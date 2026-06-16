@@ -42,6 +42,8 @@ const api: WindowApi = {
   saveUiPrefs: (prefs: Record<string, unknown>) => ipcRenderer.invoke(IPC.uiPrefsSave, prefs),
   openPath: (cwd, relPath) => ipcRenderer.invoke(IPC.shellOpenPath, { cwd, relPath }),
   readFile: (cwd, relPath) => ipcRenderer.invoke(IPC.readFile, { cwd, relPath }),
+  writeFile: (cwd, relPath, content) => ipcRenderer.invoke(IPC.writeFile, { cwd, relPath, content }),
+  onCloseShortcut: (cb) => subscribe<void>(IPC.closeShortcut, () => cb()),
   listFiles: (cwd) => ipcRenderer.invoke(IPC.listFiles, cwd),
   listDir: (cwd, rel) => ipcRenderer.invoke(IPC.listDir, { cwd, rel }),
   git: {

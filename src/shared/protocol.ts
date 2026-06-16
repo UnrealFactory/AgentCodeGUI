@@ -98,6 +98,12 @@ export interface FileReadResult {
   error?: string // human-readable reason when content is null (binary / too big / missing)
 }
 
+/** Result of writing a file's content from the in-app editor (Ctrl+S). */
+export interface FileWriteResult {
+  ok: boolean
+  error?: string // human-readable reason when the write failed
+}
+
 /** One entry of a directory listing (the in-app file explorer, loaded lazily per folder). */
 export interface DirEntry {
   name: string
@@ -436,6 +442,8 @@ export const IPC = {
   mcpSetEnabled: 'mcp:set-enabled', // turn an MCP server on/off (persisted to the app home)
   shellOpenPath: 'shell:open-path', // open a file with the OS default app
   readFile: 'fs:read-file', // read a file's text content for the in-app viewer card
+  writeFile: 'fs:write-file', // overwrite a file's text content from the in-app editor (Ctrl+S)
+  closeShortcut: 'shortcut:close', // Ctrl+W pressed (main swallows it) → renderer closes the open viewer
   listFiles: 'fs:list-files', // enumerate project files for the "@" mention palette
   listDir: 'fs:list-dir', // list one folder's entries for the file explorer (lazy per expand)
   lspStatus: 'lsp:status', // code-intel status for a file (lazily spawns the project's server)

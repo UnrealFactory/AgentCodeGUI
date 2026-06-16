@@ -32,20 +32,36 @@ function loadSize(key: string): ModalSize | null {
  * app's ui-prefs store) and double-click-to-maximize. Until the user resizes once, `size` is
  * null and the card keeps its CSS default size — so small files still open as a small
  * card and the markdown split keeps its wider default.
+ *
+ * opts.defaultMaximized: open maximized when nothing's been remembered yet (the code
+ * viewer wants this — 큰 화면으로 바로). The maximize state is itself persisted, so once
+ * the user restores to a smaller size that choice sticks across reopens / restarts.
  */
-export function useResizableModal(storageKey: string, open: boolean) {
+export function useResizableModal(storageKey: string, open: boolean, opts?: { defaultMaximized?: boolean }) {
   const ref = useRef<HTMLDivElement>(null)
   const [size, setSize] = useState<ModalSize | null>(() => loadSize(storageKey))
-  const [maximized, setMaximized] = useState(false)
+  const maxKey = storageKey + '.max'
+  const defaultMax = opts?.defaultMaximized ?? false
+  const [maximized, setMaximized] = useState<boolean>(() => getPref<boolean>(maxKey, defaultMax))
 
-  // re-read the saved size whenever the card opens: the file-viewer and diff cards
-  // are separate, always-mounted instances that share one key, so this keeps a size
-  // chosen in one of them in sync the next time the other opens
+  // re-read the saved size + maximize state whenever the card opens: the file-viewer and
+  // diff cards are separate, always-mounted instances that share one key, so this keeps a
+  // size/maximize chosen in one of them in sync the next time the other opens
   useEffect(() => {
-    if (open) setSize(loadSize(storageKey))
-  }, [open, storageKey])
+    if (open) {
+      setSize(loadSize(storageKey))
+      setMaximized(getPref<boolean>(maxKey, defaultMax))
+    }
+  }, [open, storageKey, maxKey, defaultMax])
 
-  const toggleMaximize = useCallback(() => setMaximized((m) => !m), [])
+  // toggling persists the choice (so a restore-to-small / re-maximize is remembered)
+  const toggleMaximize = useCallback(() => {
+    setMaximized((m) => {
+      const next = !m
+      setPref(maxKey, next)
+      return next
+    })
+  }, [maxKey])
 
   // The card is centred in its overlay, so its centre stays put as it grows: a 1px
   // cursor move past an edge has to add 2px of size (one per side) for that edge to

@@ -15,6 +15,7 @@ import type {
   EngineVersionState,
   EngineInstallProgress,
   FileReadResult,
+  FileWriteResult,
   DirEntry,
   SkillInfo,
   McpServerInfo,
@@ -64,6 +65,10 @@ export interface WindowApi {
   openPath(cwd: string, relPath: string): Promise<void>
   /** read a file's text content (cwd-relative or absolute) for the in-app viewer card */
   readFile(cwd: string, relPath: string): Promise<FileReadResult>
+  /** overwrite a file's text content (cwd-relative or absolute) from the in-app editor */
+  writeFile(cwd: string, relPath: string, content: string): Promise<FileWriteResult>
+  /** Ctrl+W was pressed (main blocks the app-close) — fired so the open viewer can close itself */
+  onCloseShortcut(cb: () => void): () => void
   /** enumerate project files (relative POSIX paths) to power the "@" mention palette */
   listFiles(cwd: string): Promise<string[]>
   /** list one folder's entries (folders first) for the file explorer — `rel` is cwd-relative ('' = root) */

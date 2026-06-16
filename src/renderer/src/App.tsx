@@ -484,8 +484,9 @@ function MainApp({ user }: { user: AppUser }) {
     const onKey = (e: KeyboardEvent): void => {
       if (e.metaKey || e.ctrlKey || e.altKey) return
       // a blocking question/프롬프트 modal owns the keyboard (arrows/Enter/numbers) while
-      // open — don't let these global shortcuts steal focus or cycle the mode underneath it
-      if (document.querySelector('.q-overlay, .pr-overlay')) return
+      // open — don't let these global shortcuts steal focus or cycle the mode underneath it.
+      // .q-mini = 질문을 잠깐 내려둔 상태(여전히 답 대기 중)도 동일하게 비켜준다
+      if (document.querySelector('.q-overlay, .q-mini, .pr-overlay')) return
       // when the /ask modal is FULL open it owns Enter (focuses its own composer), so
       // don't steal focus to the main one. When it's minimized, we deliberately let
       // this run — Enter then focuses the main chat composer, as expected.
@@ -518,7 +519,7 @@ function MainApp({ user }: { user: AppUser }) {
       if (e.key !== 'Escape' || mode !== 'single' || !busy) return
       if (
         document.querySelector(
-          '.q-overlay, .set-overlay, .set-dialog-overlay, .pr-overlay, .ask-overlay, .ask-mini, .fv-overlay, .gitm-overlay, .iv-overlay, .sa-overlay, .ctx-menu, .sel-bar'
+          '.q-overlay, .q-mini, .set-overlay, .set-dialog-overlay, .pr-overlay, .ask-overlay, .ask-mini, .fv-overlay, .gitm-overlay, .iv-overlay, .sa-overlay, .ctx-menu, .sel-bar'
         )
       )
         return

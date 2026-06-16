@@ -17,7 +17,7 @@ import * as gitApi from './git'
 import { lspManager } from './lsp/manager'
 import { initAutoUpdater, checkForUpdates, quitAndInstall, getUpdateStatus } from './updater'
 import { IPC } from '@shared/protocol'
-import type { EngineEvent, RunRequest, PermissionResponse, QuestionResponse, WindowBounds, ResizeEdge, UsageInfo, UsageWindow, FileReadResult, UserProfile, MultiRunRequest, MultiPermissionResponse, MultiQuestionResponse, LspPos } from '@shared/protocol'
+import type { EngineEvent, RunRequest, PermissionResponse, QuestionResponse, WindowBounds, ResizeEdge, UsageInfo, UsageWindow, FileReadResult, FileWriteResult, UserProfile, MultiRunRequest, MultiPermissionResponse, MultiQuestionResponse, LspPos } from '@shared/protocol'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -353,6 +353,15 @@ function createWindow(): void {
     const allowed = (dev && url.startsWith(dev)) || url.startsWith('file:')
     if (!allowed) event.preventDefault()
   })
+  // Ctrl/⌘+W는 Electron 기본 메뉴의 '창 닫기' 단축키라, 누르면 앱이 그대로 꺼진다 —
+  // 삼켜서 앱 종료는 막되(before-input-event는 메뉴 단축키까지 차단), 렌더러엔 알려
+  // 열린 코드 뷰어만 닫게 한다. (앱 종료는 창 닫기 버튼/Alt+F4로만)
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    if (input.type === 'keyDown' && (input.control || input.meta) && !input.alt && input.key.toLowerCase() === 'w') {
+      event.preventDefault()
+      send(IPC.closeShortcut, null)
+    }
+  })
 
   const devUrl = process.env['ELECTRON_RENDERER_URL']
   if (devUrl) {
@@ -531,6 +540,19 @@ function registerIpc(): void {
       return { path: a.relPath, content: buf.toString('utf8'), truncated: false }
     } catch {
       return { path: a.relPath, content: null, truncated: false, error: '파일을 열 수 없어요' }
+    }
+  })
+
+  // Overwrite a file's text from the in-app editor (Ctrl+S). Writes utf-8 to the same
+  // resolved path readFile uses; the renderer holds the buffer, so this is the only
+  // disk write for editing.
+  ipcMain.handle(IPC.writeFile, async (_e, a: { cwd: string; relPath: string; content: string }): Promise<FileWriteResult> => {
+    const abs = path.isAbsolute(a.relPath) ? a.relPath : path.join(a.cwd || '', a.relPath)
+    try {
+      await fs.promises.writeFile(abs, a.content, 'utf8')
+      return { ok: true }
+    } catch (e) {
+      return { ok: false, error: (e as Error)?.message || '파일을 저장할 수 없어요' }
     }
   })
 

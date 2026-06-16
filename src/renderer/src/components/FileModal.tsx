@@ -2,7 +2,10 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type CSSPr
 import { createPortal } from 'react-dom'
 import type { FileDiff, FileReadResult, LspLocation, LspSemanticTokens, LspStatus } from '@shared/protocol'
 import { Markdown } from './Markdown'
+import { CmEditor, type CmEditorHandle } from './CmEditor'
 import { highlightCode, highlightToLines } from '../lib/highlight'
+import { SEM_CLASS, riderSemClass, type SemSpan, type StructOv } from '../lib/semTokens'
+import { useCppStructOv } from '../lib/cppStruct'
 import { isImagePath, imageSrc } from '../lib/images'
 import { FileBadge, fileTypeFor, paletteClassFor } from './fileType'
 import {
@@ -43,105 +46,8 @@ function absPath(p: string, cwd: string): string {
   return /^([a-zA-Z]:[\\/]|\\\\|\/)/.test(p) ? p : cwd.replace(/[\\/]+$/, '') + '\\' + p
 }
 
-// ── semantic highlighting (LSP semanticTokens over the hljs base) ───────────
-// LSP token type → viewer color class. Identifier kinds only — keywords, strings,
-// comments etc. stay with highlight.js, which already colors them consistently.
-// IntelliJ-palette languages (TS·Python …) use this shared table.
-const SEM_CLASS: Record<string, string> = {
-  class: 'sem-type',
-  struct: 'sem-type',
-  interface: 'sem-type',
-  enum: 'sem-type',
-  type: 'sem-type',
-  typeParameter: 'sem-type',
-  delegateName: 'sem-type',
-  moduleName: 'sem-type',
-  concept: 'sem-type',
-  method: 'sem-fn',
-  function: 'sem-fn',
-  extensionMethodName: 'sem-fn',
-  property: 'sem-member',
-  field: 'sem-member',
-  fieldName: 'sem-member',
-  event: 'sem-member',
-  enumMember: 'sem-const',
-  enumConstant: 'sem-const',
-  constant: 'sem-const',
-  constantName: 'sem-const',
-  macro: 'sem-const',
-  decorator: 'sem-const',
-  parameter: 'sem-param'
-}
-
-// Rider-palette languages (C#·C++): 토큰 분류를 Rider 2025.3의 실제 스킴(Rider
-// Islands Dark / Rider Light)과 1:1로 맞춘 매핑 — Rider 설치본의 스킴 XML과
-// ReSharper 하이라이터 등록(fallback 체인)에서 직접 추출·검증한 값이다.
-//  · struct/enum/union/delegate는 클래스(--code-type)와 다른 연보라(--code-type-2)
-//  · C# enum 멤버는 ReSharper가 '상수'로 분류(볼드 시안), C++ enumerator는 연보라
-//  · event는 핑크, 매크로는 키워드 색, C++ 의존 이름(dependent name)은 민트
-//  · 파라미터·지역변수는 기본 텍스트색(이탤릭 아님) — hljs의 잘못된 추측도 덮는다
-//  · clangd의 'comment' 토큰은 비활성 전처리 분기(#if 0 …)에만 나온다
-//  · 'unknown'(미해석 이름)은 칠하지 않는다 — compile_commands.json 없는 프로젝트
-//    (예: UE)에선 미해석 식별자마다 dependentName이 붙어 와서, 색을 주면 UE_LOG 같은
-//    매크로까지 의존-이름 민트로 오염된다. 진짜 템플릿 의존 타입은 'type'으로 온다.
-// 한계: clangd는 C++ struct/union도 'class'로 보고하므로 Rider의 struct 연보라
-// 구분은 C++에선 불가능하다(둘 다 클래스 보라로 칠해짐).
-function riderSemClass(type: string, modBits: number, modNames: string[], cpp: boolean): string | null {
-  const has = (name: string): boolean => {
-    const i = modNames.indexOf(name)
-    return i >= 0 && (modBits & (1 << i)) !== 0
-  }
-  switch (type) {
-    case 'type': // C++ typedef/alias — Rider도 클래스 보라. 단 typename T::x는 의존 이름
-      return cpp && has('dependentName') ? 'sem-dep' : 'sem-type'
-    case 'class':
-    case 'interface':
-    case 'typeParameter':
-    case 'namespace':
-    case 'moduleName':
-      return 'sem-type'
-    case 'struct':
-    case 'enum':
-    case 'delegateName':
-      return 'sem-type2'
-    case 'enumMember':
-    case 'enumConstant':
-      return cpp ? 'sem-type2' : 'sem-const'
-    case 'constant':
-    case 'constantName':
-      return 'sem-const'
-    case 'method':
-    case 'function':
-    case 'extensionMethodName':
-    case 'operatorOverloaded':
-      return 'sem-fn'
-    case 'operator': // C++ 사용자 정의 연산자 호출만 메서드 색 — 그 외 연산자는 기본색
-      return cpp && has('userDefined') ? 'sem-fn' : null
-    case 'property':
-    case 'field':
-    case 'fieldName':
-      return 'sem-member'
-    case 'variable': // C++ static 멤버는 'variable'+classScope로 온다 → 필드 색
-      return cpp && has('classScope') ? 'sem-member' : 'sem-plain'
-    case 'parameter':
-      return 'sem-plain'
-    case 'event':
-      return 'sem-event'
-    case 'macro':
-    case 'preprocessorKeyword': // OmniSharp: #region·#if 같은 C# 지시문 — Rider는 키워드 파랑
-      return 'sem-kw'
-    case 'concept': // Rider는 concept을 기본 식별자 색으로 둔다 (Default Identifier fallback)
-      return 'sem-plain'
-    case 'stringEscapeCharacter':
-      return 'sem-esc'
-    case 'comment': // clangd: 비활성 전처리 분기만 — 진짜 주석은 토큰으로 안 온다
-      return cpp ? 'sem-inactive' : null
-    case 'excludedCode': // OmniSharp: C#의 #if 비활성 분기
-      return 'sem-inactive'
-    default:
-      return null
-  }
-}
+// SEM_CLASS / riderSemClass moved to ../lib/semTokens (shared with the CodeMirror
+// editor so viewer + editor color identifiers from one table). Imported above.
 
 // ── hover card content — 서버 마크다운을 구조화해 IDE 툴팁처럼 ──────────────
 // clangd는 '### kind `name`' 헤더 → 메타(→ 반환형 · provided by · Type:) → 본문 →
@@ -408,15 +314,8 @@ function hoverKindClass(kind: string): string {
 // "지금 열린 파일"에는 안 나와도, 전에 연 파일에서 배웠으면 칠할 수 있게 한다
 const sessionSemDict = new Map<string, string>()
 
-// ── C++ struct 구분 보정 ─────────────────────────────────────────────────────
-// clangd 시맨틱 토큰은 struct/union을 'class'로 합쳐 보내 Rider의 연보라 구분이
-// 사라진다 (workspace/symbol·documentSymbol도 마찬가지 — 직접 확인). 종류가
-// 살아있는 유일한 통로는 hover라서, 화면의 고유 이름당 한 번씩 그 위치에 hover를
-// 보내 '### struct …' 헤더로 종류를 배운다. 이미 파싱된 TU 안의 위치라 ms 단위.
-// 필드는 hover 시그니처의 '// In <소속타입>'으로 소속을 알아내 struct 소속이면
-// 연보라. 결과는 세션 캐시 — 같은 이름은 다시 묻지 않는다.
-const cppRecordIsStruct = new Map<string, boolean>() // 타입 이름 → struct/union 여부
-const cppFieldOfStruct = new Map<string, boolean>() // 필드 이름 → struct 소속 여부
+// C++ struct 구분 보정(cppRecordIsStruct/cppFieldOfStruct + 프로브)은 ../lib/cppStruct
+// (useCppStructOv 훅)로 옮겨 뷰어·CM이 공유한다.
 
 // UE 명명규칙 폴백 (C++ 전용) — 사전 어디에도 없는 이름이면 접두사로 추정:
 // F/U/A/S/T/I+대문자 → 타입 보라, E+대문자 → enum 연보라. 사전이 항상 우선이라
@@ -466,7 +365,9 @@ function decorateIdents(html: string, resolve: (name: string) => string | null):
   return root.innerHTML
 }
 
-function HoverContent({
+// exported so the CodeMirror editor (CmEditor) renders the identical hover card.
+// It's a function declaration → hoisted, so the FileModal↔CmEditor import cycle is safe.
+export function HoverContent({
   md,
   lang,
   dict,
@@ -591,12 +492,6 @@ function HoverContent({
       )}
     </>
   )
-}
-
-interface SemSpan {
-  char: number
-  len: number
-  cls: string
 }
 
 // Wrap [char, char+len) ranges of a line's text in classed spans. Wraps are applied
@@ -1090,6 +985,7 @@ function CodeView({
   cwd,
   lsp,
   sem,
+  structOv,
   jump,
   marks,
   mdSource,
@@ -1101,6 +997,7 @@ function CodeView({
   cwd: string
   lsp: boolean
   sem: LspSemanticTokens | null
+  structOv: StructOv | null // C++ struct 연보라 보정 (FileModal에서 한 번 계산해 내려줌)
   jump: { line: number; tick: number } | null
   marks: DiffMarks | null // changed-file decorations (null = plain viewing)
   mdSource?: boolean // markdown with a diff opens as source so the marks are visible
@@ -1121,6 +1018,9 @@ function CodeView({
     preRef.current?.classList.toggle('lsp-ctrl', on)
   }, [])
   const [flash, setFlash] = useState<number | null>(null) // 1-based line to spotlight
+  // 오버뷰 룰러는 "스크롤해야 보이는 변경을 한눈에"가 목적이라 스크롤이 생길 때만 의미가
+  // 있다 — 파일이 화면에 다 들어오면 숨긴다. 카드 크기/본문/줌 변화에 다시 잰다.
+  const [rulerOverflows, setRulerOverflows] = useState(false)
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const hoverSeq = useRef(0)
   // F12(정의로 이동)의 대상 — 마지막 일반 클릭 위치(IDE의 캐럿), 없으면 현재 마우스 위치
@@ -1137,75 +1037,6 @@ function CodeView({
   // drop a single trailing newline so the gutter and the rendered code agree on the
   // line count (otherwise the final "\n" adds a phantom unnumbered line)
   const body = isMd ? '' : content.replace(/\n$/, '')
-  // C++ struct 보정 결과 — 이 파일에서 연보라로 재분류할 타입/필드 이름들
-  const [structOv, setStructOv] = useState<{ types: Set<string>; fields: Set<string> } | null>(null)
-  useEffect(() => {
-    setStructOv(null)
-    const cpp = t.lang === 'cpp' || t.lang === 'c'
-    if (!sem || !sem.data.length || !cpp || !paletteClassFor(t.lang)) return
-    const srcLines = body.split('\n')
-    // 이름별 첫 등장 위치 — hover 프로브를 쏠 좌표
-    const typePos = new Map<string, { line: number; character: number }>()
-    const fieldPos = new Map<string, { line: number; character: number }>()
-    for (let i = 0; i < sem.data.length; i += 5) {
-      const type = sem.types[sem.data[i + 3]] ?? ''
-      if (type !== 'class' && type !== 'property') continue
-      const text = (srcLines[sem.data[i]] ?? '').substr(sem.data[i + 1], sem.data[i + 2])
-      if (!/^[A-Za-z_]\w*$/.test(text)) continue
-      const m = type === 'class' ? typePos : fieldPos
-      if (!m.has(text)) m.set(text, { line: sem.data[i], character: sem.data[i + 1] })
-    }
-    if (!typePos.size && !fieldPos.size) return
-    let alive = true
-    const apply = (): void => {
-      if (!alive) return
-      const types = new Set([...typePos.keys()].filter((n) => cppRecordIsStruct.get(n) === true))
-      const fields = new Set([...fieldPos.keys()].filter((n) => cppFieldOfStruct.get(n) === true))
-      setStructOv(types.size || fields.size ? { types, fields } : null)
-    }
-    const needTypes = [...typePos.keys()].filter((n) => !cppRecordIsStruct.has(n))
-    const needFields = [...fieldPos.keys()].filter((n) => !cppFieldOfStruct.has(n))
-    if (!needTypes.length && !needFields.length) {
-      apply()
-      return
-    }
-    // hover 헤더의 종류 단어와, 시그니처의 '// In <소속>' 을 뽑는다
-    const probe = async (pos: { line: number; character: number }): Promise<{ kind: string; container: string } | null> => {
-      const r = await window.api.lsp.hover(cwd, path, pos).catch(() => null)
-      const head = /^###\s+([\w-]+)/.exec(r?.contents ?? '')
-      if (!head) return null
-      const cont = /\/\/ In ([\w:]+)/.exec(r?.contents ?? '')
-      return { kind: head[1].toLowerCase(), container: cont?.[1]?.split('::').pop() ?? '' }
-    }
-    const CHUNK = 6
-    void (async () => {
-      // 타입 먼저 — 필드의 소속 판정이 이 결과(cppRecordIsStruct)를 쓴다
-      for (let i = 0; i < needTypes.length && alive; i += CHUNK) {
-        await Promise.all(
-          needTypes.slice(i, i + CHUNK).map(async (n) => {
-            const p = await probe(typePos.get(n)!)
-            if (!p) return // 응답 없음(서버 바쁨 등) — 캐시하지 않고 다음 기회에
-            if (p.kind === 'struct' || p.kind === 'union') cppRecordIsStruct.set(n, true)
-            else if (p.kind === 'class') cppRecordIsStruct.set(n, false)
-          })
-        )
-      }
-      for (let i = 0; i < needFields.length && alive; i += CHUNK) {
-        await Promise.all(
-          needFields.slice(i, i + CHUNK).map(async (n) => {
-            const p = await probe(fieldPos.get(n)!)
-            if (!p || p.kind !== 'field' || !p.container) return
-            const st = cppRecordIsStruct.get(p.container)
-            if (st !== undefined) cppFieldOfStruct.set(n, st) // 소속 종류를 모르면 보류
-          })
-        )
-      }
-      apply()
-    })()
-    return () => {
-      alive = false
-    }
-  }, [sem, t.lang, body, cwd, path])
 
   // semantic tokens grouped per line, mapped to color classes (skipping kinds we
   // leave to hljs) — recomputed only when a new token set arrives. Rider 언어(C#·C++)는
@@ -1353,6 +1184,18 @@ function CodeView({
     const timer = setTimeout(() => setFlash(null), 1500)
     return () => clearTimeout(timer)
   }, [jump, lines])
+
+  // 스크롤 가능 여부를 재서 오버뷰 룰러 표시를 토글한다. 카드 크기 변화(최대화/복원·창
+  // 리사이즈)는 ResizeObserver로, 본문·줌 변화는 deps 재실행으로 다시 잰다.
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const measure = (): void => setRulerOverflows(el.scrollHeight > el.clientHeight + 1)
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [lines, body, zoom])
 
   const onMove = (e: React.MouseEvent): void => {
     mousePt.current = { x: e.clientX, y: e.clientY }
@@ -1550,6 +1393,14 @@ function CodeView({
       )
       pushGhosts(i + 1)
     })
+    // 변경된 파일: 마지막 줄이 추가면 그 초록 틴트를 카드 아래 빈 높이까지 잇는 채움 행을
+    // 둔다 — 짧은 파일에서 풀폭 틴트가 뚝 끊겨 '검은 밑줄'처럼 보이던 경계를 없앤다.
+    // 표시 전용(data-ln 없음)이라 호버·검색·정의 이동엔 잡히지 않는다.
+    if (deco) {
+      const tailCls = decoCls(lines!.length - 1) // 마지막 줄이 추가면 ' dadd', 아니면 ''
+      gutterCells.push(<span key="fill" className={'fv-fill' + tailCls} aria-hidden="true" />)
+      codeRows.push(<div key="fill" className={'fvl fv-fill' + tailCls} aria-hidden="true" />)
+    }
   } else {
     for (let i = 0; i < lineCount; i++)
       gutterCells.push(<span key={i}>{i + 1}</span>)
@@ -1564,7 +1415,7 @@ function CodeView({
           </div>
           <pre
             ref={preRef}
-            className="fv-pre hljs"
+            className={'fv-pre hljs' + (deco ? ' has-fill' : '')}
             onMouseMove={lsp ? onMove : undefined}
             onMouseLeave={lsp ? onLeavePre : undefined}
             // 코드에 마우스를 누르는 순간 카드를 치운다 — 더블클릭/드래그 선택이
@@ -1578,7 +1429,7 @@ function CodeView({
       </div>
       {/* overview ruler — one clickable mark per changed block, mapped onto the file's
           full height, so edits deep in a long file are visible without scrolling */}
-      {deco && deco.blocks.length > 0 && (
+      {deco && deco.blocks.length > 0 && rulerOverflows && (
         <div className="diff-ruler">
           {deco.blocks.map((b, i) => (
             <button
@@ -1680,6 +1531,14 @@ export function FileModal({
   // a changed markdown file opens as marked-up source (so the diff is visible);
   // this flips it to the rendered document
   const [mdPreview, setMdPreview] = useState(false)
+  // PoC: swap the read-only <pre> viewer for the CodeMirror editor (실험 토글). Kept
+  // across file switches so the two engines can be A/B compared while browsing.
+  const [cmEngine, setCmEngine] = useState(false)
+  const [cmDirty, setCmDirty] = useState(false) // CM 버퍼에 미저장 변경이 있는가
+  const [cmSaved, setCmSaved] = useState(false) // 방금 저장됨 — 잠깐 '저장됨' 표시
+  const cmRef = useRef<CmEditorHandle>(null)
+  // 정의 이동 시 떠나는 파일의 캐럿 위치를 기억 → 뒤로가기로 돌아오면 그 자리로 복원 (CM)
+  const posMap = useRef(new Map<string, number>())
   // 파일 내 검색(Ctrl+F) 열림 + 선택-질문 패널 (선택 텍스트·줄 범위와 질문 입력)
   const [findOpen, setFindOpen] = useState(false)
   const [ask, setAsk] = useState<{ text: string; from: number | null; to: number | null } | null>(null)
@@ -1694,6 +1553,8 @@ export function FileModal({
     if (findOpen) setFindOpen(false)
     if (ask) setAsk(null)
     if (askText) setAskText('')
+    if (cmDirty) setCmDirty(false)
+    if (cmSaved) setCmSaved(false)
   }
   const effPath = vs.stack.length ? vs.stack[vs.stack.length - 1].path : path
   const isSvg = !!effPath && /\.svg$/i.test(effPath)
@@ -1707,8 +1568,16 @@ export function FileModal({
   const diff = ov ? ov.diff : (effPath && diffs?.[effPath.replace(/\\/g, '/')]) || null
   const marks = useMemo(() => (diff ? diffMarksOf(diff) : null), [diff])
   const isMdFile = !!effPath && fileTypeFor(effPath).lang === 'markdown'
+  // CM PoC applies to non-markdown code files only (markdown keeps its render/source
+  // toggle for now). Computed here so the header toggle and the body swap agree.
+  const fLang = effPath ? fileTypeFor(effPath).lang : ''
+  // CM editing writes to the live file, so it's offered only for real on-disk files —
+  // not git-snapshot overrides (would overwrite the working copy with old content).
+  const cmEligible = !isImg && !isMdFile && res?.content != null && !ov
+  // C++ struct 연보라 보정 — 엔진(뷰어/CM) 무관하게 한 번 계산해 양쪽에 내려준다
+  const structOv = useCppStructOv(sem, fLang, res?.content ?? '', cwd, effPath ?? '')
 
-  const rz = useResizableModal('viewer.size', path != null)
+  const rz = useResizableModal('viewer.size', path != null, { defaultMaximized: true })
   const z = useZoom('viewer.zoom', path != null)
   // 선택 툴바가 "본문 안의 선택"을 판별하려면 카드 엘리먼트가 필요 — 상태 콜백 ref로 추적
   const [cardEl, setCardEl] = useState<HTMLDivElement | null>(null)
@@ -1717,6 +1586,21 @@ export function FileModal({
   // backdrop. Without this, selecting text inside the card and dragging out past its
   // edge fires a `click` on the overlay (the common ancestor of down/up) and closes it.
   const downOnOverlay = useRef(false)
+
+  // closing with unsaved CM edits asks first (Esc / backdrop / X / mouse-back all route
+  // through here). cmDirtyRef mirrors state so the keydown/mouse closures see it live.
+  const cmDirtyRef = useRef(false)
+  cmDirtyRef.current = cmDirty
+  const requestClose = useCallback((): void => {
+    if (cmDirtyRef.current && !window.confirm('저장하지 않은 변경이 있어요. 저장하지 않고 닫을까요?')) return
+    onClose()
+  }, [onClose])
+
+  // Ctrl+W — main이 앱 종료를 막고 보내는 신호. 코드 뷰어가 열려 있으면 닫는다 (Esc와 동일)
+  useEffect(() => {
+    if (!path) return
+    return window.api.onCloseShortcut(requestClose)
+  }, [path, requestClose])
 
   // (re)load whenever the viewed path changes; `alive` guards against a stale
   // response landing after the user already switched files or closed the card.
@@ -1829,11 +1713,11 @@ export function FileModal({
         setFindOpen(false)
         return
       }
-      onClose()
+      requestClose()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [path, onClose])
+  }, [path, requestClose])
 
   // Ctrl/⌘+F → 파일 내 검색 (카드가 열려 있는 동안은 탐색기 검색보다 우선)
   useEffect(() => {
@@ -1861,12 +1745,13 @@ export function FileModal({
     const onUp = (e: MouseEvent): void => {
       if (e.button !== 3) return
       e.preventDefault()
+      // 더 갈 곳이 있으면 한 단계 뒤로. 없으면 아무것도 안 한다(예전엔 뷰어를 닫았지만,
+      // 실수로 코드창이 꺼지는 게 싫다는 피드백 — 닫기는 Esc·X·Ctrl+W로만)
       if (hasTrail) setVs((v) => ({ ...v, stack: v.stack.slice(0, -1), jump: null }))
-      else onClose()
     }
     window.addEventListener('mouseup', onUp)
     return () => window.removeEventListener('mouseup', onUp)
-  }, [path, vs.stack.length, onClose])
+  }, [path, vs.stack.length])
 
   // Ctrl+클릭 definition target: same document → just jump; another file → stack it
   // (with the jump), so 뒤로 can unwind back to where the exploration started
@@ -1877,6 +1762,9 @@ export function FileModal({
       // 점프 직전의 텍스트 선택(더블클릭 단어 등)은 도착지에서 무의미한데 선택
       // 툴바까지 끌고 와 남는다 — 항해 시점에 정리
       window.getSelection()?.removeAllRanges()
+      // 떠나는 파일(CM)의 캐럿 위치를 저장 — 뒤로가기로 돌아오면 복원
+      const leaving = cmRef.current?.getCaret()
+      if (leaving != null && effPathRef.current) posMap.current.set(canonPath(effPathRef.current, cwd), leaving)
       const target = displayPath(loc.path, cwd)
       // 다른 파일로의 점프는 최근 파일 탭에도 기록 (앱 공통 키 형식인 슬래시 rel 경로로)
       const cur = effPathRef.current
@@ -1905,7 +1793,7 @@ export function FileModal({
         downOnOverlay.current = e.target === e.currentTarget
       }}
       onClick={(e) => {
-        if (downOnOverlay.current && e.target === e.currentTarget) onClose()
+        if (downOnOverlay.current && e.target === e.currentTarget) requestClose()
       }}
     >
       <div className="fv-modal rzm" ref={modalRef} style={rz.modalStyle}>
@@ -1954,6 +1842,25 @@ export function FileModal({
               {svgCode ? '미리보기' : '코드 보기'}
             </button>
           )}
+          {cmEligible && (
+            <button
+              className={'fv-lsp install htip' + (cmEngine ? ' on' : '')}
+              onClick={() => setCmEngine((v) => !v)}
+              data-tip={cmEngine ? '기존 뷰어로 돌아가기' : 'CodeMirror 편집기로 보기 (실험)'}
+            >
+              {cmEngine ? 'CM 끄기' : 'CM 편집기 (실험)'}
+            </button>
+          )}
+          {cmEligible && cmEngine && cmDirty && (
+            <button
+              className="fv-lsp install htip"
+              onClick={() => cmRef.current?.save()}
+              data-tip="저장 (Ctrl+S)"
+            >
+              ● 저장
+            </button>
+          )}
+          {cmEligible && cmEngine && !cmDirty && cmSaved && <span className="fv-lsp ready">저장됨</span>}
           {lspStatus === 'starting' && (
             <span className="fv-lsp starting">
               <span className="spin" /> 심볼 분석 준비 중
@@ -1992,7 +1899,7 @@ export function FileModal({
           >
             {rz.maximized ? <IconRestore size={15} /> : <IconMax size={13} />}
           </button>
-          <button className="dclose htip" onClick={onClose} aria-label="닫기" data-tip="닫기 (Esc)">
+          <button className="dclose htip" onClick={requestClose} aria-label="닫기" data-tip="닫기 (Esc)">
             <IconClose size={16} />
           </button>
         </div>
@@ -2005,6 +1912,27 @@ export function FileModal({
           </div>
         ) : res.error || res.content == null ? (
           <div className="fv-empty">{res.error || '내용이 없어요'}</div>
+        ) : cmEngine && cmEligible ? (
+          <CmEditor
+            key={effPath}
+            ref={cmRef}
+            content={res.content}
+            lang={fLang}
+            path={effPath}
+            cwd={cwd}
+            sem={sem}
+            structOv={structOv}
+            zoom={z.zoom}
+            lsp={lspStatus === 'ready'}
+            jump={vs.jump}
+            initialPos={posMap.current.get(canonPath(effPath, cwd))}
+            onNavigate={handleNavigate}
+            onDirtyChange={setCmDirty}
+            onSaved={() => {
+              setCmSaved(true)
+              window.setTimeout(() => setCmSaved(false), 1400)
+            }}
+          />
         ) : (
           <CodeView
             path={effPath}
@@ -2013,6 +1941,7 @@ export function FileModal({
             cwd={cwd}
             lsp={lspStatus === 'ready'}
             sem={sem}
+            structOv={structOv}
             jump={vs.jump}
             marks={marks}
             mdSource={isMdFile && !!diff && !mdPreview}

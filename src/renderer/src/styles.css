@@ -165,6 +165,18 @@ button:focus-visible{ outline:none; box-shadow:var(--hover-ring); }
 input,textarea{ font-family:inherit; }
 ::selection{ background: var(--accent-soft); }
 
+/* 스크롤바 — 앱 전역 기본값으로 깔아, .scroll이 안 붙은 영역까지 OS 기본 스크롤바
+   (흰 트랙 · 위/아래 화살표 버튼)가 새어 나오지 않게 한다. .scroll과 똑같은 둥근 pill
+   모양. ::-webkit-scrollbar를 author가 정의하면 Chromium은 화살표 버튼을 0으로 접지만,
+   확실히 하려고 button/corner도 명시적으로 끈다. .chat-files(스크롤바 숨김)·.scroll은
+   클래스 우선순위가 높아 이 전역값을 덮어쓴다. */
+*::-webkit-scrollbar{ width:10px; height:10px; }
+*::-webkit-scrollbar-track{ background:transparent; }
+*::-webkit-scrollbar-thumb{ background: var(--line-2); border-radius:99px; border:3px solid transparent; background-clip:content-box; }
+*::-webkit-scrollbar-thumb:hover{ background: var(--line-strong); background-clip:content-box; }
+*::-webkit-scrollbar-button{ display:none; width:0; height:0; }
+*::-webkit-scrollbar-corner{ background:transparent; }
+
 .scroll{ scrollbar-width:thin; scrollbar-color: var(--line-strong) transparent; }
 .scroll::-webkit-scrollbar{ width:10px; height:10px; }
 .scroll::-webkit-scrollbar-thumb{ background: var(--line-2); border-radius:99px; border:3px solid transparent; background-clip:content-box; }
@@ -662,6 +674,11 @@ input,textarea{ font-family:inherit; }
 /* read/write/edit rows open the file on click */
 .t-row.openable{ cursor:pointer; }
 .t-row.openable:hover .t-target{ color:var(--accent-2); text-decoration:underline; text-underline-offset:2px; }
+/* 파일 줄 툴팁("파일 보기")은 파일명(.t-target) 시작점 바로 위에 띄운다 — 행 전체에
+   달면 .t-target(flex:1) 탓에 행이 칼럼 폭만큼 넓어 툴팁이 가운데(≈오른쪽)에 떴다.
+   기본 위치(bottom:100%, 위)는 그대로 두고 left만 파일명 텍스트 시작점(0)에 맞춘다. */
+.t-target.has-tip::after{ left:0; transform:translate(0, 3px); }
+.t-target.has-tip:hover::after{ transform:translate(0, 0); }
 
 /* ── bash output (BashOutput) — the install-log idiom, inlined under the row ──
    Collapsed: a ghost line as quiet as the rows themselves. Expanded: an --inset
@@ -1087,6 +1104,20 @@ input,textarea{ font-family:inherit; }
 .qm-spacer{ flex:1; }
 .qm-close{ width:30px; height:30px; flex:0 0 auto; border-radius:8px; display:grid; place-items:center; color:var(--text-3); transition:background .13s, color .13s; }
 .qm-close:hover{ background:var(--surface-2); color:var(--text); }
+/* 질문 잠깐 내려두기 — 헤더의 ⌄ 버튼/Esc로 우하단 알약으로 접어, q-overlay 대신 떠서
+   뒤 대화를 그대로 보고 스크롤할 수 있게 한다. .mini-* 언어(.ask-mini)와 공유. */
+.qm-min{ width:30px; height:30px; flex:0 0 auto; border-radius:8px; display:grid; place-items:center; color:var(--text-3); transition:background .13s, color .13s; }
+.qm-min:hover{ background:var(--surface-2); color:var(--text); }
+.q-mini{
+  position:absolute; right:24px; bottom:24px; z-index:80;
+  display:flex; align-items:center; gap:11px;
+  padding:9px 9px 9px 11px; min-width:248px; max-width:360px;
+  background:var(--bg); border:1px solid var(--line-2); border-radius:15px;
+  box-shadow:0 20px 48px -16px rgba(40,30,20,0.44); cursor:pointer;
+  animation:rise .18s cubic-bezier(.2,.8,.2,1) both; transition:box-shadow .14s, border-color .14s;
+}
+.q-mini:hover{ border-color:var(--accent-line); box-shadow:0 24px 56px -16px rgba(40,30,20,0.5); }
+.q-mini-orb{ width:32px; height:32px; flex:0 0 auto; border-radius:10px; background:linear-gradient(140deg, var(--accent), var(--accent-2)); display:grid; place-items:center; color:var(--on-accent); }
 .qm-step-count{ flex:0 0 auto; font-family:var(--font-mono); font-size:12.5px; font-weight:600; color:var(--text-3); }
 /* stepper — progress across multiple questions; done steps are clickable to revisit */
 .q-steps{ display:flex; align-items:center; gap:7px; flex-wrap:wrap; padding:13px 22px; border-bottom:1px solid var(--line); }
@@ -1372,9 +1403,12 @@ input,textarea{ font-family:inherit; }
 }
 .fv-gutter span{ font-family:var(--font-mono); font-size:12.5px; line-height:1.7; color:var(--text-4); }
 /* flex:1 stretches the pre past its longest line, so a changed line's tint runs the
-   full visible width of the pane (not just to the code's edge) */
-.fv-pre{ margin:0; padding:14px 20px 14px 16px; flex:1; }
-.fv-pre code.hljs{ font-family:var(--font-mono); font-size:12.5px; line-height:1.7; color:var(--text-2); white-space:pre; }
+   full visible width of the pane (not just to the code's edge). 가로 패딩은 pre가 아니라
+   각 줄(.fvl)·코드에 둔다 — pre가 패딩을 가지면 줄 틴트가 그 안쪽에서 시작/끝나, 거터와
+   초록 사이(및 오른쪽 끝)에 안 칠해진 어두운 띠가 생긴다. 줄에 패딩을 두면 틴트가 거터
+   경계부터 끝까지 꽉 찬다(글자 위치는 그대로). */
+.fv-pre{ margin:0; padding:14px 0; flex:1; }
+.fv-pre code.hljs{ display:block; padding:0 20px 0 16px; font-family:var(--font-mono); font-size:12.5px; line-height:1.7; color:var(--text-2); white-space:pre; }
 
 /* ── 변경된 파일 마킹 — diff를 코드 뷰 위에 그대로 얹는다 ──────
    실제 디스크 내용을 렌더하므로 LSP 호버/정의 이동 좌표가 항상 진실이고, 그 위에
@@ -1382,12 +1416,21 @@ input,textarea{ font-family:inherit; }
    .fv-wrap은 스크롤 밖에서 오버뷰 룰러(.diff-ruler)를 고정해 주는 호스트. */
 .fv-wrap{ position:relative; flex:1; min-height:0; display:flex; flex-direction:column; }
 .fv-wrap .fv-code{ flex:1; }
+/* 추가된 줄 — 삭제 고스트(빨강)와 대칭으로 행 전체를 초록 틴트, 거터 숫자도 초록 배경.
+   짧은 새 파일에서 풀폭 초록이 마지막 줄 아래로 뚝 끊겨 '검은 밑줄'처럼 보이던 문제는
+   아래 .has-fill 채움 행으로 막는다(틴트를 빈 높이까지 이어 경계 자체를 없앤다). */
 .fvl.dadd{ background:var(--green-soft); }
 .fv-gutter span.dadd{
   background:var(--green-gut); color:var(--green);
-  /* 음수 마진 + 같은 패딩으로 거터의 안쪽 여백까지 틴트를 채운다 (숫자 위치는 그대로) */
+  /* 음수 마진 + 같은 패딩으로 거터 안쪽 여백까지 틴트를 채운다 (숫자 위치는 그대로) */
   margin:0 -12px 0 -16px; padding:0 12px 0 16px;
 }
+/* 마지막 변경 줄의 틴트를 카드 아래 빈 높이까지 잇는 표시 전용 채움 행 — .fv-pre를 세로
+   flex로 두고 남는 공간을 먹는다(거터 .fv-gutter는 이미 flex column). data-ln이 없어
+   호버·검색·정의 이동엔 잡히지 않는다. */
+.fv-pre.has-fill{ display:flex; flex-direction:column; }
+.fvl.fv-fill{ flex:1 1 auto; min-height:0; }
+.fv-gutter span.fv-fill{ flex:1 1 auto; min-height:0; }
 /* 삭제된 코드의 고스트 줄 — 그 경계 자리에 빨간 틴트로 끼워 넣어 지워진 내용이
    보인다. 거터에는 옛(old-side) 줄 번호가 빨간 숫자로 박힌다. */
 .fvl.gdel{ background:var(--red-soft); opacity:.88; }
@@ -1480,7 +1523,7 @@ input,textarea{ font-family:inherit; }
    per-line rows replace the single <code> block so hover hit-testing and definition
    jumps have one element per line; metrics mirror code.hljs so the gutter aligns */
 .fv-pre .fvl{ font-family:var(--font-mono); font-size:12.5px; line-height:1.7; min-height:1.7em;
-  color:var(--text-2); white-space:pre; }
+  padding:0 20px 0 16px; color:var(--text-2); white-space:pre; }
 .fv-pre.lsp-ctrl{ cursor:pointer; }
 .fv-pre.lsp-ctrl .fvl:hover{ background:color-mix(in oklab, var(--accent) 8%, transparent); }
 /* semantic token colors (LSP) — wrapped innermost, so they win over hljs tokens.
@@ -1501,6 +1544,23 @@ input,textarea{ font-family:inherit; }
 /* Rider: 상수·enum 멤버(C#)는 볼드 (DEFAULT_CONSTANT FONT_TYPE 1) */
 .pal-rider .fvl .sem-const, .pal-rider.lsp-hover .sem-const{ font-weight:600; }
 
+/* CodeMirror 편집기의 시맨틱 색 — 데코레이션 span(.sem-*)이 hljs 베이스 span 안쪽에
+   중첩되므로(buildDeco에서 hljs를 inclusive=바깥으로) 가장 안쪽 요소가 되어 색이 이긴다.
+   뷰어의 .fvl .sem-* 와 같은 --code-* 값을 쓴다(팔레트 변수는 .cm-host의 pal 클래스에서 상속). */
+.cm-content .sem-type{ color:var(--code-type); }
+.cm-content .sem-type2{ color:var(--code-type-2, var(--code-type)); }
+.cm-content .sem-fn{ color:var(--code-fn); }
+.cm-content .sem-member{ color:var(--code-member); }
+.cm-content .sem-const{ color:var(--code-const); }
+.cm-content .sem-event{ color:var(--code-event, var(--code-member)); }
+.cm-content .sem-kw{ color:var(--code-kw); }
+.cm-content .sem-dep{ color:var(--code-dep, var(--text-2)); }
+.cm-content .sem-esc{ color:var(--code-esc, var(--code-str)); }
+.cm-content .sem-inactive{ color:var(--code-inactive, var(--code-cmt)); }
+.cm-content .sem-plain{ color:var(--text-2); font-style:normal; }
+.cm-content .sem-param{ font-style:italic; }
+.pal-rider .cm-content .sem-const{ font-weight:600; }
+
 .fvl.flash{ animation:fvl-flash 1.5s ease-out; }
 @keyframes fvl-flash{
   0%, 25%{ background:color-mix(in oklab, var(--accent) 28%, transparent); }
@@ -1519,6 +1579,24 @@ input,textarea{ font-family:inherit; }
 .fv-lsp.install{ border:none; cursor:pointer; font-family:inherit;
   color:var(--accent); background:color-mix(in oklab, var(--accent) 14%, transparent); }
 .fv-lsp.install:hover{ background:color-mix(in oklab, var(--accent) 24%, transparent); }
+/* active 토글(예: CM 편집기 켜짐) — 액센트로 채워 현재 모드를 또렷이 */
+.fv-lsp.install.on{ color:var(--on-accent); background:var(--accent); }
+.fv-lsp.install.on:hover{ background:var(--accent); }
+
+/* CodeMirror 편집기 호스트 — 카드 본문을 가득 채운다(.fv-wrap과 같은 flex 채움).
+   토큰 색은 전부 hljs 데코레이션 + 기존 .hljs .hljs-* CSS에서 오고, 여긴 레이아웃만. */
+.cm-host{ flex:1 1 auto; min-height:0; position:relative; overflow:hidden; background:var(--inset); }
+.cm-host .cm-editor{ height:100%; }
+.cm-host .cm-editor.cm-focused{ outline:none; }
+/* CM hover 툴팁: CM 기본 크롬(테두리·배경)을 숨기고 .lsp-hover 카드만 보이게.
+   카드 위치는 CM 툴팁이 잡으므로 .lsp-hover의 position:fixed를 static으로 덮는다. */
+.cm-tooltip.cm-tooltip-hover{ background:transparent !important; border:none !important; }
+.cm-tooltip .cm-lsp-hover{ position:static; }
+/* 정의 이동 도착 줄 깜빡임 — 뷰어의 .fvl.flash와 같은 애니메이션 */
+.cm-flash{ animation:fvl-flash 1.5s ease-out; }
+/* Ctrl(정의 이동 모드) — 포인터 커서 + 줄 hover 강조 (뷰어의 .fv-pre.lsp-ctrl와 동일) */
+.cm-host.lsp-ctrl .cm-content{ cursor:pointer; }
+.cm-host.lsp-ctrl .cm-line:hover{ background:color-mix(in oklab, var(--accent) 8%, transparent); }
 
 /* back button (definition-jump trail) sits before the file badge */
 .diff-head .fv-back{ margin-right:-2px; }

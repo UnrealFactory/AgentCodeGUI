@@ -30,6 +30,7 @@ import {
   IconAlert,
   IconShieldChk,
   IconClipList,
+  IconExpand,
   IconCheckCirc,
   IconBolt,
   IconX2,
@@ -284,14 +285,16 @@ function ToolGroup({
         return (
           <Fragment key={t.id}>
             <div
-              className={'t-row ' + t.kind + ' ' + t.status + (openable ? ' openable has-tip' : '')}
+              className={'t-row ' + t.kind + ' ' + t.status + (openable ? ' openable' : '')}
               onClick={openable ? () => onOpenFile!(t.target) : undefined}
-              data-tip={openable ? '파일 보기' : undefined}
             >
               <span className="t-ic">{toolIcon(t.kind, 14)}</span>
               <span className="t-verb">{t.verb}</span>
               <span className="t-sep">·</span>
-              <span className="t-target">{t.target}</span>
+              {/* 툴팁은 넓은 행 전체가 아니라 파일명에 달아, 파일명 바로 아래에 뜨게 한다 */}
+              <span className={'t-target' + (openable ? ' has-tip' : '')} data-tip={openable ? '파일 보기' : undefined}>
+                {t.target}
+              </span>
               <ToolResult t={t} />
             </div>
             {t.kind === 'bash' && t.output && <BashOutput t={t} />}
@@ -1066,6 +1069,9 @@ function QuestionDialog({
   const [custom, setCustom] = useState<string[]>(() => questions.map(() => '')) // 기타 free text
   const [other, setOther] = useState<boolean[]>(() => questions.map(() => false)) // 기타 active
   const [step, setStep] = useState(0)
+  // 잠깐 내려두기 — 답을 잃지 않고 우하단 알약으로 접어, 뒤 대화를 확인한 뒤 다시 펼쳐
+  // 답한다. QuestionModal이 requestId로 키를 걸어, 새 질문이 오면 펼친 상태로 다시 뜬다.
+  const [minimized, setMinimized] = useState(false)
   const modalRef = useRef<HTMLDivElement>(null)
   const customRef = useRef<HTMLInputElement>(null)
   const multi = questions.length > 1
@@ -1132,24 +1138,34 @@ function QuestionDialog({
     } else setStep(step + 1)
   }
 
-  // focus the modal on open so the composer textarea behind it doesn't swallow the
-  // number-key shortcuts
+  // focus the modal on open AND whenever it's restored from the pill, so the composer
+  // textarea behind it doesn't swallow the number-key shortcuts
   useEffect(() => {
-    modalRef.current?.focus()
-  }, [])
+    if (!minimized) modalRef.current?.focus()
+  }, [minimized])
   // focus the free-text field whenever 기타 becomes active for the current question
   useEffect(() => {
     if (other[step]) customRef.current?.focus()
   }, [other, step])
 
-  // Keyboard: Esc skips (dismiss) from anywhere — even mid-typing; ←/↑ ·→/↓ move between
-  // questions, number keys 1-8 pick an option (the last is 직접 입력), Enter advances/
+  // Keyboard: Esc 잠깐 내려두기(한 번 더 Esc면 건너뛰기) — 작성 중에도; ←/↑ ·→/↓ move
+  // between questions, number keys 1-8 pick an option (the last is 직접 입력), Enter advances/
   // submits. The arrows/numbers/Enter are skipped while focus is in a text field.
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
+      // 내려둔 동안엔 대화를 자유롭게 보도록 키를 가로채지 않는다. Esc 한 번 더면
+      // 건너뛰기 — 펼치기는 알약/✕ 옆 버튼 클릭으로 (ask 모달의 Esc·Esc와 동일)
+      if (minimized) {
+        if (e.key === 'Escape') {
+          e.preventDefault()
+          onDismiss()
+        }
+        return
+      }
+      // 펼친 상태의 Esc는 건너뛰기 대신 잠깐 내려둔다 — 답을 잃지 않고 대화를 확인
       if (e.key === 'Escape') {
         e.preventDefault()
-        onDismiss()
+        setMinimized(true)
         return
       }
       const ae = document.activeElement as HTMLElement | null
@@ -1181,15 +1197,47 @@ function QuestionDialog({
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [sel, custom, other, step, onDismiss])
+  }, [sel, custom, other, step, onDismiss, minimized])
 
   const otherIdx = cur.options.length // 직접 입력's position → its number / keyboard shortcut
   const footBtn = cur.multiSelect || other[step] // single-select options auto-advance; these need a button
 
+  // 내려둔 상태 — q-overlay 대신 우하단 알약으로 접어 뒤 대화를 그대로 보며 스크롤할 수
+  // 있게 한다. 클릭(또는 펼치기 버튼)이면 다시 질문이 뜨고, ✕는 건너뛰기.
+  if (minimized) {
+    return (
+      <div className="q-mini" onClick={() => setMinimized(false)}>
+        <div className="q-mini-orb">
+          <IconClipList size={17} />
+        </div>
+        <div className="mini-text">
+          <div className="mini-title">질문이 기다리고 있어요</div>
+          <div className="mini-sub">{multi ? `질문 ${questions.length}개 · 펼쳐서 답하기` : '펼쳐서 답하기'}</div>
+        </div>
+        <span className="mini-spacer" />
+        <button className="mini-btn has-tip" data-tip="펼치기" aria-label="펼치기" onClick={() => setMinimized(false)}>
+          <IconExpand size={15} />
+        </button>
+        <button
+          className="mini-btn close has-tip"
+          data-tip="건너뛰기"
+          aria-label="건너뛰기"
+          onClick={(e) => {
+            e.stopPropagation()
+            onDismiss()
+          }}
+        >
+          <IconClose size={16} />
+        </button>
+      </div>
+    )
+  }
+
   return (
     // The agent is blocked waiting on this answer, so — unlike the other modals — a
     // backdrop click does NOT dismiss it (too easy to lose the prompt by accident).
-    // Closing is only via a deliberate action: answer it, or the ✕ to skip.
+    // Closing is a deliberate action: answer it, ✕ to skip, or 내려두기(⌄·Esc)로 잠깐
+    // 접어 대화를 확인한 뒤 다시 펼쳐 답한다.
     <div className="q-overlay">
       <div className="q-modal" ref={modalRef} tabIndex={-1}>
         <div className="q-modal-head">
@@ -1200,6 +1248,9 @@ function QuestionDialog({
             </span>
           )}
           <span className="qm-spacer" />
+          <button className="qm-min" onClick={() => setMinimized(true)} aria-label="내려두기" title="내려두기 (Esc)">
+            <IconChevDown size={18} />
+          </button>
           <button className="qm-close" onClick={onDismiss} aria-label="건너뛰기" title="건너뛰기">
             <IconClose size={18} />
           </button>
@@ -1292,7 +1343,7 @@ function QuestionDialog({
         </div>
 
         <div className="q-modal-foot">
-          <span className="q-hint">숫자 키로 선택{cur.multiSelect ? ' · 여러 개 가능' : ''} · Esc 닫기</span>
+          <span className="q-hint">숫자 키로 선택{cur.multiSelect ? ' · 여러 개 가능' : ''} · Esc 내려두기</span>
           {footBtn && (
             <button className="q-submit" disabled={!curChosen} onClick={proceed}>
               {last ? '완료' : '다음'}
@@ -1369,6 +1420,14 @@ export function Composer({
     el.style.height = 'auto'
     el.style.height = Math.min(el.scrollHeight, 160) + 'px'
   }
+
+  // 작성칸 높이를 항상 현재 value에 맞춘다. 전송하면 부모가 value를 비우지만 그건
+  // onChange를 거치지 않아, 이 effect가 없으면 긴 메시지를 보낸 뒤에도 칸이 커진 채
+  // 다음 타이핑 전까지 유지된다(예약·히스토리·초안 복원 같은 외부 변경도 함께 보정).
+  useEffect(() => {
+    grow(inputRef?.current ?? null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value])
 
   // ── 보낸 메시지 히스토리 (셸처럼 ↑/↓로 복구) ────────────────────
   // histIdx: 현재 history 위치(null = 직접 작성 중인 초안). histDraft: 히스토리

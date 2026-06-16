@@ -68,6 +68,11 @@
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.161",
+    "@codemirror/autocomplete": "^6.20.3",
+    "@codemirror/commands": "^6.10.3",
+    "@codemirror/language": "^6.12.3",
+    "@codemirror/state": "^6.6.0",
+    "@codemirror/view": "^6.43.1",
     "electron-updater": "^6.8.9",
     "highlight.js": "^11.11.1",
     "pyright": "^1.1.410",
