@@ -19,6 +19,7 @@ import { SettingsModal } from './components/Settings'
 import { EngineGate } from './components/EngineGate'
 import { AppUpdateGate } from './components/AppUpdateGate'
 import { WhatsNew } from './components/WhatsNew'
+import { UpdateNotes } from './components/UpdateNotes'
 import { Profile } from './components/Profile'
 import { PromptModal } from './components/PromptModal'
 import { RecentFiles } from './components/RecentFiles'
@@ -1120,9 +1121,12 @@ function MainApp({ user }: { user: AppUser }) {
       {settingsOpen && <SettingsModal cwd={cwd} onClose={() => setSettingsOpen(false)} />}
 
 
-      {/* 업데이트 내용 카드 — 버전이 바뀐 첫 실행에 한 번. 엔진/앱 업데이트
-          게이트보다 먼저 렌더해서(z-index 동급, DOM 뒤가 위) 게이트가 항상 위에 뜬다 */}
+      {/* 첫 실행 안내 — 둘은 SEEN_KEY를 공유해 서로 배타적이다. 새 설치(도장 없음)는
+          WhatsNew(전체 기능 소개), 마이너 버전이 오른 업데이트는 UpdateNotes(업데이트
+          패치노트). 엔진/앱 업데이트 게이트보다 먼저 렌더해서(z-index 동급, DOM 뒤가
+          위) 게이트가 항상 위에 뜬다 */}
       <WhatsNew />
+      <UpdateNotes />
 
       <EngineGate />
       <AppUpdateGate />

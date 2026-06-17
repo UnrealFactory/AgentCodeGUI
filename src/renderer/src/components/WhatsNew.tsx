@@ -1,23 +1,27 @@
 import { ReactNode, useEffect, useState } from 'react'
 import { getPref, setPref } from '../lib/prefs'
 
-// 업데이트(또는 새 설치) 후 첫 실행에 딱 한 번 뜨는 "업데이트 내용" 화면.
-// 마지막으로 본 앱 버전을 ui-prefs에 기록해 두고, 메이저.마이너 시리즈가 바뀐
-// 업데이트에서만 연다 — 1.5.x 패치(x만 오르는) 업데이트는 같은 패치노트라 이미 본
-// 사용자에겐 다시 띄우지 않는다. 닫으면 그 버전으로 도장이 찍힌다.
-// 비주얼은 v1.5 "시네마틱 히어로" 컨셉: 풀스크린 루프 비디오 무대 위에 세리프
-// 대제목(영문 Instrument Serif · 한글 Noto Serif KR)과 리퀴드 글래스 내비/칩.
-// 패치노트가 기능별 슬라이드로 쪼개져 하단 칩·← →·Enter(CTA)로 한 장씩 넘긴다.
+// "전체 기능 소개" 덱 — 새로 설치한 사람에게 딱 한 번, 우리 앱에 어떤 기능이 있는지
+// 한 바퀴 둘러보게 해 준다. 업데이트(버전 상승)로 뜨는 건 여기가 아니라 UpdateNotes가
+// 맡는다 — 그래서 이 화면은 "본 적 없는(기록이 전혀 없는) 첫 실행"에만 연다. 닫으면
+// 현재 버전으로 도장(SEEN_KEY)이 찍히고, 이후로는 다시 뜨지 않는다.
+// 내용은 1.1 시점까지 쌓인 모든 기능을 한 번에 — 개요 → 코드 인텔리전스 → Git →
+// 멀티 에이전트 → 대화 → 엔진/마무리.
+// 비주얼은 "시네마틱 히어로" 컨셉: 풀스크린 루프 비디오 무대 위에 세리프 대제목
+// (영문 Instrument Serif · 한글 Noto Serif KR)과 리퀴드 글래스 내비/칩.
+// 기능별 슬라이드로 쪼개져 하단 칩·← →·Enter(CTA)로 한 장씩 넘긴다.
 // 닫기는 상단 건너뛰기, 마지막 슬라이드의 시작하기, 또는 Esc.
-const SEEN_KEY = 'whatsnew.seenVersion'
+// SEEN_KEY·seriesOf는 UpdateNotes(업데이트 패치노트)와 공유한다 — 같은 도장을 읽고
+// 써서 둘이 같은 실행에 동시에 뜨지 않게 조율한다.
+export const SEEN_KEY = 'whatsnew.seenVersion'
 
 // '1.5.3' → '1.5' — 패치노트는 마이너 단위로 같은 내용이므로 이 단위로 비교한다
-function seriesOf(v: string): string {
+export function seriesOf(v: string): string {
   return v.split('.').slice(0, 2).join('.')
 }
 
-// v1.0 출시 — 패치노트가 아니라 "전체 기능 소개" 덱. 역대 버전에서 쌓인 기능을 한 번에
-// 둘러보도록 개요 → 코드 인텔리전스 → Git → 멀티 에이전트 → 대화 → 엔진/마무리로 엮었다.
+// "전체 기능 소개" 덱 — 역대 버전에서 쌓인 기능을 한 번에 둘러보도록
+// 개요 → 코드 인텔리전스 → Git → 멀티 에이전트 → 대화 → 엔진/마무리로 엮었다.
 // 비주얼은 기존 "스페이스" 무대를 그대로 — 슬라이드마다 배경 비디오가 바뀐다 (딥 스페이스
 // 5종). 전부 CloudFront immutable 캐시라 한 번 받으면 디스크 캐시로 재생; 받기 전/오프라인엔
 // 딥 네이비(#010828) 무대가 그대로 깔려 깨지지 않는다.
@@ -60,14 +64,14 @@ const SLIDES: Slide[] = [
       <>
         다른 에디터 없이도,
         <br />
-        <em>코드가 읽힙니다.</em>
+        <em>읽고, 고칩니다.</em>
       </>
     ),
     desc: (
       <>
         내장 파일 탐색기와 <b>LSP 코드 뷰어</b> — 심볼 탐색, Ctrl+F, <b>F12로 정의 이동</b>,
-        구조화된 호버 카드, 언어별 신택스 팔레트까지. 에이전트가 만지는 코드를 곧바로,
-        제자리에서 읽어요.
+        구조화된 호버 카드. <b>읽기·편집 모드</b>를 오가며 부모 커밋과의 표준 diff를 보고
+        제자리에서 고치고, C#·TS·Python 등 분석은 디스크 캐시로 <b>다시 켜도 거의 즉시</b> 떠요.
       </>
     )
   },
@@ -142,8 +146,8 @@ const SLIDES: Slide[] = [
     desc: (
       <>
         Claude Code 엔진을 <b>인앱에서 설치·전환</b>하고(시스템 설치는 그대로 둬요), 라이트·다크
-        테마, 우클릭 <b>“AgentCodeGUI로 열기”</b>, 자동 업데이트까지. 자, 이제 <b>시작할 시간</b>
-        이에요.
+        테마, 최대화 버튼의 <b>창 스냅 배치</b>, 우클릭 <b>“AgentCodeGUI로 열기”</b>, 자동
+        업데이트까지. 자, 이제 <b>시작할 시간</b>이에요.
       </>
     )
   }
@@ -164,15 +168,15 @@ export function WhatsNew() {
 
   // decide only once the REAL version arrives — comparing against the pre-IPC
   // fallback would flash the screen for users who have already seen this version.
-  // 같은 마이너 시리즈(1.5.x)의 패치 업데이트는 스킵 — 1.5.2에서 본 화면이 1.5.3에서
-  // 또 뜨지 않게. 새 설치(기록 없음)와 시리즈가 바뀐 업데이트(1.6.0)에서만 연다.
+  // 이 화면은 "전체 기능 소개"라 새로 설치한 사람(도장이 전혀 없는 첫 실행)에게만 연다.
+  // 업데이트로 버전이 올라간 경우는 여기 말고 UpdateNotes(업데이트 패치노트)가 맡는다.
   useEffect(() => {
     window.api.app
       .getVersion()
       .then((v) => {
         if (!v) return
         const seen = getPref<string>(SEEN_KEY, '')
-        if (seen && seriesOf(seen) === seriesOf(v)) return
+        if (seen) return // 이미 본 적 있음(설치 이력 있음) → 소개 덱은 다시 안 뜬다
         setVersion(v)
       })
       .catch(() => {})
