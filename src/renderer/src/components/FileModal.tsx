@@ -98,8 +98,13 @@ function splitCsArgs(args: string): string[] {
 
 function parseCsSig(
   sig: string
-): { kind: string; name: string; container: string | null; ret?: string; retLabel?: string; params?: string[] } | null {
-  const s = sig.replace(/\s+/g, ' ').trim()
+): { kind: string; name: string; container: string | null; ret?: string; retLabel?: string; params?: string[]; value?: string } | null {
+  let s = sig.replace(/\s+/g, ' ').trim()
+  // 확장 메서드: Roslyn이 '(확장)'/'(extension)' 접두사를 붙여 보낸다 — 떼고 일반
+  // 멤버처럼 파싱하되 종류를 'extension method'로 분류해, 다른 메서드 호버와 똑같은
+  // 카드(종류 칩 + 이름·매개변수·반환) 구조로 만든다.
+  const isExt = /^\((확장|extension)\)\s*/.test(s)
+  if (isExt) s = s.replace(/^\((확장|extension)\)\s*/, '')
   // ① VS식 마커
   const marker = /^\((매개 변수|parameter|지역 변수|local variable|로컬 변수|상수|constant|필드|field)\)\s*(.*)$/.exec(s)
   if (marker) {
@@ -108,17 +113,30 @@ function parseCsSig(
       '지역 변수': 'local', '로컬 변수': 'local', 'local variable': 'local',
       '상수': 'const', constant: 'const', '필드': 'field', field: 'field'
     }
-    const rest = marker[2]
+    let rest = marker[2]
+    // const/field 초기값: 'type Container.Name = value' — 값을 떼어 VALUE로 따로 둔다
+    // (안 떼면 끝 토큰인 값이 이름으로, 타입칸엔 'type ...Name ='가 들어가 깨진다)
+    let value: string | undefined
+    const eq = rest.indexOf(' = ')
+    if (eq >= 0) {
+      value = rest.slice(eq + 3).trim()
+      rest = rest.slice(0, eq).trim()
+    }
     const sp = rest.lastIndexOf(' ')
-    if (sp < 0) return { kind: KIND[marker[1]], name: rest, container: null }
+    if (sp < 0) return { kind: KIND[marker[1]], name: rest, container: null, value }
     const qual = rest.slice(sp + 1)
     const dot = qual.lastIndexOf('.')
+    // 한정명이 있으면 멤버다 — const는 C++의 'static field'처럼 'const field'로 통일한다
+    // (한정명이 없으면 메서드 안 지역 const라 그냥 'const')
+    let kindOut = KIND[marker[1]]
+    if (kindOut === 'const' && dot >= 0) kindOut = 'const field'
     return {
-      kind: KIND[marker[1]],
+      kind: kindOut,
       name: dot >= 0 ? qual.slice(dot + 1) : qual,
       container: dot >= 0 ? qual.slice(0, dot) : null,
       ret: rest.slice(0, sp),
-      retLabel: 'type'
+      retLabel: 'type',
+      value
     }
   }
   // ② 타입/네임스페이스 선언
@@ -135,20 +153,49 @@ function parseCsSig(
     }
   }
   // ③ 멤버 — 'ret Container.Name(args)' / 'ret Container.Name { get; }' / 'ret Container.Name'
-  const body = s.replace(/^(?:(?:public|private|protected|internal|static|readonly|virtual|override|sealed|abstract|async|extern|unsafe|new|partial|required|event|delegate)\s+)+/, '')
+  let body = s.replace(/^(?:(?:public|private|protected|internal|static|readonly|virtual|override|sealed|abstract|async|extern|unsafe|new|partial|required|event|delegate)\s+)+/, '')
   const paren = body.indexOf('(')
+  // 메서드 괄호가 없을 때의 top-level ' = value'는 초기값이다(enum 멤버 'Foo.Bar = 0',
+  // 필드 초기값). 메서드 기본 인자의 '='은 괄호 안이라 건드리지 않는다 — 떼어 둔다.
+  let value: string | undefined
+  if (paren < 0) {
+    const eq = body.indexOf(' = ')
+    if (eq >= 0) {
+      value = body.slice(eq + 3).trim()
+      body = body.slice(0, eq).trim()
+    }
+  }
   const brace = body.indexOf('{')
   const cut = paren >= 0 ? paren : brace >= 0 ? brace : body.length
   const headPart = body.slice(0, cut).trim()
   const sp = headPart.lastIndexOf(' ')
-  if (sp < 0) return null
+  if (sp < 0) {
+    // 타입 접두사 없는 한정명 + 값 → enum 멤버 ('EEnumTest.A = 0'). clangd의 enumerator와
+    // 같은 분류로 구조화한다(이름·값·소속). 값이 없으면 신뢰도가 낮아 raw로 둔다.
+    const d = headPart.lastIndexOf('.')
+    if (d >= 0 && value !== undefined) {
+      return { kind: 'enum member', name: headPart.slice(d + 1), container: headPart.slice(0, d), value }
+    }
+    return null
+  }
   const qual = headPart.slice(sp + 1)
   const dot = qual.lastIndexOf('.')
   if (dot < 0) return null // 한정명이 아니면 신뢰도가 낮다 — 구조화 포기
   const name = qual.slice(dot + 1)
   const container = qual.slice(0, dot)
   const ret = headPart.slice(0, sp)
-  const kind = paren >= 0 ? (name === container.split('.').pop() ? 'constructor' : 'method') : brace >= 0 ? 'property' : /\bevent\b/.test(s) ? 'event' : 'field'
+  const kind =
+    paren >= 0
+      ? name === container.split('.').pop()
+        ? 'constructor'
+        : isExt
+          ? 'extension method'
+          : 'method'
+      : brace >= 0
+        ? 'property'
+        : /\bevent\b/.test(s)
+          ? 'event'
+          : 'field'
   // 매개변수 — clangd의 'Parameters:' 목록에 해당하는 정보를 시그니처 괄호에서 복원
   let params: string[] | undefined
   if (paren >= 0) {
@@ -161,13 +208,16 @@ function parseCsSig(
     container,
     // void도 표시한다 — C++(clangd) 카드와 마찬가지로 반환형 줄이 항상 보이게
     ret: ret && kind !== 'constructor' ? ret : undefined,
-    retLabel: kind === 'method' ? 'return' : 'type',
-    params
+    retLabel: /method/.test(kind) ? 'return' : 'type',
+    params,
+    value
   }
 }
 
 function parseHover(md: string): HoverParts | null {
-  let rest = md.trim()
+  // Roslyn은 줄바꿈을 CRLF로 보낸다 — 펜스 정규식(```lang\n)이 \r에 막혀 구조화에
+  // 실패하고 raw 마크다운으로 떨어지면 카드 디자인이 깨진다. 먼저 LF로 정규화한다.
+  let rest = md.replace(/\r\n?/g, '\n').trim()
   let kind: string | null = null
   let name: string | null = null
   const head = /^###\s+([^\n`]+?)\s*`([^`\n]+)`\s*\n?/.exec(rest)
@@ -178,6 +228,9 @@ function parseHover(md: string): HoverParts | null {
     // clangd는 C++ static 데이터 멤버를 'static-property'라 부른다 — 인스턴스 멤버
     // (field)·C#(static field)과 용어를 맞춘다
     if (kind === 'static-property') kind = 'static field'
+    // clangd 종류는 'static-method'처럼 하이픈을 쓴다 — C#('static method')과 통일해
+    // 칩이 'STATIC-METHOD'가 아니라 'STATIC METHOD'로 뜨게 하이픈을 공백으로 바꾼다
+    kind = kind.replace(/-/g, ' ')
   }
   let sig: string | null = null
   let sigLang = ''
@@ -191,6 +244,9 @@ function parseHover(md: string): HoverParts | null {
   }
   if (!head && !sig) return null
   if (sig) sig = sig.replace(/^\/\/ In .+\n/, '') // 소속 클래스 주석 — 헤더의 한정명과 중복
+  // Roslyn은 오버로드가 있으면 시그니처 끝에 '(+ 1 오버로드)'/'(+ 2 overloads)'를 붙여
+  // — parseCsSig의 타입/멤버 판별을 깨뜨리므로 떼어낸다 (메서드 인자 괄호는 '+'로 시작 안 함)
+  if (sig) sig = sig.replace(/\s*\(\+[^)]*\)\s*$/, '')
   // 메타 줄은 '→ `bool`' 같은 기호 대신 라벨(return·type·value)로. 출처(provided
   // by/in)는 푸터로, clangd가 본문에 풀어 쓰는 'Parameters:' 불릿은 구조화된
   // 매개변수 목록으로 끌어올린다 — RETURN과 같은 격자에서 줄맞춰 보이게.
@@ -251,6 +307,7 @@ function parseHover(md: string): HoverParts | null {
       kind = e.kind
       name = e.name
       if (e.ret) metas.unshift({ k: e.retLabel ?? 'type', v: '`' + e.ret + '`' })
+      if (e.value) metas.push({ k: 'value', v: '`' + e.value + '`' }) // const/field 초기값
       if (e.params?.length) params = e.params.map((q) => ({ v: '`' + q + '`' }))
       if (e.container && !from) {
         // 타입 선언의 소속은 네임스페이스, 멤버의 소속은 선언 타입 — 라벨을 구분

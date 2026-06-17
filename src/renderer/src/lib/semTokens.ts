@@ -60,10 +60,14 @@ export function riderSemClass(type: string, modBits: number, modNames: string[],
     case 'typeParameter':
     case 'namespace':
     case 'moduleName':
+    case 'module': // Roslyn
+    case 'recordClass': // Roslyn: record(class) — 클래스와 동일 보라
       return 'sem-type'
     case 'struct':
     case 'enum':
     case 'delegateName':
+    case 'delegate': // Roslyn
+    case 'recordStruct': // Roslyn: record struct — struct와 동일 연보라
       return 'sem-type2'
     case 'enumMember':
     case 'enumConstant':
@@ -74,6 +78,7 @@ export function riderSemClass(type: string, modBits: number, modNames: string[],
     case 'method':
     case 'function':
     case 'extensionMethodName':
+    case 'extensionMethod': // Roslyn
     case 'operatorOverloaded':
       return 'sem-fn'
     case 'operator': // C++ 사용자 정의 연산자 호출만 메서드 색 — 그 외 연산자는 기본색

@@ -26,19 +26,48 @@ export interface DownloadSpec {
   findBin(dir: string): string | null
 }
 
+// recursively locate a file by exact name (the Roslyn server's exe is nested a few
+// folders deep inside the extracted nupkg: tools/<tfm>/<rid>/...exe)
+function findFile(dir: string, name: string, depth = 0): string | null {
+  if (depth > 8) return null
+  let ents: fs.Dirent[]
+  try {
+    ents = fs.readdirSync(dir, { withFileTypes: true })
+  } catch {
+    return null
+  }
+  for (const e of ents) {
+    const p = path.join(dir, e.name)
+    if (e.isFile() && e.name === name) return p
+    if (e.isDirectory()) {
+      const r = findFile(p, name, depth + 1)
+      if (r) return r
+    }
+  }
+  return null
+}
+
 export const DOWNLOADS: Record<string, DownloadSpec> = {
   cs: {
     id: 'cs',
-    label: 'C# (OmniSharp)',
-    // the net6.0 build, run via `dotnet` with roll-forward: it uses the machine's
-    // .NET SDK MSBuild, which loads modern SDK-style projects. (The full-framework
-    // build binds VS's MSBuild and breaks against current VS versions.)
-    resolveUrl: async () =>
-      'https://github.com/OmniSharp/omnisharp-roslyn/releases/latest/download/omnisharp-win-x64-net6.0.zip',
-    findBin: (dir) => {
-      const p = path.join(dir, 'OmniSharp.dll')
-      return fs.existsSync(p) ? p : null
-    }
+    label: 'C# (Roslyn)',
+    // Microsoft's Roslyn-based LSP (what the modern VS Code C# extension uses) —
+    // far faster than OmniSharp, MIT-licensed, published per-platform on nuget.org.
+    // A self-contained apphost (needs the .NET runtime on the machine). We resolve
+    // the newest version from the NuGet flat-container API and fetch the .nupkg.
+    resolveUrl: async () => {
+      const pkg = 'roslyn-language-server.win-x64'
+      const res = await fetch(`https://api.nuget.org/v3-flatcontainer/${pkg}/index.json`, {
+        headers: { 'user-agent': 'AgentCodeGUI' }
+      })
+      if (!res.ok) throw new Error(`NuGet 응답 오류 (${res.status})`)
+      const j = (await res.json()) as { versions?: string[] }
+      const v = j.versions?.[j.versions.length - 1] // flat-container lists versions ascending
+      if (!v) throw new Error('roslyn-language-server 버전을 찾을 수 없어요')
+      return `https://api.nuget.org/v3-flatcontainer/${pkg}/${v}/${pkg}.${v}.nupkg`
+    },
+    // the .nupkg extracts to tools/<tfm>/win-x64/Microsoft.CodeAnalysis.LanguageServer.exe
+    findBin: (dir) => findFile(dir, 'Microsoft.CodeAnalysis.LanguageServer.exe')
   },
   cpp: {
     id: 'cpp',

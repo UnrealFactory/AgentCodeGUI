@@ -28,6 +28,9 @@ export class StdioRpc {
   /** Answers server→client requests (workspace/configuration …). Must not throw. */
   onRequest: (method: string, params: unknown) => unknown = () => null
 
+  /** Observes server→client notifications (progress, projectInitializationComplete …). */
+  onNotify: (method: string, params: unknown) => void = () => {}
+
   constructor(private child: ChildProcess) {
     child.stdout?.on('data', (chunk: Buffer) => this.feed(chunk))
   }
@@ -106,7 +109,15 @@ export class StdioRpc {
         )
       return
     }
-    if (msg.method) return // notification (diagnostics, logs) — not used yet
+    if (msg.method) {
+      // notification (diagnostics, logs, progress, projectInitializationComplete)
+      try {
+        this.onNotify(msg.method, msg.params)
+      } catch {
+        /* observer must not break the read loop */
+      }
+      return
+    }
     if (msg.id == null) return
     const p = this.pending.get(Number(msg.id))
     if (!p) return

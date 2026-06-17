@@ -49,6 +49,14 @@ interface ServerDef {
    *  out-of-tree compile DB; bundled servers ignore it. */
   command(root: string): SpawnPlan | null
   initializationOptions?(): unknown
+  /** post-initialize hook — Roslyn doesn't auto-discover .sln/.csproj, so we tell it
+   *  which projects to open here (after `initialized`). Other servers don't need it. */
+  afterInitialized?(rpc: StdioRpc, root: string): void
+  /** true when the server keeps loading after `initialize` and signals readiness with
+   *  a `workspace/projectInitializationComplete` notification (Roslyn). We hold the
+   *  status at 'starting' until then so the viewer only asks for tokens once the index
+   *  is complete — otherwise it captures early/partial tokens and never refreshes. */
+  awaitsProjectInit?: boolean
   /** 파일별 서버 루트 — 기본은 열린 프로젝트(cwd). C#은 가장 가까운 .csproj 폴더로
    *  좁힌다: UE 같은 모노레포 루트의 무관한 sln(엔진 자동화 프로젝트 수십 개)을
    *  물면 정작 보는 파일이 어느 프로젝트에도 속하지 않아 토큰이 안 나온다 */
@@ -58,6 +66,9 @@ interface ServerDef {
 // 소스 없는 .NET 어셈블리 심볼(F12 → BCL 타입 등)의 디컴파일 소스를 떨궈 두는 곳.
 // 이 안의 파일은 읽기 전용 뷰 — LSP를 붙여봐야 misc 문서라 status에서 제외한다.
 const METADATA_DIR = path.join(APP_HOME, 'metadata')
+
+// Roslyn LSP가 쓰는 로그 폴더 (서버가 직접 기록) — 앱 홈 아래로 모은다
+const ROSLYN_LOG = path.join(APP_HOME, 'lsp', 'roslyn-log')
 
 /** OmniSharp의 $metadata$ 가짜 경로 → o#/metadata 요청 파라미터.
  *  '$metadata$/Project/<P>/Assembly/<A>/Symbol/<T>.cs' 꼴이고 이름의 '.'이
@@ -89,6 +100,18 @@ function nearestCsProjectRoot(absFile: string, cwd: string): string | null {
   return null
 }
 
+/** .csproj file URIs directly in `root` — Roslyn's project/open payload. */
+function csprojUris(root: string): string[] {
+  try {
+    return fs
+      .readdirSync(root)
+      .filter((n) => n.toLowerCase().endsWith('.csproj'))
+      .map((n) => pathToFileURL(path.join(root, n)).href)
+  } catch {
+    return []
+  }
+}
+
 // keep a server's working set bounded — beyond this, the least recently
 // opened document is closed so server memory doesn't grow with every file viewed
 const MAX_OPEN_DOCS = 32
@@ -109,6 +132,9 @@ interface ServerHandle {
   ready: Promise<void>
   docs: Map<string, DocState> // uri → sync state (insertion order = open order)
   diedAt: number
+  // Roslyn: true between initialize and projectInitializationComplete — status reports
+  // 'starting' while true so the viewer waits for the full index before asking tokens
+  projectInitPending: boolean
   // the server's semanticTokens legend (token type names + modifier names) from the
   // initialize result — null when the server doesn't do semantic highlighting
   semLegend: { types: string[]; mods: string[] } | null
@@ -188,15 +214,26 @@ const SERVERS: ServerDef[] = [
     label: 'C#',
     langs: 'C#',
     kind: 'download',
-    requires: '.NET SDK(dotnet) 필요',
+    requires: '.NET SDK 10+ 필요',
     exts: { cs: 'csharp', csx: 'csharp' },
-    // needs the .NET SDK (`dotnet` on PATH) — a given on C# dev machines. Roll-forward
-    // lets the net6.0 build run on whatever newer runtime the SDK ships.
+    // Roslyn LSP: self-contained apphost launched over stdio. Needs the .NET 10 runtime
+    // (+ SDK for MSBuild project loads) — a given on modern C# dev machines.
     command: () => {
-      const dll = installedBin('cs')
-      return dll ? { cmd: 'dotnet', args: [dll, '-lsp'], env: { DOTNET_ROLL_FORWARD: 'LatestMajor' } } : null
+      const exe = installedBin('cs')
+      return exe ? { cmd: exe, args: ['--stdio', '--logLevel=Information', `--extensionLogDirectory=${ROSLYN_LOG}`] } : null
     },
-    rootFor: (abs, cwd) => nearestCsProjectRoot(abs, cwd) ?? cwd
+    rootFor: (abs, cwd) => nearestCsProjectRoot(abs, cwd) ?? cwd,
+    // initialize 후에도 솔루션 인덱싱이 한참 걸린다 — projectInitializationComplete
+    // 전까지 status를 'starting'으로 잡아 뷰어가 완성된 토큰만 받게 한다
+    awaitsProjectInit: true,
+    // Roslyn은 .sln/.csproj를 스스로 찾지 않는다 — rootFor가 좁힌 .csproj 폴더의
+    // 프로젝트를 project/open으로 열어 줘야 인덱싱이 시작된다. 로드가 끝나면
+    // workspace/projectInitializationComplete가 오고, 그 전엔 빈 토큰이 올 수 있어
+    // 렌더러의 semanticTokens 재시도(폴링)가 이를 메운다.
+    afterInitialized: (rpc, root) => {
+      const projects = csprojUris(root)
+      if (projects.length) rpc.notify('project/open', { projects })
+    }
   },
   {
     id: 'cpp',
@@ -287,6 +324,10 @@ class LspManager {
     if (s.status !== 'error') {
       void s.ready.then(() => this.openDoc(s, def, abs)).catch(() => {})
     }
+    // Roslyn: initialize returns early but the index isn't ready until
+    // projectInitializationComplete — keep reporting 'starting' so the viewer doesn't
+    // grab partial tokens (which would then need a reopen to refresh).
+    if (s.status === 'ready' && s.projectInitPending) return 'starting'
     return s.status
   }
 
@@ -347,10 +388,9 @@ class LspManager {
       .catch(() => null)
     const raw = r?.data
     if (!Array.isArray(raw) || raw.length === 0) {
-      // OmniSharp: 프로젝트 로드가 끝나기 전에 didOpen된 문서는 misc 워크스페이스에
-      // 묶여 영영 빈 토큰만 온다 — 문서를 닫아 두면 다음 재시도(렌더러 폴링)의
-      // didOpen이 로드된 프로젝트에 재연결된다. clangd는 재파싱이 비싸서 제외.
-      ctx.reopen?.()
+      // 빈 토큰 = "지원하지만 아직 없음"(서버가 인덱싱/프로젝트 로드 중). null은
+      // "이 서버는 시맨틱 토큰 자체가 없음"에만 쓴다 — 그래야 렌더러가 폴링을 멈춘다.
+      // Roslyn은 projectInitializationComplete 전까지 비어 올 수 있고, 그 폴링이 메운다.
       return { data: [], types: ctx.semLegend.types, mods: ctx.semLegend.mods }
     }
     const data: number[] = []
@@ -587,7 +627,13 @@ class LspManager {
       ready: Promise.resolve(),
       docs: new Map(),
       diedAt: 0,
-      semLegend: null
+      semLegend: null,
+      projectInitPending: !!def.awaitsProjectInit
+    }
+    // Roslyn signals the full index is ready with this notification — flip the gate so
+    // status() reports 'ready' and the viewer asks for (now complete) semantic tokens.
+    rpc.onNotify = (method) => {
+      if (method === 'workspace/projectInitializationComplete') handle.projectInitPending = false
     }
     const rootUri = pathToFileURL(path.resolve(root)).href
     handle.ready = rpc
@@ -635,6 +681,7 @@ class LspManager {
             ? { types, mods: Array.isArray(legend?.tokenModifiers) ? legend.tokenModifiers : [] }
             : null
         rpc.notify('initialized', {})
+        def.afterInitialized?.(rpc, path.resolve(root))
         handle.status = 'ready'
       })
     handle.ready.catch(() => {
@@ -669,8 +716,6 @@ class LspManager {
     rpc: StdioRpc
     uri: string
     semLegend: { types: string[]; mods: string[] } | null
-    /** C#: 문서를 닫아 다음 didOpen 때 로드된 프로젝트로 재연결 (빈 토큰 자가 회복) */
-    reopen?: () => void
   } | null> {
     const abs = this.resolve(cwd, relPath)
     const def = abs ? serverDefFor(abs) : null
@@ -682,15 +727,7 @@ class LspManager {
     try {
       await s.ready
       const uri = await this.openDoc(s, def, abs)
-      const reopen =
-        def.id === 'cs'
-          ? (): void => {
-              if (!s.docs.has(uri)) return
-              s.docs.delete(uri)
-              s.rpc.notify('textDocument/didClose', { textDocument: { uri } })
-            }
-          : undefined
-      return { rpc: s.rpc, uri, semLegend: s.semLegend, reopen }
+      return { rpc: s.rpc, uri, semLegend: s.semLegend }
     } catch {
       return null
     }
