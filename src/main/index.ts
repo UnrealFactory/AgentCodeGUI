@@ -694,6 +694,7 @@ function registerIpc(): void {
   ipcMain.handle(IPC.lspPrewarm, async (_e, a: { cwd: string }) => {
     lspManager.prewarm(a.cwd || '')
   })
+  ipcMain.handle(IPC.lspProjectStatus, async (_e, a: { cwd: string }) => lspManager.projectStatus(a.cwd || ''))
   ipcMain.handle(IPC.lspInstall, async (_e, a: { cwd: string; relPath: string }) =>
     lspManager.install(a.cwd || '', a.relPath, (p) => send(IPC.lspInstallProgress, p))
   )

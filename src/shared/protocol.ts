@@ -117,6 +117,13 @@ export interface DirEntry {
  * (C#/OmniSharp, C++/clangd) — bundled ones (TS, Python) skip those states.
  */
 export type LspStatus = 'unsupported' | 'starting' | 'ready' | 'error' | 'need-install' | 'installing'
+/** Aggregate code-analysis state for a whole project — drives the explorer folder badge.
+ *  'analyzing' = a server under the folder is still starting/indexing, 'ready' = all done,
+ *  'idle' = nothing running. percent = latest indexing % during 'analyzing' (or null). */
+export interface LspProjectStatus {
+  state: 'idle' | 'analyzing' | 'ready'
+  percent: number | null
+}
 /** A known language server + its provisioning state (설정 ▸ 코드 분석). */
 export interface LspServerInfo {
   id: string // 'ts' | 'py' | 'cs' | 'cpp'
@@ -454,6 +461,7 @@ export const IPC = {
   lspSemanticTokens: 'lsp:semantic-tokens', // semantic highlighting tokens for a document
   lspCachedTokens: 'lsp:cached-tokens', // disk-cached tokens for instant paint (no server spawn)
   lspPrewarm: 'lsp:prewarm', // warm up a project's server/compile-DB before the first file open
+  lspProjectStatus: 'lsp:project-status', // aggregate analysis state for a folder (explorer badge)
   lspInstall: 'lsp:install', // download a native language server (C#/C++) on user request
   lspServers: 'lsp:servers', // list every known language server + provisioning state (settings)
   lspInstallServer: 'lsp:install-server', // download a server by id (settings)

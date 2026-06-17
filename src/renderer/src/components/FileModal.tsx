@@ -1529,12 +1529,12 @@ export function FileModal({
   onViewFile?: (relPath: string) => void
 }) {
   const [res, setRes] = useState<FileReadResult | null>(null)
+  // lspStatus는 색칠·hover·정의이동 게이트 + 파일별 "심볼 분석 중" 칩 판정에 쓴다.
+  // (설치는 설정에서 — 코드창엔 분석 중 칩만 두고 ready/error/설치 칩은 안 둔다)
   const [lspStatus, setLspStatus] = useState<LspStatus>('unsupported')
   const [sem, setSem] = useState<LspSemanticTokens | null>(null)
-  // native-server (C#/C++) download: percent for the chip + a poll-restart nonce
-  const [instPct, setInstPct] = useState<number | null>(null)
-  const [instErr, setInstErr] = useState<string | null>(null)
-  const [pollNonce, setPollNonce] = useState(0)
+  const [noSem, setNoSem] = useState(false) // 서버가 이 파일엔 시맨틱 토큰이 없다고 알림 → 분석칩 끔
+  const [anPct, setAnPct] = useState<number | null>(null) // 분석 진행률(프로젝트 인덱싱 %)
   const [vs, setVs] = useState<ViewState>({ root: path, stack: [], fwd: [], jump: null })
   // an SVG can be viewed both ways — as the rendered image (default) or as markup
   const [svgCode, setSvgCode] = useState(false)
@@ -1642,10 +1642,9 @@ export function FileModal({
     }
   }, [effPath, cwd, isImg, ovContent])
 
-  // code-intelligence status for the viewed file. The first ask lazily spawns the
-  // project's language server, so poll while it warms up ('starting' → 'ready') or
-  // while a native server download runs ('installing'). pollNonce restarts the loop
-  // when the user kicks off an install.
+  // code-intelligence status for the viewed file — drives only the feature gate
+  // (lsp={ready} below). The first ask lazily spawns the project's server, so poll
+  // while it warms up ('starting'/'installing'). 상태 칩은 코드창에 없다(폴더 배지로 이동).
   useEffect(() => {
     setLspStatus('unsupported')
     // 커밋 시점 내용은 디스크와 다를 수 있다 — LSP 좌표가 거짓이 되므로 끈다
@@ -1658,8 +1657,9 @@ export function FileModal({
         .then((st) => {
           if (!alive) return
           setLspStatus(st)
-          // installs can take minutes (tens of MB) — poll much longer than warm-up
-          if ((st === 'starting' || st === 'installing') && tries++ < 600) setTimeout(tick, 800)
+          // 촘촘히 폴링(400ms)해서 ready 감지 지연을 줄인다 — 그래야 ready 직후 색이
+          // 폴더 배지가 사라지기 전에/같이 들어온다. 워밍은 길 수 있어 창을 넓게(≈8분).
+          if ((st === 'starting' || st === 'installing') && tries++ < 1200) setTimeout(tick, 400)
         })
         .catch(() => alive && setLspStatus('error'))
     }
@@ -1667,26 +1667,7 @@ export function FileModal({
     return () => {
       alive = false
     }
-  }, [effPath, cwd, pollNonce, isImg, ovContent])
-
-  // download progress for the "심볼 분석 설치" flow — drives the percent in the chip
-  useEffect(() => {
-    if (!path) return
-    return window.api.lsp.onInstallProgress((p) => {
-      setInstPct(p.done ? null : p.percent)
-      if (p.done) {
-        setInstErr(p.ok ? null : p.error || '설치 실패')
-        setPollNonce((n) => n + 1) // re-ask immediately: installed → server starting
-      }
-    })
-  }, [path])
-
-  const startInstall = useCallback(() => {
-    if (!effPath) return
-    setInstErr(null)
-    window.api.lsp.install(cwd, effPath).catch(() => {})
-    setPollNonce((n) => n + 1) // pick up the 'installing' state right away
-  }, [cwd, effPath])
+  }, [effPath, cwd, isImg, ovContent])
 
   // instant paint: on open, ask the disk cache for this file's last-known tokens
   // (keyed by content hash — no server spawn) and paint immediately. The live
@@ -1695,12 +1676,16 @@ export function FileModal({
   // 커밋 시점 내용(ovContent)은 디스크와 달라 LSP 좌표가 거짓이 되므로 캐시도 끈다.
   useEffect(() => {
     setSem(null)
+    setNoSem(false)
     if (!effPath || isImg || ovContent != null || res?.content == null) return
     let alive = true
     window.api.lsp
       .cachedTokens(cwd, effPath)
       .then((t) => {
-        if (alive && t && t.data.length) setSem(t)
+        // 캐시는 라이브 토큰이 아직 없을 때만 채운다(prev ?? t). 서버가 prewarm으로 빨리
+        // ready돼 라이브(완성본)가 먼저 도착했는데, 늦게 끝난 캐시(옛/부분일 수 있음)가
+        // 그걸 덮어써 "완료인데 색이 부분만" 되던 레이스를 막는다. 라이브는 항상 우선.
+        if (alive && t && t.data.length) setSem((prev) => prev ?? t)
       })
       .catch(() => {})
     return () => {
@@ -1723,8 +1708,8 @@ export function FileModal({
         .then((t) => {
           if (!alive) return
           if (t && t.data.length) setSem(t)
-          else if (t && tries++ < 30) setTimeout(fetchTokens, 2000)
-          // t === null → the server has no semantic tokens; stay with hljs only
+          else if (t && tries++ < 75) setTimeout(fetchTokens, 800)
+          else if (t === null) setNoSem(true) // 이 서버는 시맨틱 토큰 없음 → 분석칩 끔, hljs만
         })
         .catch(() => {})
     }
@@ -1733,6 +1718,32 @@ export function FileModal({
       alive = false
     }
   }, [effPath, cwd, lspStatus, res])
+
+  // 파일별 "심볼 분석 중" 판정 — 색 토큰을 기다리는 동안만 true(서버 워밍 또는 토큰 페치 중).
+  // 캐시/라이브 색이 들어오면(sem) · 시맨틱 토큰 없는 서버면(noSem) · 미지원/에러면 사라진다.
+  const isCodeView = !!effPath && !isImg && ovContent == null && res?.content != null
+  const analyzing =
+    isCodeView && sem == null && !noSem && (lspStatus === 'starting' || lspStatus === 'installing' || lspStatus === 'ready')
+  // 분석 중에만 프로젝트 인덱싱 %를 가볍게 폴링해 칩에 보여준다(없으면 % 없이 '심볼 분석 중')
+  useEffect(() => {
+    if (!analyzing || !cwd) {
+      setAnPct(null)
+      return
+    }
+    let alive = true
+    const tick = (): void => {
+      window.api.lsp
+        .projectStatus(cwd)
+        .then((s) => alive && setAnPct(s.state === 'analyzing' ? s.percent : null))
+        .catch(() => {})
+    }
+    tick()
+    const iv = setInterval(tick, 800)
+    return () => {
+      alive = false
+      clearInterval(iv)
+    }
+  }, [analyzing, cwd])
 
   // Esc는 안쪽 레이어부터 차례로 접는다: 선택 툴바 → 질문 패널 → 파일 내 검색 → 카드
   const askOpenRef = useRef(false)
@@ -1931,33 +1942,10 @@ export function FileModal({
             </button>
           )}
           {cmEligible && !cmDirty && cmSaved && <span className="fv-lsp ready">저장됨</span>}
-          {lspStatus === 'starting' && (
+          {/* 파일별 심볼 분석 중 — 색 토큰이 들어오면 사라진다. ready/error/설치 칩은 없음 */}
+          {analyzing && (
             <span className="fv-lsp starting">
-              <span className="spin" /> 심볼 분석 준비 중
-            </span>
-          )}
-          {lspStatus === 'ready' && (
-            <span className="fv-lsp ready htip" data-tip="호버 = 타입 정보 · Ctrl+클릭 = 정의로 이동">
-              심볼 탐색
-            </span>
-          )}
-          {lspStatus === 'error' && (
-            <span className="fv-lsp error htip" data-tip="언어 서버를 시작하지 못했어요 — 잠시 후 파일을 다시 열면 재시도해요">
-              심볼 분석 사용 불가
-            </span>
-          )}
-          {lspStatus === 'need-install' && (
-            <button
-              className="fv-lsp install htip"
-              onClick={startInstall}
-              data-tip={instErr ? `이전 시도 실패: ${instErr} — 다시 시도` : '이 언어의 분석 서버를 내려받아요 (수십 MB, 최초 1회)'}
-            >
-              심볼 분석 설치
-            </button>
-          )}
-          {lspStatus === 'installing' && (
-            <span className="fv-lsp starting">
-              <span className="spin" /> 분석 서버 설치 중{instPct != null ? ` ${instPct}%` : ''}
+              <span className="spin" /> 심볼 분석 중{anPct != null ? ` ${anPct}%` : ''}
             </span>
           )}
           <span className="dspacer" />

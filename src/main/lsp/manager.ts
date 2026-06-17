@@ -14,6 +14,7 @@ import type {
   LspInstallProgress,
   LspLocation,
   LspPos,
+  LspProjectStatus,
   LspSemanticTokens,
   LspServerInfo,
   LspStatus
@@ -112,6 +113,18 @@ function csprojUris(root: string): string[] {
   }
 }
 
+/** solution file URI directly in `root`, or null — preferred over csproj (whole solution).
+ *  .slnx(신형 XML)와 .sln 둘 다 인식하고, 둘 다 있으면 신형 .slnx를 고른다. */
+function slnUri(root: string): string | null {
+  try {
+    const names = fs.readdirSync(root)
+    const n = names.find((x) => x.toLowerCase().endsWith('.slnx')) ?? names.find((x) => x.toLowerCase().endsWith('.sln'))
+    return n ? pathToFileURL(path.join(root, n)).href : null
+  } catch {
+    return null
+  }
+}
+
 // keep a server's working set bounded — beyond this, the least recently
 // opened document is closed so server memory doesn't grow with every file viewed
 const MAX_OPEN_DOCS = 32
@@ -135,6 +148,9 @@ interface ServerHandle {
   // Roslyn: true between initialize and projectInitializationComplete — status reports
   // 'starting' while true so the viewer waits for the full index before asking tokens
   projectInitPending: boolean
+  // latest $/progress percentage during indexing (Roslyn 'Loading'…), null when none —
+  // feeds the explorer's "분석 중 N%" badge
+  progressPct: number | null
   // the server's semanticTokens legend (token type names + modifier names) from the
   // initialize result — null when the server doesn't do semantic highlighting
   semLegend: { types: string[]; mods: string[] } | null
@@ -226,11 +242,16 @@ const SERVERS: ServerDef[] = [
     // initialize 후에도 솔루션 인덱싱이 한참 걸린다 — projectInitializationComplete
     // 전까지 status를 'starting'으로 잡아 뷰어가 완성된 토큰만 받게 한다
     awaitsProjectInit: true,
-    // Roslyn은 .sln/.csproj를 스스로 찾지 않는다 — rootFor가 좁힌 .csproj 폴더의
-    // 프로젝트를 project/open으로 열어 줘야 인덱싱이 시작된다. 로드가 끝나면
-    // workspace/projectInitializationComplete가 오고, 그 전엔 빈 토큰이 올 수 있어
-    // 렌더러의 semanticTokens 재시도(폴링)가 이를 메운다.
+    // Roslyn은 솔루션/프로젝트를 스스로 찾지 않는다 — 루트에 .sln/.slnx가 있으면 솔루션째
+    // (solution/open), 없으면 그 폴더의 .csproj들을(project/open) 열어 줘야 인덱싱이
+    // 시작된다. 로드가 끝나면 workspace/projectInitializationComplete가 오고, 그 전엔
+    // 빈 토큰이 올 수 있어 렌더러의 semanticTokens 재시도(폴링)가 이를 메운다.
     afterInitialized: (rpc, root) => {
+      const sln = slnUri(root)
+      if (sln) {
+        rpc.notify('solution/open', { solution: sln })
+        return
+      }
       const projects = csprojUris(root)
       if (projects.length) rpc.notify('project/open', { projects })
     }
@@ -322,13 +343,47 @@ class LspManager {
     const s = this.ensure(def, def.rootFor?.(abs, cwd) ?? cwd)
     if (!s) return 'error'
     if (s.status !== 'error') {
-      void s.ready.then(() => this.openDoc(s, def, abs)).catch(() => {})
+      // awaitsProjectInit 서버(Roslyn): 프로젝트 로드가 끝나기 전에 문서를 열면 misc
+      // (임시) 워크스페이스에 묶여 심볼이 안 풀린다 — hover가 null이고 토큰도 degrade된다.
+      // projectInitializationComplete 이후에 열어야 로드된 프로젝트에 제대로 붙는다.
+      void s.ready
+        .then(() => {
+          if (!s.projectInitPending) void this.openDoc(s, def, abs)
+        })
+        .catch(() => {})
     }
     // Roslyn: initialize returns early but the index isn't ready until
     // projectInitializationComplete — keep reporting 'starting' so the viewer doesn't
     // grab partial tokens (which would then need a reopen to refresh).
     if (s.status === 'ready' && s.projectInitPending) return 'starting'
     return s.status
+  }
+
+  /**
+   * Aggregate analysis state for a whole project (the explorer's folder badge): how every
+   * language server rooted at/under `cwd` is doing. 'analyzing' while any is still
+   * starting/indexing, 'ready' once all are done, 'idle' when none is running. `percent`
+   * is the latest indexing % during 'analyzing' (null when the server doesn't report one).
+   */
+  projectStatus(cwd: string): LspProjectStatus {
+    if (!cwd) return { state: 'idle', percent: null }
+    const root = path.resolve(cwd).toLowerCase()
+    const prefix = root + path.sep
+    let analyzing = false
+    let ready = false
+    let percent: number | null = null
+    for (const [key, s] of this.servers) {
+      const sroot = key.slice(key.indexOf('|') + 1) // key = `${id}|${resolved lowercased root}`
+      if (sroot !== root && !sroot.startsWith(prefix)) continue
+      if (s.status === 'error') continue
+      if (s.status === 'starting' || s.projectInitPending) {
+        analyzing = true
+        if (s.progressPct != null) percent = s.progressPct
+      } else if (s.status === 'ready') ready = true
+    }
+    if (analyzing) return { state: 'analyzing', percent }
+    if (ready) return { state: 'ready', percent: null }
+    return { state: 'idle', percent: null }
   }
 
   // clangd 서버(키=cwd)당 한 번만 — generate가 끝나 'generated'면 그 서버를 재시작.
@@ -459,18 +514,14 @@ class LspManager {
     let id: string | null = null
     // .uproject가 cwd에 없어도 조상에 있으면 UE 하위폴더를 연 것 — cpp로 본다
     if (has(/\.uproject$/) || ueRoot(root)) id = 'cpp'
-    else if (has(/\.sln$/) || has(/\.csproj$/)) id = 'cs'
+    else if (has(/\.slnx?$/) || has(/\.csproj$/)) id = 'cs'
     else if (has(/^tsconfig.*\.json$/) || has(/^package\.json$/)) id = 'ts'
     else if (has(/^pyproject\.toml$/) || has(/^requirements\.txt$/) || has(/^setup\.py$/)) id = 'py'
     if (!id) return null
     const def = SERVERS.find((s) => s.id === id) ?? null
     if (!def) return null
-    // 설치형(C#/C++)은 아직 안 받았으면 미리 띄울 수 없다 — 사용자가 첫 파일에서 설치
+    // 설치형(C#/C++)은 아직 안 받았으면 미리 띄울 수 없다 — 사용자가 설정에서 설치
     if (def.kind === 'download' && installState(def.id) !== 'installed') return null
-    // rootFor를 쓰는 서버(C#)는 실제 루트가 파일 위치에 따라 cwd가 아닐 수 있다 —
-    // cwd로 미리 띄우면 정작 파일이 쓰는 인스턴스와 키가 어긋나 서버가 두 번 뜬다.
-    // 그런 서버는 prewarm하지 않는다(C#은 토큰 캐시로 즉시 페인트되니 충분).
-    if (def.rootFor) return null
     return def
   }
 
@@ -628,12 +679,21 @@ class LspManager {
       docs: new Map(),
       diedAt: 0,
       semLegend: null,
-      projectInitPending: !!def.awaitsProjectInit
+      projectInitPending: !!def.awaitsProjectInit,
+      progressPct: null
     }
     // Roslyn signals the full index is ready with this notification — flip the gate so
     // status() reports 'ready' and the viewer asks for (now complete) semantic tokens.
-    rpc.onNotify = (method) => {
-      if (method === 'workspace/projectInitializationComplete') handle.projectInitPending = false
+    // $/progress feeds the explorer's analysis percentage during indexing.
+    rpc.onNotify = (method, params) => {
+      if (method === 'workspace/projectInitializationComplete') {
+        handle.projectInitPending = false
+        handle.progressPct = null
+      } else if (method === '$/progress') {
+        const v = (params as { value?: { kind?: string; percentage?: number } } | undefined)?.value
+        if (v?.kind === 'end') handle.progressPct = null
+        else if (typeof v?.percentage === 'number') handle.progressPct = v.percentage
+      }
     }
     const rootUri = pathToFileURL(path.resolve(root)).href
     handle.ready = rpc

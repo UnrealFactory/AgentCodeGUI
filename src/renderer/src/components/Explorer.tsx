@@ -71,6 +71,11 @@ export const Explorer = memo(function Explorer({
   // rel path('' = root) → that folder's entries; only loaded (visited) folders exist here
   const [entries, setEntries] = useState<Map<string, DirEntry[]>>(new Map())
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  // 참고 폴더도 미리 데워 둔다(메인은 App에서 prewarm) — 첫 파일 열 때 빠르게.
+  // 심볼 분석 진행 표시는 코드창(파일별 "심볼 분석 중 %")으로 옮겼다 — 폴더 배지 없음.
+  useEffect(() => {
+    refs.forEach((d) => window.api.lsp.prewarm(d).catch(() => {}))
+  }, [refs])
   const [sel, setSel] = useState<string | null>(null)
   // 파일 이름 검색 — 트리와 같은 자리에서 평면 결과로 전환. 파일 목록(@멘션과 같은
   // 워커)은 첫 검색에 한 번만 받아오고, cwd/refreshKey가 바뀌면 무효화한다.

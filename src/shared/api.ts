@@ -21,6 +21,7 @@ import type {
   McpServerInfo,
   UpdateStatus,
   LspStatus,
+  LspProjectStatus,
   LspPos,
   LspHoverResult,
   LspLocation,
@@ -107,6 +108,8 @@ export interface WindowApi {
     cachedTokens(cwd: string, relPath: string): Promise<LspSemanticTokens | null>
     /** warm a project's server / compile-DB before the first file is opened */
     prewarm(cwd: string): Promise<void>
+    /** aggregate analysis state for a folder (explorer badge: analyzing/ready + percent) */
+    projectStatus(cwd: string): Promise<LspProjectStatus>
     /** download this file's native language server (C#/C++) — user-initiated */
     install(cwd: string, relPath: string): Promise<{ ok: boolean; error?: string }>
     /** subscribe to streamed server-download progress (returns an unsubscribe fn) */
