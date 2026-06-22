@@ -608,11 +608,12 @@ export function ChatHeader({ title }: { title: string }) {
   )
 }
 
-// Floating toolbar that pops up above a text selection inside the chat thread. 복사
-// copies the highlighted text; 더 자세히 quotes it into the composer so the user can
-// ask Claude to expand on it. It appears on mouseup with a non-empty selection scoped
-// to the chat, follows the text on scroll, and dismisses on Esc / when the selection
-// collapses. Positioned with fixed coords from the selection's bounding rect.
+// Floating toolbar for a text selection inside the chat thread. 복사 copies the
+// highlighted text; 더 자세히 quotes it into the composer so the user can ask Claude to
+// expand on it. It appears on right-click (contextmenu) over a non-empty selection scoped
+// to the chat — never on a plain drag — anchored at the mouse cursor like a context menu,
+// flipping at the viewport edges. Dismisses on Esc / mousedown / when the selection
+// collapses out of view on scroll.
 export function SelectionToolbar({
   scrollRef,
   onElaborate
@@ -621,65 +622,69 @@ export function SelectionToolbar({
   onElaborate: (text: string) => void
 }) {
   const barRef = useRef<HTMLDivElement>(null)
-  const [pos, setPos] = useState<{ cx: number; top: number; bottom: number; text: string } | null>(null)
+  const [pos, setPos] = useState<{ x: number; y: number; text: string } | null>(null)
   const [copied, setCopied] = useState(false)
 
   useEffect(() => {
     const container = scrollRef.current
     if (!container) return
 
-    // the current selection as toolbar coords — or null if there's nothing usable
+    // the chat selection's text, or null if there's nothing usable
     // (collapsed, empty, or reaching outside the chat thread)
-    const read = (): { cx: number; top: number; bottom: number; text: string } | null => {
+    const readSel = (): string | null => {
       const sel = window.getSelection()
       if (!sel || sel.isCollapsed || sel.rangeCount === 0) return null
       const text = sel.toString().trim()
       if (!text) return null
       if (!container.contains(sel.anchorNode) || !container.contains(sel.focusNode)) return null
-      const rect = sel.getRangeAt(0).getBoundingClientRect()
-      if (rect.width === 0 && rect.height === 0) return null
-      return { cx: rect.left + rect.width / 2, top: rect.top, bottom: rect.bottom, text }
+      return text
     }
 
     // 새 드래그/클릭이 시작되는 순간(mousedown) 이전 툴바를 즉시 내린다 —
-    // mouseup까지 낡은 툴바가 남아 있으면 반응이 한 박자 늦게 느껴진다
+    // 낡은 툴바가 남아 있으면 반응이 한 박자 늦게 느껴진다. 단, 우클릭 자체는
+    // 곧바로 contextmenu에서 다시 띄우므로 무시한다.
     const onMouseDown = (e: MouseEvent): void => {
+      if (e.button === 2) return // 우클릭 → contextmenu가 처리
       if (barRef.current?.contains(e.target as Node)) return
       setPos(null)
     }
-    const onMouseUp = (e: MouseEvent): void => {
-      // clicking the toolbar itself shouldn't recompute/hide it
+    // 드래그(선택)만으로는 뜨지 않고, 선택 위에서 우클릭할 때만 — 마우스 커서 위치에 띄운다
+    const onContextMenu = (e: MouseEvent): void => {
       if (barRef.current?.contains(e.target as Node)) return
-      // defer a tick so the browser has finalized the selection
-      setTimeout(() => {
-        setPos(read())
-        setCopied(false)
-      }, 0)
+      const text = readSel()
+      if (!text) return // 선택이 없으면 기본 메뉴를 막지 않는다
+      e.preventDefault()
+      setPos({ x: e.clientX, y: e.clientY, text })
+      setCopied(false)
     }
-    const onScroll = (): void => setPos((p) => (p ? read() : p)) // follow the text, drop if gone
+    // 스크롤하면 선택이 화면에서 벗어날 수 있으니, 선택이 사라지면 내린다
+    const onScroll = (): void => setPos((p) => (p && readSel() ? p : null))
     const onKey = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') setPos(null)
     }
 
     document.addEventListener('mousedown', onMouseDown)
-    document.addEventListener('mouseup', onMouseUp)
+    document.addEventListener('contextmenu', onContextMenu)
     container.addEventListener('scroll', onScroll, { passive: true })
     window.addEventListener('keydown', onKey)
     return () => {
       document.removeEventListener('mousedown', onMouseDown)
-      document.removeEventListener('mouseup', onMouseUp)
+      document.removeEventListener('contextmenu', onContextMenu)
       container.removeEventListener('scroll', onScroll)
       window.removeEventListener('keydown', onKey)
     }
   }, [scrollRef])
 
   if (!pos) return null
-  // sit just above the selection; flip below when it's too close to the viewport top
-  const below = pos.top < 52
+  // 커서 오른쪽 아래에 붙이되(컨텍스트 메뉴 느낌), 화면 가장자리에선 반대쪽으로 뒤집는다
+  const BAR_W = 188
+  const BAR_H = 40
+  const flipX = pos.x + BAR_W + 6 > window.innerWidth
+  const flipY = pos.y + BAR_H + 10 > window.innerHeight
   const style: CSSProperties = {
-    left: Math.min(Math.max(pos.cx, 92), window.innerWidth - 92),
-    top: below ? pos.bottom + 10 : pos.top - 10,
-    transform: below ? 'translate(-50%, 0)' : 'translate(-50%, -100%)'
+    left: flipX ? pos.x - 6 : pos.x + 6,
+    top: flipY ? pos.y - 8 : pos.y + 8,
+    transform: `translate(${flipX ? '-100%' : '0'}, ${flipY ? '-100%' : '0'})`
   }
   const copy = (): void => {
     navigator.clipboard?.writeText(pos.text).then(() => setCopied(true), () => {})
@@ -691,7 +696,7 @@ export function SelectionToolbar({
   }
   return (
     <div
-      className={'sel-bar' + (below ? ' below' : '')}
+      className="sel-bar"
       ref={barRef}
       style={style}
       // keep the highlight alive when a button is pressed (mousedown would otherwise
