@@ -2751,6 +2751,34 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
 .ma-p-folder svg:last-child{ color:var(--text-4); flex:0 0 auto; }
 .ma-p-folder-name{ min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .ma-p-folder:hover{ background:var(--surface-2); color:var(--text-2); box-shadow:var(--hover-ring); }
+/* 시안 B — 폴더 칩이 트리 팝오버를 띄우고 있는 동안의 활성 표시 */
+.ma-p-folder.on{ background:var(--accent-soft); color:var(--text); box-shadow:inset 0 0 0 1px var(--accent-line); }
+.ma-p-folder.on svg:last-child{ transform:rotate(180deg); color:var(--accent-2); }
+
+/* 패널 폴더 칩에서 펼쳐지는 파일 트리 팝오버. body로 포털한 fixed 박스라 패널
+   overflow·확대 오버레이에 안 잘린다(ctx-menu/ScrollTip과 같은 패턴). 트리·검색은
+   단일 모드 탐색기와 같은 .exp-* 클래스를 그대로 재사용한다. */
+.pfm{
+  position:fixed; z-index:320;
+  display:flex; flex-direction:column; max-height:min(440px, 70vh);
+  background:var(--bg); border:1px solid var(--line-2); border-radius:12px;
+  box-shadow:0 18px 44px -16px rgba(40,30,20,0.34), 0 0 0 1px var(--line);
+  overflow:hidden; animation:fade .12s ease both;
+}
+:root[data-theme="dark"] .pfm{ box-shadow:0 22px 50px -18px rgba(0,0,0,0.7), 0 0 0 1px var(--line); }
+.pfm-head{ display:flex; align-items:center; gap:7px; padding:9px 8px 9px 12px; border-bottom:1px solid var(--line); }
+.pfm-fic{ color:var(--accent); display:grid; place-items:center; flex:0 0 auto; }
+.pfm-name{ flex:1; min-width:0; font-size:12px; font-weight:650; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.pfm-swap{ flex:0 0 auto; font-size:10.5px; font-weight:600; color:var(--accent-2); padding:3px 8px; border-radius:7px; transition:background .12s; }
+.pfm-swap:hover{ background:var(--accent-soft); }
+.pfm-x{ flex:0 0 auto; color:var(--text-4); padding:3px; border-radius:6px; display:grid; place-items:center; transition:background .12s,color .12s; }
+.pfm-x:hover{ background:var(--surface-2); color:var(--text-2); }
+.pfm .exp-search{ margin:9px 10px 8px; }
+.pfm .exp-tree{ flex:1; min-height:0; overflow-y:auto; overflow-x:hidden; padding:0 6px 10px; }
+.pfm-blank{ display:flex; flex-direction:column; align-items:center; gap:10px; padding:26px 18px 28px; text-align:center; }
+.pfm-blank-ic{ width:40px; height:40px; border-radius:11px; display:grid; place-items:center; background:var(--surface-2); color:var(--text-3); }
+.pfm-blank-text{ font-size:12px; color:var(--text-3); line-height:1.5; }
+.pfm-blank-btn{ font-size:12px; font-weight:600; color:var(--on-accent); background:var(--accent); padding:7px 16px; border-radius:8px; }
 
 /* context gauge */
 .ma-p-ctx{

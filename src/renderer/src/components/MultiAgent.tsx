@@ -27,6 +27,8 @@ import {
 import { Sidebar, type ChatSummary, type WorkspaceMode } from './Sidebar'
 import { FolderSwitchDialog } from './FolderSwitchDialog'
 import { PromptModal } from './PromptModal'
+import { PanelFolderMenu } from './PanelFolderMenu'
+import { FileModal } from './FileModal'
 import { imageSrc, imageName, filesToImagePaths } from '../lib/images'
 import { mentionAtCaret, mentionEntries, extractMentions, type MentionEntry } from '../lib/mentions'
 import { FileBadge } from './fileType'
@@ -643,6 +645,7 @@ interface PanelViewProps {
   onStop: (slot: number) => void
   onPicker: (slot: number, p: PickerState) => void
   onPickFolder: (slot: number) => void
+  onOpenFile: (slot: number, rel: string) => void // 폴더 팝오버에서 고른 파일을 뷰어로 연다
   onFocusPanel: (slot: number) => void
   onExpand: (slot: number | null) => void
   onPermission: (slot: number, behavior: 'allow' | 'allow_always' | 'deny') => void
@@ -669,6 +672,7 @@ const PanelView = memo(function PanelView({
   onStop,
   onPicker,
   onPickFolder,
+  onOpenFile,
   onFocusPanel,
   onExpand,
   onPermission,
@@ -677,6 +681,8 @@ const PanelView = memo(function PanelView({
   onOpenPrompt
 }: PanelViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
+  // 폴더 칩에서 펼쳐지는 파일 트리 팝오버(시안 B) — 칩 사각형을 기준으로 띄운다
+  const [folderRect, setFolderRect] = useState<DOMRect | null>(null)
 
   const cwd = meta.cwd || ''
   // 폴더를 고르지 않으면 엔진이 바탕화면에서 동작한다 — 라벨로 그 기본값을 알린다
@@ -752,9 +758,12 @@ const PanelView = memo(function PanelView({
         </div>
         <div className="ma-p-row2">
           <button
-            className="ma-p-folder has-tip"
-            data-tip={meta.cwd || '바탕화면 · 클릭해 작업 폴더 선택'}
-            onClick={() => onPickFolder(slot)}
+            className={'ma-p-folder has-tip' + (folderRect ? ' on' : '')}
+            data-tip={meta.cwd ? meta.cwd + ' · 클릭해 파일 탐색' : '바탕화면 · 클릭해 폴더 선택'}
+            onClick={(e) => {
+              const r = e.currentTarget.getBoundingClientRect()
+              setFolderRect((cur) => (cur ? null : r))
+            }}
           >
             <IconFolder size={13} />
             <span className="ma-p-folder-name">{cwdLabel}</span>
@@ -877,6 +886,24 @@ const PanelView = memo(function PanelView({
         />
       </div>
 
+      {folderRect && (
+        <PanelFolderMenu
+          anchor={folderRect}
+          cwd={meta.cwd}
+          changed={state.files}
+          refreshKey={state.messages.length}
+          onOpenFile={(rel) => {
+            setFolderRect(null)
+            onOpenFile(slot, rel)
+          }}
+          onPickFolder={() => {
+            setFolderRect(null)
+            onPickFolder(slot)
+          }}
+          onClose={() => setFolderRect(null)}
+        />
+      )}
+
       <PermissionModal permission={state.pendingPermission} onRespond={(b) => onPermission(slot, b)} />
       <QuestionModal
         question={state.pendingQuestion}
@@ -957,6 +984,9 @@ function ActiveSession({
   const [pendingFolder, setPendingFolder] = useState<
     { kind: 'panel'; slot: number; cwd: string } | { kind: 'batch'; dir: string } | null
   >(null)
+  // 폴더 팝오버에서 연 파일 — 그 패널의 cwd·diffs로 코드 뷰어를 띄운다 (패널 안이 아니라
+  // 여기서 한 번만 렌더해야 .fv-overlay(absolute)가 확대 오버레이에 갇히지 않는다)
+  const [openFile, setOpenFile] = useState<{ slot: number; path: string } | null>(null)
 
   // restore each panel's saved thread into its live session, once on mount
   useEffect(() => {
@@ -1029,8 +1059,9 @@ function ActiveSession({
   // A permission/question card owns the keyboard while open, so we always stand down then.
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
-      // a question card — or the folder-switch confirm / 프롬프트 modal — owns the keyboard
-      if (document.querySelector('.q-overlay, .set-dialog-overlay, .pr-overlay')) return
+      // a question card — or the folder-switch confirm / 프롬프트 modal / 파일 뷰어 / 폴더
+      // 팝오버 — owns the keyboard while open
+      if (document.querySelector('.q-overlay, .set-dialog-overlay, .pr-overlay, .fv-overlay, .pfm')) return
       const ae = document.activeElement as HTMLElement | null
       const typing = !!ae && (['INPUT', 'TEXTAREA', 'SELECT'].includes(ae.tagName) || ae.isContentEditable)
 
@@ -1089,6 +1120,7 @@ function ActiveSession({
   const onPicker = useEvent((slot: number, picker: PickerState) => patchMeta(slot, { picker }))
   const onFocusPanel = useEvent((slot: number) => setFocusedSlot(slot))
   const onOpenPrompt = useEvent((slot: number) => setPromptSlot(slot))
+  const onOpenPanelFile = useEvent((slot: number, rel: string) => setOpenFile({ slot, path: rel }))
 
   // ── panel working-folder changes ──
   // A panel's folder is panel-scoped, and its session id is folder-scoped — moving a
@@ -1312,6 +1344,7 @@ function ActiveSession({
         onStop={stopPanel}
         onPicker={onPicker}
         onPickFolder={onPickFolder}
+        onOpenFile={onOpenPanelFile}
         onFocusPanel={onFocusPanel}
         onExpand={onExpand}
         onPermission={onPermission}
@@ -1388,6 +1421,17 @@ function ActiveSession({
           value={metas[promptSlot].sysPrompt ?? ''}
           onSave={(text) => patchMeta(promptSlot, { sysPrompt: text || undefined })}
           onClose={() => setPromptSlot(null)}
+        />
+      )}
+
+      {/* 폴더 팝오버에서 연 파일 — 그 패널의 cwd·diffs로 코드 뷰어. 패널이 아니라 여기서
+          한 번만 렌더해 .fv-overlay(absolute inset:0)가 .win-body 전체를 덮게 한다 */}
+      {openFile && (
+        <FileModal
+          path={openFile.path}
+          cwd={metas[openFile.slot].cwd}
+          diffs={sessions[openFile.slot].state.diffs}
+          onClose={() => setOpenFile(null)}
         />
       )}
     </>
