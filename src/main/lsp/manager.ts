@@ -5,8 +5,19 @@ import fs from 'node:fs'
 import fsp from 'node:fs/promises'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 import { StdioRpc } from './jsonrpc'
-import { DOWNLOADS, install, installState, installedBin, uninstall } from './install'
+import { DOWNLOADS, install, installState, installedBin, uninstall, killHolders } from './install'
 import { ensureUeClangDb, ueDbDir, ueRoot } from './ue'
+import {
+  verseExePath,
+  verseSourcePath,
+  verseProjectRoot,
+  verseWorkspaceFolders,
+  verseDeclHover,
+  verseDocAt,
+  verseKeywordDoc,
+  setVerseExe,
+  clearVerseExe
+} from './verse'
 import { getCached, setCached, gcDeadBuckets } from './semcache'
 import { APP_HOME } from '../engine/versions'
 import type {
@@ -42,13 +53,19 @@ interface ServerDef {
   id: string
   label: string
   langs: string // display name of the covered languages (settings list)
-  kind: 'bundled' | 'download'
+  // bundled = ships in node_modules · download = fetched on demand (install.ts) ·
+  // external = a user-supplied binary we can't ship/download (Verse: Epic's verse-lsp.exe)
+  kind: 'bundled' | 'download' | 'external'
   exts: Record<string, string> // extension → LSP languageId
   requires?: string // external prerequisite, shown in settings (e.g. .NET SDK)
   /** how to launch the server for a given project root, or null when its
    *  binary/module is missing. `root` lets clangd point at the project's
    *  out-of-tree compile DB; bundled servers ignore it. */
   command(root: string): SpawnPlan | null
+  /** workspace folders to send at `initialize`, or null to use the default (the single
+   *  project root). Verse returns the source package + API digest folders parsed from the
+   *  project's .vproject so the server can resolve cross-package symbols. */
+  workspaceFoldersFor?(root: string): { uri: string; name: string }[] | null
   initializationOptions?(): unknown
   /** post-initialize hook — Roslyn doesn't auto-discover .sln/.csproj, so we tell it
    *  which projects to open here (after `initialized`). Other servers don't need it. */
@@ -279,6 +296,25 @@ const SERVERS: ServerDef[] = [
       }
       return { cmd: bin, args }
     }
+  },
+  {
+    id: 'verse',
+    label: 'Verse',
+    langs: 'Verse',
+    kind: 'external',
+    exts: { verse: 'verse', versetest: 'verse', vson: 'verse' },
+    // Epic's verse-lsp.exe — only runnable once the user points us at their Verse.vsix /
+    // verse-lsp.exe (prepared into the app home). Null = color-only (highlight.js grammar).
+    // No special args, plain stdio — exactly how the VS Code Verse extension launches it.
+    command: () => {
+      const exe = verseExePath()
+      return exe ? { cmd: exe, args: [] } : null
+    },
+    // key the server by the UE project root (.uproject ancestor), not the deep source folder
+    rootFor: (abs, cwd) => verseProjectRoot(abs) ?? cwd,
+    // the server needs the source + Verse/UnrealEngine digest folders, discovered from the
+    // generated .vproject — without them every request times out (it can't resolve types)
+    workspaceFoldersFor: (root) => verseWorkspaceFolders(root)
   }
 ]
 
@@ -337,6 +373,9 @@ class LspManager {
       if (st === 'installing') return 'installing'
       if (st === 'none') return 'need-install'
     }
+    // external (Verse): no binary configured yet → behave like an unsupported file
+    // (highlight.js colouring stays; no LSP features). Configured → fall through to spawn.
+    if (def.kind === 'external' && !def.command('')) return 'unsupported'
     // UE 프로젝트면 clangd용 compile_commands.json을 백그라운드로 생성/갱신 —
     // 이미 떠 있던 clangd는 'DB 없음'을 캐시하므로 생성됐을 때 재시작해 준다
     if (def.id === 'cpp') this.maybeUeDb(cwd)
@@ -522,6 +561,8 @@ class LspManager {
     if (!def) return null
     // 설치형(C#/C++)은 아직 안 받았으면 미리 띄울 수 없다 — 사용자가 설정에서 설치
     if (def.kind === 'download' && installState(def.id) !== 'installed') return null
+    // external(Verse)도 exe 경로가 설정돼 있어야 미리 띄운다
+    if (def.kind === 'external' && !def.command('')) return null
     return def
   }
 
@@ -536,19 +577,17 @@ class LspManager {
         // bundled 서버는 root와 무관하게 모듈 존재 여부만 본다
         return { ...base, kind: 'bundled' as const, state: def.command('') ? ('bundled' as const) : ('none' as const) }
       }
+      // external(Verse): exe 경로가 지정돼 준비됐으면 'installed', 아니면 'none'.
+      // path는 사용자가 지정한 vsix/exe 원본 경로(설정 표시용).
+      if (def.kind === 'external') {
+        return {
+          ...base,
+          kind: 'external' as const,
+          state: def.command('') ? ('installed' as const) : ('none' as const),
+          path: verseSourcePath() ?? undefined
+        }
+      }
       return { ...base, kind: 'download' as const, state: installState(def.id) }
-    })
-    // Verse: open-source UE ships no Verse language server, so there's nothing to spawn — but
-    // the app bundles a custom syntax-highlighting grammar (verseLang.ts). List it as a
-    // bundled, highlight-only language (no install/remove) so it shows up as supported.
-    list.push({
-      id: 'verse',
-      label: 'Verse',
-      langs: 'Verse',
-      exts: '.verse .versetest .vson',
-      kind: 'bundled',
-      state: 'bundled',
-      requires: '구문 강조'
     })
     return list
   }
@@ -562,14 +601,36 @@ class LspManager {
 
   /** Remove a downloaded server: stop every running instance, then delete from disk. */
   async uninstallServer(id: string): Promise<void> {
+    this.stopServers(id)
+    await uninstall(id)
+  }
+
+  /** Stop + drop every running server instance for an id (no disk changes). */
+  private stopServers(id: string): void {
     for (const [key, s] of [...this.servers]) {
       if (key.startsWith(id + '|')) {
-        s.rpc.dispose('서버 삭제')
+        s.rpc.dispose('서버 중지')
         killTree(s.child)
         this.servers.delete(key)
       }
     }
-    await uninstall(id)
+  }
+
+  /** Configure Verse's verse-lsp.exe from a user path (vsix/exe). Stops any running
+   *  verse server first so the destination binary isn't file-locked during copy. */
+  async setVersePath(srcPath: string): Promise<{ ok: boolean; error?: string }> {
+    this.stopServers('verse')
+    await killHolders('verse') // orphans from a force-killed run still hold the exe
+    await new Promise((r) => setTimeout(r, 300)) // let the OS release the handle
+    return setVerseExe(srcPath)
+  }
+
+  /** Forget the configured Verse server (stop it, delete the prepared exe + config). */
+  async clearVersePath(): Promise<void> {
+    this.stopServers('verse')
+    await killHolders('verse')
+    await new Promise((r) => setTimeout(r, 300))
+    await clearVerseExe()
   }
 
   /** Hover info (markdown signature + docs) at an LSP (0-based) position. */
@@ -581,7 +642,43 @@ class LspManager {
       position: pos
     })
     const contents = hoverMarkdown(r?.contents)
+    const abs = this.resolve(cwd, relPath)
+    const def = abs ? serverDefFor(abs) : null
+    if (def?.id === 'verse' && abs) {
+      // 1) 키워드·지정자·속성·내장 타입은 우리 용어집 설명으로. 내장 타입(int/void…)은 LSP가
+      //    이름만 주므로 여기서 덮어쓴다 — 그래서 LSP 응답 유무와 무관하게 가장 먼저 본다.
+      const gloss = await verseKeywordDoc(abs, pos.line, pos.character).catch(() => null)
+      if (gloss) return { contents: gloss }
+      // 2) 실제 심볼: verse-lsp는 호버에 문서 주석을 안 싣는다 — definition으로 선언을 찾아
+      //    그 위의 `# …`/@doc 주석을 붙인다(내 코드 또는 API digest).
+      if (contents) {
+        const doc = await this.verseHoverDoc(ctx.rpc, ctx.uri, pos).catch(() => '')
+        return { contents: doc ? contents + '\n\n' + doc : contents }
+      }
+      // 3) 호버가 아예 없으면 선언부 — 그 줄에서 카드를 합성한다(+ 그 위 문서 주석).
+      const declSig = await verseDeclHover(abs, pos.line, pos.character).catch(() => null)
+      if (declSig) return { contents: declSig }
+    }
     return contents ? { contents } : null
+  }
+
+  /** The doc comment above a Verse symbol's declaration, found via textDocument/definition. */
+  private async verseHoverDoc(rpc: StdioRpc, uri: string, pos: LspPos): Promise<string> {
+    const d = await rpc.request<RawLocation | RawLocation[] | null>('textDocument/definition', {
+      textDocument: { uri },
+      position: pos
+    })
+    const loc = Array.isArray(d) ? d[0] : d
+    if (!loc) return ''
+    const turi = loc.uri ?? loc.targetUri
+    const range = loc.range ?? loc.targetSelectionRange ?? loc.targetRange
+    const line = range?.start?.line
+    if (!turi || !turi.startsWith('file:') || typeof line !== 'number') return ''
+    try {
+      return await verseDocAt(fileURLToPath(turi), line)
+    } catch {
+      return ''
+    }
   }
 
   /** Definition target(s) for the symbol at an LSP (0-based) position. */
@@ -709,6 +806,11 @@ class LspManager {
       }
     }
     const rootUri = pathToFileURL(path.resolve(root)).href
+    // Verse supplies its own multi-root folder set (source + API digests, from the .vproject).
+    // With a custom set we send rootUri:null (LSP multi-root convention) so the server treats
+    // each folder as a package root rather than re-scanning the project root.
+    const customFolders = def.workspaceFoldersFor?.(path.resolve(root))
+    const folders = customFolders ?? [{ uri: rootUri, name: path.basename(root) }]
     handle.ready = rpc
       .request<{
         capabilities?: { semanticTokensProvider?: { legend?: { tokenTypes?: string[]; tokenModifiers?: string[] } } }
@@ -716,8 +818,8 @@ class LspManager {
         'initialize',
         {
           processId: process.pid,
-          rootUri,
-          workspaceFolders: [{ uri: rootUri, name: path.basename(root) }],
+          rootUri: customFolders ? null : rootUri,
+          workspaceFolders: folders,
           capabilities: {
             textDocument: {
               hover: { contentFormat: ['markdown', 'plaintext'] },
@@ -795,6 +897,7 @@ class LspManager {
     if (!abs || !def) return null
     if (abs.toLowerCase().startsWith(METADATA_DIR.toLowerCase())) return null
     if (def.kind === 'download' && installState(def.id) !== 'installed') return null
+    if (def.kind === 'external' && !def.command('')) return null
     const s = this.ensure(def, def.rootFor?.(abs, cwd) ?? cwd)
     if (!s) return null
     try {

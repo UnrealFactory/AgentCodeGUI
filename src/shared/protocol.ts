@@ -126,14 +126,18 @@ export interface LspProjectStatus {
 }
 /** A known language server + its provisioning state (설정 ▸ 코드 분석). */
 export interface LspServerInfo {
-  id: string // 'ts' | 'py' | 'cs' | 'cpp'
+  id: string // 'ts' | 'py' | 'cs' | 'cpp' | 'verse'
   label: string // server display name, e.g. 'C#'
   langs: string // covered languages, e.g. 'TypeScript · JavaScript'
   exts: string // covered extensions, e.g. '.cs .csx'
-  kind: 'bundled' | 'download'
-  // bundled = ships with the app (always available) · none = not yet downloaded
+  // bundled = ships with the app · download = fetched on demand · external = user supplies
+  // the binary (Verse: Epic's verse-lsp.exe, can't be shipped/downloaded)
+  kind: 'bundled' | 'download' | 'external'
+  // bundled = ships with the app (always available) · none = not provisioned · installed =
+  // downloaded (download) or configured (external) · installing = download in progress
   state: 'bundled' | 'none' | 'installing' | 'installed'
   requires?: string // external prerequisite note, e.g. '.NET SDK(dotnet) 필요'
+  path?: string // external: the configured source path (vsix/exe) — for display
 }
 /** Streamed progress while downloading a language server. */
 export interface LspInstallProgress {
@@ -474,6 +478,9 @@ export const IPC = {
   lspServers: 'lsp:servers', // list every known language server + provisioning state (settings)
   lspInstallServer: 'lsp:install-server', // download a server by id (settings)
   lspUninstallServer: 'lsp:uninstall-server', // stop + delete a downloaded server (settings)
+  lspPickVerseServer: 'lsp:pick-verse-server', // file dialog to choose Verse.vsix / verse-lsp.exe
+  lspSetVersePath: 'lsp:set-verse-path', // configure the Verse server from a vsix/exe path
+  lspClearVersePath: 'lsp:clear-verse-path', // forget the configured Verse server
   winMinimize: 'win:minimize',
   winMaximizeToggle: 'win:maximize-toggle',
   winClose: 'win:close',

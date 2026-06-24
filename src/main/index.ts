@@ -725,6 +725,24 @@ function registerIpc(): void {
       .then(() => ({ ok: true as const }))
       .catch((e) => ({ ok: false as const, error: (e as Error).message || '삭제하지 못했어요' }))
   )
+  ipcMain.handle(IPC.lspPickVerseServer, async () => {
+    if (!mainWindow) return null
+    const r = await dialog.showOpenDialog(mainWindow, {
+      properties: ['openFile'],
+      title: 'Verse 언어 서버 선택 (Verse.vsix 또는 verse-lsp.exe)',
+      filters: [{ name: 'Verse 서버', extensions: ['vsix', 'exe'] }]
+    })
+    return r.canceled || !r.filePaths[0] ? null : r.filePaths[0]
+  })
+  ipcMain.handle(IPC.lspSetVersePath, async (_e, p: string) =>
+    lspManager.setVersePath(p || '').catch((e) => ({ ok: false as const, error: (e as Error).message || '설정 실패' }))
+  )
+  ipcMain.handle(IPC.lspClearVersePath, async () =>
+    lspManager
+      .clearVersePath()
+      .then(() => ({ ok: true as const }))
+      .catch((e) => ({ ok: false as const, error: (e as Error).message || '해제하지 못했어요' }))
+  )
 
   ipcMain.handle(IPC.winMinimize, async () => mainWindow?.minimize())
   ipcMain.handle(IPC.winMaximizeToggle, async () => {

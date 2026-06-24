@@ -832,6 +832,21 @@ input,textarea{ font-family:inherit; }
    #region 같은 지시문은 시맨틱 토큰(preprocessorKeyword)이 파랑으로 덮는다 */
 .pal-cpp .hljs-type, .pal-cpp .hljs-meta{ color:var(--code-kw); }
 .pal-cs .hljs-type, .pal-cs .hljs-built_in{ color:var(--code-kw); }
+/* Verse: @속성(@editable 등)은 pal-rider에서 meta=클래스색(보라)이라 구분이 안 됐다 —
+   어노테이션다운 올리브-골드로 분리한다. (<지정자>는 .specifier_ 규칙이 구조체색으로 더 높은
+   특이도로 이긴다.) */
+/* Verse: @속성(@editable 등)은 pal-rider에서 meta=클래스색(보라)이라 구분이 안 됐다 —
+   코랄(따뜻한 주황-적)로 분리한다. (<지정자>는 .specifier_ 규칙이 구조체색으로 더 높은
+   특이도로 이긴다.) */
+.pal-verse{ --verse-attr:#c0573a; }
+:root[data-theme="dark"] .pal-verse{ --verse-attr:#e29178; }
+.pal-verse .hljs-meta{ color:var(--verse-attr); }
+/* Verse: <…> 지정자(<public>·<override>·<transacts>·<computes>…)는 클래스명과 같은
+   보라(--code-type)라 구분이 안 됐다 — 구조체 색(--code-type-2)으로 분리한다. verseLang의
+   'meta.specifier' 서브스코프가 `specifier_`(Verse 전용)를 달아줘 @어트리뷰트(plain meta)는
+   건드리지 않는다. 특이도 0,3,0 → 위의 .hljs .hljs-meta(0,2,0)를 이긴다. 모든 코드 표면 커버. */
+.fvl .hljs-meta.specifier_, .cm-content .hljs-meta.specifier_,
+.hljs .hljs-meta.specifier_, .lsp-hover .hljs-meta.specifier_{ color:var(--code-type-2, var(--code-type)); }
 
 /* composer */
 .composer-wrap{ flex:0 0 auto; padding:14px 28px 18px; }

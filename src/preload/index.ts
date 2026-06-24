@@ -70,7 +70,10 @@ const api: WindowApi = {
     onInstallProgress: (cb) => subscribe(IPC.lspInstallProgress, cb),
     servers: () => ipcRenderer.invoke(IPC.lspServers),
     installServer: (id: string) => ipcRenderer.invoke(IPC.lspInstallServer, id),
-    uninstallServer: (id: string) => ipcRenderer.invoke(IPC.lspUninstallServer, id)
+    uninstallServer: (id: string) => ipcRenderer.invoke(IPC.lspUninstallServer, id),
+    pickVerseServer: () => ipcRenderer.invoke(IPC.lspPickVerseServer),
+    setVersePath: (p: string) => ipcRenderer.invoke(IPC.lspSetVersePath, p),
+    clearVersePath: () => ipcRenderer.invoke(IPC.lspClearVersePath)
   },
   win: {
     minimize: () => ipcRenderer.invoke(IPC.winMinimize),

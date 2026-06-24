@@ -120,6 +120,12 @@ export interface WindowApi {
     installServer(id: string): Promise<{ ok: boolean; error?: string }>
     /** stop every running instance of a downloaded server and delete it from disk */
     uninstallServer(id: string): Promise<{ ok: boolean; error?: string }>
+    /** open a file dialog to choose Verse.vsix / verse-lsp.exe — returns the path or null */
+    pickVerseServer(): Promise<string | null>
+    /** configure the Verse server from a vsix/exe path (extracts/copies the binary) */
+    setVersePath(p: string): Promise<{ ok: boolean; error?: string }>
+    /** forget the configured Verse server (stop it + delete the prepared binary) */
+    clearVersePath(): Promise<{ ok: boolean; error?: string }>
   }
   win: {
     minimize(): Promise<void>

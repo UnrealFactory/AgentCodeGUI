@@ -214,6 +214,95 @@ function parseCsSig(
   }
 }
 
+// Verse 호버는 한 줄 시그니처를 MarkedString(```verse)로 보낸다. parseCsSig의 Verse판 —
+// '[var] (/모듈/경로:)이름<지정자…>(매개변수)<효과…>:타입' 꼴을 분해해 같은 카드(종류 칩 ·
+// 이름 · specifiers · params · return/type · module 푸터)로 구조화한다. 지정자는 <…>를 살려
+// 돌려줘 카드에서도 본문과 같은 Verse 색(지정자=구조체색)으로 칠해지게 한다.
+function parseVerseSig(
+  sig: string
+): { kind: string; name: string; container: string | null; ret?: string; retLabel?: string; params?: string[]; mods?: string[] } | null {
+  let s = sig.replace(/\s+/g, ' ').trim()
+  const mods: string[] = []
+  // <지정자> 묶음 흡수 — <…> 형태를 보존해 카드에서도 Verse 색(지정자=구조체색)으로 칠한다
+  const eatSpecs = (): void => {
+    let m: RegExpExecArray | null
+    while ((m = /^<([^>]*)>/.exec(s))) {
+      mods.push('<' + m[1] + '>')
+      s = s.slice(m[0].length).trim()
+    }
+  }
+  // 한정자 (/Module/Path:) — 심볼이 속한 모듈/클래스 경로. 흡수하고 경로를 돌려준다.
+  const eatQual = (): string | null => {
+    const q = /^\((\/[^()]*?):\)\s*/.exec(s)
+    if (!q) return null
+    s = s.slice(q[0].length)
+    return q[1]
+  }
+
+  // ① 타입 선언 shape — 종류 키워드가 맨 앞: 'interface (/Verse.org/Verse:)cancelable'.
+  // (class/struct/enum/interface/module은 Verse 예약어라 식별자와 충돌하지 않는다)
+  const tk = /^(class|struct|enum|interface|module)\b\s*/.exec(s)
+  if (tk) {
+    s = s.slice(tk[0].length)
+    const container = eatQual()
+    const nm = /^([A-Za-z_]\w*)/.exec(s)
+    if (!nm) return null
+    s = s.slice(nm[1].length).trim()
+    eatSpecs()
+    return { kind: tk[1], name: nm[1], container, retLabel: 'type', mods: mods.length ? mods : undefined }
+  }
+
+  // ② var / function / field shape: '[var] (/path:)Name<specs>(params)<effects>:type'
+  let bind: string | null = null
+  const kw = /^(var|set)\s+/.exec(s)
+  if (kw) {
+    bind = kw[1]
+    s = s.slice(kw[0].length)
+  }
+  const container = eatQual()
+  const nm = /^([A-Za-z_]\w*)/.exec(s)
+  if (!nm) return null
+  const name = nm[1]
+  s = s.slice(name.length).trim()
+  eatSpecs() // 이름 뒤: 접근/선언 지정자
+  // 매개변수 (...) — 최상위 쉼표로 분리(splitCsArgs가 <>·()·[] 깊이를 처리)
+  let params: string[] | undefined
+  if (s.startsWith('(')) {
+    let depth = 0
+    let end = -1
+    for (let i = 0; i < s.length; i++) {
+      const c = s[i]
+      if (c === '(') depth++
+      else if (c === ')' && --depth === 0) {
+        end = i
+        break
+      }
+    }
+    if (end > 0) {
+      params = splitCsArgs(s.slice(1, end))
+      s = s.slice(end + 1).trim()
+    }
+  }
+  eatSpecs() // 매개변수 뒤: 효과 지정자 (<transacts><predicts> 등)
+  // 반환형/타입 — 남은 선두 ':'
+  let ret: string | undefined
+  const rt = /^:\s*(.+)$/.exec(s)
+  if (rt) ret = rt[1].trim()
+  // 종류 — Verse는 var(가변)와 비-var(불변)가 근본적으로 다르다: var/set→'var'(가변, 핑크),
+  // 매개변수 있으면 함수, :타입만 있는 비-var 바인딩은 'constant'(불변 상수, 청록), 셋 다 없으면
+  // 타입(키워드 없는 클래스 등). 이렇게 해야 var 변수와 일반 상수/파라미터가 색·라벨로 갈린다.
+  const kind = bind ? 'var' : params ? 'function' : ret ? 'constant' : 'type'
+  return {
+    kind,
+    name,
+    container,
+    ret,
+    retLabel: kind === 'function' ? 'return' : 'type',
+    params,
+    mods: mods.length ? mods : undefined
+  }
+}
+
 function parseHover(md: string): HoverParts | null {
   // Roslyn은 줄바꿈을 CRLF로 보낸다 — 펜스 정규식(```lang\n)이 \r에 막혀 구조화에
   // 실패하고 raw 마크다운으로 떨어지면 카드 디자인이 깨진다. 먼저 LF로 정규화한다.
@@ -254,6 +343,7 @@ function parseHover(md: string): HoverParts | null {
   let params: { v: string; doc?: string }[] = []
   const facts: { k: string; v: string }[] = []
   let from: { k: string; v: string } | null = null
+  const sigMods: string[] = [] // Verse 지정자(parseVerseSig)처럼 시그니처 파서가 끌어낸 한정자
   // 독시젠/문서 태그 — 본문에 '@param x …'로 날 것으로 두지 않고 스펙 행에 합친다
   const paramDocs = new Map<string, string>()
   let returnDoc = ''
@@ -300,19 +390,22 @@ function parseHover(md: string): HoverParts | null {
       docLines.push(t.replace(/^[@\\]brief\s+/, '')) // 태그만 벗기고 본문으로
     } else docLines.push(lines[i])
   }
-  // OmniSharp(C#): 종류 헤더가 없으니 시그니처에서 종류·이름·반환형·매개변수·소속을 끌어낸다
+  // 종류 헤더가 없는 서버(OmniSharp C#, Verse)는 시그니처에서 종류·이름·반환형·매개변수·소속을
+  // 끌어낸다. Verse는 ```verse 펜스라 sigLang으로 구분해 전용 파서를 쓴다.
   if (!kind && sig) {
-    const e = parseCsSig(sig)
+    const isVerse = sigLang === 'verse'
+    const e = isVerse ? parseVerseSig(sig) : parseCsSig(sig)
     if (e) {
       kind = e.kind
       name = e.name
       if (e.ret) metas.unshift({ k: e.retLabel ?? 'type', v: '`' + e.ret + '`' })
-      if (e.value) metas.push({ k: 'value', v: '`' + e.value + '`' }) // const/field 초기값
+      if ('value' in e && e.value) metas.push({ k: 'value', v: '`' + e.value + '`' }) // const/field 초기값
       if (e.params?.length) params = e.params.map((q) => ({ v: '`' + q + '`' }))
+      if ('mods' in e && e.mods?.length) sigMods.push(...e.mods) // Verse 지정자 → access 칩
       if (e.container && !from) {
-        // 타입 선언의 소속은 네임스페이스, 멤버의 소속은 선언 타입 — 라벨을 구분
+        // Verse: 한정자는 모듈/클래스 경로 → 'module'. C#/C++: 타입은 namespace, 멤버는 in.
         const isType = /^(struct|class|interface|enum|delegate|namespace)$/.test(e.kind)
-        from = { k: isType ? 'namespace' : 'in', v: '`' + e.container + '`' }
+        from = { k: isVerse ? 'module' : isType ? 'namespace' : 'in', v: '`' + e.container + '`' }
       }
     }
   }
@@ -333,8 +426,8 @@ function parseHover(md: string): HoverParts | null {
       else metas.push({ k: 'return', v: '', doc: returnDoc }) // void인데 @return만 있는 경우
     }
   }
-  // 한정자 — 시그니처 전문을 치우면 잃기 쉬운 정보(static·const·접근자…)만 칩으로 승격
-  const mods: string[] = []
+  // 한정자 — 시그니처 전문을 치우면 잃기 쉬운 정보(static·const·접근자·Verse 지정자…)만 칩으로 승격
+  const mods: string[] = [...sigMods]
   if (sig) {
     const flat = sig.replace(/\s+/g, ' ')
     const lead =
@@ -359,14 +452,46 @@ function parseHover(md: string): HoverParts | null {
 // 변수는 핑크(--code-num), 파라미터는 탄(--code-str), 그 외 미분류는 앱 액센트.
 function hoverKindClass(kind: string): string {
   const k = kind.toLowerCase()
+  // Verse 지정자/속성 용어집 카드 — 코드에서 <지정자>가 갖는 구조체색 칩으로 통일
+  if (/access|effect|specifier|attribute/.test(k)) return 'k-type2'
   if (/method|function|constructor|destructor|operator/.test(k)) return 'k-fn'
   if (/struct|enum|union|delegate/.test(k)) return 'k-type2'
-  if (/class|interface|namespace|type|concept/.test(k)) return 'k-type'
+  if (/class|interface|namespace|type|concept|module/.test(k)) return 'k-type'
   if (/macro/.test(k)) return 'k-kw'
   if (/field|property|event|const/.test(k)) return 'k-member'
-  if (/variable|local/.test(k)) return 'k-var'
+  if (/variable|local|\bvar\b/.test(k)) return 'k-var'
   if (/param/.test(k)) return 'k-param'
   return 'k-plain'
+}
+
+// Verse 지정자(<…>)는 의미가 갈린다 — 접근(가시성)·효과(계산 효과)·그 외 선언 지정자.
+// 카드에서 한 줄로 뭉치지 않고 access · effects · specifiers 세 줄로 나눠 보여 준다.
+const VERSE_ACCESS = new Set(['public', 'private', 'protected', 'internal', 'epic_internal'])
+const VERSE_EFFECT = new Set([
+  'transacts', 'computes', 'reads', 'writes', 'decides', 'varies',
+  'converges', 'suspends', 'no_rollback', 'allocates', 'predicts'
+])
+// '<public>' / '<getter(GetX)>' → 'public' / 'getter'
+function verseSpecName(spec: string): string {
+  const m = /^<\s*([A-Za-z_]\w*)/.exec(spec)
+  return m ? m[1] : spec.replace(/[<>]/g, '')
+}
+// 지정자 묶음을 access → specifiers(그 외) → effects 순의 (비어있지 않은) 행들로 가른다
+function splitVerseSpecs(mods: string[]): { k: string; items: string[] }[] {
+  const access: string[] = []
+  const effects: string[] = []
+  const other: string[] = []
+  for (const m of mods) {
+    const n = verseSpecName(m)
+    if (VERSE_ACCESS.has(n)) access.push(m)
+    else if (VERSE_EFFECT.has(n)) effects.push(m)
+    else other.push(m)
+  }
+  const rows: { k: string; items: string[] }[] = []
+  if (access.length) rows.push({ k: 'access', items: access })
+  if (other.length) rows.push({ k: 'specifiers', items: other })
+  if (effects.length) rows.push({ k: 'effects', items: effects })
+  return rows
 }
 
 // 세션 동안 배운 식별자→색 누적 사전 — 호버 시그니처가 참조하는 타입(TArray 등)이
@@ -504,14 +629,24 @@ export function HoverContent({
               </div>
             </>
           )}
-          {mods.length > 0 && (
-            <>
-              <span className="lh-spec-k">access</span>
-              <div className="lh-spec-v">
-                <Markdown text={mods.map((m) => '`' + m + '`').join(' ')} codeLang={lang} decorate={deco} />
-              </div>
-            </>
-          )}
+          {/* Verse: 지정자를 access · specifiers · effects 로 갈라 각각 한 줄씩 */}
+          {lang === 'verse'
+            ? splitVerseSpecs(mods).map((row) => (
+                <Fragment key={row.k}>
+                  <span className="lh-spec-k">{row.k}</span>
+                  <div className="lh-spec-v">
+                    <Markdown text={row.items.map((m) => '`' + m + '`').join(' ')} codeLang={lang} decorate={deco} />
+                  </div>
+                </Fragment>
+              ))
+            : mods.length > 0 && (
+                <>
+                  <span className="lh-spec-k">access</span>
+                  <div className="lh-spec-v">
+                    <Markdown text={mods.map((m) => '`' + m + '`').join(' ')} codeLang={lang} decorate={deco} />
+                  </div>
+                </>
+              )}
           {p.params.length > 0 && (
             <>
               <span className="lh-spec-k">params</span>

@@ -166,7 +166,7 @@ async function extractZip(zip: string, dest: string): Promise<void> {
 // line, so only our servers are touched — including orphans left behind when the
 // app was force-killed (they keep holding the dll and make the delete EPERM).
 // $PID excludes the sweeping PowerShell itself (its command line contains the dir).
-function killHolders(id: string): Promise<void> {
+export function killHolders(id: string): Promise<void> {
   if (process.platform !== 'win32') return Promise.resolve()
   const dir = path.join(LSP_DIR, id).replace(/'/g, "''")
   return new Promise((resolve) => {

@@ -5,8 +5,9 @@ import type { HLJSApi, Language, Mode } from 'highlight.js'
 // (@doc/@editable…), declaration kinds (class/struct/enum/module/interface), the core
 // primitive types and control-flow keywords, line (#) and nestable block (<# … #>)
 // comments. We emit only the standard hljs scopes so the app's IntelliJ-default palette
-// (.hljs-keyword/type/string/comment/number/meta/title.*) colours Verse exactly like every
-// other language — no Verse-specific CSS needed. Epic ships no Verse LSP with open-source
+// (.hljs-keyword/type/string/comment/number/meta/title.*) colours Verse like every other
+// language — the one exception is the <…> specifier sub-scope 'meta.specifier', tinted the
+// struct colour by a Verse-specific styles.css rule. Epic ships no Verse LSP with open-source
 // UE, so this is colour-only (no semantic tokens / symbol outline).
 
 // Effect, access and declaration specifiers that appear between angle brackets, e.g.
@@ -23,9 +24,13 @@ const SPECIFIERS = [
 ].join('|')
 
 export function verse(hljs: HLJSApi): Language {
-  // <native>, <getter(GetX)>, <setter(SetX)> … → annotation/meta colour (olive).
+  // <native>, <public>, <override>, <transacts>, <getter(GetX)> … — effect/access/decl
+  // specifiers. Sub-scope 'meta.specifier' emits `hljs-meta specifier_`; the `specifier_`
+  // class (Verse-only) lets styles.css tint every <…> specifier with the struct colour
+  // (--code-type-2) so they read distinctly from class names (--code-type, same purple) and
+  // from @attributes, which keep the plain 'meta' colour below.
   const SPECIFIER: Mode = {
-    scope: 'meta',
+    scope: 'meta.specifier',
     match: new RegExp(`<(?:${SPECIFIERS})(?:\\([^)]*\\))?>`)
   }
   // @doc("…"), @editable, @replicated("RepNotify") … → annotation/meta colour.
@@ -92,6 +97,20 @@ export function verse(hljs: HLJSApi): Language {
     match: /(?<=\b(?:var|set)[ \t])[A-Za-z_][A-Za-z0-9_]*/,
     relevance: 0
   }
+  // super / Self read like keywords (blue). But `(super:)` / `Self(` would be grabbed by FIELD
+  // (name before ':') or FUNCTION (Name before '(') first, so match them explicitly and list
+  // this mode AHEAD of those in `contains` — otherwise the keyword colour never applies.
+  const SPECIAL: Mode = {
+    scope: 'keyword',
+    match: /\b(?:super|Self)\b/
+  }
+  // '?' is Verse's option operator — optional type `?t`, optional param `?Name`, unwrap `x?`.
+  // Verse has no ternary, so every '?' is this operator: colour it like a keyword (blue).
+  // (Listed after STRING/comments in `contains`, so '?' inside those isn't matched.)
+  const OPTION_OP: Mode = {
+    scope: 'keyword',
+    match: /\?/
+  }
 
   return {
     name: 'Verse',
@@ -103,17 +122,19 @@ export function verse(hljs: HLJSApi): Language {
         'if', 'else', 'for', 'while', 'loop', 'case', 'block', 'defer', 'return',
         'break', 'continue', 'spawn', 'branch', 'sync', 'rush', 'race', 'then',
         'do', 'where', 'var', 'set', 'option', 'profile', 'test', 'not', 'and', 'or',
+        // special names + reactive (live-variable) keywords
+        'super', 'Self', 'live', 'await', 'upon', 'when', 'batch',
         // Built-in data types are coloured like keywords (blue), same as `class` — matching
         // how Rider/C# colour `int`/`void`/`bool`. (Type-DEFINITION names stay the type colour
         // via TYPE_DEF → title.class_, so they remain distinct from these.)
         'int', 'float', 'string', 'logic', 'void', 'char', 'char32', 'char8',
-        'rational', 'any', 'comparable', 'tuple', 'array', 'map', 'type', 'subtype',
+        'rational', 'any', 'comparable', 'tuple', 'array', 'map', 'weak_map', 'type', 'subtype',
         'generator', 'message', 'vector3', 'vector2', 'rotation', 'transform', 'color'
       ],
       literal: ['true', 'false'],
       built_in: ['external']
     },
-    contains: [BLOCK_COMMENT, hljs.COMMENT(/#/, /$/), ATTRIBUTE, SPECIFIER, STRING, CHAR, NUMBER, TYPE_DEF, FUNCTION, FIELD, VAR_NAME]
+    contains: [BLOCK_COMMENT, hljs.COMMENT(/#/, /$/), ATTRIBUTE, SPECIFIER, STRING, CHAR, NUMBER, OPTION_OP, SPECIAL, TYPE_DEF, FUNCTION, FIELD, VAR_NAME]
   }
 }
 

@@ -182,6 +182,7 @@ export function paletteClassFor(lang: string): string {
   if (!RIDER_LANGS.has(l)) return ''
   if (CS_LANGS.has(l)) return ' pal-rider pal-cs'
   if (CPP_LANGS.has(l)) return ' pal-rider pal-cpp'
+  if (l === 'verse') return ' pal-rider pal-verse'
   return ' pal-rider'
 }
 

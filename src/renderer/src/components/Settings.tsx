@@ -592,7 +592,7 @@ const LSP_BADGE: Record<string, string> = { ts: 'a.ts', py: 'a.py', cs: 'a.cs', 
 // the install/remove progress card (엔진 설치와 같은 카드 모달) — one op at a time
 interface LspCard {
   id: string // server id the op belongs to (routes progress events)
-  op: '설치' | '삭제'
+  op: '설치' | '삭제' | '준비'
   label: string
   log: string[]
   status: 'running' | 'done' | 'error'
@@ -667,6 +667,25 @@ function LspView() {
       .catch(() => setCard((c) => (c && c.id === s.id ? { ...c, status: 'error', error: '삭제하지 못했어요.' } : c)))
       .finally(refresh)
   }
+  // Verse(external): the user picks their Verse.vsix / verse-lsp.exe; we extract+prepare it.
+  const doVersePick = async (): Promise<void> => {
+    const p = await window.api.lsp.pickVerseServer()
+    if (!p) return
+    setCard({ id: 'verse', op: '준비', label: 'Verse', log: [`선택: ${p}`, 'verse-lsp.exe 준비 중…'], status: 'running', percent: null })
+    const r = await window.api.lsp.setVersePath(p).catch(() => ({ ok: false as const, error: '설정에 실패했습니다.' }))
+    setCard((c) =>
+      c && c.id === 'verse'
+        ? r.ok
+          ? { ...c, status: 'done', log: [...c.log, '준비 완료. .verse 파일을 열면 정의 이동·호버·심볼이 켜집니다.'] }
+          : { ...c, status: 'error', error: r.error || '설정에 실패했습니다.' }
+        : c
+    )
+    refresh()
+  }
+  const doVerseClear = async (): Promise<void> => {
+    await window.api.lsp.clearVersePath().catch(() => {})
+    refresh()
+  }
 
   return (
     <>
@@ -692,10 +711,19 @@ function LspView() {
                     <div className="ext-top">
                       <span className="ext-name">{s.langs}</span>
                       {s.state === 'bundled' && <span className="ver-chip latest">앱 내장</span>}
-                      {s.state === 'installed' && <span className="ver-chip latest">설치됨</span>}
+                      {s.kind !== 'external' && s.state === 'installed' && (
+                        <span className="ver-chip latest">설치됨</span>
+                      )}
+                      {s.kind === 'external' &&
+                        (s.state === 'installed' ? (
+                          <span className="ver-chip latest">지정됨</span>
+                        ) : (
+                          <span className="ver-chip">미지정</span>
+                        ))}
                       {s.requires && <span className="ver-chip">{s.requires}</span>}
                     </div>
                     <div className="ext-desc ext-cmd">{s.exts}</div>
+                    {s.kind === 'external' && s.path && <div className="ext-desc ext-cmd">{s.path}</div>}
                   </div>
                   {s.kind === 'download' &&
                     (s.state === 'installed' ? (
@@ -707,6 +735,16 @@ function LspView() {
                         {installing ? `설치 중…${p != null ? ` ${p}%` : ''}` : '설치'}
                       </button>
                     ))}
+                  {s.kind === 'external' &&
+                    (s.state === 'installed' ? (
+                      <button className="inst-btn ghost" onClick={doVerseClear}>
+                        <IconTrash size={13} /> 삭제
+                      </button>
+                    ) : (
+                      <button className="inst-btn" onClick={doVersePick}>
+                        설정
+                      </button>
+                    ))}
                 </div>
               )
             })}
@@ -716,6 +754,12 @@ function LspView() {
         <div className="set-note">
           내장 서버는 바로 사용할 수 있고, C#·C++ 서버는 최초 1회 내려받아 <code>~/.agentcodegui/lsp</code> 에
           설치됩니다.
+        </div>
+        <div className="set-note">
+          Verse는 Epic의 <code>verse-lsp</code> 가 필요합니다 — UEFN/포트나이트의{' '}
+          <code>Verse.vsix</code>(또는 <code>verse-lsp.exe</code>) 경로를 지정하면 정의 이동·호버·심볼이 켜집니다.
+          소스/디제스트 폴더는 프로젝트의 <code>.vproject</code> 에서 자동으로 찾습니다. 지정 전에는 구문 강조만
+          동작합니다.
         </div>
       </div>
 
@@ -786,7 +830,9 @@ function LspView() {
                 {card.status === 'running'
                   ? card.op === '설치'
                     ? `내려받는 중…${card.percent != null ? ` ${card.percent}%` : ''}`
-                    : '삭제하는 중…'
+                    : card.op === '준비'
+                      ? '준비하는 중…'
+                      : '삭제하는 중…'
                   : card.status === 'done'
                     ? `${card.op}가 완료되었습니다`
                     : `${card.op}에 실패했습니다`}
