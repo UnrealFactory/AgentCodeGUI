@@ -20,6 +20,7 @@ import {
   IconClose,
   IconCopy,
   IconMax,
+  IconPencil,
   IconRestore,
   IconSearch,
   IconSend
@@ -1710,6 +1711,47 @@ interface ViewState {
   jump: { line: number; tick: number } | null
 }
 
+// Card-style confirm for closing the viewer with unsaved CM edits — replaces the native
+// window.confirm (which both broke the card language and, by blocking the thread, left the
+// editor's IME/contentEditable wedged so typing died after a cancel). Esc/Enter both pick
+// the safe default (계속 편집): nothing is lost by mistake, and a real discard needs a click.
+function CloseConfirmDialog({ onStay, onLeave }: { onStay: () => void; onLeave: () => void }) {
+  useEffect(() => {
+    // capture + stopPropagation so the viewer's own window Esc handler stands down — this
+    // card owns Esc while it's open. Enter falls through to the autofocused 취소 button.
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key !== 'Escape') return
+      e.preventDefault()
+      e.stopPropagation()
+      onStay()
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [onStay, onLeave])
+
+  return (
+    <div className="set-dialog-overlay" onMouseDown={onStay}>
+      <div className="set-dialog" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="sd-ic">
+          <IconPencil size={22} />
+        </div>
+        <div className="sd-title">저장하지 않고 닫을까요?</div>
+        <div className="sd-msg">
+          아직 <b>저장하지 않은 변경</b>이 있어요. 그대로 닫으면 이 변경 내용은 사라집니다.
+        </div>
+        <div className="sd-btns">
+          <button className="sd-cancel" onClick={onStay} autoFocus>
+            계속 편집
+          </button>
+          <button className="sd-go danger" onClick={onLeave}>
+            저장 안 함
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // A read-only file preview shown as a centered card (same overlay/card language as
 // the diff & settings dialogs) instead of handing the file to the OS. Loads the
 // content over IPC on open; renders it with syntax highlighting / markdown. Code
@@ -1841,10 +1883,23 @@ export function FileModal({
   // through here). cmDirtyRef mirrors state so the keydown/mouse closures see it live.
   const cmDirtyRef = useRef(false)
   cmDirtyRef.current = cmDirty
+  // 미저장 변경이 있으면 곧장 닫지 않고 카드형 확인을 띄운다(네이티브 confirm 대신). 확인이
+  // 떠 있는 동안엔 뷰어의 Esc/단축키가 물러나고(아래 closeConfirmRef 가드), 취소하면 편집기로
+  // 포커스를 돌려준다 — confirm이 스레드를 막아 IME가 엉키던 "취소 후 입력 불가"도 함께 해소.
+  const [closeConfirm, setCloseConfirm] = useState(false)
+  const closeConfirmRef = useRef(false)
+  closeConfirmRef.current = closeConfirm
   const requestClose = useCallback((): void => {
-    if (cmDirtyRef.current && !window.confirm('저장하지 않은 변경이 있어요. 저장하지 않고 닫을까요?')) return
+    if (cmDirtyRef.current) {
+      setCloseConfirm(true)
+      return
+    }
     onClose()
   }, [onClose])
+  // 파일이 바뀌면(다른 파일 열기/뒤로) 떠 있던 확인 카드는 의미가 없어지므로 닫는다
+  useEffect(() => {
+    setCloseConfirm(false)
+  }, [effPath])
 
   // Ctrl+W — main이 앱 종료를 막고 보내는 신호. 코드 뷰어가 열려 있으면 닫는다 (Esc와 동일)
   useEffect(() => {
@@ -1985,6 +2040,7 @@ export function FileModal({
     if (!path) return
     const onKey = (e: KeyboardEvent): void => {
       if (e.key !== 'Escape') return
+      if (closeConfirmRef.current) return // 닫기 확인 카드가 떠 있으면 그 카드가 Esc를 가진다
       if (document.querySelector('.sel-bar')) return // 선택 툴바가 먼저 접힌다
       if (document.querySelector('.cm-host .cm-find')) return // CM 검색 바가 열려 있으면 그게 먼저 닫힌다
       if (askOpenRef.current) {
@@ -2007,6 +2063,7 @@ export function FileModal({
     if (!path) return
     const onKey = (e: KeyboardEvent): void => {
       if (!((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'f')) return
+      if (closeConfirmRef.current) return // 확인 카드가 떠 있으면 단축키는 물러난다
       e.preventDefault()
       // CM 편집기 코드 파일은 CM 검색 패널(가상화 대응)을, 그 외엔 기존 FindBar를 연다
       if (cmEligible) cmRef.current?.openSearch()
@@ -2022,6 +2079,7 @@ export function FileModal({
     if (!path || !cmEligible) return
     const onKey = (e: KeyboardEvent): void => {
       if (!((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'e')) return
+      if (closeConfirmRef.current) return // 확인 카드가 떠 있으면 모드 토글을 막는다
       e.preventDefault()
       e.stopPropagation()
       setCmMode((m) => (m === 'read' ? 'edit' : 'read'))
@@ -2037,6 +2095,7 @@ export function FileModal({
     const onKey = (e: KeyboardEvent): void => {
       if (!((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && (e.code === 'KeyD' || e.key.toLowerCase() === 'd')))
         return
+      if (closeConfirmRef.current) return // 확인 카드가 떠 있으면 보기 토글을 막는다
       e.preventDefault()
       e.stopPropagation()
       setDiffView((v) => !v)
@@ -2330,6 +2389,15 @@ export function FileModal({
       </div>
       {onAskSelection && !isImg && !ask && (
         <SelectionAskBar root={cardEl} onAsk={(text, from, to) => setAsk({ text, from, to })} />
+      )}
+      {closeConfirm && (
+        <CloseConfirmDialog
+          onStay={() => {
+            setCloseConfirm(false)
+            cmRef.current?.focus() // 편집기로 포커스 복귀 — 곧바로 이어서 타이핑되도록
+          }}
+          onLeave={onClose}
+        />
       )}
     </div>
   )

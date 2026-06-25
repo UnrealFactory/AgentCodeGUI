@@ -1,4 +1,5 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { createPortal } from 'react-dom'
 import { createRoot } from 'react-dom/client'
 import { EditorState, Compartment, StateField, StateEffect } from '@codemirror/state'
 import {
@@ -9,8 +10,7 @@ import {
   hoverTooltip,
   tooltips,
   Decoration,
-  type DecorationSet,
-  type Command
+  type DecorationSet
 } from '@codemirror/view'
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
 import {
@@ -26,7 +26,7 @@ import {
   type CompletionResult
 } from '@codemirror/autocomplete'
 import { highlightSelectionMatches } from '@codemirror/search'
-import { indentUnit } from '@codemirror/language'
+import { indentUnit, bracketMatching } from '@codemirror/language'
 import type { LspSemanticTokens, LspLocation } from '@shared/protocol'
 import { highlighting } from '../lib/cmHljs'
 import { ensureVerseRegistry, onVerseRegChange } from '../lib/verseRegistry'
@@ -34,13 +34,14 @@ import { buildSemDict, type StructOv } from '../lib/semTokens'
 import { readDiffField, type DiffMarks } from '../lib/cmDiff'
 import { findField, setFindHits, computeMatches } from '../lib/cmFind'
 import { paletteClassFor } from './fileType'
-import { IconSearch, IconChevDown, IconClose } from './icons'
+import { IconSearch, IconChevDown, IconClose, IconAlert } from './icons'
 import { HoverContent } from './FileModal'
 
 export interface CmEditorHandle {
   save: () => void
   getCaret: () => number // 현재 캐럿 offset — 정의 이동 시 호출 위치 저장용
   openSearch: () => void // Ctrl+F — CM 검색 패널 열기 (포커스 무관)
+  focus: () => void // 편집기로 포커스 복귀 (예: 닫기 확인 카드를 취소한 뒤)
 }
 
 const PAIR: Record<string, string> = { '{': '}', '[': ']', '(': ')' }
@@ -90,18 +91,29 @@ const flashField = StateField.define<DecorationSet>({
   provide: (f) => EditorView.decorations.from(f)
 })
 
-// Language-agnostic smart Enter — works for every language without a CM grammar:
-// continue the current line's indentation, add one level after an opening bracket,
-// and when the caret sits between a freshly-typed pair ( {| } ) split it onto three
-// lines with the caret indented on the middle one (the IDE-classic).
-const smartEnter: Command = (view) => {
+// 들여쓰기가 의미를 갖는 언어의 스마트 Enter 보정. open: 블록을 여는 줄(끝이 ':' 또는 Verse는
+// '=' 정의도) 다음 줄은 한 단계 들여쓰고, dedent: 블록을 닫는 문(return/break/continue …) 다음
+// 줄은 한 단계 내어쓴다 — 그다음은 보통 바깥 스코프의 새 선언이라(사용자 예: `return 0.0` 뒤엔
+// 새 함수·변수). 괄호({}/[]/()) 기반 언어는 아래 PAIR 로직이 이미 처리하므로 여기 등록하지 않는다.
+const INDENT_RULES: Record<string, { open: RegExp; dedent: RegExp }> = {
+  verse: { open: /[:=]$/, dedent: /^(return|break|continue|yield)\b/ },
+  python: { open: /:$/, dedent: /^(return|break|continue|pass|raise)\b/ }
+}
+
+// Smart Enter — works for every language without a CM grammar: continue the current line's
+// indentation, add one level after an opening bracket, split a freshly-typed pair ( {| } )
+// onto three lines (IDE-classic), and—for indentation-significant languages (Verse/Python)—
+// open a block after ':'/'=' and close one after return/break/continue.
+function smartEnter(view: EditorView, lang: string): boolean {
   const { state } = view
+  if (state.readOnly) return false // 읽기 모드에선 편집하지 않는다(기본 동작에 양보)
   const sel = state.selection.main
   if (sel.from !== sel.to) return false // let the default handle ranged selections
   const line = state.doc.lineAt(sel.from)
   const indent = /^[ \t]*/.exec(line.text)![0]
   const unit = state.facet(indentUnit)
-  const opener = state.doc.sliceString(line.from, sel.from).replace(/\s+$/, '').slice(-1)
+  const before = state.doc.sliceString(line.from, sel.from)
+  const opener = before.replace(/\s+$/, '').slice(-1)
   const opensBlock = opener in PAIR
   const nextChar = state.doc.sliceString(sel.from, Math.min(sel.from + 1, line.to))
   if (opensBlock && nextChar === PAIR[opener]) {
@@ -113,13 +125,56 @@ const smartEnter: Command = (view) => {
     })
     return true
   }
-  const newIndent = opensBlock ? indent + unit : indent
+  let newIndent = opensBlock ? indent + unit : indent
+  const rule = INDENT_RULES[lang]
+  if (!opensBlock && rule) {
+    const head = before.trim()
+    if (rule.open.test(head)) newIndent = indent + unit
+    else if (rule.dedent.test(head) && indent.endsWith(unit)) newIndent = indent.slice(0, indent.length - unit.length)
+  }
   view.dispatch({
     changes: { from: sel.from, insert: '\n' + newIndent },
     selection: { anchor: sel.from + 1 + newIndent.length },
     scrollIntoView: true,
     userEvent: 'input'
   })
+  return true
+}
+
+// Per-language line-comment token. We paint colours from hljs (no CM language package), so
+// CM's own toggleComment has no commentTokens to work with — this drives our own Mod-/ below.
+const LINE_COMMENT: Record<string, string> = {
+  verse: '#', python: '#', ruby: '#', perl: '#', bash: '#', yaml: '#', ini: '#', r: '#',
+  makefile: '#', dockerfile: '#',
+  csharp: '//', cpp: '//', c: '//', javascript: '//', typescript: '//', java: '//', rust: '//',
+  go: '//', kotlin: '//', swift: '//', php: '//', fsharp: '//', scss: '//', less: '//',
+  objectivec: '//', json: '//', vbnet: "'", sql: '--', lua: '--'
+}
+
+// Mod-/ — toggle line comments over the selected lines, language-aware. Comments at the
+// selection's shallowest indent (keeps code aligned); uncomments when every non-blank line
+// already starts with the token. No-op (falls through) for read mode or unknown languages.
+function toggleLineComment(view: EditorView, lang: string): boolean {
+  const token = LINE_COMMENT[lang]
+  if (!token || view.state.readOnly) return false
+  const { state } = view
+  const nums = new Set<number>()
+  for (const r of state.selection.ranges)
+    for (let n = state.doc.lineAt(r.from).number; n <= state.doc.lineAt(r.to).number; n++) nums.add(n)
+  const lines = [...nums].map((n) => state.doc.line(n)).filter((l) => l.text.trim().length)
+  if (!lines.length) return false
+  const allCommented = lines.every((l) => l.text.trimStart().startsWith(token))
+  const changes = allCommented
+    ? lines.map((l) => {
+        const from = l.from + l.text.indexOf(token)
+        const to = from + token.length + (state.doc.sliceString(from + token.length, from + token.length + 1) === ' ' ? 1 : 0)
+        return { from, to }
+      })
+    : (() => {
+        const col = Math.min(...lines.map((l) => /^[ \t]*/.exec(l.text)![0].length))
+        return lines.map((l) => ({ from: l.from + col, insert: token + ' ' }))
+      })()
+  view.dispatch({ changes, userEvent: allCommented ? 'delete' : 'input' })
   return true
 }
 
@@ -152,6 +207,13 @@ const baseTheme = EditorView.theme(
     '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection': {
       backgroundColor: 'var(--accent-soft)'
     },
+    // 캐럿 옆 괄호 짝 강조 — 선택색과 구분되게 은은한 박스(테두리 위주), 짝 없으면 빨강 글자
+    '.cm-matchingBracket, &.cm-focused .cm-matchingBracket': {
+      backgroundColor: 'var(--accent-soft)',
+      outline: '1px solid color-mix(in oklch, var(--accent) 55%, transparent)',
+      borderRadius: '2px'
+    },
+    '.cm-nonmatchingBracket': { color: 'var(--red)' },
     '.cm-gutters': { backgroundColor: 'var(--inset)', borderRight: '1px solid var(--line)', color: 'var(--text-4)' },
     '.cm-lineNumbers .cm-gutterElement': {
       fontFamily: 'var(--font-mono)',
@@ -196,11 +258,14 @@ export const CmEditor = forwardRef<
   const viewRef = useRef<EditorView | null>(null)
   const [rulerOn, setRulerOn] = useState(false) // 스크롤될 때만 오버뷰 룰러 표시
   const [findOpen, setFindOpen] = useState(false) // Ctrl+F 검색 바(우리 디자인 .fv-find 오버레이)
+  const [saveErr, setSaveErr] = useState<string | null>(null) // 저장 실패 — 네이티브 alert 대신 카드로
   // live mirrors so the CM event handlers (built once) always see current values
   const cwdRef = useRef(cwd)
   cwdRef.current = cwd
   const pathRef = useRef(path)
   pathRef.current = path
+  const langRef = useRef(lang) // 한 번 만든 키맵(smartEnter·Mod-/)이 항상 현재 언어를 읽도록
+  langRef.current = lang
   const lspRef = useRef(lsp)
   lspRef.current = lsp
   const onNavRef = useRef(onNavigate)
@@ -280,7 +345,7 @@ export const CmEditor = forwardRef<
       // 저장 자체는 diff를 건드릴 필요가 없다(부모는 불변 — 내 변경이 초록으로 합쳐져 보임).
       onSavedRef.current?.()
     } else {
-      window.alert('저장 실패: ' + (r.error || '알 수 없는 오류'))
+      setSaveErr(r.error || '알 수 없는 오류')
     }
   }, [cwd, path])
   const saveRef = useRef(doSave)
@@ -290,7 +355,8 @@ export const CmEditor = forwardRef<
     () => ({
       save: () => void saveRef.current(),
       getCaret: () => viewRef.current?.state.selection.main.head ?? 0,
-      openSearch: () => setFindOpen(true) // 검색 바 열기 — 입력은 자동 포커스
+      openSearch: () => setFindOpen(true), // 검색 바 열기 — 입력은 자동 포커스
+      focus: () => viewRef.current?.focus()
     }),
     []
   )
@@ -437,12 +503,14 @@ export const CmEditor = forwardRef<
           // 추가(팝업 열림=수락, 닫힘=false → 아래 indentWithTab으로 들여쓰기).
           keymap.of([...completionKeymap, { key: 'Tab', run: acceptCompletion }]),
           keymap.of([
-            { key: 'Enter', run: smartEnter },
+            { key: 'Enter', run: (v) => smartEnter(v, langRef.current) },
+            { key: 'Mod-/', run: (v) => toggleLineComment(v, langRef.current), preventDefault: true },
             ...closeBracketsKeymap,
             ...defaultKeymap,
             ...historyKeymap,
             indentWithTab
           ]),
+          bracketMatching(), // 캐럿 옆 괄호와 그 짝을 은은히 강조 (.cm-matchingBracket)
           hlCompartment.current.of(highlighting(lang, semRef.current, structOvRef.current)),
           flashField,
           findField, // Ctrl+F 검색 매치 하이라이트 (CM 기본 패널 대신 .fv-find 오버레이가 구동)
@@ -677,9 +745,51 @@ export const CmEditor = forwardRef<
           ))}
         </div>
       )}
+      {saveErr && (
+        <SaveErrorDialog
+          message={saveErr}
+          onClose={() => {
+            setSaveErr(null)
+            viewRef.current?.focus() // 편집기로 포커스 복귀 — 다시 저장 시도하거나 이어서 편집
+          }}
+        />
+      )}
     </div>
   )
 })
+
+// 저장 실패를 알리는 카드(네이티브 alert 대체) — 스레드를 막지 않아 IME가 엉키지 않고, 앱의
+// .set-dialog 언어와도 맞는다. body로 포털해 .cm-host의 클리핑/스태킹을 벗어난다. Esc·Enter·
+// 확인·백드롭 모두 닫기. capture+stopPropagation으로 뷰어의 Esc 핸들러가 먼저 닫는 일을 막는다.
+function SaveErrorDialog({ message, onClose }: { message: string; onClose: () => void }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key !== 'Escape' && e.key !== 'Enter') return
+      e.preventDefault()
+      e.stopPropagation()
+      onClose()
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [onClose])
+  return createPortal(
+    <div className="set-dialog-overlay" onMouseDown={onClose}>
+      <div className="set-dialog" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="sd-ic">
+          <IconAlert size={22} />
+        </div>
+        <div className="sd-title">저장하지 못했어요</div>
+        <div className="sd-msg">{message}</div>
+        <div className="sd-btns">
+          <button className="sd-go" onClick={onClose} autoFocus>
+            확인
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  )
+}
 
 // 파일 내 검색 바 — 비-CM FindBar와 같은 .fv-find 디자인을 CM 문서·하이라이트에 맞춰 구동.
 // 매치는 직접 계산(computeMatches)해 findField로 칠하고, 현재 매치로 스크롤만 한다(캐럿은
