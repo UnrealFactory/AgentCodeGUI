@@ -716,6 +716,7 @@ export function SelectionToolbar({
   )
 }
 
+// 에이전트(코드) 모드 — 코드베이스를 직접 다루는 작업 위주
 const WELCOME_SUGGESTIONS: { icon: typeof IconPencil; label: string }[] = [
   { icon: IconEye, label: '이 프로젝트의 구조를 설명해줘' },
   { icon: IconSearch, label: '버그를 찾아서 고쳐줘' },
@@ -723,17 +724,46 @@ const WELCOME_SUGGESTIONS: { icon: typeof IconPencil; label: string }[] = [
   { icon: IconPencil, label: '테스트 코드를 작성해줘' }
 ]
 
-// shown in the chat area when the active conversation is empty (first launch / new chat)
-export function WelcomeState({ userName, onPick }: { userName: string; onPick: (text: string) => void }) {
+// 순수 채팅(대화) 모드 — 작업 폴더가 없어 코드 작업이 아니라 설명·아이디어·상의 위주
+const CHAT_SUGGESTIONS: { icon: typeof IconPencil; label: string }[] = [
+  { icon: IconBook, label: '어려운 개념을 쉽게 설명해줘' },
+  { icon: IconBolt, label: '아이디어를 함께 브레인스토밍해줘' },
+  { icon: IconWrench, label: '기술 선택이나 설계 방향을 같이 고민해줘' },
+  { icon: IconPencil, label: '글이나 문서 초안을 작성해줘' }
+]
+
+const WELCOME_COPY = {
+  agent: {
+    sub: '코드 작성과 리뷰부터 버그 수정, 리팩터링까지 — 아래에 바로 입력하거나 추천으로 시작해보세요.',
+    suggestions: WELCOME_SUGGESTIONS
+  },
+  chat: {
+    sub: '가볍게 대화로 시작해보세요 — 궁금한 걸 묻거나 아이디어를 함께 정리해보세요.',
+    suggestions: CHAT_SUGGESTIONS
+  }
+} as const
+
+// shown in the chat area when the active conversation is empty (first launch / new chat).
+// variant='chat'은 작업 폴더 없는 순수 대화 모드용 — 대화 중심 추천을 보여준다.
+export function WelcomeState({
+  userName,
+  onPick,
+  variant = 'agent'
+}: {
+  userName: string
+  onPick: (text: string) => void
+  variant?: 'agent' | 'chat'
+}) {
+  const copy = WELCOME_COPY[variant]
   return (
     <div className="welcome">
       <div className="wc-mark">
         <IconClaude size={26} />
       </div>
       <div className="wc-title">무엇을 도와드릴까요{userName ? `, ${userName}님` : ''}?</div>
-      <div className="wc-sub">코드 작성과 리뷰부터 버그 수정, 리팩터링까지 — 아래에 바로 입력하거나 추천으로 시작해보세요.</div>
+      <div className="wc-sub">{copy.sub}</div>
       <div className="wc-grid">
-        {WELCOME_SUGGESTIONS.map((s) => (
+        {copy.suggestions.map((s) => (
           <button key={s.label} className="wc-card" onClick={() => onPick(s.label)}>
             <span className="wc-ic">
               <s.icon size={16} />

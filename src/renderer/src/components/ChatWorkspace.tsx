@@ -555,6 +555,7 @@ export function ChatWorkspace({
         <div className="chat-scroll scroll" ref={chatScrollRef}>
           {state.messages.length === 0 && !busy ? (
             <WelcomeState
+              variant="chat"
               userName={user.name}
               onPick={(t) => {
                 setInput(t)
