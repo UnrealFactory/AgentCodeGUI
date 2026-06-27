@@ -29,6 +29,12 @@ function verseFilterKey(cwd: string): string {
   return 'explorer.verseFilter:' + cwd.replace(/[\\/]+/g, '/').toLowerCase()
 }
 
+// 지금 보고 있는 폴더(메인='' 또는 Verse API·참고 폴더 경로)의 저장 키 — 프로젝트별로 기억해
+// 앱을 껐다 켜거나 같은 채팅을 다시 열어도 보던 폴더(예: /Verse.org)로 복원한다
+function viewKey(cwd: string): string {
+  return 'explorer.view:' + cwd.replace(/[\\/]+/g, '/').toLowerCase()
+}
+
 /**
  * 파일 탐색기 — 채팅 옆의 접이식 칼럼 (A안). 활성 채팅의 작업 폴더가 곧 트리의
  * 루트라서 폴더를 따로 "여는" 개념이 없다: 채팅을 바꾸면 트리도 따라간다.
@@ -80,7 +86,8 @@ export const Explorer = memo(function Explorer({
   // 가린다. excludes가 비면(=Verse 프로젝트 아님) 토글 자체를 숨긴다. 기본 ON, 프로젝트별 영속.
   const [excludes, setExcludes] = useState<string[]>([])
   const [verseFilter, setVerseFilter] = useState<boolean>(() => (cwd ? getPref<boolean>(verseFilterKey(cwd), true) : true))
-  const [view, setView] = useState('')
+  // 지금 보고 있는 폴더 — 프로젝트별로 영속(껐다 켜도 보던 Verse API/참고 폴더로 복원). '' = 메인.
+  const [view, setView] = useState<string>(() => (cwd ? getPref<string>(viewKey(cwd), '') : ''))
   const [prevCwd, setPrevCwd] = useState(cwd)
   if (prevCwd !== cwd) {
     setPrevCwd(cwd)
@@ -89,7 +96,7 @@ export const Explorer = memo(function Explorer({
     setExcludes([])
     setVerseOpen(cwd ? getPref<boolean>(verseOpenKey(cwd), false) : false)
     setVerseFilter(cwd ? getPref<boolean>(verseFilterKey(cwd), true) : true)
-    setView('')
+    setView(cwd ? getPref<string>(viewKey(cwd), '') : '')
   }
   // 실제로 필터를 거는 조건 — 토글 ON이면서 이 프로젝트에 제외 글롭이 있을 때만
   const filtering = verseFilter && excludes.length > 0
@@ -116,6 +123,13 @@ export const Explorer = memo(function Explorer({
   useEffect(() => {
     refs.forEach((d) => window.api.lsp.prewarm(d).catch(() => {}))
   }, [refs])
+
+  // 보고 있는 폴더가 바뀔 때마다 프로젝트별로 저장 — 모든 setView 경로(메인/참고/Verse API 클릭,
+  // 참고 폴더 추가·삭제)를 한곳에서 영속한다. cwd 전환 시엔 위에서 그 프로젝트의 저장값으로
+  // 막 복원했으므로 같은 값을 다시 쓰는 무해한 no-op이 된다.
+  useEffect(() => {
+    if (cwd) setPref(viewKey(cwd), view)
+  }, [cwd, view])
 
   // Verse 프로젝트면 .vproject의 패키지(내 Verse 소스 + Verse.org/Fortnite.com/… digest)를
   // 발견해 보기 전용 루트로 자동 노출 — UEFN이 VS Code에 그리는 그룹 뷰와 같은 모습.

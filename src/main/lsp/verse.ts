@@ -552,34 +552,82 @@ function findVproject(root: string): string | null {
   return null
 }
 
+// Fallback folder source: the UEFN-generated `*.code-workspace` in the project root. It lists
+// the exact multi-root set VS Code opens — the source package, the Assets/vproject dirs, and the
+// Verse/UnrealEngine/Fortnite API digests — each with its REAL absolute path. UEFN keeps the
+// generated `.vproject` under a GLOBAL `%LOCALAPPDATA%\UnrealEditorFortnite\Saved\VerseProject`,
+// which findVproject (scanning only <root>/Saved/VerseProject) can't reach, so for those projects
+// this file is the only way to hand verse-lsp its digest folders. (Same file the explorer's
+// "Verse API" group reads.) Returns null when there's no such file.
+function verseCodeWorkspaceFolders(root: string): { uri: string; name: string }[] | null {
+  let files: string[]
+  try {
+    files = fs.readdirSync(root).filter((n) => n.toLowerCase().endsWith('.code-workspace'))
+  } catch {
+    return null
+  }
+  for (const n of files) {
+    try {
+      const j = JSON.parse(fs.readFileSync(path.join(root, n), 'utf8')) as {
+        folders?: { name?: string; path?: string }[]
+      }
+      const seen = new Set<string>()
+      const out: { uri: string; name: string }[] = []
+      for (const f of j.folders ?? []) {
+        if (!f.path) continue
+        let abs: string
+        try {
+          abs = path.resolve(root, f.path) // workspace paths may be relative to the .code-workspace dir
+          if (!fs.existsSync(abs)) continue
+        } catch {
+          continue
+        }
+        const key = abs.toLowerCase()
+        if (seen.has(key)) continue
+        seen.add(key)
+        out.push({ uri: pathToFileURL(abs).href, name: f.name || path.basename(abs) })
+      }
+      if (out.length) return out
+    } catch {
+      // malformed workspace file — try the next one
+    }
+  }
+  return null
+}
+
 /**
  * The multi-root workspace folders verse-lsp needs: the vproject folder (so the server
  * discovers the manifest) plus every package dirPath it declares (the user's source and
- * the Verse/UnrealEngine API digests). Returns null when no .vproject exists — the project
- * hasn't generated Verse files yet, so navigation can't resolve and we stay colour-only.
+ * the Verse/UnrealEngine API digests). Prefers a local `.vproject`; when none is reachable
+ * (UEFN keeps the generated manifest in a global Saved/VerseProject), falls back to the
+ * project's `*.code-workspace`, which lists the same folders with absolute paths. Returns
+ * null only when neither exists — the project hasn't generated Verse files yet, so navigation
+ * can't resolve and we stay colour-only.
  */
 export function verseWorkspaceFolders(root: string): { uri: string; name: string }[] | null {
   const vproj = findVproject(root)
-  if (!vproj) return null
-  const pkgs = parseVproject(vproj)
-  if (!pkgs) return null
-  const seen = new Set<string>()
-  const out: { uri: string; name: string }[] = []
-  const add = (dir: string, name: string): void => {
-    if (!dir) return
-    let abs: string
-    try {
-      abs = path.resolve(dir)
-      if (!fs.existsSync(abs)) return
-    } catch {
-      return
+  const pkgs = vproj ? parseVproject(vproj) : null
+  if (vproj && pkgs) {
+    const seen = new Set<string>()
+    const out: { uri: string; name: string }[] = []
+    const add = (dir: string, name: string): void => {
+      if (!dir) return
+      let abs: string
+      try {
+        abs = path.resolve(dir)
+        if (!fs.existsSync(abs)) return
+      } catch {
+        return
+      }
+      const key = abs.toLowerCase()
+      if (seen.has(key)) return
+      seen.add(key)
+      out.push({ uri: pathToFileURL(abs).href, name })
     }
-    const key = abs.toLowerCase()
-    if (seen.has(key)) return
-    seen.add(key)
-    out.push({ uri: pathToFileURL(abs).href, name })
+    add(path.dirname(vproj), 'vproject')
+    for (const p of pkgs) add(p.dirPath, p.name)
+    if (out.length) return out
   }
-  add(path.dirname(vproj), 'vproject')
-  for (const p of pkgs) add(p.dirPath, p.name)
-  return out.length ? out : null
+  // No reachable local .vproject — try the UEFN-written *.code-workspace (global digest paths).
+  return verseCodeWorkspaceFolders(root)
 }
