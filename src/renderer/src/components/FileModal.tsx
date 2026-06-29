@@ -293,15 +293,20 @@ function parseVerseSig(
   const name = dotMember ? dotMember[1] : (opToken ?? nm[1])
   s = s.slice(nm[0].length).trim()
   eatSpecs() // 이름 뒤: 접근/선언 지정자
-  // 매개변수 (...) — 최상위 쉼표로 분리(splitCsArgs가 <>·()·[] 깊이를 처리)
+  // 매개변수 (...) 또는 [...] — `<decides>` 실패형 함수는 verse-lsp가 사용처 호버에서 매개변수
+  // 목록을 대괄호로 준다(호출 구문 `f[]`을 그대로 반영). 둘 다 매개변수 목록으로 받아 함수로
+  // 분류해야 한다 — 안 그러면 `(`가 아니라 `[`로 시작해 params·ret 둘 다 못 잡고 종류가 'type'으로
+  // 깨졌다(예: Entity.GetPlayspaceForEntity[] → 종류 Type). 최상위 쉼표 분리는 splitCsArgs가 처리.
   let params: string[] | undefined
-  if (s.startsWith('(')) {
+  if (s.startsWith('(') || s.startsWith('[')) {
+    const open = s[0]
+    const close = open === '(' ? ')' : ']'
     let depth = 0
     let end = -1
     for (let i = 0; i < s.length; i++) {
       const c = s[i]
-      if (c === '(') depth++
-      else if (c === ')' && --depth === 0) {
+      if (c === open) depth++
+      else if (c === close && --depth === 0) {
         end = i
         break
       }
@@ -722,6 +727,16 @@ export function HoverContent({
     const kindWords = (p.kind ?? '').toLowerCase()
     return allMods.filter((m) => m !== 'static' && !kindWords.includes(m))
   }, [p, allMods])
+  // Verse: the hovered symbol's OWN name is rendered as an isolated `Player` token, so the registry
+  // highlighter can't see it's a binding and promotes any name matching a type (UEFN asset classes are
+  // PascalCase, e.g. a project `Player` class) to the type colour — even when the card already knows
+  // it's a parameter/local/variable/constant. Force those names to the plain identifier colour so a
+  // `for (Player : …)` loop var or `(Player:player)` param doesn't read purple. Real types/functions
+  // keep the highlighter's colour.
+  const namePlain = useMemo(
+    () => lang === 'verse' && /^(parameter|local variable|variable|constant|var)$/i.test(p?.kind ?? ''),
+    [p, lang]
+  )
   // a Verse `var`'s SETTER (write) access — verse-lsp's hover drops it, so look it up from the
   // registry by the member's container (the hover qualifier's last path segment) + name.
   const verseWrite = useMemo(() => {
@@ -842,7 +857,7 @@ export function HoverContent({
           {p.name && (
             <>
               <span className="lh-spec-k">name</span>
-              <div className="lh-spec-v lh-name-row">
+              <div className={'lh-spec-v lh-name-row' + (namePlain ? ' nm-plain' : '')}>
                 <Markdown text={'`' + p.name + '`'} codeLang={lang} decorate={deco} />
               </div>
             </>

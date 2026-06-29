@@ -595,6 +595,16 @@ export async function verseLocalHover(
       if (/:=\s*(?:class|struct|enum|interface|module)\b/.test(t)) break
       return isMethodLocal(i) ? card('Local Variable', typeHint) : null
     }
+    // for-loop iteration variable — `for (Player : coll)`, `for (A : x, B : y)`, `for (K -> V : map)`.
+    // Bound with a bare `:` (or as a map key before `->`), so the walrus/typed-local branches miss it
+    // and it falls through to verse-lsp's raw use-site card — a confusing 'constant'/`<internal>`, plus
+    // verseDefInfo grabbing the comment ABOVE the `for` line as its "doc". Label it a loop-scoped local
+    // instead, typed by verse-lsp's inferred element type (the `:` here binds the COLLECTION, not the
+    // element type, so we can't read it off the line). No bogus doc — verseLocalHover attaches none.
+    if (/\bfor\s*\(/.test(t)) {
+      const re = new RegExp(`[(,]\\s*${word}\\s*->|(?:[(,]|->)\\s*${word}\\s*:(?!=)`)
+      if (re.test(t)) return isMethodLocal(i) ? card('Local Variable', typeHint) : null
+    }
     // typed local/field statement — `word : type = …`
     const tm = new RegExp(`^${word}\\s*:\\s*([^=]+?)\\s*=`).exec(t)
     if (tm) return isMethodLocal(i) ? card('Local Variable', tm[1]) : null

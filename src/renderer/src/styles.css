@@ -1836,6 +1836,10 @@ input,textarea{ font-family:inherit; }
 /* Ctrl(정의 이동 모드) — 포인터 커서 + 줄 hover 강조 (뷰어의 .fv-pre.lsp-ctrl와 동일) */
 .cm-host.lsp-ctrl .cm-content{ cursor:pointer; }
 .cm-host.lsp-ctrl .cm-line:hover{ background:color-mix(in oklab, var(--accent) 8%, transparent); }
+/* 읽기 모드 — 편집을 못 하므로 텍스트 I-빔 대신 기본 화살표(호버로 타입만 보는 흐름에 맞춤).
+   단 Ctrl(정의 이동)일 땐 위 lsp-ctrl 포인터를 유지해야 하므로 더 높은 특이도로 되살린다. */
+.cm-host.mode-read .cm-content{ cursor:default; }
+.cm-host.mode-read.lsp-ctrl .cm-content{ cursor:pointer; }
 
 /* CM 파일 내 검색(Ctrl+F) — 비-CM 뷰어와 같은 .fv-find 플로팅 바를 그대로 쓴다(우리 톤 통일).
    .cm-host 기준 좌상단 근처에 띄우고, 매치는 직접 칠한다(아래 .cm-find-hit/-cur). */
@@ -1899,7 +1903,7 @@ input,textarea{ font-family:inherit; }
   display:flex; flex-direction:column; gap:9px; align-items:stretch;
   background:var(--bg); border:1px solid var(--line-2); border-radius:14px;
   box-shadow:0 24px 56px -20px rgba(30,22,14,.5), 0 3px 12px -5px rgba(30,22,14,.2);
-  padding:13px 15px; user-select:text; cursor:auto;
+  padding:13px 15px; user-select:text; cursor:default;
   animation:fade .12s ease both; /* 등장은 살짝 페이드, 제거는 즉시 */ }
 .lsp-hover .codeblock{ border:none; background:var(--surface); margin:0; border-radius:9px; }
 .lsp-hover .codeblock .cb-head{ display:none; }
@@ -1945,6 +1949,10 @@ input,textarea{ font-family:inherit; }
 .lsp-hover .lh-head{ flex-wrap:wrap; row-gap:4px; }
 /* NAME 행 — 같은 코드 칩이되 카드의 주인공이라 살짝만 크게 */
 .lsp-hover .lh-name-row code.inline{ font-size:16px; font-weight:600; }
+/* 변수/매개변수/로컬/상수 이름은 타입 색 승격을 막고 기본 식별자 색으로 — 동명 에셋 타입
+   (예: PascalCase `Player` 클래스)과 겹쳐도 보라색이 되지 않게 (highlighter가 칠한 색을 덮어씀) */
+.lsp-hover .lh-name-row.nm-plain code.inline,
+.lsp-hover .lh-name-row.nm-plain code.inline *{ color:var(--text-2); }
 .lsp-hover .lh-sig{ background:var(--surface); border:1px solid var(--line); border-radius:9px; padding:9px 12px; }
 .lsp-hover .lh-sig code{ display:block; font-family:var(--font-mono); font-size:14px; line-height:1.6;
   white-space:pre-wrap; word-break:break-word; color:var(--text-2); }

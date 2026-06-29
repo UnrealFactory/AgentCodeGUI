@@ -324,6 +324,12 @@ const baseTheme = EditorView.theme(
 // CM이 알아서 유지(포인터가 카드 위)하고, 멀어지면 막지 않으니 평소대로 닫힌다. (예전의 패딩 "다리"는
 // CM이 패딩까지 크기로 재 카드가 토큰에서 떨어지는 역효과가 있어 폐기.) 카드가 토큰에 바로 붙으므로
 // 좁은 띠(아래 px)면 충분하고, 큰 카드에서 편집 영역 전체를 막지 않는다.
+//
+// 단, 포인터가 코드(.cm-content) 위로 "돌아오면" 막지 않는다 — 카드는 코드 밖의 툴팁 DOM이므로
+// 코드 위 mousemove는 옆 토큰으로 옮기는 중이라는 뜻이다. 카드가 넓어 같은 줄 옆 토큰이 ±띠 안에
+// 들어가도, 코드 위에선 CM이 그 토큰으로 호버를 다시 풀게 둬야 옛 카드가 끼지 않는다(예:
+// OnPlayerJoined 옆 (Player:player)로 옮기면 Player 호버가 떠야 함). 막는 건 카드 위/카드와 토큰
+// 사이의 코드-밖 틈일 때뿐.
 const HOVER_KEEP_PX = 22
 const cmHoverKeepAlive = ViewPlugin.fromClass(
   class {
@@ -334,6 +340,8 @@ const cmHoverKeepAlive = ViewPlugin.fromClass(
       this.onMove = (e: MouseEvent): void => {
         const tip = document.querySelector('.cm-tooltip-hover') as HTMLElement | null
         if (!tip) return
+        // 코드 위로 돌아옴 → CM의 재호버에 양보(옆 토큰으로 카드가 갱신되게). 카드는 .cm-content 밖.
+        if ((e.target as HTMLElement | null)?.closest?.('.cm-content')) return
         const r = tip.getBoundingClientRect()
         if (
           e.clientX >= r.left - HOVER_KEEP_PX &&

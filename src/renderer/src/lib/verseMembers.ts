@@ -125,7 +125,7 @@ const VERSE_BUILTIN_STRUCTS = new Set(['vector3', 'vector2', 'rotation', 'transf
 //   • everything else (locals, params, unknown receivers) → default colour (span stripped)
 // Both the viewer and the editor go through here, so both get it.
 export function recolorVerse(html: string, scopes: VerseScopes): string {
-  const { members, methods, fileTypes } = scopes
+  const { members, methods, locals, fileTypes } = scopes
   const reg = verseReg()
   const typeKind = (name: string): string | undefined =>
     fileTypes.get(name) ?? reg.kind[name] ?? (VERSE_BUILTIN_STRUCTS.has(name) ? 'struct' : undefined)
@@ -135,12 +135,25 @@ export function recolorVerse(html: string, scopes: VerseScopes): string {
       ? `<span class="hljs-title class_">${name}</span>`
       : `<span class="sem-type2">${name}</span>`
   let out = html.replace(
-    /<span class="hljs-variable">([A-Za-z_]\w*)<\/span>(\.?)/g,
-    (full, name: string, dot: string) => {
+    // capture a trailing `.` (member-access receiver) OR a bare `:` (binding-name position); the two
+    // can't both follow an identifier, so re-append whichever matched via `tail`.
+    /<span class="hljs-variable">([A-Za-z_]\w*)<\/span>(\.?)(\s*:(?!=))?/g,
+    (full, name: string, dot: string, colon: string | undefined) => {
+      const tail = dot + (colon ?? '')
       if (members.has(name)) return full // member (own or inherited) → member colour, keep
       // a bare method reference (a callback passed without `()`) — colour it like a function (mint),
       // matching `OnTick(…)` at its definition/call. The grammar only catches a name BEFORE '(' .
-      if (methods.has(name)) return `<span class="hljs-title function_">${name}</span>` + dot
+      if (methods.has(name)) return `<span class="hljs-title function_">${name}</span>` + tail
+      // a local / parameter / loop var shadows a same-named TYPE → keep it default, not the type colour.
+      // UEFN asset types are PascalCase (e.g. a project's `Player` asset class), so they collide with
+      // ordinary PascalCase locals like a `for (Player : …)` loop var — and in body position the local
+      // must win. (File-wide, like the rest of this pass: a genuine same-named type ref also reads as
+      // the local — accepted, since nothing lexical separates the two uses.)
+      if (locals.has(name)) return name + tail
+      // a binding NAME — an identifier immediately before a bare `:` (a `name:type` param/field/local
+      // declaration) — is never a type in Verse (the type sits AFTER the `:`), so don't promote it to
+      // the type colour even when a same-named asset type exists. Fixes the `Player:player` param row.
+      if (colon) return name + tail
       const k = typeKind(name)
       if (k) return typeSpan(name, k) + dot // confirmed type → type colour by kind
       return name + dot // local / parameter / unknown → default (white)
