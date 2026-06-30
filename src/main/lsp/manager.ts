@@ -12,6 +12,7 @@ import {
   verseSourcePath,
   verseProjectRoot,
   verseWorkspaceFolders,
+  verseWorkspaceMtime,
   verseDeclHover,
   verseLocalHover,
   verseDocAt,
@@ -166,6 +167,9 @@ const MAX_OPEN_DOCS = 32
 // a crashed/failed server isn't respawned until this much time has passed,
 // so a broken install can't spawn-loop
 const RESPAWN_COOLDOWN = 30_000
+// verse only: minimum gap between checks of the workspace's digest/.vproject mtimes (a restart
+// trigger after a UEFN Verse rebuild) — without it we'd stat the digests on every hover
+const VERSE_WS_RECHECK = 4_000
 
 interface DocState {
   version: number
@@ -180,6 +184,12 @@ interface ServerHandle {
   ready: Promise<void>
   docs: Map<string, DocState> // uri → sync state (insertion order = open order)
   diedAt: number
+  // verse only: when this server spawned (Date.now), and when we last checked the workspace's
+  // digest/.vproject mtimes against it. UEFN regenerates those on every Verse build; once they
+  // climb past startedAt the server's index is stale and ensure() restarts it (throttled by
+  // wsCheckedAt). Set for every server but only consulted for verse.
+  startedAt: number
+  wsCheckedAt: number
   // Roslyn: true between initialize and projectInitializationComplete — status reports
   // 'starting' while true so the viewer waits for the full index before asking tokens
   projectInitPending: boolean
@@ -1240,12 +1250,24 @@ class LspManager {
   /** Get (or spawn) the server of this kind owning this project root. */
   private ensure(def: ServerDef, root: string): ServerHandle | null {
     if (!root) return null
-    const key = `${def.id}|${path.resolve(root).toLowerCase()}`
+    const rRoot = path.resolve(root)
+    const key = `${def.id}|${rRoot.toLowerCase()}`
     const existing = this.servers.get(key)
     if (existing) {
-      if (existing.status !== 'error') return existing
-      if (Date.now() - existing.diedAt < RESPAWN_COOLDOWN) return existing
-      this.servers.delete(key) // cooled down — try a fresh spawn below
+      if (existing.status === 'error') {
+        if (Date.now() - existing.diedAt < RESPAWN_COOLDOWN) return existing
+        this.servers.delete(key) // cooled down — try a fresh spawn below
+      } else if (def.id === 'verse' && this.verseWorkspaceStale(existing, rRoot)) {
+        // UEFN rewrites the .vproject + API digests on every Verse build; a server that indexed
+        // before that is stale — it can't resolve the regenerated API symbols, so official hovers
+        // (and go-to-definition into the digests) go blank. Tear it down so the fresh spawn below
+        // re-indexes the new project. User source edits don't count (verseWorkspaceMtime ignores them).
+        existing.rpc.dispose('Verse 프로젝트 재생성 감지 — 재시작')
+        killTree(existing.child)
+        this.servers.delete(key)
+      } else {
+        return existing
+      }
     }
 
     const plan = def.command(path.resolve(root))
@@ -1282,6 +1304,8 @@ class LspManager {
       ready: Promise.resolve(),
       docs: new Map(),
       diedAt: 0,
+      startedAt: Date.now(),
+      wsCheckedAt: Date.now(),
       semLegend: null,
       complTriggers: null,
       projectInitPending: !!def.awaitsProjectInit,
@@ -1389,6 +1413,20 @@ class LspManager {
 
     this.servers.set(key, handle)
     return handle
+  }
+
+  /**
+   * True when the Verse workspace's generated artifacts (digests/.vproject/.code-workspace) are
+   * newer than when `handle` indexed them — i.e. UEFN rebuilt Verse and this server's index is
+   * stale. Throttled (we'd otherwise stat the digests on every hover) and only ever consulted for
+   * the verse server, where `ensure` uses it to restart the server with the regenerated project.
+   */
+  private verseWorkspaceStale(handle: ServerHandle, root: string): boolean {
+    const now = Date.now()
+    if (now - handle.wsCheckedAt < VERSE_WS_RECHECK) return false
+    handle.wsCheckedAt = now
+    const m = verseWorkspaceMtime(root)
+    return m > 0 && m > handle.startedAt
   }
 
   /** Server ready + document opened/synced — the common front half of every query. */

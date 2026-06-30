@@ -2,9 +2,8 @@ import path from 'node:path'
 import fs from 'node:fs'
 import fsp from 'node:fs/promises'
 import { spawn } from 'node:child_process'
-import { pathToFileURL } from 'node:url'
+import { pathToFileURL, fileURLToPath } from 'node:url'
 import { APP_HOME } from '../engine/versions'
-import { ueRoot } from './ue'
 import { translateVerseDoc } from './verseDocKo'
 
 /* ============================================================
@@ -127,9 +126,36 @@ export async function clearVerseExe(): Promise<void> {
   await fsp.rm(VERSE_CONFIG, { force: true }).catch(() => {})
 }
 
-/** The UE project root (.uproject ancestor) for a .verse file, or null. */
+/**
+ * The UE/UEFN project root for a .verse file — the nearest ancestor that looks like a Verse
+ * project: a UEFN `.uefnproject`, a UE `.uproject`, the UEFN-written `*.code-workspace`, or a
+ * generated `Saved/VerseProject`. Returns null when none is found. We can't reuse `ueRoot` here:
+ * it keys clangd off `.uproject` ONLY, but UEFN projects ship `.uefnproject`/`.uplugin` and no
+ * `.uproject` — so a .verse file in one would resolve to no root, the server would fall back to a
+ * stray cwd, and `verseWorkspaceFolders` would never find the digests (no official hover).
+ */
 export function verseProjectRoot(absFile: string): string | null {
-  return ueRoot(path.dirname(absFile))
+  let d = path.resolve(path.dirname(absFile))
+  for (let i = 0; i < 24; i++) {
+    let names: string[]
+    try {
+      names = fs.readdirSync(d)
+    } catch {
+      names = []
+    }
+    const has = (re: RegExp): boolean => names.some((n) => re.test(n))
+    if (
+      has(/\.uefnproject$/i) ||
+      has(/\.uproject$/i) ||
+      has(/\.code-workspace$/i) ||
+      fs.existsSync(path.join(d, 'Saved', 'VerseProject'))
+    )
+      return d
+    const parent = path.dirname(d)
+    if (parent === d) break
+    d = parent
+  }
+  return null
 }
 
 // 선언 줄 바로 위의 문서 주석을 모은다 — 연속된 `# …` 줄(과 한 줄짜리 `<# … #>`)과
@@ -745,4 +771,49 @@ export function verseWorkspaceFolders(root: string): { uri: string; name: string
   }
   // No reachable local .vproject — try the UEFN-written *.code-workspace (global digest paths).
   return verseCodeWorkspaceFolders(root)
+}
+
+/**
+ * Newest mtime (ms) among the Verse workspace's GENERATED artifacts for `root` — the project's
+ * `*.code-workspace`, the `.vproject` manifest, and the `*.digest.verse` API digests. UEFN rewrites
+ * ALL of these every time it rebuilds Verse, so a verse-lsp that indexed before that climb is stale:
+ * it can't resolve the newly-structured API and official hovers go blank. The manager compares this
+ * against the server's spawn time and restarts when it's newer. Deliberately ignores the user's own
+ * source `.verse` files (only `*.digest.verse` counts) so ordinary editing never trips a restart.
+ * Cheap — stats a manifest file per package folder, no content reads. 0 when nothing is found.
+ */
+export function verseWorkspaceMtime(root: string): number {
+  let newest = 0
+  const bump = (p: string): void => {
+    try {
+      const m = fs.statSync(p).mtimeMs
+      if (m > newest) newest = m
+    } catch {
+      /* missing — ignore */
+    }
+  }
+  // the project's own *.code-workspace (UEFN rewrites it on every Verse build)
+  try {
+    for (const n of fs.readdirSync(root)) if (/\.code-workspace$/i.test(n)) bump(path.join(root, n))
+  } catch {
+    /* unreadable root */
+  }
+  // the manifest + digest packages — one `*.vproject` / `*.digest.verse` per folder
+  const folders = verseWorkspaceFolders(root)
+  if (folders)
+    for (const f of folders) {
+      let dir: string
+      try {
+        dir = fileURLToPath(f.uri)
+      } catch {
+        continue
+      }
+      try {
+        for (const n of fs.readdirSync(dir))
+          if (/\.digest\.verse$/i.test(n) || /\.vproject$/i.test(n)) bump(path.join(dir, n))
+      } catch {
+        /* unreadable package dir */
+      }
+    }
+  return newest
 }

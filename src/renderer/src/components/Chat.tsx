@@ -81,8 +81,8 @@ interface ModeOpt {
 const MODELS: ModelOpt[] = [
   { v: 'Fable 5', id: 'fable', d: '최상위 지능 · 가장 어려운 작업', ctx: 1000, color: 'var(--gold)' },
   { v: 'Opus 4.8', id: 'opus', d: '고성능 · 복잡한 작업', ctx: 1000, color: 'var(--violet)' },
-  { v: 'Sonnet 4.7', id: 'sonnet', d: '균형 · 일상 작업', ctx: 1000, color: 'var(--blue)' },
-  { v: 'Haiku 4.6', id: 'haiku', d: '빠른 응답 · 가벼운 작업', ctx: 200, color: 'var(--teal)' }
+  { v: 'Sonnet 5', id: 'sonnet', d: '균형 · 일상 작업', ctx: 1000, color: 'var(--blue)' },
+  { v: 'Haiku 4.5', id: 'haiku', d: '빠른 응답 · 가벼운 작업', ctx: 200, color: 'var(--teal)' }
 ]
 const EFFORTS: EffortOpt[] = [
   { v: '최대', id: 'max', d: '최대 강도', level: 5 },
