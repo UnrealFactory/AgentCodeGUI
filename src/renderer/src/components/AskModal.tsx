@@ -16,7 +16,10 @@ export function AskModal({
   picker,
   initialText,
   minimized,
-  onMinimizedChange
+  onMinimizedChange,
+  apiMode,
+  apiReady,
+  onApiModeChange
 }: {
   onClose: () => void
   cwd: string
@@ -26,6 +29,9 @@ export function AskModal({
   // minimized state lives in App so re-running "/ask" while down keeps it down
   minimized: boolean
   onMinimizedChange: (v: boolean) => void
+  apiMode: boolean // 전역 과금 모드 (구독/API) — /ask 실행에도 그대로 적용
+  apiReady: boolean
+  onApiModeChange: (next: boolean) => void
 }) {
   // a second, isolated agent session driven by the /ask engine channel
   const { state, busy, begin, clearPermission, clearQuestion } = useAgentSession((cb) =>
@@ -101,7 +107,9 @@ export function AskModal({
       // continue THIS ask's own session so follow-ups keep context (separate from the main
       // chat) — but only while still in the same folder (a session id is scoped to its
       // project, so resuming it after a folder change errors "No conversation found")
-      resume: state.session && sameCwd(state.session.cwd, cwd) ? state.session.sessionId : undefined
+      resume: state.session && sameCwd(state.session.cwd, cwd) ? state.session.sessionId : undefined,
+      // 전역 과금 모드 — API를 골랐으면 /ask 실행도 API 키로 과금
+      useApi: apiMode || undefined
     }
     setInput('')
     requestAnimationFrame(() => grow(taRef.current))
@@ -238,7 +246,7 @@ export function AskModal({
             <div className="ask-foot">
               {/* 이 질문 세션만의 모델·강도·모드 — 메인 컴포저와 동일한 컨트롤(RunPickers) */}
               <div className="ask-pickers">
-                <RunPickers picker={pk} setPicker={setPk} />
+                <RunPickers picker={pk} setPicker={setPk} apiMode={apiMode} apiReady={apiReady} onApiModeChange={onApiModeChange} />
               </div>
               <div className={'ask-composer' + (busy ? ' busy' : '')}>
                 <textarea

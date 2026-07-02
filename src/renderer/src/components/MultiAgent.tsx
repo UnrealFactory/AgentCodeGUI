@@ -86,6 +86,7 @@ interface PanelMeta {
   custom: boolean // user-renamed → keep the title instead of deriving it from the prompt
   cwd: string // this panel's working dir
   picker: PickerState
+  api: boolean // 이 패널의 과금 (true = API 키 종량) — 모델/모드처럼 패널별 독립 선택
   input: string
   images: string[] // attached image paths, sent with the next message
   queue: ScheduledMsg[] // messages queued while this panel is busy — auto-sent in order when its run ends
@@ -97,6 +98,7 @@ interface PersistedPanel {
   custom: boolean
   cwd: string
   picker: PickerState
+  api?: boolean // 없으면(예전 저장본) 복원 시점의 전역 과금 모드로 시드
   snapshot?: SessionState
   sysPrompt?: string
 }
@@ -119,8 +121,8 @@ interface CommitPayload {
   panels: PersistedPanel[]
 }
 
-function freshPanel(): PanelMeta {
-  return { title: '', custom: false, cwd: '', picker: { ...DEFAULT_PICKER }, input: '', images: [], queue: [] }
+function freshPanel(api = false): PanelMeta {
+  return { title: '', custom: false, cwd: '', picker: { ...DEFAULT_PICKER }, api, input: '', images: [], queue: [] }
 }
 function blankSession(id: string, count = 4): PersistedSession {
   return {
@@ -644,6 +646,8 @@ interface PanelViewProps {
   onRemoveQueued: (slot: number, id: string) => void
   onStop: (slot: number) => void
   onPicker: (slot: number, p: PickerState) => void
+  apiReady: boolean // 키 존재 여부 (없으면 API 선택이 설정을 연다)
+  onApiMode: (slot: number, next: boolean) => void // 패널별 과금 선택
   onPickFolder: (slot: number) => void
   onOpenFile: (slot: number, rel: string) => void // 폴더 팝오버에서 고른 파일을 뷰어로 연다
   onFocusPanel: (slot: number) => void
@@ -671,6 +675,8 @@ const PanelView = memo(function PanelView({
   onRemoveQueued,
   onStop,
   onPicker,
+  apiReady,
+  onApiMode,
   onPickFolder,
   onOpenFile,
   onFocusPanel,
@@ -868,7 +874,14 @@ const PanelView = memo(function PanelView({
           </div>
         )}
         <div className="ma-p-pickers">
-          <RunPickers picker={meta.picker} setPicker={(p) => onPicker(slot, p)} align="right" />
+          <RunPickers
+            picker={meta.picker}
+            setPicker={(p) => onPicker(slot, p)}
+            align="right"
+            apiMode={meta.api}
+            apiReady={apiReady}
+            onApiModeChange={(next) => onApiMode(slot, next)}
+          />
         </div>
         <PanelComposer
           value={meta.input}
@@ -936,6 +949,9 @@ function ActiveSession({
   initial,
   user,
   usage,
+  apiMode,
+  apiReady,
+  onOpenApiSettings,
   onFirstPrompt,
   onStatus,
   onCommit
@@ -944,6 +960,9 @@ function ActiveSession({
   initial: PersistedSession
   user: AppUser
   usage: UsageInfo
+  apiMode: boolean // 전역 과금 모드 — 새 패널/예전 저장본의 기본값 시드로만 쓴다
+  apiReady: boolean // 키 존재 여부 — 없으면 패널에서 API 선택 시 설정을 연다
+  onOpenApiSettings: () => void // 설정 → API 탭 열기 (키 미등록 가드)
   onFirstPrompt: (sessionId: string, prompt: string) => void
   onStatus: (sessionId: string, status: AgentStatus) => void
   onCommit: (sessionId: string, payload: CommitPayload) => void
@@ -967,12 +986,14 @@ function ActiveSession({
             custom: !!p.custom,
             cwd: p.cwd ?? '',
             picker: p.picker ?? { ...DEFAULT_PICKER },
+            // 패널별 과금 — 예전 저장본(필드 없음)은 현재 전역 모드를 기본값으로
+            api: p.api ?? apiMode,
             input: '',
             images: [],
             queue: [],
             sysPrompt: p.sysPrompt || undefined
           }
-        : freshPanel()
+        : freshPanel(apiMode)
     })
   )
   const [expandedSlot, setExpandedSlot] = useState<number | null>(null)
@@ -1036,6 +1057,7 @@ function ActiveSession({
         custom: m.custom,
         cwd: m.cwd,
         picker: m.picker,
+        api: m.api,
         snapshot: snapshotForPersist(sessions[i].state),
         sysPrompt: m.sysPrompt
       }
@@ -1111,6 +1133,14 @@ function ActiveSession({
     setMetas((prev) => prev.map((m, i) => (i === slot ? { ...m, ...patch } : m)))
   )
   const onInput = useEvent((slot: number, text: string) => patchMeta(slot, { input: text }))
+  // 패널별 과금 선택 — API를 골랐는데 키가 없으면 켜는 대신 설정 → API 탭을 연다
+  const onPanelApi = useEvent((slot: number, next: boolean) => {
+    if (next && !apiReady) {
+      onOpenApiSettings()
+      return
+    }
+    patchMeta(slot, { api: next })
+  })
   const onAddImages = useEvent((slot: number, paths: string[]) =>
     setMetas((prev) => prev.map((m, i) => (i === slot ? { ...m, images: Array.from(new Set([...m.images, ...paths])) } : m)))
   )
@@ -1216,7 +1246,9 @@ function ActiveSession({
       systemPrompt: m.sysPrompt,
       // resume only while still in the session's original folder (a session id is scoped
       // to its project — resuming it after a folder change errors "No conversation found")
-      resume: sess.state.session && sameCwd(sess.state.session.cwd, dir) ? sess.state.session.sessionId : undefined
+      resume: sess.state.session && sameCwd(sess.state.session.cwd, dir) ? sess.state.session.sessionId : undefined,
+      // 패널별 과금 — 이 패널이 API를 골랐으면 이 실행만 API 키로 과금
+      useApi: m.api || undefined
     }
     window.api.multi?.run(req).catch(() => {})
   })
@@ -1349,6 +1381,8 @@ function ActiveSession({
         onRemoveQueued={onRemoveQueued}
         onStop={stopPanel}
         onPicker={onPicker}
+        apiReady={apiReady}
+        onApiMode={onPanelApi}
         onPickFolder={onPickFolder}
         onOpenFile={onOpenPanelFile}
         onFocusPanel={onFocusPanel}
@@ -1451,13 +1485,19 @@ export function MultiWorkspace({
   usage,
   onOpenSettings,
   mode,
-  onModeChange
+  onModeChange,
+  apiMode,
+  apiReady,
+  onOpenApiSettings
 }: {
   user: AppUser
   usage: UsageInfo
   onOpenSettings: () => void
   mode: WorkspaceMode
   onModeChange: (m: WorkspaceMode) => void
+  apiMode: boolean // 전역 과금 모드 — 새 패널의 기본값 시드로만 쓴다 (선택은 패널별)
+  apiReady: boolean
+  onOpenApiSettings: () => void // 설정 → API 탭 열기 (키 미등록 가드)
 }) {
   // full data for every session (active one is folded in on commit / unmount). A ref,
   // not state — the live thread lives in ActiveSession's hooks, this is only for persist.
@@ -1666,6 +1706,9 @@ export function MultiWorkspace({
           initial={dataRef.current[activeId] ?? blankSession(activeId)}
           user={user}
           usage={usage}
+          apiMode={apiMode}
+          apiReady={apiReady}
+          onOpenApiSettings={onOpenApiSettings}
           onFirstPrompt={onFirstPrompt}
           onStatus={onStatus}
           onCommit={onCommit}

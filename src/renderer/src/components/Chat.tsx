@@ -51,6 +51,9 @@ import {
   IconList,
   IconBot,
   IconPanelLeft,
+  IconKey,
+  IconCard,
+  IconDollar,
   type IconProps
 } from './icons'
 
@@ -92,7 +95,8 @@ const EFFORTS: EffortOpt[] = [
   { v: '낮음', id: 'low', d: '가벼운 추론', level: 1 },
   { v: '최소', id: 'minimal', d: '확장사고 끔', level: 0 }
 ]
-const MODE_ICONS = { shield: IconShieldChk, plan: IconClipList, check: IconCheckCirc, bolt: IconBolt, warn: IconAlert }
+// 모드 + 과금 picker가 함께 쓰는 아이콘 키 (Pick의 icons 렌더링)
+const MODE_ICONS = { shield: IconShieldChk, plan: IconClipList, check: IconCheckCirc, bolt: IconBolt, warn: IconAlert, card: IconCard, key: IconKey }
 const MODES: ModeOpt[] = [
   { v: '일반', id: 'normal', d: '변경마다 승인 요청', color: 'var(--text-3)', icon: 'shield' },
   { v: '플랜', id: 'plan', d: '계획만 수립, 실행은 승인 후', color: 'var(--blue)', icon: 'plan' },
@@ -909,16 +913,58 @@ function Pick<O extends { v: string; d?: string; color?: string; level?: number;
   )
 }
 
+// 과금(구독/API) picker — 메인 컴포저·채팅·멀티 패널·/ask가 같은 컨트롤을 공유한다.
+// onChange(next): next=true(API)를 고르면 호출자가 키 유무를 확인하고, 없으면 설정을 연다.
+export function BillingPick({
+  apiMode,
+  apiReady,
+  onChange,
+  align
+}: {
+  apiMode: boolean
+  apiReady: boolean
+  onChange: (next: boolean) => void
+  align?: 'right'
+}) {
+  return (
+    <Pick
+      label="과금"
+      value={apiMode ? 'API' : '구독'}
+      options={[
+        // --accent는 다크 테마에서 무채색(근백색)이라 아이콘이 하얗게 죽는다 —
+        // 양쪽 테마 모두 색을 유지하는 골드(프리미엄 멤버십 결)로 칠한다
+        { v: '구독', d: 'Claude 구독(정액)으로 실행', color: 'var(--gold)', icon: 'card' as const },
+        {
+          v: 'API',
+          d: apiReady ? '저장된 API 키로 종량 과금' : 'API 키 필요 — 선택하면 설정이 열려요',
+          color: 'var(--green)',
+          icon: 'key' as const
+        }
+      ]}
+      onChange={(v) => onChange(v === 'API')}
+      align={align}
+      icons
+      tip="과금 방식 — 구독(정액) vs API 키(종량)"
+    />
+  )
+}
+
 // The model · effort · mode picker row, factored out of the Composer so the
 // multi-agent panels (and their expand modal) reuse the exact same controls.
 export function RunPickers({
   picker,
   setPicker,
-  align
+  align,
+  apiMode = false,
+  apiReady = false,
+  onApiModeChange
 }: {
   picker: PickerState
   setPicker: (p: PickerState) => void
   align?: 'right' // open the mode menu leftward when the panel hugs the right edge
+  apiMode?: boolean // 과금 picker 상태 (전역 구독/API) — onApiModeChange가 있을 때만 표시
+  apiReady?: boolean
+  onApiModeChange?: (next: boolean) => void
 }) {
   const modelOpt = MODELS.find((m) => m.id === picker.model) ?? MODELS[0]
   const effortOpt = EFFORTS.find((e) => e.id === picker.effort) ?? EFFORTS[2]
@@ -950,6 +996,7 @@ export function RunPickers({
         icons
         tip="실행 모드 — 변경 승인 방식"
       />
+      {onApiModeChange && <BillingPick apiMode={apiMode} apiReady={apiReady} onChange={onApiModeChange} align={align} />}
     </>
   )
 }
@@ -970,6 +1017,10 @@ export function fmtTok(n: number): string {
   if (n >= 1000) return Math.round(n / 1000) + 'K'
   return String(n)
 }
+// USD 표시 (API 모드 비용) — 소액은 셋째 자리까지, 그 외 둘째 자리까지
+function fmtUsd(v: number): string {
+  return '$' + (v > 0 && v < 1 ? v.toFixed(3) : v.toFixed(2))
+}
 function resetText(resetsAt: number | null, useDays: boolean): string {
   if (resetsAt == null) return '초기화 시간 미상'
   const rem = resetsAt - Math.floor(Date.now() / 1000)
@@ -985,38 +1036,75 @@ function resetText(resetsAt: number | null, useDays: boolean): string {
   return h > 0 ? `${h}시간 ${m}분 후 초기화` : `${m}분 후 초기화`
 }
 
-function ContextStrip({ winTokens, contextTokens, usage }: { winTokens: number; contextTokens: number | null; usage: UsageInfo }) {
+function ContextStrip({
+  winTokens,
+  contextTokens,
+  usage,
+  apiMode = false,
+  chatSpentUsd = 0,
+  budgetUsd = null,
+  totalSpentUsd = 0
+}: {
+  winTokens: number
+  contextTokens: number | null
+  usage: UsageInfo
+  apiMode?: boolean // true → 구독 한도 대신 API 비용을 보여준다 (WorkBar와 동일한 규칙)
+  chatSpentUsd?: number
+  budgetUsd?: number | null
+  totalSpentUsd?: number
+}) {
   const ctxPct = contextTokens != null && winTokens > 0 ? Math.min(100, Math.round((contextTokens / winTokens) * 100)) : 0
-  const items: { label: string; pct: number | null; detail: string }[] = [
+  const items: { label: string; pct: number | null; usd?: boolean; val?: string; detail: string }[] = [
     {
       label: '현재 컨텍스트',
       pct: ctxPct,
       detail: `${contextTokens != null ? fmtTok(contextTokens) : 0} / ${fmtWindow(Math.round(winTokens / 1000))} 토큰`
     },
-    {
-      label: '5시간 한도',
-      pct: usage.fiveHour?.pct ?? null,
-      detail: usage.fiveHour ? resetText(usage.fiveHour.resetsAt, false) : '데이터 없음'
-    },
-    {
-      label: '주간 한도',
-      pct: usage.weekly?.pct ?? null,
-      detail: usage.weekly ? resetText(usage.weekly.resetsAt, true) : '데이터 없음'
-    },
-    // Fable 5 전용 주간 한도 — 플랜에 없으면(null) 칩 자체를 숨긴다
-    ...(usage.weeklyFable
-      ? [{ label: 'Fable 주간 한도', pct: usage.weeklyFable.pct as number | null, detail: resetText(usage.weeklyFable.resetsAt, true) }]
-      : [])
+    ...(apiMode
+      ? [
+          // 비용 행은 링 대신 달러 배지(usd) — "한도의 몇 %"가 아니라 금액 자체라서
+          { label: '이번 대화 비용', pct: null, usd: true, val: fmtUsd(chatSpentUsd), detail: 'API 모드 실행의 누적 비용' },
+          budgetUsd != null
+            ? {
+                label: '남은 예산',
+                pct: Math.min(100, Math.round((totalSpentUsd / budgetUsd) * 100)),
+                val: fmtUsd(Math.max(0, budgetUsd - totalSpentUsd)),
+                detail: `예산 ${fmtUsd(budgetUsd)} 중 ${fmtUsd(totalSpentUsd)} 사용`
+              }
+            : { label: '누적 사용액', pct: null, usd: true, val: fmtUsd(totalSpentUsd), detail: '전체 워크스페이스 합산' }
+        ]
+      : [
+          {
+            label: '5시간 한도',
+            pct: usage.fiveHour?.pct ?? null,
+            detail: usage.fiveHour ? resetText(usage.fiveHour.resetsAt, false) : '데이터 없음'
+          },
+          {
+            label: '주간 한도',
+            pct: usage.weekly?.pct ?? null,
+            detail: usage.weekly ? resetText(usage.weekly.resetsAt, true) : '데이터 없음'
+          },
+          // Fable 5 전용 주간 한도 — 플랜에 없으면(null) 칩 자체를 숨긴다
+          ...(usage.weeklyFable
+            ? [{ label: 'Fable 주간 한도', pct: usage.weeklyFable.pct as number | null, detail: resetText(usage.weeklyFable.resetsAt, true) }]
+            : [])
+        ])
   ]
   return (
     <div className="ctx-strip">
       {items.map((c, i) => (
         <div className="ctx-chip" key={i}>
-          <span className="cc-ring" style={{ ['--p']: c.pct ?? 0 } as CSSProperties} />
+          {c.usd ? (
+            <span className="cc-usd">
+              <IconDollar size={11} />
+            </span>
+          ) : (
+            <span className="cc-ring" style={{ ['--p']: c.pct ?? 0 } as CSSProperties} />
+          )}
           <span className="cc-text">
             <span className="cc-top">
               <span className="cc-label">{c.label}</span>
-              <span className="cc-pct">{c.pct != null ? c.pct + '%' : '—'}</span>
+              <span className="cc-pct">{c.val ?? (c.pct != null ? c.pct + '%' : '—')}</span>
             </span>
             <span className="cc-detail">{c.detail}</span>
           </span>
@@ -1041,6 +1129,10 @@ export const WorkBar = memo(function WorkBar({
   contextTokens,
   contextWindow,
   model,
+  apiMode = false,
+  chatSpentUsd = 0,
+  budgetUsd = null,
+  totalSpentUsd = 0,
   onOpenFile,
   onOpenSubagent
 }: {
@@ -1052,6 +1144,10 @@ export const WorkBar = memo(function WorkBar({
   contextTokens: number | null
   contextWindow: number | null
   model: ModelId
+  apiMode?: boolean // true → 컨텍스트 팝오버가 구독 한도 대신 API 비용을 보여준다
+  chatSpentUsd?: number // 이 대화의 API 모드 누적 비용
+  budgetUsd?: number | null // 설정 → API의 예산 (null = 미설정)
+  totalSpentUsd?: number // 전체 워크스페이스의 API 모드 누적 사용액
   onOpenFile: (f: ChangedFile) => void
   onOpenSubagent: (a: SubAgentInfo) => void
 }) {
@@ -1082,19 +1178,36 @@ export const WorkBar = memo(function WorkBar({
   const runningSub = subagents.filter((a) => a.status === 'running').length
   const doneSub = subagents.filter((a) => a.status === 'done').length
 
-  // 컨텍스트 팝오버는 예전 컴포저 스트립과 같은 3줄(현재 컨텍스트·5시간·주간)
-  const ctxItems: { label: string; pct: number | null; detail: string }[] = [
+  // 컨텍스트 팝오버 — 구독 모드는 예전 컴포저 스트립과 같은 3줄(현재 컨텍스트·5시간·주간),
+  // API 모드는 한도가 의미 없으니 비용으로 바꾼다(이번 대화 비용 + 남은 예산/누적 사용액).
+  // val: pct 자리(%)에 대신 보여줄 텍스트 — 비용 행은 %가 없어 금액을 그대로 띄운다.
+  // usd: 링 대신 달러 배지 — 금액은 "한도의 몇 %"가 아니라 진행률 링이 어울리지 않는다.
+  const ctxItems: { label: string; pct: number | null; usd?: boolean; val?: string; detail: string }[] = [
     {
       label: '현재 컨텍스트',
       pct: ctxPct,
       detail: `${contextTokens != null ? fmtTok(contextTokens) : 0} / ${fmtWindow(Math.round(winTokens / 1000))} 토큰`
     },
-    { label: '5시간 한도', pct: usage.fiveHour?.pct ?? null, detail: usage.fiveHour ? resetText(usage.fiveHour.resetsAt, false) : '데이터 없음' },
-    { label: '주간 한도', pct: usage.weekly?.pct ?? null, detail: usage.weekly ? resetText(usage.weekly.resetsAt, true) : '데이터 없음' },
-    // Fable 5 전용 주간 한도 — 플랜에 없으면(null) 행 자체를 숨긴다
-    ...(usage.weeklyFable
-      ? [{ label: 'Fable 주간 한도', pct: usage.weeklyFable.pct as number | null, detail: resetText(usage.weeklyFable.resetsAt, true) }]
-      : [])
+    ...(apiMode
+      ? [
+          { label: '이번 대화 비용', pct: null, usd: true, val: fmtUsd(chatSpentUsd), detail: 'API 모드 실행의 누적 비용' },
+          budgetUsd != null
+            ? {
+                label: '남은 예산',
+                pct: Math.min(100, Math.round((totalSpentUsd / budgetUsd) * 100)),
+                val: fmtUsd(Math.max(0, budgetUsd - totalSpentUsd)),
+                detail: `예산 ${fmtUsd(budgetUsd)} 중 ${fmtUsd(totalSpentUsd)} 사용`
+              }
+            : { label: '누적 사용액', pct: null, usd: true, val: fmtUsd(totalSpentUsd), detail: '전체 워크스페이스 · 설정 → API에서 예산 입력 가능' }
+        ]
+      : [
+          { label: '5시간 한도', pct: usage.fiveHour?.pct ?? null, detail: usage.fiveHour ? resetText(usage.fiveHour.resetsAt, false) : '데이터 없음' },
+          { label: '주간 한도', pct: usage.weekly?.pct ?? null, detail: usage.weekly ? resetText(usage.weekly.resetsAt, true) : '데이터 없음' },
+          // Fable 5 전용 주간 한도 — 플랜에 없으면(null) 행 자체를 숨긴다
+          ...(usage.weeklyFable
+            ? [{ label: 'Fable 주간 한도', pct: usage.weeklyFable.pct as number | null, detail: resetText(usage.weeklyFable.resetsAt, true) }]
+            : [])
+        ])
   ]
 
   const toggle = (t: WorkTab): void => setOpen((o) => (o === t ? null : t))
@@ -1112,7 +1225,7 @@ export const WorkBar = memo(function WorkBar({
     { key: 'todo', icon: <IconList size={14} />, label: '할 일', value: `${todoDone}/${todoTotal || 0}`, detail: todoTotal ? `${todoPct}% 완료` : busy ? '계획 수립 중' : '없음', tip: 'Claude가 세운 작업 계획 — 누르면 할 일 목록' },
     { key: 'sub', icon: <IconBot size={14} />, label: '서브에이전트', value: `${doneSub}/${subTotal || 0}`, detail: runningSub > 0 ? `${runningSub}개 실행 중` : subTotal ? '모두 완료' : '없음', tip: 'Claude가 띄운 보조 에이전트의 진행 상황 — 누르면 목록' },
     { key: 'file', icon: <IconFile size={14} />, label: '변경된 파일', value: `${files.length}`, detail: files.length ? `+${totalAdd} −${totalDel}` : '없음', tip: '이번 작업에서 생성·수정된 파일 — 누르면 목록·diff' },
-    { key: 'ctx', ring: ctxPct, label: '컨텍스트', value: `${ctxPct}%`, detail: ctxItems[0].detail, tip: '대화의 컨텍스트 사용량·사용 한도 — 누르면 자세히', align: 'r' }
+    { key: 'ctx', ring: ctxPct, label: '컨텍스트', value: `${ctxPct}%`, detail: ctxItems[0].detail, tip: apiMode ? '대화의 컨텍스트 사용량·API 비용 — 누르면 자세히' : '대화의 컨텍스트 사용량·사용 한도 — 누르면 자세히', align: 'r' }
   ]
 
   const popBody = (key: WorkTab): ReactNode => {
@@ -1181,16 +1294,22 @@ export const WorkBar = memo(function WorkBar({
     return (
       <>
         <div className="wb-pop-h">
-          <span className="t">컨텍스트 · 사용 한도</span>
+          <span className="t">{apiMode ? '컨텍스트 · API 비용' : '컨텍스트 · 사용 한도'}</span>
         </div>
         <div className="wb-ctx-list">
           {ctxItems.map((c, i) => (
             <div className="ctx-chip" key={i}>
-              <span className="cc-ring" style={{ ['--p']: c.pct ?? 0 } as CSSProperties} />
+              {c.usd ? (
+                <span className="cc-usd">
+                  <IconDollar size={11} />
+                </span>
+              ) : (
+                <span className="cc-ring" style={{ ['--p']: c.pct ?? 0 } as CSSProperties} />
+              )}
               <span className="cc-text">
                 <span className="cc-top">
                   <span className="cc-label">{c.label}</span>
-                  <span className="cc-pct">{c.pct != null ? c.pct + '%' : '—'}</span>
+                  <span className="cc-pct">{c.val ?? (c.pct != null ? c.pct + '%' : '—')}</span>
                 </span>
                 <span className="cc-detail">{c.detail}</span>
               </span>
@@ -1644,6 +1763,12 @@ export function Composer({
   started,
   picker,
   setPicker,
+  apiMode = false,
+  apiReady = false,
+  onApiModeChange,
+  chatSpentUsd = 0,
+  budgetUsd = null,
+  totalSpentUsd = 0,
   images,
   onPickImages,
   onAddImagePaths,
@@ -1669,6 +1794,12 @@ export function Composer({
   started: boolean
   picker: PickerState
   setPicker: (p: PickerState) => void
+  apiMode?: boolean // true → 실행이 구독 대신 API 키로 과금 (과금 picker 상태)
+  apiReady?: boolean // 설정 → API에 키가 저장돼 있는지 (없으면 API 선택이 설정을 연다)
+  onApiModeChange?: (next: boolean) => void // 제공될 때만 과금 picker를 그린다
+  chatSpentUsd?: number // 이 대화의 API 모드 누적 비용 — ContextStrip(API 모드)용
+  budgetUsd?: number | null // 설정 → API의 예산
+  totalSpentUsd?: number // 전체 워크스페이스 API 누적 사용액
   images: string[]
   onPickImages: () => void
   onAddImagePaths: (paths: string[]) => void
@@ -1974,7 +2105,17 @@ export function Composer({
   return (
     <div className="composer-wrap">
       <div className="composer-inner">
-        {showContext && <ContextStrip winTokens={winTokens} contextTokens={contextTokens} usage={usage} />}
+        {showContext && (
+          <ContextStrip
+            winTokens={winTokens}
+            contextTokens={contextTokens}
+            usage={usage}
+            apiMode={apiMode}
+            chatSpentUsd={chatSpentUsd}
+            budgetUsd={budgetUsd}
+            totalSpentUsd={totalSpentUsd}
+          />
+        )}
 
         {queued.length > 0 && (
           <div className="sched">
@@ -2220,6 +2361,12 @@ export function Composer({
               icons
               tip="실행 모드 — 변경 승인 방식"
             />
+            {onApiModeChange && (
+              <>
+                <span className="pick-div" />
+                <BillingPick apiMode={apiMode} apiReady={apiReady} onChange={onApiModeChange} align="right" />
+              </>
+            )}
             <span className="cm-spacer" />
             {busy ? (
               value.trim() || images.length > 0 ? (

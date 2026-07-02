@@ -34,6 +34,14 @@ const api: WindowApi = {
   // File is passed through the contextBridge function call and resolved to its OS path
   pathForFile: (file: File) => webUtils.getPathForFile(file),
   getUsage: () => ipcRenderer.invoke(IPC.getUsage),
+  apiConfig: {
+    get: () => ipcRenderer.invoke(IPC.apiConfigGet),
+    setKey: (key: string) => ipcRenderer.invoke(IPC.apiConfigSetKey, key),
+    clearKey: () => ipcRenderer.invoke(IPC.apiConfigClearKey),
+    setBudget: (usd: number | null) => ipcRenderer.invoke(IPC.apiConfigSetBudget, usd),
+    resetSpend: () => ipcRenderer.invoke(IPC.apiConfigResetSpend),
+    listUsage: () => ipcRenderer.invoke(IPC.apiUsageList)
+  },
   getProfile: () => ipcRenderer.invoke(IPC.profileGet) as Promise<UserProfile | null>,
   saveProfile: (profile: UserProfile) => ipcRenderer.invoke(IPC.profileSave, profile),
   getChats: () => ipcRenderer.invoke(IPC.chatsGet),

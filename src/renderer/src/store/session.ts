@@ -53,6 +53,9 @@ export interface SessionState {
   // set while a slash command run is in flight; consumed on 'result' to finalize its
   // card (cardId points at the running card pushed in 'begin')
   pendingCommand: { name: string; beforeContext: number | null; beforeMsgs: number; cardId: string } | null
+  // 이 대화에서 API 모드(viaApi) 실행들이 쓴 비용 누적(USD) — 구독 실행의 명목
+  // 비용은 실제 청구가 아니므로 더하지 않는다. 예전 스냅샷엔 없을 수 있어 ?? 0으로 읽는다.
+  spentUsd: number
   thinkingText: string | null
   openGroupId: string | null
   seq: number
@@ -141,6 +144,7 @@ export const initialSessionState: SessionState = {
   session: null,
   result: null,
   pendingCommand: null,
+  spentUsd: 0,
   thinkingText: null,
   openGroupId: null,
   seq: 0
@@ -399,7 +403,9 @@ function reducer(state: SessionState, action: Action): SessionState {
         },
         pendingPermission: null,
         pendingQuestion: null,
-        pendingCommand: null
+        pendingCommand: null,
+        // API 모드 실행의 비용만 대화 누적에 더한다 (컨텍스트 팝오버 '이번 대화 비용')
+        spentUsd: (state.spentUsd ?? 0) + (e.viaApi && e.costUsd ? e.costUsd : 0)
       }
       const without = state.messages.filter((m) => m.id !== THINKING_ID)
       // a slash command finished → finalize its running card in place

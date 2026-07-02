@@ -137,6 +137,26 @@ const SLIDES: Slide[] = [
     )
   },
   {
+    chip: '과금',
+    accent: 'your billing',
+    video: V_COMMIT,
+    title: (
+      <>
+        구독으로도,
+        <br />
+        <em>API 키로도.</em>
+      </>
+    ),
+    desc: (
+      <>
+        컴포저의 <b>과금 선택</b>으로 실행마다 <b>구독(정액) ↔ API 키(종량)</b>를 오가요 — 멀티는{' '}
+        <b>패널마다 따로</b> 골라요. API 모드에선 5시간 한도 대신 <b>대화 비용과 남은 예산</b>이
+        보이고, 설정 → <b>API</b>에서 키(<b>암호화 저장</b>)·예산과 <b>모델별·일별 사용 통계</b>를
+        관리합니다.
+      </>
+    )
+  },
+  {
     chip: '그리고',
     accent: 'ready',
     video: V_HERO,

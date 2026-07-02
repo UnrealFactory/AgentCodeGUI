@@ -1,11 +1,13 @@
-import { Fragment, useEffect, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import type {
   EngineVersionEntry,
   EngineVersionState,
   SkillInfo,
   SkillScope,
   McpServerInfo,
-  LspServerInfo
+  LspServerInfo,
+  ApiConfigStatus,
+  ApiUsageRecord
 } from '@shared/protocol'
 import { FileBadge } from './fileType'
 import { getPref, setPref } from '../lib/prefs'
@@ -24,14 +26,18 @@ import {
   IconSun,
   IconMoon,
   IconCode,
+  IconKey,
+  IconDollar,
   type IconProps
 } from './icons'
 import { getTheme, setTheme, type Theme } from '../lib/theme'
 
-type View = 'version' | 'mcp' | 'skill' | 'lsp' | 'appearance'
+export type SettingsView = 'version' | 'api' | 'mcp' | 'skill' | 'lsp' | 'appearance'
+type View = SettingsView
 
 const NAV: { id: View; label: string; Icon: (p: IconProps) => React.ReactElement }[] = [
   { id: 'version', label: 'Claude Code', Icon: IconClaude },
+  { id: 'api', label: 'API', Icon: IconKey },
   { id: 'mcp', label: 'MCP', Icon: IconServer },
   { id: 'skill', label: 'Skill', Icon: IconBook },
   { id: 'lsp', label: 'Code', Icon: IconCode },
@@ -369,6 +375,366 @@ function VersionView() {
           </div>
         </div>
       )}
+    </>
+  )
+}
+
+// USD 표시 — 소액(토큰 과금)은 셋째 자리까지, 그 외 둘째 자리까지
+function fmtUsd(v: number): string {
+  return '$' + (v > 0 && v < 1 ? v.toFixed(3) : v.toFixed(2))
+}
+function fmtTokS(n: number): string {
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M'
+  if (n >= 1000) return Math.round(n / 1000) + 'K'
+  return String(n)
+}
+// 모델 표시명 → 앱 전역의 모델 정체성 색 (picker 점과 동일) — 통계 행의 identity 점
+function modelDotColor(model: string): string {
+  const m = model.toLowerCase()
+  if (m.includes('fable')) return 'var(--gold)'
+  if (m.includes('opus')) return 'var(--violet)'
+  if (m.includes('sonnet')) return 'var(--blue)'
+  if (m.includes('haiku')) return 'var(--teal)'
+  return 'var(--text-4)'
+}
+const USAGE_SOURCE_LABEL: Record<ApiUsageRecord['source'], string> = {
+  chat: '코드', ask: '/ask', talk: '채팅', ma: '멀티'
+}
+type StatPeriod = '1d' | '7d' | '30d' | 'all'
+const STAT_PERIODS: { id: StatPeriod; label: string; days: number | null }[] = [
+  { id: '1d', label: '1일', days: 1 },
+  { id: '7d', label: '7일', days: 7 },
+  { id: '30d', label: '30일', days: 30 },
+  { id: 'all', label: '전체', days: null }
+]
+
+function ApiView() {
+  const [st, setSt] = useState<ApiConfigStatus | null>(null)
+  const [keyInput, setKeyInput] = useState('')
+  const [budgetInput, setBudgetInput] = useState('')
+  const [busy, setBusy] = useState(false)
+  // 사용 통계 — API 모드 실행 원장(jsonl)을 읽어 렌더러에서 집계한다
+  const [recs, setRecs] = useState<ApiUsageRecord[] | null>(null)
+  const [period, setPeriod] = useState<StatPeriod>('30d')
+
+  useEffect(() => {
+    window.api.apiConfig
+      .get()
+      .then((s) => {
+        setSt(s)
+        setBudgetInput(s.budgetUsd != null ? String(s.budgetUsd) : '')
+      })
+      .catch(() => {})
+    window.api.apiConfig
+      .listUsage()
+      .then(setRecs)
+      .catch(() => setRecs([]))
+  }, [])
+
+  // 기간 요약(비용·실행·토큰) + 모델별 비용 — 기간 칩을 따른다
+  const stats = useMemo(() => {
+    const list = recs ?? []
+    const days = STAT_PERIODS.find((t) => t.id === period)?.days ?? null
+    const cut = days == null ? 0 : Date.now() - days * 864e5
+    const rows = list.filter((r) => r.ts >= cut)
+    let cost = 0
+    let inTok = 0
+    let outTok = 0
+    const byModel = new Map<string, { cost: number; runs: number; tok: number }>()
+    const bySource = new Map<ApiUsageRecord['source'], number>()
+    for (const r of rows) {
+      cost += r.costUsd
+      inTok += r.inTok + r.cacheRead + r.cacheWrite
+      outTok += r.outTok
+      const m = byModel.get(r.model) ?? { cost: 0, runs: 0, tok: 0 }
+      m.cost += r.costUsd
+      m.runs += 1
+      m.tok += r.inTok + r.cacheRead + r.cacheWrite + r.outTok
+      byModel.set(r.model, m)
+      bySource.set(r.source, (bySource.get(r.source) ?? 0) + r.costUsd)
+    }
+    const models = [...byModel.entries()]
+      .map(([model, v]) => ({ model, ...v }))
+      .sort((a, b) => b.cost - a.cost)
+    const sources = [...bySource.entries()].sort((a, b) => b[1] - a[1])
+    return { runs: rows.length, cost, inTok, outTok, models, maxModelCost: models[0]?.cost ?? 0, sources }
+  }, [recs, period])
+
+  // 일별 미니 바차트 — 기간 칩과 무관하게 항상 최근 14일 고정 창
+  const days = useMemo(() => {
+    const list = recs ?? []
+    const out: { label: string; cost: number; runs: number }[] = []
+    const today = new Date()
+    for (let i = 13; i >= 0; i--) {
+      const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() - i)
+      const from = d.getTime()
+      const to = from + 864e5
+      let cost = 0
+      let runs = 0
+      for (const r of list) {
+        if (r.ts >= from && r.ts < to) {
+          cost += r.costUsd
+          runs += 1
+        }
+      }
+      out.push({ label: `${d.getMonth() + 1}/${d.getDate()}`, cost, runs })
+    }
+    return out
+  }, [recs])
+  const maxDay = Math.max(...days.map((d) => d.cost), 0)
+
+  const saveKey = async (): Promise<void> => {
+    const k = keyInput.trim()
+    if (!k) return
+    setBusy(true)
+    try {
+      setSt(await window.api.apiConfig.setKey(k))
+      setKeyInput('')
+    } catch {
+      /* ignore */
+    } finally {
+      setBusy(false)
+    }
+  }
+  const removeKey = async (): Promise<void> => {
+    setBusy(true)
+    try {
+      setSt(await window.api.apiConfig.clearKey())
+    } catch {
+      /* ignore */
+    } finally {
+      setBusy(false)
+    }
+  }
+  const saveBudget = async (): Promise<void> => {
+    const n = parseFloat(budgetInput)
+    const usd = isFinite(n) && n > 0 ? n : null
+    try {
+      const s = await window.api.apiConfig.setBudget(usd)
+      setSt(s)
+      setBudgetInput(s.budgetUsd != null ? String(s.budgetUsd) : '')
+    } catch {
+      /* ignore */
+    }
+  }
+  const resetSpend = async (): Promise<void> => {
+    try {
+      setSt(await window.api.apiConfig.resetSpend())
+    } catch {
+      /* ignore */
+    }
+  }
+
+  const budgetDirty = (st?.budgetUsd != null ? String(st.budgetUsd) : '') !== budgetInput.trim()
+  const remain = st && st.budgetUsd != null ? st.budgetUsd - st.spentUsd : null
+
+  return (
+    <>
+      <div className="set-h1">API</div>
+      <div className="set-h1-sub">
+        API 키를 등록하면 채팅 컴포저의 <strong>API 토글</strong>로 실행 과금을 구독(OAuth) ↔ API 크레딧 사이에서
+        전환할 수 있습니다. API 모드에선 5시간·주간 한도 대신 사용 비용이 표시됩니다.
+      </div>
+
+      <div className="sec">
+        <div className="card">
+          <div className="ver-row">
+            <div className="ver-ic">
+              <IconKey size={20} />
+            </div>
+            <div className="ver-main">
+              <div className="ver-name">API 키</div>
+              <div className="ver-meta">
+                {st == null
+                  ? '불러오는 중…'
+                  : st.hasKey
+                    ? `sk-ant-…${st.keyTail ?? '????'} · 암호화되어 이 컴퓨터에만 저장됨`
+                    : 'platform.claude.com에서 발급한 키(sk-ant-api…)를 입력하세요'}
+              </div>
+            </div>
+            {st?.hasKey ? (
+              <button className="inst-btn ghost" disabled={busy} onClick={() => void removeKey()}>
+                <IconTrash size={13} /> 삭제
+              </button>
+            ) : (
+              <div className="api-form">
+                <input
+                  className="api-input"
+                  type="password"
+                  placeholder="sk-ant-api03-…"
+                  value={keyInput}
+                  spellCheck={false}
+                  onChange={(e) => setKeyInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') void saveKey()
+                  }}
+                />
+                <button className="inst-btn" disabled={busy || !keyInput.trim()} onClick={() => void saveKey()}>
+                  저장
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="set-note">
+          키는 Windows 계정에 묶인 암호화(DPAPI)로 <code>~/.agentcodegui/api-config.json</code>에 저장되며, 실행할 때
+          엔진 프로세스에만 전달됩니다. 화면에는 끝 4자리만 표시돼요.
+        </div>
+      </div>
+
+      <div className="sec">
+        <div className="card">
+          <div className="ver-row">
+            <div className="ver-ic">
+              <IconDollar size={20} />
+            </div>
+            <div className="ver-main">
+              <div className="ver-name">예산 (선택)</div>
+              <div className="ver-meta">충전한 금액(USD)을 입력하면 컨텍스트 표시에 “남은 예산”이 나옵니다</div>
+            </div>
+            <div className="api-form">
+              <input
+                className="api-input num"
+                type="number"
+                min={0}
+                step={1}
+                placeholder="예: 20"
+                value={budgetInput}
+                onChange={(e) => setBudgetInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') void saveBudget()
+                }}
+              />
+              <button className="inst-btn" disabled={!budgetDirty} onClick={() => void saveBudget()}>
+                저장
+              </button>
+            </div>
+          </div>
+          <div className="api-spend">
+            <span className="api-spend-l">API 모드 누적 사용액</span>
+            <span className="api-spend-v">{st ? fmtUsd(st.spentUsd) : '—'}</span>
+            {remain != null && (
+              <span className={'api-spend-remain' + (remain <= 0 ? ' over' : '')}>
+                남은 예산 {fmtUsd(Math.max(0, remain))}
+              </span>
+            )}
+            <span className="smh-spacer" />
+            <button className="inst-btn ghost" disabled={!st || st.spentUsd === 0} onClick={() => void resetSpend()}>
+              <IconRefresh size={13} /> 리셋
+            </button>
+          </div>
+        </div>
+        <div className="set-note">
+          Anthropic은 계정 잔액 조회 API를 제공하지 않아, 이 앱이 API 모드 실행마다 보고되는 비용
+          (<code>total_cost_usd</code>)을 직접 누적해 예산에서 차감합니다. 다른 앱에서 같은 키를 쓰면 실제 잔액과
+          어긋날 수 있어요 — 재충전 후에는 <strong>리셋</strong>으로 기준을 다시 잡아 주세요.
+        </div>
+      </div>
+
+      <div className="sec">
+        <div className="api-stat-head">
+          <span className="api-stat-title">사용 통계</span>
+          <div className="skill-tabs slim">
+            {STAT_PERIODS.map((t) => (
+              <button
+                key={t.id}
+                className={'skill-tab' + (period === t.id ? ' active' : '')}
+                onClick={() => setPeriod(t.id)}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {recs == null ? (
+          <div className="ver-loading">
+            <span className="set-spin" /> 불러오는 중…
+          </div>
+        ) : recs.length === 0 ? (
+          <div className="set-empty">아직 API 모드 실행 기록이 없어요. 컴포저의 API 토글을 켜고 실행하면 여기에 쌓입니다.</div>
+        ) : (
+          <>
+            <div className="api-tiles">
+              <div className="api-tile">
+                <div className="api-tile-l">총 비용</div>
+                <div className="api-tile-v">{fmtUsd(stats.cost)}</div>
+                <div className="api-tile-d">실행 {stats.runs}회</div>
+              </div>
+              <div className="api-tile">
+                <div className="api-tile-l">입력 토큰</div>
+                <div className="api-tile-v">{fmtTokS(stats.inTok)}</div>
+                <div className="api-tile-d">캐시 읽기·생성 포함</div>
+              </div>
+              <div className="api-tile">
+                <div className="api-tile-l">출력 토큰</div>
+                <div className="api-tile-v">{fmtTokS(stats.outTok)}</div>
+                <div className="api-tile-d">
+                  {stats.sources.length
+                    ? stats.sources.map(([s, c]) => `${USAGE_SOURCE_LABEL[s]} ${fmtUsd(c)}`).join(' · ')
+                    : ' '}
+                </div>
+              </div>
+            </div>
+
+            <div className="api-chart">
+              <div className="api-chart-h">
+                <span className="api-chart-t">일별 비용</span>
+                <span className="api-chart-s">최근 14일</span>
+              </div>
+              <div className="api-days">
+                {days.map((d, i) => (
+                  <div
+                    className="api-day has-tip"
+                    key={i}
+                    data-tip={`${d.label} · ${fmtUsd(d.cost)} · ${d.runs}회`}
+                  >
+                    <div
+                      className={'api-day-bar' + (d.cost === 0 ? ' zero' : '')}
+                      style={{ height: maxDay > 0 ? `${Math.max(3, (d.cost / maxDay) * 100)}%` : '3%' }}
+                    />
+                  </div>
+                ))}
+              </div>
+              <div className="api-day-lbls">
+                {days.map((d, i) => (
+                  <span className="api-day-lbl" key={i}>
+                    {(days.length - 1 - i) % 3 === 0 ? d.label : ''}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <div className="api-chart">
+              <div className="api-chart-h">
+                <span className="api-chart-t">모델별 비용</span>
+                <span className="api-chart-s">{STAT_PERIODS.find((t) => t.id === period)?.label}</span>
+              </div>
+              <div className="api-mrows">
+                {stats.models.map((m) => (
+                  <div className="api-mrow" key={m.model}>
+                    <span className="api-mdot" style={{ background: modelDotColor(m.model) }} />
+                    <span className="api-mname">{m.model}</span>
+                    <span className="api-mbar-wrap">
+                      <span
+                        className="api-mbar"
+                        style={{ width: stats.maxModelCost > 0 ? `${Math.max(1.5, (m.cost / stats.maxModelCost) * 100)}%` : '1.5%' }}
+                      />
+                    </span>
+                    <span className="api-mval">{fmtUsd(m.cost)}</span>
+                    <span className="api-mruns">{m.runs}회 · {fmtTokS(m.tok)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
+
+        <div className="set-note">
+          API 모드로 돌린 실행만 집계됩니다 (구독 실행은 실제 청구가 아니라 제외). 기록은{' '}
+          <code>~/.agentcodegui/api-usage.jsonl</code>에 쌓여요.
+        </div>
+      </div>
     </>
   )
 }
@@ -746,12 +1112,11 @@ function LspView() {
                           ) : (
                             <span className="ver-chip">미지정</span>
                           ))}
-                        {s.requires && <span className="ver-chip">{s.requires}</span>}
-                        {/* Verse 행에 현재 문서 언어를 칩으로 — 펼치지 않아도 상태가 한눈에 보인다 */}
-                        {isVerse && <span className="ver-chip">{verseKo ? '문서 한국어' : '문서 원문'}</span>}
+                        {/* Verse의 요구사항·경로·문서 언어는 행을 펼치면 보인다 — 접힌 행은
+                            다른 서버들과 같은 2줄 높이를 유지한다 */}
+                        {!isVerse && s.requires && <span className="ver-chip">{s.requires}</span>}
                       </div>
                       <div className="ext-desc ext-cmd">{s.exts}</div>
-                      {s.kind === 'external' && s.path && <div className="ext-desc ext-cmd">{s.path}</div>}
                     </div>
                     {s.kind === 'download' &&
                       (s.state === 'installed' ? (
@@ -786,27 +1151,46 @@ function LspView() {
                         </button>
                       ))}
                   </div>
-                  {/* Verse 펼침 — 공식 문서 한국어 토글 (행에 연결된 하위 옵션) */}
+                  {/* Verse 펼침 — 연결 안내·지정 경로·문서 언어가 행 아래로 깔끔하게 이어진다.
+                      (하단 set-note에 있던 긴 설명을 여기로 옮겨 접힌 행은 다른 서버와 동일한 높이) */}
                   {isVerse && verseOpen && (
-                    <div className="ext-item ext-sub">
-                      <div className="ext-main">
-                        <div className="ext-sub-name">공식 문서를 한국어로 보기</div>
-                        <div className="ext-desc ext-sub-desc">
-                          <code>/Verse.org</code> · <code>/UnrealEngine.com</code> · <code>/Fortnite.com</code> API 주석
-                          설명을 호버에서 한국어로 보여줍니다. 끄면 영어 원문으로 표시합니다. (번역에 없는 항목이나 내 코드
-                          주석은 원문 그대로)
+                    <>
+                      <div className="ext-item ext-sub">
+                        <div className="ext-main">
+                          <div className="ext-sub-name">Epic verse-lsp 연결</div>
+                          <div className="ext-desc ext-sub-desc">
+                            UEFN/포트나이트의 <code>Verse.vsix</code>(또는 <code>verse-lsp.exe</code>) 경로를 지정하면 정의
+                            이동·호버·심볼이 켜집니다. 소스·디제스트 폴더는 프로젝트의 <code>.vproject</code>에서 자동으로
+                            찾고, 지정 전에는 구문 강조만 동작해요.
+                          </div>
+                          {s.path && (
+                            <div className="ext-sub-path">
+                              <IconCheck size={12} />
+                              <code>{s.path}</code>
+                            </div>
+                          )}
                         </div>
                       </div>
-                      <button
-                        className={'skill-toggle' + (verseKo ? ' on' : '')}
-                        role="switch"
-                        aria-checked={verseKo}
-                        aria-label={verseKo ? 'Verse 한국어 문서 끄기' : 'Verse 한국어 문서 켜기'}
-                        onClick={toggleVerseKo}
-                      >
-                        <span className="skill-knob" />
-                      </button>
-                    </div>
+                      <div className="ext-item ext-sub">
+                        <div className="ext-main">
+                          <div className="ext-sub-name">공식 문서를 한국어로 보기</div>
+                          <div className="ext-desc ext-sub-desc">
+                            <code>/Verse.org</code> · <code>/UnrealEngine.com</code> · <code>/Fortnite.com</code> API 주석
+                            설명을 호버에서 한국어로 보여줍니다. 끄면 영어 원문으로 표시합니다. (번역에 없는 항목이나 내 코드
+                            주석은 원문 그대로)
+                          </div>
+                        </div>
+                        <button
+                          className={'skill-toggle' + (verseKo ? ' on' : '')}
+                          role="switch"
+                          aria-checked={verseKo}
+                          aria-label={verseKo ? 'Verse 한국어 문서 끄기' : 'Verse 한국어 문서 켜기'}
+                          onClick={toggleVerseKo}
+                        >
+                          <span className="skill-knob" />
+                        </button>
+                      </div>
+                    </>
                   )}
                 </Fragment>
               )
@@ -816,13 +1200,7 @@ function LspView() {
 
         <div className="set-note">
           내장 서버는 바로 사용할 수 있고, C#·C++ 서버는 최초 1회 내려받아 <code>~/.agentcodegui/lsp</code> 에
-          설치됩니다.
-        </div>
-        <div className="set-note">
-          Verse는 Epic의 <code>verse-lsp</code> 가 필요합니다 — UEFN/포트나이트의{' '}
-          <code>Verse.vsix</code>(또는 <code>verse-lsp.exe</code>) 경로를 지정하면 정의 이동·호버·심볼이 켜집니다.
-          소스/디제스트 폴더는 프로젝트의 <code>.vproject</code> 에서 자동으로 찾습니다. 지정 전에는 구문 강조만
-          동작합니다. <strong>Verse 행을 클릭하면 공식 문서를 한국어로 볼지 켜고 끌 수 있어요.</strong>
+          설치됩니다. Verse 연결·문서 언어 옵션은 Verse 행을 클릭하면 펼쳐집니다.
         </div>
       </div>
 
@@ -956,8 +1334,16 @@ function AppearanceView() {
   )
 }
 
-export function SettingsModal({ cwd, onClose }: { cwd: string; onClose: () => void }) {
-  const [view, setView] = useState<View>('version')
+export function SettingsModal({
+  cwd,
+  onClose,
+  initialView
+}: {
+  cwd: string
+  onClose: () => void
+  initialView?: SettingsView // 특정 탭으로 바로 열기 (예: 컴포저 API 토글 → 'api')
+}) {
+  const [view, setView] = useState<View>(initialView ?? 'version')
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
@@ -996,6 +1382,7 @@ export function SettingsModal({ cwd, onClose }: { cwd: string; onClose: () => vo
           <main className="set-main scroll">
             <div className="set-inner">
               {view === 'version' && <VersionView />}
+              {view === 'api' && <ApiView />}
               {view === 'mcp' && <McpView cwd={cwd} />}
               {view === 'skill' && <SkillView cwd={cwd} />}
               {view === 'lsp' && <LspView />}

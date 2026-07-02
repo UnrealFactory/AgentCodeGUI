@@ -1092,6 +1092,10 @@ input,textarea{ font-family:inherit; }
 .cc-ring{ width:19px; height:19px; flex:0 0 19px; border-radius:50%; position:relative;
   background:conic-gradient(var(--accent) calc(var(--p) * 1%), var(--surface-3) 0); }
 .cc-ring::after{ content:""; position:absolute; inset:3px; border-radius:50%; background:var(--surface); }
+/* 비용 행의 달러 배지 — 금액은 진행률이 아니라서 링 대신 (API 모드 컨텍스트 칩).
+   색은 링 트랙과 같은 중립 회색 계열 — 칩들 사이에서 튀지 않게 */
+.cc-usd{ width:19px; height:19px; flex:0 0 19px; border-radius:50%; display:grid; place-items:center;
+  background:var(--surface-3); color:var(--text-2); }
 .cc-text{ flex:1; min-width:0; display:flex; flex-direction:column; gap:1px; }
 .cc-top{ display:flex; align-items:baseline; gap:6px; }
 .cc-label{ flex:1; min-width:0; font-size:11px; font-weight:600; color:var(--text-2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
@@ -2371,6 +2375,11 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
 .ext-sub-name{ font-size:13px; font-weight:600; color:var(--text-2); }
 .ext-sub-desc{ white-space:normal; overflow:visible; text-overflow:clip; margin-top:4px; line-height:1.55; }
 .ext-sub-desc code{ font-family:var(--font-mono); color:var(--accent-2); }
+/* Verse 펼침의 지정 경로 줄 — 체크 + 모노 경로, 설명과 살짝 띄운다 */
+.ext-sub-path{ display:flex; align-items:center; gap:6px; margin-top:8px; font-size:11px;
+  color:var(--green); min-width:0; }
+.ext-sub-path code{ font-family:var(--font-mono); color:var(--text-3); overflow:hidden;
+  text-overflow:ellipsis; white-space:nowrap; }
 
 /* version manager */
 .sec-head{ display:flex; align-items:flex-end; gap:10px; margin-bottom:13px; }
@@ -2398,6 +2407,56 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
 .set-error{ font-size:12.5px; color:var(--red); background:var(--red-soft); border-radius:8px; padding:9px 12px; margin-bottom:11px; word-break:break-word; }
 .set-note{ font-size:11.5px; color:var(--text-4); margin-top:12px; line-height:1.6; }
 .set-note code{ font-family:var(--font-mono); color:var(--accent-2); }
+
+/* 설정 ▸ API — 키/예산 입력 + 누적 사용액 줄 */
+.api-form{ display:flex; align-items:center; gap:8px; flex:0 0 auto; }
+.api-input{ width:230px; font-size:12.5px; font-family:var(--font-mono); color:var(--text);
+  background:var(--bg); border:1px solid var(--line-2); border-radius:9px; padding:8px 11px;
+  transition:border-color .14s, background .14s; }
+.api-input:hover{ border-color:var(--line-strong); }
+.api-input:focus{ border-color:var(--accent); outline:none; background:var(--surface); }
+.api-input::placeholder{ color:var(--text-4); }
+.api-input.num{ width:104px; font-family:inherit; -moz-appearance:textfield; appearance:textfield; }
+/* 크롬 기본 number 스피너(위/아래 화살표) 제거 — 앱의 미니멀 인풋 결과 안 맞는다 */
+.api-input.num::-webkit-outer-spin-button,
+.api-input.num::-webkit-inner-spin-button{ -webkit-appearance:none; margin:0; }
+.api-spend{ display:flex; align-items:center; gap:10px; padding:12px 18px; border-top:1px solid var(--line); font-size:12px; }
+.api-spend-l{ color:var(--text-4); }
+.api-spend-v{ font-family:var(--font-mono); font-weight:600; color:var(--text-2); }
+.api-spend-remain{ font-family:var(--font-mono); font-weight:600; color:var(--green); }
+.api-spend-remain.over{ color:var(--red); }
+
+/* 설정 ▸ API — 사용 통계 (스탯 타일 + 일별/모델별 미니 차트) */
+.api-stat-head{ display:flex; align-items:center; margin-bottom:12px; }
+.api-stat-title{ flex:1; font-size:13.5px; font-weight:700; letter-spacing:-.01em; }
+.skill-tabs.slim{ margin-bottom:0; }
+.skill-tabs.slim .skill-tab{ padding:4px 11px; font-size:11.5px; }
+.api-tiles{ display:flex; gap:10px; margin-bottom:10px; }
+.api-tile{ flex:1; min-width:0; background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:12px 14px; }
+.api-tile-l{ font-size:11px; font-weight:600; color:var(--text-4); }
+.api-tile-v{ font-size:18px; font-weight:700; font-family:var(--font-mono); letter-spacing:-.01em; margin-top:4px; }
+.api-tile-d{ font-size:10.5px; color:var(--text-4); margin-top:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.api-chart{ background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:14px 16px 11px; margin-bottom:10px; }
+.api-chart-h{ display:flex; align-items:baseline; gap:8px; margin-bottom:11px; }
+.api-chart-t{ font-size:12px; font-weight:700; }
+.api-chart-s{ font-size:10.5px; color:var(--text-4); }
+/* 일별 세로 미니 바 — 기준선 하나만(격자 없음), 막대는 데이터 끝만 둥글게 */
+.api-days{ display:flex; align-items:flex-end; gap:4px; height:64px; border-bottom:1px solid var(--line); }
+.api-day{ flex:1; min-width:0; height:100%; display:flex; flex-direction:column; justify-content:flex-end; border-radius:4px 4px 0 0; transition:background .12s; }
+.api-day:hover{ background:var(--surface-2); }
+.api-day-bar{ width:100%; min-height:2px; border-radius:3px 3px 0 0; background:var(--accent); }
+.api-day-bar.zero{ background:var(--surface-3); }
+.api-day-lbls{ display:flex; gap:4px; margin-top:5px; }
+.api-day-lbl{ flex:1; min-width:0; text-align:center; font-size:9px; font-family:var(--font-mono); color:var(--text-4); white-space:nowrap; }
+/* 모델별 가로 바 — 정체성은 점(picker와 같은 모델 색), 크기는 액센트 단일 색 */
+.api-mrows{ display:flex; flex-direction:column; gap:2px; }
+.api-mrow{ display:flex; align-items:center; gap:10px; padding:7px 0; }
+.api-mdot{ width:8px; height:8px; border-radius:99px; flex:0 0 auto; }
+.api-mname{ width:88px; flex:0 0 auto; font-size:12px; font-weight:600; color:var(--text-2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.api-mbar-wrap{ flex:1; min-width:0; height:12px; display:flex; align-items:center; }
+.api-mbar{ display:block; height:12px; border-radius:0 4px 4px 0; background:var(--accent); }
+.api-mval{ width:66px; flex:0 0 auto; text-align:right; font-family:var(--font-mono); font-size:11.5px; font-weight:600; color:var(--text-2); }
+.api-mruns{ width:88px; flex:0 0 auto; text-align:right; font-size:10.5px; color:var(--text-4); white-space:nowrap; }
 
 /* version dropdown picker (current engine card) */
 .vpick{ position:relative; flex:0 0 auto; }

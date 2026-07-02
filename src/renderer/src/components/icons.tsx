@@ -294,6 +294,29 @@ export const IconClock = (p: IconProps) => (
     <path d="M12 7v5l3 2" />
   </Icon>
 )
+// 달러 — 설정 → API의 예산(충전액) 카드
+export const IconDollar = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M12 2.5v19" />
+    <path d="M16.5 6.5H10a3 3 0 0 0 0 6h4a3 3 0 0 1 0 6H7" />
+  </Icon>
+)
+// 신용카드 — 컴포저 과금 picker의 '구독'(정액) 옵션
+export const IconCard = (p: IconProps) => (
+  <Icon {...p}>
+    <rect x={2.5} y={5.5} width={19} height={13} rx={2.5} />
+    <path d="M2.5 10h19" />
+    <path d="M6.5 14.5h4" />
+  </Icon>
+)
+// 열쇠 — 설정 → API (API 키 과금) 탭
+export const IconKey = (p: IconProps) => (
+  <Icon {...p}>
+    <circle cx={7.5} cy={15.5} r={4.5} />
+    <path d="M10.8 12.2L21 2" />
+    <path d="M15.5 7.5l3 3" />
+  </Icon>
+)
 export const IconServer = (p: IconProps) => (
   <Icon {...p}>
     <rect x={3} y={3} width={18} height={7} rx={2} />

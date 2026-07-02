@@ -10,6 +10,8 @@ import type {
   WindowBounds,
   ResizeEdge,
   UsageInfo,
+  ApiConfigStatus,
+  ApiUsageRecord,
   UserProfile,
   EngineVersionEntry,
   EngineVersionState,
@@ -52,6 +54,19 @@ export interface WindowApi {
   /** resolve the absolute filesystem path of a dragged-in File (Electron webUtils) */
   pathForFile(file: File): string
   getUsage(): Promise<UsageInfo>
+  /** API 키 과금 설정 (설정 → API + 컴포저 API 토글). 모든 호출이 최신 스냅샷을 돌려준다. */
+  apiConfig: {
+    get(): Promise<ApiConfigStatus>
+    /** API 키 저장 — 메인이 safeStorage로 암호화해 보관 (원문은 렌더러로 안 돌아옴) */
+    setKey(key: string): Promise<ApiConfigStatus>
+    clearKey(): Promise<ApiConfigStatus>
+    /** 예산(USD) 설정 — null이면 예산 없음(누적 사용액만 표시) */
+    setBudget(usd: number | null): Promise<ApiConfigStatus>
+    /** 누적 사용액을 0으로 리셋 (재충전 시 기준점 재설정) */
+    resetSpend(): Promise<ApiConfigStatus>
+    /** API 모드 실행 원장(최근 2만 건) — 설정 → API의 통계가 집계한다 */
+    listUsage(): Promise<ApiUsageRecord[]>
+  }
   /** load the saved local user profile, or null when none has been set */
   getProfile(): Promise<UserProfile | null>
   /** persist the local user profile (nickname + avatar color) */

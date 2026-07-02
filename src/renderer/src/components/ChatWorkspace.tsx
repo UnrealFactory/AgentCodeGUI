@@ -97,13 +97,23 @@ export function ChatWorkspace({
   usage,
   onOpenSettings,
   mode,
-  onModeChange
+  onModeChange,
+  apiMode,
+  apiReady,
+  onApiModeChange,
+  budgetUsd,
+  totalSpentUsd
 }: {
   user: AppUser
   usage: UsageInfo
   onOpenSettings: () => void
   mode: WorkspaceMode
   onModeChange: (m: WorkspaceMode) => void
+  apiMode: boolean // 전역 과금 모드 (구독/API) — App이 소유, 여기선 표시·전달만
+  apiReady: boolean
+  onApiModeChange: (next: boolean) => void
+  budgetUsd: number | null // 컴포저 ContextStrip의 남은 예산 표시용
+  totalSpentUsd: number
 }) {
   const { state, clearPermission, clearQuestion, begin, load } = useAgentSession(window.api.talk.onEvent)
   const busy = state.status === 'analyzing' || state.status === 'working'
@@ -441,7 +451,9 @@ export function ChatWorkspace({
       // 작업 폴더 없음 — 엔진이 빈 cwd를 홈 폴더로 폴백한다 (folder는 늘 동일하므로 resume도 안전)
       cwd: '',
       systemPrompt: CHAT_SYSTEM_PROMPT,
-      resume: state.session?.sessionId
+      resume: state.session?.sessionId,
+      // 전역 과금 모드 — API를 골랐으면 이 실행도 API 키로 과금
+      useApi: apiMode || undefined
     }
     if (!opts?.keepDraft) {
       setInput('')
@@ -605,6 +617,12 @@ export function ChatWorkspace({
           started={state.messages.length > 0}
           picker={picker}
           setPicker={setPicker}
+          apiMode={apiMode}
+          apiReady={apiReady}
+          onApiModeChange={onApiModeChange}
+          chatSpentUsd={state.spentUsd ?? 0}
+          budgetUsd={budgetUsd}
+          totalSpentUsd={totalSpentUsd}
           images={images}
           onPickImages={addImagesFromPicker}
           onAddImagePaths={addImagePaths}

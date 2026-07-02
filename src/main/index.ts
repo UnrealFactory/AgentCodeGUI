@@ -8,6 +8,8 @@ import { ClaudeEngine } from './claude/engine'
 import * as engineVersions from './engine/versions'
 import { readProfile, writeProfile } from './profile'
 import { readUiPrefs, writeUiPrefs } from './uiPrefs'
+import { apiConfigStatus, setApiKey, clearApiKey, setBudget, resetSpend } from './apiConfig'
+import { readApiUsage } from './apiUsage'
 import { setVerseDocKo } from './lsp/verseDocKo'
 import { bumpVerseRegistryRev } from './lsp/verseMemberDb'
 import { readChats, writeChats } from './chats'
@@ -346,16 +348,16 @@ function hideSnapPreview(): void {
   if (snapPreviewWin && !snapPreviewWin.isDestroyed() && snapPreviewWin.isVisible()) snapPreviewWin.hide()
 }
 
-const engine = new ClaudeEngine((event: EngineEvent) => send(IPC.engineEvent, event))
+const engine = new ClaudeEngine((event: EngineEvent) => send(IPC.engineEvent, event), 'chat')
 // A second, independent engine dedicated to the "/ask" throwaway conversation. It
 // runs in parallel to `engine` (the main chat) on its own channel, so asking a quick
 // side question never cancels the main run or mixes events into the work thread.
-const askEngine = new ClaudeEngine((event: EngineEvent) => send(IPC.askEvent, event))
+const askEngine = new ClaudeEngine((event: EngineEvent) => send(IPC.askEvent, event), 'ask')
 
 // The 채팅(pure conversation) workspace runs on its own dedicated engine — separate from
 // the main chat (`engine`) and /ask (`askEngine`) — so its events never mix into either.
 // It has no project folder; the engine falls back to the Desktop folder for an empty cwd.
-const talkEngine = new ClaudeEngine((event: EngineEvent) => send(IPC.talkEvent, event))
+const talkEngine = new ClaudeEngine((event: EngineEvent) => send(IPC.talkEvent, event), 'talk')
 
 // ── multi-agent engine pool ─────────────────────────────────
 // One ClaudeEngine per on-screen panel, created on demand and addressed by panelId.
@@ -365,7 +367,7 @@ const maEngines = new Map<string, ClaudeEngine>()
 function maEngine(panelId: string): ClaudeEngine {
   let eng = maEngines.get(panelId)
   if (!eng) {
-    eng = new ClaudeEngine((event: EngineEvent) => send(IPC.maEvent, { panelId, event }))
+    eng = new ClaudeEngine((event: EngineEvent) => send(IPC.maEvent, { panelId, event }), 'ma')
     maEngines.set(panelId, eng)
   }
   return eng
@@ -598,6 +600,26 @@ function registerIpc(): void {
     return abs
   })
   ipcMain.handle(IPC.getUsage, async () => getUsage())
+
+  // API 키 과금 설정 (설정 → API) — 키 원문은 절대 렌더러로 돌려주지 않는다
+  ipcMain.handle(IPC.apiConfigGet, async () => apiConfigStatus())
+  ipcMain.handle(IPC.apiConfigSetKey, async (_e, key: string) => {
+    setApiKey(String(key ?? ''))
+    return apiConfigStatus()
+  })
+  ipcMain.handle(IPC.apiConfigClearKey, async () => {
+    clearApiKey()
+    return apiConfigStatus()
+  })
+  ipcMain.handle(IPC.apiConfigSetBudget, async (_e, usd: number | null) => {
+    setBudget(typeof usd === 'number' ? usd : null)
+    return apiConfigStatus()
+  })
+  ipcMain.handle(IPC.apiConfigResetSpend, async () => {
+    resetSpend()
+    return apiConfigStatus()
+  })
+  ipcMain.handle(IPC.apiUsageList, async () => readApiUsage())
 
   // local user profile (nickname + avatar color), stored in the app home folder
   ipcMain.handle(IPC.profileGet, async () => readProfile())

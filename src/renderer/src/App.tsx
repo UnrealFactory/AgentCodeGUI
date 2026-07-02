@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { AppUser, FileDiff, RunRequest, SubAgentInfo, UsageInfo, UserProfile } from '@shared/protocol'
+import type { ApiConfigStatus, AppUser, FileDiff, RunRequest, SubAgentInfo, UsageInfo, UserProfile } from '@shared/protocol'
 import { extractMentions } from './lib/mentions'
 import { useMaximized } from './lib/useMaximized'
 import { useAgentSession, initialSessionState, snapshotForPersist, sameCwd, commandOf, commandTitleOf, type SessionState } from './store/session'
@@ -124,6 +124,13 @@ function MainApp({ user }: { user: AppUser }) {
   // the image lightbox/multi-viewer: the set being viewed + the active index (null = closed)
   const [viewer, setViewer] = useState<{ images: string[]; index: number } | null>(null)
   const [usage, setUsage] = useState<UsageInfo>({ fiveHour: null, weekly: null, weeklyFable: null })
+  // API 모드 — 켜면 실행이 구독(OAuth) 대신 저장된 API 키로 과금된다. 앱 단위 설정
+  // (채팅별 picker와 달리 과금 수단이라 전역이 자연스럽다) — uiPrefs에 영속.
+  const [apiMode, setApiMode] = useState<boolean>(() => getPref<boolean>('api.mode', false))
+  // 설정 → API의 스냅샷(키 존재·예산·누적 사용액) — 토글 가드와 남은 예산 표시에 쓴다
+  const [apiCfg, setApiCfg] = useState<ApiConfigStatus | null>(null)
+  // 설정 모달을 특정 탭으로 열기 (키 없이 API 토글을 누르면 'api' 탭으로 바로)
+  const [settingsView, setSettingsView] = useState<'version' | 'api' | undefined>(undefined)
   const [openFilePath, setOpenFilePath] = useState<string | null>(null)
   // Git 카드에서 연 파일의 일회성 컨텍스트(시점 내용·마킹 diff·해시 칩) — 일반
   // 경로 열기(openPath)는 항상 이걸 비워서 세션 diff 마킹으로 돌아온다
@@ -195,7 +202,44 @@ function MainApp({ user }: { user: AppUser }) {
   // rate-limit usage: on mount and whenever a run finishes
   useEffect(() => {
     window.api.getUsage().then(setUsage).catch(() => {})
+    window.api.apiConfig.get().then(setApiCfg).catch(() => {})
   }, [])
+
+  // 설정 모달을 닫으면 API 설정을 다시 읽는다 — 방금 키를 등록/삭제했을 수 있다.
+  // 키가 사라졌으면 API 모드도 끈다(키 없는 API 모드는 실행이 실패하므로).
+  useEffect(() => {
+    if (settingsOpen) return
+    window.api.apiConfig
+      .get()
+      .then((s) => {
+        setApiCfg(s)
+        if (!s.hasKey) {
+          setApiMode((on) => {
+            if (on) setPref('api.mode', false)
+            return on ? false : on
+          })
+        }
+      })
+      .catch(() => {})
+  }, [settingsOpen])
+
+  // 설정 → API 탭 열기 — 키 없이 API 과금을 고른 화면들이 공용으로 쓰는 가드
+  const openApiSettings = useEvent(() => {
+    setSettingsView('api')
+    setSettingsOpen(true)
+  })
+
+  // 컴포저의 과금 picker(구독/API) — API 선택인데 키가 없으면 설정 → API 탭을 열어 안내
+  const onApiModeChange = useEvent((next: boolean) => {
+    if (next && !apiCfg?.hasKey) {
+      openApiSettings()
+      return
+    }
+    setApiMode(() => {
+      setPref('api.mode', next)
+      return next
+    })
+  })
 
   // Fable 5 정책 거부 → 엔진이 폴백 모델로 전환·재시도한 경우(경고 배너는 스레드에
   // 표시됨), 이 채팅의 모델 picker도 따라 바꿔서 다음 메시지부터 폴백 모델로 바로
@@ -241,6 +285,8 @@ function MainApp({ user }: { user: AppUser }) {
   useEffect(() => {
     if (state.status === 'done' || state.status === 'error') {
       window.api.getUsage().then(setUsage).catch(() => {})
+      // API 모드 누적 사용액(전역)도 갱신 — 남은 예산 링이 실행 직후 바로 맞아떨어지게
+      window.api.apiConfig.get().then(setApiCfg).catch(() => {})
       setFsTick((t) => t + 1)
     }
   }, [state.status])
@@ -641,7 +687,9 @@ function MainApp({ user }: { user: AppUser }) {
       // but only while still in the folder it was created in (a session id is scoped to
       // its project, so resuming it elsewhere errors "No conversation found"). A folder
       // change starts a fresh conversation in the new project.
-      resume: state.session && sameCwd(state.session.cwd, dir) ? state.session.sessionId : undefined
+      resume: state.session && sameCwd(state.session.cwd, dir) ? state.session.sessionId : undefined,
+      // API 모드(컴포저 토글) — 이 실행을 구독 대신 저장된 API 키로 과금
+      useApi: apiMode || undefined
     }
     if (!opts?.keepDraft) {
       setInput('')
@@ -951,6 +999,9 @@ function MainApp({ user }: { user: AppUser }) {
             onOpenSettings={onOpenSettings}
             mode={mode}
             onModeChange={onModeChange}
+            apiMode={apiMode}
+            apiReady={!!apiCfg?.hasKey}
+            onOpenApiSettings={openApiSettings}
           />
         ) : mode === 'chat' ? (
           <ChatWorkspace
@@ -959,6 +1010,11 @@ function MainApp({ user }: { user: AppUser }) {
             onOpenSettings={onOpenSettings}
             mode={mode}
             onModeChange={onModeChange}
+            apiMode={apiMode}
+            apiReady={!!apiCfg?.hasKey}
+            onApiModeChange={onApiModeChange}
+            budgetUsd={apiCfg?.budgetUsd ?? null}
+            totalSpentUsd={apiCfg?.spentUsd ?? 0}
           />
         ) : (
         <>
@@ -1059,6 +1115,10 @@ function MainApp({ user }: { user: AppUser }) {
             contextTokens={state.result?.contextTokens ?? null}
             contextWindow={state.result?.contextWindow ?? null}
             model={picker.model}
+            apiMode={apiMode}
+            chatSpentUsd={state.spentUsd ?? 0}
+            budgetUsd={apiCfg?.budgetUsd ?? null}
+            totalSpentUsd={apiCfg?.spentUsd ?? 0}
             onOpenFile={onOpenFile}
             onOpenSubagent={onOpenSubagent}
           />
@@ -1079,6 +1139,9 @@ function MainApp({ user }: { user: AppUser }) {
             started={state.messages.length > 0}
             picker={picker}
             setPicker={setPicker}
+            apiMode={apiMode}
+            apiReady={!!apiCfg?.hasKey}
+            onApiModeChange={onApiModeChange}
             images={images}
             onPickImages={addImagesFromPicker}
             onAddImagePaths={addImagePaths}
@@ -1150,6 +1213,9 @@ function MainApp({ user }: { user: AppUser }) {
           user={user}
           picker={picker}
           initialText={askInitial}
+          apiMode={apiMode}
+          apiReady={!!apiCfg?.hasKey}
+          onApiModeChange={onApiModeChange}
         />
       )}
 
@@ -1164,7 +1230,16 @@ function MainApp({ user }: { user: AppUser }) {
         />
       )}
 
-      {settingsOpen && <SettingsModal cwd={cwd} onClose={() => setSettingsOpen(false)} />}
+      {settingsOpen && (
+        <SettingsModal
+          cwd={cwd}
+          initialView={settingsView}
+          onClose={() => {
+            setSettingsOpen(false)
+            setSettingsView(undefined)
+          }}
+        />
+      )}
 
 
       {/* 첫 실행 안내 — 둘은 SEEN_KEY를 공유해 서로 배타적이다. 새 설치(도장 없음)는

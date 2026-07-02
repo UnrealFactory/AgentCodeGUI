@@ -299,6 +299,9 @@ export type EngineEvent =
       // the model's real context-window size (tokens), from the SDK's per-model usage.
       // null when unknown → the renderer falls back to the model's default window.
       contextWindow: number | null
+      // 이 실행이 API 키 과금(useApi)으로 돌았는지 — 대화별 비용 누적은 이 플래그가
+      // 켜진 결과의 costUsd만 합산한다 (구독 실행의 명목 비용은 실제 청구가 아니므로).
+      viaApi: boolean
     }
   // live context-token estimate emitted per assistant turn (before the final result)
   | { type: 'context'; runId: string; contextTokens: number }
@@ -327,6 +330,9 @@ export interface RunRequest {
   cwd: string // working directory (project root). Required.
   resume?: string // session id to resume — carries this chat's conversation history
   systemPrompt?: string // 채팅/패널별 프롬프트 — appended to the preset system prompt every run
+  // true → 이 실행은 구독(OAuth) 대신 저장된 API 키로 과금한다 (컴포저의 API 토글).
+  // 엔진이 하위 CLI에 ANTHROPIC_API_KEY를 주입하고, result 이벤트에 viaApi로 표시한다.
+  useApi?: boolean
 }
 
 // ── Multi-agent (N independent panels, one engine each) ──────
@@ -377,6 +383,43 @@ export interface WindowBounds {
 export type ResizeEdge = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw'
 /** Snap-layout target: 반쪽(left/right) · 쿼터(tl/tr/bl/br) · 최대화(max). */
 export type SnapZone = 'left' | 'right' | 'tl' | 'tr' | 'bl' | 'br' | 'max'
+
+// ── API 키 과금 설정 (설정 → API) ─────────────────────────────
+/**
+ * 렌더러에 보여줄 API 설정 스냅샷. 키 원문은 절대 렌더러로 보내지 않는다 —
+ * 존재 여부(hasKey)와 확인용 끝 4자리(keyTail)만 노출. 키는 메인 프로세스가
+ * safeStorage(Windows DPAPI)로 암호화해 앱 홈(api-config.json)에 보관한다.
+ * spentUsd는 API 모드 실행들의 total_cost_usd 누적(전체 워크스페이스 합산) —
+ * Anthropic은 잔액 조회 API를 제공하지 않으므로, 예산(budgetUsd)을 입력받아
+ * 이 누적치를 차감하는 방식으로 "남은 예산"을 근사한다.
+ */
+export interface ApiConfigStatus {
+  hasKey: boolean
+  keyTail: string | null // 저장된 키의 끝 4자리 (표시용)
+  budgetUsd: number | null // 사용자가 입력한 예산(충전액), 없으면 null
+  spentUsd: number // API 모드 실행의 누적 비용(USD)
+}
+
+/** 어떤 화면의 엔진이 실행했는지 — 사용 통계의 분류 축. */
+export type ApiUsageSource = 'chat' | 'ask' | 'talk' | 'ma'
+
+/**
+ * API 모드 실행 1건의 기록 (설정 → API 통계의 원장 한 줄).
+ * 메인이 ~/.agentcodegui/api-usage.jsonl 에 실행이 끝날 때마다 append 한다.
+ * 토큰 수치는 SDK result의 누적 usage(그 실행 전체 합).
+ */
+export interface ApiUsageRecord {
+  ts: number // unix ms — 실행이 끝난 시각
+  model: string // 표시 모델명 (예: 'Opus 4.8') — 알 수 없으면 picker 별칭
+  source: ApiUsageSource
+  costUsd: number
+  inTok: number // input_tokens (비캐시 입력)
+  outTok: number // output_tokens
+  cacheRead: number // cache_read_input_tokens
+  cacheWrite: number // cache_creation_input_tokens
+  durationMs: number | null
+  numTurns: number | null
+}
 
 // ── Rate-limit usage (from the OAuth usage API) ──────────────
 export interface UsageWindow {
@@ -506,6 +549,12 @@ export const IPC = {
   pickImages: 'dialog:pick-images', // open dialog filtered to image files; returns absolute paths
   saveImageData: 'image:save-data', // persist pasted/dropped raw image bytes to a temp file; returns its path
   getUsage: 'usage:get',
+  apiConfigGet: 'api-config:get', // API 키/예산/누적 사용액 스냅샷 (키 원문 제외)
+  apiConfigSetKey: 'api-config:set-key', // API 키 저장 (safeStorage 암호화)
+  apiConfigClearKey: 'api-config:clear-key', // 저장된 API 키 삭제
+  apiConfigSetBudget: 'api-config:set-budget', // 예산(USD) 설정 (null = 없음)
+  apiConfigResetSpend: 'api-config:reset-spend', // 누적 사용액 0으로 리셋 (재충전 시)
+  apiUsageList: 'api-usage:list', // API 모드 실행 원장 (설정 → API 통계)
   profileGet: 'profile:get', // load the saved local user profile (or null)
   profileSave: 'profile:save', // persist nickname + avatar color
   chatsGet: 'chats:get', // load the saved chat list + active id (or null)

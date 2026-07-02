@@ -5,6 +5,9 @@ import { app } from 'electron'
 import { loadActiveQuery } from '../engine/versions'
 import { disabledSkillOverrides } from '../skills'
 import { deniedMcpServers } from '../mcp'
+import { getApiKey, addSpend } from '../apiConfig'
+import { recordApiUsage } from '../apiUsage'
+import type { ApiUsageSource } from '@shared/protocol'
 import type {
   EngineEvent,
   RunRequest,
@@ -84,6 +87,9 @@ interface StreamEvent {
 interface SdkMsg {
   type: string
   subtype?: string
+  // system/init: 이 세션의 인증 출처 — 'oauth'(구독 로그인) 또는 API 키 계열
+  // ('user'/'project'/'org'/'temporary'). API 모드 검증(과금 경로 확인)에 쓴다.
+  apiKeySource?: string
   // message.model: 이 assistant 프레임을 실제로 생성한 모델 id — 세션 중 전환(한도·과부하
   // 폴백 등)을 원인 불문 감지하는 안전망으로 쓴다
   message?: { content?: ContentBlock[] | string; usage?: UsageInfo; model?: string }
@@ -172,6 +178,8 @@ const nextBlockId = (): string => `m${LAUNCH_TAG}-${++blockCounter}`
 
 export class ClaudeEngine {
   private emit: Emit
+  /** 이 엔진이 속한 화면 (chat/ask/talk/ma) — API 사용 원장의 분류 축 */
+  private source: ApiUsageSource
   private abort: AbortController | null = null
   private handle: { interrupt?: () => Promise<void> } | null = null
   private activeRunId: string | null = null
@@ -196,9 +204,13 @@ export class ClaudeEngine {
   private taskSeq = 0
   /** session the taskMap belongs to — a new session resets the accumulated tasks */
   private taskSessionId: string | null = null
+  /** 마지막으로 띄운 인증 불일치 배너 — 같은 내용이 매 메시지(런)마다 반복되지 않게
+   *  내용이 바뀔 때만 다시 띄운다 (예: 전역 ANTHROPIC_API_KEY가 있는 구독 모드). */
+  private lastAuthNotice = ''
 
-  constructor(emit: Emit) {
+  constructor(emit: Emit, source: ApiUsageSource = 'chat') {
     this.emit = emit
+    this.source = source
   }
 
   get isRunning(): boolean {
@@ -296,9 +308,17 @@ export class ClaudeEngine {
     // 거부 폴백 경로는 배너를 직접 띄우면서 이 값을 갱신하므로 이중 배너가 뜨지 않는다.
     let curModelDisplay = ''
 
+    // API 모드 — 저장된 키를 하위 CLI의 환경변수로 주입해 이 실행을 구독(OAuth)이
+    // 아닌 API 키 과금으로 돌린다. 키 원문은 여기(메인)에서만 읽고 렌더러엔 안 간다.
+    const useApi = !!req.useApi
+    const apiKey = useApi ? getApiKey() : null
+
     try {
       if (!query) {
         throw new Error('설치된 Claude Code 엔진이 없습니다. 설정 → 버전에서 엔진을 먼저 설치해 주세요.')
+      }
+      if (useApi && !apiKey) {
+        throw new Error('API 모드가 켜져 있지만 저장된 API 키가 없습니다. 설정 → API에서 키를 먼저 등록해 주세요.')
       }
       const q = query({
         prompt,
@@ -326,6 +346,9 @@ export class ClaudeEngine {
           // 'bypassPermissions' is inert unless this companion flag is set — the SDK
           // only passes --allow-dangerously-skip-permissions when it's true.
           ...(permissionMode === 'bypassPermissions' ? { allowDangerouslySkipPermissions: true } : {}),
+          // API 모드: ANTHROPIC_API_KEY를 주입해 이 실행을 API 키 과금으로 돌린다.
+          // SDK의 env 옵션은 process.env를 대체(merge 아님)하므로 반드시 펼쳐서 준다.
+          ...(useApi && apiKey ? { env: { ...process.env, ANTHROPIC_API_KEY: apiKey } } : {}),
           // Behave like the Claude Code CLI (full coding-agent persona + tools)
           // and honour the user's installed settings / CLAUDE.md / MCP servers.
           // A per-chat/panel 프롬프트 rides along as an append — re-sent on every
@@ -416,6 +439,22 @@ export class ClaudeEngine {
           // 전환 감지의 기준점 — init이 준 풀 모델 id만 신뢰(짧은 별칭이면 첫 assistant
           // 프레임이 기준점을 잡는다)
           curModelDisplay = modelKey(msg.model) || curModelDisplay
+          // API 모드 검증 — init의 apiKeySource가 실제 과금 경로를 알려준다. 토글과
+          // 어긋나면(켰는데 oauth로 붙음 / 껐는데 API 키로 붙음 — 예: 전역 환경변수)
+          // 조용히 지나가지 않고 배너로 알린다. 같은 배너가 매 메시지 반복되진 않게
+          // 내용이 바뀔 때만 다시 띄운다.
+          if (typeof msg.apiKeySource === 'string' && msg.apiKeySource) {
+            let authNotice = ''
+            if (useApi && msg.apiKeySource === 'oauth') {
+              authNotice = 'API 모드가 켜져 있지만 이 실행은 구독(OAuth) 인증으로 연결됐어요. 과금이 API 키로 되지 않았을 수 있습니다.'
+            } else if (!useApi && msg.apiKeySource !== 'oauth') {
+              authNotice = '이 실행은 API 키 인증으로 연결됐어요(환경변수 등). 구독이 아닌 API 크레딧으로 과금될 수 있습니다.'
+            }
+            if (authNotice !== this.lastAuthNotice) {
+              this.lastAuthNotice = authNotice
+              if (authNotice) this.emit({ type: 'notice', runId, text: authNotice })
+            }
+          }
           continue
         }
 
@@ -576,6 +615,25 @@ export class ClaudeEngine {
           // use the last per-turn context, NOT contextFromUsage(msg.usage): the
           // result's usage is cumulative across the whole run and would overstate
           // the live window (often well past 100%).
+          // API 모드 실행의 비용은 전역 누적(설정 → API의 사용액)에 바로 더하고, 실행
+          // 1건을 사용 원장에 남긴다(모델별·일별 통계) — 모든 엔진 인스턴스(메인/ask/
+          // 채팅/멀티)가 이 경로를 지나므로 한 곳에서 끝난다.
+          if (useApi && typeof msg.total_cost_usd === 'number') {
+            addSpend(msg.total_cost_usd)
+            recordApiUsage({
+              ts: Date.now(),
+              // 표시 모델명(전환 감지가 추적한 값) — init 전에 죽은 실행은 picker 별칭으로
+              model: curModelDisplay || req.model,
+              source: this.source,
+              costUsd: msg.total_cost_usd,
+              inTok: msg.usage?.input_tokens ?? 0,
+              outTok: msg.usage?.output_tokens ?? 0,
+              cacheRead: msg.usage?.cache_read_input_tokens ?? 0,
+              cacheWrite: msg.usage?.cache_creation_input_tokens ?? 0,
+              durationMs: msg.duration_ms ?? null,
+              numTurns: msg.num_turns ?? null
+            })
+          }
           this.emit({
             type: 'result',
             runId,
@@ -585,7 +643,8 @@ export class ClaudeEngine {
             durationMs: msg.duration_ms ?? null,
             numTurns: msg.num_turns ?? null,
             contextTokens: lastContextTokens,
-            contextWindow: windowFromModelUsage(msg.modelUsage)
+            contextWindow: windowFromModelUsage(msg.modelUsage),
+            viaApi: useApi
           })
           this.emit({ type: 'status', runId, status: msg.is_error ? 'error' : 'done' })
         }
