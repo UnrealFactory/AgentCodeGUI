@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { AppUser, RunRequest } from '@shared/protocol'
 import { useAgentSession, sameCwd } from '../store/session'
-import { MessageView, WorkingIndicator, PermissionModal, QuestionModal, type PickerState } from './Chat'
+import { MessageView, WorkingIndicator, PermissionModal, QuestionModal, RunPickers, type PickerState } from './Chat'
 import { IconChevDown, IconClose, IconSend } from './icons'
 
 // "/ask" — a throwaway, one-shot conversation that lives entirely apart from the work
@@ -32,6 +32,9 @@ export function AskModal({
     window.api.ask?.onEvent?.(cb) ?? (() => {})
   )
   const [input, setInput] = useState(initialText ?? '')
+  // /ask 자체의 실행 설정 — 열릴 때 메인 컴포저의 선택을 이어받고, 여기서 바꾸면 이 질문
+  // 세션에만 적용된다(메인 대화의 picker는 건드리지 않는다). 모달이 닫히면 함께 사라진다.
+  const [pk, setPk] = useState<PickerState>(picker)
   const scrollRef = useRef<HTMLDivElement>(null)
   const taRef = useRef<HTMLTextAreaElement>(null)
 
@@ -90,9 +93,9 @@ export function AskModal({
     begin(text)
     const req: RunRequest = {
       prompt: text,
-      model: picker.model,
-      effort: picker.effort,
-      mode: picker.mode,
+      model: pk.model,
+      effort: pk.effort,
+      mode: pk.mode,
       // empty cwd → the engine falls back to the home dir, so a general question still works
       cwd,
       // continue THIS ask's own session so follow-ups keep context (separate from the main
@@ -233,6 +236,10 @@ export function AskModal({
 
             {/* composer */}
             <div className="ask-foot">
+              {/* 이 질문 세션만의 모델·강도·모드 — 메인 컴포저와 동일한 컨트롤(RunPickers) */}
+              <div className="ask-pickers">
+                <RunPickers picker={pk} setPicker={setPk} />
+              </div>
               <div className={'ask-composer' + (busy ? ' busy' : '')}>
                 <textarea
                   ref={taRef}

@@ -34,7 +34,7 @@ import type { LspSemanticTokens, LspLocation, LspCompletionItem } from '@shared/
 import { VERSE_BUILTIN_KIND } from '@shared/protocol'
 import { highlighting } from '../lib/cmHljs'
 import { ensureVerseRegistry, onVerseRegChange } from '../lib/verseRegistry'
-import { VERSE_SPECIFIERS, VERSE_ATTRIBUTES } from '../lib/verseKeywords'
+import { VERSE_SPECIFIERS, VERSE_ATTRIBUTES } from '@shared/verseKeywords'
 import { buildSemDict, type StructOv } from '../lib/semTokens'
 import { readDiffField, type DiffMarks } from '../lib/cmDiff'
 import { findField, setFindHits, computeMatches } from '../lib/cmFind'
@@ -154,15 +154,18 @@ function applySpecifier(name: string) {
   }
 }
 
+// 완성 info는 플레인 텍스트로 렌더되므로 공유 용어집(호버용 마크다운)의 백틱만 벗겨 쓴다.
+const plainDoc = (d?: string): string | undefined => d?.replace(/`/g, '')
+
 // 정적이라 한 번만 만든다. getter/setter·@doc은 인자를 받으므로 스니펫(괄호/따옴표 안에 커서)으로.
 const VERSE_SPEC_OPTS: Completion[] = VERSE_SPECIFIERS.filter((s) => !s.internal).map((s) => {
-  const base: Completion = { label: s.name, type: VERSE_SPEC_TYPE[s.group] ?? 'spec-decl', info: s.doc }
+  const base: Completion = { label: s.name, type: VERSE_SPEC_TYPE[s.group] ?? 'spec-decl', info: plainDoc(s.doc) }
   return s.arg ? snippetCompletion(`${s.name}(\${})>`, base) : { ...base, apply: applySpecifier(s.name) }
 })
 // 라벨/삽입은 '@' 없이(이미 친 '@' 다음부터 치환하므로 — verseComplete의 from 참고). 코랄 at-sign
 // 아이콘이 @속성임을 알리니 라벨에 '@'를 또 붙이지 않는다(<지정자>가 '<' 없이 보이는 것과 동일).
 const VERSE_AT_OPTS: Completion[] = VERSE_ATTRIBUTES.filter((a) => !a.internal).map((a) => {
-  const base: Completion = { label: a.name, type: 'attribute', detail: a.arg ? '("…")' : undefined, info: a.doc }
+  const base: Completion = { label: a.name, type: 'attribute', detail: a.arg ? '("…")' : undefined, info: plainDoc(a.doc) }
   return a.arg ? snippetCompletion(`${a.name}("\${}")`, base) : { ...base, apply: a.name }
 })
 
@@ -412,10 +415,12 @@ export const CmEditor = forwardRef<
 
   // 파일이 뜨는 즉시 서버에 미리 문서를 열어(didOpen) 인덱싱을 시작 → 타이핑 전에 준비가 끝나,
   // 첫 완성이 빈 목록으로 떠 "몇 번 재시도해야 나오는" 콜드 스타트를 없앤다. LSP 파일일 때만.
+  // Verse는 ready를 기다리지 않는다 — warm()이 메인에서 스폰·초기화를 알아서 기다리므로 파일이
+  // 뜨자마자 부르면 게이트가 열리는 그 순간 서버가 이미 이 문서를 컴파일해 둔 상태가 된다.
   useEffect(() => {
-    if (!lsp || !path) return
+    if (!path || (!lsp && lang !== 'verse')) return
     void window.api.lsp.warm(cwd, path).catch(() => {})
-  }, [lsp, path, cwd])
+  }, [lsp, lang, path, cwd])
 
   // .verse 정확 색칠용 타입 레지스트리(digest+프로젝트의 종류·멤버)를 프로젝트당 1회 가져오고,
   // 도착하면 하이라이트 레이어를 한 번 재구성해 다시 칠한다(추측 대신 사실로 색칠).
@@ -508,7 +513,9 @@ export const CmEditor = forwardRef<
     // (CM 툴팁이 body에 떠서 클리핑 안 됨; .cm-tooltip 크롬은 테마에서 투명화)
     const lspHover = hoverTooltip(
       async (v, pos) => {
-        if (!lspRef.current) return null
+        // Verse는 서버가 아직 준비 전(콜드/에러)이어도 메인이 합성 카드(용어집·지역변수·선언부)를
+        // 만들 수 있으므로 게이트를 열어 둔다 — "처음 열면 호버가 안 되다가 다시 열어야 되는" 공백 제거.
+        if (!lspRef.current && langRef.current !== 'verse') return null
         // 라이브 버퍼 전체를 같이 보낸다(미저장 편집 반영) — 안 그러면 방금 새로 정의한 함수 안에서
         // 호버 위치/내용이 디스크 파일과 어긋나 호버가 안 뜬다(completion과 동일한 이유).
         const r = await window.api.lsp
@@ -577,7 +584,8 @@ export const CmEditor = forwardRef<
       return null
     }
     const lspComplete = async (ctx: CompletionContext): Promise<CompletionResult | null> => {
-      if (!lspRef.current || ctx.state.readOnly) return null
+      // Verse는 서버 준비 전에도 스캔 기반 후보(멤버/스코프)를 메인이 즉시 주므로 게이트를 열어 둔다
+      if ((!lspRef.current && langRef.current !== 'verse') || ctx.state.readOnly) return null
       const word = ctx.matchBefore(/[\w$]+/)
       const before = ctx.state.sliceDoc(Math.max(0, ctx.pos - 1), ctx.pos)
       // 자동 발동은 단어 입력 중이거나 트리거 문자 뒤일 때만 — 빈 자리에서 매 입력마다 뜨는 걸 막는다.
@@ -693,7 +701,8 @@ export const CmEditor = forwardRef<
               const s = ins.toString()
               if (s.length !== 1) return
               if (langRef.current === 'verse' && (s === '@' || s === '<')) trigger = true
-              else if (hasLsp && (s === '.' || /[A-Za-z_]/.test(s))) trigger = true
+              // Verse는 서버 준비 전에도 스캔 완성이 나오므로 lsp 게이트 없이 발동
+              else if ((hasLsp || langRef.current === 'verse') && (s === '.' || /[A-Za-z_]/.test(s))) trigger = true
             })
             if (trigger) startCompletion(u.view)
           }),

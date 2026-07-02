@@ -5,20 +5,12 @@
 const fs = require('fs')
 const DIR = require('path').join(__dirname, '..', '.tmp-verse')
 
-// Put each Korean sentence on its own line so the hover card reads cleanly. Markdown only
-// breaks on a blank line (the renderer has no remark-breaks), so a sentence-ending period is
-// turned into a paragraph break (`\n\n`). We never touch inside `backtick spans` (code, types,
-// paths) and only break after a period that follows Hangul / a closing bracket — so decimals
-// (`200.0`) and `e.g.` stay intact. A bare single `\n` is left as-is, which markdown collapses
-// to a space — re-joining a wrapped sentence rather than splitting it.
+// (구버전은 여기서 한국어 문장마다 문단(`\n\n`)으로 강제 분리했다 — 카드가 세로로 한없이
+// 길어지는 원인. 지금은 RULES.md가 번역 에이전트에게 "자연스러운 문단으로 재구성"을 직접
+// 요구하므로, 병합은 에이전트가 만든 문단 구조를 그대로 존중하고 공백만 정돈한다.
+// 표시 단 정리는 앱의 verseDocFormat.ts(구분선 제거·코드 펜스·용어 백틱)가 담당.)
 function formatDoc(s) {
-  const parts = String(s).split(/(`[^`]*`)/) // odd indices are code spans — leave untouched
-  for (let i = 0; i < parts.length; i += 2) {
-    parts[i] = parts[i].replace(/([가-힣)\]"」』])\.[ \t]*\n*[ \t]*(?=\S)/g, '$1.\n\n')
-    // a sentence that ends right before a code span (the next part) — break across the boundary
-    if (i + 1 < parts.length) parts[i] = parts[i].replace(/([가-힣)\]"」』])\.[ \t]*\n*[ \t]*$/, '$1.\n\n')
-  }
-  return parts.join('').replace(/\n{3,}/g, '\n\n').trim()
+  return String(s).replace(/\n{3,}/g, '\n\n').trim()
 }
 
 const blocks = JSON.parse(fs.readFileSync(DIR + '/blocks.json', 'utf8'))

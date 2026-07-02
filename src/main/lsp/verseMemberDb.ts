@@ -3,8 +3,10 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { LspCompletionItem, LspPos, VerseRegistry } from '../../shared/protocol'
 import { VERSE_BUILTIN_KIND } from '../../shared/protocol'
+import { verseIndent as indentOf, verseDocPiece, verseEnclosingLine, verseBlockStart, VERSE_NAME_TRAIL } from '../../shared/verseSyntax'
 import { verseWorkspaceFolders } from './verse'
 import { translateVerseDoc } from './verseDocKo'
+import { versePlainDoc } from './verseDocFormat'
 
 /* ============================================================
  * Verse member completion DB — the gap verse-lsp leaves open.
@@ -44,24 +46,12 @@ interface VType {
   doc?: string // the `#`/`@doc(...)` comment immediately above the declaration
 }
 
-const indentOf = (line: string): number => {
-  let i = 0
-  let lvl = 0
-  for (;;) {
-    if (line[i] === '\t') {
-      lvl++
-      i++
-    } else if (line.startsWith('    ', i)) {
-      lvl++
-      i += 4
-    } else break
-  }
-  return lvl
-}
-
 // type declaration:  Name<specs>(typeparams) := class|struct|enum|interface <specs> (supers) :
-const TYPE_DECL =
-  /^([A-Za-z_]\w*)(?:<[^>]*>|\([^()]*\))*\s*:=\s*(class|struct|enum|interface)\b((?:<[^>]*>)*)\s*(?:\(([^]*)\))?\s*:?\s*(?:#.*)?$/
+// VERSE_NAME_TRAIL — 타입 매개변수 안의 중첩 괄호(`subtype(member_info_interface)` 등)까지 지나간다.
+// 전엔 `\([^()]*\)`라 digest의 chat_channel 같은 파라미터형 클래스가 통째로 등록되지 않았다.
+const TYPE_DECL = new RegExp(
+  String.raw`^([A-Za-z_]\w*)${VERSE_NAME_TRAIL}\s*:=\s*(class|struct|enum|interface)\b((?:<[^>]*>)*)\s*(?:\(([^]*)\))?\s*:?\s*(?:#.*)?$`
+)
 const stripQual = (s: string): string => s.replace(/^\(\s*\/[^)]*?:\s*\)/, '') // strip `(/Verse.org/…:)`
 // a type reference → its base simple name (drop ?/^ option/pointer prefixes, type-args, specifiers)
 const baseType = (t: string): string =>
@@ -76,40 +66,47 @@ const baseType = (t: string): string =>
 const MODULE_DECL = /^([A-Za-z_]\w*)(?:<[^>]*>)*\s*:=\s*module\b/
 const FREE_FN = /^([A-Za-z_]\w*)((?:<[^>]*>)*)\(([^]*?)\)((?:<[^>]*>)*)\s*:\s*([^=]+?)\s*=/
 const FREE_BIND = /^([A-Za-z_]\w*)(?:<[^>]*>)*\s*:(?:=|\s*[^=]+=)/
-// a single-line function/method header `Name<specs>(params)<eff>:ret =` (the `=` opens the body)
-const FN_HEADER = /^([A-Za-z_]\w*)(?:<[^>]*>)*\s*\(([^]*?)\)(?:<[^>]*>)*\s*:[^=]*=/
+// a single-line function/method header `Name<specs>(params)<eff>:ret =` (the `=` opens the body).
+// `:(?!=)` — 파라미터형 타입 선언(`name<…>(t:…) := class…`)의 `:=`를 반환형으로 오인하지 않게.
+const FN_HEADER = /^([A-Za-z_]\w*)(?:<[^>]*>)*\s*\(([^]*?)\)(?:<[^>]*>)*\s*:(?!=)[^=]*=/
 
 /** Scan Verse source text → register types + their direct members into `types`. */
 export function parseVerseTypes(types: Map<string, VType>, text: string): void {
   const lines = text.split(/\r?\n/)
   const stack: { indent: number; name: string; kind: string }[] = []
-  // doc 주석 버퍼 — 선언 바로 위의 연속된 `#` 줄 / `@doc("…")`를 모았다가 타입 선언에 붙인다.
-  // 빈 줄이나 일반 코드 줄을 만나면 비운다(선언에 "바로 붙은" 주석만 doc로 인정).
+  // doc 주석 버퍼 — 선언 바로 위의 doc 조각을 모았다가 타입 선언에 붙인다. 분류는 공유
+  // verseDocPiece — verse.ts의 호버 추출(verseDocAbove)과 같은 분류기라 출력이 byte 단위로
+  // 일치하고, 한국어 번역 팩의 sha1(원문) 매칭이 안 어긋난다. 빈 줄/일반 코드 줄에서 비운다.
   let docBuf: string[] = []
+  // 여러 줄 `<# … #>` 블록 주석 추적 — 주석 안의 코드 예시(`Foo := class` 등)가 팬텀
+  // 타입/멤버로 등록되지 않게 통째로 건너뛴다(parseVerseGlobals·renderer verseScopes와 동일).
+  let inBlockComment = false
   for (const raw of lines) {
     const t = raw.trim()
-    if (!t) {
+    if (inBlockComment) {
+      if (t.includes('#>')) inBlockComment = false
+      continue
+    }
+    if (t.startsWith('<#') && !t.includes('#>')) {
+      inBlockComment = true
       docBuf = []
       continue
     }
-    // doc 주석 — extractVerseDoc(verse.ts)와 똑같은 형식으로 모은다. 한국어 번역 팩은 sha1(원문)으로
-    // 찾으므로 형식이 1바이트라도 어긋나면 번역을 못 찾는다: `# …`(앞 #/공백 제거) · 한 줄 `<# … #>` ·
-    // `@doc("…")`(이스케이프 해제). 그 밖의 @속성은 건너뛰고 위쪽 주석을 유지한다.
-    if (t.startsWith('#') && !t.startsWith('#>')) {
-      docBuf.push(t.replace(/^#+\s?/, ''))
+    const piece = verseDocPiece(t)
+    if (piece.type === 'blank') {
+      docBuf = []
       continue
     }
-    if (t.startsWith('<#') && t.endsWith('#>')) {
-      docBuf.push(t.slice(2, -2).trim())
+    if (piece.type === 'doc') {
+      docBuf.push(piece.text)
       continue
     }
-    if (t.startsWith('@')) {
-      const dm = /^@doc\s*\(\s*"((?:[^"\\]|\\.)*)"\s*\)/.exec(t)
-      if (dm) docBuf.push(dm[1].replace(/\\(.)/g, '$1'))
-      continue
+    if (piece.type === 'attr') {
+      if (piece.text != null) docBuf.push(piece.text) // @doc("…") 본문
+      continue // 그 밖의 @속성은 건너뛰고 위쪽 주석을 유지한다
     }
-    if (t.startsWith('<#') || t.startsWith('using') || t.startsWith('import')) {
-      docBuf = [] // 여러 줄 블록 주석 시작 등 — 비운다
+    if (t.startsWith('using') || t.startsWith('import')) {
+      docBuf = []
       continue
     }
     const ind = indentOf(raw)
@@ -344,6 +341,19 @@ export function verseMemberContext(text: string, pos: LspPos): { receiver: strin
   return { receiver, receiverPos: { line: pos.line, character: m.index + receiver.length - 1 } }
 }
 
+/**
+ * 캐럿이 멤버 접근의 `.` 뒤인가 — verseMemberContext가 못 잡는 비식별자 리시버(`Foo().`,
+ * `arr[0].`, 체인 끝의 복합식) 포함. manager.completion이 이때 스코프 후보(지역/전역) 병합을
+ * 건너뛰게 한다: 점 바로 뒤에 지역변수 목록이 뜨는 건 명백한 노이즈다. 숫자 리터럴의 소수점
+ * (`3.`)은 제외 — 그건 입력 중인 float이지 멤버 접근이 아니다(`x3.` 같은 식별자 꼬리 숫자는 통과).
+ */
+export function verseDotContext(text: string, pos: LspPos): boolean {
+  const line = text.split(/\r?\n/)[pos.line] ?? ''
+  const head = line.slice(0, pos.character).replace(/[A-Za-z_]\w*$/, '') // drop the partial member word
+  if (!head.endsWith('.')) return false
+  return !/(?:^|[^\w.])\d[\d_]*\.$/.test(head) // 토큰 전체가 숫자인 `3.`만 float으로 본다
+}
+
 /** Is `name` a type we know (live buffer / project / digests)? Fast, exact path for `TypeName.`. */
 export function verseHasType(root: string, text: string, name: string): boolean {
   return !!getView(root, text)(name)
@@ -374,12 +384,12 @@ export function verseResolveTypeRegex(root: string, text: string, receiver: stri
   const get = getView(root, text)
   if (get(receiver)) return receiver
   if (receiver === 'Self') {
+    // 진짜 감싸는 클래스만(min-indent walk) — 위쪽의 무관한 클래스가 Self로 오인되지 않게
     const lines = text.split(/\r?\n/)
-    for (let i = Math.min(caretLine, lines.length - 1); i >= 0; i--) {
-      const m = /^([A-Za-z_]\w*)(?:<[^>]*>|\([^()]*\))*\s*:=\s*class\b/.exec((lines[i] ?? '').trim())
-      if (m) return m[1]
-    }
-    return null
+    const SELF_CLASS = new RegExp(String.raw`^([A-Za-z_]\w*)${VERSE_NAME_TRAIL}\s*:=\s*class\b`)
+    const start = verseBlockStart(lines, caretLine)
+    const h = verseEnclosingLine(lines, start.line, (t) => SELF_CLASS.test(t), start.indent)
+    return h >= 0 ? (SELF_CLASS.exec(lines[h].trim())?.[1] ?? null) : null
   }
   const pats = [
     new RegExp(`\\bvar\\s+${receiver}\\s*(?:<[^>]*>)?\\s*:\\s*([?^]*[A-Za-z_]\\w*)`),
@@ -414,39 +424,28 @@ export function verseTypeMembers(root: string, text: string, typeName: string, i
   }))
 }
 
-// the indent of the caret's line (or the nearest non-blank line above, when the caret sits on a blank)
-function blockIndentAt(lines: string[], caretLine: number): number {
-  for (let i = Math.min(caretLine, lines.length - 1); i >= 0; i--) {
-    if ((lines[i] ?? '').trim()) return indentOf(lines[i])
-  }
-  return 0
-}
-
-// the class/struct/interface whose body encloses the caret — Verse lets you reference its members bare
+// the class/struct/interface whose body truly ENCLOSES the caret — Verse lets you reference its
+// members bare. 공유 verseEnclosingLine(min-indent walk)이라 앞서 지나간(감싸지 않는) 클래스는
+// 잡지 않는다 — 전엔 자유 함수 본문에서 위쪽 클래스의 멤버가 완성에 누출됐다.
 function enclosingTypeName(lines: string[], caretLine: number): string | null {
-  const caretIndent = blockIndentAt(lines, caretLine)
-  for (let i = Math.min(caretLine, lines.length - 1); i >= 0; i--) {
-    const t = (lines[i] ?? '').trim()
-    if (!t || t.startsWith('#') || t.startsWith('@')) continue
-    const m = TYPE_DECL.exec(t)
-    if (m && m[2] !== 'enum' && indentOf(lines[i]) < caretIndent) return m[1]
-  }
-  return null
+  const start = verseBlockStart(lines, caretLine)
+  const h = verseEnclosingLine(
+    lines,
+    start.line,
+    (t) => {
+      const m = TYPE_DECL.exec(t)
+      return !!m && m[2] !== 'enum'
+    },
+    start.indent
+  )
+  return h >= 0 ? (TYPE_DECL.exec(lines[h].trim())?.[1] ?? null) : null
 }
 
 // params + var/walrus/typed locals of the function body enclosing the caret → push(name, 6=Variable).
-// Bounded to the ONE enclosing function (header at a shallower indent) so siblings' locals don't leak.
+// Bounded to the ONE truly enclosing function (min-indent walk) so siblings' locals/params don't leak.
 function collectEnclosingLocals(lines: string[], caretLine: number, push: (n: string, k: number) => void): void {
-  const caretIndent = blockIndentAt(lines, caretLine)
-  let hi = -1
-  for (let i = Math.min(caretLine, lines.length - 1); i >= 0; i--) {
-    const t = (lines[i] ?? '').trim()
-    if (!t || t.startsWith('#') || t.startsWith('@')) continue
-    if (indentOf(lines[i]) < caretIndent && FN_HEADER.test(t)) {
-      hi = i
-      break
-    }
-  }
+  const start = verseBlockStart(lines, caretLine)
+  const hi = verseEnclosingLine(lines, start.line, (t) => FN_HEADER.test(t), start.indent)
   if (hi < 0) return
   const headerIndent = indentOf(lines[hi])
   const fh = FN_HEADER.exec(lines[hi].trim())
@@ -569,7 +568,9 @@ export function verseRegistry(root: string): VerseRegistry {
       reg.kind[name] = t.kind as VerseRegistry['kind'][string]
       if (t.supers.length) reg.supers[name] = t.supers
       // 한국어 보기가 켜져 있으면 번역(팩에 있으면)으로 — 메인 호버 문서와 동일하게. 끄면/없으면 원문.
-      if (t.doc) reg.docs[name] = translateVerseDoc(t.doc)
+      // 이 docs는 카드 안 토큰 설명 '플레인 텍스트' 툴팁(.lh-tokdesc)으로 가므로 첫 문단만,
+      // 백틱·구분선·코드 줄은 벗겨서(versePlainDoc) — 전체 문서는 호버 카드 본문이 담당한다.
+      if (t.doc) reg.docs[name] = versePlainDoc(translateVerseDoc(t.doc))
       // colouring is cross-file (other files / inherited), where private members aren't visible — so
       // the registry's member list stays public-only (same-class private colouring is the renderer's
       // own live scan). Enum values are never private.
@@ -599,8 +600,35 @@ export function verseExtMethods(root: string): Set<string> {
   return cached.extMethods
 }
 
-/** Drop a project's cached digest/source parse (e.g. when the Verse server is reconfigured). */
+// ── 캐시 수명 ────────────────────────────────────────────────────────────────
+// digest/소스 파스는 프로젝트당 1회 캐시되지만 영원하진 않다: UEFN이 Verse를 재빌드하면
+// (digest 재생성 → manager가 verse-lsp를 재시작하는 그 경로에서) 해당 루트를 무효화하고,
+// 앱 안에서 .verse를 저장할 때도 무효화한다. `regRev`는 레지스트리 세대 카운터 — 무효화나
+// 문서 언어 토글(내용은 같아도 번역이 달라짐)마다 올라가고, 렌더러는 rev 비교로 자기가 든
+// 레지스트리가 낡았을 때만 다시 받아간다. (남은 구멍: 에이전트가 디스크에서 직접 고친
+// .verse는 어느 경로도 안 지나므로 다음 재빌드/저장/재시작까지 낡은 채로 남는다.)
+let regRev = 1
+
+/** 현재 레지스트리 세대 — 렌더러가 들고 있는 rev와 비교해 재전송 여부를 정한다. */
+export function verseRegistryRev(): number {
+  return regRev
+}
+
+/** 캐시 내용은 그대로지만 파생물이 달라질 때(한국어 문서 토글) 세대만 올린다. */
+export function bumpVerseRegistryRev(): void {
+  regRev++
+}
+
+/** Drop ONE project's cached digest/source parse — UEFN 재빌드 감지·.verse 저장 시. */
+export function invalidateVerseMemberCache(root: string): void {
+  cache.delete(path.resolve(root).toLowerCase())
+  liveMemo = { text: ' ', map: new Map() } // 어떤 실제 버퍼와도 다른 센티널(선언부와 동일 값)
+  regRev++
+}
+
+/** Drop every project's cached parse (e.g. when the Verse server is reconfigured). */
 export function clearVerseMemberCache(): void {
+  regRev++
   cache.clear()
   liveMemo = { text: ' ', map: new Map() }
 }

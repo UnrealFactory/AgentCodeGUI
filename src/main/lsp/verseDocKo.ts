@@ -9,9 +9,13 @@ const PACK = pack as Record<string, string>
 
 let enabled = false
 
-/** Turn Korean API docs on/off — driven by the `verseDocLang` UI pref ('ko' = on). */
-export function setVerseDocKo(on: boolean): void {
+/** Turn Korean API docs on/off — driven by the `verseDocLang` UI pref ('ko' = on).
+ *  Returns true when the value actually CHANGED — 호출자(index.ts)가 이때만 레지스트리 세대를
+ *  올려, 렌더러가 든 registry.docs(fetch 시점 언어로 번역됨)를 다음 열기에 다시 받게 한다. */
+export function setVerseDocKo(on: boolean): boolean {
+  const changed = enabled !== on
   enabled = on
+  return changed
 }
 
 /**

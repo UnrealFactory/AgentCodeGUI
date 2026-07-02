@@ -27,7 +27,7 @@ import type {
   LspLocation,
   LspSemanticTokens,
   LspCompletionList,
-  VerseRegistry,
+  VerseRegistrySnapshot,
   LspInstallProgress,
   LspServerInfo,
   GitStatus,
@@ -128,8 +128,9 @@ export interface WindowApi {
     prewarm(cwd: string): Promise<void>
     /** eagerly open a specific file on its server so indexing finishes before the first completion */
     warm(cwd: string, relPath: string): Promise<void>
-    /** accurate Verse type registry (kinds/supers/members/enum values) for a file's project, for colouring */
-    verseRegistry(cwd: string, relPath: string): Promise<VerseRegistry | null>
+    /** accurate Verse type registry (kinds/supers/members/enum values) for a file's project, for colouring.
+     *  `knownRev`(마지막으로 받은 세대)와 같으면 reg=null 스냅샷만 와 페이로드를 아낀다 */
+    verseRegistry(cwd: string, relPath: string, knownRev?: number): Promise<VerseRegistrySnapshot | null>
     /** aggregate analysis state for a folder (explorer badge: analyzing/ready + percent) */
     projectStatus(cwd: string): Promise<LspProjectStatus>
     /** Verse API digest folders to show as view-only roots in the explorer (mirrors UEFN's

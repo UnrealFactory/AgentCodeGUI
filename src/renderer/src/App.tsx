@@ -123,7 +123,7 @@ function MainApp({ user }: { user: AppUser }) {
   const [queue, setQueue] = useState<ScheduledMsg[]>([])
   // the image lightbox/multi-viewer: the set being viewed + the active index (null = closed)
   const [viewer, setViewer] = useState<{ images: string[]; index: number } | null>(null)
-  const [usage, setUsage] = useState<UsageInfo>({ fiveHour: null, weekly: null })
+  const [usage, setUsage] = useState<UsageInfo>({ fiveHour: null, weekly: null, weeklyFable: null })
   const [openFilePath, setOpenFilePath] = useState<string | null>(null)
   // Git 카드에서 연 파일의 일회성 컨텍스트(시점 내용·마킹 diff·해시 칩) — 일반
   // 경로 열기(openPath)는 항상 이걸 비워서 세션 diff 마킹으로 돌아온다
@@ -144,6 +144,13 @@ function MainApp({ user }: { user: AppUser }) {
   const [askOpen, setAskOpen] = useState(false)
   const [askMinimized, setAskMinimized] = useState(false)
   const [askInitial, setAskInitial] = useState('')
+  // /ask 모달 열기 — 컴포저의 "/ask <질문>"(idle)과 예약 우회(busy 중 즉시 실행)가 공유.
+  // 항상 앞으로 가져온다: 최소화돼 있었으면 펼친다.
+  const openAsk = (initial: string): void => {
+    setAskInitial(initial)
+    setAskOpen(true)
+    setAskMinimized(false)
+  }
   // read in the global key handler (registered once) without going stale
   const askOpenRef = useRef(askOpen)
   askOpenRef.current = askOpen
@@ -556,29 +563,28 @@ function MainApp({ user }: { user: AppUser }) {
   // scheduled with (instead of the composer's current state); interactive sends omit it.
   // keepDraft: 컴포저 밖에서 만들어진 프롬프트(파일 뷰어 질문, 큐 재생)는 사용자가
   // 쓰다 둔 초안을 지우지 않는다.
+  // 반환값: 엔진 런을 실제로 시작했으면 true — 클라이언트 명령(/ask·/clear)이나 조기
+  // 반환은 false. 예약 큐 드레인이 이 값으로 "런 없이 소진된 항목" 뒤를 이어서 보낸다.
   const runPrompt = async (
     text: string,
     opts?: { images?: string[]; picker?: PickerState; keepDraft?: boolean }
-  ): Promise<void> => {
+  ): Promise<boolean> => {
     const imgs = opts?.images ?? images
     const pk = opts?.picker ?? picker
     // an image-only message (attachments, no text) is allowed — guard on having either
-    if ((!text.trim() && imgs.length === 0) || busy) return
+    if ((!text.trim() && imgs.length === 0) || busy) return false
     // /clear is a client command — reset the conversation instead of calling the engine
     if (text.trim() === '/clear') {
       clearConversation()
-      return
+      return false
     }
     // /ask opens the independent throwaway modal — it runs on its own engine and is
     // never sent to the main chat. "/ask <question>" pre-fills the modal's composer.
-    // Running /ask always brings it to the front: if it was minimized, expand it.
     const trimmed = text.trim()
     if (trimmed === '/ask' || trimmed.startsWith('/ask ')) {
-      setAskInitial(trimmed.slice(4).trim())
-      setAskOpen(true)
-      setAskMinimized(false)
-      setInput('')
-      return
+      openAsk(trimmed.slice(4).trim())
+      if (!opts?.keepDraft) setInput('')
+      return false
     }
     // a built-in slash command (/init·/compact·/review·/security-review) → tracked so
     // its completion renders a summary card instead of a raw user bubble; null otherwise
@@ -586,7 +592,7 @@ function MainApp({ user }: { user: AppUser }) {
     let dir = cwd
     if (!dir) {
       dir = (await window.api.pickDirectory()) ?? ''
-      if (!dir) return
+      if (!dir) return false
       setManualCwd(dir)
     }
     // sending re-engages the follow so the user's own message (and the reply) scroll
@@ -642,11 +648,21 @@ function MainApp({ user }: { user: AppUser }) {
       setImages([])
     }
     window.api.run(req).catch(() => {})
+    return true
   }
 
   // queue the current draft (while the agent is busy) to auto-send when the run ends
   const scheduleMessage = (): void => {
     if (!busy || (!input.trim() && images.length === 0)) return
+    // /ask는 본 대화와 분리된 자체 엔진 모달 — 메인 런과 무관하므로 예약하지 않고
+    // 즉시 연다. (전엔 큐로 들어가 "실행 중엔 /ask가 안 되는" 것처럼 보였다.)
+    const t = input.trim()
+    if (t === '/ask' || t.startsWith('/ask ')) {
+      openAsk(t.slice(4).trim())
+      setInput('')
+      composerRef.current?.focus()
+      return
+    }
     const id = crypto.randomUUID ? crypto.randomUUID() : `q-${Date.now()}-${queue.length}`
     setQueue((q) => [...q, { id, text: input, images, picker }])
     setInput('')
@@ -654,19 +670,30 @@ function MainApp({ user }: { user: AppUser }) {
     composerRef.current?.focus()
   }
 
-  // drain the queue one message at a time on each busy→idle transition. The `was` guard
-  // (only act when we were busy and now aren't) prevents a double-send: dequeuing changes
-  // `queue` and re-runs this effect before the next run's busy flips back on.
+  // drain the queue on each busy→idle transition. 런을 시작하지 않는 클라이언트 명령
+  // (/clear 등)은 busy가 다시 전환되지 않아 뒤 항목이 영영 갇히므로, 엔진 런이 하나
+  // 시작될 때까지 while 로 연달아 소진한다. 이중 전송 방지: 루프는 전환당 한 번만 돌고
+  // (deps=busy — 항목 추가는 busy 중에만 일어나 effect를 다시 태우지 않는다), 런을
+  // 시작한 순간 멈춘다(다음 idle 전환이 이어받는다).
   const prevBusyRef = useRef(busy)
+  const queueRef = useRef(queue)
+  queueRef.current = queue
   useEffect(() => {
     const was = prevBusyRef.current
     prevBusyRef.current = busy
-    if (busy || !was || queue.length === 0) return
-    const next = queue[0]
-    setQueue((q) => q.slice(1))
-    // 예약 메시지는 자체 텍스트/첨부로 재생 — 실행 중에 새로 쓰던 초안은 건드리지 않는다
-    void runPrompt(next.text, { images: next.images, picker: next.picker, keepDraft: true })
-  }, [busy, queue])
+    if (busy || !was || queueRef.current.length === 0) return
+    void (async () => {
+      while (queueRef.current.length > 0) {
+        const next = queueRef.current[0]
+        queueRef.current = queueRef.current.slice(1)
+        setQueue((q) => q.slice(1))
+        // 예약 메시지는 자체 텍스트/첨부로 재생 — 실행 중에 새로 쓰던 초안은 건드리지 않는다
+        const started = await runPrompt(next.text, { images: next.images, picker: next.picker, keepDraft: true })
+        if (started) break
+      }
+    })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [busy])
 
   // "더 자세히" from the chat selection toolbar: wrap the highlighted passage in a
   // <selection> tag — an XML tag the model parses more reliably than a markdown

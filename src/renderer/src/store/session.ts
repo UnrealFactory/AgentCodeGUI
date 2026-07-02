@@ -350,6 +350,16 @@ function reducer(state: SessionState, action: Action): SessionState {
       }
     }
 
+    case 'notice': {
+      // 엔진 루프의 일반 배너(CLI 알림·한도 경고 등) — 진행 상태는 건드리지 않고 줄만 끼운다
+      const seq = state.seq + 1
+      return {
+        ...state,
+        seq,
+        messages: [...state.messages, { kind: 'notice', id: `n${seq}`, text: e.text, time: nowTime() }]
+      }
+    }
+
     case 'permission-request':
       return { ...state, pendingPermission: { requestId: e.requestId, toolName: e.toolName, summary: e.summary } }
 

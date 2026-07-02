@@ -213,6 +213,15 @@ export interface VerseRegistry {
   setters: Record<string, Record<string, string>> // type → member → SETTER (write) access, when explicit
   docs: Record<string, string> // type name → its doc comment (`#`/`@doc`) — shown when hovering the type in a card
 }
+/**
+ * verseRegistry IPC의 세대(rev) 스냅샷. 메인은 무효화(UEFN 재빌드·저장·문서 언어 토글)마다
+ * rev를 올리고, 렌더러가 보낸 knownRev와 같으면 reg=null(변화 없음)만 돌려줘 큰 페이로드
+ * 직렬화를 건너뛴다. 최상위 null = Verse 파일/프로젝트가 아님(렌더러는 다음 열기에 재시도).
+ */
+export interface VerseRegistrySnapshot {
+  rev: number
+  reg: VerseRegistry | null
+}
 
 // ── Terminal (Bash tool) ─────────────────────────────────────
 export type TermLineType = 'cmd' | 'out' | 'ok' | 'muted' | 'err'
@@ -304,6 +313,9 @@ export type EngineEvent =
       text: string // ready-to-render Korean warning line
       retractMessageId: string | null // 거부된 쪽이 스트리밍하던 메시지 id (없으면 null)
     }
+  // 엔진 루프의 일반 텍스트 배너 — CLI가 REPL에 띄우는 알림(notification)·경고 줄
+  // (informational: 한도 경고, 훅 피드백 등). 스레드에 notice 줄로 그대로 표시한다.
+  | { type: 'notice'; runId: string; text: string }
   | { type: 'error'; runId: string; message: string }
 
 // ── Renderer → Main commands ─────────────────────────────────
@@ -374,6 +386,9 @@ export interface UsageWindow {
 export interface UsageInfo {
   fiveHour: UsageWindow | null
   weekly: UsageWindow | null
+  // Fable 5 전용 주간 한도 (usage API `limits[]`의 weekly_scoped·model=Fable 항목).
+  // 플랜에 이 한도가 없으면 null → UI는 행/필 자체를 숨긴다.
+  weeklyFable: UsageWindow | null
 }
 
 // ── Engine (Claude Code SDK) version management ──────────────

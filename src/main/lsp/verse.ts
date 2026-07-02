@@ -5,6 +5,9 @@ import { spawn } from 'node:child_process'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 import { APP_HOME } from '../engine/versions'
 import { translateVerseDoc } from './verseDocKo'
+import { formatVerseDoc } from './verseDocFormat'
+import { verseIndent, verseDocAbove, verseAttrsAbove, verseEnclosingLine, VERSE_PARENS, VERSE_NAME_TRAIL } from '@shared/verseSyntax'
+import { VERSE_SPECIFIERS, VERSE_ATTRIBUTES, type VerseKw } from '@shared/verseKeywords'
 
 /* ============================================================
  * Verse language server (Epic's verse-lsp). Unlike the other
@@ -151,6 +154,16 @@ export function verseProjectRoot(absFile: string): string | null {
       fs.existsSync(path.join(d, 'Saved', 'VerseProject'))
     )
       return d
+    // UEFN 전역 레이아웃 — digest는 %LOCALAPPDATA%\UnrealEditorFortnite\Saved\VerseProject\<Proj>\…
+    // 아래에 있고, <Proj> 폴더가 vproject\<Proj>.vproject 를 품는다. 여기서 멈추지 않으면 위의
+    // .code-workspace 체크가 한 단계 위(모든 프로젝트의 워크스페이스가 모인 Saved\VerseProject)를
+    // 루트로 잡아 — 엉뚱한 프로젝트의 폴더 세트로 서버가 떠 digest 호버/정의 이동이 전부 죽는다.
+    // 매니페스트의 소스 패키지로 실제 프로젝트 루트를 역추적해(이미 떠 있는 그 프로젝트 서버 재사용),
+    // 못 찾으면 <Proj> 폴더 자체를 루트로 쓴다(findVproject가 이 모양도 읽는다).
+    if (names.some((n) => n.toLowerCase() === 'vproject')) {
+      const owner = verseGlobalDirOwner(d)
+      if (owner !== undefined) return owner ?? d
+    }
     const parent = path.dirname(d)
     if (parent === d) break
     d = parent
@@ -158,38 +171,73 @@ export function verseProjectRoot(absFile: string): string | null {
   return null
 }
 
-// 선언 줄 바로 위의 문서 주석을 모은다 — 연속된 `# …` 줄(과 한 줄짜리 `<# … #>`)과
-// `@doc("…")` 속성. 사이의 다른 속성(@editable 등)은 건너뛰고 더 위의 주석을 계속 찾는다.
-function extractVerseDoc(lines: string[], declLine: number): string {
-  const out: string[] = []
-  for (let i = declLine - 1; i >= 0; i--) {
-    const t = lines[i].trim()
-    if (t === '') break // 빈 줄 — 붙어 있지 않은 주석이므로 중단
-    if (t.startsWith('@')) {
-      const dm = /^@doc\s*\(\s*"((?:[^"\\]|\\.)*)"\s*\)/.exec(t)
-      if (dm) out.unshift(dm[1].replace(/\\(.)/g, '$1'))
-      continue // 다른 속성은 건너뛰고 위쪽 주석을 계속 본다
-    }
-    if (t.startsWith('<#') && t.endsWith('#>')) {
-      out.unshift(t.slice(2, -2).trim())
-      continue
-    }
-    if (t.startsWith('#') && !t.startsWith('#>')) {
-      out.unshift(t.replace(/^#+\s?/, ''))
-      continue
-    }
-    break // 코드 줄 — 중단
+// 전역 <Proj> 폴더(안에 vproject\*.vproject) → 그 매니페스트가 가리키는 실제 프로젝트 루트
+// (.uefnproject/.uproject 조상). undefined = vproject 없음(전역 레이아웃 아님), null = 매니페스트는
+// 있지만 역추적 실패(FortniteGame 등 — 호출자가 d 자체를 루트로 쓴다). 호버마다 불리므로 memo.
+const ownerMemo = new Map<string, string | null | undefined>()
+function verseGlobalDirOwner(d: string): string | null | undefined {
+  const key = d.toLowerCase()
+  if (ownerMemo.has(key)) return ownerMemo.get(key)
+  let out: string | null | undefined
+  const vdir = path.join(d, 'vproject')
+  let vfiles: string[] = []
+  try {
+    vfiles = fs.readdirSync(vdir).filter((n) => n.toLowerCase().endsWith('.vproject'))
+  } catch {
+    /* vproject 폴더 없음 */
   }
-  // 호버에 보이는 최종 문구 — 한국어 보기가 켜져 있고 이 API 주석의 번역이 팩에 있으면
-  // 한국어로, 없으면(유저 코드 주석·신규 API) 영어 원문 그대로. 끄면 무조건 원문.
-  return translateVerseDoc(out.join('\n').trim())
+  if (!vfiles.length) out = undefined
+  else {
+    out = null
+    const pkgs = parseVproject(path.join(vdir, vfiles[0]))
+    for (const p of pkgs ?? []) {
+      const owner = ueProjectAncestor(p.dirPath)
+      if (owner) {
+        out = owner
+        break
+      }
+    }
+  }
+  ownerMemo.set(key, out)
+  return out
 }
 
-// Verse 키워드·지정자·속성·내장 타입 용어집 — verse-lsp는 이 언어 키워드들에 호버를 주지
-// 않으므로(내장 타입은 이름-only 호버만) 직접 설명을 단다. 값은 카드에 그대로 렌더되는
-// 설명(마크다운)이며, `코드 용어`는 백틱으로 감싸 본문과 같은 Verse 색으로 칠해진다.
-// 칩·이름 없이 설명만 보여 준다(B안).
-const VERSE_GLOSSARY: Record<string, string> = {
+// 패키지 폴더에서 위로 걸어 .uefnproject/.uproject 를 품은 실제 프로젝트 루트를 찾는다.
+// digest 패키지(%LOCALAPPDATA% 아래)는 못 찾고 null — 사용자 소스 패키지만 성공한다.
+function ueProjectAncestor(dir: string): string | null {
+  let d = path.resolve(dir)
+  for (let i = 0; i < 24; i++) {
+    let names: string[] = []
+    try {
+      names = fs.readdirSync(d)
+    } catch {
+      /* unreadable — keep walking */
+    }
+    if (names.some((n) => /\.(uefnproject|uproject)$/i.test(n))) return d
+    const parent = path.dirname(d)
+    if (parent === d) break
+    d = parent
+  }
+  return null
+}
+
+// 선언 줄 바로 위의 문서 주석(공유 verseDocAbove — verseMemberDb의 파서와 같은 분류기라
+// 추출 형식이 byte 단위로 일치, 번역 팩 sha1 매칭이 안 어긋난다) + 한국어 번역 + 카드용
+// 마크다운 정리(formatVerseDoc — 구분선 제거·코드 목록 펜스·핵심 용어 백틱). 번역 조회는
+// 원문으로 먼저 하므로 포맷터는 매칭에 영향이 없다. 호버에 보이는 최종 문구 — 한국어 보기가
+// 켜져 있고 이 API 주석의 번역이 팩에 있으면 한국어로, 없으면(유저 코드 주석·신규 API) 영어
+// 원문 그대로. 끄면 무조건 원문.
+function extractVerseDoc(lines: string[], declLine: number): string {
+  return formatVerseDoc(translateVerseDoc(verseDocAbove(lines, declLine)))
+}
+
+// Verse 키워드·내장 타입 용어집 — verse-lsp는 이 언어 키워드들에 호버를 주지 않으므로
+// (내장 타입은 이름-only 호버만) 직접 설명을 단다. 값은 카드에 그대로 렌더되는 설명
+// (마크다운)이며, `코드 용어`는 백틱으로 감싸 본문과 같은 Verse 색으로 칠해진다.
+// 칩·이름 없이 설명만 보여 준다(B안). 여기엔 진짜 예약어만 — 사용자 식별자와 충돌할 수
+// 있는 <지정자>·@속성 이름은 아래 SPEC/ATTR 용어집(공유 어휘)으로 분리해, 각각 `<…>` 안
+// / `@` 컨텍스트에서만 답한다.
+const VERSE_KEYWORD_GLOSSARY: Record<string, string> = {
   // 선언 키워드
   class: '객체 타입을 정의합니다. 변수에 담아도 복사되지 않고 원본을 가리키며, 상속과 메서드를 가질 수 있습니다.',
   struct: '데이터를 묶는 타입을 정의합니다. 대입하거나 넘길 때 전체가 그대로 복사되어 원본과 따로 동작하며, 상속은 하지 않습니다.',
@@ -253,78 +301,31 @@ const VERSE_GLOSSARY: Record<string, string> = {
   map: '키로 값을 찾는 묶음입니다. `[K]V` 로도 표기합니다.',
   weak_map: '영속 저장에 주로 사용하는 특수한 맵입니다. 전체를 순회하거나 한꺼번에 읽을 수는 없고, 항목 하나씩만 다룰 수 있습니다.',
   where: '타입 자체를 매개변수로 받게 해줍니다. 어떤 타입이 들어와도 그 타입 정보를 그대로 보존합니다.',
-  // 접근 범위 지정자
-  public: '어디서나 사용할 수 있습니다.',
-  private: '선언한 클래스나 모듈 안에서만 보이고, 그 밖에서는 사용할 수 없습니다.',
-  protected: '선언한 클래스와 그 자식 클래스에서만 사용할 수 있습니다.',
-  internal: '같은 모듈 안에서만 사용할 수 있습니다.',
-  scoped: '어느 범위에서 사용할 수 있는지 직접 지정하는 세밀한 접근 지정자입니다. 정해진 단계 대신 허용 범위를 명시적으로 지정합니다.',
-  epic_internal: 'Epic 내부에서만 사용하며 일반 코드에서는 사용할 수 없습니다.',
-  // 효과 지정자
-  computes: '같은 입력에는 항상 같은 결과를 주고, 함수 밖의 값은 읽지도 바꾸지도 않습니다.',
-  converges: '반드시 끝나며 무한히 도는 일이 없습니다.',
-  reads: '함수 밖의 값(다른 객체나 변수)을 읽습니다.',
-  writes: '함수 밖의 값(다른 객체나 변수)을 바꿉니다.',
-  transacts: '도중에 실패하면 그동안 바꾼 값을 자동으로 되돌립니다.',
-  decides: '성공하거나 실패할 수 있는 식이고, 실패하면 그 자리에서 멈춥니다. `if` 나 `for` 같은 곳에서만 사용할 수 있습니다.',
-  suspends: '실행을 잠시 멈췄다 나중에 이어서 합니다. 비동기 작업에 붙습니다.',
-  varies: '같은 입력이어도 호출할 때마다 결과가 달라질 수 있습니다.',
-  no_rollback: '여기서 한 일은 실패하더라도 되돌릴 수 없습니다.',
-  allocates: '호출할 때마다 새 객체를 만들어, 매번 다른 값으로 취급됩니다.',
-  predicts: '서버가 확정하기 전에 클라이언트가 먼저 실행합니다.',
-  // 그 밖의 지정자
-  native: '실제 동작이 엔진 쪽에 구현돼 있습니다.',
-  native_callable: '엔진이나 블루프린트에서 호출할 수 있게 열어 둡니다.',
-  override: '부모 클래스의 메서드를 새로 덮어써 다시 정의합니다.',
-  final: '더 이상 덮어쓰거나 상속할 수 없게 합니다. 클래스에 붙이면 자식 클래스를, 필드·메서드에 붙이면 재정의를 막습니다.',
-  final_super: '상위 클래스로 이어지는 호출 체인을 더 이상 바꿀 수 없게 고정합니다.',
-  final_super_base: '`<final_super>` 의 베이스 버전으로, 상속 구조의 맨 아래에서 상위 호출 체인을 고정합니다.',
-  abstract: '이것만으로는 만들 수 없고 자식 클래스가 나머지를 구현해야 합니다. 본문 없는 메서드를 선언할 수 있습니다.',
-  unique: '인스턴스마다 고유해서, 두 값이 같은 객체인지 비교할 수 있습니다.',
-  concrete: '모든 항목에 기본값이 있어 값을 채우지 않아도 바로 만들 수 있습니다.',
-  castable: '실행 중에 타입을 확인하거나 바꿀 수 있습니다.',
-  constructor: '객체를 만들어 주는 함수입니다.',
-  getter: '프로퍼티 값을 읽는 통로입니다.',
-  setter: '프로퍼티 값을 바꾸는 통로입니다.',
-  open: '다른 모듈에서 멤버를 더 추가할 수 있습니다.',
-  closed: '다른 모듈에서 멤버를 더 추가할 수 없습니다.',
-  persistable: '게임을 꺼도 저장되어 남을 수 있는 타입입니다. 보통 `<final>` 과 함께 사용합니다.',
-  persistent: '게임을 꺼도 저장되어 남는 데이터입니다. 보통 `<final>` 과 함께 사용합니다.',
-  localizes: '여러 언어로 번역되는 글자나 메시지를 만듭니다.',
-  // 엔진 내부 지정자 — 엔진 API 정의/네이티브 선언에만 나오고 일반 코드에서 직접 쓸 일이 거의 없다.
-  uht_comparable: 'UnrealHeaderTool(UHT)에서 비교 가능한 타입으로 다루도록 표시하는 엔진 내부 지정자입니다. 일반 코드에서 직접 쓸 일은 거의 없습니다.',
-  module_scoped_var_weak_map_key: '`weak_map` 의 키로 쓰이는 모듈 범위 변수를 표시하는 엔진 내부 지정자입니다. 일반 코드에서 직접 쓸 일은 거의 없습니다.',
-  mesh_part_field: '메시 파트와 연결되는 필드를 표시하는 엔진 내부 지정자입니다. 일반 코드에서 직접 쓸 일은 거의 없습니다.',
   // 특수 이름
   super: '부모 클래스를 가리킵니다.',
-  Self: '지금 이 클래스 자신을 가리킵니다.',
-  // 속성(@…)
-  editable: '에디터에서 값을 직접 바꿀 수 있게 노출합니다.',
-  doc: '심볼에 설명 글을 답니다.',
-  available: '어느 버전부터 사용할 수 있는지 표시합니다.',
-  deprecated: '더 이상 권장하지 않는 기능입니다. 앞으로 제거될 수 있으니 대체 기능으로 옮기는 것이 좋습니다.',
-  experimental: '아직 실험 단계라 나중에 바뀔 수 있습니다.',
-  // 엔진/컴파일러 내장 속성 — 주로 엔진 API 정의에 나타나며 일반 코드에서 직접 쓸 일은 거의 없다.
-  import_as: '이 심볼을 원래 어느 경로·이름으로 가져왔는지 기록하는 엔진 내부 속성입니다. 주로 엔진 API 정의에 나타나며, 일반 코드에서 직접 쓸 일은 거의 없습니다.',
-  vm_no_effect_token: '가상 머신(VM)이 이 함수를 이펙트 토큰 전달 없이 호출하도록 표시하는 엔진 내부 속성입니다. 일반 코드에서 직접 쓸 일은 거의 없습니다.',
-  rtfm_always_open: '생성되는 Verse API 문서에서 이 항목을 항상 펼친 상태로 보이게 하는 엔진 내부 문서화 속성입니다.',
-  // 속성을 "정의"할 때 붙이는 메타 속성 — `@editable` 같은 속성의 정의 위에 달린다. 엔진 API 정의엔
-  // 문서 주석이 없어 직접 설명한다(엔진/컴파일러 내장이라 일반 코드에서 새로 만들 일은 거의 없다).
-  attribscope_class: '정의 중인 속성을 클래스 멤버에 붙일 수 있게 허용하는 적용 범위 표시입니다.',
-  attribscope_struct: '정의 중인 속성을 구조체 멤버에 붙일 수 있게 허용하는 적용 범위 표시입니다.',
-  attribscope_data: '정의 중인 속성을 데이터 정의에 붙일 수 있게 허용하는 적용 범위 표시입니다.',
-  attribscope_enum: '정의 중인 속성을 `enum` 에 붙일 수 있게 허용하는 적용 범위 표시입니다.',
-  attribscope_interface: '정의 중인 속성을 인터페이스에 붙일 수 있게 허용하는 적용 범위 표시입니다.',
-  attribscope_module: '정의 중인 속성을 모듈에 붙일 수 있게 허용하는 적용 범위 표시입니다.',
-  customattribhandler: '이 속성을 엔진이 전용 로직으로 처리한다는 표시입니다. `@editable` 같은 내장 속성을 정의할 때 씁니다.'
+  Self: '지금 이 클래스 자신을 가리킵니다.'
 }
+
+// <지정자>·@속성 설명 — 자동완성 목록과 같은 공유 어휘(shared/verseKeywords)에서 파생하므로
+// 두 화면(호버·완성)이 어긋날 수 없다. getter/available 같은 이름은 예약어가 아니라 사용자
+// 식별자와 충돌할 수 있으므로, 지정자는 `<…>` 안(specAt)·속성은 `@` 컨텍스트(attrAt)에서만 답한다.
+const byName = (list: VerseKw[]): Record<string, string> => {
+  const out: Record<string, string> = {}
+  for (const k of list) if (k.doc) out[k.name] = k.doc
+  return out
+}
+const VERSE_SPEC_GLOSSARY: Record<string, string> = byName(VERSE_SPECIFIERS)
+const VERSE_ATTR_GLOSSARY: Record<string, string> = byName(VERSE_ATTRIBUTES)
 
 /**
  * If the token under the cursor is a Verse keyword / specifier / attribute / built-in type,
  * return our own description (B안: 칩·이름 없이 설명만). verse-lsp gives no hover for these,
  * or only a useless name-only one for built-in types, so we supply it. Returns markdown or null.
- * Every glossary key is a Verse reserved word, so it can't collide with a user identifier —
- * membership alone is enough (wordAt matches whole tokens, so `set` won't fire inside `settings`).
+ * 발동 컨텍스트를 종류별로 가른다 — 키워드·내장 타입은 전부 예약어라 bare 단어 매칭으로
+ * 충분하지만, 속성(@doc·@available…)·지정자(getter·persistent…) 이름은 예약어가 아니어서
+ * 같은 이름의 사용자 필드/변수와 충돌한다(예: `Available:int` 필드에 속성 설명이 뜨던 버그).
+ * 그래서 속성은 `@` 컨텍스트(attrAt), 지정자는 `<…>` 안(specAt)에서만 답하고, 그 밖의
+ * 위치에서는 verse-lsp의 진짜 심볼 호버로 흘려보낸다.
  */
 export async function verseKeywordDoc(absFile: string, line: number, col: number, text?: string): Promise<string | null> {
   let raw: string
@@ -342,16 +343,32 @@ export async function verseKeywordDoc(absFile: string, line: number, col: number
   const attr = attrAt(raw, col)
   if (attr) {
     // Object.hasOwn: keep 'toString'/'constructor' (Object.prototype keys) from matching as attrs.
-    const desc = Object.hasOwn(VERSE_GLOSSARY, attr)
-      ? VERSE_GLOSSARY[attr]
+    const desc = Object.hasOwn(VERSE_ATTR_GLOSSARY, attr)
+      ? VERSE_ATTR_GLOSSARY[attr]
       : attr.startsWith('editable_')
-        ? VERSE_GLOSSARY.editable
+        ? VERSE_ATTR_GLOSSARY.editable
         : undefined
     if (desc) return `### attribute \`${attr}\`\n\n${desc}`
   }
+  // `<지정자>` — 꺾쇠 안일 때만. verse-lsp는 지정자에 호버가 없으므로 여기서만 답해도 손해가 없다.
+  const spec = specAt(raw, col)
+  if (spec && Object.hasOwn(VERSE_SPEC_GLOSSARY, spec)) return VERSE_SPEC_GLOSSARY[spec]
   const word = wordAt(raw, col)
   // Object.hasOwn: 'constructor'·'toString' 같은 Object.prototype 키를 설명으로 잘못 잡지 않게
-  return word && Object.hasOwn(VERSE_GLOSSARY, word) ? VERSE_GLOSSARY[word] : null
+  return word && Object.hasOwn(VERSE_KEYWORD_GLOSSARY, word) ? VERSE_KEYWORD_GLOSSARY[word] : null
+}
+
+// The `<specifier>` name when the caret is inside an angle-bracket specifier token — the word's
+// start is immediately preceded by '<' AND its end is followed by '>' or '(' (인자형 <getter(Fn)>).
+// `a < b` 비교는 붙여 써도 뒤가 '>'/'('가 아니면 안 걸리고, `x<final>`꼴은 문법상 지정자다.
+function specAt(line: string, col: number): string | null {
+  const w = wordAt(line, col)
+  if (!w) return null
+  let a = col
+  while (a > 0 && /[A-Za-z0-9_]/.test(line[a - 1])) a--
+  if (line[a - 1] !== '<') return null
+  const after = line[a + w.length]
+  return after === '>' || after === '(' ? w : null
 }
 
 // The `@attribute` name when the caret is on an attribute token — on the '@' itself (name follows)
@@ -369,7 +386,7 @@ function attrAt(line: string, col: number): string | null {
 }
 
 // `?` 는 Verse의 옵션 연산자로 위치에 따라 의미가 셋이다 — verse-lsp는 호버를 안 주고 `wordAt`도
-// 기호를 안 잡으므로(글로서리처럼) 직접 설명한다. VERSE_GLOSSARY와 같은 톤(설명만, B안).
+// 기호를 안 잡으므로(글로서리처럼) 직접 설명한다. VERSE_KEYWORD_GLOSSARY와 같은 톤(설명만, B안).
 const VERSE_Q_OPTION = '옵션 타입입니다. 값이 있을 수도(그 값), 없을 수도(`false`) 있습니다.'
 const VERSE_Q_QUERY = '옵션에 값이 있으면 그 값을 꺼내 성공하고, 없으면 실패합니다. `if` 나 `for` 같은 실패가 허용되는 곳에서 씁니다.'
 const VERSE_Q_PARAM = '기본값이 있어 생략할 수 있는 이름 매개변수입니다.'
@@ -391,7 +408,7 @@ export async function verseSymbolDoc(absFile: string, line: number, col: number,
   // the `?` at the caret, or just left of it (hovering the char right after also counts)
   const i = raw[col] === '?' ? col : raw[col - 1] === '?' ? col - 1 : -1
   if (i < 0) return null
-  const hash = raw.indexOf('#') // ignore a `?` inside a line comment
+  const hash = verseCommentStart(raw) // ignore a `?` inside a line comment
   if (hash >= 0 && hash < i) return null
   // postfix `expr?` — the char immediately before is an identifier or a closing bracket
   if (/[A-Za-z0-9_)\]]/.test(raw[i - 1] ?? '')) return VERSE_Q_QUERY
@@ -410,6 +427,21 @@ export async function verseDocAt(absFile: string, line: number, text?: string): 
   } catch {
     return ''
   }
+}
+
+// 줄에서 문자열 밖의 첫 `#`(주석 시작) 인덱스, 없으면 -1 — `"color #fff"` 같은 문자열 안의
+// `#`에 낚이지 않게 한다. Verse 문자열은 "…"이고 주석 판정엔 \" 이스케이프 처리면 충분하다.
+function verseCommentStart(line: string): number {
+  let inStr = false
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i]
+    if (inStr) {
+      if (c === '\\') i++
+      else if (c === '"') inStr = false
+    } else if (c === '"') inStr = true
+    else if (c === '#') return i
+  }
+  return -1
 }
 
 // the identifier under a column, or null
@@ -436,35 +468,14 @@ function balancedParen(s: string, open: number): number {
   return -1
 }
 
-// The type whose body encloses `declLine` — the nearest `Name := class|struct|enum|interface` header
-// above it at a SHALLOWER indent. Used to qualify a synthesized member card (`(/Type:)Field…`).
+// The type whose body truly ENCLOSES `declLine` — 공유 verseEnclosingLine(min-indent walk)으로
+// 진짜 조상만 인정한다("위로 첫 매치"는 앞서 지나간, 감싸지 않는 타입을 잡았다). Used to
+// qualify a synthesized member card (`(/Type:)Field…`). VERSE_NAME_TRAIL: 파라미터형 타입
+// `chat_channel<…>(member_info:subtype(…)) := class…`의 타입 매개변수도 지나간다.
+const VERSE_TYPE_HEADER = new RegExp(String.raw`^([A-Za-z_]\w*)${VERSE_NAME_TRAIL}\s*:=\s*(?:class|struct|enum|interface)\b`)
 function verseEnclosingType(lines: string[], declLine: number): string | null {
-  const declIndent = verseIndent(lines[declLine] ?? '')
-  for (let i = declLine - 1; i >= 0; i--) {
-    const t = (lines[i] ?? '').trim()
-    if (!t || t.startsWith('#') || t.startsWith('@')) continue
-    const tm = /^([A-Za-z_]\w*)(?:<[^>]*>|\([^()]*\))*\s*:=\s*(?:class|struct|enum|interface)\b/.exec(t)
-    if (tm && verseIndent(lines[i] ?? '') < declIndent) return tm[1]
-  }
-  return null
-}
-
-// `@editable` / `@experimental` 등 선언 줄 바로 위의 @속성 이름들(붙어 있는 블록 안). `@doc`는
-// 문서 본문으로 따로 처리하므로 제외. extractVerseDoc과 같은 위쪽 스캔 규칙(빈 줄/코드 줄에서 중단).
-function verseDeclAttrs(lines: string[], declLine: number): string[] {
-  const out: string[] = []
-  for (let i = declLine - 1; i >= 0; i--) {
-    const t = (lines[i] ?? '').trim()
-    if (t === '') break
-    if (t.startsWith('@')) {
-      const am = /^@([A-Za-z_]\w*)/.exec(t)
-      if (am && am[1] !== 'doc') out.unshift(am[1])
-      continue
-    }
-    if (t.startsWith('#') || (t.startsWith('<#') && t.endsWith('#>'))) continue
-    break // 코드 줄 — 중단
-  }
-  return out
+  const h = verseEnclosingLine(lines, declLine, (t) => VERSE_TYPE_HEADER.test(t))
+  return h >= 0 ? (VERSE_TYPE_HEADER.exec(lines[h].trim())?.[1] ?? null) : null
 }
 
 /**
@@ -489,14 +500,20 @@ export async function verseDeclHover(absFile: string, line: number, col: number,
   // 선언 위의 @속성들 — verse-lsp는 사용처 호버에서 이를 `<editable>` 지정자로 접어 주지만 선언부엔
   // 호버가 없다. 같은 모양(`<attr>`)으로 sig의 이름 뒤에 실어, 카드가 사용처와 동일하게 ATTRIBUTES
   // 행을 그리게 한다(@속성/지정자 구분은 렌더러 splitVerseSpecs가 한다).
-  const attrSpecs = verseDeclAttrs(lines, line)
+  const attrSpecs = verseAttrsAbove(lines, line)
     .map((a) => `<${a}>`)
     .join('')
   let sig: string | null = null
   let isMember = false // ②/③ are members of an enclosing type; ① is the type itself
-  // ① 타입 선언: Name<specs> := class|struct|enum|interface|module<specs>(super)?
-  let m = /^([A-Za-z_]\w*)((?:<[^>]*>)*)\s*:=\s*(class|struct|enum|interface|module)\b((?:<[^>]*>)*)/.exec(s)
-  if (m && m[1] === word) sig = `${m[3]} ${m[1]}${m[2]}${attrSpecs}${m[4]}`
+  // ① 타입 선언: Name<specs>(typeparams)? := class|struct|enum|interface|module<specs>(super)?
+  //    digest의 파라미터형 타입(`chat_channel<…>(member_info:subtype(…)) := class…`)도 잡는다 —
+  //    타입 매개변수 리스트는 sig에서 뺀다(카드 파서 eatSpecs가 '('에서 멈춰 뒤 지정자를 잃는다;
+  //    매개변수는 어차피 호버 중인 선언 줄에 그대로 보인다).
+  let m = new RegExp(String.raw`^([A-Za-z_]\w*)(${VERSE_NAME_TRAIL})\s*:=\s*(class|struct|enum|interface|module)\b((?:<[^>]*>)*)`).exec(s)
+  if (m && m[1] === word) {
+    const specs = m[2].replace(new RegExp(VERSE_PARENS, 'g'), '') // <지정자>만 남기고 (타입 매개변수) 제거
+    sig = `${m[3]} ${m[1]}${specs}${attrSpecs}${m[4]}`
+  }
   // ② 함수/메서드: [(receiver).|(/Module:)] Name<specs>(params)<effects>:ret [= …]
   //    · 네이티브 선언은 `= 본문`이 없어 `:ret`에서 끝난다 → `=`는 선택적
   //    · 확장 메서드는 `(Recv:type …).Name…`로 시작(리시버는 떼어냄), 자유 함수는 `(/Module:)Name…`(한정자 보존)
@@ -545,22 +562,8 @@ export async function verseDeclHover(absFile: string, line: number, col: number,
   return '```verse\n' + sig + '\n```' + (doc ? '\n\n' + doc : '')
 }
 
-// Indentation depth in levels (tab or 4 spaces = 1 level), to tell a class-body field from a
-// method-body local.
-function verseIndent(line: string): number {
-  let i = 0
-  let lvl = 0
-  for (;;) {
-    if (line[i] === '\t') {
-      lvl++
-      i++
-    } else if (line.startsWith('    ', i)) {
-      lvl++
-      i += 4
-    } else break
-  }
-  return lvl
-}
+// 클래스류 타입 헤더 — 파라미터형(`name<…>(t:…)`) 포함. isMethodLocal의 감싸는-타입 판정용.
+const CLASSY = new RegExp(String.raw`^[A-Za-z_]\w*${VERSE_NAME_TRAIL}\s*:=\s*(?:class|struct|interface)\b`)
 
 /**
  * Synthesize a hover card for a Verse *local variable* or *parameter* — verse-lsp gives no hover
@@ -591,23 +594,35 @@ export async function verseLocalHover(
   const card = (kind: string, type?: string): string =>
     `### ${kind} \`${word}\`` + (type && type.trim() ? `\nType: \`${type.trim()}\`` : '')
   // A binding at line bi is a class-body member field (not a local) when its indent equals the
-  // body indent of the nearest enclosing class/struct/interface (= header indent + 1). Deeper
-  // ⇒ inside a method ⇒ a true local. No enclosing type ⇒ treat as local (module-level binding).
+  // body indent of the truly ENCLOSING class/struct/interface (= header indent + 1, 공유
+  // verseEnclosingLine의 min-indent walk — 앞서 지나간 감싸지 않는 클래스는 잡지 않는다).
+  // Deeper ⇒ inside a method ⇒ a true local. No enclosing type ⇒ local (module-level binding).
   const isMethodLocal = (bi: number): boolean => {
-    for (let j = bi; j >= 0; j--) {
-      if (/^\s*[A-Za-z_]\w*\s*(?:<[^>]*>)*\s*:=\s*(?:class|struct|interface)\b/.test(lines[j] ?? '')) {
-        return verseIndent(lines[bi]) > verseIndent(lines[j]) + 1
-      }
-    }
-    return true
+    const h = verseEnclosingLine(lines, bi, (t) => CLASSY.test(t))
+    if (h < 0) return true
+    return verseIndent(lines[bi]) > verseIndent(lines[h]) + 1
   }
+  // 위로 스캔하되 렉시컬 스코프를 존중한다: 지금까지 본 최소 들여쓰기(min)보다 깊은 줄은 딴
+  // 블록 안이라 이 위치에서 보이지 않는 바인딩이므로 건너뛴다. min보다 얕은 줄이 곧 조상이고,
+  // 매개변수(함수 헤더)는 조상(또는 호버 줄 자신)일 때만 인정한다 — 형제 함수의 같은 이름
+  // 매개변수/지역이 이 위치의 바인딩으로 오인되던 것을 막는다.
+  let min = verseIndent(lines[line] ?? '')
   for (let i = line; i >= 0; i--) {
-    const t = (lines[i] ?? '').trim()
-    // parameter — single-line function-definition header `Name(… word : type …)<effects>:ret =`
-    const fh = /^[A-Za-z_]\w*(?:<[^>]*>)*\s*\(([\s\S]*?)\)(?:<[^>]*>)*\s*:[^=]*=/.exec(t)
-    if (fh) {
-      const pm = new RegExp(`(?:^|[(,]\\s*)\\??\\s*${word}\\s*:\\s*([^,)]+)`).exec('(' + fh[1])
-      if (pm) return card('Parameter', pm[1])
+    const raw2 = lines[i] ?? ''
+    const t = raw2.trim()
+    if (!t || t.startsWith('#') || t.startsWith('@') || /^[)\]}]/.test(t)) continue
+    const ind = verseIndent(raw2)
+    if (i !== line && ind > min) continue // 더 깊은(딴) 블록 — 스코프 밖
+    const ancestor = i !== line && ind < min
+    // parameter — single-line function-definition header `Name(… word : type …)<effects>:ret =`,
+    // 감싸는 헤더(조상)거나 호버 줄 자신일 때만. `:(?!=)` — 파라미터형 타입 선언
+    // (`name<…>(t:…) := class…`)의 `:=`가 함수 헤더의 `:반환형 =`으로 오인되지 않게.
+    if (ancestor || i === line) {
+      const fh = /^[A-Za-z_]\w*(?:<[^>]*>)*\s*\(([\s\S]*?)\)(?:<[^>]*>)*\s*:(?!=)[^=]*=/.exec(t)
+      if (fh) {
+        const pm = new RegExp(`(?:^|[(,]\\s*)\\??\\s*${word}\\s*:\\s*([^,)]+)`).exec('(' + fh[1])
+        if (pm) return card('Parameter', pm[1])
+      }
     }
     // `var` declaration — local only when inside a method body (else it's a member field →
     // verse-lsp). NOTE: `set X = …` is a re-assignment, not a declaration, so it's excluded — we
@@ -634,6 +649,7 @@ export async function verseLocalHover(
     // typed local/field statement — `word : type = …`
     const tm = new RegExp(`^${word}\\s*:\\s*([^=]+?)\\s*=`).exec(t)
     if (tm) return isMethodLocal(i) ? card('Local Variable', tm[1]) : null
+    if (ancestor) min = ind
   }
   return null
 }
@@ -673,6 +689,18 @@ function findVproject(root: string): string | null {
   if (uprojName) {
     const det = path.join(base, uprojName, 'vproject', `${uprojName}.vproject`)
     if (fs.existsSync(det)) return det
+  }
+  // root 자체가 UEFN 전역 <Proj> 폴더인 경우(%LOCALAPPDATA%\…\Saved\VerseProject\<Proj>) —
+  // 매니페스트가 root\vproject\ 바로 아래에 있다. verseProjectRoot가 실제 프로젝트 역추적에
+  // 실패해 이 폴더를 루트로 넘겼을 때(digest를 단독으로 볼 때)의 경로.
+  try {
+    const own = fs.readdirSync(path.join(root, 'vproject')).find((n) => n.toLowerCase().endsWith('.vproject'))
+    if (own) {
+      const p = path.join(root, 'vproject', own)
+      if (parseVproject(p)) return p
+    }
+  } catch {
+    /* no local vproject dir */
   }
   // fallback: scan <base>/*/vproject/*.vproject and take the first valid one
   try {

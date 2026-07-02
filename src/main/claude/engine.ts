@@ -84,7 +84,9 @@ interface StreamEvent {
 interface SdkMsg {
   type: string
   subtype?: string
-  message?: { content?: ContentBlock[] | string; usage?: UsageInfo }
+  // message.model: 이 assistant 프레임을 실제로 생성한 모델 id — 세션 중 전환(한도·과부하
+  // 폴백 등)을 원인 불문 감지하는 안전망으로 쓴다
+  message?: { content?: ContentBlock[] | string; usage?: UsageInfo; model?: string }
   event?: StreamEvent // present on 'stream_event' messages (partial streaming)
   parent_tool_use_id?: string | null
   session_id?: string
@@ -103,6 +105,11 @@ interface SdkMsg {
   original_model?: string
   fallback_model?: string
   api_refusal_category?: string | null
+  // system/notification (REPL 알림 큐 미러) · system/informational (루프 배너)
+  text?: string
+  content?: string
+  level?: string
+  priority?: string
 }
 
 interface PermissionResult {
@@ -284,6 +291,10 @@ export class ClaudeEngine {
     // banners already emitted from onUserDialog — the end-of-turn
     // model_refusal_fallback notice for the same fallback is then skipped
     let pendingFallbackNotices = 0
+    // 지금 답변을 생성 중인 모델(표시명) — assistant 프레임의 model 필드로 추적해, 세션
+    // 중 전환(한도 도달·모델 과부하 폴백 등 거부 이외의 원인 포함)을 감지해 배너를 띄운다.
+    // 거부 폴백 경로는 배너를 직접 띄우면서 이 값을 갱신하므로 이중 배너가 뜨지 않는다.
+    let curModelDisplay = ''
 
     try {
       if (!query) {
@@ -361,6 +372,7 @@ export class ClaudeEngine {
               // a fresh bubble, not append to it
               retractMessageId: curTextId
             })
+            curModelDisplay = modelKey(p.fallbackModel) || curModelDisplay
             curTextId = null
             curThinking = ''
             streamedThisMsg = false
@@ -401,6 +413,9 @@ export class ClaudeEngine {
             cwd: msg.cwd ?? cwd,
             tools: msg.tools ?? []
           })
+          // 전환 감지의 기준점 — init이 준 풀 모델 id만 신뢰(짧은 별칭이면 첫 assistant
+          // 프레임이 기준점을 잡는다)
+          curModelDisplay = modelKey(msg.model) || curModelDisplay
           continue
         }
 
@@ -410,6 +425,7 @@ export class ClaudeEngine {
         // the only signal, so emit the banner from here. Never retract here: at end
         // of turn the live stream id may already belong to the retried (good) answer.
         if (msg.type === 'system' && msg.subtype === 'model_refusal_fallback') {
+          curModelDisplay = modelKey(msg.fallback_model) || curModelDisplay
           if (pendingFallbackNotices > 0) {
             pendingFallbackNotices--
           } else {
@@ -421,6 +437,24 @@ export class ClaudeEngine {
               text: fallbackNotice(msg.original_model, msg.fallback_model, msg.api_refusal_category),
               retractMessageId: null
             })
+          }
+          continue
+        }
+
+        // CLI 루프 배너 — REPL 알림(notification: 한도 경고·모델 전환 사유 등)과 눈에 띄는
+        // 정보 줄(informational: warning/suggestion). CLI가 사용자에게 보여주는 것이니 우리도
+        // 스레드에 notice 줄로 표시한다. 'info'(transcript 전용)·'notice'(도구 진행줄이 섞여
+        // 소란) 레벨과 tool_use_id 달린 진행줄은 건너뛴다.
+        if (msg.type === 'system' && msg.subtype === 'notification') {
+          const text = msg.text?.trim()
+          if (text) this.emit({ type: 'notice', runId, text })
+          continue
+        }
+        if (msg.type === 'system' && msg.subtype === 'informational') {
+          const text = msg.content?.trim()
+          const prominent = msg.level === 'warning' || msg.level === 'suggestion'
+          if (text && prominent && !(msg as { tool_use_id?: string }).tool_use_id) {
+            this.emit({ type: 'notice', runId, text })
           }
           continue
         }
@@ -459,6 +493,25 @@ export class ClaudeEngine {
         }
 
         if (msg.type === 'assistant') {
+          // 세션 중 모델 전환 감지(원인 불문 안전망) — 이 프레임을 만든 모델이 직전과 다르면
+          // 배너 + picker 동기화(model-fallback 이벤트 재사용). 거부 폴백 경로는 위에서 이미
+          // 배너를 띄우며 curModelDisplay를 갱신하므로 이중으로 뜨지 않고, [1m] 컨텍스트
+          // 변형 전환은 표시명이 같아 걸리지 않는다.
+          const mk = modelKey(msg.message?.model)
+          if (mk) {
+            if (!curModelDisplay) curModelDisplay = mk
+            else if (mk !== curModelDisplay) {
+              this.emit({
+                type: 'model-fallback',
+                runId,
+                fromModel: curModelDisplay,
+                toModel: msg.message?.model ?? mk,
+                text: `모델이 ${curModelDisplay}에서 ${mk}로 전환되었어요. 이후 답변은 ${mk}로 생성됩니다.`,
+                retractMessageId: null
+              })
+              curModelDisplay = mk
+            }
+          }
           // live context estimate: each assistant turn's usage reflects the
           // conversation so far → update the gauge before the final result lands.
           const ctx = contextFromUsage(msg.message?.usage)
@@ -823,6 +876,14 @@ function modelDisplay(id: unknown): string {
   const m = /claude-(fable|opus|sonnet|haiku)-(\d+)(?:-(\d{1,2}))?\b/i.exec(s)
   if (!m) return s || '다른 모델'
   return m[1][0].toUpperCase() + m[1].slice(1).toLowerCase() + ' ' + m[2] + (m[3] ? '.' + m[3] : '')
+}
+
+// modelDisplay의 엄격판 — 풀 모델 id로 파싱될 때만 표시명을, 아니면 ''. 전환 감지의 비교
+// 키로 쓴다: 짧은 별칭('fable')이나 빈 값이 기준점을 오염시켜 가짜 전환 배너를 띄우지 않게.
+// [1m] 컨텍스트 변형은 같은 표시명으로 정규화돼 전환으로 치지 않는다.
+function modelKey(id: unknown): string {
+  const s = typeof id === 'string' ? id : ''
+  return /claude-(fable|opus|sonnet|haiku)-\d/i.test(s) ? modelDisplay(s) : ''
 }
 
 // stop_details.category 코드 → 한국어 라벨. Open string — 새 분류가 스키마보다

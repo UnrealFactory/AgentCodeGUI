@@ -23,6 +23,7 @@ import {
 } from './verse'
 import {
   verseMemberContext,
+  verseDotContext,
   verseHasType,
   verseTypeFromHover,
   verseResolveTypeRegex,
@@ -31,7 +32,10 @@ import {
   verseExtMethods,
   verseIsTypePosition,
   verseBuiltinTypeItems,
-  verseRegistry as verseMemberDbRegistry
+  verseRegistry as verseMemberDbRegistry,
+  verseRegistryRev,
+  invalidateVerseMemberCache,
+  clearVerseMemberCache
 } from './verseMemberDb'
 import { getCached, setCached, gcDeadBuckets } from './semcache'
 import { APP_HOME } from '../engine/versions'
@@ -841,6 +845,19 @@ class LspManager {
     this.maybeUeDb(root)
     const def = this.detectProjectServer(root)
     if (def && def.command(root)) void this.ensure(def, root)
+    // Verse 워크스페이스면 멤버 DB(digest/소스 파스)도 지금 데워 둔다 — 안 그러면 첫 완성/
+    // 레지스트리 요청이 동기 파싱을 통째로 물어 수백 ms 걸릴 수 있다. verse-lsp exe가 없어도
+    // 색칠 레지스트리는 이 DB에서 나오므로 폴더 구조만 보이면 데운다. setTimeout(0)으로 프로젝트
+    // 열기 직후의 바쁜 프레임(파일 트리·프리워밍 IPC)을 피해 다음 틱으로 미룬다.
+    if (def?.id === 'verse' || verseWorkspaceFolders(root)) {
+      setTimeout(() => {
+        try {
+          verseMemberDbRegistry(root)
+        } catch {
+          /* 예열 실패는 무해 — 첫 요청이 다시 만든다 */
+        }
+      }, 0)
+    }
   }
 
   /** cwd의 주력 언어 서버를 값싼 파일 시그널로 추정 — 못 찾으면 null. */
@@ -856,6 +873,8 @@ class LspManager {
     let id: string | null = null
     // .uproject가 cwd에 없어도 조상에 있으면 UE 하위폴더를 연 것 — cpp로 본다
     if (has(/\.uproject$/) || ueRoot(root)) id = 'cpp'
+    // UEFN 크리에이티브 프로젝트(.uefnproject, .uproject 없음)의 주력 언어는 Verse
+    else if (has(/\.uefnproject$/)) id = 'verse'
     else if (has(/\.slnx?$/) || has(/\.csproj$/)) id = 'cs'
     else if (has(/^tsconfig.*\.json$/) || has(/^package\.json$/)) id = 'ts'
     else if (has(/^pyproject\.toml$/) || has(/^requirements\.txt$/) || has(/^setup\.py$/)) id = 'py'
@@ -923,6 +942,7 @@ class LspManager {
    *  verse server first so the destination binary isn't file-locked during copy. */
   async setVersePath(srcPath: string): Promise<{ ok: boolean; error?: string }> {
     this.stopServers('verse')
+    clearVerseMemberCache() // 서버 재구성 — 파스 캐시도 처음부터
     await killHolders('verse') // orphans from a force-killed run still hold the exe
     await new Promise((r) => setTimeout(r, 300)) // let the OS release the handle
     return setVerseExe(srcPath)
@@ -931,6 +951,7 @@ class LspManager {
   /** Forget the configured Verse server (stop it, delete the prepared exe + config). */
   async clearVersePath(): Promise<void> {
     this.stopServers('verse')
+    clearVerseMemberCache()
     await killHolders('verse')
     await new Promise((r) => setTimeout(r, 300))
     await clearVerseExe()
@@ -950,18 +971,26 @@ class LspManager {
     if (def.kind === 'download' && installState(def.id) !== 'installed') return null
     if (def.kind === 'external' && !def.command('')) return null
     const s = this.ensure(def, def.rootFor?.(abs, cwd) ?? cwd)
-    if (!s) return null
-    try {
-      await s.ready
-    } catch {
-      return null
+    let ready = false
+    if (s) {
+      try {
+        await s.ready
+        ready = true
+      } catch {
+        /* verse는 아래 로컬 합성 체인으로 계속 — 다른 서버는 곧장 종료 */
+      }
     }
+    // Verse가 아닌 언어는 서버 없이는 호버가 없다. Verse는 용어집·지역변수·선언부 카드가 전부
+    // 텍스트 합성이라 서버가 죽었거나 인덱싱 중이어도 동작한다 — digest/콜드 상태 호버 공백 방지.
+    if (!ready && def.id !== 'verse') return null
     // live buffer → didChange (reflects unsaved edits); no buffer → the disk-synced doc
-    const uri = text != null ? this.syncBuffer(s, def, abs, text) : await this.openDoc(s, def, abs)
-    const r = await s.rpc.request<{ contents?: unknown } | null>('textDocument/hover', {
-      textDocument: { uri },
-      position: pos
-    })
+    const uri = !ready ? '' : text != null ? this.syncBuffer(s!, def, abs, text) : await this.openDoc(s!, def, abs)
+    const r = ready
+      ? await s!.rpc.request<{ contents?: unknown } | null>('textDocument/hover', {
+          textDocument: { uri },
+          position: pos
+        })
+      : null
     const contents = hoverMarkdown(r?.contents)
     if (def.id === 'verse') {
       // 0) `?` 옵션 연산자 — verse-lsp도 글로서리(wordAt)도 기호는 못 잡으므로 위치로 판별해 설명.
@@ -981,7 +1010,8 @@ class LspManager {
       //    문서 주석도 안 싣는다. definition으로 선언을 찾아 그 줄에서 종류를 읽어 시그니처 앞에
       //    박고(그래야 카드가 'Type'이 아니라 'Class'로 뜬다) 위의 `# …`/@doc 주석도 붙인다.
       if (contents) {
-        const { doc, kind } = await this.verseDefInfo(s.rpc, uri, pos, abs, text).catch(() => ({ doc: '', kind: null }))
+        // contents가 있다는 것 = 서버 응답이 있었다는 것(ready) — s는 비-null
+        const { doc, kind } = await this.verseDefInfo(s!.rpc, uri, pos, abs, text).catch(() => ({ doc: '', kind: null }))
         const body = kind ? injectVerseKind(contents, kind) : contents
         return { contents: doc ? body + '\n\n' + doc : body }
       }
@@ -1110,12 +1140,38 @@ class LspManager {
     if (def.kind === 'external' && !def.command('')) return null
     const root = def.rootFor?.(abs, cwd) ?? cwd
     const s = this.ensure(def, root)
-    if (!s) return null
-    try {
-      await s.ready
-    } catch {
-      return null
+    let ready = false
+    if (s) {
+      try {
+        await s.ready
+        ready = true
+      } catch {
+        /* verse는 아래 스캔-전용 분기로 계속 */
+      }
     }
+    // Verse 콜드/에러 구간 — 서버 없이도 스캔 기반 후보(리시버 멤버·스코프)를 즉시 준다.
+    // isIncomplete=true 라 렌더러가 입력마다 다시 물어, 서버가 준비되는 순간 자연히 합쳐진다.
+    if (!ready && def.id === 'verse') {
+      const mctx = verseMemberContext(text, pos)
+      if (mctx) {
+        const type = verseHasType(root, text, mctx.receiver)
+          ? mctx.receiver
+          : verseResolveTypeRegex(root, text, mctx.receiver, pos.line)
+        if (type) {
+          const members = verseTypeMembers(root, text, type, mctx.receiver === 'Self')
+          if (members.length) return { items: members, isIncomplete: true }
+        }
+        return null
+      }
+      if (verseDotContext(text, pos)) return null // 미해석 리시버의 `.` 뒤 — 스코프 주입 금지
+      const scope = verseScopeCompletions(root, text, pos)
+      if (verseIsTypePosition(text, pos)) {
+        const typeScope = [...verseBuiltinTypeItems(), ...scope.filter((it) => TYPE_KINDS.has(it.kind ?? -1))]
+        return mergeVerseTypes(typeScope, null, verseMemberDbRegistry(root))
+      }
+      return mergeVerseScope(scope, null, verseExtMethods(root))
+    }
+    if (!ready || !s) return null
     if (s.complTriggers == null) return null // server advertised no completionProvider
     const uri = this.syncBuffer(s, def, abs, text)
     // when the char left of the cursor is one of the server's trigger chars (Verse '.'),
@@ -1166,6 +1222,10 @@ class LspManager {
         // nothing), but do NOT inject scope identifiers: locals/functions are wrong right after a `.`.
         return mapCompletion(r)
       }
+      // `.` 뒤인데 리시버가 식별자가 아닌 경우(`Foo().`, `arr[0].`, 복합 체인) — verseMemberContext가
+      // 못 잡아 아래 identifier 분기로 흘러 지역/전역이 점 뒤에 제안되던 노이즈를 막는다. 위의
+      // 미해석 리시버 분기와 동일하게 verse-lsp 원본만 돌려준다(스코프 주입 없음).
+      if (verseDotContext(text, pos)) return mapCompletion(r)
       // ── Identifier completion (no `.`) ──────────────────────────────────────────────────
       // verse-lsp's lexical scope only populates when the file COMPILES — which it rarely does while
       // you type — so the user's own locals/params/functions/types disappear. Scan them from the live
@@ -1222,12 +1282,31 @@ class LspManager {
     await this.openDoc(s, def, abs).catch(() => {})
   }
 
-  /** Accurate Verse type registry for a file's project (for the renderer's semantic colouring). */
-  verseRegistry(cwd: string, relPath: string): VerseRegistry | null {
+  /**
+   * Accurate Verse type registry for a file's project (for the renderer's semantic colouring),
+   * 세대(rev) 스냅샷으로. 렌더러가 마지막으로 받은 `knownRev`를 보내면, 그 사이 무효화(UEFN
+   * 재빌드·저장·문서 언어 토글)가 없었을 때 `reg: null`(변화 없음)만 돌려줘 큰 페이로드
+   * 직렬화를 건너뛴다. null = Verse 파일/프로젝트가 아님(렌더러는 마크 없이 다음에 재시도).
+   */
+  verseRegistry(cwd: string, relPath: string, knownRev?: number): { rev: number; reg: VerseRegistry | null } | null {
     const abs = this.resolve(cwd, relPath)
     if (!abs || serverDefFor(abs)?.id !== 'verse') return null
     const root = verseProjectRoot(abs) ?? cwd
-    return root ? verseMemberDbRegistry(root) : null
+    if (!root) return null
+    const rev = verseRegistryRev()
+    if (knownRev === rev) return { rev, reg: null } // unchanged — 렌더러가 이미 들고 있다
+    return { rev, reg: verseMemberDbRegistry(root) }
+  }
+
+  /**
+   * 파일이 앱 안에서 저장됐다는 알림(IPC.writeFile 뒤) — Verse 파일이면 그 프로젝트의 멤버 DB
+   * 캐시를 무효화해, 새로 선언한 타입/멤버가 다른 파일의 완성·색칠에도 나타나게 한다. verse-lsp
+   * 자체는 didChange로 이미 최신이므로 서버는 건드리지 않는다.
+   */
+  fileWritten(cwd: string, relPath: string): void {
+    const abs = this.resolve(cwd, relPath)
+    if (!abs || serverDefFor(abs)?.id !== 'verse') return
+    invalidateVerseMemberCache(verseProjectRoot(abs) ?? cwd)
   }
 
   /** Kill every server (app quit). */
@@ -1262,6 +1341,9 @@ class LspManager {
         // before that is stale — it can't resolve the regenerated API symbols, so official hovers
         // (and go-to-definition into the digests) go blank. Tear it down so the fresh spawn below
         // re-indexes the new project. User source edits don't count (verseWorkspaceMtime ignores them).
+        // 우리 멤버 DB(완성 멤버·레지스트리)도 같은 digest를 파싱해 캐시하므로 함께 무효화한다 —
+        // 서버만 재시작하고 DB를 남기면 새 API가 완성/색칠에 영영 안 나타난다.
+        invalidateVerseMemberCache(rRoot)
         existing.rpc.dispose('Verse 프로젝트 재생성 감지 — 재시작')
         killTree(existing.child)
         this.servers.delete(key)

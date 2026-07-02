@@ -1248,11 +1248,17 @@ function ActiveSession({
     prevBusyRef.current = busySig
     SLOTS.forEach((slot) => {
       if (busySig[slot] === '1' || was[slot] !== '1') return
-      const next = metas[slot].queue[0]
-      if (!next) return
-      setMetas((prev) => prev.map((m, i) => (i === slot ? { ...m, queue: m.queue.slice(1) } : m)))
+      // 런을 시작하지 않는 클라이언트 명령(/clear)은 busy 전환이 다시 오지 않아 뒤 항목이
+      // 영영 갇힌다 — 앞쪽의 /clear 들을 연달아 소진하고, 엔진 런을 시작할 첫 일반 항목까지
+      // 한 번에 내보낸다(그 런이 끝나면 다음 idle 전환이 나머지를 이어받는다).
+      const q = metas[slot].queue
+      let clears = 0
+      while (clears < q.length && q[clears].text.trim() === '/clear') clears++
+      const items = q.slice(0, Math.min(clears + 1, q.length))
+      if (!items.length) return
+      setMetas((prev) => prev.map((m, i) => (i === slot ? { ...m, queue: m.queue.slice(items.length) } : m)))
       // 예약 메시지는 자체 텍스트/첨부/설정으로 재생 — 실행 중에 새로 쓰던 초안은 건드리지 않는다
-      void sendPanel(slot, { text: next.text, images: next.images, picker: next.picker })
+      for (const next of items) void sendPanel(slot, { text: next.text, images: next.images, picker: next.picker })
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [busySig, metas])
@@ -1371,6 +1377,7 @@ function ActiveSession({
           </button>
           <UsagePill label="5시간 한도" pct={usage.fiveHour?.pct ?? null} />
           <UsagePill label="주간 한도" pct={usage.weekly?.pct ?? null} />
+          {usage.weeklyFable && <UsagePill label="Fable 주간 한도" pct={usage.weeklyFable.pct} />}
           <div className="ma-count" role="tablist" aria-label="패널 수">
             {COUNT_OPTIONS.map((n) => (
               <button

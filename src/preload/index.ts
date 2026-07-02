@@ -74,7 +74,8 @@ const api: WindowApi = {
       ipcRenderer.invoke(IPC.lspCompletion, { cwd, relPath, pos, text }),
     prewarm: (cwd: string) => ipcRenderer.invoke(IPC.lspPrewarm, { cwd }),
     warm: (cwd: string, relPath: string) => ipcRenderer.invoke(IPC.lspWarm, { cwd, relPath }),
-    verseRegistry: (cwd: string, relPath: string) => ipcRenderer.invoke(IPC.lspVerseRegistry, { cwd, relPath }),
+    verseRegistry: (cwd: string, relPath: string, knownRev?: number) =>
+      ipcRenderer.invoke(IPC.lspVerseRegistry, { cwd, relPath, knownRev }),
     projectStatus: (cwd: string) => ipcRenderer.invoke(IPC.lspProjectStatus, { cwd }),
     verseDigests: (cwd: string) => ipcRenderer.invoke(IPC.lspVerseDigests, { cwd }),
     verseExcludes: (cwd: string) => ipcRenderer.invoke(IPC.lspVerseExcludes, { cwd }),

@@ -1002,7 +1002,11 @@ function ContextStrip({ winTokens, contextTokens, usage }: { winTokens: number; 
       label: '주간 한도',
       pct: usage.weekly?.pct ?? null,
       detail: usage.weekly ? resetText(usage.weekly.resetsAt, true) : '데이터 없음'
-    }
+    },
+    // Fable 5 전용 주간 한도 — 플랜에 없으면(null) 칩 자체를 숨긴다
+    ...(usage.weeklyFable
+      ? [{ label: 'Fable 주간 한도', pct: usage.weeklyFable.pct as number | null, detail: resetText(usage.weeklyFable.resetsAt, true) }]
+      : [])
   ]
   return (
     <div className="ctx-strip">
@@ -1086,7 +1090,11 @@ export const WorkBar = memo(function WorkBar({
       detail: `${contextTokens != null ? fmtTok(contextTokens) : 0} / ${fmtWindow(Math.round(winTokens / 1000))} 토큰`
     },
     { label: '5시간 한도', pct: usage.fiveHour?.pct ?? null, detail: usage.fiveHour ? resetText(usage.fiveHour.resetsAt, false) : '데이터 없음' },
-    { label: '주간 한도', pct: usage.weekly?.pct ?? null, detail: usage.weekly ? resetText(usage.weekly.resetsAt, true) : '데이터 없음' }
+    { label: '주간 한도', pct: usage.weekly?.pct ?? null, detail: usage.weekly ? resetText(usage.weekly.resetsAt, true) : '데이터 없음' },
+    // Fable 5 전용 주간 한도 — 플랜에 없으면(null) 행 자체를 숨긴다
+    ...(usage.weeklyFable
+      ? [{ label: 'Fable 주간 한도', pct: usage.weeklyFable.pct as number | null, detail: resetText(usage.weeklyFable.resetsAt, true) }]
+      : [])
   ]
 
   const toggle = (t: WorkTab): void => setOpen((o) => (o === t ? null : t))
@@ -1726,8 +1734,9 @@ export function Composer({
   const slashRef = useRef<HTMLDivElement>(null)
   const skillsCwd = useRef<string | null>(null)
 
-  // the leading "/token" being typed (no space/newline yet, not mid-run), else null
-  const slashQuery = !busy && value.startsWith('/') && !/\s/.test(value) ? value.slice(1).toLowerCase() : null
+  // the leading "/token" being typed (no space/newline yet), else null. 실행 중에도 연다 —
+  // /ask는 즉시 실행되고(스케줄 경로가 가로챔), 나머지 명령/스킬은 예약돼 런이 끝나면 나간다.
+  const slashQuery = value.startsWith('/') && !/\s/.test(value) ? value.slice(1).toLowerCase() : null
 
   // lazily load this project's skills the first time the palette is summoned
   useEffect(() => {

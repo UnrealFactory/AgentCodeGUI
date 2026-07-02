@@ -10,7 +10,7 @@ import { diffMarksOf, type DiffMarks } from '../lib/cmDiff'
 import { getPref, setPref } from '../lib/prefs'
 import { isImagePath, imageSrc } from '../lib/images'
 import { verseReg } from '../lib/verseRegistry'
-import { VERSE_SPECIFIERS, VERSE_ATTRIBUTES } from '../lib/verseKeywords'
+import { VERSE_SPECIFIERS, VERSE_ATTRIBUTES } from '@shared/verseKeywords'
 import { FileBadge, fileTypeFor, paletteClassFor } from './fileType'
 import {
   IconBot,
@@ -533,7 +533,8 @@ function verseSpecName(spec: string): string {
 // 코드에서 그 토큰을 직접 호버했을 때 뜨는 글로서리와 같은 설명. 출처는 완성과 동일한
 // verseKeywords(VERSE_SPECIFIERS·VERSE_ATTRIBUTES)라 설명이 한 곳에서만 관리된다.
 const VERSE_TOK_DESC = new Map<string, string>()
-for (const s of [...VERSE_SPECIFIERS, ...VERSE_ATTRIBUTES]) if (s.doc) VERSE_TOK_DESC.set(s.name, s.doc)
+// 네이티브 title 툴팁은 플레인 텍스트 — 공유 용어집(호버 마크다운용)의 백틱만 벗겨 담는다.
+for (const s of [...VERSE_SPECIFIERS, ...VERSE_ATTRIBUTES]) if (s.doc) VERSE_TOK_DESC.set(s.name, s.doc.replace(/`/g, ''))
 // 토큰(`<override>` / `<getter(GetX)>` / `@editable`)의 설명. @editable_* 계열은 editable로 폴백.
 function verseTokDesc(tok: string): string | undefined {
   const n = verseSpecName(tok).replace(/^@/, '')
@@ -2130,6 +2131,10 @@ export function FileModal({
           // 촘촘히 폴링(400ms)해서 ready 감지 지연을 줄인다 — 그래야 ready 직후 색이
           // 폴더 배지가 사라지기 전에/같이 들어온다. 워밍은 길 수 있어 창을 넓게(≈8분).
           if ((st === 'starting' || st === 'installing') && tries++ < 1200) setTimeout(tick, 400)
+          // 'error'에서 폴링을 멈추면 서버가 쿨다운(30초) 뒤 되살아나도 이 파일은 영영
+          // lsp=off — 파일을 닫았다 열어야만 복구됐다. 느슨하게(3초) 계속 물어 다음
+          // ensure가 재스폰하면 자동으로 starting→ready 경로에 다시 올라탄다.
+          else if (st === 'error' && tries++ < 160) setTimeout(tick, 3000)
         })
         .catch(() => alive && setLspStatus('error'))
     }

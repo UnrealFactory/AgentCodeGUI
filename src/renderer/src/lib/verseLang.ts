@@ -1,5 +1,6 @@
 import type { HLJSApi, Language, Mode } from 'highlight.js'
-import { VERSE_SPECIFIER_NAMES } from './verseKeywords'
+import { VERSE_SPECIFIER_NAMES } from '@shared/verseKeywords'
+import { VERSE_NAME_TRAIL } from '@shared/verseSyntax'
 
 // highlight.js grammar for Epic's Verse language (.verse). Grounded in the UE6.0 source
 // corpus AND cross-checked against Epic's own VS Code Verse grammar (verse.json, scope
@@ -111,12 +112,14 @@ export function verse(hljs: HLJSApi): Language {
     match: /\?/
   }
 
-  // Type definition: `Name<…> := class|struct|enum|module|interface`. Kept on the type colour.
-  // Tried before FUNCTION/VARIABLE so the type name wins.
+  // Type definition: `Name<…>(typeparams)? := class|struct|enum|module|interface`. Kept on the type
+  // colour. Tried before FUNCTION/VARIABLE so the type name wins — VERSE_NAME_TRAIL이 파라미터형
+  // 타입(`chat_channel<…>(t:subtype(…)) := class…`)의 괄호도 지나가므로, FUNCTION('(' 앞 이름)보다
+  // 먼저 타입으로 칠해진다.
   const TYPE_DEF: Mode = {
     scope: 'title.class',
     match: new RegExp(
-      `\\b${NOT_KW}[A-Za-z_]\\w*(?=[ \\t]*${SPECS}[ \\t]*:=[ \\t]*(?:class|struct|enum|module|interface)\\b)`
+      `\\b${NOT_KW}[A-Za-z_]\\w*(?=[ \\t]*${VERSE_NAME_TRAIL}[ \\t]*:=[ \\t]*(?:class|struct|enum|module|interface)\\b)`
     ),
     relevance: 0
   }

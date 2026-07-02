@@ -1,3 +1,4 @@
+import { verseIndent, VERSE_NAME_TRAIL } from '@shared/verseSyntax'
 import { verseReg, verseInheritedMembers, verseInheritedMethods } from './verseRegistry'
 
 // ── B-lite: approximate member / local / module colouring for .verse ─────────
@@ -15,22 +16,8 @@ import { verseReg, verseInheritedMembers, verseInheritedMethods } from './verseR
 // members (no '.') stay default; a local shadowing a field's name reads as the member; a module
 // sharing a local's name reads as the local.
 
-function indentLevel(line: string): number {
-  let i = 0
-  let lvl = 0
-  for (;;) {
-    if (line[i] === '\t') {
-      lvl++
-      i++
-    } else if (line.startsWith('    ', i)) {
-      lvl++
-      i += 4
-    } else break
-  }
-  return lvl
-}
-
-const TYPE_HEADER = /^([A-Za-z_]\w*)\s*(?:<[^>]*>)*\s*:=\s*(class|struct|interface|enum)\b/
+// VERSE_NAME_TRAIL — digest의 파라미터형 타입(`chat_channel<…>(t:subtype(…)) := class…`)도 타입으로 인식
+const TYPE_HEADER = new RegExp(String.raw`^([A-Za-z_]\w*)\s*${VERSE_NAME_TRAIL}\s*:=\s*(class|struct|interface|enum)\b`)
 const VAR_FIELD = /^(?:var|set)\s+([A-Za-z_]\w*)/
 const TYPED_FIELD = /^([A-Za-z_]\w*)\s*(?:<[^>]*>)*\s*:/
 // a class-body method: a name (+ specifiers) immediately before '(' — `OnTick(`, `OnBegin<override>(`
@@ -67,7 +54,7 @@ export function verseScopes(code: string): VerseScopes {
       continue
     }
     if (!trimmed || trimmed.startsWith('#')) continue
-    const lvl = indentLevel(raw)
+    const lvl = verseIndent(raw)
     while (bodyIndents.length && lvl < bodyIndents[bodyIndents.length - 1]) bodyIndents.pop()
     const th = TYPE_HEADER.exec(trimmed)
     if (th) {
@@ -138,7 +125,7 @@ export function recolorVerse(html: string, scopes: VerseScopes): string {
     // capture a trailing `.` (member-access receiver) OR a bare `:` (binding-name position); the two
     // can't both follow an identifier, so re-append whichever matched via `tail`.
     /<span class="hljs-variable">([A-Za-z_]\w*)<\/span>(\.?)(\s*:(?!=))?/g,
-    (full, name: string, dot: string, colon: string | undefined) => {
+    (full, name: string, dot: string, colon: string | undefined, offset: number, whole: string) => {
       const tail = dot + (colon ?? '')
       if (members.has(name)) return full // member (own or inherited) → member colour, keep
       // a bare method reference (a callback passed without `()`) — colour it like a function (mint),
@@ -150,10 +137,19 @@ export function recolorVerse(html: string, scopes: VerseScopes): string {
       // must win. (File-wide, like the rest of this pass: a genuine same-named type ref also reads as
       // the local — accepted, since nothing lexical separates the two uses.)
       if (locals.has(name)) return name + tail
-      // a binding NAME — an identifier immediately before a bare `:` (a `name:type` param/field/local
-      // declaration) — is never a type in Verse (the type sits AFTER the `:`), so don't promote it to
-      // the type colour even when a same-named asset type exists. Fixes the `Player:player` param row.
-      if (colon) return name + tail
+      if (colon) {
+        // 줄 끝의 bare `:` — 블록형 아키타입 생성 `X := transform:`(다음 줄부터 필드 블록)이다.
+        // 여기선 콜론이 `이름:타입`의 콜론이 아니라 타입 '뒤'에서 본문을 여는 콜론이므로, 알려진
+        // 타입이면 타입 색으로 승격한다(인라인형 `transform{…}`과 색이 같아진다).
+        if (/^[ \t]*(?:\r?\n|$)/.test(whole.slice(offset + full.length))) {
+          const k = typeKind(name)
+          if (k) return typeSpan(name, k) + tail
+        }
+        // 그 밖의 bare `:` 앞 식별자는 바인딩 NAME(`name:type` 매개변수/필드/로컬 선언) — 타입은
+        // 콜론 '뒤'에 오므로, 같은 이름의 애셋 타입이 있어도 타입 색으로 승격하지 않는다.
+        // Fixes the `Player:player` param row.
+        return name + tail
+      }
       const k = typeKind(name)
       if (k) return typeSpan(name, k) + dot // confirmed type → type colour by kind
       return name + dot // local / parameter / unknown → default (white)

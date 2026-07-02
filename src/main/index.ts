@@ -9,6 +9,7 @@ import * as engineVersions from './engine/versions'
 import { readProfile, writeProfile } from './profile'
 import { readUiPrefs, writeUiPrefs } from './uiPrefs'
 import { setVerseDocKo } from './lsp/verseDocKo'
+import { bumpVerseRegistryRev } from './lsp/verseMemberDb'
 import { readChats, writeChats } from './chats'
 import { readMulti, writeMulti } from './maStore'
 import { readTalk, writeTalk } from './talkStore'
@@ -476,7 +477,7 @@ let usageCache: { at: number; data: UsageInfo } | null = null
 const USAGE_TTL = 5 * 60 * 1000
 
 async function getUsage(): Promise<UsageInfo> {
-  const empty: UsageInfo = { fiveHour: null, weekly: null }
+  const empty: UsageInfo = { fiveHour: null, weekly: null, weeklyFable: null }
   if (usageCache && Date.now() - usageCache.at < USAGE_TTL) return usageCache.data
   let token: string | undefined
   try {
@@ -495,7 +496,10 @@ async function getUsage(): Promise<UsageInfo> {
     })
     clearTimeout(timer)
     if (!res.ok) return empty
-    const j = (await res.json()) as Record<string, { utilization?: number | string; resets_at?: string }>
+    const j = (await res.json()) as Record<string, { utilization?: number | string; resets_at?: string }> & {
+      // 모델별 한도는 legacy 필드(seven_day_opus 등)가 아니라 limits[] 배열로 온다.
+      limits?: { kind?: string; percent?: number; resets_at?: string; scope?: { model?: { display_name?: string } | null } | null }[]
+    }
     const toTs = (s?: string): number | null => {
       if (!s) return null
       const ms = Date.parse(s)
@@ -503,7 +507,15 @@ async function getUsage(): Promise<UsageInfo> {
     }
     const win = (o?: { utilization?: number | string; resets_at?: string }): UsageWindow | null =>
       o ? { pct: Math.max(0, Math.min(100, Math.round(parseFloat(String(o.utilization ?? 0)) || 0))), resetsAt: toTs(o.resets_at) } : null
-    const data: UsageInfo = { fiveHour: win(j.five_hour), weekly: win(j.seven_day) }
+    // Fable 5 주간 한도: limits[]에서 weekly_scoped + model 이름에 'fable'이 들어간 항목
+    const fable = Array.isArray(j.limits)
+      ? j.limits.find((l) => l?.kind === 'weekly_scoped' && (l.scope?.model?.display_name ?? '').toLowerCase().includes('fable'))
+      : undefined
+    const data: UsageInfo = {
+      fiveHour: win(j.five_hour),
+      weekly: win(j.seven_day),
+      weeklyFable: fable ? { pct: Math.max(0, Math.min(100, Math.round(fable.percent ?? 0))), resetsAt: toTs(fable.resets_at) } : null
+    }
     usageCache = { at: Date.now(), data }
     return data
   } catch {
@@ -599,7 +611,9 @@ function registerIpc(): void {
   ipcMain.handle(IPC.uiPrefsGet, async () => readUiPrefs())
   ipcMain.handle(IPC.uiPrefsSave, async (_e, prefs: Record<string, unknown>) => {
     writeUiPrefs(prefs)
-    setVerseDocKo(prefs?.verseDocLang !== 'en') // Verse hover docs in Korean unless '원문 보기'
+    // Verse hover docs in Korean unless '원문 보기'. 언어가 실제로 바뀌었으면 레지스트리 세대를
+    // 올려, 렌더러가 든 registry.docs(fetch 시점 언어로 번역돼 박제됨)도 다음 열기에 새 언어로.
+    if (setVerseDocKo(prefs?.verseDocLang !== 'en')) bumpVerseRegistryRev()
   })
   setVerseDocKo(readUiPrefs().verseDocLang !== 'en') // apply the saved choice at startup
 
@@ -739,6 +753,9 @@ function registerIpc(): void {
     const abs = path.isAbsolute(a.relPath) ? a.relPath : path.join(a.cwd || '', a.relPath)
     try {
       await fs.promises.writeFile(abs, a.content, 'utf8')
+      // Verse 파일이면 그 프로젝트의 멤버 DB 캐시를 무효화 — 새 타입/멤버가 다른 파일의
+      // 완성·색칠에도 반영되게 (verse-lsp 자체는 didChange로 이미 최신).
+      lspManager.fileWritten(a.cwd || '', a.relPath)
       return { ok: true }
     } catch (e) {
       return { ok: false, error: (e as Error)?.message || '파일을 저장할 수 없어요' }
@@ -799,9 +816,9 @@ function registerIpc(): void {
   ipcMain.handle(IPC.lspWarm, async (_e, a: { cwd: string; relPath: string }) => {
     lspManager.warm(a.cwd || '', a.relPath).catch(() => {})
   })
-  ipcMain.handle(IPC.lspVerseRegistry, async (_e, a: { cwd: string; relPath: string }) => {
+  ipcMain.handle(IPC.lspVerseRegistry, async (_e, a: { cwd: string; relPath: string; knownRev?: number }) => {
     try {
-      return lspManager.verseRegistry(a.cwd || '', a.relPath)
+      return lspManager.verseRegistry(a.cwd || '', a.relPath, a.knownRev)
     } catch {
       return null
     }

@@ -2740,6 +2740,9 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
 
 /* composer — 한 줄 가로 레이아웃 (텍스트 + 전송 버튼이 세로 중앙 정렬) */
 .ask-foot{ flex:0 0 auto; padding:12px 16px 14px; border-top:1px solid var(--line); background:linear-gradient(180deg, transparent, var(--surface) 240%); }
+/* /ask 자체 실행 설정 행 — 메인 컴포저와 같은 Pick 컨트롤을 컴포저 위에 한 줄로 */
+.ask-pickers{ display:flex; align-items:center; gap:2px; padding:0 2px 7px; }
+.ask-pickers .pick, .ask-pickers .pick-btn{ min-width:0; }
 .ask-composer{ display:flex; align-items:flex-end; gap:10px; background:var(--surface); border:1px solid var(--line-2); border-radius:14px; padding:7px 7px 7px 14px; transition:border-color .16s, box-shadow .16s; }
 .ask-composer:focus-within{ border-color:var(--accent-line); box-shadow:0 0 0 3px var(--accent-soft); }
 .ask-composer.busy{ opacity:.7; }
