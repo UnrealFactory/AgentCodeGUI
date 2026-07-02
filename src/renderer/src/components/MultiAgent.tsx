@@ -694,7 +694,10 @@ const PanelView = memo(function PanelView({
   // 폴더를 고르지 않으면 엔진이 바탕화면에서 동작한다 — 라벨로 그 기본값을 알린다
   const cwdLabel = meta.cwd ? basename(meta.cwd) : '바탕화면'
 
-  const status = STATUS_META[state.status]
+  // 승인/질문 카드가 떠 있는 동안은 상태를 "응답 대기"로 덮어쓴다 — 엔진은 busy지만
+  // 실제로는 사용자를 기다리는 중이라, 그냥 작업 중인 패널과 한눈에 구분돼야 한다
+  const waiting = !!(state.pendingPermission || state.pendingQuestion)
+  const status = waiting ? { label: '응답 대기', cls: 'ask' } : STATUS_META[state.status]
   const winTokens = windowTokensFor(meta.picker.model, state.result?.contextWindow ?? null)
   const ctxTokens = state.result?.contextTokens ?? null
   const ctxPct = ctxTokens != null && winTokens > 0 ? Math.min(100, Math.round((ctxTokens / winTokens) * 100)) : 0
@@ -757,7 +760,8 @@ const PanelView = memo(function PanelView({
             </button>
           )}
           <span className={'ma-status ' + status.cls}>
-            {busy && <span className="ma-status-spin" />}
+            {/* 응답 대기 중엔 스피너를 숨긴다 — 도는 건 에이전트가 아니라 사용자 차례 */}
+            {busy && !waiting && <span className="ma-status-spin" />}
             <span>{status.label}</span>
             {busy && <span className="ma-status-time">{fmtElapsed(elapsed)}</span>}
           </span>
@@ -917,11 +921,20 @@ const PanelView = memo(function PanelView({
         />
       )}
 
-      <PermissionModal permission={state.pendingPermission} onRespond={(b) => onPermission(slot, b)} />
+      {/* 패널 스코프 카드 — .ma-panel(position:relative) 안에서 그 패널만 덮으므로
+          어느 패널의 요청인지 위치로 식별된다. 키보드는 포커스/확장된 패널의 카드만
+          받는다 — 동시에 여러 카드가 떠도 키 한 번이 전부에 응답되지 않도록. */}
+      <PermissionModal
+        permission={state.pendingPermission}
+        onRespond={(b) => onPermission(slot, b)}
+        hotkeys={focused || expanded}
+      />
       <QuestionModal
         question={state.pendingQuestion}
         onAnswer={(a) => onAnswer(slot, a)}
         onDismiss={() => onDismissQuestion(slot)}
+        hotkeys={focused || expanded}
+        onExpand={expanded ? undefined : () => onExpand(slot)}
       />
     </div>
   )
@@ -1081,9 +1094,17 @@ function ActiveSession({
   // A permission/question card owns the keyboard while open, so we always stand down then.
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
-      // a question card — or the folder-switch confirm / 프롬프트 modal / 파일 뷰어 / 폴더
-      // 팝오버 — owns the keyboard while open
-      if (document.querySelector('.q-overlay, .set-dialog-overlay, .pr-overlay, .fv-overlay, .pfm')) return
+      // 앱 전역 오버레이(폴더 확인 / 프롬프트 모달 / 파일 뷰어 / 폴더 팝오버)가 열려
+      // 있으면 항상 양보한다
+      if (document.querySelector('.set-dialog-overlay, .pr-overlay, .fv-overlay, .pfm')) return
+      // 승인/질문 카드는 패널 안에 뜬다(스코프 오버레이). 키보드를 받는 건 포커스/확장
+      // 패널의 카드뿐이니 그때만 양보하고, 다른 패널의 카드는 1‥N 이동을 막지 않는다 —
+      // 번호를 누르면 그 패널이 포커스되며 카드가 키를 넘겨받는다. 패널 밖 .q-overlay
+      // (ask 모달의 질문 등)는 예전처럼 전역으로 키보드를 가진다.
+      for (const el of Array.from(document.querySelectorAll('.q-overlay'))) {
+        const panel = el.closest('.ma-panel')
+        if (!panel || panel.classList.contains('expanded') || panel.classList.contains('focused')) return
+      }
       const ae = document.activeElement as HTMLElement | null
       const typing = !!ae && (['INPUT', 'TEXTAREA', 'SELECT'].includes(ae.tagName) || ae.isContentEditable)
 

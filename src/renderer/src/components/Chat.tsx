@@ -1370,15 +1370,32 @@ const Q_NUM_COLORS = [
 export function QuestionModal({
   question,
   onAnswer,
-  onDismiss
+  onDismiss,
+  hotkeys = true,
+  onExpand
 }: {
   question: { requestId: string; questions: AgentQuestion[] } | null
   onAnswer: (answers: string[][]) => void
   onDismiss: () => void
+  // 멀티 패널 — 카드가 여러 패널에 동시에 떠 있어도 키보드(숫자·화살표·Esc)는
+  // 포커스된 패널의 카드만 받는다. 단일 채팅/ask 모달은 기본 true.
+  hotkeys?: boolean
+  // 좁은 그리드 패널에서 다단계 질문이 답답할 때 — 헤더의 크게 보기 버튼으로
+  // 패널 확장과 연결한다 (제공될 때만 버튼을 그린다)
+  onExpand?: () => void
 }) {
   if (!question) return null
   // keyed on requestId so each new question gets a fresh dialog (resets selections)
-  return <QuestionDialog key={question.requestId} questions={question.questions} onAnswer={onAnswer} onDismiss={onDismiss} />
+  return (
+    <QuestionDialog
+      key={question.requestId}
+      questions={question.questions}
+      onAnswer={onAnswer}
+      onDismiss={onDismiss}
+      hotkeys={hotkeys}
+      onExpand={onExpand}
+    />
+  )
 }
 
 // the three permission choices — rendered as numbered cards (same look as the question
@@ -1394,13 +1411,17 @@ const PERM_CHOICES = [
 // (allow + stop asking for this tool this session) / 3 거부. Keys 1·2·3 pick; Esc denies.
 export function PermissionModal({
   permission,
-  onRespond
+  onRespond,
+  hotkeys = true
 }: {
   permission: { requestId: string; toolName: string; summary: string } | null
   onRespond: (behavior: 'allow' | 'allow_always' | 'deny') => void
+  // 멀티 패널 — 두 패널이 동시에 승인을 요청해도 1·2·3/Esc는 포커스된 패널의
+  // 카드만 받는다 (안 그러면 키 한 번이 모든 요청에 동시 응답된다)
+  hotkeys?: boolean
 }) {
   useEffect(() => {
-    if (!permission) return
+    if (!permission || !hotkeys) return
     const onKey = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') {
         e.preventDefault()
@@ -1415,7 +1436,7 @@ export function PermissionModal({
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [permission, onRespond])
+  }, [permission, onRespond, hotkeys])
 
   if (!permission) return null
   return (
@@ -1454,11 +1475,15 @@ export function PermissionModal({
 function QuestionDialog({
   questions,
   onAnswer,
-  onDismiss
+  onDismiss,
+  hotkeys = true,
+  onExpand
 }: {
   questions: AgentQuestion[]
   onAnswer: (answers: string[][]) => void
   onDismiss: () => void
+  hotkeys?: boolean
+  onExpand?: () => void
 }) {
   const [sel, setSel] = useState<string[][]>(() => questions.map(() => []))
   const [custom, setCustom] = useState<string[]>(() => questions.map(() => '')) // 기타 free text
@@ -1534,10 +1559,11 @@ function QuestionDialog({
   }
 
   // focus the modal on open AND whenever it's restored from the pill, so the composer
-  // textarea behind it doesn't swallow the number-key shortcuts
+  // textarea behind it doesn't swallow the number-key shortcuts. hotkeys가 없는(포커스
+  // 안 된 패널) 카드는 포커스를 훔치지 않는다 — 다른 패널에서 입력 중일 수 있다.
   useEffect(() => {
-    if (!minimized) modalRef.current?.focus()
-  }, [minimized])
+    if (!minimized && hotkeys) modalRef.current?.focus()
+  }, [minimized, hotkeys])
   // focus the free-text field whenever 기타 becomes active for the current question
   useEffect(() => {
     if (other[step]) customRef.current?.focus()
@@ -1547,6 +1573,7 @@ function QuestionDialog({
   // between questions, number keys 1-8 pick an option (the last is 직접 입력), Enter advances/
   // submits. The arrows/numbers/Enter are skipped while focus is in a text field.
   useEffect(() => {
+    if (!hotkeys) return // 포커스 안 된 패널의 카드 — 클릭으로만 답한다
     const onKey = (e: KeyboardEvent): void => {
       // 내려둔 동안엔 대화를 자유롭게 보도록 키를 가로채지 않는다. Esc 한 번 더면
       // 건너뛰기 — 펼치기는 알약/✕ 옆 버튼 클릭으로 (ask 모달의 Esc·Esc와 동일)
@@ -1592,7 +1619,7 @@ function QuestionDialog({
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [sel, custom, other, step, onDismiss, minimized])
+  }, [sel, custom, other, step, onDismiss, minimized, hotkeys])
 
   const otherIdx = cur.options.length // 직접 입력's position → its number / keyboard shortcut
   const footBtn = cur.multiSelect || other[step] // single-select options auto-advance; these need a button
@@ -1643,6 +1670,13 @@ function QuestionDialog({
             </span>
           )}
           <span className="qm-spacer" />
+          {/* 좁은 패널에서만 제공 — 패널 확장으로 넘어가면 카드가 리마운트돼 지금까지의
+              선택이 초기화되므로, 답을 고르기 전에 누르는 걸 상정한다 */}
+          {onExpand && (
+            <button className="qm-min" onClick={onExpand} aria-label="크게 보기" title="크게 보기">
+              <IconExpand size={16} />
+            </button>
+          )}
           <button className="qm-min" onClick={() => setMinimized(true)} aria-label="내려두기" title="내려두기 (Esc)">
             <IconChevDown size={18} />
           </button>

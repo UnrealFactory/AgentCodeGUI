@@ -3036,8 +3036,12 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
 
 /* one panel. No overflow:hidden — the picker / folder dropdowns and tool tooltips
    must be free to escape the panel box; the top/bottom corners are rounded on the
-   header and footer instead so the frame still reads as a single rounded card. */
+   header and footer instead so the frame still reads as a single rounded card.
+   position:relative — 승인/질문 .q-overlay(absolute inset:0)가 이 패널만 덮는 기준.
+   물어본 패널 위에 카드가 앉으니 출처 식별이 자동이고, 동시 요청도 각자 자기 패널에
+   뜬다. (패널 안의 다른 absolute들은 .ma-p-body/.ma-p-composer 등 자체 기준을 가짐) */
 .ma-panel{
+  position:relative;
   display:flex; flex-direction:column; min-width:0; min-height:0;
   background:var(--surface); border:1px solid var(--line); border-radius:14px;
   transition:border-color .14s, box-shadow .14s;
@@ -3061,6 +3065,8 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
 .ma-p-dot.working{ background:var(--accent); box-shadow:0 0 0 3px var(--accent-soft); animation:pulse 1.2s ease-in-out infinite; }
 .ma-p-dot.done{ background:var(--green); }
 .ma-p-dot.error{ background:var(--red); }
+/* 응답 대기 — 승인/질문 카드가 사용자를 기다리는 중 (작업 중과 구분되는 골드 펄스) */
+.ma-p-dot.ask{ background:var(--yellow); box-shadow:0 0 0 3px color-mix(in oklab, var(--yellow) 22%, transparent); animation:pulse 1.4s ease-in-out infinite; }
 .ma-p-title{ font-size:13.5px; font-weight:600; letter-spacing:-.01em; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .ma-p-act{
   flex:0 0 auto; display:grid; place-items:center; width:26px; height:26px; border-radius:7px;
@@ -3077,6 +3083,7 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
 .ma-status.working{ color:var(--accent-2); background:var(--accent-soft); }
 .ma-status.done{ color:var(--green); background:var(--green-soft); }
 .ma-status.error{ color:var(--red); background:var(--red-soft); }
+.ma-status.ask{ color:var(--yellow); background:color-mix(in oklab, var(--yellow) 15%, transparent); }
 .ma-status-time{ font-family:var(--font-mono); font-size:10.5px; opacity:.8; }
 .ma-status-spin{ width:11px; height:11px; border-radius:99px; border:2px solid currentColor; border-right-color:transparent; opacity:.7; animation:spin .7s linear infinite; }
 
@@ -3210,6 +3217,51 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
 .ma-sched .sched-hint{ display:none; } /* too long for a panel-width card */
 .ma-sched .sched-item{ gap:8px; padding:5px 6px 5px 8px; }
 .ma-sched .sched-text{ font-size:12.5px; }
+
+/* ── 패널 스코프 승인/질문 카드 — 좁은 그리드 패널용 컴팩트 서식 ──────────────
+   .ma-panel(position:relative) 덕에 .q-overlay가 물어본 패널만 덮는다. 3열 그리드의
+   패널은 ~400px 폭이라 전체 화면용 카드(580px, 큰 타이포)가 안 들어가므로 여기서
+   줄인다. 확장 카드(.expanded)는 충분히 넓어 기본 서식을 그대로 쓴다. */
+.ma-panel:not(.expanded) .q-overlay{ padding:12px; border-radius:13px; }
+/* 내려둔 질문 알약 — 패널 우하단에 앉는다 */
+.ma-panel:not(.expanded) .q-mini{ right:10px; bottom:10px; min-width:0; max-width:calc(100% - 20px); gap:9px; padding:8px 8px 8px 10px; }
+.ma-panel:not(.expanded) .q-mini-orb{ width:26px; height:26px; border-radius:8px; }
+.ma-panel:not(.expanded) .q-mini .mini-title{ font-size:12px; }
+.ma-panel:not(.expanded) .q-mini .mini-sub{ font-size:10.5px; }
+/* 승인 카드 */
+.ma-panel:not(.expanded) .perm-modal{ max-height:100%; overflow-y:auto; padding:14px; gap:11px; border-radius:13px; }
+.ma-panel:not(.expanded) .perm-head{ gap:10px; }
+.ma-panel:not(.expanded) .perm-ic{ width:34px; height:34px; flex-basis:34px; border-radius:10px; }
+.ma-panel:not(.expanded) .perm-ic svg{ width:19px; height:19px; }
+.ma-panel:not(.expanded) .perm-title{ font-size:14.5px; }
+.ma-panel:not(.expanded) .perm-sub{ font-size:11.5px; }
+.ma-panel:not(.expanded) .perm-tool{ font-size:10.5px; padding:3px 9px; }
+.ma-panel:not(.expanded) .perm-sum{ font-size:11.5px; padding:9px 11px; border-radius:9px; max-height:110px; }
+.ma-panel:not(.expanded) .perm-foot{ font-size:10.5px; }
+/* 질문 카드 */
+.ma-panel:not(.expanded) .q-modal{ max-height:100%; border-radius:13px; }
+.ma-panel:not(.expanded) .q-modal-head{ padding:10px 8px 10px 14px; }
+.ma-panel:not(.expanded) .qm-title{ font-size:13.5px; }
+.ma-panel:not(.expanded) .qm-step-count{ font-size:11px; }
+.ma-panel:not(.expanded) .qm-min, .ma-panel:not(.expanded) .qm-close{ width:26px; height:26px; }
+.ma-panel:not(.expanded) .q-steps{ padding:9px 14px; gap:5px; }
+.ma-panel:not(.expanded) .q-step{ padding:4px 9px 4px 4px; }
+.ma-panel:not(.expanded) .q-step-n{ width:17px; height:17px; font-size:10px; }
+.ma-panel:not(.expanded) .q-step-lbl{ font-size:11px; }
+.ma-panel:not(.expanded) .q-modal-body{ padding:12px 14px; gap:12px; }
+.ma-panel:not(.expanded) .q-chip{ font-size:10.5px; padding:3px 9px; }
+.ma-panel:not(.expanded) .q-q{ font-size:14px; }
+.ma-panel:not(.expanded) .q-opts{ gap:7px; }
+.ma-panel:not(.expanded) .q-opt{ padding:9px 11px; gap:9px; border-radius:11px; }
+.ma-panel:not(.expanded) .q-num{ width:20px; height:20px; margin-top:0; font-size:11px; }
+.ma-panel:not(.expanded) .q-opt-label{ font-size:12.5px; }
+.ma-panel:not(.expanded) .q-opt-desc{ font-size:11.5px; line-height:1.45; }
+.ma-panel:not(.expanded) .q-custom-wrap{ padding:5px 5px 5px 10px; border-radius:10px; }
+.ma-panel:not(.expanded) .q-custom{ font-size:12.5px; }
+.ma-panel:not(.expanded) .q-custom-go{ width:26px; height:26px; border-radius:7px; }
+.ma-panel:not(.expanded) .q-modal-foot{ padding:9px 14px; }
+.ma-panel:not(.expanded) .q-hint{ font-size:10.5px; }
+.ma-panel:not(.expanded) .q-submit{ padding:7px 15px; font-size:12.5px; border-radius:8px; }
 
 /* expand-to-modal — overlay is a direct child of .win-body, so it covers the whole
    workspace (sidebar included) for an even, full backdrop blur */
