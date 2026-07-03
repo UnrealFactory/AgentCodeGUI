@@ -949,9 +949,10 @@ export function BillingPick({
       label="과금"
       value={apiMode ? 'API' : '구독'}
       options={[
-        // --accent는 다크 테마에서 무채색(근백색)이라 아이콘이 하얗게 죽는다 —
-        // 양쪽 테마 모두 색을 유지하는 골드(프리미엄 멤버십 결)로 칠한다
-        { v: '구독', d: 'Claude 구독(정액)으로 실행', color: 'var(--gold)', icon: 'card' as const },
+        // --accent는 다크 테마에서 무채색(근백색)이라 아이콘이 하얗게 죽는다.
+        // 골드는 Fable 모델 티어 색과 겹쳐서 제외 — 모델 색(골드/바이올렛/블루/틸)·API 그린과
+        // 모두 구분되면서 양쪽 테마에서 색을 유지하는 로즈로 칠한다
+        { v: '구독', d: 'Claude 구독(정액)으로 실행', color: 'var(--rose)', icon: 'card' as const },
         {
           v: 'API',
           d: apiReady ? '저장된 API 키로 종량 과금' : 'API 키 필요 — 선택하면 설정이 열려요',

@@ -139,6 +139,7 @@ const api: WindowApi = {
     install: (version: string) => ipcRenderer.invoke(IPC.engineInstall, version),
     uninstall: (version: string) => ipcRenderer.invoke(IPC.engineUninstall, version),
     setActive: (version: string | null) => ipcRenderer.invoke(IPC.engineSetActive, version),
+    cleanup: () => ipcRenderer.invoke(IPC.engineCleanup),
     onInstallProgress: (cb) => subscribe(IPC.engineInstallProgress, cb)
   },
   skill: {

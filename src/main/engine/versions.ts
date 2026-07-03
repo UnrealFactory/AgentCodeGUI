@@ -6,7 +6,12 @@ import fsp from 'node:fs/promises'
 import { spawn } from 'node:child_process'
 import { pathToFileURL } from 'node:url'
 import { writeFileAtomic } from '../atomicWrite'
-import type { EngineVersionEntry, EngineVersionState, EngineInstallProgress } from '@shared/protocol'
+import type {
+  EngineVersionEntry,
+  EngineVersionState,
+  EngineInstallProgress,
+  EngineCleanupResult
+} from '@shared/protocol'
 
 // The Claude Code engine ships as this npm package. Selecting a "version" means
 // installing that package version into our own home folder and loading it from
@@ -223,6 +228,42 @@ export async function uninstall(version: string): Promise<void> {
   await fsp.rm(path.join(ENGINES_DIR, version), { recursive: true, force: true })
   if (readConfig().activeVersion === version) writeConfig({ activeVersion: null })
   if (sdkCache?.version === version) sdkCache = null
+}
+
+// best-effort recursive folder size — the "얼마나 확보했는지" figure for cleanup
+async function dirSize(dir: string): Promise<number> {
+  let total = 0
+  try {
+    for (const e of await fsp.readdir(dir, { withFileTypes: true })) {
+      const p = path.join(dir, e.name)
+      if (e.isDirectory()) total += await dirSize(p)
+      else if (e.isFile()) total += (await fsp.stat(p).catch(() => null))?.size ?? 0
+    }
+  } catch {
+    /* unreadable entries just don't count */
+  }
+  return total
+}
+
+/**
+ * Deletes every installed version except the newest one. If the active version
+ * was among the deleted, the kept newest becomes active — a cleanup must never
+ * silently drop runs back to the bundled SDK.
+ */
+export async function cleanupOld(): Promise<EngineCleanupResult> {
+  const installed = listInstalled() // newest first
+  const kept = installed[0] ?? null
+  const activeBefore = readConfig().activeVersion
+  const removed: string[] = []
+  let freedBytes = 0
+  for (const v of installed.slice(1)) {
+    freedBytes += await dirSize(path.join(ENGINES_DIR, v))
+    await uninstall(v) // clears config/sdkCache when they pointed at this version
+    removed.push(v)
+  }
+  const activeSwitched = activeBefore != null && removed.includes(activeBefore)
+  if (activeSwitched) writeConfig({ activeVersion: kept })
+  return { removed, kept, freedBytes, activeSwitched }
 }
 
 // ── dynamic SDK loading (used by the engine) ─────────────────

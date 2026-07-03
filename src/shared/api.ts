@@ -16,6 +16,7 @@ import type {
   EngineVersionEntry,
   EngineVersionState,
   EngineInstallProgress,
+  EngineCleanupResult,
   FileReadResult,
   FileWriteResult,
   DirEntry,
@@ -194,6 +195,8 @@ export interface WindowApi {
     install(version: string): Promise<{ ok: boolean; error?: string }>
     uninstall(version: string): Promise<void>
     setActive(version: string | null): Promise<void>
+    /** 최신 설치본만 남기고 이전 버전을 모두 삭제 (설정 ▸ Claude Code ▸ 정리) */
+    cleanup(): Promise<EngineCleanupResult>
     onInstallProgress(cb: (p: EngineInstallProgress) => void): () => void
   }
   /** Agent skills (SKILL.md). Listed by scope; toggled on/off from Settings. */

@@ -1070,6 +1070,7 @@ function registerIpc(): void {
   )
   ipcMain.handle(IPC.engineUninstall, async (_e, version: string) => engineVersions.uninstall(version))
   ipcMain.handle(IPC.engineSetActive, async (_e, version: string | null) => engineVersions.setActive(version))
+  ipcMain.handle(IPC.engineCleanup, async () => engineVersions.cleanupOld())
 
   // ── app meta + auto-update ──
   ipcMain.handle(IPC.appGetVersion, async () => app.getVersion())

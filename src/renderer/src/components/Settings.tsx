@@ -64,9 +64,10 @@ function VersionView() {
   const [dialog, setDialog] = useState<{
     title: string
     message: string
-    tone?: 'danger' | 'warn'
+    tone?: 'danger' | 'warn' | 'ok' // ok = 결과 알림 (체크 아이콘, 확인만)
     confirm?: { label: string; action: () => void }
   } | null>(null)
+  const [cleaning, setCleaning] = useState(false) // 이전 버전 정리 진행 중
   const [install, setInstall] = useState<{
     version: string
     log: string[]
@@ -171,6 +172,43 @@ function VersionView() {
 
   // "current" = the version installed & selected in ~/.agentcodegui (null until one is installed)
   const current = state?.active ?? null
+
+  // 이전 버전 일괄 정리 — 최신 설치본(installed[0], 내림차순 정렬)만 남긴다
+  const newest = state?.installed[0] ?? null
+  const oldCount = Math.max(0, (state?.installed.length ?? 0) - 1)
+  const doCleanup = async (): Promise<void> => {
+    setCleaning(true)
+    try {
+      const r = await window.api.engine.cleanup()
+      setDialog({
+        title: '정리 완료',
+        tone: 'ok',
+        message:
+          `이전 버전 ${r.removed.length}개를 삭제했습니다` +
+          (r.freedBytes > 0 ? ` (${fmtBytes(r.freedBytes)} 확보)` : '') +
+          '.' +
+          (r.activeSwitched && r.kept ? ` 사용 버전이 ${r.kept}(으)로 전환되었습니다.` : '')
+      })
+    } catch (e) {
+      setDialog({ title: '정리 실패', message: String((e as Error)?.message ?? e) })
+    } finally {
+      setCleaning(false)
+      refreshState()
+    }
+  }
+  const askCleanup = (): void => {
+    if (!newest || oldCount === 0) return
+    // 사용 중인 버전이 최신이 아니면 그것도 삭제 대상 — 전환된다는 걸 미리 알린다
+    const activeIsOld = !!current && current !== newest
+    setDialog({
+      title: '이전 버전 정리',
+      message:
+        `최신 ${newest} 버전만 남기고 이전 버전 ${oldCount}개를 삭제할까요? ` +
+        `~/.agentcodegui/engines 에서 제거됩니다.` +
+        (activeIsOld ? ` 사용 중인 ${current}도 삭제 대상이라, 정리 후 ${newest}(으)로 전환됩니다.` : ''),
+      confirm: { label: '삭제', action: () => void doCleanup() }
+    })
+  }
 
   const onPick = (v: EngineVersionEntry): void => {
     setOpen(false)
@@ -281,6 +319,32 @@ function VersionView() {
               )}
             </div>
           </div>
+
+          {oldCount > 0 && (
+            <>
+              <div className="ver-div" />
+              <div className="ver-row">
+                <div className="ver-ic">
+                  <IconTrash size={18} />
+                </div>
+                <div className="ver-main">
+                  <div className="ver-name">이전 버전 정리</div>
+                  <div className="ver-meta">
+                    최신 {newest}만 남기고 이전 버전 {oldCount}개를 삭제합니다
+                  </div>
+                </div>
+                <button className="inst-btn ghost" disabled={cleaning || !!busy} onClick={askCleanup}>
+                  {cleaning ? (
+                    <>
+                      <span className="set-spin" /> 정리 중…
+                    </>
+                  ) : (
+                    '정리'
+                  )}
+                </button>
+              </div>
+            </>
+          )}
         </div>
 
         <div className="set-note">
@@ -350,8 +414,8 @@ function VersionView() {
       {dialog && (
         <div className="set-dialog-overlay" onMouseDown={() => setDialog(null)}>
           <div className="set-dialog" onMouseDown={(e) => e.stopPropagation()}>
-            <div className={'sd-ic' + (dialog.tone === 'warn' ? ' warn' : '')}>
-              <IconAlert size={22} />
+            <div className={'sd-ic' + (dialog.tone === 'warn' ? ' warn' : dialog.tone === 'ok' ? ' ok' : '')}>
+              {dialog.tone === 'ok' ? <IconCheck size={22} /> : <IconAlert size={22} />}
             </div>
             <div className="sd-title">{dialog.title}</div>
             <div className="sd-msg">{dialog.message}</div>
@@ -382,6 +446,12 @@ function VersionView() {
 // USD 표시 — 소액(토큰 과금)은 셋째 자리까지, 그 외 둘째 자리까지
 function fmtUsd(v: number): string {
   return '$' + (v > 0 && v < 1 ? v.toFixed(3) : v.toFixed(2))
+}
+// 정리로 확보한 디스크 용량 — 엔진 폴더는 수십 MB~GB 단위라 KB 아래는 뭉갠다
+function fmtBytes(n: number): string {
+  if (n >= 1024 ** 3) return (n / 1024 ** 3).toFixed(1) + ' GB'
+  if (n >= 1024 ** 2) return Math.round(n / 1024 ** 2) + ' MB'
+  return Math.max(1, Math.round(n / 1024)) + ' KB'
 }
 function fmtTokS(n: number): string {
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M'

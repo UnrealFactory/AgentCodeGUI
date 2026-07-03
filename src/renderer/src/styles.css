@@ -2522,6 +2522,7 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
   animation:rise .18s cubic-bezier(.2,.8,.2,1) both; }
 .sd-ic{ width:48px; height:48px; margin:0 auto; border-radius:14px; display:grid; place-items:center; background:var(--red-soft); color:var(--red); }
 .sd-ic.warn{ background:var(--accent-soft); color:var(--accent-2); }
+.sd-ic.ok{ background:var(--green-soft); color:var(--green); }
 .sd-title{ margin-top:14px; font-size:16px; font-weight:700; letter-spacing:-.01em; color:var(--text); }
 .sd-msg{ margin-top:8px; font-size:13px; line-height:1.6; color:var(--text-3); word-break:break-word; max-height:200px; overflow-y:auto; }
 .sd-msg b{ color:var(--text); font-weight:700; }

@@ -459,6 +459,13 @@ export interface EngineInstallProgress {
   ok?: boolean
   error?: string
 }
+/** Result of deleting every installed version except the newest (설정 ▸ 정리). */
+export interface EngineCleanupResult {
+  removed: string[] // versions deleted, newest first
+  kept: string | null // the newest installed version that stayed
+  freedBytes: number // disk space reclaimed (best-effort walk before rm)
+  activeSwitched: boolean // active pointed at a removed version → moved to `kept`
+}
 
 // ── User profile (local nickname + avatar color) ─────────────
 /** Persisted to ~/.agentcodegui/profile.json — set once on the entry screen. */
@@ -613,6 +620,8 @@ export const IPC = {
   engineInstall: 'engine:install',
   engineUninstall: 'engine:uninstall',
   engineSetActive: 'engine:set-active',
+  engineCleanup: 'engine:cleanup', // 최신 설치본만 남기고 이전 버전 폴더 전부 삭제
+
   // git — 탐색기의 Git 카드 (읽기 + 커밋/푸시/풀)
   gitRoot: 'git:root', // cwd → 레포 최상위(.git 상위 탐색 포함), 없으면 null
   gitStatus: 'git:status', // 브랜치·ahead/behind·작업 트리 변경·브랜치/원격/태그 목록
