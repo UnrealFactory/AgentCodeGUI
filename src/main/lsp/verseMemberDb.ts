@@ -38,6 +38,7 @@ interface VMember {
   mkind: MemberKind
   write?: string // a `var<…>` member's SETTER (write) access — verse-lsp's hover omits it
   private?: boolean // `<private>`/`<epic_internal>` — hidden from EXTERNAL access, but visible inside the declaring class
+  doc?: string // 선언 바로 위 문서 주석(원문·미번역) — override 멤버 호버의 베이스 doc 조회용(verseMemberDoc)
 }
 interface VType {
   kind: string // class | struct | enum | interface
@@ -129,6 +130,8 @@ export function parseVerseTypes(types: Map<string, VType>, text: string): void {
       stack.push({ indent: ind, name, kind })
       continue
     }
+    // 멤버 선언 위의 doc 조각 — 타입과 마찬가지로 멤버에도 붙인다(원문 그대로, 번역 팩 sha1 매칭용)
+    const memberDoc = docBuf.join('\n').trim() || undefined
     docBuf = [] // 일반 코드 줄(멤버 등) — 다음 선언의 doc로 새지 않게 비운다
     if (!parent) continue
     if (ind !== parent.indent + 1) continue // DIRECT members only — skip method-body statements
@@ -136,7 +139,7 @@ export function parseVerseTypes(types: Map<string, VType>, text: string): void {
     if (!pt) continue
     if (parent.kind === 'enum') {
       const m = /^([A-Za-z_]\w*)\b/.exec(t)
-      if (m) pt.members.push({ name: m[1], sig: '', mkind: 'enumMember' })
+      if (m) pt.members.push({ name: m[1], sig: '', mkind: 'enumMember', doc: memberDoc })
       continue
     }
     // capture a `var`'s OWN specifiers (`var<private> X<protected>`) — the `<private>` is the SETTER
@@ -155,7 +158,7 @@ export function parseVerseTypes(types: Map<string, VType>, text: string): void {
       const isFn = !!m[3]
       const ret = m[5] ? m[5].trim() : ''
       const sig = (m[3] || '') + (ret ? (ret.startsWith(':') ? '' : ':') + ret : '')
-      pt.members.push({ name: m[1], sig: sig.trim(), mkind: isFn ? 'method' : 'field', write, private: isPriv })
+      pt.members.push({ name: m[1], sig: sig.trim(), mkind: isFn ? 'method' : 'field', write, private: isPriv, doc: memberDoc })
     }
   }
 }
@@ -205,6 +208,30 @@ export function parseVerseGlobals(out: VGlobal[], text: string): void {
     const b = FREE_BIND.exec(body)
     if (b) out.push({ name: b[1], kind: isVar ? 6 : 21 }) // mutable global var → Variable, else Constant
   }
+}
+
+/**
+ * `typeName`과 그 supers 체인에서 `memberName` 선언에 붙은 문서 주석(원문)을 찾는다 — BFS라
+ * 가까운 조상이 먼저다. `<override>` 멤버 호버의 doc 소스: 오버라이드 선언 위엔 주석이 없는 게
+ * 보통이라 공식 API의 doc(번역 포함)이 통째로 사라졌다 → 베이스 선언(digest)의 doc을 대신 쓴다.
+ * 원문 그대로 반환 — 번역(translateVerseDoc)·카드 포맷(formatVerseDoc)은 호출자 몫이어야
+ * 번역 팩의 sha1(원문) 매칭이 어긋나지 않는다. 체인 어디에도 doc이 없으면 null.
+ */
+export function verseMemberDoc(root: string, text: string, typeName: string, memberName: string): string | null {
+  const get = getView(root, text)
+  const seen = new Set<string>()
+  const queue = [typeName]
+  for (let qi = 0; qi < queue.length; qi++) {
+    const n = queue[qi]
+    if (seen.has(n)) continue
+    seen.add(n)
+    const t = get(n)
+    if (!t) continue
+    const m = t.members.find((mb) => mb.name === memberName && mb.doc)
+    if (m) return m.doc!
+    queue.push(...t.supers)
+  }
+  return null
 }
 
 /** Collect a type's members incl. inherited (walk supers), deduped by name. */

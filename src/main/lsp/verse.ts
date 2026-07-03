@@ -485,7 +485,13 @@ function verseEnclosingType(lines: string[], declLine: number): string | null {
  * is the name the line declares, so it never invents a card for an unrelated token.
  * Returns a ```verse fenced markdown string, or null.
  */
-export async function verseDeclHover(absFile: string, line: number, col: number, text?: string): Promise<string | null> {
+export async function verseDeclHover(
+  absFile: string,
+  line: number,
+  col: number,
+  text?: string,
+  baseDoc?: (typeName: string, memberName: string) => string | null
+): Promise<string | null> {
   let lines: string[]
   try {
     lines = (text != null ? text : await fsp.readFile(absFile, 'utf8')).split(/\r?\n/)
@@ -558,8 +564,33 @@ export async function verseDeclHover(absFile: string, line: number, col: number,
     const enc = verseEnclosingType(lines, line)
     if (enc) sig = `(/${enc}:)${sig}`
   }
-  const doc = extractVerseDoc(lines, line) // 선언 위 문서 주석도 함께
+  // 선언 위 문서 주석 — 없고 <override> 선언이면 베이스(공식) doc으로 폴백
+  const doc = extractVerseDoc(lines, line) || (baseDoc ? verseOverrideDoc(lines, line, baseDoc) : '')
   return '```verse\n' + sig + '\n```' + (doc ? '\n\n' + doc : '')
+}
+
+/**
+ * `<override>` 멤버 선언의 doc 폴백 — `OnBeginSimulation<override>()` 같은 오버라이드 선언 위엔
+ * 사용자가 주석을 안 다니까 extractVerseDoc이 빈 문자열을 주고, 공식 API의 doc(한국어 번역 포함)이
+ * 카드에서 통째로 사라졌다. 선언 줄의 이름 지정자에 `<override>`가 있으면 감싸는 타입을 찾아
+ * supers 체인에서 베이스 선언의 doc(원문)을 lookup(→ verseMemberDb.verseMemberDoc)으로 받고,
+ * 자기 주석과 같은 경로(번역 → 카드 포맷)로 돌려준다. lookup을 콜백으로 받는 이유: verseMemberDb가
+ * 이 파일(verseWorkspaceFolders)을 import하므로 역방향 import는 순환이 된다 — manager가 잇는다.
+ * override가 아니거나 베이스 doc이 없으면 ''.
+ */
+export function verseOverrideDoc(
+  lines: string[],
+  declLine: number,
+  lookup: (typeName: string, memberName: string) => string | null
+): string {
+  const t = (lines[declLine] ?? '').trim()
+  // 선언되는 이름 + 그 이름에 붙은 지정자들 — `var X<override>:…` 필드도 포함(기본값 재정의)
+  const m = /^(?:(?:var|set)(?:<[^>]*>)*\s+)?([A-Za-z_]\w*)((?:<[^>]*>)*)/.exec(t)
+  if (!m || !m[2].includes('<override>')) return ''
+  const enc = verseEnclosingType(lines, declLine)
+  if (!enc) return ''
+  const raw = lookup(enc, m[1])
+  return raw ? formatVerseDoc(translateVerseDoc(raw)) : ''
 }
 
 // 클래스류 타입 헤더 — 파라미터형(`name<…>(t:…)`) 포함. isMethodLocal의 감싸는-타입 판정용.

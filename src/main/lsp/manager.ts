@@ -18,6 +18,7 @@ import {
   verseDocAt,
   verseKeywordDoc,
   verseSymbolDoc,
+  verseOverrideDoc,
   setVerseExe,
   clearVerseExe
 } from './verse'
@@ -25,6 +26,7 @@ import {
   verseMemberContext,
   verseDotContext,
   verseHasType,
+  verseMemberDoc,
   verseTypeFromHover,
   verseResolveTypeRegex,
   verseTypeMembers,
@@ -978,7 +980,8 @@ class LspManager {
     if (abs.toLowerCase().startsWith(METADATA_DIR.toLowerCase())) return null
     if (def.kind === 'download' && installState(def.id) !== 'installed') return null
     if (def.kind === 'external' && !def.command('')) return null
-    const s = this.ensure(def, def.rootFor?.(abs, cwd) ?? cwd)
+    const root = def.rootFor?.(abs, cwd) ?? cwd
+    const s = this.ensure(def, root)
     let ready = false
     if (s) {
       try {
@@ -1019,12 +1022,15 @@ class LspManager {
       //    박고(그래야 카드가 'Type'이 아니라 'Class'로 뜬다) 위의 `# …`/@doc 주석도 붙인다.
       if (contents) {
         // contents가 있다는 것 = 서버 응답이 있었다는 것(ready) — s는 비-null
-        const { doc, kind } = await this.verseDefInfo(s!.rpc, uri, pos, abs, text).catch(() => ({ doc: '', kind: null }))
+        const { doc, kind } = await this.verseDefInfo(s!.rpc, uri, pos, root, abs, text).catch(() => ({ doc: '', kind: null }))
         const body = kind ? injectVerseKind(contents, kind) : contents
         return { contents: doc ? body + '\n\n' + doc : body }
       }
-      // 4) 호버가 아예 없으면 선언부 — 그 줄에서 카드를 합성한다(+ 그 위 문서 주석).
-      const declSig = await verseDeclHover(abs, pos.line, pos.character, text).catch(() => null)
+      // 4) 호버가 아예 없으면 선언부 — 그 줄에서 카드를 합성한다(+ 그 위 문서 주석; <override>
+      //    선언이라 자기 주석이 없으면 supers 체인의 베이스(공식) doc — 번역 포함 — 로 폴백).
+      const declSig = await verseDeclHover(abs, pos.line, pos.character, text, (t, m) =>
+        verseMemberDoc(root, text ?? '', t, m)
+      ).catch(() => null)
       if (declSig) return { contents: declSig }
     }
     return contents ? { contents } : null
@@ -1040,6 +1046,7 @@ class LspManager {
     rpc: StdioRpc,
     uri: string,
     pos: LspPos,
+    root: string,
     abs?: string,
     text?: string
   ): Promise<{ doc: string; kind: string | null }> {
@@ -1063,7 +1070,12 @@ class LspManager {
           : undefined
       const lines = (live != null ? live : await fsp.readFile(file, 'utf8')).split(/\r?\n/)
       const km = /:=\s*(class|struct|enum|interface|module)\b/.exec(lines[line] ?? '')
-      return { doc: await verseDocAt(file, line, live), kind: km ? km[1] : null }
+      // 사용처 호버의 definition이 <override> 선언(자기 주석 없음)에 떨어지면 supers 체인의
+      // 베이스(공식) doc — 번역 포함 — 로 폴백. verseMemberDoc의 라이브 파스에는 정의 대상
+      // 파일의 텍스트를 준다(감싸는 타입·supers가 그 파일에 있다).
+      let doc = await verseDocAt(file, line, live)
+      if (!doc) doc = verseOverrideDoc(lines, line, (t, m) => verseMemberDoc(root, lines.join('\n'), t, m))
+      return { doc, kind: km ? km[1] : null }
     } catch {
       return { doc: '', kind: null }
     }
