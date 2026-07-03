@@ -979,6 +979,8 @@ input,textarea{ font-family:inherit; }
 }
 .notice-ic{ flex:0 0 auto; display:grid; place-items:center; margin-top:1px; color:var(--yellow); }
 .notice-text{ flex:1; min-width:0; font-size:13px; line-height:1.6; color:var(--text-2); word-break:keep-all; }
+/* 안내문에서 `백틱`으로 강조한 단어 (예: 하단 '과금' 토글) — 따옴표 대신 색으로 가리킨다 */
+.notice-kw{ color:var(--yellow); font-weight:600; }
 .notice-time{ flex:0 0 auto; font-size:11px; color:var(--text-3); margin-top:2px; }
 
 /* "/command 완료" summary card rendered in the chat thread */
@@ -3550,3 +3552,30 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
   .un-num{ font-size:2.4rem; }
 }
 
+
+/* ── 오류 경계 폴백 (ErrorBoundary) — 렌더 예외가 앱 전체를 백지로 만들지 않게,
+   문제가 난 워크스페이스 자리에만 복구 카드를 띄운다 ── */
+.eb{ flex:1; min-width:0; display:flex; align-items:center; justify-content:center; padding:24px; }
+.eb-card{
+  max-width:420px; padding:26px 28px; border-radius:16px;
+  background:var(--panel, oklch(1 0 0)); border:1px solid var(--line, oklch(0.9 0.004 60));
+  box-shadow:var(--shadow-lg, 0 24px 64px -22px rgba(40,30,20,.25)); text-align:center;
+}
+.eb-title{ font-size:15px; font-weight:700; color:var(--text); }
+.eb-sub{ margin-top:8px; font-size:12.5px; line-height:1.6; color:var(--text-3); }
+.eb-msg{
+  margin-top:12px; padding:9px 12px; border-radius:9px; background:var(--accent-soft);
+  font-family:var(--font-mono); font-size:11px; color:var(--text-2);
+  word-break:break-all; max-height:88px; overflow:auto; text-align:left;
+}
+.eb-actions{ margin-top:16px; display:flex; gap:8px; justify-content:center; }
+.eb-btn{
+  border:none; border-radius:9px; cursor:pointer; padding:8px 18px;
+  font-size:12.5px; font-weight:600; color:var(--on-accent, #fff); background:var(--accent);
+}
+.eb-btn:hover{ background:var(--accent-2); }
+.eb-btn--ghost{ background:transparent; color:var(--text-2); border:1px solid var(--line, oklch(0.9 0.004 60)); }
+.eb-btn--ghost:hover{ background:var(--accent-soft); color:var(--text); }
+
+/* 초장문 본문 폴백 — remark 파싱 한도를 넘긴 텍스트를 구조 없이 원문 그대로 표시 */
+.md-overflow{ white-space:pre-wrap; word-break:break-word; margin:0; font:inherit; }

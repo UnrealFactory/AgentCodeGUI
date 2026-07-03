@@ -1,6 +1,7 @@
 import path from 'node:path'
 import fs from 'node:fs'
 import { APP_HOME } from './engine/versions'
+import { writeFileAtomic } from './atomicWrite'
 import type { UserProfile } from '@shared/protocol'
 
 // The local user profile (nickname + avatar color) lives alongside the engine
@@ -23,7 +24,7 @@ export function readProfile(): UserProfile | null {
 /** Persists the profile, creating the home folder if needed. */
 export function writeProfile(profile: UserProfile): void {
   fs.mkdirSync(APP_HOME, { recursive: true })
-  fs.writeFileSync(
+  writeFileAtomic(
     PROFILE_PATH,
     JSON.stringify({ nickname: profile.nickname.trim(), color: profile.color }, null, 2)
   )

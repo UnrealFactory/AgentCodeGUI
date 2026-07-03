@@ -1,6 +1,7 @@
 import path from 'node:path'
 import fs from 'node:fs'
 import { APP_HOME } from './engine/versions'
+import { writeFileAtomic } from './atomicWrite'
 
 // One file per chat under ~/.agentcodegui/chats/ (<id>.json), plus a small
 // index.json holding the order + which chat was active. The renderer still
@@ -84,7 +85,7 @@ export function writeChats(data: unknown): void {
       order.push(id)
       const json = JSON.stringify(chat)
       if (cache.get(id) !== json) {
-        fs.writeFileSync(chatFile(id), json)
+        writeFileAtomic(chatFile(id), json)
         cache.set(id, json)
       }
     }
@@ -106,7 +107,7 @@ export function writeChats(data: unknown): void {
         cache.delete(id)
       }
     }
-    fs.writeFileSync(
+    writeFileAtomic(
       INDEX_PATH,
       JSON.stringify({ version: blob.version ?? 1, order, activeChatId: blob.activeChatId ?? '' })
     )

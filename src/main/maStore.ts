@@ -1,6 +1,7 @@
 import path from 'node:path'
 import fs from 'node:fs'
 import { APP_HOME } from './engine/versions'
+import { writeFileAtomic } from './atomicWrite'
 
 // The multi-agent workspace (panel layout + each panel's session snapshot) is small
 // and bounded (≤6 panels), so it lives in one JSON blob under the app home folder —
@@ -21,7 +22,7 @@ export function readMulti(): unknown {
 export function writeMulti(data: unknown): void {
   try {
     fs.mkdirSync(APP_HOME, { recursive: true })
-    fs.writeFileSync(FILE, JSON.stringify(data))
+    writeFileAtomic(FILE, JSON.stringify(data))
   } catch {
     /* ignore */
   }

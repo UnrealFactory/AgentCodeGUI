@@ -204,9 +204,6 @@ export class ClaudeEngine {
   private taskSeq = 0
   /** session the taskMap belongs to — a new session resets the accumulated tasks */
   private taskSessionId: string | null = null
-  /** 마지막으로 띄운 인증 불일치 배너 — 같은 내용이 매 메시지(런)마다 반복되지 않게
-   *  내용이 바뀔 때만 다시 띄운다 (예: 전역 ANTHROPIC_API_KEY가 있는 구독 모드). */
-  private lastAuthNotice = ''
 
   constructor(emit: Emit, source: ApiUsageSource = 'chat') {
     this.emit = emit
@@ -307,6 +304,11 @@ export class ClaudeEngine {
     // 중 전환(한도 도달·모델 과부하 폴백 등 거부 이외의 원인 포함)을 감지해 배너를 띄운다.
     // 거부 폴백 경로는 배너를 직접 띄우면서 이 값을 갱신하므로 이중 배너가 뜨지 않는다.
     let curModelDisplay = ''
+    // 이 실행의 실제 인증 경로 — init의 apiKeySource('oauth'=구독 / 그 외='user'·'project'
+    // ·환경변수 등=API 키). 과금 집계는 토글(useApi)이 아니라 이 실제 경로로 판정해야,
+    // 전역 ANTHROPIC_API_KEY로 API 과금된 실행도 원장에 잡히고(그리고 API 모드를 켰지만
+    // 구독으로 붙은 실행은 잡지 않는다). null=아직 못 받음 → useApi로 폴백.
+    let runApiKeySource: string | null = null
 
     // API 모드 — 저장된 키를 하위 CLI의 환경변수로 주입해 이 실행을 구독(OAuth)이
     // 아닌 API 키 과금으로 돌린다. 키 원문은 여기(메인)에서만 읽고 렌더러엔 안 간다.
@@ -444,16 +446,25 @@ export class ClaudeEngine {
           // 조용히 지나가지 않고 배너로 알린다. 같은 배너가 매 메시지 반복되진 않게
           // 내용이 바뀔 때만 다시 띄운다.
           if (typeof msg.apiKeySource === 'string' && msg.apiKeySource) {
+            runApiKeySource = msg.apiKeySource // 과금 집계 판정용 (아래 result에서 사용)
+            const apiBilled = isApiKeyBilled(msg.apiKeySource) // 'oauth'·'none'=구독 → false
             let authNotice = ''
-            if (useApi && msg.apiKeySource === 'oauth') {
-              authNotice = 'API 모드가 켜져 있지만 이 실행은 구독(OAuth) 인증으로 연결됐어요. 과금이 API 키로 되지 않았을 수 있습니다.'
-            } else if (!useApi && msg.apiKeySource !== 'oauth') {
-              authNotice = '이 실행은 API 키 인증으로 연결됐어요(환경변수 등). 구독이 아닌 API 크레딧으로 과금될 수 있습니다.'
+            // once: 이 대화에서 한 번만, 방금 보낸 사용자 메시지 바로 위에 끼워 넣는 키.
+            // '실수로 과금 API로 해놨네'를 알아채라고 띄우는 거라 반복하지 않고 딱 한 번만.
+            let once: string | undefined
+            if (apiBilled) {
+              // 이 실행은 실제로 API 크레딧으로 과금된다 (직접 켠 경우·전역 ANTHROPIC_API_KEY 둘 다)
+              // 백틱으로 감싼 부분은 렌더러가 색을 넣는다 (하단 '과금' 토글과 바꿀 값 '구독')
+              authNotice = useApi
+                ? '이 대화는 API 크레딧으로 과금돼요 (구독이 아닙니다). 실수로 API를 골랐다면 하단 `과금`을 `구독`으로 바꾸세요.'
+                : '이 대화는 API 키로 과금돼요 (환경변수 ANTHROPIC_API_KEY 사용). 구독 크레딧은 쓰이지 않습니다.'
+              once = 'api-billing'
+            } else if (useApi) {
+              // API 모드를 켰는데 구독으로 붙음 = 의도(API 과금)가 실패한 불일치 → 한 번만 알림
+              authNotice = 'API 모드가 켜져 있지만 이 실행은 구독 인증으로 연결됐어요. 과금이 API 키로 되지 않았을 수 있습니다.'
+              once = 'api-mismatch'
             }
-            if (authNotice !== this.lastAuthNotice) {
-              this.lastAuthNotice = authNotice
-              if (authNotice) this.emit({ type: 'notice', runId, text: authNotice })
-            }
+            if (authNotice) this.emit({ type: 'notice', runId, text: authNotice, ...(once ? { once } : {}) })
           }
           continue
         }
@@ -615,10 +626,14 @@ export class ClaudeEngine {
           // use the last per-turn context, NOT contextFromUsage(msg.usage): the
           // result's usage is cumulative across the whole run and would overstate
           // the live window (often well past 100%).
-          // API 모드 실행의 비용은 전역 누적(설정 → API의 사용액)에 바로 더하고, 실행
-          // 1건을 사용 원장에 남긴다(모델별·일별 통계) — 모든 엔진 인스턴스(메인/ask/
-          // 채팅/멀티)가 이 경로를 지나므로 한 곳에서 끝난다.
-          if (useApi && typeof msg.total_cost_usd === 'number') {
+          // API 키로 실제 과금된 실행의 비용을 전역 누적(설정 → API의 사용액)에 더하고,
+          // 실행 1건을 사용 원장에 남긴다(모델별·일별 통계). 판정은 토글이 아니라 실제
+          // 인증 경로(runApiKeySource)로 한다 — 그래야 전역 ANTHROPIC_API_KEY로 API 과금된
+          // 실행도 잡히고, 구독(oauth)으로 붙은 실행의 명목 비용은 (API 모드를 켰더라도)
+          // 실제 청구가 아니므로 더하지 않는다. init 전에 죽어 경로를 못 받았으면 useApi로 폴백.
+          // 모든 엔진 인스턴스(메인/ask/채팅/멀티)가 이 경로를 지나므로 한 곳에서 끝난다.
+          const billedToApi = runApiKeySource ? isApiKeyBilled(runApiKeySource) : useApi
+          if (billedToApi && typeof msg.total_cost_usd === 'number') {
             addSpend(msg.total_cost_usd)
             recordApiUsage({
               ts: Date.now(),
@@ -644,7 +659,8 @@ export class ClaudeEngine {
             numTurns: msg.num_turns ?? null,
             contextTokens: lastContextTokens,
             contextWindow: windowFromModelUsage(msg.modelUsage),
-            viaApi: useApi
+            // 대화별 비용 누적(렌더러)도 같은 실제-과금 판정을 쓴다 (전역 원장과 일관)
+            viaApi: billedToApi
           })
           this.emit({ type: 'status', runId, status: msg.is_error ? 'error' : 'done' })
         }
@@ -803,6 +819,18 @@ export class ClaudeEngine {
     cur: string | null,
     next: string
   ): { whole: boolean; file: ChangedFile; diff: FileDiff } {
+    // A very large file makes the whole-file diff itself the hazard: the line array
+    // balloons the IPC payload, the renderer's state, and the persisted snapshot —
+    // and holding the baseline text pins megabytes for the rest of the run. Keep a
+    // summary row instead of a preview. (`whole: true` so the renderer replaces any
+    // previously accumulated diff for this path rather than appending.)
+    const HUGE = 4_000_000 // chars ≈ 4MB
+    if ((cur?.length ?? 0) > HUGE || next.length > HUGE) {
+      this.baselines.delete(abs)
+      const tag = cur == null ? ('new' as const) : ('edit' as const)
+      const lines = [{ t: 'hunk' as const, text: '@@ 파일이 너무 커서 변경 미리보기를 생략했어요 @@' }]
+      return { whole: true, file: { path: rel, add: 0, del: 0, tag }, diff: { path: rel, tag, add: 0, del: 0, lines } }
+    }
     if (!this.baselines.has(abs)) this.baselines.set(abs, cur)
     const base = this.baselines.get(abs) ?? null
     if (base == null) {
@@ -943,6 +971,14 @@ function modelDisplay(id: unknown): string {
 function modelKey(id: unknown): string {
   const s = typeof id === 'string' ? id : ''
   return /claude-(fable|opus|sonnet|haiku)-\d/i.test(s) ? modelDisplay(s) : ''
+}
+
+// init의 apiKeySource가 "실제 API 키 과금"을 뜻하는지. 구독 계열은 두 값이 온다:
+// 'oauth'(구독 로그인)과 'none'(키 없음 → 로그인 계정으로 폴백). 둘 다 API 청구가 아니라
+// 명목 비용만 있으므로 과금 집계·안내에서 제외한다. 그 외 값('user'/'project'/'org'/
+// 'temporary'/환경변수 등)은 실제 API 키 과금. 빈 값이면 판정 불가(호출부에서 폴백).
+function isApiKeyBilled(source: string | null | undefined): boolean {
+  return !!source && source !== 'oauth' && source !== 'none'
 }
 
 // stop_details.category 코드 → 한국어 라벨. Open string — 새 분류가 스키마보다

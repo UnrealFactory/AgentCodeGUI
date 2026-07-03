@@ -1,6 +1,7 @@
 import path from 'node:path'
 import fs from 'node:fs'
 import { APP_HOME } from './engine/versions'
+import { writeFileAtomic } from './atomicWrite'
 
 // Renderer-owned UI preferences (file-viewer size/zoom, chat zoom) live alongside the
 // profile in the app home folder, so they sit with the rest of the app's settings and
@@ -21,5 +22,5 @@ export function readUiPrefs(): Record<string, unknown> {
 /** Persists the whole UI prefs blob, creating the home folder if needed. */
 export function writeUiPrefs(prefs: Record<string, unknown>): void {
   fs.mkdirSync(APP_HOME, { recursive: true })
-  fs.writeFileSync(UI_PREFS_PATH, JSON.stringify(prefs ?? {}, null, 2))
+  writeFileAtomic(UI_PREFS_PATH, JSON.stringify(prefs ?? {}, null, 2))
 }

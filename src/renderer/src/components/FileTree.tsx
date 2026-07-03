@@ -3,6 +3,9 @@ import type { ChangedFile, DirEntry } from '@shared/protocol'
 import { FileBadge } from './fileType'
 import { IconChevRight, IconFolder, IconFolderOpen, IconSearch, IconX2 } from './icons'
 
+// 폴더 하나가 트리에 그리는 최대 행 수 — 초과분은 "외 N개 항목 생략" 안내 행으로 접는다
+const MAX_DIR_ROWS = 500
+
 /**
  * 파일 트리 코어 — 단일 모드 Explorer의 트리(lazy listDir·펼침·검색·변경 배지)만
  * 떼어낸 재사용 컴포넌트. 폴더 목록/참고 폴더/접기 같은 Explorer 전용 껍데기는 없고,
@@ -147,7 +150,9 @@ export function FileTree({
         </div>
       )
     }
-    return list.map((e) => {
+    // Explorer와 같은 이유의 상한 — 한 폴더의 수만 개 항목이 DOM 폭발을 일으키지 않게
+    const shown = list.length > MAX_DIR_ROWS ? list.slice(0, MAX_DIR_ROWS) : list
+    const rows = shown.map((e) => {
       const rel = base ? base + '/' + e.name : e.name
       if (e.dir) {
         const isOpen = expanded.has(rel)
@@ -183,6 +188,14 @@ export function FileTree({
         </button>
       )
     })
+    if (list.length > shown.length) {
+      rows.push(
+        <div className="exp-note" style={{ paddingLeft: indent(depth) + 18 }} key={base + '/…'}>
+          외 {list.length - shown.length}개 항목 생략
+        </div>
+      )
+    }
+    return rows
   }
 
   return (

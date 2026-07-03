@@ -50,7 +50,7 @@ export function ImageViewer({
   }, [index])
 
   if (!images.length) return null
-  const path = images[Math.min(index, images.length - 1)]
+  const path = images[Math.min(Math.max(0, index), images.length - 1)]
 
   return (
     <div
@@ -98,6 +98,7 @@ export function ImageViewer({
             alt={imageName(path)}
             className={'iv-img' + (zoom ? ' zoomed' : '')}
             draggable={false}
+            decoding="async"
             onClick={() => setZoom((z) => !z)}
           />
         </div>
@@ -119,7 +120,10 @@ export function ImageViewer({
               aria-label={imageName(p)}
               aria-current={i === index}
             >
-              <img src={imageSrc(p)} alt={imageName(p)} draggable={false} />
+              {/* 화면 밖 썸네일은 디코드를 미룬다 — 첨부 이미지가 많아도 스트립 전체를
+                  한 번에 풀해상도로 디코드하지 않게(보이는 것만 디코드). 원본 파일을 그대로
+                  쓰되 스크롤로 들어올 때 로드된다. */}
+              <img src={imageSrc(p)} alt={imageName(p)} draggable={false} loading="lazy" decoding="async" />
             </button>
           ))}
         </div>

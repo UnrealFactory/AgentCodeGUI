@@ -11,18 +11,27 @@ function escapeHtml(s: string): string {
   return s.replace(/[&<>]/g, (c) => (c === '&' ? '&amp;' : c === '<' ? '&lt;' : '&gt;'))
 }
 
+// Highlighting is synchronous on the UI thread — past these sizes it turns from
+// "colors" into "the app froze", so bigger blocks render as escaped plain text.
+// Auto-detect runs EVERY grammar over the block (many× the cost), hence its far
+// lower cap. Mirrors the viewer's own HL_LIMIT.
+const HL_MAX = 200_000
+const HL_AUTO_MAX = 20_000
+
 // highlight.js → HTML. Uses the named language when hljs knows it, falls back to
 // auto-detect, then to plain escaped text. Shared by the markdown renderer and the
 // file viewer card so both produce identically-themed `.hljs-*` token markup.
 export function highlightCode(code: string, lang: string): string {
   try {
     if (lang && hljs.getLanguage(lang)) {
+      if (code.length > HL_MAX) return escapeHtml(code)
       const value = hljs.highlight(code, { language: lang }).value
       // Verse has no LSP semantic tokens; recover member fields by a whole-file scan and keep
       // only those identifiers on the member colour (locals/params/uses of non-members drop to
       // default). Both the viewer and the editor go through here, so both get it.
       return lang === 'verse' ? recolorVerse(value, verseScopes(code)) : value
     }
+    if (code.length > HL_AUTO_MAX) return escapeHtml(code)
     return hljs.highlightAuto(code).value
   } catch {
     return escapeHtml(code)

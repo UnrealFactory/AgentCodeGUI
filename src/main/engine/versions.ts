@@ -5,6 +5,7 @@ import fs from 'node:fs'
 import fsp from 'node:fs/promises'
 import { spawn } from 'node:child_process'
 import { pathToFileURL } from 'node:url'
+import { writeFileAtomic } from '../atomicWrite'
 import type { EngineVersionEntry, EngineVersionState, EngineInstallProgress } from '@shared/protocol'
 
 // The Claude Code engine ships as this npm package. Selecting a "version" means
@@ -52,7 +53,7 @@ function readConfig(): Config {
 
 function writeConfig(c: Config): void {
   fs.mkdirSync(APP_HOME, { recursive: true })
-  fs.writeFileSync(CONFIG_PATH, JSON.stringify(c, null, 2))
+  writeFileAtomic(CONFIG_PATH, JSON.stringify(c, null, 2))
 }
 
 /** The version bundled with the app (the package.json dependency floor). */

@@ -9,6 +9,9 @@ import { NoticeModal } from './NoticeModal'
 
 const isMac = typeof navigator !== 'undefined' && navigator.platform.toLowerCase().includes('mac')
 
+// 폴더 하나가 트리에 그리는 최대 행 수 — 초과분은 "외 N개 항목 생략" 안내 행으로 접는다
+const MAX_DIR_ROWS = 500
+
 // 펼쳐둔 폴더 목록의 저장 키 — 작업 폴더별로 따로 기억한다
 function expandedKey(cwd: string): string {
   return 'explorer.expanded:' + cwd.replace(/[\\/]+/g, '/').toLowerCase()
@@ -580,7 +583,10 @@ export const Explorer = memo(function Explorer({
         </div>
       )
     }
-    return list.map((e) => {
+    // 생성물 폴더 등 수만 개 항목을 한 번에 DOM으로 만들면 렌더러가 멈춘다 — 상한 후
+    // 생략 안내 행을 붙인다
+    const shown = list.length > MAX_DIR_ROWS ? list.slice(0, MAX_DIR_ROWS) : list
+    const rows = shown.map((e) => {
       const rel = base ? base + '/' + e.name : e.name
       if (e.dir) {
         const isOpen = expanded.has(rel)
@@ -635,6 +641,14 @@ export const Explorer = memo(function Explorer({
         </button>
       )
     })
+    if (list.length > shown.length) {
+      rows.push(
+        <div className="exp-note" style={{ paddingLeft: indent(depth) + 18 }} key={base + '/…'}>
+          외 {list.length - shown.length}개 항목 생략
+        </div>
+      )
+    }
+    return rows
   }
 
   return (

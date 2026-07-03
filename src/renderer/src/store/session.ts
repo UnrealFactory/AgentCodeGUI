@@ -29,7 +29,7 @@ export type ThreadItem =
       running: boolean
       failed?: boolean
     }
-  // 시스템 경고를 스레드에 인라인으로 보여주는 줄 (예: 정책 거부 → 모델 자동 전환)
+  // 시스템 경고를 스레드에 인라인으로 보여주는 줄 (예: 정책 거부 → 모델 자동 전환, API 과금 안내)
   | { kind: 'notice'; id: string; text: string; time: string }
 
 export interface SessionState {
@@ -53,12 +53,15 @@ export interface SessionState {
   // set while a slash command run is in flight; consumed on 'result' to finalize its
   // card (cardId points at the running card pushed in 'begin')
   pendingCommand: { name: string; beforeContext: number | null; beforeMsgs: number; cardId: string } | null
-  // 이 대화에서 API 모드(viaApi) 실행들이 쓴 비용 누적(USD) — 구독 실행의 명목
-  // 비용은 실제 청구가 아니므로 더하지 않는다. 예전 스냅샷엔 없을 수 있어 ?? 0으로 읽는다.
+  // 이 대화에서 실제 API 키로 과금된(viaApi) 실행들이 쓴 비용 누적(USD) — 구독 실행의
+  // 명목 비용은 실제 청구가 아니므로 더하지 않는다. 예전 스냅샷엔 없을 수 있어 ?? 0으로 읽는다.
   spentUsd: number
   thinkingText: string | null
   openGroupId: string | null
   seq: number
+  // 이 대화에서 이미 한 번 보여준 '한 번만' 안내(notice)들의 key. 스냅샷에 저장돼 재시작
+  // 후에도 유지되고, 같은 key의 once 안내는 이후 다시 끼우지 않는다. (예: 'api-billing')
+  shownNotices: string[]
 }
 
 type Action =
@@ -147,7 +150,84 @@ export const initialSessionState: SessionState = {
   spentUsd: 0,
   thinkingText: null,
   openGroupId: null,
-  seq: 0
+  seq: 0,
+  shownNotices: []
+}
+
+// ── growth caps ──────────────────────────────────────────────
+// A long autonomous session (worst case: 6 multi-agent panels in bypass mode, all
+// streaming at once) produces tens of thousands of events. Nothing user-visible needs
+// unbounded history, and unbounded arrays held live in 6 panels simultaneously are
+// what eventually OOM-kill the renderer. Oldest entries fall off each cap.
+const MAX_THREAD_ITEMS = 500
+const MAX_TOOLS_PER_GROUP = 400
+const MAX_SUBAGENT_TOOLS = 200
+const MAX_TERMINAL_LINES = 500
+const MAX_DIFF_LINES = 4000
+
+function capThread(list: ThreadItem[]): ThreadItem[] {
+  return list.length > MAX_THREAD_ITEMS ? list.slice(list.length - MAX_THREAD_ITEMS) : list
+}
+function capPush<T>(list: T[], item: T, max: number): T[] {
+  return list.length >= max ? [...list.slice(-(max - 1)), item] : [...list, item]
+}
+
+// Rebuild a persisted snapshot defensively before loading it into live state.
+// Snapshots are written as one JSON blob; a crash mid-write or schema drift can leave
+// fields missing or wrongly shaped, and spreading such a blob straight into the
+// reducer makes the first render throw (`messages.map is not a function`) — which,
+// without an error boundary, white-screens the whole workspace and repeats on every
+// launch. Anything malformed falls back to its empty initial value.
+export function sanitizeSnapshot(raw: unknown): SessionState {
+  const r = (raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {}) as Record<string, unknown>
+  const arr = <T>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : [])
+  const obj = (v: unknown): Record<string, unknown> | null =>
+    v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : null
+
+  const messages = arr<ThreadItem>(r.messages)
+    .filter((m): m is ThreadItem => !!m && typeof m === 'object' && typeof (m as { kind?: unknown }).kind === 'string')
+    .map((m) => (m.kind === 'toolgroup' && !Array.isArray(m.tools) ? { ...m, tools: [] } : m))
+  const subagents = arr<SubAgentInfo>(r.subagents)
+    .filter((a) => !!a && typeof a === 'object')
+    .map((a) => (Array.isArray(a.tools) ? a : { ...a, tools: [] }))
+  const diffs: Record<string, FileDiff> = {}
+  const rawDiffs = obj(r.diffs)
+  if (rawDiffs) {
+    for (const key of Object.keys(rawDiffs)) {
+      const d = rawDiffs[key] as FileDiff | null
+      if (d && typeof d === 'object' && Array.isArray(d.lines)) diffs[key] = d
+    }
+  }
+  const session = obj(r.session)
+  const result = obj(r.result)
+  // an in-flight status must never restore as busy (the run died with the app);
+  // completed states keep their sidebar dot
+  const status: AgentStatus = r.status === 'done' || r.status === 'error' ? r.status : 'idle'
+  return {
+    ...initialSessionState,
+    status,
+    messages: capThread(messages),
+    todos: arr<Todo>(r.todos).filter((t) => !!t && typeof t === 'object'),
+    files: arr<ChangedFile>(r.files).filter((f) => !!f && typeof f === 'object'),
+    diffs,
+    subagents,
+    session: session
+      ? { sessionId: String(session.sessionId ?? ''), model: String(session.model ?? ''), cwd: String(session.cwd ?? '') }
+      : null,
+    result: result
+      ? {
+          costUsd: typeof result.costUsd === 'number' ? result.costUsd : null,
+          durationMs: typeof result.durationMs === 'number' ? result.durationMs : null,
+          numTurns: typeof result.numTurns === 'number' ? result.numTurns : null,
+          contextTokens: typeof result.contextTokens === 'number' ? result.contextTokens : null,
+          contextWindow: typeof result.contextWindow === 'number' ? result.contextWindow : null
+        }
+      : null,
+    spentUsd: typeof r.spentUsd === 'number' ? r.spentUsd : 0,
+    seq: typeof r.seq === 'number' ? r.seq : 0,
+    // 예전 이름(dismissedNotices)도 읽어 마이그레이션
+    shownNotices: arr<unknown>(r.shownNotices ?? r.dismissedNotices).filter((x): x is string => typeof x === 'string')
+  }
 }
 
 function reducer(state: SessionState, action: Action): SessionState {
@@ -173,12 +253,14 @@ function reducer(state: SessionState, action: Action): SessionState {
       status: 'analyzing',
       // a command run replaces the user bubble with a live "running" card (spinner)
       // pushed right away, so the run shows immediate feedback instead of a blank gap
-      messages: cmd
-        ? [
-            ...without,
-            { kind: 'cmdresult', id: cardId, name: cmd, title: CMD_CARDS[cmd].running, sub: null, stats: null, time: action.time, running: true }
-          ]
-        : [...without, { kind: 'msg', id: `u${seq}`, role: 'user', text: action.text, animate: false, time: action.time, images: action.images?.length ? action.images : undefined }],
+      messages: capThread(
+        cmd
+          ? [
+              ...without,
+              { kind: 'cmdresult', id: cardId, name: cmd, title: CMD_CARDS[cmd].running, sub: null, stats: null, time: action.time, running: true }
+            ]
+          : [...without, { kind: 'msg', id: `u${seq}`, role: 'user', text: action.text, animate: false, time: action.time, images: action.images?.length ? action.images : undefined }]
+      ),
       // snapshot the pre-run context so /compact can report real savings on completion
       pendingCommand: cmd
         ? { name: cmd, beforeContext: state.result?.contextTokens ?? null, beforeMsgs: without.filter((m) => m.kind === 'msg').length, cardId }
@@ -226,11 +308,19 @@ function reducer(state: SessionState, action: Action): SessionState {
     case 'assistant-stream': {
       // append a streamed chunk to the in-progress assistant message (creating it
       // on the first chunk). animate:false — the streaming itself is the animation.
+      // Hot path first: the streamed message is almost always the last item — update
+      // it in place instead of re-filtering + re-mapping the whole history per token.
+      const last = state.messages[state.messages.length - 1]
+      if (last && last.kind === 'msg' && last.id === e.messageId) {
+        const messages = state.messages.slice()
+        messages[messages.length - 1] = { ...last, text: last.text + e.delta }
+        return { ...state, thinkingText: null, openGroupId: null, messages }
+      }
       const without = state.messages.filter((m) => m.id !== THINKING_ID)
       const exists = without.some((m) => m.id === e.messageId)
       const messages = exists
         ? without.map((m) => (m.id === e.messageId && m.kind === 'msg' ? { ...m, text: m.text + e.delta } : m))
-        : [...without, { kind: 'msg' as const, id: e.messageId, role: 'assistant' as const, text: e.delta, animate: false, time: nowTime() }]
+        : capThread([...without, { kind: 'msg' as const, id: e.messageId, role: 'assistant' as const, text: e.delta, animate: false, time: nowTime() }])
       return { ...state, thinkingText: null, openGroupId: null, messages }
     }
 
@@ -249,11 +339,11 @@ function reducer(state: SessionState, action: Action): SessionState {
       return {
         ...state,
         openGroupId: null,
-        messages: [
+        messages: capThread([
           ...without,
           // animate short replies for a streaming feel; render long output instantly
           { kind: 'msg', id: e.messageId, role: 'assistant', text: e.text, animate: e.text.length <= 280, time: nowTime() }
-        ]
+        ])
       }
     }
 
@@ -264,7 +354,7 @@ function reducer(state: SessionState, action: Action): SessionState {
         const pid = e.tool.parentToolId
         return {
           ...state,
-          subagents: state.subagents.map((a) => (a.id === pid ? { ...a, tools: [...a.tools, e.tool] } : a))
+          subagents: state.subagents.map((a) => (a.id === pid ? { ...a, tools: capPush(a.tools, e.tool, MAX_SUBAGENT_TOOLS) } : a))
         }
       }
       let messages = state.messages
@@ -273,24 +363,46 @@ function reducer(state: SessionState, action: Action): SessionState {
       if (!hasOpen) {
         const seq = state.seq + 1
         openGroupId = `tg${seq}`
-        messages = [...messages.filter((m) => m.id !== THINKING_ID), { kind: 'toolgroup', id: openGroupId, tools: [], time: nowTime() }]
+        messages = capThread([...messages.filter((m) => m.id !== THINKING_ID), { kind: 'toolgroup', id: openGroupId, tools: [], time: nowTime() }])
         state = { ...state, seq }
       }
       messages = messages.map((m) =>
-        m.kind === 'toolgroup' && m.id === openGroupId ? { ...m, tools: [...m.tools, e.tool] } : m
+        m.kind === 'toolgroup' && m.id === openGroupId ? { ...m, tools: capPush(m.tools, e.tool, MAX_TOOLS_PER_GROUP) } : m
       )
       return { ...state, messages, openGroupId }
     }
 
     case 'tool-end': {
       // tool-end carries no parentToolId, so update whichever container holds the id.
-      const upd = (t: ToolLogItem): ToolLogItem =>
-        t.id === e.id ? { ...t, status: e.status, result: e.result, ...(e.output ? { output: e.output } : {}) } : t
-      return {
-        ...state,
-        messages: state.messages.map((m) => (m.kind === 'toolgroup' ? { ...m, tools: m.tools.map(upd) } : m)),
-        subagents: state.subagents.map((a) => ({ ...a, tools: a.tools.map(upd) }))
+      // The id lives in exactly one container, and recent tools sit at the end — scan
+      // backwards and rebuild only the one message/agent holding it. (The previous
+      // full-history rebuild reallocated every message + every subagent tool list on
+      // every tool completion, which grows quadratic over a long session.)
+      const patch = (t: ToolLogItem): ToolLogItem => ({ ...t, status: e.status, result: e.result, ...(e.output ? { output: e.output } : {}) })
+      for (let i = state.messages.length - 1; i >= 0; i--) {
+        const m = state.messages[i]
+        if (m.kind !== 'toolgroup') continue
+        for (let k = m.tools.length - 1; k >= 0; k--) {
+          if (m.tools[k].id !== e.id) continue
+          const tools = m.tools.slice()
+          tools[k] = patch(tools[k])
+          const messages = state.messages.slice()
+          messages[i] = { ...m, tools }
+          return { ...state, messages }
+        }
       }
+      for (let i = state.subagents.length - 1; i >= 0; i--) {
+        const a = state.subagents[i]
+        for (let k = a.tools.length - 1; k >= 0; k--) {
+          if (a.tools[k].id !== e.id) continue
+          const tools = a.tools.slice()
+          tools[k] = patch(tools[k])
+          const subagents = state.subagents.slice()
+          subagents[i] = { ...a, tools }
+          return { ...state, subagents }
+        }
+      }
+      return state
     }
 
     case 'todos':
@@ -312,15 +424,22 @@ function reducer(state: SessionState, action: Action): SessionState {
           : { ...existing, add: existing.add + e.file.add, del: existing.del + e.file.del, tag: existing.tag === 'new' ? 'new' : e.file.tag }
       const files = [updated, ...state.files.filter((f) => f.path !== e.file.path)]
       const prevDiff = state.diffs[e.file.path]
+      // a file re-edited many times otherwise grows its line array without bound —
+      // keep the most recent MAX_DIFF_LINES with a marker where older hunks fell off
+      const merged = prevDiff && !isWrite ? [...prevDiff.lines, ...e.diff.lines] : e.diff.lines
+      const lines =
+        merged.length > MAX_DIFF_LINES
+          ? [{ t: 'hunk' as const, text: '@@ 이전 변경 일부 생략 @@' }, ...merged.slice(-MAX_DIFF_LINES)]
+          : merged
       const diff: FileDiff =
         prevDiff && !isWrite
-          ? { ...prevDiff, add: prevDiff.add + e.diff.add, del: prevDiff.del + e.diff.del, lines: [...prevDiff.lines, ...e.diff.lines] }
-          : e.diff
+          ? { ...prevDiff, add: prevDiff.add + e.diff.add, del: prevDiff.del + e.diff.del, lines }
+          : { ...e.diff, lines }
       return { ...state, files, diffs: { ...state.diffs, [e.file.path]: diff } }
     }
 
     case 'terminal':
-      return { ...state, terminal: [...state.terminal, e.line] }
+      return { ...state, terminal: capPush(state.terminal, e.line, MAX_TERMINAL_LINES) }
 
     case 'subagent': {
       const existing = state.subagents.find((a) => a.id === e.agent.id)
@@ -350,18 +469,30 @@ function reducer(state: SessionState, action: Action): SessionState {
         ...state,
         seq,
         thinkingText: null,
-        messages: [...without, { kind: 'notice', id: `fb${seq}`, text: e.text, time: nowTime() }]
+        messages: capThread([...without, { kind: 'notice', id: `fb${seq}`, text: e.text, time: nowTime() }])
       }
     }
 
     case 'notice': {
-      // 엔진 루프의 일반 배너(CLI 알림·한도 경고 등) — 진행 상태는 건드리지 않고 줄만 끼운다
       const seq = state.seq + 1
-      return {
-        ...state,
-        seq,
-        messages: [...state.messages, { kind: 'notice', id: `n${seq}`, text: e.text, time: nowTime() }]
+      const item = { kind: 'notice' as const, id: `n${seq}`, text: e.text, time: nowTime() }
+      // once 안내(예: API 과금)는 이 대화에서 그 key당 딱 한 번만, 방금 보낸 사용자 메시지
+      // 바로 위에 끼워 넣는다 — 'API로 과금 중'을 자기 메시지 바로 위에서 한 번 알아채게.
+      if (e.once) {
+        if (state.shownNotices.includes(e.once)) return state
+        const msgs = state.messages.slice()
+        let at = msgs.length
+        for (let i = msgs.length - 1; i >= 0; i--) {
+          if (msgs[i].kind === 'msg' && (msgs[i] as { role?: string }).role === 'user') {
+            at = i
+            break
+          }
+        }
+        msgs.splice(at, 0, item)
+        return { ...state, seq, shownNotices: [...state.shownNotices, e.once], messages: capThread(msgs) }
       }
+      // 그 외 일반 배너(CLI 알림·한도 경고 등) — 진행 상태는 건드리지 않고 끝에 줄만 붙인다
+      return { ...state, seq, messages: capThread([...state.messages, item]) }
     }
 
     case 'permission-request':
@@ -453,7 +584,7 @@ function reducer(state: SessionState, action: Action): SessionState {
         return {
           ...base,
           seq,
-          messages: [...without, { kind: 'msg', id: `rerr${seq}`, role: 'assistant', text: e.text, animate: false, error: true, time: nowTime() }]
+          messages: capThread([...without, { kind: 'msg', id: `rerr${seq}`, role: 'assistant', text: e.text, animate: false, error: true, time: nowTime() }])
         }
       }
       return base
@@ -467,10 +598,10 @@ function reducer(state: SessionState, action: Action): SessionState {
         seq,
         pendingPermission: null,
         pendingQuestion: null,
-        messages: [
+        messages: capThread([
           ...without,
           { kind: 'msg', id: `err${seq}`, role: 'assistant', text: `오류: ${e.message}`, animate: false, error: true, time: nowTime() }
-        ]
+        ])
       }
     }
 

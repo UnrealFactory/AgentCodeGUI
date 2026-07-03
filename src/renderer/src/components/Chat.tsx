@@ -321,6 +321,9 @@ function ToolGroup({
 // chunks. A fractional cursor advances by (time × rate) each frame, where rate
 // scales with the unshown buffer — so the cursor trails slightly behind during
 // streaming (steady trickle, no stop-and-go) and drains the tail when it ends.
+// 글자 수가 이 한도를 넘는 답변은 부드러운 공개 애니메이션을 생략한다 (아래 주석 참고)
+const REVEAL_LIMIT = 24_000
+
 function SmoothMarkdown({ text, running }: { text: string; running: boolean }) {
   const [shown, setShown] = useState(() => (running ? 0 : text.length))
   const targetRef = useRef(text)
@@ -339,7 +342,14 @@ function SmoothMarkdown({ text, running }: { text: string; running: boolean }) {
       lastT.current = now
       const target = targetRef.current.length
       let cur = curRef.current
-      if (cur < target) {
+      if (target > REVEAL_LIMIT) {
+        // 초장문: 매 프레임 markdown을 처음부터 다시 파싱하는 비용이 글 길이에 비례해
+        // 커진다(수십 KB부터 프레임을 잡아먹음) — 애니메이션을 접고 즉시 전부 보여준다
+        if (cur < target) {
+          curRef.current = target
+          setShown(target)
+        }
+      } else if (cur < target) {
         const buffer = target - cur
         // desired speed scales with how far behind we are, with a steady floor so
         // it never crawls during model pauses
@@ -404,6 +414,13 @@ function MessageImages({ images, onOpen }: { images: string[]; onOpen?: (images:
   )
 }
 
+// 안내(notice) 텍스트의 `백틱`으로 감싼 구간을 색 강조 span으로 바꾼다. 백틱이 없으면
+// 문자열 그대로 반환. 안내문은 엔진이 만든 신뢰 텍스트라 이 정도 가벼운 파싱이면 충분하다.
+function renderNoticeText(text: string): ReactNode {
+  if (!text.includes('`')) return text
+  return text.split('`').map((seg, i) => (i % 2 === 1 ? <span key={i} className="notice-kw">{seg}</span> : seg))
+}
+
 export const MessageView = memo(function MessageView({
   item,
   userInitial,
@@ -428,13 +445,14 @@ export const MessageView = memo(function MessageView({
   if (item.kind === 'toolgroup') return <ToolGroup item={item} onOpenFile={onOpenFile} lead={lead} />
   if (item.kind === 'cmdresult') return <CmdResultCard item={item} />
   if (item.kind === 'notice') {
-    // 시스템 경고 줄 — 정책 거부로 모델이 자동 전환됐을 때 등
+    // 시스템 경고 줄 — 정책 거부로 모델이 자동 전환됐을 때, API 과금 안내 등.
+    // 텍스트의 `백틱`으로 감싼 부분은 색을 넣어 강조한다(예: 하단 '과금' 토글).
     return (
       <div className="notice-row">
         <span className="notice-ic">
           <IconAlert size={15} />
         </span>
-        <div className="notice-text">{item.text}</div>
+        <div className="notice-text">{renderNoticeText(item.text)}</div>
         <span className="notice-time">{item.time}</span>
       </div>
     )

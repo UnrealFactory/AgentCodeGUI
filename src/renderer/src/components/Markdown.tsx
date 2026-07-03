@@ -90,9 +90,14 @@ export function Markdown({
     }
     return { ...baseComponents, code: inline, pre: makePre(!!plain, decorate) }
   }, [plain, codeLang, decorate])
+  // remark 파싱도 동기 작업이다 — 아주 큰 본문(거대한 .md 파일, 초장문 답변)은 파싱
+  // 자체가 프레임을 통째로 잡아먹으므로 구조 없이 원문 그대로 보여준다
+  if (text.length > MD_PARSE_LIMIT) return <pre className="md-overflow">{text}</pre>
   return (
     <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
       {text}
     </ReactMarkdown>
   )
 }
+
+const MD_PARSE_LIMIT = 150_000

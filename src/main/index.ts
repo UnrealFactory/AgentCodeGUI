@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, shell, session, screen, protocol } from 'electron'
+import { app, BrowserWindow, crashReporter, ipcMain, dialog, shell, session, screen, protocol } from 'electron'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import fs from 'node:fs'
@@ -13,6 +13,7 @@ import { readApiUsage } from './apiUsage'
 import { setVerseDocKo } from './lsp/verseDocKo'
 import { bumpVerseRegistryRev } from './lsp/verseMemberDb'
 import { readChats, writeChats } from './chats'
+import { writeFileAtomic } from './atomicWrite'
 import { readMulti, writeMulti } from './maStore'
 import { readTalk, writeTalk } from './talkStore'
 import { listSkills, setSkillEnabled } from './skills'
@@ -25,6 +26,32 @@ import { IPC } from '@shared/protocol'
 import type { EngineEvent, RunRequest, PermissionResponse, QuestionResponse, WindowBounds, ResizeEdge, SnapZone, UsageInfo, UsageWindow, FileReadResult, FileWriteResult, UserProfile, MultiRunRequest, MultiPermissionResponse, MultiQuestionResponse, LspPos } from '@shared/protocol'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
+
+// ── 최후 안전망: 크래시 진단 + 메인 프로세스 생존 ────────────────────────────
+// crashReporter는 네이티브 크래시(V8 OOM abort 등)의 미니덤프를 로컬에 남긴다
+// (업로드 없음 — app.getPath('crashDumps')에서 확인). app ready 전에 시작해야 한다.
+crashReporter.start({ uploadToServer: false })
+// uncaughtException의 기본 동작은 즉시 종료 — 대화 중이던 앱이 통째로 사라진다.
+// 진단 로그(~/.agentcodegui/crash.log)를 남기고 계속 산다: 상태가 이상해질 수는
+// 있지만, 사용자가 저장 안 된 작업을 잃고 원인도 모른 채 꺼지는 것보다는 낫다.
+function logFatal(kind: string, err: unknown): void {
+  try {
+    const file = path.join(engineVersions.APP_HOME, 'crash.log')
+    fs.mkdirSync(engineVersions.APP_HOME, { recursive: true })
+    try {
+      // 로그가 무한히 자라지 않게 1MB에서 새로 시작
+      if (fs.statSync(file).size > 1024 * 1024) fs.unlinkSync(file)
+    } catch {
+      /* no log yet */
+    }
+    const detail = err instanceof Error ? err.stack ?? err.message : String(err)
+    fs.appendFileSync(file, `[${new Date().toISOString()}] ${kind}: ${detail}\n`)
+  } catch {
+    /* logging must never throw */
+  }
+}
+process.on('uncaughtException', (err) => logFatal('uncaughtException', err))
+process.on('unhandledRejection', (reason) => logFatal('unhandledRejection', reason))
 
 // ── local image serving (composer attachments + chat image viewer) ───────────
 // Renderer can't load file:// images from its http(dev)/file(prod) origin (webSecurity),
@@ -217,7 +244,7 @@ function saveWindowState(): void {
   const state: WinState = { x: b.x, y: b.y, width: size.width, height: size.height, maximized: customMaximized }
   try {
     fs.mkdirSync(engineVersions.APP_HOME, { recursive: true })
-    fs.writeFileSync(stateFile(), JSON.stringify(state))
+    writeFileAtomic(stateFile(), JSON.stringify(state))
   } catch {
     /* ignore */
   }
@@ -944,27 +971,33 @@ function registerIpc(): void {
     let lastX = b0.x
     let lastY = b0.y
     dragTimer = setInterval(() => {
-      if (!mainWindow || mainWindow.isDestroyed()) return stopDrag()
-      const p = screen.getCursorScreenPoint()
-      const x = p.x - offX
-      const y = p.y - offY
-      // skip when the cursor hasn't moved: nudging a still window every 8ms would still
-      // inflate it (see below), and there's nothing to move anyway
-      if (x === lastX && y === lastY) return
-      lastX = x
-      lastY = y
-      // setBounds with the *locked* grab-time size — NOT setPosition. On a transparent
-      // window with fractional display scaling, setPosition lets Chromium recompute the
-      // size from physical pixels and round it up ~1px every call, so a held/long drag
-      // grew the window without bound. Re-asserting the exact size each frame pins it.
-      mainWindow.setBounds({ x, y, width, height })
-      // 커서가 가장자리/모서리에 닿으면 스냅 고스트를 그 자리에 띄운다 (놓으면 거기로 스냅)
-      const disp = screen.getDisplayNearestPoint(p)
-      const zone = snapZoneFor(p, disp.bounds)
-      if (zone !== pendingSnapZone) {
-        pendingSnapZone = zone
-        if (zone) showSnapPreview(zone, disp.workArea)
-        else hideSnapPreview()
+      // 타이머 콜백 안의 예외는 어디에도 잡히지 않고 uncaughtException이 된다 — 제스처
+      // 중 창이 닫히는 경계 타이밍(setBounds/미리보기 생성)도 앱을 못 죽이게 감싼다
+      try {
+        if (!mainWindow || mainWindow.isDestroyed()) return stopDrag()
+        const p = screen.getCursorScreenPoint()
+        const x = p.x - offX
+        const y = p.y - offY
+        // skip when the cursor hasn't moved: nudging a still window every 8ms would still
+        // inflate it (see below), and there's nothing to move anyway
+        if (x === lastX && y === lastY) return
+        lastX = x
+        lastY = y
+        // setBounds with the *locked* grab-time size — NOT setPosition. On a transparent
+        // window with fractional display scaling, setPosition lets Chromium recompute the
+        // size from physical pixels and round it up ~1px every call, so a held/long drag
+        // grew the window without bound. Re-asserting the exact size each frame pins it.
+        mainWindow.setBounds({ x, y, width, height })
+        // 커서가 가장자리/모서리에 닿으면 스냅 고스트를 그 자리에 띄운다 (놓으면 거기로 스냅)
+        const disp = screen.getDisplayNearestPoint(p)
+        const zone = snapZoneFor(p, disp.bounds)
+        if (zone !== pendingSnapZone) {
+          pendingSnapZone = zone
+          if (zone) showSnapPreview(zone, disp.workArea)
+          else hideSnapPreview()
+        }
+      } catch {
+        stopDrag()
       }
     }, 8)
   })
@@ -996,30 +1029,35 @@ function registerIpc(): void {
     stopResize()
     let prev = ''
     resizeTimer = setInterval(() => {
-      if (!mainWindow || mainWindow.isDestroyed()) return stopResize()
-      const p = screen.getCursorScreenPoint()
-      const dx = p.x - c0.x
-      const dy = p.y - c0.y
-      let left = left0
-      let top = top0
-      let right = right0
-      let bottom = bottom0
-      // each grabbed edge follows the cursor; the opposite edge stays pinned to its
-      // grab-time position, so width/height clamp without ever shifting the anchor
-      if (edge.includes('e')) right = Math.max(left0 + MIN_W, right0 + dx)
-      if (edge.includes('w')) left = Math.min(right0 - MIN_W, left0 + dx)
-      if (edge.includes('s')) bottom = Math.max(top0 + MIN_H, bottom0 + dy)
-      if (edge.includes('n')) top = Math.min(bottom0 - MIN_H, top0 + dy)
-      const next = { x: Math.round(left), y: Math.round(top), width: Math.round(right - left), height: Math.round(bottom - top) }
-      // skip when the target is unchanged (still cursor) — re-setting identical bounds
-      // can still drift ±1px under fractional DPI rounding
-      const key = `${next.x},${next.y},${next.width},${next.height}`
-      if (key === prev) return
-      prev = key
-      mainWindow.setBounds(next)
-      // remember the intended size so a later drag re-asserts this, not the
-      // inflated getBounds(), and the window doesn't drift after a resize
-      logicalSize = { width: next.width, height: next.height }
+      // 드래그 타이머와 같은 이유의 백스톱 — 타이머 안 예외는 곧 uncaughtException
+      try {
+        if (!mainWindow || mainWindow.isDestroyed()) return stopResize()
+        const p = screen.getCursorScreenPoint()
+        const dx = p.x - c0.x
+        const dy = p.y - c0.y
+        let left = left0
+        let top = top0
+        let right = right0
+        let bottom = bottom0
+        // each grabbed edge follows the cursor; the opposite edge stays pinned to its
+        // grab-time position, so width/height clamp without ever shifting the anchor
+        if (edge.includes('e')) right = Math.max(left0 + MIN_W, right0 + dx)
+        if (edge.includes('w')) left = Math.min(right0 - MIN_W, left0 + dx)
+        if (edge.includes('s')) bottom = Math.max(top0 + MIN_H, bottom0 + dy)
+        if (edge.includes('n')) top = Math.min(bottom0 - MIN_H, top0 + dy)
+        const next = { x: Math.round(left), y: Math.round(top), width: Math.round(right - left), height: Math.round(bottom - top) }
+        // skip when the target is unchanged (still cursor) — re-setting identical bounds
+        // can still drift ±1px under fractional DPI rounding
+        const key = `${next.x},${next.y},${next.width},${next.height}`
+        if (key === prev) return
+        prev = key
+        mainWindow.setBounds(next)
+        // remember the intended size so a later drag re-asserts this, not the
+        // inflated getBounds(), and the window doesn't drift after a resize
+        logicalSize = { width: next.width, height: next.height }
+      } catch {
+        stopResize()
+      }
     }, 8)
   })
   ipcMain.handle(IPC.winResizeEnd, async () => stopResize())

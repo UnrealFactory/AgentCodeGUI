@@ -34,6 +34,10 @@ function lineMarks(html: string, base: number, out: { from: number; to: number; 
   walk(root)
 }
 
+// past this size the per-keystroke whole-file re-highlight (see `highlighting` below)
+// takes long enough to hang typing — the editor then runs uncolored but responsive
+const CM_HL_MAX = 200_000
+
 export function buildDeco(
   view: EditorView,
   lang: string,
@@ -41,6 +45,7 @@ export function buildDeco(
   structOv: StructOv | null
 ): DecorationSet {
   const doc = view.state.doc
+  if (doc.length > CM_HL_MAX) return Decoration.none
   const marks: Range<Decoration>[] = []
   // hljs base marks are made inclusive (startSide < 0) so they sort as the OUTER span;
   // sem marks are exclusive (default) → inner span. For a coinciding range the sem
@@ -50,6 +55,9 @@ export function buildDeco(
   const n = Math.min(lines.length, doc.lines)
   for (let i = 0; i < n; i++) lineMarks(lines[i], doc.line(i + 1).from, hljsRaw)
   for (const m of hljsRaw) {
+    // clamp: an out-of-range decoration makes CodeMirror throw during render (the sem
+    // marks below already guard this way; recolorVerse could in theory drift lengths)
+    if (m.to > doc.length || m.to <= m.from) continue
     marks.push(Decoration.mark({ class: m.cls, inclusiveStart: true, inclusiveEnd: true }).range(m.from, m.to))
   }
   const byLine = sem ? semByLine(sem, lang, structOv, doc.toString()) : null

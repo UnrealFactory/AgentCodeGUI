@@ -6,6 +6,7 @@ import { CmEditor, type CmEditorHandle } from './CmEditor'
 import { highlightCode, highlightToLines } from '../lib/highlight'
 import { SEM_CLASS, riderSemClass, type SemSpan, type StructOv } from '../lib/semTokens'
 import { useCppStructOv } from '../lib/cppStruct'
+import { capMapSet } from '../lib/capMap'
 import { diffMarksOf, type DiffMarks } from '../lib/cmDiff'
 import { getPref, setPref } from '../lib/prefs'
 import { isImagePath, imageSrc } from '../lib/images'
@@ -633,8 +634,10 @@ function splitVerseSpecs(mods: string[], kind?: string, write?: string): { k: st
 }
 
 // 세션 동안 배운 식별자→색 누적 사전 — 호버 시그니처가 참조하는 타입(TArray 등)이
-// "지금 열린 파일"에는 안 나와도, 전에 연 파일에서 배웠으면 칠할 수 있게 한다
+// "지금 열린 파일"에는 안 나와도, 전에 연 파일에서 배웠으면 칠할 수 있게 한다.
+// 오래 켜두고 많은 파일을 열어도 무한히 늘지 않게 크기 상한(초과분은 오래된 것부터 제거).
 const sessionSemDict = new Map<string, string>()
+const SESSION_SEM_MAX = 5000
 
 // C++ struct 구분 보정(cppRecordIsStruct/cppFieldOfStruct + 프로브)은 ../lib/cppStruct
 // (useCppStructOv 훅)로 옮겨 뷰어·CM이 공유한다.
@@ -1501,7 +1504,7 @@ function CodeView({
           best = cls
         }
       dict.set(text, best)
-      sessionSemDict.set(text, best) // 다른 파일의 호버에서도 이 이름을 칠할 수 있게 누적
+      capMapSet(sessionSemDict, text, best, SESSION_SEM_MAX) // 다른 파일의 호버에서도 이 이름을 칠할 수 있게 누적(상한)
     }
     return dict.size ? dict : null
   }, [sem, t.lang, body, structOv])
@@ -1985,8 +1988,9 @@ export function FileModal({
   const [cmSaved, setCmSaved] = useState(false) // 방금 저장됨 — 잠깐 '저장됨' 표시
   const [cmMode, setCmMode] = useState<'read' | 'edit'>('read') // 변경 파일은 읽기(diff)로 열고 '편집' 눌러 수정
   // 읽기 모드의 변경 tint(초록/빨강) 표시 — Ctrl+D로 일반 보기와 토글. 선택한 보기는
-  // 파일·네비게이션을 넘어 전역으로 유지하고 디스크에도 남긴다(prefs).
-  const [diffView, setDiffViewState] = useState(() => getPref('viewer.diffView', true))
+  // 파일·네비게이션을 넘어 전역으로 유지하고 디스크에도 남긴다(prefs). 기본은 OFF —
+  // 필요할 때만 Ctrl+D로 켠다(변경 파일 자체는 여전히 변경된 파일·배지로 확인 가능).
+  const [diffView, setDiffViewState] = useState(() => getPref('viewer.diffView', false))
   const setDiffView = useCallback((next: boolean | ((v: boolean) => boolean)): void => {
     setDiffViewState((v) => {
       const nv = typeof next === 'function' ? next(v) : next

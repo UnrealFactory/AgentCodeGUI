@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ApiConfigStatus, AppUser, FileDiff, RunRequest, SubAgentInfo, UsageInfo, UserProfile } from '@shared/protocol'
 import { extractMentions } from './lib/mentions'
 import { useMaximized } from './lib/useMaximized'
-import { useAgentSession, initialSessionState, snapshotForPersist, sameCwd, commandOf, commandTitleOf, type SessionState } from './store/session'
+import { useAgentSession, initialSessionState, sanitizeSnapshot, snapshotForPersist, sameCwd, commandOf, commandTitleOf, type SessionState } from './store/session'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import { TitleBar } from './components/TitleBar'
 import { Sidebar, type WorkspaceMode } from './components/Sidebar'
 import { MultiWorkspace } from './components/MultiAgent'
@@ -307,7 +308,7 @@ function MainApp({ user }: { user: AppUser }) {
             ...c,
             manualCwd: c.manualCwd ?? '',
             picker: sanitizePicker(c.picker),
-            snapshot: { ...initialSessionState, ...c.snapshot }
+            snapshot: sanitizeSnapshot(c.snapshot)
           }))
           const active = restored.find((c) => c.id === data.activeChatId) ?? restored[0]
           setChats(restored)
@@ -993,29 +994,33 @@ function MainApp({ user }: { user: AppUser }) {
       <TitleBar title="Desktop" />
       <div className="win-body">
         {mode === 'multi' ? (
-          <MultiWorkspace
-            user={user}
-            usage={usage}
-            onOpenSettings={onOpenSettings}
-            mode={mode}
-            onModeChange={onModeChange}
-            apiMode={apiMode}
-            apiReady={!!apiCfg?.hasKey}
-            onOpenApiSettings={openApiSettings}
-          />
+          <ErrorBoundary label="멀티 에이전트">
+            <MultiWorkspace
+              user={user}
+              usage={usage}
+              onOpenSettings={onOpenSettings}
+              mode={mode}
+              onModeChange={onModeChange}
+              apiMode={apiMode}
+              apiReady={!!apiCfg?.hasKey}
+              onOpenApiSettings={openApiSettings}
+            />
+          </ErrorBoundary>
         ) : mode === 'chat' ? (
-          <ChatWorkspace
-            user={user}
-            usage={usage}
-            onOpenSettings={onOpenSettings}
-            mode={mode}
-            onModeChange={onModeChange}
-            apiMode={apiMode}
-            apiReady={!!apiCfg?.hasKey}
-            onApiModeChange={onApiModeChange}
-            budgetUsd={apiCfg?.budgetUsd ?? null}
-            totalSpentUsd={apiCfg?.spentUsd ?? 0}
-          />
+          <ErrorBoundary label="채팅">
+            <ChatWorkspace
+              user={user}
+              usage={usage}
+              onOpenSettings={onOpenSettings}
+              mode={mode}
+              onModeChange={onModeChange}
+              apiMode={apiMode}
+              apiReady={!!apiCfg?.hasKey}
+              onApiModeChange={onApiModeChange}
+              budgetUsd={apiCfg?.budgetUsd ?? null}
+              totalSpentUsd={apiCfg?.spentUsd ?? 0}
+            />
+          </ErrorBoundary>
         ) : (
         <>
         <Sidebar
@@ -1300,7 +1305,13 @@ export default function App() {
   } else if (!user) {
     content = <Profile initial={profile} onEnter={enter} />
   } else {
-    content = <MainApp user={user} />
+    // 최상위 안전망 — MainApp 자체 렌더(단일 모드 스레드 포함)에서 난 예외까지 잡는다.
+    // 워크스페이스별 경계가 먼저 잡고, 여기는 그 밖(사이드바·모달 등)을 커버한다.
+    content = (
+      <ErrorBoundary label="앱">
+        <MainApp user={user} />
+      </ErrorBoundary>
+    )
   }
 
   return (

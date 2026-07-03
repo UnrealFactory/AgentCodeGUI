@@ -299,8 +299,9 @@ export type EngineEvent =
       // the model's real context-window size (tokens), from the SDK's per-model usage.
       // null when unknown → the renderer falls back to the model's default window.
       contextWindow: number | null
-      // 이 실행이 API 키 과금(useApi)으로 돌았는지 — 대화별 비용 누적은 이 플래그가
-      // 켜진 결과의 costUsd만 합산한다 (구독 실행의 명목 비용은 실제 청구가 아니므로).
+      // 이 실행이 실제로 API 키로 과금됐는지(토글이 아니라 인증 경로 기준: 전역
+      // ANTHROPIC_API_KEY로 붙은 실행도 true). 대화별 비용 누적은 이 플래그가 켜진
+      // 결과의 costUsd만 합산한다 (구독 실행의 명목 비용은 실제 청구가 아니므로).
       viaApi: boolean
     }
   // live context-token estimate emitted per assistant turn (before the final result)
@@ -318,7 +319,9 @@ export type EngineEvent =
     }
   // 엔진 루프의 일반 텍스트 배너 — CLI가 REPL에 띄우는 알림(notification)·경고 줄
   // (informational: 한도 경고, 훅 피드백 등). 스레드에 notice 줄로 그대로 표시한다.
-  | { type: 'notice'; runId: string; text: string }
+  // once가 있으면 '이 대화에서 그 key당 한 번만' 표시하는 안내(예: API 과금)로 취급하고,
+  // 방금 보낸 사용자 메시지 바로 위에 끼워 넣는다.
+  | { type: 'notice'; runId: string; text: string; once?: string }
   | { type: 'error'; runId: string; message: string }
 
 // ── Renderer → Main commands ─────────────────────────────────

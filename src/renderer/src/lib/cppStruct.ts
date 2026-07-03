@@ -2,6 +2,11 @@ import { useEffect, useState } from 'react'
 import type { LspSemanticTokens } from '@shared/protocol'
 import type { StructOv } from './semTokens'
 import { paletteClassFor } from '../components/fileType'
+import { capMapSet } from './capMap'
+
+// 세션 캐시 상한 — 아주 오래 켜두고 방대한 C++ 코드를 열어도 이름 캐시가 무한히 늘지
+// 않게. 초과분은 오래된 것부터 밀려나고 필요하면 다시 hover로 배운다(ms).
+const CPP_CACHE_MAX = 5000
 
 // ── C++ struct 구분 보정 ─────────────────────────────────────────────────────
 // clangd 시맨틱 토큰은 struct/union을 'class'로 합쳐 보내 Rider의 연보라 구분이
@@ -70,8 +75,8 @@ export function useCppStructOv(
           needTypes.slice(i, i + CHUNK).map(async (n) => {
             const p = await probe(typePos.get(n)!)
             if (!p) return // 응답 없음(서버 바쁨 등) — 캐시하지 않고 다음 기회에
-            if (p.kind === 'struct' || p.kind === 'union') cppRecordIsStruct.set(n, true)
-            else if (p.kind === 'class') cppRecordIsStruct.set(n, false)
+            if (p.kind === 'struct' || p.kind === 'union') capMapSet(cppRecordIsStruct, n, true, CPP_CACHE_MAX)
+            else if (p.kind === 'class') capMapSet(cppRecordIsStruct, n, false, CPP_CACHE_MAX)
           })
         )
       }
@@ -81,7 +86,7 @@ export function useCppStructOv(
             const p = await probe(fieldPos.get(n)!)
             if (!p || p.kind !== 'field' || !p.container) return
             const st = cppRecordIsStruct.get(p.container)
-            if (st !== undefined) cppFieldOfStruct.set(n, st) // 소속 종류를 모르면 보류
+            if (st !== undefined) capMapSet(cppFieldOfStruct, n, st, CPP_CACHE_MAX) // 소속 종류를 모르면 보류
           })
         )
       }

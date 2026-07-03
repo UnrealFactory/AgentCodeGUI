@@ -3,6 +3,7 @@ import type { AppUser, AgentStatus, UsageInfo, MultiRunRequest, EngineEvent, Ski
 import {
   useAgentSession,
   initialSessionState,
+  sanitizeSnapshot,
   snapshotForPersist,
   sameCwd,
   commandOf,
@@ -77,6 +78,19 @@ const STATUS_META: Record<AgentStatus, { label: string; cls: string }> = {
 // multi-agent panels default to bypass — autonomous parallel work shouldn't stop on
 // per-tool approvals across several panels at once (changeable per panel in the picker)
 const DEFAULT_PICKER: PickerState = { model: 'opus', effort: 'xhigh', mode: 'bypass' }
+
+// a picker restored from disk may be missing, truncated (crash mid-save), or hold ids
+// this build no longer knows — each field falls back to the default individually
+const PICKER_MODELS = ['fable', 'opus', 'sonnet', 'haiku']
+const PICKER_EFFORTS = ['max', 'xhigh', 'high', 'medium', 'low', 'minimal']
+const PICKER_MODES = ['normal', 'plan', 'acceptEdits', 'auto', 'bypass']
+function sanitizePanelPicker(p?: Partial<PickerState> | null): PickerState {
+  return {
+    model: p?.model && PICKER_MODELS.includes(p.model) ? p.model : DEFAULT_PICKER.model,
+    effort: p?.effort && PICKER_EFFORTS.includes(p.effort) ? p.effort : DEFAULT_PICKER.effort,
+    mode: p?.mode && PICKER_MODES.includes(p.mode) ? p.mode : DEFAULT_PICKER.mode
+  }
+}
 
 const MULTI_VERSION = 2
 
@@ -997,8 +1011,8 @@ function ActiveSession({
         ? {
             title: p.title ?? '',
             custom: !!p.custom,
-            cwd: p.cwd ?? '',
-            picker: p.picker ?? { ...DEFAULT_PICKER },
+            cwd: typeof p.cwd === 'string' ? p.cwd : '',
+            picker: sanitizePanelPicker(p.picker),
             // 패널별 과금 — 예전 저장본(필드 없음)은 현재 전역 모드를 기본값으로
             api: p.api ?? apiMode,
             input: '',
@@ -1025,7 +1039,7 @@ function ActiveSession({
   // restore each panel's saved thread into its live session, once on mount
   useEffect(() => {
     initial.panels?.forEach((p, i) => {
-      if (p?.snapshot && i < SLOT_COUNT) sessions[i].load({ ...initialSessionState, ...p.snapshot })
+      if (p?.snapshot && i < SLOT_COUNT) sessions[i].load(sanitizeSnapshot(p.snapshot))
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -1296,11 +1310,15 @@ function ActiveSession({
   // dequeuing changes `metas` and re-runs this effect before the next run's busy flips on.
   const busySig = sessions.map((s) => (s.busy ? '1' : '0')).join('')
   const prevBusyRef = useRef(busySig)
+  // slots mid-drain — sendPanel can await pickDirectory (cwd 없는 재생) before busy
+  // flips, and this effect re-runs on every metas change in that window; the ref makes
+  // re-entry per slot impossible regardless of timing
+  const drainingRef = useRef<Set<number>>(new Set())
   useEffect(() => {
     const was = prevBusyRef.current
     prevBusyRef.current = busySig
     SLOTS.forEach((slot) => {
-      if (busySig[slot] === '1' || was[slot] !== '1') return
+      if (busySig[slot] === '1' || was[slot] !== '1' || drainingRef.current.has(slot)) return
       // 런을 시작하지 않는 클라이언트 명령(/clear)은 busy 전환이 다시 오지 않아 뒤 항목이
       // 영영 갇힌다 — 앞쪽의 /clear 들을 연달아 소진하고, 엔진 런을 시작할 첫 일반 항목까지
       // 한 번에 내보낸다(그 런이 끝나면 다음 idle 전환이 나머지를 이어받는다).
@@ -1309,9 +1327,17 @@ function ActiveSession({
       while (clears < q.length && q[clears].text.trim() === '/clear') clears++
       const items = q.slice(0, Math.min(clears + 1, q.length))
       if (!items.length) return
+      drainingRef.current.add(slot)
       setMetas((prev) => prev.map((m, i) => (i === slot ? { ...m, queue: m.queue.slice(items.length) } : m)))
-      // 예약 메시지는 자체 텍스트/첨부/설정으로 재생 — 실행 중에 새로 쓰던 초안은 건드리지 않는다
-      for (const next of items) void sendPanel(slot, { text: next.text, images: next.images, picker: next.picker })
+      // 예약 메시지는 자체 텍스트/첨부/설정으로 재생 — 실행 중에 새로 쓰던 초안은 건드리지
+      // 않는다. 순차 await: 이전 항목이 자리를 잡기 전에 다음 항목이 겹쳐 나가지 않게.
+      void (async () => {
+        try {
+          for (const next of items) await sendPanel(slot, { text: next.text, images: next.images, picker: next.picker })
+        } finally {
+          drainingRef.current.delete(slot)
+        }
+      })()
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [busySig, metas])
@@ -1440,7 +1466,15 @@ function ActiveSession({
                 role="tab"
                 aria-selected={count === n}
                 className={'ma-count-btn' + (count === n ? ' on' : '')}
-                onClick={() => setCount(n)}
+                onClick={() => {
+                  setCount(n)
+                  // 줄어든 그리드 밖을 가리키던 확대/선택/모달 슬롯은 정리 — 안 보이는
+                  // 패널이 오버레이로 계속 떠 있거나 포커스를 쥐고 있지 않게
+                  setExpandedSlot((s) => (s != null && s >= n ? null : s))
+                  setFocusedSlot((s) => (s != null && s >= n ? null : s))
+                  setPromptSlot((s) => (s != null && s >= n ? null : s))
+                  setOpenFile((f) => (f && f.slot >= n ? null : f))
+                }}
               >
                 {n}
               </button>
@@ -1569,17 +1603,22 @@ export function MultiWorkspace({
       .then((raw) => {
         if (!alive) return
         const data = raw as MultiPersist | null
-        if (data && Array.isArray(data.sessions) && data.sessions.length) {
-          const ord = data.sessions.map((s) => s.id)
-          data.sessions.forEach((s) => (dataRef.current[s.id] = s))
+        // a crash mid-save can leave malformed entries — keep only sessions with a real
+        // id so a corrupt one can't seed `undefined` keys through the whole workspace
+        const sessions = (Array.isArray(data?.sessions) ? data!.sessions : []).filter(
+          (s): s is PersistedSession => !!s && typeof s === 'object' && typeof s.id === 'string' && s.id.length > 0
+        )
+        if (sessions.length) {
+          const ord = sessions.map((s) => s.id)
+          sessions.forEach((s) => (dataRef.current[s.id] = s))
           setOrder(ord)
-          setTitles(Object.fromEntries(data.sessions.map((s) => [s.id, { title: s.title ?? '', custom: !!s.custom }])))
+          setTitles(Object.fromEntries(sessions.map((s) => [s.id, { title: s.title ?? '', custom: !!s.custom }])))
           setStatuses(
             Object.fromEntries(
-              data.sessions.map((s) => [s.id, aggregateStatus((s.panels ?? []).map((p) => p?.snapshot?.status ?? 'idle'))])
+              sessions.map((s) => [s.id, aggregateStatus((s.panels ?? []).map((p) => p?.snapshot?.status ?? 'idle'))])
             )
           )
-          setActiveId(data.activeSessionId && ord.includes(data.activeSessionId) ? data.activeSessionId : ord[0])
+          setActiveId(data!.activeSessionId && ord.includes(data!.activeSessionId) ? data!.activeSessionId : ord[0])
         } else {
           seed()
         }

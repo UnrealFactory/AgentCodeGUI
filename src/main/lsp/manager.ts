@@ -242,7 +242,15 @@ function nodeServer(script: string | null, ...args: string[]): SpawnPlan | null 
 function killTree(child: ChildProcess): void {
   try {
     if (process.platform === 'win32' && child.pid) {
-      spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' })
+      // spawn failure (ENOENT 등) is emitted async — without the error listener it
+      // becomes an uncaughtException; fall back to a plain kill instead
+      spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' }).on('error', () => {
+        try {
+          child.kill()
+        } catch {
+          /* already gone */
+        }
+      })
     } else {
       child.kill()
     }

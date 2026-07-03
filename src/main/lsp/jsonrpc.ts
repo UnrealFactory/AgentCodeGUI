@@ -33,6 +33,14 @@ export class StdioRpc {
 
   constructor(private child: ChildProcess) {
     child.stdout?.on('data', (chunk: Buffer) => this.feed(chunk))
+    // A server that died mid-conversation surfaces EPIPE/EOF *asynchronously* as an
+    // 'error' event on its stdio streams (the try/catch in write() only sees sync
+    // throws). Without these listeners Node re-raises that as an uncaughtException —
+    // one crashed clangd/verse-lsp/Roslyn then takes the whole app down with it.
+    // Swallow: in-flight requests already fail via timeout, and the child's 'exit'
+    // handler dispose()s this rpc right after.
+    child.stdin?.on('error', () => {})
+    child.stdout?.on('error', () => {})
   }
 
   request<T>(method: string, params: unknown, timeoutMs = 15000): Promise<T> {

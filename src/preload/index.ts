@@ -16,10 +16,35 @@ import type {
 import type { LspPos } from '@shared/protocol'
 import type { WindowApi } from '@shared/api'
 
+// One real ipcRenderer listener per channel, fanned out to JS subscribers. The multi
+// workspace alone subscribes 12+ times to the shared ma:event channel (6 panel hooks +
+// 6 fallback watchers), which blows past Node's default 10-listener warning threshold
+// and re-registers native listeners on every session switch. A hub keeps the native
+// side at exactly one listener per channel; subscribers come and go in a plain Set.
+const hubs = new Map<string, Set<(payload: unknown) => void>>()
 function subscribe<T>(channel: string, cb: (payload: T) => void): () => void {
-  const listener = (_e: IpcRendererEvent, payload: T): void => cb(payload)
-  ipcRenderer.on(channel, listener)
-  return () => ipcRenderer.removeListener(channel, listener)
+  let subs = hubs.get(channel)
+  if (!subs) {
+    subs = new Set()
+    hubs.set(channel, subs)
+    const set = subs
+    ipcRenderer.on(channel, (_e: IpcRendererEvent, payload: unknown) => {
+      // iterate a copy so a subscriber unsubscribing (or throwing) mid-dispatch
+      // can't corrupt the loop or starve the remaining subscribers
+      for (const fn of [...set]) {
+        try {
+          fn(payload)
+        } catch (err) {
+          console.error(`[preload] subscriber error on ${channel}`, err)
+        }
+      }
+    })
+  }
+  const fn = cb as (payload: unknown) => void
+  subs.add(fn)
+  return () => {
+    subs.delete(fn)
+  }
 }
 
 const api: WindowApi = {

@@ -2,6 +2,7 @@ import path from 'node:path'
 import fs from 'node:fs'
 import { safeStorage } from 'electron'
 import { APP_HOME } from './engine/versions'
+import { writeFileAtomic } from './atomicWrite'
 import type { ApiConfigStatus } from '@shared/protocol'
 
 // API 키 과금 설정 — 키·예산·누적 사용액을 앱 홈에 보관한다. 키는 가능하면
@@ -30,7 +31,7 @@ function readConfig(): StoredConfig {
 
 function writeConfig(cfg: StoredConfig): void {
   fs.mkdirSync(APP_HOME, { recursive: true })
-  fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2))
+  writeFileAtomic(CONFIG_PATH, JSON.stringify(cfg, null, 2))
 }
 
 /** 렌더러용 스냅샷 — 키 원문 대신 존재 여부 + 끝 4자리만. */

@@ -4,6 +4,7 @@ import { extractMentions } from '../lib/mentions'
 import {
   useAgentSession,
   initialSessionState,
+  sanitizeSnapshot,
   snapshotForPersist,
   commandOf,
   commandTitleOf,
@@ -171,7 +172,7 @@ export function ChatWorkspace({
           const restored = data.chats.map((c) => ({
             ...c,
             picker: sanitizePicker(c.picker),
-            snapshot: { ...initialSessionState, ...c.snapshot }
+            snapshot: sanitizeSnapshot(c.snapshot)
           }))
           const active = restored.find((c) => c.id === data.activeChatId) ?? restored[0]
           setChats(restored)
