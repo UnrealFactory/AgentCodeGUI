@@ -15,6 +15,11 @@ export type AgentStatus = 'idle' | 'analyzing' | 'working' | 'done' | 'error'
 // ── Tool activity ────────────────────────────────────────────
 export type ToolKind = 'search' | 'read' | 'write' | 'edit' | 'bash' | 'task' | 'web' | 'mcp' | 'other'
 
+export interface WebLink {
+  title: string
+  url: string
+}
+
 export interface ToolLogItem {
   id: string // tool_use id
   verb: string // display label: Search / Read / Write / Edit / Bash / Task …
@@ -23,6 +28,7 @@ export interface ToolLogItem {
   status: 'running' | 'done' | 'error'
   result?: string // short result summary once finished
   output?: string // captured output tail (Bash) — rendered as a collapsible inline log
+  links?: WebLink[] // web rows — pages a WebSearch found; the chat row expands to clickable links
   parentToolId?: string // set when this tool runs inside a subagent (Task)
 }
 
@@ -271,7 +277,7 @@ export type EngineEvent =
   | { type: 'thinking'; runId: string; text: string }
   | { type: 'thinking-clear'; runId: string }
   | { type: 'tool-start'; runId: string; tool: ToolLogItem }
-  | { type: 'tool-end'; runId: string; id: string; status: 'done' | 'error'; result?: string; output?: string }
+  | { type: 'tool-end'; runId: string; id: string; status: 'done' | 'error'; result?: string; output?: string; links?: WebLink[] }
   | { type: 'todos'; runId: string; todos: Todo[] }
   // `whole` = a full-file Write (the diff supersedes any accumulated diff for this
   // path); false for incremental Edit/MultiEdit (merges onto the existing diff)

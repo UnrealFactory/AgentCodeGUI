@@ -613,6 +613,14 @@ input,textarea{ font-family:inherit; }
 .chat-head-toggle.has-tip:hover::after{ transform:translate(0, 0); }
 
 .chat-scroll{ flex:1; overflow-y:auto; min-height:0; }
+/* "맨 아래로" 점프 버튼 — 위로 스크롤해 바닥에서 멀어지면 뜬다. 스크롤 영역 안의
+   0높이 sticky 래퍼라 컴포저/워크바 높이와 무관하게 항상 스크롤 뷰포트 바닥 위에 붙고,
+   스크롤 흐름에 자리를 차지하지 않는다(레이아웃 이동 없음). */
+.jump-bottom-wrap{ position:sticky; bottom:18px; height:0; display:flex; justify-content:center; z-index:6; pointer-events:none; }
+.jump-bottom{ pointer-events:auto; display:grid; place-items:center; width:38px; height:38px; margin-top:-38px;
+  border-radius:99px; background:var(--surface); border:1px solid var(--line-2); color:var(--text-2);
+  box-shadow:0 8px 20px -8px rgba(30,22,14,.4), var(--shadow-sm); cursor:pointer; animation:fade .12s ease both; }
+.jump-bottom:hover{ background:var(--surface-2); color:var(--text); box-shadow:var(--hover-ring), 0 8px 20px -8px rgba(30,22,14,.4); }
 /* 대화 본문 폭은 채팅 칼럼에 비례 — 좁을 땐 예전처럼 760px 기준으로 꽉 채우고,
    사이드바/탐색기를 접거나 창을 키워 칼럼이 넓어지면 가용 폭의 88%까지 같이
    넓어진다 (남는 여백 12%는 중앙정렬 숨구멍, 줄이 한없이 길어지지 않게 상한 1400px).
@@ -735,6 +743,21 @@ input,textarea{ font-family:inherit; }
 /* read/write/edit rows open the file on click */
 .t-row.openable{ cursor:pointer; }
 .t-row.openable:hover .t-target{ color:var(--accent-2); text-decoration:underline; text-underline-offset:2px; }
+/* Web 행에서 펼치는 "찾은 페이지" 목록 — 배시 출력 블록과 같은 --inset 카드 이디엄.
+   각 줄은 파비콘 · 제목(밑줄 없는 조용한 톤) · 도메인, 호버에서만 행이 밝아지고 제목이
+   링크 톤으로. 클릭하면 OS 브라우저로 열린다. 들여쓰기 23px = 아이콘 14px + 갭 9px. */
+.wl-list{ margin:1px 0 1px 23px; padding:5px; background:var(--inset); border:1px solid var(--line);
+  border-radius:10px; display:flex; flex-direction:column; gap:1px; max-height:302px; overflow-y:auto;
+  animation:fade .12s ease both; }
+.wl-item{ display:flex; align-items:center; gap:9px; min-width:0; padding:5px 8px; border-radius:7px;
+  text-decoration:none; }
+.wl-item:hover{ background:var(--surface-2); }
+.wl-fav{ flex:0 0 auto; width:16px; height:16px; border-radius:4px; object-fit:contain; }
+.wl-fav-fb{ display:grid; place-items:center; background:var(--surface-3); color:var(--text-4); }
+.wl-title{ min-width:0; font-size:12.5px; line-height:1.5; color:var(--text-2);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.wl-item:hover .wl-title{ color:var(--accent-2); }
+.wl-host{ flex:0 0 auto; font-size:11px; color:var(--text-4); }
 /* 파일 줄 툴팁("파일 보기")은 파일명(.t-target) 시작점 바로 위에 띄운다 — 행 전체에
    달면 .t-target(flex:1) 탓에 행이 칼럼 폭만큼 넓어 툴팁이 가운데(≈오른쪽)에 떴다.
    기본 위치(bottom:100%, 위)는 그대로 두고 left만 파일명 텍스트 시작점(0)에 맞춘다. */
@@ -1929,6 +1952,22 @@ input,textarea{ font-family:inherit; }
 .lsp-hover .bullets{ list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:4px; }
 .lsp-hover .bullets > li{ position:relative; padding-left:16px; font-size:14px; line-height:1.55; color:var(--text-2); }
 .lsp-hover .bullets > li::before{ content:""; position:absolute; left:1px; top:8px; width:4px; height:4px; border-radius:99px; background:var(--accent); }
+/* 번호 목록·인용문·표 — .bullets만 입혀져 있어 ol/blockquote/table이 브라우저 기본
+   (작은 글자·기본 색·40px 들여쓰기)으로 떨어지던 것을 불릿과 같은 톤으로 맞춘다 */
+.lsp-hover .md-ol{ margin:0; padding-left:20px; display:flex; flex-direction:column; gap:4px; }
+.lsp-hover .md-ol > li{ font-size:14px; line-height:1.55; color:var(--text-2); padding-left:2px; }
+.lsp-hover .md-ol > li::marker{ color:var(--text-4); font-size:12.5px; }
+.lsp-hover .bullets .md-ol, .lsp-hover .md-ol .bullets,
+.lsp-hover .bullets .bullets, .lsp-hover .md-ol .md-ol{ margin-top:4px; }
+/* 느슨한 목록(항목이 p로 감싸짐)도 li 글자 크기를 따르게 */
+.lsp-hover .bullets p, .lsp-hover .md-ol p{ font-size:inherit; line-height:inherit; }
+.lsp-hover .md-quote{ margin:0; padding:3px 0 3px 12px; border-left:3px solid var(--line-2); color:var(--text-3); white-space:pre-wrap; word-break:break-word; }
+.lsp-hover .md-table-wrap{ margin:0; overflow-x:auto; border:1px solid var(--line-2); border-radius:9px; }
+.lsp-hover .md-table{ border-collapse:collapse; width:100%; font-size:13.5px; }
+.lsp-hover .md-table th, .lsp-hover .md-table td{ padding:6px 11px; border-bottom:1px solid var(--line); text-align:left; }
+.lsp-hover .md-table th{ background:var(--surface); font-weight:600; color:var(--text); }
+.lsp-hover .md-table td{ color:var(--text-2); }
+.lsp-hover .md-table tr:last-child td{ border-bottom:none; }
 /* 구조화 레이아웃(HoverContent) — [종류 칩 + 심볼명] / 시그니처 스트립 / 메타 / 본문.
    칩은 코드와 같은 팔레트 변수로 물들인다(메서드 초록, 클래스 보라, 매크로 파랑…) */
 .lsp-hover .lh-head{ display:flex; align-items:center; gap:7px; min-width:0; }
@@ -3021,6 +3060,15 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
 .ma-usage-ring::after{ content:""; position:absolute; inset:2.5px; border-radius:50%; background:var(--surface); }
 .ma-usage-label{ font-size:11.5px; font-weight:500; color:var(--text-3); }
 .ma-usage-pct{ font-family:var(--font-mono); font-size:11px; font-weight:600; color:var(--accent-2); }
+/* 달러 배지 pill (세션 비용) — 금액은 진행률이 아니라 링 대신 중립 회색 배지 (cc-usd와 동일 이디엄) */
+.ma-usage-usd{ width:16px; height:16px; flex:0 0 16px; border-radius:50%; display:grid; place-items:center;
+  background:var(--surface-3); color:var(--text-2); }
+/* 헤더 과금 그룹 — 패널마다 과금이 달라(구독/API 혼합 가능) 두 묶음을 나란히 보여준다.
+   혼합일 때만 그룹 앞에 소속 태그가 붙는다: 구독=로즈(패널 picker와 동일), API=그린 */
+.ma-bill{ display:flex; align-items:center; gap:8px; min-width:0; }
+.ma-bill-tag{ flex:0 0 auto; padding:4px 9px; border-radius:99px; font-size:10.5px; font-weight:700; letter-spacing:.03em;
+  color:var(--rose); background:color-mix(in oklab, var(--rose) 13%, transparent); }
+.ma-bill-tag.api{ color:var(--green); background:color-mix(in oklab, var(--green) 13%, transparent); }
 
 .ma-count{ display:flex; gap:2px; margin-left:4px; padding:3px; background:var(--inset); border:1px solid var(--line); border-radius:9px; }
 .ma-count-btn{

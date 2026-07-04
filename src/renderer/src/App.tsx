@@ -27,11 +27,12 @@ import { PromptModal } from './components/PromptModal'
 import { RecentFiles } from './components/RecentFiles'
 import { ResizeHandles } from './components/ResizeHandles'
 import { useZoom, ZoomBadge, mergeRefs } from './components/zoom'
-import { IconCode } from './components/icons'
+import { IconChevDown, IconCode } from './components/icons'
 
 // px from the bottom within which the chat counts as "at the bottom" — scrolling
 // back into this band (when not mid scroll-up) resumes auto-follow
 const BOTTOM_EPSILON = 60
+const JUMP_SHOW_PX = 240 // 바닥에서 이만큼 멀어지면 "맨 아래로" 점프 버튼을 띄운다
 
 function truncate(s: string, n: number): string {
   return s.length > n ? s.slice(0, n - 1) + '…' : s
@@ -380,9 +381,15 @@ function MainApp({ user }: { user: AppUser }) {
   // settles at the bottom AND isn't mid scroll-up. Reset to true on send / chat switch.
   const stickRef = useRef(true)
   const lastWheelUpRef = useRef(-Infinity) // timeStamp of the most recent upward wheel
+  const lastTopRef = useRef(0) // 마지막 스크롤 위치 — 멀티 모드 왕복으로 패널이 재생성될 때 복원용
+  const [showJump, setShowJump] = useState(false) // 바닥에서 멀어지면 "맨 아래로" 버튼 표시
   useEffect(() => {
     const el = scrollEl
     if (!el) return
+    // 멀티 모드 왕복은 채팅 패널을 재생성해 scrollTop이 0(맨 위)에서 시작한다 — 바닥을
+    // 따라가던 중이면 맨 아래로, 위를 읽던 중이면 마지막으로 보던 위치로 복원
+    el.scrollTop = stickRef.current ? el.scrollHeight : lastTopRef.current
+    setShowJump(el.scrollHeight - el.scrollTop - el.clientHeight > JUMP_SHOW_PX)
     const onWheel = (e: WheelEvent): void => {
       if (e.ctrlKey) return // ctrl+wheel is zoom (handled elsewhere), not a scroll
       if (e.deltaY < 0) {
@@ -391,14 +398,13 @@ function MainApp({ user }: { user: AppUser }) {
       }
     }
     const onScroll = (e: Event): void => {
+      lastTopRef.current = el.scrollTop
+      const fromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+      setShowJump(fromBottom > JUMP_SHOW_PX)
       // resume only while paused, settled at the bottom, and not in the middle of an
       // upward gesture — the time guard stops a near-bottom scroll-up from instantly
       // re-arming the follow (which would trap the user in the bottom band)
-      if (
-        !stickRef.current &&
-        el.scrollHeight - el.scrollTop - el.clientHeight <= BOTTOM_EPSILON &&
-        e.timeStamp - lastWheelUpRef.current > 150
-      )
+      if (!stickRef.current && fromBottom <= BOTTOM_EPSILON && e.timeStamp - lastWheelUpRef.current > 150)
         stickRef.current = true
     }
     el.addEventListener('wheel', onWheel, { passive: true })
@@ -413,6 +419,7 @@ function MainApp({ user }: { user: AppUser }) {
   // message-arrive effect below, so the freshly loaded thread lands at the bottom)
   useEffect(() => {
     stickRef.current = true
+    setShowJump(false)
   }, [activeChatId])
 
   // auto-stick to bottom when new messages/thinking arrive — but only while the
@@ -1107,6 +1114,22 @@ function MainApp({ user }: { user: AppUser }) {
                   )
                 })}
                 {busy && showWorking && <WorkingIndicator text={state.thinkingText} />}
+              </div>
+            )}
+            {showJump && (
+              <div className="jump-bottom-wrap">
+                <button
+                  className="jump-bottom has-tip"
+                  data-tip="맨 아래로"
+                  aria-label="맨 아래로"
+                  onClick={() => {
+                    stickRef.current = true
+                    const el = scrollRef.current
+                    if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
+                  }}
+                >
+                  <IconChevDown size={17} />
+                </button>
               </div>
             )}
           </div>

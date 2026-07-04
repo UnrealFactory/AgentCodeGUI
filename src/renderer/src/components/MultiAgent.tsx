@@ -20,6 +20,7 @@ import {
   windowTokensFor,
   fmtTok,
   fmtWindow,
+  fmtUsd,
   SLASH_COMMANDS,
   pickerModelOf,
   type PickerState,
@@ -47,7 +48,8 @@ import {
   IconX2,
   IconBook,
   IconSearch,
-  IconSpark
+  IconSpark,
+  IconDollar
 } from './icons'
 
 // the "/" palette in a panel: the same built-in commands as single mode, minus /ask
@@ -958,13 +960,32 @@ function fmtElapsed(s: number): string {
   return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`
 }
 
-// small usage pill in the workspace header (5시간 / 주간 한도)
-function UsagePill({ label, pct }: { label: string; pct: number | null }) {
+// small usage pill in the workspace header — 한도 링(pct) 또는 달러 배지(usd)에
+// 값(val)을 얹는다. tip이 있으면 앱 공통 has-tip 툴팁이 위로 뜬다.
+function UsagePill({
+  label,
+  pct,
+  val,
+  usd,
+  tip
+}: {
+  label: string
+  pct: number | null
+  val?: string
+  usd?: boolean
+  tip?: string
+}) {
   return (
-    <span className="ma-usage">
-      <span className="ma-usage-ring" style={{ ['--p']: pct ?? 0 } as CSSProperties} />
+    <span className={'ma-usage' + (tip ? ' has-tip' : '')} data-tip={tip}>
+      {usd ? (
+        <span className="ma-usage-usd">
+          <IconDollar size={10} />
+        </span>
+      ) : (
+        <span className="ma-usage-ring" style={{ ['--p']: pct ?? 0 } as CSSProperties} />
+      )}
       <span className="ma-usage-label">{label}</span>
-      <span className="ma-usage-pct">{pct != null ? pct + '%' : '—'}</span>
+      <span className="ma-usage-pct">{val ?? (pct != null ? pct + '%' : '—')}</span>
     </span>
   )
 }
@@ -1071,6 +1092,24 @@ function ActiveSession({
     onStatus(sessionId, aggStatus)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [aggStatus])
+
+  // ── 헤더 과금 표시: 보이는 패널들의 구독/API 구성 ────────────────────────
+  // 패널마다 과금이 달라 절반 구독·절반 API도 가능하다 — 구독 패널이 하나라도 있으면
+  // 한도 링을, API 패널이 하나라도 있으면 비용 pill을 띄우고, 혼합이면 그룹 앞의
+  // 태그(구독 N / API N)로 어느 패널들 몫인지 구분한다.
+  const billSub = SLOTS.slice(0, count).filter((i) => !metas[i].api).length
+  const billApi = count - billSub
+  const billMixed = billSub > 0 && billApi > 0
+  // 남은 예산(전역 누적) — API 패널이 있을 때만 읽고, 실행이 끝날 때마다 다시 읽어
+  // 링이 실행 직후 바로 맞아떨어지게 한다
+  const [budget, setBudget] = useState<{ budgetUsd: number | null; spentUsd: number } | null>(null)
+  useEffect(() => {
+    if (!billApi) return
+    window.api.apiConfig
+      .get()
+      .then((s) => setBudget({ budgetUsd: s.budgetUsd ?? null, spentUsd: s.spentUsd ?? 0 }))
+      .catch(() => {})
+  }, [billApi, aggStatus])
 
   // build the persistable form of this session (latest closure kept in a ref so the
   // unmount commit captures the final state)
@@ -1456,9 +1495,48 @@ function ActiveSession({
             <span>일괄 폴더</span>
             <IconChevDown size={11} />
           </button>
-          <UsagePill label="5시간 한도" pct={usage.fiveHour?.pct ?? null} />
-          <UsagePill label="주간 한도" pct={usage.weekly?.pct ?? null} />
-          {usage.weeklyFable && <UsagePill label="Fable 주간 한도" pct={usage.weeklyFable.pct} />}
+          {billSub > 0 && (
+            <div className="ma-bill">
+              {billMixed && (
+                <span className="ma-bill-tag has-tip" data-tip={`패널 ${billSub}개가 구독(정액) 과금`}>
+                  구독 {billSub}
+                </span>
+              )}
+              <UsagePill label={billMixed ? '5시간' : '5시간 한도'} pct={usage.fiveHour?.pct ?? null} />
+              <UsagePill label={billMixed ? '주간' : '주간 한도'} pct={usage.weekly?.pct ?? null} />
+              {usage.weeklyFable && (
+                <UsagePill label={billMixed ? 'Fable' : 'Fable 주간 한도'} pct={usage.weeklyFable.pct} />
+              )}
+            </div>
+          )}
+          {billApi > 0 && (
+            <div className="ma-bill">
+              {billMixed && (
+                <span className="ma-bill-tag api has-tip" data-tip={`패널 ${billApi}개가 API 키(종량) 과금`}>
+                  API {billApi}
+                </span>
+              )}
+              {/* 누적 사용액은 예산 유무와 무관하게 항상 — 첫 로드 전(null)엔 $0.00이
+                  깜빡이지 않게 숨긴다 */}
+              {budget && (
+                <UsagePill
+                  label={billMixed ? '누적' : '누적 사용액'}
+                  pct={null}
+                  usd
+                  val={fmtUsd(budget.spentUsd)}
+                  tip="전체 워크스페이스의 API 누적 사용액"
+                />
+              )}
+              {budget?.budgetUsd != null && (
+                <UsagePill
+                  label="남은 예산"
+                  pct={Math.min(100, Math.round((budget.spentUsd / budget.budgetUsd) * 100))}
+                  val={fmtUsd(Math.max(0, budget.budgetUsd - budget.spentUsd))}
+                  tip={`예산 ${fmtUsd(budget.budgetUsd)} 중 ${fmtUsd(budget.spentUsd)} 사용`}
+                />
+              )}
+            </div>
+          )}
           <div className="ma-count" role="tablist" aria-label="패널 수">
             {COUNT_OPTIONS.map((n) => (
               <button

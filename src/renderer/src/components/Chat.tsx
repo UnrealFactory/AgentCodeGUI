@@ -259,6 +259,77 @@ function BashOutput({ t }: { t: ToolLogItem }) {
   )
 }
 
+// 링크의 도메인 (www. 제거) — 표시·파비콘 조회 공용
+function hostOf(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '')
+  } catch {
+    return ''
+  }
+}
+
+// 사이트 파비콘 — 구글 s2 서비스에서 도메인 아이콘을 가져오고, 실패(오프라인·아이콘
+// 없음)하면 지구본 폴백으로 조용히 내려앉는다
+function WebFavicon({ host }: { host: string }) {
+  const [err, setErr] = useState(false)
+  if (!host || err)
+    return (
+      <span className="wl-fav wl-fav-fb">
+        <IconGlobe size={10} />
+      </span>
+    )
+  return (
+    <img
+      className="wl-fav"
+      src={`https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=32`}
+      alt=""
+      loading="lazy"
+      onError={() => setErr(true)}
+    />
+  )
+}
+
+// Web 행 (WebSearch/WebFetch): 검색이 찾은 페이지 목록(links)이 실려 오면 행을 클릭해
+// 목록을 펼치고, 각 항목은 OS 브라우저로 연다(target=_blank → 메인의 shell.openExternal
+// 경유). links 없이 target 자체가 URL인 행(WebFetch)은 클릭하면 그 페이지를 바로 연다.
+// 펼침 목록은 배시 출력 블록과 같은 --inset 카드 이디엄: 파비콘 · 제목 · 도메인.
+function WebRow({ t }: { t: ToolLogItem }) {
+  const [open, setOpen] = useState(false)
+  const links = t.links ?? []
+  const direct = !links.length && /^https?:\/\//i.test(t.target) ? t.target : null
+  const clickable = links.length > 0 || !!direct
+  return (
+    <>
+      <div
+        className={'t-row ' + t.kind + ' ' + t.status + (clickable ? ' openable' : '')}
+        onClick={links.length ? () => setOpen((o) => !o) : direct ? () => window.open(direct) : undefined}
+      >
+        <span className="t-ic">{toolIcon(t.kind, 14)}</span>
+        <span className="t-verb">{t.verb}</span>
+        <span className="t-sep">·</span>
+        <span
+          className={'t-target' + (clickable ? ' has-tip' : '')}
+          data-tip={links.length ? (open ? '접기' : '찾은 페이지 보기') : direct ? '브라우저에서 열기' : undefined}
+        >
+          {t.target}
+        </span>
+        <ToolResult t={t} />
+      </div>
+      {open && links.length > 0 && (
+        <div className="wl-list scroll">
+          {links.map((l) => (
+            <a key={l.url} className="wl-item" href={l.url} target="_blank" rel="noreferrer">
+              <WebFavicon host={hostOf(l.url)} />
+              <span className="wl-title">{l.title}</span>
+              <span className="wl-host">{hostOf(l.url)}</span>
+            </a>
+          ))}
+        </div>
+      )}
+    </>
+  )
+}
+
 // tools the assistant ran, blended into the message flow as quiet lines (no card):
 // colored type icon · verb · target (wraps in full) · result on the right.
 // File rows (read/write/edit) are clickable to open the file.
@@ -293,6 +364,7 @@ function ToolGroup({
         </>
       )}
       {item.tools.map((t) => {
+        if (t.kind === 'web') return <WebRow t={t} key={t.id} />
         const openable = !!onOpenFile && (t.kind === 'read' || t.kind === 'write' || t.kind === 'edit') && !!t.target
         return (
           <Fragment key={t.id}>
@@ -1037,7 +1109,7 @@ export function fmtTok(n: number): string {
   return String(n)
 }
 // USD 표시 (API 모드 비용) — 소액은 셋째 자리까지, 그 외 둘째 자리까지
-function fmtUsd(v: number): string {
+export function fmtUsd(v: number): string {
   return '$' + (v > 0 && v < 1 ? v.toFixed(3) : v.toFixed(2))
 }
 function resetText(resetsAt: number | null, useDays: boolean): string {

@@ -874,16 +874,29 @@ export class ClaudeEngine {
 
     // Panel-feeding tools (TodoWrite / Task*) produce no tool log row.
     if (meta && !TASK_TOOLS.has(meta.name)) {
+      // Web 행: 검색이 어떤 페이지들을 찾았는지 뽑아 행에 링크 목록으로 실어 보낸다
+      // — 채팅에서 행을 클릭하면 목록이 펼쳐지고 각 링크는 브라우저로 열린다
+      const links = meta.name === 'WebSearch' && !isError ? extractWebLinks(text) : undefined
       // edit/write surface their +/- line counts (or 새 파일); other tools use a summary
       const result =
         meta.pending && !isError
           ? meta.pending.file.tag === 'new'
             ? '새 파일'
             : `+${meta.pending.file.add} -${meta.pending.file.del}`
-          : resultSummary(meta.name, text, isError)
+          : links
+            ? `${links.length}개 결과`
+            : resultSummary(meta.name, text, isError)
       // Bash rows carry their output tail so the chat can show it as an inline log
       const output = meta.name === 'Bash' ? tailOutput(text) : undefined
-      this.emit({ type: 'tool-end', runId, id, status: isError ? 'error' : 'done', result, ...(output ? { output } : {}) })
+      this.emit({
+        type: 'tool-end',
+        runId,
+        id,
+        status: isError ? 'error' : 'done',
+        result,
+        ...(output ? { output } : {}),
+        ...(links ? { links } : {})
+      })
     }
   }
 
@@ -1113,6 +1126,39 @@ function resultText(content: unknown): string {
       .join('\n')
   }
   return ''
+}
+
+// WebSearch 결과 본문에서 검색이 찾은 페이지 목록을 뽑는다 — 본문에는
+// `Links: [{"title":"…","url":"…"}, …]` JSON 블록이 (여러 검색 라운드면 여러 번) 들어온다.
+// 파싱이 안 되는 변형이면 "url":"…" 쌍이라도 줍는다. 채팅 Web 행의 펼침 목록에 쓴다.
+function extractWebLinks(text: string): import('@shared/protocol').WebLink[] | undefined {
+  const out: { title: string; url: string }[] = []
+  const seen = new Set<string>()
+  const push = (title: unknown, url: unknown): void => {
+    if (typeof url !== 'string' || !/^https?:\/\//i.test(url) || seen.has(url)) return
+    seen.add(url)
+    const t = typeof title === 'string' ? title.trim() : ''
+    out.push({ title: t || url, url })
+  }
+  const re = /Links:\s*(\[[^\n]*\])/g
+  let m: RegExpExecArray | null
+  while ((m = re.exec(text))) {
+    try {
+      const arr: unknown = JSON.parse(m[1])
+      if (Array.isArray(arr))
+        for (const it of arr) {
+          const o = (it ?? {}) as Record<string, unknown>
+          push(o.title, o.url)
+        }
+    } catch {
+      /* 잘리거나 변형된 블록 — 아래 폴백이 줍는다 */
+    }
+  }
+  if (!out.length) {
+    const ure = /"url"\s*:\s*"(https?:\/\/[^"\s]+)"/g
+    while ((m = ure.exec(text))) push('', m[1])
+  }
+  return out.length ? out.slice(0, 20) : undefined
 }
 
 // The tail of a bash output for the inline chat log: last 200 lines / 16KB. Caps

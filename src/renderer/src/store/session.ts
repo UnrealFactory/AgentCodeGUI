@@ -378,7 +378,13 @@ function reducer(state: SessionState, action: Action): SessionState {
       // backwards and rebuild only the one message/agent holding it. (The previous
       // full-history rebuild reallocated every message + every subagent tool list on
       // every tool completion, which grows quadratic over a long session.)
-      const patch = (t: ToolLogItem): ToolLogItem => ({ ...t, status: e.status, result: e.result, ...(e.output ? { output: e.output } : {}) })
+      const patch = (t: ToolLogItem): ToolLogItem => ({
+        ...t,
+        status: e.status,
+        result: e.result,
+        ...(e.output ? { output: e.output } : {}),
+        ...(e.links ? { links: e.links } : {})
+      })
       for (let i = state.messages.length - 1; i >= 0; i--) {
         const m = state.messages[i]
         if (m.kind !== 'toolgroup') continue

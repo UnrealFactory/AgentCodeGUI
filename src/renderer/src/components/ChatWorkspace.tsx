@@ -19,18 +19,23 @@ import {
   SelectionToolbar,
   WelcomeState,
   WorkingIndicator,
+  WorkBar,
   nextMode,
   pickerModelOf,
   type PickerState,
   type ScheduledMsg
 } from './Chat'
+import { SubAgentModal } from './AgentPanel'
+import { FileModal } from './FileModal'
 import { Sidebar, type WorkspaceMode } from './Sidebar'
 import { ImageViewer } from './ImageViewer'
 import { useZoom, ZoomBadge, mergeRefs } from './zoom'
+import { IconChevDown } from './icons'
 
 // px from the bottom within which the chat counts as "at the bottom" — scrolling
 // back into this band (when not mid scroll-up) resumes auto-follow (mirrors 단일 모드)
 const BOTTOM_EPSILON = 60
+const JUMP_SHOW_PX = 240 // 바닥에서 이만큼 멀어지면 "맨 아래로" 점프 버튼을 띄운다 (단일 모드와 동일)
 
 // 채팅(순수 대화)은 작업 폴더가 없다 — 엔진은 빈 cwd를 홈 폴더로 폴백한다. 시스템
 // 프롬프트로 "대화 위주" 성향을 살짝 유도해, 사용자가 첨부/요청하지 않는 한 도구를
@@ -224,6 +229,7 @@ export function ChatWorkspace({
   // ── auto-follow latch (same intent-read approach as 단일 모드) ──────────────
   const stickRef = useRef(true)
   const lastWheelUpRef = useRef(-Infinity)
+  const [showJump, setShowJump] = useState(false) // 바닥에서 멀어지면 "맨 아래로" 버튼 표시
   // the chat-scroll element is stable for this workspace's lifetime, so binding once on
   // mount (refs are attached before effects run) is enough — no need to track it as state
   useEffect(() => {
@@ -237,11 +243,9 @@ export function ChatWorkspace({
       }
     }
     const onScroll = (e: Event): void => {
-      if (
-        !stickRef.current &&
-        el.scrollHeight - el.scrollTop - el.clientHeight <= BOTTOM_EPSILON &&
-        e.timeStamp - lastWheelUpRef.current > 150
-      )
+      const fromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+      setShowJump(fromBottom > JUMP_SHOW_PX)
+      if (!stickRef.current && fromBottom <= BOTTOM_EPSILON && e.timeStamp - lastWheelUpRef.current > 150)
         stickRef.current = true
     }
     el.addEventListener('wheel', onWheel, { passive: true })
@@ -254,6 +258,7 @@ export function ChatWorkspace({
   // switching chats re-pins to the bottom
   useEffect(() => {
     stickRef.current = true
+    setShowJump(false)
   }, [activeChatId])
   useEffect(() => {
     const el = scrollRef.current
@@ -409,6 +414,12 @@ export function ChatWorkspace({
     addImagePaths(await window.api.pickImages())
   }
   const openViewer = useEvent((imgs: string[], index: number) => setViewer({ images: imgs, index }))
+
+  // 작업 바(할 일·서브에이전트·변경된 파일·컨텍스트)에서 연 것들 — 단일(코드) 모드와
+  // 동일한 뷰어/카드. 채팅 모드도 요청하면 도구가 돌 수 있어 같은 패널이 유효하다.
+  const [openWorkFile, setOpenWorkFile] = useState<string | null>(null)
+  const [openSubagentId, setOpenSubagentId] = useState<string | null>(null)
+  const openSubagent = openSubagentId ? state.subagents.find((a) => a.id === openSubagentId) ?? null : null
 
   // `opts` lets a queued message replay with the attachments + run settings it was
   // scheduled with; interactive sends omit it. keepDraft: queued replays don't clear the
@@ -593,6 +604,7 @@ export function ChatWorkspace({
                     live={idx === state.messages.length - 1 && m.kind === 'msg' && m.role === 'assistant' && !m.error}
                     running={busy}
                     lead={m.kind === 'toolgroup' && !prevIsAiBlock}
+                    onOpenFile={setOpenWorkFile}
                     onOpenImage={openViewer}
                   />
                 )
@@ -600,8 +612,40 @@ export function ChatWorkspace({
               {busy && showWorking && <WorkingIndicator text={state.thinkingText} />}
             </div>
           )}
+          {showJump && (
+            <div className="jump-bottom-wrap">
+              <button
+                className="jump-bottom has-tip"
+                data-tip="맨 아래로"
+                aria-label="맨 아래로"
+                onClick={() => {
+                  stickRef.current = true
+                  const el = scrollRef.current
+                  if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
+                }}
+              >
+                <IconChevDown size={17} />
+              </button>
+            </div>
+          )}
         </div>
         <SelectionToolbar scrollRef={scrollRef} onElaborate={onElaborateSelection} />
+        <WorkBar
+          status={state.status}
+          todos={state.todos}
+          files={state.files}
+          subagents={state.subagents}
+          usage={liveUsage}
+          contextTokens={state.result?.contextTokens ?? null}
+          contextWindow={state.result?.contextWindow ?? null}
+          model={picker.model}
+          apiMode={apiMode}
+          chatSpentUsd={state.spentUsd ?? 0}
+          budgetUsd={budgetUsd}
+          totalSpentUsd={totalSpentUsd}
+          onOpenFile={(f) => setOpenWorkFile(f.path)}
+          onOpenSubagent={(a) => setOpenSubagentId(a.id)}
+        />
         <Composer
           value={input}
           onChange={setInput}
@@ -632,6 +676,7 @@ export function ChatWorkspace({
           contextTokens={state.result?.contextTokens ?? null}
           contextWindow={state.result?.contextWindow ?? null}
           usage={liveUsage}
+          showContext={false}
           cwd=""
           mentionBase=""
           inputRef={composerRef}
@@ -640,6 +685,17 @@ export function ChatWorkspace({
 
       <QuestionModal question={state.pendingQuestion} onAnswer={onAnswer} onDismiss={onDismissQuestion} />
       <PermissionModal permission={state.pendingPermission} onRespond={onPermission} />
+
+      {/* 작업 바에서 연 변경 파일 뷰어 — cwd는 엔진이 실제로 쓴 폴더(세션 보고값) */}
+      {openWorkFile && (
+        <FileModal
+          path={openWorkFile}
+          cwd={state.session?.cwd ?? ''}
+          diffs={state.diffs}
+          onClose={() => setOpenWorkFile(null)}
+        />
+      )}
+      <SubAgentModal agent={openSubagent} onClose={() => setOpenSubagentId(null)} />
 
       {viewer && (
         <ImageViewer
