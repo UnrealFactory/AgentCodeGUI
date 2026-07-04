@@ -11,6 +11,7 @@ import { readUiPrefs, writeUiPrefs } from './uiPrefs'
 import { apiConfigStatus, setApiKey, clearApiKey, setBudget, resetSpend } from './apiConfig'
 import { readApiUsage } from './apiUsage'
 import { setVerseDocKo } from './lsp/verseDocKo'
+import { setUeDocKo } from './lsp/ueDocKo'
 import { bumpVerseRegistryRev } from './lsp/verseMemberDb'
 import { readChats, writeChats } from './chats'
 import { writeFileAtomic } from './atomicWrite'
@@ -663,8 +664,11 @@ function registerIpc(): void {
     // Verse hover docs in Korean unless '원문 보기'. 언어가 실제로 바뀌었으면 레지스트리 세대를
     // 올려, 렌더러가 든 registry.docs(fetch 시점 언어로 번역돼 박제됨)도 다음 열기에 새 언어로.
     if (setVerseDocKo(prefs?.verseDocLang !== 'en')) bumpVerseRegistryRev()
+    // UE C++ 공식 주석 번역(clangd 호버) — 다음 호버부터 즉시 적용, 캐시 없음이라 세대 갱신 불필요
+    setUeDocKo(prefs?.ueDocLang !== 'en')
   })
   setVerseDocKo(readUiPrefs().verseDocLang !== 'en') // apply the saved choice at startup
+  setUeDocKo(readUiPrefs().ueDocLang !== 'en')
 
   // skills (SKILL.md capabilities): list global (~/.claude) + project (.claude),
   // and turn them on/off. The on/off choice is applied to runs by the engine.
@@ -858,6 +862,9 @@ function registerIpc(): void {
   )
   ipcMain.handle(IPC.lspCompletion, async (_e, a: { cwd: string; relPath: string; pos: LspPos; text: string }) =>
     lspManager.completion(a.cwd || '', a.relPath, a.pos, a.text).catch(() => null)
+  )
+  ipcMain.handle(IPC.lspResolveCompletion, async (_e, a: { cwd: string; relPath: string; gen: number; ri: number }) =>
+    lspManager.resolveCompletion(a.cwd || '', a.relPath, a.gen, a.ri).catch(() => null)
   )
   ipcMain.handle(IPC.lspPrewarm, async (_e, a: { cwd: string }) => {
     lspManager.prewarm(a.cwd || '')

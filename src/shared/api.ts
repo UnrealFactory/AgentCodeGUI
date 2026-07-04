@@ -30,6 +30,7 @@ import type {
   LspLocation,
   LspSemanticTokens,
   LspCompletionList,
+  LspResolvedCompletion,
   VerseRegistrySnapshot,
   LspInstallProgress,
   LspServerInfo,
@@ -140,6 +141,9 @@ export interface WindowApi {
     /** completion candidates at an LSP (0-based) position. `text` is the live editor buffer —
      *  completion needs the unsaved partial word, which isn't on disk yet. Null = no candidates. */
     completion(cwd: string, relPath: string, pos: LspPos, text: string): Promise<LspCompletionList | null>
+    /** lazy docs for a completion candidate (completionItem/resolve) — `gen`은 completion()이 준
+     *  목록 세대, `ri`는 후보의 원본 인덱스. 낡은 세대·미지원 서버·문서 없음이면 null. */
+    resolveCompletion(cwd: string, relPath: string, gen: number, ri: number): Promise<LspResolvedCompletion | null>
     /** warm a project's server / compile-DB before the first file is opened */
     prewarm(cwd: string): Promise<void>
     /** eagerly open a specific file on its server so indexing finishes before the first completion */

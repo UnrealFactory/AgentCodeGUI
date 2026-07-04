@@ -200,11 +200,20 @@ export interface LspCompletionItem {
   /** server-provided sort/filter hints (CM uses them when present) */
   sortText?: string
   filterText?: string
+  /** 원본 아이템 인덱스 — 목록의 `gen`과 함께 completion-resolve(문서 지연 로드)의 핸들이 된다 */
+  ri?: number
 }
 /** Completion result at a position — candidates + whether the list is partial (re-query on more typing). */
 export interface LspCompletionList {
   items: LspCompletionItem[]
   isIncomplete: boolean
+  /** 이 목록의 세대(resolve 핸들) — 서버가 completionItem/resolve를 지원할 때만 실린다 */
+  gen?: number
+}
+/** completionItem/resolve로 지연 로드한 후보 문서 — 없으면 null. */
+export interface LspResolvedCompletion {
+  detail?: string
+  documentation?: string
 }
 /**
  * Accurate Verse type registry parsed from the project's digests + `.verse` files (verse-lsp emits
@@ -598,6 +607,7 @@ export const IPC = {
   lspSemanticTokens: 'lsp:semantic-tokens', // semantic highlighting tokens for a document
   lspCachedTokens: 'lsp:cached-tokens', // disk-cached tokens for instant paint (no server spawn)
   lspCompletion: 'lsp:completion', // completion candidates at a position (carries the live editor buffer)
+  lspResolveCompletion: 'lsp:completion-resolve', // lazy docs for a completion candidate (completionItem/resolve)
   lspPrewarm: 'lsp:prewarm', // warm up a project's server/compile-DB before the first file open
   lspWarm: 'lsp:warm', // eagerly open a specific file on its server so it's indexed before typing
   lspVerseRegistry: 'lsp:verse-registry', // accurate Verse type registry (digests+project) for colouring

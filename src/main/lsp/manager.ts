@@ -41,6 +41,8 @@ import {
 } from './verseMemberDb'
 import { getCached, setCached, gcDeadBuckets } from './semcache'
 import { APP_HOME } from '../engine/versions'
+import { glossaryLineDoc, keywordPriorityDoc, ueCppPriorityDoc, ueCppFallbackDoc } from '@shared/langGlossary'
+import { translateUeHover } from './ueDocKo'
 import { VERSE_BUILTIN_KIND } from '@shared/protocol'
 import type {
   LspCompletionItem,
@@ -213,6 +215,13 @@ interface ServerHandle {
   // newer keystroke cancels it via $/cancelRequest so the server isn't stuck re-parsing the
   // full document for a popup the user has already typed past. undefined when none in flight.
   lastComplId?: number
+  // completionItem/resolve 지원(initialize의 completionProvider.resolveProvider) — tsserver/
+  // pyright/Roslyn은 후보 목록엔 문서를 안 싣고 resolve로 지연 제공한다. false면 요청 안 함.
+  complResolve: boolean
+  // 마지막 완성 응답의 "원본" 아이템들(서버의 data 필드 포함) — resolve는 원본을 그대로
+  // 돌려보내야 한다. gen(세대)으로 렌더러의 지연 resolve가 낡은 목록을 집는 걸 막는다.
+  complRaw: { gen: number; items: RawCompletionItem[] } | null
+  complGen: number
 }
 
 // Resolve a file that ships in the app's node_modules. In a packaged build the
@@ -398,6 +407,117 @@ function serverDefFor(absPath: string): ServerDef | null {
   return SERVERS.find((s) => ext in s.exts) ?? null
 }
 
+// 파일의 용어집 언어 키(shared/langGlossary의 LANG_GLOSSARY 키) — 없으면 null.
+// LSP languageId(typescriptreact 등)를 렌더러 fileType.lang과 같은 키로 접는다.
+function glossaryLangFor(def: ServerDef, absPath: string): string | null {
+  const ext = path.extname(absPath).slice(1).toLowerCase()
+  const id = def.exts[ext]
+  if (!id) return null
+  if (id === 'typescript' || id === 'typescriptreact') return 'typescript'
+  if (id === 'javascript' || id === 'javascriptreact') return 'javascript'
+  if (id === 'python' || id === 'csharp' || id === 'cpp' || id === 'c') return id
+  return null
+}
+
+// 파일이 UE C++인지 — ① UE 프로젝트(.uproject 조상) 안이거나 ② 엔진 소스 트리 자체
+// (…\UE_5.x\Engine\Source\… — F12로 엔진 헤더에 들어간 경우. 엔진 트리엔 .uproject가 없어
+// ueRoot로는 못 잡는다; 엔진 루트의 Engine/Build/Build.version이 마커다). 호버마다 위로
+// 걷지 않게 폴더별로 memo. UE 전용 어휘(UPROPERTY·int32·번역…)는 이 판정이 참일 때만.
+const ueDirMemo = new Map<string, boolean>()
+function ueEngineRoot(dir: string): string | null {
+  let d = path.resolve(dir)
+  for (let i = 0; i < 24; i++) {
+    try {
+      if (fs.existsSync(path.join(d, 'Engine', 'Build', 'Build.version'))) return d
+    } catch {
+      /* unreadable — keep walking */
+    }
+    const parent = path.dirname(d)
+    if (parent === d) break
+    d = parent
+  }
+  return null
+}
+function isUeCpp(def: ServerDef, abs: string): boolean {
+  if (def.id !== 'cpp') return false
+  const dir = path.dirname(path.resolve(abs)).toLowerCase()
+  let v = ueDirMemo.get(dir)
+  if (v === undefined) {
+    v = ueRoot(dir) != null || ueEngineRoot(dir) != null
+    ueDirMemo.set(dir, v)
+  }
+  return v
+}
+
+// (pos.line, text|디스크)에서 커서 줄 텍스트 하나를 읽는다 — 용어집류 판정의 공통 입력.
+async function lineAt(abs: string, line: number, text?: string): Promise<string> {
+  try {
+    return (text != null ? text : await fsp.readFile(abs, 'utf8')).split(/\r?\n/)[line] ?? ''
+  } catch {
+    return ''
+  }
+}
+
+/**
+ * UE 매크로·지정자 우선 호버 — LSP보다 먼저 답한다(hover()의 최상단에서 호출). UPROPERTY 같은
+ * 리플렉션 매크로는 clangd가 `#define …` 전개 카드(정보 없음)를 주고, 괄호 안 지정자
+ * (EditAnywhere…)는 UHT 전용 토큰이라 아예 침묵하므로 — Verse가 내장 타입을 덮어쓰는 것과
+ * 같은 이유로 우리 설명이 이긴다. UE 프로젝트의 C/C++일 때만.
+ */
+async function ueCppPriorityHover(def: ServerDef, abs: string, pos: LspPos, text?: string): Promise<LspHoverResult | null> {
+  if (!isUeCpp(def, abs)) return null
+  const doc = ueCppPriorityDoc(await lineAt(abs, pos.line, text), pos.character)
+  return doc ? { contents: doc } : null
+}
+
+/**
+ * 키워드·내장 타입 용어집 폴백 카드 — Verse의 verseKeywordDoc에 해당하는 비-Verse 경로.
+ * 언어 서버는 예약어(`if`·`for`…)와 상당수 내장 타입(`int`·`number`…)에 호버를 주지 않으므로,
+ * ① LSP 호버가 비어 있을 때와 ② 서버가 아직 준비 전/미설치일 때 이걸로 답한다. UE 프로젝트의
+ * C/C++이면 UE 타입(int32·FString…)도 함께 본다. `text`(라이브 버퍼)가 있으면 그걸, 없으면
+ * 디스크를 읽는다. 해당 없으면 null.
+ */
+async function glossaryHover(def: ServerDef, abs: string, pos: LspPos, text?: string): Promise<LspHoverResult | null> {
+  const lang = glossaryLangFor(def, abs)
+  if (!lang) return null
+  const line = await lineAt(abs, pos.line, text)
+  if (isUeCpp(def, abs)) {
+    const ue = ueCppFallbackDoc(line, pos.character)
+    if (ue) return { contents: ue }
+  }
+  const doc = glossaryLineDoc(lang, line, pos.character)
+  return doc ? { contents: doc } : null
+}
+
+// 호버 마크다운에 문서 한 단락을 보탠다 — clangd 마크다운은 시그니처 펜스로 "끝나는" 형태라,
+// 뒤에 그냥 붙이면 렌더러의 말미 펜스(시그니처) 추출이 깨져 `class X` 코드 박스가 본문에
+// 그대로 노출된다. 말미 펜스가 있으면 그 '앞'에 끼워 넣는다.
+function appendDocToHover(md: string, doc: string): string {
+  const m = /```(\w*)\n[\s\S]*?```\s*$/.exec(md)
+  if (m) return md.slice(0, m.index) + doc + '\n\n' + md.slice(m.index)
+  return md + '\n\n' + doc
+}
+
+// 호버 마크다운에 "본문 문서"(코드 펜스·헤더·메타 줄이 아닌 산문)가 있는지 — 전방 선언만
+// 보이는 클래스 카드(이름뿐)를 판별해 UE 타입 설명을 보탤지 정하는 데 쓴다.
+function hoverHasProse(md: string): boolean {
+  let inFence = false
+  for (const line of md.split('\n')) {
+    if (/^\s*```/.test(line)) {
+      inFence = !inFence
+      continue
+    }
+    if (inFence) continue
+    const t = line.trim()
+    if (!t) continue
+    // #include "…" — clangd include-cleaner의 헤더 제안 줄. 문서(산문)가 아니다 —
+    // 이걸 산문으로 치면 전방 선언 카드에 UE 타입 설명 폴백이 안 붙는다.
+    if (/^(###\s|-{3,}\s*$|provided by\b|#include\b|→|Type:|Value =|Offset:\s*\d|Size:\s*\d|Parameters:\s*$)/.test(t)) continue
+    return true
+  }
+  return false
+}
+
 // hover `contents` arrives as string | MarkedString | MarkupContent | arrays of
 // those — flatten everything into one markdown string for the renderer
 function hoverMarkdown(contents: unknown): string {
@@ -436,17 +556,25 @@ interface RawCompletionItem {
   textEdit?: { newText?: string }
   sortText?: string
   filterText?: string
+  data?: unknown // 서버의 resolve 핸들(불투명) — completionItem/resolve로 그대로 돌려보낸다
 }
 // textDocument/completion returns either a bare item array or a CompletionList wrapper
 type RawCompletion = RawCompletionItem[] | { items?: RawCompletionItem[]; isIncomplete?: boolean } | null
 
+/** A completion response's raw item array — mapCompletion과 같은 규칙(ri 인덱스 기준). */
+function rawItemsOf(r: RawCompletion): RawCompletionItem[] {
+  if (!r) return []
+  return Array.isArray(r) ? r : Array.isArray(r.items) ? r.items : []
+}
+
 /** Normalize a server completion response into our flat list (null when there's nothing usable). */
 function mapCompletion(r: RawCompletion): LspCompletionList | null {
   if (!r) return null
-  const rawItems = Array.isArray(r) ? r : Array.isArray(r.items) ? r.items : []
+  const rawItems = rawItemsOf(r)
   const isIncomplete = Array.isArray(r) ? false : !!r.isIncomplete
   const items: LspCompletionItem[] = []
-  for (const it of rawItems) {
+  for (let i = 0; i < rawItems.length; i++) {
+    const it = rawItems[i]
     if (!it || typeof it.label !== 'string') continue
     const doc = typeof it.documentation === 'string' ? it.documentation : it.documentation?.value
     items.push({
@@ -457,7 +585,8 @@ function mapCompletion(r: RawCompletion): LspCompletionList | null {
       insertText: it.textEdit?.newText ?? it.insertText ?? it.label,
       snippet: it.insertTextFormat === 2,
       sortText: it.sortText,
-      filterText: it.filterText
+      filterText: it.filterText,
+      ri: i // 원본 인덱스 — completionItem/resolve(문서 지연 로드)가 이걸로 원본을 되찾는다
     })
   }
   return items.length ? { items, isIncomplete } : null
@@ -611,6 +740,11 @@ class LspManager {
       if (s.status === 'starting' || s.projectInitPending) {
         analyzing = true
         if (s.progressPct != null) percent = s.progressPct
+      } else if (s.status === 'ready' && s.progressPct != null) {
+        // clangd: initialize는 즉시 끝나지만 백그라운드 인덱싱($/progress)은 한참 이어진다 —
+        // 진행률이 흐르는 동안은 '분석 중 N%'로 정직하게 보여 준다 (end가 오면 percent가 걷힌다)
+        analyzing = true
+        percent = s.progressPct
       } else if (s.status === 'ready') ready = true
     }
     if (analyzing) return { state: 'analyzing', percent }
@@ -978,7 +1112,24 @@ class LspManager {
     const def = abs ? serverDefFor(abs) : null
     if (!abs || !def) return null
     if (abs.toLowerCase().startsWith(METADATA_DIR.toLowerCase())) return null
-    if (def.kind === 'download' && installState(def.id) !== 'installed') return null
+    // UE C++ 매크로(UPROPERTY…)·매크로 괄호 안 지정자(EditAnywhere…)는 LSP보다 먼저 —
+    // clangd의 매크로 전개 카드는 무의미하고 지정자엔 아예 침묵한다 (설치 여부와도 무관).
+    const uePrio = await ueCppPriorityHover(def, abs, pos, text)
+    if (uePrio) return uePrio
+    // 예약어도 LSP보다 먼저 — clangd/Roslyn은 키워드 위치에서 무의미한 카드(override)나
+    // 감싸는 함수의 카드(virtual)를 돌려줘, 폴백 순서로는 키워드 설명이 나오지 않는다.
+    // 예약어는 사용자 식별자가 될 수 없으므로 심볼 호버를 가리지 않는다 (Verse와 동일 규칙;
+    // 문맥 키워드와 auto·this 같은 "LSP가 더 잘 아는" 키워드는 shared 쪽에서 제외돼 있다).
+    if (def.id !== 'verse') {
+      const lang = glossaryLangFor(def, abs)
+      if (lang) {
+        const kw = keywordPriorityDoc(lang, await lineAt(abs, pos.line, text), pos.character)
+        if (kw) return { contents: kw }
+      }
+    }
+    // 미설치 서버(C#/C++ 다운로드 전)도 키워드·내장 타입 용어집 호버는 동작한다 —
+    // Verse가 서버 없이 합성 카드를 내는 것과 같은 "콜드 경로".
+    if (def.kind === 'download' && installState(def.id) !== 'installed') return glossaryHover(def, abs, pos, text)
     if (def.kind === 'external' && !def.command('')) return null
     const root = def.rootFor?.(abs, cwd) ?? cwd
     const s = this.ensure(def, root)
@@ -988,21 +1139,37 @@ class LspManager {
         await s.ready
         ready = true
       } catch {
-        /* verse는 아래 로컬 합성 체인으로 계속 — 다른 서버는 곧장 종료 */
+        /* verse는 아래 로컬 합성 체인으로 계속 — 다른 서버는 용어집 폴백으로 */
       }
     }
-    // Verse가 아닌 언어는 서버 없이는 호버가 없다. Verse는 용어집·지역변수·선언부 카드가 전부
-    // 텍스트 합성이라 서버가 죽었거나 인덱싱 중이어도 동작한다 — digest/콜드 상태 호버 공백 방지.
-    if (!ready && def.id !== 'verse') return null
+    // 서버 준비 전(인덱싱/에러) — Verse는 아래 합성 체인이 답하고, 그 외 언어는 심볼 호버는
+    // 못 줘도 키워드/내장 타입 용어집으로는 답한다(호버 공백 최소화).
+    if (!ready && def.id !== 'verse') return glossaryHover(def, abs, pos, text)
     // live buffer → didChange (reflects unsaved edits); no buffer → the disk-synced doc
     const uri = !ready ? '' : text != null ? this.syncBuffer(s!, def, abs, text) : await this.openDoc(s!, def, abs)
+    // 타임아웃 60초 — clangd가 UE TU를 콜드 파싱하는 동안 hover는 파싱이 끝날 때까지
+    // 큐에 있다가 응답한다. 기본 15초로는 첫 몇 분간 호버가 전부 타임아웃돼 "파일을 껐다
+    // 켜야 뜨는" 것처럼 보였다. 늦게 온 응답은 렌더러(hoverSeq/CM)가 낡은 것을 버린다.
     const r = ready
-      ? await s!.rpc.request<{ contents?: unknown } | null>('textDocument/hover', {
-          textDocument: { uri },
-          position: pos
-        })
+      ? await s!.rpc.request<{ contents?: unknown } | null>(
+          'textDocument/hover',
+          { textDocument: { uri }, position: pos },
+          60000
+        )
       : null
-    const contents = hoverMarkdown(r?.contents)
+    let contents = hoverMarkdown(r?.contents)
+    // UE C++: clangd 호버에 실려 온 엔진 공식 주석(영어)을 문단 해시로 번역 팩에서 찾아
+    // 한국어로 바꾼다 — Verse 공식 문서 번역과 같은 구조 (설정에서 끄면 no-op).
+    if (contents && isUeCpp(def, abs)) {
+      contents = translateUeHover(contents)
+      // 문서 없는 카드(전방 선언만 보이는 콜드/미해석 상태의 `class UCameraComponent` 등)에는
+      // 우리 UE 타입 설명 한 줄을 보태 준다 — clangd가 나중에 진짜 주석을 실어 오면 그때는
+      // 위 번역 팩이 답하므로 중복되지 않는다.
+      if (!hoverHasProse(contents)) {
+        const extra = ueCppFallbackDoc(await lineAt(abs, pos.line, text), pos.character)
+        if (extra) contents = appendDocToHover(contents, extra)
+      }
+    }
     if (def.id === 'verse') {
       // 0) `?` 옵션 연산자 — verse-lsp도 글로서리(wordAt)도 기호는 못 잡으므로 위치로 판별해 설명.
       const qdoc = await verseSymbolDoc(abs, pos.line, pos.character, text).catch(() => null)
@@ -1033,7 +1200,10 @@ class LspManager {
       ).catch(() => null)
       if (declSig) return { contents: declSig }
     }
-    return contents ? { contents } : null
+    if (contents) return { contents }
+    // LSP가 침묵한 위치 — 키워드/내장 타입이면 용어집으로 답한다(같은 이름의 진짜 심볼은
+    // 위에서 서버 호버가 먼저 잡으므로 여기 오지 않는다). 그 외엔 정말로 호버 없음.
+    return glossaryHover(def, abs, pos, text)
   }
 
   /**
@@ -1275,7 +1445,47 @@ class LspManager {
       }
       return mergeVerseScope(scope, r, verseExtMethods(root))
     }
-    return mapCompletion(r)
+    const list = mapCompletion(r)
+    // 서버가 resolve를 지원하면 원본 아이템(불투명 data 포함)을 세대와 함께 보관 — 렌더러가
+    // 후보를 하이라이트할 때 completion-resolve IPC로 문서를 지연 로드한다(tsserver/pyright/Roslyn
+    // 은 목록엔 문서를 안 싣고 resolve로만 준다 — 이게 없으면 다른 언어의 완성 문서가 영영 빈다).
+    if (list && s.complResolve) {
+      s.complRaw = { gen: ++s.complGen, items: rawItemsOf(r) }
+      list.gen = s.complRaw.gen
+    }
+    return list
+  }
+
+  /**
+   * 완성 후보의 문서 지연 로드 — completion()이 보관해 둔 원본 아이템(gen 세대의 ri번째)을
+   * completionItem/resolve로 돌려보내 detail/documentation을 받아 온다. 세대가 다르면(그 사이
+   * 새 완성 목록이 왔으면) 낡은 요청이므로 null. 서버가 resolve를 지원하지 않아도 null.
+   */
+  async resolveCompletion(
+    cwd: string,
+    relPath: string,
+    gen: number,
+    ri: number
+  ): Promise<{ detail?: string; documentation?: string } | null> {
+    const abs = this.resolve(cwd, relPath)
+    const def = abs ? serverDefFor(abs) : null
+    if (!abs || !def) return null
+    if (def.kind === 'download' && installState(def.id) !== 'installed') return null
+    if (def.kind === 'external' && !def.command('')) return null
+    const s = this.ensure(def, def.rootFor?.(abs, cwd) ?? cwd)
+    if (!s || !s.complResolve || !s.complRaw || s.complRaw.gen !== gen) return null
+    const raw = s.complRaw.items[ri]
+    if (!raw) return null
+    try {
+      await s.ready
+    } catch {
+      return null
+    }
+    const r = await s.rpc.request<RawCompletionItem | null>('completionItem/resolve', raw, 10000).catch(() => null)
+    if (!r) return null
+    const doc = typeof r.documentation === 'string' ? r.documentation : r.documentation?.value
+    if (!doc && !r.detail) return null
+    return { detail: typeof r.detail === 'string' ? r.detail : undefined, documentation: doc || undefined }
   }
 
   /**
@@ -1396,6 +1606,8 @@ class LspManager {
         return Array.isArray(items) ? items.map(() => null) : []
       }
       if (method === 'workspace/applyEdit') return { applied: false }
+      // 진행률 토큰 생성 요청 수락 — 이후 $/progress(백그라운드 인덱싱 %)가 흘러온다
+      if (method === 'window/workDoneProgress/create') return null
       return null
     }
 
@@ -1410,6 +1622,9 @@ class LspManager {
       wsCheckedAt: Date.now(),
       semLegend: null,
       complTriggers: null,
+      complResolve: false,
+      complRaw: null,
+      complGen: 0,
       projectInitPending: !!def.awaitsProjectInit,
       progressPct: null
     }
@@ -1436,7 +1651,7 @@ class LspManager {
       .request<{
         capabilities?: {
           semanticTokensProvider?: { legend?: { tokenTypes?: string[]; tokenModifiers?: string[] } }
-          completionProvider?: { triggerCharacters?: string[] }
+          completionProvider?: { triggerCharacters?: string[]; resolveProvider?: boolean }
         }
       }>(
         'initialize',
@@ -1450,9 +1665,14 @@ class LspManager {
               definition: {},
               // completion isn't wired for every server yet, but declaring the client
               // capability is harmless and lets servers that gate completion on it (and
-              // their snippet/markdown-doc formats) light up — Verse's verse-lsp included
+              // their snippet/markdown-doc formats) light up — Verse's verse-lsp included.
+              // resolveSupport: tsserver/pyright/Roslyn은 문서·detail을 resolve로 지연 제공한다.
               completion: {
-                completionItem: { snippetSupport: true, documentationFormat: ['markdown', 'plaintext'] }
+                completionItem: {
+                  snippetSupport: true,
+                  documentationFormat: ['markdown', 'plaintext'],
+                  resolveSupport: { properties: ['documentation', 'detail'] }
+                }
               },
               synchronization: { dynamicRegistration: false },
               semanticTokens: {
@@ -1469,7 +1689,10 @@ class LspManager {
                 formats: ['relative']
               }
             },
-            workspace: { workspaceFolders: true }
+            workspace: { workspaceFolders: true },
+          // 진행률 알림 수신 — 이걸 선언해야 clangd가 백그라운드 인덱싱 $/progress를 보낸다
+          // (Roslyn은 선언 없이도 보냈지만 clangd는 능력 선언에 gate 되어 있다)
+          window: { workDoneProgress: true }
           },
           ...(def.initializationOptions?.() != null ? { initializationOptions: def.initializationOptions() } : {})
         },
@@ -1489,6 +1712,7 @@ class LspManager {
         // completion() short-circuits so we never round-trip to a server that can't complete.
         const cp = res?.capabilities?.completionProvider
         handle.complTriggers = cp ? (Array.isArray(cp.triggerCharacters) ? cp.triggerCharacters : []) : null
+        handle.complResolve = !!cp?.resolveProvider
         rpc.notify('initialized', {})
         def.afterInitialized?.(rpc, path.resolve(root))
         handle.status = 'ready'

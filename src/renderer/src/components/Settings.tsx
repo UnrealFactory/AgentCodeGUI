@@ -1047,6 +1047,9 @@ function LspView() {
   const [verseKo, setVerseKo] = useState<boolean>(() => getPref<string>('verseDocLang', 'ko') !== 'en')
   // Verse 행 펼침 — 클릭하면 '공식 문서 한국어' 등 Verse 전용 옵션이 행 아래로 펼쳐진다.
   const [verseOpen, setVerseOpen] = useState(false)
+  // UE C++ 공식 주석 호버 언어 — 'ko'(기본) / 'en'. C/C++ 행을 펼치면 토글이 보인다.
+  const [ueKo, setUeKo] = useState<boolean>(() => getPref<string>('ueDocLang', 'ko') !== 'en')
+  const [cppOpen, setCppOpen] = useState(false)
 
   const refresh = (): void => {
     window.api.lsp
@@ -1135,6 +1138,13 @@ function LspView() {
       return next
     })
   }
+  const toggleUeKo = (): void => {
+    setUeKo((on) => {
+      const next = !on
+      setPref('ueDocLang', next ? 'ko' : 'en') // 메인이 다음 호버부터 적용
+      return next
+    })
+  }
 
   return (
     <>
@@ -1153,17 +1163,22 @@ function LspView() {
             {servers.map((s) => {
               const installing = s.state === 'installing'
               const p = pct[s.id]
-              // Verse(external)만 행을 클릭해 펼치는 디스클로저 — 하위에 '공식 문서 한국어' 옵션을 담는다.
+              // 펼치는 디스클로저 행: Verse(external)는 '공식 문서 한국어' 등 Verse 옵션을,
+              // C/C++는 'Unreal Engine 공식 문서 한국어' 옵션을 행 아래에 담는다.
               const isVerse = s.kind === 'external'
+              const isCpp = s.id === 'cpp'
+              const disc = isVerse || isCpp
+              const open = isVerse ? verseOpen : cppOpen
+              const toggleOpen = isVerse ? () => setVerseOpen((o) => !o) : () => setCppOpen((o) => !o)
               return (
                 <Fragment key={s.id}>
                   <div
-                    className={'ext-item' + (isVerse ? ' disc-row' + (verseOpen ? ' open' : '') : '')}
-                    role={isVerse ? 'button' : undefined}
-                    aria-expanded={isVerse ? verseOpen : undefined}
-                    onClick={isVerse ? () => setVerseOpen((o) => !o) : undefined}
+                    className={'ext-item' + (disc ? ' disc-row' + (open ? ' open' : '') : '')}
+                    role={disc ? 'button' : undefined}
+                    aria-expanded={disc ? open : undefined}
+                    onClick={disc ? toggleOpen : undefined}
                   >
-                    {isVerse && (
+                    {disc && (
                       <span className="ext-chev" aria-hidden>
                         <IconChevRight size={15} />
                       </span>
@@ -1190,11 +1205,24 @@ function LspView() {
                     </div>
                     {s.kind === 'download' &&
                       (s.state === 'installed' ? (
-                        <button className="inst-btn ghost" onClick={() => setConfirm(s)}>
+                        <button
+                          className="inst-btn ghost"
+                          onClick={(e) => {
+                            e.stopPropagation() // C/C++ 디스클로저 행 토글에 안 걸리게
+                            setConfirm(s)
+                          }}
+                        >
                           <IconTrash size={13} /> 삭제
                         </button>
                       ) : (
-                        <button className="inst-btn" disabled={installing} onClick={() => doInstall(s)}>
+                        <button
+                          className="inst-btn"
+                          disabled={installing}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            doInstall(s)
+                          }}
+                        >
                           {installing ? `설치 중…${p != null ? ` ${p}%` : ''}` : '설치'}
                         </button>
                       ))}
@@ -1262,6 +1290,31 @@ function LspView() {
                       </div>
                     </>
                   )}
+                  {/* C/C++ 펼침 — 언리얼 프로젝트의 엔진 공식 주석(clangd 호버) 한국어 번역 토글 */}
+                  {isCpp && cppOpen && (
+                    <div className="ext-item ext-sub">
+                      <div className="ext-main">
+                        <div className="ext-sub-name">Unreal Engine 공식 문서를 한국어로 보기</div>
+                        <div className="ext-desc ext-sub-desc">
+                          언리얼 프로젝트(<code>.uproject</code>)의 C++ 호버에 실리는 엔진 공식 주석(<code>AActor</code>·
+                          <code>TObjectPtr</code> 같은 핵심 타입 설명)을 한국어로 보여줍니다. 끄면 영어 원문으로
+                          표시합니다. (번역에 없는 항목이나 내 코드 주석은 원문 그대로)
+                        </div>
+                      </div>
+                      <button
+                        className={'skill-toggle' + (ueKo ? ' on' : '')}
+                        role="switch"
+                        aria-checked={ueKo}
+                        aria-label={ueKo ? 'Unreal Engine 한국어 문서 끄기' : 'Unreal Engine 한국어 문서 켜기'}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          toggleUeKo()
+                        }}
+                      >
+                        <span className="skill-knob" />
+                      </button>
+                    </div>
+                  )}
                 </Fragment>
               )
             })}
@@ -1270,7 +1323,8 @@ function LspView() {
 
         <div className="set-note">
           내장 서버는 바로 사용할 수 있고, C#·C++ 서버는 최초 1회 내려받아 <code>~/.agentcodegui/lsp</code> 에
-          설치됩니다. Verse 연결·문서 언어 옵션은 Verse 행을 클릭하면 펼쳐집니다.
+          설치됩니다. Verse 연결·문서 언어 옵션은 Verse 행을, Unreal Engine 문서 언어 옵션은 C·C++ 행을
+          클릭하면 펼쳐집니다.
         </div>
       </div>
 

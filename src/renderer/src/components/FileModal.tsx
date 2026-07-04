@@ -12,6 +12,7 @@ import { getPref, setPref } from '../lib/prefs'
 import { isImagePath, imageSrc } from '../lib/images'
 import { verseReg } from '../lib/verseRegistry'
 import { VERSE_SPECIFIERS, VERSE_ATTRIBUTES } from '@shared/verseKeywords'
+import { glossaryDoc, hasGlossary, UE_CPP_WORD_DOCS } from '@shared/langGlossary'
 import { FileBadge, fileTypeFor, paletteClassFor } from './fileType'
 import {
   IconBot,
@@ -84,14 +85,17 @@ interface HoverParts {
 //  · '(매개 변수) string Message'   — VS식 마커(로캘 따라 한글/영문)
 //  · 'readonly struct NS.Type'      — 타입 선언 (enum은 ': byte' 같은 기반 타입)
 //  · 'void Container.Name(args)'    — 멤버 (메서드/프로퍼티/필드는 괄호·중괄호로 구분)
-// 최상위 쉼표로 인자 목록 분리 — 제네릭(<>)·배열([])·중첩 괄호 안의 쉼표는 무시
+// 최상위 쉼표로 인자 목록 분리 — 제네릭(<>)·배열([])·중첩 괄호·객체 리터럴 타입({}) 안의 쉼표는 무시.
+// 화살표(`=>`)의 '>'는 제네릭 닫힘이 아니므로 깊이에서 뺀다 — 안 그러면 TS 함수 타입 매개변수
+// (`f: (a) => void, b: any`)에서 깊이가 음수로 틀어져 그 뒤 쉼표 분리가 전부 죽는다.
 function splitCsArgs(args: string): string[] {
   const out: string[] = []
   let depth = 0
   let cur = ''
-  for (const ch of args) {
-    if (ch === '<' || ch === '(' || ch === '[') depth++
-    else if (ch === '>' || ch === ')' || ch === ']') depth--
+  for (let i = 0; i < args.length; i++) {
+    const ch = args[i]
+    if (ch === '<' || ch === '(' || ch === '[' || ch === '{') depth++
+    else if ((ch === '>' && args[i - 1] !== '=') || ch === ')' || ch === ']' || ch === '}') depth--
     if (ch === ',' && depth === 0) {
       out.push(cur.trim())
       cur = ''
@@ -217,6 +221,254 @@ function parseCsSig(
     params,
     value
   }
+}
+
+// tsserver(typescript-language-server) 호버 시그니처의 구조화 — parseCsSig의 TS/JS판.
+// C#과 달리 이름이 앞, 타입이 `: 타입`으로 뒤에 온다. 형태 갈래:
+//  · '(method) Foo.bar<T>(x: T): T'  '(property) Foo.baz: number'  '(parameter) x: string'
+//  · 'const x: 3' / 'let y: string' / 'function f(a: string): void' / 'class Foo<T>'
+//  · '(alias) class Foo\nimport Foo' — 별명 너머의 실제 선언으로 다시 판별
+//  · '(enum member) Dir.Up = 0' — 이름·값·소속으로 구조화
+function parseTsSig(
+  sig: string
+): { kind: string; name: string; container: string | null; ret?: string; retLabel?: string; params?: string[]; value?: string; mods?: string[] } | null {
+  let s = sig.replace(/\s+/g, ' ').trim()
+  // (alias) 카드의 부가 줄('import Foo'/'export foo')은 정보가 겹친다 — 떼고 본 선언만 본다
+  s = s.replace(/\s+(?:import|export)\s+[\w.$]+$/, '')
+  const mods: string[] = []
+  let kind: string | null = null
+  const marker =
+    /^\((method|property|parameter|alias|local var|local function|local class|getter|setter|enum member|type parameter|JSX attribute|accessor)\)\s*/.exec(
+      s
+    )
+  if (marker) {
+    s = s.slice(marker[0].length)
+    const k = marker[1]
+    if (k === 'alias') {
+      // 별명 너머의 실제 선언(class/const/function …)으로 판별 — 실패하면 alias 카드로
+      const inner = parseTsSig(s)
+      if (inner) return inner
+      kind = 'alias'
+    } else if (k === 'local var') kind = 'local variable'
+    else if (k === 'local function') kind = 'function'
+    else if (k === 'local class') kind = 'class'
+    else if (k === 'getter') {
+      kind = 'property'
+      mods.push('get')
+    } else if (k === 'setter') {
+      kind = 'property'
+      mods.push('set')
+    } else if (k === 'JSX attribute') kind = 'attribute'
+    else if (k === 'type parameter') {
+      // '(type parameter) T in Foo<T>(…)' — 이름은 T, 소속은 'in' 뒤의 심볼
+      const m = /^([A-Za-z_$][\w$]*)(?:\s+in\s+(.+))?$/.exec(s)
+      if (m) return { kind: 'type parameter', name: m[1], container: m[2] ? m[2].split(/[<(]/)[0].trim() : null }
+      kind = 'type parameter'
+    } else kind = k
+  }
+  // 'enum member': 'Dir.Up = 0' — clangd enumerator·C# enum 멤버와 같은 구조로
+  if (kind === 'enum member') {
+    const m = /^([\w$.]+?)(?:\s*=\s*(.+))?$/.exec(s)
+    if (!m) return null
+    const dot = m[1].lastIndexOf('.')
+    return {
+      kind: 'enum member',
+      name: dot >= 0 ? m[1].slice(dot + 1) : m[1],
+      container: dot >= 0 ? m[1].slice(0, dot) : null,
+      value: m[2]?.trim()
+    }
+  }
+  // 선언 키워드 (마커가 없을 때): class/interface/enum/namespace/type/function/let/const …
+  if (!kind) {
+    const decl = /^(abstract class|class|interface|enum|namespace|module|type|function|constructor|var|let|const|import)\s+/.exec(s)
+    if (!decl) return null // 키워드도 마커도 없으면 신뢰도가 낮다 — 구조화 포기(raw 폴백)
+    s = s.slice(decl[0].length)
+    let k = decl[1]
+    if (k === 'abstract class') {
+      mods.push('abstract')
+      k = 'class'
+    }
+    if (k === 'const' && /^enum\s+/.test(s)) {
+      s = s.replace(/^enum\s+/, '')
+      k = 'enum'
+    }
+    kind = k === 'let' || k === 'var' ? 'variable' : k === 'const' ? 'constant' : k === 'import' ? 'alias' : k
+  }
+  // 타입 별명: 'type Name<T> = RHS' — 우변을 VALUE로
+  if (kind === 'type') {
+    const m = /^([A-Za-z_$][\w$]*)(?:<[^=]*?>)?\s*=\s*(.+)$/.exec(s)
+    if (m) return { kind: 'type', name: m[1], container: null, value: m[2].trim(), mods: mods.length ? mods : undefined }
+  }
+  // 타입/이름공간 선언: 이름 토큰만 취한다 ('class Foo<T> extends Bar' → Foo)
+  if (/^(class|interface|enum|namespace|module|alias|type)$/.test(kind)) {
+    const m = /^("[^"]+"|[A-Za-z_$][\w$.]*)/.exec(s)
+    if (!m) return null
+    const raw = m[1].replace(/"/g, '')
+    const dot = raw.lastIndexOf('.')
+    return {
+      kind,
+      name: dot >= 0 ? raw.slice(dot + 1) : raw,
+      container: dot >= 0 ? raw.slice(0, dot) : null,
+      mods: mods.length ? mods : undefined
+    }
+  }
+  // 일반형: '한정.이름<제네릭>?(params): ret' 또는 '한정.이름?: 타입' — 이름부를 top-level
+  // '('(값 매개변수) 또는 ':'(타입 구분) 앞까지 읽는다. 제네릭 <> 안의 기호는 지나간다.
+  let i = 0
+  let angle = 0
+  for (; i < s.length; i++) {
+    const c = s[i]
+    if (c === '<') angle++
+    else if (c === '>') angle = Math.max(0, angle - 1)
+    else if (angle === 0 && (c === '(' || c === ':')) break
+  }
+  const rawHead = s.slice(0, i).trim().replace(/\?$/, '')
+  // 제네릭 목록은 이름에서 뗀다 — 'Array<string>.map<U>' → 'Array.map' (첫 '<'에서 자르면
+  // 한정 경로 중간의 제네릭 때문에 이름이 'Array'로 깨진다). 꺾쇠 깊이를 세며 밖 글자만 남긴다.
+  let head = ''
+  let ang = 0
+  for (const ch of rawHead) {
+    if (ch === '<') ang++
+    else if (ch === '>') ang = Math.max(0, ang - 1)
+    else if (ang === 0) head += ch
+  }
+  if (!/^[A-Za-z_$][\w$.]*$/.test(head)) return null
+  const dot = head.lastIndexOf('.')
+  const name = dot >= 0 ? head.slice(dot + 1) : head
+  const container = dot >= 0 ? head.slice(0, dot) : null
+  if (s[i] === '(') {
+    // 함수류 — 괄호 균형으로 끊고 매개변수·반환형을 읽는다
+    let depth = 0
+    let end = -1
+    for (let j = i; j < s.length; j++) {
+      if (s[j] === '(') depth++
+      else if (s[j] === ')' && --depth === 0) {
+        end = j
+        break
+      }
+    }
+    if (end < 0) return null
+    const params = splitCsArgs(s.slice(i + 1, end))
+    const after = s.slice(end + 1).trim()
+    const rt = /^:\s*(.+)$/.exec(after)
+    const fkind = kind ?? (container ? 'method' : 'function')
+    return {
+      kind: fkind,
+      name,
+      container,
+      ret: fkind === 'constructor' ? undefined : rt?.[1]?.trim(),
+      retLabel: 'return',
+      params,
+      mods: mods.length ? mods : undefined
+    }
+  }
+  if (s[i] === ':') {
+    // 값류 — ': 타입'. 초기값은 tsserver가 타입 자리에 리터럴로 싣는다('const x: 3')
+    const ret = s.slice(i + 1).trim()
+    return { kind: kind ?? 'property', name, container, ret, retLabel: 'type', mods: mods.length ? mods : undefined }
+  }
+  // 이름만 남은 형태 ('constructor Foo' 등) — 마커/키워드가 있어야 유의미
+  return kind ? { kind, name, container, mods: mods.length ? mods : undefined } : null
+}
+
+// pyright 호버 시그니처의 구조화 — parseCsSig의 Python판. 형태 갈래:
+//  · '(method) def bar(self, x: int) -> str' / '(function) def foo(...) -> None'
+//  · '(variable) x: int' / '(parameter) x: str' / '(property) y: float' / '(constant) MAX: int'
+//  · '(class) Foo' / 'class Foo(x: int)'(생성자 호출형) / '(module) os' / '(type alias) …'
+function parsePySig(
+  sig: string
+): { kind: string; name: string; container: string | null; ret?: string; retLabel?: string; params?: string[]; mods?: string[] } | null {
+  let s = sig.replace(/\s+/g, ' ').trim()
+  const mods: string[] = []
+  let kind: string | null = null
+  const marker = /^\((function|method|property|variable|parameter|class|module|constant|field|type alias|type parameter)\)\s*/.exec(s)
+  if (marker) {
+    kind = marker[1] === 'type alias' ? 'type' : marker[1]
+    s = s.slice(marker[0].length)
+  }
+  // 'def 이름(매개변수) -> 반환형' — async def 포함. 메서드의 관례적 self/cls는 뺀다.
+  const def = /^(async\s+)?def\s+/.exec(s)
+  if (def) {
+    if (def[1]) mods.push('async')
+    s = s.slice(def[0].length)
+    const nm = /^([A-Za-z_]\w*)/.exec(s)
+    if (!nm) return null
+    s = s.slice(nm[1].length).trim()
+    if (!s.startsWith('(')) return null
+    let depth = 0
+    let end = -1
+    for (let j = 0; j < s.length; j++) {
+      if (s[j] === '(') depth++
+      else if (s[j] === ')' && --depth === 0) {
+        end = j
+        break
+      }
+    }
+    if (end < 0) return null
+    let params = splitCsArgs(s.slice(1, end))
+    if (kind === 'method' && params.length && /^(self|cls)\b/.test(params[0])) params = params.slice(1)
+    const rt = /^\s*->\s*(.+)$/.exec(s.slice(end + 1))
+    return {
+      kind: kind ?? 'function',
+      name: nm[1],
+      container: null,
+      ret: rt?.[1]?.trim(),
+      retLabel: 'return',
+      params,
+      mods: mods.length ? mods : undefined
+    }
+  }
+  // 'class Foo(base…)' — 생성자 호출형이면 매개변수도 함께 (pyright가 호출 위치에서 준다)
+  const cls = /^class\s+([A-Za-z_][\w.]*)/.exec(s)
+  if (cls) {
+    const raw = cls[1]
+    const dot = raw.lastIndexOf('.')
+    const rest = s.slice(cls[0].length).trim()
+    let params: string[] | undefined
+    if (rest.startsWith('(')) {
+      let depth = 0
+      let end = -1
+      for (let j = 0; j < rest.length; j++) {
+        if (rest[j] === '(') depth++
+        else if (rest[j] === ')' && --depth === 0) {
+          end = j
+          break
+        }
+      }
+      if (end > 0) params = splitCsArgs(rest.slice(1, end))
+    }
+    return {
+      kind: 'class',
+      name: dot >= 0 ? raw.slice(dot + 1) : raw,
+      container: dot >= 0 ? raw.slice(0, dot) : null,
+      retLabel: 'type',
+      params
+    }
+  }
+  // '이름: 타입' — 변수/매개변수/속성/상수. 초기값 '= …'는 pyright가 잘 안 싣지만 오면 뗀다.
+  const tm = /^([A-Za-z_][\w.]*)\s*:\s*(.+?)(?:\s*=\s*.+)?$/.exec(s)
+  if (tm) {
+    const dot = tm[1].lastIndexOf('.')
+    return {
+      kind: kind ?? 'variable',
+      name: dot >= 0 ? tm[1].slice(dot + 1) : tm[1],
+      container: dot >= 0 ? tm[1].slice(0, dot) : null,
+      ret: tm[2].trim(),
+      retLabel: 'type',
+      mods: mods.length ? mods : undefined
+    }
+  }
+  // 이름만 남은 형태 — '(module) os' / '(class) int'. 마커가 있어야 유의미.
+  const bare = /^([A-Za-z_][\w.]*)$/.exec(s)
+  if (bare && kind) {
+    const dot = bare[1].lastIndexOf('.')
+    return {
+      kind,
+      name: dot >= 0 ? bare[1].slice(dot + 1) : bare[1],
+      container: dot >= 0 ? bare[1].slice(0, dot) : null
+    }
+  }
+  return null
 }
 
 // Verse 호버는 한 줄 시그니처를 MarkedString(```verse)로 보낸다. parseCsSig의 Verse판 —
@@ -392,6 +644,10 @@ function parseHover(md: string): HoverParts | null {
     else if (/^Type:/.test(t)) metas.push({ k: 'type', v: t.replace(/^Type:\s*/, '') })
     else if (/^Value =/.test(t)) metas.push({ k: 'value', v: t.replace(/^Value =\s*/, '') })
     else if (/^provided by\b/.test(t)) from = { k: 'provided by', v: t.replace(/^provided by\s*/, '') }
+    else if (/^#include\s/.test(t)) {
+      // clangd include-cleaner의 헤더 제안 — 본문에 날것으로 두지 않고 구조화 행으로
+      metas.push({ k: 'include', v: '`' + t + '`' })
+    }
     else if (/^Offset:\s*\d+\s*byte/.test(t)) {
       // clangd 필드 메모리 정보 — 'Offset: 0 bytes' → 종류 칩 옆 알약으로
       const m = /^Offset:\s*(\d+)\s*byte/.exec(t)
@@ -422,15 +678,34 @@ function parseHover(md: string): HoverParts | null {
       else docLines.push(lines[i])
     } else if (/^[@\\]returns?\s+\S/.test(t)) {
       returnDoc = t.replace(/^[@\\]returns?\s+/, '')
+    } else if (/^\*@param\*/.test(t)) {
+      // tsserver JSDoc 태그: '*@param* `x` — 설명' — 본문에 날 것으로 두지 않고 스펙 행에 합친다
+      const m = /^\*@param\*\s+`?([\w$]+)`?\s*(?:—|–|-|:)?\s*(.*)$/.exec(t)
+      if (m && m[2]) paramDocs.set(m[1], m[2])
+      else if (!m) docLines.push(lines[i])
+    } else if (/^\*@returns?\*/.test(t)) {
+      const d = t.replace(/^\*@returns?\*\s*(?:—|–|-|:)?\s*/, '')
+      if (d) returnDoc = d
+    } else if (/^:param\s+/.test(t)) {
+      // pyright 독스트링(reST): ':param x: 설명' / ':param str x: 설명'
+      const m = /^:param\s+(?:[\w[\], .]+\s+)?(\w+):\s*(.+)$/.exec(t)
+      if (m) paramDocs.set(m[1], m[2])
+      else docLines.push(lines[i])
+    } else if (/^:returns?:\s*\S/.test(t)) {
+      returnDoc = t.replace(/^:returns?:\s*/, '')
+    } else if (/^:rtype:/.test(t)) {
+      // 반환 타입 표기는 시그니처가 이미 보여준다 — 본문 소음으로 두지 않는다
     } else if (/^[@\\]brief\s+\S/.test(t)) {
       docLines.push(t.replace(/^[@\\]brief\s+/, '')) // 태그만 벗기고 본문으로
     } else docLines.push(lines[i])
   }
-  // 종류 헤더가 없는 서버(OmniSharp C#, Verse)는 시그니처에서 종류·이름·반환형·매개변수·소속을
-  // 끌어낸다. Verse는 ```verse 펜스라 sigLang으로 구분해 전용 파서를 쓴다.
+  // 종류 헤더가 없는 서버(Roslyn C#, tsserver, pyright, Verse)는 시그니처에서 종류·이름·반환형·
+  // 매개변수·소속을 끌어낸다. 펜스 언어(sigLang)로 그 서버의 시그니처 문법에 맞는 파서를 고른다.
   if (!kind && sig) {
     const isVerse = sigLang === 'verse'
-    const e = isVerse ? parseVerseSig(sig) : parseCsSig(sig)
+    const isPy = sigLang === 'python'
+    const isTs = /^(typescript|javascript|typescriptreact|javascriptreact|tsx|jsx|ts|js)$/.test(sigLang)
+    const e = isVerse ? parseVerseSig(sig) : isPy ? parsePySig(sig) : isTs ? parseTsSig(sig) : parseCsSig(sig)
     if (e) {
       kind = e.kind
       name = e.name
@@ -445,10 +720,14 @@ function parseHover(md: string): HoverParts | null {
       }
     }
   }
-  // @param/@return 문서를 스펙 행에 붙인다 — 코드 조각의 마지막 식별자가 매개변수 이름
+  // @param/@return 문서를 스펙 행에 붙인다 — 매개변수 이름은 언어별 어순을 따른다:
+  // TS/Python/Verse는 '이름: 타입'(첫 식별자, 단 C++의 `std::` 같은 '::'는 제외),
+  // C#/C++은 '타입 이름'(마지막 식별자).
   if (paramDocs.size || returnDoc) {
     const nameOf = (v: string): string => {
       const code = v.replace(/`/g, '').replace(/\(aka[^)]*\)\s*$/, '').trim()
+      const head = /^[*&]*\s*\??([A-Za-z_]\w*)\s*\??\s*:(?!:)/.exec(code)
+      if (head) return head[1]
       const m = /([A-Za-z_]\w*)\s*$/.exec(code)
       return m ? m[1] : ''
     }
@@ -492,12 +771,58 @@ function hoverKindClass(kind: string): string {
   if (/access|effect|specifier|attribute/.test(k)) return 'k-type2'
   if (/method|function|constructor|destructor|operator/.test(k)) return 'k-fn'
   if (/struct|enum|union|delegate/.test(k)) return 'k-type2'
-  if (/class|interface|namespace|type|concept|module/.test(k)) return 'k-type'
+  if (/class|interface|namespace|type|concept|module|alias/.test(k)) return 'k-type'
   if (/macro/.test(k)) return 'k-kw'
   if (/field|property|event|const/.test(k)) return 'k-member'
   if (/variable|local|\bvar\b/.test(k)) return 'k-var'
   if (/param/.test(k)) return 'k-param'
   return 'k-plain'
+}
+
+// 비-Verse 종류 칩 설명 — verseKindDesc의 공용판. 카드의 종류 칩(METHOD·CLASS·PROPERTY…)에
+// 가까이 대면 그게 뭔지 하단 띠로 설명한다(Verse와 같은 UX). 언어 공통 개념이라 사전 하나로 간다.
+const GENERIC_KIND_DESC: Record<string, string> = {
+  method: '객체(타입)에 속한 함수입니다.',
+  'extension method': '기존 타입에 밖에서 덧붙인 메서드입니다.',
+  function: '호출하면 동작을 수행하고 값을 돌려줄 수 있는 함수입니다.',
+  constructor: '객체가 만들어질 때 호출되는 초기화 함수(생성자)입니다.',
+  destructor: '객체가 사라질 때 호출되는 정리 함수(소멸자)입니다.',
+  operator: '연산자(`+`, `==` …)를 이 타입에 맞게 재정의한 함수입니다.',
+  class: '객체를 찍어내는 틀(클래스) 타입입니다.',
+  struct: '값 형식 타입입니다. 대입하거나 넘길 때 복사됩니다.',
+  union: '여러 멤버가 같은 메모리를 공유하는 타입입니다.',
+  enum: '이름 붙은 값들을 나열한 목록 타입입니다.',
+  'enum member': '`enum` 에 나열된 값 중 하나입니다.',
+  enumerator: '`enum` 에 나열된 값 중 하나입니다.',
+  interface: '갖춰야 할 멤버들을 정해 둔 약속(인터페이스)입니다.',
+  namespace: '관련 코드를 묶는 이름 공간입니다.',
+  module: '관련 코드를 묶는 모듈입니다.',
+  property: '읽기/쓰기가 접근자(게터/세터)로 처리되는 멤버입니다.',
+  field: '타입 안에 저장되는 데이터 멤버입니다.',
+  event: '구독(`+=`)할 수 있는 알림 멤버입니다.',
+  delegate: '메서드를 값처럼 담아 전달하는 타입입니다.',
+  parameter: '함수에 전달되는 매개변수입니다.',
+  'type parameter': '제네릭에서 타입을 받는 자리(타입 매개변수)입니다.',
+  variable: '값을 담는 변수입니다.',
+  'local variable': '블록 안에서만 쓰이는 지역 변수입니다.',
+  constant: '한 번 정해지면 바뀌지 않는 값(상수)입니다.',
+  macro: '컴파일 전에 그 자리에서 텍스트로 치환되는 매크로입니다.',
+  type: '타입입니다.',
+  alias: '다른 심볼을 가리키는 별명(가져온 이름)입니다.',
+  attribute: '심볼에 부가 정보를 다는 속성입니다.'
+}
+function genericKindDesc(kind: string | null): string | undefined {
+  if (!kind) return undefined
+  const k = kind.toLowerCase().replace(/^static\s+/, '').trim()
+  if (Object.prototype.hasOwnProperty.call(GENERIC_KIND_DESC, k)) return GENERIC_KIND_DESC[k]
+  if (k.includes('enum member') || k.includes('enumerator')) return GENERIC_KIND_DESC['enum member']
+  if (k.includes('param')) return GENERIC_KIND_DESC.parameter
+  if (k.includes('local')) return GENERIC_KIND_DESC['local variable']
+  if (k.includes('field')) return GENERIC_KIND_DESC.field
+  if (k.includes('const')) return GENERIC_KIND_DESC.constant
+  if (k.includes('method')) return GENERIC_KIND_DESC.method
+  if (k.includes('function')) return GENERIC_KIND_DESC.function
+  return undefined
 }
 
 // Verse 종류 칩 색 — 사용자 선호대로 Constant Variable ↔ Variable 색을 맞바꾸고, enum/struct 값은
@@ -810,11 +1135,19 @@ export function HoverContent({
     const t = e.target as HTMLElement
     const tagged = t.closest?.('[data-tip]') as HTMLElement | null
     if (tagged?.dataset.tip) return showTokDesc(tagged.dataset.tip, tagged)
-    // 코드 토큰(잎 스팬)의 단어로 설명을 찾는다 — 파라미터/반환형 안의 타입(char·color·void…)까지
-    if (t.childElementCount === 0 && lang === 'verse') {
+    // 코드 토큰(잎 스팬)의 단어로 설명을 찾는다 — 파라미터/반환형 안의 타입(char·number·void…)까지.
+    // Verse는 전용 사전(지정자·레지스트리 포함), 그 외 언어는 공유 용어집(langGlossary)으로.
+    if (t.childElementCount === 0) {
       const w = (t.textContent ?? '').trim()
       if (/^[A-Za-z_]\w*$/.test(w)) {
-        const d = verseWordDesc(w)
+        const d =
+          lang === 'verse'
+            ? verseWordDesc(w)
+            : (
+                glossaryDoc(lang, w) ??
+                // C/C++ 카드의 UE 타입·매크로(FString·TArray·UPROPERTY…)도 설명해 준다
+                (lang === 'cpp' || lang === 'c' ? UE_CPP_WORD_DOCS[w] : undefined)
+              )?.replace(/`/g, '')
         if (d) return showTokDesc(d, t)
       }
     }
@@ -823,16 +1156,12 @@ export function HoverContent({
   useEffect(() => () => void (tipHideTimer.current && clearTimeout(tipHideTimer.current)), [])
   if (!p) return <Markdown text={md} codeLang={lang} decorate={deco} />
   return (
-    <div
-      className="lh-body"
-      onMouseOver={lang === 'verse' ? onTokOver : undefined}
-      onMouseLeave={lang === 'verse' ? scheduleTokHide : undefined}
-    >
+    <div className="lh-body" onMouseOver={onTokOver} onMouseLeave={scheduleTokHide}>
       {p.kind && (
         <div className="lh-head lh-kindrow">
           <span
             className={'lh-kind ' + (lang === 'verse' ? verseKindClass(p.kind, kindDisplay) : hoverKindClass(p.kind))}
-            data-tip={(lang === 'verse' && verseKindDesc(p.kind)) || undefined}
+            data-tip={(lang === 'verse' ? verseKindDesc(p.kind) : genericKindDesc(p.kind)) || undefined}
           >
             {kindDisplay}
           </span>
@@ -1393,6 +1722,7 @@ function CodeView({
   zoom,
   cwd,
   lsp,
+  coldHover = true,
   sem,
   structOv,
   jump,
@@ -1405,6 +1735,9 @@ function CodeView({
   zoom: number
   cwd: string
   lsp: boolean
+  // 서버 준비 전(콜드) 호버 허용 여부 — git 스냅샷처럼 화면 내용이 디스크와 다른 보기는
+  // 좌표가 거짓이 되므로 꺼야 한다 (FileModal이 ovContent 유무로 정한다)
+  coldHover?: boolean
   sem: LspSemanticTokens | null
   structOv: StructOv | null // C++ struct 연보라 보정 (FileModal에서 한 번 계산해 내려줌)
   jump: { line: number; tick: number } | null
@@ -1413,6 +1746,10 @@ function CodeView({
   onNavigate: (loc: LspLocation) => void
 }) {
   const t = fileTypeFor(path)
+  // 호버 게이트 — 서버 준비 전(콜드)에도 답할 수 있는 언어는 열어 둔다: Verse는 합성 카드
+  // (용어집·지역변수·선언부), 그 외 지원 언어는 키워드·내장 타입 용어집이 메인에서 나온다.
+  // 정의 이동(Ctrl+클릭/F12)·시맨틱 색은 여전히 서버(lsp=ready)가 있어야 한다.
+  const hoverOk = lsp || (coldHover && (t.lang === 'verse' || hasGlossary(t.lang)))
   const scrollRef = useRef<HTMLDivElement>(null)
   // defMods: C#용 한정자 보강 — OmniSharp 호버 시그니처엔 public/static이 안 실려서
   // 정의 줄을 읽어 따로 채운다 (도착하면 카드의 ACCESS 행이 늦게 나타날 수 있음)
@@ -1608,7 +1945,7 @@ function CodeView({
 
   const onMove = (e: React.MouseEvent): void => {
     mousePt.current = { x: e.clientX, y: e.clientY }
-    setCtrl(e.ctrlKey || e.metaKey)
+    setCtrl((e.ctrlKey || e.metaKey) && lsp) // 정의 이동 커서는 서버가 있어야 의미 있다
     // Ctrl/⌘(정의 모드)에서는 호버 카드를 띄우지 않는다 — 점프하려는 참에 카드가
     // 시야와 클릭 대상을 가리지 않게
     if (e.ctrlKey || e.metaKey) {
@@ -1817,7 +2154,11 @@ function CodeView({
 
   return (
     <div className="fv-wrap">
-      <div className={'fv-code scroll' + paletteClassFor(t.lang)} ref={scrollRef} onScroll={lsp ? clearHover : undefined}>
+      <div
+        className={'fv-code scroll' + paletteClassFor(t.lang)}
+        ref={scrollRef}
+        onScroll={hoverOk ? clearHover : undefined}
+      >
         <div className="fv-inner" style={{ zoom }}>
           <div className="fv-gutter" aria-hidden="true">
             {gutterCells}
@@ -1825,12 +2166,12 @@ function CodeView({
           <pre
             ref={preRef}
             className={'fv-pre hljs' + (deco ? ' has-fill' : '')}
-            onMouseMove={lsp ? onMove : undefined}
-            onMouseLeave={lsp ? onLeavePre : undefined}
+            onMouseMove={hoverOk ? onMove : undefined}
+            onMouseLeave={hoverOk ? onLeavePre : undefined}
             // 코드에 마우스를 누르는 순간 카드를 치운다 — 더블클릭/드래그 선택이
             // 떠 있는 카드와 겹쳐 엉키지 않게 (카드 안에서의 클릭·복사는 그대로)
-            onMouseDown={lsp ? clearHover : undefined}
-            onClick={lsp ? onClick : undefined}
+            onMouseDown={hoverOk ? clearHover : undefined}
+            onClick={hoverOk ? onClick : undefined}
           >
             {codeRows ?? <code className="hljs">{body}</code>}
           </pre>
@@ -1975,6 +2316,10 @@ export function FileModal({
   const [lspStatus, setLspStatus] = useState<LspStatus>('unsupported')
   const [sem, setSem] = useState<LspSemanticTokens | null>(null)
   const [noSem, setNoSem] = useState(false) // 서버가 이 파일엔 시맨틱 토큰이 없다고 알림 → 분석칩 끔
+  // 라이브(서버) 토큰이 실제로 도착했는가 — 디스크 캐시 색은 sem을 채우지만 서버가 이 파일을
+  // 파싱했다는 뜻이 아니다. 분석칩은 이 값 기준으로 유지해, 캐시 색이 칠해져 있어도 서버가
+  // 준비될 때까지 "심볼 분석 중"이 정직하게 보인다 (호버가 그때부터 되므로).
+  const [semLive, setSemLive] = useState(false)
   const [anPct, setAnPct] = useState<number | null>(null) // 분석 진행률(프로젝트 인덱싱 %)
   const [vs, setVs] = useState<ViewState>({ root: path, stack: [], fwd: [], jump: null })
   // an SVG can be viewed both ways — as the rendered image (default) or as markup
@@ -2156,6 +2501,7 @@ export function FileModal({
   useEffect(() => {
     setSem(null)
     setNoSem(false)
+    setSemLive(false)
     if (!effPath || isImg || ovContent != null || res?.content == null) return
     let alive = true
     window.api.lsp
@@ -2186,9 +2532,14 @@ export function FileModal({
         .semanticTokens(cwd, effPath)
         .then((t) => {
           if (!alive) return
-          if (t && t.data.length) setSem(t)
-          else if (t && tries++ < 75) setTimeout(fetchTokens, 800)
-          else if (t === null) setNoSem(true) // 이 서버는 시맨틱 토큰 없음 → 분석칩 끔, hljs만
+          if (t && t.data.length) {
+            setSem(t)
+            setSemLive(true) // 서버가 이 파일을 실제로 파싱했다 — 분석칩 내림
+          } else if (t && tries++ < 75) setTimeout(fetchTokens, 800)
+          // 빈 토큰이 재시도 한도까지 이어짐(컴파일 DB 밖 파일 등 — 서버가 이 문서에 끝내
+          // 토큰을 안 줌) 또는 토큰 미지원 서버 — 분석칩을 내리고 hljs 색으로 확정한다.
+          // 안 그러면 "심볼 분석 중" 배지가 영영 남는다.
+          else setNoSem(true)
         })
         .catch(() => {})
     }
@@ -2198,11 +2549,13 @@ export function FileModal({
     }
   }, [effPath, cwd, lspStatus, res])
 
-  // 파일별 "심볼 분석 중" 판정 — 색 토큰을 기다리는 동안만 true(서버 워밍 또는 토큰 페치 중).
-  // 캐시/라이브 색이 들어오면(sem) · 시맨틱 토큰 없는 서버면(noSem) · 미지원/에러면 사라진다.
+  // 파일별 "심볼 분석 중" 판정 — 서버의 라이브 토큰이 도착할 때까지 true(서버 워밍/파싱 중).
+  // 디스크 캐시 색(sem)이 먼저 칠해져도 서버가 아직 이 파일을 파싱 전이면 칩을 유지한다 —
+  // 호버·정의 이동이 그때부터 되므로 이게 정직한 신호다. 시맨틱 토큰 없는 서버(noSem)·
+  // 미지원/에러면 사라진다.
   const isCodeView = !!effPath && !isImg && ovContent == null && res?.content != null
   const analyzing =
-    isCodeView && sem == null && !noSem && (lspStatus === 'starting' || lspStatus === 'installing' || lspStatus === 'ready')
+    isCodeView && !semLive && !noSem && (lspStatus === 'starting' || lspStatus === 'installing' || lspStatus === 'ready')
   // 분석 중에만 프로젝트 인덱싱 %를 가볍게 폴링해 칩에 보여준다(없으면 % 없이 '심볼 분석 중')
   useEffect(() => {
     if (!analyzing || !cwd) {
@@ -2507,6 +2860,7 @@ export function FileModal({
             zoom={z.zoom}
             cwd={cwd}
             lsp={lspStatus === 'ready'}
+            coldHover={ovContent == null}
             sem={sem}
             structOv={structOv}
             jump={vs.jump}

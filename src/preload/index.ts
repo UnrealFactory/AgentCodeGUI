@@ -105,6 +105,8 @@ const api: WindowApi = {
     cachedTokens: (cwd: string, relPath: string) => ipcRenderer.invoke(IPC.lspCachedTokens, { cwd, relPath }),
     completion: (cwd: string, relPath: string, pos: LspPos, text: string) =>
       ipcRenderer.invoke(IPC.lspCompletion, { cwd, relPath, pos, text }),
+    resolveCompletion: (cwd: string, relPath: string, gen: number, ri: number) =>
+      ipcRenderer.invoke(IPC.lspResolveCompletion, { cwd, relPath, gen, ri }),
     prewarm: (cwd: string) => ipcRenderer.invoke(IPC.lspPrewarm, { cwd }),
     warm: (cwd: string, relPath: string) => ipcRenderer.invoke(IPC.lspWarm, { cwd, relPath }),
     verseRegistry: (cwd: string, relPath: string, knownRev?: number) =>

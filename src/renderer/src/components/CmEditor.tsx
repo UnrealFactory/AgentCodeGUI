@@ -35,6 +35,7 @@ import { VERSE_BUILTIN_KIND } from '@shared/protocol'
 import { highlighting } from '../lib/cmHljs'
 import { ensureVerseRegistry, onVerseRegChange } from '../lib/verseRegistry'
 import { VERSE_SPECIFIERS, VERSE_ATTRIBUTES } from '@shared/verseKeywords'
+import { hasGlossary, ueMacroContext, UE_SPECIFIERS } from '@shared/langGlossary'
 import { buildSemDict, type StructOv } from '../lib/semTokens'
 import { readDiffField, type DiffMarks } from '../lib/cmDiff'
 import { findField, setFindHits, computeMatches } from '../lib/cmFind'
@@ -88,11 +89,16 @@ interface ComplCand {
   detail?: string // sig가 비었을 때의 보조 타입 텍스트(LSP detail)
   kind?: number
   doc?: string
+  ri?: number // 원본 아이템 인덱스 — 목록 gen과 함께 문서 지연 로드(resolve)의 핸들
   hasParen: boolean // 값 매개변수 괄호 '(' 있음 → 호출 형태로 삽입
   hasParams: boolean // 괄호 안에 인자 있음 → 커서를 괄호 안에
   order: number // 서버가 준 순서(관련도) — 동점 타이브레이커
   overloads: number // 같은 이름의 추가 시그니처 수(0 = 단일)
 }
+
+// 호출 형태로 삽입할 LSP CompletionItemKind — Method(2)·Function(3)·Constructor(4). 라벨에
+// 괄호를 싣지 않는 서버(tsserver/pyright/Roslyn)에서 함수 완성이 이름만 박히던 걸 보완한다.
+const CALLABLE_KINDS = new Set([2, 3, 4])
 
 // 서버 완성 목록 → 후보 universe. ① 이름 없는 매개변수 placeholder 정리, ② 구조체 아키타입
 // (`이름 {…}`) 중복 제거, ③ 같은 이름의 오버로드를 한 항목으로 합치고 추가 개수만 센다 —
@@ -123,6 +129,7 @@ function buildCandidates(items: LspCompletionItem[]): ComplCand[] {
       detail: it.detail,
       kind: it.kind,
       doc: it.documentation || undefined,
+      ri: it.ri,
       hasParen: paren >= 0,
       hasParams: paren >= 0 && !/^\(\s*\)/.test(label.slice(paren)),
       order: order++,
@@ -168,6 +175,22 @@ const VERSE_AT_OPTS: Completion[] = VERSE_ATTRIBUTES.filter((a) => !a.internal).
   const base: Completion = { label: a.name, type: 'attribute', detail: a.arg ? '("…")' : undefined, info: plainDoc(a.doc) }
   return a.arg ? snippetCompletion(`${a.name}("\${}")`, base) : { ...base, apply: a.name }
 })
+
+// ── UE 매크로 지정자 자동완성 (C/C++ · UPROPERTY(EditAnywhere…) 류) ─────────────────────────
+// 매크로 괄호 안 지정자는 언리얼 헤더 툴(UHT) 전용 토큰이라 clangd가 완성해 주지 않는다 —
+// Verse의 <지정자> 소스와 같은 정적 목록으로 채운다. 아이콘은 본문 지정자 색과 같은
+// 보라(spec-effect = --violet)로 통일 — 코드에서 지정자가 클래스와 같은 타입 색으로 칠해지는
+// 것과 결이 맞는다(recolorUeCpp).
+const UE_SPEC_OPTS = new Map<string, Completion[]>()
+for (const s of UE_SPECIFIERS) {
+  for (const m of s.macros) {
+    const base: Completion = { label: s.name, type: 'spec-effect', info: plainDoc(s.doc) }
+    const opt = s.snippet ? snippetCompletion(s.snippet, base) : { ...base, apply: s.name }
+    const arr = UE_SPEC_OPTS.get(m)
+    if (arr) arr.push(opt)
+    else UE_SPEC_OPTS.set(m, [opt])
+  }
+}
 
 // 정의 이동 도착 줄을 잠깐 깜빡이는 라인 데코레이션 (뷰어의 .fvl.flash와 같은 fvl-flash 애니메이션).
 // 값 = 줄 시작 offset, null = 해제.
@@ -513,9 +536,10 @@ export const CmEditor = forwardRef<
     // (CM 툴팁이 body에 떠서 클리핑 안 됨; .cm-tooltip 크롬은 테마에서 투명화)
     const lspHover = hoverTooltip(
       async (v, pos) => {
-        // Verse는 서버가 아직 준비 전(콜드/에러)이어도 메인이 합성 카드(용어집·지역변수·선언부)를
-        // 만들 수 있으므로 게이트를 열어 둔다 — "처음 열면 호버가 안 되다가 다시 열어야 되는" 공백 제거.
-        if (!lspRef.current && langRef.current !== 'verse') return null
+        // 서버 준비 전(콜드/에러)에도 메인이 답할 수 있는 언어는 게이트를 열어 둔다 — Verse는
+        // 합성 카드(용어집·지역변수·선언부), 그 외 지원 언어는 키워드·내장 타입 용어집 폴백.
+        // "처음 열면 호버가 안 되다가 다시 열어야 되는" 공백 제거.
+        if (!lspRef.current && langRef.current !== 'verse' && !hasGlossary(langRef.current)) return null
         // 라이브 버퍼 전체를 같이 보낸다(미저장 편집 반영) — 안 그러면 방금 새로 정의한 함수 안에서
         // 호버 위치/내용이 디스크 파일과 어긋나 호버가 안 뜬다(completion과 동일한 이유).
         const r = await window.api.lsp
@@ -583,6 +607,31 @@ export const CmEditor = forwardRef<
       if (lt) return { from: ctx.pos - lt[1].length, options: VERSE_SPEC_OPTS, validFor: /^\w*$/ }
       return null
     }
+    // UE 매크로 괄호 안 지정자 완성 — `UPROPERTY(Edit…` 처럼 UHT 전용 토큰은 clangd가 완성해
+    // 주지 않으므로 정적 목록으로 채운다(verseComplete와 같은 패턴). 그 매크로에 유효한
+    // 지정자만 나온다. 괄호 밖·다른 언어에서는 발동하지 않는다.
+    const ueSpecComplete = (ctx: CompletionContext): CompletionResult | null => {
+      if ((lang !== 'cpp' && lang !== 'c') || ctx.state.readOnly) return null
+      const ln = ctx.state.doc.lineAt(ctx.pos)
+      const macro = ueMacroContext(ln.text, ctx.pos - ln.from)
+      if (!macro) return null
+      const opts = UE_SPEC_OPTS.get(macro)
+      if (!opts) return null
+      const word = ctx.matchBefore(/\w*/)
+      return { from: word ? word.from : ctx.pos, options: opts, validFor: /^\w*$/ }
+    }
+    // 완성 문서 지연 로드 — 후보를 하이라이트하면 그때 completionItem/resolve로 문서를 받아
+    // 옆 info 패널에 띄운다. 실패/없음이면 패널 없음(기존과 동일). 패널은 플레인 텍스트라
+    // 마크다운 펜스·백틱만 벗겨 담는다.
+    const resolveInfo = async (gen: number, ri: number): Promise<{ dom: HTMLElement } | null> => {
+      const r = await window.api.lsp.resolveCompletion(cwdRef.current, pathRef.current, gen, ri).catch(() => null)
+      const txt = [r?.detail, r?.documentation].filter(Boolean).join('\n\n')
+      const plain = txt.replace(/```[\w-]*\n?/g, '').replace(/`/g, '').trim()
+      if (!plain) return null
+      const dom = document.createElement('div')
+      dom.textContent = plain
+      return { dom }
+    }
     const lspComplete = async (ctx: CompletionContext): Promise<CompletionResult | null> => {
       // Verse는 서버 준비 전에도 스캔 기반 후보(멤버/스코프)를 메인이 즉시 주므로 게이트를 열어 둔다
       if ((!lspRef.current && langRef.current !== 'verse') || ctx.state.readOnly) return null
@@ -597,6 +646,12 @@ export const CmEditor = forwardRef<
         const pre = ctx.state.sliceDoc(ctx.state.doc.lineAt(ctx.pos).from, ctx.pos)
         if (/@\w*$/.test(pre) || /[)\]\w]<\w*$/.test(pre)) return null
       }
+      // UE 매크로 괄호 안도 마찬가지 — ueSpecComplete가 책임지고, clangd의 일반 심볼 후보가
+      // 지정자 목록에 섞이지 않게 LSP는 양보한다.
+      if (lang === 'cpp' || lang === 'c') {
+        const ln0 = ctx.state.doc.lineAt(ctx.pos)
+        if (ueMacroContext(ln0.text, ctx.pos - ln0.from)) return null
+      }
       // CM offset → LSP {line, character} (ctx.view는 optional이라 state.doc에서 직접 계산)
       const ln = ctx.state.doc.lineAt(ctx.pos)
       const pos = { line: ln.number - 1, character: ctx.pos - ln.from }
@@ -604,6 +659,7 @@ export const CmEditor = forwardRef<
         .completion(cwdRef.current, pathRef.current, pos, ctx.state.doc.toString())
         .catch(() => null)
       if (!list || !list.items.length) return null
+      const gen = list.gen // resolve 세대 — 서버가 completionItem/resolve를 지원할 때만 실린다
       // 서버 라벨 → 후보(이름/시그니처 분리, 아키타입 중복 제거, 오버로드 한 항목으로 합치기).
       // 값 매개변수 괄호가 있으면 호출 형태(`이름()` + 인자 있으면 커서를 괄호 안에)로, 타입 매개변수
       // '[...]'·식별자는 이름만 박는다. 시그니처는 흐린 detail로, 오버로드가 더 있으면 `+N`을 붙인다.
@@ -613,12 +669,17 @@ export const CmEditor = forwardRef<
           label: c.name,
           detail: sig + (c.overloads ? `  +${c.overloads}` : '') || undefined,
           type: complKind(c.kind),
-          info: c.doc,
+          // 문서: 목록에 실려 왔으면 그대로, 아니면 하이라이트 시점에 resolve로 지연 로드
+          // (tsserver/pyright/Roslyn은 목록엔 문서를 안 싣는다 — 이게 없으면 info 패널이 영영 빈다)
+          info: c.doc ?? (gen != null && c.ri != null ? () => resolveInfo(gen, c.ri!) : undefined),
           // 서버가 매겨 준 순서(verse-lsp는 관련도순으로 정렬해 보낸다)를 동점일 때의 타이브레이커로
           // 만 쓴다 — 폭을 1 미만으로 좁혀 CM의 접두어 매칭 품질을 뒤엎지 않게 한다.
           boost: -c.order / 1000
         }
         if (c.hasParen) return snippetCompletion(c.hasParams ? `${c.name}(\${})` : `${c.name}()`, base)
+        // 라벨에 시그니처를 싣지 않는 서버(tsserver/pyright/Roslyn)의 함수류 — 호출 형태로 넣고
+        // 커서를 괄호 안에 둔다. Verse는 함수 라벨에 괄호가 항상 있으므로 위 분기가 이미 처리한다.
+        if (lang !== 'verse' && CALLABLE_KINDS.has(c.kind ?? -1)) return snippetCompletion(`${c.name}(\${})`, base)
         return { ...base, apply: c.name }
       })
       return {
@@ -689,7 +750,7 @@ export const CmEditor = forwardRef<
           // `mi`가 has_dynam·i·cs 같은 흩어진 매칭에 걸려 무관한 항목이 쏟아지던 걸 막는다(다른 IDE처럼).
           // verseComplete를 먼저(정적·동기, @/<만 발동) 두고 그다음 LSP. 둘은 @/< 컨텍스트에서 서로
           // 양보하므로 결과가 섞이지 않는다.
-          autocompletion({ override: [verseComplete, lspComplete], defaultKeymap: false, activateOnTyping: true, filterStrict: true }),
+          autocompletion({ override: [verseComplete, ueSpecComplete, lspComplete], defaultKeymap: false, activateOnTyping: true, filterStrict: true }),
           // 방금 친 글자가 트리거면 팝업을 직접 연다(activateOnTyping만으론 콜드/첫 글자에 안 뜨는 경우가
           // 있어 신뢰성을 높인다). `.`·식별자 문자는 LSP 소스(LSP 필요)가, Verse의 `@`/`<`는 정적
           // verseComplete가 받으므로 LSP 없이도 연다. (validFor 덕에 단어 도중엔 로컬 필터만 돈다.)
@@ -701,6 +762,10 @@ export const CmEditor = forwardRef<
               const s = ins.toString()
               if (s.length !== 1) return
               if (langRef.current === 'verse' && (s === '@' || s === '<')) trigger = true
+              // C/C++: UE 매크로의 여는 괄호·괄호 안 글자 — ueSpecComplete(정적)가 LSP 없이도
+              // 답하므로 lsp 게이트 없이 발동한다(컨텍스트가 아니면 소스가 null이라 무해).
+              else if ((langRef.current === 'cpp' || langRef.current === 'c') && (s === '(' || /[A-Za-z_]/.test(s)))
+                trigger = true
               // Verse는 서버 준비 전에도 스캔 완성이 나오므로 lsp 게이트 없이 발동
               else if ((hasLsp || langRef.current === 'verse') && (s === '.' || /[A-Za-z_]/.test(s))) trigger = true
             })
