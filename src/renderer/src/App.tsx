@@ -533,6 +533,18 @@ function MainApp({ user }: { user: AppUser }) {
     setChats(remaining)
   }
 
+  // 사이드바 라벨 행의 전체 삭제 — 확인 카드는 Sidebar가 띄우고, 여기선 빈 채팅
+  // 하나로 리셋한다 (deleteChat의 remaining.length === 0 분기와 동일한 착지점)
+  const deleteAllChats = (): void => {
+    if (busy) return
+    const fresh = newChatMeta(manualCwd, picker)
+    load(initialSessionState)
+    setInput('')
+    setImages([])
+    setChats([fresh])
+    setActiveChatId(fresh.id)
+  }
+
   // ⌘N / Ctrl+N opens a fresh chat — read createChat through a ref to avoid stale closures
   const createChatRef = useRef(createChat)
   createChatRef.current = createChat
@@ -989,6 +1001,7 @@ function MainApp({ user }: { user: AppUser }) {
   const onSelectChat = useEvent(selectChat)
   const onRenameChat = useEvent(renameChat)
   const onDeleteChat = useEvent(deleteChat)
+  const onDeleteAllChats = useEvent(deleteAllChats)
   const onPromptChat = useEvent((id: string) => setPromptChatId(id))
   // 프롬프트 저장 — 빈 값은 해제(필드 제거)로 처리
   const savePrompt = (id: string, text: string): void => {
@@ -1041,6 +1054,7 @@ function MainApp({ user }: { user: AppUser }) {
           onSelectChat={onSelectChat}
           onRenameChat={onRenameChat}
           onDeleteChat={onDeleteChat}
+          onDeleteAllChats={onDeleteAllChats}
           onPromptChat={onPromptChat}
           onOpenSettings={onOpenSettings}
           mode={mode}

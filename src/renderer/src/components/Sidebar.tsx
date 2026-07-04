@@ -268,6 +268,7 @@ export const Sidebar = memo(function Sidebar({
   onSelectChat,
   onRenameChat,
   onDeleteChat,
+  onDeleteAllChats,
   onPromptChat,
   onOpenSettings,
   mode = 'single',
@@ -287,6 +288,7 @@ export const Sidebar = memo(function Sidebar({
   onSelectChat: (id: string) => void
   onRenameChat: (id: string, name: string) => void
   onDeleteChat: (id: string) => void
+  onDeleteAllChats?: () => void // 목록 전체 삭제 — 라벨 행의 휴지통, 확인 카드 후 실행
   onPromptChat?: (id: string) => void // 채팅별 프롬프트 설정 (단일 모드)
   onOpenSettings: () => void
   mode?: WorkspaceMode
@@ -300,6 +302,18 @@ export const Sidebar = memo(function Sidebar({
   // 접힘 상태는 Sidebar 안에서 관리 — 단일/멀티 모드 어느 쪽에서 접어도 같은
   // pref('sidebar.open')를 읽고 쓰므로 모드를 오가도 상태가 이어진다
   const [open, setOpen] = useState<boolean>(() => getPref<boolean>('sidebar.open', true))
+  // 전체 삭제 확인 카드 — 개별 삭제와 같은 set-dialog 이디엄, Esc로 닫힌다
+  const [confirmAll, setConfirmAll] = useState(false)
+  useEffect(() => {
+    if (!confirmAll) return
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') setConfirmAll(false)
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [confirmAll])
+  // 라벨('최근 채팅'/'최근 작업')에서 항목 단어를 따와 확인 문구에 쓴다
+  const itemWord = listLabel.includes('작업') ? '작업' : '채팅'
   const toggle = (): void => {
     setOpen((o) => {
       setPref('sidebar.open', !o)
@@ -402,7 +416,20 @@ export const Sidebar = memo(function Sidebar({
         <input placeholder={searchLabel} value={chatQuery} onChange={(e) => onChatQuery(e.target.value)} />
       </div>
 
-      <div className="sb-label">{listLabel}</div>
+      <div className="sb-label">
+        <span>{listLabel}</span>
+        {onDeleteAllChats && chats.length > 0 && (
+          <button
+            className="sb-clear has-tip"
+            data-tip={busy ? '작업이 끝난 뒤 지울 수 있어요' : '전체 삭제'}
+            aria-label="전체 삭제"
+            disabled={busy}
+            onClick={() => setConfirmAll(true)}
+          >
+            <IconTrash size={13} />
+          </button>
+        )}
+      </div>
       <div className="sb-list scroll">
         <RecentChats
           chats={chats}
@@ -424,6 +451,34 @@ export const Sidebar = memo(function Sidebar({
           <div className="n">{user.name}</div>
         </div>
       </button>
+
+      {confirmAll && (
+        <div className="set-dialog-overlay" onMouseDown={() => setConfirmAll(false)}>
+          <div className="set-dialog" onMouseDown={(e) => e.stopPropagation()}>
+            <div className="sd-ic">
+              <IconTrash size={22} />
+            </div>
+            <div className="sd-title">전체 삭제</div>
+            <div className="sd-msg">
+              {itemWord} <b>{chats.length}개</b>를 모두 삭제할까요? 되돌릴 수 없습니다.
+            </div>
+            <div className="sd-btns">
+              <button className="sd-cancel" onClick={() => setConfirmAll(false)}>
+                취소
+              </button>
+              <button
+                className="sd-go danger"
+                onClick={() => {
+                  onDeleteAllChats?.()
+                  setConfirmAll(false)
+                }}
+              >
+                모두 삭제
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </aside>
   )
 })

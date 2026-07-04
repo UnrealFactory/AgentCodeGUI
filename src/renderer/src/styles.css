@@ -314,7 +314,14 @@ input,textarea{ font-family:inherit; }
 .sb-search input{ background:none; border:none; outline:none; color:var(--text); font-size:12.5px; flex:1; }
 .sb-search input::placeholder{ color:var(--text-4); }
 
-.sb-label{ font-size:11px; color:var(--text-4); font-weight:600; letter-spacing:.04em; padding:16px 20px 7px; text-transform:uppercase; }
+.sb-label{ display:flex; align-items:center; justify-content:space-between;
+  font-size:11px; color:var(--text-4); font-weight:600; letter-spacing:.04em; padding:16px 20px 7px 20px; text-transform:uppercase; }
+/* 목록 전체 삭제 — 라벨 행 오른쪽의 조용한 휴지통, 호버에서만 위험 색 */
+.sb-clear{ display:grid; place-items:center; width:22px; height:22px; margin:-4px -6px; border-radius:6px;
+  color:var(--text-4); transition:background .12s, color .12s; }
+.sb-clear:hover{ background:var(--red-soft); color:var(--red); }
+.sb-clear:disabled{ opacity:.45; cursor:default; }
+.sb-clear:disabled:hover{ background:transparent; color:var(--text-4); }
 
 .sb-list{ flex:1; overflow-y:auto; padding:0 8px 8px; min-height:0; }
 .sb-item{
@@ -3048,6 +3055,11 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
 .ma-batch svg:first-child{ color:var(--accent); }
 .ma-batch svg:last-child{ color:var(--text-4); }
 .ma-batch:hover{ background:var(--surface-2); color:var(--text); box-shadow:var(--hover-ring); }
+
+/* 패널 폴더 칩 툴팁 — 기본(가운데 정렬)은 긴 절대경로가 창/패널 왼쪽 밖으로 잘린다.
+   칩의 왼쪽 모서리에 맞춰 붙이고, 경로가 길면 tip-wrap(300px)에서 줄바꿈 */
+.ma-p-folder.has-tip::after{ left:0; transform:translate(0, 3px); }
+.ma-p-folder.has-tip:hover::after{ transform:translate(0, 0); }
 
 .ma-usage{
   display:flex; align-items:center; gap:7px; padding:5px 11px 5px 8px;

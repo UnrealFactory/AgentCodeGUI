@@ -784,7 +784,7 @@ const PanelView = memo(function PanelView({
         </div>
         <div className="ma-p-row2">
           <button
-            className={'ma-p-folder has-tip' + (folderRect ? ' on' : '')}
+            className={'ma-p-folder has-tip tip-wrap' + (folderRect ? ' on' : '')}
             data-tip={meta.cwd ? meta.cwd + ' · 클릭해 파일 탐색' : '바탕화면 · 클릭해 폴더 선택'}
             onClick={(e) => {
               const r = e.currentTarget.getBoundingClientRect()
@@ -1143,8 +1143,18 @@ function ActiveSession({
   // Panel keyboard control (only while focus isn't in a field):
   //  · 1‥N        jump straight into that panel's composer (selects it + focuses the input)
   //  · Enter      drop the cursor into the selected panel's composer (e.g. after a click)
-  //  · Esc        close the expanded panel, else release the panel selection
+  //  · Esc        close the expanded panel; else cancel the focused panel's RUN if it's
+  //               busy (단일 모드의 Esc=작업 취소와 같은 기대), else release the selection
   // A permission/question card owns the keyboard while open, so we always stand down then.
+  //
+  // 이벤트 시점의 busy를 읽어야 해서 useEvent — 키보드 effect는 [expandedSlot, focusedSlot,
+  // count]에만 재바인딩되므로 클로저의 sessions는 그 사이 얼어 있다(막 busy로 바뀐 패널을
+  // 못 보고 선택만 풀던 원인).
+  const escCancelPanel = useEvent((slot: number): boolean => {
+    if (!sessions[slot].busy) return false
+    stopPanel(slot)
+    return true
+  })
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       // 앱 전역 오버레이(폴더 확인 / 프롬프트 모달 / 파일 뷰어 / 폴더 팝오버)가 열려
@@ -1167,8 +1177,12 @@ function ActiveSession({
           setExpandedSlot(null)
         } else if (focusedSlot != null) {
           e.preventDefault()
-          setFocusedSlot(null)
-          if (typing) ae?.blur()
+          // 실행 중인 패널이면 선택 해제가 아니라 그 패널의 실행 취소 — 포커스는 유지해
+          // 이어서 바로 다음 지시를 입력할 수 있다. 대기 패널일 때만 선택을 놓는다.
+          if (!escCancelPanel(focusedSlot)) {
+            setFocusedSlot(null)
+            if (typing) ae?.blur()
+          }
         }
         return
       }
@@ -1269,11 +1283,11 @@ function ActiveSession({
     // renders a summary card instead of a raw bubble; null for a normal prompt / skill
     const cmd = commandOf(text)
     const firstInSession = sessions.every((s) => s.state.messages.length === 0)
+    // 폴더 미선택이면 대화상자를 강제하지 않는다 — 칩 라벨의 약속대로 엔진이
+    // 바탕화면으로 폴백한다. 이어지는 턴은 세션이 보고한 실제 폴더(바탕화면의 절대
+    // 경로)를 그대로 써서 resume·폴더 비교가 끊기지 않게 한다.
     let dir = m.cwd || ''
-    if (!dir) {
-      dir = (await window.api.pickDirectory()) ?? ''
-      if (!dir) return
-    }
+    if (!dir && sess.state.session) dir = sess.state.session.cwd
     // folder changed since this panel's conversation began → a different project, and the
     // session can't continue here (a session id is folder-scoped). Reset the panel's thread
     // so it matches the fresh engine session instead of showing stale messages.
@@ -1290,7 +1304,8 @@ function ActiveSession({
               ...pm,
               // a queued replay keeps the draft being typed; an interactive send consumes it
               ...(opts ? {} : { input: '', images: [] }),
-              cwd: dir,
+              // cwd는 여기서 만지지 않는다 — 사용자가 폴더를 고르면 onPickFolder가 쓰고,
+              // 미선택(바탕화면 폴백) 패널은 빈 값을 유지해 칩 라벨이 '바탕화면'으로 남는다
               title: pm.custom && !folderSwitched ? pm.title : title,
               custom: folderSwitched ? false : pm.custom
             }
@@ -1797,6 +1812,18 @@ export function MultiWorkspace({
       setOrder(next)
     }
   })
+  // 사이드바 라벨 행의 전체 삭제 — 모든 세션의 패널 엔진을 해제하고 빈 세션 하나로
+  // 시작한다 (deleteSession의 "마지막 하나 삭제" 분기와 동일한 착지점)
+  const deleteAllSessions = useEvent(() => {
+    order.forEach((id) => SLOTS.forEach((i) => window.api.multi?.dispose(chan(id, i)).catch(() => {})))
+    dataRef.current = {}
+    const nid = newSessionId()
+    dataRef.current[nid] = blankSession(nid)
+    setTitles({ [nid]: { title: '', custom: false } })
+    setStatuses({ [nid]: 'idle' })
+    setOrder([nid])
+    setActiveId(nid)
+  })
 
   // recent-tasks list = sessions that actually have content. A fresh blank session
   // (no message sent yet) stays hidden — like single mode, where a new chat doesn't
@@ -1822,6 +1849,7 @@ export function MultiWorkspace({
         onSelectChat={selectSession}
         onRenameChat={renameSession}
         onDeleteChat={deleteSession}
+        onDeleteAllChats={deleteAllSessions}
         onOpenSettings={onOpenSettings}
         mode={mode}
         onModeChange={onModeChange}

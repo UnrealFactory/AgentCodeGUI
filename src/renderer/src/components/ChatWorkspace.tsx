@@ -342,6 +342,16 @@ export function ChatWorkspace({
     }
     setChats(remaining)
   }
+  // 사이드바 라벨 행의 전체 삭제 — 빈 채팅 하나로 리셋 (단일 모드와 동일한 착지점)
+  const deleteAllChats = (): void => {
+    if (busy) return
+    const fresh = newChatMeta(picker)
+    load(initialSessionState)
+    setInput('')
+    setImages([])
+    setChats([fresh])
+    setActiveChatId(fresh.id)
+  }
 
   // /clear — wipe the active conversation back to a blank slate (client action, never
   // sent to the engine, so the visible list and the engine context stay in sync)
@@ -551,6 +561,7 @@ export function ChatWorkspace({
   const onSelectChat = useEvent(selectChat)
   const onRenameChat = useEvent(renameChat)
   const onDeleteChat = useEvent(deleteChat)
+  const onDeleteAllChats = useEvent(deleteAllChats)
 
   return (
     <>
@@ -565,6 +576,7 @@ export function ChatWorkspace({
         onSelectChat={onSelectChat}
         onRenameChat={onRenameChat}
         onDeleteChat={onDeleteChat}
+        onDeleteAllChats={onDeleteAllChats}
         onOpenSettings={onOpenSettings}
         mode={mode}
         onModeChange={onModeChange}
