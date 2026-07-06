@@ -48,14 +48,16 @@ export interface WindowApi {
   respondPermission(res: PermissionResponse): Promise<void>
   respondQuestion(res: QuestionResponse): Promise<void>
   pickDirectory(): Promise<string | null>
-  /** open a file dialog filtered to images; returns the chosen absolute paths */
-  pickImages(): Promise<string[]>
-  /** persist raw image bytes (a pasted screenshot / dragged-in image with no path) to a
+  /** open a file dialog filtered to attachable files (images + readable text); returns the chosen absolute paths */
+  pickAttachments(): Promise<string[]>
+  /** persist raw attachment bytes (a pasted screenshot / browser-dragged file with no path) to a
    *  temp file in the app home and return its absolute path, so it can be shown + attached */
-  saveImageData(bytes: ArrayBuffer, ext: string): Promise<string>
+  saveAttachmentData(bytes: ArrayBuffer, ext: string): Promise<string>
   /** resolve the absolute filesystem path of a dragged-in File (Electron webUtils) */
   pathForFile(file: File): string
-  getUsage(): Promise<UsageInfo>
+  /** 구독 사용량 (한도·추가 크레딧). 기본은 5분 캐시 — fresh=true는 15초 바닥만 지키고
+   *  새로 받아온다 (실행 종료·컨텍스트 팝오버 열기 등 "지금 값"이 필요한 순간용) */
+  getUsage(fresh?: boolean): Promise<UsageInfo>
   /** API 키 과금 설정 (설정 → API + 컴포저 API 토글). 모든 호출이 최신 스냅샷을 돌려준다. */
   apiConfig: {
     get(): Promise<ApiConfigStatus>

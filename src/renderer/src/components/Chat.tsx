@@ -4,6 +4,8 @@ import type {
   EffortId,
   ModeId,
   UsageInfo,
+  UsageWindow,
+  ExtraCreditInfo,
   ToolLogItem,
   AgentQuestion,
   SkillInfo,
@@ -17,10 +19,11 @@ import { Markdown } from './Markdown'
 import { FileBadge } from './fileType'
 import { StatusPill, Todos, FileRow, SubAgent } from './AgentPanel'
 import { mentionAtCaret, mentionEntries, type MentionEntry } from '../lib/mentions'
-import { imageSrc, imageName, filesToImagePaths } from '../lib/images'
+import { imageSrc, imageName, filesToAttachmentPaths, isImagePath, isAttachablePath } from '../lib/images'
 import {
   IconClaude,
   IconImage,
+  IconPaperclip,
   IconChevDown,
   IconCheck,
   IconCopy,
@@ -452,37 +455,58 @@ function SmoothMarkdown({ text, running }: { text: string; running: boolean }) {
 // memoized so typing in the composer (which re-renders the app) doesn't re-parse
 // markdown for every existing message — only messages whose props actually change
 // re-render
-// Image attachments inside a sent message, shown as a matted "photo card". A single
+// Attachments inside a sent message. Images show as a matted "photo card" — a single
 // image is one framed card; multiple images collapse into a stacked deck (the first
-// image on top, blank cards peeking behind) with a "N장" count badge. Either way a
-// click opens the viewer — at the first image; the viewer's filmstrip browses the rest.
-function MessageImages({ images, onOpen }: { images: string[]; onOpen?: (images: string[], index: number) => void }) {
-  const count = images.length
+// image on top, blank cards peeking behind) with a "N장" count badge; a click opens the
+// viewer at the first image (the filmstrip browses the rest). Text/doc attachments show
+// as filename chips (file-type icon + name); a click opens the in-app file viewer.
+function MessageAttachments({
+  images,
+  onOpen,
+  onOpenFile
+}: {
+  images: string[] // 모든 첨부 경로 (필드명은 저장 호환을 위해 images 유지)
+  onOpen?: (images: string[], index: number) => void
+  onOpenFile?: (path: string) => void
+}) {
+  const imgs = images.filter(isImagePath)
+  const docs = images.filter((p) => !isImagePath(p))
+  const count = imgs.length
   const multi = count > 1
-  const first = images[0]
+  const first = imgs[0]
   return (
-    <div className={'msg-imgs' + (multi ? ' deck' : '')}>
-      {multi && (
-        <>
-          <span className="msg-img-stack s2" aria-hidden="true" />
-          <span className="msg-img-stack s1" aria-hidden="true" />
-        </>
+    <>
+      {count > 0 && (
+        // 툴팁은 래퍼에 — .msg-img 버튼은 overflow:hidden이라 ::after가 잘린다
+        <div className={'msg-imgs has-tip' + (multi ? ' deck' : '')} data-tip={multi ? `이미지 ${count}장` : imageName(first)}>
+          {multi && (
+            <>
+              <span className="msg-img-stack s2" aria-hidden="true" />
+              <span className="msg-img-stack s1" aria-hidden="true" />
+            </>
+          )}
+          <button className="msg-img" onClick={() => onOpen?.(imgs, 0)} aria-label={multi ? `이미지 ${count}장` : imageName(first)}>
+            <img src={imageSrc(first)} alt={imageName(first)} draggable={false} loading="lazy" />
+            {multi && (
+              <span className="msg-img-count">
+                <IconImage size={13} />
+                {count}장
+              </span>
+            )}
+          </button>
+        </div>
       )}
-      <button
-        className="msg-img"
-        onClick={() => onOpen?.(images, 0)}
-        aria-label={multi ? `이미지 ${count}장` : imageName(first)}
-        title={multi ? `이미지 ${count}장` : imageName(first)}
-      >
-        <img src={imageSrc(first)} alt={imageName(first)} draggable={false} loading="lazy" />
-        {multi && (
-          <span className="msg-img-count">
-            <IconImage size={13} />
-            {count}장
-          </span>
-        )}
-      </button>
-    </div>
+      {docs.length > 0 && (
+        <div className="msg-docs">
+          {docs.map((p, i) => (
+            <button key={p + i} className="msg-doc has-tip tip-path" data-tip={p} onClick={() => onOpenFile?.(p)} aria-label={imageName(p)}>
+              <FileBadge path={p} size={15} />
+              <span className="msg-doc-name">{imageName(p)}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </>
   )
 }
 
@@ -561,7 +585,7 @@ export const MessageView = memo(function MessageView({
         </div>
         <div className="content">
           {item.kind === 'msg' && item.images && item.images.length > 0 && (
-            <MessageImages images={item.images} onOpen={onOpenImage} />
+            <MessageAttachments images={item.images} onOpen={onOpenImage} onOpenFile={onOpenFile} />
           )}
           {item.text &&
             (isUser || item.error ? (
@@ -1112,6 +1136,47 @@ export function fmtTok(n: number): string {
 export function fmtUsd(v: number): string {
   return '$' + (v > 0 && v < 1 ? v.toFixed(3) : v.toFixed(2))
 }
+// 추가 크레딧 금액 — USD는 $ 기호, 그 외 통화는 코드를 병기
+export function fmtCredit(v: number, currency: string): string {
+  return currency === 'USD' ? fmtUsd(v) : v.toFixed(2) + ' ' + currency
+}
+// 구독 한도 행 (컴포저 스트립·작업 바 팝오버 공용) — 링은 사용률, 큰 값은 "남은" %.
+// 구독엔 잔액 API가 없어 창별 사용률·리셋 시각이 전부 — 남은 크레딧은 100−사용률로 보여준다
+// (API 모드의 "남은 예산" 행과 같은 문법: 링=사용분, 값=잔여분).
+function limitItem(
+  label: string,
+  w: UsageWindow | null,
+  useDays: boolean
+): { label: string; pct: number | null; val?: string; detail: string } {
+  return {
+    label,
+    pct: w?.pct ?? null,
+    val: w ? `${Math.max(0, 100 - Math.round(w.pct))}% 남음` : undefined,
+    detail: w ? resetText(w.resetsAt, useDays) : '데이터 없음'
+  }
+}
+// 추가 사용 크레딧 행 (작업 바 컨텍스트 팝오버) — claude.ai에서 켠 사용자에게만 행이
+// 뜬다 (꺼져 있으면 잔액도 한도도 없어 보여줄 게 없다). 잔액이 소진된 상태(켰지만
+// 0원)도 보여준다 — "다 떨어짐"이야말로 알아야 할 정보다. 값=현재 잔액, 링·디테일=월
+// 지출 한도 대비 사용분 (API 모드 "남은 예산" 행과 같은 문법).
+export function extraCreditVisible(x: ExtraCreditInfo | null | undefined): x is ExtraCreditInfo {
+  return !!x && (x.enabled || x.outOfCredits)
+}
+function extraCreditItem(x: ExtraCreditInfo): { label: string; pct: number | null; val?: string; detail: string } {
+  if (!x.enabled && x.outOfCredits)
+    return {
+      label: '추가 크레딧',
+      pct: x.pct,
+      val: `${fmtCredit(0, x.currency)} 남음`,
+      detail: '크레딧 소진 — claude.ai에서 충전해야 다시 쓸 수 있어요'
+    }
+  return {
+    label: '추가 크레딧',
+    pct: x.pct,
+    val: x.balance != null ? `${fmtCredit(x.balance, x.currency)} 남음` : undefined,
+    detail: `이번 달 ${fmtCredit(x.used ?? 0, x.currency)} 사용${x.cap != null ? ` · 월 한도 ${fmtCredit(x.cap, x.currency)}` : ''}`
+  }
+}
 function resetText(resetsAt: number | null, useDays: boolean): string {
   if (resetsAt == null) return '초기화 시간 미상'
   const rem = resetsAt - Math.floor(Date.now() / 1000)
@@ -1165,20 +1230,10 @@ function ContextStrip({
             : { label: '누적 사용액', pct: null, usd: true, val: fmtUsd(totalSpentUsd), detail: '전체 워크스페이스 합산' }
         ]
       : [
-          {
-            label: '5시간 한도',
-            pct: usage.fiveHour?.pct ?? null,
-            detail: usage.fiveHour ? resetText(usage.fiveHour.resetsAt, false) : '데이터 없음'
-          },
-          {
-            label: '주간 한도',
-            pct: usage.weekly?.pct ?? null,
-            detail: usage.weekly ? resetText(usage.weekly.resetsAt, true) : '데이터 없음'
-          },
+          limitItem('5시간 한도', usage.fiveHour, false),
+          limitItem('주간 한도', usage.weekly, true),
           // Fable 5 전용 주간 한도 — 플랜에 없으면(null) 칩 자체를 숨긴다
-          ...(usage.weeklyFable
-            ? [{ label: 'Fable 주간 한도', pct: usage.weeklyFable.pct as number | null, detail: resetText(usage.weeklyFable.resetsAt, true) }]
-            : [])
+          ...(usage.weeklyFable ? [limitItem('Fable 주간 한도', usage.weeklyFable, true)] : [])
         ])
   ]
   return (
@@ -1212,7 +1267,6 @@ type WorkTab = 'todo' | 'sub' | 'file' | 'ctx'
 // (한 번에 하나, Esc·바깥 클릭으로 닫힘). 예전 오른쪽 에이전트 패널(.agent)을 대체해
 // 대화 칼럼을 넓힌다. App이 매 틱 리렌더해도 컴포저 타이핑과 분리되도록 memo.
 export const WorkBar = memo(function WorkBar({
-  status,
   todos,
   files,
   subagents,
@@ -1225,9 +1279,9 @@ export const WorkBar = memo(function WorkBar({
   budgetUsd = null,
   totalSpentUsd = 0,
   onOpenFile,
-  onOpenSubagent
+  onOpenSubagent,
+  onRefreshUsage
 }: {
-  status: AgentStatus
   todos: Todo[]
   files: ChangedFile[]
   subagents: SubAgentInfo[]
@@ -1241,10 +1295,10 @@ export const WorkBar = memo(function WorkBar({
   totalSpentUsd?: number // 전체 워크스페이스의 API 모드 누적 사용액
   onOpenFile: (f: ChangedFile) => void
   onOpenSubagent: (a: SubAgentInfo) => void
+  onRefreshUsage?: () => void // 컨텍스트 팝오버를 열 때 사용량 강제 새로고침
 }) {
   const [open, setOpen] = useState<WorkTab | null>(null)
   const ref = useRef<HTMLDivElement>(null)
-  const busy = status === 'analyzing' || status === 'working'
 
   // 팝오버는 Esc / 바깥 클릭으로 닫는다 (네이티브 다이얼로그 금지 — 카드 패턴 유지)
   useEffect(() => {
@@ -1292,16 +1346,20 @@ export const WorkBar = memo(function WorkBar({
             : { label: '누적 사용액', pct: null, usd: true, val: fmtUsd(totalSpentUsd), detail: '전체 워크스페이스 · 설정 → API에서 예산 입력 가능' }
         ]
       : [
-          { label: '5시간 한도', pct: usage.fiveHour?.pct ?? null, detail: usage.fiveHour ? resetText(usage.fiveHour.resetsAt, false) : '데이터 없음' },
-          { label: '주간 한도', pct: usage.weekly?.pct ?? null, detail: usage.weekly ? resetText(usage.weekly.resetsAt, true) : '데이터 없음' },
+          limitItem('5시간 한도', usage.fiveHour, false),
+          limitItem('주간 한도', usage.weekly, true),
           // Fable 5 전용 주간 한도 — 플랜에 없으면(null) 행 자체를 숨긴다
-          ...(usage.weeklyFable
-            ? [{ label: 'Fable 주간 한도', pct: usage.weeklyFable.pct as number | null, detail: resetText(usage.weeklyFable.resetsAt, true) }]
-            : [])
+          ...(usage.weeklyFable ? [limitItem('Fable 주간 한도', usage.weeklyFable, true)] : []),
+          // 추가 사용 크레딧 (claude.ai 설정 → 사용 크레딧) — 켜져 있거나 소진 상태일 때만
+          ...(extraCreditVisible(usage.extraCredit) ? [extraCreditItem(usage.extraCredit)] : [])
         ])
   ]
 
-  const toggle = (t: WorkTab): void => setOpen((o) => (o === t ? null : t))
+  const toggle = (t: WorkTab): void => {
+    // 컨텍스트 팝오버를 여는 순간 사용량을 새로 받아온다 — 추가 크레딧 잔액이 열 때마다 최신이게
+    if (t === 'ctx' && open !== 'ctx') onRefreshUsage?.()
+    setOpen((o) => (o === t ? null : t))
+  }
 
   // 칩 면(面)은 예전 컨텍스트 스트립과 똑같은 결 — 왼쪽 링/아이콘 + 2줄 텍스트(라벨·값
   // 위, 디테일 아래). 4칸이 폭을 똑같이 나눠(flex:1) 가지런히 채운다. 누르면 그 칸 위로
@@ -1313,7 +1371,8 @@ export const WorkBar = memo(function WorkBar({
   const totalDel = files.reduce((n, f) => n + (f.del || 0), 0)
 
   const chips: { key: WorkTab; ring?: number; icon?: ReactNode; label: string; value: string; detail: string; tip: string; align?: 'r' }[] = [
-    { key: 'todo', icon: <IconList size={14} />, label: '할 일', value: `${todoDone}/${todoTotal || 0}`, detail: todoTotal ? `${todoPct}% 완료` : busy ? '계획 수립 중' : '없음', tip: 'Claude가 세운 작업 계획 — 누르면 할 일 목록' },
+    // 빈 목록은 실행 중에도 "계획 수립 중"이라 추측하지 않는다 — 팝오버 문구와 같은 이유
+    { key: 'todo', icon: <IconList size={14} />, label: '할 일', value: `${todoDone}/${todoTotal || 0}`, detail: todoTotal ? `${todoPct}% 완료` : '없음', tip: 'Claude가 세운 작업 계획 — 누르면 할 일 목록' },
     { key: 'sub', icon: <IconBot size={14} />, label: '서브에이전트', value: `${doneSub}/${subTotal || 0}`, detail: runningSub > 0 ? `${runningSub}개 실행 중` : subTotal ? '모두 완료' : '없음', tip: 'Claude가 띄운 보조 에이전트의 진행 상황 — 누르면 목록' },
     { key: 'file', icon: <IconFile size={14} />, label: '변경된 파일', value: `${files.length}`, detail: files.length ? `+${totalAdd} −${totalDel}` : '없음', tip: '이번 작업에서 생성·수정된 파일 — 누르면 목록·diff' },
     { key: 'ctx', ring: ctxPct, label: '컨텍스트', value: `${ctxPct}%`, detail: ctxItems[0].detail, tip: apiMode ? '대화의 컨텍스트 사용량·API 비용 — 누르면 자세히' : '대화의 컨텍스트 사용량·사용 한도 — 누르면 자세히', align: 'r' }
@@ -1329,7 +1388,9 @@ export const WorkBar = memo(function WorkBar({
               {todoDone}/{todoTotal || 0}
             </span>
           </div>
-          {todoTotal ? <Todos todos={todos} /> : <div className="ag-none">{busy ? '계획을 수립하는 중…' : '아직 할 일이 없어요'}</div>}
+          {/* 실행 중이어도 "계획 수립 중"이라고 추측하지 않는다 — 간단한 작업은 할 일
+              목록을 아예 만들지 않으므로, 없으면 그냥 없다고 말하는 게 정직하다 */}
+          {todoTotal ? <Todos todos={todos} /> : <div className="ag-none">아직 할 일이 없어요</div>}
         </>
       )
     if (key === 'sub')
@@ -2206,7 +2267,7 @@ export function Composer({
     }
   }
 
-  // ── image drag-and-drop + paste ────────────────────────────
+  // ── attachment drag-and-drop + paste (images + readable text files) ─────────
   const dragHasFile = (e: React.DragEvent): boolean =>
     Array.from(e.dataTransfer.items || []).some((it) => it.kind === 'file')
 
@@ -2215,15 +2276,19 @@ export function Composer({
     setDragOver(false)
     if (!e.dataTransfer.files?.length) return
     e.preventDefault()
-    const paths = await filesToImagePaths(e.dataTransfer.files)
+    const paths = await filesToAttachmentPaths(e.dataTransfer.files)
     if (paths.length) onAddImagePaths(paths)
   }
 
   const onPaste = async (e: React.ClipboardEvent<HTMLTextAreaElement>): Promise<void> => {
-    const imgs = Array.from(e.clipboardData.files || []).filter((f) => f.type.startsWith('image/'))
-    if (!imgs.length) return
-    e.preventDefault() // a pasted screenshot becomes an attachment, not pasted text
-    const paths = await filesToImagePaths(imgs)
+    // a copied FILE (screenshot, or a txt/md/… from the OS) becomes an attachment;
+    // plain text pastes have no clipboard files and stay ordinary text
+    const files = Array.from(e.clipboardData.files || []).filter(
+      (f) => f.type.startsWith('image/') || isAttachablePath(f.name)
+    )
+    if (!files.length) return
+    e.preventDefault()
+    const paths = await filesToAttachmentPaths(files)
     if (paths.length) onAddImagePaths(paths)
   }
 
@@ -2256,11 +2321,11 @@ export function Composer({
                 <div className="sched-item" key={m.id}>
                   <span className="sched-num">{i + 1}</span>
                   <span className="sched-text">
-                    {m.text.trim() || (m.images.length ? `이미지 ${m.images.length}장` : '')}
+                    {m.text.trim() || (m.images.length ? `첨부 ${m.images.length}개` : '')}
                   </span>
                   {m.images.length > 0 && (
-                    <span className="sched-img" title={`이미지 ${m.images.length}장`}>
-                      <IconImage size={14} />
+                    <span className="sched-img has-tip" data-tip={`첨부 ${m.images.length}개`}>
+                      <IconPaperclip size={14} />
                     </span>
                   )}
                   <button
@@ -2297,8 +2362,8 @@ export function Composer({
         >
           {dragOver && (
             <div className="drop-hint">
-              <IconImage size={24} />
-              <span>이미지를 여기에 놓으세요</span>
+              <IconPaperclip size={24} />
+              <span>파일을 여기에 놓으세요</span>
             </div>
           )}
           {slashOpen && (
@@ -2411,22 +2476,38 @@ export function Composer({
           )}
           {images.length > 0 && (
             <div className="img-tray">
-              {images.map((p, i) => (
-                <div className="img-thumb" key={p + i}>
-                  <button
-                    type="button"
-                    className="img-thumb-open"
-                    onClick={() => onOpenImage?.(images, i)}
-                    aria-label={imageName(p)}
-                    title={imageName(p)}
-                  >
-                    <img src={imageSrc(p)} alt={imageName(p)} draggable={false} />
-                  </button>
-                  <button className="img-thumb-x has-tip" onClick={() => onRemoveImage(i)} aria-label="제거" data-tip="제거">
-                    <IconX2 size={11} />
-                  </button>
-                </div>
-              ))}
+              {/* 툴팁은 래퍼(.img-thumb)에 — 안쪽 .img-thumb-open은 overflow:hidden이라 ::after가 잘린다 */}
+              {images.map((p, i) =>
+                isImagePath(p) ? (
+                  <div className="img-thumb has-tip" data-tip={imageName(p)} key={p + i}>
+                    <button
+                      type="button"
+                      className="img-thumb-open"
+                      onClick={() => {
+                        // 뷰어는 이미지 전용 — 문서 첨부를 뺀 목록과 그 안에서의 위치로 연다
+                        const imgs = images.filter(isImagePath)
+                        onOpenImage?.(imgs, imgs.indexOf(p))
+                      }}
+                      aria-label={imageName(p)}
+                    >
+                      <img src={imageSrc(p)} alt={imageName(p)} draggable={false} />
+                    </button>
+                    <button className="img-thumb-x has-tip" onClick={() => onRemoveImage(i)} aria-label="제거" data-tip="제거">
+                      <IconX2 size={11} />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="img-thumb doc has-tip tip-path" data-tip={p} key={p + i}>
+                    <span className="img-thumb-open">
+                      <FileBadge path={p} size={15} />
+                      <span className="doc-name">{imageName(p)}</span>
+                    </span>
+                    <button className="img-thumb-x has-tip" onClick={() => onRemoveImage(i)} aria-label="제거" data-tip="제거">
+                      <IconX2 size={11} />
+                    </button>
+                  </div>
+                )
+              )}
             </div>
           )}
           <textarea
@@ -2456,8 +2537,8 @@ export function Composer({
             }}
           />
           <div className="composer-bar">
-            <button className="cm-icon has-tip" aria-label="이미지 첨부" data-tip="이미지 첨부" onClick={onPickImages}>
-              <IconImage size={16} />
+            <button className="cm-icon has-tip" aria-label="파일 첨부" data-tip="파일 첨부 (이미지·텍스트)" onClick={onPickImages}>
+              <IconPaperclip size={16} />
             </button>
             <Pick
               label="모델"

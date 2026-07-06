@@ -53,12 +53,12 @@ const api: WindowApi = {
   respondPermission: (res: PermissionResponse) => ipcRenderer.invoke(IPC.permissionRespond, res),
   respondQuestion: (res: QuestionResponse) => ipcRenderer.invoke(IPC.questionRespond, res),
   pickDirectory: () => ipcRenderer.invoke(IPC.pickDirectory),
-  pickImages: () => ipcRenderer.invoke(IPC.pickImages),
-  saveImageData: (bytes: ArrayBuffer, ext: string) => ipcRenderer.invoke(IPC.saveImageData, { bytes, ext }),
+  pickAttachments: () => ipcRenderer.invoke(IPC.pickAttachments),
+  saveAttachmentData: (bytes: ArrayBuffer, ext: string) => ipcRenderer.invoke(IPC.saveAttachmentData, { bytes, ext }),
   // webUtils.getPathForFile must run in the preload (not the sandboxed renderer); the
   // File is passed through the contextBridge function call and resolved to its OS path
   pathForFile: (file: File) => webUtils.getPathForFile(file),
-  getUsage: () => ipcRenderer.invoke(IPC.getUsage),
+  getUsage: (fresh?: boolean) => ipcRenderer.invoke(IPC.getUsage, fresh),
   apiConfig: {
     get: () => ipcRenderer.invoke(IPC.apiConfigGet),
     setKey: (key: string) => ipcRenderer.invoke(IPC.apiConfigSetKey, key),

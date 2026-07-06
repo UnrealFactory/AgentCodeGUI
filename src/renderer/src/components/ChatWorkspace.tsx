@@ -143,7 +143,8 @@ export function ChatWorkspace({
     window.api.getUsage().then(setLiveUsage).catch(() => {})
   }, [])
   useEffect(() => {
-    if (state.status === 'done' || state.status === 'error') window.api.getUsage().then(setLiveUsage).catch(() => {})
+    // fresh — 추가 크레딧 잔액이 방금 실행의 소비를 바로 반영하게 (5분 캐시 우회)
+    if (state.status === 'done' || state.status === 'error') window.api.getUsage(true).then(setLiveUsage).catch(() => {})
   }, [state.status])
 
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -421,9 +422,13 @@ export function ChatWorkspace({
     if (paths.length) setImages((a) => Array.from(new Set([...a, ...paths])))
   }
   const addImagesFromPicker = async (): Promise<void> => {
-    addImagePaths(await window.api.pickImages())
+    addImagePaths(await window.api.pickAttachments())
   }
   const openViewer = useEvent((imgs: string[], index: number) => setViewer({ images: imgs, index }))
+  // 컨텍스트 팝오버 열 때 사용량 강제 새로고침 — 추가 크레딧 잔액이 그 순간 최신이게
+  const onRefreshUsage = useEvent(() => {
+    window.api.getUsage(true).then(setLiveUsage).catch(() => {})
+  })
 
   // 작업 바(할 일·서브에이전트·변경된 파일·컨텍스트)에서 연 것들 — 단일(코드) 모드와
   // 동일한 뷰어/카드. 채팅 모드도 요청하면 도구가 돌 수 있어 같은 패널이 유효하다.
@@ -450,7 +455,7 @@ export function ChatWorkspace({
     const cmd = commandOf(text)
     stickRef.current = true
     begin(text, cmd, imgs)
-    const title = cmd ? commandTitleOf(cmd) : text.trim().slice(0, 80) || '이미지 첨부'
+    const title = cmd ? commandTitleOf(cmd) : text.trim().slice(0, 80) || '파일 첨부'
     setChats((list) =>
       list.map((c) => (c.id === activeChatId && !c.custom ? { ...c, title, custom: false } : c))
     )
@@ -462,7 +467,7 @@ export function ChatWorkspace({
       if (mentions.length)
         notes.push(`[멘션된 파일 — 필요하면 Read 도구로 확인하세요]\n${mentions.map((p) => '- ' + p).join('\n')}`)
       if (imgs.length)
-        notes.push(`[첨부 이미지 — Read 도구로 확인하세요]\n${imgs.map((p) => '- ' + p).join('\n')}`)
+        notes.push(`[첨부 파일 — Read 도구로 확인하세요]\n${imgs.map((p) => '- ' + p).join('\n')}`)
       if (notes.length) promptForEngine = `${text}\n\n${notes.join('\n\n')}`
     }
     const req: RunRequest = {
@@ -643,7 +648,6 @@ export function ChatWorkspace({
         </div>
         <SelectionToolbar scrollRef={scrollRef} onElaborate={onElaborateSelection} />
         <WorkBar
-          status={state.status}
           todos={state.todos}
           files={state.files}
           subagents={state.subagents}
@@ -657,6 +661,7 @@ export function ChatWorkspace({
           totalSpentUsd={totalSpentUsd}
           onOpenFile={(f) => setOpenWorkFile(f.path)}
           onOpenSubagent={(a) => setOpenSubagentId(a.id)}
+          onRefreshUsage={onRefreshUsage}
         />
         <Composer
           value={input}

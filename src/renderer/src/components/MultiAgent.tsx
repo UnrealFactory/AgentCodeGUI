@@ -21,6 +21,8 @@ import {
   fmtTok,
   fmtWindow,
   fmtUsd,
+  fmtCredit,
+  extraCreditVisible,
   SLASH_COMMANDS,
   pickerModelOf,
   type PickerState,
@@ -31,7 +33,7 @@ import { FolderSwitchDialog } from './FolderSwitchDialog'
 import { PromptModal } from './PromptModal'
 import { PanelFolderMenu } from './PanelFolderMenu'
 import { FileModal } from './FileModal'
-import { imageSrc, imageName, filesToImagePaths } from '../lib/images'
+import { imageSrc, imageName, filesToAttachmentPaths, isImagePath, isAttachablePath } from '../lib/images'
 import { mentionAtCaret, mentionEntries, extractMentions, type MentionEntry } from '../lib/mentions'
 import { FileBadge } from './fileType'
 import {
@@ -44,7 +46,7 @@ import {
   IconChevDown,
   IconChevRight,
   IconCode,
-  IconImage,
+  IconPaperclip,
   IconX2,
   IconBook,
   IconSearch,
@@ -420,15 +422,19 @@ function PanelComposer({
     }
   }
 
-  const pickImages = async (): Promise<void> => {
-    const paths = await window.api.pickImages()
+  const pickAttachments = async (): Promise<void> => {
+    const paths = await window.api.pickAttachments()
     if (paths.length) onAddImages(paths)
   }
   const onPaste = async (e: React.ClipboardEvent<HTMLTextAreaElement>): Promise<void> => {
-    const imgs = Array.from(e.clipboardData.files || []).filter((f) => f.type.startsWith('image/'))
-    if (!imgs.length) return
-    e.preventDefault() // a pasted screenshot becomes an attachment, not pasted text
-    const paths = await filesToImagePaths(imgs)
+    // a copied FILE (screenshot, or a txt/md/… from the OS) becomes an attachment;
+    // plain text pastes have no clipboard files and stay ordinary text
+    const files = Array.from(e.clipboardData.files || []).filter(
+      (f) => f.type.startsWith('image/') || isAttachablePath(f.name)
+    )
+    if (!files.length) return
+    e.preventDefault()
+    const paths = await filesToAttachmentPaths(files)
     if (paths.length) onAddImages(paths)
   }
   const dragHasFile = (e: React.DragEvent): boolean =>
@@ -438,7 +444,7 @@ function PanelComposer({
     setDragOver(false)
     if (!e.dataTransfer.files?.length) return
     e.preventDefault()
-    const paths = await filesToImagePaths(e.dataTransfer.files)
+    const paths = await filesToAttachmentPaths(e.dataTransfer.files)
     if (paths.length) onAddImages(paths)
   }
 
@@ -463,8 +469,8 @@ function PanelComposer({
     >
       {dragOver && (
         <div className="drop-hint">
-          <IconImage size={22} />
-          <span>이미지를 여기에 놓으세요</span>
+          <IconPaperclip size={22} />
+          <span>파일을 여기에 놓으세요</span>
         </div>
       )}
       {slashOpen && (
@@ -579,11 +585,23 @@ function PanelComposer({
       )}
       {images.length > 0 && (
         <div className="img-tray ma-img-tray">
+          {/* 툴팁은 래퍼(.img-thumb)에 — 안쪽 .img-thumb-open은 overflow:hidden이라 ::after가 잘린다 */}
           {images.map((p, i) => (
-            <div className="img-thumb" key={p + i}>
-              <span className="img-thumb-open">
-                <img src={imageSrc(p)} alt={imageName(p)} draggable={false} />
-              </span>
+            <div
+              className={'img-thumb has-tip' + (isImagePath(p) ? '' : ' doc tip-path')}
+              data-tip={isImagePath(p) ? imageName(p) : p}
+              key={p + i}
+            >
+              {isImagePath(p) ? (
+                <span className="img-thumb-open">
+                  <img src={imageSrc(p)} alt={imageName(p)} draggable={false} />
+                </span>
+              ) : (
+                <span className="img-thumb-open">
+                  <FileBadge path={p} size={15} />
+                  <span className="doc-name">{imageName(p)}</span>
+                </span>
+              )}
               <button className="img-thumb-x has-tip" onClick={() => onRemoveImage(i)} aria-label="제거" data-tip="제거">
                 <IconX2 size={11} />
               </button>
@@ -592,8 +610,8 @@ function PanelComposer({
         </div>
       )}
       <div className="ma-p-composer-row">
-        <button className="ma-attach has-tip" data-tip="이미지 첨부" aria-label="이미지 첨부" onClick={pickImages}>
-          <IconImage size={16} />
+        <button className="ma-attach has-tip" data-tip="파일 첨부 (이미지·텍스트)" aria-label="파일 첨부" onClick={pickAttachments}>
+          <IconPaperclip size={16} />
         </button>
         <textarea
           ref={taRef}
@@ -873,11 +891,11 @@ const PanelView = memo(function PanelView({
                 <div className="sched-item" key={m.id}>
                   <span className="sched-num">{i + 1}</span>
                   <span className="sched-text">
-                    {m.text.trim() || (m.images.length ? `이미지 ${m.images.length}장` : '')}
+                    {m.text.trim() || (m.images.length ? `첨부 ${m.images.length}개` : '')}
                   </span>
                   {m.images.length > 0 && (
-                    <span className="sched-img" title={`이미지 ${m.images.length}장`}>
-                      <IconImage size={13} />
+                    <span className="sched-img has-tip" data-tip={`첨부 ${m.images.length}개`}>
+                      <IconPaperclip size={13} />
                     </span>
                   )}
                   <button
@@ -1023,6 +1041,18 @@ function ActiveSession({
   const s4 = useAgentSession(subFor(chan(sessionId, 4)))
   const s5 = useAgentSession(subFor(chan(sessionId, 5)))
   const sessions = [s0, s1, s2, s3, s4, s5]
+
+  // 사용량은 App이 단일 모드 실행에만 갱신한다 — 멀티 패널 실행이 끝날 때는 여기서
+  // 직접 강제 새로고침해 헤더 필(한도·추가 크레딧)이 방금 소비를 바로 반영하게 한다
+  const [liveUsage, setLiveUsage] = useState<UsageInfo>(usage)
+  useEffect(() => setLiveUsage(usage), [usage]) // App 쪽 갱신도 그대로 흡수
+  const busyCount = sessions.filter((s) => s.busy).length
+  const prevBusyCountRef = useRef(busyCount)
+  useEffect(() => {
+    const was = prevBusyCountRef.current
+    prevBusyCountRef.current = busyCount
+    if (busyCount < was) window.api.getUsage(true).then(setLiveUsage).catch(() => {})
+  }, [busyCount])
 
   const [count, setCount] = useState(() => clampCount(initial.count))
   const [metas, setMetas] = useState<PanelMeta[]>(() =>
@@ -1295,7 +1325,7 @@ function ActiveSession({
       !!sess.state.session && sess.state.messages.length > 0 && !sameCwd(sess.state.session.cwd, dir)
     if (folderSwitched) sess.load(initialSessionState)
     sess.begin(text, cmd, imgs)
-    const title = cmd ? commandTitleOf(cmd) : text.slice(0, 80) || '이미지 첨부'
+    const title = cmd ? commandTitleOf(cmd) : text.slice(0, 80) || '파일 첨부'
     if (firstInSession) onFirstPrompt(sessionId, title)
     setMetas((prev) =>
       prev.map((pm, i) =>
@@ -1321,7 +1351,7 @@ function ActiveSession({
       if (mentions.length)
         notes.push(`[멘션된 파일 — 필요하면 Read 도구로 확인하세요]\n${mentions.map((p) => '- ' + p).join('\n')}`)
       if (imgs.length)
-        notes.push(`[첨부 이미지 — Read 도구로 확인하세요]\n${imgs.map((p) => '- ' + p).join('\n')}`)
+        notes.push(`[첨부 파일 — Read 도구로 확인하세요]\n${imgs.map((p) => '- ' + p).join('\n')}`)
       if (notes.length) promptForEngine = `${text}\n\n${notes.join('\n\n')}`
     }
     const req: MultiRunRequest = {
@@ -1517,10 +1547,33 @@ function ActiveSession({
                   구독 {billSub}
                 </span>
               )}
-              <UsagePill label={billMixed ? '5시간' : '5시간 한도'} pct={usage.fiveHour?.pct ?? null} />
-              <UsagePill label={billMixed ? '주간' : '주간 한도'} pct={usage.weekly?.pct ?? null} />
-              {usage.weeklyFable && (
-                <UsagePill label={billMixed ? 'Fable' : 'Fable 주간 한도'} pct={usage.weeklyFable.pct} />
+              <UsagePill label={billMixed ? '5시간' : '5시간 한도'} pct={liveUsage.fiveHour?.pct ?? null} />
+              <UsagePill label={billMixed ? '주간' : '주간 한도'} pct={liveUsage.weekly?.pct ?? null} />
+              {liveUsage.weeklyFable && (
+                <UsagePill label={billMixed ? 'Fable' : 'Fable 주간 한도'} pct={liveUsage.weeklyFable.pct} />
+              )}
+              {/* 추가 사용 크레딧 — claude.ai에서 켰거나 잔액 소진 상태일 때. 값=잔액,
+                  링=월 한도 대비 사용률 (한도 미설정으로 pct가 없으면 달러 배지로 대체) */}
+              {extraCreditVisible(liveUsage.extraCredit) && (
+                <UsagePill
+                  label={billMixed ? '크레딧' : '추가 크레딧'}
+                  pct={liveUsage.extraCredit.pct}
+                  usd={liveUsage.extraCredit.pct == null}
+                  val={
+                    liveUsage.extraCredit.balance != null
+                      ? fmtCredit(liveUsage.extraCredit.balance, liveUsage.extraCredit.currency)
+                      : undefined
+                  }
+                  tip={
+                    liveUsage.extraCredit.outOfCredits && !liveUsage.extraCredit.enabled
+                      ? '추가 사용 크레딧 소진 — claude.ai에서 충전해야 다시 쓸 수 있어요'
+                      : `추가 사용 크레딧 잔액${
+                          liveUsage.extraCredit.cap != null
+                            ? ` · 월 한도 ${fmtCredit(liveUsage.extraCredit.cap, liveUsage.extraCredit.currency)}`
+                            : ''
+                        }`
+                  }
+                />
               )}
             </div>
           )}

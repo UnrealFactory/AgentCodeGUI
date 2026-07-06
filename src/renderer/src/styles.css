@@ -1077,6 +1077,26 @@ input,textarea{ font-family:inherit; }
 /* .has-tip sets position:relative (same specificity, declared later) which would
    knock the button out of its corner — pin it back so only the tooltip is adopted */
 .img-thumb-x.has-tip{ position:absolute; }
+/* 썸네일/칩의 파일명 툴팁은 래퍼(.img-thumb)에 단다 (안쪽 .img-thumb-open은
+   overflow:hidden이라 ::after가 잘림) — 단, X(제거) 버튼 위에서는 래퍼 툴팁을
+   숨겨 "제거" 툴팁 하나만 뜨게 한다 */
+.img-thumb.has-tip:has(.img-thumb-x:hover)::after{ content:none; }
+/* text/doc attachment in the composer tray — same shell as an image thumb, but a
+   wide filename chip (file-type icon + name) instead of a square thumbnail */
+.img-thumb.doc{ width:auto; max-width:230px; height:36px; }
+.img-thumb.doc .img-thumb-open{
+  display:flex; align-items:center; gap:7px; width:auto; max-width:100%; height:100%;
+  padding:0 11px; cursor:default;
+}
+.img-thumb.doc .doc-name{
+  font-size:12px; font-weight:550; color:var(--text-2);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+/* 칩 안 파일타입 아이콘(FileBadge)의 네이티브 title("TypeScript" 등)이 커스텀
+   툴팁과 겹쳐 뜨지 않게 — 장식용이니 호버 대상에서 제외 */
+.img-thumb.doc .fticon, .msg-doc .fticon{ pointer-events:none; }
+/* width도 함께 — 아래쪽 .ma-img-tray .img-thumb{width:50px}가 같은 특이도로 덮지 않게 */
+.ma-img-tray .img-thumb.doc{ width:auto; height:32px; max-width:190px; }
 
 /* ── scheduled messages (queued while the agent is busy) ─────────────────── */
 /* a warm card above the composer listing drafts that auto-send when the run ends */
@@ -1185,6 +1205,11 @@ input,textarea{ font-family:inherit; }
 .has-tip:hover::after{ opacity:1; transform: translate(-50%, 0); transition-delay:.3s; }
 /* multi-line variant — same tooltip look, but wraps for long text (skill descriptions) */
 .has-tip.tip-wrap::after{ white-space:normal; width:max-content; max-width:300px; padding:8px 11px; line-height:1.5; text-align:left; }
+/* 경로 변형 — 첨부 칩의 전체 경로: 공백 없는 긴 문자열이라 아무 데서나 끊어 줄바꿈 */
+.has-tip.tip-path::after{
+  white-space:normal; width:max-content; max-width:320px;
+  word-break:break-all; padding:8px 11px; line-height:1.5; text-align:left;
+}
 .pick-btn.active::after{ content: none; }
 
 .pick{ position:relative; }
@@ -1371,15 +1396,17 @@ input,textarea{ font-family:inherit; }
    걸치는 ~6.5줄/~3.5줄 → "더 있다"는 단서), 변경된 파일은 보통 가장 길어지는
    목록이라 캡 대신 패널의 남는 세로 공간을 전부 쓴다(최소 224px 보장). */
 .todos{ display:flex; flex-direction:column; gap:2px; max-height:232px; overflow-y:auto; overscroll-behavior:contain; }
-.todo{ display:flex; align-items:center; gap:11px; padding:8px 8px; border-radius:8px; transition:background .14s; }
-.todo .box{ width:18px; height:18px; flex:0 0 18px; border-radius:6px; border:1.5px solid var(--line-strong); display:grid; place-items:center; color:transparent; transition:.18s; }
-.todo .lab{ font-size:13px; color:var(--text-3); transition:color .18s; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+/* 긴 할 일은 잘라내지 않고 줄바꿈으로 늘린다 (리스트가 max-height+스크롤이라 안전).
+   체크박스·스피너는 여러 줄일 때 세로 중앙에 뜨지 않게 첫 줄에 정렬 */
+.todo{ display:flex; align-items:flex-start; gap:11px; padding:8px 8px; border-radius:8px; transition:background .14s; }
+.todo .box{ width:18px; height:18px; flex:0 0 18px; margin-top:1px; border-radius:6px; border:1.5px solid var(--line-strong); display:grid; place-items:center; color:transparent; transition:.18s; }
+.todo .lab{ font-size:13px; line-height:1.5; color:var(--text-3); transition:color .18s; flex:1 1 auto; min-width:0; overflow-wrap:anywhere; }
 .todo.running{ background:var(--surface); }
 .todo.running .box{ border-color:var(--accent); }
 .todo.running .lab{ color:var(--text); font-weight:500; }
 .todo.done .box{ background:var(--green); border-color:var(--green); color:var(--on-accent); }
 .todo.done .lab{ color:var(--text-2); }
-.todo .spin{ width:13px; height:13px; border-radius:99px; border:2px solid var(--accent-soft); border-top-color:var(--accent); animation:spin .7s linear infinite; }
+.todo .spin{ width:13px; height:13px; margin-top:3px; border-radius:99px; border:2px solid var(--accent-soft); border-top-color:var(--accent); animation:spin .7s linear infinite; }
 .progress{ height:4px; border-radius:99px; background:var(--surface-2); overflow:hidden; margin-bottom:14px; }
 .progress > i{ display:block; height:100%; background:var(--accent); border-radius:99px; transition:width .5s cubic-bezier(.2,.8,.2,1); }
 
@@ -2938,6 +2965,20 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
   box-shadow:0 1px 4px oklch(0 0 0 / 0.25);
 }
 
+/* text/doc attachments in a sent message — filename chips (click → 파일 뷰어 카드) */
+.msg-docs{ display:flex; flex-wrap:wrap; gap:7px; margin-bottom:8px; }
+.msg.user .content .msg-docs:last-child{ margin-bottom:0; }
+.msg-doc{
+  display:inline-flex; align-items:center; gap:7px; max-width:260px; padding:6px 11px;
+  border-radius:10px; border:1px solid var(--line-2); background:var(--surface-2);
+  box-shadow:var(--shadow-sm); transition:border-color .14s, box-shadow .14s, transform .14s;
+}
+.msg-doc:hover{ border-color:var(--accent-line); box-shadow:var(--hover-ring); transform:translateY(-1px); }
+.msg-doc-name{
+  font-size:12px; font-weight:550; color:var(--text-2);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+
 /* ============================== IMAGE VIEWER ============================== */
 /* a modern lightbox / multi-viewer: dark blurred backdrop, top bar with the filename +
    counter + actions, a centered stage with prev/next, and a thumbnail filmstrip. */
@@ -3006,6 +3047,11 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
   transition:opacity .13s ease, transform .13s ease;
 }
 .iv-top .htip:hover::after{ opacity:1; transform:translateY(0); transition-delay:.3s; }
+/* 파일명의 전체 경로 툴팁 — 이름은 바 왼쪽에 있으니 왼쪽 정렬로 펼치고, 긴 경로는 줄바꿈 */
+.iv-top .htip.iv-name::after{
+  left:0; right:auto; white-space:normal; width:max-content; max-width:420px;
+  word-break:break-all; line-height:1.5; padding:7px 10px;
+}
 
 /* ============================== MODE TOGGLE (sidebar) ============================== */
 .sb-mode{

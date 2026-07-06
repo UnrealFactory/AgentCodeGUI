@@ -24,6 +24,7 @@ import * as gitApi from './git'
 import { lspManager } from './lsp/manager'
 import { initAutoUpdater, checkForUpdates, quitAndInstall, getUpdateStatus } from './updater'
 import { IPC } from '@shared/protocol'
+import { ATTACH_IMAGE_EXTS, ATTACH_TEXT_EXTS } from '@shared/attachments'
 import type { EngineEvent, RunRequest, PermissionResponse, QuestionResponse, WindowBounds, ResizeEdge, SnapZone, UsageInfo, UsageWindow, FileReadResult, FileWriteResult, UserProfile, MultiRunRequest, MultiPermissionResponse, MultiQuestionResponse, LspPos } from '@shared/protocol'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -72,6 +73,9 @@ const IMG_EXTS: Record<string, string> = {
 protocol.registerSchemesAsPrivileged([
   { scheme: 'ccg-img', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, bypassCSP: true } }
 ])
+
+// pathless 첨부(붙여넣기/브라우저 드래그) 저장 시 허용되는 확장자 — 이미지 + 텍스트
+const ATTACH_SAVE_EXTS = new Set([...ATTACH_IMAGE_EXTS, ...ATTACH_TEXT_EXTS].map((e) => '.' + e))
 
 // Directory holding pasted/dragged image data that has no source path of its own.
 function attachmentsDir(): string {
@@ -505,10 +509,14 @@ function createWindow(): void {
 // ── OAuth rate-limit usage (5h / weekly), mirroring statusline.js ───────────
 let usageCache: { at: number; data: UsageInfo } | null = null
 const USAGE_TTL = 5 * 60 * 1000
+// 강제 새로고침(fresh)의 바닥 TTL — 추가 크레딧 잔액은 실행마다 실제 돈이 줄어드는
+// 값이라 5분 캐시는 너무 낡는다. 실행 종료·팝오버 열기 순간엔 새로 받되, 연타가
+// API를 때리지 않게 15초는 재사용한다.
+const USAGE_TTL_FRESH = 15 * 1000
 
-async function getUsage(): Promise<UsageInfo> {
-  const empty: UsageInfo = { fiveHour: null, weekly: null, weeklyFable: null }
-  if (usageCache && Date.now() - usageCache.at < USAGE_TTL) return usageCache.data
+async function getUsage(fresh = false): Promise<UsageInfo> {
+  const empty: UsageInfo = { fiveHour: null, weekly: null, weeklyFable: null, extraCredit: null }
+  if (usageCache && Date.now() - usageCache.at < (fresh ? USAGE_TTL_FRESH : USAGE_TTL)) return usageCache.data
   let token: string | undefined
   try {
     const creds = JSON.parse(fs.readFileSync(path.join(os.homedir(), '.claude', '.credentials.json'), 'utf8'))
@@ -529,6 +537,18 @@ async function getUsage(): Promise<UsageInfo> {
     const j = (await res.json()) as Record<string, { utilization?: number | string; resets_at?: string }> & {
       // 모델별 한도는 legacy 필드(seven_day_opus 등)가 아니라 limits[] 배열로 온다.
       limits?: { kind?: string; percent?: number; resets_at?: string; scope?: { model?: { display_name?: string } | null } | null }[]
+      // 추가 사용 크레딧 (claude.ai 설정 → 사용 크레딧과 같은 데이터).
+      // 금액 필드는 {amount_minor, currency, exponent} 또는 {money, credits} 래퍼 —
+      // 실측에서 두 형태가 다 관찰돼 필드별 타입은 unknown으로 두고 관대하게 파싱한다.
+      spend?: {
+        enabled?: boolean
+        disabled_reason?: string | null
+        percent?: number | null
+        used?: unknown
+        cap?: unknown
+        limit?: unknown
+        balance?: unknown
+      } | null
     }
     const toTs = (s?: string): number | null => {
       if (!s) return null
@@ -541,10 +561,34 @@ async function getUsage(): Promise<UsageInfo> {
     const fable = Array.isArray(j.limits)
       ? j.limits.find((l) => l?.kind === 'weekly_scoped' && (l.scope?.model?.display_name ?? '').toLowerCase().includes('fable'))
       : undefined
+    // 금액 파서 — 숫자 그대로, {amount_minor, exponent}, {money, credits} 래퍼를 모두 수용
+    const money = (m: unknown): number | null => {
+      if (m == null) return null
+      if (typeof m === 'number') return m
+      if (typeof m !== 'object') return null
+      const o = m as { amount_minor?: unknown; exponent?: unknown; money?: unknown; credits?: unknown }
+      if (typeof o.amount_minor === 'number')
+        return o.amount_minor / Math.pow(10, typeof o.exponent === 'number' ? o.exponent : 2)
+      return money(o.money) ?? money(o.credits)
+    }
+    const sp = j.spend
+    // 토글은 켰지만 잔액 소진 → API가 enabled:false + out_of_credits로 내려준다
+    const outOfCredits = sp?.disabled_reason === 'out_of_credits'
     const data: UsageInfo = {
       fiveHour: win(j.five_hour),
       weekly: win(j.seven_day),
-      weeklyFable: fable ? { pct: Math.max(0, Math.min(100, Math.round(fable.percent ?? 0))), resetsAt: toTs(fable.resets_at) } : null
+      weeklyFable: fable ? { pct: Math.max(0, Math.min(100, Math.round(fable.percent ?? 0))), resetsAt: toTs(fable.resets_at) } : null,
+      extraCredit: sp
+        ? {
+            enabled: !!sp.enabled,
+            outOfCredits,
+            currency: ((sp.used as { currency?: string } | null)?.currency || 'USD') as string,
+            used: money(sp.used),
+            cap: money(sp.cap) ?? money(sp.limit),
+            balance: money(sp.balance) ?? (outOfCredits ? 0 : null),
+            pct: typeof sp.percent === 'number' ? Math.max(0, Math.min(100, Math.round(sp.percent))) : null
+          }
+        : null
     }
     usageCache = { at: Date.now(), data }
     return data
@@ -609,25 +653,29 @@ function registerIpc(): void {
     })
     return r.canceled || !r.filePaths[0] ? null : r.filePaths[0]
   })
-  ipcMain.handle(IPC.pickImages, async () => {
+  ipcMain.handle(IPC.pickAttachments, async () => {
     if (!mainWindow) return []
     const r = await dialog.showOpenDialog(mainWindow, {
       properties: ['openFile', 'multiSelections'],
-      title: '첨부할 이미지 선택',
-      filters: [{ name: '이미지', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg', 'avif', 'ico'] }]
+      title: '첨부할 파일 선택',
+      filters: [
+        { name: '첨부 가능한 파일', extensions: [...ATTACH_IMAGE_EXTS, ...ATTACH_TEXT_EXTS] },
+        { name: '이미지', extensions: [...ATTACH_IMAGE_EXTS] },
+        { name: '텍스트·문서', extensions: [...ATTACH_TEXT_EXTS] }
+      ]
     })
     return r.canceled ? [] : r.filePaths
   })
-  // a pasted screenshot or an image dragged from a browser has no file path — its raw
+  // a pasted screenshot or a file dragged from a browser has no file path — its raw
   // bytes are written to the app's attachments folder so it gets a path to show + attach
-  ipcMain.handle(IPC.saveImageData, async (_e, a: { bytes: ArrayBuffer; ext: string }): Promise<string> => {
+  ipcMain.handle(IPC.saveAttachmentData, async (_e, a: { bytes: ArrayBuffer; ext: string }): Promise<string> => {
     const ext = ('.' + String(a.ext || 'png').replace(/^\.+/, '').toLowerCase()).replace(/[^.a-z0-9]/g, '')
-    const safeExt = ext in IMG_EXTS ? ext : '.png'
+    const safeExt = ATTACH_SAVE_EXTS.has(ext) ? ext : '.png'
     const abs = path.join(attachmentsDir(), `paste-${randomUUID()}${safeExt}`)
     await fs.promises.writeFile(abs, Buffer.from(a.bytes))
     return abs
   })
-  ipcMain.handle(IPC.getUsage, async () => getUsage())
+  ipcMain.handle(IPC.getUsage, async (_e, fresh?: boolean) => getUsage(!!fresh))
 
   // API 키 과금 설정 (설정 → API) — 키 원문은 절대 렌더러로 돌려주지 않는다
   ipcMain.handle(IPC.apiConfigGet, async () => apiConfigStatus())

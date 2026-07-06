@@ -125,7 +125,7 @@ function MainApp({ user }: { user: AppUser }) {
   const [queue, setQueue] = useState<ScheduledMsg[]>([])
   // the image lightbox/multi-viewer: the set being viewed + the active index (null = closed)
   const [viewer, setViewer] = useState<{ images: string[]; index: number } | null>(null)
-  const [usage, setUsage] = useState<UsageInfo>({ fiveHour: null, weekly: null, weeklyFable: null })
+  const [usage, setUsage] = useState<UsageInfo>({ fiveHour: null, weekly: null, weeklyFable: null, extraCredit: null })
   // API 모드 — 켜면 실행이 구독(OAuth) 대신 저장된 API 키로 과금된다. 앱 단위 설정
   // (채팅별 picker와 달리 과금 수단이라 전역이 자연스럽다) — uiPrefs에 영속.
   const [apiMode, setApiMode] = useState<boolean>(() => getPref<boolean>('api.mode', false))
@@ -286,7 +286,8 @@ function MainApp({ user }: { user: AppUser }) {
   }, [fsTick])
   useEffect(() => {
     if (state.status === 'done' || state.status === 'error') {
-      window.api.getUsage().then(setUsage).catch(() => {})
+      // fresh — 추가 크레딧 잔액이 방금 실행의 소비를 바로 반영하게 (5분 캐시 우회)
+      window.api.getUsage(true).then(setUsage).catch(() => {})
       // API 모드 누적 사용액(전역)도 갱신 — 남은 예산 링이 실행 직후 바로 맞아떨어지게
       window.api.apiConfig.get().then(setApiCfg).catch(() => {})
       setFsTick((t) => t + 1)
@@ -351,7 +352,7 @@ function MainApp({ user }: { user: AppUser }) {
     if (paths.length) setImages((a) => Array.from(new Set([...a, ...paths])))
   }
   const addImagesFromPicker = async (): Promise<void> => {
-    addImagePaths(await window.api.pickImages())
+    addImagePaths(await window.api.pickAttachments())
   }
   const openViewer = useEvent((imgs: string[], index: number) => setViewer({ images: imgs, index }))
 
@@ -673,7 +674,7 @@ function MainApp({ user }: { user: AppUser }) {
     begin(text, cmd, imgs)
     // derive the chat title from the prompt (command → its friendly title) unless renamed.
     // a folder switch starts a fresh conversation, so it re-titles even a renamed chat.
-    const title = cmd ? commandTitleOf(cmd) : text.trim().slice(0, 80) || '이미지 첨부'
+    const title = cmd ? commandTitleOf(cmd) : text.trim().slice(0, 80) || '파일 첨부'
     setChats((list) =>
       list.map((c) => {
         if (c.id !== activeChatId) return c
@@ -692,7 +693,7 @@ function MainApp({ user }: { user: AppUser }) {
       if (mentions.length)
         notes.push(`[멘션된 파일 — 필요하면 Read 도구로 확인하세요]\n${mentions.map((p) => '- ' + p).join('\n')}`)
       if (imgs.length)
-        notes.push(`[첨부 이미지 — Read 도구로 확인하세요]\n${imgs.map((p) => '- ' + p).join('\n')}`)
+        notes.push(`[첨부 파일 — Read 도구로 확인하세요]\n${imgs.map((p) => '- ' + p).join('\n')}`)
       if (notes.length) promptForEngine = `${text}\n\n${notes.join('\n\n')}`
     }
     const req: RunRequest = {
@@ -979,6 +980,10 @@ function MainApp({ user }: { user: AppUser }) {
     )
   })
   const onOpenSubagent = useEvent((a: SubAgentInfo) => setOpenSubagentId(a.id))
+  // 컨텍스트 팝오버 열 때 사용량 강제 새로고침 — 추가 크레딧 잔액이 그 순간 최신이게
+  const onRefreshUsage = useEvent(() => {
+    window.api.getUsage(true).then(setUsage).catch(() => {})
+  })
   // ── Git 카드 ───────────────────────────────────────────────
   const onOpenGit = useEvent(() => {
     if (gitRoot) setGitOpen(true)
@@ -1149,7 +1154,6 @@ function MainApp({ user }: { user: AppUser }) {
           </div>
           <SelectionToolbar scrollRef={scrollRef} onElaborate={onElaborateSelection} />
           <WorkBar
-            status={state.status}
             todos={state.todos}
             files={state.files}
             subagents={state.subagents}
@@ -1163,6 +1167,7 @@ function MainApp({ user }: { user: AppUser }) {
             totalSpentUsd={apiCfg?.spentUsd ?? 0}
             onOpenFile={onOpenFile}
             onOpenSubagent={onOpenSubagent}
+            onRefreshUsage={onRefreshUsage}
           />
           <Composer
             value={input}

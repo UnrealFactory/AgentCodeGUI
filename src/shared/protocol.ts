@@ -444,12 +444,27 @@ export interface UsageWindow {
   pct: number // 0-100
   resetsAt: number | null // unix seconds
 }
+// 구독 "추가 사용 크레딧"(한도 도달 후 종량 이어쓰기) — usage API의 spend 객체.
+// 금액은 주(major) 단위 숫자(amount_minor / 10^exponent 환산), 통화는 코드 그대로.
+export interface ExtraCreditInfo {
+  enabled: boolean // 켜져 있고 잔액도 있는 정상 상태
+  // 토글은 켰지만 잔액이 소진돼 API가 비활성 취급하는 상태 (disabled_reason:
+  // "out_of_credits") — UI는 이때도 행을 보여준다 ("다 떨어짐"이야말로 중요한 정보)
+  outOfCredits: boolean
+  currency: string // 'USD' 등 — USD만 $ 기호로 표시
+  used: number | null // 이번 달 사용액
+  cap: number | null // 월간 지출 한도
+  balance: number | null // 현재 잔액 (소진 상태는 0으로 정규화)
+  pct: number | null // 월 한도 대비 사용률 0-100
+}
 export interface UsageInfo {
   fiveHour: UsageWindow | null
   weekly: UsageWindow | null
   // Fable 5 전용 주간 한도 (usage API `limits[]`의 weekly_scoped·model=Fable 항목).
   // 플랜에 이 한도가 없으면 null → UI는 행/필 자체를 숨긴다.
   weeklyFable: UsageWindow | null
+  // 추가 사용 크레딧 — 응답에 spend가 없으면(구버전 API) null → UI는 행을 숨긴다
+  extraCredit: ExtraCreditInfo | null
 }
 
 // ── Engine (Claude Code SDK) version management ──────────────
@@ -571,8 +586,8 @@ export const IPC = {
   talkGet: 'talk:get', // load the persisted chat-workspace conversations (or null)
   talkSave: 'talk:save', // persist the chat-workspace conversations so they survive a restart
   pickDirectory: 'dialog:pick-directory',
-  pickImages: 'dialog:pick-images', // open dialog filtered to image files; returns absolute paths
-  saveImageData: 'image:save-data', // persist pasted/dropped raw image bytes to a temp file; returns its path
+  pickAttachments: 'dialog:pick-attachments', // open dialog filtered to attachable files (images + text); returns absolute paths
+  saveAttachmentData: 'attachment:save-data', // persist pasted/dropped raw attachment bytes to a temp file; returns its path
   getUsage: 'usage:get',
   apiConfigGet: 'api-config:get', // API 키/예산/누적 사용액 스냅샷 (키 원문 제외)
   apiConfigSetKey: 'api-config:set-key', // API 키 저장 (safeStorage 암호화)

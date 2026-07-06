@@ -63,7 +63,7 @@ export function ImageViewer({
       }}
     >
       <div className="iv-top">
-        <div className="iv-name" title={path}>
+        <div className="iv-name htip" data-tip={path}>
           {imageName(path)}
         </div>
         {multi && (
