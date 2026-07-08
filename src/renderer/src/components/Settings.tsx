@@ -7,7 +7,8 @@ import type {
   McpServerInfo,
   LspServerInfo,
   ApiConfigStatus,
-  ApiUsageRecord
+  ApiUsageRecord,
+  AccountInfo
 } from '@shared/protocol'
 import { FileBadge } from './fileType'
 import { getPref, setPref } from '../lib/prefs'
@@ -28,14 +29,17 @@ import {
   IconCode,
   IconKey,
   IconDollar,
+  IconUser,
+  IconPlus,
   type IconProps
 } from './icons'
 import { getTheme, setTheme, type Theme } from '../lib/theme'
 
-export type SettingsView = 'version' | 'api' | 'mcp' | 'skill' | 'lsp' | 'appearance'
+export type SettingsView = 'account' | 'version' | 'api' | 'mcp' | 'skill' | 'lsp' | 'appearance'
 type View = SettingsView
 
 const NAV: { id: View; label: string; Icon: (p: IconProps) => React.ReactElement }[] = [
+  { id: 'account', label: 'Account', Icon: IconUser },
   { id: 'version', label: 'Claude Code', Icon: IconClaude },
   { id: 'api', label: 'API', Icon: IconKey },
   { id: 'mcp', label: 'MCP', Icon: IconServer },
@@ -53,6 +57,181 @@ function cmpVer(a: string, b: string): number {
     if (d) return d
   }
   return 0
+}
+
+// ── Account (클로드 구독 로그인 · 다중 계정 전환) ───────────────
+// 번들 CLI의 `claude auth …`로 로그인/로그아웃하고, 각 계정의 크리덴셜을 암호화 스냅샷해두어
+// "변경"으로 재로그인 없이 전환한다(main/auth.ts). 로그인은 브라우저 OAuth → 완료 시 자동 갱신.
+function AccountView(): React.ReactElement {
+  const [accounts, setAccounts] = useState<AccountInfo[] | null>(null)
+  // 'login' | 'logout' | <email>(전환 중) | null
+  const [busy, setBusy] = useState<string | null>(null)
+  const [loginUrl, setLoginUrl] = useState<string | null>(null)
+  const [note, setNote] = useState<string | null>(null)
+
+  const reload = (): void => {
+    window.api.auth.listAccounts().then(setAccounts).catch(() => setAccounts([]))
+  }
+  useEffect(() => reload(), [])
+  useEffect(() => window.api.auth.onLoginUrl(setLoginUrl), [])
+
+  const addAccount = async (): Promise<void> => {
+    setBusy('login')
+    setLoginUrl(null)
+    setNote(null)
+    try {
+      const res = await window.api.auth.login(false)
+      if (!res.ok) setNote(res.error ?? '로그인이 완료되지 않았어요')
+    } catch {
+      /* ignore */
+    }
+    setBusy(null)
+    setLoginUrl(null)
+    reload()
+  }
+  const doLogout = async (): Promise<void> => {
+    setBusy('logout')
+    setNote(null)
+    try {
+      await window.api.auth.logout()
+    } catch {
+      /* ignore */
+    }
+    setBusy(null)
+    reload()
+  }
+  const doSwitch = async (email: string): Promise<void> => {
+    setBusy(email)
+    setNote(null)
+    try {
+      const st = await window.api.auth.switchAccount(email)
+      if (st.error) setNote(st.error)
+    } catch {
+      /* ignore */
+    }
+    setBusy(null)
+    reload()
+  }
+  const doRemove = async (email: string): Promise<void> => {
+    try {
+      setAccounts(await window.api.auth.removeAccount(email))
+    } catch {
+      /* ignore */
+    }
+  }
+
+  const planLabel = (t?: string): string =>
+    t ? t.charAt(0).toUpperCase() + t.slice(1) + ' 플랜' : '구독'
+
+  return (
+    <>
+      <div className="set-h1">Account</div>
+      <div className="set-h1-sub">
+        클로드(Claude) 구독 계정이에요. 여러 계정을 등록해두고 <strong>변경</strong>으로 언제든 전환할 수 있어요 — 엔진
+        실행은 지금 활성화된 계정(<code>~/.claude</code>)을 씁니다.
+      </div>
+
+      <div className="sec">
+        <div className="card">
+          {accounts == null ? (
+            <div className="acct-row">
+              <div className="ver-main">
+                <div className="ver-meta">
+                  <span className="set-spin" /> 불러오는 중…
+                </div>
+              </div>
+            </div>
+          ) : accounts.length === 0 && busy !== 'login' ? (
+            <div className="acct-row">
+              <div className="ver-ic">
+                <IconUser size={20} />
+              </div>
+              <div className="ver-main">
+                <div className="ver-name">로그인된 계정이 없어요</div>
+                <div className="ver-meta">구독 계정으로 로그인하면 API 키 없이 실행할 수 있어요</div>
+              </div>
+              <button className="inst-btn" disabled={busy != null} onClick={() => void addAccount()}>
+                로그인
+              </button>
+            </div>
+          ) : (
+            accounts.map((a) => (
+              <div className="acct-row" key={a.email}>
+                <div className="ver-ic">
+                  <IconUser size={18} />
+                </div>
+                <div className="ver-main">
+                  <div className="ver-name">
+                    {a.email} {a.active && <span className="acct-badge">현재</span>}
+                  </div>
+                  <div className="ver-meta">{planLabel(a.subscriptionType)}</div>
+                </div>
+                {a.active ? (
+                  <button className="inst-btn ghost" disabled={busy != null} onClick={() => void doLogout()}>
+                    {busy === 'logout' ? (
+                      <>
+                        <span className="set-spin" /> …
+                      </>
+                    ) : (
+                      '로그아웃'
+                    )}
+                  </button>
+                ) : (
+                  <>
+                    <button className="inst-btn" disabled={busy != null} onClick={() => void doSwitch(a.email)}>
+                      {busy === a.email ? (
+                        <>
+                          <span className="set-spin" /> 전환 중…
+                        </>
+                      ) : (
+                        '변경'
+                      )}
+                    </button>
+                    <button className="acct-x" disabled={busy != null} aria-label="목록에서 제거" onClick={() => void doRemove(a.email)}>
+                      <IconTrash size={13} />
+                    </button>
+                  </>
+                )}
+              </div>
+            ))
+          )}
+
+          {busy === 'login' ? (
+            <div className="acct-row">
+              <div className="ver-ic">
+                <span className="set-spin" />
+              </div>
+              <div className="ver-main">
+                <div className="ver-name">로그인 진행 중…</div>
+                <div className="ver-meta">브라우저에서 로그인을 완료하세요</div>
+              </div>
+              <button className="inst-btn ghost" onClick={() => window.api.auth.cancelLogin().catch(() => {})}>
+                취소
+              </button>
+            </div>
+          ) : accounts != null && accounts.length > 0 ? (
+            <button className="acct-add" disabled={busy != null} onClick={() => void addAccount()}>
+              <IconPlus size={15} /> 계정 추가
+            </button>
+          ) : null}
+        </div>
+
+        {note && <div className="set-note">{note}</div>}
+        {busy === 'login' && loginUrl && (
+          <div className="set-note">
+            브라우저가 안 열렸나요?{' '}
+            <a href={loginUrl} target="_blank" rel="noreferrer">
+              이 링크로 로그인
+            </a>
+          </div>
+        )}
+        <div className="set-note">
+          계정 크리덴셜은 <code>~/.agentcodegui</code>에 <b>암호화(DPAPI)</b>되어 저장되고, “변경”은 재로그인 없이
+          <code>~/.claude</code>의 활성 크리덴셜만 바꿔요. 리프레시 토큰이 만료된 계정은 다시 로그인이 필요할 수 있어요.
+        </div>
+      </div>
+    </>
+  )
 }
 
 function VersionView() {
@@ -1505,6 +1684,7 @@ export function SettingsModal({
           </nav>
           <main className="set-main scroll">
             <div className="set-inner">
+              {view === 'account' && <AccountView />}
               {view === 'version' && <VersionView />}
               {view === 'api' && <ApiView />}
               {view === 'mcp' && <McpView cwd={cwd} />}

@@ -10,6 +10,7 @@ import { readProfile, writeProfile } from './profile'
 import { readUiPrefs, writeUiPrefs } from './uiPrefs'
 import { apiConfigStatus, setApiKey, clearApiKey, setBudget, resetSpend } from './apiConfig'
 import { readApiUsage } from './apiUsage'
+import { authStatus, authLogin, authLogout, authLoginCancel, listAccounts, switchAccount, removeAccount } from './auth'
 import { setVerseDocKo } from './lsp/verseDocKo'
 import { setUeDocKo } from './lsp/ueDocKo'
 import { bumpVerseRegistryRev } from './lsp/verseMemberDb'
@@ -774,6 +775,15 @@ function registerIpc(): void {
     return abs
   })
   ipcMain.handle(IPC.getUsage, async (_e, fresh?: boolean) => getUsage(!!fresh))
+
+  // 클로드 계정(구독) 로그인 — 번들 CLI의 `claude auth …` 호출 (설정 → 계정)
+  ipcMain.handle(IPC.authStatus, async () => authStatus())
+  ipcMain.handle(IPC.authLogout, async () => authLogout())
+  ipcMain.handle(IPC.authLogin, async (_e, useConsole?: boolean) => authLogin(_e.sender, !!useConsole))
+  ipcMain.handle(IPC.authLoginCancel, async () => authLoginCancel())
+  ipcMain.handle(IPC.authListAccounts, async () => listAccounts())
+  ipcMain.handle(IPC.authSwitchAccount, async (_e, email: string) => switchAccount(email))
+  ipcMain.handle(IPC.authRemoveAccount, async (_e, email: string) => removeAccount(email))
 
   // API 키 과금 설정 (설정 → API) — 키 원문은 절대 렌더러로 돌려주지 않는다
   ipcMain.handle(IPC.apiConfigGet, async () => apiConfigStatus())

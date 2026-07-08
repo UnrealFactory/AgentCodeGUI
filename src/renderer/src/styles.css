@@ -2381,6 +2381,23 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
 .ver-name{ font-size:14px; font-weight:600; }
 .ver-meta{ font-size:12px; color:var(--text-4); margin-top:2px; }
 
+/* 계정(Account) 목록 — 카드 안에 계정 행을 쌓고 사이에 얇은 구분선 */
+.acct-row{ display:flex; align-items:center; gap:13px; padding:14px 18px; }
+.acct-row + .acct-row{ border-top:1px solid var(--line); }
+.acct-row .ver-ic{ width:34px; height:34px; flex:0 0 34px; border-radius:9px; }
+.acct-badge{ font-size:10px; font-weight:700; color:var(--green); background:var(--green-soft);
+  border-radius:99px; padding:2px 7px; margin-left:6px; vertical-align:middle; letter-spacing:.02em; }
+.acct-x{ flex:none; width:30px; height:30px; display:grid; place-items:center; border-radius:8px;
+  color:var(--text-4); transition:background .12s, color .12s; }
+.acct-x:hover{ background:color-mix(in oklab, var(--red) 12%, transparent); color:var(--red); }
+.acct-x:disabled{ opacity:.4; pointer-events:none; }
+/* 계정 추가 — 목록 아래 전폭 버튼 */
+.acct-add{ display:flex; align-items:center; justify-content:center; gap:7px; width:100%;
+  padding:11px; border-top:1px solid var(--line); color:var(--text-3); font-size:12.5px; font-weight:600;
+  transition:background .12s, color .12s; }
+.acct-add:hover{ background:var(--surface-2); color:var(--text); }
+.acct-add:disabled{ opacity:.5; pointer-events:none; }
+
 .ext-list{ display:flex; flex-direction:column; }
 .ext-item{ display:flex; align-items:center; gap:13px; padding:13px 16px; border:1px solid var(--line); background:var(--surface); }
 .ext-item:first-child{ border-radius:12px 12px 0 0; }

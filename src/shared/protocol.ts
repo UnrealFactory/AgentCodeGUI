@@ -418,6 +418,23 @@ export interface ApiConfigStatus {
   spentUsd: number // API 모드 실행의 누적 비용(USD)
 }
 
+/** 클로드 계정(구독) 로그인 상태 — `claude auth status --json`을 정규화한 값. */
+export interface AuthStatus {
+  loggedIn: boolean
+  email?: string
+  authMethod?: string // 'claude.ai'(구독) 등
+  subscriptionType?: string // 'max' · 'pro' 등
+  orgName?: string
+  error?: string // 상태 조회/실행 실패 사유 (있으면 UI에 안내)
+}
+
+/** 저장된(전환 가능한) 계정 1건 — 크리덴셜 스냅샷은 앱 홈에 암호화 보관, 여기엔 표시용 메타만. */
+export interface AccountInfo {
+  email: string
+  subscriptionType?: string
+  active: boolean // 지금 ~/.claude 에 활성화된 계정인가
+}
+
 /** 어떤 화면의 엔진이 실행했는지 — 사용 통계의 분류 축. */
 export type ApiUsageSource = 'chat' | 'ask' | 'talk' | 'ma'
 
@@ -597,6 +614,16 @@ export const IPC = {
   pickAttachments: 'dialog:pick-attachments', // open dialog filtered to attachable files (images + text); returns absolute paths
   saveAttachmentData: 'attachment:save-data', // persist pasted/dropped raw attachment bytes to a temp file; returns its path
   getUsage: 'usage:get',
+  // 클로드 계정(구독 OAuth) 로그인 — 번들 CLI의 `claude auth …`를 호출한다. 로그인/로그아웃은
+  // ~/.claude/.credentials.json을 바꾸므로 앱 전체 실행 인증에 영향을 준다.
+  authStatus: 'auth:status', // `claude auth status --json` → 로그인 여부·이메일·플랜
+  authLogin: 'auth:login', // `claude auth login` (브라우저 OAuth) — 완료 시 새 상태 반환
+  authLogout: 'auth:logout', // `claude auth logout` — 로그아웃 후 새 상태 반환
+  authLoginCancel: 'auth:login-cancel', // 진행 중인 로그인 프로세스 중단
+  authLoginUrl: 'auth:login-url', // main→renderer: 로그인 OAuth URL (브라우저가 안 열릴 때 폴백 링크)
+  authListAccounts: 'auth:list-accounts', // 저장된(전환 가능한) 계정 목록 + 활성 표시
+  authSwitchAccount: 'auth:switch-account', // 저장된 계정으로 전환(크리덴셜 스왑) → 새 상태
+  authRemoveAccount: 'auth:remove-account', // 저장 목록에서 계정 제거(활성 로그인은 안 건드림)
   apiConfigGet: 'api-config:get', // API 키/예산/누적 사용액 스냅샷 (키 원문 제외)
   apiConfigSetKey: 'api-config:set-key', // API 키 저장 (safeStorage 암호화)
   apiConfigClearKey: 'api-config:clear-key', // 저장된 API 키 삭제

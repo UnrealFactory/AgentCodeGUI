@@ -32,6 +32,13 @@ export const IconSearch = (p: IconProps) => (
     <path d="M21 21l-4.3-4.3" />
   </Icon>
 )
+// 계정 — 사람 실루엣 (설정 → 계정 탭)
+export const IconUser = (p: IconProps) => (
+  <Icon {...p}>
+    <circle cx={12} cy={8} r={4} />
+    <path d="M4 21c0-4 3.6-6 8-6s8 2 8 6" />
+  </Icon>
+)
 // 필터 — 줄어드는 가로선 3개. "Verse 위주로 보기" 토글에 쓴다(앱의 라인아트 톤 유지)
 export const IconFilter = (p: IconProps) => (
   <Icon {...p}>

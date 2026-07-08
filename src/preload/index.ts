@@ -59,6 +59,16 @@ const api: WindowApi = {
   // File is passed through the contextBridge function call and resolved to its OS path
   pathForFile: (file: File) => webUtils.getPathForFile(file),
   getUsage: (fresh?: boolean) => ipcRenderer.invoke(IPC.getUsage, fresh),
+  auth: {
+    status: () => ipcRenderer.invoke(IPC.authStatus),
+    logout: () => ipcRenderer.invoke(IPC.authLogout),
+    login: (useConsole?: boolean) => ipcRenderer.invoke(IPC.authLogin, useConsole),
+    cancelLogin: () => ipcRenderer.invoke(IPC.authLoginCancel),
+    onLoginUrl: (cb: (url: string) => void) => subscribe(IPC.authLoginUrl, cb),
+    listAccounts: () => ipcRenderer.invoke(IPC.authListAccounts),
+    switchAccount: (email: string) => ipcRenderer.invoke(IPC.authSwitchAccount, email),
+    removeAccount: (email: string) => ipcRenderer.invoke(IPC.authRemoveAccount, email)
+  },
   apiConfig: {
     get: () => ipcRenderer.invoke(IPC.apiConfigGet),
     setKey: (key: string) => ipcRenderer.invoke(IPC.apiConfigSetKey, key),

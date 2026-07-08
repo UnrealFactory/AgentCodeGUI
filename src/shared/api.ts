@@ -11,6 +11,8 @@ import type {
   ResizeEdge,
   UsageInfo,
   ApiConfigStatus,
+  AuthStatus,
+  AccountInfo,
   ApiUsageRecord,
   UserProfile,
   EngineVersionEntry,
@@ -58,6 +60,26 @@ export interface WindowApi {
   /** 구독 사용량 (한도·추가 크레딧). 기본은 5분 캐시 — fresh=true는 15초 바닥만 지키고
    *  새로 받아온다 (실행 종료·컨텍스트 팝오버 열기 등 "지금 값"이 필요한 순간용) */
   getUsage(fresh?: boolean): Promise<UsageInfo>
+  /** 클로드 계정(구독 OAuth) 로그인 — 번들 CLI의 `claude auth …`를 감싼다 (설정 → 계정). */
+  auth: {
+    /** 현재 로그인 상태 (이메일·플랜·로그인 여부) */
+    status(): Promise<AuthStatus>
+    /** 로그아웃 후 새 상태를 돌려준다 */
+    logout(): Promise<AuthStatus>
+    /** 로그인 시작 — 브라우저 OAuth. 완료(또는 취소/타임아웃)되면 새 상태를 돌려준다.
+     *  useConsole=true 면 구독 대신 Anthropic 콘솔(API) 계정으로 로그인한다. */
+    login(useConsole?: boolean): Promise<AuthStatus & { ok: boolean }>
+    /** 진행 중인 로그인 프로세스를 중단한다 */
+    cancelLogin(): Promise<void>
+    /** 로그인 OAuth URL 수신 (브라우저가 안 열릴 때 폴백 링크용) */
+    onLoginUrl(cb: (url: string) => void): () => void
+    /** 저장된(전환 가능한) 계정 목록 — 현재 활성 계정은 active:true */
+    listAccounts(): Promise<AccountInfo[]>
+    /** 저장된 계정으로 전환(크리덴셜 스왑, 재로그인 없이) → 새 상태 */
+    switchAccount(email: string): Promise<AuthStatus>
+    /** 저장 목록에서 계정 제거(활성 로그인 자체는 안 건드림) → 갱신된 목록 */
+    removeAccount(email: string): Promise<AccountInfo[]>
+  }
   /** API 키 과금 설정 (설정 → API + 컴포저 API 토글). 모든 호출이 최신 스냅샷을 돌려준다. */
   apiConfig: {
     get(): Promise<ApiConfigStatus>
