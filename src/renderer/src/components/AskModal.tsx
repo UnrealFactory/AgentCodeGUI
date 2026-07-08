@@ -2,7 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 import type { AppUser, RunRequest } from '@shared/protocol'
 import { useAgentSession, sameCwd } from '../store/session'
 import { MessageView, WorkingIndicator, PermissionModal, QuestionModal, RunPickers, type PickerState } from './Chat'
-import { IconChevDown, IconClose, IconSend } from './icons'
+import { FileBadge } from './fileType'
+import { imageSrc, imageName, isImagePath, isAttachablePath, filesToAttachmentPaths } from '../lib/images'
+import { IconChevDown, IconClose, IconPaperclip, IconSend, IconX2 } from './icons'
 
 // "/ask" — a throwaway, one-shot conversation that lives entirely apart from the work
 // chat. It runs on its OWN engine instance (window.api.ask.*), so it never cancels the
@@ -38,11 +40,45 @@ export function AskModal({
     window.api.ask?.onEvent?.(cb) ?? (() => {})
   )
   const [input, setInput] = useState(initialText ?? '')
+  // 첨부(이미지·텍스트 파일) — 메인 컴포저와 동일하게 경로 노트로 엔진에 전달돼 Read 도구가
+  // 읽는다. /ask는 일회용이라 전송하면 함께 비운다(모달을 닫으면 그대로 사라진다).
+  const [images, setImages] = useState<string[]>([])
   // /ask 자체의 실행 설정 — 열릴 때 메인 컴포저의 선택을 이어받고, 여기서 바꾸면 이 질문
   // 세션에만 적용된다(메인 대화의 picker는 건드리지 않는다). 모달이 닫히면 함께 사라진다.
   const [pk, setPk] = useState<PickerState>(picker)
   const scrollRef = useRef<HTMLDivElement>(null)
   const taRef = useRef<HTMLTextAreaElement>(null)
+  // dragenter/leave가 자식마다 튀어 플래그가 깜빡이므로 깊이 카운터로 센다(메인 컴포저와 동일)
+  const dragDepth = useRef(0)
+  const [dragOver, setDragOver] = useState(false)
+
+  // 새 경로를 기존 첨부에 중복 없이 이어 붙인다
+  const addPaths = (paths: string[]): void => {
+    if (paths.length) setImages((prev) => Array.from(new Set([...prev, ...paths])))
+  }
+  const addFromPicker = async (): Promise<void> => {
+    addPaths(await window.api.pickAttachments())
+  }
+  const removeImage = (i: number): void => setImages((prev) => prev.filter((_, j) => j !== i))
+
+  // 드롭·붙여넣기 — 이미지와 읽을 수 있는 텍스트 파일을 첨부로 받는다(메인 컴포저와 동일)
+  const onDrop = async (e: React.DragEvent): Promise<void> => {
+    dragDepth.current = 0
+    setDragOver(false)
+    if (!e.dataTransfer.files?.length) return
+    e.preventDefault()
+    addPaths(await filesToAttachmentPaths(e.dataTransfer.files))
+  }
+  const onPaste = async (e: React.ClipboardEvent<HTMLTextAreaElement>): Promise<void> => {
+    const files = Array.from(e.clipboardData.files || []).filter(
+      (f) => f.type.startsWith('image/') || isAttachablePath(f.name)
+    )
+    if (!files.length) return
+    e.preventDefault()
+    addPaths(await filesToAttachmentPaths(files))
+  }
+  const dragHasFile = (e: React.DragEvent): boolean =>
+    Array.from(e.dataTransfer.items || []).some((it) => it.kind === 'file')
 
   const started = state.messages.length > 0
 
@@ -95,10 +131,15 @@ export function AskModal({
 
   const send = (): void => {
     const text = input.trim()
-    if (!text || busy) return
-    begin(text)
+    // 첨부만 있고 글이 없어도 보낼 수 있다(메인 컴포저와 동일)
+    if ((!text && images.length === 0) || busy) return
+    begin(text, null, images)
+    // 첨부 경로를 프롬프트 노트로 접어 넣는다 — 엔진이 Read 도구로 읽는다(메인 컴포저와 동일)
+    const promptForEngine = images.length
+      ? `${text}\n\n[첨부 파일 — Read 도구로 확인하세요]\n${images.map((p) => '- ' + p).join('\n')}`.trim()
+      : text
     const req: RunRequest = {
-      prompt: text,
+      prompt: promptForEngine,
       model: pk.model,
       effort: pk.effort,
       mode: pk.mode,
@@ -112,6 +153,7 @@ export function AskModal({
       useApi: apiMode || undefined
     }
     setInput('')
+    setImages([])
     requestAnimationFrame(() => grow(taRef.current))
     window.api.ask?.run(req).catch(() => {})
   }
@@ -248,7 +290,58 @@ export function AskModal({
               <div className="ask-pickers">
                 <RunPickers picker={pk} setPicker={setPk} apiMode={apiMode} apiReady={apiReady} onApiModeChange={onApiModeChange} />
               </div>
-              <div className={'ask-composer' + (busy ? ' busy' : '')}>
+              {/* 첨부 트레이 — 컴포저 위. 이미지는 썸네일, 텍스트/문서는 파일명 칩(메인 컴포저와 동일) */}
+              {images.length > 0 && (
+                <div className="img-tray ask-tray">
+                  {images.map((p, i) =>
+                    isImagePath(p) ? (
+                      <div className="img-thumb has-tip" data-tip={imageName(p)} key={p + i}>
+                        <span className="img-thumb-open">
+                          <img src={imageSrc(p)} alt={imageName(p)} draggable={false} />
+                        </span>
+                        <button className="img-thumb-x has-tip" onClick={() => removeImage(i)} aria-label="제거" data-tip="제거">
+                          <IconX2 size={11} />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="img-thumb doc has-tip tip-path" data-tip={p} key={p + i}>
+                        <span className="img-thumb-open">
+                          <FileBadge path={p} size={15} />
+                          <span className="doc-name">{imageName(p)}</span>
+                        </span>
+                        <button className="img-thumb-x has-tip" onClick={() => removeImage(i)} aria-label="제거" data-tip="제거">
+                          <IconX2 size={11} />
+                        </button>
+                      </div>
+                    )
+                  )}
+                </div>
+              )}
+              <div
+                className={'ask-composer' + (busy ? ' busy' : '') + (dragOver ? ' drag' : '')}
+                onDragEnter={(e) => {
+                  if (!dragHasFile(e)) return
+                  dragDepth.current += 1
+                  setDragOver(true)
+                }}
+                onDragOver={(e) => {
+                  if (dragHasFile(e)) e.preventDefault()
+                }}
+                onDragLeave={() => {
+                  dragDepth.current = Math.max(0, dragDepth.current - 1)
+                  if (dragDepth.current === 0) setDragOver(false)
+                }}
+                onDrop={onDrop}
+              >
+                <button
+                  className="ask-attach has-tip"
+                  data-tip="파일 첨부 (이미지·텍스트)"
+                  aria-label="파일 첨부"
+                  onClick={addFromPicker}
+                  disabled={busy}
+                >
+                  <IconPaperclip size={17} />
+                </button>
                 <textarea
                   ref={taRef}
                   rows={1}
@@ -259,6 +352,7 @@ export function AskModal({
                     setInput(e.target.value)
                     grow(e.target)
                   }}
+                  onPaste={onPaste}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && !e.shiftKey) {
                       e.preventDefault()
@@ -266,7 +360,13 @@ export function AskModal({
                     }
                   }}
                 />
-                <button className="ask-send has-tip" data-tip="보내기 (Enter)" aria-label="보내기" onClick={send} disabled={busy || !input.trim()}>
+                <button
+                  className="ask-send has-tip"
+                  data-tip="보내기 (Enter)"
+                  aria-label="보내기"
+                  onClick={send}
+                  disabled={busy || (!input.trim() && images.length === 0)}
+                >
                   <IconSend size={17} />
                 </button>
               </div>

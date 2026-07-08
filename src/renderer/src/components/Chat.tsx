@@ -865,6 +865,219 @@ export function SelectionToolbar({
   )
 }
 
+// ── 채팅 내 검색 (Ctrl+F) ────────────────────────────────────
+// 파일 뷰어의 FindBar와 같은 CSS Custom Highlight API로 스레드 텍스트에 매치를 칠한다 —
+// DOM(innerHTML)을 건드리지 않아 마크다운·스트리밍 렌더와 충돌하지 않는다. 하이라이트
+// 키(chatfind)는 CSS ::highlight() 선택자와 묶여 고정이라, 한 번에 한 검색 바만 열려
+// 있어야 한다 — 멀티 모드에선 active(포커스/확대된 패널)만 반응하고 나머지는 스스로 닫는다.
+interface CFHighlightCtor {
+  new (...r: Range[]): unknown
+}
+const CF_HL = (globalThis as unknown as { Highlight?: CFHighlightCtor }).Highlight
+const CF_REG = (CSS as unknown as { highlights?: Map<string, unknown> }).highlights
+// Ctrl+F를 스스로 처리하는 오버레이(파일 뷰어·설정·깃 등)가 떠 있으면 채팅 검색은 비켜선다
+const CF_BLOCKING = '.fv-overlay, .set-overlay, .gitm-overlay, .ask-overlay, .iv-overlay, .sa-overlay, .set-dialog-overlay'
+
+// 스크롤 컨테이너 안 텍스트 노드를 훑어 q(대소문자 무시)의 매치마다 Range를 만든다.
+// 컨테이너 전체를 한 블록으로 스캔해 마크다운 span 으로 쪼개진 텍스트 경계를 넘는 매치도 잡는다.
+function collectChatRanges(root: HTMLElement, q: string): Range[] {
+  const query = q.toLowerCase()
+  if (!query) return []
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+  const nodes: Text[] = []
+  const offs: number[] = []
+  let text = ''
+  for (let n = walker.nextNode() as Text | null; n; n = walker.nextNode() as Text | null) {
+    nodes.push(n)
+    offs.push(text.length)
+    text += n.data
+  }
+  if (!text) return []
+  const low = text.toLowerCase()
+  // pos(전체 문자 오프셋) → 그 글자가 든 텍스트 노드와 노드 내 오프셋
+  const locate = (pos: number, isEnd: boolean): { n: Text; o: number } => {
+    const p = isEnd ? pos - 1 : pos
+    let i = offs.length - 1
+    while (i > 0 && offs[i] > p) i--
+    return { n: nodes[i], o: pos - offs[i] }
+  }
+  const out: Range[] = []
+  let idx = low.indexOf(query)
+  while (idx >= 0 && out.length < 2000) {
+    const s = locate(idx, false)
+    const e = locate(idx + query.length, true)
+    try {
+      const r = document.createRange()
+      r.setStart(s.n, s.o)
+      r.setEnd(e.n, e.o)
+      out.push(r)
+    } catch {
+      /* 경계 계산이 어긋난 매치는 건너뛴다 */
+    }
+    idx = low.indexOf(query, idx + Math.max(query.length, 1))
+  }
+  return out
+}
+
+export function ChatFind({
+  scrollRef,
+  active = true,
+  panel = false
+}: {
+  scrollRef: React.RefObject<HTMLElement | null>
+  active?: boolean // Ctrl+F에 반응할지 — 멀티 모드에선 포커스/확대된 패널만 true
+  panel?: boolean // 멀티 패널 안(작은 폭)에 뜨는 변형
+}) {
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const [cur, setCur] = useState(0)
+  const [total, setTotal] = useState(0)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const rangesRef = useRef<Range[]>([])
+  const queryRef = useRef(query)
+  queryRef.current = query
+
+  const clearHl = (): void => {
+    CF_REG?.delete('chatfind')
+    CF_REG?.delete('chatfind-cur')
+  }
+  // 닫기 — 하이라이트까지 걷어낸다
+  const close = (): void => {
+    setOpen(false)
+    setQuery('')
+    setCur(0)
+    setTotal(0)
+    clearHl()
+  }
+
+  // Ctrl+F: 열기(이미 열려 있으면 입력 재선택). active 인스턴스만, Ctrl+F를 스스로 갖는
+  // 오버레이가 없고 이 채팅 표면이 실제로 화면에 떠 있을 때만 반응한다.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (!((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 'f')) return
+      if (!active) return
+      const root = scrollRef.current
+      if (!root || root.offsetParent === null) return
+      if (document.querySelector(CF_BLOCKING)) return
+      e.preventDefault()
+      if (open) {
+        inputRef.current?.select()
+        return
+      }
+      // 짧은 한 줄 선택이 있으면 초기 검색어로 (브라우저 Ctrl+F 관례)
+      const sel = window.getSelection()?.toString().trim() ?? ''
+      setQuery(sel && sel.length <= 80 && !sel.includes('\n') ? sel : '')
+      setOpen(true)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [active, open, scrollRef])
+
+  // 비활성(멀티 모드에서 포커스를 잃은 패널)이 되면 닫아 한 번에 하나만 열리게 한다
+  useEffect(() => {
+    if (!active && open) close()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active])
+
+  // 언마운트 시 하이라이트 정리
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => () => clearHl(), [])
+
+  // 열리면 입력에 포커스(초기 검색어가 있으면 전체 선택해 바로 덮어쓰기 쉽게)
+  useEffect(() => {
+    if (open) inputRef.current?.select()
+  }, [open])
+
+  // 쿼리/본문 변화 → 매치 재수집 + 전체 하이라이트. 스트리밍으로 스레드가 바뀌면
+  // MutationObserver로 다시 칠한다(아래에서 150ms로 묶어 과도한 재계산을 막는다).
+  useEffect(() => {
+    if (!open) return
+    const root = scrollRef.current
+    if (!root) return
+    const run = (reset: boolean): void => {
+      const rs = collectChatRanges(root, queryRef.current)
+      rangesRef.current = rs
+      setTotal(rs.length)
+      // 새 검색어면 첫 매치로(reset), 스트리밍 재계산이면 현재 위치를 최대한 유지(clamp)
+      setCur((c) => (rs.length ? (reset ? 0 : Math.min(c, rs.length - 1)) : 0))
+      CF_REG?.delete('chatfind')
+      if (rs.length && CF_HL && CF_REG) CF_REG.set('chatfind', new CF_HL(...rs))
+      if (!rs.length) CF_REG?.delete('chatfind-cur')
+    }
+    run(true)
+    // 스트리밍 중엔 characterData가 초당 여러 번 바뀐다 — 150ms로 묶어 재계산 부담을 던다
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const obs = new MutationObserver(() => {
+      if (timer) return
+      timer = setTimeout(() => {
+        timer = null
+        run(false)
+      }, 150)
+    })
+    obs.observe(root, { childList: true, subtree: true, characterData: true })
+    return () => {
+      obs.disconnect()
+      if (timer) clearTimeout(timer)
+    }
+  }, [open, query, scrollRef])
+
+  // 현재 매치 강조 + (화면 밖일 때만) 가운데로 스크롤 — 스트리밍 재계산에 화면이 튀지 않게
+  useEffect(() => {
+    if (!open) return
+    CF_REG?.delete('chatfind-cur')
+    const r = rangesRef.current[cur]
+    if (!r) return
+    if (CF_HL && CF_REG) CF_REG.set('chatfind-cur', new CF_HL(r))
+    const el = r.startContainer.nodeType === Node.TEXT_NODE ? r.startContainer.parentElement : (r.startContainer as Element)
+    const cont = scrollRef.current
+    if (el && cont) {
+      const er = el.getBoundingClientRect()
+      const cr = cont.getBoundingClientRect()
+      if (er.top < cr.top + 8 || er.bottom > cr.bottom - 8) el.scrollIntoView({ block: 'center' })
+    }
+  }, [cur, total, open, scrollRef])
+
+  const step = (d: number): void => {
+    const n = rangesRef.current.length
+    if (!n) return
+    setCur((c) => (c + d + n) % n)
+  }
+
+  if (!open) return null
+  return (
+    <div className={'fv-find chat-find' + (panel ? ' chat-find--panel' : '')}>
+      <IconSearch size={13} />
+      <input
+        ref={inputRef}
+        autoFocus
+        value={query}
+        placeholder="채팅 내 검색…"
+        onChange={(e) => setQuery(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault()
+            step(e.shiftKey ? -1 : 1)
+          } else if (e.key === 'Escape') {
+            e.preventDefault()
+            e.stopPropagation()
+            close()
+          }
+        }}
+      />
+      <span className="cnt">{total ? `${cur + 1}/${total}` : query ? '0개' : ''}</span>
+      <button className="has-tip" data-tip="이전 (Shift+Enter)" aria-label="이전 결과" onClick={() => step(-1)} disabled={!total}>
+        <IconChevDown size={14} style={{ transform: 'rotate(180deg)' }} />
+      </button>
+      <button className="has-tip" data-tip="다음 (Enter)" aria-label="다음 결과" onClick={() => step(1)} disabled={!total}>
+        <IconChevDown size={14} />
+      </button>
+      <button className="has-tip" data-tip="닫기 (Esc)" aria-label="검색 닫기" onClick={close}>
+        <IconClose size={14} />
+      </button>
+    </div>
+  )
+}
+
 // 에이전트(코드) 모드 — 코드베이스를 직접 다루는 작업 위주
 const WELCOME_SUGGESTIONS: { icon: typeof IconPencil; label: string }[] = [
   { icon: IconEye, label: '이 프로젝트의 구조를 설명해줘' },

@@ -9,7 +9,7 @@ import { Sidebar, type WorkspaceMode } from './components/Sidebar'
 import { MultiWorkspace } from './components/MultiAgent'
 import { ChatWorkspace } from './components/ChatWorkspace'
 import { getPref, setPref } from './lib/prefs'
-import { ChatHeader, Composer, MessageView, QuestionModal, PermissionModal, SelectionToolbar, WelcomeState, WorkBar, WorkingIndicator, nextMode, pickerModelOf, type PickerState, type ScheduledMsg } from './components/Chat'
+import { ChatHeader, ChatFind, Composer, MessageView, QuestionModal, PermissionModal, SelectionToolbar, WelcomeState, WorkBar, WorkingIndicator, nextMode, pickerModelOf, type PickerState, type ScheduledMsg } from './components/Chat'
 import { SubAgentModal } from './components/AgentPanel'
 import { Explorer } from './components/Explorer'
 import { AskModal } from './components/AskModal'
@@ -551,9 +551,22 @@ function MainApp({ user }: { user: AppUser }) {
   createChatRef.current = createChat
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'n') {
+      // Shift+Ctrl+N is a separate shortcut (new session window) — don't also make a chat
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'n') {
         e.preventDefault()
         createChatRef.current()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  // Ctrl/⌘+Shift+N — open a new independent session window (works in any mode)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'n') {
+        e.preventDefault()
+        window.api.openSessionWindow().catch(() => {})
       }
     }
     window.addEventListener('keydown', onKey)
@@ -1153,6 +1166,7 @@ function MainApp({ user }: { user: AppUser }) {
             )}
           </div>
           <SelectionToolbar scrollRef={scrollRef} onElaborate={onElaborateSelection} />
+          <ChatFind scrollRef={scrollRef} />
           <WorkBar
             todos={state.todos}
             files={state.files}

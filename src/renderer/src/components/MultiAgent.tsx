@@ -17,6 +17,7 @@ import {
   PermissionModal,
   QuestionModal,
   SelectionToolbar,
+  ChatFind,
   windowTokensFor,
   fmtTok,
   fmtWindow,
@@ -872,6 +873,7 @@ const PanelView = memo(function PanelView({
             </div>
           )}
         </div>
+        <ChatFind scrollRef={scrollRef} active={focused || expanded} panel />
       </div>
 
       <SelectionToolbar scrollRef={scrollRef} onElaborate={onElaborate} />

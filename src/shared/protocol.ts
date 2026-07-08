@@ -585,6 +585,14 @@ export const IPC = {
   talkQuestionRespond: 'talk:question-respond',
   talkGet: 'talk:get', // load the persisted chat-workspace conversations (or null)
   talkSave: 'talk:save', // persist the chat-workspace conversations so they survive a restart
+  // 세션 창 — "추가 세션": 어느 모드에서든 새 OS 창(네이티브 프레임, 크기조절 자유)을 하나
+  // 더 띄워 독립 대화를 굴린다. 창마다 자기 엔진을 갖고, 이벤트는 그 창의 webContents로만
+  // 라우팅된다(sessionEvent). 기존 채널/메인 창 로직은 건드리지 않는 순수 추가 채널이다.
+  openSessionWindow: 'win:open-session', // 새 세션 창을 띄운다 (타이틀바 + / Ctrl+Shift+N)
+  sessionRun: 'session:run',
+  sessionCancel: 'session:cancel',
+  sessionPermissionRespond: 'session:permission-respond',
+  sessionQuestionRespond: 'session:question-respond',
   pickDirectory: 'dialog:pick-directory',
   pickAttachments: 'dialog:pick-attachments', // open dialog filtered to attachable files (images + text); returns absolute paths
   saveAttachmentData: 'attachment:save-data', // persist pasted/dropped raw attachment bytes to a temp file; returns its path
@@ -676,6 +684,7 @@ export const IPC = {
   askEvent: 'ask:event', // streamed events from the /ask engine (separate channel)
   maEvent: 'ma:event', // streamed events from every multi-agent engine (wrapped with panelId)
   talkEvent: 'talk:event', // streamed events from the 채팅 (pure conversation) engine
+  sessionEvent: 'session:event', // streamed events from a session window's own engine
   engineInstallProgress: 'engine:install-progress',
   lspInstallProgress: 'lsp:install-progress', // streamed progress while downloading a language server
   winState: 'win:state'

@@ -244,6 +244,21 @@ export interface WindowApi {
     /** subscribe to the 채팅 engine's streaming events (returns an unsubscribe fn) */
     onEvent(cb: (event: EngineEvent) => void): () => void
   }
+  /** open a new "session" window — an independent OS window (native frame, freely
+   *  resizable, movable to a second monitor) running its own conversation on its own
+   *  engine. Callable from any mode; each window is fully independent of the others. */
+  openSessionWindow(): Promise<void>
+  /** 세션 창 — the chat that lives inside a session window. Its own engine per window,
+   *  events routed only to that window (sessionEvent). Same payload shapes as the main
+   *  chat; the run/cancel/respond are resolved to the calling window's engine in main. */
+  session: {
+    run(req: RunRequest): Promise<string>
+    cancel(): Promise<void>
+    respondPermission(res: PermissionResponse): Promise<void>
+    respondQuestion(res: QuestionResponse): Promise<void>
+    /** subscribe to THIS window's session engine events (returns an unsubscribe fn) */
+    onEvent(cb: (event: EngineEvent) => void): () => void
+  }
   /** Multi-agent — a pool of independent engines, one per on-screen panel, all running
    *  in parallel. Each command names its panel; events arrive on a shared channel and
    *  are delivered per-panel by `onEvent(panelId, …)`. */

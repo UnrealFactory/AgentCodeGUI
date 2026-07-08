@@ -12,6 +12,7 @@ import {
 } from '../store/session'
 import {
   ChatHeader,
+  ChatFind,
   Composer,
   MessageView,
   QuestionModal,
@@ -371,7 +372,8 @@ export function ChatWorkspace({
   createChatRef.current = createChat
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'n') {
+      // Shift+Ctrl+N is the new-session-window shortcut — leave it for App's handler
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'n') {
         e.preventDefault()
         createChatRef.current()
       }
@@ -647,6 +649,7 @@ export function ChatWorkspace({
           )}
         </div>
         <SelectionToolbar scrollRef={scrollRef} onElaborate={onElaborateSelection} />
+        <ChatFind scrollRef={scrollRef} />
         <WorkBar
           todos={state.todos}
           files={state.files}

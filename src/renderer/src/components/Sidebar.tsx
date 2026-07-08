@@ -405,6 +405,17 @@ export const Sidebar = memo(function Sidebar({
         </div>
       )}
 
+      {/* 추가 채팅 — 지금 작업과 따로 굴러가는 독립 대화를 새 창으로 연다 (어느 모드에서든) */}
+      <button
+        className="sb-new sb-addchat has-tip"
+        onClick={() => window.api.openSessionWindow().catch(() => {})}
+        data-tip="새 창으로 독립 대화 — 지금 작업과 따로 굴러가요"
+      >
+        <IconMessage size={16} />
+        <span>추가 채팅</span>
+        <span className="kbd">{isMac ? '⌘ Shift N' : 'Ctrl Shift N'}</span>
+      </button>
+
       <button className="sb-new has-tip" onClick={onNewChat} disabled={busy} data-tip={busy ? '작업이 끝난 뒤 시작할 수 있어요' : newTip}>
         <IconPlus size={16} />
         <span>{newLabel}</span>

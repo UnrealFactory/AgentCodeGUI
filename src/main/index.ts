@@ -1,4 +1,4 @@
-import { app, BrowserWindow, crashReporter, ipcMain, dialog, shell, session, screen, protocol } from 'electron'
+import { app, BrowserWindow, crashReporter, ipcMain, dialog, shell, session, screen, protocol, type WebContents } from 'electron'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import fs from 'node:fs'
@@ -405,6 +405,88 @@ function maEngine(panelId: string): ClaudeEngine {
   return eng
 }
 
+// ── session windows ("추가 세션") ───────────────────────────
+// Each session window is an INDEPENDENT OS window with its OWN engine; events route only
+// to that window's webContents (never the shared mainWindow send()). Keyed by
+// webContents.id so any number of session windows stay fully isolated from each other and
+// from the main window. Purely additive — the main window's channels/chrome are untouched.
+const sessionEngines = new Map<number, ClaudeEngine>()
+function sessionEngineFor(wc: WebContents): ClaudeEngine {
+  let eng = sessionEngines.get(wc.id)
+  if (!eng) {
+    eng = new ClaudeEngine((event: EngineEvent) => {
+      if (!wc.isDestroyed()) wc.send(IPC.sessionEvent, event)
+    }, 'chat')
+    sessionEngines.set(wc.id, eng)
+  }
+  return eng
+}
+
+function createSessionWindow(): void {
+  // native frame → OS resize / move / maximize / second-monitor all come for free, and we
+  // never touch the main window's custom frameless chrome + snap plumbing.
+  const win = new BrowserWindow({
+    width: 460,
+    height: 700,
+    minWidth: 360,
+    minHeight: 440,
+    show: false,
+    // KEEP the native frame (so OS resize works) but hide its title bar — the renderer
+    // draws our own title bar + window controls (routed to this window). No ugly native bar.
+    titleBarStyle: 'hidden',
+    // hide the default "File Edit View Window" menu bar too; Alt still reveals it so the
+    // standard edit accelerators (copy/paste/…) stay intact.
+    autoHideMenuBar: true,
+    backgroundColor: '#1a1a1a',
+    title: '추가 채팅 — AgentCodeGUI',
+    webPreferences: {
+      preload: path.join(__dirname, '../preload/index.mjs'),
+      contextIsolation: true,
+      sandbox: false
+    }
+  })
+  const wcId = win.webContents.id
+
+  win.once('ready-to-show', () => win.show())
+
+  // never navigate the app away; open external links in the OS browser (mirrors mainWindow)
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    try {
+      const { protocol: p } = new URL(url)
+      if (p === 'https:' || p === 'http:') shell.openExternal(url)
+    } catch {
+      /* malformed URL — ignore */
+    }
+    return { action: 'deny' }
+  })
+  win.webContents.on('will-navigate', (event, url) => {
+    const dev = process.env['ELECTRON_RENDERER_URL']
+    const allowed = (dev && url.startsWith(dev)) || url.startsWith('file:')
+    if (!allowed) event.preventDefault()
+  })
+
+  // our custom title bar reflects maximize state via winState — send it to THIS window
+  // (session windows use native maximize, not the main window's custom scheme)
+  win.on('maximize', () => win.webContents.send(IPC.winState, { maximized: true }))
+  win.on('unmaximize', () => win.webContents.send(IPC.winState, { maximized: false }))
+
+  // release this window's engine (and its CLI subprocess) when it closes
+  win.on('closed', () => {
+    const eng = sessionEngines.get(wcId)
+    if (eng) {
+      eng.cancel().catch(() => {})
+      sessionEngines.delete(wcId)
+    }
+  })
+
+  const devUrl = process.env['ELECTRON_RENDERER_URL']
+  if (devUrl) {
+    win.loadURL(devUrl + '#session')
+  } else {
+    win.loadFile(path.join(__dirname, '../renderer/index.html'), { hash: 'session' })
+  }
+}
+
 function createWindow(): void {
   const state = loadWindowState()
   const positioned = isOnScreen(state)
@@ -622,6 +704,22 @@ function registerIpc(): void {
   ipcMain.handle(IPC.talkQuestionRespond, async (_e, res: QuestionResponse) => talkEngine.respondQuestion(res))
   ipcMain.handle(IPC.talkGet, async () => readTalk())
   ipcMain.handle(IPC.talkSave, async (_e, data: unknown) => writeTalk(data))
+
+  // 세션 창 — open a new independent window; run/cancel/respond resolve to the CALLING
+  // window's own engine (via _e.sender), so each window's conversation stays isolated.
+  ipcMain.handle(IPC.openSessionWindow, async () => {
+    createSessionWindow()
+  })
+  ipcMain.handle(IPC.sessionRun, async (_e, req: RunRequest) => sessionEngineFor(_e.sender).run(req))
+  ipcMain.handle(IPC.sessionCancel, async (_e) => {
+    await sessionEngines.get(_e.sender.id)?.cancel()
+  })
+  ipcMain.handle(IPC.sessionPermissionRespond, async (_e, res: PermissionResponse) =>
+    sessionEngines.get(_e.sender.id)?.respondPermission(res)
+  )
+  ipcMain.handle(IPC.sessionQuestionRespond, async (_e, res: QuestionResponse) =>
+    sessionEngines.get(_e.sender.id)?.respondQuestion(res)
+  )
 
   // multi-agent — route each command to its panel's engine (lazily created on first run)
   ipcMain.handle(IPC.maRun, async (_e, req: MultiRunRequest) => maEngine(req.panelId).run(req))
@@ -975,13 +1073,24 @@ function registerIpc(): void {
       .catch((e) => ({ ok: false as const, error: (e as Error).message || '해제하지 못했어요' }))
   )
 
-  ipcMain.handle(IPC.winMinimize, async () => mainWindow?.minimize())
-  ipcMain.handle(IPC.winMaximizeToggle, async () => {
-    setMaximized(!customMaximized)
-    return customMaximized
+  // window controls resolve to the CALLING window — the main window keeps its custom
+  // maximize scheme; session windows (native frame) use native maximize/restore.
+  ipcMain.handle(IPC.winMinimize, async (_e) => (BrowserWindow.fromWebContents(_e.sender) ?? mainWindow)?.minimize())
+  ipcMain.handle(IPC.winMaximizeToggle, async (_e) => {
+    const w = BrowserWindow.fromWebContents(_e.sender)
+    if (!w || w === mainWindow) {
+      setMaximized(!customMaximized)
+      return customMaximized
+    }
+    if (w.isMaximized()) w.unmaximize()
+    else w.maximize()
+    return w.isMaximized()
   })
-  ipcMain.handle(IPC.winClose, async () => mainWindow?.close())
-  ipcMain.handle(IPC.winIsMaximized, async () => customMaximized)
+  ipcMain.handle(IPC.winClose, async (_e) => (BrowserWindow.fromWebContents(_e.sender) ?? mainWindow)?.close())
+  ipcMain.handle(IPC.winIsMaximized, async (_e) => {
+    const w = BrowserWindow.fromWebContents(_e.sender)
+    return !w || w === mainWindow ? customMaximized : w.isMaximized()
+  })
   ipcMain.handle(IPC.winGetBounds, async () => mainWindow?.getBounds() ?? { x: 0, y: 0, width: 0, height: 0 })
   ipcMain.handle(IPC.winSetBounds, async (_e, b: WindowBounds) => {
     if (mainWindow && !customMaximized) {

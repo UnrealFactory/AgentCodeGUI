@@ -2324,9 +2324,9 @@ export function FileModal({
   const [vs, setVs] = useState<ViewState>({ root: path, stack: [], fwd: [], jump: null })
   // an SVG can be viewed both ways — as the rendered image (default) or as markup
   const [svgCode, setSvgCode] = useState(false)
-  // a changed markdown file opens as marked-up source (so the diff is visible);
-  // this flips it to the rendered document
-  const [mdPreview, setMdPreview] = useState(false)
+  // 마크다운은 기본을 '렌더링된 문서'로 연다(변경 파일이어도) — 소스/변경(diff) 보기는
+  // Ctrl+D(또는 헤더 버튼)로 전환한다. true = 렌더, false = 변경 마킹 소스.
+  const [mdPreview, setMdPreview] = useState(true)
   // 편집 가능한 코드 파일은 CodeMirror 편집기로 연다(아래 cmEligible). 마크다운·이미지·
   // git 스냅샷·잘린 파일은 읽기 전용 CodeView 유지.
   const [cmDirty, setCmDirty] = useState(false) // CM 버퍼에 미저장 변경이 있는가
@@ -2356,7 +2356,7 @@ export function FileModal({
   if (vs.root !== path) {
     setVs({ root: path, stack: [], fwd: [], jump: null })
     if (svgCode) setSvgCode(false)
-    if (mdPreview) setMdPreview(false)
+    if (!mdPreview) setMdPreview(true) // 새 파일은 마크다운 기본값(렌더)으로 되돌린다
     if (findOpen) setFindOpen(false)
     if (ask) setAsk(null)
     if (askText) setAskText('')
@@ -2398,6 +2398,8 @@ export function FileModal({
   // 마크다운은 자체 '미리보기/변경사항' 토글이 있으니 제외. 끄면 marks를 안 내려보내 diff·
   // 오버뷰 룰러가 모두 사라지고 평범한(잠긴) 뷰가 된다.
   const canToggleDiff = !!marks && !isMdFile
+  // 마크다운(변경 파일)은 렌더↔소스(diff)를 Ctrl+D로 오간다 — 코드 파일의 diffView와 별개
+  const mdCanToggle = isMdFile && !!diff
   // diff가 실제로 그려지는 맥락에서만 버튼·단축키가 의미 있다: 비-CM 읽기 뷰어이거나, CM 코드
   // 파일을 읽기 모드로 보는 중일 때(편집 모드는 어차피 diff를 끄므로 토글이 무의미).
   const diffVisibleCtx = canToggleDiff && (!cmEligible || cmMode === 'read')
@@ -2634,21 +2636,22 @@ export function FileModal({
     return () => window.removeEventListener('keydown', onKey, true)
   }, [path, cmEligible])
 
-  // Ctrl/⌘+D → diff(변경 tint) 보기 ↔ 일반(무색) 보기 토글. diff가 그려지는 맥락에서만 동작.
+  // Ctrl/⌘+D → 마크다운은 렌더↔소스(변경 diff), 그 외는 diff(변경 tint)↔일반(무색) 토글.
   // capture로 CM 키맵보다 먼저 잡고, IME가 켜져 있어도 잡히게 물리 키(e.code)도 함께 본다.
   useEffect(() => {
-    if (!path || !diffVisibleCtx) return
+    if (!path || (!diffVisibleCtx && !mdCanToggle)) return
     const onKey = (e: KeyboardEvent): void => {
       if (!((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && (e.code === 'KeyD' || e.key.toLowerCase() === 'd')))
         return
       if (closeConfirmRef.current) return // 확인 카드가 떠 있으면 보기 토글을 막는다
       e.preventDefault()
       e.stopPropagation()
-      setDiffView((v) => !v)
+      if (mdCanToggle) setMdPreview((v) => !v)
+      else setDiffView((v) => !v)
     }
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
-  }, [path, diffVisibleCtx])
+  }, [path, diffVisibleCtx, mdCanToggle])
 
   // 질문 패널이 열리면 바로 입력에 포커스
   useEffect(() => {
@@ -2760,7 +2763,7 @@ export function FileModal({
             <button
               className="fv-lsp install htip"
               onClick={() => setMdPreview((v) => !v)}
-              data-tip={mdPreview ? '변경 마킹이 표시된 소스로 보기' : '렌더링된 문서로 보기'}
+              data-tip={mdPreview ? '변경 마킹이 표시된 소스로 보기 (Ctrl+D)' : '렌더링된 문서로 보기 (Ctrl+D)'}
             >
               {mdPreview ? '변경 사항' : '미리보기'}
             </button>

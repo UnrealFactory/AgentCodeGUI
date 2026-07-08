@@ -170,6 +170,14 @@ const api: WindowApi = {
     saveState: (data: unknown) => ipcRenderer.invoke(IPC.talkSave, data),
     onEvent: (cb: (e: EngineEvent) => void) => subscribe(IPC.talkEvent, cb)
   },
+  openSessionWindow: () => ipcRenderer.invoke(IPC.openSessionWindow),
+  session: {
+    run: (req: RunRequest) => ipcRenderer.invoke(IPC.sessionRun, req),
+    cancel: () => ipcRenderer.invoke(IPC.sessionCancel),
+    respondPermission: (res: PermissionResponse) => ipcRenderer.invoke(IPC.sessionPermissionRespond, res),
+    respondQuestion: (res: QuestionResponse) => ipcRenderer.invoke(IPC.sessionQuestionRespond, res),
+    onEvent: (cb: (e: EngineEvent) => void) => subscribe(IPC.sessionEvent, cb)
+  },
   multi: {
     run: (req: MultiRunRequest) => ipcRenderer.invoke(IPC.maRun, req),
     cancel: (panelId: string) => ipcRenderer.invoke(IPC.maCancel, panelId),
