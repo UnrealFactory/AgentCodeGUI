@@ -3730,8 +3730,7 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
 .md-overflow{ white-space:pre-wrap; word-break:break-word; margin:0; font:inherit; }
 
 /* ── 세션 창 ("추가 세션") — 네이티브 프레임 OS 창을 채우는 단독 대화 ─────────── */
-/* 메인 앱의 .win 크롬을 안 쓰므로 뷰포트를 직접 채운다. .thread(760px 하한)는 좁은
-   창에서 넘치므로 재사용하지 않고 .sw-thread로 폭 제약 없이 흐르게 둔다. */
+/* 메인 앱의 .win 크롬을 안 쓰므로 뷰포트를 직접 채운다. */
 .sw{ position:fixed; inset:0; display:flex; flex-direction:column; background:var(--bg); color:var(--text); }
 /* 우리 앱과 동일한 타이틀바(.titlebar 재사용) — 창 전체는 끌어서 이동(app-region:drag),
    창 컨트롤 영역만 no-drag로 클릭을 받는다. 네이티브 타이틀바는 titleBarStyle:'hidden'으로 숨김. */
@@ -3739,9 +3738,15 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
 .sw-titlebar .tb-controls{ -webkit-app-region: no-drag; }
 
 .sw-scroll{ flex:1; min-height:0; overflow-y:auto; }
-/* 실제 채팅의 .thread와 같은 메시지 칼럼(같은 MessageView) — 단, 좁은 창에서 넘치지 않게
-   760px 하한 없이 창 폭에 맞춰 흐른다. 컴포저는 아래에서 실제 채팅의 <Composer>를 그대로 쓴다. */
-.sw-thread{ padding:22px 20px 26px; display:flex; flex-direction:column; gap:22px; }
+/* 실제 채팅(.chat--talk .thread)과 같은 중앙 정렬 칼럼 — 92%·상한 1600px로 양옆에
+   숨구멍을 두고, px 경계는 줌 배율(--z, Ctrl+휠)로 역보정해 확대해도 보이는 폭은 유지.
+   .thread와 달리 min(100%)로 감싸 760px 하한이 좁은 창에서 넘치지 않게 한다. */
+.sw-thread{
+  max-width:min(100%, clamp(calc(760px / var(--z, 1)), 92%, calc(1600px / var(--z, 1))));
+  margin:0 auto; padding:22px 20px 26px; display:flex; flex-direction:column; gap:22px;
+}
+/* 긴 대화 가상화 — .thread > .msg와 같은 이유(화면 밖 메시지 레이아웃/페인트 생략) */
+.sw-thread > .msg{ content-visibility:auto; contain-intrinsic-size:auto 120px; }
 
 .sw-empty{ height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:40px 30px; }
 .sw-empty-orb{ width:56px; height:56px; border-radius:18px; display:grid; place-items:center; margin-bottom:14px;
