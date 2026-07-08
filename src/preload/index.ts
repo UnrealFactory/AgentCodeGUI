@@ -67,7 +67,8 @@ const api: WindowApi = {
     onLoginUrl: (cb: (url: string) => void) => subscribe(IPC.authLoginUrl, cb),
     listAccounts: () => ipcRenderer.invoke(IPC.authListAccounts),
     switchAccount: (email: string) => ipcRenderer.invoke(IPC.authSwitchAccount, email),
-    removeAccount: (email: string) => ipcRenderer.invoke(IPC.authRemoveAccount, email)
+    removeAccount: (email: string) => ipcRenderer.invoke(IPC.authRemoveAccount, email),
+    accountsUsage: () => ipcRenderer.invoke(IPC.authAccountsUsage)
   },
   apiConfig: {
     get: () => ipcRenderer.invoke(IPC.apiConfigGet),
@@ -187,6 +188,13 @@ const api: WindowApi = {
     respondPermission: (res: PermissionResponse) => ipcRenderer.invoke(IPC.sessionPermissionRespond, res),
     respondQuestion: (res: QuestionResponse) => ipcRenderer.invoke(IPC.sessionQuestionRespond, res),
     onEvent: (cb: (e: EngineEvent) => void) => subscribe(IPC.sessionEvent, cb)
+  },
+  sessionAsk: {
+    run: (req: RunRequest) => ipcRenderer.invoke(IPC.sessionAskRun, req),
+    cancel: () => ipcRenderer.invoke(IPC.sessionAskCancel),
+    respondPermission: (res: PermissionResponse) => ipcRenderer.invoke(IPC.sessionAskPermissionRespond, res),
+    respondQuestion: (res: QuestionResponse) => ipcRenderer.invoke(IPC.sessionAskQuestionRespond, res),
+    onEvent: (cb: (e: EngineEvent) => void) => subscribe(IPC.sessionAskEvent, cb)
   },
   multi: {
     run: (req: MultiRunRequest) => ipcRenderer.invoke(IPC.maRun, req),

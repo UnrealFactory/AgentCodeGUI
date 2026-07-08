@@ -435,6 +435,18 @@ export interface AccountInfo {
   active: boolean // 지금 ~/.claude 에 활성화된 계정인가
 }
 
+/**
+ * 저장된 계정 1건의 한도 사용률 — 전환 없이 각 계정의 저장 토큰으로 usage API를 조회한 값.
+ * null = 그 한도가 플랜에 없거나 조회 불가(저장 토큰 만료 등). 만료된 토큰은 전환 시
+ * CLI가 리프레시하므로 "조회만 안 될 뿐" 전환은 정상 동작한다.
+ */
+export interface AccountUsage {
+  email: string
+  fiveHourPct: number | null // 5시간 창 사용률 0-100
+  weeklyPct: number | null // 주간(7일) 창 사용률 0-100
+  fablePct: number | null // Fable 5 전용 주간 한도 사용률 0-100
+}
+
 /** 어떤 화면의 엔진이 실행했는지 — 사용 통계의 분류 축. */
 export type ApiUsageSource = 'chat' | 'ask' | 'talk' | 'ma'
 
@@ -610,6 +622,12 @@ export const IPC = {
   sessionCancel: 'session:cancel',
   sessionPermissionRespond: 'session:permission-respond',
   sessionQuestionRespond: 'session:question-respond',
+  // 세션 창 안의 /ask — 그 창 전용 ask 엔진(창별 1개). 메인 창의 ask 채널은 mainWindow로만
+  // 이벤트를 보내므로, 세션 창은 자기 webContents로 라우팅되는 별도 채널이 필요하다.
+  sessionAskRun: 'session-ask:run',
+  sessionAskCancel: 'session-ask:cancel',
+  sessionAskPermissionRespond: 'session-ask:permission-respond',
+  sessionAskQuestionRespond: 'session-ask:question-respond',
   pickDirectory: 'dialog:pick-directory',
   pickAttachments: 'dialog:pick-attachments', // open dialog filtered to attachable files (images + text); returns absolute paths
   saveAttachmentData: 'attachment:save-data', // persist pasted/dropped raw attachment bytes to a temp file; returns its path
@@ -624,6 +642,7 @@ export const IPC = {
   authListAccounts: 'auth:list-accounts', // 저장된(전환 가능한) 계정 목록 + 활성 표시
   authSwitchAccount: 'auth:switch-account', // 저장된 계정으로 전환(크리덴셜 스왑) → 새 상태
   authRemoveAccount: 'auth:remove-account', // 저장 목록에서 계정 제거(활성 로그인은 안 건드림)
+  authAccountsUsage: 'auth:accounts-usage', // 저장된 계정별 한도 사용률(5시간·주간·Fable) 일괄 조회
   apiConfigGet: 'api-config:get', // API 키/예산/누적 사용액 스냅샷 (키 원문 제외)
   apiConfigSetKey: 'api-config:set-key', // API 키 저장 (safeStorage 암호화)
   apiConfigClearKey: 'api-config:clear-key', // 저장된 API 키 삭제
@@ -712,6 +731,7 @@ export const IPC = {
   maEvent: 'ma:event', // streamed events from every multi-agent engine (wrapped with panelId)
   talkEvent: 'talk:event', // streamed events from the 채팅 (pure conversation) engine
   sessionEvent: 'session:event', // streamed events from a session window's own engine
+  sessionAskEvent: 'session-ask:event', // streamed events from a session window's own /ask engine
   engineInstallProgress: 'engine:install-progress',
   lspInstallProgress: 'lsp:install-progress', // streamed progress while downloading a language server
   winState: 'win:state'

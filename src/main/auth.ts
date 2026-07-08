@@ -9,7 +9,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { app, safeStorage, shell, type WebContents } from 'electron'
 import { IPC } from '@shared/protocol'
-import type { AuthStatus, AccountInfo } from '@shared/protocol'
+import type { AuthStatus, AccountInfo, AccountUsage } from '@shared/protocol'
 
 // 번들된 네이티브 claude 실행 파일을 찾는다(dev: 앱 node_modules, prod: asar.unpacked).
 // auth 는 버전 무관하게 같은 ~/.claude 크리덴셜을 다루므로 번들본으로 충분하다.
@@ -62,9 +62,13 @@ export function authStatus(): Promise<AuthStatus> {
 export async function authLogout(): Promise<AuthStatus> {
   const bin = claudeBin()
   if (!bin) return { loggedIn: false, error: 'claude 실행 파일을 찾지 못했어요' }
+  const st = await authStatus()
   await new Promise<void>((resolve) => {
     execFile(bin, ['auth', 'logout'], { timeout: 20000, windowsHide: true }, () => resolve())
   })
+  // 로그아웃은 토큰을 서버에서 해지한다 — 같은 토큰을 담은 이 계정의 저장 스냅샷도 함께
+  // 죽는다. 목록에 남겨두면 '변경'이 반드시 실패하는 거짓 항목이 되므로 같이 제거한다.
+  if (st.loggedIn && st.email) writeStore(readStore().filter((a) => a.email !== st.email))
   return authStatus()
 }
 
@@ -180,6 +184,19 @@ async function snapshotCurrent(): Promise<void> {
   if (!st.loggedIn || !st.email) return
   const snap = currentSnapshot()
   if (!snap) return
+  // 오염 방지: 지금 크리덴셜(토큰)이 '다른 이메일'로 저장된 토큰과 동일하면, 신원(.claude.json)과
+  // 토큰(.credentials.json)이 어긋난 혼합 상태다(외부 claude 프로세스가 신원만 되쓴 직후 등).
+  // 이대로 저장하면 이 이메일 항목이 남의 토큰으로 오염되므로(전환이 무동작이 되는 원인) 건너뛴다.
+  for (const a of readStore()) {
+    if (a.email === st.email) continue
+    const raw = decCreds(a.credEnc)
+    if (!raw) continue
+    try {
+      if ((JSON.parse(raw) as AccountSnapshot).creds === snap.creds) return
+    } catch {
+      /* ignore */
+    }
+  }
   const credEnc = encCreds(JSON.stringify(snap))
   if (!credEnc) return
   const store = readStore().filter((a) => a.email !== st.email)
@@ -198,6 +215,30 @@ export async function listAccounts(): Promise<AccountInfo[]> {
   }))
 }
 
+// 스냅샷 토큰의 생사 검증 — 로그아웃 등으로 서버에서 해지된 토큰을 복원하면 CLI가 401을
+// 맞고 크리덴셜을 껍데기로 덮어써 "Not logged in"이 된다(디버그 로그로 실측). 만료 전인데
+// 401/403이면 확실히 죽은 것. 이미 만료된 액세스 토큰은 401이 정상(리프레시로 살아날 수
+// 있음)이라 판정 불가 → 'unknown'으로 전환을 막지 않는다. 네트워크 오류도 'unknown'.
+async function validateSnapshotToken(credsRaw: string): Promise<'ok' | 'dead' | 'unknown'> {
+  try {
+    const j = JSON.parse(credsRaw) as { claudeAiOauth?: { accessToken?: string; expiresAt?: number } }
+    const o = j.claudeAiOauth
+    if (!o?.accessToken) return 'dead'
+    if (typeof o.expiresAt === 'number' && o.expiresAt <= Date.now()) return 'unknown'
+    const ctrl = new AbortController()
+    const t = setTimeout(() => ctrl.abort(), 5000)
+    const res = await fetch('https://api.anthropic.com/api/oauth/usage', {
+      headers: { Authorization: 'Bearer ' + o.accessToken, 'anthropic-beta': 'oauth-2025-04-20' },
+      signal: ctrl.signal
+    })
+    clearTimeout(t)
+    if (res.status === 401 || res.status === 403) return 'dead'
+    return 'ok'
+  } catch {
+    return 'unknown'
+  }
+}
+
 export async function switchAccount(email: string): Promise<AuthStatus> {
   const st = await authStatus()
   if (st.loggedIn && st.email === email) return st // 이미 활성
@@ -212,6 +253,11 @@ export async function switchAccount(email: string): Promise<AuthStatus> {
   } catch {
     return { ...st, error: '계정 데이터가 손상됐어요 — 다시 로그인해 추가해 주세요' }
   }
+  // 죽은 토큰은 적용하지 않는다 — 적용하면 현재 로그인까지 깨진다(껍데기 덮어쓰기).
+  if ((await validateSnapshotToken(snap.creds)) === 'dead') {
+    writeStore(readStore().filter((a) => a.email !== email))
+    return { ...st, error: '이 계정의 저장된 로그인이 해지됐어요(로그아웃 등) — 다시 로그인해 추가해 주세요' }
+  }
   if (!applySnapshot(snap)) return { ...st, error: '계정 전환에 실패했어요' }
   return authStatus()
 }
@@ -219,6 +265,61 @@ export async function switchAccount(email: string): Promise<AuthStatus> {
 export async function removeAccount(email: string): Promise<AccountInfo[]> {
   writeStore(readStore().filter((a) => a.email !== email))
   return listAccounts()
+}
+
+// 저장된 계정별 한도 사용률 — 전환 없이 각 스냅샷의 액세스 토큰으로 usage API를 병렬 조회.
+// 만료된 토큰은 조회하지 않는다(401 확정 — 전환하면 CLI가 리프레시하므로 전환 자체는 정상).
+// 실패는 조용히 null(표시만 빠짐) — 목록 UX를 네트워크에 볼모 잡히지 않게 한다.
+export async function accountsUsage(): Promise<AccountUsage[]> {
+  const rows = readStore().map(async (a): Promise<AccountUsage> => {
+    const empty: AccountUsage = { email: a.email, fiveHourPct: null, weeklyPct: null, fablePct: null }
+    const raw = decCreds(a.credEnc)
+    if (!raw) return empty
+    let token: string | undefined
+    let expiresAt: number | undefined
+    try {
+      const snap = JSON.parse(raw) as AccountSnapshot
+      const o = (JSON.parse(snap.creds) as { claudeAiOauth?: { accessToken?: string; expiresAt?: number } }).claudeAiOauth
+      token = o?.accessToken
+      expiresAt = o?.expiresAt
+    } catch {
+      return empty
+    }
+    if (!token || (typeof expiresAt === 'number' && expiresAt <= Date.now())) return empty
+    try {
+      const ctrl = new AbortController()
+      const t = setTimeout(() => ctrl.abort(), 5000)
+      const res = await fetch('https://api.anthropic.com/api/oauth/usage', {
+        headers: { Authorization: 'Bearer ' + token, 'anthropic-beta': 'oauth-2025-04-20' },
+        signal: ctrl.signal
+      })
+      clearTimeout(t)
+      if (!res.ok) return empty
+      const j = (await res.json()) as {
+        five_hour?: { utilization?: number | string }
+        seven_day?: { utilization?: number | string }
+        limits?: { kind?: string; percent?: number; scope?: { model?: { display_name?: string } | null } | null }[]
+      }
+      const pct = (u?: { utilization?: number | string }): number | null => {
+        if (!u) return null
+        const n = parseFloat(String(u.utilization ?? ''))
+        return isNaN(n) ? null : Math.max(0, Math.min(100, Math.round(n)))
+      }
+      // Fable 5 주간 한도: limits[]의 weekly_scoped + model 이름에 'fable' (getUsage와 같은 규칙)
+      const fable = Array.isArray(j.limits)
+        ? j.limits.find((l) => l?.kind === 'weekly_scoped' && (l.scope?.model?.display_name ?? '').toLowerCase().includes('fable'))
+        : undefined
+      return {
+        email: a.email,
+        fiveHourPct: pct(j.five_hour),
+        weeklyPct: pct(j.seven_day),
+        fablePct: fable && typeof fable.percent === 'number' ? Math.max(0, Math.min(100, Math.round(fable.percent))) : null
+      }
+    } catch {
+      return empty
+    }
+  })
+  return Promise.all(rows)
 }
 
 // 진행 중인 로그인 자식 프로세스(한 번에 하나) — 취소로 죽일 수 있게 보관

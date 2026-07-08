@@ -13,6 +13,7 @@ import type {
   ApiConfigStatus,
   AuthStatus,
   AccountInfo,
+  AccountUsage,
   ApiUsageRecord,
   UserProfile,
   EngineVersionEntry,
@@ -79,6 +80,8 @@ export interface WindowApi {
     switchAccount(email: string): Promise<AuthStatus>
     /** 저장 목록에서 계정 제거(활성 로그인 자체는 안 건드림) → 갱신된 목록 */
     removeAccount(email: string): Promise<AccountInfo[]>
+    /** 저장된 계정별 한도 사용률(5시간·주간·Fable) — 전환 없이 각 계정 토큰으로 일괄 조회 */
+    accountsUsage(): Promise<AccountUsage[]>
   }
   /** API 키 과금 설정 (설정 → API + 컴포저 API 토글). 모든 호출이 최신 스냅샷을 돌려준다. */
   apiConfig: {
@@ -279,6 +282,16 @@ export interface WindowApi {
     respondPermission(res: PermissionResponse): Promise<void>
     respondQuestion(res: QuestionResponse): Promise<void>
     /** subscribe to THIS window's session engine events (returns an unsubscribe fn) */
+    onEvent(cb: (event: EngineEvent) => void): () => void
+  }
+  /** 세션 창 안의 /ask — 그 창 전용 ask 엔진(창별 1개, 본 대화 엔진과 분리). 메인 창의
+   *  ask 채널은 mainWindow로만 이벤트를 보내므로 세션 창은 이 채널을 쓴다. */
+  sessionAsk: {
+    run(req: RunRequest): Promise<string>
+    cancel(): Promise<void>
+    respondPermission(res: PermissionResponse): Promise<void>
+    respondQuestion(res: QuestionResponse): Promise<void>
+    /** subscribe to THIS window's /ask engine events (returns an unsubscribe fn) */
     onEvent(cb: (event: EngineEvent) => void): () => void
   }
   /** Multi-agent — a pool of independent engines, one per on-screen panel, all running

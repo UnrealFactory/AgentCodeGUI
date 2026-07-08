@@ -16,6 +16,7 @@ import {
 import { ImageViewer } from './ImageViewer'
 import { SubAgentModal } from './AgentPanel'
 import { FileModal } from './FileModal'
+import { AskModal } from './AskModal'
 
 // ── 추가 채팅 (세션 창) ────────────────────────────────────────
 // A standalone conversation in its OWN native OS window (freely resizable, movable to a
@@ -55,6 +56,20 @@ export function SessionWindow(): React.ReactElement {
   const openSubagent = openSubagentId ? state.subagents.find((a) => a.id === openSubagentId) ?? null : null
   const scrollRef = useRef<HTMLDivElement>(null)
   const composerRef = useRef<HTMLTextAreaElement>(null)
+  // "/ask" — 이 창 전용 일회용 질문 모달(sessionAsk 채널, 본 대화 엔진과 분리). 메인 창과
+  // 동일한 UX: "/ask <질문>"은 모달 컴포저를 미리 채우고, 닫으면(언마운트) 대화가 사라진다.
+  const [askOpen, setAskOpen] = useState(false)
+  const [askInitial, setAskInitial] = useState('')
+  const [askMinimized, setAskMinimized] = useState(false)
+  const askOpenRef = useRef(askOpen)
+  askOpenRef.current = askOpen
+  const askMinimizedRef = useRef(askMinimized)
+  askMinimizedRef.current = askMinimized
+  const openAsk = (initial: string): void => {
+    setAskInitial(initial)
+    setAskMinimized(false)
+    setAskOpen(true)
+  }
 
   const started = state.messages.length > 0
   const onRefreshUsage = (): void => {
@@ -95,6 +110,8 @@ export function SessionWindow(): React.ReactElement {
       if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return
       if (e.key !== 'Enter') return
       if (document.querySelector('.q-overlay, .pr-overlay')) return
+      // /ask 모달이 펼쳐져 있으면 Enter는 그 모달의 컴포저 몫 (메인 창과 동일)
+      if (askOpenRef.current && !askMinimizedRef.current) return
       const ae = document.activeElement as HTMLElement | null
       const interactive =
         !!ae && (['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON', 'A'].includes(ae.tagName) || ae.isContentEditable)
@@ -134,6 +151,13 @@ export function SessionWindow(): React.ReactElement {
       setQueue([])
       return
     }
+    // /ask — 이 창 전용 일회용 질문 모달(자체 엔진). 본 대화로는 보내지 않는다 (메인 창과 동일)
+    const trimmed = text.trim()
+    if (trimmed === '/ask' || trimmed.startsWith('/ask ')) {
+      openAsk(trimmed.slice(4).trim())
+      if (!opts?.keepDraft) setInput('')
+      return
+    }
     begin(text, null, imgs)
     // fold mention/attachment notes into the prompt so the engine reads them (same as 채팅)
     let promptForEngine = text
@@ -161,6 +185,14 @@ export function SessionWindow(): React.ReactElement {
   // queue a draft while busy → auto-send when the run ends (same as 채팅)
   const scheduleMessage = (): void => {
     if (!busy || (!input.trim() && images.length === 0)) return
+    // /ask는 본 대화와 분리된 자체 엔진 모달 — 실행 중에도 예약 없이 즉시 연다 (메인 창과 동일)
+    const t = input.trim()
+    if (t === '/ask' || t.startsWith('/ask ')) {
+      openAsk(t.slice(4).trim())
+      setInput('')
+      composerRef.current?.focus()
+      return
+    }
     const id = crypto.randomUUID ? crypto.randomUUID() : `q-${queue.length}-${state.messages.length}`
     setQueue((q) => [...q, { id, text: input, images, picker }])
     setInput('')
@@ -327,6 +359,24 @@ export function SessionWindow(): React.ReactElement {
           index={viewer.index}
           onIndexChange={(i) => setViewer((v) => (v ? { ...v, index: i } : v))}
           onClose={() => setViewer(null)}
+        />
+      )}
+
+      {/* /ask — 이 창 전용 일회용 질문 모달. sessionAsk 채널이라 이 창의 본 대화·다른 창과
+          완전히 분리된다. 세션 창엔 폴더가 없으므로 cwd는 빈 값(엔진이 홈으로 폴백). */}
+      {askOpen && (
+        <AskModal
+          onClose={() => {
+            setAskOpen(false)
+            setAskMinimized(false)
+          }}
+          minimized={askMinimized}
+          onMinimizedChange={setAskMinimized}
+          cwd=""
+          user={user}
+          picker={picker}
+          initialText={askInitial}
+          channel={window.api.sessionAsk}
         />
       )}
     </div>

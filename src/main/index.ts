@@ -10,7 +10,7 @@ import { readProfile, writeProfile } from './profile'
 import { readUiPrefs, writeUiPrefs } from './uiPrefs'
 import { apiConfigStatus, setApiKey, clearApiKey, setBudget, resetSpend } from './apiConfig'
 import { readApiUsage } from './apiUsage'
-import { authStatus, authLogin, authLogout, authLoginCancel, listAccounts, switchAccount, removeAccount } from './auth'
+import { authStatus, authLogin, authLogout, authLoginCancel, listAccounts, switchAccount, removeAccount, accountsUsage } from './auth'
 import { setVerseDocKo } from './lsp/verseDocKo'
 import { setUeDocKo } from './lsp/ueDocKo'
 import { bumpVerseRegistryRev } from './lsp/verseMemberDb'
@@ -422,6 +422,19 @@ function sessionEngineFor(wc: WebContents): ClaudeEngine {
   }
   return eng
 }
+// 세션 창 안의 /ask — 창마다 자기 ask 엔진(메인 창의 askEngine은 mainWindow로만 이벤트를
+// 보내므로 공유 불가). 본 대화 엔진과 분리돼 세션 창의 실행을 취소하지 않는다.
+const sessionAskEngines = new Map<number, ClaudeEngine>()
+function sessionAskEngineFor(wc: WebContents): ClaudeEngine {
+  let eng = sessionAskEngines.get(wc.id)
+  if (!eng) {
+    eng = new ClaudeEngine((event: EngineEvent) => {
+      if (!wc.isDestroyed()) wc.send(IPC.sessionAskEvent, event)
+    }, 'ask')
+    sessionAskEngines.set(wc.id, eng)
+  }
+  return eng
+}
 
 function createSessionWindow(): void {
   // native frame → OS resize / move / maximize / second-monitor all come for free, and we
@@ -471,12 +484,17 @@ function createSessionWindow(): void {
   win.on('maximize', () => win.webContents.send(IPC.winState, { maximized: true }))
   win.on('unmaximize', () => win.webContents.send(IPC.winState, { maximized: false }))
 
-  // release this window's engine (and its CLI subprocess) when it closes
+  // release this window's engines (and their CLI subprocesses) when it closes
   win.on('closed', () => {
     const eng = sessionEngines.get(wcId)
     if (eng) {
       eng.cancel().catch(() => {})
       sessionEngines.delete(wcId)
+    }
+    const askEng = sessionAskEngines.get(wcId)
+    if (askEng) {
+      askEng.cancel().catch(() => {})
+      sessionAskEngines.delete(wcId)
     }
   })
 
@@ -721,6 +739,17 @@ function registerIpc(): void {
   ipcMain.handle(IPC.sessionQuestionRespond, async (_e, res: QuestionResponse) =>
     sessionEngines.get(_e.sender.id)?.respondQuestion(res)
   )
+  // 세션 창 안의 /ask — 호출한 창의 자기 ask 엔진으로 라우팅(본 대화 엔진과 분리)
+  ipcMain.handle(IPC.sessionAskRun, async (_e, req: RunRequest) => sessionAskEngineFor(_e.sender).run(req))
+  ipcMain.handle(IPC.sessionAskCancel, async (_e) => {
+    await sessionAskEngines.get(_e.sender.id)?.cancel()
+  })
+  ipcMain.handle(IPC.sessionAskPermissionRespond, async (_e, res: PermissionResponse) =>
+    sessionAskEngines.get(_e.sender.id)?.respondPermission(res)
+  )
+  ipcMain.handle(IPC.sessionAskQuestionRespond, async (_e, res: QuestionResponse) =>
+    sessionAskEngines.get(_e.sender.id)?.respondQuestion(res)
+  )
 
   // multi-agent — route each command to its panel's engine (lazily created on first run)
   ipcMain.handle(IPC.maRun, async (_e, req: MultiRunRequest) => maEngine(req.panelId).run(req))
@@ -784,6 +813,7 @@ function registerIpc(): void {
   ipcMain.handle(IPC.authListAccounts, async () => listAccounts())
   ipcMain.handle(IPC.authSwitchAccount, async (_e, email: string) => switchAccount(email))
   ipcMain.handle(IPC.authRemoveAccount, async (_e, email: string) => removeAccount(email))
+  ipcMain.handle(IPC.authAccountsUsage, async () => accountsUsage())
 
   // API 키 과금 설정 (설정 → API) — 키 원문은 절대 렌더러로 돌려주지 않는다
   ipcMain.handle(IPC.apiConfigGet, async () => apiConfigStatus())

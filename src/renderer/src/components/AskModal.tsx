@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { AppUser, RunRequest } from '@shared/protocol'
+import type { WindowApi } from '@shared/api'
 import { useAgentSession, sameCwd } from '../store/session'
 import { MessageView, WorkingIndicator, PermissionModal, QuestionModal, RunPickers, type PickerState } from './Chat'
 import { FileBadge } from './fileType'
@@ -19,9 +20,10 @@ export function AskModal({
   initialText,
   minimized,
   onMinimizedChange,
-  apiMode,
-  apiReady,
-  onApiModeChange
+  apiMode = false,
+  apiReady = false,
+  onApiModeChange,
+  channel = window.api.ask
 }: {
   onClose: () => void
   cwd: string
@@ -31,13 +33,16 @@ export function AskModal({
   // minimized state lives in App so re-running "/ask" while down keeps it down
   minimized: boolean
   onMinimizedChange: (v: boolean) => void
-  apiMode: boolean // 전역 과금 모드 (구독/API) — /ask 실행에도 그대로 적용
-  apiReady: boolean
-  onApiModeChange: (next: boolean) => void
+  apiMode?: boolean // 전역 과금 모드 (구독/API) — /ask 실행에도 그대로 적용
+  apiReady?: boolean
+  // 없으면 과금 picker를 숨긴다(RunPickers 규칙) — API 모드 배관이 없는 세션 창용
+  onApiModeChange?: (next: boolean) => void
+  // ask 엔진 채널 — 기본은 메인 창의 전역 /ask, 세션 창은 자기 창 전용 sessionAsk를 넣는다
+  channel?: WindowApi['ask']
 }) {
   // a second, isolated agent session driven by the /ask engine channel
   const { state, busy, begin, clearPermission, clearQuestion } = useAgentSession((cb) =>
-    window.api.ask?.onEvent?.(cb) ?? (() => {})
+    channel?.onEvent?.(cb) ?? (() => {})
   )
   const [input, setInput] = useState(initialText ?? '')
   // 첨부(이미지·텍스트 파일) — 메인 컴포저와 동일하게 경로 노트로 엔진에 전달돼 Read 도구가
@@ -155,27 +160,27 @@ export function AskModal({
     setInput('')
     setImages([])
     requestAnimationFrame(() => grow(taRef.current))
-    window.api.ask?.run(req).catch(() => {})
+    channel?.run(req).catch(() => {})
   }
 
   const close = (): void => {
-    window.api.ask?.cancel().catch(() => {})
+    channel?.cancel().catch(() => {})
     onClose()
   }
 
   const onPermission = (behavior: 'allow' | 'allow_always' | 'deny'): void => {
     if (!state.pendingPermission) return
-    window.api.ask?.respondPermission({ requestId: state.pendingPermission.requestId, behavior }).catch(() => {})
+    channel?.respondPermission({ requestId: state.pendingPermission.requestId, behavior }).catch(() => {})
     clearPermission()
   }
   const onAnswer = (answers: string[][]): void => {
     if (!state.pendingQuestion) return
-    window.api.ask?.respondQuestion({ requestId: state.pendingQuestion.requestId, answers }).catch(() => {})
+    channel?.respondQuestion({ requestId: state.pendingQuestion.requestId, answers }).catch(() => {})
     clearQuestion()
   }
   const onDismissQuestion = (): void => {
     if (!state.pendingQuestion) return
-    window.api.ask?.respondQuestion({ requestId: state.pendingQuestion.requestId, answers: null }).catch(() => {})
+    channel?.respondQuestion({ requestId: state.pendingQuestion.requestId, answers: null }).catch(() => {})
     clearQuestion()
   }
 

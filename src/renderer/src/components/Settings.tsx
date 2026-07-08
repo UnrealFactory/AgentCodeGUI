@@ -8,7 +8,8 @@ import type {
   LspServerInfo,
   ApiConfigStatus,
   ApiUsageRecord,
-  AccountInfo
+  AccountInfo,
+  AccountUsage
 } from '@shared/protocol'
 import { FileBadge } from './fileType'
 import { getPref, setPref } from '../lib/prefs'
@@ -68,9 +69,15 @@ function AccountView(): React.ReactElement {
   const [busy, setBusy] = useState<string | null>(null)
   const [loginUrl, setLoginUrl] = useState<string | null>(null)
   const [note, setNote] = useState<string | null>(null)
+  // 계정별 한도 사용률(5시간·주간·Fable) — 목록과 별도로 나중에 도착해 채워진다(네트워크 조회)
+  const [usage, setUsage] = useState<Record<string, AccountUsage>>({})
 
   const reload = (): void => {
     window.api.auth.listAccounts().then(setAccounts).catch(() => setAccounts([]))
+    window.api.auth
+      .accountsUsage()
+      .then((us) => setUsage(Object.fromEntries(us.map((u) => [u.email, u]))))
+      .catch(() => {})
   }
   useEffect(() => reload(), [])
   useEffect(() => window.api.auth.onLoginUrl(setLoginUrl), [])
@@ -123,6 +130,17 @@ function AccountView(): React.ReactElement {
   const planLabel = (t?: string): string =>
     t ? t.charAt(0).toUpperCase() + t.slice(1) + ' 플랜' : '구독'
 
+  // 계정별 남은 한도 — 앱 전체 관례(잔여 % = 100 − 사용률)를 따른다. 조회 못 한 항목은
+  // 조용히 빠진다(저장 토큰 만료 등 — 전환하면 CLI가 리프레시하므로 전환은 정상).
+  const usageText = (u?: AccountUsage): string => {
+    if (!u) return ''
+    const parts: string[] = []
+    if (u.fiveHourPct != null) parts.push(`5시간 ${100 - u.fiveHourPct}%`)
+    if (u.weeklyPct != null) parts.push(`주간 ${100 - u.weeklyPct}%`)
+    if (u.fablePct != null) parts.push(`Fable ${100 - u.fablePct}%`)
+    return parts.length ? ` · 남음: ${parts.join(' · ')}` : ''
+  }
+
   return (
     <>
       <div className="set-h1">Account</div>
@@ -164,7 +182,10 @@ function AccountView(): React.ReactElement {
                   <div className="ver-name">
                     {a.email} {a.active && <span className="acct-badge">현재</span>}
                   </div>
-                  <div className="ver-meta">{planLabel(a.subscriptionType)}</div>
+                  <div className="ver-meta">
+                    {planLabel(a.subscriptionType)}
+                    {usageText(usage[a.email])}
+                  </div>
                 </div>
                 {a.active ? (
                   <button className="inst-btn ghost" disabled={busy != null} onClick={() => void doLogout()}>
