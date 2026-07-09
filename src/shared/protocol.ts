@@ -629,6 +629,7 @@ export const IPC = {
   sessionAskPermissionRespond: 'session-ask:permission-respond',
   sessionAskQuestionRespond: 'session-ask:question-respond',
   pickDirectory: 'dialog:pick-directory',
+  dirExists: 'fs:dir-exists', // 저장된 작업 폴더가 아직 존재하는지 확인(추가 채팅의 폴더 복원 검증)
   pickAttachments: 'dialog:pick-attachments', // open dialog filtered to attachable files (images + text); returns absolute paths
   saveAttachmentData: 'attachment:save-data', // persist pasted/dropped raw attachment bytes to a temp file; returns its path
   getUsage: 'usage:get',

@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { AppUser, RunRequest, UserProfile, UsageInfo } from '@shared/protocol'
-import { useAgentSession, initialSessionState, type SessionState } from '../store/session'
+import { useAgentSession, initialSessionState, sameCwd, type SessionState } from '../store/session'
 import { extractMentions } from '../lib/mentions'
-import { IconMin, IconMax, IconRestore, IconClose } from './icons'
+import { IconMin, IconMax, IconRestore, IconClose, IconFolder } from './icons'
 import {
   Composer,
   MessageView,
@@ -29,6 +29,28 @@ import { useZoom, ZoomBadge, mergeRefs } from './zoom'
 // and the "추가 채팅" header are bespoke to this window.
 
 const DEFAULT_PICKER: PickerState = { model: 'opus', effort: 'high', mode: 'auto' }
+// 마지막에 고른 모델·effort·모드를 기억한다 → 새 창을 열면 그 값이 기본이 된다.
+const PICKER_KEY = 'session.picker'
+const MODEL_IDS = ['fable', 'opus', 'sonnet', 'haiku']
+const EFFORT_IDS = ['max', 'xhigh', 'high', 'medium', 'low', 'minimal']
+const MODE_IDS = ['normal', 'plan', 'acceptEdits', 'auto', 'bypass']
+// 저장값이 낡거나 손상됐을 수 있으니 필드마다 검증하고, 이상하면 기본값으로 채운다.
+function sanitizePicker(p?: Partial<PickerState> | null): PickerState {
+  return {
+    model: p?.model && MODEL_IDS.includes(p.model) ? p.model : DEFAULT_PICKER.model,
+    effort: p?.effort && EFFORT_IDS.includes(p.effort) ? p.effort : DEFAULT_PICKER.effort,
+    mode: p?.mode && MODE_IDS.includes(p.mode) ? p.mode : DEFAULT_PICKER.mode
+  }
+}
+function loadPicker(): PickerState {
+  try {
+    const raw = localStorage.getItem(PICKER_KEY)
+    if (raw) return sanitizePicker(JSON.parse(raw))
+  } catch {
+    /* 손상·미지원 → 기본값 */
+  }
+  return DEFAULT_PICKER
+}
 const FALLBACK_USER: AppUser = { name: '나', avatarText: '나', avatarColor: '#7c8cff' }
 const EMPTY_USAGE: UsageInfo = { fiveHour: null, weekly: null, weeklyFable: null, extraCredit: null }
 // same intent as 채팅 모드 — conversational, no tool-rummaging unless asked/attached
@@ -40,16 +62,38 @@ function userFromProfile(p: UserProfile): AppUser {
   return { name: name || '나', avatarText: (name.slice(0, 1) || '나').toUpperCase(), avatarColor: p.color }
 }
 
+// 이 창의 작업 폴더는 마지막에 고른 값을 기억한다(창을 다시 열어도 유지). 빈 값이면 엔진이
+// 바탕화면으로 폴백하므로, '' = 바탕화면(기본)을 뜻한다.
+const CWD_KEY = 'session.cwd'
+// 폴더 경로에서 표시용 이름(마지막 구간)만 뽑는다. 빈 값이면 기본 라벨.
+function folderLabel(cwd: string): string {
+  if (!cwd) return '바탕화면'
+  const parts = cwd.replace(/[\\/]+$/, '').split(/[\\/]/)
+  return parts[parts.length - 1] || cwd
+}
+
 export function SessionWindow(): React.ReactElement {
   const { state, busy, begin, clearPermission, clearQuestion, load } = useAgentSession((cb) =>
     window.api.session?.onEvent?.(cb) ?? (() => {})
   )
   const [max, setMax] = useState(false)
+  // 이 창의 작업 폴더('' = 바탕화면 기본). 폴더를 지정하면 실행·@멘션·/ask가 모두 그 폴더 기준.
+  const [cwd, setCwd] = useState('')
   const [user, setUser] = useState<AppUser>(FALLBACK_USER)
   const [input, setInput] = useState('')
   const [images, setImages] = useState<string[]>([])
   const [queue, setQueue] = useState<ScheduledMsg[]>([])
-  const [picker, setPicker] = useState<PickerState>(DEFAULT_PICKER)
+  // 새 창은 마지막에 고른 모델·effort·모드로 시작한다(localStorage 복원, 손상 시 기본값)
+  const [picker, setPicker] = useState<PickerState>(loadPicker)
+  // 피커를 바꾸면 다음 새 창의 기본값이 되도록 저장한다
+  const savePicker = (p: PickerState): void => {
+    setPicker(p)
+    try {
+      localStorage.setItem(PICKER_KEY, JSON.stringify(p))
+    } catch {
+      /* localStorage 불가 — 이번 창에서만 유지 */
+    }
+  }
   const [usage, setUsage] = useState<UsageInfo>(EMPTY_USAGE)
   const [viewer, setViewer] = useState<{ images: string[]; index: number } | null>(null)
   const [openWorkFile, setOpenWorkFile] = useState<string | null>(null)
@@ -81,6 +125,28 @@ export function SessionWindow(): React.ReactElement {
     window.api.getUsage(true).then(setUsage).catch(() => {})
   }
 
+  // 작업 폴더 적용 — 값을 기억하고, 대화가 이미 시작됐다면 새 폴더로 새 대화를 연다. 세션 ID는
+  // 폴더에 묶여 있어(메인 앱과 동일) 이어갈 수 없으므로, 스레드를 비워 보이는 대화와 엔진 세션을
+  // 일치시킨다. 큐에 쌓인 예약 메시지도 이전 폴더의 것이라 함께 비운다.
+  const applyFolder = (dir: string): void => {
+    if (dir === cwd || sameCwd(dir, cwd)) return // 같은 폴더(형식만 다른 경우 포함) → 대화 유지
+    if (started) {
+      load(initialSessionState)
+      setQueue([])
+    }
+    setCwd(dir)
+    try {
+      localStorage.setItem(CWD_KEY, dir)
+    } catch {
+      /* localStorage 불가 — 이번 창에서만 유지 */
+    }
+  }
+  const pickFolder = async (): Promise<void> => {
+    const dir = await window.api.pickDirectory()
+    if (dir) applyFolder(dir)
+  }
+  const resetFolder = (): void => applyFolder('') // 바탕화면(기본)으로
+
   // 내가 보낸 메시지(오래된→최신) — 작성칸에서 ↑/↓로 다시 불러오기 (채팅과 동일)
   const sentHistory = useMemo(
     () =>
@@ -95,6 +161,30 @@ export function SessionWindow(): React.ReactElement {
   useEffect(() => {
     window.api.getProfile().then((p) => p && setUser(userFromProfile(p))).catch(() => {})
     window.api.getUsage().then(setUsage).catch(() => {})
+  }, [])
+
+  // 지난번에 고른 작업 폴더 복원 — 폴더가 지워졌을 수 있으니 존재를 확인하고, 없으면 바탕화면으로.
+  useEffect(() => {
+    let saved = ''
+    try {
+      saved = localStorage.getItem(CWD_KEY) || ''
+    } catch {
+      /* localStorage 불가 */
+    }
+    if (!saved) return
+    window.api
+      .dirExists(saved)
+      .then((ok) => {
+        if (ok) setCwd(saved)
+        else {
+          try {
+            localStorage.removeItem(CWD_KEY)
+          } catch {
+            /* no-op */
+          }
+        }
+      })
+      .catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -176,7 +266,7 @@ export function SessionWindow(): React.ReactElement {
       model: pk.model,
       effort: pk.effort,
       mode: pk.mode,
-      cwd: '', // no folder — the engine falls back to the Desktop
+      cwd, // 지정한 작업 폴더. 빈 값이면 엔진이 바탕화면으로 폴백
       systemPrompt: CHAT_SYSTEM_PROMPT,
       resume: state.session?.sessionId
     }
@@ -242,6 +332,21 @@ export function SessionWindow(): React.ReactElement {
           메인 프로세스에서 호출 창(webContents) 기준으로 이 창을 제어한다. */}
       <div className="titlebar sw-titlebar">
         <span className="tb-page">추가 채팅</span>
+        {/* 작업 폴더 — 클릭하면 폴더 선택(취소하면 그대로). 지정하면 실행·@멘션·/ask가 그 폴더 기준.
+            기본은 바탕화면이며, 폴더를 고르면 옆의 ×로 다시 바탕화면으로 되돌린다. */}
+        <button
+          className="sw-folder has-tip tip-path"
+          data-tip={cwd ? `작업 폴더: ${cwd}` : '바탕화면 — 클릭해서 작업 폴더 지정'}
+          onClick={pickFolder}
+        >
+          <IconFolder size={13} />
+          <span className="sw-folder-name">{folderLabel(cwd)}</span>
+        </button>
+        {cwd && (
+          <button className="sw-folder-reset has-tip" data-tip="바탕화면으로" aria-label="바탕화면으로" onClick={resetFolder}>
+            <IconClose size={11} />
+          </button>
+        )}
         <div className="tb-spacer" />
         <div className="tb-controls">
           <button className="tb-btn" aria-label="최소화" data-tip="최소화" onClick={() => window.api.win.minimize()}>
@@ -273,6 +378,11 @@ export function SessionWindow(): React.ReactElement {
               지금 하는 코드 작업은 그대로 두고, 이 창에서 따로 대화하세요.
               <br />크기 조절·다른 모니터로 옮기기 모두 자유예요.
             </p>
+            {/* 작업 폴더를 미리 정해두면 파일을 다루는 대화가 그 폴더에서 열린다(기본은 바탕화면) */}
+            <button className="sw-empty-folder" onClick={pickFolder}>
+              <IconFolder size={14} />
+              <span>작업 폴더: {folderLabel(cwd)}</span>
+            </button>
           </div>
         ) : (
           <div className="sw-thread" style={{ zoom: chatZoom.zoom, '--z': chatZoom.zoom } as React.CSSProperties}>
@@ -330,7 +440,7 @@ export function SessionWindow(): React.ReactElement {
         busy={busy}
         started={started}
         picker={picker}
-        setPicker={setPicker}
+        setPicker={savePicker}
         images={images}
         onPickImages={addImagesFromPicker}
         onAddImagePaths={addImagePaths}
@@ -340,8 +450,8 @@ export function SessionWindow(): React.ReactElement {
         contextWindow={state.result?.contextWindow ?? null}
         usage={usage}
         showContext={false}
-        cwd=""
-        mentionBase=""
+        cwd={cwd}
+        mentionBase={cwd}
         inputRef={composerRef}
       />
 
@@ -369,7 +479,7 @@ export function SessionWindow(): React.ReactElement {
       )}
 
       {/* /ask — 이 창 전용 일회용 질문 모달. sessionAsk 채널이라 이 창의 본 대화·다른 창과
-          완전히 분리된다. 세션 창엔 폴더가 없으므로 cwd는 빈 값(엔진이 홈으로 폴백). */}
+          완전히 분리된다. 작업 폴더를 지정했으면 그 폴더 기준(없으면 엔진이 바탕화면으로 폴백). */}
       {askOpen && (
         <AskModal
           onClose={() => {
@@ -378,7 +488,7 @@ export function SessionWindow(): React.ReactElement {
           }}
           minimized={askMinimized}
           onMinimizedChange={setAskMinimized}
-          cwd=""
+          cwd={cwd}
           user={user}
           picker={picker}
           initialText={askInitial}

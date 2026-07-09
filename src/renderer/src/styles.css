@@ -1431,10 +1431,13 @@ input,textarea{ font-family:inherit; }
 .file .fchev{ color:var(--text-4); opacity:0; transition:opacity .14s; flex:0 0 auto; margin-left:-4px; }
 .file:hover .fchev{ opacity:1; }
 .file .fi{ color:var(--text-4); flex:0 0 auto; }
+.file .fticon{ flex:0 0 auto; }
+/* 파일명만 표기(폴더 경로 생략) — 좁은 목록에서 폴더를 자르면 'P…' 같은 회색 조각이 남아 헷갈렸다.
+   이름이 아주 길면 …로 잘리되, 뒤의 +/- 통계·태그(.stat, flex:0 0 auto)는 절대 밀려나지 않는다. */
 .file .path{ font-family:var(--font-mono); font-size:11.5px; color:var(--text-2); flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.file .path .dir{ color:var(--text-4); }
 .file .stat{ display:flex; align-items:center; gap:6px; font-family:var(--font-mono); font-size:11px; flex:0 0 auto; }
 .file .add{ color:var(--green); } .file .del{ color:var(--red); }
+.file .add.zero, .file .del.zero{ color:var(--text-4); } /* +0 / −0 은 흐리게(변경 없음) */
 .file .tag{ font-family:var(--font-mono); font-size:9.5px; letter-spacing:.04em; padding:1px 5px; border-radius:4px; text-transform:uppercase; }
 .file .tag.new{ background:var(--green-soft); color:var(--green); }
 .file .tag.edit{ background:var(--surface-2); color:var(--text-3); }
@@ -1510,15 +1513,20 @@ input,textarea{ font-family:inherit; }
 /* shared header of the file-viewer card (the old separate diff modal is folded into
    the viewer — a changed file shows its marks inside the code view instead) */
 .diff-head{ display:flex; align-items:center; gap:10px; padding:13px 14px 13px 18px; border-bottom:1px solid var(--line); background:var(--surface); }
-.diff-head .dpath{ font-family:var(--font-mono); font-size:13px; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.diff-head .dpath .dir{ color:var(--text-4); }
+/* 경로는 flex 행: 디렉터리를 먼저 줄여(…) 파일명을 우선 살리고, 그래도 넘치면 파일명도 잘린다.
+   뒤의 태그·+/- 통계(flex:0 0 auto)는 절대 밀려나지 않는다 — "이름이 짧아지더라도 +/-는 반드시 보이게". */
+.diff-head .dpath{ flex:0 1 auto; min-width:0; display:flex; align-items:baseline; overflow:hidden; font-family:var(--font-mono); font-size:13px; color:var(--text); }
+.diff-head .dpath .dir{ flex:0 100 auto; min-width:0; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; color:var(--text-4); }
+.diff-head .dpath .name{ flex:0 1 auto; min-width:0; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+.diff-head .fticon{ flex:0 0 auto; }
 /* NEW / EDIT pill in the header — same pill language as the change-region bars and
    the changed-files panel tags (these styles were previously only scoped to .file) */
 .diff-head .tag{ flex:0 0 auto; font-family:var(--font-mono); font-size:9.5px; font-weight:700; letter-spacing:.04em; padding:2px 6px; border-radius:5px; text-transform:uppercase; }
 .diff-head .tag.new{ background:var(--green-soft); color:var(--green); }
 .diff-head .tag.edit{ background:var(--surface-2); color:var(--text-3); }
-.diff-head .dstat{ display:flex; align-items:center; gap:8px; font-family:var(--font-mono); font-size:12px; font-weight:600; }
+.diff-head .dstat{ flex:0 0 auto; display:flex; align-items:center; gap:8px; font-family:var(--font-mono); font-size:12px; font-weight:600; }
 .diff-head .dstat .add{ color:var(--green); } .diff-head .dstat .del{ color:var(--red); }
+.diff-head .dstat .add.zero, .diff-head .dstat .del.zero{ color:var(--text-4); } /* +0 / −0 은 흐리게 */
 .diff-head .dspacer{ flex:1; }
 .diff-head .dclose{ color:var(--text-3); padding:7px; border-radius:8px; transition:background .12s,color .12s; }
 .diff-head .dclose:hover{ background:var(--surface-2); color:var(--text); }
@@ -3736,6 +3744,36 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
    창 컨트롤 영역만 no-drag로 클릭을 받는다. 네이티브 타이틀바는 titleBarStyle:'hidden'으로 숨김. */
 .sw-titlebar{ -webkit-app-region: drag; }
 .sw-titlebar .tb-controls{ -webkit-app-region: no-drag; }
+
+/* 작업 폴더 칩 — 타이틀바는 드래그 영역이라 칩/리셋만 no-drag로 클릭을 받는다. */
+.sw-titlebar .sw-folder,
+.sw-titlebar .sw-folder-reset{ -webkit-app-region: no-drag; }
+.sw-folder{
+  display:inline-flex; align-items:center; gap:5px; height:22px; max-width:200px; margin-left:10px;
+  padding:0 9px; border:1px solid var(--line-2); border-radius:7px; background:var(--surface);
+  color:var(--text-2); font-size:11.5px; cursor:pointer;
+}
+.sw-folder:hover{ background:var(--surface-2); color:var(--text); }
+.sw-folder svg{ flex:0 0 auto; opacity:.75; }
+.sw-folder-name{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.sw-folder-reset{
+  display:inline-grid; place-items:center; width:20px; height:20px; margin-left:3px;
+  border:none; border-radius:6px; background:transparent; color:var(--text-3); cursor:pointer;
+}
+.sw-folder-reset:hover{ background:var(--surface-2); color:var(--text); }
+/* 타이틀바 칩이라 툴팁을 위가 아니라 아래로 떨군다(창 밖으로 나가지 않게). 칩은 왼쪽 정렬로 시작. */
+.sw-folder.has-tip::after{ bottom:auto; top:100%; left:0; margin-bottom:0; margin-top:8px; transform:translate(0, -3px); }
+.sw-folder.has-tip:hover::after{ transform:translate(0, 0); }
+.sw-folder-reset.has-tip::after{ bottom:auto; top:100%; margin-bottom:0; margin-top:8px; transform:translate(-50%, -3px); }
+.sw-folder-reset.has-tip:hover::after{ transform:translate(-50%, 0); }
+/* 빈 상태의 작업 폴더 버튼 — 처음 여는 사용자에게도 폴더 지정을 알려준다. */
+.sw-empty-folder{
+  display:inline-flex; align-items:center; gap:7px; margin-top:18px; padding:7px 13px;
+  border:1px solid var(--line-2); border-radius:9px; background:var(--surface);
+  color:var(--text-2); font-size:12px; cursor:pointer;
+}
+.sw-empty-folder:hover{ background:var(--surface-2); color:var(--text); }
+.sw-empty-folder svg{ opacity:.8; }
 
 .sw-scroll{ flex:1; min-height:0; overflow-y:auto; }
 /* 실제 채팅(.chat--talk .thread)과 같은 중앙 정렬 칼럼 — 92%·상한 1600px로 양옆에

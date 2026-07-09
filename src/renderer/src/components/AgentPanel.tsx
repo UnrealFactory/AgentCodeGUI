@@ -56,18 +56,17 @@ export function Todos({ todos }: { todos: Todo[] }) {
 
 export function FileRow({ f, onOpen }: { f: ChangedFile; onOpen: (f: ChangedFile) => void }) {
   const slash = f.path.lastIndexOf('/')
-  const dir = slash >= 0 ? f.path.slice(0, slash + 1) : ''
   const name = slash >= 0 ? f.path.slice(slash + 1) : f.path
   return (
     <button className="file" data-tip={f.path} onClick={() => onOpen(f)}>
       <FileBadge path={f.path} size={18} />
-      <span className="path">
-        <span className="dir">{dir}</span>
-        {name}
-      </span>
+      {/* 좁은 목록이라 폴더 경로는 빼고 파일명만 — 전체 경로는 hover 툴팁(data-tip)에 있다.
+          폴더를 조금이라도 잘라 보여주면 'P…' 같은 알아볼 수 없는 회색 조각이 남아 더 헷갈렸다. */}
+      <span className="path">{name}</span>
       <span className="stat">
-        {f.add ? <span className="add">+{f.add}</span> : null}
-        {f.del ? <span className="del">−{f.del}</span> : null}
+        {/* 항상 +N −M 고정 표기 — 변경이 없으면 +0 −0(흐리게). 행마다 형식이 달라 헷갈리던 문제 해결 */}
+        <span className={'add' + (f.add ? '' : ' zero')}>+{f.add || 0}</span>
+        <span className={'del' + (f.del ? '' : ' zero')}>−{f.del || 0}</span>
         <span className={'tag ' + (f.tag === 'new' ? 'new' : 'edit')}>{f.tag === 'new' ? 'NEW' : 'EDIT'}</span>
       </span>
       <IconChevRight size={14} className="fchev" />

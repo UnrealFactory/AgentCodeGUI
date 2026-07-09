@@ -2745,16 +2745,17 @@ export function FileModal({
           )}
           <FileBadge path={effPath} size={22} />
           <span className="dpath">
-            <span className="dir">{dir}</span>
-            {name}
+            {dir && <span className="dir">{dir}</span>}
+            <span className="name">{name}</span>
           </span>
           {ov?.label && <span className="fv-glabel">{ov.label}</span>}
           {diff && (
             <>
               <span className={'tag ' + (diff.tag === 'new' ? 'new' : 'edit')}>{diff.tag === 'new' ? 'NEW' : 'EDIT'}</span>
               <span className="dstat">
-                {diff.add ? <span className="add">+{diff.add}</span> : null}
-                {diff.del ? <span className="del">−{diff.del}</span> : null}
+                {/* 항상 +N −M 고정 표기 — 변경이 없으면 +0 −0(흐리게) */}
+                <span className={'add' + (diff.add ? '' : ' zero')}>+{diff.add || 0}</span>
+                <span className={'del' + (diff.del ? '' : ' zero')}>−{diff.del || 0}</span>
               </span>
             </>
           )}

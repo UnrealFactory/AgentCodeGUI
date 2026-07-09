@@ -53,6 +53,7 @@ const api: WindowApi = {
   respondPermission: (res: PermissionResponse) => ipcRenderer.invoke(IPC.permissionRespond, res),
   respondQuestion: (res: QuestionResponse) => ipcRenderer.invoke(IPC.questionRespond, res),
   pickDirectory: () => ipcRenderer.invoke(IPC.pickDirectory),
+  dirExists: (dir: string) => ipcRenderer.invoke(IPC.dirExists, dir),
   pickAttachments: () => ipcRenderer.invoke(IPC.pickAttachments),
   saveAttachmentData: (bytes: ArrayBuffer, ext: string) => ipcRenderer.invoke(IPC.saveAttachmentData, { bytes, ext }),
   // webUtils.getPathForFile must run in the preload (not the sandboxed renderer); the

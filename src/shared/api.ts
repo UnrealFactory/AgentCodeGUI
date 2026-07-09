@@ -51,6 +51,8 @@ export interface WindowApi {
   respondPermission(res: PermissionResponse): Promise<void>
   respondQuestion(res: QuestionResponse): Promise<void>
   pickDirectory(): Promise<string | null>
+  /** whether an absolute path exists and is a directory — used to validate a saved 작업 폴더 before reusing it */
+  dirExists(dir: string): Promise<boolean>
   /** open a file dialog filtered to attachable files (images + readable text); returns the chosen absolute paths */
   pickAttachments(): Promise<string[]>
   /** persist raw attachment bytes (a pasted screenshot / browser-dragged file with no path) to a

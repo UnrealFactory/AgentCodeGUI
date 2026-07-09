@@ -773,13 +773,24 @@ function registerIpc(): void {
   ipcMain.handle(IPC.maGet, async () => readMulti())
   ipcMain.handle(IPC.maSave, async (_e, data: unknown) => writeMulti(data))
 
-  ipcMain.handle(IPC.pickDirectory, async () => {
-    if (!mainWindow) return null
-    const r = await dialog.showOpenDialog(mainWindow, {
+  ipcMain.handle(IPC.pickDirectory, async (_e) => {
+    // parent the picker to the window that asked (so a 추가 채팅 창의 다이얼로그가 그 창 위에 뜬다);
+    // fall back to the main window if the sender's window is gone
+    const owner = BrowserWindow.fromWebContents(_e.sender) ?? mainWindow
+    if (!owner) return null
+    const r = await dialog.showOpenDialog(owner, {
       properties: ['openDirectory'],
       title: '작업할 프로젝트 폴더 선택'
     })
     return r.canceled || !r.filePaths[0] ? null : r.filePaths[0]
+  })
+  ipcMain.handle(IPC.dirExists, async (_e, dir: string) => {
+    if (!dir || !dir.trim()) return false
+    try {
+      return fs.statSync(dir).isDirectory()
+    } catch {
+      return false
+    }
   })
   ipcMain.handle(IPC.pickAttachments, async () => {
     if (!mainWindow) return []
