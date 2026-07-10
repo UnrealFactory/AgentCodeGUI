@@ -85,6 +85,10 @@ export interface WindowApi {
     /** 저장된 계정별 한도 사용률(5시간·주간·Fable) — 전환 없이 각 계정 토큰으로 일괄 조회 */
     accountsUsage(): Promise<AccountUsage[]>
   }
+  /** 세션 창(추가 채팅)에서: 메인 창을 앞으로 가져와 설정 → API 탭을 연다 (키 등록 안내) */
+  openApiSettings(): Promise<void>
+  /** 메인 창에서: 위 요청 수신 → 설정 모달을 API 탭으로 연다. 반환값은 구독 해제 함수. */
+  onApiSettingsRequested(cb: () => void): () => void
   /** API 키 과금 설정 (설정 → API + 컴포저 API 토글). 모든 호출이 최신 스냅샷을 돌려준다. */
   apiConfig: {
     get(): Promise<ApiConfigStatus>

@@ -53,7 +53,9 @@ function sanitizePicker(p?: Partial<PickerState> | null): PickerState {
   return {
     model: p?.model && MODEL_IDS.includes(p.model) ? p.model : DEFAULT_PICKER.model,
     effort: p?.effort && EFFORT_IDS.includes(p.effort) ? p.effort : DEFAULT_PICKER.effort,
-    mode: p?.mode && MODE_IDS.includes(p.mode) ? p.mode : DEFAULT_PICKER.mode
+    mode: p?.mode && MODE_IDS.includes(p.mode) ? p.mode : DEFAULT_PICKER.mode,
+    // 실행 계정(이메일) — 형태만 확인 (등록 목록 대조는 picker·엔진이 담당)
+    account: typeof p?.account === 'string' && p.account ? p.account : undefined
   }
 }
 
@@ -482,7 +484,9 @@ export function ChatWorkspace({
       systemPrompt: CHAT_SYSTEM_PROMPT,
       resume: state.session?.sessionId,
       // 전역 과금 모드 — API를 골랐으면 이 실행도 API 키로 과금
-      useApi: apiMode || undefined
+      useApi: apiMode || undefined,
+      // 이 채팅의 실행 계정(구독) — 전역 활성 계정과 다르면 엔진이 격리 폴더로 돌린다
+      account: pk.account
     }
     if (!opts?.keepDraft) {
       setInput('')

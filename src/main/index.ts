@@ -826,6 +826,15 @@ function registerIpc(): void {
   ipcMain.handle(IPC.authRemoveAccount, async (_e, email: string) => removeAccount(email))
   ipcMain.handle(IPC.authAccountsUsage, async () => accountsUsage())
 
+  // 세션 창(추가 채팅)의 과금 picker — 설정 모달은 메인 창에만 있어서, 키 없이 API를
+  // 고르면 메인 창을 앞으로 가져와 설정 → API 탭을 대신 연다.
+  ipcMain.handle(IPC.openApiSettings, async () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return
+    if (mainWindow.isMinimized()) mainWindow.restore()
+    mainWindow.focus()
+    mainWindow.webContents.send(IPC.apiSettingsRequested)
+  })
+
   // API 키 과금 설정 (설정 → API) — 키 원문은 절대 렌더러로 돌려주지 않는다
   ipcMain.handle(IPC.apiConfigGet, async () => apiConfigStatus())
   ipcMain.handle(IPC.apiConfigSetKey, async (_e, key: string) => {

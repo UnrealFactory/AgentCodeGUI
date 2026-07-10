@@ -64,7 +64,10 @@ function sanitizePicker(p?: Partial<PickerState> | null): PickerState {
   return {
     model: p?.model && MODEL_IDS.includes(p.model) ? p.model : DEFAULT_PICKER.model,
     effort: p?.effort && EFFORT_IDS.includes(p.effort) ? p.effort : DEFAULT_PICKER.effort,
-    mode: p?.mode && MODE_IDS.includes(p.mode) ? p.mode : DEFAULT_PICKER.mode
+    mode: p?.mode && MODE_IDS.includes(p.mode) ? p.mode : DEFAULT_PICKER.mode,
+    // 실행 계정(이메일) — 등록 목록과의 대조는 비동기라 여기선 형태만 확인. 목록에서
+    // 사라진 계정은 picker가 경고 항목으로 보여주고, 실행 시 엔진이 에러로 알린다.
+    account: typeof p?.account === 'string' && p.account ? p.account : undefined
   }
 }
 
@@ -230,6 +233,12 @@ function MainApp({ user }: { user: AppUser }) {
     setSettingsView('api')
     setSettingsOpen(true)
   })
+
+  // 세션 창(추가 채팅)에서 키 없이 API 과금을 고르면 — 그 창엔 설정 모달이 없어서
+  // 메인 프로세스가 이 창을 앞으로 가져오며 보내는 요청 — 설정 → API 탭을 연다.
+  // ?. 가드: dev HMR로 렌더러만 새 코드가 들어오면 구 preload엔 이 함수가 없다 —
+  // 마운트 효과라 가드가 없으면 TypeError 하나가 앱 전체를 에러 카드로 만든다(실측).
+  useEffect(() => window.api.onApiSettingsRequested?.(openApiSettings), [openApiSettings])
 
   // 컴포저의 과금 picker(구독/API) — API 선택인데 키가 없으면 설정 → API 탭을 열어 안내
   const onApiModeChange = useEvent((next: boolean) => {
@@ -723,7 +732,9 @@ function MainApp({ user }: { user: AppUser }) {
       // change starts a fresh conversation in the new project.
       resume: state.session && sameCwd(state.session.cwd, dir) ? state.session.sessionId : undefined,
       // API 모드(컴포저 토글) — 이 실행을 구독 대신 저장된 API 키로 과금
-      useApi: apiMode || undefined
+      useApi: apiMode || undefined,
+      // 이 채팅의 실행 계정(구독) — 전역 활성 계정과 다르면 엔진이 격리 폴더로 돌린다
+      account: pk.account
     }
     if (!opts?.keepDraft) {
       setInput('')

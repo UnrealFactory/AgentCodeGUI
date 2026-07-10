@@ -27,7 +27,8 @@ export interface ToolLogItem {
   target: string // file path or command summary
   status: 'running' | 'done' | 'error'
   result?: string // short result summary once finished
-  output?: string // captured output tail (Bash) — rendered as a collapsible inline log
+  output?: string // captured output tail (Bash) — 클릭 시 전체 로그 모달로 표시
+  durationMs?: number // 실행 시간 (tool-start→end) — bash 행의 우측 요약·모달에 표시
   links?: WebLink[] // web rows — pages a WebSearch found; the chat row expands to clickable links
   parentToolId?: string // set when this tool runs inside a subagent (Task)
 }
@@ -286,7 +287,7 @@ export type EngineEvent =
   | { type: 'thinking'; runId: string; text: string }
   | { type: 'thinking-clear'; runId: string }
   | { type: 'tool-start'; runId: string; tool: ToolLogItem }
-  | { type: 'tool-end'; runId: string; id: string; status: 'done' | 'error'; result?: string; output?: string; links?: WebLink[] }
+  | { type: 'tool-end'; runId: string; id: string; status: 'done' | 'error'; result?: string; output?: string; durationMs?: number; links?: WebLink[] }
   | { type: 'todos'; runId: string; todos: Todo[] }
   // `whole` = a full-file Write (the diff supersedes any accumulated diff for this
   // path); false for incremental Edit/MultiEdit (merges onto the existing diff)
@@ -351,6 +352,10 @@ export interface RunRequest {
   // true → 이 실행은 구독(OAuth) 대신 저장된 API 키로 과금한다 (컴포저의 API 토글).
   // 엔진이 하위 CLI에 ANTHROPIC_API_KEY를 주입하고, result 이벤트에 viaApi로 표시한다.
   useApi?: boolean
+  // 이 실행을 전역 활성 로그인 대신 등록된 다른 구독 계정으로 돌린다(계정 picker의
+  // 이메일). 엔진이 그 계정의 격리 CLAUDE_CONFIG_DIR을 물질화해 주입한다 — 전역 활성
+  // 계정과 같으면 오버라이드 없이 실행하고, useApi가 켜져 있으면 무시된다.
+  account?: string
 }
 
 // ── Multi-agent (N independent panels, one engine each) ──────
@@ -650,6 +655,8 @@ export const IPC = {
   apiConfigSetBudget: 'api-config:set-budget', // 예산(USD) 설정 (null = 없음)
   apiConfigResetSpend: 'api-config:reset-spend', // 누적 사용액 0으로 리셋 (재충전 시)
   apiUsageList: 'api-usage:list', // API 모드 실행 원장 (설정 → API 통계)
+  openApiSettings: 'ui:open-api-settings', // 세션 창 → 메인 프로세스: 메인 창을 앞으로 + 설정 → API 탭 열기
+  apiSettingsRequested: 'ui:api-settings-requested', // 메인 프로세스 → 메인 창: 위 요청 전달(설정 모달 열기)
   profileGet: 'profile:get', // load the saved local user profile (or null)
   profileSave: 'profile:save', // persist nickname + avatar color
   chatsGet: 'chats:get', // load the saved chat list + active id (or null)

@@ -1,4 +1,5 @@
 import { Fragment, memo, useEffect, useRef, useState, type CSSProperties, type ComponentType, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import type {
   ModelId,
   EffortId,
@@ -12,7 +13,9 @@ import type {
   AgentStatus,
   Todo,
   ChangedFile,
-  SubAgentInfo
+  SubAgentInfo,
+  AccountInfo,
+  AccountUsage
 } from '@shared/protocol'
 import type { ThreadItem } from '../store/session'
 import { Markdown } from './Markdown'
@@ -57,6 +60,7 @@ import {
   IconKey,
   IconCard,
   IconDollar,
+  IconUser,
   type IconProps
 } from './icons'
 
@@ -98,8 +102,8 @@ const EFFORTS: EffortOpt[] = [
   { v: '낮음', id: 'low', d: '가벼운 추론', level: 1 },
   { v: '최소', id: 'minimal', d: '확장사고 끔', level: 0 }
 ]
-// 모드 + 과금 picker가 함께 쓰는 아이콘 키 (Pick의 icons 렌더링)
-const MODE_ICONS = { shield: IconShieldChk, plan: IconClipList, check: IconCheckCirc, bolt: IconBolt, warn: IconAlert, card: IconCard, key: IconKey }
+// 모드 + 과금 + 계정 picker가 함께 쓰는 아이콘 키 (Pick의 icons 렌더링)
+const MODE_ICONS = { shield: IconShieldChk, plan: IconClipList, check: IconCheckCirc, bolt: IconBolt, warn: IconAlert, card: IconCard, key: IconKey, user: IconUser }
 const MODES: ModeOpt[] = [
   { v: '일반', id: 'normal', d: '변경마다 승인 요청', color: 'var(--text-3)', icon: 'shield' },
   { v: '플랜', id: 'plan', d: '계획만 수립, 실행은 승인 후', color: 'var(--blue)', icon: 'plan' },
@@ -112,6 +116,9 @@ export interface PickerState {
   model: ModelId
   effort: EffortId
   mode: ModeId
+  // 이 채팅의 실행 계정(등록 계정 이메일) — 없으면 전역 활성 계정을 따른다. 과금이
+  // '구독'일 때만 의미가 있다(API 모드 실행에선 엔진이 무시).
+  account?: string
 }
 
 /** raw SDK model id ('claude-opus-4-8-…') → picker ModelId, or undefined if unknown.
@@ -191,11 +198,27 @@ function toolIcon(kind: string, size: number) {
   return <IconWrench size={size} />
 }
 
+// 실행 시간 표시 (bash 행 요약·모달) — 10초 미만은 소수 한 자리, 1분 넘으면 m s
+function fmtDur(ms: number): string {
+  const s = ms / 1000
+  if (s < 10) return s.toFixed(1) + 's'
+  if (s < 60) return Math.round(s) + 's'
+  return Math.floor(s / 60) + 'm ' + Math.round(s % 60) + 's'
+}
+
 // result shown on the right: a spinner while running, a red mark on error, the +/-
 // line counts for edits (colored), or the tool's text summary otherwise.
+// Bash는 '✓' 대신 실행 시간 · 출력 줄수 — 다른 도구의 '10줄'과 같은 문법.
 function ToolResult({ t }: { t: ToolLogItem }) {
   if (t.status === 'running') return <span className="t-res"><span className="spin" /></span>
   if (t.status === 'error') return <span className="t-res err">오류</span>
+  if (t.kind === 'bash') {
+    const parts = [
+      t.durationMs != null ? fmtDur(t.durationMs) : '',
+      t.output ? `${t.output.split('\n').length}줄` : ''
+    ].filter(Boolean)
+    if (parts.length) return <span className="t-res">{parts.join(' · ')}</span>
+  }
   const diff = (t.result ?? '').match(/^\+(\d+) -(\d+)$/)
   if (diff)
     return (
@@ -206,59 +229,132 @@ function ToolResult({ t }: { t: ToolLogItem }) {
   return <span className="t-res">{t.result ?? ''}</span>
 }
 
-// A bash row's captured output, in the install-log idiom (--inset block, mono 11px).
-// Collapsed it's a single ghost line (last output line — n줄) as quiet as the tool
-// rows; click to expand the scrollable log. Failures open expanded on their own —
-// the error text is the very thing the user needs to read next.
-function BashOutput({ t }: { t: ToolLogItem }) {
-  const [open, setOpen] = useState(false)
-  const [copied, setCopied] = useState(false)
-  const failed = t.status === 'error'
+// 실패 출력에서 에러로 읽히는 줄만 붉게 — 성공 출력은 설치 로그처럼 완전 무채색 유지
+function bashErrLine(failed: boolean, ln: string): boolean {
+  return failed && /(^|\s)(error|err!|fatal|exception|failed)\b/i.test(ln)
+}
+
+// Bash 전체 로그 모달 — 인라인 펼침은 좁아서 읽기 어렵다는 피드백으로 교체.
+// '명령'과 '출력'을 섹션으로 나눠 요청/결과가 한눈에 읽힌다. 채팅 스크롤러/가상화
+// 밖(body 포털)에 그려서 어느 화면(메인·멀티 패널·추가 채팅)에서 열어도 안전하다.
+function BashLogModal({ t, onClose }: { t: ToolLogItem; onClose: () => void }) {
+  // 복사 피드백 — 명령/출력 어느 쪽을 복사했는지 구분 (복사 → 복사됨 1.2s, 설정 CopyRow 이디엄)
+  const [copied, setCopied] = useState<'cmd' | 'out' | null>(null)
   useEffect(() => {
-    if (failed) setOpen(true)
-  }, [failed])
-  if (!t.output) return null
-  // same feedback idiom as 설정 → 브리지의 CopyRow: 복사 → 복사됨 (1.2s)
-  const copy = (): void => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', onKey)
+    // Ctrl+W — main이 앱 종료를 삼키고 보내는 신호(shortcut:close). 코드 뷰어와 같은 규칙.
+    const offCloseShortcut = window.api.onCloseShortcut(onClose)
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      offCloseShortcut()
+    }
+  }, [onClose])
+  const failed = t.status === 'error'
+  const lines = (t.output ?? '').split('\n')
+  const copy = (which: 'cmd' | 'out', text: string): void => {
     navigator.clipboard
-      ?.writeText(t.output ?? '')
+      ?.writeText(text)
       .then(() => {
-        setCopied(true)
-        setTimeout(() => setCopied(false), 1200)
+        setCopied(which)
+        setTimeout(() => setCopied(null), 1200)
       })
       .catch(() => {})
   }
-  const lines = t.output.split('\n')
-  const last = [...lines].reverse().find((l) => l.trim()) ?? ''
-  // tint only lines that read as errors, and only on a failed run — success
-  // output stays fully achromatic like the install log
-  const errLine = (ln: string): boolean => failed && /(^|\s)(error|err!|fatal|exception|failed)\b/i.test(ln)
-  if (!open)
-    return (
-      <div className="bo-ghost" onClick={() => setOpen(true)}>
-        <span className="bo-tick">└</span>
-        <span className={'bo-pv' + (failed ? ' err' : '')}>{last}</span>
-        <span className="bo-n">— {lines.length}줄</span>
-      </div>
-    )
-  return (
-    <div className={'bo-block' + (failed ? ' fail' : '')}>
-      <div className="bo-log scroll">
-        {lines.map((ln, i) => (
-          <div key={i} className={'bo-ln' + (errLine(ln) ? ' err' : '')}>
-            {ln || ' '}
+  return createPortal(
+    <div className="sa-overlay" onMouseDown={onClose}>
+      <div className="bm-card" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="bm-head">
+          <span className={'bm-ic' + (failed ? ' err' : '')}>
+            <IconTerminal size={16} />
+          </span>
+          <div className="bm-title">Bash</div>
+          <span className={'bm-status' + (failed ? ' err' : '')}>{failed ? '실패' : '완료'}</span>
+          <button className="sa-card-close" onClick={onClose} aria-label="닫기">
+            <IconClose size={18} />
+          </button>
+        </div>
+        <div className="bm-body">
+          <div className="bm-lbl">
+            <span>명령</span>
+            <span className="bo-sp" />
+            <button className={'bm-copy' + (copied === 'cmd' ? ' on' : '')} onClick={() => copy('cmd', t.target)}>
+              {copied === 'cmd' ? '복사됨' : '복사'}
+            </button>
           </div>
-        ))}
+          <div className="bm-cmd scroll">{t.target}</div>
+          <div className="bm-lbl">
+            <span>출력</span>
+            <span className="bo-sp" />
+            <button className={'bm-copy' + (copied === 'out' ? ' on' : '')} onClick={() => copy('out', t.output ?? '')}>
+              {copied === 'out' ? '복사됨' : '복사'}
+            </button>
+          </div>
+          <div className="bm-log scroll">
+            {lines.map((ln, i) => (
+              <div key={i} className={'bo-ln' + (bashErrLine(failed, ln) ? ' err' : '')}>
+                {ln || ' '}
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="bm-foot">
+          {/* 실행 시간 · 줄수 — 엔진이 끝 200줄/16KB만 실어 보내는 캡은 '끝부분 200줄'로 알린다 */}
+          <span>
+            {t.durationMs != null ? `${fmtDur(t.durationMs)} · ` : ''}
+            {lines.length >= 200 ? '끝부분 200줄' : `${lines.length}줄`}
+          </span>
+        </div>
       </div>
-      <div className="bo-foot">
-        <span>{lines.length}줄</span>
-        <span className="bo-sp" />
-        <button className={copied ? 'bo-copied' : ''} onClick={copy}>
-          {copied ? '복사됨' : '복사'}
-        </button>
-        <button onClick={() => setOpen(false)}>접기</button>
+    </div>,
+    document.body
+  )
+}
+
+// Bash 행 — Read/Edit 행이 파일을 열듯 명령(t-target)을 클릭하면 전체 로그 모달이
+// 열린다(호버 툴팁 '결과 보기'). 성공 출력의 고스트 줄은 제거 — 줄수·실행 시간은
+// 행 오른쪽 요약(ToolResult)에 다른 도구들과 같은 문법으로 나온다. 실패는 마지막
+// 5줄 꼬리를 인라인에 남긴다 — 에러는 아무것도 열지 않아도 바로 읽혀야 한다.
+function BashRow({ t }: { t: ToolLogItem }) {
+  const [open, setOpen] = useState(false)
+  const failed = t.status === 'error'
+  const clickable = !!t.output
+  return (
+    <>
+      <div
+        className={'t-row bash ' + t.status + (clickable ? ' openable' : '')}
+        onClick={clickable ? () => setOpen(true) : undefined}
+      >
+        <span className="t-ic">{toolIcon('bash', 14)}</span>
+        <span className="t-verb">{t.verb}</span>
+        <span className="t-sep">·</span>
+        <span className={'t-target' + (clickable ? ' has-tip' : '')} data-tip={clickable ? '결과 보기' : undefined}>
+          {t.target}
+        </span>
+        <ToolResult t={t} />
       </div>
-    </div>
+      {failed && t.output && (
+        <div className="bo-block fail bo-open" onClick={() => setOpen(true)}>
+          <div className="bo-log">
+            {t.output
+              .split('\n')
+              .slice(-5)
+              .map((ln, i) => (
+                <div key={i} className={'bo-ln' + (bashErrLine(failed, ln) ? ' err' : '')}>
+                  {ln || ' '}
+                </div>
+              ))}
+          </div>
+          <div className="bo-foot">
+            <span className="bo-sp" />
+            <span className="bo-more">전체 로그 보기</span>
+          </div>
+        </div>
+      )}
+      {open && t.output && <BashLogModal t={t} onClose={() => setOpen(false)} />}
+    </>
   )
 }
 
@@ -368,6 +464,7 @@ function ToolGroup({
       )}
       {item.tools.map((t) => {
         if (t.kind === 'web') return <WebRow t={t} key={t.id} />
+        if (t.kind === 'bash') return <BashRow t={t} key={t.id} />
         const openable = !!onOpenFile && (t.kind === 'read' || t.kind === 'write' || t.kind === 'edit') && !!t.target
         return (
           <Fragment key={t.id}>
@@ -384,7 +481,6 @@ function ToolGroup({
               </span>
               <ToolResult t={t} />
             </div>
-            {t.kind === 'bash' && t.output && <BashOutput t={t} />}
           </Fragment>
         )
       })}
@@ -1151,6 +1247,7 @@ function Bars({ level }: { level: number }) {
 interface PickProps<O extends { v: string; d?: string }> {
   label: string
   value: string
+  valueLabel?: string // 버튼에 표시할 짧은 값 (없으면 value 그대로) — 긴 이메일 등
   options: O[]
   onChange: (v: string) => void
   align?: 'right'
@@ -1159,9 +1256,10 @@ interface PickProps<O extends { v: string; d?: string }> {
   icons?: boolean
   tip?: string
 }
-function Pick<O extends { v: string; d?: string; color?: string; level?: number; icon?: keyof typeof MODE_ICONS; warn?: boolean }>({
+function Pick<O extends { v: string; d?: string; d2?: string; color?: string; level?: number; icon?: keyof typeof MODE_ICONS; warn?: boolean }>({
   label,
   value,
+  valueLabel,
   options,
   onChange,
   align,
@@ -1203,7 +1301,7 @@ function Pick<O extends { v: string; d?: string; color?: string; level?: number;
           <Bars level={sel.level ?? 3} />
         ) : null}
         <span className="pick-lbl">{label}</span>
-        <span className="pick-val">{value}</span>
+        <span className="pick-val">{valueLabel ?? value}</span>
         <IconChevDown size={11} className="pick-chev" />
       </button>
       {open && (
@@ -1229,6 +1327,7 @@ function Pick<O extends { v: string; d?: string; color?: string; level?: number;
                 <span className="po-text">
                   <span className="po-main">{o.v}</span>
                   {o.d && <span className="po-desc">{o.d}</span>}
+                  {o.d2 && <span className="po-desc">{o.d2}</span>}
                 </span>
                 {o.v === value && <IconCheck size={14} className="po-check" />}
               </button>
@@ -1274,6 +1373,142 @@ export function BillingPick({
       icons
       tip="과금 방식 — 구독(정액) vs API 키(종량)"
     />
+  )
+}
+
+// ── 계정 목록 캐시 (계정 picker 공용) ─────────────────────────
+// listAccounts는 메인이 CLI 프로세스를 하나 띄워 상태를 묻는다(auth status) — picker
+// 마운트마다 부르면 무겁다. 모듈 캐시 + TTL로 화면의 여러 picker(컴포저·패널들)가
+// 한 번의 조회를 나눠 쓴다. 계정 목록은 설정에서만 바뀌니 1분이면 충분히 신선하다.
+let acctCache: { at: number; list: AccountInfo[] } | null = null
+let acctInflight: Promise<AccountInfo[]> | null = null
+const ACCT_TTL = 60_000
+// 계정별 아이콘 색 — 등록 순서대로 배정해 어디서 열어도 같은 계정 = 같은 색.
+// 컴포저에서 설정 가능한 것들과 색이 겹치면 안 된다: 모델(골드·바이올렛·블루·틸),
+// 모드(블루·옐로·바이올렛·레드), 과금(로즈·그린), 경고(레드)가 이미 점유 → 계정은
+// 전용 팔레트(시안·라임·오렌지·마젠타, 로즈에서 먼 순)를 쓴다.
+const ACCT_COLORS = ['var(--cyan)', 'var(--lime)', 'var(--orange)', 'var(--magenta)']
+
+// 계정별 한도 사용률(5시간·주간·Fable) — 설정 → Account와 같은 조회를 나눠 쓴다.
+// 계정마다 네트워크 요청이 나가므로 계정 목록과 같은 방식의 모듈 캐시 + TTL.
+let usageCache: { at: number; map: Record<string, AccountUsage> } | null = null
+let usageInflight: Promise<Record<string, AccountUsage>> | null = null
+function fetchAccountsUsage(): Promise<Record<string, AccountUsage>> {
+  if (usageCache && Date.now() - usageCache.at < ACCT_TTL) return Promise.resolve(usageCache.map)
+  if (usageInflight) return usageInflight
+  usageInflight = window.api.auth
+    .accountsUsage()
+    .then((us: AccountUsage[]) => {
+      const map = Object.fromEntries(us.map((u) => [u.email, u]))
+      usageCache = { at: Date.now(), map }
+      usageInflight = null
+      return map
+    })
+    .catch(() => {
+      usageInflight = null
+      return usageCache?.map ?? {}
+    })
+  return usageInflight
+}
+
+// 계정 옵션의 잔여 한도 줄 — 앱 전체 관례(잔여 % = 100 − 사용률, 설정 → Account와 동일).
+// 조회 못 한 항목은 조용히 빠진다(저장 토큰 만료 등 — 실행하면 CLI가 리프레시한다).
+function acctUsageLine(u?: AccountUsage): string {
+  if (!u) return ''
+  const parts: string[] = []
+  if (u.fiveHourPct != null) parts.push(`5시간 ${100 - u.fiveHourPct}%`)
+  if (u.weeklyPct != null) parts.push(`주간 ${100 - u.weeklyPct}%`)
+  if (u.fablePct != null) parts.push(`Fable ${100 - u.fablePct}%`)
+  return parts.length ? `남음 ${parts.join(' · ')}` : ''
+}
+function fetchAccounts(): Promise<AccountInfo[]> {
+  if (acctCache && Date.now() - acctCache.at < ACCT_TTL) return Promise.resolve(acctCache.list)
+  if (acctInflight) return acctInflight
+  acctInflight = window.api.auth
+    .listAccounts()
+    .then((list: AccountInfo[]) => {
+      acctCache = { at: Date.now(), list }
+      acctInflight = null
+      return list
+    })
+    .catch(() => {
+      acctInflight = null
+      return acctCache?.list ?? []
+    })
+  return acctInflight
+}
+
+// 계정 picker — 과금이 '구독'일 때 이 채팅의 실행 계정을 고른다(등록 계정이 2개 이상일
+// 때만 표시 — 하나뿐이면 고를 게 없다). '기본'은 전역 활성 계정을 그대로 따라가고,
+// 특정 계정을 고르면 이 채팅의 실행만 그 계정(격리 CLAUDE_CONFIG_DIR)으로 돈다.
+export function AccountPick({
+  account,
+  onChange,
+  align,
+  divider
+}: {
+  account?: string
+  onChange: (email?: string) => void
+  align?: 'right'
+  divider?: boolean // 컴포저 바처럼 pick 사이에 구분선을 쓰는 곳 — 숨을 때 같이 숨도록 내부에서 그린다
+}) {
+  const [accounts, setAccounts] = useState<AccountInfo[]>(() => acctCache?.list ?? [])
+  // 계정별 잔여 한도 — 목록과 별도로 나중에 도착해 옵션 설명 줄을 채운다(네트워크 조회)
+  const [usage, setUsage] = useState<Record<string, AccountUsage>>(() => usageCache?.map ?? {})
+  useEffect(() => {
+    let on = true
+    fetchAccounts().then((l) => {
+      if (on) setAccounts(l)
+    })
+    fetchAccountsUsage().then((m) => {
+      if (on) setUsage(m)
+    })
+    return () => {
+      on = false
+    }
+  }, [])
+  // 계정이 하나뿐이면 picker 자체가 소음 — 단, 이 채팅이 이미 다른 계정을 고른 상태면
+  // (목록이 줄었어도) 그 사실이 보여야 하니 그대로 그린다.
+  if (accounts.length < 2 && !account) return null
+  const activeEmail = accounts.find((a) => a.active)?.email
+  // '기본' 같은 추상 항목 없이 항상 실제 계정을 보여준다 — 아직 안 골랐으면 지금 실행에
+  // 실제로 쓰일 전역 활성 계정이 값이다. 하나를 고르면 이 채팅에 고정된다.
+  const effective = account ?? activeEmail
+  // 버튼엔 이메일 로컬파트만 짧게 — 로컬파트가 겹치는 계정이 있으면 전체 이메일로 구분
+  const short = (email: string): string => {
+    const lp = email.split('@')[0]
+    return accounts.some((a) => a.email !== email && a.email.split('@')[0] === lp) ? email : lp
+  }
+  const options = [
+    ...accounts.map((a, i) => ({
+      v: a.email,
+      d: a.active ? '현재 활성 계정' : a.subscriptionType ? `${a.subscriptionType} 구독` : '등록된 계정',
+      // 잔여 한도(5시간·주간·Fable)를 둘째 설명 줄로 — 어느 계정이 여유 있는지 보고 고른다
+      d2: acctUsageLine(usage[a.email]) || undefined,
+      // 계정마다 다른 색 — 어느 채팅이 어느 계정인지 아이콘 색만으로 구분되게
+      color: ACCT_COLORS[i % ACCT_COLORS.length],
+      icon: 'user' as const
+    })),
+    // 저장 목록에서 사라진 계정을 여전히 가리키는 채팅 — 실행이 실패할 수 있음을 알리고
+    // 다른 값으로 바꿀 수 있게 목록에 남겨 보여준다
+    ...(account && !accounts.some((a) => a.email === account)
+      ? [{ v: account, d: '저장 목록에 없음 — 설정 → Account에서 다시 추가하세요', color: 'var(--red)', icon: 'warn' as const, warn: true }]
+      : [])
+  ]
+  return (
+    <>
+      {divider && <span className="pick-div" />}
+      <Pick
+        label="계정"
+        value={effective ?? ''}
+        valueLabel={effective ? short(effective) : '—'}
+        options={options}
+        onChange={(v) => onChange(v)}
+        align={align}
+        icons
+        tip="실행 계정 — 이 채팅을 어느 구독 계정으로 돌릴지"
+      />
+    </>
   )
 }
 
@@ -1325,6 +1560,11 @@ export function RunPickers({
         tip="실행 모드 — 변경 승인 방식"
       />
       {onApiModeChange && <BillingPick apiMode={apiMode} apiReady={apiReady} onChange={onApiModeChange} align={align} />}
+      {/* 구독일 때만: 이 채팅의 실행 계정 (API 모드는 과금 주체가 키라 계정이 무의미).
+          과금 picker가 없는 창(추가 채팅의 /ask 등)도 구독 실행이므로 계정은 고를 수 있다. */}
+      {!apiMode && (
+        <AccountPick account={picker.account} onChange={(email) => setPicker({ ...picker, account: email })} align={align} />
+      )}
     </>
   )
 }
@@ -2785,6 +3025,16 @@ export function Composer({
                 <span className="pick-div" />
                 <BillingPick apiMode={apiMode} apiReady={apiReady} onChange={onApiModeChange} align="right" />
               </>
+            )}
+            {/* 구독일 때만: 이 채팅의 실행 계정 (RunPickers와 같은 규칙 — 과금 picker가
+                없는 추가 채팅 창도 구독 실행이므로 계정은 고를 수 있다) */}
+            {!apiMode && (
+              <AccountPick
+                account={picker.account}
+                onChange={(email) => setPicker({ ...picker, account: email })}
+                align="right"
+                divider
+              />
             )}
             <span className="cm-spacer" />
             {busy ? (

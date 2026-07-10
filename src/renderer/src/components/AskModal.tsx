@@ -155,7 +155,9 @@ export function AskModal({
       // project, so resuming it after a folder change errors "No conversation found")
       resume: state.session && sameCwd(state.session.cwd, cwd) ? state.session.sessionId : undefined,
       // 전역 과금 모드 — API를 골랐으면 /ask 실행도 API 키로 과금
-      useApi: apiMode || undefined
+      useApi: apiMode || undefined,
+      // 이 /ask 세션의 실행 계정(구독) — 전역 활성 계정과 다르면 엔진이 격리 폴더로 돌린다
+      account: pk.account
     }
     setInput('')
     setImages([])

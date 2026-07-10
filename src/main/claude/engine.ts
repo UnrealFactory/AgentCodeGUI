@@ -7,6 +7,7 @@ import { disabledSkillOverrides } from '../skills'
 import { deniedMcpServers } from '../mcp'
 import { getApiKey, addSpend } from '../apiConfig'
 import { recordApiUsage } from '../apiUsage'
+import { accountRunDir, syncAccountTokens } from '../auth'
 import type { ApiUsageSource } from '@shared/protocol'
 import type {
   EngineEvent,
@@ -189,8 +190,9 @@ export class ClaudeEngine {
   private permissionWaiters = new Map<string, (r: PermChoice) => void>()
   /** pending AskUserQuestion resolvers keyed by requestId (answers, or null if dismissed) */
   private questionWaiters = new Map<string, (answers: string[][] | null) => void>()
-  /** tool_use id → metadata so we can interpret tool_results (incl. a deferred file change) */
-  private tools = new Map<string, { name: string; cwd: string; pending?: { whole: boolean; file: ChangedFile; diff: FileDiff } }>()
+  /** tool_use id → metadata so we can interpret tool_results (incl. a deferred file change).
+   *  startedAt은 tool-end의 durationMs(실행 시간 — bash 행 요약에 표시)를 계산한다. */
+  private tools = new Map<string, { name: string; cwd: string; startedAt: number; pending?: { whole: boolean; file: ChangedFile; diff: FileDiff } }>()
   /** tool_use ids of subagent-spawn tools (Task/Agent), to flip them to done on result */
   private subagents = new Set<string>()
   /** absolute path → its content the first time it was modified this run (null = the
@@ -314,6 +316,11 @@ export class ClaudeEngine {
     // 아닌 API 키 과금으로 돌린다. 키 원문은 여기(메인)에서만 읽고 렌더러엔 안 간다.
     const useApi = !!req.useApi
     const apiKey = useApi ? getApiKey() : null
+    // 채팅별 계정(구독) 오버라이드 — 이 채팅이 전역 활성 계정과 다른 등록 계정을 골랐으면
+    // 그 계정의 격리 config 폴더를 물질화해 CLAUDE_CONFIG_DIR로 주입한다(auth.ts).
+    // null = 오버라이드 불필요(활성 계정과 동일하거나 미지정). API 모드면 과금 주체가
+    // API 키라 계정 오버라이드는 무의미 → 건너뛴다. finally에서 되싱크에 쓰므로 밖에 선언.
+    let accountDir: string | null = null
 
     try {
       if (!query) {
@@ -322,6 +329,7 @@ export class ClaudeEngine {
       if (useApi && !apiKey) {
         throw new Error('API 모드가 켜져 있지만 저장된 API 키가 없습니다. 설정 → API에서 키를 먼저 등록해 주세요.')
       }
+      if (!useApi && req.account) accountDir = accountRunDir(req.account) // 스냅샷 없음/손상 → throw로 에러 표시
       const q = query({
         prompt,
         options: {
@@ -349,8 +357,13 @@ export class ClaudeEngine {
           // only passes --allow-dangerously-skip-permissions when it's true.
           ...(permissionMode === 'bypassPermissions' ? { allowDangerouslySkipPermissions: true } : {}),
           // API 모드: ANTHROPIC_API_KEY를 주입해 이 실행을 API 키 과금으로 돌린다.
+          // 계정 오버라이드: CLAUDE_CONFIG_DIR로 그 계정의 격리 config 폴더를 가리킨다.
           // SDK의 env 옵션은 process.env를 대체(merge 아님)하므로 반드시 펼쳐서 준다.
-          ...(useApi && apiKey ? { env: { ...process.env, ANTHROPIC_API_KEY: apiKey } } : {}),
+          ...(useApi && apiKey
+            ? { env: { ...process.env, ANTHROPIC_API_KEY: apiKey } }
+            : accountDir
+              ? { env: { ...process.env, CLAUDE_CONFIG_DIR: accountDir } }
+              : {}),
           // Behave like the Claude Code CLI (full coding-agent persona + tools)
           // and honour the user's installed settings / CLAUDE.md / MCP servers.
           // A per-chat/panel 프롬프트 rides along as an append — re-sent on every
@@ -686,6 +699,15 @@ export class ClaudeEngine {
           waiter(null)
         }
       }
+      // 계정 오버라이드 실행 — CLI가 격리 폴더 안에서 리프레시한 토큰을 스냅샷에 되쓴다
+      // (다음 물질화·전환·한도 조회가 신선한 토큰을 쓰도록)
+      if (accountDir && req.account) {
+        try {
+          syncAccountTokens(req.account)
+        } catch {
+          /* ignore */
+        }
+      }
       if (this.activeRunId === runId) {
         this.activeRunId = null
         this.handle = null
@@ -705,7 +727,8 @@ export class ClaudeEngine {
     // AskUserQuestion is surfaced as an interactive choice card (handled in
     // canUseTool), not a tool-log row — so don't render or track it here.
     if (name === 'AskUserQuestion') return
-    this.tools.set(id, { name, cwd })
+    const startedAt = Date.now()
+    this.tools.set(id, { name, cwd, startedAt })
 
     // Subagent spawn — newer engines name this tool 'Agent', older ones 'Task'.
     if (name === 'Task' || name === 'Agent') {
@@ -805,7 +828,7 @@ export class ClaudeEngine {
         const edits = Array.isArray(input.edits) ? (input.edits as Array<Record<string, unknown>>) : []
         next = edits.reduce((t, e) => applyEdit(t, String(e.old_string ?? ''), String(e.new_string ?? ''), !!e.replace_all), cur ?? '')
       }
-      this.tools.set(id, { name, cwd, pending: this.fileChangePending(rel, abs, cur, next) })
+      this.tools.set(id, { name, cwd, startedAt, pending: this.fileChangePending(rel, abs, cur, next) })
     }
   }
 
@@ -894,6 +917,8 @@ export class ClaudeEngine {
         id,
         status: isError ? 'error' : 'done',
         result,
+        // 실행 시간 — bash 행의 우측 요약(시간 · 줄수)과 로그 모달에 표시
+        durationMs: Date.now() - meta.startedAt,
         ...(output ? { output } : {}),
         ...(links ? { links } : {})
       })

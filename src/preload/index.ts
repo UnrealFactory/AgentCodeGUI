@@ -71,6 +71,8 @@ const api: WindowApi = {
     removeAccount: (email: string) => ipcRenderer.invoke(IPC.authRemoveAccount, email),
     accountsUsage: () => ipcRenderer.invoke(IPC.authAccountsUsage)
   },
+  openApiSettings: () => ipcRenderer.invoke(IPC.openApiSettings),
+  onApiSettingsRequested: (cb: () => void) => subscribe(IPC.apiSettingsRequested, cb),
   apiConfig: {
     get: () => ipcRenderer.invoke(IPC.apiConfigGet),
     setKey: (key: string) => ipcRenderer.invoke(IPC.apiConfigSetKey, key),

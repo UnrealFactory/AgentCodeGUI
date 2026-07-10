@@ -35,6 +35,13 @@
   --rose:   oklch(0.58 0.17 350);
   /* mythic gold — Fable model tier (between the coral accent and --yellow) */
   --gold:   oklch(0.67 0.15 68);
+  /* 계정 picker 전용 — 컴포저에서 설정 가능한 것들(모델·모드·과금)의 색과 겹치지 않는 색상 */
+  --lime:    oklch(0.61 0.14 122);
+  --orange:  oklch(0.63 0.15 50);
+  --magenta: oklch(0.56 0.17 322);
+  /* Effort 막대 전용 — 블루(250)와 바이올렛(295) 사이의 빈 구간. accent(다크=무채색)를
+     쓰면 하얗게 죽어서, 컴포저 picker들과 안 겹치는 자기 색을 준다 */
+  --indigo:  oklch(0.51 0.17 272);
 
   --green-soft:  oklch(0.56 0.14 158 / 0.14);
   --blue-soft:   oklch(0.55 0.13 250 / 0.14);
@@ -114,6 +121,12 @@
   --cyan:   oklch(0.80 0.09 222);
   --rose:   oklch(0.74 0.12 350);
   --gold:   oklch(0.81 0.12 75);
+  /* 계정 picker 전용 — 컴포저 picker 색과 안 겹치는 색상 (라이트와 동일 규칙, 다크 탈채도 램프) */
+  --lime:    oklch(0.82 0.11 122);
+  --orange:  oklch(0.78 0.11 50);
+  --magenta: oklch(0.73 0.11 322);
+  /* Effort 막대 전용 — 이웃한 블루·바이올렛보다 채도를 살짝 올려 자기 색으로 읽히게 */
+  --indigo:  oklch(0.74 0.12 272);
 
   --green-soft:  oklch(0.78 0.11 158 / 0.14);
   --blue-soft:   oklch(0.72 0.09 248 / 0.14);
@@ -790,21 +803,10 @@ body.col-resizing *{ cursor:col-resize !important; }
 .t-target.has-tip::after{ left:0; transform:translate(0, 3px); }
 .t-target.has-tip:hover::after{ transform:translate(0, 0); }
 
-/* ── bash output (BashOutput) — the install-log idiom, inlined under the row ──
-   Collapsed: a ghost line as quiet as the rows themselves. Expanded: an --inset
-   block, mono 11px --text-3, stderr-looking lines in --red on failed runs only.
+/* ── bash 실패 출력 꼬리 (BashRow) — the install-log idiom, inlined under the row.
+   실패한 명령만 마지막 5줄을 --inset 블록으로 남긴다(에러는 안 열어도 바로 읽히게).
+   성공 출력은 인라인 없음 — 행(명령) 클릭 = 전체 로그 모달(.bm-*).
    Indented 23px to align under the verb (icon 14px + gap 9px). */
-.bo-ghost{
-  display:flex; align-items:baseline; gap:7px; margin:-2px 0 0 23px;
-  font-family:var(--font-mono); font-size:11px; color:var(--text-4);
-  cursor:pointer; user-select:none; min-width:0;
-}
-.bo-tick{ flex:0 0 auto; }
-.bo-pv{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
-.bo-pv.err{ color:var(--red); }
-.bo-n{ flex:0 0 auto; }
-.bo-ghost:hover .bo-pv, .bo-ghost:hover .bo-n{ color:var(--accent-2); }
-.bo-ghost:hover .bo-pv{ text-decoration:underline; text-underline-offset:2px; }
 .bo-block{
   margin:1px 0 1px 23px; background:var(--inset); border:1px solid var(--line);
   border-radius:9px; overflow:hidden;
@@ -824,6 +826,56 @@ body.col-resizing *{ cursor:col-resize !important; }
 }
 .bo-foot button:hover{ color:var(--accent-2); background:var(--accent-soft); }
 .bo-foot button.bo-copied{ color:var(--green); }
+/* 실패 출력의 인라인 꼬리(마지막 5줄) — 에러는 안 열어도 바로 읽혀야 해서 남긴다.
+   클릭하면 전체 로그 모달. 성공 출력의 고스트 줄도 클릭 = 모달(인라인 펼침은 제거). */
+.bo-block.bo-open{ cursor:pointer; }
+.bo-block.bo-open:hover{ border-color:var(--line-2); }
+.bo-more{ flex:0 0 auto; color:var(--text-4); }
+.bo-block.bo-open:hover .bo-more{ color:var(--accent-2); text-decoration:underline; text-underline-offset:2px; }
+
+/* ── Bash 전체 로그 모달 (BashLogModal) — 인라인 펼침 대신 크게 읽는 카드.
+   sa-overlay(백드롭) 위에 뜨며, '명령'과 '출력' 섹션으로 요청/결과를 나눠 보여준다.
+   로그는 --inset 배경에 mono 12px로 인라인(11px)보다 한 단계 크게. ── */
+.bm-card{
+  width:min(1020px, 94vw); max-height:min(85vh, 880px); display:flex; flex-direction:column;
+  background:var(--bg); border:1px solid var(--line-2); border-radius:14px;
+  box-shadow:var(--shadow-win); overflow:hidden; animation:rise .18s cubic-bezier(.2,.8,.2,1) both;
+}
+.bm-head{ display:flex; align-items:center; gap:10px; padding:14px 14px 14px 18px; border-bottom:1px solid var(--line); min-width:0; }
+.bm-ic{ display:flex; color:var(--text-3); flex:0 0 auto; }
+.bm-ic.err{ color:var(--red); }
+.bm-title{ flex:1; min-width:0; font-size:15px; font-weight:700; color:var(--text); }
+.bm-status{ flex:0 0 auto; font-size:12px; font-weight:600; color:var(--green); }
+.bm-status.err{ color:var(--red); }
+.bm-body{ flex:1; min-height:0; display:flex; flex-direction:column; gap:10px; padding:16px 18px; }
+.bm-lbl{
+  flex:0 0 auto; display:flex; align-items:center; gap:8px;
+  font-size:12px; font-weight:600; letter-spacing:.04em; text-transform:uppercase; color:var(--text-4);
+}
+/* 섹션별 복사 버튼 (명령/출력) — bm-lbl의 uppercase·자간을 물려받지 않게 리셋 */
+.bm-copy{
+  border:none; background:none; font-family:inherit; font-size:12px; font-weight:500;
+  letter-spacing:normal; text-transform:none; color:var(--text-4);
+  cursor:pointer; padding:3px 8px; border-radius:6px;
+}
+.bm-copy:hover{ color:var(--accent-2); background:var(--accent-soft); }
+.bm-copy.on{ color:var(--green); }
+.bm-cmd{
+  flex:0 0 auto; max-height:150px; overflow-y:auto; padding:11px 14px;
+  background:var(--inset); border:1px solid var(--line); border-radius:9px;
+  font-family:var(--font-mono); font-size:13px; line-height:1.65; color:var(--text-2);
+  white-space:pre-wrap; word-break:break-all;
+}
+.bm-log{
+  flex:1; min-height:0; overflow-y:auto; padding:11px 14px;
+  background:var(--inset); border:1px solid var(--line); border-radius:9px;
+}
+.bm-log .bo-ln{ font-size:13px; line-height:1.75; }
+/* 하단 정보 줄 — 실행 시간 · 줄수 (버튼 없음, 조용한 메타 정보) */
+.bm-foot{
+  display:flex; align-items:center; padding:8px 18px 9px;
+  border-top:1px solid var(--line); font-size:12px; color:var(--text-4);
+}
 
 .msg.user{ flex-direction:row-reverse; }
 .msg.user .msg-main{ display:flex; flex-direction:column; align-items:flex-end; }
@@ -1252,7 +1304,7 @@ body.col-resizing *{ cursor:col-resize !important; }
 .po-dot{ width:8px; height:8px; border-radius:99px; flex:0 0 auto; }
 .bars{ display:inline-flex; align-items:flex-end; gap:2px; height:14px; flex:0 0 auto; }
 .bars .bar{ width:3px; border-radius:1.5px; background:var(--line-strong); transition:background .14s; }
-.bars .bar.on{ background:var(--accent); }
+.bars .bar.on{ background:var(--indigo); }
 .pick-opt .bars{ align-self:center; }
 .pick-opt:hover{ background:var(--surface-2); box-shadow:var(--hover-ring); }
 .pick-opt.on{ background:var(--accent-soft); }
@@ -2345,7 +2397,7 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
   animation:fade .16s ease both;
 }
 .set-modal{
-  width:min(960px, 100%); height:min(640px, 100%);
+  width:min(1140px, 100%); height:min(800px, 100%);
   display:flex; flex-direction:column;
   background:var(--bg); border:1px solid var(--line-2); border-radius:14px;
   box-shadow: 0 30px 80px -16px rgba(40,30,20,0.34);
@@ -2370,7 +2422,7 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
 .set-nav .nav-item.active .ic{ color:var(--accent); }
 
 .set-main{ flex:1; min-width:0; overflow-y:auto; }
-.set-inner{ max-width:640px; margin:0 auto; padding:28px 34px 50px; }
+.set-inner{ max-width:760px; margin:0 auto; padding:28px 34px 50px; }
 .set-h1{ font-size:20px; font-weight:700; letter-spacing:-.02em; }
 .set-h1-sub{ font-size:13px; color:var(--text-3); margin-top:5px; }
 /* 부제 안의 코드 예시(bin·obj·Saved) — 규칙이 없으면 UA 기본 monospace로 떨어져 자간이 벌어져 보인다.
@@ -2546,14 +2598,24 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
 .exd-panel.off{ opacity:.4; pointer-events:none; }
 .exd-add{ display:flex; align-items:center; gap:8px; }
 .exd-add .api-input{ flex:1; width:auto; }
-.exd-listhead{ display:flex; align-items:center; justify-content:space-between; padding:0 3px 1px; }
-.exd-count{ font-size:11.5px; font-weight:600; letter-spacing:.02em; color:var(--text-4); }
+.exd-listhead{ display:flex; align-items:center; gap:10px; padding:0 3px 1px; }
+/* 목록 안 찾기 — 프리셋이 수십 개라 특정 폴더만 지우려면 스크롤보다 검색이 빠르다 */
+.exd-find{
+  display:flex; align-items:center; gap:6px; flex:0 1 230px; min-width:0; margin-right:auto;
+  padding:5px 9px; background:var(--inset); border:1px solid var(--line); border-radius:8px; color:var(--text-4);
+}
+.exd-find:focus-within{ border-color:var(--accent-line); }
+.exd-find input{ flex:1; min-width:0; background:none; border:none; outline:none; font-size:12px; color:var(--text); }
+.exd-find input::placeholder{ color:var(--text-4); }
+.exd-find-x{ display:flex; color:var(--text-4); border-radius:4px; }
+.exd-find-x:hover{ color:var(--text); }
+.exd-count{ font-size:11.5px; font-weight:600; letter-spacing:.02em; color:var(--text-4); flex:0 0 auto; }
 .exd-restore{ display:inline-flex; align-items:center; gap:5px; font-size:11.5px; color:var(--text-3);
   padding:4px 9px; border-radius:7px; transition:background .12s, color .12s; }
 .exd-restore:hover:not(:disabled){ background:var(--surface-2); color:var(--text); }
 .exd-restore:disabled{ opacity:.4; cursor:default; }
 .exd-list{ display:flex; flex-direction:column; border:1px solid var(--line); border-radius:11px;
-  overflow-y:auto; max-height:340px; }
+  overflow-y:auto; max-height:440px; }
 .exd-row{ display:flex; align-items:center; gap:9px; padding:9px 11px; border-bottom:1px solid var(--line); }
 .exd-row:last-child{ border-bottom:none; }
 .exd-row:hover{ background:var(--surface-2); }
@@ -3761,10 +3823,13 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
 /* ── 오류 경계 폴백 (ErrorBoundary) — 렌더 예외가 앱 전체를 백지로 만들지 않게,
    문제가 난 워크스페이스 자리에만 복구 카드를 띄운다 ── */
 .eb{ flex:1; min-width:0; display:flex; align-items:center; justify-content:center; padding:24px; }
+/* 토큰 주의: 이 카드는 존재하는 토큰만 써야 한다 — 예전에 없는 --panel을 참조해 흰색
+   폴백으로 그려졌고, 다크 테마에선 근백색 글자와 겹쳐 "빈 흰 카드"가 됐다(눈에 안 보이는
+   에러 카드는 없는 것보다 나쁘다). --surface/--line/--shadow-win은 양 테마 :root에 있다. */
 .eb-card{
   max-width:420px; padding:26px 28px; border-radius:16px;
-  background:var(--panel, oklch(1 0 0)); border:1px solid var(--line, oklch(0.9 0.004 60));
-  box-shadow:var(--shadow-lg, 0 24px 64px -22px rgba(40,30,20,.25)); text-align:center;
+  background:var(--surface); border:1px solid var(--line);
+  box-shadow:var(--shadow-win); text-align:center;
 }
 .eb-title{ font-size:15px; font-weight:700; color:var(--text); }
 .eb-sub{ margin-top:8px; font-size:12.5px; line-height:1.6; color:var(--text-3); }
@@ -3776,10 +3841,10 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
 .eb-actions{ margin-top:16px; display:flex; gap:8px; justify-content:center; }
 .eb-btn{
   border:none; border-radius:9px; cursor:pointer; padding:8px 18px;
-  font-size:12.5px; font-weight:600; color:var(--on-accent, #fff); background:var(--accent);
+  font-size:12.5px; font-weight:600; color:var(--on-accent); background:var(--accent);
 }
 .eb-btn:hover{ background:var(--accent-2); }
-.eb-btn--ghost{ background:transparent; color:var(--text-2); border:1px solid var(--line, oklch(0.9 0.004 60)); }
+.eb-btn--ghost{ background:transparent; color:var(--text-2); border:1px solid var(--line); }
 .eb-btn--ghost:hover{ background:var(--accent-soft); color:var(--text); }
 
 /* 초장문 본문 폴백 — remark 파싱 한도를 넘긴 텍스트를 구조 없이 원문 그대로 표시 */

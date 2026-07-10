@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { AppUser, RunRequest, UserProfile, UsageInfo } from '@shared/protocol'
+import type { ApiConfigStatus, AppUser, RunRequest, UserProfile, UsageInfo } from '@shared/protocol'
+import { getPref, setPref } from '../lib/prefs'
 import { useAgentSession, initialSessionState, sameCwd, type SessionState } from '../store/session'
 import { extractMentions } from '../lib/mentions'
 import { IconMin, IconMax, IconRestore, IconClose, IconFolder } from './icons'
@@ -39,7 +40,9 @@ function sanitizePicker(p?: Partial<PickerState> | null): PickerState {
   return {
     model: p?.model && MODEL_IDS.includes(p.model) ? p.model : DEFAULT_PICKER.model,
     effort: p?.effort && EFFORT_IDS.includes(p.effort) ? p.effort : DEFAULT_PICKER.effort,
-    mode: p?.mode && MODE_IDS.includes(p.mode) ? p.mode : DEFAULT_PICKER.mode
+    mode: p?.mode && MODE_IDS.includes(p.mode) ? p.mode : DEFAULT_PICKER.mode,
+    // 실행 계정(이메일) — 형태만 확인 (등록 목록 대조는 picker·엔진이 담당)
+    account: typeof p?.account === 'string' && p.account ? p.account : undefined
   }
 }
 function loadPicker(): PickerState {
@@ -95,6 +98,40 @@ export function SessionWindow(): React.ReactElement {
     }
   }
   const [usage, setUsage] = useState<UsageInfo>(EMPTY_USAGE)
+  // 과금(구독/API) — 메인과 같은 전역 pref(api.mode)에서 시작한다. 이 창엔 설정 모달이
+  // 없어서 키 없이 API를 고르면 IPC로 메인 창의 설정 → API 탭을 대신 연다. 키 존재/예산은
+  // 창 포커스마다 다시 읽어 메인에서 방금 등록/삭제한 키를 따라잡는다.
+  const [apiMode, setApiMode] = useState<boolean>(() => getPref<boolean>('api.mode', false))
+  const [apiCfg, setApiCfg] = useState<ApiConfigStatus | null>(null)
+  useEffect(() => {
+    const refresh = (): void => {
+      window.api.apiConfig
+        .get()
+        .then((s) => {
+          setApiCfg(s)
+          // 키가 사라졌으면 API 모드도 끈다 — 키 없는 API 모드는 실행이 실패한다 (메인과 동일 가드)
+          if (!s.hasKey) {
+            setApiMode((on) => {
+              if (on) setPref('api.mode', false)
+              return false
+            })
+          }
+        })
+        .catch(() => {})
+    }
+    refresh()
+    window.addEventListener('focus', refresh)
+    return () => window.removeEventListener('focus', refresh)
+  }, [])
+  const onApiModeChange = (next: boolean): void => {
+    if (next && !apiCfg?.hasKey) {
+      // ?. 가드: HMR로 렌더러만 갈린 구 preload엔 이 함수가 없을 수 있다 (App과 동일)
+      window.api.openApiSettings?.().catch(() => {})
+      return
+    }
+    setApiMode(next)
+    setPref('api.mode', next)
+  }
   const [viewer, setViewer] = useState<{ images: string[]; index: number } | null>(null)
   const [openWorkFile, setOpenWorkFile] = useState<string | null>(null)
   const [openSubagentId, setOpenSubagentId] = useState<string | null>(null)
@@ -124,6 +161,13 @@ export function SessionWindow(): React.ReactElement {
   const onRefreshUsage = (): void => {
     window.api.getUsage(true).then(setUsage).catch(() => {})
   }
+
+  // 실행이 끝나면 API 누적 사용액을 다시 읽는다 — 작업 바의 남은 예산이 바로 맞아떨어지게
+  useEffect(() => {
+    if (state.status === 'done' || state.status === 'error') {
+      window.api.apiConfig.get().then(setApiCfg).catch(() => {})
+    }
+  }, [state.status])
 
   // 작업 폴더 적용 — 값을 기억하고, 대화가 이미 시작됐다면 새 폴더로 새 대화를 연다. 세션 ID는
   // 폴더에 묶여 있어(메인 앱과 동일) 이어갈 수 없으므로, 스레드를 비워 보이는 대화와 엔진 세션을
@@ -268,7 +312,11 @@ export function SessionWindow(): React.ReactElement {
       mode: pk.mode,
       cwd, // 지정한 작업 폴더. 빈 값이면 엔진이 바탕화면으로 폴백
       systemPrompt: CHAT_SYSTEM_PROMPT,
-      resume: state.session?.sessionId
+      resume: state.session?.sessionId,
+      // 과금 모드 — API를 골랐으면 이 창의 실행도 API 키로 과금 (메인과 같은 전역 설정)
+      useApi: apiMode || undefined,
+      // 이 창의 실행 계정(구독) — 전역 활성 계정과 다르면 엔진이 격리 폴더로 돌린다
+      account: pk.account
     }
     if (!opts?.keepDraft) {
       setInput('')
@@ -417,10 +465,10 @@ export function SessionWindow(): React.ReactElement {
         contextTokens={state.result?.contextTokens ?? null}
         contextWindow={state.result?.contextWindow ?? null}
         model={picker.model}
-        apiMode={false}
+        apiMode={apiMode}
         chatSpentUsd={state.spentUsd ?? 0}
-        budgetUsd={null}
-        totalSpentUsd={0}
+        budgetUsd={apiCfg?.budgetUsd ?? null}
+        totalSpentUsd={apiCfg?.spentUsd ?? 0}
         onOpenFile={(f) => setOpenWorkFile(f.path)}
         onOpenSubagent={(a) => setOpenSubagentId(a.id)}
         onRefreshUsage={onRefreshUsage}
@@ -441,6 +489,9 @@ export function SessionWindow(): React.ReactElement {
         started={started}
         picker={picker}
         setPicker={savePicker}
+        apiMode={apiMode}
+        apiReady={!!apiCfg?.hasKey}
+        onApiModeChange={onApiModeChange}
         images={images}
         onPickImages={addImagesFromPicker}
         onAddImagePaths={addImagePaths}
@@ -492,6 +543,9 @@ export function SessionWindow(): React.ReactElement {
           user={user}
           picker={picker}
           initialText={askInitial}
+          apiMode={apiMode}
+          apiReady={!!apiCfg?.hasKey}
+          onApiModeChange={onApiModeChange}
           channel={window.api.sessionAsk}
         />
       )}

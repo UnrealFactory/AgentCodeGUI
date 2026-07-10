@@ -93,7 +93,9 @@ function sanitizePanelPicker(p?: Partial<PickerState> | null): PickerState {
   return {
     model: p?.model && PICKER_MODELS.includes(p.model) ? p.model : DEFAULT_PICKER.model,
     effort: p?.effort && PICKER_EFFORTS.includes(p.effort) ? p.effort : DEFAULT_PICKER.effort,
-    mode: p?.mode && PICKER_MODES.includes(p.mode) ? p.mode : DEFAULT_PICKER.mode
+    mode: p?.mode && PICKER_MODES.includes(p.mode) ? p.mode : DEFAULT_PICKER.mode,
+    // 실행 계정(이메일) — 형태만 확인 (등록 목록 대조는 picker·엔진이 담당)
+    account: typeof p?.account === 'string' && p.account ? p.account : undefined
   }
 }
 
@@ -1369,7 +1371,9 @@ function ActiveSession({
       // to its project — resuming it after a folder change errors "No conversation found")
       resume: sess.state.session && sameCwd(sess.state.session.cwd, dir) ? sess.state.session.sessionId : undefined,
       // 패널별 과금 — 이 패널이 API를 골랐으면 이 실행만 API 키로 과금
-      useApi: m.api || undefined
+      useApi: m.api || undefined,
+      // 패널별 실행 계정(구독) — 전역 활성 계정과 다르면 엔진이 격리 폴더로 돌린다
+      account: pk.account
     }
     window.api.multi?.run(req).catch(() => {})
   })

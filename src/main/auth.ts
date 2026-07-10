@@ -67,8 +67,12 @@ export async function authLogout(): Promise<AuthStatus> {
     execFile(bin, ['auth', 'logout'], { timeout: 20000, windowsHide: true }, () => resolve())
   })
   // 로그아웃은 토큰을 서버에서 해지한다 — 같은 토큰을 담은 이 계정의 저장 스냅샷도 함께
-  // 죽는다. 목록에 남겨두면 '변경'이 반드시 실패하는 거짓 항목이 되므로 같이 제거한다.
-  if (st.loggedIn && st.email) writeStore(readStore().filter((a) => a.email !== st.email))
+  // 죽는다. 목록에 남겨두면 '변경'이 반드시 실패하는 거짓 항목이 되므로 같이 제거한다
+  // (채팅별 오버라이드용으로 물질화된 격리 폴더도 같은 토큰이라 함께 정리).
+  if (st.loggedIn && st.email) {
+    writeStore(readStore().filter((a) => a.email !== st.email))
+    deleteAccountDir(st.email)
+  }
   return authStatus()
 }
 
@@ -264,7 +268,172 @@ export async function switchAccount(email: string): Promise<AuthStatus> {
 
 export async function removeAccount(email: string): Promise<AccountInfo[]> {
   writeStore(readStore().filter((a) => a.email !== email))
+  deleteAccountDir(email)
   return listAccounts()
+}
+
+// ── 채팅별 계정 오버라이드 (CLAUDE_CONFIG_DIR) ─────────────────
+// 전역 로그인(~/.claude)은 한 계정뿐이라, 채팅마다 다른 계정으로 실행하려면 계정별 격리
+// config 폴더가 필요하다. 등록 계정의 스냅샷을 ~/.agentcodegui/accounts/<slug>/ 에
+// 물질화(.credentials.json 토큰 + .claude.json 신원)하고, 엔진이 CLAUDE_CONFIG_DIR로
+// 그 폴더를 가리키면 그 실행만 해당 계정으로 인증된다(빈 폴더=로그아웃, 토큰+신원을
+// 넣은 폴더=그 계정 인식 — 실측 검증).
+// - 세션 기록(projects·sessions 등)은 ~/.claude로 정션 링크 → resume이 계정과 무관하게
+//   이어지고, 채팅 중간에 계정을 바꿔도 대화 맥락이 유지된다. skills·agents·plugins·
+//   commands도 링크해 전역과 같은 도구 환경을 쓴다(Windows 정션은 관리자 권한 불필요).
+// - settings.json·CLAUDE.md는 파일이라 링크 대신 물질화 때마다 복사한다(수 KB).
+// - CLI가 폴더 안에서 토큰을 스스로 리프레시하므로, 실행이 끝나면 syncAccountTokens가
+//   폴더의 더 신선한 토큰을 암호화 스냅샷에 되쓴다. 가드(accessToken 존재 + expiresAt
+//   전진)를 통과할 때만 — 401을 맞아 껍데기로 덮인 크리덴셜이 스냅샷을 오염시키지
+//   않도록(1.6.2에서 잡은 스냅샷 오염과 같은 계열의 방어).
+const ACCOUNTS_DIR = path.join(os.homedir(), '.agentcodegui', 'accounts')
+// 전역 ~/.claude와 공유할 폴더(정션 링크) — 세션 기록 + 도구 환경. 파일은 복사.
+const SHARED_DIRS = ['projects', 'sessions', 'session-env', 'todos', 'tasks', 'teams', 'agents', 'skills', 'plugins', 'commands', 'file-history']
+const COPIED_FILES = ['settings.json', 'settings.local.json', 'CLAUDE.md']
+
+// 이메일 → 폴더 이름. 로컬파트가 같은 계정끼리 부딪히지 않게 짧은 해시를 붙인다.
+function accountSlug(email: string): string {
+  const safe = email.toLowerCase().replace(/[^a-z0-9._-]+/g, '_')
+  let h = 0
+  for (let i = 0; i < email.length; i++) h = (h * 31 + email.charCodeAt(i)) >>> 0
+  return `${safe}-${h.toString(36)}`
+}
+
+function readFileOrNull(p: string): string | null {
+  try {
+    return fs.readFileSync(p, 'utf8')
+  } catch {
+    return null
+  }
+}
+
+// 크리덴셜의 신선도 키 — 액세스 토큰이 없으면 0(껍데기), 만료시각이 없으면 1(최소값).
+// 물질화(어느 쪽 토큰을 남길지)와 되싱크(스냅샷을 갱신할지) 판정에 쓴다.
+function credsExpiresAt(raw: string | null): number {
+  if (!raw) return 0
+  try {
+    const o = (JSON.parse(raw) as { claudeAiOauth?: { accessToken?: string; expiresAt?: number } }).claudeAiOauth
+    if (!o?.accessToken) return 0
+    return typeof o.expiresAt === 'number' ? o.expiresAt : 1
+  } catch {
+    return 0
+  }
+}
+
+// 전역 활성 로그인의 이메일 — CLI를 띄우지 않고 ~/.claude.json의 신원을 직접 읽는다
+// (실행마다 호출되는 경로라 authStatus의 프로세스 스폰은 과하다).
+export function activeAccountEmail(): string | null {
+  const acc = readJson(CLAUDE_JSON)?.oauthAccount as { emailAddress?: string } | undefined
+  return typeof acc?.emailAddress === 'string' ? acc.emailAddress : null
+}
+
+// 세션 기록·도구 환경을 전역 ~/.claude와 공유(정션 링크 + 설정 파일 복사). 링크 실패는
+// 그 항목만 격리 동작이 될 뿐 치명적이지 않아 조용히 넘어간다. CLI가 먼저 실폴더를
+// 만들어뒀으면 데이터 보존을 우선해 그대로 둔다.
+function linkSharedState(dir: string): void {
+  const home = path.join(os.homedir(), '.claude')
+  for (const name of SHARED_DIRS) {
+    const src = path.join(home, name)
+    const dst = path.join(dir, name)
+    try {
+      if (!fs.existsSync(src) || !fs.statSync(src).isDirectory()) continue
+      try {
+        fs.lstatSync(dst)
+        continue // 이미 있음(링크든 실폴더든) — 그대로 둔다
+      } catch {
+        /* 없음 → 링크 생성 */
+      }
+      fs.symlinkSync(src, dst, 'junction')
+    } catch {
+      /* ignore */
+    }
+  }
+  for (const name of COPIED_FILES) {
+    try {
+      const src = path.join(home, name)
+      if (fs.existsSync(src)) fs.copyFileSync(src, path.join(dir, name))
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+// 실행용 계정 해석 — 전역 활성 계정이면 null(오버라이드 불필요 — 같은 토큰을 두 곳에서
+// 리프레시하다 서로 무효화하는 사고를 피한다), 다른 등록 계정이면 물질화된 격리 config
+// 폴더 경로. 스냅샷이 없거나 깨졌으면 던진다(엔진이 에러 카드로 표시).
+export function accountRunDir(email: string): string | null {
+  if (activeAccountEmail() === email) return null
+  const target = readStore().find((a) => a.email === email)
+  if (!target) throw new Error(`'${email}' 계정이 저장 목록에 없어요 — 설정 → Account에서 다시 추가해 주세요.`)
+  const raw = decCreds(target.credEnc)
+  if (!raw) throw new Error(`'${email}' 계정 데이터를 복호화하지 못했어요 — 설정 → Account에서 다시 로그인해 주세요.`)
+  let snap: AccountSnapshot
+  try {
+    snap = JSON.parse(raw) as AccountSnapshot
+  } catch {
+    snap = { creds: '', account: null }
+  }
+  if (!snap.creds || !snap.account) {
+    throw new Error(`'${email}' 계정 데이터가 손상됐어요 — 설정 → Account에서 다시 로그인해 주세요.`)
+  }
+  const dir = path.join(ACCOUNTS_DIR, accountSlug(email))
+  fs.mkdirSync(dir, { recursive: true })
+  // 토큰: 폴더 쪽이 더 신선하면(직전 실행에서 CLI가 리프레시) 남겨두고, 스냅샷이 더
+  // 신선하면(재로그인 등) 스냅샷으로 덮는다.
+  const credPath = path.join(dir, '.credentials.json')
+  if (credsExpiresAt(snap.creds) >= credsExpiresAt(readFileOrNull(credPath))) fs.writeFileSync(credPath, snap.creds)
+  // 신원: 폴더의 .claude.json에 oauthAccount·userID를 병합(CLI가 적어둔 다른 상태는 보존)
+  const cjPath = path.join(dir, '.claude.json')
+  const cj = readJson(cjPath) ?? {}
+  cj.oauthAccount = snap.account
+  if (snap.userID !== undefined) cj.userID = snap.userID
+  if (cj.hasCompletedOnboarding === undefined) cj.hasCompletedOnboarding = true
+  fs.writeFileSync(cjPath, JSON.stringify(cj, null, 2))
+  linkSharedState(dir)
+  return dir
+}
+
+// 계정 오버라이드 실행이 끝난 뒤 호출 — 격리 폴더에서 리프레시된 토큰을 스냅샷에 반영.
+export function syncAccountTokens(email: string): void {
+  const store = readStore()
+  const target = store.find((a) => a.email === email)
+  if (!target) return
+  const dirCreds = readFileOrNull(path.join(ACCOUNTS_DIR, accountSlug(email), '.credentials.json'))
+  if (!dirCreds) return
+  const raw = decCreds(target.credEnc)
+  if (!raw) return
+  let snap: AccountSnapshot
+  try {
+    snap = JSON.parse(raw) as AccountSnapshot
+  } catch {
+    return
+  }
+  if (dirCreds === snap.creds) return // 변화 없음
+  if (credsExpiresAt(dirCreds) <= credsExpiresAt(snap.creds)) return // 껍데기/후퇴 토큰 가드
+  const credEnc = encCreds(JSON.stringify({ ...snap, creds: dirCreds }))
+  if (!credEnc) return
+  writeStore(store.map((a) => (a.email === email ? { ...a, credEnc } : a)))
+}
+
+// 계정을 목록에서 지울 때 물질화된 폴더도 정리한다. 폴더 안의 정션이 ~/.claude를
+// 가리키므로, 재귀 삭제 전에 공유 링크를 먼저 끊어 원본이 절대 지워지지 않게 한다
+// (rmSync는 심링크를 따라가지 않지만, 원본이 사용자 홈이라 이중으로 방어한다).
+function deleteAccountDir(email: string): void {
+  const dir = path.join(ACCOUNTS_DIR, accountSlug(email))
+  try {
+    if (!fs.existsSync(dir)) return
+    for (const name of SHARED_DIRS) {
+      try {
+        const p = path.join(dir, name)
+        if (fs.lstatSync(p).isSymbolicLink()) fs.unlinkSync(p)
+      } catch {
+        /* ignore */
+      }
+    }
+    fs.rmSync(dir, { recursive: true, force: true })
+  } catch {
+    /* ignore */
+  }
 }
 
 // 저장된 계정별 한도 사용률 — 전환 없이 각 스냅샷의 액세스 토큰으로 usage API를 병렬 조회.

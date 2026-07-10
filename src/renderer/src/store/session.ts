@@ -383,6 +383,7 @@ function reducer(state: SessionState, action: Action): SessionState {
         status: e.status,
         result: e.result,
         ...(e.output ? { output: e.output } : {}),
+        ...(e.durationMs != null ? { durationMs: e.durationMs } : {}),
         ...(e.links ? { links: e.links } : {})
       })
       for (let i = state.messages.length - 1; i >= 0; i--) {

@@ -35,6 +35,7 @@ import {
   IconFilter,
   IconFolder,
   IconX2,
+  IconSearch,
   type IconProps
 } from './icons'
 import { getTheme, setTheme, type Theme } from '../lib/theme'
@@ -1626,6 +1627,8 @@ function ExplorerView(): React.ReactElement {
   const [enabled, setEnabled] = useState<boolean>(() => getHideEnabled())
   const [dirs, setDirs] = useState<string[]>(() => getHideDirs())
   const [input, setInput] = useState('')
+  // 목록 찾기 — 프리셋이 수십 개라 특정 폴더 하나를 지우려면 검색이 빠르다 (대소문자 무시)
+  const [query, setQuery] = useState('')
 
   const commit = (list: string[]): void => {
     setDirs(list)
@@ -1648,6 +1651,8 @@ function ExplorerView(): React.ReactElement {
   const isDefault =
     dirs.length === DEFAULT_HIDE_DIRS.length &&
     dirs.every((d, i) => d === DEFAULT_HIDE_DIRS[i])
+  const q = query.trim().toLowerCase()
+  const shown = q ? dirs.filter((d) => d.toLowerCase().includes(q)) : dirs
 
   return (
     <>
@@ -1701,7 +1706,24 @@ function ExplorerView(): React.ReactElement {
           </div>
 
           <div className="exd-listhead">
-            <span className="exd-count">{dirs.length}개 폴더</span>
+            <div className="exd-find">
+              <IconSearch size={12} />
+              <input
+                placeholder="폴더 찾기"
+                value={query}
+                spellCheck={false}
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') setQuery('')
+                }}
+              />
+              {query && (
+                <button className="exd-find-x" aria-label="찾기 지우기" onClick={() => setQuery('')}>
+                  <IconX2 size={11} />
+                </button>
+              )}
+            </div>
+            <span className="exd-count">{q ? `${shown.length}/${dirs.length}개 폴더` : `${dirs.length}개 폴더`}</span>
             <button className="exd-restore" disabled={isDefault} onClick={() => commit([...DEFAULT_HIDE_DIRS])}>
               <IconRefresh size={12} /> 기본값 복원
             </button>
@@ -1710,8 +1732,10 @@ function ExplorerView(): React.ReactElement {
           <div className="exd-list scroll">
             {dirs.length === 0 ? (
               <div className="exd-empty">숨길 폴더가 없어요 — 위에서 추가하세요</div>
+            ) : shown.length === 0 ? (
+              <div className="exd-empty">‘{query.trim()}’와 일치하는 폴더가 없어요</div>
             ) : (
-              dirs.map((d) => (
+              shown.map((d) => (
                 <div className="exd-row" key={d}>
                   <IconFolder className="exd-row-ic" size={14} />
                   <span className="exd-row-n">{d}</span>
