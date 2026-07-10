@@ -204,6 +204,23 @@ export const IconEye = (p: IconProps) => (
     <circle cx={12} cy={12} r={3} />
   </Icon>
 )
+// 별표 — 설정 Explorer의 확장자(*.ext) 섹션
+export const IconAsterisk = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M12 5v14" />
+    <path d="M6 8.5l12 7" />
+    <path d="M18 8.5l-12 7" />
+  </Icon>
+)
+// 눈에 사선 — 탐색기 우클릭 '숨김 목록에 추가'
+export const IconEyeOff = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M10.6 5.3A11 11 0 0 1 12 5c6.5 0 10 7 10 7a17.6 17.6 0 0 1-2.9 3.8" />
+    <path d="M6.5 6.5A16.9 16.9 0 0 0 2 12s3.5 7 10 7a10 10 0 0 0 4.4-1" />
+    <path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" />
+    <path d="M3 3l18 18" />
+  </Icon>
+)
 export const IconCode = (p: IconProps) => (
   <Icon {...p}>
     <path d="M9 8l-4 4 4 4" />

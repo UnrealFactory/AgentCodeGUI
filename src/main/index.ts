@@ -899,6 +899,46 @@ function registerIpc(): void {
     const abs = path.isAbsolute(a.relPath) ? a.relPath : path.join(a.cwd || '', a.relPath)
     shell.showItemInFolder(abs)
   })
+  // 탐색기 파일 작업 뒤 LSP 통지 준비물 — 폴더 작업은 안의 '파일'들이 통지 대상이라(서버
+  // 워처는 파일 글롭) 상한을 두고 열거한다. 상한 초과분은 놓치지만(드묾) 통지는 최선 노력.
+  const walkFilesBounded = (dir: string, cap = 400): string[] => {
+    const out: string[] = []
+    const queue = [dir]
+    while (queue.length && out.length < cap) {
+      const d = queue.shift() as string
+      let entries: fs.Dirent[]
+      try {
+        entries = fs.readdirSync(d, { withFileTypes: true })
+      } catch {
+        continue
+      }
+      for (const e of entries) {
+        const p = path.join(d, e.name)
+        if (e.isDirectory()) queue.push(p)
+        else if (e.isFile()) {
+          out.push(p)
+          if (out.length >= cap) break
+        }
+      }
+    }
+    return out
+  }
+  // src→dest 이동/이름변경을 서버에는 삭제+생성 쌍으로 알린다(LSP엔 rename 이벤트가 없다)
+  const notifyMoved = (src: string, dest: string): void => {
+    const changes: { abs: string; kind: 'created' | 'changed' | 'deleted' }[] = []
+    try {
+      if (fs.statSync(dest).isDirectory()) {
+        for (const f of walkFilesBounded(dest)) {
+          changes.push({ abs: path.join(src, path.relative(dest, f)), kind: 'deleted' }, { abs: f, kind: 'created' })
+        }
+      } else {
+        changes.push({ abs: src, kind: 'deleted' }, { abs: dest, kind: 'created' })
+      }
+    } catch {
+      /* 통지는 최선 노력 — 실패해도 파일 작업 자체는 성공 */
+    }
+    lspManager.notifyWatchedFiles(changes)
+  }
   // Rename a file/folder within its own parent dir. Rejects path separators / dup names.
   ipcMain.handle(
     IPC.fsRename,
@@ -911,6 +951,7 @@ function registerIpc(): void {
         if (path.resolve(dest) === path.resolve(abs)) return { ok: true } // unchanged
         if (fs.existsSync(dest)) return { ok: false, error: '같은 이름이 이미 있어요' }
         await fs.promises.rename(abs, dest)
+        notifyMoved(abs, dest)
         return { ok: true }
       } catch (e) {
         return { ok: false, error: (e as Error)?.message || '이름을 바꿀 수 없어요' }
@@ -923,7 +964,10 @@ function registerIpc(): void {
     async (_e, a: { cwd: string; relPath: string }): Promise<{ ok: boolean; error?: string }> => {
       try {
         const abs = path.isAbsolute(a.relPath) ? a.relPath : path.join(a.cwd || '', a.relPath)
+        // 휴지통에 들어가면 열거할 수 없으니 지우기 '전'에 통지 대상 파일을 모아 둔다
+        const gone = fs.statSync(abs).isDirectory() ? walkFilesBounded(abs) : [abs]
         await shell.trashItem(abs)
+        lspManager.notifyWatchedFiles(gone.map((f) => ({ abs: f, kind: 'deleted' as const })))
         return { ok: true }
       } catch (e) {
         return { ok: false, error: (e as Error)?.message || '삭제할 수 없어요' }
@@ -945,6 +989,7 @@ function registerIpc(): void {
         if (dest === src || dest.startsWith(src + path.sep)) return { ok: false, error: '폴더를 자기 안으로 옮길 수 없어요' }
         if (fs.existsSync(dest)) return { ok: false, error: '대상에 같은 이름이 이미 있어요' }
         await fs.promises.rename(src, dest)
+        notifyMoved(src, dest)
         return { ok: true }
       } catch (e) {
         return { ok: false, error: (e as Error)?.message || '옮길 수 없어요' }
@@ -963,6 +1008,7 @@ function registerIpc(): void {
         } else {
           await fs.promises.mkdir(path.dirname(abs), { recursive: true })
           await fs.promises.writeFile(abs, '', { flag: 'wx' }) // wx: fail if it appeared meanwhile
+          lspManager.notifyWatchedFiles([{ abs, kind: 'created' }])
         }
         return { ok: true }
       } catch (e) {
@@ -1028,8 +1074,17 @@ function registerIpc(): void {
   // One folder's entries for the file explorer — called lazily as folders expand
   ipcMain.handle(
     IPC.listDir,
-    async (_e, a: { cwd: string; rel: string; exclude?: string[]; hideEmpty?: boolean; excludeDirs?: string[] }) =>
-      listDir(a.cwd || '', a.rel || '', a.exclude, a.hideEmpty, a.excludeDirs)
+    async (
+      _e,
+      a: {
+        cwd: string
+        rel: string
+        exclude?: string[]
+        hideEmpty?: boolean
+        excludeDirs?: string[]
+        excludeFiles?: string[]
+      }
+    ) => listDir(a.cwd || '', a.rel || '', a.exclude, a.hideEmpty, a.excludeDirs, a.excludeFiles)
   )
 
   // LSP code intelligence for the in-app viewer — lazy per-project language servers.

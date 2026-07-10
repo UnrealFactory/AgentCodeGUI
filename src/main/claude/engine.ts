@@ -23,6 +23,7 @@ import type {
   Todo
 } from '@shared/protocol'
 import { computeLineDiff, newFileDiff } from './diff'
+import { lspManager } from '../lsp/manager'
 
 type Emit = (event: EngineEvent) => void
 
@@ -192,7 +193,8 @@ export class ClaudeEngine {
   private questionWaiters = new Map<string, (answers: string[][] | null) => void>()
   /** tool_use id → metadata so we can interpret tool_results (incl. a deferred file change).
    *  startedAt은 tool-end의 durationMs(실행 시간 — bash 행 요약에 표시)를 계산한다. */
-  private tools = new Map<string, { name: string; cwd: string; startedAt: number; pending?: { whole: boolean; file: ChangedFile; diff: FileDiff } }>()
+  // abs: Write/Edit 대상의 절대 경로 — 성공 시 LSP에 파일 변화를 통지하는 데 쓴다(rel은 cwd 밖이면 모호)
+  private tools = new Map<string, { name: string; cwd: string; startedAt: number; abs?: string; pending?: { whole: boolean; file: ChangedFile; diff: FileDiff } }>()
   /** tool_use ids of subagent-spawn tools (Task/Agent), to flip them to done on result */
   private subagents = new Set<string>()
   /** absolute path → its content the first time it was modified this run (null = the
@@ -828,7 +830,7 @@ export class ClaudeEngine {
         const edits = Array.isArray(input.edits) ? (input.edits as Array<Record<string, unknown>>) : []
         next = edits.reduce((t, e) => applyEdit(t, String(e.old_string ?? ''), String(e.new_string ?? ''), !!e.replace_all), cur ?? '')
       }
-      this.tools.set(id, { name, cwd, startedAt, pending: this.fileChangePending(rel, abs, cur, next) })
+      this.tools.set(id, { name, cwd, startedAt, abs, pending: this.fileChangePending(rel, abs, cur, next) })
     }
   }
 
@@ -885,6 +887,11 @@ export class ClaudeEngine {
     // Emit the deferred file change only now that the edit/write has actually succeeded.
     if (meta?.pending && !isError) {
       this.emit({ type: 'file-change', runId, file: meta.pending.file, diff: meta.pending.diff, whole: meta.pending.whole })
+      // 살아있는 LSP 서버들에도 디스크 변화를 통지 — 클라이언트 워칭에 기대는 서버가
+      // 에이전트가 만든/고친 파일을 곧바로 알게 한다 (자세한 역할 분담은 notifyWatchedFiles 주석)
+      if (meta.abs) {
+        lspManager.notifyWatchedFiles([{ abs: meta.abs, kind: meta.pending.file.tag === 'new' ? 'created' : 'changed' }])
+      }
     }
 
     if (meta?.name === 'Bash') {

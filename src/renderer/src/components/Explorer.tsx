@@ -3,10 +3,19 @@ import { createPortal } from 'react-dom'
 import type { ChangedFile, DirEntry } from '@shared/protocol'
 import { FileBadge } from './fileType'
 import { getPref, setPref } from '../lib/prefs'
-import { IconChevLeft, IconChevRight, IconFile, IconFilter, IconFolder, IconFolderOpen, IconGitBranch, IconPencil, IconPlus, IconRefresh, IconSearch, IconTrash, IconVerse, IconX2 } from './icons'
+import { IconChevLeft, IconChevRight, IconEyeOff, IconFile, IconFilter, IconFolder, IconFolderOpen, IconGitBranch, IconPencil, IconPlus, IconRefresh, IconSearch, IconTrash, IconVerse, IconX2 } from './icons'
 import { FileOpModal, type FileOp } from './FileOpModal'
 import { NoticeModal } from './NoticeModal'
-import { getHideDirs, getHideEnabled, setHideEnabled, onHideChanged } from '../lib/hideDirs'
+import {
+  getHideDirs,
+  getHideEnabled,
+  getHideFiles,
+  makeNameMatcher,
+  onHideChanged,
+  setHideDirs,
+  setHideEnabled,
+  setHideFiles
+} from '../lib/hideDirs'
 
 const isMac = typeof navigator !== 'undefined' && navigator.platform.toLowerCase().includes('mac')
 
@@ -97,15 +106,18 @@ export const Explorer = memo(function Explorer({
   const [verseFilter, setVerseFilter] = useState<boolean>(() => (cwd ? getPref<boolean>(verseFilterKey(cwd), true) : true))
   // 지금 보고 있는 폴더 — 프로젝트별로 영속(껐다 켜도 보던 Verse API/참고 폴더로 복원). '' = 메인.
   const [view, setView] = useState<string>(() => (cwd ? getPref<string>(viewKey(cwd), '') : ''))
-  // 빌드·생성물 폴더 숨김(설정 › 탐색기) — Verse와 달리 프로젝트별이 아니라 전역 프리셋이다.
-  // 설정에서 목록/토글을 바꾸면 hideDirs가 이벤트를 쏴, 여기서 다시 읽어 트리를 갱신한다.
+  // 빌드·생성물 숨김(설정 › Explorer) — Verse와 달리 프로젝트별이 아니라 전역 프리셋이고,
+  // 폴더 목록과 파일(이름·패턴) 목록 두 벌이다. 설정이나 우클릭 '숨김 목록에 추가'가 목록/토글을
+  // 바꾸면 hideDirs가 이벤트를 쏴, 여기서 다시 읽어 트리를 갱신한다.
   const [hideEnabled, setHideOn] = useState<boolean>(() => getHideEnabled())
   const [hideList, setHideList] = useState<string[]>(() => getHideDirs())
+  const [hideFileList, setHideFileList] = useState<string[]>(() => getHideFiles())
   useEffect(
     () =>
       onHideChanged(() => {
         setHideOn(getHideEnabled())
         setHideList(getHideDirs())
+        setHideFileList(getHideFiles())
       }),
     []
   )
@@ -171,14 +183,18 @@ export const Explorer = memo(function Explorer({
   }
   // "Verse 위주로 보기" — UEFN 글롭(파일+폴더) + 빈 폴더 숨김
   const verseFiltering = verseFilter && excludes.length > 0
-  // 두 필터는 성격이 달라 따로 넘긴다:
-  //  - 일반 숨김(generalDirs)은 '폴더에만' — 같은 이름의 파일(예: 확장자 없는 'Saved')은 안 숨긴다.
-  //  - Verse 글롭(verseExcl)은 *.uasset 같은 '파일'도 숨겨야 하므로 파일+폴더 양쪽에 건다.
+  // 세 필터는 성격이 달라 따로 넘긴다:
+  //  - 일반 숨김 폴더(generalDirs)는 '폴더에만' — 같은 이름의 파일(예: 확장자 없는 'Saved')은 안 숨긴다.
+  //  - 일반 숨김 파일(generalFiles)은 '파일에만' — 이름 또는 *.확장자 패턴, 폴더 목록의 거울.
+  //  - Verse 글롭(verseExcl)은 *.uasset 같은 파일도 폴더도 숨겨야 하므로 양쪽에 건다.
   const generalDirs = useMemo(() => (hideEnabled ? hideList : []), [hideEnabled, hideList])
+  const generalFiles = useMemo(() => (hideEnabled ? hideFileList : []), [hideEnabled, hideFileList])
   const verseExcl = useMemo(() => (verseFiltering ? excludes : []), [verseFiltering, excludes])
   const hideEmpty = verseFiltering // 빈 폴더 프루닝은 Verse에만
   // 검색 결과에서 숨긴 폴더 밑의 파일도 빼기 위한 이름 집합(소문자) — 일반 숨김(폴더)만 대상
   const hideSet = useMemo(() => new Set(generalDirs.map((d) => d.toLowerCase())), [generalDirs])
+  // 숨긴 파일 이름·패턴은 검색 결과에서도 뺀다 — 트리 판정(makeExcluder)과 같은 규칙의 렌더러 매처
+  const hideFileMatch = useMemo(() => makeNameMatcher(generalFiles), [generalFiles])
   // 수동 참고 폴더에 이미 있는 경로는 자동 digest 행에서 빼 중복을 막는다
   const autoRefs = verseRefs.filter((v) => !refs.some((r) => samePath(r, v.path)))
   const viewing = view && (refs.includes(view) || autoRefs.some((v) => v.path === view)) ? view : '' // '' = 메인 폴더 보기
@@ -248,7 +264,8 @@ export const Explorer = memo(function Explorer({
 
   // 필터를 켜고/끄거나(또는 excludes가 처음 도착하면) 화면에 떠 있는 것(root + 펼친 폴더)을
   // 조용히 다시 읽는다 — 펼침/선택 상태는 그대로 두고 내용만 필터 반영. 검색 인덱스도 무효화.
-  const filterSig = verseExcl.join('|') + '##' + generalDirs.join('|') + '#' + (hideEmpty ? 1 : 0)
+  const filterSig =
+    verseExcl.join('|') + '##' + generalDirs.join('|') + '##' + generalFiles.join('|') + '#' + (hideEmpty ? 1 : 0)
   useEffect(() => {
     if (!root) return
     loadDir('')
@@ -290,7 +307,8 @@ export const Explorer = memo(function Explorer({
         rel,
         verseExcl.length ? verseExcl : undefined,
         hideEmpty,
-        generalDirs.length ? generalDirs : undefined
+        generalDirs.length ? generalDirs : undefined,
+        generalFiles.length ? generalFiles : undefined
       )
       .then((list) => {
         if (gen !== genRef.current) return // a different folder took over meanwhile
@@ -367,13 +385,14 @@ export const Explorer = memo(function Explorer({
         if (cut >= 0 && f.slice(0, cut).toLowerCase().split('/').some((s) => hideSet.has(s))) continue
       }
       const name = f.slice(f.lastIndexOf('/') + 1).toLowerCase()
+      if (hideFileMatch && hideFileMatch(name)) continue // 숨긴 파일 이름·패턴도 검색에서 제외
       if (name.startsWith(q)) starts.push(f)
       else if (name.includes(q)) names.push(f)
       else if (f.toLowerCase().includes(q)) paths.push(f)
       if (starts.length >= 100) break
     }
     return [...starts, ...names, ...paths].slice(0, 100)
-  }, [searching, allFiles, query, hideSet])
+  }, [searching, allFiles, query, hideSet, hideFileMatch])
 
   const toggleDir = (rel: string): void => {
     const next = new Set(expanded)
@@ -473,6 +492,17 @@ export const Explorer = memo(function Explorer({
     if (ctx.revealAbs) void window.api.revealPath('', ctx.revealAbs)
     else void window.api.revealPath(root, ctx.rel)
     setCtx(null)
+  }
+  // 우클릭 '숨김 목록에 추가' — 폴더는 폴더 목록에, 파일은 파일 목록(이름 또는 *.확장자 패턴)에
+  // 넣는다. 전역 목록이라 설정 › Explorer에서 되돌리고, setHide*가 이벤트를 쏴 트리가 곧바로
+  // 다시 읽힌다. 마스터 토글이 꺼져 있으면 켠다 — 숨기라고 눌렀는데 그대로 보이면 이상하니.
+  const addHide = (pattern: string, dir: boolean): void => {
+    setCtx(null)
+    const list = dir ? getHideDirs() : getHideFiles()
+    if (!list.some((x) => x.toLowerCase() === pattern.toLowerCase())) {
+      ;(dir ? setHideDirs : setHideFiles)([...list, pattern])
+    }
+    if (!getHideEnabled()) setHideEnabled(true)
   }
   const startCreate = (kind: 'newFile' | 'newFolder'): void => {
     if (!ctx) return
@@ -640,6 +670,15 @@ export const Explorer = memo(function Explorer({
     }
   }, [open])
 
+  // 컨텍스트 메뉴가 화면 아래/오른쪽을 넘치면 실측 크기로 되민다 — 항목 수가 행 종류
+  // (파일/폴더/루트/절대경로)마다 달라 상수 클램프로는 부족하다. paint 전에 실행돼 안 튄다.
+  useLayoutEffect(() => {
+    const el = ctxRef.current
+    if (!el || !ctx) return
+    el.style.left = Math.max(8, Math.min(ctx.x, window.innerWidth - el.offsetWidth - 8)) + 'px'
+    el.style.top = Math.max(8, Math.min(ctx.y, window.innerHeight - el.offsetHeight - 8)) + 'px'
+  }, [ctx])
+
   // 컨텍스트 메뉴 닫기 — 바깥 클릭 / Esc / 스크롤 / 리사이즈 (메뉴 내부 클릭은 ref로 보호)
   useEffect(() => {
     if (!ctx) return
@@ -763,10 +802,7 @@ export const Explorer = memo(function Explorer({
           <div
             ref={ctxRef}
             className="ctx-menu"
-            style={{
-              left: Math.min(ctx.x, window.innerWidth - 210),
-              top: Math.min(ctx.y, window.innerHeight - 210)
-            }}
+            style={{ left: ctx.x, top: ctx.y }}
           >
             {/* 새 파일/폴더는 폴더 또는 빈 영역(루트)에서만 — 파일·폴더 행(revealAbs) 우클릭엔 안 뜬다 */}
             {(ctx.dir || ctx.root) && !ctx.revealAbs && (
@@ -794,6 +830,21 @@ export const Explorer = memo(function Explorer({
             <button className="ctx-item" onClick={doReveal}>
               <IconFolderOpen size={15} /> 파일 탐색기에서 보기
             </button>
+            {/* 숨김 목록에 추가 — 폴더는 이름으로, 파일은 이름 그리고(확장자가 있으면) *.확장자로.
+                루트/절대경로 행에는 안 붙는다. 클릭 즉시 트리에서 사라지고 설정 › Explorer에서 관리. */}
+            {!ctx.root && !ctx.revealAbs && (
+              <>
+                <div className="ctx-sep" />
+                <button className="ctx-item" onClick={() => addHide(ctx.name, ctx.dir)}>
+                  <IconEyeOff size={15} /> ‘{shortName(ctx.name)}’ 숨김 목록에 추가
+                </button>
+                {!ctx.dir && !!extOf(ctx.name) && (
+                  <button className="ctx-item" onClick={() => addHide('*.' + extOf(ctx.name), false)}>
+                    <IconEyeOff size={15} /> ‘*.{extOf(ctx.name)}’ 모두 숨김 목록에 추가
+                  </button>
+                )}
+              </>
+            )}
             {!ctx.root && !ctx.revealAbs && (
               <>
                 <div className="ctx-sep" />
@@ -817,15 +868,15 @@ export const Explorer = memo(function Explorer({
       {notice && <NoticeModal title={notice.title} message={notice.message} onClose={() => setNotice(null)} />}
       <div className="exp-head">
         <span className="exp-title">탐색기</span>
-        {/* 빌드·생성물 폴더 숨김 빠른 토글 — 목록은 설정 › 탐색기에서 관리(전역 프리셋) */}
+        {/* 빌드·생성물 숨김(폴더·파일) 빠른 토글 — 목록은 설정 › Explorer에서 관리(전역 프리셋) */}
         <button
           className={'exp-act has-tip' + (hideEnabled ? ' on' : '')}
           data-tip={
             hideEnabled
-              ? '빌드·생성물 폴더 숨김 · 켜짐 — 클릭하면 모두 보기 (목록: 설정 › 탐색기)'
-              : '모든 폴더 보임 — 클릭하면 빌드·생성물 폴더 숨김 (목록: 설정 › 탐색기)'
+              ? '빌드·생성물 폴더·파일 숨김 · 켜짐 — 클릭하면 모두 보기 (목록: 설정 › Explorer)'
+              : '모든 항목 보임 — 클릭하면 빌드·생성물 폴더·파일 숨김 (목록: 설정 › Explorer)'
           }
-          aria-label="빌드·생성물 폴더 숨김"
+          aria-label="빌드·생성물 폴더·파일 숨김"
           aria-pressed={hideEnabled}
           onClick={() => setHideEnabled(!hideEnabled)}
           disabled={!cwd}
@@ -1055,6 +1106,18 @@ function indent(depth: number): number {
 function basename(p: string): string {
   const parts = p.split(/[\\/]+/).filter(Boolean)
   return parts.length ? parts[parts.length - 1] : p
+}
+
+// 파일 이름의 확장자('' = 없음) — 점으로 시작하는 dotfile(.gitignore)은 확장자 없음으로 취급해
+// 우클릭 메뉴에 '*.gitignore 모두 숨기기' 같은 이상한 항목이 안 생기게 한다
+function extOf(name: string): string {
+  const i = name.lastIndexOf('.')
+  return i > 0 && i < name.length - 1 ? name.slice(i + 1) : ''
+}
+
+// 컨텍스트 메뉴 라벨용 — 긴 파일 이름이 메뉴 폭을 폭주시키지 않게 줄인다
+function shortName(name: string): string {
+  return name.length > 24 ? name.slice(0, 22) + '…' : name
 }
 
 // 경로 동치 비교 — 슬래시 방향·중복·대소문자 무시 (Windows 경로 섞임 대응)

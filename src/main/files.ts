@@ -127,13 +127,15 @@ async function dirHasVisibleFile(
  * Lazy by design (called per expanded folder). By default nothing is filtered — the explorer
  * shows the real tree, node_modules included.
  *
- * Two independent filters, each a name list:
+ * Three independent filters, each a name list:
  *  - `exclude`      — matches files AND folders (the "Verse 위주로 보기" globs: `**\/*.uasset`,
  *                     `Collections`, …). With `hideEmpty`, folders left empty by these are dropped
  *                     too — mirroring UEFN's Verse Explorer view.
  *  - `excludeDirs`  — matches DIRECTORIES ONLY (the general "빌드·생성물 폴더 숨김": bin/obj/Saved/…).
  *                     A file that merely shares a hidden folder's name (e.g. a file literally named
  *                     `Saved`) stays visible.
+ *  - `excludeFiles` — matches FILES ONLY (숨김 파일 이름·패턴: Thumbs.db, `*.uasset`, …) — the
+ *                     mirror of `excludeDirs`, so a folder sharing a hidden file's name stays visible.
  * Folders first, then files, each sorted case-insensitively.
  */
 export async function listDir(
@@ -141,7 +143,8 @@ export async function listDir(
   rel: string,
   exclude?: string[],
   hideEmpty?: boolean,
-  excludeDirs?: string[]
+  excludeDirs?: string[],
+  excludeFiles?: string[]
 ): Promise<DirEntry[]> {
   if (!cwd) return []
   const root = path.resolve(cwd)
@@ -156,12 +159,13 @@ export async function listDir(
   }
   const exclAll = exclude && exclude.length ? makeExcluder(exclude) : null // files + dirs
   const exclDir = excludeDirs && excludeDirs.length ? makeExcluder(excludeDirs) : null // dirs only
-  // one entry's verdict — a directory checks both lists; a file only the files+dirs list
+  const exclFile = excludeFiles && excludeFiles.length ? makeExcluder(excludeFiles) : null // files only
+  // one entry's verdict — the shared list always applies, then the dir-only/file-only list by kind
   const hidden = (name: string, dir: boolean): boolean =>
-    (!!exclAll && exclAll(name)) || (dir && !!exclDir && exclDir(name))
+    (!!exclAll && exclAll(name)) || (dir ? !!exclDir && exclDir(name) : !!exclFile && exclFile(name))
 
   let out: DirEntry[] = entries.map((e) => ({ name: e.name, dir: e.isDirectory() }))
-  if (exclAll || exclDir) {
+  if (exclAll || exclDir || exclFile) {
     out = out.filter((e) => !hidden(e.name, e.dir))
     if (hideEmpty) {
       const kept: DirEntry[] = []

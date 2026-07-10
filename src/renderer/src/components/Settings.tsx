@@ -32,6 +32,8 @@ import {
   IconDollar,
   IconUser,
   IconPlus,
+  IconAsterisk,
+  IconFile,
   IconFilter,
   IconFolder,
   IconX2,
@@ -39,7 +41,16 @@ import {
   type IconProps
 } from './icons'
 import { getTheme, setTheme, type Theme } from '../lib/theme'
-import { DEFAULT_HIDE_DIRS, getHideDirs, getHideEnabled, setHideDirs, setHideEnabled } from '../lib/hideDirs'
+import {
+  DEFAULT_HIDE_DIRS,
+  DEFAULT_HIDE_FILES,
+  getHideDirs,
+  getHideEnabled,
+  getHideFiles,
+  setHideDirs,
+  setHideEnabled,
+  setHideFiles
+} from '../lib/hideDirs'
 
 export type SettingsView = 'account' | 'version' | 'api' | 'mcp' | 'skill' | 'lsp' | 'explorer' | 'appearance'
 type View = SettingsView
@@ -1619,67 +1630,61 @@ function LspView() {
   )
 }
 
-// ── 탐색기 (숨길 폴더 관리) ───────────────────────────────────────
-// 파일 탐색기 트리에서 감출 폴더 이름을 전역으로 관리한다. bin·obj·Saved 같은 빌드/생성물
-// 폴더를 이름 기준(대소문자 무시, 어느 깊이든)으로 숨겨 소스에 집중하게 한다. 저장 즉시
-// lib/hideDirs가 이벤트를 쏴 열려 있는 탐색기가 트리를 다시 읽는다.
+// ── 탐색기 (숨길 폴더·파일 관리) ───────────────────────────────────
+// 파일 탐색기 트리에서 감출 이름을 전역으로 관리한다. 저장은 두 벌(폴더 목록·파일 목록)이지만
+// 화면은 세 섹션이다: Folders(폴더만) / Files(파일 이름) / Extensions(*.확장자 패턴) — 파일
+// 목록 안의 항목을 '모양'으로 갈라 보여줄 뿐, 매칭·저장은 그대로 파일 목록 하나를 쓴다.
+// 대소문자 무시·어느 깊이든 매칭되고, 저장 즉시 lib/hideDirs가 이벤트를 쏴 열려 있는 탐색기가
+// 트리를 다시 읽는다. 탐색기 트리 우클릭 '숨김 목록에 추가'도 같은 목록으로 들어온다.
+
+// '*.확장자' 꼴인가 — Extensions 섹션으로 분류하는 기준 (다른 글롭·일반 이름은 Files에 남는다)
+function isExtPattern(s: string): boolean {
+  return /^\*\.[^\\/*?]+$/.test(s)
+}
+
 function ExplorerView(): React.ReactElement {
   const [enabled, setEnabled] = useState<boolean>(() => getHideEnabled())
   const [dirs, setDirs] = useState<string[]>(() => getHideDirs())
-  const [input, setInput] = useState('')
-  // 목록 찾기 — 프리셋이 수십 개라 특정 폴더 하나를 지우려면 검색이 빠르다 (대소문자 무시)
-  const [query, setQuery] = useState('')
-
-  const commit = (list: string[]): void => {
-    setDirs(list)
-    setHideDirs(list) // 저장 + 탐색기에 알림
-  }
+  const [files, setFiles] = useState<string[]>(() => getHideFiles())
   const toggle = (): void => {
     const next = !enabled
     setEnabled(next)
     setHideEnabled(next)
   }
-  const add = (): void => {
-    // 폴더 '이름'만 받는다 — 경로 구분자는 떼어내고, 이미 있으면(대소문자 무시) 무시
-    const name = input.trim().replace(/[\\/]/g, '')
-    if (!name) return
-    setInput('')
-    if (dirs.some((d) => d.toLowerCase() === name.toLowerCase())) return
-    commit([...dirs, name])
+  // 파일 목록을 화면용으로 두 갈래로 — 커밋은 다른 갈래를 보존한 채 합쳐서 한 목록으로 저장
+  const plainFiles = files.filter((f) => !isExtPattern(f))
+  const extFiles = files.filter(isExtPattern)
+  const commitFiles = (l: string[]): void => {
+    setFiles(l)
+    setHideFiles(l) // 저장 + 탐색기에 알림
   }
-  const remove = (name: string): void => commit(dirs.filter((d) => d !== name))
-  const isDefault =
-    dirs.length === DEFAULT_HIDE_DIRS.length &&
-    dirs.every((d, i) => d === DEFAULT_HIDE_DIRS[i])
-  const q = query.trim().toLowerCase()
-  const shown = q ? dirs.filter((d) => d.toLowerCase().includes(q)) : dirs
 
   return (
     <>
       <div className="set-h1">Explorer</div>
       <div className="set-h1-sub">
-        파일 탐색기 트리에서 숨길 폴더를 관리해요. <code>bin</code>·<code>obj</code>·<code>Saved</code> 같은 빌드·생성물
-        폴더를 감춰 소스에 집중할 수 있어요.
+        파일 탐색기 트리에서 숨길 폴더·파일을 관리해요. <code>bin</code>·<code>obj</code> 같은 빌드·생성물 폴더와{' '}
+        <code>Thumbs.db</code>·<code>*.uasset</code> 같은 파일을 감춰 소스에 집중할 수 있어요.
       </div>
 
       <div className="sec">
-        {/* 위: 마스터 토글 하나 */}
+        {/* 위: 마스터 토글 하나 — 폴더·파일 목록에 함께 적용 */}
         <div className="card">
           <div className="ver-row">
             <div className="ver-ic">
               <IconFilter size={20} />
             </div>
             <div className="ver-main">
-              <div className="ver-name">빌드·생성물 폴더 숨기기</div>
+              <div className="ver-name">빌드·생성물 숨기기</div>
               <div className="ver-meta">
-                {enabled ? '아래 목록의 폴더를 탐색기에서 감춰요' : '모든 폴더를 그대로 보여줘요'}
+                {enabled ? '아래 목록의 폴더·파일을 탐색기에서 감춰요' : '모든 폴더·파일을 그대로 보여줘요'}
               </div>
             </div>
             <button
               className={'skill-toggle' + (enabled ? ' on' : '')}
               role="switch"
               aria-checked={enabled}
-              aria-label={enabled ? '폴더 숨김 끄기' : '폴더 숨김 켜기'}
+              aria-label={enabled ? '숨김 끄기' : '숨김 켜기'}
               onClick={toggle}
             >
               <span className="skill-knob" />
@@ -1687,74 +1692,164 @@ function ExplorerView(): React.ReactElement {
           </div>
         </div>
 
-        {/* 아래: 추가 입력 + 폴더가 한 줄씩 쭉 */}
+        {/* 아래: Folders / Files 두 섹션 — 같은 UI 한 벌(추가 입력 + 찾기 + 행 나열)을 공유 */}
         <div className={'exd-panel' + (enabled ? '' : ' off')}>
-          <div className="exd-add">
-            <input
-              className="api-input"
-              placeholder="폴더 이름 추가 (예: Logs)"
-              value={input}
-              spellCheck={false}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') add()
-              }}
-            />
-            <button className="inst-btn" disabled={!input.trim()} onClick={add}>
-              <IconPlus size={14} /> 추가
-            </button>
-          </div>
-
-          <div className="exd-listhead">
-            <div className="exd-find">
-              <IconSearch size={12} />
-              <input
-                placeholder="폴더 찾기"
-                value={query}
-                spellCheck={false}
-                onChange={(e) => setQuery(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Escape') setQuery('')
-                }}
-              />
-              {query && (
-                <button className="exd-find-x" aria-label="찾기 지우기" onClick={() => setQuery('')}>
-                  <IconX2 size={11} />
-                </button>
-              )}
-            </div>
-            <span className="exd-count">{q ? `${shown.length}/${dirs.length}개 폴더` : `${dirs.length}개 폴더`}</span>
-            <button className="exd-restore" disabled={isDefault} onClick={() => commit([...DEFAULT_HIDE_DIRS])}>
-              <IconRefresh size={12} /> 기본값 복원
-            </button>
-          </div>
-
-          <div className="exd-list scroll">
-            {dirs.length === 0 ? (
-              <div className="exd-empty">숨길 폴더가 없어요 — 위에서 추가하세요</div>
-            ) : shown.length === 0 ? (
-              <div className="exd-empty">‘{query.trim()}’와 일치하는 폴더가 없어요</div>
-            ) : (
-              shown.map((d) => (
-                <div className="exd-row" key={d}>
-                  <IconFolder className="exd-row-ic" size={14} />
-                  <span className="exd-row-n">{d}</span>
-                  <button className="exd-row-x" aria-label={d + ' 제거'} onClick={() => remove(d)}>
-                    <IconX2 size={12} />
-                  </button>
-                </div>
-              ))
-            )}
-          </div>
+          <HideListSection
+            title="Folders"
+            sub="폴더 이름 — 같은 이름의 파일은 그대로"
+            Ic={IconFolder}
+            placeholder="폴더 이름 추가 (예: Logs)"
+            unit="폴더"
+            defaults={DEFAULT_HIDE_DIRS}
+            list={dirs}
+            onCommit={(l) => {
+              setDirs(l)
+              setHideDirs(l) // 저장 + 탐색기에 알림
+            }}
+          />
+          <HideListSection
+            title="Files"
+            sub="파일 이름 — 폴더는 그대로"
+            Ic={IconFile}
+            placeholder="파일 이름 추가 (예: Thumbs.db)"
+            unit="파일"
+            defaults={DEFAULT_HIDE_FILES}
+            list={plainFiles}
+            onCommit={(l) => commitFiles([...l, ...extFiles])}
+          />
+          <HideListSection
+            title="Extensions"
+            sub="*.확장자 — 그 확장자의 파일 전부"
+            Ic={IconAsterisk}
+            placeholder="확장자 추가 (예: uasset)"
+            unit="확장자"
+            defaults={[]}
+            list={extFiles}
+            onCommit={(l) => commitFiles([...plainFiles, ...l])}
+            // 'uasset'·'.uasset'·'*.uasset' 어느 꼴로 넣어도 저장 형태(*.확장자)로 정규화
+            normalize={(raw) => {
+              const s = raw.replace(/[\\/\s]/g, '').replace(/^\*?\./, '').replace(/[*?]/g, '')
+              return s ? '*.' + s : ''
+            }}
+          />
         </div>
 
         <div className="set-note">
-          폴더 이름은 <b>대소문자 구분 없이</b>, 트리의 <b>어느 깊이에서든</b> 같은 이름의 <b>폴더만</b> 숨겨요(같은
-          이름의 파일은 그대로). 숨겨도 파일은 남아 있고 에이전트는 접근할 수 있어요 — 보기만 정리하는 거예요. 탐색기
-          헤더의 <IconFilter size={11} /> 버튼으로도 빠르게 켜고 끌 수 있어요.
+          이름은 <b>대소문자 구분 없이</b>, 트리의 <b>어느 깊이에서든</b> 매칭돼요 — Folders 목록은 <b>폴더만</b>,
+          Files·Extensions 목록은 <b>파일만</b> 숨겨요. 숨겨도 파일은 남아 있고 에이전트는 접근할 수 있어요 —
+          보기만 정리하는 거예요. 탐색기에서 파일·폴더를 <b>우클릭 → 숨김 목록에 추가</b>로도 넣을 수 있고, 탐색기
+          헤더의 <IconFilter size={11} /> 버튼으로 빠르게 켜고 끌 수 있어요.
         </div>
       </div>
     </>
+  )
+}
+
+// 숨김 목록 한 벌 — 추가 입력, 목록 안 찾기(프리셋이 수십 개라 스크롤보다 검색이 빠르다),
+// 기본값 복원, 행 나열. Folders/Files/Extensions 세 섹션이 이 컴포넌트를 공유한다.
+function HideListSection({
+  title,
+  sub,
+  Ic,
+  placeholder,
+  unit,
+  defaults,
+  list,
+  onCommit,
+  normalize
+}: {
+  title: string
+  sub: string
+  Ic: (p: IconProps) => React.ReactElement
+  placeholder: string
+  unit: string // 개수 표기 단위 — '폴더'·'파일'·'확장자'
+  defaults: string[]
+  list: string[]
+  onCommit: (l: string[]) => void
+  normalize?: (raw: string) => string // 섹션별 입력 정규화 — 기본은 경로 구분자 제거
+}): React.ReactElement {
+  const [input, setInput] = useState('')
+  const [query, setQuery] = useState('')
+
+  const add = (): void => {
+    // '이름'(또는 * ? 패턴)만 받는다 — 정규화 후 비면 무시, 이미 있으면(대소문자 무시) 무시
+    const name = (normalize ?? ((s: string) => s.replace(/[\\/]/g, '')))(input.trim())
+    if (!name) return
+    setInput('')
+    if (list.some((d) => d.toLowerCase() === name.toLowerCase())) return
+    onCommit([...list, name])
+  }
+  const isDefault = list.length === defaults.length && list.every((d, i) => d === defaults[i])
+  const q = query.trim().toLowerCase()
+  const shown = q ? list.filter((d) => d.toLowerCase().includes(q)) : list
+
+  return (
+    <div className="exd-sec">
+      <div className="exd-sec-head">
+        <span className="exd-sec-t">{title}</span>
+        <span className="exd-sec-d">{sub}</span>
+      </div>
+      <div className="exd-add">
+        <input
+          className="api-input"
+          placeholder={placeholder}
+          value={input}
+          spellCheck={false}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') add()
+          }}
+        />
+        <button className="inst-btn" disabled={!input.trim()} onClick={add}>
+          <IconPlus size={14} /> 추가
+        </button>
+      </div>
+
+      <div className="exd-listhead">
+        <div className="exd-find">
+          <IconSearch size={12} />
+          <input
+            placeholder={unit + ' 찾기'}
+            value={query}
+            spellCheck={false}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') setQuery('')
+            }}
+          />
+          {query && (
+            <button className="exd-find-x" aria-label="찾기 지우기" onClick={() => setQuery('')}>
+              <IconX2 size={11} />
+            </button>
+          )}
+        </div>
+        <span className="exd-count">{q ? `${shown.length}/${list.length}개 ${unit}` : `${list.length}개 ${unit}`}</span>
+        {/* 기본값이 아예 없는 섹션(Extensions)에선 '복원'이 '모두 지우기'가 돼버려 안 보여준다 */}
+        {defaults.length > 0 && (
+          <button className="exd-restore" disabled={isDefault} onClick={() => onCommit([...defaults])}>
+            <IconRefresh size={12} /> 기본값 복원
+          </button>
+        )}
+      </div>
+
+      <div className="exd-list scroll">
+        {list.length === 0 ? (
+          <div className="exd-empty">숨길 목록이 비어 있어요 — 위에서 추가하세요</div>
+        ) : shown.length === 0 ? (
+          <div className="exd-empty">‘{query.trim()}’와 일치하는 항목이 없어요</div>
+        ) : (
+          shown.map((d) => (
+            <div className="exd-row" key={d}>
+              <Ic className="exd-row-ic" size={14} />
+              <span className="exd-row-n">{d}</span>
+              <button className="exd-row-x" aria-label={d + ' 제거'} onClick={() => onCommit(list.filter((x) => x !== d))}>
+                <IconX2 size={12} />
+              </button>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
   )
 }
 

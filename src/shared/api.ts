@@ -136,13 +136,15 @@ export interface WindowApi {
   listFiles(cwd: string): Promise<string[]>
   /** list one folder's entries (folders first) for the file explorer — `rel` is cwd-relative ('' = root).
    *  `exclude` = files.exclude globs (files+folders) and `hideEmpty` together give the "Verse 위주로 보기"
-   *  filtered tree; `excludeDirs` = names hidden for DIRECTORIES ONLY (일반 "빌드·생성물 폴더 숨김"). */
+   *  filtered tree; `excludeDirs` = names hidden for DIRECTORIES ONLY, `excludeFiles` = names/patterns
+   *  hidden for FILES ONLY (일반 "빌드·생성물 숨김" — 설정 › Explorer의 두 목록). */
   listDir(
     cwd: string,
     rel: string,
     exclude?: string[],
     hideEmpty?: boolean,
-    excludeDirs?: string[]
+    excludeDirs?: string[],
+    excludeFiles?: string[]
   ): Promise<DirEntry[]>
   /** git — 탐색기의 Git 카드 (히스토리·변경 사항·커밋/푸시/풀) */
   git: {

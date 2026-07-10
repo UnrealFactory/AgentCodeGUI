@@ -97,8 +97,8 @@ const api: WindowApi = {
   writeFile: (cwd, relPath, content) => ipcRenderer.invoke(IPC.writeFile, { cwd, relPath, content }),
   onCloseShortcut: (cb) => subscribe<void>(IPC.closeShortcut, () => cb()),
   listFiles: (cwd) => ipcRenderer.invoke(IPC.listFiles, cwd),
-  listDir: (cwd, rel, exclude, hideEmpty, excludeDirs) =>
-    ipcRenderer.invoke(IPC.listDir, { cwd, rel, exclude, hideEmpty, excludeDirs }),
+  listDir: (cwd, rel, exclude, hideEmpty, excludeDirs, excludeFiles) =>
+    ipcRenderer.invoke(IPC.listDir, { cwd, rel, exclude, hideEmpty, excludeDirs, excludeFiles }),
   git: {
     root: (cwd: string, force?: boolean) => ipcRenderer.invoke(IPC.gitRoot, { cwd, force }),
     status: (root: string) => ipcRenderer.invoke(IPC.gitStatus, root),

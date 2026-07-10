@@ -437,6 +437,10 @@ interface ServerHandle {
   // 돌려보내야 한다. gen(세대)으로 렌더러의 지연 resolve가 낡은 목록을 집는 걸 막는다.
   complRaw: { gen: number; items: RawCompletionItem[] } | null
   complGen: number
+  // C# 전용: 로드한 솔루션 파일(.sln/.slnx)의 워처 — UnrealSharp가 플러그인 생성/삭제로
+  // 솔루션을 재생성하면 solution/open을 재통지해 새 프로젝트를 로드한다(watchCsSolution).
+  // 서버가 죽으면 반드시 close (안 하면 워처가 유령으로 남아 죽은 rpc에 notify한다).
+  slnWatch?: fs.FSWatcher
 }
 
 // Resolve a file that ships in the app's node_modules. In a packaged build the
@@ -1929,19 +1933,55 @@ class LspManager {
   }
 
   /**
-   * 파일이 앱 안에서 저장됐다는 알림(IPC.writeFile 뒤) — Verse 파일이면 그 프로젝트의 멤버 DB
-   * 캐시를 무효화해, 새로 선언한 타입/멤버가 다른 파일의 완성·색칠에도 나타나게 한다. verse-lsp
+   * 파일이 앱 안에서 저장됐다는 알림(IPC.writeFile 뒤) — 서버들에 디스크 변화를 통지하고
+   * (열린 문서는 didChange가 진실이라 무해), Verse 파일이면 그 프로젝트의 멤버 DB 캐시를
+   * 무효화해 새로 선언한 타입/멤버가 다른 파일의 완성·색칠에도 나타나게 한다. verse-lsp
    * 자체는 didChange로 이미 최신이므로 서버는 건드리지 않는다.
    */
   fileWritten(cwd: string, relPath: string): void {
     const abs = this.resolve(cwd, relPath)
-    if (!abs || serverDefFor(abs)?.id !== 'verse') return
+    if (!abs) return
+    this.notifyWatchedFiles([{ abs, kind: 'changed' }])
+    if (serverDefFor(abs)?.id !== 'verse') return
     invalidateVerseMemberCache(verseProjectRoot(abs) ?? cwd)
+  }
+
+  /**
+   * 디스크 파일 변화(생성/수정/삭제)를 살아있는 서버들에 workspace/didChangeWatchedFiles로
+   * 알린다 — 앱이 스스로 아는 변화(에이전트 Write/Edit, 내장 에디터 저장, 탐색기 파일 작업)만.
+   * Roslyn은 이 통지에 기대지 않는다: 우리가 워칭 능력을 선언하지 않아 자체 폴백 워처가 돌고
+   * (initialize 능력 주석 참조), 솔루션 멤버십 구멍은 watchCsSolution이 맡는다. 이 통지는
+   * 클라이언트 워칭에 기대는 서버들(pyright류)을 위한 최선 노력이고, 관심 없는 서버는
+   * 조용히 무시하므로 무해하다.
+   *
+   * 서버 root 포함 여부로 거르지 않는다: C#의 root(sln 폴더)가 cwd 밖 형제 프로젝트의 파일
+   * (UnrealSharp 플러그인 Script)을 경로상 '포함'하지 않는 배치가 실제로 있다. 대신 그 서버가
+   * 관심 가질 확장자(def.exts + C#은 프로젝트/솔루션 파일)만 골라 보낸다.
+   */
+  notifyWatchedFiles(changes: { abs: string; kind: 'created' | 'changed' | 'deleted' }[]): void {
+    if (!changes.length) return
+    const TYPE = { created: 1, changed: 2, deleted: 3 } as const
+    // C#은 소스 외에 프로젝트/솔루션 파일 변화도 프로젝트 시스템 갱신 대상
+    const CS_EXTRA = new Set(['csproj', 'sln', 'slnx', 'props', 'targets'])
+    for (const [key, s] of this.servers) {
+      if (s.status !== 'ready') continue // 초기화 전 서버는 스킵 — 로드 시점 글롭 평가가 커버
+      const def = SERVERS.find((d) => d.id === key.slice(0, key.indexOf('|')))
+      if (!def) continue
+      const wanted = changes.filter((c) => {
+        const ext = path.extname(c.abs).slice(1).toLowerCase()
+        return ext in def.exts || (def.id === 'cs' && CS_EXTRA.has(ext))
+      })
+      if (!wanted.length) continue
+      s.rpc.notify('workspace/didChangeWatchedFiles', {
+        changes: wanted.map((c) => ({ uri: pathToFileURL(path.resolve(c.abs)).href, type: TYPE[c.kind] }))
+      })
+    }
   }
 
   /** Kill every server (app quit). */
   disposeAll(): void {
     for (const s of this.servers.values()) {
+      s.slnWatch?.close()
       s.rpc.dispose('앱 종료')
       killTree(s.child)
     }
@@ -2102,6 +2142,11 @@ class LspManager {
                 formats: ['relative']
               }
             },
+            // workspace.didChangeWatchedFiles는 '일부러' 선언하지 않는다 — 선언하면 Roslyn이
+            // 자체 폴백 파일 워처를 끄고 워칭을 전적으로 클라이언트에 맡기는데(실측), 우리는
+            // 외부 변화(빌드 산출물·다른 에디터·git)까지 다 챙겨 줄 수 없다. 미선언이면 Roslyn이
+            // 로드된 프로젝트 폴더를 스스로 감시해 새 파일을 수 초 안에 편입한다(실측). 남는
+            // 구멍은 '솔루션 멤버십 변화'(slnx 재생성) 하나 — watchCsSolution이 메운다.
             workspace: { workspaceFolders: true },
           // 진행률 알림 수신 — 이걸 선언해야 clangd가 백그라운드 인덱싱 $/progress를 보낸다
           // (Roslyn은 선언 없이도 보냈지만 clangd는 능력 선언에 gate 되어 있다)
@@ -2132,10 +2177,12 @@ class LspManager {
         rpc.notify('initialized', {})
         def.afterInitialized?.(rpc, path.resolve(root))
         handle.status = 'ready'
+        if (def.id === 'cs') this.watchCsSolution(handle, path.resolve(root))
       })
     handle.ready.catch(() => {
       handle.status = 'error'
       handle.diedAt = Date.now()
+      handle.slnWatch?.close()
       // a server that failed/hung initialize would linger forever — take it down
       // so the cooldown respawn starts from a clean slate
       killTree(child)
@@ -2144,6 +2191,7 @@ class LspManager {
     child.on('error', () => {
       handle.status = 'error'
       handle.diedAt = Date.now()
+      handle.slnWatch?.close()
       rpc.dispose('LSP 서버 실행 실패')
     })
     child.on('exit', (code) => {
@@ -2154,6 +2202,7 @@ class LspManager {
       handle.status = 'error'
       handle.diedAt = Date.now()
       handle.docs.clear()
+      handle.slnWatch?.close()
       rpc.dispose('LSP 서버가 종료됨')
     })
 
@@ -2173,6 +2222,47 @@ class LspManager {
     handle.wsCheckedAt = now
     const m = verseWorkspaceMtime(root)
     return m > 0 && m > handle.startedAt
+  }
+
+  /**
+   * C# 서버가 로드한 솔루션 파일(.sln/.slnx)을 감시하다가 바뀌면 solution/open을 재통지한다.
+   *
+   * 왜: Roslyn은 솔루션 '멤버십'을 로드 시점에 한 번만 읽는다. UnrealSharp는 플러그인을
+   * 만들면 솔루션을 재생성해 새 csproj 참조를 더하는데, 이미 떠 있는 서버는 그걸 모른 채
+   * 새 프로젝트의 모든 .cs를 떠돌이(misc) 문서로 취급한다 — BCL만 색이 붙고 UnrealSharp/
+   * 프로젝트 심볼은 무색(실측 재현). 같은 경로로 solution/open을 다시 보내면 수 초 안에
+   * 새 프로젝트가 로드되고, '이미 열려 있던' misc 문서까지 그 자리에서 회복된다(실측) —
+   * 서버 재시작(수 분짜리 재인덱싱)이 필요 없다.
+   *
+   * 로드된 프로젝트 '안'의 새 파일은 이 감시가 필요 없다: didChangeWatchedFiles를 선언하지
+   * 않은 클라이언트에겐 Roslyn이 자체 폴백 워처를 돌려 수 초 안에 스스로 편입한다(실측).
+   * 파일을 직접 감시하지 않고 폴더를 감시해 이름으로 거른다 — 재생성(삭제+생성/교체)이
+   * 파일 핸들 워치를 끊는 Windows 특성 회피.
+   */
+  private watchCsSolution(s: ServerHandle, root: string): void {
+    const sln = csSolutionByRoot.get(root.toLowerCase()) ?? null
+    if (!sln) return // csproj 단독 로드 — 감시할 솔루션이 없다
+    let timer: ReturnType<typeof setTimeout> | null = null
+    try {
+      const name = path.basename(sln).toLowerCase()
+      s.slnWatch = fs.watch(path.dirname(sln), (_ev, fn) => {
+        if (!fn || String(fn).toLowerCase() !== name) return
+        // 재생성은 이벤트가 여러 번 튄다(쓰기·교체) — 마지막 이벤트 후 2초 조용해지면 1회 재통지
+        if (timer) clearTimeout(timer)
+        timer = setTimeout(() => {
+          timer = null
+          if (s.status !== 'ready') return
+          try {
+            if (!fs.existsSync(sln)) return // 삭제-후-재생성 중간이면 다음 생성 이벤트가 다시 재운다
+          } catch {
+            return
+          }
+          s.rpc.notify('solution/open', { solution: pathToFileURL(sln).href })
+        }, 2000)
+      })
+    } catch {
+      /* 감시 실패(권한 등) — 없던 기능이니 조용히 포기, 색칠은 재시작 시 회복 */
+    }
   }
 
   /**
