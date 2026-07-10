@@ -6,11 +6,17 @@ import { getPref, setPref } from '../lib/prefs'
 import { IconChevLeft, IconChevRight, IconFile, IconFilter, IconFolder, IconFolderOpen, IconGitBranch, IconPencil, IconPlus, IconRefresh, IconSearch, IconTrash, IconVerse, IconX2 } from './icons'
 import { FileOpModal, type FileOp } from './FileOpModal'
 import { NoticeModal } from './NoticeModal'
+import { getHideDirs, getHideEnabled, setHideEnabled, onHideChanged } from '../lib/hideDirs'
 
 const isMac = typeof navigator !== 'undefined' && navigator.platform.toLowerCase().includes('mac')
 
 // 폴더 하나가 트리에 그리는 최대 행 수 — 초과분은 "외 N개 항목 생략" 안내 행으로 접는다
 const MAX_DIR_ROWS = 500
+
+// 탐색기 칼럼 너비(가로 드래그로 조절) — 하한/상한과 기본값. 전역으로 기억한다.
+const EXP_MIN_W = 190
+const EXP_MAX_W = 620
+const EXP_DEFAULT_W = 236
 
 // 펼쳐둔 폴더 목록의 저장 키 — 작업 폴더별로 따로 기억한다
 function expandedKey(cwd: string): string {
@@ -91,6 +97,68 @@ export const Explorer = memo(function Explorer({
   const [verseFilter, setVerseFilter] = useState<boolean>(() => (cwd ? getPref<boolean>(verseFilterKey(cwd), true) : true))
   // 지금 보고 있는 폴더 — 프로젝트별로 영속(껐다 켜도 보던 Verse API/참고 폴더로 복원). '' = 메인.
   const [view, setView] = useState<string>(() => (cwd ? getPref<string>(viewKey(cwd), '') : ''))
+  // 빌드·생성물 폴더 숨김(설정 › 탐색기) — Verse와 달리 프로젝트별이 아니라 전역 프리셋이다.
+  // 설정에서 목록/토글을 바꾸면 hideDirs가 이벤트를 쏴, 여기서 다시 읽어 트리를 갱신한다.
+  const [hideEnabled, setHideOn] = useState<boolean>(() => getHideEnabled())
+  const [hideList, setHideList] = useState<string[]>(() => getHideDirs())
+  useEffect(
+    () =>
+      onHideChanged(() => {
+        setHideOn(getHideEnabled())
+        setHideList(getHideDirs())
+      }),
+    []
+  )
+  // 칼럼 너비 — 오른쪽 가장자리 핸들을 끌어 조절, 전역으로 기억(껐다 켜도 유지). 더블클릭으로 기본값 복귀.
+  const clampW = (w: number): number => Math.max(EXP_MIN_W, Math.min(EXP_MAX_W, Math.round(w)))
+  const [width, setWidth] = useState<number>(() => clampW(getPref<number>('explorer.width', EXP_DEFAULT_W)))
+  const widthRef = useRef(width)
+  const dragRef = useRef<{ x: number; w: number } | null>(null)
+  const resizeElRef = useRef<HTMLDivElement>(null)
+  // 핸들 옆 말풍선 — 호버엔 안내문, 드래그 중엔 실시간 너비(px). 커서 Y를 따라 왼쪽에 뜬다.
+  const [wtip, setWtip] = useState<{ x: number; y: number; text: string } | null>(null)
+  const applyWidth = (w: number): void => {
+    const c = clampW(w)
+    widthRef.current = c
+    setWidth(c)
+  }
+  const paintTip = (clientY: number, dragging: boolean): void => {
+    const el = resizeElRef.current
+    if (!el) return
+    const r = el.getBoundingClientRect()
+    setWtip({ x: r.left, y: clientY, text: dragging ? `${widthRef.current}px` : '드래그로 너비 조절 · 더블클릭 초기화' })
+  }
+  const onResizeDown = (e: React.PointerEvent): void => {
+    e.preventDefault()
+    ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+    dragRef.current = { x: e.clientX, w: width }
+    document.body.classList.add('col-resizing')
+    paintTip(e.clientY, true)
+  }
+  const onResizeMove = (e: React.PointerEvent): void => {
+    const d = dragRef.current
+    if (d) applyWidth(d.w + (e.clientX - d.x))
+    paintTip(e.clientY, !!d) // 드래그면 px, 호버면 안내문 — 커서를 따라 위치 갱신
+  }
+  const onResizeUp = (e: React.PointerEvent): void => {
+    if (!dragRef.current) return
+    dragRef.current = null
+    document.body.classList.remove('col-resizing')
+    ;(e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId)
+    setPref('explorer.width', widthRef.current)
+    setWtip(null)
+  }
+  const onResizeEnter = (e: React.PointerEvent): void => {
+    if (!dragRef.current) paintTip(e.clientY, false)
+  }
+  const onResizeLeave = (): void => {
+    if (!dragRef.current) setWtip(null)
+  }
+  const resetWidth = (e: React.MouseEvent): void => {
+    applyWidth(EXP_DEFAULT_W)
+    setPref('explorer.width', EXP_DEFAULT_W)
+    paintTip(e.clientY, false) // 초기화 후에도 안내문을 그 자리에 다시 그린다
+  }
   const [prevCwd, setPrevCwd] = useState(cwd)
   if (prevCwd !== cwd) {
     setPrevCwd(cwd)
@@ -101,8 +169,16 @@ export const Explorer = memo(function Explorer({
     setVerseFilter(cwd ? getPref<boolean>(verseFilterKey(cwd), true) : true)
     setView(cwd ? getPref<string>(viewKey(cwd), '') : '')
   }
-  // 실제로 필터를 거는 조건 — 토글 ON이면서 이 프로젝트에 제외 글롭이 있을 때만
-  const filtering = verseFilter && excludes.length > 0
+  // "Verse 위주로 보기" — UEFN 글롭(파일+폴더) + 빈 폴더 숨김
+  const verseFiltering = verseFilter && excludes.length > 0
+  // 두 필터는 성격이 달라 따로 넘긴다:
+  //  - 일반 숨김(generalDirs)은 '폴더에만' — 같은 이름의 파일(예: 확장자 없는 'Saved')은 안 숨긴다.
+  //  - Verse 글롭(verseExcl)은 *.uasset 같은 '파일'도 숨겨야 하므로 파일+폴더 양쪽에 건다.
+  const generalDirs = useMemo(() => (hideEnabled ? hideList : []), [hideEnabled, hideList])
+  const verseExcl = useMemo(() => (verseFiltering ? excludes : []), [verseFiltering, excludes])
+  const hideEmpty = verseFiltering // 빈 폴더 프루닝은 Verse에만
+  // 검색 결과에서 숨긴 폴더 밑의 파일도 빼기 위한 이름 집합(소문자) — 일반 숨김(폴더)만 대상
+  const hideSet = useMemo(() => new Set(generalDirs.map((d) => d.toLowerCase())), [generalDirs])
   // 수동 참고 폴더에 이미 있는 경로는 자동 digest 행에서 빼 중복을 막는다
   const autoRefs = verseRefs.filter((v) => !refs.some((r) => samePath(r, v.path)))
   const viewing = view && (refs.includes(view) || autoRefs.some((v) => v.path === view)) ? view : '' // '' = 메인 폴더 보기
@@ -162,7 +238,7 @@ export const Explorer = memo(function Explorer({
 
   // 필터를 켜고/끄거나(또는 excludes가 처음 도착하면) 화면에 떠 있는 것(root + 펼친 폴더)을
   // 조용히 다시 읽는다 — 펼침/선택 상태는 그대로 두고 내용만 필터 반영. 검색 인덱스도 무효화.
-  const filterSig = filtering ? excludes.join('|') : ''
+  const filterSig = verseExcl.join('|') + '##' + generalDirs.join('|') + '#' + (hideEmpty ? 1 : 0)
   useEffect(() => {
     if (!root) return
     loadDir('')
@@ -199,7 +275,13 @@ export const Explorer = memo(function Explorer({
     if (!root) return
     const gen = genRef.current
     window.api
-      .listDir(root, rel, filtering ? excludes : undefined, filtering)
+      .listDir(
+        root,
+        rel,
+        verseExcl.length ? verseExcl : undefined,
+        hideEmpty,
+        generalDirs.length ? generalDirs : undefined
+      )
       .then((list) => {
         if (gen !== genRef.current) return // a different folder took over meanwhile
         setEntries((m) => {
@@ -269,6 +351,11 @@ export const Explorer = memo(function Explorer({
     const names: string[] = []
     const paths: string[] = []
     for (const f of allFiles) {
+      // 트리에서 숨긴 폴더 밑의 파일은 검색에서도 뺀다(디렉터리 세그먼트만 검사, 파일명은 제외)
+      if (hideSet.size) {
+        const cut = f.lastIndexOf('/')
+        if (cut >= 0 && f.slice(0, cut).toLowerCase().split('/').some((s) => hideSet.has(s))) continue
+      }
       const name = f.slice(f.lastIndexOf('/') + 1).toLowerCase()
       if (name.startsWith(q)) starts.push(f)
       else if (name.includes(q)) names.push(f)
@@ -276,7 +363,7 @@ export const Explorer = memo(function Explorer({
       if (starts.length >= 100) break
     }
     return [...starts, ...names, ...paths].slice(0, 100)
-  }, [searching, allFiles, query])
+  }, [searching, allFiles, query, hideSet])
 
   const toggleDir = (rel: string): void => {
     const next = new Set(expanded)
@@ -652,7 +739,7 @@ export const Explorer = memo(function Explorer({
   }
 
   return (
-    <aside className="explorer" ref={asideRef}>
+    <aside className="explorer" ref={asideRef} style={{ width, flex: `0 0 ${width}px` }}>
       <ScrollTip rootRef={asideRef} suppressed={!!ctx} />
       {ctx &&
         createPortal(
@@ -713,6 +800,21 @@ export const Explorer = memo(function Explorer({
       {notice && <NoticeModal title={notice.title} message={notice.message} onClose={() => setNotice(null)} />}
       <div className="exp-head">
         <span className="exp-title">탐색기</span>
+        {/* 빌드·생성물 폴더 숨김 빠른 토글 — 목록은 설정 › 탐색기에서 관리(전역 프리셋) */}
+        <button
+          className={'exp-act has-tip' + (hideEnabled ? ' on' : '')}
+          data-tip={
+            hideEnabled
+              ? '빌드·생성물 폴더 숨김 · 켜짐 — 클릭하면 모두 보기 (목록: 설정 › 탐색기)'
+              : '모든 폴더 보임 — 클릭하면 빌드·생성물 폴더 숨김 (목록: 설정 › 탐색기)'
+          }
+          aria-label="빌드·생성물 폴더 숨김"
+          aria-pressed={hideEnabled}
+          onClick={() => setHideEnabled(!hideEnabled)}
+          disabled={!cwd}
+        >
+          <IconFilter size={14} />
+        </button>
         {/* 수동 새로고침 — 턴 종료 자동 갱신과 별개로, 외부에서 바뀐 파일을 지금 바로 반영 */}
         <button
           ref={refreshRef}
@@ -902,6 +1004,27 @@ export const Explorer = memo(function Explorer({
           </button>
         </div>
       )}
+      {/* 오른쪽 가장자리 드래그로 칼럼 너비 조절 — 더블클릭하면 기본 너비로 복귀 */}
+      <div
+        ref={resizeElRef}
+        className="exp-resize"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="탐색기 너비 조절"
+        onPointerDown={onResizeDown}
+        onPointerMove={onResizeMove}
+        onPointerUp={onResizeUp}
+        onPointerEnter={onResizeEnter}
+        onPointerLeave={onResizeLeave}
+        onDoubleClick={resetWidth}
+      />
+      {wtip &&
+        createPortal(
+          <div className="exp-wtip" style={{ left: wtip.x, top: wtip.y }}>
+            {wtip.text}
+          </div>,
+          document.body
+        )}
     </aside>
   )
 })

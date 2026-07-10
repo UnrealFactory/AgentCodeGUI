@@ -32,11 +32,15 @@ import {
   IconDollar,
   IconUser,
   IconPlus,
+  IconFilter,
+  IconFolder,
+  IconX2,
   type IconProps
 } from './icons'
 import { getTheme, setTheme, type Theme } from '../lib/theme'
+import { DEFAULT_HIDE_DIRS, getHideDirs, getHideEnabled, setHideDirs, setHideEnabled } from '../lib/hideDirs'
 
-export type SettingsView = 'account' | 'version' | 'api' | 'mcp' | 'skill' | 'lsp' | 'appearance'
+export type SettingsView = 'account' | 'version' | 'api' | 'mcp' | 'skill' | 'lsp' | 'explorer' | 'appearance'
 type View = SettingsView
 
 const NAV: { id: View; label: string; Icon: (p: IconProps) => React.ReactElement }[] = [
@@ -46,6 +50,7 @@ const NAV: { id: View; label: string; Icon: (p: IconProps) => React.ReactElement
   { id: 'mcp', label: 'MCP', Icon: IconServer },
   { id: 'skill', label: 'Skill', Icon: IconBook },
   { id: 'lsp', label: 'Code', Icon: IconCode },
+  { id: 'explorer', label: 'Explorer', Icon: IconFilter },
   { id: 'appearance', label: 'Theme', Icon: IconContrast }
 ]
 
@@ -1613,6 +1618,122 @@ function LspView() {
   )
 }
 
+// ── 탐색기 (숨길 폴더 관리) ───────────────────────────────────────
+// 파일 탐색기 트리에서 감출 폴더 이름을 전역으로 관리한다. bin·obj·Saved 같은 빌드/생성물
+// 폴더를 이름 기준(대소문자 무시, 어느 깊이든)으로 숨겨 소스에 집중하게 한다. 저장 즉시
+// lib/hideDirs가 이벤트를 쏴 열려 있는 탐색기가 트리를 다시 읽는다.
+function ExplorerView(): React.ReactElement {
+  const [enabled, setEnabled] = useState<boolean>(() => getHideEnabled())
+  const [dirs, setDirs] = useState<string[]>(() => getHideDirs())
+  const [input, setInput] = useState('')
+
+  const commit = (list: string[]): void => {
+    setDirs(list)
+    setHideDirs(list) // 저장 + 탐색기에 알림
+  }
+  const toggle = (): void => {
+    const next = !enabled
+    setEnabled(next)
+    setHideEnabled(next)
+  }
+  const add = (): void => {
+    // 폴더 '이름'만 받는다 — 경로 구분자는 떼어내고, 이미 있으면(대소문자 무시) 무시
+    const name = input.trim().replace(/[\\/]/g, '')
+    if (!name) return
+    setInput('')
+    if (dirs.some((d) => d.toLowerCase() === name.toLowerCase())) return
+    commit([...dirs, name])
+  }
+  const remove = (name: string): void => commit(dirs.filter((d) => d !== name))
+  const isDefault =
+    dirs.length === DEFAULT_HIDE_DIRS.length &&
+    dirs.every((d, i) => d === DEFAULT_HIDE_DIRS[i])
+
+  return (
+    <>
+      <div className="set-h1">Explorer</div>
+      <div className="set-h1-sub">
+        파일 탐색기 트리에서 숨길 폴더를 관리해요. <code>bin</code>·<code>obj</code>·<code>Saved</code> 같은 빌드·생성물
+        폴더를 감춰 소스에 집중할 수 있어요.
+      </div>
+
+      <div className="sec">
+        {/* 위: 마스터 토글 하나 */}
+        <div className="card">
+          <div className="ver-row">
+            <div className="ver-ic">
+              <IconFilter size={20} />
+            </div>
+            <div className="ver-main">
+              <div className="ver-name">빌드·생성물 폴더 숨기기</div>
+              <div className="ver-meta">
+                {enabled ? '아래 목록의 폴더를 탐색기에서 감춰요' : '모든 폴더를 그대로 보여줘요'}
+              </div>
+            </div>
+            <button
+              className={'skill-toggle' + (enabled ? ' on' : '')}
+              role="switch"
+              aria-checked={enabled}
+              aria-label={enabled ? '폴더 숨김 끄기' : '폴더 숨김 켜기'}
+              onClick={toggle}
+            >
+              <span className="skill-knob" />
+            </button>
+          </div>
+        </div>
+
+        {/* 아래: 추가 입력 + 폴더가 한 줄씩 쭉 */}
+        <div className={'exd-panel' + (enabled ? '' : ' off')}>
+          <div className="exd-add">
+            <input
+              className="api-input"
+              placeholder="폴더 이름 추가 (예: Logs)"
+              value={input}
+              spellCheck={false}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') add()
+              }}
+            />
+            <button className="inst-btn" disabled={!input.trim()} onClick={add}>
+              <IconPlus size={14} /> 추가
+            </button>
+          </div>
+
+          <div className="exd-listhead">
+            <span className="exd-count">{dirs.length}개 폴더</span>
+            <button className="exd-restore" disabled={isDefault} onClick={() => commit([...DEFAULT_HIDE_DIRS])}>
+              <IconRefresh size={12} /> 기본값 복원
+            </button>
+          </div>
+
+          <div className="exd-list scroll">
+            {dirs.length === 0 ? (
+              <div className="exd-empty">숨길 폴더가 없어요 — 위에서 추가하세요</div>
+            ) : (
+              dirs.map((d) => (
+                <div className="exd-row" key={d}>
+                  <IconFolder className="exd-row-ic" size={14} />
+                  <span className="exd-row-n">{d}</span>
+                  <button className="exd-row-x" aria-label={d + ' 제거'} onClick={() => remove(d)}>
+                    <IconX2 size={12} />
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        <div className="set-note">
+          폴더 이름은 <b>대소문자 구분 없이</b>, 트리의 <b>어느 깊이에서든</b> 같은 이름의 <b>폴더만</b> 숨겨요(같은
+          이름의 파일은 그대로). 숨겨도 파일은 남아 있고 에이전트는 접근할 수 있어요 — 보기만 정리하는 거예요. 탐색기
+          헤더의 <IconFilter size={11} /> 버튼으로도 빠르게 켜고 끌 수 있어요.
+        </div>
+      </div>
+    </>
+  )
+}
+
 const THEME_OPTS: {
   id: Theme
   label: string
@@ -1711,6 +1832,7 @@ export function SettingsModal({
               {view === 'mcp' && <McpView cwd={cwd} />}
               {view === 'skill' && <SkillView cwd={cwd} />}
               {view === 'lsp' && <LspView />}
+              {view === 'explorer' && <ExplorerView />}
               {view === 'appearance' && <AppearanceView />}
             </div>
           </main>

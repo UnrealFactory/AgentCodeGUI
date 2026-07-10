@@ -92,10 +92,11 @@ function makeExcluder(patterns: string[]): (name: string) => boolean {
  * hide directories that are empty once the excludes are applied (UEFN's "Hide Empty
  * Directories"). Bounded by depth + a shared node budget so an all-asset subtree can't stall
  * the expand; on hitting the budget we assume "yes" — safer to reveal than to wrongly hide.
+ * `hidden(name, dir)` matches the same file-vs-dir rules the top-level listing uses.
  */
 async function dirHasVisibleFile(
   abs: string,
-  excl: (n: string) => boolean,
+  hidden: (name: string, dir: boolean) => boolean,
   depth: number,
   budget: { n: number }
 ): Promise<boolean> {
@@ -108,13 +109,14 @@ async function dirHasVisibleFile(
   }
   const subdirs: string[] = []
   for (const e of entries) {
-    if (excl(e.name)) continue
+    const dir = e.isDirectory()
+    if (hidden(e.name, dir)) continue
     if (e.isFile()) return true
-    if (e.isDirectory()) subdirs.push(path.join(abs, e.name))
+    if (dir) subdirs.push(path.join(abs, e.name))
     if (--budget.n <= 0) return true
   }
   for (const d of subdirs) {
-    if (await dirHasVisibleFile(d, excl, depth - 1, budget)) return true
+    if (await dirHasVisibleFile(d, hidden, depth - 1, budget)) return true
     if (budget.n <= 0) return true
   }
   return false
@@ -123,16 +125,23 @@ async function dirHasVisibleFile(
 /**
  * List ONE folder for the file explorer — `rel` is cwd-relative ('' = project root).
  * Lazy by design (called per expanded folder). By default nothing is filtered — the explorer
- * shows the real tree, node_modules included. When `exclude` globs are given (the explorer's
- * "Verse 위주로 보기"), entries matching them are dropped, and with `hideEmpty` directories
- * left empty by those excludes are dropped too — mirroring UEFN's Verse Explorer view.
+ * shows the real tree, node_modules included.
+ *
+ * Two independent filters, each a name list:
+ *  - `exclude`      — matches files AND folders (the "Verse 위주로 보기" globs: `**\/*.uasset`,
+ *                     `Collections`, …). With `hideEmpty`, folders left empty by these are dropped
+ *                     too — mirroring UEFN's Verse Explorer view.
+ *  - `excludeDirs`  — matches DIRECTORIES ONLY (the general "빌드·생성물 폴더 숨김": bin/obj/Saved/…).
+ *                     A file that merely shares a hidden folder's name (e.g. a file literally named
+ *                     `Saved`) stays visible.
  * Folders first, then files, each sorted case-insensitively.
  */
 export async function listDir(
   cwd: string,
   rel: string,
   exclude?: string[],
-  hideEmpty?: boolean
+  hideEmpty?: boolean,
+  excludeDirs?: string[]
 ): Promise<DirEntry[]> {
   if (!cwd) return []
   const root = path.resolve(cwd)
@@ -145,10 +154,15 @@ export async function listDir(
   } catch {
     return [] // unreadable dir (perms, gone) — show it empty
   }
+  const exclAll = exclude && exclude.length ? makeExcluder(exclude) : null // files + dirs
+  const exclDir = excludeDirs && excludeDirs.length ? makeExcluder(excludeDirs) : null // dirs only
+  // one entry's verdict — a directory checks both lists; a file only the files+dirs list
+  const hidden = (name: string, dir: boolean): boolean =>
+    (!!exclAll && exclAll(name)) || (dir && !!exclDir && exclDir(name))
+
   let out: DirEntry[] = entries.map((e) => ({ name: e.name, dir: e.isDirectory() }))
-  const excl = exclude && exclude.length ? makeExcluder(exclude) : null
-  if (excl) {
-    out = out.filter((e) => !excl(e.name))
+  if (exclAll || exclDir) {
+    out = out.filter((e) => !hidden(e.name, e.dir))
     if (hideEmpty) {
       const kept: DirEntry[] = []
       for (const e of out) {
@@ -156,7 +170,7 @@ export async function listDir(
           kept.push(e)
           continue
         }
-        if (await dirHasVisibleFile(path.join(abs, e.name), excl, 6, { n: 4000 })) kept.push(e)
+        if (await dirHasVisibleFile(path.join(abs, e.name), hidden, 6, { n: 4000 })) kept.push(e)
       }
       out = kept
     }

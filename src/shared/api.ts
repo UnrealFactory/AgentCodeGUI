@@ -131,8 +131,15 @@ export interface WindowApi {
   /** enumerate project files (relative POSIX paths) to power the "@" mention palette */
   listFiles(cwd: string): Promise<string[]>
   /** list one folder's entries (folders first) for the file explorer — `rel` is cwd-relative ('' = root).
-   *  `exclude` = files.exclude globs and `hideEmpty` together give the "Verse 위주로 보기" filtered tree. */
-  listDir(cwd: string, rel: string, exclude?: string[], hideEmpty?: boolean): Promise<DirEntry[]>
+   *  `exclude` = files.exclude globs (files+folders) and `hideEmpty` together give the "Verse 위주로 보기"
+   *  filtered tree; `excludeDirs` = names hidden for DIRECTORIES ONLY (일반 "빌드·생성물 폴더 숨김"). */
+  listDir(
+    cwd: string,
+    rel: string,
+    exclude?: string[],
+    hideEmpty?: boolean,
+    excludeDirs?: string[]
+  ): Promise<DirEntry[]>
   /** git — 탐색기의 Git 카드 (히스토리·변경 사항·커밋/푸시/풀) */
   git: {
     /** cwd가 속한 레포 최상위(.git 상위 폴더 탐색 포함), 없으면 null — cwd별 캐시 */

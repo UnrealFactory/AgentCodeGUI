@@ -1017,8 +1017,10 @@ function registerIpc(): void {
   ipcMain.handle(IPC.listFiles, async (_e, cwd: string) => listProjectFiles(cwd || ''))
 
   // One folder's entries for the file explorer — called lazily as folders expand
-  ipcMain.handle(IPC.listDir, async (_e, a: { cwd: string; rel: string; exclude?: string[]; hideEmpty?: boolean }) =>
-    listDir(a.cwd || '', a.rel || '', a.exclude, a.hideEmpty)
+  ipcMain.handle(
+    IPC.listDir,
+    async (_e, a: { cwd: string; rel: string; exclude?: string[]; hideEmpty?: boolean; excludeDirs?: string[] }) =>
+      listDir(a.cwd || '', a.rel || '', a.exclude, a.hideEmpty, a.excludeDirs)
   )
 
   // LSP code intelligence for the in-app viewer — lazy per-project language servers.

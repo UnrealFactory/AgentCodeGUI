@@ -398,9 +398,25 @@ input,textarea{ font-family:inherit; }
    surface 호버, 모노 폰트 경로)로, 코드 브라우징이 필요 없을 땐 좁은 레일로 접힌다. */
 .explorer{
   width:236px; flex:0 0 236px;
+  position:relative;
   display:flex; flex-direction:column; min-height:0;
   background:var(--bg); border-right:1px solid var(--line);
 }
+/* 오른쪽 가장자리 리사이즈 핸들 — 보더에 걸쳐 얇게 두고, 호버/드래그 시 강조선이 뜬다.
+   드래그 중엔 body에 col-resizing을 걸어 전역 커서와 텍스트 선택 방지를 준다. */
+.exp-resize{ position:absolute; top:0; right:-3px; width:7px; height:100%; z-index:5;
+  cursor:col-resize; touch-action:none; }
+.exp-resize::before{ content:''; position:absolute; top:0; bottom:0; left:3px; width:2px;
+  background:var(--accent); opacity:0; transition:opacity .12s; }
+.exp-resize:hover::before, body.col-resizing .exp-resize::before{ opacity:.7; }
+body.col-resizing{ cursor:col-resize; user-select:none; }
+body.col-resizing *{ cursor:col-resize !important; }
+/* 핸들 옆 말풍선(포털) — 앱 툴팁과 같은 다크 pill. 핸들 왼쪽, 커서 Y 높이에 뜬다. */
+.exp-wtip{ position:fixed; z-index:60; transform:translate(calc(-100% - 10px), -50%);
+  background:var(--text); color:var(--bg); font-family:var(--font-sans);
+  font-size:11px; font-weight:500; letter-spacing:.01em; line-height:1;
+  padding:6px 9px; border-radius:8px; white-space:nowrap; pointer-events:none;
+  box-shadow:0 8px 20px -6px rgba(40,30,20,0.32); }
 /* 헤더를 폴더 목록보다 위 레이어로 — 아래로 떨어지는 헤더 버튼 툴팁이 첫 폴더 행(메인 칩)
    위에 확실히 그려지게 한다(같은 컨텍스트면 칩이 가려 버리던 문제). */
 .exp-head{ display:flex; align-items:center; gap:2px; padding:12px 10px 6px 16px; position:relative; z-index:2; }
@@ -411,6 +427,9 @@ input,textarea{ font-family:inherit; }
    (예: 비활성 Git 버튼) 다른 버튼 툴팁과 달리 흐릿해진다. svg에만 줘서 툴팁은 선명하게. */
 .exp-act:disabled{ cursor:default; }
 .exp-act:disabled svg{ opacity:.4; }
+/* 빌드·생성물 폴더 숨김 토글 — 켜짐이면 강조색으로 눌린 상태임을 알린다(Git 버튼과 같은 톤) */
+.exp-act.on{ color:var(--accent); background:var(--accent-soft); }
+.exp-act.on:hover{ color:var(--accent-2); background:var(--accent-soft); }
 /* 헤더는 창 맨 위라 기본(위로 뜨는) 툴팁이 잘리고 타이틀바 뒤로 깔린다 → 세로만 버튼 아래로
    뒤집고, 가로는 앱 기본대로 버튼 가운데 정렬을 유지해 어느 버튼인지 분명히 가리킨다. */
 .exp-head .has-tip::after{ bottom:auto; top:100%; margin-bottom:0; margin-top:8px; transform:translate(-50%, -3px); }
@@ -2354,6 +2373,10 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
 .set-inner{ max-width:640px; margin:0 auto; padding:28px 34px 50px; }
 .set-h1{ font-size:20px; font-weight:700; letter-spacing:-.02em; }
 .set-h1-sub{ font-size:13px; color:var(--text-3); margin-top:5px; }
+/* 부제 안의 코드 예시(bin·obj·Saved) — 규칙이 없으면 UA 기본 monospace로 떨어져 자간이 벌어져 보인다.
+   앱 인라인 코드 칩으로 통일해 본문 폰트와 자연스럽게 붙게 한다. */
+.set-h1-sub code{ font-family:var(--font-mono); font-size:11.5px; color:var(--accent-2);
+  background:var(--surface-2); border:1px solid var(--line); padding:1px 5px; border-radius:5px; letter-spacing:0; }
 .sec{ margin-top:26px; }
 
 /* ---- appearance / theme picker ---- */
@@ -2432,13 +2455,13 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
 .ext-ic.badge.py{ background:oklch(0.55 0.13 150); }
 .ext-ic.badge.ws{ background:oklch(0.55 0.15 220); }
 .ext-ic.badge.go{ background:oklch(0.60 0.12 200); }
-.inst-btn{ flex:none; font-size:12px; font-weight:600; color:var(--on-accent); background:var(--accent);
+.inst-btn{ flex:none; display:inline-flex; align-items:center; justify-content:center; gap:6px;
+  font-size:12px; font-weight:600; color:var(--on-accent); background:var(--accent);
   border:none; border-radius:8px; padding:7px 14px; cursor:pointer; transition:opacity .12s; }
 .inst-btn:hover:not(:disabled){ opacity:.9; }
 .inst-btn:disabled{ background:var(--surface-2); color:var(--text-3); cursor:default; }
 /* quiet variant: an installed row's 삭제 — subdued until hovered */
-.inst-btn.ghost{ display:inline-flex; align-items:center; gap:5px;
-  color:var(--text-3); background:var(--surface-2); }
+.inst-btn.ghost{ gap:5px; color:var(--text-3); background:var(--surface-2); }
 .inst-btn.ghost:hover{ opacity:1; color:var(--red); background:color-mix(in oklab, var(--red) 12%, transparent); }
 /* brand editor icons (real product logos) — carry their own background */
 .ext-ic.brandico{ background:none; border:none; padding:0; overflow:hidden; }
@@ -2516,6 +2539,31 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
 .set-error{ font-size:12.5px; color:var(--red); background:var(--red-soft); border-radius:8px; padding:9px 12px; margin-bottom:11px; word-break:break-word; }
 .set-note{ font-size:11.5px; color:var(--text-4); margin-top:12px; line-height:1.6; }
 .set-note code{ font-family:var(--font-mono); color:var(--accent-2); }
+.set-note svg{ vertical-align:-1px; opacity:.7; }
+
+/* 설정 ▸ Explorer — 마스터 토글(위) 아래로 숨길 폴더를 한 줄씩 나열. 토글이 꺼지면 몸통을 흐리게. */
+.exd-panel{ display:flex; flex-direction:column; gap:10px; margin-top:12px; transition:opacity .16s; }
+.exd-panel.off{ opacity:.4; pointer-events:none; }
+.exd-add{ display:flex; align-items:center; gap:8px; }
+.exd-add .api-input{ flex:1; width:auto; }
+.exd-listhead{ display:flex; align-items:center; justify-content:space-between; padding:0 3px 1px; }
+.exd-count{ font-size:11.5px; font-weight:600; letter-spacing:.02em; color:var(--text-4); }
+.exd-restore{ display:inline-flex; align-items:center; gap:5px; font-size:11.5px; color:var(--text-3);
+  padding:4px 9px; border-radius:7px; transition:background .12s, color .12s; }
+.exd-restore:hover:not(:disabled){ background:var(--surface-2); color:var(--text); }
+.exd-restore:disabled{ opacity:.4; cursor:default; }
+.exd-list{ display:flex; flex-direction:column; border:1px solid var(--line); border-radius:11px;
+  overflow-y:auto; max-height:340px; }
+.exd-row{ display:flex; align-items:center; gap:9px; padding:9px 11px; border-bottom:1px solid var(--line); }
+.exd-row:last-child{ border-bottom:none; }
+.exd-row:hover{ background:var(--surface-2); }
+.exd-row-ic{ color:var(--text-4); flex:0 0 auto; }
+.exd-row-n{ flex:1; min-width:0; font-size:12.5px; font-family:var(--font-mono); color:var(--text-2);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.exd-row-x{ display:grid; place-items:center; width:23px; height:23px; flex:0 0 auto; border-radius:6px;
+  color:var(--text-4); transition:background .12s, color .12s; }
+.exd-row-x:hover{ background:var(--red-soft); color:var(--red); }
+.exd-empty{ font-size:12px; color:var(--text-4); padding:18px; text-align:center; }
 
 /* 설정 ▸ API — 키/예산 입력 + 누적 사용액 줄 */
 .api-form{ display:flex; align-items:center; gap:8px; flex:0 0 auto; }
