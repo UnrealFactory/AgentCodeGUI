@@ -190,7 +190,17 @@ export const Explorer = memo(function Explorer({
   const refreshRef = useRef<HTMLButtonElement>(null) // 새로고침 아이콘 1회전 애니메이션 대상
   // 우클릭 컨텍스트 메뉴 + 파일 작업 카드(이름 변경·새 파일/폴더·삭제). root=true면 빈 영역
   // 우클릭(프로젝트 루트에 만들기)이다.
-  const [ctx, setCtx] = useState<{ x: number; y: number; rel: string; name: string; dir: boolean; root?: boolean } | null>(null)
+  const [ctx, setCtx] = useState<{
+    x: number
+    y: number
+    rel: string
+    name: string
+    dir: boolean
+    root?: boolean
+    // 절대경로 대상(작업/참고 폴더 행) — "파일 탐색기에서 보기"만 있는 보기 전용 메뉴.
+    // 파일 작업(새 파일·이름 변경·삭제)은 트리의 rel 경로 기반이라 여기엔 안 붙인다.
+    revealAbs?: string
+  } | null>(null)
   const [fileOp, setFileOp] = useState<FileOp | null>(null)
   const ctxRef = useRef<HTMLDivElement>(null)
   // 드래그 앤 드롭 이동 — dragRel: 끌고 있는 항목, dropRel: 들어갈 대상 폴더('' = 루트)
@@ -452,9 +462,16 @@ export const Explorer = memo(function Explorer({
     ev.preventDefault()
     setCtx({ x: ev.clientX, y: ev.clientY, rel: '', name: rootLabel, dir: true, root: true })
   }
+  // 작업/참고 폴더 행 우클릭 — 절대경로 대상의 "파일 탐색기에서 보기" 전용 메뉴
+  const openCtxAbs = (ev: React.MouseEvent, abs: string, name: string): void => {
+    ev.preventDefault()
+    ev.stopPropagation()
+    setCtx({ x: ev.clientX, y: ev.clientY, rel: '', name, dir: false, revealAbs: abs })
+  }
   const doReveal = (): void => {
     if (!ctx) return
-    void window.api.revealPath(root, ctx.rel)
+    if (ctx.revealAbs) void window.api.revealPath('', ctx.revealAbs)
+    else void window.api.revealPath(root, ctx.rel)
     setCtx(null)
   }
   const startCreate = (kind: 'newFile' | 'newFolder'): void => {
@@ -751,8 +768,8 @@ export const Explorer = memo(function Explorer({
               top: Math.min(ctx.y, window.innerHeight - 210)
             }}
           >
-            {/* 새 파일/폴더는 폴더 또는 빈 영역(루트)에서만 — 파일 우클릭엔 안 뜬다 */}
-            {(ctx.dir || ctx.root) && (
+            {/* 새 파일/폴더는 폴더 또는 빈 영역(루트)에서만 — 파일·폴더 행(revealAbs) 우클릭엔 안 뜬다 */}
+            {(ctx.dir || ctx.root) && !ctx.revealAbs && (
               <>
                 <button className="ctx-item" onClick={() => startCreate('newFile')}>
                   <IconFile size={15} /> 새 파일
@@ -763,7 +780,7 @@ export const Explorer = memo(function Explorer({
                 <div className="ctx-sep" />
               </>
             )}
-            {!ctx.root && (
+            {!ctx.root && !ctx.revealAbs && (
               <button
                 className="ctx-item"
                 onClick={() => {
@@ -777,7 +794,7 @@ export const Explorer = memo(function Explorer({
             <button className="ctx-item" onClick={doReveal}>
               <IconFolderOpen size={15} /> 파일 탐색기에서 보기
             </button>
-            {!ctx.root && (
+            {!ctx.root && !ctx.revealAbs && (
               <>
                 <div className="ctx-sep" />
                 <button
@@ -847,6 +864,7 @@ export const Explorer = memo(function Explorer({
               className={'exp-frow main has-tip' + (!viewing ? ' active' : '')}
               data-tip={cwd + ' · 메인 작업 폴더' + (viewing ? '' : ' — 클릭하면 변경')}
               onClick={() => (viewing ? setView('') : onPickFolder())}
+              onContextMenu={(e) => openCtxAbs(e, cwd, project)}
               aria-label="메인 작업 폴더"
             >
               <IconFolder className="f-ic" size={14} />
@@ -863,6 +881,7 @@ export const Explorer = memo(function Explorer({
                 className={'exp-frow has-tip' + (viewing === r ? ' active' : '')}
                 data-tip={r + ' · 참고 폴더 (보기 전용)'}
                 onClick={() => setView(r)}
+                onContextMenu={(e) => openCtxAbs(e, r, basename(r))}
               >
                 <IconFolder className="f-ic" size={14} />
                 <span className="f-name">{basename(r)}</span>

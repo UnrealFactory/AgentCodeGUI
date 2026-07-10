@@ -1,6 +1,6 @@
 {
   "name": "agent-code-gui",
-  "version": "1.6.6",
+  "version": "1.7.0",
   "description": "AgentCodeGUI — Claude Code 데스크탑 IDE (자체 파일 탐색기 + LSP 코드 인텔리전스)",
   "private": true,
   "type": "module",

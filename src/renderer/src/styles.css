@@ -2161,11 +2161,14 @@ body.col-resizing *{ cursor:col-resize !important; }
 .lsp-hover .lh-spec-v p{ margin:0; font-size:14.5px; color:var(--text-2); }
 .lsp-hover .lh-spec-v code.inline{ font-size:14.5px; }
 .lsp-hover .lh-docs{ display:flex; flex-direction:column; gap:6px; min-width:0; }
-/* 출처 — 카드 맨 아래, 전폭 헤어라인 아래 딱 한 줄 (라벨은 스펙 배지와 동일).
-   경로는 아무 데서나 끊어 줄바꿈 — 한 토큰짜리 긴 경로가 카드를 뚫고 나가지 않게 */
-.lsp-hover .lh-from{ display:flex; align-items:baseline; gap:8px; min-width:0;
+/* 출처 — 카드 맨 아래, 전폭 헤어라인 아래 (라벨은 스펙 배지와 동일). 멤버 카드는 "소속
+   타입(CLASS …)" + "NAMESPACE …" 두 행이 될 수 있어 스펙 단과 같은 2열 그리드로 줄을
+   맞춘다(한 행짜리도 동일 레이아웃). 경로는 아무 데서나 끊어 줄바꿈 — 한 토큰짜리 긴
+   경로가 카드를 뚫고 나가지 않게 */
+.lsp-hover .lh-from{ display:grid; grid-template-columns:max-content 1fr; column-gap:13px; row-gap:8px;
+  align-items:baseline; min-width:0;
   margin:2px -15px -4px; padding:8px 15px 1px; border-top:1px solid var(--line); }
-.lsp-hover .lh-from p{ margin:0; font-size:12.5px; color:var(--text-3); flex:1; min-width:0; }
+.lsp-hover .lh-from p{ margin:0; font-size:12.5px; color:var(--text-3); min-width:0; }
 .lsp-hover .lh-from code.inline{ font-size:12.5px; background:none; border:none; padding:0; word-break:break-all; }
 
 /* ============================== GIT 카드 ============================== */

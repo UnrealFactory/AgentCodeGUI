@@ -41,7 +41,15 @@ import {
 } from './verseMemberDb'
 import { getCached, setCached, gcDeadBuckets } from './semcache'
 import { APP_HOME } from '../engine/versions'
-import { glossaryLineDoc, keywordPriorityDoc, ueCppPriorityDoc, ueCppFallbackDoc } from '@shared/langGlossary'
+import {
+  glossaryLineDoc,
+  keywordPriorityDoc,
+  ueCppPriorityDoc,
+  ueCppFallbackDoc,
+  glossaryDoc,
+  glossaryWordAt,
+  csSymbolDoc
+} from '@shared/langGlossary'
 import { translateUeHover } from './ueDocKo'
 import { VERSE_BUILTIN_KIND } from '@shared/protocol'
 import type {
@@ -102,9 +110,10 @@ interface ServerDef {
    *  status at 'starting' until then so the viewer only asks for tokens once the index
    *  is complete — otherwise it captures early/partial tokens and never refreshes. */
   awaitsProjectInit?: boolean
-  /** 파일별 서버 루트 — 기본은 열린 프로젝트(cwd). C#은 가장 가까운 .csproj 폴더로
-   *  좁힌다: UE 같은 모노레포 루트의 무관한 sln(엔진 자동화 프로젝트 수십 개)을
-   *  물면 정작 보는 파일이 어느 프로젝트에도 속하지 않아 토큰이 안 나온다 */
+  /** 파일별 서버 루트 — 기본은 열린 프로젝트(cwd). C#은 그 파일의 csproj를 '참조하는'
+   *  솔루션 폴더(크로스 프로젝트 분석·서버 1개), 없으면 가장 가까운 .csproj 폴더로 좁힌다.
+   *  참조 검사 덕에 UE 모노레포 루트의 무관한 sln(엔진 자동화 프로젝트 수십 개)을 물어
+   *  정작 보는 파일이 어느 프로젝트에도 속하지 않던 실패는 나지 않는다 (csRootFor) */
   rootFor?(abs: string, cwd: string): string
 }
 
@@ -157,6 +166,201 @@ function csprojUris(root: string): string[] {
   }
 }
 
+// ── C# 솔루션 인식 루트 ──────────────────────────────────────────
+// 보는 파일은 csproj 하나여도, 그 csproj를 '참조하는' 솔루션(.sln/.slnx)이 있으면 솔루션
+// 폴더를 루트로 삼아 솔루션째 연다 — 한 Roslyn이 프로젝트 전부(크로스 참조 포함)를 담당하고,
+// 프로젝트를 오가며 봐도 서버가 하나만 뜬다. '참조하는지'를 실제로 검사하므로 UE 루트의
+// 무관한 자동화 sln(예전 휴리스틱이 무서워하던 것)은 자연히 걸러진다. UnrealSharp 배치는
+// 관리 솔루션이 <UE루트>/Script에 있고 플러그인 스크립트는 Plugins/<P>/Script에 있어 조상
+// 관계가 아니다 — ueRoot로 따로 찾는다(플러그인 폴더만 열었어도 게임의 관리 솔루션을 쓴다).
+interface CsRootHit {
+  root: string
+  sln: string | null // 참조 확인된 솔루션 파일의 절대 경로 (afterInitialized가 정확히 이걸 연다)
+}
+const csRootMemo = new Map<string, { at: number; hit: CsRootHit }>()
+const CS_ROOT_TTL = 30_000 // 솔루션 탐색은 파일시스템 워크 — status 폴링(400ms)마다 걷지 않게
+// rootFor가 고른 솔루션을 afterInitialized(시그니처가 root뿐)에 전달하는 스태시
+const csSolutionByRoot = new Map<string, string>()
+
+// Roslyn MetadataAsSource(F12로 어셈블리 심볼에 들어갈 때 서버가 %TEMP%에 떨궈 주는 디컴파일/
+// PDB 소스) 경로 → 그 파일을 만들어 준 서버의 루트. 이 파일은 어떤 프로젝트에도 속하지 않아
+// 일반 rootFor로는 엉뚱한 서버가 뜨고(misc행 — 같은 파일 심볼만 색칠), 오직 '만든 서버'만이
+// 자기 메타데이터 워크스페이스 문서로 제대로 분석한다. definition()이 채운다.
+const META_AS_SOURCE_RE = /[\\/]MetadataAsSource[\\/]/i
+const metadataAsSourceRoot = new Map<string, string>()
+// 주인을 모르는 MetadataAsSource(앱 재시작 후 최근 파일 탭 등으로 재열람 — 맵은 메모리라
+// 비어 있다)용 폴백: 가장 최근에 쓴 C# 서버 루트. 그 서버가 만든 파일일 가능성이 가장 높고,
+// 아니어도 cwd 루트(무관한 솔루션)로 새 서버를 띄우는 것보단 낫다.
+let lastCsRoot: string | null = null
+
+// Roslyn 버그 우회: 대상이 MetadataAsSource 임시 파일인 정의 요청은 "그 파일을 처음 생성한
+// 한 번"만 위치를 주고, 같은 심볼의 두 번째 요청부터는 빈 응답이 온다(실측 — 파일이 이미
+// 있으면 위치 반환을 건너뛰는 서버 동작). 첫 성공을 (소스 파일 + 커서 단어) 키로 기억해 두고
+// 빈 응답이 오면 캐시로 답한다. 임시 파일 대상만 캐시하므로 일반 코드의 정당한 "정의 없음"
+// (공백·키워드 위 등)은 건드리지 않는다.
+const metaDefCache = new Map<string, LspLocation[]>()
+const META_DEF_CACHE_CAP = 500
+// 지금까지 definition 결과로 본 MetadataAsSource 파일들 (소문자 → 원본 경로). 아래 "컨테이너
+// 경유 복구"가 타입 이름으로 이미 생성된 임시 파일을 되찾는 데 쓴다.
+const metaFilesSeen = new Map<string, string>()
+
+/**
+ * 빈 정의 응답의 컨테이너 경유 복구 — Roslyn의 1회용은 심볼이 아니라 '생성 파일' 단위라,
+ * 같은 임시 파일에 사는 두 번째 멤버부터는 첫 요청조차 0개가 온다(실측: Bind_FProperty의
+ * CallGetNativePropertyFromName가 파일을 만들면 CallGetPropertyOffsetFromName는 영영 빈 응답).
+ * 호버 시그니처(`int Bind_FProperty.CallGetPropertyOffsetFromName(…)`)에서 컨테이너 타입을
+ * 읽어, 이미 본 그 타입의 임시 파일 안에서 멤버 선언 줄을 텍스트로 찾아 위치를 합성한다.
+ */
+async function recoverMetaDef(rpc: StdioRpc, uri: string, pos: LspPos, word: string, srcAbs: string): Promise<LspLocation | null> {
+  const hov = await rpc
+    .request<{ contents?: unknown } | null>('textDocument/hover', { textDocument: { uri }, position: pos }, 8000)
+    .catch(() => null)
+  const md = hoverContentString(hov)
+  const m = new RegExp(`([A-Za-z_]\\w*)\\.${word}\\s*[({<]`).exec(md) ?? new RegExp(`([A-Za-z_]\\w*)\\.${word}\\b`).exec(md)
+  const container = m?.[1]
+  if (!container) return null
+  // 파일명 후보: 컨테이너 그대로 + UE 접두사(U/A/F/E) 벗긴 것 — C# 클래스 UToolMenuEntryScript의
+  // 생성 파일은 엔진 이름 그대로 ToolMenuEntryScript.generated.cs다.
+  const names = new Set([container.toLowerCase()])
+  if (/^[UAFE][A-Z]/.test(container)) names.add(container.slice(1).toLowerCase())
+  const wanted = new Set<string>()
+  for (const n of names) {
+    wanted.add(`${n}.generated.cs`)
+    wanted.add(`${n}.cs`)
+  }
+  // 현재 파일 자신도 후보(같은 타입의 다른 멤버 — 예: 선언으로의 파일 내 점프)
+  const candidates = [srcAbs, ...metaFilesSeen.values()]
+  for (const orig of candidates) {
+    if (!wanted.has(path.basename(orig).toLowerCase())) continue
+    try {
+      if (!fs.existsSync(orig)) continue
+      const ls = (await fsp.readFile(orig, 'utf8')).split(/\r?\n/)
+      const declRe = new RegExp(`\\b${word}\\s*[(<]`)
+      // 선언 줄 우선(public/static 등 선두 한정자 동반), 없으면 첫 등장 줄
+      let li = ls.findIndex((l) => declRe.test(l) && /^\s*(?:\[|public|private|protected|internal|static|extern|unsafe|partial)/.test(l))
+      if (li < 0) li = ls.findIndex((l) => declRe.test(l))
+      if (li < 0) continue
+      return { path: orig, line: li, character: Math.max(0, ls[li].indexOf(word)) }
+    } catch {
+      /* 못 읽으면 다음 후보로 */
+    }
+  }
+  return null
+}
+
+/** dir 안의 .sln/.slnx 중 `csprojs`(절대경로 소문자 집합) 하나라도 참조하는 첫 파일 —
+ *  그 솔루션이 참조하는 전체 csproj 수(projects)와 함께. 수가 클수록 "완전한" 솔루션이다. */
+function slnReferencing(dir: string, csprojs: Set<string>): { sln: string; projects: number } | null {
+  let names: string[] = []
+  try {
+    names = fs.readdirSync(dir)
+  } catch {
+    return null
+  }
+  const slns = names.filter((n) => /\.slnx?$/i.test(n))
+  slns.sort((a, b) => Number(/\.sln$/i.test(a)) - Number(/\.sln$/i.test(b))) // 신형 .slnx 우선
+  for (const n of slns) {
+    let txt = ''
+    try {
+      txt = fs.readFileSync(path.join(dir, n), 'utf8')
+    } catch {
+      continue
+    }
+    // .slnx는 Path="…csproj", .sln은 "…\X.csproj" — 어느 형식이든 따옴표 안 경로로 잡힌다
+    const re = /"([^"]+\.csproj)"/gi
+    let m: RegExpExecArray | null
+    let projects = 0
+    let matched = false
+    while ((m = re.exec(txt))) {
+      projects++
+      try {
+        if (!matched && csprojs.has(path.resolve(dir, m[1]).toLowerCase())) matched = true
+      } catch {
+        /* 이상한 경로 항목 — 다음 항목으로 */
+      }
+    }
+    if (matched) return { sln: path.join(dir, n), projects }
+  }
+  return null
+}
+
+/** 파일의 C# 서버 루트: 참조 솔루션 폴더(있으면) > 가장 가까운 csproj 폴더 > cwd. */
+function csRootFor(abs: string, cwd: string): string {
+  // F12로 들어간 MetadataAsSource 임시 파일 — 만들어 준 서버로 되돌려 보낸다 (위 주석 참조)
+  if (META_AS_SOURCE_RE.test(abs)) {
+    const owner = metadataAsSourceRoot.get(path.resolve(abs).toLowerCase())
+    if (owner) return owner
+    if (lastCsRoot) return lastCsRoot // 주인 미상(재시작 후 재열람) — 최근 C# 서버로 폴백
+  }
+  const projDir = nearestCsProjectRoot(abs, cwd)
+  if (!projDir) {
+    // UnrealSharp UHT 글루(<플러그인>/Intermediate/UnrealSharp/UHT/**)는 csproj 조상이 없다 —
+    // 진짜 소유자는 <플러그인>/Managed/UnrealSharp/UnrealSharp/UnrealSharp.csproj의 글롭
+    // include다. 그 프로젝트로 위임해 UnrealSharp.sln째 열면 글루 문서가 로드된 프로젝트에
+    // 매칭돼 심볼이 전부 풀린다 — 위임 없이는 cwd 루트(무관한 C++ 솔루션)로 스폰돼 misc
+    // 워크스페이스행: 로컬만 풀리고 IntPtr 같은 크로스 어셈블리 심볼은 전멸한다.
+    // (게임 쪽 글루는 폴더에 자체 csproj가 UBT로 생성돼 있어 위의 일반 경로로 풀린다)
+    const glue = /^(.*?)[/\\]Intermediate[/\\]UnrealSharp[/\\]UHT[/\\]/i.exec(abs)
+    if (glue) {
+      const owner = path.join(glue[1], 'Managed', 'UnrealSharp', 'UnrealSharp', 'UnrealSharp.csproj')
+      try {
+        if (fs.existsSync(owner)) return csRootFor(owner, cwd)
+      } catch {
+        /* 접근 불가 — cwd 폴백 */
+      }
+    }
+    return cwd
+  }
+  const key = projDir.toLowerCase() + '|' + (cwd || '').toLowerCase()
+  const memo = csRootMemo.get(key)
+  if (memo && Date.now() - memo.at < CS_ROOT_TTL) return memo.hit.root
+  let csprojs = new Set<string>()
+  try {
+    csprojs = new Set(
+      fs
+        .readdirSync(projDir)
+        .filter((n) => n.toLowerCase().endsWith('.csproj'))
+        .map((n) => path.join(projDir, n).toLowerCase())
+    )
+  } catch {
+    /* 못 읽으면 아래 폴백(projDir 단독)으로 */
+  }
+  let hit: CsRootHit = { root: projDir, sln: null }
+  if (csprojs.size) {
+    // 후보 수집: ① csproj 폴더에서 cwd 경계까지 조상 워크 + ② UnrealSharp 특례(<UE루트>/Script —
+    // 관리 솔루션이 플러그인 스크립트와 조상 관계가 아니라 따로 본다; cwd 밖이어도).
+    // 그중 "참조 프로젝트 수가 가장 많은" 솔루션을 고른다(동률이면 안쪽 우선) — csproj 폴더에
+    // 도구가 떨궈 둔 단일 프로젝트 sln이 진짜(전체) 솔루션을 가리면, 프라임이 형제 프로젝트를
+    // 커버하지 못해 크로스 프로젝트 심볼이 무색으로 남는다(UnrealSharp에서 실측).
+    const candidates: { root: string; sln: string; projects: number }[] = []
+    const stop = cwd ? path.resolve(cwd).toLowerCase() : ''
+    let dir = projDir
+    for (let i = 0; i < 16; i++) {
+      const c = slnReferencing(dir, csprojs)
+      if (c) candidates.push({ root: dir, ...c })
+      if (dir.toLowerCase() === stop) break
+      const parent = path.dirname(dir)
+      if (parent === dir) break
+      dir = parent
+    }
+    const ur = ueRoot(projDir)
+    if (ur) {
+      const scriptDir = path.join(ur, 'Script')
+      const c = slnReferencing(scriptDir, csprojs)
+      if (c && !candidates.some((x) => x.sln.toLowerCase() === c.sln.toLowerCase())) {
+        candidates.push({ root: scriptDir, ...c })
+      }
+    }
+    let best: { root: string; sln: string; projects: number } | null = null
+    for (const c of candidates) if (!best || c.projects > best.projects) best = c
+    if (best) hit = { root: best.root, sln: best.sln }
+  }
+  csRootMemo.set(key, { at: Date.now(), hit })
+  if (hit.sln) csSolutionByRoot.set(path.resolve(hit.root).toLowerCase(), hit.sln)
+  lastCsRoot = hit.root // 주인 미상 MetadataAsSource 폴백용 — 최근 실사용 루트
+  return hit.root
+}
+
 /** solution file URI directly in `root`, or null — preferred over csproj (whole solution).
  *  .slnx(신형 XML)와 .sln 둘 다 인식하고, 둘 다 있으면 신형 .slnx를 고른다. */
 function slnUri(root: string): string | null {
@@ -183,6 +387,9 @@ interface DocState {
   version: number
   mtimeMs: number
   size: number
+  // 마지막으로 서버에 보낸 문서 내용 — incremental 동기화 서버(Roslyn)에 didChange를
+  // "이전 문서 전체 range + 새 텍스트"로 보내기 위한 기준. 열린 문서(≤MAX_OPEN_DOCS)만 유지.
+  text: string
 }
 
 interface ServerHandle {
@@ -218,6 +425,14 @@ interface ServerHandle {
   // completionItem/resolve 지원(initialize의 completionProvider.resolveProvider) — tsserver/
   // pyright/Roslyn은 후보 목록엔 문서를 안 싣고 resolve로 지연 제공한다. false면 요청 안 함.
   complResolve: boolean
+  // initialize 결과의 textDocumentSync.change — 2(incremental)를 선언한 서버(Roslyn)에는
+  // didChange를 range 없는 전문 교체로 보내면 안 된다: Roslyn은 range null에
+  // NullReferenceException으로 '프로세스째' 죽는다. 그런 서버엔 전체-range 교체로 보낸다.
+  syncKind: number
+  // Roslyn 전 솔루션 시맨틱 프라임(workspace/symbol) — 형제 ProjectReference의 스켈레톤은
+  // 그 프로젝트 컴파일을 누가 요구해야 만들어지고, 없으면 frozen 토큰 모델이 크로스 프로젝트
+  // 심볼을 영영 'variable'(무색)로 분류한다. 한 번의 심볼 검색이 전 프로젝트 컴파일을 강제한다.
+  wsSymPrime?: Promise<void>
   // 마지막 완성 응답의 "원본" 아이템들(서버의 data 필드 포함) — resolve는 원본을 그대로
   // 돌려보내야 한다. gen(세대)으로 렌더러의 지연 resolve가 낡은 목록을 집는 걸 막는다.
   complRaw: { gen: number; items: RawCompletionItem[] } | null
@@ -338,16 +553,19 @@ const SERVERS: ServerDef[] = [
       const exe = installedBin('cs')
       return exe ? { cmd: exe, args: ['--stdio', '--logLevel=Information', `--extensionLogDirectory=${ROSLYN_LOG}`] } : null
     },
-    rootFor: (abs, cwd) => nearestCsProjectRoot(abs, cwd) ?? cwd,
+    // 파일의 csproj를 '참조하는' 솔루션이 있으면 그 폴더(솔루션째 로드 — 크로스 프로젝트
+    // 분석·서버 1개), 없으면 가장 가까운 csproj 폴더(단독 로드)로 좁힌다. csRootFor 참조.
+    rootFor: (abs, cwd) => csRootFor(abs, cwd),
     // initialize 후에도 솔루션 인덱싱이 한참 걸린다 — projectInitializationComplete
     // 전까지 status를 'starting'으로 잡아 뷰어가 완성된 토큰만 받게 한다
     awaitsProjectInit: true,
-    // Roslyn은 솔루션/프로젝트를 스스로 찾지 않는다 — 루트에 .sln/.slnx가 있으면 솔루션째
-    // (solution/open), 없으면 그 폴더의 .csproj들을(project/open) 열어 줘야 인덱싱이
-    // 시작된다. 로드가 끝나면 workspace/projectInitializationComplete가 오고, 그 전엔
-    // 빈 토큰이 올 수 있어 렌더러의 semanticTokens 재시도(폴링)가 이를 메운다.
+    // Roslyn은 솔루션/프로젝트를 스스로 찾지 않는다 — rootFor가 참조 확인까지 마친 솔루션이
+    // 있으면 정확히 그 파일을(solution/open), 아니면 루트의 .sln/.slnx → .csproj들 순으로
+    // 열어 줘야 인덱싱이 시작된다. 로드가 끝나면 workspace/projectInitializationComplete가
+    // 오고, 그 전엔 빈 토큰이 올 수 있어 렌더러의 semanticTokens 재시도(폴링)가 이를 메운다.
     afterInitialized: (rpc, root) => {
-      const sln = slnUri(root)
+      const chosen = csSolutionByRoot.get(root.toLowerCase())
+      const sln = chosen ? pathToFileURL(chosen).href : slnUri(root)
       if (sln) {
         rpc.notify('solution/open', { solution: sln })
         return
@@ -456,6 +674,42 @@ async function lineAt(abs: string, line: number, text?: string): Promise<string>
   } catch {
     return ''
   }
+}
+
+/**
+ * offset이 C# set/init 접근자 본문 안인가 — 세터의 암시적 `value` 판정용. Roslyn은 암시적
+ * value에 평범한 매개변수 카드(+널 분석 소음)만 줘서 "이게 뭔지"를 설명하지 못하므로,
+ * 접근자 안으로 확인될 때만 용어집이 먼저 답한다(접근자 밖의 진짜 value 심볼은 안 가린다).
+ * 문자열/주석 안 중괄호까지는 안 본다 — 카드 하나의 폴백 판정이라 휴리스틱으로 충분.
+ */
+function csInSetAccessor(full: string, offset: number): boolean {
+  // ① 표현식 본문: `set => … value` — 문장 경계(;·{·}) 전까지 거꾸로 보며 '=>' 앞 토큰 확인
+  for (let i = offset - 1; i >= 0; i--) {
+    const c = full[i]
+    if (c === ';' || c === '{' || c === '}') break
+    if (c === '>' && full[i - 1] === '=') {
+      const m = /(\w+)\s*$/.exec(full.slice(Math.max(0, i - 24), i - 1))
+      if (m && (m[1] === 'set' || m[1] === 'init')) return true
+      break
+    }
+  }
+  // ② 블록 본문: 미짝 '{'를 바깥으로 걸으며 여는 괄호 앞 토큰이 set/init인지 — if/for 같은
+  //    안쪽 블록은 지나쳐 계속 바깥으로, get 접근자를 만나면 확정적으로 아님.
+  let depth = 0
+  for (let i = offset - 1; i >= 0; i--) {
+    const c = full[i]
+    if (c === '}') depth++
+    else if (c === '{') {
+      if (depth > 0) {
+        depth--
+        continue
+      }
+      const m = /(\w+)\s*$/.exec(full.slice(Math.max(0, i - 24), i))
+      if (m && (m[1] === 'set' || m[1] === 'init')) return true
+      if (m && m[1] === 'get') return false
+    }
+  }
+  return false
 }
 
 /**
@@ -657,6 +911,25 @@ function mergeVerseScope(scope: LspCompletionItem[], raw: RawCompletion, extMeth
   return { items, isIncomplete: lsp ? lsp.isIncomplete : true }
 }
 
+/**
+ * didChange의 contentChanges 페이로드 — incremental(2)을 선언한 서버엔 "이전 문서 전체를 덮는
+ * range 교체"로, 그 외(full/미선언)엔 range 없는 전문 교체로 만든다. LSP상 range 없는 교체는
+ * 항상 합법이지만 Roslyn은 range를 non-null로 가정해 NullReferenceException으로 '프로세스째'
+ * 죽는다 — 서버가 선언한 동기화 방식을 존중하는 게 스펙이기도 하다. (\r\n 문서: split('\n')의
+ * 중간 조각에 남는 \r만큼 character가 부풀 수 있지만, 스펙상 줄 길이 초과 position은 줄 끝으로
+ * 클램프되므로 "전체 덮기"에는 지장이 없다. 마지막 조각엔 터미네이터가 없어 정확하다.)
+ */
+function fullChange(syncKind: number, prevText: string, text: string): unknown[] {
+  if (syncKind !== 2) return [{ text }] // no range → full-content replace
+  const lines = prevText.split('\n')
+  return [
+    {
+      range: { start: { line: 0, character: 0 }, end: { line: lines.length - 1, character: lines[lines.length - 1].length } },
+      text
+    }
+  ]
+}
+
 /** The character immediately left of an LSP position in `text` — for trigger-char detection. */
 function charBefore(text: string, pos: LspPos): string {
   const lines = text.split('\n')
@@ -709,7 +982,8 @@ class LspManager {
       // projectInitializationComplete 이후에 열어야 로드된 프로젝트에 제대로 붙는다.
       void s.ready
         .then(() => {
-          if (!s.projectInitPending) void this.openDoc(s, def, abs)
+          // openDoc 자체의 실패(stat 불가 등)도 삼킨다 — 바깥 catch는 ready 실패만 잡는다
+          if (!s.projectInitPending) void this.openDoc(s, def, abs).catch(() => {})
         })
         .catch(() => {})
     }
@@ -730,12 +1004,17 @@ class LspManager {
     if (!cwd) return { state: 'idle', percent: null }
     const root = path.resolve(cwd).toLowerCase()
     const prefix = root + path.sep
+    // UE 프로젝트의 하위 폴더(플러그인 Script 등)를 연 경우, 그 파일들을 담당하는 서버는
+    // UE 루트 쪽(<UE루트>/Script의 C# 솔루션 서버 등)에 뜬다 — cwd 접두사 매칭만으로는
+    // 배지가 그 서버를 못 보므로 UE 루트 아래 서버도 포함한다.
+    const ur = ueRoot(root)
+    const urPrefix = ur && path.resolve(ur).toLowerCase() !== root ? path.resolve(ur).toLowerCase() + path.sep : null
     let analyzing = false
     let ready = false
     let percent: number | null = null
     for (const [key, s] of this.servers) {
       const sroot = key.slice(key.indexOf('|') + 1) // key = `${id}|${resolved lowercased root}`
-      if (sroot !== root && !sroot.startsWith(prefix)) continue
+      if (sroot !== root && !sroot.startsWith(prefix) && !(urPrefix && sroot.startsWith(urPrefix))) continue
       if (s.status === 'error') continue
       if (s.status === 'starting' || s.projectInitPending) {
         analyzing = true
@@ -926,6 +1205,13 @@ class LspManager {
     const def = abs ? serverDefFor(abs) : null
     const ctx = await this.prep(cwd, relPath)
     if (!ctx || !ctx.semLegend) return null
+    // Roslyn: 시맨틱 토큰은 frozen(부분) 컴파일로 분류된다 — 아무도 풀 컴파일을 요구하지
+    // 않으면 크로스 어셈블리 심볼(IntPtr·참조 타입…)이 영영 'variable'(미해석)로 남아 색이
+    // 빠진다. 문서를 연 뒤의 전 솔루션 프라임(workspace/symbol) 한 번이 자기 프로젝트와
+    // 형제 ProjectReference 스켈레톤까지 전부 확보한다. (진단 풀(textDocument/diagnostic)로
+    // 강제하는 방법은 함정 — 자기 프로젝트만 풀리고, 프라임 '뒤'에 돌리면 형제 스켈레톤을
+    // 도로 무효화해 토큰이 다시 미해석으로 떨어진다. 실측으로 확인.)
+    if (def?.awaitsProjectInit) await this.primeFullSemantics(ctx.s).catch(() => {})
     // a failed/timed-out request reports "supported but empty" — null is reserved
     // for "this server has no semantic tokens", which stops the renderer's retries
     const r = await ctx.rpc
@@ -989,6 +1275,23 @@ class LspManager {
     this.maybeUeDb(root)
     const def = this.detectProjectServer(root)
     if (def && def.command(root)) void this.ensure(def, root)
+    // UnrealSharp: UE 프로젝트에 관리(C#) 솔루션(<UE루트>/Script/*.slnx|sln)이 있으면 Roslyn도
+    // 함께 데운다 — 주력 언어 감지는 cpp라 안 잡히지만, 솔루션 로드는 수 초 걸리므로 첫 .cs를
+    // 보기 전에 미리. csRootFor가 같은 Script 폴더를 루트로 고르므로 이 서버가 그대로 재사용된다.
+    if (def?.id !== 'cs' && installState('cs') === 'installed') {
+      const ur = ueRoot(root)
+      const scriptDir = ur ? path.join(ur, 'Script') : null
+      let hasSln = false
+      try {
+        hasSln = !!scriptDir && fs.readdirSync(scriptDir).some((n) => /\.slnx?$/i.test(n))
+      } catch {
+        /* Script 폴더 없음 — UnrealSharp 미사용 */
+      }
+      if (scriptDir && hasSln) {
+        const cs = SERVERS.find((s) => s.id === 'cs')
+        if (cs) void this.ensure(cs, scriptDir)
+      }
+    }
     // Verse 워크스페이스면 멤버 DB(digest/소스 파스)도 지금 데워 둔다 — 안 그러면 첫 완성/
     // 레지스트리 요청이 동기 파싱을 통째로 물어 수백 ms 걸릴 수 있다. verse-lsp exe가 없어도
     // 색칠 레지스트리는 이 DB에서 나오므로 폴더 구조만 보이면 데운다. setTimeout(0)으로 프로젝트
@@ -1123,8 +1426,36 @@ class LspManager {
     if (def.id !== 'verse') {
       const lang = glossaryLangFor(def, abs)
       if (lang) {
-        const kw = keywordPriorityDoc(lang, await lineAt(abs, pos.line, text), pos.character)
+        const line = await lineAt(abs, pos.line, text)
+        const kw = keywordPriorityDoc(lang, line, pos.character)
         if (kw) return { contents: kw }
+        // C# 세터의 암시적 `value` — Roslyn 카드는 평범한 매개변수(+널 분석 소음)라 정체를
+        // 설명하지 못한다. set/init 접근자 본문 안의 `value`(멤버 접근 `x.value` 제외)로
+        // 확인될 때만 용어집이 먼저 답한다 — 접근자 밖의 진짜 value 심볼은 안 가린다.
+        if (lang === 'csharp') {
+          // `?`·`??`·`??=`·`?.` — 기호는 wordAt이 못 잡고 사용자 식별자도 될 수 없으므로
+          // 위치로 판별해 LSP보다 먼저 설명한다 (Verse의 `?` 옵션 연산자 처리와 동일 규칙)
+          const sym = csSymbolDoc(line, pos.character)
+          if (sym) return { contents: sym }
+          const w = glossaryWordAt(line, pos.character)
+          if (w?.word === 'value' && line[w.start - 1] !== '.') {
+            try {
+              const full = text != null ? text : await fsp.readFile(abs, 'utf8')
+              const ls = full.split('\n')
+              if (pos.line < ls.length) {
+                let off = 0
+                for (let i = 0; i < pos.line; i++) off += ls[i].length + 1
+                off += Math.min(pos.character, ls[pos.line].length)
+                if (csInSetAccessor(full, off)) {
+                  const doc = glossaryDoc('csharp', 'value')
+                  if (doc) return { contents: doc }
+                }
+              }
+            } catch {
+              /* 읽기 실패 — 평소 경로(LSP)로 계속 */
+            }
+          }
+        }
       }
     }
     // 미설치 서버(C#/C++ 다운로드 전)도 키워드·내장 타입 용어집 호버는 동작한다 —
@@ -1150,14 +1481,24 @@ class LspManager {
     // 타임아웃 60초 — clangd가 UE TU를 콜드 파싱하는 동안 hover는 파싱이 끝날 때까지
     // 큐에 있다가 응답한다. 기본 15초로는 첫 몇 분간 호버가 전부 타임아웃돼 "파일을 껐다
     // 켜야 뜨는" 것처럼 보였다. 늦게 온 응답은 렌더러(hoverSeq/CM)가 낡은 것을 버린다.
+    // 실패(타임아웃·서버 사망)는 throw하지 않고 빈 응답으로 — 안 그러면 아래 용어집 폴백
+    // (예: C# `partial` 같은 문맥 키워드)까지 못 가고 호버가 통째로 침묵한다.
     const r = ready
-      ? await s!.rpc.request<{ contents?: unknown } | null>(
-          'textDocument/hover',
-          { textDocument: { uri }, position: pos },
-          60000
-        )
+      ? await s!.rpc
+          .request<{ contents?: unknown } | null>('textDocument/hover', { textDocument: { uri }, position: pos }, 60000)
+          .catch(() => null)
       : null
     let contents = hoverMarkdown(r?.contents)
+    // C# this/base — Roslyn 카드는 가리키는 타입만 보여준다(유용). 여기에 키워드 설명 한 줄을
+    // 보태 "공식 문법 설명이 항상 보이게" 한다(사용자 피드백). LSP가 침묵하면 맨 아래
+    // 용어집 폴백이 키워드 카드로 답하므로 어느 쪽이든 설명은 나온다.
+    if (contents && glossaryLangFor(def, abs) === 'csharp') {
+      const w = glossaryWordAt(await lineAt(abs, pos.line, text), pos.character)?.word
+      if (w === 'this' || w === 'base') {
+        const doc = glossaryDoc('csharp', w)
+        if (doc) contents = appendDocToHover(contents, doc)
+      }
+    }
     // UE C++: clangd 호버에 실려 온 엔진 공식 주석(영어)을 문단 해시로 번역 팩에서 찾아
     // 한국어로 바꾼다 — Verse 공식 문서 번역과 같은 구조 (설정에서 끄면 no-op).
     if (contents && isUeCpp(def, abs)) {
@@ -1264,7 +1605,8 @@ class LspManager {
     if (abs.toLowerCase().startsWith(METADATA_DIR.toLowerCase())) return []
     if (def.kind === 'download' && installState(def.id) !== 'installed') return []
     if (def.kind === 'external' && !def.command('')) return []
-    const s = this.ensure(def, def.rootFor?.(abs, cwd) ?? cwd)
+    const root = def.rootFor?.(abs, cwd) ?? cwd
+    const s = this.ensure(def, root)
     if (!s) return []
     try {
       await s.ready
@@ -1272,10 +1614,12 @@ class LspManager {
       return []
     }
     const uri = text != null ? this.syncBuffer(s, def, abs, text) : await this.openDoc(s, def, abs)
-    const r = await s.rpc.request<RawLocation | RawLocation[] | null>('textDocument/definition', {
-      textDocument: { uri },
-      position: pos
-    })
+    const r = await s.rpc
+      .request<RawLocation | RawLocation[] | null>('textDocument/definition', {
+        textDocument: { uri },
+        position: pos
+      })
+      .catch(() => null)
     const list = Array.isArray(r) ? r : r ? [r] : []
     const out: LspLocation[] = []
     for (const loc of list) {
@@ -1284,10 +1628,66 @@ class LspManager {
       const start = range?.start
       if (!uri || !uri.startsWith('file:') || typeof start?.line !== 'number') continue
       try {
-        out.push({ path: fileURLToPath(uri), line: start.line, character: start.character ?? 0 })
+        const p = fileURLToPath(uri)
+        // Roslyn이 %TEMP%에 떨궈 준 MetadataAsSource(디컴파일/PDB 소스) — 이 파일의 주인은
+        // 지금 이 서버다. 뷰어가 열 때 같은 서버로 라우팅되도록 기억해 둔다(csRootFor 참조).
+        if (META_AS_SOURCE_RE.test(p)) {
+          metadataAsSourceRoot.set(path.resolve(p).toLowerCase(), path.resolve(root))
+          metaFilesSeen.set(path.resolve(p).toLowerCase(), p) // 컨테이너 경유 복구용 원본 경로
+        }
+        out.push({ path: p, line: start.line, character: start.character ?? 0 })
       } catch {
         /* unparseable uri — skip */
       }
+    }
+    // MetadataAsSource 재요청 우회 캐시 (위 metaDefCache 주석 참조): 첫 성공은 저장하고,
+    // 빈 응답은 같은 단어의 캐시(대상 파일이 아직 디스크에 있을 때만)로 되살린다.
+    if (def.id === 'cs') {
+      const word = glossaryWordAt(await lineAt(abs, pos.line, text), pos.character)?.word
+      if (word) {
+        const cacheKey = path.resolve(abs).toLowerCase() + '|' + word
+        // 캐시 저장 조건: 대상이 임시 파일이거나, 소스 자체가 임시 파일(읽기 전용·불변이라
+        // 어떤 성공이든 안전)일 때. UObject처럼 대상은 실소스여도 partial의 생성 파트가 얽혀
+        // 재요청부터 0개가 되는 케이스(실측)를 후자가 덮는다.
+        if (out.length && (out.some((o) => META_AS_SOURCE_RE.test(o.path)) || META_AS_SOURCE_RE.test(abs))) {
+          if (metaDefCache.size >= META_DEF_CACHE_CAP) {
+            const oldest = metaDefCache.keys().next().value
+            if (oldest) metaDefCache.delete(oldest)
+          }
+          metaDefCache.set(cacheKey, out.map((o) => ({ ...o })))
+        } else if (!out.length) {
+          const cached = metaDefCache.get(cacheKey)
+          if (cached && cached.every((c) => fs.existsSync(c.path))) {
+            out.push(...cached.map((c) => ({ ...c })))
+          } else {
+            // 캐시에도 없는 첫 0개 — 같은 생성 파일의 "다른 멤버" 케이스(1회용이 파일 단위).
+            // 호버의 컨테이너 타입으로 이미 생성된 임시 파일에서 선언을 찾아 복구하고 캐시한다.
+            const rec = await recoverMetaDef(s.rpc, uri, pos, word, abs).catch(() => null)
+            if (rec) {
+              out.push(rec)
+              metaDefCache.set(cacheKey, [{ ...rec }])
+            }
+          }
+        }
+      }
+    }
+    // F12 대상이 임시 메타 파일이면 지금 바로 서버에 didOpen(선워밍) — 뷰어가 파일을 여는
+    // 시점보다 먼저 파싱을 시작시켜, "들어갔는데 몇 초간 호버·색이 안 나오는" 공백을 줄인다.
+    // 이어서 도착 지점 심볼에 호버(QuickInfo)도 한 번 쏴 둔다(응답은 버림) — 토큰은 frozen
+    // 계산이라 색이 먼저 들어오는데 호버는 풀 시맨틱이 필요해 몇 초 늦었고, 그 사이 "분석 중"
+    // 칩은 이미 사라져 거짓 신호가 됐다. 여기서 흡수하면 색과 호버가 거의 같이 준비된다.
+    for (const o of out) {
+      if (!META_AS_SOURCE_RE.test(o.path)) continue
+      void (async () => {
+        await this.openDoc(s, def, o.path).catch(() => {})
+        await s.rpc
+          .request(
+            'textDocument/hover',
+            { textDocument: { uri: pathToFileURL(o.path).href }, position: { line: o.line, character: o.character + 1 } },
+            30000
+          )
+          .catch(() => {})
+      })()
     }
     // C#: 소스 없는 어셈블리 심볼은 $metadata$ 가짜 경로로 온다 — o#/metadata로
     // 디컴파일 소스를 받아 캐시 파일로 떨구고 그 경로로 바꿔치기해서, F12가
@@ -1590,12 +1990,20 @@ class LspManager {
       child = spawn(plan.cmd, plan.args, {
         cwd: path.resolve(root),
         env: { ...process.env, ...plan.env },
-        stdio: ['pipe', 'pipe', 'ignore'],
+        stdio: ['pipe', 'pipe', 'pipe'],
         windowsHide: true
       })
     } catch {
       return null
     }
+    // stderr 꼬리만 보관 — 서버가 죽으면 사인(예: Roslyn의 unhandled exception 덤프)을 남긴다.
+    // 파이프를 안 읽으면 버퍼가 차 서버가 멈출 수 있으므로 항상 소비하고 버린다(clangd는
+    // 평상시 로그도 stderr로 쏟는다 — 꼬리 4KB만 유지).
+    let errTail = ''
+    child.stderr?.on('data', (d: Buffer) => {
+      errTail = (errTail + d.toString('utf8')).slice(-4096)
+    })
+    child.stderr?.on('error', () => {})
 
     const rpc = new StdioRpc(child)
     rpc.onRequest = (method, params) => {
@@ -1623,6 +2031,7 @@ class LspManager {
       semLegend: null,
       complTriggers: null,
       complResolve: false,
+      syncKind: 1,
       complRaw: null,
       complGen: 0,
       projectInitPending: !!def.awaitsProjectInit,
@@ -1635,6 +2044,9 @@ class LspManager {
       if (method === 'workspace/projectInitializationComplete') {
         handle.projectInitPending = false
         handle.progressPct = null
+        // 주의: 전 솔루션 시맨틱 프라임(primeFullSemantics)을 여기서 선제 실행하면 안 된다 —
+        // 문서가 하나도 열리기 '전'의 프라임은 효과가 없다(실측: prime→didOpen 순서면 토큰이
+        // 계속 미해석). semanticTokens가 문서를 연 뒤 첫 요청에서 프라임한다.
       } else if (method === '$/progress') {
         const v = (params as { value?: { kind?: string; percentage?: number } } | undefined)?.value
         if (v?.kind === 'end') handle.progressPct = null
@@ -1652,6 +2064,7 @@ class LspManager {
         capabilities?: {
           semanticTokensProvider?: { legend?: { tokenTypes?: string[]; tokenModifiers?: string[] } }
           completionProvider?: { triggerCharacters?: string[]; resolveProvider?: boolean }
+          textDocumentSync?: number | { change?: number }
         }
       }>(
         'initialize',
@@ -1713,6 +2126,9 @@ class LspManager {
         const cp = res?.capabilities?.completionProvider
         handle.complTriggers = cp ? (Array.isArray(cp.triggerCharacters) ? cp.triggerCharacters : []) : null
         handle.complResolve = !!cp?.resolveProvider
+        // 서버의 문서 동기화 방식(1=full·2=incremental) — didChange 페이로드 형태를 가른다
+        const sync = res?.capabilities?.textDocumentSync
+        handle.syncKind = (typeof sync === 'number' ? sync : sync?.change) ?? 1
         rpc.notify('initialized', {})
         def.afterInitialized?.(rpc, path.resolve(root))
         handle.status = 'ready'
@@ -1730,7 +2146,11 @@ class LspManager {
       handle.diedAt = Date.now()
       rpc.dispose('LSP 서버 실행 실패')
     })
-    child.on('exit', () => {
+    child.on('exit', (code) => {
+      // 비정상 종료는 stderr 꼬리와 함께 남긴다 — "왜 죽었는지"가 어디에도 안 남던 문제
+      if (code !== 0 && code != null) {
+        console.error(`[lsp] ${def.id} 서버 비정상 종료 (code=${code})${errTail.trim() ? '\n' + errTail.trim().slice(-2000) : ''}`)
+      }
       handle.status = 'error'
       handle.diedAt = Date.now()
       handle.docs.clear()
@@ -1755,6 +2175,30 @@ class LspManager {
     return m > 0 && m > handle.startedAt
   }
 
+  /**
+   * Roslyn 전 솔루션 시맨틱 프라임 — workspace/symbol 검색 한 번이 모든 프로젝트의 컴파일
+   * (형제 ProjectReference 스켈레톤 포함)을 강제한다. 이게 없으면 frozen 토큰 모델이
+   * 크로스 프로젝트 심볼을 영영 'variable'(무색)로 분류한다(진단은 정상이라 더 헷갈린다).
+   * 쿼리 문자열은 무엇이든 전체 인덱스 빌드를 유발한다 — 히트 0짜리 이상한 쿼리로 페이로드만
+   * 아낀다. 실패하면 프라임을 비워 다음 기회에 재시도한다.
+   * 반드시 문서가 하나 이상 didOpen된 '뒤'에 불러야 한다 — 열기 전 프라임은 효과가 없다
+   * (실측). 한 번 성공하면 이후에 여는 문서들도 재프라임 없이 온전히 분류된다.
+   */
+  private primeFullSemantics(s: ServerHandle): Promise<void> {
+    if (!s.wsSymPrime) {
+      s.wsSymPrime = (async () => {
+        // didOpen '직후'(같은 틱)에 쏘면 서버가 문서 열림을 워크스페이스에 반영하기 전
+        // 스냅샷을 프라임해 소스 제너레이터 멤버(Bind_*의 CallXxx)가 미해석으로 남는다 —
+        // 실측: 갭 0ms=실패, 1.5s=성공. 문서가 자리잡을 시간을 주고 쏜다(서버당 1회 비용).
+        await new Promise((r) => setTimeout(r, 1500))
+        await s.rpc.request('workspace/symbol', { query: 'zz__semantic_prime__' }, 180000)
+      })().catch(() => {
+        s.wsSymPrime = undefined
+      })
+    }
+    return s.wsSymPrime
+  }
+
   /** Server ready + document opened/synced — the common front half of every query. */
   private async prep(
     cwd: string,
@@ -1763,6 +2207,7 @@ class LspManager {
     rpc: StdioRpc
     uri: string
     semLegend: { types: string[]; mods: string[] } | null
+    s: ServerHandle
   } | null> {
     const abs = this.resolve(cwd, relPath)
     const def = abs ? serverDefFor(abs) : null
@@ -1775,7 +2220,7 @@ class LspManager {
     try {
       await s.ready
       const uri = await this.openDoc(s, def, abs)
-      return { rpc: s.rpc, uri, semLegend: s.semLegend }
+      return { rpc: s.rpc, uri, semLegend: s.semLegend, s }
     } catch {
       return null
     }
@@ -1793,7 +2238,7 @@ class LspManager {
     const uri = pathToFileURL(abs).href
     const cur = s.docs.get(uri)
     if (!cur) {
-      s.docs.set(uri, { version: 1, mtimeMs: -1, size: -1 })
+      s.docs.set(uri, { version: 1, mtimeMs: -1, size: -1, text })
       const ext = path.extname(abs).slice(1).toLowerCase()
       s.rpc.notify('textDocument/didOpen', {
         textDocument: { uri, languageId: def.exts[ext] ?? Object.values(def.exts)[0], version: 1, text }
@@ -1806,12 +2251,13 @@ class LspManager {
         }
       }
     } else {
-      cur.version++
-      cur.mtimeMs = -1
-      cur.size = -1
+      if (cur.text === text) return uri // 서버가 이미 같은 내용을 들고 있다(호버 연타 등) — didChange 생략
+      // 엔트리는 교체(제자리 수정 금지) — openDoc의 pre/cur 동일성 검사가 "그 사이 라이브
+      // 버퍼가 밀렸음"을 알아채고 디스크 didChange로 되덮는 걸 접게 하는 신호다.
+      s.docs.set(uri, { version: cur.version + 1, mtimeMs: -1, size: -1, text })
       s.rpc.notify('textDocument/didChange', {
-        textDocument: { uri, version: cur.version },
-        contentChanges: [{ text }] // no range → full-content replace
+        textDocument: { uri, version: cur.version + 1 },
+        contentChanges: fullChange(s.syncKind, cur.text, text)
       })
     }
     return uri
@@ -1820,15 +2266,24 @@ class LspManager {
   /**
    * didOpen the file (or didChange when it changed on disk since — e.g. the agent
    * just edited it), so the server's view always matches what the viewer shows.
+   *
+   * 레이스 규약: 판정·기록·통지는 모든 await '뒤' 한 틱에 몰아서 한다. 뷰어는 파일 하나에
+   * status 폴링·warm·semanticTokens(prep)·hover를 동시에 던지고, 그 openDoc들이 stat/read의
+   * await 갭에서 겹치면 둘 다 "안 열림"으로 판정해 didOpen을 두 번 보냈다 — tsserver/clangd는
+   * 관용하지만 Roslyn은 unhandled exception으로 '프로세스째' 죽는다(C# 전멸의 근본 원인).
+   * docs 엔트리 객체는 제자리 수정 없이 매번 교체하므로, await 전에 집은 엔트리(pre)와 지금
+   * 엔트리가 다르면 그 사이 누가 문서를 열었거나 갱신한 것 — 이번 디스크 동기화는 접는다
+   * (그쪽이 더 최신이고, 특히 라이브 버퍼를 디스크 내용으로 되돌려선 안 된다).
    */
   private async openDoc(s: ServerHandle, def: ServerDef, abs: string): Promise<string> {
     const uri = pathToFileURL(abs).href
+    const pre = s.docs.get(uri)
     const st = await fsp.stat(abs)
-    const cur = s.docs.get(uri)
-    if (cur && cur.mtimeMs === st.mtimeMs && cur.size === st.size) return uri
+    if (pre && pre.mtimeMs === st.mtimeMs && pre.size === st.size) return uri
     const text = await fsp.readFile(abs, 'utf8')
+    const cur = s.docs.get(uri)
     if (!cur) {
-      s.docs.set(uri, { version: 1, mtimeMs: st.mtimeMs, size: st.size })
+      s.docs.set(uri, { version: 1, mtimeMs: st.mtimeMs, size: st.size, text })
       const ext = path.extname(abs).slice(1).toLowerCase()
       s.rpc.notify('textDocument/didOpen', {
         textDocument: { uri, languageId: def.exts[ext] ?? Object.values(def.exts)[0], version: 1, text }
@@ -1840,13 +2295,17 @@ class LspManager {
           s.rpc.notify('textDocument/didClose', { textDocument: { uri: oldest } })
         }
       }
-    } else {
-      cur.version++
-      cur.mtimeMs = st.mtimeMs
-      cur.size = st.size
+    } else if (cur === pre) {
+      if (cur.text === text) {
+        // 내용은 그대로인데 mtime만 달라진 경우(라이브 버퍼 마크 -1 → 디스크 재검사 포함) —
+        // didChange 없이 동기화 상태만 최신으로 되돌린다
+        s.docs.set(uri, { version: cur.version, mtimeMs: st.mtimeMs, size: st.size, text })
+        return uri
+      }
+      s.docs.set(uri, { version: cur.version + 1, mtimeMs: st.mtimeMs, size: st.size, text })
       s.rpc.notify('textDocument/didChange', {
-        textDocument: { uri, version: cur.version },
-        contentChanges: [{ text }] // no range → full-content replace
+        textDocument: { uri, version: cur.version + 1 },
+        contentChanges: fullChange(s.syncKind, cur.text, text)
       })
     }
     return uri

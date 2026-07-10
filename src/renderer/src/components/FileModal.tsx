@@ -4,7 +4,7 @@ import type { FileDiff, FileReadResult, LspLocation, LspSemanticTokens, LspStatu
 import { Markdown } from './Markdown'
 import { CmEditor, type CmEditorHandle } from './CmEditor'
 import { highlightCode, highlightToLines } from '../lib/highlight'
-import { SEM_CLASS, riderSemClass, type SemSpan, type StructOv } from '../lib/semTokens'
+import { SEM_CLASS, riderSemClass, csRememberType, csTypeHint, type SemSpan, type StructOv } from '../lib/semTokens'
 import { useCppStructOv } from '../lib/cppStruct'
 import { capMapSet } from '../lib/capMap'
 import { diffMarksOf, type DiffMarks } from '../lib/cmDiff'
@@ -105,9 +105,40 @@ function splitCsArgs(args: string): string[] {
   return out.filter(Boolean)
 }
 
+// C# 시그니처 선두의 한정자 run — 마커 뒤(`(필드) static readonly nint …`)와 멤버 시그니처
+// 공용. 이걸 안 떼면 한정자가 TYPE 행에 새어 들어 'static readonly nint'처럼 중첩돼 보인다.
+const CS_LEAD_MODS =
+  /^(?:(?:public|private|protected|internal|static|readonly|virtual|override|sealed|abstract|async|extern|unsafe|new|partial|required|volatile|event|delegate)\s+)+/
+// 떼어낸 run → 표시용 한정자 목록. event/delegate는 한정자가 아니라 종류라 표시에서 뺀다.
+function csLeadMods(run: string): string[] {
+  return run.trim().split(/\s+/).filter((m) => m !== 'event' && m !== 'delegate')
+}
+
+// C# 내장 타입 별칭 → 실제 종류. Roslyn은 내장 타입 참조 호버에 별칭 한 단어만 싣는다
+// (IntPtr→`nint`, String→`string`) — 그 단어로 STRUCT/CLASS 칩을 복원하는 데 쓴다.
+const CS_BUILTIN_KIND: Record<string, string> = {
+  int: 'struct', long: 'struct', short: 'struct', byte: 'struct', sbyte: 'struct',
+  uint: 'struct', ulong: 'struct', ushort: 'struct', nint: 'struct', nuint: 'struct',
+  float: 'struct', double: 'struct', decimal: 'struct', bool: 'struct', char: 'struct',
+  string: 'class', object: 'class', dynamic: 'class'
+}
+
+/** 줄의 col 위치 식별자 — 호버 카드에 "실제로 가리킨 이름"을 알려주는 용도(별칭 카드의
+ *  NAME↔ALIAS 분리). langGlossary의 wordAt과 같은 규칙. CmEditor도 가져다 쓴다. */
+export function identAt(line: string, col: number): string | null {
+  if (col < 0 || col > line.length) return null
+  let a = col
+  let b = col
+  const isW = (c: string): boolean => /[A-Za-z0-9_]/.test(c)
+  while (a > 0 && isW(line[a - 1])) a--
+  while (b < line.length && isW(line[b])) b++
+  const w = line.slice(a, b)
+  return /^[A-Za-z_]\w*$/.test(w) ? w : null
+}
+
 function parseCsSig(
   sig: string
-): { kind: string; name: string; container: string | null; ret?: string; retLabel?: string; params?: string[]; value?: string } | null {
+): { kind: string; name: string; container: string | null; ret?: string; retLabel?: string; params?: string[]; value?: string; mods?: string[] } | null {
   let s = sig.replace(/\s+/g, ' ').trim()
   // 확장 메서드: Roslyn이 '(확장)'/'(extension)' 접두사를 붙여 보낸다 — 떼고 일반
   // 멤버처럼 파싱하되 종류를 'extension method'로 분류해, 다른 메서드 호버와 똑같은
@@ -119,10 +150,19 @@ function parseCsSig(
   if (marker) {
     const KIND: Record<string, string> = {
       '매개 변수': 'parameter', parameter: 'parameter',
-      '지역 변수': 'local', '로컬 변수': 'local', 'local variable': 'local',
+      // 칩 라벨은 'LOCAL'보다 'LOCAL VARIABLE'이 분명하다 — TS 파서('local var' 정규화)와도 통일
+      '지역 변수': 'local variable', '로컬 변수': 'local variable', 'local variable': 'local variable',
       '상수': 'const', constant: 'const', '필드': 'field', field: 'field'
     }
     let rest = marker[2]
+    // 마커 뒤 선두 한정자(`static readonly nint …`)는 타입이 아니다 — TYPE 행에 새지 않게
+    // 떼어 한정자 목록으로 돌려준다(static은 종류 칩에, 나머지는 MODIFIERS 행에 얹힌다).
+    let mods: string[] | undefined
+    const lead = CS_LEAD_MODS.exec(rest)
+    if (lead) {
+      mods = csLeadMods(lead[0])
+      rest = rest.slice(lead[0].length)
+    }
     // const/field 초기값: 'type Container.Name = value' — 값을 떼어 VALUE로 따로 둔다
     // (안 떼면 끝 토큰인 값이 이름으로, 타입칸엔 'type ...Name ='가 들어가 깨진다)
     let value: string | undefined
@@ -132,7 +172,7 @@ function parseCsSig(
       rest = rest.slice(0, eq).trim()
     }
     const sp = rest.lastIndexOf(' ')
-    if (sp < 0) return { kind: KIND[marker[1]], name: rest, container: null, value }
+    if (sp < 0) return { kind: KIND[marker[1]], name: rest, container: null, value, mods }
     const qual = rest.slice(sp + 1)
     const dot = qual.lastIndexOf('.')
     // 한정명이 있으면 멤버다 — const는 C++의 'static field'처럼 'const field'로 통일한다
@@ -145,7 +185,8 @@ function parseCsSig(
       container: dot >= 0 ? qual.slice(0, dot) : null,
       ret: rest.slice(0, sp),
       retLabel: 'type',
-      value
+      value,
+      mods
     }
   }
   // ② 타입/네임스페이스 선언
@@ -153,16 +194,27 @@ function parseCsSig(
   if (decl && !s.includes('(')) {
     const qual = decl[2]
     const dot = qual.lastIndexOf('.')
+    const name = dot >= 0 ? qual.slice(dot + 1) : qual
+    // C# 어트리뷰트(…Attribute 관례) — `[UClass]` 사용처 호버가 'CLASS'로 뜨면 어긋난다.
+    // 이름 관례로 'attribute'로 재분류한다(선언부 호버도 어트리뷰트 클래스이므로 같이 적용).
+    const isAttr = decl[1] === 'class' && /Attribute$/.test(name)
     return {
-      kind: decl[1],
-      name: dot >= 0 ? qual.slice(dot + 1) : qual,
+      kind: isAttr ? 'attribute' : decl[1],
+      name,
       container: dot >= 0 ? qual.slice(0, dot) : null,
       ret: decl[1] === 'enum' && decl[3] ? decl[3] : undefined,
       retLabel: 'type'
     }
   }
-  // ③ 멤버 — 'ret Container.Name(args)' / 'ret Container.Name { get; }' / 'ret Container.Name'
-  let body = s.replace(/^(?:(?:public|private|protected|internal|static|readonly|virtual|override|sealed|abstract|async|extern|unsafe|new|partial|required|event|delegate)\s+)+/, '')
+  // ③ 내장 타입 별칭 — 내장/별칭 타입 참조 호버(IntPtr→`nint`, string…)는 시그니처가 단어
+  // 하나뿐이라 구조화가 안 돼 헐벗은 코드 박스로 떨어졌다. 종류·이름 카드로 만들어 준다.
+  // (카드 안 `nint` 토큰에 대면 용어집 설명도 뜬다 — onTokOver의 glossaryDoc 경로)
+  if (Object.prototype.hasOwnProperty.call(CS_BUILTIN_KIND, s)) return { kind: CS_BUILTIN_KIND[s], name: s, container: null }
+  // ④ 멤버 — 'ret Container.Name(args)' / 'ret Container.Name { get; }' / 'ret Container.Name'
+  let mods3: string[] | undefined
+  const lead3 = CS_LEAD_MODS.exec(s)
+  if (lead3) mods3 = csLeadMods(lead3[0])
+  let body = s.replace(CS_LEAD_MODS, '')
   const paren = body.indexOf('(')
   // 메서드 괄호가 없을 때의 top-level ' = value'는 초기값이다(enum 멤버 'Foo.Bar = 0',
   // 필드 초기값). 메서드 기본 인자의 '='은 괄호 안이라 건드리지 않는다 — 떼어 둔다.
@@ -179,11 +231,27 @@ function parseCsSig(
   const headPart = body.slice(0, cut).trim()
   const sp = headPart.lastIndexOf(' ')
   if (sp < 0) {
+    const d = headPart.lastIndexOf('.')
+    // 반환형 없는 한정 호출 — Roslyn 생성자 호버가 이 꼴이다(`FName.FName(string name)`).
+    // 이름 == 소속의 끝 세그먼트면 생성자, 아니면(드물게) 메서드로 구조화해 칩을 살린다.
+    if (paren >= 0 && d >= 0) {
+      const name = headPart.slice(d + 1)
+      const container = headPart.slice(0, d)
+      let params: string[] | undefined
+      const close = body.lastIndexOf(')')
+      if (close > paren) params = splitCsArgs(body.slice(paren + 1, close))
+      return {
+        kind: name === container.split('.').pop() ? 'constructor' : 'method',
+        name,
+        container,
+        params,
+        mods: mods3
+      }
+    }
     // 타입 접두사 없는 한정명 + 값 → enum 멤버 ('EEnumTest.A = 0'). clangd의 enumerator와
     // 같은 분류로 구조화한다(이름·값·소속). 값이 없으면 신뢰도가 낮아 raw로 둔다.
-    const d = headPart.lastIndexOf('.')
     if (d >= 0 && value !== undefined) {
-      return { kind: 'enum member', name: headPart.slice(d + 1), container: headPart.slice(0, d), value }
+      return { kind: 'enum member', name: headPart.slice(d + 1), container: headPart.slice(0, d), value, mods: mods3 }
     }
     return null
   }
@@ -219,7 +287,8 @@ function parseCsSig(
     ret: ret && kind !== 'constructor' ? ret : undefined,
     retLabel: /method/.test(kind) ? 'return' : 'type',
     params,
-    value
+    value,
+    mods: mods3
   }
 }
 
@@ -715,7 +784,8 @@ function parseHover(md: string): HoverParts | null {
       if ('mods' in e && e.mods?.length) sigMods.push(...e.mods) // Verse 지정자 → access 칩
       if (e.container && !from) {
         // Verse: 한정자는 모듈/클래스 경로 → 'module'. C#/C++: 타입은 namespace, 멤버는 in.
-        const isType = /^(struct|class|interface|enum|delegate|namespace)$/.test(e.kind)
+        // attribute도 타입(…Attribute 클래스)이다 — 재분류 후에도 NAMESPACE 라벨을 유지한다.
+        const isType = /^(struct|class|interface|enum|delegate|namespace|attribute)$/.test(e.kind)
         from = { k: isVerse ? 'module' : isType ? 'namespace' : 'in', v: '`' + e.container + '`' }
       }
     }
@@ -753,6 +823,7 @@ function parseHover(md: string): HoverParts | null {
     if (/\)\s*const\b/.test(flat)) mods.push('const')
     if (/\{\s*get;/.test(flat)) mods.push('get')
     if (/\bset;\s*\}/.test(flat)) mods.push('set')
+    if (/\binit;\s*\}/.test(flat)) mods.push('init') // C# init-only 세터 — get/set과 같은 접근자 대접
   }
   const kindWords = (kind ?? '').toLowerCase()
   const dedupMods = [...new Set(mods)].filter((m) => !kindWords.includes(m))
@@ -958,6 +1029,22 @@ function splitVerseSpecs(mods: string[], kind?: string, write?: string): { k: st
   return rows
 }
 
+// 비-Verse(C#/C++/TS…) 한정자 분류 — splitVerseSpecs의 일반 언어판. `partial`·`sealed` 같은
+// 건 접근 수준이 아닌데 ACCESS 행에 한 덩어리로 섞여 나왔다(사용자 피드백): 진짜 접근지시자만
+// access로, 프로퍼티 접근자(get/set)는 accessors로, 나머지는 modifiers로 가른다.
+const ACCESS_MODS = new Set(['public', 'private', 'protected', 'internal'])
+const ACCESSOR_MODS = new Set(['get', 'set', 'init'])
+function splitCsMods(mods: string[]): { k: string; items: string[] }[] {
+  const rows: { k: string; items: string[] }[] = []
+  const access = mods.filter((m) => ACCESS_MODS.has(m))
+  const other = mods.filter((m) => !ACCESS_MODS.has(m) && !ACCESSOR_MODS.has(m))
+  const accessors = mods.filter((m) => ACCESSOR_MODS.has(m))
+  if (access.length) rows.push({ k: 'access', items: access })
+  if (other.length) rows.push({ k: 'modifiers', items: other })
+  if (accessors.length) rows.push({ k: 'accessors', items: accessors })
+  return rows
+}
+
 // 세션 동안 배운 식별자→색 누적 사전 — 호버 시그니처가 참조하는 타입(TArray 등)이
 // "지금 열린 파일"에는 안 나와도, 전에 연 파일에서 배웠으면 칠할 수 있게 한다.
 // 오래 켜두고 많은 파일을 열어도 무한히 늘지 않게 크기 상한(초과분은 오래된 것부터 제거).
@@ -1021,19 +1108,30 @@ export function HoverContent({
   md,
   lang,
   dict,
-  extraMods
+  extraMods,
+  word
 }: {
   md: string
   lang: string
   dict: Map<string, string> | null
   extraMods?: string[] // C# 정의 줄에서 보강한 한정자 (시그니처 추출분과 합집합)
+  word?: string // 커서 밑 식별자 — 별칭 카드(Roslyn이 IntPtr→nint로 정규화)의 NAME 복원용
 }) {
   const p = useMemo(() => parseHover(md), [md])
+  // Roslyn은 내장/별칭 타입 참조 호버를 별칭 한 단어(nint)로 정규화한다 — 실제로 가리킨
+  // 이름(IntPtr)이 NAME에서 사라지므로, 커서 밑 단어와 다르면 NAME은 그 단어로 되돌리고
+  // 별칭은 ALIAS 행으로 뺀다. `var` 호버(추론 타입이 별칭으로 옴)는 TYPE 행이 더 정확하다.
+  const aliasSwap =
+    lang === 'csharp' &&
+    !!word &&
+    !!p?.name &&
+    word !== p.name &&
+    Object.prototype.hasOwnProperty.call(CS_BUILTIN_KIND, p.name)
+  const dispName = aliasSwap ? word : p?.name
   // static은 ACCESS 행이 아니라 종류 칩에 합친다 — 'STATIC METHOD'처럼 한눈에
   const allMods = useMemo(() => [...new Set([...(p?.mods ?? []), ...(extraMods ?? [])])], [p, extraMods])
   const kindDisplay = useMemo(() => {
     if (!p?.kind) return null
-    if (allMods.includes('static') && !/static/i.test(p.kind)) return 'static ' + p.kind
     // Verse: label by the CONTAINER's kind when the hovered symbol is a member of an enum/struct
     // ('Enum Value' / 'Struct Value'); otherwise make data-member labels unambiguous — a non-`var`
     // binding is an immutable 'Constant Variable', a `var` binding is a (mutable) 'Variable'.
@@ -1048,14 +1146,25 @@ export function HoverContent({
       if (ck === 'enum' || ck === 'struct') return ck === 'enum' ? 'Enum Value' : 'Struct Value'
       if (p.kind === 'constant') return 'Constant Variable'
       if (p.kind === 'var') return 'Variable'
+      return p.kind
     }
-    return p.kind
+    let k = p.kind
+    // C# 프로퍼티: 접근자는 별도 행 대신 종류 칩으로 승격 — 'GET SET PROPERTY'/'GET PROPERTY'.
+    // 접근자가 언어 차원의 특별함이라(일반 필드/변수와 다름) 칩 라벨이 그걸 바로 말해 준다.
+    if (k === 'property') {
+      const acc = ['get', 'set', 'init'].filter((m) => allMods.includes(m))
+      if (acc.length) k = acc.join(' ') + ' ' + k
+    }
+    // static은 ACCESS/MODIFIERS 행이 아니라 종류 칩 맨 앞에 — 'STATIC GET SET PROPERTY'처럼
+    if (allMods.includes('static') && !/static/i.test(k)) k = 'static ' + k
+    return k
   }, [p, allMods, lang])
   const mods = useMemo(() => {
     if (!p) return []
-    const kindWords = (p.kind ?? '').toLowerCase()
+    // 칩에 승격된 단어(static·get·set·종류)는 행에서 뺀다 — 표시 기준이므로 kindDisplay로 거른다
+    const kindWords = (kindDisplay ?? p.kind ?? '').toLowerCase()
     return allMods.filter((m) => m !== 'static' && !kindWords.includes(m))
-  }, [p, allMods])
+  }, [p, allMods, kindDisplay])
   // Verse: the hovered symbol's OWN name is rendered as an isolated `Player` token, so the registry
   // highlighter can't see it's a binding and promotes any name matching a type (UEFN asset classes are
   // PascalCase, e.g. a project `Player` class) to the type colour — even when the card already knows
@@ -1082,6 +1191,42 @@ export function HoverContent({
     const ck = owner ? verseReg().kind[owner] : undefined
     return ck ? { k: ck, v: '`' + owner + '`' } : p.from
   }, [p, lang])
+  // 비-Verse footer 행들 — 멤버 카드의 소속(IN Container)을 "소속 타입의 종류" 라벨
+  // (CLASS/STRUCT/ENUM/INTERFACE + 이름)로 바꾸고, 한정명에 네임스페이스가 딸려 있으면
+  // NAMESPACE 행을 맨 밑에 따로 뺀다 — "어떤 클래스의 멤버인지"가 라벨로 바로 읽힌다
+  // (Verse footer와 같은 규칙). 소속의 종류는 시그니처에 없으므로 파일/세션 시맨틱 사전의
+  // 색 분류로 알아내고, 못 알아내면 기존 'in' 라벨 그대로 둔다.
+  const fromRows = useMemo((): { k: string; v: string }[] => {
+    if (lang === 'verse' || !p?.from) return []
+    const f = p.from
+    if (f.k !== 'in') return [f] // 'namespace'(타입 카드)·'provided by'(clangd) — 그대로 한 행
+    const full = f.v.replace(/`/g, '')
+    // 마지막 최상위 '.'에서 소속 타입과 네임스페이스를 가른다 — 제네릭 인자 안 '.'은 무시
+    let depth = 0
+    let cut = -1
+    for (let i = full.length - 1; i >= 0; i--) {
+      const c = full[i]
+      if (c === '>') depth++
+      else if (c === '<') depth--
+      else if (c === '.' && depth === 0) {
+        cut = i
+        break
+      }
+    }
+    const owner = cut >= 0 ? full.slice(cut + 1) : full
+    const ns = cut >= 0 ? full.slice(0, cut) : ''
+    const bare = owner.split('<')[0]
+    let k = 'in'
+    if (/^enum/.test(p.kind ?? '')) k = 'enum' // enum 멤버의 소속은 정의상 enum
+    else {
+      const cls = dict?.get(bare) ?? sessionSemDict.get(bare)
+      if (cls === 'sem-type2') k = 'struct'
+      else if (cls === 'sem-type') k = lang === 'csharp' && /^I[A-Z]/.test(bare) ? 'interface' : 'class'
+    }
+    const rows = [{ k, v: '`' + owner + '`' }]
+    if (ns) rows.push({ k: 'namespace', v: '`' + ns + '`' })
+    return rows
+  }, [p, lang, dict])
   // 카드 안의 모든 코드(시그니처·메타 칩·본문 인라인/펜스·푸터)는 본문과 같은
   // 파이프라인 하나로: hljs 베이스 + 언어 팔레트 + 시맨틱 색 사전(decorate).
   // 색 우선순위: 이 파일 사전 → 세션 누적 사전 → UE 명명규칙(C++만)
@@ -1183,19 +1328,28 @@ export function HoverContent({
           <code className="hljs" dangerouslySetInnerHTML={{ __html: sigHtml }} />
         </div>
       )}
-      {/* 스펙 행 — NAME → ACCESS(접근지시자) → PARAMS → RETURN 순서, 한 줄에 하나씩 */}
+      {/* 스펙 행 — NAME → ACCESS → MODIFIERS → ACCESSORS → PARAMS → RETURN 순서, 한 줄에 하나씩 */}
       {(p.name || mods.length > 0 || p.params.length > 0 || p.metas.length > 0 || (lang === 'verse' && verseFrom)) && (
         <div className="lh-spec">
           {/* NAME·ACCESS도 PARAMS·RETURN과 같은 코드 칩으로 — 행 전체가 한 결 */}
-          {p.name && (
+          {dispName && (
             <>
               <span className="lh-spec-k">name</span>
               <div className={'lh-spec-v lh-name-row' + (namePlain ? ' nm-plain' : '')}>
+                <Markdown text={'`' + dispName + '`'} codeLang={lang} decorate={deco} />
+              </div>
+            </>
+          )}
+          {aliasSwap && p.name && (
+            <>
+              <span className="lh-spec-k">{word === 'var' ? 'type' : 'alias'}</span>
+              <div className="lh-spec-v">
                 <Markdown text={'`' + p.name + '`'} codeLang={lang} decorate={deco} />
               </div>
             </>
           )}
-          {/* Verse: 지정자를 access · specifiers · effects 로 갈라 각각 한 줄씩 */}
+          {/* Verse: 지정자를 access · specifiers · effects 로, 그 외 언어는 access · modifiers ·
+              accessors 로 갈라 각각 한 줄씩 — partial 같은 비접근 한정자가 ACCESS에 섞이지 않게 */}
           {lang === 'verse'
             ? splitVerseSpecs(mods, p.kind ?? undefined, verseWrite).map((row) => (
                 <Fragment key={row.k}>
@@ -1215,14 +1369,14 @@ export function HoverContent({
                   </div>
                 </Fragment>
               ))
-            : mods.length > 0 && (
-                <>
-                  <span className="lh-spec-k">access</span>
+            : splitCsMods(mods).map((row) => (
+                <Fragment key={row.k}>
+                  <span className="lh-spec-k">{row.k}</span>
                   <div className="lh-spec-v">
-                    <Markdown text={mods.map((m) => '`' + m + '`').join(' ')} codeLang={lang} decorate={deco} />
+                    <Markdown text={row.items.map((m) => '`' + m + '`').join(' ')} codeLang={lang} decorate={deco} />
                   </div>
-                </>
-              )}
+                </Fragment>
+              ))}
           {p.params.length > 0 && (
             <>
               <span className="lh-spec-k">params</span>
@@ -1264,10 +1418,14 @@ export function HoverContent({
           <Markdown text={p.docs} codeLang={lang} decorate={deco} />
         </div>
       )}
-      {lang !== 'verse' && verseFrom && (
+      {lang !== 'verse' && fromRows.length > 0 && (
         <div className="lh-from">
-          <span className="lh-spec-k">{verseFrom.k}</span>
-          <Markdown text={verseFrom.v} codeLang={lang} decorate={deco} />
+          {fromRows.map((f, i) => (
+            <Fragment key={i}>
+              <span className="lh-spec-k">{f.k}</span>
+              <Markdown text={f.v} codeLang={lang} decorate={deco} />
+            </Fragment>
+          ))}
         </div>
       )}
       {/* 토큰 설명 — 카드 밖(아래/위)에 한 곳에 떠서 글자만 바뀐다. body 포털이라 카드 위(z)에 뜬다 */}
@@ -1753,9 +1911,14 @@ function CodeView({
   const scrollRef = useRef<HTMLDivElement>(null)
   // defMods: C#용 한정자 보강 — OmniSharp 호버 시그니처엔 public/static이 안 실려서
   // 정의 줄을 읽어 따로 채운다 (도착하면 카드의 ACCESS 행이 늦게 나타날 수 있음)
-  const [hover, setHover] = useState<{ x: number; y: number; below: boolean; md: string; defMods?: string[] } | null>(
-    null
-  )
+  const [hover, setHover] = useState<{
+    x: number
+    y: number
+    below: boolean
+    md: string
+    defMods?: string[]
+    word?: string // 커서 밑 식별자 — 별칭 카드의 NAME 복원(HoverContent)
+  } | null>(null)
   // Ctrl(정의 모드) 커서 표시는 React 상태가 아니라 DOM 클래스 직접 토글 —
   // Control 키만 눌러도 일어나던 재렌더가 코드 줄의 텍스트 노드를 갈아끼워
   // 선택(더블클릭 단어)을 파괴했고, 그 탓에 Ctrl+C 복사가 항상 빈손이었다.
@@ -1792,15 +1955,24 @@ function CodeView({
     if (!sem || !sem.data.length) return null
     const rider = !!paletteClassFor(t.lang)
     const cpp = t.lang === 'cpp' || t.lang === 'c'
-    const srcLines = structOv ? body.split('\n') : null
+    const cs = t.lang === 'csharp'
+    const srcLines = structOv || cs ? body.split('\n') : null
     const m = new Map<number, SemSpan[]>()
     for (let i = 0; i < sem.data.length; i += 5) {
       const type = sem.types[sem.data[i + 3]] ?? ''
       let cls = rider ? riderSemClass(type, sem.data[i + 4], sem.mods, cpp) : SEM_CLASS[type]
       if (!cls) continue
-      if (srcLines && (type === 'class' || type === 'property')) {
+      if (srcLines && structOv && (type === 'class' || type === 'property')) {
         const text = (srcLines[sem.data[i]] ?? '').substr(sem.data[i + 1], sem.data[i + 2])
-        if (type === 'class' ? structOv!.types.has(text) : structOv!.fields.has(text)) cls = 'sem-type2'
+        if (type === 'class' ? structOv.types.has(text) : structOv.fields.has(text)) cls = 'sem-type2'
+      }
+      // C# 타입 힌트 — 미해석('variable') 토큰이 세션에서 타입으로 학습된 이름이면 승격 (semTokens).
+      // null 계열 연산자(?·??·??=·?.)는 키워드색 — 공식 문법이 눈에 띄게(사용자 피드백).
+      if (srcLines && cs) {
+        const tx = (srcLines[sem.data[i]] ?? '').substr(sem.data[i + 1], sem.data[i + 2])
+        if (cls === 'sem-type' || cls === 'sem-type2') csRememberType(tx, cls)
+        else if (type === 'variable' && cls === 'sem-plain') cls = csTypeHint(tx) ?? cls
+        else if ((type === 'operator' || type === 'punctuation') && /^(\?|\?\?|\?\?=|\?\.)$/.test(tx)) cls = 'sem-kw'
       }
       const line = sem.data[i]
       let arr = m.get(line)
@@ -1827,6 +1999,8 @@ function CodeView({
       if (structOv && (type === 'class' || type === 'property')) {
         if (type === 'class' ? structOv.types.has(text) : structOv.fields.has(text)) cls = 'sem-type2'
       }
+      // C# 타입 힌트 — 본문(semByLine)과 같은 승격을 호버 사전에도
+      if (t.lang === 'csharp' && type === 'variable' && cls === 'sem-plain') cls = csTypeHint(text) ?? cls
       let byCls = counts.get(text)
       if (!byCls) counts.set(text, (byCls = new Map()))
       byCls.set(cls, (byCls.get(cls) ?? 0) + 1)
@@ -1994,7 +2168,8 @@ function CodeView({
           if (!r || !r.contents) return setHover(null)
           const s3 = window.getSelection()
           if (s3 && !s3.isCollapsed) return // 응답 오는 사이 선택됨 — 양보
-          setHover({ x: e.clientX, y: e.clientY, below: e.clientY < window.innerHeight * 0.55, md: r.contents })
+          const word = identAt(content.split('\n')[pos.line] ?? '', pos.character) ?? undefined
+          setHover({ x: e.clientX, y: e.clientY, below: e.clientY < window.innerHeight * 0.55, md: r.contents, word })
           // C#: 시그니처에 접근지시자가 없다 — 정의 선언 줄을 읽어 ACCESS를 보강.
           // (메타데이터 전용 심볼은 파일이 안 읽혀 조용히 생략된다)
           if (t.lang === 'csharp') {
@@ -2221,7 +2396,7 @@ function CodeView({
             }}
             onMouseLeave={clearHover}
           >
-            <HoverContent md={hover.md} lang={t.lang} dict={semDict} extraMods={hover.defMods} />
+            <HoverContent md={hover.md} lang={t.lang} dict={semDict} extraMods={hover.defMods} word={hover.word} />
           </div>,
           document.body
         )}
@@ -2320,6 +2495,9 @@ export function FileModal({
   // 파싱했다는 뜻이 아니다. 분석칩은 이 값 기준으로 유지해, 캐시 색이 칠해져 있어도 서버가
   // 준비될 때까지 "심볼 분석 중"이 정직하게 보인다 (호버가 그때부터 되므로).
   const [semLive, setSemLive] = useState(false)
+  // 호버(풀 시맨틱)까지 실제로 응답하는가 — 색 토큰은 frozen 계산이라 먼저 오고 호버는 몇 초
+  // 늦을 수 있다(Roslyn 메타 문서에서 두드러짐). 칩은 둘 다 준비돼야 내린다.
+  const [hoverReady, setHoverReady] = useState(false)
   const [anPct, setAnPct] = useState<number | null>(null) // 분석 진행률(프로젝트 인덱싱 %)
   const [vs, setVs] = useState<ViewState>({ root: path, stack: [], fwd: [], jump: null })
   // an SVG can be viewed both ways — as the rendered image (default) or as markup
@@ -2504,6 +2682,7 @@ export function FileModal({
     setSem(null)
     setNoSem(false)
     setSemLive(false)
+    setHoverReady(false)
     if (!effPath || isImg || ovContent != null || res?.content == null) return
     let alive = true
     window.api.lsp
@@ -2529,19 +2708,36 @@ export function FileModal({
     if (!effPath || lspStatus !== 'ready' || res?.content == null) return
     let alive = true
     let tries = 0
+    let lastSig = '' // 마지막으로 받은 토큰의 지문 — 개선 감시(아래) 비교 기준
+    let stable = 0 // 같은 결과가 연속으로 온 횟수 — 2번이면 확정으로 보고 폴링 종료
+    const sig = (d: number[]): string => {
+      let h = 0
+      for (let i = 0; i < d.length; i++) h = (h * 31 + d[i]) | 0
+      return d.length + ':' + h
+    }
     const fetchTokens = (): void => {
       window.api.lsp
         .semanticTokens(cwd, effPath)
         .then((t) => {
           if (!alive) return
           if (t && t.data.length) {
-            setSem(t)
-            setSemLive(true) // 서버가 이 파일을 실제로 파싱했다 — 분석칩 내림
-          } else if (t && tries++ < 75) setTimeout(fetchTokens, 800)
+            const s = sig(t.data)
+            if (s !== lastSig) {
+              lastSig = s
+              stable = 0
+              setSem(t)
+              setSemLive(true) // 서버가 이 파일을 실제로 파싱했다 — 분석칩 내림
+            } else stable++
+            // 토큰은 한 번 왔다고 최종이 아니다 — Roslyn(형제 프로젝트 컴파일 완료)·clangd
+            // (백그라운드 인덱싱)는 시간이 지나며 분류가 좋아진다. 두 번 연속 같은 결과가
+            // 나올 때까지 이어 물어 마지막 개선을 줍는다(보통 1~2번 만에 끝난다).
+            if (stable < 2 && tries++ < 90) setTimeout(fetchTokens, stable ? 2500 : 1200)
+          } else if (t && !lastSig && tries++ < 75) setTimeout(fetchTokens, 800)
           // 빈 토큰이 재시도 한도까지 이어짐(컴파일 DB 밖 파일 등 — 서버가 이 문서에 끝내
           // 토큰을 안 줌) 또는 토큰 미지원 서버 — 분석칩을 내리고 hljs 색으로 확정한다.
-          // 안 그러면 "심볼 분석 중" 배지가 영영 남는다.
-          else setNoSem(true)
+          // 안 그러면 "심볼 분석 중" 배지가 영영 남는다. (이미 색이 있는데 빈 응답이 오면
+          // — 서버 재시작 등 — 받은 색을 유지하고 조용히 멈춘다)
+          else if (!lastSig) setNoSem(true)
         })
         .catch(() => {})
     }
@@ -2551,13 +2747,38 @@ export function FileModal({
     }
   }, [effPath, cwd, lspStatus, res])
 
-  // 파일별 "심볼 분석 중" 판정 — 서버의 라이브 토큰이 도착할 때까지 true(서버 워밍/파싱 중).
-  // 디스크 캐시 색(sem)이 먼저 칠해져도 서버가 아직 이 파일을 파싱 전이면 칩을 유지한다 —
-  // 호버·정의 이동이 그때부터 되므로 이게 정직한 신호다. 시맨틱 토큰 없는 서버(noSem)·
-  // 미지원/에러면 사라진다.
+  // 호버 준비 프로브 — 첫 라이브 토큰이 오면 첫 토큰 위치에 호버를 한 번 쏴서 "응답이 온다"를
+  // 확인한다. 내용(null이어도)과 무관하게 완료 자체가 풀 시맨틱 준비 신호다. 이걸 기다려야
+  // "칩은 사라졌는데 호버는 몇 초 더 걸리는" 거짓 구간이 없어진다. 서버가 오래 걸려도 칩을
+  // 15초 이상 잡아두지는 않는다(그때는 프로브 완료를 기다리지 않고 내림).
+  useEffect(() => {
+    if (!semLive || hoverReady) return
+    if (!effPath || !sem || sem.data.length < 2) {
+      setHoverReady(true)
+      return
+    }
+    let alive = true
+    const done = (): void => {
+      if (alive) setHoverReady(true)
+    }
+    const cap = setTimeout(done, 15000)
+    window.api.lsp.hover(cwd, effPath, { line: sem.data[0], character: sem.data[1] + 1 }).then(done, done)
+    return () => {
+      alive = false
+      clearTimeout(cap)
+    }
+  }, [semLive, hoverReady, effPath, cwd, sem])
+
+  // 파일별 "심볼 분석 중" 판정 — 서버의 라이브 토큰이 도착하고 호버(풀 시맨틱)까지 응답할 때
+  // 까지 true(서버 워밍/파싱 중). 디스크 캐시 색(sem)이 먼저 칠해져도 서버가 아직 이 파일을
+  // 파싱 전이면 칩을 유지한다 — 호버·정의 이동이 그때부터 되므로 이게 정직한 신호다.
+  // 시맨틱 토큰 없는 서버(noSem)·미지원/에러면 사라진다.
   const isCodeView = !!effPath && !isImg && ovContent == null && res?.content != null
   const analyzing =
-    isCodeView && !semLive && !noSem && (lspStatus === 'starting' || lspStatus === 'installing' || lspStatus === 'ready')
+    isCodeView &&
+    !(semLive && hoverReady) &&
+    !noSem &&
+    (lspStatus === 'starting' || lspStatus === 'installing' || lspStatus === 'ready')
   // 분석 중에만 프로젝트 인덱싱 %를 가볍게 폴링해 칩에 보여준다(없으면 % 없이 '심볼 분석 중')
   useEffect(() => {
     if (!analyzing || !cwd) {

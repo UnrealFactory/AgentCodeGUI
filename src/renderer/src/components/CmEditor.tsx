@@ -41,7 +41,7 @@ import { readDiffField, type DiffMarks } from '../lib/cmDiff'
 import { findField, setFindHits, computeMatches } from '../lib/cmFind'
 import { paletteClassFor } from './fileType'
 import { IconSearch, IconChevDown, IconClose, IconAlert } from './icons'
-import { HoverContent } from './FileModal'
+import { HoverContent, identAt } from './FileModal'
 
 export interface CmEditorHandle {
   save: () => void
@@ -547,6 +547,9 @@ export const CmEditor = forwardRef<
           .catch(() => null)
         if (!r || !r.contents) return null
         const md = r.contents
+        // 커서 밑 식별자 — 별칭 카드(Roslyn이 IntPtr→nint로 정규화)의 NAME 복원용
+        const hovLine = v.state.doc.lineAt(pos)
+        const word = identAt(hovLine.text, pos - hovLine.from) ?? undefined
         return {
           pos,
           create: () => {
@@ -555,7 +558,7 @@ export const CmEditor = forwardRef<
             const root = createRoot(dom)
             let alive = true
             const draw = (mods?: string[]): void =>
-              root.render(<HoverContent md={md} lang={lang} dict={semDictRef.current} extraMods={mods} />)
+              root.render(<HoverContent md={md} lang={lang} dict={semDictRef.current} extraMods={mods} word={word} />)
             draw()
             // C#: OmniSharp 호버엔 접근지시자(public/static…)가 없어 정의 줄을 읽어 ACCESS
             // 행을 보강한다(뷰어 CodeView와 동일). 도착하면 카드를 다시 그린다.

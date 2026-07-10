@@ -187,6 +187,10 @@ const CS_GLOSSARY: Gloss = {
   sealed: '더 이상 상속(또는 재정의)할 수 없게 봉인합니다.',
   partial: '한 타입의 정의를 여러 파일에 나눠 적을 수 있게 합니다.',
   required: '객체를 만들 때 반드시 초기화해야 하는 멤버로 만듭니다.',
+  // 연산자·형변환
+  operator: '연산자(`+`, `==`, 형변환…)를 이 타입에 맞게 재정의하는 멤버를 선언합니다.',
+  implicit: '암시적 형변환 연산자로 선언합니다 — 캐스트 없이 자동으로 변환됩니다. (`public static implicit operator …`)',
+  explicit: '명시적 형변환 연산자로 선언합니다 — `(타입)값` 캐스트를 써야만 변환됩니다.',
   // 변수·값
   var: '컴파일러가 초기값에서 타입을 추론하는 지역 변수를 선언합니다.',
   new: '새 객체를 만듭니다. 멤버 앞에서는 부모 멤버를 가리는 재선언 표시이기도 합니다.',
@@ -223,6 +227,10 @@ const CS_GLOSSARY: Gloss = {
   // 비동기
   async: '비동기 메서드를 만듭니다. 보통 `Task` 를 돌려주고, 안에서 `await` 를 쓸 수 있습니다.',
   await: '비동기 작업이 끝날 때까지 기다렸다가 결과값을 꺼냅니다. 스레드를 막지 않습니다.',
+  // 저수준(unsafe)
+  unsafe: '포인터 등 안전 검증이 꺼진 코드를 담는 블록/한정자입니다. 프로젝트에 `AllowUnsafeBlocks` 가 켜져 있어야 합니다.',
+  stackalloc: '힙 대신 스택에 메모리 블록을 할당합니다. 메서드가 끝나면 자동으로 사라지고, GC 부담이 없습니다.',
+  fixed: 'GC가 객체를 옮기지 못하게 주소를 고정한 채 포인터를 얻습니다. `unsafe` 문맥에서 씁니다.',
   // 매개변수 전달
   ref: '변수를 참조로 전달합니다. 메서드 안에서 바꾸면 원본도 바뀝니다.',
   out: '메서드가 값을 내보내는 용도의 매개변수입니다. 메서드가 반드시 값을 채워야 합니다.',
@@ -244,6 +252,8 @@ const CS_GLOSSARY: Gloss = {
   uint: '32비트 부호 없는 정수입니다.',
   ulong: '64비트 부호 없는 정수입니다.',
   ushort: '16비트 부호 없는 정수입니다.',
+  nint: '포인터와 같은 크기의 부호 있는 정수입니다(32비트 프로세스 4바이트, 64비트 8바이트). `System.IntPtr` 의 별칭으로, 네이티브 상호운용에 씁니다.',
+  nuint: '포인터와 같은 크기의 부호 없는 정수입니다. `System.UIntPtr` 의 별칭입니다.',
   float: '32비트 소수(단정밀도)입니다. 리터럴엔 `f` 를 붙입니다.',
   double: '64비트 소수(배정밀도)입니다. 소수 리터럴의 기본 타입입니다.',
   decimal: '금액 계산에 알맞은 고정 정밀도 십진 소수입니다. 리터럴엔 `m` 을 붙입니다.',
@@ -695,6 +705,18 @@ export function glossaryDoc(lang: string, word: string): string | undefined {
   return g && hasOwn(g, word) ? g[word] : undefined
 }
 
+/** 줄의 col 위치 식별자와 시작 열 — main의 문맥 판정(C# 세터 value 등)용 공개 헬퍼. */
+export function glossaryWordAt(line: string, col: number): { word: string; start: number } | null {
+  if (col < 0 || col > line.length) return null
+  let a = col
+  let b = col
+  const isW = (c: string): boolean => /[A-Za-z0-9_]/.test(c)
+  while (a > 0 && isW(line[a - 1])) a--
+  while (b < line.length && isW(line[b])) b++
+  const w = line.slice(a, b)
+  return /^[A-Za-z_]\w*$/.test(w) ? { word: w, start: a } : null
+}
+
 // the identifier under a column, or null — verse.ts의 wordAt과 동일한 규칙
 function wordAt(line: string, col: number): string | null {
   if (col < 0 || col > line.length) return null
@@ -755,6 +777,9 @@ const NON_PRIORITY: Record<string, Set<string>> = {
   csharp: new Set([
     'var', 'dynamic', 'async', 'await', 'get', 'set', 'init', 'value', 'yield', 'when', 'where',
     'with', 'record', 'required', 'nameof', 'partial', 'base', 'this'
+    // nint/nuint는 우선(비-NON_PRIORITY) — int처럼 우리 설명 카드가 낫다(사용자 피드백).
+    // this/base는 LSP 우선 유지 — Roslyn의 "가리키는 타입" 카드가 유용해서, manager가 그
+    // 카드에 키워드 설명을 append한다(침묵하면 용어집 폴백이 답하므로 설명은 항상 나온다).
   ]),
   typescript: new Set([
     'this', 'as', 'is', 'asserts', 'satisfies', 'keyof', 'infer', 'type', 'module', 'namespace',
@@ -770,6 +795,36 @@ const NON_PRIORITY: Record<string, Set<string>> = {
     'match', 'case', 'self', 'cls', '__init__',
     'int', 'float', 'str', 'bool', 'list', 'dict', 'tuple', 'set', 'bytes'
   ])
+}
+
+/**
+ * C# `?` 계열 기호 연산자 설명 — wordAt(식별자 전용)이 못 잡는 기호를 위치로 판별한다.
+ * 기호는 사용자 식별자가 될 수 없으므로 LSP보다 먼저 답해도 심볼 호버를 가리지 않는다
+ * (Verse의 `?` 옵션 연산자 처리와 같은 규칙). 커서가 '?' 자체가 아니라 `?.`의 '.',
+ * `??`의 둘째 글자, `??=`의 '=' 위에 있어도 잡는다.
+ */
+export function csSymbolDoc(line: string, col: number): string | null {
+  if (!line) return null
+  let i = col
+  if (line[i] !== '?') {
+    if ((line[i] === '.' || line[i] === '=' || line[i] === '[') && line[i - 1] === '?') i--
+    else if (line[i - 1] === '?') i--
+    else return null
+  }
+  while (i > 0 && line[i - 1] === '?') i-- // '??'의 둘째 '?'에 올려도 시작 위치로
+  if (line[i] !== '?') return null
+  if (inStringOrComment('csharp', line, i)) return null
+  const three = line.slice(i, i + 3)
+  const two = line.slice(i, i + 2)
+  if (three === '??=') return '왼쪽이 `null`일 때만 오른쪽 값을 대입합니다(널 병합 대입).'
+  if (two === '??') return '왼쪽이 `null`이면 대신 오른쪽 값을 씁니다(널 병합 연산자).'
+  if (two === '?.') return '왼쪽이 `null`이면 멤버에 접근하지 않고 전체가 `null`이 됩니다(널 조건 연산자).'
+  if (two === '?[') return '왼쪽이 `null`이면 인덱싱하지 않고 전체가 `null`이 됩니다(널 조건 인덱서).'
+  // 단독 '?' — 앞 토큰에 붙어 있으면 nullable 타입 표시, 띄어 있으면 조건(삼항) 연산자
+  const attached = i > 0 && /[\w>\])]/.test(line[i - 1])
+  return attached
+    ? '이 타입의 값이 `null`일 수도 있음을 표시합니다(nullable). 컴파일러가 `null` 검사 경고로 도와줍니다.'
+    : '조건(삼항) 연산자입니다: `조건 ? 참일 때 값 : 거짓일 때 값`.'
 }
 
 /** 예약어 우선 호버 — 용어집 항목 중 "진짜 예약어"만, LSP 요청 전에 답한다. 아니면 null. */

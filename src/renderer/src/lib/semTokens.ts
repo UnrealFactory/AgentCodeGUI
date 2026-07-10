@@ -81,8 +81,12 @@ export function riderSemClass(type: string, modBits: number, modNames: string[],
     case 'extensionMethod': // Roslyn
     case 'operatorOverloaded':
       return 'sem-fn'
-    case 'operator': // C++ 사용자 정의 연산자 호출만 메서드 색 — 그 외 연산자는 기본색
-      return cpp && has('userDefined') ? 'sem-fn' : null
+    case 'operator': // C++ 사용자 정의 연산자 호출만 메서드 색 — 그 외 연산자는 기본색.
+      // C#(Roslyn)은 명시적 기본색으로 — hljs가 어트리뷰트 전체를 meta(보라)로 칠해 둔 위에
+      // 시맨틱이 식별자만 덮으면 사이의 '.'·연산자가 보라로 남는다.
+      return cpp ? (has('userDefined') ? 'sem-fn' : null) : 'sem-plain'
+    case 'punctuation': // Roslyn: 괄호·쉼표·세미콜론 — 위와 같은 이유로 기본색을 명시한다
+      return 'sem-plain'
     case 'property':
     case 'field':
     case 'fieldName':
@@ -107,6 +111,36 @@ export function riderSemClass(type: string, modBits: number, modNames: string[],
     default:
       return null
   }
+}
+
+// ── C# 타입 힌트 (BCL 시드 + 세션 학습) ──────────────────────────────
+// Roslyn은 합성 문서(F12로 들어가는 MetadataAsSource 임시 소스 등)에 BCL 참조를 붙여 주지
+// 않아 IntPtr 같은 타입이 'variable'(미해석 → 기본색)로 남는다 — 진단 풀로도 안 풀리는 서버
+// 한계. 렌더러에서 메운다: 어디선가 실제로 타입(class/struct)으로 분류된 PascalCase 이름을
+// 세션 동안 기억했다가, 미해석 토큰이 그 이름이면 타입색으로 승격한다. 흔한 BCL 타입은 시드로
+// 미리 넣어 첫 파일부터 통하게 한다. 지역변수 오염은 ① PascalCase 관례 ② "타입으로 분류된 적
+// 있는 이름만 기억" 두 겹으로 막는다(camelCase 지역변수는 힌트에 아예 안 들어간다).
+const CS_TYPE_HINTS = new Map<string, string>([
+  ['IntPtr', 'sem-type2'], ['UIntPtr', 'sem-type2'], ['Guid', 'sem-type2'], ['DateTime', 'sem-type2'],
+  ['DateTimeOffset', 'sem-type2'], ['TimeSpan', 'sem-type2'], ['Span', 'sem-type2'], ['ReadOnlySpan', 'sem-type2'],
+  ['Memory', 'sem-type2'], ['CancellationToken', 'sem-type2'], ['Boolean', 'sem-type2'], ['Int32', 'sem-type2'],
+  ['Int64', 'sem-type2'], ['Single', 'sem-type2'], ['Double', 'sem-type2'], ['Byte', 'sem-type2'],
+  ['Char', 'sem-type2'], ['Decimal', 'sem-type2'],
+  ['String', 'sem-type'], ['Object', 'sem-type'], ['Type', 'sem-type'], ['Exception', 'sem-type'],
+  ['Task', 'sem-type'], ['Action', 'sem-type'], ['Func', 'sem-type'], ['Delegate', 'sem-type'],
+  ['Array', 'sem-type'], ['Attribute', 'sem-type'], ['EventHandler', 'sem-type']
+])
+const CS_HINT_CAP = 4000 // 세션 학습 상한 — 오래 켜 둬도 무한히 안 자라게
+
+/** 타입(class/struct 계열)으로 분류된 C# 이름을 기억한다 — PascalCase만. */
+export function csRememberType(name: string, cls: string): void {
+  if (CS_TYPE_HINTS.size >= CS_HINT_CAP || !/^[A-Z]/.test(name)) return
+  CS_TYPE_HINTS.set(name, cls)
+}
+
+/** 미해석('variable') C# 토큰의 타입색 힌트 — 없으면 undefined(기본색 유지). */
+export function csTypeHint(name: string): string | undefined {
+  return CS_TYPE_HINTS.get(name)
 }
 
 export interface SemSpan {
@@ -134,7 +168,8 @@ export function semByLine(
   if (!sem.data.length) return null
   const rider = !!paletteClassFor(lang)
   const cpp = lang === 'cpp' || lang === 'c'
-  const srcLines = structOv && text ? text.split('\n') : null
+  const cs = lang === 'csharp'
+  const srcLines = text && (structOv || cs) ? text.split('\n') : null
   const m = new Map<number, SemSpan[]>()
   for (let i = 0; i < sem.data.length; i += 5) {
     const type = sem.types[sem.data[i + 3]] ?? ''
@@ -143,6 +178,14 @@ export function semByLine(
     if (srcLines && structOv && (type === 'class' || type === 'property')) {
       const tx = (srcLines[sem.data[i]] ?? '').substr(sem.data[i + 1], sem.data[i + 2])
       if (type === 'class' ? structOv.types.has(tx) : structOv.fields.has(tx)) cls = 'sem-type2'
+    }
+    // C# 타입 힌트 — 타입으로 분류된 이름은 기억하고, 미해석('variable')은 힌트로 승격.
+    // null 계열 연산자(?·??·??=·?.)는 키워드색 — 공식 문법이 눈에 띄게(사용자 피드백).
+    if (srcLines && cs) {
+      const tx = (srcLines[sem.data[i]] ?? '').substr(sem.data[i + 1], sem.data[i + 2])
+      if (cls === 'sem-type' || cls === 'sem-type2') csRememberType(tx, cls)
+      else if (type === 'variable' && cls === 'sem-plain') cls = csTypeHint(tx) ?? cls
+      else if ((type === 'operator' || type === 'punctuation') && /^(\?|\?\?|\?\?=|\?\.)$/.test(tx)) cls = 'sem-kw'
     }
     const line = sem.data[i]
     let arr = m.get(line)
@@ -165,6 +208,7 @@ export function buildSemDict(
   if (!sem.data.length) return null
   const rider = !!paletteClassFor(lang)
   const cpp = lang === 'cpp' || lang === 'c'
+  const cs = lang === 'csharp'
   const srcLines = text.split('\n')
   const counts = new Map<string, Map<string, number>>()
   for (let i = 0; i < sem.data.length; i += 5) {
@@ -175,6 +219,11 @@ export function buildSemDict(
     if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(t)) continue // 연산자·괄호 토큰 제외
     if (structOv && (type === 'class' || type === 'property')) {
       if (type === 'class' ? structOv.types.has(t) : structOv.fields.has(t)) cls = 'sem-type2'
+    }
+    // C# 타입 힌트 — semByLine과 같은 규칙 (호버 카드 사전도 같은 색을 보게)
+    if (cs) {
+      if (cls === 'sem-type' || cls === 'sem-type2') csRememberType(t, cls)
+      else if (type === 'variable' && cls === 'sem-plain') cls = csTypeHint(t) ?? cls
     }
     let byCls = counts.get(t)
     if (!byCls) counts.set(t, (byCls = new Map()))
