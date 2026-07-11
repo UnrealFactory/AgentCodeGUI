@@ -59,7 +59,7 @@ const api: WindowApi = {
   // webUtils.getPathForFile must run in the preload (not the sandboxed renderer); the
   // File is passed through the contextBridge function call and resolved to its OS path
   pathForFile: (file: File) => webUtils.getPathForFile(file),
-  getUsage: (fresh?: boolean) => ipcRenderer.invoke(IPC.getUsage, fresh),
+  getUsage: (fresh?: boolean, account?: string) => ipcRenderer.invoke(IPC.getUsage, fresh, account),
   auth: {
     status: () => ipcRenderer.invoke(IPC.authStatus),
     logout: () => ipcRenderer.invoke(IPC.authLogout),

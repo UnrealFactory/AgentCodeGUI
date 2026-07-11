@@ -208,16 +208,22 @@ function MainApp({ user }: { user: AppUser }) {
   const chatScrollRef = useMemo(() => mergeRefs(scrollRef, setScrollEl, chatZoom.ref), [chatZoom.ref])
   const composerRef = useRef<HTMLTextAreaElement>(null)
 
-  // rate-limit usage: on mount and whenever a run finishes
+  // rate-limit usage: 마운트 + 이 채팅의 실행 계정이 바뀔 때(계정 picker·채팅 전환) —
+  // 컨텍스트 한도는 "이 채팅이 실제로 소비할 계정" 기준이어야 해서 계정을 함께 넘긴다
   useEffect(() => {
-    window.api.getUsage().then(setUsage).catch(() => {})
+    window.api.getUsage(false, picker.account).then(setUsage).catch(() => {})
+  }, [picker.account])
+  useEffect(() => {
     window.api.apiConfig.get().then(setApiCfg).catch(() => {})
   }, [])
 
   // 설정 모달을 닫으면 API 설정을 다시 읽는다 — 방금 키를 등록/삭제했을 수 있다.
   // 키가 사라졌으면 API 모드도 끈다(키 없는 API 모드는 실행이 실패하므로).
+  // 사용량도 다시 — Account 탭에서 활성 계정을 전환했을 수 있다(토큰이 바뀌면
+  // 메인 캐시가 자동 미스라 새 계정 수치가 바로 온다).
   useEffect(() => {
     if (settingsOpen) return
+    window.api.getUsage(true, picker.account).then(setUsage).catch(() => {})
     window.api.apiConfig
       .get()
       .then((s) => {
@@ -300,7 +306,7 @@ function MainApp({ user }: { user: AppUser }) {
   useEffect(() => {
     if (state.status === 'done' || state.status === 'error') {
       // fresh — 추가 크레딧 잔액이 방금 실행의 소비를 바로 반영하게 (5분 캐시 우회)
-      window.api.getUsage(true).then(setUsage).catch(() => {})
+      window.api.getUsage(true, picker.account).then(setUsage).catch(() => {})
       // API 모드 누적 사용액(전역)도 갱신 — 남은 예산 링이 실행 직후 바로 맞아떨어지게
       window.api.apiConfig.get().then(setApiCfg).catch(() => {})
       setFsTick((t) => t + 1)
@@ -1036,7 +1042,7 @@ function MainApp({ user }: { user: AppUser }) {
   const onOpenSubagent = useEvent((a: SubAgentInfo) => setOpenSubagentId(a.id))
   // 컨텍스트 팝오버 열 때 사용량 강제 새로고침 — 추가 크레딧 잔액이 그 순간 최신이게
   const onRefreshUsage = useEvent(() => {
-    window.api.getUsage(true).then(setUsage).catch(() => {})
+    window.api.getUsage(true, picker.account).then(setUsage).catch(() => {})
   })
   // ── Git 카드 ───────────────────────────────────────────────
   const onOpenGit = useEvent(() => {

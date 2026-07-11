@@ -141,14 +141,15 @@ export function ChatWorkspace({
   // file with the default blank chat before hydration finishes
   const [hydrated, setHydrated] = useState(false)
   // App refreshes usage on the MAIN engine's runs, which never fire here — so the chat
-  // workspace keeps its own copy fresh (seeded from the prop) on mount + each run end
+  // workspace keeps its own copy fresh (seeded from the prop) on mount + each run end.
+  // 계정을 함께 넘긴다 — 이 채팅이 다른 실행 계정(picker.account)이면 한도도 그 계정 기준
   const [liveUsage, setLiveUsage] = useState<UsageInfo>(usage)
   useEffect(() => {
-    window.api.getUsage().then(setLiveUsage).catch(() => {})
-  }, [])
+    window.api.getUsage(false, picker.account).then(setLiveUsage).catch(() => {})
+  }, [picker.account])
   useEffect(() => {
     // fresh — 추가 크레딧 잔액이 방금 실행의 소비를 바로 반영하게 (5분 캐시 우회)
-    if (state.status === 'done' || state.status === 'error') window.api.getUsage(true).then(setLiveUsage).catch(() => {})
+    if (state.status === 'done' || state.status === 'error') window.api.getUsage(true, picker.account).then(setLiveUsage).catch(() => {})
   }, [state.status])
 
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -460,7 +461,7 @@ export function ChatWorkspace({
   const openViewer = useEvent((imgs: string[], index: number) => setViewer({ images: imgs, index }))
   // 컨텍스트 팝오버 열 때 사용량 강제 새로고침 — 추가 크레딧 잔액이 그 순간 최신이게
   const onRefreshUsage = useEvent(() => {
-    window.api.getUsage(true).then(setLiveUsage).catch(() => {})
+    window.api.getUsage(true, picker.account).then(setLiveUsage).catch(() => {})
   })
 
   // 작업 바(할 일·서브에이전트·변경된 파일·컨텍스트)에서 연 것들 — 단일(코드) 모드와

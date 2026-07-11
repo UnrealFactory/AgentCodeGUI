@@ -162,7 +162,7 @@ export function SessionWindow(): React.ReactElement {
 
   const started = state.messages.length > 0
   const onRefreshUsage = (): void => {
-    window.api.getUsage(true).then(setUsage).catch(() => {})
+    window.api.getUsage(true, picker.account).then(setUsage).catch(() => {})
   }
 
   // 실행이 끝나면 API 누적 사용액을 다시 읽는다 — 작업 바의 남은 예산이 바로 맞아떨어지게
@@ -207,8 +207,11 @@ export function SessionWindow(): React.ReactElement {
   // avatar/name from the shared saved profile; usage for the composer strip
   useEffect(() => {
     window.api.getProfile().then((p) => p && setUser(userFromProfile(p))).catch(() => {})
-    window.api.getUsage().then(setUsage).catch(() => {})
   }, [])
+  // 사용량은 이 창의 실행 계정 기준 — 계정 picker로 바꾸면 한도도 그 계정 것으로 갱신
+  useEffect(() => {
+    window.api.getUsage(false, picker.account).then(setUsage).catch(() => {})
+  }, [picker.account])
 
   // 지난번에 고른 작업 폴더 복원 — 폴더가 지워졌을 수 있으니 존재를 확인하고, 없으면 바탕화면으로.
   useEffect(() => {

@@ -10,7 +10,7 @@ import { readProfile, writeProfile } from './profile'
 import { readUiPrefs, writeUiPrefs } from './uiPrefs'
 import { apiConfigStatus, setApiKey, clearApiKey, setBudget, resetSpend } from './apiConfig'
 import { readApiUsage } from './apiUsage'
-import { authStatus, authLogin, authLogout, authLoginCancel, listAccounts, switchAccount, removeAccount, accountsUsage } from './auth'
+import { authStatus, authLogin, authLogout, authLoginCancel, listAccounts, switchAccount, removeAccount, accountsUsage, activeAccountEmail, accountAccessToken } from './auth'
 import { setVerseDocKo } from './lsp/verseDocKo'
 import { setUeDocKo } from './lsp/ueDocKo'
 import { bumpVerseRegistryRev } from './lsp/verseMemberDb'
@@ -608,24 +608,50 @@ function createWindow(): void {
 }
 
 // ── OAuth rate-limit usage (5h / weekly), mirroring statusline.js ───────────
-let usageCache: { at: number; data: UsageInfo } | null = null
+// 캐시는 계정별(키=계정 이메일, ''=전역) + 엔트리에 조회 토큰을 함께 저장 — 토큰이
+// 달라지면(설정 → Account 전환 = 크리덴셜 스왑) TTL이 남았어도 캐시 미스로 떨어져,
+// 전환 직후 이전 계정 수치가 최대 5분 남던 문제가 구조적으로 사라진다.
+const usageCache = new Map<string, { at: number; token: string; data: UsageInfo }>()
+// 같은 키의 동시 조회 합치기 — 마운트/설정 닫기/실행 종료가 겹쳐도 API는 한 번만 맞는다
+const usageInflight = new Map<string, Promise<UsageInfo>>()
 const USAGE_TTL = 5 * 60 * 1000
 // 강제 새로고침(fresh)의 바닥 TTL — 추가 크레딧 잔액은 실행마다 실제 돈이 줄어드는
 // 값이라 5분 캐시는 너무 낡는다. 실행 종료·팝오버 열기 순간엔 새로 받되, 연타가
 // API를 때리지 않게 15초는 재사용한다.
 const USAGE_TTL_FRESH = 15 * 1000
 
-async function getUsage(fresh = false): Promise<UsageInfo> {
-  const empty: UsageInfo = { fiveHour: null, weekly: null, weeklyFable: null, extraCredit: null }
-  if (usageCache && Date.now() - usageCache.at < (fresh ? USAGE_TTL_FRESH : USAGE_TTL)) return usageCache.data
-  let token: string | undefined
+// 조회에 쓸 토큰 — account(채팅별 실행 계정)가 전역 활성 계정과 다르면 그 계정의 저장
+// 토큰(스냅샷/물질화 폴더 중 신선한 쪽), 아니면 전역 로그인(~/.claude) 토큰. 컨텍스트
+// 팝오버의 한도는 "이 채팅이 실제로 소비할 계정" 기준이어야 하기 때문.
+function usageTokenFor(account?: string): { token: string; key: string } | null {
+  if (account && account !== activeAccountEmail()) {
+    const token = accountAccessToken(account)
+    return token ? { token, key: account } : null
+  }
   try {
     const creds = JSON.parse(fs.readFileSync(path.join(os.homedir(), '.claude', '.credentials.json'), 'utf8'))
-    token = creds?.claudeAiOauth?.accessToken
+    const token: unknown = creds?.claudeAiOauth?.accessToken
+    return typeof token === 'string' && token ? { token, key: '' } : null
   } catch {
-    /* no credentials */
+    return null
   }
-  if (!token) return empty
+}
+
+async function getUsage(fresh = false, account?: string): Promise<UsageInfo> {
+  const empty: UsageInfo = { fiveHour: null, weekly: null, weeklyFable: null, extraCredit: null }
+  const tk = usageTokenFor(account)
+  if (!tk) return empty
+  const hit = usageCache.get(tk.key)
+  if (hit && hit.token === tk.token && Date.now() - hit.at < (fresh ? USAGE_TTL_FRESH : USAGE_TTL)) return hit.data
+  const inflight = usageInflight.get(tk.key)
+  if (inflight) return inflight
+  const req = fetchUsage(tk.token, tk.key).finally(() => usageInflight.delete(tk.key))
+  usageInflight.set(tk.key, req)
+  return req
+}
+
+async function fetchUsage(token: string, cacheKey: string): Promise<UsageInfo> {
+  const empty: UsageInfo = { fiveHour: null, weekly: null, weeklyFable: null, extraCredit: null }
   try {
     const ctrl = new AbortController()
     const timer = setTimeout(() => ctrl.abort(), 5000)
@@ -691,7 +717,7 @@ async function getUsage(fresh = false): Promise<UsageInfo> {
           }
         : null
     }
-    usageCache = { at: Date.now(), data }
+    usageCache.set(cacheKey, { at: Date.now(), token, data })
     return data
   } catch {
     return empty
@@ -814,7 +840,7 @@ function registerIpc(): void {
     await fs.promises.writeFile(abs, Buffer.from(a.bytes))
     return abs
   })
-  ipcMain.handle(IPC.getUsage, async (_e, fresh?: boolean) => getUsage(!!fresh))
+  ipcMain.handle(IPC.getUsage, async (_e, fresh?: boolean, account?: string) => getUsage(!!fresh, account))
 
   // 클로드 계정(구독) 로그인 — 번들 CLI의 `claude auth …` 호출 (설정 → 계정)
   ipcMain.handle(IPC.authStatus, async () => authStatus())

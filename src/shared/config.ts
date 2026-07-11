@@ -6,4 +6,4 @@
  * auto-update compares against) via `useAppVersion()` — this is just the pre-IPC
  * placeholder, so keep it roughly in sync with package.json to avoid a visible flash.
  */
-export const APP_VERSION = '1.7.10'
+export const APP_VERSION = '1.7.11'

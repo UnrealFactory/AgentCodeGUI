@@ -62,8 +62,10 @@ export interface WindowApi {
   /** resolve the absolute filesystem path of a dragged-in File (Electron webUtils) */
   pathForFile(file: File): string
   /** 구독 사용량 (한도·추가 크레딧). 기본은 5분 캐시 — fresh=true는 15초 바닥만 지키고
-   *  새로 받아온다 (실행 종료·컨텍스트 팝오버 열기 등 "지금 값"이 필요한 순간용) */
-  getUsage(fresh?: boolean): Promise<UsageInfo>
+   *  새로 받아온다 (실행 종료·컨텍스트 팝오버 열기 등 "지금 값"이 필요한 순간용).
+   *  account: 이 채팅의 실행 계정(picker.account) — 전역 활성 계정과 다르면 그 계정의
+   *  저장 토큰으로 조회해, 컨텍스트 팝오버 한도가 실제 소비될 계정 기준이 되게 한다. */
+  getUsage(fresh?: boolean, account?: string): Promise<UsageInfo>
   /** 클로드 계정(구독 OAuth) 로그인 — 번들 CLI의 `claude auth …`를 감싼다 (설정 → 계정). */
   auth: {
     /** 현재 로그인 상태 (이메일·플랜·로그인 여부) */

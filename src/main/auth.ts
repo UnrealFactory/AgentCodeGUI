@@ -436,25 +436,45 @@ function deleteAccountDir(email: string): void {
   }
 }
 
-// 저장된 계정별 한도 사용률 — 전환 없이 각 스냅샷의 액세스 토큰으로 usage API를 병렬 조회.
+// 저장 계정의 usage 조회용 액세스 토큰 — 스냅샷·물질화 폴더(직전 채팅별 실행에서 CLI가
+// 리프레시했을 수 있음)·전역 ~/.claude(이 계정이 지금 활성이면 — 스냅샷은 로그인/전환
+// 때만 갱신되니 오래 활성일수록 만료돼 있고, CLI는 전역 자리에서 리프레시한다) 중 가장
+// 신선한 쪽. 만료·부재·복호화 실패는 null(401 확정이거나 조회 불가 — 표시만 빠지고,
+// 전환/실행하면 CLI가 리프레시한다).
+export function accountAccessToken(email: string): string | null {
+  const target = readStore().find((a) => a.email === email)
+  if (!target) return null
+  let best: string | null = null
+  const raw = decCreds(target.credEnc)
+  if (raw) {
+    try {
+      best = (JSON.parse(raw) as AccountSnapshot).creds || null
+    } catch {
+      /* 손상된 스냅샷 — 나머지 후보로 넘어간다 */
+    }
+  }
+  const dirCreds = readFileOrNull(path.join(ACCOUNTS_DIR, accountSlug(email), '.credentials.json'))
+  const activeCreds = activeAccountEmail() === email ? readActiveCreds() : null
+  for (const c of [dirCreds, activeCreds]) if (credsExpiresAt(c) > credsExpiresAt(best)) best = c
+  if (!best) return null
+  try {
+    const o = (JSON.parse(best) as { claudeAiOauth?: { accessToken?: string; expiresAt?: number } }).claudeAiOauth
+    if (!o?.accessToken) return null
+    if (typeof o.expiresAt === 'number' && o.expiresAt <= Date.now()) return null
+    return o.accessToken
+  } catch {
+    return null
+  }
+}
+
+// 저장된 계정별 한도 사용률 — 전환 없이 각 계정의 저장 토큰으로 usage API를 병렬 조회.
 // 만료된 토큰은 조회하지 않는다(401 확정 — 전환하면 CLI가 리프레시하므로 전환 자체는 정상).
 // 실패는 조용히 null(표시만 빠짐) — 목록 UX를 네트워크에 볼모 잡히지 않게 한다.
 export async function accountsUsage(): Promise<AccountUsage[]> {
   const rows = readStore().map(async (a): Promise<AccountUsage> => {
     const empty: AccountUsage = { email: a.email, fiveHourPct: null, weeklyPct: null, fablePct: null }
-    const raw = decCreds(a.credEnc)
-    if (!raw) return empty
-    let token: string | undefined
-    let expiresAt: number | undefined
-    try {
-      const snap = JSON.parse(raw) as AccountSnapshot
-      const o = (JSON.parse(snap.creds) as { claudeAiOauth?: { accessToken?: string; expiresAt?: number } }).claudeAiOauth
-      token = o?.accessToken
-      expiresAt = o?.expiresAt
-    } catch {
-      return empty
-    }
-    if (!token || (typeof expiresAt === 'number' && expiresAt <= Date.now())) return empty
+    const token = accountAccessToken(a.email)
+    if (!token) return empty
     try {
       const ctrl = new AbortController()
       const t = setTimeout(() => ctrl.abort(), 5000)
