@@ -131,6 +131,7 @@ const api: WindowApi = {
     verseExcludes: (cwd: string) => ipcRenderer.invoke(IPC.lspVerseExcludes, { cwd }),
     install: (cwd: string, relPath: string) => ipcRenderer.invoke(IPC.lspInstall, { cwd, relPath }),
     onInstallProgress: (cb) => subscribe(IPC.lspInstallProgress, cb),
+    onFilesChanged: (cb) => subscribe(IPC.lspFilesChanged, cb),
     servers: () => ipcRenderer.invoke(IPC.lspServers),
     installServer: (id: string) => ipcRenderer.invoke(IPC.lspInstallServer, id),
     uninstallServer: (id: string) => ipcRenderer.invoke(IPC.lspUninstallServer, id),

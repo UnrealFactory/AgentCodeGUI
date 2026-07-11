@@ -2503,6 +2503,10 @@ export function FileModal({
   // 호버(풀 시맨틱)까지 실제로 응답하는가 — 색 토큰은 frozen 계산이라 먼저 오고 호버는 몇 초
   // 늦을 수 있다(Roslyn 메타 문서에서 두드러짐). 칩은 둘 다 준비돼야 내린다.
   const [hoverReady, setHoverReady] = useState(false)
+  // 프로젝트의 '다른' 코드 파일이 바뀌었을 때 올리는 세대 — 멈춘 토큰 폴링을 다시 깨운다.
+  // C#(Roslyn)은 새/수정 파일의 타입이 main의 재프라임 '뒤' 요청부터 분류되므로, 이게 없으면
+  // 열려 있는 문서는 재열람 전까지 새 타입이 무색으로 남는다.
+  const [semEpoch, setSemEpoch] = useState(0)
   const [anPct, setAnPct] = useState<number | null>(null) // 분석 진행률(프로젝트 인덱싱 %)
   const [vs, setVs] = useState<ViewState>({ root: path, stack: [], fwd: [], jump: null })
   // an SVG can be viewed both ways — as the rendered image (default) or as markup
@@ -2704,10 +2708,38 @@ export function FileModal({
     }
   }, [effPath, cwd, res, isImg, ovContent])
 
+  // 프로젝트의 다른 코드 파일이 바뀌면(에이전트 생성/수정, 탐색기 작업, 저장) 토큰 세대를
+  // 올려 아래 폴링을 다시 깨운다 — C#은 main이 예약한 재프라임 뒤에야 새 파일의 타입이
+  // 분류되는데, 폴링은 stable 2회면 멈춰 있어 신호 없인 재열람 전까지 무색으로 남는다.
+  // 보고 있는 파일 '자신'의 변화는 제외 — 뷰어 본문(res)은 연 시점 스냅샷이라, 새 디스크
+  // 기준 토큰을 그 위에 칠하면 좌표가 어긋난다(자신은 재열람 때 새 내용+새 색으로 회복).
+  useEffect(() => {
+    if (!effPath || isImg || ovContent != null) return
+    const ext = (/\.([^.\\/]+)$/.exec(effPath)?.[1] ?? '').toLowerCase()
+    if (!ext) return
+    const norm = (p: string): string => p.replace(/\\/g, '/').toLowerCase()
+    const self = norm(/^(?:[a-zA-Z]:[\\/]|[\\/])/.test(effPath) ? effPath : cwd ? cwd + '/' + effPath : effPath)
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const off = window.api.lsp.onFilesChanged((e) => {
+      if (!e.exts.includes(ext)) return
+      // 자기 자신이 끼어 있으면 통째로 건너뛴다 — 본문 스냅샷이 이미 낡아, 어떤 토큰을
+      // 받아도 좌표가 어긋난다(에이전트가 이 파일+새 파일을 함께 만진 턴 포함)
+      if (e.paths.some((p) => norm(p) === self)) return
+      // 연속 변화(에이전트 턴의 여러 편집)는 마지막 것만 — 재폴링 한 번으로 합친다
+      if (timer) clearTimeout(timer)
+      timer = setTimeout(() => setSemEpoch((n) => n + 1), 1000)
+    })
+    return () => {
+      if (timer) clearTimeout(timer)
+      off()
+    }
+  }, [effPath, cwd, isImg, ovContent])
+
   // semantic highlighting: ask once the server is ready. Right after the server
   // turns ready it may still be settling (OmniSharp keeps associating documents
   // for a while after the solution loads) and answer with nothing — keep retrying
-  // for a generous window. Re-asks when the viewed file (or its content) changes.
+  // for a generous window. Re-asks when the viewed file (or its content) changes,
+  // and when semEpoch bumps (다른 파일의 변화로 이 문서의 색이 좋아질 수 있는 순간).
   // Doesn't reset sem — the cache paint above stays visible until live arrives.
   useEffect(() => {
     if (!effPath || lspStatus !== 'ready' || res?.content == null) return
@@ -2750,7 +2782,7 @@ export function FileModal({
     return () => {
       alive = false
     }
-  }, [effPath, cwd, lspStatus, res])
+  }, [effPath, cwd, lspStatus, res, semEpoch])
 
   // 호버 준비 프로브 — 첫 라이브 토큰이 오면 첫 토큰 위치에 호버를 한 번 쏴서 "응답이 온다"를
   // 확인한다. 내용(null이어도)과 무관하게 완료 자체가 풀 시맨틱 준비 신호다. 이걸 기다려야

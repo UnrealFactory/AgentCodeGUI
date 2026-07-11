@@ -35,6 +35,7 @@ import type {
   LspCompletionList,
   LspResolvedCompletion,
   VerseRegistrySnapshot,
+  LspFilesChangedEvent,
   LspInstallProgress,
   LspServerInfo,
   GitStatus,
@@ -206,6 +207,9 @@ export interface WindowApi {
     install(cwd: string, relPath: string): Promise<{ ok: boolean; error?: string }>
     /** subscribe to streamed server-download progress (returns an unsubscribe fn) */
     onInstallProgress(cb: (p: LspInstallProgress) => void): () => void
+    /** 코드 파일 변화 브로드캐스트 구독 — 열린 뷰어가 멈춘 토큰 폴링을 다시 깨운다.
+     *  (C#: 새/수정 파일의 타입은 main의 재프라임 뒤 요청부터 색이 들어온다) */
+    onFilesChanged(cb: (e: LspFilesChangedEvent) => void): () => void
     /** list every known language server + provisioning state (설정 ▸ 코드 분석) */
     servers(): Promise<LspServerInfo[]>
     /** download a server by id (settings tab) */

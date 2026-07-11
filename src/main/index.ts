@@ -1108,6 +1108,14 @@ function registerIpc(): void {
   ipcMain.handle(IPC.gitPush, async (_e, root: string) => gitApi.gitPush(root))
   ipcMain.handle(IPC.gitPull, async (_e, root: string) => gitApi.gitPull(root))
 
+  // 코드 파일 변화(에이전트 편집·저장·탐색기 작업)가 서버에 통지되면 모든 창의 뷰어에
+  // 브로드캐스트 — 열려 있는 문서의 토큰 폴링을 깨워 재프라임 뒤의 색을 받아 가게 한다
+  // (세션 창도 FileModal을 띄우므로 mainWindow 한정 send가 아니라 전 창에 보낸다)
+  lspManager.onFilesChanged = (e) => {
+    for (const w of BrowserWindow.getAllWindows()) {
+      if (!w.isDestroyed()) w.webContents.send(IPC.lspFilesChanged, e)
+    }
+  }
   ipcMain.handle(IPC.lspStatus, async (_e, a: { cwd: string; relPath: string }) =>
     lspManager.status(a.cwd || '', a.relPath)
   )

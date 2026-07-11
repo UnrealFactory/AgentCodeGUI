@@ -180,6 +180,15 @@ export interface LspSemanticTokens {
   /** modifier bit position → LSP token modifier name (the server's legend) */
   mods: string[]
 }
+/** 프로젝트 코드 파일 변화가 언어 서버들에 통지됐다는 브로드캐스트(main→모든 창) — 열린
+ *  뷰어가 멈춘 토큰 폴링을 다시 깨우는 신호. C#(Roslyn)은 새/수정 파일의 타입이 재프라임
+ *  '뒤'의 토큰 요청부터 분류되므로, 이 신호가 없으면 열려 있는 문서는 재열람 전까지 무색. */
+export interface LspFilesChangedEvent {
+  /** 바뀐 파일들의 절대 경로 — 뷰어가 "자기 자신"의 변화(본문 스냅샷과 좌표 어긋남)를 거른다 */
+  paths: string[]
+  /** 바뀐 확장자들(소문자, 점 없음) + 파생 언어 키(csproj/sln 변화 → 'cs') — 관심 판별용 */
+  exts: string[]
+}
 /** A private CompletionItemKind (outside LSP's 1–25) we tag Verse language built-ins with — built-in
  *  types (int/float/…) AND reserved literals/keywords (true/false/…). The renderer gives them their own
  *  `#` "official built-in" icon in the keyword colour, distinct from user-defined symbols. */
@@ -698,6 +707,7 @@ export const IPC = {
   lspPickVerseServer: 'lsp:pick-verse-server', // file dialog to choose Verse.vsix / verse-lsp.exe
   lspSetVersePath: 'lsp:set-verse-path', // configure the Verse server from a vsix/exe path
   lspClearVersePath: 'lsp:clear-verse-path', // forget the configured Verse server
+  lspFilesChanged: 'lsp:files-changed', // 코드 파일 변화 브로드캐스트 → 열린 뷰어의 토큰 재폴링
   winMinimize: 'win:minimize',
   winMaximizeToggle: 'win:maximize-toggle',
   winClose: 'win:close',

@@ -382,6 +382,10 @@ const RESPAWN_COOLDOWN = 30_000
 // verse only: minimum gap between checks of the workspace's digest/.vproject mtimes (a restart
 // trigger after a UEFN Verse rebuild) — without it we'd stat the digests on every hover
 const VERSE_WS_RECHECK = 4_000
+// C# 재프라임이 마지막 파일 변화 통지로부터 보장하는 조용한 간격 — Roslyn 폴백 워처의
+// 새 파일 편입(실측 0.8~1.6초, 소형 솔루션 기준)이 끝난 뒤에 프라임해야 한다. 그 전에
+// 프라임하면 새 파일이 빠진 컴파일이 "프라임 완료"로 확정돼 영영 무색(실측 재현).
+const PRIME_REDO_GAP = 3_000
 
 interface DocState {
   version: number
@@ -433,6 +437,12 @@ interface ServerHandle {
   // 그 프로젝트 컴파일을 누가 요구해야 만들어지고, 없으면 frozen 토큰 모델이 크로스 프로젝트
   // 심볼을 영영 'variable'(무색)로 분류한다. 한 번의 심볼 검색이 전 프로젝트 컴파일을 강제한다.
   wsSymPrime?: Promise<void>
+  // C# 파일이 마지막으로 생성/수정/삭제 통지된 시각(0 = 없음) — 프라임은 스냅샷이라 그 뒤의
+  // 새 파일/새 타입은 재프라임 전까지 열린 문서들에서 영영 무색이다(실측). notifyWatchedFiles가
+  // 이 시각을 찍고 wsSymPrime을 비워 다음 토큰 요청이 재프라임하게 하고, primeFullSemantics는
+  // 이 시각으로부터 조용한 간격(PRIME_REDO_GAP)을 보장한다 — Roslyn 폴백 워처의 새 파일 편입
+  // (실측 0.8~1.6초)이 끝나기 '전'의 프라임은 새 파일 없는 컴파일을 확정하는 헛프라임이다.
+  primeDirtyAt: number
   // 마지막 완성 응답의 "원본" 아이템들(서버의 data 필드 포함) — resolve는 원본을 그대로
   // 돌려보내야 한다. gen(세대)으로 렌더러의 지연 resolve가 낡은 목록을 집는 걸 막는다.
   complRaw: { gen: number; items: RawCompletionItem[] } | null
@@ -953,6 +963,10 @@ function hoverContentString(h: { contents?: unknown } | null): string {
 
 class LspManager {
   private servers = new Map<string, ServerHandle>()
+
+  /** notifyWatchedFiles가 서버에 실제로 통지했을 때 부르는 훅 — index.ts가 모든 창으로
+   *  브로드캐스트하게 배선한다(IPC.lspFilesChanged). 열린 뷰어의 토큰 재폴링 신호. */
+  onFilesChanged: ((e: { paths: string[]; exts: string[] }) => void) | null = null
 
   /**
    * Code-intelligence status for a file — and the lazy kick-off: asking for the
@@ -1949,10 +1963,14 @@ class LspManager {
   /**
    * 디스크 파일 변화(생성/수정/삭제)를 살아있는 서버들에 workspace/didChangeWatchedFiles로
    * 알린다 — 앱이 스스로 아는 변화(에이전트 Write/Edit, 내장 에디터 저장, 탐색기 파일 작업)만.
-   * Roslyn은 이 통지에 기대지 않는다: 우리가 워칭 능력을 선언하지 않아 자체 폴백 워처가 돌고
-   * (initialize 능력 주석 참조), 솔루션 멤버십 구멍은 watchCsSolution이 맡는다. 이 통지는
-   * 클라이언트 워칭에 기대는 서버들(pyright류)을 위한 최선 노력이고, 관심 없는 서버는
-   * 조용히 무시하므로 무해하다.
+   * Roslyn은 이 '통지 자체'에는 기대지 않는다: 우리가 워칭 능력을 선언하지 않아 자체 폴백
+   * 워처가 돌고(initialize 능력 주석 참조), 솔루션 멤버십 구멍은 watchCsSolution이 맡는다.
+   * 통지는 클라이언트 워칭에 기대는 서버들(pyright류)을 위한 최선 노력이고, 관심 없는 서버는
+   * 조용히 무시하므로 무해하다. 단 C#은 여기서 두 가지를 '함께' 한다:
+   *  ① 프라임 캐시 무효화 — frozen 토큰은 마지막 프라임 시점의 컴파일로 분류하므로, 그 뒤에
+   *     생긴/바뀐 파일의 타입은 재프라임 전까지 열린 문서들에서 영영 무색이다(실측 재현).
+   *  ② onFilesChanged 브로드캐스트 — 열려 있는 뷰어의 멈춘 토큰 폴링을 깨워, 재프라임 뒤의
+   *     좋아진 토큰을 실제로 받아 가게 한다(재열람 없이도 색 회복).
    *
    * 서버 root 포함 여부로 거르지 않는다: C#의 root(sln 폴더)가 cwd 밖 형제 프로젝트의 파일
    * (UnrealSharp 플러그인 Script)을 경로상 '포함'하지 않는 배치가 실제로 있다. 대신 그 서버가
@@ -1963,6 +1981,7 @@ class LspManager {
     const TYPE = { created: 1, changed: 2, deleted: 3 } as const
     // C#은 소스 외에 프로젝트/솔루션 파일 변화도 프로젝트 시스템 갱신 대상
     const CS_EXTRA = new Set(['csproj', 'sln', 'slnx', 'props', 'targets'])
+    const notified = new Map<string, string>() // 소문자 키 → 원본 절대 경로 (브로드캐스트용 중복 제거)
     for (const [key, s] of this.servers) {
       if (s.status !== 'ready') continue // 초기화 전 서버는 스킵 — 로드 시점 글롭 평가가 커버
       const def = SERVERS.find((d) => d.id === key.slice(0, key.indexOf('|')))
@@ -1972,9 +1991,34 @@ class LspManager {
         return ext in def.exts || (def.id === 'cs' && CS_EXTRA.has(ext))
       })
       if (!wanted.length) continue
+      // C#(Roslyn): 다음 semanticTokens 요청이 재프라임하도록 예약 — primeDirtyAt이 재프라임의
+      // "조용한 간격" 기준점이 된다(폴백 워처의 새 파일 편입이 끝난 뒤 컴파일 확정, 실측).
+      if (def.awaitsProjectInit) {
+        s.primeDirtyAt = Date.now()
+        s.wsSymPrime = undefined
+      }
+      for (const c of wanted) {
+        const abs = path.resolve(c.abs)
+        notified.set(abs.toLowerCase(), abs)
+      }
       s.rpc.notify('workspace/didChangeWatchedFiles', {
         changes: wanted.map((c) => ({ uri: pathToFileURL(path.resolve(c.abs)).href, type: TYPE[c.kind] }))
       })
+    }
+    // 어느 서버든 실제로 통지받았을 때만 뷰어를 깨운다 — 서버가 없으면 갱신할 토큰도 없다
+    if (notified.size && this.onFilesChanged) {
+      const paths = [...notified.values()]
+      const exts = new Set<string>()
+      for (const p of paths) {
+        const e = path.extname(p).slice(1).toLowerCase()
+        exts.add(e)
+        // 프로젝트/솔루션 파일 변화도 .cs 뷰어가 다시 칠할 사유다(멤버십/참조 변화)
+        if (e === 'cs' || e === 'csx' || CS_EXTRA.has(e)) {
+          exts.add('cs')
+          exts.add('csx')
+        }
+      }
+      this.onFilesChanged({ paths, exts: [...exts] })
     }
   }
 
@@ -2075,7 +2119,8 @@ class LspManager {
       complRaw: null,
       complGen: 0,
       projectInitPending: !!def.awaitsProjectInit,
-      progressPct: null
+      progressPct: null,
+      primeDirtyAt: 0
     }
     // Roslyn signals the full index is ready with this notification — flip the gate so
     // status() reports 'ready' and the viewer asks for (now complete) semantic tokens.
@@ -2146,7 +2191,8 @@ class LspManager {
             // 자체 폴백 파일 워처를 끄고 워칭을 전적으로 클라이언트에 맡기는데(실측), 우리는
             // 외부 변화(빌드 산출물·다른 에디터·git)까지 다 챙겨 줄 수 없다. 미선언이면 Roslyn이
             // 로드된 프로젝트 폴더를 스스로 감시해 새 파일을 수 초 안에 편입한다(실측). 남는
-            // 구멍은 '솔루션 멤버십 변화'(slnx 재생성) 하나 — watchCsSolution이 메운다.
+            // 구멍은 둘: '솔루션 멤버십 변화'(slnx 재생성)는 watchCsSolution이, '편입돼도 frozen
+            // 토큰엔 재프라임 전까지 안 들어오는 것'은 notifyWatchedFiles의 재프라임 예약이 메운다.
             workspace: { workspaceFolders: true },
           // 진행률 알림 수신 — 이걸 선언해야 clangd가 백그라운드 인덱싱 $/progress를 보낸다
           // (Roslyn은 선언 없이도 보냈지만 clangd는 능력 선언에 gate 되어 있다)
@@ -2258,6 +2304,12 @@ class LspManager {
             return
           }
           s.rpc.notify('solution/open', { solution: pathToFileURL(sln).href })
+          // 새로 로드될 프로젝트는 프라임된 적이 없다 — 재프라임을 예약하고 열린 C# 뷰어를
+          // 깨워, 새 프로젝트의 심볼이 재열람 없이 색에 반영되게 한다. (재프라임의
+          // workspace/symbol은 서버 쪽에서 솔루션 로드 완료를 기다렸다 답하므로 순서 안전)
+          s.primeDirtyAt = Date.now()
+          s.wsSymPrime = undefined
+          this.onFilesChanged?.({ paths: [], exts: ['cs', 'csx'] })
         }, 2000)
       })
     } catch {
@@ -2272,16 +2324,30 @@ class LspManager {
    * 쿼리 문자열은 무엇이든 전체 인덱스 빌드를 유발한다 — 히트 0짜리 이상한 쿼리로 페이로드만
    * 아낀다. 실패하면 프라임을 비워 다음 기회에 재시도한다.
    * 반드시 문서가 하나 이상 didOpen된 '뒤'에 불러야 한다 — 열기 전 프라임은 효과가 없다
-   * (실측). 한 번 성공하면 이후에 여는 문서들도 재프라임 없이 온전히 분류된다.
+   * (실측). 성공한 프라임은 '그 시점까지의' 소스에 유효하다 — 그 뒤 파일이 생기거나 바뀌면
+   * notifyWatchedFiles가 캐시를 비워 재프라임을 예약한다(안 하면 새 타입이 영영 무색, 실측).
+   * 재프라임은 증분 컴파일이라 값싸다(실측 0초대).
    */
   private primeFullSemantics(s: ServerHandle): Promise<void> {
     if (!s.wsSymPrime) {
       s.wsSymPrime = (async () => {
         // didOpen '직후'(같은 틱)에 쏘면 서버가 문서 열림을 워크스페이스에 반영하기 전
         // 스냅샷을 프라임해 소스 제너레이터 멤버(Bind_*의 CallXxx)가 미해석으로 남는다 —
-        // 실측: 갭 0ms=실패, 1.5s=성공. 문서가 자리잡을 시간을 주고 쏜다(서버당 1회 비용).
-        await new Promise((r) => setTimeout(r, 1500))
+        // 실측: 갭 0ms=실패, 1.5s=성공. 재프라임은 추가로 "마지막 파일 변화로부터
+        // PRIME_REDO_GAP 조용"까지 기다린다(폴백 워처의 새 파일 편입 완료 뒤에 컴파일을
+        // 확정해야 하므로 — primeDirtyAt 주석 참조). 기다리는 동안 또 바뀌면 다시 기다린다
+        // (에이전트 턴의 연속 편집을 한 번의 프라임으로 합침).
+        for (;;) {
+          const dirty = s.primeDirtyAt
+          const wait = Math.max(1500, dirty ? dirty + PRIME_REDO_GAP - Date.now() : 0)
+          await new Promise((r) => setTimeout(r, wait))
+          if (s.primeDirtyAt === dirty) break
+        }
+        const started = Date.now()
         await s.rpc.request('workspace/symbol', { query: 'zz__semantic_prime__' }, 180000)
+        // 프라임이 도는 사이 새 변화가 통지됐으면 이 프라임은 이미 낡았다 — 캐시를 비워
+        // 다음 토큰 요청이 재프라임하게 한다(뷰어의 폴링이 이어 물어 자연 회복).
+        if (s.primeDirtyAt > started) s.wsSymPrime = undefined
       })().catch(() => {
         s.wsSymPrime = undefined
       })
