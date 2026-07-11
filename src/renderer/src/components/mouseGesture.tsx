@@ -84,6 +84,15 @@ export function GestureGlyph({ pattern, size = 26 }: { pattern: string; size?: n
   )
 }
 
+/** ↑← — 추가 채팅(독립 세션 창) 열기. 대화 스레드가 있는 화면(코드·채팅·멀티 패널·추가 채팅 자신)이 공유한다. */
+export function sessionWindowGesture(): GestureAction {
+  return {
+    pattern: 'UL',
+    label: '추가 채팅 열기',
+    run: () => window.api.openSessionWindow().catch(() => {})
+  }
+}
+
 /** 스크롤러 하나짜리 화면의 ↑/↓ 제스처 한 벌 — 대상은 실행 시점에 찾는다(재마운트 안전). */
 export function scrollGestures(el: () => Element | null | undefined): GestureAction[] {
   const go = (top: boolean): void => {

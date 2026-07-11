@@ -31,7 +31,7 @@ import { FileModal } from './FileModal'
 import { Sidebar, type WorkspaceMode } from './Sidebar'
 import { ImageViewer } from './ImageViewer'
 import { useZoom, ZoomBadge, mergeRefs } from './zoom'
-import { MouseGestureLayer, type GestureAction } from './mouseGesture'
+import { MouseGestureLayer, sessionWindowGesture, type GestureAction } from './mouseGesture'
 import { IconChevDown } from './icons'
 
 // px from the bottom within which the chat counts as "at the bottom" — scrolling
@@ -309,7 +309,8 @@ export function ChatWorkspace({
         const el = scrollRef.current
         if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
       }
-    }
+    },
+    sessionWindowGesture()
   ]
 
   const activeChat = chats.find((c) => c.id === activeChatId)

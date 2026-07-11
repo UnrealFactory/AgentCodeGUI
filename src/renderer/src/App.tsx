@@ -28,7 +28,7 @@ import { PromptModal } from './components/PromptModal'
 import { RecentFiles } from './components/RecentFiles'
 import { ResizeHandles } from './components/ResizeHandles'
 import { useZoom, ZoomBadge, mergeRefs } from './components/zoom'
-import { MouseGestureLayer, type GestureAction } from './components/mouseGesture'
+import { MouseGestureLayer, sessionWindowGesture, type GestureAction } from './components/mouseGesture'
 import { IconChevDown, IconCode } from './components/icons'
 
 // px from the bottom within which the chat counts as "at the bottom" — scrolling
@@ -483,7 +483,8 @@ function MainApp({ user }: { user: AppUser }) {
         const el = scrollRef.current
         if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
       }
-    }
+    },
+    sessionWindowGesture()
   ]
 
   const cwd = manualCwd || ''

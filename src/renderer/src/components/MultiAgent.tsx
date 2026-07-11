@@ -38,7 +38,7 @@ import { imageSrc, imageName, filesToAttachmentPaths, isImagePath, isAttachableP
 import { mentionAtCaret, mentionEntries, extractMentions, type MentionEntry } from '../lib/mentions'
 import { FileBadge } from './fileType'
 import { mergeRefs } from './zoom'
-import { MouseGestureLayer, scrollGestures } from './mouseGesture'
+import { MouseGestureLayer, scrollGestures, sessionWindowGesture } from './mouseGesture'
 import {
   IconGrid,
   IconSend,
@@ -884,7 +884,7 @@ const PanelView = memo(function PanelView({
       </div>
 
       <SelectionToolbar scrollRef={scrollRef} onElaborate={onElaborate} />
-      <MouseGestureLayer target={threadEl} actions={scrollGestures(() => threadEl)} />
+      <MouseGestureLayer target={threadEl} actions={[...scrollGestures(() => threadEl), sessionWindowGesture()]} />
 
       <div className="ma-p-foot">
         {meta.queue.length > 0 && (

@@ -41,7 +41,7 @@ import {
   IconMouse,
   type IconProps
 } from './icons'
-import { GestureGlyph, GESTURE_DEFAULTS } from './mouseGesture'
+import { GestureGlyph, GESTURE_DEFAULTS, MouseGestureLayer, scrollGestures } from './mouseGesture'
 import { getTheme, setTheme, type Theme } from '../lib/theme'
 import {
   DEFAULT_HIDE_DIRS,
@@ -1647,14 +1647,16 @@ function isExtPattern(s: string): boolean {
 
 // 우클릭 드래그 제스처 — 켜고 끄기 + 동작 목록 + 감도(시작 거리·획 길이).
 // 값은 prefs에 저장되고 MouseGestureLayer가 제스처 시작 시점마다 읽으므로 즉시 반영된다.
-// 동작 매핑은 각 화면에 고정(FileModal 5종 · Bash 로그 3종 · Git 카드 닫기 · 대화 스레드
-// ↑/↓) — 여기 목록과 함께 바꿔야 한다.
+// 동작 매핑은 각 화면에 고정(FileModal 5종 · Bash 로그 3종 · Git 카드 닫기 · 설정창 ↑/↓/↓→ ·
+// 대화 스레드 ↑/↓/↑← · 추가 채팅 창은 →↑ 최대화·↓→ 닫기 포함) — 여기 목록과 함께 바꿔야 한다.
 const GESTURE_LIST: { pattern: string; name: string; desc: string }[] = [
   { pattern: 'L', name: '이전 파일', desc: '정의 점프로 떠나온 파일로 돌아가요 — 파일 뷰어' },
   { pattern: 'R', name: '다음 파일', desc: '뒤로 갔던 길을 다시 앞으로 — 파일 뷰어' },
   { pattern: 'U', name: '맨 위로', desc: '본문·대화를 처음으로' },
   { pattern: 'D', name: '맨 아래로', desc: '본문·대화를 끝으로' },
-  { pattern: 'DR', name: '창 닫기', desc: '카드를 닫아요 — 저장 안 한 변경이 있으면 물어봐요' }
+  { pattern: 'UL', name: '추가 채팅 열기', desc: '독립 창으로 새 대화를 하나 더 — 대화 화면 어디서나' },
+  { pattern: 'RU', name: '최대화/이전 크기', desc: '추가 채팅 창을 크게, 다시 그으면 원래대로' },
+  { pattern: 'DR', name: '창 닫기', desc: '카드·추가 채팅 창을 닫아요 — 저장 안 한 변경이 있으면 물어봐요' }
 ]
 
 function GestureView(): React.ReactElement {
@@ -2072,6 +2074,8 @@ export function SettingsModal({
   initialView?: SettingsView // 특정 탭으로 바로 열기 (예: 컴포저 API 토글 → 'api')
 }) {
   const [view, setView] = useState<View>(initialView ?? 'version')
+  // 마우스 제스처(↑/↓ 본문 스크롤 · ↓→ 닫기) 대상 — 카드 루트를 state로 추적
+  const [cardEl, setCardEl] = useState<HTMLDivElement | null>(null)
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
@@ -2083,7 +2087,11 @@ export function SettingsModal({
 
   return (
     <div className="set-overlay" onMouseDown={onClose}>
-      <div className="set-modal" onMouseDown={(e) => e.stopPropagation()}>
+      <MouseGestureLayer
+        target={cardEl}
+        actions={[...scrollGestures(() => cardEl?.querySelector('.set-main')), { pattern: 'DR', label: '창 닫기', run: onClose }]}
+      />
+      <div className="set-modal" ref={setCardEl} onMouseDown={(e) => e.stopPropagation()}>
         <div className="set-modal-head">
           <span className="smh-title">설정</span>
           <span className="smh-spacer" />

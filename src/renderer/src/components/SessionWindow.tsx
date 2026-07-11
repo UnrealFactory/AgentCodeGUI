@@ -19,7 +19,7 @@ import { SubAgentModal } from './AgentPanel'
 import { FileModal } from './FileModal'
 import { AskModal } from './AskModal'
 import { useZoom, ZoomBadge, mergeRefs } from './zoom'
-import { MouseGestureLayer, scrollGestures } from './mouseGesture'
+import { MouseGestureLayer, scrollGestures, sessionWindowGesture } from './mouseGesture'
 
 // ── 추가 채팅 (세션 창) ────────────────────────────────────────
 // A standalone conversation in its OWN native OS window (freely resizable, movable to a
@@ -418,7 +418,18 @@ export function SessionWindow(): React.ReactElement {
       </div>
 
       <ZoomBadge pct={chatZoom.pct} show={chatZoom.flash} />
-      <MouseGestureLayer target={threadEl} actions={scrollGestures(() => threadEl)} />
+      {/* ↑←는 여기서도 창을 하나 더 연다. →↑는 타이틀바 최대화 버튼과 같은 토글 — 라벨은
+          현재 상태(max)를 따라 '최대화'/'이전 크기로'로 바뀐다. ↓→ 닫기는 × 버튼과 같은
+          네이티브 close — 이 창의 대화는 창과 함께 사라지는 게 원래 규칙이라 확인 없이 닫는다. */}
+      <MouseGestureLayer
+        target={threadEl}
+        actions={[
+          ...scrollGestures(() => threadEl),
+          sessionWindowGesture(),
+          { pattern: 'RU', label: max ? '이전 크기로' : '창 최대화', run: () => window.api.win.toggleMaximize() },
+          { pattern: 'DR', label: '창 닫기', run: () => window.api.win.close() }
+        ]}
+      />
       <div className="sw-scroll scroll" ref={swScrollRef}>
         {!started && !busy ? (
           <div className="sw-empty">
