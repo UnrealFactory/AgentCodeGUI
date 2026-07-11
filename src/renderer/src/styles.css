@@ -1784,6 +1784,11 @@ body.col-resizing *{ cursor:col-resize !important; }
 .fv-md{ overflow:auto; min-height:0; padding:22px 28px; background:var(--bg); }
 .fv-md > :first-child{ margin-top:0; }
 
+/* ── HTML preview (rendered page in a sandboxed iframe) ──────
+   흰 배경을 깐다: iframe 문서는 배경 미지정 시 투명이라 다크 앱 배경 위에서 검정
+   글씨가 안 보이게 되는 것을 막는다(브라우저 기본 캔버스 재현) */
+.fv-htmlframe{ flex:1; min-height:0; border:0; background:#fff; }
+
 /* ── image preview (png/jpg/svg…) ────────────────────────────
    the bitmap centered in the pane on a transparency checkerboard; sized in pixels by
    the component (fit × zoom), so a zoomed-in image simply overflows and scrolls */

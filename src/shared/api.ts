@@ -133,6 +133,8 @@ export interface WindowApi {
   readFile(cwd: string, relPath: string): Promise<FileReadResult>
   /** overwrite a file's text content (cwd-relative or absolute) from the in-app editor */
   writeFile(cwd: string, relPath: string, content: string): Promise<FileWriteResult>
+  /** ccg-page:// URL for the viewer's rendered HTML preview (registers the serving root) */
+  htmlPreviewUrl(cwd: string, relPath: string): Promise<string>
   /** Ctrl+W was pressed (main blocks the app-close) — fired so the open viewer can close itself */
   onCloseShortcut(cb: () => void): () => void
   /** enumerate project files (relative POSIX paths) to power the "@" mention palette */

@@ -72,8 +72,80 @@ const IMG_EXTS: Record<string, string> = {
   '.ico': 'image/x-icon'
 }
 protocol.registerSchemesAsPrivileged([
-  { scheme: 'ccg-img', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, bypassCSP: true } }
+  { scheme: 'ccg-img', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, bypassCSP: true } },
+  // HTML 미리보기(파일 뷰어) 문서·상대경로 리소스 서빙 — corsEnabled로 페이지 안의
+  // fetch('./data.json')도 동작(응답에 ACAO:* — sandbox iframe은 opaque origin이라 필요)
+  { scheme: 'ccg-page', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, bypassCSP: true, corsEnabled: true } }
 ])
+
+// ── HTML 미리보기 서빙(ccg-page://) ──────────────────────────────────────────
+// 뷰어가 htmlPreviewUrl로 등록한 루트(프로젝트 폴더 또는 문서의 폴더) 아래만 서빙 —
+// 임의 로컬 파일이 스킴으로 노출되지 않게 하는 범위 제한. 소문자·구분자 정규화 키.
+const pageRoots = new Set<string>()
+// 문서가 참조할 만한 텍스트/폰트/미디어 타입 — 이미지들은 IMG_EXTS를 그대로 재사용
+const PAGE_MIME: Record<string, string> = {
+  '.html': 'text/html',
+  '.htm': 'text/html',
+  '.css': 'text/css',
+  '.js': 'text/javascript',
+  '.mjs': 'text/javascript',
+  '.json': 'application/json',
+  '.txt': 'text/plain',
+  '.xml': 'application/xml',
+  '.woff': 'font/woff',
+  '.woff2': 'font/woff2',
+  '.ttf': 'font/ttf',
+  '.otf': 'font/otf',
+  '.wasm': 'application/wasm',
+  '.mp4': 'video/mp4',
+  '.webm': 'video/webm',
+  '.mp3': 'audio/mpeg',
+  '.wav': 'audio/wav',
+  '.ogg': 'audio/ogg'
+}
+// 미리보기 HTML 문서 끝에 덧붙이는 입력 브리지 — sandbox iframe이 포커스/호버를 가지면
+// 부모(뷰어)가 keydown·우클릭 드래그를 못 받아 Ctrl+D(코드 전환)·Esc(닫기)·마우스 제스처가
+// 죽는다. 그 입력만 postMessage로 부모에 중계한다(Ctrl+W는 main의 before-input 경로가
+// 프레임 무관하게 이미 잡는다). 우클릭 포인터는 드래그 동안만 중계해 스팸이 없고, 획을
+// 그렸으면 페이지 자체 contextmenu도 한 발 삼킨다(부모 제스처 레이어와 같은 관례).
+// 부모→페이지 방향으론 스크롤 명령(ccgPageScroll)을 받아 ↑/↓ 제스처의 맨 위/아래를 맡는다.
+// </html> 뒤에 붙어도 파서가 스크립트를 body로 옮겨 실행하므로 삽입 위치를 찾을 필요가 없다.
+const PAGE_KEY_BRIDGE = `
+<script>(function(){
+var post=function(m){try{window.parent.postMessage(m,"*")}catch(_){}};
+window.addEventListener("keydown",function(e){
+if(e.ctrlKey||e.metaKey){if(e.altKey||e.shiftKey)return;
+if(e.code!=="KeyD"&&(e.key||"").toLowerCase()!=="d")return;
+e.preventDefault();post({ccgPageKey:"d"});}
+else if(e.key==="Escape"){post({ccgPageKey:"escape"});}
+},true);
+var rd=false,drew=false,sx=0,sy=0;
+var rel=function(t,e){post({ccgPagePtr:{t:t,x:e.clientX,y:e.clientY}})};
+window.addEventListener("pointerdown",function(e){
+if(e.button!==2||e.pointerType!=="mouse")return;
+rd=true;drew=false;sx=e.clientX;sy=e.clientY;rel("pd",e);
+},true);
+window.addEventListener("pointermove",function(e){
+if(!rd)return;
+if(!(e.buttons&2)){rd=false;rel("pc",e);return;}
+if(Math.hypot(e.clientX-sx,e.clientY-sy)>14)drew=true;
+rel("pm",e);
+},true);
+window.addEventListener("pointerup",function(e){
+if(e.button!==2||!rd)return;rd=false;rel("pu",e);
+},true);
+window.addEventListener("pointercancel",function(e){
+if(rd){rd=false;rel("pc",e);}
+},true);
+window.addEventListener("contextmenu",function(e){
+if(drew){drew=false;e.preventDefault();e.stopImmediatePropagation();}
+},true);
+window.addEventListener("message",function(e){
+var s=e.data&&e.data.ccgPageScroll;
+if(s)window.scrollTo({top:s==="top"?0:document.documentElement.scrollHeight,behavior:"smooth"});
+});
+})()</script>
+`
 
 // pathless 첨부(붙여넣기/브라우저 드래그) 저장 시 허용되는 확장자 — 이미지 + 텍스트
 const ATTACH_SAVE_EXTS = new Set([...ATTACH_IMAGE_EXTS, ...ATTACH_TEXT_EXTS].map((e) => '.' + e))
@@ -1077,6 +1149,17 @@ function registerIpc(): void {
     }
   })
 
+  // HTML 미리보기 URL 발급 + 서빙 루트 등록. 루트는 프로젝트(cwd) — 프로젝트 안 어디를
+  // 참조하든(../assets 포함) 서빙되고, 어차피 뷰어/에이전트가 읽을 수 있는 범위라 새 노출이
+  // 아니다. 문서가 cwd 밖이면(참고 폴더 등) 그 문서의 폴더로 좁힌다.
+  ipcMain.handle(IPC.htmlPreviewUrl, (_e, a: { cwd: string; relPath: string }): string => {
+    const abs = path.resolve(path.isAbsolute(a.relPath) ? a.relPath : path.join(a.cwd || '', a.relPath))
+    const root = a.cwd ? path.resolve(a.cwd) : ''
+    const under = root && abs.toLowerCase().startsWith(root.toLowerCase() + path.sep)
+    pageRoots.add(((under ? root : path.dirname(abs)) + path.sep).toLowerCase())
+    return 'ccg-page://local/' + abs.replace(/\\/g, '/').split('/').map(encodeURIComponent).join('/')
+  })
+
   // Overwrite a file's text from the in-app editor (Ctrl+S). Writes utf-8 to the same
   // resolved path readFile uses; the renderer holds the buffer, so this is the only
   // disk write for editing.
@@ -1439,10 +1522,47 @@ function bootstrap(): void {
       return new Response('not found', { status: 404 })
     }
   })
+  // HTML 미리보기 문서 + 그 상대경로 리소스: ccg-page://local/<인코딩된 절대경로>.
+  // 상대 참조(./style.css, ../img.png)가 URL 해석만으로 같은 스킴의 이웃 경로가 되므로
+  // 별도 매핑 없이 그대로 서빙된다. 등록된 루트 밖(../.. 탈출 포함)은 404.
+  protocol.handle('ccg-page', async (request) => {
+    try {
+      const u = new URL(request.url)
+      const p = path.normalize(decodeURIComponent(u.pathname).replace(/^\//, ''))
+      const key = p.toLowerCase()
+      if (![...pageRoots].some((r) => key.startsWith(r))) return new Response('not found', { status: 404 })
+      const st = await fs.promises.stat(p)
+      if (!st.isFile()) return new Response('not found', { status: 404 })
+      const ext = path.extname(p).toLowerCase()
+      let mime = PAGE_MIME[ext] ?? IMG_EXTS[ext] ?? 'application/octet-stream'
+      if (/^text\/|json|xml$/.test(mime)) mime += '; charset=utf-8'
+      const headers: Record<string, string> = {
+        'content-type': mime,
+        'cache-control': 'no-cache',
+        // 뷰어의 변경 감시(HEAD 폴링) 지문 + opaque origin(sandbox iframe)의 fetch 허용
+        'last-modified': st.mtime.toUTCString(),
+        'access-control-allow-origin': '*'
+      }
+      // 변경 감시 폴링은 HEAD — 본문을 읽지 않아 큰 문서도 부담 없음
+      if (request.method === 'HEAD') return new Response(null, { headers })
+      let data = await fs.promises.readFile(p)
+      if (PAGE_MIME[ext] === 'text/html') data = Buffer.concat([data, Buffer.from(PAGE_KEY_BRIDGE, 'utf8')])
+      return new Response(data, { headers })
+    } catch {
+      return new Response('not found', { status: 404 })
+    }
+  })
   createSplash()
   // Production CSP. Skipped in dev because Vite's HMR needs inline/eval + ws.
   if (!process.env['ELECTRON_RENDERER_URL']) {
     session.defaultSession.webRequest.onHeadersReceived((details, cb) => {
+      // 미리보기 문서(ccg-page)에는 앱 CSP를 주입하지 않는다 — 문서라서 CSP가 실제로
+      // 적용되는데, script-src 'self'가 인라인 <script>를 죽여 미리보기가 반쪽이 된다.
+      // 격리는 sandbox iframe(opaque origin)이 맡는다.
+      if (details.url.startsWith('ccg-page:')) {
+        cb({})
+        return
+      }
       cb({
         responseHeaders: {
           ...details.responseHeaders,
@@ -1454,7 +1574,9 @@ function bootstrap(): void {
               "img-src 'self' data: ccg-img:; " +
               // 패치노트 시네마틱 배경 비디오 (Cloudinary + 이전 CloudFront 폴백)
               "media-src 'self' https://res.cloudinary.com https://d8j0ntlcm91z4.cloudfront.net; " +
-              "connect-src 'self'"
+              // ccg-page: HTML 미리보기 iframe(frame-src) + 그 변경 감시 HEAD 폴링(connect-src)
+              "frame-src 'self' ccg-page:; " +
+              "connect-src 'self' ccg-page:"
           ]
         }
       })

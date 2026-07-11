@@ -1876,6 +1876,119 @@ function ImageView({ src, alt, zoom }: { src: string; alt: string; zoom: number 
   )
 }
 
+// HTML 파일의 렌더된 페이지 보기 — 문서(와 상대경로 리소스)를 main의 ccg-page:// 스킴이
+// 디스크에서 서빙하고, sandbox iframe(opaque origin)에 띄워 페이지 스크립트가 앱에 손대지
+// 못하게 격리한다. LSP 워처는 html을 안 다루므로(코드 서버 확장자만) 문서 자체를 HEAD로
+// 가볍게 폴링해 last-modified가 바뀌면(에이전트 수정·코드 보기에서 저장) 다시 로드한다.
+// onBridgeKey: iframe이 포커스를 가지면 부모가 keydown을 못 받는다 — 서빙 시 문서에 덧붙는
+// 입력 브리지(main의 PAGE_KEY_BRIDGE)가 Ctrl+D('d')·Esc('escape')를 postMessage로 중계해 온다.
+// 우클릭 드래그(마우스 제스처)도 같은 브리지로 중계돼, iframe 좌표를 부모 좌표로 옮긴 합성
+// PointerEvent를 iframe 엘리먼트에 재디스패치한다 — 카드의 MouseGestureLayer(캡처 down +
+// window move/up)가 실제 이벤트와 구별 없이 받아 궤적·인식이 그대로 동작한다.
+function HtmlPreview({
+  cwd,
+  filePath,
+  onBridgeKey
+}: {
+  cwd: string
+  filePath: string
+  onBridgeKey?: (k: string) => void
+}) {
+  const [url, setUrl] = useState<string | null>(null)
+  const [rev, setRev] = useState(0) // iframe 강제 리마운트 세대 (문서 변경 감지 시 +1)
+  const lastMod = useRef('')
+  const frameRef = useRef<HTMLIFrameElement>(null)
+  const onKeyRef = useRef(onBridgeKey)
+  onKeyRef.current = onBridgeKey
+  useEffect(() => {
+    const PTR_TYPE: Record<string, string> = {
+      pd: 'pointerdown',
+      pm: 'pointermove',
+      pu: 'pointerup',
+      pc: 'pointercancel'
+    }
+    const h = (ev: MessageEvent): void => {
+      const d = ev.data as { ccgPageKey?: string; ccgPagePtr?: { t: string; x: number; y: number } } | null
+      if (!d) return
+      // 우리 iframe(최상위 미리보기 문서)이 보낸 것만 — 중첩 프레임/딴 창은 무시
+      const f = frameRef.current
+      if (!f || ev.source !== f.contentWindow) return
+      if (d.ccgPageKey) {
+        onKeyRef.current?.(d.ccgPageKey)
+        return
+      }
+      const p = d.ccgPagePtr
+      const type = p && PTR_TYPE[p.t]
+      if (!p || !type) return
+      const r = f.getBoundingClientRect()
+      f.dispatchEvent(
+        new PointerEvent(type, {
+          bubbles: true,
+          cancelable: true,
+          clientX: r.left + p.x,
+          clientY: r.top + p.y,
+          // 실제 이벤트 규약대로: down/up만 우버튼(2), move는 -1 + buttons 플래그
+          button: p.t === 'pd' || p.t === 'pu' ? 2 : -1,
+          buttons: p.t === 'pm' ? 2 : 0,
+          pointerId: 7777,
+          pointerType: 'mouse',
+          isPrimary: true
+        })
+      )
+    }
+    window.addEventListener('message', h)
+    return () => window.removeEventListener('message', h)
+  }, [])
+  useEffect(() => {
+    setUrl(null)
+    setRev(0)
+    lastMod.current = ''
+    let alive = true
+    window.api
+      .htmlPreviewUrl(cwd, filePath)
+      .then((u) => alive && setUrl(u))
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [cwd, filePath])
+  useEffect(() => {
+    if (!url) return
+    let alive = true
+    const iv = setInterval(() => {
+      fetch(url, { method: 'HEAD' })
+        .then((r) => {
+          if (!alive) return
+          const m = r.headers.get('last-modified') || ''
+          if (lastMod.current && m && m !== lastMod.current) setRev((n) => n + 1)
+          lastMod.current = m
+        })
+        .catch(() => {})
+    }, 1500)
+    return () => {
+      alive = false
+      clearInterval(iv)
+    }
+  }, [url])
+  if (!url)
+    return (
+      <div className="fv-loading">
+        <span className="spin" />
+      </div>
+    )
+  return (
+    <iframe
+      key={rev}
+      ref={frameRef}
+      className="fv-htmlframe"
+      src={url}
+      // 스크립트는 돌리되(차트·데모) 앱과는 격리 — allow-same-origin은 주지 않는다
+      sandbox="allow-scripts allow-forms allow-modals"
+      title="HTML 미리보기"
+    />
+  )
+}
+
 // the file's body: markdown files render as formatted markdown; everything else is
 // shown as line-numbered, syntax-highlighted source. When LSP is ready the code gets
 // hover type info and Ctrl+클릭 go-to-definition.
@@ -2514,6 +2627,9 @@ export function FileModal({
   // 마크다운은 기본을 '렌더링된 문서'로 연다(변경 파일이어도) — 소스/변경(diff) 보기는
   // Ctrl+D(또는 헤더 버튼)로 전환한다. true = 렌더, false = 변경 마킹 소스.
   const [mdPreview, setMdPreview] = useState(true)
+  // HTML도 마크다운처럼 기본을 '렌더링된 페이지'(sandbox iframe)로 열고 Ctrl+D로 코드와
+  // 오간다. 코드 보기는 여느 코드 파일과 동일(CM 편집·diff) — 미리보기와 편집이 분리된다.
+  const [htmlPreview, setHtmlPreview] = useState(true)
   // 편집 가능한 코드 파일은 CodeMirror 편집기로 연다(아래 cmEligible). 마크다운·이미지·
   // git 스냅샷·잘린 파일은 읽기 전용 CodeView 유지.
   const [cmDirty, setCmDirty] = useState(false) // CM 버퍼에 미저장 변경이 있는가
@@ -2544,6 +2660,7 @@ export function FileModal({
     setVs({ root: path, stack: [], fwd: [], jump: null })
     if (svgCode) setSvgCode(false)
     if (!mdPreview) setMdPreview(true) // 새 파일은 마크다운 기본값(렌더)으로 되돌린다
+    if (!htmlPreview) setHtmlPreview(true) // HTML도 기본값(렌더)으로
     if (findOpen) setFindOpen(false)
     if (ask) setAsk(null)
     if (askText) setAskText('')
@@ -2560,6 +2677,11 @@ export function FileModal({
   // 정의 이동으로 다른 파일에 들어가면 override는 원래 파일의 것 — 적용하지 않는다
   const ov = vs.stack.length === 0 ? override ?? null : null
   const ovContent = ov?.content ?? null
+  // HTML은 렌더된 페이지(sandbox iframe, 디스크에서 ccg-page://로 서빙)와 코드 보기를
+  // Ctrl+D로 오간다. git 스냅샷(ov)은 디스크와 내용이 달라 미리보기가 거짓 — 코드만.
+  const isHtmlPage = !!effPath && /\.html?$/i.test(effPath)
+  const htmlCanToggle = isHtmlPage && !ov
+  const htmlView = htmlCanToggle && htmlPreview
   // the viewed file's accumulated diff (keys are slash-relative paths; the definition-
   // jump stack stores backslash ones) — drives the change marks and the header stats.
   // Git 카드에서 온 일회성 diff(ov.diff)가 있으면 세션 diff 대신 그걸 쓴다.
@@ -2578,7 +2700,8 @@ export function FileModal({
   // CM editing writes to the live file, so it's used only for real, fully-loaded on-disk
   // files — not git-snapshot overrides (would overwrite the working copy with old content)
   // and not truncated previews (saving would drop everything past the read cap).
-  const cmEligible = !isImg && !isMdFile && res != null && res.content != null && !res.truncated && !ov
+  // HTML 미리보기 중엔 CM(과 그 헤더 버튼·단축키)이 물러난다 — 코드 보기로 오면 복귀.
+  const cmEligible = !isImg && !isMdFile && !htmlView && res != null && res.content != null && !res.truncated && !ov
   // C++ struct 연보라 보정 — 엔진(뷰어/CM) 무관하게 한 번 계산해 양쪽에 내려준다
   const structOv = useCppStructOv(sem, fLang, res?.content ?? '', cwd, effPath ?? '')
   // diff(변경 tint) 보기 토글 — 읽기 모드의 초록/빨강 diff를 Ctrl+D로 켜고 끈다(편집과 분리).
@@ -2606,6 +2729,17 @@ export function FileModal({
   // through here). cmDirtyRef mirrors state so the keydown/mouse closures see it live.
   const cmDirtyRef = useRef(false)
   cmDirtyRef.current = cmDirty
+  // HTML 렌더↔코드 전환. 코드 보기에 미저장 편집이 있으면 저장하고 넘어간다 — 전환이
+  // CM을 내려 버퍼가 사라지고, 미리보기 자체도 디스크 기준이라 저장돼야 보인다.
+  // (doSave는 호출 시점에 버퍼를 동기로 캡처하므로 직후 언마운트에 안전)
+  const toggleHtmlPreview = useCallback((): void => {
+    if (cmDirtyRef.current) {
+      cmRef.current?.save()
+      setCmDirty(false)
+    }
+    setFindOpen(false) // 코드 보기의 검색 바는 미리보기 본문에 닿지 않는다 — 접고 전환
+    setHtmlPreview((v) => !v)
+  }, [])
   // 미저장 변경이 있으면 곧장 닫지 않고 카드형 확인을 띄운다(네이티브 confirm 대신). 확인이
   // 떠 있는 동안엔 뷰어의 Esc/단축키가 물러나고(아래 closeConfirmRef 가드), 취소하면 편집기로
   // 포커스를 돌려준다 — confirm이 스레드를 막아 IME가 엉키던 "취소 후 입력 불가"도 함께 해소.
@@ -2901,6 +3035,7 @@ export function FileModal({
     const onKey = (e: KeyboardEvent): void => {
       if (!((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'f')) return
       if (closeConfirmRef.current) return // 확인 카드가 떠 있으면 단축키는 물러난다
+      if (htmlView) return // 렌더된 페이지(iframe)는 부모에서 본문 검색이 닿지 않는다
       e.preventDefault()
       // CM 편집기 코드 파일은 CM 검색 패널(가상화 대응)을, 그 외엔 기존 FindBar를 연다
       if (cmEligible) cmRef.current?.openSearch()
@@ -2908,7 +3043,7 @@ export function FileModal({
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [path, cmEligible])
+  }, [path, cmEligible, htmlView])
 
   // Ctrl/⌘+E → 읽기 ↔ 편집 모드 토글. 편집 가능한 코드 파일이면 어디서나(토글 버튼과 동일 조건).
   // capture로 잡아 CM 키맵보다 먼저 처리하고, 편집 모드 진입 시 포커스는 CmEditor가 잡는다.
@@ -2925,10 +3060,11 @@ export function FileModal({
     return () => window.removeEventListener('keydown', onKey, true)
   }, [path, cmEligible])
 
-  // Ctrl/⌘+D → 마크다운은 렌더↔소스(변경 diff), 그 외는 diff(변경 tint)↔일반(무색) 토글.
-  // capture로 CM 키맵보다 먼저 잡고, IME가 켜져 있어도 잡히게 물리 키(e.code)도 함께 본다.
+  // Ctrl/⌘+D → 마크다운은 렌더↔소스(변경 diff), HTML은 렌더↔코드, 그 외는 diff(변경
+  // tint)↔일반(무색) 토글. capture로 CM 키맵보다 먼저 잡고, IME가 켜져 있어도 잡히게
+  // 물리 키(e.code)도 함께 본다.
   useEffect(() => {
-    if (!path || (!diffVisibleCtx && !mdCanToggle)) return
+    if (!path || (!diffVisibleCtx && !mdCanToggle && !htmlCanToggle)) return
     const onKey = (e: KeyboardEvent): void => {
       if (!((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && (e.code === 'KeyD' || e.key.toLowerCase() === 'd')))
         return
@@ -2936,11 +3072,12 @@ export function FileModal({
       e.preventDefault()
       e.stopPropagation()
       if (mdCanToggle) setMdPreview((v) => !v)
+      else if (htmlCanToggle) toggleHtmlPreview()
       else setDiffView((v) => !v)
     }
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
-  }, [path, diffVisibleCtx, mdCanToggle])
+  }, [path, diffVisibleCtx, mdCanToggle, htmlCanToggle, toggleHtmlPreview])
 
   // 질문 패널이 열리면 바로 입력에 포커스
   useEffect(() => {
@@ -2987,6 +3124,12 @@ export function FileModal({
   // 셀렉터 한 줄로 찾는다(코드 .fv-code · 마크다운 .fv-md · 이미지 .fv-imgbody · CM .cm-scroller).
   const scrollBody = useCallback(
     (to: 'top' | 'bottom'): void => {
+      // HTML 미리보기는 스크롤러가 iframe 문서 안 — 브리지에 명령을 보내 페이지가 스크롤한다
+      const frame = cardEl?.querySelector('.fv-htmlframe') as HTMLIFrameElement | null
+      if (frame) {
+        frame.contentWindow?.postMessage({ ccgPageScroll: to }, '*')
+        return
+      }
       const sc = cardEl?.querySelector('.cm-scroller, .fv-code, .fv-md, .fv-imgbody')
       if (sc) sc.scrollTo({ top: to === 'top' ? 0 : sc.scrollHeight, behavior: 'smooth' })
     },
@@ -3118,6 +3261,15 @@ export function FileModal({
               {svgCode ? '미리보기' : '코드 보기'}
             </button>
           )}
+          {htmlCanToggle && (
+            <button
+              className="fv-lsp install htip"
+              onClick={toggleHtmlPreview}
+              data-tip={htmlPreview ? '소스 코드로 보기 (Ctrl+D)' : '렌더링된 페이지로 보기 (Ctrl+D)'}
+            >
+              {htmlPreview ? '코드 보기' : '미리보기'}
+            </button>
+          )}
           {cmEligible && (
             <button
               className={'fv-lsp cm-mode htip ' + cmMode}
@@ -3131,7 +3283,8 @@ export function FileModal({
             <button
               className={'fv-lsp cm-diff htip ' + (diffView ? 'on' : 'off')}
               onClick={() => setDiffView((v) => !v)}
-              data-tip={diffView ? '일반 보기로 전환 (Ctrl+D)' : '변경 보기로 전환 (Ctrl+D)'}
+              // HTML은 Ctrl+D가 렌더↔코드 전환에 쓰이므로 이 토글은 버튼으로만
+              data-tip={(diffView ? '일반 보기로 전환' : '변경 보기로 전환') + (htmlCanToggle ? '' : ' (Ctrl+D)')}
             >
               {diffView ? '변경' : '일반'}
             </button>
@@ -3168,6 +3321,21 @@ export function FileModal({
         {!rz.maximized && <ModalResizeHandles onStart={rz.startResize} />}
         {isImg ? (
           <ImageView key={effPath} src={imageSrc(absPath(effPath, cwd))} alt={name} zoom={z.zoom} />
+        ) : htmlView ? (
+          <HtmlPreview
+            key={effPath}
+            cwd={cwd}
+            filePath={effPath}
+            onBridgeKey={(k) => {
+              if (closeConfirmRef.current) return // 확인 카드가 떠 있으면 단축키는 물러난다
+              if (k === 'd') toggleHtmlPreview()
+              // escape — 뷰어의 Esc 레이어 순서(메뉴 → 질문 → 검색 → 카드)를 그대로 따른다
+              else if (headCtxOpenRef.current) setHeadCtx(null)
+              else if (askOpenRef.current) setAsk(null)
+              else if (findOpenRef.current) setFindOpen(false)
+              else requestClose()
+            }}
+          />
         ) : res == null ? (
           <div className="fv-loading">
             <span className="spin" />

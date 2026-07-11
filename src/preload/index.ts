@@ -95,6 +95,7 @@ const api: WindowApi = {
   movePath: (cwd, srcRel, destRel) => ipcRenderer.invoke(IPC.fsMove, { cwd, srcRel, destRel }),
   readFile: (cwd, relPath) => ipcRenderer.invoke(IPC.readFile, { cwd, relPath }),
   writeFile: (cwd, relPath, content) => ipcRenderer.invoke(IPC.writeFile, { cwd, relPath, content }),
+  htmlPreviewUrl: (cwd, relPath) => ipcRenderer.invoke(IPC.htmlPreviewUrl, { cwd, relPath }),
   onCloseShortcut: (cb) => subscribe<void>(IPC.closeShortcut, () => cb()),
   listFiles: (cwd) => ipcRenderer.invoke(IPC.listFiles, cwd),
   listDir: (cwd, rel, exclude, hideEmpty, excludeDirs, excludeFiles) =>

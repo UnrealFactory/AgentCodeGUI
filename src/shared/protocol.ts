@@ -684,6 +684,7 @@ export const IPC = {
   fsMove: 'fs:move', // move a file/folder into another folder (explorer drag & drop)
   readFile: 'fs:read-file', // read a file's text content for the in-app viewer card
   writeFile: 'fs:write-file', // overwrite a file's text content from the in-app editor (Ctrl+S)
+  htmlPreviewUrl: 'fs:html-preview-url', // ccg-page:// URL 발급 + 서빙 루트 등록 (뷰어 HTML 미리보기)
   closeShortcut: 'shortcut:close', // Ctrl+W pressed (main swallows it) → renderer closes the open viewer
   listFiles: 'fs:list-files', // enumerate project files for the "@" mention palette
   listDir: 'fs:list-dir', // list one folder's entries for the file explorer (lazy per expand)
