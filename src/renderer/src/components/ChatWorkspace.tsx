@@ -31,7 +31,7 @@ import { FileModal } from './FileModal'
 import { Sidebar, type WorkspaceMode } from './Sidebar'
 import { ImageViewer } from './ImageViewer'
 import { useZoom, ZoomBadge, mergeRefs } from './zoom'
-import { MouseGestureLayer, sessionWindowGesture, type GestureAction } from './mouseGesture'
+import { MouseGestureLayer, clearGesture, sessionWindowGesture, type GestureAction } from './mouseGesture'
 import { IconChevDown } from './icons'
 
 // px from the bottom within which the chat counts as "at the bottom" — scrolling
@@ -310,7 +310,9 @@ export function ChatWorkspace({
         if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
       }
     },
-    sessionWindowGesture()
+    sessionWindowGesture(),
+    // clearConversation은 아래에서 선언 — 배열 생성 시점(TDZ)을 피해 실행 시점에 참조한다
+    clearGesture(() => clearConversation())
   ]
 
   const activeChat = chats.find((c) => c.id === activeChatId)

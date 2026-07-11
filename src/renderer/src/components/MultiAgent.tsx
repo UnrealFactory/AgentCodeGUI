@@ -38,7 +38,7 @@ import { imageSrc, imageName, filesToAttachmentPaths, isImagePath, isAttachableP
 import { mentionAtCaret, mentionEntries, extractMentions, type MentionEntry } from '../lib/mentions'
 import { FileBadge } from './fileType'
 import { mergeRefs } from './zoom'
-import { MouseGestureLayer, scrollGestures, sessionWindowGesture } from './mouseGesture'
+import { MouseGestureLayer, clearGesture, scrollGestures, sessionWindowGesture } from './mouseGesture'
 import {
   IconGrid,
   IconSend,
@@ -684,6 +684,7 @@ interface PanelViewProps {
   onSchedule: (slot: number) => void // queue the draft while the panel is busy
   onRemoveQueued: (slot: number, id: string) => void
   onStop: (slot: number) => void
+  onClear: (slot: number) => void // ↑↓ 제스처 — 이 패널의 대화만 백지로 (/clear)
   onPicker: (slot: number, p: PickerState) => void
   apiReady: boolean // 키 존재 여부 (없으면 API 선택이 설정을 연다)
   onApiMode: (slot: number, next: boolean) => void // 패널별 과금 선택
@@ -713,6 +714,7 @@ const PanelView = memo(function PanelView({
   onSchedule,
   onRemoveQueued,
   onStop,
+  onClear,
   onPicker,
   apiReady,
   onApiMode,
@@ -884,7 +886,10 @@ const PanelView = memo(function PanelView({
       </div>
 
       <SelectionToolbar scrollRef={scrollRef} onElaborate={onElaborate} />
-      <MouseGestureLayer target={threadEl} actions={[...scrollGestures(() => threadEl), sessionWindowGesture()]} />
+      <MouseGestureLayer
+        target={threadEl}
+        actions={[...scrollGestures(() => threadEl), sessionWindowGesture(), clearGesture(() => onClear(slot))]}
+      />
 
       <div className="ma-p-foot">
         {meta.queue.length > 0 && (
@@ -1438,6 +1443,14 @@ function ActiveSession({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [busySig, metas])
 
+  // ↑↓ 제스처의 대화 비우기 — 컴포저 /clear와 같은 착지점(이 패널만 백지로)
+  const clearPanel = useEvent((slot: number) => {
+    const sess = sessions[slot]
+    if (sess.busy) return
+    sess.load(initialSessionState)
+    patchMeta(slot, { title: '', custom: false, input: '', images: [] })
+  })
+
   const stopPanel = useEvent((slot: number) => {
     // stopping the run also abandons anything queued behind it (mirrors single mode)
     window.api.multi?.cancel(chan(sessionId, slot)).catch(() => {})
@@ -1523,6 +1536,7 @@ function ActiveSession({
         onSchedule={schedulePanel}
         onRemoveQueued={onRemoveQueued}
         onStop={stopPanel}
+        onClear={clearPanel}
         onPicker={onPicker}
         apiReady={apiReady}
         onApiMode={onPanelApi}

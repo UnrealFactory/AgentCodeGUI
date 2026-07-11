@@ -43,26 +43,34 @@ if (typeof window !== 'undefined') {
 export function GestureGlyph({ pattern, size = 26 }: { pattern: string; size?: number }) {
   const U = 10 // 획 하나의 길이 (viewBox 단위)
   const AH = 3.4 // 화살촉 날개 길이
+  const GAP = 6 // 왕복(180° 반전)에서 갈라 그린 화살표 사이 간격
+  // 180° 반전은 같은 자리를 되밟아 한 획으로 보인다('UD'가 'D'처럼). 반전 지점에서 획을
+  // 끊고 옆자리에 새 화살표로 시작한다 — 'UD'는 ↑ 옆에 ↓ 두 개, 반전 없는 패턴은 예전 그대로.
   let x = 0
   let y = 0
-  let ldx = 1
+  let ldx = 0
   let ldy = 0
-  const pts: number[][] = [[0, 0]]
+  const runs: { pts: number[][]; dx: number; dy: number }[] = [{ pts: [[0, 0]], dx: 1, dy: 0 }]
   for (const d of pattern) {
     const [dx, dy] = d === 'L' ? [-1, 0] : d === 'R' ? [1, 0] : d === 'U' ? [0, -1] : [0, 1]
+    if (dx === -ldx && dy === -ldy) {
+      x += Math.abs(dy) * GAP // 수직 왕복은 오른쪽에, 수평 왕복은 아래에 나란히
+      y += Math.abs(dx) * GAP
+      runs.push({ pts: [[x, y]], dx, dy })
+    }
     x += dx * U
     y += dy * U
-    pts.push([x, y])
+    const run = runs[runs.length - 1]
+    run.pts.push([x, y])
+    run.dx = dx
+    run.dy = dy
     ldx = dx
     ldy = dy
   }
-  // 화살촉: 마지막 진행 방향의 반대쪽으로 ±35° 벌린 날개 두 줄
-  const a = Math.atan2(ldy, ldx) + Math.PI
-  const wing = (off: number): number[] => [x + AH * Math.cos(a + off), y + AH * Math.sin(a + off)]
-  const [w1, w2] = [wing(0.62), wing(-0.62)]
   // viewBox는 패턴 bbox를 감싸는 정사각형 — 획 수와 무관하게 선 굵기가 같아 보이게
-  const xs = pts.map((p) => p[0])
-  const ys = pts.map((p) => p[1])
+  const all = runs.flatMap((r) => r.pts)
+  const xs = all.map((p) => p[0])
+  const ys = all.map((p) => p[1])
   const cx = (Math.min(...xs) + Math.max(...xs)) / 2
   const cy = (Math.min(...ys) + Math.max(...ys)) / 2
   const side = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)) + 9
@@ -78,8 +86,19 @@ export function GestureGlyph({ pattern, size = 26 }: { pattern: string; size?: n
       strokeLinejoin="round"
       aria-hidden="true"
     >
-      <polyline points={pts.map((p) => p.join(',')).join(' ')} />
-      <polyline points={`${w1.join(',')} ${x},${y} ${w2.join(',')}`} />
+      {runs.map((r, i) => {
+        // 화살촉: 그 획의 마지막 진행 방향 반대쪽으로 ±35° 벌린 날개 두 줄
+        const [ex, ey] = r.pts[r.pts.length - 1]
+        const a = Math.atan2(r.dy, r.dx) + Math.PI
+        const wing = (off: number): number[] => [ex + AH * Math.cos(a + off), ey + AH * Math.sin(a + off)]
+        const [w1, w2] = [wing(0.62), wing(-0.62)]
+        return (
+          <g key={i}>
+            <polyline points={r.pts.map((p) => p.join(',')).join(' ')} />
+            <polyline points={`${w1.join(',')} ${ex},${ey} ${w2.join(',')}`} />
+          </g>
+        )
+      })}
     </svg>
   )
 }
@@ -91,6 +110,11 @@ export function sessionWindowGesture(): GestureAction {
     label: '추가 채팅 열기',
     run: () => window.api.openSessionWindow().catch(() => {})
   }
+}
+
+/** ↑↓ — 대화 비우기(/clear와 같은 착지점). 실제 초기화는 화면마다 달라 콜백으로 받는다. */
+export function clearGesture(run: () => void): GestureAction {
+  return { pattern: 'UD', label: '대화 비우기', run }
 }
 
 /** 스크롤러 하나짜리 화면의 ↑/↓ 제스처 한 벌 — 대상은 실행 시점에 찾는다(재마운트 안전). */

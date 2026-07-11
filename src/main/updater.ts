@@ -148,11 +148,17 @@ $timer.Add_Tick({
 $timer.Start()
 $null = $script:w.ShowDialog()
 `
+  // cmd /c 한 다리를 거쳐 띄운다 (직접 spawn의 두 함정, PoC 실측):
+  //  · detached:true → DETACHED_PROCESS(콘솔 없음)인데 powershell.exe는 콘솔 앱이라 기동 자체를 못 한다
+  //  · detached 없음 → libuv job object(KILL_ON_JOB_CLOSE)가 앱 종료와 함께 자식을 죽인다
+  // cmd(자식)는 job 안에서 앱과 함께 죽지만, 손자 PS는 SILENT_BREAKAWAY_OK로 job 밖이라
+  // 설치 내내 생존하고, 콘솔은 cmd의 숨은 콘솔(windowsHide)을 물려받아 번쩍임이 없다.
+  // 주의: cmd 커맨드라인은 8191자 한계 — 현재 EncodedCommand ~6.2k라 여유가 크지 않다.
   try {
     spawn(
-      'powershell.exe',
-      ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-EncodedCommand', Buffer.from(ps, 'utf16le').toString('base64')],
-      { detached: true, stdio: 'ignore', windowsHide: true }
+      'cmd.exe',
+      ['/d', '/s', '/c', 'powershell.exe', '-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(ps, 'utf16le').toString('base64')],
+      { stdio: 'ignore', windowsHide: true }
     ).unref()
   } catch {
     /* 스플래시는 장식 — 실패해도 설치는 그대로 진행 */

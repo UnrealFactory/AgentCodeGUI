@@ -19,7 +19,7 @@ import { SubAgentModal } from './AgentPanel'
 import { FileModal } from './FileModal'
 import { AskModal } from './AskModal'
 import { useZoom, ZoomBadge, mergeRefs } from './zoom'
-import { MouseGestureLayer, scrollGestures, sessionWindowGesture } from './mouseGesture'
+import { MouseGestureLayer, clearGesture, scrollGestures, sessionWindowGesture } from './mouseGesture'
 
 // ── 추가 채팅 (세션 창) ────────────────────────────────────────
 // A standalone conversation in its OWN native OS window (freely resizable, movable to a
@@ -281,16 +281,22 @@ export function SessionWindow(): React.ReactElement {
   }
   const openViewer = (imgs: string[], index: number): void => setViewer({ images: imgs, index })
 
+  // /clear — reset this window's conversation (client command, same as 채팅/코드).
+  // 컴포저의 /clear와 스레드의 ↑↓ 제스처가 같은 착지점을 쓴다.
+  const clearConversation = (): void => {
+    if (busy) return
+    load(initialSessionState)
+    setInput('')
+    setImages([])
+    setQueue([])
+  }
+
   const runPrompt = (text: string, opts?: { images?: string[]; picker?: PickerState; keepDraft?: boolean }): void => {
     const imgs = opts?.images ?? images
     const pk = opts?.picker ?? picker
     if ((!text.trim() && imgs.length === 0) || busy) return
-    // /clear — reset this window's conversation (client command, same as 채팅/코드)
     if (text.trim() === '/clear') {
-      load(initialSessionState)
-      setInput('')
-      setImages([])
-      setQueue([])
+      clearConversation()
       return
     }
     // /ask — 이 창 전용 일회용 질문 모달(자체 엔진). 본 대화로는 보내지 않는다 (메인 창과 동일)
@@ -418,14 +424,16 @@ export function SessionWindow(): React.ReactElement {
       </div>
 
       <ZoomBadge pct={chatZoom.pct} show={chatZoom.flash} />
-      {/* ↑←는 여기서도 창을 하나 더 연다. →↑는 타이틀바 최대화 버튼과 같은 토글 — 라벨은
-          현재 상태(max)를 따라 '최대화'/'이전 크기로'로 바뀐다. ↓→ 닫기는 × 버튼과 같은
-          네이티브 close — 이 창의 대화는 창과 함께 사라지는 게 원래 규칙이라 확인 없이 닫는다. */}
+      {/* ↑←는 여기서도 창을 하나 더 연다. ↑↓는 컴포저 /clear와 같은 대화 비우기.
+          →↑는 타이틀바 최대화 버튼과 같은 토글 — 라벨은 현재 상태(max)를 따라
+          '최대화'/'이전 크기로'로 바뀐다. ↓→ 닫기는 × 버튼과 같은 네이티브 close —
+          이 창의 대화는 창과 함께 사라지는 게 원래 규칙이라 확인 없이 닫는다. */}
       <MouseGestureLayer
         target={threadEl}
         actions={[
           ...scrollGestures(() => threadEl),
           sessionWindowGesture(),
+          clearGesture(clearConversation),
           { pattern: 'RU', label: max ? '이전 크기로' : '창 최대화', run: () => window.api.win.toggleMaximize() },
           { pattern: 'DR', label: '창 닫기', run: () => window.api.win.close() }
         ]}

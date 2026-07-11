@@ -28,7 +28,7 @@ import { PromptModal } from './components/PromptModal'
 import { RecentFiles } from './components/RecentFiles'
 import { ResizeHandles } from './components/ResizeHandles'
 import { useZoom, ZoomBadge, mergeRefs } from './components/zoom'
-import { MouseGestureLayer, sessionWindowGesture, type GestureAction } from './components/mouseGesture'
+import { MouseGestureLayer, clearGesture, sessionWindowGesture, type GestureAction } from './components/mouseGesture'
 import { IconChevDown, IconCode } from './components/icons'
 
 // px from the bottom within which the chat counts as "at the bottom" — scrolling
@@ -484,7 +484,9 @@ function MainApp({ user }: { user: AppUser }) {
         if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
       }
     },
-    sessionWindowGesture()
+    sessionWindowGesture(),
+    // clearConversation은 아래에서 선언 — 배열 생성 시점(TDZ)을 피해 실행 시점에 참조한다
+    clearGesture(() => clearConversation())
   ]
 
   const cwd = manualCwd || ''
