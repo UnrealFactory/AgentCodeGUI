@@ -997,6 +997,45 @@ body.col-resizing *{ cursor:col-resize !important; }
 /* 다크에선 전역 --accent가 무채색이라(위 Claude 마크 규칙과 동일한 이유) 브랜드 오렌지 복원 */
 :root[data-theme="dark"] .working-spark{ color:oklch(0.61 0.16 42); }
 
+/* 멘트 shimmer 색 — 랜덤멘트가 바뀔 때 Chat.tsx rollPhraseColor()가 추첨(화이트 59% / 단색 각 2% / 그라디언트 각 0.5%).
+   단색 .wc는 기본 스윕 그대로 색만 교체(어두운 base 위로 밝은 hi 하이라이트가 지나감),
+   .wc-flow는 색 띠 전체가 계속 흐른다(첫 색을 끝에 반복해 이음새 없음). thinking 요약엔 칠하지 않음.
+   각 색은 [라이트 / 다크] 페어 — 라이트는 진한 하이라이트, 다크는 밝은 파스텔. */
+.working-label.wc{ background-image:linear-gradient(90deg, var(--wc-base) 0%, var(--wc-base) 38%, var(--wc-hi) 50%, var(--wc-base) 62%, var(--wc-base) 100%); }
+.wc-orange{ --wc-base:#c79b85; --wc-hi:#d15c0d; } :root[data-theme="dark"] .wc-orange{ --wc-base:#97675a; --wc-hi:#ff9d66; }
+.wc-gold{ --wc-base:#c4a878; --wc-hi:#b8860b; } :root[data-theme="dark"] .wc-gold{ --wc-base:#97855a; --wc-hi:#ffd76b; }
+.wc-lemon{ --wc-base:#bab47a; --wc-hi:#9a8f00; } :root[data-theme="dark"] .wc-lemon{ --wc-base:#98955a; --wc-hi:#f7f06e; }
+.wc-lime{ --wc-base:#a8b87f; --wc-hi:#6b9e0d; } :root[data-theme="dark"] .wc-lime{ --wc-base:#7d9455; --wc-hi:#c8f573; }
+.wc-green{ --wc-base:#8fba8f; --wc-hi:#22993f; } :root[data-theme="dark"] .wc-green{ --wc-base:#5f9c5f; --wc-hi:#86ec86; }
+.wc-mint{ --wc-base:#85b8a1; --wc-hi:#0f9c66; } :root[data-theme="dark"] .wc-mint{ --wc-base:#5a9478; --wc-hi:#7ff5bd; }
+.wc-teal{ --wc-base:#7fb3ab; --wc-hi:#0d968a; } :root[data-theme="dark"] .wc-teal{ --wc-base:#4f9188; --wc-hi:#5fe3d0; }
+.wc-aqua{ --wc-base:#7fb0bd; --wc-hi:#0791b5; } :root[data-theme="dark"] .wc-aqua{ --wc-base:#549099; --wc-hi:#77eaff; }
+.wc-sky{ --wc-base:#8badc2; --wc-hi:#1d7fc4; } :root[data-theme="dark"] .wc-sky{ --wc-base:#6f93ab; --wc-hi:#a8dcff; }
+.wc-blue{ --wc-base:#8aa3c4; --wc-hi:#2465d1; } :root[data-theme="dark"] .wc-blue{ --wc-base:#5f80a8; --wc-hi:#8cc0ff; }
+.wc-indigo{ --wc-base:#939ac9; --wc-hi:#4152d6; } :root[data-theme="dark"] .wc-indigo{ --wc-base:#6b74ab; --wc-hi:#93a0ff; }
+.wc-lavender{ --wc-base:#a49bc9; --wc-hi:#6a4fd1; } :root[data-theme="dark"] .wc-lavender{ --wc-base:#7b73a6; --wc-hi:#c8b3ff; }
+.wc-purple{ --wc-base:#a78fc9; --wc-hi:#7a35d1; } :root[data-theme="dark"] .wc-purple{ --wc-base:#8168a8; --wc-hi:#b98cff; }
+.wc-magenta{ --wc-base:#bd8ab8; --wc-hi:#b625a8; } :root[data-theme="dark"] .wc-magenta{ --wc-base:#a05f9a; --wc-hi:#f27ee6; }
+.wc-pink{ --wc-base:#c48fb2; --wc-hi:#d12a94; } :root[data-theme="dark"] .wc-pink{ --wc-base:#a06b91; --wc-hi:#ff9ddb; }
+.wc-rose{ --wc-base:#c48a9b; --wc-hi:#d12456; } :root[data-theme="dark"] .wc-rose{ --wc-base:#a85f78; --wc-hi:#ff7fa8; }
+.wc-coral{ --wc-base:#c49090; --wc-hi:#d14f42; } :root[data-theme="dark"] .wc-coral{ --wc-base:#a26262; --wc-hi:#ff9191; }
+.wc-red{ --wc-base:#c28585; --wc-hi:#c92222; } :root[data-theme="dark"] .wc-red{ --wc-base:#a35555; --wc-hi:#ff6b6b; }
+.wc-mocha{ --wc-base:#b39885; --wc-hi:#8a5a2e; } :root[data-theme="dark"] .wc-mocha{ --wc-base:#97785f; --wc-hi:#e0b48c; }
+.working-label.wc-flow{ animation:fade .35s ease, wc-flow 3.5s linear infinite; }
+@keyframes wc-flow{ from{ background-position:0% 0; } to{ background-position:-300% 0; } }
+.working-label.wc-rainbow{ background-image:linear-gradient(90deg,#c93a3a,#c9820a,#7f9e0d,#22993f,#0d96b5,#4152d6,#8a35d1,#d12a94,#c93a3a); }
+:root[data-theme="dark"] .working-label.wc-rainbow{ background-image:linear-gradient(90deg,#ff9191,#ffc46b,#f2ea6b,#8df08d,#6bd9ea,#8fa8ff,#c89fff,#ff9dd6,#ff9191); }
+.working-label.wc-sunset{ background-image:linear-gradient(90deg,#d15c0d,#d12a6e,#8a35d1,#d15c0d); }
+:root[data-theme="dark"] .working-label.wc-sunset{ background-image:linear-gradient(90deg,#ff9d66,#ff6b9d,#c86bff,#ff9d66); }
+.working-label.wc-ocean{ background-image:linear-gradient(90deg,#0d968a,#2465d1,#0791b5,#0d968a); }
+:root[data-theme="dark"] .working-label.wc-ocean{ background-image:linear-gradient(90deg,#5fe3d0,#6b9dff,#77eaff,#5fe3d0); }
+.working-label.wc-aurora{ animation-duration:.35s, 5s; background-image:linear-gradient(90deg,#0f9c66,#0791b5,#6a4fd1,#0f9c66); }
+:root[data-theme="dark"] .working-label.wc-aurora{ background-image:linear-gradient(90deg,#7ff5bd,#77eaff,#c8b3ff,#7ff5bd); }
+.working-label.wc-fire{ animation-duration:.35s, 2.8s; background-image:linear-gradient(90deg,#c92222,#d1820a,#b8860b,#c92222); }
+:root[data-theme="dark"] .working-label.wc-fire{ background-image:linear-gradient(90deg,#ff6b6b,#ff9d4d,#ffd76b,#ff6b6b); }
+.working-label.wc-neon{ background-image:linear-gradient(90deg,#009e9e,#c414b0,#009e9e); }
+:root[data-theme="dark"] .working-label.wc-neon{ background-image:linear-gradient(90deg,#6bffee,#ff6bf0,#6bffee); }
+
 .codeblock{ margin-top:14px; border:1px solid var(--line-2); border-radius:10px; overflow:hidden; background:var(--inset); animation:rise .4s cubic-bezier(.2,.8,.2,1) both; }
 .codeblock .cb-head{ display:flex; align-items:center; gap:8px; padding:8px 12px; border-bottom:1px solid var(--line); background:var(--surface); }
 .codeblock .cb-head .fn{ font-family:var(--font-mono); font-size:11.5px; color:var(--text-2); }

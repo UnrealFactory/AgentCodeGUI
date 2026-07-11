@@ -105,13 +105,17 @@ const EFFORTS: EffortOpt[] = [
 ]
 // 모드 + 과금 + 계정 picker가 함께 쓰는 아이콘 키 (Pick의 icons 렌더링)
 const MODE_ICONS = { shield: IconShieldChk, plan: IconClipList, check: IconCheckCirc, bolt: IconBolt, warn: IconAlert, card: IconCard, key: IconKey, user: IconUser }
+// 드롭다운 표시는 가장 위험한 것부터(우회→일반). 폴백·순환 방향은 아래 MODE_FALLBACK·nextMode가 보정.
 const MODES: ModeOpt[] = [
-  { v: '일반', id: 'normal', d: '변경마다 승인 요청', color: 'var(--text-3)', icon: 'shield' },
-  { v: '플랜', id: 'plan', d: '계획만 수립, 실행은 승인 후', color: 'var(--blue)', icon: 'plan' },
-  { v: '모두 허용', id: 'acceptEdits', d: '파일 편집 자동 수락', color: 'var(--yellow)', icon: 'check' },
+  // 우회는 위험 모드지만 텍스트는 다른 모드와 동일하게(흰색·한국어) — 빨간 경고 삼각형으로만 위험 표시
+  { v: '우회', id: 'bypass', d: '모든 권한 확인 건너뛰기', color: 'var(--red)', icon: 'warn' },
   { v: '자동', id: 'auto', d: '도구 실행까지 자동 진행', color: 'var(--violet)', icon: 'bolt' },
-  { v: 'Bypass', id: 'bypass', d: '모든 권한 확인 건너뛰기', color: 'var(--red)', icon: 'warn', warn: true }
+  { v: '모두 허용', id: 'acceptEdits', d: '파일 편집 자동 수락', color: 'var(--yellow)', icon: 'check' },
+  { v: '플랜', id: 'plan', d: '계획만 수립, 실행은 승인 후', color: 'var(--blue)', icon: 'plan' },
+  { v: '일반', id: 'normal', d: '변경마다 승인 요청', color: 'var(--text-3)', icon: 'shield' }
 ]
+// 배열 순서와 무관하게 폴백 기본값은 항상 '일반'
+const MODE_FALLBACK = MODES.find((m) => m.id === 'normal') ?? MODES[MODES.length - 1]
 
 export interface PickerState {
   model: ModelId
@@ -138,10 +142,11 @@ export interface ScheduledMsg {
   picker: PickerState
 }
 
-// next run mode in the picker order — used by the Shift+Tab shortcut
+// next run mode — used by the Shift+Tab shortcut. 배열은 위험한 것부터라(우회→일반)
+// 역방향으로 걸어 기존 순환 순서(일반→플랜→모두 허용→자동→우회→일반)를 유지한다.
 export function nextMode(current: ModeId): ModeId {
   const i = MODES.findIndex((m) => m.id === current)
-  return MODES[(i + 1) % MODES.length].id
+  return MODES[(i - 1 + MODES.length) % MODES.length].id
 }
 
 // ── Slash commands ───────────────────────────────────────────
@@ -701,107 +706,187 @@ function CmdResultCard({ item }: { item: Extract<ThreadItem, { kind: 'cmdresult'
 // Playful rotating labels (Claude Code style) shown while busy when there's no
 // explicit thinking summary.
 const WORKING_PHRASES = [
+  // 생각·궁리
   '골똘히 생각하는 중',
   '머리 굴리는 중',
-  '코드 들여다보는 중',
   '곰곰이 따져보는 중',
   '차근차근 정리하는 중',
-  '이리저리 탐색하는 중',
-  '퍼즐 맞추는 중',
-  '묘수를 찾는 중',
-  '조합해보는 중',
-  '꼼지락거리는 중',
-  '뇌를 가동하는 중',
-  '반짝이는 수를 고르는 중',
-  '마법 부리는 중',
   '고민에 고민을 더하는 중',
-  '한 땀 한 땀 엮는 중',
-  '열심히 만지작거리는 중',
-  '실마리를 푸는 중',
-  '머릿속 회로 돌리는 중',
-  '생각의 실타래 푸는 중',
-  '코드를 음미하는 중',
-  '점들을 잇는 중',
-  '깊이 파고드는 중',
-  '톱니바퀴 돌리는 중',
-  '단서를 모으는 중',
-  '가능성을 저울질하는 중',
-  '머리를 쥐어짜는 중',
-  '아이디어 굽는 중',
-  '생각을 졸이는 중',
   '차분히 헤아리는 중',
-  '경우의 수를 세는 중',
-  '논리를 다듬는 중',
-  '빈칸을 채우는 중',
-  '흐름을 따라가는 중',
-  '맥락을 읽는 중',
-  '큰 그림 그리는 중',
-  '설계도를 펼치는 중',
-  '발상을 굴리는 중',
-  '묘안을 짜내는 중',
-  '차곡차곡 쌓는 중',
-  '슬슬 시동 거는 중',
-  '손가락 푸는 중',
-  '커피 한 모금 하는 중',
-  '심호흡 하는 중',
+  '곱씹어보는 중',
+  '요모조모 뜯어보는 중',
+  '하나하나 짚어보는 중',
+  '갈피를 잡는 중',
+  '감을 잡는 중',
+  '머릿속을 정돈하는 중',
+  '생각을 가다듬는 중',
+  '생각의 갈래를 나누는 중',
+  '핵심만 골라내는 중',
+  '앞뒤를 맞춰보는 중',
   '정신 집중하는 중',
+  '맥락을 읽는 중',
+  '흐름을 따라가는 중',
+  // 두뇌·회로
+  '뇌를 가동하는 중',
+  '머릿속 회로 돌리는 중',
+  '톱니바퀴 돌리는 중',
   '두뇌 풀가동 중',
-  '코드 숲을 헤매는 중',
-  '보물 찾는 중',
-  '매듭을 푸는 중',
-  '톡톡 두드려보는 중',
-  '영감을 부르는 중',
-  // 짧은 단어형 — claude.ai "Figuring"식, shimmer와 궁합이 좋다
-  '궁리중',
-  '골몰중',
-  '숙고중',
-  '몰입중',
-  '음미중',
-  '조립중',
-  '탐색중',
-  '열일중',
   '두뇌 예열중',
   '회로 점검중',
-  // 요리·숙성
+  '두뇌 엔진 데우는 중',
+  '기어를 올리는 중',
+  '생각 회로에 불 켜는 중',
+  '두뇌 터빈 돌리는 중',
+  '뉴런 총출동 중',
+  '시냅스 달구는 중',
+  '뉴런을 깨우는 중',
+  '시냅스 연결하는 중',
+  '뇌세포 소집하는 중',
+  '회로도를 따라가는 중',
+  '배선을 정리하는 중',
+  '신호를 추적하는 중',
+  '머릿속 주판 튕기는 중',
+  '머릿속 칠판에 적는 중',
+  '머릿속 서랍을 뒤지는 중',
+  '기억의 책장을 넘기는 중',
+  '머릿속 실험실 가동 중',
+  // 추리·수사
+  '단서를 모으는 중',
+  '실마리를 푸는 중',
+  '돋보기 들이대는 중',
+  '발자국 따라가는 중',
+  '수수께끼를 푸는 중',
+  '단서를 맞춰보는 중',
+  '흩어진 단서를 줍는 중',
+  '추리를 이어가는 중',
+  '진상을 파헤치는 중',
+  '범인을 좁혀가는 중',
+  '버그 자취를 쫓는 중',
+  '안개를 걷어내는 중',
+  '촉을 세우는 중',
+  // 탐험·발굴
+  '이리저리 탐색하는 중',
+  '코드 숲을 헤매는 중',
+  '보물 찾는 중',
+  '지도를 펼치는 중',
+  '미궁을 헤치는 중',
+  '미로에서 길 찾는 중',
+  '깊이 파고드는 중',
+  '지름길을 찾는 중',
+  '샛길을 살피는 중',
+  '갈림길에서 고르는 중',
+  '코드 바다를 항해하는 중',
+  '깊은 곳까지 잠수하는 중',
+  '광맥을 캐는 중',
+  '원석을 캐는 중',
+  '점들을 잇는 중',
+  '별자리를 잇는 중',
+  // 퍼즐·엮기
+  '퍼즐 맞추는 중',
+  '조합해보는 중',
+  '생각의 실타래 푸는 중',
+  '매듭을 푸는 중',
+  '빈칸을 채우는 중',
+  '한 땀 한 땀 엮는 중',
+  '차곡차곡 쌓는 중',
+  '딱 맞는 조각 찾는 중',
+  '틀을 짜는 중',
+  '촘촘히 엮는 중',
+  // 코드·논리
+  '코드 들여다보는 중',
+  '코드를 음미하는 중',
+  '논리를 다듬는 중',
+  '경우의 수를 세는 중',
+  '가능성을 저울질하는 중',
+  '코드 결을 살피는 중',
+  '코드 행간을 읽는 중',
+  '로직을 굴려보는 중',
+  '실행 흐름을 짚는 중',
+  '흐름을 거슬러 올라가는 중',
+  '변수를 저울질하는 중',
+  '변수를 하나씩 소거하는 중',
+  '논리를 갈고닦는 중',
+  '가설을 세우는 중',
+  '가설을 검증하는 중',
+  '반례를 찾아보는 중',
+  '허점을 메우는 중',
+  '빈틈을 살피는 중',
+  '방정식을 푸는 중',
+  // 설계·구축
+  '큰 그림 그리는 중',
+  '설계도를 펼치는 중',
+  '청사진을 그리는 중',
+  '밑그림 그리는 중',
+  '뼈대를 세우는 중',
+  '주춧돌 놓는 중',
+  '판을 짜는 중',
+  '수순을 정하는 중',
+  '벽돌을 한 장씩 쌓는 중',
+  '징검다리 놓는 중',
+  '첫 단추를 끼우는 중',
+  // 수읽기·승부
+  '묘수를 찾는 중',
+  '반짝이는 수를 고르는 중',
+  '묘안을 짜내는 중',
+  '다음 수를 읽는 중',
+  '몇 수 앞을 내다보는 중',
+  '판세를 읽는 중',
+  '포석을 놓는 중',
+  '외통수를 찾는 중',
+  '승부수를 고르는 중',
+  '묘수풀이 하는 중',
+  '패를 맞춰보는 중',
+  // 생각 요리·숙성 — 생각/아이디어/답이 주어로 오는 것만
+  '아이디어 굽는 중',
+  '생각을 졸이는 중',
   '생각을 우려내는 중',
   '아이디어 반죽하는 중',
   '답을 숙성시키는 중',
-  '뭉근히 끓이는 중',
   '노릇하게 굽는 중',
-  '간을 보는 중',
-  '한소끔 끓이는 중',
-  '진하게 내리는 중',
   '갓 구운 답 꺼내는 중',
-  '육수 우리는 중',
-  // 공방·장인
-  '대패질하는 중',
-  '사포질하는 중',
-  '나사 조이는 중',
-  '먹줄 튕기는 중',
-  '모루에 두드리는 중',
-  // 탐험·추리
-  '돋보기 들이대는 중',
-  '발자국 따라가는 중',
-  '지도를 펼치는 중',
-  '미궁을 헤치는 중',
-  // 너스레·몸짓
-  '수염 쓰다듬는 중',
-  '턱을 괴는 중',
-  '안경 고쳐 쓰는 중',
-  '눈썹 모으는 중',
-  '전구 갈아 끼우는 중',
+  '생각을 뜸 들이는 중',
+  '생각을 재우는 중',
+  '생각을 체에 거르는 중',
+  '생각을 증류하는 중',
+  '아이디어를 발효시키는 중',
+  '아이디어를 배양하는 중',
+  '발상을 버무리는 중',
+  '발상을 굴리는 중',
+  '답을 빚는 중',
+  // 영감·마법
+  '마법 부리는 중',
+  '영감을 부르는 중',
   '번뜩임 기다리는 중',
-  '뉴런 총출동 중',
-  '시냅스 달구는 중',
-  '팔 걷어붙이는 중',
-  '의자 당겨 앉는 중'
+  '아이디어에 불씨 지피는 중',
+  '영감의 안테나 세우는 중',
+  '마법진을 그리는 중',
+  '주문을 외는 중',
+  // 몸풀기
+  '슬슬 시동 거는 중',
+  '손가락 푸는 중',
+  '열심히 만지작거리는 중',
+  '톡톡 두드려보는 중',
+  '머리를 쥐어짜는 중'
 ]
+
+// 멘트 shimmer 색 추첨 — 화이트 59%, 단색 19종 각 2%(합 38%), 그라디언트 6종 각 0.5%(합 3%).
+// 단색은 wc-* 클래스가 base/hi 색만 바꾸고, 그라디언트는 wc-flow가 색 띠를 계속 흘린다(styles.css).
+const PHRASE_SOLID_COLORS = ['orange', 'gold', 'lemon', 'lime', 'green', 'mint', 'teal', 'aqua', 'sky', 'blue', 'indigo', 'lavender', 'purple', 'magenta', 'pink', 'rose', 'coral', 'red', 'mocha']
+const PHRASE_FLOW_COLORS = ['rainbow', 'sunset', 'ocean', 'aurora', 'fire', 'neon']
+function rollPhraseColor(): string {
+  let r = Math.random() * 100
+  if ((r -= 59) < 0) return ''
+  for (const c of PHRASE_SOLID_COLORS) if ((r -= 2) < 0) return 'wc wc-' + c
+  for (const c of PHRASE_FLOW_COLORS) if ((r -= 0.5) < 0) return 'wc-flow wc-' + c
+  return ''
+}
 
 // Persistent "working" indicator shown in the chat while the agent is busy, so
 // the user can always tell it's running (not stuck). Shows the latest thinking
 // summary when available, otherwise a rotating playful label.
 export function WorkingIndicator({ text }: { text: string | null }) {
   const [i, setI] = useState(() => Math.floor(Math.random() * WORKING_PHRASES.length))
+  const [color, setColor] = useState(rollPhraseColor)
   useEffect(() => {
     let id: ReturnType<typeof setTimeout>
     function schedule(): void {
@@ -814,6 +899,7 @@ export function WorkingIndicator({ text }: { text: string | null }) {
             if (next === n) next = (next + 1) % WORKING_PHRASES.length
             return next
           })
+          setColor(rollPhraseColor())
           schedule()
         },
         5000 + Math.random() * 15000
@@ -824,12 +910,13 @@ export function WorkingIndicator({ text }: { text: string | null }) {
   }, [])
   const label = text || WORKING_PHRASES[i]
   // claude.ai 스타일 미니멀: 아바타 상자·점 없이 [스파크(펄스+회전) + shimmer 문구]만.
+  // 색은 랜덤멘트에만 — thinking 요약은 항상 기본 화이트.
   return (
     <div className="working-line">
       <span className="working-spark">
         <IconClaude size={17} />
       </span>
-      <span key={label} className="working-label">
+      <span key={label} className={'working-label' + (text || !color ? '' : ' ' + color)}>
         {label}
       </span>
     </div>
@@ -1546,7 +1633,7 @@ export function RunPickers({
 }) {
   const modelOpt = MODELS.find((m) => m.id === picker.model) ?? MODELS[0]
   const effortOpt = EFFORTS.find((e) => e.id === picker.effort) ?? EFFORTS[2]
-  const modeOpt = MODES.find((m) => m.id === picker.mode) ?? MODES[0]
+  const modeOpt = MODES.find((m) => m.id === picker.mode) ?? MODE_FALLBACK
   return (
     <>
       <Pick
@@ -1558,7 +1645,7 @@ export function RunPickers({
         tip="모델 — 응답 품질·속도"
       />
       <Pick
-        label="Effort"
+        label="추론"
         value={effortOpt.v}
         options={EFFORTS}
         onChange={(v) => setPicker({ ...picker, effort: (EFFORTS.find((m) => m.v === v) ?? EFFORTS[2]).id })}
@@ -1569,7 +1656,7 @@ export function RunPickers({
         label="모드"
         value={modeOpt.v}
         options={MODES}
-        onChange={(v) => setPicker({ ...picker, mode: (MODES.find((m) => m.v === v) ?? MODES[0]).id })}
+        onChange={(v) => setPicker({ ...picker, mode: (MODES.find((m) => m.v === v) ?? MODE_FALLBACK).id })}
         align={align}
         icons
         tip="실행 모드 — 변경 승인 방식"
@@ -2473,10 +2560,10 @@ export function Composer({
   const dragDepth = useRef(0)
   const [dragOver, setDragOver] = useState(false)
   const modelOpt = MODELS.find((m) => m.id === picker.model) ?? MODELS[0]
+  const effortOpt = EFFORTS.find((e) => e.id === picker.effort) ?? EFFORTS[2]
   // prefer the SDK's real context window; fall back to the model's nominal size
   const winTokens = contextWindow ?? modelOpt.ctx * 1000
-  const effortOpt = EFFORTS.find((e) => e.id === picker.effort) ?? EFFORTS[2]
-  const modeOpt = MODES.find((m) => m.id === picker.mode) ?? MODES[0]
+  const modeOpt = MODES.find((m) => m.id === picker.mode) ?? MODE_FALLBACK
 
   const grow = (el: HTMLTextAreaElement | null): void => {
     if (!el) return
@@ -3018,7 +3105,7 @@ export function Composer({
             />
             <span className="pick-div" />
             <Pick
-              label="Effort"
+              label="추론"
               value={effortOpt.v}
               options={EFFORTS}
               onChange={(v) => setPicker({ ...picker, effort: (EFFORTS.find((m) => m.v === v) ?? EFFORTS[2]).id })}
@@ -3030,7 +3117,7 @@ export function Composer({
               label="모드"
               value={modeOpt.v}
               options={MODES}
-              onChange={(v) => setPicker({ ...picker, mode: (MODES.find((m) => m.v === v) ?? MODES[0]).id })}
+              onChange={(v) => setPicker({ ...picker, mode: (MODES.find((m) => m.v === v) ?? MODE_FALLBACK).id })}
               align="right"
               icons
               tip="실행 모드 — 변경 승인 방식"
