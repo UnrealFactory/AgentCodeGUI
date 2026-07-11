@@ -959,7 +959,7 @@ function ApiView() {
                 <div className="api-tile-d">
                   {stats.sources.length
                     ? stats.sources.map(([s, c]) => `${USAGE_SOURCE_LABEL[s]} ${fmtUsd(c)}`).join(' · ')
-                    : ' '}
+                    : '\u00A0'}
                 </div>
               </div>
             </div>

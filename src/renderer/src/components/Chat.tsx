@@ -295,7 +295,8 @@ function BashLogModal({ t, onClose }: { t: ToolLogItem; onClose: () => void }) {
           <div className="bm-log scroll">
             {lines.map((ln, i) => (
               <div key={i} className={'bo-ln' + (bashErrLine(failed, ln) ? ' err' : '')}>
-                {ln || ' '}
+                {/* 빈 줄은 NBSP로 높이 유지 — 일반 공백은 collapse돼 줄이 사라진다 */}
+                {ln || '\u00A0'}
               </div>
             ))}
           </div>
@@ -314,12 +315,10 @@ function BashLogModal({ t, onClose }: { t: ToolLogItem; onClose: () => void }) {
 }
 
 // Bash 행 — Read/Edit 행이 파일을 열듯 명령(t-target)을 클릭하면 전체 로그 모달이
-// 열린다(호버 툴팁 '결과 보기'). 성공 출력의 고스트 줄은 제거 — 줄수·실행 시간은
-// 행 오른쪽 요약(ToolResult)에 다른 도구들과 같은 문법으로 나온다. 실패는 마지막
-// 5줄 꼬리를 인라인에 남긴다 — 에러는 아무것도 열지 않아도 바로 읽혀야 한다.
+// 열린다(호버 툴팁 '결과 보기'). 인라인 출력은 성공·실패 모두 없음 — 실패도 우측
+// '오류' 요약만 남기고, 내용은 다른 도구들과 똑같이 클릭해서 모달로 읽는다.
 function BashRow({ t }: { t: ToolLogItem }) {
   const [open, setOpen] = useState(false)
-  const failed = t.status === 'error'
   const clickable = !!t.output
   return (
     <>
@@ -335,24 +334,6 @@ function BashRow({ t }: { t: ToolLogItem }) {
         </span>
         <ToolResult t={t} />
       </div>
-      {failed && t.output && (
-        <div className="bo-block fail bo-open" onClick={() => setOpen(true)}>
-          <div className="bo-log">
-            {t.output
-              .split('\n')
-              .slice(-5)
-              .map((ln, i) => (
-                <div key={i} className={'bo-ln' + (bashErrLine(failed, ln) ? ' err' : '')}>
-                  {ln || ' '}
-                </div>
-              ))}
-          </div>
-          <div className="bo-foot">
-            <span className="bo-sp" />
-            <span className="bo-more">전체 로그 보기</span>
-          </div>
-        </div>
-      )}
       {open && t.output && <BashLogModal t={t} onClose={() => setOpen(false)} />}
     </>
   )
@@ -651,20 +632,11 @@ export const MessageView = memo(function MessageView({
   }
   if (item.kind === 'thinking') {
     return (
-      <div className="msg ai-msg">
-        <div className="ava ai">
-          <IconClaude size={16} />
-        </div>
-        <div className="msg-main">
-          <div className="thinking">
-            <span>{item.text}</span>
-            <span className="dots">
-              <i />
-              <i />
-              <i />
-            </span>
-          </div>
-        </div>
+      <div className="working-line">
+        <span className="working-spark">
+          <IconClaude size={17} />
+        </span>
+        <span className="working-label">{item.text}</span>
       </div>
     )
   }
@@ -771,7 +743,51 @@ const WORKING_PHRASES = [
   '보물 찾는 중',
   '매듭을 푸는 중',
   '톡톡 두드려보는 중',
-  '영감을 부르는 중'
+  '영감을 부르는 중',
+  // 짧은 단어형 — claude.ai "Figuring"식, shimmer와 궁합이 좋다
+  '궁리중',
+  '골몰중',
+  '숙고중',
+  '몰입중',
+  '음미중',
+  '조립중',
+  '탐색중',
+  '열일중',
+  '두뇌 예열중',
+  '회로 점검중',
+  // 요리·숙성
+  '생각을 우려내는 중',
+  '아이디어 반죽하는 중',
+  '답을 숙성시키는 중',
+  '뭉근히 끓이는 중',
+  '노릇하게 굽는 중',
+  '간을 보는 중',
+  '한소끔 끓이는 중',
+  '진하게 내리는 중',
+  '갓 구운 답 꺼내는 중',
+  '육수 우리는 중',
+  // 공방·장인
+  '대패질하는 중',
+  '사포질하는 중',
+  '나사 조이는 중',
+  '먹줄 튕기는 중',
+  '모루에 두드리는 중',
+  // 탐험·추리
+  '돋보기 들이대는 중',
+  '발자국 따라가는 중',
+  '지도를 펼치는 중',
+  '미궁을 헤치는 중',
+  // 너스레·몸짓
+  '수염 쓰다듬는 중',
+  '턱을 괴는 중',
+  '안경 고쳐 쓰는 중',
+  '눈썹 모으는 중',
+  '전구 갈아 끼우는 중',
+  '번뜩임 기다리는 중',
+  '뉴런 총출동 중',
+  '시냅스 달구는 중',
+  '팔 걷어붙이는 중',
+  '의자 당겨 앉는 중'
 ]
 
 // Persistent "working" indicator shown in the chat while the agent is busy, so
@@ -800,23 +816,15 @@ export function WorkingIndicator({ text }: { text: string | null }) {
     return () => clearTimeout(id)
   }, [])
   const label = text || WORKING_PHRASES[i]
+  // claude.ai 스타일 미니멀: 아바타 상자·점 없이 [스파크(펄스+회전) + shimmer 문구]만.
   return (
-    <div className="msg ai-msg">
-      <div className="ava ai">
-        <IconClaude size={16} />
-      </div>
-      <div className="msg-main">
-        <div className="thinking">
-          <span key={label} style={{ animation: 'fade .35s ease' }}>
-            {label}
-          </span>
-          <span className="dots">
-            <i />
-            <i />
-            <i />
-          </span>
-        </div>
-      </div>
+    <div className="working-line">
+      <span className="working-spark">
+        <IconClaude size={17} />
+      </span>
+      <span key={label} className="working-label">
+        {label}
+      </span>
     </div>
   )
 }

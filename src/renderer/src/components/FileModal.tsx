@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 import type { FileDiff, FileReadResult, LspLocation, LspSemanticTokens, LspStatus } from '@shared/protocol'
 import { Markdown } from './Markdown'
@@ -22,6 +22,7 @@ import {
   IconChevRight,
   IconClose,
   IconCopy,
+  IconFolderOpen,
   IconMax,
   IconPencil,
   IconRestore,
@@ -50,8 +51,11 @@ function canonPath(p: string, cwd: string): string {
   const full = isAbs ? p : cwd.replace(/[\\/]+$/, '') + '\\' + p
   return full.replace(/\//g, '\\').toLowerCase()
 }
+function isAbsPath(p: string): boolean {
+  return /^([a-zA-Z]:[\\/]|\\\\|\/)/.test(p)
+}
 function absPath(p: string, cwd: string): string {
-  return /^([a-zA-Z]:[\\/]|\\\\|\/)/.test(p) ? p : cwd.replace(/[\\/]+$/, '') + '\\' + p
+  return isAbsPath(p) ? p : cwd.replace(/[\\/]+$/, '') + '\\' + p
 }
 
 // SEM_CLASS / riderSemClass moved to ../lib/semTokens (shared with the CodeMirror
@@ -2800,6 +2804,33 @@ export function FileModal({
     }
   }, [analyzing, cwd])
 
+  // 헤더 우클릭 메뉴 — 경로 복사 / 파일 탐색기에서 보기 (탐색기 ctx-menu와 같은 디자인·클램프)
+  const [headCtx, setHeadCtx] = useState<{ x: number; y: number } | null>(null)
+  const headCtxRef = useRef<HTMLDivElement>(null)
+  const headCtxOpenRef = useRef(false)
+  headCtxOpenRef.current = headCtx != null
+  // 화면 아래/오른쪽을 넘치면 실측 크기로 되민다 — paint 전에 실행돼 안 튄다
+  useLayoutEffect(() => {
+    const el = headCtxRef.current
+    if (!el || !headCtx) return
+    el.style.left = Math.max(8, Math.min(headCtx.x, window.innerWidth - el.offsetWidth - 8)) + 'px'
+    el.style.top = Math.max(8, Math.min(headCtx.y, window.innerHeight - el.offsetHeight - 8)) + 'px'
+  }, [headCtx])
+  // 메뉴 닫기 — 바깥 클릭 / 리사이즈 (Esc는 아래 레이어링 핸들러가 가진다)
+  useEffect(() => {
+    if (!headCtx) return
+    const close = (): void => setHeadCtx(null)
+    const onDown = (e: MouseEvent): void => {
+      if (headCtxRef.current && !headCtxRef.current.contains(e.target as Node)) close()
+    }
+    window.addEventListener('mousedown', onDown)
+    window.addEventListener('resize', close)
+    return () => {
+      window.removeEventListener('mousedown', onDown)
+      window.removeEventListener('resize', close)
+    }
+  }, [headCtx])
+
   // Esc는 안쪽 레이어부터 차례로 접는다: 선택 툴바 → 질문 패널 → 파일 내 검색 → 카드
   const askOpenRef = useRef(false)
   askOpenRef.current = ask != null
@@ -2810,6 +2841,10 @@ export function FileModal({
     const onKey = (e: KeyboardEvent): void => {
       if (e.key !== 'Escape') return
       if (closeConfirmRef.current) return // 닫기 확인 카드가 떠 있으면 그 카드가 Esc를 가진다
+      if (headCtxOpenRef.current) {
+        setHeadCtx(null) // 헤더 우클릭 메뉴가 최상단 임시 레이어 — 그것부터 접는다
+        return
+      }
       if (document.querySelector('.sel-bar')) return // 선택 툴바가 먼저 접힌다
       if (document.querySelector('.cm-host .cm-find')) return // CM 검색 바가 열려 있으면 그게 먼저 닫힌다
       if (askOpenRef.current) {
@@ -2953,7 +2988,50 @@ export function FileModal({
       }}
     >
       <div className="fv-modal rzm" ref={modalRef} style={rz.modalStyle}>
-        <div className="diff-head" onDoubleClick={rz.onHeaderDoubleClick}>
+        {headCtx &&
+          createPortal(
+            <div ref={headCtxRef} className="ctx-menu" style={{ left: headCtx.x, top: headCtx.y }}>
+              <button
+                className="ctx-item"
+                onClick={() => {
+                  void navigator.clipboard.writeText(absPath(effPath, cwd).replace(/\//g, '\\'))
+                  setHeadCtx(null)
+                }}
+              >
+                <IconCopy size={15} /> 경로 복사
+              </button>
+              {!isAbsPath(effPath) && (
+                <button
+                  className="ctx-item"
+                  onClick={() => {
+                    void navigator.clipboard.writeText(effPath)
+                    setHeadCtx(null)
+                  }}
+                >
+                  <IconCopy size={15} /> 프로젝트 상대 경로 복사
+                </button>
+              )}
+              <div className="ctx-sep" />
+              <button
+                className="ctx-item"
+                onClick={() => {
+                  void window.api.revealPath(cwd, effPath)
+                  setHeadCtx(null)
+                }}
+              >
+                <IconFolderOpen size={15} /> 파일 탐색기에서 보기
+              </button>
+            </div>,
+            document.body
+          )}
+        <div
+          className="diff-head"
+          onDoubleClick={rz.onHeaderDoubleClick}
+          onContextMenu={(e) => {
+            e.preventDefault()
+            setHeadCtx({ x: e.clientX, y: e.clientY })
+          }}
+        >
           {vs.stack.length > 0 && (
             <button className="dclose htip fv-back" onClick={goBack} aria-label="뒤로" data-tip="이전 파일로 (마우스 뒤로 버튼)">
               <IconChevLeft size={15} />

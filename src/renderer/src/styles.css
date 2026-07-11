@@ -803,35 +803,12 @@ body.col-resizing *{ cursor:col-resize !important; }
 .t-target.has-tip::after{ left:0; transform:translate(0, 3px); }
 .t-target.has-tip:hover::after{ transform:translate(0, 0); }
 
-/* ── bash 실패 출력 꼬리 (BashRow) — the install-log idiom, inlined under the row.
-   실패한 명령만 마지막 5줄을 --inset 블록으로 남긴다(에러는 안 열어도 바로 읽히게).
-   성공 출력은 인라인 없음 — 행(명령) 클릭 = 전체 로그 모달(.bm-*).
-   Indented 23px to align under the verb (icon 14px + gap 9px). */
-.bo-block{
-  margin:1px 0 1px 23px; background:var(--inset); border:1px solid var(--line);
-  border-radius:9px; overflow:hidden;
-}
-.bo-block.fail{ border-left:2px solid var(--red); }
-.bo-log{ max-height:240px; overflow-y:auto; padding:9px 12px; }
+/* ── bash 로그 공용 조각 — 줄(.bo-ln)·스페이서(.bo-sp)는 전체 로그 모달(.bm-*)이 쓴다.
+   인라인 출력 블록은 성공·실패 모두 없음 — 실패도 행 우측 '오류' 요약만 남고,
+   행(명령) 클릭 = 전체 로그 모달. */
 .bo-ln{ font-family:var(--font-mono); font-size:11px; line-height:1.75; color:var(--text-3); white-space:pre-wrap; word-break:break-all; }
 .bo-ln.err{ color:var(--red); }
-.bo-foot{
-  display:flex; align-items:center; gap:10px; padding:5px 12px 6px;
-  border-top:1px solid var(--line); font-size:10.5px; color:var(--text-4);
-}
 .bo-sp{ flex:1; }
-.bo-foot button{
-  border:none; background:none; font-family:inherit; font-size:10.5px; color:var(--text-4);
-  cursor:pointer; padding:2px 5px; border-radius:5px;
-}
-.bo-foot button:hover{ color:var(--accent-2); background:var(--accent-soft); }
-.bo-foot button.bo-copied{ color:var(--green); }
-/* 실패 출력의 인라인 꼬리(마지막 5줄) — 에러는 안 열어도 바로 읽혀야 해서 남긴다.
-   클릭하면 전체 로그 모달. 성공 출력의 고스트 줄도 클릭 = 모달(인라인 펼침은 제거). */
-.bo-block.bo-open{ cursor:pointer; }
-.bo-block.bo-open:hover{ border-color:var(--line-2); }
-.bo-more{ flex:0 0 auto; color:var(--text-4); }
-.bo-block.bo-open:hover .bo-more{ color:var(--accent-2); text-decoration:underline; text-underline-offset:2px; }
 
 /* ── Bash 전체 로그 모달 (BashLogModal) — 인라인 펼침 대신 크게 읽는 카드.
    sa-overlay(백드롭) 위에 뜨며, '명령'과 '출력' 섹션으로 요청/결과를 나눠 보여준다.
@@ -914,11 +891,24 @@ body.col-resizing *{ cursor:col-resize !important; }
 .caret{ display:inline-block; width:7px; height:15px; transform:translateY(2px); margin-left:1px; background:var(--accent); border-radius:1px; animation:blink 1s steps(1) infinite; }
 @keyframes blink{ 50%{ opacity:0; } }
 
-.thinking{ display:flex; align-items:center; gap:9px; color:var(--text-3); font-size:13px; }
-.dots{ display:inline-flex; gap:4px; }
-.dots i{ width:5px; height:5px; border-radius:99px; background:var(--text-3); animation:bob 1.2s ease-in-out infinite; }
-.dots i:nth-child(2){ animation-delay:.16s; } .dots i:nth-child(3){ animation-delay:.32s; }
-@keyframes bob{ 0%,80%,100%{ transform:translateY(0); opacity:.4; } 40%{ transform:translateY(-4px); opacity:1; } }
+/* 작업중 인디케이터 — claude.ai 스타일 미니멀: 아바타 상자 없이 [주황 스파크 + 문구].
+   스파크는 펄스+회전, 문구는 하이라이트가 좌→우로 흐르는 shimmer(문구 교체 시 fade 재생).
+   min-height는 예전 아바타 행(28px)과 맞춰 등장/퇴장 때 스레드가 안 튀게. */
+.working-line{ display:flex; align-items:center; gap:10px; min-height:28px; }
+.working-spark{ width:20px; height:20px; flex:0 0 20px; display:grid; place-items:center; color:var(--accent); animation:spark-pulse 1.5s ease-in-out infinite; }
+.working-spark svg{ display:block; overflow:visible; animation:spark-spin 4.5s linear infinite; }
+@keyframes spark-pulse{ 0%,100%{ transform:scale(1); opacity:.82; } 50%{ transform:scale(1.18); opacity:1; } }
+@keyframes spark-spin{ to{ transform:rotate(360deg); } }
+.working-label{
+  font-size:13px;
+  background:linear-gradient(90deg, var(--text-3) 0%, var(--text-3) 38%, var(--text) 50%, var(--text-3) 62%, var(--text-3) 100%);
+  background-size:300% 100%;
+  -webkit-background-clip:text; background-clip:text; color:transparent;
+  animation:fade .35s ease, shimmer-sweep 2.4s ease-in-out infinite;
+}
+@keyframes shimmer-sweep{ 0%{ background-position:100% 0; } 100%{ background-position:0% 0; } }
+/* 다크에선 전역 --accent가 무채색이라(위 Claude 마크 규칙과 동일한 이유) 브랜드 오렌지 복원 */
+:root[data-theme="dark"] .working-spark{ color:oklch(0.61 0.16 42); }
 
 .codeblock{ margin-top:14px; border:1px solid var(--line-2); border-radius:10px; overflow:hidden; background:var(--inset); animation:rise .4s cubic-bezier(.2,.8,.2,1) both; }
 .codeblock .cb-head{ display:flex; align-items:center; gap:8px; padding:8px 12px; border-bottom:1px solid var(--line); background:var(--surface); }
