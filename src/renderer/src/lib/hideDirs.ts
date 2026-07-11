@@ -36,8 +36,8 @@ export const DEFAULT_HIDE_DIRS = [
 ]
 
 // 기본 숨김 파일 목록 — OS가 흘리는 잡동사니만. 빌드 생성물 파일(*.uasset 등)은 대부분
-// 폴더 단위(Content·bin·obj)로 이미 가려지니 기본값은 보수적으로 잡았다 — 필요하면 설정이나
-// 트리 우클릭('숨김 목록에 추가')으로 이름 또는 *.확장자 패턴을 더한다.
+// 폴더 단위(Content·bin·obj)로 이미 가려지니 기본값은 보수적으로 잡았다 — 필요하면 설정
+// (이름·*.확장자 패턴)이나 트리 우클릭('숨김 목록에 추가' — 이름)으로 더한다.
 export const DEFAULT_HIDE_FILES = ['.DS_Store', 'Thumbs.db', 'desktop.ini']
 
 const ENABLED_KEY = 'explorer.hideEnabled'

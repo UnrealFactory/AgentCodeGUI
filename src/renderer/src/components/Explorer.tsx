@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import type { ChangedFile, DirEntry } from '@shared/protocol'
 import { FileBadge } from './fileType'
 import { getPref, setPref } from '../lib/prefs'
-import { IconChevLeft, IconChevRight, IconEyeOff, IconFile, IconFilter, IconFolder, IconFolderOpen, IconGitBranch, IconList, IconPencil, IconPlus, IconRefresh, IconSearch, IconTrash, IconVerse, IconX2 } from './icons'
+import { IconChevLeft, IconChevRight, IconCopy, IconEyeOff, IconFile, IconFilter, IconFolder, IconFolderOpen, IconGitBranch, IconList, IconPencil, IconPlus, IconRefresh, IconSearch, IconTrash, IconVerse, IconX2 } from './icons'
 import { FileOpModal, type FileOp } from './FileOpModal'
 import { NoticeModal } from './NoticeModal'
 import {
@@ -507,8 +507,15 @@ export const Explorer = memo(function Explorer({
     else void window.api.revealPath(root, ctx.rel)
     setCtx(null)
   }
-  // 우클릭 '숨김 목록에 추가' — 폴더는 폴더 목록에, 파일은 파일 목록(이름 또는 *.확장자 패턴)에
-  // 넣는다. 전역 목록이라 설정 › Explorer에서 되돌리고, setHide*가 이벤트를 쏴 트리가 곧바로
+  // 절대경로를 클립보드로 — 뷰어 헤더 우클릭 '경로 복사'와 같은 백슬래시 표기
+  const doCopyPath = (): void => {
+    if (!ctx) return
+    const abs = ctx.revealAbs || (ctx.rel ? root.replace(/[\\/]+$/, '') + '\\' + ctx.rel : root)
+    void navigator.clipboard.writeText(abs.replace(/\//g, '\\'))
+    setCtx(null)
+  }
+  // 우클릭 '숨김 목록에 추가' — 폴더는 폴더 목록에, 파일은 파일 목록에 이름으로 넣는다.
+  // 전역 목록이라 설정 › Explorer에서 되돌리고, setHide*가 이벤트를 쏴 트리가 곧바로
   // 다시 읽힌다. 마스터 토글이 꺼져 있으면 켠다 — 숨기라고 눌렀는데 그대로 보이면 이상하니.
   const addHide = (pattern: string, dir: boolean): void => {
     setCtx(null)
@@ -844,6 +851,9 @@ export const Explorer = memo(function Explorer({
                 <IconPencil size={15} /> 이름 변경
               </button>
             )}
+            <button className="ctx-item" onClick={doCopyPath}>
+              <IconCopy size={15} /> 경로 복사
+            </button>
             <button className="ctx-item" onClick={doReveal}>
               <IconFolderOpen size={15} /> 파일 탐색기에서 보기
             </button>
@@ -859,19 +869,14 @@ export const Explorer = memo(function Explorer({
                 <IconList size={15} /> 변경된 파일 {ctxChg}개 보기
               </button>
             )}
-            {/* 숨김 목록에 추가 — 폴더는 이름으로, 파일은 이름 그리고(확장자가 있으면) *.확장자로.
-                루트/절대경로 행에는 안 붙는다. 클릭 즉시 트리에서 사라지고 설정 › Explorer에서 관리. */}
+            {/* 숨김 목록에 추가 — 이름으로 폴더/파일 목록에 넣는다. 루트/절대경로 행에는 안 붙는다.
+                클릭 즉시 트리에서 사라지고 설정 › Explorer에서 관리(거기선 *.확장자 패턴도 가능). */}
             {!ctx.root && !ctx.revealAbs && (
               <>
                 <div className="ctx-sep" />
                 <button className="ctx-item" onClick={() => addHide(ctx.name, ctx.dir)}>
                   <IconEyeOff size={15} /> ‘{shortName(ctx.name)}’ 숨김 목록에 추가
                 </button>
-                {!ctx.dir && !!extOf(ctx.name) && (
-                  <button className="ctx-item" onClick={() => addHide('*.' + extOf(ctx.name), false)}>
-                    <IconEyeOff size={15} /> ‘*.{extOf(ctx.name)}’ 모두 숨김 목록에 추가
-                  </button>
-                )}
               </>
             )}
             {!ctx.root && !ctx.revealAbs && (
@@ -1135,13 +1140,6 @@ function indent(depth: number): number {
 function basename(p: string): string {
   const parts = p.split(/[\\/]+/).filter(Boolean)
   return parts.length ? parts[parts.length - 1] : p
-}
-
-// 파일 이름의 확장자('' = 없음) — 점으로 시작하는 dotfile(.gitignore)은 확장자 없음으로 취급해
-// 우클릭 메뉴에 '*.gitignore 모두 숨기기' 같은 이상한 항목이 안 생기게 한다
-function extOf(name: string): string {
-  const i = name.lastIndexOf('.')
-  return i > 0 && i < name.length - 1 ? name.slice(i + 1) : ''
 }
 
 // 컨텍스트 메뉴 라벨용 — 긴 파일 이름이 메뉴 폭을 폭주시키지 않게 줄인다
