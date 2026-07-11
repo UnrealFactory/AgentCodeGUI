@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import type { ChangedFile, DirEntry } from '@shared/protocol'
 import { FileBadge } from './fileType'
 import { getPref, setPref } from '../lib/prefs'
-import { IconChevLeft, IconChevRight, IconEyeOff, IconFile, IconFilter, IconFolder, IconFolderOpen, IconGitBranch, IconPencil, IconPlus, IconRefresh, IconSearch, IconTrash, IconVerse, IconX2 } from './icons'
+import { IconChevLeft, IconChevRight, IconEyeOff, IconFile, IconFilter, IconFolder, IconFolderOpen, IconGitBranch, IconList, IconPencil, IconPlus, IconRefresh, IconSearch, IconTrash, IconVerse, IconX2 } from './icons'
 import { FileOpModal, type FileOp } from './FileOpModal'
 import { NoticeModal } from './NoticeModal'
 import {
@@ -77,6 +77,7 @@ export const Explorer = memo(function Explorer({
   changed,
   gitReady,
   onOpenGit,
+  onShowChanged,
   onViewFolderChange
 }: {
   cwd: string
@@ -88,6 +89,7 @@ export const Explorer = memo(function Explorer({
   changed?: ChangedFile[] // 이 세션에서 AI가 만든/수정한 파일 (rel posix) → 색·배지 표시
   gitReady?: boolean // 메인 작업 폴더가 git 레포 안에 있는지 (상위 탐색 포함)
   onOpenGit?: () => void // ⎇ 버튼 → Git 카드 (커밋 히스토리·변경 사항)
+  onShowChanged?: (scope: { rel: string; label: string }) => void // 우클릭 '변경된 파일 보기' → 카드
   onViewFolderChange?: (folder: string) => void // 지금 보고 있는 폴더(메인/참고)를 알림 → 채팅 @ 멘션의 기준
 }) {
   // 참고 폴더(보기 전용) 목록과 지금 보고 있는 폴더('' = 메인). cwd가 바뀌면(채팅
@@ -297,6 +299,18 @@ export const Explorer = memo(function Explorer({
     }
     return { files, dirs }
   }, [changed, viewing])
+
+  // 우클릭한 폴더 아래 변경 파일 수 — 0이면 '변경된 파일 보기' 메뉴 항목 자체를
+  // 안 그린다(점 없는 폴더와 일치). 목록 자체는 App의 ChangedFilesModal 카드가 그린다.
+  const countChg = (rel: string): number => {
+    if (!rel) return chg.files.size
+    let n = 0
+    const pre = rel + '/'
+    chg.files.forEach((_t, p) => {
+      if (p.startsWith(pre)) n++
+    })
+    return n
+  }
 
   const loadDir = (rel: string): void => {
     if (!root) return
@@ -709,6 +723,9 @@ export const Explorer = memo(function Explorer({
   const project = basename(cwd)
   // 지금 보고 있는 뷰의 표시 이름 — 메인은 프로젝트명, Verse API/참고 폴더는 그 폴더명(예: /Verse.org)
   const rootLabel = viewing ? autoRefs.find((v) => v.path === viewing)?.name ?? basename(viewing) : project
+  // 우클릭 메뉴의 '변경된 파일 보기' — 폴더/루트(빈 영역)에서만, 그 아래 변경 파일이 있을 때만.
+  // 참고 폴더 뷰에선 chg가 비어 있어 자연히 안 뜬다.
+  const ctxChg = ctx && onShowChanged && (ctx.dir || ctx.root) && !ctx.revealAbs ? countChg(ctx.rel) : 0
 
   const renderRows = (base: string, depth: number): React.ReactNode => {
     const list = entries.get(base)
@@ -830,6 +847,18 @@ export const Explorer = memo(function Explorer({
             <button className="ctx-item" onClick={doReveal}>
               <IconFolderOpen size={15} /> 파일 탐색기에서 보기
             </button>
+            {/* 이 폴더(또는 프로젝트 전체) 아래 AI가 만든/수정한 파일 목록 카드 — 점이 붙은 폴더에만 뜬다 */}
+            {ctxChg > 0 && (
+              <button
+                className="ctx-item"
+                onClick={() => {
+                  onShowChanged?.({ rel: ctx.rel, label: ctx.root ? rootLabel : ctx.name })
+                  setCtx(null)
+                }}
+              >
+                <IconList size={15} /> 변경된 파일 {ctxChg}개 보기
+              </button>
+            )}
             {/* 숨김 목록에 추가 — 폴더는 이름으로, 파일은 이름 그리고(확장자가 있으면) *.확장자로.
                 루트/절대경로 행에는 안 붙는다. 클릭 즉시 트리에서 사라지고 설정 › Explorer에서 관리. */}
             {!ctx.root && !ctx.revealAbs && (

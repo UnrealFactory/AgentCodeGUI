@@ -16,6 +16,7 @@ import { AskModal } from './components/AskModal'
 import { FolderSwitchDialog } from './components/FolderSwitchDialog'
 import { FileModal } from './components/FileModal'
 import { GitModal, type GitFileOpen } from './components/GitModal'
+import { ChangedFilesModal } from './components/ChangedFilesModal'
 import { ImageViewer } from './components/ImageViewer'
 import { SettingsModal } from './components/Settings'
 import { EngineGate } from './components/EngineGate'
@@ -144,6 +145,8 @@ function MainApp({ user }: { user: AppUser }) {
   // 탐색기 ⎇ 버튼 → Git 카드. 루트는 메인 프로세스가 상위 폴더까지 탐색(cwd별 캐시)
   const [gitOpen, setGitOpen] = useState(false)
   const [gitRoot, setGitRoot] = useState<string | null>(null)
+  // 탐색기 우클릭 '변경된 파일 보기' 카드 — 스코프 폴더(rel '' = 프로젝트 전체)와 표시 이름
+  const [chgScope, setChgScope] = useState<{ rel: string; label: string } | null>(null)
   // a working-folder change that would reset the current conversation, parked here
   // until the user confirms it in the card modal (변경) or backs out (취소)
   const [pendingFolder, setPendingFolder] = useState<string | null>(null)
@@ -1036,6 +1039,10 @@ function MainApp({ user }: { user: AppUser }) {
   const onOpenGit = useEvent(() => {
     if (gitRoot) setGitOpen(true)
   })
+  // ── 변경 파일 카드 (탐색기 우클릭) ─────────────────────────
+  const onShowChanged = useEvent((scope: { rel: string; label: string }) => setChgScope(scope))
+  // 작업 폴더가 바뀌면(채팅 전환 포함) 스코프 rel 경로가 무의미해지니 카드를 닫는다
+  useEffect(() => setChgScope(null), [cwd])
   // Git 카드에서 파일 열기 — 커밋 시점 내용/마킹을 뷰어에 일회성으로 넘긴다
   const onGitOpenFile = useEvent((p: GitFileOpen) => {
     setFileOverride({ content: p.content, diff: p.diff, label: p.label })
@@ -1124,6 +1131,7 @@ function MainApp({ user }: { user: AppUser }) {
           changed={state.files}
           gitReady={!!gitRoot}
           onOpenGit={onOpenGit}
+          onShowChanged={onShowChanged}
           onViewFolderChange={onExplorerView}
         />
 
@@ -1259,6 +1267,15 @@ function MainApp({ user }: { user: AppUser }) {
 
       {gitOpen && gitRoot && (
         <GitModal root={gitRoot} cwd={cwd} onClose={() => setGitOpen(false)} onOpenFile={onGitOpenFile} onAskClaude={onGitAskClaude} />
+      )}
+
+      {chgScope && (
+        <ChangedFilesModal
+          scope={chgScope}
+          changed={state.files}
+          onOpen={onOpenToolFile}
+          onClose={() => setChgScope(null)}
+        />
       )}
 
       <FileModal
