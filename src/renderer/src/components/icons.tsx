@@ -452,3 +452,11 @@ export const IconMouse = (p: IconProps) => (
     <path d="M12 7v4" />
   </Icon>
 )
+// 원 안의 위 화살표 — 사이드바 앱 업데이트 배지
+export const IconArrowUpCircle = (p: IconProps) => (
+  <Icon {...p}>
+    <circle cx={12} cy={12} r={9} />
+    <path d="M12 16V8.5" />
+    <path d="M8.5 11.5 12 8l3.5 3.5" />
+  </Icon>
+)

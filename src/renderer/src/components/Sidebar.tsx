@@ -1,9 +1,9 @@
 import { memo, useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
-import type { AppUser, AgentStatus } from '@shared/protocol'
+import type { AppUser, AgentStatus, UpdateStatus } from '@shared/protocol'
 import { useAppVersion } from '../lib/version'
 import { getPref, setPref } from '../lib/prefs'
-import { IconSearch, IconPlus, IconMore, IconPencil, IconSpark, IconTrash, IconCode, IconGrid, IconMessage, IconChevLeft, IconPanelLeft } from './icons'
+import { IconSearch, IconPlus, IconMore, IconPencil, IconSpark, IconTrash, IconCode, IconGrid, IconMessage, IconChevLeft, IconPanelLeft, IconArrowUpCircle } from './icons'
 
 // 채팅 = pure conversation (no folder/explorer) · single = one coding agent · multi = parallel agents
 export type WorkspaceMode = 'chat' | 'single' | 'multi'
@@ -302,6 +302,16 @@ export const Sidebar = memo(function Sidebar({
   // 접힘 상태는 Sidebar 안에서 관리 — 단일/멀티 모드 어느 쪽에서 접어도 같은
   // pref('sidebar.open')를 읽고 쓰므로 모드를 오가도 상태가 이어진다
   const [open, setOpen] = useState<boolean>(() => getPref<boolean>('sidebar.open', true))
+  // 앱 업데이트 이벤트 배지 — 새 버전이 발견되면 프로필 줄 위에 나타난다. 상태는
+  // 메인 프로세스가 소유(AppUpdateGate와 같은 채널을 구독)하므로 여기서 놓친 초기
+  // 이벤트도 getUpdateStatus 시드로 복원된다. 클릭하면 상세 카드를 되띄운다.
+  const [upd, setUpd] = useState<UpdateStatus | null>(null)
+  useEffect(() => {
+    window.api.app.getUpdateStatus().then(setUpd).catch(() => {})
+    return window.api.app.onUpdateEvent(setUpd)
+  }, [])
+  const updReady = upd?.phase === 'downloaded'
+  const updVisible = updReady || upd?.phase === 'available' || upd?.phase === 'downloading'
   // 전체 삭제 확인 카드 — 개별 삭제와 같은 set-dialog 이디엄, Esc로 닫힌다
   const [confirmAll, setConfirmAll] = useState(false)
   useEffect(() => {
@@ -453,6 +463,19 @@ export const Sidebar = memo(function Sidebar({
           onPrompt={onPromptChat}
         />
       </div>
+
+      {updVisible && upd && (
+        <button
+          className={'sb-update' + (updReady ? ' ready' : '')}
+          onClick={() => window.dispatchEvent(new Event('app-update:open'))}
+        >
+          <span className="ic">{updReady ? <IconArrowUpCircle size={16} stroke={1.8} /> : <span className="set-spin" />}</span>
+          <span className="txt">
+            <span className="t">{upd.version ? `새 버전 v${upd.version}` : '새 버전'}</span>
+            <span className="s">{updReady ? '재시작하여 업데이트' : `내려받는 중… ${upd.percent}%`}</span>
+          </span>
+        </button>
+      )}
 
       <button className="sb-foot has-tip" data-tip="설정 열기" aria-label="설정 열기" onClick={onOpenSettings}>
         <div className="ava" style={{ background: user.avatarColor, color: '#fff' }}>

@@ -406,6 +406,35 @@ input,textarea{ font-family:inherit; }
 .sb-foot .who{ flex:1; min-width:0; }
 .sb-foot .who .n{ font-size:12.5px; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 
+/* 앱 업데이트 이벤트 배지 — 새 버전이 생기면 프로필 줄 위에 나타난다. 내려받는 동안은
+   조용한 진행 pill, 준비 완료(ready)면 아이콘 펄스 + 광택 한 줄이 주기적으로 쓸고
+   지나가 이벤트처럼 눈에 걸린다. 클릭은 항상 상세 카드(AppUpdateGate)를 되띄운다. */
+.sb-update{
+  margin:4px 12px 9px; padding:8px 10px; width:calc(100% - 24px);
+  display:flex; align-items:center; gap:10px; text-align:left;
+  border-radius:10px; border:1px solid var(--accent-line); background:var(--accent-soft);
+  position:relative; overflow:hidden;
+  transition:box-shadow .14s, border-color .14s;
+}
+.sb-update:hover{ box-shadow:var(--hover-ring); }
+.sb-update .ic{ width:26px; height:26px; flex:0 0 26px; border-radius:8px; display:grid; place-items:center; background:var(--accent); color:var(--on-accent); }
+.sb-update:not(.ready) .ic{ background:transparent; }
+.sb-update .txt{ flex:1; min-width:0; display:flex; flex-direction:column; gap:1px; }
+.sb-update .t{ font-size:12px; font-weight:600; letter-spacing:-.01em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.sb-update .s{ font-size:11px; color:var(--text-3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.sb-update.ready .ic{ animation:upd-pulse 2.4s ease-in-out infinite; }
+@keyframes upd-pulse{ 0%,100%{ box-shadow:0 0 0 0 var(--accent-soft); } 50%{ box-shadow:0 0 0 5px var(--accent-soft); } }
+.sb-update.ready::after{
+  content:""; position:absolute; inset:0; pointer-events:none;
+  background:linear-gradient(105deg, transparent 42%, oklch(1 0 0 / 0.16) 50%, transparent 58%);
+  transform:translateX(-100%); animation:upd-sheen 3.4s ease-in-out infinite;
+}
+@keyframes upd-sheen{ 0%{ transform:translateX(-100%); } 45%,100%{ transform:translateX(100%); } }
+/* 다크에선 전역 --accent가 무채색이라 배지가 묻힌다 — Claude 마크·스파크와 같은
+   규칙으로 이 배지의 아이콘 칩에만 브랜드 오렌지를 복원 */
+:root[data-theme="dark"] .sb-update .ic{ background:oklch(0.61 0.16 42); color:#fff; }
+:root[data-theme="dark"] .sb-update:not(.ready) .ic{ background:transparent; }
+
 /* ============================== EXPLORER ============================== */
 /* 파일 탐색기 — 채팅 옆 접이식 칼럼. 사이드바와 같은 디자인 언어(헤어라인 보더,
    surface 호버, 모노 폰트 경로)로, 코드 브라우징이 필요 없을 땐 좁은 레일로 접힌다. */

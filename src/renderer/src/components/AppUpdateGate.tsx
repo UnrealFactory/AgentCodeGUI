@@ -17,8 +17,11 @@ export function AppUpdateGate() {
 
   // seed from the main-process state (catches events fired before we subscribed)
   useEffect(() => {
+    // the sidebar's update badge re-surfaces a dismissed card through this event
+    const reopen = (): void => setDismissed(false)
+    window.addEventListener('app-update:open', reopen)
     window.api.app.getUpdateStatus().then(setStatus).catch(() => {})
-    return window.api.app.onUpdateEvent((s) => {
+    const off = window.api.app.onUpdateEvent((s) => {
       // re-surface the card at the key moments even if it was hidden before
       if (s.phase !== prevPhase.current && (s.phase === 'available' || s.phase === 'downloaded')) {
         setDismissed(false)
@@ -26,6 +29,10 @@ export function AppUpdateGate() {
       prevPhase.current = s.phase
       setStatus(s)
     })
+    return () => {
+      window.removeEventListener('app-update:open', reopen)
+      off()
+    }
   }, [])
 
   // keep the log scrolled to the newest line
