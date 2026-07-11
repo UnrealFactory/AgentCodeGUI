@@ -30,6 +30,7 @@ import {
   IconSend
 } from './icons'
 import { useResizableModal, ModalResizeHandles } from './resizableModal'
+import { MouseGestureLayer, type GestureAction } from './mouseGesture'
 import { useZoom, ZoomBadge, mergeRefs } from './zoom'
 
 // beyond this size we skip syntax highlighting (highlight.js gets slow on very large
@@ -2948,6 +2949,25 @@ export function FileModal({
     return () => window.removeEventListener('mouseup', onUp)
   }, [path, goBack, goForward])
 
+  // 우클릭 드래그 마우스 제스처 — ←/→는 정의 점프 트레일(옆버튼과 같은 동작), ↑/↓는 본문
+  // 스크롤, ↓→(L자)는 닫기. 갈 곳이 없으면 라벨로 정직하게 알리고 실행은 no-op(옆버튼과
+  // 같은 규칙 — 실수로 닫히는 게 싫다는 피드백). 본문 스크롤러는 모드마다 하나뿐이라
+  // 셀렉터 한 줄로 찾는다(코드 .fv-code · 마크다운 .fv-md · 이미지 .fv-imgbody · CM .cm-scroller).
+  const scrollBody = useCallback(
+    (to: 'top' | 'bottom'): void => {
+      const sc = cardEl?.querySelector('.cm-scroller, .fv-code, .fv-md, .fv-imgbody')
+      if (sc) sc.scrollTo({ top: to === 'top' ? 0 : sc.scrollHeight, behavior: 'smooth' })
+    },
+    [cardEl]
+  )
+  const gestureActions: GestureAction[] = [
+    { pattern: 'L', label: vs.stack.length ? '이전 파일' : '이전 파일 없음', run: goBack },
+    { pattern: 'R', label: vs.fwd.length ? '다음 파일' : '다음 파일 없음', run: goForward },
+    { pattern: 'U', label: '맨 위로', run: () => scrollBody('top') },
+    { pattern: 'D', label: '맨 아래로', run: () => scrollBody('bottom') },
+    { pattern: 'DR', label: '창 닫기', run: requestClose }
+  ]
+
   // Ctrl+클릭 definition target: same document → just jump; another file → stack it
   // (with the jump), so 뒤로 can unwind. 새 점프는 앞으로(fwd) 기록을 무효화한다(브라우저처럼).
   const handleNavigate = useCallback(
@@ -3000,17 +3020,6 @@ export function FileModal({
               >
                 <IconCopy size={15} /> 경로 복사
               </button>
-              {!isAbsPath(effPath) && (
-                <button
-                  className="ctx-item"
-                  onClick={() => {
-                    void navigator.clipboard.writeText(effPath)
-                    setHeadCtx(null)
-                  }}
-                >
-                  <IconCopy size={15} /> 프로젝트 상대 경로 복사
-                </button>
-              )}
               <div className="ctx-sep" />
               <button
                 className="ctx-item"
@@ -3240,6 +3249,7 @@ export function FileModal({
       {onAskSelection && !isImg && !ask && (
         <SelectionAskBar root={cardEl} onAsk={(text, from, to) => setAsk({ text, from, to })} />
       )}
+      <MouseGestureLayer target={cardEl} actions={gestureActions} disabled={closeConfirm} />
       {closeConfirm && (
         <CloseConfirmDialog
           onStay={() => {

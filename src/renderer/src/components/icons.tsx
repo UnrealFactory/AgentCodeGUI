@@ -445,3 +445,10 @@ export const IconCloseOthers = (p: IconProps) => (
     <path d="m21 10.5-3 3" />
   </Icon>
 )
+// 마우스 본체 + 가운데 휠 — 설정 → Gestures 탭
+export const IconMouse = (p: IconProps) => (
+  <Icon {...p}>
+    <rect x={6.5} y={3} width={11} height={18} rx={5.5} />
+    <path d="M12 7v4" />
+  </Icon>
+)

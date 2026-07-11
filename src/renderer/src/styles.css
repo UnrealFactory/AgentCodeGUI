@@ -2382,6 +2382,33 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
 }
 .zoom-badge.on{ opacity:.96; transform:translate(-50%, -50%) scale(1); }
 
+/* ── 마우스 제스처(우클릭 드래그) — 전체 화면 궤적 + 인식된 동작 버블(카드 중앙).
+   body 포털·pointer-events:none이라 어떤 화면 위에서도 입력을 가로채지 않는다.
+   z는 뷰어 위 임시 레이어들(ctx-menu 300 · lsp-hover 400)보다 위.
+   잉크는 전역 accent 그대로 — 라이트는 오렌지, 다크는 근백색(흰 궤적 선호 — 실물 피드백).
+   글로우도 잉크를 따라간다. */
+.mg-layer{ --mg-ink:var(--accent); position:fixed; inset:0; z-index:500; pointer-events:none; transition:opacity .22s ease; }
+.mg-layer.out{ opacity:0; }
+.mg-trail{ position:absolute; inset:0; width:100%; height:100%; display:block; }
+.mg-trail polyline{
+  fill:none; stroke:var(--mg-ink); stroke-opacity:.9;
+  stroke-width:3; stroke-linecap:round; stroke-linejoin:round;
+  filter:drop-shadow(0 0 7px color-mix(in srgb, var(--mg-ink) 45%, transparent));
+}
+.mg-label{
+  position:fixed; transform:translate(-50%, -50%);
+  display:flex; flex-direction:column; align-items:center; gap:8px;
+  min-width:104px; padding:16px 22px 13px; border-radius:18px;
+  background:color-mix(in srgb, var(--surface) 82%, transparent);
+  -webkit-backdrop-filter:blur(16px) saturate(1.15); backdrop-filter:blur(16px) saturate(1.15);
+  border:1px solid var(--line-2);
+  box-shadow:0 20px 48px -14px rgba(40,30,20,0.4);
+  color:var(--mg-ink);
+  animation:mg-pop .17s cubic-bezier(.2,.8,.2,1) both;
+}
+@keyframes mg-pop{ from{ transform:translate(-50%,-50%) scale(.9); opacity:0; } }
+.mg-name{ font-family:var(--font-sans); font-size:12px; font-weight:600; letter-spacing:.01em; color:var(--text-2); white-space:nowrap; }
+
 /* ============================== SETTINGS ============================== */
 .set-overlay{
   position:absolute; inset:0; z-index:70;
@@ -2626,6 +2653,38 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
   color:var(--text-4); transition:background .12s, color .12s; }
 .exd-row-x:hover{ background:var(--red-soft); color:var(--red); }
 .exd-empty{ font-size:12px; color:var(--text-4); padding:18px; text-align:center; }
+
+/* 설정 ▸ Gestures — 동작 목록(글리프+이름+설명 행)과 감도 슬라이더.
+   글리프 잉크는 인식 버블과 같은 규칙(전역 accent — 라이트 오렌지·다크 근백색). */
+.gst-list{ display:flex; flex-direction:column; padding:4px 0; }
+.gst-row{ display:flex; align-items:center; gap:12px; padding:9px 14px; border-bottom:1px solid var(--line); }
+.gst-row:last-child{ border-bottom:none; }
+.gst-glyph{
+  display:grid; place-items:center; width:34px; height:34px; flex:0 0 auto;
+  border-radius:9px; background:var(--surface-2); color:var(--accent);
+}
+.gst-name{ font-size:12.5px; font-weight:600; color:var(--text); flex:0 0 auto; }
+.gst-desc{ font-size:11.5px; color:var(--text-4); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.gst-slider{ display:flex; flex-direction:column; gap:8px; padding:11px 14px; border-bottom:1px solid var(--line); }
+.gst-slider:last-child{ border-bottom:none; }
+.gst-slider-head{ display:flex; align-items:baseline; gap:9px; }
+.gst-slider-head .gst-desc{ flex:1; }
+.gst-val{ font-size:11.5px; font-weight:600; font-family:var(--font-mono); color:var(--text-2); flex:0 0 auto; }
+.gst-reset{ font-size:11px; color:var(--text-3); padding:2px 8px; border-radius:7px; border:1px solid var(--line-2);
+  transition:background .12s, color .12s; flex:0 0 auto; }
+.gst-reset:hover{ background:var(--surface-2); color:var(--text); }
+/* 트랙은 채움(--fill)까지 accent, 나머지는 홈 — 썸은 surface 위 accent 링 */
+.gst-range{
+  -webkit-appearance:none; appearance:none; width:100%; height:4px; border-radius:99px; outline:none;
+  background:linear-gradient(to right, var(--accent) 0 var(--fill), var(--surface-3) var(--fill) 100%);
+}
+.gst-range::-webkit-slider-thumb{
+  -webkit-appearance:none; appearance:none; width:15px; height:15px; border-radius:50%;
+  background:var(--surface); border:4.5px solid var(--accent);
+  box-shadow:0 1px 4px rgba(0,0,0,0.22); cursor:grab; transition:transform .12s;
+}
+.gst-range::-webkit-slider-thumb:hover{ transform:scale(1.12); }
+.gst-range:active::-webkit-slider-thumb{ cursor:grabbing; }
 
 /* 설정 ▸ API — 키/예산 입력 + 누적 사용액 줄 */
 .api-form{ display:flex; align-items:center; gap:8px; flex:0 0 auto; }

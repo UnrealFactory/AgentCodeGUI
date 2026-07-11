@@ -38,8 +38,10 @@ import {
   IconFolder,
   IconX2,
   IconSearch,
+  IconMouse,
   type IconProps
 } from './icons'
+import { GestureGlyph, GESTURE_DEFAULTS } from './mouseGesture'
 import { getTheme, setTheme, type Theme } from '../lib/theme'
 import {
   DEFAULT_HIDE_DIRS,
@@ -52,7 +54,7 @@ import {
   setHideFiles
 } from '../lib/hideDirs'
 
-export type SettingsView = 'account' | 'version' | 'api' | 'mcp' | 'skill' | 'lsp' | 'explorer' | 'appearance'
+export type SettingsView = 'account' | 'version' | 'api' | 'mcp' | 'skill' | 'lsp' | 'explorer' | 'gesture' | 'appearance'
 type View = SettingsView
 
 const NAV: { id: View; label: string; Icon: (p: IconProps) => React.ReactElement }[] = [
@@ -63,6 +65,7 @@ const NAV: { id: View; label: string; Icon: (p: IconProps) => React.ReactElement
   { id: 'skill', label: 'Skill', Icon: IconBook },
   { id: 'lsp', label: 'Code', Icon: IconCode },
   { id: 'explorer', label: 'Explorer', Icon: IconFilter },
+  { id: 'gesture', label: 'Gestures', Icon: IconMouse },
   { id: 'appearance', label: 'Theme', Icon: IconContrast }
 ]
 
@@ -1642,6 +1645,166 @@ function isExtPattern(s: string): boolean {
   return /^\*\.[^\\/*?]+$/.test(s)
 }
 
+// 파일 뷰어의 우클릭 드래그 제스처 — 켜고 끄기 + 동작 목록 + 감도(시작 거리·획 길이).
+// 값은 prefs에 저장되고 MouseGestureLayer가 제스처 시작 시점마다 읽으므로 즉시 반영된다.
+// 동작 매핑 자체는 FileModal의 gestureActions에 고정 — 여기 목록과 함께 바꿔야 한다.
+const GESTURE_LIST: { pattern: string; name: string; desc: string }[] = [
+  { pattern: 'L', name: '이전 파일', desc: '정의 점프로 떠나온 파일로 돌아가요' },
+  { pattern: 'R', name: '다음 파일', desc: '뒤로 갔던 길을 다시 앞으로' },
+  { pattern: 'U', name: '맨 위로', desc: '본문을 문서 처음으로' },
+  { pattern: 'D', name: '맨 아래로', desc: '본문을 문서 끝으로' },
+  { pattern: 'DR', name: '창 닫기', desc: '뷰어를 닫아요 — 저장 안 한 변경이 있으면 물어봐요' }
+]
+
+function GestureView(): React.ReactElement {
+  const [enabled, setEnabled] = useState<boolean>(() => getPref('gesture.enabled', true))
+  const [start, setStart] = useState<number>(() => getPref('gesture.start', GESTURE_DEFAULTS.start))
+  const [stroke, setStroke] = useState<number>(() => getPref('gesture.stroke', GESTURE_DEFAULTS.stroke))
+  const toggle = (): void => {
+    const next = !enabled
+    setEnabled(next)
+    setPref('gesture.enabled', next)
+  }
+
+  return (
+    <>
+      <div className="set-h1">Gestures</div>
+      <div className="set-h1-sub">
+        파일 뷰어에서 <b>우클릭을 누른 채 드래그</b>하면 제스처예요. 짧게 그으면 평범한 우클릭이라 선택 툴바·헤더
+        메뉴는 그대로 동작해요.
+      </div>
+
+      <div className="sec">
+        <div className="card">
+          <div className="ver-row">
+            <div className="ver-ic">
+              <IconMouse size={20} />
+            </div>
+            <div className="ver-main">
+              <div className="ver-name">마우스 제스처</div>
+              <div className="ver-meta">{enabled ? '우클릭 드래그로 뷰어를 조작해요' : '꺼짐 — 우클릭은 메뉴만 열어요'}</div>
+            </div>
+            <button
+              className={'skill-toggle' + (enabled ? ' on' : '')}
+              role="switch"
+              aria-checked={enabled}
+              aria-label={enabled ? '제스처 끄기' : '제스처 켜기'}
+              onClick={toggle}
+            >
+              <span className="skill-knob" />
+            </button>
+          </div>
+        </div>
+
+        <div className={'exd-panel' + (enabled ? '' : ' off')}>
+          {/* 제스처 목록 — 획 모양 글리프는 인식 버블과 같은 컴포넌트라 실물과 늘 일치 */}
+          <div className="exd-sec">
+            <div className="exd-sec-head">
+              <span className="exd-sec-t">Actions</span>
+              <span className="exd-sec-d">우클릭을 누른 채 이 모양으로</span>
+            </div>
+            <div className="card gst-list">
+              {GESTURE_LIST.map((g) => (
+                <div key={g.pattern} className="gst-row">
+                  <span className="gst-glyph">
+                    <GestureGlyph pattern={g.pattern} size={22} />
+                  </span>
+                  <span className="gst-name">{g.name}</span>
+                  <span className="gst-desc">{g.desc}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* 감도 — 시작 거리(제스처 vs 우클릭 판정)와 획 길이(방향 한 획 판정) */}
+          <div className="exd-sec">
+            <div className="exd-sec-head">
+              <span className="exd-sec-t">Sensitivity</span>
+              <span className="exd-sec-d">낮을수록 예민해요</span>
+            </div>
+            <div className="card gst-list">
+              <PxSlider
+                label="시작 거리"
+                desc="이만큼 움직여야 제스처로 봐요 — 그 전에 떼면 평범한 우클릭"
+                min={8}
+                max={30}
+                def={GESTURE_DEFAULTS.start}
+                value={start}
+                onChange={(v) => {
+                  setStart(v)
+                  setPref('gesture.start', v)
+                }}
+              />
+              <PxSlider
+                label="획 길이"
+                desc="방향 한 획으로 인정하는 최소 이동 — ↓→ 같은 꺾임 인식에 영향"
+                min={12}
+                max={48}
+                def={GESTURE_DEFAULTS.stroke}
+                value={stroke}
+                onChange={(v) => {
+                  setStroke(v)
+                  setPref('gesture.stroke', v)
+                }}
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="set-note">
+          제스처 중에는 궤적과 인식된 동작이 화면에 표시돼요. 그리다 만 모양이 어떤 동작과도 안 맞으면 아무 일도
+          일어나지 않아요 — 메뉴도 안 열려요.
+        </div>
+      </div>
+    </>
+  )
+}
+
+// px 값 슬라이더 한 줄 — 현재 값 표시 + 기본값에서 벗어나면 되돌리기 버튼
+function PxSlider({
+  label,
+  desc,
+  min,
+  max,
+  def,
+  value,
+  onChange
+}: {
+  label: string
+  desc: string
+  min: number
+  max: number
+  def: number
+  value: number
+  onChange: (v: number) => void
+}): React.ReactElement {
+  const pct = ((value - min) / (max - min)) * 100
+  return (
+    <div className="gst-slider">
+      <div className="gst-slider-head">
+        <span className="gst-name">{label}</span>
+        <span className="gst-desc">{desc}</span>
+        {value !== def && (
+          <button className="gst-reset" onClick={() => onChange(def)}>
+            기본값 {def}px
+          </button>
+        )}
+        <span className="gst-val">{value}px</span>
+      </div>
+      <input
+        className="gst-range"
+        type="range"
+        min={min}
+        max={max}
+        step={1}
+        value={value}
+        style={{ ['--fill' as never]: pct + '%' }}
+        onChange={(e) => onChange(Number(e.target.value))}
+      />
+    </div>
+  )
+}
+
 function ExplorerView(): React.ReactElement {
   const [enabled, setEnabled] = useState<boolean>(() => getHideEnabled())
   const [dirs, setDirs] = useState<string[]>(() => getHideDirs())
@@ -1952,6 +2115,7 @@ export function SettingsModal({
               {view === 'skill' && <SkillView cwd={cwd} />}
               {view === 'lsp' && <LspView />}
               {view === 'explorer' && <ExplorerView />}
+              {view === 'gesture' && <GestureView />}
               {view === 'appearance' && <AppearanceView />}
             </div>
           </main>
