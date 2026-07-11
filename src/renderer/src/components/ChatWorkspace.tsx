@@ -31,6 +31,7 @@ import { FileModal } from './FileModal'
 import { Sidebar, type WorkspaceMode } from './Sidebar'
 import { ImageViewer } from './ImageViewer'
 import { useZoom, ZoomBadge, mergeRefs } from './zoom'
+import { MouseGestureLayer, type GestureAction } from './mouseGesture'
 import { IconChevDown } from './icons'
 
 // px from the bottom within which the chat counts as "at the bottom" — scrolling
@@ -157,7 +158,9 @@ export function ChatWorkspace({
   // 정한 읽기 크기가 모드 간에 일관되게 유지된다). zoom.ref(휠 리스너용 콜백 ref)를
   // 스크롤 뷰포트에 합쳐 붙인다 — 콜백 ref는 stable하므로 memo가 재생성되지 않는다.
   const chatZoom = useZoom('chat.zoom')
-  const chatScrollRef = useMemo(() => mergeRefs(scrollRef, chatZoom.ref), [chatZoom.ref])
+  // 마우스 제스처 대상은 state로 추적 — 채팅 페인은 멀티 모드 왕복에서 재마운트된다(useZoom과 같은 이유)
+  const [chatEl, setChatEl] = useState<HTMLDivElement | null>(null)
+  const chatScrollRef = useMemo(() => mergeRefs(scrollRef, chatZoom.ref, setChatEl), [chatZoom.ref])
 
   // 내가 보낸 메시지(오래된→최신) — 작성칸에서 ↑/↓로 셸처럼 다시 불러온다
   const sentHistory = useMemo(
@@ -285,6 +288,29 @@ export function ChatWorkspace({
       cancelAnimationFrame(raf)
     }
   }, [busy])
+
+  // 대화 스레드 ↑/↓ 제스처 — ↑는 스트리밍 중 rAF 바닥 고정이 도로 끌어내리지 않게 고정을
+  // 풀고(재고정 150ms 가드도 무장), ↓는 '맨 아래로' 버튼과 같은 규칙으로 다시 고정한다
+  const chatGestures: GestureAction[] = [
+    {
+      pattern: 'U',
+      label: '맨 위로',
+      run: () => {
+        stickRef.current = false
+        lastWheelUpRef.current = performance.now()
+        scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
+      }
+    },
+    {
+      pattern: 'D',
+      label: '맨 아래로',
+      run: () => {
+        stickRef.current = true
+        const el = scrollRef.current
+        if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
+      }
+    }
+  ]
 
   const activeChat = chats.find((c) => c.id === activeChatId)
   const activeEmpty = state.messages.length === 0 && !activeChat?.title
@@ -654,6 +680,7 @@ export function ChatWorkspace({
         </div>
         <SelectionToolbar scrollRef={scrollRef} onElaborate={onElaborateSelection} />
         <ChatFind scrollRef={scrollRef} />
+        <MouseGestureLayer target={chatEl} actions={chatGestures} />
         <WorkBar
           todos={state.todos}
           files={state.files}

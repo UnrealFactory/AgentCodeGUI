@@ -1645,15 +1645,16 @@ function isExtPattern(s: string): boolean {
   return /^\*\.[^\\/*?]+$/.test(s)
 }
 
-// 파일 뷰어의 우클릭 드래그 제스처 — 켜고 끄기 + 동작 목록 + 감도(시작 거리·획 길이).
+// 우클릭 드래그 제스처 — 켜고 끄기 + 동작 목록 + 감도(시작 거리·획 길이).
 // 값은 prefs에 저장되고 MouseGestureLayer가 제스처 시작 시점마다 읽으므로 즉시 반영된다.
-// 동작 매핑 자체는 FileModal의 gestureActions에 고정 — 여기 목록과 함께 바꿔야 한다.
+// 동작 매핑은 각 화면에 고정(FileModal 5종 · Bash 로그 3종 · Git 카드 닫기 · 대화 스레드
+// ↑/↓) — 여기 목록과 함께 바꿔야 한다.
 const GESTURE_LIST: { pattern: string; name: string; desc: string }[] = [
-  { pattern: 'L', name: '이전 파일', desc: '정의 점프로 떠나온 파일로 돌아가요' },
-  { pattern: 'R', name: '다음 파일', desc: '뒤로 갔던 길을 다시 앞으로' },
-  { pattern: 'U', name: '맨 위로', desc: '본문을 문서 처음으로' },
-  { pattern: 'D', name: '맨 아래로', desc: '본문을 문서 끝으로' },
-  { pattern: 'DR', name: '창 닫기', desc: '뷰어를 닫아요 — 저장 안 한 변경이 있으면 물어봐요' }
+  { pattern: 'L', name: '이전 파일', desc: '정의 점프로 떠나온 파일로 돌아가요 — 파일 뷰어' },
+  { pattern: 'R', name: '다음 파일', desc: '뒤로 갔던 길을 다시 앞으로 — 파일 뷰어' },
+  { pattern: 'U', name: '맨 위로', desc: '본문·대화를 처음으로' },
+  { pattern: 'D', name: '맨 아래로', desc: '본문·대화를 끝으로' },
+  { pattern: 'DR', name: '창 닫기', desc: '카드를 닫아요 — 저장 안 한 변경이 있으면 물어봐요' }
 ]
 
 function GestureView(): React.ReactElement {
@@ -1670,8 +1671,8 @@ function GestureView(): React.ReactElement {
     <>
       <div className="set-h1">Gestures</div>
       <div className="set-h1-sub">
-        파일 뷰어에서 <b>우클릭을 누른 채 드래그</b>하면 제스처예요. 짧게 그으면 평범한 우클릭이라 선택 툴바·헤더
-        메뉴는 그대로 동작해요.
+        파일 뷰어·Bash 로그·Git 카드와 대화 스레드에서 <b>우클릭을 누른 채 드래그</b>하면 제스처예요. 짧게 그으면
+        평범한 우클릭이라 기존 우클릭 메뉴는 그대로 동작해요.
       </div>
 
       <div className="sec">

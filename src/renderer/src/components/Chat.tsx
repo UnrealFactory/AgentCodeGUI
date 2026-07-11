@@ -20,6 +20,7 @@ import type {
 import type { ThreadItem } from '../store/session'
 import { Markdown } from './Markdown'
 import { FileBadge } from './fileType'
+import { MouseGestureLayer, scrollGestures } from './mouseGesture'
 import { StatusPill, Todos, FileRow, SubAgent } from './AgentPanel'
 import { mentionAtCaret, mentionEntries, type MentionEntry } from '../lib/mentions'
 import { imageSrc, imageName, filesToAttachmentPaths, isImagePath, isAttachablePath } from '../lib/images'
@@ -240,6 +241,8 @@ function bashErrLine(failed: boolean, ln: string): boolean {
 function BashLogModal({ t, onClose }: { t: ToolLogItem; onClose: () => void }) {
   // 복사 피드백 — 명령/출력 어느 쪽을 복사했는지 구분 (복사 → 복사됨 1.2s, 설정 CopyRow 이디엄)
   const [copied, setCopied] = useState<'cmd' | 'out' | null>(null)
+  // 마우스 제스처(↑/↓ 출력 스크롤 · ↓→ 닫기) 대상 — 카드 엘리먼트를 state로 추적
+  const [card, setCard] = useState<HTMLDivElement | null>(null)
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') onClose()
@@ -265,7 +268,7 @@ function BashLogModal({ t, onClose }: { t: ToolLogItem; onClose: () => void }) {
   }
   return createPortal(
     <div className="sa-overlay" onMouseDown={onClose}>
-      <div className="bm-card" onMouseDown={(e) => e.stopPropagation()}>
+      <div className="bm-card" ref={setCard} onMouseDown={(e) => e.stopPropagation()}>
         <div className="bm-head">
           <span className={'bm-ic' + (failed ? ' err' : '')}>
             <IconTerminal size={16} />
@@ -309,6 +312,10 @@ function BashLogModal({ t, onClose }: { t: ToolLogItem; onClose: () => void }) {
           </span>
         </div>
       </div>
+      <MouseGestureLayer
+        target={card}
+        actions={[...scrollGestures(() => card?.querySelector('.bm-log')), { pattern: 'DR', label: '창 닫기', run: onClose }]}
+      />
     </div>,
     document.body
   )

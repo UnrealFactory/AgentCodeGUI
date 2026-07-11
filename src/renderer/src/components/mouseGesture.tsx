@@ -84,6 +84,18 @@ export function GestureGlyph({ pattern, size = 26 }: { pattern: string; size?: n
   )
 }
 
+/** 스크롤러 하나짜리 화면의 ↑/↓ 제스처 한 벌 — 대상은 실행 시점에 찾는다(재마운트 안전). */
+export function scrollGestures(el: () => Element | null | undefined): GestureAction[] {
+  const go = (top: boolean): void => {
+    const s = el()
+    if (s) s.scrollTo({ top: top ? 0 : s.scrollHeight, behavior: 'smooth' })
+  }
+  return [
+    { pattern: 'U', label: '맨 위로', run: () => go(true) },
+    { pattern: 'D', label: '맨 아래로', run: () => go(false) }
+  ]
+}
+
 interface TrailState {
   pts: number[] // [x0,y0, x1,y1, …] — SVG polyline용 플랫 배열
   pattern: string

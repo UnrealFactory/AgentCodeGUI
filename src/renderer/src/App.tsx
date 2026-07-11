@@ -27,6 +27,7 @@ import { PromptModal } from './components/PromptModal'
 import { RecentFiles } from './components/RecentFiles'
 import { ResizeHandles } from './components/ResizeHandles'
 import { useZoom, ZoomBadge, mergeRefs } from './components/zoom'
+import { MouseGestureLayer, type GestureAction } from './components/mouseGesture'
 import { IconChevDown, IconCode } from './components/icons'
 
 // px from the bottom within which the chat counts as "at the bottom" — scrolling
@@ -458,6 +459,29 @@ function MainApp({ user }: { user: AppUser }) {
       cancelAnimationFrame(raf)
     }
   }, [busy])
+
+  // 대화 스레드 ↑/↓ 제스처 — ↑는 스트리밍 중 rAF 바닥 고정이 도로 끌어내리지 않게 고정을
+  // 풀고(재고정 150ms 가드도 무장), ↓는 '맨 아래로' 버튼과 같은 규칙으로 다시 고정한다
+  const chatGestures: GestureAction[] = [
+    {
+      pattern: 'U',
+      label: '맨 위로',
+      run: () => {
+        stickRef.current = false
+        lastWheelUpRef.current = performance.now()
+        scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
+      }
+    },
+    {
+      pattern: 'D',
+      label: '맨 아래로',
+      run: () => {
+        stickRef.current = true
+        const el = scrollRef.current
+        if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
+      }
+    }
+  ]
 
   const cwd = manualCwd || ''
   // @ 멘션의 기준 폴더 — 탐색기가 보고 있는 폴더(참고 폴더 포함), 없으면 작업 폴더.
@@ -1178,6 +1202,7 @@ function MainApp({ user }: { user: AppUser }) {
           </div>
           <SelectionToolbar scrollRef={scrollRef} onElaborate={onElaborateSelection} />
           <ChatFind scrollRef={scrollRef} />
+          <MouseGestureLayer target={scrollEl} actions={chatGestures} />
           <WorkBar
             todos={state.todos}
             files={state.files}

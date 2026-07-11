@@ -3,6 +3,8 @@ import type { FileDiff, GitChange, GitCommit, GitStatus } from '@shared/protocol
 import { FileBadge } from './fileType'
 import { IconCheck, IconClaude, IconClose, IconGitBranch, IconMax, IconRestore, IconSearch } from './icons'
 import { useResizableModal, ModalResizeHandles } from './resizableModal'
+import { mergeRefs } from './zoom'
+import { MouseGestureLayer } from './mouseGesture'
 
 // Fork의 정보 구조(내비 · 커밋 리스트 · 상세)를 앱의 모달 카드 언어로 옮긴 Git 카드.
 // 데이터는 전부 읽기 전용 git 명령(IPC)이고, 쓰기 동작은 커밋·푸시·--ff-only 풀뿐.
@@ -94,6 +96,9 @@ export function GitModal({
   const [copied, setCopied] = useState(false)
   const rz = useResizableModal('git.size', true)
   const downOnOverlay = useRef(false)
+  // 마우스 제스처(↓→ 닫기) 대상 — 카드 엘리먼트를 state로 추적 (스크롤 페인이 셋이라 ↑/↓는 없음)
+  const [cardEl, setCardEl] = useState<HTMLDivElement | null>(null)
+  const modalRef = useMemo(() => mergeRefs(rz.ref, setCardEl), [rz.ref])
 
   const refresh = useCallback((): void => {
     window.api.git.status(root).then(setStatus).catch(() => {})
@@ -265,7 +270,8 @@ export function GitModal({
         if (downOnOverlay.current && e.target === e.currentTarget) onClose()
       }}
     >
-      <div className="gitm-modal rzm" ref={rz.ref} style={rz.modalStyle}>
+      <div className="gitm-modal rzm" ref={modalRef} style={rz.modalStyle}>
+        <MouseGestureLayer target={cardEl} actions={[{ pattern: 'DR', label: '창 닫기', run: onClose }]} />
         {!rz.maximized && <ModalResizeHandles onStart={rz.startResize} />}
         <div className="diff-head" onDoubleClick={rz.onHeaderDoubleClick}>
           <span className="gitm-ic">

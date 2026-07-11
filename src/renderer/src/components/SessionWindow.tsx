@@ -19,6 +19,7 @@ import { SubAgentModal } from './AgentPanel'
 import { FileModal } from './FileModal'
 import { AskModal } from './AskModal'
 import { useZoom, ZoomBadge, mergeRefs } from './zoom'
+import { MouseGestureLayer, scrollGestures } from './mouseGesture'
 
 // ── 추가 채팅 (세션 창) ────────────────────────────────────────
 // A standalone conversation in its OWN native OS window (freely resizable, movable to a
@@ -141,7 +142,9 @@ export function SessionWindow(): React.ReactElement {
   // Ctrl+휠 글자 크기 — 메인 채팅과 같은 'chat.zoom' 키를 공유해 한 번 정한 읽기
   // 크기가 이 창에도 그대로 적용된다 (휠 리스너용 콜백 ref를 스크롤 뷰포트에 합침)
   const chatZoom = useZoom('chat.zoom')
-  const swScrollRef = useMemo(() => mergeRefs(scrollRef, chatZoom.ref), [chatZoom.ref])
+  // 마우스 제스처(↑/↓) 대상 — 스레드 엘리먼트를 state로 추적
+  const [threadEl, setThreadEl] = useState<HTMLDivElement | null>(null)
+  const swScrollRef = useMemo(() => mergeRefs(scrollRef, chatZoom.ref, setThreadEl), [chatZoom.ref])
   // "/ask" — 이 창 전용 일회용 질문 모달(sessionAsk 채널, 본 대화 엔진과 분리). 메인 창과
   // 동일한 UX: "/ask <질문>"은 모달 컴포저를 미리 채우고, 닫으면(언마운트) 대화가 사라진다.
   const [askOpen, setAskOpen] = useState(false)
@@ -415,6 +418,7 @@ export function SessionWindow(): React.ReactElement {
       </div>
 
       <ZoomBadge pct={chatZoom.pct} show={chatZoom.flash} />
+      <MouseGestureLayer target={threadEl} actions={scrollGestures(() => threadEl)} />
       <div className="sw-scroll scroll" ref={swScrollRef}>
         {!started && !busy ? (
           <div className="sw-empty">

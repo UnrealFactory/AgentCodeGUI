@@ -37,6 +37,8 @@ import { FileModal } from './FileModal'
 import { imageSrc, imageName, filesToAttachmentPaths, isImagePath, isAttachablePath } from '../lib/images'
 import { mentionAtCaret, mentionEntries, extractMentions, type MentionEntry } from '../lib/mentions'
 import { FileBadge } from './fileType'
+import { mergeRefs } from './zoom'
+import { MouseGestureLayer, scrollGestures } from './mouseGesture'
 import {
   IconGrid,
   IconSend,
@@ -724,6 +726,9 @@ const PanelView = memo(function PanelView({
   onOpenPrompt
 }: PanelViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
+  // 마우스 제스처(↑/↓) 대상 — 이 패널의 스레드 엘리먼트를 state로 추적 (패널별 독립)
+  const [threadEl, setThreadEl] = useState<HTMLDivElement | null>(null)
+  const threadRef = useMemo(() => mergeRefs(scrollRef, setThreadEl), [])
   // 폴더 칩에서 펼쳐지는 파일 트리 팝오버(시안 B) — 칩 사각형을 기준으로 띄운다
   const [folderRect, setFolderRect] = useState<DOMRect | null>(null)
 
@@ -844,7 +849,7 @@ const PanelView = memo(function PanelView({
             <span>크게 보기</span>
           </button>
         )}
-        <div className="ma-p-thread scroll" ref={scrollRef}>
+        <div className="ma-p-thread scroll" ref={threadRef}>
           {!started && !busy ? (
             <div className="ma-p-empty">
               <div className="ma-p-empty-ic">
@@ -879,6 +884,7 @@ const PanelView = memo(function PanelView({
       </div>
 
       <SelectionToolbar scrollRef={scrollRef} onElaborate={onElaborate} />
+      <MouseGestureLayer target={threadEl} actions={scrollGestures(() => threadEl)} />
 
       <div className="ma-p-foot">
         {meta.queue.length > 0 && (
