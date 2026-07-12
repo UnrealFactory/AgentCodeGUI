@@ -264,6 +264,9 @@ export interface SubAgentInfo {
   status: SubAgentStatus
   activity: string
   tools: ToolLogItem[] // tools this subagent ran (its child tool_uses)
+  // 실행 중 내레이션의 누적 로그 — activity는 최신 한 줄로 덮이므로, 과정을 나중에
+  // 볼 수 있게 렌더러(reducer)가 변화를 여기 쌓는다 (엔진은 채우지 않는다)
+  log?: string[]
 }
 
 // ── Chat ─────────────────────────────────────────────────────
@@ -286,6 +289,29 @@ export interface AgentQuestion {
   options: AgentQuestionOption[]
 }
 
+// ── 백그라운드 작업 (Claude Code의 셸 추적 패리티) ────────────
+// Bash run_in_background / Ctrl+B로 백그라운드가 된 작업. CLI 프로세스 안에서 돌므로
+// 턴의 스트림이 닫히면(결과 후 유예 포함) 함께 정리된다 — 그때도 종료 통지가 온다.
+export interface BgTask {
+  id: string // SDK task_id — 중지(stop) 요청에 그대로 쓴다
+  kind: string // SDK task_type 원시값 (셸은 'local_bash')
+  description: string // 작업 설명 (셸이면 모델이 붙인 명령 한 줄 설명)
+  status: 'running' | 'completed' | 'failed' | 'stopped'
+  summary?: string // 종료 통지의 요약
+  outputFile?: string // 출력이 쌓이는 파일 경로 (실행 중엔 유도값, 종료 통지가 실제 경로로 덮음)
+  // stopped가 사용자의 중지가 아니라 턴 종료에 따른 CLI 정리였는지 — 표시 문구를 가른다
+  teardown?: boolean
+  // 사용자가 중지 버튼으로 끊은 작업인지 (엔진이 stop 요청 id를 기억해 정착 통지에 표식)
+  byUser?: boolean
+}
+
+// 렌더러 → 엔진 백그라운드 작업 컨트롤. stop: 그 작업 중지(id 필수),
+// background: 지금 도는 포그라운드 도구 전부를 백그라운드로 (터미널 Ctrl+B 패리티).
+export interface BgTaskRequest {
+  action: 'stop' | 'background'
+  id?: string
+}
+
 // ── Engine → Renderer events ─────────────────────────────────
 export type EngineEvent =
   | { type: 'status'; runId: string; status: AgentStatus }
@@ -303,6 +329,13 @@ export type EngineEvent =
   | { type: 'file-change'; runId: string; file: ChangedFile; diff: FileDiff; whole: boolean }
   | { type: 'terminal'; runId: string; line: TermLine }
   | { type: 'subagent'; runId: string; agent: SubAgentInfo }
+  // 살아있는 백그라운드 작업 전체 목록 (SDK background_tasks_changed 미러 — REPLACE 의미:
+  // 렌더러는 이 목록에 없는 실행 중 작업을 종료로 간주하고, 종료 상세는 bg-task-end가 채운다)
+  | { type: 'bg-tasks'; runId: string; tasks: Array<{ id: string; kind: string; description: string; outputFile?: string }> }
+  // 백그라운드 작업 정착 통지 (SDK task_notification) — 렌더러가 추적 중인 id만 반영한다.
+  // atTurnEnd: result 이후의 정착 = 턴 종료에 따른 CLI 정리, byUser: 사용자가 중지 버튼으로
+  // 끊음 — stopped의 사유 표기(직접 중지/Claude가 중지/턴 종료 정리)를 가른다
+  | { type: 'bg-task-end'; runId: string; id: string; status: 'completed' | 'failed' | 'stopped'; summary?: string; outputFile?: string; atTurnEnd?: boolean; byUser?: boolean }
   | {
       type: 'permission-request'
       runId: string
@@ -604,6 +637,7 @@ export const IPC = {
   runCancel: 'claude:cancel',
   permissionRespond: 'claude:permission-respond',
   questionRespond: 'claude:question-respond',
+  bgTask: 'claude:bg-task', // 백그라운드 작업 컨트롤 (중지 / 포그라운드 전부 백그라운드로)
   // /ask — an independent, throwaway conversation that runs on its OWN engine
   // instance so it never cancels or pollutes the main chat (same payload shapes).
   askRun: 'ask:run',
@@ -626,6 +660,7 @@ export const IPC = {
   talkCancel: 'talk:cancel',
   talkPermissionRespond: 'talk:permission-respond',
   talkQuestionRespond: 'talk:question-respond',
+  talkBgTask: 'talk:bg-task',
   talkGet: 'talk:get', // load the persisted chat-workspace conversations (or null)
   talkSave: 'talk:save', // persist the chat-workspace conversations so they survive a restart
   // 세션 창 — "추가 세션": 어느 모드에서든 새 OS 창(네이티브 프레임, 크기조절 자유)을 하나
@@ -636,6 +671,7 @@ export const IPC = {
   sessionCancel: 'session:cancel',
   sessionPermissionRespond: 'session:permission-respond',
   sessionQuestionRespond: 'session:question-respond',
+  sessionBgTask: 'session:bg-task',
   // 세션 창 안의 /ask — 그 창 전용 ask 엔진(창별 1개). 메인 창의 ask 채널은 mainWindow로만
   // 이벤트를 보내므로, 세션 창은 자기 webContents로 라우팅되는 별도 채널이 필요하다.
   sessionAskRun: 'session-ask:run',

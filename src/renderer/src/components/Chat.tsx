@@ -14,6 +14,8 @@ import type {
   Todo,
   ChangedFile,
   SubAgentInfo,
+  BgTask,
+  BgTaskRequest,
   AccountInfo,
   AccountUsage
 } from '@shared/protocol'
@@ -1815,7 +1817,190 @@ function ContextStrip({
   )
 }
 
-type WorkTab = 'todo' | 'sub' | 'file' | 'ctx'
+type WorkTab = 'todo' | 'sub' | 'sh' | 'file' | 'ctx'
+
+// 셸의 상태 문구 — stopped는 사유까지: 사용자가 누른 중지 / Claude(모델)가 끊음 /
+// 턴이 끝나며 CLI가 같이 정리함은 다른 사건이다 (sleep이 완료된 걸로 오해하기 쉬운 지점).
+function bgStatusLabel(t: BgTask): string {
+  switch (t.status) {
+    case 'running':
+      return '실행 중'
+    case 'completed':
+      return '완료'
+    case 'failed':
+      return '실패'
+    default:
+      if (t.byUser) return '중지됨 — 직접 중지'
+      if (t.teardown) return '턴 종료로 정리됨'
+      return '중지됨 — Claude가 중지'
+  }
+}
+
+// 색은 서브에이전트와 같은 문법 — 실행 중 스피너, 완료 초록 ✓, 중지/실패 빨간 ✕.
+// 중지의 사유 구분은 색이 아니라 위 라벨 텍스트가 맡는다.
+
+// 지금 턴을 막고 있는 포그라운드 Bash가 있는지 — "기다리는 명령 건너뛰고 계속하기"는
+// 건너뛸 대상이 실제로 있을 때만 보여준다 (백그라운드로 넘어간 Bash는 즉시 done이 된다).
+export function hasRunningBash(messages: ThreadItem[]): boolean {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i]
+    if (m.kind === 'toolgroup' && m.tools.some((t) => t.kind === 'bash' && t.status === 'running')) return true
+  }
+  return false
+}
+
+// 백그라운드 셸 한 줄 — 설명 + 상태, 실행 중이면 중지 버튼. 행을 누르면 출력(라이브
+// 테일 포함) 카드가 열린다.
+function BgTaskRow({ t, onOpen, onStop }: { t: BgTask; onOpen: (id: string) => void; onStop?: (id: string) => void }) {
+  return (
+    <div className={'bgtask ' + t.status} onClick={() => onOpen(t.id)}>
+      <span className="bg-ic">
+        <IconTerminal size={14} />
+      </span>
+      <div className="bg-main">
+        <div className="bg-desc">{t.description || t.id}</div>
+        <div className="bg-sub">
+          {bgStatusLabel(t)}
+          {/* 요약이 설명과 같은 문장으로 오는 경우(중지 통지)가 있어 중복이면 생략 */}
+          {t.status !== 'running' && t.summary && t.summary !== t.description ? ` — ${t.summary}` : ''}
+        </div>
+      </div>
+      {t.status === 'running' ? (
+        <>
+          <span className="spin" />
+          {onStop && (
+            <button
+              className="bg-stop"
+              onClick={(e) => {
+                e.stopPropagation()
+                onStop(t.id)
+              }}
+            >
+              중지
+            </button>
+          )}
+        </>
+      ) : t.status === 'completed' ? (
+        <span className="sa-check">
+          <IconCheck size={12} />
+        </span>
+      ) : (
+        <span className="bg-x">
+          <IconClose size={12} />
+        </span>
+      )}
+    </div>
+  )
+}
+
+// 백그라운드 셸 상세 카드 — 서브에이전트 카드와 같은 시각 언어(.sa-card). 핵심은 출력:
+// 실행 중이면 출력 파일(엔진이 유도한 경로)을 1.2초마다 다시 읽어 라이브 테일을 보여준다.
+// readFile IPC는 절대경로를 그대로 받고, 파일이 아직 없으면 에러를 돌려줘 조용히 대기한다.
+function BgTaskModal({ t, onStop, onClose }: { t: BgTask | null; onStop?: (id: string) => void; onClose: () => void }) {
+  const [out, setOut] = useState<{ text: string | null; err: string | null }>({ text: null, err: null })
+  const preRef = useRef<HTMLPreElement>(null)
+  // 마우스 제스처(U/D 스크롤·DR 닫기)의 대상 카드 엘리먼트
+  const [cardEl, setCardEl] = useState<HTMLDivElement | null>(null)
+  const file = t?.outputFile
+  const running = t?.status === 'running'
+  useEffect(() => {
+    if (!t) return
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [t, onClose])
+  useEffect(() => {
+    setOut({ text: null, err: null })
+    if (!file) return
+    let alive = true
+    const load = (): void => {
+      window.api
+        .readFile('', file)
+        .then((r) => {
+          if (!alive) return
+          if (r.content != null) setOut({ text: r.content, err: null })
+          else setOut((p) => (p.text != null ? p : { text: null, err: r.error ?? null }))
+        })
+        .catch(() => {})
+    }
+    load()
+    if (!running) {
+      return () => {
+        alive = false
+      }
+    }
+    const iv = setInterval(load, 1200)
+    return () => {
+      alive = false
+      clearInterval(iv)
+    }
+  }, [file, running])
+  // 새 출력이 붙으면 테일로 따라간다 (터미널처럼)
+  useEffect(() => {
+    const el = preRef.current
+    if (el) el.scrollTop = el.scrollHeight
+  }, [out.text])
+  if (!t) return null
+  const tail = out.text ? out.text.split('\n').slice(-400).join('\n').trimEnd() : ''
+  return createPortal(
+    <div className="sa-overlay" onMouseDown={onClose}>
+      <div className="sa-card" ref={setCardEl} onMouseDown={(e) => e.stopPropagation()}>
+        <div className="sa-card-head">
+          <span className={'sa-card-ic bg-card-ic ' + t.status}>
+            <IconTerminal size={18} />
+          </span>
+          <div className="sa-card-titles">
+            <div className="sa-card-name">{t.description || t.id}</div>
+            <div className="sa-card-role">백그라운드 셸</div>
+          </div>
+          <span className={'bg-chip ' + t.status}>{bgStatusLabel(t)}</span>
+          {running && onStop && (
+            <button className="bg-stop-chip" onClick={() => onStop(t.id)}>
+              중지
+            </button>
+          )}
+          <button className="sa-card-close" onClick={onClose} aria-label="닫기">
+            <IconClose size={18} />
+          </button>
+        </div>
+        <div className="sa-card-body scroll">
+          {!running && t.summary && t.summary !== t.description && (
+            <div className="sa-card-sec">
+              <div className="sa-card-lbl">요약</div>
+              <div className="content">{t.summary}</div>
+            </div>
+          )}
+          <div className="sa-card-sec">
+            <div className="sa-card-lbl">출력{running ? ' — 실시간' : ''}</div>
+            {tail ? (
+              <pre className="bg-out" ref={preRef}>
+                {tail}
+              </pre>
+            ) : (
+              <div className="ag-none">{running ? '아직 출력이 없어요 (쌓이는 대로 여기 보여요)' : '출력 결과가 없어요'}</div>
+            )}
+          </div>
+          {file && (
+            <div className="bg-out-path" title={file}>
+              {file}
+            </div>
+          )}
+        </div>
+      </div>
+      {/* 우클릭 드래그 제스처 — 뷰어와 같은 문법. 스크롤은 출력(pre)이 있으면 그쪽을 우선 */}
+      <MouseGestureLayer
+        target={cardEl}
+        actions={[
+          ...scrollGestures(() => cardEl?.querySelector('.bg-out') ?? cardEl?.querySelector('.sa-card-body')),
+          { pattern: 'DR', label: '카드 닫기', run: onClose }
+        ]}
+      />
+    </div>,
+    document.body
+  )
+}
 
 // 코드(에이전트) 모드의 "작업 바" — 컴포저 바로 위 한 줄. 할 일·서브에이전트·변경된
 // 파일·컨텍스트를 알약 칩으로 두고, 누르면 그 칩 위로 팝오버가 떠 내용을 보여준다
@@ -1825,6 +2010,7 @@ export const WorkBar = memo(function WorkBar({
   todos,
   files,
   subagents,
+  bgTasks = [],
   usage,
   contextTokens,
   contextWindow,
@@ -1833,13 +2019,17 @@ export const WorkBar = memo(function WorkBar({
   chatSpentUsd = 0,
   budgetUsd = null,
   totalSpentUsd = 0,
+  busy = false,
+  canSkipWait = false,
   onOpenFile,
   onOpenSubagent,
+  onBgTask,
   onRefreshUsage
 }: {
   todos: Todo[]
   files: ChangedFile[]
   subagents: SubAgentInfo[]
+  bgTasks?: BgTask[] // 백그라운드 셸 등 — 셸 칩·팝오버(중지/Ctrl+B)
   usage: UsageInfo
   contextTokens: number | null
   contextWindow: number | null
@@ -1848,11 +2038,16 @@ export const WorkBar = memo(function WorkBar({
   chatSpentUsd?: number // 이 대화의 API 모드 누적 비용
   budgetUsd?: number | null // 설정 → API의 예산 (null = 미설정)
   totalSpentUsd?: number // 전체 워크스페이스의 API 모드 누적 사용액
+  busy?: boolean // 실행 중 여부
+  canSkipWait?: boolean // 막고 있는 포그라운드 Bash가 있는지 — 건너뛰기 버튼은 이때만 노출
   onOpenFile: (f: ChangedFile) => void
   onOpenSubagent: (a: SubAgentInfo) => void
+  onBgTask?: (req: BgTaskRequest) => void // 셸 중지 / 포그라운드 도구 백그라운드화
   onRefreshUsage?: () => void // 컨텍스트 팝오버를 열 때 사용량 강제 새로고침
 }) {
   const [open, setOpen] = useState<WorkTab | null>(null)
+  // 셸 행 클릭 → 출력 카드. id로 들고 있어야 라이브 갱신(REPLACE·정착 통지)이 카드에 흐른다.
+  const [openBgId, setOpenBgId] = useState<string | null>(null)
   const ref = useRef<HTMLDivElement>(null)
 
   // 팝오버는 Esc / 바깥 클릭으로 닫는다 (네이티브 다이얼로그 금지 — 카드 패턴 유지)
@@ -1877,6 +2072,8 @@ export const WorkBar = memo(function WorkBar({
   const todoDone = todos.filter((t) => t.status === 'done').length
   const runningSub = subagents.filter((a) => a.status === 'running').length
   const doneSub = subagents.filter((a) => a.status === 'done').length
+  const runningBg = bgTasks.filter((t) => t.status === 'running').length
+  const endedBg = bgTasks.length - runningBg
 
   // 컨텍스트 팝오버 — 구독 모드는 예전 컴포저 스트립과 같은 3줄(현재 컨텍스트·5시간·주간),
   // API 모드는 한도가 의미 없으니 비용으로 바꾼다(이번 대화 비용 + 남은 예산/누적 사용액).
@@ -1929,6 +2126,7 @@ export const WorkBar = memo(function WorkBar({
     // 빈 목록은 실행 중에도 "계획 수립 중"이라 추측하지 않는다 — 팝오버 문구와 같은 이유
     { key: 'todo', icon: <IconList size={14} />, label: '할 일', value: `${todoDone}/${todoTotal || 0}`, detail: todoTotal ? `${todoPct}% 완료` : '없음', tip: 'Claude가 세운 작업 계획 — 누르면 할 일 목록' },
     { key: 'sub', icon: <IconBot size={14} />, label: '서브에이전트', value: `${doneSub}/${subTotal || 0}`, detail: runningSub > 0 ? `${runningSub}개 실행 중` : subTotal ? '모두 완료' : '없음', tip: 'Claude가 띄운 보조 에이전트의 진행 상황 — 누르면 목록' },
+    { key: 'sh', icon: <IconTerminal size={14} />, label: '백그라운드 셸', value: `${endedBg}/${bgTasks.length || 0}`, detail: runningBg > 0 ? `${runningBg}개 실행 중` : bgTasks.length ? '모두 종료' : '없음', tip: 'Claude가 백그라운드로 돌리는 셸 — 누르면 목록·중지' },
     { key: 'file', icon: <IconFile size={14} />, label: '변경된 파일', value: `${files.length}`, detail: files.length ? `+${totalAdd} −${totalDel}` : '없음', tip: '이번 작업에서 생성·수정된 파일 — 누르면 목록·diff' },
     { key: 'ctx', ring: ctxPct, label: '컨텍스트', value: `${ctxPct}%`, detail: ctxItems[0].detail, tip: apiMode ? '대화의 컨텍스트 사용량·API 비용 — 누르면 자세히' : '대화의 컨텍스트 사용량·사용 한도 — 누르면 자세히', align: 'r' }
   ]
@@ -1970,6 +2168,43 @@ export const WorkBar = memo(function WorkBar({
             </div>
           ) : (
             <div className="ag-none">아직 서브에이전트가 없어요</div>
+          )}
+        </>
+      )
+    if (key === 'sh')
+      return (
+        <>
+          <div className="wb-pop-h">
+            <span className="t">백그라운드 셸</span>
+            <span className="c">{runningBg > 0 ? runningBg + ' 실행 중' : `${endedBg}/${bgTasks.length || 0}`}</span>
+          </div>
+          {bgTasks.length ? (
+            <div className="wb-pop-list">
+              {bgTasks.map((t) => (
+                <BgTaskRow
+                  key={t.id}
+                  t={t}
+                  onOpen={(id) => {
+                    setOpen(null)
+                    setOpenBgId(id)
+                  }}
+                  onStop={onBgTask ? (id) => onBgTask({ action: 'stop', id }) : undefined}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="ag-none">아직 백그라운드 셸이 없어요</div>
+          )}
+          {/* 터미널 Ctrl+B 패리티 — 지금 막고 있는 포그라운드 Bash(빌드 등)를 백그라운드로
+              보내고 턴을 계속 진행시킨다. 건너뛸 명령이 실제로 있을 때만 보여준다. */}
+          {busy && canSkipWait && onBgTask && (
+            <button
+              className="wb-bg-all has-tip tip-wrap"
+              data-tip="막고 있는 포그라운드 명령을 백그라운드로 보내고 Claude가 다음 작업을 계속하게 합니다 (터미널의 Ctrl+B)"
+              onClick={() => onBgTask({ action: 'background' })}
+            >
+              기다리는 명령 건너뛰고 계속하기
+            </button>
           )}
         </>
       )
@@ -2054,6 +2289,13 @@ export const WorkBar = memo(function WorkBar({
           </div>
         ))}
       </div>
+      {openBgId && (
+        <BgTaskModal
+          t={bgTasks.find((t) => t.id === openBgId) ?? null}
+          onStop={onBgTask ? (id) => onBgTask({ action: 'stop', id }) : undefined}
+          onClose={() => setOpenBgId(null)}
+        />
+      )}
     </div>
   )
 })

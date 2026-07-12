@@ -2,6 +2,7 @@ import { useEffect, useReducer, useRef, useState } from 'react'
 import type {
   AgentStatus,
   AgentQuestion,
+  BgTask,
   ChangedFile,
   EngineEvent,
   FileDiff,
@@ -40,6 +41,8 @@ export interface SessionState {
   diffs: Record<string, FileDiff>
   terminal: TermLine[]
   subagents: SubAgentInfo[]
+  // 백그라운드 작업(셸 등) — 살아있는 건 bg-tasks REPLACE로, 종료 상세는 bg-task-end로 갱신
+  bgTasks: BgTask[]
   pendingPermission: { requestId: string; toolName: string; summary: string } | null
   pendingQuestion: { requestId: string; questions: AgentQuestion[] } | null
   session: { sessionId: string; model: string; cwd: string } | null
@@ -130,7 +133,9 @@ export function snapshotForPersist(s: SessionState): SessionState {
     pendingCommand: null,
     // drop a command card still mid-run — it would restore as a forever-spinning card
     messages: s.messages.filter((m) => !(m.kind === 'cmdresult' && m.running)),
-    subagents: s.subagents.map((a) => (a.status === 'done' ? a : { ...a, status: 'done' as const }))
+    subagents: s.subagents.map((a) => (a.status === 'done' ? a : { ...a, status: 'done' as const })),
+    // 백그라운드 작업은 CLI 프로세스와 함께 죽으므로 "실행 중"으로 복원되면 거짓말이 된다
+    bgTasks: s.bgTasks.map((t) => (t.status === 'running' ? { ...t, status: 'stopped' as const, teardown: true } : t))
   }
 }
 
@@ -142,6 +147,7 @@ export const initialSessionState: SessionState = {
   diffs: {},
   terminal: [],
   subagents: [],
+  bgTasks: [],
   pendingPermission: null,
   pendingQuestion: null,
   session: null,
@@ -162,6 +168,7 @@ export const initialSessionState: SessionState = {
 const MAX_THREAD_ITEMS = 500
 const MAX_TOOLS_PER_GROUP = 400
 const MAX_SUBAGENT_TOOLS = 200
+const MAX_SUBAGENT_LOG = 100
 const MAX_TERMINAL_LINES = 500
 const MAX_DIFF_LINES = 4000
 
@@ -189,7 +196,7 @@ export function sanitizeSnapshot(raw: unknown): SessionState {
     .map((m) => (m.kind === 'toolgroup' && !Array.isArray(m.tools) ? { ...m, tools: [] } : m))
   const subagents = arr<SubAgentInfo>(r.subagents)
     .filter((a) => !!a && typeof a === 'object')
-    .map((a) => (Array.isArray(a.tools) ? a : { ...a, tools: [] }))
+    .map((a) => ({ ...a, tools: Array.isArray(a.tools) ? a.tools : [], log: Array.isArray(a.log) ? a.log : undefined }))
   const diffs: Record<string, FileDiff> = {}
   const rawDiffs = obj(r.diffs)
   if (rawDiffs) {
@@ -211,6 +218,7 @@ export function sanitizeSnapshot(raw: unknown): SessionState {
     files: arr<ChangedFile>(r.files).filter((f) => !!f && typeof f === 'object'),
     diffs,
     subagents,
+    bgTasks: arr<BgTask>(r.bgTasks).filter((t) => !!t && typeof t === 'object' && typeof t.id === 'string'),
     session: session
       ? { sessionId: String(session.sessionId ?? ''), model: String(session.model ?? ''), cwd: String(session.cwd ?? '') }
       : null,
@@ -251,6 +259,9 @@ function reducer(state: SessionState, action: Action): SessionState {
     return {
       ...state,
       status: 'analyzing',
+      // 백그라운드 셸은 턴을 못 넘기고 CLI와 함께 죽으므로, 지난 턴의 종료 항목을 계속
+      // 끌고 다니면 매 대화마다 죽은 셸이 다시 보인다 — 새 턴 시작에 비운다 (칩=현재 턴)
+      bgTasks: [],
       // a command run replaces the user bubble with a live "running" card (spinner)
       // pushed right away, so the run shows immediate feedback instead of a blank gap
       messages: capThread(
@@ -451,20 +462,72 @@ function reducer(state: SessionState, action: Action): SessionState {
     case 'subagent': {
       const existing = state.subagents.find((a) => a.id === e.agent.id)
       if (existing) {
-        const subagents = state.subagents.map((a) =>
-          a.id === e.agent.id
-            ? {
-                ...a,
-                status: e.agent.status,
-                name: e.agent.name || a.name,
-                role: e.agent.role || a.role,
-                activity: e.agent.activity || a.activity
-              }
-            : a
-        )
+        const subagents = state.subagents.map((a) => {
+          if (a.id !== e.agent.id) return a
+          // 실행 중 내레이션은 최신 한 줄(activity)로 덮이므로, 변화를 log에 쌓아
+          // 카드의 "과정" 섹션이 흐름 전체를 보여줄 수 있게 한다 (완료 시 결과는 제외)
+          const act = e.agent.activity
+          const log =
+            act && e.agent.status === 'running' && act !== a.activity
+              ? capPush(a.log ?? [], act, MAX_SUBAGENT_LOG)
+              : a.log
+          return {
+            ...a,
+            status: e.agent.status,
+            name: e.agent.name || a.name,
+            role: e.agent.role || a.role,
+            activity: act || a.activity,
+            log
+          }
+        })
         return { ...state, subagents }
       }
       return { ...state, subagents: [...state.subagents, e.agent] }
+    }
+
+    case 'bg-tasks': {
+      // 살아있는 백그라운드 작업의 REPLACE — 목록에 있으면 실행 중으로 업서트, 실행 중이었는데
+      // 사라졌으면 종료로 간주(정확한 상태·요약은 바로 뒤따르는 bg-task-end가 채운다).
+      // 이미 종료된 항목은 이번 대화의 기록으로 그대로 남긴다.
+      const live = new Map(e.tasks.map((t) => [t.id, t]))
+      const next = state.bgTasks.map((t) => {
+        const hit = live.get(t.id)
+        if (hit) {
+          live.delete(t.id)
+          return {
+            ...t,
+            kind: hit.kind || t.kind,
+            description: hit.description || t.description,
+            // 종료 통지의 실제 경로가 이미 있으면 유도값으로 되덮지 않는다
+            outputFile: t.outputFile ?? hit.outputFile,
+            status: 'running' as const
+          }
+        }
+        return t.status === 'running' ? { ...t, status: 'completed' as const } : t
+      })
+      for (const t of live.values()) next.push({ id: t.id, kind: t.kind, description: t.description, outputFile: t.outputFile, status: 'running' })
+      return { ...state, bgTasks: next }
+    }
+
+    case 'bg-task-end': {
+      // 정착 통지 — 추적 중인 id만 반영한다 (포그라운드 Bash·서브에이전트의 정착 통지도
+      // 같은 이벤트로 오므로, 모르는 id는 백그라운드였던 적이 없는 작업 → 무시)
+      if (!state.bgTasks.some((t) => t.id === e.id)) return state
+      return {
+        ...state,
+        bgTasks: state.bgTasks.map((t) =>
+          t.id === e.id
+            ? {
+                ...t,
+                status: e.status,
+                summary: e.summary ?? t.summary,
+                outputFile: e.outputFile ?? t.outputFile,
+                teardown: e.atTurnEnd || undefined,
+                byUser: e.byUser ?? t.byUser
+              }
+            : t
+        )
+      }
     }
 
     case 'model-fallback': {

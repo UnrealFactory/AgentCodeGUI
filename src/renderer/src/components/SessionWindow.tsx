@@ -1,5 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { ApiConfigStatus, AppUser, RunRequest, UserProfile, UsageInfo } from '@shared/protocol'
+import type { ApiConfigStatus, AppUser, BgTaskRequest, RunRequest, UserProfile, UsageInfo } from '@shared/protocol'
+
+// 백그라운드 셸 컨트롤 — 이 창의 세션 엔진으로 라우팅 (memo된 WorkBar용 고정 함수)
+const onBgTaskSession = (req: BgTaskRequest): void => {
+  window.api.session?.bgTask(req).catch(() => {})
+}
 import { getPref, setPref } from '../lib/prefs'
 import { useAgentSession, initialSessionState, sameCwd, type SessionState } from '../store/session'
 import { extractMentions } from '../lib/mentions'
@@ -8,6 +13,7 @@ import {
   Composer,
   MessageView,
   WorkingIndicator,
+  hasRunningBash,
   WorkBar,
   PermissionModal,
   QuestionModal,
@@ -145,6 +151,8 @@ export function SessionWindow(): React.ReactElement {
   // 마우스 제스처(↑/↓) 대상 — 스레드 엘리먼트를 state로 추적
   const [threadEl, setThreadEl] = useState<HTMLDivElement | null>(null)
   const swScrollRef = useMemo(() => mergeRefs(scrollRef, chatZoom.ref, setThreadEl), [chatZoom.ref])
+  // 턴을 막고 있는 포그라운드 Bash가 있을 때만 셸 팝오버에 "건너뛰기"(Ctrl+B) 버튼을 노출
+  const canSkipWait = useMemo(() => hasRunningBash(state.messages), [state.messages])
   // "/ask" — 이 창 전용 일회용 질문 모달(sessionAsk 채널, 본 대화 엔진과 분리). 메인 창과
   // 동일한 UX: "/ask <질문>"은 모달 컴포저를 미리 채우고, 닫으면(언마운트) 대화가 사라진다.
   const [askOpen, setAskOpen] = useState(false)
@@ -487,6 +495,10 @@ export function SessionWindow(): React.ReactElement {
         todos={state.todos}
         files={state.files}
         subagents={state.subagents}
+        bgTasks={state.bgTasks}
+        busy={busy}
+        canSkipWait={canSkipWait}
+        onBgTask={onBgTaskSession}
         usage={usage}
         contextTokens={state.result?.contextTokens ?? null}
         contextWindow={state.result?.contextWindow ?? null}

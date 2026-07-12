@@ -1,8 +1,9 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import type { AgentStatus, ChangedFile, SubAgentInfo, SubAgentStatus, Todo } from '@shared/protocol'
 import { IconBot, IconFile, IconChevRight, IconCheck, IconSearch, IconClose } from './icons'
 import { FileBadge } from './fileType'
 import { Markdown } from './Markdown'
+import { MouseGestureLayer, scrollGestures } from './mouseGesture'
 
 const STATUS_LABEL: Record<AgentStatus, string> = {
   idle: '대기 중',
@@ -115,6 +116,8 @@ export function SubAgent({ a, onOpen }: { a: SubAgentInfo; onOpen: (a: SubAgentI
 
 // centered detail card — same visual language as the settings modal / install card
 export function SubAgentModal({ agent, onClose }: { agent: SubAgentInfo | null; onClose: () => void }) {
+  // 마우스 제스처(U/D 스크롤·DR 닫기)의 대상 카드 엘리먼트
+  const [cardEl, setCardEl] = useState<HTMLDivElement | null>(null)
   useEffect(() => {
     if (!agent) return
     const onKey = (e: KeyboardEvent): void => {
@@ -127,7 +130,7 @@ export function SubAgentModal({ agent, onClose }: { agent: SubAgentInfo | null; 
   const doneCount = agent.tools.filter((t) => t.status !== 'running').length
   return (
     <div className="sa-overlay" onMouseDown={onClose}>
-      <div className="sa-card" onMouseDown={(e) => e.stopPropagation()}>
+      <div className="sa-card" ref={setCardEl} onMouseDown={(e) => e.stopPropagation()}>
         <div className="sa-card-head">
           <span className={'sa-card-ic ' + agent.status}>{saIcon(agent.name, 18)}</span>
           <div className="sa-card-titles">
@@ -145,6 +148,20 @@ export function SubAgentModal({ agent, onClose }: { agent: SubAgentInfo | null; 
               <div className="sa-card-lbl">{agent.status === 'done' ? '결과' : '설명'}</div>
               <div className="content sa-card-md">
                 <Markdown text={agent.activity} />
+              </div>
+            </div>
+          )}
+          {/* 실행 중 내레이션의 누적 로그 — 최신 한 줄(activity)로 덮여 사라지던 과정을
+              시간순으로 보여준다 (reducer가 변화를 쌓는다) */}
+          {agent.log && agent.log.length > 0 && (
+            <div className="sa-card-sec">
+              <div className="sa-card-lbl">과정</div>
+              <div className="sa-log">
+                {agent.log.map((line, i) => (
+                  <div className="sa-log-line" key={i}>
+                    {line}
+                  </div>
+                ))}
               </div>
             </div>
           )}
@@ -170,6 +187,14 @@ export function SubAgentModal({ agent, onClose }: { agent: SubAgentInfo | null; 
           </div>
         </div>
       </div>
+      {/* 우클릭 드래그 제스처 — 뷰어와 같은 문법 (U 맨 위 · D 맨 아래 · DR 닫기) */}
+      <MouseGestureLayer
+        target={cardEl}
+        actions={[
+          ...scrollGestures(() => cardEl?.querySelector('.sa-card-body')),
+          { pattern: 'DR', label: '카드 닫기', run: onClose }
+        ]}
+      />
     </div>
   )
 }

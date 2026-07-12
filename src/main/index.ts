@@ -26,7 +26,7 @@ import { lspManager } from './lsp/manager'
 import { initAutoUpdater, checkForUpdates, quitAndInstall, getUpdateStatus } from './updater'
 import { IPC } from '@shared/protocol'
 import { ATTACH_IMAGE_EXTS, ATTACH_TEXT_EXTS } from '@shared/attachments'
-import type { EngineEvent, RunRequest, PermissionResponse, QuestionResponse, WindowBounds, ResizeEdge, SnapZone, UsageInfo, UsageWindow, FileReadResult, FileWriteResult, UserProfile, MultiRunRequest, MultiPermissionResponse, MultiQuestionResponse, LspPos } from '@shared/protocol'
+import type { EngineEvent, RunRequest, PermissionResponse, QuestionResponse, BgTaskRequest, WindowBounds, ResizeEdge, SnapZone, UsageInfo, UsageWindow, FileReadResult, FileWriteResult, UserProfile, MultiRunRequest, MultiPermissionResponse, MultiQuestionResponse, LspPos } from '@shared/protocol'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -803,6 +803,7 @@ function registerIpc(): void {
   })
   ipcMain.handle(IPC.permissionRespond, async (_e, res: PermissionResponse) => engine.respondPermission(res))
   ipcMain.handle(IPC.questionRespond, async (_e, res: QuestionResponse) => engine.respondQuestion(res))
+  ipcMain.handle(IPC.bgTask, async (_e, req: BgTaskRequest) => engine.bgTask(req))
 
   // /ask — the independent ephemeral conversation, driven by its own engine instance
   ipcMain.handle(IPC.askRun, async (_e, req: RunRequest) => askEngine.run(req))
@@ -819,6 +820,7 @@ function registerIpc(): void {
   })
   ipcMain.handle(IPC.talkPermissionRespond, async (_e, res: PermissionResponse) => talkEngine.respondPermission(res))
   ipcMain.handle(IPC.talkQuestionRespond, async (_e, res: QuestionResponse) => talkEngine.respondQuestion(res))
+  ipcMain.handle(IPC.talkBgTask, async (_e, req: BgTaskRequest) => talkEngine.bgTask(req))
   ipcMain.handle(IPC.talkGet, async () => readTalk())
   ipcMain.handle(IPC.talkSave, async (_e, data: unknown) => writeTalk(data))
 
@@ -837,6 +839,7 @@ function registerIpc(): void {
   ipcMain.handle(IPC.sessionQuestionRespond, async (_e, res: QuestionResponse) =>
     sessionEngines.get(_e.sender.id)?.respondQuestion(res)
   )
+  ipcMain.handle(IPC.sessionBgTask, async (_e, req: BgTaskRequest) => sessionEngines.get(_e.sender.id)?.bgTask(req))
   // 세션 창 안의 /ask — 호출한 창의 자기 ask 엔진으로 라우팅(본 대화 엔진과 분리)
   ipcMain.handle(IPC.sessionAskRun, async (_e, req: RunRequest) => sessionAskEngineFor(_e.sender).run(req))
   ipcMain.handle(IPC.sessionAskCancel, async (_e) => {

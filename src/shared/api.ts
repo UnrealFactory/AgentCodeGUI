@@ -2,6 +2,7 @@ import type {
   RunRequest,
   PermissionResponse,
   QuestionResponse,
+  BgTaskRequest,
   MultiRunRequest,
   MultiPermissionResponse,
   MultiQuestionResponse,
@@ -51,6 +52,8 @@ export interface WindowApi {
   cancel(): Promise<void>
   respondPermission(res: PermissionResponse): Promise<void>
   respondQuestion(res: QuestionResponse): Promise<void>
+  /** 백그라운드 작업 컨트롤 — 중지(stop) / 포그라운드 도구 전부 백그라운드로(background, Ctrl+B 패리티) */
+  bgTask(req: BgTaskRequest): Promise<void>
   pickDirectory(): Promise<string | null>
   /** whether an absolute path exists and is a directory — used to validate a saved 작업 폴더 before reusing it */
   dirExists(dir: string): Promise<boolean>
@@ -285,6 +288,7 @@ export interface WindowApi {
     cancel(): Promise<void>
     respondPermission(res: PermissionResponse): Promise<void>
     respondQuestion(res: QuestionResponse): Promise<void>
+    bgTask(req: BgTaskRequest): Promise<void>
     /** load the persisted chat-workspace conversations blob (renderer-owned shape), or null */
     getState(): Promise<unknown>
     /** persist the chat-workspace conversations so they survive a restart */
@@ -304,6 +308,7 @@ export interface WindowApi {
     cancel(): Promise<void>
     respondPermission(res: PermissionResponse): Promise<void>
     respondQuestion(res: QuestionResponse): Promise<void>
+    bgTask(req: BgTaskRequest): Promise<void>
     /** subscribe to THIS window's session engine events (returns an unsubscribe fn) */
     onEvent(cb: (event: EngineEvent) => void): () => void
   }

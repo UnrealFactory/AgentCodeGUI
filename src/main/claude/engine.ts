@@ -18,6 +18,7 @@ import type {
   PermissionResponse,
   QuestionResponse,
   AgentQuestion,
+  BgTaskRequest,
   ChangedFile,
   FileDiff,
   Todo
@@ -97,6 +98,7 @@ interface SdkMsg {
   message?: { content?: ContentBlock[] | string; usage?: UsageInfo; model?: string }
   event?: StreamEvent // present on 'stream_event' messages (partial streaming)
   parent_tool_use_id?: string | null
+  subagent_type?: string // 이 프레임을 만든 서브에이전트 타입 (사이드체인 판별 보조)
   session_id?: string
   model?: string
   cwd?: string
@@ -118,6 +120,14 @@ interface SdkMsg {
   content?: string
   level?: string
   priority?: string
+  // system/background_tasks_changed (살아있는 백그라운드 작업 전체 — REPLACE 의미)
+  tasks?: Array<{ task_id?: string; task_type?: string; description?: string }>
+  // system/task_notification (작업 정착: completed/failed/stopped + 요약·출력 파일)
+  task_id?: string
+  tool_use_id?: string // 그 작업을 시작한 tool_use 블록 id — 백그라운드 서브에이전트 완료 매칭
+  status?: string
+  summary?: string
+  output_file?: string
 }
 
 interface PermissionResult {
@@ -183,7 +193,13 @@ export class ClaudeEngine {
   /** 이 엔진이 속한 화면 (chat/ask/talk/ma) — API 사용 원장의 분류 축 */
   private source: ApiUsageSource
   private abort: AbortController | null = null
-  private handle: { interrupt?: () => Promise<void> } | null = null
+  private handle: {
+    interrupt?: () => Promise<void>
+    // 백그라운드 작업 컨트롤 (SDK Query 메서드) — stopTask: 지정 작업 중지,
+    // backgroundTasks: 포그라운드 작업을 백그라운드로 (인자 없으면 전부 = Ctrl+B)
+    stopTask?: (taskId: string) => Promise<void>
+    backgroundTasks?: (toolUseId?: string) => Promise<boolean>
+  } | null = null
   private activeRunId: string | null = null
   /** resolves when the active run's stream loop has fully torn down */
   private runLoop: Promise<void> | null = null
@@ -197,6 +213,12 @@ export class ClaudeEngine {
   private tools = new Map<string, { name: string; cwd: string; startedAt: number; abs?: string; pending?: { whole: boolean; file: ChangedFile; diff: FileDiff } }>()
   /** tool_use ids of subagent-spawn tools (Task/Agent), to flip them to done on result */
   private subagents = new Set<string>()
+  /** 사용자가 중지 버튼으로 끊은 백그라운드 작업 id — 정착 통지에 byUser 표식을 붙인다 */
+  private userBgStops = new Set<string>()
+  /** 살아있는 작업의 tool_use id → task id (task_started로 등록, 정착 통지로 해제).
+   *  서브에이전트 tool_result가 "백그라운드 시작 접수증"인지 판정한다: 결과가 왔는데
+   *  작업이 아직 살아 있으면 접수증(문구 스니핑보다 견고 — 접수증 문구는 종류마다 다르다). */
+  private liveTaskByToolUse = new Map<string, string>()
   /** absolute path → its content the first time it was modified this run (null = the
    *  file didn't exist yet). Every change renders as a full-file diff against this
    *  baseline, so repeated edits to one file accumulate into one whole-file diff. */
@@ -234,6 +256,23 @@ export class ClaudeEngine {
     waiter(res.answers)
   }
 
+  /** 백그라운드 작업 컨트롤 — stop: 그 작업 중지(task_notification 'stopped'가 뒤따라
+   *  목록을 정리한다), background: 지금 도는 포그라운드 도구 전부를 백그라운드로(터미널
+   *  Ctrl+B 패리티 — 막혀 있던 tool_result가 즉시 반환되고 턴이 계속된다). 실행이 이미
+   *  끝나 핸들이 없거나 요청이 늦었으면 조용히 무시한다. */
+  async bgTask(req: BgTaskRequest): Promise<void> {
+    try {
+      if (req.action === 'stop' && req.id) {
+        this.userBgStops.add(req.id) // 정착 통지에 '직접 중지' 표식을 붙이기 위해 기억
+        await this.handle?.stopTask?.(req.id)
+      } else if (req.action === 'background') {
+        await this.handle?.backgroundTasks?.()
+      }
+    } catch {
+      /* 실행 종료와 경합 — 무시 */
+    }
+  }
+
   async cancel(): Promise<void> {
     try {
       await this.handle?.interrupt?.()
@@ -266,6 +305,8 @@ export class ClaudeEngine {
     this.activeRunId = runId
     this.tools.clear()
     this.subagents.clear()
+    this.userBgStops.clear()
+    this.liveTaskByToolUse.clear()
     this.baselines.clear()
 
     // 폴더가 지정되지 않은 실행(채팅·멀티/단일 폴더 미선택)은 홈이 아니라 바탕화면에서
@@ -308,6 +349,12 @@ export class ClaudeEngine {
     // 중 전환(한도 도달·모델 과부하 폴백 등 거부 이외의 원인 포함)을 감지해 배너를 띄운다.
     // 거부 폴백 경로는 배너를 직접 띄우면서 이 값을 갱신하므로 이중 배너가 뜨지 않는다.
     let curModelDisplay = ''
+    // 백그라운드 작업 추적 — 살아있는 id 집합(REPLACE로 갱신)과 "턴이 이미 끝났는지".
+    // result 뒤에 오는 stopped 통지는 사용자가 누른 중지가 아니라 CLI 정리(턴 종료와 함께
+    // 셸 사망)이므로, atTurnEnd로 구분해 렌더러가 '중지됨'과 '턴 종료로 정리됨'을 가른다.
+    const liveBgIds = new Set<string>()
+    let turnEnded = false
+    let bgSessionId = ''
     // 이 실행의 실제 인증 경로 — init의 apiKeySource('oauth'=구독 / 그 외='user'·'project'
     // ·환경변수 등=API 키). 과금 집계는 토글(useApi)이 아니라 이 실제 경로로 판정해야,
     // 전역 ANTHROPIC_API_KEY로 API 과금된 실행도 원장에 잡히고(그리고 API 모드를 켰지만
@@ -378,36 +425,85 @@ export class ClaudeEngine {
           settingSources: ['user', 'project', 'local'],
           // stream assistant text token-by-token instead of one final block
           includePartialMessages: true,
+          // 서브에이전트의 내레이션/생각 프레임도 전달받는다(기본은 tool_use/tool_result만).
+          // 사이드체인 분기가 이를 그 서브에이전트 카드의 activity 줄로 보낸다 — 카드에서
+          // 도구만이 아니라 "지금 뭘 하는 중인지"가 실시간으로 보이게.
+          forwardSubagentText: true,
           abortController: abort,
           // The SDK spawns its bundled native Claude CLI directly and, with no
           // CLAUDE_CONFIG_DIR / ANTHROPIC_API_KEY override, reads the existing
           // ~/.claude OAuth login — so a Max subscription works with no API key.
           ...(claudeBin ? { pathToClaudeCodeExecutable: claudeBin } : {}),
           canUseTool: this.makeCanUseTool(runId, req.mode, cwd),
-          // ── Fable 5 정책 거부 → 폴백 모델 자동 전환 (CLI 패리티) ──
+          // ── Fable 5 정책 거부 → 폴백 모델 전환 확인 (CLI 패리티) ──
           // Fable 5 has safety measures that can end a turn with stop_reason
           // 'refusal'. The SDK's fallback flow is dialog-gated: a consumer that
           // doesn't declare 'refusal_fallback_prompt' just gets the refusal error
-          // and the turn dies. Declare it and auto-accept — like the CLI, the turn
-          // is retried on the fallback model (Opus) and the session stays there —
-          // and surface a warning banner in the chat instead of a blocking prompt.
+          // and the turn dies. Declare it and — like the CLI's own prompt — ask
+          // the user before switching: accept retries the turn on the fallback
+          // model (Opus) and the session stays there; decline answers 'cancelled'
+          // and the CLI applies its no-dialog default (refusal error ends the turn).
           supportedDialogKinds: ['refusal_fallback_prompt'],
-          onUserDialog: async (dlg: { dialogKind: string; payload?: Record<string, unknown> }) => {
+          onUserDialog: async (
+            dlg: { dialogKind: string; payload?: Record<string, unknown> },
+            dlgOpts?: { signal?: AbortSignal }
+          ) => {
             // unrecognized dialog kinds must be answered 'cancelled' (SDK contract:
             // the CLI then applies that dialog's default behavior)
             if (dlg.dialogKind !== 'refusal_fallback_prompt') return { behavior: 'cancelled' as const }
             const p = dlg.payload ?? {}
-            pendingFallbackNotices++
+            const from = modelDisplay(p.originalModel)
+            const to = modelDisplay(p.fallbackModel)
             if (thinkingOpen) {
               this.emit({ type: 'thinking-clear', runId })
               thinkingOpen = false
             }
+            // AskUserQuestion 카드 재사용 — 모든 표면(코드 메인·채팅·세션 창·멀티 패널)이
+            // 이미 렌더한다. requestId가 ask- 접두라 finally의 waiter 정리도 그대로 적용.
+            const contLabel = `${to}로 전환해 계속`
+            const requestId = `ask-${runId}-${++this.permReqCounter}`
+            const answers = await new Promise<string[][] | null>((resolve) => {
+              this.questionWaiters.set(requestId, resolve)
+              const onAbort = (): void => {
+                if (this.questionWaiters.delete(requestId)) resolve(null)
+              }
+              dlgOpts?.signal?.addEventListener('abort', onAbort, { once: true })
+              this.emit({
+                type: 'question-request',
+                runId,
+                requestId,
+                questions: [
+                  {
+                    question: `${fallbackReason(p.originalModel, p.apiRefusalCategory)} ${to} 모델로 전환해 계속할까요?`,
+                    header: '모델 전환',
+                    multiSelect: false,
+                    options: [
+                      { label: contLabel, description: `이 요청을 ${to}로 다시 시도하고, 이후 대화도 ${to}로 진행합니다.` },
+                      { label: '중단', description: '전환하지 않고 여기서 끝냅니다. 프롬프트를 고쳐 다시 보낼 수 있어요.' }
+                    ]
+                  }
+                ]
+              })
+            })
+            if (answers?.[0]?.[0] !== contLabel) {
+              // 중단 선택(또는 실행 취소로 카드가 닫힘 = null) → 거부 에러로 턴 종료.
+              // 취소로 닫혔을 땐 실행 자체가 끝나는 중이라 안내 줄을 더하지 않는다.
+              if (answers) {
+                this.emit({
+                  type: 'notice',
+                  runId,
+                  text: `모델을 전환하지 않아 이 요청은 ${from}의 거부로 종료됐어요. 프롬프트를 수정해 다시 시도할 수 있어요.`
+                })
+              }
+              return { behavior: 'cancelled' as const }
+            }
+            pendingFallbackNotices++
             this.emit({
               type: 'model-fallback',
               runId,
               fromModel: typeof p.originalModel === 'string' ? p.originalModel : '',
               toModel: typeof p.fallbackModel === 'string' ? p.fallbackModel : '',
-              text: fallbackNotice(p.originalModel, p.fallbackModel, p.apiRefusalCategory),
+              text: `${fallbackReason(p.originalModel, p.apiRefusalCategory)} ${to} 모델로 전환해 계속해요. 이후 대화도 ${to} 모델로 진행됩니다.`,
               // the refused leg's streamed partial — the retried answer must start
               // a fresh bubble, not append to it
               retractMessageId: curTextId
@@ -423,7 +519,7 @@ export class ClaudeEngine {
           }
         }
       })
-      this.handle = q as unknown as { interrupt?: () => Promise<void> }
+      this.handle = q as unknown as NonNullable<typeof this.handle>
 
       // size of the live context window. Each assistant turn's usage reflects the
       // whole conversation at that point, so the latest one is the current context.
@@ -456,6 +552,7 @@ export class ClaudeEngine {
           // 전환 감지의 기준점 — init이 준 풀 모델 id만 신뢰(짧은 별칭이면 첫 assistant
           // 프레임이 기준점을 잡는다)
           curModelDisplay = modelKey(msg.model) || curModelDisplay
+          bgSessionId = msg.session_id ?? '' // 백그라운드 출력 파일 경로 유도에 사용
           // API 모드 검증 — init의 apiKeySource가 실제 과금 경로를 알려준다. 토글과
           // 어긋나면(켰는데 oauth로 붙음 / 껐는데 API 키로 붙음 — 예: 전역 환경변수)
           // 조용히 지나가지 않고 배너로 알린다. 같은 배너가 매 메시지 반복되진 않게
@@ -524,8 +621,72 @@ export class ClaudeEngine {
           continue
         }
 
+        // 백그라운드 작업(셸 등) 추적 — 살아있는 목록 전체가 멤버십 변화(시작·완료·중지·
+        // Ctrl+B 백그라운드화)마다 REPLACE로 온다. 레벨 신호라 북엔드를 짝맞출 필요 없음.
+        // outputFile은 CLI의 실측 규칙(%TEMP%\claude\<경로의 영숫자 외→'-'>\<session>\tasks\
+        // <task_id>.output)으로 유도한 라이브 출력 후보 — 종료 통지의 실제 경로가 오면 덮인다.
+        if (msg.type === 'system' && msg.subtype === 'background_tasks_changed') {
+          const outFile = (id: string): string | undefined =>
+            bgSessionId ? path.join(os.tmpdir(), 'claude', cwd.replace(/[^a-zA-Z0-9]/g, '-'), bgSessionId, 'tasks', `${id}.output`) : undefined
+          const tasks = (Array.isArray(msg.tasks) ? msg.tasks : [])
+            .filter((t) => t && typeof t.task_id === 'string')
+            // 셸 계열만 — 백그라운드 서브에이전트도 이 목록에 실려 오지만(task_type
+            // 'subagent'류) 그건 서브에이전트 칩이 이미 추적한다. 칩 이름값('셸')대로 거른다.
+            .filter((t) => /bash|shell/i.test(t.task_type ?? ''))
+            .map((t) => ({ id: t.task_id!, kind: t.task_type ?? '', description: t.description ?? '', outputFile: outFile(t.task_id!) }))
+          liveBgIds.clear()
+          for (const t of tasks) liveBgIds.add(t.id)
+          this.emit({ type: 'bg-tasks', runId, tasks })
+          continue
+        }
+        // 작업 시작 북엔드 — tool_use ↔ task 매핑 등록 (포그라운드·백그라운드 공통)
+        if (msg.type === 'system' && msg.subtype === 'task_started') {
+          if (typeof msg.tool_use_id === 'string' && typeof msg.task_id === 'string') {
+            this.liveTaskByToolUse.set(msg.tool_use_id, msg.task_id)
+          }
+          continue
+        }
+        // 작업 정착 통지 — 상태·요약·출력 파일 경로. 포그라운드 Bash·서브에이전트의 정착도
+        // 같은 subtype으로 오므로, 렌더러는 자기가 추적하던 백그라운드 id만 반영한다.
+        if (msg.type === 'system' && msg.subtype === 'task_notification') {
+          const st = msg.status
+          if (typeof msg.task_id === 'string' && (st === 'completed' || st === 'failed' || st === 'stopped')) {
+            liveBgIds.delete(msg.task_id)
+            this.emit({
+              type: 'bg-task-end',
+              runId,
+              id: msg.task_id,
+              status: st,
+              summary: msg.summary?.trim() || undefined,
+              outputFile: msg.output_file || undefined,
+              atTurnEnd: turnEnded,
+              // 사용자가 중지 버튼으로 끊은 작업이면 표식 (턴 종료 정리와 표기를 가른다)
+              byUser: this.userBgStops.delete(msg.task_id) || undefined
+            })
+            // 정착했으니 "살아있는 작업" 매핑에서 해제
+            const tuid = msg.tool_use_id
+            if (typeof tuid === 'string') this.liveTaskByToolUse.delete(tuid)
+            // 백그라운드 서브에이전트의 진짜 완료 — Task의 tool_result는 "백그라운드로
+            // 시작됨" 접수증과 함께 즉시 돌아와 카드가 일찍 done이 되므로(그 경우
+            // handleToolResult가 카드를 실행 중으로 유지한다), 완료는 이 통지가 맡는다.
+            if (typeof tuid === 'string' && this.subagents.has(tuid)) {
+              this.subagents.delete(tuid)
+              const label = st === 'completed' ? '완료' : st === 'stopped' ? (turnEnded ? '턴 종료로 정리됨' : '중지됨') : '실패'
+              this.emit({
+                type: 'subagent',
+                runId,
+                agent: { id: tuid, name: '', role: '', status: 'done', activity: msg.summary?.trim() || label, tools: [] }
+              })
+            }
+          }
+          continue
+        }
+
         // partial streaming: text/thinking arrive as deltas before the full message
         if (msg.type === 'stream_event') {
+          // 사이드체인(서브에이전트) 스트리밍 델타는 메인 말풍선/생각줄에 섞지 않는다 —
+          // 전체 프레임이 도착하면 위의 assistant 분기가 카드 activity로 보낸다.
+          if (msg.parent_tool_use_id) continue
           const ev = msg.event
           if (ev?.type === 'content_block_delta') {
             const d = ev.delta
@@ -558,6 +719,34 @@ export class ClaudeEngine {
         }
 
         if (msg.type === 'assistant') {
+          // 서브에이전트(사이드체인) 프레임 — 메인 스레드와 완전히 분리해 처리한다.
+          // 서브에이전트는 자기 정의대로 메인과 다른 모델로 돌 수 있어(예: Fable 5 메인
+          // 아래 Explore=Opus 4.8) 메인 경로에 태우면 ① 모델 전환 안전망이 인터리브마다
+          // "전환됨" 배너를 핑퐁으로 도배(+model-fallback을 받은 picker 동요), ② usage가
+          // 서브에이전트 자신의 컨텍스트라 게이지 오염, ③ 내레이션 text가 메인 말풍선으로
+          // 섞이고, ④ 메인 스트리밍 상태(curTextId)를 중간에 리셋해 말풍선이 쪼개진다.
+          // → 내부 tool_use는 카드에 귀속(parentToolId), 내레이션/생각은 그 카드의
+          // activity 줄로(reducer의 subagent 케이스가 부분 병합 — tools 보존).
+          if (msg.parent_tool_use_id || msg.subagent_type) {
+            const pid = msg.parent_tool_use_id
+            const blocks = Array.isArray(msg.message?.content) ? (msg.message!.content as ContentBlock[]) : []
+            for (const block of blocks) {
+              if (block.type === 'tool_use' && block.id && block.name) {
+                this.handleToolUse(runId, block, cwd, pid ?? undefined)
+              } else if (pid && this.subagents.has(pid)) {
+                // 실행 중인(스폰을 목격한) 서브에이전트만 — 모르는 pid에 빈 카드를 만들지 않는다
+                const line = block.type === 'text' ? (block.text ?? '') : block.type === 'thinking' ? (block.thinking ?? '') : ''
+                if (line.trim()) {
+                  this.emit({
+                    type: 'subagent',
+                    runId,
+                    agent: { id: pid, name: '', role: '', status: 'running', activity: oneLine(line, 200), tools: [] }
+                  })
+                }
+              }
+            }
+            continue
+          }
           // 세션 중 모델 전환 감지(원인 불문 안전망) — 이 프레임을 만든 모델이 직전과 다르면
           // 배너 + picker 동기화(model-fallback 이벤트 재사용). 거부 폴백 경로는 위에서 이미
           // 배너를 띄우며 curModelDisplay를 갱신하므로 이중으로 뜨지 않고, [1m] 컨텍스트
@@ -632,6 +821,8 @@ export class ClaudeEngine {
         }
 
         if (msg.type === 'result') {
+          // 이후의 stopped 통지는 사용자 중지가 아니라 턴 종료에 따른 CLI 정리로 표시한다
+          turnEnded = true
           // Only SDKResultSuccess carries `result`; error subtypes put text in `errors`.
           const resultText = msg.is_error
             ? Array.isArray(msg.errors) && msg.errors.length
@@ -711,6 +902,19 @@ export class ClaudeEngine {
         }
       }
       if (this.activeRunId === runId) {
+        // 스트림이 닫히면 CLI 프로세스도 죽으므로 백그라운드 작업은 전부 사라진다 —
+        // 통지가 못 온 잔여 항목은 "턴 종료로 정리됨"으로 명시하고 빈 REPLACE로 마감한다.
+        // (activeRunId 가드: 새 실행이 이미 시작됐다면 그쪽 목록을 지우면 안 된다)
+        for (const id of liveBgIds) {
+          this.emit({ type: 'bg-task-end', runId, id, status: 'stopped', atTurnEnd: true })
+        }
+        this.emit({ type: 'bg-tasks', runId, tasks: [] })
+        // 아직 done을 못 받은 서브에이전트(백그라운드로 돌다 통지 없이 스트림이 닫힘,
+        // 또는 실행 취소)도 실행 중으로 남지 않게 정리한다
+        for (const id of this.subagents) {
+          this.emit({ type: 'subagent', runId, agent: { id, name: '', role: '', status: 'done', activity: '턴 종료로 정리됨', tools: [] } })
+        }
+        this.subagents.clear()
         this.activeRunId = null
         this.handle = null
         this.abort = null
@@ -875,6 +1079,19 @@ export class ClaudeEngine {
 
     // Subagent finished
     if (this.subagents.has(id)) {
+      // 백그라운드로 돌린 서브에이전트의 tool_result는 "백그라운드로 시작됨" 접수증이
+      // 즉시 돌아온 것 — 완료가 아니다. 판정: 그 작업이 아직 살아 있으면(task_started
+      // 등록 후 정착 통지 전) 접수증이다. 포그라운드는 정착 통지가 tool_result보다 먼저
+      // 와서(실측) 여기 안 걸린다. 문구 검사는 task_started가 늦게 오는 레이스의 보조
+      // (접수증 문구가 종류마다 달라 — bash "backgrounded", agent "Async agent launched").
+      if (!isError && (this.liveTaskByToolUse.has(id) || /running in background|backgrounded|async agent launched/i.test(text))) {
+        this.emit({
+          type: 'subagent',
+          runId,
+          agent: { id, name: '', role: '', status: 'running', activity: '백그라운드에서 진행 중', tools: [] }
+        })
+        return
+      }
       this.subagents.delete(id)
       this.emit({
         type: 'subagent',
@@ -1030,11 +1247,17 @@ function isApiKeyBilled(source: string | null | undefined): boolean {
 // 먼저 생길 수 있어서, 모르는 값은 코드 그대로 보여준다.
 const REFUSAL_CATEGORY_LABEL: Record<string, string> = { cyber: '사이버 보안', bio: '생물학' }
 
-function fallbackNotice(from: unknown, to: unknown, category: unknown): string {
+// 거부 사유 한 줄 — 전환 확인 질문 카드와 전환 배너가 공유한다
+function fallbackReason(from: unknown, category: unknown): string {
   const f = modelDisplay(from)
-  const t = modelDisplay(to)
   const c = typeof category === 'string' && category ? ` (감지 분류: ${REFUSAL_CATEGORY_LABEL[category] ?? category})` : ''
-  return `${f}의 안전 정책이 이 요청에 대한 응답을 거부해 ${t} 모델로 자동 전환했어요${c}. 이후 대화도 ${t} 모델로 진행됩니다.`
+  return `${f}의 안전 정책이 이 요청에 대한 응답을 거부했어요${c}.`
+}
+
+// 다이얼로그 없이 CLI가 스스로 전환을 끝낸 경우(end-of-turn 통지만 온 경우)의 배너
+function fallbackNotice(from: unknown, to: unknown, category: unknown): string {
+  const t = modelDisplay(to)
+  return `${fallbackReason(from, category)} ${t} 모델로 자동 전환했어요. 이후 대화도 ${t} 모델로 진행됩니다.`
 }
 
 function describeTool(

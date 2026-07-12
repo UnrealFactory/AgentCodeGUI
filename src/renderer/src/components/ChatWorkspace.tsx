@@ -1,5 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { AppUser, RunRequest, UsageInfo } from '@shared/protocol'
+import type { AppUser, BgTaskRequest, RunRequest, UsageInfo } from '@shared/protocol'
+
+// 백그라운드 셸 컨트롤 — 모듈 스코프 고정 함수 (memo된 WorkBar의 리렌더 방지)
+const onBgTaskTalk = (req: BgTaskRequest): void => {
+  window.api.talk.bgTask(req).catch(() => {})
+}
 import { extractMentions } from '../lib/mentions'
 import {
   useAgentSession,
@@ -20,6 +25,7 @@ import {
   SelectionToolbar,
   WelcomeState,
   WorkingIndicator,
+  hasRunningBash,
   WorkBar,
   nextMode,
   pickerModelOf,
@@ -127,6 +133,8 @@ export function ChatWorkspace({
 }) {
   const { state, clearPermission, clearQuestion, begin, load } = useAgentSession(window.api.talk.onEvent)
   const busy = state.status === 'analyzing' || state.status === 'working'
+  // 턴을 막고 있는 포그라운드 Bash가 있을 때만 셸 팝오버에 "건너뛰기"(Ctrl+B) 버튼을 노출
+  const canSkipWait = useMemo(() => hasRunningBash(state.messages), [state.messages])
 
   const [chats, setChats] = useState<ChatMeta[]>(() => [newChatMeta()])
   const [activeChatId, setActiveChatId] = useState<string>(() => chats[0].id)
@@ -689,6 +697,10 @@ export function ChatWorkspace({
           todos={state.todos}
           files={state.files}
           subagents={state.subagents}
+          bgTasks={state.bgTasks}
+          busy={busy}
+          canSkipWait={canSkipWait}
+          onBgTask={onBgTaskTalk}
           usage={liveUsage}
           contextTokens={state.result?.contextTokens ?? null}
           contextWindow={state.result?.contextWindow ?? null}

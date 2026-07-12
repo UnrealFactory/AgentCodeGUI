@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { ApiConfigStatus, AppUser, FileDiff, RunRequest, SubAgentInfo, UsageInfo, UserProfile } from '@shared/protocol'
+import type { ApiConfigStatus, AppUser, BgTaskRequest, FileDiff, RunRequest, SubAgentInfo, UsageInfo, UserProfile } from '@shared/protocol'
+
+// 백그라운드 셸 컨트롤(중지/Ctrl+B) — window.api는 전역이라 모듈 스코프의 고정 함수로
+// 만들어 memo된 WorkBar가 매 렌더마다 새 콜백을 받지 않게 한다
+const onBgTaskMain = (req: BgTaskRequest): void => {
+  window.api.bgTask(req).catch(() => {})
+}
 import { extractMentions } from './lib/mentions'
 import { useMaximized } from './lib/useMaximized'
 import { useAgentSession, initialSessionState, sanitizeSnapshot, snapshotForPersist, sameCwd, commandOf, commandTitleOf, type SessionState } from './store/session'
@@ -9,7 +15,7 @@ import { Sidebar, type WorkspaceMode } from './components/Sidebar'
 import { MultiWorkspace } from './components/MultiAgent'
 import { ChatWorkspace } from './components/ChatWorkspace'
 import { getPref, setPref } from './lib/prefs'
-import { ChatHeader, ChatFind, Composer, MessageView, QuestionModal, PermissionModal, SelectionToolbar, WelcomeState, WorkBar, WorkingIndicator, nextMode, pickerModelOf, type PickerState, type ScheduledMsg } from './components/Chat'
+import { ChatHeader, ChatFind, Composer, MessageView, QuestionModal, PermissionModal, SelectionToolbar, WelcomeState, WorkBar, WorkingIndicator, hasRunningBash, nextMode, pickerModelOf, type PickerState, type ScheduledMsg } from './components/Chat'
 import { SubAgentModal } from './components/AgentPanel'
 import { Explorer } from './components/Explorer'
 import { AskModal } from './components/AskModal'
@@ -110,6 +116,8 @@ interface PersistedChats {
 
 function MainApp({ user }: { user: AppUser }) {
   const { state, elapsed, busy, begin, clearPermission, clearQuestion, load } = useAgentSession()
+  // 턴을 막고 있는 포그라운드 Bash가 있을 때만 셸 팝오버에 "건너뛰기"(Ctrl+B) 버튼을 노출
+  const canSkipWait = useMemo(() => hasRunningBash(state.messages), [state.messages])
   const maximized = useMaximized()
   const [input, setInput] = useState('')
   // 이번 대화에서 내가 보낸 메시지(오래된→최신) — 작성칸에서 ↑/↓로 셸처럼 다시 불러온다
@@ -1224,6 +1232,10 @@ function MainApp({ user }: { user: AppUser }) {
             todos={state.todos}
             files={state.files}
             subagents={state.subagents}
+            bgTasks={state.bgTasks}
+            busy={busy}
+            canSkipWait={canSkipWait}
+            onBgTask={onBgTaskMain}
             usage={usage}
             contextTokens={state.result?.contextTokens ?? null}
             contextWindow={state.result?.contextWindow ?? null}

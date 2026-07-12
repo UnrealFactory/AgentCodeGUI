@@ -4,6 +4,7 @@ import type {
   RunRequest,
   PermissionResponse,
   QuestionResponse,
+  BgTaskRequest,
   EngineEvent,
   WindowState,
   UserProfile,
@@ -52,6 +53,7 @@ const api: WindowApi = {
   cancel: () => ipcRenderer.invoke(IPC.runCancel),
   respondPermission: (res: PermissionResponse) => ipcRenderer.invoke(IPC.permissionRespond, res),
   respondQuestion: (res: QuestionResponse) => ipcRenderer.invoke(IPC.questionRespond, res),
+  bgTask: (req: BgTaskRequest) => ipcRenderer.invoke(IPC.bgTask, req),
   pickDirectory: () => ipcRenderer.invoke(IPC.pickDirectory),
   dirExists: (dir: string) => ipcRenderer.invoke(IPC.dirExists, dir),
   pickAttachments: () => ipcRenderer.invoke(IPC.pickAttachments),
@@ -183,6 +185,7 @@ const api: WindowApi = {
     cancel: () => ipcRenderer.invoke(IPC.talkCancel),
     respondPermission: (res: PermissionResponse) => ipcRenderer.invoke(IPC.talkPermissionRespond, res),
     respondQuestion: (res: QuestionResponse) => ipcRenderer.invoke(IPC.talkQuestionRespond, res),
+    bgTask: (req: BgTaskRequest) => ipcRenderer.invoke(IPC.talkBgTask, req),
     getState: () => ipcRenderer.invoke(IPC.talkGet),
     saveState: (data: unknown) => ipcRenderer.invoke(IPC.talkSave, data),
     onEvent: (cb: (e: EngineEvent) => void) => subscribe(IPC.talkEvent, cb)
@@ -193,6 +196,7 @@ const api: WindowApi = {
     cancel: () => ipcRenderer.invoke(IPC.sessionCancel),
     respondPermission: (res: PermissionResponse) => ipcRenderer.invoke(IPC.sessionPermissionRespond, res),
     respondQuestion: (res: QuestionResponse) => ipcRenderer.invoke(IPC.sessionQuestionRespond, res),
+    bgTask: (req: BgTaskRequest) => ipcRenderer.invoke(IPC.sessionBgTask, req),
     onEvent: (cb: (e: EngineEvent) => void) => subscribe(IPC.sessionEvent, cb)
   },
   sessionAsk: {
