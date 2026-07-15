@@ -2,13 +2,16 @@
 // Generates the NSIS installer-wizard artwork to match the app's look:
 //   build/installerSidebar.bmp  (164×314) — the welcome/finish panel
 //   build/installerHeader.bmp   (150×57)  — the inner-page header strip
-// Warm off-white background + the brand orange logo tile with white code brackets.
+// 2.0 brand — 다크 카드(헤어라인 링) + 근백색 마스코트 로봇(gen-icon과 같은 글리프).
+// 사이드바는 앱과 같은 다크 무대, 헤더는 마법사가 검은 제목을 얹는 자리라 밝은 띠.
 // No text (no font engine available) — the wizard prints the product name itself.
 // 24-bit BI_RGB BMP (what MUI expects); rendered at 4× and box-downsampled for AA.
 const fs = require('node:fs')
 const path = require('node:path')
 
-const ORANGE = [0xcf, 0x5b, 0x28]
+const CARD = [0x19, 0x19, 0x19] // 다크 카드 (앱 창 표면)
+const FG = [0xe9, 0xe9, 0xe9] // 근백색 마스코트 (--accent)
+const RING = [0x4b, 0x4b, 0x4b] // 카드 헤어라인 링
 const WHITE = [0xff, 0xff, 0xff]
 const SS = 4
 
@@ -115,7 +118,70 @@ function makeCanvas(W, H) {
     }
   }
 
-  // the brand logo: orange rounded tile + white `< >` brackets, centered on (cx,cy)
+  // 마스코트 글리프 — gen-icon.cjs와 같은 IconMascot 24-unit 패스(귀는 0.4 바깥·슬림).
+  // size = 글리프 폭 기준 스케일, 시각 중심(12, 11.4)이 (cx,cy)에 온다.
+  const quad = (p0, p1, p2, n = 16) => {
+    const pts = []
+    for (let i = 0; i <= n; i++) {
+      const t = i / n
+      const u = 1 - t
+      pts.push([
+        u * u * p0[0] + 2 * u * t * p1[0] + t * t * p2[0],
+        u * u * p0[1] + 2 * u * t * p1[1] + t * t * p2[1]
+      ])
+    }
+    return pts
+  }
+  const cubicPts = (p0, p1, p2, p3, n = 16) => {
+    const pts = []
+    for (let i = 0; i <= n; i++) {
+      const t = i / n
+      const u = 1 - t
+      pts.push([
+        u * u * u * p0[0] + 3 * u * u * t * p1[0] + 3 * u * t * t * p2[0] + t * t * t * p3[0],
+        u * u * u * p0[1] + 3 * u * u * t * p1[1] + 3 * u * t * t * p2[1] + t * t * t * p3[1]
+      ])
+    }
+    return pts
+  }
+  // rx 4.5 라운드 사각(머리) 경계를 닫힌 폴리라인으로 — 코너는 쿼터 아크 8분할
+  const headOutline = (P) => {
+    const pts = []
+    const arc = (ccx, ccy, a0, a1) => {
+      for (let i = 0; i <= 8; i++) {
+        const a = a0 + ((a1 - a0) * i) / 8
+        pts.push(P(ccx + 4.5 * Math.cos(a), ccy + 4.5 * Math.sin(a)))
+      }
+    }
+    arc(10, 12.5, Math.PI, Math.PI * 1.5) // TL
+    arc(14, 12.5, Math.PI * 1.5, Math.PI * 2) // TR
+    arc(14, 13.5, 0, Math.PI * 0.5) // BR
+    arc(10, 13.5, Math.PI * 0.5, Math.PI) // BL
+    pts.push(pts[0])
+    return pts
+  }
+  const mascot = (cx, cy, size, color, alpha = 1) => {
+    const k = size / 24
+    const P = (x, y) => [cx + (x - 12) * k, cy + (y - 11.4) * k]
+    const hw = 1.0 * k
+    stroke(headOutline(P), hw, color, alpha)
+    stroke(quad(P(9.5, 8), P(9, 5.8), P(7.3, 4.9)), hw, color, alpha)
+    stroke(quad(P(14.5, 8), P(15, 5.8), P(16.7, 4.9)), hw, color, alpha)
+    stroke(cubicPts(P(4.0, 10.6), P(2.6, 11.5), P(2.6, 14.5), P(4.0, 15.4)), 0.8 * k, color, alpha)
+    stroke(cubicPts(P(20.0, 10.6), P(21.4, 11.5), P(21.4, 14.5), P(20.0, 15.4)), 0.8 * k, color, alpha)
+    for (const [dx, dy, dr] of [
+      [10.2, 13, 1.0],
+      [13.8, 13, 1.0],
+      [7, 4.7, 0.9],
+      [17, 4.7, 0.9]
+    ]) {
+      const [px, py] = P(dx, dy)
+      const r = dr * k
+      roundRect(px - r, py - r, r * 2, r * 2, r, color, alpha)
+    }
+  }
+
+  // the brand logo: 다크 카드 타일(헤어라인 링) + 근백색 마스코트, centered on (cx,cy)
   const logo = (cx, cy, size, opts = {}) => {
     const tile = size
     const r = size * 0.27
@@ -123,25 +189,13 @@ function makeCanvas(W, H) {
     if (opts.shadow !== false) {
       for (let s = 0; s < 3; s++) {
         const grow = 2 + s * 4
-        roundRect(cx - tile / 2 - grow, cy - tile / 2 + 6 + s * 2, tile + grow * 2, tile + grow * 2, r + grow, [0x6b, 0x2c, 0x12], 0.06)
+        roundRect(cx - tile / 2 - grow, cy - tile / 2 + 6 + s * 2, tile + grow * 2, tile + grow * 2, r + grow, [0, 0, 0], 0.08)
       }
     }
-    roundRect(cx - tile / 2, cy - tile / 2, tile, tile, r, ORANGE)
-    // brackets authored in a 24-unit box (svg: <9,8 5,12 9,16> / <15,8 19,12 15,16>)
-    const g = (size * 0.46) / 8 // glyph spans ~±4 units → ~0.46*size wide
-    const sw = 1.3 * g
-    const L = [
-      [cx - 3 * g, cy - 4 * g],
-      [cx - 7 * g, cy],
-      [cx - 3 * g, cy + 4 * g]
-    ]
-    const R = [
-      [cx + 3 * g, cy - 4 * g],
-      [cx + 7 * g, cy],
-      [cx + 3 * g, cy + 4 * g]
-    ]
-    stroke(L, sw, WHITE)
-    stroke(R, sw, WHITE)
+    roundRect(cx - tile / 2, cy - tile / 2, tile, tile, r, RING) // 링(바깥 딱지)
+    const b = Math.max(1, size * 0.02) // 링 두께
+    roundRect(cx - tile / 2 + b, cy - tile / 2 + b, tile - b * 2, tile - b * 2, Math.max(0, r - b), CARD)
+    mascot(cx, cy, size * 0.72, FG)
   }
 
   // box-downsample SS×SS → W×H, return 24-bit RGB rows (top-down, [r,g,b])
@@ -170,7 +224,7 @@ function makeCanvas(W, H) {
     return out
   }
 
-  return { gradient, glow, roundRect, stroke, logo, resolve, W, H }
+  return { gradient, glow, roundRect, stroke, logo, mascot, resolve, W, H }
 }
 
 // 24-bit BI_RGB BMP (bottom-up, BGR, 4-byte aligned rows) from top-down RGB.
@@ -205,46 +259,24 @@ function bmpEncode(W, H, rgb) {
   return buf
 }
 
-const BG_TOP = [0xfd, 0xfb, 0xf8]
-const BG_BOT = [0xf3, 0xea, 0xe0]
-
-// ── sidebar 164×314 ──
+// ── sidebar 164×314 ── (앱과 같은 다크 무대 위 브랜드 카드)
 {
   const c = makeCanvas(164, 314)
-  c.gradient(BG_TOP, BG_BOT)
-  c.glow(82, 120, 120, ORANGE, 0.13) // warm halo behind the logo
+  c.gradient([0x17, 0x17, 0x17], [0x0e, 0x0e, 0x0e])
+  c.glow(82, 120, 120, WHITE, 0.05) // 은은한 백색 헤일로
   c.logo(82, 120, 96) // brand tile
-  c.roundRect(82 - 22, 200, 44, 4, 2, ORANGE) // accent underline
-  // oversized faint bracket watermark near the bottom for subtle texture
-  const g = 6
-  c.stroke(
-    [
-      [82 - 3 * g, 268 - 4 * g],
-      [82 - 7 * g, 268],
-      [82 - 3 * g, 268 + 4 * g]
-    ],
-    1.3 * g,
-    ORANGE,
-    0.05
-  )
-  c.stroke(
-    [
-      [82 + 3 * g, 268 - 4 * g],
-      [82 + 7 * g, 268],
-      [82 + 3 * g, 268 + 4 * g]
-    ],
-    1.3 * g,
-    ORANGE,
-    0.05
-  )
+  c.roundRect(82 - 22, 200, 44, 4, 2, FG, 0.9) // accent underline
+  // oversized faint mascot watermark near the bottom for subtle texture
+  c.mascot(82, 268, 120, WHITE, 0.05)
   fs.writeFileSync(path.join(__dirname, '..', 'build', 'installerSidebar.bmp'), bmpEncode(164, 314, c.resolve()))
 }
 
-// ── header 150×57 ── (logo on the right; wizard prints the title text on the left)
+// ── header 150×57 ── (logo on the right; wizard prints the title text on the left —
+// 검은 제목이 얹히는 자리라 밝은 중립 띠를 유지한다)
 {
   const c = makeCanvas(150, 57)
-  c.gradient([0xfd, 0xfc, 0xfa], [0xfb, 0xf7, 0xf2])
-  c.logo(122, 28, 38)
+  c.gradient([0xf7, 0xf7, 0xf7], [0xf0, 0xf0, 0xf0])
+  c.logo(122, 28, 38, { shadow: false }) // 밝은 띠 위에선 그림자가 얼룩으로 보인다
   fs.writeFileSync(path.join(__dirname, '..', 'build', 'installerHeader.bmp'), bmpEncode(150, 57, c.resolve()))
 }
 

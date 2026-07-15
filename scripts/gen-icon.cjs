@@ -2,16 +2,17 @@
 // Generates build/icon.ico (+ build/icon.png) for the installer, exe, taskbar and
 // the "AgentCodeGUI로 열기" context-menu entry — no image dependencies.
 //
-// The mark mirrors the in-app splash/brand: a rounded orange square (brand orange
-// ≈ oklch(0.61 0.16 42) → sRGB #CF5B28) with two white code brackets `< >`. Each
-// size is rasterised at 4× and box-downsampled for smooth edges, then PNG-encoded
+// 2.0 mark = the app itself in miniature: a dark card (#191919, "창이 곧 카드") with a
+// hairline ring and the near-white mascot robot glyph (IconMascot의 24-unit 패스 그대로).
+// Each size is rasterised at 4× and box-downsampled for smooth edges, then PNG-encoded
 // and packed into a multi-resolution .ico (PNG-compressed entries).
 const fs = require('node:fs')
 const path = require('node:path')
 const zlib = require('node:zlib')
 
-const BG = [0xcf, 0x5b, 0x28] // brand orange (sRGB approximation of the splash logo)
-const FG = [0xff, 0xff, 0xff] // bracket white
+const BG = [0x19, 0x19, 0x19] // dark card (앱 창 표면)
+const FG = [0xe9, 0xe9, 0xe9] // near-white mascot (--accent)
+const RING = [0x4b, 0x4b, 0x4b] // hairline ring ≈ white 22% over the card
 const SS = 4 // supersample factor
 
 // distance from point p to segment a–b
@@ -36,6 +37,34 @@ function polyDist(px, py, pts) {
   return d
 }
 
+// flatten a quadratic bézier into a polyline
+function quad(p0, p1, p2, n = 16) {
+  const pts = []
+  for (let i = 0; i <= n; i++) {
+    const t = i / n
+    const u = 1 - t
+    pts.push([
+      u * u * p0[0] + 2 * u * t * p1[0] + t * t * p2[0],
+      u * u * p0[1] + 2 * u * t * p1[1] + t * t * p2[1]
+    ])
+  }
+  return pts
+}
+
+// flatten a cubic bézier into a polyline
+function cubic(p0, p1, p2, p3, n = 16) {
+  const pts = []
+  for (let i = 0; i <= n; i++) {
+    const t = i / n
+    const u = 1 - t
+    pts.push([
+      u * u * u * p0[0] + 3 * u * u * t * p1[0] + 3 * u * t * t * p2[0] + t * t * t * p3[0],
+      u * u * u * p0[1] + 3 * u * u * t * p1[1] + 3 * u * t * t * p2[1] + t * t * t * p3[1]
+    ])
+  }
+  return pts
+}
+
 // Render an S×S RGBA icon (4× supersampled internally).
 function render(S) {
   const hi = S * SS
@@ -46,21 +75,45 @@ function render(S) {
   const cy = hi / 2
   const halfW = hi / 2 - inset
   const halfH = hi / 2 - inset
+  const ringHw = 2.4 * f // hairline ring half-width (경계 안쪽으로 그린다)
 
-  // brackets, authored in the 256-space (centre 128, 11px per svg unit, stroke 2.6)
-  const g = 11 * f
+  // 마스코트 — IconMascot(icons.tsx)의 24-unit 패스를 그대로, 시각 중심(12, 11.4)을
+  // 카드 중심에 맞춰 확대한다. 아이콘 가독을 위해 스트로크는 svg 1.5 → 2.0 unit.
+  const k = 8.6 * f // 1 svg unit
   const C = 128 * f
-  const left = [
-    [C - 3 * g, C - 4 * g],
-    [C - 7 * g, C],
-    [C - 3 * g, C + 4 * g]
+  const mx = (u) => C + (u - 12) * k
+  const my = (u) => C + (u - 11.4) * k
+  const P = (x, y) => [mx(x), my(y)]
+  // 굵은 스트로크(2.0 unit)에선 귀가 머리 옆면에 붙어 한 덩이로 보인다 — 귀만
+  // 0.4 unit 바깥으로 밀고 조금 얇게(0.8) 그려 svg의 열린 아크 느낌을 지킨다
+  const antennae = [
+    quad(P(9.5, 8), P(9, 5.8), P(7.3, 4.9)), // 왼 더듬이
+    quad(P(14.5, 8), P(15, 5.8), P(16.7, 4.9)) // 오른 더듬이
   ]
-  const right = [
-    [C + 3 * g, C - 4 * g],
-    [C + 7 * g, C],
-    [C + 3 * g, C + 4 * g]
+  const ears = [
+    cubic(P(4.0, 10.6), P(2.6, 11.5), P(2.6, 14.5), P(4.0, 15.4)), // 왼 귀
+    cubic(P(20.0, 10.6), P(21.4, 11.5), P(21.4, 14.5), P(20.0, 15.4)) // 오른 귀
   ]
-  const hw = 1.3 * g // half stroke width
+  const dots = [
+    [mx(10.2), my(13), 1.0 * k], // 눈
+    [mx(13.8), my(13), 1.0 * k],
+    [mx(7), my(4.7), 0.9 * k], // 더듬이 점
+    [mx(17), my(4.7), 0.9 * k]
+  ]
+  // 머리 — rx 4.5의 라운드 사각 외곽선 (SDF의 |sd|가 곧 경계까지의 거리)
+  const headCx = mx(12)
+  const headCy = my(13)
+  const headHw = 6.5 * k
+  const headHh = 5 * k
+  const headR = 4.5 * k
+  const hw = 1.0 * k // glyph half stroke width
+
+  const headDist = (px, py) => {
+    const qx = Math.abs(px - headCx) - (headHw - headR)
+    const qy = Math.abs(py - headCy) - (headHh - headR)
+    const sd = Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) + Math.min(Math.max(qx, qy), 0) - headR
+    return Math.abs(sd)
+  }
 
   const buf = Buffer.alloc(hi * hi * 4)
   for (let y = 0; y < hi; y++) {
@@ -73,8 +126,32 @@ function render(S) {
       const sd = Math.hypot(ox, oy) + Math.min(Math.max(qx, qy), 0) - radius
       const i = (y * hi + x) * 4
       if (sd <= 0) {
-        const db = Math.min(polyDist(x + 0.5, y + 0.5, left), polyDist(x + 0.5, y + 0.5, right))
-        const col = db <= hw ? FG : BG
+        const px = x + 0.5
+        const py = y + 0.5
+        let d = headDist(px, py)
+        for (const s of antennae) {
+          const v = polyDist(px, py, s)
+          if (v < d) d = v
+        }
+        let glyph = d <= hw
+        if (!glyph) {
+          for (const s of ears) {
+            if (polyDist(px, py, s) <= 0.8 * k) {
+              glyph = true
+              break
+            }
+          }
+        }
+        if (!glyph) {
+          for (const [dcx, dcy, dr] of dots) {
+            if (Math.hypot(px - dcx, py - dcy) <= dr) {
+              glyph = true
+              break
+            }
+          }
+        }
+        // 카드 표면 → 경계 헤어라인 링 → 글리프 순으로 얹는다
+        const col = glyph ? FG : -sd <= ringHw ? RING : BG
         buf[i] = col[0]
         buf[i + 1] = col[1]
         buf[i + 2] = col[2]
