@@ -7,7 +7,7 @@ import { disabledSkillOverrides } from '../skills'
 import { deniedMcpServers } from '../mcp'
 import { getApiKey, addSpend } from '../apiConfig'
 import { recordApiUsage } from '../apiUsage'
-import { accountRunDir, syncAccountTokens } from '../auth'
+import { accountRunDir, syncAccountTokens, defaultAccountEmail } from '../auth'
 import type { ApiUsageSource } from '@shared/protocol'
 import type {
   EngineEvent,
@@ -190,7 +190,7 @@ const nextBlockId = (): string => `m${LAUNCH_TAG}-${++blockCounter}`
 
 export class ClaudeEngine {
   private emit: Emit
-  /** 이 엔진이 속한 화면 (chat/ask/talk/ma) — API 사용 원장의 분류 축 */
+  /** 이 엔진이 속한 화면 (chat/talk/ma) — API 사용 원장의 분류 축 */
   private source: ApiUsageSource
   private abort: AbortController | null = null
   private handle: {
@@ -201,6 +201,10 @@ export class ClaudeEngine {
     backgroundTasks?: (toolUseId?: string) => Promise<boolean>
   } | null = null
   private activeRunId: string | null = null
+  /** 현재 실행이 result 프레임을 지났는지 — 정리 유예(post-result) 중인 CLI에는 interrupt를
+   *  보내지 않는다(응답할 턴이 없어 유예가 끝날 때까지 cancel이 막힌다). 실행이 없으면 true.
+   *  bg 통지의 atTurnEnd('중지됨' vs '턴 종료로 정리됨') 판정도 이 값을 쓴다. */
+  private turnEnded = true
   /** resolves when the active run's stream loop has fully torn down */
   private runLoop: Promise<void> | null = null
   /** pending canUseTool resolvers keyed by requestId */
@@ -213,6 +217,8 @@ export class ClaudeEngine {
   private tools = new Map<string, { name: string; cwd: string; startedAt: number; abs?: string; pending?: { whole: boolean; file: ChangedFile; diff: FileDiff } }>()
   /** tool_use ids of subagent-spawn tools (Task/Agent), to flip them to done on result */
   private subagents = new Set<string>()
+  /** 서브에이전트별 사이드체인 모델 표시명 — 프레임마다 오므로 변화 시 1회만 emit */
+  private subagentModels = new Map<string, string>()
   /** 사용자가 중지 버튼으로 끊은 백그라운드 작업 id — 정착 통지에 byUser 표식을 붙인다 */
   private userBgStops = new Set<string>()
   /** 살아있는 작업의 tool_use id → task id (task_started로 등록, 정착 통지로 해제).
@@ -274,8 +280,17 @@ export class ClaudeEngine {
   }
 
   async cancel(): Promise<void> {
+    // interrupt는 진행 중인 턴에만 보낸다 — result 후 정리 유예(~5s) 중인 CLI는 응답할
+    // 턴이 없어 여기서 유예가 끝날 때까지 조용히 막혔다(답변 직후 보낸 다음 메시지가
+    // 몇 초간 "씹힌" 것처럼 보이는 주범). 턴이 끝났으면 바로 abort로 가고, 진행 중이어도
+    // 응답이 늦으면 1.5s 뒤 abort가 강제 마무리한다(행 방지).
     try {
-      await this.handle?.interrupt?.()
+      if (!this.turnEnded && this.handle?.interrupt) {
+        await Promise.race([
+          this.handle.interrupt().catch(() => {}),
+          new Promise((r) => setTimeout(r, 1500))
+        ])
+      }
     } catch {
       /* ignore */
     }
@@ -303,8 +318,10 @@ export class ClaudeEngine {
 
     const runId = nextRunId()
     this.activeRunId = runId
+    this.turnEnded = false // 새 턴 — cancel이 다시 우아한 interrupt 경로를 쓴다
     this.tools.clear()
     this.subagents.clear()
+    this.subagentModels.clear()
     this.userBgStops.clear()
     this.liveTaskByToolUse.clear()
     this.baselines.clear()
@@ -320,14 +337,10 @@ export class ClaudeEngine {
 
     const prompt = req.prompt
     const permissionMode = modeToPermission(req.mode)
-    // skills turned off in 설정 → Skill: hide them from the model for this run via
-    // the flag-settings layer (null when nothing is disabled). This never touches
-    // the user's ~/.claude config — it's applied per-run alongside permissionMode.
-    const skillOverrides = disabledSkillOverrides()
-    // MCP servers turned off in 설정 → MCP: a per-run denylist spanning every scope
-    // (null when none disabled). Like skillOverrides, never edits ~/.claude.json.
-    const mcpDenied = deniedMcpServers()
 
+    // busy 표시는 어떤 실패보다 먼저 — 설정 읽기(디스크·safeStorage)까지 전부 아래 try
+    // 안으로 옮겨, 어디서 던져도 error+status 이벤트로 정리되고 렌더러가 analyzing에
+    // 갇히지 않는다. (렌더러의 실행 경계 가드도 analyzing이 항상 첫 이벤트임을 전제한다)
     this.emit({ type: 'status', runId, status: 'analyzing' })
 
     const claudeBin = process.env.MAIN_VITE_CLAUDE_BIN || process.env.CLAUDE_BIN
@@ -349,12 +362,15 @@ export class ClaudeEngine {
     // 중 전환(한도 도달·모델 과부하 폴백 등 거부 이외의 원인 포함)을 감지해 배너를 띄운다.
     // 거부 폴백 경로는 배너를 직접 띄우면서 이 값을 갱신하므로 이중 배너가 뜨지 않는다.
     let curModelDisplay = ''
-    // 백그라운드 작업 추적 — 살아있는 id 집합(REPLACE로 갱신)과 "턴이 이미 끝났는지".
-    // result 뒤에 오는 stopped 통지는 사용자가 누른 중지가 아니라 CLI 정리(턴 종료와 함께
-    // 셸 사망)이므로, atTurnEnd로 구분해 렌더러가 '중지됨'과 '턴 종료로 정리됨'을 가른다.
+    // 백그라운드 작업 추적 — 살아있는 id 집합(REPLACE로 갱신). "턴이 이미 끝났는지"는
+    // this.turnEnded가 담당(cancel의 interrupt 생략 판단과 공유): result 뒤에 오는 stopped
+    // 통지는 사용자가 누른 중지가 아니라 CLI 정리(턴 종료와 함께 셸 사망)이므로,
+    // atTurnEnd로 구분해 렌더러가 '중지됨'과 '턴 종료로 정리됨'을 가른다.
     const liveBgIds = new Set<string>()
-    let turnEnded = false
     let bgSessionId = ''
+    // 종결 status(done/error)를 이미 보냈는지 — 못 보낸 채 스트림이 닫히면(CLI 급사,
+    // result 프레임 없는 종료) 렌더러의 busy가 영영 안 풀리므로 finally의 안전망이 챙긴다
+    let sentTerminalStatus = false
     // 이 실행의 실제 인증 경로 — init의 apiKeySource('oauth'=구독 / 그 외='user'·'project'
     // ·환경변수 등=API 키). 과금 집계는 토글(useApi)이 아니라 이 실제 경로로 판정해야,
     // 전역 ANTHROPIC_API_KEY로 API 과금된 실행도 원장에 잡히고(그리고 API 모드를 켰지만
@@ -364,21 +380,38 @@ export class ClaudeEngine {
     // API 모드 — 저장된 키를 하위 CLI의 환경변수로 주입해 이 실행을 구독(OAuth)이
     // 아닌 API 키 과금으로 돌린다. 키 원문은 여기(메인)에서만 읽고 렌더러엔 안 간다.
     const useApi = !!req.useApi
-    const apiKey = useApi ? getApiKey() : null
     // 채팅별 계정(구독) 오버라이드 — 이 채팅이 전역 활성 계정과 다른 등록 계정을 골랐으면
     // 그 계정의 격리 config 폴더를 물질화해 CLAUDE_CONFIG_DIR로 주입한다(auth.ts).
-    // null = 오버라이드 불필요(활성 계정과 동일하거나 미지정). API 모드면 과금 주체가
-    // API 키라 계정 오버라이드는 무의미 → 건너뛴다. finally에서 되싱크에 쓰므로 밖에 선언.
+    // 이 실행이 소비할 계정 — 채팅이 바인딩한 계정(req.account), 미지정이면 기본 계정.
+    // 구독 실행은 항상 그 계정의 격리 config 폴더(CLAUDE_CONFIG_DIR)로 돈다(전역 ~/.claude
+    // 불가침). API 모드면 과금 주체가 API 키라 계정은 무의미 → 건너뛴다.
+    // finally에서 되싱크에 쓰므로 밖에 선언.
+    let accountEmail: string | null = null
     let accountDir: string | null = null
 
     try {
+      // skills turned off in 설정 → Skill: hide them from the model for this run via
+      // the flag-settings layer (null when nothing is disabled). This never touches
+      // the user's ~/.claude config — it's applied per-run alongside permissionMode.
+      const skillOverrides = disabledSkillOverrides()
+      // MCP servers turned off in 설정 → MCP: a per-run denylist spanning every scope
+      // (null when none disabled). Like skillOverrides, never edits ~/.claude.json.
+      const mcpDenied = deniedMcpServers()
+      const apiKey = useApi ? getApiKey() : null
+
       if (!query) {
         throw new Error('설치된 Claude Code 엔진이 없습니다. 설정 → 버전에서 엔진을 먼저 설치해 주세요.')
       }
       if (useApi && !apiKey) {
         throw new Error('API 모드가 켜져 있지만 저장된 API 키가 없습니다. 설정 → API에서 키를 먼저 등록해 주세요.')
       }
-      if (!useApi && req.account) accountDir = accountRunDir(req.account) // 스냅샷 없음/손상 → throw로 에러 표시
+      if (!useApi) {
+        accountEmail = req.account ?? defaultAccountEmail()
+        if (!accountEmail) {
+          throw new Error('등록된 클로드 계정이 없어요 — 설정 → Account에서 로그인해 주세요.')
+        }
+        accountDir = accountRunDir(accountEmail) // 등록 없음/손상 → throw로 에러 표시
+      }
       const q = query({
         prompt,
         options: {
@@ -659,7 +692,7 @@ export class ClaudeEngine {
               status: st,
               summary: msg.summary?.trim() || undefined,
               outputFile: msg.output_file || undefined,
-              atTurnEnd: turnEnded,
+              atTurnEnd: this.turnEnded,
               // 사용자가 중지 버튼으로 끊은 작업이면 표식 (턴 종료 정리와 표기를 가른다)
               byUser: this.userBgStops.delete(msg.task_id) || undefined
             })
@@ -671,11 +704,20 @@ export class ClaudeEngine {
             // handleToolResult가 카드를 실행 중으로 유지한다), 완료는 이 통지가 맡는다.
             if (typeof tuid === 'string' && this.subagents.has(tuid)) {
               this.subagents.delete(tuid)
-              const label = st === 'completed' ? '완료' : st === 'stopped' ? (turnEnded ? '턴 종료로 정리됨' : '중지됨') : '실패'
+              const label = st === 'completed' ? '완료' : st === 'stopped' ? (this.turnEnded ? '턴 종료로 정리됨' : '중지됨') : '실패'
+              const saMeta = this.tools.get(tuid)
               this.emit({
                 type: 'subagent',
                 runId,
-                agent: { id: tuid, name: '', role: '', status: 'done', activity: msg.summary?.trim() || label, tools: [] }
+                agent: {
+                  id: tuid,
+                  name: '',
+                  role: '',
+                  status: 'done',
+                  activity: msg.summary?.trim() || label,
+                  tools: [],
+                  durationMs: saMeta ? Date.now() - saMeta.startedAt : undefined
+                }
               })
             }
           }
@@ -729,6 +771,17 @@ export class ClaudeEngine {
           // activity 줄로(reducer의 subagent 케이스가 부분 병합 — tools 보존).
           if (msg.parent_tool_use_id || msg.subagent_type) {
             const pid = msg.parent_tool_use_id
+            // 사이드체인 프레임이 보고한 실행 모델 — 카드 서브 줄·푸터 '모델' 칩용.
+            // 프레임마다 실려 오므로 값이 바뀔 때만 부분 업데이트로 흘린다.
+            const smk = modelKey(msg.message?.model)
+            if (pid && smk && this.subagents.has(pid) && this.subagentModels.get(pid) !== smk) {
+              this.subagentModels.set(pid, smk)
+              this.emit({
+                type: 'subagent',
+                runId,
+                agent: { id: pid, name: '', role: '', status: 'running', activity: '', tools: [], model: smk }
+              })
+            }
             const blocks = Array.isArray(msg.message?.content) ? (msg.message!.content as ContentBlock[]) : []
             for (const block of blocks) {
               if (block.type === 'tool_use' && block.id && block.name) {
@@ -821,8 +874,9 @@ export class ClaudeEngine {
         }
 
         if (msg.type === 'result') {
-          // 이후의 stopped 통지는 사용자 중지가 아니라 턴 종료에 따른 CLI 정리로 표시한다
-          turnEnded = true
+          // 이후의 stopped 통지는 사용자 중지가 아니라 턴 종료에 따른 CLI 정리로 표시하고,
+          // 이후의 cancel은 interrupt 없이 바로 abort한다(정리 유예 중 CLI는 응답이 없다)
+          this.turnEnded = true
           // Only SDKResultSuccess carries `result`; error subtypes put text in `errors`.
           const resultText = msg.is_error
             ? Array.isArray(msg.errors) && msg.errors.length
@@ -837,7 +891,7 @@ export class ClaudeEngine {
           // 인증 경로(runApiKeySource)로 한다 — 그래야 전역 ANTHROPIC_API_KEY로 API 과금된
           // 실행도 잡히고, 구독(oauth)으로 붙은 실행의 명목 비용은 (API 모드를 켰더라도)
           // 실제 청구가 아니므로 더하지 않는다. init 전에 죽어 경로를 못 받았으면 useApi로 폴백.
-          // 모든 엔진 인스턴스(메인/ask/채팅/멀티)가 이 경로를 지나므로 한 곳에서 끝난다.
+          // 모든 엔진 인스턴스(메인/채팅/멀티)가 이 경로를 지나므로 한 곳에서 끝난다.
           const billedToApi = runApiKeySource ? isApiKeyBilled(runApiKeySource) : useApi
           if (billedToApi && typeof msg.total_cost_usd === 'number') {
             addSpend(msg.total_cost_usd)
@@ -869,6 +923,7 @@ export class ClaudeEngine {
             viaApi: billedToApi
           })
           this.emit({ type: 'status', runId, status: msg.is_error ? 'error' : 'done' })
+          sentTerminalStatus = true
         }
       }
     } catch (err) {
@@ -877,6 +932,7 @@ export class ClaudeEngine {
       if (!abort.signal.aborted) {
         this.emit({ type: 'error', runId, message })
         this.emit({ type: 'status', runId, status: 'error' })
+        sentTerminalStatus = true
       }
     } finally {
       // clear any permission waiters belonging to this run so resolvers never outlive it
@@ -892,11 +948,11 @@ export class ClaudeEngine {
           waiter(null)
         }
       }
-      // 계정 오버라이드 실행 — CLI가 격리 폴더 안에서 리프레시한 토큰을 스냅샷에 되쓴다
-      // (다음 물질화·전환·한도 조회가 신선한 토큰을 쓰도록)
-      if (accountDir && req.account) {
+      // CLI가 격리 폴더 안에서 리프레시한 토큰을 암호화 백업에 되쓴다
+      // (다음 물질화·한도 조회가 신선한 토큰을 쓰도록)
+      if (accountDir && accountEmail) {
         try {
-          syncAccountTokens(req.account)
+          syncAccountTokens(accountEmail)
         } catch {
           /* ignore */
         }
@@ -912,9 +968,34 @@ export class ClaudeEngine {
         // 아직 done을 못 받은 서브에이전트(백그라운드로 돌다 통지 없이 스트림이 닫힘,
         // 또는 실행 취소)도 실행 중으로 남지 않게 정리한다
         for (const id of this.subagents) {
-          this.emit({ type: 'subagent', runId, agent: { id, name: '', role: '', status: 'done', activity: '턴 종료로 정리됨', tools: [] } })
+          const saMeta = this.tools.get(id)
+          this.emit({
+            type: 'subagent',
+            runId,
+            agent: {
+              id,
+              name: '',
+              role: '',
+              status: 'done',
+              activity: '턴 종료로 정리됨',
+              tools: [],
+              durationMs: saMeta ? Date.now() - saMeta.startedAt : undefined
+            }
+          })
         }
         this.subagents.clear()
+        // 종결 status 보장 — result 프레임도 error도 없이 스트림이 닫히면(CLI 급사 등)
+        // 아무도 done을 안 보내 busy가 영영 안 풀렸다. 취소(abort)로 끝난 경우도 이
+        // 안전망이 스피너를 정리한다 — 새 실행의 begin이 이미 지나갔다면 렌더러의
+        // 실행 경계 가드(curRunId)가 이 늦은 status를 걸러낸다.
+        if (!sentTerminalStatus) {
+          if (!abort.signal.aborted) {
+            this.emit({ type: 'notice', runId, text: '엔진이 응답 없이 종료됐어요 — 메시지를 다시 보내 주세요.' })
+            this.emit({ type: 'status', runId, status: 'error' })
+          } else {
+            this.emit({ type: 'status', runId, status: 'done' })
+          }
+        }
         this.activeRunId = null
         this.handle = null
         this.abort = null
@@ -1096,7 +1177,16 @@ export class ClaudeEngine {
       this.emit({
         type: 'subagent',
         runId,
-        agent: { id, name: '', role: '', status: 'done', activity: agentResult(text) || '완료', tools: [] }
+        // 소요 = Task tool_use 시작→결과 도착 (meta.startedAt은 handleToolUse가 기록)
+        agent: {
+          id,
+          name: '',
+          role: '',
+          status: 'done',
+          activity: agentResult(text) || '완료',
+          tools: [],
+          durationMs: meta ? Date.now() - meta.startedAt : undefined
+        }
       })
       return
     }

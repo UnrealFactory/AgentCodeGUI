@@ -10,9 +10,9 @@ function clamp(v: number): number {
   return Math.min(MAX, Math.max(MIN, Math.round(v * 10) / 10))
 }
 
-function load(key: string): number {
-  const v = getPref(key, 1)
-  return typeof v === 'number' && Number.isFinite(v) ? clamp(v) : 1
+function load(key: string, def = 1): number {
+  const v = getPref(key, def)
+  return typeof v === 'number' && Number.isFinite(v) ? clamp(v) : clamp(def)
 }
 
 /**
@@ -21,23 +21,24 @@ function load(key: string): number {
  * (a CSS `zoom` factor) to the inner content. `flash` is true briefly after each change
  * so a "120%" badge can fade in then out. React's onWheel is registered passive and
  * can't preventDefault, so we bind a native non-passive listener ourselves.
+ * `def`: 저장값이 없을 때의 기본 배율 — 멀티(1.2)처럼 화면별로 다른 시작점을 준다.
  */
-export function useZoom(storageKey: string, active = true) {
+export function useZoom(storageKey: string, active = true, def = 1) {
   // track the target via a state-backed callback ref, not a plain ref object: the wheel
   // listener must re-bind whenever the element unmounts/remounts — the chat pane is torn
   // down and rebuilt on a multi-agent mode round trip, and the viewer cards render null
   // while closed. A ref object's `.current` change wouldn't re-run the effect; state does.
   const [el, setEl] = useState<HTMLDivElement | null>(null)
   const ref = useCallback((node: HTMLDivElement | null) => setEl(node), [])
-  const [zoom, setZoom] = useState(() => load(storageKey))
+  const [zoom, setZoom] = useState(() => load(storageKey, def))
   const [flash, setFlash] = useState(false)
   const timer = useRef<number | undefined>(undefined)
 
   // re-sync from storage each time the pane (re)opens, so panes sharing a key (the file
   // viewer and the diff card both use ccgui.viewer.zoom) agree within a session too
   useEffect(() => {
-    if (active) setZoom(load(storageKey))
-  }, [active, storageKey])
+    if (active) setZoom(load(storageKey, def))
+  }, [active, storageKey, def])
 
   // re-runs whenever the live element changes (mount/unmount) or `active` flips, so the
   // listener always follows the current node rather than a one-shot mount-time capture.

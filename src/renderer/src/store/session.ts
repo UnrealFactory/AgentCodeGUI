@@ -5,6 +5,7 @@ import type {
   BgTask,
   ChangedFile,
   EngineEvent,
+  EngineId,
   FileDiff,
   SubAgentInfo,
   TermLine,
@@ -32,6 +33,10 @@ export type ThreadItem =
     }
   // 시스템 경고를 스레드에 인라인으로 보여주는 줄 (예: 정책 거부 → 모델 자동 전환, API 과금 안내)
   | { kind: 'notice'; id: string; text: string; time: string }
+  // 턴 마무리 줄 (PoC .worked) — 'N초 동안 작업함'. result의 durationMs로 답변 앞에 끼운다
+  | { kind: 'worked'; id: string; ms: number }
+  // AI 질문의 문답 흔적 (PoC .qa) — 답을 보내면 질문·선택을 스레드에 남긴다 (건너뛰면 없음)
+  | { kind: 'qa'; id: string; pairs: { q: string; a: string[] }[] }
 
 export interface SessionState {
   status: AgentStatus
@@ -43,8 +48,10 @@ export interface SessionState {
   subagents: SubAgentInfo[]
   // 백그라운드 작업(셸 등) — 살아있는 건 bg-tasks REPLACE로, 종료 상세는 bg-task-end로 갱신
   bgTasks: BgTask[]
-  pendingPermission: { requestId: string; toolName: string; summary: string } | null
-  pendingQuestion: { requestId: string; questions: AgentQuestion[] } | null
+  // engine — 요청한 엔진(카드 헤더 'Claude의 승인 요청'/'GPT의 승인 요청' 표기), 생략=claude
+  pendingPermission: { requestId: string; toolName: string; summary: string; engine?: EngineId } | null
+  // engine — 질문을 던진 엔진(카드 헤더 'Claude의 질문'/'GPT의 질문' 표기), 생략=claude
+  pendingQuestion: { requestId: string; questions: AgentQuestion[]; engine?: EngineId } | null
   session: { sessionId: string; model: string; cwd: string } | null
   result: {
     costUsd: number | null
@@ -65,6 +72,12 @@ export interface SessionState {
   // 이 대화에서 이미 한 번 보여준 '한 번만' 안내(notice)들의 key. 스냅샷에 저장돼 재시작
   // 후에도 유지되고, 같은 key의 once 안내는 이후 다시 끼우지 않는다. (예: 'api-billing')
   shownNotices: string[]
+  // 실행 경계 가드 — 현재 실행의 runId. begin이 'pending'(엔진의 analyzing 이벤트 전
+  // 표식)으로 갈아끼우고 analyzing이 실 runId를 채택한다. 종결 이벤트(status/result/
+  // error)는 현재 실행 것만 반영해, 죽어가는 이전 실행의 늦은 이벤트(정리 유예 중 CLI를
+  // 새 실행이 밀어낼 때의 잔재)가 새 실행의 busy·결과를 덮지 못하게 한다.
+  // null = 출처 불명(복원 직후 등) — 잘못 거르면 busy가 영영 안 풀리므로 가드 없이 통과.
+  curRunId: string | null
 }
 
 type Action =
@@ -72,9 +85,14 @@ type Action =
   | { type: 'engine'; event: EngineEvent }
   | { type: 'clear-permission' }
   | { type: 'clear-question' }
+  // 질문에 답을 보냄 — pendingQuestion을 닫으며 문답 흔적(qa)을 스레드에 남긴다
+  | { type: 'answer-question'; answers: string[][] }
   | { type: 'load'; state: SessionState }
 
 const THINKING_ID = 'thinking'
+// begin 직후(엔진의 analyzing 이벤트가 아직)를 나타내는 curRunId 표식 — 이 창에 도착하는
+// 종결 이벤트는 전부 이전 실행의 잔재다. 실제 runId는 'run-N'/'cxrun-N'이라 충돌하지 않는다.
+const PENDING_RUN = 'pending'
 
 export function nowTime(): string {
   return new Date().toLocaleTimeString('ko-KR', { hour: 'numeric', minute: '2-digit' })
@@ -157,7 +175,8 @@ export const initialSessionState: SessionState = {
   thinkingText: null,
   openGroupId: null,
   seq: 0,
-  shownNotices: []
+  shownNotices: [],
+  curRunId: null
 }
 
 // ── growth caps ──────────────────────────────────────────────
@@ -171,6 +190,14 @@ const MAX_SUBAGENT_TOOLS = 200
 const MAX_SUBAGENT_LOG = 100
 const MAX_TERMINAL_LINES = 500
 const MAX_DIFF_LINES = 4000
+
+// 스레드 끝의 '작업함' 줄을 건너뛴 마지막 항목 index — 답변의 부드러운 공개(live)는
+// 이 index 기준이라, result가 끝에 worked를 붙여도 공개 애니메이션이 뚝 끊기지 않는다.
+export function liveMsgIndex(list: ThreadItem[]): number {
+  let i = list.length - 1
+  while (i >= 0 && list[i].kind === 'worked') i--
+  return i
+}
 
 function capThread(list: ThreadItem[]): ThreadItem[] {
   return list.length > MAX_THREAD_ITEMS ? list.slice(list.length - MAX_THREAD_ITEMS) : list
@@ -251,6 +278,23 @@ function reducer(state: SessionState, action: Action): SessionState {
     return { ...state, pendingQuestion: null }
   }
 
+  if (action.type === 'answer-question') {
+    const pq = state.pendingQuestion
+    if (!pq) return state
+    // 실제로 답한 질문만 흔적으로 남긴다 (전부 비어 있으면 카드만 닫는다)
+    const pairs = pq.questions
+      .map((q, i) => ({ q: q.question, a: action.answers[i] ?? [] }))
+      .filter((p) => p.a.length > 0)
+    if (!pairs.length) return { ...state, pendingQuestion: null }
+    const seq = state.seq + 1
+    return {
+      ...state,
+      seq,
+      pendingQuestion: null,
+      messages: capThread([...state.messages, { kind: 'qa', id: `qa${seq}`, pairs }])
+    }
+  }
+
   if (action.type === 'begin') {
     const seq = state.seq + 1
     const cmd = action.command
@@ -259,6 +303,8 @@ function reducer(state: SessionState, action: Action): SessionState {
     return {
       ...state,
       status: 'analyzing',
+      // 새 실행의 analyzing이 오기 전까지 종결 이벤트를 전부 잔재로 취급 (실행 경계 가드)
+      curRunId: PENDING_RUN,
       // 백그라운드 셸은 턴을 못 넘기고 CLI와 함께 죽으므로, 지난 턴의 종료 항목을 계속
       // 끌고 다니면 매 대화마다 죽은 셸이 다시 보인다 — 새 턴 시작에 비운다 (칩=현재 턴)
       bgTasks: [],
@@ -304,8 +350,16 @@ function reducer(state: SessionState, action: Action): SessionState {
   }
 
   const e = action.event
+  // 실행 경계 가드 — 죽어가는 이전 실행의 늦은 종결 이벤트인지. begin 직후(pending)면
+  // 현 실행의 analyzing 전이므로 전부 잔재고, runId 채택 후엔 다른 id를 거른다.
+  // curRunId=null(복원 등 출처 불명)은 통과 — 잘못 거르면 busy가 영영 안 풀린다.
+  const staleRun = (runId: string): boolean =>
+    state.curRunId === PENDING_RUN || (!!state.curRunId && state.curRunId !== runId)
   switch (e.type) {
     case 'status':
+      // analyzing = 모든 실행의 첫 이벤트 (엔진 계약) — 이 실행을 현재 실행으로 채택
+      if (e.status === 'analyzing') return { ...state, status: 'analyzing', curRunId: e.runId }
+      if (staleRun(e.runId)) return state
       return { ...state, status: e.status }
 
     case 'session':
@@ -477,6 +531,9 @@ function reducer(state: SessionState, action: Action): SessionState {
             name: e.agent.name || a.name,
             role: e.agent.role || a.role,
             activity: act || a.activity,
+            // 모델·소요는 부분 업데이트로 띄엄띄엄 온다 — 빈 값이 기존 값을 지우지 않게
+            model: e.agent.model || a.model,
+            durationMs: e.agent.durationMs ?? a.durationMs,
             log
           }
         })
@@ -566,10 +623,10 @@ function reducer(state: SessionState, action: Action): SessionState {
     }
 
     case 'permission-request':
-      return { ...state, pendingPermission: { requestId: e.requestId, toolName: e.toolName, summary: e.summary } }
+      return { ...state, pendingPermission: { requestId: e.requestId, toolName: e.toolName, summary: e.summary, engine: e.engine } }
 
     case 'question-request':
-      return { ...state, pendingQuestion: { requestId: e.requestId, questions: e.questions } }
+      return { ...state, pendingQuestion: { requestId: e.requestId, questions: e.questions, engine: e.engine } }
 
     case 'context': {
       // live mid-run update of just the context-token gauge
@@ -587,6 +644,7 @@ function reducer(state: SessionState, action: Action): SessionState {
     }
 
     case 'result': {
+      if (staleRun(e.runId)) return state
       const after = e.contextTokens ?? state.result?.contextTokens ?? null
       const window = e.contextWindow ?? state.result?.contextWindow ?? null
       const base = {
@@ -657,10 +715,35 @@ function reducer(state: SessionState, action: Action): SessionState {
           messages: capThread([...without, { kind: 'msg', id: `rerr${seq}`, role: 'assistant', text: e.text, animate: false, error: true, time: nowTime() }])
         }
       }
+      const extra: ThreadItem[] = []
+      let seq = state.seq
+      // 무음 턴 가시화 — 스트리밍 답변·도구 로그·에러 아무것도 안 남긴 성공 result는
+      // 지금까지 조용히 idle로 돌아가 "메시지가 씹힌 것"처럼 보였다(빈 텍스트 result,
+      // 시작 직후 죽은 실행 등). 마지막 항목이 방금 보낸 사용자 말풍선 그대로면
+      // 안내 줄을 남겨 빈 턴을 눈에 보이게 한다. (실행 중지도 이 모양이 될 수 있어
+      // 문구가 그 경우를 함께 안내한다)
+      const last = without[without.length - 1]
+      if (!e.isError && last?.kind === 'msg' && last.role === 'user') {
+        seq += 1
+        extra.push({
+          kind: 'notice',
+          id: `n${seq}`,
+          text: '이번 턴이 응답 없이 끝났어요 — 직접 중지한 게 아니라면 메시지를 다시 보내 주세요.',
+          time: nowTime()
+        })
+      }
+      // 턴 마무리 줄(PoC .worked) — 'N초 동안 작업함'. 답변 앞은 "읽기 전에 걸리적"
+      // 이라는 피드백으로 턴 맨 끝(답변 뒤)에 붙인다.
+      if (!e.isError && e.durationMs != null && e.durationMs >= 1000) {
+        seq += 1
+        extra.push({ kind: 'worked', id: `w${seq}`, ms: e.durationMs })
+      }
+      if (extra.length) return { ...base, seq, messages: capThread([...without, ...extra]) }
       return base
     }
 
     case 'error': {
+      if (staleRun(e.runId)) return state
       const seq = state.seq + 1
       const without = state.messages.filter((m) => m.id !== THINKING_ID)
       return {
@@ -681,9 +764,9 @@ function reducer(state: SessionState, action: Action): SessionState {
   }
 }
 
-// `subscribe` defaults to the main engine channel; the "/ask" modal passes
-// window.api.ask.onEvent so its throwaway conversation drives a second, isolated
-// session through the exact same reducer.
+// `subscribe` defaults to the main engine channel; other surfaces (채팅·추가 채팅·
+// 멀티 패널) pass their own channel's onEvent so each isolated conversation drives
+// through the exact same reducer.
 export function useAgentSession(
   subscribe?: (cb: (event: EngineEvent) => void) => () => void
 ) {
@@ -724,8 +807,10 @@ export function useAgentSession(
     dispatch({ type: 'begin', text, time: nowTime(), command, images })
   const clearPermission = (): void => dispatch({ type: 'clear-permission' })
   const clearQuestion = (): void => dispatch({ type: 'clear-question' })
+  // 답과 함께 질문을 닫는다 — clearQuestion과 달리 문답 흔적(qa)을 스레드에 남긴다
+  const answerQuestion = (answers: string[][]): void => dispatch({ type: 'answer-question', answers })
   // replace the entire live state — used when switching between chats
   const load = (snapshot: SessionState): void => dispatch({ type: 'load', state: snapshot })
 
-  return { state, elapsed, busy, begin, clearPermission, clearQuestion, load }
+  return { state, elapsed, busy, begin, clearPermission, clearQuestion, answerQuestion, load }
 }

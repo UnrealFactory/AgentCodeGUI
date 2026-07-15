@@ -8,19 +8,20 @@ import type {
   MultiQuestionResponse,
   EngineEvent,
   WindowState,
-  WindowBounds,
-  ResizeEdge,
   UsageInfo,
   ApiConfigStatus,
   AuthStatus,
   AccountInfo,
   AccountUsage,
+  CodexAccountInfo,
+  CodexAccountUsage,
   ApiUsageRecord,
   UserProfile,
   EngineVersionEntry,
   EngineVersionState,
   EngineInstallProgress,
   EngineCleanupResult,
+  CodexModelInfo,
   FileReadResult,
   FileWriteResult,
   DirEntry,
@@ -29,6 +30,11 @@ import type {
   UpdateStatus,
   LspStatus,
   LspProjectStatus,
+  AgentStatus,
+  SessionWindowInfo,
+  SessionPersistPayload,
+  SessionHydrateData,
+  EngineUpdateStatus,
   LspPos,
   LspHoverResult,
   LspLocation,
@@ -39,11 +45,6 @@ import type {
   LspFilesChangedEvent,
   LspInstallProgress,
   LspServerInfo,
-  GitStatus,
-  GitCommit,
-  GitChange,
-  GitFileAt,
-  GitOpResult
 } from './protocol'
 
 /** The surface exposed to the renderer via `window.api` (contextBridge). */
@@ -66,30 +67,50 @@ export interface WindowApi {
   pathForFile(file: File): string
   /** 구독 사용량 (한도·추가 크레딧). 기본은 5분 캐시 — fresh=true는 15초 바닥만 지키고
    *  새로 받아온다 (실행 종료·컨텍스트 팝오버 열기 등 "지금 값"이 필요한 순간용).
-   *  account: 이 채팅의 실행 계정(picker.account) — 전역 활성 계정과 다르면 그 계정의
-   *  저장 토큰으로 조회해, 컨텍스트 팝오버 한도가 실제 소비될 계정 기준이 되게 한다. */
+   *  account: 이 채팅의 실행 계정(picker.account) — 미지정이면 기본 계정 기준으로 조회해,
+   *  컨텍스트 팝오버 한도가 실제 소비될 계정 기준이 되게 한다. */
   getUsage(fresh?: boolean, account?: string): Promise<UsageInfo>
-  /** 클로드 계정(구독 OAuth) 로그인 — 번들 CLI의 `claude auth …`를 감싼다 (설정 → 계정). */
+  /** 클로드 계정(구독 OAuth) — 앱 등록 계정만 사용, 전역 ~/.claude 불가침 (설정 → Account). */
   auth: {
-    /** 현재 로그인 상태 (이메일·플랜·로그인 여부) */
-    status(): Promise<AuthStatus>
-    /** 로그아웃 후 새 상태를 돌려준다 */
-    logout(): Promise<AuthStatus>
-    /** 로그인 시작 — 브라우저 OAuth. 완료(또는 취소/타임아웃)되면 새 상태를 돌려준다.
+    /** 계정 추가(로그인) — 격리 폴더 브라우저 OAuth. 완료 시 등록 + 결과 상태 반환.
      *  useConsole=true 면 구독 대신 Anthropic 콘솔(API) 계정으로 로그인한다. */
     login(useConsole?: boolean): Promise<AuthStatus & { ok: boolean }>
+    /** 계정 로그아웃 — 그 계정 토큰 해지 + 등록 제거 → 갱신된 목록 */
+    logout(email: string): Promise<AccountInfo[]>
     /** 진행 중인 로그인 프로세스를 중단한다 */
     cancelLogin(): Promise<void>
     /** 로그인 OAuth URL 수신 (브라우저가 안 열릴 때 폴백 링크용) */
     onLoginUrl(cb: (url: string) => void): () => void
-    /** 저장된(전환 가능한) 계정 목록 — 현재 활성 계정은 active:true */
+    /** 등록 계정 목록 — 기본 계정은 isDefault:true */
     listAccounts(): Promise<AccountInfo[]>
-    /** 저장된 계정으로 전환(크리덴셜 스왑, 재로그인 없이) → 새 상태 */
-    switchAccount(email: string): Promise<AuthStatus>
-    /** 저장 목록에서 계정 제거(활성 로그인 자체는 안 건드림) → 갱신된 목록 */
+    /** 새 채팅·미지정 채팅이 쓸 기본 계정 지정 → 갱신된 목록 */
+    setDefaultAccount(email: string): Promise<AccountInfo[]>
+    /** 등록 목록에서 계정 제거(토큰 해지 없이 — 해지는 logout) → 갱신된 목록 */
     removeAccount(email: string): Promise<AccountInfo[]>
-    /** 저장된 계정별 한도 사용률(5시간·주간·Fable) — 전환 없이 각 계정 토큰으로 일괄 조회 */
+    /** 등록 계정별 한도 사용률(5시간·주간·Fable) — 각 계정 토큰으로 일괄 조회 */
     accountsUsage(): Promise<AccountUsage[]>
+  }
+  /** Codex(OpenAI) 계정 — Anthropic과 동일: 앱 등록 계정만, 전역 ~/.codex 불가침 (설정 → Account). */
+  codexAuth: {
+    /** 등록 계정 목록 — 기본 계정은 isDefault:true */
+    listAccounts(): Promise<CodexAccountInfo[]>
+    /** 계정 추가 — 격리 CODEX_HOME 브라우저 OAuth. 완료 시 등록 + 갱신된 목록 */
+    login(): Promise<CodexAccountInfo[]>
+    /** 계정 삭제 — 그 계정 auth 제거 + 등록 삭제 → 갱신된 목록 */
+    logout(email: string): Promise<CodexAccountInfo[]>
+    /** 새 채팅·미지정 채팅이 쓸 기본 계정 지정 → 갱신된 목록 */
+    setDefaultAccount(email: string): Promise<CodexAccountInfo[]>
+    cancelLogin(): Promise<void>
+    /** 등록 계정별 한도(rateLimits) 일괄 조회 — planType은 표시 플랜으로도 우선 사용 */
+    accountsUsage(): Promise<CodexAccountUsage[]>
+  }
+  /** 두 엔진 CLI 공통 자동 업데이트 — 인자 있으면 설정, 항상 현재 값을 반환 (설정 → Engine → 공통) */
+  engineAutoUpdate(enabled?: boolean): Promise<boolean>
+  /** 부팅 자동 업데이트 카드 — 메인이 부팅 직후 두 엔진을 설치→활성화→정리하며
+   *  진행 스냅샷(REPLACE)을 흘린다. status()는 마운트 때 현재 상태 따라잡기용. */
+  engineUpdate: {
+    status(): Promise<EngineUpdateStatus>
+    onEvent(cb: (s: EngineUpdateStatus) => void): () => void
   }
   /** 세션 창(추가 채팅)에서: 메인 창을 앞으로 가져와 설정 → API 탭을 연다 (키 등록 안내) */
   openApiSettings(): Promise<void>
@@ -98,13 +119,14 @@ export interface WindowApi {
   /** API 키 과금 설정 (설정 → API + 컴포저 API 토글). 모든 호출이 최신 스냅샷을 돌려준다. */
   apiConfig: {
     get(): Promise<ApiConfigStatus>
-    /** API 키 저장 — 메인이 safeStorage로 암호화해 보관 (원문은 렌더러로 안 돌아옴) */
-    setKey(key: string): Promise<ApiConfigStatus>
-    clearKey(): Promise<ApiConfigStatus>
-    /** 예산(USD) 설정 — null이면 예산 없음(누적 사용액만 표시) */
+    /** API 키 저장 — 메인이 safeStorage로 암호화해 보관 (원문은 렌더러로 안 돌아옴).
+     *  provider 생략 = Anthropic, 'openai' = Codex 실행용 OpenAI 키. */
+    setKey(key: string, provider?: 'anthropic' | 'openai'): Promise<ApiConfigStatus>
+    clearKey(provider?: 'anthropic' | 'openai'): Promise<ApiConfigStatus>
+    /** 예산(USD) 설정 — null이면 예산 없음. Anthropic 전용(Codex는 비용 미보고). */
     setBudget(usd: number | null): Promise<ApiConfigStatus>
-    /** 누적 사용액을 0으로 리셋 (재충전 시 기준점 재설정) */
-    resetSpend(): Promise<ApiConfigStatus>
+    /** 예산 초기화(0원) — 예산을 지우고 누적 사용액도 0으로 (재충전 시) */
+    resetBudget(): Promise<ApiConfigStatus>
     /** API 모드 실행 원장(최근 2만 건) — 설정 → API의 통계가 집계한다 */
     listUsage(): Promise<ApiUsageRecord[]>
   }
@@ -154,26 +176,6 @@ export interface WindowApi {
     excludeDirs?: string[],
     excludeFiles?: string[]
   ): Promise<DirEntry[]>
-  /** git — 탐색기의 Git 카드 (히스토리·변경 사항·커밋/푸시/풀) */
-  git: {
-    /** cwd가 속한 레포 최상위(.git 상위 폴더 탐색 포함), 없으면 null — cwd별 캐시 */
-    root(cwd: string, force?: boolean): Promise<string | null>
-    /** 브랜치·ahead/behind·작업 트리 변경·브랜치/원격/태그 목록 */
-    status(root: string): Promise<GitStatus | null>
-    /** 커밋 목록 (푸시 여부 포함) */
-    log(root: string, limit?: number): Promise<GitCommit[]>
-    /** 한 커밋의 변경 파일 + 증감 */
-    commitDetail(root: string, hash: string): Promise<GitChange[]>
-    /** 커밋 시점 파일 내용 + 부모→커밋 diff — 뷰어가 그 시점을 그대로 보여줄 때 */
-    fileAt(root: string, hash: string, path: string): Promise<GitFileAt>
-    /** 작업 트리 파일의 HEAD→디스크 diff — 뷰어 마킹용 (내용은 디스크에서 읽음) */
-    workingFile(root: string, path: string): Promise<GitFileAt>
-    /** add -A 후 커밋 */
-    commit(root: string, subject: string, body: string): Promise<GitOpResult>
-    push(root: string): Promise<GitOpResult>
-    /** --ff-only 풀 */
-    pull(root: string): Promise<GitOpResult>
-  }
   /** LSP code intelligence for the in-app viewer (lazy per-project language servers) */
   lsp: {
     /** current status for a file — asking also warms up the project's server */
@@ -235,15 +237,6 @@ export interface WindowApi {
     toggleMaximize(): Promise<boolean>
     close(): Promise<void>
     isMaximized(): Promise<boolean>
-    getBounds(): Promise<WindowBounds>
-    setBounds(bounds: WindowBounds): Promise<void>
-    /** begin/end a manual title-bar drag (frameless window moved from the main process) */
-    dragStart(): Promise<void>
-    dragEnd(): Promise<void>
-    /** begin/end a manual edge resize — the main process samples the live cursor so
-     *  it never feeds back on itself the way renderer pointer events can */
-    resizeStart(edge: ResizeEdge): Promise<void>
-    resizeEnd(): Promise<void>
   }
   /** Claude Code engine (SDK) version management. */
   engine: {
@@ -252,10 +245,23 @@ export interface WindowApi {
     install(version: string): Promise<{ ok: boolean; error?: string }>
     uninstall(version: string): Promise<void>
     setActive(version: string | null): Promise<void>
-    /** 최신 설치본만 남기고 이전 버전을 모두 삭제 (설정 ▸ Claude Code ▸ 정리) */
+    /** 최신 설치본만 남기고 이전 버전을 모두 삭제 (설정 ▸ Engine ▸ 정리) */
     cleanup(): Promise<EngineCleanupResult>
     onInstallProgress(cb: (p: EngineInstallProgress) => void): () => void
   }
+  /** Codex CLI 버전 관리 — Claude Code와 동일한 문법 (state.bundled 자리는 전역 codex 버전 폴백). */
+  codexEngine: {
+    listAvailable(): Promise<{ latest: string | null; versions: EngineVersionEntry[] }>
+    state(): Promise<EngineVersionState>
+    install(version: string): Promise<{ ok: boolean; error?: string }>
+    uninstall(version: string): Promise<void>
+    setActive(version: string | null): Promise<void>
+    cleanup(): Promise<EngineCleanupResult>
+    onInstallProgress(cb: (p: EngineInstallProgress) => void): () => void
+  }
+  /** Codex CLI(app-server)의 모델 목록 — picker의 OpenAI 세그먼트. 미설치면 []. */
+  codexModels(): Promise<CodexModelInfo[]>
+
   /** Agent skills (SKILL.md). Listed by scope; toggled on/off from Settings. */
   skill: {
     /** enumerate global (~/.claude) + project (.claude/skills for `cwd`) skills */
@@ -269,16 +275,6 @@ export interface WindowApi {
     list(cwd: string): Promise<McpServerInfo[]>
     /** turn an MCP server on/off by name — applied to subsequent runs by the engine */
     setEnabled(name: string, enabled: boolean): Promise<void>
-  }
-  /** "/ask" — an independent throwaway conversation on its own engine instance, so it
-   *  never cancels or mixes into the main chat. Same payload shapes, separate channel. */
-  ask: {
-    run(req: RunRequest): Promise<string>
-    cancel(): Promise<void>
-    respondPermission(res: PermissionResponse): Promise<void>
-    respondQuestion(res: QuestionResponse): Promise<void>
-    /** subscribe to the /ask engine's streaming events (returns an unsubscribe fn) */
-    onEvent(cb: (event: EngineEvent) => void): () => void
   }
   /** 채팅 — a pure-conversation workspace on its own dedicated engine + persistence.
    *  No project folder, explorer, or tools UI; its own conversation list, separate from
@@ -311,16 +307,25 @@ export interface WindowApi {
     bgTask(req: BgTaskRequest): Promise<void>
     /** subscribe to THIS window's session engine events (returns an unsubscribe fn) */
     onEvent(cb: (event: EngineEvent) => void): () => void
+    /** 이 세션 창의 제목(첫 프롬프트)·상태 보고 — 메인 창 사이드바 '추가 채팅' 목록용 */
+    report(info: { title: string; status: AgentStatus }): Promise<void>
+    /** 이 창에 배정된 채팅의 저장본 조회 — 마운트 시 복원. 새 채팅이면 null */
+    hydrate(): Promise<SessionHydrateData | null>
+    /** 이 창의 대화 스냅샷 저장 — 디바운스 저장과 닫기 flush가 같은 경로를 쓴다 */
+    persist(p: SessionPersistPayload): Promise<void>
+    /** 메인이 닫기 직전 마지막 스냅샷을 요청 — 받으면 즉시 persist로 응답한다 */
+    onFlushRequest(cb: () => void): () => void
   }
-  /** 세션 창 안의 /ask — 그 창 전용 ask 엔진(창별 1개, 본 대화 엔진과 분리). 메인 창의
-   *  ask 채널은 mainWindow로만 이벤트를 보내므로 세션 창은 이 채널을 쓴다. */
-  sessionAsk: {
-    run(req: RunRequest): Promise<string>
-    cancel(): Promise<void>
-    respondPermission(res: PermissionResponse): Promise<void>
-    respondQuestion(res: QuestionResponse): Promise<void>
-    /** subscribe to THIS window's /ask engine events (returns an unsubscribe fn) */
-    onEvent(cb: (event: EngineEvent) => void): () => void
+  /** 추가 채팅 레지스트리 — 대화는 채팅 id 기준으로 영속(창을 닫아도·재시작해도 목록에
+   *  남음), 창은 열어 보는 뷰. 클릭 = 창 포커스(닫힌 채팅이면 창을 다시 만들어 복원),
+   *  X = 대화 삭제. */
+  sessionWindows: {
+    list(): Promise<SessionWindowInfo[]>
+    focus(id: string): Promise<void>
+    close(id: string): Promise<void>
+    /** 사이드바에서 이름 변경 — 이후 그 창의 자동 제목 보고(첫 프롬프트)는 무시된다 */
+    rename(id: string, title: string): Promise<void>
+    onChanged(cb: (list: SessionWindowInfo[]) => void): () => void
   }
   /** Multi-agent — a pool of independent engines, one per on-screen panel, all running
    *  in parallel. Each command names its panel; events arrive on a shared channel and
@@ -330,6 +335,8 @@ export interface WindowApi {
     cancel(panelId: string): Promise<void>
     respondPermission(res: MultiPermissionResponse): Promise<void>
     respondQuestion(res: MultiQuestionResponse): Promise<void>
+    /** 패널 WorkBar의 백그라운드 셸 컨트롤(중지/Ctrl+B) — 그 패널의 엔진으로 라우팅 */
+    bgTask(panelId: string, req: BgTaskRequest): Promise<void>
     /** stop a panel's run and release its engine (the panel was removed) */
     dispose(panelId: string): Promise<void>
     /** load the persisted multi-agent workspace blob (layout + panel snapshots), or null */

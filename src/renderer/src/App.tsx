@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { ApiConfigStatus, AppUser, BgTaskRequest, FileDiff, RunRequest, SubAgentInfo, UsageInfo, UserProfile } from '@shared/protocol'
+import type { ApiConfigStatus, AppUser, BgTaskRequest, EngineId, RunRequest, SessionWindowInfo, SubAgentInfo, UsageInfo, UserProfile } from '@shared/protocol'
 
 // 백그라운드 셸 컨트롤(중지/Ctrl+B) — window.api는 전역이라 모듈 스코프의 고정 함수로
 // 만들어 memo된 WorkBar가 매 렌더마다 새 콜백을 받지 않게 한다
@@ -7,40 +7,28 @@ const onBgTaskMain = (req: BgTaskRequest): void => {
   window.api.bgTask(req).catch(() => {})
 }
 import { extractMentions } from './lib/mentions'
-import { useMaximized } from './lib/useMaximized'
-import { useAgentSession, initialSessionState, sanitizeSnapshot, snapshotForPersist, sameCwd, commandOf, commandTitleOf, type SessionState } from './store/session'
+import { useAgentSession, initialSessionState, sanitizeSnapshot, snapshotForPersist, sameCwd, commandOf, commandTitleOf, liveMsgIndex, type SessionState } from './store/session'
 import { ErrorBoundary } from './components/ErrorBoundary'
-import { TitleBar } from './components/TitleBar'
-import { Sidebar, type WorkspaceMode } from './components/Sidebar'
-import { MultiWorkspace } from './components/MultiAgent'
-import { ChatWorkspace } from './components/ChatWorkspace'
+import { Sidebar, type ChatSummary, type SidebarSection } from './components/Sidebar'
+import { pushRecentDir, seedRecentDirs } from './lib/recentDirs'
+import { MultiWorkspace, useMultiSessions } from './components/MultiAgent'
+import { NewChatModal } from './components/NewChatModal'
 import { getPref, setPref } from './lib/prefs'
-import { ChatHeader, ChatFind, Composer, MessageView, QuestionModal, PermissionModal, SelectionToolbar, WelcomeState, WorkBar, WorkingIndicator, hasRunningBash, nextMode, pickerModelOf, type PickerState, type ScheduledMsg } from './components/Chat'
+import { ChatHeader, ChatFind, Composer, MessageView, QuestionModal, PermissionModal, SelectionToolbar, WelcomeState, WorkBar, WorkingIndicator, hasRunningBash, nextMode, pickerModelOf, useThreadFollow, type PickerState, type ScheduledMsg } from './components/Chat'
 import { SubAgentModal } from './components/AgentPanel'
 import { Explorer } from './components/Explorer'
-import { AskModal } from './components/AskModal'
 import { FolderSwitchDialog } from './components/FolderSwitchDialog'
 import { FileModal } from './components/FileModal'
-import { GitModal, type GitFileOpen } from './components/GitModal'
 import { ChangedFilesModal } from './components/ChangedFilesModal'
 import { ImageViewer } from './components/ImageViewer'
 import { SettingsModal } from './components/Settings'
 import { EngineGate } from './components/EngineGate'
+import { EngineUpdateGate } from './components/EngineUpdateGate'
 import { AppUpdateGate } from './components/AppUpdateGate'
-import { WhatsNew } from './components/WhatsNew'
-import { UpdateNotes } from './components/UpdateNotes'
-import { Profile } from './components/Profile'
-import { PromptModal } from './components/PromptModal'
-import { RecentFiles } from './components/RecentFiles'
-import { ResizeHandles } from './components/ResizeHandles'
+import { PatchNotes } from './components/PatchNotes'
 import { useZoom, ZoomBadge, mergeRefs } from './components/zoom'
 import { MouseGestureLayer, clearGesture, sessionWindowGesture, type GestureAction } from './components/mouseGesture'
 import { IconChevDown, IconCode } from './components/icons'
-
-// px from the bottom within which the chat counts as "at the bottom" — scrolling
-// back into this band (when not mid scroll-up) resumes auto-follow
-const BOTTOM_EPSILON = 60
-const JUMP_SHOW_PX = 240 // 바닥에서 이만큼 멀어지면 "맨 아래로" 점프 버튼을 띄운다
 
 function truncate(s: string, n: number): string {
   return s.length > n ? s.slice(0, n - 1) + '…' : s
@@ -57,8 +45,7 @@ interface ChatMeta {
   picker: PickerState // 모델·effort·모드 — per chat, restored on switch
   draft?: string // 보내지 않은 컴포저 초안 — 채팅 전환/재시작에도 유지
   draftImages?: string[]
-  sysPrompt?: string // 채팅별 프롬프트 — 매 실행마다 시스템 프롬프트에 append (없으면 미설정)
-  recentFiles?: string[] // 이 채팅에서 연 파일 (rel 경로, 최신순) — 헤더 아래 탭으로 표시
+  updatedAt?: number // 마지막 활동(프롬프트 전송) 시각 — 사이드바 상대 시간 표시용
 }
 
 // fallback for fresh chats and for chats saved before the picker was persisted
@@ -73,9 +60,13 @@ function sanitizePicker(p?: Partial<PickerState> | null): PickerState {
     model: p?.model && MODEL_IDS.includes(p.model) ? p.model : DEFAULT_PICKER.model,
     effort: p?.effort && EFFORT_IDS.includes(p.effort) ? p.effort : DEFAULT_PICKER.effort,
     mode: p?.mode && MODE_IDS.includes(p.mode) ? p.mode : DEFAULT_PICKER.mode,
+    // 실행 엔진 + Codex 모델 — codex가 아니면 필드를 지워 기본(Claude)으로
+    engine: p?.engine === 'codex' ? 'codex' : undefined,
+    codexModel: typeof p?.codexModel === 'string' && p.codexModel ? p.codexModel : undefined,
     // 실행 계정(이메일) — 등록 목록과의 대조는 비동기라 여기선 형태만 확인. 목록에서
     // 사라진 계정은 picker가 경고 항목으로 보여주고, 실행 시 엔진이 에러로 알린다.
-    account: typeof p?.account === 'string' && p.account ? p.account : undefined
+    account: typeof p?.account === 'string' && p.account ? p.account : undefined,
+    codexAccount: typeof p?.codexAccount === 'string' && p.codexAccount ? p.codexAccount : undefined
   }
 }
 
@@ -115,10 +106,9 @@ interface PersistedChats {
 }
 
 function MainApp({ user }: { user: AppUser }) {
-  const { state, elapsed, busy, begin, clearPermission, clearQuestion, load } = useAgentSession()
+  const { state, busy, begin, clearPermission, clearQuestion, answerQuestion, load } = useAgentSession()
   // 턴을 막고 있는 포그라운드 Bash가 있을 때만 셸 팝오버에 "건너뛰기"(Ctrl+B) 버튼을 노출
   const canSkipWait = useMemo(() => hasRunningBash(state.messages), [state.messages])
-  const maximized = useMaximized()
   const [input, setInput] = useState('')
   // 이번 대화에서 내가 보낸 메시지(오래된→최신) — 작성칸에서 ↑/↓로 셸처럼 다시 불러온다
   const sentHistory = useMemo(
@@ -147,12 +137,6 @@ function MainApp({ user }: { user: AppUser }) {
   // 설정 모달을 특정 탭으로 열기 (키 없이 API 토글을 누르면 'api' 탭으로 바로)
   const [settingsView, setSettingsView] = useState<'version' | 'api' | undefined>(undefined)
   const [openFilePath, setOpenFilePath] = useState<string | null>(null)
-  // Git 카드에서 연 파일의 일회성 컨텍스트(시점 내용·마킹 diff·해시 칩) — 일반
-  // 경로 열기(openPath)는 항상 이걸 비워서 세션 diff 마킹으로 돌아온다
-  const [fileOverride, setFileOverride] = useState<{ content: string | null; diff: FileDiff | null; label: string | null } | null>(null)
-  // 탐색기 ⎇ 버튼 → Git 카드. 루트는 메인 프로세스가 상위 폴더까지 탐색(cwd별 캐시)
-  const [gitOpen, setGitOpen] = useState(false)
-  const [gitRoot, setGitRoot] = useState<string | null>(null)
   // 탐색기 우클릭 '변경된 파일 보기' 카드 — 스코프 폴더(rel '' = 프로젝트 전체)와 표시 이름
   const [chgScope, setChgScope] = useState<{ rel: string; label: string } | null>(null)
   // a working-folder change that would reset the current conversation, parked here
@@ -160,43 +144,54 @@ function MainApp({ user }: { user: AppUser }) {
   const [pendingFolder, setPendingFolder] = useState<string | null>(null)
   const [openSubagentId, setOpenSubagentId] = useState<string | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
-  // 프롬프트 설정 모달이 열린 채팅 id (사이드바 우클릭 → 프롬프트 설정)
-  const [promptChatId, setPromptChatId] = useState<string | null>(null)
-  // "/ask" — a throwaway side conversation (its own engine + session). Mounted only
-  // while open, so closing it discards everything (ephemeral). `askInitial` pre-fills
-  // the composer when the user typed "/ask <question>".
-  const [askOpen, setAskOpen] = useState(false)
-  const [askMinimized, setAskMinimized] = useState(false)
-  const [askInitial, setAskInitial] = useState('')
-  // /ask 모달 열기 — 컴포저의 "/ask <질문>"(idle)과 예약 우회(busy 중 즉시 실행)가 공유.
-  // 항상 앞으로 가져온다: 최소화돼 있었으면 펼친다.
-  const openAsk = (initial: string): void => {
-    setAskInitial(initial)
-    setAskOpen(true)
-    setAskMinimized(false)
-  }
-  // read in the global key handler (registered once) without going stale
-  const askOpenRef = useRef(askOpen)
-  askOpenRef.current = askOpen
-  const askMinimizedRef = useRef(askMinimized)
-  askMinimizedRef.current = askMinimized
   const [chats, setChats] = useState<ChatMeta[]>(() => [newChatMeta()])
   const [activeChatId, setActiveChatId] = useState<string>(() => chats[0].id)
-  const [chatQuery, setChatQuery] = useState('')
-  // 단일 / 멀티 에이전트 작업 모드 — persisted so the app reopens where you left off
-  const [mode, setMode] = useState<WorkspaceMode>(() => getPref<WorkspaceMode>('workspace.mode', 'single'))
-  const onModeChange = (m: WorkspaceMode): void => {
+  // 일반(단일) / 멀티 뷰 — 2.0: 모드 탭이 사라지고 사이드바 항목 선택이 뷰를 정한다.
+  // 1.x의 'chat'(순수 채팅 모드) 저장값은 'single'로 위생 처리 (모드 자체가 은퇴).
+  const [mode, setMode] = useState<'single' | 'multi'>(() =>
+    getPref<string>('workspace.mode', 'single') === 'multi' ? 'multi' : 'single'
+  )
+  const switchMode = (m: 'single' | 'multi'): void => {
     setMode(m)
     setPref('workspace.mode', m)
   }
-  // 파일 탐색기 칼럼(채팅 옆) — 접힘 상태는 앱 단위로 기억
-  const [explorerOpen, setExplorerOpen] = useState<boolean>(() => getPref<boolean>('explorer.open', true))
+  // 멀티 세션 메타(목록·제목·상태·영속화) — App이 소유해 사이드바 '멀티 채팅' 섹션이
+  // 어느 뷰에서든 그려지고, 멀티 뷰는 이 번들을 받아 활성 세션만 렌더한다
+  const multi = useMultiSessions()
+  // 열린 세션 창(추가 채팅) 목록 — 메인 프로세스 레지스트리 구독
+  const [sessionWins, setSessionWins] = useState<SessionWindowInfo[]>([])
+  useEffect(() => {
+    window.api.sessionWindows.list().then(setSessionWins).catch(() => {})
+    return window.api.sessionWindows.onChanged(setSessionWins)
+  }, [])
+  // 새 채팅 선택 모달 (일반/멀티 → 패널 수) — Ctrl+N·사이드바 새 채팅이 연다
+  const [newChatOpen, setNewChatOpen] = useState(false)
+  // 파일 탐색기 — 2.0: 왼쪽 칼럼을 채팅 사이드바와 '전환'해 쓴다 (헤더 돋보기 옆 버튼).
+  // 기본은 채팅 목록. 전환 상태는 앱 단위로 기억.
+  const [explorerOpen, setExplorerOpen] = useState<boolean>(() => getPref<boolean>('explorer.swap', false))
   const toggleExplorer = useEvent(() => {
     setExplorerOpen((o) => {
-      setPref('explorer.open', !o)
+      setPref('explorer.swap', !o)
       return !o
     })
   })
+  // ` (백쿼트) 한 키 = 사이드바 ⟷ 탐색기 전환 — 글자가 들어가는 입력에서는 무시.
+  // 탐색기는 코드 뷰 전용이라 멀티 뷰에서는 반응하지 않는다.
+  const modeRef = useRef(mode)
+  modeRef.current = mode
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key !== '`' || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return
+      if (modeRef.current !== 'single') return
+      const ae = document.activeElement as HTMLElement | null
+      if (ae && (['INPUT', 'TEXTAREA', 'SELECT'].includes(ae.tagName) || ae.isContentEditable)) return
+      e.preventDefault()
+      toggleExplorer()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   // 탐색기가 지금 보여주는 폴더(메인 작업 폴더 또는 참고 폴더의 절대 경로). '' = 아직
   // 보고가 없음 → cwd로 폴백. 채팅 입력의 @ 멘션이 이 폴더를 기준으로 파일을 뜨운다.
   const [explorerFolder, setExplorerFolder] = useState('')
@@ -236,7 +231,9 @@ function MainApp({ user }: { user: AppUser }) {
       .get()
       .then((s) => {
         setApiCfg(s)
-        if (!s.hasKey) {
+        // 두 엔진 키가 모두 사라졌을 때만 API 모드를 강제로 끈다 — 한쪽 키만 있어도
+        // 그 엔진 실행은 API 과금이 유효하다 (키 없는 엔진은 실행 시 엔진이 안내한다)
+        if (!s.hasKey && !s.hasOpenaiKey) {
           setApiMode((on) => {
             if (on) setPref('api.mode', false)
             return on ? false : on
@@ -258,9 +255,11 @@ function MainApp({ user }: { user: AppUser }) {
   // 마운트 효과라 가드가 없으면 TypeError 하나가 앱 전체를 에러 카드로 만든다(실측).
   useEffect(() => window.api.onApiSettingsRequested?.(openApiSettings), [openApiSettings])
 
-  // 컴포저의 과금 picker(구독/API) — API 선택인데 키가 없으면 설정 → API 탭을 열어 안내
-  const onApiModeChange = useEvent((next: boolean) => {
-    if (next && !apiCfg?.hasKey) {
+  // 컴포저의 과금 picker(구독/API) — API 선택인데 그 엔진의 키가 없으면 설정 → API 탭을
+  // 열어 안내한다 (Anthropic 엔진=Anthropic 키, Codex 엔진=OpenAI 키)
+  const onApiModeChange = useEvent((next: boolean, engine?: EngineId) => {
+    const ready = engine === 'codex' ? !!apiCfg?.hasOpenaiKey : !!apiCfg?.hasKey
+    if (next && !ready) {
       openApiSettings()
       return
     }
@@ -270,47 +269,23 @@ function MainApp({ user }: { user: AppUser }) {
     })
   })
 
-  // Fable 5 정책 거부 → 엔진이 폴백 모델로 전환·재시도한 경우(경고 배너는 스레드에
-  // 표시됨), 이 채팅의 모델 picker도 따라 바꿔서 다음 메시지부터 폴백 모델로 바로
-  // 가게 한다 — 안 바꾸면 매번 거부→전환을 반복한다.
+  // Fable 5 정책 거부(claude)·모델 수용량 초과(codex) → 엔진이 폴백 모델로 전환·재시도한
+  // 경우(경고 배너는 스레드에 표시됨), 이 채팅의 모델 picker도 따라 바꿔서 다음
+  // 메시지부터 폴백 모델로 바로 가게 한다 — 안 바꾸면 매번 오류→전환을 반복한다.
   useEffect(
     () =>
       window.api.onEngineEvent((e) => {
         if (e.type !== 'model-fallback') return
+        if (e.engine === 'codex') {
+          setPicker((p) => (p.codexModel === e.toModel ? p : { ...p, codexModel: e.toModel }))
+          return
+        }
         const next = pickerModelOf(e.toModel)
         if (next) setPicker((p) => (p.model === next ? p : { ...p, model: next }))
       }),
     []
   )
 
-  // git 레포 루트 — 폴더가 바뀌면 다시 찾고, 턴이 끝나면(fsTick) force 재조회
-  // (에이전트가 방금 git init 했을 수도 있다). 카드가 열린 채 폴더가 바뀌면 닫는다.
-  useEffect(() => {
-    setGitOpen(false)
-    if (!manualCwd) {
-      setGitRoot(null)
-      return
-    }
-    let alive = true
-    window.api.git
-      .root(manualCwd)
-      .then((r) => alive && setGitRoot(r))
-      .catch(() => {})
-    return () => {
-      alive = false
-    }
-  }, [manualCwd])
-  useEffect(() => {
-    if (!manualCwd || fsTick === 0) return
-    let alive = true
-    window.api.git
-      .root(manualCwd, true)
-      .then((r) => alive && setGitRoot(r))
-      .catch(() => {})
-    return () => {
-      alive = false
-    }
-  }, [fsTick])
   useEffect(() => {
     if (state.status === 'done' || state.status === 'error') {
       // fresh — 추가 크레딧 잔액이 방금 실행의 소비를 바로 반영하게 (5분 캐시 우회)
@@ -322,25 +297,49 @@ function MainApp({ user }: { user: AppUser }) {
   }, [state.status])
 
   // restore saved conversations on mount, then load the active chat's snapshot
-  // into the live session so it picks up right where it left off
+  // into the live session so it picks up right where it left off.
+  // 1.x 채팅 모드(chat-talk.json)의 대화는 일반 목록 뒤로 1회 편입한다 — 모드 자체가
+  // 은퇴했으므로(2.0), 편입 후 원본 파일은 비워 다음 실행에서 중복 편입되지 않게 한다.
   useEffect(() => {
     let alive = true
-    window.api
-      .getChats()
-      .then((raw) => {
+    Promise.all([window.api.getChats().catch(() => null), window.api.talk.getState().catch(() => null)])
+      .then(([raw, talkRaw]) => {
         if (!alive) return
         const data = raw as PersistedChats | null
-        if (data && Array.isArray(data.chats) && data.chats.length) {
-          // guard each snapshot against missing fields from an older/corrupt file —
-          // including the per-chat folder, so restoring an old chat never sets undefined
-          const restored = data.chats.map((c) => ({
-            ...c,
-            manualCwd: c.manualCwd ?? '',
+        // guard each snapshot against missing fields from an older/corrupt file —
+        // including the per-chat folder, so restoring an old chat never sets undefined
+        const restored =
+          data && Array.isArray(data.chats) && data.chats.length
+            ? data.chats.map((c) => ({
+                ...c,
+                manualCwd: c.manualCwd ?? '',
+                picker: sanitizePicker(c.picker),
+                snapshot: sanitizeSnapshot(c.snapshot)
+              }))
+            : null
+        const talk = talkRaw as { chats?: Partial<ChatMeta>[] } | null
+        const have = new Set((restored ?? []).map((c) => c.id))
+        const migrated = (Array.isArray(talk?.chats) ? talk!.chats : [])
+          .filter(
+            (c): c is Partial<ChatMeta> & { id: string } =>
+              !!c && typeof c === 'object' && typeof c.id === 'string' && !have.has(c.id) &&
+              (!!c.title || !!(c.snapshot as SessionState | undefined)?.messages?.length)
+          )
+          .map((c) => ({
+            id: c.id,
+            title: c.title ?? '',
+            custom: !!c.custom,
+            snapshot: sanitizeSnapshot(c.snapshot),
+            manualCwd: '', // 순수 대화엔 폴더가 없었다 — 첫 전송 때 폴더를 고른다
             picker: sanitizePicker(c.picker),
-            snapshot: sanitizeSnapshot(c.snapshot)
+            draft: c.draft,
+            draftImages: c.draftImages
           }))
-          const active = restored.find((c) => c.id === data.activeChatId) ?? restored[0]
-          setChats(restored)
+        if (restored) {
+          const active = restored.find((c) => c.id === data!.activeChatId) ?? restored[0]
+          // 공유 최근 폴더 콜드 스타트 — 비어 있으면 기존 채팅들의 폴더로 1회 시드
+          seedRecentDirs(restored.map((c) => ({ p: c.manualCwd, t: c.updatedAt ?? 0 })))
+          setChats([...restored, ...migrated])
           setActiveChatId(active.id)
           load(active.snapshot)
           setManualCwd(active.manualCwd ?? '')
@@ -348,7 +347,10 @@ function MainApp({ user }: { user: AppUser }) {
           // 닫기 전에 쓰다 만 초안(텍스트·첨부 이미지)도 그대로 돌아온다
           setInput(active.draft ?? '')
           setImages(active.draftImages ?? [])
+        } else if (migrated.length) {
+          setChats((cur) => [...cur, ...migrated])
         }
+        if (migrated.length) window.api.talk.saveState({ version: 1, chats: [], activeChatId: '' }).catch(() => {})
       })
       .catch(() => {})
       .finally(() => {
@@ -399,114 +401,38 @@ function MainApp({ user }: { user: AppUser }) {
     }
   }, [])
 
-  // Whether the chat auto-follows the bottom. This is a LATCH, not a per-frame
-  // position check: the streaming loop below snaps to the bottom every frame, so
-  // comparing positions would let each snap immediately undo a small scroll-up —
-  // the user could never escape without one big flick. Instead we read intent
-  // directly: a wheel-up turns following OFF (deltaY is intrinsic to the event, so
-  // it never races the snap — and the handler runs before the frame's rAF, so the
-  // snap is skipped that very frame). Following turns back ON only when the user
-  // settles at the bottom AND isn't mid scroll-up. Reset to true on send / chat switch.
-  const stickRef = useRef(true)
-  const lastWheelUpRef = useRef(-Infinity) // timeStamp of the most recent upward wheel
-  const lastTopRef = useRef(0) // 마지막 스크롤 위치 — 멀티 모드 왕복으로 패널이 재생성될 때 복원용
-  const [showJump, setShowJump] = useState(false) // 바닥에서 멀어지면 "맨 아래로" 버튼 표시
-  useEffect(() => {
-    const el = scrollEl
-    if (!el) return
-    // 멀티 모드 왕복은 채팅 패널을 재생성해 scrollTop이 0(맨 위)에서 시작한다 — 바닥을
-    // 따라가던 중이면 맨 아래로, 위를 읽던 중이면 마지막으로 보던 위치로 복원
-    el.scrollTop = stickRef.current ? el.scrollHeight : lastTopRef.current
-    setShowJump(el.scrollHeight - el.scrollTop - el.clientHeight > JUMP_SHOW_PX)
-    const onWheel = (e: WheelEvent): void => {
-      if (e.ctrlKey) return // ctrl+wheel is zoom (handled elsewhere), not a scroll
-      if (e.deltaY < 0) {
-        stickRef.current = false // scrolling up → stop following
-        lastWheelUpRef.current = e.timeStamp
-      }
-    }
-    const onScroll = (e: Event): void => {
-      lastTopRef.current = el.scrollTop
-      const fromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
-      setShowJump(fromBottom > JUMP_SHOW_PX)
-      // resume only while paused, settled at the bottom, and not in the middle of an
-      // upward gesture — the time guard stops a near-bottom scroll-up from instantly
-      // re-arming the follow (which would trap the user in the bottom band)
-      if (!stickRef.current && fromBottom <= BOTTOM_EPSILON && e.timeStamp - lastWheelUpRef.current > 150)
-        stickRef.current = true
-    }
-    el.addEventListener('wheel', onWheel, { passive: true })
-    el.addEventListener('scroll', onScroll, { passive: true })
-    return () => {
-      el.removeEventListener('wheel', onWheel)
-      el.removeEventListener('scroll', onScroll)
-    }
-  }, [scrollEl])
+  // 스레드 바닥 따라가기 — 래치·점프 버튼·스트리밍 rAF 고정을 훅이 소유한다
+  // (본채팅·추가 채팅 공용 — Chat.tsx의 useThreadFollow)
+  const follow = useThreadFollow(scrollEl, busy)
 
   // switching/opening a chat always re-pins to the bottom (runs before the
   // message-arrive effect below, so the freshly loaded thread lands at the bottom)
   useEffect(() => {
-    stickRef.current = true
-    setShowJump(false)
+    follow.reset()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeChatId])
 
   // auto-stick to bottom when new messages/thinking arrive — but only while the
   // follow latch is on (scrolling up to read history pauses this)
   useEffect(() => {
-    const el = scrollRef.current
-    if (el && stickRef.current) el.scrollTop = el.scrollHeight
+    follow.snapIfStuck()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.messages, state.thinkingText])
-
-  // while a run streams, follow the smooth text reveal every frame so it reads as
-  // a continuous flow (not a jump on each delta). Paused while the latch is off.
-  useEffect(() => {
-    if (!busy) return
-    const el = scrollRef.current
-    if (!el) return
-    let raf = 0
-    let alive = true
-    const stick = (): void => {
-      if (!alive) return
-      if (stickRef.current) el.scrollTop = el.scrollHeight
-      raf = requestAnimationFrame(stick)
-    }
-    raf = requestAnimationFrame(stick)
-    return () => {
-      alive = false
-      cancelAnimationFrame(raf)
-    }
-  }, [busy])
 
   // 대화 스레드 ↑/↓ 제스처 — ↑는 스트리밍 중 rAF 바닥 고정이 도로 끌어내리지 않게 고정을
   // 풀고(재고정 150ms 가드도 무장), ↓는 '맨 아래로' 버튼과 같은 규칙으로 다시 고정한다
   const chatGestures: GestureAction[] = [
-    {
-      pattern: 'U',
-      label: '맨 위로',
-      run: () => {
-        stickRef.current = false
-        lastWheelUpRef.current = performance.now()
-        scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
-      }
-    },
-    {
-      pattern: 'D',
-      label: '맨 아래로',
-      run: () => {
-        stickRef.current = true
-        const el = scrollRef.current
-        if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
-      }
-    },
+    { pattern: 'U', label: '맨 위로', run: () => follow.scrollTop() },
+    { pattern: 'D', label: '맨 아래로', run: () => follow.jumpBottom() },
     sessionWindowGesture(),
     // clearConversation은 아래에서 선언 — 배열 생성 시점(TDZ)을 피해 실행 시점에 참조한다
     clearGesture(() => clearConversation())
   ]
 
   const cwd = manualCwd || ''
-  // @ 멘션의 기준 폴더 — 탐색기가 보고 있는 폴더(참고 폴더 포함), 없으면 작업 폴더.
-  // root가 바뀔 때마다 탐색기가 보고하므로 cwd가 바뀌어도 곧 따라온다.
-  const mentionBase = explorerFolder || cwd
+  // @ 멘션의 기준 폴더 — 탐색기가 떠 있고 다른 뷰(Verse digest)를 보고 있으면 그 폴더,
+  // 아니면 작업 폴더. 탐색기가 내려가 있으면 보고값이 낡을 수 있어 cwd로 되돌린다.
+  const mentionBase = (explorerOpen && explorerFolder) || cwd
 
   // 프로젝트가 정해지면 분석 서버/컴파일 DB를 미리 데워 둔다 — 첫 파일을 열 때
   // 서버 워밍을 기다리지 않도록(특히 C#/UE). 폴더가 바뀔 때마다 한 번.
@@ -519,14 +445,14 @@ function MainApp({ user }: { user: AppUser }) {
   // list; the chat area shows the welcome screen instead
   const activeEmpty = state.messages.length === 0 && !activeChat?.title
 
-  // snapshot the live session into the currently active chat. An empty active
-  // chat is dropped rather than kept, so at most one blank chat ever exists.
+  // snapshot the live session into the currently active chat. 빈 채팅도 버리지 않고
+  // 그대로 저장한다 — 새 채팅에서 골라둔 모델·모드·계정(picker)·폴더·초안이 다른 채팅에
+  // 다녀와도 남아 있게. 사이드바 목록엔 원래 안 보이고(chatSummaries가 거름), 새로
+  // 만드는 대신 createChat이 재사용하므로 빈 채팅은 여전히 최대 1개다.
   const saveActive = (list: ChatMeta[]): ChatMeta[] =>
-    activeEmpty
-      ? list.filter((c) => c.id !== activeChatId)
-      : list.map((c) =>
-          c.id === activeChatId ? { ...c, snapshot: state, manualCwd, picker, draft: input, draftImages: images } : c
-        )
+    list.map((c) =>
+      c.id === activeChatId ? { ...c, snapshot: state, manualCwd, picker, draft: input, draftImages: images } : c
+    )
 
   // load a chat's saved snapshot into the live session + restore its directory,
   // its own 모델·effort·모드 selection and any unsent composer draft
@@ -540,12 +466,19 @@ function MainApp({ user }: { user: AppUser }) {
   }
 
   const createChat = (): void => {
-    if (mode !== 'single') return // multi/채팅 own ⌘N via their own workspaces
     if (busy) return // a run streams into the active chat — don't switch mid-flight
     if (activeEmpty) {
       // already sitting on a blank chat — nothing to create, just reset drafts
       setInput('')
       setImages([])
+      return
+    }
+    // 이미 만들어둔 빈 채팅이 있으면 새로 만들지 않고 거기로 복귀 — 골라둔
+    // 모델·모드·계정·폴더·초안이 그대로 살아 돌아온다 (빈 채팅 최대 1개 규칙)
+    const blank = chats.find((c) => c.id !== activeChatId && !c.title && c.snapshot.messages.length === 0)
+    if (blank) {
+      setChats((list) => saveActive(list))
+      restore(blank)
       return
     }
     // a new chat starts from the settings you're currently using — not the app default
@@ -599,15 +532,13 @@ function MainApp({ user }: { user: AppUser }) {
     setActiveChatId(fresh.id)
   }
 
-  // ⌘N / Ctrl+N opens a fresh chat — read createChat through a ref to avoid stale closures
-  const createChatRef = useRef(createChat)
-  createChatRef.current = createChat
+  // ⌘N / Ctrl+N — 새 채팅 선택 모달(일반/멀티)을 연다 (PoC: 버튼도 같은 모달)
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       // Shift+Ctrl+N is a separate shortcut (new session window) — don't also make a chat
       if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'n') {
         e.preventDefault()
-        createChatRef.current()
+        setNewChatOpen(true)
       }
     }
     window.addEventListener('keydown', onKey)
@@ -635,10 +566,6 @@ function MainApp({ user }: { user: AppUser }) {
       // open — don't let these global shortcuts steal focus or cycle the mode underneath it.
       // .q-mini = 질문을 잠깐 내려둔 상태(여전히 답 대기 중)도 동일하게 비켜준다
       if (document.querySelector('.q-overlay, .q-mini, .pr-overlay')) return
-      // when the /ask modal is FULL open it owns Enter (focuses its own composer), so
-      // don't steal focus to the main one. When it's minimized, we deliberately let
-      // this run — Enter then focuses the main chat composer, as expected.
-      if (askOpenRef.current && !askMinimizedRef.current) return
       if (e.key === 'Tab' && e.shiftKey) {
         e.preventDefault()
         setPicker((p) => ({ ...p, mode: nextMode(p.mode) }))
@@ -667,7 +594,7 @@ function MainApp({ user }: { user: AppUser }) {
       if (e.key !== 'Escape' || mode !== 'single' || !busy) return
       if (
         document.querySelector(
-          '.q-overlay, .q-mini, .set-overlay, .set-dialog-overlay, .pr-overlay, .ask-overlay, .ask-mini, .fv-overlay, .gitm-overlay, .iv-overlay, .sa-overlay, .ctx-menu, .sel-bar'
+          '.q-overlay, .q-mini, .set-overlay, .set-dialog-overlay, .pr-overlay, .fv-overlay, .gitm-overlay, .iv-overlay, .sa-overlay, .ctx-menu, .sel-bar'
         )
       )
         return
@@ -696,7 +623,7 @@ function MainApp({ user }: { user: AppUser }) {
   // scheduled with (instead of the composer's current state); interactive sends omit it.
   // keepDraft: 컴포저 밖에서 만들어진 프롬프트(파일 뷰어 질문, 큐 재생)는 사용자가
   // 쓰다 둔 초안을 지우지 않는다.
-  // 반환값: 엔진 런을 실제로 시작했으면 true — 클라이언트 명령(/ask·/clear)이나 조기
+  // 반환값: 엔진 런을 실제로 시작했으면 true — 클라이언트 명령(/clear)이나 조기
   // 반환은 false. 예약 큐 드레인이 이 값으로 "런 없이 소진된 항목" 뒤를 이어서 보낸다.
   const runPrompt = async (
     text: string,
@@ -711,14 +638,6 @@ function MainApp({ user }: { user: AppUser }) {
       clearConversation()
       return false
     }
-    // /ask opens the independent throwaway modal — it runs on its own engine and is
-    // never sent to the main chat. "/ask <question>" pre-fills the modal's composer.
-    const trimmed = text.trim()
-    if (trimmed === '/ask' || trimmed.startsWith('/ask ')) {
-      openAsk(trimmed.slice(4).trim())
-      if (!opts?.keepDraft) setInput('')
-      return false
-    }
     // a built-in slash command (/init·/compact·/review·/security-review) → tracked so
     // its completion renders a summary card instead of a raw user bubble; null otherwise
     const cmd = commandOf(text)
@@ -730,7 +649,7 @@ function MainApp({ user }: { user: AppUser }) {
     }
     // sending re-engages the follow so the user's own message (and the reply) scroll
     // into view, even if they'd scrolled up to read history before sending
-    stickRef.current = true
+    follow.pin()
     // folder changed since this conversation began → it's a different project, and the
     // session can't continue here (a session id is folder-scoped). Reset the thread to a
     // clean slate so the visible chat matches the fresh engine session instead of showing
@@ -744,8 +663,8 @@ function MainApp({ user }: { user: AppUser }) {
     setChats((list) =>
       list.map((c) => {
         if (c.id !== activeChatId) return c
-        // 폴더가 바뀌면 최근 파일 탭도 비운다 (rel 경로는 이전 프로젝트의 것)
-        const base = folderSwitched ? { ...c, recentFiles: undefined } : c
+        // 전송 = 활동 — 사이드바 상대 시간(updatedAt)이 이 순간으로 갱신된다
+        const base = { ...c, updatedAt: Date.now() }
         return !c.custom || folderSwitched ? { ...base, title, custom: false } : base
       })
     )
@@ -767,9 +686,10 @@ function MainApp({ user }: { user: AppUser }) {
       model: pk.model,
       effort: pk.effort,
       mode: pk.mode,
+      // 실행 엔진(claude/codex) + Codex GPT 모델 — 생략하면 Claude
+      engine: pk.engine,
+      codexModel: pk.codexModel,
       cwd: dir,
-      // 채팅별 프롬프트 — 매 실행 시스템 프롬프트에 append (없으면 생략)
-      systemPrompt: activeChat?.sysPrompt,
       // resume this chat's session so the conversation continues with full history —
       // but only while still in the folder it was created in (a session id is scoped to
       // its project, so resuming it elsewhere errors "No conversation found"). A folder
@@ -777,8 +697,9 @@ function MainApp({ user }: { user: AppUser }) {
       resume: state.session && sameCwd(state.session.cwd, dir) ? state.session.sessionId : undefined,
       // API 모드(컴포저 토글) — 이 실행을 구독 대신 저장된 API 키로 과금
       useApi: apiMode || undefined,
-      // 이 채팅의 실행 계정(구독) — 전역 활성 계정과 다르면 엔진이 격리 폴더로 돌린다
-      account: pk.account
+      // 실행 계정 — 클로드는 격리 CLAUDE_CONFIG_DIR, Codex는 격리 CODEX_HOME (미지정=기본 계정)
+      account: pk.account,
+      codexAccount: pk.codexAccount
     }
     if (!opts?.keepDraft) {
       setInput('')
@@ -791,15 +712,6 @@ function MainApp({ user }: { user: AppUser }) {
   // queue the current draft (while the agent is busy) to auto-send when the run ends
   const scheduleMessage = (): void => {
     if (!busy || (!input.trim() && images.length === 0)) return
-    // /ask는 본 대화와 분리된 자체 엔진 모달 — 메인 런과 무관하므로 예약하지 않고
-    // 즉시 연다. (전엔 큐로 들어가 "실행 중엔 /ask가 안 되는" 것처럼 보였다.)
-    const t = input.trim()
-    if (t === '/ask' || t.startsWith('/ask ')) {
-      openAsk(t.slice(4).trim())
-      setInput('')
-      composerRef.current?.focus()
-      return
-    }
     const id = crypto.randomUUID ? crypto.randomUUID() : `q-${Date.now()}-${queue.length}`
     setQueue((q) => [...q, { id, text: input, images, picker }])
     setInput('')
@@ -878,7 +790,7 @@ function MainApp({ user }: { user: AppUser }) {
   const onAnswer = (answers: string[][]): void => {
     if (!state.pendingQuestion) return
     window.api.respondQuestion({ requestId: state.pendingQuestion.requestId, answers }).catch(() => {})
-    clearQuestion()
+    answerQuestion(answers) // 카드를 닫으며 문답 흔적을 스레드에 남긴다
   }
   // skip without answering (Esc / backdrop / ✕) → agent proceeds with its defaults
   const onDismissQuestion = (): void => {
@@ -913,12 +825,9 @@ function MainApp({ user }: { user: AppUser }) {
     if (!pendingFolder) return
     setManualCwd(pendingFolder)
     load(initialSessionState)
-    // 최근 파일 탭도 비운다 — rel 경로는 폴더에 묶여 있어 새 프로젝트에선 무의미
     setChats((list) =>
       list.map((c) =>
-        c.id === activeChatId
-          ? { ...c, title: '', custom: false, snapshot: initialSessionState, recentFiles: undefined }
-          : c
+        c.id === activeChatId ? { ...c, title: '', custom: false, snapshot: initialSessionState } : c
       )
     )
     setPendingFolder(null)
@@ -977,6 +886,11 @@ function MainApp({ user }: { user: AppUser }) {
   // look the subagent up live each render so the open card reflects status/tool updates
   const openSubagent = openSubagentId ? state.subagents.find((a) => a.id === openSubagentId) ?? null : null
   const taskTitle = truncate(activeChat?.title || '', 40)
+  // 최근 작업 폴더는 공유 저장소(lib/recentDirs) — 일반·멀티·추가 채팅이 같은 목록을
+  // 쓴다. 이 채팅의 폴더가 바뀌면(선택·복원 포함) 목록 맨 앞으로 올린다.
+  useEffect(() => {
+    if (cwd) pushRecentDir(cwd)
+  }, [cwd])
   // hide the "thinking…" indicator while the assistant is streaming its answer
   // text (the streaming text is the activity); keep it for thinking/tool phases
   const lastMsg = state.messages[state.messages.length - 1]
@@ -995,178 +909,144 @@ function MainApp({ user }: { user: AppUser }) {
           id: c.id,
           title: c.title,
           status: c.id === activeChatId ? state.status : c.snapshot.status,
-          hasPrompt: !!c.sysPrompt
+          updatedAt: c.updatedAt
         })),
     [chats, activeChatId, state.messages.length, state.status]
   )
 
   // stable handlers for the memoized Sidebar / WorkBar
   const onOpenSettings = useEvent(() => setSettingsOpen(true))
-  // 최근 파일 탭: 이 채팅에서 연 파일을 기록. 새 파일만 맨 앞에 끼우고 이미 있는
-  // 파일은 자리를 지킨다 — 드래그로 정리한 순서가 다시 열 때마다 출렁이지 않게. 최대 20개.
-  const recordRecentFile = (path: string): void => {
-    setChats((list) =>
-      list.map((c) => {
-        if (c.id !== activeChatId) return c
-        const cur = c.recentFiles ?? []
-        if (cur.includes(path)) return c
-        return { ...c, recentFiles: [path, ...cur].slice(0, 20) }
-      })
-    )
-  }
   // 모든 파일은 코드 뷰어 카드 하나로 연다 — 변경된 파일이면 뷰어가 diff 마킹
   // (추가 틴트·삭제 헤어라인·룰러)을 얹으므로 LSP 심볼 탐색과 변경 표시가 공존한다.
-  // 일반 열기는 Git 카드의 일회성 컨텍스트를 비워 세션 diff 마킹으로 돌아온다.
   const openPath = (path: string): void => {
-    setFileOverride(null)
     setOpenFilePath(path)
   }
-  const onOpenFile = useEvent((f: { path: string }) => {
-    recordRecentFile(f.path)
-    openPath(f.path)
-  })
-  // click a file in a tool-log row / explorer — same viewer, recorded as recent
-  const onOpenToolFile = useEvent((path: string) => {
-    recordRecentFile(path)
-    openPath(path)
-  })
-  // 최근 파일 탭에서 열기 — 기록 갱신 없이(탭 순서가 클릭마다 출렁이지 않게) 열기만
-  const onOpenRecent = useEvent((path: string) => openPath(path))
-  // 뷰어 안 Ctrl+클릭 정의 이동으로 들어간 파일도 최근 탭에 기록
-  const onViewFile = useEvent((path: string) => recordRecentFile(path))
-  // 드래그로 바뀐 탭 순서를 그대로 저장
-  const onReorderRecent = useEvent((files: string[]) => {
-    setChats((list) => list.map((c) => (c.id === activeChatId ? { ...c, recentFiles: files } : c)))
-  })
-  // 탭 X·휠클릭은 한 개, 우클릭 메뉴(다른/오른쪽/모두 닫기)는 여러 개를 한 번에 제거
-  const onRemoveRecent = useEvent((paths: string[]) => {
-    const drop = new Set(paths)
-    setChats((list) =>
-      list.map((c) =>
-        c.id === activeChatId ? { ...c, recentFiles: (c.recentFiles ?? []).filter((p) => !drop.has(p)) } : c
-      )
-    )
-  })
+  const onOpenFile = useEvent((f: { path: string }) => openPath(f.path))
+  // click a file in a tool-log row / explorer — same viewer
+  const onOpenToolFile = useEvent((path: string) => openPath(path))
   const onOpenSubagent = useEvent((a: SubAgentInfo) => setOpenSubagentId(a.id))
   // 컨텍스트 팝오버 열 때 사용량 강제 새로고침 — 추가 크레딧 잔액이 그 순간 최신이게
   const onRefreshUsage = useEvent(() => {
     window.api.getUsage(true, picker.account).then(setUsage).catch(() => {})
   })
-  // ── Git 카드 ───────────────────────────────────────────────
-  const onOpenGit = useEvent(() => {
-    if (gitRoot) setGitOpen(true)
-  })
   // ── 변경 파일 카드 (탐색기 우클릭) ─────────────────────────
   const onShowChanged = useEvent((scope: { rel: string; label: string }) => setChgScope(scope))
   // 작업 폴더가 바뀌면(채팅 전환 포함) 스코프 rel 경로가 무의미해지니 카드를 닫는다
   useEffect(() => setChgScope(null), [cwd])
-  // Git 카드에서 파일 열기 — 커밋 시점 내용/마킹을 뷰어에 일회성으로 넘긴다
-  const onGitOpenFile = useEvent((p: GitFileOpen) => {
-    setFileOverride({ content: p.content, diff: p.diff, label: p.label })
-    setOpenFilePath(p.path)
-  })
-  // "Claude에게 메시지 짓게 하기" — 활성 채팅에 커밋 위임 (작업 중이면 예약 큐로)
-  const onGitAskClaude = useEvent((prompt: string) => {
-    if (busy) {
-      const id = crypto.randomUUID ? crypto.randomUUID() : `q-${Date.now()}-${queue.length}`
-      setQueue((q) => [...q, { id, text: prompt, images: [], picker }])
-    } else {
-      void runPrompt(prompt, { images: [], keepDraft: true })
-    }
-  })
-  const onNewChat = useEvent(createChat)
-  const onSelectChat = useEvent(selectChat)
   const onRenameChat = useEvent(renameChat)
   const onDeleteChat = useEvent(deleteChat)
   const onDeleteAllChats = useEvent(deleteAllChats)
-  const onPromptChat = useEvent((id: string) => setPromptChatId(id))
-  // 프롬프트 저장 — 빈 값은 해제(필드 제거)로 처리
-  const savePrompt = (id: string, text: string): void => {
-    setChats((list) => list.map((c) => (c.id === id ? { ...c, sysPrompt: text || undefined } : c)))
-  }
-  const promptChat = promptChatId ? chats.find((c) => c.id === promptChatId) ?? null : null
-
+  const onOpenNewChat = useEvent(() => setNewChatOpen(true))
+  // 사이드바 항목 선택 — 섹션이 곧 뷰: 일반=코드 뷰, 멀티=멀티 뷰, 추가=그 창 포커스
+  const onSelectGeneral = useEvent((id: string) => {
+    if (mode !== 'single') switchMode('single')
+    selectChat(id)
+  })
+  const onSelectMulti = useEvent((id: string) => {
+    if (mode !== 'multi') switchMode('multi')
+    multi.selectSession(id)
+  })
+  // 추가 채팅 — id는 영속 채팅 id. 클릭=창 포커스(닫힌 채팅이면 창을 다시 만들어 복원),
+  // X=대화 삭제(열린 창이 있으면 그 창도 닫힘). 목록은 창을 닫아도/재시작해도 남는다.
+  const onFocusSessionWin = useEvent((id: string) => {
+    window.api.sessionWindows.focus(id).catch(() => {})
+  })
+  const onCloseSessionWin = useEvent((id: string) => {
+    window.api.sessionWindows.close(id).catch(() => {})
+  })
+  const onRenameSessionWin = useEvent((id: string, name: string) => {
+    window.api.sessionWindows.rename(id, name).catch(() => {})
+  })
+  const onCloseAllSessionWins = useEvent(() => {
+    sessionWins.forEach((w) => window.api.sessionWindows.close(w.id).catch(() => {}))
+  })
+  const extraSummaries = useMemo<ChatSummary[]>(
+    () => sessionWins.map((w) => ({ id: w.id, title: w.title || '새 채팅', status: w.status, updatedAt: w.updatedAt })),
+    [sessionWins]
+  )
+  // 사이드바 3섹션 — active 하이라이트는 지금 보이는 뷰의 항목 하나만(PoC 규칙).
+  // currentId는 busy 잠금 예외용: 실행이 흐르는 채팅은 멀티 뷰에서도 눌러 돌아올 수 있다
+  const sections: SidebarSection[] = useMemo(
+    () => [
+      {
+        key: 'general' as const,
+        label: '일반 채팅',
+        chats: chatSummaries,
+        activeId: mode === 'single' ? activeChatId : undefined,
+        currentId: activeChatId,
+        busy,
+        onSelect: onSelectGeneral,
+        onRename: onRenameChat,
+        onDelete: onDeleteChat,
+        onDeleteAll: onDeleteAllChats
+      },
+      {
+        key: 'multi' as const,
+        label: '멀티 채팅',
+        chats: multi.summaries,
+        activeId: mode === 'multi' ? multi.activeId : undefined,
+        onSelect: onSelectMulti,
+        onRename: multi.renameSession,
+        onDelete: multi.deleteSession,
+        onDeleteAll: multi.deleteAllSessions
+      },
+      {
+        key: 'extra' as const,
+        label: '추가 채팅',
+        chats: extraSummaries,
+        onSelect: onFocusSessionWin,
+        onRename: onRenameSessionWin,
+        onDelete: onCloseSessionWin,
+        onDeleteAll: onCloseAllSessionWins
+      }
+    ],
+    // useEvent 핸들러·multi CRUD는 stable — 데이터/선택 상태만 의존한다
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [chatSummaries, multi.summaries, multi.activeId, extraSummaries, mode, activeChatId, busy]
+  )
   return (
-    <div className={'win' + (maximized ? ' max' : '')}>
-      <TitleBar title="Desktop" />
+    <div className="win">
+      <div className="blurwarm" />
       <div className="win-body">
+        {/* 왼쪽 칼럼 — 채팅 사이드바 ⟷ 파일 탐색기 전환 ( ` 또는 헤더 돋보기 옆 버튼, 코드 뷰 전용).
+            두 패널 모두 242px 고정이라 폭 트랜지션 없이 key 교체 슬라이드-인만 남는다 */}
+        <div className="lcol">
+          {mode === 'single' && explorerOpen ? (
+            <Explorer
+              key="fx"
+              cwd={cwd}
+              refreshKey={fsTick}
+              onPickFolder={pickFolder}
+              onOpenFile={onOpenToolFile}
+              changed={state.files}
+              onShowChanged={onShowChanged}
+              onViewFolderChange={onExplorerView}
+            />
+          ) : (
+            <Sidebar key="sb" user={user} sections={sections} onNewChat={onOpenNewChat} onOpenSettings={onOpenSettings} />
+          )}
+        </div>
         {mode === 'multi' ? (
           <ErrorBoundary label="멀티 에이전트">
             <MultiWorkspace
-              user={user}
+              multi={multi}
               usage={usage}
-              onOpenSettings={onOpenSettings}
-              mode={mode}
-              onModeChange={onModeChange}
               apiMode={apiMode}
               apiReady={!!apiCfg?.hasKey}
+              apiReadyCodex={!!apiCfg?.hasOpenaiKey}
               onOpenApiSettings={openApiSettings}
-            />
-          </ErrorBoundary>
-        ) : mode === 'chat' ? (
-          <ErrorBoundary label="채팅">
-            <ChatWorkspace
-              user={user}
-              usage={usage}
-              onOpenSettings={onOpenSettings}
-              mode={mode}
-              onModeChange={onModeChange}
-              apiMode={apiMode}
-              apiReady={!!apiCfg?.hasKey}
-              onApiModeChange={onApiModeChange}
-              budgetUsd={apiCfg?.budgetUsd ?? null}
-              totalSpentUsd={apiCfg?.spentUsd ?? 0}
             />
           </ErrorBoundary>
         ) : (
         <>
-        <Sidebar
-          user={user}
-          chats={chatSummaries}
-          activeChatId={activeChatId}
-          busy={busy}
-          chatQuery={chatQuery}
-          onChatQuery={setChatQuery}
-          onNewChat={onNewChat}
-          onSelectChat={onSelectChat}
-          onRenameChat={onRenameChat}
-          onDeleteChat={onDeleteChat}
-          onDeleteAllChats={onDeleteAllChats}
-          onPromptChat={onPromptChat}
-          onOpenSettings={onOpenSettings}
-          mode={mode}
-          onModeChange={onModeChange}
-        />
-
-        <Explorer
-          cwd={cwd}
-          open={explorerOpen}
-          onToggle={toggleExplorer}
-          refreshKey={fsTick}
-          onPickFolder={pickFolder}
-          onOpenFile={onOpenToolFile}
-          changed={state.files}
-          gitReady={!!gitRoot}
-          onOpenGit={onOpenGit}
-          onShowChanged={onShowChanged}
-          onViewFolderChange={onExplorerView}
-        />
-
         <div className="chat chat--code">
           <ChatHeader
             title={taskTitle}
-            status={state.status}
-            elapsed={elapsed}
+            cwd={cwd}
+            onSelectFolder={requestFolder}
+            onBrowseFolder={pickFolder}
             explorerHidden={!explorerOpen}
             onToggleExplorer={toggleExplorer}
-          />
-          <RecentFiles
-            files={activeChat?.recentFiles ?? []}
-            changed={state.files}
-            activePath={openFilePath}
-            onOpen={onOpenRecent}
-            onRemove={onRemoveRecent}
-            onReorder={onReorderRecent}
           />
           <ZoomBadge pct={chatZoom.pct} show={chatZoom.flash} />
           <div className="chat-scroll scroll" ref={chatScrollRef}>
@@ -1182,43 +1062,26 @@ function MainApp({ user }: { user: AppUser }) {
               // --z: 줌 배율을 CSS에도 전달 — .thread가 px 폭 경계를 역보정해
               // 확대해도 칼럼의 보이는 폭은 유지한 채 글자만 커지게 한다
               <div className="thread" style={{ zoom: chatZoom.zoom, '--z': chatZoom.zoom } as React.CSSProperties}>
-                {state.messages.map((m, idx) => {
-                  // a tool group that opens the assistant's turn (the model ran a tool
-                  // before writing any text) has no preceding message to carry the
-                  // avatar — flag it so it draws the Claude avatar itself. It "leads"
-                  // when the previous item isn't already part of the assistant column.
-                  const prev = state.messages[idx - 1]
-                  const prevIsAiBlock =
-                    !!prev && (prev.kind === 'toolgroup' || (prev.kind === 'msg' && prev.role === 'assistant'))
-                  return (
-                    <MessageView
-                      key={m.id}
-                      item={m}
-                      userInitial={user.avatarText}
-                      userColor={user.avatarColor}
-                      userName={user.name}
-                      live={idx === state.messages.length - 1 && m.kind === 'msg' && m.role === 'assistant' && !m.error}
-                      running={busy}
-                      lead={m.kind === 'toolgroup' && !prevIsAiBlock}
-                      onOpenFile={onOpenToolFile}
-                      onOpenImage={openViewer}
-                    />
-                  )
-                })}
+                {state.messages.map((m, idx) => (
+                  <MessageView
+                    key={m.id}
+                    item={m}
+                    live={idx === liveMsgIndex(state.messages) && m.kind === 'msg' && m.role === 'assistant' && !m.error}
+                    running={busy}
+                    onOpenFile={onOpenToolFile}
+                    onOpenImage={openViewer}
+                  />
+                ))}
                 {busy && showWorking && <WorkingIndicator text={state.thinkingText} />}
               </div>
             )}
-            {showJump && (
+            {follow.showJump && (
               <div className="jump-bottom-wrap">
                 <button
                   className="jump-bottom has-tip"
                   data-tip="맨 아래로"
                   aria-label="맨 아래로"
-                  onClick={() => {
-                    stickRef.current = true
-                    const el = scrollRef.current
-                    if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
-                  }}
+                  onClick={follow.jumpBottom}
                 >
                   <IconChevDown size={17} />
                 </button>
@@ -1244,6 +1107,8 @@ function MainApp({ user }: { user: AppUser }) {
             chatSpentUsd={state.spentUsd ?? 0}
             budgetUsd={apiCfg?.budgetUsd ?? null}
             totalSpentUsd={apiCfg?.spentUsd ?? 0}
+            engine={picker.engine}
+            codexAccount={picker.codexAccount}
             onOpenFile={onOpenFile}
             onOpenSubagent={onOpenSubagent}
             onRefreshUsage={onRefreshUsage}
@@ -1267,6 +1132,7 @@ function MainApp({ user }: { user: AppUser }) {
             setPicker={setPicker}
             apiMode={apiMode}
             apiReady={!!apiCfg?.hasKey}
+            apiReadyCodex={!!apiCfg?.hasOpenaiKey}
             onApiModeChange={onApiModeChange}
             images={images}
             onPickImages={addImagesFromPicker}
@@ -1282,13 +1148,10 @@ function MainApp({ user }: { user: AppUser }) {
             inputRef={composerRef}
           />
         </div>
+
         </>
         )}
       </div>
-
-      {gitOpen && gitRoot && (
-        <GitModal root={gitRoot} cwd={cwd} onClose={() => setGitOpen(false)} onOpenFile={onGitOpenFile} onAskClaude={onGitAskClaude} />
-      )}
 
       {chgScope && (
         <ChangedFilesModal
@@ -1303,13 +1166,8 @@ function MainApp({ user }: { user: AppUser }) {
         path={openFilePath}
         cwd={cwd}
         diffs={state.diffs}
-        override={fileOverride}
-        onClose={() => {
-          setOpenFilePath(null)
-          setFileOverride(null)
-        }}
+        onClose={() => setOpenFilePath(null)}
         onAskSelection={onAskSelection}
-        onViewFile={onViewFile}
       />
 
       {viewer && (
@@ -1336,35 +1194,6 @@ function MainApp({ user }: { user: AppUser }) {
         />
       )}
 
-      {askOpen && (
-        <AskModal
-          onClose={() => {
-            setAskOpen(false)
-            setAskMinimized(false)
-          }}
-          minimized={askMinimized}
-          onMinimizedChange={setAskMinimized}
-          cwd={cwd}
-          user={user}
-          picker={picker}
-          initialText={askInitial}
-          apiMode={apiMode}
-          apiReady={!!apiCfg?.hasKey}
-          onApiModeChange={onApiModeChange}
-        />
-      )}
-
-      {promptChat && (
-        <PromptModal
-          target={promptChat.title || '새 채팅'}
-          scope="이 채팅에만 적용"
-          noun="채팅"
-          value={promptChat.sysPrompt ?? ''}
-          onSave={(text) => savePrompt(promptChat.id, text)}
-          onClose={() => setPromptChatId(null)}
-        />
-      )}
-
       {settingsOpen && (
         <SettingsModal
           cwd={cwd}
@@ -1376,15 +1205,29 @@ function MainApp({ user }: { user: AppUser }) {
         />
       )}
 
+      {/* 새 채팅 선택 — 일반(코드 뷰에 빈 채팅)/멀티(패널 수 골라 새 세션) */}
+      {newChatOpen && (
+        <NewChatModal
+          busy={busy}
+          onClose={() => setNewChatOpen(false)}
+          onGeneral={() => {
+            if (mode !== 'single') switchMode('single')
+            createChat()
+          }}
+          onMulti={(n) => {
+            if (mode !== 'multi') switchMode('multi')
+            multi.newSession(n)
+          }}
+        />
+      )}
 
-      {/* 첫 실행 안내 — 둘은 SEEN_KEY를 공유해 서로 배타적이다. 새 설치(도장 없음)는
-          WhatsNew(전체 기능 소개), 마이너 버전이 오른 업데이트는 UpdateNotes(업데이트
-          패치노트). 엔진/앱 업데이트 게이트보다 먼저 렌더해서(z-index 동급, DOM 뒤가
-          위) 게이트가 항상 위에 뜬다 */}
-      <WhatsNew />
-      <UpdateNotes />
+
+      {/* 패치노트 릴리즈 카드 — 버전이 오른(또는 첫) 실행에 한 장. 엔진/앱 업데이트
+          게이트보다 먼저 렌더해서(z-index 동급, DOM 뒤가 위) 게이트가 항상 위에 뜬다 */}
+      <PatchNotes />
 
       <EngineGate />
+      <EngineUpdateGate />
       <AppUpdateGate />
     </div>
   )
@@ -1396,34 +1239,37 @@ function userFromProfile(p: UserProfile): AppUser {
   return { name, avatarText: name.slice(0, 1).toUpperCase() || '?', avatarColor: p.color }
 }
 
+// 2.0: 입장 화면 없이 바로 시작 — 저장된 프로필이 있으면 그대로, 없으면 기본값.
+// 닉네임·아바타는 설정 ▸ Profile에서 언제든 바꾼다.
+const DEFAULT_USER: AppUser = { name: 'User', avatarText: 'U', avatarColor: '#6366F1' }
+
 export default function App() {
   const [ready, setReady] = useState(false)
-  // the last saved profile — pre-fills the entry screen so a returning user just
-  // presses 입장하기. null until loaded / when none has ever been set.
-  const [profile, setProfile] = useState<UserProfile | null>(null)
-  // set once the user presses 입장하기; null shows the entry screen.
-  const [user, setUser] = useState<AppUser | null>(null)
-  const maximized = useMaximized()
+  const [user, setUser] = useState<AppUser>(DEFAULT_USER)
 
   useEffect(() => {
     window.api
       .getProfile()
-      .then((p) => setProfile(p))
+      .then((p) => {
+        if (p && p.nickname?.trim()) setUser(userFromProfile(p))
+      })
       .catch(() => {})
       .finally(() => setReady(true))
   }, [])
 
-  // 입장하기: persist the profile, then enter the app
-  const enter = (p: UserProfile): void => {
-    window.api.saveProfile(p).catch(() => {})
-    setProfile(p)
-    setUser(userFromProfile(p))
-  }
+  // 설정 ▸ Profile 저장이 바로 반영되게 — profileChanged 커스텀 이벤트로 동기화
+  useEffect(() => {
+    const onChanged = (e: Event): void => {
+      const p = (e as CustomEvent<UserProfile>).detail
+      if (p && p.nickname?.trim()) setUser(userFromProfile(p))
+    }
+    window.addEventListener('ccg-profile-changed', onChanged)
+    return () => window.removeEventListener('ccg-profile-changed', onChanged)
+  }, [])
 
-  let content: React.ReactNode
   if (!ready) {
-    content = (
-      <div className={'win' + (maximized ? ' max' : '')}>
+    return (
+      <div className="win">
         <div className="boot">
           <div className="boot-logo"><IconCode size={29} stroke={2.4} /></div>
           <div className="boot-name">AgentCodeGUI</div>
@@ -1432,22 +1278,12 @@ export default function App() {
         </div>
       </div>
     )
-  } else if (!user) {
-    content = <Profile initial={profile} onEnter={enter} />
-  } else {
-    // 최상위 안전망 — MainApp 자체 렌더(단일 모드 스레드 포함)에서 난 예외까지 잡는다.
-    // 워크스페이스별 경계가 먼저 잡고, 여기는 그 밖(사이드바·모달 등)을 커버한다.
-    content = (
-      <ErrorBoundary label="앱">
-        <MainApp user={user} />
-      </ErrorBoundary>
-    )
   }
-
+  // 최상위 안전망 — MainApp 자체 렌더(단일 모드 스레드 포함)에서 난 예외까지 잡는다.
+  // 워크스페이스별 경계가 먼저 잡고, 여기는 그 밖(사이드바·모달 등)을 커버한다.
   return (
-    <>
-      {!maximized && <ResizeHandles />}
-      {content}
-    </>
+    <ErrorBoundary label="앱">
+      <MainApp user={user} />
+    </ErrorBoundary>
   )
 }

@@ -4,13 +4,16 @@ import path from 'node:path'
 import fs from 'node:fs'
 import os from 'node:os'
 import { randomUUID } from 'node:crypto'
-import { ClaudeEngine } from './claude/engine'
+import { EngineRouter } from './engineRouter'
+import { CodexEngine } from './codex/engine'
 import * as engineVersions from './engine/versions'
 import { readProfile, writeProfile } from './profile'
 import { readUiPrefs, writeUiPrefs } from './uiPrefs'
-import { apiConfigStatus, setApiKey, clearApiKey, setBudget, resetSpend } from './apiConfig'
+import { apiConfigStatus, setApiKey, clearApiKey, setOpenaiApiKey, clearOpenaiApiKey, setBudget, resetBudget } from './apiConfig'
 import { readApiUsage } from './apiUsage'
-import { authStatus, authLogin, authLogout, authLoginCancel, listAccounts, switchAccount, removeAccount, accountsUsage, activeAccountEmail, accountAccessToken } from './auth'
+import { authLogin, authLogout, authLoginCancel, listAccounts, setDefaultAccount, removeAccount, accountsUsage, defaultAccountEmail, freshAccountToken, usageSlot, migrateAccounts } from './auth'
+import { codexListAccounts, codexLogin, codexLogout, codexSetDefaultAccount, codexLoginCancel, codexAccountsUsage, migrateCodexAccounts } from './codex/auth'
+import * as codexVersions from './codex/versions'
 import { setVerseDocKo } from './lsp/verseDocKo'
 import { setUeDocKo } from './lsp/ueDocKo'
 import { bumpVerseRegistryRev } from './lsp/verseMemberDb'
@@ -18,15 +21,15 @@ import { readChats, writeChats } from './chats'
 import { writeFileAtomic } from './atomicWrite'
 import { readMulti, writeMulti } from './maStore'
 import { readTalk, writeTalk } from './talkStore'
+import { readSessionChats, writeSessionChats, type SessionChatRecord } from './sessionChats'
 import { listSkills, setSkillEnabled } from './skills'
 import { listMcpServers, setMcpEnabled } from './mcp'
 import { listProjectFiles, listDir } from './files'
-import * as gitApi from './git'
 import { lspManager } from './lsp/manager'
 import { initAutoUpdater, checkForUpdates, quitAndInstall, getUpdateStatus } from './updater'
 import { IPC } from '@shared/protocol'
 import { ATTACH_IMAGE_EXTS, ATTACH_TEXT_EXTS } from '@shared/attachments'
-import type { EngineEvent, RunRequest, PermissionResponse, QuestionResponse, BgTaskRequest, WindowBounds, ResizeEdge, SnapZone, UsageInfo, UsageWindow, FileReadResult, FileWriteResult, UserProfile, MultiRunRequest, MultiPermissionResponse, MultiQuestionResponse, LspPos } from '@shared/protocol'
+import type { EngineEvent, RunRequest, PermissionResponse, QuestionResponse, BgTaskRequest, UsageInfo, UsageWindow, FileReadResult, FileWriteResult, UserProfile, MultiRunRequest, MultiPermissionResponse, MultiQuestionResponse, LspPos, AgentStatus, SessionWindowInfo, SessionPersistPayload, SessionHydrateData, EngineUpdateItem, EngineUpdateStatus } from '@shared/protocol'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -189,15 +192,14 @@ const SPLASH_HTML = `<!doctype html><html><head><meta charset="utf-8" />
   html,body{margin:0;height:100%;background:transparent;overflow:hidden;
     font-family:'Wanted Sans Variable',system-ui,-apple-system,sans-serif;-webkit-user-select:none;user-select:none}
   .card{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
-    background:oklch(0.992 0.002 80);border-radius:18px;
-    box-shadow:0 24px 64px -22px rgba(40,30,20,.45),0 0 0 1px rgba(0,0,0,.06)}
-  .logo{width:56px;height:56px;border-radius:16px;background:oklch(0.61 0.16 42);display:grid;place-items:center;
-    color:#fff;font-weight:800;font-size:27px;font-family:'JetBrains Mono',ui-monospace,monospace;
-    box-shadow:0 6px 16px -4px oklch(0.61 0.16 42 / .5)}
-  .name{margin-top:16px;font-size:14px;font-weight:600;color:oklch(0.27 0.008 60);letter-spacing:-.01em}
+    background:#151515;border-radius:18px;
+    box-shadow:0 24px 64px -22px rgba(0,0,0,.8),0 0 0 1px rgba(255,255,255,.10)}
+  .logo{width:56px;height:56px;border-radius:16px;background:#e9e9e9;display:grid;place-items:center;
+    color:#161616;font-weight:800;font-size:27px;font-family:'JetBrains Mono',ui-monospace,monospace}
+  .name{margin-top:16px;font-size:14px;font-weight:600;color:rgba(255,255,255,.90);letter-spacing:-.01em}
   .spin{margin-top:18px;width:20px;height:20px;border-radius:50%;
-    border:2.5px solid oklch(0.61 0.16 42 / .18);border-top-color:oklch(0.61 0.16 42);animation:s .7s linear infinite}
-  .sub{margin-top:12px;font-size:11.5px;color:oklch(0.69 0.008 60)}
+    border:2.5px solid rgba(255,255,255,.14);border-top-color:rgba(255,255,255,.62);animation:s .7s linear infinite}
+  .sub{margin-top:12px;font-size:11.5px;color:rgba(255,255,255,.40)}
   @keyframes s{to{transform:rotate(360deg)}}
 </style></head>
 <body><div class="card">
@@ -278,48 +280,14 @@ function isOnScreen(s: WinState): boolean {
   })
 }
 
-// Custom maximize: a transparent window gets no native maximize animation on
-// Windows, so we animate the bounds ourselves and track the state here instead of
-// relying on the OS maximize.
-let customMaximized = false
-let restoreBounds: WindowBounds | null = null
-
-// The size we *intend* the window to be. A transparent window under fractional DPI
-// scaling reads back ~1px larger than we set it (setBounds(W) ⇒ getBounds() === W+1),
-// so re-deriving a gesture's locked size from getBounds() every time snowballed the
-// window ~1px per title-bar drag / maximize-restore cycle. Steering by this intended
-// size instead keeps the actual size settled — it never compounds. Updated only on
-// deliberate size changes (initial create, edge-resize, restore).
-let logicalSize: { width: number; height: number } | null = null
-
-// Title-bar drag + edge-resize are driven by main-process timers that follow the live
-// OS cursor. Hoisted to module scope so a lost-focus safety net (window 'blur') and the
-// two gestures' mutual exclusion can reach them: a timer that outlives its mouseup is
-// what made the window keep growing — it stays running and resizes on every later move.
-let dragTimer: ReturnType<typeof setInterval> | null = null
-let resizeTimer: ReturnType<typeof setInterval> | null = null
-function stopDrag(): void {
-  if (dragTimer) {
-    clearInterval(dragTimer)
-    dragTimer = null
-  }
-  hideSnapPreview() // 드래그가 끝나거나 끊기면 스냅 고스트도 같이 내린다
-}
-function stopResize(): void {
-  if (resizeTimer) {
-    clearInterval(resizeTimer)
-    resizeTimer = null
-  }
-}
-
+// 2.0 아크릴 창: 불투명(재질) 창이라 네이티브 최대화·Aero Snap·가장자리 리사이즈가
+// 전부 살아 있다 — 투명 창 시절의 커스텀 최대화/스냅/드래그/리사이즈 배관은 제거됐다.
 let saveTimer: ReturnType<typeof setTimeout> | null = null
 function saveWindowState(): void {
   if (!mainWindow || mainWindow.isDestroyed()) return
-  // remember the windowed (non-maximized) bounds even while maximized; take the size
-  // from the clean intended size so the saved value doesn't carry the DPI inflation
-  const b = customMaximized && restoreBounds ? restoreBounds : mainWindow.getBounds()
-  const size = customMaximized ? b : logicalSize ?? b
-  const state: WinState = { x: b.x, y: b.y, width: size.width, height: size.height, maximized: customMaximized }
+  const maximized = mainWindow.isMaximized()
+  const b = mainWindow.getNormalBounds() // 최대화 중에도 창 모드 크기를 기억
+  const state: WinState = { x: b.x, y: b.y, width: b.width, height: b.height, maximized }
   try {
     fs.mkdirSync(engineVersions.APP_HOME, { recursive: true })
     writeFileAtomic(stateFile(), JSON.stringify(state))
@@ -332,150 +300,34 @@ function scheduleSave(): void {
   saveTimer = setTimeout(saveWindowState, 400)
 }
 
-function workAreaBounds(): WindowBounds {
-  const d = mainWindow ? screen.getDisplayMatching(mainWindow.getBounds()) : screen.getPrimaryDisplay()
-  const a = d.workArea
-  return { x: a.x, y: a.y, width: a.width, height: a.height }
-}
-// maximize/restore is applied instantly — animating a transparent window's bounds
-// stutters badly (every frame recomposites the layered window and re-lays-out the
-// whole app). The light .win inset/border-radius CSS transition still softens the edge.
-function setMaximized(want: boolean): void {
-  if (!mainWindow || want === customMaximized) return
-  if (want) {
-    // capture the windowed bounds to restore to — but take the size from the clean
-    // intended size, not the inflated getBounds(), so a maximize→restore round-trip
-    // doesn't grow the window
-    const b = mainWindow.getBounds()
-    restoreBounds = logicalSize ? { x: b.x, y: b.y, width: logicalSize.width, height: logicalSize.height } : b
-    customMaximized = true
-    send(IPC.winState, { maximized: true })
-    mainWindow.setBounds(workAreaBounds())
-  } else {
-    customMaximized = false
-    send(IPC.winState, { maximized: false })
-    if (restoreBounds) {
-      mainWindow.setBounds(restoreBounds)
-      logicalSize = { width: restoreBounds.width, height: restoreBounds.height }
-    }
-  }
-  scheduleSave()
-}
-
-// ── 커스텀 스냅 (반쪽/쿼터/최대화) + 드래그 미리보기 ──────────────────────────
-// 투명·프레임리스·수동드래그 창이라 네이티브 Snap Layouts/Aero Snap이 안 떠서 직접 구현.
-function snapBounds(zone: Exclude<SnapZone, 'max'>, wa: WindowBounds): WindowBounds {
-  const hw = Math.round(wa.width / 2)
-  const hh = Math.round(wa.height / 2)
-  const rw = wa.width - hw // 우측/하단 잔차 흡수 → 두 쪽이 화면을 정확히 채움
-  const bh = wa.height - hh
-  switch (zone) {
-    case 'left':
-      return { x: wa.x, y: wa.y, width: hw, height: wa.height }
-    case 'right':
-      return { x: wa.x + hw, y: wa.y, width: rw, height: wa.height }
-    case 'tl':
-      return { x: wa.x, y: wa.y, width: hw, height: hh }
-    case 'tr':
-      return { x: wa.x + hw, y: wa.y, width: rw, height: hh }
-    case 'bl':
-      return { x: wa.x, y: wa.y + hh, width: hw, height: bh }
-    case 'br':
-      return { x: wa.x + hw, y: wa.y + hh, width: rw, height: bh }
-  }
-}
-function applySnap(zone: SnapZone): void {
-  if (!mainWindow) return
-  if (zone === 'max') {
-    setMaximized(true)
-    return
-  }
-  const b = snapBounds(zone, workAreaBounds())
-  customMaximized = false
-  mainWindow.setBounds(b)
-  logicalSize = { width: b.width, height: b.height }
-  send(IPC.winState, { maximized: false })
-  scheduleSave()
-}
-// 커서가 디스플레이 가장자리/모서리에 닿았을 때의 스냅 존 (없으면 null). bounds = 디스플레이 전체.
-function snapZoneFor(p: { x: number; y: number }, b: WindowBounds): SnapZone | null {
-  const T = 22 // 직선 가장자리 두께 — 타이틀바 잡은 지점이 창 위에서 한참 아래라 넉넉히
-  const C = 64 // 모서리로 인정하는 수직축 도달 범위
-  const top = p.y <= b.y + T
-  const bot = p.y >= b.y + b.height - T
-  const lef = p.x <= b.x + T
-  const rig = p.x >= b.x + b.width - T
-  const cTop = p.y <= b.y + C
-  const cBot = p.y >= b.y + b.height - C
-  const cLef = p.x <= b.x + C
-  const cRig = p.x >= b.x + b.width - C
-  if ((lef && cTop) || (top && cLef)) return 'tl'
-  if ((rig && cTop) || (top && cRig)) return 'tr'
-  if ((lef && cBot) || (bot && cLef)) return 'bl'
-  if ((rig && cBot) || (bot && cRig)) return 'br'
-  if (top) return 'max'
-  if (lef) return 'left'
-  if (rig) return 'right'
-  return null
-}
-// 스냅될 자리를 미리 보여주는 반투명 고스트 — mainWindow의 자식 창이라 함께 닫힌다.
-let snapPreviewWin: BrowserWindow | null = null
-let pendingSnapZone: SnapZone | null = null
-function showSnapPreview(zone: SnapZone, wa: WindowBounds): void {
-  if (!mainWindow) return
-  if (!snapPreviewWin || snapPreviewWin.isDestroyed()) {
-    snapPreviewWin = new BrowserWindow({
-      parent: mainWindow,
-      show: false,
-      frame: false,
-      transparent: true,
-      backgroundColor: '#00000000',
-      focusable: false,
-      skipTaskbar: true,
-      alwaysOnTop: true,
-      resizable: false,
-      movable: false,
-      hasShadow: false,
-      fullscreenable: false,
-      webPreferences: { sandbox: true }
-    })
-    snapPreviewWin.setIgnoreMouseEvents(true)
-    const html =
-      '<!doctype html><meta charset="utf-8"><body style="margin:0;background:transparent;overflow:hidden">' +
-      '<div style="position:fixed;inset:7px;border-radius:12px;background:rgba(150,180,255,0.20);border:2px solid rgba(185,208,255,0.9)"></div></body>'
-    snapPreviewWin.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html))
-  }
-  const rect = zone === 'max' ? wa : snapBounds(zone, wa)
-  snapPreviewWin.setBounds(rect)
-  if (!snapPreviewWin.isVisible()) snapPreviewWin.showInactive()
-}
-function hideSnapPreview(): void {
-  if (snapPreviewWin && !snapPreviewWin.isDestroyed() && snapPreviewWin.isVisible()) snapPreviewWin.hide()
-}
-
-const engine = new ClaudeEngine((event: EngineEvent) => send(IPC.engineEvent, event), 'chat')
-// A second, independent engine dedicated to the "/ask" throwaway conversation. It
-// runs in parallel to `engine` (the main chat) on its own channel, so asking a quick
-// side question never cancels the main run or mixes events into the work thread.
-const askEngine = new ClaudeEngine((event: EngineEvent) => send(IPC.askEvent, event), 'ask')
+// 2.0: 채널마다 EngineRouter — RunRequest.engine(claude/codex)에 따라
+// Claude Code CLI 또는 Codex CLI(app-server)로 라우팅된다.
+const engine = new EngineRouter((event: EngineEvent) => send(IPC.engineEvent, event), 'chat')
 
 // The 채팅(pure conversation) workspace runs on its own dedicated engine — separate from
-// the main chat (`engine`) and /ask (`askEngine`) — so its events never mix into either.
+// the main chat (`engine`) — so its events never mix into it.
 // It has no project folder; the engine falls back to the Desktop folder for an empty cwd.
-const talkEngine = new ClaudeEngine((event: EngineEvent) => send(IPC.talkEvent, event), 'talk')
+const talkEngine = new EngineRouter((event: EngineEvent) => send(IPC.talkEvent, event), 'talk')
 
 // ── multi-agent engine pool ─────────────────────────────────
-// One ClaudeEngine per on-screen panel, created on demand and addressed by panelId.
+// One engine per on-screen panel, created on demand and addressed by panelId.
 // Each owns its own CLI subprocess, so N panels genuinely run in parallel; every event
 // is tagged with the panelId on the shared maEvent channel for the renderer to route.
-const maEngines = new Map<string, ClaudeEngine>()
-function maEngine(panelId: string): ClaudeEngine {
+const maEngines = new Map<string, EngineRouter>()
+function maEngine(panelId: string): EngineRouter {
   let eng = maEngines.get(panelId)
   if (!eng) {
-    eng = new ClaudeEngine((event: EngineEvent) => send(IPC.maEvent, { panelId, event }), 'ma')
+    eng = new EngineRouter((event: EngineEvent) => send(IPC.maEvent, { panelId, event }), 'ma')
     maEngines.set(panelId, eng)
   }
   return eng
+}
+
+// picker의 OpenAI 모델 목록 — 실행과 무관하게 조회만 하는 공용 Codex 인스턴스
+let codexList: CodexEngine | null = null
+async function codexModels(): Promise<import('@shared/protocol').CodexModelInfo[]> {
+  if (!codexList) codexList = new CodexEngine(() => {})
+  return codexList.listModels()
 }
 
 // ── session windows ("추가 세션") ───────────────────────────
@@ -483,47 +335,105 @@ function maEngine(panelId: string): ClaudeEngine {
 // to that window's webContents (never the shared mainWindow send()). Keyed by
 // webContents.id so any number of session windows stay fully isolated from each other and
 // from the main window. Purely additive — the main window's channels/chrome are untouched.
-const sessionEngines = new Map<number, ClaudeEngine>()
-function sessionEngineFor(wc: WebContents): ClaudeEngine {
+const sessionEngines = new Map<number, EngineRouter>()
+function sessionEngineFor(wc: WebContents): EngineRouter {
   let eng = sessionEngines.get(wc.id)
   if (!eng) {
-    eng = new ClaudeEngine((event: EngineEvent) => {
+    eng = new EngineRouter((event: EngineEvent) => {
       if (!wc.isDestroyed()) wc.send(IPC.sessionEvent, event)
     }, 'chat')
     sessionEngines.set(wc.id, eng)
   }
   return eng
 }
-// 세션 창 안의 /ask — 창마다 자기 ask 엔진(메인 창의 askEngine은 mainWindow로만 이벤트를
-// 보내므로 공유 불가). 본 대화 엔진과 분리돼 세션 창의 실행을 취소하지 않는다.
-const sessionAskEngines = new Map<number, ClaudeEngine>()
-function sessionAskEngineFor(wc: WebContents): ClaudeEngine {
-  let eng = sessionAskEngines.get(wc.id)
-  if (!eng) {
-    eng = new ClaudeEngine((event: EngineEvent) => {
-      if (!wc.isDestroyed()) wc.send(IPC.sessionAskEvent, event)
-    }, 'ask')
-    sessionAskEngines.set(wc.id, eng)
-  }
-  return eng
+
+// 추가 채팅 영속 레지스트리 — 대화(스냅샷·제목·폴더)는 채팅 id 기준으로 디스크에 남고
+// (메인 채팅처럼 재시작 후에도 사이드바에 유지), 창은 그 채팅을 "열어 보는" 뷰일 뿐이다.
+// 닫기 = 저장 후 창 정리(대화는 목록에 남음), 사이드바 X = 대화 삭제.
+const sessionChats = new Map<string, SessionChatRecord>()
+for (const r of readSessionChats()) sessionChats.set(r.id, r)
+function persistSessionChats(): void {
+  writeSessionChats([...sessionChats.values()])
 }
 
-function createSessionWindow(): void {
-  // native frame → OS resize / move / maximize / second-monitor all come for free, and we
-  // never touch the main window's custom frameless chrome + snap plumbing.
+// 열린 세션 창 — webContents id → { 창, 채팅 id, 라이브 상태 }. 제목·상태는 그 창의
+// 렌더러가 sessionReport로 보고하고, 변화가 있을 때마다 메인 창으로 목록을 흘린다.
+// kill: 사이드바 X(대화 삭제)의 진짜 닫기 표식 — 닫기=저장 후 정리 흐름을 건너뛴다.
+// flushing/flushTimer: 닫기 시 마지막 스냅샷을 받아낸 뒤 destroy하는 중간 상태.
+const sessionWins = new Map<
+  number,
+  { win: BrowserWindow; chatId: string; status: AgentStatus; kill?: boolean; flushing?: boolean; flushTimer?: NodeJS.Timeout }
+>()
+// 앱 종료 중 표식 — 종료가 시작되면 세션 창의 닫기 가로채기를 멈춰 quit이 안 막히게
+let appQuitting = false
+
+// ── 엔진 부팅 자동 업데이트 스냅샷 ───────────────────────────
+// 부팅 게이트(runBootEngineUpdate)가 채우고, 변화마다 렌더러로 통째로 흘린다.
+// 렌더러 카드는 마운트 때 engineUpdateStatus로 따라잡는다(이벤트 경합 무해).
+let engUpdate: EngineUpdateStatus = { active: false, items: [], cleanup: 'pending', freedBytes: 0, done: false }
+function pushEngUpdate(): void {
+  send(IPC.engineUpdateEvent, engUpdate)
+}
+function sessionWinList(): SessionWindowInfo[] {
+  const live = new Map<string, AgentStatus>()
+  for (const [, s] of sessionWins) if (!s.win.isDestroyed()) live.set(s.chatId, s.status)
+  return [...sessionChats.values()].map((r) => ({
+    id: r.id,
+    title: r.title,
+    status: live.get(r.id) ?? (r.status === 'done' || r.status === 'error' ? r.status : 'idle'),
+    open: live.has(r.id),
+    updatedAt: r.updatedAt
+  }))
+}
+function broadcastSessionWins(): void {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(IPC.sessionWindowsChanged, sessionWinList())
+}
+
+// 숨긴 창의 마지막 스냅샷을 받아낸 뒤 창을 정리한다 — 렌더러에 flush를 요청하고, persist가
+// 도착하면(또는 1.5초 타임아웃) destroy. 그 사이 사용자가 사이드바로 창을 되살렸으면
+// (visible) 정리를 취소해 대화가 계속 그 창에서 이어지게 한다.
+function finishFlush(wcId: number): void {
+  const s = sessionWins.get(wcId)
+  if (!s) return
+  if (s.flushTimer) {
+    clearTimeout(s.flushTimer)
+    s.flushTimer = undefined
+  }
+  if (!s.flushing) return
+  s.flushing = false
+  if (s.win.isDestroyed() || s.win.isVisible()) return
+  s.win.destroy()
+}
+function flushAndDestroy(wcId: number): void {
+  const s = sessionWins.get(wcId)
+  if (!s || s.win.isDestroyed() || s.flushing) return
+  s.flushing = true
+  s.win.webContents.send(IPC.sessionFlushRequest, null)
+  s.flushTimer = setTimeout(() => finishFlush(wcId), 1500)
+}
+
+function createSessionWindow(chatId?: string): void {
+  // 새 창 = 새 채팅 레코드. 빈 채팅은 디스크에 쓰이지 않으므로(writeSessionChats가 거름)
+  // 열었다 그냥 닫으면 흔적이 남지 않고, 닫힌 채팅을 다시 열면 기존 레코드에 창만 붙는다.
+  let rec = chatId ? sessionChats.get(chatId) : undefined
+  if (!rec) {
+    rec = { id: randomUUID(), title: '', status: 'idle', cwd: '', snapshot: null }
+    sessionChats.set(rec.id, rec)
+  }
+  const recId = rec.id
   const win = new BrowserWindow({
-    width: 460,
-    height: 700,
+    width: 560,
+    height: 720,
     minWidth: 360,
     minHeight: 440,
     show: false,
-    // KEEP the native frame (so OS resize works) but hide its title bar — the renderer
-    // draws our own title bar + window controls (routed to this window). No ugly native bar.
-    titleBarStyle: 'hidden',
+    // 메인 창과 같은 아크릴 껍데기 — 프레임리스여도 thickFrame으로 OS 리사이즈·스냅이 산다.
+    // backgroundColor 금지 — 불투명 층이 아크릴을 막는다 (메인 창과 동일 규칙)
+    frame: false,
+    backgroundMaterial: 'acrylic',
     // hide the default "File Edit View Window" menu bar too; Alt still reveals it so the
     // standard edit accelerators (copy/paste/…) stay intact.
     autoHideMenuBar: true,
-    backgroundColor: '#1a1a1a',
     title: '추가 채팅 — AgentCodeGUI',
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.mjs'),
@@ -556,6 +466,20 @@ function createSessionWindow(): void {
   win.on('maximize', () => win.webContents.send(IPC.winState, { maximized: true }))
   win.on('unmaximize', () => win.webContents.send(IPC.winState, { maximized: false }))
 
+  // 닫기(X·Alt+F4·↓→ 제스처) = 저장 후 창 정리 — 대화는 사이드바 '추가 채팅'에 남고,
+  // 항목을 누르면 창을 다시 만들어 이어간다. 실행 중이면 창만 숨겨 턴을 끝까지 돌리고
+  // (백그라운드 계속 실행), 끝나는 시점(sessionReport)에 마지막 스냅샷을 받아 정리한다.
+  // 진짜 종료는 사이드바 X(kill = 대화 삭제)와 앱 종료뿐. 메인 창이 없으면 사이드바도
+  // 없어 대화를 되찾을 길이 없으니 이 흐름 없이 그냥 닫는다.
+  win.on('close', (e) => {
+    const s = sessionWins.get(wcId)
+    if (appQuitting || s?.kill || !mainWindow || mainWindow.isDestroyed()) return
+    e.preventDefault()
+    win.hide()
+    const busy = s && (s.status === 'analyzing' || s.status === 'working')
+    if (!busy) flushAndDestroy(wcId)
+  })
+
   // release this window's engines (and their CLI subprocesses) when it closes
   win.on('closed', () => {
     const eng = sessionEngines.get(wcId)
@@ -563,12 +487,20 @@ function createSessionWindow(): void {
       eng.cancel().catch(() => {})
       sessionEngines.delete(wcId)
     }
-    const askEng = sessionAskEngines.get(wcId)
-    if (askEng) {
-      askEng.cancel().catch(() => {})
-      sessionAskEngines.delete(wcId)
+    const s = sessionWins.get(wcId)
+    if (s?.flushTimer) clearTimeout(s.flushTimer)
+    // 빈 대화(첫 메시지 전)는 목록에 남길 이유가 없다 — 창이 사라질 때 항목째 정리
+    const rec = s ? sessionChats.get(s.chatId) : undefined
+    if (rec && (rec.empty || rec.snapshot == null)) {
+      sessionChats.delete(rec.id)
+      persistSessionChats()
     }
+    sessionWins.delete(wcId)
+    broadcastSessionWins()
   })
+
+  sessionWins.set(wcId, { win, chatId: recId, status: 'idle' })
+  broadcastSessionWins()
 
   const devUrl = process.env['ELECTRON_RENDERER_URL']
   if (devUrl) {
@@ -589,8 +521,13 @@ function createWindow(): void {
     minHeight: 600,
     show: false,
     frame: false,
-    transparent: true,
-    backgroundColor: '#00000000',
+    // 창 자체가 카드 — DWM 아크릴 재질(transparent와 병용 불가). 라운드·그림자·
+    // 네이티브 스냅/최대화/리사이즈가 OS에서 그대로 온다. 비활성 시 재질이 꺼지는
+    // 것은 OS 사양으로 수용(PoC 확정).
+    // backgroundColor는 절대 깔지 않는다 — 불투명 층이 재질과 웹 콘텐츠 사이를 막아
+    // 유리가 완전히 죽는다(실측). 재질 미지원(Win10)은 DWM이 알아서 불투명 폴백.
+    backgroundMaterial: 'acrylic',
+    autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.mjs'),
       contextIsolation: true,
@@ -601,48 +538,33 @@ function createWindow(): void {
     }
   })
 
-  logicalSize = { width: state.width, height: state.height }
-
-  if (state.maximized) {
-    restoreBounds = mainWindow.getBounds()
-    customMaximized = true
-    mainWindow.setBounds(workAreaBounds())
-  }
+  if (state.maximized) mainWindow.maximize()
 
   mainWindow.on('ready-to-show', () => {
     mainWindow?.show()
     closeSplash()
   })
+  // 네이티브 최대화 — 커스텀 타이틀바 아이콘이 상태를 따라가게만 알린다
   mainWindow.on('maximize', () => {
-    // OS 경로(Win+↑ 등)로 최대화돼도 커스텀 최대화 체계로 일원화 — OS 최대화 상태로
-    // 남겨두면 customMaximized=false라서 리사이즈 가드·복원 로직이 전부 어긋난다
-    mainWindow?.unmaximize()
-    setMaximized(true)
+    send(IPC.winState, { maximized: true })
+    scheduleSave()
   })
   mainWindow.on('unmaximize', () => {
     send(IPC.winState, { maximized: false })
-    saveWindowState()
-  })
-  mainWindow.on('resize', () => {
-    // 커스텀 최대화 중인데 외부 경로(OS 스냅, Win+화살표 …)로 크기가 변했으면
-    // 상태를 자가 치유 — 안 그러면 '최대화' 아이콘/가드와 실제 창이 어긋난 채 남는다
-    if (customMaximized && mainWindow) {
-      const wa = workAreaBounds()
-      const b = mainWindow.getBounds()
-      if (Math.abs(b.width - wa.width) > 2 || Math.abs(b.height - wa.height) > 2) {
-        customMaximized = false
-        send(IPC.winState, { maximized: false })
-      }
-    }
     scheduleSave()
   })
+  mainWindow.on('resize', scheduleSave)
   mainWindow.on('move', scheduleSave)
   mainWindow.on('close', saveWindowState)
-  // a drag/resize timer must never outlive its gesture — if focus leaves mid-drag
-  // (alt-tab, a dialog, a click elsewhere), kill it so the window can't keep growing
-  mainWindow.on('blur', () => {
-    stopDrag()
-    stopResize()
+  // 숨은 추가 채팅 창(닫기 정리 대기 또는 백그라운드 턴 실행 중)은 메인 창이 죽으면 함께
+  // 정리해 보이지 않는 창이 window-all-closed(앱 종료)를 막는 일을 없앤다. 대화는 마지막
+  // 저장본으로 디스크에 남는다. 보이는(또는 최소화된) 세션 창은 지금처럼 독립 생존하고,
+  // 이후의 닫기는 mainWindow=null이라 진짜 닫힘.
+  mainWindow.on('closed', () => {
+    mainWindow = null
+    for (const [, s] of sessionWins) {
+      if (!s.win.isDestroyed() && !s.win.isVisible()) s.win.destroy()
+    }
   })
 
   // Open external links in the OS browser, but only http/https; never navigate the app away.
@@ -692,32 +614,26 @@ const USAGE_TTL = 5 * 60 * 1000
 // API를 때리지 않게 15초는 재사용한다.
 const USAGE_TTL_FRESH = 15 * 1000
 
-// 조회에 쓸 토큰 — account(채팅별 실행 계정)가 전역 활성 계정과 다르면 그 계정의 저장
-// 토큰(스냅샷/물질화 폴더 중 신선한 쪽), 아니면 전역 로그인(~/.claude) 토큰. 컨텍스트
-// 팝오버의 한도는 "이 채팅이 실제로 소비할 계정" 기준이어야 하기 때문.
-function usageTokenFor(account?: string): { token: string; key: string } | null {
-  if (account && account !== activeAccountEmail()) {
-    const token = accountAccessToken(account)
-    return token ? { token, key: account } : null
-  }
-  try {
-    const creds = JSON.parse(fs.readFileSync(path.join(os.homedir(), '.claude', '.credentials.json'), 'utf8'))
-    const token: unknown = creds?.claudeAiOauth?.accessToken
-    return typeof token === 'string' && token ? { token, key: '' } : null
-  } catch {
-    return null
-  }
+// 조회에 쓸 토큰 — account(채팅별 실행 계정), 미지정이면 기본 계정. 컨텍스트 팝오버의
+// 한도는 "이 채팅이 실제로 소비할 계정" 기준이어야 하기 때문. 등록 계정 스토어만 보고,
+// 만료된 토큰은 리프레시해서라도 돌려준다(오래 안 쓴 계정도 한도가 뜨게).
+async function usageTokenFor(account?: string): Promise<{ token: string; key: string } | null> {
+  const email = account ?? defaultAccountEmail()
+  if (!email) return null
+  const token = await freshAccountToken(email)
+  return token ? { token, key: email } : null
 }
 
 async function getUsage(fresh = false, account?: string): Promise<UsageInfo> {
   const empty: UsageInfo = { fiveHour: null, weekly: null, weeklyFable: null, extraCredit: null }
-  const tk = usageTokenFor(account)
+  const tk = await usageTokenFor(account)
   if (!tk) return empty
   const hit = usageCache.get(tk.key)
   if (hit && hit.token === tk.token && Date.now() - hit.at < (fresh ? USAGE_TTL_FRESH : USAGE_TTL)) return hit.data
   const inflight = usageInflight.get(tk.key)
   if (inflight) return inflight
-  const req = fetchUsage(tk.token, tk.key).finally(() => usageInflight.delete(tk.key))
+  // usage API는 세게 레이트리밋됨(429) — 계정별 한도 조회와 같은 전역 큐로 직렬화
+  const req = usageSlot(() => fetchUsage(tk.token, tk.key)).finally(() => usageInflight.delete(tk.key))
   usageInflight.set(tk.key, req)
   return req
 }
@@ -732,7 +648,8 @@ async function fetchUsage(token: string, cacheKey: string): Promise<UsageInfo> {
       signal: ctrl.signal
     })
     clearTimeout(timer)
-    if (!res.ok) return empty
+    // 실패(429 등)는 마지막 성공값으로 폴백 — TTL이 지난 캐시라도 빈 화면보다 낫다
+    if (!res.ok) return usageCache.get(cacheKey)?.data ?? empty
     const j = (await res.json()) as Record<string, { utilization?: number | string; resets_at?: string }> & {
       // 모델별 한도는 legacy 필드(seven_day_opus 등)가 아니라 limits[] 배열로 온다.
       limits?: { kind?: string; percent?: number; resets_at?: string; scope?: { model?: { display_name?: string } | null } | null }[]
@@ -792,7 +709,7 @@ async function fetchUsage(token: string, cacheKey: string): Promise<UsageInfo> {
     usageCache.set(cacheKey, { at: Date.now(), token, data })
     return data
   } catch {
-    return empty
+    return usageCache.get(cacheKey)?.data ?? empty
   }
 }
 
@@ -804,14 +721,6 @@ function registerIpc(): void {
   ipcMain.handle(IPC.permissionRespond, async (_e, res: PermissionResponse) => engine.respondPermission(res))
   ipcMain.handle(IPC.questionRespond, async (_e, res: QuestionResponse) => engine.respondQuestion(res))
   ipcMain.handle(IPC.bgTask, async (_e, req: BgTaskRequest) => engine.bgTask(req))
-
-  // /ask — the independent ephemeral conversation, driven by its own engine instance
-  ipcMain.handle(IPC.askRun, async (_e, req: RunRequest) => askEngine.run(req))
-  ipcMain.handle(IPC.askCancel, async () => {
-    await askEngine.cancel()
-  })
-  ipcMain.handle(IPC.askPermissionRespond, async (_e, res: PermissionResponse) => askEngine.respondPermission(res))
-  ipcMain.handle(IPC.askQuestionRespond, async (_e, res: QuestionResponse) => askEngine.respondQuestion(res))
 
   // 채팅 — the pure-conversation workspace, driven by its own engine instance
   ipcMain.handle(IPC.talkRun, async (_e, req: RunRequest) => talkEngine.run(req))
@@ -840,17 +749,80 @@ function registerIpc(): void {
     sessionEngines.get(_e.sender.id)?.respondQuestion(res)
   )
   ipcMain.handle(IPC.sessionBgTask, async (_e, req: BgTaskRequest) => sessionEngines.get(_e.sender.id)?.bgTask(req))
-  // 세션 창 안의 /ask — 호출한 창의 자기 ask 엔진으로 라우팅(본 대화 엔진과 분리)
-  ipcMain.handle(IPC.sessionAskRun, async (_e, req: RunRequest) => sessionAskEngineFor(_e.sender).run(req))
-  ipcMain.handle(IPC.sessionAskCancel, async (_e) => {
-    await sessionAskEngines.get(_e.sender.id)?.cancel()
+  // 추가 채팅 레지스트리 — 목록 조회/포커스/삭제/이름 변경(메인 창), 제목·상태 보고와
+  // 대화 저장·복원(세션 창 자신). 대화는 채팅 id 기준 영속 — 창은 열어 보는 뷰다.
+  ipcMain.handle(IPC.sessionWindowsList, async () => sessionWinList())
+  ipcMain.handle(IPC.sessionWindowFocus, async (_e, id: string) => {
+    for (const s of sessionWins.values()) {
+      if (s.chatId !== id || s.win.isDestroyed()) continue
+      // 닫기(저장 후 정리)가 진행 중이었다면 취소 — 사용자가 대화를 도로 열었다
+      if (s.flushTimer) {
+        clearTimeout(s.flushTimer)
+        s.flushTimer = undefined
+      }
+      s.flushing = false
+      if (!s.win.isVisible()) s.win.show()
+      if (s.win.isMinimized()) s.win.restore()
+      s.win.focus()
+      return
+    }
+    // 닫힌 채팅 — 창을 다시 만들면 렌더러가 sessionHydrate로 저장본을 복원한다
+    if (sessionChats.has(id)) createSessionWindow(id)
   })
-  ipcMain.handle(IPC.sessionAskPermissionRespond, async (_e, res: PermissionResponse) =>
-    sessionAskEngines.get(_e.sender.id)?.respondPermission(res)
-  )
-  ipcMain.handle(IPC.sessionAskQuestionRespond, async (_e, res: QuestionResponse) =>
-    sessionAskEngines.get(_e.sender.id)?.respondQuestion(res)
-  )
+  ipcMain.handle(IPC.sessionWindowClose, async (_e, id: string) => {
+    // 사이드바 X = 대화 삭제 — 열린 창이 있으면 저장 없이 그 창도 닫는다
+    for (const [, s] of sessionWins) {
+      if (s.chatId === id && !s.win.isDestroyed()) {
+        s.kill = true // 닫기=저장 후 정리 가로채기를 통과시키는 진짜 닫기 표식
+        s.win.close()
+      }
+    }
+    if (sessionChats.delete(id)) persistSessionChats()
+    broadcastSessionWins()
+  })
+  ipcMain.handle(IPC.sessionWindowRename, async (_e, id: string, title: string) => {
+    const rec = sessionChats.get(id)
+    if (!rec || !title.trim()) return
+    rec.title = title.trim()
+    rec.custom = true
+    persistSessionChats()
+    broadcastSessionWins()
+  })
+  ipcMain.handle(IPC.sessionReport, async (_e, info: { title: string; status: AgentStatus }) => {
+    const s = sessionWins.get(_e.sender.id)
+    if (!s) return
+    s.status = info.status
+    const rec = sessionChats.get(s.chatId)
+    if (rec && !rec.custom) rec.title = info.title
+    // 닫기(숨김)로 백그라운드에서 돌던 턴이 끝났다 — 마지막 스냅샷을 받아 창을 정리한다
+    const busy = info.status === 'analyzing' || info.status === 'working'
+    if (!busy && !s.kill && !s.win.isDestroyed() && !s.win.isVisible()) flushAndDestroy(_e.sender.id)
+    broadcastSessionWins()
+  })
+  ipcMain.handle(IPC.sessionHydrate, async (_e): Promise<SessionHydrateData | null> => {
+    const s = sessionWins.get(_e.sender.id)
+    const rec = s ? sessionChats.get(s.chatId) : undefined
+    if (!rec || rec.snapshot == null) return null
+    return { snapshot: rec.snapshot, cwd: rec.cwd, picker: rec.picker, draft: rec.draft, draftImages: rec.draftImages }
+  })
+  ipcMain.handle(IPC.sessionPersist, async (_e, p: SessionPersistPayload) => {
+    const s = sessionWins.get(_e.sender.id)
+    const rec = s ? sessionChats.get(s.chatId) : undefined
+    if (!s || !rec) return
+    if (!rec.custom) rec.title = p.title
+    // 실행 중 스냅샷은 idle로 얼려 저장한다 — 재시작 복원이 "실행 중"으로 거짓말하지 않게
+    rec.status = p.status === 'done' || p.status === 'error' ? p.status : 'idle'
+    rec.cwd = p.cwd
+    rec.snapshot = p.snapshot
+    rec.picker = p.picker
+    rec.draft = p.draft
+    rec.draftImages = p.draftImages
+    rec.empty = p.empty
+    if (p.updatedAt != null) rec.updatedAt = p.updatedAt
+    persistSessionChats()
+    if (s.flushing) finishFlush(_e.sender.id) // 닫기 대기 중이던 창 — 저장이 끝났으니 정리
+    broadcastSessionWins()
+  })
 
   // multi-agent — route each command to its panel's engine (lazily created on first run)
   ipcMain.handle(IPC.maRun, async (_e, req: MultiRunRequest) => maEngine(req.panelId).run(req))
@@ -862,6 +834,10 @@ function registerIpc(): void {
   )
   ipcMain.handle(IPC.maQuestionRespond, async (_e, res: MultiQuestionResponse) =>
     maEngines.get(res.panelId)?.respondQuestion(res)
+  )
+  // 패널 WorkBar의 백그라운드 셸 컨트롤(중지/Ctrl+B) — 그 패널의 엔진으로 (없으면 no-op)
+  ipcMain.handle(IPC.maBgTask, async (_e, panelId: string, req: BgTaskRequest) =>
+    maEngines.get(panelId)?.bgTask(req)
   )
   // a removed panel: stop its run and drop the engine so its subprocess is released
   ipcMain.handle(IPC.maDispose, async (_e, panelId: string) => {
@@ -917,15 +893,28 @@ function registerIpc(): void {
   })
   ipcMain.handle(IPC.getUsage, async (_e, fresh?: boolean, account?: string) => getUsage(!!fresh, account))
 
-  // 클로드 계정(구독) 로그인 — 번들 CLI의 `claude auth …` 호출 (설정 → 계정)
-  ipcMain.handle(IPC.authStatus, async () => authStatus())
-  ipcMain.handle(IPC.authLogout, async () => authLogout())
+  // 클로드 계정(구독) — 앱 등록 계정만, 전역 ~/.claude 불가침 (설정 → Account)
+  ipcMain.handle(IPC.authLogout, async (_e, email: string) => authLogout(email))
   ipcMain.handle(IPC.authLogin, async (_e, useConsole?: boolean) => authLogin(_e.sender, !!useConsole))
   ipcMain.handle(IPC.authLoginCancel, async () => authLoginCancel())
   ipcMain.handle(IPC.authListAccounts, async () => listAccounts())
-  ipcMain.handle(IPC.authSwitchAccount, async (_e, email: string) => switchAccount(email))
+  ipcMain.handle(IPC.authSetDefaultAccount, async (_e, email: string) => setDefaultAccount(email))
   ipcMain.handle(IPC.authRemoveAccount, async (_e, email: string) => removeAccount(email))
   ipcMain.handle(IPC.authAccountsUsage, async () => accountsUsage())
+  // Codex(OpenAI) 계정 — Anthropic과 동일한 문법 (앱 등록 계정만, 전역 ~/.codex 불가침)
+  ipcMain.handle(IPC.codexListAccounts, async () => codexListAccounts())
+  ipcMain.handle(IPC.codexLogin, async (_e) => codexLogin(_e.sender))
+  ipcMain.handle(IPC.codexLogout, async (_e, email: string) => codexLogout(email))
+  ipcMain.handle(IPC.codexSetDefaultAccount, async (_e, email: string) => codexSetDefaultAccount(email))
+  ipcMain.handle(IPC.codexLoginCancel, async () => codexLoginCancel())
+  ipcMain.handle(IPC.codexAccountsUsage, async () => codexAccountsUsage())
+  // 두 엔진 CLI 공통 자동 업데이트 토글 — 인자 있으면 설정, 항상 현재 값을 반환
+  ipcMain.handle(IPC.engineAutoUpdate, async (_e, enabled?: boolean) => {
+    if (typeof enabled === 'boolean') engineVersions.setAutoUpdate(enabled)
+    return engineVersions.getAutoUpdate()
+  })
+  // 부팅 자동 업데이트 진행 스냅샷 — 카드가 마운트 때 현재 상태를 따라잡는 용도
+  ipcMain.handle(IPC.engineUpdateStatus, async () => engUpdate)
 
   // 세션 창(추가 채팅)의 과금 picker — 설정 모달은 메인 창에만 있어서, 키 없이 API를
   // 고르면 메인 창을 앞으로 가져와 설정 → API 탭을 대신 연다.
@@ -936,22 +925,25 @@ function registerIpc(): void {
     mainWindow.webContents.send(IPC.apiSettingsRequested)
   })
 
-  // API 키 과금 설정 (설정 → API) — 키 원문은 절대 렌더러로 돌려주지 않는다
+  // API 키 과금 설정 (설정 → API) — 키 원문은 절대 렌더러로 돌려주지 않는다.
+  // provider 인자로 Anthropic(기본)·OpenAI 키가 같은 채널을 쓴다.
   ipcMain.handle(IPC.apiConfigGet, async () => apiConfigStatus())
-  ipcMain.handle(IPC.apiConfigSetKey, async (_e, key: string) => {
-    setApiKey(String(key ?? ''))
+  ipcMain.handle(IPC.apiConfigSetKey, async (_e, key: string, provider?: string) => {
+    if (provider === 'openai') setOpenaiApiKey(String(key ?? ''))
+    else setApiKey(String(key ?? ''))
     return apiConfigStatus()
   })
-  ipcMain.handle(IPC.apiConfigClearKey, async () => {
-    clearApiKey()
+  ipcMain.handle(IPC.apiConfigClearKey, async (_e, provider?: string) => {
+    if (provider === 'openai') clearOpenaiApiKey()
+    else clearApiKey()
     return apiConfigStatus()
   })
   ipcMain.handle(IPC.apiConfigSetBudget, async (_e, usd: number | null) => {
     setBudget(typeof usd === 'number' ? usd : null)
     return apiConfigStatus()
   })
-  ipcMain.handle(IPC.apiConfigResetSpend, async () => {
-    resetSpend()
+  ipcMain.handle(IPC.apiConfigResetBudget, async () => {
+    resetBudget()
     return apiConfigStatus()
   })
   ipcMain.handle(IPC.apiUsageList, async () => readApiUsage())
@@ -1201,25 +1193,6 @@ function registerIpc(): void {
 
   // LSP code intelligence for the in-app viewer — lazy per-project language servers.
   // Failures degrade to null/[]: the viewer just loses hover/jump, never errors.
-  // ── git — 탐색기 Git 카드 (읽기 + 커밋/푸시/풀) ────────────
-  ipcMain.handle(IPC.gitRoot, async (_e, a: { cwd: string; force?: boolean }) => gitApi.gitRoot(a.cwd || '', !!a.force))
-  ipcMain.handle(IPC.gitStatus, async (_e, root: string) => gitApi.gitStatus(root))
-  ipcMain.handle(IPC.gitLog, async (_e, a: { root: string; limit?: number }) => gitApi.gitLog(a.root, a.limit))
-  ipcMain.handle(IPC.gitCommitDetail, async (_e, a: { root: string; hash: string }) =>
-    gitApi.gitCommitDetail(a.root, a.hash)
-  )
-  ipcMain.handle(IPC.gitFileAt, async (_e, a: { root: string; hash: string; path: string }) =>
-    gitApi.gitFileAt(a.root, a.hash, a.path)
-  )
-  ipcMain.handle(IPC.gitWorkingFile, async (_e, a: { root: string; path: string }) =>
-    gitApi.gitWorkingFile(a.root, a.path)
-  )
-  ipcMain.handle(IPC.gitCommit, async (_e, a: { root: string; subject: string; body: string }) =>
-    gitApi.gitCommit(a.root, a.subject, a.body)
-  )
-  ipcMain.handle(IPC.gitPush, async (_e, root: string) => gitApi.gitPush(root))
-  ipcMain.handle(IPC.gitPull, async (_e, root: string) => gitApi.gitPull(root))
-
   // 코드 파일 변화(에이전트 편집·저장·탐색기 작업)가 서버에 통지되면 모든 창의 뷰어에
   // 브로드캐스트 — 열려 있는 문서의 토큰 폴링을 깨워 재프라임 뒤의 색을 받아 가게 한다
   // (세션 창도 FileModal을 띄우므로 mainWindow 한정 send가 아니라 전 창에 보낸다)
@@ -1310,161 +1283,32 @@ function registerIpc(): void {
       .catch((e) => ({ ok: false as const, error: (e as Error).message || '해제하지 못했어요' }))
   )
 
-  // window controls resolve to the CALLING window — the main window keeps its custom
-  // maximize scheme; session windows (native frame) use native maximize/restore.
+  // window controls resolve to the CALLING window — 전 창이 네이티브 최대화/복원.
+  // (드래그는 렌더러의 -webkit-app-region:drag, 리사이즈는 프레임리스 thickFrame이 담당)
   ipcMain.handle(IPC.winMinimize, async (_e) => (BrowserWindow.fromWebContents(_e.sender) ?? mainWindow)?.minimize())
   ipcMain.handle(IPC.winMaximizeToggle, async (_e) => {
-    const w = BrowserWindow.fromWebContents(_e.sender)
-    if (!w || w === mainWindow) {
-      setMaximized(!customMaximized)
-      return customMaximized
-    }
+    const w = BrowserWindow.fromWebContents(_e.sender) ?? mainWindow
+    if (!w) return false
     if (w.isMaximized()) w.unmaximize()
     else w.maximize()
     return w.isMaximized()
   })
   ipcMain.handle(IPC.winClose, async (_e) => (BrowserWindow.fromWebContents(_e.sender) ?? mainWindow)?.close())
   ipcMain.handle(IPC.winIsMaximized, async (_e) => {
-    const w = BrowserWindow.fromWebContents(_e.sender)
-    return !w || w === mainWindow ? customMaximized : w.isMaximized()
+    const w = BrowserWindow.fromWebContents(_e.sender) ?? mainWindow
+    return w ? w.isMaximized() : false
   })
-  ipcMain.handle(IPC.winGetBounds, async () => mainWindow?.getBounds() ?? { x: 0, y: 0, width: 0, height: 0 })
-  ipcMain.handle(IPC.winSetBounds, async (_e, b: WindowBounds) => {
-    if (mainWindow && !customMaximized) {
-      mainWindow.setBounds(b)
-      logicalSize = { width: b.width, height: b.height }
-    }
-  })
-
-  // Manual title-bar drag. The frameless+transparent window can't use
-  // -webkit-app-region:drag and still receive double-click, so we move the window
-  // from here: on drag-start, poll the cursor and follow it by the grab offset.
-  ipcMain.handle(IPC.winDragStart, async () => {
-    if (!mainWindow) return
-    stopResize() // a drag and a resize must never run at the same time
-    const cursor = screen.getCursorScreenPoint()
-    if (customMaximized) {
-      // 윈도우 표준 동작: 최대화된 창의 타이틀바를 끌면 복원되면서 그대로 들려 간다.
-      // 커서의 가로 비율을 유지해 복원 창에서도 잡았던 지점이 손에 남게 한다.
-      const wa = workAreaBounds()
-      const ratio = Math.min(1, Math.max(0, (cursor.x - wa.x) / wa.width))
-      setMaximized(false) // restoreBounds 크기로 복원 + 상태 브로드캐스트
-      const rb = mainWindow.getBounds()
-      mainWindow.setBounds({
-        x: Math.round(cursor.x - rb.width * ratio),
-        y: Math.max(wa.y, cursor.y - 18), // 타이틀바를 쥔 손가락 아래로
-        width: rb.width,
-        height: rb.height
-      })
-      logicalSize = { width: rb.width, height: rb.height }
-    }
-    const b0 = mainWindow.getBounds()
-    const offX = cursor.x - b0.x
-    const offY = cursor.y - b0.y
-    // Lock the *intended* size, not getBounds(): on a transparent window under
-    // fractional DPI scaling getBounds() reads ~1px larger than what we set, so
-    // re-deriving the size from it each drag grew the window ~1px per gesture.
-    if (!logicalSize) logicalSize = { width: b0.width, height: b0.height }
-    const width = logicalSize.width
-    const height = logicalSize.height
-    stopDrag()
-    pendingSnapZone = null
-    let lastX = b0.x
-    let lastY = b0.y
-    dragTimer = setInterval(() => {
-      // 타이머 콜백 안의 예외는 어디에도 잡히지 않고 uncaughtException이 된다 — 제스처
-      // 중 창이 닫히는 경계 타이밍(setBounds/미리보기 생성)도 앱을 못 죽이게 감싼다
-      try {
-        if (!mainWindow || mainWindow.isDestroyed()) return stopDrag()
-        const p = screen.getCursorScreenPoint()
-        const x = p.x - offX
-        const y = p.y - offY
-        // skip when the cursor hasn't moved: nudging a still window every 8ms would still
-        // inflate it (see below), and there's nothing to move anyway
-        if (x === lastX && y === lastY) return
-        lastX = x
-        lastY = y
-        // setBounds with the *locked* grab-time size — NOT setPosition. On a transparent
-        // window with fractional display scaling, setPosition lets Chromium recompute the
-        // size from physical pixels and round it up ~1px every call, so a held/long drag
-        // grew the window without bound. Re-asserting the exact size each frame pins it.
-        mainWindow.setBounds({ x, y, width, height })
-        // 커서가 가장자리/모서리에 닿으면 스냅 고스트를 그 자리에 띄운다 (놓으면 거기로 스냅)
-        const disp = screen.getDisplayNearestPoint(p)
-        const zone = snapZoneFor(p, disp.bounds)
-        if (zone !== pendingSnapZone) {
-          pendingSnapZone = zone
-          if (zone) showSnapPreview(zone, disp.workArea)
-          else hideSnapPreview()
-        }
-      } catch {
-        stopDrag()
-      }
-    }, 8)
-  })
-  ipcMain.handle(IPC.winDragEnd, async () => {
-    stopDrag() // 고스트도 내려간다
-    if (pendingSnapZone) {
-      const z = pendingSnapZone
-      pendingSnapZone = null
-      applySnap(z)
-    }
-  })
-
-  // Manual edge resize. Like the drag, we sample the real OS cursor here instead of
-  // trusting renderer pointer events: a renderer-driven resize on the top/left edges
-  // moves the window origin, which fires fresh pointer events under the captured
-  // handle and snowballs the window larger every frame. Anchoring the opposite edges
-  // to the grab-time bounds and following the live cursor makes a still hold a no-op.
-  const MIN_W = 940
-  const MIN_H = 600
-  ipcMain.handle(IPC.winResizeStart, async (_e, edge: ResizeEdge) => {
-    if (!mainWindow || customMaximized) return
-    stopDrag() // a drag and a resize must never run at the same time
-    const b0 = mainWindow.getBounds()
-    const c0 = screen.getCursorScreenPoint()
-    const left0 = b0.x
-    const top0 = b0.y
-    const right0 = b0.x + b0.width
-    const bottom0 = b0.y + b0.height
-    stopResize()
-    let prev = ''
-    resizeTimer = setInterval(() => {
-      // 드래그 타이머와 같은 이유의 백스톱 — 타이머 안 예외는 곧 uncaughtException
-      try {
-        if (!mainWindow || mainWindow.isDestroyed()) return stopResize()
-        const p = screen.getCursorScreenPoint()
-        const dx = p.x - c0.x
-        const dy = p.y - c0.y
-        let left = left0
-        let top = top0
-        let right = right0
-        let bottom = bottom0
-        // each grabbed edge follows the cursor; the opposite edge stays pinned to its
-        // grab-time position, so width/height clamp without ever shifting the anchor
-        if (edge.includes('e')) right = Math.max(left0 + MIN_W, right0 + dx)
-        if (edge.includes('w')) left = Math.min(right0 - MIN_W, left0 + dx)
-        if (edge.includes('s')) bottom = Math.max(top0 + MIN_H, bottom0 + dy)
-        if (edge.includes('n')) top = Math.min(bottom0 - MIN_H, top0 + dy)
-        const next = { x: Math.round(left), y: Math.round(top), width: Math.round(right - left), height: Math.round(bottom - top) }
-        // skip when the target is unchanged (still cursor) — re-setting identical bounds
-        // can still drift ±1px under fractional DPI rounding
-        const key = `${next.x},${next.y},${next.width},${next.height}`
-        if (key === prev) return
-        prev = key
-        mainWindow.setBounds(next)
-        // remember the intended size so a later drag re-asserts this, not the
-        // inflated getBounds(), and the window doesn't drift after a resize
-        logicalSize = { width: next.width, height: next.height }
-      } catch {
-        stopResize()
-      }
-    }, 8)
-  })
-  ipcMain.handle(IPC.winResizeEnd, async () => stopResize())
 
   // ── engine (Claude Code SDK) version management ──
   ipcMain.handle(IPC.engineListAvailable, async () => engineVersions.listAvailable())
+  // Codex CLI 모델 목록 — 실패(미설치 등)는 빈 배열로 강등해 picker가 정적 폴백을 쓴다
+  ipcMain.handle(IPC.codexModels, async () => {
+    try {
+      return await codexModels()
+    } catch {
+      return []
+    }
+  })
   ipcMain.handle(IPC.engineState, async () => engineVersions.getState())
   ipcMain.handle(IPC.engineInstall, async (_e, version: string) =>
     engineVersions.install(version, (p) => send(IPC.engineInstallProgress, p))
@@ -1472,6 +1316,15 @@ function registerIpc(): void {
   ipcMain.handle(IPC.engineUninstall, async (_e, version: string) => engineVersions.uninstall(version))
   ipcMain.handle(IPC.engineSetActive, async (_e, version: string | null) => engineVersions.setActive(version))
   ipcMain.handle(IPC.engineCleanup, async () => engineVersions.cleanupOld())
+  // Codex CLI 버전 관리 — Claude Code와 동일한 문법 (전역 codex는 폴백일 뿐, 불가침)
+  ipcMain.handle(IPC.codexEngineListAvailable, async () => codexVersions.codexListAvailable())
+  ipcMain.handle(IPC.codexEngineState, async () => codexVersions.codexEngineState())
+  ipcMain.handle(IPC.codexEngineInstall, async (_e, version: string) =>
+    codexVersions.codexInstall(version, (p) => send(IPC.codexEngineInstallProgress, p))
+  )
+  ipcMain.handle(IPC.codexEngineUninstall, async (_e, version: string) => codexVersions.codexUninstall(version))
+  ipcMain.handle(IPC.codexEngineSetActive, async (_e, version: string | null) => codexVersions.codexSetActive(version))
+  ipcMain.handle(IPC.codexEngineCleanup, async () => codexVersions.codexCleanupOld())
 
   // ── app meta + auto-update ──
   ipcMain.handle(IPC.appGetVersion, async () => app.getVersion())
@@ -1504,7 +1357,7 @@ if (!gotSingleInstanceLock) {
 }
 
 function bootstrap(): void {
-  app.whenReady().then(() => {
+  app.whenReady().then(async () => {
   // a folder passed on the command line (context-menu launch) is applied once the UI asks
   pendingOpenDir = openedDirFromArgv(process.argv)
   // carry over an engine installed under the old (pre-rebrand) home folder
@@ -1556,6 +1409,11 @@ function bootstrap(): void {
     }
   })
   createSplash()
+  // 계정 v3 1회 마이그레이션 — 세션 기록을 앱 소유 shared로 복사 + 전역 로그인 가져오기.
+  // 창 생성 전에 await — 복사가 끝나기 전 엔진이 실행돼 세션이 갈라지는 레이스 방지
+  // (그동안 스플래시가 떠 있다). Codex(OpenAI)도 같은 문법으로 이관.
+  await migrateAccounts()
+  await migrateCodexAccounts()
   // Production CSP. Skipped in dev because Vite's HMR needs inline/eval + ws.
   if (!process.env['ELECTRON_RENDERER_URL']) {
     session.defaultSession.webRequest.onHeadersReceived((details, cb) => {
@@ -1586,6 +1444,113 @@ function bootstrap(): void {
     })
   }
   createWindow()
+  // ── 엔진 CLI 자동 업데이트 (설정 → Engine → 공통 토글, 기본 켬) ─────────────
+  // 부팅 게이트: "새 버전이 있어요" 물어보는 창 대신, 부팅 직후 — 아직 어떤 세션도
+  // 돌기 전이라 옛 버전 삭제가 실행 중 CLI(또는 상시 codex app-server)를 물 수 없는
+  // 유일한 시점 — 두 엔진을 설치→활성화→이전 버전 정리까지 끝내고, 진행 상황을
+  // 카드(EngineUpdateStatus REPLACE)로 렌더러에 흘린다. 할 일이 없으면 카드도 없다.
+  // 6시간 주기는 설치+활성화만(다음 턴부터 새 버전) — 삭제는 하지 않는다: 진행 중
+  // 세션의 CLI가 옛 폴더에서 돌고 있으면 Windows 파일 잠금으로 반쯤 지워지다 실패하고
+  // 최악은 그 턴이 깨진다. 남은 옛 버전은 다음 부팅 게이트가 정리한다.
+  const updateTargets = [
+    {
+      id: 'claude' as const,
+      label: 'Claude Code',
+      list: () => engineVersions.listAvailable(),
+      state: async () => engineVersions.getState(),
+      install: (v: string) => engineVersions.install(v, () => {}),
+      setActive: (v: string) => engineVersions.setActive(v),
+      cleanup: () => engineVersions.cleanupOld()
+    },
+    {
+      id: 'codex' as const,
+      label: 'Codex CLI',
+      list: () => codexVersions.codexListAvailable(),
+      state: async () => codexVersions.codexEngineState(),
+      install: (v: string) => codexVersions.codexInstall(v, () => {}),
+      setActive: (v: string) => codexVersions.codexSetActive(v),
+      cleanup: () => codexVersions.codexCleanupOld()
+    }
+  ]
+  const runBootEngineUpdate = async (): Promise<void> => {
+    if (!engineVersions.getAutoUpdate()) return
+    // 할 일 조사 — 조회 실패(오프라인 등) 엔진은 조용히 건너뛴다 (다음 부팅에 재시도)
+    const work: { t: (typeof updateTargets)[number]; item: EngineUpdateItem }[] = []
+    for (const t of updateTargets) {
+      try {
+        const { latest } = await t.list()
+        if (!latest) continue
+        const st = await t.state()
+        if (st.active === latest) continue
+        work.push({ t, item: { id: t.id, label: t.label, from: st.active, to: latest, status: 'pending' } })
+      } catch {
+        /* skip */
+      }
+    }
+    if (!work.length) {
+      // 업데이트 없음 — 지난 6시간 주기(사일런트 설치)가 남긴 옛 버전만 조용히 정리
+      for (const t of updateTargets) {
+        try {
+          if ((await t.state()).installed.length > 1) await t.cleanup()
+        } catch {
+          /* 다음 부팅에 재시도 */
+        }
+      }
+      return
+    }
+    engUpdate = { active: true, items: work.map((w) => w.item), cleanup: 'pending', freedBytes: 0, done: false }
+    pushEngUpdate()
+    for (const { t, item } of work) {
+      item.status = 'installing'
+      pushEngUpdate()
+      try {
+        if (!(await t.state()).installed.includes(item.to)) {
+          const r = await t.install(item.to)
+          if (!r.ok) throw new Error(r.error ?? '설치 실패')
+        }
+        t.setActive(item.to)
+        item.status = 'done'
+      } catch (e) {
+        item.status = 'error'
+        item.error = (e as Error)?.message ?? String(e)
+      }
+      pushEngUpdate()
+    }
+    engUpdate.cleanup = 'running'
+    pushEngUpdate()
+    for (const t of updateTargets) {
+      try {
+        // 실패한 설치본은 listInstalled에 안 잡히므로(마커 없는 반쪽 폴더) 안전 —
+        // 최신 하나만 남기고 삭제, 활성 포인터는 cleanup이 스스로 보정한다
+        if ((await t.state()).installed.length > 1) engUpdate.freedBytes += (await t.cleanup()).freedBytes
+      } catch {
+        /* 다음 부팅에 재시도 */
+      }
+    }
+    engUpdate.cleanup = 'done'
+    engUpdate.done = true
+    pushEngUpdate()
+  }
+  const silentEngineUpdate = async (): Promise<void> => {
+    if (!engineVersions.getAutoUpdate()) return
+    for (const t of updateTargets) {
+      try {
+        const { latest } = await t.list()
+        if (!latest) continue
+        const st = await t.state()
+        if (st.active === latest) continue
+        if (!st.installed.includes(latest)) {
+          const r = await t.install(latest)
+          if (!r.ok) continue
+        }
+        t.setActive(latest)
+      } catch {
+        /* 조용히 — 다음 주기에 재시도 */
+      }
+    }
+  }
+  setTimeout(() => void runBootEngineUpdate(), 1500) // 렌더러가 뜬 뒤 카드가 보이게 살짝 늦춘다
+  setInterval(() => void silentEngineUpdate(), 6 * 60 * 60 * 1000)
   // background auto-update against GitHub Releases (no-op in dev). Status is streamed
   // to the renderer so the UI can surface an "update available / ready" banner.
   initAutoUpdater((e) => send(IPC.updateEvent, e))
@@ -1596,11 +1561,23 @@ function bootstrap(): void {
   })
 }
 
+// 남은 codex app-server 프로세스까지 정리
+function disposeEngines(): void {
+  engine.dispose()
+  talkEngine.dispose()
+  for (const [, e] of maEngines) e.dispose()
+  for (const [, e] of sessionEngines) e.dispose()
+  codexList?.dispose()
+}
+
 app.on('window-all-closed', () => {
   lspManager.disposeAll()
+  disposeEngines()
   if (process.platform !== 'darwin') app.quit()
 })
 
 app.on('before-quit', () => {
+  appQuitting = true // 세션 창 닫기 가로채기 해제 — 저장 후 정리 흐름이 quit을 막지 않게
   lspManager.disposeAll()
+  disposeEngines()
 })

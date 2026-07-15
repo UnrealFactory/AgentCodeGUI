@@ -1,5 +1,5 @@
 import { memo, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
-import type { AppUser, AgentStatus, UsageInfo, MultiRunRequest, EngineEvent, SkillInfo } from '@shared/protocol'
+import type { AgentStatus, BgTaskRequest, EngineId, UsageInfo, MultiRunRequest, EngineEvent } from '@shared/protocol'
 import {
   useAgentSession,
   initialSessionState,
@@ -8,58 +8,35 @@ import {
   sameCwd,
   commandOf,
   commandTitleOf,
+  liveMsgIndex,
   type SessionState
 } from '../store/session'
 import {
+  Composer,
   MessageView,
   WorkingIndicator,
-  RunPickers,
+  WorkBar,
   PermissionModal,
   QuestionModal,
   SelectionToolbar,
   ChatFind,
-  windowTokensFor,
-  fmtTok,
-  fmtWindow,
-  fmtUsd,
-  fmtCredit,
-  extraCreditVisible,
-  SLASH_COMMANDS,
+  FolderPop,
+  hasRunningBash,
   pickerModelOf,
   type PickerState,
   type ScheduledMsg
 } from './Chat'
-import { Sidebar, type ChatSummary, type WorkspaceMode } from './Sidebar'
+import type { ChatSummary } from './Sidebar'
+import { WinControls } from './TitleBar'
 import { FolderSwitchDialog } from './FolderSwitchDialog'
-import { PromptModal } from './PromptModal'
-import { PanelFolderMenu } from './PanelFolderMenu'
 import { FileModal } from './FileModal'
-import { imageSrc, imageName, filesToAttachmentPaths, isImagePath, isAttachablePath } from '../lib/images'
-import { mentionAtCaret, mentionEntries, extractMentions, type MentionEntry } from '../lib/mentions'
-import { FileBadge } from './fileType'
-import { mergeRefs } from './zoom'
+import { pushRecentDir } from '../lib/recentDirs'
+import { SubAgentModal } from './AgentPanel'
+import { ImageViewer } from './ImageViewer'
+import { extractMentions } from '../lib/mentions'
+import { mergeRefs, useZoom, ZoomBadge } from './zoom'
 import { MouseGestureLayer, clearGesture, scrollGestures, sessionWindowGesture } from './mouseGesture'
-import {
-  IconGrid,
-  IconSend,
-  IconClock,
-  IconClose,
-  IconExpand,
-  IconFolder,
-  IconChevDown,
-  IconChevRight,
-  IconCode,
-  IconPaperclip,
-  IconX2,
-  IconBook,
-  IconSearch,
-  IconSpark,
-  IconDollar
-} from './icons'
-
-// the "/" palette in a panel: the same built-in commands as single mode, minus /ask
-// (a single-mode side conversation that has no place inside a panel)
-const PANEL_SLASH_COMMANDS = SLASH_COMMANDS.filter((c) => c.name !== 'ask')
+import { IconFolder, IconChevDown, IconMascot } from './icons'
 
 // A multi-agent SESSION is a group of N panels that work together. The recent-tasks
 // list shows one entry per session (not per panel); "새 작업" opens a fresh session and
@@ -70,8 +47,7 @@ const PANEL_SLASH_COMMANDS = SLASH_COMMANDS.filter((c) => c.name !== 'ask')
 const SLOT_COUNT = 6
 const SLOTS = [0, 1, 2, 3, 4, 5]
 
-// grid columns per visible-panel count (matches the reference layouts: 4 → 2×2, 6 → 3×2)
-const COLS: Record<number, number> = { 2: 2, 3: 3, 4: 2, 5: 3, 6: 3 }
+// 그리드 배치는 .ma-grid.nN 클래스가 결정 (PoC: 2·3=한 줄, 4=2×2, 5=3+2 스팬, 6=3×2)
 const COUNT_OPTIONS = [2, 3, 4, 5, 6]
 
 const STATUS_META: Record<AgentStatus, { label: string; cls: string }> = {
@@ -96,8 +72,12 @@ function sanitizePanelPicker(p?: Partial<PickerState> | null): PickerState {
     model: p?.model && PICKER_MODELS.includes(p.model) ? p.model : DEFAULT_PICKER.model,
     effort: p?.effort && PICKER_EFFORTS.includes(p.effort) ? p.effort : DEFAULT_PICKER.effort,
     mode: p?.mode && PICKER_MODES.includes(p.mode) ? p.mode : DEFAULT_PICKER.mode,
+    // 실행 엔진 + Codex 모델 — 버리면 GPT 패널이 복원 때마다 Claude로 폴백한다
+    engine: p?.engine === 'codex' ? 'codex' : undefined,
+    codexModel: typeof p?.codexModel === 'string' && p.codexModel ? p.codexModel : undefined,
     // 실행 계정(이메일) — 형태만 확인 (등록 목록 대조는 picker·엔진이 담당)
-    account: typeof p?.account === 'string' && p.account ? p.account : undefined
+    account: typeof p?.account === 'string' && p.account ? p.account : undefined,
+    codexAccount: typeof p?.codexAccount === 'string' && p.codexAccount ? p.codexAccount : undefined
   }
 }
 
@@ -113,7 +93,6 @@ interface PanelMeta {
   input: string
   images: string[] // attached image paths, sent with the next message
   queue: ScheduledMsg[] // messages queued while this panel is busy — auto-sent in order when its run ends
-  sysPrompt?: string // 패널별 프롬프트 — 매 실행마다 시스템 프롬프트에 append (없으면 미설정)
 }
 // what we persist for one panel (its meta + the frozen session thread)
 interface PersistedPanel {
@@ -123,7 +102,6 @@ interface PersistedPanel {
   picker: PickerState
   api?: boolean // 없으면(예전 저장본) 복원 시점의 전역 과금 모드로 시드
   snapshot?: SessionState
-  sysPrompt?: string
 }
 // a whole multi-agent session: a title (for the recent list) + its panel layout
 interface PersistedSession {
@@ -132,6 +110,7 @@ interface PersistedSession {
   custom: boolean
   count: number
   panels: PersistedPanel[] // length SLOT_COUNT
+  updatedAt?: number // 마지막 활동(실행 시작) 시각 — 사이드바 상대 시간 표시용
 }
 interface MultiPersist {
   version: number
@@ -195,488 +174,21 @@ function subFor(channel: string) {
   return (cb: (e: EngineEvent) => void): (() => void) => window.api.multi?.onEvent?.(channel, cb) ?? (() => {})
 }
 
-// ── a panel's composer — textarea + "/" command palette + image attachments ───────
-function PanelComposer({
-  value,
-  history,
-  images,
-  busy,
-  cwd,
-  onChange,
-  onAddImages,
-  onRemoveImage,
-  onSend,
-  onSchedule,
-  onStop,
-  onFocus
-}: {
-  value: string
-  history: string[] // 이 패널에서 보낸 메시지(오래된→최신) — ↑/↓로 다시 불러오기
-  images: string[]
-  busy: boolean
-  cwd: string // scopes which skills the "/" palette loads
-  onChange: (text: string) => void
-  onAddImages: (paths: string[]) => void
-  onRemoveImage: (i: number) => void
-  onSend: () => void
-  onSchedule: () => void // queue the current draft while the panel is busy
-  onStop: () => void
-  onFocus: () => void
-}) {
-  const taRef = useRef<HTMLTextAreaElement>(null)
-  const slashRef = useRef<HTMLDivElement>(null)
-  const skillsCwd = useRef<string | null>(null)
-  const [skills, setSkills] = useState<SkillInfo[]>([])
-  const [slashIdx, setSlashIdx] = useState(0)
-  const [slashDismissed, setSlashDismissed] = useState(false)
-  const dragDepth = useRef(0)
-  const [dragOver, setDragOver] = useState(false)
-  // "@" file mention palette
-  const [caret, setCaret] = useState(0)
-  const [files, setFiles] = useState<string[]>([])
-  const [mentionIdx, setMentionIdx] = useState(0)
-  const [mentionDismissed, setMentionDismissed] = useState(false)
-  const mentionRef = useRef<HTMLDivElement>(null)
-  const filesCwd = useRef<string | null>(null)
-
-  const grow = (el: HTMLTextAreaElement | null): void => {
-    if (!el) return
-    el.style.height = 'auto'
-    el.style.height = Math.min(el.scrollHeight, 132) + 'px'
-  }
-
-  // ── 보낸 메시지 히스토리 (셸처럼 ↑/↓로 복구) ────────────────────
-  // histIdx: 현재 history 위치(null = 직접 작성 중인 초안). histDraft: 탐색을
-  // 시작할 때 잠시 보관해 둔 초안 — ↓로 끝까지 내려오면 그대로 되돌린다.
-  const [histIdx, setHistIdx] = useState<number | null>(null)
-  const histDraft = useRef('')
-  const applyHistory = (text: string): void => {
-    onChange(text)
-    requestAnimationFrame(() => {
-      const el = taRef.current
-      if (!el) return
-      el.focus()
-      const n = el.value.length
-      el.setSelectionRange(n, n)
-      setCaret(n)
-      grow(el)
-    })
-  }
-
-  // the leading "/token" being typed (no space yet, not mid-run), else null
-  const slashQuery = !busy && value.startsWith('/') && !/\s/.test(value) ? value.slice(1).toLowerCase() : null
-  useEffect(() => {
-    if (slashQuery === null || skillsCwd.current === cwd) return
-    skillsCwd.current = cwd
-    window.api.skill
-      .list(cwd)
-      .then(setSkills)
-      .catch(() => setSkills([]))
-  }, [slashQuery, cwd])
-  useEffect(() => {
-    setSlashIdx(0)
-    if (slashQuery === null) setSlashDismissed(false)
-  }, [slashQuery])
-
-  const cmdHits = slashQuery === null ? [] : PANEL_SLASH_COMMANDS.filter((c) => c.name.includes(slashQuery))
-  const skillHits =
-    slashQuery === null ? [] : skills.filter((s) => s.enabled && s.name.toLowerCase().includes(slashQuery))
-  const slashNames = [...cmdHits.map((c) => c.name), ...skillHits.map((s) => s.name)]
-  const slashOpen = slashQuery !== null && !slashDismissed && slashNames.length > 0
-  const activeIdx = Math.min(slashIdx, slashNames.length - 1)
-  useEffect(() => {
-    if (!slashOpen) return
-    slashRef.current?.querySelector(`[data-i="${activeIdx}"]`)?.scrollIntoView({ block: 'nearest' })
-  }, [activeIdx, slashOpen])
-
-  const pickSlash = (name: string): void => {
-    onChange('/' + name + ' ')
-    requestAnimationFrame(() => {
-      const el = taRef.current
-      if (!el) return
-      el.focus()
-      const n = el.value.length
-      el.setSelectionRange(n, n)
-      grow(el)
-    })
-  }
-
-  // the "@token" the caret sits in — suppressed while busy or when "/" owns the menu
-  const mentionTok = !busy && slashQuery === null ? mentionAtCaret(value, caret) : null
-  const mentionActive = mentionTok !== null
-  useEffect(() => {
-    if (!mentionActive || filesCwd.current === cwd) return
-    filesCwd.current = cwd
-    window.api
-      .listFiles(cwd)
-      .then(setFiles)
-      .catch(() => setFiles([]))
-  }, [mentionActive, cwd])
-  useEffect(() => {
-    setMentionIdx(0)
-    if (!mentionActive) setMentionDismissed(false)
-  }, [mentionTok?.query, mentionActive])
-  const mention = mentionTok ? mentionEntries(files, mentionTok.query) : null
-  const mentionHits = mention?.entries ?? []
-  const mentionOpen = mentionActive && !mentionDismissed && mentionHits.length > 0
-  const activeMentionIdx = Math.min(mentionIdx, mentionHits.length - 1)
-  useEffect(() => {
-    if (!mentionOpen) return
-    mentionRef.current?.querySelector(`[data-i="${activeMentionIdx}"]`)?.scrollIntoView({ block: 'nearest' })
-  }, [activeMentionIdx, mentionOpen])
-
-  // picking a folder drills in (insert "dir/", palette re-opens deeper); a file commits it
-  const pickMention = (entry: MentionEntry): void => {
-    const tok = mentionAtCaret(value, caret)
-    if (!tok) return
-    const before = value.slice(0, tok.start)
-    const after = value.slice(tok.end)
-    const insert = entry.kind === 'dir' ? '@' + entry.full + '/' : '@' + entry.full + ' '
-    const pos = (before + insert).length
-    onChange(before + insert + after)
-    setCaret(pos)
-    requestAnimationFrame(() => {
-      const el = taRef.current
-      if (!el) return
-      el.focus()
-      el.setSelectionRange(pos, pos)
-      grow(el)
-    })
-  }
-
-  const handleKey = (e: React.KeyboardEvent<HTMLTextAreaElement>): void => {
-    if (mentionOpen) {
-      if (e.key === 'ArrowDown') {
-        e.preventDefault()
-        setMentionIdx((i) => (Math.min(i, mentionHits.length - 1) + 1) % mentionHits.length)
-        return
-      }
-      if (e.key === 'ArrowUp') {
-        e.preventDefault()
-        setMentionIdx((i) => (Math.min(i, mentionHits.length - 1) - 1 + mentionHits.length) % mentionHits.length)
-        return
-      }
-      if (e.key === 'Enter' || e.key === 'Tab') {
-        e.preventDefault()
-        pickMention(mentionHits[activeMentionIdx])
-        return
-      }
-      if (e.key === 'Escape') {
-        e.preventDefault()
-        setMentionDismissed(true)
-        return
-      }
-    }
-    if (slashOpen) {
-      if (e.key === 'ArrowDown') {
-        e.preventDefault()
-        setSlashIdx((i) => (Math.min(i, slashNames.length - 1) + 1) % slashNames.length)
-        return
-      }
-      if (e.key === 'ArrowUp') {
-        e.preventDefault()
-        setSlashIdx((i) => (Math.min(i, slashNames.length - 1) - 1 + slashNames.length) % slashNames.length)
-        return
-      }
-      if (e.key === 'Enter' || e.key === 'Tab') {
-        e.preventDefault()
-        pickSlash(slashNames[activeIdx])
-        return
-      }
-      if (e.key === 'Escape') {
-        e.preventDefault()
-        setSlashDismissed(true)
-        return
-      }
-    }
-    // 팔레트가 닫혀 있을 때만: ↑/↓로 이 패널에서 보낸 메시지를 셸처럼 다시 불러온다.
-    // 커서가 첫 줄/마지막 줄 끝에 있을 때만 가로채서 여러 줄 편집의 줄 이동은 방해하지 않는다.
-    if (history.length > 0 && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
-      const pos = e.currentTarget.selectionStart ?? value.length
-      const onFirstLine = !value.slice(0, pos).includes('\n')
-      const onLastLine = !value.slice(pos).includes('\n')
-      if (e.key === 'ArrowUp' && onFirstLine) {
-        e.preventDefault()
-        if (histIdx === null) histDraft.current = value // 작성 중이던 초안을 잠시 보관
-        const next = histIdx === null ? history.length - 1 : Math.max(0, histIdx - 1)
-        setHistIdx(next)
-        applyHistory(history[next])
-        return
-      }
-      if (e.key === 'ArrowDown' && onLastLine && histIdx !== null) {
-        e.preventDefault()
-        if (histIdx >= history.length - 1) {
-          setHistIdx(null)
-          applyHistory(histDraft.current) // 최신보다 더 내려오면 보관해 둔 초안으로 복귀
-        } else {
-          const next = histIdx + 1
-          setHistIdx(next)
-          applyHistory(history[next])
-        }
-        return
-      }
-    }
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      if (!value.trim() && images.length === 0) return
-      setHistIdx(null) // 보내고 나면 히스토리 위치를 초기화
-      // while the panel is busy, Enter queues the draft instead of sending it
-      if (busy) onSchedule()
-      else onSend()
-      requestAnimationFrame(() => grow(taRef.current))
-    }
-  }
-
-  const pickAttachments = async (): Promise<void> => {
-    const paths = await window.api.pickAttachments()
-    if (paths.length) onAddImages(paths)
-  }
-  const onPaste = async (e: React.ClipboardEvent<HTMLTextAreaElement>): Promise<void> => {
-    // a copied FILE (screenshot, or a txt/md/… from the OS) becomes an attachment;
-    // plain text pastes have no clipboard files and stay ordinary text
-    const files = Array.from(e.clipboardData.files || []).filter(
-      (f) => f.type.startsWith('image/') || isAttachablePath(f.name)
-    )
-    if (!files.length) return
-    e.preventDefault()
-    const paths = await filesToAttachmentPaths(files)
-    if (paths.length) onAddImages(paths)
-  }
-  const dragHasFile = (e: React.DragEvent): boolean =>
-    Array.from(e.dataTransfer.items || []).some((it) => it.kind === 'file')
-  const onDrop = async (e: React.DragEvent): Promise<void> => {
-    dragDepth.current = 0
-    setDragOver(false)
-    if (!e.dataTransfer.files?.length) return
-    e.preventDefault()
-    const paths = await filesToAttachmentPaths(e.dataTransfer.files)
-    if (paths.length) onAddImages(paths)
-  }
-
-  return (
-    <div
-      className={'ma-p-composer' + (busy ? ' busy' : '') + (dragOver ? ' drag' : '')}
-      onDragEnter={(e) => {
-        if (!dragHasFile(e)) return
-        dragDepth.current += 1
-        setDragOver(true)
-      }}
-      onDragOver={(e) => {
-        if (!dragHasFile(e)) return
-        e.preventDefault()
-        e.dataTransfer.dropEffect = 'copy'
-      }}
-      onDragLeave={() => {
-        dragDepth.current = Math.max(0, dragDepth.current - 1)
-        if (dragDepth.current === 0) setDragOver(false)
-      }}
-      onDrop={onDrop}
-    >
-      {dragOver && (
-        <div className="drop-hint">
-          <IconPaperclip size={22} />
-          <span>파일을 여기에 놓으세요</span>
-        </div>
-      )}
-      {slashOpen && (
-        <div className="slash-menu scroll" ref={slashRef} role="listbox">
-          {cmdHits.length > 0 && <div className="slash-sec">명령어</div>}
-          {cmdHits.map((c, i) => {
-            const Ic = c.icon
-            return (
-              <button
-                key={'cmd:' + c.name}
-                data-i={i}
-                role="option"
-                aria-selected={i === activeIdx}
-                className={'slash-opt' + (i === activeIdx ? ' on' : '')}
-                onMouseEnter={() => setSlashIdx(i)}
-                onMouseDown={(e) => {
-                  e.preventDefault()
-                  pickSlash(c.name)
-                }}
-              >
-                <span className="slash-ic">
-                  <Ic size={15} />
-                </span>
-                <span className="slash-name">{c.name}</span>
-                <span className="slash-desc">{c.desc}</span>
-              </button>
-            )
-          })}
-          {skillHits.length > 0 && <div className="slash-sec">스킬</div>}
-          {skillHits.map((s, i) => {
-            const gi = cmdHits.length + i
-            return (
-              <button
-                key={'skill:' + s.scope + ':' + s.name}
-                data-i={gi}
-                role="option"
-                aria-selected={gi === activeIdx}
-                className={'slash-opt' + (gi === activeIdx ? ' on' : '')}
-                onMouseEnter={() => setSlashIdx(gi)}
-                onMouseDown={(e) => {
-                  e.preventDefault()
-                  pickSlash(s.name)
-                }}
-              >
-                <span className="slash-ic skill">
-                  <IconBook size={15} />
-                </span>
-                <span className="slash-name">{s.name}</span>
-                <span className="slash-desc">{s.description || '설명이 없습니다.'}</span>
-              </button>
-            )
-          })}
-        </div>
-      )}
-      {mentionOpen && mention && (
-        <div className="slash-menu scroll" ref={mentionRef} role="listbox">
-          <div className="slash-sec mention-loc">
-            {mention.mode === 'search' ? (
-              <>
-                <IconSearch size={11} />
-                <span>
-                  ‘{mention.term}’ 검색{mention.base ? ' · ' + mention.base.replace(/\/$/, '') : ''}
-                </span>
-              </>
-            ) : (
-              <>
-                <IconFolder size={11} />
-                <span>
-                  {mention.base ? mention.base.replace(/\/$/, '') : '프로젝트 루트'}
-                  {mention.term ? ' · ‘' + mention.term + '’' : ''}
-                </span>
-              </>
-            )}
-          </div>
-          {mentionHits.map((e, i) => (
-            <button
-              key={e.kind + ':' + e.full}
-              data-i={i}
-              role="option"
-              aria-selected={i === activeMentionIdx}
-              className={'slash-opt' + (i === activeMentionIdx ? ' on' : '')}
-              onMouseEnter={() => setMentionIdx(i)}
-              onMouseDown={(ev) => {
-                ev.preventDefault()
-                pickMention(e)
-              }}
-            >
-              {e.kind === 'dir' ? (
-                <>
-                  <span className="slash-ic folder">
-                    <IconFolder size={16} />
-                  </span>
-                  <span className="slash-name">{e.name}</span>
-                  <span className="slash-desc into">
-                    <IconChevRight size={15} />
-                  </span>
-                </>
-              ) : (
-                <>
-                  <span className="slash-ic ft">
-                    <FileBadge path={e.full} size={22} />
-                  </span>
-                  <span className="slash-name path">{e.name}</span>
-                  {mention.mode === 'search' && (
-                    <span className="slash-desc">{e.dir ? e.dir.replace(/\/$/, '') : '루트'}</span>
-                  )}
-                </>
-              )}
-            </button>
-          ))}
-        </div>
-      )}
-      {images.length > 0 && (
-        <div className="img-tray ma-img-tray">
-          {/* 툴팁은 래퍼(.img-thumb)에 — 안쪽 .img-thumb-open은 overflow:hidden이라 ::after가 잘린다 */}
-          {images.map((p, i) => (
-            <div
-              className={'img-thumb has-tip' + (isImagePath(p) ? '' : ' doc tip-path')}
-              data-tip={isImagePath(p) ? imageName(p) : p}
-              key={p + i}
-            >
-              {isImagePath(p) ? (
-                <span className="img-thumb-open">
-                  <img src={imageSrc(p)} alt={imageName(p)} draggable={false} />
-                </span>
-              ) : (
-                <span className="img-thumb-open">
-                  <FileBadge path={p} size={15} />
-                  <span className="doc-name">{imageName(p)}</span>
-                </span>
-              )}
-              <button className="img-thumb-x has-tip" onClick={() => onRemoveImage(i)} aria-label="제거" data-tip="제거">
-                <IconX2 size={11} />
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-      <div className="ma-p-composer-row">
-        <button className="ma-attach has-tip" data-tip="파일 첨부 (이미지·텍스트)" aria-label="파일 첨부" onClick={pickAttachments}>
-          <IconPaperclip size={16} />
-        </button>
-        <textarea
-          ref={taRef}
-          rows={1}
-          placeholder={busy ? '다음 메시지를 예약하세요… (작업 후 자동 전송)' : '메시지…  ( / 명령어 · @ 파일 )'}
-          value={value}
-          onChange={(e) => {
-            onChange(e.target.value)
-            setCaret(e.target.selectionStart ?? e.target.value.length)
-            grow(e.target)
-          }}
-          onSelect={(e) => setCaret(e.currentTarget.selectionStart ?? 0)}
-          onFocus={() => {
-            onFocus()
-            setSlashDismissed(false)
-            setMentionDismissed(false)
-          }}
-          onBlur={() => {
-            setSlashDismissed(true)
-            setMentionDismissed(true)
-          }}
-          onKeyDown={handleKey}
-          onPaste={onPaste}
-        />
-        {busy ? (
-          value.trim() || images.length > 0 ? (
-            <button className="ma-send schedule has-tip" data-tip="작업 후 전송 예약 (Enter)" aria-label="예약" onClick={onSchedule}>
-              <IconClock size={16} />
-            </button>
-          ) : (
-            <button className="ma-send stop has-tip" data-tip="실행 중지" aria-label="중지" onClick={onStop}>
-              <IconClose size={16} />
-            </button>
-          )
-        ) : (
-          <button
-            className="ma-send has-tip"
-            data-tip="보내기 (Enter)"
-            aria-label="보내기"
-            disabled={!value.trim() && images.length === 0}
-            onClick={onSend}
-          >
-            <IconSend size={16} />
-          </button>
-        )}
-      </div>
-    </div>
-  )
-}
-
 // ── one panel's chat (presentational; its session is owned by ActiveSession) ──────
+// 패널 안은 본채팅과 완전히 같은 문법(PoC) — .thread 스레드 + WorkBar 5칩 + 진짜
+// Composer(모델 칩·"/"·"@"·첨부·예약 포함)를 그대로 쓰고, zoom(.8)으로만 비례 축소한
+// 미니어처다. 패널 고유의 것은 헤더(번호·제목·폴더 칩·상태)와 패널 스코프 카드뿐.
 interface PanelViewProps {
   slot: number
   meta: PanelMeta
   state: SessionState
   busy: boolean
   elapsed: number
-  expanded: boolean
   focused: boolean
-  user: AppUser
+  usage: UsageInfo // WorkBar 컨텍스트 팝오버용 — 패널 계정이 혼재라 전역 계정 기준(멀티 헤더와 동일)
+  budgetUsd: number | null // 설정 → API 예산 — API 패널의 WorkBar 비용 행
+  totalSpentUsd: number // 전체 워크스페이스 API 누적 사용액
+  zoom: number // Ctrl+휠 읽기 크기(chat.zoom 공유) — 멀티에선 전 패널에 함께 적용
   onInput: (slot: number, text: string) => void
   onAddImages: (slot: number, paths: string[]) => void
   onRemoveImage: (slot: number, i: number) => void
@@ -686,16 +198,20 @@ interface PanelViewProps {
   onStop: (slot: number) => void
   onClear: (slot: number) => void // ↑↓ 제스처 — 이 패널의 대화만 백지로 (/clear)
   onPicker: (slot: number, p: PickerState) => void
-  apiReady: boolean // 키 존재 여부 (없으면 API 선택이 설정을 연다)
-  onApiMode: (slot: number, next: boolean) => void // 패널별 과금 선택
-  onPickFolder: (slot: number) => void
-  onOpenFile: (slot: number, rel: string) => void // 폴더 팝오버에서 고른 파일을 뷰어로 연다
+  apiReady: boolean // Anthropic 키 존재 여부 (없으면 API 선택이 설정을 연다)
+  apiReadyCodex: boolean // OpenAI 키 존재 여부 — Codex 패널의 과금 선택용
+  onApiMode: (slot: number, next: boolean, engine?: EngineId) => void // 패널별 과금 선택
+  onPickFolder: (slot: number) => void // 찾아보기 — OS 폴더 선택
+  onSelectFolder: (slot: number, path: string) => void // 작업 폴더 팝오버 목록에서 선택
+  onOpenFile: (slot: number, rel: string) => void // WorkBar·툴 로그의 파일 → 뷰어
+  onOpenSubagent: (slot: number, id: string) => void // WorkBar 서브에이전트 행 → 상세 카드
+  onOpenImage: (images: string[], index: number) => void // 스레드/컴포저 이미지 → 뷰어
+  onBgTask: (slot: number, req: BgTaskRequest) => void // 백그라운드 셸 중지/Ctrl+B — 이 패널 엔진으로
+  onRefreshUsage: () => void // 컨텍스트 팝오버를 열 때 사용량 강제 새로고침
   onFocusPanel: (slot: number) => void
-  onExpand: (slot: number | null) => void
   onPermission: (slot: number, behavior: 'allow' | 'allow_always' | 'deny') => void
   onAnswer: (slot: number, answers: string[][]) => void
   onDismissQuestion: (slot: number) => void
-  onOpenPrompt: (slot: number) => void // 패널별 프롬프트 설정 모달 열기
 }
 
 const PanelView = memo(function PanelView({
@@ -704,9 +220,11 @@ const PanelView = memo(function PanelView({
   state,
   busy,
   elapsed,
-  expanded,
   focused,
-  user,
+  usage,
+  budgetUsd,
+  totalSpentUsd,
+  zoom,
   onInput,
   onAddImages,
   onRemoveImage,
@@ -717,22 +235,27 @@ const PanelView = memo(function PanelView({
   onClear,
   onPicker,
   apiReady,
+  apiReadyCodex,
   onApiMode,
   onPickFolder,
+  onSelectFolder,
   onOpenFile,
+  onOpenSubagent,
+  onOpenImage,
+  onBgTask,
+  onRefreshUsage,
   onFocusPanel,
-  onExpand,
   onPermission,
   onAnswer,
   onDismissQuestion,
-  onOpenPrompt
 }: PanelViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
+  const composerRef = useRef<HTMLTextAreaElement>(null)
   // 마우스 제스처(↑/↓) 대상 — 이 패널의 스레드 엘리먼트를 state로 추적 (패널별 독립)
   const [threadEl, setThreadEl] = useState<HTMLDivElement | null>(null)
   const threadRef = useMemo(() => mergeRefs(scrollRef, setThreadEl), [])
-  // 폴더 칩에서 펼쳐지는 파일 트리 팝오버(시안 B) — 칩 사각형을 기준으로 띄운다
-  const [folderRect, setFolderRect] = useState<DOMRect | null>(null)
+  // 폴더 칩에서 펼쳐지는 작업 폴더 팝오버 — 본채팅 헤더와 같은 FolderPop(공유 최근 폴더)
+  const [folderPop, setFolderPop] = useState(false)
 
   const cwd = meta.cwd || ''
   // 폴더를 고르지 않으면 엔진이 바탕화면에서 동작한다 — 라벨로 그 기본값을 알린다
@@ -742,10 +265,9 @@ const PanelView = memo(function PanelView({
   // 실제로는 사용자를 기다리는 중이라, 그냥 작업 중인 패널과 한눈에 구분돼야 한다
   const waiting = !!(state.pendingPermission || state.pendingQuestion)
   const status = waiting ? { label: '응답 대기', cls: 'ask' } : STATUS_META[state.status]
-  const winTokens = windowTokensFor(meta.picker.model, state.result?.contextWindow ?? null)
-  const ctxTokens = state.result?.contextTokens ?? null
-  const ctxPct = ctxTokens != null && winTokens > 0 ? Math.min(100, Math.round((ctxTokens / winTokens) * 100)) : 0
   const started = state.messages.length > 0
+  // 턴을 막고 있는 포그라운드 Bash가 있을 때만 셸 팝오버에 "건너뛰기"(Ctrl+B) 노출 (본채팅과 동일)
+  const canSkipWait = useMemo(() => hasRunningBash(state.messages), [state.messages])
 
   // 이 패널에서 내가 보낸 메시지(오래된→최신) — 작성칸에서 ↑/↓로 셸처럼 다시 불러온다
   const sentHistory = useMemo(
@@ -764,16 +286,18 @@ const PanelView = memo(function PanelView({
     onInput(slot, meta.input.trim() ? meta.input + '\n\n' + sel : sel)
     onFocusPanel(slot)
     requestAnimationFrame(() => {
-      const el = document.querySelector(
-        `.ma-panel[data-slot="${slot}"] .ma-p-composer textarea`
-      ) as HTMLTextAreaElement | null
+      const el = composerRef.current
       if (!el) return
       el.focus()
       const n = el.value.length
       el.setSelectionRange(n, n)
-      el.style.height = 'auto'
-      el.style.height = Math.min(el.scrollHeight, 132) + 'px'
     })
+  }
+
+  // 첨부 파일 선택 — 진짜 Composer의 [+] 버튼이 부른다 (본채팅과 같은 OS 픽커)
+  const pickImages = async (): Promise<void> => {
+    const paths = await window.api.pickAttachments()
+    if (paths.length) onAddImages(slot, paths)
   }
 
   // pin the thread to the newest message / working line as it streams
@@ -788,101 +312,79 @@ const PanelView = memo(function PanelView({
 
   return (
     <div
-      className={'ma-panel' + (expanded ? ' expanded' : '') + (focused ? ' focused' : '')}
+      className={'ma-panel' + (focused ? ' focused' : '')}
       data-slot={slot}
       onMouseDown={() => onFocusPanel(slot)}
     >
+      {/* PoC .mph — 한 줄 헤더: [번호][제목] ─ [폴더 칩][상태 칩]. 컨텍스트·모델·과금은
+          아래 WorkBar·Composer(본채팅 문법)가 이미 말하므로 헤더는 신원과 상태만 남긴다 */}
       <div className="ma-p-head">
-        <div className="ma-p-row1">
-          <span className={'ma-p-num' + (focused ? ' on' : '')}>{slot + 1}</span>
-          <span className={'ma-p-dot ' + status.cls} />
-          <span className="ma-p-title">{meta.title || '새 작업'}</span>
-          <span className="ma-spacer" />
-          {expanded && (
-            <button className="ma-p-act has-tip" data-tip="닫기 (Esc)" aria-label="닫기" onClick={() => onExpand(null)}>
-              <IconClose size={15} />
-            </button>
-          )}
-          <span className={'ma-status ' + status.cls}>
-            {/* 응답 대기 중엔 스피너를 숨긴다 — 도는 건 에이전트가 아니라 사용자 차례 */}
-            {busy && !waiting && <span className="ma-status-spin" />}
-            <span>{status.label}</span>
-            {busy && <span className="ma-status-time">{fmtElapsed(elapsed)}</span>}
-          </span>
-        </div>
-        <div className="ma-p-row2">
+        <span className={'ma-p-num' + (focused ? ' on' : '')}>{slot + 1}</span>
+        <span className="ma-p-title">{meta.title || '새 작업'}</span>
+        <span className="ma-spacer" />
+        {/* 작업 폴더 칩 — 본채팅 헤더와 같은 FolderPop(공유 최근 폴더 + 찾아보기)이 열린다.
+            .hfold 래퍼가 팝오버 기준점 + 안쪽 클릭의 바깥닫힘 전파 차단을 겸한다 */}
+        <span className="hfold" onMouseDown={(e) => e.stopPropagation()}>
+          {/* 팝오버가 열려 있는 동안은 has-tip을 떼어 툴팁이 팝오버 위에 겹치지 않게 한다 */}
           <button
-            className={'ma-p-folder has-tip tip-wrap' + (folderRect ? ' on' : '')}
-            data-tip={meta.cwd ? meta.cwd + ' · 클릭해 파일 탐색' : '바탕화면 · 클릭해 폴더 선택'}
-            onClick={(e) => {
-              const r = e.currentTarget.getBoundingClientRect()
-              setFolderRect((cur) => (cur ? null : r))
+            className={'ma-p-folder' + (folderPop ? ' on' : ' has-tip tip-wrap')}
+            data-tip={meta.cwd ? meta.cwd + ' · 클릭해 폴더 변경' : '바탕화면 · 클릭해 폴더 선택'}
+            onClick={() => {
+              onFocusPanel(slot)
+              setFolderPop((o) => !o)
             }}
           >
-            <IconFolder size={13} />
+            <IconFolder size={11} />
             <span className="ma-p-folder-name">{cwdLabel}</span>
-            <IconChevDown size={11} />
+            <IconChevDown size={10} />
           </button>
-          <button
-            className={'ma-p-prompt has-tip' + (meta.sysPrompt ? ' on' : '')}
-            data-tip={meta.sysPrompt ? '프롬프트 설정됨' : '이 패널의 프롬프트 설정'}
-            onClick={() => onOpenPrompt(slot)}
-          >
-            <IconSpark size={11} stroke={2.4} />
-            <span>프롬프트</span>
-          </button>
-        </div>
-      </div>
-
-      <div className="ma-p-ctx">
-        <span className="ma-ctx-ring" style={{ ['--p']: ctxPct } as CSSProperties} />
-        <span className="ma-ctx-label">컨텍스트</span>
-        <span className="ma-ctx-detail">
-          {ctxTokens != null ? fmtTok(ctxTokens) : 0} / {fmtWindow(Math.round(winTokens / 1000))} 토큰
+          {folderPop && (
+            <FolderPop
+              right
+              cwd={meta.cwd}
+              onSelect={(p) => onSelectFolder(slot, p)}
+              onBrowse={() => onPickFolder(slot)}
+              onClose={() => setFolderPop(false)}
+            />
+          )}
         </span>
-        <span className="ma-spacer" />
-        <span className="ma-ctx-pct">{ctxPct}%</span>
+        <span className={'ma-status ' + status.cls}>
+          {/* 응답 대기 중엔 스피너를 숨긴다 — 도는 건 에이전트가 아니라 사용자 차례 */}
+          {busy && !waiting && <span className="ma-status-spin" />}
+          <span>{status.label}</span>
+          {busy && <span className="ma-status-time">{fmtElapsed(elapsed)}</span>}
+        </span>
       </div>
 
       <div className="ma-p-body">
-        {!expanded && (
-          <button className="ma-p-zoom" onClick={() => onExpand(slot)} aria-label="크게 보기">
-            <IconExpand size={13} />
-            <span>크게 보기</span>
-          </button>
-        )}
         <div className="ma-p-thread scroll" ref={threadRef}>
           {!started && !busy ? (
             <div className="ma-p-empty">
+              {/* 공식 로봇 마스코트 — 웰컴 화면(.wc-mark)과 같은 정지 아이콘 */}
               <div className="ma-p-empty-ic">
-                <IconCode size={20} />
+                <IconMascot size={38} />
               </div>
               <div className="ma-p-empty-text">메시지를 입력해 작업을 시작하세요</div>
             </div>
           ) : (
-            <div className="ma-p-thread-inner">
-              {state.messages.map((m, idx) => {
-                const prev = state.messages[idx - 1]
-                const prevIsAiBlock =
-                  !!prev && (prev.kind === 'toolgroup' || (prev.kind === 'msg' && prev.role === 'assistant'))
-                return (
-                  <MessageView
-                    key={m.id}
-                    item={m}
-                    userInitial={user.avatarText}
-                    userColor={user.avatarColor}
-                    userName={user.name}
-                    live={idx === state.messages.length - 1 && m.kind === 'msg' && m.role === 'assistant' && !m.error}
-                    running={busy}
-                    lead={m.kind === 'toolgroup' && !prevIsAiBlock}
-                  />
-                )
-              })}
+            // 본채팅과 같은 .thread 마크업 — 패널에선 CSS(zoom .8·풀폭)만 다르고,
+            // Ctrl+휠 읽기 크기(chat.zoom)는 그 위에 곱으로 얹힌다(전 패널 공통)
+            <div className="thread" style={{ zoom, '--z': zoom } as CSSProperties}>
+              {state.messages.map((m, idx) => (
+                <MessageView
+                  key={m.id}
+                  item={m}
+                  live={idx === liveMsgIndex(state.messages) && m.kind === 'msg' && m.role === 'assistant' && !m.error}
+                  running={busy}
+                  onOpenFile={(p) => onOpenFile(slot, p)}
+                  onOpenImage={onOpenImage}
+                />
+              ))}
               {busy && showWorking && <WorkingIndicator text={state.thinkingText} />}
             </div>
           )}
         </div>
-        <ChatFind scrollRef={scrollRef} active={focused || expanded} panel />
+        <ChatFind scrollRef={scrollRef} active={focused} panel />
       </div>
 
       <SelectionToolbar scrollRef={scrollRef} onElaborate={onElaborate} />
@@ -891,99 +393,74 @@ const PanelView = memo(function PanelView({
         actions={[...scrollGestures(() => threadEl), sessionWindowGesture(), clearGesture(() => onClear(slot))]}
       />
 
-      <div className="ma-p-foot">
-        {meta.queue.length > 0 && (
-          <div className="sched ma-sched">
-            <div className="sched-head">
-              <span className="sched-title">
-                <IconClock size={13} />
-                예약된 메시지 {meta.queue.length}
-              </span>
-              <span className="sched-hint">작업이 끝나면 순서대로 전송돼요</span>
-            </div>
-            <div className="sched-list">
-              {meta.queue.map((m, i) => (
-                <div className="sched-item" key={m.id}>
-                  <span className="sched-num">{i + 1}</span>
-                  <span className="sched-text">
-                    {m.text.trim() || (m.images.length ? `첨부 ${m.images.length}개` : '')}
-                  </span>
-                  {m.images.length > 0 && (
-                    <span className="sched-img has-tip" data-tip={`첨부 ${m.images.length}개`}>
-                      <IconPaperclip size={13} />
-                    </span>
-                  )}
-                  <button
-                    className="sched-x has-tip"
-                    aria-label="예약 취소"
-                    data-tip="예약 취소"
-                    onClick={() => onRemoveQueued(slot, m.id)}
-                  >
-                    <IconX2 size={12} />
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-        <div className="ma-p-pickers">
-          <RunPickers
-            picker={meta.picker}
-            setPicker={(p) => onPicker(slot, p)}
-            align="right"
-            apiMode={meta.api}
-            apiReady={apiReady}
-            onApiModeChange={(next) => onApiMode(slot, next)}
-          />
-        </div>
-        <PanelComposer
-          value={meta.input}
-          history={sentHistory}
-          images={meta.images}
-          busy={busy}
-          cwd={cwd}
-          onChange={(t) => onInput(slot, t)}
-          onAddImages={(paths) => onAddImages(slot, paths)}
-          onRemoveImage={(i) => onRemoveImage(slot, i)}
-          onSend={() => onSend(slot)}
-          onSchedule={() => onSchedule(slot)}
-          onStop={() => onStop(slot)}
-          onFocus={() => onFocusPanel(slot)}
-        />
-      </div>
-
-      {folderRect && (
-        <PanelFolderMenu
-          anchor={folderRect}
-          cwd={meta.cwd}
-          changed={state.files}
-          refreshKey={state.messages.length}
-          onOpenFile={(rel) => {
-            setFolderRect(null)
-            onOpenFile(slot, rel)
-          }}
-          onPickFolder={() => {
-            setFolderRect(null)
-            onPickFolder(slot)
-          }}
-          onClose={() => setFolderRect(null)}
-        />
-      )}
+      {/* 본채팅과 완전히 같은 WorkBar(할 일·서브에이전트·백그라운드 셸·변경된 파일·컨텍스트)
+          + 진짜 Composer(모델 칩·"/" 팔레트·"@" 멘션·첨부·예약 큐) — zoom .8 미니어처 */}
+      <WorkBar
+        todos={state.todos}
+        files={state.files}
+        subagents={state.subagents}
+        bgTasks={state.bgTasks}
+        busy={busy}
+        canSkipWait={canSkipWait}
+        onBgTask={(req) => onBgTask(slot, req)}
+        usage={usage}
+        contextTokens={state.result?.contextTokens ?? null}
+        contextWindow={state.result?.contextWindow ?? null}
+        model={meta.picker.model}
+        apiMode={meta.api}
+        chatSpentUsd={state.spentUsd ?? 0}
+        budgetUsd={budgetUsd}
+        totalSpentUsd={totalSpentUsd}
+        engine={meta.picker.engine}
+        codexAccount={meta.picker.codexAccount}
+        onOpenFile={(f) => onOpenFile(slot, f.path)}
+        onOpenSubagent={(a) => onOpenSubagent(slot, a.id)}
+        onRefreshUsage={onRefreshUsage}
+      />
+      <Composer
+        value={meta.input}
+        onChange={(t) => onInput(slot, t)}
+        history={sentHistory}
+        onSend={() => onSend(slot)}
+        onStop={() => onStop(slot)}
+        onSchedule={() => onSchedule(slot)}
+        queued={meta.queue}
+        onRemoveQueued={(id) => onRemoveQueued(slot, id)}
+        busy={busy}
+        started={started}
+        picker={meta.picker}
+        setPicker={(p) => onPicker(slot, p)}
+        apiMode={meta.api}
+        apiReady={apiReady}
+        apiReadyCodex={apiReadyCodex}
+        onApiModeChange={(next, eng) => onApiMode(slot, next, eng)}
+        images={meta.images}
+        onPickImages={pickImages}
+        onAddImagePaths={(paths) => onAddImages(slot, paths)}
+        onRemoveImage={(i) => onRemoveImage(slot, i)}
+        onOpenImage={onOpenImage}
+        contextTokens={state.result?.contextTokens ?? null}
+        contextWindow={state.result?.contextWindow ?? null}
+        usage={usage}
+        showContext={false}
+        cwd={cwd}
+        mentionBase={cwd}
+        inputRef={composerRef}
+      />
 
       {/* 패널 스코프 카드 — .ma-panel(position:relative) 안에서 그 패널만 덮으므로
-          어느 패널의 요청인지 위치로 식별된다. 키보드는 포커스/확장된 패널의 카드만
+          어느 패널의 요청인지 위치로 식별된다. 키보드는 포커스된 패널의 카드만
           받는다 — 동시에 여러 카드가 떠도 키 한 번이 전부에 응답되지 않도록. */}
       <PermissionModal
         permission={state.pendingPermission}
         onRespond={(b) => onPermission(slot, b)}
-        hotkeys={focused || expanded}
+        hotkeys={focused}
       />
       <QuestionModal
         question={state.pendingQuestion}
         onAnswer={(a) => onAnswer(slot, a)}
         onDismiss={() => onDismissQuestion(slot)}
-        hotkeys={focused || expanded}
-        onExpand={expanded ? undefined : () => onExpand(slot)}
+        hotkeys={focused}
       />
     </div>
   )
@@ -993,45 +470,15 @@ function fmtElapsed(s: number): string {
   return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`
 }
 
-// small usage pill in the workspace header — 한도 링(pct) 또는 달러 배지(usd)에
-// 값(val)을 얹는다. tip이 있으면 앱 공통 has-tip 툴팁이 위로 뜬다.
-function UsagePill({
-  label,
-  pct,
-  val,
-  usd,
-  tip
-}: {
-  label: string
-  pct: number | null
-  val?: string
-  usd?: boolean
-  tip?: string
-}) {
-  return (
-    <span className={'ma-usage' + (tip ? ' has-tip' : '')} data-tip={tip}>
-      {usd ? (
-        <span className="ma-usage-usd">
-          <IconDollar size={10} />
-        </span>
-      ) : (
-        <span className="ma-usage-ring" style={{ ['--p']: pct ?? 0 } as CSSProperties} />
-      )}
-      <span className="ma-usage-label">{label}</span>
-      <span className="ma-usage-pct">{val ?? (pct != null ? pct + '%' : '—')}</span>
-    </span>
-  )
-}
-
 // ── one active multi-agent session: its panel grid + header (keyed by sessionId in the
 //    workspace, so switching sessions cleanly remounts a fresh set of 6 panel hooks) ──
 function ActiveSession({
   sessionId,
   initial,
-  user,
   usage,
   apiMode,
   apiReady,
+  apiReadyCodex,
   onOpenApiSettings,
   onFirstPrompt,
   onStatus,
@@ -1039,10 +486,10 @@ function ActiveSession({
 }: {
   sessionId: string
   initial: PersistedSession
-  user: AppUser
   usage: UsageInfo
   apiMode: boolean // 전역 과금 모드 — 새 패널/예전 저장본의 기본값 시드로만 쓴다
-  apiReady: boolean // 키 존재 여부 — 없으면 패널에서 API 선택 시 설정을 연다
+  apiReady: boolean // Anthropic 키 존재 여부 — 없으면 패널에서 API 선택 시 설정을 연다
+  apiReadyCodex: boolean // OpenAI 키 존재 여부 — Codex 패널의 API 선택 가드
   onOpenApiSettings: () => void // 설정 → API 탭 열기 (키 미등록 가드)
   onFirstPrompt: (sessionId: string, prompt: string) => void
   onStatus: (sessionId: string, status: AgentStatus) => void
@@ -1083,24 +530,26 @@ function ActiveSession({
             api: p.api ?? apiMode,
             input: '',
             images: [],
-            queue: [],
-            sysPrompt: p.sysPrompt || undefined
+            queue: []
           }
         : freshPanel(apiMode)
     })
   )
-  const [expandedSlot, setExpandedSlot] = useState<number | null>(null)
   const [focusedSlot, setFocusedSlot] = useState<number | null>(null)
-  // 프롬프트 설정 모달이 열린 패널 슬롯 (헤더의 프롬프트 칩 클릭)
-  const [promptSlot, setPromptSlot] = useState<number | null>(null)
-  // a folder change that would reset panel conversation(s), parked here until the user
+  // Ctrl+휠 읽기 크기 — 멀티 전용 배율(multi.zoom, 기본 120%): 패널은 미니어처(zoom .8)라
+  // 시작점을 키워 두고, 본채팅(chat.zoom)·추가 채팅(session.zoom)과는 독립이다.
+  // 그리드에서 굴리면 전 패널에 함께 적용된다.
+  const multiZoom = useZoom('multi.zoom', true, 1.2)
+  // a folder change that would reset a panel's conversation, parked here until the user
   // confirms it in the card modal (변경) or backs out (취소)
-  const [pendingFolder, setPendingFolder] = useState<
-    { kind: 'panel'; slot: number; cwd: string } | { kind: 'batch'; dir: string } | null
-  >(null)
+  const [pendingFolder, setPendingFolder] = useState<{ slot: number; cwd: string } | null>(null)
   // 폴더 팝오버에서 연 파일 — 그 패널의 cwd·diffs로 코드 뷰어를 띄운다 (패널 안이 아니라
   // 여기서 한 번만 렌더해야 .fv-overlay(absolute)가 확대 오버레이에 갇히지 않는다)
   const [openFile, setOpenFile] = useState<{ slot: number; path: string } | null>(null)
+  // WorkBar 서브에이전트 행에서 연 상세 카드 — 열려 있는 동안 그 패널의 라이브 상태를 따른다
+  const [openSub, setOpenSub] = useState<{ slot: number; id: string } | null>(null)
+  // 스레드/컴포저 이미지 → 라이트박스 (본채팅과 동일한 뷰어를 세션 레벨에서 한 번만)
+  const [viewer, setViewer] = useState<{ images: string[]; index: number } | null>(null)
 
   // restore each panel's saved thread into its live session, once on mount
   useEffect(() => {
@@ -1110,13 +559,22 @@ function ActiveSession({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Fable 5 정책 거부 → 엔진이 폴백 모델로 전환·재시도한 패널은 picker도 따라 바꾼다
-  // (안 바꾸면 그 패널은 매번 거부→전환을 반복). 경고 배너는 스레드에 표시된다.
+  // Fable 5 정책 거부(claude)·모델 수용량 초과(codex) → 엔진이 폴백 모델로 전환·재시도한
+  // 패널은 picker도 따라 바꾼다(안 바꾸면 그 패널은 매번 오류→전환을 반복). 경고 배너는
+  // 스레드에 표시된다.
   useEffect(() => {
     const offs = SLOTS.map(
       (slot) =>
         window.api.multi?.onEvent?.(chan(sessionId, slot), (e) => {
           if (e.type !== 'model-fallback') return
+          if (e.engine === 'codex') {
+            setMetas((prev) =>
+              prev.map((m, i) =>
+                i === slot && m.picker.codexModel !== e.toModel ? { ...m, picker: { ...m.picker, codexModel: e.toModel } } : m
+              )
+            )
+            return
+          }
           const next = pickerModelOf(e.toModel)
           if (next)
             setMetas((prev) =>
@@ -1138,15 +596,9 @@ function ActiveSession({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [aggStatus])
 
-  // ── 헤더 과금 표시: 보이는 패널들의 구독/API 구성 ────────────────────────
-  // 패널마다 과금이 달라 절반 구독·절반 API도 가능하다 — 구독 패널이 하나라도 있으면
-  // 한도 링을, API 패널이 하나라도 있으면 비용 pill을 띄우고, 혼합이면 그룹 앞의
-  // 태그(구독 N / API N)로 어느 패널들 몫인지 구분한다.
-  const billSub = SLOTS.slice(0, count).filter((i) => !metas[i].api).length
-  const billApi = count - billSub
-  const billMixed = billSub > 0 && billApi > 0
-  // 남은 예산(전역 누적) — API 패널이 있을 때만 읽고, 실행이 끝날 때마다 다시 읽어
-  // 링이 실행 직후 바로 맞아떨어지게 한다
+  // 예산(전역 누적) — API 과금 패널의 WorkBar 컨텍스트 팝오버(비용 행)용. API 패널이
+  // 있을 때만 읽고, 실행이 끝날 때마다 다시 읽어 실행 직후 바로 맞아떨어지게 한다
+  const billApi = SLOTS.slice(0, count).filter((i) => metas[i].api).length
   const [budget, setBudget] = useState<{ budgetUsd: number | null; spentUsd: number } | null>(null)
   useEffect(() => {
     if (!billApi) return
@@ -1169,8 +621,7 @@ function ActiveSession({
         cwd: m.cwd,
         picker: m.picker,
         api: m.api,
-        snapshot: snapshotForPersist(sessions[i].state),
-        sysPrompt: m.sysPrompt
+        snapshot: snapshotForPersist(sessions[i].state)
       }
     })
   })
@@ -1188,12 +639,12 @@ function ActiveSession({
   // Panel keyboard control (only while focus isn't in a field):
   //  · 1‥N        jump straight into that panel's composer (selects it + focuses the input)
   //  · Enter      drop the cursor into the selected panel's composer (e.g. after a click)
-  //  · Esc        close the expanded panel; else cancel the focused panel's RUN if it's
-  //               busy (단일 모드의 Esc=작업 취소와 같은 기대), else release the selection
+  //  · Esc        cancel the focused panel's RUN if it's busy (단일 모드의 Esc=작업 취소와
+  //               같은 기대), else release the selection
   // A permission/question card owns the keyboard while open, so we always stand down then.
   //
-  // 이벤트 시점의 busy를 읽어야 해서 useEvent — 키보드 effect는 [expandedSlot, focusedSlot,
-  // count]에만 재바인딩되므로 클로저의 sessions는 그 사이 얼어 있다(막 busy로 바뀐 패널을
+  // 이벤트 시점의 busy를 읽어야 해서 useEvent — 키보드 effect는 [focusedSlot, count]에만
+  // 재바인딩되므로 클로저의 sessions는 그 사이 얼어 있다(막 busy로 바뀐 패널을
   // 못 보고 선택만 풀던 원인).
   const escCancelPanel = useEvent((slot: number): boolean => {
     if (!sessions[slot].busy) return false
@@ -1204,23 +655,20 @@ function ActiveSession({
     const onKey = (e: KeyboardEvent): void => {
       // 앱 전역 오버레이(폴더 확인 / 프롬프트 모달 / 파일 뷰어 / 폴더 팝오버)가 열려
       // 있으면 항상 양보한다
-      if (document.querySelector('.set-dialog-overlay, .pr-overlay, .fv-overlay, .pfm')) return
-      // 승인/질문 카드는 패널 안에 뜬다(스코프 오버레이). 키보드를 받는 건 포커스/확장
+      if (document.querySelector('.set-dialog-overlay, .pr-overlay, .fv-overlay, .hpop')) return
+      // 승인/질문 카드는 패널 안에 뜬다(스코프 오버레이). 키보드를 받는 건 포커스된
       // 패널의 카드뿐이니 그때만 양보하고, 다른 패널의 카드는 1‥N 이동을 막지 않는다 —
       // 번호를 누르면 그 패널이 포커스되며 카드가 키를 넘겨받는다. 패널 밖 .q-overlay
       // (ask 모달의 질문 등)는 예전처럼 전역으로 키보드를 가진다.
       for (const el of Array.from(document.querySelectorAll('.q-overlay'))) {
         const panel = el.closest('.ma-panel')
-        if (!panel || panel.classList.contains('expanded') || panel.classList.contains('focused')) return
+        if (!panel || panel.classList.contains('focused')) return
       }
       const ae = document.activeElement as HTMLElement | null
       const typing = !!ae && (['INPUT', 'TEXTAREA', 'SELECT'].includes(ae.tagName) || ae.isContentEditable)
 
       if (e.key === 'Escape') {
-        if (expandedSlot != null) {
-          e.preventDefault()
-          setExpandedSlot(null)
-        } else if (focusedSlot != null) {
+        if (focusedSlot != null) {
           e.preventDefault()
           // 실행 중인 패널이면 선택 해제가 아니라 그 패널의 실행 취소 — 포커스는 유지해
           // 이어서 바로 다음 지시를 입력할 수 있다. 대기 패널일 때만 선택을 놓는다.
@@ -1234,8 +682,7 @@ function ActiveSession({
       if (e.metaKey || e.ctrlKey || e.altKey || typing) return
 
       if (e.key === 'Enter' && !e.shiftKey) {
-        const scope = expandedSlot != null ? '.ma-expand-card' : '.ma-panel.focused'
-        const ta = document.querySelector(`${scope} .ma-p-composer textarea`) as HTMLTextAreaElement | null
+        const ta = document.querySelector('.ma-panel.focused .composer textarea') as HTMLTextAreaElement | null
         if (ta) {
           e.preventDefault()
           ta.focus()
@@ -1246,12 +693,11 @@ function ActiveSession({
       if (Number.isInteger(n) && n >= 1 && n <= count) {
         e.preventDefault()
         const slot = n - 1
-        setExpandedSlot(null)
         setFocusedSlot(slot)
         // jump straight into that panel's composer (next frame, once the grid is settled)
         requestAnimationFrame(() => {
           const ta = document.querySelector(
-            `.ma-grid .ma-panel[data-slot="${slot}"] .ma-p-composer textarea`
+            `.ma-grid .ma-panel[data-slot="${slot}"] .composer textarea`
           ) as HTMLTextAreaElement | null
           ta?.focus()
         })
@@ -1259,16 +705,17 @@ function ActiveSession({
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [expandedSlot, focusedSlot, count])
+  }, [focusedSlot, count])
 
   // ── stable per-panel handlers ──
   const patchMeta = useEvent((slot: number, patch: Partial<PanelMeta>) =>
     setMetas((prev) => prev.map((m, i) => (i === slot ? { ...m, ...patch } : m)))
   )
   const onInput = useEvent((slot: number, text: string) => patchMeta(slot, { input: text }))
-  // 패널별 과금 선택 — API를 골랐는데 키가 없으면 켜는 대신 설정 → API 탭을 연다
-  const onPanelApi = useEvent((slot: number, next: boolean) => {
-    if (next && !apiReady) {
+  // 패널별 과금 선택 — API를 골랐는데 그 패널 엔진의 키가 없으면 켜는 대신 설정 → API 탭을 연다
+  const onPanelApi = useEvent((slot: number, next: boolean, engine?: EngineId) => {
+    const ready = engine === 'codex' ? apiReadyCodex : apiReady
+    if (next && !ready) {
       onOpenApiSettings()
       return
     }
@@ -1282,8 +729,17 @@ function ActiveSession({
   )
   const onPicker = useEvent((slot: number, picker: PickerState) => patchMeta(slot, { picker }))
   const onFocusPanel = useEvent((slot: number) => setFocusedSlot(slot))
-  const onOpenPrompt = useEvent((slot: number) => setPromptSlot(slot))
   const onOpenPanelFile = useEvent((slot: number, rel: string) => setOpenFile({ slot, path: rel }))
+  const onOpenPanelSub = useEvent((slot: number, id: string) => setOpenSub({ slot, id }))
+  const onOpenImage = useEvent((imgs: string[], index: number) => setViewer({ images: imgs, index }))
+  // 백그라운드 셸 컨트롤(중지/Ctrl+B) — 그 패널의 엔진으로 라우팅 (?.: 구 preload 가드)
+  const onPanelBgTask = useEvent((slot: number, req: BgTaskRequest) => {
+    window.api.multi?.bgTask?.(chan(sessionId, slot), req).catch(() => {})
+  })
+  // 패널 WorkBar의 컨텍스트 팝오버를 열 때 사용량 강제 새로고침 (본채팅과 동일한 fresh 규칙)
+  const onRefreshUsage = useEvent(() => {
+    window.api.getUsage(true).then(setLiveUsage).catch(() => {})
+  })
 
   // ── panel working-folder changes ──
   // A panel's folder is panel-scoped, and its session id is folder-scoped — moving a
@@ -1295,17 +751,19 @@ function ActiveSession({
     // same folder / nothing to lose → just rebind, no ceremony
     if (!cwd || !cur || sameCwd(cwd, cur) || sessions[slot].state.messages.length === 0) {
       patchMeta(slot, { cwd })
+      if (cwd) pushRecentDir(cwd) // 공유 최근 폴더(일반·추가 채팅과 공용)에 반영
       return
     }
     if (sessions[slot].busy) return // the running turn works in this folder
-    setPendingFolder({ kind: 'panel', slot, cwd })
+    setPendingFolder({ slot, cwd })
   }
   const onPickFolder = useEvent(async (slot: number) => {
     if (sessions[slot].busy) return // blocked mid-run anyway — don't even open the picker
     const dir = await window.api.pickDirectory()
     if (dir) requestPanelFolder(slot, dir)
   })
-  const onExpand = useEvent((slot: number | null) => setExpandedSlot(slot))
+  // 작업 폴더 팝오버(FolderPop) 목록에서 선택 — 확인 카드 흐름은 requestPanelFolder가 공용
+  const onSelectFolder = useEvent((slot: number, dir: string) => requestPanelFolder(slot, dir))
 
   // `opts` lets a queued message replay with the text/attachments/run settings it was
   // scheduled with (instead of the live draft, which the user may be typing in — a
@@ -1375,16 +833,19 @@ function ActiveSession({
       model: pk.model,
       effort: pk.effort,
       mode: pk.mode,
+      // 실행 엔진(claude/codex) + Codex GPT 모델 — 생략하면 Claude
+      engine: pk.engine,
+      codexModel: pk.codexModel,
       cwd: dir,
       // 패널별 프롬프트 — 매 실행 시스템 프롬프트에 append (없으면 생략)
-      systemPrompt: m.sysPrompt,
       // resume only while still in the session's original folder (a session id is scoped
       // to its project — resuming it after a folder change errors "No conversation found")
       resume: sess.state.session && sameCwd(sess.state.session.cwd, dir) ? sess.state.session.sessionId : undefined,
       // 패널별 과금 — 이 패널이 API를 골랐으면 이 실행만 API 키로 과금
       useApi: m.api || undefined,
-      // 패널별 실행 계정(구독) — 전역 활성 계정과 다르면 엔진이 격리 폴더로 돌린다
-      account: pk.account
+      // 실행 계정 — 클로드는 격리 CLAUDE_CONFIG_DIR, Codex는 격리 CODEX_HOME (미지정=기본 계정)
+      account: pk.account,
+      codexAccount: pk.codexAccount
     }
     window.api.multi?.run(req).catch(() => {})
   })
@@ -1470,7 +931,7 @@ function ActiveSession({
     window.api.multi
       ?.respondQuestion({ panelId: chan(sessionId, slot), requestId: sess.state.pendingQuestion.requestId, answers })
       .catch(() => {})
-    sess.clearQuestion()
+    sess.answerQuestion(answers) // 카드를 닫으며 문답 흔적을 그 패널 스레드에 남긴다
   })
   const onDismissQuestion = useEvent((slot: number) => {
     const sess = sessions[slot]
@@ -1481,42 +942,17 @@ function ActiveSession({
     sess.clearQuestion()
   })
 
-  // batch working folder: set every panel's cwd at once. Panels whose conversation is
-  // anchored to a different folder would be reset by the move — confirm those first.
-  const batchAffected = (dir: string): number[] =>
-    SLOTS.filter((i) => sessions[i].state.messages.length > 0 && !sameCwd(panelCwd(i), dir))
-  const applyBatchFolder = useEvent((dir: string) => {
-    // wipe the panels that can't follow the folder (same shape as a panel /clear). A busy
-    // panel keeps streaming untouched — its send-time folder check still covers it later.
-    const wipe = batchAffected(dir).filter((i) => !sessions[i].busy)
-    wipe.forEach((i) => sessions[i].load(initialSessionState))
-    setMetas((prev) =>
-      prev.map((m, i) => (wipe.includes(i) ? { ...m, cwd: dir, title: '', custom: false } : { ...m, cwd: dir }))
-    )
-  })
-  const onBatchFolder = useEvent(async () => {
-    const dir = await window.api.pickDirectory()
-    if (!dir) return
-    if (batchAffected(dir).length === 0) applyBatchFolder(dir)
-    else setPendingFolder({ kind: 'batch', dir })
-  })
-
-  // 변경 — apply the parked folder change and start the affected conversation(s) fresh
+  // 변경 — apply the parked folder change and start that panel's conversation fresh
   const confirmFolder = useEvent(() => {
     const p = pendingFolder
     if (!p) return
-    if (p.kind === 'panel') {
-      patchMeta(p.slot, { cwd: p.cwd, title: '', custom: false })
-      sessions[p.slot].load(initialSessionState)
-    } else {
-      applyBatchFolder(p.dir)
-    }
+    patchMeta(p.slot, { cwd: p.cwd, title: '', custom: false })
+    sessions[p.slot].load(initialSessionState)
+    pushRecentDir(p.cwd) // 공유 최근 폴더에 반영
     setPendingFolder(null)
   })
 
-  const cols = COLS[count] ?? 3
-
-  const renderPanel = (slot: number, expanded: boolean): React.ReactNode => {
+  const renderPanel = (slot: number): React.ReactNode => {
     const sess = sessions[slot]
     return (
       <PanelView
@@ -1526,9 +962,11 @@ function ActiveSession({
         state={sess.state}
         busy={sess.busy}
         elapsed={sess.elapsed}
-        expanded={expanded}
-        focused={focusedSlot === slot && !expanded}
-        user={user}
+        focused={focusedSlot === slot}
+        usage={liveUsage}
+        budgetUsd={budget?.budgetUsd ?? null}
+        totalSpentUsd={budget?.spentUsd ?? 0}
+        zoom={multiZoom.zoom}
         onInput={onInput}
         onAddImages={onAddImages}
         onRemoveImage={onRemoveImage}
@@ -1539,15 +977,19 @@ function ActiveSession({
         onClear={clearPanel}
         onPicker={onPicker}
         apiReady={apiReady}
+        apiReadyCodex={apiReadyCodex}
         onApiMode={onPanelApi}
         onPickFolder={onPickFolder}
+        onSelectFolder={onSelectFolder}
         onOpenFile={onOpenPanelFile}
+        onOpenSubagent={onOpenPanelSub}
+        onOpenImage={onOpenImage}
+        onBgTask={onPanelBgTask}
+        onRefreshUsage={onRefreshUsage}
         onFocusPanel={onFocusPanel}
-        onExpand={onExpand}
         onPermission={onPermission}
         onAnswer={onAnswer}
         onDismissQuestion={onDismissQuestion}
-        onOpenPrompt={onOpenPrompt}
       />
     )
   }
@@ -1555,82 +997,11 @@ function ActiveSession({
   return (
     <>
       <section className="multi">
+        {/* 헤더 = 드래그 바: 아이콘/타이틀·일괄 폴더·한도 필은 2.0에서 삭제 — 남는 건
+            오른쪽의 패널 수 탭과 창 컨트롤뿐(왼쪽 배치는 시도 후 롤백). 한도·비용은
+            각 패널 WorkBar 컨텍스트 팝오버가 말한다 */}
         <div className="ma-head">
-          <span className="ma-head-ic">
-            <IconGrid size={17} />
-          </span>
-          <span className="ma-head-title">멀티 에이전트</span>
           <span className="ma-spacer" />
-          <button className="ma-batch has-tip" data-tip="모든 패널 작업 폴더 설정" onClick={onBatchFolder}>
-            <IconFolder size={14} />
-            <span>일괄 폴더</span>
-            <IconChevDown size={11} />
-          </button>
-          {billSub > 0 && (
-            <div className="ma-bill">
-              {billMixed && (
-                <span className="ma-bill-tag has-tip" data-tip={`패널 ${billSub}개가 구독(정액) 과금`}>
-                  구독 {billSub}
-                </span>
-              )}
-              <UsagePill label={billMixed ? '5시간' : '5시간 한도'} pct={liveUsage.fiveHour?.pct ?? null} />
-              <UsagePill label={billMixed ? '주간' : '주간 한도'} pct={liveUsage.weekly?.pct ?? null} />
-              {liveUsage.weeklyFable && (
-                <UsagePill label={billMixed ? 'Fable' : 'Fable 주간 한도'} pct={liveUsage.weeklyFable.pct} />
-              )}
-              {/* 추가 사용 크레딧 — claude.ai에서 켰거나 잔액 소진 상태일 때. 값=잔액,
-                  링=월 한도 대비 사용률 (한도 미설정으로 pct가 없으면 달러 배지로 대체) */}
-              {extraCreditVisible(liveUsage.extraCredit) && (
-                <UsagePill
-                  label={billMixed ? '크레딧' : '추가 크레딧'}
-                  pct={liveUsage.extraCredit.pct}
-                  usd={liveUsage.extraCredit.pct == null}
-                  val={
-                    liveUsage.extraCredit.balance != null
-                      ? fmtCredit(liveUsage.extraCredit.balance, liveUsage.extraCredit.currency)
-                      : undefined
-                  }
-                  tip={
-                    liveUsage.extraCredit.outOfCredits && !liveUsage.extraCredit.enabled
-                      ? '추가 사용 크레딧 소진 — claude.ai에서 충전해야 다시 쓸 수 있어요'
-                      : `추가 사용 크레딧 잔액${
-                          liveUsage.extraCredit.cap != null
-                            ? ` · 월 한도 ${fmtCredit(liveUsage.extraCredit.cap, liveUsage.extraCredit.currency)}`
-                            : ''
-                        }`
-                  }
-                />
-              )}
-            </div>
-          )}
-          {billApi > 0 && (
-            <div className="ma-bill">
-              {billMixed && (
-                <span className="ma-bill-tag api has-tip" data-tip={`패널 ${billApi}개가 API 키(종량) 과금`}>
-                  API {billApi}
-                </span>
-              )}
-              {/* 누적 사용액은 예산 유무와 무관하게 항상 — 첫 로드 전(null)엔 $0.00이
-                  깜빡이지 않게 숨긴다 */}
-              {budget && (
-                <UsagePill
-                  label={billMixed ? '누적' : '누적 사용액'}
-                  pct={null}
-                  usd
-                  val={fmtUsd(budget.spentUsd)}
-                  tip="전체 워크스페이스의 API 누적 사용액"
-                />
-              )}
-              {budget?.budgetUsd != null && (
-                <UsagePill
-                  label="남은 예산"
-                  pct={Math.min(100, Math.round((budget.spentUsd / budget.budgetUsd) * 100))}
-                  val={fmtUsd(Math.max(0, budget.budgetUsd - budget.spentUsd))}
-                  tip={`예산 ${fmtUsd(budget.budgetUsd)} 중 ${fmtUsd(budget.spentUsd)} 사용`}
-                />
-              )}
-            </div>
-          )}
           <div className="ma-count" role="tablist" aria-label="패널 수">
             {COUNT_OPTIONS.map((n) => (
               <button
@@ -1640,55 +1011,34 @@ function ActiveSession({
                 className={'ma-count-btn' + (count === n ? ' on' : '')}
                 onClick={() => {
                   setCount(n)
-                  // 줄어든 그리드 밖을 가리키던 확대/선택/모달 슬롯은 정리 — 안 보이는
+                  // 줄어든 그리드 밖을 가리키던 선택/모달 슬롯은 정리 — 안 보이는
                   // 패널이 오버레이로 계속 떠 있거나 포커스를 쥐고 있지 않게
-                  setExpandedSlot((s) => (s != null && s >= n ? null : s))
                   setFocusedSlot((s) => (s != null && s >= n ? null : s))
-                  setPromptSlot((s) => (s != null && s >= n ? null : s))
                   setOpenFile((f) => (f && f.slot >= n ? null : f))
+                  setOpenSub((s) => (s && s.slot >= n ? null : s))
                 }}
               >
                 {n}
               </button>
             ))}
           </div>
+          <span className="vsep" />
+          <WinControls />
         </div>
 
-        <div className="ma-grid scroll" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
-          {SLOTS.slice(0, count).map((slot) =>
-            expandedSlot === slot ? <div key={slot} className="ma-panel ma-placeholder" /> : renderPanel(slot, false)
-          )}
+        {/* 배치는 .nN 클래스가 결정 — PoC: 2·3=한 줄, 4=2×2, 5=3+2(스팬), 6=3×2 */}
+        <div className={'ma-grid scroll n' + count} ref={multiZoom.ref}>
+          {SLOTS.slice(0, count).map((slot) => renderPanel(slot))}
         </div>
+        <ZoomBadge pct={multiZoom.pct} show={multiZoom.flash} />
       </section>
-
-      {/* rendered as a sibling of the section (a direct child of .win-body) so the
-          backdrop blur covers the whole workspace — sidebar included — not just the grid */}
-      {expandedSlot != null && (
-        <div className="ma-expand-overlay" onMouseDown={() => setExpandedSlot(null)}>
-          <div className="ma-expand-card" onMouseDown={(e) => e.stopPropagation()}>
-            {renderPanel(expandedSlot, true)}
-          </div>
-        </div>
-      )}
 
       {pendingFolder && (
         <FolderSwitchDialog
-          from={pendingFolder.kind === 'panel' ? panelCwd(pendingFolder.slot) : ''}
-          to={pendingFolder.kind === 'panel' ? pendingFolder.cwd : pendingFolder.dir}
-          multi={pendingFolder.kind === 'batch'}
+          from={panelCwd(pendingFolder.slot)}
+          to={pendingFolder.cwd}
           onCancel={() => setPendingFolder(null)}
           onConfirm={confirmFolder}
-        />
-      )}
-
-      {promptSlot != null && (
-        <PromptModal
-          target={metas[promptSlot].title || '새 작업'}
-          scope={`패널 ${promptSlot + 1}에만 적용`}
-          noun="패널"
-          value={metas[promptSlot].sysPrompt ?? ''}
-          onSave={(text) => patchMeta(promptSlot, { sysPrompt: text || undefined })}
-          onClose={() => setPromptSlot(null)}
         />
       )}
 
@@ -1697,35 +1047,35 @@ function ActiveSession({
       {openFile && (
         <FileModal
           path={openFile.path}
-          cwd={metas[openFile.slot].cwd}
+          cwd={metas[openFile.slot].cwd || sessions[openFile.slot].state.session?.cwd || ''}
           diffs={sessions[openFile.slot].state.diffs}
           onClose={() => setOpenFile(null)}
+        />
+      )}
+
+      {/* WorkBar 서브에이전트 상세 카드 — 매 렌더 라이브 조회라 상태/도구 갱신이 흐른다 (본채팅과 동일) */}
+      <SubAgentModal
+        agent={openSub ? sessions[openSub.slot].state.subagents.find((a) => a.id === openSub.id) ?? null : null}
+        onClose={() => setOpenSub(null)}
+      />
+
+      {viewer && (
+        <ImageViewer
+          images={viewer.images}
+          index={viewer.index}
+          onIndexChange={(i) => setViewer((v) => (v ? { ...v, index: i } : v))}
+          onClose={() => setViewer(null)}
         />
       )}
     </>
   )
 }
 
-// ── the multi-agent workspace: sidebar (session list) + the active session ────────
-export function MultiWorkspace({
-  user,
-  usage,
-  onOpenSettings,
-  mode,
-  onModeChange,
-  apiMode,
-  apiReady,
-  onOpenApiSettings
-}: {
-  user: AppUser
-  usage: UsageInfo
-  onOpenSettings: () => void
-  mode: WorkspaceMode
-  onModeChange: (m: WorkspaceMode) => void
-  apiMode: boolean // 전역 과금 모드 — 새 패널의 기본값 시드로만 쓴다 (선택은 패널별)
-  apiReady: boolean
-  onOpenApiSettings: () => void // 설정 → API 탭 열기 (키 미등록 가드)
-}) {
+// ── 멀티 세션 메타(목록·제목·상태·영속화)를 소유하는 훅 — App이 부른다 ────────
+// 2.0 사이드바는 멀티 뷰 밖에서도 '멀티 채팅' 섹션을 상시로 그려야 해서, 세션
+// 목록/영속화를 워크스페이스 컴포넌트 밖으로 들어올렸다. MultiWorkspace는 이
+// 번들을 props로 받아 활성 세션만 그리는 순수 뷰가 된다.
+export function useMultiSessions() {
   // full data for every session (active one is folded in on commit / unmount). A ref,
   // not state — the live thread lives in ActiveSession's hooks, this is only for persist.
   const dataRef = useRef<Record<string, PersistedSession>>({})
@@ -1733,7 +1083,8 @@ export function MultiWorkspace({
   const [activeId, setActiveId] = useState<string>('')
   const [titles, setTitles] = useState<Record<string, { title: string; custom: boolean }>>({})
   const [statuses, setStatuses] = useState<Record<string, AgentStatus>>({})
-  const [chatQuery, setChatQuery] = useState('')
+  // 세션별 마지막 활동 시각 — 사이드바 상대 시간. 실행 시작·첫 프롬프트에서 갱신
+  const [times, setTimes] = useState<Record<string, number>>({})
   const [hydrated, setHydrated] = useState(false)
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -1746,7 +1097,7 @@ export function MultiWorkspace({
           const d = dataRef.current[id]
           if (!d) return null
           const t = titles[id]
-          return { ...d, title: t?.title ?? d.title, custom: t?.custom ?? d.custom }
+          return { ...d, title: t?.title ?? d.title, custom: t?.custom ?? d.custom, updatedAt: times[id] ?? d.updatedAt }
         })
         .filter(Boolean) as PersistedSession[]
     }
@@ -1785,6 +1136,11 @@ export function MultiWorkspace({
           sessions.forEach((s) => (dataRef.current[s.id] = s))
           setOrder(ord)
           setTitles(Object.fromEntries(sessions.map((s) => [s.id, { title: s.title ?? '', custom: !!s.custom }])))
+          setTimes(
+            Object.fromEntries(
+              sessions.filter((s) => typeof s.updatedAt === 'number').map((s) => [s.id, s.updatedAt as number])
+            )
+          )
           setStatuses(
             Object.fromEntries(
               sessions.map((s) => [s.id, aggregateStatus((s.panels ?? []).map((p) => p?.snapshot?.status ?? 'idle'))])
@@ -1811,7 +1167,7 @@ export function MultiWorkspace({
   useEffect(() => {
     if (hydrated) scheduleSave()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hydrated, order, titles, activeId])
+  }, [hydrated, order, titles, activeId, times])
 
   // ── reports from the active session ──
   const onCommit = useEvent((sid: string, payload: CommitPayload) => {
@@ -1826,27 +1182,44 @@ export function MultiWorkspace({
     scheduleSave()
   })
   const onFirstPrompt = useEvent((sid: string, prompt: string) => {
+    setTimes((t) => ({ ...t, [sid]: Date.now() }))
     setTitles((t) => {
       const cur = t[sid]
       if (cur?.custom || (cur && cur.title)) return t // already named
       return { ...t, [sid]: { title: prompt.slice(0, 80) || '멀티 세션', custom: false } }
     })
   })
-  const onStatus = useEvent((sid: string, status: AgentStatus) =>
+  const onStatus = useEvent((sid: string, status: AgentStatus) => {
+    // 실행이 시작되는 전이만 활동으로 친다 — done/error 정착은 시간을 안 건드린다
+    if ((status === 'working' || status === 'analyzing') && statuses[sid] !== status)
+      setTimes((t) => ({ ...t, [sid]: Date.now() }))
     setStatuses((s) => (s[sid] === status ? s : { ...s, [sid]: status }))
-  )
+  })
 
   // the active session is "empty" (no title, idle) → 새 작업 just stays on it
   const activeEmpty = (statuses[activeId] ?? 'idle') === 'idle' && !titles[activeId]?.title
 
-  const newSession = useEvent(() => {
-    if (activeEmpty) return
-    const curCount = dataRef.current[activeId]?.count ?? 4
+  // 새 세션 — 패널 수는 새 채팅 모달(2~6)이 넘기고, 없으면 현 세션 구성을 따른다.
+  // 빈 세션 위에서 부르면: 같은 구성이면 그대로 머물고, 다른 구성이면 그 빈 세션을
+  // 갈아끼운다 (key 교체로 ActiveSession이 새 패널 수로 재마운트되도록 id를 새로 딴다)
+  const newSession = useEvent((count?: number) => {
+    const n = clampCount(count ?? dataRef.current[activeId]?.count ?? 4)
+    if (activeEmpty && (dataRef.current[activeId]?.count ?? 4) === n) return
     const id = newSessionId()
-    dataRef.current[id] = blankSession(id, curCount)
-    setOrder((o) => [id, ...o])
-    setTitles((t) => ({ ...t, [id]: { title: '', custom: false } }))
-    setStatuses((s) => ({ ...s, [id]: 'idle' }))
+    dataRef.current[id] = blankSession(id, n)
+    const replacing = activeEmpty ? activeId : null
+    if (replacing) delete dataRef.current[replacing]
+    setOrder((o) => [id, ...(replacing ? o.filter((x) => x !== replacing) : o)])
+    setTitles((t) => {
+      const next = { ...t, [id]: { title: '', custom: false } }
+      if (replacing) delete next[replacing]
+      return next
+    })
+    setStatuses((s) => {
+      const next: Record<string, AgentStatus> = { ...s, [id]: 'idle' }
+      if (replacing) delete next[replacing]
+      return next
+    })
     setActiveId(id)
   })
   const selectSession = useEvent((id: string) => {
@@ -1875,6 +1248,11 @@ export function MultiWorkspace({
       delete n[id]
       return n
     })
+    setTimes((t) => {
+      const n = { ...t }
+      delete n[id]
+      return n
+    })
     if (id === activeId) {
       if (next.length === 0) {
         const nid = newSessionId()
@@ -1900,65 +1278,83 @@ export function MultiWorkspace({
     dataRef.current[nid] = blankSession(nid)
     setTitles({ [nid]: { title: '', custom: false } })
     setStatuses({ [nid]: 'idle' })
+    setTimes({})
     setOrder([nid])
     setActiveId(nid)
   })
 
   // recent-tasks list = sessions that actually have content. A fresh blank session
   // (no message sent yet) stays hidden — like single mode, where a new chat doesn't
-  // appear in the list until it's used, so the list opens on "아직 채팅이 없어요".
-  const chats: ChatSummary[] = useMemo(
+  // appear in the list until it's used, so the list opens on "채팅이 없어요".
+  const summaries: ChatSummary[] = useMemo(
     () =>
       order
-        .map((id) => ({ id, title: titles[id]?.title ?? '', status: statuses[id] ?? ('idle' as AgentStatus) }))
+        .map((id) => ({
+          id,
+          title: titles[id]?.title ?? '',
+          status: statuses[id] ?? ('idle' as AgentStatus),
+          updatedAt: times[id]
+        }))
         .filter((c) => c.title !== ''),
-    [order, titles, statuses]
+    [order, titles, statuses, times]
   )
 
-  return (
-    <>
-      <Sidebar
-        user={user}
-        chats={chats}
-        activeChatId={activeId}
-        busy={false}
-        chatQuery={chatQuery}
-        onChatQuery={setChatQuery}
-        onNewChat={newSession}
-        onSelectChat={selectSession}
-        onRenameChat={renameSession}
-        onDeleteChat={deleteSession}
-        onDeleteAllChats={deleteAllSessions}
-        onOpenSettings={onOpenSettings}
-        mode={mode}
-        onModeChange={onModeChange}
-        listLabel="최근 작업"
-        newLabel="새 작업"
-        newTip="새로운 작업을 시작해요"
-        searchLabel="작업 검색…"
-      />
+  const initialOf = useEvent((id: string): PersistedSession => dataRef.current[id] ?? blankSession(id))
 
-      {!hydrated || !activeId ? (
-        <section className="multi">
-          <div className="ma-hydrate">
-            <span className="ma-hydrate-spin" />
-          </div>
-        </section>
-      ) : (
-        <ActiveSession
-          key={activeId}
-          sessionId={activeId}
-          initial={dataRef.current[activeId] ?? blankSession(activeId)}
-          user={user}
-          usage={usage}
-          apiMode={apiMode}
-          apiReady={apiReady}
-          onOpenApiSettings={onOpenApiSettings}
-          onFirstPrompt={onFirstPrompt}
-          onStatus={onStatus}
-          onCommit={onCommit}
-        />
-      )}
-    </>
+  return {
+    hydrated,
+    activeId,
+    summaries,
+    activeEmpty,
+    newSession,
+    selectSession,
+    renameSession,
+    deleteSession,
+    deleteAllSessions,
+    initialOf,
+    onFirstPrompt,
+    onStatus,
+    onCommit
+  }
+}
+export type MultiSessions = ReturnType<typeof useMultiSessions>
+
+// ── the multi-agent workspace — 활성 세션만 그리는 뷰. 세션 목록·전환·삭제는
+// App의 사이드바(멀티 채팅 섹션)가 useMultiSessions 번들로 다룬다 ────────────
+export function MultiWorkspace({
+  multi,
+  usage,
+  apiMode,
+  apiReady,
+  apiReadyCodex = false,
+  onOpenApiSettings
+}: {
+  multi: MultiSessions
+  usage: UsageInfo
+  apiMode: boolean // 전역 과금 모드 — 새 패널의 기본값 시드로만 쓴다 (선택은 패널별)
+  apiReady: boolean
+  apiReadyCodex?: boolean // OpenAI 키 존재 여부 — Codex 패널의 과금 선택용
+  onOpenApiSettings: () => void // 설정 → API 탭 열기 (키 미등록 가드)
+}) {
+  return !multi.hydrated || !multi.activeId ? (
+    <section className="multi">
+      <div className="ma-hydrate">
+        <span className="ma-hydrate-spin" />
+      </div>
+    </section>
+  ) : (
+    <ActiveSession
+      key={multi.activeId}
+      sessionId={multi.activeId}
+      initial={multi.initialOf(multi.activeId)}
+      usage={usage}
+      apiMode={apiMode}
+      apiReady={apiReady}
+      apiReadyCodex={apiReadyCodex}
+      onOpenApiSettings={onOpenApiSettings}
+      onFirstPrompt={multi.onFirstPrompt}
+      onStatus={multi.onStatus}
+      onCommit={multi.onCommit}
+    />
   )
 }

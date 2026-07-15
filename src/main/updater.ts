@@ -121,16 +121,21 @@ $xaml = @'
     </Border.Effect>
     <StackPanel>
       <StackPanel Orientation="Horizontal" Margin="0,0,0,15">
-        <Border Width="31" Height="31" CornerRadius="9" Background="#C4633E">
-          <TextBlock Text="&lt;/&gt;" Foreground="#FFF8F2" FontFamily="Consolas" FontSize="12" FontWeight="Bold"
-                     HorizontalAlignment="Center" VerticalAlignment="Center"/>
+        <Border Width="31" Height="31" CornerRadius="9" Background="#E9E9E9">
+          <Viewbox Width="18" Height="18">
+            <Canvas Width="24" Height="24">
+              <Path Stroke="#161616" StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                    Data="M10 8h4a4.5 4.5 0 0 1 4.5 4.5v1a4.5 4.5 0 0 1 -4.5 4.5h-4a4.5 4.5 0 0 1 -4.5 -4.5v-1a4.5 4.5 0 0 1 4.5 -4.5z M9.5 8Q9 5.8 7.3 4.9 M14.5 8Q15 5.8 16.7 4.9 M4.4 10.6C3 11.5 3 14.5 4.4 15.4 M19.6 10.6C21 11.5 21 14.5 19.6 15.4"/>
+              <Path Fill="#161616" Data="M10.2 13m-.95 0a.95 .95 0 1 0 1.9 0a.95 .95 0 1 0 -1.9 0M13.8 13m-.95 0a.95 .95 0 1 0 1.9 0a.95 .95 0 1 0 -1.9 0M7 4.7m-.85 0a.85 .85 0 1 0 1.7 0a.85 .85 0 1 0 -1.7 0M17 4.7m-.85 0a.85 .85 0 1 0 1.7 0a.85 .85 0 1 0 -1.7 0"/>
+            </Canvas>
+          </Viewbox>
         </Border>
         <StackPanel Margin="12,0,0,0" VerticalAlignment="Center">
           <TextBlock Text="새 버전으로 업데이트하는 중" Foreground="#F2F2F2" FontSize="14" FontWeight="SemiBold" FontFamily="Segoe UI"/>
           <TextBlock Text="${sub}" Foreground="#9A9A9A" FontSize="11.5" Margin="0,3,0,0" FontFamily="Segoe UI"/>
         </StackPanel>
       </StackPanel>
-      <ProgressBar IsIndeterminate="True" Height="4" Foreground="#C4633E" Background="#2E2E2E" BorderThickness="0"/>
+      <ProgressBar IsIndeterminate="True" Height="4" Foreground="#E9E9E9" Background="#2E2E2E" BorderThickness="0"/>
     </StackPanel>
   </Border>
 </Window>
@@ -153,7 +158,8 @@ $null = $script:w.ShowDialog()
   //  · detached 없음 → libuv job object(KILL_ON_JOB_CLOSE)가 앱 종료와 함께 자식을 죽인다
   // cmd(자식)는 job 안에서 앱과 함께 죽지만, 손자 PS는 SILENT_BREAKAWAY_OK로 job 밖이라
   // 설치 내내 생존하고, 콘솔은 cmd의 숨은 콘솔(windowsHide)을 물려받아 번쩍임이 없다.
-  // 주의: cmd 커맨드라인은 8191자 한계 — 현재 EncodedCommand ~6.2k라 여유가 크지 않다.
+  // 주의: cmd 커맨드라인은 8191자 한계 — 현재 EncodedCommand ~7.1k(마스코트 XAML 포함)라
+  // 여유가 크지 않다. 수정하면 splash-poc.cjs(poc-update-harness)로 길이를 실측할 것.
   try {
     spawn(
       'cmd.exe',

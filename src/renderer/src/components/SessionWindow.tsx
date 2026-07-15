@@ -1,40 +1,58 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { ApiConfigStatus, AppUser, BgTaskRequest, RunRequest, UserProfile, UsageInfo } from '@shared/protocol'
+import type { ApiConfigStatus, AppUser, BgTaskRequest, EngineId, RunRequest, SessionPersistPayload, UserProfile, UsageInfo } from '@shared/protocol'
 
 // 백그라운드 셸 컨트롤 — 이 창의 세션 엔진으로 라우팅 (memo된 WorkBar용 고정 함수)
 const onBgTaskSession = (req: BgTaskRequest): void => {
   window.api.session?.bgTask(req).catch(() => {})
 }
 import { getPref, setPref } from '../lib/prefs'
-import { useAgentSession, initialSessionState, sameCwd, type SessionState } from '../store/session'
-import { extractMentions } from '../lib/mentions'
-import { IconMin, IconMax, IconRestore, IconClose, IconFolder } from './icons'
 import {
+  useAgentSession,
+  initialSessionState,
+  sameCwd,
+  commandOf,
+  liveMsgIndex,
+  sanitizeSnapshot,
+  snapshotForPersist,
+  type SessionState
+} from '../store/session'
+import { extractMentions } from '../lib/mentions'
+import {
+  ChatHeader,
+  ChatFind,
   Composer,
   MessageView,
   WorkingIndicator,
+  WelcomeState,
+  SelectionToolbar,
   hasRunningBash,
+  nextMode,
+  pickerModelOf,
   WorkBar,
   PermissionModal,
   QuestionModal,
+  useThreadFollow,
   type PickerState,
   type ScheduledMsg
 } from './Chat'
+import { pushRecentDir } from '../lib/recentDirs'
 import { ImageViewer } from './ImageViewer'
 import { SubAgentModal } from './AgentPanel'
 import { FileModal } from './FileModal'
-import { AskModal } from './AskModal'
+import { FolderSwitchDialog } from './FolderSwitchDialog'
 import { useZoom, ZoomBadge, mergeRefs } from './zoom'
-import { MouseGestureLayer, clearGesture, scrollGestures, sessionWindowGesture } from './mouseGesture'
+import { MouseGestureLayer, clearGesture, sessionWindowGesture, type GestureAction } from './mouseGesture'
+import { IconChevDown } from './icons'
 
 // ── 추가 채팅 (세션 창) ────────────────────────────────────────
 // A standalone conversation in its OWN native OS window (freely resizable, movable to a
 // second monitor), running on this window's own engine via the `session` channel — fully
 // independent of the main window's code/chat/multi work.
 //
-// The chat body is the SAME as 채팅 모드: the real MessageView thread + the full Composer
-// (model·effort·mode pickers, attachments, history). Only the empty state (center bolt)
-// and the "추가 채팅" header are bespoke to this window.
+// 2.0 컨셉(PoC): 사이드바만 없고 본채팅 화면 그대로다 — ChatHeader(폴더 picker·찾기·창
+// 컨트롤이 곧 타이틀바), WelcomeState, .thread 스레드, WorkBar, 진짜 Composer, 최근 파일
+// 탭, 선택 툴바, 폴더 확인 카드까지 전부 본채팅과 같은 부품·같은 규칙으로 동작한다.
+// 기본 작업 폴더는 바탕화면(빈 cwd → 엔진 폴백)이고, 헤더 폴더 칩에서 언제든 바꾼다.
 
 const DEFAULT_PICKER: PickerState = { model: 'opus', effort: 'high', mode: 'auto' }
 // 마지막에 고른 모델·effort·모드를 기억한다 → 새 창을 열면 그 값이 기본이 된다.
@@ -48,8 +66,12 @@ function sanitizePicker(p?: Partial<PickerState> | null): PickerState {
     model: p?.model && MODEL_IDS.includes(p.model) ? p.model : DEFAULT_PICKER.model,
     effort: p?.effort && EFFORT_IDS.includes(p.effort) ? p.effort : DEFAULT_PICKER.effort,
     mode: p?.mode && MODE_IDS.includes(p.mode) ? p.mode : DEFAULT_PICKER.mode,
+    // 실행 엔진 + Codex 모델 — codex가 아니면 필드를 지워 기본(Claude)으로
+    engine: p?.engine === 'codex' ? 'codex' : undefined,
+    codexModel: typeof p?.codexModel === 'string' && p.codexModel ? p.codexModel : undefined,
     // 실행 계정(이메일) — 형태만 확인 (등록 목록 대조는 picker·엔진이 담당)
-    account: typeof p?.account === 'string' && p.account ? p.account : undefined
+    account: typeof p?.account === 'string' && p.account ? p.account : undefined,
+    codexAccount: typeof p?.codexAccount === 'string' && p.codexAccount ? p.codexAccount : undefined
   }
 }
 function loadPicker(): PickerState {
@@ -61,33 +83,25 @@ function loadPicker(): PickerState {
   }
   return DEFAULT_PICKER
 }
-const FALLBACK_USER: AppUser = { name: '나', avatarText: '나', avatarColor: '#7c8cff' }
+const FALLBACK_USER: AppUser = { name: 'User', avatarText: 'U', avatarColor: '#6366F1' }
 const EMPTY_USAGE: UsageInfo = { fiveHour: null, weekly: null, weeklyFable: null, extraCredit: null }
-// same intent as 채팅 모드 — conversational, no tool-rummaging unless asked/attached
-const CHAT_SYSTEM_PROMPT =
-  '지금은 사용자와 자유롭게 이야기하는 채팅 모드입니다. 사용자가 파일/이미지를 첨부했거나 명시적으로 요청한 경우가 아니라면, 파일을 뒤지거나 도구를 실행하지 말고 대화로 답하세요. 친근하고 간결하게, 한국어로 답합니다.'
 
 function userFromProfile(p: UserProfile): AppUser {
   const name = p.nickname.trim()
-  return { name: name || '나', avatarText: (name.slice(0, 1) || '나').toUpperCase(), avatarColor: p.color }
+  return { name: name || 'User', avatarText: (name.slice(0, 1) || 'U').toUpperCase(), avatarColor: p.color }
 }
 
 // 이 창의 작업 폴더는 마지막에 고른 값을 기억한다(창을 다시 열어도 유지). 빈 값이면 엔진이
-// 바탕화면으로 폴백하므로, '' = 바탕화면(기본)을 뜻한다.
+// 바탕화면으로 폴백하므로, '' = 바탕화면(기본)을 뜻한다. 최근 폴더 목록은 일반·멀티
+// 채팅과 공유하는 lib/recentDirs — 헤더 팝오버(FolderPop)가 직접 읽는다.
 const CWD_KEY = 'session.cwd'
-// 폴더 경로에서 표시용 이름(마지막 구간)만 뽑는다. 빈 값이면 기본 라벨.
-function folderLabel(cwd: string): string {
-  if (!cwd) return '바탕화면'
-  const parts = cwd.replace(/[\\/]+$/, '').split(/[\\/]/)
-  return parts[parts.length - 1] || cwd
-}
 
 export function SessionWindow(): React.ReactElement {
-  const { state, busy, begin, clearPermission, clearQuestion, load } = useAgentSession((cb) =>
+  const { state, busy, begin, clearPermission, clearQuestion, answerQuestion, load } = useAgentSession((cb) =>
     window.api.session?.onEvent?.(cb) ?? (() => {})
   )
   const [max, setMax] = useState(false)
-  // 이 창의 작업 폴더('' = 바탕화면 기본). 폴더를 지정하면 실행·@멘션·/ask가 모두 그 폴더 기준.
+  // 이 창의 작업 폴더('' = 바탕화면 기본). 폴더를 지정하면 실행·@멘션이 모두 그 폴더 기준.
   const [cwd, setCwd] = useState('')
   const [user, setUser] = useState<AppUser>(FALLBACK_USER)
   const [input, setInput] = useState('')
@@ -95,6 +109,9 @@ export function SessionWindow(): React.ReactElement {
   const [queue, setQueue] = useState<ScheduledMsg[]>([])
   // 새 창은 마지막에 고른 모델·effort·모드로 시작한다(localStorage 복원, 손상 시 기본값)
   const [picker, setPicker] = useState<PickerState>(loadPicker)
+  // Shift+Tab 순환처럼 등록 시점이 고정된 핸들러가 최신 picker를 읽기 위한 ref
+  const pickerRef = useRef(picker)
+  pickerRef.current = picker
   // 피커를 바꾸면 다음 새 창의 기본값이 되도록 저장한다
   const savePicker = (p: PickerState): void => {
     setPicker(p)
@@ -104,6 +121,22 @@ export function SessionWindow(): React.ReactElement {
       /* localStorage 불가 — 이번 창에서만 유지 */
     }
   }
+  // Fable 5 정책 거부(claude)·모델 수용량 초과(codex) → 엔진이 폴백 모델로 전환·재시도한
+  // 경우 이 창의 picker도 따라 바꾼다 (메인 채팅과 같은 규칙 — 안 바꾸면 매번 반복).
+  // 엔진 주도 변경이라 setPicker — 다음 새 창의 기본값(localStorage)은 안 건드린다.
+  useEffect(
+    () =>
+      window.api.session?.onEvent?.((e) => {
+        if (e.type !== 'model-fallback') return
+        if (e.engine === 'codex') {
+          setPicker((p) => (p.codexModel === e.toModel ? p : { ...p, codexModel: e.toModel }))
+          return
+        }
+        const next = pickerModelOf(e.toModel)
+        if (next) setPicker((p) => (p.model === next ? p : { ...p, model: next }))
+      }) ?? undefined,
+    []
+  )
   const [usage, setUsage] = useState<UsageInfo>(EMPTY_USAGE)
   // 과금(구독/API) — 메인과 같은 전역 pref(api.mode)에서 시작한다. 이 창엔 설정 모달이
   // 없어서 키 없이 API를 고르면 IPC로 메인 창의 설정 → API 탭을 대신 연다. 키 존재/예산은
@@ -116,8 +149,8 @@ export function SessionWindow(): React.ReactElement {
         .get()
         .then((s) => {
           setApiCfg(s)
-          // 키가 사라졌으면 API 모드도 끈다 — 키 없는 API 모드는 실행이 실패한다 (메인과 동일 가드)
-          if (!s.hasKey) {
+          // 두 엔진 키가 모두 사라졌을 때만 API 모드를 끈다 (메인과 동일 가드)
+          if (!s.hasKey && !s.hasOpenaiKey) {
             setApiMode((on) => {
               if (on) setPref('api.mode', false)
               return false
@@ -130,8 +163,9 @@ export function SessionWindow(): React.ReactElement {
     window.addEventListener('focus', refresh)
     return () => window.removeEventListener('focus', refresh)
   }, [])
-  const onApiModeChange = (next: boolean): void => {
-    if (next && !apiCfg?.hasKey) {
+  const onApiModeChange = (next: boolean, engine?: EngineId): void => {
+    const ready = engine === 'codex' ? !!apiCfg?.hasOpenaiKey : !!apiCfg?.hasKey
+    if (next && !ready) {
       // ?. 가드: HMR로 렌더러만 갈린 구 preload엔 이 함수가 없을 수 있다 (App과 동일)
       window.api.openApiSettings?.().catch(() => {})
       return
@@ -143,30 +177,25 @@ export function SessionWindow(): React.ReactElement {
   const [openWorkFile, setOpenWorkFile] = useState<string | null>(null)
   const [openSubagentId, setOpenSubagentId] = useState<string | null>(null)
   const openSubagent = openSubagentId ? state.subagents.find((a) => a.id === openSubagentId) ?? null : null
+  // 작업 폴더 변경 확인 카드 — 본채팅과 동일한 규칙(잃을 대화가 있으면 확인 후 리셋)
+  const [pendingFolder, setPendingFolder] = useState<string | null>(null)
+  // 저장본 복원이 끝났는지 — 끝나기 전엔 보고/persist를 막아 저장된 대화를 빈 상태로 덮지 않는다
+  const [hydrated, setHydrated] = useState(false)
+  const hydratedRef = useRef(false)
+  // 마지막 활동(프롬프트 전송) 시각 — persist에 실어 사이드바 상대 시간이 된다
+  const lastActiveRef = useRef<number | undefined>(undefined)
   const scrollRef = useRef<HTMLDivElement>(null)
+  // 스크롤 뷰포트를 state로도 추적 — follow 훅·제스처 레이어가 재바인딩되도록 (App과 동일)
+  const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null)
   const composerRef = useRef<HTMLTextAreaElement>(null)
-  // Ctrl+휠 글자 크기 — 메인 채팅과 같은 'chat.zoom' 키를 공유해 한 번 정한 읽기
-  // 크기가 이 창에도 그대로 적용된다 (휠 리스너용 콜백 ref를 스크롤 뷰포트에 합침)
-  const chatZoom = useZoom('chat.zoom')
-  // 마우스 제스처(↑/↓) 대상 — 스레드 엘리먼트를 state로 추적
-  const [threadEl, setThreadEl] = useState<HTMLDivElement | null>(null)
-  const swScrollRef = useMemo(() => mergeRefs(scrollRef, chatZoom.ref, setThreadEl), [chatZoom.ref])
+  // Ctrl+휠 글자 크기 — 추가 채팅 전용 배율(session.zoom): 본채팅(chat.zoom)·멀티
+  // (multi.zoom)와 독립이라 창마다 다른 읽기 크기를 유지할 수 있다
+  const chatZoom = useZoom('session.zoom')
+  const swScrollRef = useMemo(() => mergeRefs(scrollRef, setScrollEl, chatZoom.ref), [chatZoom.ref])
   // 턴을 막고 있는 포그라운드 Bash가 있을 때만 셸 팝오버에 "건너뛰기"(Ctrl+B) 버튼을 노출
   const canSkipWait = useMemo(() => hasRunningBash(state.messages), [state.messages])
-  // "/ask" — 이 창 전용 일회용 질문 모달(sessionAsk 채널, 본 대화 엔진과 분리). 메인 창과
-  // 동일한 UX: "/ask <질문>"은 모달 컴포저를 미리 채우고, 닫으면(언마운트) 대화가 사라진다.
-  const [askOpen, setAskOpen] = useState(false)
-  const [askInitial, setAskInitial] = useState('')
-  const [askMinimized, setAskMinimized] = useState(false)
-  const askOpenRef = useRef(askOpen)
-  askOpenRef.current = askOpen
-  const askMinimizedRef = useRef(askMinimized)
-  askMinimizedRef.current = askMinimized
-  const openAsk = (initial: string): void => {
-    setAskInitial(initial)
-    setAskMinimized(false)
-    setAskOpen(true)
-  }
+  // 스레드 바닥 따라가기 — 본채팅과 같은 래치·점프 버튼·스트리밍 rAF 고정 (공용 훅)
+  const follow = useThreadFollow(scrollEl, busy)
 
   const started = state.messages.length > 0
   const onRefreshUsage = (): void => {
@@ -180,27 +209,45 @@ export function SessionWindow(): React.ReactElement {
     }
   }, [state.status])
 
-  // 작업 폴더 적용 — 값을 기억하고, 대화가 이미 시작됐다면 새 폴더로 새 대화를 연다. 세션 ID는
-  // 폴더에 묶여 있어(메인 앱과 동일) 이어갈 수 없으므로, 스레드를 비워 보이는 대화와 엔진 세션을
-  // 일치시킨다. 큐에 쌓인 예약 메시지도 이전 폴더의 것이라 함께 비운다.
-  const applyFolder = (dir: string): void => {
-    if (dir === cwd || sameCwd(dir, cwd)) return // 같은 폴더(형식만 다른 경우 포함) → 대화 유지
-    if (started) {
-      load(initialSessionState)
-      setQueue([])
-    }
-    setCwd(dir)
+  // ── 작업 폴더 — 본채팅과 같은 확인 카드 흐름 ─────────────────────
+  const persistCwd = (dir: string): void => {
     try {
       localStorage.setItem(CWD_KEY, dir)
     } catch {
       /* localStorage 불가 — 이번 창에서만 유지 */
     }
   }
-  const pickFolder = async (): Promise<void> => {
-    const dir = await window.api.pickDirectory()
-    if (dir) applyFolder(dir)
+  // 이 창의 폴더 사용(선택·복원)을 공유 최근 폴더 목록에 반영 — 일반·멀티 채팅과 공유
+  useEffect(() => {
+    if (cwd) pushRecentDir(cwd)
+  }, [cwd])
+  // 세션 ID는 폴더에 묶여 있어(본채팅과 동일) 다른 폴더로는 대화를 이어갈 수 없다 —
+  // 잃을 대화가 있으면 확인 카드를 먼저 띄우고, 같은 폴더 재선택/빈 대화는 조용히 적용한다.
+  const requestFolder = (dir: string): void => {
+    if (!dir) return
+    const cur = cwd || state.session?.cwd || ''
+    if (!cur || sameCwd(dir, cur) || state.messages.length === 0) {
+      setCwd(dir)
+      persistCwd(dir)
+      return
+    }
+    if (busy) return // 진행 중 턴은 이 폴더에서 작업한다 — 끝나거나 중지한 뒤에
+    setPendingFolder(dir)
   }
-  const resetFolder = (): void => applyFolder('') // 바탕화면(기본)으로
+  // 변경 — 스레드/예약 큐를 비우고 새 폴더에서 새 대화 (본채팅의 confirmFolder)
+  const confirmFolder = (): void => {
+    if (!pendingFolder) return
+    load(initialSessionState)
+    setQueue([])
+    setCwd(pendingFolder)
+    persistCwd(pendingFolder)
+    setPendingFolder(null)
+  }
+  const pickFolder = async (): Promise<void> => {
+    if (busy) return // 실행 중 폴더 변경은 어차피 막힌다 — 픽커도 열지 않는다
+    const dir = await window.api.pickDirectory()
+    if (dir) requestFolder(dir)
+  }
 
   // 내가 보낸 메시지(오래된→최신) — 작성칸에서 ↑/↓로 다시 불러오기 (채팅과 동일)
   const sentHistory = useMemo(
@@ -212,6 +259,44 @@ export function SessionWindow(): React.ReactElement {
     [state.messages]
   )
 
+  // 메인 창 사이드바 '추가 채팅' 목록용 보고 — 첫 프롬프트에서 딴 제목 + 진행 상태.
+  // 복원 전 보고는 저장된 제목을 ''로 덮으므로 hydrated 이후에만 보낸다.
+  // ?. 가드: HMR로 렌더러만 갈린 구 preload엔 report가 없을 수 있다 (openApiSettings와 동일)
+  const winTitle = sentHistory[0]?.trim().slice(0, 80) ?? ''
+  useEffect(() => {
+    if (!hydrated) return
+    window.api.session?.report?.({ title: winTitle, status: state.status }).catch(() => {})
+  }, [hydrated, winTitle, state.status])
+
+  // ── 영속화 (persist) ────────────────────────────────────────
+  // 메인 채팅과 같은 규칙(600ms 디바운스) — 대화·폴더·picker·초안을 채팅 레코드로 저장해
+  // 창을 닫아도, 앱을 재시작해도 사이드바 '추가 채팅'에서 이 대화를 다시 연다.
+  // persistNowRef: 닫기 직전의 flush(최종 스냅샷)와 디바운스 저장이 같은 최신 상태를
+  // 읽도록 매 렌더 갱신되는 ref로 둔다.
+  const persistNowRef = useRef<() => void>(() => {})
+  persistNowRef.current = () => {
+    if (!hydratedRef.current) return
+    const payload: SessionPersistPayload = {
+      title: winTitle,
+      status: state.status,
+      cwd,
+      snapshot: snapshotForPersist(state),
+      picker,
+      draft: input,
+      draftImages: images,
+      empty: state.messages.length === 0,
+      updatedAt: lastActiveRef.current
+    }
+    window.api.session?.persist?.(payload).catch(() => {})
+  }
+  useEffect(() => {
+    if (!hydrated) return
+    const t = setTimeout(() => persistNowRef.current(), 600)
+    return () => clearTimeout(t)
+  }, [hydrated, state, cwd, picker, input, images])
+  // 닫기 flush — 메인이 창을 정리하기 직전 마지막 스냅샷을 요청한다 (닫기=저장 후 정리)
+  useEffect(() => window.api.session?.onFlushRequest?.(() => persistNowRef.current()) ?? (() => {}), [])
+
   // avatar/name from the shared saved profile; usage for the composer strip
   useEffect(() => {
     window.api.getProfile().then((p) => p && setUser(userFromProfile(p))).catch(() => {})
@@ -221,50 +306,78 @@ export function SessionWindow(): React.ReactElement {
     window.api.getUsage(false, picker.account).then(setUsage).catch(() => {})
   }, [picker.account])
 
-  // 지난번에 고른 작업 폴더 복원 — 폴더가 지워졌을 수 있으니 존재를 확인하고, 없으면 바탕화면으로.
+  // ── 복원 (hydrate) ──────────────────────────────────────────
+  // 사이드바에서 다시 연 채팅이면 저장본(대화·폴더·picker·초안)을 되살리고, 새 창이면
+  // 마지막에 고른 작업 폴더만 복원한다. 폴더는 그 사이 지워졌을 수 있으니 존재를 확인
+  // 하고, 없으면 바탕화면으로. 대화 이어가기는 스냅샷의 session.sessionId resume이 담당.
+  // ?. 가드: HMR로 렌더러만 갈린 구 preload엔 hydrate가 없을 수 있다 (report와 동일)
   useEffect(() => {
-    let saved = ''
-    try {
-      saved = localStorage.getItem(CWD_KEY) || ''
-    } catch {
-      /* localStorage 불가 */
-    }
-    if (!saved) return
-    window.api
-      .dirExists(saved)
-      .then((ok) => {
-        if (ok) setCwd(saved)
-        else {
-          try {
-            localStorage.removeItem(CWD_KEY)
-          } catch {
-            /* no-op */
-          }
+    let alive = true
+    ;(async () => {
+      const h = (await window.api.session?.hydrate?.().catch(() => null)) ?? null
+      if (!alive) return
+      if (h) {
+        load(sanitizeSnapshot(h.snapshot))
+        // picker는 사용자 조작이 아니므로 setPicker — 새 창 기본값(localStorage)은 안 건드린다
+        if (h.picker) setPicker(sanitizePicker(h.picker as Partial<PickerState>))
+        if (typeof h.draft === 'string' && h.draft) setInput(h.draft)
+        if (Array.isArray(h.draftImages)) setImages(h.draftImages.filter((x): x is string => typeof x === 'string'))
+      }
+      let dir = h?.cwd || ''
+      if (!dir) {
+        try {
+          dir = localStorage.getItem(CWD_KEY) || ''
+        } catch {
+          /* localStorage 불가 */
         }
-      })
-      .catch(() => {})
+      }
+      if (!dir) return
+      const ok = await window.api.dirExists(dir).catch(() => false)
+      if (!alive) return
+      if (ok) setCwd(dir)
+      else if (!h) {
+        try {
+          localStorage.removeItem(CWD_KEY)
+        } catch {
+          /* no-op */
+        }
+      }
+    })().finally(() => {
+      // 실패해도 hydrated는 세운다 — 아니면 persist가 영원히 막혀 새 대화도 저장이 안 된다
+      if (alive) {
+        hydratedRef.current = true
+        setHydrated(true)
+      }
+    })
+    return () => {
+      alive = false
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
     requestAnimationFrame(() => composerRef.current?.focus())
   }, [])
 
-  // our custom title bar's maximize icon — reflects THIS window's native maximize state
+  // 마우스 제스처 RU(최대화 토글) 라벨용 — 이 창의 네이티브 최대화 상태
   useEffect(() => window.api.onWinState((s) => setMax(s.maximized)), [])
   useEffect(() => {
     window.api.win.isMaximized().then(setMax)
   }, [])
 
-  // Enter (from anywhere outside a field) jumps into the composer — same as the main app,
-  // so you can read the thread and just start typing. A permission/question card owns the
-  // keyboard while up, so stand down then.
+  // Enter (from anywhere outside a field) jumps into the composer; Shift+Tab cycles the
+  // run mode — same as the main app. A permission/question card owns the keyboard while up.
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
-      if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return
-      if (e.key !== 'Enter') return
-      if (document.querySelector('.q-overlay, .pr-overlay')) return
-      // /ask 모달이 펼쳐져 있으면 Enter는 그 모달의 컴포저 몫 (메인 창과 동일)
-      if (askOpenRef.current && !askMinimizedRef.current) return
+      if (e.metaKey || e.ctrlKey || e.altKey) return
+      if (document.querySelector('.q-overlay, .q-mini, .pr-overlay')) return
+      if (e.key === 'Tab' && e.shiftKey) {
+        e.preventDefault()
+        const p = pickerRef.current
+        savePicker({ ...p, mode: nextMode(p.mode) })
+        return
+      }
+      if (e.shiftKey || e.key !== 'Enter') return
       const ae = document.activeElement as HTMLElement | null
       const interactive =
         !!ae && (['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON', 'A'].includes(ae.tagName) || ae.isContentEditable)
@@ -275,13 +388,32 @@ export function SessionWindow(): React.ReactElement {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // pin the thread to the newest message / working line as it streams
+  // Esc = 실행 중지 (본채팅과 동일) — 열린 모달/메뉴가 있으면 그쪽의 Esc에 양보한다
   useEffect(() => {
-    const el = scrollRef.current
-    if (el) el.scrollTop = el.scrollHeight
-  }, [state.messages, state.thinkingText, busy])
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key !== 'Escape' || !busy) return
+      if (
+        document.querySelector(
+          '.q-overlay, .q-mini, .set-dialog-overlay, .pr-overlay, .fv-overlay, .iv-overlay, .sa-overlay, .ctx-menu, .sel-bar'
+        )
+      )
+        return
+      e.preventDefault()
+      window.api.session?.cancel().catch(() => {})
+      setQueue([])
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [busy])
+
+  // 새 메시지/생각 갱신 — 래치가 켜져 있을 때만 바닥 고정 (본채팅과 동일)
+  useEffect(() => {
+    follow.snapIfStuck()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.messages, state.thinkingText])
 
   // ── attachments (same as 채팅) ───────────────────────────────
   const addImagePaths = (paths: string[]): void => {
@@ -292,7 +424,10 @@ export function SessionWindow(): React.ReactElement {
   }
   const openViewer = (imgs: string[], index: number): void => setViewer({ images: imgs, index })
 
-  // /clear — reset this window's conversation (client command, same as 채팅/코드).
+  // 툴 로그/WorkBar에서 연 파일 — 뷰어로
+  const onOpenToolFile = (path: string): void => setOpenWorkFile(path)
+
+  // /clear — reset this window's conversation (client command, same as 본채팅).
   // 컴포저의 /clear와 스레드의 ↑↓ 제스처가 같은 착지점을 쓴다.
   const clearConversation = (): void => {
     if (busy) return
@@ -310,33 +445,36 @@ export function SessionWindow(): React.ReactElement {
       clearConversation()
       return
     }
-    // /ask — 이 창 전용 일회용 질문 모달(자체 엔진). 본 대화로는 보내지 않는다 (메인 창과 동일)
-    const trimmed = text.trim()
-    if (trimmed === '/ask' || trimmed.startsWith('/ask ')) {
-      openAsk(trimmed.slice(4).trim())
-      if (!opts?.keepDraft) setInput('')
-      return
-    }
-    begin(text, null, imgs)
+    // 내장 슬래시 명령(/init·/compact·/review…) — 본채팅처럼 요약 카드로 렌더되게 추적
+    const cmd = commandOf(text)
+    // 전송 = 따라가기 재개 — 위를 읽던 중이어도 내 메시지와 답이 시야로 들어온다
+    follow.pin()
+    lastActiveRef.current = Date.now() // 사이드바 상대 시간의 기준 — 프롬프트 전송 시각
+    begin(text, cmd, imgs)
     // fold mention/attachment notes into the prompt so the engine reads them (same as 채팅)
     let promptForEngine = text
-    const notes: string[] = []
-    const mentions = extractMentions(text)
-    if (mentions.length) notes.push(`[멘션된 파일 — 필요하면 Read 도구로 확인하세요]\n${mentions.map((p) => '- ' + p).join('\n')}`)
-    if (imgs.length) notes.push(`[첨부 파일 — Read 도구로 확인하세요]\n${imgs.map((p) => '- ' + p).join('\n')}`)
-    if (notes.length) promptForEngine = `${text}\n\n${notes.join('\n\n')}`
+    if (!cmd) {
+      const notes: string[] = []
+      const mentions = extractMentions(text)
+      if (mentions.length) notes.push(`[멘션된 파일 — 필요하면 Read 도구로 확인하세요]\n${mentions.map((p) => '- ' + p).join('\n')}`)
+      if (imgs.length) notes.push(`[첨부 파일 — Read 도구로 확인하세요]\n${imgs.map((p) => '- ' + p).join('\n')}`)
+      if (notes.length) promptForEngine = `${text}\n\n${notes.join('\n\n')}`
+    }
     const req: RunRequest = {
       prompt: promptForEngine,
       model: pk.model,
       effort: pk.effort,
       mode: pk.mode,
+      // 실행 엔진(claude/codex) + Codex GPT 모델 — 생략하면 Claude
+      engine: pk.engine,
+      codexModel: pk.codexModel,
       cwd, // 지정한 작업 폴더. 빈 값이면 엔진이 바탕화면으로 폴백
-      systemPrompt: CHAT_SYSTEM_PROMPT,
       resume: state.session?.sessionId,
       // 과금 모드 — API를 골랐으면 이 창의 실행도 API 키로 과금 (메인과 같은 전역 설정)
       useApi: apiMode || undefined,
-      // 이 창의 실행 계정(구독) — 전역 활성 계정과 다르면 엔진이 격리 폴더로 돌린다
-      account: pk.account
+      // 실행 계정 — 클로드는 격리 CLAUDE_CONFIG_DIR, Codex는 격리 CODEX_HOME (미지정=기본 계정)
+      account: pk.account,
+      codexAccount: pk.codexAccount
     }
     if (!opts?.keepDraft) {
       setInput('')
@@ -348,14 +486,6 @@ export function SessionWindow(): React.ReactElement {
   // queue a draft while busy → auto-send when the run ends (same as 채팅)
   const scheduleMessage = (): void => {
     if (!busy || (!input.trim() && images.length === 0)) return
-    // /ask는 본 대화와 분리된 자체 엔진 모달 — 실행 중에도 예약 없이 즉시 연다 (메인 창과 동일)
-    const t = input.trim()
-    if (t === '/ask' || t.startsWith('/ask ')) {
-      openAsk(t.slice(4).trim())
-      setInput('')
-      composerRef.current?.focus()
-      return
-    }
     const id = crypto.randomUUID ? crypto.randomUUID() : `q-${queue.length}-${state.messages.length}`
     setQueue((q) => [...q, { id, text: input, images, picker }])
     setInput('')
@@ -373,6 +503,33 @@ export function SessionWindow(): React.ReactElement {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [busy, queue])
 
+  // "더 자세히" — 본채팅과 동일: 선택한 글을 <selection> 태그로 감싸 컴포저에 붙인다
+  const onElaborateSelection = (text: string): void => {
+    const base = `<selection>\n${text.trim()}\n</selection>\n\n이 부분 더 자세히 설명해줘`
+    setInput((cur) => (cur.trim() ? cur + '\n\n' + base : base))
+    requestAnimationFrame(() => {
+      const el = composerRef.current
+      if (!el) return
+      el.focus()
+      const end = el.value.length
+      el.setSelectionRange(end, end)
+    })
+  }
+
+  // 파일 뷰어의 질문 패널 — 경로·줄 범위가 붙은 <selection> 블록과 함께 즉시 전송
+  // (대화 진행 중이면 예약 큐로). 컴포저 초안은 건드리지 않는다. (본채팅과 동일)
+  const onAskSelection = (p: { path: string; text: string; from: number | null; to: number | null; question: string }): void => {
+    const lines = p.from != null && p.to != null ? ` lines="${Math.min(p.from, p.to)}-${Math.max(p.from, p.to)}"` : ''
+    const prompt = `<selection file="${p.path}"${lines}>\n${p.text}\n</selection>\n\n${p.question}`
+    setOpenWorkFile(null)
+    if (busy) {
+      const id = crypto.randomUUID ? crypto.randomUUID() : `q-${queue.length}-${state.messages.length}`
+      setQueue((q) => [...q, { id, text: prompt, images: [], picker }])
+    } else {
+      runPrompt(prompt, { images: [], keepDraft: true })
+    }
+  }
+
   const onPermission = (behavior: 'allow' | 'allow_always' | 'deny'): void => {
     if (!state.pendingPermission) return
     window.api.session?.respondPermission({ requestId: state.pendingPermission.requestId, behavior }).catch(() => {})
@@ -381,7 +538,7 @@ export function SessionWindow(): React.ReactElement {
   const onAnswer = (answers: string[][]): void => {
     if (!state.pendingQuestion) return
     window.api.session?.respondQuestion({ requestId: state.pendingQuestion.requestId, answers }).catch(() => {})
-    clearQuestion()
+    answerQuestion(answers) // 카드를 닫으며 문답 흔적을 스레드에 남긴다
   }
   const onDismissQuestion = (): void => {
     if (!state.pendingQuestion) return
@@ -391,169 +548,150 @@ export function SessionWindow(): React.ReactElement {
 
   const lastMsg = state.messages[state.messages.length - 1]
   const streamingAnswer = lastMsg?.kind === 'msg' && lastMsg.role === 'assistant' && !lastMsg.error
-  const showWorking = (state.thinkingText != null || !streamingAnswer) && !state.pendingQuestion
+  const showWorking =
+    (state.thinkingText != null || !streamingAnswer) && !state.pendingQuestion && !state.pendingCommand
+
+  // ↑←는 여기서도 창을 하나 더 연다. ↑/↓는 본채팅과 같은 래치 규칙(맨 위로/맨 아래로),
+  // ↑↓는 컴포저 /clear와 같은 대화 비우기. →↑는 최대화 토글(라벨은 현재 상태를 따라감),
+  // ↓→ 닫기 — 대화는 저장돼 사이드바 '추가 채팅'에 남는다(실행 중이면 턴을 마저 돌리고
+  // 정리, 삭제는 사이드바 X). 그래서 확인 없이 닫는다.
+  const gestures: GestureAction[] = [
+    { pattern: 'U', label: '맨 위로', run: () => follow.scrollTop() },
+    { pattern: 'D', label: '맨 아래로', run: () => follow.jumpBottom() },
+    sessionWindowGesture(),
+    clearGesture(clearConversation),
+    { pattern: 'RU', label: max ? '이전 크기로' : '창 최대화', run: () => window.api.win.toggleMaximize() },
+    { pattern: 'DR', label: '창 닫기', run: () => window.api.win.close() }
+  ]
 
   return (
     <div className="sw">
-      {/* 우리 앱과 동일한 커스텀 타이틀바(.titlebar 재사용) — 네이티브 바 대신 "추가 채팅".
-          창 전체는 -webkit-app-region:drag로 끌 수 있고, 버튼만 no-drag. 창 컨트롤은
-          메인 프로세스에서 호출 창(webContents) 기준으로 이 창을 제어한다. */}
-      <div className="titlebar sw-titlebar">
-        <span className="tb-page">추가 채팅</span>
-        {/* 작업 폴더 — 클릭하면 폴더 선택(취소하면 그대로). 지정하면 실행·@멘션·/ask가 그 폴더 기준.
-            기본은 바탕화면이며, 폴더를 고르면 옆의 ×로 다시 바탕화면으로 되돌린다. */}
-        <button
-          className="sw-folder has-tip tip-path"
-          data-tip={cwd ? `작업 폴더: ${cwd}` : '바탕화면 — 클릭해서 작업 폴더 지정'}
-          onClick={pickFolder}
-        >
-          <IconFolder size={13} />
-          <span className="sw-folder-name">{folderLabel(cwd)}</span>
-        </button>
-        {cwd && (
-          <button className="sw-folder-reset has-tip" data-tip="바탕화면으로" aria-label="바탕화면으로" onClick={resetFolder}>
-            <IconClose size={11} />
-          </button>
-        )}
-        <div className="tb-spacer" />
-        <div className="tb-controls">
-          <button className="tb-btn" aria-label="최소화" data-tip="최소화" onClick={() => window.api.win.minimize()}>
-            <IconMin size={15} />
-          </button>
-          <button
-            className="tb-btn"
-            aria-label={max ? '이전 크기로' : '최대화'}
-            data-tip={max ? '이전 크기로' : '최대화'}
-            onClick={() => window.api.win.toggleMaximize()}
-          >
-            {max ? <IconRestore size={14} /> : <IconMax size={13} />}
-          </button>
-          <button className="tb-btn close" aria-label="닫기" data-tip="닫기" onClick={() => window.api.win.close()}>
-            <IconClose size={15} />
-          </button>
-        </div>
-      </div>
-
-      <ZoomBadge pct={chatZoom.pct} show={chatZoom.flash} />
-      {/* ↑←는 여기서도 창을 하나 더 연다. ↑↓는 컴포저 /clear와 같은 대화 비우기.
-          →↑는 타이틀바 최대화 버튼과 같은 토글 — 라벨은 현재 상태(max)를 따라
-          '최대화'/'이전 크기로'로 바뀐다. ↓→ 닫기는 × 버튼과 같은 네이티브 close —
-          이 창의 대화는 창과 함께 사라지는 게 원래 규칙이라 확인 없이 닫는다. */}
-      <MouseGestureLayer
-        target={threadEl}
-        actions={[
-          ...scrollGestures(() => threadEl),
-          sessionWindowGesture(),
-          clearGesture(clearConversation),
-          { pattern: 'RU', label: max ? '이전 크기로' : '창 최대화', run: () => window.api.win.toggleMaximize() },
-          { pattern: 'DR', label: '창 닫기', run: () => window.api.win.close() }
-        ]}
-      />
-      <div className="sw-scroll scroll" ref={swScrollRef}>
-        {!started && !busy ? (
-          <div className="sw-empty">
-            <div className="sw-empty-orb">
-              <BoltGlyph big />
-            </div>
-            <h2>무엇이든 편하게 물어보세요</h2>
-            <p>
-              지금 하는 코드 작업은 그대로 두고, 이 창에서 따로 대화하세요.
-              <br />크기 조절·다른 모니터로 옮기기 모두 자유예요.
-            </p>
-            {/* 작업 폴더를 미리 정해두면 파일을 다루는 대화가 그 폴더에서 열린다(기본은 바탕화면) */}
-            <button className="sw-empty-folder" onClick={pickFolder}>
-              <IconFolder size={14} />
-              <span>작업 폴더: {folderLabel(cwd)}</span>
-            </button>
-          </div>
-        ) : (
-          <div className="sw-thread" style={{ zoom: chatZoom.zoom, '--z': chatZoom.zoom } as React.CSSProperties}>
-            {state.messages.map((m, idx) => {
-              const prev = state.messages[idx - 1]
-              const prevIsAiBlock =
-                !!prev && (prev.kind === 'toolgroup' || (prev.kind === 'msg' && prev.role === 'assistant'))
-              return (
+      <div className="blurwarm" />
+      {/* 본채팅 화면 그대로(사이드바만 없음) — ChatHeader가 곧 이 창의 타이틀바
+          (전체 드래그 + 폴더 picker + 찾기 + 창 컨트롤). 창 컨트롤은 메인 프로세스가
+          호출 창(webContents) 기준으로 이 창을 제어한다. */}
+      <div className="chat chat--code">
+        <ChatHeader
+          title={winTitle || '추가 채팅'}
+          cwd={cwd || state.session?.cwd || ''}
+          placeholder="바탕화면"
+          onSelectFolder={requestFolder}
+          onBrowseFolder={pickFolder}
+        />
+        <ZoomBadge pct={chatZoom.pct} show={chatZoom.flash} />
+        <div className="chat-scroll scroll" ref={swScrollRef}>
+          {!started && !busy ? (
+            <WelcomeState
+              userName={user.name}
+              variant={cwd ? 'agent' : 'chat'}
+              onPick={(t) => {
+                setInput(t)
+                composerRef.current?.focus()
+              }}
+            />
+          ) : (
+            <div className="thread" style={{ zoom: chatZoom.zoom, '--z': chatZoom.zoom } as React.CSSProperties}>
+              {state.messages.map((m, idx) => (
                 <MessageView
                   key={m.id}
                   item={m}
-                  userInitial={user.avatarText}
-                  userColor={user.avatarColor}
-                  userName={user.name}
-                  live={idx === state.messages.length - 1 && m.kind === 'msg' && m.role === 'assistant' && !m.error}
+                  live={idx === liveMsgIndex(state.messages) && m.kind === 'msg' && m.role === 'assistant' && !m.error}
                   running={busy}
-                  lead={m.kind === 'toolgroup' && !prevIsAiBlock}
+                  onOpenFile={onOpenToolFile}
                   onOpenImage={openViewer}
                 />
-              )
-            })}
-            {busy && showWorking && <WorkingIndicator text={state.thinkingText} />}
-          </div>
-        )}
+              ))}
+              {busy && showWorking && <WorkingIndicator text={state.thinkingText} />}
+            </div>
+          )}
+          {follow.showJump && (
+            <div className="jump-bottom-wrap">
+              <button className="jump-bottom has-tip" data-tip="맨 아래로" aria-label="맨 아래로" onClick={follow.jumpBottom}>
+                <IconChevDown size={17} />
+              </button>
+            </div>
+          )}
+        </div>
+        <SelectionToolbar scrollRef={scrollRef} onElaborate={onElaborateSelection} />
+        <ChatFind scrollRef={scrollRef} />
+        <MouseGestureLayer target={scrollEl} actions={gestures} />
+        <WorkBar
+          todos={state.todos}
+          files={state.files}
+          subagents={state.subagents}
+          bgTasks={state.bgTasks}
+          busy={busy}
+          canSkipWait={canSkipWait}
+          onBgTask={onBgTaskSession}
+          usage={usage}
+          contextTokens={state.result?.contextTokens ?? null}
+          contextWindow={state.result?.contextWindow ?? null}
+          model={picker.model}
+          apiMode={apiMode}
+          chatSpentUsd={state.spentUsd ?? 0}
+          budgetUsd={apiCfg?.budgetUsd ?? null}
+          totalSpentUsd={apiCfg?.spentUsd ?? 0}
+          engine={picker.engine}
+          codexAccount={picker.codexAccount}
+          onOpenFile={(f) => onOpenToolFile(f.path)}
+          onOpenSubagent={(a) => setOpenSubagentId(a.id)}
+          onRefreshUsage={onRefreshUsage}
+        />
+        <Composer
+          value={input}
+          onChange={setInput}
+          history={sentHistory}
+          onSend={() => runPrompt(input)}
+          onStop={() => {
+            window.api.session?.cancel().catch(() => {})
+            setQueue([])
+          }}
+          onSchedule={scheduleMessage}
+          queued={queue}
+          onRemoveQueued={(id) => setQueue((q) => q.filter((m) => m.id !== id))}
+          busy={busy}
+          started={started}
+          picker={picker}
+          setPicker={savePicker}
+          apiMode={apiMode}
+          apiReady={!!apiCfg?.hasKey}
+          apiReadyCodex={!!apiCfg?.hasOpenaiKey}
+          onApiModeChange={onApiModeChange}
+          images={images}
+          onPickImages={addImagesFromPicker}
+          onAddImagePaths={addImagePaths}
+          onRemoveImage={(i) => setImages((a) => a.filter((_, idx) => idx !== i))}
+          onOpenImage={openViewer}
+          contextTokens={state.result?.contextTokens ?? null}
+          contextWindow={state.result?.contextWindow ?? null}
+          usage={usage}
+          showContext={false}
+          cwd={cwd}
+          mentionBase={cwd}
+          inputRef={composerRef}
+        />
       </div>
-
-      <WorkBar
-        todos={state.todos}
-        files={state.files}
-        subagents={state.subagents}
-        bgTasks={state.bgTasks}
-        busy={busy}
-        canSkipWait={canSkipWait}
-        onBgTask={onBgTaskSession}
-        usage={usage}
-        contextTokens={state.result?.contextTokens ?? null}
-        contextWindow={state.result?.contextWindow ?? null}
-        model={picker.model}
-        apiMode={apiMode}
-        chatSpentUsd={state.spentUsd ?? 0}
-        budgetUsd={apiCfg?.budgetUsd ?? null}
-        totalSpentUsd={apiCfg?.spentUsd ?? 0}
-        onOpenFile={(f) => setOpenWorkFile(f.path)}
-        onOpenSubagent={(a) => setOpenSubagentId(a.id)}
-        onRefreshUsage={onRefreshUsage}
-      />
-      <Composer
-        value={input}
-        onChange={setInput}
-        history={sentHistory}
-        onSend={() => runPrompt(input)}
-        onStop={() => {
-          window.api.session?.cancel().catch(() => {})
-          setQueue([])
-        }}
-        onSchedule={scheduleMessage}
-        queued={queue}
-        onRemoveQueued={(id) => setQueue((q) => q.filter((m) => m.id !== id))}
-        busy={busy}
-        started={started}
-        picker={picker}
-        setPicker={savePicker}
-        apiMode={apiMode}
-        apiReady={!!apiCfg?.hasKey}
-        onApiModeChange={onApiModeChange}
-        images={images}
-        onPickImages={addImagesFromPicker}
-        onAddImagePaths={addImagePaths}
-        onRemoveImage={(i) => setImages((a) => a.filter((_, idx) => idx !== i))}
-        onOpenImage={openViewer}
-        contextTokens={state.result?.contextTokens ?? null}
-        contextWindow={state.result?.contextWindow ?? null}
-        usage={usage}
-        showContext={false}
-        cwd={cwd}
-        mentionBase={cwd}
-        inputRef={composerRef}
-      />
 
       <PermissionModal permission={state.pendingPermission} onRespond={onPermission} />
       <QuestionModal question={state.pendingQuestion} onAnswer={onAnswer} onDismiss={onDismissQuestion} />
 
-      {/* 작업 바에서 연 변경 파일 뷰어 — cwd는 엔진이 실제로 쓴 폴더(세션 보고값) */}
+      {pendingFolder && (
+        <FolderSwitchDialog
+          from={cwd || state.session?.cwd || ''}
+          to={pendingFolder}
+          onCancel={() => setPendingFolder(null)}
+          onConfirm={confirmFolder}
+        />
+      )}
+
+      {/* 작업 바/툴 로그에서 연 파일 뷰어 — cwd는 엔진이 실제로 쓴 폴더(세션 보고값) */}
       {openWorkFile && (
         <FileModal
           path={openWorkFile}
-          cwd={state.session?.cwd ?? ''}
+          cwd={state.session?.cwd ?? cwd}
           diffs={state.diffs}
           onClose={() => setOpenWorkFile(null)}
+          onAskSelection={onAskSelection}
         />
       )}
       <SubAgentModal agent={openSubagent} onClose={() => setOpenSubagentId(null)} />
@@ -567,35 +705,6 @@ export function SessionWindow(): React.ReactElement {
         />
       )}
 
-      {/* /ask — 이 창 전용 일회용 질문 모달. sessionAsk 채널이라 이 창의 본 대화·다른 창과
-          완전히 분리된다. 작업 폴더를 지정했으면 그 폴더 기준(없으면 엔진이 바탕화면으로 폴백). */}
-      {askOpen && (
-        <AskModal
-          onClose={() => {
-            setAskOpen(false)
-            setAskMinimized(false)
-          }}
-          minimized={askMinimized}
-          onMinimizedChange={setAskMinimized}
-          cwd={cwd}
-          user={user}
-          picker={picker}
-          initialText={askInitial}
-          apiMode={apiMode}
-          apiReady={!!apiCfg?.hasKey}
-          onApiModeChange={onApiModeChange}
-          channel={window.api.sessionAsk}
-        />
-      )}
     </div>
-  )
-}
-
-function BoltGlyph({ big }: { big?: boolean }): React.ReactElement {
-  const s = big ? 26 : 15
-  return (
-    <svg viewBox="0 0 24 24" width={s} height={s} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-      <path d="M13 2 4.5 13.5H11l-1 8.5 8.5-11.5H12z" />
-    </svg>
   )
 }

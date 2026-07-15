@@ -4,6 +4,8 @@
  * ============================================================ */
 
 // ── Picker enums (UI ⇄ engine) ───────────────────────────────
+/** 실행 엔진 — Anthropic(Claude Code CLI) 또는 OpenAI(Codex CLI). */
+export type EngineId = 'claude' | 'codex'
 export type ModelId = 'fable' | 'opus' | 'sonnet' | 'haiku'
 // minimal → extended thinking off; low..max → SDK effort levels (xhigh = Opus 4.7+)
 export type EffortId = 'max' | 'xhigh' | 'high' | 'medium' | 'low' | 'minimal'
@@ -60,43 +62,6 @@ export interface FileDiff {
   lines: DiffLine[]
 }
 
-// ── Git (탐색기 Git 카드) ─────────────────────────────────────
-export type GitFileStatus = 'M' | 'A' | 'D' | 'R'
-export interface GitChange {
-  path: string // 레포 루트 기준 posix 경로
-  status: GitFileStatus
-  add: number | null // numstat 증감 (바이너리/미상 = null)
-  del: number | null
-}
-export interface GitStatus {
-  root: string // 레포 최상위 절대 경로
-  branch: string // 현재 브랜치 (detached면 짧은 해시)
-  ahead: number
-  behind: number
-  changes: GitChange[]
-  branches: { name: string; current: boolean }[]
-  remotes: string[]
-  tags: string[] // 최신순, 최대 20개
-}
-export interface GitCommit {
-  hash: string
-  shortHash: string
-  subject: string
-  body: string
-  author: string
-  date: number // unix ms
-  tags: string[] // 이 커밋을 가리키는 태그들
-  pushed: boolean // 업스트림에 반영됐는지 (업스트림 없으면 true)
-}
-export interface GitFileAt {
-  content: string | null // 커밋 시점 파일 내용 (바이너리/너무 큼/삭제 = null)
-  diff: FileDiff | null // 부모→커밋 whole-file diff (뷰어 변경 마킹용)
-  error?: string
-}
-export interface GitOpResult {
-  ok: boolean
-  error?: string
-}
 /** Result of reading a file's content for the in-app viewer card. */
 export interface FileReadResult {
   path: string // the relative path that was requested (echoed back)
@@ -267,6 +232,10 @@ export interface SubAgentInfo {
   // 실행 중 내레이션의 누적 로그 — activity는 최신 한 줄로 덮이므로, 과정을 나중에
   // 볼 수 있게 렌더러(reducer)가 변화를 여기 쌓는다 (엔진은 채우지 않는다)
   log?: string[]
+  // 사이드체인 프레임이 보고한 실행 모델 표시명 (예: 'Opus 4.8') — 카드 서브 줄·푸터 칩
+  model?: string
+  // Task 도구 시작→완료 소요 — 완료 emit에만 실린다 (실행 중엔 없음)
+  durationMs?: number
 }
 
 // ── Chat ─────────────────────────────────────────────────────
@@ -342,9 +311,12 @@ export type EngineEvent =
       requestId: string
       toolName: string
       summary: string
+      // 카드 헤더 표기용('Claude의 승인 요청'/'GPT의 승인 요청') — 생략하면 claude
+      engine?: EngineId
     }
-  // the agent called AskUserQuestion → surface an interactive choice card
-  | { type: 'question-request'; runId: string; requestId: string; questions: AgentQuestion[] }
+  // the agent called AskUserQuestion → surface an interactive choice card.
+  // engine: 카드 헤더 표기용('Claude의 질문'/'GPT의 질문') — 생략하면 claude
+  | { type: 'question-request'; runId: string; requestId: string; questions: AgentQuestion[]; engine?: EngineId }
   | {
       type: 'result'
       runId: string
@@ -367,6 +339,8 @@ export type EngineEvent =
   // Fable 5가 안전 정책으로 응답을 거부(stop_reason 'refusal')해 엔진이 CLI처럼 폴백
   // 모델로 자동 전환·재시도한 경우. 렌더러는 경고 배너를 스레드에 표시하고, 거부된
   // 쪽의 스트리밍 부분 답변(retractMessageId)을 지우고, 모델 picker를 toModel로 바꾼다.
+  // Codex의 수용량 초과(ServerOverloaded) 전환도 이 이벤트를 재사용 — engine: 'codex'면
+  // toModel이 GPT 모델 id라 picker의 codexModel을 바꾼다.
   | {
       type: 'model-fallback'
       runId: string
@@ -374,6 +348,7 @@ export type EngineEvent =
       toModel: string // raw model id, e.g. claude-opus-4-8
       text: string // ready-to-render Korean warning line
       retractMessageId: string | null // 거부된 쪽이 스트리밍하던 메시지 id (없으면 null)
+      engine?: EngineId // picker 동기화 분기용 — 생략하면 claude
     }
   // 엔진 루프의 일반 텍스트 배너 — CLI가 REPL에 띄우는 알림(notification)·경고 줄
   // (informational: 한도 경고, 훅 피드백 등). 스레드에 notice 줄로 그대로 표시한다.
@@ -389,15 +364,20 @@ export interface RunRequest {
   effort: EffortId
   mode: ModeId
   cwd: string // working directory (project root). Required.
+  // 실행 엔진 — 생략하면 'claude'. 'codex'면 codexModel(GPT 모델 id)로 Codex CLI가 돈다.
+  engine?: EngineId
+  codexModel?: string
   resume?: string // session id to resume — carries this chat's conversation history
   systemPrompt?: string // 채팅/패널별 프롬프트 — appended to the preset system prompt every run
   // true → 이 실행은 구독(OAuth) 대신 저장된 API 키로 과금한다 (컴포저의 API 토글).
   // 엔진이 하위 CLI에 ANTHROPIC_API_KEY를 주입하고, result 이벤트에 viaApi로 표시한다.
   useApi?: boolean
-  // 이 실행을 전역 활성 로그인 대신 등록된 다른 구독 계정으로 돌린다(계정 picker의
-  // 이메일). 엔진이 그 계정의 격리 CLAUDE_CONFIG_DIR을 물질화해 주입한다 — 전역 활성
-  // 계정과 같으면 오버라이드 없이 실행하고, useApi가 켜져 있으면 무시된다.
+  // 이 실행이 소비할 클로드 구독 계정(계정 picker의 이메일). 엔진이 그 계정의 격리
+  // CLAUDE_CONFIG_DIR을 물질화해 주입한다 — 미지정이면 기본 계정, useApi가 켜져 있으면 무시.
   account?: string
+  // Codex 실행이 소비할 OpenAI 계정 — 미지정이면 기본 계정. 엔진이 그 계정의 격리
+  // CODEX_HOME으로 app-server를 띄운다 (engine==='codex'일 때만 의미).
+  codexAccount?: string
 }
 
 // ── Multi-agent (N independent panels, one engine each) ──────
@@ -434,20 +414,20 @@ export interface QuestionResponse {
   answers: string[][] | null
 }
 
+/** Codex 모델 1건 — app-server model/list의 축약형 (picker 표시용). */
+export interface CodexModelInfo {
+  id: string
+  label: string
+  desc: string
+  efforts: string[]
+  defaultEffort: string
+  isDefault: boolean
+}
+
 // ── Window ───────────────────────────────────────────────────
 export interface WindowState {
   maximized: boolean
 }
-export interface WindowBounds {
-  x: number
-  y: number
-  width: number
-  height: number
-}
-/** Which edge/corner of the frameless window a resize grabs. */
-export type ResizeEdge = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw'
-/** Snap-layout target: 반쪽(left/right) · 쿼터(tl/tr/bl/br) · 최대화(max). */
-export type SnapZone = 'left' | 'right' | 'tl' | 'tr' | 'bl' | 'br' | 'max'
 
 // ── API 키 과금 설정 (설정 → API) ─────────────────────────────
 /**
@@ -463,9 +443,13 @@ export interface ApiConfigStatus {
   keyTail: string | null // 저장된 키의 끝 4자리 (표시용)
   budgetUsd: number | null // 사용자가 입력한 예산(충전액), 없으면 null
   spentUsd: number // API 모드 실행의 누적 비용(USD)
+  // OpenAI(Codex) API 키 — API 모드에서 Codex 실행이 이 키로 과금된다.
+  // Codex는 실행 비용(total_cost_usd)을 보고하지 않아 예산·누적은 Anthropic 전용.
+  hasOpenaiKey: boolean
+  openaiKeyTail: string | null
 }
 
-/** 클로드 계정(구독) 로그인 상태 — `claude auth status --json`을 정규화한 값. */
+/** 클로드 로그인 시도 결과 — `claude auth status --json`(격리 폴더)을 정규화한 값. */
 export interface AuthStatus {
   loggedIn: boolean
   email?: string
@@ -475,11 +459,28 @@ export interface AuthStatus {
   error?: string // 상태 조회/실행 실패 사유 (있으면 UI에 안내)
 }
 
-/** 저장된(전환 가능한) 계정 1건 — 크리덴셜 스냅샷은 앱 홈에 암호화 보관, 여기엔 표시용 메타만. */
+/** 등록된 계정 1건 — 크리덴셜 스냅샷은 앱 홈에 암호화 보관, 여기엔 표시용 메타만. */
 export interface AccountInfo {
   email: string
   subscriptionType?: string
-  active: boolean // 지금 ~/.claude 에 활성화된 계정인가
+  isDefault: boolean // 새 채팅·계정 미지정 채팅이 쓰는 기본 계정인가
+}
+
+/** 등록된 OpenAI(Codex) 계정 1건 — Anthropic과 동일한 문법(앱 등록 계정만, 기본 계정). */
+export interface CodexAccountInfo {
+  email: string
+  plan: string | null // 'plus' · 'pro' · 'free' 등 (id_token의 chatgpt_plan_type)
+  isDefault: boolean // 새 채팅·계정 미지정 채팅이 쓰는 기본 계정인가
+}
+
+/**
+ * OpenAI(Codex) 계정 1건의 한도 — app-server `account/rateLimits/read` 실측.
+ * planType은 id_token보다 신선(구독 변경이 바로 반영)해서 표시 플랜도 이걸 우선한다.
+ */
+export interface CodexAccountUsage {
+  email: string
+  planType: string | null
+  windows: { label: string; usedPct: number }[] // 예: [{label:'5시간',usedPct:12},{label:'주간',usedPct:34}]
 }
 
 /**
@@ -495,7 +496,7 @@ export interface AccountUsage {
 }
 
 /** 어떤 화면의 엔진이 실행했는지 — 사용 통계의 분류 축. */
-export type ApiUsageSource = 'chat' | 'ask' | 'talk' | 'ma'
+export type ApiUsageSource = 'chat' | 'talk' | 'ma'
 
 /**
  * API 모드 실행 1건의 기록 (설정 → API 통계의 원장 한 줄).
@@ -549,6 +550,9 @@ export interface EngineVersionEntry {
   version: string
   date: string | null // ISO publish date, if known
   latest: boolean // matches the registry's dist-tags.latest
+  // 정식(latest dist-tag)보다 높은 버전 — next 등 프리뷰 채널. 자동 업데이트 대상이
+  // 아니므로 UI가 '프리뷰' 배지로 구분한다 (없으면 '최신 위에 배지 없는 버전'이 고장처럼 보임)
+  preview?: boolean
 }
 /** Current state of the locally managed engine versions. */
 export interface EngineVersionState {
@@ -578,6 +582,62 @@ export interface EngineCleanupResult {
 export interface UserProfile {
   nickname: string
   color: string // hex, chosen from the avatar palette
+}
+
+/** 추가 채팅(세션 창) 한 개 — 사이드바 목록 항목. id는 영속 채팅 id(uuid)로, 창을
+ *  닫았다 다시 열거나 앱을 재시작해도 같은 대화를 가리킨다. title '' = 아직 첫
+ *  메시지를 보내지 않은 채팅. open = 그 채팅의 창이 지금 떠 있는지(숨김 포함). */
+export interface SessionWindowInfo {
+  id: string
+  title: string
+  status: AgentStatus
+  open: boolean
+  updatedAt?: number // 마지막 활동(프롬프트 전송) 시각 — 사이드바 상대 시간 표시용
+}
+
+/** 세션 창 렌더러 → 메인: 이 창의 대화 저장(디바운스/닫기 flush). 스냅샷 모양은
+ *  렌더러(SessionState)가 소유하고 메인은 그대로 저장만 한다. empty = 메시지 0 —
+ *  창을 닫을 때 목록에 남기지 않는 판정용. */
+export interface SessionPersistPayload {
+  title: string
+  status: AgentStatus
+  cwd: string
+  snapshot: unknown
+  picker?: unknown
+  draft?: string
+  draftImages?: string[]
+  empty: boolean
+  updatedAt?: number
+}
+
+/** 메인 → 세션 창 렌더러: 저장된 추가 채팅의 복원 데이터 (새 채팅이면 null). */
+export interface SessionHydrateData {
+  snapshot: unknown
+  cwd: string
+  picker?: unknown
+  draft?: string
+  draftImages?: string[]
+}
+
+// ── 엔진 자동 업데이트 (부팅 게이트) ─────────────────────────
+/** 부팅 자동 업데이트에서 엔진 하나의 진행 상태 — 카드의 행 하나. */
+export interface EngineUpdateItem {
+  id: 'claude' | 'codex'
+  label: string // 'Claude Code' | 'Codex CLI'
+  from: string | null // 현재 활성 버전 (null = 신규 설치)
+  to: string // 목표(최신) 버전
+  status: 'pending' | 'installing' | 'done' | 'error'
+  error?: string
+}
+/** 부팅 자동 업데이트 전체 스냅샷 — 변화마다 통째로 다시 보낸다(REPLACE).
+ *  active=false면 이번 부팅엔 할 일이 없었다는 뜻(카드 없음). done이 서면 렌더러가
+ *  잠시 보여주고 자동으로 닫는다. */
+export interface EngineUpdateStatus {
+  active: boolean
+  items: EngineUpdateItem[]
+  cleanup: 'pending' | 'running' | 'done' // 이전 버전 정리 단계
+  freedBytes: number
+  done: boolean
 }
 
 /** In-memory user derived from the saved profile, threaded through the UI. */
@@ -638,12 +698,6 @@ export const IPC = {
   permissionRespond: 'claude:permission-respond',
   questionRespond: 'claude:question-respond',
   bgTask: 'claude:bg-task', // 백그라운드 작업 컨트롤 (중지 / 포그라운드 전부 백그라운드로)
-  // /ask — an independent, throwaway conversation that runs on its OWN engine
-  // instance so it never cancels or pollutes the main chat (same payload shapes).
-  askRun: 'ask:run',
-  askCancel: 'ask:cancel',
-  askPermissionRespond: 'ask:permission-respond',
-  askQuestionRespond: 'ask:question-respond',
   // multi-agent — a pool of independent engines, one per on-screen panel. Each command
   // carries a panelId so the main side routes it to that panel's engine; events come
   // back wrapped with the panelId on the shared maEvent channel.
@@ -651,11 +705,12 @@ export const IPC = {
   maCancel: 'ma:cancel',
   maPermissionRespond: 'ma:permission-respond',
   maQuestionRespond: 'ma:question-respond',
+  maBgTask: 'ma:bg-task', // 패널 WorkBar의 백그라운드 셸 컨트롤(중지/Ctrl+B) — 그 패널 엔진으로
   maDispose: 'ma:dispose', // cancel + drop a panel's engine (panel removed)
   maGet: 'ma:get', // load the persisted multi-agent workspace (layout + panel snapshots)
   maSave: 'ma:save', // persist the multi-agent workspace so it survives a restart
-  // 채팅 — a pure-conversation workspace on its OWN engine instance (like /ask but
-  // persistent, with its own conversation list). No project folder, explorer, or tools UI.
+  // 채팅 — a pure-conversation workspace on its OWN engine instance, with its own
+  // conversation list. No project folder, explorer, or tools UI.
   talkRun: 'talk:run',
   talkCancel: 'talk:cancel',
   talkPermissionRespond: 'talk:permission-respond',
@@ -672,33 +727,45 @@ export const IPC = {
   sessionPermissionRespond: 'session:permission-respond',
   sessionQuestionRespond: 'session:question-respond',
   sessionBgTask: 'session:bg-task',
-  // 세션 창 안의 /ask — 그 창 전용 ask 엔진(창별 1개). 메인 창의 ask 채널은 mainWindow로만
-  // 이벤트를 보내므로, 세션 창은 자기 webContents로 라우팅되는 별도 채널이 필요하다.
-  sessionAskRun: 'session-ask:run',
-  sessionAskCancel: 'session-ask:cancel',
-  sessionAskPermissionRespond: 'session-ask:permission-respond',
-  sessionAskQuestionRespond: 'session-ask:question-respond',
+  // 추가 채팅 레지스트리 — 대화는 채팅 id 기준으로 디스크에 영속(메인 채팅처럼 재시작
+  // 후에도 사이드바에 남음)하고, 창은 그 채팅을 열어 보는 뷰다. 창 렌더러가 제목(첫
+  // 프롬프트)·상태를 보고하고, 생성/종료/보고/저장 때마다 메인 창에 브로드캐스트.
+  sessionWindowsList: 'session-wins:list', // 메인 창: 추가 채팅 목록 조회(열린 창 + 저장된 채팅)
+  sessionWindowFocus: 'session-wins:focus', // (id) 창이 있으면 앞으로, 닫힌 채팅이면 창을 다시 만들어 복원
+  sessionWindowClose: 'session-wins:close', // (id) 채팅 삭제 — 열린 창이 있으면 저장 없이 닫는다
+  sessionWindowRename: 'session-wins:rename', // (id, title) 사이드바에서 이름 변경 — 이후 창의 자동 제목 보고는 무시
+  sessionReport: 'session-wins:report', // 세션 창 렌더러 → 자기 제목·상태 보고
+  sessionHydrate: 'session-wins:hydrate', // 세션 창 렌더러 → 자기 채팅의 저장본 조회(마운트 복원)
+  sessionPersist: 'session-wins:persist', // 세션 창 렌더러 → 자기 대화 스냅샷 저장(디바운스/flush)
   pickDirectory: 'dialog:pick-directory',
   dirExists: 'fs:dir-exists', // 저장된 작업 폴더가 아직 존재하는지 확인(추가 채팅의 폴더 복원 검증)
   pickAttachments: 'dialog:pick-attachments', // open dialog filtered to attachable files (images + text); returns absolute paths
   saveAttachmentData: 'attachment:save-data', // persist pasted/dropped raw attachment bytes to a temp file; returns its path
   getUsage: 'usage:get',
-  // 클로드 계정(구독 OAuth) 로그인 — 번들 CLI의 `claude auth …`를 호출한다. 로그인/로그아웃은
-  // ~/.claude/.credentials.json을 바꾸므로 앱 전체 실행 인증에 영향을 준다.
-  authStatus: 'auth:status', // `claude auth status --json` → 로그인 여부·이메일·플랜
-  authLogin: 'auth:login', // `claude auth login` (브라우저 OAuth) — 완료 시 새 상태 반환
-  authLogout: 'auth:logout', // `claude auth logout` — 로그아웃 후 새 상태 반환
+  // 클로드 계정(구독 OAuth) — 앱 등록 계정만 사용. 로그인/로그아웃은 격리 CONFIG_DIR에서
+  // 이뤄져 전역 ~/.claude를 건드리지 않는다. "전환" 개념 없음 — 채팅이 계정을 바인딩한다.
+  authLogin: 'auth:login', // `claude auth login` (브라우저 OAuth, 격리 폴더) — 완료 시 계정 편입 + 상태 반환
+  authLogout: 'auth:logout', // (email) 그 계정 토큰 해지 + 등록 제거 — 새 목록 반환
   authLoginCancel: 'auth:login-cancel', // 진행 중인 로그인 프로세스 중단
   authLoginUrl: 'auth:login-url', // main→renderer: 로그인 OAuth URL (브라우저가 안 열릴 때 폴백 링크)
-  authListAccounts: 'auth:list-accounts', // 저장된(전환 가능한) 계정 목록 + 활성 표시
-  authSwitchAccount: 'auth:switch-account', // 저장된 계정으로 전환(크리덴셜 스왑) → 새 상태
-  authRemoveAccount: 'auth:remove-account', // 저장 목록에서 계정 제거(활성 로그인은 안 건드림)
-  authAccountsUsage: 'auth:accounts-usage', // 저장된 계정별 한도 사용률(5시간·주간·Fable) 일괄 조회
+  authListAccounts: 'auth:list-accounts', // 등록 계정 목록 + 기본 계정 표시
+  authSetDefaultAccount: 'auth:set-default-account', // (email) 새 채팅의 기본 계정 지정 — 새 목록 반환
+  authRemoveAccount: 'auth:remove-account', // 등록 목록에서 계정 제거(토큰 해지 없이 — 해지는 logout)
+  authAccountsUsage: 'auth:accounts-usage', // 등록 계정별 한도 사용률(5시간·주간·Fable) 일괄 조회
+  // Codex(OpenAI) 계정 — Anthropic과 동일한 문법: 앱 등록 계정만, 전역 ~/.codex 불가침
+  codexListAccounts: 'codex-auth:list-accounts', // 등록 계정 목록 + 기본 표시
+  codexLogin: 'codex-auth:login', // `codex login` (격리 CODEX_HOME 브라우저 OAuth) — 완료 시 편입 + 새 목록
+  codexLogout: 'codex-auth:logout', // (email) 그 계정 auth 제거 + 등록 삭제 — 새 목록 반환
+  codexSetDefaultAccount: 'codex-auth:set-default-account', // (email) 기본 계정 지정 — 새 목록
+  codexLoginCancel: 'codex-auth:login-cancel',
+  codexAccountsUsage: 'codex-auth:accounts-usage', // 등록 계정별 한도(rateLimits) 일괄 조회
+  engineAutoUpdate: 'engine:auto-update', // (get: 인자 없음 / set: boolean) 두 엔진 CLI 자동 업데이트 토글
+  engineUpdateStatus: 'engine:update-status', // 부팅 자동 업데이트 스냅샷 조회 — 카드가 마운트 때 따라잡는다
   apiConfigGet: 'api-config:get', // API 키/예산/누적 사용액 스냅샷 (키 원문 제외)
   apiConfigSetKey: 'api-config:set-key', // API 키 저장 (safeStorage 암호화)
   apiConfigClearKey: 'api-config:clear-key', // 저장된 API 키 삭제
-  apiConfigSetBudget: 'api-config:set-budget', // 예산(USD) 설정 (null = 없음)
-  apiConfigResetSpend: 'api-config:reset-spend', // 누적 사용액 0으로 리셋 (재충전 시)
+  apiConfigSetBudget: 'api-config:set-budget', // 예산(USD) 설정 (null = 없음, provider별)
+  apiConfigResetBudget: 'api-config:reset-budget', // 예산 초기화(0원) — Anthropic은 누적도 0으로
   apiUsageList: 'api-usage:list', // API 모드 실행 원장 (설정 → API 통계)
   openApiSettings: 'ui:open-api-settings', // 세션 창 → 메인 프로세스: 메인 창을 앞으로 + 설정 → API 탭 열기
   apiSettingsRequested: 'ui:api-settings-requested', // 메인 프로세스 → 메인 창: 위 요청 전달(설정 모달 열기)
@@ -749,29 +816,22 @@ export const IPC = {
   winMaximizeToggle: 'win:maximize-toggle',
   winClose: 'win:close',
   winIsMaximized: 'win:is-maximized',
-  winGetBounds: 'win:get-bounds',
-  winSetBounds: 'win:set-bounds',
-  winDragStart: 'win:drag-start',
-  winDragEnd: 'win:drag-end',
-  winResizeStart: 'win:resize-start',
-  winResizeEnd: 'win:resize-end',
+  // Codex CLI 버전 관리 — Claude Code 엔진과 동일한 문법(npm 패키지를 앱 홈에 버전별 설치)
+  codexEngineListAvailable: 'codex-engine:list-available',
+  codexEngineState: 'codex-engine:state',
+  codexEngineInstall: 'codex-engine:install',
+  codexEngineUninstall: 'codex-engine:uninstall',
+  codexEngineSetActive: 'codex-engine:set-active',
+  codexEngineCleanup: 'codex-engine:cleanup',
+  codexEngineInstallProgress: 'codex-engine:install-progress',
   engineListAvailable: 'engine:list-available',
+  codexModels: 'codex:models', // Codex CLI(app-server) model/list — picker의 OpenAI 모델 목록
   engineState: 'engine:state',
   engineInstall: 'engine:install',
   engineUninstall: 'engine:uninstall',
   engineSetActive: 'engine:set-active',
   engineCleanup: 'engine:cleanup', // 최신 설치본만 남기고 이전 버전 폴더 전부 삭제
 
-  // git — 탐색기의 Git 카드 (읽기 + 커밋/푸시/풀)
-  gitRoot: 'git:root', // cwd → 레포 최상위(.git 상위 탐색 포함), 없으면 null
-  gitStatus: 'git:status', // 브랜치·ahead/behind·작업 트리 변경·브랜치/원격/태그 목록
-  gitLog: 'git:log', // 커밋 목록 (푸시 여부 포함)
-  gitCommitDetail: 'git:commit-detail', // 한 커밋의 변경 파일 + 증감
-  gitFileAt: 'git:file-at', // 커밋 시점의 파일 내용 + 부모→커밋 diff (뷰어 마킹용)
-  gitWorkingFile: 'git:working-file', // 작업 트리 파일의 HEAD→디스크 diff (뷰어 마킹용)
-  gitCommit: 'git:commit', // add -A + commit
-  gitPush: 'git:push',
-  gitPull: 'git:pull', // --ff-only
   // app meta + auto-update (electron-updater)
   appGetVersion: 'app:get-version', // the running app version (package.json version)
   appGetInitialDir: 'app:get-initial-dir', // folder passed via "AgentCodeGUI로 열기" at launch (consumed once)
@@ -782,11 +842,12 @@ export const IPC = {
   engineEvent: 'engine:event',
   openDirectory: 'app:open-directory', // a folder opened via "AgentCodeGUI로 열기" while already running
   updateEvent: 'app:update-event', // streamed auto-update status
-  askEvent: 'ask:event', // streamed events from the /ask engine (separate channel)
   maEvent: 'ma:event', // streamed events from every multi-agent engine (wrapped with panelId)
   talkEvent: 'talk:event', // streamed events from the 채팅 (pure conversation) engine
   sessionEvent: 'session:event', // streamed events from a session window's own engine
-  sessionAskEvent: 'session-ask:event', // streamed events from a session window's own /ask engine
+  sessionWindowsChanged: 'session-wins:changed', // main→메인 창: 추가 채팅 목록 변경
+  sessionFlushRequest: 'session-wins:flush-request', // main→세션 창: 닫기 전 마지막 스냅샷 저장 요청
+  engineUpdateEvent: 'engine:update-event', // main→렌더러: 부팅 자동 업데이트 진행(REPLACE 스냅샷)
   engineInstallProgress: 'engine:install-progress',
   lspInstallProgress: 'lsp:install-progress', // streamed progress while downloading a language server
   winState: 'win:state'

@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import type {
   EngineVersionEntry,
   EngineVersionState,
@@ -7,9 +7,10 @@ import type {
   McpServerInfo,
   LspServerInfo,
   ApiConfigStatus,
-  ApiUsageRecord,
   AccountInfo,
-  AccountUsage
+  AccountUsage,
+  CodexAccountInfo,
+  CodexAccountUsage
 } from '@shared/protocol'
 import { FileBadge } from './fileType'
 import { getPref, setPref } from '../lib/prefs'
@@ -18,31 +19,27 @@ import {
   IconServer,
   IconBook,
   IconRefresh,
-  IconClaude,
+  IconBot,
+  LogoClaude,
+  LogoOpenAI,
   IconChevDown,
   IconChevRight,
   IconAlert,
   IconCheck,
   IconTrash,
-  IconContrast,
-  IconSun,
-  IconMoon,
   IconCode,
   IconKey,
-  IconDollar,
   IconUser,
+  IconCard,
   IconPlus,
-  IconAsterisk,
-  IconFile,
+  IconPencil,
   IconFilter,
-  IconFolder,
   IconX2,
   IconSearch,
   IconMouse,
   type IconProps
 } from './icons'
 import { GestureGlyph, GESTURE_DEFAULTS, MouseGestureLayer, scrollGestures } from './mouseGesture'
-import { getTheme, setTheme, type Theme } from '../lib/theme'
 import {
   DEFAULT_HIDE_DIRS,
   DEFAULT_HIDE_FILES,
@@ -54,19 +51,40 @@ import {
   setHideFiles
 } from '../lib/hideDirs'
 
-export type SettingsView = 'account' | 'version' | 'api' | 'mcp' | 'skill' | 'lsp' | 'explorer' | 'gesture' | 'appearance'
+export type SettingsView = 'profile' | 'account' | 'version' | 'api' | 'mcp' | 'skill' | 'lsp' | 'explorer' | 'gesture'
 type View = SettingsView
 
-const NAV: { id: View; label: string; Icon: (p: IconProps) => React.ReactElement }[] = [
-  { id: 'account', label: 'Account', Icon: IconUser },
-  { id: 'version', label: 'Claude Code', Icon: IconClaude },
-  { id: 'api', label: 'API', Icon: IconKey },
-  { id: 'mcp', label: 'MCP', Icon: IconServer },
-  { id: 'skill', label: 'Skill', Icon: IconBook },
-  { id: 'lsp', label: 'Code', Icon: IconCode },
-  { id: 'explorer', label: 'Explorer', Icon: IconFilter },
-  { id: 'gesture', label: 'Gestures', Icon: IconMouse },
-  { id: 'appearance', label: 'Theme', Icon: IconContrast }
+// 레일 — PoC 재해석: 그룹 라벨(사용자/엔진/확장/환경) 아래 항목. keys는 검색어(한국어 동의어).
+const NAV_GROUPS: { label: string; items: { id: View; label: string; Icon: (p: IconProps) => React.ReactElement; keys: string }[] }[] = [
+  {
+    label: '사용자',
+    items: [
+      { id: 'profile', label: 'Profile', Icon: IconUser, keys: '프로필 닉네임 아바타 이름 색' },
+      { id: 'account', label: 'Account', Icon: IconCard, keys: '계정 로그인 구독 기본 한도 openai chatgpt' }
+    ]
+  },
+  {
+    label: '엔진',
+    items: [
+      { id: 'version', label: 'Engine', Icon: IconBot, keys: '엔진 claude code codex cli 버전 업데이트 설치' },
+      { id: 'api', label: 'API', Icon: IconKey, keys: 'api 키 예산 과금 비용' }
+    ]
+  },
+  {
+    label: '확장',
+    items: [
+      { id: 'mcp', label: 'MCP', Icon: IconServer, keys: 'mcp 서버 도구' },
+      { id: 'skill', label: 'Skill', Icon: IconBook, keys: '스킬 명령 슬래시' }
+    ]
+  },
+  {
+    label: '환경',
+    items: [
+      { id: 'lsp', label: 'Code', Icon: IconCode, keys: '코드 언어 서버 lsp 하이라이트 심볼' },
+      { id: 'explorer', label: 'Explorer', Icon: IconFilter, keys: '탐색기 숨김 필터 폴더' },
+      { id: 'gesture', label: 'Gestures', Icon: IconMouse, keys: '제스처 마우스 우클릭' }
+    ]
+  }
 ]
 
 // numeric semver-ish compare: <0 if a is older than b
@@ -80,17 +98,101 @@ function cmpVer(a: string, b: string): number {
   return 0
 }
 
-// ── Account (클로드 구독 로그인 · 다중 계정 전환) ───────────────
-// 번들 CLI의 `claude auth …`로 로그인/로그아웃하고, 각 계정의 크리덴셜을 암호화 스냅샷해두어
-// "변경"으로 재로그인 없이 전환한다(main/auth.ts). 로그인은 브라우저 OAuth → 완료 시 자동 갱신.
+// ── Profile (닉네임 + 아바타 색 — 사이드바 하단·채팅 첫 인사의 내 표시.
+//    말풍선의 ava/meta는 2.0 리뉴얼 CSS가 숨겨 채팅 본문엔 안 나온다) ────────────
+// 저장 즉시 메인 창에 반영 — App이 ccg-profile-changed 커스텀 이벤트를 구독.
+// 추가 채팅 창(SessionWindow)은 별도 OS 창이라 이 이벤트가 닿지 않음 — 창을 열 때 getProfile로 로드.
+// PoC 문법: 히어로 카드(큰 아바타 미리보기) + 필드, 스와치는 체크 대신 링.
+// 20색 = 스와치 줄(한 줄 10개)에 정확히 두 줄. 색상환 순서로 돌되 [0]은 기본색
+// 인디고 고정(App의 DEFAULT_USER와 동일), 끝은 브라운·뉴트럴로 마무리.
+const AVA_SWATCHES = [
+  '#6366F1', '#7C3AED', '#9333EA', '#C026D3', '#DB2777',
+  '#E11D48', '#DC2626', '#EA580C', '#D97706', '#CA8A04',
+  '#65A30D', '#16A34A', '#059669', '#0D9488', '#0891B2',
+  '#0EA5E9', '#2563EB', '#92400E', '#64748B', '#000000'
+]
+function ProfileView(): React.ReactElement {
+  const [nick, setNick] = useState('')
+  const [color, setColor] = useState(AVA_SWATCHES[0])
+  useEffect(() => {
+    window.api
+      .getProfile()
+      .then((p) => {
+        if (p) {
+          setNick(p.nickname)
+          setColor(p.color || AVA_SWATCHES[0])
+        }
+      })
+      .catch(() => {})
+  }, [])
+  // 빈 닉네임은 저장하지 않는다 — App도 빈 이름은 무시하므로 마지막 유효값이 유지된다
+  const apply = (nickname: string, c: string): void => {
+    if (!nickname.trim()) return
+    const profile = { nickname: nickname.trim(), color: c }
+    window.api.saveProfile(profile).catch(() => {})
+    window.dispatchEvent(new CustomEvent('ccg-profile-changed', { detail: profile }))
+  }
+  const shown = nick.trim() || 'User'
+  return (
+    <>
+      <div className="set-h1">Profile</div>
+      <div className="set-h1-sub">사이드바와 채팅 첫 인사에 보이는 내 이름과 아바타예요 — 바꾸면 바로 반영돼요.</div>
+      <div className="sc2 hero2">
+        <div className="set-bigava" style={{ background: color }}>{shown.charAt(0).toUpperCase()}</div>
+        <div>
+          <div className="n">{shown}</div>
+          <div className="s">사이드바에 이 이름과 색으로 보여요</div>
+        </div>
+      </div>
+      <div className="set-field">
+        <label>닉네임</label>
+        <input
+          className="set-input"
+          value={nick}
+          maxLength={20}
+          placeholder="User"
+          onChange={(e) => {
+            setNick(e.target.value)
+            apply(e.target.value, color)
+          }}
+        />
+      </div>
+      <div className="set-field">
+        <label>아바타 색</label>
+        <div className="set-swatches">
+          {AVA_SWATCHES.map((c) => (
+            <button
+              key={c}
+              className={'set-swatch' + (c === color ? ' on' : '')}
+              style={{ background: c }}
+              aria-label={'아바타 색 ' + c}
+              onClick={() => {
+                setColor(c)
+                apply(nick, c)
+              }}
+            />
+          ))}
+        </div>
+      </div>
+    </>
+  )
+}
+
+// ── Account (구독 로그인 Anthropic·OpenAI — 앱 등록 계정만, 전환 개념 없음) ───────
+// 로그인/로그아웃 전부 격리 CONFIG_DIR(main/auth.ts) — 전역 ~/.claude 불가침.
+// PoC 문법: 계정 카드(아바타·이메일·기본 배지·플랜) + 잔여 한도 미니 게이지 + 점선 추가 행.
 function AccountView(): React.ReactElement {
   const [accounts, setAccounts] = useState<AccountInfo[] | null>(null)
-  // 'login' | 'logout' | <email>(전환 중) | null
+  // 'login' | 'codex-login' | <email>(삭제 중) | 'codex'(OpenAI 삭제 중) | null
   const [busy, setBusy] = useState<string | null>(null)
   const [loginUrl, setLoginUrl] = useState<string | null>(null)
   const [note, setNote] = useState<string | null>(null)
   // 계정별 한도 사용률(5시간·주간·Fable) — 목록과 별도로 나중에 도착해 채워진다(네트워크 조회)
   const [usage, setUsage] = useState<Record<string, AccountUsage>>({})
+  // Codex(OpenAI) 등록 계정 — Anthropic과 동일한 문법. null = 아직 조회 전
+  const [cxAccounts, setCxAccounts] = useState<CodexAccountInfo[] | null>(null)
+  // Codex 계정별 한도(rateLimits) — 목록과 별도로 나중에 도착(계정마다 app-server 1회 스폰)
+  const [cxUsage, setCxUsage] = useState<Record<string, CodexAccountUsage>>({})
 
   const reload = (): void => {
     window.api.auth.listAccounts().then(setAccounts).catch(() => setAccounts([]))
@@ -98,7 +200,15 @@ function AccountView(): React.ReactElement {
       .accountsUsage()
       .then((us) => setUsage(Object.fromEntries(us.map((u) => [u.email, u]))))
       .catch(() => {})
+    window.api.codexAuth.listAccounts().then(setCxAccounts).catch(() => setCxAccounts([]))
+    window.api.codexAuth
+      .accountsUsage()
+      .then((us) => setCxUsage(Object.fromEntries(us.map((u) => [u.email, u]))))
+      .catch(() => {})
   }
+  // 한도 조회는 탭을 열 때 1회(reload) — 주기 폴링 없음. usage API 예산이 빡빡해서(429)
+  // 호출을 아끼고, 실패해도 main의 마지막 성공값/디스크 캐시가 게이지를 지켜준다.
+  // 429 백오프 재시도가 큐 안에서 끝나면 그 시점에 화면이 갱신된다(늦게 도착해도 반영).
   useEffect(() => reload(), [])
   useEffect(() => window.api.auth.onLoginUrl(setLoginUrl), [])
 
@@ -116,166 +226,309 @@ function AccountView(): React.ReactElement {
     setLoginUrl(null)
     reload()
   }
-  const doLogout = async (): Promise<void> => {
-    setBusy('logout')
-    setNote(null)
-    try {
-      await window.api.auth.logout()
-    } catch {
-      /* ignore */
-    }
-    setBusy(null)
-    reload()
-  }
-  const doSwitch = async (email: string): Promise<void> => {
+  // 삭제 = 그 계정 토큰 해지(서버) + 등록 제거 — 다시 쓰려면 재로그인
+  const doDelete = async (email: string): Promise<void> => {
     setBusy(email)
     setNote(null)
     try {
-      const st = await window.api.auth.switchAccount(email)
-      if (st.error) setNote(st.error)
+      setAccounts(await window.api.auth.logout(email))
     } catch {
       /* ignore */
     }
     setBusy(null)
     reload()
   }
-  const doRemove = async (email: string): Promise<void> => {
+  // 기본 계정 지정 — 새 채팅·계정 미지정 채팅이 이 계정으로 실행된다.
+  // 배지가 즉시 옮겨가도록 낙관 갱신 후 서버 결과로 확정한다.
+  const doSetDefault = async (email: string): Promise<void> => {
+    setNote(null)
+    setAccounts((prev) => prev?.map((a) => ({ ...a, isDefault: a.email === email })) ?? prev)
     try {
-      setAccounts(await window.api.auth.removeAccount(email))
+      setAccounts(await window.api.auth.setDefaultAccount(email))
+    } catch {
+      setNote('기본 계정을 바꾸지 못했어요 — 앱을 재시작한 뒤 다시 시도해 주세요')
+      reload()
+    }
+  }
+  // OpenAI(Codex) — Anthropic과 같은 동작 3종 (추가/삭제/기본 지정)
+  const doCodexLogin = async (): Promise<void> => {
+    setBusy('codex-login')
+    setLoginUrl(null)
+    setNote(null)
+    try {
+      setCxAccounts(await window.api.codexAuth.login())
     } catch {
       /* ignore */
     }
+    setBusy(null)
+    setLoginUrl(null)
   }
-
+  const doCodexDelete = async (email: string): Promise<void> => {
+    setBusy('cx:' + email)
+    setNote(null)
+    try {
+      setCxAccounts(await window.api.codexAuth.logout(email))
+    } catch {
+      /* ignore */
+    }
+    setBusy(null)
+  }
+  const doCodexSetDefault = async (email: string): Promise<void> => {
+    setNote(null)
+    setCxAccounts((prev) => prev?.map((a) => ({ ...a, isDefault: a.email === email })) ?? prev)
+    try {
+      setCxAccounts(await window.api.codexAuth.setDefaultAccount(email))
+    } catch {
+      setNote('기본 계정을 바꾸지 못했어요 — 앱을 재시작한 뒤 다시 시도해 주세요')
+      reload()
+    }
+  }
   const planLabel = (t?: string): string =>
     t ? t.charAt(0).toUpperCase() + t.slice(1) + ' 플랜' : '구독'
-
-  // 계정별 남은 한도 — 앱 전체 관례(잔여 % = 100 − 사용률)를 따른다. 조회 못 한 항목은
-  // 조용히 빠진다(저장 토큰 만료 등 — 전환하면 CLI가 리프레시하므로 전환은 정상).
-  const usageText = (u?: AccountUsage): string => {
-    if (!u) return ''
-    const parts: string[] = []
-    if (u.fiveHourPct != null) parts.push(`5시간 ${100 - u.fiveHourPct}%`)
-    if (u.weeklyPct != null) parts.push(`주간 ${100 - u.weeklyPct}%`)
-    if (u.fablePct != null) parts.push(`Fable ${100 - u.fablePct}%`)
-    return parts.length ? ` · 남음: ${parts.join(' · ')}` : ''
-  }
 
   return (
     <>
       <div className="set-h1">Account</div>
       <div className="set-h1-sub">
-        클로드(Claude) 구독 계정이에요. 여러 계정을 등록해두고 <strong>변경</strong>으로 언제든 전환할 수 있어요 — 엔진
-        실행은 지금 활성화된 계정(<code>~/.claude</code>)을 씁니다.
+        구독 계정 로그인 — 엔진별로 따로 관리돼요. 실행에는 여기 등록된 계정만 쓰여요 — 채팅마다 계정을 따로
+        고를 수 있고, 안 고른 채팅은 <strong>기본</strong> 계정으로 실행돼요.
       </div>
 
-      <div className="sec">
-        <div className="card">
-          {accounts == null ? (
-            <div className="acct-row">
-              <div className="ver-main">
-                <div className="ver-meta">
-                  <span className="set-spin" /> 불러오는 중…
-                </div>
+      <div className="set-sec">Anthropic</div>
+      {accounts == null ? (
+        <div className="sc2 acct">
+          <div className="meta">
+            <span className="set-spin" /> 불러오는 중…
+          </div>
+        </div>
+      ) : (
+        <>
+          {accounts.map((a, i) => (
+            <div className="sc2 acct" key={a.email}>
+              <div className="ava2" style={{ background: AVA_SWATCHES[i % AVA_SWATCHES.length] }}>
+                {a.email.charAt(0).toUpperCase()}
               </div>
-            </div>
-          ) : accounts.length === 0 && busy !== 'login' ? (
-            <div className="acct-row">
-              <div className="ver-ic">
-                <IconUser size={20} />
-              </div>
-              <div className="ver-main">
-                <div className="ver-name">로그인된 계정이 없어요</div>
-                <div className="ver-meta">구독 계정으로 로그인하면 API 키 없이 실행할 수 있어요</div>
-              </div>
-              <button className="inst-btn" disabled={busy != null} onClick={() => void addAccount()}>
-                로그인
-              </button>
-            </div>
-          ) : (
-            accounts.map((a) => (
-              <div className="acct-row" key={a.email}>
-                <div className="ver-ic">
-                  <IconUser size={18} />
+              <div>
+                <div className="em">
+                  {a.email}
+                  {a.isDefault && <span className="set-badge">기본</span>}
                 </div>
-                <div className="ver-main">
-                  <div className="ver-name">
-                    {a.email} {a.active && <span className="acct-badge">현재</span>}
-                  </div>
-                  <div className="ver-meta">
-                    {planLabel(a.subscriptionType)}
-                    {usageText(usage[a.email])}
-                  </div>
-                </div>
-                {a.active ? (
-                  <button className="inst-btn ghost" disabled={busy != null} onClick={() => void doLogout()}>
-                    {busy === 'logout' ? (
-                      <>
-                        <span className="set-spin" /> …
-                      </>
-                    ) : (
-                      '로그아웃'
-                    )}
+                <div className="meta">{planLabel(a.subscriptionType)}</div>
+              </div>
+              <span className="sp" />
+              <AccountLimits u={usage[a.email]} />
+              <div className="acts">
+                {!a.isDefault && (
+                  <button className="set-chipbtn" disabled={busy != null} onClick={() => void doSetDefault(a.email)}>
+                    기본으로
                   </button>
-                ) : (
-                  <>
-                    <button className="inst-btn" disabled={busy != null} onClick={() => void doSwitch(a.email)}>
-                      {busy === a.email ? (
-                        <>
-                          <span className="set-spin" /> 전환 중…
-                        </>
-                      ) : (
-                        '변경'
-                      )}
-                    </button>
-                    <button className="acct-x" disabled={busy != null} aria-label="목록에서 제거" onClick={() => void doRemove(a.email)}>
-                      <IconTrash size={13} />
-                    </button>
-                  </>
                 )}
+                <button className="set-chipbtn danger" disabled={busy != null} onClick={() => void doDelete(a.email)}>
+                  {busy === a.email ? '삭제 중…' : '삭제'}
+                </button>
               </div>
-            ))
-          )}
-
+            </div>
+          ))}
           {busy === 'login' ? (
-            <div className="acct-row">
-              <div className="ver-ic">
+            <div className="sc2 acct">
+              <div className="ava2" style={{ background: 'rgba(255,255,255,.12)' }}>
                 <span className="set-spin" />
               </div>
-              <div className="ver-main">
-                <div className="ver-name">로그인 진행 중…</div>
-                <div className="ver-meta">브라우저에서 로그인을 완료하세요</div>
+              <div>
+                <div className="em">로그인 진행 중…</div>
+                <div className="meta">브라우저에서 로그인을 완료하세요</div>
               </div>
-              <button className="inst-btn ghost" onClick={() => window.api.auth.cancelLogin().catch(() => {})}>
+              <span className="sp" />
+              <button className="set-chipbtn" onClick={() => window.api.auth.cancelLogin().catch(() => {})}>
                 취소
               </button>
             </div>
-          ) : accounts != null && accounts.length > 0 ? (
-            <button className="acct-add" disabled={busy != null} onClick={() => void addAccount()}>
-              <IconPlus size={15} /> 계정 추가
+          ) : (
+            <button className="set-addrow" disabled={busy != null} onClick={() => void addAccount()}>
+              <IconPlus size={12} /> 계정 추가
             </button>
-          ) : null}
-        </div>
+          )}
+        </>
+      )}
 
-        {note && <div className="set-note">{note}</div>}
-        {busy === 'login' && loginUrl && (
-          <div className="set-note">
-            브라우저가 안 열렸나요?{' '}
-            <a href={loginUrl} target="_blank" rel="noreferrer">
-              이 링크로 로그인
-            </a>
+      <div className="set-sec">OpenAI</div>
+      {cxAccounts == null ? (
+        <div className="sc2 acct">
+          <div className="meta">
+            <span className="set-spin" /> 불러오는 중…
           </div>
-        )}
-        <div className="set-note">
-          계정 크리덴셜은 <code>~/.agentcodegui</code>에 <b>암호화(DPAPI)</b>되어 저장되고, “변경”은 재로그인 없이
-          <code>~/.claude</code>의 활성 크리덴셜만 바꿔요. 리프레시 토큰이 만료된 계정은 다시 로그인이 필요할 수 있어요.
         </div>
+      ) : (
+        <>
+          {cxAccounts.map((a, i) => (
+            <div className="sc2 acct" key={a.email}>
+              <div className="ava2" style={{ background: AVA_SWATCHES[(i + 6) % AVA_SWATCHES.length] }}>
+                {a.email.charAt(0).toUpperCase()}
+              </div>
+              <div>
+                <div className="em">
+                  {a.email}
+                  {a.isDefault && <span className="set-badge">기본</span>}
+                </div>
+                {/* 플랜은 rateLimits의 planType이 최신(구독 변경 즉시 반영) — 도착 전엔 id_token 값 */}
+                <div className="meta">{chatgptPlan(cxUsage[a.email]?.planType ?? a.plan)}</div>
+              </div>
+              <span className="sp" />
+              <CodexLimits u={cxUsage[a.email]} />
+              <div className="acts">
+                {!a.isDefault && (
+                  <button className="set-chipbtn" disabled={busy != null} onClick={() => void doCodexSetDefault(a.email)}>
+                    기본으로
+                  </button>
+                )}
+                <button className="set-chipbtn danger" disabled={busy != null} onClick={() => void doCodexDelete(a.email)}>
+                  {busy === 'cx:' + a.email ? '삭제 중…' : '삭제'}
+                </button>
+              </div>
+            </div>
+          ))}
+          {busy === 'codex-login' ? (
+            <div className="sc2 acct">
+              <div className="ava2" style={{ background: 'rgba(255,255,255,.12)' }}>
+                <span className="set-spin" />
+              </div>
+              <div>
+                <div className="em">로그인 진행 중…</div>
+                <div className="meta">브라우저에서 ChatGPT 로그인을 완료하세요</div>
+              </div>
+              <span className="sp" />
+              <button className="set-chipbtn" onClick={() => window.api.codexAuth.cancelLogin().catch(() => {})}>
+                취소
+              </button>
+            </div>
+          ) : (
+            <button className="set-addrow" disabled={busy != null} onClick={() => void doCodexLogin()}>
+              <IconPlus size={12} /> 계정 추가
+            </button>
+          )}
+        </>
+      )}
+
+      {note && <div className="set-note2">{note}</div>}
+      {(busy === 'login' || busy === 'codex-login') && loginUrl && (
+        <div className="set-note2">
+          브라우저가 안 열렸나요?{' '}
+          <a href={loginUrl} target="_blank" rel="noreferrer">
+            이 링크로 로그인
+          </a>
+        </div>
+      )}
+      <div className="set-note2">
+        계정 크리덴셜은 모두 <code>~/.agentcodegui</code>에 <b>암호화(DPAPI)</b>되어 저장돼요. 터미널 Claude Code(
+        <code>~/.claude</code>)·codex(<code>~/.codex</code>)의 로그인과는 완전히 분리돼 서로 영향을 주지 않아요.
       </div>
     </>
   )
 }
 
-function VersionView() {
+// ChatGPT 플랜 표기 — Anthropic의 "Max 플랜"과 같은 문법
+function chatgptPlan(plan: string | null | undefined): string {
+  return 'ChatGPT' + (plan ? ' ' + plan.charAt(0).toUpperCase() + plan.slice(1) : '') + ' 플랜'
+}
+
+// OpenAI 계정 카드의 잔여 한도 미니 게이지 — rateLimits의 윈도(5시간·주간 등)를
+// Anthropic 카드와 같은 게이지 문법(잔여 % = 100 − 사용률)으로.
+function CodexLimits({ u }: { u?: CodexAccountUsage }): React.ReactElement | null {
+  if (!u || u.windows.length === 0) return null
+  return (
+    <div className="limits">
+      {u.windows.map((w) => (
+        <div className="lim" key={w.label}>
+          <span className="ll">{w.label}</span>
+          <div className="g2">
+            <i style={{ width: 100 - w.usedPct + '%' }} />
+          </div>
+          <span className="lv">{100 - w.usedPct}%</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// 계정 카드의 잔여 한도 미니 게이지 — 앱 전체 관례(잔여 % = 100 − 사용률). 조회 못 한
+// 항목은 조용히 빠진다(저장 토큰 만료 등 — 실행하면 CLI가 리프레시한다).
+// 행 순서는 컨텍스트 팝오버와 동일: 5시간 → Fable → 주간.
+function AccountLimits({ u }: { u?: AccountUsage }): React.ReactElement | null {
+  if (!u) return null
+  const rows: { label: string; left: number }[] = []
+  if (u.fiveHourPct != null) rows.push({ label: '5시간', left: 100 - u.fiveHourPct })
+  if (u.fablePct != null) rows.push({ label: 'Fable', left: 100 - u.fablePct })
+  if (u.weeklyPct != null) rows.push({ label: '주간', left: 100 - u.weeklyPct })
+  if (!rows.length) return null
+  return (
+    <div className="limits">
+      {rows.map((r) => (
+        <div className="lim" key={r.label}>
+          <span className="ll">{r.label}</span>
+          <div className="g2">
+            <i style={{ width: r.left + '%' }} />
+          </div>
+          <span className="lv">{r.left}%</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// ── Engine (PoC 문법) — 엔진 CLI 버전 관리 카드. Claude Code와 Codex CLI가 같은
+// api 표면(state/listAvailable/install/…)을 받아 완전히 같은 UI로 관리된다.
+type EngineApi = (typeof window.api)['engine']
+
+function EngineView(): React.ReactElement {
+  // 두 엔진 공통 자동 업데이트 — null=아직 조회 전(토글 비활성), 낙관 갱신 후 서버 값으로 확정
+  const [auto, setAuto] = useState<boolean | null>(null)
+  useEffect(() => {
+    window.api.engineAutoUpdate().then(setAuto).catch(() => {})
+  }, [])
+  const toggleAuto = (): void => {
+    if (auto == null) return
+    const next = !auto
+    setAuto(next)
+    window.api.engineAutoUpdate(next).then(setAuto).catch(() => {})
+  }
+  return (
+    <>
+      <div className="set-h1">Engine</div>
+      <div className="set-h1-sub">
+        엔진마다 CLI가 따로 설치돼요 — 채팅의 엔진 선택(Anthropic/OpenAI)이 여기서 관리하는 CLI로 실행돼요. 버전을
+        고르면 전용 폴더에 설치되고, 시스템에 전역 설치된 CLI는 건드리지 않아요.
+      </div>
+      <div className="set-sec">Anthropic</div>
+      <EngineCard name="Claude Code" tile={<LogoClaude size={20} />} fallback="번들" api={window.api.engine} />
+      <div className="set-sec">OpenAI</div>
+      <EngineCard name="Codex CLI" tile={<LogoOpenAI size={20} />} fallback="전역 설치" api={window.api.codexEngine} />
+      <div className="set-sec">공통</div>
+      <div className="sc2 tgl" style={{ marginTop: 0 }}>
+        <div>
+          <div className="em">자동 업데이트</div>
+          <div className="meta">새 버전이 나오면 조용히 설치해서 사용해요 — 두 엔진 모두</div>
+        </div>
+        <span className="sp" />
+        <button className={'sw2' + (auto ? ' on' : '')} aria-label="자동 업데이트" disabled={auto == null} onClick={toggleAuto} />
+      </div>
+      <div className="set-note2">
+        설치 위치: <code>~/.agentcodegui/engines</code> · <code>~/.agentcodegui/codex-engines</code>
+      </div>
+    </>
+  )
+}
+
+function EngineCard({
+  name,
+  tile,
+  fallback,
+  api
+}: {
+  name: string
+  tile: React.ReactNode // 공식 로고 (LogoClaude/LogoOpenAI) — 두 엔진 모두 중립 타일(색감 통일)
+  fallback: string // 설치·고정본이 없을 때 실제로 도는 것 — '번들'(claude) / '전역 설치'(codex)
+  api: EngineApi
+}): React.ReactElement {
   const [state, setState] = useState<EngineVersionState | null>(null)
   const [available, setAvailable] = useState<EngineVersionEntry[] | null>(null)
   const [loading, setLoading] = useState(true)
@@ -299,12 +552,12 @@ function VersionView() {
   const logRef = useRef<HTMLDivElement>(null)
 
   const refreshState = (): void => {
-    window.api.engine.state().then(setState).catch(() => {})
+    api.state().then(setState).catch(() => {})
   }
   const refreshList = (): void => {
     setLoading(true)
     setListError(null)
-    window.api.engine
+    api
       .listAvailable()
       .then((r) => setAvailable(r.versions))
       .catch((e: unknown) => setListError(String((e as Error)?.message ?? e)))
@@ -314,7 +567,7 @@ function VersionView() {
   useEffect(() => {
     refreshState()
     refreshList()
-    return window.api.engine.onInstallProgress((p) => {
+    return api.onInstallProgress((p) => {
       if (p.line) setInstall((c) => (c ? { ...c, log: [...c.log, p.line as string] } : c))
     })
   }, [])
@@ -347,7 +600,7 @@ function VersionView() {
     if (installed) {
       // already installed → just switch (quick); surface failures as a small dialog
       try {
-        await window.api.engine.setActive(version)
+        await api.setActive(version)
       } catch (e) {
         setDialog({ title: '전환 실패', message: String((e as Error)?.message ?? e) })
       }
@@ -357,9 +610,9 @@ function VersionView() {
     setBusy(version)
     setInstall({ version, log: ['설치를 준비하는 중…'], status: 'running' })
     try {
-      const r = await window.api.engine.install(version)
+      const r = await api.install(version)
       if (r.ok) {
-        await window.api.engine.setActive(version) // 설치하면 바로 그 버전을 사용
+        await api.setActive(version) // 설치하면 바로 그 버전을 사용
         setInstall((c) => (c ? { ...c, status: 'done' } : c))
       } else {
         setInstall((c) => (c ? { ...c, status: 'error', error: r.error ?? '알 수 없는 오류로 설치에 실패했습니다.' } : c))
@@ -374,7 +627,7 @@ function VersionView() {
 
   const doRemove = async (version: string): Promise<void> => {
     try {
-      await window.api.engine.uninstall(version)
+      await api.uninstall(version)
     } catch (e) {
       setDialog({ title: '삭제 실패', message: String((e as Error)?.message ?? e) })
       return
@@ -399,7 +652,7 @@ function VersionView() {
   const doCleanup = async (): Promise<void> => {
     setCleaning(true)
     try {
-      const r = await window.api.engine.cleanup()
+      const r = await api.cleanup()
       setDialog({
         title: '정리 완료',
         tone: 'ok',
@@ -458,23 +711,25 @@ function VersionView() {
     return [...extra, ...base]
   })()
 
+  // 카드 상단 배지 — 지금 도는 버전(고정본 > 번들/전역 폴백)이 레지스트리 최신과 같은가
+  const latest = (available ?? []).find((v) => v.latest)?.version ?? null
+  const shownVer = current ?? (state?.bundled && state.bundled !== 'unknown' ? state.bundled : null)
+  const upToDate = latest != null && shownVer != null && cmpVer(shownVer, latest) >= 0
   return (
     <>
-      <div className="set-h1">Claude Code</div>
-      <div className="set-h1-sub">Claude Code 엔진 버전을 선택하면 전용 폴더에 설치되고, 해당 버전으로 실행됩니다.</div>
-
-      <div className="sec">
-        <div className="card">
-          <div className="ver-row">
-            <div className="ver-ic">
-              <IconClaude size={20} />
-            </div>
-            <div className="ver-main">
-              <div className="ver-name">현재 엔진</div>
-              <div className="ver-meta">{current ? '내 컴퓨터에 설치된 버전' : '아직 설치·고정된 버전이 없습니다'}</div>
-            </div>
-
-            <div className="vpick" ref={pickRef}>
+      <div className="sc2 row2 eng">
+        <div className="set-tile">{tile}</div>
+        <div>
+          <div className="em">
+            {name}
+            {latest && shownVer && (upToDate ? <span className="set-badge">최신</span> : <span className="set-badge warn">v{latest} 있음</span>)}
+          </div>
+          <div className="meta">
+            {busy ? '설치 중…' : shownVer ? `v${shownVer}${current ? '' : ` (${fallback})`} · CLI` : '미설치 — 버전을 골라 설치하세요'}
+          </div>
+        </div>
+        <span className="sp" />
+        <div className="vpick" ref={pickRef}>
               <button
                 className={'vpick-btn' + (open ? ' open' : '')}
                 onClick={() => setOpen((o) => !o)}
@@ -511,6 +766,8 @@ function VersionView() {
                           >
                             <span className="vpo-v">{v.version}</span>
                             {v.latest && <span className="vtag latest">최신</span>}
+                            {/* 정식(latest)보다 높은 프리뷰(next 채널) — 자동 업데이트가 안 가는 게 정상임을 배지로 */}
+                            {v.preview && <span className="vtag next">프리뷰</span>}
                             {isCur && <span className="vtag cur">현재</span>}
                             {installed && !isCur && <span className="vtag inst">설치됨</span>}
                             <span className="vpo-right">
@@ -537,40 +794,23 @@ function VersionView() {
                   </div>
                 </div>
               )}
-            </div>
-          </div>
-
-          {oldCount > 0 && (
-            <>
-              <div className="ver-div" />
-              <div className="ver-row">
-                <div className="ver-ic">
-                  <IconTrash size={18} />
-                </div>
-                <div className="ver-main">
-                  <div className="ver-name">이전 버전 정리</div>
-                  <div className="ver-meta">
-                    최신 {newest}만 남기고 이전 버전 {oldCount}개를 삭제합니다
-                  </div>
-                </div>
-                <button className="inst-btn ghost" disabled={cleaning || !!busy} onClick={askCleanup}>
-                  {cleaning ? (
-                    <>
-                      <span className="set-spin" /> 정리 중…
-                    </>
-                  ) : (
-                    '정리'
-                  )}
-                </button>
-              </div>
-            </>
-          )}
-        </div>
-
-        <div className="set-note">
-          설치 위치: <code>~/.agentcodegui/engines/&lt;버전&gt;</code> · 시스템에 설치된 Claude는 건드리지 않습니다.
         </div>
       </div>
+
+      {oldCount > 0 && (
+        <div className="sc2 row2">
+          <div>
+            <div className="em">이전 버전 정리</div>
+            <div className="meta">
+              최신 {newest}만 남기고 이전 버전 {oldCount}개를 삭제해요
+            </div>
+          </div>
+          <span className="sp" />
+          <button className="set-chipbtn" disabled={cleaning || !!busy} onClick={askCleanup}>
+            {cleaning ? '정리 중…' : '정리'}
+          </button>
+        </div>
+      )}
 
       {install && (
         <div
@@ -673,359 +913,269 @@ function fmtBytes(n: number): string {
   if (n >= 1024 ** 2) return Math.round(n / 1024 ** 2) + ' MB'
   return Math.max(1, Math.round(n / 1024)) + ' KB'
 }
-function fmtTokS(n: number): string {
-  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M'
-  if (n >= 1000) return Math.round(n / 1000) + 'K'
-  return String(n)
-}
-// 모델 표시명 → 앱 전역의 모델 정체성 색 (picker 점과 동일) — 통계 행의 identity 점
-function modelDotColor(model: string): string {
-  const m = model.toLowerCase()
-  if (m.includes('fable')) return 'var(--gold)'
-  if (m.includes('opus')) return 'var(--violet)'
-  if (m.includes('sonnet')) return 'var(--blue)'
-  if (m.includes('haiku')) return 'var(--teal)'
-  return 'var(--text-4)'
-}
-const USAGE_SOURCE_LABEL: Record<ApiUsageRecord['source'], string> = {
-  chat: '코드', ask: '/ask', talk: '채팅', ma: '멀티'
-}
-type StatPeriod = '1d' | '7d' | '30d' | 'all'
-const STAT_PERIODS: { id: StatPeriod; label: string; days: number | null }[] = [
-  { id: '1d', label: '1일', days: 1 },
-  { id: '7d', label: '7일', days: 7 },
-  { id: '30d', label: '30일', days: 30 },
-  { id: 'all', label: '전체', days: null }
-]
-
 function ApiView() {
   const [st, setSt] = useState<ApiConfigStatus | null>(null)
-  const [keyInput, setKeyInput] = useState('')
-  const [budgetInput, setBudgetInput] = useState('')
   const [busy, setBusy] = useState(false)
-  // 사용 통계 — API 모드 실행 원장(jsonl)을 읽어 렌더러에서 집계한다
-  const [recs, setRecs] = useState<ApiUsageRecord[] | null>(null)
-  const [period, setPeriod] = useState<StatPeriod>('30d')
 
   useEffect(() => {
-    window.api.apiConfig
-      .get()
-      .then((s) => {
-        setSt(s)
-        setBudgetInput(s.budgetUsd != null ? String(s.budgetUsd) : '')
-      })
-      .catch(() => {})
-    window.api.apiConfig
-      .listUsage()
-      .then(setRecs)
-      .catch(() => setRecs([]))
+    window.api.apiConfig.get().then(setSt).catch(() => {})
   }, [])
 
-  // 기간 요약(비용·실행·토큰) + 모델별 비용 — 기간 칩을 따른다
-  const stats = useMemo(() => {
-    const list = recs ?? []
-    const days = STAT_PERIODS.find((t) => t.id === period)?.days ?? null
-    const cut = days == null ? 0 : Date.now() - days * 864e5
-    const rows = list.filter((r) => r.ts >= cut)
-    let cost = 0
-    let inTok = 0
-    let outTok = 0
-    const byModel = new Map<string, { cost: number; runs: number; tok: number }>()
-    const bySource = new Map<ApiUsageRecord['source'], number>()
-    for (const r of rows) {
-      cost += r.costUsd
-      inTok += r.inTok + r.cacheRead + r.cacheWrite
-      outTok += r.outTok
-      const m = byModel.get(r.model) ?? { cost: 0, runs: 0, tok: 0 }
-      m.cost += r.costUsd
-      m.runs += 1
-      m.tok += r.inTok + r.cacheRead + r.cacheWrite + r.outTok
-      byModel.set(r.model, m)
-      bySource.set(r.source, (bySource.get(r.source) ?? 0) + r.costUsd)
-    }
-    const models = [...byModel.entries()]
-      .map(([model, v]) => ({ model, ...v }))
-      .sort((a, b) => b.cost - a.cost)
-    const sources = [...bySource.entries()].sort((a, b) => b[1] - a[1])
-    return { runs: rows.length, cost, inTok, outTok, models, maxModelCost: models[0]?.cost ?? 0, sources }
-  }, [recs, period])
-
-  // 일별 미니 바차트 — 기간 칩과 무관하게 항상 최근 14일 고정 창
-  const days = useMemo(() => {
-    const list = recs ?? []
-    const out: { label: string; cost: number; runs: number }[] = []
-    const today = new Date()
-    for (let i = 13; i >= 0; i--) {
-      const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() - i)
-      const from = d.getTime()
-      const to = from + 864e5
-      let cost = 0
-      let runs = 0
-      for (const r of list) {
-        if (r.ts >= from && r.ts < to) {
-          cost += r.costUsd
-          runs += 1
-        }
-      }
-      out.push({ label: `${d.getMonth() + 1}/${d.getDate()}`, cost, runs })
-    }
-    return out
-  }, [recs])
-  const maxDay = Math.max(...days.map((d) => d.cost), 0)
-
-  const saveKey = async (): Promise<void> => {
-    const k = keyInput.trim()
-    if (!k) return
+  // 키·예산 조작 한 벌 — Anthropic·OpenAI 카드(ProviderApiCard)가 provider만 달리해 공유
+  const saveKey = async (provider: 'anthropic' | 'openai', key: string): Promise<boolean> => {
+    if (!key.trim()) return false
     setBusy(true)
     try {
-      setSt(await window.api.apiConfig.setKey(k))
-      setKeyInput('')
+      setSt(await window.api.apiConfig.setKey(key.trim(), provider))
+      return true
+    } catch {
+      return false
+    } finally {
+      setBusy(false)
+    }
+  }
+  const removeKey = async (provider: 'anthropic' | 'openai'): Promise<void> => {
+    setBusy(true)
+    try {
+      setSt(await window.api.apiConfig.clearKey(provider))
     } catch {
       /* ignore */
     } finally {
       setBusy(false)
     }
   }
-  const removeKey = async (): Promise<void> => {
-    setBusy(true)
+  // 예산은 Anthropic 전용 — Codex는 실행 비용을 보고하지 않아 차감이 불가능하다
+  const saveBudget = async (usd: number | null): Promise<void> => {
     try {
-      setSt(await window.api.apiConfig.clearKey())
-    } catch {
-      /* ignore */
-    } finally {
-      setBusy(false)
-    }
-  }
-  const saveBudget = async (): Promise<void> => {
-    const n = parseFloat(budgetInput)
-    const usd = isFinite(n) && n > 0 ? n : null
-    try {
-      const s = await window.api.apiConfig.setBudget(usd)
-      setSt(s)
-      setBudgetInput(s.budgetUsd != null ? String(s.budgetUsd) : '')
+      setSt(await window.api.apiConfig.setBudget(usd))
     } catch {
       /* ignore */
     }
   }
-  const resetSpend = async (): Promise<void> => {
+  // 초기화(0원) — 예산을 지우고 누적 사용액도 0으로 (재충전 후 새 기준)
+  const doResetBudget = async (): Promise<void> => {
     try {
-      setSt(await window.api.apiConfig.resetSpend())
+      setSt(await window.api.apiConfig.resetBudget())
     } catch {
       /* ignore */
     }
   }
-
-  const budgetDirty = (st?.budgetUsd != null ? String(st.budgetUsd) : '') !== budgetInput.trim()
-  const remain = st && st.budgetUsd != null ? st.budgetUsd - st.spentUsd : null
 
   return (
     <>
       <div className="set-h1">API</div>
       <div className="set-h1-sub">
         API 키를 등록하면 채팅 컴포저의 <strong>API 토글</strong>로 실행 과금을 구독(OAuth) ↔ API 크레딧 사이에서
-        전환할 수 있습니다. API 모드에선 5시간·주간 한도 대신 사용 비용이 표시됩니다.
+        전환할 수 있습니다. API 모드에선 Anthropic 실행은 Anthropic 키로, OpenAI(Codex) 실행은 OpenAI 키로 과금돼요.
       </div>
 
-      <div className="sec">
-        <div className="card">
-          <div className="ver-row">
-            <div className="ver-ic">
-              <IconKey size={20} />
-            </div>
-            <div className="ver-main">
-              <div className="ver-name">API 키</div>
-              <div className="ver-meta">
-                {st == null
-                  ? '불러오는 중…'
-                  : st.hasKey
-                    ? `sk-ant-…${st.keyTail ?? '????'} · 암호화되어 이 컴퓨터에만 저장됨`
-                    : 'platform.claude.com에서 발급한 키(sk-ant-api…)를 입력하세요'}
-              </div>
-            </div>
-            {st?.hasKey ? (
-              <button className="inst-btn ghost" disabled={busy} onClick={() => void removeKey()}>
-                <IconTrash size={13} /> 삭제
-              </button>
-            ) : (
-              <div className="api-form">
-                <input
-                  className="api-input"
-                  type="password"
-                  placeholder="sk-ant-api03-…"
-                  value={keyInput}
-                  spellCheck={false}
-                  onChange={(e) => setKeyInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') void saveKey()
-                  }}
-                />
-                <button className="inst-btn" disabled={busy || !keyInput.trim()} onClick={() => void saveKey()}>
-                  저장
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-        <div className="set-note">
-          키는 Windows 계정에 묶인 암호화(DPAPI)로 <code>~/.agentcodegui/api-config.json</code>에 저장되며, 실행할 때
-          엔진 프로세스에만 전달됩니다. 화면에는 끝 4자리만 표시돼요.
-        </div>
+      <div className="set-sec">Anthropic</div>
+      <ProviderApiCard
+        provider="anthropic"
+        st={st}
+        busy={busy}
+        onSaveKey={(k) => saveKey('anthropic', k)}
+        onClearKey={() => void removeKey('anthropic')}
+        onSaveBudget={saveBudget}
+        onResetBudget={doResetBudget}
+      />
+      <div className="set-note2">
+        API 모드에서 <strong>Claude Code 엔진</strong> 실행이 이 키로 과금돼요. 키는 platform.claude.com에서 발급 —
+        암호화(DPAPI)돼 이 컴퓨터에만 저장되고, 실행할 때 엔진 프로세스에만 전달돼요. 잔액 조회 API가 없어 실행마다
+        보고되는 비용(<code>total_cost_usd</code>)을 누적해 예산에서 차감합니다 — 재충전했으면{' '}
+        <strong>초기화</strong>(예산·누적 0원) 후 새 예산을 입력하세요.
       </div>
 
-      <div className="sec">
-        <div className="card">
-          <div className="ver-row">
-            <div className="ver-ic">
-              <IconDollar size={20} />
-            </div>
-            <div className="ver-main">
-              <div className="ver-name">예산 (선택)</div>
-              <div className="ver-meta">충전한 금액(USD)을 입력하면 컨텍스트 표시에 “남은 예산”이 나옵니다</div>
-            </div>
-            <div className="api-form">
+      <div className="set-sec">OpenAI</div>
+      <ProviderApiCard
+        provider="openai"
+        st={st}
+        busy={busy}
+        onSaveKey={(k) => saveKey('openai', k)}
+        onClearKey={() => void removeKey('openai')}
+      />
+      <div className="set-note2">
+        API 모드에서 <strong>Codex 엔진</strong> 실행이 이 키로 과금돼요. 키는 platform.openai.com에서 발급 — 같은
+        방식으로 암호화돼 저장돼요. Codex는 실행 비용을 보고하지 않아 앱에서 사용액을 추적할 수 없어요 —
+        platform.openai.com에서 확인해 주세요.
+      </div>
+    </>
+  )
+}
+
+// 엔진별 API 카드 한 장 — PoC 문법: 키 줄(배지·변경·삭제) + 마스킹 모노 필 + 예산 줄 +
+// 얇은 잔여 게이지. 키는 등록 전/변경 중엔 입력으로, 예산은 연필을 눌러 인라인 편집.
+// 예산 UI는 Anthropic 전용 — Codex는 비용을 보고하지 않아 예산 개념 자체를 두지 않는다.
+function ProviderApiCard({
+  provider,
+  st,
+  busy,
+  onSaveKey,
+  onClearKey,
+  onSaveBudget,
+  onResetBudget
+}: {
+  provider: 'anthropic' | 'openai'
+  st: ApiConfigStatus | null
+  busy: boolean
+  onSaveKey: (key: string) => Promise<boolean>
+  onClearKey: () => void
+  onSaveBudget?: (usd: number | null) => Promise<void> // Anthropic 카드만 전달
+  onResetBudget?: () => Promise<void>
+}): React.ReactElement {
+  const oa = provider === 'openai'
+  const has = st == null ? null : oa ? st.hasOpenaiKey : st.hasKey
+  const tail = (oa ? st?.openaiKeyTail : st?.keyTail) ?? '????'
+  const budget = oa ? null : (st?.budgetUsd ?? null)
+  const spent = st?.spentUsd ?? 0
+
+  const [keyInput, setKeyInput] = useState('')
+  const [editKey, setEditKey] = useState(false) // 등록된 키의 '변경' 모드
+  const [budInput, setBudInput] = useState('')
+  const [editBud, setEditBud] = useState(false)
+
+  const saveKeyNow = async (): Promise<void> => {
+    if (await onSaveKey(keyInput)) {
+      setKeyInput('')
+      setEditKey(false)
+    }
+  }
+  const startBud = (): void => {
+    setBudInput(budget != null ? String(budget) : '')
+    setEditBud(true)
+  }
+  const saveBudNow = async (): Promise<void> => {
+    const n = parseFloat(budInput)
+    await onSaveBudget?.(isFinite(n) && n > 0 ? n : null)
+    setEditBud(false)
+  }
+  const resetBudNow = async (): Promise<void> => {
+    await onResetBudget?.()
+    setBudInput('')
+    setEditBud(false)
+  }
+
+  const remain = budget != null ? budget - spent : null
+  const remainPct = remain != null && budget ? Math.max(0, Math.min(100, (remain / budget) * 100)) : null
+  const canReset = budget != null || spent > 0
+
+  return (
+    <div className="sc2 api">
+      <div className="aphead">
+        <span className="apn">API 키</span>
+        {has != null &&
+          (has ? <span className="set-badge">등록됨</span> : <span className="set-badge off">미등록</span>)}
+        <span className="sp" />
+        {has && !editKey && (
+          <>
+            <button
+              className="set-chipbtn"
+              disabled={busy}
+              onClick={() => {
+                setKeyInput('')
+                setEditKey(true)
+              }}
+            >
+              변경
+            </button>
+            <button className="set-chipbtn danger" disabled={busy} onClick={onClearKey}>
+              삭제
+            </button>
+          </>
+        )}
+      </div>
+
+      {has && !editKey ? (
+        <div className="apkey">{(oa ? 'sk-' : 'sk-ant-') + '••••••••' + tail}</div>
+      ) : (
+        <div className="apform">
+          <input
+            className="set-input"
+            type="password"
+            placeholder={oa ? 'sk-proj-…' : 'sk-ant-api03-…'}
+            value={keyInput}
+            spellCheck={false}
+            autoFocus={editKey}
+            onChange={(e) => setKeyInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') void saveKeyNow()
+              if (e.key === 'Escape' && editKey) {
+                setEditKey(false)
+                setKeyInput('')
+              }
+            }}
+          />
+          <button className="set-chipbtn" disabled={busy || !keyInput.trim()} onClick={() => void saveKeyNow()}>
+            저장
+          </button>
+          {editKey && (
+            <button
+              className="set-chipbtn"
+              onClick={() => {
+                setEditKey(false)
+                setKeyInput('')
+              }}
+            >
+              취소
+            </button>
+          )}
+        </div>
+      )}
+
+      {!oa && (
+        <div className="apbud">
+          {editBud ? (
+            <>
               <input
-                className="api-input num"
+                className="set-input num"
                 type="number"
                 min={0}
                 step={1}
                 placeholder="예: 20"
-                value={budgetInput}
-                onChange={(e) => setBudgetInput(e.target.value)}
+                value={budInput}
+                autoFocus
+                onChange={(e) => setBudInput(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter') void saveBudget()
+                  if (e.key === 'Enter') void saveBudNow()
+                  if (e.key === 'Escape') setEditBud(false)
                 }}
               />
-              <button className="inst-btn" disabled={!budgetDirty} onClick={() => void saveBudget()}>
+              <button className="set-chipbtn" onClick={() => void saveBudNow()}>
                 저장
               </button>
-            </div>
-          </div>
-          <div className="api-spend">
-            <span className="api-spend-l">API 모드 누적 사용액</span>
-            <span className="api-spend-v">{st ? fmtUsd(st.spentUsd) : '—'}</span>
-            {remain != null && (
-              <span className={'api-spend-remain' + (remain <= 0 ? ' over' : '')}>
-                남은 예산 {fmtUsd(Math.max(0, remain))}
-              </span>
-            )}
-            <span className="smh-spacer" />
-            <button className="inst-btn ghost" disabled={!st || st.spentUsd === 0} onClick={() => void resetSpend()}>
-              <IconRefresh size={13} /> 리셋
-            </button>
-          </div>
-        </div>
-        <div className="set-note">
-          Anthropic은 계정 잔액 조회 API를 제공하지 않아, 이 앱이 API 모드 실행마다 보고되는 비용
-          (<code>total_cost_usd</code>)을 직접 누적해 예산에서 차감합니다. 다른 앱에서 같은 키를 쓰면 실제 잔액과
-          어긋날 수 있어요 — 재충전 후에는 <strong>리셋</strong>으로 기준을 다시 잡아 주세요.
-        </div>
-      </div>
-
-      <div className="sec">
-        <div className="api-stat-head">
-          <span className="api-stat-title">사용 통계</span>
-          <div className="skill-tabs slim">
-            {STAT_PERIODS.map((t) => (
-              <button
-                key={t.id}
-                className={'skill-tab' + (period === t.id ? ' active' : '')}
-                onClick={() => setPeriod(t.id)}
-              >
-                {t.label}
+              <button className="set-chipbtn" disabled={!canReset} onClick={() => void resetBudNow()}>
+                초기화
               </button>
-            ))}
-          </div>
+              <span className="sp" />
+              <button className="set-chipbtn" onClick={() => setEditBud(false)}>
+                취소
+              </button>
+            </>
+          ) : budget != null ? (
+            <>
+              <span>
+                누적 <b>{fmtUsd(spent)}</b> / 예산 {fmtUsd(budget)}
+              </span>
+              <button className="apedit" aria-label="예산 수정" onClick={startBud}>
+                <IconPencil size={11} />
+              </button>
+              <span className="sp" />
+              {remain != null &&
+                (remain <= 0 ? <span className="over">예산 초과</span> : <span>남음 {Math.round(remainPct ?? 0)}%</span>)}
+            </>
+          ) : (
+            <>
+              <span>예산 없음 — 정해두면 남은 예산이 표시돼요</span>
+              <span className="sp" />
+              <button className="set-chipbtn" onClick={startBud}>
+                예산 설정
+              </button>
+            </>
+          )}
         </div>
-
-        {recs == null ? (
-          <div className="ver-loading">
-            <span className="set-spin" /> 불러오는 중…
-          </div>
-        ) : recs.length === 0 ? (
-          <div className="set-empty">아직 API 모드 실행 기록이 없어요. 컴포저의 API 토글을 켜고 실행하면 여기에 쌓입니다.</div>
-        ) : (
-          <>
-            <div className="api-tiles">
-              <div className="api-tile">
-                <div className="api-tile-l">총 비용</div>
-                <div className="api-tile-v">{fmtUsd(stats.cost)}</div>
-                <div className="api-tile-d">실행 {stats.runs}회</div>
-              </div>
-              <div className="api-tile">
-                <div className="api-tile-l">입력 토큰</div>
-                <div className="api-tile-v">{fmtTokS(stats.inTok)}</div>
-                <div className="api-tile-d">캐시 읽기·생성 포함</div>
-              </div>
-              <div className="api-tile">
-                <div className="api-tile-l">출력 토큰</div>
-                <div className="api-tile-v">{fmtTokS(stats.outTok)}</div>
-                <div className="api-tile-d">
-                  {stats.sources.length
-                    ? stats.sources.map(([s, c]) => `${USAGE_SOURCE_LABEL[s]} ${fmtUsd(c)}`).join(' · ')
-                    : '\u00A0'}
-                </div>
-              </div>
-            </div>
-
-            <div className="api-chart">
-              <div className="api-chart-h">
-                <span className="api-chart-t">일별 비용</span>
-                <span className="api-chart-s">최근 14일</span>
-              </div>
-              <div className="api-days">
-                {days.map((d, i) => (
-                  <div
-                    className="api-day has-tip"
-                    key={i}
-                    data-tip={`${d.label} · ${fmtUsd(d.cost)} · ${d.runs}회`}
-                  >
-                    <div
-                      className={'api-day-bar' + (d.cost === 0 ? ' zero' : '')}
-                      style={{ height: maxDay > 0 ? `${Math.max(3, (d.cost / maxDay) * 100)}%` : '3%' }}
-                    />
-                  </div>
-                ))}
-              </div>
-              <div className="api-day-lbls">
-                {days.map((d, i) => (
-                  <span className="api-day-lbl" key={i}>
-                    {(days.length - 1 - i) % 3 === 0 ? d.label : ''}
-                  </span>
-                ))}
-              </div>
-            </div>
-
-            <div className="api-chart">
-              <div className="api-chart-h">
-                <span className="api-chart-t">모델별 비용</span>
-                <span className="api-chart-s">{STAT_PERIODS.find((t) => t.id === period)?.label}</span>
-              </div>
-              <div className="api-mrows">
-                {stats.models.map((m) => (
-                  <div className="api-mrow" key={m.model}>
-                    <span className="api-mdot" style={{ background: modelDotColor(m.model) }} />
-                    <span className="api-mname">{m.model}</span>
-                    <span className="api-mbar-wrap">
-                      <span
-                        className="api-mbar"
-                        style={{ width: stats.maxModelCost > 0 ? `${Math.max(1.5, (m.cost / stats.maxModelCost) * 100)}%` : '1.5%' }}
-                      />
-                    </span>
-                    <span className="api-mval">{fmtUsd(m.cost)}</span>
-                    <span className="api-mruns">{m.runs}회 · {fmtTokS(m.tok)}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </>
-        )}
-
-        <div className="set-note">
-          API 모드로 돌린 실행만 집계됩니다 (구독 실행은 실제 청구가 아니라 제외). 기록은{' '}
-          <code>~/.agentcodegui/api-usage.jsonl</code>에 쌓여요.
-        </div>
-      </div>
-    </>
+      )}
+      {!oa && budget != null && <div className="g2 big">{<i style={{ width: (remainPct ?? 0) + '%' }} />}</div>}
+    </div>
   )
 }
 
@@ -1074,66 +1224,59 @@ function SkillView({ cwd }: { cwd: string }) {
       <div className="set-h1">Skill</div>
       <div className="set-h1-sub">에이전트가 쓸 수 있는 Skill을 범위별로 보고, 여기서 바로 켜고 끌 수 있습니다.</div>
 
-      <div className="sec">
-        <div className="skill-tabs">
-          {SCOPE_TABS.map((t) => (
-            <button
-              key={t.id}
-              className={'skill-tab' + (scope === t.id ? ' active' : '')}
-              onClick={() => setScope(t.id)}
-            >
-              {t.label}
-              <span className="skill-tab-n">{counts[t.id]}</span>
-            </button>
-          ))}
-          <button className="skill-refresh" onClick={refresh} aria-label="새로고침">
-            <IconRefresh size={14} />
+      <div className="set-sec">스킬</div>
+      <div className="set-tabs">
+        {SCOPE_TABS.map((t) => (
+          <button key={t.id} className={'set-tab' + (scope === t.id ? ' on' : '')} onClick={() => setScope(t.id)}>
+            {t.label}
+            <span className="n">{counts[t.id]}</span>
           </button>
-        </div>
+        ))}
+        <button className="set-iconbtn" onClick={refresh} aria-label="새로고침">
+          <IconRefresh size={13} />
+        </button>
+      </div>
 
-        {skills == null ? (
-          <div className="ver-loading">
-            <span className="set-spin" /> 불러오는 중…
-          </div>
-        ) : rows.length === 0 ? (
-          <div className="set-empty">
-            {scope === 'local'
-              ? cwd
-                ? '이 프로젝트의 .claude/skills 에 Skill이 없습니다.'
-                : '연결된 프로젝트가 없어 로컬 Skill을 찾을 수 없습니다.'
-              : scope === 'global'
-                ? '~/.claude/skills 에 Skill이 없습니다.'
-                : '설치된 Skill이 없습니다.'}
-          </div>
-        ) : (
-          <div className="ext-list">
-            {rows.map((s) => (
-              <div className={'ext-item skill' + (s.enabled ? '' : ' off')} key={s.scope + ':' + s.name}>
-                <div className="ext-main has-tip tip-wrap" data-tip={s.description || '설명이 없습니다.'}>
-                  <div className="ext-top">
-                    <span className="ext-name">{s.name}</span>
-                    <span className={'scope-badge ' + s.scope}>{s.scope === 'global' ? '전역' : '로컬'}</span>
-                  </div>
-                  <div className="ext-desc">{s.description || '설명이 없습니다.'}</div>
-                </div>
-                <button
-                  className={'skill-toggle' + (s.enabled ? ' on' : '')}
-                  role="switch"
-                  aria-checked={s.enabled}
-                  aria-label={s.name + (s.enabled ? ' 끄기' : ' 켜기')}
-                  disabled={busy === s.name}
-                  onClick={() => void toggle(s)}
-                >
-                  <span className="skill-knob" />
-                </button>
+      {skills == null ? (
+        <div className="sc2 hint">
+          <span className="set-spin" /> 불러오는 중…
+        </div>
+      ) : rows.length === 0 ? (
+        <div className="sc2 hint">
+          {scope === 'local'
+            ? cwd
+              ? '이 프로젝트의 .claude/skills 에 Skill이 없습니다.'
+              : '연결된 프로젝트가 없어 로컬 Skill을 찾을 수 없습니다.'
+            : scope === 'global'
+              ? '~/.claude/skills 에 Skill이 없습니다.'
+              : '설치된 Skill이 없습니다.'}
+        </div>
+      ) : (
+        rows.map((s) => (
+          <div className={'sc2 row2' + (s.enabled ? '' : ' off')} key={s.scope + ':' + s.name}>
+            <div className="set-tile">/</div>
+            <div className="rmain has-tip tip-wrap" data-tip={s.description || '설명이 없습니다.'}>
+              <div className="em">
+                {s.name}
+                <span className="set-badge off">{s.scope === 'global' ? '전역' : '로컬'}</span>
               </div>
-            ))}
+              <div className="meta">{s.description || '설명이 없습니다.'}</div>
+            </div>
+            <button
+              className={'sw2' + (s.enabled ? ' on' : '')}
+              role="switch"
+              aria-checked={s.enabled}
+              aria-label={s.name + (s.enabled ? ' 끄기' : ' 켜기')}
+              disabled={busy === s.name}
+              onClick={() => void toggle(s)}
+            />
           </div>
-        )}
+        ))
+      )}
 
-        <div className="set-note">
-          전역: <code>~/.claude/skills</code> · 로컬: <code>&lt;프로젝트&gt;/.claude/skills</code> · 끄면 이후 실행부터 에이전트가 그 Skill을 사용하지 않습니다.
-        </div>
+      <div className="set-note2">
+        전역: <code>~/.claude/skills</code> · 로컬: <code>&lt;프로젝트&gt;/.claude/skills</code> · 끄면 이후 실행부터
+        에이전트가 그 Skill을 사용하지 않습니다.
       </div>
     </>
   )
@@ -1171,73 +1314,69 @@ function McpView({ cwd }: { cwd: string }) {
     local: servers?.filter((s) => s.scope === 'local').length ?? 0
   }
   const rows = (servers ?? []).filter((s) => scope === 'all' || s.scope === scope)
+  // 카드 타일 이니셜 — PoC 문법(context7 → C7): 영숫자만 남겨 앞 두 글자
+  const tileTxt = (name: string): string => name.replace(/[^a-z0-9]/gi, '').slice(0, 2).toUpperCase() || '?'
 
   return (
     <>
       <div className="set-h1">MCP</div>
       <div className="set-h1-sub">에이전트가 쓸 수 있는 MCP 서버를 범위별로 보고, 여기서 바로 켜고 끌 수 있습니다.</div>
 
-      <div className="sec">
-        <div className="skill-tabs">
-          {SCOPE_TABS.map((t) => (
-            <button
-              key={t.id}
-              className={'skill-tab' + (scope === t.id ? ' active' : '')}
-              onClick={() => setScope(t.id)}
-            >
-              {t.label}
-              <span className="skill-tab-n">{counts[t.id]}</span>
-            </button>
-          ))}
-          <button className="skill-refresh" onClick={refresh} aria-label="새로고침">
-            <IconRefresh size={14} />
+      <div className="set-sec">서버</div>
+      <div className="set-tabs">
+        {SCOPE_TABS.map((t) => (
+          <button key={t.id} className={'set-tab' + (scope === t.id ? ' on' : '')} onClick={() => setScope(t.id)}>
+            {t.label}
+            <span className="n">{counts[t.id]}</span>
           </button>
-        </div>
+        ))}
+        <button className="set-iconbtn" onClick={refresh} aria-label="새로고침">
+          <IconRefresh size={13} />
+        </button>
+      </div>
 
-        {servers == null ? (
-          <div className="ver-loading">
-            <span className="set-spin" /> 불러오는 중…
-          </div>
-        ) : rows.length === 0 ? (
-          <div className="set-empty">
-            {scope === 'local'
-              ? cwd
-                ? '이 프로젝트(.mcp.json·로컬)에 등록된 MCP 서버가 없습니다.'
-                : '연결된 프로젝트가 없어 로컬 MCP 서버를 찾을 수 없습니다.'
-              : scope === 'global'
-                ? '~/.claude.json 에 등록된 전역 MCP 서버가 없습니다.'
-                : '등록된 MCP 서버가 없습니다.'}
-          </div>
-        ) : (
-          <div className="ext-list">
-            {rows.map((s) => (
-              <div className={'ext-item skill' + (s.enabled ? '' : ' off')} key={s.origin + ':' + s.name}>
-                <div className="ext-main has-tip tip-wrap" data-tip={s.detail || '연결 정보가 없습니다.'}>
-                  <div className="ext-top">
-                    <span className="ext-name">{s.name}</span>
-                    <span className={'scope-badge ' + s.scope}>{s.scope === 'global' ? '전역' : '로컬'}</span>
-                    {s.transport !== 'unknown' && <span className="ver-chip">{s.transport.toUpperCase()}</span>}
-                  </div>
-                  <div className="ext-desc ext-cmd">{s.detail || '연결 정보가 없습니다.'}</div>
-                </div>
-                <button
-                  className={'skill-toggle' + (s.enabled ? ' on' : '')}
-                  role="switch"
-                  aria-checked={s.enabled}
-                  aria-label={s.name + (s.enabled ? ' 끄기' : ' 켜기')}
-                  disabled={busy === s.name}
-                  onClick={() => void toggle(s)}
-                >
-                  <span className="skill-knob" />
-                </button>
+      {servers == null ? (
+        <div className="sc2 hint">
+          <span className="set-spin" /> 불러오는 중…
+        </div>
+      ) : rows.length === 0 ? (
+        <div className="sc2 hint">
+          {scope === 'local'
+            ? cwd
+              ? '이 프로젝트(.mcp.json·로컬)에 등록된 MCP 서버가 없습니다.'
+              : '연결된 프로젝트가 없어 로컬 MCP 서버를 찾을 수 없습니다.'
+            : scope === 'global'
+              ? '~/.claude.json 에 등록된 전역 MCP 서버가 없습니다.'
+              : '등록된 MCP 서버가 없습니다.'}
+        </div>
+      ) : (
+        rows.map((s) => (
+          <div className={'sc2 row2' + (s.enabled ? '' : ' off')} key={s.origin + ':' + s.name}>
+            <div className="set-tile">{tileTxt(s.name)}</div>
+            <div className="rmain has-tip tip-wrap" data-tip={s.detail || '연결 정보가 없습니다.'}>
+              <div className="em">
+                {s.name}
+                <span className="set-badge off">{s.scope === 'global' ? '전역' : '로컬'}</span>
               </div>
-            ))}
+              <div className="meta mono">
+                {(s.transport !== 'unknown' ? s.transport + ' · ' : '') + (s.detail || '연결 정보가 없습니다.')}
+              </div>
+            </div>
+            <button
+              className={'sw2' + (s.enabled ? ' on' : '')}
+              role="switch"
+              aria-checked={s.enabled}
+              aria-label={s.name + (s.enabled ? ' 끄기' : ' 켜기')}
+              disabled={busy === s.name}
+              onClick={() => void toggle(s)}
+            />
           </div>
-        )}
+        ))
+      )}
 
-        <div className="set-note">
-          전역: <code>~/.claude.json</code> · 프로젝트: <code>&lt;프로젝트&gt;/.mcp.json</code> · 끄면 이후 실행부터 에이전트가 그 서버를 사용하지 않습니다.
-        </div>
+      <div className="set-note2">
+        전역: <code>~/.claude.json</code> · 프로젝트: <code>&lt;프로젝트&gt;/.mcp.json</code> · 끄면 이후 실행부터
+        에이전트가 그 서버를 사용하지 않습니다.
       </div>
     </>
   )
@@ -1373,179 +1512,169 @@ function LspView() {
         파일 뷰어의 심볼 탐색(호버 타입 정보 · Ctrl+클릭 정의 이동)을 언어별 분석 서버가 제공합니다.
       </div>
 
-      <div className="sec">
-        {servers == null ? (
-          <div className="ver-loading">
-            <span className="set-spin" /> 불러오는 중…
-          </div>
-        ) : (
-          <div className="ext-list">
-            {servers.map((s) => {
-              const installing = s.state === 'installing'
-              const p = pct[s.id]
-              // 펼치는 디스클로저 행: Verse(external)는 '공식 문서 한국어' 등 Verse 옵션을,
-              // C/C++는 'Unreal Engine 공식 문서 한국어' 옵션을 행 아래에 담는다.
-              const isVerse = s.kind === 'external'
-              const isCpp = s.id === 'cpp'
-              const disc = isVerse || isCpp
-              const open = isVerse ? verseOpen : cppOpen
-              const toggleOpen = isVerse ? () => setVerseOpen((o) => !o) : () => setCppOpen((o) => !o)
-              return (
-                <Fragment key={s.id}>
-                  <div
-                    className={'ext-item' + (disc ? ' disc-row' + (open ? ' open' : '') : '')}
-                    role={disc ? 'button' : undefined}
-                    aria-expanded={disc ? open : undefined}
-                    onClick={disc ? toggleOpen : undefined}
-                  >
-                    {disc && (
-                      <span className="ext-chev" aria-hidden>
-                        <IconChevRight size={15} />
-                      </span>
-                    )}
-                    <FileBadge path={LSP_BADGE[s.id] ?? 'a.txt'} size={30} />
-                    <div className="ext-main">
-                      <div className="ext-top">
-                        <span className="ext-name">{s.langs}</span>
-                        {s.state === 'bundled' && <span className="ver-chip latest">앱 내장</span>}
-                        {s.kind !== 'external' && s.state === 'installed' && (
-                          <span className="ver-chip latest">설치됨</span>
-                        )}
-                        {s.kind === 'external' &&
-                          (s.state === 'installed' ? (
-                            <span className="ver-chip latest">지정됨</span>
-                          ) : (
-                            <span className="ver-chip">미지정</span>
-                          ))}
-                        {/* Verse의 요구사항·경로·문서 언어는 행을 펼치면 보인다 — 접힌 행은
-                            다른 서버들과 같은 2줄 높이를 유지한다 */}
-                        {!isVerse && s.requires && <span className="ver-chip">{s.requires}</span>}
-                      </div>
-                      <div className="ext-desc ext-cmd">{s.exts}</div>
-                    </div>
-                    {s.kind === 'download' &&
-                      (s.state === 'installed' ? (
-                        <button
-                          className="inst-btn ghost"
-                          onClick={(e) => {
-                            e.stopPropagation() // C/C++ 디스클로저 행 토글에 안 걸리게
-                            setConfirm(s)
-                          }}
-                        >
-                          <IconTrash size={13} /> 삭제
-                        </button>
-                      ) : (
-                        <button
-                          className="inst-btn"
-                          disabled={installing}
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            doInstall(s)
-                          }}
-                        >
-                          {installing ? `설치 중…${p != null ? ` ${p}%` : ''}` : '설치'}
-                        </button>
-                      ))}
+      <div className="set-sec">언어 서버</div>
+      {servers == null ? (
+        <div className="sc2 hint">
+          <span className="set-spin" /> 불러오는 중…
+        </div>
+      ) : (
+        servers.map((s) => {
+          const installing = s.state === 'installing'
+          const p = pct[s.id]
+          // 펼치는 디스클로저 행: Verse(external)는 '공식 문서 한국어' 등 Verse 옵션을,
+          // C/C++는 'Unreal Engine 공식 문서 한국어' 옵션을 행 아래에 담는다.
+          const isVerse = s.kind === 'external'
+          const isCpp = s.id === 'cpp'
+          const disc = isVerse || isCpp
+          const open = isVerse ? verseOpen : cppOpen
+          const toggleOpen = isVerse ? () => setVerseOpen((o) => !o) : () => setCppOpen((o) => !o)
+          return (
+            <Fragment key={s.id}>
+              <div
+                className={'sc2 row2' + (disc ? ' disc' + (open ? ' open' : '') : '')}
+                role={disc ? 'button' : undefined}
+                aria-expanded={disc ? open : undefined}
+                onClick={disc ? toggleOpen : undefined}
+              >
+                {disc && (
+                  <span className="chev" aria-hidden>
+                    <IconChevRight size={15} />
+                  </span>
+                )}
+                <div className="set-tile">
+                  <FileBadge path={LSP_BADGE[s.id] ?? 'a.txt'} size={24} />
+                </div>
+                <div className="rmain">
+                  <div className="em">
+                    {s.langs}
+                    {s.state === 'bundled' && <span className="set-badge">앱 내장</span>}
+                    {s.kind !== 'external' && s.state === 'installed' && <span className="set-badge">설치됨</span>}
                     {s.kind === 'external' &&
                       (s.state === 'installed' ? (
-                        <button
-                          className="inst-btn ghost"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            doVerseClear()
-                          }}
-                        >
-                          <IconTrash size={13} /> 삭제
-                        </button>
+                        <span className="set-badge">지정됨</span>
                       ) : (
-                        <button
-                          className="inst-btn"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            doVersePick()
-                          }}
-                        >
-                          설정
-                        </button>
+                        <span className="set-badge off">미지정</span>
                       ))}
+                    {/* Verse의 요구사항·경로·문서 언어는 행을 펼치면 보인다 — 접힌 행은
+                        다른 서버들과 같은 2줄 높이를 유지한다 */}
+                    {!isVerse && s.requires && <span className="set-badge off">{s.requires}</span>}
                   </div>
-                  {/* Verse 펼침 — 연결 안내·지정 경로·문서 언어가 행 아래로 깔끔하게 이어진다.
-                      (하단 set-note에 있던 긴 설명을 여기로 옮겨 접힌 행은 다른 서버와 동일한 높이) */}
-                  {isVerse && verseOpen && (
-                    <>
-                      <div className="ext-item ext-sub">
-                        <div className="ext-main">
-                          <div className="ext-sub-name">Epic verse-lsp 연결</div>
-                          <div className="ext-desc ext-sub-desc">
-                            UEFN/포트나이트의 <code>Verse.vsix</code>(또는 <code>verse-lsp.exe</code>) 경로를 지정하면 정의
-                            이동·호버·심볼이 켜집니다. 소스·디제스트 폴더는 프로젝트의 <code>.vproject</code>에서 자동으로
-                            찾고, 지정 전에는 구문 강조만 동작해요.
-                          </div>
-                          {s.path && (
-                            <div className="ext-sub-path">
-                              <IconCheck size={12} />
-                              <code>{s.path}</code>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                      <div className="ext-item ext-sub">
-                        <div className="ext-main">
-                          <div className="ext-sub-name">공식 문서를 한국어로 보기</div>
-                          <div className="ext-desc ext-sub-desc">
-                            <code>/Verse.org</code> · <code>/UnrealEngine.com</code> · <code>/Fortnite.com</code> API 주석
-                            설명을 호버에서 한국어로 보여줍니다. 끄면 영어 원문으로 표시합니다. (번역에 없는 항목이나 내 코드
-                            주석은 원문 그대로)
-                          </div>
-                        </div>
-                        <button
-                          className={'skill-toggle' + (verseKo ? ' on' : '')}
-                          role="switch"
-                          aria-checked={verseKo}
-                          aria-label={verseKo ? 'Verse 한국어 문서 끄기' : 'Verse 한국어 문서 켜기'}
-                          onClick={toggleVerseKo}
-                        >
-                          <span className="skill-knob" />
-                        </button>
-                      </div>
-                    </>
-                  )}
-                  {/* C/C++ 펼침 — 언리얼 프로젝트의 엔진 공식 주석(clangd 호버) 한국어 번역 토글 */}
-                  {isCpp && cppOpen && (
-                    <div className="ext-item ext-sub">
-                      <div className="ext-main">
-                        <div className="ext-sub-name">Unreal Engine 공식 문서를 한국어로 보기</div>
-                        <div className="ext-desc ext-sub-desc">
-                          언리얼 프로젝트(<code>.uproject</code>)의 C++ 호버에 실리는 엔진 공식 주석(<code>AActor</code>·
-                          <code>TObjectPtr</code> 같은 핵심 타입 설명)을 한국어로 보여줍니다. 끄면 영어 원문으로
-                          표시합니다. (번역에 없는 항목이나 내 코드 주석은 원문 그대로)
-                        </div>
-                      </div>
-                      <button
-                        className={'skill-toggle' + (ueKo ? ' on' : '')}
-                        role="switch"
-                        aria-checked={ueKo}
-                        aria-label={ueKo ? 'Unreal Engine 한국어 문서 끄기' : 'Unreal Engine 한국어 문서 켜기'}
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          toggleUeKo()
-                        }}
-                      >
-                        <span className="skill-knob" />
-                      </button>
+                  <div className="meta mono">{s.exts}</div>
+                </div>
+                {s.kind === 'download' &&
+                  (s.state === 'installed' ? (
+                    <button
+                      className="set-chipbtn danger"
+                      onClick={(e) => {
+                        e.stopPropagation() // C/C++ 디스클로저 행 토글에 안 걸리게
+                        setConfirm(s)
+                      }}
+                    >
+                      삭제
+                    </button>
+                  ) : (
+                    <button
+                      className="set-chipbtn"
+                      disabled={installing}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        doInstall(s)
+                      }}
+                    >
+                      {installing ? `설치 중…${p != null ? ` ${p}%` : ''}` : '설치'}
+                    </button>
+                  ))}
+                {s.kind === 'external' &&
+                  (s.state === 'installed' ? (
+                    <button
+                      className="set-chipbtn danger"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        doVerseClear()
+                      }}
+                    >
+                      삭제
+                    </button>
+                  ) : (
+                    <button
+                      className="set-chipbtn"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        doVersePick()
+                      }}
+                    >
+                      설정
+                    </button>
+                  ))}
+              </div>
+              {/* Verse 펼침 — 연결 안내·지정 경로·문서 언어가 행 아래 들여쓴 카드로 이어진다 */}
+              {isVerse && verseOpen && (
+                <>
+                  <div className="sc2 sub">
+                    <div className="sn">Epic verse-lsp 연결</div>
+                    <div className="sd">
+                      UEFN/포트나이트의 <code>Verse.vsix</code>(또는 <code>verse-lsp.exe</code>) 경로를 지정하면 정의
+                      이동·호버·심볼이 켜집니다. 소스·디제스트 폴더는 프로젝트의 <code>.vproject</code>에서 자동으로
+                      찾고, 지정 전에는 구문 강조만 동작해요.
                     </div>
-                  )}
-                </Fragment>
-              )
-            })}
-          </div>
-        )}
+                    {s.path && (
+                      <div className="spath">
+                        <IconCheck size={12} />
+                        <code>{s.path}</code>
+                      </div>
+                    )}
+                  </div>
+                  <div className="sc2 sub row2">
+                    <div className="rmain">
+                      <div className="sn">공식 문서를 한국어로 보기</div>
+                      <div className="sd">
+                        <code>/Verse.org</code> · <code>/UnrealEngine.com</code> · <code>/Fortnite.com</code> API 주석
+                        설명을 호버에서 한국어로 보여줍니다. 끄면 영어 원문으로 표시합니다. (번역에 없는 항목이나 내 코드
+                        주석은 원문 그대로)
+                      </div>
+                    </div>
+                    <button
+                      className={'sw2' + (verseKo ? ' on' : '')}
+                      role="switch"
+                      aria-checked={verseKo}
+                      aria-label={verseKo ? 'Verse 한국어 문서 끄기' : 'Verse 한국어 문서 켜기'}
+                      onClick={toggleVerseKo}
+                    />
+                  </div>
+                </>
+              )}
+              {/* C/C++ 펼침 — 언리얼 프로젝트의 엔진 공식 주석(clangd 호버) 한국어 번역 토글 */}
+              {isCpp && cppOpen && (
+                <div className="sc2 sub row2">
+                  <div className="rmain">
+                    <div className="sn">Unreal Engine 공식 문서를 한국어로 보기</div>
+                    <div className="sd">
+                      언리얼 프로젝트(<code>.uproject</code>)의 C++ 호버에 실리는 엔진 공식 주석(<code>AActor</code>·
+                      <code>TObjectPtr</code> 같은 핵심 타입 설명)을 한국어로 보여줍니다. 끄면 영어 원문으로
+                      표시합니다. (번역에 없는 항목이나 내 코드 주석은 원문 그대로)
+                    </div>
+                  </div>
+                  <button
+                    className={'sw2' + (ueKo ? ' on' : '')}
+                    role="switch"
+                    aria-checked={ueKo}
+                    aria-label={ueKo ? 'Unreal Engine 한국어 문서 끄기' : 'Unreal Engine 한국어 문서 켜기'}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      toggleUeKo()
+                    }}
+                  />
+                </div>
+              )}
+            </Fragment>
+          )
+        })
+      )}
 
-        <div className="set-note">
-          내장 서버는 바로 사용할 수 있고, C#·C++ 서버는 최초 1회 내려받아 <code>~/.agentcodegui/lsp</code> 에
-          설치됩니다. Verse 연결·문서 언어 옵션은 Verse 행을, Unreal Engine 문서 언어 옵션은 C·C++ 행을
-          클릭하면 펼쳐집니다.
-        </div>
+      <div className="set-note2">
+        내장 서버는 바로 사용할 수 있고, C#·C++ 서버는 최초 1회 내려받아 <code>~/.agentcodegui/lsp</code> 에
+        설치됩니다. Verse 연결·문서 언어 옵션은 Verse 행을, Unreal Engine 문서 언어 옵션은 C·C++ 행을 클릭하면
+        펼쳐집니다.
       </div>
 
       {confirm && (
@@ -1678,93 +1807,77 @@ function GestureView(): React.ReactElement {
         평범한 우클릭이라 기존 우클릭 메뉴는 그대로 동작해요.
       </div>
 
-      <div className="sec">
-        <div className="card">
-          <div className="ver-row">
-            <div className="ver-ic">
-              <IconMouse size={20} />
+      <div className="sc2 tgl" style={{ marginTop: 20 }}>
+        <div>
+          <div className="em">마우스 제스처</div>
+          <div className="meta">{enabled ? '우클릭 드래그로 뷰어를 조작해요' : '꺼짐 — 우클릭은 메뉴만 열어요'}</div>
+        </div>
+        <span className="sp" />
+        <button
+          className={'sw2' + (enabled ? ' on' : '')}
+          role="switch"
+          aria-checked={enabled}
+          aria-label={enabled ? '제스처 끄기' : '제스처 켜기'}
+          onClick={toggle}
+        />
+      </div>
+
+      <div className={'dim2' + (enabled ? '' : ' off')}>
+        {/* 제스처 목록 — 획 모양 글리프는 인식 버블과 같은 컴포넌트라 실물과 늘 일치 */}
+        <div className="set-sec">제스처</div>
+        <div className="set-grid3">
+          {GESTURE_LIST.map((g) => (
+            <div key={g.pattern} className="sc2 ges">
+              <div className="gtile">
+                <GestureGlyph pattern={g.pattern} size={22} />
+              </div>
+              <div>
+                <div className="em">{g.name}</div>
+                <div className="meta">{g.desc}</div>
+              </div>
             </div>
-            <div className="ver-main">
-              <div className="ver-name">마우스 제스처</div>
-              <div className="ver-meta">{enabled ? '우클릭 드래그로 뷰어를 조작해요' : '꺼짐 — 우클릭은 메뉴만 열어요'}</div>
-            </div>
-            <button
-              className={'skill-toggle' + (enabled ? ' on' : '')}
-              role="switch"
-              aria-checked={enabled}
-              aria-label={enabled ? '제스처 끄기' : '제스처 켜기'}
-              onClick={toggle}
-            >
-              <span className="skill-knob" />
-            </button>
-          </div>
+          ))}
         </div>
 
-        <div className={'exd-panel' + (enabled ? '' : ' off')}>
-          {/* 제스처 목록 — 획 모양 글리프는 인식 버블과 같은 컴포넌트라 실물과 늘 일치 */}
-          <div className="exd-sec">
-            <div className="exd-sec-head">
-              <span className="exd-sec-t">Actions</span>
-              <span className="exd-sec-d">우클릭을 누른 채 이 모양으로</span>
-            </div>
-            <div className="card gst-list">
-              {GESTURE_LIST.map((g) => (
-                <div key={g.pattern} className="gst-row">
-                  <span className="gst-glyph">
-                    <GestureGlyph pattern={g.pattern} size={22} />
-                  </span>
-                  <span className="gst-name">{g.name}</span>
-                  <span className="gst-desc">{g.desc}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* 감도 — 시작 거리(제스처 vs 우클릭 판정)와 획 길이(방향 한 획 판정) */}
-          <div className="exd-sec">
-            <div className="exd-sec-head">
-              <span className="exd-sec-t">Sensitivity</span>
-              <span className="exd-sec-d">낮을수록 예민해요</span>
-            </div>
-            <div className="card gst-list">
-              <PxSlider
-                label="시작 거리"
-                desc="이만큼 움직여야 제스처로 봐요 — 그 전에 떼면 평범한 우클릭"
-                min={8}
-                max={30}
-                def={GESTURE_DEFAULTS.start}
-                value={start}
-                onChange={(v) => {
-                  setStart(v)
-                  setPref('gesture.start', v)
-                }}
-              />
-              <PxSlider
-                label="획 길이"
-                desc="방향 한 획으로 인정하는 최소 이동 — ↓→ 같은 꺾임 인식에 영향"
-                min={12}
-                max={48}
-                def={GESTURE_DEFAULTS.stroke}
-                value={stroke}
-                onChange={(v) => {
-                  setStroke(v)
-                  setPref('gesture.stroke', v)
-                }}
-              />
-            </div>
-          </div>
+        {/* 감도 — 시작 거리(제스처 vs 우클릭 판정)와 획 길이(방향 한 획 판정) */}
+        <div className="set-sec">감도</div>
+        <div className="sc2">
+          <PxSlider
+            label="시작 거리"
+            desc="이만큼 움직여야 제스처로 봐요 — 그 전에 떼면 평범한 우클릭"
+            min={8}
+            max={30}
+            def={GESTURE_DEFAULTS.start}
+            value={start}
+            onChange={(v) => {
+              setStart(v)
+              setPref('gesture.start', v)
+            }}
+          />
+          <PxSlider
+            label="획 길이"
+            desc="방향 한 획으로 인정하는 최소 이동 — ↓→ 같은 꺾임 인식에 영향"
+            min={12}
+            max={48}
+            def={GESTURE_DEFAULTS.stroke}
+            value={stroke}
+            onChange={(v) => {
+              setStroke(v)
+              setPref('gesture.stroke', v)
+            }}
+          />
         </div>
+      </div>
 
-        <div className="set-note">
-          제스처 중에는 궤적과 인식된 동작이 화면에 표시돼요. 그리다 만 모양이 어떤 동작과도 안 맞으면 아무 일도
-          일어나지 않아요 — 메뉴도 안 열려요.
-        </div>
+      <div className="set-note2">
+        제스처 중에는 궤적과 인식된 동작이 화면에 표시돼요. 그리다 만 모양이 어떤 동작과도 안 맞으면 아무 일도
+        일어나지 않아요 — 메뉴도 안 열려요. 낮은 감도 값일수록 예민하게 반응해요.
       </div>
     </>
   )
 }
 
-// px 값 슬라이더 한 줄 — 현재 값 표시 + 기본값에서 벗어나면 되돌리기 버튼
+// px 값 슬라이더 한 줄 — 현재 값 표시 + 기본값에서 벗어나면 되돌리기 칩
 function PxSlider({
   label,
   desc,
@@ -1784,19 +1897,19 @@ function PxSlider({
 }): React.ReactElement {
   const pct = ((value - min) / (max - min)) * 100
   return (
-    <div className="gst-slider">
-      <div className="gst-slider-head">
-        <span className="gst-name">{label}</span>
-        <span className="gst-desc">{desc}</span>
+    <div className="sld">
+      <div className="sld-head">
+        <span className="sld-l">{label}</span>
+        <span className="sld-d">{desc}</span>
         {value !== def && (
-          <button className="gst-reset" onClick={() => onChange(def)}>
+          <button className="sld-reset" onClick={() => onChange(def)}>
             기본값 {def}px
           </button>
         )}
-        <span className="gst-val">{value}px</span>
+        <span className="sld-v">{value}px</span>
       </div>
       <input
-        className="gst-range"
+        className="rng2"
         type="range"
         min={min}
         max={max}
@@ -1834,90 +1947,79 @@ function ExplorerView(): React.ReactElement {
         <code>Thumbs.db</code>·<code>*.uasset</code> 같은 파일을 감춰 소스에 집중할 수 있어요.
       </div>
 
-      <div className="sec">
-        {/* 위: 마스터 토글 하나 — 폴더·파일 목록에 함께 적용 */}
-        <div className="card">
-          <div className="ver-row">
-            <div className="ver-ic">
-              <IconFilter size={20} />
-            </div>
-            <div className="ver-main">
-              <div className="ver-name">빌드·생성물 숨기기</div>
-              <div className="ver-meta">
-                {enabled ? '아래 목록의 폴더·파일을 탐색기에서 감춰요' : '모든 폴더·파일을 그대로 보여줘요'}
-              </div>
-            </div>
-            <button
-              className={'skill-toggle' + (enabled ? ' on' : '')}
-              role="switch"
-              aria-checked={enabled}
-              aria-label={enabled ? '숨김 끄기' : '숨김 켜기'}
-              onClick={toggle}
-            >
-              <span className="skill-knob" />
-            </button>
+      {/* 위: 마스터 토글 하나 — 폴더·파일 목록에 함께 적용 */}
+      <div className="sc2 tgl" style={{ marginTop: 20 }}>
+        <div>
+          <div className="em">빌드·생성물 숨기기</div>
+          <div className="meta">
+            {enabled ? '아래 목록의 폴더·파일을 탐색기에서 감춰요' : '모든 폴더·파일을 그대로 보여줘요'}
           </div>
         </div>
+        <span className="sp" />
+        <button
+          className={'sw2' + (enabled ? ' on' : '')}
+          role="switch"
+          aria-checked={enabled}
+          aria-label={enabled ? '숨김 끄기' : '숨김 켜기'}
+          onClick={toggle}
+        />
+      </div>
 
-        {/* 아래: Folders / Files 두 섹션 — 같은 UI 한 벌(추가 입력 + 찾기 + 행 나열)을 공유 */}
-        <div className={'exd-panel' + (enabled ? '' : ' off')}>
-          <HideListSection
-            title="Folders"
-            sub="폴더 이름 — 같은 이름의 파일은 그대로"
-            Ic={IconFolder}
-            placeholder="폴더 이름 추가 (예: Logs)"
-            unit="폴더"
-            defaults={DEFAULT_HIDE_DIRS}
-            list={dirs}
-            onCommit={(l) => {
-              setDirs(l)
-              setHideDirs(l) // 저장 + 탐색기에 알림
-            }}
-          />
-          <HideListSection
-            title="Files"
-            sub="파일 이름 — 폴더는 그대로"
-            Ic={IconFile}
-            placeholder="파일 이름 추가 (예: Thumbs.db)"
-            unit="파일"
-            defaults={DEFAULT_HIDE_FILES}
-            list={plainFiles}
-            onCommit={(l) => commitFiles([...l, ...extFiles])}
-          />
-          <HideListSection
-            title="Extensions"
-            sub="*.확장자 — 그 확장자의 파일 전부"
-            Ic={IconAsterisk}
-            placeholder="확장자 추가 (예: uasset)"
-            unit="확장자"
-            defaults={[]}
-            list={extFiles}
-            onCommit={(l) => commitFiles([...plainFiles, ...l])}
-            // 'uasset'·'.uasset'·'*.uasset' 어느 꼴로 넣어도 저장 형태(*.확장자)로 정규화
-            normalize={(raw) => {
-              const s = raw.replace(/[\\/\s]/g, '').replace(/^\*?\./, '').replace(/[*?]/g, '')
-              return s ? '*.' + s : ''
-            }}
-          />
-        </div>
+      {/* 아래: Folders / Files / Extensions 세 카드 — 같은 UI 한 벌(추가 + 찾기 + 칩 목록)을 공유 */}
+      <div className={'dim2' + (enabled ? '' : ' off')}>
+        <HideListSection
+          title="Folders"
+          sub="폴더 이름 — 같은 이름의 파일은 그대로"
+          placeholder="폴더 이름 추가 (예: Logs)"
+          unit="폴더"
+          defaults={DEFAULT_HIDE_DIRS}
+          list={dirs}
+          onCommit={(l) => {
+            setDirs(l)
+            setHideDirs(l) // 저장 + 탐색기에 알림
+          }}
+        />
+        <HideListSection
+          title="Files"
+          sub="파일 이름 — 폴더는 그대로"
+          placeholder="파일 이름 추가 (예: Thumbs.db)"
+          unit="파일"
+          defaults={DEFAULT_HIDE_FILES}
+          list={plainFiles}
+          onCommit={(l) => commitFiles([...l, ...extFiles])}
+        />
+        <HideListSection
+          title="Extensions"
+          sub="*.확장자 — 그 확장자의 파일 전부"
+          placeholder="확장자 추가 (예: uasset)"
+          unit="확장자"
+          defaults={[]}
+          list={extFiles}
+          onCommit={(l) => commitFiles([...plainFiles, ...l])}
+          // 'uasset'·'.uasset'·'*.uasset' 어느 꼴로 넣어도 저장 형태(*.확장자)로 정규화
+          normalize={(raw) => {
+            const s = raw.replace(/[\\/\s]/g, '').replace(/^\*?\./, '').replace(/[*?]/g, '')
+            return s ? '*.' + s : ''
+          }}
+        />
+      </div>
 
-        <div className="set-note">
-          이름은 <b>대소문자 구분 없이</b>, 트리의 <b>어느 깊이에서든</b> 매칭돼요 — Folders 목록은 <b>폴더만</b>,
-          Files·Extensions 목록은 <b>파일만</b> 숨겨요. 숨겨도 파일은 남아 있고 에이전트는 접근할 수 있어요 —
-          보기만 정리하는 거예요. 탐색기에서 파일·폴더를 <b>우클릭 → 숨김 목록에 추가</b>로도 넣을 수 있고, 탐색기
-          헤더의 <IconFilter size={11} /> 버튼으로 빠르게 켜고 끌 수 있어요.
-        </div>
+      <div className="set-note2">
+        이름은 <b>대소문자 구분 없이</b>, 트리의 <b>어느 깊이에서든</b> 매칭돼요 — Folders 목록은 <b>폴더만</b>,
+        Files·Extensions 목록은 <b>파일만</b> 숨겨요. 숨겨도 파일은 남아 있고 에이전트는 접근할 수 있어요 — 보기만
+        정리하는 거예요. 탐색기에서 파일·폴더를 <b>우클릭 → 숨김 목록에 추가</b>로도 넣을 수 있고, 탐색기 헤더의{' '}
+        <IconFilter size={11} /> 버튼으로 빠르게 켜고 끌 수 있어요.
       </div>
     </>
   )
 }
 
-// 숨김 목록 한 벌 — 추가 입력, 목록 안 찾기(프리셋이 수십 개라 스크롤보다 검색이 빠르다),
-// 기본값 복원, 행 나열. Folders/Files/Extensions 세 섹션이 이 컴포넌트를 공유한다.
+// 숨김 목록 한 벌 — 카드 하나에 제목 줄(개수·기본값 복원), 추가 입력 + 목록 안 찾기
+// (프리셋이 수십 개라 스크롤보다 검색이 빠르다), 숨김 패턴 칩(클릭으로 제거).
+// Folders/Files/Extensions 세 카드가 이 컴포넌트를 공유한다.
 function HideListSection({
   title,
   sub,
-  Ic,
   placeholder,
   unit,
   defaults,
@@ -1927,7 +2029,6 @@ function HideListSection({
 }: {
   title: string
   sub: string
-  Ic: (p: IconProps) => React.ReactElement
   placeholder: string
   unit: string // 개수 표기 단위 — '폴더'·'파일'·'확장자'
   defaults: string[]
@@ -1951,14 +2052,22 @@ function HideListSection({
   const shown = q ? list.filter((d) => d.toLowerCase().includes(q)) : list
 
   return (
-    <div className="exd-sec">
-      <div className="exd-sec-head">
-        <span className="exd-sec-t">{title}</span>
-        <span className="exd-sec-d">{sub}</span>
+    <div className="sc2">
+      <div className="exh">
+        <span className="t2">{title}</span>
+        <span className="d2">{sub}</span>
+        <span className="sp" />
+        <span className="cnt">{q ? `${shown.length}/${list.length}개 ${unit}` : `${list.length}개 ${unit}`}</span>
+        {/* 기본값이 아예 없는 섹션(Extensions)에선 '복원'이 '모두 지우기'가 돼버려 안 보여준다 */}
+        {defaults.length > 0 && (
+          <button className="restore" disabled={isDefault} onClick={() => onCommit([...defaults])}>
+            기본값 복원
+          </button>
+        )}
       </div>
-      <div className="exd-add">
+      <div className="exadd">
         <input
-          className="api-input"
+          className="ain"
           placeholder={placeholder}
           value={input}
           spellCheck={false}
@@ -1967,14 +2076,11 @@ function HideListSection({
             if (e.key === 'Enter') add()
           }}
         />
-        <button className="inst-btn" disabled={!input.trim()} onClick={add}>
-          <IconPlus size={14} /> 추가
+        <button className="set-chipbtn" disabled={!input.trim()} onClick={add}>
+          추가
         </button>
-      </div>
-
-      <div className="exd-listhead">
-        <div className="exd-find">
-          <IconSearch size={12} />
+        <div className="exfind">
+          <IconSearch size={11} />
           <input
             placeholder={unit + ' 찾기'}
             value={query}
@@ -1985,83 +2091,34 @@ function HideListSection({
             }}
           />
           {query && (
-            <button className="exd-find-x" aria-label="찾기 지우기" onClick={() => setQuery('')}>
+            <button aria-label="찾기 지우기" onClick={() => setQuery('')}>
               <IconX2 size={11} />
             </button>
           )}
         </div>
-        <span className="exd-count">{q ? `${shown.length}/${list.length}개 ${unit}` : `${list.length}개 ${unit}`}</span>
-        {/* 기본값이 아예 없는 섹션(Extensions)에선 '복원'이 '모두 지우기'가 돼버려 안 보여준다 */}
-        {defaults.length > 0 && (
-          <button className="exd-restore" disabled={isDefault} onClick={() => onCommit([...defaults])}>
-            <IconRefresh size={12} /> 기본값 복원
-          </button>
-        )}
       </div>
 
-      <div className="exd-list scroll">
+      <div className="chips2 scroll">
         {list.length === 0 ? (
-          <div className="exd-empty">숨길 목록이 비어 있어요 — 위에서 추가하세요</div>
+          <div className="exempty">숨길 목록이 비어 있어요 — 위에서 추가하세요</div>
         ) : shown.length === 0 ? (
-          <div className="exd-empty">‘{query.trim()}’와 일치하는 항목이 없어요</div>
+          <div className="exempty">‘{query.trim()}’와 일치하는 항목이 없어요</div>
         ) : (
           shown.map((d) => (
-            <div className="exd-row" key={d}>
-              <Ic className="exd-row-ic" size={14} />
-              <span className="exd-row-n">{d}</span>
-              <button className="exd-row-x" aria-label={d + ' 제거'} onClick={() => onCommit(list.filter((x) => x !== d))}>
-                <IconX2 size={12} />
-              </button>
-            </div>
+            <button
+              className="xchip"
+              key={d}
+              title={d + ' 제거'}
+              aria-label={d + ' 제거'}
+              onClick={() => onCommit(list.filter((x) => x !== d))}
+            >
+              {d}
+              <IconX2 size={9} />
+            </button>
           ))
         )}
       </div>
     </div>
-  )
-}
-
-const THEME_OPTS: {
-  id: Theme
-  label: string
-  desc: string
-  Icon: (p: IconProps) => React.ReactElement
-}[] = [
-  { id: 'light', label: '라이트', desc: '밝은 화면', Icon: IconSun },
-  { id: 'dark', label: '다크', desc: '어두운 화면', Icon: IconMoon }
-]
-
-function AppearanceView() {
-  const [theme, setThemeState] = useState<Theme>(() => getTheme())
-  const pick = (t: Theme): void => {
-    setTheme(t)
-    setThemeState(t)
-  }
-  return (
-    <>
-      <div className="set-h1">Theme</div>
-      <div className="set-h1-sub">앱 테마를 선택하세요. 변경하면 곧바로 적용됩니다.</div>
-      <div className="theme-grid">
-        {THEME_OPTS.map(({ id, label, desc, Icon }) => (
-          <button
-            key={id}
-            className={'theme-card' + (theme === id ? ' on' : '')}
-            onClick={() => pick(id)}
-            aria-pressed={theme === id}
-          >
-            <span className={'theme-prev ' + id}>
-              <Icon size={20} />
-            </span>
-            <span className="theme-name">{label}</span>
-            <span className="theme-desc">{desc}</span>
-            {theme === id && (
-              <span className="theme-chk">
-                <IconCheck size={13} />
-              </span>
-            )}
-          </button>
-        ))}
-      </div>
-    </>
   )
 }
 
@@ -2074,9 +2131,11 @@ export function SettingsModal({
   onClose: () => void
   initialView?: SettingsView // 특정 탭으로 바로 열기 (예: 컴포저 API 토글 → 'api')
 }) {
-  const [view, setView] = useState<View>(initialView ?? 'version')
+  const [view, setView] = useState<View>(initialView ?? 'profile')
   // 마우스 제스처(↑/↓ 본문 스크롤 · ↓→ 닫기) 대상 — 카드 루트를 state로 추적
   const [cardEl, setCardEl] = useState<HTMLDivElement | null>(null)
+  // 레일 검색 — 라벨+keys(한국어 동의어)로 항목을 거르고, 빈 그룹은 라벨째 숨긴다
+  const [navQ, setNavQ] = useState('')
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
@@ -2086,6 +2145,12 @@ export function SettingsModal({
     return () => document.removeEventListener('keydown', onKey)
   }, [onClose])
 
+  const q = navQ.trim().toLowerCase()
+  const groups = NAV_GROUPS.map((g) => ({
+    ...g,
+    items: g.items.filter((it) => !q || (it.label + ' ' + it.keys).toLowerCase().includes(q))
+  })).filter((g) => g.items.length > 0)
+
   return (
     <div className="set-overlay" onMouseDown={onClose}>
       <MouseGestureLayer
@@ -2093,40 +2158,39 @@ export function SettingsModal({
         actions={[...scrollGestures(() => cardEl?.querySelector('.set-main')), { pattern: 'DR', label: '창 닫기', run: onClose }]}
       />
       <div className="set-modal" ref={setCardEl} onMouseDown={(e) => e.stopPropagation()}>
-        <div className="set-modal-head">
-          <span className="smh-title">설정</span>
-          <span className="smh-spacer" />
-          <button className="smh-close" onClick={onClose} aria-label="닫기">
-            <IconClose size={18} />
-          </button>
-        </div>
+        <button className="smh-close set-x" onClick={onClose} aria-label="닫기">
+          <IconClose size={16} />
+        </button>
         <div className="set-body">
-          <nav className="set-nav">
-            <div className="nh">설정</div>
-            {NAV.map(({ id, label, Icon }) => (
-              <button
-                key={id}
-                className={'nav-item' + (view === id ? ' active' : '')}
-                onClick={() => setView(id)}
-              >
-                <span className="ic">
-                  <Icon size={17} />
-                </span>
-                {label}
-              </button>
+          <nav className="set-nav scroll">
+            <div className="set-title">설정</div>
+            <div className="set-search">
+              <IconSearch size={12} />
+              <input value={navQ} onChange={(e) => setNavQ(e.target.value)} placeholder="설정 검색" />
+            </div>
+            {groups.map((g) => (
+              <Fragment key={g.label}>
+                <div className="set-grp">{g.label}</div>
+                {g.items.map(({ id, label, Icon }) => (
+                  <button key={id} className={'set-ni' + (view === id ? ' on' : '')} onClick={() => setView(id)}>
+                    <Icon size={14} />
+                    {label}
+                  </button>
+                ))}
+              </Fragment>
             ))}
           </nav>
           <main className="set-main scroll">
             <div className="set-inner">
+              {view === 'profile' && <ProfileView />}
               {view === 'account' && <AccountView />}
-              {view === 'version' && <VersionView />}
+              {view === 'version' && <EngineView />}
               {view === 'api' && <ApiView />}
               {view === 'mcp' && <McpView cwd={cwd} />}
               {view === 'skill' && <SkillView cwd={cwd} />}
               {view === 'lsp' && <LspView />}
               {view === 'explorer' && <ExplorerView />}
               {view === 'gesture' && <GestureView />}
-              {view === 'appearance' && <AppearanceView />}
             </div>
           </main>
         </div>

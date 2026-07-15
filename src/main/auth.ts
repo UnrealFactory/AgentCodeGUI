@@ -1,7 +1,10 @@
 /**
- * 클로드 계정(구독 OAuth) 로그인 — 번들된 네이티브 `claude` CLI의 `auth` 서브커맨드를
- * 감싼다. 로그인/로그아웃은 ~/.claude/.credentials.json 을 바꾸므로 앱 전체 실행 인증에
- * 영향을 준다(엔진은 이 크리덴셜을 그대로 읽어 구독으로 실행한다).
+ * 클로드 계정(구독 OAuth) — 앱에 등록된 계정만 사용한다. 전역 ~/.claude는 읽지도 쓰지도
+ * 않는다(최초 1회 가져오기 마이그레이션 제외 — 이후 터미널 Claude Code와 완전 격리).
+ * 계정마다 격리 config 폴더(~/.agentcodegui/accounts/<slug>)를 두고, 모든 구독 실행이
+ * CLAUDE_CONFIG_DIR로 그 폴더를 가리킨다. "활성 계정/전환" 개념은 없다 — 채팅이 계정을
+ * 명시적으로 바인딩하고, 미지정이면 기본 계정(defaultEmail)을 쓴다.
+ * (CLI가 CLAUDE_CONFIG_DIR을 상태 조회·로그인·실행 전부에서 자기 홈으로 취급하는 것 실측)
  */
 import { execFile, spawn, type ChildProcess } from 'node:child_process'
 import fs from 'node:fs'
@@ -12,7 +15,7 @@ import { IPC } from '@shared/protocol'
 import type { AuthStatus, AccountInfo, AccountUsage } from '@shared/protocol'
 
 // 번들된 네이티브 claude 실행 파일을 찾는다(dev: 앱 node_modules, prod: asar.unpacked).
-// auth 는 버전 무관하게 같은 ~/.claude 크리덴셜을 다루므로 번들본으로 충분하다.
+// auth 는 버전 무관하게 같은 크리덴셜 포맷을 다루므로 번들본으로 충분하다.
 function claudeBin(): string | null {
   const rel = ['@anthropic-ai', 'claude-agent-sdk-win32-x64', 'claude.exe']
   const cands = [
@@ -47,46 +50,31 @@ function parseStatus(stdout: string): AuthStatus {
   }
 }
 
-export function authStatus(): Promise<AuthStatus> {
+// 특정 config 폴더의 로그인 상태 — CLAUDE_CONFIG_DIR로 그 폴더만 본다(전역 무관).
+function statusForDir(dir: string): Promise<AuthStatus> {
   const bin = claudeBin()
   if (!bin) return Promise.resolve({ loggedIn: false, error: 'claude 실행 파일을 찾지 못했어요' })
   return new Promise((resolve) => {
-    execFile(bin, ['auth', 'status', '--json'], { timeout: 20000, windowsHide: true }, (err, stdout) => {
-      // 로그아웃 상태면 CLI가 비-0으로 끝나며 JSON에 loggedIn:false를 준다 — 그대로 파싱
-      if (stdout && stdout.trim().startsWith('{')) return resolve(parseStatus(stdout))
-      resolve({ loggedIn: false, ...(err ? {} : {}) })
-    })
+    execFile(
+      bin,
+      ['auth', 'status', '--json'],
+      { timeout: 20000, windowsHide: true, env: { ...process.env, CLAUDE_CONFIG_DIR: dir } },
+      (_err, stdout) => {
+        // 로그아웃 상태면 CLI가 비-0으로 끝나며 JSON에 loggedIn:false를 준다 — 그대로 파싱
+        if (stdout && stdout.trim().startsWith('{')) return resolve(parseStatus(stdout))
+        resolve({ loggedIn: false })
+      }
+    )
   })
 }
 
-export async function authLogout(): Promise<AuthStatus> {
-  const bin = claudeBin()
-  if (!bin) return { loggedIn: false, error: 'claude 실행 파일을 찾지 못했어요' }
-  const st = await authStatus()
-  await new Promise<void>((resolve) => {
-    execFile(bin, ['auth', 'logout'], { timeout: 20000, windowsHide: true }, () => resolve())
-  })
-  // 로그아웃은 토큰을 서버에서 해지한다 — 같은 토큰을 담은 이 계정의 저장 스냅샷도 함께
-  // 죽는다. 목록에 남겨두면 '변경'이 반드시 실패하는 거짓 항목이 되므로 같이 제거한다
-  // (채팅별 오버라이드용으로 물질화된 격리 폴더도 같은 토큰이라 함께 정리).
-  if (st.loggedIn && st.email) {
-    writeStore(readStore().filter((a) => a.email !== st.email))
-    deleteAccountDir(st.email)
-  }
-  return authStatus()
-}
-
-// ── 다중 계정 저장/전환 ───────────────────────────────────────
-// Claude는 활성 계정 하나(~/.claude/.credentials.json)만 둔다. 각 계정의 크리덴셜 파일을
-// 통째로 스냅샷해 앱 홈에 (safeStorage로 암호화) 보관해두면, "변경"은 그 스냅샷을
-// .credentials.json 으로 되써서 재로그인 없이 전환된다(리프레시 토큰이 유효한 한).
-// 계정 신원(이메일·org)은 .credentials.json이 아니라 ~/.claude.json의 oauthAccount에 있다.
-// 그래서 한 계정 = { .credentials.json(토큰) + .claude.json의 oauthAccount·userID(신원) } 를
-// 함께 스냅샷해야 한다. 토큰만 바꾸면 status가 이전 신원을 그대로 반환한다.
-const CRED_PATH = path.join(os.homedir(), '.claude', '.credentials.json')
-const CLAUDE_JSON = path.join(os.homedir(), '.claude.json')
-const STORE_PATH = path.join(os.homedir(), '.agentcodegui', 'accounts.json')
-const STORE_VERSION = 2 // 포맷 변경 시 올린다(구버전 스토어는 자동 폐기)
+// ── 계정 스토어 (~/.agentcodegui/accounts.json, v3) ───────────────
+// 계정 = { .credentials.json(토큰) + .claude.json의 oauthAccount·userID(신원) } 스냅샷.
+// 살아있는 토큰의 실거처는 계정 폴더(CLI가 거기서 리프레시)고, 스토어의 암호화 스냅샷은
+// 폴더 재생성용 백업이다 — 실행이 끝나면 syncAccountTokens가 폴더 쪽을 백업에 되쓴다.
+const APP_HOME = path.join(os.homedir(), '.agentcodegui')
+const STORE_PATH = path.join(APP_HOME, 'accounts.json')
+const STORE_VERSION = 3 // v3: defaultEmail 추가 + 전역 ~/.claude 의존 제거 (v2와 계정 포맷 동일)
 
 interface AccountSnapshot {
   creds: string // .credentials.json 전체 내용(토큰)
@@ -100,6 +88,12 @@ interface StoredAccount {
   credEnc: string // base64( safeStorage.encryptString( JSON(AccountSnapshot) ) )
 }
 
+interface StoreFile {
+  version: number
+  defaultEmail?: string // 새 채팅의 기본 계정 (미지정 채팅의 실행 계정)
+  accounts: StoredAccount[]
+}
+
 function readJson(p: string): Record<string, unknown> | null {
   try {
     return JSON.parse(fs.readFileSync(p, 'utf8')) as Record<string, unknown>
@@ -108,46 +102,35 @@ function readJson(p: string): Record<string, unknown> | null {
   }
 }
 
-function readStore(): StoredAccount[] {
+// v2(계정 포맷 동일)도 읽는다 — 마이그레이션 전에 호출돼도 계정이 사라져 보이지 않게.
+// v1 이하는 신원이 없어 무효 → 폐기.
+function readStoreFile(): StoreFile {
   try {
-    const j = JSON.parse(fs.readFileSync(STORE_PATH, 'utf8')) as { version?: number; accounts?: StoredAccount[] }
-    if (j.version !== STORE_VERSION) return [] // 구버전 포맷은 신원이 없어 무효 → 폐기
-    return Array.isArray(j.accounts) ? j.accounts : []
+    const j = JSON.parse(fs.readFileSync(STORE_PATH, 'utf8')) as StoreFile
+    if (j.version !== STORE_VERSION && j.version !== 2) return { version: STORE_VERSION, accounts: [] }
+    return {
+      version: j.version,
+      defaultEmail: typeof j.defaultEmail === 'string' ? j.defaultEmail : undefined,
+      accounts: Array.isArray(j.accounts) ? j.accounts : []
+    }
   } catch {
-    return []
+    return { version: STORE_VERSION, accounts: [] }
   }
 }
-function writeStore(accounts: StoredAccount[]): void {
+function readStore(): StoredAccount[] {
+  return readStoreFile().accounts
+}
+function writeStoreFile(accounts: StoredAccount[], defaultEmail: string | undefined): void {
   try {
-    fs.mkdirSync(path.dirname(STORE_PATH), { recursive: true })
-    fs.writeFileSync(STORE_PATH, JSON.stringify({ version: STORE_VERSION, accounts }, null, 2))
+    fs.mkdirSync(APP_HOME, { recursive: true })
+    // 기본 계정이 목록에 없으면(삭제 등) 첫 계정으로 물러난다 — "기본 없음" 상태를 안 만든다
+    const def = accounts.some((a) => a.email === defaultEmail) ? defaultEmail : accounts[0]?.email
+    fs.writeFileSync(STORE_PATH, JSON.stringify({ version: STORE_VERSION, defaultEmail: def, accounts }, null, 2))
   } catch {
     /* ignore */
   }
 }
 
-// 현재 활성 계정의 { 토큰 + 신원 } 스냅샷
-function currentSnapshot(): AccountSnapshot | null {
-  const creds = readActiveCreds()
-  const cj = readJson(CLAUDE_JSON)
-  if (!creds || !cj || !cj.oauthAccount) return null
-  return { creds, account: cj.oauthAccount, userID: typeof cj.userID === 'string' ? cj.userID : undefined }
-}
-
-// 스냅샷을 활성 계정으로 되쓴다(.credentials.json 토큰 + .claude.json의 oauthAccount·userID)
-function applySnapshot(snap: AccountSnapshot): boolean {
-  if (!snap.creds || !snap.account) return false
-  if (!writeActiveCreds(snap.creds)) return false
-  const cj = readJson(CLAUDE_JSON) ?? {}
-  cj.oauthAccount = snap.account
-  if (snap.userID !== undefined) cj.userID = snap.userID
-  try {
-    fs.writeFileSync(CLAUDE_JSON, JSON.stringify(cj, null, 2))
-    return true
-  } catch {
-    return false
-  }
-}
 function encCreds(raw: string): string | null {
   try {
     return safeStorage.isEncryptionAvailable()
@@ -165,129 +148,55 @@ function decCreds(b64: string): string | null {
     return null
   }
 }
-function readActiveCreds(): string | null {
-  try {
-    return fs.readFileSync(CRED_PATH, 'utf8')
-  } catch {
-    return null
-  }
-}
-function writeActiveCreds(raw: string): boolean {
-  try {
-    fs.mkdirSync(path.dirname(CRED_PATH), { recursive: true })
-    fs.writeFileSync(CRED_PATH, raw)
-    return true
-  } catch {
-    return false
-  }
+
+// 미지정 채팅이 쓸 기본 계정 — 스토어의 defaultEmail, 무효/부재면 첫 계정, 계정 0개면 null.
+export function defaultAccountEmail(): string | null {
+  const f = readStoreFile()
+  if (f.defaultEmail && f.accounts.some((a) => a.email === f.defaultEmail)) return f.defaultEmail
+  return f.accounts[0]?.email ?? null
 }
 
-// 현재 활성 로그인을 스냅샷해 저장(그 계정의 최신 토큰을 보존). 로그인 성공 후, 전환 직전에 호출.
-async function snapshotCurrent(): Promise<void> {
-  const st = await authStatus()
-  if (!st.loggedIn || !st.email) return
-  const snap = currentSnapshot()
-  if (!snap) return
-  // 오염 방지: 지금 크리덴셜(토큰)이 '다른 이메일'로 저장된 토큰과 동일하면, 신원(.claude.json)과
-  // 토큰(.credentials.json)이 어긋난 혼합 상태다(외부 claude 프로세스가 신원만 되쓴 직후 등).
-  // 이대로 저장하면 이 이메일 항목이 남의 토큰으로 오염되므로(전환이 무동작이 되는 원인) 건너뛴다.
-  for (const a of readStore()) {
-    if (a.email === st.email) continue
-    const raw = decCreds(a.credEnc)
-    if (!raw) continue
-    try {
-      if ((JSON.parse(raw) as AccountSnapshot).creds === snap.creds) return
-    } catch {
-      /* ignore */
-    }
-  }
-  const credEnc = encCreds(JSON.stringify(snap))
-  if (!credEnc) return
-  const store = readStore().filter((a) => a.email !== st.email)
-  store.push({ email: st.email, subscriptionType: st.subscriptionType, credEnc })
-  writeStore(store)
+export async function setDefaultAccount(email: string): Promise<AccountInfo[]> {
+  const f = readStoreFile()
+  if (f.accounts.some((a) => a.email === email)) writeStoreFile(f.accounts, email)
+  return listAccounts()
 }
 
+// 등록 계정 목록 — 스토어만 본다(CLI 스폰 없음, 전역 무관).
 export async function listAccounts(): Promise<AccountInfo[]> {
-  const st = await authStatus()
-  // 아직 저장 안 된 현재 로그인은 목록에 자동 편입
-  if (st.loggedIn && st.email && !readStore().some((a) => a.email === st.email)) await snapshotCurrent()
+  const def = defaultAccountEmail()
   return readStore().map((a) => ({
     email: a.email,
     subscriptionType: a.subscriptionType,
-    active: !!st.loggedIn && a.email === st.email
+    isDefault: a.email === def
   }))
 }
 
-// 스냅샷 토큰의 생사 검증 — 로그아웃 등으로 서버에서 해지된 토큰을 복원하면 CLI가 401을
-// 맞고 크리덴셜을 껍데기로 덮어써 "Not logged in"이 된다(디버그 로그로 실측). 만료 전인데
-// 401/403이면 확실히 죽은 것. 이미 만료된 액세스 토큰은 401이 정상(리프레시로 살아날 수
-// 있음)이라 판정 불가 → 'unknown'으로 전환을 막지 않는다. 네트워크 오류도 'unknown'.
-async function validateSnapshotToken(credsRaw: string): Promise<'ok' | 'dead' | 'unknown'> {
-  try {
-    const j = JSON.parse(credsRaw) as { claudeAiOauth?: { accessToken?: string; expiresAt?: number } }
-    const o = j.claudeAiOauth
-    if (!o?.accessToken) return 'dead'
-    if (typeof o.expiresAt === 'number' && o.expiresAt <= Date.now()) return 'unknown'
-    const ctrl = new AbortController()
-    const t = setTimeout(() => ctrl.abort(), 5000)
-    const res = await fetch('https://api.anthropic.com/api/oauth/usage', {
-      headers: { Authorization: 'Bearer ' + o.accessToken, 'anthropic-beta': 'oauth-2025-04-20' },
-      signal: ctrl.signal
-    })
-    clearTimeout(t)
-    if (res.status === 401 || res.status === 403) return 'dead'
-    return 'ok'
-  } catch {
-    return 'unknown'
-  }
-}
-
-export async function switchAccount(email: string): Promise<AuthStatus> {
-  const st = await authStatus()
-  if (st.loggedIn && st.email === email) return st // 이미 활성
-  await snapshotCurrent() // 나가는 계정의 최신 토큰·신원 보존
-  const target = readStore().find((a) => a.email === email)
-  if (!target) return { ...st, error: '저장된 계정을 찾지 못했어요' }
-  const rawSnap = decCreds(target.credEnc)
-  if (!rawSnap) return { ...st, error: '계정 전환에 실패했어요' }
-  let snap: AccountSnapshot
-  try {
-    snap = JSON.parse(rawSnap) as AccountSnapshot
-  } catch {
-    return { ...st, error: '계정 데이터가 손상됐어요 — 다시 로그인해 추가해 주세요' }
-  }
-  // 죽은 토큰은 적용하지 않는다 — 적용하면 현재 로그인까지 깨진다(껍데기 덮어쓰기).
-  if ((await validateSnapshotToken(snap.creds)) === 'dead') {
-    writeStore(readStore().filter((a) => a.email !== email))
-    return { ...st, error: '이 계정의 저장된 로그인이 해지됐어요(로그아웃 등) — 다시 로그인해 추가해 주세요' }
-  }
-  if (!applySnapshot(snap)) return { ...st, error: '계정 전환에 실패했어요' }
-  return authStatus()
-}
-
 export async function removeAccount(email: string): Promise<AccountInfo[]> {
-  writeStore(readStore().filter((a) => a.email !== email))
+  const f = readStoreFile()
+  writeStoreFile(
+    f.accounts.filter((a) => a.email !== email),
+    f.defaultEmail
+  )
   deleteAccountDir(email)
   return listAccounts()
 }
 
-// ── 채팅별 계정 오버라이드 (CLAUDE_CONFIG_DIR) ─────────────────
-// 전역 로그인(~/.claude)은 한 계정뿐이라, 채팅마다 다른 계정으로 실행하려면 계정별 격리
-// config 폴더가 필요하다. 등록 계정의 스냅샷을 ~/.agentcodegui/accounts/<slug>/ 에
-// 물질화(.credentials.json 토큰 + .claude.json 신원)하고, 엔진이 CLAUDE_CONFIG_DIR로
-// 그 폴더를 가리키면 그 실행만 해당 계정으로 인증된다(빈 폴더=로그아웃, 토큰+신원을
+// ── 계정별 격리 config 폴더 (CLAUDE_CONFIG_DIR) ─────────────────
+// 모든 구독 실행이 계정 폴더를 CLAUDE_CONFIG_DIR로 받는다(빈 폴더=로그아웃, 토큰+신원을
 // 넣은 폴더=그 계정 인식 — 실측 검증).
-// - 세션 기록(projects·sessions 등)은 ~/.claude로 정션 링크 → resume이 계정과 무관하게
-//   이어지고, 채팅 중간에 계정을 바꿔도 대화 맥락이 유지된다. skills·agents·plugins·
-//   commands도 링크해 전역과 같은 도구 환경을 쓴다(Windows 정션은 관리자 권한 불필요).
-// - settings.json·CLAUDE.md는 파일이라 링크 대신 물질화 때마다 복사한다(수 KB).
+// - 세션 기록(projects·sessions 등)은 앱 소유 공유 원본(~/.agentcodegui/shared)으로 정션
+//   링크 → resume이 계정과 무관하게 이어지고, 채팅 중간에 계정을 바꿔도 대화 맥락이
+//   유지된다. skills·agents·plugins·commands도 링크해 계정끼리 같은 도구 환경을 쓴다
+//   (Windows 정션은 관리자 권한 불필요).
+// - settings.json·CLAUDE.md는 파일이라 링크 대신 물질화 때마다 shared에서 복사한다(수 KB).
 // - CLI가 폴더 안에서 토큰을 스스로 리프레시하므로, 실행이 끝나면 syncAccountTokens가
-//   폴더의 더 신선한 토큰을 암호화 스냅샷에 되쓴다. 가드(accessToken 존재 + expiresAt
-//   전진)를 통과할 때만 — 401을 맞아 껍데기로 덮인 크리덴셜이 스냅샷을 오염시키지
-//   않도록(1.6.2에서 잡은 스냅샷 오염과 같은 계열의 방어).
-const ACCOUNTS_DIR = path.join(os.homedir(), '.agentcodegui', 'accounts')
-// 전역 ~/.claude와 공유할 폴더(정션 링크) — 세션 기록 + 도구 환경. 파일은 복사.
+//   폴더의 더 신선한 토큰을 암호화 스냅샷(백업)에 되쓴다. 가드(accessToken 존재 +
+//   expiresAt 전진)를 통과할 때만 — 401을 맞아 껍데기로 덮인 크리덴셜이 백업을
+//   오염시키지 않도록(1.6.2에서 잡은 스냅샷 오염과 같은 계열의 방어).
+const ACCOUNTS_DIR = path.join(APP_HOME, 'accounts')
+const SHARED_ROOT = path.join(APP_HOME, 'shared')
+// 계정 폴더끼리 공유할 폴더(정션 링크) — 세션 기록 + 도구 환경. 파일은 복사.
 const SHARED_DIRS = ['projects', 'sessions', 'session-env', 'todos', 'tasks', 'teams', 'agents', 'skills', 'plugins', 'commands', 'file-history']
 const COPIED_FILES = ['settings.json', 'settings.local.json', 'CLAUDE.md']
 
@@ -308,7 +217,7 @@ function readFileOrNull(p: string): string | null {
 }
 
 // 크리덴셜의 신선도 키 — 액세스 토큰이 없으면 0(껍데기), 만료시각이 없으면 1(최소값).
-// 물질화(어느 쪽 토큰을 남길지)와 되싱크(스냅샷을 갱신할지) 판정에 쓴다.
+// 물질화(어느 쪽 토큰을 남길지)와 되싱크(백업을 갱신할지) 판정에 쓴다.
 function credsExpiresAt(raw: string | null): number {
   if (!raw) return 0
   try {
@@ -320,37 +229,38 @@ function credsExpiresAt(raw: string | null): number {
   }
 }
 
-// 전역 활성 로그인의 이메일 — CLI를 띄우지 않고 ~/.claude.json의 신원을 직접 읽는다
-// (실행마다 호출되는 경로라 authStatus의 프로세스 스폰은 과하다).
-export function activeAccountEmail(): string | null {
-  const acc = readJson(CLAUDE_JSON)?.oauthAccount as { emailAddress?: string } | undefined
-  return typeof acc?.emailAddress === 'string' ? acc.emailAddress : null
+// 공유 원본 폴더 보장 — 정션 대상이 항상 존재해야 CLI가 계정 폴더 안에 실폴더를 만들어
+// 세션이 계정별로 갈라지는 사고가 없다.
+function ensureSharedRoot(): void {
+  try {
+    for (const name of SHARED_DIRS) fs.mkdirSync(path.join(SHARED_ROOT, name), { recursive: true })
+  } catch {
+    /* ignore */
+  }
 }
 
-// 세션 기록·도구 환경을 전역 ~/.claude와 공유(정션 링크 + 설정 파일 복사). 링크 실패는
+// 세션 기록·도구 환경을 공유 원본과 잇는다(정션 링크 + 설정 파일 복사). 링크 실패는
 // 그 항목만 격리 동작이 될 뿐 치명적이지 않아 조용히 넘어간다. CLI가 먼저 실폴더를
 // 만들어뒀으면 데이터 보존을 우선해 그대로 둔다.
 function linkSharedState(dir: string): void {
-  const home = path.join(os.homedir(), '.claude')
+  ensureSharedRoot()
   for (const name of SHARED_DIRS) {
-    const src = path.join(home, name)
     const dst = path.join(dir, name)
     try {
-      if (!fs.existsSync(src) || !fs.statSync(src).isDirectory()) continue
       try {
         fs.lstatSync(dst)
         continue // 이미 있음(링크든 실폴더든) — 그대로 둔다
       } catch {
         /* 없음 → 링크 생성 */
       }
-      fs.symlinkSync(src, dst, 'junction')
+      fs.symlinkSync(path.join(SHARED_ROOT, name), dst, 'junction')
     } catch {
       /* ignore */
     }
   }
   for (const name of COPIED_FILES) {
     try {
-      const src = path.join(home, name)
+      const src = path.join(SHARED_ROOT, name)
       if (fs.existsSync(src)) fs.copyFileSync(src, path.join(dir, name))
     } catch {
       /* ignore */
@@ -358,13 +268,12 @@ function linkSharedState(dir: string): void {
   }
 }
 
-// 실행용 계정 해석 — 전역 활성 계정이면 null(오버라이드 불필요 — 같은 토큰을 두 곳에서
-// 리프레시하다 서로 무효화하는 사고를 피한다), 다른 등록 계정이면 물질화된 격리 config
-// 폴더 경로. 스냅샷이 없거나 깨졌으면 던진다(엔진이 에러 카드로 표시).
-export function accountRunDir(email: string): string | null {
-  if (activeAccountEmail() === email) return null
+// 실행용 계정 폴더 — 등록 계정이면 물질화된 격리 config 폴더 경로(항상 반환). 폴더 쪽
+// 토큰이 더 신선하면(직전 실행에서 CLI가 리프레시) 남겨두고, 백업이 더 신선하면(재로그인
+// 등) 백업으로 덮는다. 스냅샷이 없거나 깨졌으면 던진다(엔진이 에러 카드로 표시).
+export function accountRunDir(email: string): string {
   const target = readStore().find((a) => a.email === email)
-  if (!target) throw new Error(`'${email}' 계정이 저장 목록에 없어요 — 설정 → Account에서 다시 추가해 주세요.`)
+  if (!target) throw new Error(`'${email}' 계정이 등록 목록에 없어요 — 설정 → Account에서 로그인해 주세요.`)
   const raw = decCreds(target.credEnc)
   if (!raw) throw new Error(`'${email}' 계정 데이터를 복호화하지 못했어요 — 설정 → Account에서 다시 로그인해 주세요.`)
   let snap: AccountSnapshot
@@ -378,8 +287,6 @@ export function accountRunDir(email: string): string | null {
   }
   const dir = path.join(ACCOUNTS_DIR, accountSlug(email))
   fs.mkdirSync(dir, { recursive: true })
-  // 토큰: 폴더 쪽이 더 신선하면(직전 실행에서 CLI가 리프레시) 남겨두고, 스냅샷이 더
-  // 신선하면(재로그인 등) 스냅샷으로 덮는다.
   const credPath = path.join(dir, '.credentials.json')
   if (credsExpiresAt(snap.creds) >= credsExpiresAt(readFileOrNull(credPath))) fs.writeFileSync(credPath, snap.creds)
   // 신원: 폴더의 .claude.json에 oauthAccount·userID를 병합(CLI가 적어둔 다른 상태는 보존)
@@ -393,10 +300,10 @@ export function accountRunDir(email: string): string | null {
   return dir
 }
 
-// 계정 오버라이드 실행이 끝난 뒤 호출 — 격리 폴더에서 리프레시된 토큰을 스냅샷에 반영.
+// 실행이 끝난 뒤 호출 — 계정 폴더에서 CLI가 리프레시한 토큰을 암호화 백업에 반영.
 export function syncAccountTokens(email: string): void {
-  const store = readStore()
-  const target = store.find((a) => a.email === email)
+  const f = readStoreFile()
+  const target = f.accounts.find((a) => a.email === email)
   if (!target) return
   const dirCreds = readFileOrNull(path.join(ACCOUNTS_DIR, accountSlug(email), '.credentials.json'))
   if (!dirCreds) return
@@ -412,12 +319,15 @@ export function syncAccountTokens(email: string): void {
   if (credsExpiresAt(dirCreds) <= credsExpiresAt(snap.creds)) return // 껍데기/후퇴 토큰 가드
   const credEnc = encCreds(JSON.stringify({ ...snap, creds: dirCreds }))
   if (!credEnc) return
-  writeStore(store.map((a) => (a.email === email ? { ...a, credEnc } : a)))
+  writeStoreFile(
+    f.accounts.map((a) => (a.email === email ? { ...a, credEnc } : a)),
+    f.defaultEmail
+  )
 }
 
-// 계정을 목록에서 지울 때 물질화된 폴더도 정리한다. 폴더 안의 정션이 ~/.claude를
+// 계정을 목록에서 지울 때 물질화된 폴더도 정리한다. 폴더 안의 정션이 공유 원본을
 // 가리키므로, 재귀 삭제 전에 공유 링크를 먼저 끊어 원본이 절대 지워지지 않게 한다
-// (rmSync는 심링크를 따라가지 않지만, 원본이 사용자 홈이라 이중으로 방어한다).
+// (rmSync는 심링크를 따라가지 않지만, 원본이 세션 기록 전체라 이중으로 방어한다).
 function deleteAccountDir(email: string): void {
   const dir = path.join(ACCOUNTS_DIR, accountSlug(email))
   try {
@@ -436,11 +346,9 @@ function deleteAccountDir(email: string): void {
   }
 }
 
-// 저장 계정의 usage 조회용 액세스 토큰 — 스냅샷·물질화 폴더(직전 채팅별 실행에서 CLI가
-// 리프레시했을 수 있음)·전역 ~/.claude(이 계정이 지금 활성이면 — 스냅샷은 로그인/전환
-// 때만 갱신되니 오래 활성일수록 만료돼 있고, CLI는 전역 자리에서 리프레시한다) 중 가장
-// 신선한 쪽. 만료·부재·복호화 실패는 null(401 확정이거나 조회 불가 — 표시만 빠지고,
-// 전환/실행하면 CLI가 리프레시한다).
+// 계정의 usage 조회용 액세스 토큰 — 계정 폴더(살아있는 토큰)와 암호화 백업 중 신선한 쪽.
+// 만료·부재·복호화 실패는 null(401 확정이거나 조회 불가 — 표시만 빠지고, 실행하면 CLI가
+// 리프레시한다).
 export function accountAccessToken(email: string): string | null {
   const target = readStore().find((a) => a.email === email)
   if (!target) return null
@@ -450,12 +358,11 @@ export function accountAccessToken(email: string): string | null {
     try {
       best = (JSON.parse(raw) as AccountSnapshot).creds || null
     } catch {
-      /* 손상된 스냅샷 — 나머지 후보로 넘어간다 */
+      /* 손상된 백업 — 폴더 후보로 넘어간다 */
     }
   }
   const dirCreds = readFileOrNull(path.join(ACCOUNTS_DIR, accountSlug(email), '.credentials.json'))
-  const activeCreds = activeAccountEmail() === email ? readActiveCreds() : null
-  for (const c of [dirCreds, activeCreds]) if (credsExpiresAt(c) > credsExpiresAt(best)) best = c
+  if (credsExpiresAt(dirCreds) > credsExpiresAt(best)) best = dirCreds
   if (!best) return null
   try {
     const o = (JSON.parse(best) as { claudeAiOauth?: { accessToken?: string; expiresAt?: number } }).claudeAiOauth
@@ -467,49 +374,215 @@ export function accountAccessToken(email: string): string | null {
   }
 }
 
-// 저장된 계정별 한도 사용률 — 전환 없이 각 계정의 저장 토큰으로 usage API를 병렬 조회.
-// 만료된 토큰은 조회하지 않는다(401 확정 — 전환하면 CLI가 리프레시하므로 전환 자체는 정상).
-// 실패는 조용히 null(표시만 빠짐) — 목록 UX를 네트워크에 볼모 잡히지 않게 한다.
-export async function accountsUsage(): Promise<AccountUsage[]> {
-  const rows = readStore().map(async (a): Promise<AccountUsage> => {
-    const empty: AccountUsage = { email: a.email, fiveHourPct: null, weeklyPct: null, fablePct: null }
-    const token = accountAccessToken(a.email)
-    if (!token) return empty
+// ── 만료 토큰 리프레시 — 한도 조회가 "실행 후"가 아니라 언제든 뜨게 ──────
+// 토큰은 실행 중 CLI만 갱신하므로, 오래 안 쓴 계정은 만료돼 게이지가 비어 있었다.
+// CLI와 같은 공개 클라이언트(로그인 URL 실측의 client_id)로 refresh_token을 교환하고,
+// 회전된 refresh 토큰까지 폴더+백업에 즉시 되써서 어느 쪽도 죽은 토큰을 남기지 않는다.
+// 같은 계정 동시 요청은 단일 비행으로 합쳐 이중 회전을 막는다.
+const OAUTH_CLIENT_ID = '9d1c250a-e61b-44d9-88ed-5944d1962f5e'
+const OAUTH_TOKEN_URLS = ['https://console.anthropic.com/v1/oauth/token', 'https://platform.claude.com/v1/oauth/token']
+const refreshInflight = new Map<string, Promise<string | null>>()
+
+// force=true는 시간상 유효해 보여도 리프레시한다 — 401을 맞은 토큰(다른 프로세스가
+// 그랜트를 회전시킨 경우 등)의 1회 재시도용. 리프레시 토큰까지 죽었으면 null(재로그인 필요).
+export async function freshAccountToken(email: string, force = false): Promise<string | null> {
+  if (!force) {
+    const now = accountAccessToken(email)
+    if (now) return now
+  }
+  const inflight = refreshInflight.get(email)
+  if (inflight) return inflight
+  const p = refreshAccountToken(email).finally(() => refreshInflight.delete(email))
+  refreshInflight.set(email, p)
+  return p
+}
+
+async function refreshAccountToken(email: string): Promise<string | null> {
+  const target = readStore().find((a) => a.email === email)
+  if (!target) return null
+  // 가장 신선한 크리덴셜 원문(폴더 > 백업)에서 refreshToken을 꺼낸다
+  const dirCreds = readFileOrNull(path.join(ACCOUNTS_DIR, accountSlug(email), '.credentials.json'))
+  let backup: string | null = null
+  const snapRaw = decCreds(target.credEnc)
+  let snap: AccountSnapshot | null = null
+  try {
+    snap = snapRaw ? (JSON.parse(snapRaw) as AccountSnapshot) : null
+    backup = snap?.creds ?? null
+  } catch {
+    /* 손상된 백업 — 폴더 후보만 */
+  }
+  const base = credsExpiresAt(dirCreds) >= credsExpiresAt(backup) ? dirCreds : backup
+  if (!base) return null
+  let parsed: Record<string, unknown>
+  let oauth: { refreshToken?: string } & Record<string, unknown>
+  try {
+    parsed = JSON.parse(base) as Record<string, unknown>
+    oauth = (parsed.claudeAiOauth ?? {}) as typeof oauth
+  } catch {
+    return null
+  }
+  if (!oauth.refreshToken) return null
+  for (const url of OAUTH_TOKEN_URLS) {
     try {
       const ctrl = new AbortController()
-      const t = setTimeout(() => ctrl.abort(), 5000)
-      const res = await fetch('https://api.anthropic.com/api/oauth/usage', {
-        headers: { Authorization: 'Bearer ' + token, 'anthropic-beta': 'oauth-2025-04-20' },
+      const t = setTimeout(() => ctrl.abort(), 10000)
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ grant_type: 'refresh_token', refresh_token: oauth.refreshToken, client_id: OAUTH_CLIENT_ID }),
         signal: ctrl.signal
       })
       clearTimeout(t)
-      if (!res.ok) return empty
-      const j = (await res.json()) as {
-        five_hour?: { utilization?: number | string }
-        seven_day?: { utilization?: number | string }
-        limits?: { kind?: string; percent?: number; scope?: { model?: { display_name?: string } | null } | null }[]
+      if (!res.ok) continue // 4xx면 회전 없음 — 다음 엔드포인트 시도
+      const j = (await res.json()) as { access_token?: string; refresh_token?: string; expires_in?: number }
+      if (!j.access_token) continue
+      const nextRaw = JSON.stringify({
+        ...parsed,
+        claudeAiOauth: {
+          ...oauth,
+          accessToken: j.access_token,
+          refreshToken: j.refresh_token ?? oauth.refreshToken,
+          expiresAt: Date.now() + (j.expires_in ?? 3600) * 1000
+        }
+      })
+      // 회전된 refresh 토큰 유실 방지 — 폴더와 암호화 백업 둘 다 즉시 갱신
+      try {
+        const dir = path.join(ACCOUNTS_DIR, accountSlug(email))
+        fs.mkdirSync(dir, { recursive: true })
+        fs.writeFileSync(path.join(dir, '.credentials.json'), nextRaw)
+      } catch {
+        /* ignore */
       }
-      const pct = (u?: { utilization?: number | string }): number | null => {
-        if (!u) return null
-        const n = parseFloat(String(u.utilization ?? ''))
-        return isNaN(n) ? null : Math.max(0, Math.min(100, Math.round(n)))
+      if (snap) {
+        const credEnc = encCreds(JSON.stringify({ ...snap, creds: nextRaw }))
+        if (credEnc) {
+          const f = readStoreFile()
+          writeStoreFile(
+            f.accounts.map((a) => (a.email === email ? { ...a, credEnc } : a)),
+            f.defaultEmail
+          )
+        }
       }
-      // Fable 5 주간 한도: limits[]의 weekly_scoped + model 이름에 'fable' (getUsage와 같은 규칙)
-      const fable = Array.isArray(j.limits)
-        ? j.limits.find((l) => l?.kind === 'weekly_scoped' && (l.scope?.model?.display_name ?? '').toLowerCase().includes('fable'))
-        : undefined
-      return {
-        email: a.email,
-        fiveHourPct: pct(j.five_hour),
-        weeklyPct: pct(j.seven_day),
-        fablePct: fable && typeof fable.percent === 'number' ? Math.max(0, Math.min(100, Math.round(fable.percent))) : null
-      }
+      return j.access_token
     } catch {
-      return empty
+      /* 네트워크 오류 — 다음 엔드포인트 */
     }
+  }
+  return null
+}
+
+// ── usage API 레이트리밋 대응 — 실측: 같은 IP의 병렬 2건 중 1건이 429로 튕기고,
+// 짧은 간격의 연속 호출도 튕긴다("게이지가 둘 중 하나만 나오는" 증상의 진짜 원인).
+// 전 프로세스의 usage 호출을 하나의 큐로 직렬화하고 호출 사이 간격을 둔다 —
+// getUsage(index.ts)도 같은 큐를 쓴다. 결과는 계정별 캐시 + 실패(429 등) 시 마지막
+// 성공값 유지 — 게이지가 깜빡이며 사라지지 않는다.
+let usageChain: Promise<unknown> = Promise.resolve()
+const USAGE_GAP_MS = 1200
+export function usageSlot<T>(fn: () => Promise<T>): Promise<T> {
+  const run = usageChain.then(fn, fn)
+  usageChain = run.catch(() => {}).then(() => new Promise((r) => setTimeout(r, USAGE_GAP_MS)))
+  return run
+}
+const acctUsageCache = new Map<string, { at: number; data: AccountUsage }>()
+const ACCT_USAGE_TTL = 2 * 60 * 1000
+// 캐시는 디스크에도 영속화(민감정보 아님 — 퍼센트뿐) — 앱을 켜자마자 마지막 값이 바로
+// 보이고, 레이트리밋으로 첫 조회가 늦어도 게이지가 비지 않는다.
+const USAGE_CACHE_PATH = path.join(APP_HOME, 'usage-cache.json')
+try {
+  const j = JSON.parse(fs.readFileSync(USAGE_CACHE_PATH, 'utf8')) as Record<string, { at: number; data: AccountUsage }>
+  for (const [k, v] of Object.entries(j)) if (v && v.data) acctUsageCache.set(k, v)
+} catch {
+  /* 없음/손상 — 빈 캐시로 시작 */
+}
+function saveUsageCache(): void {
+  try {
+    fs.mkdirSync(APP_HOME, { recursive: true })
+    fs.writeFileSync(USAGE_CACHE_PATH, JSON.stringify(Object.fromEntries(acctUsageCache)))
+  } catch {
+    /* ignore */
+  }
+}
+
+// 계정 1건의 한도 조회 — null이면 실패(429 포함, 호출부가 마지막 성공값으로 폴백).
+// 401/403이면 강제 리프레시 후 1회 재시도 — 시간상 유효해 보여도 서버에서 무효화된
+// 토큰(다른 프로세스의 그랜트 회전 등)을 걸러낸다.
+async function fetchAccountUsage(email: string): Promise<AccountUsage | null> {
+  const token = await freshAccountToken(email)
+  if (!token) return null
+  try {
+    const hit = async (tk: string): Promise<Response> => {
+      const ctrl = new AbortController()
+      const t = setTimeout(() => ctrl.abort(), 5000)
+      try {
+        return await fetch('https://api.anthropic.com/api/oauth/usage', {
+          headers: { Authorization: 'Bearer ' + tk, 'anthropic-beta': 'oauth-2025-04-20' },
+          signal: ctrl.signal
+        })
+      } finally {
+        clearTimeout(t)
+      }
+    }
+    let res = await hit(token)
+    if (res.status === 401 || res.status === 403) {
+      const retry = await freshAccountToken(email, true)
+      if (!retry || retry === token) return null
+      res = await hit(retry)
+    }
+    if (res.status === 429) {
+      // 예산이 매우 빡빡한 엔드포인트(분당 1~2건 실측) — Retry-After만큼 기다렸다 1회 재시도.
+      // 이 대기는 usageSlot 큐 안이라 다른 usage 호출도 자연히 뒤로 밀린다(추가 429 방지).
+      const ra = parseInt(res.headers.get('retry-after') ?? '', 10)
+      await new Promise((r) => setTimeout(r, Math.min(Number.isNaN(ra) ? 15000 : ra * 1000, 30000)))
+      res = await hit(token)
+    }
+    if (!res.ok) return null
+    const j = (await res.json()) as {
+      five_hour?: { utilization?: number | string }
+      seven_day?: { utilization?: number | string }
+      limits?: { kind?: string; percent?: number; scope?: { model?: { display_name?: string } | null } | null }[]
+    }
+    const pct = (u?: { utilization?: number | string }): number | null => {
+      if (!u) return null
+      const n = parseFloat(String(u.utilization ?? ''))
+      return isNaN(n) ? null : Math.max(0, Math.min(100, Math.round(n)))
+    }
+    // Fable 5 주간 한도: limits[]의 weekly_scoped + model 이름에 'fable' (getUsage와 같은 규칙)
+    const fable = Array.isArray(j.limits)
+      ? j.limits.find((l) => l?.kind === 'weekly_scoped' && (l.scope?.model?.display_name ?? '').toLowerCase().includes('fable'))
+      : undefined
+    return {
+      email,
+      fiveHourPct: pct(j.five_hour),
+      weeklyPct: pct(j.seven_day),
+      fablePct: fable && typeof fable.percent === 'number' ? Math.max(0, Math.min(100, Math.round(fable.percent))) : null
+    }
+  } catch {
+    return null
+  }
+}
+
+// 등록 계정별 한도 사용률 — 캐시(2분)가 신선하면 그대로, 아니면 큐를 통해 순차 조회.
+export async function accountsUsage(): Promise<AccountUsage[]> {
+  const rows = readStore().map(async (a): Promise<AccountUsage> => {
+    const cached = acctUsageCache.get(a.email)
+    if (cached && Date.now() - cached.at < ACCT_USAGE_TTL) return cached.data
+    const fresh = await usageSlot(() => fetchAccountUsage(a.email))
+    if (fresh) {
+      acctUsageCache.set(a.email, { at: Date.now(), data: fresh })
+      saveUsageCache()
+      return fresh
+    }
+    // 실패 — 마지막 성공값 유지(다음 주기에 재시도), 그것도 없으면 빈 값
+    return cached?.data ?? { email: a.email, fiveHourPct: null, weeklyPct: null, fablePct: null }
   })
   return Promise.all(rows)
 }
+
+// ── 로그인/로그아웃 — 항상 CONFIG_DIR 격리, 전역 ~/.claude 불가침 ──
+// 로그인 전엔 이메일을 모르므로 임시 폴더(~/.agentcodegui/login)로 로그인하고, 완료 후
+// 신원을 읽어 스토어에 편입 + 계정 폴더로 물질화한다. "계정 추가"가 기존 계정을 절대
+// 위협하지 않는다(전역 크리덴셜 덮어쓰기 자체가 없음).
+const LOGIN_DIR = path.join(APP_HOME, 'login')
 
 // 진행 중인 로그인 자식 프로세스(한 번에 하나) — 취소로 죽일 수 있게 보관
 let loginProc: ChildProcess | null = null
@@ -529,12 +602,15 @@ export async function authLogin(wc: WebContents, useConsole: boolean): Promise<A
   const bin = claudeBin()
   if (!bin) return { ok: false, loggedIn: false, error: 'claude 실행 파일을 찾지 못했어요' }
   authLoginCancel() // 이전 시도가 있으면 정리
-  // 지금 로그인된 계정을 먼저 보존한다 — 로그인은 .credentials.json을 덮어써서, 이게 없으면
-  // 기존 계정이 사라진다("계정 추가"가 되도록)
-  await snapshotCurrent()
+  try {
+    fs.rmSync(LOGIN_DIR, { recursive: true, force: true }) // 이전의 부분 상태 제거
+    fs.mkdirSync(LOGIN_DIR, { recursive: true })
+  } catch {
+    /* ignore */
+  }
   return new Promise((resolve) => {
     const args = ['auth', 'login', useConsole ? '--console' : '--claudeai']
-    const child = spawn(bin, args, { windowsHide: true })
+    const child = spawn(bin, args, { windowsHide: true, env: { ...process.env, CLAUDE_CONFIG_DIR: LOGIN_DIR } })
     loginProc = child
     let opened = false
     // CLI가 출력하는 OAuth URL을 잡아 브라우저로 연다(CLI가 자동으로 열기도 하지만 이중 안전).
@@ -552,11 +628,164 @@ export async function authLogin(wc: WebContents, useConsole: boolean): Promise<A
     const finish = async (): Promise<void> => {
       clearTimeout(timer)
       if (loginProc === child) loginProc = null
-      const status = await authStatus()
-      if (status.loggedIn) await snapshotCurrent() // 새로 로그인된 계정을 저장 목록에 편입
-      resolve({ ok: status.loggedIn, ...status })
+      const status = await statusForDir(LOGIN_DIR)
+      if (status.loggedIn && status.email) importAccountFromDir(LOGIN_DIR, status)
+      try {
+        fs.rmSync(LOGIN_DIR, { recursive: true, force: true }) // 평문 토큰을 임시 자리에 남기지 않는다
+      } catch {
+        /* ignore */
+      }
+      resolve({ ok: !!(status.loggedIn && status.email), ...status })
     }
     child.on('close', () => void finish())
     child.on('error', () => void finish())
+  })
+}
+
+// config 폴더의 { 토큰 + 신원 }을 스토어에 편입하고 계정 폴더로 물질화한다.
+// (로그인 완료 + 마이그레이션의 전역 가져오기가 공용)
+function importAccountFromDir(dir: string, status: AuthStatus): void {
+  const email = status.email
+  if (!email) return
+  const creds = readFileOrNull(path.join(dir, '.credentials.json'))
+  if (!creds) return
+  const cj = readJson(path.join(dir, '.claude.json'))
+  // 신원 객체가 없으면(비정상) 이메일로 합성 — accountRunDir가 신원을 요구한다
+  const account = cj?.oauthAccount ?? { emailAddress: email }
+  const userID = typeof cj?.userID === 'string' ? cj.userID : undefined
+  const credEnc = encCreds(JSON.stringify({ creds, account, userID } satisfies AccountSnapshot))
+  if (!credEnc) return
+  const f = readStoreFile()
+  const accounts = f.accounts.filter((a) => a.email !== email)
+  accounts.push({ email, subscriptionType: status.subscriptionType, credEnc })
+  // 첫 계정이면 자동으로 기본 계정이 된다(writeStoreFile의 폴백)
+  writeStoreFile(accounts, f.defaultEmail)
+  try {
+    accountRunDir(email) // 계정 폴더 물질화 + 공유 정션 연결
+  } catch {
+    /* 다음 실행 때 다시 시도된다 */
+  }
+}
+
+// 계정 로그아웃 — 그 계정 폴더를 CONFIG_DIR로 CLI 로그아웃(서버 토큰 해지) 후 스토어·폴더
+// 제거. 해지 실패(네트워크 등)여도 로컬은 지운다 — 목록에 거짓 항목을 남기지 않는다.
+export async function authLogout(email: string): Promise<AccountInfo[]> {
+  const bin = claudeBin()
+  let dir: string | null = null
+  try {
+    dir = accountRunDir(email) // 폴더가 없으면 백업에서 물질화해서라도 해지를 시도
+  } catch {
+    /* 스냅샷 손상 등 — 해지 없이 로컬만 제거 */
+  }
+  if (bin && dir) {
+    await new Promise<void>((resolve) => {
+      execFile(
+        bin,
+        ['auth', 'logout'],
+        { timeout: 20000, windowsHide: true, env: { ...process.env, CLAUDE_CONFIG_DIR: dir } },
+        () => resolve()
+      )
+    })
+  }
+  return removeAccount(email)
+}
+
+// ── 1회 마이그레이션 — 전역 ~/.claude 시대의 상태를 앱 소유로 이관 ──
+// (1) 세션 기록·도구 환경을 ~/.claude에서 shared로 복사(원본은 남긴다 — 터미널 CLI 무손상)
+// (2) 기존 계정 폴더의 ~/.claude행 정션을 끊어 다음 물질화가 shared로 다시 잇게
+// (3) 전역에 로그인돼 있던 계정을 스토어로 가져오기(이후 전역은 다시 보지 않는다)
+// (4) 스토어 v2 → v3 승격(defaultEmail 채움)
+// 마커 파일로 1회만 실행. 앱 시작 시(창 생성 전) await — 복사 완료 전 실행되는 레이스 방지.
+const MIGRATED_MARK = path.join(SHARED_ROOT, '.migrated-v3')
+
+export async function migrateAccounts(): Promise<void> {
+  const f = readStoreFile()
+  if (fs.existsSync(MIGRATED_MARK)) {
+    // 마이그레이션 후에도 v2 파일이 남은 희귀 경로(마이그레이션 중 크래시) — 승격만 재시도
+    if (f.version !== STORE_VERSION) writeStoreFile(f.accounts, f.defaultEmail)
+    return
+  }
+  const home = path.join(os.homedir(), '.claude')
+  ensureSharedRoot()
+  // (1) 세션 기록 1회 복사 — shared 쪽이 비어 있을 때만(재실행 시 사용자 데이터 보호)
+  for (const name of SHARED_DIRS) {
+    const src = path.join(home, name)
+    const dst = path.join(SHARED_ROOT, name)
+    try {
+      if (!fs.existsSync(src) || !fs.statSync(src).isDirectory()) continue
+      if (fs.readdirSync(dst).length > 0) continue
+      await fs.promises.cp(src, dst, { recursive: true, force: false, errorOnExist: false })
+    } catch {
+      /* 항목 단위 실패는 무시 — 세션 일부가 안 옮겨질 뿐 */
+    }
+  }
+  for (const name of COPIED_FILES) {
+    try {
+      const src = path.join(home, name)
+      const dst = path.join(SHARED_ROOT, name)
+      if (fs.existsSync(src) && !fs.existsSync(dst)) fs.copyFileSync(src, dst)
+    } catch {
+      /* ignore */
+    }
+  }
+  // (2) 기존 계정 폴더의 정션 재배선 — ~/.claude행 링크를 끊는다(다음 물질화가 shared로)
+  try {
+    for (const slug of fs.readdirSync(ACCOUNTS_DIR)) {
+      for (const name of SHARED_DIRS) {
+        try {
+          const p = path.join(ACCOUNTS_DIR, slug, name)
+          if (fs.lstatSync(p).isSymbolicLink()) fs.unlinkSync(p)
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+  } catch {
+    /* accounts 폴더 없음 */
+  }
+  // (3) 전역 로그인 가져오기 — 신원+토큰이 있고, 아직 등록 안 됐고, 같은 토큰이 다른
+  // 이메일로 저장돼 있지 않을 때만(신원·토큰 어긋난 혼합 상태 가드)
+  const creds = readFileOrNull(path.join(home, '.credentials.json'))
+  const cj = readJson(path.join(os.homedir(), '.claude.json'))
+  const acc = cj?.oauthAccount as { emailAddress?: string } | undefined
+  const email = typeof acc?.emailAddress === 'string' ? acc.emailAddress : null
+  if (creds && email && !f.accounts.some((a) => a.email === email)) {
+    const collided = f.accounts.some((a) => {
+      const raw = decCreds(a.credEnc)
+      if (!raw) return false
+      try {
+        return (JSON.parse(raw) as AccountSnapshot).creds === creds
+      } catch {
+        return false
+      }
+    })
+    if (!collided) {
+      // 플랜 이름은 전역 CLI 상태에서 한 번만 — 실패해도 가져오기는 진행(표시만 빠짐)
+      const st = await globalAuthStatus()
+      const credEnc = encCreds(
+        JSON.stringify({ creds, account: cj!.oauthAccount, userID: typeof cj!.userID === 'string' ? cj!.userID : undefined } satisfies AccountSnapshot)
+      )
+      if (credEnc) f.accounts.push({ email, subscriptionType: st.subscriptionType, credEnc })
+    }
+  }
+  // (4) v3 승격 + 기본 계정(기존 defaultEmail > 전역에 로그인돼 있던 계정 > 첫 계정 폴백)
+  const globalDefault = email && f.accounts.some((a) => a.email === email) ? email : undefined
+  writeStoreFile(f.accounts, f.defaultEmail ?? globalDefault)
+  try {
+    fs.writeFileSync(MIGRATED_MARK, String(Date.now()))
+  } catch {
+    /* ignore */
+  }
+}
+
+// 전역 ~/.claude의 로그인 상태 — 마이그레이션의 플랜 이름 조회 전용(그 외 전역 조회 금지).
+function globalAuthStatus(): Promise<AuthStatus> {
+  const bin = claudeBin()
+  if (!bin) return Promise.resolve({ loggedIn: false })
+  return new Promise((resolve) => {
+    execFile(bin, ['auth', 'status', '--json'], { timeout: 20000, windowsHide: true }, (_err, stdout) => {
+      if (stdout && stdout.trim().startsWith('{')) return resolve(parseStatus(stdout))
+      resolve({ loggedIn: false })
+    })
   })
 }

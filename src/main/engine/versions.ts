@@ -43,6 +43,24 @@ export function migrateLegacyHome(): void {
 
 type QueryFn = (arg: unknown) => unknown
 
+// 두 엔진 CLI(Claude Code·Codex) 공통 자동 업데이트 플래그 (설정 → Engine → 공통) — 기본 켬
+const AUTO_UPDATE_PATH = path.join(APP_HOME, 'engine-auto-update.json')
+export function getAutoUpdate(): boolean {
+  try {
+    return (JSON.parse(fs.readFileSync(AUTO_UPDATE_PATH, 'utf8')) as { enabled?: boolean }).enabled !== false
+  } catch {
+    return true
+  }
+}
+export function setAutoUpdate(enabled: boolean): void {
+  try {
+    fs.mkdirSync(APP_HOME, { recursive: true })
+    writeFileAtomic(AUTO_UPDATE_PATH, JSON.stringify({ enabled }))
+  } catch {
+    /* ignore */
+  }
+}
+
 interface Config {
   activeVersion: string | null
 }
@@ -145,7 +163,9 @@ export async function listAvailable(): Promise<{ latest: string | null; versions
     const versions: EngineVersionEntry[] = stable.map((v) => ({
       version: v,
       date: time[v] ?? null,
-      latest: v === latest
+      latest: v === latest,
+      // latest보다 높은 버전 = next 등 프리뷰 채널 (예: latest 0.3.208 위의 0.3.209)
+      preview: latest != null && compareDesc(v, latest) < 0
     }))
     return { latest, versions }
   } finally {
@@ -225,7 +245,9 @@ export async function install(
 }
 
 export async function uninstall(version: string): Promise<void> {
-  await fsp.rm(path.join(ENGINES_DIR, version), { recursive: true, force: true })
+  // Windows: 백신/인덱서의 순간 점유로 rm이 EPERM으로 즉사할 수 있다 — 기본
+  // maxRetries가 0이라 재시도를 명시해야 견딘다 (codexUninstall과 동일 규칙)
+  await fsp.rm(path.join(ENGINES_DIR, version), { recursive: true, force: true, maxRetries: 5, retryDelay: 300 })
   if (readConfig().activeVersion === version) writeConfig({ activeVersion: null })
   if (sdkCache?.version === version) sdkCache = null
 }

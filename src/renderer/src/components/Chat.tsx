@@ -1,16 +1,18 @@
-import { Fragment, memo, useEffect, useRef, useState, type CSSProperties, type ComponentType, type ReactNode } from 'react'
+import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ComponentType, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import type {
   ModelId,
   EffortId,
   ModeId,
+  EngineId,
   UsageInfo,
   UsageWindow,
   ExtraCreditInfo,
+  CodexAccountInfo,
+  CodexAccountUsage,
   ToolLogItem,
   AgentQuestion,
   SkillInfo,
-  AgentStatus,
   Todo,
   ChangedFile,
   SubAgentInfo,
@@ -19,16 +21,18 @@ import type {
   AccountInfo,
   AccountUsage
 } from '@shared/protocol'
-import type { ThreadItem } from '../store/session'
+import { sameCwd, type ThreadItem } from '../store/session'
+import { loadRecentDirs } from '../lib/recentDirs'
+import { relTime } from './Sidebar'
 import { Markdown } from './Markdown'
 import { FileBadge } from './fileType'
 import { MouseGestureLayer, scrollGestures } from './mouseGesture'
-import { StatusPill, Todos, FileRow, SubAgent } from './AgentPanel'
+import { Todos, FileRow, SubAgent } from './AgentPanel'
+import { WinControls } from './TitleBar'
 import { mentionAtCaret, mentionEntries, type MentionEntry } from '../lib/mentions'
 import { imageSrc, imageName, filesToAttachmentPaths, isImagePath, isAttachablePath } from '../lib/images'
 import {
-  IconClaude,
-  IconImage,
+  IconPlus,
   IconPaperclip,
   IconChevDown,
   IconCheck,
@@ -43,9 +47,7 @@ import {
   IconClose,
   IconAlert,
   IconShieldChk,
-  IconClipList,
   IconExpand,
-  IconCheckCirc,
   IconBolt,
   IconX2,
   IconPlug,
@@ -56,14 +58,14 @@ import {
   IconBook,
   IconFolder,
   IconChevRight,
+  IconChevLeft,
   IconClock,
   IconList,
   IconBot,
-  IconPanelLeft,
-  IconKey,
-  IconCard,
   IconDollar,
-  IconUser,
+  IconMascot,
+  IconMascotDraw,
+  IconPanelRight,
   type IconProps
 } from './icons'
 
@@ -74,7 +76,6 @@ interface ModelOpt {
   id: ModelId
   d: string
   ctx: number
-  color: string
 }
 interface EffortOpt {
   v: string
@@ -86,16 +87,13 @@ interface ModeOpt {
   v: string
   id: ModeId
   d: string
-  color: string
-  icon: keyof typeof MODE_ICONS
-  warn?: boolean
 }
 
 const MODELS: ModelOpt[] = [
-  { v: 'Fable 5', id: 'fable', d: '최상위 지능 · 가장 어려운 작업', ctx: 1000, color: 'var(--gold)' },
-  { v: 'Opus 4.8', id: 'opus', d: '고성능 · 복잡한 작업', ctx: 1000, color: 'var(--violet)' },
-  { v: 'Sonnet 5', id: 'sonnet', d: '균형 · 일상 작업', ctx: 1000, color: 'var(--blue)' },
-  { v: 'Haiku 4.5', id: 'haiku', d: '빠른 응답 · 가벼운 작업', ctx: 200, color: 'var(--teal)' }
+  { v: 'Fable 5', id: 'fable', d: '최상위 지능 · 가장 어려운 작업', ctx: 1000 },
+  { v: 'Opus 4.8', id: 'opus', d: '고성능 · 복잡한 작업', ctx: 1000 },
+  { v: 'Sonnet 5', id: 'sonnet', d: '균형 · 일상 작업', ctx: 1000 },
+  { v: 'Haiku 4.5', id: 'haiku', d: '빠른 응답 · 가벼운 작업', ctx: 200 }
 ]
 const EFFORTS: EffortOpt[] = [
   { v: '최대', id: 'max', d: '최대 강도', level: 5 },
@@ -105,27 +103,96 @@ const EFFORTS: EffortOpt[] = [
   { v: '낮음', id: 'low', d: '가벼운 추론', level: 1 },
   { v: '최소', id: 'minimal', d: '확장사고 끔', level: 0 }
 ]
-// 모드 + 과금 + 계정 picker가 함께 쓰는 아이콘 키 (Pick의 icons 렌더링)
-const MODE_ICONS = { shield: IconShieldChk, plan: IconClipList, check: IconCheckCirc, bolt: IconBolt, warn: IconAlert, card: IconCard, key: IconKey, user: IconUser }
-// 드롭다운 표시는 가장 위험한 것부터(우회→일반). 폴백·순환 방향은 아래 MODE_FALLBACK·nextMode가 보정.
+// 모드 순서·이름 = PoC 확정: 일반→플랜→부분 허용→자동 허용→모두 허용, 색 특별취급 없음
 const MODES: ModeOpt[] = [
-  // 우회는 위험 모드지만 텍스트는 다른 모드와 동일하게(흰색·한국어) — 빨간 경고 삼각형으로만 위험 표시
-  { v: '우회', id: 'bypass', d: '모든 권한 확인 건너뛰기', color: 'var(--red)', icon: 'warn' },
-  { v: '자동', id: 'auto', d: '도구 실행까지 자동 진행', color: 'var(--violet)', icon: 'bolt' },
-  { v: '모두 허용', id: 'acceptEdits', d: '파일 편집 자동 수락', color: 'var(--yellow)', icon: 'check' },
-  { v: '플랜', id: 'plan', d: '계획만 수립, 실행은 승인 후', color: 'var(--blue)', icon: 'plan' },
-  { v: '일반', id: 'normal', d: '변경마다 승인 요청', color: 'var(--text-3)', icon: 'shield' }
+  { v: '일반', id: 'normal', d: '변경마다 승인 요청' },
+  { v: '플랜', id: 'plan', d: '계획만 수립, 실행은 승인 후' },
+  { v: '부분 허용', id: 'acceptEdits', d: '파일 편집 자동 수락' },
+  { v: '자동 허용', id: 'auto', d: '도구 실행까지 자동 진행' },
+  { v: '모두 허용', id: 'bypass', d: '모든 권한 확인 건너뛰기' }
 ]
 // 배열 순서와 무관하게 폴백 기본값은 항상 '일반'
-const MODE_FALLBACK = MODES.find((m) => m.id === 'normal') ?? MODES[MODES.length - 1]
+const MODE_FALLBACK = MODES.find((m) => m.id === 'normal') ?? MODES[0]
 
 export interface PickerState {
   model: ModelId
   effort: EffortId
   mode: ModeId
-  // 이 채팅의 실행 계정(등록 계정 이메일) — 없으면 전역 활성 계정을 따른다. 과금이
+  // 실행 엔진 — 'claude'(기본) 또는 'codex'(OpenAI Codex CLI)
+  engine?: EngineId
+  // engine==='codex'일 때의 GPT 모델 id (예: gpt-5.6-terra)
+  codexModel?: string
+  // 이 채팅의 실행 계정(등록 계정 이메일) — 없으면 기본 계정을 따른다. 과금이
   // '구독'일 때만 의미가 있다(API 모드 실행에선 엔진이 무시).
   account?: string
+  // engine==='codex'일 때의 OpenAI 계정 바인딩 — 없으면 Codex 기본 계정을 따른다
+  codexAccount?: string
+}
+
+// ── Codex(OpenAI) 모델 — app-server model/list를 한 번 받아 캐시, 실패 시 정적 폴백
+// (실측 0.144.3: gpt-5.6-terra/luna · gpt-5.5 · gpt-5.4-mini) ──
+export interface CodexModelOpt {
+  v: string
+  id: string
+  d: string
+}
+// model/list 실측(0.144, 2026-07) 순서 그대로 — 서버 영어 설명의 한국어 번역이
+// codexDescKo를 통해 실제 목록에도 입혀진다 (여기 없는 새 모델만 영어 원문)
+const CODEX_FALLBACK: CodexModelOpt[] = [
+  { v: 'GPT-5.6-Sol', id: 'gpt-5.6-sol', d: '최신 프론티어 · 가장 어려운 작업' },
+  { v: 'GPT-5.6-Terra', id: 'gpt-5.6-terra', d: '균형 에이전트 코딩 · 일상 작업' },
+  { v: 'GPT-5.6-Luna', id: 'gpt-5.6-luna', d: '빠르고 경제적 · 가벼운 작업' }
+]
+// 구세대(5.5·5.4) 모델은 picker에서 숨긴다(유저 결정) — 서버 목록에 있어도 걸러낸다.
+// 모르는 새 모델(예: 5.7)은 그대로 통과해 목록에 뜬다.
+const CODEX_HIDDEN = new Set(['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini'])
+// 엔진을 codex로 바꿀 때의 기본 모델 — 서버 기본(sol)이 아니라 균형형(terra)을 유지
+export const CODEX_DEFAULT_MODEL = 'gpt-5.6-terra'
+let codexModelCache: CodexModelOpt[] | null = null
+let codexModelFetch: Promise<CodexModelOpt[]> | null = null
+// 서버(model/list)의 영어 설명 → 한국어. 아는 모델은 CODEX_FALLBACK의 한국어 설명을
+// 그대로 쓰고, 모르는 새 모델만 서버 원문으로 남긴다.
+function codexDescKo(id: string, desc?: string, isDefault?: boolean): string {
+  return CODEX_FALLBACK.find((f) => f.id === id)?.d ?? desc ?? (isDefault ? '기본 모델' : '')
+}
+function fetchCodexModels(): Promise<CodexModelOpt[]> {
+  if (codexModelCache) return Promise.resolve(codexModelCache)
+  if (codexModelFetch) return codexModelFetch
+  codexModelFetch = window.api
+    .codexModels()
+    .then((list) => {
+      const opts = list
+        .filter((m) => !CODEX_HIDDEN.has(m.id))
+        .map((m) => ({ v: m.label, id: m.id, d: codexDescKo(m.id, m.desc, m.isDefault) }))
+      if (opts.length) codexModelCache = opts
+      return codexModelCache ?? CODEX_FALLBACK
+    })
+    .catch(() => CODEX_FALLBACK)
+    .finally(() => {
+      codexModelFetch = null
+    })
+  return codexModelFetch
+}
+
+const ENGINES: { v: string; id: EngineId; d: string }[] = [
+  { v: 'Anthropic', id: 'claude', d: 'Claude Code CLI로 실행' },
+  { v: 'OpenAI', id: 'codex', d: 'Codex CLI로 실행' }
+]
+
+/** OpenAI 모델 목록 훅 — 엔진을 codex로 두면 그때 받아온다 (실패 시 정적 폴백). */
+function useCodexModels(engine: EngineId): CodexModelOpt[] {
+  const [list, setList] = useState<CodexModelOpt[]>(() => codexModelCache ?? CODEX_FALLBACK)
+  useEffect(() => {
+    if (engine !== 'codex') return
+    let on = true
+    fetchCodexModels().then((l) => {
+      if (on) setList(l)
+    })
+    return () => {
+      on = false
+    }
+  }, [engine])
+  return list
 }
 
 /** raw SDK model id ('claude-opus-4-8-…') → picker ModelId, or undefined if unknown.
@@ -144,11 +211,11 @@ export interface ScheduledMsg {
   picker: PickerState
 }
 
-// next run mode — used by the Shift+Tab shortcut. 배열은 위험한 것부터라(우회→일반)
-// 역방향으로 걸어 기존 순환 순서(일반→플랜→모두 허용→자동→우회→일반)를 유지한다.
+// next run mode — used by the Shift+Tab shortcut. 배열이 PoC 순서(일반→…→모두 허용)라
+// 정방향으로 걸으면 기존 순환(일반→플랜→부분→자동→모두→일반)이 그대로 유지된다.
 export function nextMode(current: ModeId): ModeId {
   const i = MODES.findIndex((m) => m.id === current)
-  return MODES[(i - 1 + MODES.length) % MODES.length].id
+  return MODES[(i + 1) % MODES.length].id
 }
 
 // ── Slash commands ───────────────────────────────────────────
@@ -164,7 +231,6 @@ export interface SlashCmd {
   icon: ComponentType<IconProps>
 }
 export const SLASH_COMMANDS: SlashCmd[] = [
-  { name: 'ask', desc: '본 대화와 분리된 임시 질문 · 저장 안 됨', icon: IconBolt },
   { name: 'init', desc: '코드베이스를 분석해 CLAUDE.md 생성', icon: IconFileText },
   { name: 'clear', desc: '대화 기록과 컨텍스트 초기화', icon: IconRefresh },
   { name: 'compact', desc: '대화를 요약해 컨텍스트 절약', icon: IconCompress },
@@ -212,6 +278,15 @@ function fmtDur(ms: number): string {
   if (s < 10) return s.toFixed(1) + 's'
   if (s < 60) return Math.round(s) + 's'
   return Math.floor(s / 60) + 'm ' + Math.round(s % 60) + 's'
+}
+
+// 턴 마무리 줄 (PoC .worked) — '42초 동안 작업함' / '1분 12초 동안 작업함'
+function fmtWorked(ms: number): string {
+  const s = Math.max(1, Math.round(ms / 1000))
+  if (s < 60) return `${s}초 동안 작업함`
+  const m = Math.floor(s / 60)
+  const r = s % 60
+  return r ? `${m}분 ${r}초 동안 작업함` : `${m}분 동안 작업함`
 }
 
 // result shown on the right: a spinner while running, a red mark on error, the +/-
@@ -275,53 +350,67 @@ function BashLogModal({ t, onClose }: { t: ToolLogItem; onClose: () => void }) {
   }
   return createPortal(
     <div className="sa-overlay" onMouseDown={onClose}>
-      <div className="bm-card" ref={setCard} onMouseDown={(e) => e.stopPropagation()}>
-        <div className="bm-head">
-          <span className={'bm-ic' + (failed ? ' err' : '')}>
-            <IconTerminal size={16} />
+      <div className="dc-card" ref={setCard} onMouseDown={(e) => e.stopPropagation()}>
+        <div className="dc-head">
+          <div className="dc-tile">
+            <IconTerminal size={19} />
+          </div>
+          <div className="dc-tt">
+            <span className="dc-title mono">{t.target}</span>
+            <div className="dc-sub">Bash · 일회성 실행{t.durationMs != null ? ` · ${fmtDur(t.durationMs)}` : ''}</div>
+          </div>
+          <span className={'dc-badge' + (failed ? ' err' : '')}>
+            <span className="d" />
+            {failed ? '오류' : '완료'}
           </span>
-          <div className="bm-title">Bash</div>
-          <span className={'bm-status' + (failed ? ' err' : '')}>{failed ? '실패' : '완료'}</span>
-          <button className="sa-card-close" onClick={onClose} aria-label="닫기">
-            <IconClose size={18} />
+          <button className="dc-close" onClick={onClose} aria-label="닫기">
+            <IconClose size={16} />
           </button>
         </div>
-        <div className="bm-body">
-          <div className="bm-lbl">
+        <div className="dc-body scroll">
+          <div className="dc-sec">
             <span>명령</span>
-            <span className="bo-sp" />
-            <button className={'bm-copy' + (copied === 'cmd' ? ' on' : '')} onClick={() => copy('cmd', t.target)}>
-              {copied === 'cmd' ? '복사됨' : '복사'}
+            <i className="dc-ln" />
+            <button className={'dc-copy' + (copied === 'cmd' ? ' on' : '')} onClick={() => copy('cmd', t.target)}>
+              <IconCopy size={12} />
+              {copied === 'cmd' ? '복사됨 ✓' : '명령 복사'}
             </button>
           </div>
-          <div className="bm-cmd scroll">{t.target}</div>
-          <div className="bm-lbl">
+          <div className="dc-cmd">{t.target}</div>
+          <div className="dc-sec">
             <span>출력</span>
-            <span className="bo-sp" />
-            <button className={'bm-copy' + (copied === 'out' ? ' on' : '')} onClick={() => copy('out', t.output ?? '')}>
-              {copied === 'out' ? '복사됨' : '복사'}
+            <i className="dc-ln" />
+            <button className={'dc-copy' + (copied === 'out' ? ' on' : '')} onClick={() => copy('out', t.output ?? '')}>
+              <IconCopy size={12} />
+              {copied === 'out' ? '복사됨 ✓' : '출력 복사'}
             </button>
           </div>
-          <div className="bm-log scroll">
+          <div className="dc-term">
+            <div className="dc-term-body">
             {lines.map((ln, i) => (
               <div key={i} className={'bo-ln' + (bashErrLine(failed, ln) ? ' err' : '')}>
                 {/* 빈 줄은 NBSP로 높이 유지 — 일반 공백은 collapse돼 줄이 사라진다 */}
                 {ln || '\u00A0'}
               </div>
             ))}
+            </div>
           </div>
         </div>
-        <div className="bm-foot">
-          {/* 실행 시간 · 줄수 — 엔진이 끝 200줄/16KB만 실어 보내는 캡은 '끝부분 200줄'로 알린다 */}
-          <span>
-            {t.durationMs != null ? `${fmtDur(t.durationMs)} · ` : ''}
-            {lines.length >= 200 ? '끝부분 200줄' : `${lines.length}줄`}
+        <div className="dc-foot">
+          {t.durationMs != null && (
+            <span className="dc-stat">
+              소요 <b>{fmtDur(t.durationMs)}</b>
+            </span>
+          )}
+          {/* 엔진이 끝 200줄/16KB만 실어 보내는 캡은 '끝부분 200줄'로 알린다 */}
+          <span className="dc-stat">
+            출력 <b>{lines.length >= 200 ? '끝부분 200줄' : `${lines.length}줄`}</b>
           </span>
         </div>
       </div>
       <MouseGestureLayer
         target={card}
-        actions={[...scrollGestures(() => card?.querySelector('.bm-log')), { pattern: 'DR', label: '창 닫기', run: onClose }]}
+        actions={[...scrollGestures(() => card?.querySelector('.dc-body')), { pattern: 'DR', label: '창 닫기', run: onClose }]}
       />
     </div>,
     document.body
@@ -342,9 +431,8 @@ function BashRow({ t }: { t: ToolLogItem }) {
       >
         <span className="t-ic">{toolIcon('bash', 14)}</span>
         <span className="t-verb">{t.verb}</span>
-        <span className="t-sep">·</span>
         <span className={'t-target' + (clickable ? ' has-tip' : '')} data-tip={clickable ? '결과 보기' : undefined}>
-          {t.target}
+          <span className="t-txt">{t.target}</span>
         </span>
         <ToolResult t={t} />
       </div>
@@ -400,12 +488,11 @@ function WebRow({ t }: { t: ToolLogItem }) {
       >
         <span className="t-ic">{toolIcon(t.kind, 14)}</span>
         <span className="t-verb">{t.verb}</span>
-        <span className="t-sep">·</span>
         <span
           className={'t-target' + (clickable ? ' has-tip' : '')}
           data-tip={links.length ? (open ? '접기' : '찾은 페이지 보기') : direct ? '브라우저에서 열기' : undefined}
         >
-          {t.target}
+          <span className="t-txt">{t.target}</span>
         </span>
         <ToolResult t={t} />
       </div>
@@ -428,35 +515,16 @@ function WebRow({ t }: { t: ToolLogItem }) {
 // colored type icon · verb · target (wraps in full) · result on the right.
 // File rows (read/write/edit) are clickable to open the file.
 //
-// `lead` = this group opens the assistant's turn (it ran a tool before writing any
-// text, so there's no preceding message to carry the avatar). In that case we drop
-// the Claude avatar into the 42px gutter so the turn still reads as Claude's — like
-// a normal message block — instead of floating header-less. Done with an absolute
-// avatar rather than a `.msg` wrapper so tool groups stay out of the message
-// virtualization (which would otherwise clip the "파일 열기" hover tooltip).
 function ToolGroup({
   item,
-  onOpenFile,
-  lead
+  onOpenFile
 }: {
   item: Extract<ThreadItem, { kind: 'toolgroup' }>
   onOpenFile?: (path: string) => void
-  lead?: boolean
 }) {
   if (!item.tools.length) return null
   return (
-    <div className={'toollog' + (lead ? ' lead' : '')}>
-      {lead && (
-        <>
-          <div className="ava ai lead-ava">
-            <IconClaude size={16} />
-          </div>
-          <div className="lead-meta">
-            <span className="name">Claude</span>
-            {item.time && <span className="time">{item.time}</span>}
-          </div>
-        </>
-      )}
+    <div className="toollog">
       {item.tools.map((t) => {
         if (t.kind === 'web') return <WebRow t={t} key={t.id} />
         if (t.kind === 'bash') return <BashRow t={t} key={t.id} />
@@ -469,10 +537,9 @@ function ToolGroup({
             >
               <span className="t-ic">{toolIcon(t.kind, 14)}</span>
               <span className="t-verb">{t.verb}</span>
-              <span className="t-sep">·</span>
               {/* 툴팁은 넓은 행 전체가 아니라 파일명에 달아, 파일명 바로 아래에 뜨게 한다 */}
               <span className={'t-target' + (openable ? ' has-tip' : '')} data-tip={openable ? '파일 보기' : undefined}>
-                {t.target}
+                <span className="t-txt">{t.target}</span>
               </span>
               <ToolResult t={t} />
             </div>
@@ -562,29 +629,17 @@ function MessageAttachments({
 }) {
   const imgs = images.filter(isImagePath)
   const docs = images.filter((p) => !isImagePath(p))
-  const count = imgs.length
-  const multi = count > 1
-  const first = imgs[0]
   return (
     <>
-      {count > 0 && (
-        // 툴팁은 래퍼에 — .msg-img 버튼은 overflow:hidden이라 ::after가 잘린다
-        <div className={'msg-imgs has-tip' + (multi ? ' deck' : '')} data-tip={multi ? `이미지 ${count}장` : imageName(first)}>
-          {multi && (
-            <>
-              <span className="msg-img-stack s2" aria-hidden="true" />
-              <span className="msg-img-stack s1" aria-hidden="true" />
-            </>
-          )}
-          <button className="msg-img" onClick={() => onOpen?.(imgs, 0)} aria-label={multi ? `이미지 ${count}장` : imageName(first)}>
-            <img src={imageSrc(first)} alt={imageName(first)} draggable={false} loading="lazy" />
-            {multi && (
-              <span className="msg-img-count">
-                <IconImage size={13} />
-                {count}장
-              </span>
-            )}
-          </button>
+      {imgs.length > 0 && (
+        // 매트 액자+스택 덱은 폐기(그림자·이중 프레임이 2.0 톤에 무거움) — 균일 높이의
+        // 조용한 썸네일이 랩 되는 한 줄로 서고, i번째를 클릭하면 뷰어가 그 장부터 연다
+        <div className="msg-imgs">
+          {imgs.map((p, i) => (
+            <button key={p + i} className="msg-img has-tip" data-tip={imageName(p)} onClick={() => onOpen?.(imgs, i)} aria-label={imageName(p)}>
+              <img src={imageSrc(p)} alt={imageName(p)} draggable={false} loading="lazy" />
+            </button>
+          ))}
         </div>
       )}
       {docs.length > 0 && (
@@ -610,27 +665,42 @@ function renderNoticeText(text: string): ReactNode {
 
 export const MessageView = memo(function MessageView({
   item,
-  userInitial,
-  userColor,
-  userName,
   live,
   running,
-  lead,
   onOpenFile,
   onOpenImage
 }: {
   item: ThreadItem
-  userInitial: string
-  userColor: string
-  userName: string
   live?: boolean // this is the latest assistant message (smooth-reveal it)
   running?: boolean // a run is in progress (start the reveal from empty)
-  lead?: boolean // toolgroup that opens the assistant's turn (carry the avatar)
   onOpenFile?: (path: string) => void // open a file referenced by a tool-log row
   onOpenImage?: (images: string[], index: number) => void // open the image viewer at an index
 }) {
-  if (item.kind === 'toolgroup') return <ToolGroup item={item} onOpenFile={onOpenFile} lead={lead} />
+  if (item.kind === 'toolgroup') return <ToolGroup item={item} onOpenFile={onOpenFile} />
   if (item.kind === 'cmdresult') return <CmdResultCard item={item} />
+  // 턴 마무리 줄 — 답변 바로 위의 'N초 동안 작업함' (PoC .worked)
+  if (item.kind === 'worked') return <div className="worked">{fmtWorked(item.ms)}</div>
+  // 문답 흔적 (PoC .qa) — Q 마커+질문(흐림) 아래 ✓+답(볼드). 박스 없이 대화에 남는다
+  if (item.kind === 'qa') {
+    return (
+      <div className="qa">
+        {item.pairs.map((p, i) => (
+          <div key={i}>
+            <div className="qq2">
+              <span className="qm">Q{i + 1}</span>
+              <span className="qt2">{p.q}</span>
+            </div>
+            {p.a.map((a, k) => (
+              <div className="qa2" key={k}>
+                <IconCheck size={14} />
+                <span>{a}</span>
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+    )
+  }
   if (item.kind === 'notice') {
     // 시스템 경고 줄 — 정책 거부로 모델이 자동 전환됐을 때, API 과금 안내 등.
     // 텍스트의 `백틱`으로 감싼 부분은 색을 넣어 강조한다(예: 하단 '과금' 토글).
@@ -648,7 +718,7 @@ export const MessageView = memo(function MessageView({
     return (
       <div className="working-line">
         <span className="working-spark">
-          <IconClaude size={17} />
+          <IconMascotDraw size={25} />
         </span>
         <span className="working-label">{item.text}</span>
       </div>
@@ -657,14 +727,7 @@ export const MessageView = memo(function MessageView({
   const isUser = item.role === 'user'
   return (
     <div className={'msg ' + (isUser ? 'user' : 'ai-msg') + (item.error ? ' error' : '')}>
-      <div className={'ava ' + (isUser ? 'user' : 'ai')} style={isUser ? { background: userColor, color: '#fff' } : undefined}>
-        {isUser ? userInitial : <IconClaude size={16} />}
-      </div>
       <div className="msg-main">
-        <div className="meta">
-          <span className="name">{isUser ? userName : 'Claude'}</span>
-          <span className="time">{item.time}</span>
-        </div>
         <div className="content">
           {item.kind === 'msg' && item.images && item.images.length > 0 && (
             <MessageAttachments images={item.images} onOpen={onOpenImage} onOpenFile={onOpenFile} />
@@ -911,12 +974,12 @@ export function WorkingIndicator({ text }: { text: string | null }) {
     return () => clearTimeout(id)
   }, [])
   const label = text || WORKING_PHRASES[i]
-  // claude.ai 스타일 미니멀: 아바타 상자·점 없이 [스파크(펄스+회전) + shimmer 문구]만.
+  // 라이브 인디케이터 — 마스코트가 선부터 그려지는 루프(머리→귀→더듬이→점) + shimmer 문구.
   // 색은 랜덤멘트에만 — thinking 요약은 항상 기본 화이트.
   return (
     <div className="working-line">
       <span className="working-spark">
-        <IconClaude size={17} />
+        <IconMascotDraw size={25} />
       </span>
       <span key={label} className={'working-label' + (text || !color ? '' : ' ' + color)}>
         {label}
@@ -925,34 +988,164 @@ export function WorkingIndicator({ text }: { text: string | null }) {
   )
 }
 
-// status/elapsed are optional — only the code(agent) mode passes them, so the
-// 대기중/작업중 pill rides the header's top-right (where the agent panel used to
-// show it). 채팅 모드는 안 넘기므로 칩이 뜨지 않는다.
+// 헤더 폴더 picker의 한 행 — App이 최근 채팅들의 폴더에서 뽑아 넘긴다
+// ── 작업 폴더 picker 팝오버 — 본채팅 헤더·멀티 패널 칩·추가 채팅 헤더 공용 ─────
+// 목록은 공유 최근 폴더(lib/recentDirs — localStorage라 모든 창이 공유)를 마운트
+// (=열림) 시점에 새로 읽는다: 다른 화면/창에서 방금 고른 폴더가 바로 보인다.
+export function FolderPop({
+  cwd,
+  onSelect,
+  onBrowse,
+  onClose,
+  right
+}: {
+  cwd?: string // 현재 폴더 — 맨 위 '지금' + 체크로 표시
+  onSelect: (path: string) => void // 목록에서 선택 — 호스트의 requestFolder(확인 카드 흐름)
+  onBrowse: () => void // 찾아보기 — OS 폴더 선택
+  onClose: () => void
+  right?: boolean // 오른쪽 끝 칩용 — 팝오버 오른쪽 정렬 (.wb-pop.r)
+}) {
+  // 바깥 클릭/Esc로 닫기 — 안쪽 클릭은 호스트의 .hfold 래퍼가 전파를 막는다
+  useEffect(() => {
+    const close = (): void => onClose()
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('mousedown', close)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('mousedown', close)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [onClose])
+  const rows = useMemo(() => {
+    const shared = loadRecentDirs()
+    const items = cwd && !shared.some((x) => sameCwd(x.p, cwd)) ? [{ p: cwd, t: 0 }, ...shared] : shared
+    return items
+      .map((x) => ({ path: x.p, t: x.t, current: !!cwd && sameCwd(x.p, cwd) }))
+      .sort((a, b) => (a.current ? -1 : b.current ? 1 : b.t - a.t))
+      .slice(0, 6)
+  }, [cwd])
+  const baseOf = (p: string): string => p.split(/[\\/]+/).filter(Boolean).pop() ?? p
+  return (
+    <div className={'wb-pop hpop' + (right ? ' r' : '')}>
+      <div className="wb-pop-h">
+        <span className="t">작업 폴더</span>
+      </div>
+      <div className="wb-pop-list">
+        {rows.map((f) => (
+          <button
+            key={f.path}
+            className="wb-prow hprow"
+            onClick={() => {
+              onClose()
+              if (!f.current) onSelect(f.path)
+            }}
+          >
+            <span className="grow">
+              {baseOf(f.path)}
+              <span className="sub">{f.path}</span>
+            </span>
+            {(f.current || f.t > 0) && <span className="end">{f.current ? '지금' : relTime(f.t)}</span>}
+            {f.current && (
+              <span className="pcheck">
+                <IconCheck size={12} stroke={2.4} />
+              </span>
+            )}
+          </button>
+        ))}
+        {rows.length > 0 && <div className="wb-psep" />}
+        <button
+          className="wb-prow hprow"
+          onClick={() => {
+            onClose()
+            onBrowse()
+          }}
+        >
+          <span className="grow">
+            폴더 찾아보기…<span className="sub">목록에 없는 폴더 선택</span>
+          </span>
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// PoC .ch 그대로: [제목][폴더 칩(모노 필 → 작업 폴더 팝오버)][sp][돋보기][탐색기 토글][구분선][창 컨트롤].
+// 상태 필은 2.0에서 제거 — 진행 상태는 사이드바 점·스레드 인디케이터·WorkBar가 이미 말한다.
 // explorerHidden/onToggleExplorer: 탐색기를 접으면 레일을 남기지 않고 완전히 사라지므로,
-// 단축키(Ctrl/⌘+F)를 모르는 사람도 다시 열 수 있게 헤더 좌상단에 토글 버튼을 둔다.
+// 단축키를 모르는 사람도 다시 열 수 있게 토글 버튼을 둔다.
 export function ChatHeader({
   title,
-  status,
-  elapsed,
+  cwd,
+  placeholder = '폴더 선택',
+  onSelectFolder,
+  onBrowseFolder,
   explorerHidden,
   onToggleExplorer
 }: {
   title: string
-  status?: AgentStatus
-  elapsed?: number
+  cwd?: string
+  placeholder?: string // 폴더 미지정일 때 칩 라벨 — 추가 채팅은 기본 폴더가 '바탕화면'
+  onSelectFolder?: (path: string) => void // 목록에서 선택 — App의 requestFolder(확인 카드 흐름)
+  onBrowseFolder?: () => void // 찾아보기 — OS 폴더 선택
   explorerHidden?: boolean
   onToggleExplorer?: () => void
 }) {
+  const [fpop, setFpop] = useState(false)
+  // 돋보기 켜짐 표시 — ChatFind가 알리는 열림 상태를 구독한다
+  const [findOn, setFindOn] = useState(false)
+  useEffect(() => {
+    const onState = (e: Event): void => setFindOn(!!(e as CustomEvent).detail)
+    window.addEventListener('ccg:chat-find-state', onState)
+    return () => window.removeEventListener('ccg:chat-find-state', onState)
+  }, [])
   return (
     <div className="chat-head">
-      {explorerHidden && onToggleExplorer && (
-        <button className="chat-head-toggle has-tip" data-tip="탐색기 열기" aria-label="탐색기 열기" onClick={onToggleExplorer}>
-          <IconPanelLeft size={17} />
+      {title && <span className="h-title">{title}</span>}
+      {onBrowseFolder && (
+        <span className="hfold" onMouseDown={(e) => e.stopPropagation()}>
+          {/* 앱 공통 커스텀 툴팁(has-tip) — 네이티브 title은 OS 서식이라 튄다 (유저 결정).
+              말줄임은 안쪽 span 몫 — 버튼에 overflow:hidden을 두면 ::after 툴팁째 잘린다.
+              팝오버가 열려 있는 동안은 has-tip을 떼어 툴팁이 팝오버와 겹치지 않게 한다 */}
+          <button
+            className={'tag mono fsel' + (fpop ? '' : ' has-tip')}
+            data-tip="작업 폴더 — 누르면 변경"
+            onClick={() => setFpop((o) => !o)}
+          >
+            <span className="fsel-txt">{cwd || placeholder}</span>
+          </button>
+          {fpop && (
+            <FolderPop
+              cwd={cwd}
+              onSelect={(p) => onSelectFolder?.(p)}
+              onBrowse={onBrowseFolder}
+              onClose={() => setFpop(false)}
+            />
+          )}
+        </span>
+      )}
+      <span className="spacer" />
+      <button
+        className={'h-ic has-tip' + (findOn ? ' on' : '')}
+        data-tip="대화에서 찾기 (Ctrl+F)"
+        aria-label="대화에서 찾기"
+        onClick={() => window.dispatchEvent(new Event('ccg:chat-find'))}
+      >
+        <IconSearch size={15} />
+      </button>
+      {onToggleExplorer && (
+        <button
+          className={'h-ic has-tip' + (explorerHidden ? '' : ' on')}
+          data-tip={explorerHidden ? '파일 탐색기 — 왼쪽 목록과 전환 (`)' : '채팅 목록으로 (`)'}
+          aria-label="파일 탐색기"
+          onClick={onToggleExplorer}
+        >
+          <IconPanelRight size={15} />
         </button>
       )}
-      {title && <span className="h-title">{title}</span>}
-      <span className="spacer" />
-      {status && <StatusPill status={status} elapsed={elapsed ?? 0} />}
+      <span className="vsep" />
+      <WinControls />
     </div>
   )
 }
@@ -1076,7 +1269,7 @@ interface CFHighlightCtor {
 const CF_HL = (globalThis as unknown as { Highlight?: CFHighlightCtor }).Highlight
 const CF_REG = (CSS as unknown as { highlights?: Map<string, unknown> }).highlights
 // Ctrl+F를 스스로 처리하는 오버레이(파일 뷰어·설정·깃 등)가 떠 있으면 채팅 검색은 비켜선다
-const CF_BLOCKING = '.fv-overlay, .set-overlay, .gitm-overlay, .ask-overlay, .iv-overlay, .sa-overlay, .set-dialog-overlay'
+const CF_BLOCKING = '.fv-overlay, .set-overlay, .gitm-overlay, .iv-overlay, .sa-overlay, .set-dialog-overlay'
 
 // 스크롤 컨테이너 안 텍스트 노드를 훑어 q(대소문자 무시)의 매치마다 Range를 만든다.
 // 컨테이너 전체를 한 블록으로 스캔해 마크다운 span 으로 쪼개진 텍스트 경계를 넘는 매치도 잡는다.
@@ -1150,8 +1343,23 @@ export function ChatFind({
     clearHl()
   }
 
-  // Ctrl+F: 열기(이미 열려 있으면 입력 재선택). active 인스턴스만, Ctrl+F를 스스로 갖는
-  // 오버레이가 없고 이 채팅 표면이 실제로 화면에 떠 있을 때만 반응한다.
+  // 열기 공통 경로 — Ctrl+F와 헤더 돋보기(ccg:chat-find 이벤트)가 같이 쓴다.
+  // active 인스턴스만, Ctrl+F를 스스로 갖는 오버레이가 없고 이 채팅 표면이
+  // 실제로 화면에 떠 있을 때만 반응한다. 이미 열려 있으면 입력 재선택.
+  const openFind = (): void => {
+    if (!active) return
+    const root = scrollRef.current
+    if (!root || root.offsetParent === null) return
+    if (document.querySelector(CF_BLOCKING)) return
+    if (open) {
+      inputRef.current?.select()
+      return
+    }
+    // 짧은 한 줄 선택이 있으면 초기 검색어로 (브라우저 Ctrl+F 관례)
+    const sel = window.getSelection()?.toString().trim() ?? ''
+    setQuery(sel && sel.length <= 80 && !sel.includes('\n') ? sel : '')
+    setOpen(true)
+  }
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       if (!((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 'f')) return
@@ -1160,18 +1368,26 @@ export function ChatFind({
       if (!root || root.offsetParent === null) return
       if (document.querySelector(CF_BLOCKING)) return
       e.preventDefault()
-      if (open) {
-        inputRef.current?.select()
-        return
-      }
-      // 짧은 한 줄 선택이 있으면 초기 검색어로 (브라우저 Ctrl+F 관례)
-      const sel = window.getSelection()?.toString().trim() ?? ''
-      setQuery(sel && sel.length <= 80 && !sel.includes('\n') ? sel : '')
-      setOpen(true)
+      openFind()
+    }
+    // 헤더 돋보기는 토글 — 열려 있으면 닫는다 (Ctrl+F는 관례대로 입력 재선택)
+    const onOpenEvent = (): void => {
+      if (open) close()
+      else openFind()
     }
     window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    window.addEventListener('ccg:chat-find', onOpenEvent)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('ccg:chat-find', onOpenEvent)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active, open, scrollRef])
+
+  // 헤더 돋보기의 켜짐 표시 — 열림/닫힘을 창 이벤트로 알린다 (ChatHeader가 구독)
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('ccg:chat-find-state', { detail: open }))
+  }, [open])
 
   // 비활성(멀티 모드에서 포커스를 잃은 패널)이 되면 닫아 한 번에 하나만 열리게 한다
   useEffect(() => {
@@ -1279,6 +1495,95 @@ export function ChatFind({
 }
 
 // 에이전트(코드) 모드 — 코드베이스를 직접 다루는 작업 위주
+// ── 스레드 바닥 따라가기 — 본채팅·추가 채팅이 공유하는 스크롤 규칙 ─────────────
+// 매 프레임 위치 비교가 아니라 의도 래치: 스트리밍 스냅이 프레임마다 도는 동안 위치
+// 비교는 작은 위 스크롤을 즉시 무효화하므로, 휠 업 = 따라가기 OFF(이벤트 고유의
+// deltaY라 스냅과 경합하지 않음), 바닥 정착 + 150ms 가드 = 다시 ON 으로 읽는다.
+const FOLLOW_BOTTOM_EPSILON = 60 // 이 안쪽이면 "바닥에 있다"로 판정
+const FOLLOW_JUMP_SHOW_PX = 240 // 바닥에서 이만큼 멀어지면 "맨 아래로" 점프 버튼 표시
+export function useThreadFollow(scrollEl: HTMLElement | null, busy: boolean) {
+  const stickRef = useRef(true)
+  const lastWheelUpRef = useRef(-Infinity) // timeStamp of the most recent upward wheel
+  const lastTopRef = useRef(0) // 마지막 스크롤 위치 — 뷰 왕복으로 스크롤 영역이 재생성될 때 복원용
+  const [showJump, setShowJump] = useState(false)
+
+  useEffect(() => {
+    const el = scrollEl
+    if (!el) return
+    // 뷰 왕복은 스크롤 영역을 재생성해 scrollTop이 0(맨 위)에서 시작한다 — 바닥을
+    // 따라가던 중이면 맨 아래로, 위를 읽던 중이면 마지막으로 보던 위치로 복원
+    el.scrollTop = stickRef.current ? el.scrollHeight : lastTopRef.current
+    setShowJump(el.scrollHeight - el.scrollTop - el.clientHeight > FOLLOW_JUMP_SHOW_PX)
+    const onWheel = (e: WheelEvent): void => {
+      if (e.ctrlKey) return // ctrl+wheel is zoom (handled elsewhere), not a scroll
+      if (e.deltaY < 0) {
+        stickRef.current = false // scrolling up → stop following
+        lastWheelUpRef.current = e.timeStamp
+      }
+    }
+    const onScroll = (e: Event): void => {
+      lastTopRef.current = el.scrollTop
+      const fromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+      setShowJump(fromBottom > FOLLOW_JUMP_SHOW_PX)
+      // resume only while paused, settled at the bottom, and not in the middle of an
+      // upward gesture — the time guard stops a near-bottom scroll-up from instantly
+      // re-arming the follow (which would trap the user in the bottom band)
+      if (!stickRef.current && fromBottom <= FOLLOW_BOTTOM_EPSILON && e.timeStamp - lastWheelUpRef.current > 150)
+        stickRef.current = true
+    }
+    el.addEventListener('wheel', onWheel, { passive: true })
+    el.addEventListener('scroll', onScroll, { passive: true })
+    return () => {
+      el.removeEventListener('wheel', onWheel)
+      el.removeEventListener('scroll', onScroll)
+    }
+  }, [scrollEl])
+
+  // while a run streams, follow the smooth text reveal every frame so it reads as
+  // a continuous flow (not a jump on each delta). Paused while the latch is off.
+  useEffect(() => {
+    if (!busy || !scrollEl) return
+    let raf = 0
+    let alive = true
+    const stick = (): void => {
+      if (!alive) return
+      if (stickRef.current) scrollEl.scrollTop = scrollEl.scrollHeight
+      raf = requestAnimationFrame(stick)
+    }
+    raf = requestAnimationFrame(stick)
+    return () => {
+      alive = false
+      cancelAnimationFrame(raf)
+    }
+  }, [busy, scrollEl])
+
+  // 전송 = 따라가기 재개 (스냅은 메시지 추가 effect가 수행)
+  const pin = useCallback(() => {
+    stickRef.current = true
+  }, [])
+  // 채팅 전환/열기 — 항상 바닥부터 (호출측의 메시지 로드 effect보다 먼저 실행되게 배치)
+  const reset = useCallback(() => {
+    stickRef.current = true
+    setShowJump(false)
+  }, [])
+  // 새 메시지/생각 갱신 시 호출 — 래치가 켜져 있을 때만 바닥으로
+  const snapIfStuck = useCallback(() => {
+    if (scrollEl && stickRef.current) scrollEl.scrollTop = scrollEl.scrollHeight
+  }, [scrollEl])
+  // "맨 아래로" 버튼·↓ 제스처 — 다시 고정하고 부드럽게 내려간다
+  const jumpBottom = useCallback(() => {
+    stickRef.current = true
+    scrollEl?.scrollTo({ top: scrollEl.scrollHeight, behavior: 'smooth' })
+  }, [scrollEl])
+  // ↑ 제스처 — 스트리밍 rAF가 도로 끌어내리지 않게 고정을 풀고(재고정 가드 무장) 맨 위로
+  const scrollTop = useCallback(() => {
+    stickRef.current = false
+    lastWheelUpRef.current = performance.now()
+    scrollEl?.scrollTo({ top: 0, behavior: 'smooth' })
+  }, [scrollEl])
+  return { showJump, pin, reset, snapIfStuck, jumpBottom, scrollTop }
+}
+
 const WELCOME_SUGGESTIONS: { icon: typeof IconPencil; label: string }[] = [
   { icon: IconEye, label: '이 프로젝트의 구조를 설명해줘' },
   { icon: IconSearch, label: '버그를 찾아서 고쳐줘' },
@@ -1319,8 +1624,10 @@ export function WelcomeState({
   const copy = WELCOME_COPY[variant]
   return (
     <div className="welcome">
+      {/* 정지 마스코트 — 그려지는(draw-loop) 로봇은 "작업 중" 인디케이터 전용, 대기
+          화면은 공식 로봇 아이콘 그대로 (유저 결정) */}
       <div className="wc-mark">
-        <IconClaude size={26} />
+        <IconMascot size={46} />
       </div>
       <div className="wc-title">무엇을 도와드릴까요{userName ? `, ${userName}님` : ''}?</div>
       <div className="wc-sub">{copy.sub}</div>
@@ -1338,148 +1645,6 @@ export function WelcomeState({
   )
 }
 
-function Bars({ level }: { level: number }) {
-  return (
-    <span className="bars">
-      {[1, 2, 3, 4, 5].map((i) => (
-        <span key={i} className={'bar' + (i <= level ? ' on' : '')} style={{ height: 4 + i * 2 + 'px' }} />
-      ))}
-    </span>
-  )
-}
-
-interface PickProps<O extends { v: string; d?: string }> {
-  label: string
-  value: string
-  valueLabel?: string // 버튼에 표시할 짧은 값 (없으면 value 그대로) — 긴 이메일 등
-  options: O[]
-  onChange: (v: string) => void
-  align?: 'right'
-  dots?: boolean
-  bars?: boolean
-  icons?: boolean
-  tip?: string
-}
-function Pick<O extends { v: string; d?: string; d2?: string; color?: string; level?: number; icon?: keyof typeof MODE_ICONS; warn?: boolean }>({
-  label,
-  value,
-  valueLabel,
-  options,
-  onChange,
-  align,
-  dots,
-  bars,
-  icons,
-  tip
-}: PickProps<O>) {
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    if (!open) return
-    const h = (e: MouseEvent): void => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
-    }
-    document.addEventListener('mousedown', h)
-    return () => document.removeEventListener('mousedown', h)
-  }, [open])
-  const sel = options.find((o) => o.v === value)
-  const ModeIc = (key?: keyof typeof MODE_ICONS) => {
-    if (!key) return null
-    const C = MODE_ICONS[key]
-    return <C size={14} />
-  }
-  return (
-    <div className="pick" ref={ref}>
-      <button
-        className={'pick-btn' + (tip ? ' has-tip' : '') + (open ? ' active' : '') + (icons && sel?.warn ? ' warnbtn' : '')}
-        data-tip={tip}
-        onClick={() => setOpen((o) => !o)}
-      >
-        {icons && sel ? (
-          <span className="pick-mode-ic" style={{ color: sel.color }}>
-            {ModeIc(sel.icon)}
-          </span>
-        ) : dots && sel ? (
-          <span className="pick-dot" style={{ background: sel.color }} />
-        ) : bars && sel ? (
-          <Bars level={sel.level ?? 3} />
-        ) : null}
-        <span className="pick-lbl">{label}</span>
-        <span className="pick-val">{valueLabel ?? value}</span>
-        <IconChevDown size={11} className="pick-chev" />
-      </button>
-      {open && (
-        <div className={'pick-menu' + (align === 'right' ? ' right' : '')}>
-          <div className="pick-menu-h">{label}</div>
-          {options.map((o) => (
-            <div key={o.v}>
-              {o.warn && <span className="pick-sep" />}
-              <button
-                className={'pick-opt' + (o.v === value ? ' on' : '') + (o.warn ? ' warn' : '')}
-                onClick={() => {
-                  onChange(o.v)
-                  setOpen(false)
-                }}
-              >
-                {icons && (
-                  <span className="po-mode-ic" style={{ color: o.color }}>
-                    {ModeIc(o.icon)}
-                  </span>
-                )}
-                {dots && (o.warn ? <IconAlert size={14} className="po-warn-ic" /> : <span className="po-dot" style={{ background: o.color }} />)}
-                {bars && <Bars level={o.level ?? 3} />}
-                <span className="po-text">
-                  <span className="po-main">{o.v}</span>
-                  {o.d && <span className="po-desc">{o.d}</span>}
-                  {o.d2 && <span className="po-desc">{o.d2}</span>}
-                </span>
-                {o.v === value && <IconCheck size={14} className="po-check" />}
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
-// 과금(구독/API) picker — 메인 컴포저·채팅·멀티 패널·/ask가 같은 컨트롤을 공유한다.
-// onChange(next): next=true(API)를 고르면 호출자가 키 유무를 확인하고, 없으면 설정을 연다.
-export function BillingPick({
-  apiMode,
-  apiReady,
-  onChange,
-  align
-}: {
-  apiMode: boolean
-  apiReady: boolean
-  onChange: (next: boolean) => void
-  align?: 'right'
-}) {
-  return (
-    <Pick
-      label="과금"
-      value={apiMode ? 'API' : '구독'}
-      options={[
-        // --accent는 다크 테마에서 무채색(근백색)이라 아이콘이 하얗게 죽는다.
-        // 골드는 Fable 모델 티어 색과 겹쳐서 제외 — 모델 색(골드/바이올렛/블루/틸)·API 그린과
-        // 모두 구분되면서 양쪽 테마에서 색을 유지하는 로즈로 칠한다
-        { v: '구독', d: 'Claude 구독(정액)으로 실행', color: 'var(--rose)', icon: 'card' as const },
-        {
-          v: 'API',
-          d: apiReady ? '저장된 API 키로 종량 과금' : 'API 키 필요 — 선택하면 설정이 열려요',
-          color: 'var(--green)',
-          icon: 'key' as const
-        }
-      ]}
-      onChange={(v) => onChange(v === 'API')}
-      align={align}
-      icons
-      tip="과금 방식 — 구독(정액) vs API 키(종량)"
-    />
-  )
-}
-
 // ── 계정 목록 캐시 (계정 picker 공용) ─────────────────────────
 // listAccounts는 메인이 CLI 프로세스를 하나 띄워 상태를 묻는다(auth status) — picker
 // 마운트마다 부르면 무겁다. 모듈 캐시 + TTL로 화면의 여러 picker(컴포저·패널들)가
@@ -1487,11 +1652,6 @@ export function BillingPick({
 let acctCache: { at: number; list: AccountInfo[] } | null = null
 let acctInflight: Promise<AccountInfo[]> | null = null
 const ACCT_TTL = 60_000
-// 계정별 아이콘 색 — 등록 순서대로 배정해 어디서 열어도 같은 계정 = 같은 색.
-// 컴포저에서 설정 가능한 것들과 색이 겹치면 안 된다: 모델(골드·바이올렛·블루·틸),
-// 모드(블루·옐로·바이올렛·레드), 과금(로즈·그린), 경고(레드)가 이미 점유 → 계정은
-// 전용 팔레트(시안·라임·오렌지·마젠타, 로즈에서 먼 순)를 쓴다.
-const ACCT_COLORS = ['var(--cyan)', 'var(--lime)', 'var(--orange)', 'var(--magenta)']
 
 // 계정별 한도 사용률(5시간·주간·Fable) — 설정 → Account와 같은 조회를 나눠 쓴다.
 // 계정마다 네트워크 요청이 나가므로 계정 목록과 같은 방식의 모듈 캐시 + TTL.
@@ -1521,9 +1681,9 @@ function acctUsageLine(u?: AccountUsage): string {
   if (!u) return ''
   const parts: string[] = []
   if (u.fiveHourPct != null) parts.push(`5시간 ${100 - u.fiveHourPct}%`)
-  if (u.weeklyPct != null) parts.push(`주간 ${100 - u.weeklyPct}%`)
   if (u.fablePct != null) parts.push(`Fable ${100 - u.fablePct}%`)
-  return parts.length ? `남음 ${parts.join(' · ')}` : ''
+  if (u.weeklyPct != null) parts.push(`주간 ${100 - u.weeklyPct}%`)
+  return parts.join(' · ')
 }
 function fetchAccounts(): Promise<AccountInfo[]> {
   if (acctCache && Date.now() - acctCache.at < ACCT_TTL) return Promise.resolve(acctCache.list)
@@ -1542,134 +1702,331 @@ function fetchAccounts(): Promise<AccountInfo[]> {
   return acctInflight
 }
 
-// 계정 picker — 과금이 '구독'일 때 이 채팅의 실행 계정을 고른다(등록 계정이 2개 이상일
-// 때만 표시 — 하나뿐이면 고를 게 없다). '기본'은 전역 활성 계정을 그대로 따라가고,
-// 특정 계정을 고르면 이 채팅의 실행만 그 계정(격리 CLAUDE_CONFIG_DIR)으로 돈다.
-export function AccountPick({
-  account,
-  onChange,
-  align,
-  divider
-}: {
-  account?: string
-  onChange: (email?: string) => void
-  align?: 'right'
-  divider?: boolean // 컴포저 바처럼 pick 사이에 구분선을 쓰는 곳 — 숨을 때 같이 숨도록 내부에서 그린다
-}) {
-  const [accounts, setAccounts] = useState<AccountInfo[]>(() => acctCache?.list ?? [])
-  // 계정별 잔여 한도 — 목록과 별도로 나중에 도착해 옵션 설명 줄을 채운다(네트워크 조회)
-  const [usage, setUsage] = useState<Record<string, AccountUsage>>(() => usageCache?.map ?? {})
-  useEffect(() => {
-    let on = true
-    fetchAccounts().then((l) => {
-      if (on) setAccounts(l)
+// Codex(OpenAI) 계정 목록 — Anthropic과 같은 모듈 캐시 문법 (설정에서만 바뀌니 1분 TTL)
+let cxAcctCache: { at: number; list: CodexAccountInfo[] } | null = null
+let cxAcctInflight: Promise<CodexAccountInfo[]> | null = null
+function fetchCodexAccounts(): Promise<CodexAccountInfo[]> {
+  if (cxAcctCache && Date.now() - cxAcctCache.at < ACCT_TTL) return Promise.resolve(cxAcctCache.list)
+  if (cxAcctInflight) return cxAcctInflight
+  cxAcctInflight = window.api.codexAuth
+    .listAccounts()
+    .then((list: CodexAccountInfo[]) => {
+      cxAcctCache = { at: Date.now(), list }
+      cxAcctInflight = null
+      return list
     })
-    fetchAccountsUsage().then((m) => {
-      if (on) setUsage(m)
+    .catch(() => {
+      cxAcctInflight = null
+      return cxAcctCache?.list ?? []
+    })
+  return cxAcctInflight
+}
+// ChatGPT 플랜 표기 — 'plus' → 'ChatGPT Plus'
+function chatgptPlanLabel(plan: string | null): string {
+  return 'ChatGPT' + (plan ? ' ' + plan.charAt(0).toUpperCase() + plan.slice(1) : '')
+}
+
+// Codex(OpenAI) 계정별 잔여 한도 — Anthropic accountsUsage와 같은 모듈 캐시 문법.
+// 계정마다 app-server를 한 번 띄워 조회하므로(무겁다) TTL을 나눠 쓴다.
+let cxUsageCache: { at: number; map: Record<string, CodexAccountUsage> } | null = null
+let cxUsageInflight: Promise<Record<string, CodexAccountUsage>> | null = null
+function fetchCodexUsage(): Promise<Record<string, CodexAccountUsage>> {
+  if (cxUsageCache && Date.now() - cxUsageCache.at < ACCT_TTL) return Promise.resolve(cxUsageCache.map)
+  if (cxUsageInflight) return cxUsageInflight
+  cxUsageInflight = window.api.codexAuth
+    .accountsUsage()
+    .then((us: CodexAccountUsage[]) => {
+      const map = Object.fromEntries(us.map((u) => [u.email, u]))
+      cxUsageCache = { at: Date.now(), map }
+      cxUsageInflight = null
+      return map
+    })
+    .catch(() => {
+      cxUsageInflight = null
+      return cxUsageCache?.map ?? {}
+    })
+  return cxUsageInflight
+}
+// Codex 계정 옵션의 잔여 한도 줄 — Anthropic acctUsageLine과 같은 관례(잔여 % = 100 − 사용률)
+function cxUsageLine(u?: CodexAccountUsage): string {
+  if (!u || !u.windows.length) return ''
+  return u.windows.map((w) => `${w.label} ${Math.max(0, 100 - Math.round(w.usedPct))}%`).join(' · ')
+}
+
+// 지금 유효한 Codex 계정(바인딩 ?? 기본 계정)의 잔여 한도 — 컨텍스트 팝오버·스트립이
+// Codex 엔진일 때 Anthropic 한도 행 대신 이걸 그린다. active=false면 조회하지 않는다.
+function useCodexUsage(engine: EngineId | undefined, codexAccount: string | undefined, active: boolean): CodexAccountUsage | null {
+  const [u, setU] = useState<CodexAccountUsage | null>(null)
+  useEffect(() => {
+    if (engine !== 'codex' || !active) return
+    let on = true
+    Promise.all([fetchCodexAccounts(), fetchCodexUsage()]).then(([accts, map]) => {
+      if (!on) return
+      const email = codexAccount ?? accts.find((a) => a.isDefault)?.email ?? accts[0]?.email
+      setU(email ? (map[email] ?? null) : null)
     })
     return () => {
       on = false
     }
-  }, [])
-  // 계정이 하나뿐이면 picker 자체가 소음 — 단, 이 채팅이 이미 다른 계정을 고른 상태면
-  // (목록이 줄었어도) 그 사실이 보여야 하니 그대로 그린다.
-  if (accounts.length < 2 && !account) return null
-  const activeEmail = accounts.find((a) => a.active)?.email
-  // '기본' 같은 추상 항목 없이 항상 실제 계정을 보여준다 — 아직 안 골랐으면 지금 실행에
-  // 실제로 쓰일 전역 활성 계정이 값이다. 하나를 고르면 이 채팅에 고정된다.
-  const effective = account ?? activeEmail
-  // 버튼엔 이메일 로컬파트만 짧게 — 로컬파트가 겹치는 계정이 있으면 전체 이메일로 구분
-  const short = (email: string): string => {
-    const lp = email.split('@')[0]
-    return accounts.some((a) => a.email !== email && a.email.split('@')[0] === lp) ? email : lp
+  }, [engine, codexAccount, active])
+  return engine === 'codex' ? u : null
+}
+
+// ── 통합 picker 팝오버 (PoC 확정) ─────────────────────────────
+// 컴포저의 칩 하나("Fable 5 · 매우 높음 · 자동 허용")로 연다:
+// [Anthropic|OpenAI] 엔진 세그먼트 → 모델 목록(선택한 모델 아래로 추론 슬라이더가
+// 슬라이드 오픈) → 모드 → 과금(구독/API) → 계정. 점/아이콘 없는 플레인 텍스트+체크.
+
+// 추론 슬라이더 — 6단계 스냅 (최소~최대, EFFORTS.level 0~5)
+function EffortSlide({ effort, onChange }: { effort: EffortId; onChange: (e: EffortId) => void }) {
+  const cur = EFFORTS.find((e) => e.id === effort) ?? EFFORTS[2]
+  const pct = cur.level * 20
+  const snap = (clientX: number, el: HTMLDivElement): void => {
+    const r = el.getBoundingClientRect()
+    const idx = Math.min(5, Math.max(0, Math.round(((clientX - r.left) / r.width) * 5)))
+    const opt = EFFORTS.find((x) => x.level === idx)
+    if (opt && opt.id !== effort) onChange(opt.id)
   }
-  const options = [
-    ...accounts.map((a, i) => ({
-      v: a.email,
-      d: a.active ? '현재 활성 계정' : a.subscriptionType ? `${a.subscriptionType} 구독` : '등록된 계정',
-      // 잔여 한도(5시간·주간·Fable)를 둘째 설명 줄로 — 어느 계정이 여유 있는지 보고 고른다
-      d2: acctUsageLine(usage[a.email]) || undefined,
-      // 계정마다 다른 색 — 어느 채팅이 어느 계정인지 아이콘 색만으로 구분되게
-      color: ACCT_COLORS[i % ACCT_COLORS.length],
-      icon: 'user' as const
-    })),
-    // 저장 목록에서 사라진 계정을 여전히 가리키는 채팅 — 실행이 실패할 수 있음을 알리고
-    // 다른 값으로 바꿀 수 있게 목록에 남겨 보여준다
-    ...(account && !accounts.some((a) => a.email === account)
-      ? [{ v: account, d: '저장 목록에 없음 — 설정 → Account에서 다시 추가하세요', color: 'var(--red)', icon: 'warn' as const, warn: true }]
-      : [])
-  ]
   return (
-    <>
-      {divider && <span className="pick-div" />}
-      <Pick
-        label="계정"
-        value={effective ?? ''}
-        valueLabel={effective ? short(effective) : '—'}
-        options={options}
-        onChange={(v) => onChange(v)}
-        align={align}
-        icons
-        tip="실행 계정 — 이 채팅을 어느 구독 계정으로 돌릴지"
-      />
-    </>
+    <div className="eslide">
+      <span className="elabel">추론</span>
+      <div className="etrack" onClick={(e) => snap(e.clientX, e.currentTarget)}>
+        <i className="efill" style={{ width: pct + '%' }} />
+        {[0, 1, 2, 3, 4, 5].map((i) => (
+          <span key={i} className="etick" style={{ left: i * 20 + '%' }} />
+        ))}
+        <b className="eknob" style={{ left: pct + '%' }} />
+      </div>
+      <span className="ecur">{cur.v}</span>
+    </div>
   )
 }
 
-// The model · effort · mode picker row, factored out of the Composer so the
-// multi-agent panels (and their expand modal) reuse the exact same controls.
-export function RunPickers({
+function PPRow({ sel, main, sub, onClick }: { sel: boolean; main: string; sub?: string; onClick: () => void }) {
+  return (
+    <button className={'pp-row' + (sel ? ' sel' : '')} onClick={onClick}>
+      <span className="pp-grow">
+        {main}
+        {sub && <span className="pp-sub">{sub}</span>}
+      </span>
+      {sel && (
+        <span className="pp-check">
+          <IconCheck size={12} stroke={2.4} />
+        </span>
+      )}
+    </button>
+  )
+}
+
+export function PickerChip({
   picker,
   setPicker,
-  align,
   apiMode = false,
   apiReady = false,
+  apiReadyCodex = false,
+  engineLocked = false,
   onApiModeChange
 }: {
   picker: PickerState
   setPicker: (p: PickerState) => void
-  align?: 'right' // open the mode menu leftward when the panel hugs the right edge
-  apiMode?: boolean // 과금 picker 상태 (전역 구독/API) — onApiModeChange가 있을 때만 표시
-  apiReady?: boolean
-  onApiModeChange?: (next: boolean) => void
+  apiMode?: boolean
+  apiReady?: boolean // Anthropic API 키 존재 여부
+  apiReadyCodex?: boolean // OpenAI API 키 존재 여부 — Codex 엔진의 과금 섹션이 쓴다
+  // 대화가 시작된 채팅은 엔진 전환 잠금 — 상대 엔진은 이 대화를 이어받을 수 없어서
+  // (세션 resume 포맷이 서로 다름) 화면만 이어져 보이는 기억 상실이 된다. 모델·추론·
+  // 모드·계정은 그대로 자유. /clear·폴더 변경으로 대화가 리셋되면 다시 풀린다.
+  engineLocked?: boolean
+  onApiModeChange?: (next: boolean, engine?: EngineId) => void
 }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLSpanElement>(null)
+  useEffect(() => {
+    if (!open) return
+    const close = (e: MouseEvent): void => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false)
+    }
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') setOpen(false)
+    }
+    window.addEventListener('mousedown', close)
+    window.addEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('mousedown', close)
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [open])
+
+  const engine: EngineId = picker.engine === 'codex' ? 'codex' : 'claude'
+  const codexModels = useCodexModels(engine)
+  const codexId = picker.codexModel ?? CODEX_DEFAULT_MODEL
+  const codexOpt = codexModels.find((m) => m.id === codexId) ?? codexModels[0] ?? CODEX_FALLBACK[0]
   const modelOpt = MODELS.find((m) => m.id === picker.model) ?? MODELS[0]
   const effortOpt = EFFORTS.find((e) => e.id === picker.effort) ?? EFFORTS[2]
   const modeOpt = MODES.find((m) => m.id === picker.mode) ?? MODE_FALLBACK
+
+  // 계정 목록 — 마운트 시 한 번(캐시) + 팝오버를 열 때 갱신 (구독 실행에만 의미)
+  const [accounts, setAccounts] = useState<AccountInfo[]>(() => acctCache?.list ?? [])
+  const [aUsage, setAUsage] = useState<Record<string, AccountUsage>>(() => usageCache?.map ?? {})
+  const [cxAccounts, setCxAccounts] = useState<CodexAccountInfo[]>(() => cxAcctCache?.list ?? [])
+  const [cxUsage, setCxUsage] = useState<Record<string, CodexAccountUsage>>(() => cxUsageCache?.map ?? {})
+  useEffect(() => {
+    let on = true
+    if (engine === 'claude') {
+      fetchAccounts().then((l) => {
+        if (on) setAccounts(l)
+      })
+      if (open)
+        fetchAccountsUsage().then((m) => {
+          if (on) setAUsage(m)
+        })
+    } else {
+      fetchCodexAccounts().then((l) => {
+        if (on) setCxAccounts(l)
+      })
+      if (open)
+        fetchCodexUsage().then((m) => {
+          if (on) setCxUsage(m)
+        })
+    }
+    return () => {
+      on = false
+    }
+  }, [open, engine])
+  const defaultEmail = accounts.find((a) => a.isDefault)?.email
+  const effective = picker.account ?? defaultEmail
+  const cxDefaultEmail = cxAccounts.find((a) => a.isDefault)?.email
+  const cxEffective = picker.codexAccount ?? cxDefaultEmail
+
+  // 칩 라벨 = 모델·추론·모드 + 계정. 계정은 항상 표시(기본 계정 포함) — API 모드면
+  // 계정 대신 'API'. 계정 목록이 아직 안 왔으면(유효 계정 미상) 꼬리표를 생략한다.
+  const modelLabel = engine === 'claude' ? modelOpt.v : codexOpt.v
+  let extra = ''
+  if (apiMode) {
+    extra = ' · API'
+  } else if (engine === 'claude') {
+    if (effective) extra = ' · ' + effective.split('@')[0]
+  } else if (cxEffective) {
+    extra = ' · ' + cxEffective.split('@')[0]
+  }
+  const label = `${modelLabel} · ${effortOpt.v} · ${modeOpt.v}${extra}`
+
   return (
-    <>
-      <Pick
-        label="모델"
-        value={modelOpt.v}
-        options={MODELS}
-        onChange={(v) => setPicker({ ...picker, model: (MODELS.find((m) => m.v === v) ?? MODELS[0]).id })}
-        dots
-        tip="모델 — 응답 품질·속도"
-      />
-      <Pick
-        label="추론"
-        value={effortOpt.v}
-        options={EFFORTS}
-        onChange={(v) => setPicker({ ...picker, effort: (EFFORTS.find((m) => m.v === v) ?? EFFORTS[2]).id })}
-        bars
-        tip="추론 강도 — 깊이 vs 속도"
-      />
-      <Pick
-        label="모드"
-        value={modeOpt.v}
-        options={MODES}
-        onChange={(v) => setPicker({ ...picker, mode: (MODES.find((m) => m.v === v) ?? MODE_FALLBACK).id })}
-        align={align}
-        icons
-        tip="실행 모드 — 변경 승인 방식"
-      />
-      {onApiModeChange && <BillingPick apiMode={apiMode} apiReady={apiReady} onChange={onApiModeChange} align={align} />}
-      {/* 구독일 때만: 이 채팅의 실행 계정 (API 모드는 과금 주체가 키라 계정이 무의미).
-          과금 picker가 없는 창(추가 채팅의 /ask 등)도 구독 실행이므로 계정은 고를 수 있다. */}
-      {!apiMode && (
-        <AccountPick account={picker.account} onChange={(email) => setPicker({ ...picker, account: email })} align={align} />
+    <span className="cw" ref={ref}>
+      {/* 네이티브 title 툴팁 없음 — 칩 라벨이 이미 내용을 다 말한다 (유저 결정) */}
+      <button className={'model-chip' + (open ? ' on' : '')} onClick={() => setOpen((o) => !o)}>
+        {label}
+      </button>
+      {open && (
+        <div className="picker-pop scroll">
+          {/* 엔진 세그먼트 — 영어 표기 (PoC). 대화가 시작되면 잠긴다 (prop 주석 참고) */}
+          <div className="pprov">
+            {ENGINES.map((en) => (
+              <button
+                key={en.id}
+                className={engine === en.id ? 'on' : ''}
+                disabled={engineLocked && engine !== en.id}
+                onClick={() =>
+                  setPicker({
+                    ...picker,
+                    engine: en.id === 'codex' ? 'codex' : undefined,
+                    ...(en.id === 'codex' && !picker.codexModel ? { codexModel: CODEX_DEFAULT_MODEL } : {})
+                  })
+                }
+              >
+                {en.v}
+              </button>
+            ))}
+          </div>
+          {engineLocked && <div className="pp-lock">대화가 시작된 채팅은 엔진을 바꿀 수 없어요</div>}
+          <div className="pp-h4">모델</div>
+          {engine === 'claude'
+            ? MODELS.map((m) => (
+                <Fragment key={m.id}>
+                  <PPRow sel={m.id === picker.model} main={m.v} sub={m.d} onClick={() => setPicker({ ...picker, model: m.id })} />
+                  <div className={'edrawer' + (m.id === picker.model ? ' open' : '')}>
+                    {m.id === picker.model && (
+                      <EffortSlide effort={picker.effort} onChange={(id) => setPicker({ ...picker, effort: id })} />
+                    )}
+                  </div>
+                </Fragment>
+              ))
+            : codexModels.map((m) => (
+                <Fragment key={m.id}>
+                  <PPRow sel={m.id === codexId} main={m.v} sub={m.d} onClick={() => setPicker({ ...picker, codexModel: m.id })} />
+                  <div className={'edrawer' + (m.id === codexId ? ' open' : '')}>
+                    {m.id === codexId && (
+                      <EffortSlide effort={picker.effort} onChange={(id) => setPicker({ ...picker, effort: id })} />
+                    )}
+                  </div>
+                </Fragment>
+              ))}
+          <div className="pp-sep" />
+          <div className="pp-h4">모드</div>
+          {MODES.map((m) => (
+            <PPRow key={m.id} sel={m.id === picker.mode} main={m.v} sub={m.d} onClick={() => setPicker({ ...picker, mode: m.id })} />
+          ))}
+          {/* 과금 — 두 엔진 모두: API 모드면 Anthropic은 Anthropic 키, Codex는 OpenAI 키로 과금 */}
+          {onApiModeChange && (
+            <>
+              <div className="pp-sep" />
+              <div className="pp-h4">과금</div>
+              <PPRow
+                sel={!apiMode}
+                main="구독"
+                sub={(engine === 'codex' ? 'ChatGPT' : 'Claude') + ' 구독(정액)으로 실행'}
+                onClick={() => onApiModeChange(false, engine)}
+              />
+              <PPRow
+                sel={apiMode}
+                main="API"
+                sub={
+                  (engine === 'codex' ? apiReadyCodex : apiReady)
+                    ? '저장된 API 키로 종량 과금'
+                    : 'API 키 필요 — 설정 → API에서 등록'
+                }
+                onClick={() => onApiModeChange(true, engine)}
+              />
+            </>
+          )}
+          {/* 계정 — 구독 실행에만 (API 모드는 키로 과금되니 계정 선택이 무의미) */}
+          {engine === 'claude' && !apiMode && (accounts.length > 0 || picker.account) && (
+            <>
+              <div className="pp-sep" />
+              <div className="pp-h4">계정</div>
+              {accounts.map((a) => (
+                <PPRow
+                  key={a.email}
+                  sel={a.email === effective}
+                  main={a.email.split('@')[0]}
+                  // 잔여 한도가 본문 — 플랜 접두를 붙이면 줄이 길어져 '주간'이 잘린다(실측).
+                  // 한도가 아직 안 왔을 때만 플랜으로 대신한다.
+                  sub={acctUsageLine(aUsage[a.email]) || (a.subscriptionType ? `${a.subscriptionType} 구독` : '등록된 계정')}
+                  // 기본 계정을 고르면 바인딩을 푼다(기본을 따라감) — 다른 계정은 이 채팅에 고정
+                  onClick={() => setPicker({ ...picker, account: a.isDefault ? undefined : a.email })}
+                />
+              ))}
+            </>
+          )}
+          {/* OpenAI 계정 — Anthropic과 동일한 문법 (Codex 엔진 실행이 소비할 계정) */}
+          {engine === 'codex' && !apiMode && (cxAccounts.length > 0 || picker.codexAccount) && (
+            <>
+              <div className="pp-sep" />
+              <div className="pp-h4">계정</div>
+              {cxAccounts.map((a) => (
+                <PPRow
+                  key={a.email}
+                  sel={a.email === cxEffective}
+                  main={a.email.split('@')[0]}
+                  // Anthropic과 같은 문법 — 잔여 한도(5시간·주간)가 본문, 조회 전엔 플랜
+                  sub={cxUsageLine(cxUsage[a.email]) || chatgptPlanLabel(a.plan) + ' 구독'}
+                  onClick={() => setPicker({ ...picker, codexAccount: a.isDefault ? undefined : a.email })}
+                />
+              ))}
+            </>
+          )}
+        </div>
       )}
-    </>
+    </span>
   )
 }
 
@@ -1714,25 +2071,9 @@ function limitItem(
 }
 // 추가 사용 크레딧 행 (작업 바 컨텍스트 팝오버) — claude.ai에서 켠 사용자에게만 행이
 // 뜬다 (꺼져 있으면 잔액도 한도도 없어 보여줄 게 없다). 잔액이 소진된 상태(켰지만
-// 0원)도 보여준다 — "다 떨어짐"이야말로 알아야 할 정보다. 값=현재 잔액, 링·디테일=월
-// 지출 한도 대비 사용분 (API 모드 "남은 예산" 행과 같은 문법).
+// 0원)도 보여준다 — "다 떨어짐"이야말로 알아야 할 정보다.
 export function extraCreditVisible(x: ExtraCreditInfo | null | undefined): x is ExtraCreditInfo {
   return !!x && (x.enabled || x.outOfCredits)
-}
-function extraCreditItem(x: ExtraCreditInfo): { label: string; pct: number | null; val?: string; detail: string } {
-  if (!x.enabled && x.outOfCredits)
-    return {
-      label: '추가 크레딧',
-      pct: x.pct,
-      val: `${fmtCredit(0, x.currency)} 남음`,
-      detail: '크레딧 소진 — claude.ai에서 충전해야 다시 쓸 수 있어요'
-    }
-  return {
-    label: '추가 크레딧',
-    pct: x.pct,
-    val: x.balance != null ? `${fmtCredit(x.balance, x.currency)} 남음` : undefined,
-    detail: `이번 달 ${fmtCredit(x.used ?? 0, x.currency)} 사용${x.cap != null ? ` · 월 한도 ${fmtCredit(x.cap, x.currency)}` : ''}`
-  }
 }
 function resetText(resetsAt: number | null, useDays: boolean): string {
   if (resetsAt == null) return '초기화 시간 미상'
@@ -1749,6 +2090,53 @@ function resetText(resetsAt: number | null, useDays: boolean): string {
   return h > 0 ? `${h}시간 ${m}분 후 초기화` : `${m}분 후 초기화`
 }
 
+// WorkBar 컨텍스트 팝오버 행 (PoC .prow 문법) — 라벨+부제, 오른쪽 "남음 n%"(굵게),
+// 행 아래 진행 바(bar)도 같은 남은 비율을 가리킨다. 부제는 목업의 절대시각 대신
+// 실데이터의 초기화 남은 시간.
+type CtxRow = { label: string; sub: string; end: ReactNode; bar: number | null }
+function limitRow(label: string, w: UsageWindow | null, useDays: boolean): CtxRow {
+  const rem = w ? Math.max(0, 100 - Math.round(w.pct)) : null
+  return {
+    label,
+    sub: w ? resetText(w.resetsAt, useDays) : '데이터 없음',
+    end:
+      rem != null ? (
+        <>
+          남음 <b>{rem}%</b>
+        </>
+      ) : (
+        '—'
+      ),
+    bar: rem
+  }
+}
+function extraCreditRow(x: ExtraCreditInfo): CtxRow {
+  if (!x.enabled && x.outOfCredits)
+    return {
+      label: '추가 크레딧',
+      sub: '크레딧 소진 — claude.ai에서 충전해야 다시 쓸 수 있어요',
+      end: (
+        <>
+          남음 <b>{fmtCredit(0, x.currency)}</b>
+        </>
+      ),
+      bar: 0
+    }
+  return {
+    label: '추가 크레딧',
+    sub: `이번 달 ${fmtCredit(x.used ?? 0, x.currency)} 사용${x.cap != null ? ` · 월 한도 ${fmtCredit(x.cap, x.currency)}` : ''}`,
+    end:
+      x.balance != null ? (
+        <>
+          남음 <b>{fmtCredit(x.balance, x.currency)}</b>
+        </>
+      ) : (
+        '—'
+      ),
+    bar: x.pct != null ? Math.max(0, 100 - Math.round(x.pct)) : null
+  }
+}
+
 function ContextStrip({
   winTokens,
   contextTokens,
@@ -1756,7 +2144,9 @@ function ContextStrip({
   apiMode = false,
   chatSpentUsd = 0,
   budgetUsd = null,
-  totalSpentUsd = 0
+  totalSpentUsd = 0,
+  engine,
+  codexAccount
 }: {
   winTokens: number
   contextTokens: number | null
@@ -1765,33 +2155,47 @@ function ContextStrip({
   chatSpentUsd?: number
   budgetUsd?: number | null
   totalSpentUsd?: number
+  engine?: EngineId // 'codex'면 Anthropic 한도 칩 대신 OpenAI 한도 칩 (WorkBar와 동일)
+  codexAccount?: string
 }) {
   const ctxPct = contextTokens != null && winTokens > 0 ? Math.min(100, Math.round((contextTokens / winTokens) * 100)) : 0
+  // Codex 엔진의 한도 칩 — 이 계정(바인딩 ?? 기본)의 OpenAI 한도. 스트립은 상시
+  // 보이는 UI라 마운트 시 조회(모듈 캐시 TTL이 과조회를 막는다)
+  const cxU = useCodexUsage(engine, codexAccount, true)
   const items: { label: string; pct: number | null; usd?: boolean; val?: string; detail: string }[] = [
     {
       label: '현재 컨텍스트',
       pct: ctxPct,
       detail: `${contextTokens != null ? fmtTok(contextTokens) : 0} / ${fmtWindow(Math.round(winTokens / 1000))} 토큰`
     },
-    ...(apiMode
-      ? [
-          // 비용 행은 링 대신 달러 배지(usd) — "한도의 몇 %"가 아니라 금액 자체라서
-          { label: '이번 대화 비용', pct: null, usd: true, val: fmtUsd(chatSpentUsd), detail: 'API 모드 실행의 누적 비용' },
-          budgetUsd != null
-            ? {
-                label: '남은 예산',
-                pct: Math.min(100, Math.round((totalSpentUsd / budgetUsd) * 100)),
-                val: fmtUsd(Math.max(0, budgetUsd - totalSpentUsd)),
-                detail: `예산 ${fmtUsd(budgetUsd)} 중 ${fmtUsd(totalSpentUsd)} 사용`
-              }
-            : { label: '누적 사용액', pct: null, usd: true, val: fmtUsd(totalSpentUsd), detail: '전체 워크스페이스 합산' }
-        ]
-      : [
-          limitItem('5시간 한도', usage.fiveHour, false),
-          limitItem('주간 한도', usage.weekly, true),
-          // Fable 5 전용 주간 한도 — 플랜에 없으면(null) 칩 자체를 숨긴다
-          ...(usage.weeklyFable ? [limitItem('Fable 주간 한도', usage.weeklyFable, true)] : [])
-        ])
+    ...(engine === 'codex'
+      ? apiMode
+        ? []
+        : (cxU?.windows ?? []).map((w) => ({
+            label: `${w.label} 한도`,
+            pct: Math.min(100, Math.round(w.usedPct)),
+            val: `${Math.max(0, 100 - Math.round(w.usedPct))}% 남음`,
+            detail: 'ChatGPT 구독 사용량 기준'
+          }))
+      : apiMode
+        ? [
+            // 비용 행은 링 대신 달러 배지(usd) — "한도의 몇 %"가 아니라 금액 자체라서
+            { label: '이번 대화 비용', pct: null, usd: true, val: fmtUsd(chatSpentUsd), detail: 'API 모드 실행의 누적 비용' },
+            budgetUsd != null
+              ? {
+                  label: '남은 예산',
+                  pct: Math.min(100, Math.round((totalSpentUsd / budgetUsd) * 100)),
+                  val: fmtUsd(Math.max(0, budgetUsd - totalSpentUsd)),
+                  detail: `예산 ${fmtUsd(budgetUsd)} 중 ${fmtUsd(totalSpentUsd)} 사용`
+                }
+              : { label: '누적 사용액', pct: null, usd: true, val: fmtUsd(totalSpentUsd), detail: '전체 워크스페이스 합산' }
+          ]
+        : [
+            limitItem('5시간 한도', usage.fiveHour, false),
+            limitItem('주간 한도', usage.weekly, true),
+            // Fable 5 전용 주간 한도 — 플랜에 없으면(null) 칩 자체를 숨긴다
+            ...(usage.weeklyFable ? [limitItem('Fable 주간 한도', usage.weeklyFable, true)] : [])
+          ])
   ]
   return (
     <div className="ctx-strip">
@@ -1849,56 +2253,86 @@ export function hasRunningBash(messages: ThreadItem[]): boolean {
   return false
 }
 
-// 백그라운드 셸 한 줄 — 설명 + 상태, 실행 중이면 중지 버튼. 행을 누르면 출력(라이브
-// 테일 포함) 카드가 열린다.
+// 백그라운드 셸 한 줄 — PoC .prow: 상태 아이콘(스피너/✓/✕) + 설명/서브, 실행 중이면
+// 끝에 중지 알약. 행을 누르면 출력(라이브 테일 포함) 카드가 열린다.
 function BgTaskRow({ t, onOpen, onStop }: { t: BgTask; onOpen: (id: string) => void; onStop?: (id: string) => void }) {
+  const running = t.status === 'running'
+  // 완료=흐림+초록 ✓ · 실패/직접 중지=빨간 ✕ · 턴 정리는 중립 회색 ✕ (사고 아님)
+  const rowCls = t.status === 'completed' ? ' done' : t.status === 'failed' || (t.status === 'stopped' && !t.teardown) ? ' err' : ''
   return (
-    <div className={'bgtask ' + t.status} onClick={() => onOpen(t.id)}>
-      <span className="bg-ic">
-        <IconTerminal size={14} />
+    <div className={'wb-prow act' + rowCls} onClick={() => onOpen(t.id)}>
+      <span className="ic">
+        {running ? <span className="spin" /> : t.status === 'completed' ? <IconCheck size={12} /> : <IconClose size={12} />}
       </span>
-      <div className="bg-main">
-        <div className="bg-desc">{t.description || t.id}</div>
-        <div className="bg-sub">
+      <span className="grow">
+        {t.description || t.id}
+        <span className="sub">
           {bgStatusLabel(t)}
           {/* 요약이 설명과 같은 문장으로 오는 경우(중지 통지)가 있어 중복이면 생략 */}
           {t.status !== 'running' && t.summary && t.summary !== t.description ? ` — ${t.summary}` : ''}
-        </div>
-      </div>
-      {t.status === 'running' ? (
-        <>
-          <span className="spin" />
-          {onStop && (
-            <button
-              className="bg-stop"
-              onClick={(e) => {
-                e.stopPropagation()
-                onStop(t.id)
-              }}
-            >
-              중지
-            </button>
-          )}
-        </>
-      ) : t.status === 'completed' ? (
-        <span className="sa-check">
-          <IconCheck size={12} />
         </span>
-      ) : (
-        <span className="bg-x">
-          <IconClose size={12} />
-        </span>
+      </span>
+      {running && onStop && (
+        <button
+          className="wb-stop"
+          onClick={(e) => {
+            e.stopPropagation()
+            onStop(t.id)
+          }}
+        >
+          중지
+        </button>
       )}
     </div>
   )
 }
 
-// 백그라운드 셸 상세 카드 — 서브에이전트 카드와 같은 시각 언어(.sa-card). 핵심은 출력:
-// 실행 중이면 출력 파일(엔진이 유도한 경로)을 1.2초마다 다시 읽어 라이브 테일을 보여준다.
-// readFile IPC는 절대경로를 그대로 받고, 파일이 아직 없으면 에러를 돌려줘 조용히 대기한다.
+// 셸 카드 상태 배지 — PoC .stbadge: 실행 중=중립+스피너, 완료=초록, 실패/중지=빨강,
+// 턴 종료 정리는 중립(사고가 아니라 수명 종료)
+function bgBadge(t: BgTask): ReactNode {
+  if (t.status === 'running')
+    return (
+      <span className="dc-badge n">
+        <span className="spin" />
+        실행 중
+      </span>
+    )
+  if (t.status === 'completed')
+    return (
+      <span className="dc-badge">
+        <span className="d" />
+        완료
+      </span>
+    )
+  if (t.status === 'failed')
+    return (
+      <span className="dc-badge err">
+        <span className="d" />
+        실패
+      </span>
+    )
+  return t.teardown ? (
+    <span className="dc-badge n">
+      <span className="d" />
+      정리됨
+    </span>
+  ) : (
+    <span className="dc-badge err">
+      <span className="d" />
+      중지됨
+    </span>
+  )
+}
+
+// 백그라운드 셸 상세 카드 — PoC 상세 카드 문법(.dc-*): 터미널 타일 + 모노 명령 제목,
+// 본문은 터미널(경로 스트립 + 라이브 테일). 실행 중이면 출력 파일(엔진이 유도한 경로)을
+// 1.2초마다 다시 읽어 테일을 보여준다. readFile IPC는 절대경로를 그대로 받고, 파일이
+// 아직 없으면 에러를 돌려줘 조용히 대기한다.
 function BgTaskModal({ t, onStop, onClose }: { t: BgTask | null; onStop?: (id: string) => void; onClose: () => void }) {
   const [out, setOut] = useState<{ text: string | null; err: string | null }>({ text: null, err: null })
-  const preRef = useRef<HTMLPreElement>(null)
+  // 본문(.dc-body)이 유일한 스크롤러 — 테일 따라가기도 이 엘리먼트를 내린다
+  const bodyRef = useRef<HTMLDivElement>(null)
+  const [copied, setCopied] = useState(false)
   // 마우스 제스처(U/D 스크롤·DR 닫기)의 대상 카드 엘리먼트
   const [cardEl, setCardEl] = useState<HTMLDivElement | null>(null)
   const file = t?.outputFile
@@ -1939,61 +2373,92 @@ function BgTaskModal({ t, onStop, onClose }: { t: BgTask | null; onStop?: (id: s
   }, [file, running])
   // 새 출력이 붙으면 테일로 따라간다 (터미널처럼)
   useEffect(() => {
-    const el = preRef.current
+    const el = bodyRef.current
     if (el) el.scrollTop = el.scrollHeight
   }, [out.text])
   if (!t) return null
   const tail = out.text ? out.text.split('\n').slice(-400).join('\n').trimEnd() : ''
+  const copyPath = (): void => {
+    if (!file) return
+    navigator.clipboard
+      ?.writeText(file)
+      .then(() => {
+        setCopied(true)
+        setTimeout(() => setCopied(false), 1200)
+      })
+      .catch(() => {})
+  }
   return createPortal(
     <div className="sa-overlay" onMouseDown={onClose}>
-      <div className="sa-card" ref={setCardEl} onMouseDown={(e) => e.stopPropagation()}>
-        <div className="sa-card-head">
-          <span className={'sa-card-ic bg-card-ic ' + t.status}>
-            <IconTerminal size={18} />
-          </span>
-          <div className="sa-card-titles">
-            <div className="sa-card-name">{t.description || t.id}</div>
-            <div className="sa-card-role">백그라운드 셸</div>
+      <div className="dc-card" ref={setCardEl} onMouseDown={(e) => e.stopPropagation()}>
+        <div className="dc-head">
+          <div className="dc-tile">
+            <IconTerminal size={19} />
           </div>
-          <span className={'bg-chip ' + t.status}>{bgStatusLabel(t)}</span>
+          <div className="dc-tt">
+            <span className="dc-title mono">{t.description || t.id}</span>
+            <div className="dc-sub">백그라운드 셸 · {bgStatusLabel(t)}</div>
+          </div>
+          {bgBadge(t)}
           {running && onStop && (
-            <button className="bg-stop-chip" onClick={() => onStop(t.id)}>
+            <button className="dc-stop" onClick={() => onStop(t.id)}>
               중지
             </button>
           )}
-          <button className="sa-card-close" onClick={onClose} aria-label="닫기">
-            <IconClose size={18} />
+          <button className="dc-close" onClick={onClose} aria-label="닫기">
+            <IconClose size={16} />
           </button>
         </div>
-        <div className="sa-card-body scroll">
+        <div className="dc-body scroll" ref={bodyRef}>
           {!running && t.summary && t.summary !== t.description && (
-            <div className="sa-card-sec">
-              <div className="sa-card-lbl">요약</div>
-              <div className="content">{t.summary}</div>
-            </div>
+            <>
+              <div className="dc-sec">
+                <span>요약</span>
+                <i className="dc-ln" />
+              </div>
+              <div className="dc-box">
+                <div className="dc-md">{t.summary}</div>
+              </div>
+            </>
           )}
-          <div className="sa-card-sec">
-            <div className="sa-card-lbl">출력{running ? ' — 실시간' : ''}</div>
-            {tail ? (
-              <pre className="bg-out" ref={preRef}>
-                {tail}
-              </pre>
-            ) : (
-              <div className="ag-none">{running ? '아직 출력이 없어요 (쌓이는 대로 여기 보여요)' : '출력 결과가 없어요'}</div>
-            )}
+          <div className="dc-sec">
+            <span>출력{running ? ' — 실시간' : ''}</span>
+            <i className="dc-ln" />
           </div>
-          {file && (
-            <div className="bg-out-path" title={file}>
-              {file}
+          <div className="dc-term">
+            {file && (
+              <div className="dc-term-head">
+                <span className="pth" title={file}>
+                  {file}
+                </span>
+                <button className={'dc-copy' + (copied ? ' on' : '')} onClick={copyPath}>
+                  <IconCopy size={12} />
+                  {copied ? '복사됨 ✓' : '경로 복사'}
+                </button>
+              </div>
+            )}
+            <div className="dc-term-body">
+              {tail ? (
+                <pre className="dc-term-pre">{tail}</pre>
+              ) : (
+                <div className="ag-none">{running ? '아직 출력이 없어요 (쌓이는 대로 여기 보여요)' : '출력 결과가 없어요'}</div>
+              )}
             </div>
-          )}
+          </div>
+        </div>
+        <div className="dc-foot">
+          {/* 테일은 끝 400줄만 유지 — 캡에 닿았으면 전체가 아니라 끝부분임을 밝힌다 */}
+          <span className="dc-stat">
+            출력 <b>{tail ? (tail.split('\n').length >= 400 ? '끝부분 400줄' : `${tail.split('\n').length}줄`) : '0줄'}</b>
+          </span>
+          {running && <span className="dc-stat">하단 따라가는 중</span>}
         </div>
       </div>
-      {/* 우클릭 드래그 제스처 — 뷰어와 같은 문법. 스크롤은 출력(pre)이 있으면 그쪽을 우선 */}
+      {/* 우클릭 드래그 제스처 — 뷰어와 같은 문법. 스크롤러는 본문(.dc-body) 하나 */}
       <MouseGestureLayer
         target={cardEl}
         actions={[
-          ...scrollGestures(() => cardEl?.querySelector('.bg-out') ?? cardEl?.querySelector('.sa-card-body')),
+          ...scrollGestures(() => cardEl?.querySelector('.dc-body')),
           { pattern: 'DR', label: '카드 닫기', run: onClose }
         ]}
       />
@@ -2021,6 +2486,8 @@ export const WorkBar = memo(function WorkBar({
   totalSpentUsd = 0,
   busy = false,
   canSkipWait = false,
+  engine,
+  codexAccount,
   onOpenFile,
   onOpenSubagent,
   onBgTask,
@@ -2040,6 +2507,8 @@ export const WorkBar = memo(function WorkBar({
   totalSpentUsd?: number // 전체 워크스페이스의 API 모드 누적 사용액
   busy?: boolean // 실행 중 여부
   canSkipWait?: boolean // 막고 있는 포그라운드 Bash가 있는지 — 건너뛰기 버튼은 이때만 노출
+  engine?: EngineId // 'codex'면 컨텍스트 팝오버가 Anthropic 한도 대신 OpenAI 한도를 그린다
+  codexAccount?: string // Codex 실행 계정 바인딩 — 없으면 기본 계정 기준
   onOpenFile: (f: ChangedFile) => void
   onOpenSubagent: (a: SubAgentInfo) => void
   onBgTask?: (req: BgTaskRequest) => void // 셸 중지 / 포그라운드 도구 백그라운드화
@@ -2075,36 +2544,60 @@ export const WorkBar = memo(function WorkBar({
   const runningBg = bgTasks.filter((t) => t.status === 'running').length
   const endedBg = bgTasks.length - runningBg
 
-  // 컨텍스트 팝오버 — 구독 모드는 예전 컴포저 스트립과 같은 3줄(현재 컨텍스트·5시간·주간),
-  // API 모드는 한도가 의미 없으니 비용으로 바꾼다(이번 대화 비용 + 남은 예산/누적 사용액).
-  // val: pct 자리(%)에 대신 보여줄 텍스트 — 비용 행은 %가 없어 금액을 그대로 띄운다.
-  // usd: 링 대신 달러 배지 — 금액은 "한도의 몇 %"가 아니라 진행률 링이 어울리지 않는다.
-  const ctxItems: { label: string; pct: number | null; usd?: boolean; val?: string; detail: string }[] = [
-    {
-      label: '현재 컨텍스트',
-      pct: ctxPct,
-      detail: `${contextTokens != null ? fmtTok(contextTokens) : 0} / ${fmtWindow(Math.round(winTokens / 1000))} 토큰`
-    },
-    ...(apiMode
-      ? [
-          { label: '이번 대화 비용', pct: null, usd: true, val: fmtUsd(chatSpentUsd), detail: 'API 모드 실행의 누적 비용' },
-          budgetUsd != null
-            ? {
-                label: '남은 예산',
-                pct: Math.min(100, Math.round((totalSpentUsd / budgetUsd) * 100)),
-                val: fmtUsd(Math.max(0, budgetUsd - totalSpentUsd)),
-                detail: `예산 ${fmtUsd(budgetUsd)} 중 ${fmtUsd(totalSpentUsd)} 사용`
-              }
-            : { label: '누적 사용액', pct: null, usd: true, val: fmtUsd(totalSpentUsd), detail: '전체 워크스페이스 · 설정 → API에서 예산 입력 가능' }
-        ]
-      : [
-          limitItem('5시간 한도', usage.fiveHour, false),
-          limitItem('주간 한도', usage.weekly, true),
-          // Fable 5 전용 주간 한도 — 플랜에 없으면(null) 행 자체를 숨긴다
-          ...(usage.weeklyFable ? [limitItem('Fable 주간 한도', usage.weeklyFable, true)] : []),
-          // 추가 사용 크레딧 (claude.ai 설정 → 사용 크레딧) — 켜져 있거나 소진 상태일 때만
-          ...(extraCreditVisible(usage.extraCredit) ? [extraCreditItem(usage.extraCredit)] : [])
-        ])
+  // 컨텍스트 팝오버 — PoC 문법 그대로: 헤더 오른쪽에 토큰 수, 행 아래 4px 진행 바,
+  // 첫 행(현재 컨텍스트) 뒤 구분선. 현재 컨텍스트 바는 사용분, 한도 바는 남은 비율 —
+  // 오른쪽 "남음 n%" 텍스트와 바가 같은 것을 가리키게. API 모드는 한도가 의미 없으니
+  // 비용 행으로 바꾼다(이번 대화 비용 + 남은 예산/누적 사용액 — 진행 바는 예산 행만).
+  const ctxDetail = `${contextTokens != null ? fmtTok(contextTokens) : 0} / ${fmtWindow(Math.round(winTokens / 1000))} 토큰`
+  // Codex 엔진이면 Anthropic 한도(5시간·Fable·주간) 대신 이 계정의 OpenAI 한도를 그린다.
+  // 조회는 팝오버가 열렸을 때만 (계정마다 app-server 1회 — 무거운 조회)
+  const cxU = useCodexUsage(engine, codexAccount, open === 'ctx')
+  const ctxRows: CtxRow[] = [
+    { label: '현재 컨텍스트', sub: '이 대화가 차지하는 컨텍스트 창', end: <b>{ctxPct}%</b>, bar: ctxPct },
+    ...(engine === 'codex'
+      ? apiMode
+        ? [
+            {
+              label: 'API 과금',
+              sub: 'Codex는 실행 비용을 보고하지 않아요 — 사용액은 platform.openai.com에서',
+              end: <b>—</b>,
+              bar: null
+            }
+          ]
+        : (cxU?.windows ?? []).map((w) => ({
+            label: `${w.label} 한도`,
+            sub: 'ChatGPT 구독 사용량 기준',
+            end: (
+              <>
+                남음 <b>{Math.max(0, 100 - Math.round(w.usedPct))}%</b>
+              </>
+            ),
+            bar: Math.max(0, 100 - Math.round(w.usedPct))
+          }))
+      : apiMode
+        ? [
+            { label: '이번 대화 비용', sub: 'API 모드 실행의 누적 비용', end: <b>{fmtUsd(chatSpentUsd)}</b>, bar: null },
+            budgetUsd != null
+              ? {
+                  label: '남은 예산',
+                  sub: `예산 ${fmtUsd(budgetUsd)} 중 ${fmtUsd(totalSpentUsd)} 사용`,
+                  end: (
+                    <>
+                      남음 <b>{fmtUsd(Math.max(0, budgetUsd - totalSpentUsd))}</b>
+                    </>
+                  ),
+                  bar: Math.max(0, 100 - Math.round((totalSpentUsd / budgetUsd) * 100))
+                }
+              : { label: '누적 사용액', sub: '전체 워크스페이스 · 설정 → API에서 예산 입력 가능', end: <b>{fmtUsd(totalSpentUsd)}</b>, bar: null }
+          ]
+        : [
+            limitRow('5시간 한도', usage.fiveHour, false),
+            // Fable 5 전용 주간 한도 — 플랜에 없으면(null) 행 자체를 숨긴다 (행 순서는 PoC와 동일)
+            ...(usage.weeklyFable ? [limitRow('Fable 주간 한도', usage.weeklyFable, true)] : []),
+            limitRow('주간 한도', usage.weekly, true),
+            // 추가 사용 크레딧 (claude.ai 설정 → 사용 크레딧) — 켜져 있거나 소진 상태일 때만
+            ...(extraCreditVisible(usage.extraCredit) ? [extraCreditRow(usage.extraCredit)] : [])
+          ])
   ]
 
   const toggle = (t: WorkTab): void => {
@@ -2128,7 +2621,7 @@ export const WorkBar = memo(function WorkBar({
     { key: 'sub', icon: <IconBot size={14} />, label: '서브에이전트', value: `${doneSub}/${subTotal || 0}`, detail: runningSub > 0 ? `${runningSub}개 실행 중` : subTotal ? '모두 완료' : '없음', tip: 'Claude가 띄운 보조 에이전트의 진행 상황 — 누르면 목록' },
     { key: 'sh', icon: <IconTerminal size={14} />, label: '백그라운드 셸', value: `${endedBg}/${bgTasks.length || 0}`, detail: runningBg > 0 ? `${runningBg}개 실행 중` : bgTasks.length ? '모두 종료' : '없음', tip: 'Claude가 백그라운드로 돌리는 셸 — 누르면 목록·중지' },
     { key: 'file', icon: <IconFile size={14} />, label: '변경된 파일', value: `${files.length}`, detail: files.length ? `+${totalAdd} −${totalDel}` : '없음', tip: '이번 작업에서 생성·수정된 파일 — 누르면 목록·diff' },
-    { key: 'ctx', ring: ctxPct, label: '컨텍스트', value: `${ctxPct}%`, detail: ctxItems[0].detail, tip: apiMode ? '대화의 컨텍스트 사용량·API 비용 — 누르면 자세히' : '대화의 컨텍스트 사용량·사용 한도 — 누르면 자세히', align: 'r' }
+    { key: 'ctx', ring: ctxPct, label: '컨텍스트', value: `${ctxPct}%`, detail: ctxDetail, tip: apiMode ? '대화의 컨텍스트 사용량·API 비용 — 누르면 자세히' : '대화의 컨텍스트 사용량·사용 한도 — 누르면 자세히', align: 'r' }
   ]
 
   const popBody = (key: WorkTab): ReactNode => {
@@ -2139,6 +2632,7 @@ export const WorkBar = memo(function WorkBar({
             <span className="t">할 일</span>
             <span className="c">
               {todoDone}/{todoTotal || 0}
+              {todoTotal ? ` · ${todoPct}% 완료` : ''}
             </span>
           </div>
           {/* 실행 중이어도 "계획 수립 중"이라고 추측하지 않는다 — 간단한 작업은 할 일
@@ -2236,28 +2730,26 @@ export const WorkBar = memo(function WorkBar({
     return (
       <>
         <div className="wb-pop-h">
-          <span className="t">{apiMode ? '컨텍스트 · API 비용' : '컨텍스트 · 사용 한도'}</span>
+          <span className="t">컨텍스트</span>
+          <span className="c">{ctxDetail}</span>
         </div>
-        <div className="wb-ctx-list">
-          {ctxItems.map((c, i) => (
-            <div className="ctx-chip" key={i}>
-              {c.usd ? (
-                <span className="cc-usd">
-                  <IconDollar size={11} />
-                </span>
-              ) : (
-                <span className="cc-ring" style={{ ['--p']: c.pct ?? 0 } as CSSProperties} />
-              )}
-              <span className="cc-text">
-                <span className="cc-top">
-                  <span className="cc-label">{c.label}</span>
-                  <span className="cc-pct">{c.val ?? (c.pct != null ? c.pct + '%' : '—')}</span>
-                </span>
-                <span className="cc-detail">{c.detail}</span>
+        {ctxRows.map((r, i) => (
+          <Fragment key={i}>
+            <div className="wb-prow">
+              <span className="grow">
+                {r.label}
+                <span className="sub">{r.sub}</span>
               </span>
+              <span className="end">{r.end}</span>
             </div>
-          ))}
-        </div>
+            {r.bar != null && (
+              <div className="wb-pbar">
+                <i style={{ width: r.bar + '%' }} />
+              </div>
+            )}
+            {i === 0 && <div className="wb-psep" />}
+          </Fragment>
+        ))}
       </>
     )
   }
@@ -2273,7 +2765,20 @@ export const WorkBar = memo(function WorkBar({
               onClick={() => toggle(c.key)}
             >
               {c.ring != null ? (
-                <span className="cc-ring" style={{ ['--p']: c.ring } as CSSProperties} />
+                // PoC 컨텍스트 칩 링 — 둘레 31.4(r=5)의 얇은 스트로크, dashoffset으로 사용분만큼 채움
+                <svg className="ring" viewBox="0 0 13 13">
+                  <circle className="bgc" cx="6.5" cy="6.5" r="5" fill="none" strokeWidth="1.8" />
+                  <circle
+                    className="fgc"
+                    cx="6.5"
+                    cy="6.5"
+                    r="5"
+                    fill="none"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                    style={{ strokeDashoffset: 31.4 * (1 - c.ring / 100) }}
+                  />
+                </svg>
               ) : (
                 <span className="wb-ic">{c.icon}</span>
               )}
@@ -2300,22 +2805,9 @@ export const WorkBar = memo(function WorkBar({
   )
 })
 
-// distinct colors for the option number badges (1-8), cycled by position
-const Q_NUM_COLORS = [
-  'var(--blue)',
-  'var(--green)',
-  'var(--violet)',
-  'var(--rose)',
-  'var(--teal)',
-  'var(--accent-2)',
-  'var(--cyan)',
-  'var(--red)'
-]
-
-// The agent's AskUserQuestion, shown as a centered modal (same overlay/card pattern
-// as the Settings/SubAgent dialogs). Options are numbered and selectable with the
-// 1-9 keys. A single single-select question answers on click/keypress; otherwise
-// selections build up and 확인 submits. Esc / backdrop / ✕ skip (agent uses defaults).
+// The agent's AskUserQuestion — PoC 'Claude의 질문' 카드(qcard 문법): 마스코트 헤더,
+// 한 번에 한 질문(방향 슬라이드·이전 질문), 플랫 선택지 + 인라인 직접 입력. 숫자 키로
+// 선택, Esc는 내려두기(알약), 알약의 ✕가 건너뛰기 (agent uses defaults).
 export function QuestionModal({
   question,
   onAnswer,
@@ -2323,11 +2815,11 @@ export function QuestionModal({
   hotkeys = true,
   onExpand
 }: {
-  question: { requestId: string; questions: AgentQuestion[] } | null
+  question: { requestId: string; questions: AgentQuestion[]; engine?: EngineId } | null
   onAnswer: (answers: string[][]) => void
   onDismiss: () => void
   // 멀티 패널 — 카드가 여러 패널에 동시에 떠 있어도 키보드(숫자·화살표·Esc)는
-  // 포커스된 패널의 카드만 받는다. 단일 채팅/ask 모달은 기본 true.
+  // 포커스된 패널의 카드만 받는다. 단일 채팅은 기본 true.
   hotkeys?: boolean
   // 좁은 그리드 패널에서 다단계 질문이 답답할 때 — 헤더의 크게 보기 버튼으로
   // 패널 확장과 연결한다 (제공될 때만 버튼을 그린다)
@@ -2339,6 +2831,7 @@ export function QuestionModal({
     <QuestionDialog
       key={question.requestId}
       questions={question.questions}
+      engine={question.engine}
       onAnswer={onAnswer}
       onDismiss={onDismiss}
       hotkeys={hotkeys}
@@ -2347,23 +2840,22 @@ export function QuestionModal({
   )
 }
 
-// the three permission choices — rendered as numbered cards (same look as the question
-// modal's options) and pickable with the 1·2·3 keys. Colors read semantically.
+// the three permission choices — flat qcard options picked with the 1·2·3 keys
 const PERM_CHOICES = [
-  { key: 'allow', label: '허용', desc: '이번 한 번만 실행을 허용해요', color: 'var(--green)' },
-  { key: 'allow_always', label: '항상 허용', desc: '이번 세션 동안 이 도구를 자동 허용해요', color: 'var(--accent)' },
-  { key: 'deny', label: '거부', desc: '이 작업을 실행하지 않아요', color: 'var(--red)' }
+  { key: 'allow', label: '허용', desc: '이번 한 번만 실행을 허용해요' },
+  { key: 'allow_always', label: '항상 허용', desc: '이번 세션 동안 이 도구를 자동 허용해요' },
+  { key: 'deny', label: '거부', desc: '이 작업을 실행하지 않아요' }
 ] as const
 
-// The agent's tool-permission request, shown as a centered modal (same overlay/card
-// language as the question modal). The choices are numbered cards: 1 허용 / 2 항상 허용
-// (allow + stop asking for this tool this session) / 3 거부. Keys 1·2·3 pick; Esc denies.
+// The agent's tool-permission request — 질문 카드와 같은 qcard 문법: 마스코트 헤더
+// ('Claude/GPT의 승인 요청' + 도구 칩) + 볼드 질문 + 모노 명령 웰 + 플랫 선택지.
+// Keys 1·2·3 pick; Esc denies. 선택지는 누르는 즉시 응답한다(단일 선택 질문과 동일).
 export function PermissionModal({
   permission,
   onRespond,
   hotkeys = true
 }: {
-  permission: { requestId: string; toolName: string; summary: string } | null
+  permission: { requestId: string; toolName: string; summary: string; engine?: EngineId } | null
   onRespond: (behavior: 'allow' | 'allow_always' | 'deny') => void
   // 멀티 패널 — 두 패널이 동시에 승인을 요청해도 1·2·3/Esc는 포커스된 패널의
   // 카드만 받는다 (안 그러면 키 한 번이 모든 요청에 동시 응답된다)
@@ -2390,32 +2882,25 @@ export function PermissionModal({
   if (!permission) return null
   return (
     <div className="q-overlay">
-      <div className="perm-modal" role="dialog" aria-modal="true">
-        <div className="perm-head">
-          <span className="perm-ic">
-            <IconShieldChk size={28} />
-          </span>
-          <div className="perm-htext">
-            <span className="perm-title">도구 사용 승인 요청</span>
-            <span className="perm-sub">Claude가 다음 작업을 실행하려고 합니다</span>
+      <div className="qcard scroll" role="dialog" aria-modal="true">
+        <div className="qhead">
+          <IconMascot size={17} />
+          <span className="qhl">{permission.engine === 'codex' ? 'GPT의 승인 요청' : 'Claude의 승인 요청'}</span>
+          <span className="qsp" />
+          {permission.toolName && <span className="qtool">{permission.toolName}</span>}
+        </div>
+        <div className="qwrap">
+          <div className="qbt">이 작업을 실행할까요?</div>
+          {permission.summary && <div className="qsum">{permission.summary}</div>}
+          <div className="qopts">
+            {PERM_CHOICES.map((c) => (
+              <button key={c.key} className={'qopt' + (c.key === 'deny' ? ' qopt-deny' : '')} onClick={() => onRespond(c.key)}>
+                <span className="ql">{c.label}</span>
+                <span className="qd">{c.desc}</span>
+              </button>
+            ))}
           </div>
-          {permission.toolName && <span className="perm-tool">{permission.toolName}</span>}
         </div>
-        {permission.summary && <div className="perm-sum">{permission.summary}</div>}
-        <div className="q-opts">
-          {PERM_CHOICES.map((c, i) => (
-            <button key={c.key} className="q-opt" onClick={() => onRespond(c.key)}>
-              <span className="q-num" style={{ background: c.color, color: 'var(--on-accent)' }}>
-                {i + 1}
-              </span>
-              <span className="q-opt-text">
-                <span className="q-opt-label">{c.label}</span>
-                <span className="q-opt-desc">{c.desc}</span>
-              </span>
-            </button>
-          ))}
-        </div>
-        <div className="perm-foot">숫자 키로 선택 · Esc 거부</div>
       </div>
     </div>
   )
@@ -2423,42 +2908,61 @@ export function PermissionModal({
 
 function QuestionDialog({
   questions,
+  engine,
   onAnswer,
   onDismiss,
   hotkeys = true,
   onExpand
 }: {
   questions: AgentQuestion[]
+  engine?: EngineId // 질문을 던진 엔진 — 헤더 표기('Claude의 질문'/'GPT의 질문')
   onAnswer: (answers: string[][]) => void
   onDismiss: () => void
   hotkeys?: boolean
   onExpand?: () => void
 }) {
   const [sel, setSel] = useState<string[][]>(() => questions.map(() => []))
-  const [custom, setCustom] = useState<string[]>(() => questions.map(() => '')) // 기타 free text
-  const [other, setOther] = useState<boolean[]>(() => questions.map(() => false)) // 기타 active
+  const [custom, setCustom] = useState<string[]>(() => questions.map(() => '')) // 직접 입력 free text
+  // 단일 선택에서 직접 입력을 답으로 확정(Enter)했는지 — 뒤로 왔을 때 입력줄 체크 복원용.
+  // 다중 선택은 확정 절차가 없다: 입력이 비어있지 않으면 그 자체로 답에 포함된다.
+  const [other, setOther] = useState<boolean[]>(() => questions.map(() => false))
   const [step, setStep] = useState(0)
-  // 잠깐 내려두기 — 답을 잃지 않고 우하단 알약으로 접어, 뒤 대화를 확인한 뒤 다시 펼쳐
+  // 질문 전환 방향 — qwrap 슬라이드(qstep 앞으로/qstep-b 뒤로). 첫 등장은 카드 rise에
+  // 맡기고(null), 접기/펼치기 리마운트 때 재생되지 않게 그때도 null로 되돌린다.
+  const [dir, setDir] = useState<'fwd' | 'back' | null>(null)
+  // 잠깐 내려두기 — 답을 잃지 않고 하단 알약으로 접어, 뒤 대화를 확인한 뒤 다시 펼쳐
   // 답한다. QuestionModal이 requestId로 키를 걸어, 새 질문이 오면 펼친 상태로 다시 뜬다.
-  const [minimized, setMinimized] = useState(false)
+  const [minimized, setMinimizedRaw] = useState(false)
   const modalRef = useRef<HTMLDivElement>(null)
-  const customRef = useRef<HTMLInputElement>(null)
+  const freeRef = useRef<HTMLInputElement>(null)
   const multi = questions.length > 1
   const cur = questions[step]
   const last = step === questions.length - 1
 
-  // a question's resolved answer: its checked options plus, when 기타 is active and
-  // filled, the free-text value. Single-select 기타 replaces the option choice.
+  const setMinimized = (v: boolean): void => {
+    setDir(null)
+    setMinimizedRaw(v)
+  }
+  const goTo = (next: number, d: 'fwd' | 'back'): void => {
+    setDir(d)
+    setStep(next)
+  }
+
+  // a question's resolved answer: multi-select = checked options + the free text when
+  // filled; single-select = the confirmed free text, or the picked option.
   const answerAt = (i: number, s = sel, c = custom, o = other): string[] => {
-    const extra = o[i] && c[i].trim() ? [c[i].trim()] : []
-    return questions[i].multiSelect ? [...s[i], ...extra] : o[i] ? extra : s[i]
+    const free = c[i].trim()
+    if (questions[i].multiSelect) return free ? [...s[i], free] : s[i]
+    return o[i] ? (free ? [free] : []) : s[i]
   }
   const finalAnswers = (s = sel, c = custom, o = other): string[][] => questions.map((_, i) => answerAt(i, s, c, o))
   const curChosen = answerAt(step).length > 0
   const allAnswered = questions.every((_, i) => answerAt(i).length > 0)
+  // 직접 입력 줄의 선택 표시 — 내용이 있고, 단일 선택이라면 Enter로 확정까지 된 상태
+  const freeOn = custom[step].trim().length > 0 && (cur.multiSelect || other[step])
 
-  // pick a listed option. Single-select clears 기타 and auto-advances (or submits on
-  // the last question); multi-select toggles and waits for the 다음/완료 button.
+  // pick a listed option. Single-select clears the 직접 입력 확정 and auto-advances (or
+  // submits on the last question); multi-select toggles and waits for the 다음/완료 button.
   const choose = (label: string): void => {
     const nextSel = sel.map((a) => a.slice())
     if (cur.multiSelect) {
@@ -2477,21 +2981,8 @@ function QuestionDialog({
     }
     if (!cur.multiSelect) {
       if (last) onAnswer(finalAnswers(nextSel, custom, nextOther))
-      else setStep(step + 1)
+      else goTo(step + 1, 'fwd')
     }
-  }
-  // pick the auto-appended 기타 (직접 입력) option → reveal the text field
-  const chooseOther = (): void => {
-    const nextOther = other.slice()
-    if (cur.multiSelect) {
-      nextOther[step] = !nextOther[step]
-    } else {
-      nextOther[step] = true
-      const nextSel = sel.map((a) => a.slice())
-      nextSel[step] = []
-      setSel(nextSel)
-    }
-    setOther(nextOther)
   }
   const setCustomAt = (i: number, val: string): void =>
     setCustom((prev) => {
@@ -2504,7 +2995,24 @@ function QuestionDialog({
     if (!curChosen) return
     if (last) {
       if (allAnswered) onAnswer(finalAnswers())
-    } else setStep(step + 1)
+    } else goTo(step + 1, 'fwd')
+  }
+  // Enter in the 직접 입력 row — 단일 선택은 입력한 텍스트를 답으로 확정하고 진행,
+  // 다중 선택은 입력이 이미 답에 포함되므로 그냥 다음/완료로 진행한다.
+  const pickFree = (): void => {
+    if (cur.multiSelect) {
+      proceed()
+      return
+    }
+    if (!custom[step].trim()) return
+    const nextOther = other.slice()
+    nextOther[step] = true
+    setOther(nextOther)
+    const nextSel = sel.map((a) => a.slice())
+    nextSel[step] = []
+    setSel(nextSel)
+    if (last) onAnswer(finalAnswers(nextSel, custom, nextOther))
+    else goTo(step + 1, 'fwd')
   }
 
   // focus the modal on open AND whenever it's restored from the pill, so the composer
@@ -2513,10 +3021,6 @@ function QuestionDialog({
   useEffect(() => {
     if (!minimized && hotkeys) modalRef.current?.focus()
   }, [minimized, hotkeys])
-  // focus the free-text field whenever 기타 becomes active for the current question
-  useEffect(() => {
-    if (other[step]) customRef.current?.focus()
-  }, [other, step])
 
   // Keyboard: Esc 잠깐 내려두기(한 번 더 Esc면 건너뛰기) — 작성 중에도; ←/↑ ·→/↓ move
   // between questions, number keys 1-8 pick an option (the last is 직접 입력), Enter advances/
@@ -2543,12 +3047,12 @@ function QuestionDialog({
       if (ae && (ae.tagName === 'TEXTAREA' || ae.tagName === 'INPUT' || ae.isContentEditable)) return
       if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
         e.preventDefault()
-        setStep((s) => Math.max(0, s - 1))
+        if (step > 0) goTo(step - 1, 'back')
         return
       }
       if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
         e.preventDefault()
-        setStep((s) => Math.min(questions.length - 1, s + 1))
+        if (step < questions.length - 1) goTo(step + 1, 'fwd')
         return
       }
       if (e.key === 'Enter') {
@@ -2562,35 +3066,24 @@ function QuestionDialog({
         e.preventDefault()
         choose(cur.options[n - 1].label)
       } else if (n === cur.options.length + 1) {
+        // 마지막 번호 = 직접 입력 줄 — 포커스만 옮긴다 (답은 Enter로 확정)
         e.preventDefault()
-        chooseOther()
+        freeRef.current?.focus()
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [sel, custom, other, step, onDismiss, minimized, hotkeys])
 
-  const otherIdx = cur.options.length // 직접 입력's position → its number / keyboard shortcut
-  const footBtn = cur.multiSelect || other[step] // single-select options auto-advance; these need a button
-
-  // 내려둔 상태 — q-overlay 대신 우하단 알약으로 접어 뒤 대화를 그대로 보며 스크롤할 수
-  // 있게 한다. 클릭(또는 펼치기 버튼)이면 다시 질문이 뜨고, ✕는 건너뛰기.
+  // 내려둔 상태 — q-overlay 대신 하단 중앙 알약(PoC qmini)으로 접어 뒤 대화를 그대로
+  // 보며 스크롤할 수 있게 한다. 클릭이면 다시 질문이 뜨고, ✕는 건너뛰기.
   if (minimized) {
     return (
       <div className="q-mini" onClick={() => setMinimized(false)}>
-        <div className="q-mini-orb">
-          <IconClipList size={17} />
-        </div>
-        <div className="mini-text">
-          <div className="mini-title">질문이 기다리고 있어요</div>
-          <div className="mini-sub">{multi ? `질문 ${questions.length}개 · 펼쳐서 답하기` : '펼쳐서 답하기'}</div>
-        </div>
-        <span className="mini-spacer" />
-        <button className="mini-btn has-tip" data-tip="펼치기" aria-label="펼치기" onClick={() => setMinimized(false)}>
-          <IconExpand size={15} />
-        </button>
+        <IconMascot size={15} />
+        <span className="qmt">{multi ? `질문 ${questions.length}개 대기 중 — 클릭해서 답하기` : '질문 대기 중 — 클릭해서 답하기'}</span>
         <button
-          className="mini-btn close has-tip"
+          className="qmx has-tip"
           data-tip="건너뛰기"
           aria-label="건너뛰기"
           onClick={(e) => {
@@ -2598,7 +3091,7 @@ function QuestionDialog({
             onDismiss()
           }}
         >
-          <IconClose size={16} />
+          <IconClose size={13} />
         </button>
       </div>
     )
@@ -2607,125 +3100,80 @@ function QuestionDialog({
   return (
     // The agent is blocked waiting on this answer, so — unlike the other modals — a
     // backdrop click does NOT dismiss it (too easy to lose the prompt by accident).
-    // Closing is a deliberate action: answer it, ✕ to skip, or 내려두기(⌄·Esc)로 잠깐
-    // 접어 대화를 확인한 뒤 다시 펼쳐 답한다.
+    // 건너뛰기는 내려두기(⌄·Esc) 뒤 알약의 ✕ — PoC 문법대로 헤더에는 접기만 남긴다.
     <div className="q-overlay">
-      <div className="q-modal" ref={modalRef} tabIndex={-1}>
-        <div className="q-modal-head">
-          <span className="qm-title">질문</span>
-          {multi && (
-            <span className="qm-step-count">
-              {step + 1} / {questions.length}
-            </span>
-          )}
-          <span className="qm-spacer" />
+      <div className="qcard scroll" ref={modalRef} tabIndex={-1} role="dialog" aria-modal="true">
+        <div className="qhead">
+          <IconMascot size={17} />
+          <span className="qhl">{engine === 'codex' ? 'GPT의 질문' : 'Claude의 질문'}</span>
+          <span className="qsp" />
           {/* 좁은 패널에서만 제공 — 패널 확장으로 넘어가면 카드가 리마운트돼 지금까지의
               선택이 초기화되므로, 답을 고르기 전에 누르는 걸 상정한다 */}
           {onExpand && (
-            <button className="qm-min" onClick={onExpand} aria-label="크게 보기" title="크게 보기">
-              <IconExpand size={16} />
+            <button className="qmin" onClick={onExpand} aria-label="크게 보기" title="크게 보기">
+              <IconExpand size={14} />
             </button>
           )}
-          <button className="qm-min" onClick={() => setMinimized(true)} aria-label="내려두기" title="내려두기 (Esc)">
-            <IconChevDown size={18} />
-          </button>
-          <button className="qm-close" onClick={onDismiss} aria-label="건너뛰기" title="건너뛰기">
-            <IconClose size={18} />
+          <button className="qmin" onClick={() => setMinimized(true)} aria-label="접어두기" title="접어두기 (Esc)">
+            <IconChevDown size={15} />
           </button>
         </div>
 
-        {multi && (
-          <div className="q-steps">
-            {questions.map((q, i) => {
-              const done = answerAt(i).length > 0
-              // namespaced so the upcoming-step class doesn't collide with the global
-              // `.todo` (task-list item) rule, which would clamp the chip to 8px radius
-              const state = i === step ? 'q-cur' : done ? 'q-done' : 'q-todo'
+        {/* 한 번에 한 질문 — key=step 리마운트로 방향 슬라이드가 재생된다 */}
+        <div key={step} className={'qwrap' + (dir === 'fwd' ? ' qstep' : dir === 'back' ? ' qstep-b' : '')}>
+          <div className="qbl">
+            <span>
+              질문 {step + 1}/{questions.length}
+            </span>
+            <span className="qsp" />
+            {step > 0 && (
+              <button className="qback" onClick={() => goTo(step - 1, 'back')}>
+                <IconChevLeft size={11} />
+                이전 질문
+              </button>
+            )}
+          </div>
+          <div className="qbt">{cur.question}</div>
+          <div className="qopts">
+            {cur.options.map((o, oi) => {
+              const on = sel[step].includes(o.label)
               return (
-                <button
-                  key={i}
-                  className={'q-step ' + state}
-                  onClick={() => setStep(i)}
-                  title={done ? answerAt(i).join(', ') : undefined}
-                >
-                  <span className="q-step-n">{done && i !== step ? <IconCheck size={12} /> : i + 1}</span>
-                  <span className="q-step-lbl">{q.header || `질문 ${i + 1}`}</span>
+                <button key={oi} className={'qopt' + (on ? ' on' : '')} onClick={() => choose(o.label)}>
+                  <span className="ql">{o.label}</span>
+                  {o.description && <span className="qd">{o.description}</span>}
+                  <span className="qck">
+                    <IconCheck size={13} />
+                  </span>
                 </button>
               )
             })}
-          </div>
-        )}
-
-        <div className="q-modal-body scroll">
-          <div className="q-block">
-            <div className="q-head">
-              {cur.header && <span className="q-chip">{cur.header}</span>}
-              <span className="q-q">{cur.question}</span>
+            {/* 직접 입력 — 항상 마지막 줄의 인라인 입력 (PoC qopt-free). Enter로 답한다 */}
+            <div className={'qopt qopt-free' + (freeOn ? ' on' : '')} onClick={() => freeRef.current?.focus()}>
+              <input
+                ref={freeRef}
+                placeholder="원하는 답을 직접 입력… (Enter)"
+                value={custom[step]}
+                onChange={(e) => setCustomAt(step, e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    pickFree()
+                  }
+                }}
+              />
+              <span className="qck">
+                <IconCheck size={13} />
+              </span>
             </div>
-            <div className="q-opts">
-              {cur.options.map((o, oi) => {
-                const on = sel[step].includes(o.label)
-                return (
-                  <button key={oi} className={'q-opt' + (on ? ' on' : '')} onClick={() => choose(o.label)}>
-                    <span className="q-num" style={{ background: Q_NUM_COLORS[oi % Q_NUM_COLORS.length], color: 'var(--on-accent)' }}>
-                      {oi + 1}
-                    </span>
-                    <span className="q-opt-text">
-                      <span className="q-opt-label">{o.label}</span>
-                      {o.description && <span className="q-opt-desc">{o.description}</span>}
-                    </span>
-                    {on && <IconCheck size={15} className="q-check" />}
-                  </button>
-                )
-              })}
-              {/* every question gets an auto-appended free-text option, like the real tool */}
-              <button className={'q-opt q-opt-other' + (other[step] ? ' on' : '')} onClick={chooseOther}>
-                <span className="q-num" style={{ background: Q_NUM_COLORS[otherIdx % Q_NUM_COLORS.length], color: 'var(--on-accent)' }}>
-                  {otherIdx + 1}
-                </span>
-                <span className="q-opt-text">
-                  <span className="q-opt-label">직접 입력</span>
-                  <span className="q-opt-desc">원하는 답을 직접 작성해요</span>
-                </span>
-                {other[step] && <IconCheck size={15} className="q-check" />}
+          </div>
+          {/* 다중 선택만 진행 버튼이 필요하다 — 단일 선택은 고르는 즉시 넘어간다 */}
+          {cur.multiSelect && (
+            <div className="qfoot">
+              <span className="qhint">여러 개 선택 가능</span>
+              <button className="qgo" disabled={!curChosen} onClick={proceed}>
+                {last ? '완료' : '다음'}
               </button>
-              {other[step] && (
-                <div className="q-custom-wrap">
-                  <IconPencil size={14} className="q-custom-ic" />
-                  <input
-                    ref={customRef}
-                    className="q-custom"
-                    placeholder="원하는 답을 직접 입력…"
-                    value={custom[step]}
-                    onChange={(e) => setCustomAt(step, e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault()
-                        proceed()
-                      }
-                    }}
-                  />
-                  <button
-                    className="q-custom-go"
-                    disabled={!custom[step].trim()}
-                    onClick={proceed}
-                    title={last ? '완료' : '다음'}
-                    aria-label={last ? '완료' : '다음'}
-                  >
-                    <IconSend size={14} />
-                  </button>
-                </div>
-              )}
             </div>
-          </div>
-        </div>
-
-        <div className="q-modal-foot">
-          <span className="q-hint">숫자 키로 선택{cur.multiSelect ? ' · 여러 개 가능' : ''} · Esc 내려두기</span>
-          {footBtn && (
-            <button className="q-submit" disabled={!curChosen} onClick={proceed}>
-              {last ? '완료' : '다음'}
-            </button>
           )}
         </div>
       </div>
@@ -2748,6 +3196,7 @@ export function Composer({
   setPicker,
   apiMode = false,
   apiReady = false,
+  apiReadyCodex = false,
   onApiModeChange,
   chatSpentUsd = 0,
   budgetUsd = null,
@@ -2763,6 +3212,7 @@ export function Composer({
   showContext = true,
   cwd,
   mentionBase,
+  commands = SLASH_COMMANDS,
   inputRef
 }: {
   value: string
@@ -2778,8 +3228,9 @@ export function Composer({
   picker: PickerState
   setPicker: (p: PickerState) => void
   apiMode?: boolean // true → 실행이 구독 대신 API 키로 과금 (과금 picker 상태)
-  apiReady?: boolean // 설정 → API에 키가 저장돼 있는지 (없으면 API 선택이 설정을 연다)
-  onApiModeChange?: (next: boolean) => void // 제공될 때만 과금 picker를 그린다
+  apiReady?: boolean // 설정 → API에 Anthropic 키가 저장돼 있는지 (없으면 API 선택이 설정을 연다)
+  apiReadyCodex?: boolean // OpenAI 키 존재 여부 — Codex 엔진의 과금 선택이 쓴다
+  onApiModeChange?: (next: boolean, engine?: EngineId) => void // 제공될 때만 과금 picker를 그린다
   chatSpentUsd?: number // 이 대화의 API 모드 누적 비용 — ContextStrip(API 모드)용
   budgetUsd?: number | null // 설정 → API의 예산
   totalSpentUsd?: number // 전체 워크스페이스 API 누적 사용액
@@ -2794,6 +3245,7 @@ export function Composer({
   showContext?: boolean // 코드 모드는 작업 바가 컨텍스트를 보여주므로 컴포저 안 스트립을 끈다(기본 true)
   cwd: string // project dir — scopes which skills the "/" palette loads
   mentionBase?: string // @ 멘션이 파일을 뜨우는 기준 폴더(탐색기가 보는 폴더). 없으면 cwd
+  commands?: SlashCmd[] // "/" 팔레트의 내장 명령 목록 (기본: SLASH_COMMANDS 전체)
   inputRef?: React.RefObject<HTMLTextAreaElement | null>
 }) {
   const [focus, setFocus] = useState(false)
@@ -2802,15 +3254,16 @@ export function Composer({
   const dragDepth = useRef(0)
   const [dragOver, setDragOver] = useState(false)
   const modelOpt = MODELS.find((m) => m.id === picker.model) ?? MODELS[0]
-  const effortOpt = EFFORTS.find((e) => e.id === picker.effort) ?? EFFORTS[2]
   // prefer the SDK's real context window; fall back to the model's nominal size
   const winTokens = contextWindow ?? modelOpt.ctx * 1000
-  const modeOpt = MODES.find((m) => m.id === picker.mode) ?? MODE_FALLBACK
 
   const grow = (el: HTMLTextAreaElement | null): void => {
     if (!el) return
     el.style.height = 'auto'
     el.style.height = Math.min(el.scrollHeight, 160) + 'px'
+    // 상한(160px)을 넘기 전엔 스크롤을 잠근다 — 분수 zoom(멀티 패널 .9 등)에선 반올림
+    // 오차로 1px 유령 오버플로가 생겨 빈 입력에도 스크롤바가 튀어나올 수 있다
+    el.style.overflowY = el.scrollHeight > 160 ? 'auto' : 'hidden'
   }
 
   // 작성칸 높이를 항상 현재 value에 맞춘다. 전송하면 부모가 value를 비우지만 그건
@@ -2849,7 +3302,7 @@ export function Composer({
   const skillsCwd = useRef<string | null>(null)
 
   // the leading "/token" being typed (no space/newline yet), else null. 실행 중에도 연다 —
-  // /ask는 즉시 실행되고(스케줄 경로가 가로챔), 나머지 명령/스킬은 예약돼 런이 끝나면 나간다.
+  // 명령/스킬은 예약돼 런이 끝나면 나간다.
   const slashQuery = value.startsWith('/') && !/\s/.test(value) ? value.slice(1).toLowerCase() : null
 
   // lazily load this project's skills the first time the palette is summoned
@@ -2870,7 +3323,7 @@ export function Composer({
 
   // match the command/skill NAME only — not the description, so typing "cl" doesn't
   // surprise-match /init via its "…CLAUDE.md…" blurb
-  const cmdHits = slashQuery === null ? [] : SLASH_COMMANDS.filter((c) => c.name.includes(slashQuery))
+  const cmdHits = slashQuery === null ? [] : commands.filter((c) => c.name.includes(slashQuery))
   const skillHits =
     slashQuery === null ? [] : skills.filter((s) => s.enabled && s.name.toLowerCase().includes(slashQuery))
   // command names first, then skill names — the flat order keyboard nav walks
@@ -3101,15 +3554,18 @@ export function Composer({
             chatSpentUsd={chatSpentUsd}
             budgetUsd={budgetUsd}
             totalSpentUsd={totalSpentUsd}
+            engine={picker.engine}
+            codexAccount={picker.codexAccount}
           />
         )}
 
         {queued.length > 0 && (
           <div className="sched">
             <div className="sched-head">
+              <span className="sched-pulse" />
               <span className="sched-title">
-                <IconClock size={14} />
-                예약된 메시지 {queued.length}
+                예약된 메시지
+                <span className="sched-count">{queued.length}</span>
               </span>
               <span className="sched-hint">작업이 끝나면 순서대로 전송돼요</span>
             </div>
@@ -3122,7 +3578,7 @@ export function Composer({
                   </span>
                   {m.images.length > 0 && (
                     <span className="sched-img has-tip" data-tip={`첨부 ${m.images.length}개`}>
-                      <IconPaperclip size={14} />
+                      <IconPaperclip size={13} />
                     </span>
                   )}
                   <button
@@ -3159,7 +3615,7 @@ export function Composer({
         >
           {dragOver && (
             <div className="drop-hint">
-              <IconPaperclip size={24} />
+              <IconPaperclip size={15} />
               <span>파일을 여기에 놓으세요</span>
             </div>
           )}
@@ -3307,93 +3763,59 @@ export function Composer({
               )}
             </div>
           )}
-          <textarea
-            ref={inputRef}
-            rows={1}
-            placeholder={busy ? '다음 메시지를 예약하세요… (작업 후 자동 전송)' : started ? '메세지를 입력하세요.' : '오늘 어떤 도움을 드릴까요?'}
-            value={value}
-            onChange={(e) => {
-              onChange(e.target.value)
-              setCaret(e.target.selectionStart ?? e.target.value.length)
-              setHistIdx(null) // 직접 타이핑하면 히스토리 탐색에서 빠져나온다
-              grow(e.target)
-            }}
-            // track caret moves (arrows, clicks) so the "@" palette follows the token under it
-            onSelect={(e) => setCaret(e.currentTarget.selectionStart ?? 0)}
-            onKeyDown={handleKey}
-            onPaste={onPaste}
-            onFocus={() => {
-              setFocus(true)
-              setSlashDismissed(false)
-              setMentionDismissed(false)
-            }}
-            onBlur={() => {
-              setFocus(false)
-              setSlashDismissed(true) // clicking away closes the palette
-              setMentionDismissed(true)
-            }}
-          />
-          <div className="composer-bar">
-            <button className="cm-icon has-tip" aria-label="파일 첨부" data-tip="파일 첨부 (이미지·텍스트)" onClick={onPickImages}>
-              <IconPaperclip size={16} />
+          {/* 한 줄 고스트 필 (PoC): [+ 첨부] [입력] [모델 칩 → 통합 팝오버] [보내기] */}
+          <div className="composer-row">
+            <button className="plus has-tip" aria-label="파일 첨부" data-tip="파일 첨부 (이미지·텍스트)" onClick={onPickImages}>
+              <IconPlus size={11} stroke={2.2} />
             </button>
-            <Pick
-              label="모델"
-              value={modelOpt.v}
-              options={MODELS}
-              onChange={(v) => setPicker({ ...picker, model: (MODELS.find((m) => m.v === v) ?? MODELS[0]).id })}
-              dots
-              tip="모델 — 응답 품질·속도"
+            <textarea
+              ref={inputRef}
+              rows={1}
+              placeholder={busy ? '다음 메시지를 예약하세요… (작업 후 자동 전송)' : started ? '메세지를 입력하세요.' : '오늘 어떤 도움을 드릴까요?'}
+              value={value}
+              onChange={(e) => {
+                onChange(e.target.value)
+                setCaret(e.target.selectionStart ?? e.target.value.length)
+                setHistIdx(null) // 직접 타이핑하면 히스토리 탐색에서 빠져나온다
+                grow(e.target)
+              }}
+              // track caret moves (arrows, clicks) so the "@" palette follows the token under it
+              onSelect={(e) => setCaret(e.currentTarget.selectionStart ?? 0)}
+              onKeyDown={handleKey}
+              onPaste={onPaste}
+              onFocus={() => {
+                setFocus(true)
+                setSlashDismissed(false)
+                setMentionDismissed(false)
+              }}
+              onBlur={() => {
+                setFocus(false)
+                setSlashDismissed(true) // clicking away closes the palette
+                setMentionDismissed(true)
+              }}
             />
-            <span className="pick-div" />
-            <Pick
-              label="추론"
-              value={effortOpt.v}
-              options={EFFORTS}
-              onChange={(v) => setPicker({ ...picker, effort: (EFFORTS.find((m) => m.v === v) ?? EFFORTS[2]).id })}
-              bars
-              tip="추론 강도 — 깊이 vs 속도"
+            <PickerChip
+              picker={picker}
+              setPicker={setPicker}
+              apiMode={apiMode}
+              apiReady={apiReady}
+              apiReadyCodex={apiReadyCodex}
+              engineLocked={started}
+              onApiModeChange={onApiModeChange}
             />
-            <span className="pick-div" />
-            <Pick
-              label="모드"
-              value={modeOpt.v}
-              options={MODES}
-              onChange={(v) => setPicker({ ...picker, mode: (MODES.find((m) => m.v === v) ?? MODE_FALLBACK).id })}
-              align="right"
-              icons
-              tip="실행 모드 — 변경 승인 방식"
-            />
-            {onApiModeChange && (
-              <>
-                <span className="pick-div" />
-                <BillingPick apiMode={apiMode} apiReady={apiReady} onChange={onApiModeChange} align="right" />
-              </>
-            )}
-            {/* 구독일 때만: 이 채팅의 실행 계정 (RunPickers와 같은 규칙 — 과금 picker가
-                없는 추가 채팅 창도 구독 실행이므로 계정은 고를 수 있다) */}
-            {!apiMode && (
-              <AccountPick
-                account={picker.account}
-                onChange={(email) => setPicker({ ...picker, account: email })}
-                align="right"
-                divider
-              />
-            )}
-            <span className="cm-spacer" />
             {busy ? (
               value.trim() || images.length > 0 ? (
                 <button className="send schedule has-tip" aria-label="예약" data-tip="작업 후 전송 예약 (Enter)" onClick={onSchedule}>
-                  <IconClock size={17} />
+                  <IconClock size={15} />
                 </button>
               ) : (
                 <button className="send stop has-tip" aria-label="중지" data-tip="실행 중지" onClick={onStop}>
-                  <IconClose size={17} />
+                  <IconClose size={15} />
                 </button>
               )
             ) : (
               <button className="send has-tip" aria-label="보내기" data-tip="보내기 (Enter)" disabled={!value.trim() && images.length === 0} onClick={onSend}>
-                <IconSend size={17} />
+                <IconSend size={15} />
               </button>
             )}
           </div>

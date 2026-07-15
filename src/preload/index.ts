@@ -12,7 +12,11 @@ import type {
   MultiRunRequest,
   MultiPermissionResponse,
   MultiQuestionResponse,
-  MultiEngineEvent
+  MultiEngineEvent,
+  AgentStatus,
+  SessionWindowInfo,
+  SessionPersistPayload,
+  EngineUpdateStatus
 } from '@shared/protocol'
 import type { LspPos } from '@shared/protocol'
 import type { WindowApi } from '@shared/api'
@@ -63,24 +67,36 @@ const api: WindowApi = {
   pathForFile: (file: File) => webUtils.getPathForFile(file),
   getUsage: (fresh?: boolean, account?: string) => ipcRenderer.invoke(IPC.getUsage, fresh, account),
   auth: {
-    status: () => ipcRenderer.invoke(IPC.authStatus),
-    logout: () => ipcRenderer.invoke(IPC.authLogout),
+    logout: (email: string) => ipcRenderer.invoke(IPC.authLogout, email),
     login: (useConsole?: boolean) => ipcRenderer.invoke(IPC.authLogin, useConsole),
     cancelLogin: () => ipcRenderer.invoke(IPC.authLoginCancel),
     onLoginUrl: (cb: (url: string) => void) => subscribe(IPC.authLoginUrl, cb),
     listAccounts: () => ipcRenderer.invoke(IPC.authListAccounts),
-    switchAccount: (email: string) => ipcRenderer.invoke(IPC.authSwitchAccount, email),
+    setDefaultAccount: (email: string) => ipcRenderer.invoke(IPC.authSetDefaultAccount, email),
     removeAccount: (email: string) => ipcRenderer.invoke(IPC.authRemoveAccount, email),
     accountsUsage: () => ipcRenderer.invoke(IPC.authAccountsUsage)
+  },
+  codexAuth: {
+    listAccounts: () => ipcRenderer.invoke(IPC.codexListAccounts),
+    login: () => ipcRenderer.invoke(IPC.codexLogin),
+    logout: (email: string) => ipcRenderer.invoke(IPC.codexLogout, email),
+    setDefaultAccount: (email: string) => ipcRenderer.invoke(IPC.codexSetDefaultAccount, email),
+    cancelLogin: () => ipcRenderer.invoke(IPC.codexLoginCancel),
+    accountsUsage: () => ipcRenderer.invoke(IPC.codexAccountsUsage)
+  },
+  engineAutoUpdate: (enabled?: boolean) => ipcRenderer.invoke(IPC.engineAutoUpdate, enabled),
+  engineUpdate: {
+    status: () => ipcRenderer.invoke(IPC.engineUpdateStatus),
+    onEvent: (cb: (s: EngineUpdateStatus) => void) => subscribe(IPC.engineUpdateEvent, cb)
   },
   openApiSettings: () => ipcRenderer.invoke(IPC.openApiSettings),
   onApiSettingsRequested: (cb: () => void) => subscribe(IPC.apiSettingsRequested, cb),
   apiConfig: {
     get: () => ipcRenderer.invoke(IPC.apiConfigGet),
-    setKey: (key: string) => ipcRenderer.invoke(IPC.apiConfigSetKey, key),
-    clearKey: () => ipcRenderer.invoke(IPC.apiConfigClearKey),
+    setKey: (key: string, provider?: 'anthropic' | 'openai') => ipcRenderer.invoke(IPC.apiConfigSetKey, key, provider),
+    clearKey: (provider?: 'anthropic' | 'openai') => ipcRenderer.invoke(IPC.apiConfigClearKey, provider),
     setBudget: (usd: number | null) => ipcRenderer.invoke(IPC.apiConfigSetBudget, usd),
-    resetSpend: () => ipcRenderer.invoke(IPC.apiConfigResetSpend),
+    resetBudget: () => ipcRenderer.invoke(IPC.apiConfigResetBudget),
     listUsage: () => ipcRenderer.invoke(IPC.apiUsageList)
   },
   getProfile: () => ipcRenderer.invoke(IPC.profileGet) as Promise<UserProfile | null>,
@@ -102,17 +118,6 @@ const api: WindowApi = {
   listFiles: (cwd) => ipcRenderer.invoke(IPC.listFiles, cwd),
   listDir: (cwd, rel, exclude, hideEmpty, excludeDirs, excludeFiles) =>
     ipcRenderer.invoke(IPC.listDir, { cwd, rel, exclude, hideEmpty, excludeDirs, excludeFiles }),
-  git: {
-    root: (cwd: string, force?: boolean) => ipcRenderer.invoke(IPC.gitRoot, { cwd, force }),
-    status: (root: string) => ipcRenderer.invoke(IPC.gitStatus, root),
-    log: (root: string, limit?: number) => ipcRenderer.invoke(IPC.gitLog, { root, limit }),
-    commitDetail: (root: string, hash: string) => ipcRenderer.invoke(IPC.gitCommitDetail, { root, hash }),
-    fileAt: (root: string, hash: string, path: string) => ipcRenderer.invoke(IPC.gitFileAt, { root, hash, path }),
-    workingFile: (root: string, path: string) => ipcRenderer.invoke(IPC.gitWorkingFile, { root, path }),
-    commit: (root: string, subject: string, body: string) => ipcRenderer.invoke(IPC.gitCommit, { root, subject, body }),
-    push: (root: string) => ipcRenderer.invoke(IPC.gitPush, root),
-    pull: (root: string) => ipcRenderer.invoke(IPC.gitPull, root)
-  },
   lsp: {
     status: (cwd: string, relPath: string) => ipcRenderer.invoke(IPC.lspStatus, { cwd, relPath }),
     hover: (cwd: string, relPath: string, pos: LspPos, text?: string) =>
@@ -146,13 +151,7 @@ const api: WindowApi = {
     minimize: () => ipcRenderer.invoke(IPC.winMinimize),
     toggleMaximize: () => ipcRenderer.invoke(IPC.winMaximizeToggle),
     close: () => ipcRenderer.invoke(IPC.winClose),
-    isMaximized: () => ipcRenderer.invoke(IPC.winIsMaximized),
-    getBounds: () => ipcRenderer.invoke(IPC.winGetBounds),
-    setBounds: (bounds) => ipcRenderer.invoke(IPC.winSetBounds, bounds),
-    dragStart: () => ipcRenderer.invoke(IPC.winDragStart),
-    dragEnd: () => ipcRenderer.invoke(IPC.winDragEnd),
-    resizeStart: (edge) => ipcRenderer.invoke(IPC.winResizeStart, edge),
-    resizeEnd: () => ipcRenderer.invoke(IPC.winResizeEnd)
+    isMaximized: () => ipcRenderer.invoke(IPC.winIsMaximized)
   },
   engine: {
     listAvailable: () => ipcRenderer.invoke(IPC.engineListAvailable),
@@ -163,6 +162,16 @@ const api: WindowApi = {
     cleanup: () => ipcRenderer.invoke(IPC.engineCleanup),
     onInstallProgress: (cb) => subscribe(IPC.engineInstallProgress, cb)
   },
+  codexEngine: {
+    listAvailable: () => ipcRenderer.invoke(IPC.codexEngineListAvailable),
+    state: () => ipcRenderer.invoke(IPC.codexEngineState),
+    install: (version: string) => ipcRenderer.invoke(IPC.codexEngineInstall, version),
+    uninstall: (version: string) => ipcRenderer.invoke(IPC.codexEngineUninstall, version),
+    setActive: (version: string | null) => ipcRenderer.invoke(IPC.codexEngineSetActive, version),
+    cleanup: () => ipcRenderer.invoke(IPC.codexEngineCleanup),
+    onInstallProgress: (cb) => subscribe(IPC.codexEngineInstallProgress, cb)
+  },
+  codexModels: () => ipcRenderer.invoke(IPC.codexModels),
   skill: {
     list: (cwd: string) => ipcRenderer.invoke(IPC.skillList, cwd),
     setEnabled: (name: string, enabled: boolean) =>
@@ -172,13 +181,6 @@ const api: WindowApi = {
     list: (cwd: string) => ipcRenderer.invoke(IPC.mcpList, cwd),
     setEnabled: (name: string, enabled: boolean) =>
       ipcRenderer.invoke(IPC.mcpSetEnabled, { name, enabled })
-  },
-  ask: {
-    run: (req: RunRequest) => ipcRenderer.invoke(IPC.askRun, req),
-    cancel: () => ipcRenderer.invoke(IPC.askCancel),
-    respondPermission: (res: PermissionResponse) => ipcRenderer.invoke(IPC.askPermissionRespond, res),
-    respondQuestion: (res: QuestionResponse) => ipcRenderer.invoke(IPC.askQuestionRespond, res),
-    onEvent: (cb: (e: EngineEvent) => void) => subscribe(IPC.askEvent, cb)
   },
   talk: {
     run: (req: RunRequest) => ipcRenderer.invoke(IPC.talkRun, req),
@@ -197,20 +199,25 @@ const api: WindowApi = {
     respondPermission: (res: PermissionResponse) => ipcRenderer.invoke(IPC.sessionPermissionRespond, res),
     respondQuestion: (res: QuestionResponse) => ipcRenderer.invoke(IPC.sessionQuestionRespond, res),
     bgTask: (req: BgTaskRequest) => ipcRenderer.invoke(IPC.sessionBgTask, req),
-    onEvent: (cb: (e: EngineEvent) => void) => subscribe(IPC.sessionEvent, cb)
+    onEvent: (cb: (e: EngineEvent) => void) => subscribe(IPC.sessionEvent, cb),
+    report: (info: { title: string; status: AgentStatus }) => ipcRenderer.invoke(IPC.sessionReport, info),
+    hydrate: () => ipcRenderer.invoke(IPC.sessionHydrate),
+    persist: (p: SessionPersistPayload) => ipcRenderer.invoke(IPC.sessionPersist, p),
+    onFlushRequest: (cb: () => void) => subscribe<void>(IPC.sessionFlushRequest, () => cb())
   },
-  sessionAsk: {
-    run: (req: RunRequest) => ipcRenderer.invoke(IPC.sessionAskRun, req),
-    cancel: () => ipcRenderer.invoke(IPC.sessionAskCancel),
-    respondPermission: (res: PermissionResponse) => ipcRenderer.invoke(IPC.sessionAskPermissionRespond, res),
-    respondQuestion: (res: QuestionResponse) => ipcRenderer.invoke(IPC.sessionAskQuestionRespond, res),
-    onEvent: (cb: (e: EngineEvent) => void) => subscribe(IPC.sessionAskEvent, cb)
+  sessionWindows: {
+    list: () => ipcRenderer.invoke(IPC.sessionWindowsList),
+    focus: (id: string) => ipcRenderer.invoke(IPC.sessionWindowFocus, id),
+    close: (id: string) => ipcRenderer.invoke(IPC.sessionWindowClose, id),
+    rename: (id: string, title: string) => ipcRenderer.invoke(IPC.sessionWindowRename, id, title),
+    onChanged: (cb: (list: SessionWindowInfo[]) => void) => subscribe(IPC.sessionWindowsChanged, cb)
   },
   multi: {
     run: (req: MultiRunRequest) => ipcRenderer.invoke(IPC.maRun, req),
     cancel: (panelId: string) => ipcRenderer.invoke(IPC.maCancel, panelId),
     respondPermission: (res: MultiPermissionResponse) => ipcRenderer.invoke(IPC.maPermissionRespond, res),
     respondQuestion: (res: MultiQuestionResponse) => ipcRenderer.invoke(IPC.maQuestionRespond, res),
+    bgTask: (panelId: string, req: BgTaskRequest) => ipcRenderer.invoke(IPC.maBgTask, panelId, req),
     dispose: (panelId: string) => ipcRenderer.invoke(IPC.maDispose, panelId),
     getState: () => ipcRenderer.invoke(IPC.maGet),
     saveState: (data: unknown) => ipcRenderer.invoke(IPC.maSave, data),

@@ -15,13 +15,17 @@ import { VERSE_SPECIFIERS, VERSE_ATTRIBUTES } from '@shared/verseKeywords'
 import { glossaryDoc, hasGlossary, UE_CPP_WORD_DOCS } from '@shared/langGlossary'
 import { FileBadge, fileTypeFor, paletteClassFor } from './fileType'
 import {
+  IconBook,
   IconBot,
   IconCheck,
   IconChevDown,
   IconChevLeft,
   IconChevRight,
   IconClose,
+  IconCode,
   IconCopy,
+  IconDiff,
+  IconEye,
   IconFolderOpen,
   IconMax,
   IconPencil,
@@ -116,16 +120,33 @@ const CS_LEAD_MODS =
   /^(?:(?:public|private|protected|internal|static|readonly|virtual|override|sealed|abstract|async|extern|unsafe|new|partial|required|volatile|event|delegate)\s+)+/
 // 떼어낸 run → 표시용 한정자 목록. event/delegate는 한정자가 아니라 종류라 표시에서 뺀다.
 function csLeadMods(run: string): string[] {
-  return run.trim().split(/\s+/).filter((m) => m !== 'event' && m !== 'delegate')
+  return run
+    .trim()
+    .split(/\s+/)
+    .filter((m) => m !== 'event' && m !== 'delegate')
 }
 
 // C# 내장 타입 별칭 → 실제 종류. Roslyn은 내장 타입 참조 호버에 별칭 한 단어만 싣는다
 // (IntPtr→`nint`, String→`string`) — 그 단어로 STRUCT/CLASS 칩을 복원하는 데 쓴다.
 const CS_BUILTIN_KIND: Record<string, string> = {
-  int: 'struct', long: 'struct', short: 'struct', byte: 'struct', sbyte: 'struct',
-  uint: 'struct', ulong: 'struct', ushort: 'struct', nint: 'struct', nuint: 'struct',
-  float: 'struct', double: 'struct', decimal: 'struct', bool: 'struct', char: 'struct',
-  string: 'class', object: 'class', dynamic: 'class'
+  int: 'struct',
+  long: 'struct',
+  short: 'struct',
+  byte: 'struct',
+  sbyte: 'struct',
+  uint: 'struct',
+  ulong: 'struct',
+  ushort: 'struct',
+  nint: 'struct',
+  nuint: 'struct',
+  float: 'struct',
+  double: 'struct',
+  decimal: 'struct',
+  bool: 'struct',
+  char: 'struct',
+  string: 'class',
+  object: 'class',
+  dynamic: 'class'
 }
 
 /** 줄의 col 위치 식별자 — 호버 카드에 "실제로 가리킨 이름"을 알려주는 용도(별칭 카드의
@@ -141,9 +162,16 @@ export function identAt(line: string, col: number): string | null {
   return /^[A-Za-z_]\w*$/.test(w) ? w : null
 }
 
-function parseCsSig(
-  sig: string
-): { kind: string; name: string; container: string | null; ret?: string; retLabel?: string; params?: string[]; value?: string; mods?: string[] } | null {
+function parseCsSig(sig: string): {
+  kind: string
+  name: string
+  container: string | null
+  ret?: string
+  retLabel?: string
+  params?: string[]
+  value?: string
+  mods?: string[]
+} | null {
   let s = sig.replace(/\s+/g, ' ').trim()
   // 확장 메서드: Roslyn이 '(확장)'/'(extension)' 접두사를 붙여 보낸다 — 떼고 일반
   // 멤버처럼 파싱하되 종류를 'extension method'로 분류해, 다른 메서드 호버와 똑같은
@@ -154,10 +182,16 @@ function parseCsSig(
   const marker = /^\((매개 변수|parameter|지역 변수|local variable|로컬 변수|상수|constant|필드|field)\)\s*(.*)$/.exec(s)
   if (marker) {
     const KIND: Record<string, string> = {
-      '매개 변수': 'parameter', parameter: 'parameter',
+      '매개 변수': 'parameter',
+      parameter: 'parameter',
       // 칩 라벨은 'LOCAL'보다 'LOCAL VARIABLE'이 분명하다 — TS 파서('local var' 정규화)와도 통일
-      '지역 변수': 'local variable', '로컬 변수': 'local variable', 'local variable': 'local variable',
-      '상수': 'const', constant: 'const', '필드': 'field', field: 'field'
+      '지역 변수': 'local variable',
+      '로컬 변수': 'local variable',
+      'local variable': 'local variable',
+      상수: 'const',
+      constant: 'const',
+      필드: 'field',
+      field: 'field'
     }
     let rest = marker[2]
     // 마커 뒤 선두 한정자(`static readonly nint …`)는 타입이 아니다 — TYPE 행에 새지 않게
@@ -177,7 +211,14 @@ function parseCsSig(
       rest = rest.slice(0, eq).trim()
     }
     const sp = rest.lastIndexOf(' ')
-    if (sp < 0) return { kind: KIND[marker[1]], name: rest, container: null, value, mods }
+    if (sp < 0)
+      return {
+        kind: KIND[marker[1]],
+        name: rest,
+        container: null,
+        value,
+        mods
+      }
     const qual = rest.slice(sp + 1)
     const dot = qual.lastIndexOf('.')
     // 한정명이 있으면 멤버다 — const는 C++의 'static field'처럼 'const field'로 통일한다
@@ -256,7 +297,13 @@ function parseCsSig(
     // 타입 접두사 없는 한정명 + 값 → enum 멤버 ('EEnumTest.A = 0'). clangd의 enumerator와
     // 같은 분류로 구조화한다(이름·값·소속). 값이 없으면 신뢰도가 낮아 raw로 둔다.
     if (d >= 0 && value !== undefined) {
-      return { kind: 'enum member', name: headPart.slice(d + 1), container: headPart.slice(0, d), value, mods: mods3 }
+      return {
+        kind: 'enum member',
+        name: headPart.slice(d + 1),
+        container: headPart.slice(0, d),
+        value,
+        mods: mods3
+      }
     }
     return null
   }
@@ -303,9 +350,16 @@ function parseCsSig(
 //  · 'const x: 3' / 'let y: string' / 'function f(a: string): void' / 'class Foo<T>'
 //  · '(alias) class Foo\nimport Foo' — 별명 너머의 실제 선언으로 다시 판별
 //  · '(enum member) Dir.Up = 0' — 이름·값·소속으로 구조화
-function parseTsSig(
-  sig: string
-): { kind: string; name: string; container: string | null; ret?: string; retLabel?: string; params?: string[]; value?: string; mods?: string[] } | null {
+function parseTsSig(sig: string): {
+  kind: string
+  name: string
+  container: string | null
+  ret?: string
+  retLabel?: string
+  params?: string[]
+  value?: string
+  mods?: string[]
+} | null {
   let s = sig.replace(/\s+/g, ' ').trim()
   // (alias) 카드의 부가 줄('import Foo'/'export foo')은 정보가 겹친다 — 떼고 본 선언만 본다
   s = s.replace(/\s+(?:import|export)\s+[\w.$]+$/, '')
@@ -336,7 +390,12 @@ function parseTsSig(
     else if (k === 'type parameter') {
       // '(type parameter) T in Foo<T>(…)' — 이름은 T, 소속은 'in' 뒤의 심볼
       const m = /^([A-Za-z_$][\w$]*)(?:\s+in\s+(.+))?$/.exec(s)
-      if (m) return { kind: 'type parameter', name: m[1], container: m[2] ? m[2].split(/[<(]/)[0].trim() : null }
+      if (m)
+        return {
+          kind: 'type parameter',
+          name: m[1],
+          container: m[2] ? m[2].split(/[<(]/)[0].trim() : null
+        }
       kind = 'type parameter'
     } else kind = k
   }
@@ -371,7 +430,14 @@ function parseTsSig(
   // 타입 별명: 'type Name<T> = RHS' — 우변을 VALUE로
   if (kind === 'type') {
     const m = /^([A-Za-z_$][\w$]*)(?:<[^=]*?>)?\s*=\s*(.+)$/.exec(s)
-    if (m) return { kind: 'type', name: m[1], container: null, value: m[2].trim(), mods: mods.length ? mods : undefined }
+    if (m)
+      return {
+        kind: 'type',
+        name: m[1],
+        container: null,
+        value: m[2].trim(),
+        mods: mods.length ? mods : undefined
+      }
   }
   // 타입/이름공간 선언: 이름 토큰만 취한다 ('class Foo<T> extends Bar' → Foo)
   if (/^(class|interface|enum|namespace|module|alias|type)$/.test(kind)) {
@@ -439,7 +505,14 @@ function parseTsSig(
   if (s[i] === ':') {
     // 값류 — ': 타입'. 초기값은 tsserver가 타입 자리에 리터럴로 싣는다('const x: 3')
     const ret = s.slice(i + 1).trim()
-    return { kind: kind ?? 'property', name, container, ret, retLabel: 'type', mods: mods.length ? mods : undefined }
+    return {
+      kind: kind ?? 'property',
+      name,
+      container,
+      ret,
+      retLabel: 'type',
+      mods: mods.length ? mods : undefined
+    }
   }
   // 이름만 남은 형태 ('constructor Foo' 등) — 마커/키워드가 있어야 유의미
   return kind ? { kind, name, container, mods: mods.length ? mods : undefined } : null
@@ -449,9 +522,15 @@ function parseTsSig(
 //  · '(method) def bar(self, x: int) -> str' / '(function) def foo(...) -> None'
 //  · '(variable) x: int' / '(parameter) x: str' / '(property) y: float' / '(constant) MAX: int'
 //  · '(class) Foo' / 'class Foo(x: int)'(생성자 호출형) / '(module) os' / '(type alias) …'
-function parsePySig(
-  sig: string
-): { kind: string; name: string; container: string | null; ret?: string; retLabel?: string; params?: string[]; mods?: string[] } | null {
+function parsePySig(sig: string): {
+  kind: string
+  name: string
+  container: string | null
+  ret?: string
+  retLabel?: string
+  params?: string[]
+  mods?: string[]
+} | null {
   let s = sig.replace(/\s+/g, ' ').trim()
   const mods: string[] = []
   let kind: string | null = null
@@ -549,9 +628,15 @@ function parsePySig(
 // '[var] (/모듈/경로:)이름<지정자…>(매개변수)<효과…>:타입' 꼴을 분해해 같은 카드(종류 칩 ·
 // 이름 · specifiers · params · return/type · module 푸터)로 구조화한다. 지정자는 <…>를 살려
 // 돌려줘 카드에서도 본문과 같은 Verse 색(지정자=구조체색)으로 칠해지게 한다.
-function parseVerseSig(
-  sig: string
-): { kind: string; name: string; container: string | null; ret?: string; retLabel?: string; params?: string[]; mods?: string[] } | null {
+function parseVerseSig(sig: string): {
+  kind: string
+  name: string
+  container: string | null
+  ret?: string
+  retLabel?: string
+  params?: string[]
+  mods?: string[]
+} | null {
   let s = sig.replace(/\s+/g, ' ').trim()
   const mods: string[] = []
   // <지정자> 묶음 흡수 — <…> 형태를 보존해 카드에서도 Verse 색(지정자=구조체색)으로 칠한다
@@ -584,8 +669,20 @@ function parseVerseSig(
     // the actual symbol; label it '<kind> value' (e.g. 'enum value') of the type `Type`.
     const dot = /^\.([A-Za-z_]\w*)/.exec(s)
     if (dot && (tk[1] === 'enum' || tk[1] === 'struct'))
-      return { kind: tk[1] + ' value', name: dot[1], container: nm[1], retLabel: 'type', mods: mods.length ? mods : undefined }
-    return { kind: tk[1], name: nm[1], container, retLabel: 'type', mods: mods.length ? mods : undefined }
+      return {
+        kind: tk[1] + ' value',
+        name: dot[1],
+        container: nm[1],
+        retLabel: 'type',
+        mods: mods.length ? mods : undefined
+      }
+    return {
+      kind: tk[1],
+      name: nm[1],
+      container,
+      retLabel: 'type',
+      mods: mods.length ? mods : undefined
+    }
   }
 
   // ② var / function / field shape: '[var] (/path:)Name<specs>(params)<effects>:type'. verse-lsp
@@ -721,8 +818,7 @@ function parseHover(md: string): HoverParts | null {
     else if (/^#include\s/.test(t)) {
       // clangd include-cleaner의 헤더 제안 — 본문에 날것으로 두지 않고 구조화 행으로
       metas.push({ k: 'include', v: '`' + t + '`' })
-    }
-    else if (/^Offset:\s*\d+\s*byte/.test(t)) {
+    } else if (/^Offset:\s*\d+\s*byte/.test(t)) {
       // clangd 필드 메모리 정보 — 'Offset: 0 bytes' → 종류 칩 옆 알약으로
       const m = /^Offset:\s*(\d+)\s*byte/.exec(t)
       if (m) facts.push({ k: 'offset', v: m[1] + 'B' })
@@ -733,8 +829,7 @@ function parseHover(md: string): HoverParts | null {
       const al = /alignment\s+(\d+)\s*byte/.exec(t)
       if (sz) facts.push({ k: 'size', v: sz[1] + 'B' + (pad ? '+' + pad[1] : '') })
       if (al) facts.push({ k: 'align', v: al[1] + 'B' })
-    }
-    else if (/^Parameters:\s*$/.test(t)) {
+    } else if (/^Parameters:\s*$/.test(t)) {
       while (i + 1 < lines.length) {
         const b = lines[i + 1].trim()
         if (!b) {
@@ -791,7 +886,10 @@ function parseHover(md: string): HoverParts | null {
         // Verse: 한정자는 모듈/클래스 경로 → 'module'. C#/C++: 타입은 namespace, 멤버는 in.
         // attribute도 타입(…Attribute 클래스)이다 — 재분류 후에도 NAMESPACE 라벨을 유지한다.
         const isType = /^(struct|class|interface|enum|delegate|namespace|attribute)$/.test(e.kind)
-        from = { k: isVerse ? 'module' : isType ? 'namespace' : 'in', v: '`' + e.container + '`' }
+        from = {
+          k: isVerse ? 'module' : isType ? 'namespace' : 'in',
+          v: '`' + e.container + '`'
+        }
       }
     }
   }
@@ -800,7 +898,10 @@ function parseHover(md: string): HoverParts | null {
   // C#/C++은 '타입 이름'(마지막 식별자).
   if (paramDocs.size || returnDoc) {
     const nameOf = (v: string): string => {
-      const code = v.replace(/`/g, '').replace(/\(aka[^)]*\)\s*$/, '').trim()
+      const code = v
+        .replace(/`/g, '')
+        .replace(/\(aka[^)]*\)\s*$/, '')
+        .trim()
       const head = /^[*&]*\s*\??([A-Za-z_]\w*)\s*\??\s*:(?!:)/.exec(code)
       if (head) return head[1]
       const m = /([A-Za-z_]\w*)\s*$/.exec(code)
@@ -835,7 +936,19 @@ function parseHover(md: string): HoverParts | null {
   // 매크로의 #define/전개처럼 시그니처가 본체인 경우만 전문을 남긴다
   const sigIsBody = !!sig && /#define|\/\/ Expands to/.test(sig)
   const showSig = !!sig && (!(kind && name) || sigIsBody || /macro/.test(kindWords))
-  return { kind, name, mods: dedupMods, sig, sigLang, showSig, metas, params, facts, from, docs: docLines.join('\n').trim() }
+  return {
+    kind,
+    name,
+    mods: dedupMods,
+    sig,
+    sigLang,
+    showSig,
+    metas,
+    params,
+    facts,
+    from,
+    docs: docLines.join('\n').trim()
+  }
 }
 
 // 종류 칩 색 — 코드 본문과 같은 팔레트(메서드 초록, 클래스 보라, 매크로 파랑…).
@@ -889,7 +1002,10 @@ const GENERIC_KIND_DESC: Record<string, string> = {
 }
 function genericKindDesc(kind: string | null): string | undefined {
   if (!kind) return undefined
-  const k = kind.toLowerCase().replace(/^static\s+/, '').trim()
+  const k = kind
+    .toLowerCase()
+    .replace(/^static\s+/, '')
+    .trim()
   if (Object.prototype.hasOwnProperty.call(GENERIC_KIND_DESC, k)) return GENERIC_KIND_DESC[k]
   if (k.includes('enum member') || k.includes('enumerator')) return GENERIC_KIND_DESC['enum member']
   if (k.includes('param')) return GENERIC_KIND_DESC.parameter
@@ -917,8 +1033,17 @@ function verseKindClass(kind: string, display: string | null): string {
 // 카드에서 한 줄로 뭉치지 않고 access · effects · specifiers 세 줄로 나눠 보여 준다.
 const VERSE_ACCESS = new Set(['public', 'private', 'protected', 'internal', 'epic_internal'])
 const VERSE_EFFECT = new Set([
-  'transacts', 'computes', 'reads', 'writes', 'decides', 'varies',
-  'converges', 'suspends', 'no_rollback', 'allocates', 'predicts'
+  'transacts',
+  'computes',
+  'reads',
+  'writes',
+  'decides',
+  'varies',
+  'converges',
+  'suspends',
+  'no_rollback',
+  'allocates',
+  'predicts'
 ])
 // Every name that is a genuine `<specifier>` (access · effect · declaration modifier). Built from the
 // SAME list that drives `<…>` completion (verseKeywords), so the two never drift. @attributes
@@ -1008,7 +1133,8 @@ function splitVerseSpecs(mods: string[], kind?: string, write?: string): { k: st
     const n = verseSpecName(m)
     if (VERSE_ACCESS.has(n)) access.push(m)
     else if (VERSE_EFFECT.has(n)) effects.push(m)
-    else if (VERSE_KNOWN_SPEC.has(n)) other.push(m) // a genuine declaration specifier → specifiers row
+    else if (VERSE_KNOWN_SPEC.has(n))
+      other.push(m) // a genuine declaration specifier → specifiers row
     else attrs.push('@' + n) // not a known specifier → it's a folded @attribute (<import_as(…)> → @import_as)
   }
   // A DATA member with no access specifier defaults to `internal` — surface it so the card is
@@ -1127,11 +1253,7 @@ export function HoverContent({
   // 이름(IntPtr)이 NAME에서 사라지므로, 커서 밑 단어와 다르면 NAME은 그 단어로 되돌리고
   // 별칭은 ALIAS 행으로 뺀다. `var` 호버(추론 타입이 별칭으로 옴)는 TYPE 행이 더 정확하다.
   const aliasSwap =
-    lang === 'csharp' &&
-    !!word &&
-    !!p?.name &&
-    word !== p.name &&
-    Object.prototype.hasOwnProperty.call(CS_BUILTIN_KIND, p.name)
+    lang === 'csharp' && !!word && !!p?.name && word !== p.name && Object.prototype.hasOwnProperty.call(CS_BUILTIN_KIND, p.name)
   const dispName = aliasSwap ? word : p?.name
   // static은 ACCESS 행이 아니라 종류 칩에 합친다 — 'STATIC METHOD'처럼 한눈에
   const allMods = useMemo(() => [...new Set([...(p?.mods ?? []), ...(extraMods ?? [])])], [p, extraMods])
@@ -1176,10 +1298,7 @@ export function HoverContent({
   // it's a parameter/local/variable/constant. Force those names to the plain identifier colour so a
   // `for (Player : …)` loop var or `(Player:player)` param doesn't read purple. Real types/functions
   // keep the highlighter's colour.
-  const namePlain = useMemo(
-    () => lang === 'verse' && /^(parameter|local variable|variable|constant|var)$/i.test(p?.kind ?? ''),
-    [p, lang]
-  )
+  const namePlain = useMemo(() => lang === 'verse' && /^(parameter|local variable|variable|constant|var)$/i.test(p?.kind ?? ''), [p, lang])
   // a Verse `var`'s SETTER (write) access — verse-lsp's hover drops it, so look it up from the
   // registry by the member's container (the hover qualifier's last path segment) + name.
   const verseWrite = useMemo(() => {
@@ -1222,7 +1341,8 @@ export function HoverContent({
     const ns = cut >= 0 ? full.slice(0, cut) : ''
     const bare = owner.split('<')[0]
     let k = 'in'
-    if (/^enum/.test(p.kind ?? '')) k = 'enum' // enum 멤버의 소속은 정의상 enum
+    if (/^enum/.test(p.kind ?? ''))
+      k = 'enum' // enum 멤버의 소속은 정의상 enum
     else {
       const cls = dict?.get(bare) ?? sessionSemDict.get(bare)
       if (cls === 'sem-type2') k = 'struct'
@@ -1256,7 +1376,12 @@ export function HoverContent({
   // 설명은 카드 "바로 아래"(자리 없으면 위)에 한 곳에 떠서, 어느 토큰을 훑든 위치는 그대로 두고 글자만
   // 바뀐다 — 토큰마다 새로 떴다 사라지지 않으니(요소를 계속 띄워 둠) 깜빡임·흰 공이 없다. 카드 밖에 있어
   // 카드가 위로 떠도/스크롤돼도 안 가린다.
-  const [tip, setTip] = useState<{ text: string; left: number; top?: number; bottom?: number } | null>(null)
+  const [tip, setTip] = useState<{
+    text: string
+    left: number
+    top?: number
+    bottom?: number
+  } | null>(null)
   const tipHideTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const showTokDesc = (text: string, anchor: HTMLElement): void => {
     if (tipHideTimer.current) {
@@ -1272,9 +1397,7 @@ export function HoverContent({
     // 위치까지 비교 — 텍스트가 같아도(예: READ/WRITE 둘 다 <internal>) 다른 토큰이면 그 위치로 옮긴다.
     // (같은 토큰 안에서의 중복 호출만 그대로 둬서 불필요한 리렌더를 막는다)
     setTip((cur) =>
-      cur && cur.text === text && cur.left === left && cur.top === top && cur.bottom === bottom
-        ? cur
-        : { text, left, top, bottom }
+      cur && cur.text === text && cur.left === left && cur.top === top && cur.bottom === bottom ? cur : { text, left, top, bottom }
     )
   }
   const scheduleTokHide = (): void => {
@@ -1532,7 +1655,12 @@ function SelectionAskBar({
       const n = ln ? Number(ln.dataset.ln) : NaN
       return Number.isFinite(n) && n > 0 ? n : null
     }
-    const read = (): { rect: DOMRect; text: string; from: number | null; to: number | null } | null => {
+    const read = (): {
+      rect: DOMRect
+      text: string
+      from: number | null
+      to: number | null
+    } | null => {
       const sel = window.getSelection()
       if (!sel || sel.isCollapsed || sel.rangeCount === 0) return null
       const text = sel.toString().trim()
@@ -1548,7 +1676,12 @@ function SelectionAskBar({
       const range = sel.getRangeAt(0)
       const rect = range.getBoundingClientRect()
       if (rect.width === 0 && rect.height === 0) return null
-      return { rect, text, from: lineOf(range.startContainer), to: lineOf(range.endContainer) }
+      return {
+        rect,
+        text,
+        from: lineOf(range.startContainer),
+        to: lineOf(range.endContainer)
+      }
     }
     // 새 드래그/클릭이 시작되는 순간(mousedown) 이전 툴바를 즉시 내린다 —
     // mouseup까지 낡은 툴바가 남아 있으면 반응이 한 박자 늦게 느껴진다
@@ -1581,7 +1714,13 @@ function SelectionAskBar({
         if (!p) return p
         const r = read()
         if (!r) return null
-        return { ...p, x: p.x + (r.rect.left - p.rectLeft), y: p.y + (r.rect.top - p.rectTop), rectTop: r.rect.top, rectLeft: r.rect.left }
+        return {
+          ...p,
+          x: p.x + (r.rect.left - p.rectLeft),
+          y: p.y + (r.rect.top - p.rectTop),
+          rectTop: r.rect.top,
+          rectLeft: r.rect.left
+        }
       })
     // Esc는 툴바만 접는다 — 뷰어의 Esc(카드 닫기)는 .sel-bar가 없을 때만 동작
     const onKey = (e: KeyboardEvent): void => {
@@ -1885,15 +2024,7 @@ function ImageView({ src, alt, zoom }: { src: string; alt: string; zoom: number 
 // 우클릭 드래그(마우스 제스처)도 같은 브리지로 중계돼, iframe 좌표를 부모 좌표로 옮긴 합성
 // PointerEvent를 iframe 엘리먼트에 재디스패치한다 — 카드의 MouseGestureLayer(캡처 down +
 // window move/up)가 실제 이벤트와 구별 없이 받아 궤적·인식이 그대로 동작한다.
-function HtmlPreview({
-  cwd,
-  filePath,
-  onBridgeKey
-}: {
-  cwd: string
-  filePath: string
-  onBridgeKey?: (k: string) => void
-}) {
+function HtmlPreview({ cwd, filePath, onBridgeKey }: { cwd: string; filePath: string; onBridgeKey?: (k: string) => void }) {
   const [url, setUrl] = useState<string | null>(null)
   const [rev, setRev] = useState(0) // iframe 강제 리마운트 세대 (문서 변경 감지 시 +1)
   const lastMod = useRef('')
@@ -1908,7 +2039,10 @@ function HtmlPreview({
       pc: 'pointercancel'
     }
     const h = (ev: MessageEvent): void => {
-      const d = ev.data as { ccgPageKey?: string; ccgPagePtr?: { t: string; x: number; y: number } } | null
+      const d = ev.data as {
+        ccgPageKey?: string
+        ccgPagePtr?: { t: string; x: number; y: number }
+      } | null
       if (!d) return
       // 우리 iframe(최상위 미리보기 문서)이 보낸 것만 — 중첩 프레임/딴 창은 무시
       const f = frameRef.current
@@ -2261,8 +2395,7 @@ function CodeView({
       if (card) {
         const r = card.getBoundingClientRect()
         const m = 28
-        if (e.clientX >= r.left - m && e.clientX <= r.right + m && e.clientY >= r.top - m && e.clientY <= r.bottom + m)
-          return h
+        if (e.clientX >= r.left - m && e.clientX <= r.right + m && e.clientY >= r.top - m && e.clientY <= r.bottom + m) return h
       }
       const dx = e.clientX - h.x
       const dy = e.clientY - h.y
@@ -2287,7 +2420,13 @@ function CodeView({
           const s3 = window.getSelection()
           if (s3 && !s3.isCollapsed) return // 응답 오는 사이 선택됨 — 양보
           const word = identAt(content.split('\n')[pos.line] ?? '', pos.character) ?? undefined
-          setHover({ x: e.clientX, y: e.clientY, below: e.clientY < window.innerHeight * 0.55, md: r.contents, word })
+          setHover({
+            x: e.clientX,
+            y: e.clientY,
+            below: e.clientY < window.innerHeight * 0.55,
+            md: r.contents,
+            word
+          })
           // C#: 시그니처에 접근지시자가 없다 — 정의 선언 줄을 읽어 ACCESS를 보강.
           // (메타데이터 전용 심볼은 파일이 안 읽혀 조용히 생략된다)
           if (t.lang === 'csharp') {
@@ -2323,8 +2462,7 @@ function CodeView({
       if (rt instanceof Node && card.contains(rt)) return
       const r = card.getBoundingClientRect()
       const m = 28
-      if (e.clientX >= r.left - m && e.clientX <= r.right + m && e.clientY >= r.top - m && e.clientY <= r.bottom + m)
-        return
+      if (e.clientX >= r.left - m && e.clientX <= r.right + m && e.clientY >= r.top - m && e.clientY <= r.bottom + m) return
     }
     clearHover()
   }
@@ -2379,8 +2517,7 @@ function CodeView({
     const sc = scrollRef.current
     const el = sc?.querySelector(`[data-ln="${Math.max(1, Math.min(n, lineCount))}"]`)
     if (!sc || !el) return
-    const top =
-      sc.scrollTop + el.getBoundingClientRect().top - sc.getBoundingClientRect().top - sc.clientHeight / 2
+    const top = sc.scrollTop + el.getBoundingClientRect().top - sc.getBoundingClientRect().top - sc.clientHeight / 2
     sc.scrollTo({ top, left: 0, behavior: 'smooth' })
   }
 
@@ -2405,7 +2542,9 @@ function CodeView({
             <div
               key={`g${b}:${g.n}`}
               className="fvl gdel"
-              dangerouslySetInnerHTML={{ __html: highlightCode(g.text || ' ', t.lang) }}
+              dangerouslySetInnerHTML={{
+                __html: highlightCode(g.text || ' ', t.lang)
+              }}
             />
           ) : (
             <div key={`g${b}:${g.n}`} className="fvl gdel">
@@ -2441,17 +2580,12 @@ function CodeView({
       codeRows.push(<div key="fill" className={'fvl fv-fill' + tailCls} aria-hidden="true" />)
     }
   } else {
-    for (let i = 0; i < lineCount; i++)
-      gutterCells.push(<span key={i}>{i + 1}</span>)
+    for (let i = 0; i < lineCount; i++) gutterCells.push(<span key={i}>{i + 1}</span>)
   }
 
   return (
     <div className="fv-wrap">
-      <div
-        className={'fv-code scroll' + paletteClassFor(t.lang)}
-        ref={scrollRef}
-        onScroll={hoverOk ? clearHover : undefined}
-      >
+      <div className={'fv-code scroll' + paletteClassFor(t.lang)} ref={scrollRef} onScroll={hoverOk ? clearHover : undefined}>
         <div className="fv-inner" style={{ zoom }}>
           <div className="fv-gutter" aria-hidden="true">
             {gutterCells}
@@ -2499,10 +2633,7 @@ function CodeView({
             className={'lsp-hover' + paletteClassFor(t.lang)}
             style={{
               // 카드 최대 폭(920px 또는 화면-48px) + 여백이 화면 오른쪽에 들어가게 당긴다
-              left: Math.max(
-                8,
-                Math.min(hover.x + 14, window.innerWidth - Math.min(920, window.innerWidth - 48) - 16)
-              ),
+              left: Math.max(8, Math.min(hover.x + 14, window.innerWidth - Math.min(920, window.innerWidth - 48) - 16)),
               ...(hover.below ? { top: hover.y + 18 } : { bottom: window.innerHeight - hover.y + 14 })
             }}
             // 카드 안으로 들어오면 유지 — 시그니처/문서를 긁어 복사할 수 있다.
@@ -2585,8 +2716,7 @@ export function FileModal({
   diffs,
   override,
   onClose,
-  onAskSelection,
-  onViewFile
+  onAskSelection
 }: {
   path: string | null
   cwd: string
@@ -2596,12 +2726,14 @@ export function FileModal({
   // Git 카드에서 연 파일 — content가 있으면 그 시점(커밋) 내용을 그대로 보여주고
   // (디스크와 다를 수 있으니 LSP는 끔), 없으면 평소처럼 디스크에서 읽는다(LSP 유지).
   // diff는 세션 diffs 대신 마킹에 쓰는 일회성 diff, label은 헤더의 커밋 해시 칩.
-  override?: { content: string | null; diff: FileDiff | null; label: string | null } | null
+  override?: {
+    content: string | null
+    diff: FileDiff | null
+    label: string | null
+  } | null
   onClose: () => void
   // 드래그 선택 → 뷰어 안 질문 패널에서 작성한 질문을 선택 텍스트·파일·줄 범위와 함께 전송
   onAskSelection?: (p: { path: string; text: string; from: number | null; to: number | null; question: string }) => void
-  // Ctrl+클릭 정의 이동으로 다른 파일에 들어갔을 때 — 최근 파일 탭에 기록용
-  onViewFile?: (relPath: string) => void
 }) {
   const [res, setRes] = useState<FileReadResult | null>(null)
   // lspStatus는 색칠·hover·정의이동 게이트 + 파일별 "심볼 분석 중" 칩 판정에 쓴다.
@@ -2621,7 +2753,12 @@ export function FileModal({
   // 열려 있는 문서는 재열람 전까지 새 타입이 무색으로 남는다.
   const [semEpoch, setSemEpoch] = useState(0)
   const [anPct, setAnPct] = useState<number | null>(null) // 분석 진행률(프로젝트 인덱싱 %)
-  const [vs, setVs] = useState<ViewState>({ root: path, stack: [], fwd: [], jump: null })
+  const [vs, setVs] = useState<ViewState>({
+    root: path,
+    stack: [],
+    fwd: [],
+    jump: null
+  })
   // an SVG can be viewed both ways — as the rendered image (default) or as markup
   const [svgCode, setSvgCode] = useState(false)
   // 마크다운은 기본을 '렌더링된 문서'로 연다(변경 파일이어도) — 소스/변경(diff) 보기는
@@ -2651,7 +2788,11 @@ export function FileModal({
   const posMap = useRef(new Map<string, number>())
   // 파일 내 검색(Ctrl+F) 열림 + 선택-질문 패널 (선택 텍스트·줄 범위와 질문 입력)
   const [findOpen, setFindOpen] = useState(false)
-  const [ask, setAsk] = useState<{ text: string; from: number | null; to: number | null } | null>(null)
+  const [ask, setAsk] = useState<{
+    text: string
+    from: number | null
+    to: number | null
+  } | null>(null)
   const [askText, setAskText] = useState('')
   const askInputRef = useRef<HTMLTextAreaElement>(null)
   // a freshly opened file discards any definition-jump trail from the previous one
@@ -2675,7 +2816,7 @@ export function FileModal({
   const isSvg = !!effPath && /\.svg$/i.test(effPath)
   const isImg = !!effPath && isImagePath(effPath) && !(isSvg && svgCode)
   // 정의 이동으로 다른 파일에 들어가면 override는 원래 파일의 것 — 적용하지 않는다
-  const ov = vs.stack.length === 0 ? override ?? null : null
+  const ov = vs.stack.length === 0 ? (override ?? null) : null
   const ovContent = ov?.content ?? null
   // HTML은 렌더된 페이지(sandbox iframe, 디스크에서 ccg-page://로 서빙)와 코드 보기를
   // Ctrl+D로 오간다. git 스냅샷(ov)은 디스크와 내용이 달라 미리보기가 거짓 — 코드만.
@@ -2715,7 +2856,9 @@ export function FileModal({
   const diffVisibleCtx = canToggleDiff && (!cmEligible || cmMode === 'read')
   const effMarks = canToggleDiff && !diffView ? null : marks
 
-  const rz = useResizableModal('viewer.size', path != null, { defaultMaximized: true })
+  const rz = useResizableModal('viewer.size', path != null, {
+    defaultMaximized: true
+  })
   const z = useZoom('viewer.zoom', path != null)
   // 선택 툴바가 "본문 안의 선택"을 판별하려면 카드 엘리먼트가 필요 — 상태 콜백 ref로 추적
   const [cardEl, setCardEl] = useState<HTMLDivElement | null>(null)
@@ -2779,7 +2922,16 @@ export function FileModal({
     window.api
       .readFile(cwd, effPath)
       .then((r) => alive && setRes(r))
-      .catch(() => alive && setRes({ path: effPath, content: null, truncated: false, error: '파일을 열 수 없어요' }))
+      .catch(
+        () =>
+          alive &&
+          setRes({
+            path: effPath,
+            content: null,
+            truncated: false,
+            error: '파일을 열 수 없어요'
+          })
+      )
     return () => {
       alive = false
     }
@@ -2946,10 +3098,7 @@ export function FileModal({
   // 시맨틱 토큰 없는 서버(noSem)·미지원/에러면 사라진다.
   const isCodeView = !!effPath && !isImg && ovContent == null && res?.content != null
   const analyzing =
-    isCodeView &&
-    !(semLive && hoverReady) &&
-    !noSem &&
-    (lspStatus === 'starting' || lspStatus === 'installing' || lspStatus === 'ready')
+    isCodeView && !(semLive && hoverReady) && !noSem && (lspStatus === 'starting' || lspStatus === 'installing' || lspStatus === 'ready')
   // 분석 중에만 프로젝트 인덱싱 %를 가볍게 폴링해 칩에 보여준다(없으면 % 없이 '심볼 분석 중')
   useEffect(() => {
     if (!analyzing || !cwd) {
@@ -3066,8 +3215,7 @@ export function FileModal({
   useEffect(() => {
     if (!path || (!diffVisibleCtx && !mdCanToggle && !htmlCanToggle)) return
     const onKey = (e: KeyboardEvent): void => {
-      if (!((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && (e.code === 'KeyD' || e.key.toLowerCase() === 'd')))
-        return
+      if (!((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && (e.code === 'KeyD' || e.key.toLowerCase() === 'd'))) return
       if (closeConfirmRef.current) return // 확인 카드가 떠 있으면 보기 토글을 막는다
       e.preventDefault()
       e.stopPropagation()
@@ -3094,11 +3242,29 @@ export function FileModal({
   // 뒤로 = 스택 한 단계 빼서 앞으로(fwd) 스택에 쌓기 / 앞으로 = 그 반대. 둘 다 캐럿 복원용으로 저장.
   const goBack = useCallback((): void => {
     rememberCaret()
-    setVs((v) => (v.stack.length ? { ...v, stack: v.stack.slice(0, -1), fwd: [...v.fwd, v.stack[v.stack.length - 1]], jump: null } : v))
+    setVs((v) =>
+      v.stack.length
+        ? {
+            ...v,
+            stack: v.stack.slice(0, -1),
+            fwd: [...v.fwd, v.stack[v.stack.length - 1]],
+            jump: null
+          }
+        : v
+    )
   }, [rememberCaret])
   const goForward = useCallback((): void => {
     rememberCaret()
-    setVs((v) => (v.fwd.length ? { ...v, stack: [...v.stack, v.fwd[v.fwd.length - 1]], fwd: v.fwd.slice(0, -1), jump: null } : v))
+    setVs((v) =>
+      v.fwd.length
+        ? {
+            ...v,
+            stack: [...v.stack, v.fwd[v.fwd.length - 1]],
+            fwd: v.fwd.slice(0, -1),
+            jump: null
+          }
+        : v
+    )
   }, [rememberCaret])
 
   // 마우스 옆 버튼: 뒤로(X1=button 3) / 앞으로(X2=button 4) — 브라우저·IDE 관례. 더 갈 곳이
@@ -3131,13 +3297,25 @@ export function FileModal({
         return
       }
       const sc = cardEl?.querySelector('.cm-scroller, .fv-code, .fv-md, .fv-imgbody')
-      if (sc) sc.scrollTo({ top: to === 'top' ? 0 : sc.scrollHeight, behavior: 'smooth' })
+      if (sc)
+        sc.scrollTo({
+          top: to === 'top' ? 0 : sc.scrollHeight,
+          behavior: 'smooth'
+        })
     },
     [cardEl]
   )
   const gestureActions: GestureAction[] = [
-    { pattern: 'L', label: vs.stack.length ? '이전 파일' : '이전 파일 없음', run: goBack },
-    { pattern: 'R', label: vs.fwd.length ? '다음 파일' : '다음 파일 없음', run: goForward },
+    {
+      pattern: 'L',
+      label: vs.stack.length ? '이전 파일' : '이전 파일 없음',
+      run: goBack
+    },
+    {
+      pattern: 'R',
+      label: vs.fwd.length ? '다음 파일' : '다음 파일 없음',
+      run: goForward
+    },
     { pattern: 'U', label: '맨 위로', run: () => scrollBody('top') },
     { pattern: 'D', label: '맨 아래로', run: () => scrollBody('bottom') },
     { pattern: 'DR', label: '창 닫기', run: requestClose }
@@ -3152,11 +3330,6 @@ export function FileModal({
       window.getSelection()?.removeAllRanges()
       rememberCaret() // 떠나는 파일(CM) 캐럿 저장 — 뒤로/앞으로로 돌아오면 복원
       const target = displayPath(loc.path, cwd)
-      // 다른 파일로의 점프는 최근 파일 탭에도 기록 (앱 공통 키 형식인 슬래시 rel 경로로)
-      const cur = effPathRef.current
-      if (onViewFile && cur && canonPath(target, cwd) !== canonPath(cur, cwd)) {
-        onViewFile(target.replace(/\\/g, '/'))
-      }
       setVs((v) => {
         if (v.root == null) return v
         const current = v.stack.length ? v.stack[v.stack.length - 1].path : v.root
@@ -3165,12 +3338,30 @@ export function FileModal({
         return { ...v, stack: [...v.stack, { path: target }], jump, fwd: [] }
       })
     },
-    [cwd, onViewFile, rememberCaret]
+    [cwd, rememberCaret]
   )
+
+  // 헤더 서브라인·푸터 스탯용 파일 메타 — 줄 수는 큰 파일에서 매 렌더 세지 않게 메모
+  const fileInfo = useMemo(() => {
+    const c = res?.content
+    if (c == null) return null
+    let lines = 1
+    for (let i = 0; i < c.length; i++) if (c.charCodeAt(i) === 10) lines++
+    return { lines, eol: c.includes('\r\n') ? 'CRLF' : 'LF' }
+  }, [res])
 
   if (!path || !effPath) return null
   const name = effPath.split(/[\\/]/).pop() || effPath
   const dir = effPath.slice(0, effPath.length - name.length)
+  const ext = name.includes('.') ? (name.split('.').pop() || '').toUpperCase() : ''
+  // PoC mhead 서브라인 — 경로 · 확장자 · 줄 수(잘린 파일은 N줄+).
+  // 프로젝트 루트 파일은 상대경로가 파일명과 같아 제목만 반복 → 절대경로(경로 복사와 같은 표기)로
+  const subPath = dir ? dir + name : absPath(effPath, cwd).replace(/\//g, '\\')
+  const sub = [subPath, ext, fileInfo ? `${fileInfo.lines.toLocaleString()}줄${res?.truncated ? '+' : ''}` : '']
+    .filter(Boolean)
+    .join(' · ')
+  // 모드·단축키 안내문은 안 둔다 — 모드는 헤더 vtool의 켜진 아이콘이 이미 말해준다
+  const showFoot = !!fileInfo && !isImg
 
   return (
     <div
@@ -3226,12 +3417,32 @@ export function FileModal({
               <IconChevRight size={15} />
             </button>
           )}
-          <FileBadge path={effPath} size={22} />
-          <span className="dpath">
-            {dir && <span className="dir">{dir}</span>}
-            <span className="name">{name}</span>
+          {/* PoC mhead — 아이콘 타일 + 파일명/서브(경로·타입·줄 수) 2줄 제목 */}
+          <span className="fv-tile">
+            <FileBadge path={effPath} size={20} />
+          </span>
+          <span className="fv-tt">
+            <span className="fv-name">{name}</span>
+            <span className="fv-sub">{sub}</span>
           </span>
           {ov?.label && <span className="fv-glabel">{ov.label}</span>}
+          {/* PoC 아크릴 mhead 문법 — 왼쪽엔 파일 정체성(아이콘·경로·스냅샷 라벨)만, 상태·통계·
+              도구는 전부 오른쪽 클러스터로. 나타났다 사라지는 칩(분석 중·저장·일부만 표시)은
+              클러스터 왼끝에 둬 고정 컨트롤(+/− 알약·vtool·창 버튼)이 밀리지 않는다. */}
+          <span className="dspacer" />
+          {/* 파일별 심볼 분석 중 — 색 토큰이 들어오면 사라진다. ready/error/설치 칩은 없음 */}
+          {analyzing && (
+            <span className="fv-lsp starting">
+              <span className="spin" /> 심볼 분석 중{anPct != null ? ` ${anPct}%` : ''}
+            </span>
+          )}
+          {res?.truncated && <span className="fv-trunc">일부만 표시</span>}
+          {cmEligible && cmDirty && (
+            <button className="fv-lsp install htip" onClick={() => cmRef.current?.save()} data-tip="저장 (Ctrl+S)">
+              ● 저장
+            </button>
+          )}
+          {cmEligible && !cmDirty && cmSaved && <span className="fv-lsp ready">저장됨</span>}
           {diff && (
             <>
               <span className={'tag ' + (diff.tag === 'new' ? 'new' : 'edit')}>{diff.tag === 'new' ? 'NEW' : 'EDIT'}</span>
@@ -3242,70 +3453,107 @@ export function FileModal({
               </span>
             </>
           )}
-          {res?.truncated && <span className="fv-trunc">일부만 표시</span>}
-          {isMdFile && diff && (
-            <button
-              className="fv-lsp install htip"
-              onClick={() => setMdPreview((v) => !v)}
-              data-tip={mdPreview ? '변경 마킹이 표시된 소스로 보기 (Ctrl+D)' : '렌더링된 문서로 보기 (Ctrl+D)'}
-            >
-              {mdPreview ? '변경 사항' : '미리보기'}
-            </button>
+          {/* PoC vtool — 미리보기/소스 │ 읽기/편집 │ diff. 뷰어 고유 기능만 세그먼트에, 최대화·닫기는 일반 창 버튼 */}
+          {(mdCanToggle || isSvg || htmlCanToggle || cmEligible || diffVisibleCtx) && (
+            <div className="vtool">
+              {/* 세그먼트 문법 — 상태마다 버튼 하나씩(눈=미리보기, <>=소스), 켜진 쪽만 밝게(.on).
+                  아이콘 스왑 단일 버튼도 시도했으나 두 상태가 다 보이는 이쪽이 확정 */}
+              {mdCanToggle && (
+                <>
+                  <button
+                    className={'htip' + (mdPreview ? ' on' : '')}
+                    onClick={() => setMdPreview(true)}
+                    aria-label="문서 미리보기"
+                    data-tip="렌더링된 문서로 보기 (Ctrl+D)"
+                  >
+                    <IconEye size={14} />
+                  </button>
+                  <button
+                    className={'htip' + (!mdPreview ? ' on' : '')}
+                    onClick={() => setMdPreview(false)}
+                    aria-label="변경 소스"
+                    data-tip="변경 마킹이 표시된 소스로 보기 (Ctrl+D)"
+                  >
+                    <IconCode size={14} />
+                  </button>
+                </>
+              )}
+              {isSvg && (
+                <>
+                  <button
+                    className={'htip' + (!svgCode ? ' on' : '')}
+                    onClick={() => setSvgCode(false)}
+                    aria-label="SVG 미리보기"
+                    data-tip="렌더링된 이미지로 보기"
+                  >
+                    <IconEye size={14} />
+                  </button>
+                  <button
+                    className={'htip' + (svgCode ? ' on' : '')}
+                    onClick={() => setSvgCode(true)}
+                    aria-label="SVG 소스"
+                    data-tip="SVG 마크업을 소스로 보기"
+                  >
+                    <IconCode size={14} />
+                  </button>
+                </>
+              )}
+              {htmlCanToggle && (
+                <>
+                  <button
+                    className={'htip' + (htmlPreview ? ' on' : '')}
+                    // toggleHtmlPreview가 미저장 편집 자동 저장까지 처리 — 직접 세터 금지
+                    onClick={() => !htmlPreview && toggleHtmlPreview()}
+                    aria-label="페이지 미리보기"
+                    data-tip="렌더링된 페이지로 보기 (Ctrl+D)"
+                  >
+                    <IconEye size={14} />
+                  </button>
+                  <button
+                    className={'htip' + (!htmlPreview ? ' on' : '')}
+                    onClick={() => htmlPreview && toggleHtmlPreview()}
+                    aria-label="코드 보기"
+                    data-tip="소스 코드로 보기 (Ctrl+D)"
+                  >
+                    <IconCode size={14} />
+                  </button>
+                </>
+              )}
+              {(mdCanToggle || isSvg || htmlCanToggle) && (cmEligible || diffVisibleCtx) && <span className="vsep2" />}
+              {cmEligible && (
+                <>
+                  <button
+                    className={'htip' + (cmMode === 'read' ? ' on' : '')}
+                    onClick={() => setCmMode('read')}
+                    aria-label="읽기 모드"
+                    data-tip="읽기 모드 (Ctrl+E)"
+                  >
+                    <IconBook size={14} />
+                  </button>
+                  <button
+                    className={'htip' + (cmMode === 'edit' ? ' on' : '')}
+                    onClick={() => setCmMode('edit')}
+                    aria-label="편집 모드"
+                    data-tip="편집 모드 (Ctrl+E)"
+                  >
+                    <IconPencil size={14} />
+                  </button>
+                </>
+              )}
+              {cmEligible && diffVisibleCtx && <span className="vsep2" />}
+              {diffVisibleCtx && (
+                <button
+                  className={'htip' + (diffView ? ' on' : '')}
+                  onClick={() => setDiffView((v) => !v)}
+                  aria-label="변경 보기"
+                  // HTML은 Ctrl+D가 렌더↔코드 전환에 쓰이므로 이 토글은 버튼으로만
+                  data-tip={(diffView ? '변경 표시 끄기' : '변경 표시 켜기') + (htmlCanToggle ? '' : ' (Ctrl+D)')}
+                >
+                  <IconDiff size={14} />
+                </button>
+              )}
+            </div>
           )}
-          {isSvg && (
-            <button
-              className="fv-lsp install htip"
-              onClick={() => setSvgCode((v) => !v)}
-              data-tip={svgCode ? '렌더링된 이미지로 보기' : 'SVG 마크업을 소스로 보기'}
-            >
-              {svgCode ? '미리보기' : '코드 보기'}
-            </button>
-          )}
-          {htmlCanToggle && (
-            <button
-              className="fv-lsp install htip"
-              onClick={toggleHtmlPreview}
-              data-tip={htmlPreview ? '소스 코드로 보기 (Ctrl+D)' : '렌더링된 페이지로 보기 (Ctrl+D)'}
-            >
-              {htmlPreview ? '코드 보기' : '미리보기'}
-            </button>
-          )}
-          {cmEligible && (
-            <button
-              className={'fv-lsp cm-mode htip ' + cmMode}
-              onClick={() => setCmMode((m) => (m === 'read' ? 'edit' : 'read'))}
-              data-tip={cmMode === 'read' ? '편집 모드로 전환 (Ctrl+E)' : '읽기 모드로 전환 (Ctrl+E)'}
-            >
-              {cmMode === 'read' ? '읽기' : '편집'}
-            </button>
-          )}
-          {diffVisibleCtx && (
-            <button
-              className={'fv-lsp cm-diff htip ' + (diffView ? 'on' : 'off')}
-              onClick={() => setDiffView((v) => !v)}
-              // HTML은 Ctrl+D가 렌더↔코드 전환에 쓰이므로 이 토글은 버튼으로만
-              data-tip={(diffView ? '일반 보기로 전환' : '변경 보기로 전환') + (htmlCanToggle ? '' : ' (Ctrl+D)')}
-            >
-              {diffView ? '변경' : '일반'}
-            </button>
-          )}
-          {cmEligible && cmDirty && (
-            <button
-              className="fv-lsp install htip"
-              onClick={() => cmRef.current?.save()}
-              data-tip="저장 (Ctrl+S)"
-            >
-              ● 저장
-            </button>
-          )}
-          {cmEligible && !cmDirty && cmSaved && <span className="fv-lsp ready">저장됨</span>}
-          {/* 파일별 심볼 분석 중 — 색 토큰이 들어오면 사라진다. ready/error/설치 칩은 없음 */}
-          {analyzing && (
-            <span className="fv-lsp starting">
-              <span className="spin" /> 심볼 분석 중{anPct != null ? ` ${anPct}%` : ''}
-            </span>
-          )}
-          <span className="dspacer" />
           <button
             className="dclose htip"
             onClick={rz.toggleMaximize}
@@ -3319,76 +3567,82 @@ export function FileModal({
           </button>
         </div>
         {!rz.maximized && <ModalResizeHandles onStart={rz.startResize} />}
-        {isImg ? (
-          <ImageView key={effPath} src={imageSrc(absPath(effPath, cwd))} alt={name} zoom={z.zoom} />
-        ) : htmlView ? (
-          <HtmlPreview
-            key={effPath}
-            cwd={cwd}
-            filePath={effPath}
-            onBridgeKey={(k) => {
-              if (closeConfirmRef.current) return // 확인 카드가 떠 있으면 단축키는 물러난다
-              if (k === 'd') toggleHtmlPreview()
-              // escape — 뷰어의 Esc 레이어 순서(메뉴 → 질문 → 검색 → 카드)를 그대로 따른다
-              else if (headCtxOpenRef.current) setHeadCtx(null)
-              else if (askOpenRef.current) setAsk(null)
-              else if (findOpenRef.current) setFindOpen(false)
-              else requestClose()
-            }}
-          />
-        ) : res == null ? (
-          <div className="fv-loading">
-            <span className="spin" />
+        {/* PoC mbody — 본문은 카드 위에 얹힌 인셋 패널(라운드·헤어라인), 아래 mfoot 스탯 줄 */}
+        <div className={'fv-body' + (showFoot ? '' : ' nofoot')}>
+          {isImg ? (
+            <ImageView key={effPath} src={imageSrc(absPath(effPath, cwd))} alt={name} zoom={z.zoom} />
+          ) : htmlView ? (
+            <HtmlPreview
+              key={effPath}
+              cwd={cwd}
+              filePath={effPath}
+              onBridgeKey={(k) => {
+                if (closeConfirmRef.current) return // 확인 카드가 떠 있으면 단축키는 물러난다
+                if (k === 'd') toggleHtmlPreview()
+                // escape — 뷰어의 Esc 레이어 순서(메뉴 → 질문 → 검색 → 카드)를 그대로 따른다
+                else if (headCtxOpenRef.current) setHeadCtx(null)
+                else if (askOpenRef.current) setAsk(null)
+                else if (findOpenRef.current) setFindOpen(false)
+                else requestClose()
+              }}
+            />
+          ) : res == null ? (
+            <div className="fv-loading">
+              <span className="spin" />
+            </div>
+          ) : res.error || res.content == null ? (
+            <div className="fv-empty">{res.error || '내용이 없어요'}</div>
+          ) : cmEligible ? (
+            <CmEditor
+              key={effPath}
+              ref={cmRef}
+              content={res.content}
+              lang={fLang}
+              path={effPath}
+              cwd={cwd}
+              sem={sem}
+              structOv={structOv}
+              marks={effMarks}
+              readOnly={cmMode === 'read'}
+              zoom={z.zoom}
+              lsp={lspStatus === 'ready'}
+              jump={vs.jump}
+              initialPos={posMap.current.get(canonPath(effPath, cwd))}
+              onNavigate={handleNavigate}
+              onDirtyChange={setCmDirty}
+              onSaved={() => {
+                setCmSaved(true)
+                window.setTimeout(() => setCmSaved(false), 1400)
+              }}
+            />
+          ) : (
+            <CodeView
+              path={effPath}
+              content={res.content}
+              zoom={z.zoom}
+              cwd={cwd}
+              lsp={lspStatus === 'ready'}
+              coldHover={ovContent == null}
+              sem={sem}
+              structOv={structOv}
+              jump={vs.jump}
+              marks={effMarks}
+              mdSource={isMdFile && !!diff && !mdPreview}
+              onNavigate={handleNavigate}
+            />
+          )}
+        </div>
+        {showFoot && (
+          <div className="fv-foot">
+            <span className="dspacer" />
+            <span className="fstat mono">UTF-8</span>
+            <span className="fstat mono">{fileInfo!.eol}</span>
           </div>
-        ) : res.error || res.content == null ? (
-          <div className="fv-empty">{res.error || '내용이 없어요'}</div>
-        ) : cmEligible ? (
-          <CmEditor
-            key={effPath}
-            ref={cmRef}
-            content={res.content}
-            lang={fLang}
-            path={effPath}
-            cwd={cwd}
-            sem={sem}
-            structOv={structOv}
-            marks={effMarks}
-            readOnly={cmMode === 'read'}
-            zoom={z.zoom}
-            lsp={lspStatus === 'ready'}
-            jump={vs.jump}
-            initialPos={posMap.current.get(canonPath(effPath, cwd))}
-            onNavigate={handleNavigate}
-            onDirtyChange={setCmDirty}
-            onSaved={() => {
-              setCmSaved(true)
-              window.setTimeout(() => setCmSaved(false), 1400)
-            }}
-          />
-        ) : (
-          <CodeView
-            path={effPath}
-            content={res.content}
-            zoom={z.zoom}
-            cwd={cwd}
-            lsp={lspStatus === 'ready'}
-            coldHover={ovContent == null}
-            sem={sem}
-            structOv={structOv}
-            jump={vs.jump}
-            marks={effMarks}
-            mdSource={isMdFile && !!diff && !mdPreview}
-            onNavigate={handleNavigate}
-          />
         )}
         <ZoomBadge pct={z.pct} show={z.flash} />
 
         {findOpen && !isImg && (
-          <FindBar
-            root={cardEl}
-            contentKey={effPath + ':' + (res?.content?.length ?? -1)}
-            onClose={() => setFindOpen(false)}
-          />
+          <FindBar root={cardEl} contentKey={effPath + ':' + (res?.content?.length ?? -1)} onClose={() => setFindOpen(false)} />
         )}
 
         {ask && onAskSelection && (
@@ -3418,7 +3672,11 @@ export function FileModal({
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault()
                     if (askText.trim()) {
-                      onAskSelection({ path: effPath, ...ask, question: askText.trim() })
+                      onAskSelection({
+                        path: effPath,
+                        ...ask,
+                        question: askText.trim()
+                      })
                       setAsk(null)
                       setAskText('')
                     }
@@ -3435,7 +3693,11 @@ export function FileModal({
                 disabled={!askText.trim()}
                 onClick={() => {
                   if (!askText.trim()) return
-                  onAskSelection({ path: effPath, ...ask, question: askText.trim() })
+                  onAskSelection({
+                    path: effPath,
+                    ...ask,
+                    question: askText.trim()
+                  })
                   setAsk(null)
                   setAskText('')
                 }}
@@ -3446,9 +3708,7 @@ export function FileModal({
           </div>
         )}
       </div>
-      {onAskSelection && !isImg && !ask && (
-        <SelectionAskBar root={cardEl} onAsk={(text, from, to) => setAsk({ text, from, to })} />
-      )}
+      {onAskSelection && !isImg && !ask && <SelectionAskBar root={cardEl} onAsk={(text, from, to) => setAsk({ text, from, to })} />}
       <MouseGestureLayer target={cardEl} actions={gestureActions} disabled={closeConfirm} />
       {closeConfirm && (
         <CloseConfirmDialog

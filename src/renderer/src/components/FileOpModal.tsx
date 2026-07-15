@@ -48,15 +48,6 @@ export function FileOpModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const META = {
-    rename: { title: '이름 변경', icon: <IconPencil size={18} stroke={2} />, btn: '변경', danger: false },
-    delete: { title: '삭제', icon: <IconTrash size={18} stroke={2} />, btn: '삭제', danger: true },
-    newFile: { title: '새 파일', icon: <IconFile size={18} stroke={2} />, btn: '만들기', danger: false },
-    newFolder: { title: '새 폴더', icon: <IconFolder size={18} stroke={2} />, btn: '만들기', danger: false }
-  }[op.kind]
-
-  const sub = op.kind === 'rename' || op.kind === 'delete' ? op.name : `${op.parentLabel} 안에 만들기`
-
   const submit = async (): Promise<void> => {
     if (busy) return
     const v = val.trim()
@@ -71,11 +62,50 @@ export function FileOpModal({
     else setErr(r.error || '실패했어요')
   }
 
+  // 삭제 확인은 채팅 삭제 확인과 같은 중앙 유리 카드(.sconfirm) 문법 — 입력류만 .pr-* 카드
+  if (op.kind === 'delete') {
+    return (
+      <div className="sconfirm" onMouseDown={onClose}>
+        <div className="sccard" onMouseDown={(e) => e.stopPropagation()}>
+          <div className="scic">
+            <IconTrash size={19} />
+          </div>
+          <div className="sctt">{op.dir ? '폴더 삭제' : '파일 삭제'}</div>
+          <div className="sct">
+            &lsquo;{op.name}&rsquo; {op.dir ? '폴더를' : '파일을'} 휴지통으로 보내요. 휴지통에서 다시 복구할 수
+            있어요.
+          </div>
+          {err && (
+            <div className="fop-err">
+              <IconInfo size={14} /> {err}
+            </div>
+          )}
+          <div className="scb">
+            <button className="cancel" onClick={onClose}>
+              취소
+            </button>
+            <button className="danger" onClick={() => void submit()} disabled={busy}>
+              삭제
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  const META = {
+    rename: { title: '이름 변경', icon: <IconPencil size={18} stroke={2} />, btn: '변경' },
+    newFile: { title: '새 파일', icon: <IconFile size={18} stroke={2} />, btn: '만들기' },
+    newFolder: { title: '새 폴더', icon: <IconFolder size={18} stroke={2} />, btn: '만들기' }
+  }[op.kind]
+
+  const sub = op.kind === 'rename' ? op.name : `${op.parentLabel} 안에 만들기`
+
   return (
     <div className="pr-overlay" onMouseDown={onClose}>
       <div className="pr-modal fop-modal" onMouseDown={(e) => e.stopPropagation()}>
         <div className="pr-head">
-          <div className={'pr-ic' + (META.danger ? ' danger' : '')}>{META.icon}</div>
+          <div className="pr-ic">{META.icon}</div>
           <div className="pr-titles">
             <div className="pr-title">{META.title}</div>
             <div className="pr-sub">{sub}</div>
@@ -86,31 +116,23 @@ export function FileOpModal({
         </div>
 
         <div className="pr-body">
-          {isInput ? (
-            <input
-              ref={inRef}
-              className="pr-input"
-              value={val}
-              spellCheck={false}
-              placeholder={op.kind === 'newFolder' ? '폴더 이름' : op.kind === 'newFile' ? '파일 이름 (예: test.txt)' : '새 이름'}
-              onChange={(e) => {
-                setVal(e.target.value)
-                setErr(null)
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault()
-                  void submit()
-                }
-              }}
-            />
-          ) : (
-            <div className="fop-confirm">
-              <b>{op.name}</b>
-              {op.dir ? ' 폴더를' : ' 파일을'} 휴지통으로 보낼까요?
-              <div className="fop-hint">휴지통에서 다시 복구할 수 있어요.</div>
-            </div>
-          )}
+          <input
+            ref={inRef}
+            className="pr-input"
+            value={val}
+            spellCheck={false}
+            placeholder={op.kind === 'newFolder' ? '폴더 이름' : op.kind === 'newFile' ? '파일 이름 (예: test.txt)' : '새 이름'}
+            onChange={(e) => {
+              setVal(e.target.value)
+              setErr(null)
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                void submit()
+              }
+            }}
+          />
           {err && (
             <div className="fop-err">
               <IconInfo size={14} /> {err}
@@ -123,7 +145,7 @@ export function FileOpModal({
           <button className="pr-cancel" onClick={onClose}>
             취소
           </button>
-          <button className={'pr-save' + (META.danger ? ' danger' : '')} onClick={() => void submit()} disabled={busy}>
+          <button className="pr-save" onClick={() => void submit()} disabled={busy}>
             {META.btn}
           </button>
         </div>

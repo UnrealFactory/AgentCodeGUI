@@ -1,29 +1,20 @@
 import { useEffect, useRef, useState } from 'react'
-import { IconAlert, IconCheck, IconBolt, IconClaude } from './icons'
-
-// numeric semver-ish compare: <0 if a is older than b
-function cmpVer(a: string, b: string): number {
-  const pa = a.split('.').map((n) => parseInt(n, 10) || 0)
-  const pb = b.split('.').map((n) => parseInt(n, 10) || 0)
-  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-    const d = (pa[i] ?? 0) - (pb[i] ?? 0)
-    if (d) return d
-  }
-  return 0
-}
+import { IconAlert, IconCheck, IconClaude } from './icons'
 
 type Phase = 'hidden' | 'prompt' | 'installing' | 'done' | 'error'
 
 /**
- * On launch: if the Claude engine isn't installed (or is older than the latest
- * available), pops a card prompting to install the latest version — one click
- * installs it into ~/.agentcodegui and activates it.
+ * On launch: if the Claude engine isn't installed, pops a card prompting to install
+ * the latest version — one click installs it into ~/.agentcodegui and activates it.
+ *
+ * 자동 업데이트(설정 → Engine, 기본 켬)가 켜져 있으면 이 게이트는 아예 안 뜬다 —
+ * 설치도 업데이트도 부팅 게이트(EngineUpdateGate)가 물어보지 않고 진행하며 카드로
+ * 보여준다. "새 엔진 버전" 업데이트 프롬프트는 그 구조로 대체돼 제거됐다(누르지
+ * 않아도 20초 뒤 사일런트 업데이트가 어차피 덮어쓰던 거짓 선택지였다).
  */
 export function EngineGate() {
   const [phase, setPhase] = useState<Phase>('hidden')
-  const [kind, setKind] = useState<'install' | 'update'>('install')
   const [target, setTarget] = useState('') // latest version to install
-  const [activeVer, setActiveVer] = useState<string | null>(null)
   const [log, setLog] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
   const logRef = useRef<HTMLDivElement>(null)
@@ -34,19 +25,15 @@ export function EngineGate() {
     let alive = true
     void (async () => {
       try {
+        // 자동 업데이트가 켜져 있으면 부팅 게이트의 몫 — 조회 실패는 켬(기본값)으로 간주
+        const auto = await window.api.engineAutoUpdate().catch(() => true)
+        if (!alive || auto) return
         const [state, avail] = await Promise.all([window.api.engine.state(), window.api.engine.listAvailable()])
         if (!alive) return
         const latest = avail.latest
         if (!latest) return // can't determine latest (offline) → stay hidden
         setTarget(latest)
-        setActiveVer(state.active)
-        if (!state.active) {
-          setKind('install')
-          setPhase('prompt')
-        } else if (cmpVer(state.active, latest) < 0) {
-          setKind('update')
-          setPhase('prompt')
-        }
+        if (!state.active) setPhase('prompt')
       } catch {
         /* offline / error → stay hidden, settings still lets them install */
       }
@@ -96,19 +83,17 @@ export function EngineGate() {
     return (
       <div className="set-dialog-overlay">
         <div className="set-dialog" onMouseDown={(e) => e.stopPropagation()}>
-          <div className="sd-ic warn">{kind === 'update' ? <IconBolt size={22} /> : <IconClaude size={22} />}</div>
-          <div className="sd-title">{kind === 'install' ? 'Claude 엔진 설치' : '새 엔진 버전'}</div>
-          <div className="sd-msg">
-            {kind === 'install'
-              ? `Claude Code 엔진이 아직 설치되지 않았습니다. 최신 버전(${target})을 설치하면 바로 사용할 수 있어요.`
-              : `현재 ${activeVer} 버전을 사용 중입니다. 최신 버전(${target})으로 업데이트할까요?`}
+          <div className="sd-ic warn">
+            <IconClaude size={22} />
           </div>
+          <div className="sd-title">Claude 엔진 설치</div>
+          <div className="sd-msg">{`Claude Code 엔진이 아직 설치되지 않았습니다. 최신 버전(${target})을 설치하면 바로 사용할 수 있어요.`}</div>
           <div className="sd-btns">
             <button className="sd-cancel" onClick={() => setPhase('hidden')}>
               나중에
             </button>
             <button className="sd-go" onClick={doInstall}>
-              {kind === 'install' ? '설치' : '업데이트'}
+              설치
             </button>
           </div>
         </div>

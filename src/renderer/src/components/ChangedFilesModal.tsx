@@ -1,18 +1,18 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ChangedFile } from '@shared/protocol'
 import { FileBadge } from './fileType'
-import { IconClose, IconFile, IconFolder, IconList, IconMax, IconPencil, IconRestore } from './icons'
-import { useResizableModal, ModalResizeHandles } from './resizableModal'
-import { mergeRefs } from './zoom'
+import { IconClose, IconFolder } from './icons'
 import { MouseGestureLayer, scrollGestures } from './mouseGesture'
 
-// 분류 탭 — 전체 / 새 파일 / 수정됨 (설정창의 좌측 내비와 같은 언어)
-type Cat = 'all' | 'new' | 'edit'
+// 분류 세그먼트 — 전체 / 수정됨 / 새 파일 (PoC chgseg)
+type Cat = 'all' | 'edit' | 'new'
 
-// 탐색기 우클릭 '변경된 파일 보기' — 설정창 크기의 창: 좌측에서 전체/새 파일/수정됨을
-// 고르고, 본문은 그 폴더(rel '' = 프로젝트 전체) 아래의 세션 변경 파일을 하위 폴더별로
-// 묶어 보여준다. 클릭하면 diff 뷰어가 창 위로 뜨고(z 60 > 55, Git 카드와 같은 레이어링)
-// 창은 남아 연달아 볼 수 있다. Git 카드처럼 크기 조절·최대화·창별 크기 기억을 지원한다.
+// 탐색기 우클릭 '변경된 파일 보기' — PoC 폴더 변경 파일 카드(chgcard):
+// mhead(폴더 타일 + 이름/경로·개수 모노 서브 + ± 합계 알약) 아래 세그먼트 알약
+// 필터(상태색 점 + 개수, 0개는 비활성)와 파일 행(아이콘·이름·흐린 위치·±수치·상태
+// 글자) 목록. 행을 클릭하면 diff 뷰어가 카드 위로 뜨고(z 60 > 55) 카드는 남아
+// 연달아 볼 수 있다. changed에서 매번 파생 — 보는 중에 에이전트가 파일을 더
+// 만지면 즉시 반영된다.
 export function ChangedFilesModal({
   scope,
   changed,
@@ -26,8 +26,6 @@ export function ChangedFilesModal({
 }) {
   const [cat, setCat] = useState<Cat>('all')
 
-  // changed에서 매번 파생 — 보고 있는 중에 에이전트가 파일을 더 만지면 즉시 반영된다.
-  // 경로순 정렬이라 폴더 그룹도 자연히 경로순(하위 폴더 먼저, 스코프 바로 아래 파일은 마지막).
   const list = useMemo(() => {
     const pre = scope.rel ? scope.rel + '/' : ''
     return changed.filter((f) => !pre || f.path.startsWith(pre)).sort((a, b) => a.path.localeCompare(b.path))
@@ -37,31 +35,11 @@ export function ChangedFilesModal({
   const sumDel = list.reduce((n, f) => n + f.del, 0)
   const shown = cat === 'all' ? list : list.filter((f) => f.tag === cat)
 
-  // 스코프 기준 상대 폴더별 그룹('' = 스코프 바로 아래) — 행에는 파일 이름만 남아 깔끔하다
-  const groups = useMemo(() => {
-    const m = new Map<string, { name: string; file: ChangedFile }[]>()
-    for (const f of shown) {
-      const local = scope.rel ? f.path.slice(scope.rel.length + 1) : f.path
-      const slash = local.lastIndexOf('/')
-      const dir = slash >= 0 ? local.slice(0, slash) : ''
-      const g = m.get(dir)
-      const row = { name: local.slice(slash + 1), file: f }
-      if (g) g.push(row)
-      else m.set(dir, [row])
-    }
-    return [...m.entries()]
-  }, [shown, scope])
-
-  const NAV: { id: Cat; label: string; icon: React.ReactNode; count: number }[] = [
-    { id: 'all', label: '전체', icon: <IconList size={17} />, count: list.length },
-    { id: 'new', label: '새 파일', icon: <IconFile size={17} />, count: nNew },
-    { id: 'edit', label: '수정됨', icon: <IconPencil size={17} />, count: list.length - nNew }
+  const SEGS: { k: Cat; t: string; c: number; dot?: string }[] = [
+    { k: 'all', t: '전체', c: list.length },
+    { k: 'edit', t: '수정됨', c: list.length - nNew, dot: 'var(--yellow)' },
+    { k: 'new', t: '새 파일', c: nNew, dot: 'var(--green)' }
   ]
-  const EMPTY: Record<Cat, string> = {
-    all: '변경된 파일이 없어요',
-    new: '새로 만든 파일이 없어요',
-    edit: '수정된 파일이 없어요'
-  }
 
   // Esc — 위에 떠 있는 파일 뷰어가 우선 (뷰어의 Esc가 그쪽 카드만 닫는다, Git 카드와 같은 가드)
   useEffect(() => {
@@ -74,15 +52,12 @@ export function ChangedFilesModal({
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
-  // 오버레이에서 눌러서 오버레이에서 뗀 클릭만 닫기 — 창 안에서 시작한 드래그가
-  // 밖에서 끝나도 닫히지 않게 (Git 카드와 같은 처리)
+  // 오버레이에서 눌러서 오버레이에서 뗀 클릭만 닫기 — 카드 안에서 시작한 드래그가
+  // 밖에서 끝나도 닫히지 않게
   const downOnOverlay = useRef(false)
-  // 크기 조절·최대화 — Git 카드와 같은 훅, 크기는 'chgm.size'로 기억
-  const rz = useResizableModal('chgm.size', true)
-  // 마우스 제스처(↑/↓ 목록 맨 위·아래, ↓→ 닫기) 대상 — 창 루트는 state로 추적
+  // 마우스 제스처(↑/↓ 목록 맨 위·아래, ↓→ 닫기) — 카드 루트와 스크롤 본문은 state로 추적
   const [cardEl, setCardEl] = useState<HTMLDivElement | null>(null)
-  const modalRef = useMemo(() => mergeRefs(rz.ref, setCardEl), [rz.ref])
-  const [listEl, setListEl] = useState<HTMLElement | null>(null)
+  const [bodyEl, setBodyEl] = useState<HTMLDivElement | null>(null)
 
   return (
     <div
@@ -96,78 +71,66 @@ export function ChangedFilesModal({
     >
       <MouseGestureLayer
         target={cardEl}
-        actions={[...scrollGestures(() => listEl), { pattern: 'DR', label: '창 닫기', run: onClose }]}
+        actions={[...scrollGestures(() => bodyEl), { pattern: 'DR', label: '창 닫기', run: onClose }]}
       />
-      <div className="chgm-modal rzm" ref={modalRef} style={rz.modalStyle}>
-        {!rz.maximized && <ModalResizeHandles onStart={rz.startResize} />}
-        <div className="diff-head" onDoubleClick={rz.onHeaderDoubleClick}>
-          <span className="gitm-ic">
-            <IconList size={16} />
+      <div className="chgm-modal" ref={setCardEl}>
+        {/* ── 헤더 (PoC mhead) — 폴더 타일 + 2줄 제목, 오른쪽 ± 합계 알약 + 닫기 ── */}
+        <div className="chgm-head">
+          <span className="chgm-tile">
+            <IconFolder size={17} />
           </span>
-          <span className="gitm-name">변경된 파일</span>
-          <span className="gitm-path">{scope.rel || scope.label}</span>
-          <span className="dspacer" />
-          {(sumAdd > 0 || sumDel > 0) && (
-            <span className="chgm-total">
-              {sumAdd > 0 && <span className="add">+{sumAdd}</span>}
-              {sumDel > 0 && <span className="del">−{sumDel}</span>}
-            </span>
-          )}
-          <button
-            className="dclose htip"
-            onClick={rz.toggleMaximize}
-            aria-label={rz.maximized ? '이전 크기로' : '최대화'}
-            data-tip={rz.maximized ? '이전 크기로' : '최대화'}
-          >
-            {rz.maximized ? <IconRestore size={15} /> : <IconMax size={13} />}
-          </button>
-          <button className="dclose htip" onClick={onClose} aria-label="닫기" data-tip="닫기 (Esc)">
-            <IconClose size={16} />
+          <span className="chgm-tt">
+            <span className="mt">{scope.label}</span>
+            <span className="msub">{(scope.rel || scope.label) + ' · 변경된 파일 ' + list.length + '개'}</span>
+          </span>
+          <span className="sp" />
+          {sumAdd > 0 && <span className="dpill add">+{sumAdd}</span>}
+          {sumDel > 0 && <span className="dpill del">−{sumDel}</span>}
+          <button className="chgm-close htip" onClick={onClose} aria-label="닫기" data-tip="닫기 (Esc)">
+            <IconClose size={15} />
           </button>
         </div>
 
-        <div className="chgm-body">
-          {/* ── 좌측 분류 내비 (설정창과 같은 언어) ── */}
-          <nav className="chgm-nav">
-            <div className="nh">분류</div>
-            {NAV.map(({ id, label, icon, count }) => (
-              <button key={id} className={'nav-item' + (cat === id ? ' active' : '')} onClick={() => setCat(id)}>
-                <span className="ic">{icon}</span>
-                {label}
-                <span className={'cnt' + (count === 0 ? ' zero' : '')}>{count}</span>
+        {/* ── 본문 — 세그먼트 필터 + 파일 목록 인셋 카드(PoC mcard.tools), 통째로 스크롤 ── */}
+        <div className="chgm-body scroll" ref={setBodyEl}>
+          <div className="chgm-seg">
+            {SEGS.map((s) => (
+              <button
+                key={s.k}
+                className={(cat === s.k ? 'on' : '') + (s.c ? '' : ' dis')}
+                onClick={() => setCat(s.k)}
+              >
+                {s.dot && <span className="d2" style={{ background: s.dot }} />}
+                {s.t}
+                <span className="c">{s.c}</span>
               </button>
             ))}
-          </nav>
-
-          {/* ── 본문: 하위 폴더별 그룹 목록 ── */}
-          <main className="chgm-main scroll" ref={setListEl}>
+          </div>
+          <div className="chgm-list">
             {shown.length === 0 ? (
-              <div className="chgm-empty">{EMPTY[cat]}</div>
+              <div className="chgm-empty">변경된 파일이 없어요</div>
             ) : (
-              groups.map(([dir, rows]) => (
-                <Fragment key={dir || './'}>
-                  {/* 스코프 바로 아래(dir '')는 다른 그룹이 있을 때만 './'로 구분해 준다 */}
-                  {(dir || groups.length > 1) && (
-                    <div className="chgm-dir">
-                      <IconFolder size={13} />
-                      {dir || './'}
-                    </div>
-                  )}
-                  {rows.map(({ name, file: f }) => (
-                    <button key={f.path} className="chgm-file" onClick={() => onOpen(f.path)}>
-                      <FileBadge path={f.path} size={19} />
-                      <span className="fn">{name}</span>
-                      <span className="stat">
-                        {f.add > 0 && <span className="add">+{f.add}</span>}
-                        {f.del > 0 && <span className="del">−{f.del}</span>}
-                      </span>
-                      <span className={'exp-chg ' + f.tag}>{f.tag === 'new' ? 'N' : 'M'}</span>
-                    </button>
-                  ))}
-                </Fragment>
-              ))
+              shown.map((f) => {
+                // 스코프 기준 상대 경로 — 이름과 흐린 위치(부모 폴더, 스코프 바로 아래면 '·')로 나눈다
+                const local = scope.rel ? f.path.slice(scope.rel.length + 1) : f.path
+                const slash = local.lastIndexOf('/')
+                return (
+                  <button key={f.path} className="chgm-row" onClick={() => onOpen(f.path)}>
+                    <span className="fic">
+                      <FileBadge path={f.path} size={14} />
+                    </span>
+                    <span className="n">{local.slice(slash + 1)}</span>
+                    <span className="pp">{slash >= 0 ? local.slice(0, slash) : '·'}</span>
+                    <span className="pm">
+                      <span className={'a' + (f.add ? '' : ' zero')}>+{f.add}</span>
+                      <span className={'d' + (f.del ? '' : ' zero')}>−{f.del}</span>
+                    </span>
+                    <span className={'gs ' + (f.tag === 'new' ? 'a' : 'm')}>{f.tag === 'new' ? 'A' : 'M'}</span>
+                  </button>
+                )
+              })
             )}
-          </main>
+          </div>
         </div>
       </div>
     </div>

@@ -1,26 +1,31 @@
 import { useEffect, useRef, useState } from 'react'
 import type { UpdateStatus } from '@shared/protocol'
-import { IconAlert, IconCheck } from './icons'
+import { IconAlert, IconDownload } from './icons'
 
 /**
- * App auto-update UI — mirrors EngineGate's install-card so updating the app looks
- * exactly like installing a Claude engine version: a streamed log + progress, then a
- * "재시작하여 설치" action when ready. The full state (incl. the log) is owned by the
- * main process; we seed from it on mount so no early event is missed, then follow live
- * updates. 카드는 스스로 뜨지 않는다 — 새 버전 알림은 사이드바 배지가 맡고, 이 카드는
- * 배지 클릭(app-update:open)으로만 열린다. 10분 주기 재확인이 작업 중에 카드를 불쑥
- * 띄우던 것을 막기 위한 규칙이라, 시작 시 발견된 업데이트도 배지로만 알린다.
+ * 앱 자동 업데이트 알림 — 2.0 PoC의 사이드바 하단 유리 카드.
+ * 새 버전(받는 중 게이지) → 준비 완료(나중에/업데이트) → 적용하는 중이 카드 하나에서
+ * 이어진다. 상태는 메인 프로세스가 소유 — 마운트 때 시드해 구독 전 이벤트를 놓치지
+ * 않는다. 다운로드는 백그라운드 자동이라 카드의 '업데이트'는 곧 적용(재시작)이다.
+ *
+ * 뜨고 접히는 규칙: 새 버전이 발견되면 스스로 떠서 진행을 보여주고, '나중에'로 접으면
+ * 준비 완료가 되는 순간 한 번 더 뜬다(그때가 행동할 순간이라). 그 뒤로는 사이드바
+ * 배지 클릭(app-update:open)으로만 되열린다 — 10분 주기 재확인이 작업 중에 카드를
+ * 되띄우지 않게. 접어둔 채 앱을 끄면 종료 시 자동 설치(autoInstallOnAppQuit)가 받는다.
  */
 export function AppUpdateGate() {
   const [status, setStatus] = useState<UpdateStatus | null>(null)
-  const [dismissed, setDismissed] = useState(true)
-  const logRef = useRef<HTMLDivElement>(null)
+  const [appVer, setAppVer] = useState('')
+  const [dismissed, setDismissed] = useState(false)
+  const [applying, setApplying] = useState(false)
+  const [shown, setShown] = useState(false) // .show — 올라오는/가라앉는 트랜지션용
+  const prevPhase = useRef<UpdateStatus['phase'] | null>(null)
 
-  // seed from the main-process state (catches events fired before we subscribed)
   useEffect(() => {
-    // the sidebar's update badge opens the card through this event
+    // 사이드바 배지가 이 이벤트로 카드를 되연다
     const reopen = (): void => setDismissed(false)
     window.addEventListener('app-update:open', reopen)
+    window.api.app.getVersion().then(setAppVer).catch(() => {})
     window.api.app.getUpdateStatus().then(setStatus).catch(() => {})
     const off = window.api.app.onUpdateEvent(setStatus)
     return () => {
@@ -29,74 +34,85 @@ export function AppUpdateGate() {
     }
   }, [])
 
-  // keep the log scrolled to the newest line
+  // 받는 중에 접었어도 준비 완료가 되는 순간엔 다시 알린다
   useEffect(() => {
-    const el = logRef.current
-    if (el) el.scrollTop = el.scrollHeight
-  }, [status?.log.length])
+    const ph = status?.phase ?? null
+    if (ph !== prevPhase.current) {
+      prevPhase.current = ph
+      if (ph === 'downloaded') setDismissed(false)
+      // 적용 대기 중 단계가 바뀌면(설치 실패 → error 등) 버튼 줄을 되살린다
+      else setApplying(false)
+    }
+  }, [status?.phase])
 
-  if (!status || dismissed) return null
-  const { phase } = status
-  // only an actual update is worth a card; a normal launch (checking → none) shows nothing.
-  const visible =
-    phase === 'available' || phase === 'downloading' || phase === 'downloaded' || (phase === 'error' && status.version != null)
-  if (!visible) return null
+  const phase = status?.phase
+  // 실제 업데이트가 있을 때만 카드가 존재한다 — 평범한 시작(checking → none)은 무표시.
+  // 오류는 업데이트가 진행되던 중(version 있음)일 때만 알릴 가치가 있다.
+  const active =
+    phase === 'available' || phase === 'downloading' || phase === 'downloaded' || (phase === 'error' && status?.version != null)
+  const visible = active && !dismissed
 
-  const statusCls = phase === 'downloaded' ? 'done' : phase === 'error' ? 'error' : 'running'
-  const title =
-    phase === 'downloaded' ? '업데이트 준비 완료' : phase === 'error' ? '업데이트 오류' : '업데이트 다운로드 중'
+  // .show는 한 프레임 늦게 붙여 첫 등장도 트랜지션을 타게 한다
+  useEffect(() => {
+    if (!visible) {
+      setShown(false)
+      return
+    }
+    const raf = requestAnimationFrame(() => setShown(true))
+    return () => cancelAnimationFrame(raf)
+  }, [visible])
+
+  if (!status || !active) return null
+
+  const err = phase === 'error'
+  const ready = phase === 'downloaded'
+  const ver = status.version
+  const verLine = appVer && ver ? `${appVer} → ${ver}` : ver ? `v${ver}` : ''
 
   return (
-    <div
-      className="set-dialog-overlay"
-      onMouseDown={() => setDismissed(true)} // hide; the download keeps running in the background
-    >
-      <div className="install-card" onMouseDown={(e) => e.stopPropagation()}>
-        <div className="ic-head">
-          <span className={'ic-hic ' + statusCls}>
-            {phase === 'downloaded' ? (
-              <IconCheck size={16} />
-            ) : phase === 'error' ? (
-              <IconAlert size={16} />
+    <div className={'upd' + (shown ? ' show' : '')}>
+      <div className="uh">
+        <div className={'uic' + (err ? ' err' : '')}>
+          {err ? <IconAlert size={14} stroke={2.2} /> : <IconDownload size={14} stroke={2} />}
+        </div>
+        <div>
+          <div className="ut">{err ? '업데이트 오류' : '새 버전이 나왔어요'}</div>
+          <div className="us">
+            {err ? (
+              status.error || '업데이트에 실패했어요 · 잠시 후 다시 시도해요'
             ) : (
-              <span className="set-spin" />
+              <>
+                <span className="uk">{verLine}</span>
+                {applying ? ' · 적용하는 중…' : ready ? ' · 바로 적용돼요' : ` · 받는 중 — ${status.percent}%`}
+              </>
             )}
-          </span>
-          <span className="ic-title">{title}</span>
-          {status.version && <span className="ic-ver">v{status.version}</span>}
+          </div>
         </div>
-        <div className="ic-log scroll" ref={logRef}>
-          {status.log.map((l, i) => (
-            <div className="ic-ln" key={i}>
-              {l}
-            </div>
-          ))}
-          {phase === 'error' && status.error && <div className="ic-ln err">{status.error}</div>}
+      </div>
+      {!err && !ready && (
+        <div className="upbar">
+          <i style={{ width: status.percent + '%' }} />
         </div>
-        <div className="ic-foot">
-          <span className={'ic-status ' + statusCls}>
-            {phase === 'downloaded'
-              ? '재시작하면 새 버전이 설치됩니다'
-              : phase === 'error'
-                ? '업데이트에 실패했습니다'
-                : `내려받는 중… ${status.percent}%`}
-          </span>
-          {phase === 'downloaded' ? (
-            <>
-              <button className="sd-cancel" onClick={() => setDismissed(true)}>
-                나중에
-              </button>
-              <button className="sd-go" onClick={() => window.api.app.installUpdate()}>
-                재시작하여 설치
-              </button>
-            </>
-          ) : (
-            <button className="sd-go" onClick={() => setDismissed(true)}>
-              {phase === 'error' ? '확인' : '숨기기'}
+      )}
+      {!applying && (
+        <div className="ub">
+          <button className="later" onClick={() => setDismissed(true)}>
+            {err ? '확인' : '나중에'}
+          </button>
+          {ready && (
+            <button
+              className="go"
+              onClick={() => {
+                // 스플래시가 겹쳐 뜨고 앱이 꺼진다 — 그 한 박자 동안 '적용하는 중…'
+                setApplying(true)
+                window.api.app.installUpdate()
+              }}
+            >
+              업데이트
             </button>
           )}
         </div>
-      </div>
+      )}
     </div>
   )
 }
