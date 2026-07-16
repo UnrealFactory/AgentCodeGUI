@@ -1505,6 +1505,7 @@ export function useThreadFollow(scrollEl: HTMLElement | null, busy: boolean) {
   const stickRef = useRef(true)
   const lastWheelUpRef = useRef(-Infinity) // timeStamp of the most recent upward wheel
   const lastTopRef = useRef(0) // 마지막 스크롤 위치 — 뷰 왕복으로 스크롤 영역이 재생성될 때 복원용
+  const sbDragRef = useRef(false) // 세로 스크롤바를 잡고 있는 동안 true — 드래그 중 재고정 금지
   const [showJump, setShowJump] = useState(false)
 
   useEffect(() => {
@@ -1528,14 +1529,46 @@ export function useThreadFollow(scrollEl: HTMLElement | null, busy: boolean) {
       // resume only while paused, settled at the bottom, and not in the middle of an
       // upward gesture — the time guard stops a near-bottom scroll-up from instantly
       // re-arming the follow (which would trap the user in the bottom band)
-      if (!stickRef.current && fromBottom <= FOLLOW_BOTTOM_EPSILON && e.timeStamp - lastWheelUpRef.current > 150)
+      if (
+        !stickRef.current &&
+        !sbDragRef.current &&
+        fromBottom <= FOLLOW_BOTTOM_EPSILON &&
+        e.timeStamp - lastWheelUpRef.current > 150
+      )
+        stickRef.current = true
+    }
+    // 스크롤바 드래그도 휠 업과 같은 '따라가기 OFF' 의도 — 드래그는 wheel 없이 scroll만
+    // 내서, 잡는 순간 래치를 안 풀면 스트리밍 rAF가 매 프레임 바닥으로 도로 끌어내려
+    // 썸을 위로 끌 수 없다(실측: 490px 끌어도 fromBottom 26px 고정). 네이티브 스크롤바
+    // 클릭은 target=스크롤러 자신 + offsetX가 clientWidth(스크롤바 제외 폭) 바깥으로
+    // 온다(실측 994/989). 드래그 중엔 바닥을 스쳐도 재고정하지 않고, 놓는 순간 바닥이면
+    // 휠 복귀와 같은 규칙으로 다시 따라간다.
+    const onSbDown = (e: MouseEvent): void => {
+      if (e.button !== 0 || e.target !== el || e.offsetX < el.clientWidth) return
+      sbDragRef.current = true
+      stickRef.current = false
+    }
+    const onSbUp = (e: MouseEvent): void => {
+      if (!sbDragRef.current) return
+      sbDragRef.current = false
+      // '바닥에 놓았나'는 스크롤 위치가 아니라 포인터 y로 판정한다 — 스트리밍 성장이
+      // 드래그 중 scroll 이벤트를 계속 만들고(리매핑도 scrollTop을 1~8px씩 움직임 —
+      // 실측) 놓는 순간의 fromBottom도 성장에 밀려나 있어 둘 다 신뢰할 수 없다.
+      // 썸을 트랙 끝까지 내리면 포인터는 바닥에서 썸 높이(최소 36px) 안에 남는다.
+      const nearBottom = el.getBoundingClientRect().bottom - e.clientY <= 48
+      if (nearBottom || el.scrollHeight - el.scrollTop - el.clientHeight <= FOLLOW_BOTTOM_EPSILON)
         stickRef.current = true
     }
     el.addEventListener('wheel', onWheel, { passive: true })
     el.addEventListener('scroll', onScroll, { passive: true })
+    el.addEventListener('mousedown', onSbDown)
+    // mouseup은 창 전역에서 — 썸을 잡은 채 포인터가 스크롤러 밖에서 놓일 수 있다
+    window.addEventListener('mouseup', onSbUp)
     return () => {
       el.removeEventListener('wheel', onWheel)
       el.removeEventListener('scroll', onScroll)
+      el.removeEventListener('mousedown', onSbDown)
+      window.removeEventListener('mouseup', onSbUp)
     }
   }, [scrollEl])
 
@@ -3260,18 +3293,25 @@ export function Composer({
   // 입력이 두 줄 이상이면 컴포저가 자동 두 줄로 승격 — 입력칸이 첫 줄 전체를 차지하고
   // [+ · 칩 · 보내기]가 아래 줄로 내려간다. 긴 요약 칩(GPT 모델·계정)이 입력칸 폭을
   // 잠식해 모든 줄이 일찍 꺾이던 문제의 해법 (한 줄일 땐 기존 고스트 필 그대로).
+  // 클래스 이름은 'multi'가 아니라 'two-line' — 멀티 채팅 화면 루트(.multi)의 전역 규칙
+  // (flex-direction:column 등)이 같은 이름을 타고 컴포저 행을 덮쳐, 승격 순간 컨트롤이
+  // 오른쪽에 세로로 쌓이는 거대 컴포저가 되던 실사고.
   const [multi, setMulti] = useState(false)
   const grow = (el: HTMLTextAreaElement | null): void => {
     if (!el) return
     // 승격 판정은 항상 '한 줄 레이아웃(칩이 옆에 있는 좁은 폭)'에서 잰다 — 승격 후의
     // 넓은 폭으로 재판정하면 좁혀서 두 줄 ↔ 넓혀서 한 줄이 서로를 뒤집는 진동이 생긴다.
     const row = el.parentElement // .composer-row
-    row?.classList.remove('multi')
+    row?.classList.remove('two-line')
     el.style.height = 'auto'
-    const wraps = el.scrollHeight > 32 // 한 줄 높이 ≈26px(13px×1.55+패딩 6), 두 줄 ≈46px
-    row?.classList.toggle('multi', wraps)
+    // 빈 입력은 무조건 한 줄 — placeholder도 scrollHeight에 계상돼서(Chromium), 좁은 폭
+    // (멀티 패널·세션 창·확대 배율)에서 긴 busy placeholder가 줄바꿈되면 빈 칸인데도
+    // 승격 판정이 나고, 판정은 늘 한 줄 폭에서 재므로 전송 후에도 영영 안 풀렸다.
+    const empty = el.value === ''
+    const wraps = !empty && el.scrollHeight > 32 // 한 줄 높이 ≈26px(13px×1.55+패딩 6), 두 줄 ≈46px
+    row?.classList.toggle('two-line', wraps)
     el.style.height = 'auto'
-    el.style.height = Math.min(el.scrollHeight, 160) + 'px'
+    el.style.height = (empty ? 26 : Math.min(el.scrollHeight, 160)) + 'px'
     // 상한(160px)을 넘기 전엔 스크롤을 잠근다 — 분수 zoom(멀티 패널 .9 등)에선 반올림
     // 오차로 1px 유령 오버플로가 생겨 빈 입력에도 스크롤바가 튀어나올 수 있다
     el.style.overflowY = el.scrollHeight > 160 ? 'auto' : 'hidden'
@@ -3776,8 +3816,8 @@ export function Composer({
             </div>
           )}
           {/* 한 줄 고스트 필 (PoC): [+ 첨부] [입력] [모델 칩 → 통합 팝오버] [보내기]
-              — 입력이 여러 줄이면 multi가 서서 입력칸 전체 폭 + 컨트롤 아랫줄로 승격 */}
-          <div className={'composer-row' + (multi ? ' multi' : '')}>
+              — 입력이 여러 줄이면 two-line이 서서 입력칸 전체 폭 + 컨트롤 아랫줄로 승격 */}
+          <div className={'composer-row' + (multi ? ' two-line' : '')}>
             <button className="plus has-tip" aria-label="파일 첨부" data-tip="파일 첨부 (이미지·텍스트)" onClick={onPickImages}>
               <IconPlus size={11} stroke={2.2} />
             </button>

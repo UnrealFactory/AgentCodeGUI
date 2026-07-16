@@ -561,9 +561,84 @@ export class ClaudeEngine {
       // overstate the window, so we never use it for the gauge.
       let lastContextTokens: number | null = null
 
+      // 이 실행에 눈에 보이는 턴 활동(답변 텍스트·도구·tool_result)이 있었는지 — 생각만
+      // 한 프레임은 스레드에 아무것도 안 남기므로 세지 않는다(무음 턴 notice 기준과 일치)
+      let sawTurnActivity = false
+      // 활동 없이 도착한 성공 result 보류분 — 실측(밀린 백그라운드 통지): 새 CLI가 이전
+      // 턴 작업의 통지를 먼저 무음 미니턴으로 소화하며 빈 result를 내고 진짜 턴이 뒤에
+      // 이어진다. 이를 즉시 종결로 내보내면 busy가 풀리고 렌더러가 "이번 턴이 응답 없이
+      // 끝났어요"를 오발한다 — 스트림이 실질 메시지로 이어지면 버리고, 그대로 닫히면
+      // 루프 뒤에서 진짜 무음 턴으로 정착한다.
+      let heldResult: SdkMsg | null = null
+      const settleResult = (msg: SdkMsg): void => {
+        // Only SDKResultSuccess carries `result`; error subtypes put text in `errors`.
+        const resultText = msg.is_error
+          ? Array.isArray(msg.errors) && msg.errors.length
+            ? msg.errors.join('; ')
+            : msg.result ?? '실행이 실패했습니다.'
+          : msg.result ?? ''
+        // use the last per-turn context, NOT contextFromUsage(msg.usage): the
+        // result's usage is cumulative across the whole run and would overstate
+        // the live window (often well past 100%).
+        // API 키로 실제 과금된 실행의 비용을 전역 누적(설정 → API의 사용액)에 더하고,
+        // 실행 1건을 사용 원장에 남긴다(모델별·일별 통계). 판정은 토글이 아니라 실제
+        // 인증 경로(runApiKeySource)로 한다 — 그래야 전역 ANTHROPIC_API_KEY로 API 과금된
+        // 실행도 잡히고, 구독(oauth)으로 붙은 실행의 명목 비용은 (API 모드를 켰더라도)
+        // 실제 청구가 아니므로 더하지 않는다. init 전에 죽어 경로를 못 받았으면 useApi로 폴백.
+        // 모든 엔진 인스턴스(메인/채팅/멀티)가 이 경로를 지나므로 한 곳에서 끝난다.
+        const billedToApi = runApiKeySource ? isApiKeyBilled(runApiKeySource) : useApi
+        if (billedToApi && typeof msg.total_cost_usd === 'number') {
+          addSpend(msg.total_cost_usd)
+          recordApiUsage({
+            ts: Date.now(),
+            // 표시 모델명(전환 감지가 추적한 값) — init 전에 죽은 실행은 picker 별칭으로
+            model: curModelDisplay || req.model,
+            source: this.source,
+            costUsd: msg.total_cost_usd,
+            inTok: msg.usage?.input_tokens ?? 0,
+            outTok: msg.usage?.output_tokens ?? 0,
+            cacheRead: msg.usage?.cache_read_input_tokens ?? 0,
+            cacheWrite: msg.usage?.cache_creation_input_tokens ?? 0,
+            durationMs: msg.duration_ms ?? null,
+            numTurns: msg.num_turns ?? null
+          })
+        }
+        this.emit({
+          type: 'result',
+          runId,
+          isError: !!msg.is_error,
+          text: resultText,
+          costUsd: msg.total_cost_usd ?? null,
+          durationMs: msg.duration_ms ?? null,
+          numTurns: msg.num_turns ?? null,
+          contextTokens: lastContextTokens,
+          contextWindow: windowFromModelUsage(msg.modelUsage),
+          // 대화별 비용 누적(렌더러)도 같은 실제-과금 판정을 쓴다 (전역 원장과 일관)
+          viaApi: billedToApi
+        })
+        this.emit({ type: 'status', runId, status: msg.is_error ? 'error' : 'done' })
+        sentTerminalStatus = true
+      }
+
       for await (const raw of q as AsyncIterable<SdkMsg>) {
         if (this.activeRunId !== runId) break
         const msg = raw
+
+        // 눈에 보이는 턴 활동 판별 — 보류 중인 result가 있으면 턴이 계속되고 있다는
+        // 증거이므로 버린다(미니턴의 조기 종결이었음). 주입된 통지는 user 텍스트 프레임,
+        // 생각은 thinking 블록/델타라 여기 안 걸린다 — 그 뒤의 무음 result를 보류할 수 있다.
+        const msgBlocks = Array.isArray(msg.message?.content) ? msg.message.content : []
+        if (
+          (msg.type === 'assistant' && msgBlocks.some((b) => b?.type === 'text' || b?.type === 'tool_use')) ||
+          (msg.type === 'stream_event' && msg.event?.delta?.type === 'text_delta') ||
+          (msg.type === 'user' && msgBlocks.some((b) => b?.type === 'tool_result'))
+        ) {
+          sawTurnActivity = true
+          if (heldResult) {
+            heldResult = null
+            this.turnEnded = false // 미니턴 종결로 오판했던 상태 복구 — cancel이 다시 interrupt 경로
+          }
+        }
 
         if (msg.type === 'system' && msg.subtype === 'init') {
           // A different session means a fresh task list — drop tasks carried over
@@ -877,55 +952,20 @@ export class ClaudeEngine {
           // 이후의 stopped 통지는 사용자 중지가 아니라 턴 종료에 따른 CLI 정리로 표시하고,
           // 이후의 cancel은 interrupt 없이 바로 abort한다(정리 유예 중 CLI는 응답이 없다)
           this.turnEnded = true
-          // Only SDKResultSuccess carries `result`; error subtypes put text in `errors`.
-          const resultText = msg.is_error
-            ? Array.isArray(msg.errors) && msg.errors.length
-              ? msg.errors.join('; ')
-              : msg.result ?? '실행이 실패했습니다.'
-            : msg.result ?? ''
-          // use the last per-turn context, NOT contextFromUsage(msg.usage): the
-          // result's usage is cumulative across the whole run and would overstate
-          // the live window (often well past 100%).
-          // API 키로 실제 과금된 실행의 비용을 전역 누적(설정 → API의 사용액)에 더하고,
-          // 실행 1건을 사용 원장에 남긴다(모델별·일별 통계). 판정은 토글이 아니라 실제
-          // 인증 경로(runApiKeySource)로 한다 — 그래야 전역 ANTHROPIC_API_KEY로 API 과금된
-          // 실행도 잡히고, 구독(oauth)으로 붙은 실행의 명목 비용은 (API 모드를 켰더라도)
-          // 실제 청구가 아니므로 더하지 않는다. init 전에 죽어 경로를 못 받았으면 useApi로 폴백.
-          // 모든 엔진 인스턴스(메인/채팅/멀티)가 이 경로를 지나므로 한 곳에서 끝난다.
-          const billedToApi = runApiKeySource ? isApiKeyBilled(runApiKeySource) : useApi
-          if (billedToApi && typeof msg.total_cost_usd === 'number') {
-            addSpend(msg.total_cost_usd)
-            recordApiUsage({
-              ts: Date.now(),
-              // 표시 모델명(전환 감지가 추적한 값) — init 전에 죽은 실행은 picker 별칭으로
-              model: curModelDisplay || req.model,
-              source: this.source,
-              costUsd: msg.total_cost_usd,
-              inTok: msg.usage?.input_tokens ?? 0,
-              outTok: msg.usage?.output_tokens ?? 0,
-              cacheRead: msg.usage?.cache_read_input_tokens ?? 0,
-              cacheWrite: msg.usage?.cache_creation_input_tokens ?? 0,
-              durationMs: msg.duration_ms ?? null,
-              numTurns: msg.num_turns ?? null
-            })
+          if (!msg.is_error && !sawTurnActivity && !msg.result?.trim()) {
+            // 눈에 보이는 활동도 result 텍스트도 없는 성공 result — 밀린 통지를 소화한
+            // 무음 미니턴의 조기 종결일 수 있으니 보류한다(위 활동 판별이 버리거나, 루프
+            // 뒤에서 정착). 실패 result나 텍스트 실린 result는 즉시 정착 — 오류는 바로
+            // 보여야 하고, 답이 있는 턴의 result가 빈 활동으로 오는 일은 없다(실측).
+            heldResult = msg
+            continue
           }
-          this.emit({
-            type: 'result',
-            runId,
-            isError: !!msg.is_error,
-            text: resultText,
-            costUsd: msg.total_cost_usd ?? null,
-            durationMs: msg.duration_ms ?? null,
-            numTurns: msg.num_turns ?? null,
-            contextTokens: lastContextTokens,
-            contextWindow: windowFromModelUsage(msg.modelUsage),
-            // 대화별 비용 누적(렌더러)도 같은 실제-과금 판정을 쓴다 (전역 원장과 일관)
-            viaApi: billedToApi
-          })
-          this.emit({ type: 'status', runId, status: msg.is_error ? 'error' : 'done' })
-          sentTerminalStatus = true
+          settleResult(msg)
         }
       }
+      // 보류된 무음 result — 실질 메시지 없이 스트림이 닫혔으면 진짜 무음 턴이다.
+      // 여기서 정착해야 렌더러의 무음 턴 안내가 (진짜일 때만) 뜨고 busy가 풀린다.
+      if (heldResult && this.activeRunId === runId && !abort.signal.aborted) settleResult(heldResult)
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       // An abort surfaces as an error — don't surface it as a failure to the user.

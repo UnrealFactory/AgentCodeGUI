@@ -200,6 +200,10 @@ export class CodexEngine {
   private activeRunId: string | null = null
   private activeThreadId: string | null = null
   private activeTurnId: string | null = null
+  /** 이미 마감한 턴 id들 — 중단 3s 캡·수용량 재시도 등으로 먼저 마감한 턴의 늦은
+   *  turn/completed·error 통지가 다음 실행의 시작 창(activeTurnId 공백)에 도착해
+   *  새 runId로 둔갑하는 것을 막는다 (Claude의 무음 미니턴 오발과 같은 가족) */
+  private endedTurnIds = new Set<string>()
   /** 턴 시작 시각 — turn.durationMs가 안 실려 올 때 '작업함' 줄의 소요 폴백 */
   private turnStartedAt = 0
   /** 이번 실행의 작업 폴더 — 파일 변경 경로를 Claude 엔진처럼 cwd 상대로 바꾼다 */
@@ -515,6 +519,14 @@ export class CodexEngine {
         if (typeof usage?.modelContextWindow === 'number') this.lastCtxWindow = usage.modelContextWindow
         return
       }
+      case 'turn/started': {
+        // turn/start RPC 응답보다 먼저 파이프에 실리는 턴 개시 통지 — 응답 왕복을
+        // 기다리는 사이 activeTurnId가 비는 창을 여기서 닫는다 (메인 스레드의 턴은
+        // 전부 이 앱이 시작한 것이므로 채택해도 안전)
+        const turn = params.turn as { id?: string } | undefined
+        if (turn?.id && !this.activeTurnId) this.activeTurnId = turn.id
+        return
+      }
       case 'turn/completed': {
         const turn = params.turn as {
           id?: string
@@ -522,11 +534,26 @@ export class CodexEngine {
           error?: { message?: string; codexErrorInfo?: unknown } | null
           durationMs?: number | null
         }
+        // 이미 마감한 턴의 늦은 통지(중단 캡 뒤 도착한 interrupted 등) — 시작 창에서
+        // 받아주면 새 턴이 즉시 "응답 없이 끝났어요"로 정착하고 남은 스트림이 전부 버려진다
+        if (turn?.id && this.endedTurnIds.has(turn.id)) return
+        // 시작 창(activeTurnId 공백)에 도착한 id 달린 completed는 전부 잔재다 — 실측
+        // 와이어 순서가 turn/start 응답(id) → turn/started → … → completed 라서, 우리
+        // 턴의 completed는 채택(응답 또는 turn/started)보다 먼저 올 수 없다. id 없는
+        // 프레임(비정형)만 종전처럼 도착 순서로 정착시킨다.
+        if (!this.activeTurnId && turn?.id) return
         if (this.activeTurnId && turn?.id && turn.id !== this.activeTurnId) return
         void this.settleTurn(turn)
         return
       }
       case 'error': {
+        // 마감한(또는 다른/아직 없는) 턴의 늦은 error 통지도 같은 이유로 걸러낸다 —
+        // 시작 창에서 받아주면 새 실행이 이전 턴의 오류로 즉사한다. turn/start 자체의
+        // 실패는 통지가 아니라 RPC 오류(run의 catch)로 온다.
+        const errTurnId = typeof params.turnId === 'string' ? params.turnId : ''
+        if (errTurnId && this.endedTurnIds.has(errTurnId)) return
+        if (errTurnId && !this.activeTurnId) return
+        if (errTurnId && this.activeTurnId && errTurnId !== this.activeTurnId) return
         const err = params.error as { message?: string; codexErrorInfo?: unknown } | undefined
         const willRetry = params.willRetry === true
         if (willRetry) {
@@ -966,6 +993,12 @@ export class CodexEngine {
     // 수용량 초과 실패는 결과로 정착하지 않는다 — 다른 모델로 전환해 같은 턴을 다시
     // 시도할지 물어보고(질문 카드), 수락하면 이 실행이 그대로 이어진다
     if (failed && isCapacityErr(turn?.error)) {
+      // 재시도 확인을 기다리는 동안(activeTurnId 공백) 같은 실패 턴의 중복 통지가
+      // 오면 확인 카드가 겹으로 뜬다 — 실패 턴을 지금 마감 목록에 올린다
+      if (this.activeTurnId) {
+        this.endedTurnIds.add(this.activeTurnId)
+        this.activeTurnId = null
+      }
       void this.askCapacityFallback(runId)
       return
     }
@@ -1067,7 +1100,10 @@ export class CodexEngine {
         effort
       })
       const turnObj = turn as { turn?: { id?: string }; id?: string }
-      this.activeTurnId = turnObj?.turn?.id ?? (typeof turnObj?.id === 'string' ? turnObj.id : null)
+      // 응답을 기다리는 사이 turn/started가 먼저 채택했으면 보존, 실행이 이미 마감됐으면
+      // id를 부활시키지 않는다(다음 실행이 엉뚱한 mismatch로 통지를 버리게 된다)
+      if (this.activeRunId === runId)
+        this.activeTurnId = turnObj?.turn?.id ?? (typeof turnObj?.id === 'string' ? turnObj.id : this.activeTurnId)
       // 헤더의 모델 표기 동기화 — 스레드는 그대로, 모델만 바뀌었다
       this.emit({ type: 'session', runId, sessionId: this.activeThreadId ?? '', model: to, cwd: this.activeCwd, tools: [] })
       // 첫 turn/start가 거절돼 폴링이 시작 전이면 여기서 — 재시도 턴도 셸 추적을 받게
@@ -1160,6 +1196,12 @@ export class CodexEngine {
     this.cxCollabCalls.clear()
     this.emit({ type: 'status', runId, status })
     this.activeRunId = null
+    // 마감한 턴 id를 기억 — 늦은 turn/completed·error 통지가 다음 실행의 시작 창에서
+    // 새 턴으로 둔갑하지 못하게 한다 (통지는 다음 턴 언저리에만 오므로 최근 몇 개면 충분)
+    if (this.activeTurnId) {
+      this.endedTurnIds.add(this.activeTurnId)
+      if (this.endedTurnIds.size > 8) this.endedTurnIds.delete(this.endedTurnIds.values().next().value!)
+    }
     this.activeTurnId = null
     this.sawActivity = false
     this.turnDone?.resolve()
@@ -1302,6 +1344,7 @@ export class CodexEngine {
 
     const runId = nextRunId()
     this.activeRunId = runId
+    this.activeTurnId = null // 잔재 보험 — 스테일 id가 새 턴의 통지를 mismatch로 버리지 않게
     this.sawActivity = false
     this.items.clear()
     this.cxAgents.clear()
@@ -1392,7 +1435,11 @@ export class CodexEngine {
         effort
       })
       const turnObj = turn as { turn?: { id?: string }; id?: string }
-      this.activeTurnId = turnObj?.turn?.id ?? (typeof turnObj?.id === 'string' ? turnObj.id : null)
+      // 응답을 기다리는 사이 turn/started가 먼저 채택했으면 보존(?? 뒤 폴백), 그 사이 턴이
+      // 이미 정착해 실행이 끝났으면 id를 부활시키지 않는다(activeRunId 가드 — 스테일
+      // activeTurnId가 다음 실행의 통지를 mismatch로 버리게 된다)
+      if (this.activeRunId === runId)
+        this.activeTurnId = turnObj?.turn?.id ?? (typeof turnObj?.id === 'string' ? turnObj.id : this.activeTurnId)
       // 백그라운드 터미널 폴링 시작 — 푸시 알림이 없어 5초 간격 list (finishRun이 멈춘다)
       this.bgPollTimer = setInterval(() => void this.pollBgTerminals(), 5000)
       // 이후는 알림 스트림이 끌고 간다 (turn/completed → result → finishRun)

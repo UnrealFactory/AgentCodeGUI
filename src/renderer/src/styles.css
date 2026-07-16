@@ -635,7 +635,11 @@ input,textarea{ font-family:inherit; }
 }
 .exp-blank-btn:hover{ background:var(--accent-2); }
 /* ============================== CHAT ============================== */
-.chat{ flex:1; min-width:0; display:flex; flex-direction:column; background:var(--chat-bg); position:relative; }
+/* min-height:0 필수 — 세션 창(.sw)은 column flex라 자동 최소 크기(min-height:auto)가
+   .chat을 대화 내용 높이만큼 키워, 내용이 창을 넘는 순간 .chat-scroll의 스크롤이 통째로
+   소멸한다(스크롤바·바닥 따라가기·컴포저까지 화면 밖). 본채팅(.win-body row flex)은
+   교차축 stretch라 영향 없음. .ma-panel은 같은 이유로 이미 min-height:0 */
+.chat{ flex:1; min-width:0; min-height:0; display:flex; flex-direction:column; background:var(--chat-bg); position:relative; }
 
 /* 채팅 헤더 — PoC .ch: 38px, 경계선 없이 명도로만, 창 드래그 영역 + 오른쪽 끝 창 컨트롤 */
 .chat-head{
@@ -1089,10 +1093,11 @@ input,textarea{ font-family:inherit; }
 .composer.focus{ border-color:var(--line-strong); background:rgba(255,255,255,.035); }
 .composer-row{ display:flex; align-items:flex-end; gap:8px; }
 /* 자동 두 줄 승격 — 입력이 두 줄 이상이면(grow가 판정) 입력칸이 첫 줄 전체를 차지하고
-   [+ · 칩 · 보내기]가 아래 줄로 내려간다. 긴 요약 칩이 입력 폭을 잠식하던 것의 해법 */
-.composer-row.multi{ flex-wrap:wrap; }
-.composer-row.multi textarea{ order:-1; flex-basis:100%; }
-.composer-row.multi .cw{ margin-left:auto; }
+   [+ · 칩 · 보내기]가 아래 줄로 내려간다. 긴 요약 칩이 입력 폭을 잠식하던 것의 해법.
+   이름이 'multi'면 멀티 화면 루트(.multi)의 flex-direction:column이 같이 걸린다 — two-line 고정 */
+.composer-row.two-line{ flex-wrap:wrap; }
+.composer-row.two-line textarea{ order:-1; flex-basis:100%; }
+.composer-row.two-line .cw{ margin-left:auto; }
 .composer .plus{
   width:22px; height:22px; flex:0 0 22px; margin-bottom:3px; border-radius:99px; border:1px solid var(--line-2);
   display:grid; place-items:center; color:var(--text-3); transition:background .12s, color .12s;
