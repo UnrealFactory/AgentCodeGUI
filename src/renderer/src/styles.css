@@ -2922,7 +2922,11 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
   max-width:100%; max-height:100%; object-fit:contain; cursor:zoom-in;
   border-radius:8px; box-shadow:0 24px 70px -18px rgba(0,0,0,0.6); animation:rise .2s cubic-bezier(.2,.8,.2,1) both;
 }
-.iv-img.zoomed{ max-width:none; max-height:none; width:auto; cursor:zoom-out; border-radius:0; box-shadow:none; }
+/* margin:auto — 넘치는 축은 flex-start 그대로 스크롤되고(음수 여백에선 auto가 0으로 접힘),
+   화면보다 작은 축은 중앙에 온다. 좌상단에 처박히고 옆이 텅 비던 확대 버그의 해법 */
+.iv-img.zoomed{ max-width:none; max-height:none; width:auto; margin:auto; cursor:zoom-out; border-radius:0; box-shadow:none; }
+/* 원본이 fit 표시와 같은 크기(작은 이미지)면 확대할 게 없다 — zoom-in 커서로 거짓말하지 않기 */
+.iv-img.nozoom{ cursor:default; }
 
 /* prev/next — floating glass buttons pinned to the stage edges, only when multiple */
 .iv-nav{
