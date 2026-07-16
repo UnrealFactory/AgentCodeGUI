@@ -2863,12 +2863,12 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
 @media (max-width:1000px){ .sidebar{ width:210px; flex-basis:210px; } }
 
 /* ============================== MESSAGE IMAGES ============================== */
-/* images attached to a sent message — a matted "photo card". One image is a single
-   framed card; multiple images collapse into a stacked deck (top image + blank cards
-   peeking behind, upper-right) with a "N장" badge. A click opens the viewer. */
-/* 첨부 이미지 — 매트 액자·스택 덱 폐기(그림자·이중 프레임·떠오르는 호버가 2.0 톤에 무거움).
-   이미지 자체가 균일 높이의 조용한 썸네일: 라운드+헤어라인, 넓은 캡처는 가운데 crop(cover),
-   호버는 명도만. 여러 장은 랩 되는 한 줄 — 겹친 덱 대신 전부 보이고 i번째 클릭=그 장부터. */
+/* images attached to a sent message. One image is a single quiet thumbnail; multiple
+   images collapse into a flat deck (top image + hairline blank cards peeking upper-right)
+   with a "N장" badge. A click opens the viewer at the first image. */
+/* 첨부 이미지 — 한 장은 균일 높이의 조용한 썸네일: 라운드+헤어라인, 넓은 캡처는 가운데
+   crop(cover), 호버는 명도만. 여러 장은 플랫 덱 하나로 묶임 — 구 덱을 폐기시킨 무게
+   (그림자·매트 액자·떠오르는 호버)는 되살리지 않는다. */
 .msg-imgs{ display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px; }
 .msg.user .content .msg-imgs:last-child{ margin-bottom:0; }
 .msg-img{
@@ -2878,6 +2878,26 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
 }
 .msg-img img{ display:block; height:100%; width:auto; max-width:100%; object-fit:cover; }
 .msg-img:hover{ border-color:rgba(255,255,255,.22); filter:brightness(1.07); }
+
+/* 여러 장 덱 — 컨테이너 위·오른쪽 8px 여백이 뒤 카드들 자리. 뒤 카드 = 첫 장 박스를
+   (+4,-4)·(+8,-8) 평행이동한 빈 표면(전부 헤어라인+표면색, 그림자 없음). */
+.msg-deck{ position:relative; display:block; padding:8px 8px 0 0; }
+.msg-deck-card{ position:absolute; border-radius:10px; border:1px solid var(--line-2); background:var(--surface-2); }
+.msg-deck-card.c1{ inset:4px 4px 4px 4px; }
+.msg-deck-card.c2{ inset:0 0 8px 8px; }
+.msg-deck-top{
+  position:relative; z-index:1; display:block; height:92px; max-width:240px; overflow:hidden;
+  border-radius:10px; border:1px solid var(--line-2); background:var(--inset);
+  transition:border-color .12s, filter .12s;
+}
+.msg-deck-top img{ display:block; height:100%; width:auto; max-width:100%; object-fit:cover; }
+.msg-deck:hover .msg-deck-top{ border-color:rgba(255,255,255,.22); filter:brightness(1.07); }
+.msg-deck-n{
+  position:absolute; right:6px; bottom:6px;
+  font-size:11px; font-weight:600; font-variant-numeric:tabular-nums; line-height:1;
+  color:rgba(255,255,255,.92); background:rgba(12,12,13,.62); padding:4px 8px; border-radius:99px;
+  backdrop-filter:blur(3px); -webkit-backdrop-filter:blur(3px);
+}
 
 /* text/doc attachments in a sent message — filename chips (click → 파일 뷰어 카드).
    이미지 썸네일과 같은 조용한 문법: 그림자·리프트 없이 명도로만 */

@@ -613,11 +613,11 @@ function SmoothMarkdown({ text, running }: { text: string; running: boolean }) {
 // memoized so typing in the composer (which re-renders the app) doesn't re-parse
 // markdown for every existing message — only messages whose props actually change
 // re-render
-// Attachments inside a sent message. Images show as a matted "photo card" — a single
-// image is one framed card; multiple images collapse into a stacked deck (the first
-// image on top, blank cards peeking behind) with a "N장" count badge; a click opens the
-// viewer at the first image (the filmstrip browses the rest). Text/doc attachments show
-// as filename chips (file-type icon + name); a click opens the in-app file viewer.
+// Attachments inside a sent message. A single image is one quiet thumbnail; multiple
+// images collapse into a flat deck (the first image on top, hairline blank cards peeking
+// upper-right) with a "N장" count badge — a click opens the viewer at the first image
+// (the filmstrip and ←/→ gestures browse the rest). Text/doc attachments show as
+// filename chips (file-type icon + name); a click opens the in-app file viewer.
 function MessageAttachments({
   images,
   onOpen,
@@ -631,15 +631,31 @@ function MessageAttachments({
   const docs = images.filter((p) => !isImagePath(p))
   return (
     <>
-      {imgs.length > 0 && (
-        // 매트 액자+스택 덱은 폐기(그림자·이중 프레임이 2.0 톤에 무거움) — 균일 높이의
-        // 조용한 썸네일이 랩 되는 한 줄로 서고, i번째를 클릭하면 뷰어가 그 장부터 연다
+      {imgs.length === 1 && (
         <div className="msg-imgs">
-          {imgs.map((p, i) => (
-            <button key={p + i} className="msg-img has-tip" data-tip={imageName(p)} onClick={() => onOpen?.(imgs, i)} aria-label={imageName(p)}>
-              <img src={imageSrc(p)} alt={imageName(p)} draggable={false} loading="lazy" />
-            </button>
-          ))}
+          <button className="msg-img has-tip" data-tip={imageName(imgs[0])} onClick={() => onOpen?.(imgs, 0)} aria-label={imageName(imgs[0])}>
+            <img src={imageSrc(imgs[0])} alt={imageName(imgs[0])} draggable={false} loading="lazy" />
+          </button>
+        </div>
+      )}
+      {imgs.length > 1 && (
+        // 여러 장은 한 덱으로 묶는다 — 첫 장만 보이고 뒤에 빈 카드 두 장이 오른쪽 위로
+        // 비껴 겹침 + 'N장' 배지. 구 덱을 폐기시킨 무게(그림자·매트 액자·떠오르는 호버)는
+        // 되살리지 않는다: 전부 헤어라인+표면색, 호버는 명도만
+        <div className="msg-imgs">
+          <button
+            className="msg-deck has-tip"
+            data-tip={`사진 ${imgs.length}장 보기`}
+            onClick={() => onOpen?.(imgs, 0)}
+            aria-label={`사진 ${imgs.length}장 보기`}
+          >
+            <span className="msg-deck-card c2" aria-hidden="true" />
+            <span className="msg-deck-card c1" aria-hidden="true" />
+            <span className="msg-deck-top">
+              <img src={imageSrc(imgs[0])} alt={imageName(imgs[0])} draggable={false} loading="lazy" />
+              <span className="msg-deck-n">{imgs.length}장</span>
+            </span>
+          </button>
         </div>
       )}
       {docs.length > 0 && (
@@ -934,15 +950,19 @@ const WORKING_PHRASES = [
   '머리를 쥐어짜는 중'
 ]
 
-// 멘트 shimmer 색 추첨 — 화이트 59%, 단색 19종 각 2%(합 38%), 그라디언트 6종 각 0.5%(합 3%).
+// 멘트 shimmer 색 추첨 — 화이트 90%, 단색 19종이 9.7%를 나눔(각 ≈0.51%), 그라디언트는
+// 남는 0.3%: rainbow만 0.01%(1만분의 1 잭팟), 나머지 5종이 0.29%를 나눔(각 0.058%).
 // 단색은 wc-* 클래스가 base/hi 색만 바꾸고, 그라디언트는 wc-flow가 색 띠를 계속 흘린다(styles.css).
 const PHRASE_SOLID_COLORS = ['orange', 'gold', 'lemon', 'lime', 'green', 'mint', 'teal', 'aqua', 'sky', 'blue', 'indigo', 'lavender', 'purple', 'magenta', 'pink', 'rose', 'coral', 'red', 'mocha']
 const PHRASE_FLOW_COLORS = ['rainbow', 'sunset', 'ocean', 'aurora', 'fire', 'neon']
+const PHRASE_SOLID_EACH = 9.7 / PHRASE_SOLID_COLORS.length
+const PHRASE_RAINBOW = 0.01
+const PHRASE_FLOW_EACH = (0.3 - PHRASE_RAINBOW) / (PHRASE_FLOW_COLORS.length - 1)
 function rollPhraseColor(): string {
   let r = Math.random() * 100
-  if ((r -= 59) < 0) return ''
-  for (const c of PHRASE_SOLID_COLORS) if ((r -= 2) < 0) return 'wc wc-' + c
-  for (const c of PHRASE_FLOW_COLORS) if ((r -= 0.5) < 0) return 'wc-flow wc-' + c
+  if ((r -= 90) < 0) return ''
+  for (const c of PHRASE_SOLID_COLORS) if ((r -= PHRASE_SOLID_EACH) < 0) return 'wc wc-' + c
+  for (const c of PHRASE_FLOW_COLORS) if ((r -= c === 'rainbow' ? PHRASE_RAINBOW : PHRASE_FLOW_EACH) < 0) return 'wc-flow wc-' + c
   return ''
 }
 
