@@ -1088,6 +1088,11 @@ input,textarea{ font-family:inherit; }
 }
 .composer.focus{ border-color:var(--line-strong); background:rgba(255,255,255,.035); }
 .composer-row{ display:flex; align-items:flex-end; gap:8px; }
+/* 자동 두 줄 승격 — 입력이 두 줄 이상이면(grow가 판정) 입력칸이 첫 줄 전체를 차지하고
+   [+ · 칩 · 보내기]가 아래 줄로 내려간다. 긴 요약 칩이 입력 폭을 잠식하던 것의 해법 */
+.composer-row.multi{ flex-wrap:wrap; }
+.composer-row.multi textarea{ order:-1; flex-basis:100%; }
+.composer-row.multi .cw{ margin-left:auto; }
 .composer .plus{
   width:22px; height:22px; flex:0 0 22px; margin-bottom:3px; border-radius:99px; border:1px solid var(--line-2);
   display:grid; place-items:center; color:var(--text-3); transition:background .12s, color .12s;
@@ -2516,10 +2521,13 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
 /* 계정 카드 — 잔여 한도가 카드 안 미니 게이지로 (.sc2 스코프 필수 — 다른 .acct와 겹침 방지) */
 .sc2.acct{ display:flex; align-items:center; gap:13px; }
 .ava2{ width:40px; height:40px; border-radius:99px; display:grid; place-items:center; font-size:14px; font-weight:700; color:#fff; flex:0 0 auto; box-shadow:0 5px 14px -5px rgba(0,0,0,.5); }
-.limits{ display:flex; flex-direction:column; gap:6px; width:170px; flex:0 0 auto; }
+/* 초기화 시각 열(.lr)만큼 넓힌 폭 — 게이지 블록이 왼쪽으로 밀리고 바 폭은 그대로 */
+.limits{ display:flex; flex-direction:column; gap:6px; width:264px; flex:0 0 auto; }
 .lim{ display:flex; align-items:center; gap:8px; }
 .lim .ll{ font-size:9.5px; color:var(--text-4); width:28px; text-align:right; flex:0 0 auto; }
 .lim .lv{ font-size:9.5px; color:var(--text-3); width:30px; flex:0 0 auto; font-variant-numeric:tabular-nums; }
+/* 창 초기화 시각 — '7/18 (토) 15:00' 풀 표기. 조회 전/구 캐시는 빈 칸으로 열 정렬 유지 */
+.lim .lr{ font-size:9.5px; color:var(--text-4); width:86px; flex:0 0 auto; font-variant-numeric:tabular-nums; white-space:nowrap; }
 .g2{ flex:1; height:3px; border-radius:99px; background:rgba(255,255,255,.08); overflow:hidden; }
 .g2 i{ display:block; height:100%; border-radius:99px; background:var(--accent); }
 .g2.big{ height:4px; }
@@ -3226,6 +3234,16 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
 }
 @keyframes pnsheen{ from{ background-position:150% 0; } to{ background-position:-80% 0; } }
 .pn-lead{ margin-top:12px; font-size:14.5px; line-height:1.55; color:var(--text-2); word-break:keep-all; }
+
+/* 릴리즈 선택 필 — 시리즈 안의 버전(최신 5개)을 페이지처럼 오간다 */
+.pn-vers{ display:flex; gap:6px; flex-wrap:wrap; flex:0 0 auto; padding:0 2px 13px; }
+.pn-vbtn{
+  font-family:var(--font-mono); font-size:10.5px; font-weight:600; color:var(--text-3);
+  padding:4px 11px; border-radius:99px; background:var(--surface-2);
+  transition:background .12s, color .12s;
+}
+.pn-vbtn:hover{ background:var(--hover); color:var(--text); }
+.pn-vbtn.on{ background:rgba(255,255,255,.14); color:var(--text); }
 
 .pn-scroll{
   flex:1 1 auto; min-height:0; overflow-y:auto; overscroll-behavior:contain;

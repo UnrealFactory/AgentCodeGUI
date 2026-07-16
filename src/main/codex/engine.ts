@@ -121,8 +121,10 @@ function cxActivityLine(inner: Record<string, unknown> | undefined): string {
         .filter(Boolean)
       return changes.length ? oneLine('파일 수정: ' + changes.join(', '), 200) : '파일 수정'
     }
-    case 'webSearch':
-      return oneLine('검색: ' + String((inner as { query?: string }).query ?? ''), 200)
+    case 'webSearch': {
+      const t = cxWebSearchTarget(inner)
+      return t ? oneLine('검색: ' + t, 200) : ''
+    }
     case 'mcpToolCall':
       return oneLine('MCP: ' + String(inner.tool ?? ''), 200)
     case 'agentMessage':
@@ -137,6 +139,18 @@ function cxActivityLine(inner: Record<string, unknown> | undefined): string {
 function oneLine(s: string, max: number): string {
   const t = s.replace(/\s+/g, ' ').trim()
   return t.length > max ? t.slice(0, max - 1) + '…' : t
+}
+
+// webSearch 아이템 → 행에 보여줄 대상 문구. 검색어는 item/completed에만 실리고
+// (started는 query=""·action=null, 실측 0.144.4), 검색이 아닌 열람류 액션은
+// {type:'other'}로 와 검색어가 끝까지 없다. 찾은 페이지 목록은 프로토콜에 없음 —
+// 검색어 표시가 가능한 최대치다 (인용 링크는 답변 본문 마크다운으로 렌더된다).
+function cxWebSearchTarget(item: Record<string, unknown>): string {
+  const action = (item.action ?? {}) as { type?: string; query?: string; queries?: string[] | null }
+  const queries = Array.isArray(action.queries) ? action.queries.filter(Boolean) : []
+  const query = String(item.query ?? '') || String(action.query ?? '') || queries.join(' · ')
+  if (query) return oneLine(query, 200)
+  return action.type === 'other' ? '검색한 페이지 열람' : ''
 }
 
 // ── 모델 수용량 초과(ServerOverloaded) 판정 ──────────────────
@@ -553,7 +567,9 @@ export class CodexEngine {
         start('mcp', String(item.tool ?? 'MCP'), `${item.server ?? ''}`)
         return
       case 'webSearch':
-        start('web', 'WebSearch', String((item as { query?: string }).query ?? ''))
+        // 검색어는 item/completed에만 실린다(실측: started는 query가 빈 문자열) —
+        // 실행 중엔 자리 문구를 두고, 완료 처리가 tool-end.target으로 덮는다
+        start('web', 'WebSearch', cxWebSearchTarget(item) || '검색 중…')
         return
       // Codex 서브에이전트(collab) — 도구 행이 아니라 Claude와 같은 서브에이전트
       // 칩/카드로. spawnAgent 콜이 오는 흐름은 카드를 여기서 만들고(receiverThreadIds[0]
@@ -655,7 +671,7 @@ export class CodexEngine {
         else if (type === 'fileChange') {
           const changes = (item.changes as { path: string }[]) ?? []
           tool('edit', 'Edit', changes.map((c) => c.path).join(', ') || '파일 변경')
-        } else if (type === 'webSearch') tool('web', 'WebSearch', String((item as { query?: string }).query ?? ''))
+        } else if (type === 'webSearch') tool('web', 'WebSearch', cxWebSearchTarget(item) || '검색 중…')
         else if (type === 'mcpToolCall') tool('mcp', String(item.tool ?? 'MCP'), String(item.server ?? ''))
         return
       }
@@ -670,12 +686,15 @@ export class CodexEngine {
             type === 'commandExecution'
               ? (item.exitCode as number | null) !== 0
               : /fail|declin/i.test(String(item.status ?? ''))
+          // webSearch의 검색어는 완료에만 실린다 — 카드 도구 줄의 자리 문구를 덮는다
+          const target = type === 'webSearch' ? cxWebSearchTarget(item) : undefined
           this.emit({
             type: 'tool-end',
             runId,
             id,
             status: failed ? 'error' : 'done',
-            durationMs: (item.durationMs as number | null) ?? Date.now() - meta.startedAt
+            durationMs: (item.durationMs as number | null) ?? Date.now() - meta.startedAt,
+            ...(target ? { target } : {})
           })
           this.items.delete(id)
           return
@@ -736,6 +755,22 @@ export class CodexEngine {
           this.bgTerms.delete(id)
           this.bgByProcess.delete(bg.processId)
           const exit = item.exitCode as number | null
+          // 자연 종료면 행도 되살린다 — 완료 아이템이 전체 출력(aggregatedOutput)을
+          // 들고 오므로(실측 0.144.4: yield/폴링과 무관) '백그라운드로 전환'으로 일찍
+          // 닫혔던 행에 최종 출력·실제 소요·성패를 정착시켜 로그를 클릭해 볼 수 있게.
+          // 중지(user/turnEnd)는 제외 — 그 사연은 칩이 표기하고 행은 전환 표시를 유지.
+          const output = String(item.aggregatedOutput ?? '')
+          if (!bg.stopped && output) {
+            this.emit({
+              type: 'tool-end',
+              runId,
+              id,
+              status: exit === 0 ? 'done' : 'error',
+              result: exit === 0 ? undefined : `exit ${exit ?? '?'}`,
+              output: output.slice(-8000),
+              durationMs: (item.durationMs as number | null) ?? Date.now() - bg.startedAt
+            })
+          }
           this.emit({
             type: 'bg-task-end',
             runId,
@@ -816,12 +851,15 @@ export class CodexEngine {
         if (!this.items.has(id)) return
         const meta = this.items.get(id)
         const failed = String(item.status ?? '').toLowerCase().includes('fail')
+        // webSearch의 검색어는 여기(완료)에만 실린다 — 행의 자리 문구를 실제 검색어로 덮는다
+        const target = type === 'webSearch' ? cxWebSearchTarget(item) : undefined
         this.emit({
           type: 'tool-end',
           runId,
           id,
           status: failed ? 'error' : 'done',
-          durationMs: meta ? Date.now() - meta.startedAt : undefined
+          durationMs: meta ? Date.now() - meta.startedAt : undefined,
+          ...(target ? { target } : {})
         })
         this.items.delete(id)
         return

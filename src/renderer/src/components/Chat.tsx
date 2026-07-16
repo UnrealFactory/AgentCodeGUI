@@ -3257,13 +3257,25 @@ export function Composer({
   // prefer the SDK's real context window; fall back to the model's nominal size
   const winTokens = contextWindow ?? modelOpt.ctx * 1000
 
+  // 입력이 두 줄 이상이면 컴포저가 자동 두 줄로 승격 — 입력칸이 첫 줄 전체를 차지하고
+  // [+ · 칩 · 보내기]가 아래 줄로 내려간다. 긴 요약 칩(GPT 모델·계정)이 입력칸 폭을
+  // 잠식해 모든 줄이 일찍 꺾이던 문제의 해법 (한 줄일 땐 기존 고스트 필 그대로).
+  const [multi, setMulti] = useState(false)
   const grow = (el: HTMLTextAreaElement | null): void => {
     if (!el) return
+    // 승격 판정은 항상 '한 줄 레이아웃(칩이 옆에 있는 좁은 폭)'에서 잰다 — 승격 후의
+    // 넓은 폭으로 재판정하면 좁혀서 두 줄 ↔ 넓혀서 한 줄이 서로를 뒤집는 진동이 생긴다.
+    const row = el.parentElement // .composer-row
+    row?.classList.remove('multi')
+    el.style.height = 'auto'
+    const wraps = el.scrollHeight > 32 // 한 줄 높이 ≈26px(13px×1.55+패딩 6), 두 줄 ≈46px
+    row?.classList.toggle('multi', wraps)
     el.style.height = 'auto'
     el.style.height = Math.min(el.scrollHeight, 160) + 'px'
     // 상한(160px)을 넘기 전엔 스크롤을 잠근다 — 분수 zoom(멀티 패널 .9 등)에선 반올림
     // 오차로 1px 유령 오버플로가 생겨 빈 입력에도 스크롤바가 튀어나올 수 있다
     el.style.overflowY = el.scrollHeight > 160 ? 'auto' : 'hidden'
+    setMulti(wraps) // 재렌더의 className이 방금 손댄 classList와 일치하도록 동기화
   }
 
   // 작성칸 높이를 항상 현재 value에 맞춘다. 전송하면 부모가 value를 비우지만 그건
@@ -3763,8 +3775,9 @@ export function Composer({
               )}
             </div>
           )}
-          {/* 한 줄 고스트 필 (PoC): [+ 첨부] [입력] [모델 칩 → 통합 팝오버] [보내기] */}
-          <div className="composer-row">
+          {/* 한 줄 고스트 필 (PoC): [+ 첨부] [입력] [모델 칩 → 통합 팝오버] [보내기]
+              — 입력이 여러 줄이면 multi가 서서 입력칸 전체 폭 + 컨트롤 아랫줄로 승격 */}
+          <div className={'composer-row' + (multi ? ' multi' : '')}>
             <button className="plus has-tip" aria-label="파일 첨부" data-tip="파일 첨부 (이미지·텍스트)" onClick={onPickImages}>
               <IconPlus size={11} stroke={2.2} />
             </button>

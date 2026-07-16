@@ -431,6 +431,43 @@ function chatgptPlan(plan: string | null | undefined): string {
   return 'ChatGPT' + (plan ? ' ' + plan.charAt(0).toUpperCase() + plan.slice(1) : '') + ' 플랜'
 }
 
+// 한도 초기화 시각 — '7/18 (토) 15:00' (주간류 긴 창은 풀 표기를 바로 보여준다)
+function fmtResetAt(ts?: number | null): string | null {
+  if (!ts) return null
+  const d = new Date(ts * 1000)
+  const day = ['일', '월', '화', '수', '목', '금', '토'][d.getDay()]
+  const hm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+  return `${d.getMonth() + 1}/${d.getDate()} (${day}) ${hm}`
+}
+// 5시간처럼 짧은 창은 날짜보다 남은 시간이 유용 — '2시간 10분 뒤'
+function fmtResetIn(ts?: number | null): string | null {
+  if (!ts) return null
+  const diff = ts * 1000 - Date.now()
+  if (diff <= 0) return '곧'
+  const m = Math.max(1, Math.round(diff / 60000))
+  if (m < 60) return `${m}분 뒤`
+  const h = Math.floor(m / 60)
+  const mm = m % 60
+  return mm ? `${h}시간 ${mm}분 뒤` : `${h}시간 뒤`
+}
+
+// 한도 게이지 한 행 — 라벨 · 잔여 바 · 잔여% · 초기화 시각.
+// 시간 단위 창('5시간' 등)은 남은 시간, 주간류는 절대 시각. 초기화 시각을 모르는
+// 항목(구 캐시 등)도 빈 칸을 그려 열 정렬을 유지한다.
+function LimRow({ label, left, resetsAt }: { label: string; left: number; resetsAt?: number | null }): React.ReactElement {
+  const reset = label.includes('시간') ? fmtResetIn(resetsAt) : fmtResetAt(resetsAt)
+  return (
+    <div className="lim">
+      <span className="ll">{label}</span>
+      <div className="g2">
+        <i style={{ width: left + '%' }} />
+      </div>
+      <span className="lv">{left}%</span>
+      <span className="lr">{reset}</span>
+    </div>
+  )
+}
+
 // OpenAI 계정 카드의 잔여 한도 미니 게이지 — rateLimits의 윈도(5시간·주간 등)를
 // Anthropic 카드와 같은 게이지 문법(잔여 % = 100 − 사용률)으로.
 function CodexLimits({ u }: { u?: CodexAccountUsage }): React.ReactElement | null {
@@ -438,13 +475,7 @@ function CodexLimits({ u }: { u?: CodexAccountUsage }): React.ReactElement | nul
   return (
     <div className="limits">
       {u.windows.map((w) => (
-        <div className="lim" key={w.label}>
-          <span className="ll">{w.label}</span>
-          <div className="g2">
-            <i style={{ width: 100 - w.usedPct + '%' }} />
-          </div>
-          <span className="lv">{100 - w.usedPct}%</span>
-        </div>
+        <LimRow key={w.label} label={w.label} left={100 - w.usedPct} resetsAt={w.resetsAt} />
       ))}
     </div>
   )
@@ -455,21 +486,15 @@ function CodexLimits({ u }: { u?: CodexAccountUsage }): React.ReactElement | nul
 // 행 순서는 컨텍스트 팝오버와 동일: 5시간 → Fable → 주간.
 function AccountLimits({ u }: { u?: AccountUsage }): React.ReactElement | null {
   if (!u) return null
-  const rows: { label: string; left: number }[] = []
-  if (u.fiveHourPct != null) rows.push({ label: '5시간', left: 100 - u.fiveHourPct })
-  if (u.fablePct != null) rows.push({ label: 'Fable', left: 100 - u.fablePct })
-  if (u.weeklyPct != null) rows.push({ label: '주간', left: 100 - u.weeklyPct })
+  const rows: { label: string; left: number; resetsAt?: number | null }[] = []
+  if (u.fiveHourPct != null) rows.push({ label: '5시간', left: 100 - u.fiveHourPct, resetsAt: u.fiveHourResetsAt })
+  if (u.fablePct != null) rows.push({ label: 'Fable', left: 100 - u.fablePct, resetsAt: u.fableResetsAt })
+  if (u.weeklyPct != null) rows.push({ label: '주간', left: 100 - u.weeklyPct, resetsAt: u.weeklyResetsAt })
   if (!rows.length) return null
   return (
     <div className="limits">
       {rows.map((r) => (
-        <div className="lim" key={r.label}>
-          <span className="ll">{r.label}</span>
-          <div className="g2">
-            <i style={{ width: r.left + '%' }} />
-          </div>
-          <span className="lv">{r.left}%</span>
-        </div>
+        <LimRow key={r.label} label={r.label} left={r.left} resetsAt={r.resetsAt} />
       ))}
     </div>
   )

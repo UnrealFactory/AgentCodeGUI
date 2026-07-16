@@ -449,7 +449,9 @@ function reducer(state: SessionState, action: Action): SessionState {
         result: e.result,
         ...(e.output ? { output: e.output } : {}),
         ...(e.durationMs != null ? { durationMs: e.durationMs } : {}),
-        ...(e.links ? { links: e.links } : {})
+        ...(e.links ? { links: e.links } : {}),
+        // 완료 때 확정된 대상(Codex webSearch 검색어)이 실려 오면 자리 문구를 덮는다
+        ...(e.target ? { target: e.target } : {})
       })
       for (let i = state.messages.length - 1; i >= 0; i--) {
         const m = state.messages[i]

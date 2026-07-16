@@ -39,8 +39,7 @@ export function NewChatModal({
             <div className="ncs">어떤 구성으로 시작할까요? 폴더는 채팅 안에서 언제든 바꿀 수 있어요.</div>
             <div className="nctiles">
               <button
-                className={'nctile' + (busy ? ' has-tip off' : '')}
-                data-tip={busy ? '작업이 끝난 뒤 시작할 수 있어요' : undefined}
+                className={'nctile' + (busy ? ' off' : '')}
                 onClick={() => {
                   if (busy) return
                   onClose()

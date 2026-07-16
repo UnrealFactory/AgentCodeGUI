@@ -18,10 +18,88 @@ export function seriesOf(v: string): string {
 type Note = { tag: string; name: ReactNode; desc: ReactNode }
 type Release = { eyebrow: string; lead: ReactNode; notes: Note[] }
 
-// 시리즈('2.0')별 패치노트 — 다음 릴리즈에선 여기에 한 덩이만 얹으면 된다.
+// 버전별 패치노트 — 릴리즈마다 여기에 한 덩이씩 얹는다. 카드의 버전 버튼으로
+// 오갈 수 있는 건 최신 MAX_VERSIONS개까지 — 그보다 오래된 덩이는 릴리즈 때 지운다.
 // 지난 1.x 노트들은 은퇴한 UpdateNotes와 함께 정리했다(이제 보여줄 경로가 없다).
+const MAX_VERSIONS = 5
 const RELEASES: Record<string, Release> = {
-  '2.0': {
+  '2.0.2': {
+    eyebrow: 'UPDATE',
+    lead: '쓰다 보면 걸리던 결들을 다듬었습니다.',
+    notes: [
+      {
+        tag: 'GPT · 웹 검색',
+        name: '무엇을 검색했는지 보여요',
+        desc: (
+          <>
+            GPT의 <b>WebSearch 행에 실제 검색어</b>가 표시됩니다 — 검색어가 완료 시점에야
+            확정되는 프로토콜이라, 실행 중엔 '검색 중…'이었다가 끝나면 검색어로 정착해요.
+            검색이 아닌 열람 동작은 <b>'검색한 페이지 열람'</b>으로 구분합니다.
+          </>
+        )
+      },
+      {
+        tag: 'GPT · 터미널',
+        name: '백그라운드 명령도, 로그가 남아요',
+        desc: (
+          <>
+            백그라운드 세션으로 넘어갔다 끝난 명령의 행이 이제 <b>최종 출력·실제 소요·성패</b>로
+            되살아납니다 — 행을 클릭하면 <b>전체 로그</b>를 볼 수 있어요. 어떤 Bash 행은 클릭되고
+            어떤 행은 안 되던 미스터리의 답이었습니다.
+          </>
+        )
+      },
+      {
+        tag: '계정 한도',
+        name: '언제 풀리는지, 게이지 옆에',
+        desc: (
+          <>
+            설정 계정 카드의 한도 게이지 옆에 <b>초기화 시점</b>이 붙었어요 — 5시간 창은{' '}
+            <b>남은 시간</b>('2시간 10분 뒤'), 주간·Fable은 <b>날짜와 시각</b>('7/18 (토)
+            15:00'). Anthropic·OpenAI 카드 모두요.
+          </>
+        )
+      },
+      {
+        tag: '컴포저',
+        name: '길게 쓰면, 넓게 써져요',
+        desc: (
+          <>
+            입력이 <b>두 줄 이상으로 자라면</b> 입력칸이 첫 줄 전체 폭을 차지하고 모델 칩·보내기가
+            아랫줄로 내려갑니다 — 긴 모델·계정 요약이 글을 중간에 꺾던 문제의 해법. 한 줄일 땐
+            기존 모습 그대로예요.
+          </>
+        )
+      },
+      {
+        tag: '패치노트',
+        name: '릴리즈마다, 한 장씩',
+        desc: (
+          <>
+            지금 보고 계신 이 카드에 <b>버전 버튼</b>이 생겼어요 — 릴리즈별로 노트를 나눠 보고,
+            최신 5개까지 오갈 수 있습니다.
+          </>
+        )
+      }
+    ]
+  },
+  '2.0.1': {
+    eyebrow: 'UPDATE',
+    lead: '작업표시줄까지, 마스코트 얼굴로.',
+    notes: [
+      {
+        tag: '아이콘',
+        name: '작업표시줄에도, 마스코트가',
+        desc: (
+          <>
+            앱 아이콘과 설치 마법사 아트가 <b>마스코트 브랜드</b>로 바뀌었어요 — 다크 카드 위
+            근백색 로봇. 작업표시줄·바로가기·우클릭 메뉴·설치 화면 어디서나 같은 얼굴입니다.
+          </>
+        )
+      }
+    ]
+  },
+  '2.0.0': {
     eyebrow: 'ALL NEW',
     lead: '앱을 처음부터 다시 그렸습니다.',
     notes: [
@@ -152,31 +230,22 @@ const RELEASES: Record<string, Release> = {
             클릭), 스크롤로 끝까지 읽어도 좋아요.
           </>
         )
-      },
-      {
-        tag: '아이콘 (2.0.1)',
-        name: '작업표시줄에도, 마스코트가',
-        desc: (
-          <>
-            앱 아이콘과 설치 마법사 아트가 <b>마스코트 브랜드</b>로 바뀌었어요 — 다크 카드 위
-            근백색 로봇. 작업표시줄·바로가기·우클릭 메뉴·설치 화면 어디서나 같은 얼굴입니다.
-          </>
-        )
       }
     ]
   }
 }
 
-// 가장 높은 시리즈를 폴백으로 — 노트가 아직 없는 버전이면 최신 노트를 보여 준다
-function pickRelease(version: string): Release {
-  const exact = RELEASES[seriesOf(version)]
-  if (exact) return exact
-  const keys = Object.keys(RELEASES).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
-  return RELEASES[keys[keys.length - 1]]
+// 카드가 보여줄 버전 목록 — 최신부터, 최대 MAX_VERSIONS개 (가독성 캡)
+function noteVersions(): string[] {
+  return Object.keys(RELEASES)
+    .sort((a, b) => b.localeCompare(a, undefined, { numeric: true }))
+    .slice(0, MAX_VERSIONS)
 }
 
 export function PatchNotes(): ReactNode {
   const [version, setVersion] = useState<string | null>(null)
+  // 보고 있는 릴리즈 — 버전 버튼으로 오간다. null = 아직 결정 전(카드 열릴 때 채움)
+  const [sel, setSel] = useState<string | null>(null)
 
   // decide only once the REAL version arrives — comparing against the pre-IPC
   // fallback would flash the card for users who have already seen this version.
@@ -188,6 +257,8 @@ export function PatchNotes(): ReactNode {
         if (!v) return
         if (getPref<string>(SEEN_KEY, '') === v) return
         setVersion(v)
+        // 처음 보여줄 릴리즈: 현재 버전의 노트가 있으면 그것, 없으면 최신 노트
+        setSel(RELEASES[v] ? v : noteVersions()[0])
       })
       .catch(() => {})
   }, [])
@@ -211,8 +282,10 @@ export function PatchNotes(): ReactNode {
 
   if (!version) return null
 
-  const rel = pickRelease(version)
-  const series = seriesOf(version)
+  const versions = noteVersions()
+  const cur = sel && RELEASES[sel] ? sel : versions[0]
+  const rel = RELEASES[cur]
+  const series = seriesOf(cur)
 
   return (
     <div className="pn-overlay" onMouseDown={(e) => e.target === e.currentTarget && close()}>
@@ -241,7 +314,19 @@ export function PatchNotes(): ReactNode {
           <p className="pn-lead">{rel.lead}</p>
         </div>
 
-        <div className="pn-scroll">
+        {/* 릴리즈 선택 — 시리즈 안의 버전들을 페이지처럼 오간다 (최신 5개까지) */}
+        {versions.length > 1 && (
+          <div className="pn-vers">
+            {versions.map((v) => (
+              <button key={v} className={'pn-vbtn' + (v === cur ? ' on' : '')} onClick={() => setSel(v)}>
+                v{v}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* key=버전 — 릴리즈를 바꾸면 스크롤이 맨 위에서 다시 시작한다 */}
+        <div className="pn-scroll" key={cur}>
           {rel.notes.map((n, i) => (
             <article key={i} className="pn-item">
               <div className="pn-num">{String(i + 1).padStart(2, '0')}</div>

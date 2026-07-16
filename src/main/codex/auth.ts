@@ -452,8 +452,8 @@ export async function codexAccountsUsage(): Promise<CodexAccountUsage[]> {
     const res = (await codexRpcOnce(dir, 'account/rateLimits/read')) as {
       rateLimits?: {
         planType?: string
-        primary?: { usedPercent?: number; windowDurationMins?: number } | null
-        secondary?: { usedPercent?: number; windowDurationMins?: number } | null
+        primary?: { usedPercent?: number; windowDurationMins?: number; resetsAt?: number } | null
+        secondary?: { usedPercent?: number; windowDurationMins?: number; resetsAt?: number } | null
       }
     } | null
     const rl = res?.rateLimits
@@ -461,7 +461,12 @@ export async function codexAccountsUsage(): Promise<CodexAccountUsage[]> {
     const windows: CodexAccountUsage['windows'] = []
     for (const w of [rl.primary, rl.secondary]) {
       if (w && typeof w.usedPercent === 'number' && typeof w.windowDurationMins === 'number') {
-        windows.push({ label: windowLabel(w.windowDurationMins), usedPct: Math.max(0, Math.min(100, Math.round(w.usedPercent))) })
+        windows.push({
+          label: windowLabel(w.windowDurationMins),
+          usedPct: Math.max(0, Math.min(100, Math.round(w.usedPercent))),
+          // 창 초기화 시각(unix 초) — rateLimits/read 실측 필드
+          resetsAt: typeof w.resetsAt === 'number' ? w.resetsAt : null
+        })
       }
     }
     const planType = typeof rl.planType === 'string' ? rl.planType : null

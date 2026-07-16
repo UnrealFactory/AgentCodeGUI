@@ -537,14 +537,20 @@ async function fetchAccountUsage(email: string): Promise<AccountUsage | null> {
     }
     if (!res.ok) return null
     const j = (await res.json()) as {
-      five_hour?: { utilization?: number | string }
-      seven_day?: { utilization?: number | string }
-      limits?: { kind?: string; percent?: number; scope?: { model?: { display_name?: string } | null } | null }[]
+      five_hour?: { utilization?: number | string; resets_at?: string }
+      seven_day?: { utilization?: number | string; resets_at?: string }
+      limits?: { kind?: string; percent?: number; resets_at?: string; scope?: { model?: { display_name?: string } | null } | null }[]
     }
     const pct = (u?: { utilization?: number | string }): number | null => {
       if (!u) return null
       const n = parseFloat(String(u.utilization ?? ''))
       return isNaN(n) ? null : Math.max(0, Math.min(100, Math.round(n)))
+    }
+    // 초기화 시각(ISO) → unix 초 — getUsage(fetchUsage)와 같은 규칙
+    const toTs = (s?: string): number | null => {
+      if (!s) return null
+      const ms = Date.parse(s)
+      return isNaN(ms) ? null : Math.floor(ms / 1000)
     }
     // Fable 5 주간 한도: limits[]의 weekly_scoped + model 이름에 'fable' (getUsage와 같은 규칙)
     const fable = Array.isArray(j.limits)
@@ -554,7 +560,10 @@ async function fetchAccountUsage(email: string): Promise<AccountUsage | null> {
       email,
       fiveHourPct: pct(j.five_hour),
       weeklyPct: pct(j.seven_day),
-      fablePct: fable && typeof fable.percent === 'number' ? Math.max(0, Math.min(100, Math.round(fable.percent))) : null
+      fablePct: fable && typeof fable.percent === 'number' ? Math.max(0, Math.min(100, Math.round(fable.percent))) : null,
+      fiveHourResetsAt: toTs(j.five_hour?.resets_at),
+      weeklyResetsAt: toTs(j.seven_day?.resets_at),
+      fableResetsAt: toTs(fable?.resets_at)
     }
   } catch {
     return null

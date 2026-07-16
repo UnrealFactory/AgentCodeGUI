@@ -291,7 +291,9 @@ export type EngineEvent =
   | { type: 'thinking'; runId: string; text: string }
   | { type: 'thinking-clear'; runId: string }
   | { type: 'tool-start'; runId: string; tool: ToolLogItem }
-  | { type: 'tool-end'; runId: string; id: string; status: 'done' | 'error'; result?: string; output?: string; durationMs?: number; links?: WebLink[] }
+  // target: 시작 시점엔 몰랐던 대상이 완료 때 확정되면 행의 target을 덮는다
+  // (Codex webSearch — 검색어가 item/completed에만 실린다, 실측 0.144.4)
+  | { type: 'tool-end'; runId: string; id: string; status: 'done' | 'error'; result?: string; output?: string; durationMs?: number; links?: WebLink[]; target?: string }
   | { type: 'todos'; runId: string; todos: Todo[] }
   // `whole` = a full-file Write (the diff supersedes any accumulated diff for this
   // path); false for incremental Edit/MultiEdit (merges onto the existing diff)
@@ -480,7 +482,8 @@ export interface CodexAccountInfo {
 export interface CodexAccountUsage {
   email: string
   planType: string | null
-  windows: { label: string; usedPct: number }[] // 예: [{label:'5시간',usedPct:12},{label:'주간',usedPct:34}]
+  // resetsAt: 창 초기화 시각(unix 초, rateLimits primary/secondary의 resetsAt 실측) — 없으면 null
+  windows: { label: string; usedPct: number; resetsAt?: number | null }[] // 예: [{label:'주간',usedPct:34,resetsAt:1784724661}]
 }
 
 /**
@@ -493,6 +496,11 @@ export interface AccountUsage {
   fiveHourPct: number | null // 5시간 창 사용률 0-100
   weeklyPct: number | null // 주간(7일) 창 사용률 0-100
   fablePct: number | null // Fable 5 전용 주간 한도 사용률 0-100
+  // 각 창의 초기화 시각(unix 초, usage API resets_at) — 없으면 null.
+  // optional인 이유: 디스크 캐시(usage-cache.json)의 구 항목엔 필드가 없다.
+  fiveHourResetsAt?: number | null
+  weeklyResetsAt?: number | null
+  fableResetsAt?: number | null
 }
 
 /** 어떤 화면의 엔진이 실행했는지 — 사용 통계의 분류 축. */
