@@ -28,3 +28,6 @@ Thumbs.db
 # Verse doc-translation pipeline scratch (digest text, chunks, per-chunk output).
 # The generated pack ships at src/main/lsp/verse-doc-ko.json; this is only the working dir.
 .tmp-verse/
+
+# 홍보 영상 렌더 작업장 (프레임 렌더러+스크린샷 텍스처+렌더 출력 — 대부분 재생성물, 34MB급)
+promo/
