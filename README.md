@@ -81,6 +81,10 @@ AgentCodeGUI는 터미널의 코딩 에이전트(**Claude Code** · **Codex CLI*
 - 새 버전은 **자동 업데이트** — 사이드바에 배지가 뜨면 클릭 한 번으로 조용히 설치됩니다.
 - 폴더 우클릭 → **"AgentCodeGUI로 열기"** 로 그 폴더를 작업 폴더 삼아 바로 엽니다.
 
+### Code signing
+
+Free code signing provided by [SignPath.io](https://signpath.io), certificate by [SignPath Foundation](https://signpath.org).
+
 ## Development
 
 ```bash
