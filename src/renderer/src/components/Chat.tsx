@@ -631,9 +631,12 @@ function MessageAttachments({
   const docs = images.filter((p) => !isImagePath(p))
   return (
     <>
+      {/* 메시지 안 첨부물엔 호버 툴팁(has-tip) 금지 — .thread > .msg의 content-visibility:auto가
+          contain:paint를 내포해 말풍선 상자 밖 페인트를 자른다(첨부는 말풍선 맨 위라 툴팁이
+          위로 튀어나옴 → 잘린 흰 조각만 남는 실측). 정보는 배지·뷰어 상단 바가 대신한다. */}
       {imgs.length === 1 && (
         <div className="msg-imgs">
-          <button className="msg-img has-tip" data-tip={imageName(imgs[0])} onClick={() => onOpen?.(imgs, 0)} aria-label={imageName(imgs[0])}>
+          <button className="msg-img" onClick={() => onOpen?.(imgs, 0)} aria-label={imageName(imgs[0])}>
             <img src={imageSrc(imgs[0])} alt={imageName(imgs[0])} draggable={false} loading="lazy" />
           </button>
         </div>
@@ -643,12 +646,7 @@ function MessageAttachments({
         // 비껴 겹침 + 'N장' 배지. 구 덱을 폐기시킨 무게(그림자·매트 액자·떠오르는 호버)는
         // 되살리지 않는다: 전부 헤어라인+표면색, 호버는 명도만
         <div className="msg-imgs">
-          <button
-            className="msg-deck has-tip"
-            data-tip={`사진 ${imgs.length}장 보기`}
-            onClick={() => onOpen?.(imgs, 0)}
-            aria-label={`사진 ${imgs.length}장 보기`}
-          >
+          <button className="msg-deck" onClick={() => onOpen?.(imgs, 0)} aria-label={`사진 ${imgs.length}장 보기`}>
             <span className="msg-deck-card c2" aria-hidden="true" />
             <span className="msg-deck-card c1" aria-hidden="true" />
             <span className="msg-deck-top">
@@ -661,7 +659,7 @@ function MessageAttachments({
       {docs.length > 0 && (
         <div className="msg-docs">
           {docs.map((p, i) => (
-            <button key={p + i} className="msg-doc has-tip tip-path" data-tip={p} onClick={() => onOpenFile?.(p)} aria-label={imageName(p)}>
+            <button key={p + i} className="msg-doc" onClick={() => onOpenFile?.(p)} aria-label={imageName(p)}>
               <FileBadge path={p} size={15} />
               <span className="msg-doc-name">{imageName(p)}</span>
             </button>
