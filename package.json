@@ -3,6 +3,7 @@
   "version": "2.0.4",
   "description": "AgentCodeGUI — Claude Code 데스크탑 IDE (자체 파일 탐색기 + LSP 코드 인텔리전스)",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "main": "./out/main/index.js",
   "author": "AgentCodeGUI",
