@@ -631,6 +631,7 @@ export function SessionWindow(): React.ReactElement {
           chatSpentUsd={state.spentUsd ?? 0}
           budgetUsd={apiCfg?.budgetUsd ?? null}
           totalSpentUsd={apiCfg?.spentUsd ?? 0}
+          tokenTotals={state.tokenTotals}
           engine={picker.engine}
           codexAccount={picker.codexAccount}
           onOpenFile={(f) => onOpenToolFile(f.path)}

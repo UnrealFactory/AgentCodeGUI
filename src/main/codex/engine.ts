@@ -247,6 +247,16 @@ export class CodexEngine {
   private lastCtxTokens: number | null = null
   private lastCtxWindow: number | null = null
   private sawActivity = false
+  /** thread/tokenUsage/updated의 total(스레드 누적) 최신값 — 턴 소모량은 정착(settleTurn)
+   *  시점 total과 직전 정착 시점 total(usageBase)의 델타로 만든다. 다른 스레드로 갈아타면
+   *  서버 카운터가 이어지지 않으므로 베이스도 리셋(usageThreadId가 그 판별). 리셋 직후의
+   *  첫 통지는 usageBaseAdopt로 base = total − last를 채택한다: 신규 스레드는 total==last라
+   *  0과 같고, 재시작 후 복원(resume) 스레드가 total에 과거 누적을 실어 보내는 경우에도
+   *  과거분이 통째로 이번 턴에 귀속되는 걸 막는다(오차는 최대 요청 1건분). */
+  private usageTotal = { inTok: 0, cached: 0, outTok: 0 }
+  private usageBase = { inTok: 0, cached: 0, outTok: 0 }
+  private usageBaseAdopt = false
+  private usageThreadId: string | null = null
 
   private modelCache: { at: number; models: CodexModelInfo[] } | null = null
 
@@ -506,9 +516,12 @@ export class CodexEngine {
         return
       }
       case 'thread/tokenUsage/updated': {
+        // last/total은 TokenUsageBreakdown(inputTokens·cachedInputTokens·outputTokens·
+        // reasoningOutputTokens·totalTokens) — codex 0.144 generate-json-schema 실측
+        type TokenBk = { totalTokens?: number; inputTokens?: number; cachedInputTokens?: number; outputTokens?: number }
         const usage = params.tokenUsage as {
-          last?: { totalTokens?: number }
-          total?: { totalTokens?: number }
+          last?: TokenBk
+          total?: TokenBk
           modelContextWindow?: number | null
         }
         const ctx = usage?.last?.totalTokens ?? usage?.total?.totalTokens ?? null
@@ -517,6 +530,21 @@ export class CodexEngine {
           this.emit({ type: 'context', runId, contextTokens: ctx })
         }
         if (typeof usage?.modelContextWindow === 'number') this.lastCtxWindow = usage.modelContextWindow
+        // 스레드 누적 소모(입력에는 캐시 히트가 포함) — 턴 정착 때 델타로 접어 보고한다
+        const tot = usage?.total
+        if (tot) {
+          this.usageTotal = { inTok: tot.inputTokens ?? 0, cached: tot.cachedInputTokens ?? 0, outTok: tot.outputTokens ?? 0 }
+          if (this.usageBaseAdopt) {
+            // 스레드 교체 후 첫 통지 — base = total − last (필드 주석 참고)
+            this.usageBaseAdopt = false
+            const l = usage?.last
+            this.usageBase = {
+              inTok: Math.max(0, this.usageTotal.inTok - (l?.inputTokens ?? 0)),
+              cached: Math.max(0, this.usageTotal.cached - (l?.cachedInputTokens ?? 0)),
+              outTok: Math.max(0, this.usageTotal.outTok - (l?.outputTokens ?? 0))
+            }
+          }
+        }
         return
       }
       case 'turn/started': {
@@ -1004,6 +1032,18 @@ export class CodexEngine {
     }
     const interrupted = turn?.status === 'interrupted'
     this.emit({ type: 'thinking-clear', runId })
+    // 이 턴이 소모한 실측 토큰 — 스레드 누적(total)의 정착 간 델타. inputTokens에는
+    // 캐시 히트(cachedInputTokens)가 포함돼 있어 비캐시/캐시로 갈라 보고한다(캐시 쓰기
+    // 구분은 Codex가 보고하지 않아 0). 수용량 전환으로 턴 중간에 모델이 바뀐 경우는
+    // 최종 모델로 귀속된다(전환 전 소모를 가를 신호가 와이어에 없다 — 드문 경우라 수용).
+    const dIn = Math.max(0, this.usageTotal.inTok - this.usageBase.inTok)
+    const dCached = Math.max(0, this.usageTotal.cached - this.usageBase.cached)
+    const dOut = Math.max(0, this.usageTotal.outTok - this.usageBase.outTok)
+    this.usageBase = { ...this.usageTotal }
+    const tokenUsage =
+      dIn + dOut > 0
+        ? [{ model: this.activeModel, inTok: Math.max(0, dIn - dCached), outTok: dOut, cacheRead: dCached, cacheWrite: 0 }]
+        : []
     this.emit({
       type: 'result',
       runId,
@@ -1015,7 +1055,8 @@ export class CodexEngine {
       numTurns: 1,
       contextTokens: this.lastCtxTokens,
       contextWindow: this.lastCtxWindow,
-      viaApi: false
+      viaApi: false,
+      tokenUsage
     })
     this.finishRun(failed ? 'error' : 'done')
   }
@@ -1425,6 +1466,15 @@ export class CodexEngine {
         if (!threadId) throw new Error('thread/start가 스레드 id를 주지 않았어요')
       }
       this.activeThreadId = threadId
+      // 토큰 누적 베이스 — 다른 스레드로 갈아탔으면 서버 카운터가 이어지지 않으므로
+      // 리셋하고, 첫 통지에서 base를 채택한다(usageBaseAdopt — 필드 주석 참고).
+      // 같은 스레드 재개(같은 프로세스)는 카운터가 이어지므로 그대로 둔다.
+      if (this.usageThreadId !== threadId) {
+        this.usageThreadId = threadId
+        this.usageTotal = { inTok: 0, cached: 0, outTok: 0 }
+        this.usageBase = { inTok: 0, cached: 0, outTok: 0 }
+        this.usageBaseAdopt = true
+      }
       this.emit({ type: 'session', runId, sessionId: threadId, model, cwd, tools: [] })
 
       this.turnStartedAt = Date.now()

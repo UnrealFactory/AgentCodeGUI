@@ -335,6 +335,9 @@ export type EngineEvent =
       // ANTHROPIC_API_KEY로 붙은 실행도 true). 대화별 비용 누적은 이 플래그가 켜진
       // 결과의 costUsd만 합산한다 (구독 실행의 명목 비용은 실제 청구가 아니므로).
       viaApi: boolean
+      // 이 실행이 소모한 모델별 실측 토큰 — 렌더러가 대화 단위로 누적해 컨텍스트
+      // 팝오버 맨 아래 '토큰 사용량'을 그린다. 생략/빈 배열 = 보고 없음.
+      tokenUsage?: TokenUse[]
     }
   // live context-token estimate emitted per assistant turn (before the final result)
   | { type: 'context'; runId: string; contextTokens: number }
@@ -505,6 +508,24 @@ export interface AccountUsage {
 
 /** 어떤 화면의 엔진이 실행했는지 — 사용 통계의 분류 축. */
 export type ApiUsageSource = 'chat' | 'talk' | 'ma'
+
+/** 모델 하나의 토큰 소모 묶음 — 대화 누적(tokenTotals)의 값 형태. */
+export interface TokenTally {
+  inTok: number // 비캐시 입력
+  outTok: number // 출력
+  cacheRead: number // 캐시 읽기 (Codex는 cachedInputTokens)
+  cacheWrite: number // 캐시 쓰기 (Codex는 구분 보고가 없어 0)
+}
+
+/**
+ * 실행 1건이 소모한 모델별 실측 토큰 (result 이벤트의 tokenUsage 한 항목).
+ * 렌더러가 대화 단위로 누적해 컨텍스트 팝오버 '토큰 사용량'을 그린다.
+ * 주의: 한도(주간·5시간) 차감은 모델 단가·캐시 여부로 가중되므로 이 수치와
+ * 정비례하지 않는다 — UI는 실측 토큰이라고만 말하고 한도 환산을 주장하지 않는다.
+ */
+export interface TokenUse extends TokenTally {
+  model: string // 표시 모델명 (Claude: 'Opus 4.8' 꼴, Codex: 모델 id 그대로)
+}
 
 /**
  * API 모드 실행 1건의 기록 (설정 → API 통계의 원장 한 줄).

@@ -19,7 +19,8 @@ import type {
   BgTask,
   BgTaskRequest,
   AccountInfo,
-  AccountUsage
+  AccountUsage,
+  TokenTally
 } from '@shared/protocol'
 import { sameCwd, type ThreadItem } from '../store/session'
 import { loadRecentDirs } from '../lib/recentDirs'
@@ -2535,6 +2536,7 @@ export const WorkBar = memo(function WorkBar({
   chatSpentUsd = 0,
   budgetUsd = null,
   totalSpentUsd = 0,
+  tokenTotals = {},
   busy = false,
   canSkipWait = false,
   engine,
@@ -2556,6 +2558,7 @@ export const WorkBar = memo(function WorkBar({
   chatSpentUsd?: number // 이 대화의 API 모드 누적 비용
   budgetUsd?: number | null // 설정 → API의 예산 (null = 미설정)
   totalSpentUsd?: number // 전체 워크스페이스의 API 모드 누적 사용액
+  tokenTotals?: Record<string, TokenTally> // 이 대화의 모델별 실측 토큰 누적 (팝오버 맨 아래 행)
   busy?: boolean // 실행 중 여부
   canSkipWait?: boolean // 막고 있는 포그라운드 Bash가 있는지 — 건너뛰기 버튼은 이때만 노출
   engine?: EngineId // 'codex'면 컨텍스트 팝오버가 Anthropic 한도 대신 OpenAI 한도를 그린다
@@ -2649,6 +2652,31 @@ export const WorkBar = memo(function WorkBar({
             // 추가 사용 크레딧 (claude.ai 설정 → 사용 크레딧) — 켜져 있거나 소진 상태일 때만
             ...(extraCreditVisible(usage.extraCredit) ? [extraCreditRow(usage.extraCredit)] : [])
           ])
+  ]
+  // 이번 대화가 지금까지 소모한 실측 토큰(모델별 누적) — 팝오버 맨 아래 참고 섹션.
+  // 한도 차감은 모델 단가·캐시 가중이라 이 수치와 정비례하지 않는다: '사용 토큰' 실측만
+  // 말하고 한도 환산을 주장하지 않는다. 캐시는 읽기+쓰기 합산 한 칸. 아직 보고가 없는
+  // 새 대화도 0으로 항상 보여준다(행이 생겼다 없어졌다 하지 않게) — 모델별 내역 행만
+  // 실제 보고가 쌓인 뒤(2개 모델 이상) 붙는다.
+  const tokBk = (t: TokenTally): string => `입력 ${fmtTok(t.inTok)} · 출력 ${fmtTok(t.outTok)} · 캐시 ${fmtTok(t.cacheRead + t.cacheWrite)}`
+  const tokEntries = Object.entries(tokenTotals)
+    .map(([m, t]) => ({ model: m, tally: t, total: t.inTok + t.outTok + t.cacheRead + t.cacheWrite }))
+    .filter((t) => t.total > 0)
+    .sort((a, b) => b.total - a.total)
+  const tokGrand: TokenTally = tokEntries.reduce(
+    (s, t) => ({ inTok: s.inTok + t.tally.inTok, outTok: s.outTok + t.tally.outTok, cacheRead: s.cacheRead + t.tally.cacheRead, cacheWrite: s.cacheWrite + t.tally.cacheWrite }),
+    { inTok: 0, outTok: 0, cacheRead: 0, cacheWrite: 0 }
+  )
+  const tokRows: CtxRow[] = [
+    {
+      // 대화 팝오버 안이라 '이번 대화' 수식은 군더더기 — 스코프는 위치가 이미 말한다
+      label: '토큰 사용량',
+      // 모델이 하나면 헤더 한 줄로 끝낸다(내역 행과 완전히 겹치므로) — 모델명을 부제에
+      sub: tokEntries.length === 1 ? `${tokEntries[0].model} · ${tokBk(tokEntries[0].tally)}` : tokBk(tokGrand),
+      end: <b>{fmtTok(tokEntries.reduce((n, t) => n + t.total, 0))}</b>,
+      bar: null
+    },
+    ...(tokEntries.length > 1 ? tokEntries.map((t) => ({ label: t.model, sub: tokBk(t.tally), end: <>{fmtTok(t.total)}</> as ReactNode, bar: null })) : [])
   ]
 
   const toggle = (t: WorkTab): void => {
@@ -2800,6 +2828,17 @@ export const WorkBar = memo(function WorkBar({
             )}
             {i === 0 && <div className="wb-psep" />}
           </Fragment>
+        ))}
+        {/* 토큰 사용량(대화 누적) — 맨 아래 참고 섹션 (엔진·API 모드 불문 실측, 새 대화는 0) */}
+        <div className="wb-psep" />
+        {tokRows.map((r, i) => (
+          <div className="wb-prow" key={'tok' + i}>
+            <span className="grow">
+              {r.label}
+              <span className="sub">{r.sub}</span>
+            </span>
+            <span className="end">{r.end}</span>
+          </div>
         ))}
       </>
     )

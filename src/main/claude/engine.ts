@@ -21,7 +21,8 @@ import type {
   BgTaskRequest,
   ChangedFile,
   FileDiff,
-  Todo
+  Todo,
+  TokenUse
 } from '@shared/protocol'
 import { computeLineDiff, newFileDiff } from './diff'
 import { lspManager } from '../lsp/manager'
@@ -71,7 +72,14 @@ function contextFromUsage(u?: UsageInfo): number | null {
 // the real context-window size, read from the result's per-model usage. Several
 // models may appear (e.g. a subagent on a smaller model) — the main conversation
 // runs on the largest window, so take the max. null when unavailable.
-function windowFromModelUsage(mu?: Record<string, { contextWindow?: number }>): number | null {
+interface ModelUsageEntry {
+  contextWindow?: number
+  inputTokens?: number
+  outputTokens?: number
+  cacheReadInputTokens?: number
+  cacheCreationInputTokens?: number
+}
+function windowFromModelUsage(mu?: Record<string, ModelUsageEntry>): number | null {
   if (!mu) return null
   let max = 0
   for (const key of Object.keys(mu)) {
@@ -79,6 +87,43 @@ function windowFromModelUsage(mu?: Record<string, { contextWindow?: number }>): 
     if (typeof w === 'number' && w > max) max = w
   }
   return max > 0 ? max : null
+}
+
+// 실행 1건의 모델별 실측 토큰 — result의 modelUsage(모델 id 키)를 표시명으로 접어
+// 내보낸다. 서브에이전트가 다른 모델로 돌면 항목이 여러 개고, [1m] 컨텍스트 변형처럼
+// 표시명이 같아지는 id는 하나로 합친다. modelUsage가 없거나 전부 0이면(옛 CLI 방어)
+// 합산 usage를 현재 모델 하나로 폴백. 전부 0인 항목은 내보내지 않는다.
+function tokenUseFromResult(msg: { modelUsage?: Record<string, ModelUsageEntry>; usage?: UsageInfo }, fallbackModel: string): TokenUse[] {
+  const out: TokenUse[] = []
+  const push = (t: TokenUse): void => {
+    if (t.inTok + t.outTok + t.cacheRead + t.cacheWrite <= 0) return
+    const same = out.find((x) => x.model === t.model)
+    if (same) {
+      same.inTok += t.inTok
+      same.outTok += t.outTok
+      same.cacheRead += t.cacheRead
+      same.cacheWrite += t.cacheWrite
+    } else out.push(t)
+  }
+  for (const [id, u] of Object.entries(msg.modelUsage ?? {})) {
+    push({
+      model: modelDisplay(id),
+      inTok: u?.inputTokens ?? 0,
+      outTok: u?.outputTokens ?? 0,
+      cacheRead: u?.cacheReadInputTokens ?? 0,
+      cacheWrite: u?.cacheCreationInputTokens ?? 0
+    })
+  }
+  if (!out.length && msg.usage) {
+    push({
+      model: fallbackModel,
+      inTok: msg.usage.input_tokens ?? 0,
+      outTok: msg.usage.output_tokens ?? 0,
+      cacheRead: msg.usage.cache_read_input_tokens ?? 0,
+      cacheWrite: msg.usage.cache_creation_input_tokens ?? 0
+    })
+  }
+  return out
 }
 
 interface StreamEvent {
@@ -110,7 +155,7 @@ interface SdkMsg {
   duration_ms?: number
   num_turns?: number
   usage?: UsageInfo
-  modelUsage?: Record<string, { contextWindow?: number }>
+  modelUsage?: Record<string, ModelUsageEntry>
   // system/model_refusal_fallback (Fable 5 정책 거부 → 폴백 모델 전환 알림)
   original_model?: string
   fallback_model?: string
@@ -614,7 +659,9 @@ export class ClaudeEngine {
           contextTokens: lastContextTokens,
           contextWindow: windowFromModelUsage(msg.modelUsage),
           // 대화별 비용 누적(렌더러)도 같은 실제-과금 판정을 쓴다 (전역 원장과 일관)
-          viaApi: billedToApi
+          viaApi: billedToApi,
+          // 이 실행이 소모한 모델별 실측 토큰 — 렌더러가 대화 누적(tokenTotals)에 더한다
+          tokenUsage: tokenUseFromResult(msg, curModelDisplay || req.model)
         })
         this.emit({ type: 'status', runId, status: msg.is_error ? 'error' : 'done' })
         sentTerminalStatus = true

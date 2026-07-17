@@ -10,6 +10,8 @@ import type {
   SubAgentInfo,
   TermLine,
   Todo,
+  TokenTally,
+  TokenUse,
   ToolLogItem
 } from '@shared/protocol'
 
@@ -66,6 +68,10 @@ export interface SessionState {
   // 이 대화에서 실제 API 키로 과금된(viaApi) 실행들이 쓴 비용 누적(USD) — 구독 실행의
   // 명목 비용은 실제 청구가 아니므로 더하지 않는다. 예전 스냅샷엔 없을 수 있어 ?? 0으로 읽는다.
   spentUsd: number
+  // 이 대화가 지금까지 소모한 모델별 실측 토큰 누적 — 컨텍스트 팝오버 '토큰 사용량'.
+  // 키는 엔진이 보고한 표시 모델명, 값은 실행 1건분(result.tokenUsage)의 합.
+  // 한도 차감 환산이 아니라 실측 그대로다. 예전 스냅샷엔 없을 수 있어 ?? {}로 읽는다.
+  tokenTotals: Record<string, TokenTally>
   thinkingText: string | null
   openGroupId: string | null
   seq: number
@@ -172,6 +178,7 @@ export const initialSessionState: SessionState = {
   result: null,
   pendingCommand: null,
   spentUsd: 0,
+  tokenTotals: {},
   thinkingText: null,
   openGroupId: null,
   seq: 0,
@@ -190,6 +197,24 @@ const MAX_SUBAGENT_TOOLS = 200
 const MAX_SUBAGENT_LOG = 100
 const MAX_TERMINAL_LINES = 500
 const MAX_DIFF_LINES = 4000
+
+// 실행 1건분의 모델별 토큰(result.tokenUsage)을 대화 누적(tokenTotals)에 더한다.
+// 보고가 없으면(생략·빈 배열) 기존 객체를 그대로 돌려줘 불필요한 리렌더를 만들지 않는다.
+function mergeTokenUse(prev: Record<string, TokenTally> | undefined, use: TokenUse[] | undefined): Record<string, TokenTally> {
+  const base = prev ?? {}
+  if (!use?.length) return base
+  const next = { ...base }
+  for (const u of use) {
+    const t = next[u.model] ?? { inTok: 0, outTok: 0, cacheRead: 0, cacheWrite: 0 }
+    next[u.model] = {
+      inTok: t.inTok + u.inTok,
+      outTok: t.outTok + u.outTok,
+      cacheRead: t.cacheRead + u.cacheRead,
+      cacheWrite: t.cacheWrite + u.cacheWrite
+    }
+  }
+  return next
+}
 
 // 스레드 끝의 '작업함' 줄을 건너뛴 마지막 항목 index — 답변의 부드러운 공개(live)는
 // 이 index 기준이라, result가 끝에 worked를 붙여도 공개 애니메이션이 뚝 끊기지 않는다.
@@ -234,6 +259,16 @@ export function sanitizeSnapshot(raw: unknown): SessionState {
   }
   const session = obj(r.session)
   const result = obj(r.result)
+  // 대화 누적 토큰 — 숫자 아닌 필드는 0으로 접고, 형태가 아예 다르면 항목째 버린다
+  const tokenTotals: Record<string, TokenTally> = {}
+  const rawTok = obj(r.tokenTotals)
+  if (rawTok) {
+    const num = (v: unknown): number => (typeof v === 'number' && isFinite(v) ? v : 0)
+    for (const key of Object.keys(rawTok)) {
+      const t = obj(rawTok[key])
+      if (t) tokenTotals[key] = { inTok: num(t.inTok), outTok: num(t.outTok), cacheRead: num(t.cacheRead), cacheWrite: num(t.cacheWrite) }
+    }
+  }
   // an in-flight status must never restore as busy (the run died with the app);
   // completed states keep their sidebar dot
   const status: AgentStatus = r.status === 'done' || r.status === 'error' ? r.status : 'idle'
@@ -259,13 +294,15 @@ export function sanitizeSnapshot(raw: unknown): SessionState {
         }
       : null,
     spentUsd: typeof r.spentUsd === 'number' ? r.spentUsd : 0,
+    tokenTotals,
     seq: typeof r.seq === 'number' ? r.seq : 0,
     // 예전 이름(dismissedNotices)도 읽어 마이그레이션
     shownNotices: arr<unknown>(r.shownNotices ?? r.dismissedNotices).filter((x): x is string => typeof x === 'string')
   }
 }
 
-function reducer(state: SessionState, action: Action): SessionState {
+// export는 리플레이 하네스용 — 앱 코드는 useAgentSession을 통해서만 쓴다
+export function reducer(state: SessionState, action: Action): SessionState {
   if (action.type === 'load') {
     return action.state
   }
@@ -666,7 +703,9 @@ function reducer(state: SessionState, action: Action): SessionState {
         pendingQuestion: null,
         pendingCommand: null,
         // API 모드 실행의 비용만 대화 누적에 더한다 (컨텍스트 팝오버 '이번 대화 비용')
-        spentUsd: (state.spentUsd ?? 0) + (e.viaApi && e.costUsd ? e.costUsd : 0)
+        spentUsd: (state.spentUsd ?? 0) + (e.viaApi && e.costUsd ? e.costUsd : 0),
+        // 실행 1건분의 모델별 실측 토큰을 대화 누적에 더한다 (컨텍스트 팝오버 '토큰 사용량')
+        tokenTotals: mergeTokenUse(state.tokenTotals, e.tokenUsage)
       }
       const without = state.messages.filter((m) => m.id !== THINKING_ID)
       // a slash command finished → finalize its running card in place

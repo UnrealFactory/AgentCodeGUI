@@ -411,6 +411,7 @@ const PanelView = memo(function PanelView({
         chatSpentUsd={state.spentUsd ?? 0}
         budgetUsd={budgetUsd}
         totalSpentUsd={totalSpentUsd}
+        tokenTotals={state.tokenTotals}
         engine={meta.picker.engine}
         codexAccount={meta.picker.codexAccount}
         onOpenFile={(f) => onOpenFile(slot, f.path)}
