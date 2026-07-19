@@ -25,7 +25,7 @@ const MAX_VERSIONS = 5
 const RELEASES: Record<string, Release> = {
   '2.0.5': {
     eyebrow: 'UPDATE',
-    lead: '멀티 채팅에 파일 탐색기가 들어오고, 창 유리가 더 살아나고, 가장자리 잘림 둘을 폈습니다.',
+    lead: '멀티 채팅에 파일 탐색기가 들어오고, 사이드바 폭을 끌어서 조절할 수 있게 되고, 창 유리가 더 살아나고, C# 분석이 새 파일을 놓치지 않게 됐습니다.',
     notes: [
       {
         tag: '파일 탐색기',
@@ -37,6 +37,17 @@ const RELEASES: Record<string, Release> = {
             다른 패널을 클릭하면 트리도 그 패널 폴더로 바뀌고, 파일을 열면 그 패널의 변경
             표시(diff)와 함께 보입니다. 변경 파일 배지와 우클릭 '변경된 파일 보기'도 그 패널
             기준이에요.
+          </>
+        )
+      },
+      {
+        tag: '사이드바',
+        name: '사이드바 폭, 내 마음대로',
+        desc: (
+          <>
+            사이드바(파일 탐색기)의 <b>오른쪽 경계를 드래그</b>해 폭을 조절할 수 있습니다 —
+            정한 폭은 다음 실행에도 기억돼요. 경계를 <b>더블클릭</b>하면 기본 폭으로
+            돌아옵니다.
           </>
         )
       },
@@ -72,6 +83,32 @@ const RELEASES: Record<string, Release> = {
             좁은 멀티 패널에서 작업 바의 <b>컨텍스트 팝오버</b>와 헤더의 <b>폴더 팝오버</b>가
             패널 밖으로 나가 <b>왼쪽이 뜯긴 채 사이드바 밑으로 들어간 것처럼</b> 보이던 버그를
             수정했습니다 — 이제 팝오버가 패널 폭에 맞춰 항상 자기 패널 안에 뜹니다.
+          </>
+        )
+      },
+      {
+        tag: 'C#',
+        name: '새로 생긴 C# 파일도 곧장 색인',
+        desc: (
+          <>
+            에이전트가 <b>명령어(Bash)로</b> 파일을 만들거나 외부 도구가 <b>앱 밖에서</b> C#
+            파일을 만들고 고쳐도, 이제 코드 뷰어의 색·호버가 곧장 따라옵니다 — 열려 있던
+            문서도 재열람 없이 새 타입의 색을 받아요. <b>GPT</b>가 고친 파일이 분석에 반영되지
+            않던 것과, <b>솔루션 파일이 앱 밖에서 재생성</b>돼 새 프로젝트가 생겨도 미리 떠
+            있던 분석 서버가 이를 놓치던 문제도 함께 잡았습니다.
+          </>
+        )
+      },
+      {
+        tag: 'C#',
+        name: 'Build.cs를 열어도 이제 가볍게',
+        desc: (
+          <>
+            언리얼 프로젝트의 <b>Build.cs·Target.cs</b>를 열면 루트의 자동 생성 솔루션(엔진
+            자동화 프로젝트 수십 개)을 통째로 인덱싱하느라 <b>몇 분씩 '분석 중'</b>이 뜨던
+            것을, 이 파일들의 진짜 주인인 <b>룰 전용 프로젝트</b>만 열도록 바꿨습니다 — 몇 초
+            만에 색·호버가 나와요. 소속 프로젝트가 없는 낱 C# 파일도 더는 그 거대 솔루션을
+            깨우지 않습니다.
           </>
         )
       }
@@ -302,7 +339,7 @@ export function PatchNotes(): ReactNode {
           <span className="pn-hl">업데이트 소식</span>
           <span className="pn-sp" />
           <span className="pn-verpill">v{version}</span>
-          <button className="pn-x" onClick={close} title="닫기">
+          <button className="pn-x" onClick={close} aria-label="닫기">
             <IconClose size={13} />
           </button>
         </div>

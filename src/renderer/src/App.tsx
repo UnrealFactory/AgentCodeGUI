@@ -175,6 +175,39 @@ function MainApp({ user }: { user: AppUser }) {
       return !o
     })
   })
+  // 왼쪽 칼럼 폭 — 오른쪽 경계 핸들 드래그로 조절(180–420px), 앱 단위로 기억.
+  // null = 기본 폭(242px, 좁은 창 210px 반응형 유지 — 인라인 스타일을 안 얹는다).
+  // 핸들 더블클릭이 기본 폭 복귀. 실제 드래그가 있을 때만 저장 — 클릭만으로
+  // 기본(반응형)이 고정 폭으로 굳는 걸 막고, 더블클릭 복귀와도 안 엉킨다.
+  const [lcolW, setLcolW] = useState<number | null>(() => getPref<number | null>('sidebar.width', null))
+  const [lcolDrag, setLcolDrag] = useState(false)
+  const onLcolResize = useEvent((e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    const handle = e.currentTarget
+    const startW = handle.parentElement?.getBoundingClientRect().width ?? 242
+    const startX = e.clientX
+    let w: number | null = null
+    handle.setPointerCapture(e.pointerId)
+    setLcolDrag(true)
+    const onMove = (ev: PointerEvent): void => {
+      w = Math.round(Math.min(420, Math.max(180, startW + (ev.clientX - startX))))
+      setLcolW(w)
+    }
+    const onUp = (): void => {
+      handle.removeEventListener('pointermove', onMove)
+      handle.removeEventListener('pointerup', onUp)
+      handle.removeEventListener('pointercancel', onUp)
+      setLcolDrag(false)
+      if (w != null) setPref('sidebar.width', w)
+    }
+    handle.addEventListener('pointermove', onMove)
+    handle.addEventListener('pointerup', onUp)
+    handle.addEventListener('pointercancel', onUp)
+  })
+  const onLcolReset = useEvent(() => {
+    setLcolW(null)
+    setPref('sidebar.width', null)
+  })
   // ` (백쿼트) 한 키 = 사이드바 ⟷ 탐색기 전환 — 글자가 들어가는 입력에서는 무시.
   // 멀티 뷰에서도 동작한다 — 그때 탐색기는 마지막으로 클릭(포커스)한 패널의 폴더를 보인다.
   useEffect(() => {
@@ -1012,8 +1045,12 @@ function MainApp({ user }: { user: AppUser }) {
       <div className="win-body">
         {/* 왼쪽 칼럼 — 채팅 사이드바 ⟷ 파일 탐색기 전환 ( ` 또는 헤더 돋보기 옆 버튼).
             멀티 뷰의 탐색기는 마지막으로 클릭한 패널의 폴더를 따라간다(패널 전환 = 트리 전환).
-            두 패널 모두 242px 고정이라 폭 트랜지션 없이 key 교체 슬라이드-인만 남는다 */}
-        <div className="lcol">
+            두 패널 모두 --lcol-w 한 폭이라 폭 트랜지션 없이 key 교체 슬라이드-인만 남는다.
+            오른쪽 경계 핸들 드래그로 폭 조절 — 사용자 폭일 때만 인라인 변수를 얹는다 */}
+        <div
+          className="lcol"
+          style={lcolW != null ? ({ '--lcol-w': `${lcolW}px` } as React.CSSProperties) : undefined}
+        >
           {mode === 'single' && explorerOpen ? (
             <Explorer
               key="fx"
@@ -1038,6 +1075,11 @@ function MainApp({ user }: { user: AppUser }) {
           ) : (
             <Sidebar key="sb" user={user} sections={sections} onNewChat={onOpenNewChat} onOpenSettings={onOpenSettings} />
           )}
+          <div
+            className={lcolDrag ? 'lcol-rs on' : 'lcol-rs'}
+            onPointerDown={onLcolResize}
+            onDoubleClick={onLcolReset}
+          />
         </div>
         {mode === 'multi' ? (
           <ErrorBoundary label="멀티 에이전트">

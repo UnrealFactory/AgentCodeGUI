@@ -20,6 +20,7 @@ import fs from 'node:fs'
 import { codexAccountRunDir, codexApiKeyRunDir, codexDefaultAccountEmail, syncCodexAccount } from './auth'
 import { getOpenaiApiKey } from '../apiConfig'
 import { codexBin } from './versions'
+import { lspManager } from '../lsp/manager'
 import type {
   AgentQuestion,
   BgTaskRequest,
@@ -870,6 +871,7 @@ export class CodexEngine {
           durationMs: meta ? Date.now() - meta.startedAt : undefined
         })
         if (!failed) {
+          const watched: { abs: string; kind: 'created' | 'changed' | 'deleted' }[] = []
           for (const ch of changes) {
             const kind = ch.kind?.type
             // 실측: add/delete는 diff 필드에 파일 '원문'이 그대로 온다(접두사 없음) —
@@ -896,7 +898,13 @@ export class CodexEngine {
             const diff: FileDiff = { path: file.path, tag: file.tag, add, del, lines }
             // 새 파일/전체 갱신은 whole=true — 누적 diff를 대체
             this.emit({ type: 'file-change', runId, file, diff, whole: kind === 'add' })
+            const abs = path.isAbsolute(ch.path) ? ch.path : this.activeCwd ? path.join(this.activeCwd, ch.path) : ''
+            if (abs) watched.push({ abs, kind: kind === 'add' ? 'created' : kind === 'delete' ? 'deleted' : 'changed' })
           }
+          // 살아있는 LSP 서버들에도 디스크 변화를 통지 — Claude 엔진의 Write/Edit 경로와 같은
+          // 배선(C# 재프라임 예약 + 열린 뷰어 재폴링 깨우기; 역할 분담은 notifyWatchedFiles 주석).
+          // 이게 없으면 GPT가 만든 새 파일/타입이 열린 C# 문서들에서 재열람 전까지 무색으로 남는다.
+          if (watched.length) lspManager.notifyWatchedFiles(watched)
         }
         this.items.delete(id)
         return

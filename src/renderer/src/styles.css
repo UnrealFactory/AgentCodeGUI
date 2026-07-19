@@ -190,12 +190,22 @@ input,textarea{ font-family:inherit; }
 .win-body{ flex:1; display:flex; min-height:0; position:relative; }
 
 /* ---- 왼쪽 칼럼 래퍼 — 채팅 사이드바 ⟷ 파일 탐색기 전환 ( ` / 헤더 버튼) ----
-   두 패널 모두 242px 고정(폭 트랜지션 없음) — 들어오는 패널은 슬라이드-인. 전환 중
-   넘치는 안쪽은 잘라 탁탁 끊기는 느낌을 없앤다. 팝오버·메뉴는 fixed/포털이라 무관. */
+   두 패널 모두 --lcol-w 한 폭(폭 트랜지션 없음) — 들어오는 패널은 슬라이드-인. 전환 중
+   넘치는 안쪽은 잘라 탁탁 끊기는 느낌을 없앤다. 팝오버·메뉴는 fixed/포털이라 무관.
+   폭은 오른쪽 경계 핸들(.lcol-rs) 드래그로 조절 — 사용자 폭은 App이 인라인 --lcol-w로
+   덮는다(인라인 > 아래 좁은 창 미디어쿼리). position:relative는 핸들 앵커용 —
+   fixed 자손의 containing block이 되는 건 transform/filter 계열뿐이라 안전. */
 .lcol{
-  flex:0 0 auto; width:242px; min-height:0;
-  display:flex; overflow:hidden;
+  flex:0 0 auto; width:var(--lcol-w, 242px); min-height:0;
+  display:flex; overflow:hidden; position:relative;
 }
+/* 폭 조절 핸들 — 경계 안쪽 5px 스트립(overflow:hidden 안이라 밖으로 못 나감).
+   평소엔 투명, 호버(살짝 늦게)·드래그 중(.on)에만 경계선이 드러난다. */
+.lcol-rs{ position:absolute; top:0; right:0; bottom:0; width:5px; cursor:col-resize; z-index:30; }
+.lcol-rs::before{ content:''; position:absolute; inset:0 0 0 auto; width:2px;
+  background:var(--line-2); opacity:0; transition:opacity .12s; }
+.lcol-rs:hover::before{ opacity:1; transition-delay:.15s; }
+.lcol-rs.on::before{ opacity:1; background:var(--line-strong); transition-delay:0s; }
 /* 등장 애니는 fill 없이·margin 슬라이드로 — transform/opacity 키프레임이 fill:both로 남으면
    끝난 뒤에도 '적용 중'이라 패널이 fixed 자손의 containing block(transform: 메뉴가 .lcol
    overflow:hidden에 잘림)이자 영구 스태킹 컨텍스트(opacity: 안의 인라인 오버레이 카드가
@@ -209,7 +219,7 @@ input,textarea{ font-family:inherit; }
 
 /* ---- sidebar — 재질이 은은히 비치는 면 (배경 없음 = body의 --panel 틴트) ---- */
 .sidebar{
-  width:242px; flex:0 0 242px;
+  width:var(--lcol-w, 242px); flex:0 0 auto;
   display:flex; flex-direction:column;
   min-height:0;
   padding:8px 7px 0;
@@ -434,7 +444,7 @@ input,textarea{ font-family:inherit; }
 /* 파일 탐색기 — 2.0: 왼쪽 칼럼을 채팅 사이드바와 '전환'해 쓰는 패널 (PoC .fx).
    채팅 헤더의 패널 버튼(돋보기 옆)이 스위치. 배경 없음 = body의 --panel 틴트. */
 .explorer{
-  width:242px; flex:0 0 242px;
+  width:var(--lcol-w, 242px); flex:0 0 auto;
   display:flex; flex-direction:column; min-height:0;
   padding:8px 7px 0;
 }
@@ -2871,7 +2881,10 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
 @keyframes rise{ from{ opacity:0; transform:translateY(6px); } to{ opacity:1; transform:none; } }
 @keyframes fade{ from{ opacity:0; } to{ opacity:1; } }
 
-@media (max-width:1000px){ .sidebar{ width:210px; flex-basis:210px; } }
+/* 좁은 창 기본 폭 — .lcol 변수로 내려 사이드바·탐색기·칼럼이 함께 줄어든다
+   (예전엔 .sidebar만 줄어 .lcol 242px 안에 32px 빈 띠가 남았다).
+   사용자가 폭을 정했으면 인라인 --lcol-w가 이걸 덮는다. */
+@media (max-width:1000px){ .lcol{ --lcol-w:210px; } }
 
 /* ============================== MESSAGE IMAGES ============================== */
 /* images attached to a sent message. One image is a single quiet thumbnail; multiple

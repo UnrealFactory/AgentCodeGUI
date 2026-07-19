@@ -103,8 +103,10 @@ interface ServerDef {
   workspaceFoldersFor?(root: string): { uri: string; name: string }[] | null
   initializationOptions?(): unknown
   /** post-initialize hook — Roslyn doesn't auto-discover .sln/.csproj, so we tell it
-   *  which projects to open here (after `initialized`). Other servers don't need it. */
-  afterInitialized?(rpc: StdioRpc, root: string): void
+   *  which projects to open here (after `initialized`). Other servers don't need it.
+   *  반환: 무언가 열었으면 true, 열 것이 없었으면 false — false면 ensure가
+   *  projectInitializationComplete 게이트를 바로 내린다(기다릴 로드가 없다). */
+  afterInitialized?(rpc: StdioRpc, root: string): boolean
   /** true when the server keeps loading after `initialize` and signals readiness with
    *  a `workspace/projectInitializationComplete` notification (Roslyn). We hold the
    *  status at 'starting' until then so the viewer only asks for tokens once the index
@@ -181,6 +183,46 @@ const csRootMemo = new Map<string, { at: number; hit: CsRootHit }>()
 const CS_ROOT_TTL = 30_000 // 솔루션 탐색은 파일시스템 워크 — status 폴링(400ms)마다 걷지 않게
 // rootFor가 고른 솔루션을 afterInitialized(시그니처가 root뿐)에 전달하는 스태시
 const csSolutionByRoot = new Map<string, string>()
+
+// "참조 확인 없이는 솔루션을 열지 않는다"의 폴백 확장 — csproj 조상이 없는 낱파일이 UE
+// 루트(cwd)로 폴백해 뜬 서버 루트가 여기 등록되고, afterInitialized가 이 루트에선 루트
+// 솔루션 자동 열기를 생략한다. UE 루트의 솔루션은 UBT가 생성한 것(엔진 자동화 프로젝트
+// 수십 개 참조)이라 통째로 열면 수 분짜리 헛인덱싱인데, 낱파일은 어차피 어느 프로젝트
+// 소속도 아니어서 misc 문서가 되고 misc는 솔루션 없이도 기본 색이 나온다(얻는 것 동일).
+const csNoAutoSln = new Set<string>()
+
+// UE 룰 파일(*.Build.cs / *.Target.cs)의 주인 — UBT가 프로젝트 파일 생성 때 만들어 두는
+// 룰 전용 프로젝트(<UE루트>/Intermediate/Build/BuildRulesProjects/<X>/, Build.cs·Target.cs를
+// include). 폴더 탐색은 디스크 워크라 csRootMemo와 같은 TTL로 memo — 프로젝트 파일을
+// 나중에 생성해도(폴더가 나중에 생겨도) TTL 뒤엔 잡힌다.
+const ueRulesMemo = new Map<string, { at: number; dir: string | null }>()
+function ueRulesProjectDir(ur: string): string | null {
+  const key = path.resolve(ur).toLowerCase()
+  const memo = ueRulesMemo.get(key)
+  if (memo && Date.now() - memo.at < CS_ROOT_TTL) return memo.dir
+  let dir: string | null = null
+  try {
+    const base = path.join(ur, 'Intermediate', 'Build', 'BuildRulesProjects')
+    for (const e of fs.readdirSync(base, { withFileTypes: true })) {
+      if (!e.isDirectory()) continue
+      const d = path.join(base, e.name)
+      let ok = false
+      try {
+        ok = fs.readdirSync(d).some((f) => f.toLowerCase().endsWith('.csproj'))
+      } catch {
+        /* 못 읽는 폴더 — 다음 후보로 */
+      }
+      if (ok) {
+        dir = d
+        break
+      }
+    }
+  } catch {
+    /* 룰 프로젝트 미생성(프로젝트 파일을 만든 적 없음) — 기존 폴백 유지 */
+  }
+  ueRulesMemo.set(key, { at: Date.now(), dir })
+  return dir
+}
 
 // Roslyn MetadataAsSource(F12로 어셈블리 심볼에 들어갈 때 서버가 %TEMP%에 떨궈 주는 디컴파일/
 // PDB 소스) 경로 → 그 파일을 만들어 준 서버의 루트. 이 파일은 어떤 프로젝트에도 속하지 않아
@@ -309,6 +351,24 @@ function csRootFor(abs: string, cwd: string): string {
         /* 접근 불가 — cwd 폴백 */
       }
     }
+    // UE 룰 파일(Build.cs·Target.cs)도 csproj 조상이 없다 — 진짜 주인은 UBT의 룰 전용
+    // 프로젝트(ueRulesProjectDir)다. 그 폴더로 'csproj 단독 로드' 위임한다: 참조 솔루션
+    // 탐색을 일부러 안 거치는데, 루트의 UBT 생성 거대 솔루션이 이 csproj를 참조하고 있어
+    // 평소 규칙대로면 그 솔루션째(엔진 자동화 프로젝트 수십 개) 열리기 때문 — 룰 프로젝트
+    // 하나면 몇 초 만에 색·호버가 전부 나온다.
+    if (/\.(build|target)\.cs$/i.test(abs)) {
+      const ur = ueRoot(path.dirname(abs))
+      if (ur) {
+        const rules = ueRulesProjectDir(ur)
+        if (rules) {
+          lastCsRoot = rules // F12(디컴파일 소스)의 주인 미상 폴백도 이 서버로
+          return rules
+        }
+      }
+    }
+    // 그 외 주인 없는 낱파일이 UE 루트로 떨어지는 경우 — 루트 솔루션 자동 열기를 눌러 둔다
+    // (csNoAutoSln 주석). 비 UE 프로젝트는 루트 솔루션이 대개 사용자 자신의 것이라 기존대로.
+    if (cwd && ueRoot(cwd)) csNoAutoSln.add(path.resolve(cwd).toLowerCase())
     return cwd
   }
   const key = projDir.toLowerCase() + '|' + (cwd || '').toLowerCase()
@@ -451,6 +511,10 @@ interface ServerHandle {
   // 솔루션을 재생성하면 solution/open을 재통지해 새 프로젝트를 로드한다(watchCsSolution).
   // 서버가 죽으면 반드시 close (안 하면 워처가 유령으로 남아 죽은 rpc에 notify한다).
   slnWatch?: fs.FSWatcher
+  // C# 전용: 서버 루트의 재귀 워처 — 앱을 '거치지 않은' 디스크 변화(에이전트 Bash, 외부
+  // 도구의 코드 재생성, 외부 에디터, git)를 notifyWatchedFiles로 흘린다(watchCsRoot).
+  // slnWatch와 같은 자리들에서 close.
+  dirWatch?: fs.FSWatcher
 }
 
 // Resolve a file that ships in the app's node_modules. In a packaged build the
@@ -579,13 +643,25 @@ const SERVERS: ServerDef[] = [
     // 오고, 그 전엔 빈 토큰이 올 수 있어 렌더러의 semanticTokens 재시도(폴링)가 이를 메운다.
     afterInitialized: (rpc, root) => {
       const chosen = csSolutionByRoot.get(root.toLowerCase())
+      // UE 루트로 폴백한 낱파일 서버 — 참조 확인 안 된 루트 솔루션(UBT 생성 거대 솔루션)을
+      // 열지 않는다(csNoAutoSln 주석). 문서는 misc로 동작하고 기본 색은 그대로 나온다.
+      if (!chosen && csNoAutoSln.has(root.toLowerCase())) return false
       const sln = chosen ? pathToFileURL(chosen).href : slnUri(root)
       if (sln) {
+        // 프리웜(prewarm → ensure 직행, csRootFor 미경유)으로 뜬 서버는 스태시가 비어 있다 —
+        // 여기서 실제로 연 솔루션을 채워야 직후의 watchCsSolution이 재생성 감시를 건다.
+        // 안 채우면 외부 도구가 새 프로젝트를 추가하며 솔루션 파일을 재생성해도 프리웜
+        // 경로의 서버만 그걸 몰라, 새 프로젝트의 모든 .cs가 misc(무색)로 남는다.
+        if (!chosen) csSolutionByRoot.set(root.toLowerCase(), fileURLToPath(sln))
         rpc.notify('solution/open', { solution: sln })
-        return
+        return true
       }
       const projects = csprojUris(root)
-      if (projects.length) rpc.notify('project/open', { projects })
+      if (projects.length) {
+        rpc.notify('project/open', { projects })
+        return true
+      }
+      return false
     }
   },
   {
@@ -2026,6 +2102,7 @@ class LspManager {
   disposeAll(): void {
     for (const s of this.servers.values()) {
       s.slnWatch?.close()
+      s.dirWatch?.close()
       s.rpc.dispose('앱 종료')
       killTree(s.child)
     }
@@ -2221,14 +2298,21 @@ class LspManager {
         const sync = res?.capabilities?.textDocumentSync
         handle.syncKind = (typeof sync === 'number' ? sync : sync?.change) ?? 1
         rpc.notify('initialized', {})
-        def.afterInitialized?.(rpc, path.resolve(root))
+        const opened = def.afterInitialized?.(rpc, path.resolve(root))
+        // 열 것이 아예 없던 루트(낱파일 폴백 등) — projectInitializationComplete를 기다릴
+        // 로드가 없다: 게이트를 바로 내려 misc 문서의 기본 색·호버가 즉시 나가게 한다
+        if (opened === false) handle.projectInitPending = false
         handle.status = 'ready'
-        if (def.id === 'cs') this.watchCsSolution(handle, path.resolve(root))
+        if (def.id === 'cs') {
+          this.watchCsSolution(handle, path.resolve(root))
+          this.watchCsRoot(handle, path.resolve(root))
+        }
       })
     handle.ready.catch(() => {
       handle.status = 'error'
       handle.diedAt = Date.now()
       handle.slnWatch?.close()
+      handle.dirWatch?.close()
       // a server that failed/hung initialize would linger forever — take it down
       // so the cooldown respawn starts from a clean slate
       killTree(child)
@@ -2238,6 +2322,7 @@ class LspManager {
       handle.status = 'error'
       handle.diedAt = Date.now()
       handle.slnWatch?.close()
+      handle.dirWatch?.close()
       rpc.dispose('LSP 서버 실행 실패')
     })
     child.on('exit', (code) => {
@@ -2249,6 +2334,7 @@ class LspManager {
       handle.diedAt = Date.now()
       handle.docs.clear()
       handle.slnWatch?.close()
+      handle.dirWatch?.close()
       rpc.dispose('LSP 서버가 종료됨')
     })
 
@@ -2312,8 +2398,59 @@ class LspManager {
           this.onFilesChanged?.({ paths: [], exts: ['cs', 'csx'] })
         }, 2000)
       })
+      // 폴더 삭제 등으로 워처가 에러를 내면 조용히 끝낸다 — 'error' 이벤트를 안 받으면
+      // 프로세스째 uncaughtException으로 죽는다
+      s.slnWatch.on('error', () => {})
     } catch {
       /* 감시 실패(권한 등) — 없던 기능이니 조용히 포기, 색칠은 재시작 시 회복 */
+    }
+  }
+
+  /**
+   * C# 서버 루트의 재귀 파일 워처 — 앱을 '거치지 않은' 디스크 변화(에이전트의 Bash 명령,
+   * 외부 도구의 코드 재생성, 외부 에디터, git 체크아웃)를 notifyWatchedFiles로 흘린다.
+   *
+   * 왜: 앱 경유 변화(Write/Edit·에디터 저장·탐색기 작업)는 각자 통지하지만, 그 밖의 변화는
+   * Roslyn이 폴백 워처로 프로젝트 '편입'까지는 스스로 해도 ① frozen 토큰 재프라임 예약과
+   * ② 열린 뷰어의 재폴링 깨우기는 앱 쪽 신호가 없으면 영영 안 일어난다 — 새로 생긴 파일의
+   * 타입이 열린 C# 문서들에서 재열람 전까지 무색으로 고착된다(notifyWatchedFiles 주석의
+   * ①②가 정확히 이 신호다). 이벤트는 1초 조용해질 때까지 모아 한 번에 통지한다(빌드 폭풍
+   * 대비 — 배치 상한 400개, 초과분은 버려도 재프라임 예약엔 지장 없다). 앱 경유 변화와의
+   * 중복 통지는 무해: 재프라임 예약은 시각 갱신일 뿐이고 서버 통지는 Roslyn이 무시한다.
+   */
+  private watchCsRoot(s: ServerHandle, root: string): void {
+    const WATCH_EXTS = new Set(['cs', 'csx', 'csproj', 'sln', 'slnx', 'props', 'targets'])
+    const pending = new Map<string, string>() // 소문자 경로 → 원본 절대 경로
+    let timer: ReturnType<typeof setTimeout> | null = null
+    try {
+      s.dirWatch = fs.watch(root, { recursive: true }, (_ev, fn) => {
+        if (!fn) return
+        const ext = path.extname(String(fn)).slice(1).toLowerCase()
+        if (!WATCH_EXTS.has(ext)) return
+        const abs = path.join(root, String(fn))
+        if (pending.size < 400) pending.set(abs.toLowerCase(), abs)
+        if (timer) clearTimeout(timer)
+        timer = setTimeout(() => {
+          timer = null
+          const batch = [...pending.values()]
+          pending.clear()
+          const changes = batch.map((p) => {
+            let kind: 'changed' | 'deleted' = 'changed'
+            try {
+              if (!fs.existsSync(p)) kind = 'deleted'
+            } catch {
+              /* 판정 불가 — changed로 (프라임 예약엔 종류가 중요하지 않다) */
+            }
+            return { abs: p, kind }
+          })
+          this.notifyWatchedFiles(changes)
+        }, 1000)
+      })
+      // 루트 폴더 삭제 등으로 워처가 에러를 내면 조용히 끝낸다 — 'error' 이벤트를 안 받으면
+      // 프로세스째 uncaughtException으로 죽는다
+      s.dirWatch.on('error', () => {})
+    } catch {
+      /* 재귀 감시 실패(네트워크 드라이브 등) — 앱 경유 변화 통지만으로 동작(기존과 동일) */
     }
   }
 
