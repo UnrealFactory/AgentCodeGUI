@@ -308,14 +308,13 @@ function AccountView(): React.ReactElement {
               <div className="ava2" style={{ background: AVA_SWATCHES[i % AVA_SWATCHES.length] }}>
                 {a.email.charAt(0).toUpperCase()}
               </div>
-              <div>
+              <div className="who">
                 <div className="em">
-                  {a.email}
+                  <span className="emt">{a.email}</span>
                   {a.isDefault && <span className="set-badge">기본</span>}
                 </div>
                 <div className="meta">{planLabel(a.subscriptionType)}</div>
               </div>
-              <span className="sp" />
               <AccountLimits u={usage[a.email]} />
               <div className="acts">
                 {!a.isDefault && (
@@ -334,11 +333,10 @@ function AccountView(): React.ReactElement {
               <div className="ava2" style={{ background: 'rgba(255,255,255,.12)' }}>
                 <span className="set-spin" />
               </div>
-              <div>
+              <div className="who">
                 <div className="em">로그인 진행 중…</div>
                 <div className="meta">브라우저에서 로그인을 완료하세요</div>
               </div>
-              <span className="sp" />
               <button className="set-chipbtn" onClick={() => window.api.auth.cancelLogin().catch(() => {})}>
                 취소
               </button>
@@ -365,15 +363,14 @@ function AccountView(): React.ReactElement {
               <div className="ava2" style={{ background: AVA_SWATCHES[(i + 6) % AVA_SWATCHES.length] }}>
                 {a.email.charAt(0).toUpperCase()}
               </div>
-              <div>
+              <div className="who">
                 <div className="em">
-                  {a.email}
+                  <span className="emt">{a.email}</span>
                   {a.isDefault && <span className="set-badge">기본</span>}
                 </div>
                 {/* 플랜은 rateLimits의 planType이 최신(구독 변경 즉시 반영) — 도착 전엔 id_token 값 */}
                 <div className="meta">{chatgptPlan(cxUsage[a.email]?.planType ?? a.plan)}</div>
               </div>
-              <span className="sp" />
               <CodexLimits u={cxUsage[a.email]} />
               <div className="acts">
                 {!a.isDefault && (
@@ -392,11 +389,10 @@ function AccountView(): React.ReactElement {
               <div className="ava2" style={{ background: 'rgba(255,255,255,.12)' }}>
                 <span className="set-spin" />
               </div>
-              <div>
+              <div className="who">
                 <div className="em">로그인 진행 중…</div>
                 <div className="meta">브라우저에서 ChatGPT 로그인을 완료하세요</div>
               </div>
-              <span className="sp" />
               <button className="set-chipbtn" onClick={() => window.api.codexAuth.cancelLogin().catch(() => {})}>
                 취소
               </button>

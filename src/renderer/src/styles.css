@@ -2524,7 +2524,14 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
 .set-chipbtn.danger{ color:var(--red); background:rgba(221,122,107,.10); }
 .set-chipbtn.danger:hover{ background:rgba(221,122,107,.18); }
 /* 계정 카드 — 잔여 한도가 카드 안 미니 게이지로 (.sc2 스코프 필수 — 다른 .acct와 겹침 방지) */
-.sc2.acct{ display:flex; align-items:center; gap:13px; }
+/* 신원 칼럼(.who)이 남는 폭을 갖고 이메일(.emt)만 말줄임 — 긴 이메일·좁은 창에서
+   '기본' 배지가 다음 줄로 내려가거나 버튼·게이지가 카드 밖으로 밀려 잘리던 것.
+   그래도 못 담을 만큼 좁으면(min-width 경계) 게이지·버튼이 둘째 줄로 내려간다(wrap). */
+.sc2.acct{ display:flex; align-items:center; gap:13px; flex-wrap:wrap; }
+.sc2.acct .who{ flex:1 1 0; min-width:130px; }
+.sc2.acct .em{ display:flex; align-items:center; min-width:0; }
+.sc2.acct .em .emt{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.sc2.acct .em .set-badge{ flex:0 0 auto; }
 .ava2{ width:40px; height:40px; border-radius:99px; display:grid; place-items:center; font-size:14px; font-weight:700; color:#fff; flex:0 0 auto; box-shadow:0 5px 14px -5px rgba(0,0,0,.5); }
 /* 초기화 시각 열(.lr)만큼 넓힌 폭 — 게이지 블록이 왼쪽으로 밀리고 바 폭은 그대로 */
 .limits{ display:flex; flex-direction:column; gap:6px; width:264px; flex:0 0 auto; }
@@ -2536,8 +2543,9 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
 .g2{ flex:1; height:3px; border-radius:99px; background:rgba(255,255,255,.08); overflow:hidden; }
 .g2 i{ display:block; height:100%; border-radius:99px; background:var(--accent); }
 .g2.big{ height:4px; }
-/* 버튼 수(기본으로 유무)와 무관하게 한도 게이지 x좌표가 모든 카드에서 같도록 고정폭 우측 정렬 */
-.sc2.acct .acts{ display:flex; gap:7px; flex:0 0 128px; justify-content:flex-end; }
+/* 버튼 수(기본으로 유무)와 무관하게 한도 게이지 x좌표가 모든 카드에서 같도록 고정폭 우측 정렬
+   (margin-left:auto는 wrap으로 내려간 둘째 줄에서만 작동 — 첫 줄은 .who가 여백을 다 가진다) */
+.sc2.acct .acts{ display:flex; gap:7px; flex:0 0 128px; justify-content:flex-end; margin-left:auto; }
 .set-addrow{
   display:flex; align-items:center; justify-content:center; gap:6px; width:100%; margin-top:8px;
   padding:11px; border-radius:14px; border:1.5px dashed rgba(255,255,255,.11);
@@ -3166,6 +3174,17 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
 .ma-panel .workbar-wrap{ padding:6px 12px 0; }
 /* 좁은 패널에선 칩이 잘리는 대신 줄바꿈 (PoC .mpwork flex-wrap 문법) */
 .ma-panel .workbar{ max-width:none; flex-wrap:wrap; row-gap:2px; }
+/* 패널 팝오버 앵커는 칩(.wb-cell)이 아니라 바/헤더 전체 — 칩 기준 고정폭(292/300px)
+   팝오버는 좁은 패널에서 패널 왼쪽 밖으로 나가고, .ma-grid(overflow:auto)가 그리드
+   경계에서 잘라 왼쪽 열 패널에선 사이드바 밑으로 들어간 것처럼 보였다(실물 CDP 실측).
+   바 전체 앵커 + 바 폭 상한이면 팝오버가 항상 자기 패널 안에 머문다. */
+.ma-panel .workbar{ position:relative; }
+.ma-panel .workbar .wb-cell{ position:static; }
+.ma-panel .workbar .wb-pop{ max-width:100%; }
+/* 헤더 폴더 팝오버(.hpop)도 같은 함정 — 헤더(.ma-p-head) 기준으로 올려 앵커 */
+.ma-panel .ma-p-head{ position:relative; }
+.ma-panel .ma-p-head .hfold{ position:static; }
+.ma-panel .ma-p-head .wb-pop.hpop{ max-width:100%; }
 .ma-panel .composer-wrap{ padding:8px 12px 12px; }
 .ma-panel .composer-inner{ max-width:none; }
 .ma-p-empty{
