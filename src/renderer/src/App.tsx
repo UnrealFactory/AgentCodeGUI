@@ -28,7 +28,7 @@ import { AppUpdateGate } from './components/AppUpdateGate'
 import { PatchNotes } from './components/PatchNotes'
 import { useZoom, ZoomBadge, mergeRefs } from './components/zoom'
 import { MouseGestureLayer, clearGesture, sessionWindowGesture, type GestureAction } from './components/mouseGesture'
-import { IconChevDown, IconCode } from './components/icons'
+import { IconChevDown, IconMascot } from './components/icons'
 
 function truncate(s: string, n: number): string {
   return s.length > n ? s.slice(0, n - 1) + '…' : s
@@ -1272,7 +1272,7 @@ export default function App() {
     return (
       <div className="win">
         <div className="boot">
-          <div className="boot-logo"><IconCode size={29} stroke={2.4} /></div>
+          <div className="boot-logo"><IconMascot size={30} /></div>
           <div className="boot-name">AgentCodeGUI</div>
           <div className="boot-spin" />
           <div className="boot-sub">불러오는 중…</div>

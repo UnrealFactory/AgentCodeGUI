@@ -203,7 +203,7 @@ const SPLASH_HTML = `<!doctype html><html><head><meta charset="utf-8" />
   @keyframes s{to{transform:rotate(360deg)}}
 </style></head>
 <body><div class="card">
-  <div class="logo"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 8l-4 4 4 4"/><path d="M15 8l4 4-4 4"/></svg></div>
+  <div class="logo"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5.5" y="8" width="13" height="10" rx="4.5"/><circle cx="10.2" cy="13" r=".95" fill="currentColor" stroke="none"/><circle cx="13.8" cy="13" r=".95" fill="currentColor" stroke="none"/><path d="M9.5 8Q9 5.8 7.3 4.9"/><circle cx="7" cy="4.7" r=".85" fill="currentColor" stroke="none"/><path d="M14.5 8Q15 5.8 16.7 4.9"/><circle cx="17" cy="4.7" r=".85" fill="currentColor" stroke="none"/><path d="M4.4 10.6C3 11.5 3 14.5 4.4 15.4"/><path d="M19.6 10.6C21 11.5 21 14.5 19.6 15.4"/></svg></div>
   <div class="name">AgentCodeGUI</div>
   <div class="spin"></div>
   <div class="sub">시작하는 중…</div>
