@@ -47,7 +47,13 @@ export function initAutoUpdater(send: (s: UpdateStatus) => void): void {
   sender = send
   if (!app.isPackaged) return
   autoUpdater.autoDownload = true // download in the background as soon as one is found
-  autoUpdater.autoInstallOnAppQuit = true // and install it on the next normal quit
+  // 종료 시 자동 설치는 쓰지 않는다: 그 경로는 아무 화면 없이 NSIS 설치기가 "이전 버전
+  // 삭제 → 새 파일 복사"를 백그라운드로 도는데, 사용자가 앱을 닫고 곧바로 PC를 끄면
+  // 삭제 단계와 복사 단계 사이에서 설치기가 죽어 앱이 통째로 사라진다(재현 보고 —
+  // Claude로 오래 작업한 세션일수록 그 사이 업데이트가 받아져 있어 종료가 곧 발동이었다).
+  // 설치는 업데이트 카드의 버튼(quitAndInstall — 스플래시로 진행이 보이는 경로)만 쓰고,
+  // 받아둔 파일은 pending 캐시에 남아 다음 실행에서 검증 후 그대로 재사용된다.
+  autoUpdater.autoInstallOnAppQuit = false
 
   if (!wired) {
     wired = true
@@ -70,7 +76,7 @@ export function initAutoUpdater(send: (s: UpdateStatus) => void): void {
       set({ phase: 'downloading', percent }, line)
     })
     autoUpdater.on('update-downloaded', (info) =>
-      set({ phase: 'downloaded', version: info.version, percent: 100 }, '다운로드 완료 · 재시작하면 설치됩니다')
+      set({ phase: 'downloaded', version: info.version, percent: 100 }, '다운로드 완료 · 업데이트 버튼으로 적용할 수 있어요')
     )
     autoUpdater.on('error', (err) => set({ phase: 'error', error: err?.message ?? String(err) }, '업데이트 중 오류가 발생했어요'))
   }
@@ -79,7 +85,7 @@ export function initAutoUpdater(send: (s: UpdateStatus) => void): void {
 
   // 주기 재확인 — 단, 내려받는 중/받아둔 상태에선 쉰다. 같은 버전으로 phase가
   // 다시 구르면(available→downloaded 전이) 닫아둔 카드가 주기마다 되뜨기 때문.
-  // 받아둔 버전은 재시작(또는 종료 시 자동 설치) 때 깔리고, 그보다 새 릴리즈는
+  // 받아둔 버전은 카드의 업데이트 버튼으로 깔리고, 그보다 새 릴리즈는
   // 재시작 직후의 launch 확인이 이어받는다. 오류/최신 상태에서는 계속 재시도.
   if (!recheckTimer) {
     recheckTimer = setInterval(() => {

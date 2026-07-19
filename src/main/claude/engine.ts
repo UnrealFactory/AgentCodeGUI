@@ -357,6 +357,18 @@ export class ClaudeEngine {
     }
   }
 
+  /** 앱 종료 시 정리 — cancel()과 달리 아무것도 기다리지 않는다(quit 핸들러는 동기).
+   *  abort가 SDK로 전달돼 CLI 자식 프로세스가 정리를 시작하고(못 미치면 job object가
+   *  앱 종료와 함께 거둔다), 떠 있던 권한/질문 대기자는 즉시 풀어 프로미스가 매달린
+   *  채 남지 않게 한다. */
+  dispose(): void {
+    this.abort?.abort()
+    for (const [, waiter] of this.permissionWaiters) waiter({ behavior: 'deny', message: 'cancelled' })
+    this.permissionWaiters.clear()
+    for (const [, waiter] of this.questionWaiters) waiter(null)
+    this.questionWaiters.clear()
+  }
+
   /** Start a run. Returns the runId; events stream via `emit`. */
   async run(req: RunRequest): Promise<string> {
     if (this.isRunning) await this.cancel()

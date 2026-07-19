@@ -1481,7 +1481,11 @@ function bootstrap(): void {
         const { latest } = await t.list()
         if (!latest) continue
         const st = await t.state()
-        if (st.active === latest) continue
+        // 활성이 latest와 같거나 더 높으면(프리뷰 채널) 할 일 없음. 같음(===)만 보던 게
+        // 무한 사이클의 원인: 프리뷰 활성 상태에서 stable을 "업데이트"로 설치·활성화하면
+        // 아래 정리 단계가 수치상 최신인 프리뷰만 남기고 방금 깐 stable을 도로 지워
+        // 활성이 프리뷰로 복귀하고, 다음 부팅이 똑같이 반복했다(설치와 정리의 싸움).
+        if (st.active && engineVersions.compareVersionsDesc(latest, st.active) >= 0) continue
         work.push({ t, item: { id: t.id, label: t.label, from: st.active, to: latest, status: 'pending' } })
       } catch {
         /* skip */
@@ -1538,7 +1542,8 @@ function bootstrap(): void {
         const { latest } = await t.list()
         if (!latest) continue
         const st = await t.state()
-        if (st.active === latest) continue
+        // 부팅 게이트와 같은 채널 가드 — 프리뷰 활성을 stable로 끌어내리지 않는다
+        if (st.active && engineVersions.compareVersionsDesc(latest, st.active) >= 0) continue
         if (!st.installed.includes(latest)) {
           const r = await t.install(latest)
           if (!r.ok) continue
@@ -1561,7 +1566,8 @@ function bootstrap(): void {
   })
 }
 
-// 남은 codex app-server 프로세스까지 정리
+// 두 엔진의 자식 프로세스 정리 — Claude는 abort로 CLI 정리를 시작시키고,
+// codex는 상시 app-server 프로세스를 죽인다
 function disposeEngines(): void {
   engine.dispose()
   talkEngine.dispose()

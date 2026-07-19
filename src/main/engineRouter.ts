@@ -60,6 +60,7 @@ export class EngineRouter {
   }
 
   dispose(): void {
+    this.claude.dispose()
     this.codex?.dispose()
   }
 }

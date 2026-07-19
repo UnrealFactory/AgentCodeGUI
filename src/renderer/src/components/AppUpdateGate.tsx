@@ -11,7 +11,8 @@ import { IconAlert, IconDownload } from './icons'
  * 뜨고 접히는 규칙: 새 버전이 발견되면 스스로 떠서 진행을 보여주고, '나중에'로 접으면
  * 준비 완료가 되는 순간 한 번 더 뜬다(그때가 행동할 순간이라). 그 뒤로는 사이드바
  * 배지 클릭(app-update:open)으로만 되열린다 — 10분 주기 재확인이 작업 중에 카드를
- * 되띄우지 않게. 접어둔 채 앱을 끄면 종료 시 자동 설치(autoInstallOnAppQuit)가 받는다.
+ * 되띄우지 않게. 설치는 이 카드의 '업데이트' 버튼만 — 종료 시 자동 설치는 보이지 않는
+ * 설치기 도중 PC가 꺼지면 앱이 삭제되는 사고라 껐다(받아둔 파일은 다음 실행에 재사용).
  */
 export function AppUpdateGate() {
   const [status, setStatus] = useState<UpdateStatus | null>(null)

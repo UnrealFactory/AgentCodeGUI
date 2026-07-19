@@ -104,8 +104,9 @@ function installedVersionAt(version: string): string | null {
   }
 }
 
-// rough semver-ish descending compare (stable versions only)
-function compareDesc(a: string, b: string): number {
+// rough semver-ish descending compare (stable versions only). Exported for the boot
+// gate's channel guard (양 엔진 공통 — 자릿수 비교라 패키지 무관).
+export function compareVersionsDesc(a: string, b: string): number {
   const pa = a.split('.').map((x) => parseInt(x, 10) || 0)
   const pb = b.split('.').map((x) => parseInt(x, 10) || 0)
   for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
@@ -125,7 +126,7 @@ export function listInstalled(): string[] {
   } catch {
     return []
   }
-  return names.filter((v) => installedVersionAt(v) != null).sort(compareDesc)
+  return names.filter((v) => installedVersionAt(v) != null).sort(compareVersionsDesc)
 }
 
 export function getState(): EngineVersionState {
@@ -159,13 +160,13 @@ export async function listAvailable(): Promise<{ latest: string | null; versions
     const time = j.time ?? {}
     // stable releases only (drop -beta/-rc/etc), newest first
     const stable = Object.keys(j.versions ?? {}).filter((v) => !v.includes('-'))
-    stable.sort(compareDesc)
+    stable.sort(compareVersionsDesc)
     const versions: EngineVersionEntry[] = stable.map((v) => ({
       version: v,
       date: time[v] ?? null,
       latest: v === latest,
       // latest보다 높은 버전 = next 등 프리뷰 채널 (예: latest 0.3.208 위의 0.3.209)
-      preview: latest != null && compareDesc(v, latest) < 0
+      preview: latest != null && compareVersionsDesc(v, latest) < 0
     }))
     return { latest, versions }
   } finally {
