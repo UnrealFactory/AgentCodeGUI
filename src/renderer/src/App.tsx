@@ -399,13 +399,16 @@ function MainApp({ user }: { user: AppUser }) {
   // back in, and ephemeral fields are stripped, so a restart resumes cleanly
   useEffect(() => {
     if (!hydrated) return
-    const list = chats.map((c) =>
-      c.id === activeChatId
-        ? { ...c, snapshot: snapshotForPersist(state), manualCwd, picker, draft: input, draftImages: images }
-        : { ...c, snapshot: snapshotForPersist(c.snapshot) }
-    )
-    const payload: PersistedChats = { version: CHATS_VERSION, chats: list, activeChatId }
+    // 스냅샷 조립도 타이머 안에서 — 이 이펙트는 스트리밍 토큰마다 다시 돌므로, 밖에서
+    // 조립하면 매 토큰이 모든 채팅의 snapshotForPersist를 물게 된다(600ms 안에 취소될
+    // 작업인데도). 안으로 옮기면 토큰당 비용은 setTimeout 예약뿐이다.
     const t = setTimeout(() => {
+      const list = chats.map((c) =>
+        c.id === activeChatId
+          ? { ...c, snapshot: snapshotForPersist(state), manualCwd, picker, draft: input, draftImages: images }
+          : { ...c, snapshot: snapshotForPersist(c.snapshot) }
+      )
+      const payload: PersistedChats = { version: CHATS_VERSION, chats: list, activeChatId }
       window.api.saveChats(payload).catch(() => {})
     }, 600)
     return () => clearTimeout(t)
@@ -929,6 +932,8 @@ function MainApp({ user }: { user: AppUser }) {
   // text (the streaming text is the activity); keep it for thinking/tool phases
   const lastMsg = state.messages[state.messages.length - 1]
   const streamingAnswer = lastMsg?.kind === 'msg' && lastMsg.role === 'assistant' && !lastMsg.error
+  // 스레드 map 밖에서 한 번만 — 메시지마다 liveMsgIndex를 다시 계산하지 않게
+  const liveIdx = liveMsgIndex(state.messages)
   // while a question card — or a running command card — is up, that card already
   // conveys "working", so drop the duplicate "…중" indicator
   const showWorking =
@@ -1124,7 +1129,7 @@ function MainApp({ user }: { user: AppUser }) {
                   <MessageView
                     key={m.id}
                     item={m}
-                    live={idx === liveMsgIndex(state.messages) && m.kind === 'msg' && m.role === 'assistant' && !m.error}
+                    live={idx === liveIdx && m.kind === 'msg' && m.role === 'assistant' && !m.error}
                     running={busy}
                     onOpenFile={onOpenToolFile}
                     onOpenImage={openViewer}

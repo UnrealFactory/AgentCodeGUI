@@ -411,6 +411,8 @@ export class ClaudeEngine {
     let thinkingOpen = false
     let curTextId: string | null = null
     let curThinking = ''
+    // 마지막으로 보낸 생각 한 줄 — 앞 90자가 다 채워지면 이후 델타로는 안 변한다
+    let thinkLine = ''
     let streamedThisMsg = false
     // banners already emitted from onUserDialog — the end-of-turn
     // model_refusal_fallback notice for the same fallback is then skipped
@@ -601,6 +603,7 @@ export class ClaudeEngine {
             curModelDisplay = modelKey(p.fallbackModel) || curModelDisplay
             curTextId = null
             curThinking = ''
+            thinkLine = ''
             streamedThisMsg = false
             return { behavior: 'completed' as const, result: 'retry_fallback' }
           },
@@ -876,9 +879,18 @@ export class ClaudeEngine {
               this.emit({ type: 'assistant-stream', runId, messageId: curTextId, delta: d.text })
             } else if (d?.type === 'thinking_delta' && d.thinking) {
               thinkingOpen = true
-              curThinking += d.thinking
               streamedThisMsg = true
-              this.emit({ type: 'thinking', runId, text: oneLine(curThinking, 90) })
+              // 표시 줄은 누적 생각의 앞 90자 — 다 채워지면(89자+…) 이후 델타로 절대
+              // 안 변하므로, 그 뒤로 델타마다 전체 누적 문자열을 재정규화하고 같은
+              // 문구를 다시 보내(렌더러 리렌더) 낭비하던 것을 건너뛴다
+              if (thinkLine.length < 90) {
+                curThinking += d.thinking
+                const line = oneLine(curThinking, 90)
+                if (line !== thinkLine) {
+                  thinkLine = line
+                  this.emit({ type: 'thinking', runId, text: line })
+                }
+              }
             }
           } else if (ev?.type === 'content_block_start' && ev.content_block?.type === 'tool_use') {
             // The model just started emitting a tool call. Its input — for a Write,
@@ -993,6 +1005,7 @@ export class ClaudeEngine {
           // reset per-message streaming state for the next assistant turn
           curTextId = null
           curThinking = ''
+          thinkLine = ''
           streamedThisMsg = false
           continue
         }
@@ -1204,7 +1217,12 @@ export class ClaudeEngine {
       const fp = String(input.file_path ?? '')
       const rel = toRel(cwd, fp)
       const abs = path.isAbsolute(fp) ? fp : path.join(cwd, fp)
-      const cur = readDisk(abs)
+      // stat 먼저 — HUGE 판정이 어차피 미리보기를 접을 파일(≥16MB 바이트면 UTF-8 최악
+      // 4바이트/자로도 4M자 초과 확정)은 통째 동기 읽기 자체를 생략한다. 지금까지는
+      // 크기 판정보다 읽기가 먼저라, 수십 MB 파일 편집이 스트림 루프를 읽기 시간만큼
+      // 통째로 막은 뒤에야 "너무 커서 생략"으로 빠졌다.
+      const hugeOnDisk = statSize(abs) >= HUGE_BYTES_CERTAIN
+      const cur = hugeOnDisk ? null : readDisk(abs)
       let next: string
       if (name === 'Write') {
         next = String(input.content ?? '')
@@ -1214,7 +1232,7 @@ export class ClaudeEngine {
         const edits = Array.isArray(input.edits) ? (input.edits as Array<Record<string, unknown>>) : []
         next = edits.reduce((t, e) => applyEdit(t, String(e.old_string ?? ''), String(e.new_string ?? ''), !!e.replace_all), cur ?? '')
       }
-      this.tools.set(id, { name, cwd, startedAt, abs, pending: this.fileChangePending(rel, abs, cur, next) })
+      this.tools.set(id, { name, cwd, startedAt, abs, pending: this.fileChangePending(rel, abs, cur, next, hugeOnDisk) })
     }
   }
 
@@ -1226,7 +1244,9 @@ export class ClaudeEngine {
     rel: string,
     abs: string,
     cur: string | null,
-    next: string
+    next: string,
+    // 호출측 stat 가드가 읽기를 생략한 파일 — cur=null이지만 새 파일이 아니라 거대 파일
+    hugeOnDisk = false
   ): { whole: boolean; file: ChangedFile; diff: FileDiff } {
     // A very large file makes the whole-file diff itself the hazard: the line array
     // balloons the IPC payload, the renderer's state, and the persisted snapshot —
@@ -1234,9 +1254,9 @@ export class ClaudeEngine {
     // summary row instead of a preview. (`whole: true` so the renderer replaces any
     // previously accumulated diff for this path rather than appending.)
     const HUGE = 4_000_000 // chars ≈ 4MB
-    if ((cur?.length ?? 0) > HUGE || next.length > HUGE) {
+    if (hugeOnDisk || (cur?.length ?? 0) > HUGE || next.length > HUGE) {
       this.baselines.delete(abs)
-      const tag = cur == null ? ('new' as const) : ('edit' as const)
+      const tag = cur == null && !hugeOnDisk ? ('new' as const) : ('edit' as const)
       const lines = [{ t: 'hunk' as const, text: '@@ 파일이 너무 커서 변경 미리보기를 생략했어요 @@' }]
       return { whole: true, file: { path: rel, add: 0, del: 0, tag }, diff: { path: rel, tag, add: 0, del: 0, lines } }
     }
@@ -1629,6 +1649,18 @@ function readDisk(abs: string): string | null {
     return fs.readFileSync(abs, 'utf8')
   } catch {
     return null
+  }
+}
+
+// UTF-8 최악(4바이트/자)으로도 HUGE(4M자)를 확실히 넘는 바이트 크기 — 이 이상이면
+// 읽지 않고도 "미리보기 생략" 판정이 확정된다. 그 미만은 기존대로 읽어 글자 수로 판정.
+const HUGE_BYTES_CERTAIN = 16_000_000
+
+function statSize(abs: string): number {
+  try {
+    return fs.statSync(abs).size
+  } catch {
+    return 0
   }
 }
 

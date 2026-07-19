@@ -106,10 +106,45 @@ function escapeHtml(s: string): string {
 const HL_MAX = 200_000
 const HL_AUTO_MAX = 20_000
 
+// 하이라이트 결과 LRU 캐시 — 같은 코드가 다시 그려질 때(채팅 전환 재마운트, 뷰어의
+// 시맨틱 토큰 도착 후 재하이라이트, 멀티 패널 재배치) hljs 전체 재실행을 건너뛴다.
+// 예산은 엔트리 수가 아니라 원문 길이 합으로 묶어 큰 파일 몇 개가 메모리를 못 불리게
+// 한다. Verse는 제외 — recolorVerse가 런타임에 갱신되는 멤버 레지스트리를 읽어
+// 같은 입력이라도 결과가 바뀔 수 있다.
+const HL_CACHE_BUDGET = 2_000_000 // 캐시에 든 코드 원문 길이 합
+// 캐시 키 구분자 — 언어명에 절대 못 나오는 NUL. 키 = lang + SEP + code라
+// 축출 시 키 길이에서 원문 길이를 역산할 수 있다.
+const HL_SEP = String.fromCharCode(0)
+const hlCache = new Map<string, string>()
+let hlCacheTotal = 0
+
 // highlight.js → HTML. Uses the named language when hljs knows it, falls back to
 // auto-detect, then to plain escaped text. Shared by the markdown renderer and the
 // file viewer card so both produce identically-themed `.hljs-*` token markup.
 export function highlightCode(code: string, lang: string): string {
+  const key = lang !== 'verse' && code.length <= HL_CACHE_BUDGET / 2 ? lang + HL_SEP + code : null
+  if (key) {
+    const hit = hlCache.get(key)
+    if (hit !== undefined) {
+      hlCache.delete(key)
+      hlCache.set(key, hit) // 재삽입으로 최근 사용 순서 갱신
+      return hit
+    }
+  }
+  const out = doHighlight(code, lang)
+  if (key) {
+    hlCache.set(key, out)
+    hlCacheTotal += code.length
+    while (hlCacheTotal > HL_CACHE_BUDGET && hlCache.size > 1) {
+      const oldest = hlCache.keys().next().value!
+      hlCacheTotal -= oldest.length - (oldest.indexOf(HL_SEP) + 1)
+      hlCache.delete(oldest)
+    }
+  }
+  return out
+}
+
+function doHighlight(code: string, lang: string): string {
   try {
     if (lang && hljs.getLanguage(lang)) {
       if (code.length > HL_MAX) return escapeHtml(code)

@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import type { ApiConfigStatus, AppUser, BgTaskRequest, EngineId, RunRequest, SessionPersistPayload, UserProfile, UsageInfo } from '@shared/protocol'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { ApiConfigStatus, AppUser, BgTaskRequest, ChangedFile, EngineId, RunRequest, SessionPersistPayload, SubAgentInfo, UserProfile, UsageInfo } from '@shared/protocol'
 
 // 백그라운드 셸 컨트롤 — 이 창의 세션 엔진으로 라우팅 (memo된 WorkBar용 고정 함수)
 const onBgTaskSession = (req: BgTaskRequest): void => {
@@ -422,10 +422,14 @@ export function SessionWindow(): React.ReactElement {
   const addImagesFromPicker = async (): Promise<void> => {
     addImagePaths(await window.api.pickAttachments())
   }
-  const openViewer = (imgs: string[], index: number): void => setViewer({ images: imgs, index })
+  // 안정 정체성(useCallback) — 스레드의 MessageView와 WorkBar는 memo라, 렌더마다 새
+  // 함수를 넘기면 스트리밍 매 토큰에 완료된 메시지까지 전부 리렌더(마크다운 재파싱)된다
+  const openViewer = useCallback((imgs: string[], index: number): void => setViewer({ images: imgs, index }), [])
 
   // 툴 로그/WorkBar에서 연 파일 — 뷰어로
-  const onOpenToolFile = (path: string): void => setOpenWorkFile(path)
+  const onOpenToolFile = useCallback((path: string): void => setOpenWorkFile(path), [])
+  const openChangedFile = useCallback((f: ChangedFile): void => setOpenWorkFile(f.path), [])
+  const openSubagentCard = useCallback((a: SubAgentInfo): void => setOpenSubagentId(a.id), [])
 
   // /clear — reset this window's conversation (client command, same as 본채팅).
   // 컴포저의 /clear와 스레드의 ↑↓ 제스처가 같은 착지점을 쓴다.
@@ -548,6 +552,8 @@ export function SessionWindow(): React.ReactElement {
 
   const lastMsg = state.messages[state.messages.length - 1]
   const streamingAnswer = lastMsg?.kind === 'msg' && lastMsg.role === 'assistant' && !lastMsg.error
+  // 스레드 map 밖에서 한 번만 — 메시지마다 liveMsgIndex를 다시 계산하지 않게
+  const liveIdx = liveMsgIndex(state.messages)
   const showWorking =
     (state.thinkingText != null || !streamingAnswer) && !state.pendingQuestion && !state.pendingCommand
 
@@ -595,7 +601,7 @@ export function SessionWindow(): React.ReactElement {
                 <MessageView
                   key={m.id}
                   item={m}
-                  live={idx === liveMsgIndex(state.messages) && m.kind === 'msg' && m.role === 'assistant' && !m.error}
+                  live={idx === liveIdx && m.kind === 'msg' && m.role === 'assistant' && !m.error}
                   running={busy}
                   onOpenFile={onOpenToolFile}
                   onOpenImage={openViewer}
@@ -634,8 +640,8 @@ export function SessionWindow(): React.ReactElement {
           tokenTotals={state.tokenTotals}
           engine={picker.engine}
           codexAccount={picker.codexAccount}
-          onOpenFile={(f) => onOpenToolFile(f.path)}
-          onOpenSubagent={(a) => setOpenSubagentId(a.id)}
+          onOpenFile={openChangedFile}
+          onOpenSubagent={openSubagentCard}
           onRefreshUsage={onRefreshUsage}
         />
         <Composer

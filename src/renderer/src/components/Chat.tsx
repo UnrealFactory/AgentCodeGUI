@@ -564,6 +564,7 @@ function SmoothMarkdown({ text, running }: { text: string; running: boolean }) {
   const curRef = useRef(shown) // fractional cursor
   const velRef = useRef(0) // current reveal velocity (chars/sec), eased
   const lastT = useRef(0)
+  const lastCommit = useRef(0) // 마지막으로 setShown을 커밋한 시각 (파싱 스로틀)
 
   useEffect(() => {
     let raf = 0
@@ -592,7 +593,15 @@ function SmoothMarkdown({ text, running }: { text: string; running: boolean }) {
         velRef.current += (targetVel - velRef.current) * Math.min(1, dt * 3.5)
         cur = Math.min(target, cur + velRef.current * dt)
         curRef.current = cur
-        setShown(Math.floor(cur))
+        // 커밋(setShown)마다 지금까지 보인 전체 텍스트를 remark가 처음부터 재파싱한다 —
+        // 그 비용은 글 길이에 비례하므로, 길어질수록 커밋 간격을 넓혀(6.4천자까지는 매
+        // 프레임, 이후 점점 늘어 최대 50ms) 프레임당 파싱 비용에 상한을 둔다. 커서는
+        // 매 프레임 전진하므로 공개 총 시간은 그대로고 한 커밋에 드러나는 글자만 커진다.
+        // 따라잡은 순간엔 즉시 커밋 — plain→하이라이트 전환이 스로틀에 걸리지 않게.
+        if (cur >= target || now - lastCommit.current >= Math.min(50, cur / 400)) {
+          lastCommit.current = now
+          setShown(Math.floor(cur))
+        }
       } else {
         velRef.current = 0
       }

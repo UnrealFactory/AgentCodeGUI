@@ -5,6 +5,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import { randomUUID } from 'node:crypto'
 import { EngineRouter } from './engineRouter'
+import { coalesceStream } from './streamCoalesce'
 import { CodexEngine } from './codex/engine'
 import * as engineVersions from './engine/versions'
 import { readProfile, writeProfile } from './profile'
@@ -302,12 +303,12 @@ function scheduleSave(): void {
 
 // 2.0: 채널마다 EngineRouter — RunRequest.engine(claude/codex)에 따라
 // Claude Code CLI 또는 Codex CLI(app-server)로 라우팅된다.
-const engine = new EngineRouter((event: EngineEvent) => send(IPC.engineEvent, event), 'chat')
+const engine = new EngineRouter(coalesceStream((event: EngineEvent) => send(IPC.engineEvent, event)), 'chat')
 
 // The 채팅(pure conversation) workspace runs on its own dedicated engine — separate from
 // the main chat (`engine`) — so its events never mix into it.
 // It has no project folder; the engine falls back to the Desktop folder for an empty cwd.
-const talkEngine = new EngineRouter((event: EngineEvent) => send(IPC.talkEvent, event), 'talk')
+const talkEngine = new EngineRouter(coalesceStream((event: EngineEvent) => send(IPC.talkEvent, event)), 'talk')
 
 // ── multi-agent engine pool ─────────────────────────────────
 // One engine per on-screen panel, created on demand and addressed by panelId.
@@ -317,7 +318,7 @@ const maEngines = new Map<string, EngineRouter>()
 function maEngine(panelId: string): EngineRouter {
   let eng = maEngines.get(panelId)
   if (!eng) {
-    eng = new EngineRouter((event: EngineEvent) => send(IPC.maEvent, { panelId, event }), 'ma')
+    eng = new EngineRouter(coalesceStream((event: EngineEvent) => send(IPC.maEvent, { panelId, event })), 'ma')
     maEngines.set(panelId, eng)
   }
   return eng
@@ -339,9 +340,12 @@ const sessionEngines = new Map<number, EngineRouter>()
 function sessionEngineFor(wc: WebContents): EngineRouter {
   let eng = sessionEngines.get(wc.id)
   if (!eng) {
-    eng = new EngineRouter((event: EngineEvent) => {
-      if (!wc.isDestroyed()) wc.send(IPC.sessionEvent, event)
-    }, 'chat')
+    eng = new EngineRouter(
+      coalesceStream((event: EngineEvent) => {
+        if (!wc.isDestroyed()) wc.send(IPC.sessionEvent, event)
+      }),
+      'chat'
+    )
     sessionEngines.set(wc.id, eng)
   }
   return eng

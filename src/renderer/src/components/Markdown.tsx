@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { memo, useMemo } from 'react'
 import ReactMarkdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { highlightCode } from '../lib/highlight'
@@ -68,7 +68,9 @@ const baseComponents: Components = {
 const componentsHighlighted: Components = { ...baseComponents, pre: makePre(false) }
 const componentsPlain: Components = { ...baseComponents, pre: makePre(true) }
 
-export function Markdown({
+// memo — remark 파싱은 글 길이에 비례하는 동기 작업이라, props가 그대로면(완료된
+// 메시지·뷰어의 .md 본문) 부모 리렌더에 파싱이 따라 돌지 않게 여기서 한 번 더 막는다
+export const Markdown = memo(function Markdown({
   text,
   plain,
   codeLang,
@@ -98,6 +100,6 @@ export function Markdown({
       {text}
     </ReactMarkdown>
   )
-}
+})
 
 const MD_PARSE_LIMIT = 150_000

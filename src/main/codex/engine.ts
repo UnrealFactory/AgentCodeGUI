@@ -245,6 +245,9 @@ export class CodexEngine {
   private cxCollabCalls = new Map<string, { tool: string; agents: string[] }>()
   /** 진행 중 reasoning 요약 누적 — thinking 한 줄로 보여준다 */
   private thinkingBuf = ''
+  // thinking 줄이 지금 떠 있는지 — 답변 델타마다 무조건 thinking-clear를 앞에 붙이면
+  // 델타당 IPC가 두 배가 되고 스트림 배칭도 매번 강제 flush된다. 떠 있을 때만 지운다.
+  private thinkingShown = false
   private lastCtxTokens: number | null = null
   private lastCtxWindow: number | null = null
   private sawActivity = false
@@ -468,7 +471,10 @@ export class CodexEngine {
     switch (method) {
       case 'item/agentMessage/delta': {
         this.markWorking()
-        this.emit({ type: 'thinking-clear', runId })
+        if (this.thinkingShown) {
+          this.thinkingShown = false
+          this.emit({ type: 'thinking-clear', runId })
+        }
         this.emit({ type: 'assistant-stream', runId, messageId: `cx${LAUNCH_TAG}-${params.itemId}`, delta: String(params.delta ?? '') })
         return
       }
@@ -477,6 +483,7 @@ export class CodexEngine {
         this.markWorking()
         this.thinkingBuf += String(params.delta ?? '')
         const tail = this.thinkingBuf.slice(-300)
+        this.thinkingShown = true
         this.emit({ type: 'thinking', runId, text: oneLine(tail, 90) })
         return
       }
@@ -1039,6 +1046,7 @@ export class CodexEngine {
       return
     }
     const interrupted = turn?.status === 'interrupted'
+    this.thinkingShown = false
     this.emit({ type: 'thinking-clear', runId })
     // 이 턴이 소모한 실측 토큰 — 스레드 누적(total)의 정착 간 델타. inputTokens에는
     // 캐시 히트(cachedInputTokens)가 포함돼 있어 비캐시/캐시로 갈라 보고한다(캐시 쓰기
@@ -1095,6 +1103,7 @@ export class CodexEngine {
       this.finishRun('error')
       return
     }
+    this.thinkingShown = false
     this.emit({ type: 'thinking-clear', runId })
     const contLabel = `${label(to)}로 전환해 다시 시도`
     const requestId = `cxcap-${LAUNCH_TAG}-${++this.permCounter}`
@@ -1401,6 +1410,7 @@ export class CodexEngine {
     this.bgTerms.clear()
     this.bgByProcess.clear()
     this.thinkingBuf = ''
+    this.thinkingShown = false
     this.emit({ type: 'status', runId, status: 'analyzing' })
 
     const cwd = req.cwd && req.cwd.trim() ? req.cwd : path.join(os.homedir(), 'Desktop')

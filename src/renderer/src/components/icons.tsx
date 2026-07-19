@@ -520,10 +520,12 @@ export const IconMascotDraw = ({ size = 20, stroke = 1.5, className, ...rest }: 
     <path className="st d2" pathLength={1} d="M19.6 10.6C21 11.5 21 14.5 19.6 15.4" />
     <path className="st d3" pathLength={1} d="M9.5 8Q9 5.8 7.3 4.9" />
     <path className="st d3" pathLength={1} d="M14.5 8Q15 5.8 16.7 4.9" />
+    {/* 더듬이 끝점은 더듬이 획이 끝난 직후에, 눈은 맨 마지막에 — 점이 획 없이 먼저 뜨면
+        사이클 중간이 조각처럼 보인다 (완성 순서: 몸통 → 귀 → 더듬이·끝점 → 눈) */}
     <circle className="dd" cx={7} cy={4.7} r={0.85} fill="currentColor" stroke="none" />
     <circle className="dd" cx={17} cy={4.7} r={0.85} fill="currentColor" stroke="none" />
-    <circle className="dd" cx={10.2} cy={13} r={0.95} fill="currentColor" stroke="none" />
-    <circle className="dd" cx={13.8} cy={13} r={0.95} fill="currentColor" stroke="none" />
+    <circle className="de" cx={10.2} cy={13} r={0.95} fill="currentColor" stroke="none" />
+    <circle className="de" cx={13.8} cy={13} r={0.95} fill="currentColor" stroke="none" />
   </svg>
 )
 

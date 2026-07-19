@@ -1,5 +1,5 @@
 import { memo, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
-import type { AgentStatus, BgTaskRequest, ChangedFile, EngineId, UsageInfo, MultiRunRequest, EngineEvent } from '@shared/protocol'
+import type { AgentStatus, BgTaskRequest, ChangedFile, EngineId, UsageInfo, MultiRunRequest, EngineEvent, SubAgentInfo } from '@shared/protocol'
 import {
   useAgentSession,
   initialSessionState,
@@ -321,6 +321,16 @@ const PanelView = memo(function PanelView({
   const lastMsg = state.messages[state.messages.length - 1]
   const streamingAnswer = lastMsg?.kind === 'msg' && lastMsg.role === 'assistant' && !lastMsg.error
   const showWorking = (state.thinkingText != null || !streamingAnswer) && !state.pendingQuestion && !state.pendingCommand
+  // 스트리밍 중 매 토큰 렌더에서 MessageView memo가 유지되도록 — 인라인 화살표를 넘기면
+  // 매 렌더 새 함수 정체성이 완료된 메시지까지 전부 리렌더(마크다운 재파싱)시킨다
+  const openFile = useEvent((p: string) => onOpenFile(slot, p))
+  // 같은 이유로 memo인 WorkBar의 콜백들도 안정 정체성으로 — 순수 텍스트 스트리밍 중엔
+  // 나머지 props(할 일·파일·서브에이전트 배열)가 그대로라 WorkBar가 통째로 스킵된다
+  const openChangedFile = useEvent((f: ChangedFile) => onOpenFile(slot, f.path))
+  const openSubagent = useEvent((a: SubAgentInfo) => onOpenSubagent(slot, a.id))
+  const bgTask = useEvent((req: BgTaskRequest) => onBgTask(slot, req))
+  // 메시지마다 liveMsgIndex를 다시 계산하지 않게 map 밖에서 한 번만
+  const liveIdx = liveMsgIndex(state.messages)
 
   return (
     <div
@@ -386,9 +396,9 @@ const PanelView = memo(function PanelView({
                 <MessageView
                   key={m.id}
                   item={m}
-                  live={idx === liveMsgIndex(state.messages) && m.kind === 'msg' && m.role === 'assistant' && !m.error}
+                  live={idx === liveIdx && m.kind === 'msg' && m.role === 'assistant' && !m.error}
                   running={busy}
-                  onOpenFile={(p) => onOpenFile(slot, p)}
+                  onOpenFile={openFile}
                   onOpenImage={onOpenImage}
                 />
               ))}
@@ -414,7 +424,7 @@ const PanelView = memo(function PanelView({
         bgTasks={state.bgTasks}
         busy={busy}
         canSkipWait={canSkipWait}
-        onBgTask={(req) => onBgTask(slot, req)}
+        onBgTask={bgTask}
         usage={usage}
         contextTokens={state.result?.contextTokens ?? null}
         contextWindow={state.result?.contextWindow ?? null}
@@ -426,8 +436,8 @@ const PanelView = memo(function PanelView({
         tokenTotals={state.tokenTotals}
         engine={meta.picker.engine}
         codexAccount={meta.picker.codexAccount}
-        onOpenFile={(f) => onOpenFile(slot, f.path)}
-        onOpenSubagent={(a) => onOpenSubagent(slot, a.id)}
+        onOpenFile={openChangedFile}
+        onOpenSubagent={openSubagent}
         onRefreshUsage={onRefreshUsage}
       />
       <Composer
