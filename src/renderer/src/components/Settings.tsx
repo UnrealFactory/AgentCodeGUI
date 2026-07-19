@@ -40,6 +40,7 @@ import {
   type IconProps
 } from './icons'
 import { GestureGlyph, GESTURE_DEFAULTS, MouseGestureLayer, scrollGestures } from './mouseGesture'
+import { remainTone } from './Chat'
 import {
   DEFAULT_HIDE_DIRS,
   DEFAULT_HIDE_FILES,
@@ -447,18 +448,23 @@ function fmtResetIn(ts?: number | null): string | null {
   return mm ? `${h}시간 ${mm}분 뒤` : `${h}시간 뒤`
 }
 
-// 한도 게이지 한 행 — 라벨 · 잔여 바 · 잔여% · 초기화 시각.
+// 한도 게이지 한 행 — 라벨 · 잔여 바 · "n% 남음" · 초기화 시각. 맨숫자는 방향(남은량/
+// 소모량)을 못 말해줘 "남음"을 숫자마다 붙인다(컨텍스트 팝오버와 같은 표기). 잔량이
+// 낮으면(잔량 톤) 바·숫자가 색으로 도드라진다.
 // 시간 단위 창('5시간' 등)은 남은 시간, 주간류는 절대 시각. 초기화 시각을 모르는
 // 항목(구 캐시 등)도 빈 칸을 그려 열 정렬을 유지한다.
 function LimRow({ label, left, resetsAt }: { label: string; left: number; resetsAt?: number | null }): React.ReactElement {
   const reset = label.includes('시간') ? fmtResetIn(resetsAt) : fmtResetAt(resetsAt)
+  const tone = remainTone(left)
   return (
-    <div className="lim">
+    <div className={'lim' + (tone ? ' ' + tone : '')}>
       <span className="ll">{label}</span>
       <div className="g2">
         <i style={{ width: left + '%' }} />
       </div>
-      <span className="lv">{left}%</span>
+      <span className="lv">
+        <b>{left}%</b> 남음
+      </span>
       <span className="lr">{reset}</span>
     </div>
   )

@@ -452,10 +452,6 @@ const PanelView = memo(function PanelView({
         onAddImagePaths={(paths) => onAddImages(slot, paths)}
         onRemoveImage={(i) => onRemoveImage(slot, i)}
         onOpenImage={onOpenImage}
-        contextTokens={state.result?.contextTokens ?? null}
-        contextWindow={state.result?.contextWindow ?? null}
-        usage={usage}
-        showContext={false}
         cwd={cwd}
         mentionBase={cwd}
         inputRef={composerRef}

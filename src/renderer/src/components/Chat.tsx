@@ -63,7 +63,6 @@ import {
   IconClock,
   IconList,
   IconBot,
-  IconDollar,
   IconMascot,
   IconMascotDraw,
   IconPanelRight,
@@ -1727,15 +1726,43 @@ function fetchAccountsUsage(): Promise<Record<string, AccountUsage>> {
   return usageInflight
 }
 
+// 잔량 톤 — 남은 한도 40% 이하 주황(warn), 10% 이하 빨강(crit). 설정 Account 게이지·
+// 컨텍스트 팝오버·계정 드롭다운이 같은 경계를 쓴다. ''는 평상시 — 클래스 없이 그린다.
+export function remainTone(left: number): '' | 'warn' | 'crit' {
+  return left <= 10 ? 'crit' : left <= 40 ? 'warn' : ''
+}
+
+// "남음 5시간 63% · 주간 8%" 한 줄 — 맨숫자는 방향(남은량/소모량)을 못 말해줘 "남음"을
+// 접두 한 번으로 밝힌다. 항목마다 붙이면 줄이 길어져 '주간'이 잘린다(플랜 접두 실측과
+// 같은 제약). 잔량 톤에 걸린 항목만 색으로 도드라진다.
+function usageLineNode(parts: { label: string; left: number }[]): ReactNode {
+  return (
+    <>
+      {'남음 '}
+      {parts.map((p, i) => {
+        const tone = remainTone(p.left)
+        const text = `${p.label} ${p.left}%`
+        return (
+          <Fragment key={p.label}>
+            {i > 0 && ' · '}
+            {tone ? <span className={tone}>{text}</span> : text}
+          </Fragment>
+        )
+      })}
+    </>
+  )
+}
+
 // 계정 옵션의 잔여 한도 줄 — 앱 전체 관례(잔여 % = 100 − 사용률, 설정 → Account와 동일).
 // 조회 못 한 항목은 조용히 빠진다(저장 토큰 만료 등 — 실행하면 CLI가 리프레시한다).
-function acctUsageLine(u?: AccountUsage): string {
-  if (!u) return ''
-  const parts: string[] = []
-  if (u.fiveHourPct != null) parts.push(`5시간 ${100 - u.fiveHourPct}%`)
-  if (u.fablePct != null) parts.push(`Fable ${100 - u.fablePct}%`)
-  if (u.weeklyPct != null) parts.push(`주간 ${100 - u.weeklyPct}%`)
-  return parts.join(' · ')
+function acctUsageLine(u?: AccountUsage): ReactNode {
+  if (!u) return null
+  const parts: { label: string; left: number }[] = []
+  if (u.fiveHourPct != null) parts.push({ label: '5시간', left: 100 - u.fiveHourPct })
+  if (u.fablePct != null) parts.push({ label: 'Fable', left: 100 - u.fablePct })
+  if (u.weeklyPct != null) parts.push({ label: '주간', left: 100 - u.weeklyPct })
+  if (!parts.length) return null
+  return usageLineNode(parts)
 }
 function fetchAccounts(): Promise<AccountInfo[]> {
   if (acctCache && Date.now() - acctCache.at < ACCT_TTL) return Promise.resolve(acctCache.list)
@@ -1800,9 +1827,9 @@ function fetchCodexUsage(): Promise<Record<string, CodexAccountUsage>> {
   return cxUsageInflight
 }
 // Codex 계정 옵션의 잔여 한도 줄 — Anthropic acctUsageLine과 같은 관례(잔여 % = 100 − 사용률)
-function cxUsageLine(u?: CodexAccountUsage): string {
-  if (!u || !u.windows.length) return ''
-  return u.windows.map((w) => `${w.label} ${Math.max(0, 100 - Math.round(w.usedPct))}%`).join(' · ')
+function cxUsageLine(u?: CodexAccountUsage): ReactNode {
+  if (!u || !u.windows.length) return null
+  return usageLineNode(u.windows.map((w) => ({ label: w.label, left: Math.max(0, 100 - Math.round(w.usedPct)) })))
 }
 
 // 지금 유효한 Codex 계정(바인딩 ?? 기본 계정)의 잔여 한도 — 컨텍스트 팝오버·스트립이
@@ -1854,7 +1881,7 @@ function EffortSlide({ effort, onChange }: { effort: EffortId; onChange: (e: Eff
   )
 }
 
-function PPRow({ sel, main, sub, onClick }: { sel: boolean; main: string; sub?: string; onClick: () => void }) {
+function PPRow({ sel, main, sub, onClick }: { sel: boolean; main: string; sub?: ReactNode; onClick: () => void }) {
   return (
     <button className={'pp-row' + (sel ? ' sel' : '')} onClick={onClick}>
       <span className="pp-grow">
@@ -2106,21 +2133,6 @@ export function fmtUsd(v: number): string {
 export function fmtCredit(v: number, currency: string): string {
   return currency === 'USD' ? fmtUsd(v) : v.toFixed(2) + ' ' + currency
 }
-// 구독 한도 행 (컴포저 스트립·작업 바 팝오버 공용) — 링은 사용률, 큰 값은 "남은" %.
-// 구독엔 잔액 API가 없어 창별 사용률·리셋 시각이 전부 — 남은 크레딧은 100−사용률로 보여준다
-// (API 모드의 "남은 예산" 행과 같은 문법: 링=사용분, 값=잔여분).
-function limitItem(
-  label: string,
-  w: UsageWindow | null,
-  useDays: boolean
-): { label: string; pct: number | null; val?: string; detail: string } {
-  return {
-    label,
-    pct: w?.pct ?? null,
-    val: w ? `${Math.max(0, 100 - Math.round(w.pct))}% 남음` : undefined,
-    detail: w ? resetText(w.resetsAt, useDays) : '데이터 없음'
-  }
-}
 // 추가 사용 크레딧 행 (작업 바 컨텍스트 팝오버) — claude.ai에서 켠 사용자에게만 행이
 // 뜬다 (꺼져 있으면 잔액도 한도도 없어 보여줄 게 없다). 잔액이 소진된 상태(켰지만
 // 0원)도 보여준다 — "다 떨어짐"이야말로 알아야 할 정보다.
@@ -2145,7 +2157,7 @@ function resetText(resetsAt: number | null, useDays: boolean): string {
 // WorkBar 컨텍스트 팝오버 행 (PoC .prow 문법) — 라벨+부제, 오른쪽 "남음 n%"(굵게),
 // 행 아래 진행 바(bar)도 같은 남은 비율을 가리킨다. 부제는 목업의 절대시각 대신
 // 실데이터의 초기화 남은 시간.
-type CtxRow = { label: string; sub: string; end: ReactNode; bar: number | null }
+type CtxRow = { label: string; sub: string; end: ReactNode; bar: number | null; tone?: '' | 'warn' | 'crit' }
 function limitRow(label: string, w: UsageWindow | null, useDays: boolean): CtxRow {
   const rem = w ? Math.max(0, 100 - Math.round(w.pct)) : null
   return {
@@ -2154,12 +2166,13 @@ function limitRow(label: string, w: UsageWindow | null, useDays: boolean): CtxRo
     end:
       rem != null ? (
         <>
-          남음 <b>{rem}%</b>
+          <b>{rem}%</b> 남음
         </>
       ) : (
         '—'
       ),
-    bar: rem
+    bar: rem,
+    tone: rem != null ? remainTone(rem) : ''
   }
 }
 function extraCreditRow(x: ExtraCreditInfo): CtxRow {
@@ -2169,108 +2182,27 @@ function extraCreditRow(x: ExtraCreditInfo): CtxRow {
       sub: '크레딧 소진 — claude.ai에서 충전해야 다시 쓸 수 있어요',
       end: (
         <>
-          남음 <b>{fmtCredit(0, x.currency)}</b>
+          <b>{fmtCredit(0, x.currency)}</b> 남음
         </>
       ),
-      bar: 0
+      bar: 0,
+      tone: 'crit'
     }
+  const left = x.pct != null ? Math.max(0, 100 - Math.round(x.pct)) : null
   return {
     label: '추가 크레딧',
     sub: `이번 달 ${fmtCredit(x.used ?? 0, x.currency)} 사용${x.cap != null ? ` · 월 한도 ${fmtCredit(x.cap, x.currency)}` : ''}`,
     end:
       x.balance != null ? (
         <>
-          남음 <b>{fmtCredit(x.balance, x.currency)}</b>
+          <b>{fmtCredit(x.balance, x.currency)}</b> 남음
         </>
       ) : (
         '—'
       ),
-    bar: x.pct != null ? Math.max(0, 100 - Math.round(x.pct)) : null
+    bar: left,
+    tone: left != null ? remainTone(left) : ''
   }
-}
-
-function ContextStrip({
-  winTokens,
-  contextTokens,
-  usage,
-  apiMode = false,
-  chatSpentUsd = 0,
-  budgetUsd = null,
-  totalSpentUsd = 0,
-  engine,
-  codexAccount
-}: {
-  winTokens: number
-  contextTokens: number | null
-  usage: UsageInfo
-  apiMode?: boolean // true → 구독 한도 대신 API 비용을 보여준다 (WorkBar와 동일한 규칙)
-  chatSpentUsd?: number
-  budgetUsd?: number | null
-  totalSpentUsd?: number
-  engine?: EngineId // 'codex'면 Anthropic 한도 칩 대신 OpenAI 한도 칩 (WorkBar와 동일)
-  codexAccount?: string
-}) {
-  const ctxPct = contextTokens != null && winTokens > 0 ? Math.min(100, Math.round((contextTokens / winTokens) * 100)) : 0
-  // Codex 엔진의 한도 칩 — 이 계정(바인딩 ?? 기본)의 OpenAI 한도. 스트립은 상시
-  // 보이는 UI라 마운트 시 조회(모듈 캐시 TTL이 과조회를 막는다)
-  const cxU = useCodexUsage(engine, codexAccount, true)
-  const items: { label: string; pct: number | null; usd?: boolean; val?: string; detail: string }[] = [
-    {
-      label: '현재 컨텍스트',
-      pct: ctxPct,
-      detail: `${contextTokens != null ? fmtTok(contextTokens) : 0} / ${fmtWindow(Math.round(winTokens / 1000))} 토큰`
-    },
-    ...(engine === 'codex'
-      ? apiMode
-        ? []
-        : (cxU?.windows ?? []).map((w) => ({
-            label: `${w.label} 한도`,
-            pct: Math.min(100, Math.round(w.usedPct)),
-            val: `${Math.max(0, 100 - Math.round(w.usedPct))}% 남음`,
-            detail: 'ChatGPT 구독 사용량 기준'
-          }))
-      : apiMode
-        ? [
-            // 비용 행은 링 대신 달러 배지(usd) — "한도의 몇 %"가 아니라 금액 자체라서
-            { label: '이번 대화 비용', pct: null, usd: true, val: fmtUsd(chatSpentUsd), detail: 'API 모드 실행의 누적 비용' },
-            budgetUsd != null
-              ? {
-                  label: '남은 예산',
-                  pct: Math.min(100, Math.round((totalSpentUsd / budgetUsd) * 100)),
-                  val: fmtUsd(Math.max(0, budgetUsd - totalSpentUsd)),
-                  detail: `예산 ${fmtUsd(budgetUsd)} 중 ${fmtUsd(totalSpentUsd)} 사용`
-                }
-              : { label: '누적 사용액', pct: null, usd: true, val: fmtUsd(totalSpentUsd), detail: '전체 워크스페이스 합산' }
-          ]
-        : [
-            limitItem('5시간 한도', usage.fiveHour, false),
-            limitItem('주간 한도', usage.weekly, true),
-            // Fable 5 전용 주간 한도 — 플랜에 없으면(null) 칩 자체를 숨긴다
-            ...(usage.weeklyFable ? [limitItem('Fable 주간 한도', usage.weeklyFable, true)] : [])
-          ])
-  ]
-  return (
-    <div className="ctx-strip">
-      {items.map((c, i) => (
-        <div className="ctx-chip" key={i}>
-          {c.usd ? (
-            <span className="cc-usd">
-              <IconDollar size={11} />
-            </span>
-          ) : (
-            <span className="cc-ring" style={{ ['--p']: c.pct ?? 0 } as CSSProperties} />
-          )}
-          <span className="cc-text">
-            <span className="cc-top">
-              <span className="cc-label">{c.label}</span>
-              <span className="cc-pct">{c.val ?? (c.pct != null ? c.pct + '%' : '—')}</span>
-            </span>
-            <span className="cc-detail">{c.detail}</span>
-          </span>
-        </div>
-      ))}
-    </div>
-  )
 }
 
 type WorkTab = 'todo' | 'sub' | 'sh' | 'file' | 'ctx'
@@ -2618,30 +2550,38 @@ export const WorkBar = memo(function WorkBar({
               bar: null
             }
           ]
-        : (cxU?.windows ?? []).map((w) => ({
-            label: `${w.label} 한도`,
-            sub: 'ChatGPT 구독 사용량 기준',
-            end: (
-              <>
-                남음 <b>{Math.max(0, 100 - Math.round(w.usedPct))}%</b>
-              </>
-            ),
-            bar: Math.max(0, 100 - Math.round(w.usedPct))
-          }))
+        : (cxU?.windows ?? []).map((w) => {
+            const rem = Math.max(0, 100 - Math.round(w.usedPct))
+            return {
+              label: `${w.label} 한도`,
+              sub: 'ChatGPT 구독 사용량 기준',
+              end: (
+                <>
+                  <b>{rem}%</b> 남음
+                </>
+              ),
+              bar: rem,
+              tone: remainTone(rem)
+            }
+          })
       : apiMode
         ? [
             { label: '이번 대화 비용', sub: 'API 모드 실행의 누적 비용', end: <b>{fmtUsd(chatSpentUsd)}</b>, bar: null },
             budgetUsd != null
-              ? {
-                  label: '남은 예산',
-                  sub: `예산 ${fmtUsd(budgetUsd)} 중 ${fmtUsd(totalSpentUsd)} 사용`,
-                  end: (
-                    <>
-                      남음 <b>{fmtUsd(Math.max(0, budgetUsd - totalSpentUsd))}</b>
-                    </>
-                  ),
-                  bar: Math.max(0, 100 - Math.round((totalSpentUsd / budgetUsd) * 100))
-                }
+              ? (() => {
+                  const left = Math.max(0, 100 - Math.round((totalSpentUsd / budgetUsd) * 100))
+                  return {
+                    label: '남은 예산',
+                    sub: `예산 ${fmtUsd(budgetUsd)} 중 ${fmtUsd(totalSpentUsd)} 사용`,
+                    end: (
+                      <>
+                        <b>{fmtUsd(Math.max(0, budgetUsd - totalSpentUsd))}</b> 남음
+                      </>
+                    ),
+                    bar: left,
+                    tone: remainTone(left)
+                  }
+                })()
               : { label: '누적 사용액', sub: '전체 워크스페이스 · 설정 → API에서 예산 입력 가능', end: <b>{fmtUsd(totalSpentUsd)}</b>, bar: null }
           ]
         : [
@@ -2814,7 +2754,7 @@ export const WorkBar = memo(function WorkBar({
         </div>
         {ctxRows.map((r, i) => (
           <Fragment key={i}>
-            <div className="wb-prow">
+            <div className={'wb-prow' + (r.tone ? ' ' + r.tone : '')}>
               <span className="grow">
                 {r.label}
                 <span className="sub">{r.sub}</span>
@@ -2822,7 +2762,7 @@ export const WorkBar = memo(function WorkBar({
               <span className="end">{r.end}</span>
             </div>
             {r.bar != null && (
-              <div className="wb-pbar">
+              <div className={'wb-pbar' + (r.tone ? ' ' + r.tone : '')}>
                 <i style={{ width: r.bar + '%' }} />
               </div>
             )}
@@ -3288,18 +3228,11 @@ export function Composer({
   apiReady = false,
   apiReadyCodex = false,
   onApiModeChange,
-  chatSpentUsd = 0,
-  budgetUsd = null,
-  totalSpentUsd = 0,
   images,
   onPickImages,
   onAddImagePaths,
   onRemoveImage,
   onOpenImage,
-  contextTokens,
-  contextWindow,
-  usage,
-  showContext = true,
   cwd,
   mentionBase,
   commands = SLASH_COMMANDS,
@@ -3321,18 +3254,11 @@ export function Composer({
   apiReady?: boolean // 설정 → API에 Anthropic 키가 저장돼 있는지 (없으면 API 선택이 설정을 연다)
   apiReadyCodex?: boolean // OpenAI 키 존재 여부 — Codex 엔진의 과금 선택이 쓴다
   onApiModeChange?: (next: boolean, engine?: EngineId) => void // 제공될 때만 과금 picker를 그린다
-  chatSpentUsd?: number // 이 대화의 API 모드 누적 비용 — ContextStrip(API 모드)용
-  budgetUsd?: number | null // 설정 → API의 예산
-  totalSpentUsd?: number // 전체 워크스페이스 API 누적 사용액
   images: string[]
   onPickImages: () => void
   onAddImagePaths: (paths: string[]) => void
   onRemoveImage: (i: number) => void
   onOpenImage?: (images: string[], index: number) => void
-  contextTokens: number | null
-  contextWindow: number | null // real window from the SDK; null → use the model default
-  usage: UsageInfo
-  showContext?: boolean // 코드 모드는 작업 바가 컨텍스트를 보여주므로 컴포저 안 스트립을 끈다(기본 true)
   cwd: string // project dir — scopes which skills the "/" palette loads
   mentionBase?: string // @ 멘션이 파일을 뜨우는 기준 폴더(탐색기가 보는 폴더). 없으면 cwd
   commands?: SlashCmd[] // "/" 팔레트의 내장 명령 목록 (기본: SLASH_COMMANDS 전체)
@@ -3343,9 +3269,6 @@ export function Composer({
   // a counter, not a bool: dragenter/leave fire per child element, so a plain flag flickers
   const dragDepth = useRef(0)
   const [dragOver, setDragOver] = useState(false)
-  const modelOpt = MODELS.find((m) => m.id === picker.model) ?? MODELS[0]
-  // prefer the SDK's real context window; fall back to the model's nominal size
-  const winTokens = contextWindow ?? modelOpt.ctx * 1000
 
   // 입력이 두 줄 이상이면 컴포저가 자동 두 줄로 승격 — 입력칸이 첫 줄 전체를 차지하고
   // [+ · 칩 · 보내기]가 아래 줄로 내려간다. 긴 요약 칩(GPT 모델·계정)이 입력칸 폭을
@@ -3654,20 +3577,6 @@ export function Composer({
   return (
     <div className="composer-wrap">
       <div className="composer-inner">
-        {showContext && (
-          <ContextStrip
-            winTokens={winTokens}
-            contextTokens={contextTokens}
-            usage={usage}
-            apiMode={apiMode}
-            chatSpentUsd={chatSpentUsd}
-            budgetUsd={budgetUsd}
-            totalSpentUsd={totalSpentUsd}
-            engine={picker.engine}
-            codexAccount={picker.codexAccount}
-          />
-        )}
-
         {queued.length > 0 && (
           <div className="sched">
             <div className="sched-head">

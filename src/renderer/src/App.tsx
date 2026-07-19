@@ -1198,10 +1198,6 @@ function MainApp({ user }: { user: AppUser }) {
             onAddImagePaths={addImagePaths}
             onRemoveImage={(i) => setImages((a) => a.filter((_, idx) => idx !== i))}
             onOpenImage={openViewer}
-            contextTokens={state.result?.contextTokens ?? null}
-            contextWindow={state.result?.contextWindow ?? null}
-            usage={usage}
-            showContext={false}
             cwd={cwd}
             mentionBase={mentionBase}
             inputRef={composerRef}

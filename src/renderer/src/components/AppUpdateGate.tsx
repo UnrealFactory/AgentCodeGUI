@@ -9,9 +9,10 @@ import { IconAlert, IconDownload } from './icons'
  * 않는다. 다운로드는 백그라운드 자동이라 카드의 '업데이트'는 곧 적용(재시작)이다.
  *
  * 뜨고 접히는 규칙: 새 버전이 발견되면 스스로 떠서 진행을 보여주고, '나중에'로 접으면
- * 준비 완료가 되는 순간 한 번 더 뜬다(그때가 행동할 순간이라). 그 뒤로는 사이드바
- * 배지 클릭(app-update:open)으로만 되열린다 — 10분 주기 재확인이 작업 중에 카드를
- * 되띄우지 않게. 설치는 이 카드의 '업데이트' 버튼만 — 종료 시 자동 설치는 보이지 않는
+ * 준비 완료가 되는 순간 한 번 더 뜬다(그때가 행동할 순간이라). 그 뒤로는 다음 실행에서
+ * 다시 안내한다 — 10분 주기 재확인이 작업 중에 카드를 되띄우지 않게. 알림 통로는 이
+ * 카드 하나 — 예전 사이드바 배지(sb-update)는 같은 알림이 둘로 뜨는 중복이라 은퇴시켰다.
+ * 설치는 이 카드의 '업데이트' 버튼만 — 종료 시 자동 설치는 보이지 않는
  * 설치기 도중 PC가 꺼지면 앱이 삭제되는 사고라 껐다(받아둔 파일은 다음 실행에 재사용).
  */
 export function AppUpdateGate() {
@@ -23,16 +24,9 @@ export function AppUpdateGate() {
   const prevPhase = useRef<UpdateStatus['phase'] | null>(null)
 
   useEffect(() => {
-    // 사이드바 배지가 이 이벤트로 카드를 되연다
-    const reopen = (): void => setDismissed(false)
-    window.addEventListener('app-update:open', reopen)
     window.api.app.getVersion().then(setAppVer).catch(() => {})
     window.api.app.getUpdateStatus().then(setStatus).catch(() => {})
-    const off = window.api.app.onUpdateEvent(setStatus)
-    return () => {
-      window.removeEventListener('app-update:open', reopen)
-      off()
-    }
+    return window.api.app.onUpdateEvent(setStatus)
   }, [])
 
   // 받는 중에 접었어도 준비 완료가 되는 순간엔 다시 알린다
