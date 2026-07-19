@@ -24,9 +24,22 @@ type Release = { eyebrow: string; lead: ReactNode; notes: Note[] }
 const MAX_VERSIONS = 5
 const RELEASES: Record<string, Release> = {
   '2.0.5': {
-    eyebrow: 'FIX',
-    lead: '가장자리에서 잘리던 것 둘을 폈습니다.',
+    eyebrow: 'UPDATE',
+    lead: '멀티 채팅에 파일 탐색기가 들어오고, 가장자리 잘림 둘을 폈습니다.',
     notes: [
+      {
+        tag: '파일 탐색기',
+        name: '멀티 채팅에도, 파일 탐색기',
+        desc: (
+          <>
+            멀티 뷰에서도 <b>` 키</b>나 헤더의 <b>탐색기 버튼</b>으로 왼쪽 사이드바가 파일
+            탐색기로 전환됩니다 — 트리는 <b>마지막으로 클릭한 패널</b>의 작업 폴더를 따라가요.
+            다른 패널을 클릭하면 트리도 그 패널 폴더로 바뀌고, 파일을 열면 그 패널의 변경
+            표시(diff)와 함께 보입니다. 변경 파일 배지와 우클릭 '변경된 파일 보기'도 그 패널
+            기준이에요.
+          </>
+        )
+      },
       {
         tag: '계정 카드',
         name: "'기본' 배지, 제자리에",

@@ -650,13 +650,14 @@ input,textarea{ font-family:inherit; }
 .chat-head button, .chat-head .tb-left{ -webkit-app-region:no-drag; }
 .chat-head .h-title{ font-size:12px; font-weight:600; letter-spacing:-.01em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:50%; }
 .chat-head .spacer{ flex:1; }
-.chat-head .h-ic{ color:var(--text-3); padding:5px; border-radius:6px; display:grid; place-items:center; transition:background .12s,color .12s; }
-.chat-head .h-ic:hover{ background:var(--hover); color:var(--text); }
-.chat-head .h-ic.on{ color:var(--text); background:rgba(255,255,255,.08); }
+/* .h-ic 아이콘 버튼 — 멀티 헤더(.ma-head)의 탐색기 토글도 같은 문법을 쓴다 */
+.chat-head .h-ic, .ma-head .h-ic{ color:var(--text-3); padding:5px; border-radius:6px; display:grid; place-items:center; transition:background .12s,color .12s; }
+.chat-head .h-ic:hover, .ma-head .h-ic:hover{ background:var(--hover); color:var(--text); }
+.chat-head .h-ic.on, .ma-head .h-ic.on{ color:var(--text); background:rgba(255,255,255,.08); }
 /* 헤더는 창 맨 위라 기본(위로 뜨는) 툴팁이 잘려 안 보인다 → 버튼 아래로 뒤집는다
    (창 컨트롤은 아래의 .win-ctl 자체 규칙이 오른쪽 정렬까지 마저 처리) */
-.chat-head .has-tip::after{ bottom:auto; top:100%; margin-bottom:0; margin-top:8px; transform:translate(-50%, -3px); }
-.chat-head .has-tip:hover::after{ transform:translate(-50%, 0); }
+.chat-head .has-tip::after, .ma-head .has-tip::after{ bottom:auto; top:100%; margin-bottom:0; margin-top:8px; transform:translate(-50%, -3px); }
+.chat-head .has-tip:hover::after, .ma-head .has-tip:hover::after{ transform:translate(-50%, 0); }
 /* 헤더 폴더 칩 — 경로 태그가 그대로 버튼 (PoC .tag.mono.fsel), 클릭 = 최근 폴더 팝오버 */
 .chat-head .tag{ font-size:10.5px; color:var(--text-4); background:var(--hover); padding:2px 7px; border-radius:99px; }
 .chat-head .tag.mono{ font-family:var(--font-mono); font-size:10px; }

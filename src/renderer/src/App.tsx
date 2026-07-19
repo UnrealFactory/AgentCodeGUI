@@ -11,7 +11,7 @@ import { useAgentSession, initialSessionState, sanitizeSnapshot, snapshotForPers
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { Sidebar, type ChatSummary, type SidebarSection } from './components/Sidebar'
 import { pushRecentDir, seedRecentDirs } from './lib/recentDirs'
-import { MultiWorkspace, useMultiSessions } from './components/MultiAgent'
+import { MultiWorkspace, useMultiSessions, type MultiExplorerInfo } from './components/MultiAgent'
 import { NewChatModal } from './components/NewChatModal'
 import { getPref, setPref } from './lib/prefs'
 import { ChatHeader, ChatFind, Composer, MessageView, QuestionModal, PermissionModal, SelectionToolbar, WelcomeState, WorkBar, WorkingIndicator, hasRunningBash, nextMode, pickerModelOf, useThreadFollow, type PickerState, type ScheduledMsg } from './components/Chat'
@@ -176,13 +176,10 @@ function MainApp({ user }: { user: AppUser }) {
     })
   })
   // ` (백쿼트) 한 키 = 사이드바 ⟷ 탐색기 전환 — 글자가 들어가는 입력에서는 무시.
-  // 탐색기는 코드 뷰 전용이라 멀티 뷰에서는 반응하지 않는다.
-  const modeRef = useRef(mode)
-  modeRef.current = mode
+  // 멀티 뷰에서도 동작한다 — 그때 탐색기는 마지막으로 클릭(포커스)한 패널의 폴더를 보인다.
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       if (e.key !== '`' || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return
-      if (modeRef.current !== 'single') return
       const ae = document.activeElement as HTMLElement | null
       if (ae && (['INPUT', 'TEXTAREA', 'SELECT'].includes(ae.tagName) || ae.isContentEditable)) return
       e.preventDefault()
@@ -196,6 +193,10 @@ function MainApp({ user }: { user: AppUser }) {
   // 보고가 없음 → cwd로 폴백. 채팅 입력의 @ 멘션이 이 폴더를 기준으로 파일을 뜨운다.
   const [explorerFolder, setExplorerFolder] = useState('')
   const onExplorerView = useEvent((folder: string) => setExplorerFolder(folder))
+  // 멀티 뷰의 탐색기가 따라갈 패널 정보 — ActiveSession이 마지막으로 클릭(포커스)한
+  // 패널의 폴더·변경 파일·핸들러를 보고한다. 세션 전환 시 새 마운트가 곧바로 덮어쓰므로
+  // 언마운트에서 비우지 않는다(비우면 전환마다 사이드바로 한 번 튕겼다 돌아온다).
+  const [multiExp, setMultiExp] = useState<MultiExplorerInfo | null>(null)
   // bumped when a run finishes → the explorer re-reads its expanded folders, so files
   // the agent just created/deleted show up without a manual refresh
   const [fsTick, setFsTick] = useState(0)
@@ -931,8 +932,9 @@ function MainApp({ user }: { user: AppUser }) {
   })
   // ── 변경 파일 카드 (탐색기 우클릭) ─────────────────────────
   const onShowChanged = useEvent((scope: { rel: string; label: string }) => setChgScope(scope))
-  // 작업 폴더가 바뀌면(채팅 전환 포함) 스코프 rel 경로가 무의미해지니 카드를 닫는다
-  useEffect(() => setChgScope(null), [cwd])
+  // 작업 폴더가 바뀌면(채팅 전환 포함) 스코프 rel 경로가 무의미해지니 카드를 닫는다.
+  // 멀티 뷰에선 탐색기가 따라가는 패널·그 폴더가 바뀔 때도 같은 이유로 닫는다.
+  useEffect(() => setChgScope(null), [cwd, mode, multiExp?.slot, multiExp?.cwd])
   const onRenameChat = useEvent(renameChat)
   const onDeleteChat = useEvent(deleteChat)
   const onDeleteAllChats = useEvent(deleteAllChats)
@@ -1008,7 +1010,8 @@ function MainApp({ user }: { user: AppUser }) {
     <div className="win">
       <div className="blurwarm" />
       <div className="win-body">
-        {/* 왼쪽 칼럼 — 채팅 사이드바 ⟷ 파일 탐색기 전환 ( ` 또는 헤더 돋보기 옆 버튼, 코드 뷰 전용).
+        {/* 왼쪽 칼럼 — 채팅 사이드바 ⟷ 파일 탐색기 전환 ( ` 또는 헤더 돋보기 옆 버튼).
+            멀티 뷰의 탐색기는 마지막으로 클릭한 패널의 폴더를 따라간다(패널 전환 = 트리 전환).
             두 패널 모두 242px 고정이라 폭 트랜지션 없이 key 교체 슬라이드-인만 남는다 */}
         <div className="lcol">
           {mode === 'single' && explorerOpen ? (
@@ -1021,6 +1024,16 @@ function MainApp({ user }: { user: AppUser }) {
               changed={state.files}
               onShowChanged={onShowChanged}
               onViewFolderChange={onExplorerView}
+            />
+          ) : mode === 'multi' && explorerOpen && multiExp ? (
+            <Explorer
+              key="fxm"
+              cwd={multiExp.cwd}
+              refreshKey={multiExp.tick}
+              onPickFolder={multiExp.pickFolder}
+              onOpenFile={multiExp.openFile}
+              changed={multiExp.files}
+              onShowChanged={onShowChanged}
             />
           ) : (
             <Sidebar key="sb" user={user} sections={sections} onNewChat={onOpenNewChat} onOpenSettings={onOpenSettings} />
@@ -1035,6 +1048,9 @@ function MainApp({ user }: { user: AppUser }) {
               apiReady={!!apiCfg?.hasKey}
               apiReadyCodex={!!apiCfg?.hasOpenaiKey}
               onOpenApiSettings={openApiSettings}
+              onExplorerInfo={setMultiExp}
+              explorerHidden={!explorerOpen}
+              onToggleExplorer={toggleExplorer}
             />
           </ErrorBoundary>
         ) : (
@@ -1157,8 +1173,9 @@ function MainApp({ user }: { user: AppUser }) {
       {chgScope && (
         <ChangedFilesModal
           scope={chgScope}
-          changed={state.files}
-          onOpen={onOpenToolFile}
+          // 멀티 뷰의 탐색기에서 열렸으면 그 패널의 변경 목록·뷰어(패널 cwd·diffs)로 간다
+          changed={(mode === 'multi' ? multiExp?.files : state.files) ?? []}
+          onOpen={mode === 'multi' && multiExp ? multiExp.openFile : onOpenToolFile}
           onClose={() => setChgScope(null)}
         />
       )}

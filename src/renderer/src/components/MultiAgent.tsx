@@ -1,5 +1,5 @@
 import { memo, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
-import type { AgentStatus, BgTaskRequest, EngineId, UsageInfo, MultiRunRequest, EngineEvent } from '@shared/protocol'
+import type { AgentStatus, BgTaskRequest, ChangedFile, EngineId, UsageInfo, MultiRunRequest, EngineEvent } from '@shared/protocol'
 import {
   useAgentSession,
   initialSessionState,
@@ -36,7 +36,7 @@ import { ImageViewer } from './ImageViewer'
 import { extractMentions } from '../lib/mentions'
 import { mergeRefs, useZoom, ZoomBadge } from './zoom'
 import { MouseGestureLayer, clearGesture, scrollGestures, sessionWindowGesture } from './mouseGesture'
-import { IconFolder, IconChevDown, IconMascot } from './icons'
+import { IconFolder, IconChevDown, IconMascot, IconPanelRight } from './icons'
 
 // A multi-agent SESSION is a group of N panels that work together. The recent-tasks
 // list shows one entry per session (not per panel); "새 작업" opens a fresh session and
@@ -121,6 +121,18 @@ interface MultiPersist {
 interface CommitPayload {
   count: number
   panels: PersistedPanel[]
+}
+
+// 왼쪽 칼럼 파일 탐색기(` 전환)가 따라갈 패널의 스냅샷 — ActiveSession이 App으로
+// 보고하고, App이 사이드바 자리(.lcol)에 이 정보로 Explorer를 그린다. 핸들러는
+// useEvent라 안정 — 파일 열기/폴더 선택이 그 패널의 뷰어·폴더 흐름으로 간다.
+export interface MultiExplorerInfo {
+  slot: number
+  cwd: string // 그 패널의 작업 폴더 ('' = 아직 미선택 → 탐색기 빈 화면 + 폴더 선택 버튼)
+  files: ChangedFile[] // 그 패널 세션의 변경 파일 → 트리 M/A 배지
+  tick: number // 패널 실행이 끝날 때마다 +1 → 탐색기 재읽기 (본채팅 fsTick 규칙)
+  openFile: (path: string) => void // 그 패널의 cwd·diffs로 코드 뷰어
+  pickFolder: () => void // 그 패널의 폴더 선택 (OS 픽커 + 확인 카드 흐름)
 }
 
 function freshPanel(api = false): PanelMeta {
@@ -483,7 +495,10 @@ function ActiveSession({
   onOpenApiSettings,
   onFirstPrompt,
   onStatus,
-  onCommit
+  onCommit,
+  onExplorerInfo,
+  explorerHidden,
+  onToggleExplorer
 }: {
   sessionId: string
   initial: PersistedSession
@@ -495,6 +510,9 @@ function ActiveSession({
   onFirstPrompt: (sessionId: string, prompt: string) => void
   onStatus: (sessionId: string, status: AgentStatus) => void
   onCommit: (sessionId: string, payload: CommitPayload) => void
+  onExplorerInfo?: (info: MultiExplorerInfo) => void // 왼쪽 칼럼 탐색기가 따라갈 패널 보고
+  explorerHidden?: boolean // 탐색기가 내려가 있는가 — 헤더 토글 버튼의 상태 표시
+  onToggleExplorer?: () => void // 헤더 토글 버튼 — 사이드바 ⟷ 탐색기 (본채팅 헤더와 동일)
 }) {
   // every slot's session — six fixed hook calls, subscribed for this session's lifetime
   const s0 = useAgentSession(subFor(chan(sessionId, 0)))
@@ -511,10 +529,16 @@ function ActiveSession({
   useEffect(() => setLiveUsage(usage), [usage]) // App 쪽 갱신도 그대로 흡수
   const busyCount = sessions.filter((s) => s.busy).length
   const prevBusyCountRef = useRef(busyCount)
+  // 패널 실행이 하나라도 끝나면 +1 — 왼쪽 탐색기가 루트+펼친 폴더를 다시 읽어 방금
+  // 생성/삭제된 파일이 새로고침 없이 보인다 (본채팅 fsTick과 같은 규칙)
+  const [fsTick, setFsTick] = useState(0)
   useEffect(() => {
     const was = prevBusyCountRef.current
     prevBusyCountRef.current = busyCount
-    if (busyCount < was) window.api.getUsage(true).then(setLiveUsage).catch(() => {})
+    if (busyCount < was) {
+      window.api.getUsage(true).then(setLiveUsage).catch(() => {})
+      setFsTick((t) => t + 1)
+    }
   }, [busyCount])
 
   const [count, setCount] = useState(() => clampCount(initial.count))
@@ -765,6 +789,25 @@ function ActiveSession({
   })
   // 작업 폴더 팝오버(FolderPop) 목록에서 선택 — 확인 카드 흐름은 requestPanelFolder가 공용
   const onSelectFolder = useEvent((slot: number, dir: string) => requestPanelFolder(slot, dir))
+
+  // ── 왼쪽 칼럼 파일 탐색기(` 전환) — 따라갈 패널을 App으로 보고 ──
+  // 마지막으로 포커스(클릭)한 패널 기준, 아직 없으면 1번. Esc로 선택을 놓아도 탐색기는
+  // 그 패널에 남는다. 패널 수를 줄여 슬롯이 사라지면 마지막 패널로 내려앉는다.
+  const [expSlot, setExpSlot] = useState(0)
+  useEffect(() => {
+    if (focusedSlot != null) setExpSlot(focusedSlot)
+  }, [focusedSlot])
+  const eSlot = Math.min(expSlot, count - 1)
+  // 파일 열기는 그 패널의 cwd·diffs 뷰어(openFile), 폴더 선택은 그 패널의 선택 흐름으로
+  const expOpenFile = useEvent((path: string) => setOpenFile({ slot: Math.min(expSlot, count - 1), path }))
+  const expPickFolder = useEvent(() => onPickFolder(Math.min(expSlot, count - 1)))
+  const expCwd = panelCwd(eSlot)
+  const expFiles = sessions[eSlot].state.files
+  useEffect(() => {
+    onExplorerInfo?.({ slot: eSlot, cwd: expCwd, files: expFiles, tick: fsTick, openFile: expOpenFile, pickFolder: expPickFolder })
+    // 핸들러는 useEvent(stable), onExplorerInfo는 App의 setState(stable) — 데이터만 의존
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [eSlot, expCwd, expFiles, fsTick])
 
   // `opts` lets a queued message replay with the text/attachments/run settings it was
   // scheduled with (instead of the live draft, which the user may be typing in — a
@@ -1023,6 +1066,18 @@ function ActiveSession({
               </button>
             ))}
           </div>
+          {/* 탐색기 토글 — 본채팅 헤더와 같은 버튼·툴팁: 단축키(`)를 모르는 사람도
+              멀티 뷰에서 탐색기를 열 수 있게 (탐색기는 포커스한 패널의 폴더를 따라간다) */}
+          {onToggleExplorer && (
+            <button
+              className={'h-ic has-tip' + (explorerHidden ? '' : ' on')}
+              data-tip={explorerHidden ? '파일 탐색기 — 왼쪽 목록과 전환 (`)' : '채팅 목록으로 (`)'}
+              aria-label="파일 탐색기"
+              onClick={onToggleExplorer}
+            >
+              <IconPanelRight size={15} />
+            </button>
+          )}
           <span className="vsep" />
           <WinControls />
         </div>
@@ -1328,7 +1383,10 @@ export function MultiWorkspace({
   apiMode,
   apiReady,
   apiReadyCodex = false,
-  onOpenApiSettings
+  onOpenApiSettings,
+  onExplorerInfo,
+  explorerHidden,
+  onToggleExplorer
 }: {
   multi: MultiSessions
   usage: UsageInfo
@@ -1336,6 +1394,9 @@ export function MultiWorkspace({
   apiReady: boolean
   apiReadyCodex?: boolean // OpenAI 키 존재 여부 — Codex 패널의 과금 선택용
   onOpenApiSettings: () => void // 설정 → API 탭 열기 (키 미등록 가드)
+  onExplorerInfo?: (info: MultiExplorerInfo) => void // 왼쪽 칼럼 탐색기가 따라갈 패널 보고
+  explorerHidden?: boolean // 헤더 토글 버튼 상태 — 탐색기가 내려가 있으면 true
+  onToggleExplorer?: () => void // 헤더 토글 버튼 — 사이드바 ⟷ 탐색기
 }) {
   return !multi.hydrated || !multi.activeId ? (
     <section className="multi">
@@ -1356,6 +1417,9 @@ export function MultiWorkspace({
       onFirstPrompt={multi.onFirstPrompt}
       onStatus={multi.onStatus}
       onCommit={multi.onCommit}
+      onExplorerInfo={onExplorerInfo}
+      explorerHidden={explorerHidden}
+      onToggleExplorer={onToggleExplorer}
     />
   )
 }
