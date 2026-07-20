@@ -1,5 +1,6 @@
 import path from 'node:path'
 import fs from 'node:fs'
+import { createHash } from 'node:crypto'
 import { safeStorage } from 'electron'
 import { APP_HOME } from './engine/versions'
 import { writeFileAtomic } from './atomicWrite'
@@ -23,6 +24,10 @@ interface StoredConfig {
   openaiKey?: string
   openaiEnc?: boolean
   openaiKeyTail?: string
+  // 시스템 환경변수 ANTHROPIC_API_KEY 확인 카드의 답 — 키 지문(sha256 앞 12자)별.
+  // 'api'=이 키로 과금 계속, 'sub'=키를 걷어내고 구독. 키 원문은 저장하지 않고,
+  // 키가 바뀌면 지문이 달라져 자연히 다시 묻는다.
+  envKeyChoices?: Record<string, 'api' | 'sub'>
 }
 
 function readConfig(): StoredConfig {
@@ -120,6 +125,27 @@ export function clearOpenaiApiKey(): void {
 export function getOpenaiApiKey(): string | null {
   const cfg = readConfig()
   return decodeKey(cfg.openaiKey, cfg.openaiEnc)
+}
+
+// ── 환경변수 ANTHROPIC_API_KEY 확인 ──────────────────────────────
+// 헤드리스 CLI는 전역 env 키가 있으면 묻지 않고 구독 로그인보다 우선한다(실측:
+// apiKeySource=ANTHROPIC_API_KEY, OAuth 무시). 그래서 엔진이 구독 실행 전에 질문
+// 카드로 확인하고, 답을 여기 지문별로 기억해 같은 키면 다시 묻지 않는다.
+
+function envKeyFp(key: string): string {
+  return createHash('sha256').update(key).digest('hex').slice(0, 12)
+}
+
+/** 이 env 키에 대해 저장된 선택 (없으면 null → 질문 카드가 뜬다). */
+export function envKeyChoice(key: string): 'api' | 'sub' | null {
+  const v = readConfig().envKeyChoices?.[envKeyFp(key)]
+  return v === 'api' || v === 'sub' ? v : null
+}
+
+export function setEnvKeyChoice(key: string, choice: 'api' | 'sub'): void {
+  const cfg = readConfig()
+  cfg.envKeyChoices = { ...(cfg.envKeyChoices ?? {}), [envKeyFp(key)]: choice }
+  writeConfig(cfg)
 }
 
 export function setBudget(usd: number | null): void {

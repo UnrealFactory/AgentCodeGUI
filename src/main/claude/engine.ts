@@ -5,7 +5,7 @@ import { app } from 'electron'
 import { loadActiveQuery } from '../engine/versions'
 import { disabledSkillOverrides } from '../skills'
 import { deniedMcpServers } from '../mcp'
-import { getApiKey, addSpend } from '../apiConfig'
+import { getApiKey, addSpend, envKeyChoice, setEnvKeyChoice } from '../apiConfig'
 import { recordApiUsage } from '../apiUsage'
 import { accountRunDir, syncAccountTokens, defaultAccountEmail } from '../auth'
 import type { ApiUsageSource } from '@shared/protocol'
@@ -471,6 +471,57 @@ export class ClaudeEngine {
         }
         accountDir = accountRunDir(accountEmail) // 등록 없음/손상 → throw로 에러 표시
       }
+
+      // 전역 환경변수 ANTHROPIC_API_KEY 확인 — 헤드리스 CLI는 터미널 TUI와 달리 묻지
+      // 않고 env 키를 구독 로그인보다 우선한다(실측: apiKeySource=ANTHROPIC_API_KEY,
+      // OAuth 완전 무시). TUI의 "이 키를 쓸까요?" 확인을 질문 카드로 재현한다:
+      // 승인=이 키로 API 과금 계속(기존 과금 공지·원장이 그대로 잡는다), 거절=자식
+      // env에서 키를 걷어내 구독으로. 답은 키 지문별로 저장돼 같은 키면 다시 묻지
+      // 않는다(키가 바뀌면 재확인). API 모드는 저장된 키를 명시 주입하므로 해당 없음.
+      let dropEnvKey = false
+      const envKey = !useApi ? process.env.ANTHROPIC_API_KEY || null : null
+      if (envKey) {
+        let choice = envKeyChoice(envKey)
+        if (!choice) {
+          const useLabel = 'API 키로 과금'
+          const requestId = `ask-${runId}-${++this.permReqCounter}`
+          const answers = await new Promise<string[][] | null>((resolve) => {
+            this.questionWaiters.set(requestId, resolve)
+            const onAbort = (): void => {
+              if (this.questionWaiters.delete(requestId)) resolve(null)
+            }
+            abort.signal.addEventListener('abort', onAbort, { once: true })
+            this.emit({
+              type: 'question-request',
+              runId,
+              requestId,
+              questions: [
+                {
+                  question:
+                    '시스템 환경변수에 ANTHROPIC_API_KEY가 설정돼 있어요. 이 키로 실행하면 구독이 아니라 API 크레딧으로 과금됩니다. 어떻게 할까요?',
+                  header: 'API 키 감지',
+                  multiSelect: false,
+                  options: [
+                    { label: useLabel, description: '환경변수의 API 키로 실행합니다 — API 크레딧이 차감돼요. 이 키에 대한 선택은 기억됩니다.' },
+                    { label: '구독으로 실행', description: '이 키를 무시하고 로그인한 구독 계정으로 실행합니다. 이 키에 대한 선택은 기억됩니다.' }
+                  ]
+                }
+              ]
+            })
+          })
+          if (abort.signal.aborted) throw new Error('cancelled') // catch가 abort로 침묵 처리
+          // 답 없이 닫힘(null) → 저장하지 않고 이번 실행만 안전한 쪽(구독)으로
+          choice = answers?.[0]?.[0] === useLabel ? 'api' : 'sub'
+          if (answers) setEnvKeyChoice(envKey, choice)
+        }
+        dropEnvKey = choice === 'sub'
+      }
+      // 구독 실행 env — 위에서 "구독으로"를 골랐으면 env 키를 걷어내 하이재킹을 차단
+      const subEnv: NodeJS.ProcessEnv | null = accountDir
+        ? { ...process.env, CLAUDE_CONFIG_DIR: accountDir }
+        : null
+      if (subEnv && dropEnvKey) delete subEnv.ANTHROPIC_API_KEY
+
       const q = query({
         prompt,
         options: {
@@ -502,8 +553,8 @@ export class ClaudeEngine {
           // SDK의 env 옵션은 process.env를 대체(merge 아님)하므로 반드시 펼쳐서 준다.
           ...(useApi && apiKey
             ? { env: { ...process.env, ANTHROPIC_API_KEY: apiKey } }
-            : accountDir
-              ? { env: { ...process.env, CLAUDE_CONFIG_DIR: accountDir } }
+            : subEnv
+              ? { env: subEnv }
               : {}),
           // Behave like the Claude Code CLI (full coding-agent persona + tools)
           // and honour the user's installed settings / CLAUDE.md / MCP servers.
