@@ -40,6 +40,7 @@ import {
   clearVerseMemberCache
 } from './verseMemberDb'
 import { getCached, setCached, gcDeadBuckets } from './semcache'
+import { minimalRangeChange } from './minimalChange'
 import { APP_HOME } from '../engine/versions'
 import {
   glossaryLineDoc,
@@ -1002,22 +1003,26 @@ function mergeVerseScope(scope: LspCompletionItem[], raw: RawCompletion, extMeth
 }
 
 /**
- * didChange의 contentChanges 페이로드 — incremental(2)을 선언한 서버엔 "이전 문서 전체를 덮는
- * range 교체"로, 그 외(full/미선언)엔 range 없는 전문 교체로 만든다. LSP상 range 없는 교체는
- * 항상 합법이지만 Roslyn은 range를 non-null로 가정해 NullReferenceException으로 '프로세스째'
- * 죽는다 — 서버가 선언한 동기화 방식을 존중하는 게 스펙이기도 하다. (\r\n 문서: split('\n')의
- * 중간 조각에 남는 \r만큼 character가 부풀 수 있지만, 스펙상 줄 길이 초과 position은 줄 끝으로
- * 클램프되므로 "전체 덮기"에는 지장이 없다. 마지막 조각엔 터미네이터가 없어 정확하다.)
+ * didChange의 contentChanges 페이로드 — incremental(2)을 선언한 서버엔 공통 prefix/suffix를
+ * 잘라낸 "최소 range 교체"(minimalChange.ts)로, 그 외(full/미선언)엔 range 없는 전문 교체로
+ * 만든다. LSP상 range 없는 교체는 항상 합법이지만 Roslyn은 range를 non-null로 가정해
+ * NullReferenceException으로 '프로세스째' 죽는다 — 서버가 선언한 동기화 방식을 존중하는 게
+ * 스펙이기도 하다. 최소 range는 예전의 "전문을 덮는 한 range 교체"보다 페이로드와 서버 쪽
+ * 재파싱이 편집 조각 크기로 줄어든다 — 완성이 열린 채 타이핑하는 매 키가 이 길을 탄다.
  */
 function fullChange(syncKind: number, prevText: string, text: string): unknown[] {
   if (syncKind !== 2) return [{ text }] // no range → full-content replace
-  const lines = prevText.split('\n')
-  return [
-    {
-      range: { start: { line: 0, character: 0 }, end: { line: lines.length - 1, character: lines[lines.length - 1].length } },
-      text
-    }
-  ]
+  return [minimalRangeChange(prevText, text)]
+}
+
+/** 토큰 데이터 + 본문 지문 — semanticTokens()가 같은 내용을 디스크 캐시에 거듭 쓰지 않게
+ *  비교하는 키(뷰어의 안정화 폴링은 같은 결과를 최소 두 번 받아 온다). */
+function semSig(data: number[], text: string): string {
+  let h = 0
+  for (let i = 0; i < data.length; i++) h = (h * 31 + data[i]) | 0
+  let t = 0
+  for (let i = 0; i < text.length; i++) t = (t * 31 + text.charCodeAt(i)) | 0
+  return data.length + ':' + h + ':' + text.length + ':' + t
 }
 
 /** The character immediately left of an LSP position in `text` — for trigger-char detection. */
@@ -1039,6 +1044,9 @@ function hoverContentString(h: { contents?: unknown } | null): string {
 
 class LspManager {
   private servers = new Map<string, ServerHandle>()
+  // 파일별 마지막으로 디스크 캐시에 기록한 토큰+본문 지문 — 뷰어의 안정화 폴링이 같은
+  // 결과를 거듭 보내와도 직렬화·쓰기를 반복하지 않게 한다(상한 512, 오래된 것부터 정리)
+  private semWrites = new Map<string, string>()
 
   /** notifyWatchedFiles가 서버에 실제로 통지했을 때 부르는 훅 — index.ts가 모든 창으로
    *  브로드캐스트하게 배선한다(IPC.lspFilesChanged). 열린 뷰어의 토큰 재폴링 신호. */
@@ -1328,12 +1336,23 @@ class LspManager {
       data.push(line, char, raw[i + 2], raw[i + 3], raw[i + 4])
     }
     const out = { data, types: ctx.semLegend.types, mods: ctx.semLegend.mods }
-    // 디스크 캐시에 떨궈 다음 실행 때 서버를 안 기다리고 즉시 색칠할 수 있게 한다
-    if (abs && def) {
-      void fsp
-        .readFile(abs, 'utf8')
-        .then((content) => setCached(cwd, def.id, abs, content, out))
-        .catch(() => {})
+    // 디스크 캐시에 떨궈 다음 실행 때 서버를 안 기다리고 즉시 색칠할 수 있게 한다. 내용은
+    // 디스크 재읽기 대신 서버에 동기화된 문서 텍스트(openDoc이 방금 맞춰 둔 그 본문) —
+    // 토큰이 실제로 설명하는 내용이라 키 정합이 정확하고(재읽기는 didOpen 뒤 파일이 바뀌면
+    // 새 내용 키에 옛 토큰을 넣는 미스매치 여지가 있었다) 읽기 한 번도 아낀다. 뷰어가 안정
+    // 판정까지 같은 결과를 거듭 폴링하므로, 지문이 같으면 직렬화·쓰기를 통째로 건너뛴다.
+    const docText = ctx.s.docs.get(ctx.uri)?.text
+    if (abs && def && docText != null) {
+      const memoKey = def.id + '|' + abs
+      const sig = semSig(data, docText)
+      if (this.semWrites.get(memoKey) !== sig) {
+        this.semWrites.set(memoKey, sig)
+        if (this.semWrites.size > 512) {
+          const oldest = this.semWrites.keys().next().value
+          if (oldest) this.semWrites.delete(oldest)
+        }
+        void setCached(cwd, def.id, abs, docText, out)
+      }
     }
     return out
   }

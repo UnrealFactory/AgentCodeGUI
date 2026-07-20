@@ -121,7 +121,10 @@ let hlCacheTotal = 0
 // highlight.js → HTML. Uses the named language when hljs knows it, falls back to
 // auto-detect, then to plain escaped text. Shared by the markdown renderer and the
 // file viewer card so both produce identically-themed `.hljs-*` token markup.
-export function highlightCode(code: string, lang: string): string {
+// store=false: 조회는 하되 새 결과를 캐시에 넣지 않는다 — CM 편집기의 키 입력마다
+// 달라지는 중간 버전이 예산(2M)을 채워 뷰어·채팅용 유효 캐시를 전멸시키던 오염 방지.
+// (읽기→편집 전환의 첫 색칠은 뷰어가 넣어 둔 같은 원문을 그대로 적중한다.)
+export function highlightCode(code: string, lang: string, store = true): string {
   const key = lang !== 'verse' && code.length <= HL_CACHE_BUDGET / 2 ? lang + HL_SEP + code : null
   if (key) {
     const hit = hlCache.get(key)
@@ -132,7 +135,7 @@ export function highlightCode(code: string, lang: string): string {
     }
   }
   const out = doHighlight(code, lang)
-  if (key) {
+  if (key && store) {
     hlCache.set(key, out)
     hlCacheTotal += code.length
     while (hlCacheTotal > HL_CACHE_BUDGET && hlCache.size > 1) {
@@ -169,8 +172,8 @@ function doHighlight(code: string, lang: string): string {
 // re-balances the tags: spans still open at a line's end are closed there and
 // re-opened at the start of the next line. Lets the file viewer render each line
 // as its own element (LSP hit-testing + line jumps) with identical colors.
-export function highlightToLines(code: string, lang: string): string[] {
-  const html = highlightCode(code, lang)
+export function highlightToLines(code: string, lang: string, store = true): string[] {
+  const html = highlightCode(code, lang, store)
   const tagRe = /<span[^>]*>|<\/span>/g
   const stack: string[] = []
   return html.split('\n').map((line) => {

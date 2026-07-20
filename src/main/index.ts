@@ -34,6 +34,17 @@ import type { EngineEvent, RunRequest, PermissionResponse, QuestionResponse, BgT
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
+// ── dev 샌드박스 격리(CCG_HOME) ──────────────────────────────────────────────
+// 설치본이 떠 있는 채로 dev를 시험할 때: APP_HOME(versions.ts)과 함께 userData도 통째로
+// 옮겨야 완전히 분리된다 — userData가 설치본과 같으면 requestSingleInstanceLock이 실패해
+// dev가 '로그 한 줄 없이' app.quit()으로 조용히 죽는다(그간의 미스터리 재현 원인). env
+// USERPROFILE/APPDATA 오버라이드는 못 쓴다: 크래시패드 핸들러가 --database 없이 떠 자멸
+// (exit 127)하거나 Electron이 env를 무시한다. crashReporter.start 전에 실행해야 크래시
+// 덤프(userData/Crashpad)까지 샌드박스로 따라온다. 프로덕션(isPackaged)에선 무시.
+if (!app.isPackaged && process.env.CCG_HOME) {
+  app.setPath('userData', path.join(path.resolve(process.env.CCG_HOME), 'userData'))
+}
+
 // ── 최후 안전망: 크래시 진단 + 메인 프로세스 생존 ────────────────────────────
 // crashReporter는 네이티브 크래시(V8 OOM abort 등)의 미니덤프를 로컬에 남긴다
 // (업로드 없음 — app.getPath('crashDumps')에서 확인). app ready 전에 시작해야 한다.

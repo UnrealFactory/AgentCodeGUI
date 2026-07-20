@@ -20,7 +20,14 @@ const PACKAGE = '@anthropic-ai/claude-agent-sdk'
 
 // App home folder — engines, config, and the local user profile all live here.
 // Exported so other main-process modules (e.g. profile storage) share the path.
-export const APP_HOME = path.join(os.homedir(), '.agentcodegui')
+// dev 한정 CCG_HOME 오버라이드: 설치본이 떠 있는 채로 dev를 시험할 때 홈을 통째로
+// 샌드박스로 옮긴다 — 설치본과 ~/.agentcodegui를 공유하면 dev가 조용히 죽고,
+// USERPROFILE 오버라이드는 크래시패드 핸들러가 기동 못 해(--database 누락 자멸) 못 쓴다.
+// 프로덕션(isPackaged)에선 무시되므로 사용자 환경엔 영향이 없다.
+export const APP_HOME =
+  !app.isPackaged && process.env.CCG_HOME
+    ? path.resolve(process.env.CCG_HOME)
+    : path.join(os.homedir(), '.agentcodegui')
 // Previous (pre-rebrand) home folder, migrated on first launch if it still exists.
 const LEGACY_HOME = path.join(os.homedir(), '.rookissaiclaudecode')
 const ENGINES_DIR = path.join(APP_HOME, 'engines')

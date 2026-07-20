@@ -4,7 +4,7 @@ import type { FileDiff, FileReadResult, LspLocation, LspSemanticTokens, LspStatu
 import { Markdown } from './Markdown'
 import { CmEditor, type CmEditorHandle } from './CmEditor'
 import { highlightCode, highlightToLines } from '../lib/highlight'
-import { SEM_CLASS, riderSemClass, csRememberType, csTypeHint, type SemSpan, type StructOv } from '../lib/semTokens'
+import { semByLine as semSpansByLine, buildSemDict, type SemSpan, type StructOv } from '../lib/semTokens'
 import { useCppStructOv } from '../lib/cppStruct'
 import { capMapSet } from '../lib/capMap'
 import { diffMarksOf, type DiffMarks } from '../lib/cmDiff'
@@ -63,8 +63,8 @@ function absPath(p: string, cwd: string): string {
   return isAbsPath(p) ? p : cwd.replace(/[\\/]+$/, '') + '\\' + p
 }
 
-// SEM_CLASS / riderSemClass moved to ../lib/semTokens (shared with the CodeMirror
-// editor so viewer + editor color identifiers from one table). Imported above.
+// 시맨틱 토큰 → 색 매핑(줄별 span·이름 사전)은 ../lib/semTokens 공용 — 뷰어와 CM 편집기가
+// 한 테이블·한 로직으로 칠한다(두 벌 유지 금지). Imported above.
 
 // ── hover card content — 서버 마크다운을 구조화해 IDE 툴팁처럼 ──────────────
 // clangd는 '### kind `name`' 헤더 → 메타(→ 반환형 · provided by · Type:) → 본문 →
@@ -2196,80 +2196,27 @@ function CodeView({
 
   const isMd = t.lang === 'markdown' && !mdSource
   // drop a single trailing newline so the gutter and the rendered code agree on the
-  // line count (otherwise the final "\n" adds a phantom unnumbered line)
-  const body = isMd ? '' : content.replace(/\n$/, '')
+  // line count (otherwise the final "\n" adds a phantom unnumbered line).
+  // memo — CodeView는 분석칩 %(800ms 폴링)·호버 카드 표시/해제마다 재렌더되므로
+  // O(파일) 문자열 일은 전부 memo로 묶는다(행 memo는 아래 gutterCells/codeRows).
+  const body = useMemo(() => (isMd ? '' : content.replace(/\n$/, '')), [isMd, content])
+  const lineCount = useMemo(() => (isMd ? 0 : body.split('\n').length), [isMd, body])
 
   // semantic tokens grouped per line, mapped to color classes (skipping kinds we
-  // leave to hljs) — recomputed only when a new token set arrives. Rider 언어(C#·C++)는
-  // modifier까지 보는 전용 매핑, 나머지는 공용 IntelliJ 테이블. C++의 class/property
-  // 토큰은 struct 보정(structOv)을 거쳐 연보라로 재분류될 수 있다.
-  const semByLine = useMemo(() => {
-    if (!sem || !sem.data.length) return null
-    const rider = !!paletteClassFor(t.lang)
-    const cpp = t.lang === 'cpp' || t.lang === 'c'
-    const cs = t.lang === 'csharp'
-    const srcLines = structOv || cs ? body.split('\n') : null
-    const m = new Map<number, SemSpan[]>()
-    for (let i = 0; i < sem.data.length; i += 5) {
-      const type = sem.types[sem.data[i + 3]] ?? ''
-      let cls = rider ? riderSemClass(type, sem.data[i + 4], sem.mods, cpp) : SEM_CLASS[type]
-      if (!cls) continue
-      if (srcLines && structOv && (type === 'class' || type === 'property')) {
-        const text = (srcLines[sem.data[i]] ?? '').substr(sem.data[i + 1], sem.data[i + 2])
-        if (type === 'class' ? structOv.types.has(text) : structOv.fields.has(text)) cls = 'sem-type2'
-      }
-      // C# 타입 힌트 — 미해석('variable') 토큰이 세션에서 타입으로 학습된 이름이면 승격 (semTokens).
-      // null 계열 연산자(?·??·??=·?.)는 키워드색 — 공식 문법이 눈에 띄게(사용자 피드백).
-      if (srcLines && cs) {
-        const tx = (srcLines[sem.data[i]] ?? '').substr(sem.data[i + 1], sem.data[i + 2])
-        if (cls === 'sem-type' || cls === 'sem-type2') csRememberType(tx, cls)
-        else if (type === 'variable' && cls === 'sem-plain') cls = csTypeHint(tx) ?? cls
-        else if ((type === 'operator' || type === 'punctuation') && /^(\?|\?\?|\?\?=|\?\.)$/.test(tx)) cls = 'sem-kw'
-      }
-      const line = sem.data[i]
-      let arr = m.get(line)
-      if (!arr) m.set(line, (arr = []))
-      arr.push({ char: sem.data[i + 1], len: sem.data[i + 2], cls })
-    }
-    return m.size ? m : null
-  }, [sem, t.lang, body, structOv])
-  // 식별자 텍스트 → 색 클래스 사전 — 호버 카드의 시그니처를 본문과 같은 색으로
-  // 칠하는 데 쓴다. 같은 이름이 여러 분류로 나오면 다수결.
+  // leave to hljs) — recomputed only when a new token set arrives. 매핑 로직은
+  // lib/semTokens.semByLine 공용(CM 편집기와 한 벌 — Rider 언어 modifier 매핑·
+  // C++ struct 보정·C# 타입 힌트·null 연산자 키워드색 포함).
+  const semByLine = useMemo(
+    () => (sem ? semSpansByLine(sem, t.lang, structOv, body) : null),
+    [sem, t.lang, body, structOv]
+  )
+  // 식별자 텍스트 → 색 클래스 사전 — 호버 카드의 시그니처를 본문과 같은 색으로 칠하는 데
+  // 쓴다(같은 이름 다수결 — lib/semTokens.buildSemDict 공용, CM 편집기와 한 벌). 세션
+  // 사전에도 누적해 다른 파일의 호버에서도 이 이름을 칠할 수 있게 한다(상한).
   const semDict = useMemo(() => {
-    if (!sem || !sem.data.length) return null
-    const rider = !!paletteClassFor(t.lang)
-    const cpp = t.lang === 'cpp' || t.lang === 'c'
-    const srcLines = body.split('\n')
-    const counts = new Map<string, Map<string, number>>()
-    for (let i = 0; i < sem.data.length; i += 5) {
-      const type = sem.types[sem.data[i + 3]] ?? ''
-      let cls = rider ? riderSemClass(type, sem.data[i + 4], sem.mods, cpp) : SEM_CLASS[type]
-      if (!cls) continue
-      const text = (srcLines[sem.data[i]] ?? '').substr(sem.data[i + 1], sem.data[i + 2])
-      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(text)) continue // 연산자·괄호 토큰 제외
-      // struct 보정 — 본문과 호버가 같은 색을 말하게
-      if (structOv && (type === 'class' || type === 'property')) {
-        if (type === 'class' ? structOv.types.has(text) : structOv.fields.has(text)) cls = 'sem-type2'
-      }
-      // C# 타입 힌트 — 본문(semByLine)과 같은 승격을 호버 사전에도
-      if (t.lang === 'csharp' && type === 'variable' && cls === 'sem-plain') cls = csTypeHint(text) ?? cls
-      let byCls = counts.get(text)
-      if (!byCls) counts.set(text, (byCls = new Map()))
-      byCls.set(cls, (byCls.get(cls) ?? 0) + 1)
-    }
-    const dict = new Map<string, string>()
-    for (const [text, byCls] of counts) {
-      let best = ''
-      let bn = 0
-      for (const [cls, n] of byCls)
-        if (n > bn) {
-          bn = n
-          best = cls
-        }
-      dict.set(text, best)
-      capMapSet(sessionSemDict, text, best, SESSION_SEM_MAX) // 다른 파일의 호버에서도 이 이름을 칠할 수 있게 누적(상한)
-    }
-    return dict.size ? dict : null
+    const dict = sem ? buildSemDict(sem, t.lang, body, structOv) : null
+    if (dict) for (const [text, cls] of dict) capMapSet(sessionSemDict, text, cls, SESSION_SEM_MAX)
+    return dict
   }, [sem, t.lang, body, structOv])
   const lines = useMemo(() => {
     if (isMd || body.length > HL_LIMIT) return null
@@ -2482,8 +2429,78 @@ function CodeView({
   // decorations apply only while the diff's new side still matches the file on disk
   // (per-line views only — the un-numbered plain block for huge files can't be marked);
   // a file changed outside the agent after the diff was taken simply shows unmarked.
-  const lineCount = isMd ? 0 : body.split('\n').length
   const deco = !isMd && lines != null && marks && marks.newCount === lineCount ? marks : null
+
+  // 거터·본문 행 memo — 렌더마다 수천 개 엘리먼트를 새로 만들지 않게 한다. CodeView는 분석칩
+  // %·호버 카드 때문에 자주 재렌더되는데, [lines, deco, flash]가 그대로면 행 엘리먼트 정체성이
+  // 유지돼 React 조정이 즉시 끝난다. 삭제된 코드는 그 경계 자리에 "고스트 줄"(빨간 틴트 + 옛
+  // 줄 번호)로 끼워 넣어 지워진 내용도 보인다. data-ln이 없는 표시 전용 행이라 LSP 호버·정의
+  // 이동·검색·줄 범위 선택 어디에도 잡히지 않고, 실제 줄 번호 매김도 흔들리지 않는다.
+  const { gutterCells, codeRows } = useMemo((): {
+    gutterCells: React.ReactNode[]
+    codeRows: React.ReactNode[] | null
+  } => {
+    const gutterCells: React.ReactNode[] = []
+    const codeRows: React.ReactNode[] | null = !isMd && lines != null ? [] : null
+    if (isMd) return { gutterCells, codeRows }
+    const decoCls = (i: number): string => (deco?.added.has(i + 1) ? ' dadd' : '')
+    if (codeRows) {
+      const pushGhosts = (b: number): void => {
+        const gs = deco?.ghosts.get(b)
+        if (!gs) return
+        for (const g of gs) {
+          gutterCells.push(
+            <span key={`g${b}:${g.n}`} className="gdel">
+              {g.n}
+            </span>
+          )
+          codeRows.push(
+            t.lang ? (
+              <div
+                key={`g${b}:${g.n}`}
+                className="fvl gdel"
+                dangerouslySetInnerHTML={{
+                  __html: highlightCode(g.text || ' ', t.lang)
+                }}
+              />
+            ) : (
+              <div key={`g${b}:${g.n}`} className="fvl gdel">
+                {g.text || ' '}
+              </div>
+            )
+          )
+        }
+      }
+      pushGhosts(0)
+      lines!.forEach((h, i) => {
+        gutterCells.push(
+          <span key={i} className={decoCls(i).trim() || undefined}>
+            {i + 1}
+          </span>
+        )
+        codeRows.push(
+          <div
+            key={i}
+            className={'fvl' + (flash === i + 1 ? ' flash' : '') + decoCls(i)}
+            data-ln={i + 1}
+            dangerouslySetInnerHTML={{ __html: h }}
+          />
+        )
+        pushGhosts(i + 1)
+      })
+      // 변경된 파일: 마지막 줄이 추가면 그 초록 틴트를 카드 아래 빈 높이까지 잇는 채움 행을
+      // 둔다 — 짧은 파일에서 풀폭 틴트가 뚝 끊겨 '검은 밑줄'처럼 보이던 경계를 없앤다.
+      // 표시 전용(data-ln 없음)이라 호버·검색·정의 이동엔 잡히지 않는다.
+      if (deco) {
+        const tailCls = decoCls(lines!.length - 1) // 마지막 줄이 추가면 ' dadd', 아니면 ''
+        gutterCells.push(<span key="fill" className={'fv-fill' + tailCls} aria-hidden="true" />)
+        codeRows.push(<div key="fill" className={'fvl fv-fill' + tailCls} aria-hidden="true" />)
+      }
+    } else {
+      for (let i = 0; i < lineCount; i++) gutterCells.push(<span key={i}>{i + 1}</span>)
+    }
+    return { gutterCells, codeRows }
+  }, [isMd, lines, deco, flash, lineCount, t.lang])
 
   // a changed file opens at its first change — the edit may sit deep in a long file,
   // and nothing else hints where it is. Once per opened file (not again when semantic
@@ -2510,7 +2527,6 @@ function CodeView({
     )
   }
 
-  const decoCls = (i: number): string => (deco?.added.has(i + 1) ? ' dadd' : '')
   const jumpToLine = (n: number): void => {
     // scrollIntoView(smooth)는 긴 줄에서 가로까지 끌고 간다 — 세로만 직접 계산해
     // 부드럽게 이동하고 가로는 줄 시작(왼쪽)으로 고정
@@ -2519,68 +2535,6 @@ function CodeView({
     if (!sc || !el) return
     const top = sc.scrollTop + el.getBoundingClientRect().top - sc.getBoundingClientRect().top - sc.clientHeight / 2
     sc.scrollTo({ top, left: 0, behavior: 'smooth' })
-  }
-
-  // 거터와 본문을 같은 순서로 함께 쌓는다 — 삭제된 코드는 그 경계 자리에 "고스트
-  // 줄"(빨간 틴트 + 옛 줄 번호)로 끼워 넣어 지워진 내용도 보인다. data-ln이 없는
-  // 표시 전용 행이라 LSP 호버·정의 이동·검색·줄 범위 선택 어디에도 잡히지 않고,
-  // 실제 줄 번호 매김도 흔들리지 않는다.
-  const gutterCells: React.ReactNode[] = []
-  const codeRows: React.ReactNode[] | null = lines != null ? [] : null
-  if (codeRows) {
-    const pushGhosts = (b: number): void => {
-      const gs = deco?.ghosts.get(b)
-      if (!gs) return
-      for (const g of gs) {
-        gutterCells.push(
-          <span key={`g${b}:${g.n}`} className="gdel">
-            {g.n}
-          </span>
-        )
-        codeRows.push(
-          t.lang ? (
-            <div
-              key={`g${b}:${g.n}`}
-              className="fvl gdel"
-              dangerouslySetInnerHTML={{
-                __html: highlightCode(g.text || ' ', t.lang)
-              }}
-            />
-          ) : (
-            <div key={`g${b}:${g.n}`} className="fvl gdel">
-              {g.text || ' '}
-            </div>
-          )
-        )
-      }
-    }
-    pushGhosts(0)
-    lines!.forEach((h, i) => {
-      gutterCells.push(
-        <span key={i} className={decoCls(i).trim() || undefined}>
-          {i + 1}
-        </span>
-      )
-      codeRows.push(
-        <div
-          key={i}
-          className={'fvl' + (flash === i + 1 ? ' flash' : '') + decoCls(i)}
-          data-ln={i + 1}
-          dangerouslySetInnerHTML={{ __html: h }}
-        />
-      )
-      pushGhosts(i + 1)
-    })
-    // 변경된 파일: 마지막 줄이 추가면 그 초록 틴트를 카드 아래 빈 높이까지 잇는 채움 행을
-    // 둔다 — 짧은 파일에서 풀폭 틴트가 뚝 끊겨 '검은 밑줄'처럼 보이던 경계를 없앤다.
-    // 표시 전용(data-ln 없음)이라 호버·검색·정의 이동엔 잡히지 않는다.
-    if (deco) {
-      const tailCls = decoCls(lines!.length - 1) // 마지막 줄이 추가면 ' dadd', 아니면 ''
-      gutterCells.push(<span key="fill" className={'fv-fill' + tailCls} aria-hidden="true" />)
-      codeRows.push(<div key="fill" className={'fvl fv-fill' + tailCls} aria-hidden="true" />)
-    }
-  } else {
-    for (let i = 0; i < lineCount; i++) gutterCells.push(<span key={i}>{i + 1}</span>)
   }
 
   return (
