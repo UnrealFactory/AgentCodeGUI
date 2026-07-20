@@ -18,6 +18,8 @@ import path from 'node:path'
 import os from 'node:os'
 import fs from 'node:fs'
 import { codexAccountRunDir, codexApiKeyRunDir, codexDefaultAccountEmail, syncCodexAccount } from './auth'
+import { parseUnifiedDiff, reverseApplyUnified } from './unidiff'
+import { computeLineDiff, newFileDiff } from '../claude/diff'
 import { getOpenaiApiKey } from '../apiConfig'
 import { codexBin } from './versions'
 import { lspManager } from '../lsp/manager'
@@ -88,25 +90,28 @@ function codexPolicy(mode: ModeId): { approvalPolicy: string; sandbox: string } 
   }
 }
 
-/** unified diff 텍스트 → 뷰어 마킹용 FileDiff 라인/증감. */
-function parseUnifiedDiff(diffText: string): { lines: DiffLine[]; add: number; del: number } {
-  const lines: DiffLine[] = []
-  let add = 0
-  let del = 0
-  for (const raw of diffText.split('\n')) {
-    if (raw.startsWith('@@')) lines.push({ t: 'hunk', text: raw })
-    else if (raw.startsWith('+++') || raw.startsWith('---')) continue
-    else if (raw.startsWith('+')) {
-      add++
-      lines.push({ t: 'add', text: raw.slice(1) })
-    } else if (raw.startsWith('-')) {
-      del++
-      lines.push({ t: 'del', text: raw.slice(1) })
-    } else {
-      lines.push({ t: 'ctx', text: raw.startsWith(' ') ? raw.slice(1) : raw })
-    }
+// ── 파일 변경 미리보기 정책 (Claude 엔진 fileChangePending과 같은 값·같은 이유) ──
+// diff가 4M자를 넘으면 IPC 페이로드·렌더러 상태·스냅샷이 통째로 위험해진다 — 요약 행만.
+const HUGE_PREVIEW_CHARS = 4_000_000
+// UTF-8 최악(4바이트/자)으로도 위 상한 초과가 확정되는 바이트 — 읽기 전에 stat으로 판정해
+// 수십 MB 파일의 동기 통읽기가 스트림 루프를 막지 않게 한다.
+const HUGE_PREVIEW_BYTES = 16_000_000
+const hugePreviewRows = (): DiffLine[] => [
+  { t: 'hunk', text: '@@ 파일이 너무 커서 변경 미리보기를 생략했어요 @@' }
+]
+function readDiskText(abs: string): string | null {
+  try {
+    return fs.readFileSync(abs, 'utf8')
+  } catch {
+    return null
   }
-  return { lines, add, del }
+}
+function statSizeOf(abs: string): number {
+  try {
+    return fs.statSync(abs).size
+  } catch {
+    return 0
+  }
 }
 
 // 서브에이전트 중첩 활동 아이템(subAgentActivity.item) → 카드 activity 한 줄.
@@ -209,6 +214,10 @@ export class CodexEngine {
   private turnStartedAt = 0
   /** 이번 실행의 작업 폴더 — 파일 변경 경로를 Claude 엔진처럼 cwd 상대로 바꾼다 */
   private activeCwd = ''
+  /** 절대경로 → 이 런에서 처음 만졌을 때의 원문(null = 없던 파일). Claude 엔진 baselines와
+   *  같은 계약: 매 변경을 이 기준의 "전체 파일 diff"로 승격해(whole=true 교체) 누적 편집이
+   *  한 장으로 보인다. update의 원문은 와이어 훙크를 디스크에 역적용해 복원한다. */
+  private fileBaselines = new Map<string, string | null>()
   /** turn/completed(또는 오류)로 풀리는 현재 턴의 종료 대기 */
   private turnDone: { resolve: () => void } | null = null
 
@@ -881,19 +890,28 @@ export class CodexEngine {
           const watched: { abs: string; kind: 'created' | 'changed' | 'deleted' }[] = []
           for (const ch of changes) {
             const kind = ch.kind?.type
+            const abs = path.isAbsolute(ch.path) ? ch.path : this.activeCwd ? path.join(this.activeCwd, ch.path) : ''
             // 실측: add/delete는 diff 필드에 파일 '원문'이 그대로 온다(접두사 없음) —
-            // 전 줄을 추가/삭제로 취급. update만 진짜 unified diff.
+            // 전 줄을 추가/삭제로 취급. update는 unified 훙크 '조각'이라 그대로 흘리면
+            // 렌더러 마킹(diffMarksOf — 전체 파일 diff 전제)의 줄번호·부모 복원이 전부
+            // 훙크 기준이 되어 파일 전체가 변경으로 칠해진다 → cumulativeUpdateDiff가
+            // Claude 엔진과 같은 "런 baseline↔디스크 전체 diff(whole=true 교체)"로 승격.
             let lines: DiffLine[]
             let add = 0
             let del = 0
+            let tag: 'new' | 'edit' = kind === 'add' ? 'new' : 'edit'
+            let whole = true
             if (kind === 'add' || kind === 'delete') {
-              const t = (ch.diff ?? '').replace(/\n$/, '')
+              const t = (ch.diff ?? '').replace(/\r\n/g, '\n').replace(/\n$/, '')
               const raw = t ? t.split('\n') : []
               lines = raw.map((text) => ({ t: kind === 'add' ? 'add' : 'del', text }))
               if (kind === 'add') add = lines.length
               else del = lines.length
+              // 런 첫 접촉의 원상태 기록: add=없던 파일(null)·delete=삭제 직전 원문 —
+              // 같은 파일을 이후 다시 만지면 이 기준의 누적 전체 diff가 나온다
+              if (abs && !this.fileBaselines.has(abs)) this.fileBaselines.set(abs, kind === 'add' ? null : (ch.diff ?? ''))
             } else {
-              ;({ lines, add, del } = parseUnifiedDiff(ch.diff ?? ''))
+              ;({ lines, add, del, tag, whole } = this.cumulativeUpdateDiff(abs, ch.diff ?? ''))
             }
             // 렌더러(변경 파일 칩·뷰어)는 워크스페이스 상대 경로를 기대한다 — cwd 아래면 상대화
             let p = ch.path
@@ -901,11 +919,9 @@ export class CodexEngine {
               const rel = path.relative(this.activeCwd, ch.path)
               if (rel && !rel.startsWith('..') && !path.isAbsolute(rel)) p = rel
             }
-            const file: ChangedFile = { path: p.replace(/\\/g, '/'), add, del, tag: kind === 'add' ? 'new' : 'edit' }
+            const file: ChangedFile = { path: p.replace(/\\/g, '/'), add, del, tag }
             const diff: FileDiff = { path: file.path, tag: file.tag, add, del, lines }
-            // 새 파일/전체 갱신은 whole=true — 누적 diff를 대체
-            this.emit({ type: 'file-change', runId, file, diff, whole: kind === 'add' })
-            const abs = path.isAbsolute(ch.path) ? ch.path : this.activeCwd ? path.join(this.activeCwd, ch.path) : ''
+            this.emit({ type: 'file-change', runId, file, diff, whole })
             if (abs) watched.push({ abs, kind: kind === 'add' ? 'created' : kind === 'delete' ? 'deleted' : 'changed' })
           }
           // 살아있는 LSP 서버들에도 디스크 변화를 통지 — Claude 엔진의 Write/Edit 경로와 같은
@@ -1396,6 +1412,48 @@ export class CodexEngine {
     return models
   }
 
+  /** update(수정) fileChange → 누적 전체 파일 diff. fileChange는 적용 완료 후에 오므로
+   *  디스크 = 적용 후가 성립한다: 런에서 이 파일을 처음 만지면 와이어 훙크를 디스크에
+   *  역적용해 baseline(적용 전 원문)을 복원해 두고, 매번 baseline↔디스크 전체 diff를
+   *  whole=true(교체)로 내보낸다 — Claude 엔진 fileChangePending과 같은 모양/정책.
+   *  역적용이 어긋나면(비정상 와이어) 그 한 번만 훙크 조각(whole=false)으로 흘린다 —
+   *  렌더러(FileModal)는 훙크 조각의 변경 마킹을 접으므로 오염되지 않는다. */
+  private cumulativeUpdateDiff(
+    abs: string,
+    diffText: string
+  ): { lines: DiffLine[]; add: number; del: number; tag: 'new' | 'edit'; whole: boolean } {
+    const fallback = (): { lines: DiffLine[]; add: number; del: number; tag: 'new' | 'edit'; whole: boolean } => {
+      const { lines, add, del } = parseUnifiedDiff(diffText)
+      return { lines, add, del, tag: 'edit', whole: false }
+    }
+    const huge = (): { lines: DiffLine[]; add: number; del: number; tag: 'new' | 'edit'; whole: boolean } => {
+      this.fileBaselines.delete(abs) // 거대 파일 원문을 런 내내 잡아두지 않는다
+      return { lines: hugePreviewRows(), add: 0, del: 0, tag: 'edit', whole: true }
+    }
+    if (!abs) return fallback()
+    // stat 먼저 — 어차피 미리보기를 접을 크기(≥16MB)는 동기 통읽기 자체를 생략해
+    // 스트림 루프를 읽기 시간만큼 막지 않는다 (Claude 엔진 Write/Edit 경로와 동일).
+    if (statSizeOf(abs) >= HUGE_PREVIEW_BYTES) return huge()
+    const cur = readDiskText(abs)
+    if (cur == null) return fallback()
+    if (cur.length > HUGE_PREVIEW_CHARS) return huge()
+    if (!this.fileBaselines.has(abs)) {
+      const pre = reverseApplyUnified(cur, diffText)
+      // 실패 시 baseline=현재(적용 후) — 이번 변경만 훙크로 흘리고 다음 변경부터 정상화
+      this.fileBaselines.set(abs, pre ?? cur)
+      if (pre == null) return fallback()
+    }
+    const base = this.fileBaselines.get(abs) ?? null
+    if (base != null && base.length > HUGE_PREVIEW_CHARS) return huge()
+    if (base == null) {
+      // 이 런에서 add로 태어난 파일의 후속 수정 — 전체가 '새 파일' diff로 한 장
+      const { lines, add } = newFileDiff(cur)
+      return { lines, add, del: 0, tag: 'new', whole: true }
+    }
+    const { lines, add, del } = computeLineDiff(base, cur)
+    return { lines, add, del, tag: 'edit', whole: true }
+  }
+
   /** Start a run. Returns the runId; events stream via `emit`. */
   async run(req: RunRequest): Promise<string> {
     if (this.isRunning) await this.cancel()
@@ -1409,6 +1467,7 @@ export class CodexEngine {
     this.cxCollabCalls.clear()
     this.bgTerms.clear()
     this.bgByProcess.clear()
+    this.fileBaselines.clear() // 누적 diff 기준은 런 단위 — Claude 엔진과 동일
     this.thinkingBuf = ''
     this.thinkingShown = false
     this.emit({ type: 'status', runId, status: 'analyzing' })

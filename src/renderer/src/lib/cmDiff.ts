@@ -1,6 +1,7 @@
 import { EditorView, Decoration, WidgetType, type DecorationSet } from '@codemirror/view'
 import { StateField, type EditorState, type Range } from '@codemirror/state'
 import type { FileDiff } from '@shared/protocol'
+import { diffLineOps } from '@shared/lineDiff'
 import { highlightCode } from './highlight'
 
 // ── changed-file decorations (diff painted onto the live file) ───────────────
@@ -26,6 +27,10 @@ export function diffMarksOf(diff: FileDiff): DiffMarks {
   const ghosts = new Map<number, { n: number; text: string }[]>()
   const blocks: DiffMarks['blocks'] = []
   const oldLines: string[] = []
+  // 지금 엔진은 diff 라인을 LF로 정규화해 보내지만, 구(舊) 세션 스냅샷의 diff는 CRLF
+  // 파일이면 텍스트 끝에 '\r'이 남아 있다 — 부모 복원(oldLines)이 LF 문서와 전 줄
+  // 불일치(=전체변경으로 칠해짐)가 되지 않게 여기서 한 번 벗긴다. 고스트 표시도 동일.
+  const clean = (s: string): string => (s.endsWith('\r') ? s.slice(0, -1) : s)
   const mark = (line: number, type: 'add' | 'del'): void => {
     const last = blocks[blocks.length - 1]
     if (last && line - last.end <= 1) {
@@ -39,11 +44,11 @@ export function diffMarksOf(diff: FileDiff): DiffMarks {
     if (l.t === 'hunk') continue
     if (l.t === 'del') {
       oldLn++
-      oldLines.push(l.text) // del = old-side 줄
+      oldLines.push(clean(l.text)) // del = old-side 줄
       delAfter.add(ln)
       let arr = ghosts.get(ln)
       if (!arr) ghosts.set(ln, (arr = []))
-      arr.push({ n: oldLn, text: l.text })
+      arr.push({ n: oldLn, text: clean(l.text) })
       mark(ln + 1, 'del') // ruler mark above line ln+1 (below the last line when at EOF)
       continue
     }
@@ -53,7 +58,7 @@ export function diffMarksOf(diff: FileDiff): DiffMarks {
       mark(ln, 'add')
     } else {
       oldLn++
-      oldLines.push(l.text) // ctx = old-side 줄이기도 하다
+      oldLines.push(clean(l.text)) // ctx = old-side 줄이기도 하다
     }
   }
   return { added, delAfter, ghosts, blocks, newCount: ln, oldLines }
@@ -63,6 +68,10 @@ export function diffMarksOf(diff: FileDiff): DiffMarks {
 // Deleted lines render as a block widget between lines — a red "ghost" showing the
 // removed source (syntax-highlighted; colors inherit from the host's hljs/palette
 // classes) with the old line number in a faux-gutter. Display-only (events ignored).
+// 한 삭제 블록에서 실제로 그리는 최대 행 수. 블록 위젯은 뷰포트 가상화가 안 되어 행 전부를
+// 즉시 DOM+하이라이트로 만든다 — 수만 줄 통재작성 파일의 고스트가 렌더러를 헹시키지 않게
+// 앞부분만 그리고 나머지는 개수 요약 한 줄로 접는다.
+const MAX_GHOST_ROWS = 300
 class GhostWidget extends WidgetType {
   readonly key: string
   constructor(
@@ -78,7 +87,7 @@ class GhostWidget extends WidgetType {
   toDOM(): HTMLElement {
     const wrap = document.createElement('div')
     wrap.className = 'cm-ghost'
-    for (const g of this.gs) {
+    for (const g of this.gs.slice(0, MAX_GHOST_ROWS)) {
       // 삭제 줄 = 본문 코드 줄과 같은 패딩으로 렌더 → 삭제 코드가 실제 코드와 정확히 정렬.
       // (CM 블록 위젯은 거터 칸을 못 만들어 옛 줄번호는 거터에 못 넣는다 — 생략)
       const row = document.createElement('div')
@@ -86,6 +95,12 @@ class GhostWidget extends WidgetType {
       if (this.lang) row.innerHTML = highlightCode(g.text || ' ', this.lang)
       else row.textContent = g.text || ' '
       wrap.appendChild(row)
+    }
+    if (this.gs.length > MAX_GHOST_ROWS) {
+      const more = document.createElement('div')
+      more.className = 'cm-ghost-row'
+      more.textContent = `… 외 ${(this.gs.length - MAX_GHOST_ROWS).toLocaleString()}줄 삭제`
+      wrap.appendChild(more)
     }
     return wrap
   }
@@ -95,54 +110,10 @@ class GhostWidget extends WidgetType {
 }
 
 // ── 표준 라인 diff (부모 a ↔ 현재 b) ─────────────────────────────────────────
-// 두 줄 배열을 비교해 편집 스크립트를 돌려준다: eq(그대로)·del(부모에만 있음=삭제)·
-// add(현재에만 있음=추가/변경). 앞뒤 공통 줄을 먼저 잘라 국소 변경은 O(n)으로 끝내고,
-// 가운데 차이 구간만 LCS DP를 돈다.
-type DiffOp = { t: 'eq'; ai: number; bi: number } | { t: 'del'; ai: number } | { t: 'add'; bi: number }
-function diffOps(a: string[], b: string[]): DiffOp[] {
-  const n = a.length
-  const m = b.length
-  const ops: DiffOp[] = []
-  let p = 0
-  const cap = Math.min(n, m)
-  while (p < cap && a[p] === b[p]) p++
-  let s = 0
-  while (s < cap - p && a[n - 1 - s] === b[m - 1 - s]) s++
-  for (let i = 0; i < p; i++) ops.push({ t: 'eq', ai: i, bi: i })
-  const midA = a.slice(p, n - s)
-  const midB = b.slice(p, m - s)
-  const MA = midA.length
-  const MB = midB.length
-  if (MA && MB && MA * MB <= 4_000_000) {
-    const dp: Int32Array[] = []
-    for (let i = 0; i <= MA; i++) dp.push(new Int32Array(MB + 1))
-    for (let i = MA - 1; i >= 0; i--)
-      for (let j = MB - 1; j >= 0; j--)
-        dp[i][j] = midA[i] === midB[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1])
-    let i = 0
-    let j = 0
-    while (i < MA || j < MB) {
-      if (i < MA && j < MB && midA[i] === midB[j]) {
-        ops.push({ t: 'eq', ai: p + i, bi: p + j })
-        i++
-        j++
-      } else if (i < MA && (j >= MB || dp[i + 1][j] >= dp[i][j + 1])) {
-        // 동점이면 del을 먼저 — 수정한 줄이 "🔴 옛거(위) → 🟢 새거(아래)" 표준 diff 순서로 보이게
-        ops.push({ t: 'del', ai: p + i })
-        i++
-      } else {
-        ops.push({ t: 'add', bi: p + j })
-        j++
-      }
-    }
-  } else {
-    // 차이 구간이 비정상적으로 크면 DP 포기 — 전부 삭제 후 전부 추가(드묾·안전)
-    for (let i = 0; i < MA; i++) ops.push({ t: 'del', ai: p + i })
-    for (let j = 0; j < MB; j++) ops.push({ t: 'add', bi: p + j })
-  }
-  for (let k = 0; k < s; k++) ops.push({ t: 'eq', ai: n - s + k, bi: m - s + k })
-  return ops
-}
+// 코어는 shared/lineDiff의 Myers(엔진 diff와 같은 구현): 비용이 실제 변경량 D에 비례해
+// 큰 파일의 먼 두 곳 수정도 정확히 그 줄만 나오고, 수정 묶음은 "🔴 옛거(위) → 🟢 새거
+// (아래)" 순서(del 전부 → add 전부)가 계약으로 보장된다. 상한(D 2000·스텝 예산) 초과는
+// 전부 삭제+전부 추가 폴백 — 그 규모로 진짜 바뀐 문서의 정직한 표시.
 
 // 읽기 모드 데코 — "현재 파일(C) vs 부모(parent)" 표준 diff. 추가/변경된 C 줄 = 초록,
 // 삭제된 부모 줄 = 그 자리 빨강 고스트 블록. 기준이 부모(불변)라 저장·재열기에도 안 깨진다.
@@ -154,7 +125,7 @@ function buildReadDiff(state: EditorState, parent: string[], lang: string): Deco
   // CM은 끝의 개행을 빈 줄로 들고 있다 — C 끝에만 빈 줄이 있으면 부모에도 맞춰 헛 diff 방지
   if (cLines.length && cLines[cLines.length - 1] === '' && (pLines.length === 0 || pLines[pLines.length - 1] !== ''))
     pLines = [...pLines, '']
-  const ops = diffOps(pLines, cLines)
+  const ops = diffLineOps(pLines, cLines)
   const ranges: Range<Decoration>[] = []
   let curLine = 0 // 지금까지 낸 현재(C) 줄 수
   let pendingDel: { n: number; text: string }[] = []

@@ -196,7 +196,11 @@ const MAX_TOOLS_PER_GROUP = 400
 const MAX_SUBAGENT_TOOLS = 200
 const MAX_SUBAGENT_LOG = 100
 const MAX_TERMINAL_LINES = 500
-const MAX_DIFF_LINES = 4000
+// 파일 하나의 diff 라인 상한. 4000이던 시절은 훙크 조각이 편집마다 concat되던 보험이었고
+// (지금은 엔진이 whole=true 전체 diff로 교체 방출), 크래시 원인이던 diff DP는 셀 캡
+// (cmDiff·main diff의 4M cells)이 따로 막는다 — 이 상한이 지키는 건 스냅샷·상태 크기뿐.
+// 초과 시 트림(마킹 불가 + 수만 줄이 죽은 무게로 남음) 대신 요약 행 하나로 접는다.
+const MAX_DIFF_LINES = 30_000
 
 // 실행 1건분의 모델별 토큰(result.tokenUsage)을 대화 누적(tokenTotals)에 더한다.
 // 보고가 없으면(생략·빈 배열) 기존 객체를 그대로 돌려줘 불필요한 리렌더를 만들지 않는다.
@@ -535,12 +539,13 @@ export function reducer(state: SessionState, action: Action): SessionState {
           : { ...existing, add: existing.add + e.file.add, del: existing.del + e.file.del, tag: existing.tag === 'new' ? 'new' : e.file.tag }
       const files = [updated, ...state.files.filter((f) => f.path !== e.file.path)]
       const prevDiff = state.diffs[e.file.path]
-      // a file re-edited many times otherwise grows its line array without bound —
-      // keep the most recent MAX_DIFF_LINES with a marker where older hunks fell off
       const merged = prevDiff && !isWrite ? [...prevDiff.lines, ...e.diff.lines] : e.diff.lines
+      // 상한 초과는 요약 행으로 대체 — +N/−N 칩·카운트는 살아 있고 뷰어 마킹만 접힌다
+      // ('생략' 텍스트가 FileModal의 훙크 조각 가드에 걸리는 게 의도). 라인을 실어 봤자
+      // 마킹이 안 되는 diff는 스냅샷·IPC 무게만 늘린다.
       const lines =
         merged.length > MAX_DIFF_LINES
-          ? [{ t: 'hunk' as const, text: '@@ 이전 변경 일부 생략 @@' }, ...merged.slice(-MAX_DIFF_LINES)]
+          ? [{ t: 'hunk' as const, text: '@@ 변경이 너무 길어 미리보기를 생략했어요 @@' }]
           : merged
       const diff: FileDiff =
         prevDiff && !isWrite

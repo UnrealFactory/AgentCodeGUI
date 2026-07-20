@@ -486,6 +486,7 @@ export const CmEditor = forwardRef<
   structOvRef.current = structOv
   const baselineRef = useRef('') // last-saved text — dirty = current doc differs from this
   const dirtyRef = useRef(false)
+  const eolRef = useRef<'\n' | '\r\n'>('\n') // 디스크 원본 개행 — 문서는 LF, 저장 때 되살린다
   // callbacks via refs so a parent re-render (new inline handlers) never rebuilds the editor
   const onDirtyRef = useRef(onDirtyChange)
   const onSavedRef = useRef(onSaved)
@@ -497,7 +498,10 @@ export const CmEditor = forwardRef<
     if (!view) return
     const text = view.state.doc.toString()
     if (text === baselineRef.current) return
-    const r = await window.api.writeFile(cwd, path, text)
+    // 문서는 LF로 정규화되어 있다 — 원본이 CRLF였으면 저장 때 되살린다. 안 그러면 저장
+    // 한 번에 파일 전체 개행이 바뀌어 git·에이전트 diff가 전부 변경으로 잡히고, 푸터의
+    // CRLF 표기와도 모순이 된다.
+    const r = await window.api.writeFile(cwd, path, eolRef.current === '\r\n' ? text.replace(/\n/g, '\r\n') : text)
     if (r.ok) {
       baselineRef.current = text
       dirtyRef.current = false
@@ -527,6 +531,7 @@ export const CmEditor = forwardRef<
     if (!parent) return
     // normalize CRLF→LF so hljs's `\n` line split and CM's line offsets agree
     const doc = content.replace(/\r\n/g, '\n')
+    eolRef.current = content.includes('\r\n') ? '\r\n' : '\n' // 저장(doSave) 때 복원할 원본 개행
     baselineRef.current = doc
     dirtyRef.current = false
     // 읽기 모드 diff의 기준 = 부모(에이전트 작업 전, marks.oldLines). 마운트 시점 모드/마크로 초기 구성.

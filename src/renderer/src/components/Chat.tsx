@@ -289,6 +289,15 @@ function fmtWorked(ms: number): string {
   return r ? `${m}분 ${r}초 동안 작업함` : `${m}분 동안 작업함`
 }
 
+// 작업 중 인디케이터의 라이브 경과 — 마무리 줄(fmtWorked)과 같은 한국어 단위라
+// 턴이 끝나는 순간 'N초 동안 작업함'으로 자연스럽게 이어진다
+function fmtElapsedKo(s: number): string {
+  if (s < 60) return `${s}초`
+  const m = Math.floor(s / 60)
+  const r = s % 60
+  return r ? `${m}분 ${r}초` : `${m}분`
+}
+
 // result shown on the right: a spinner while running, a red mark on error, the +/-
 // line counts for edits (colored), or the tool's text summary otherwise.
 // Bash는 '✓' 대신 실행 시간 · 출력 줄수 — 다른 도구의 '10줄'과 같은 문법.
@@ -976,7 +985,9 @@ function rollPhraseColor(): string {
 // Persistent "working" indicator shown in the chat while the agent is busy, so
 // the user can always tell it's running (not stuck). Shows the latest thinking
 // summary when available, otherwise a rotating playful label.
-export function WorkingIndicator({ text }: { text: string | null }) {
+// elapsed(초)는 useAgentSession 훅에서 내려온다 — 질문/승인 카드나 답변 스트리밍으로
+// 인디케이터가 잠시 언마운트돼도 훅이 계속 세고 있어 리셋되지 않는다
+export function WorkingIndicator({ text, elapsed }: { text: string | null; elapsed: number }) {
   const [i, setI] = useState(() => Math.floor(Math.random() * WORKING_PHRASES.length))
   const [color, setColor] = useState(rollPhraseColor)
   useEffect(() => {
@@ -1010,6 +1021,13 @@ export function WorkingIndicator({ text }: { text: string | null }) {
       </span>
       <span key={label} className={'working-label' + (text || !color ? '' : ' ' + color)}>
         {label}
+      </span>
+      {/* 경과 시간 — 문구 span과 형제(문구는 key={label}로 리마운트되며 shimmer가
+          도는데, 초가 그 안에 있으면 매초 리마운트로 shimmer가 리셋된다).
+          랜덤멘트에 색이 와도 시간은 항상 조용한 회색(--text-4) */}
+      <span className="working-time">
+        <span className="dot">·</span>
+        {fmtElapsedKo(elapsed)}
       </span>
     </div>
   )

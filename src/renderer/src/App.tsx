@@ -106,7 +106,7 @@ interface PersistedChats {
 }
 
 function MainApp({ user }: { user: AppUser }) {
-  const { state, busy, begin, clearPermission, clearQuestion, answerQuestion, load } = useAgentSession()
+  const { state, elapsed, busy, begin, clearPermission, clearQuestion, answerQuestion, load } = useAgentSession()
   // 턴을 막고 있는 포그라운드 Bash가 있을 때만 셸 팝오버에 "건너뛰기"(Ctrl+B) 버튼을 노출
   const canSkipWait = useMemo(() => hasRunningBash(state.messages), [state.messages])
   const [input, setInput] = useState('')
@@ -1135,7 +1135,7 @@ function MainApp({ user }: { user: AppUser }) {
                     onOpenImage={openViewer}
                   />
                 ))}
-                {busy && showWorking && <WorkingIndicator text={state.thinkingText} />}
+                {busy && showWorking && <WorkingIndicator text={state.thinkingText} elapsed={elapsed} />}
               </div>
             )}
             {follow.showJump && (

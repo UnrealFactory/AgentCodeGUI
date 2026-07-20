@@ -2827,7 +2827,15 @@ export function FileModal({
   // jump stack stores backslash ones) — drives the change marks and the header stats.
   // Git 카드에서 온 일회성 diff(ov.diff)가 있으면 세션 diff 대신 그걸 쓴다.
   const diff = ov ? ov.diff : (effPath && diffs?.[effPath.replace(/\\/g, '/')]) || null
-  const marks = useMemo(() => (diff ? diffMarksOf(diff) : null), [diff])
+  const marks = useMemo(() => {
+    if (!diff) return null
+    // 훙크 조각 diff는 마킹 불가: diffMarksOf는 "전체 파일 diff"를 전제하므로 조각을 넣으면
+    // 줄번호·부모 복원이 훙크 기준이 되어 읽기 모드가 파일 전체를 변경(초록)으로 칠한다.
+    // 해당 케이스 = 구(舊) 세션의 Codex unified 훙크(지금 엔진은 전체 diff로 승격해 보냄),
+    // 역적용 폴백, 앞부분이 잘린 병합 diff('생략' 마커) — 마킹만 접고 +N/−N 칩은 유지.
+    const fragment = diff.lines.some((l) => l.t === 'hunk' && (/^@@ -\d/.test(l.text) || l.text.includes('생략')))
+    return fragment ? null : diffMarksOf(diff)
+  }, [diff])
   // 파일이 바뀔 때마다 항상 읽기 모드로 연다(파일 종류 무관 일관). 편집은 Ctrl+E로.
   // diff/일반 보기(diffView)는 여기서 리셋하지 않는다 — 사용자가 Ctrl+D로 고른 보기를
   // 파일·네비게이션을 넘어 전역으로 유지한다.

@@ -992,6 +992,11 @@ input,textarea{ font-family:inherit; }
 .working-label.wc-fire{ animation-duration:.35s, 2.8s; background-image:linear-gradient(90deg,#ff6b6b,#ff9d4d,#ffd76b,#ff6b6b); }
 .working-label.wc-neon{ background-image:linear-gradient(90deg,#6bffee,#ff6bf0,#6bffee); }
 
+/* 작업 중 경과 시간 — 문구 옆의 '· N초'. 문구 span과 형제라 shimmer 리셋과 무관.
+   tabular-nums로 초가 바뀌어도 폭이 안 떨린다. 간격: 문구와는 flex gap(10px), 점 뒤 6px */
+.working-time{ font-size:12.5px; color:var(--text-4); font-variant-numeric:tabular-nums; animation:fade .35s ease; }
+.working-time .dot{ margin-right:6px; }
+
 .codeblock{ margin-top:14px; border:1px solid var(--line-2); border-radius:10px; overflow:hidden; background:var(--inset); animation:rise .4s cubic-bezier(.2,.8,.2,1) both; }
 .codeblock .cb-head{ display:flex; align-items:center; gap:8px; padding:8px 12px; border-bottom:1px solid var(--line); background:var(--surface); }
 .codeblock .cb-head .fn{ font-family:var(--font-mono); font-size:11.5px; color:var(--text-2); }

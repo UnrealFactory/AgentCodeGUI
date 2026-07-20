@@ -97,7 +97,7 @@ function userFromProfile(p: UserProfile): AppUser {
 const CWD_KEY = 'session.cwd'
 
 export function SessionWindow(): React.ReactElement {
-  const { state, busy, begin, clearPermission, clearQuestion, answerQuestion, load } = useAgentSession((cb) =>
+  const { state, elapsed, busy, begin, clearPermission, clearQuestion, answerQuestion, load } = useAgentSession((cb) =>
     window.api.session?.onEvent?.(cb) ?? (() => {})
   )
   const [max, setMax] = useState(false)
@@ -607,7 +607,7 @@ export function SessionWindow(): React.ReactElement {
                   onOpenImage={openViewer}
                 />
               ))}
-              {busy && showWorking && <WorkingIndicator text={state.thinkingText} />}
+              {busy && showWorking && <WorkingIndicator text={state.thinkingText} elapsed={elapsed} />}
             </div>
           )}
           {follow.showJump && (

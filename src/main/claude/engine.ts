@@ -1222,15 +1222,20 @@ export class ClaudeEngine {
       // 크기 판정보다 읽기가 먼저라, 수십 MB 파일 편집이 스트림 루프를 읽기 시간만큼
       // 통째로 막은 뒤에야 "너무 커서 생략"으로 빠졌다.
       const hugeOnDisk = statSize(abs) >= HUGE_BYTES_CERTAIN
-      const cur = hugeOnDisk ? null : readDisk(abs)
+      // 원문·편집 문자열 모두 LF로 정규화해 다룬다 — CLI의 Edit는 개행 차이를 흡수해
+      // 적용하지만 우리 applyEdit(리터럴 indexOf)는 CRLF 원문에서 old_string(LF)을 못
+      // 찾아 미리보기가 통째로 누락(+0−0)됐다. diff 라인 텍스트도 LF로 깨끗해져 뷰어의
+      // LF 정규화 문서(CmEditor)와 줄 단위로 일치한다.
+      const raw = hugeOnDisk ? null : readDisk(abs)
+      const cur = raw == null ? null : normEol(raw)
       let next: string
       if (name === 'Write') {
-        next = String(input.content ?? '')
+        next = normEol(String(input.content ?? ''))
       } else if (name === 'Edit') {
-        next = applyEdit(cur ?? '', String(input.old_string ?? ''), String(input.new_string ?? ''), !!input.replace_all)
+        next = applyEdit(cur ?? '', normEol(String(input.old_string ?? '')), normEol(String(input.new_string ?? '')), !!input.replace_all)
       } else {
         const edits = Array.isArray(input.edits) ? (input.edits as Array<Record<string, unknown>>) : []
-        next = edits.reduce((t, e) => applyEdit(t, String(e.old_string ?? ''), String(e.new_string ?? ''), !!e.replace_all), cur ?? '')
+        next = edits.reduce((t, e) => applyEdit(t, normEol(String(e.old_string ?? '')), normEol(String(e.new_string ?? '')), !!e.replace_all), cur ?? '')
       }
       this.tools.set(id, { name, cwd, startedAt, abs, pending: this.fileChangePending(rel, abs, cur, next, hugeOnDisk) })
     }
@@ -1662,6 +1667,11 @@ function statSize(abs: string): number {
   } catch {
     return 0
   }
+}
+
+// CRLF → LF — 파일 변경 미리보기 파이프라인은 전부 LF 기준(CmEditor 문서 정규화와 짝)
+function normEol(s: string): string {
+  return s.replace(/\r\n/g, '\n')
 }
 
 // apply an Edit-tool replacement to text the same way the tool does: first occurrence

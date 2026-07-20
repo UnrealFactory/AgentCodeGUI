@@ -402,7 +402,7 @@ const PanelView = memo(function PanelView({
                   onOpenImage={onOpenImage}
                 />
               ))}
-              {busy && showWorking && <WorkingIndicator text={state.thinkingText} />}
+              {busy && showWorking && <WorkingIndicator text={state.thinkingText} elapsed={elapsed} />}
             </div>
           )}
         </div>
