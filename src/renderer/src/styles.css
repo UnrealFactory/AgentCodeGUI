@@ -456,7 +456,9 @@ input,textarea{ font-family:inherit; }
   background-repeat:no-repeat; background-position:14px 0; background-size:calc(var(--d,0) * 13px) 100%;
 }
 .fxr:hover{ background-color:var(--hover); color:var(--text); }
-.fxr.on{ background-color:rgba(255,255,255,.08); color:var(--text); }
+/* 선택 행 — 진한 단색 판(.08)은 아크릴 위에서 탁한 회색 슬랩으로 읽혀서,
+   호버와 같은 베일 + 헤어라인 링으로 '선택'을 표시한다 */
+.fxr.on{ background-color:var(--hover); color:var(--text); box-shadow:inset 0 0 0 1px var(--line-2); }
 .fxr .tw{ width:11px; flex:0 0 11px; display:grid; place-items:center; color:var(--text-4); }
 .fxr .tw svg{ transition:transform .13s ease; }
 .fxr.open .tw svg{ transform:rotate(90deg); }

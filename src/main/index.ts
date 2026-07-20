@@ -427,6 +427,18 @@ function flushAndDestroy(wcId: number): void {
   s.flushTimer = setTimeout(() => finishFlush(wcId), 1500)
 }
 
+// 비활성 창에서 DWM이 아크릴을 끄고 불투명 회색 폴백을 그리는 것을 되돌린다 — blur 때
+// 재질을 다시 적용하면 비활성 상태로도 유리가 유지된다. 50ms 지연은 DWM의 비활성 전환이
+// 끝난 뒤에 재적용이 얹히도록 하는 간격(실측: 흰 배경·글래스100에서 사이드바 81→51로
+// 꺼지던 것이 81 유지, 전환 순간 딥은 1프레임 3/255뿐). 재질 미지원(Win10)은 원래 no-op.
+function keepAcrylicWhenBlurred(win: BrowserWindow): void {
+  win.on('blur', () => {
+    setTimeout(() => {
+      if (!win.isDestroyed()) win.setBackgroundMaterial('acrylic')
+    }, 50)
+  })
+}
+
 function createSessionWindow(chatId?: string): void {
   // 새 창 = 새 채팅 레코드. 빈 채팅은 디스크에 쓰이지 않으므로(writeSessionChats가 거름)
   // 열었다 그냥 닫으면 흔적이 남지 않고, 닫힌 채팅을 다시 열면 기존 레코드에 창만 붙는다.
@@ -457,6 +469,7 @@ function createSessionWindow(chatId?: string): void {
     }
   })
   const wcId = win.webContents.id
+  keepAcrylicWhenBlurred(win)
 
   win.once('ready-to-show', () => win.show())
 
@@ -538,7 +551,7 @@ function createWindow(): void {
     frame: false,
     // 창 자체가 카드 — DWM 아크릴 재질(transparent와 병용 불가). 라운드·그림자·
     // 네이티브 스냅/최대화/리사이즈가 OS에서 그대로 온다. 비활성 시 재질이 꺼지는
-    // 것은 OS 사양으로 수용(PoC 확정).
+    // 것은 keepAcrylicWhenBlurred로 되살린다(blur 시 재적용 — 실측 검증).
     // backgroundColor는 절대 깔지 않는다 — 불투명 층이 재질과 웹 콘텐츠 사이를 막아
     // 유리가 완전히 죽는다(실측). 재질 미지원(Win10)은 DWM이 알아서 불투명 폴백.
     backgroundMaterial: 'acrylic',
@@ -554,6 +567,7 @@ function createWindow(): void {
   })
 
   if (state.maximized) mainWindow.maximize()
+  keepAcrylicWhenBlurred(mainWindow)
 
   mainWindow.on('ready-to-show', () => {
     mainWindow?.show()
