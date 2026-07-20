@@ -105,6 +105,7 @@ const api: WindowApi = {
   saveChats: (data: unknown) => ipcRenderer.invoke(IPC.chatsSave, data),
   getUiPrefs: () => ipcRenderer.invoke(IPC.uiPrefsGet) as Promise<Record<string, unknown>>,
   saveUiPrefs: (prefs: Record<string, unknown>) => ipcRenderer.invoke(IPC.uiPrefsSave, prefs),
+  onUiGlassChanged: (cb) => subscribe(IPC.uiGlassChanged, cb),
   openPath: (cwd, relPath) => ipcRenderer.invoke(IPC.shellOpenPath, { cwd, relPath }),
   revealPath: (cwd, relPath) => ipcRenderer.invoke(IPC.shellRevealPath, { cwd, relPath }),
   renamePath: (cwd, relPath, newName) => ipcRenderer.invoke(IPC.fsRename, { cwd, relPath, newName }),

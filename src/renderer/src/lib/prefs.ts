@@ -65,3 +65,10 @@ export function setPref(key: string, value: unknown): void {
   window.clearTimeout(saveTimer)
   saveTimer = window.setTimeout(flush, 250)
 }
+
+/** 다른 창의 변경 브로드캐스트를 캐시에만 반영 — 저장을 걸지 않는다. 여기서 저장까지 하면
+ *  원본 창의 flush와 통(blob)째 저장이 경합하고, 반영을 안 하면 이 창의 다음 flush가 낡은
+ *  값으로 되돌려 쓴다(둘 다 실측 가능한 함정). */
+export function patchPref(key: string, value: unknown): void {
+  cache[key] = value
+}

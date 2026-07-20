@@ -804,6 +804,7 @@ export const IPC = {
   chatsSave: 'chats:save', // persist the chat list so conversations survive a restart
   uiPrefsGet: 'ui-prefs:get', // load renderer UI prefs blob (viewer size/zoom, chat zoom)
   uiPrefsSave: 'ui-prefs:save', // persist the whole UI prefs blob to ~/.agentcodegui
+  uiGlassChanged: 'ui-glass:changed', // 유리(벽지 비침) 값 브로드캐스트 → 전 창 틴트 동기화
   skillList: 'skill:list', // enumerate global + project skills with their on/off state
   skillSetEnabled: 'skill:set-enabled', // turn a skill on/off (persisted to the app home)
   mcpList: 'mcp:list', // enumerate user + project + local MCP servers with on/off state

@@ -962,6 +962,9 @@ function registerIpc(): void {
 
   // renderer UI prefs (viewer size/zoom, chat zoom, verse doc language), in the app home folder
   ipcMain.handle(IPC.uiPrefsGet, async () => readUiPrefs())
+  // 유리 슬라이더(ui.glass)의 마지막 브로드캐스트 값 — prefs 블롭은 뷰어 줌 등 딴 변경에도
+  // 통째로 저장되므로, 값이 실제로 바뀐 저장에만 전 창 브로드캐스트를 쏜다
+  let lastGlass = readUiPrefs()['ui.glass']
   ipcMain.handle(IPC.uiPrefsSave, async (_e, prefs: Record<string, unknown>) => {
     writeUiPrefs(prefs)
     // Verse hover docs in Korean unless '원문 보기'. 언어가 실제로 바뀌었으면 레지스트리 세대를
@@ -969,6 +972,15 @@ function registerIpc(): void {
     if (setVerseDocKo(prefs?.verseDocLang !== 'en')) bumpVerseRegistryRev()
     // UE C++ 공식 주석 번역(clangd 호버) — 다음 호버부터 즉시 적용, 캐시 없음이라 세대 갱신 불필요
     setUeDocKo(prefs?.ueDocLang !== 'en')
+    // 유리(벽지 비침) — 나란히 뜬 아크릴 창들의 비침이 어긋나면 바로 보이므로, 추가 채팅 창
+    // 포함 전 창에 같은 값을 뿌린다 (수신 쪽은 prefs 캐시 patch만 — 재저장 레이스 없음)
+    const g = prefs?.['ui.glass']
+    if (typeof g === 'number' && g !== lastGlass) {
+      lastGlass = g
+      for (const w of BrowserWindow.getAllWindows()) {
+        if (!w.isDestroyed()) w.webContents.send(IPC.uiGlassChanged, g)
+      }
+    }
   })
   setVerseDocKo(readUiPrefs().verseDocLang !== 'en') // apply the saved choice at startup
   setUeDocKo(readUiPrefs().ueDocLang !== 'en')

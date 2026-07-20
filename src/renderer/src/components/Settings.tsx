@@ -14,6 +14,7 @@ import type {
 } from '@shared/protocol'
 import { FileBadge } from './fileType'
 import { getPref, setPref } from '../lib/prefs'
+import { applyGlass, GLASS_DEFAULT, GLASS_PREF } from '../lib/glass'
 import {
   IconClose,
   IconServer,
@@ -37,6 +38,7 @@ import {
   IconX2,
   IconSearch,
   IconMouse,
+  IconContrast,
   type IconProps
 } from './icons'
 import { GestureGlyph, GESTURE_DEFAULTS, MouseGestureLayer, scrollGestures } from './mouseGesture'
@@ -52,7 +54,7 @@ import {
   setHideFiles
 } from '../lib/hideDirs'
 
-export type SettingsView = 'profile' | 'account' | 'version' | 'api' | 'mcp' | 'skill' | 'lsp' | 'explorer' | 'gesture'
+export type SettingsView = 'profile' | 'account' | 'version' | 'api' | 'mcp' | 'skill' | 'lsp' | 'explorer' | 'gesture' | 'display'
 type View = SettingsView
 
 // 레일 — PoC 재해석: 그룹 라벨(사용자/엔진/확장/환경) 아래 항목. keys는 검색어(한국어 동의어).
@@ -81,6 +83,7 @@ const NAV_GROUPS: { label: string; items: { id: View; label: string; Icon: (p: I
   {
     label: '환경',
     items: [
+      { id: 'display', label: 'Display', Icon: IconContrast, keys: '화면 유리 투명 아크릴 벽지 비침 배경 glass' },
       { id: 'lsp', label: 'Code', Icon: IconCode, keys: '코드 언어 서버 lsp 하이라이트 심볼' },
       { id: 'explorer', label: 'Explorer', Icon: IconFilter, keys: '탐색기 숨김 필터 폴더' },
       { id: 'gesture', label: 'Gestures', Icon: IconMouse, keys: '제스처 마우스 우클릭' }
@@ -1904,7 +1907,7 @@ function GestureView(): React.ReactElement {
   )
 }
 
-// px 값 슬라이더 한 줄 — 현재 값 표시 + 기본값에서 벗어나면 되돌리기 칩
+// 값 슬라이더 한 줄 — 현재 값 표시 + 기본값에서 벗어나면 되돌리기 칩 (단위 기본 px)
 function PxSlider({
   label,
   desc,
@@ -1912,6 +1915,7 @@ function PxSlider({
   max,
   def,
   value,
+  unit = 'px',
   onChange
 }: {
   label: string
@@ -1920,6 +1924,7 @@ function PxSlider({
   max: number
   def: number
   value: number
+  unit?: string
   onChange: (v: number) => void
 }): React.ReactElement {
   const pct = ((value - min) / (max - min)) * 100
@@ -1930,10 +1935,14 @@ function PxSlider({
         <span className="sld-d">{desc}</span>
         {value !== def && (
           <button className="sld-reset" onClick={() => onChange(def)}>
-            기본값 {def}px
+            기본값 {def}
+            {unit}
           </button>
         )}
-        <span className="sld-v">{value}px</span>
+        <span className="sld-v">
+          {value}
+          {unit}
+        </span>
       </div>
       <input
         className="rng2"
@@ -1946,6 +1955,46 @@ function PxSlider({
         onChange={(e) => onChange(Number(e.target.value))}
       />
     </div>
+  )
+}
+
+// ── 화면 (유리 — 아크릴 벽지 비침) ───────────────────────────────────
+// 슬라이더 0~100 하나가 창 뒤가 비치는 정도를 정한다. 값은 ui.glass로 저장되고 lib/glass가
+// :root 인라인 변수(--panel/--chat-bg)로 반영 — 50이 styles.css의 PoC 확정값(스타일시트 원본).
+// 추가 채팅 창은 저장 시 uiGlassChanged 브로드캐스트로 따라온다(드래그 중엔 이 창만 즉시).
+function DisplayView(): React.ReactElement {
+  const [glass, setGlass] = useState<number>(() => getPref(GLASS_PREF, GLASS_DEFAULT))
+  return (
+    <>
+      <div className="set-h1">Display</div>
+      <div className="set-h1-sub">
+        창은 DWM 아크릴 유리 위에 얹혀 있어요. 뒤가 얼마나 비칠지 여기서 조절해요 — 본채팅·추가 채팅 창 모두에 함께
+        적용돼요.
+      </div>
+
+      <div className="set-sec">유리</div>
+      <div className="sc2">
+        <PxSlider
+          label="벽지 비침"
+          desc="0 = 완전 불투명 · 클수록 창 뒤가 잘 비쳐요 — 끌면 바로 보여요"
+          min={0}
+          max={100}
+          def={GLASS_DEFAULT}
+          unit="%"
+          value={glass}
+          onChange={(v) => {
+            setGlass(v)
+            setPref(GLASS_PREF, v)
+            applyGlass(v)
+          }}
+        />
+      </div>
+
+      <div className="set-note2">
+        아크릴 재질은 창이 활성일 때만 살아나요 — 비활성 창이 잠시 불투명해지는 건 Windows 사양이에요. 재질이 없는
+        Windows 10에서는 값과 무관하게 늘 불투명해요.
+      </div>
+    </>
   )
 }
 
@@ -2215,6 +2264,7 @@ export function SettingsModal({
               {view === 'api' && <ApiView />}
               {view === 'mcp' && <McpView cwd={cwd} />}
               {view === 'skill' && <SkillView cwd={cwd} />}
+              {view === 'display' && <DisplayView />}
               {view === 'lsp' && <LspView />}
               {view === 'explorer' && <ExplorerView />}
               {view === 'gesture' && <GestureView />}

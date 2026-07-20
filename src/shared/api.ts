@@ -142,6 +142,8 @@ export interface WindowApi {
   getUiPrefs(): Promise<Record<string, unknown>>
   /** persist the whole UI prefs blob to ~/.agentcodegui/ui-prefs.json */
   saveUiPrefs(prefs: Record<string, unknown>): Promise<void>
+  /** 유리(벽지 비침) 값 변경 구독 — 어느 창에서 바꾸든 전 창이 같은 값을 받는다 */
+  onUiGlassChanged(cb: (v: number) => void): () => void
   /** open a file (cwd-relative) with the OS default app */
   openPath(cwd: string, relPath: string): Promise<void>
   /** reveal (highlight) a file/folder in the OS file manager — explorer "파일 탐색기에서 보기" */
