@@ -447,6 +447,9 @@ const VERSE_WS_RECHECK = 4_000
 // 새 파일 편입(실측 0.8~1.6초, 소형 솔루션 기준)이 끝난 뒤에 프라임해야 한다. 그 전에
 // 프라임하면 새 파일이 빠진 컴파일이 "프라임 완료"로 확정돼 영영 무색(실측 재현).
 const PRIME_REDO_GAP = 3_000
+// C# 디스크 워처(watchCsDir)가 반응할 확장자 — 소스와 프로젝트/솔루션 파일(멤버십·참조
+// 변화도 재프라임 사유)
+const CS_WATCH_EXTS = new Set(['cs', 'csx', 'csproj', 'sln', 'slnx', 'props', 'targets'])
 
 interface DocState {
   version: number
@@ -516,6 +519,49 @@ interface ServerHandle {
   // 도구의 코드 재생성, 외부 에디터, git)를 notifyWatchedFiles로 흘린다(watchCsRoot).
   // slnWatch와 같은 자리들에서 close.
   dirWatch?: fs.FSWatcher
+  // C# 전용: 솔루션이 참조하는 '루트 밖' csproj 폴더들의 재귀 워처(watchCsProjects) —
+  // 솔루션(<UE루트>\Script)이 플러그인 쪽 관리 프로젝트(Plugins\…\Managed)를 참조하는
+  // 배치에서 dirWatch가 못 보는 폴더의 외부 변화를 흘린다. 닫는 자리는 위와 동일.
+  projWatch?: fs.FSWatcher[]
+  // C# 전용: 참조 DLL 드랍 폴더(<플러그인>\Binaries\Managed)의 워처(watchCsDllDrop) —
+  // <Reference HintPath> 참조는 프로젝트가 아니라 '빌드된 DLL'이라, 재빌드돼도 서버가
+  // 메타데이터를 스스로 갱신하지 않는다(실측 PoC: didChangeWatchedFiles(.dll/csproj)·
+  // solution/open 재통지 전패, 재시작만 통함). 드랍 갱신 감지 → 서버 재시작 예약.
+  dllWatch?: fs.FSWatcher[]
+  // 위 재시작 예약의 디바운스 타이머 — 빌드는 dll·pdb·deps를 연달아 쓰므로 조용해질 때까지
+  // 모아 1회만 재시작한다. 서버를 접을 때 함께 취소(closeWatchers).
+  restartTimer?: ReturnType<typeof setTimeout>
+}
+
+// 서버의 파일 워처 일괄 정리 — 서버를 접는 모든 자리(초기화 실패·프로세스 에러·종료·재시작·
+// 앱 종료)에서 부른다. 안 닫으면 워처가 유령으로 남아 죽은 rpc에 notify한다.
+function closeWatchers(s: ServerHandle): void {
+  s.slnWatch?.close()
+  s.dirWatch?.close()
+  for (const w of s.projWatch ?? []) w.close()
+  s.projWatch = undefined
+  for (const w of s.dllWatch ?? []) w.close()
+  s.dllWatch = undefined
+  if (s.restartTimer) {
+    clearTimeout(s.restartTimer)
+    s.restartTimer = undefined
+  }
+}
+
+/** dir에서 위로 걸으며 .uplugin이 있는 첫 폴더(UE 플러그인 루트) — 없으면 null. */
+function uePluginRoot(dir: string): string | null {
+  let d = path.resolve(dir)
+  for (let i = 0; i < 12; i++) {
+    try {
+      if (fs.readdirSync(d).some((n) => n.toLowerCase().endsWith('.uplugin'))) return d
+    } catch {
+      /* unreadable — keep walking */
+    }
+    const parent = path.dirname(d)
+    if (parent === d) break
+    d = parent
+  }
+  return null
 }
 
 // Resolve a file that ships in the app's node_modules. In a packaged build the
@@ -1279,6 +1325,7 @@ class LspManager {
     const s = this.servers.get(key)
     if (!s) return
     this.servers.delete(key) // exit 핸들러보다 먼저 지워 쿨다운 없이 재스폰되게
+    closeWatchers(s)
     s.rpc.dispose('compile_commands.json 갱신 — 분석 서버 재시작')
     killTree(s.child)
   }
@@ -2092,9 +2139,30 @@ class LspManager {
         s.primeDirtyAt = Date.now()
         s.wsSymPrime = undefined
       }
+      const byUri = new Map<string, 'created' | 'changed' | 'deleted'>()
       for (const c of wanted) {
         const abs = path.resolve(c.abs)
         notified.set(abs.toLowerCase(), abs)
+        byUri.set(pathToFileURL(abs).href.toLowerCase(), c.kind)
+      }
+      // 열린 문서는 didOpen 이후 '클라이언트가 보낸 텍스트'가 진실 — 서버는(자체 폴백
+      // 워처든 아래 통지든) 그 파일의 디스크 변화를 무시한다. 그래서 디스크에서 바뀐 열린
+      // 문서를 여기서 didChange로 재동기화하지 않으면, 아래 재프라임이 '낡은 열린 사본'으로
+      // 컴파일을 확정해 그 파일의 새 타입/멤버를 참조하는 다른 문서들이 영영 무색으로
+      // 남는다(실측: 뷰어로 봤던 어트리뷰트 파일에 에이전트가 필드를 추가한 케이스 —
+      // 재프라임·재폴링이 다 돌아도 안 낫는 유일한 경로였다). 재동기화는 openDoc 재사용
+      // (mtime 비교·중복 didOpen 방지 레이스 규약 그대로), 삭제는 didClose — 유령 문서가
+      // 컴파일에 남아 지워진 타입이 계속 해석되는 것도 막는다. URI 대조는 대소문자 무시:
+      // 통지 경로(에이전트가 준 경로 등)와 열람 경로의 케이싱이 다를 수 있다.
+      for (const uri of [...s.docs.keys()]) {
+        const kind = byUri.get(uri.toLowerCase())
+        if (!kind) continue
+        if (kind === 'deleted') {
+          s.docs.delete(uri)
+          s.rpc.notify('textDocument/didClose', { textDocument: { uri } })
+        } else {
+          void this.openDoc(s, def, fileURLToPath(uri)).catch(() => {})
+        }
       }
       s.rpc.notify('workspace/didChangeWatchedFiles', {
         changes: wanted.map((c) => ({ uri: pathToFileURL(path.resolve(c.abs)).href, type: TYPE[c.kind] }))
@@ -2120,8 +2188,7 @@ class LspManager {
   /** Kill every server (app quit). */
   disposeAll(): void {
     for (const s of this.servers.values()) {
-      s.slnWatch?.close()
-      s.dirWatch?.close()
+      closeWatchers(s)
       s.rpc.dispose('앱 종료')
       killTree(s.child)
     }
@@ -2330,8 +2397,7 @@ class LspManager {
     handle.ready.catch(() => {
       handle.status = 'error'
       handle.diedAt = Date.now()
-      handle.slnWatch?.close()
-      handle.dirWatch?.close()
+      closeWatchers(handle)
       // a server that failed/hung initialize would linger forever — take it down
       // so the cooldown respawn starts from a clean slate
       killTree(child)
@@ -2340,8 +2406,7 @@ class LspManager {
     child.on('error', () => {
       handle.status = 'error'
       handle.diedAt = Date.now()
-      handle.slnWatch?.close()
-      handle.dirWatch?.close()
+      closeWatchers(handle)
       rpc.dispose('LSP 서버 실행 실패')
     })
     child.on('exit', (code) => {
@@ -2352,8 +2417,7 @@ class LspManager {
       handle.status = 'error'
       handle.diedAt = Date.now()
       handle.docs.clear()
-      handle.slnWatch?.close()
-      handle.dirWatch?.close()
+      closeWatchers(handle)
       rpc.dispose('LSP 서버가 종료됨')
     })
 
@@ -2414,6 +2478,9 @@ class LspManager {
           // workspace/symbol은 서버 쪽에서 솔루션 로드 완료를 기다렸다 답하므로 순서 안전)
           s.primeDirtyAt = Date.now()
           s.wsSymPrime = undefined
+          // 재생성된 솔루션의 새 멤버십을 워처 집합에도 반영 — 새 프로젝트 폴더(예: 새
+          // 플러그인의 Script)가 루트 밖이면 기존 워처들엔 없다
+          this.watchCsProjects(s, root)
           this.onFilesChanged?.({ paths: [], exts: ['cs', 'csx'] })
         }, 2000)
       })
@@ -2438,15 +2505,29 @@ class LspManager {
    * 중복 통지는 무해: 재프라임 예약은 시각 갱신일 뿐이고 서버 통지는 Roslyn이 무시한다.
    */
   private watchCsRoot(s: ServerHandle, root: string): void {
-    const WATCH_EXTS = new Set(['cs', 'csx', 'csproj', 'sln', 'slnx', 'props', 'targets'])
+    s.dirWatch = this.watchCsDir(root) ?? undefined
+    this.watchCsProjects(s, root)
+  }
+
+  /**
+   * 폴더 하나의 재귀 워처 — C# 관련 확장자 변화를 1초 조용 배치로 notifyWatchedFiles에
+   * 흘린다(배치 상한 400개 — 초과분은 버려도 재프라임 예약엔 지장 없다). bin/obj는 거른다:
+   * 빌드마다 MSBuild가 obj\에 AssemblyInfo.cs·GlobalUsings.g.cs를 다시 써서, 안 거르면
+   * 빌드 한 번에 재프라임 예약+열린 뷰어 전체 재폴링이 헛돌아간다(컴파일 입력은 프로젝트
+   * 소스지 산출물이 아니다). null = 감시 실패(네트워크 드라이브 등) — 앱 경유 변화 통지만으로
+   * 동작(기존과 동일).
+   */
+  private watchCsDir(base: string): fs.FSWatcher | null {
     const pending = new Map<string, string>() // 소문자 경로 → 원본 절대 경로
     let timer: ReturnType<typeof setTimeout> | null = null
     try {
-      s.dirWatch = fs.watch(root, { recursive: true }, (_ev, fn) => {
+      const w = fs.watch(base, { recursive: true }, (_ev, fn) => {
         if (!fn) return
-        const ext = path.extname(String(fn)).slice(1).toLowerCase()
-        if (!WATCH_EXTS.has(ext)) return
-        const abs = path.join(root, String(fn))
+        const rel = String(fn)
+        const ext = path.extname(rel).slice(1).toLowerCase()
+        if (!CS_WATCH_EXTS.has(ext)) return
+        if (/(^|[\\/])(bin|obj)[\\/]/i.test(rel)) return // 빌드 산출물 — 위 주석
+        const abs = path.join(base, rel)
         if (pending.size < 400) pending.set(abs.toLowerCase(), abs)
         if (timer) clearTimeout(timer)
         timer = setTimeout(() => {
@@ -2465,12 +2546,144 @@ class LspManager {
           this.notifyWatchedFiles(changes)
         }, 1000)
       })
-      // 루트 폴더 삭제 등으로 워처가 에러를 내면 조용히 끝낸다 — 'error' 이벤트를 안 받으면
+      // 폴더 삭제 등으로 워처가 에러를 내면 조용히 끝낸다 — 'error' 이벤트를 안 받으면
       // 프로세스째 uncaughtException으로 죽는다
-      s.dirWatch.on('error', () => {})
+      w.on('error', () => {})
+      return w
     } catch {
-      /* 재귀 감시 실패(네트워크 드라이브 등) — 앱 경유 변화 통지만으로 동작(기존과 동일) */
+      return null
     }
+  }
+
+  /**
+   * 솔루션이 참조하는 csproj 폴더 중 서버 루트 '밖'의 것들을 추가 감시 — 솔루션
+   * (<UE루트>\Script)이 플러그인 쪽 관리 프로젝트(Plugins\…\Managed\…)를 참조하는 배치에선
+   * 루트 재귀 워처(dirWatch)가 그 폴더들을 못 본다: 거기서 에이전트 Bash·외부 도구·git이
+   * 소스를 바꾸면 재프라임 신호가 영영 없어 새 타입이 무색으로 고착된다(Write/Edit는 엔진
+   * 배선이 커버하지만 그 밖은 구멍이었다). 조상이 이미 목록에 있으면 자식은 접고 상한 12개 —
+   * 워처 수 폭주 방지. 솔루션 재생성 때(watchCsSolution) 다시 불러 멤버십 변화를 따라간다.
+   * 한계: csproj 밖 글롭 include(플러그인 UHT 글루)는 여전히 미감시 — 그 재생성은 대개
+   * 프로젝트/솔루션 파일 변화를 동반해 간접 신호는 온다.
+   */
+  private watchCsProjects(s: ServerHandle, root: string): void {
+    for (const w of s.projWatch ?? []) w.close()
+    s.projWatch = undefined
+    for (const w of s.dllWatch ?? []) w.close()
+    s.dllWatch = undefined
+    const sln = csSolutionByRoot.get(path.resolve(root).toLowerCase())
+    if (!sln) return // csproj 단독 로드 — 루트 워처가 전부 커버
+    let txt = ''
+    try {
+      txt = fs.readFileSync(sln, 'utf8')
+    } catch {
+      return
+    }
+    const rootLc = path.resolve(root).toLowerCase() + path.sep
+    const all: string[] = [] // 참조 csproj 폴더 전부 (드랍 폴더 탐지에도 쓴다)
+    const ownNames = new Set<string>() // 솔루션 소속 프로젝트 이름(소문자) — 드랍 필터
+    const re = /"([^"]+\.csproj)"/gi
+    let m: RegExpExecArray | null
+    while ((m = re.exec(txt))) {
+      try {
+        const p = path.resolve(path.dirname(sln), m[1])
+        ownNames.add(path.basename(p, path.extname(p)).toLowerCase())
+        const d = path.dirname(p)
+        if (fs.existsSync(d)) all.push(d)
+      } catch {
+        /* 이상한 경로 항목 — 다음 항목으로 */
+      }
+    }
+    const dirs = all.filter((d) => !(d.toLowerCase() + path.sep).startsWith(rootLc)) // 루트 워처가 커버하는 건 제외
+    dirs.sort((a, b) => a.length - b.length) // 조상 우선 — 아래 접기가 자식을 걸러낸다
+    const watchers: fs.FSWatcher[] = []
+    const picked: string[] = []
+    for (const d of dirs) {
+      const dl = d.toLowerCase() + path.sep
+      if (picked.some((p) => dl.startsWith(p))) continue
+      picked.push(dl)
+      const w = this.watchCsDir(d)
+      if (w) watchers.push(w)
+      if (watchers.length >= 12) break
+    }
+    if (watchers.length) s.projWatch = watchers
+    // 참조 DLL 드랍 폴더(<플러그인>\Binaries\Managed) 감시 — 게임 프로젝트가 플러그인
+    // 관리 코드를 <Reference HintPath>(빌드 산출물)로 참조하는 배치에서, 그 DLL이
+    // 재빌드되면 서버 재시작 없이는 새 타입이 영영 미해석이다(실측 PoC — dllWatch 주석).
+    // 드랍 후보는 sln csproj들의 .uplugin 조상 기준으로 찾는다.
+    const drops = new Set<string>()
+    for (const d of all) {
+      const plugin = uePluginRoot(d)
+      if (!plugin) continue
+      const drop = path.join(plugin, 'Binaries', 'Managed')
+      try {
+        if (fs.existsSync(drop)) drops.add(drop)
+      } catch {
+        /* 접근 불가 — 다음 후보로 */
+      }
+    }
+    const dllWatchers: fs.FSWatcher[] = []
+    for (const drop of drops) {
+      const w = this.watchCsDllDrop(s, root, drop, ownNames)
+      if (w) dllWatchers.push(w)
+      if (dllWatchers.length >= 8) break
+    }
+    if (dllWatchers.length) s.dllWatch = dllWatchers
+  }
+
+  /**
+   * 참조 DLL 드랍 폴더 하나의 재귀 워처 — .dll 갱신 시 서버 재시작을 예약한다. 솔루션
+   * '소속' 프로젝트의 산출물(ownNames)은 제외: 그 프로젝트들은 소스로 분석되므로 자기
+   * 빌드 산출물 복사에 재시작하면 게임 빌드마다 헛재시작이다. 밖에서 온 DLL(관리 플러그인
+   * 코어처럼 솔루션에 없는 프로젝트의 산출물)만이 메타데이터 참조라 재시작 사유가 된다.
+   */
+  private watchCsDllDrop(s: ServerHandle, root: string, dir: string, ownNames: Set<string>): fs.FSWatcher | null {
+    try {
+      const w = fs.watch(dir, { recursive: true }, (_ev, fn) => {
+        if (!fn) return
+        const f = String(fn)
+        if (!f.toLowerCase().endsWith('.dll')) return
+        const base = path.basename(f).slice(0, -4).toLowerCase()
+        if (ownNames.has(base)) return // 솔루션 소속 프로젝트 산출물 — 소스가 진실
+        this.scheduleCsRestart(s, root)
+      })
+      w.on('error', () => {})
+      return w
+    } catch {
+      return null
+    }
+  }
+
+  /**
+   * 참조 DLL 갱신 → C# 서버 재시작 예약(4s 조용 디바운스 — 빌드는 dll·pdb·deps를 연달아
+   * 쓴다). 실측(PoC): 참조 DLL 재빌드는 didChangeWatchedFiles(.dll/csproj 실터치 포함)·
+   * solution/open 재통지 어느 것으로도 서버 메타데이터가 갱신되지 않고 '재시작만' 통한다 —
+   * clangd compile DB 갱신·Verse 재빌드 재시작과 같은 계열의 처방. 재시작 즉시 재스폰을
+   * 걸어 로드를 시작하고, 로드가 끝나면(projectInit 완료) 뷰어를 깨워 새 참조 기준 토큰을
+   * 받게 한다 — 뷰어의 status 폴링은 ready에서 멈춰 있어 신호 없인 영영 옛 색이다.
+   */
+  private scheduleCsRestart(s: ServerHandle, root: string): void {
+    if (s.restartTimer) clearTimeout(s.restartTimer)
+    s.restartTimer = setTimeout(() => {
+      s.restartTimer = undefined
+      const key = `cs|${path.resolve(root).toLowerCase()}`
+      if (this.servers.get(key) !== s) return // 이미 교체/정리된 핸들 — 이 예약은 무효
+      console.info('[lsp] C# 참조 DLL 갱신 감지 — 분석 서버 재시작(메타데이터 리로드)')
+      this.restart('cs', root)
+      const def = SERVERS.find((d) => d.id === 'cs')
+      const fresh = def ? this.ensure(def, root) : null
+      if (!fresh) return
+      let tries = 0
+      const iv = setInterval(() => {
+        if (this.servers.get(key) !== fresh || ++tries > 300) {
+          clearInterval(iv)
+          return
+        }
+        if (fresh.status === 'ready' && !fresh.projectInitPending) {
+          clearInterval(iv)
+          this.onFilesChanged?.({ paths: [], exts: ['cs', 'csx'] })
+        }
+      }, 1000)
+    }, 4000)
   }
 
   /**
@@ -2619,6 +2832,15 @@ class LspManager {
         textDocument: { uri, version: cur.version + 1 },
         contentChanges: fullChange(s.syncKind, cur.text, text)
       })
+      // C#: 디스크에서 '실제로' 바뀐 열린 문서의 재동기화 — 컴파일 입력이 바뀌었다는 뜻이므로
+      // 재프라임을 예약해, 이 문서의 새 타입/멤버가 다른 열린 문서들의 다음 토큰 요청에
+      // 분류되게 한다(통지 경로가 놓친 외부 변화를 그 파일을 다시 보는 순간 회복하는 안전망).
+      // mtimeMs -1(완성 라이브 버퍼 마커)發 재동기화는 제외 — 타이핑 중 호버마다 프라임
+      // 캐시를 비워 다른 뷰어의 토큰 요청을 조용 간격만큼 세워 두는 낭비를 막는다.
+      if (def.awaitsProjectInit && pre.mtimeMs !== -1) {
+        s.primeDirtyAt = Date.now()
+        s.wsSymPrime = undefined
+      }
     }
     return uri
   }
