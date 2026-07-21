@@ -84,6 +84,9 @@ interface HoverParts {
   metas: { k: string; v: string; doc?: string }[]
   // 매개변수 — 한 줄에 하나씩, @param 문서가 있으면 옆에 설명으로 붙는다
   params: { v: string; doc?: string }[]
+  // 제네릭 타입 인자 치환(Roslyn 'TKey is int' / 한국어 로케일 'TKey 은(는) int') —
+  // 본문 산문으로 두면 카드 디자인과 겉돌아(사용자 피드백) NAME 아래 GENERIC 행으로 올린다
+  targs: { v: string }[]
   facts: { k: string; v: string }[] // 종류 칩 옆 알약 — clangd 필드의 size/align/offset
   from: { k: string; v: string } | null // 출처 푸터 — clangd 'provided by', C# 'in'
   docs: string
@@ -800,6 +803,7 @@ function parseHover(md: string): HoverParts | null {
   // 매개변수 목록으로 끌어올린다 — RETURN과 같은 격자에서 줄맞춰 보이게.
   const metas: { k: string; v: string; doc?: string }[] = []
   let params: { v: string; doc?: string }[] = []
+  const targs: { v: string }[] = []
   const facts: { k: string; v: string }[] = []
   let from: { k: string; v: string } | null = null
   const sigMods: string[] = [] // Verse 지정자(parseVerseSig)처럼 시그니처 파서가 끌어낸 한정자
@@ -810,6 +814,10 @@ function parseHover(md: string): HoverParts | null {
   const lines = rest.split('\n')
   for (let i = 0; i < lines.length; i++) {
     const t = lines[i].trim()
+    // Roslyn 제네릭 치환 줄은 공백을 '&nbsp;' 엔티티로, 괄호를 '\('로 이스케이프해 보낸다
+    // (실측 덤프: 'TKey&nbsp;은\(는\)&nbsp;int  ') — 화면 렌더는 이를 풀어 보여주므로 눈으론
+    // 구분이 안 된다. 치환 줄 '판정'은 이 정규화 사본으로 한다(다른 분기·표시는 원문 그대로).
+    const tn = t.replace(/&nbsp;/gi, ' ').replace(/\\([()[\]`*_{}#+\-.!<>])/g, '$1')
     if (t === '---') continue
     if (t.startsWith('→')) metas.push({ k: 'return', v: t.slice(1).trim() })
     else if (/^Type:/.test(t)) metas.push({ k: 'type', v: t.replace(/^Type:\s*/, '') })
@@ -864,6 +872,17 @@ function parseHover(md: string): HoverParts | null {
       returnDoc = t.replace(/^:returns?:\s*/, '')
     } else if (/^:rtype:/.test(t)) {
       // 반환 타입 표기는 시그니처가 이미 보여준다 — 본문 소음으로 두지 않는다
+    } else if (/^[A-Za-z_]\w*\s*(?:은\(는\)|이\(가\))\s*\S/.test(tn)) {
+      // Roslyn 제네릭 타입 인자 치환 줄, 한국어 로케일 — 'TKey 은(는) int'. 기계 서식이
+      // 확실한 조사 표기라 이름 관례 가드 없이 받는다. GENERIC 스펙 행으로 승격.
+      const m = /^([A-Za-z_]\w*)\s*(?:은\(는\)|이\(가\))\s*(\S.*)$/.exec(tn)
+      if (m) targs.push({ v: '`' + m[1] + ' = ' + m[2].replace(/\s*입니다\.?$/, '').trim() + '`' })
+    } else if (/^T(?:[A-Z0-9]\w*)?\s+is\s+[\w.:<>[\]()?*&]+(?:,\s*[\w.:<>[\]()?*&]+)*$/.test(tn)) {
+      // 영어 로케일 동일 줄 — 'TKey is int'. 'is'는 산문에도 흔해서(예: 'T is the element
+      // type') .NET 타입 매개변수 관례(T·TKey·T1…) + 우변이 타입 모양(공백은 제네릭/튜플의
+      // ', ' 뒤만)일 때만 받는다 — 아니면 본문 산문 그대로.
+      const m = /^(T(?:[A-Z0-9]\w*)?)\s+is\s+(\S.*)$/.exec(tn)
+      if (m) targs.push({ v: '`' + m[1] + ' = ' + m[2].trim() + '`' })
     } else if (/^[@\\]brief\s+\S/.test(t)) {
       docLines.push(t.replace(/^[@\\]brief\s+/, '')) // 태그만 벗기고 본문으로
     } else docLines.push(lines[i])
@@ -945,6 +964,7 @@ function parseHover(md: string): HoverParts | null {
     showSig,
     metas,
     params,
+    targs,
     facts,
     from,
     docs: docLines.join('\n').trim()
@@ -1456,8 +1476,8 @@ export function HoverContent({
           <code className="hljs" dangerouslySetInnerHTML={{ __html: sigHtml }} />
         </div>
       )}
-      {/* 스펙 행 — NAME → ACCESS → MODIFIERS → ACCESSORS → PARAMS → RETURN 순서, 한 줄에 하나씩 */}
-      {(p.name || mods.length > 0 || p.params.length > 0 || p.metas.length > 0 || (lang === 'verse' && verseFrom)) && (
+      {/* 스펙 행 — NAME → GENERIC → ACCESS → MODIFIERS → ACCESSORS → PARAMS → RETURN 순서, 한 줄에 하나씩 */}
+      {(p.name || mods.length > 0 || p.params.length > 0 || p.metas.length > 0 || p.targs.length > 0 || (lang === 'verse' && verseFrom)) && (
         <div className="lh-spec">
           {/* NAME·ACCESS도 PARAMS·RETURN과 같은 코드 칩으로 — 행 전체가 한 결 */}
           {dispName && (
@@ -1473,6 +1493,20 @@ export function HoverContent({
               <span className="lh-spec-k">{word === 'var' ? 'type' : 'alias'}</span>
               <div className="lh-spec-v">
                 <Markdown text={'`' + p.name + '`'} codeLang={lang} decorate={deco} />
+              </div>
+            </>
+          )}
+          {/* 제네릭 타입 인자 치환(TKey = int) — NAME의 <TKey, T>가 이 사용처에서 뭘 받았는지.
+              본문 산문('TKey 은(는) int')으로 두면 디자인과 겉돌아 스펙 행으로 올린다 */}
+          {p.targs.length > 0 && (
+            <>
+              <span className="lh-spec-k">generic</span>
+              <div className="lh-spec-v">
+                {p.targs.map((q, i) => (
+                  <div key={i} className="lh-pline">
+                    <Markdown text={q.v} codeLang={lang} decorate={deco} />
+                  </div>
+                ))}
               </div>
             </>
           )}

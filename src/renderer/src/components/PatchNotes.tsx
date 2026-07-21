@@ -56,6 +56,17 @@ const RELEASES: Record<string, Release> = {
         )
       },
       {
+        tag: '코드',
+        name: '호버 카드의 제네릭, 행으로 정리',
+        desc: (
+          <>
+            제네릭 타입에 마우스를 올리면 카드 본문 끝에 <b>“TKey 은(는) int”</b> 같은
+            분석기 원문이 산문처럼 섞여 나왔어요. 이제 <b>GENERIC 행</b>으로 올려 NAME 아래에{' '}
+            <b>코드 색 그대로</b>(<code>TKey = int</code>) 정돈해 보여줍니다.
+          </>
+        )
+      },
+      {
         tag: '탐색기',
         name: '선택한 파일, 회색 판 대신 테두리로',
         desc: (
