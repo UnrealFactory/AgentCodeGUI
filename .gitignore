@@ -31,3 +31,6 @@ Thumbs.db
 
 # 홍보 영상 렌더 작업장 (프레임 렌더러+스크린샷 텍스처+렌더 출력 — 대부분 재생성물, 34MB급)
 promo/
+
+# dev 격리 홈 (CCG_HOME)
+.devhome/

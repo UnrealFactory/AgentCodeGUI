@@ -1,6 +1,6 @@
 import { Fragment, memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
-import type { ChangedFile, DirEntry } from '@shared/protocol'
+import type { AppUser, ChangedFile, DirEntry } from '@shared/protocol'
 import { FileBadge } from './fileType'
 import { getPref, setPref } from '../lib/prefs'
 import {
@@ -13,6 +13,7 @@ import {
   IconFilter,
   IconFolder,
   IconFolderOpen,
+  IconGear,
   IconMascot,
   IconPencil,
   IconRefresh,
@@ -82,7 +83,9 @@ export const Explorer = memo(function Explorer({
   onOpenFile,
   changed,
   onShowChanged,
-  onViewFolderChange
+  onViewFolderChange,
+  user,
+  onOpenSettings
 }: {
   cwd: string
   refreshKey: number // bump → re-read root + every expanded folder
@@ -91,6 +94,8 @@ export const Explorer = memo(function Explorer({
   changed?: ChangedFile[] // 이 세션에서 AI가 만든/수정한 파일 (rel posix) → M/A 배지
   onShowChanged?: (scope: { rel: string; label: string }) => void // 우클릭 '변경된 파일 보기' → 카드
   onViewFolderChange?: (folder: string) => void // 지금 보고 있는 폴더를 알림 → 채팅 @ 멘션의 기준
+  user?: AppUser // 하단 프로필 행(설정 진입점)의 아바타·이름 — 사이드바 footer와 동일
+  onOpenSettings?: () => void // 하단 프로필 행 → 설정. 탐색기로 전환하면 사이드바 footer가 사라져 설정을 열 길이 없던 구멍을 메운다
 }) {
   // Verse 프로젝트면 자동으로 채워지는 보기 전용 API digest 루트(Verse.org/Fortnite.com/…).
   // 영속하지 않고 매번 .vproject에서 다시 발견한다. 트리 맨 아래 접이식 그룹으로 노출.
@@ -927,6 +932,21 @@ export const Explorer = memo(function Explorer({
             폴더 선택
           </button>
         </div>
+      )}
+
+      {/* 하단 설정 진입점 — 사이드바 footer(.sb-foot)와 동일한 프로필 행(아바타+이름+톱니).
+          탐색기로 전환하면 사이드바가 통째로 사라져 설정을 열 길이 없던 구멍을 메운다.
+          트리(flex:1) 아래 flex:0 항목이라 폴더 유무와 무관하게 항상 패널 맨 아래 붙는다 */}
+      {user && onOpenSettings && (
+        <button className="sb-foot has-tip" data-tip="설정 열기" aria-label="설정 열기" onClick={onOpenSettings}>
+          <div className="ava" style={{ background: user.avatarColor, color: '#fff' }}>
+            {user.avatarText}
+          </div>
+          <div className="who">
+            <div className="n">{user.name}</div>
+          </div>
+          <IconGear size={13} />
+        </button>
       )}
     </aside>
   )

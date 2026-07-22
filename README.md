@@ -14,6 +14,8 @@
 
 <img src="docs/multi.png" width="900" alt="AgentCodeGUI — 멀티 에이전트" />
 
+<img src="docs/code.png" width="900" alt="AgentCodeGUI — 탐색기 · 코드 뷰어" />
+
 </div>
 
 ## Overview

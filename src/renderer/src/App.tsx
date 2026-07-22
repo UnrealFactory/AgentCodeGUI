@@ -1066,6 +1066,8 @@ function MainApp({ user }: { user: AppUser }) {
               changed={state.files}
               onShowChanged={onShowChanged}
               onViewFolderChange={onExplorerView}
+              user={user}
+              onOpenSettings={onOpenSettings}
             />
           ) : mode === 'multi' && explorerOpen && multiExp ? (
             <Explorer
@@ -1076,6 +1078,8 @@ function MainApp({ user }: { user: AppUser }) {
               onOpenFile={multiExp.openFile}
               changed={multiExp.files}
               onShowChanged={onShowChanged}
+              user={user}
+              onOpenSettings={onOpenSettings}
             />
           ) : (
             <Sidebar key="sb" user={user} sections={sections} onNewChat={onOpenNewChat} onOpenSettings={onOpenSettings} />
