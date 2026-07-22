@@ -983,11 +983,12 @@ function rollPhraseColor(): string {
 }
 
 // Persistent "working" indicator shown in the chat while the agent is busy, so
-// the user can always tell it's running (not stuck). Shows the latest thinking
-// summary when available, otherwise a rotating playful label.
+// the user can always tell it's running (not stuck). 컨셉: 마스코트(선부터 그려지는
+// 루프) + 우리 커스텀 회전 문구 + 경과 초. 모델의 raw 사고 텍스트(Claude 한국어 산문·
+// Codex 영어 요약)는 여기 절대 넣지 않는다 — 두 엔진 모두 같은 브랜드 문구로 통일한다.
 // elapsed(초)는 useAgentSession 훅에서 내려온다 — 질문/승인 카드나 답변 스트리밍으로
 // 인디케이터가 잠시 언마운트돼도 훅이 계속 세고 있어 리셋되지 않는다
-export function WorkingIndicator({ text, elapsed }: { text: string | null; elapsed: number }) {
+export function WorkingIndicator({ elapsed }: { elapsed: number }) {
   const [i, setI] = useState(() => Math.floor(Math.random() * WORKING_PHRASES.length))
   const [color, setColor] = useState(rollPhraseColor)
   useEffect(() => {
@@ -1011,15 +1012,14 @@ export function WorkingIndicator({ text, elapsed }: { text: string | null; elaps
     schedule()
     return () => clearTimeout(id)
   }, [])
-  const label = text || WORKING_PHRASES[i]
+  const label = WORKING_PHRASES[i]
   // 라이브 인디케이터 — 마스코트가 선부터 그려지는 루프(머리→귀→더듬이→점) + shimmer 문구.
-  // 색은 랜덤멘트에만 — thinking 요약은 항상 기본 화이트.
   return (
     <div className="working-line">
       <span className="working-spark">
         <IconMascotDraw size={25} />
       </span>
-      <span key={label} className={'working-label' + (text || !color ? '' : ' ' + color)}>
+      <span key={label} className={'working-label' + (color ? ' ' + color : '')}>
         {label}
       </span>
       {/* 경과 시간 — 문구 span과 형제(문구는 key={label}로 리마운트되며 shimmer가

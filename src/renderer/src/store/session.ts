@@ -73,6 +73,12 @@ export interface SessionState {
   // 한도 차감 환산이 아니라 실측 그대로다. 예전 스냅샷엔 없을 수 있어 ?? {}로 읽는다.
   tokenTotals: Record<string, TokenTally>
   thinkingText: string | null
+  // 지금 '답변 본문'이 실제로 스트리밍 중인가 — 작업 인디케이터(마스코트+문구+경과 초)를
+  // 숨길지 판단하는 유일한 신호다. 답변 델타가 오면 true, 답변이 끝난 자리(assistant-done)에선
+  // 그대로 두되(끝-깜빡임 방지), 다음 단계 활동(도구 시작·재사고·새 턴)이 시작되면 false로
+  // 풀어 인디케이터가 되돌아온다. "마지막 메시지가 어시스턴트인가"로 판정하던 예전 방식은
+  // 답변이 끝난 뒤에도 계속 true라 침묵 구간에서 인디케이터를 죽이던 문제가 있었다.
+  streaming: boolean
   openGroupId: string | null
   seq: number
   // 이 대화에서 이미 한 번 보여준 '한 번만' 안내(notice)들의 key. 스냅샷에 저장돼 재시작
@@ -153,6 +159,7 @@ export function snapshotForPersist(s: SessionState): SessionState {
     pendingPermission: null,
     pendingQuestion: null,
     thinkingText: null,
+    streaming: false,
     openGroupId: null,
     pendingCommand: null,
     // drop a command card still mid-run — it would restore as a forever-spinning card
@@ -180,6 +187,7 @@ export const initialSessionState: SessionState = {
   spentUsd: 0,
   tokenTotals: {},
   thinkingText: null,
+  streaming: false,
   openGroupId: null,
   seq: 0,
   shownNotices: [],
@@ -385,6 +393,7 @@ export function reducer(state: SessionState, action: Action): SessionState {
       // dropping to 0 — it refreshes when this run emits its own result.
       result: state.result,
       thinkingText: null,
+      streaming: false,
       openGroupId: null,
       seq
     }
@@ -407,7 +416,10 @@ export function reducer(state: SessionState, action: Action): SessionState {
       return { ...state, session: { sessionId: e.sessionId, model: e.model, cwd: e.cwd } }
 
     case 'thinking':
-      return { ...state, thinkingText: e.text }
+      // 모델이 (답변이 아니라) 사고 중이라는 신호 — 답변 스트리밍이 아니므로 인디케이터를
+      // 되살린다. thinkingText는 이제 화면 표시엔 쓰지 않지만(생각 줄은 우리 커스텀 문구
+      // 전용), 상태는 그대로 둔다.
+      return { ...state, thinkingText: e.text, streaming: false }
     case 'thinking-clear':
       return { ...state, thinkingText: null }
 
@@ -420,14 +432,14 @@ export function reducer(state: SessionState, action: Action): SessionState {
       if (last && last.kind === 'msg' && last.id === e.messageId) {
         const messages = state.messages.slice()
         messages[messages.length - 1] = { ...last, text: last.text + e.delta }
-        return { ...state, thinkingText: null, openGroupId: null, messages }
+        return { ...state, thinkingText: null, streaming: true, openGroupId: null, messages }
       }
       const without = state.messages.filter((m) => m.id !== THINKING_ID)
       const exists = without.some((m) => m.id === e.messageId)
       const messages = exists
         ? without.map((m) => (m.id === e.messageId && m.kind === 'msg' ? { ...m, text: m.text + e.delta } : m))
         : capThread([...without, { kind: 'msg' as const, id: e.messageId, role: 'assistant' as const, text: e.delta, animate: false, time: nowTime() }])
-      return { ...state, thinkingText: null, openGroupId: null, messages }
+      return { ...state, thinkingText: null, streaming: true, openGroupId: null, messages }
     }
 
     case 'assistant-done': {
@@ -475,7 +487,8 @@ export function reducer(state: SessionState, action: Action): SessionState {
       messages = messages.map((m) =>
         m.kind === 'toolgroup' && m.id === openGroupId ? { ...m, tools: capPush(m.tools, e.tool, MAX_TOOLS_PER_GROUP) } : m
       )
-      return { ...state, messages, openGroupId }
+      // 도구가 시작됐다 = 답변 스트리밍이 아니다 → 인디케이터를 되살린다(답변 직후 침묵 구간 포함)
+      return { ...state, messages, openGroupId, streaming: false }
     }
 
     case 'tool-end': {

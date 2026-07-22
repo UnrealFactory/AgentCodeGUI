@@ -928,16 +928,12 @@ function MainApp({ user }: { user: AppUser }) {
   useEffect(() => {
     if (cwd) pushRecentDir(cwd)
   }, [cwd])
-  // hide the "thinking…" indicator while the assistant is streaming its answer
-  // text (the streaming text is the activity); keep it for thinking/tool phases
-  const lastMsg = state.messages[state.messages.length - 1]
-  const streamingAnswer = lastMsg?.kind === 'msg' && lastMsg.role === 'assistant' && !lastMsg.error
   // 스레드 map 밖에서 한 번만 — 메시지마다 liveMsgIndex를 다시 계산하지 않게
   const liveIdx = liveMsgIndex(state.messages)
-  // while a question card — or a running command card — is up, that card already
-  // conveys "working", so drop the duplicate "…중" indicator
-  const showWorking =
-    (state.thinkingText != null || !streamingAnswer) && !state.pendingQuestion && !state.pendingCommand
+  // 작업 인디케이터(마스코트+문구+경과 초)는 '답변 본문 스트리밍 중'에만 숨긴다(그때는
+  // 흐르는 답변 글자가 곧 피드백). 사고·도구·침묵 구간엔 계속 띄워 AI가 도는 걸 보여준다.
+  // 질문/명령 카드가 떠 있으면 그 카드가 "작업 중"을 대신 전하므로 중복 인디케이터는 뺀다.
+  const showWorking = !state.streaming && !state.pendingQuestion && !state.pendingCommand
   // only chats with real content show up in the recent list (blank chats are hidden).
   // memoized so it keeps a stable reference across keystrokes → memoized Sidebar skips.
   const chatSummaries = useMemo(
@@ -1139,7 +1135,7 @@ function MainApp({ user }: { user: AppUser }) {
                     onOpenImage={openViewer}
                   />
                 ))}
-                {busy && showWorking && <WorkingIndicator text={state.thinkingText} elapsed={elapsed} />}
+                {busy && showWorking && <WorkingIndicator elapsed={elapsed} />}
               </div>
             )}
             {follow.showJump && (

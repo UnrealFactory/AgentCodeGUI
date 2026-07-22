@@ -550,12 +550,10 @@ export function SessionWindow(): React.ReactElement {
     clearQuestion()
   }
 
-  const lastMsg = state.messages[state.messages.length - 1]
-  const streamingAnswer = lastMsg?.kind === 'msg' && lastMsg.role === 'assistant' && !lastMsg.error
   // 스레드 map 밖에서 한 번만 — 메시지마다 liveMsgIndex를 다시 계산하지 않게
   const liveIdx = liveMsgIndex(state.messages)
-  const showWorking =
-    (state.thinkingText != null || !streamingAnswer) && !state.pendingQuestion && !state.pendingCommand
+  // 작업 인디케이터는 '답변 본문 스트리밍 중'에만 숨긴다 — 사고·도구·침묵 구간엔 계속 띄운다
+  const showWorking = !state.streaming && !state.pendingQuestion && !state.pendingCommand
 
   // ↑←는 여기서도 창을 하나 더 연다. ↑/↓는 본채팅과 같은 래치 규칙(맨 위로/맨 아래로),
   // ↑↓는 컴포저 /clear와 같은 대화 비우기. →↑는 최대화 토글(라벨은 현재 상태를 따라감),
@@ -607,7 +605,7 @@ export function SessionWindow(): React.ReactElement {
                   onOpenImage={openViewer}
                 />
               ))}
-              {busy && showWorking && <WorkingIndicator text={state.thinkingText} elapsed={elapsed} />}
+              {busy && showWorking && <WorkingIndicator elapsed={elapsed} />}
             </div>
           )}
           {follow.showJump && (

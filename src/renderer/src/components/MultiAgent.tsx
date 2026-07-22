@@ -318,9 +318,8 @@ const PanelView = memo(function PanelView({
     if (el) el.scrollTop = el.scrollHeight
   }, [state.messages, state.thinkingText, busy])
 
-  const lastMsg = state.messages[state.messages.length - 1]
-  const streamingAnswer = lastMsg?.kind === 'msg' && lastMsg.role === 'assistant' && !lastMsg.error
-  const showWorking = (state.thinkingText != null || !streamingAnswer) && !state.pendingQuestion && !state.pendingCommand
+  // 작업 인디케이터는 '답변 본문 스트리밍 중'에만 숨긴다 — 사고·도구·침묵 구간엔 계속 띄운다
+  const showWorking = !state.streaming && !state.pendingQuestion && !state.pendingCommand
   // 스트리밍 중 매 토큰 렌더에서 MessageView memo가 유지되도록 — 인라인 화살표를 넘기면
   // 매 렌더 새 함수 정체성이 완료된 메시지까지 전부 리렌더(마크다운 재파싱)시킨다
   const openFile = useEvent((p: string) => onOpenFile(slot, p))
@@ -402,7 +401,7 @@ const PanelView = memo(function PanelView({
                   onOpenImage={onOpenImage}
                 />
               ))}
-              {busy && showWorking && <WorkingIndicator text={state.thinkingText} elapsed={elapsed} />}
+              {busy && showWorking && <WorkingIndicator elapsed={elapsed} />}
             </div>
           )}
         </div>
