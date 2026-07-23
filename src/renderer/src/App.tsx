@@ -14,6 +14,15 @@ import { pushRecentDir, seedRecentDirs } from './lib/recentDirs'
 import { MultiWorkspace, useMultiSessions, type MultiExplorerInfo } from './components/MultiAgent'
 import { NewChatModal } from './components/NewChatModal'
 import { getPref, setPref } from './lib/prefs'
+import {
+  SIDEBAR_AUTOHIDE,
+  SIDEBAR_AUTOHIDE_TRIGGER,
+  AUTOHIDE_DEFAULT,
+  AUTOHIDE_TRIGGER_DEFAULT,
+  SIDEBAR_AUTOHIDE_EVENT,
+  SIDEBAR_AUTOHIDE_TRIGGER_PREVIEW_EVENT,
+  type AutohideTriggerPreviewDetail
+} from './lib/sidebarAutohide'
 import { ChatHeader, ChatFind, Composer, MessageView, QuestionModal, PermissionModal, SelectionToolbar, WelcomeState, WorkBar, WorkingIndicator, hasRunningBash, nextMode, pickerModelOf, useThreadFollow, type PickerState, type ScheduledMsg } from './components/Chat'
 import { SubAgentModal } from './components/AgentPanel'
 import { Explorer } from './components/Explorer'
@@ -208,6 +217,67 @@ function MainApp({ user }: { user: AppUser }) {
     setLcolW(null)
     setPref('sidebar.width', null)
   })
+  // 사이드바 자동 숨김 — 켜면 왼쪽 칼럼을 오버레이로 접고(본문이 폭을 가득 쓴다),
+  // 왼쪽 가장자리 감지 폭 안으로 마우스가 오면 슥 펼치고, 본문 쪽으로 벗어나면 다시 접는다.
+  // 값은 설정 › Display에서 바꾸며 SIDEBAR_AUTOHIDE_EVENT로 이 창이 즉시 다시 읽는다.
+  const [autohide, setAutohide] = useState<boolean>(() => getPref<boolean>(SIDEBAR_AUTOHIDE, AUTOHIDE_DEFAULT))
+  const [autohideTrigger, setAutohideTrigger] = useState<number>(() =>
+    getPref<number>(SIDEBAR_AUTOHIDE_TRIGGER, AUTOHIDE_TRIGGER_DEFAULT)
+  )
+  const [lcolRevealed, setLcolRevealed] = useState(false)
+  const lcolRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const onChanged = (): void => {
+      setAutohide(getPref<boolean>(SIDEBAR_AUTOHIDE, AUTOHIDE_DEFAULT))
+      setAutohideTrigger(getPref<number>(SIDEBAR_AUTOHIDE_TRIGGER, AUTOHIDE_TRIGGER_DEFAULT))
+    }
+    window.addEventListener(SIDEBAR_AUTOHIDE_EVENT, onChanged)
+    return () => window.removeEventListener(SIDEBAR_AUTOHIDE_EVENT, onChanged)
+  }, [])
+  // 펼침/접힘 판정 — 커서 X 위치 한 신호로만(마우스 leave·포털 메뉴에 안 흔들린다).
+  // 펼침: 가장자리 감지 폭 안. 접힘: 실제 패널 폭 + 여유(8px) 바깥. 폭 드래그 중엔 접지 않는다.
+  useEffect(() => {
+    if (!autohide) {
+      setLcolRevealed(false)
+      return
+    }
+    // 접힘 판정은 '목표 폭' 기준 — 펼침 애니 도중 커서를 빨리 움직여도(현재 폭이 아직 작아도)
+    // 중간에 접히지 않게. 안쪽 사이드바(.sidebar/.explorer)는 고정 폭이라 offsetWidth가 곧 목표 폭.
+    const onMove = (e: MouseEvent): void => {
+      if (e.clientX <= autohideTrigger) setLcolRevealed(true)
+      else if (!lcolDrag) {
+        const inner = lcolRef.current?.firstElementChild as HTMLElement | null
+        const w = inner?.offsetWidth || (lcolW ?? 242)
+        if (e.clientX > w + 8) setLcolRevealed(false)
+      }
+    }
+    window.addEventListener('mousemove', onMove)
+    return () => window.removeEventListener('mousemove', onMove)
+  }, [autohide, autohideTrigger, lcolDrag, lcolW])
+  // 감지 폭 미리보기 — 설정에서 슬라이더를 만지는 동안 왼쪽 가장자리에 그 폭만큼 띠를 띄운다.
+  // active=false는 200ms 뒤 사라지게(다시 true가 오면 취소) — 드래그 중 잠깐의 leave에 안 깜빡.
+  const [triggerPrev, setTriggerPrev] = useState<{ show: boolean; w: number }>({
+    show: false,
+    w: AUTOHIDE_TRIGGER_DEFAULT
+  })
+  const triggerPrevTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  useEffect(() => {
+    const onPrev = (e: Event): void => {
+      const d = (e as CustomEvent<AutohideTriggerPreviewDetail>).detail
+      if (!d) return
+      clearTimeout(triggerPrevTimer.current)
+      if (d.active) setTriggerPrev({ show: true, w: d.value })
+      else {
+        setTriggerPrev((p) => ({ show: p.show, w: d.value ?? p.w }))
+        triggerPrevTimer.current = setTimeout(() => setTriggerPrev((p) => ({ ...p, show: false })), 200)
+      }
+    }
+    window.addEventListener(SIDEBAR_AUTOHIDE_TRIGGER_PREVIEW_EVENT, onPrev)
+    return () => {
+      window.removeEventListener(SIDEBAR_AUTOHIDE_TRIGGER_PREVIEW_EVENT, onPrev)
+      clearTimeout(triggerPrevTimer.current)
+    }
+  }, [])
   // ` (백쿼트) 한 키 = 사이드바 ⟷ 탐색기 전환 — 글자가 들어가는 입력에서는 무시.
   // 멀티 뷰에서도 동작한다 — 그때 탐색기는 마지막으로 클릭(포커스)한 패널의 폴더를 보인다.
   useEffect(() => {
@@ -1048,8 +1118,10 @@ function MainApp({ user }: { user: AppUser }) {
             멀티 뷰의 탐색기는 마지막으로 클릭한 패널의 폴더를 따라간다(패널 전환 = 트리 전환).
             두 패널 모두 --lcol-w 한 폭이라 폭 트랜지션 없이 key 교체 슬라이드-인만 남는다.
             오른쪽 경계 핸들 드래그로 폭 조절 — 사용자 폭일 때만 인라인 변수를 얹는다 */}
+        {autohide && <div className={'lcol-edge' + (lcolRevealed ? ' gone' : '')} />}
         <div
-          className="lcol"
+          ref={lcolRef}
+          className={'lcol' + (autohide ? ' autohide' : '') + (autohide && lcolRevealed ? ' revealed' : '')}
           style={lcolW != null ? ({ '--lcol-w': `${lcolW}px` } as React.CSSProperties) : undefined}
         >
           {mode === 'single' && explorerOpen ? (
@@ -1264,6 +1336,17 @@ function MainApp({ user }: { user: AppUser }) {
             setSettingsView(undefined)
           }}
         />
+      )}
+
+      {/* 감지 폭 미리보기 — 설정 슬라이더를 만지는 동안 창 왼쪽 가장자리에 그 폭만큼 뜨는 띠.
+          설정 모달(z-70) 위로 보이게 z-90. 안내용이라 클릭은 통과(pointer-events:none). */}
+      {triggerPrev.show && (
+        <div className="autohide-trigger-preview" style={{ width: `${triggerPrev.w}px` }}>
+          <div className="atp-lbl">
+            감지 폭 {triggerPrev.w}px
+            <span>이 안에 마우스가 오면 펼쳐져요</span>
+          </div>
+        </div>
       )}
 
       {/* 새 채팅 선택 — 일반(코드 뷰에 빈 채팅)/멀티(패널 수 골라 새 세션) */}

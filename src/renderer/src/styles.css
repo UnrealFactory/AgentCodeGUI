@@ -219,6 +219,46 @@ input,textarea{ font-family:inherit; }
 @keyframes lswap-back{ from{ opacity:0; margin-left:-14px; } }
 @keyframes lswap-fwd{ from{ opacity:0; margin-left:14px; } }
 
+/* ---- 자동 숨김(설정 › Display) — 오버레이 방식(B). 왼쪽 칼럼을 흐름에서 빼(position:absolute)
+   본문(.chat/.multi)이 폭을 가득 쓰고, 사이드바만 본문 위로 transform 슬라이드해 들고난다.
+   본문은 제자리(리플로우 없음)라 멀미가 없다. 대신 사이드바 뒤엔 창 벽지가 아니라 본문이 깔려
+   벽지 비침은 못 낸다 — 그래서 메뉴·팝오버와 같은 프로스트 유리 recipe(강한 backdrop blur로 뒤
+   본문을 갈아냄)로 유리감을 낸다. 포털된 .ctx-menu·.sconfirm은 body 소속이라 이 transform의
+   containing block/스태킹 함정(위 주석)에 안 걸린다 — 일반·멀티 공용. */
+.lcol.autohide{
+  position:absolute; left:0; top:0; bottom:0; z-index:60; overflow:visible;
+  background:rgba(28,28,28,.72); border-right:1px solid rgba(255,255,255,.10);
+  -webkit-backdrop-filter:blur(32px) saturate(1.25); backdrop-filter:blur(32px) saturate(1.25);
+  transform:translateX(-101%);
+  transition:transform .26s cubic-bezier(.2,.8,.2,1), box-shadow .26s cubic-bezier(.2,.8,.2,1);
+}
+.lcol.autohide.revealed{ transform:translateX(0); box-shadow:18px 0 50px -12px rgba(0,0,0,.75); }
+/* 접힌 상태의 손잡이 힌트 — 왼쪽 가장자리에 얇게 남는 결, 펼치면(.gone) 사라진다 */
+.lcol-edge{
+  position:absolute; left:0; top:0; bottom:0; width:3px; z-index:12; pointer-events:none;
+  background:linear-gradient(to right, var(--line-strong), transparent);
+  opacity:.5; transition:opacity .22s cubic-bezier(.2,.8,.2,1);
+}
+.lcol-edge.gone{ opacity:0; }
+/* 감지 폭 미리보기 띠 — 설정 슬라이더를 만지는 동안 창 왼쪽 가장자리에 그 폭만큼 떠서
+   '이만큼이 감지 범위'를 보여준다. fixed·안내용이라 클릭 통과, 설정 모달(z-70) 위(z-90). */
+.autohide-trigger-preview{
+  position:fixed; left:0; top:0; bottom:0; z-index:90; pointer-events:none;
+  background:linear-gradient(to right,
+    color-mix(in oklab, var(--blue) 34%, transparent),
+    color-mix(in oklab, var(--blue) 8%, transparent));
+  border-right:2px solid var(--blue);
+  animation:fade .14s ease both;
+}
+.atp-lbl{
+  position:absolute; left:100%; top:50%; transform:translateY(-50%); margin-left:10px;
+  white-space:nowrap; display:flex; flex-direction:column; gap:2px;
+  font-size:11.5px; font-weight:600; color:var(--text);
+  background:var(--surface-2); border:1px solid var(--line-2); border-radius:8px;
+  padding:6px 10px; box-shadow:var(--shadow-sm);
+}
+.atp-lbl span{ font-weight:400; font-size:10.5px; color:var(--text-3); }
+
 /* ---- sidebar — 재질이 은은히 비치는 면 (배경 없음 = body의 --panel 틴트) ---- */
 .sidebar{
   width:var(--lcol-w, 242px); flex:0 0 auto;

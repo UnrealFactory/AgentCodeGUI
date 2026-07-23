@@ -16,6 +16,16 @@ import { FileBadge } from './fileType'
 import { getPref, setPref } from '../lib/prefs'
 import { applyGlass, GLASS_DEFAULT, GLASS_PREF } from '../lib/glass'
 import {
+  SIDEBAR_AUTOHIDE,
+  SIDEBAR_AUTOHIDE_TRIGGER,
+  AUTOHIDE_DEFAULT,
+  AUTOHIDE_TRIGGER_DEFAULT,
+  AUTOHIDE_TRIGGER_MIN,
+  AUTOHIDE_TRIGGER_MAX,
+  SIDEBAR_AUTOHIDE_EVENT,
+  SIDEBAR_AUTOHIDE_TRIGGER_PREVIEW_EVENT
+} from '../lib/sidebarAutohide'
+import {
   IconClose,
   IconServer,
   IconBook,
@@ -1964,6 +1974,22 @@ function PxSlider({
 // 추가 채팅 창은 저장 시 uiGlassChanged 브로드캐스트로 따라온다(드래그 중엔 이 창만 즉시).
 function DisplayView(): React.ReactElement {
   const [glass, setGlass] = useState<number>(() => getPref(GLASS_PREF, GLASS_DEFAULT))
+  // 사이드바 자동 숨김 — 값을 바꾸면 이벤트로 메인 창이 즉시 다시 읽어 반영한다(applyGlass와 같은 결).
+  const [autohide, setAutohide] = useState<boolean>(() => getPref<boolean>(SIDEBAR_AUTOHIDE, AUTOHIDE_DEFAULT))
+  const [trigger, setTrigger] = useState<number>(() =>
+    getPref<number>(SIDEBAR_AUTOHIDE_TRIGGER, AUTOHIDE_TRIGGER_DEFAULT)
+  )
+  const emitAutohide = (): void => {
+    window.dispatchEvent(new CustomEvent(SIDEBAR_AUTOHIDE_EVENT))
+  }
+  // 감지 폭 미리보기 — 슬라이더를 만지는 동안 메인 창 가장자리에 그 폭 띠를 띄운다.
+  const previewTrigger = (active: boolean, value: number): void => {
+    window.dispatchEvent(
+      new CustomEvent(SIDEBAR_AUTOHIDE_TRIGGER_PREVIEW_EVENT, { detail: { active, value } })
+    )
+  }
+  // 모달이 슬라이더 위에서 닫혀도 띠가 남지 않게 — 언마운트 시 미리보기 끔.
+  useEffect(() => () => previewTrigger(false, 0), [])
   return (
     <>
       <div className="set-h1">Display</div>
@@ -1994,6 +2020,57 @@ function DisplayView(): React.ReactElement {
         아크릴 재질은 창이 활성일 때만 살아나요 — 비활성 창이 잠시 불투명해지는 건 Windows 사양이에요. 재질이 없는
         Windows 10에서는 값과 무관하게 늘 불투명해요.
       </div>
+
+      <div className="set-sec" style={{ marginTop: 26 }}>
+        사이드바
+      </div>
+      <div className="sc2 tgl">
+        <div>
+          <div className="em">자동 숨김</div>
+          <div className="meta">
+            {autohide
+              ? '평소엔 접어 두고, 왼쪽 가장자리에 마우스를 대면 슥 펼쳐져요 — 본채팅·멀티 모두'
+              : '사이드바를 늘 펼쳐 둬요'}
+          </div>
+        </div>
+        <span className="sp" />
+        <button
+          className={'sw2' + (autohide ? ' on' : '')}
+          role="switch"
+          aria-checked={autohide}
+          aria-label={autohide ? '자동 숨김 끄기' : '자동 숨김 켜기'}
+          onClick={() => {
+            const next = !autohide
+            setAutohide(next)
+            setPref(SIDEBAR_AUTOHIDE, next)
+            emitAutohide()
+          }}
+        />
+      </div>
+      {autohide && (
+        <div
+          className="sc2"
+          style={{ marginTop: 10 }}
+          onPointerEnter={() => previewTrigger(true, trigger)}
+          onPointerLeave={() => previewTrigger(false, trigger)}
+        >
+          <PxSlider
+            label="감지 폭"
+            desc="왼쪽 가장자리에서 이만큼 안쪽까지 마우스가 오면 펼쳐져요 — 만지면 창 가장자리에 범위가 보여요"
+            min={AUTOHIDE_TRIGGER_MIN}
+            max={AUTOHIDE_TRIGGER_MAX}
+            def={AUTOHIDE_TRIGGER_DEFAULT}
+            unit="px"
+            value={trigger}
+            onChange={(v) => {
+              setTrigger(v)
+              setPref(SIDEBAR_AUTOHIDE_TRIGGER, v)
+              emitAutohide()
+              previewTrigger(true, v)
+            }}
+          />
+        </div>
+      )}
     </>
   )
 }
