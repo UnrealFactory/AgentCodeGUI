@@ -234,8 +234,11 @@ function MainApp({ user }: { user: AppUser }) {
     window.addEventListener(SIDEBAR_AUTOHIDE_EVENT, onChanged)
     return () => window.removeEventListener(SIDEBAR_AUTOHIDE_EVENT, onChanged)
   }, [])
-  // 펼침/접힘 판정 — 커서 X 위치 한 신호로만(마우스 leave·포털 메뉴에 안 흔들린다).
+  // 펼침/접힘 판정 — 커서 X 위치(창 안 mousemove) + 문서 이탈/창 blur.
   // 펼침: 가장자리 감지 폭 안. 접힘: 실제 패널 폭 + 여유(8px) 바깥. 폭 드래그 중엔 접지 않는다.
+  // 커서가 창 밖(옆 모니터)으로 나가면 mousemove가 끊겨 마지막 상태가 얼어붙으므로,
+  // 문서 mouseleave(300ms 유예 — 왼쪽 경계 살짝 넘었다 돌아올 때 안 깜빡)와 창 blur(즉시)로 접는다.
+  // 포털 메뉴(ctx-menu·sconfirm)는 body 소속이라도 문서 안이라 문서 mouseleave에 안 걸린다.
   useEffect(() => {
     if (!autohide) {
       setLcolRevealed(false)
@@ -243,7 +246,9 @@ function MainApp({ user }: { user: AppUser }) {
     }
     // 접힘 판정은 '목표 폭' 기준 — 펼침 애니 도중 커서를 빨리 움직여도(현재 폭이 아직 작아도)
     // 중간에 접히지 않게. 안쪽 사이드바(.sidebar/.explorer)는 고정 폭이라 offsetWidth가 곧 목표 폭.
+    let leaveTimer: ReturnType<typeof setTimeout> | undefined
     const onMove = (e: MouseEvent): void => {
+      clearTimeout(leaveTimer)
       if (e.clientX <= autohideTrigger) setLcolRevealed(true)
       else if (!lcolDrag) {
         const inner = lcolRef.current?.firstElementChild as HTMLElement | null
@@ -251,8 +256,25 @@ function MainApp({ user }: { user: AppUser }) {
         if (e.clientX > w + 8) setLcolRevealed(false)
       }
     }
+    const onDocLeave = (): void => {
+      if (lcolDrag) return
+      clearTimeout(leaveTimer)
+      leaveTimer = setTimeout(() => setLcolRevealed(false), 300)
+    }
+    const onBlur = (): void => {
+      if (lcolDrag) return
+      clearTimeout(leaveTimer)
+      setLcolRevealed(false)
+    }
     window.addEventListener('mousemove', onMove)
-    return () => window.removeEventListener('mousemove', onMove)
+    document.documentElement.addEventListener('mouseleave', onDocLeave)
+    window.addEventListener('blur', onBlur)
+    return () => {
+      window.removeEventListener('mousemove', onMove)
+      document.documentElement.removeEventListener('mouseleave', onDocLeave)
+      window.removeEventListener('blur', onBlur)
+      clearTimeout(leaveTimer)
+    }
   }, [autohide, autohideTrigger, lcolDrag, lcolW])
   // 감지 폭 미리보기 — 설정에서 슬라이더를 만지는 동안 왼쪽 가장자리에 그 폭만큼 띠를 띄운다.
   // active=false는 200ms 뒤 사라지게(다시 true가 오면 취소) — 드래그 중 잠깐의 leave에 안 깜빡.
