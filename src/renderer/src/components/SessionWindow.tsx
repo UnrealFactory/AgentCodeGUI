@@ -6,6 +6,7 @@ const onBgTaskSession = (req: BgTaskRequest): void => {
   window.api.session?.bgTask(req).catch(() => {})
 }
 import { getPref, setPref } from '../lib/prefs'
+import { useTurnNotify } from '../lib/notify'
 import {
   useAgentSession,
   initialSessionState,
@@ -267,6 +268,10 @@ export function SessionWindow(): React.ReactElement {
     if (!hydrated) return
     window.api.session?.report?.({ title: winTitle, status: state.status }).catch(() => {})
   }, [hydrated, winTitle, state.status])
+
+  // 포커스 밖 알림 — 이 창의 전이 보고. 대상 채팅 id는 메인이 sender(webContents)로
+  // 채우므로 여기선 비워 보낸다 (창은 자기 영속 채팅 id를 모른다).
+  useTurnNotify(state, busy, winTitle, { surface: 'session', id: '' })
 
   // ── 영속화 (persist) ────────────────────────────────────────
   // 메인 채팅과 같은 규칙(600ms 디바운스) — 대화·폴더·picker·초안을 채팅 레코드로 저장해

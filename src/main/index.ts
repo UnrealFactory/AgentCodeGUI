@@ -19,6 +19,7 @@ import { setVerseDocKo } from './lsp/verseDocKo'
 import { setUeDocKo } from './lsp/ueDocKo'
 import { bumpVerseRegistryRev } from './lsp/verseMemberDb'
 import { readChats, writeChats } from './chats'
+import { initNotifyToast } from './notifyToast'
 import { writeFileAtomic } from './atomicWrite'
 import { readMulti, writeMulti } from './maStore'
 import { readTalk, writeTalk } from './talkStore'
@@ -554,6 +555,26 @@ function createSessionWindow(chatId?: string): void {
   }
 }
 
+// 추가 채팅으로 이동 — 열려 있으면 그 창을 있던 자리 그대로 앞으로, 닫힌 채팅이면 창을
+// 다시 만든다(렌더러가 sessionHydrate로 저장본 복원). 사이드바 클릭과 알림 토스트
+// 클릭이 같은 경로를 쓴다.
+function focusSessionChat(id: string): void {
+  for (const s of sessionWins.values()) {
+    if (s.chatId !== id || s.win.isDestroyed()) continue
+    // 닫기(저장 후 정리)가 진행 중이었다면 취소 — 사용자가 대화를 도로 열었다
+    if (s.flushTimer) {
+      clearTimeout(s.flushTimer)
+      s.flushTimer = undefined
+    }
+    s.flushing = false
+    if (!s.win.isVisible()) s.win.show()
+    if (s.win.isMinimized()) s.win.restore()
+    s.win.focus()
+    return
+  }
+  if (sessionChats.has(id)) createSessionWindow(id)
+}
+
 function createWindow(): void {
   const state = loadWindowState()
   const positioned = isOnScreen(state)
@@ -797,23 +818,7 @@ function registerIpc(): void {
   // 추가 채팅 레지스트리 — 목록 조회/포커스/삭제/이름 변경(메인 창), 제목·상태 보고와
   // 대화 저장·복원(세션 창 자신). 대화는 채팅 id 기준 영속 — 창은 열어 보는 뷰다.
   ipcMain.handle(IPC.sessionWindowsList, async () => sessionWinList())
-  ipcMain.handle(IPC.sessionWindowFocus, async (_e, id: string) => {
-    for (const s of sessionWins.values()) {
-      if (s.chatId !== id || s.win.isDestroyed()) continue
-      // 닫기(저장 후 정리)가 진행 중이었다면 취소 — 사용자가 대화를 도로 열었다
-      if (s.flushTimer) {
-        clearTimeout(s.flushTimer)
-        s.flushTimer = undefined
-      }
-      s.flushing = false
-      if (!s.win.isVisible()) s.win.show()
-      if (s.win.isMinimized()) s.win.restore()
-      s.win.focus()
-      return
-    }
-    // 닫힌 채팅 — 창을 다시 만들면 렌더러가 sessionHydrate로 저장본을 복원한다
-    if (sessionChats.has(id)) createSessionWindow(id)
-  })
+  ipcMain.handle(IPC.sessionWindowFocus, async (_e, id: string) => focusSessionChat(id))
   ipcMain.handle(IPC.sessionWindowClose, async (_e, id: string) => {
     // 사이드바 X = 대화 삭제 — 열린 창이 있으면 저장 없이 그 창도 닫는다
     for (const [, s] of sessionWins) {
@@ -1006,8 +1011,17 @@ function registerIpc(): void {
   // 유리 슬라이더(ui.glass)의 마지막 브로드캐스트 값 — prefs 블롭은 뷰어 줌 등 딴 변경에도
   // 통째로 저장되므로, 값이 실제로 바뀐 저장에만 전 창 브로드캐스트를 쏜다
   let lastGlass = readUiPrefs()['ui.glass']
+  // 포커스 밖 알림 on/off — 저장 시점마다 캐시해 알림 이벤트가 파일을 읽지 않게 한다
+  let notifyToastOn = readUiPrefs()['notify.toast'] !== false
+  initNotifyToast({
+    getMainWindow: () => mainWindow,
+    focusSessionChat,
+    sessionChatIdFor: (wcId) => sessionWins.get(wcId)?.chatId ?? null,
+    isEnabled: () => notifyToastOn
+  })
   ipcMain.handle(IPC.uiPrefsSave, async (_e, prefs: Record<string, unknown>) => {
     writeUiPrefs(prefs)
+    notifyToastOn = prefs?.['notify.toast'] !== false
     // Verse hover docs in Korean unless '원문 보기'. 언어가 실제로 바뀌었으면 레지스트리 세대를
     // 올려, 렌더러가 든 registry.docs(fetch 시점 언어로 번역돼 박제됨)도 다음 열기에 새 언어로.
     if (setVerseDocKo(prefs?.verseDocLang !== 'en')) bumpVerseRegistryRev()

@@ -7,6 +7,8 @@ const onBgTaskMain = (req: BgTaskRequest): void => {
   window.api.bgTask(req).catch(() => {})
 }
 import { extractMentions } from './lib/mentions'
+import { useTurnNotify } from './lib/notify'
+import type { NotifyTarget } from '@shared/protocol'
 import { useAgentSession, initialSessionState, sanitizeSnapshot, snapshotForPersist, sameCwd, commandOf, commandTitleOf, liveMsgIndex, type SessionState } from './store/session'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { Sidebar, type ChatSummary, type SidebarSection } from './components/Sidebar'
@@ -581,6 +583,22 @@ function MainApp({ user }: { user: AppUser }) {
   // a fresh chat with no messages and no title — it never appears in the recent
   // list; the chat area shows the welcome screen instead
   const activeEmpty = state.messages.length === 0 && !activeChat?.title
+
+  // 포커스 밖 알림 — 이 창이 비포커스일 때 턴 종료/승인/질문을 커서 모니터 토스트로.
+  // 단일 뷰는 실행 중 채팅 전환이 막혀 있어 활성 채팅 하나만 감시하면 충분하다.
+  useTurnNotify(state, busy, activeChat?.title ?? '', { surface: 'single', id: activeChatId })
+  // 토스트 클릭 라우팅 — 메인이 창을 앞으로 가져온 뒤 보낸다: 뷰 전환 + 대상 선택
+  const onNotifyJump = useEvent((t: NotifyTarget) => {
+    if (t.surface === 'multi') {
+      if (mode !== 'multi') switchMode('multi')
+      multi.selectSession(t.id)
+    } else if (t.surface === 'single') {
+      if (mode !== 'single') switchMode('single')
+      if (t.id && t.id !== activeChatId) selectChat(t.id)
+    }
+  })
+  // ?. 가드: dev HMR로 렌더러만 갈리면 구 preload엔 notify가 없다 (onApiSettingsRequested와 동일)
+  useEffect(() => window.api.notify?.onJump?.(onNotifyJump) ?? undefined, [onNotifyJump])
 
   // snapshot the live session into the currently active chat. 빈 채팅도 버리지 않고
   // 그대로 저장한다 — 새 채팅에서 골라둔 모델·모드·계정(picker)·폴더·초안이 다른 채팅에

@@ -699,6 +699,34 @@ export interface SessionWindowInfo {
   updatedAt?: number // 마지막 활동(프롬프트 전송) 시각 — 사이드바 상대 시간 표시용
 }
 
+// ── 포커스 밖 알림 (토스트) ──────────────────────────────────────────────────
+// 창이 포커스를 잃은 사이 턴이 끝나거나(done/error) AI가 기다리기 시작하면(approve/ask)
+// 커서가 있는 모니터 우하단에 작은 토스트 창을 띄운다. 표시 여부 판정(창 비포커스 +
+// 설정 on/off)은 메인 프로세스가 한다 — 렌더러는 전이만 알린다.
+export type NotifyKind = 'done' | 'error' | 'approve' | 'ask'
+
+/** 토스트 클릭 라우팅 대상 — single=메인 창 일반 채팅, multi=멀티 세션(메인 창),
+ *  session=추가 채팅(독립 창, id=영속 채팅 id — 메인이 sender로 채운다).
+ *  sub: 같은 대상 안의 구분(멀티 패널 슬롯) — 업서트 키에만 쓰고 라우팅엔 안 쓴다. */
+export interface NotifyTarget {
+  surface: 'single' | 'multi' | 'session'
+  id: string
+  sub?: string
+}
+
+export interface NotifyEventPayload {
+  kind: NotifyKind
+  title: string // 채팅/패널 제목 ('' = 토스트가 '새 채팅'으로 표시)
+  preview?: string // 답변 첫 줄·승인 요약·질문 본문 등 미리보기 한 줄
+  target: NotifyTarget
+}
+
+/** 토스트 페이지에 보내는 표시 항목(REPLACE 목록, 최신이 앞) — key는 창·대상별 업서트
+ *  키로, 클릭(notifyOpen)이 이 키로 라우팅을 되찾는다. */
+export interface NotifyEntry extends NotifyEventPayload {
+  key: string
+}
+
 /** 세션 창 렌더러 → 메인: 이 창의 대화 저장(디바운스/닫기 flush). 스냅샷 모양은
  *  렌더러(SessionState)가 소유하고 메인은 그대로 저장만 한다. empty = 메시지 0 —
  *  창을 닫을 때 목록에 남기지 않는 판정용. */
@@ -970,5 +998,12 @@ export const IPC = {
   engineUpdateEvent: 'engine:update-event', // main→렌더러: 부팅 자동 업데이트 진행(REPLACE 스냅샷)
   engineInstallProgress: 'engine:install-progress',
   lspInstallProgress: 'lsp:install-progress', // streamed progress while downloading a language server
-  winState: 'win:state'
+  winState: 'win:state',
+  // 포커스 밖 알림 (토스트 창) — 렌더러가 전이를 알리고, 메인이 비포커스 판정·표시·라우팅
+  notifyEvent: 'notify:event', // 렌더러→main: 턴 종료/승인 대기/질문 발생
+  notifyOpen: 'notify:open', // 토스트→main: 항목 클릭 — 해당 창 포커스 + 점프
+  notifyClose: 'notify:close', // 토스트→main: ✕ — 전부 지우고 닫기
+  notifyResize: 'notify:resize', // 토스트→main: 콘텐츠 높이 보고 → 창 크기 확정 + 표시
+  notifyShow: 'notify:show', // main→토스트: 표시할 항목 목록(REPLACE, 최신이 앞)
+  notifyJump: 'notify:jump' // main→메인 창: 클릭 라우팅(뷰 전환 + 채팅/세션 선택)
 } as const

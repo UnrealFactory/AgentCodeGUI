@@ -260,6 +260,14 @@ const api: WindowApi = {
     onOpenDirectory: (cb: (dir: string) => void) => subscribe(IPC.openDirectory, cb),
     onUpdateEvent: (cb: (s: UpdateStatus) => void) => subscribe(IPC.updateEvent, cb)
   },
+  notify: {
+    event: (p) => ipcRenderer.invoke(IPC.notifyEvent, p),
+    open: (key: string) => ipcRenderer.invoke(IPC.notifyOpen, key),
+    close: () => ipcRenderer.invoke(IPC.notifyClose),
+    resize: (height: number) => ipcRenderer.invoke(IPC.notifyResize, height),
+    onShow: (cb) => subscribe(IPC.notifyShow, cb),
+    onJump: (cb) => subscribe(IPC.notifyJump, cb)
+  },
   onEngineEvent: (cb: (e: EngineEvent) => void) => subscribe(IPC.engineEvent, cb),
   onWinState: (cb: (s: WindowState) => void) => subscribe(IPC.winState, cb)
 }

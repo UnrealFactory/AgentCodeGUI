@@ -54,6 +54,9 @@ import type {
   GitAiMessageResult,
   ModelId,
   EffortId,
+  NotifyEventPayload,
+  NotifyEntry,
+  NotifyTarget,
 } from './protocol'
 
 /** The surface exposed to the renderer via `window.api` (contextBridge). */
@@ -406,6 +409,17 @@ export interface WindowApi {
     onOpenDirectory(cb: (dir: string) => void): () => void
     /** subscribe to the full auto-update state on every change (returns an unsubscribe fn) */
     onUpdateEvent(cb: (status: UpdateStatus) => void): () => void
+  }
+  /** 포커스 밖 알림(토스트) — 채팅 표면이 전이(턴 종료/승인 대기/질문)를 알리면 메인이
+   *  비포커스·설정을 판정해 커서 모니터에 토스트 창을 띄운다. open/close/resize는
+   *  토스트 페이지 전용, onJump는 메인 창의 클릭 라우팅 수신. */
+  notify: {
+    event(p: NotifyEventPayload): Promise<void>
+    open(key: string): Promise<void>
+    close(): Promise<void>
+    resize(height: number): Promise<void>
+    onShow(cb: (entries: NotifyEntry[]) => void): () => void
+    onJump(cb: (target: NotifyTarget) => void): () => void
   }
   /** Subscribe to streaming engine events. Returns an unsubscribe fn. */
   onEngineEvent(cb: (event: EngineEvent) => void): () => void

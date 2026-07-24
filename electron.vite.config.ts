@@ -35,7 +35,11 @@ export default defineConfig({
     },
     build: {
       rollupOptions: {
-        input: { index: resolve(__dirname, 'src/renderer/index.html') }
+        input: {
+          index: resolve(__dirname, 'src/renderer/index.html'),
+          // 포커스 밖 알림 토스트 창 — React 없는 초경량 페이지 (main/notifyToast.ts가 띄운다)
+          toast: resolve(__dirname, 'src/renderer/toast.html')
+        }
       }
     },
     plugins: [react()]

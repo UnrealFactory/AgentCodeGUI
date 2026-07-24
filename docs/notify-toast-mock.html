@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>알림 토스트 목업 — AgentCodeGUI</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/wanteddev/wanted-sans@v1.0.3/packages/wanted-sans/fonts/webfonts/variable/split/WantedSansVariable.min.css">
+<style>
+  :root{
+    --desktop:#101010;
+    --bg: rgba(21,21,21,.97);
+    --bg-acrylic: rgba(21,21,21,.62);
+    --surface: rgba(255,255,255,.03);
+    --surface-2: rgba(255,255,255,.06);
+    --hover: rgba(255,255,255,.045);
+    --line: rgba(255,255,255,.07);
+    --line-2: rgba(255,255,255,.11);
+    --line-strong: rgba(255,255,255,.20);
+    --text: rgba(255,255,255,.90);
+    --text-2: rgba(255,255,255,.62);
+    --text-3: rgba(255,255,255,.40);
+    --text-4: rgba(255,255,255,.26);
+    --accent:#e9e9e9;
+    --accent-line: rgba(255,255,255,.26);
+    --green:#82c9a4;  --green-soft: rgba(130,201,164,.12);
+    --blue:#7fa7d8;   --blue-soft:  rgba(127,167,216,.14);
+    --amber:#d9a05b;  --amber-soft: rgba(217,160,91,.13);
+    --font-sans:'Wanted Sans Variable','Wanted Sans',system-ui,-apple-system,sans-serif;
+    --font-mono:'JetBrains Mono','Wanted Sans Variable',ui-monospace,'SFMono-Regular',monospace;
+    --radius:12px;
+    --taskbar:48px;
+  }
+  *{ box-sizing:border-box; margin:0; padding:0; }
+  html,body{ height:100%; overflow:hidden; }
+  body{ font-family:var(--font-sans); color:var(--text); background:var(--desktop); }
+  button{ font-family:inherit; color:inherit; cursor:pointer; border:none; background:none; }
+
+  /* ── 가짜 바탕화면 ─────────────────────────────── */
+  .wallpaper{
+    position:fixed; inset:0;
+    background:
+      radial-gradient(1200px 700px at 72% 18%, rgba(84,110,160,.28), transparent 62%),
+      radial-gradient(900px 600px at 18% 78%, rgba(64,120,110,.20), transparent 60%),
+      radial-gradient(700px 500px at 45% 45%, rgba(120,90,150,.12), transparent 55%),
+      linear-gradient(160deg, #16181d 0%, #0e1013 55%, #0a0b0d 100%);
+  }
+  /* 다른 앱 창이 떠 있는 상황 연출 (톤 확인용) */
+  .fake-win{
+    position:fixed; left:10%; top:12%; width:52%; height:62%;
+    border-radius:10px; border:1px solid rgba(255,255,255,.08);
+    background:#1e1f22; box-shadow:0 26px 60px -28px rgba(0,0,0,.78);
+    overflow:hidden; opacity:.9;
+  }
+  .fake-win .tbar{ height:34px; background:#2b2d30; border-bottom:1px solid rgba(255,255,255,.06);
+    display:flex; align-items:center; padding:0 12px; gap:8px; }
+  .fake-win .tbar i{ width:10px; height:10px; border-radius:3px; background:rgba(255,255,255,.14); }
+  .fake-win .tbar span{ font-size:11px; color:rgba(255,255,255,.35); margin-left:4px; }
+  .fake-win .body{ padding:18px 20px; display:grid; gap:10px; }
+  .fake-win .body b{ display:block; height:10px; border-radius:5px; background:rgba(255,255,255,.055); }
+  .fake-win .body b:nth-child(2n){ width:72%; } .fake-win .body b:nth-child(3n){ width:55%; }
+
+  /* Windows 11풍 작업표시줄 */
+  .taskbar{
+    position:fixed; left:0; right:0; bottom:0; height:var(--taskbar);
+    background:rgba(18,18,20,.72); backdrop-filter:blur(24px) saturate(1.2);
+    border-top:1px solid rgba(255,255,255,.06);
+    display:flex; align-items:center; justify-content:center; gap:6px;
+  }
+  .taskbar i{ width:32px; height:32px; border-radius:8px; background:rgba(255,255,255,.07); display:block; }
+  .taskbar i.app{ background:rgba(255,255,255,.12); outline:1px solid rgba(255,255,255,.14);
+    background-image:url('../build/icon.png'); background-size:22px; background-position:center; background-repeat:no-repeat; }
+  .taskbar .clock{ position:absolute; right:14px; font-size:11.5px; color:var(--text-3); text-align:right; line-height:1.35; }
+
+  /* ── 토스트 ────────────────────────────────────── */
+  .toast{
+    position:fixed; right:16px; bottom:calc(var(--taskbar) + 16px);
+    width:344px; border-radius:var(--radius);
+    background:var(--bg-acrylic); backdrop-filter:blur(28px) saturate(1.25);
+    box-shadow:0 18px 48px -18px rgba(0,0,0,.72), 0 0 0 1px var(--line-2);
+    overflow:hidden; cursor:pointer; user-select:none;
+    opacity:0; pointer-events:none;
+  }
+  .toast.opaque{ background:var(--bg); backdrop-filter:none; }
+  .toast.show{ pointer-events:auto; animation:toast-in .28s cubic-bezier(.2,.9,.25,1) forwards; }
+  .toast.hide{ animation:toast-out .18s ease-in forwards; }
+  @keyframes toast-in{ from{ opacity:0; transform:translateY(14px) scale(.98); } to{ opacity:1; transform:none; } }
+  @keyframes toast-out{ from{ opacity:1; transform:none; } to{ opacity:0; transform:translateY(10px) scale(.99); } }
+  .toast:hover{ box-shadow:0 18px 48px -18px rgba(0,0,0,.72), 0 0 0 1px var(--accent-line); }
+
+  .t-head{ display:flex; align-items:center; gap:7px; padding:10px 12px 0 14px; }
+  .t-head .appico{ width:16px; height:16px; border-radius:4px;
+    background:url('../build/icon.png') center/16px no-repeat, rgba(255,255,255,.10); }
+  .t-head .appname{ font-size:10.5px; font-weight:600; letter-spacing:.04em; color:var(--text-4); text-transform:uppercase; }
+  .t-head .when{ font-size:10.5px; color:var(--text-4); }
+  .t-head .when::before{ content:'·'; margin:0 5px; }
+  .t-close{ margin-left:auto; width:22px; height:22px; border-radius:6px; display:grid; place-items:center;
+    color:var(--text-4); font-size:13px; line-height:1; }
+  .t-close:hover{ background:var(--hover); color:var(--text); }
+
+  .t-body{ display:flex; gap:11px; padding:9px 14px 13px; align-items:flex-start; }
+  .t-ico{ flex:none; width:28px; height:28px; border-radius:50%; display:grid; place-items:center; margin-top:1px; }
+  .t-ico svg{ width:14px; height:14px; }
+  .t-ico.ok{   background:var(--green-soft); color:var(--green); box-shadow:inset 0 0 0 1px rgba(130,201,164,.25); }
+  .t-ico.wait{ background:var(--amber-soft); color:var(--amber); box-shadow:inset 0 0 0 1px rgba(217,160,91,.25); }
+  .t-ico.ask{  background:var(--blue-soft);  color:var(--blue);  box-shadow:inset 0 0 0 1px rgba(127,167,216,.25); }
+  .t-main{ min-width:0; flex:1; }
+  .t-title{ font-size:13px; font-weight:650; letter-spacing:-.01em; }
+  .t-title .chat{ color:var(--text-2); font-weight:500; }
+  .t-title .chat::before{ content:'—'; margin:0 6px; color:var(--text-4); }
+  .t-prev{ margin-top:4px; font-size:12px; line-height:1.5; color:var(--text-3);
+    display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+  .t-cmd{ margin-top:6px; display:inline-block; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+    font-family:var(--font-mono); font-size:11px; color:var(--text-2);
+    background:rgba(0,0,0,.25); border:1px solid var(--line); border-radius:6px; padding:3px 8px; }
+
+  /* 집계형: 여러 건을 한 장에 — 행 클릭 = 그 채팅으로 점프 */
+  .t-rows{ display:grid; gap:6px; margin-top:7px; }
+  .t-row{ display:flex; align-items:center; gap:8px; font-size:12px; color:var(--text-2);
+    background:var(--surface); border:1px solid var(--line); border-radius:8px; padding:6px 9px; }
+  .t-row:hover{ background:var(--surface-2); border-color:var(--line-strong); }
+  .t-row i{ flex:none; width:6px; height:6px; border-radius:50%; }
+  .t-row i.ok{ background:var(--green); } .t-row i.wait{ background:var(--amber); }
+  .t-row .nm{ color:var(--text); font-weight:550; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .t-row .st{ margin-left:auto; flex:none; color:var(--text-4); font-size:11px; }
+
+  /* 클릭 시 "본 창으로 점프" 시뮬레이션 칩 */
+  .jump{ position:fixed; left:50%; top:44%; transform:translate(-50%,-50%) scale(.96); opacity:0;
+    background:var(--bg); border-radius:10px; box-shadow:0 0 0 1px var(--line-2), 0 18px 48px -18px rgba(0,0,0,.7);
+    padding:12px 18px; font-size:13px; color:var(--text); pointer-events:none; transition:opacity .18s, transform .18s; }
+  .jump.on{ opacity:1; transform:translate(-50%,-50%) scale(1); }
+  .jump b{ color:var(--green); font-weight:650; }
+
+  /* ── 데모 컨트롤 (목업 전용) ──────────────────── */
+  .panel{ position:fixed; left:16px; top:16px; width:230px; border-radius:var(--radius);
+    background:var(--bg); box-shadow:0 0 0 1px var(--line-2), 0 18px 48px -18px rgba(0,0,0,.7);
+    padding:13px 14px; z-index:10; }
+  .panel h1{ font-size:11px; font-weight:650; letter-spacing:.05em; color:var(--text-3); text-transform:uppercase; margin-bottom:10px; }
+  .panel .btns{ display:grid; gap:5px; }
+  .panel .btns button{ text-align:left; font-size:12.5px; padding:7px 10px; border-radius:8px;
+    background:var(--surface); border:1px solid var(--line); color:var(--text-2); }
+  .panel .btns button:hover{ background:var(--surface-2); color:var(--text); }
+  .panel .btns button.on{ background:var(--surface-2); color:var(--text); border-color:var(--line-strong); }
+  .panel .btns button i{ display:inline-block; width:7px; height:7px; border-radius:50%; margin-right:8px; }
+  .panel .sep{ height:1px; background:var(--line); margin:11px -14px; }
+  .panel label{ display:flex; align-items:center; gap:8px; font-size:12px; color:var(--text-2); cursor:pointer; }
+  .panel .hint{ margin-top:10px; font-size:11px; line-height:1.55; color:var(--text-4); }
+</style>
+</head>
+<body>
+  <div class="wallpaper"></div>
+
+  <div class="fake-win">
+    <div class="tbar"><i></i><i></i><i></i><span>다른 작업 중인 앱 (예: 게임·브라우저·에디터)</span></div>
+    <div class="body"><b></b><b></b><b></b><b></b><b></b><b></b><b></b><b></b></div>
+  </div>
+
+  <div class="taskbar">
+    <i></i><i class="app"></i><i></i><i></i><i></i>
+    <div class="clock">오후 9:41<br>2026-07-24</div>
+  </div>
+
+  <!-- ── 토스트 본체 ── -->
+  <div class="toast" id="toast">
+    <div class="t-head">
+      <span class="appico"></span>
+      <span class="appname">AgentCodeGUI</span>
+      <span class="when">방금</span>
+      <button class="t-close" title="닫기">✕</button>
+    </div>
+    <div class="t-body" id="tbody"><!-- 변형별 내용 주입 --></div>
+  </div>
+
+  <div class="jump" id="jump">→ 본 창 포커스 + <b>해당 패널로 점프</b> (시뮬레이션)</div>
+
+  <!-- ── 데모 컨트롤 ── -->
+  <div class="panel">
+    <h1>알림 목업 — 변형</h1>
+    <div class="btns" id="btns">
+      <button data-v="done" class="on"><i style="background:var(--green)"></i>답변 도착</button>
+      <button data-v="approve"><i style="background:var(--amber)"></i>승인 대기</button>
+      <button data-v="ask"><i style="background:var(--blue)"></i>AI가 질문</button>
+      <button data-v="multi"><i style="background:var(--text-3)"></i>여러 건 집계</button>
+    </div>
+    <div class="sep"></div>
+    <label><input type="checkbox" id="acr" checked> 아크릴(반투명) — 끄면 불투명 카드</label>
+    <div class="hint">
+      자동으로 사라지지 않습니다 — 클릭(점프)하거나 ✕로 닫을 때까지 유지.<br>
+      앱 창이 포커스를 되찾으면 그때는 자동 소멸.<br>
+      실제 구현은 커서가 있는 모니터의 우하단에 뜹니다.
+    </div>
+  </div>
+
+<script>
+  const ICONS = {
+    ok:   '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 8.5l3.5 3.5 7-8"/></svg>',
+    wait: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="8" cy="8" r="6"/><path d="M8 4.8V8l2.2 1.6"/></svg>',
+    ask:  '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M5.7 6a2.4 2.4 0 1 1 3.4 2.5c-.7.35-1.1.8-1.1 1.6"/><circle cx="8" cy="12.4" r=".2" fill="currentColor"/></svg>',
+  };
+
+  const VARIANTS = {
+    done: `
+      <div class="t-ico ok">${ICONS.ok}</div>
+      <div class="t-main">
+        <div class="t-title">답변 도착<span class="chat">diff 파이프라인 정리</span></div>
+        <div class="t-prev">전체 파일 LF 계약 위반 3곳을 고쳤어요. 뷰어 쪽 훙크 병합은 손대지 않았고, 테스트는 전부 통과…</div>
+      </div>`,
+    approve: `
+      <div class="t-ico wait">${ICONS.wait}</div>
+      <div class="t-main">
+        <div class="t-title">승인 대기 중<span class="chat">릴리즈 준비</span></div>
+        <div class="t-prev">명령 실행 승인이 필요해요.</div>
+        <code class="t-cmd">npm run release</code>
+      </div>`,
+    ask: `
+      <div class="t-ico ask">${ICONS.ask}</div>
+      <div class="t-main">
+        <div class="t-title">AI가 질문했어요<span class="chat">설정 리팩터</span></div>
+        <div class="t-prev">safeStorage 키를 계정별로 분리할까요, 공용으로 둘까요? 선택지 2개 중에서 골라주세요.</div>
+      </div>`,
+    multi: `
+      <div class="t-ico ok">${ICONS.ok}</div>
+      <div class="t-main">
+        <div class="t-title">받은 알림 2건</div>
+        <div class="t-rows">
+          <div class="t-row" data-chat="diff 파이프라인 정리"><i class="ok"></i><span class="nm">diff 파이프라인 정리</span><span class="st">답변 도착</span></div>
+          <div class="t-row" data-chat="릴리즈 준비"><i class="wait"></i><span class="nm">릴리즈 준비</span><span class="st">승인 대기</span></div>
+        </div>
+      </div>`,
+  };
+  const CHAT_OF = { done:'diff 파이프라인 정리', approve:'릴리즈 준비', ask:'설정 리팩터' };
+
+  const toast = document.getElementById('toast');
+  const tbody = document.getElementById('tbody');
+  const jump  = document.getElementById('jump');
+  let curVariant = 'done';
+  let jumpT = null;
+
+  // 자동 닫힘 없음 — 클릭(점프)하거나 ✕로 닫을 때까지 유지.
+  // 실제 구현에선 본 창이 포커스를 되찾는 순간에도 자동 소멸(이미 봤으니 무의미).
+  function show(variant){
+    curVariant = variant;
+    toast.classList.remove('show','hide');
+    void toast.offsetWidth;                 // 애니메이션 리스타트
+    tbody.innerHTML = VARIANTS[variant];
+    toast.classList.add('show');
+  }
+  function dismiss(){
+    toast.classList.remove('show');
+    toast.classList.add('hide');
+  }
+
+  toast.addEventListener('click', (e) => {
+    if (e.target.closest('.t-close')) { dismiss(); return; }
+    const row = e.target.closest('.t-row');
+    const chat = row ? row.dataset.chat : CHAT_OF[curVariant];
+    dismiss();
+    jump.innerHTML = `→ 본 창 포커스 + <b>${chat ? '“' + chat + '” 패널' : '해당 패널'}</b>로 점프 (시뮬레이션)`;
+    jump.classList.add('on');
+    clearTimeout(jumpT);
+    jumpT = setTimeout(() => jump.classList.remove('on'), 1400);
+  });
+
+  const btns = document.getElementById('btns');
+  btns.addEventListener('click', (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    btns.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+    show(b.dataset.v);
+  });
+
+  document.getElementById('acr').addEventListener('change', (e) => {
+    toast.classList.toggle('opaque', !e.target.checked);
+    const on = btns.querySelector('button.on');
+    show(on ? on.dataset.v : 'done');
+  });
+
+  show('done');
+</script>
+</body>
+</html>

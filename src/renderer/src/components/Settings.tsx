@@ -93,7 +93,7 @@ const NAV_GROUPS: { label: string; items: { id: View; label: string; Icon: (p: I
   {
     label: '환경',
     items: [
-      { id: 'display', label: 'Display', Icon: IconContrast, keys: '화면 유리 투명 아크릴 벽지 비침 배경 glass' },
+      { id: 'display', label: 'Display', Icon: IconContrast, keys: '화면 유리 투명 아크릴 벽지 비침 배경 glass 알림 토스트 notification' },
       { id: 'lsp', label: 'Code', Icon: IconCode, keys: '코드 언어 서버 lsp 하이라이트 심볼' },
       { id: 'explorer', label: 'Explorer', Icon: IconFilter, keys: '탐색기 숨김 필터 폴더' },
       { id: 'gesture', label: 'Gestures', Icon: IconMouse, keys: '제스처 마우스 우클릭' }
@@ -1979,6 +1979,8 @@ function DisplayView(): React.ReactElement {
   const [trigger, setTrigger] = useState<number>(() =>
     getPref<number>(SIDEBAR_AUTOHIDE_TRIGGER, AUTOHIDE_TRIGGER_DEFAULT)
   )
+  // 포커스 밖 알림(토스트) — 기본 켬. 저장되면 메인 프로세스가 uiPrefsSave에서 캐시를 갱신한다.
+  const [notify, setNotify] = useState<boolean>(() => getPref<boolean>('notify.toast', true))
   const emitAutohide = (): void => {
     window.dispatchEvent(new CustomEvent(SIDEBAR_AUTOHIDE_EVENT))
   }
@@ -2071,6 +2073,35 @@ function DisplayView(): React.ReactElement {
           />
         </div>
       )}
+
+      <div className="set-sec" style={{ marginTop: 26 }}>
+        알림
+      </div>
+      <div className="sc2 tgl">
+        <div>
+          <div className="em">포커스 밖 알림</div>
+          <div className="meta">
+            {notify
+              ? '다른 창을 보는 사이 답변이 오거나 AI가 기다리면, 마우스가 있는 모니터에 토스트로 알려요'
+              : '창이 포커스를 잃어도 알리지 않아요'}
+          </div>
+        </div>
+        <span className="sp" />
+        <button
+          className={'sw2' + (notify ? ' on' : '')}
+          role="switch"
+          aria-checked={notify}
+          aria-label={notify ? '포커스 밖 알림 끄기' : '포커스 밖 알림 켜기'}
+          onClick={() => {
+            const next = !notify
+            setNotify(next)
+            setPref('notify.toast', next)
+          }}
+        />
+      </div>
+      <div className="set-note2">
+        토스트는 클릭하면 해당 채팅으로 바로 이동하고, 닫기 전까지 남아 있어요 — 앱 창을 다시 보면 스스로 사라져요.
+      </div>
     </>
   )
 }

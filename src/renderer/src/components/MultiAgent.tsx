@@ -34,6 +34,7 @@ import { pushRecentDir } from '../lib/recentDirs'
 import { SubAgentModal } from './AgentPanel'
 import { ImageViewer } from './ImageViewer'
 import { extractMentions } from '../lib/mentions'
+import { useTurnNotifyList } from '../lib/notify'
 import { mergeRefs, useZoom, ZoomBadge } from './zoom'
 import { MouseGestureLayer, clearGesture, scrollGestures, sessionWindowGesture } from './mouseGesture'
 import { IconFolder, IconChevDown, IconMascot, IconPanelRight } from './icons'
@@ -566,6 +567,16 @@ function ActiveSession({
     })
   )
   const [focusedSlot, setFocusedSlot] = useState<number | null>(null)
+  // 포커스 밖 알림 — 6패널 각각의 전이(턴 종료/승인/질문)를 감시한다. sub=슬롯이라
+  // 패널별로 항목이 따로 쌓이고, 클릭 라우팅은 세션 단위(이 세션이 열린다).
+  useTurnNotifyList(
+    sessions.map((s, i) => ({
+      state: s.state,
+      busy: s.busy,
+      title: metas[i].title,
+      target: { surface: 'multi' as const, id: sessionId, sub: String(i) }
+    }))
+  )
   // Ctrl+휠 읽기 크기 — 멀티 전용 배율(multi.zoom, 기본 120%): 패널은 미니어처(zoom .8)라
   // 시작점을 키워 두고, 본채팅(chat.zoom)·추가 채팅(session.zoom)과는 독립이다.
   // 그리드에서 굴리면 전 패널에 함께 적용된다.
