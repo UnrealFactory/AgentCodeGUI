@@ -26,11 +26,27 @@ import { readSessionChats, writeSessionChats, type SessionChatRecord } from './s
 import { listSkills, setSkillEnabled } from './skills'
 import { listMcpServers, setMcpEnabled } from './mcp'
 import { listProjectFiles, listDir } from './files'
+import {
+  gitStatus,
+  gitLog,
+  gitFileDiff,
+  gitCommitDetail,
+  gitCommitFileDiff,
+  gitCommit,
+  gitPush,
+  gitPull,
+  gitFetch,
+  gitDiscard,
+  gitBranches,
+  gitSwitchBranch,
+  gitCreateBranch,
+  gitAiMessage
+} from './git'
 import { lspManager } from './lsp/manager'
 import { initAutoUpdater, checkForUpdates, quitAndInstall, getUpdateStatus } from './updater'
 import { IPC } from '@shared/protocol'
 import { ATTACH_IMAGE_EXTS, ATTACH_TEXT_EXTS } from '@shared/attachments'
-import type { EngineEvent, RunRequest, PermissionResponse, QuestionResponse, BgTaskRequest, UsageInfo, UsageWindow, FileReadResult, FileWriteResult, UserProfile, MultiRunRequest, MultiPermissionResponse, MultiQuestionResponse, LspPos, AgentStatus, SessionWindowInfo, SessionPersistPayload, SessionHydrateData, EngineUpdateItem, EngineUpdateStatus } from '@shared/protocol'
+import type { EngineEvent, RunRequest, PermissionResponse, QuestionResponse, BgTaskRequest, UsageInfo, UsageWindow, FileReadResult, FileWriteResult, UserProfile, MultiRunRequest, MultiPermissionResponse, MultiQuestionResponse, LspPos, AgentStatus, SessionWindowInfo, SessionPersistPayload, SessionHydrateData, EngineUpdateItem, EngineUpdateStatus, ModelId, EffortId } from '@shared/protocol'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -1230,6 +1246,41 @@ function registerIpc(): void {
         excludeFiles?: string[]
       }
     ) => listDir(a.cwd || '', a.rel || '', a.exclude, a.hideEmpty, a.excludeDirs, a.excludeFiles)
+  )
+
+  // Git — 탐색기 상태 스트립 + Git 카드 (main/git.ts의 시스템 git CLI 래퍼).
+  // 실패는 전부 조용한 폴백(repo:false / [] / {ok:false,error}) — 카드가 그대로 보여준다.
+  ipcMain.handle(IPC.gitStatus, async (_e, cwd: string) => gitStatus(cwd || ''))
+  ipcMain.handle(IPC.gitLog, async (_e, a: { cwd: string; limit?: number; skip?: number }) =>
+    gitLog(a.cwd || '', a.limit, a.skip)
+  )
+  ipcMain.handle(IPC.gitFileDiff, async (_e, a: { cwd: string; rel: string }) => gitFileDiff(a.cwd || '', a.rel))
+  ipcMain.handle(IPC.gitCommitDetail, async (_e, a: { cwd: string; hash: string }) =>
+    gitCommitDetail(a.cwd || '', a.hash)
+  )
+  ipcMain.handle(IPC.gitCommitFileDiff, async (_e, a: { cwd: string; hash: string; rel: string }) =>
+    gitCommitFileDiff(a.cwd || '', a.hash, a.rel)
+  )
+  ipcMain.handle(IPC.gitCommit, async (_e, a: { cwd: string; files: string[]; subject: string; body: string }) =>
+    gitCommit(a.cwd || '', a.files || [], a.subject || '', a.body || '')
+  )
+  ipcMain.handle(IPC.gitPush, async (_e, cwd: string) => gitPush(cwd || ''))
+  ipcMain.handle(IPC.gitPull, async (_e, cwd: string) => gitPull(cwd || ''))
+  ipcMain.handle(IPC.gitFetch, async (_e, cwd: string) => gitFetch(cwd || ''))
+  ipcMain.handle(IPC.gitDiscard, async (_e, a: { cwd: string; rel: string; untracked: boolean }) =>
+    gitDiscard(a.cwd || '', a.rel, !!a.untracked)
+  )
+  ipcMain.handle(IPC.gitBranches, async (_e, cwd: string) => gitBranches(cwd || ''))
+  ipcMain.handle(IPC.gitSwitchBranch, async (_e, a: { cwd: string; name: string }) =>
+    gitSwitchBranch(a.cwd || '', a.name)
+  )
+  ipcMain.handle(IPC.gitCreateBranch, async (_e, a: { cwd: string; name: string }) =>
+    gitCreateBranch(a.cwd || '', a.name)
+  )
+  ipcMain.handle(
+    IPC.gitAiMessage,
+    async (_e, a: { cwd: string; files: string[]; account?: string; model?: ModelId; effort?: EffortId }) =>
+      gitAiMessage(a.cwd || '', a.files || [], { account: a.account, model: a.model, effort: a.effort })
   )
 
   // LSP code intelligence for the in-app viewer — lazy per-project language servers.

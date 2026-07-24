@@ -574,7 +574,8 @@ function ActiveSession({
   // confirms it in the card modal (변경) or backs out (취소)
   const [pendingFolder, setPendingFolder] = useState<{ slot: number; cwd: string } | null>(null)
   // 폴더 팝오버에서 연 파일 — 그 패널의 cwd·diffs로 코드 뷰어를 띄운다 (패널 안이 아니라
-  // 여기서 한 번만 렌더해야 .fv-overlay(absolute)가 확대 오버레이에 갇히지 않는다)
+  // 여기서 한 번만 렌더해야 .fv-overlay(absolute)가 패널의 스태킹 컨텍스트에 갇혀
+  // 그 패널 영역 안에서만 뜨는 사고가 없다)
   const [openFile, setOpenFile] = useState<{ slot: number; path: string } | null>(null)
   // WorkBar 서브에이전트 행에서 연 상세 카드 — 열려 있는 동안 그 패널의 라이브 상태를 따른다
   const [openSub, setOpenSub] = useState<{ slot: number; id: string } | null>(null)

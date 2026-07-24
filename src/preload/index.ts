@@ -119,6 +119,29 @@ const api: WindowApi = {
   listFiles: (cwd) => ipcRenderer.invoke(IPC.listFiles, cwd),
   listDir: (cwd, rel, exclude, hideEmpty, excludeDirs, excludeFiles) =>
     ipcRenderer.invoke(IPC.listDir, { cwd, rel, exclude, hideEmpty, excludeDirs, excludeFiles }),
+  git: {
+    status: (cwd) => ipcRenderer.invoke(IPC.gitStatus, cwd),
+    log: (cwd, limit, skip) => ipcRenderer.invoke(IPC.gitLog, { cwd, limit, skip }),
+    fileDiff: (cwd, rel) => ipcRenderer.invoke(IPC.gitFileDiff, { cwd, rel }),
+    commitDetail: (cwd, hash) => ipcRenderer.invoke(IPC.gitCommitDetail, { cwd, hash }),
+    commitFileDiff: (cwd, hash, rel) => ipcRenderer.invoke(IPC.gitCommitFileDiff, { cwd, hash, rel }),
+    commit: (cwd, files, subject, body) => ipcRenderer.invoke(IPC.gitCommit, { cwd, files, subject, body }),
+    push: (cwd) => ipcRenderer.invoke(IPC.gitPush, cwd),
+    pull: (cwd) => ipcRenderer.invoke(IPC.gitPull, cwd),
+    fetch: (cwd) => ipcRenderer.invoke(IPC.gitFetch, cwd),
+    discard: (cwd, rel, untracked) => ipcRenderer.invoke(IPC.gitDiscard, { cwd, rel, untracked }),
+    branches: (cwd) => ipcRenderer.invoke(IPC.gitBranches, cwd),
+    switchBranch: (cwd, name) => ipcRenderer.invoke(IPC.gitSwitchBranch, { cwd, name }),
+    createBranch: (cwd, name) => ipcRenderer.invoke(IPC.gitCreateBranch, { cwd, name }),
+    aiMessage: (cwd, files, opts) =>
+      ipcRenderer.invoke(IPC.gitAiMessage, {
+        cwd,
+        files,
+        account: opts?.account,
+        model: opts?.model,
+        effort: opts?.effort
+      })
+  },
   lsp: {
     status: (cwd: string, relPath: string) => ipcRenderer.invoke(IPC.lspStatus, { cwd, relPath }),
     hover: (cwd: string, relPath: string, pos: LspPos, text?: string) =>

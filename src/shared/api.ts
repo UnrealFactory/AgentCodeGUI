@@ -45,6 +45,15 @@ import type {
   LspFilesChangedEvent,
   LspInstallProgress,
   LspServerInfo,
+  GitStatus,
+  GitLogResult,
+  GitFileDiffResult,
+  GitCommitDetail,
+  GitBranch,
+  GitResult,
+  GitAiMessageResult,
+  ModelId,
+  EffortId,
 } from './protocol'
 
 /** The surface exposed to the renderer via `window.api` (contextBridge). */
@@ -178,6 +187,39 @@ export interface WindowApi {
     excludeDirs?: string[],
     excludeFiles?: string[]
   ): Promise<DirEntry[]>
+  /** Git — 탐색기 상태 스트립 + Git 카드. 작업 폴더 기준(하위 폴더여도 저장소 루트로 동작),
+   *  경로는 전부 루트 기준 포워드 슬래시. .git 없는 폴더는 status가 repo:false로 답해
+   *  스트립 자체가 그려지지 않는다. */
+  git: {
+    /** 브랜치·ahead/behind·변경 파일 목록 — repo 아님이면 repo:false */
+    status(cwd: string): Promise<GitStatus>
+    /** 히스토리 (HEAD 기준, limit+skip 페이징) — unpushed 표시 포함 */
+    log(cwd: string, limit?: number, skip?: number): Promise<GitLogResult>
+    /** 워킹트리 파일 diff (HEAD ↔ 디스크) — 뷰어 override용 FileDiff */
+    fileDiff(cwd: string, rel: string): Promise<GitFileDiffResult>
+    /** 커밋 메타(제목·본문·작성자) + 바뀐 파일 목록 */
+    commitDetail(cwd: string, hash: string): Promise<GitCommitDetail | null>
+    /** 커밋 시점 파일 내용 + 부모 대비 diff — 뷰어 override(스냅샷)용 */
+    commitFileDiff(cwd: string, hash: string, rel: string): Promise<GitFileDiffResult & { content: string | null }>
+    /** 고른 파일만 add 후 commit — 실패 시 스테이징 원복 + 사유 반환 */
+    commit(cwd: string, files: string[], subject: string, body: string): Promise<GitResult>
+    push(cwd: string): Promise<GitResult>
+    pull(cwd: string): Promise<GitResult>
+    /** 갱신하기 — 원격 상태만 새로 읽는다 (fetch --prune) */
+    fetch(cwd: string): Promise<GitResult>
+    /** 파일 하나 되돌리기 — 추적 파일은 HEAD로, 미추적 새 파일은 휴지통(복구 가능) */
+    discard(cwd: string, rel: string, untracked: boolean): Promise<GitResult>
+    branches(cwd: string): Promise<GitBranch[]>
+    switchBranch(cwd: string, name: string): Promise<GitResult>
+    createBranch(cwd: string, name: string): Promise<GitResult>
+    /** AI 커밋 메시지 — 담긴 파일 diff를 읽고 저장소 최근 커밋 톤으로 1회 생성(도구 없는 1턴).
+     *  계정·모델·effort는 카드에서 매번 고른다 — 계정마다 남은 한도가 달라서(앱의 계정 문법). */
+    aiMessage(
+      cwd: string,
+      files: string[],
+      opts?: { account?: string; model?: ModelId; effort?: EffortId }
+    ): Promise<GitAiMessageResult>
+  }
   /** LSP code intelligence for the in-app viewer (lazy per-project language servers) */
   lsp: {
     /** current status for a file — asking also warms up the project's server */

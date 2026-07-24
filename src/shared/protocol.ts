@@ -82,6 +82,81 @@ export interface DirEntry {
   dir: boolean // true → expandable folder
 }
 
+// ── Git (탐색기 상태 스트립 + Git 카드) ──────────────────────
+// 작업 폴더 기준 시스템 git CLI 래퍼(main/git.ts). 경로는 전부 저장소 루트 기준
+// 포워드 슬래시 — 작업 폴더가 저장소의 하위 폴더여도 루트(toplevel)로 동작한다.
+/** 변경 파일 하나 — index/워크트리 구분 없이 접은 표시용 상태 한 글자. */
+export interface GitFileStatus {
+  path: string // repo-root-relative, forward slashes
+  status: 'M' | 'A' | 'D' | 'R' | 'U' // 수정·새 파일·삭제·개명·충돌
+  renamedFrom?: string // R일 때 원래 경로
+  untracked?: boolean // 미추적 새 파일 — 되돌리기가 휴지통행이 된다
+}
+/** repo=false면 나머지 필드는 무의미 — 스트립 자체를 그리지 않는다. */
+export interface GitStatus {
+  repo: boolean
+  root: string // 저장소 루트(절대 경로)
+  branch: string // 현재 브랜치명 (detached면 안내 문구)
+  detached: boolean
+  ahead: number // 업스트림보다 앞선(푸시 대기) 커밋 수
+  behind: number // 업스트림보다 뒤처진(당겨올) 커밋 수
+  upstream: string | null // e.g. 'origin/main' — 없으면 첫 푸시 전
+  hasRemote: boolean // remote 자체가 없으면 push/pull 버튼을 접는다
+  files: GitFileStatus[]
+}
+/** 히스토리 한 줄 — 목록 표시에 필요한 만큼만 (본문·파일은 상세 조회로). */
+export interface GitCommit {
+  hash: string
+  shortHash: string
+  parents: string[]
+  author: string
+  time: number // unix seconds
+  refs: string[] // 브랜치·태그 장식 (HEAD-> 제거됨)
+  subject: string
+  unpushed: boolean // 업스트림에 아직 없는 커밋 — '푸시 안 됨' 점
+}
+export interface GitLogResult {
+  commits: GitCommit[]
+  hasMore: boolean // limit+1 조회로 판정 — 더 불러오기 행 노출용
+}
+/** 파일 diff — 뷰어 계약(전체 파일·LF·FileDiff) 그대로. null이면 error가 사유. */
+export interface GitFileDiffResult {
+  diff: FileDiff | null
+  error?: string // 바이너리·용량 초과 등 diff를 접은 이유
+  // 워크트리에서 지워진 파일 — 디스크에 없어 뷰어가 읽을 게 없으니 HEAD 내용을
+  // 스냅샷으로 준다 (되돌리기 전에 "뭘 잃는지"를 보게)
+  headContent?: string
+}
+export interface GitCommitFile {
+  path: string
+  status: 'M' | 'A' | 'D' | 'R'
+  renamedFrom?: string
+}
+export interface GitCommitDetail {
+  hash: string
+  shortHash: string
+  author: string
+  time: number
+  subject: string
+  body: string
+  files: GitCommitFile[]
+}
+export interface GitBranch {
+  name: string
+  current: boolean
+  time: number // 마지막 커밋 시각(unix) — 목록 정렬·상대 시간 표시
+}
+export interface GitResult {
+  ok: boolean
+  error?: string
+}
+export interface GitAiMessageResult {
+  ok: boolean
+  subject?: string
+  body?: string
+  error?: string
+}
+
 // ── LSP code intelligence (in-app file viewer) ───────────────
 /**
  * Code-intelligence availability for a file in the viewer card.
@@ -821,6 +896,21 @@ export const IPC = {
   closeShortcut: 'shortcut:close', // Ctrl+W pressed (main swallows it) → renderer closes the open viewer
   listFiles: 'fs:list-files', // enumerate project files for the "@" mention palette
   listDir: 'fs:list-dir', // list one folder's entries for the file explorer (lazy per expand)
+  // Git — 탐색기 상태 스트립 + Git 카드 (작업 폴더 기준, main/git.ts)
+  gitStatus: 'git:status', // 브랜치·ahead/behind·변경 파일 목록 (repo 아님 판정 포함)
+  gitLog: 'git:log', // 히스토리 (limit/skip 페이징, 푸시 안 됨 표시)
+  gitFileDiff: 'git:file-diff', // 워킹트리 파일 diff (HEAD ↔ 디스크, 뷰어 계약)
+  gitCommitDetail: 'git:commit-detail', // 커밋 메타 + 바뀐 파일 목록
+  gitCommitFileDiff: 'git:commit-file-diff', // 커밋 시점 파일 내용 + 부모 대비 diff (뷰어 override)
+  gitCommit: 'git:commit', // 고른 파일만 add 후 commit
+  gitPush: 'git:push', // 올리기 (업스트림 없으면 -u origin HEAD)
+  gitPull: 'git:pull', // 당겨오기
+  gitFetch: 'git:fetch', // 갱신하기 — 원격 상태만 새로 읽는다
+  gitDiscard: 'git:discard', // 파일 하나 되돌리기 (미추적은 휴지통)
+  gitBranches: 'git:branches', // 로컬 브랜치 목록
+  gitSwitchBranch: 'git:switch-branch', // 브랜치 전환
+  gitCreateBranch: 'git:create-branch', // 새 브랜치 만들고 전환
+  gitAiMessage: 'git:ai-message', // AI 커밋 메시지 — diff 읽고 저장소 톤으로 1회 생성
   lspStatus: 'lsp:status', // code-intel status for a file (lazily spawns the project's server)
   lspHover: 'lsp:hover', // symbol hover (markdown) at a position
   lspDefinition: 'lsp:definition', // definition target(s) for the symbol at a position

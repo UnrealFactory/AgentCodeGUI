@@ -319,6 +319,13 @@ export const IconGitBranch = (p: IconProps) => (
   </Icon>
 )
 // Matches the Claude mark used in RookissAi-WorkSpace (its Icon.Sparkle).
+// 되돌리기 — 왼쪽으로 감아 도는 화살표 (Git 변경 파일 행의 hover 액션)
+export const IconUndo = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M9 14L4 9l5-5" />
+    <path d="M20 20v-7a4 4 0 0 0-4-4H4" />
+  </Icon>
+)
 export const IconClaude = (p: IconProps) => (
   <Icon {...p}>
     <path d="M12 3v18M3 12h18M5.5 5.5l13 13M18.5 5.5l-13 13" />

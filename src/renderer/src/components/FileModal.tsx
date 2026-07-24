@@ -2844,13 +2844,16 @@ export function FileModal({
   // diff(변경 tint) 보기 토글 — 읽기 모드의 초록/빨강 diff를 Ctrl+D로 켜고 끈다(편집과 분리).
   // 마크다운은 자체 '미리보기/변경사항' 토글이 있으니 제외. 끄면 marks를 안 내려보내 diff·
   // 오버뷰 룰러가 모두 사라지고 평범한(잠긴) 뷰가 된다.
-  const canToggleDiff = !!marks && !isMdFile
+  // Git 카드에서 온 일회성 diff(ov.diff)는 토글과 무관하게 항상 표시 — 사용자가 방금
+  // "이 파일의 변경"을 보러 온 것이라, 전역 기본(OFF)에 가려지면 빈 화면처럼 보인다.
+  const forcedDiff = !!ov?.diff
+  const canToggleDiff = !!marks && !isMdFile && !forcedDiff
   // 마크다운(변경 파일)은 렌더↔소스(diff)를 Ctrl+D로 오간다 — 코드 파일의 diffView와 별개
   const mdCanToggle = isMdFile && !!diff
   // diff가 실제로 그려지는 맥락에서만 버튼·단축키가 의미 있다: 비-CM 읽기 뷰어이거나, CM 코드
   // 파일을 읽기 모드로 보는 중일 때(편집 모드는 어차피 diff를 끄므로 토글이 무의미).
   const diffVisibleCtx = canToggleDiff && (!cmEligible || cmMode === 'read')
-  const effMarks = canToggleDiff && !diffView ? null : marks
+  const effMarks = forcedDiff ? marks : canToggleDiff && !diffView ? null : marks
 
   const rz = useResizableModal('viewer.size', path != null, {
     defaultMaximized: true

@@ -1,13 +1,15 @@
 import { Fragment, memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
-import type { AppUser, ChangedFile, DirEntry } from '@shared/protocol'
+import type { AppUser, ChangedFile, DirEntry, GitStatus } from '@shared/protocol'
 import { FileBadge } from './fileType'
 import { getPref, setPref } from '../lib/prefs'
 import {
+  IconCheck,
   IconChevLeft,
   IconChevRight,
   IconCopy,
   IconDiff,
+  IconGitBranch,
   IconEyeOff,
   IconFile,
   IconFilter,
@@ -85,7 +87,8 @@ export const Explorer = memo(function Explorer({
   onShowChanged,
   onViewFolderChange,
   user,
-  onOpenSettings
+  onOpenSettings,
+  onOpenGit
 }: {
   cwd: string
   refreshKey: number // bump → re-read root + every expanded folder
@@ -96,6 +99,7 @@ export const Explorer = memo(function Explorer({
   onViewFolderChange?: (folder: string) => void // 지금 보고 있는 폴더를 알림 → 채팅 @ 멘션의 기준
   user?: AppUser // 하단 프로필 행(설정 진입점)의 아바타·이름 — 사이드바 footer와 동일
   onOpenSettings?: () => void // 하단 프로필 행 → 설정. 탐색기로 전환하면 사이드바 footer가 사라져 설정을 열 길이 없던 구멍을 메운다
+  onOpenGit?: () => void // Git 상태 스트립 클릭 → Git 카드. 미지정이면 스트립을 그리지 않는다
 }) {
   // Verse 프로젝트면 자동으로 채워지는 보기 전용 API digest 루트(Verse.org/Fortnite.com/…).
   // 영속하지 않고 매번 .vproject에서 다시 발견한다. 트리 맨 아래 접이식 그룹으로 노출.
@@ -180,6 +184,35 @@ export const Explorer = memo(function Explorer({
   const [dropRel, setDropRel] = useState<string | null>(null)
   const [notice, setNotice] = useState<{ title: string; message: string } | null>(null) // 알림 카드
   const asideRef = useRef<HTMLElement>(null)
+
+  // Git 상태 스트립 — .git 있는 폴더에서만 조용히 나타난다. 폴더 변경·턴 종료(refreshKey)
+  // 마다 재조회하고, Git 카드의 커밋/푸시 등 변화는 ccg-git-changed 커스텀 이벤트로 따라간다.
+  const [git, setGit] = useState<GitStatus | null>(null)
+  const [gitTick, setGitTick] = useState(0)
+  useEffect(() => {
+    const bump = (): void => setGitTick((t) => t + 1)
+    window.addEventListener('ccg-git-changed', bump)
+    return () => window.removeEventListener('ccg-git-changed', bump)
+  }, [])
+  useEffect(() => {
+    if (!cwd || !onOpenGit) {
+      setGit(null)
+      return
+    }
+    let alive = true
+    window.api.git
+      .status(cwd)
+      .then((s) => {
+        if (alive) setGit(s)
+      })
+      .catch(() => {
+        if (alive) setGit(null)
+      })
+    return () => {
+      alive = false
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cwd, refreshKey, gitTick])
 
   // 보고 있는 폴더가 바뀔 때마다 프로젝트별로 저장
   useEffect(() => {
@@ -932,6 +965,25 @@ export const Explorer = memo(function Explorer({
             폴더 선택
           </button>
         </div>
+      )}
+
+      {/* Git 상태 스트립 — 트리 아래·프로필 줄 위, .git 있는 폴더에서만. 줄 전체가
+          Git 카드 진입 버튼이고, 배지(변경 수·푸시 대기)가 상시 보이는 게 절반의 역할이다 */}
+      {cwd && git?.repo && onOpenGit && (
+        <button className="git-strip has-tip" onClick={onOpenGit} data-tip="Git — 변경·커밋·히스토리">
+          <IconGitBranch size={12} />
+          <span className="br">{git.branch}</span>
+          <span className="sp" />
+          {git.files.length > 0 && <span className="pill chg">●{git.files.length}</span>}
+          {git.ahead > 0 && <span className="pill ahead">↑{git.ahead}</span>}
+          {git.behind > 0 && <span className="pill behind">↓{git.behind}</span>}
+          {git.files.length === 0 && git.ahead === 0 && git.behind === 0 && (
+            <span className="pill clean">
+              <IconCheck size={8} stroke={3} />
+              {git.upstream ? '최신' : '깨끗'}
+            </span>
+          )}
+        </button>
       )}
 
       {/* 하단 설정 진입점 — 사이드바 footer(.sb-foot)와 동일한 프로필 행(아바타+이름+톱니).

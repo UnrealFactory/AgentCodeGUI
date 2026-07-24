@@ -29,6 +29,7 @@ import { Explorer } from './components/Explorer'
 import { FolderSwitchDialog } from './components/FolderSwitchDialog'
 import { FileModal } from './components/FileModal'
 import { ChangedFilesModal } from './components/ChangedFilesModal'
+import { GitModal, type GitViewerOverride } from './components/GitModal'
 import { ImageViewer } from './components/ImageViewer'
 import { SettingsModal } from './components/Settings'
 import { EngineGate } from './components/EngineGate'
@@ -146,6 +147,10 @@ function MainApp({ user }: { user: AppUser }) {
   // 설정 모달을 특정 탭으로 열기 (키 없이 API 토글을 누르면 'api' 탭으로 바로)
   const [settingsView, setSettingsView] = useState<'version' | 'api' | undefined>(undefined)
   const [openFilePath, setOpenFilePath] = useState<string | null>(null)
+  // Git 카드(탐색기 하단 스트립) — 열림 여부 + 카드에서 연 파일의 일회성 뷰어 오버라이드
+  // (커밋 스냅샷·일회성 diff·해시 칩). 일반 경로로 연 파일은 null이라 뷰어가 평소처럼 돈다.
+  const [gitOpen, setGitOpen] = useState(false)
+  const [gitViewer, setGitViewer] = useState<GitViewerOverride | null>(null)
   // 탐색기 우클릭 '변경된 파일 보기' 카드 — 스코프 폴더(rel '' = 프로젝트 전체)와 표시 이름
   const [chgScope, setChgScope] = useState<{ rel: string; label: string } | null>(null)
   // a working-folder change that would reset the current conversation, parked here
@@ -559,6 +564,9 @@ function MainApp({ user }: { user: AppUser }) {
   ]
 
   const cwd = manualCwd || ''
+  // Git 카드의 기준 폴더 — 단일 뷰는 이 채팅의 작업 폴더, 멀티 뷰는 탐색기가 따라가는
+  // (마지막으로 클릭한) 패널의 폴더. 탐색기 스트립과 카드가 같은 폴더를 본다.
+  const gitCwd = mode === 'multi' ? multiExp?.cwd ?? '' : cwd
   // @ 멘션의 기준 폴더 — 탐색기가 떠 있고 다른 뷰(Verse digest)를 보고 있으면 그 폴더,
   // 아니면 작업 폴더. 탐색기가 내려가 있으면 보고값이 낡을 수 있어 cwd로 되돌린다.
   const mentionBase = (explorerOpen && explorerFolder) || cwd
@@ -1045,9 +1053,19 @@ function MainApp({ user }: { user: AppUser }) {
   const onOpenSettings = useEvent(() => setSettingsOpen(true))
   // 모든 파일은 코드 뷰어 카드 하나로 연다 — 변경된 파일이면 뷰어가 diff 마킹
   // (추가 틴트·삭제 헤어라인·룰러)을 얹으므로 LSP 심볼 탐색과 변경 표시가 공존한다.
+  // 일반 경로 열기는 Git 오버라이드를 지운다 — 직전에 커밋 스냅샷을 봤어도 새 파일은 평소대로.
   const openPath = (path: string): void => {
+    setGitViewer(null)
     setOpenFilePath(path)
   }
+  // Git 카드 — 탐색기 하단 상태 스트립이 연다. 카드에서 연 파일은 override로 뷰어에.
+  const onOpenGit = useEvent(() => setGitOpen(true))
+  const onOpenGitFile = useEvent((path: string, ov: GitViewerOverride) => {
+    setGitViewer(ov)
+    setOpenFilePath(path)
+  })
+  // 폴더·뷰 전환(멀티의 패널 전환 포함)이면 카드를 접는다 — 스코프 폴더가 달라졌다
+  useEffect(() => setGitOpen(false), [gitCwd, mode])
   const onOpenFile = useEvent((f: { path: string }) => openPath(f.path))
   // click a file in a tool-log row / explorer — same viewer
   const onOpenToolFile = useEvent((path: string) => openPath(path))
@@ -1158,6 +1176,7 @@ function MainApp({ user }: { user: AppUser }) {
               onViewFolderChange={onExplorerView}
               user={user}
               onOpenSettings={onOpenSettings}
+              onOpenGit={onOpenGit}
             />
           ) : mode === 'multi' && explorerOpen && multiExp ? (
             <Explorer
@@ -1170,6 +1189,7 @@ function MainApp({ user }: { user: AppUser }) {
               onShowChanged={onShowChanged}
               user={user}
               onOpenSettings={onOpenSettings}
+              onOpenGit={onOpenGit}
             />
           ) : (
             <Sidebar key="sb" user={user} sections={sections} onNewChat={onOpenNewChat} onOpenSettings={onOpenSettings} />
@@ -1317,11 +1337,26 @@ function MainApp({ user }: { user: AppUser }) {
         />
       )}
 
+      {/* Git 카드 — 뷰어(z 60)가 위에 뜨도록 한 단계 아래(z 55). 멀티 뷰에선 탐색기가
+          따라가는 패널의 폴더 기준으로 열리고, 파일은 언제나 루트 FileModal(절대 경로)로 간다 */}
+      {gitOpen && gitCwd && (
+        <GitModal
+          cwd={gitCwd}
+          refreshKey={mode === 'multi' ? multiExp?.tick ?? 0 : fsTick}
+          onClose={() => setGitOpen(false)}
+          onOpenFile={onOpenGitFile}
+        />
+      )}
+
       <FileModal
         path={openFilePath}
         cwd={cwd}
         diffs={state.diffs}
-        onClose={() => setOpenFilePath(null)}
+        override={gitViewer}
+        onClose={() => {
+          setOpenFilePath(null)
+          setGitViewer(null)
+        }}
         onAskSelection={onAskSelection}
       />
 

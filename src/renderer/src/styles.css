@@ -2258,8 +2258,30 @@ button.wb-prow{ width:100%; text-align:left; }
 .lsp-hover .lh-from code.inline{ font-size:12.5px; background:none; border:none; padding:0; word-break:break-all; }
 
 /* ============================== GIT 카드 ============================== */
-/* 탐색기 ⎇ 버튼으로 여는 모달 — Fork식 3분할(내비·커밋·상세)을 카드 언어로.
+/* 탐색기 하단 Git 상태 스트립으로 여는 모달 — Fork식 3분할(내비·커밋·상세)을 카드 언어로.
    파일 뷰어(z 60)가 위에 뜨도록 한 단계 아래(z 55)에 깐다. */
+
+/* 탐색기 하단 Git 상태 스트립 — 트리 아래·프로필 줄 위, .git 있는 폴더에서만 렌더.
+   줄 전체가 카드 진입 버튼. 배지가 상시 보이는 것(커밋 안 한 변경이 쌓임을 조용히
+   알림)이 이 줄의 절반의 역할이라, 깨끗할 땐 초록 ✓ 하나로 조용해진다. */
+.git-strip{
+  flex:0 0 auto; display:flex; align-items:center; gap:7px; width:auto; text-align:left;
+  margin:6px -1px 0; padding:8px 10px;
+  background:var(--surface); border:1px solid var(--line); border-radius:9px;
+  font-size:11.5px; color:var(--text-2);
+  transition:background .13s, border-color .13s, box-shadow .13s, color .13s;
+}
+.git-strip:hover{ background:var(--surface-2); border-color:var(--accent-line); box-shadow:var(--shadow-sm); color:var(--text); }
+.git-strip > svg{ color:var(--text-3); flex:0 0 auto; }
+.git-strip:hover > svg{ color:var(--text); }
+.git-strip .br{ font-family:var(--font-mono); font-size:11px; font-weight:600; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.git-strip .sp{ flex:1; }
+.git-strip .pill{ display:flex; align-items:center; gap:3px; font-family:var(--font-mono); font-size:9.5px; font-weight:700; padding:2px 7px; border-radius:99px; flex:0 0 auto; }
+.git-strip .pill.chg{ color:var(--yellow); background:var(--yellow-soft); }
+.git-strip .pill.ahead{ color:var(--blue); background:var(--blue-soft); }
+.git-strip .pill.behind{ color:var(--teal); background:rgba(111,195,195,.13); }
+.git-strip .pill.clean{ color:var(--green); background:var(--green-soft); }
+
 .gitm-overlay{
   position:absolute; inset:0; z-index:55;
   background: oklch(0.1 0.004 60 / 0.55); backdrop-filter: blur(3px);
@@ -2267,27 +2289,34 @@ button.wb-prow{ width:100%; text-align:left; }
   animation:fade .16s ease both;
 }
 .gitm-modal{
-  width:min(1180px, 100%); height:min(680px, 100%);
+  /* 큰 모니터에서 옹색하지 않게 — 창의 대부분을 쓰되(오버레이 padding 40px 안), 상한만 둔다 */
+  width:min(1640px, 100%); height:min(980px, 100%);
   display:flex; flex-direction:column;
   background:var(--bg); border:1px solid var(--line-2); border-radius:14px;
   box-shadow: 0 30px 80px -16px rgba(0,0,0,0.34);
   overflow:hidden; animation:rise .22s cubic-bezier(.2,.8,.2,1) both;
 }
+/* 헤더 한 줄 — [⎇ Git] [브랜치 칩] [경로] ─ [에러] [갱신·당겨오기·올리기] [✕] */
+.gitm-head{ flex:0 0 auto; display:flex; align-items:center; gap:10px; padding:13px 18px; border-bottom:1px solid var(--line); }
+.gitm-head .sp{ flex:1; }
+/* 헤더 버튼 툴팁 — 카드 맨 위라 위로 뜨면 잘린다 → 아래로 떨어뜨린다 (.fxh 문법) */
+.gitm-head .has-tip::after{ bottom:auto; top:100%; margin-bottom:0; margin-top:8px; left:auto; right:0; transform:translate(0, -3px); }
+.gitm-head .has-tip:hover::after{ transform:translate(0, 0); }
 .gitm-ic{ flex:0 0 auto; display:grid; place-items:center; color:var(--accent); }
-.gitm-name{ flex:0 0 auto; font-weight:700; font-size:13.5px; }
+.gitm-name{ flex:0 0 auto; font-weight:700; font-size:15px; }
 .gitm-br{
   flex:0 0 auto; display:inline-flex; align-items:center; gap:5px;
-  font-family:var(--font-mono); font-size:10.5px; font-weight:600; color:var(--text-2);
-  background:var(--surface-2); border:1px solid var(--line); padding:3px 9px; border-radius:99px;
+  font-family:var(--font-mono); font-size:11.5px; font-weight:600; color:var(--text-2);
+  background:var(--surface-2); border:1px solid var(--line); padding:4px 11px; border-radius:99px;
 }
 .gitm-br .ab{ font-style:normal; color:var(--blue); }
 .gitm-br .ab.bh{ color:var(--yellow); }
-.gitm-path{ flex:0 1 auto; min-width:0; font-family:var(--font-mono); font-size:11px; color:var(--text-4); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.gitm-err{ flex:0 1 auto; min-width:0; max-width:300px; font-size:11px; color:var(--red); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.gitm-path{ flex:0 1 auto; min-width:0; font-family:var(--font-mono); font-size:12px; color:var(--text-4); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.gitm-err{ flex:0 1 auto; min-width:0; max-width:320px; font-size:12px; color:var(--red); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .gitm-btn{
   flex:0 0 auto; display:inline-flex; align-items:center; gap:6px;
   border:1px solid var(--line-2); background:var(--bg); color:var(--text-2);
-  border-radius:8px; padding:5px 11px; font-size:11.5px; font-weight:600; cursor:pointer; font-family:inherit;
+  border-radius:9px; padding:6px 13px; font-size:12.5px; font-weight:600; cursor:pointer; font-family:inherit;
   transition:box-shadow .12s, color .12s, background .12s;
 }
 .gitm-btn:hover{ box-shadow:var(--hover-ring); color:var(--text); }
@@ -2302,21 +2331,28 @@ button.wb-prow{ width:100%; text-align:left; }
 .gitm-body{ flex:1; min-height:0; display:flex; }
 
 /* 좌측 내비 */
-.gitm-nav{ width:200px; flex:0 0 200px; border-right:1px solid var(--line); background:var(--surface); padding:10px 8px 14px; overflow-y:auto; }
-.gitm-sec{ padding:11px 10px 5px; font-size:10px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--text-4); }
-.gitm-sec.line{ border-top:1px solid var(--line); margin-top:6px; padding:13px 18px 6px; }
+.gitm-nav{ width:228px; flex:0 0 228px; border-right:1px solid var(--line); background:var(--surface); padding:11px 9px 15px; overflow-y:auto; }
+.gitm-sec{ padding:12px 10px 6px; font-size:10.5px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--text-4); }
+.gitm-sec.line{ border-top:1px solid var(--line); margin-top:6px; padding:14px 18px 7px; }
+/* 섹션 줄에 오른끝 링크(모두 담기/해제)를 얹는 변형 */
+.gitm-sec.row{ display:flex; align-items:center; gap:6px; }
+.gitm-sec .lnk{ margin-left:auto; font-size:11px; font-weight:700; color:var(--text-4); text-transform:none; letter-spacing:0; padding:2px 7px; border-radius:5px; }
+.gitm-sec .lnk:hover{ background:var(--surface-2); color:var(--text-2); }
+/* 새 브랜치 인라인 입력 — 내비 항목 한 줄이 그대로 입력으로 바뀐다 */
+.gitm-item input.gitm-newbr{ flex:1; min-width:0; background:none; border:none; outline:none; color:var(--text); font-family:var(--font-mono); font-size:12.5px; }
+.gitm-item input.gitm-newbr::placeholder{ color:var(--text-4); }
 .gitm-item{
-  display:flex; align-items:center; gap:8px; width:100%; text-align:left;
-  padding:6.5px 10px; border-radius:8px; font-size:12.5px; color:var(--text-2); cursor:pointer;
+  display:flex; align-items:center; gap:9px; width:100%; text-align:left;
+  padding:8px 11px; border-radius:9px; font-size:13.5px; color:var(--text-2); cursor:pointer;
   transition:background .12s, color .12s;
 }
 .gitm-item:hover{ background:var(--surface-2); }
 .gitm-item.on{ background:var(--accent-soft); color:var(--text); font-weight:600; box-shadow:inset 0 0 0 1px var(--accent-line); }
 .gitm-item.static{ cursor:default; }
 .gitm-item.static:hover{ background:transparent; }
-.gitm-item .ic{ width:15px; flex:0 0 15px; text-align:center; color:var(--text-3); }
-.gitm-item .nm{ flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-family:var(--font-mono); font-size:11.5px; }
-.gitm-item .n{ margin-left:auto; font-family:var(--font-mono); font-size:10.5px; color:var(--text-4); }
+.gitm-item .ic{ width:16px; flex:0 0 16px; text-align:center; color:var(--text-3); }
+.gitm-item .nm{ flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-family:var(--font-mono); font-size:12.5px; }
+.gitm-item .n{ margin-left:auto; font-family:var(--font-mono); font-size:11px; color:var(--text-4); }
 .gitm-item .n.warn{ color:var(--yellow); font-weight:700; }
 .gitm-item .cur{ margin-left:auto; color:var(--green); display:grid; place-items:center; }
 
@@ -2324,92 +2360,131 @@ button.wb-prow{ width:100%; text-align:left; }
 .gitm-list{ flex:1; min-width:0; display:flex; flex-direction:column; border-right:1px solid var(--line); }
 .gitm-list.wide{ border-right:none; }
 .gitm-filter{
-  display:flex; align-items:center; gap:7px; margin:12px 14px 6px; padding:6px 11px;
-  border:1px solid var(--line); border-radius:9px; background:var(--inset); color:var(--text-4);
+  display:flex; align-items:center; gap:8px; margin:13px 15px 7px; padding:8px 12px;
+  border:1px solid var(--line); border-radius:10px; background:var(--inset); color:var(--text-4);
   transition:border-color .12s;
 }
 .gitm-filter:focus-within{ border-color:var(--accent-line); }
-.gitm-filter input{ flex:1; min-width:0; border:none; outline:none; background:transparent; font-size:12px; color:var(--text); }
+.gitm-filter input{ flex:1; min-width:0; border:none; outline:none; background:transparent; font-size:13px; color:var(--text); }
 .gitm-filter input::placeholder{ color:var(--text-4); }
 .gitm-filter .x{ color:var(--text-4); padding:2px; border-radius:5px; display:grid; place-items:center; }
 .gitm-filter .x:hover{ background:var(--surface-2); color:var(--text-2); }
 .gitm-scroll{ flex:1; min-height:0; overflow-y:auto; padding:2px 8px 12px; }
-.gitm-day{ padding:10px 12px 4px; font-size:10px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:var(--text-4); }
-.gitm-state{ flex:1; min-height:120px; display:flex; align-items:center; justify-content:center; gap:8px; color:var(--text-3); font-size:13px; padding:20px; }
+.gitm-day{ padding:11px 13px 5px; font-size:10.5px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:var(--text-4); }
+.gitm-state{ flex:1; min-height:120px; display:flex; align-items:center; justify-content:center; gap:8px; color:var(--text-3); font-size:13.5px; padding:20px; }
 .gitm-state.small{ min-height:60px; }
 
-.gitm-commit{ display:flex; gap:10px; width:100%; text-align:left; padding:7px 10px; border-radius:9px; cursor:pointer; transition:background .12s, box-shadow .12s; }
+.gitm-commit{ display:flex; gap:11px; width:100%; text-align:left; padding:8.5px 11px; border-radius:10px; cursor:pointer; transition:background .12s, box-shadow .12s; }
 .gitm-commit:hover{ background:var(--surface-2); }
 .gitm-commit.sel{ background:var(--accent-soft); box-shadow:inset 0 0 0 1px var(--accent-line); }
-.gitm-commit .c-rail{ display:flex; flex-direction:column; align-items:center; width:10px; flex:0 0 10px; }
+.gitm-commit .c-rail{ display:flex; flex-direction:column; align-items:center; width:11px; flex:0 0 11px; }
 .gitm-commit .c-dot{
-  width:8px; height:8px; border-radius:50%; background:var(--blue); margin-top:5px; flex:0 0 auto;
+  width:9px; height:9px; border-radius:50%; background:var(--blue); margin-top:6px; flex:0 0 auto;
   box-shadow:0 0 0 2.5px color-mix(in oklab, var(--blue) 20%, transparent);
 }
-.gitm-commit.pushed .c-dot{ width:7px; height:7px; background:var(--text-4); box-shadow:none; }
+.gitm-commit.pushed .c-dot{ width:8px; height:8px; background:var(--text-4); box-shadow:none; }
 .gitm-commit .c-line{ flex:1; width:1.5px; background:var(--line-2); margin-top:4px; }
 .gitm-commit:last-child .c-line{ background:transparent; }
 .gitm-commit .c-main{ flex:1; min-width:0; }
 /* flex로 메시지(.t)만 수축·말줄임 — 태그 칩은 줄지 않고 항상 보인다 */
-.gitm-commit .c-msg{ display:flex; align-items:center; gap:7px; min-width:0; font-size:12.5px; color:var(--text); line-height:1.5; }
+.gitm-commit .c-msg{ display:flex; align-items:center; gap:8px; min-width:0; font-size:13.5px; color:var(--text); line-height:1.5; }
 .gitm-commit .c-msg .t{ flex:0 1 auto; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.gitm-commit .c-meta{ display:flex; align-items:center; gap:8px; font-size:10.5px; color:var(--text-4); margin-top:1px; }
+.gitm-commit .c-meta{ display:flex; align-items:center; gap:9px; font-size:11.5px; color:var(--text-4); margin-top:2px; }
 .gitm-commit .c-hash{ font-family:var(--font-mono); color:var(--text-3); }
+.gitm-commit .c-unp{ color:var(--blue); font-weight:700; }
 .gitm-commit .c-tag{
-  flex:0 0 auto; font-size:9px; font-weight:700; padding:1px 6px; border-radius:4px;
+  flex:0 0 auto; font-size:10px; font-weight:700; padding:2px 7px; border-radius:5px;
   background:color-mix(in oklab, var(--blue) 14%, transparent); color:var(--blue);
 }
 
 /* 우측 상세 */
-.gitm-detail{ width:340px; flex:0 0 340px; min-width:0; overflow-y:auto; display:flex; flex-direction:column; }
-.gitm-detail .gd-pad{ padding:16px 18px 14px; }
-.gitm-detail .gd-msg{ font-size:13.5px; font-weight:650; line-height:1.5; word-break:break-word; }
-.gitm-detail .gd-desc{ margin-top:7px; font-size:12px; color:var(--text-3); line-height:1.65; white-space:pre-wrap; word-break:break-word; }
-.gitm-detail .gd-meta{ display:flex; align-items:center; gap:9px; margin-top:13px; }
+.gitm-detail{ width:400px; flex:0 0 400px; min-width:0; overflow-y:auto; display:flex; flex-direction:column; }
+.gitm-detail .gd-pad{ padding:18px 20px 15px; }
+.gitm-detail .gd-msg{ font-size:15px; font-weight:650; line-height:1.5; word-break:break-word; }
+.gitm-detail .gd-desc{ margin-top:8px; font-size:13px; color:var(--text-3); line-height:1.65; white-space:pre-wrap; word-break:break-word; }
+.gitm-detail .gd-meta{ display:flex; align-items:center; gap:10px; margin-top:14px; }
 .gitm-detail .gd-av{
-  width:26px; height:26px; flex:0 0 26px; border-radius:50%; background:var(--accent); color:var(--on-accent);
-  display:grid; place-items:center; font-size:11px; font-weight:700;
+  width:29px; height:29px; flex:0 0 29px; border-radius:50%; background:var(--accent); color:var(--on-accent);
+  display:grid; place-items:center; font-size:12px; font-weight:700;
 }
 .gitm-detail .gd-who{ display:flex; flex-direction:column; min-width:0; }
-.gitm-detail .gd-who b{ font-size:12px; font-weight:600; }
-.gitm-detail .gd-who i{ font-style:normal; font-size:10.5px; color:var(--text-4); }
+.gitm-detail .gd-who b{ font-size:13px; font-weight:600; }
+.gitm-detail .gd-who i{ font-style:normal; font-size:11.5px; color:var(--text-4); }
 .gitm-detail .gd-hash{
-  margin-left:auto; flex:0 0 auto; font-family:var(--font-mono); font-size:10.5px; color:var(--text-3);
-  background:var(--surface-2); padding:3px 9px; border-radius:99px; cursor:pointer; transition:box-shadow .12s, color .12s;
+  margin-left:auto; flex:0 0 auto; font-family:var(--font-mono); font-size:11.5px; color:var(--text-3);
+  background:var(--surface-2); padding:4px 11px; border-radius:99px; cursor:pointer; transition:box-shadow .12s, color .12s;
 }
 .gitm-detail .gd-hash:hover{ box-shadow:var(--hover-ring); color:var(--text); }
 
 /* 파일 행 (커밋 상세 + 변경 사항 공용) */
 .gitm-file{
-  display:flex; align-items:center; gap:8px; width:100%; text-align:left;
-  padding:5.5px 18px; font-size:12px; cursor:pointer; transition:background .12s;
+  display:flex; align-items:center; gap:9px; width:100%; text-align:left;
+  padding:7px 20px; font-size:13px; cursor:pointer; transition:background .12s;
 }
-.gitm-scroll .gitm-file{ padding:5.5px 10px; border-radius:7px; }
+.gitm-scroll .gitm-file{ padding:7px 11px; border-radius:8px; }
 .gitm-file:hover{ background:var(--surface-2); }
-.gitm-st{ font-family:var(--font-mono); font-size:10px; font-weight:700; width:13px; flex:0 0 13px; text-align:center; }
+/* 체크박스 = "커밋에 담기" — 스테이징 용어는 UI에 안 쓴다. 기본 전부 체크(최빈 경로
+   '다 커밋'이 클릭 0회). 행 클릭은 diff 뷰어, 체크 클릭만 담기 토글. */
+.gitm-file .ck{
+  width:16px; height:16px; flex:0 0 16px; border-radius:5px; border:1.5px solid var(--line-strong);
+  display:grid; place-items:center; color:transparent; transition:background .12s, border-color .12s, color .12s;
+}
+.gitm-file.ckd .ck{ background:var(--accent); border-color:var(--accent); color:var(--on-accent); }
+/* 되돌리기 — 행 오른끝 hover 액션 (뜨면 +/− 통계가 비켜난다) */
+.gitm-file .undo{
+  flex:0 0 auto; width:22px; height:22px; border-radius:6px; display:none; place-items:center;
+  color:var(--text-4); background:var(--bg);
+}
+.gitm-file:hover .undo{ display:grid; }
+.gitm-file .undo:hover{ background:var(--red-soft); color:var(--red); }
+.gitm-file:hover .stat{ display:none; }
+.gitm-st{ font-family:var(--font-mono); font-size:11px; font-weight:700; width:15px; flex:0 0 15px; text-align:center; }
 .gitm-st.m{ color:var(--yellow); }
 .gitm-st.a{ color:var(--green); }
 .gitm-st.d{ color:var(--red); }
-.gitm-file .fn{ flex:1; min-width:0; font-family:var(--font-mono); font-size:11px; color:var(--text-2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.gitm-st.u{ color:var(--violet); }
+/* 히스토리 '더 불러오기' — 리스트 맨 아래 낮은 행 */
+.gitm-loadmore{
+  display:block; width:calc(100% - 22px); margin:5px 11px 11px; padding:9px 0; border-radius:9px;
+  text-align:center; font-size:12.5px; font-weight:600; color:var(--text-3);
+  background:var(--surface); border:1px dashed var(--line-2); transition:color .12s, border-color .12s;
+}
+.gitm-loadmore:hover{ color:var(--text); border-color:var(--line-strong); }
+.gitm-file .fn{ flex:1; min-width:0; font-family:var(--font-mono); font-size:12px; color:var(--text-2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .gitm-file .fn .dir{ color:var(--text-4); }
-.gitm-file .stat{ flex:0 0 auto; display:flex; gap:6px; font-family:var(--font-mono); font-size:10px; }
+.gitm-file .stat{ flex:0 0 auto; display:flex; gap:6px; font-family:var(--font-mono); font-size:11px; }
 .gitm-file .stat .add{ color:var(--green); }
 .gitm-file .stat .del{ color:var(--red); }
 .gitm-hint{
-  margin:12px 10px 6px; padding:9px 12px; border:1px dashed var(--line-2); border-radius:9px;
-  font-size:11px; color:var(--text-4); line-height:1.55;
+  margin:13px 11px 7px; padding:10px 13px; border:1px dashed var(--line-2); border-radius:10px;
+  font-size:12px; color:var(--text-4); line-height:1.6;
 }
 
-/* 변경 사항 뷰 하단 — 커밋 컴포저 */
-.gitm-compose{ flex:0 0 auto; border-top:1px solid var(--line); padding:13px 16px 15px; background:var(--surface); }
+/* 변경 사항 뷰 하단 — 커밋 컴포저. 본채팅 컴포저와 같은 입력 언어(13px 산세리프·
+   우리 placeholder 색·조용한 웰). 예전 inset 박스 + UA 기본 placeholder(팔레트 밖
+   회색·폰트 미명시)가 "글씨체가 다르다"로 보이던 것의 수정. */
+.gitm-compose{ flex:0 0 auto; border-top:1px solid var(--line); padding:13px 18px 15px; background:var(--surface); }
 .gitm-compose input, .gitm-compose textarea{
-  width:100%; border:1px solid var(--line); border-radius:9px; background:var(--inset); color:var(--text);
-  font-family:inherit; font-size:12.5px; padding:8px 11px; outline:none; resize:none; transition:border-color .12s;
+  width:100%; border:1px solid var(--line-2); border-radius:11px; background:rgba(255,255,255,.025); color:var(--text);
+  font-family:var(--font-sans); font-size:14px; line-height:1.55; letter-spacing:-.01em;
+  padding:10px 13px; outline:none; resize:none; transition:border-color .12s, background .12s;
 }
-.gitm-compose input:focus, .gitm-compose textarea:focus{ border-color:var(--accent-line); }
-.gitm-compose textarea{ margin-top:7px; font-size:12px; }
-.gitm-compose .row{ display:flex; align-items:center; gap:7px; margin-top:9px; }
+.gitm-compose input{ font-weight:600; } /* 제목 = 커밋의 얼굴 — 히스토리 줄과 같은 무게감 */
+.gitm-compose input:focus, .gitm-compose textarea:focus{ border-color:var(--line-strong); background:rgba(255,255,255,.035); }
+.gitm-compose input::placeholder, .gitm-compose textarea::placeholder{ color:var(--text-4); font-weight:400; }
+.gitm-compose textarea{ margin-top:8px; font-size:13.5px; }
+.gitm-compose .row{ display:flex; align-items:center; gap:8px; margin-top:10px; }
 .gitm-compose .row .sp{ flex:1; }
+
+/* AI 커밋 메시지 카드 — 2단계(계정 → 모델·effort), qcard 문법 위 세그먼트만 추가 */
+.gai-lab{ margin:15px 2px 7px; font-size:11px; font-weight:700; color:var(--text-4); }
+.gai-seg{ display:flex; gap:6px; flex-wrap:wrap; }
+.gai-seg button{
+  padding:7px 13px; border-radius:9px; background:var(--surface-2);
+  font-size:12.5px; font-weight:600; color:var(--text-2); transition:background .12s, color .12s;
+}
+.gai-seg button:hover{ background:var(--surface-3); color:var(--text); }
+.gai-seg button.on{ background:var(--accent); color:var(--on-accent); }
 
 /* 뷰어 헤더의 커밋 해시 칩 (Git 카드에서 연 커밋 시점 파일) */
 .fv-glabel{
@@ -2854,8 +2929,8 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
 .sd-go.danger:hover{ background:var(--red); filter:brightness(0.95); }
 
 /* ── 공용 모달 카드 언어 (.pr-*) — FileOpModal(파일 작업)·NoticeModal이 재사용 ──
-   흰 카드, 액센트 아이콘 배지, 헤어라인 구분, rise 애니메이션. fixed + z 120:
-   멀티의 확장 패널 오버레이(z 90) 위에서도 뜬다.
+   흰 카드, 액센트 아이콘 배지, 헤어라인 구분, rise 애니메이션. fixed + z 120 —
+   앱의 어떤 카드/오버레이 위에서도 뜬다.
    (원래 프롬프트 설정 모달의 옷 — 그 기능은 2.0에서 삭제됐지만 카드 언어는 공용) */
 .pr-overlay{
   position:fixed; inset:0; z-index:120;
