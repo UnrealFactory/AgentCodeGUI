@@ -28,6 +28,7 @@ import { listSkills, setSkillEnabled } from './skills'
 import { listMcpServers, setMcpEnabled } from './mcp'
 import { listProjectFiles, listDir } from './files'
 import {
+  gitRepos,
   gitStatus,
   gitLog,
   gitFileDiff,
@@ -1264,6 +1265,7 @@ function registerIpc(): void {
 
   // Git — 탐색기 상태 스트립 + Git 카드 (main/git.ts의 시스템 git CLI 래퍼).
   // 실패는 전부 조용한 폴백(repo:false / [] / {ok:false,error}) — 카드가 그대로 보여준다.
+  ipcMain.handle(IPC.gitRepos, async (_e, cwd: string) => gitRepos(cwd || ''))
   ipcMain.handle(IPC.gitStatus, async (_e, cwd: string) => gitStatus(cwd || ''))
   ipcMain.handle(IPC.gitLog, async (_e, a: { cwd: string; limit?: number; skip?: number }) =>
     gitLog(a.cwd || '', a.limit, a.skip)

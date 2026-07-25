@@ -1,8 +1,9 @@
 import { Fragment, memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
-import type { AppUser, ChangedFile, DirEntry, GitStatus } from '@shared/protocol'
+import type { AppUser, ChangedFile, DirEntry, GitRepoInfo, GitStatus } from '@shared/protocol'
 import { FileBadge } from './fileType'
 import { getPref, setPref } from '../lib/prefs'
+import { addGitExtra, discoverGitRepos, isGitExtra, removeGitExtra } from '../lib/gitTrack'
 import {
   IconCheck,
   IconChevLeft,
@@ -99,7 +100,7 @@ export const Explorer = memo(function Explorer({
   onViewFolderChange?: (folder: string) => void // 지금 보고 있는 폴더를 알림 → 채팅 @ 멘션의 기준
   user?: AppUser // 하단 프로필 행(설정 진입점)의 아바타·이름 — 사이드바 footer와 동일
   onOpenSettings?: () => void // 하단 프로필 행 → 설정. 탐색기로 전환하면 사이드바 footer가 사라져 설정을 열 길이 없던 구멍을 메운다
-  onOpenGit?: () => void // Git 상태 스트립 클릭 → Git 카드. 미지정이면 스트립을 그리지 않는다
+  onOpenGit?: (root?: string) => void // Git 스트립 클릭 → Git 카드 (root = 그 줄의 저장소). 미지정이면 스트립을 그리지 않는다
 }) {
   // Verse 프로젝트면 자동으로 채워지는 보기 전용 API digest 루트(Verse.org/Fortnite.com/…).
   // 영속하지 않고 매번 .vproject에서 다시 발견한다. 트리 맨 아래 접이식 그룹으로 노출.
@@ -185,9 +186,9 @@ export const Explorer = memo(function Explorer({
   const [notice, setNotice] = useState<{ title: string; message: string } | null>(null) // 알림 카드
   const asideRef = useRef<HTMLElement>(null)
 
-  // Git 상태 스트립 — .git 있는 폴더에서만 조용히 나타난다. 폴더 변경·턴 종료(refreshKey)
-  // 마다 재조회하고, Git 카드의 커밋/푸시 등 변화는 ccg-git-changed 커스텀 이벤트로 따라간다.
-  const [git, setGit] = useState<GitStatus | null>(null)
+  // Git 상태 스트립 — 발견된 저장소(cwd 위 1곳 + 아래 얕은 걷기)마다 한 줄씩. 폴더 변경·
+  // 턴 종료(refreshKey)마다 재조회하고, Git 카드의 커밋/푸시 등 변화는 ccg-git-changed로 따라간다.
+  const [gitRepos, setGitRepos] = useState<{ info: GitRepoInfo; st: GitStatus }[] | null>(null)
   const [gitTick, setGitTick] = useState(0)
   useEffect(() => {
     const bump = (): void => setGitTick((t) => t + 1)
@@ -196,17 +197,24 @@ export const Explorer = memo(function Explorer({
   }, [])
   useEffect(() => {
     if (!cwd || !onOpenGit) {
-      setGit(null)
+      setGitRepos(null)
       return
     }
     let alive = true
-    window.api.git
-      .status(cwd)
-      .then((s) => {
-        if (alive) setGit(s)
+    discoverGitRepos(cwd)
+      .then(async (list) => {
+        const sts = await Promise.all(list.map((r) => window.api.git.status(r.root).catch(() => null)))
+        if (!alive) return
+        // .git 폴더가 있어도 진짜 저장소가 아니면(status 실패/repo:false) 조용히 제외
+        const rows: { info: GitRepoInfo; st: GitStatus }[] = []
+        list.forEach((info, i) => {
+          const st = sts[i]
+          if (st?.repo) rows.push({ info, st })
+        })
+        setGitRepos(rows)
       })
       .catch(() => {
-        if (alive) setGit(null)
+        if (alive) setGitRepos(null)
       })
     return () => {
       alive = false
@@ -427,10 +435,45 @@ export const Explorer = memo(function Explorer({
   }
 
   // ── 우클릭 컨텍스트 메뉴 + 파일 작업 카드 ────────────────────────────────
+  // 'Git 추적' 항목 상태 — ''=숨김, add=추적 제안(.git 있는 미추적 폴더), remove=수동 추적 해제.
+  // .git 확인이 비동기(fs)라 뒤늦은 응답이 다른 메뉴에 내려앉지 않게 대상 경로로 가드한다.
+  const [ctxGit, setCtxGit] = useState<'' | 'add' | 'remove'>('')
+  const ctxGitTarget = useRef('')
   const openCtx = (ev: React.MouseEvent, rel: string, name: string, dir: boolean): void => {
     ev.preventDefault()
     ev.stopPropagation()
     setCtx({ x: ev.clientX, y: ev.clientY, rel, name, dir })
+    setCtxGit('')
+    ctxGitTarget.current = ''
+    // 메인 프로젝트 뷰의 폴더에서만 — 다른 뷰(Verse 참조)는 프로젝트 추적 대상이 아니다
+    if (!dir || !rel || root !== cwd) return
+    const abs = root.replace(/[\\/]+$/, '') + '/' + rel
+    ctxGitTarget.current = abs
+    if (isGitExtra(cwd, abs)) {
+      setCtxGit('remove')
+      return
+    }
+    // 이미 자동 발견된 저장소면 항목을 안 보인다 (추가해봐야 중복)
+    const known = (gitRepos ?? []).some(
+      (r) => r.info.root.replace(/\\/g, '/').toLowerCase() === abs.replace(/\\/g, '/').toLowerCase()
+    )
+    if (known) return
+    void window.api
+      .dirExists(abs + '/.git')
+      .then((ok) => {
+        if (ok && ctxGitTarget.current === abs) setCtxGit('add')
+      })
+      .catch(() => {})
+  }
+  const doGitTrack = (): void => {
+    if (!ctx || !ctxGit) return
+    const abs = ctxGitTarget.current
+    if (abs) {
+      if (ctxGit === 'add') addGitExtra(cwd, abs)
+      else removeGitExtra(cwd, abs)
+      window.dispatchEvent(new CustomEvent('ccg-git-changed')) // 스트립·카드 즉시 갱신
+    }
+    setCtx(null)
   }
   // 트리 빈 영역 우클릭 → 프로젝트 루트에 새 파일/폴더 (행은 stopPropagation이라 여기 안 옴)
   const openCtxRoot = (ev: React.MouseEvent): void => {
@@ -766,6 +809,12 @@ export const Explorer = memo(function Explorer({
             <button className="ctx-item" onClick={doReveal}>
               <IconFolderOpen size={15} /> 파일 탐색기에서 보기
             </button>
+            {/* 수동 Git 추적 — .git 있는 미추적 폴더에서만 등장 (자동 발견 깊이 3 밖 커버) */}
+            {ctx.dir && !ctx.root && ctxGit && (
+              <button className="ctx-item" onClick={doGitTrack}>
+                <IconGitBranch size={15} /> {ctxGit === 'add' ? '이 폴더 Git 추적' : 'Git 추적 해제'}
+              </button>
+            )}
             {ctx.root && (
               <button
                 className="ctx-item"
@@ -967,22 +1016,47 @@ export const Explorer = memo(function Explorer({
         </div>
       )}
 
-      {/* Git 상태 스트립 — 트리 아래·프로필 줄 위, .git 있는 폴더에서만. 줄 전체가
-          Git 카드 진입 버튼이고, 배지(변경 수·푸시 대기)가 상시 보이는 게 절반의 역할이다 */}
-      {cwd && git?.repo && onOpenGit && (
-        <button className="git-strip has-tip" onClick={onOpenGit} data-tip="Git — 변경·커밋·히스토리">
-          <IconGitBranch size={12} />
-          <span className="br">{git.branch}</span>
-          <span className="sp" />
-          {git.files.length > 0 && <span className="pill chg">●{git.files.length}</span>}
-          {git.ahead > 0 && <span className="pill ahead">↑{git.ahead}</span>}
-          {git.behind > 0 && <span className="pill behind">↓{git.behind}</span>}
-          {git.files.length === 0 && git.ahead === 0 && git.behind === 0 && (
-            <span className="pill clean">
-              <IconCheck size={8} stroke={3} />
-              {git.upstream ? '최신' : '깨끗'}
-            </span>
-          )}
+      {/* Git 상태 스트립 — 트리 아래·프로필 줄 위, 발견된 저장소마다 한 줄씩(A안).
+          하위 저장소는 회색 경로 라벨로 구분하고, 줄 클릭 = 그 저장소로 Git 카드.
+          배지(변경 수·푸시 대기)가 상시 보이는 게 절반의 역할이라 4곳 이상은 '외 N곳'으로 접는다 */}
+      {cwd &&
+        onOpenGit &&
+        (gitRepos ?? []).slice(0, 3).map(({ info, st }) => (
+          <button
+            key={info.root}
+            className="git-strip has-tip"
+            onClick={() => onOpenGit(info.root)}
+            data-tip={info.rel ? `Git — ${info.rel}` : 'Git — 변경·커밋·히스토리'}
+          >
+            <IconGitBranch size={12} />
+            {info.rel && <span className="rp">{info.rel}</span>}
+            <span className="br">{st.branch}</span>
+            <span className="sp" />
+            {st.files.length > 0 && <span className="pill chg">●{st.files.length}</span>}
+            {st.ahead > 0 && <span className="pill ahead">↑{st.ahead}</span>}
+            {st.behind > 0 && <span className="pill behind">↓{st.behind}</span>}
+            {st.files.length === 0 && st.ahead === 0 && st.behind === 0 && (
+              <span className="pill clean">
+                <IconCheck size={8} stroke={3} />
+                {st.upstream ? '최신' : '깨끗'}
+              </span>
+            )}
+          </button>
+        ))}
+      {cwd && onOpenGit && (gitRepos?.length ?? 0) > 3 && (
+        <button
+          className="git-strip more has-tip"
+          onClick={() => onOpenGit(gitRepos![3].info.root)}
+          data-tip={gitRepos!
+            .slice(3)
+            .map(({ info, st }) => `${info.rel || st.branch}${st.files.length ? ` ●${st.files.length}` : ''}`)
+            .join(' · ')}
+        >
+          외 {gitRepos!.length - 3}곳
+          {(() => {
+            const n = gitRepos!.slice(3).reduce((a, x) => a + x.st.files.length, 0)
+            return n > 0 ? ` · ●${n}` : ''
+          })()}
         </button>
       )}
 

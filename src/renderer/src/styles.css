@@ -233,6 +233,12 @@ input,textarea{ font-family:inherit; }
   transition:transform .26s cubic-bezier(.2,.8,.2,1), box-shadow .26s cubic-bezier(.2,.8,.2,1);
 }
 .lcol.autohide.revealed{ transform:translateX(0); box-shadow:18px 0 50px -12px rgba(0,0,0,.75); }
+/* 펼쳐진 동안: 뒤에 깔린 본문 헤더의 창 드래그 띠를 끈다. Electron 드래그 영역은 z-순서가
+   아니라 DOM 순서로 합/차감되는 평면 집합이라, DOM상 나중인 .chat-head(전폭 drag)가 앞서
+   뚫어둔 .fxh 버튼(no-drag) 구멍을 도로 덮어 새로고침·숨김보기 버튼이 비클라이언트(호버·클릭
+   불가)가 된다(오버레이 실측). 커서가 본문으로 가면 오버레이가 접히며 즉시 복원된다. */
+.win-body:has(.lcol.autohide.revealed) .chat-head,
+.win-body:has(.lcol.autohide.revealed) .ma-head{ -webkit-app-region:no-drag; }
 /* 접힌 상태의 손잡이 힌트 — 왼쪽 가장자리에 얇게 남는 결, 펼치면(.gone) 사라진다 */
 .lcol-edge{
   position:absolute; left:0; top:0; bottom:0; width:3px; z-index:12; pointer-events:none;
@@ -2275,6 +2281,11 @@ button.wb-prow{ width:100%; text-align:left; }
 .git-strip > svg{ color:var(--text-3); flex:0 0 auto; }
 .git-strip:hover > svg{ color:var(--text); }
 .git-strip .br{ font-family:var(--font-mono); font-size:11px; font-weight:600; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+/* 하위 저장소의 경로 라벨(예: Plugins/X) — 브랜치보다 먼저 줄어들게 shrink를 크게 */
+.git-strip .rp{ font-family:var(--font-mono); font-size:10px; color:var(--text-4); min-width:0; flex:0 4 auto; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.git-strip:hover .rp{ color:var(--text-3); }
+/* 4곳 이상일 때의 '외 N곳' 접기 줄 — 낮고 조용하게, hover 툴팁이 상세를 말한다 */
+.git-strip.more{ justify-content:center; padding:4px 10px; font-size:10.5px; color:var(--text-4); }
 .git-strip .sp{ flex:1; }
 .git-strip .pill{ display:flex; align-items:center; gap:3px; font-family:var(--font-mono); font-size:9.5px; font-weight:700; padding:2px 7px; border-radius:99px; flex:0 0 auto; }
 .git-strip .pill.chg{ color:var(--yellow); background:var(--yellow-soft); }

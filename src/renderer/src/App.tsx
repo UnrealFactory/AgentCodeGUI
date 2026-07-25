@@ -149,9 +149,10 @@ function MainApp({ user }: { user: AppUser }) {
   // 설정 모달을 특정 탭으로 열기 (키 없이 API 토글을 누르면 'api' 탭으로 바로)
   const [settingsView, setSettingsView] = useState<'version' | 'api' | undefined>(undefined)
   const [openFilePath, setOpenFilePath] = useState<string | null>(null)
-  // Git 카드(탐색기 하단 스트립) — 열림 여부 + 카드에서 연 파일의 일회성 뷰어 오버라이드
-  // (커밋 스냅샷·일회성 diff·해시 칩). 일반 경로로 연 파일은 null이라 뷰어가 평소처럼 돈다.
-  const [gitOpen, setGitOpen] = useState(false)
+  // Git 카드(탐색기 하단 스트립) — null=닫힘, {root}=열림(root는 스트립이 고른 저장소 —
+  // 없으면 카드가 발견 목록의 첫 저장소로). 카드에서 연 파일의 일회성 뷰어 오버라이드는
+  // gitViewer(커밋 스냅샷·일회성 diff·해시 칩) — 일반 경로로 연 파일은 null이라 뷰어가 평소처럼 돈다.
+  const [gitOpen, setGitOpen] = useState<{ root?: string } | null>(null)
   const [gitViewer, setGitViewer] = useState<GitViewerOverride | null>(null)
   // 탐색기 우클릭 '변경된 파일 보기' 카드 — 스코프 폴더(rel '' = 프로젝트 전체)와 표시 이름
   const [chgScope, setChgScope] = useState<{ rel: string; label: string } | null>(null)
@@ -246,6 +247,10 @@ function MainApp({ user }: { user: AppUser }) {
   // 커서가 창 밖(옆 모니터)으로 나가면 mousemove가 끊겨 마지막 상태가 얼어붙으므로,
   // 문서 mouseleave(300ms 유예 — 왼쪽 경계 살짝 넘었다 돌아올 때 안 깜빡)와 창 blur(즉시)로 접는다.
   // 포털 메뉴(ctx-menu·sconfirm)는 body 소속이라도 문서 안이라 문서 mouseleave에 안 걸린다.
+  // 단, app-region:drag 띠(탐색기 .fxh·사이드바 .sb-top 등)는 OS가 타이틀바(비클라이언트)로
+  // 취급해 커서가 올라가는 순간에도 문서 mouseleave가 발생한다 — 창 밖으로 나간 게 아니므로
+  // leave 좌표가 드래그 띠 위면 무시한다. 안 그러면 헤더의 새로고침·숨김보기 버튼으로 가는
+  // 길에 사이드바가 접혀버린다. 진짜 창 이탈은 좌표가 드래그 띠 밖(트리·본문)이라 그대로 접힌다.
   useEffect(() => {
     if (!autohide) {
       setLcolRevealed(false)
@@ -263,8 +268,13 @@ function MainApp({ user }: { user: AppUser }) {
         if (e.clientX > w + 8) setLcolRevealed(false)
       }
     }
-    const onDocLeave = (): void => {
+    // 창 드래그 띠 셀렉터 — styles.css의 -webkit-app-region:drag 선언과 짝 (버튼은 no-drag라
+    // 커서가 버튼 위에 있는 동안엔 애초에 mouseleave가 안 난다)
+    const DRAG_STRIPS = '.titlebar, .sb-top, .fxh, .chat-head, .ma-head'
+    const onDocLeave = (e: MouseEvent): void => {
       if (lcolDrag) return
+      const el = document.elementFromPoint(e.clientX, e.clientY)
+      if (el?.closest(DRAG_STRIPS)) return // 드래그 띠 진입으로 인한 가짜 leave — 접지 않는다
       clearTimeout(leaveTimer)
       leaveTimer = setTimeout(() => setLcolRevealed(false), 300)
     }
@@ -1076,14 +1086,15 @@ function MainApp({ user }: { user: AppUser }) {
     setGitViewer(null)
     setOpenFilePath(path)
   }
-  // Git 카드 — 탐색기 하단 상태 스트립이 연다. 카드에서 연 파일은 override로 뷰어에.
-  const onOpenGit = useEvent(() => setGitOpen(true))
+  // Git 카드 — 탐색기 하단 상태 스트립이 연다(줄이 가리킨 저장소 root 전달). 카드에서
+  // 연 파일은 override로 뷰어에.
+  const onOpenGit = useEvent((root?: string) => setGitOpen({ root }))
   const onOpenGitFile = useEvent((path: string, ov: GitViewerOverride) => {
     setGitViewer(ov)
     setOpenFilePath(path)
   })
   // 폴더·뷰 전환(멀티의 패널 전환 포함)이면 카드를 접는다 — 스코프 폴더가 달라졌다
-  useEffect(() => setGitOpen(false), [gitCwd, mode])
+  useEffect(() => setGitOpen(null), [gitCwd, mode])
   const onOpenFile = useEvent((f: { path: string }) => openPath(f.path))
   // click a file in a tool-log row / explorer — same viewer
   const onOpenToolFile = useEvent((path: string) => openPath(path))
@@ -1360,8 +1371,9 @@ function MainApp({ user }: { user: AppUser }) {
       {gitOpen && gitCwd && (
         <GitModal
           cwd={gitCwd}
+          initialRoot={gitOpen.root}
           refreshKey={mode === 'multi' ? multiExp?.tick ?? 0 : fsTick}
-          onClose={() => setGitOpen(false)}
+          onClose={() => setGitOpen(null)}
           onOpenFile={onOpenGitFile}
         />
       )}

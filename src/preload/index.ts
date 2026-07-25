@@ -120,6 +120,7 @@ const api: WindowApi = {
   listDir: (cwd, rel, exclude, hideEmpty, excludeDirs, excludeFiles) =>
     ipcRenderer.invoke(IPC.listDir, { cwd, rel, exclude, hideEmpty, excludeDirs, excludeFiles }),
   git: {
+    repos: (cwd) => ipcRenderer.invoke(IPC.gitRepos, cwd),
     status: (cwd) => ipcRenderer.invoke(IPC.gitStatus, cwd),
     log: (cwd, limit, skip) => ipcRenderer.invoke(IPC.gitLog, { cwd, limit, skip }),
     fileDiff: (cwd, rel) => ipcRenderer.invoke(IPC.gitFileDiff, { cwd, rel }),

@@ -104,6 +104,12 @@ export interface GitStatus {
   hasRemote: boolean // remote 자체가 없으면 push/pull 버튼을 접는다
   files: GitFileStatus[]
 }
+/** 발견된 저장소 하나 — cwd 위(rev-parse)로 하나 + cwd 아래 얕은 걷기(깊이 3)로 찾는다.
+ *  root를 그대로 git IPC들의 cwd 자리에 넘기면 그 저장소 기준으로 동작한다. */
+export interface GitRepoInfo {
+  root: string // 저장소 루트(절대 경로)
+  rel: string // cwd 기준 상대 경로(포워드 슬래시). '' = cwd 자신 또는 상위 — 스트립·카드 라벨용
+}
 /** 히스토리 한 줄 — 목록 표시에 필요한 만큼만 (본문·파일은 상세 조회로). */
 export interface GitCommit {
   hash: string
@@ -307,7 +313,7 @@ export interface SubAgentInfo {
   // 실행 중 내레이션의 누적 로그 — activity는 최신 한 줄로 덮이므로, 과정을 나중에
   // 볼 수 있게 렌더러(reducer)가 변화를 여기 쌓는다 (엔진은 채우지 않는다)
   log?: string[]
-  // 사이드체인 프레임이 보고한 실행 모델 표시명 (예: 'Opus 4.8') — 카드 서브 줄·푸터 칩
+  // 사이드체인 프레임이 보고한 실행 모델 표시명 (예: 'Opus 5') — 카드 서브 줄·푸터 칩
   model?: string
   // Task 도구 시작→완료 소요 — 완료 emit에만 실린다 (실행 중엔 없음)
   durationMs?: number
@@ -425,7 +431,7 @@ export type EngineEvent =
       type: 'model-fallback'
       runId: string
       fromModel: string // raw model id, e.g. claude-fable-5
-      toModel: string // raw model id, e.g. claude-opus-4-8
+      toModel: string // raw model id, e.g. claude-opus-5
       text: string // ready-to-render Korean warning line
       retractMessageId: string | null // 거부된 쪽이 스트리밍하던 메시지 id (없으면 null)
       engine?: EngineId // picker 동기화 분기용 — 생략하면 claude
@@ -599,7 +605,7 @@ export interface TokenTally {
  * 정비례하지 않는다 — UI는 실측 토큰이라고만 말하고 한도 환산을 주장하지 않는다.
  */
 export interface TokenUse extends TokenTally {
-  model: string // 표시 모델명 (Claude: 'Opus 4.8' 꼴, Codex: 모델 id 그대로)
+  model: string // 표시 모델명 (Claude: 'Opus 5' 꼴, Codex: 모델 id 그대로)
 }
 
 /**
@@ -609,7 +615,7 @@ export interface TokenUse extends TokenTally {
  */
 export interface ApiUsageRecord {
   ts: number // unix ms — 실행이 끝난 시각
-  model: string // 표시 모델명 (예: 'Opus 4.8') — 알 수 없으면 picker 별칭
+  model: string // 표시 모델명 (예: 'Opus 5') — 알 수 없으면 picker 별칭
   source: ApiUsageSource
   costUsd: number
   inTok: number // input_tokens (비캐시 입력)
@@ -925,6 +931,7 @@ export const IPC = {
   listFiles: 'fs:list-files', // enumerate project files for the "@" mention palette
   listDir: 'fs:list-dir', // list one folder's entries for the file explorer (lazy per expand)
   // Git — 탐색기 상태 스트립 + Git 카드 (작업 폴더 기준, main/git.ts)
+  gitRepos: 'git:repos', // 저장소 발견 — cwd 위 1곳 + 아래 얕은 걷기(깊이 3, 무거운 폴더 제외)
   gitStatus: 'git:status', // 브랜치·ahead/behind·변경 파일 목록 (repo 아님 판정 포함)
   gitLog: 'git:log', // 히스토리 (limit/skip 페이징, 푸시 안 됨 표시)
   gitFileDiff: 'git:file-diff', // 워킹트리 파일 diff (HEAD ↔ 디스크, 뷰어 계약)

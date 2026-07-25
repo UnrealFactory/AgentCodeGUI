@@ -162,7 +162,7 @@ export function SubAgentModal({ agent, onClose }: { agent: SubAgentInfo | null; 
           <div className="dc-tile">{saIcon(agent.name, 19)}</div>
           <div className="dc-tt">
             <span className="dc-title">{agent.name}</span>
-            {/* PoC msub: '서브에이전트 · Opus 4.8 · 읽기 전용 탐색' — 모델은 사이드체인 실측 */}
+            {/* PoC msub: '서브에이전트 · Opus 5 · 읽기 전용 탐색' — 모델은 사이드체인 실측 */}
             <div className="dc-sub">
               서브에이전트
               {agent.model ? ` · ${agent.model}` : ''}

@@ -47,6 +47,7 @@ import type {
   LspServerInfo,
   GitStatus,
   GitLogResult,
+  GitRepoInfo,
   GitFileDiffResult,
   GitCommitDetail,
   GitBranch,
@@ -194,6 +195,8 @@ export interface WindowApi {
    *  경로는 전부 루트 기준 포워드 슬래시. .git 없는 폴더는 status가 repo:false로 답해
    *  스트립 자체가 그려지지 않는다. */
   git: {
+    /** 저장소 발견 — cwd 위(rev-parse) 1곳 + 아래 얕은 걷기(깊이 3, 무거운 폴더 제외) */
+    repos(cwd: string): Promise<GitRepoInfo[]>
     /** 브랜치·ahead/behind·변경 파일 목록 — repo 아님이면 repo:false */
     status(cwd: string): Promise<GitStatus>
     /** 히스토리 (HEAD 기준, limit+skip 페이징) — unpushed 표시 포함 */

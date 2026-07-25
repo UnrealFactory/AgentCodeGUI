@@ -58,7 +58,7 @@ AgentCodeGUI는 터미널의 코딩 에이전트(**Claude Code** · **Codex CLI*
 
 | 엔진 | 모델 | 과금 |
 |---|---|---|
-| **Claude Code** (Anthropic) | Fable 5 · Opus 4.8 · Sonnet 5 · Haiku 4.5 | Claude 구독(Pro/Max) 또는 API 키 |
+| **Claude Code** (Anthropic) | Fable 5 · Opus 5 · Sonnet 5 · Haiku 4.5 | Claude 구독(Pro/Max) 또는 API 키 |
 | **Codex CLI** (OpenAI) | GPT-5.6-Sol · GPT-5.6-Terra · GPT-5.6-Luna | ChatGPT 구독(Plus/Pro) 또는 API 키 |
 
 모델 목록은 설치된 엔진에서 실시간으로 불러와 — 새 모델이 나오면 picker에 자동으로 뜹니다. 엔진·모델·추론 강도·권한 모드는 컴포저에서 채팅마다 따로 골라요.

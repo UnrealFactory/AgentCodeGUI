@@ -9,11 +9,13 @@ import type {
   GitCommit,
   GitCommitDetail,
   GitFileStatus,
+  GitRepoInfo,
   GitStatus,
   ModelId
 } from '@shared/protocol'
 import { relTime } from './Sidebar'
 import { getPref, setPref } from '../lib/prefs'
+import { discoverGitRepos } from '../lib/gitTrack'
 import { MouseGestureLayer, type GestureAction } from './mouseGesture'
 import {
   IconCheck,
@@ -75,6 +77,11 @@ function FnPath({ p }: { p: string }) {
 
 const LOG_PAGE = 100
 
+// 저장소 표시명 — 상위/자기 저장소(rel '')는 루트 폴더 이름으로 부른다
+function repoName(root: string): string {
+  return root.replace(/\\/g, '/').split('/').filter(Boolean).pop() ?? root
+}
+
 // AI 커밋 메시지 카드의 선택지 — 컴포저 picker와 같은 축(모델·effort)
 const AI_MODELS: { id: ModelId; label: string }[] = [
   { id: 'fable', label: 'Fable 5' },
@@ -115,15 +122,21 @@ function usageDesc(u: AccountUsage | undefined, loading: boolean): string {
  */
 export function GitModal({
   cwd,
+  initialRoot,
   refreshKey,
   onClose,
   onOpenFile
 }: {
   cwd: string
+  initialRoot?: string // 스트립이 고른 저장소 루트 — 없으면 발견 목록의 첫 저장소
   refreshKey: number // 턴 종료 → 에이전트가 만든 변경을 다시 읽는다
   onClose: () => void
   onOpenFile: (path: string, override: GitViewerOverride) => void // 절대 경로(포워드 슬래시)
 }) {
+  // 발견된 저장소 목록(내비 '저장소' 섹션·변경 수 배지) + 지금 보는 저장소 루트.
+  // 모든 git IPC에 cwd 대신 repo를 넘긴다 — main이 그 경로에서 루트를 찾으므로 그대로 동작.
+  const [repos, setRepos] = useState<{ info: GitRepoInfo; st: GitStatus }[] | null>(null)
+  const [repo, setRepo] = useState<string>(initialRoot ?? cwd)
   const [st, setSt] = useState<GitStatus | null>(null)
   const [branches, setBranches] = useState<GitBranch[]>([])
   const [view, setView] = useState<'changes' | 'history'>('changes')
@@ -161,11 +174,22 @@ export function GitModal({
 
   const refresh = async (): Promise<void> => {
     const gen = genRef.current
-    const [s, br] = await Promise.all([
-      window.api.git.status(cwd).catch(() => null),
-      window.api.git.branches(cwd).catch(() => [] as GitBranch[])
+    // 저장소 목록(자동+수동 추적) + 저장소별 status(내비 배지) + 지금 저장소의 브랜치 — 전부 병렬
+    const [list, s, br] = await Promise.all([
+      discoverGitRepos(cwd).catch(() => [] as GitRepoInfo[]),
+      window.api.git.status(repo).catch(() => null),
+      window.api.git.branches(repo).catch(() => [] as GitBranch[])
     ])
+    const sts = await Promise.all(
+      list.map((r) => (r.root === s?.root && s ? Promise.resolve(s) : window.api.git.status(r.root).catch(() => null)))
+    )
     if (gen !== genRef.current) return
+    const rows: { info: GitRepoInfo; st: GitStatus }[] = []
+    list.forEach((info, i) => {
+      const x = sts[i]
+      if (x?.repo) rows.push({ info, st: x })
+    })
+    setRepos(rows)
     if (s) setSt(s)
     setBranches(br)
     // 히스토리를 이미 봤다면 첫 페이지를 다시 — 방금 커밋/전환이 바로 보이게 (페이징은 리셋)
@@ -175,14 +199,14 @@ export function GitModal({
   const loadLog = async (reset: boolean, gen = genRef.current): Promise<void> => {
     setLogLoading(true)
     const skip = reset ? 0 : log?.length ?? 0
-    const r = await window.api.git.log(cwd, LOG_PAGE, skip).catch(() => ({ commits: [], hasMore: false }))
+    const r = await window.api.git.log(repo, LOG_PAGE, skip).catch(() => ({ commits: [], hasMore: false }))
     if (gen !== genRef.current) return
     setLog((prev) => (reset ? r.commits : [...(prev ?? []), ...r.commits]))
     setHasMore(r.hasMore)
     setLogLoading(false)
   }
 
-  // 폴더 변경·턴 종료 → 전체 재조회 (폴더가 바뀌면 화면 상태도 처음으로)
+  // 폴더 변경·저장소 전환·턴 종료 → 전체 재조회 (기준이 바뀌면 화면 상태도 처음으로)
   useEffect(() => {
     genRef.current += 1
     setSt(null)
@@ -192,7 +216,14 @@ export function GitModal({
     setUnchecked(new Set())
     void refresh()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cwd])
+  }, [cwd, repo])
+
+  // initialRoot 없이 열렸거나 고른 저장소가 목록에서 사라졌으면 첫 저장소로 스냅
+  useEffect(() => {
+    if (!repos?.length) return
+    if (!repos.some((r) => r.info.root === repo)) setRepo(repos[0].info.root)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [repos])
   useEffect(() => {
     if (refreshKey > 0) void refresh()
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -233,7 +264,7 @@ export function GitModal({
     return () => window.removeEventListener('keydown', onKey)
   }, [confirm, aiStep, onClose])
 
-  const rootFs = (st?.root ?? cwd).replace(/\\/g, '/')
+  const rootFs = (st?.root || repo).replace(/\\/g, '/')
   const absOf = (rel: string): string => rootFs.replace(/\/+$/, '') + '/' + rel
   const checkedFiles = useMemo(
     () => (st?.files ?? []).filter((f) => !unchecked.has(f.path)).map((f) => f.path),
@@ -256,11 +287,11 @@ export function GitModal({
     return true
   }
 
-  const doFetch = (): void => void run('fetch', () => window.api.git.fetch(cwd))
-  const doPull = (): void => void run('pull', () => window.api.git.pull(cwd))
-  const doPush = (): void => void run('push', () => window.api.git.push(cwd))
+  const doFetch = (): void => void run('fetch', () => window.api.git.fetch(repo))
+  const doPull = (): void => void run('pull', () => window.api.git.pull(repo))
+  const doPush = (): void => void run('push', () => window.api.git.push(repo))
   const doCommit = (): void =>
-    void run('commit', () => window.api.git.commit(cwd, checkedFiles, subject, body)).then((ok) => {
+    void run('commit', () => window.api.git.commit(repo, checkedFiles, subject, body)).then((ok) => {
       if (ok) {
         setSubject('')
         setBody('')
@@ -300,7 +331,7 @@ export function GitModal({
     setBusy('ai')
     setErr(null)
     const r = await window.api.git
-      .aiMessage(cwd, checkedFiles, opts)
+      .aiMessage(repo, checkedFiles, opts)
       .catch((e) => ({ ok: false as const, error: e instanceof Error ? e.message : 'AI 메시지 생성에 실패했어요' }))
     setBusy('')
     if (!r.ok) {
@@ -313,12 +344,12 @@ export function GitModal({
 
   const doDiscard = (f: GitFileStatus): void => {
     setConfirm(null)
-    void run('discard', () => window.api.git.discard(cwd, f.path, !!f.untracked))
+    void run('discard', () => window.api.git.discard(repo, f.path, !!f.untracked))
   }
 
   const doSwitch = (name: string): void => {
     setConfirm(null)
-    void run('branch', () => window.api.git.switchBranch(cwd, name)).then((ok) => {
+    void run('branch', () => window.api.git.switchBranch(repo, name)).then((ok) => {
       if (ok) {
         setSelHash(null)
         setDetail(null)
@@ -336,7 +367,7 @@ export function GitModal({
       setCreating(false)
       return
     }
-    void run('branch', () => window.api.git.createBranch(cwd, name)).then((ok) => {
+    void run('branch', () => window.api.git.createBranch(repo, name)).then((ok) => {
       if (ok) {
         setCreating(false)
         setNewBranch('')
@@ -346,7 +377,7 @@ export function GitModal({
 
   // ── 뷰어 연결 — 워킹트리 diff / 커밋 스냅샷 ────────────────────────────────
   const openWorkFile = async (f: GitFileStatus): Promise<void> => {
-    const r = await window.api.git.fileDiff(cwd, f.path).catch(() => null)
+    const r = await window.api.git.fileDiff(repo, f.path).catch(() => null)
     if (r?.headContent != null) {
       // 디스크에서 지워진 파일 — HEAD 스냅샷으로 "뭘 잃는지"를 보여준다
       onOpenFile(absOf(f.path), { content: r.headContent, diff: null, label: 'HEAD · 삭제됨' })
@@ -359,12 +390,12 @@ export function GitModal({
     setSelHash(c.hash)
     setDetail(null)
     const gen = genRef.current
-    const d = await window.api.git.commitDetail(cwd, c.hash).catch(() => null)
+    const d = await window.api.git.commitDetail(repo, c.hash).catch(() => null)
     if (gen === genRef.current) setDetail(d)
   }
 
   const openCommitFile = async (hash: string, shortHash: string, rel: string): Promise<void> => {
-    const r = await window.api.git.commitFileDiff(cwd, hash, rel).catch(() => null)
+    const r = await window.api.git.commitFileDiff(repo, hash, rel).catch(() => null)
     if (!r) return
     onOpenFile(absOf(rel), { content: r.content ?? '', diff: r.diff, label: shortHash })
   }
@@ -462,9 +493,35 @@ export function GitModal({
         </div>
 
         <div className="gitm-body">
-          {/* 좌측 내비 — 보기 전환 + 브랜치 */}
+          {/* 좌측 내비 — 저장소(2곳 이상일 때만) + 보기 전환 + 브랜치 */}
           <div className="gitm-nav scroll">
-            <div className="gitm-sec">보기</div>
+            {(repos?.length ?? 0) > 1 && (
+              <>
+                <div className="gitm-sec">저장소</div>
+                {repos!.map(({ info, st: rs }) => (
+                  <button
+                    key={info.root}
+                    className={'gitm-item' + (info.root === repo ? ' on' : '')}
+                    onClick={() => {
+                      if (!busy && info.root !== repo) setRepo(info.root)
+                    }}
+                  >
+                    <span className="ic">
+                      <IconGitBranch size={12} />
+                    </span>
+                    <span className="nm">{info.rel || repoName(info.root)}</span>
+                    {rs.files.length > 0 ? (
+                      <span className="n warn">{rs.files.length}</span>
+                    ) : (
+                      <span className="cur">
+                        <IconCheck size={10} stroke={3} />
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </>
+            )}
+            <div className={'gitm-sec' + ((repos?.length ?? 0) > 1 ? ' line' : '')}>보기</div>
             <button className={'gitm-item' + (view === 'changes' ? ' on' : '')} onClick={() => setView('changes')}>
               <span className="ic">
                 <IconDiff size={13} />

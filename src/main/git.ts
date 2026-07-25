@@ -15,6 +15,7 @@ import type {
   GitCommitFile,
   GitFileDiffResult,
   GitLogResult,
+  GitRepoInfo,
   GitResult,
   GitStatus,
   ModelId
@@ -86,6 +87,71 @@ function collapseXY(xy: string): 'M' | 'A' | 'D' | 'R' {
   if (c === 'A' || c === 'C') return 'A'
   if (c === 'D') return 'D'
   return 'M' // M·T·기타 → 수정
+}
+
+// ── 저장소 발견 — 작업 폴더에 .git이 없고 하위(예: Plugins/X)에만 있는 프로젝트 대응 ──
+
+// 걷기에서 건너뛰는 폴더 — 저장소가 있을 리 없는 무거운 생성물 폴더들(UE·JS·닷넷·유니티).
+// 여기 없는 깊은 저장소는 못 찾는다 — 그건 추후 "이 폴더 Git 추적" 수동 추가로 커버.
+const REPO_WALK_SKIP = new Set([
+  'node_modules',
+  'Intermediate',
+  'Saved',
+  'Binaries',
+  'DerivedDataCache',
+  'Content',
+  'dist',
+  'out',
+  'build',
+  'Build',
+  'obj',
+  'bin',
+  'Library',
+  'Temp',
+  '__pycache__'
+])
+const REPO_WALK_DEPTH = 3 // cwd(0) 아래 3단계까지 — Plugins/그룹/저장소 꼴까지 커버
+
+/**
+ * cwd가 속한(위쪽) 저장소 + cwd 아래 얕은 걷기(깊이 3)로 찾은 저장소들.
+ * fs만 쓴다(.git 존재 확인 — 파일이어도 인정: 서브모듈/워크트리의 gitfile).
+ * 저장소로 판정된 폴더 아래로는 더 안 내려간다(중첩 저장소는 그 저장소를 열면 보인다).
+ */
+export async function gitRepos(cwd: string): Promise<GitRepoInfo[]> {
+  if (!cwd) return []
+  const base = path.resolve(cwd)
+  const out: GitRepoInfo[] = []
+  const seen = new Set<string>()
+  const add = (root: string): void => {
+    const r = path.resolve(root)
+    if (seen.has(r)) return
+    seen.add(r)
+    const rel = path.relative(base, r)
+    // base 밖(상위) 저장소는 rel '' — 스트립이 라벨 없이 지금처럼 그린다
+    out.push({ root: r, rel: rel && !rel.startsWith('..') ? rel.replace(/\\/g, '/') : '' })
+  }
+  const up = await repoRoot(base)
+  if (up) add(up)
+  const walk = async (dir: string, depth: number): Promise<void> => {
+    let ents: fs.Dirent[]
+    try {
+      ents = await fs.promises.readdir(dir, { withFileTypes: true })
+    } catch {
+      return
+    }
+    // 이 폴더 자체가 저장소면(상위 rev-parse가 이미 잡은 base 포함) 등록만 하고 안 내려간다
+    if (ents.some((e) => e.name === '.git')) {
+      add(dir)
+      return
+    }
+    if (depth >= REPO_WALK_DEPTH) return
+    const subs = ents.filter((e) => e.isDirectory() && !e.name.startsWith('.') && !REPO_WALK_SKIP.has(e.name))
+    await Promise.all(subs.map((e) => walk(path.join(dir, e.name), depth + 1)))
+  }
+  await walk(base, 0)
+  // cwd 자신/상위 저장소 먼저, 나머지는 경로순 — 스트립·카드 목록 순서
+  out.sort((a, b) => (a.rel === '' ? -1 : b.rel === '' ? 1 : a.rel.localeCompare(b.rel)))
+  return out
 }
 
 export async function gitStatus(cwd: string): Promise<GitStatus> {

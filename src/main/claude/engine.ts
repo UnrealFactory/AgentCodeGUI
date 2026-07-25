@@ -960,7 +960,7 @@ export class ClaudeEngine {
         if (msg.type === 'assistant') {
           // 서브에이전트(사이드체인) 프레임 — 메인 스레드와 완전히 분리해 처리한다.
           // 서브에이전트는 자기 정의대로 메인과 다른 모델로 돌 수 있어(예: Fable 5 메인
-          // 아래 Explore=Opus 4.8) 메인 경로에 태우면 ① 모델 전환 안전망이 인터리브마다
+          // 아래 Explore=Opus 5) 메인 경로에 태우면 ① 모델 전환 안전망이 인터리브마다
           // "전환됨" 배너를 핑퐁으로 도배(+model-fallback을 받은 picker 동요), ② usage가
           // 서브에이전트 자신의 컨텍스트라 게이지 오염, ③ 내레이션 text가 메인 말풍선으로
           // 섞이고, ④ 메인 스트리밍 상태(curTextId)를 중간에 리셋해 말풍선이 쪼개진다.
@@ -1484,7 +1484,7 @@ export class ClaudeEngine {
 }
 
 // ── helpers ──────────────────────────────────────────────────
-// 'claude-opus-4-8(-YYYYMMDD)' → 'Opus 4.8' — 폴백 경고 배너에 쓰는 표시 이름
+// 'claude-opus-5' / 'claude-opus-4-8(-YYYYMMDD)' → 'Opus 5' / 'Opus 4.8' — 폴백 경고 배너에 쓰는 표시 이름
 function modelDisplay(id: unknown): string {
   const s = typeof id === 'string' ? id : ''
   const m = /claude-(fable|opus|sonnet|haiku)-(\d+)(?:-(\d{1,2}))?\b/i.exec(s)

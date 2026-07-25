@@ -91,7 +91,7 @@ interface ModeOpt {
 
 const MODELS: ModelOpt[] = [
   { v: 'Fable 5', id: 'fable', d: '최상위 지능 · 가장 어려운 작업', ctx: 1000 },
-  { v: 'Opus 4.8', id: 'opus', d: '고성능 · 복잡한 작업', ctx: 1000 },
+  { v: 'Opus 5', id: 'opus', d: '고성능 · 복잡한 작업', ctx: 1000 },
   { v: 'Sonnet 5', id: 'sonnet', d: '균형 · 일상 작업', ctx: 1000 },
   { v: 'Haiku 4.5', id: 'haiku', d: '빠른 응답 · 가벼운 작업', ctx: 200 }
 ]
@@ -195,7 +195,7 @@ function useCodexModels(engine: EngineId): CodexModelOpt[] {
   return list
 }
 
-/** raw SDK model id ('claude-opus-4-8-…') → picker ModelId, or undefined if unknown.
+/** raw SDK model id ('claude-opus-5-…') → picker ModelId, or undefined if unknown.
  *  폴백 전환(model-fallback) 시 picker를 따라 바꿀 때 쓴다. */
 export function pickerModelOf(raw: string): ModelId | undefined {
   const s = raw.toLowerCase()
