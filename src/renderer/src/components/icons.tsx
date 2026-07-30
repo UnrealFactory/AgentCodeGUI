@@ -443,6 +443,15 @@ export const IconExpand = (p: IconProps) => (
     <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
   </Icon>
 )
+// collapse the full-screen modal back into its panel (IconExpand의 안쪽 화살 짝)
+export const IconCollapse = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M8 3v3a2 2 0 0 1-2 2H3" />
+    <path d="M21 8h-3a2 2 0 0 1-2-2V3" />
+    <path d="M3 16h3a2 2 0 0 1 2 2v3" />
+    <path d="M16 21v-3a2 2 0 0 1 2-2h3" />
+  </Icon>
+)
 // 8-ray spark — the per-chat/panel 프롬프트 glyph (ctx menu, sidebar marker, panel chip)
 export const IconSpark = (p: IconProps) => (
   <Icon {...p}>
@@ -454,6 +463,12 @@ export const IconSpark = (p: IconProps) => (
     <path d="M16.3 16.3l2.1 2.1" />
     <path d="M5.6 18.4l2.1-2.1" />
     <path d="M16.3 7.7l2.1-2.1" />
+  </Icon>
+)
+// 즐겨찾기 별 — 작업 폴더 팝오버 (켜짐 채움은 CSS fill:currentColor 몫)
+export const IconStar = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
   </Icon>
 )
 export const IconInfo = (p: IconProps) => (

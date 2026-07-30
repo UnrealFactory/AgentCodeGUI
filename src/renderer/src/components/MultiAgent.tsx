@@ -21,6 +21,7 @@ import {
   SelectionToolbar,
   ChatFind,
   FolderPop,
+  useThreadFollow,
   hasRunningBash,
   pickerModelOf,
   type PickerState,
@@ -36,8 +37,8 @@ import { ImageViewer } from './ImageViewer'
 import { extractMentions } from '../lib/mentions'
 import { useTurnNotifyList } from '../lib/notify'
 import { mergeRefs, useZoom, ZoomBadge } from './zoom'
-import { MouseGestureLayer, clearGesture, scrollGestures, sessionWindowGesture } from './mouseGesture'
-import { IconFolder, IconChevDown, IconMascot, IconPanelRight } from './icons'
+import { MouseGestureLayer, clearGesture, sessionWindowGesture } from './mouseGesture'
+import { IconFolder, IconChevDown, IconMascot, IconPanelRight, IconExpand, IconCollapse } from './icons'
 
 // A multi-agent SESSION is a group of N panels that work together. The recent-tasks
 // list shows one entry per session (not per panel); "새 작업" opens a fresh session and
@@ -89,6 +90,7 @@ interface PanelMeta {
   title: string
   custom: boolean // user-renamed → keep the title instead of deriving it from the prompt
   cwd: string // this panel's working dir
+  refDirs: string[] // 참조 폴더(--add-dir) — 작업 폴더 외에 이 패널 엔진이 함께 인식할 폴더들
   picker: PickerState
   api: boolean // 이 패널의 과금 (true = API 키 종량) — 모델/모드처럼 패널별 독립 선택
   input: string
@@ -100,6 +102,7 @@ interface PersistedPanel {
   title: string
   custom: boolean
   cwd: string
+  refDirs?: string[] // 없으면(예전 저장본) 빈 목록
   picker: PickerState
   api?: boolean // 없으면(예전 저장본) 복원 시점의 전역 과금 모드로 시드
   snapshot?: SessionState
@@ -137,7 +140,11 @@ export interface MultiExplorerInfo {
 }
 
 function freshPanel(api = false): PanelMeta {
-  return { title: '', custom: false, cwd: '', picker: { ...DEFAULT_PICKER }, api, input: '', images: [], queue: [] }
+  return { title: '', custom: false, cwd: '', refDirs: [], picker: { ...DEFAULT_PICKER }, api, input: '', images: [], queue: [] }
+}
+// 저장본의 참조 폴더 위생 — 문자열 배열만, 상한 8 (본채팅 sanitizeRefDirs와 같은 규칙)
+function sanitizeRefDirs(v: unknown): string[] {
+  return Array.isArray(v) ? v.filter((s): s is string => typeof s === 'string' && !!s).slice(0, 8) : []
 }
 function blankSession(id: string, count = 4): PersistedSession {
   return {
@@ -198,6 +205,7 @@ interface PanelViewProps {
   busy: boolean
   elapsed: number
   focused: boolean
+  expanded: boolean // 크게 보기 카드로 렌더 중 — 헤더 토글이 '원래 크기로'가 된다
   usage: UsageInfo // WorkBar 컨텍스트 팝오버용 — 패널 계정이 혼재라 전역 계정 기준(멀티 헤더와 동일)
   budgetUsd: number | null // 설정 → API 예산 — API 패널의 WorkBar 비용 행
   totalSpentUsd: number // 전체 워크스페이스 API 누적 사용액
@@ -216,12 +224,16 @@ interface PanelViewProps {
   onApiMode: (slot: number, next: boolean, engine?: EngineId) => void // 패널별 과금 선택
   onPickFolder: (slot: number) => void // 찾아보기 — OS 폴더 선택
   onSelectFolder: (slot: number, path: string) => void // 작업 폴더 팝오버 목록에서 선택
+  onAddRefDir: (slot: number) => void // 참조 폴더(--add-dir) 추가 — OS 픽커
+  onAddRefDirPath: (slot: number, path: string) => void // 즐겨찾기/최근 행의 + — 경로 직접 추가
+  onRemoveRefDir: (slot: number, path: string) => void
   onOpenFile: (slot: number, rel: string) => void // WorkBar·툴 로그의 파일 → 뷰어
   onOpenSubagent: (slot: number, id: string) => void // WorkBar 서브에이전트 행 → 상세 카드
   onOpenImage: (images: string[], index: number) => void // 스레드/컴포저 이미지 → 뷰어
   onBgTask: (slot: number, req: BgTaskRequest) => void // 백그라운드 셸 중지/Ctrl+B — 이 패널 엔진으로
   onRefreshUsage: () => void // 컨텍스트 팝오버를 열 때 사용량 강제 새로고침
   onFocusPanel: (slot: number) => void
+  onToggleExpand: (slot: number) => void // 헤더 버튼 — 크게 보기 ⟷ 원래 크기로
   onPermission: (slot: number, behavior: 'allow' | 'allow_always' | 'deny') => void
   onAnswer: (slot: number, answers: string[][]) => void
   onDismissQuestion: (slot: number) => void
@@ -234,6 +246,7 @@ const PanelView = memo(function PanelView({
   busy,
   elapsed,
   focused,
+  expanded,
   usage,
   budgetUsd,
   totalSpentUsd,
@@ -252,12 +265,16 @@ const PanelView = memo(function PanelView({
   onApiMode,
   onPickFolder,
   onSelectFolder,
+  onAddRefDir,
+  onAddRefDirPath,
+  onRemoveRefDir,
   onOpenFile,
   onOpenSubagent,
   onOpenImage,
   onBgTask,
   onRefreshUsage,
   onFocusPanel,
+  onToggleExpand,
   onPermission,
   onAnswer,
   onDismissQuestion,
@@ -313,11 +330,14 @@ const PanelView = memo(function PanelView({
     if (paths.length) onAddImages(slot, paths)
   }
 
-  // pin the thread to the newest message / working line as it streams
+  // 스레드 바닥 따라가기 — 본채팅과 같은 의도 래치(useThreadFollow): 스트리밍 중에도
+  // 휠 업이면 따라가기를 풀어 위 내용을 읽을 수 있고, 바닥에 다시 닿으면 재개된다.
+  // (예전의 무조건 scrollTop=scrollHeight는 실행 중 위로 못 올라가는 원인이었다)
+  const follow = useThreadFollow(threadEl, busy)
   useEffect(() => {
-    const el = scrollRef.current
-    if (el) el.scrollTop = el.scrollHeight
-  }, [state.messages, state.thinkingText, busy])
+    follow.snapIfStuck()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.messages, state.thinkingText])
 
   // 작업 인디케이터는 '답변 본문 스트리밍 중'에만 숨긴다 — 사고·도구·침묵 구간엔 계속 띄운다
   const showWorking = !state.streaming && !state.pendingQuestion && !state.pendingCommand
@@ -358,6 +378,8 @@ const PanelView = memo(function PanelView({
           >
             <IconFolder size={11} />
             <span className="ma-p-folder-name">{cwdLabel}</span>
+            {/* 참조 폴더가 있으면 +N (본채팅 폴더 칩과 같은 표시) */}
+            {meta.refDirs.length > 0 && <span className="fsel-ref">+{meta.refDirs.length}</span>}
             <IconChevDown size={10} />
           </button>
           {folderPop && (
@@ -367,6 +389,10 @@ const PanelView = memo(function PanelView({
               onSelect={(p) => onSelectFolder(slot, p)}
               onBrowse={() => onPickFolder(slot)}
               onClose={() => setFolderPop(false)}
+              refDirs={meta.refDirs}
+              onAddRef={() => onAddRefDir(slot)}
+              onAddRefPath={(p) => onAddRefDirPath(slot, p)}
+              onRemoveRef={(p) => onRemoveRefDir(slot, p)}
             />
           )}
         </span>
@@ -376,6 +402,15 @@ const PanelView = memo(function PanelView({
           <span>{status.label}</span>
           {busy && <span className="ma-status-time">{fmtElapsed(elapsed)}</span>}
         </span>
+        {/* 크게 보기 ⟷ 원래 크기로 — 이 패널을 본채팅 크기의 오버레이 카드로 (작은 글씨 대책) */}
+        <button
+          className="ma-p-expand has-tip"
+          data-tip={expanded ? '원래 크기로 (Esc)' : '크게 보기'}
+          aria-label={expanded ? '원래 크기로' : '크게 보기'}
+          onClick={() => onToggleExpand(slot)}
+        >
+          {expanded ? <IconCollapse size={12} /> : <IconExpand size={12} />}
+        </button>
       </div>
 
       <div className="ma-p-body">
@@ -405,14 +440,32 @@ const PanelView = memo(function PanelView({
               {busy && showWorking && <WorkingIndicator elapsed={elapsed} />}
             </div>
           )}
+          {/* 따라가기를 풀고 위를 읽는 중 — 본채팅과 같은 "맨 아래로" 점프 버튼 */}
+          {follow.showJump && (
+            <div className="jump-bottom-wrap">
+              <button className="jump-bottom has-tip" data-tip="맨 아래로" aria-label="맨 아래로" onClick={follow.jumpBottom}>
+                <IconChevDown size={17} />
+              </button>
+            </div>
+          )}
         </div>
         <ChatFind scrollRef={scrollRef} active={focused} panel />
       </div>
 
       <SelectionToolbar scrollRef={scrollRef} onElaborate={onElaborate} />
+      {/* RU(→↑)=최대화 토글 문법을 크게 보기에 얹는다 — 그리드에선 확대, 카드에선 복귀.
+          카드에선 DR(↓→)=닫기 문법도 같은 착지(다른 카드·뷰어들과 동일한 닫기 획) */}
       <MouseGestureLayer
         target={threadEl}
-        actions={[...scrollGestures(() => threadEl), sessionWindowGesture(), clearGesture(() => onClear(slot))]}
+        actions={[
+          // ↑/↓는 follow 래치 규칙(본채팅과 동일) — ↑는 고정을 풀고 올라가고, ↓는 재고정
+          { pattern: 'U', label: '맨 위로', run: () => follow.scrollTop() },
+          { pattern: 'D', label: '맨 아래로', run: () => follow.jumpBottom() },
+          sessionWindowGesture(),
+          clearGesture(() => onClear(slot)),
+          { pattern: 'RU', label: expanded ? '원래 크기로' : '크게 보기', run: () => onToggleExpand(slot) },
+          ...(expanded ? [{ pattern: 'DR', label: '원래 크기로', run: () => onToggleExpand(slot) }] : [])
+        ]}
       />
 
       {/* 본채팅과 완전히 같은 WorkBar(할 일·서브에이전트·백그라운드 셸·변경된 파일·컨텍스트)
@@ -444,7 +497,11 @@ const PanelView = memo(function PanelView({
         value={meta.input}
         onChange={(t) => onInput(slot, t)}
         history={sentHistory}
-        onSend={() => onSend(slot)}
+        // 전송 = 따라가기 재개 — 위를 읽던 중이어도 내 메시지와 답이 시야로 (본채팅과 동일)
+        onSend={() => {
+          follow.pin()
+          onSend(slot)
+        }}
         onStop={() => onStop(slot)}
         onSchedule={() => onSchedule(slot)}
         queued={meta.queue}
@@ -556,6 +613,7 @@ function ActiveSession({
             title: p.title ?? '',
             custom: !!p.custom,
             cwd: typeof p.cwd === 'string' ? p.cwd : '',
+            refDirs: sanitizeRefDirs(p.refDirs),
             picker: sanitizePanelPicker(p.picker),
             // 패널별 과금 — 예전 저장본(필드 없음)은 현재 전역 모드를 기본값으로
             api: p.api ?? apiMode,
@@ -581,6 +639,12 @@ function ActiveSession({
   // 시작점을 키워 두고, 본채팅(chat.zoom)·추가 채팅(session.zoom)과는 독립이다.
   // 그리드에서 굴리면 전 패널에 함께 적용된다.
   const multiZoom = useZoom('multi.zoom', true, 1.2)
+  // 크게 보기 — 이 슬롯의 패널을 본채팅 크기의 오버레이 카드로 띄운다. 패널 상태는 전부
+  // 이 컴포넌트 소유라 같은 PanelView를 자리만 옮겨 그리면 스레드·초안·실행이 그대로다
+  // (그리드 자리엔 고스트). 영속 안 함 — 세션 전환·재시작이면 접힌 채 시작.
+  const [expandedSlot, setExpandedSlot] = useState<number | null>(null)
+  // 카드 안 Ctrl+휠 읽기 크기 — 그리드(multi.zoom 120%)와 독립인 표면, 기본 100%(본채팅 크기)
+  const expandZoom = useZoom('multi.expand.zoom', expandedSlot != null, 1)
   // a folder change that would reset a panel's conversation, parked here until the user
   // confirms it in the card modal (변경) or backs out (취소)
   const [pendingFolder, setPendingFolder] = useState<{ slot: number; cwd: string } | null>(null)
@@ -661,6 +725,7 @@ function ActiveSession({
         title: m.title,
         custom: m.custom,
         cwd: m.cwd,
+        refDirs: m.refDirs,
         picker: m.picker,
         api: m.api,
         snapshot: snapshotForPersist(sessions[i].state)
@@ -710,6 +775,13 @@ function ActiveSession({
       const typing = !!ae && (['INPUT', 'TEXTAREA', 'SELECT'].includes(ae.tagName) || ae.isContentEditable)
 
       if (e.key === 'Escape') {
+        // 크게 보기가 떠 있으면 먼저 접는다 — 오버레이의 표준 기대. 실행 취소는 접힌 뒤
+        // 다시 Esc(또는 카드 안 중지 버튼)로.
+        if (expandedSlot != null) {
+          e.preventDefault()
+          setExpandedSlot(null)
+          return
+        }
         if (focusedSlot != null) {
           e.preventDefault()
           // 실행 중인 패널이면 선택 해제가 아니라 그 패널의 실행 취소 — 포커스는 유지해
@@ -736,6 +808,15 @@ function ActiveSession({
         e.preventDefault()
         const slot = n - 1
         setFocusedSlot(slot)
+        // 크게 보기 중엔 카드를 그 패널로 갈아끼운다 — 숫자 키로 패널들을 크게 넘겨본다
+        if (expandedSlot != null) {
+          setExpandedSlot(slot)
+          requestAnimationFrame(() => {
+            const ta = document.querySelector('.ma-expand-card .composer textarea') as HTMLTextAreaElement | null
+            ta?.focus()
+          })
+          return
+        }
         // jump straight into that panel's composer (next frame, once the grid is settled)
         requestAnimationFrame(() => {
           const ta = document.querySelector(
@@ -747,7 +828,7 @@ function ActiveSession({
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [focusedSlot, count])
+  }, [focusedSlot, count, expandedSlot])
 
   // ── stable per-panel handlers ──
   const patchMeta = useEvent((slot: number, patch: Partial<PanelMeta>) =>
@@ -771,6 +852,17 @@ function ActiveSession({
   )
   const onPicker = useEvent((slot: number, picker: PickerState) => patchMeta(slot, { picker }))
   const onFocusPanel = useEvent((slot: number) => setFocusedSlot(slot))
+  // 크게 보기 토글 — 열릴 때 카드 컴포저로 바로 커서(숫자 키 점프와 같은 착지)
+  const onToggleExpand = useEvent((slot: number) => {
+    const opening = expandedSlot !== slot
+    setExpandedSlot(opening ? slot : null)
+    setFocusedSlot(slot)
+    if (opening)
+      requestAnimationFrame(() => {
+        const ta = document.querySelector('.ma-expand-card .composer textarea') as HTMLTextAreaElement | null
+        ta?.focus()
+      })
+  })
   const onOpenPanelFile = useEvent((slot: number, rel: string) => setOpenFile({ slot, path: rel }))
   const onOpenPanelSub = useEvent((slot: number, id: string) => setOpenSub({ slot, id }))
   const onOpenImage = useEvent((imgs: string[], index: number) => setViewer({ images: imgs, index }))
@@ -806,6 +898,25 @@ function ActiveSession({
   })
   // 작업 폴더 팝오버(FolderPop) 목록에서 선택 — 확인 카드 흐름은 requestPanelFolder가 공용
   const onSelectFolder = useEvent((slot: number, dir: string) => requestPanelFolder(slot, dir))
+  // ── 패널별 참조 폴더(--add-dir) — 대화 리셋 없음(추가 루트만 얹음), 다음 실행부터 적용 ──
+  const onAddRefDirPath = useEvent((slot: number, dir: string) => {
+    if (!dir) return
+    setMetas((prev) =>
+      prev.map((m, i) => {
+        if (i !== slot) return m
+        const cur = m.cwd || sessions[slot].state.session?.cwd || ''
+        if ((cur && sameCwd(dir, cur)) || m.refDirs.some((p) => sameCwd(p, dir)) || m.refDirs.length >= 8) return m
+        return { ...m, refDirs: [...m.refDirs, dir] }
+      })
+    )
+  })
+  const onAddRefDir = useEvent(async (slot: number) => {
+    const dir = await window.api.pickDirectory()
+    if (dir) onAddRefDirPath(slot, dir)
+  })
+  const onRemoveRefDir = useEvent((slot: number, p: string) =>
+    setMetas((prev) => prev.map((m, i) => (i === slot ? { ...m, refDirs: m.refDirs.filter((x) => !sameCwd(x, p)) } : m)))
+  )
 
   // ── 왼쪽 칼럼 파일 탐색기(` 전환) — 따라갈 패널을 App으로 보고 ──
   // 마지막으로 포커스(클릭)한 패널 기준, 아직 없으면 1번. Esc로 선택을 놓아도 탐색기는
@@ -888,6 +999,8 @@ function ActiveSession({
         notes.push(`[첨부 파일 — Read 도구로 확인하세요]\n${imgs.map((p) => '- ' + p).join('\n')}`)
       if (notes.length) promptForEngine = `${text}\n\n${notes.join('\n\n')}`
     }
+    // 참조 폴더 — 작업 폴더와 겹치는 항목은 걸러서 전달
+    const extraDirs = m.refDirs.filter((p) => !sameCwd(p, dir))
     const req: MultiRunRequest = {
       panelId: chan(sessionId, slot),
       prompt: promptForEngine,
@@ -898,6 +1011,7 @@ function ActiveSession({
       engine: pk.engine,
       codexModel: pk.codexModel,
       cwd: dir,
+      addDirs: extraDirs.length ? extraDirs : undefined,
       // 패널별 프롬프트 — 매 실행 시스템 프롬프트에 append (없으면 생략)
       // resume only while still in the session's original folder (a session id is scoped
       // to its project — resuming it after a folder change errors "No conversation found")
@@ -1013,7 +1127,9 @@ function ActiveSession({
     setPendingFolder(null)
   })
 
-  const renderPanel = (slot: number): React.ReactNode => {
+  // expanded=true면 같은 패널을 크게 보기 카드 안에 그린다 — 읽기 배율만 카드 전용
+  // (multi.expand.zoom)으로 갈아끼우고 나머지 배선은 그리드와 동일
+  const renderPanel = (slot: number, expanded = false): React.ReactNode => {
     const sess = sessions[slot]
     return (
       <PanelView
@@ -1024,10 +1140,11 @@ function ActiveSession({
         busy={sess.busy}
         elapsed={sess.elapsed}
         focused={focusedSlot === slot}
+        expanded={expanded}
         usage={liveUsage}
         budgetUsd={budget?.budgetUsd ?? null}
         totalSpentUsd={budget?.spentUsd ?? 0}
-        zoom={multiZoom.zoom}
+        zoom={expanded ? expandZoom.zoom : multiZoom.zoom}
         onInput={onInput}
         onAddImages={onAddImages}
         onRemoveImage={onRemoveImage}
@@ -1042,12 +1159,16 @@ function ActiveSession({
         onApiMode={onPanelApi}
         onPickFolder={onPickFolder}
         onSelectFolder={onSelectFolder}
+        onAddRefDir={onAddRefDir}
+        onAddRefDirPath={onAddRefDirPath}
+        onRemoveRefDir={onRemoveRefDir}
         onOpenFile={onOpenPanelFile}
         onOpenSubagent={onOpenPanelSub}
         onOpenImage={onOpenImage}
         onBgTask={onPanelBgTask}
         onRefreshUsage={onRefreshUsage}
         onFocusPanel={onFocusPanel}
+        onToggleExpand={onToggleExpand}
         onPermission={onPermission}
         onAnswer={onAnswer}
         onDismissQuestion={onDismissQuestion}
@@ -1057,7 +1178,8 @@ function ActiveSession({
 
   return (
     <>
-      <section className="multi">
+      {/* .expanded 플래그 — 크게 보기 중 뒤 그리드 패널의 질문 카드(z80)를 베일 밑으로 내리는 CSS 훅 */}
+      <section className={'multi' + (expandedSlot != null ? ' expanded' : '')}>
         {/* 헤더 = 드래그 바: 아이콘/타이틀·일괄 폴더·한도 필은 2.0에서 삭제 — 남는 건
             오른쪽의 패널 수 탭과 창 컨트롤뿐(왼쪽 배치는 시도 후 롤백). 한도·비용은
             각 패널 WorkBar 컨텍스트 팝오버가 말한다 */}
@@ -1075,6 +1197,7 @@ function ActiveSession({
                   // 줄어든 그리드 밖을 가리키던 선택/모달 슬롯은 정리 — 안 보이는
                   // 패널이 오버레이로 계속 떠 있거나 포커스를 쥐고 있지 않게
                   setFocusedSlot((s) => (s != null && s >= n ? null : s))
+                  setExpandedSlot((s) => (s != null && s >= n ? null : s))
                   setOpenFile((f) => (f && f.slot >= n ? null : f))
                   setOpenSub((s) => (s && s.slot >= n ? null : s))
                 }}
@@ -1101,10 +1224,39 @@ function ActiveSession({
 
         {/* 배치는 .nN 클래스가 결정 — PoC: 2·3=한 줄, 4=2×2, 5=3+2(스팬), 6=3×2 */}
         <div className={'ma-grid scroll n' + count} ref={multiZoom.ref}>
-          {SLOTS.slice(0, count).map((slot) => renderPanel(slot))}
+          {SLOTS.slice(0, count).map((slot) =>
+            slot === expandedSlot ? (
+              // 크게 보는 패널의 그리드 자리 지킴이 — 실물 PanelView는 오버레이 카드에 가 있다
+              // (.ma-panel 클래스 유지: n5 스팬 등 그리드 배치 규칙이 그대로 먹게)
+              <div key={slot} className="ma-panel ma-ghost" data-slot={slot}>
+                <span className="ma-p-num on">{slot + 1}</span>
+                <span className="ma-ghost-text">크게 보는 중</span>
+              </div>
+            ) : (
+              renderPanel(slot)
+            )
+          )}
         </div>
         <ZoomBadge pct={multiZoom.pct} show={multiZoom.flash} />
       </section>
+
+      {/* 크게 보기 — 그 패널을 본채팅 크기의 오버레이 카드로. 상태는 전부 이 컴포넌트
+          소유라 스레드·작성 중 초안·실행이 그대로 이어진다. 베일 클릭/Esc/헤더 버튼으로
+          제자리, 숫자 키로 카드 안 패널 전환. 파일 뷰어(z60)·서브에이전트 카드(z70)는
+          이 베일(z55) 위에 뜬다 */}
+      {expandedSlot != null && (
+        <div
+          className="ma-expand-overlay"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setExpandedSlot(null)
+          }}
+        >
+          <div className="ma-expand-card" ref={expandZoom.ref}>
+            {renderPanel(expandedSlot, true)}
+          </div>
+          <ZoomBadge pct={expandZoom.pct} show={expandZoom.flash} />
+        </div>
+      )}
 
       {pendingFolder && (
         <FolderSwitchDialog

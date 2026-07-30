@@ -854,7 +854,7 @@ function registerIpc(): void {
     const s = sessionWins.get(_e.sender.id)
     const rec = s ? sessionChats.get(s.chatId) : undefined
     if (!rec || rec.snapshot == null) return null
-    return { snapshot: rec.snapshot, cwd: rec.cwd, picker: rec.picker, draft: rec.draft, draftImages: rec.draftImages }
+    return { snapshot: rec.snapshot, cwd: rec.cwd, refDirs: rec.refDirs, picker: rec.picker, draft: rec.draft, draftImages: rec.draftImages }
   })
   ipcMain.handle(IPC.sessionPersist, async (_e, p: SessionPersistPayload) => {
     const s = sessionWins.get(_e.sender.id)
@@ -864,6 +864,7 @@ function registerIpc(): void {
     // 실행 중 스냅샷은 idle로 얼려 저장한다 — 재시작 복원이 "실행 중"으로 거짓말하지 않게
     rec.status = p.status === 'done' || p.status === 'error' ? p.status : 'idle'
     rec.cwd = p.cwd
+    rec.refDirs = p.refDirs
     rec.snapshot = p.snapshot
     rec.picker = p.picker
     rec.draft = p.draft

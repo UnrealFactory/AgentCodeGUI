@@ -104,6 +104,8 @@ export function SessionWindow(): React.ReactElement {
   const [max, setMax] = useState(false)
   // 이 창의 작업 폴더('' = 바탕화면 기본). 폴더를 지정하면 실행·@멘션이 모두 그 폴더 기준.
   const [cwd, setCwd] = useState('')
+  // 참조 폴더(--add-dir) — 작업 폴더 외 추가 작업 루트 (본채팅과 같은 팝오버 관리, 창별 영속)
+  const [refDirs, setRefDirs] = useState<string[]>([])
   const [user, setUser] = useState<AppUser>(FALLBACK_USER)
   const [input, setInput] = useState('')
   const [images, setImages] = useState<string[]>([])
@@ -249,6 +251,20 @@ export function SessionWindow(): React.ReactElement {
     const dir = await window.api.pickDirectory()
     if (dir) requestFolder(dir)
   }
+  // ── 참조 폴더 관리 — 대화 리셋 없음(추가 루트만 얹음), 다음 실행부터 적용 (본채팅과 동일) ──
+  const addRefDirPath = (dir: string): void => {
+    if (!dir) return
+    setRefDirs((a) => {
+      const cur = cwd || state.session?.cwd || ''
+      if ((cur && sameCwd(dir, cur)) || a.some((p) => sameCwd(p, dir)) || a.length >= 8) return a
+      return [...a, dir]
+    })
+  }
+  const addRefDir = async (): Promise<void> => {
+    const dir = await window.api.pickDirectory()
+    if (dir) addRefDirPath(dir)
+  }
+  const removeRefDir = (p: string): void => setRefDirs((a) => a.filter((x) => !sameCwd(x, p)))
 
   // 내가 보낸 메시지(오래된→최신) — 작성칸에서 ↑/↓로 다시 불러오기 (채팅과 동일)
   const sentHistory = useMemo(
@@ -285,6 +301,7 @@ export function SessionWindow(): React.ReactElement {
       title: winTitle,
       status: state.status,
       cwd,
+      refDirs,
       snapshot: snapshotForPersist(state),
       picker,
       draft: input,
@@ -298,7 +315,7 @@ export function SessionWindow(): React.ReactElement {
     if (!hydrated) return
     const t = setTimeout(() => persistNowRef.current(), 600)
     return () => clearTimeout(t)
-  }, [hydrated, state, cwd, picker, input, images])
+  }, [hydrated, state, cwd, refDirs, picker, input, images])
   // 닫기 flush — 메인이 창을 정리하기 직전 마지막 스냅샷을 요청한다 (닫기=저장 후 정리)
   useEffect(() => window.api.session?.onFlushRequest?.(() => persistNowRef.current()) ?? (() => {}), [])
 
@@ -323,6 +340,7 @@ export function SessionWindow(): React.ReactElement {
       if (!alive) return
       if (h) {
         load(sanitizeSnapshot(h.snapshot))
+        if (Array.isArray(h.refDirs)) setRefDirs(h.refDirs.filter((x): x is string => typeof x === 'string' && !!x).slice(0, 8))
         // picker는 사용자 조작이 아니므로 setPicker — 새 창 기본값(localStorage)은 안 건드린다
         if (h.picker) setPicker(sanitizePicker(h.picker as Partial<PickerState>))
         if (typeof h.draft === 'string' && h.draft) setInput(h.draft)
@@ -469,6 +487,8 @@ export function SessionWindow(): React.ReactElement {
       if (imgs.length) notes.push(`[첨부 파일 — Read 도구로 확인하세요]\n${imgs.map((p) => '- ' + p).join('\n')}`)
       if (notes.length) promptForEngine = `${text}\n\n${notes.join('\n\n')}`
     }
+    // 참조 폴더 — 작업 폴더와 겹치는 항목은 걸러서 전달
+    const extraDirs = refDirs.filter((p) => !sameCwd(p, cwd || state.session?.cwd || ''))
     const req: RunRequest = {
       prompt: promptForEngine,
       model: pk.model,
@@ -478,6 +498,7 @@ export function SessionWindow(): React.ReactElement {
       engine: pk.engine,
       codexModel: pk.codexModel,
       cwd, // 지정한 작업 폴더. 빈 값이면 엔진이 바탕화면으로 폴백
+      addDirs: extraDirs.length ? extraDirs : undefined,
       resume: state.session?.sessionId,
       // 과금 모드 — API를 골랐으면 이 창의 실행도 API 키로 과금 (메인과 같은 전역 설정)
       useApi: apiMode || undefined,
@@ -586,6 +607,10 @@ export function SessionWindow(): React.ReactElement {
           placeholder="바탕화면"
           onSelectFolder={requestFolder}
           onBrowseFolder={pickFolder}
+          refDirs={refDirs}
+          onAddRefDir={addRefDir}
+          onAddRefDirPath={addRefDirPath}
+          onRemoveRefDir={removeRefDir}
         />
         <ZoomBadge pct={chatZoom.pct} show={chatZoom.flash} />
         <div className="chat-scroll scroll" ref={swScrollRef}>

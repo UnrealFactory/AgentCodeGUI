@@ -54,6 +54,7 @@ interface ChatMeta {
   custom: boolean // user-renamed → keep the title instead of deriving from prompts
   snapshot: SessionState
   manualCwd: string
+  refDirs?: string[] // 참조 폴더(--add-dir) — 작업 폴더 외에 엔진이 함께 인식할 폴더들
   picker: PickerState // 모델·effort·모드 — per chat, restored on switch
   draft?: string // 보내지 않은 컴포저 초안 — 채팅 전환/재시작에도 유지
   draftImages?: string[]
@@ -98,15 +99,21 @@ function useEvent<A extends unknown[], R>(fn: (...args: A) => R): (...args: A) =
   return useRef((...args: A) => ref.current(...args)).current
 }
 
-function newChatMeta(manualCwd = '', picker: PickerState = DEFAULT_PICKER): ChatMeta {
+function newChatMeta(manualCwd = '', picker: PickerState = DEFAULT_PICKER, refDirs: string[] = []): ChatMeta {
   return {
     id: chatId(),
     title: '',
     custom: false,
     snapshot: initialSessionState,
     manualCwd,
+    refDirs: [...refDirs],
     picker: { ...picker }
   }
+}
+
+// 저장본의 참조 폴더 위생 — 문자열 배열만, 상한 8 (손상 저장본이 이상한 값을 흘려도 무해하게)
+function sanitizeRefDirs(v: unknown): string[] {
+  return Array.isArray(v) ? v.filter((s): s is string => typeof s === 'string' && !!s).slice(0, 8) : []
 }
 
 // ── chat persistence (~/.agentcodegui/chats.json) ───────────────────────────
@@ -133,6 +140,8 @@ function MainApp({ user }: { user: AppUser }) {
   )
   const [picker, setPicker] = useState<PickerState>(DEFAULT_PICKER)
   const [manualCwd, setManualCwd] = useState('')
+  // 참조 폴더(--add-dir) — 이 채팅의 작업 폴더 외 추가 작업 루트 (폴더 팝오버에서 관리)
+  const [refDirs, setRefDirs] = useState<string[]>([])
   const [images, setImages] = useState<string[]>([])
   // messages drafted while the agent is busy — queued here and auto-sent in order once
   // the run ends (you can only enqueue while busy, and you can't switch chats while busy,
@@ -456,6 +465,7 @@ function MainApp({ user }: { user: AppUser }) {
             ? data.chats.map((c) => ({
                 ...c,
                 manualCwd: c.manualCwd ?? '',
+                refDirs: sanitizeRefDirs(c.refDirs),
                 picker: sanitizePicker(c.picker),
                 snapshot: sanitizeSnapshot(c.snapshot)
               }))
@@ -486,6 +496,7 @@ function MainApp({ user }: { user: AppUser }) {
           setActiveChatId(active.id)
           load(active.snapshot)
           setManualCwd(active.manualCwd ?? '')
+          setRefDirs(active.refDirs ?? [])
           setPicker(active.picker)
           // 닫기 전에 쓰다 만 초안(텍스트·첨부 이미지)도 그대로 돌아온다
           setInput(active.draft ?? '')
@@ -514,14 +525,14 @@ function MainApp({ user }: { user: AppUser }) {
     const t = setTimeout(() => {
       const list = chats.map((c) =>
         c.id === activeChatId
-          ? { ...c, snapshot: snapshotForPersist(state), manualCwd, picker, draft: input, draftImages: images }
+          ? { ...c, snapshot: snapshotForPersist(state), manualCwd, refDirs, picker, draft: input, draftImages: images }
           : { ...c, snapshot: snapshotForPersist(c.snapshot) }
       )
       const payload: PersistedChats = { version: CHATS_VERSION, chats: list, activeChatId }
       window.api.saveChats(payload).catch(() => {})
     }, 600)
     return () => clearTimeout(t)
-  }, [hydrated, chats, activeChatId, state, manualCwd, picker, input, images])
+  }, [hydrated, chats, activeChatId, state, manualCwd, refDirs, picker, input, images])
 
   const addImagePaths = (paths: string[]): void => {
     if (paths.length) setImages((a) => Array.from(new Set([...a, ...paths])))
@@ -616,7 +627,7 @@ function MainApp({ user }: { user: AppUser }) {
   // 만드는 대신 createChat이 재사용하므로 빈 채팅은 여전히 최대 1개다.
   const saveActive = (list: ChatMeta[]): ChatMeta[] =>
     list.map((c) =>
-      c.id === activeChatId ? { ...c, snapshot: state, manualCwd, picker, draft: input, draftImages: images } : c
+      c.id === activeChatId ? { ...c, snapshot: state, manualCwd, refDirs, picker, draft: input, draftImages: images } : c
     )
 
   // load a chat's saved snapshot into the live session + restore its directory,
@@ -624,6 +635,7 @@ function MainApp({ user }: { user: AppUser }) {
   const restore = (c: ChatMeta): void => {
     load(c.snapshot)
     setManualCwd(c.manualCwd)
+    setRefDirs(c.refDirs ?? [])
     setPicker(c.picker ?? DEFAULT_PICKER)
     setInput(c.draft ?? '')
     setImages(c.draftImages ?? [])
@@ -647,7 +659,7 @@ function MainApp({ user }: { user: AppUser }) {
       return
     }
     // a new chat starts from the settings you're currently using — not the app default
-    const fresh = newChatMeta(manualCwd, picker)
+    const fresh = newChatMeta(manualCwd, picker, refDirs)
     setChats((list) => [fresh, ...saveActive(list)])
     load(initialSessionState)
     setInput('')
@@ -672,7 +684,7 @@ function MainApp({ user }: { user: AppUser }) {
     const remaining = chats.filter((c) => c.id !== id)
     if (id === activeChatId) {
       if (remaining.length === 0) {
-        const fresh = newChatMeta(manualCwd, picker)
+        const fresh = newChatMeta(manualCwd, picker, refDirs)
         load(initialSessionState)
         setInput('')
         setImages([])
@@ -689,7 +701,7 @@ function MainApp({ user }: { user: AppUser }) {
   // 하나로 리셋한다 (deleteChat의 remaining.length === 0 분기와 동일한 착지점)
   const deleteAllChats = (): void => {
     if (busy) return
-    const fresh = newChatMeta(manualCwd, picker)
+    const fresh = newChatMeta(manualCwd, picker, refDirs)
     load(initialSessionState)
     setInput('')
     setImages([])
@@ -846,6 +858,7 @@ function MainApp({ user }: { user: AppUser }) {
         notes.push(`[첨부 파일 — Read 도구로 확인하세요]\n${imgs.map((p) => '- ' + p).join('\n')}`)
       if (notes.length) promptForEngine = `${text}\n\n${notes.join('\n\n')}`
     }
+    const extraDirs = refDirs.filter((p) => !sameCwd(p, dir))
     const req: RunRequest = {
       prompt: promptForEngine,
       model: pk.model,
@@ -855,6 +868,8 @@ function MainApp({ user }: { user: AppUser }) {
       engine: pk.engine,
       codexModel: pk.codexModel,
       cwd: dir,
+      // 참조 폴더 — 작업 폴더와 겹치는 항목은 걸러서 (같은 폴더를 --add-dir로 또 주지 않게)
+      addDirs: extraDirs.length ? extraDirs : undefined,
       // resume this chat's session so the conversation continues with full history —
       // but only while still in the folder it was created in (a session id is scoped to
       // its project, so resuming it elsewhere errors "No conversation found"). A folder
@@ -1004,6 +1019,22 @@ function MainApp({ user }: { user: AppUser }) {
     const p = await window.api.pickDirectory()
     if (p) requestFolder(p)
   }
+
+  // ── 참조 폴더(--add-dir) 관리 — 폴더 팝오버의 '참조 폴더' 섹션 + 행별 + 토글 ──
+  // 작업 폴더와 달리 대화를 리셋하지 않는다(엔진에 추가 루트만 얹는 것) — 다음 실행부터 적용
+  const addRefDirPath = (dir: string): void => {
+    if (!dir) return
+    setRefDirs((a) => {
+      const cur = cwd || state.session?.cwd || ''
+      if ((cur && sameCwd(dir, cur)) || a.some((p) => sameCwd(p, dir)) || a.length >= 8) return a
+      return [...a, dir]
+    })
+  }
+  const addRefDir = async (): Promise<void> => {
+    const dir = await window.api.pickDirectory()
+    if (dir) addRefDirPath(dir)
+  }
+  const removeRefDir = (p: string): void => setRefDirs((a) => a.filter((x) => !sameCwd(x, p)))
 
   // ⌘O / Ctrl+O opens the folder picker — read through a ref to avoid stale closures
   const pickFolderRef = useRef(pickFolder)
@@ -1251,6 +1282,10 @@ function MainApp({ user }: { user: AppUser }) {
             cwd={cwd}
             onSelectFolder={requestFolder}
             onBrowseFolder={pickFolder}
+            refDirs={refDirs}
+            onAddRefDir={addRefDir}
+            onAddRefDirPath={addRefDirPath}
+            onRemoveRefDir={removeRefDir}
             explorerHidden={!explorerOpen}
             onToggleExplorer={toggleExplorer}
           />

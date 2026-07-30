@@ -455,6 +455,10 @@ export interface RunRequest {
   codexModel?: string
   resume?: string // session id to resume — carries this chat's conversation history
   systemPrompt?: string // 채팅/패널별 프롬프트 — appended to the preset system prompt every run
+  // 참조 폴더 — 작업 폴더(cwd) 외에 엔진이 작업 루트로 인식할 추가 폴더들.
+  // claude: SDK additionalDirectories(CLI --add-dir). codex: 샌드박스 쓰기 루트
+  // (sandbox_workspace_write.writable_roots) + developerInstructions 안내로 대응.
+  addDirs?: string[]
   // true → 이 실행은 구독(OAuth) 대신 저장된 API 키로 과금한다 (컴포저의 API 토글).
   // 엔진이 하위 CLI에 ANTHROPIC_API_KEY를 주입하고, result 이벤트에 viaApi로 표시한다.
   useApi?: boolean
@@ -740,6 +744,7 @@ export interface SessionPersistPayload {
   title: string
   status: AgentStatus
   cwd: string
+  refDirs?: string[] // 참조 폴더 — cwd 외 추가 작업 루트 (RunRequest.addDirs로 전달)
   snapshot: unknown
   picker?: unknown
   draft?: string
@@ -752,6 +757,7 @@ export interface SessionPersistPayload {
 export interface SessionHydrateData {
   snapshot: unknown
   cwd: string
+  refDirs?: string[]
   picker?: unknown
   draft?: string
   draftImages?: string[]

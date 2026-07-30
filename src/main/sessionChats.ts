@@ -16,6 +16,7 @@ export interface SessionChatRecord {
   custom?: boolean // 사이드바에서 이름을 바꾼 채팅 — 창의 자동 제목 보고를 무시
   status: AgentStatus // 저장 시 idle/done/error로 얼려서 온다 (실행 중 복원 방지)
   cwd: string
+  refDirs?: string[] // 참조 폴더 — cwd 외 추가 작업 루트 (--add-dir)
   snapshot: unknown // 렌더러의 SessionState 스냅샷 (null = 아직 저장된 대화 없음)
   picker?: unknown
   draft?: string

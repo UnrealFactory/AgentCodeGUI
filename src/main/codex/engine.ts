@@ -1475,6 +1475,19 @@ export class CodexEngine {
     const cwd = req.cwd && req.cwd.trim() ? req.cwd : path.join(os.homedir(), 'Desktop')
     this.activeCwd = cwd
     const { approvalPolicy, sandbox } = codexPolicy(req.mode)
+    // 참조 폴더 — Codex는 --add-dir이 없어 두 갈래로 대응한다: ① workspace-write
+    // 샌드박스의 쓰기 루트(sandbox_workspace_write.writable_roots)로 얹어 그 폴더의
+    // 수정이 승인 없이 통과하게 하고(읽기는 원래 전역 허용), ② developerInstructions에
+    // 목록을 실어 모델이 그 폴더의 존재를 알게 한다 (Claude additionalDirectories 대응)
+    const addDirs = (req.addDirs ?? []).filter((p) => typeof p === 'string' && p.trim())
+    const threadConfig = addDirs.length
+      ? { ...THREAD_CONFIG, sandbox_workspace_write: { writable_roots: addDirs } }
+      : THREAD_CONFIG
+    const devNotes: string[] = []
+    if (req.systemPrompt?.trim()) devNotes.push(req.systemPrompt.trim())
+    if (addDirs.length)
+      devNotes.push(`[참조 폴더] 작업 폴더 외에 아래 폴더도 함께 사용할 수 있다 (읽기·수정 허용):\n${addDirs.map((p) => '- ' + p).join('\n')}`)
+    const developerInstructions = devNotes.join('\n\n')
     const model = req.codexModel || 'gpt-5.6-terra'
     // 수용량 초과 재시도(askCapacityFallback)가 같은 턴을 다시 보낼 수 있게 원본 보관
     this.activeModel = model
@@ -1526,8 +1539,8 @@ export class CodexEngine {
           model,
           approvalPolicy,
           sandbox,
-          config: THREAD_CONFIG,
-          ...(req.systemPrompt ? { developerInstructions: req.systemPrompt } : {})
+          config: threadConfig,
+          ...(developerInstructions ? { developerInstructions } : {})
         })
         threadId = r?.thread?.id ?? req.resume
       } else {
@@ -1536,8 +1549,8 @@ export class CodexEngine {
           model,
           approvalPolicy,
           sandbox,
-          config: THREAD_CONFIG,
-          ...(req.systemPrompt ? { developerInstructions: req.systemPrompt } : {})
+          config: threadConfig,
+          ...(developerInstructions ? { developerInstructions } : {})
         })
         threadId = r?.thread?.id ?? ''
         if (!threadId) throw new Error('thread/start가 스레드 id를 주지 않았어요')

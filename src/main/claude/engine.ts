@@ -540,6 +540,9 @@ export class ClaudeEngine {
             ...(skillOverrides ? { skillOverrides } : {}),
             ...(mcpDenied ? { deniedMcpServers: mcpDenied } : {})
           },
+          // 참조 폴더 — cwd 밖 폴더들을 추가 작업 루트로 (CLI --add-dir 패리티). 도구
+          // 접근·@멘션·CLAUDE.md 인식이 그 폴더들까지 넓어진다.
+          ...(req.addDirs?.length ? { additionalDirectories: req.addDirs } : {}),
           // reasoning effort (or thinking off) chosen in the composer's effort picker
           ...effortToOptions(req.effort, req.model),
           // continue this chat's conversation (loads prior history) instead of

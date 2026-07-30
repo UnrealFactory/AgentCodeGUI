@@ -56,3 +56,34 @@ export function seedRecentDirs(entries: { p: string; t: number }[]): void {
     /* no-op */
   }
 }
+
+// ── 즐겨찾기 작업 폴더 (공유) ─────────────────────────────────────
+// 최근 목록과 별개 저장 — 별을 눌러 고정하면 최근(CAP 8)에서 밀려나도 팝오버
+// 상단에 남는다. 최근과 같은 localStorage 공유 규칙(모든 창·화면 공용).
+const FAV_KEY = 'fav.workdirs'
+const FAV_CAP = 12
+
+export function loadFavDirs(): string[] {
+  try {
+    const raw = localStorage.getItem(FAV_KEY)
+    const arr = raw ? (JSON.parse(raw) as unknown) : []
+    if (!Array.isArray(arr)) return []
+    return arr.filter((x): x is string => typeof x === 'string' && !!x).slice(0, FAV_CAP)
+  } catch {
+    return []
+  }
+}
+
+// 별 토글 — 새 즐겨찾기는 맨 앞에. 반환값 = 이제 즐겨찾기인가
+export function toggleFavDir(dir: string): boolean {
+  if (!dir) return false
+  try {
+    const cur = loadFavDirs()
+    const has = cur.some((p) => sameCwd(p, dir))
+    const next = has ? cur.filter((p) => !sameCwd(p, dir)) : [dir, ...cur].slice(0, FAV_CAP)
+    localStorage.setItem(FAV_KEY, JSON.stringify(next))
+    return !has
+  } catch {
+    return false
+  }
+}

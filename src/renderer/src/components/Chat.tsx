@@ -23,7 +23,7 @@ import type {
   TokenTally
 } from '@shared/protocol'
 import { sameCwd, type ThreadItem } from '../store/session'
-import { loadRecentDirs } from '../lib/recentDirs'
+import { loadRecentDirs, loadFavDirs, toggleFavDir } from '../lib/recentDirs'
 import { relTime } from './Sidebar'
 import { Markdown } from './Markdown'
 import { FileBadge } from './fileType'
@@ -37,6 +37,7 @@ import {
   IconPaperclip,
   IconChevDown,
   IconCheck,
+  IconStar,
   IconCopy,
   IconTerminal,
   IconSearch,
@@ -1042,13 +1043,23 @@ export function FolderPop({
   onSelect,
   onBrowse,
   onClose,
-  right
+  right,
+  refDirs,
+  onAddRef,
+  onAddRefPath,
+  onRemoveRef
 }: {
   cwd?: string // 현재 폴더 — 맨 위 '지금' + 체크로 표시
   onSelect: (path: string) => void // 목록에서 선택 — 호스트의 requestFolder(확인 카드 흐름)
   onBrowse: () => void // 찾아보기 — OS 폴더 선택
   onClose: () => void
   right?: boolean // 오른쪽 끝 칩용 — 팝오버 오른쪽 정렬 (.wb-pop.r)
+  // 참조 폴더(--add-dir) — onAddRef를 넘긴 호스트만 섹션이 보인다. 작업 폴더와 달리
+  // 선택이 아니라 목록 관리(추가/제거)라 행 클릭은 없다.
+  refDirs?: string[]
+  onAddRef?: () => void // OS 픽커로 참조 폴더 추가
+  onAddRefPath?: (path: string) => void // 즐겨찾기/최근 행의 + — 그 폴더를 참조로 바로 추가
+  onRemoveRef?: (path: string) => void
 }) {
   // 바깥 클릭/Esc로 닫기 — 안쪽 클릭은 호스트의 .hfold 래퍼가 전파를 막는다
   useEffect(() => {
@@ -1063,43 +1074,134 @@ export function FolderPop({
       document.removeEventListener('keydown', onKey)
     }
   }, [onClose])
-  const rows = useMemo(() => {
+  // 즐겨찾기가 있으면 목록을 "즐겨찾기 / 최근" 섹션(캡션+밑줄)으로 나눈다. 별 토글은
+  // 라이브 재구성 — 별을 달면 그 행이 즐겨찾기 섹션으로 올라가는 게 눈에 보인다.
+  const [favRev, setFavRev] = useState(0)
+  const { curRow, favRows, recRows, favList } = useMemo(() => {
+    const favs = loadFavDirs()
     const shared = loadRecentDirs()
-    const items = cwd && !shared.some((x) => sameCwd(x.p, cwd)) ? [{ p: cwd, t: 0 }, ...shared] : shared
-    return items
-      .map((x) => ({ path: x.p, t: x.t, current: !!cwd && sameCwd(x.p, cwd) }))
-      .sort((a, b) => (a.current ? -1 : b.current ? 1 : b.t - a.t))
-      .slice(0, 6)
-  }, [cwd])
+    const tOf = (p: string): number => shared.find((x) => sameCwd(x.p, p))?.t ?? 0
+    const notCur = (p: string): boolean => !cwd || !sameCwd(p, cwd)
+    return {
+      favList: favs,
+      // 지금 폴더는 섹션 위에 따로 핀 — 즐겨찾기여도 중복해서 다시 안 그린다
+      curRow: cwd ? { path: cwd, t: tOf(cwd), current: true } : null,
+      favRows: favs.filter(notCur).map((p) => ({ path: p, t: tOf(p), current: false })),
+      recRows: shared
+        .filter((x) => notCur(x.p) && !favs.some((f) => sameCwd(f, x.p)))
+        .map((x) => ({ path: x.p, t: x.t, current: false }))
+        .slice(0, 6)
+    }
+  }, [cwd, favRev])
   const baseOf = (p: string): string => p.split(/[\\/]+/).filter(Boolean).pop() ?? p
+  // 별 토글 — 팝오버는 닫지 않는다 (행 클릭의 폴더 선택과 분리, stopPropagation)
+  const onStar = (e: React.MouseEvent, path: string): void => {
+    e.stopPropagation()
+    toggleFavDir(path)
+    setFavRev((r) => r + 1)
+  }
+  const renderRow = (f: { path: string; t: number; current: boolean }): React.ReactNode => {
+    const fav = favList.some((p) => sameCwd(p, f.path))
+    const ref = (refDirs ?? []).some((p) => sameCwd(p, f.path))
+    return (
+      <button
+        key={f.path}
+        className="wb-prow hprow"
+        onClick={() => {
+          onClose()
+          if (!f.current) onSelect(f.path)
+        }}
+      >
+        <span className="grow">
+          {baseOf(f.path)}
+          <span className="sub">{f.path}</span>
+        </span>
+        {(f.current || f.t > 0) && <span className="end">{f.current ? '지금' : relTime(f.t)}</span>}
+        {f.current && (
+          <span className="pcheck">
+            <IconCheck size={12} stroke={2.4} />
+          </span>
+        )}
+        {/* 즐겨찾기 별 — 켜지면 항상 표시, 꺼진 행은 호버에만. 최근에서 밀려나도
+            즐겨찾기 섹션에 남는다 (버튼 안 span이라 role만 — 행 클릭과 분리) */}
+        <span
+          className={'hstar' + (fav ? ' on' : '')}
+          role="button"
+          aria-label={fav ? '즐겨찾기 해제' : '즐겨찾기'}
+          onClick={(e) => onStar(e, f.path)}
+        >
+          <IconStar size={12} />
+        </span>
+        {/* 참조 토글 — 행 클릭(작업 폴더로)과 별개로, 이 폴더를 참조 폴더로 얹고 뺀다.
+            현재 폴더는 이미 루트라 참조가 될 수 없어 숨긴다. 켜지면 ✓(액센트) 상시 표시 */}
+        {onAddRefPath && !f.current && (
+          <span
+            className={'hstar htg' + (ref ? ' on' : '')}
+            role="button"
+            aria-label={ref ? '참조 폴더에서 제거' : '참조 폴더로 추가'}
+            onClick={(e) => {
+              e.stopPropagation()
+              if (ref) onRemoveRef?.(f.path)
+              else onAddRefPath(f.path)
+            }}
+          >
+            {ref ? <IconCheck size={12} stroke={2.4} /> : <IconPlus size={12} />}
+          </span>
+        )}
+      </button>
+    )
+  }
   return (
     <div className={'wb-pop hpop' + (right ? ' r' : '')}>
       <div className="wb-pop-h">
         <span className="t">작업 폴더</span>
       </div>
       <div className="wb-pop-list">
-        {rows.map((f) => (
-          <button
-            key={f.path}
-            className="wb-prow hprow"
-            onClick={() => {
-              onClose()
-              if (!f.current) onSelect(f.path)
-            }}
-          >
-            <span className="grow">
-              {baseOf(f.path)}
-              <span className="sub">{f.path}</span>
-            </span>
-            {(f.current || f.t > 0) && <span className="end">{f.current ? '지금' : relTime(f.t)}</span>}
-            {f.current && (
-              <span className="pcheck">
-                <IconCheck size={12} stroke={2.4} />
+        {curRow && renderRow(curRow)}
+        {/* 즐겨찾기가 있을 때만 섹션 캡션(라벨+밑줄)으로 나눈다 — 없으면 예전처럼 최근만 평평하게 */}
+        {favRows.length > 0 && (
+          <>
+            <div className="hsec">즐겨찾기</div>
+            {favRows.map(renderRow)}
+          </>
+        )}
+        {recRows.length > 0 && favRows.length > 0 && <div className="hsec">최근</div>}
+        {recRows.map(renderRow)}
+        {/* 참조 폴더 — 작업 폴더 외에 엔진이 함께 인식할 폴더(--add-dir). 행은 선택이
+            아니라 관리 대상이라 클릭 없음 + 호버에 제거 ✕만 */}
+        {onAddRef && (
+          <>
+            <div className="hsec">참조 폴더</div>
+            {(refDirs ?? []).map((p) => (
+              <div key={p} className="wb-prow hprow href">
+                <span className="grow">
+                  {baseOf(p)}
+                  <span className="sub">{p}</span>
+                </span>
+                <span
+                  className="hstar hx"
+                  role="button"
+                  aria-label="참조 폴더 제거"
+                  onClick={() => onRemoveRef?.(p)}
+                >
+                  <IconClose size={11} />
+                </span>
+              </div>
+            ))}
+            <button
+              className="wb-prow hprow"
+              onClick={() => {
+                onClose()
+                onAddRef()
+              }}
+            >
+              <span className="grow">
+                참조 폴더 추가…<span className="sub">작업 폴더 외에 함께 인식할 폴더</span>
               </span>
-            )}
-          </button>
-        ))}
-        {rows.length > 0 && <div className="wb-psep" />}
+            </button>
+          </>
+        )}
+        {(curRow || favRows.length > 0 || recRows.length > 0) && <div className="wb-psep" />}
         <button
           className="wb-prow hprow"
           onClick={() => {
@@ -1126,6 +1228,10 @@ export function ChatHeader({
   placeholder = '폴더 선택',
   onSelectFolder,
   onBrowseFolder,
+  refDirs,
+  onAddRefDir,
+  onAddRefDirPath,
+  onRemoveRefDir,
   explorerHidden,
   onToggleExplorer
 }: {
@@ -1134,6 +1240,10 @@ export function ChatHeader({
   placeholder?: string // 폴더 미지정일 때 칩 라벨 — 추가 채팅은 기본 폴더가 '바탕화면'
   onSelectFolder?: (path: string) => void // 목록에서 선택 — App의 requestFolder(확인 카드 흐름)
   onBrowseFolder?: () => void // 찾아보기 — OS 폴더 선택
+  refDirs?: string[] // 참조 폴더(--add-dir) — 팝오버 관리 섹션 + 칩 +N 배지
+  onAddRefDir?: () => void
+  onAddRefDirPath?: (path: string) => void // 즐겨찾기/최근 행의 + — 경로 직접 추가
+  onRemoveRefDir?: (path: string) => void
   explorerHidden?: boolean
   onToggleExplorer?: () => void
 }) {
@@ -1155,10 +1265,12 @@ export function ChatHeader({
               팝오버가 열려 있는 동안은 has-tip을 떼어 툴팁이 팝오버와 겹치지 않게 한다 */}
           <button
             className={'tag mono fsel' + (fpop ? '' : ' has-tip')}
-            data-tip="작업 폴더 — 누르면 변경"
+            data-tip={refDirs?.length ? `작업 폴더 — 누르면 변경 · 참조 폴더 ${refDirs.length}개` : '작업 폴더 — 누르면 변경'}
             onClick={() => setFpop((o) => !o)}
           >
             <span className="fsel-txt">{cwd || placeholder}</span>
+            {/* 참조 폴더가 있으면 +N — 이 채팅이 폴더 여러 개를 물고 있다는 표시 */}
+            {(refDirs?.length ?? 0) > 0 && <span className="fsel-ref">+{refDirs!.length}</span>}
           </button>
           {fpop && (
             <FolderPop
@@ -1166,6 +1278,10 @@ export function ChatHeader({
               onSelect={(p) => onSelectFolder?.(p)}
               onBrowse={onBrowseFolder}
               onClose={() => setFpop(false)}
+              refDirs={refDirs}
+              onAddRef={onAddRefDir}
+              onAddRefPath={onAddRefDirPath}
+              onRemoveRef={onRemoveRefDir}
             />
           )}
         </span>

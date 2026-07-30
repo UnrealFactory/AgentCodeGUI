@@ -708,6 +708,30 @@ input,textarea{ font-family:inherit; }
 .hpop .hprow:hover{ background:var(--hover); color:var(--text); }
 .hpop .hprow .sub{ font-family:var(--font-mono); font-size:10px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .hpop .pcheck{ margin-left:auto; color:var(--text-2); flex:0 0 auto; display:grid; place-items:center; }
+/* 작업 폴더 팝오버 섹션 캡션 — "즐겨찾기 ────" 라벨 뒤로 헤어라인이 오른쪽 끝까지 */
+.hpop .hsec{
+  display:flex; align-items:center; gap:7px; margin:5px 4px 1px; user-select:none;
+  font-size:10px; font-weight:600; color:var(--text-4);
+}
+.hpop .hsec::after{ content:''; flex:1; height:1px; background:rgba(255,255,255,.07); }
+/* 작업 폴더 즐겨찾기 별 — 켜지면 노란 채움 상시, 꺼진 행은 호버에만 (VS Code 별 문법) */
+.hprow .hstar{
+  flex:0 0 auto; width:20px; height:20px; border-radius:5px; display:grid; place-items:center;
+  color:var(--text-4); opacity:0; transition:opacity .12s, color .12s, background .12s;
+}
+.hprow:hover .hstar{ opacity:1; }
+.hprow .hstar:hover{ background:rgba(255,255,255,.09); color:var(--text); }
+.hprow .hstar.on{ opacity:1; color:var(--yellow); }
+.hprow .hstar.on svg{ fill:currentColor; }
+/* 행의 참조 토글(+/✓) — 별과 같은 호버 노출, 켜지면 액센트 ✓ 상시 (별의 fill 규칙은 제외) */
+.hprow .htg.on{ opacity:1; color:var(--accent-2); }
+.hprow .htg.on svg{ fill:none; }
+/* 참조 폴더 행 — 선택이 아니라 관리 대상: 클릭 없음(호버 면도 끔), ✕만 호버에 */
+.hprow.href{ cursor:default; }
+.hpop .hprow.href:hover{ background:none; }
+.hprow .hx:hover{ color:var(--red); background:var(--red-soft); }
+/* 폴더 칩 +N — 이 채팅에 참조 폴더가 물려 있다는 표시 */
+.fsel-ref{ flex:0 0 auto; margin-left:5px; font-size:10px; font-weight:700; color:var(--accent-2); }
 
 /* 헤더 구분선 + 창 컨트롤 (PoC .win-ctl) */
 .vsep{ width:1px; height:12px; background:var(--line-2); margin:0 4px; flex:0 0 auto; }
@@ -3301,34 +3325,46 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
 .ma-p-folder.on{ background:var(--accent-soft); color:var(--text); box-shadow:inset 0 0 0 1px var(--accent-line); }
 .ma-p-folder.on svg:last-child{ transform:rotate(180deg); color:var(--accent-2); }
 
-/* panel body (thread) — "크게 보기" 확대 기능은 2.0에서 삭제 (전 패널 배율 multi.zoom이 대체) */
+/* 헤더 오른쪽 끝 크게 보기 ⟷ 원래 크기로 토글 — 툴팁은 폴더 칩처럼 아래로 뒤집는다
+   (그리드 첫 줄·카드 상단에서 위쪽 툴팁이 잘리는 자리) */
+.ma-p-expand{
+  flex:0 0 auto; width:22px; height:22px; border-radius:6px; display:grid; place-items:center;
+  color:var(--text-4); transition:background .12s, color .12s;
+}
+.ma-p-expand:hover{ background:var(--hover); color:var(--text); }
+.ma-p-expand.has-tip::after{ bottom:auto; top:100%; left:auto; right:0; margin-bottom:0; margin-top:8px; transform:translate(0, -3px); }
+.ma-p-expand.has-tip:hover::after{ transform:translate(0, 0); }
+
+/* panel body (thread) — "크게 보기"는 2.2에서 오버레이 카드(.ma-expand-*)로 부활;
+   그리드 자체 확대는 여전히 전 패널 배율 multi.zoom 담당 */
 .ma-p-body{ position:relative; flex:1; min-height:0; display:flex; flex-direction:column; }
 
 /* panel thread — 본채팅과 같은 .thread 마크업/WorkBar/Composer를 그대로 쓰고,
    zoom으로만 비례 축소한 미니어처(PoC 컴팩트 카드 컨셉). 패널 폭에 맞춰
-   칼럼 상한(max-width)만 풀어 메시지가 패널을 꽉 채운다. */
+   칼럼 상한(max-width)만 풀어 메시지가 패널을 꽉 채운다.
+   전부 .ma-grid 스코프 — 크게 보기 카드 안 패널은 본채팅 서식 그대로여야 한다. */
 .ma-p-thread{ flex:1; min-height:0; overflow-y:auto; }
-.ma-panel .ma-p-thread{ zoom:.8; }
+.ma-grid .ma-panel .ma-p-thread{ zoom:.8; }
 /* WorkBar 칩(할 일·서브에이전트…)·컴포저는 스레드보다 살짝 크게 — .8은 칩 글자가
    안 읽힌다는 피드백. 스레드 글자는 Ctrl+휠(multi.zoom, 기본 120%)이 따로 키운다 */
-.ma-panel .workbar-wrap, .ma-panel .composer-wrap{ zoom:.9; }
-.ma-panel .thread{ max-width:none; padding:16px 16px 18px; gap:18px; }
-.ma-panel .workbar-wrap{ padding:6px 12px 0; }
+.ma-grid .ma-panel .workbar-wrap, .ma-grid .ma-panel .composer-wrap{ zoom:.9; }
+.ma-grid .ma-panel .thread{ max-width:none; padding:16px 16px 18px; gap:18px; }
+.ma-grid .ma-panel .workbar-wrap{ padding:6px 12px 0; }
 /* 좁은 패널에선 칩이 잘리는 대신 줄바꿈 (PoC .mpwork flex-wrap 문법) */
-.ma-panel .workbar{ max-width:none; flex-wrap:wrap; row-gap:2px; }
+.ma-grid .ma-panel .workbar{ max-width:none; flex-wrap:wrap; row-gap:2px; }
 /* 패널 팝오버 앵커는 칩(.wb-cell)이 아니라 바/헤더 전체 — 칩 기준 고정폭(292/300px)
    팝오버는 좁은 패널에서 패널 왼쪽 밖으로 나가고, .ma-grid(overflow:auto)가 그리드
    경계에서 잘라 왼쪽 열 패널에선 사이드바 밑으로 들어간 것처럼 보였다(실물 CDP 실측).
    바 전체 앵커 + 바 폭 상한이면 팝오버가 항상 자기 패널 안에 머문다. */
-.ma-panel .workbar{ position:relative; }
-.ma-panel .workbar .wb-cell{ position:static; }
-.ma-panel .workbar .wb-pop{ max-width:100%; }
+.ma-grid .ma-panel .workbar{ position:relative; }
+.ma-grid .ma-panel .workbar .wb-cell{ position:static; }
+.ma-grid .ma-panel .workbar .wb-pop{ max-width:100%; }
 /* 헤더 폴더 팝오버(.hpop)도 같은 함정 — 헤더(.ma-p-head) 기준으로 올려 앵커 */
-.ma-panel .ma-p-head{ position:relative; }
-.ma-panel .ma-p-head .hfold{ position:static; }
-.ma-panel .ma-p-head .wb-pop.hpop{ max-width:100%; }
-.ma-panel .composer-wrap{ padding:8px 12px 12px; }
-.ma-panel .composer-inner{ max-width:none; }
+.ma-grid .ma-panel .ma-p-head{ position:relative; }
+.ma-grid .ma-panel .ma-p-head .hfold{ position:static; }
+.ma-grid .ma-panel .ma-p-head .wb-pop.hpop{ max-width:100%; }
+.ma-grid .ma-panel .composer-wrap{ padding:8px 12px 12px; }
+.ma-grid .ma-panel .composer-inner{ max-width:none; }
 .ma-p-empty{
   height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:11px;
   padding:20px; text-align:center;
@@ -3340,27 +3376,60 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
 /* ── 패널 스코프 승인/질문 카드 — 좁은 그리드 패널용 컴팩트 서식 ──────────────
    .ma-panel(position:relative) 덕에 .q-overlay가 물어본 패널만 덮는다. 3열 그리드의
    패널은 ~400px 폭이라 전체 화면용 카드(580px, 큰 타이포)가 안 들어가므로 여기서
-   줄인다. */
-.ma-panel .q-overlay{ padding:12px; border-radius:13px; }
+   줄인다. .ma-grid 스코프 — 크게 보기 카드 안에선 본채팅 크기 카드로 돌아온다. */
+.ma-grid .ma-panel .q-overlay{ padding:12px; border-radius:13px; }
 /* 내려둔 질문 알약 — 패널 하단 중앙에 앉는다 */
-.ma-panel .q-mini{ bottom:10px; max-width:calc(100% - 20px); font-size:11.5px; gap:7px; padding:5px 6px 5px 12px; }
-.ma-panel .q-mini .qmt{ overflow:hidden; text-overflow:ellipsis; }
+.ma-grid .ma-panel .q-mini{ bottom:10px; max-width:calc(100% - 20px); font-size:11.5px; gap:7px; padding:5px 6px 5px 12px; }
+.ma-grid .ma-panel .q-mini .qmt{ overflow:hidden; text-overflow:ellipsis; }
 /* 질문/승인 카드 (qcard 공용) */
-.ma-panel .qcard{ max-height:100%; padding:13px 15px 12px; border-radius:13px; }
-.ma-panel .qhead{ margin-bottom:8px; }
-.ma-panel .qbt{ font-size:14px; }
-.ma-panel .qopts{ margin-top:10px; gap:5px; }
-.ma-panel .qopt{ padding:9px 32px 9px 11px; border-radius:9px; }
-.ma-panel .qopt .ql{ font-size:12.5px; }
-.ma-panel .qopt .qd{ font-size:11.5px; line-height:1.45; }
-.ma-panel .qopt .qck{ right:10px; }
-.ma-panel .qopt-free input{ font-size:12px; }
-.ma-panel .qfoot{ margin-top:10px; }
-.ma-panel .qhint{ font-size:10.5px; }
-.ma-panel .qgo{ padding:6px 13px; font-size:12px; border-radius:8px; }
+.ma-grid .ma-panel .qcard{ max-height:100%; padding:13px 15px 12px; border-radius:13px; }
+.ma-grid .ma-panel .qhead{ margin-bottom:8px; }
+.ma-grid .ma-panel .qbt{ font-size:14px; }
+.ma-grid .ma-panel .qopts{ margin-top:10px; gap:5px; }
+.ma-grid .ma-panel .qopt{ padding:9px 32px 9px 11px; border-radius:9px; }
+.ma-grid .ma-panel .qopt .ql{ font-size:12.5px; }
+.ma-grid .ma-panel .qopt .qd{ font-size:11.5px; line-height:1.45; }
+.ma-grid .ma-panel .qopt .qck{ right:10px; }
+.ma-grid .ma-panel .qopt-free input{ font-size:12px; }
+.ma-grid .ma-panel .qfoot{ margin-top:10px; }
+.ma-grid .ma-panel .qhint{ font-size:10.5px; }
+.ma-grid .ma-panel .qgo{ padding:6px 13px; font-size:12px; border-radius:8px; }
 /* 승인 파츠 */
-.ma-panel .qtool{ font-size:10px; padding:2px 8px; }
-.ma-panel .qsum{ margin-top:9px; font-size:11.5px; padding:8px 10px; border-radius:8px; max-height:110px; }
+.ma-grid .ma-panel .qtool{ font-size:10px; padding:2px 8px; }
+.ma-grid .ma-panel .qsum{ margin-top:9px; font-size:11.5px; padding:8px 10px; border-radius:8px; max-height:110px; }
+
+/* ── 패널 크게 보기 — 그 패널(라이브 그대로)을 본채팅 크기의 오버레이 카드로 ─────
+   층: 뒤 그리드 패널의 질문 카드(40으로 강등) < 베일(55) < 파일 뷰어(60) < 서브
+   에이전트 카드(70) — 카드 안 WorkBar/스레드에서 여는 뷰어들이 위에 떠야 한다.
+   껍데기는 파일 뷰어 카드(.fv-overlay/.fv-modal) 문법. */
+.ma-expand-overlay{
+  position:absolute; inset:0; z-index:55;
+  background:oklch(0.1 0.004 60 / 0.55); backdrop-filter:blur(3px);
+  display:flex; padding:14px 16px;
+  animation:fade .16s ease both;
+}
+/* 카드는 화면을 거의 채운다(얇은 베일 프레임만) — "크게" 보기의 약속. 안쪽 스레드는
+   본채팅과 같은 칼럼 클램프로 중앙 정렬된다 */
+.ma-expand-card{
+  position:relative; margin:auto; width:100%; height:100%;
+  display:flex; flex-direction:column;
+  background:var(--bg); border:1px solid var(--line-2); border-radius:14px;
+  box-shadow:0 30px 80px -16px rgba(0,0,0,.34); overflow:hidden;
+  animation:rise .22s cubic-bezier(.2,.8,.2,1) both;
+}
+/* 카드가 곧 패널 — 자체 테두리·포커스 링(.focused)은 카드 프레임에 양보 */
+.ma-expand-card > .ma-panel{ flex:1; min-height:0; border:none; border-radius:0; box-shadow:none; }
+/* 확대 중 뒤 그리드 패널의 질문/승인 카드·알약(z80)은 베일 밑으로 — .ma-panel은 스태킹
+   컨텍스트가 아니라 z80이 루트 층에서 베일(55) 위로 떠오른다. 상태 칩(응답 대기)이
+   대신 알리고, 숫자 키로 그 패널을 카드로 갈아끼워 답한다 */
+.multi.expanded .ma-panel .q-overlay, .multi.expanded .ma-panel .q-mini{ z-index:40; }
+/* 베일이 멀티 헤더를 덮는 동안 창 드래그 띠 해제 — drag 영역은 z 무시·평면 합산이라
+   (자동 숨김 사이드바와 같은 함정) 카드 상단 클릭이 창 드래그로 먹힌다 */
+.win-body:has(.ma-expand-overlay) .ma-head{ -webkit-app-region:no-drag; }
+
+/* 크게 보는 패널의 그리드 자리 지킴이 — 배치 규칙 유지용 .ma-panel + 점선 프레임 */
+.ma-panel.ma-ghost{ flex-direction:row; align-items:center; justify-content:center; gap:8px; border-style:dashed; }
+.ma-ghost-text{ font-size:12px; color:var(--text-4); }
 
 /* hydration spinner + empty hint */
 .ma-hydrate{ position:absolute; inset:52px 0 0; display:grid; place-items:center; background:var(--bg); }
