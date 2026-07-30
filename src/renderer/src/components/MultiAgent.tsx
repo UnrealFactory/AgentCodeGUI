@@ -64,6 +64,9 @@ const STATUS_META: Record<AgentStatus, { label: string; cls: string }> = {
 // per-tool approvals across several panels at once (changeable per panel in the picker)
 const DEFAULT_PICKER: PickerState = { model: 'opus', effort: 'xhigh', mode: 'bypass' }
 
+// 아직 조회 전인 계정의 빈 사용량 — 컨텍스트 팝오버 한도 행이 '데이터 없음'으로 그려진다
+const EMPTY_USAGE: UsageInfo = { fiveHour: null, weekly: null, weeklyFable: null, extraCredit: null }
+
 // a picker restored from disk may be missing, truncated (crash mid-save), or hold ids
 // this build no longer knows — each field falls back to the default individually
 const PICKER_MODELS = ['fable', 'opus', 'sonnet', 'haiku']
@@ -206,7 +209,7 @@ interface PanelViewProps {
   elapsed: number
   focused: boolean
   expanded: boolean // 크게 보기 카드로 렌더 중 — 헤더 토글이 '원래 크기로'가 된다
-  usage: UsageInfo // WorkBar 컨텍스트 팝오버용 — 패널 계정이 혼재라 전역 계정 기준(멀티 헤더와 동일)
+  usage: UsageInfo // WorkBar 컨텍스트 팝오버용 — 이 패널의 실행 계정(바인딩 ?? 기본 계정) 기준
   budgetUsd: number | null // 설정 → API 예산 — API 패널의 WorkBar 비용 행
   totalSpentUsd: number // 전체 워크스페이스 API 누적 사용액
   zoom: number // Ctrl+휠 읽기 크기(chat.zoom 공유) — 멀티에선 전 패널에 함께 적용
@@ -231,7 +234,7 @@ interface PanelViewProps {
   onOpenSubagent: (slot: number, id: string) => void // WorkBar 서브에이전트 행 → 상세 카드
   onOpenImage: (images: string[], index: number) => void // 스레드/컴포저 이미지 → 뷰어
   onBgTask: (slot: number, req: BgTaskRequest) => void // 백그라운드 셸 중지/Ctrl+B — 이 패널 엔진으로
-  onRefreshUsage: () => void // 컨텍스트 팝오버를 열 때 사용량 강제 새로고침
+  onRefreshUsage: (slot: number) => void // 컨텍스트 팝오버를 열 때 이 패널 계정의 사용량 강제 새로고침
   onFocusPanel: (slot: number) => void
   onToggleExpand: (slot: number) => void // 헤더 버튼 — 크게 보기 ⟷ 원래 크기로
   onPermission: (slot: number, behavior: 'allow' | 'allow_always' | 'deny') => void
@@ -349,6 +352,7 @@ const PanelView = memo(function PanelView({
   const openChangedFile = useEvent((f: ChangedFile) => onOpenFile(slot, f.path))
   const openSubagent = useEvent((a: SubAgentInfo) => onOpenSubagent(slot, a.id))
   const bgTask = useEvent((req: BgTaskRequest) => onBgTask(slot, req))
+  const refreshUsage = useEvent(() => onRefreshUsage(slot))
   // 메시지마다 liveMsgIndex를 다시 계산하지 않게 map 밖에서 한 번만
   const liveIdx = liveMsgIndex(state.messages)
 
@@ -493,7 +497,7 @@ const PanelView = memo(function PanelView({
         codexAccount={meta.picker.codexAccount}
         onOpenFile={openChangedFile}
         onOpenSubagent={openSubagent}
-        onRefreshUsage={onRefreshUsage}
+        onRefreshUsage={refreshUsage}
       />
       <Composer
         value={meta.input}
@@ -588,23 +592,22 @@ function ActiveSession({
   const s5 = useAgentSession(subFor(chan(sessionId, 5)))
   const sessions = [s0, s1, s2, s3, s4, s5]
 
-  // 사용량은 App이 단일 모드 실행에만 갱신한다 — 멀티 패널 실행이 끝날 때는 여기서
-  // 직접 강제 새로고침해 헤더 필(한도·추가 크레딧)이 방금 소비를 바로 반영하게 한다
-  const [liveUsage, setLiveUsage] = useState<UsageInfo>(usage)
-  useEffect(() => setLiveUsage(usage), [usage]) // App 쪽 갱신도 그대로 흡수
+  // 계정별 한도 사용량(키=계정 이메일, ''=기본 계정) — 컨텍스트 한도는 "그 패널이
+  // 실제로 소비할 계정" 기준이어야 해서(본채팅 picker.account와 같은 계약) 전역 한 장이
+  // 아니라 계정별로 들고, 각 패널 WorkBar엔 그 패널 실행 계정의 것만 준다. App이 준
+  // usage는 기본 계정 항목의 첫 화면 시드 — 아래 프리페치가 곧 제 계정 값으로 덮는다.
+  const [acctUsage, setAcctUsage] = useState<Record<string, UsageInfo>>(() => ({ '': usage }))
+  const fetchAcctUsage = useEvent((acct: string, fresh: boolean) => {
+    window.api
+      .getUsage(fresh, acct || undefined)
+      .then((u) => setAcctUsage((p) => ({ ...p, [acct]: u })))
+      .catch(() => {})
+  })
   const busyCount = sessions.filter((s) => s.busy).length
   const prevBusyCountRef = useRef(busyCount)
   // 패널 실행이 하나라도 끝나면 +1 — 왼쪽 탐색기가 루트+펼친 폴더를 다시 읽어 방금
   // 생성/삭제된 파일이 새로고침 없이 보인다 (본채팅 fsTick과 같은 규칙)
   const [fsTick, setFsTick] = useState(0)
-  useEffect(() => {
-    const was = prevBusyCountRef.current
-    prevBusyCountRef.current = busyCount
-    if (busyCount < was) {
-      window.api.getUsage(true).then(setLiveUsage).catch(() => {})
-      setFsTick((t) => t + 1)
-    }
-  }, [busyCount])
 
   const [count, setCount] = useState(() => clampCount(initial.count))
   const [metas, setMetas] = useState<PanelMeta[]>(() =>
@@ -626,6 +629,32 @@ function ActiveSession({
         : freshPanel(apiMode)
     })
   )
+
+  // 보이는 패널들의 실행 계정(바인딩 ?? 기본 계정) — Codex 패널은 Anthropic 한도를 안
+  // 그리니 제외. 구성이 바뀔 때만 미리 받아 둬(메인의 계정별 5분 캐시라 가볍다) 컨텍스트
+  // 팝오버 첫 열림이 '데이터 없음'으로 시작하지 않게 한다.
+  const acctSig = JSON.stringify(
+    Array.from(new Set(metas.slice(0, count).filter((m) => m.picker.engine !== 'codex').map((m) => m.picker.account ?? ''))).sort()
+  )
+  useEffect(() => {
+    ;(JSON.parse(acctSig) as string[]).forEach((a) => fetchAcctUsage(a, false))
+    // fetchAcctUsage는 useEvent(stable) — 계정 구성 시그니처에만 의존
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [acctSig])
+  // 사용량은 App이 단일 모드 실행에만 갱신한다 — 멀티 패널 실행이 끝날 때는 여기서 직접
+  // 강제 새로고침해(패널 계정 전부 — 연타는 메인의 계정별 15초 바닥 TTL이 흡수) 컨텍스트
+  // 팝오버의 한도·추가 크레딧이 방금 소비를 바로 반영하게 한다.
+  useEffect(() => {
+    const was = prevBusyCountRef.current
+    prevBusyCountRef.current = busyCount
+    if (busyCount < was) {
+      ;(JSON.parse(acctSig) as string[]).forEach((a) => fetchAcctUsage(a, true))
+      setFsTick((t) => t + 1)
+    }
+    // acctSig·fetchAcctUsage는 트리거가 아니라 재료 — busy 감소 순간에만 동작한다
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [busyCount])
+
   const [focusedSlot, setFocusedSlot] = useState<number | null>(null)
   // 포커스 밖 알림 — 6패널 각각의 전이(턴 종료/승인/질문)를 감시한다. sub=슬롯이라
   // 패널별로 항목이 따로 쌓이고, 클릭 라우팅은 세션 단위(이 세션이 열린다).
@@ -872,10 +901,9 @@ function ActiveSession({
   const onPanelBgTask = useEvent((slot: number, req: BgTaskRequest) => {
     window.api.multi?.bgTask?.(chan(sessionId, slot), req).catch(() => {})
   })
-  // 패널 WorkBar의 컨텍스트 팝오버를 열 때 사용량 강제 새로고침 (본채팅과 동일한 fresh 규칙)
-  const onRefreshUsage = useEvent(() => {
-    window.api.getUsage(true).then(setLiveUsage).catch(() => {})
-  })
+  // 패널 WorkBar의 컨텍스트 팝오버를 열 때 그 패널 실행 계정의 사용량을 강제 새로고침
+  // (본채팅과 동일한 fresh 규칙 — 계정만 이 패널의 바인딩을 따른다)
+  const onRefreshUsage = useEvent((slot: number) => fetchAcctUsage(metas[slot].picker.account ?? '', true))
 
   // ── panel working-folder changes ──
   // A panel's folder is panel-scoped, and its session id is folder-scoped — moving a
@@ -1143,7 +1171,7 @@ function ActiveSession({
         elapsed={sess.elapsed}
         focused={focusedSlot === slot}
         expanded={expanded}
-        usage={liveUsage}
+        usage={acctUsage[metas[slot].picker.account ?? ''] ?? EMPTY_USAGE}
         budgetUsd={budget?.budgetUsd ?? null}
         totalSpentUsd={budget?.spentUsd ?? 0}
         zoom={expanded ? expandZoom.zoom : multiZoom.zoom}
