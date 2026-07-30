@@ -453,8 +453,9 @@ const PanelView = memo(function PanelView({
       </div>
 
       <SelectionToolbar scrollRef={scrollRef} onElaborate={onElaborate} />
-      {/* RU(→↑)=최대화 토글 문법을 크게 보기에 얹는다 — 그리드에선 확대, 카드에선 복귀.
-          카드에선 DR(↓→)=닫기 문법도 같은 착지(다른 카드·뷰어들과 동일한 닫기 획) */}
+      {/* 그리드에선 RU(→↑, 최대화 문법)=크게 보기, 카드에선 DR(↓→, 닫기 문법)=원래
+          크기로. 카드의 RU 토글 닫기는 최대화 제스처와 헷갈려 뺐다(사용자 피드백) —
+          닫기는 다른 카드·뷰어와 같은 ↓→ 하나로 통일 */}
       <MouseGestureLayer
         target={threadEl}
         actions={[
@@ -463,8 +464,9 @@ const PanelView = memo(function PanelView({
           { pattern: 'D', label: '맨 아래로', run: () => follow.jumpBottom() },
           sessionWindowGesture(),
           clearGesture(() => onClear(slot)),
-          { pattern: 'RU', label: expanded ? '원래 크기로' : '크게 보기', run: () => onToggleExpand(slot) },
-          ...(expanded ? [{ pattern: 'DR', label: '원래 크기로', run: () => onToggleExpand(slot) }] : [])
+          ...(expanded
+            ? [{ pattern: 'DR', label: '원래 크기로', run: () => onToggleExpand(slot) }]
+            : [{ pattern: 'RU', label: '크게 보기', run: () => onToggleExpand(slot) }])
         ]}
       />
 

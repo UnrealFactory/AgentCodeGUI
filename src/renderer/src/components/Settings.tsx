@@ -1817,8 +1817,8 @@ function isExtPattern(s: string): boolean {
 // 우클릭 드래그 제스처 — 켜고 끄기 + 동작 목록 + 감도(시작 거리·획 길이).
 // 값은 prefs에 저장되고 MouseGestureLayer가 제스처 시작 시점마다 읽으므로 즉시 반영된다.
 // 동작 매핑은 각 화면에 고정(FileModal 5종 · Bash 로그 3종 · Git 카드 닫기 · 설정창 ↑/↓/↓→ ·
-// 대화 스레드 ↑/↓/↑←/↑↓ · 추가 채팅 창은 →↑ 최대화·↓→ 닫기 · 멀티 패널은 →↑ 크게 보기
-// 토글·카드에선 ↓→ 닫기 포함) — 여기 목록과 함께 바꿔야 한다.
+// 대화 스레드 ↑/↓/↑←/↑↓ · 추가 채팅 창은 →↑ 최대화·↓→ 닫기 · 멀티 패널은 →↑ 크게 보기,
+// 크게 보기 카드는 ↓→ 닫기) — 여기 목록과 함께 바꿔야 한다.
 const GESTURE_LIST: { pattern: string; name: string; desc: string }[] = [
   { pattern: 'L', name: '이전 파일', desc: '정의 점프로 떠나온 파일로 돌아가요 — 파일 뷰어' },
   { pattern: 'R', name: '다음 파일', desc: '뒤로 갔던 길을 다시 앞으로 — 파일 뷰어' },
@@ -1826,7 +1826,7 @@ const GESTURE_LIST: { pattern: string; name: string; desc: string }[] = [
   { pattern: 'D', name: '맨 아래로', desc: '본문·대화를 끝으로' },
   { pattern: 'UL', name: '추가 채팅 열기', desc: '독립 창으로 새 대화를 하나 더 — 대화 화면 어디서나' },
   { pattern: 'UD', name: '대화 비우기', desc: '지금 보는 대화를 백지로 — /clear와 같아요' },
-  { pattern: 'RU', name: '최대화/이전 크기', desc: '추가 채팅 창을 크게, 멀티 패널은 크게 보기 — 다시 그으면 원래대로' },
+  { pattern: 'RU', name: '최대화/크게 보기', desc: '추가 채팅 창은 최대화(다시 그으면 원래대로), 멀티 패널은 크게 보기' },
   { pattern: 'DR', name: '창 닫기', desc: '카드·추가 채팅 창·크게 보기를 닫아요 — 저장 안 한 변경이 있으면 물어봐요' }
 ]
 
