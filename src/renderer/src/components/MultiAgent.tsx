@@ -16,6 +16,7 @@ import {
   MessageView,
   WorkingIndicator,
   WorkBar,
+  WorkflowDock,
   PermissionModal,
   QuestionModal,
   SelectionToolbar,
@@ -533,6 +534,10 @@ const PanelView = memo(function PanelView({
       {/* 패널 스코프 카드 — .ma-panel(position:relative) 안에서 그 패널만 덮으므로
           어느 패널의 요청인지 위치로 식별된다. 키보드는 포커스된 패널의 카드만
           받는다 — 동시에 여러 카드가 떠도 키 한 번이 전부에 응답되지 않도록. */}
+      <WorkflowDock
+        wf={state.workflow ?? null}
+        onStop={state.workflow ? () => onBgTask(slot, { action: 'stop', id: state.workflow!.id }) : undefined}
+      />
       <PermissionModal
         permission={state.pendingPermission}
         onRespond={(b) => onPermission(slot, b)}
@@ -785,9 +790,20 @@ function ActiveSession({
   // 재바인딩되므로 클로저의 sessions는 그 사이 얼어 있다(막 busy로 바뀐 패널을
   // 못 보고 선택만 풀던 원인).
   const escCancelPanel = useEvent((slot: number): boolean => {
-    if (!sessions[slot].busy) return false
+    const sess = sessions[slot]
+    // 상주 워크플로(busy=false지만 도는 중)도 Esc 취소 대상 — 중지 버튼과 같은 의미.
+    // 회수(턴 걷기 + 문장 복원)는 stopPanel이 공통으로 처리한다.
+    if (!sess.busy && sess.state.workflow?.status !== 'running') return false
     stopPanel(slot)
     return true
+  })
+  // 포커스 없이 Esc — 도는 패널(busy 또는 상주 워크플로)이 딱 하나면 그걸 취소한다.
+  // 여럿이면 어느 걸 멈추라는 건지 모호하므로 가만히 둔다(패널을 포커스해 취소).
+  const escCancelSole = useEvent((): boolean => {
+    const running = sessions
+      .map((s, i) => (s.busy || s.state.workflow?.status === 'running' ? i : -1))
+      .filter((i) => i >= 0)
+    return running.length === 1 ? escCancelPanel(running[0]) : false
   })
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
@@ -821,6 +837,8 @@ function ActiveSession({
             setFocusedSlot(null)
             if (typing) ae?.blur()
           }
+        } else if (escCancelSole()) {
+          e.preventDefault()
         }
         return
       }
@@ -976,7 +994,8 @@ function ActiveSession({
     const text = (opts?.text ?? m.input).trim()
     const imgs = opts?.images ?? m.images
     const pk = opts?.picker ?? m.picker
-    // an image-only message (attachments, no text) is allowed
+    // an image-only message (attachments, no text) is allowed.
+    // 워크플로/백그라운드 작업이 도는 중의 전송은 엔진이 같은 프로세스에 주입한다(tryInject)
     if ((!text && imgs.length === 0) || sess.busy) return
     // /clear is a client command — reset just this panel's conversation (never sent to the engine)
     if (text === '/clear') {
@@ -1118,6 +1137,14 @@ function ActiveSession({
   })
 
   const stopPanel = useEvent((slot: number) => {
+    // 취소 = 회수 — 스트리밍 중이던 미완성 턴을 스레드에서 걷고 보낸 문장을 컴포저에
+    // 복원한다(초안이 있으면 지킴). 상주 워크플로만 도는 경우엔 완결된 턴이라 걷지 않는다.
+    const sess = sessions[slot]
+    if (sess.busy) {
+      const last = [...sess.state.messages].reverse().find((m) => m.kind === 'msg' && m.role === 'user')
+      sess.retractTurn()
+      if (last && 'text' in last && last.text && !metas[slot].input.trim()) patchMeta(slot, { input: last.text })
+    }
     // stopping the run also abandons anything queued behind it (mirrors single mode)
     window.api.multi?.cancel(chan(sessionId, slot)).catch(() => {})
     setMetas((prev) => prev.map((m, i) => (i === slot && m.queue.length ? { ...m, queue: [] } : m)))

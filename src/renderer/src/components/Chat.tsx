@@ -20,7 +20,8 @@ import type {
   BgTaskRequest,
   AccountInfo,
   AccountUsage,
-  TokenTally
+  TokenTally,
+  WorkflowState
 } from '@shared/protocol'
 import { sameCwd, type ThreadItem } from '../store/session'
 import { loadRecentDirs, loadFavDirs, toggleFavDir } from '../lib/recentDirs'
@@ -3354,6 +3355,149 @@ function QuestionDialog({
   )
 }
 
+/* ── 워크플로 도크 — 상주 워크플로의 알약(q-mini 문법) ↔ 펼침 카드(qcard 문법) ──
+   running일 때만 뜬다. 정착하면 통째로 사라지고 흔적(notice 줄)+정리 턴이 대화에 남는다.
+   카드는 CLI /workflows와 같은 2열(단계 레일 클릭 전환 + 그 단계의 에이전트 행) 구조. */
+export function WorkflowDock({ wf, onStop }: { wf: WorkflowState | null; onStop?: () => void }) {
+  const [open, setOpen] = useState(false)
+  // null = 진행 중인 단계를 따라간다 — 단계를 클릭하면 고정, 진행 단계를 다시 클릭하면 복귀
+  const [selPhase, setSelPhase] = useState<number | null>(null)
+  // 카드 위 우클릭 드래그 ↓→(닫기 문법) = 내려두기 — 크게 보기 카드와 같은 제스처
+  const [cardEl, setCardEl] = useState<HTMLDivElement | null>(null)
+  const running = !!wf && wf.status === 'running'
+  // Esc = 내려두기 (질문 카드의 Esc=접기와 같은 기대). 캡처 단계에서 삼켜야 각 표면의
+  // Esc=실행취소 핸들러(App·멀티·세션 창)가 같은 키로 워크플로를 죽이지 않는다.
+  useEffect(() => {
+    if (!running || !open) return
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key !== 'Escape') return
+      e.preventDefault()
+      e.stopImmediatePropagation()
+      setOpen(false)
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [running, open])
+  if (!wf || wf.status !== 'running') return null
+
+  const phases = [...wf.phases].sort((a, b) => a.index - b.index)
+  const agents = wf.agents
+  const doneAll = agents.filter((a) => a.state === 'done').length
+  // 진행 단계 = 아직 안 끝난 에이전트가 있는 가장 앞 단계 (전부 끝났으면 마지막 = 정리 중)
+  const curPhase =
+    phases.find((p) => agents.some((a) => a.phase === p.index && a.state !== 'done'))?.index ??
+    phases[phases.length - 1]?.index ??
+    1
+  const sel = selPhase ?? curPhase
+  const selTitle = phases.find((p) => p.index === sel)?.title ?? ''
+  const selAgents = agents.filter((a) => a.phase === sel)
+  const inPhase = (idx: number): { d: number; t: number } => {
+    const list = agents.filter((a) => a.phase === idx)
+    return { d: list.filter((a) => a.state === 'done').length, t: list.length }
+  }
+  const mins = Math.floor(wf.durationMs / 60_000)
+  const elapsed = mins > 0 ? `${mins}분 ${Math.floor((wf.durationMs % 60_000) / 1000)}초` : `${Math.floor(wf.durationMs / 1000)}초`
+
+  if (!open) {
+    return (
+      <div className="wf-mini" onClick={() => setOpen(true)} role="button" aria-label="워크플로 카드 펼치기">
+        <span className="st run" />
+        <span className="wt">워크플로</span>
+        <span className="ws">
+          {(phases.find((p) => p.index === curPhase)?.title || '진행 중') + ` · ${doneAll}/${agents.length}`}
+        </span>
+        <span className="wx">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <path d="m18 15-6-6-6 6" />
+          </svg>
+        </span>
+      </div>
+    )
+  }
+
+  return (
+    <div className="wf-card scroll" ref={setCardEl}>
+      <MouseGestureLayer target={cardEl} actions={[{ pattern: 'DR', label: '내려두기', run: () => setOpen(false) }]} />
+      <div className="wf-head">
+        <span className="st run" />
+        <span className="whl">워크플로</span>
+        <span className="wsum" title={wf.summary}>
+          {wf.summary}
+        </span>
+        <span className="wmeta">
+          {doneAll}/{agents.length} · {elapsed}
+          {wf.totalTokens >= 1000 ? ` · ${fmtTok(wf.totalTokens)} tok` : ''}
+        </span>
+        <button className="wmin" onClick={() => setOpen(false)} aria-label="내려두기" data-tip="내려두기" >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <path d="m6 9 6 6 6-6" />
+          </svg>
+        </button>
+      </div>
+
+      <div className="wf-title">
+        {selTitle ? `${sel}단계 ${selTitle}` : '준비 중'}
+        {selAgents.length > 0 ? ` — 에이전트 ${inPhase(sel).d}/${inPhase(sel).t}` : ''}
+      </div>
+      <div className="wf-prog">
+        <div className="bar">
+          <i style={{ width: `${agents.length ? Math.max(4, Math.round((doneAll / agents.length) * 100)) : 4}%` }} />
+        </div>
+        <span className="n">
+          {doneAll}/{agents.length}
+        </span>
+      </div>
+
+      <div className="wf-cols">
+        <div className="wf-rail">
+          {phases.map((p) => {
+            const c = inPhase(p.index)
+            const done = c.t > 0 && c.d === c.t && p.index < curPhase
+            return (
+              <button
+                key={p.index}
+                className={`wf-ph${p.index === sel ? ' sel' : ''}`}
+                onClick={() => setSelPhase(p.index === curPhase ? null : p.index)}
+              >
+                <span className="no">{p.index}</span>
+                <span className="pn">{p.title}</span>
+                <span className="pc">
+                  {done ? '✓' : c.t > 0 ? `${c.d}/${c.t}` : '대기'}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+        <div className="wf-agents">
+          {selAgents.length === 0 && <div className="wf-empty">앞 단계가 끝나면 시작돼요</div>}
+          {selAgents.map((a, i) => (
+            <div className="wf-ag" key={`${a.phase}-${i}`}>
+              <span className={`st ${a.state === 'done' ? 'ok' : a.state === 'error' ? 'err' : a.state === 'queued' ? 'wait' : 'run'}`} />
+              <span className="nm" title={a.note || a.label}>
+                {a.label}
+              </span>
+              {a.model && <span className="mt">{a.model}</span>}
+              <span className="rt">
+                {typeof a.tokens === 'number' && a.tokens >= 1000 ? `${fmtTok(a.tokens)} tok` : ''}
+                {typeof a.toolCalls === 'number' && a.toolCalls > 0 ? ` · 도구 ${a.toolCalls}` : ''}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="wf-foot">
+        <span className="wf-hint">결과가 나오면 대화로 정리해 드려요 — 그동안에도 대화는 계속할 수 있어요.</span>
+        {onStop && (
+          <button className="wf-stop" onClick={onStop}>
+            중지
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export function Composer({
   value,
   onChange,
@@ -3656,12 +3800,13 @@ export function Composer({
       }
     }
     // 팔레트가 닫혀 있을 때만: ↑/↓로 내가 보낸 메시지를 셸처럼 다시 불러온다.
-    // 커서가 첫 줄/마지막 줄 끝에 있을 때만 가로채서 여러 줄 편집의 줄 이동은 방해하지 않는다.
+    // 진입은 입력창이 비어 있을 때만 — 초안을 쓰는 중의 ↑는 줄 이동/캐럿 이동으로 남긴다.
+    // (이미 히스토리를 넘기는 중이면 계속 ↑/↓로 탐색)
     if (history.length > 0 && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
       const pos = e.currentTarget.selectionStart ?? value.length
       const onFirstLine = !value.slice(0, pos).includes('\n')
       const onLastLine = !value.slice(pos).includes('\n')
-      if (e.key === 'ArrowUp' && onFirstLine) {
+      if (e.key === 'ArrowUp' && onFirstLine && (histIdx !== null || !value.trim())) {
         e.preventDefault()
         if (histIdx === null) histDraft.current = value // 작성 중이던 초안을 잠시 보관
         const next = histIdx === null ? history.length - 1 : Math.max(0, histIdx - 1)

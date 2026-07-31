@@ -25,7 +25,7 @@ import {
   SIDEBAR_AUTOHIDE_TRIGGER_PREVIEW_EVENT,
   type AutohideTriggerPreviewDetail
 } from './lib/sidebarAutohide'
-import { ChatHeader, ChatFind, Composer, MessageView, QuestionModal, PermissionModal, SelectionToolbar, WelcomeState, WorkBar, WorkingIndicator, hasRunningBash, nextMode, pickerModelOf, useThreadFollow, type PickerState, type ScheduledMsg } from './components/Chat'
+import { ChatHeader, ChatFind, Composer, MessageView, QuestionModal, PermissionModal, SelectionToolbar, WelcomeState, WorkBar, WorkflowDock, WorkingIndicator, hasRunningBash, nextMode, pickerModelOf, useThreadFollow, type PickerState, type ScheduledMsg } from './components/Chat'
 import { SubAgentModal } from './components/AgentPanel'
 import { Explorer } from './components/Explorer'
 import { FolderSwitchDialog } from './components/FolderSwitchDialog'
@@ -125,7 +125,9 @@ interface PersistedChats {
 }
 
 function MainApp({ user }: { user: AppUser }) {
-  const { state, elapsed, busy, begin, clearPermission, clearQuestion, answerQuestion, load } = useAgentSession()
+  const { state, elapsed, busy, begin, clearPermission, clearQuestion, answerQuestion, load, retractTurn } = useAgentSession()
+  // 워크플로 상주 중(턴은 끝나 busy=false) — 전송·채팅 전환이 워크플로를 죽이지 않게 잠근다
+  const wfAlive = state.workflow?.status === 'running'
   // 턴을 막고 있는 포그라운드 Bash가 있을 때만 셸 팝오버에 "건너뛰기"(Ctrl+B) 버튼을 노출
   const canSkipWait = useMemo(() => hasRunningBash(state.messages), [state.messages])
   const [input, setInput] = useState('')
@@ -643,7 +645,7 @@ function MainApp({ user }: { user: AppUser }) {
   }
 
   const createChat = (): void => {
-    if (busy) return // a run streams into the active chat — don't switch mid-flight
+    if (busy || wfAlive) return // a run (or 상주 워크플로) streams into the active chat — don't switch mid-flight
     if (activeEmpty) {
       // already sitting on a blank chat — nothing to create, just reset drafts
       setInput('')
@@ -668,7 +670,7 @@ function MainApp({ user }: { user: AppUser }) {
   }
 
   const selectChat = (id: string): void => {
-    if (id === activeChatId || busy) return
+    if (id === activeChatId || busy || wfAlive) return
     const target = chats.find((c) => c.id === id)
     if (!target) return
     setChats((list) => saveActive(list))
@@ -680,7 +682,7 @@ function MainApp({ user }: { user: AppUser }) {
   }
 
   const deleteChat = (id: string): void => {
-    if (id === activeChatId && busy) return
+    if (id === activeChatId && (busy || wfAlive)) return
     const remaining = chats.filter((c) => c.id !== id)
     if (id === activeChatId) {
       if (remaining.length === 0) {
@@ -700,7 +702,7 @@ function MainApp({ user }: { user: AppUser }) {
   // 사이드바 라벨 행의 전체 삭제 — 확인 카드는 Sidebar가 띄우고, 여기선 빈 채팅
   // 하나로 리셋한다 (deleteChat의 remaining.length === 0 분기와 동일한 착지점)
   const deleteAllChats = (): void => {
-    if (busy) return
+    if (busy || wfAlive) return
     const fresh = newChatMeta(manualCwd, picker, refDirs)
     load(initialSessionState)
     setInput('')
@@ -742,7 +744,7 @@ function MainApp({ user }: { user: AppUser }) {
       // a blocking question/프롬프트 modal owns the keyboard (arrows/Enter/numbers) while
       // open — don't let these global shortcuts steal focus or cycle the mode underneath it.
       // .q-mini = 질문을 잠깐 내려둔 상태(여전히 답 대기 중)도 동일하게 비켜준다
-      if (document.querySelector('.q-overlay, .q-mini, .pr-overlay')) return
+      if (document.querySelector('.q-overlay, .q-mini, .pr-overlay, .wf-card')) return
       if (e.key === 'Tab' && e.shiftKey) {
         e.preventDefault()
         setPicker((p) => ({ ...p, mode: nextMode(p.mode) }))
@@ -762,26 +764,42 @@ function MainApp({ user }: { user: AppUser }) {
     return () => window.removeEventListener('keydown', onKey)
   }, [])
 
+  // 취소 = 회수 — 스트리밍 중이던 미완성 턴(보낸 말풍선 + 반쯤 온 답)을 스레드에서 걷고,
+  // 보낸 문장은 컴포저로 되살린다(쓰던 초안이 있으면 초안을 지킴). busy가 아니라 상주
+  // 워크플로만 도는 경우엔 이미 완결된 턴이므로 걷지 않고 워크플로만 끊는다.
+  // Esc와 컴포저 중지 버튼이 같은 경로를 쓴다.
+  const cancelRun = (): void => {
+    if (busy) {
+      const last = [...state.messages].reverse().find((m) => m.kind === 'msg' && m.role === 'user')
+      retractTurn()
+      if (last && 'text' in last && last.text) setInput((v) => (v.trim() ? v : last.text))
+    }
+    window.api.cancel()
+    setQueue([])
+  }
+
   // Esc stops the running conversation (single mode). A modal / menu / selection toolbar
   // that's open owns Esc for its own dismiss, so we stand down while any is present —
   // only abort the run when Esc would otherwise do nothing. Mirrors the composer's stop
   // button: cancel the run and drop anything queued behind it.
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
-      if (e.key !== 'Escape' || mode !== 'single' || !busy) return
+      // 상주 워크플로(busy=false) 중의 Esc도 취소로 — 중지 버튼과 같은 의미
+      if (e.key !== 'Escape' || mode !== 'single' || (!busy && !wfAlive)) return
       if (
         document.querySelector(
-          '.q-overlay, .q-mini, .set-overlay, .set-dialog-overlay, .pr-overlay, .fv-overlay, .gitm-overlay, .iv-overlay, .sa-overlay, .ctx-menu, .sel-bar'
+          '.q-overlay, .q-mini, .wf-card, .set-overlay, .set-dialog-overlay, .pr-overlay, .fv-overlay, .gitm-overlay, .iv-overlay, .sa-overlay, .ctx-menu, .sel-bar'
         )
       )
         return
       e.preventDefault()
-      window.api.cancel()
-      setQueue([])
+      cancelRun()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [busy, mode])
+    // state.messages는 busy 전환(begin→analyzing)마다 재바인딩되며 최신을 본다
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [busy, mode, wfAlive])
 
   // /clear — wipe the current conversation back to a blank slate (a client action
   // mirroring Claude Code's /clear; never sent to the engine, so the visible message
@@ -808,7 +826,9 @@ function MainApp({ user }: { user: AppUser }) {
   ): Promise<boolean> => {
     const imgs = opts?.images ?? images
     const pk = opts?.picker ?? picker
-    // an image-only message (attachments, no text) is allowed — guard on having either
+    // an image-only message (attachments, no text) is allowed — guard on having either.
+    // 워크플로/백그라운드 작업이 도는 중의 전송은 엔진이 같은 프로세스에 주입한다(tryInject)
+    // — 여기서 막지 않는다.
     if ((!text.trim() && imgs.length === 0) || busy) return false
     // /clear is a client command — reset the conversation instead of calling the engine
     if (text.trim() === '/clear') {
@@ -910,7 +930,7 @@ function MainApp({ user }: { user: AppUser }) {
   useEffect(() => {
     const was = prevBusyRef.current
     prevBusyRef.current = busy
-    if (busy || !was || queueRef.current.length === 0) return
+    if (busy || queueRef.current.length === 0 || !was) return
     void (async () => {
       while (queueRef.current.length > 0) {
         const next = queueRef.current[0]
@@ -1360,11 +1380,7 @@ function MainApp({ user }: { user: AppUser }) {
             onChange={setInput}
             history={sentHistory}
             onSend={() => runPrompt(input)}
-            onStop={() => {
-              // stopping the run also abandons anything queued behind it
-              window.api.cancel()
-              setQueue([])
-            }}
+            onStop={cancelRun}
             onSchedule={scheduleMessage}
             queued={queue}
             onRemoveQueued={(id) => setQueue((q) => q.filter((m) => m.id !== id))}
@@ -1435,6 +1451,11 @@ function MainApp({ user }: { user: AppUser }) {
       )}
 
       <SubAgentModal agent={openSubagent} onClose={() => setOpenSubagentId(null)} />
+
+      {/* 워크플로 알약/카드 — 메인 채팅 표면에서만 (멀티 패널은 자기 표면이 따로 붙는다) */}
+      {mode === 'single' && (
+        <WorkflowDock wf={state.workflow ?? null} onStop={state.workflow ? () => onBgTaskMain({ action: 'stop', id: state.workflow!.id }) : undefined} />
+      )}
 
       <QuestionModal question={state.pendingQuestion} onAnswer={onAnswer} onDismiss={onDismissQuestion} />
 

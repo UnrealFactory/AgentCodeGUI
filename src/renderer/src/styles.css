@@ -1612,6 +1612,81 @@ button.wb-prow{ width:100%; text-align:left; }
 .q-mini:hover{ color:var(--text); border-color:var(--line-strong); }
 .q-mini .qmx{ width:24px; height:24px; flex:0 0 auto; border-radius:99px; display:grid; place-items:center; color:var(--text-4); }
 .q-mini .qmx:hover{ background:var(--red-soft); color:var(--red); }
+/* ── 워크플로 도크 — 알약(q-mini 문법) ↔ 펼침 카드(qcard 문법) ────────────
+   상주 워크플로 전용. 상태 점(.st)은 도크 안에서만 쓰는 로컬 문법. */
+.wf-mini{
+  position:absolute; left:50%; transform:translateX(-50%); bottom:96px; z-index:80;
+  display:flex; align-items:center; gap:9px; padding:7px 9px 7px 15px; border-radius:99px;
+  background:var(--bg); border:1px solid var(--line-2);
+  box-shadow:0 14px 40px -10px rgba(0,0,0,.7), inset 0 1px 0 rgba(255,255,255,.05);
+  font-size:12.5px; color:var(--text-2); cursor:pointer; white-space:nowrap;
+  animation:minidown .22s ease-out;
+}
+.wf-mini:hover{ color:var(--text); border-color:var(--line-strong); }
+.wf-mini .wt{ font-weight:600; color:var(--text); }
+.wf-mini .ws{ color:var(--text-3); }
+.wf-mini .wx{ width:24px; height:24px; border-radius:99px; display:grid; place-items:center; color:var(--text-4); }
+.wf-mini:hover .wx{ background:var(--hover); color:var(--text); }
+.wf-mini .st, .wf-card .st{ width:7px; height:7px; border-radius:50%; flex:0 0 auto; }
+.wf-mini .st.run, .wf-card .st.run{ background:var(--accent); animation:wfpulse 1.5s ease-in-out infinite; }
+.wf-card .st.ok{ background:var(--green); }
+.wf-card .st.err{ background:var(--red); }
+.wf-card .st.wait{ background:transparent; border:1.5px solid var(--text-4); }
+@keyframes wfpulse{ 0%,100%{ opacity:1 } 50%{ opacity:.3 } }
+
+/* 펼친 카드 — 질문 카드처럼 중앙, 채팅 영역을 거의 다 차지하는 보드 */
+.wf-card{
+  position:absolute; left:50%; transform:translateX(-50%); top:56px; bottom:110px; z-index:80;
+  width:min(760px, calc(100% - 56px));
+  display:flex; flex-direction:column;
+  padding:18px 22px 14px; border-radius:18px;
+  background:var(--bg); border:1px solid var(--line-2);
+  box-shadow:0 26px 70px -16px rgba(0,0,0,.8), inset 0 1px 0 rgba(255,255,255,.05);
+  animation:wfrise .18s cubic-bezier(.2,.8,.2,1) both;
+}
+@keyframes wfrise{ from{ opacity:0; transform:translate(-50%, 14px); } }
+.wf-head{ display:flex; align-items:center; gap:9px; margin-bottom:12px; }
+.wf-head .whl{ font-size:11.5px; font-weight:600; color:var(--text-4); letter-spacing:.02em; flex:0 0 auto; }
+.wf-head .wsum{ font-size:12px; color:var(--text-3); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.wf-head .wmeta{ margin-left:auto; font-size:11px; color:var(--text-3); font-variant-numeric:tabular-nums; flex:0 0 auto; }
+.wf-head .wmin{ padding:6px; border-radius:7px; color:var(--text-3); display:grid; place-items:center; flex:0 0 auto; }
+.wf-head .wmin:hover{ background:var(--hover); color:var(--text); }
+.wf-title{ font-size:15.5px; font-weight:600; letter-spacing:-.01em; line-height:1.45; word-break:keep-all; }
+.wf-prog{ display:flex; align-items:center; gap:10px; margin:11px 0 0; }
+.wf-prog .bar{ flex:1; height:4px; border-radius:2px; background:rgba(255,255,255,.05); overflow:hidden; }
+.wf-prog .bar i{ display:block; height:100%; border-radius:2px; background:var(--accent); transition:width .3s; }
+.wf-prog .n{ font-size:11px; color:var(--text-3); font-variant-numeric:tabular-nums; flex:0 0 auto; }
+/* 2열 — 단계 레일(클릭 전환) + 그 단계의 에이전트 행 (qopt처럼 테두리 없는 플랫 카드).
+   카드가 영역을 채우므로 이 2열이 남은 높이를 다 가져가고 각 열이 따로 스크롤된다 */
+.wf-cols{ display:flex; gap:12px; margin-top:12px; flex:1; min-height:0; }
+.wf-rail{ width:150px; flex:0 0 auto; display:flex; flex-direction:column; gap:4px; overflow-y:auto; }
+.wf-ph{
+  display:flex; align-items:center; gap:8px; text-align:left; width:100%;
+  padding:7.5px 10px; border-radius:10px; font-size:12px; color:var(--text-3);
+}
+.wf-ph:hover{ background:var(--hover); }
+.wf-ph.sel{ background:rgba(255,255,255,.07); color:var(--text); }
+.wf-ph .no{ font-size:10px; font-weight:600; color:var(--text-4); width:10px; flex:0 0 auto; }
+.wf-ph .pn{ font-weight:600; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.wf-ph .pc{ margin-left:auto; font-size:10.5px; color:var(--text-4); font-variant-numeric:tabular-nums; flex:0 0 auto; }
+.wf-ph.sel .pc{ color:var(--text-3); }
+.wf-agents{ flex:1; min-width:0; display:flex; flex-direction:column; gap:3px; overflow-y:auto; align-content:start; }
+.wf-ag{
+  display:flex; align-items:center; gap:9px;
+  padding:7px 10px; border-radius:10px; background:rgba(255,255,255,.04); font-size:12px;
+}
+.wf-ag .nm{ font-family:var(--font-mono); font-size:11.5px; color:var(--text); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.wf-ag .mt{ font-size:10px; font-weight:600; color:var(--text-3); border:1px solid var(--line-2); border-radius:5px; padding:1px 5px; flex:0 0 auto; }
+.wf-ag .rt{ margin-left:auto; font-size:10.5px; color:var(--text-3); font-variant-numeric:tabular-nums; flex:0 0 auto; white-space:nowrap; }
+.wf-empty{
+  display:grid; place-items:center; min-height:96px; border-radius:10px;
+  background:rgba(255,255,255,.04); color:var(--text-4); font-size:12px;
+}
+.wf-foot{ display:flex; align-items:center; gap:10px; margin-top:12px; }
+.wf-hint{ font-size:11px; color:var(--text-4); margin-right:auto; line-height:1.5; }
+.wf-stop{ font-size:12px; font-weight:600; color:var(--red); background:var(--red-soft); padding:6px 14px; border-radius:99px; flex:0 0 auto; }
+.wf-stop:hover{ background:rgba(221,122,107,.22); }
+
 /* 문답 흔적 (PoC .qa) — Q 마커+질문(흐림) 아래 ✓+답(볼드). 박스 없이 대화에 남는다 */
 .qa{ display:flex; flex-direction:column; gap:13px; animation:fade .2s ease both; }
 .qa .qq2{ display:flex; align-items:baseline; gap:9px; font-size:13.5px; color:var(--text-3); }
@@ -3383,6 +3458,15 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
 .ma-grid .ma-panel .q-mini .qmt{ overflow:hidden; text-overflow:ellipsis; }
 /* 질문/승인 카드 (qcard 공용) */
 .ma-grid .ma-panel .qcard{ max-height:100%; padding:13px 15px 12px; border-radius:13px; }
+/* 워크플로 알약/카드 — 패널 미니어처: 알약은 컴포저 위, 카드는 패널 전면을 덮는 보드 */
+.ma-grid .ma-panel .wf-mini{ bottom:84px; max-width:calc(100% - 20px); font-size:11.5px; gap:7px; padding:5px 6px 5px 12px; }
+.ma-grid .ma-panel .wf-mini .ws{ overflow:hidden; text-overflow:ellipsis; }
+.ma-grid .ma-panel .wf-card{
+  top:8px; bottom:8px; left:8px; right:8px; width:auto; transform:none;
+  padding:13px 15px 12px; border-radius:13px; animation:wffade .15s ease both;
+}
+@keyframes wffade{ from{ opacity:0; } }
+.ma-grid .ma-panel .wf-rail{ width:118px; }
 .ma-grid .ma-panel .qhead{ margin-bottom:8px; }
 .ma-grid .ma-panel .qbt{ font-size:14px; }
 .ma-grid .ma-panel .qopts{ margin-top:10px; gap:5px; }

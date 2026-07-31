@@ -22,7 +22,9 @@ import type {
   ChangedFile,
   FileDiff,
   Todo,
-  TokenUse
+  TokenUse,
+  WorkflowState,
+  WorkflowAgent
 } from '@shared/protocol'
 import { computeLineDiff, newFileDiff } from './diff'
 import { lspManager } from '../lsp/manager'
@@ -246,6 +248,13 @@ export class ClaudeEngine {
     backgroundTasks?: (toolUseId?: string) => Promise<boolean>
   } | null = null
   private activeRunId: string | null = null
+  /** 현재 실행의 스트리밍 입력을 닫는 손잡이 — 입력이 닫혀야 CLI가 턴 정리 후 종료한다.
+   *  워크플로 상주(입력을 열어둔 채 재기동 대기) 중 cancel/dispose가 이걸로 문을 닫는다. */
+  private closeInput: (() => void) | null = null
+  /** 상주 유지 주입 — 백그라운드 작업이 살아 있는 열린 스트림이 있고 스폰 옵션이 같으면
+   *  새 프로세스 대신 그 스트림에 다음 턴을 밀어넣는다(성공 시 새 runId, 불가 시 null →
+   *  기존 경로: 이전 실행 취소 후 새 스폰). run()이 매 실행 자기 클로저로 갈아끼운다. */
+  private tryInject: ((req: RunRequest) => string | null) | null = null
   /** 현재 실행이 result 프레임을 지났는지 — 정리 유예(post-result) 중인 CLI에는 interrupt를
    *  보내지 않는다(응답할 턴이 없어 유예가 끝날 때까지 cancel이 막힌다). 실행이 없으면 true.
    *  bg 통지의 atTurnEnd('중지됨' vs '턴 종료로 정리됨') 판정도 이 값을 쓴다. */
@@ -339,6 +348,7 @@ export class ClaudeEngine {
     } catch {
       /* ignore */
     }
+    this.closeInput?.() // 워크플로 상주로 열려 있던 입력 스트림도 함께 닫는다
     this.abort?.abort()
     // reject any outstanding permission prompts
     for (const [, waiter] of this.permissionWaiters) waiter({ behavior: 'deny', message: 'cancelled' })
@@ -348,9 +358,12 @@ export class ClaudeEngine {
     this.questionWaiters.clear()
     // wait for the in-flight stream loop to fully tear down before a new run starts,
     // so two CLI subprocesses can't briefly coexist and emit overlapping events.
+    // 상한 5초: 루프 탈출은 '다음 프레임 도착'에 기대므로(위 가드), CLI가 조용히 뻗어
+    // 프레임이 영영 없으면 여기서 무한 대기하게 된다 — 그땐 포기하고 넘어간다(옛 루프는
+    // 다음 프레임이 오는 순간 스스로 탈출하고, 가드가 새 실행과의 혼선을 막는다).
     if (this.runLoop) {
       try {
-        await this.runLoop
+        await Promise.race([this.runLoop, new Promise((r) => setTimeout(r, 5000))])
       } catch {
         /* ignore */
       }
@@ -362,6 +375,7 @@ export class ClaudeEngine {
    *  앱 종료와 함께 거둔다), 떠 있던 권한/질문 대기자는 즉시 풀어 프로미스가 매달린
    *  채 남지 않게 한다. */
   dispose(): void {
+    this.closeInput?.()
     this.abort?.abort()
     for (const [, waiter] of this.permissionWaiters) waiter({ behavior: 'deny', message: 'cancelled' })
     this.permissionWaiters.clear()
@@ -371,9 +385,13 @@ export class ClaudeEngine {
 
   /** Start a run. Returns the runId; events stream via `emit`. */
   async run(req: RunRequest): Promise<string> {
+    // 백그라운드 작업(셸·에이전트·워크플로)이 살아 있는 열린 스트림이 있으면 거기에 주입 —
+    // 새 스폰은 이전 프로세스를 죽여 그 작업들이 전부 사망한다(유지의 핵심 경로)
+    const injected = this.tryInject?.(req)
+    if (injected) return injected
     if (this.isRunning) await this.cancel()
 
-    const runId = nextRunId()
+    let runId = nextRunId()
     this.activeRunId = runId
     this.turnEnded = false // 새 턴 — cancel이 다시 우아한 interrupt 경로를 쓴다
     this.tools.clear()
@@ -392,7 +410,39 @@ export class ClaudeEngine {
     let resolveLoop: () => void = () => {}
     this.runLoop = new Promise<void>((r) => (resolveLoop = r))
 
-    const prompt = req.prompt
+    // ── 스트리밍 입력 — 워크플로 상주의 발판 ──
+    // 문자열 프롬프트는 result 후 SDK가 입력을 닫아 CLI가 죽는다(백그라운드 워크플로
+    // 동반 사망 — 완료 통지를 받을 프로세스가 없어 "결과 나오면 정리" 약속이 못 지켜짐).
+    // AsyncIterable로 주고, 워크플로가 살아 있는 동안 입력을 닫지 않으면 CLI가 완료 통지
+    // 뒤 스스로 정리 턴(재기동)을 낸다. 실측: scripts/poc-workflow-keepalive.mjs.
+    // 워크플로가 없는 보통 턴은 result 직후 closeInput이 불려 기존 수명과 동일하다.
+    const inbox: unknown[] = [
+      {
+        type: 'user',
+        message: { role: 'user', content: [{ type: 'text', text: req.prompt }] },
+        parent_tool_use_id: null,
+        session_id: ''
+      }
+    ]
+    let wakeInput: (() => void) | null = null
+    let inputClosed = false
+    const closeInput = (): void => {
+      if (inputClosed) return
+      inputClosed = true
+      wakeInput?.()
+    }
+    this.closeInput = closeInput
+    abort.signal.addEventListener('abort', closeInput, { once: true })
+    async function* promptStream(): AsyncGenerator<unknown> {
+      while (true) {
+        if (inbox.length) {
+          yield inbox.shift()
+          continue
+        }
+        if (inputClosed) return
+        await new Promise<void>((r) => (wakeInput = r))
+      }
+    }
     const permissionMode = modeToPermission(req.mode)
 
     // busy 표시는 어떤 실패보다 먼저 — 설정 읽기(디스크·safeStorage)까지 전부 아래 try
@@ -427,6 +477,46 @@ export class ClaudeEngine {
     // atTurnEnd로 구분해 렌더러가 '중지됨'과 '턴 종료로 정리됨'을 가른다.
     const liveBgIds = new Set<string>()
     let bgSessionId = ''
+    // ── 워크플로 상주 상태 (task_type 'local_workflow') ──
+    // liveWorkflows: 도는 중인 워크플로(bg 목록 REPLACE로 동기화). wfIds: 이 실행에서 본
+    // 모든 워크플로 id — 정착 통지가 bg 목록이 빈 뒤에 오므로 판별은 이 집합으로 한다.
+    // wfWrapPending: 정착 통지는 왔지만 그걸 정리하는 재기동 턴의 result가 아직인 상태 —
+    // 이 동안 입력을 닫으면 정리 턴이 잘린다. lastWf: 마지막 스냅샷(취소 시 stopped 마감).
+    const liveWorkflows = new Set<string>()
+    const wfIds = new Set<string>()
+    let wfWrapPending = false
+    // 턴/통지 순서 추적 — 완료 통지가 '진행 중이던 턴' 도중에 끼면 그 턴의 result는
+    // 정리 턴이 아니다(wrap을 풀면 정리 턴이 잘린다). 통지 이후 시작된 턴의 result만
+    // wrap을 마감한다. 통지가 유휴 중에 오면 재기동 턴이 곧바로 그 "이후 턴"이다.
+    let frameSeq = 0
+    let turnStartSeq = 0
+    let wfNotifySeq = -1
+    // 지금 턴이 사용자 주입 턴인지 — 통지와 정리 턴 사이에 사용자가 끼어들 수 있다.
+    // 주입 턴의 result는 wrap을 마감하지 않는다(정리 턴은 CLI 재기동 턴 몫).
+    let turnFromInject = false
+    let lastWf: WorkflowState | null = null
+    // 정착 스냅샷의 지연 방출분 — 렌더러의 전송 게이트(wfAlive)가 wf.status==='running'에
+    // 매달리므로, 정리 턴이 끝나기 전에 settled를 내보내면 그 틈에 새 전송이 끼어들어
+    // 정리 턴을 자른다. 정리 턴의 result(또는 무음 정착·스트림 종료)에서 내보낸다.
+    let wfSettledEmit: WorkflowState | null = null
+    // 백그라운드 서브에이전트 생존 추적 — bg 목록의 셸도 워크플로도 아닌 항목(subagent류).
+    // 셸(liveBgIds)·워크플로와 함께 "파이프를 열어둘 이유"가 된다.
+    const liveBgAgents = new Set<string>()
+    // 턴도 끝났고 살아있는 백그라운드 작업(워크플로·셸·에이전트)도 재기동 대기도 없으면
+    // 입력을 닫는다 → 루프가 기존 수명(턴 종료 = CLI 정리 = finally)으로 흐른다.
+    // 백그라운드가 없는 보통 실행은 result 직후 여기로 — 기존과 동일.
+    const maybeCloseInput = (): void => {
+      if (!liveWorkflows.size && !liveBgIds.size && !liveBgAgents.size && !wfWrapPending && this.turnEnded) closeInput()
+    }
+    // 상주 안전망 — 워크플로 완료 통지 후 재기동(정리 턴)을 기다리는 상태에서만 건다.
+    // 그 프레임은 곧 와야 정상이라 10분 무소식 = CLI 급사/행 → 닫고 정리로 흐른다.
+    // (셸/에이전트 유지 상주는 dev 서버처럼 몇 시간씩 조용한 게 정상이라 타이머를 걸지
+    // 않는다 — CLI가 죽으면 스트림이 스스로 끝나 finally로 흐른다.)
+    let holdIdleTimer: NodeJS.Timeout | null = null
+    const armHoldIdle = (): void => {
+      if (holdIdleTimer) clearTimeout(holdIdleTimer)
+      holdIdleTimer = wfWrapPending ? setTimeout(closeInput, 10 * 60_000) : null
+    }
     // 종결 status(done/error)를 이미 보냈는지 — 못 보낸 채 스트림이 닫히면(CLI 급사,
     // result 프레임 없는 종료) 렌더러의 busy가 영영 안 풀리므로 finally의 안전망이 챙긴다
     let sentTerminalStatus = false
@@ -523,7 +613,7 @@ export class ClaudeEngine {
       if (subEnv && dropEnvKey) delete subEnv.ANTHROPIC_API_KEY
 
       const q = query({
-        prompt,
+        prompt: promptStream(),
         options: {
           cwd,
           model: req.model,
@@ -736,23 +826,82 @@ export class ClaudeEngine {
         sentTerminalStatus = true
       }
 
+      // ── 상주 유지 주입의 문 — run()이 새 스폰 대신 이 스트림에 다음 턴을 밀어넣는다 ──
+      // 조건: 이전 턴이 끝났고(result 지남), 지킬 백그라운드 작업(워크플로·셸·에이전트)이
+      // 살아 있고, 스폰 시점에만 정할 수 있는 옵션이 전부 같을 때만. 하나라도 다르면
+      // null → 기존 경로(취소 후 새 스폰 — 그 작업들은 기존처럼 '턴 종료로 정리됨').
+      // runId는 let이라 갈아끼우면 이후 모든 emit이 자동으로 새 턴 소속이 된다.
+      const injectFn = (nreq: RunRequest): string | null => {
+        if (inputClosed || abort.signal.aborted || !this.turnEnded) return null
+        if (!liveWorkflows.size && !liveBgIds.size && !liveBgAgents.size && !wfWrapPending) return null
+        const ncwd = nreq.cwd && nreq.cwd.trim() ? nreq.cwd : defaultCwd()
+        if (ncwd !== cwd || nreq.resume !== bgSessionId) return null
+        if (nreq.model !== req.model || nreq.mode !== req.mode || nreq.effort !== req.effort) return null
+        if (!!nreq.useApi !== useApi || (nreq.account ?? null) !== (req.account ?? null)) return null
+        if ((nreq.systemPrompt?.trim() ?? '') !== (req.systemPrompt?.trim() ?? '')) return null
+        if (JSON.stringify(nreq.addDirs ?? []) !== JSON.stringify(req.addDirs ?? [])) return null
+        runId = nextRunId()
+        this.activeRunId = runId
+        this.turnEnded = false
+        sentTerminalStatus = false
+        sawTurnActivity = false
+        heldResult = null
+        turnStartSeq = frameSeq // 주입 턴 시작점 — wrap 마감 판정의 기준
+        turnFromInject = true
+        sawTool = false
+        curTextId = null
+        curThinking = ''
+        thinkLine = ''
+        streamedThisMsg = false
+        this.emit({ type: 'status', runId, status: 'analyzing' })
+        inbox.push({
+          type: 'user',
+          message: { role: 'user', content: [{ type: 'text', text: nreq.prompt }] },
+          parent_tool_use_id: null,
+          session_id: ''
+        })
+        wakeInput?.()
+        return runId
+      }
+      this.tryInject = injectFn
+
       for await (const raw of q as AsyncIterable<SdkMsg>) {
-        if (this.activeRunId !== runId) break
+        // abort 후에도 SDK 이터레이터는 반려되지 않을 수 있다(실측, win32): abort의 reject는
+        // '그 순간 대기 중이던 읽기'에만 적용되고, 스트리밍 중(프레임 소비 중)이면 다음
+        // 읽기가 그냥 이어진다 + Windows SDK는 자식을 즉시 죽이지도 않는다(stdin 닫고
+        // 5초 뒤 SIGKILL). 그래서 취소를 SDK에 맡기지 않고 여기서 다음 프레임에 탈출한다.
+        if (this.activeRunId !== runId || abort.signal.aborted) break
         const msg = raw
+        frameSeq++
+        armHoldIdle() // 상주 안전망 재장전 — 프레임이 흐르는 동안은 살아있는 것
 
         // 눈에 보이는 턴 활동 판별 — 보류 중인 result가 있으면 턴이 계속되고 있다는
         // 증거이므로 버린다(미니턴의 조기 종결이었음). 주입된 통지는 user 텍스트 프레임,
         // 생각은 thinking 블록/델타라 여기 안 걸린다 — 그 뒤의 무음 result를 보류할 수 있다.
         const msgBlocks = Array.isArray(msg.message?.content) ? msg.message.content : []
+        // 사이드체인(parent_tool_use_id) 프레임은 턴 활동이 아니다 — 백그라운드 서브에이전트가
+        // 턴 종료 후에도 내레이션/도구 프레임을 계속 흘리는데(상주 유지로 이제 실제로 온다),
+        // 이를 활동으로 세면 busy가 되살아나고(재점등 오발) turnEnded=false가 주입도 막는다.
         if (
-          (msg.type === 'assistant' && msgBlocks.some((b) => b?.type === 'text' || b?.type === 'tool_use')) ||
-          (msg.type === 'stream_event' && msg.event?.delta?.type === 'text_delta') ||
-          (msg.type === 'user' && msgBlocks.some((b) => b?.type === 'tool_result'))
+          !msg.parent_tool_use_id &&
+          ((msg.type === 'assistant' && msgBlocks.some((b) => b?.type === 'text' || b?.type === 'tool_use')) ||
+            (msg.type === 'stream_event' && msg.event?.delta?.type === 'text_delta') ||
+            (msg.type === 'user' && msgBlocks.some((b) => b?.type === 'tool_result')))
         ) {
           sawTurnActivity = true
           if (heldResult) {
             heldResult = null
             this.turnEnded = false // 미니턴 종결로 오판했던 상태 복구 — cancel이 다시 interrupt 경로
+          }
+          // 워크플로 정리 턴 재개 — done을 이미 보낸 뒤 새 활동이 오면(완료 통지에 따른
+          // 재기동) busy를 다시 켠다. 같은 runId의 done→working→done 왕복은 렌더러
+          // 리듀서가 그대로 견디고, 왕복의 두 번째 done이 완료 토스트를 겸한다.
+          if (sentTerminalStatus) {
+            sentTerminalStatus = false
+            this.turnEnded = false
+            turnStartSeq = frameSeq // 재기동 턴 시작점 — 통지 이후면 이 턴의 result가 wrap 마감
+            turnFromInject = false
+            this.emit({ type: 'status', runId, status: 'working' })
           }
         }
 
@@ -852,15 +1001,73 @@ export class ClaudeEngine {
         if (msg.type === 'system' && msg.subtype === 'background_tasks_changed') {
           const outFile = (id: string): string | undefined =>
             bgSessionId ? path.join(os.tmpdir(), 'claude', cwd.replace(/[^a-zA-Z0-9]/g, '-'), bgSessionId, 'tasks', `${id}.output`) : undefined
-          const tasks = (Array.isArray(msg.tasks) ? msg.tasks : [])
-            .filter((t) => t && typeof t.task_id === 'string')
+          const all = (Array.isArray(msg.tasks) ? msg.tasks : []).filter((t) => t && typeof t.task_id === 'string')
+          // 워크플로·서브에이전트 생존 동기화 — REPLACE 의미 그대로, 목록에 있는 동안 살아있음
+          liveWorkflows.clear()
+          liveBgAgents.clear()
+          for (const t of all) {
+            const kind = t.task_type ?? ''
+            if (/workflow/i.test(kind)) {
+              liveWorkflows.add(t.task_id!)
+              wfIds.add(t.task_id!)
+            } else if (!/bash|shell/i.test(kind)) {
+              liveBgAgents.add(t.task_id!)
+            }
+          }
+          const tasks = all
             // 셸 계열만 — 백그라운드 서브에이전트도 이 목록에 실려 오지만(task_type
-            // 'subagent'류) 그건 서브에이전트 칩이 이미 추적한다. 칩 이름값('셸')대로 거른다.
+            // 'subagent'류) 그건 서브에이전트 칩이 이미 추적하고, 워크플로는 위의 전용
+            // 추적(+workflow 이벤트)이 맡는다. 칩 이름값('셸')대로 거른다.
             .filter((t) => /bash|shell/i.test(t.task_type ?? ''))
             .map((t) => ({ id: t.task_id!, kind: t.task_type ?? '', description: t.description ?? '', outputFile: outFile(t.task_id!) }))
           liveBgIds.clear()
           for (const t of tasks) liveBgIds.add(t.id)
           this.emit({ type: 'bg-tasks', runId, tasks })
+          maybeCloseInput() // 마지막 백그라운드 작업이 걷힌 REPLACE면 유지 상주를 끝낸다
+          continue
+        }
+        // 워크플로 진행 스냅샷 — workflow_progress가 실린 task_progress만 보드 이벤트로.
+        // (그 외 task_progress는 작업 하트비트라 표시할 게 없다.) 배열엔 phase와 agent가
+        // 섞여 오고 매번 전체 스냅샷이라 REPLACE로 흘리면 끝. 실측: PoC frames.jsonl.
+        if (msg.type === 'system' && msg.subtype === 'task_progress') {
+          const wp = (msg as { workflow_progress?: unknown }).workflow_progress
+          if (Array.isArray(wp) && wp.length && typeof msg.task_id === 'string') {
+            const phases: WorkflowState['phases'] = []
+            const agents: WorkflowAgent[] = []
+            for (const e of wp as Array<Record<string, unknown>>) {
+              if (e?.type === 'workflow_phase') {
+                phases.push({ index: Number(e.index) || 0, title: String(e.title ?? '') })
+              } else if (e?.type === 'workflow_agent') {
+                const state = String(e.state ?? '')
+                agents.push({
+                  label: String(e.label ?? ''),
+                  phase: Number(e.phaseIndex) || 0,
+                  phaseTitle: String(e.phaseTitle ?? ''),
+                  model: modelDisplay(e.model),
+                  state,
+                  ...(typeof e.tokens === 'number' ? { tokens: e.tokens } : {}),
+                  ...(typeof e.toolCalls === 'number' ? { toolCalls: e.toolCalls } : {}),
+                  ...(typeof e.durationMs === 'number' ? { durationMs: e.durationMs } : {}),
+                  // 실행 중=프롬프트 미리보기, 완료=결과 미리보기 — 카드의 활동 한 줄
+                  note: oneLine(String((state === 'done' ? e.resultPreview : e.promptPreview) ?? ''), 140) || undefined
+                })
+              }
+            }
+            const u = (msg as { usage?: { total_tokens?: number; tool_uses?: number; duration_ms?: number } }).usage
+            const prevSummary: string = lastWf ? lastWf.summary : ''
+            lastWf = {
+              id: msg.task_id,
+              summary: msg.summary?.trim() || prevSummary,
+              status: 'running',
+              phases,
+              agents,
+              totalTokens: u?.total_tokens ?? 0,
+              toolUses: u?.tool_uses ?? 0,
+              durationMs: u?.duration_ms ?? 0
+            }
+            wfIds.add(msg.task_id)
+            this.emit({ type: 'workflow', runId, wf: lastWf })
+          }
           continue
         }
         // 작업 시작 북엔드 — tool_use ↔ task 매핑 등록 (포그라운드·백그라운드 공통)
@@ -875,7 +1082,29 @@ export class ClaudeEngine {
         if (msg.type === 'system' && msg.subtype === 'task_notification') {
           const st = msg.status
           if (typeof msg.task_id === 'string' && (st === 'completed' || st === 'failed' || st === 'stopped')) {
+            // 워크플로 정착 — bg 목록에선 이미 빠진 뒤에 오므로 wfIds로 판별한다. CLI가
+            // 곧 재기동해 정리 턴을 내므로 입력은 계속 연다(wfWrapPending — 그 턴의
+            // result가 마감). 단 사용자가 직접 중지한 워크플로는 정리 턴을 기다리지 않고
+            // 바로 닫는다(중지 = 여기서 끝내라). 이 프레임은 아래의 공용 bg-task-end로도
+            // 흐르지만 렌더러는 자기가 추적하던 셸 id만 반영하므로 무해하다.
+            if (wfIds.has(msg.task_id)) {
+              liveWorkflows.delete(msg.task_id)
+              const byUser = this.userBgStops.has(msg.task_id)
+              wfWrapPending = !byUser
+              wfNotifySeq = frameSeq
+              if (lastWf?.id === msg.task_id && lastWf.status === 'running') {
+                // summary는 진행 프레임의 원문을 지킨다 — 정착 통지의 문장은
+                // 'Dynamic workflow "…" completed' 꼴이라 흔적 줄에서 '완료'와 중복된다
+                lastWf = { ...lastWf, status: st, summary: lastWf.summary || msg.summary?.trim() || '' }
+                // 직접 중지는 정리 턴이 없으므로 즉시, 그 외엔 정리 턴 뒤로 미룬다
+                if (byUser) this.emit({ type: 'workflow', runId, wf: lastWf })
+                else wfSettledEmit = lastWf
+              }
+              armHoldIdle()
+              maybeCloseInput()
+            }
             liveBgIds.delete(msg.task_id)
+            liveBgAgents.delete(msg.task_id)
             this.emit({
               type: 'bg-task-end',
               runId,
@@ -911,6 +1140,7 @@ export class ClaudeEngine {
                 }
               })
             }
+            maybeCloseInput() // 마지막 백그라운드 작업의 정착이면 유지 상주를 끝낸다
           }
           continue
         }
@@ -1084,9 +1314,33 @@ export class ClaudeEngine {
             // 뒤에서 정착). 실패 result나 텍스트 실린 result는 즉시 정착 — 오류는 바로
             // 보여야 하고, 답이 있는 턴의 result가 빈 활동으로 오는 일은 없다(실측).
             heldResult = msg
+            // 스트리밍 입력에선 스트림이 스스로 닫히지 않는다 — 실질 메시지가 안 이어지면
+            // 여기서 무음 턴으로 정착시키고 입력을 닫는다(문자열 모드의 '닫힘 정착' 등가)
+            setTimeout(() => {
+              if (heldResult && this.activeRunId === runId && !abort.signal.aborted) {
+                if (wfSettledEmit) {
+                  this.emit({ type: 'workflow', runId, wf: wfSettledEmit })
+                  wfSettledEmit = null
+                }
+                settleResult(heldResult)
+                heldResult = null
+                if (turnStartSeq > wfNotifySeq && !turnFromInject) wfWrapPending = false
+                maybeCloseInput()
+              }
+            }, 2500)
             continue
           }
+          // 워크플로 마감 — 미뤄둔 settled 스냅샷을 result보다 먼저 내보낸다(알약 소등이
+          // busy 해제보다 앞서야 렌더러 게이트·드레인이 어긋나지 않는다). wrap 대기는
+          // "통지 이후 시작된 턴"의 result만 푼다 — 통지가 진행 중이던 턴에 끼었으면 정리
+          // 턴이 아직 안 왔으므로 계속 연다. 다 풀리면 입력을 닫아 기존 수명으로 흐른다.
+          if (wfSettledEmit) {
+            this.emit({ type: 'workflow', runId, wf: wfSettledEmit })
+            wfSettledEmit = null
+          }
           settleResult(msg)
+          if (turnStartSeq > wfNotifySeq && !turnFromInject) wfWrapPending = false
+          maybeCloseInput()
         }
       }
       // 보류된 무음 result — 실질 메시지 없이 스트림이 닫혔으면 진짜 무음 턴이다.
@@ -1101,6 +1355,9 @@ export class ClaudeEngine {
         sentTerminalStatus = true
       }
     } finally {
+      if (holdIdleTimer) clearTimeout(holdIdleTimer)
+      if (this.closeInput === closeInput) this.closeInput = null
+      this.tryInject = null // 이 스트림은 닫혔다 — 다음 run은 정상 스폰 경로로
       // clear any permission waiters belonging to this run so resolvers never outlive it
       for (const [key, waiter] of this.permissionWaiters) {
         if (key.startsWith(`perm-${runId}-`)) {
@@ -1124,6 +1381,15 @@ export class ClaudeEngine {
         }
       }
       if (this.activeRunId === runId) {
+        // 미뤄둔 settled 스냅샷이 정리 턴을 못 만나고 스트림이 끝남(취소 등) → 지금 방출.
+        // 아직 running이던 워크플로가 스트림 종료와 함께 죽음(취소·CLI 급사·상주 안전망) →
+        // stopped로 마감. 어느 쪽이든 알약이 도는 채로 남지 않게 한다.
+        if (wfSettledEmit) {
+          this.emit({ type: 'workflow', runId, wf: wfSettledEmit })
+        } else if (lastWf && lastWf.status === 'running') {
+          lastWf = { ...lastWf, status: 'stopped' }
+          this.emit({ type: 'workflow', runId, wf: lastWf })
+        }
         // 스트림이 닫히면 CLI 프로세스도 죽으므로 백그라운드 작업은 전부 사라진다 —
         // 통지가 못 온 잔여 항목은 "턴 종료로 정리됨"으로 명시하고 빈 REPLACE로 마감한다.
         // (activeRunId 가드: 새 실행이 이미 시작됐다면 그쪽 목록을 지우면 안 된다)

@@ -12,7 +12,8 @@ import type {
   Todo,
   TokenTally,
   TokenUse,
-  ToolLogItem
+  ToolLogItem,
+  WorkflowState
 } from '@shared/protocol'
 
 export type ThreadItem =
@@ -50,6 +51,9 @@ export interface SessionState {
   subagents: SubAgentInfo[]
   // 백그라운드 작업(셸 등) — 살아있는 건 bg-tasks REPLACE로, 종료 상세는 bg-task-end로 갱신
   bgTasks: BgTask[]
+  // 워크플로 스냅샷 (Workflow 도구) — running이면 알약/카드가 그리고, 정착하면 흔적만 남는다.
+  // 엔진은 정리 턴이 끝날 때까지 running을 유지한다(전송 게이트 wfAlive가 그 값에 매달림).
+  workflow: WorkflowState | null
   // engine — 요청한 엔진(카드 헤더 'Claude의 승인 요청'/'GPT의 승인 요청' 표기), 생략=claude
   pendingPermission: { requestId: string; toolName: string; summary: string; engine?: EngineId } | null
   // engine — 질문을 던진 엔진(카드 헤더 'Claude의 질문'/'GPT의 질문' 표기), 생략=claude
@@ -80,6 +84,9 @@ export interface SessionState {
   // 답변이 끝난 뒤에도 계속 true라 침묵 구간에서 인디케이터를 죽이던 문제가 있었다.
   streaming: boolean
   openGroupId: string | null
+  // 회수 직후 — 코얼레서가 늦게 흘려보내는 이번 턴의 델타/생각 조각을 삼키는 중.
+  // 다음 status(취소의 done 포함)나 begin에서 풀린다. 영속 안 함(스냅샷은 false로 동결).
+  retracting?: boolean
   seq: number
   // 이 대화에서 이미 한 번 보여준 '한 번만' 안내(notice)들의 key. 스냅샷에 저장돼 재시작
   // 후에도 유지되고, 같은 key의 once 안내는 이후 다시 끼우지 않는다. (예: 'api-billing')
@@ -99,6 +106,9 @@ type Action =
   | { type: 'clear-question' }
   // 질문에 답을 보냄 — pendingQuestion을 닫으며 문답 흔적(qa)을 스레드에 남긴다
   | { type: 'answer-question'; answers: string[][] }
+  // 취소 = 회수 — 이번 턴의 잔해(마지막 사용자 메시지부터)를 스레드에서 걷는다.
+  // 호출자는 걷기 전에 그 메시지 텍스트를 읽어 컴포저에 복원한다.
+  | { type: 'retract-turn' }
   | { type: 'load'; state: SessionState }
 
 const THINKING_ID = 'thinking'
@@ -166,7 +176,10 @@ export function snapshotForPersist(s: SessionState): SessionState {
     messages: s.messages.filter((m) => !(m.kind === 'cmdresult' && m.running)),
     subagents: s.subagents.map((a) => (a.status === 'done' ? a : { ...a, status: 'done' as const })),
     // 백그라운드 작업은 CLI 프로세스와 함께 죽으므로 "실행 중"으로 복원되면 거짓말이 된다
-    bgTasks: s.bgTasks.map((t) => (t.status === 'running' ? { ...t, status: 'stopped' as const, teardown: true } : t))
+    bgTasks: s.bgTasks.map((t) => (t.status === 'running' ? { ...t, status: 'stopped' as const, teardown: true } : t)),
+    // 워크플로도 같은 운명 — 도는 채로 복원되면 거짓 알약이 뜬다 (옛 스냅샷은 필드 없음 → null)
+    workflow: s.workflow?.status === 'running' ? { ...s.workflow, status: 'stopped' as const } : s.workflow ?? null,
+    retracting: false
   }
 }
 
@@ -179,6 +192,7 @@ export const initialSessionState: SessionState = {
   terminal: [],
   subagents: [],
   bgTasks: [],
+  workflow: null,
   pendingPermission: null,
   pendingQuestion: null,
   session: null,
@@ -354,9 +368,10 @@ export function reducer(state: SessionState, action: Action): SessionState {
       status: 'analyzing',
       // 새 실행의 analyzing이 오기 전까지 종결 이벤트를 전부 잔재로 취급 (실행 경계 가드)
       curRunId: PENDING_RUN,
-      // 백그라운드 셸은 턴을 못 넘기고 CLI와 함께 죽으므로, 지난 턴의 종료 항목을 계속
-      // 끌고 다니면 매 대화마다 죽은 셸이 다시 보인다 — 새 턴 시작에 비운다 (칩=현재 턴)
-      bgTasks: [],
+      // 살아있는 백그라운드 작업(셸·에이전트)은 상주 유지로 턴을 넘는다 — 칩을 유지하고
+      // 지난 턴에 끝난 항목만 걷는다(죽은 셸이 대화마다 되살아나던 문제의 처방은 그대로).
+      // 새 스폰으로 이어진 경우(주입 불가)엔 엔진의 teardown이 곧 stopped로 정리해 준다.
+      bgTasks: state.bgTasks.filter((t) => t.status === 'running'),
       // a command run replaces the user bubble with a live "running" card (spinner)
       // pushed right away, so the run shows immediate feedback instead of a blank gap
       messages: capThread(
@@ -395,7 +410,40 @@ export function reducer(state: SessionState, action: Action): SessionState {
       thinkingText: null,
       streaming: false,
       openGroupId: null,
+      retracting: false,
       seq
+    }
+  }
+
+  if (action.type === 'retract-turn') {
+    // 취소 = 회수 — 이번 턴의 잔해를 스레드에서 걷는다. 일반 턴은 마지막 사용자 메시지부터
+    // 끝까지(보낸 말풍선 + 반쯤 온 답 + 도구 흔적), 명령(/compact 등) 턴은 돌던 카드만.
+    // 이후 코얼레서가 늦게 흘리는 델타/생각 조각은 retracting 가드가 삼킨다.
+    const msgs = state.messages.filter((m) => m.id !== THINKING_ID)
+    let next = msgs
+    if (state.pendingCommand) {
+      const cardId = state.pendingCommand.cardId
+      next = msgs.filter((m) => m.id !== cardId)
+    } else {
+      for (let i = msgs.length - 1; i >= 0; i--) {
+        const m = msgs[i]
+        if (m.kind === 'msg' && m.role === 'user') {
+          next = msgs.slice(0, i)
+          break
+        }
+      }
+    }
+    return {
+      ...state,
+      // busy는 즉시 내린다 — 엔진 정리(interrupt 유예 + 루프 탈출)를 기다리면 인디케이터가
+      // 몇 초 남는다. 늦게 오는 finally의 status done은 idle 위에 무해하게 덮인다.
+      status: 'idle',
+      messages: next,
+      pendingCommand: null,
+      thinkingText: null,
+      streaming: false,
+      openGroupId: null,
+      retracting: true
     }
   }
 
@@ -408,9 +456,9 @@ export function reducer(state: SessionState, action: Action): SessionState {
   switch (e.type) {
     case 'status':
       // analyzing = 모든 실행의 첫 이벤트 (엔진 계약) — 이 실행을 현재 실행으로 채택
-      if (e.status === 'analyzing') return { ...state, status: 'analyzing', curRunId: e.runId }
+      if (e.status === 'analyzing') return { ...state, status: 'analyzing', curRunId: e.runId, retracting: false }
       if (staleRun(e.runId)) return state
-      return { ...state, status: e.status }
+      return { ...state, status: e.status, retracting: false }
 
     case 'session':
       return { ...state, session: { sessionId: e.sessionId, model: e.model, cwd: e.cwd } }
@@ -419,6 +467,7 @@ export function reducer(state: SessionState, action: Action): SessionState {
       // 모델이 (답변이 아니라) 사고 중이라는 신호 — 답변 스트리밍이 아니므로 인디케이터를
       // 되살린다. thinkingText는 이제 화면 표시엔 쓰지 않지만(생각 줄은 우리 커스텀 문구
       // 전용), 상태는 그대로 둔다.
+      if (state.retracting) return state // 회수 직후의 늦은 조각은 버린다
       return { ...state, thinkingText: e.text, streaming: false }
     case 'thinking-clear':
       return { ...state, thinkingText: null }
@@ -428,6 +477,7 @@ export function reducer(state: SessionState, action: Action): SessionState {
       // on the first chunk). animate:false — the streaming itself is the animation.
       // Hot path first: the streamed message is almost always the last item — update
       // it in place instead of re-filtering + re-mapping the whole history per token.
+      if (state.retracting) return state // 회수 직후 코얼레서가 늦게 뱉은 델타 — 유령 말풍선 방지
       const last = state.messages[state.messages.length - 1]
       if (last && last.kind === 'msg' && last.id === e.messageId) {
         const messages = state.messages.slice()
@@ -445,6 +495,7 @@ export function reducer(state: SessionState, action: Action): SessionState {
     case 'assistant-done': {
       // finalize: if the message was streamed, replace its text with the
       // authoritative final text; otherwise add it fresh.
+      if (state.retracting) return state // 회수 직후의 늦은 마무리 프레임도 동일하게 버린다
       const without = state.messages.filter((m) => m.id !== THINKING_ID)
       const exists = without.some((m) => m.id === e.messageId)
       if (exists) {
@@ -642,6 +693,12 @@ export function reducer(state: SessionState, action: Action): SessionState {
             : t
         )
       }
+    }
+
+    case 'workflow': {
+      // 워크플로 스냅샷 REPLACE — 정착(completed/failed/stopped)하면 알약/카드가 사라지고,
+      // 결과는 뒤따르는 정리 턴 말풍선이 말한다 (별도 흔적 줄은 경고처럼 보여 뺐다)
+      return { ...state, workflow: e.wf }
     }
 
     case 'model-fallback': {
@@ -870,6 +927,8 @@ export function useAgentSession(
   const answerQuestion = (answers: string[][]): void => dispatch({ type: 'answer-question', answers })
   // replace the entire live state — used when switching between chats
   const load = (snapshot: SessionState): void => dispatch({ type: 'load', state: snapshot })
+  // 취소 = 회수 — 호출자는 걷기 전에 마지막 사용자 메시지를 읽어 컴포저에 복원한다
+  const retractTurn = (): void => dispatch({ type: 'retract-turn' })
 
-  return { state, elapsed, busy, begin, clearPermission, clearQuestion, answerQuestion, load }
+  return { state, elapsed, busy, begin, clearPermission, clearQuestion, answerQuestion, load, retractTurn }
 }

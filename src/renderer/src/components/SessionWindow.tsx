@@ -22,6 +22,7 @@ import {
   ChatHeader,
   ChatFind,
   Composer,
+  WorkflowDock,
   MessageView,
   WorkingIndicator,
   WelcomeState,
@@ -98,7 +99,7 @@ function userFromProfile(p: UserProfile): AppUser {
 const CWD_KEY = 'session.cwd'
 
 export function SessionWindow(): React.ReactElement {
-  const { state, elapsed, busy, begin, clearPermission, clearQuestion, answerQuestion, load } = useAgentSession((cb) =>
+  const { state, elapsed, busy, begin, clearPermission, clearQuestion, answerQuestion, load, retractTurn } = useAgentSession((cb) =>
     window.api.session?.onEvent?.(cb) ?? (() => {})
   )
   const [max, setMax] = useState(false)
@@ -414,23 +415,38 @@ export function SessionWindow(): React.ReactElement {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // 상주 워크플로 — busy가 풀린 뒤에도 도는 중이면 전송은 예약으로, Esc는 취소로 흐른다
+  const wfAlive = state.workflow?.status === 'running'
+
+  // 취소 = 회수 — 미완성 턴을 스레드에서 걷고 보낸 문장을 컴포저에 복원(초안이 있으면
+  // 지킴). 상주 워크플로만 도는 경우엔 완결된 턴이라 걷지 않는다. Esc·중지 버튼 공용.
+  const cancelRun = (): void => {
+    if (busy) {
+      const last = [...state.messages].reverse().find((m) => m.kind === 'msg' && m.role === 'user')
+      retractTurn()
+      if (last && 'text' in last && last.text) setInput((v) => (v.trim() ? v : last.text))
+    }
+    window.api.session?.cancel().catch(() => {})
+    setQueue([])
+  }
+
   // Esc = 실행 중지 (본채팅과 동일) — 열린 모달/메뉴가 있으면 그쪽의 Esc에 양보한다
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
-      if (e.key !== 'Escape' || !busy) return
+      if (e.key !== 'Escape' || (!busy && !wfAlive)) return
       if (
         document.querySelector(
-          '.q-overlay, .q-mini, .set-dialog-overlay, .pr-overlay, .fv-overlay, .iv-overlay, .sa-overlay, .ctx-menu, .sel-bar'
+          '.q-overlay, .q-mini, .wf-card, .set-dialog-overlay, .pr-overlay, .fv-overlay, .iv-overlay, .sa-overlay, .ctx-menu, .sel-bar'
         )
       )
         return
       e.preventDefault()
-      window.api.session?.cancel().catch(() => {})
-      setQueue([])
+      cancelRun()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [busy])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [busy, wfAlive])
 
   // 새 메시지/생각 갱신 — 래치가 켜져 있을 때만 바닥 고정 (본채팅과 동일)
   useEffect(() => {
@@ -677,10 +693,7 @@ export function SessionWindow(): React.ReactElement {
           onChange={setInput}
           history={sentHistory}
           onSend={() => runPrompt(input)}
-          onStop={() => {
-            window.api.session?.cancel().catch(() => {})
-            setQueue([])
-          }}
+          onStop={cancelRun}
           onSchedule={scheduleMessage}
           queued={queue}
           onRemoveQueued={(id) => setQueue((q) => q.filter((m) => m.id !== id))}
@@ -704,6 +717,10 @@ export function SessionWindow(): React.ReactElement {
       </div>
 
       <PermissionModal permission={state.pendingPermission} onRespond={onPermission} />
+      <WorkflowDock
+        wf={state.workflow ?? null}
+        onStop={state.workflow ? () => onBgTaskSession({ action: 'stop', id: state.workflow!.id }) : undefined}
+      />
       <QuestionModal question={state.pendingQuestion} onAnswer={onAnswer} onDismiss={onDismissQuestion} />
 
       {pendingFolder && (

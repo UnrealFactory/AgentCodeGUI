@@ -355,6 +355,31 @@ export interface BgTask {
   byUser?: boolean
 }
 
+// 워크플로(Workflow 도구, task_type 'local_workflow') 진행 상태 — task_progress의
+// workflow_progress 배열 미러. 이벤트마다 전체 스냅샷(REPLACE)이라 북엔드 짝맞춤이 없다.
+export interface WorkflowAgent {
+  label: string // 스크립트가 붙인 표시 라벨 (agent() opts.label / 프롬프트 요약)
+  phase: number // 소속 phase index (1부터)
+  phaseTitle: string
+  model: string // 표시명 (엔진이 modelDisplay로 접어서 보냄)
+  state: string // 'queued' | 'start' | 'done' | 'error' … (SDK 원시값 통과)
+  tokens?: number
+  toolCalls?: number
+  durationMs?: number
+  // 실행 중=프롬프트 미리보기, 완료=결과 미리보기 — 카드의 활동 한 줄
+  note?: string
+}
+export interface WorkflowState {
+  id: string // SDK task_id — 중지(BgTaskRequest.stop)에 그대로 쓴다
+  summary: string // 워크플로 요약 (meta.description 계열 — 카드 제목)
+  status: 'running' | 'completed' | 'failed' | 'stopped'
+  phases: Array<{ index: number; title: string }>
+  agents: WorkflowAgent[]
+  totalTokens: number
+  toolUses: number
+  durationMs: number
+}
+
 // 렌더러 → 엔진 백그라운드 작업 컨트롤. stop: 그 작업 중지(id 필수),
 // background: 지금 도는 포그라운드 도구 전부를 백그라운드로 (터미널 Ctrl+B 패리티).
 export interface BgTaskRequest {
@@ -388,6 +413,9 @@ export type EngineEvent =
   // atTurnEnd: result 이후의 정착 = 턴 종료에 따른 CLI 정리, byUser: 사용자가 중지 버튼으로
   // 끊음 — stopped의 사유 표기(직접 중지/Claude가 중지/턴 종료 정리)를 가른다
   | { type: 'bg-task-end'; runId: string; id: string; status: 'completed' | 'failed' | 'stopped'; summary?: string; outputFile?: string; atTurnEnd?: boolean; byUser?: boolean }
+  // 워크플로 진행/정착 — 전체 스냅샷 REPLACE. 정착(completed/failed/stopped) 후에도 CLI가
+  // 정리 턴(assistant/result)을 이어 보낼 수 있다(엔진이 스트림을 열어둔 채 재기동을 기다림)
+  | { type: 'workflow'; runId: string; wf: WorkflowState }
   | {
       type: 'permission-request'
       runId: string
