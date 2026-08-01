@@ -19,6 +19,21 @@ const safeId = (id: unknown): id is string => typeof id === 'string' && /^[A-Za-
 // id → last-seen JSON string, so a save only touches files whose content changed
 const cache = new Map<string, string>()
 
+// unloaded 마커 채팅에 디스크의 기존 스냅샷을 다시 끼워 넣는다 — 마커엔 스냅샷이 없으므로
+// 그대로 저장하면 대화가 지워진다. 파일도 캐시도 없으면(비정상) 스냅샷 없이 저장된다.
+function withStoredSnapshot(id: string, chat: object): object {
+  let snapshot: unknown
+  try {
+    const raw = cache.get(id) ?? fs.readFileSync(chatFile(id), 'utf8')
+    snapshot = (JSON.parse(raw) as { snapshot?: unknown }).snapshot
+  } catch {
+    /* keep snapshot undefined */
+  }
+  const merged: Record<string, unknown> = { ...chat, snapshot }
+  delete merged.unloaded
+  return merged
+}
+
 interface ChatLike {
   id?: unknown
 }
@@ -70,6 +85,17 @@ export function readChats(): unknown {
   return null
 }
 
+/** One chat's saved file, parsed — the renderer's lazy snapshot load on chat switch. */
+export function readChat(id: unknown): unknown {
+  if (!safeId(id)) return null
+  try {
+    const raw = cache.get(id) ?? fs.readFileSync(chatFile(id), 'utf8')
+    return JSON.parse(raw)
+  } catch {
+    return null
+  }
+}
+
 /** Persists the blob as per-chat files, rewriting only changed ones and pruning removed ones. */
 export function writeChats(data: unknown): void {
   const blob = data as ChatsBlob | null
@@ -83,7 +109,10 @@ export function writeChats(data: unknown): void {
       const id = chat.id as string
       present.add(id)
       order.push(id)
-      const json = JSON.stringify(chat)
+      // 렌더러가 스냅샷을 내린(unloaded) 채팅 — 메타(제목·폴더·초안…)만 온다. 파일의
+      // 스냅샷은 지키고 메타만 덮어쓴다: 여기서 그냥 저장하면 대화 내용이 통째로 증발한다.
+      const merged = (chat as { unloaded?: boolean }).unloaded ? withStoredSnapshot(id, chat) : chat
+      const json = JSON.stringify(merged)
       if (cache.get(id) !== json) {
         writeFileAtomic(chatFile(id), json)
         cache.set(id, json)

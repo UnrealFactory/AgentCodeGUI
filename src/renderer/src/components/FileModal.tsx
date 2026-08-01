@@ -9,6 +9,7 @@ import { useCppStructOv } from '../lib/cppStruct'
 import { capMapSet } from '../lib/capMap'
 import { diffMarksOf, type DiffMarks } from '../lib/cmDiff'
 import { getPref, setPref } from '../lib/prefs'
+import { t, isEn } from '../lib/i18n'
 import { isImagePath, imageSrc } from '../lib/images'
 import { verseReg } from '../lib/verseRegistry'
 import { VERSE_SPECIFIERS, VERSE_ATTRIBUTES } from '@shared/verseKeywords'
@@ -1020,20 +1021,53 @@ const GENERIC_KIND_DESC: Record<string, string> = {
   alias: '다른 심볼을 가리키는 별명(가져온 이름)입니다.',
   attribute: '심볼에 부가 정보를 다는 속성입니다.'
 }
+// 영어 미러 — 모듈 스코프 상수는 import 시점 언어로 박제되므로, 사전 자체를 t()로 감싸는 대신
+// 조회 시점(genericKindDesc)에 isEn()으로 고른다.
+const GENERIC_KIND_DESC_EN: Record<string, string> = {
+  method: 'A function that belongs to an object (type).',
+  'extension method': 'A method added to an existing type from the outside.',
+  function: 'A function that performs work when called and can return a value.',
+  constructor: 'An initializer called when an object is created (constructor).',
+  destructor: 'A cleanup function called when an object is destroyed (destructor).',
+  operator: 'A function that redefines an operator (`+`, `==` …) for this type.',
+  class: 'A class type — a mold that objects are made from.',
+  struct: 'A value type. It is copied when assigned or passed.',
+  union: 'A type whose members share the same memory.',
+  enum: 'A type that lists named values.',
+  'enum member': 'One of the values listed in an `enum`.',
+  enumerator: 'One of the values listed in an `enum`.',
+  interface: 'A contract (interface) that defines the members to provide.',
+  namespace: 'A namespace that groups related code.',
+  module: 'A module that groups related code.',
+  property: 'A member whose reads/writes go through accessors (getter/setter).',
+  field: 'A data member stored inside the type.',
+  event: 'A notification member you can subscribe to (`+=`).',
+  delegate: 'A type that carries a method around like a value.',
+  parameter: 'A parameter passed to a function.',
+  'type parameter': 'A slot that receives a type in generics (type parameter).',
+  variable: 'A variable that holds a value.',
+  'local variable': 'A local variable used only inside its block.',
+  constant: 'A value that never changes once set (constant).',
+  macro: 'A macro replaced with text in place before compilation.',
+  type: 'A type.',
+  alias: 'An alias that points to another symbol (imported name).',
+  attribute: 'An attribute that attaches extra information to a symbol.'
+}
 function genericKindDesc(kind: string | null): string | undefined {
   if (!kind) return undefined
+  const D = isEn() ? GENERIC_KIND_DESC_EN : GENERIC_KIND_DESC
   const k = kind
     .toLowerCase()
     .replace(/^static\s+/, '')
     .trim()
-  if (Object.prototype.hasOwnProperty.call(GENERIC_KIND_DESC, k)) return GENERIC_KIND_DESC[k]
-  if (k.includes('enum member') || k.includes('enumerator')) return GENERIC_KIND_DESC['enum member']
-  if (k.includes('param')) return GENERIC_KIND_DESC.parameter
-  if (k.includes('local')) return GENERIC_KIND_DESC['local variable']
-  if (k.includes('field')) return GENERIC_KIND_DESC.field
-  if (k.includes('const')) return GENERIC_KIND_DESC.constant
-  if (k.includes('method')) return GENERIC_KIND_DESC.method
-  if (k.includes('function')) return GENERIC_KIND_DESC.function
+  if (Object.prototype.hasOwnProperty.call(D, k)) return D[k]
+  if (k.includes('enum member') || k.includes('enumerator')) return D['enum member']
+  if (k.includes('param')) return D.parameter
+  if (k.includes('local')) return D['local variable']
+  if (k.includes('field')) return D.field
+  if (k.includes('const')) return D.constant
+  if (k.includes('method')) return D.method
+  if (k.includes('function')) return D.function
   return undefined
 }
 
@@ -1100,14 +1134,27 @@ const VERSE_KIND_DESC: Record<string, string> = {
   attribute: '심볼에 부가 정보를 다는 `@`속성입니다.',
   type: '타입입니다.'
 }
+// 영어 미러 — GENERIC_KIND_DESC_EN과 같은 이유(조회 시점 isEn() 선택).
+const VERSE_KIND_DESC_EN: Record<string, string> = {
+  class: 'An object type. It can have inheritance and methods; storing it keeps a reference to the original instead of copying.',
+  struct: 'A value type that groups data. The whole thing is copied when passed or assigned.',
+  enum: 'A type that lists named values.',
+  interface: 'A contract of methods to implement. Classes implement it.',
+  module: 'A unit that groups related code, identified by a path (`/My.com/Game`).',
+  var: 'A variable whose value can change. Assign a new value with `set`.',
+  constant: 'A value that never changes once set (constant).',
+  function: 'A function that performs work when called and can return a value.',
+  attribute: 'An `@`attribute that attaches extra information to a symbol.',
+  type: 'A type.'
+}
 function verseKindDesc(kind: string | null): string | undefined {
   if (!kind) return undefined
   const k = kind.toLowerCase()
-  if (k.includes('enum value')) return '`enum` 에 나열된 값 중 하나입니다.'
-  if (k.includes('struct value')) return '`struct` 의 멤버 값입니다.'
-  if (k.includes('param')) return '함수에 전달되는 매개변수입니다.'
-  if (k.includes('local')) return '블록 안에서만 쓰이는 지역 변수입니다.'
-  return VERSE_KIND_DESC[k]
+  if (k.includes('enum value')) return t('`enum` 에 나열된 값 중 하나입니다.', 'One of the values listed in an `enum`.')
+  if (k.includes('struct value')) return t('`struct` 의 멤버 값입니다.', 'A member value of a `struct`.')
+  if (k.includes('param')) return t('함수에 전달되는 매개변수입니다.', 'A parameter passed to a function.')
+  if (k.includes('local')) return t('블록 안에서만 쓰이는 지역 변수입니다.', 'A local variable used only inside its block.')
+  return (isEn() ? VERSE_KIND_DESC_EN : VERSE_KIND_DESC)[k]
 }
 // 내장(원시) 타입 설명 — 본문 글로서리(main/lsp/verse.ts)와 같은 내용의 작은 미러. 카드 안 코드
 // (파라미터/반환형)에 나온 `char`·`float`·`void` 같은 타입에 가까이 댔을 때 설명을 띄우는 데 쓴다.
@@ -1130,16 +1177,37 @@ const VERSE_BUILTIN_TYPE_DESC: Record<string, string> = {
   type: '타입 자체를 값처럼 다룹니다.',
   subtype: '어떤 타입이거나 그 자식 타입이면 받아 주는 제약입니다.'
 }
+// 영어 미러 — 조회 시점(verseWordDesc)에 isEn()으로 고른다.
+const VERSE_BUILTIN_TYPE_DESC_EN: Record<string, string> = {
+  int: 'An integer.',
+  float: 'A number with a decimal point.',
+  logic: 'Holds one of two values: true or false.',
+  string: 'A string of characters.',
+  void: 'A type meaning there is effectively no value. Used as the return type of functions with nothing to return.',
+  char: 'Holds a single character.',
+  char32: 'A character holding one Unicode code point.',
+  char8: 'A character holding one UTF-8 byte.',
+  rational: 'Holds an exact fraction with no rounding error.',
+  any: 'The topmost type that accepts every type.',
+  comparable: 'A type whose values can be compared for equality.',
+  tuple: 'Holds several values as one bundle.',
+  array: 'An array holding several values in order.',
+  map: 'A collection that looks up values by key.',
+  weak_map: 'A special map mostly used for persistent storage.',
+  type: 'Treats a type itself as a value.',
+  subtype: 'A constraint that accepts a type or any of its subtypes.'
+}
 // 카드 안 코드 토큰(단어) 하나의 설명 — 지정자/속성 → 내장 타입 → (레지스트리로 아는) 사용자/엔진
 // 타입의 종류 순으로 찾는다. 없으면 undefined(설명 안 띄움).
 function verseWordDesc(word: string): string | undefined {
   const tok = VERSE_TOK_DESC.get(word) ?? (word.startsWith('editable_') ? VERSE_TOK_DESC.get('editable') : undefined)
   if (tok) return tok
-  if (VERSE_BUILTIN_TYPE_DESC[word]) return VERSE_BUILTIN_TYPE_DESC[word]
+  const builtin = (isEn() ? VERSE_BUILTIN_TYPE_DESC_EN : VERSE_BUILTIN_TYPE_DESC)[word]
+  if (builtin) return builtin
   const reg = verseReg()
   if (reg.docs[word]) return reg.docs[word] // 그 타입(class/struct/enum)의 실제 주석(#/@doc) 우선
   const k = reg.kind[word]
-  return k ? VERSE_KIND_DESC[k] : undefined // 주석이 없을 때만 종류 일반 설명으로 폴백
+  return k ? (isEn() ? VERSE_KIND_DESC_EN : VERSE_KIND_DESC)[k] : undefined // 주석이 없을 때만 종류 일반 설명으로 폴백
 }
 // 지정자 묶음을 access → specifiers(그 외) → effects 순의 (비어있지 않은) 행들로 가른다.
 // `kind`를 받아: ① 접근지시자가 없으면 Verse 기본값 `internal`을 명시해 보여 주고,
@@ -1841,12 +1909,12 @@ function SelectionAskBar({
     >
       <button className="sel-act" onClick={copy}>
         {copied ? <IconCheck size={14} /> : <IconCopy size={14} />}
-        <span>{copied ? '복사됨' : '복사'}</span>
+        <span>{copied ? t('복사됨', 'Copied') : t('복사', 'Copy')}</span>
       </button>
       <span className="sel-div" />
       <button className="sel-act" onClick={ask}>
         <IconBot size={14} />
-        <span>Claude에게 질문</span>
+        <span>{t('Claude에게 질문', 'Ask Claude')}</span>
       </button>
     </div>,
     document.body
@@ -1969,7 +2037,7 @@ function FindBar({ root, contentKey, onClose }: { root: HTMLElement | null; cont
         ref={inputRef}
         autoFocus
         value={query}
-        placeholder="파일 내 검색…"
+        placeholder={t('파일 내 검색…', 'Find in file…')}
         onChange={(e) => setQuery(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === 'Enter') {
@@ -1981,14 +2049,26 @@ function FindBar({ root, contentKey, onClose }: { root: HTMLElement | null; cont
           }
         }}
       />
-      <span className="cnt">{total ? `${cur + 1}/${total}` : query ? '0개' : ''}</span>
-      <button className="has-tip" data-tip="이전 (Shift+Enter)" aria-label="이전 결과" onClick={() => step(-1)} disabled={!total}>
+      <span className="cnt">{total ? `${cur + 1}/${total}` : query ? t('0개', '0 results') : ''}</span>
+      <button
+        className="has-tip"
+        data-tip={t('이전 (Shift+Enter)', 'Previous (Shift+Enter)')}
+        aria-label={t('이전 결과', 'Previous result')}
+        onClick={() => step(-1)}
+        disabled={!total}
+      >
         <IconChevDown size={14} style={{ transform: 'rotate(180deg)' }} />
       </button>
-      <button className="has-tip" data-tip="다음 (Enter)" aria-label="다음 결과" onClick={() => step(1)} disabled={!total}>
+      <button
+        className="has-tip"
+        data-tip={t('다음 (Enter)', 'Next (Enter)')}
+        aria-label={t('다음 결과', 'Next result')}
+        onClick={() => step(1)}
+        disabled={!total}
+      >
         <IconChevDown size={14} />
       </button>
-      <button className="has-tip" data-tip="닫기 (Esc)" aria-label="검색 닫기" onClick={onClose}>
+      <button className="has-tip" data-tip={t('닫기 (Esc)', 'Close (Esc)')} aria-label={t('검색 닫기', 'Close search')} onClick={onClose}>
         <IconClose size={14} />
       </button>
     </div>
@@ -2020,7 +2100,7 @@ function ImageView({ src, alt, zoom }: { src: string; alt: string; zoom: number 
     return () => ro.disconnect()
   }, [nat])
 
-  if (err) return <div className="fv-empty">이미지를 표시할 수 없어요</div>
+  if (err) return <div className="fv-empty">{t('이미지를 표시할 수 없어요', "Can't display this image")}</div>
   const scale = fit * zoom
   return (
     <div className="fv-imgview">
@@ -2152,7 +2232,7 @@ function HtmlPreview({ cwd, filePath, onBridgeKey }: { cwd: string; filePath: st
       src={url}
       // 스크립트는 돌리되(차트·데모) 앱과는 격리 — allow-same-origin은 주지 않는다
       sandbox="allow-scripts allow-forms allow-modals"
-      title="HTML 미리보기"
+      title={t('HTML 미리보기', 'HTML preview')}
     />
   )
 }
@@ -2605,7 +2685,8 @@ function CodeView({
                 height: `${((b.end - b.start + 1) / deco.newCount) * 100}%`
               }}
               onClick={() => jumpToLine(b.start)}
-              aria-label={`${b.start}번째 줄 변경으로 이동`}
+              // 이 컴포넌트 안에선 t가 fileTypeFor 결과로 가려진다(shadowing) — isEn() 삼항으로
+              aria-label={isEn() ? `Go to the change at line ${b.start}` : `${b.start}번째 줄 변경으로 이동`}
             />
           ))}
         </div>
@@ -2676,16 +2757,24 @@ function CloseConfirmDialog({ onStay, onLeave }: { onStay: () => void; onLeave: 
         <div className="sd-ic">
           <IconPencil size={22} />
         </div>
-        <div className="sd-title">저장하지 않고 닫을까요?</div>
+        <div className="sd-title">{t('저장하지 않고 닫을까요?', 'Close without saving?')}</div>
         <div className="sd-msg">
-          아직 <b>저장하지 않은 변경</b>이 있어요. 그대로 닫으면 이 변경 내용은 사라집니다.
+          {isEn() ? (
+            <>
+              You still have <b>unsaved changes</b>. If you close now, they will be lost.
+            </>
+          ) : (
+            <>
+              아직 <b>저장하지 않은 변경</b>이 있어요. 그대로 닫으면 이 변경 내용은 사라집니다.
+            </>
+          )}
         </div>
         <div className="sd-btns">
           <button className="sd-cancel" onClick={onStay} autoFocus>
-            계속 편집
+            {t('계속 편집', 'Keep Editing')}
           </button>
           <button className="sd-go danger" onClick={onLeave}>
-            저장 안 함
+            {t('저장 안 함', "Don't Save")}
           </button>
         </div>
       </div>
@@ -2821,7 +2910,10 @@ export function FileModal({
     // 줄번호·부모 복원이 훙크 기준이 되어 읽기 모드가 파일 전체를 변경(초록)으로 칠한다.
     // 해당 케이스 = 구(舊) 세션의 Codex unified 훙크(지금 엔진은 전체 diff로 승격해 보냄),
     // 역적용 폴백, 앞부분이 잘린 병합 diff('생략' 마커) — 마킹만 접고 +N/−N 칩은 유지.
-    const fragment = diff.lines.some((l) => l.t === 'hunk' && (/^@@ -\d/.test(l.text) || l.text.includes('생략')))
+    // '생략' 요약 행은 표시 문자열이라 UI 언어를 탄다(엔진·store가 t()로 낸다) — 텍스트
+    // 대신 구조로 본다: 본문 줄(add/del/ctx)이 하나도 없는 훙크-only diff가 곧 그 요약분.
+    const fragment =
+      diff.lines.some((l) => l.t === 'hunk' && /^@@ -\d/.test(l.text)) || !diff.lines.some((l) => l.t !== 'hunk')
     return fragment ? null : diffMarksOf(diff)
   }, [diff])
   // 파일이 바뀔 때마다 항상 읽기 모드로 연다(파일 종류 무관 일관). 편집은 Ctrl+E로.
@@ -2928,7 +3020,7 @@ export function FileModal({
             path: effPath,
             content: null,
             truncated: false,
-            error: '파일을 열 수 없어요'
+            error: t('파일을 열 수 없어요', "Can't open this file")
           })
       )
     return () => {
@@ -3307,17 +3399,17 @@ export function FileModal({
   const gestureActions: GestureAction[] = [
     {
       pattern: 'L',
-      label: vs.stack.length ? '이전 파일' : '이전 파일 없음',
+      label: vs.stack.length ? t('이전 파일', 'Previous file') : t('이전 파일 없음', 'No previous file'),
       run: goBack
     },
     {
       pattern: 'R',
-      label: vs.fwd.length ? '다음 파일' : '다음 파일 없음',
+      label: vs.fwd.length ? t('다음 파일', 'Next file') : t('다음 파일 없음', 'No next file'),
       run: goForward
     },
-    { pattern: 'U', label: '맨 위로', run: () => scrollBody('top') },
-    { pattern: 'D', label: '맨 아래로', run: () => scrollBody('bottom') },
-    { pattern: 'DR', label: '창 닫기', run: requestClose }
+    { pattern: 'U', label: t('맨 위로', 'Scroll to top'), run: () => scrollBody('top') },
+    { pattern: 'D', label: t('맨 아래로', 'Scroll to bottom'), run: () => scrollBody('bottom') },
+    { pattern: 'DR', label: t('창 닫기', 'Close window'), run: requestClose }
   ]
 
   // Ctrl+클릭 definition target: same document → just jump; another file → stack it
@@ -3356,7 +3448,16 @@ export function FileModal({
   // PoC mhead 서브라인 — 경로 · 확장자 · 줄 수(잘린 파일은 N줄+).
   // 프로젝트 루트 파일은 상대경로가 파일명과 같아 제목만 반복 → 절대경로(경로 복사와 같은 표기)로
   const subPath = dir ? dir + name : absPath(effPath, cwd).replace(/\//g, '\\')
-  const sub = [subPath, ext, fileInfo ? `${fileInfo.lines.toLocaleString()}줄${res?.truncated ? '+' : ''}` : '']
+  const sub = [
+    subPath,
+    ext,
+    fileInfo
+      ? t(
+          `${fileInfo.lines.toLocaleString()}줄${res?.truncated ? '+' : ''}`,
+          `${fileInfo.lines.toLocaleString()} ${fileInfo.lines === 1 ? 'line' : 'lines'}${res?.truncated ? '+' : ''}`
+        )
+      : ''
+  ]
     .filter(Boolean)
     .join(' · ')
   // 모드·단축키 안내문은 안 둔다 — 모드는 헤더 vtool의 켜진 아이콘이 이미 말해준다
@@ -3383,7 +3484,7 @@ export function FileModal({
                   setHeadCtx(null)
                 }}
               >
-                <IconCopy size={15} /> 경로 복사
+                <IconCopy size={15} /> {t('경로 복사', 'Copy path')}
               </button>
               <div className="ctx-sep" />
               <button
@@ -3393,7 +3494,7 @@ export function FileModal({
                   setHeadCtx(null)
                 }}
               >
-                <IconFolderOpen size={15} /> 파일 탐색기에서 보기
+                <IconFolderOpen size={15} /> {t('파일 탐색기에서 보기', 'Reveal in File Explorer')}
               </button>
             </div>,
             document.body
@@ -3407,12 +3508,22 @@ export function FileModal({
           }}
         >
           {vs.stack.length > 0 && (
-            <button className="dclose htip fv-back" onClick={goBack} aria-label="뒤로" data-tip="이전 파일로 (마우스 뒤로 버튼)">
+            <button
+              className="dclose htip fv-back"
+              onClick={goBack}
+              aria-label={t('뒤로', 'Back')}
+              data-tip={t('이전 파일로 (마우스 뒤로 버튼)', 'Previous file (mouse back button)')}
+            >
               <IconChevLeft size={15} />
             </button>
           )}
           {vs.fwd.length > 0 && (
-            <button className="dclose htip fv-back" onClick={goForward} aria-label="앞으로" data-tip="다음 파일로 (마우스 앞으로 버튼)">
+            <button
+              className="dclose htip fv-back"
+              onClick={goForward}
+              aria-label={t('앞으로', 'Forward')}
+              data-tip={t('다음 파일로 (마우스 앞으로 버튼)', 'Next file (mouse forward button)')}
+            >
               <IconChevRight size={15} />
             </button>
           )}
@@ -3432,16 +3543,17 @@ export function FileModal({
           {/* 파일별 심볼 분석 중 — 색 토큰이 들어오면 사라진다. ready/error/설치 칩은 없음 */}
           {analyzing && (
             <span className="fv-lsp starting">
-              <span className="spin" /> 심볼 분석 중{anPct != null ? ` ${anPct}%` : ''}
+              <span className="spin" /> {t('심볼 분석 중', 'Analyzing symbols')}
+              {anPct != null ? ` ${anPct}%` : ''}
             </span>
           )}
-          {res?.truncated && <span className="fv-trunc">일부만 표시</span>}
+          {res?.truncated && <span className="fv-trunc">{t('일부만 표시', 'Partial view')}</span>}
           {cmEligible && cmDirty && (
-            <button className="fv-lsp install htip" onClick={() => cmRef.current?.save()} data-tip="저장 (Ctrl+S)">
-              ● 저장
+            <button className="fv-lsp install htip" onClick={() => cmRef.current?.save()} data-tip={t('저장 (Ctrl+S)', 'Save (Ctrl+S)')}>
+              ● {t('저장', 'Save')}
             </button>
           )}
-          {cmEligible && !cmDirty && cmSaved && <span className="fv-lsp ready">저장됨</span>}
+          {cmEligible && !cmDirty && cmSaved && <span className="fv-lsp ready">{t('저장됨', 'Saved')}</span>}
           {diff && (
             <>
               <span className={'tag ' + (diff.tag === 'new' ? 'new' : 'edit')}>{diff.tag === 'new' ? 'NEW' : 'EDIT'}</span>
@@ -3462,16 +3574,16 @@ export function FileModal({
                   <button
                     className={'htip' + (mdPreview ? ' on' : '')}
                     onClick={() => setMdPreview(true)}
-                    aria-label="문서 미리보기"
-                    data-tip="렌더링된 문서로 보기 (Ctrl+D)"
+                    aria-label={t('문서 미리보기', 'Document preview')}
+                    data-tip={t('렌더링된 문서로 보기 (Ctrl+D)', 'View as rendered document (Ctrl+D)')}
                   >
                     <IconEye size={14} />
                   </button>
                   <button
                     className={'htip' + (!mdPreview ? ' on' : '')}
                     onClick={() => setMdPreview(false)}
-                    aria-label="변경 소스"
-                    data-tip="변경 마킹이 표시된 소스로 보기 (Ctrl+D)"
+                    aria-label={t('변경 소스', 'Diff source')}
+                    data-tip={t('변경 마킹이 표시된 소스로 보기 (Ctrl+D)', 'View source with change marks (Ctrl+D)')}
                   >
                     <IconCode size={14} />
                   </button>
@@ -3482,16 +3594,16 @@ export function FileModal({
                   <button
                     className={'htip' + (!svgCode ? ' on' : '')}
                     onClick={() => setSvgCode(false)}
-                    aria-label="SVG 미리보기"
-                    data-tip="렌더링된 이미지로 보기"
+                    aria-label={t('SVG 미리보기', 'SVG preview')}
+                    data-tip={t('렌더링된 이미지로 보기', 'View as rendered image')}
                   >
                     <IconEye size={14} />
                   </button>
                   <button
                     className={'htip' + (svgCode ? ' on' : '')}
                     onClick={() => setSvgCode(true)}
-                    aria-label="SVG 소스"
-                    data-tip="SVG 마크업을 소스로 보기"
+                    aria-label={t('SVG 소스', 'SVG source')}
+                    data-tip={t('SVG 마크업을 소스로 보기', 'View SVG markup as source')}
                   >
                     <IconCode size={14} />
                   </button>
@@ -3503,16 +3615,16 @@ export function FileModal({
                     className={'htip' + (htmlPreview ? ' on' : '')}
                     // toggleHtmlPreview가 미저장 편집 자동 저장까지 처리 — 직접 세터 금지
                     onClick={() => !htmlPreview && toggleHtmlPreview()}
-                    aria-label="페이지 미리보기"
-                    data-tip="렌더링된 페이지로 보기 (Ctrl+D)"
+                    aria-label={t('페이지 미리보기', 'Page preview')}
+                    data-tip={t('렌더링된 페이지로 보기 (Ctrl+D)', 'View as rendered page (Ctrl+D)')}
                   >
                     <IconEye size={14} />
                   </button>
                   <button
                     className={'htip' + (!htmlPreview ? ' on' : '')}
                     onClick={() => htmlPreview && toggleHtmlPreview()}
-                    aria-label="코드 보기"
-                    data-tip="소스 코드로 보기 (Ctrl+D)"
+                    aria-label={t('코드 보기', 'Code view')}
+                    data-tip={t('소스 코드로 보기 (Ctrl+D)', 'View as source code (Ctrl+D)')}
                   >
                     <IconCode size={14} />
                   </button>
@@ -3524,16 +3636,16 @@ export function FileModal({
                   <button
                     className={'htip' + (cmMode === 'read' ? ' on' : '')}
                     onClick={() => setCmMode('read')}
-                    aria-label="읽기 모드"
-                    data-tip="읽기 모드 (Ctrl+E)"
+                    aria-label={t('읽기 모드', 'Read mode')}
+                    data-tip={t('읽기 모드 (Ctrl+E)', 'Read mode (Ctrl+E)')}
                   >
                     <IconBook size={14} />
                   </button>
                   <button
                     className={'htip' + (cmMode === 'edit' ? ' on' : '')}
                     onClick={() => setCmMode('edit')}
-                    aria-label="편집 모드"
-                    data-tip="편집 모드 (Ctrl+E)"
+                    aria-label={t('편집 모드', 'Edit mode')}
+                    data-tip={t('편집 모드 (Ctrl+E)', 'Edit mode (Ctrl+E)')}
                   >
                     <IconPencil size={14} />
                   </button>
@@ -3544,9 +3656,12 @@ export function FileModal({
                 <button
                   className={'htip' + (diffView ? ' on' : '')}
                   onClick={() => setDiffView((v) => !v)}
-                  aria-label="변경 보기"
+                  aria-label={t('변경 보기', 'Show changes')}
                   // HTML은 Ctrl+D가 렌더↔코드 전환에 쓰이므로 이 토글은 버튼으로만
-                  data-tip={(diffView ? '변경 표시 끄기' : '변경 표시 켜기') + (htmlCanToggle ? '' : ' (Ctrl+D)')}
+                  data-tip={
+                    (diffView ? t('변경 표시 끄기', 'Hide change marks') : t('변경 표시 켜기', 'Show change marks')) +
+                    (htmlCanToggle ? '' : ' (Ctrl+D)')
+                  }
                 >
                   <IconDiff size={14} />
                 </button>
@@ -3556,12 +3671,17 @@ export function FileModal({
           <button
             className="dclose htip"
             onClick={rz.toggleMaximize}
-            aria-label={rz.maximized ? '이전 크기로' : '최대화'}
-            data-tip={rz.maximized ? '이전 크기로' : '최대화'}
+            aria-label={rz.maximized ? t('이전 크기로', 'Restore') : t('최대화', 'Maximize')}
+            data-tip={rz.maximized ? t('이전 크기로', 'Restore') : t('최대화', 'Maximize')}
           >
             {rz.maximized ? <IconRestore size={15} /> : <IconMax size={13} />}
           </button>
-          <button className="dclose htip" onClick={requestClose} aria-label="닫기" data-tip="닫기 (Esc)">
+          <button
+            className="dclose htip"
+            onClick={requestClose}
+            aria-label={t('닫기', 'Close')}
+            data-tip={t('닫기 (Esc)', 'Close (Esc)')}
+          >
             <IconClose size={16} />
           </button>
         </div>
@@ -3590,7 +3710,7 @@ export function FileModal({
               <span className="spin" />
             </div>
           ) : res.error || res.content == null ? (
-            <div className="fv-empty">{res.error || '내용이 없어요'}</div>
+            <div className="fv-empty">{res.error || t('내용이 없어요', 'Nothing to show')}</div>
           ) : cmEligible ? (
             <CmEditor
               key={effPath}
@@ -3651,11 +3771,18 @@ export function FileModal({
               <span className="fv-ask-path">{name}</span>
               {ask.from != null && ask.to != null && (
                 <span className="fv-ask-lines">
-                  {Math.min(ask.from, ask.to)}–{Math.max(ask.from, ask.to)}줄
+                  {isEn()
+                    ? `Lines ${Math.min(ask.from, ask.to)}–${Math.max(ask.from, ask.to)}`
+                    : `${Math.min(ask.from, ask.to)}–${Math.max(ask.from, ask.to)}줄`}
                 </span>
               )}
               <span className="fv-ask-spacer" />
-              <button className="fv-ask-x has-tip" data-tip="닫기 (Esc)" onClick={() => setAsk(null)} aria-label="질문 패널 닫기">
+              <button
+                className="fv-ask-x has-tip"
+                data-tip={t('닫기 (Esc)', 'Close (Esc)')}
+                onClick={() => setAsk(null)}
+                aria-label={t('질문 패널 닫기', 'Close ask panel')}
+              >
                 <IconClose size={14} />
               </button>
             </div>
@@ -3665,7 +3792,7 @@ export function FileModal({
                 ref={askInputRef}
                 value={askText}
                 rows={1}
-                placeholder="선택한 코드에 대해 물어보세요…  (Enter 전송)"
+                placeholder={t('선택한 코드에 대해 물어보세요…  (Enter 전송)', 'Ask about the selected code…  (Enter to send)')}
                 onChange={(e) => setAskText(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {
@@ -3687,8 +3814,8 @@ export function FileModal({
               />
               <button
                 className="send has-tip"
-                data-tip="Claude에게 보내기 (Enter)"
-                aria-label="질문 보내기"
+                data-tip={t('Claude에게 보내기 (Enter)', 'Send to Claude (Enter)')}
+                aria-label={t('질문 보내기', 'Send question')}
                 disabled={!askText.trim()}
                 onClick={() => {
                   if (!askText.trim()) return

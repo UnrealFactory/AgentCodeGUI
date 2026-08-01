@@ -15,6 +15,7 @@ import type {
   ToolLogItem,
   WorkflowState
 } from '@shared/protocol'
+import { t } from '../lib/i18n'
 
 export type ThreadItem =
   | { kind: 'msg'; id: string; role: 'user' | 'assistant'; text: string; animate: boolean; error?: boolean; time: string; images?: string[] }
@@ -38,6 +39,9 @@ export type ThreadItem =
   | { kind: 'notice'; id: string; text: string; time: string }
   // 턴 마무리 줄 (PoC .worked) — 'N초 동안 작업함'. result의 durationMs로 답변 앞에 끼운다
   | { kind: 'worked'; id: string; ms: number }
+  // 중단 마커 — Esc/중지로 턴을 끊은 자리 (클로드 코드의 'Interrupted' 문법).
+  // 끊긴 턴의 흔적(말풍선·부분 답변·도구 로그)은 그대로 위에 남는다
+  | { kind: 'interrupted'; id: string }
   // AI 질문의 문답 흔적 (PoC .qa) — 답을 보내면 질문·선택을 스레드에 남긴다 (건너뛰면 없음)
   | { kind: 'qa'; id: string; pairs: { q: string; a: string[] }[] }
 
@@ -84,9 +88,10 @@ export interface SessionState {
   // 답변이 끝난 뒤에도 계속 true라 침묵 구간에서 인디케이터를 죽이던 문제가 있었다.
   streaming: boolean
   openGroupId: string | null
-  // 회수 직후 — 코얼레서가 늦게 흘려보내는 이번 턴의 델타/생각 조각을 삼키는 중.
-  // 다음 status(취소의 done 포함)나 begin에서 풀린다. 영속 안 함(스냅샷은 false로 동결).
-  retracting?: boolean
+  // 중단 직후 — 코얼레서가 늦게 흘려보내는 이번 턴의 델타/생각 조각을 삼키는 중
+  // (마커 뒤에 유령 말풍선이 자라는 것 방지). 다음 status(취소의 done 포함)나 begin에서
+  // 풀린다. 영속 안 함(스냅샷은 false로 동결).
+  interrupted?: boolean
   seq: number
   // 이 대화에서 이미 한 번 보여준 '한 번만' 안내(notice)들의 key. 스냅샷에 저장돼 재시작
   // 후에도 유지되고, 같은 key의 once 안내는 이후 다시 끼우지 않는다. (예: 'api-billing')
@@ -106,9 +111,10 @@ type Action =
   | { type: 'clear-question' }
   // 질문에 답을 보냄 — pendingQuestion을 닫으며 문답 흔적(qa)을 스레드에 남긴다
   | { type: 'answer-question'; answers: string[][] }
-  // 취소 = 회수 — 이번 턴의 잔해(마지막 사용자 메시지부터)를 스레드에서 걷는다.
-  // 호출자는 걷기 전에 그 메시지 텍스트를 읽어 컴포저에 복원한다.
-  | { type: 'retract-turn' }
+  // 취소 = 중단 — 클로드 코드처럼 턴을 그 자리에서 끊는다. CLI 세션에는 이 턴(보낸 말
+  // + 부분 답변)이 실제로 남아 재개 시 모델도 그걸 보므로, 화면에서 걷어내면 세션과
+  // 화면이 어긋난다. 흔적은 그대로 두고 '중단함' 마커만 남긴다.
+  | { type: 'interrupt-turn' }
   | { type: 'load'; state: SessionState }
 
 const THINKING_ID = 'thinking'
@@ -117,27 +123,44 @@ const THINKING_ID = 'thinking'
 const PENDING_RUN = 'pending'
 
 export function nowTime(): string {
-  return new Date().toLocaleTimeString('ko-KR', { hour: 'numeric', minute: '2-digit' })
+  return new Date().toLocaleTimeString(t('ko-KR', 'en-US'), { hour: 'numeric', minute: '2-digit' })
 }
 
 // Slash commands that get a card. Skills and /clear (client-side) are excluded.
 // `running` is the in-progress title; `sub` the static done description (/compact
 // fills it dynamically).
-const CMD_CARDS: Record<string, { title: string; running: string; sub: string | null }> = {
-  init: { title: 'CLAUDE.md를 정리했어요', running: 'CLAUDE.md를 작성하는 중…', sub: '코드베이스를 분석해 프로젝트 가이드를 작성했습니다.' },
-  compact: { title: '대화를 요약했어요', running: '대화를 요약하는 중…', sub: null },
-  review: { title: '코드 리뷰를 마쳤어요', running: '코드를 리뷰하는 중…', sub: '변경 사항을 검토했습니다.' },
-  'security-review': { title: '보안 검토를 마쳤어요', running: '보안을 검토하는 중…', sub: '변경 사항의 보안 취약점을 점검했습니다.' }
+// 표시 문자열이라 상수가 아니라 함수다 — 모듈 스코프 상수면 import 시점 언어로 박제된다.
+// 이름 집합(카드 대상 판정)은 표시와 무관하므로 상수로 따로 둔다.
+const CMD_NAMES = ['init', 'compact', 'review', 'security-review']
+function cmdCards(): Record<string, { title: string; running: string; sub: string | null }> {
+  return {
+    init: {
+      title: t('CLAUDE.md를 정리했어요', 'CLAUDE.md is ready'),
+      running: t('CLAUDE.md를 작성하는 중…', 'Writing CLAUDE.md…'),
+      sub: t('코드베이스를 분석해 프로젝트 가이드를 작성했습니다.', 'Analyzed the codebase and wrote a project guide.')
+    },
+    compact: { title: t('대화를 요약했어요', 'Conversation summarized'), running: t('대화를 요약하는 중…', 'Summarizing the conversation…'), sub: null },
+    review: {
+      title: t('코드 리뷰를 마쳤어요', 'Code review complete'),
+      running: t('코드를 리뷰하는 중…', 'Reviewing the code…'),
+      sub: t('변경 사항을 검토했습니다.', 'Reviewed the changes.')
+    },
+    'security-review': {
+      title: t('보안 검토를 마쳤어요', 'Security review complete'),
+      running: t('보안을 검토하는 중…', 'Reviewing security…'),
+      sub: t('변경 사항의 보안 취약점을 점검했습니다.', 'Checked the changes for security vulnerabilities.')
+    }
+  }
 }
 /** "/compact …" → "compact" when it's a card command, else null (normal prompt / skill). */
 export function commandOf(text: string): string | null {
   const m = /^\/([a-z][a-z-]*)/i.exec(text.trim())
   const name = m?.[1]?.toLowerCase()
-  return name && name in CMD_CARDS ? name : null
+  return name && CMD_NAMES.includes(name) ? name : null
 }
 /** Friendly title for naming a chat started by a command. */
 export function commandTitleOf(name: string): string {
-  return CMD_CARDS[name]?.title ?? name
+  return cmdCards()[name]?.title ?? name
 }
 function fmtTokShort(n: number): string {
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M'
@@ -179,7 +202,7 @@ export function snapshotForPersist(s: SessionState): SessionState {
     bgTasks: s.bgTasks.map((t) => (t.status === 'running' ? { ...t, status: 'stopped' as const, teardown: true } : t)),
     // 워크플로도 같은 운명 — 도는 채로 복원되면 거짓 알약이 뜬다 (옛 스냅샷은 필드 없음 → null)
     workflow: s.workflow?.status === 'running' ? { ...s.workflow, status: 'stopped' as const } : s.workflow ?? null,
-    retracting: false
+    interrupted: false
   }
 }
 
@@ -223,6 +246,10 @@ const MAX_TERMINAL_LINES = 500
 // (cmDiff·main diff의 4M cells)이 따로 막는다 — 이 상한이 지키는 건 스냅샷·상태 크기뿐.
 // 초과 시 트림(마킹 불가 + 수만 줄이 죽은 무게로 남음) 대신 요약 행 하나로 접는다.
 const MAX_DIFF_LINES = 30_000
+// 변경 파일(files/diffs) 엔트리 수 상한 — 이 둘은 턴을 넘어 의도적으로 살아남으므로(begin이
+// 안 지움) 장기 자율 실행에선 만진 파일 수만큼 무한 누적된다(diff가 개당 최대 수 MB).
+// files는 최근 터치 순 정렬이라 꼬리 = 가장 오래 안 만진 파일부터 접는다.
+const MAX_CHANGED_FILES = 200
 
 // 실행 1건분의 모델별 토큰(result.tokenUsage)을 대화 누적(tokenTotals)에 더한다.
 // 보고가 없으면(생략·빈 배열) 기존 객체를 그대로 돌려줘 불필요한 리렌더를 만들지 않는다.
@@ -378,7 +405,7 @@ export function reducer(state: SessionState, action: Action): SessionState {
         cmd
           ? [
               ...without,
-              { kind: 'cmdresult', id: cardId, name: cmd, title: CMD_CARDS[cmd].running, sub: null, stats: null, time: action.time, running: true }
+              { kind: 'cmdresult', id: cardId, name: cmd, title: cmdCards()[cmd].running, sub: null, stats: null, time: action.time, running: true }
             ]
           : [...without, { kind: 'msg', id: `u${seq}`, role: 'user', text: action.text, animate: false, time: action.time, images: action.images?.length ? action.images : undefined }]
       ),
@@ -410,40 +437,53 @@ export function reducer(state: SessionState, action: Action): SessionState {
       thinkingText: null,
       streaming: false,
       openGroupId: null,
-      retracting: false,
+      interrupted: false,
       seq
     }
   }
 
-  if (action.type === 'retract-turn') {
-    // 취소 = 회수 — 이번 턴의 잔해를 스레드에서 걷는다. 일반 턴은 마지막 사용자 메시지부터
-    // 끝까지(보낸 말풍선 + 반쯤 온 답 + 도구 흔적), 명령(/compact 등) 턴은 돌던 카드만.
-    // 이후 코얼레서가 늦게 흘리는 델타/생각 조각은 retracting 가드가 삼킨다.
-    const msgs = state.messages.filter((m) => m.id !== THINKING_ID)
-    let next = msgs
-    if (state.pendingCommand) {
-      const cardId = state.pendingCommand.cardId
-      next = msgs.filter((m) => m.id !== cardId)
-    } else {
-      for (let i = msgs.length - 1; i >= 0; i--) {
-        const m = msgs[i]
-        if (m.kind === 'msg' && m.role === 'user') {
-          next = msgs.slice(0, i)
-          break
-        }
-      }
-    }
+  if (action.type === 'interrupt-turn') {
+    // 취소 = 중단 — 이번 턴의 흔적(보낸 말풍선 + 반쯤 온 답 + 도구 로그)은 그대로 두고
+    // '중단함' 마커만 붙인다(세션에 실제로 남는 내용과 화면을 일치시키는 게 핵심).
+    // 명령(/compact 등) 턴은 돌던 카드를 '중단' 상태로 정착시킨다.
+    // 이후 코얼레서가 늦게 흘리는 델타/생각 조각은 interrupted 가드가 삼킨다.
+    const seq = state.seq + 1
+    // 끝을 못 본 도구 스피너는 '중단됨'으로 정착 — 이 턴의 tool-end는 이제 오지 않는다
+    // tk — i18n의 t()를 가리지 않도록 지역 인자를 리네임
+    const settleTools = (tools: ToolLogItem[]): ToolLogItem[] =>
+      tools.some((tk) => tk.status === 'running')
+        ? tools.map((tk) => (tk.status === 'running' ? { ...tk, status: 'done' as const, result: t('중단됨', 'Stopped') } : tk))
+        : tools
+    const msgs = state.messages
+      .filter((m) => m.id !== THINKING_ID)
+      .map((m) => {
+        if (m.kind !== 'toolgroup') return m
+        const tools = settleTools(m.tools)
+        return tools === m.tools ? m : { ...m, tools }
+      })
+    const next = state.pendingCommand
+      ? msgs.map((m) =>
+          m.kind === 'cmdresult' && m.id === state.pendingCommand!.cardId
+            ? { ...m, running: false, failed: true, title: t('명령을 중단했어요', 'Command stopped'), sub: null, stats: null, time: nowTime() }
+            : m
+        )
+      : capThread([...msgs, { kind: 'interrupted' as const, id: `stop${seq}` }])
     return {
       ...state,
       // busy는 즉시 내린다 — 엔진 정리(interrupt 유예 + 루프 탈출)를 기다리면 인디케이터가
       // 몇 초 남는다. 늦게 오는 finally의 status done은 idle 위에 무해하게 덮인다.
       status: 'idle',
+      seq,
       messages: next,
       pendingCommand: null,
+      pendingPermission: null,
+      pendingQuestion: null,
+      // 돌던 서브에이전트도 CLI와 함께 끊긴다 — 스피너 카드로 남지 않게 정착
+      subagents: state.subagents.map((a) => (a.status === 'done' ? a : { ...a, status: 'done' as const, tools: settleTools(a.tools) })),
       thinkingText: null,
       streaming: false,
       openGroupId: null,
-      retracting: true
+      interrupted: true
     }
   }
 
@@ -456,9 +496,9 @@ export function reducer(state: SessionState, action: Action): SessionState {
   switch (e.type) {
     case 'status':
       // analyzing = 모든 실행의 첫 이벤트 (엔진 계약) — 이 실행을 현재 실행으로 채택
-      if (e.status === 'analyzing') return { ...state, status: 'analyzing', curRunId: e.runId, retracting: false }
+      if (e.status === 'analyzing') return { ...state, status: 'analyzing', curRunId: e.runId, interrupted: false }
       if (staleRun(e.runId)) return state
-      return { ...state, status: e.status, retracting: false }
+      return { ...state, status: e.status, interrupted: false }
 
     case 'session':
       return { ...state, session: { sessionId: e.sessionId, model: e.model, cwd: e.cwd } }
@@ -467,7 +507,7 @@ export function reducer(state: SessionState, action: Action): SessionState {
       // 모델이 (답변이 아니라) 사고 중이라는 신호 — 답변 스트리밍이 아니므로 인디케이터를
       // 되살린다. thinkingText는 이제 화면 표시엔 쓰지 않지만(생각 줄은 우리 커스텀 문구
       // 전용), 상태는 그대로 둔다.
-      if (state.retracting) return state // 회수 직후의 늦은 조각은 버린다
+      if (state.interrupted) return state // 중단 직후의 늦은 조각은 버린다
       return { ...state, thinkingText: e.text, streaming: false }
     case 'thinking-clear':
       return { ...state, thinkingText: null }
@@ -477,7 +517,7 @@ export function reducer(state: SessionState, action: Action): SessionState {
       // on the first chunk). animate:false — the streaming itself is the animation.
       // Hot path first: the streamed message is almost always the last item — update
       // it in place instead of re-filtering + re-mapping the whole history per token.
-      if (state.retracting) return state // 회수 직후 코얼레서가 늦게 뱉은 델타 — 유령 말풍선 방지
+      if (state.interrupted) return state // 중단 직후 코얼레서가 늦게 뱉은 델타 — 마커 뒤 유령 말풍선 방지
       const last = state.messages[state.messages.length - 1]
       if (last && last.kind === 'msg' && last.id === e.messageId) {
         const messages = state.messages.slice()
@@ -495,7 +535,7 @@ export function reducer(state: SessionState, action: Action): SessionState {
     case 'assistant-done': {
       // finalize: if the message was streamed, replace its text with the
       // authoritative final text; otherwise add it fresh.
-      if (state.retracting) return state // 회수 직후의 늦은 마무리 프레임도 동일하게 버린다
+      if (state.interrupted) return state // 중단 직후의 늦은 마무리 프레임도 동일하게 버린다 — 부분 답변을 그대로 둔다
       const without = state.messages.filter((m) => m.id !== THINKING_ID)
       const exists = without.some((m) => m.id === e.messageId)
       if (exists) {
@@ -605,17 +645,27 @@ export function reducer(state: SessionState, action: Action): SessionState {
       const prevDiff = state.diffs[e.file.path]
       const merged = prevDiff && !isWrite ? [...prevDiff.lines, ...e.diff.lines] : e.diff.lines
       // 상한 초과는 요약 행으로 대체 — +N/−N 칩·카운트는 살아 있고 뷰어 마킹만 접힌다
-      // ('생략' 텍스트가 FileModal의 훙크 조각 가드에 걸리는 게 의도). 라인을 실어 봤자
-      // 마킹이 안 되는 diff는 스냅샷·IPC 무게만 늘린다.
+      // (훙크-only diff가 FileModal의 조각 가드에 걸리는 게 의도 — 가드는 텍스트가 아니라
+      // 구조로 보므로 이 문구를 번역해도 안전하다). 라인을 실어 봤자 마킹이 안 되는 diff는
+      // 스냅샷·IPC 무게만 늘린다.
       const lines =
         merged.length > MAX_DIFF_LINES
-          ? [{ t: 'hunk' as const, text: '@@ 변경이 너무 길어 미리보기를 생략했어요 @@' }]
+          ? [
+              {
+                t: 'hunk' as const,
+                text: t('@@ 변경이 너무 길어 미리보기를 생략했어요 @@', '@@ Change too large — preview skipped @@')
+              }
+            ]
           : merged
       const diff: FileDiff =
         prevDiff && !isWrite
           ? { ...prevDiff, add: prevDiff.add + e.diff.add, del: prevDiff.del + e.diff.del, lines }
           : { ...e.diff, lines }
-      return { ...state, files, diffs: { ...state.diffs, [e.file.path]: diff } }
+      const diffs = { ...state.diffs, [e.file.path]: diff }
+      if (files.length > MAX_CHANGED_FILES) {
+        for (const f of files.splice(MAX_CHANGED_FILES)) delete diffs[f.path]
+      }
+      return { ...state, files, diffs }
     }
 
     case 'terminal':
@@ -786,14 +836,14 @@ export function reducer(state: SessionState, action: Action): SessionState {
       // a slash command finished → finalize its running card in place
       const pc = state.pendingCommand
       if (pc) {
-        const cfg = CMD_CARDS[pc.name]
+        const cfg = cmdCards()[pc.name]
         // failed run: flip the spinner to a failed state (never leave it spinning)
         if (e.isError) {
           return {
             ...base,
             messages: without.map((m) =>
               m.kind === 'cmdresult' && m.id === pc.cardId
-                ? { ...m, running: false, failed: true, title: '명령을 완료하지 못했어요', sub: e.text || null, stats: null, time: nowTime() }
+                ? { ...m, running: false, failed: true, title: t('명령을 완료하지 못했어요', "Couldn't finish the command"), sub: e.text || null, stats: null, time: nowTime() }
                 : m
             )
           }
@@ -803,14 +853,17 @@ export function reducer(state: SessionState, action: Action): SessionState {
         if (pc.name === 'compact') {
           sub =
             pc.beforeMsgs > 0
-              ? `이전 ${pc.beforeMsgs}개 메시지를 핵심 요약으로 압축했습니다.`
-              : '대화를 핵심 요약으로 압축했습니다.'
+              ? t(`이전 ${pc.beforeMsgs}개 메시지를 핵심 요약으로 압축했습니다.`, `Compressed the previous ${pc.beforeMsgs} messages into a summary.`)
+              : t('대화를 핵심 요약으로 압축했습니다.', 'Compressed the conversation into a summary.')
           // only when the engine actually reports a smaller context — never fabricate
           const before = pc.beforeContext
           if (before != null && after != null && window && after < before) {
             const bp = Math.round((before / window) * 100)
             const ap = Math.round((after / window) * 100)
-            stats = `컨텍스트 ${bp}% → ${ap}% 로 절약 · 토큰 ${fmtTokShort(before - after)} 회수`
+            stats = t(
+              `컨텍스트 ${bp}% → ${ap}% 로 절약 · 토큰 ${fmtTokShort(before - after)} 회수`,
+              `Context ${bp}% → ${ap}% · ${fmtTokShort(before - after)} tokens reclaimed`
+            )
           }
         }
         return {
@@ -823,7 +876,8 @@ export function reducer(state: SessionState, action: Action): SessionState {
         }
       }
       // surface failure reason as a message (error subtypes carry text in `errors`)
-      if (e.isError && e.text) {
+      // — 단, 사용자가 방금 중단한 턴의 에러 결과는 사고가 아니라 중단의 여파다
+      if (e.isError && e.text && !state.interrupted) {
         const seq = state.seq + 1
         return {
           ...base,
@@ -839,18 +893,22 @@ export function reducer(state: SessionState, action: Action): SessionState {
       // 안내 줄을 남겨 빈 턴을 눈에 보이게 한다. (실행 중지도 이 모양이 될 수 있어
       // 문구가 그 경우를 함께 안내한다)
       const last = without[without.length - 1]
-      if (!e.isError && last?.kind === 'msg' && last.role === 'user') {
+      if (!e.isError && !state.interrupted && last?.kind === 'msg' && last.role === 'user') {
         seq += 1
         extra.push({
           kind: 'notice',
           id: `n${seq}`,
-          text: '이번 턴이 응답 없이 끝났어요 — 직접 중지한 게 아니라면 메시지를 다시 보내 주세요.',
+          text: t(
+            '이번 턴이 응답 없이 끝났어요 — 직접 중지한 게 아니라면 메시지를 다시 보내 주세요.',
+            'This turn ended without a reply — if you did not stop it yourself, try sending the message again.'
+          ),
           time: nowTime()
         })
       }
       // 턴 마무리 줄(PoC .worked) — 'N초 동안 작업함'. 답변 앞은 "읽기 전에 걸리적"
-      // 이라는 피드백으로 턴 맨 끝(답변 뒤)에 붙인다.
-      if (!e.isError && e.durationMs != null && e.durationMs >= 1000) {
+      // 이라는 피드백으로 턴 맨 끝(답변 뒤)에 붙인다. 중단된 턴은 '중단함' 마커가
+      // 이미 그 자리를 차지했으므로(우아한 interrupt의 늦은 result) 붙이지 않는다.
+      if (!e.isError && !state.interrupted && e.durationMs != null && e.durationMs >= 1000) {
         seq += 1
         extra.push({ kind: 'worked', id: `w${seq}`, ms: e.durationMs })
       }
@@ -860,6 +918,8 @@ export function reducer(state: SessionState, action: Action): SessionState {
 
     case 'error': {
       if (staleRun(e.runId)) return state
+      // 방금 중단한 턴이 죽으면서 내는 소리 — 사용자 행위의 여파라 오류 말풍선은 안 붙인다
+      if (state.interrupted) return state
       const seq = state.seq + 1
       const without = state.messages.filter((m) => m.id !== THINKING_ID)
       return {
@@ -869,7 +929,7 @@ export function reducer(state: SessionState, action: Action): SessionState {
         pendingQuestion: null,
         messages: capThread([
           ...without,
-          { kind: 'msg', id: `err${seq}`, role: 'assistant', text: `오류: ${e.message}`, animate: false, error: true, time: nowTime() }
+          { kind: 'msg', id: `err${seq}`, role: 'assistant', text: t(`오류: ${e.message}`, `Error: ${e.message}`), animate: false, error: true, time: nowTime() }
         ])
       }
     }
@@ -927,8 +987,8 @@ export function useAgentSession(
   const answerQuestion = (answers: string[][]): void => dispatch({ type: 'answer-question', answers })
   // replace the entire live state — used when switching between chats
   const load = (snapshot: SessionState): void => dispatch({ type: 'load', state: snapshot })
-  // 취소 = 회수 — 호출자는 걷기 전에 마지막 사용자 메시지를 읽어 컴포저에 복원한다
-  const retractTurn = (): void => dispatch({ type: 'retract-turn' })
+  // 취소 = 중단 — 흔적은 남기고 턴만 끊는다 ('중단함' 마커·스피너 정착은 리듀서가)
+  const interruptTurn = (): void => dispatch({ type: 'interrupt-turn' })
 
-  return { state, elapsed, busy, begin, clearPermission, clearQuestion, answerQuestion, load, retractTurn }
+  return { state, elapsed, busy, begin, clearPermission, clearQuestion, answerQuestion, load, interruptTurn }
 }

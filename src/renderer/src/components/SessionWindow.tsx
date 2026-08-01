@@ -6,6 +6,7 @@ const onBgTaskSession = (req: BgTaskRequest): void => {
   window.api.session?.bgTask(req).catch(() => {})
 }
 import { getPref, setPref } from '../lib/prefs'
+import { t, useLang } from '../lib/i18n'
 import { useTurnNotify } from '../lib/notify'
 import {
   useAgentSession,
@@ -99,7 +100,8 @@ function userFromProfile(p: UserProfile): AppUser {
 const CWD_KEY = 'session.cwd'
 
 export function SessionWindow(): React.ReactElement {
-  const { state, elapsed, busy, begin, clearPermission, clearQuestion, answerQuestion, load, retractTurn } = useAgentSession((cb) =>
+  useLang() // 언어 전환 시 창 전체 재렌더 — 본채팅 창 설정에서 바꿔도 브로드캐스트로 따라온다
+  const { state, elapsed, busy, begin, clearPermission, clearQuestion, answerQuestion, load, interruptTurn } = useAgentSession((cb) =>
     window.api.session?.onEvent?.(cb) ?? (() => {})
   )
   const [max, setMax] = useState(false)
@@ -418,14 +420,11 @@ export function SessionWindow(): React.ReactElement {
   // 상주 워크플로 — busy가 풀린 뒤에도 도는 중이면 전송은 예약으로, Esc는 취소로 흐른다
   const wfAlive = state.workflow?.status === 'running'
 
-  // 취소 = 회수 — 미완성 턴을 스레드에서 걷고 보낸 문장을 컴포저에 복원(초안이 있으면
-  // 지킴). 상주 워크플로만 도는 경우엔 완결된 턴이라 걷지 않는다. Esc·중지 버튼 공용.
+  // 취소 = 중단 — 턴의 흔적은 스레드에 그대로 남기고 '중단함' 마커만 붙인다(본채팅과
+  // 동일). 보낸 문장은 ↑ 히스토리로 복구. 상주 워크플로만 도는 경우엔 완결된 턴이라
+  // 마커 없이 워크플로만 끊는다. Esc·중지 버튼 공용.
   const cancelRun = (): void => {
-    if (busy) {
-      const last = [...state.messages].reverse().find((m) => m.kind === 'msg' && m.role === 'user')
-      retractTurn()
-      if (last && 'text' in last && last.text) setInput((v) => (v.trim() ? v : last.text))
-    }
+    if (busy) interruptTurn()
     window.api.session?.cancel().catch(() => {})
     setQueue([])
   }
@@ -499,8 +498,14 @@ export function SessionWindow(): React.ReactElement {
     if (!cmd) {
       const notes: string[] = []
       const mentions = extractMentions(text)
-      if (mentions.length) notes.push(`[멘션된 파일 — 필요하면 Read 도구로 확인하세요]\n${mentions.map((p) => '- ' + p).join('\n')}`)
-      if (imgs.length) notes.push(`[첨부 파일 — Read 도구로 확인하세요]\n${imgs.map((p) => '- ' + p).join('\n')}`)
+      if (mentions.length)
+        notes.push(
+          `${t('[멘션된 파일 — 필요하면 Read 도구로 확인하세요]', '[Mentioned files — read them with the Read tool if needed]')}\n${mentions.map((p) => '- ' + p).join('\n')}`
+        )
+      if (imgs.length)
+        notes.push(
+          `${t('[첨부 파일 — Read 도구로 확인하세요]', '[Attached files — read them with the Read tool]')}\n${imgs.map((p) => '- ' + p).join('\n')}`
+        )
       if (notes.length) promptForEngine = `${text}\n\n${notes.join('\n\n')}`
     }
     // 참조 폴더 — 작업 폴더와 겹치는 항목은 걸러서 전달
@@ -551,7 +556,7 @@ export function SessionWindow(): React.ReactElement {
 
   // "더 자세히" — 본채팅과 동일: 선택한 글을 <selection> 태그로 감싸 컴포저에 붙인다
   const onElaborateSelection = (text: string): void => {
-    const base = `<selection>\n${text.trim()}\n</selection>\n\n이 부분 더 자세히 설명해줘`
+    const base = `<selection>\n${text.trim()}\n</selection>\n\n${t('이 부분 더 자세히 설명해줘', 'Explain this part in more detail')}`
     setInput((cur) => (cur.trim() ? cur + '\n\n' + base : base))
     requestAnimationFrame(() => {
       const el = composerRef.current
@@ -602,12 +607,12 @@ export function SessionWindow(): React.ReactElement {
   // ↓→ 닫기 — 대화는 저장돼 사이드바 '추가 채팅'에 남는다(실행 중이면 턴을 마저 돌리고
   // 정리, 삭제는 사이드바 X). 그래서 확인 없이 닫는다.
   const gestures: GestureAction[] = [
-    { pattern: 'U', label: '맨 위로', run: () => follow.scrollTop() },
-    { pattern: 'D', label: '맨 아래로', run: () => follow.jumpBottom() },
+    { pattern: 'U', label: t('맨 위로', 'Scroll to top'), run: () => follow.scrollTop() },
+    { pattern: 'D', label: t('맨 아래로', 'Scroll to bottom'), run: () => follow.jumpBottom() },
     sessionWindowGesture(),
     clearGesture(clearConversation),
-    { pattern: 'RU', label: max ? '이전 크기로' : '창 최대화', run: () => window.api.win.toggleMaximize() },
-    { pattern: 'DR', label: '창 닫기', run: () => window.api.win.close() }
+    { pattern: 'RU', label: max ? t('이전 크기로', 'Restore') : t('창 최대화', 'Maximize window'), run: () => window.api.win.toggleMaximize() },
+    { pattern: 'DR', label: t('창 닫기', 'Close window'), run: () => window.api.win.close() }
   ]
 
   return (
@@ -618,9 +623,9 @@ export function SessionWindow(): React.ReactElement {
           호출 창(webContents) 기준으로 이 창을 제어한다. */}
       <div className="chat chat--code">
         <ChatHeader
-          title={winTitle || '추가 채팅'}
+          title={winTitle || t('추가 채팅', 'Chat window')}
           cwd={cwd || state.session?.cwd || ''}
-          placeholder="바탕화면"
+          placeholder={t('바탕화면', 'Desktop')}
           onSelectFolder={requestFolder}
           onBrowseFolder={pickFolder}
           refDirs={refDirs}
@@ -656,7 +661,12 @@ export function SessionWindow(): React.ReactElement {
           )}
           {follow.showJump && (
             <div className="jump-bottom-wrap">
-              <button className="jump-bottom has-tip" data-tip="맨 아래로" aria-label="맨 아래로" onClick={follow.jumpBottom}>
+              <button
+                className="jump-bottom has-tip"
+                data-tip={t('맨 아래로', 'Scroll to bottom')}
+                aria-label={t('맨 아래로', 'Scroll to bottom')}
+                onClick={follow.jumpBottom}
+              >
                 <IconChevDown size={17} />
               </button>
             </div>

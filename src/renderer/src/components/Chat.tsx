@@ -1,4 +1,4 @@
-import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ComponentType, type ReactNode } from 'react'
+import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ComponentType, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import type {
   ModelId,
@@ -10,6 +10,7 @@ import type {
   ExtraCreditInfo,
   CodexAccountInfo,
   CodexAccountUsage,
+  CodexModelInfo,
   ToolLogItem,
   AgentQuestion,
   SkillInfo,
@@ -23,6 +24,7 @@ import type {
   TokenTally,
   WorkflowState
 } from '@shared/protocol'
+import { t, useLang } from '../lib/i18n'
 import { sameCwd, type ThreadItem } from '../store/session'
 import { loadRecentDirs, loadFavDirs, toggleFavDir } from '../lib/recentDirs'
 import { relTime } from './Sidebar'
@@ -68,6 +70,7 @@ import {
   IconMascot,
   IconMascotDraw,
   IconPanelRight,
+  IconSquare,
   type IconProps
 } from './icons'
 
@@ -91,30 +94,41 @@ interface ModeOpt {
   d: string
 }
 
-const MODELS: ModelOpt[] = [
-  { v: 'Fable 5', id: 'fable', d: '최상위 지능 · 가장 어려운 작업', ctx: 1000 },
-  { v: 'Opus 5', id: 'opus', d: '고성능 · 복잡한 작업', ctx: 1000 },
-  { v: 'Sonnet 5', id: 'sonnet', d: '균형 · 일상 작업', ctx: 1000 },
-  { v: 'Haiku 4.5', id: 'haiku', d: '빠른 응답 · 가벼운 작업', ctx: 200 }
-]
-const EFFORTS: EffortOpt[] = [
-  { v: '최대', id: 'max', d: '최대 강도', level: 5 },
-  { v: '매우 높음', id: 'xhigh', d: '더 깊은 추론', level: 4 },
-  { v: '높음', id: 'high', d: '깊은 추론', level: 3 },
-  { v: '보통', id: 'medium', d: '보통 추론', level: 2 },
-  { v: '낮음', id: 'low', d: '가벼운 추론', level: 1 },
-  { v: '최소', id: 'minimal', d: '확장사고 끔', level: 0 }
-]
+// 표시 문자열이 든 목록은 상수가 아니라 함수 — 모듈 스코프 상수로 두면 import 시점
+// 언어로 박제된다(렌더 때 평가해야 언어 전환이 즉시 따라온다)
+function modelOpts(): ModelOpt[] {
+  return [
+    { v: 'Fable 5', id: 'fable', d: t('최상위 지능 · 가장 어려운 작업', 'Top intelligence · hardest work'), ctx: 1000 },
+    { v: 'Opus 5', id: 'opus', d: t('고성능 · 복잡한 작업', 'High performance · complex work'), ctx: 1000 },
+    { v: 'Sonnet 5', id: 'sonnet', d: t('균형 · 일상 작업', 'Balanced · everyday work'), ctx: 1000 },
+    { v: 'Haiku 4.5', id: 'haiku', d: t('빠른 응답 · 가벼운 작업', 'Fast · light work'), ctx: 200 }
+  ]
+}
+function effortOpts(): EffortOpt[] {
+  return [
+    { v: t('최대', 'Max'), id: 'max', d: t('최대 강도', 'Maximum intensity'), level: 5 },
+    { v: t('매우 높음', 'Very high'), id: 'xhigh', d: t('더 깊은 추론', 'Deeper reasoning'), level: 4 },
+    { v: t('높음', 'High'), id: 'high', d: t('깊은 추론', 'Deep reasoning'), level: 3 },
+    { v: t('보통', 'Medium'), id: 'medium', d: t('보통 추론', 'Standard reasoning'), level: 2 },
+    { v: t('낮음', 'Low'), id: 'low', d: t('가벼운 추론', 'Light reasoning'), level: 1 },
+    { v: t('최소', 'Minimal'), id: 'minimal', d: t('확장사고 끔', 'Extended thinking off'), level: 0 }
+  ]
+}
 // 모드 순서·이름 = PoC 확정: 일반→플랜→부분 허용→자동 허용→모두 허용, 색 특별취급 없음
-const MODES: ModeOpt[] = [
-  { v: '일반', id: 'normal', d: '변경마다 승인 요청' },
-  { v: '플랜', id: 'plan', d: '계획만 수립, 실행은 승인 후' },
-  { v: '부분 허용', id: 'acceptEdits', d: '파일 편집 자동 수락' },
-  { v: '자동 허용', id: 'auto', d: '도구 실행까지 자동 진행' },
-  { v: '모두 허용', id: 'bypass', d: '모든 권한 확인 건너뛰기' }
-]
+function modeOpts(): ModeOpt[] {
+  return [
+    { v: t('일반', 'Normal'), id: 'normal', d: t('변경마다 승인 요청', 'Ask before every change') },
+    { v: t('플랜', 'Plan'), id: 'plan', d: t('계획만 수립, 실행은 승인 후', 'Plan only, run after approval') },
+    { v: t('부분 허용', 'Accept edits'), id: 'acceptEdits', d: t('파일 편집 자동 수락', 'Auto-accept file edits') },
+    { v: t('자동 허용', 'Auto'), id: 'auto', d: t('도구 실행까지 자동 진행', 'Auto-run tools too') },
+    { v: t('모두 허용', 'Allow all'), id: 'bypass', d: t('모든 권한 확인 건너뛰기', 'Skip all permission prompts') }
+  ]
+}
 // 배열 순서와 무관하게 폴백 기본값은 항상 '일반'
-const MODE_FALLBACK = MODES.find((m) => m.id === 'normal') ?? MODES[0]
+function modeFallback(): ModeOpt {
+  const ms = modeOpts()
+  return ms.find((m) => m.id === 'normal') ?? ms[0]
+}
 
 export interface PickerState {
   model: ModelId
@@ -140,61 +154,71 @@ export interface CodexModelOpt {
 }
 // model/list 실측(0.144, 2026-07) 순서 그대로 — 서버 영어 설명의 한국어 번역이
 // codexDescKo를 통해 실제 목록에도 입혀진다 (여기 없는 새 모델만 영어 원문)
-const CODEX_FALLBACK: CodexModelOpt[] = [
-  { v: 'GPT-5.6-Sol', id: 'gpt-5.6-sol', d: '최신 프론티어 · 가장 어려운 작업' },
-  { v: 'GPT-5.6-Terra', id: 'gpt-5.6-terra', d: '균형 에이전트 코딩 · 일상 작업' },
-  { v: 'GPT-5.6-Luna', id: 'gpt-5.6-luna', d: '빠르고 경제적 · 가벼운 작업' }
-]
+function codexFallback(): CodexModelOpt[] {
+  return [
+    { v: 'GPT-5.6-Sol', id: 'gpt-5.6-sol', d: t('최신 프론티어 · 가장 어려운 작업', 'Newest frontier · hardest work') },
+    { v: 'GPT-5.6-Terra', id: 'gpt-5.6-terra', d: t('균형 에이전트 코딩 · 일상 작업', 'Balanced agentic coding · everyday work') },
+    { v: 'GPT-5.6-Luna', id: 'gpt-5.6-luna', d: t('빠르고 경제적 · 가벼운 작업', 'Fast and economical · light work') }
+  ]
+}
 // 구세대(5.5·5.4) 모델은 picker에서 숨긴다(유저 결정) — 서버 목록에 있어도 걸러낸다.
 // 모르는 새 모델(예: 5.7)은 그대로 통과해 목록에 뜬다.
 const CODEX_HIDDEN = new Set(['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini'])
 // 엔진을 codex로 바꿀 때의 기본 모델 — 서버 기본(sol)이 아니라 균형형(terra)을 유지
 export const CODEX_DEFAULT_MODEL = 'gpt-5.6-terra'
-let codexModelCache: CodexModelOpt[] | null = null
+// 캐시는 서버 원본(raw)으로 둔다 — 표시 목록(설명)은 읽는 순간 만들어야 언어 전환이 따라온다
+let codexModelCache: CodexModelInfo[] | null = null
 let codexModelFetch: Promise<CodexModelOpt[]> | null = null
-// 서버(model/list)의 영어 설명 → 한국어. 아는 모델은 CODEX_FALLBACK의 한국어 설명을
+// 서버(model/list)의 영어 설명 → 한국어. 아는 모델은 codexFallback()의 한국어 설명을
 // 그대로 쓰고, 모르는 새 모델만 서버 원문으로 남긴다.
 function codexDescKo(id: string, desc?: string, isDefault?: boolean): string {
-  return CODEX_FALLBACK.find((f) => f.id === id)?.d ?? desc ?? (isDefault ? '기본 모델' : '')
+  return codexFallback().find((f) => f.id === id)?.d ?? desc ?? (isDefault ? t('기본 모델', 'Default model') : '')
+}
+// 서버 원본 목록 → picker 표시 옵션 (숨김 모델 제외 + 설명 번역)
+function codexOptsOf(list: CodexModelInfo[]): CodexModelOpt[] {
+  return list
+    .filter((m) => !CODEX_HIDDEN.has(m.id))
+    .map((m) => ({ v: m.label, id: m.id, d: codexDescKo(m.id, m.desc, m.isDefault) }))
 }
 function fetchCodexModels(): Promise<CodexModelOpt[]> {
-  if (codexModelCache) return Promise.resolve(codexModelCache)
+  if (codexModelCache) return Promise.resolve(codexOptsOf(codexModelCache))
   if (codexModelFetch) return codexModelFetch
   codexModelFetch = window.api
     .codexModels()
     .then((list) => {
-      const opts = list
-        .filter((m) => !CODEX_HIDDEN.has(m.id))
-        .map((m) => ({ v: m.label, id: m.id, d: codexDescKo(m.id, m.desc, m.isDefault) }))
-      if (opts.length) codexModelCache = opts
-      return codexModelCache ?? CODEX_FALLBACK
+      const opts = codexOptsOf(list)
+      if (opts.length) codexModelCache = list
+      return opts.length ? opts : codexFallback()
     })
-    .catch(() => CODEX_FALLBACK)
+    .catch(() => codexFallback())
     .finally(() => {
       codexModelFetch = null
     })
   return codexModelFetch
 }
 
-const ENGINES: { v: string; id: EngineId; d: string }[] = [
-  { v: 'Anthropic', id: 'claude', d: 'Claude Code CLI로 실행' },
-  { v: 'OpenAI', id: 'codex', d: 'Codex CLI로 실행' }
-]
+function engineOpts(): { v: string; id: EngineId; d: string }[] {
+  return [
+    { v: 'Anthropic', id: 'claude', d: t('Claude Code CLI로 실행', 'Runs on the Claude Code CLI') },
+    { v: 'OpenAI', id: 'codex', d: t('Codex CLI로 실행', 'Runs on the Codex CLI') }
+  ]
+}
 
 /** OpenAI 모델 목록 훅 — 엔진을 codex로 두면 그때 받아온다 (실패 시 정적 폴백). */
 function useCodexModels(engine: EngineId): CodexModelOpt[] {
-  const [list, setList] = useState<CodexModelOpt[]>(() => codexModelCache ?? CODEX_FALLBACK)
+  const [, bump] = useState(0)
   useEffect(() => {
     if (engine !== 'codex') return
     let on = true
-    fetchCodexModels().then((l) => {
-      if (on) setList(l)
+    fetchCodexModels().then(() => {
+      if (on) bump((n) => n + 1)
     })
     return () => {
       on = false
     }
   }, [engine])
-  return list
+  // 목록은 state가 아니라 렌더마다 캐시에서 만든다 — state에 담아두면 그때 언어가 박제된다
+  return codexModelCache ? codexOptsOf(codexModelCache) : codexFallback()
 }
 
 /** raw SDK model id ('claude-opus-5-…') → picker ModelId, or undefined if unknown.
@@ -216,8 +240,9 @@ export interface ScheduledMsg {
 // next run mode — used by the Shift+Tab shortcut. 배열이 PoC 순서(일반→…→모두 허용)라
 // 정방향으로 걸으면 기존 순환(일반→플랜→부분→자동→모두→일반)이 그대로 유지된다.
 export function nextMode(current: ModeId): ModeId {
-  const i = MODES.findIndex((m) => m.id === current)
-  return MODES[(i + 1) % MODES.length].id
+  const ms = modeOpts()
+  const i = ms.findIndex((m) => m.id === current)
+  return ms[(i + 1) % ms.length].id
 }
 
 // ── Slash commands ───────────────────────────────────────────
@@ -232,13 +257,15 @@ export interface SlashCmd {
   desc: string
   icon: ComponentType<IconProps>
 }
-export const SLASH_COMMANDS: SlashCmd[] = [
-  { name: 'init', desc: '코드베이스를 분석해 CLAUDE.md 생성', icon: IconFileText },
-  { name: 'clear', desc: '대화 기록과 컨텍스트 초기화', icon: IconRefresh },
-  { name: 'compact', desc: '대화를 요약해 컨텍스트 절약', icon: IconCompress },
-  { name: 'review', desc: '변경 사항 코드 리뷰', icon: IconEye },
-  { name: 'security-review', desc: '변경 사항의 보안 취약점 검토', icon: IconShieldChk }
-]
+export function slashCommands(): SlashCmd[] {
+  return [
+    { name: 'init', desc: t('코드베이스를 분석해 CLAUDE.md 생성', 'Analyze the codebase and create CLAUDE.md'), icon: IconFileText },
+    { name: 'clear', desc: t('대화 기록과 컨텍스트 초기화', 'Clear the conversation and context'), icon: IconRefresh },
+    { name: 'compact', desc: t('대화를 요약해 컨텍스트 절약', 'Summarize the conversation to save context'), icon: IconCompress },
+    { name: 'review', desc: t('변경 사항 코드 리뷰', 'Code-review the changes'), icon: IconEye },
+    { name: 'security-review', desc: t('변경 사항의 보안 취약점 검토', 'Check the changes for security issues'), icon: IconShieldChk }
+  ]
+}
 
 // ── Typewriter (used for animated assistant messages) ─────────
 function Typewriter({ text }: { text: string }) {
@@ -285,42 +312,43 @@ function fmtDur(ms: number): string {
 // 턴 마무리 줄 (PoC .worked) — '42초 동안 작업함' / '1분 12초 동안 작업함'
 function fmtWorked(ms: number): string {
   const s = Math.max(1, Math.round(ms / 1000))
-  if (s < 60) return `${s}초 동안 작업함`
+  if (s < 60) return t(`${s}초 동안 작업함`, `Worked for ${s}s`)
   const m = Math.floor(s / 60)
   const r = s % 60
-  return r ? `${m}분 ${r}초 동안 작업함` : `${m}분 동안 작업함`
+  return r ? t(`${m}분 ${r}초 동안 작업함`, `Worked for ${m}m ${r}s`) : t(`${m}분 동안 작업함`, `Worked for ${m}m`)
 }
 
 // 작업 중 인디케이터의 라이브 경과 — 마무리 줄(fmtWorked)과 같은 한국어 단위라
 // 턴이 끝나는 순간 'N초 동안 작업함'으로 자연스럽게 이어진다
 function fmtElapsedKo(s: number): string {
-  if (s < 60) return `${s}초`
+  if (s < 60) return t(`${s}초`, `${s}s`)
   const m = Math.floor(s / 60)
   const r = s % 60
-  return r ? `${m}분 ${r}초` : `${m}분`
+  return r ? t(`${m}분 ${r}초`, `${m}m ${r}s`) : t(`${m}분`, `${m}m`)
 }
 
 // result shown on the right: a spinner while running, a red mark on error, the +/-
 // line counts for edits (colored), or the tool's text summary otherwise.
 // Bash는 '✓' 대신 실행 시간 · 출력 줄수 — 다른 도구의 '10줄'과 같은 문법.
-function ToolResult({ t }: { t: ToolLogItem }) {
-  if (t.status === 'running') return <span className="t-res"><span className="spin" /></span>
-  if (t.status === 'error') return <span className="t-res err">오류</span>
-  if (t.kind === 'bash') {
+// prop 이름 t는 i18n의 t()를 가리므로 안에서는 tl(tool log)로 받는다
+function ToolResult({ t: tl }: { t: ToolLogItem }) {
+  if (tl.status === 'running') return <span className="t-res"><span className="spin" /></span>
+  if (tl.status === 'error') return <span className="t-res err">{t('오류', 'Error')}</span>
+  if (tl.kind === 'bash') {
     const parts = [
-      t.durationMs != null ? fmtDur(t.durationMs) : '',
-      t.output ? `${t.output.split('\n').length}줄` : ''
+      tl.durationMs != null ? fmtDur(tl.durationMs) : '',
+      tl.output ? t(`${tl.output.split('\n').length}줄`, `${tl.output.split('\n').length} lines`) : ''
     ].filter(Boolean)
     if (parts.length) return <span className="t-res">{parts.join(' · ')}</span>
   }
-  const diff = (t.result ?? '').match(/^\+(\d+) -(\d+)$/)
+  const diff = (tl.result ?? '').match(/^\+(\d+) -(\d+)$/)
   if (diff)
     return (
       <span className="t-res">
         <span className="add">+{diff[1]}</span> <span className="del">−{diff[2]}</span>
       </span>
     )
-  return <span className="t-res">{t.result ?? ''}</span>
+  return <span className="t-res">{tl.result ?? ''}</span>
 }
 
 // 실패 출력에서 에러로 읽히는 줄만 붉게 — 성공 출력은 설치 로그처럼 완전 무채색 유지
@@ -331,7 +359,8 @@ function bashErrLine(failed: boolean, ln: string): boolean {
 // Bash 전체 로그 모달 — 인라인 펼침은 좁아서 읽기 어렵다는 피드백으로 교체.
 // '명령'과 '출력'을 섹션으로 나눠 요청/결과가 한눈에 읽힌다. 채팅 스크롤러/가상화
 // 밖(body 포털)에 그려서 어느 화면(메인·멀티 패널·추가 채팅)에서 열어도 안전하다.
-function BashLogModal({ t, onClose }: { t: ToolLogItem; onClose: () => void }) {
+// prop 이름 t는 i18n의 t()를 가리므로 안에서는 tl(tool log)로 받는다
+function BashLogModal({ t: tl, onClose }: { t: ToolLogItem; onClose: () => void }) {
   // 복사 피드백 — 명령/출력 어느 쪽을 복사했는지 구분 (복사 → 복사됨 1.2s, 설정 CopyRow 이디엄)
   const [copied, setCopied] = useState<'cmd' | 'out' | null>(null)
   // 마우스 제스처(↑/↓ 출력 스크롤 · ↓→ 닫기) 대상 — 카드 엘리먼트를 state로 추적
@@ -348,8 +377,8 @@ function BashLogModal({ t, onClose }: { t: ToolLogItem; onClose: () => void }) {
       offCloseShortcut()
     }
   }, [onClose])
-  const failed = t.status === 'error'
-  const lines = (t.output ?? '').split('\n')
+  const failed = tl.status === 'error'
+  const lines = (tl.output ?? '').split('\n')
   const copy = (which: 'cmd' | 'out', text: string): void => {
     navigator.clipboard
       ?.writeText(text)
@@ -367,33 +396,36 @@ function BashLogModal({ t, onClose }: { t: ToolLogItem; onClose: () => void }) {
             <IconTerminal size={19} />
           </div>
           <div className="dc-tt">
-            <span className="dc-title mono">{t.target}</span>
-            <div className="dc-sub">Bash · 일회성 실행{t.durationMs != null ? ` · ${fmtDur(t.durationMs)}` : ''}</div>
+            <span className="dc-title mono">{tl.target}</span>
+            <div className="dc-sub">
+              {t('Bash · 일회성 실행', 'Bash · one-off run')}
+              {tl.durationMs != null ? ` · ${fmtDur(tl.durationMs)}` : ''}
+            </div>
           </div>
           <span className={'dc-badge' + (failed ? ' err' : '')}>
             <span className="d" />
-            {failed ? '오류' : '완료'}
+            {failed ? t('오류', 'Error') : t('완료', 'Done')}
           </span>
-          <button className="dc-close" onClick={onClose} aria-label="닫기">
+          <button className="dc-close" onClick={onClose} aria-label={t('닫기', 'Close')}>
             <IconClose size={16} />
           </button>
         </div>
         <div className="dc-body scroll">
           <div className="dc-sec">
-            <span>명령</span>
+            <span>{t('명령', 'Command')}</span>
             <i className="dc-ln" />
-            <button className={'dc-copy' + (copied === 'cmd' ? ' on' : '')} onClick={() => copy('cmd', t.target)}>
+            <button className={'dc-copy' + (copied === 'cmd' ? ' on' : '')} onClick={() => copy('cmd', tl.target)}>
               <IconCopy size={12} />
-              {copied === 'cmd' ? '복사됨 ✓' : '명령 복사'}
+              {copied === 'cmd' ? t('복사됨 ✓', 'Copied ✓') : t('명령 복사', 'Copy command')}
             </button>
           </div>
-          <div className="dc-cmd">{t.target}</div>
+          <div className="dc-cmd">{tl.target}</div>
           <div className="dc-sec">
-            <span>출력</span>
+            <span>{t('출력', 'Output')}</span>
             <i className="dc-ln" />
-            <button className={'dc-copy' + (copied === 'out' ? ' on' : '')} onClick={() => copy('out', t.output ?? '')}>
+            <button className={'dc-copy' + (copied === 'out' ? ' on' : '')} onClick={() => copy('out', tl.output ?? '')}>
               <IconCopy size={12} />
-              {copied === 'out' ? '복사됨 ✓' : '출력 복사'}
+              {copied === 'out' ? t('복사됨 ✓', 'Copied ✓') : t('출력 복사', 'Copy output')}
             </button>
           </div>
           <div className="dc-term">
@@ -408,20 +440,28 @@ function BashLogModal({ t, onClose }: { t: ToolLogItem; onClose: () => void }) {
           </div>
         </div>
         <div className="dc-foot">
-          {t.durationMs != null && (
+          {tl.durationMs != null && (
             <span className="dc-stat">
-              소요 <b>{fmtDur(t.durationMs)}</b>
+              {t('소요', 'Took')} <b>{fmtDur(tl.durationMs)}</b>
             </span>
           )}
           {/* 엔진이 끝 200줄/16KB만 실어 보내는 캡은 '끝부분 200줄'로 알린다 */}
           <span className="dc-stat">
-            출력 <b>{lines.length >= 200 ? '끝부분 200줄' : `${lines.length}줄`}</b>
+            {t('출력', 'Output')}{' '}
+            <b>
+              {lines.length >= 200
+                ? t('끝부분 200줄', 'last 200 lines')
+                : t(`${lines.length}줄`, `${lines.length} lines`)}
+            </b>
           </span>
         </div>
       </div>
       <MouseGestureLayer
         target={card}
-        actions={[...scrollGestures(() => card?.querySelector('.dc-body')), { pattern: 'DR', label: '창 닫기', run: onClose }]}
+        actions={[
+          ...scrollGestures(() => card?.querySelector('.dc-body')),
+          { pattern: 'DR', label: t('창 닫기', 'Close window'), run: onClose }
+        ]}
       />
     </div>,
     document.body
@@ -431,23 +471,27 @@ function BashLogModal({ t, onClose }: { t: ToolLogItem; onClose: () => void }) {
 // Bash 행 — Read/Edit 행이 파일을 열듯 명령(t-target)을 클릭하면 전체 로그 모달이
 // 열린다(호버 툴팁 '결과 보기'). 인라인 출력은 성공·실패 모두 없음 — 실패도 우측
 // '오류' 요약만 남기고, 내용은 다른 도구들과 똑같이 클릭해서 모달로 읽는다.
-function BashRow({ t }: { t: ToolLogItem }) {
+// prop 이름 t는 i18n의 t()를 가리므로 안에서는 tl(tool log)로 받는다
+function BashRow({ t: tl }: { t: ToolLogItem }) {
   const [open, setOpen] = useState(false)
-  const clickable = !!t.output
+  const clickable = !!tl.output
   return (
     <>
       <div
-        className={'t-row bash ' + t.status + (clickable ? ' openable' : '')}
+        className={'t-row bash ' + tl.status + (clickable ? ' openable' : '')}
         onClick={clickable ? () => setOpen(true) : undefined}
       >
         <span className="t-ic">{toolIcon('bash', 14)}</span>
-        <span className="t-verb">{t.verb}</span>
-        <span className={'t-target' + (clickable ? ' has-tip' : '')} data-tip={clickable ? '결과 보기' : undefined}>
-          <span className="t-txt">{t.target}</span>
+        <span className="t-verb">{tl.verb}</span>
+        <span
+          className={'t-target' + (clickable ? ' has-tip' : '')}
+          data-tip={clickable ? t('결과 보기', 'View output') : undefined}
+        >
+          <span className="t-txt">{tl.target}</span>
         </span>
-        <ToolResult t={t} />
+        <ToolResult t={tl} />
       </div>
-      {open && t.output && <BashLogModal t={t} onClose={() => setOpen(false)} />}
+      {open && tl.output && <BashLogModal t={tl} onClose={() => setOpen(false)} />}
     </>
   )
 }
@@ -486,26 +530,35 @@ function WebFavicon({ host }: { host: string }) {
 // 목록을 펼치고, 각 항목은 OS 브라우저로 연다(target=_blank → 메인의 shell.openExternal
 // 경유). links 없이 target 자체가 URL인 행(WebFetch)은 클릭하면 그 페이지를 바로 연다.
 // 펼침 목록은 배시 출력 블록과 같은 --inset 카드 이디엄: 파비콘 · 제목 · 도메인.
-function WebRow({ t }: { t: ToolLogItem }) {
+// prop 이름 t는 i18n의 t()를 가리므로 안에서는 tl(tool log)로 받는다
+function WebRow({ t: tl }: { t: ToolLogItem }) {
   const [open, setOpen] = useState(false)
-  const links = t.links ?? []
-  const direct = !links.length && /^https?:\/\//i.test(t.target) ? t.target : null
+  const links = tl.links ?? []
+  const direct = !links.length && /^https?:\/\//i.test(tl.target) ? tl.target : null
   const clickable = links.length > 0 || !!direct
   return (
     <>
       <div
-        className={'t-row ' + t.kind + ' ' + t.status + (clickable ? ' openable' : '')}
+        className={'t-row ' + tl.kind + ' ' + tl.status + (clickable ? ' openable' : '')}
         onClick={links.length ? () => setOpen((o) => !o) : direct ? () => window.open(direct) : undefined}
       >
-        <span className="t-ic">{toolIcon(t.kind, 14)}</span>
-        <span className="t-verb">{t.verb}</span>
+        <span className="t-ic">{toolIcon(tl.kind, 14)}</span>
+        <span className="t-verb">{tl.verb}</span>
         <span
           className={'t-target' + (clickable ? ' has-tip' : '')}
-          data-tip={links.length ? (open ? '접기' : '찾은 페이지 보기') : direct ? '브라우저에서 열기' : undefined}
+          data-tip={
+            links.length
+              ? open
+                ? t('접기', 'Collapse')
+                : t('찾은 페이지 보기', 'View found pages')
+              : direct
+                ? t('브라우저에서 열기', 'Open in browser')
+                : undefined
+          }
         >
-          <span className="t-txt">{t.target}</span>
+          <span className="t-txt">{tl.target}</span>
         </span>
-        <ToolResult t={t} />
+        <ToolResult t={tl} />
       </div>
       {open && links.length > 0 && (
         <div className="wl-list scroll">
@@ -536,23 +589,28 @@ function ToolGroup({
   if (!item.tools.length) return null
   return (
     <div className="toollog">
-      {item.tools.map((t) => {
-        if (t.kind === 'web') return <WebRow t={t} key={t.id} />
-        if (t.kind === 'bash') return <BashRow t={t} key={t.id} />
-        const openable = !!onOpenFile && (t.kind === 'read' || t.kind === 'write' || t.kind === 'edit') && !!t.target
+      {/* map 인자 이름이 t면 i18n의 t()를 가려서 tl(tool log)로 받는다 */}
+      {item.tools.map((tl) => {
+        if (tl.kind === 'web') return <WebRow t={tl} key={tl.id} />
+        if (tl.kind === 'bash') return <BashRow t={tl} key={tl.id} />
+        const openable =
+          !!onOpenFile && (tl.kind === 'read' || tl.kind === 'write' || tl.kind === 'edit') && !!tl.target
         return (
-          <Fragment key={t.id}>
+          <Fragment key={tl.id}>
             <div
-              className={'t-row ' + t.kind + ' ' + t.status + (openable ? ' openable' : '')}
-              onClick={openable ? () => onOpenFile!(t.target) : undefined}
+              className={'t-row ' + tl.kind + ' ' + tl.status + (openable ? ' openable' : '')}
+              onClick={openable ? () => onOpenFile!(tl.target) : undefined}
             >
-              <span className="t-ic">{toolIcon(t.kind, 14)}</span>
-              <span className="t-verb">{t.verb}</span>
+              <span className="t-ic">{toolIcon(tl.kind, 14)}</span>
+              <span className="t-verb">{tl.verb}</span>
               {/* 툴팁은 넓은 행 전체가 아니라 파일명에 달아, 파일명 바로 아래에 뜨게 한다 */}
-              <span className={'t-target' + (openable ? ' has-tip' : '')} data-tip={openable ? '파일 보기' : undefined}>
-                <span className="t-txt">{t.target}</span>
+              <span
+                className={'t-target' + (openable ? ' has-tip' : '')}
+                data-tip={openable ? t('파일 보기', 'View file') : undefined}
+              >
+                <span className="t-txt">{tl.target}</span>
               </span>
-              <ToolResult t={t} />
+              <ToolResult t={tl} />
             </div>
           </Fragment>
         )
@@ -578,6 +636,13 @@ function SmoothMarkdown({ text, running }: { text: string; running: boolean }) {
   const lastCommit = useRef(0) // 마지막으로 setShown을 커밋한 시각 (파싱 스로틀)
 
   useEffect(() => {
+    // 다 드러난 메시지는 루프를 아예 세운다 — 따라잡은 뒤에도 rAF를 재예약하면 화면의
+    // 말풍선 수만큼 60fps 루프가 유휴 중에도 상주해(멀티 6패널이면 7개) 렌더러가 idle에
+    // 못 들어가고 GC 기회를 잃는다. 새 청크는 [text] 재실행이 루프를 재기동한다.
+    if (curRef.current >= text.length) {
+      velRef.current = 0
+      return
+    }
     let raf = 0
     let alive = true
     const tick = (now: number): void => {
@@ -594,7 +659,10 @@ function SmoothMarkdown({ text, running }: { text: string; running: boolean }) {
           curRef.current = target
           setShown(target)
         }
-      } else if (cur < target) {
+        velRef.current = 0
+        return // 다 보였다 — 루프 정지, 다음 청크가 재기동
+      }
+      if (cur < target) {
         const buffer = target - cur
         // desired speed scales with how far behind we are, with a steady floor so
         // it never crawls during model pauses
@@ -613,17 +681,18 @@ function SmoothMarkdown({ text, running }: { text: string; running: boolean }) {
           lastCommit.current = now
           setShown(Math.floor(cur))
         }
-      } else {
-        velRef.current = 0
+        raf = requestAnimationFrame(tick)
+        return
       }
-      raf = requestAnimationFrame(tick)
+      velRef.current = 0 // caught up — park; the next chunk's [text] effect re-arms
     }
     raf = requestAnimationFrame(tick)
     return () => {
       alive = false
+      lastT.current = 0
       cancelAnimationFrame(raf)
     }
-  }, [])
+  }, [text])
 
   // colorize only once the run finished AND the reveal caught up (avoids flicker)
   const plain = running || shown < text.length
@@ -666,12 +735,16 @@ function MessageAttachments({
         // 비껴 겹침 + 'N장' 배지. 구 덱을 폐기시킨 무게(그림자·매트 액자·떠오르는 호버)는
         // 되살리지 않는다: 전부 헤어라인+표면색, 호버는 명도만
         <div className="msg-imgs">
-          <button className="msg-deck" onClick={() => onOpen?.(imgs, 0)} aria-label={`사진 ${imgs.length}장 보기`}>
+          <button
+            className="msg-deck"
+            onClick={() => onOpen?.(imgs, 0)}
+            aria-label={t(`사진 ${imgs.length}장 보기`, `View ${imgs.length} photos`)}
+          >
             <span className="msg-deck-card c2" aria-hidden="true" />
             <span className="msg-deck-card c1" aria-hidden="true" />
             <span className="msg-deck-top">
               <img src={imageSrc(imgs[0])} alt={imageName(imgs[0])} draggable={false} loading="lazy" />
-              <span className="msg-deck-n">{imgs.length}장</span>
+              <span className="msg-deck-n">{t(`${imgs.length}장`, `${imgs.length}`)}</span>
             </span>
           </button>
         </div>
@@ -710,10 +783,21 @@ export const MessageView = memo(function MessageView({
   onOpenFile?: (path: string) => void // open a file referenced by a tool-log row
   onOpenImage?: (images: string[], index: number) => void // open the image viewer at an index
 }) {
+  useLang() // 언어 전환 재렌더 구독 (memo 컴포넌트라 루트 재렌더가 여기까지 오지 않는다)
   if (item.kind === 'toolgroup') return <ToolGroup item={item} onOpenFile={onOpenFile} />
   if (item.kind === 'cmdresult') return <CmdResultCard item={item} />
   // 턴 마무리 줄 — 답변 바로 위의 'N초 동안 작업함' (PoC .worked)
   if (item.kind === 'worked') return <div className="worked">{fmtWorked(item.ms)}</div>
+  // 중단 마커 — Esc/중지로 턴을 끊은 자리. 흔적(말풍선·부분 답변·도구 로그)은 그대로
+  // 위에 남는다 (클로드 코드의 'Interrupted' 문법)
+  if (item.kind === 'interrupted') {
+    return (
+      <div className="stopline">
+        <IconSquare size={9} />
+        <span>{t('중단함', 'Interrupted')}</span>
+      </div>
+    )
+  }
   // 문답 흔적 (PoC .qa) — Q 마커+질문(흐림) 아래 ✓+답(볼드). 박스 없이 대화에 남는다
   if (item.kind === 'qa') {
     return (
@@ -758,16 +842,35 @@ export const MessageView = memo(function MessageView({
       </div>
     )
   }
+  // 오류 — 맨몸 빨간 텍스트 대신 고유 카드 (노란 안내 notice-row와 같은 문법의 빨간 판).
+  // 리듀서가 붙인 '오류: ' 접두는 카드 제목이 그 역할이라 본문에서 걷는다
+  if (item.error) {
+    return (
+      <div className="error-row">
+        <span className="error-ic">
+          <IconX2 size={15} />
+        </span>
+        <div className="error-body">
+          <div className="error-head">
+            <span className="error-title">{t('오류', 'Error')}</span>
+            <span className="error-time">{item.time}</span>
+          </div>
+          {/* 리듀서가 붙인 접두는 언어에 따라 '오류: '/'Error: ' 둘 다 올 수 있다 */}
+          <div className="error-text">{item.text.replace(/^(오류|Error):\s*/, '')}</div>
+        </div>
+      </div>
+    )
+  }
   const isUser = item.role === 'user'
   return (
-    <div className={'msg ' + (isUser ? 'user' : 'ai-msg') + (item.error ? ' error' : '')}>
+    <div className={'msg ' + (isUser ? 'user' : 'ai-msg')}>
       <div className="msg-main">
         <div className="content">
           {item.kind === 'msg' && item.images && item.images.length > 0 && (
             <MessageAttachments images={item.images} onOpen={onOpenImage} onOpenFile={onOpenFile} />
           )}
           {item.text &&
-            (isUser || item.error ? (
+            (isUser ? (
               <p>{item.animate ? <Typewriter text={item.text} /> : item.text}</p>
             ) : live ? (
               <SmoothMarkdown text={item.text} running={!!running} />
@@ -783,7 +886,7 @@ export const MessageView = memo(function MessageView({
 // Completion card for a finished slash command (/init·/compact·/review·/security-review).
 // Skills and /clear never reach here — only commands tracked in SLASH_COMMANDS.
 function CmdResultCard({ item }: { item: Extract<ThreadItem, { kind: 'cmdresult' }> }) {
-  const Ic = SLASH_COMMANDS.find((c) => c.name === item.name)?.icon ?? IconTerminal
+  const Ic = slashCommands().find((c) => c.name === item.name)?.icon ?? IconTerminal
   return (
     <div className={'cmd-card' + (item.running ? ' running' : '') + (item.failed ? ' failed' : '')}>
       <span className="cmd-card-ic">
@@ -804,169 +907,172 @@ function CmdResultCard({ item }: { item: Extract<ThreadItem, { kind: 'cmdresult'
 
 // Playful rotating labels (Claude Code style) shown while busy when there's no
 // explicit thinking summary.
-const WORKING_PHRASES = [
-  // 생각·궁리
-  '골똘히 생각하는 중',
-  '머리 굴리는 중',
-  '곰곰이 따져보는 중',
-  '차근차근 정리하는 중',
-  '고민에 고민을 더하는 중',
-  '차분히 헤아리는 중',
-  '곱씹어보는 중',
-  '요모조모 뜯어보는 중',
-  '하나하나 짚어보는 중',
-  '갈피를 잡는 중',
-  '감을 잡는 중',
-  '머릿속을 정돈하는 중',
-  '생각을 가다듬는 중',
-  '생각의 갈래를 나누는 중',
-  '핵심만 골라내는 중',
-  '앞뒤를 맞춰보는 중',
-  '정신 집중하는 중',
-  '맥락을 읽는 중',
-  '흐름을 따라가는 중',
-  // 두뇌·회로
-  '뇌를 가동하는 중',
-  '머릿속 회로 돌리는 중',
-  '톱니바퀴 돌리는 중',
-  '두뇌 풀가동 중',
-  '두뇌 예열중',
-  '회로 점검중',
-  '두뇌 엔진 데우는 중',
-  '기어를 올리는 중',
-  '생각 회로에 불 켜는 중',
-  '두뇌 터빈 돌리는 중',
-  '뉴런 총출동 중',
-  '시냅스 달구는 중',
-  '뉴런을 깨우는 중',
-  '시냅스 연결하는 중',
-  '뇌세포 소집하는 중',
-  '회로도를 따라가는 중',
-  '배선을 정리하는 중',
-  '신호를 추적하는 중',
-  '머릿속 주판 튕기는 중',
-  '머릿속 칠판에 적는 중',
-  '머릿속 서랍을 뒤지는 중',
-  '기억의 책장을 넘기는 중',
-  '머릿속 실험실 가동 중',
-  // 추리·수사
-  '단서를 모으는 중',
-  '실마리를 푸는 중',
-  '돋보기 들이대는 중',
-  '발자국 따라가는 중',
-  '수수께끼를 푸는 중',
-  '단서를 맞춰보는 중',
-  '흩어진 단서를 줍는 중',
-  '추리를 이어가는 중',
-  '진상을 파헤치는 중',
-  '범인을 좁혀가는 중',
-  '버그 자취를 쫓는 중',
-  '안개를 걷어내는 중',
-  '촉을 세우는 중',
-  // 탐험·발굴
-  '이리저리 탐색하는 중',
-  '코드 숲을 헤매는 중',
-  '보물 찾는 중',
-  '지도를 펼치는 중',
-  '미궁을 헤치는 중',
-  '미로에서 길 찾는 중',
-  '깊이 파고드는 중',
-  '지름길을 찾는 중',
-  '샛길을 살피는 중',
-  '갈림길에서 고르는 중',
-  '코드 바다를 항해하는 중',
-  '깊은 곳까지 잠수하는 중',
-  '광맥을 캐는 중',
-  '원석을 캐는 중',
-  '점들을 잇는 중',
-  '별자리를 잇는 중',
-  // 퍼즐·엮기
-  '퍼즐 맞추는 중',
-  '조합해보는 중',
-  '생각의 실타래 푸는 중',
-  '매듭을 푸는 중',
-  '빈칸을 채우는 중',
-  '한 땀 한 땀 엮는 중',
-  '차곡차곡 쌓는 중',
-  '딱 맞는 조각 찾는 중',
-  '틀을 짜는 중',
-  '촘촘히 엮는 중',
-  // 코드·논리
-  '코드 들여다보는 중',
-  '코드를 음미하는 중',
-  '논리를 다듬는 중',
-  '경우의 수를 세는 중',
-  '가능성을 저울질하는 중',
-  '코드 결을 살피는 중',
-  '코드 행간을 읽는 중',
-  '로직을 굴려보는 중',
-  '실행 흐름을 짚는 중',
-  '흐름을 거슬러 올라가는 중',
-  '변수를 저울질하는 중',
-  '변수를 하나씩 소거하는 중',
-  '논리를 갈고닦는 중',
-  '가설을 세우는 중',
-  '가설을 검증하는 중',
-  '반례를 찾아보는 중',
-  '허점을 메우는 중',
-  '빈틈을 살피는 중',
-  '방정식을 푸는 중',
-  // 설계·구축
-  '큰 그림 그리는 중',
-  '설계도를 펼치는 중',
-  '청사진을 그리는 중',
-  '밑그림 그리는 중',
-  '뼈대를 세우는 중',
-  '주춧돌 놓는 중',
-  '판을 짜는 중',
-  '수순을 정하는 중',
-  '벽돌을 한 장씩 쌓는 중',
-  '징검다리 놓는 중',
-  '첫 단추를 끼우는 중',
-  // 수읽기·승부
-  '묘수를 찾는 중',
-  '반짝이는 수를 고르는 중',
-  '묘안을 짜내는 중',
-  '다음 수를 읽는 중',
-  '몇 수 앞을 내다보는 중',
-  '판세를 읽는 중',
-  '포석을 놓는 중',
-  '외통수를 찾는 중',
-  '승부수를 고르는 중',
-  '묘수풀이 하는 중',
-  '패를 맞춰보는 중',
-  // 생각 요리·숙성 — 생각/아이디어/답이 주어로 오는 것만
-  '아이디어 굽는 중',
-  '생각을 졸이는 중',
-  '생각을 우려내는 중',
-  '아이디어 반죽하는 중',
-  '답을 숙성시키는 중',
-  '노릇하게 굽는 중',
-  '갓 구운 답 꺼내는 중',
-  '생각을 뜸 들이는 중',
-  '생각을 재우는 중',
-  '생각을 체에 거르는 중',
-  '생각을 증류하는 중',
-  '아이디어를 발효시키는 중',
-  '아이디어를 배양하는 중',
-  '발상을 버무리는 중',
-  '발상을 굴리는 중',
-  '답을 빚는 중',
-  // 영감·마법
-  '마법 부리는 중',
-  '영감을 부르는 중',
-  '번뜩임 기다리는 중',
-  '아이디어에 불씨 지피는 중',
-  '영감의 안테나 세우는 중',
-  '마법진을 그리는 중',
-  '주문을 외는 중',
-  // 몸풀기
-  '슬슬 시동 거는 중',
-  '손가락 푸는 중',
-  '열심히 만지작거리는 중',
-  '톡톡 두드려보는 중',
-  '머리를 쥐어짜는 중'
-]
+// 표시 문자열이라 상수가 아니라 함수 — 모듈 스코프에서 t()를 부르면 import 시점 언어로 박제된다
+function workingPhrases(): string[] {
+  return [
+    // 생각·궁리
+    t('골똘히 생각하는 중', 'Thinking hard'),
+    t('머리 굴리는 중', 'Racking my brain'),
+    t('곰곰이 따져보는 중', 'Mulling it over'),
+    t('차근차근 정리하는 중', 'Sorting it out step by step'),
+    t('고민에 고민을 더하는 중', 'Overthinking, then some'),
+    t('차분히 헤아리는 중', 'Weighing it calmly'),
+    t('곱씹어보는 중', 'Chewing it over'),
+    t('요모조모 뜯어보는 중', 'Picking it apart'),
+    t('하나하나 짚어보는 중', 'Going through it one by one'),
+    t('갈피를 잡는 중', 'Getting my bearings'),
+    t('감을 잡는 중', 'Getting a feel for it'),
+    t('머릿속을 정돈하는 중', 'Tidying up my head'),
+    t('생각을 가다듬는 중', 'Collecting my thoughts'),
+    t('생각의 갈래를 나누는 중', 'Branching out the ideas'),
+    t('핵심만 골라내는 중', 'Picking out the essentials'),
+    t('앞뒤를 맞춰보는 중', 'Lining up the pieces'),
+    t('정신 집중하는 중', 'Focusing up'),
+    t('맥락을 읽는 중', 'Reading the context'),
+    t('흐름을 따라가는 중', 'Following the flow'),
+    // 두뇌·회로
+    t('뇌를 가동하는 중', 'Booting up the brain'),
+    t('머릿속 회로 돌리는 중', 'Spinning up mental circuits'),
+    t('톱니바퀴 돌리는 중', 'Turning the gears'),
+    t('두뇌 풀가동 중', 'Brain at full throttle'),
+    t('두뇌 예열중', 'Warming up the brain'),
+    t('회로 점검중', 'Checking the circuits'),
+    t('두뇌 엔진 데우는 중', 'Heating the brain engine'),
+    t('기어를 올리는 중', 'Shifting up a gear'),
+    t('생각 회로에 불 켜는 중', 'Lighting up the thought circuits'),
+    t('두뇌 터빈 돌리는 중', 'Spinning the brain turbine'),
+    t('뉴런 총출동 중', 'All neurons on deck'),
+    t('시냅스 달구는 중', 'Firing up the synapses'),
+    t('뉴런을 깨우는 중', 'Waking the neurons'),
+    t('시냅스 연결하는 중', 'Wiring the synapses'),
+    t('뇌세포 소집하는 중', 'Rallying the brain cells'),
+    t('회로도를 따라가는 중', 'Tracing the schematic'),
+    t('배선을 정리하는 중', 'Tidying the wiring'),
+    t('신호를 추적하는 중', 'Tracking the signal'),
+    t('머릿속 주판 튕기는 중', 'Clicking the mental abacus'),
+    t('머릿속 칠판에 적는 중', 'Writing on the mental chalkboard'),
+    t('머릿속 서랍을 뒤지는 중', 'Rummaging through mental drawers'),
+    t('기억의 책장을 넘기는 중', 'Flipping through memory'),
+    t('머릿속 실험실 가동 중', 'Running the mind lab'),
+    // 추리·수사
+    t('단서를 모으는 중', 'Gathering clues'),
+    t('실마리를 푸는 중', 'Unraveling the thread'),
+    t('돋보기 들이대는 중', 'Holding up the magnifier'),
+    t('발자국 따라가는 중', 'Following the footprints'),
+    t('수수께끼를 푸는 중', 'Solving the riddle'),
+    t('단서를 맞춰보는 중', 'Matching up the clues'),
+    t('흩어진 단서를 줍는 중', 'Picking up scattered clues'),
+    t('추리를 이어가는 중', 'Carrying on the deduction'),
+    t('진상을 파헤치는 중', 'Digging for the truth'),
+    t('범인을 좁혀가는 중', 'Narrowing down the culprit'),
+    t('버그 자취를 쫓는 중', "Chasing the bug's trail"),
+    t('안개를 걷어내는 중', 'Clearing the fog'),
+    t('촉을 세우는 중', 'Trusting my instincts'),
+    // 탐험·발굴
+    t('이리저리 탐색하는 중', 'Poking around'),
+    t('코드 숲을 헤매는 중', 'Wandering the code forest'),
+    t('보물 찾는 중', 'Hunting for treasure'),
+    t('지도를 펼치는 중', 'Unfolding the map'),
+    t('미궁을 헤치는 중', 'Working through the labyrinth'),
+    t('미로에서 길 찾는 중', 'Finding a way out of the maze'),
+    t('깊이 파고드는 중', 'Digging in deep'),
+    t('지름길을 찾는 중', 'Looking for a shortcut'),
+    t('샛길을 살피는 중', 'Scouting the side paths'),
+    t('갈림길에서 고르는 중', 'Choosing at the fork'),
+    t('코드 바다를 항해하는 중', 'Sailing the sea of code'),
+    t('깊은 곳까지 잠수하는 중', 'Diving all the way down'),
+    t('광맥을 캐는 중', 'Mining the vein'),
+    t('원석을 캐는 중', 'Digging out the raw gems'),
+    t('점들을 잇는 중', 'Connecting the dots'),
+    t('별자리를 잇는 중', 'Drawing constellations'),
+    // 퍼즐·엮기
+    t('퍼즐 맞추는 중', 'Assembling the puzzle'),
+    t('조합해보는 중', 'Trying combinations'),
+    t('생각의 실타래 푸는 중', 'Untangling the thoughts'),
+    t('매듭을 푸는 중', 'Undoing the knot'),
+    t('빈칸을 채우는 중', 'Filling in the blanks'),
+    t('한 땀 한 땀 엮는 중', 'Stitching it together'),
+    t('차곡차곡 쌓는 중', 'Stacking it up neatly'),
+    t('딱 맞는 조각 찾는 중', 'Finding the piece that fits'),
+    t('틀을 짜는 중', 'Framing it out'),
+    t('촘촘히 엮는 중', 'Weaving it tight'),
+    // 코드·논리
+    t('코드 들여다보는 중', 'Peering into the code'),
+    t('코드를 음미하는 중', 'Savoring the code'),
+    t('논리를 다듬는 중', 'Polishing the logic'),
+    t('경우의 수를 세는 중', 'Counting the cases'),
+    t('가능성을 저울질하는 중', 'Weighing the possibilities'),
+    t('코드 결을 살피는 중', 'Reading the grain of the code'),
+    t('코드 행간을 읽는 중', 'Reading between the lines'),
+    t('로직을 굴려보는 중', 'Turning the logic over'),
+    t('실행 흐름을 짚는 중', 'Tracing the execution'),
+    t('흐름을 거슬러 올라가는 중', 'Walking the flow backwards'),
+    t('변수를 저울질하는 중', 'Weighing the variables'),
+    t('변수를 하나씩 소거하는 중', 'Eliminating variables one by one'),
+    t('논리를 갈고닦는 중', 'Sharpening the logic'),
+    t('가설을 세우는 중', 'Forming a hypothesis'),
+    t('가설을 검증하는 중', 'Testing the hypothesis'),
+    t('반례를 찾아보는 중', 'Hunting for counterexamples'),
+    t('허점을 메우는 중', 'Patching the holes'),
+    t('빈틈을 살피는 중', 'Checking for gaps'),
+    t('방정식을 푸는 중', 'Solving the equation'),
+    // 설계·구축
+    t('큰 그림 그리는 중', 'Sketching the big picture'),
+    t('설계도를 펼치는 중', 'Rolling out the blueprints'),
+    t('청사진을 그리는 중', 'Drawing the blueprint'),
+    t('밑그림 그리는 중', 'Sketching the outline'),
+    t('뼈대를 세우는 중', 'Raising the skeleton'),
+    t('주춧돌 놓는 중', 'Laying the cornerstone'),
+    t('판을 짜는 중', 'Setting the stage'),
+    t('수순을 정하는 중', 'Deciding the order of moves'),
+    t('벽돌을 한 장씩 쌓는 중', 'Laying bricks one by one'),
+    t('징검다리 놓는 중', 'Placing stepping stones'),
+    t('첫 단추를 끼우는 중', 'Buttoning the first button'),
+    // 수읽기·승부
+    t('묘수를 찾는 중', 'Looking for the brilliant move'),
+    t('반짝이는 수를 고르는 중', 'Picking a sparkling move'),
+    t('묘안을 짜내는 중', 'Cooking up a clever idea'),
+    t('다음 수를 읽는 중', 'Reading the next move'),
+    t('몇 수 앞을 내다보는 중', 'Looking a few moves ahead'),
+    t('판세를 읽는 중', 'Reading the board'),
+    t('포석을 놓는 중', 'Setting up the opening'),
+    t('외통수를 찾는 중', 'Searching for checkmate'),
+    t('승부수를 고르는 중', 'Choosing the winning move'),
+    t('묘수풀이 하는 중', 'Working out the killer move'),
+    t('패를 맞춰보는 중', 'Matching up the cards'),
+    // 생각 요리·숙성 — 생각/아이디어/답이 주어로 오는 것만
+    t('아이디어 굽는 중', 'Baking the ideas'),
+    t('생각을 졸이는 중', 'Simmering the thoughts down'),
+    t('생각을 우려내는 중', 'Steeping the thoughts'),
+    t('아이디어 반죽하는 중', 'Kneading the idea dough'),
+    t('답을 숙성시키는 중', 'Aging the answer'),
+    t('노릇하게 굽는 중', 'Baking it golden brown'),
+    t('갓 구운 답 꺼내는 중', 'Pulling out a fresh-baked answer'),
+    t('생각을 뜸 들이는 중', 'Letting the thoughts steam'),
+    t('생각을 재우는 중', 'Letting the thoughts marinate'),
+    t('생각을 체에 거르는 중', 'Sifting the thoughts'),
+    t('생각을 증류하는 중', 'Distilling the thoughts'),
+    t('아이디어를 발효시키는 중', 'Fermenting the ideas'),
+    t('아이디어를 배양하는 중', 'Culturing the ideas'),
+    t('발상을 버무리는 중', 'Tossing the ideas together'),
+    t('발상을 굴리는 중', 'Rolling the idea around'),
+    t('답을 빚는 중', 'Shaping the answer'),
+    // 영감·마법
+    t('마법 부리는 중', 'Working some magic'),
+    t('영감을 부르는 중', 'Summoning inspiration'),
+    t('번뜩임 기다리는 중', 'Waiting for the spark'),
+    t('아이디어에 불씨 지피는 중', 'Kindling the idea'),
+    t('영감의 안테나 세우는 중', 'Raising the inspiration antenna'),
+    t('마법진을 그리는 중', 'Drawing the magic circle'),
+    t('주문을 외는 중', 'Chanting the incantation'),
+    // 몸풀기
+    t('슬슬 시동 거는 중', 'Getting the engine going'),
+    t('손가락 푸는 중', 'Limbering up my fingers'),
+    t('열심히 만지작거리는 중', 'Fiddling away'),
+    t('톡톡 두드려보는 중', 'Tapping around'),
+    t('머리를 쥐어짜는 중', 'Squeezing my brain')
+  ]
+}
 
 // 멘트 shimmer 색 추첨 — 화이트 90%, 단색 19종이 9.7%를 나눔(각 ≈0.51%), 그라디언트는
 // 남는 0.3%: rainbow만 0.01%(1만분의 1 잭팟), 나머지 5종이 0.29%를 나눔(각 0.058%).
@@ -991,7 +1097,8 @@ function rollPhraseColor(): string {
 // elapsed(초)는 useAgentSession 훅에서 내려온다 — 질문/승인 카드나 답변 스트리밍으로
 // 인디케이터가 잠시 언마운트돼도 훅이 계속 세고 있어 리셋되지 않는다
 export function WorkingIndicator({ elapsed }: { elapsed: number }) {
-  const [i, setI] = useState(() => Math.floor(Math.random() * WORKING_PHRASES.length))
+  useLang() // 언어 전환 재렌더 구독 — 회전 문구가 즉시 따라온다
+  const [i, setI] = useState(() => Math.floor(Math.random() * workingPhrases().length))
   const [color, setColor] = useState(rollPhraseColor)
   useEffect(() => {
     let id: ReturnType<typeof setTimeout>
@@ -1000,9 +1107,10 @@ export function WorkingIndicator({ elapsed }: { elapsed: number }) {
       id = setTimeout(
         () => {
           setI((n) => {
-            if (WORKING_PHRASES.length < 2) return 0
-            let next = Math.floor(Math.random() * WORKING_PHRASES.length)
-            if (next === n) next = (next + 1) % WORKING_PHRASES.length
+            const len = workingPhrases().length
+            if (len < 2) return 0
+            let next = Math.floor(Math.random() * len)
+            if (next === n) next = (next + 1) % len
             return next
           })
           setColor(rollPhraseColor())
@@ -1014,7 +1122,7 @@ export function WorkingIndicator({ elapsed }: { elapsed: number }) {
     schedule()
     return () => clearTimeout(id)
   }, [])
-  const label = WORKING_PHRASES[i]
+  const label = workingPhrases()[i]
   // 라이브 인디케이터 — 마스코트가 선부터 그려지는 루프(머리→귀→더듬이→점) + shimmer 문구.
   return (
     <div className="working-line">
@@ -1117,7 +1225,7 @@ export function FolderPop({
           {baseOf(f.path)}
           <span className="sub">{f.path}</span>
         </span>
-        {(f.current || f.t > 0) && <span className="end">{f.current ? '지금' : relTime(f.t)}</span>}
+        {(f.current || f.t > 0) && <span className="end">{f.current ? t('지금', 'Now') : relTime(f.t)}</span>}
         {f.current && (
           <span className="pcheck">
             <IconCheck size={12} stroke={2.4} />
@@ -1128,7 +1236,7 @@ export function FolderPop({
         <span
           className={'hstar' + (fav ? ' on' : '')}
           role="button"
-          aria-label={fav ? '즐겨찾기 해제' : '즐겨찾기'}
+          aria-label={fav ? t('즐겨찾기 해제', 'Remove from favorites') : t('즐겨찾기', 'Add to favorites')}
           onClick={(e) => onStar(e, f.path)}
         >
           <IconStar size={12} />
@@ -1139,7 +1247,9 @@ export function FolderPop({
           <span
             className={'hstar htg' + (ref ? ' on' : '')}
             role="button"
-            aria-label={ref ? '참조 폴더에서 제거' : '참조 폴더로 추가'}
+            aria-label={
+              ref ? t('참조 폴더에서 제거', 'Remove from reference folders') : t('참조 폴더로 추가', 'Add as reference folder')
+            }
             onClick={(e) => {
               e.stopPropagation()
               if (ref) onRemoveRef?.(f.path)
@@ -1155,24 +1265,24 @@ export function FolderPop({
   return (
     <div className={'wb-pop hpop' + (right ? ' r' : '')}>
       <div className="wb-pop-h">
-        <span className="t">작업 폴더</span>
+        <span className="t">{t('작업 폴더', 'Working folder')}</span>
       </div>
       <div className="wb-pop-list">
         {curRow && renderRow(curRow)}
         {/* 즐겨찾기가 있을 때만 섹션 캡션(라벨+밑줄)으로 나눈다 — 없으면 예전처럼 최근만 평평하게 */}
         {favRows.length > 0 && (
           <>
-            <div className="hsec">즐겨찾기</div>
+            <div className="hsec">{t('즐겨찾기', 'Favorites')}</div>
             {favRows.map(renderRow)}
           </>
         )}
-        {recRows.length > 0 && favRows.length > 0 && <div className="hsec">최근</div>}
+        {recRows.length > 0 && favRows.length > 0 && <div className="hsec">{t('최근', 'Recent')}</div>}
         {recRows.map(renderRow)}
         {/* 참조 폴더 — 작업 폴더 외에 엔진이 함께 인식할 폴더(--add-dir). 행은 선택이
             아니라 관리 대상이라 클릭 없음 + 호버에 제거 ✕만 */}
         {onAddRef && (
           <>
-            <div className="hsec">참조 폴더</div>
+            <div className="hsec">{t('참조 폴더', 'Reference folders')}</div>
             {(refDirs ?? []).map((p) => (
               <div key={p} className="wb-prow hprow href">
                 <span className="grow">
@@ -1182,7 +1292,7 @@ export function FolderPop({
                 <span
                   className="hstar hx"
                   role="button"
-                  aria-label="참조 폴더 제거"
+                  aria-label={t('참조 폴더 제거', 'Remove reference folder')}
                   onClick={() => onRemoveRef?.(p)}
                 >
                   <IconClose size={11} />
@@ -1197,7 +1307,8 @@ export function FolderPop({
               }}
             >
               <span className="grow">
-                참조 폴더 추가…<span className="sub">작업 폴더 외에 함께 인식할 폴더</span>
+                {t('참조 폴더 추가…', 'Add reference folder…')}
+                <span className="sub">{t('작업 폴더 외에 함께 인식할 폴더', 'Extra folders the engine can see')}</span>
               </span>
             </button>
           </>
@@ -1211,7 +1322,8 @@ export function FolderPop({
           }}
         >
           <span className="grow">
-            폴더 찾아보기…<span className="sub">목록에 없는 폴더 선택</span>
+            {t('폴더 찾아보기…', 'Browse folders…')}
+            <span className="sub">{t('목록에 없는 폴더 선택', 'Pick a folder not in the list')}</span>
           </span>
         </button>
       </div>
@@ -1226,7 +1338,7 @@ export function FolderPop({
 export function ChatHeader({
   title,
   cwd,
-  placeholder = '폴더 선택',
+  placeholder = t('폴더 선택', 'Select folder'),
   onSelectFolder,
   onBrowseFolder,
   refDirs,
@@ -1266,7 +1378,14 @@ export function ChatHeader({
               팝오버가 열려 있는 동안은 has-tip을 떼어 툴팁이 팝오버와 겹치지 않게 한다 */}
           <button
             className={'tag mono fsel' + (fpop ? '' : ' has-tip')}
-            data-tip={refDirs?.length ? `작업 폴더 — 누르면 변경 · 참조 폴더 ${refDirs.length}개` : '작업 폴더 — 누르면 변경'}
+            data-tip={
+              refDirs?.length
+                ? t(
+                    `작업 폴더 — 누르면 변경 · 참조 폴더 ${refDirs.length}개`,
+                    `Working folder — click to change · ${refDirs.length} reference folders`
+                  )
+                : t('작업 폴더 — 누르면 변경', 'Working folder — click to change')
+            }
             onClick={() => setFpop((o) => !o)}
           >
             <span className="fsel-txt">{cwd || placeholder}</span>
@@ -1290,8 +1409,8 @@ export function ChatHeader({
       <span className="spacer" />
       <button
         className={'h-ic has-tip' + (findOn ? ' on' : '')}
-        data-tip="대화에서 찾기 (Ctrl+F)"
-        aria-label="대화에서 찾기"
+        data-tip={t('대화에서 찾기 (Ctrl+F)', 'Find in chat (Ctrl+F)')}
+        aria-label={t('대화에서 찾기', 'Find in chat')}
         onClick={() => window.dispatchEvent(new Event('ccg:chat-find'))}
       >
         <IconSearch size={15} />
@@ -1299,8 +1418,12 @@ export function ChatHeader({
       {onToggleExplorer && (
         <button
           className={'h-ic has-tip' + (explorerHidden ? '' : ' on')}
-          data-tip={explorerHidden ? '파일 탐색기 — 왼쪽 목록과 전환 (`)' : '채팅 목록으로 (`)'}
-          aria-label="파일 탐색기"
+          data-tip={
+            explorerHidden
+              ? t('파일 탐색기 — 왼쪽 목록과 전환 (`)', 'File explorer — swap the left list (`)')
+              : t('채팅 목록으로 (`)', 'Back to chat list (`)')
+          }
+          aria-label={t('파일 탐색기', 'File explorer')}
           onClick={onToggleExplorer}
         >
           <IconPanelRight size={15} />
@@ -1409,12 +1532,12 @@ export function SelectionToolbar({
     >
       <button className="sel-act" onClick={copy}>
         {copied ? <IconCheck size={14} /> : <IconCopy size={14} />}
-        <span>{copied ? '복사됨' : '복사'}</span>
+        <span>{copied ? t('복사됨', 'Copied') : t('복사', 'Copy')}</span>
       </button>
       <span className="sel-div" />
       <button className="sel-act" onClick={elaborate}>
         <IconSearch size={14} />
-        <span>더 자세히</span>
+        <span>{t('더 자세히', 'Tell me more')}</span>
       </button>
     </div>
   )
@@ -1629,7 +1752,7 @@ export function ChatFind({
         ref={inputRef}
         autoFocus
         value={query}
-        placeholder="채팅 내 검색…"
+        placeholder={t('채팅 내 검색…', 'Search chat…')}
         onChange={(e) => setQuery(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === 'Enter') {
@@ -1642,14 +1765,26 @@ export function ChatFind({
           }
         }}
       />
-      <span className="cnt">{total ? `${cur + 1}/${total}` : query ? '0개' : ''}</span>
-      <button className="has-tip" data-tip="이전 (Shift+Enter)" aria-label="이전 결과" onClick={() => step(-1)} disabled={!total}>
+      <span className="cnt">{total ? `${cur + 1}/${total}` : query ? t('0개', '0/0') : ''}</span>
+      <button
+        className="has-tip"
+        data-tip={t('이전 (Shift+Enter)', 'Previous (Shift+Enter)')}
+        aria-label={t('이전 결과', 'Previous match')}
+        onClick={() => step(-1)}
+        disabled={!total}
+      >
         <IconChevDown size={14} style={{ transform: 'rotate(180deg)' }} />
       </button>
-      <button className="has-tip" data-tip="다음 (Enter)" aria-label="다음 결과" onClick={() => step(1)} disabled={!total}>
+      <button
+        className="has-tip"
+        data-tip={t('다음 (Enter)', 'Next (Enter)')}
+        aria-label={t('다음 결과', 'Next match')}
+        onClick={() => step(1)}
+        disabled={!total}
+      >
         <IconChevDown size={14} />
       </button>
-      <button className="has-tip" data-tip="닫기 (Esc)" aria-label="검색 닫기" onClick={close}>
+      <button className="has-tip" data-tip={t('닫기 (Esc)', 'Close (Esc)')} aria-label={t('검색 닫기', 'Close search')} onClick={close}>
         <IconClose size={14} />
       </button>
     </div>
@@ -1779,31 +1914,43 @@ export function useThreadFollow(scrollEl: HTMLElement | null, busy: boolean) {
   return { showJump, pin, reset, snapIfStuck, jumpBottom, scrollTop }
 }
 
-const WELCOME_SUGGESTIONS: { icon: typeof IconPencil; label: string }[] = [
-  { icon: IconEye, label: '이 프로젝트의 구조를 설명해줘' },
-  { icon: IconSearch, label: '버그를 찾아서 고쳐줘' },
-  { icon: IconBolt, label: '성능을 개선할 부분을 찾아줘' },
-  { icon: IconPencil, label: '테스트 코드를 작성해줘' }
-]
+// 표시 문자열이라 상수가 아니라 함수 — 모듈 스코프 t()는 import 시점 언어로 박제된다
+function welcomeSuggestions(): { icon: typeof IconPencil; label: string }[] {
+  return [
+    { icon: IconEye, label: t('이 프로젝트의 구조를 설명해줘', 'Explain how this project is structured') },
+    { icon: IconSearch, label: t('버그를 찾아서 고쳐줘', 'Find a bug and fix it') },
+    { icon: IconBolt, label: t('성능을 개선할 부분을 찾아줘', 'Find things worth optimizing') },
+    { icon: IconPencil, label: t('테스트 코드를 작성해줘', 'Write tests for this code') }
+  ]
+}
 
 // 순수 채팅(대화) 모드 — 작업 폴더가 없어 코드 작업이 아니라 설명·아이디어·상의 위주
-const CHAT_SUGGESTIONS: { icon: typeof IconPencil; label: string }[] = [
-  { icon: IconBook, label: '어려운 개념을 쉽게 설명해줘' },
-  { icon: IconBolt, label: '아이디어를 함께 브레인스토밍해줘' },
-  { icon: IconWrench, label: '기술 선택이나 설계 방향을 같이 고민해줘' },
-  { icon: IconPencil, label: '글이나 문서 초안을 작성해줘' }
-]
+function chatSuggestions(): { icon: typeof IconPencil; label: string }[] {
+  return [
+    { icon: IconBook, label: t('어려운 개념을 쉽게 설명해줘', 'Explain a hard concept simply') },
+    { icon: IconBolt, label: t('아이디어를 함께 브레인스토밍해줘', 'Brainstorm ideas with me') },
+    { icon: IconWrench, label: t('기술 선택이나 설계 방향을 같이 고민해줘', 'Think through a tech or design choice') },
+    { icon: IconPencil, label: t('글이나 문서 초안을 작성해줘', 'Draft a document or some writing') }
+  ]
+}
 
-const WELCOME_COPY = {
-  agent: {
-    sub: '코드 작성과 리뷰부터 버그 수정, 리팩터링까지 — 아래에 바로 입력하거나 추천으로 시작해보세요.',
-    suggestions: WELCOME_SUGGESTIONS
-  },
-  chat: {
-    sub: '가볍게 대화로 시작해보세요 — 궁금한 걸 묻거나 아이디어를 함께 정리해보세요.',
-    suggestions: CHAT_SUGGESTIONS
-  }
-} as const
+function welcomeCopy(variant: 'agent' | 'chat'): { sub: string; suggestions: { icon: typeof IconPencil; label: string }[] } {
+  return variant === 'chat'
+    ? {
+        sub: t(
+          '가볍게 대화로 시작해보세요 — 궁금한 걸 묻거나 아이디어를 함께 정리해보세요.',
+          'Start with a chat — ask anything, or sort out an idea together.'
+        ),
+        suggestions: chatSuggestions()
+      }
+    : {
+        sub: t(
+          '코드 작성과 리뷰부터 버그 수정, 리팩터링까지 — 아래에 바로 입력하거나 추천으로 시작해보세요.',
+          'From writing and reviewing code to fixing bugs and refactoring — type below, or start from a suggestion.'
+        ),
+        suggestions: welcomeSuggestions()
+      }
+}
 
 // shown in the chat area when the active conversation is empty (first launch / new chat).
 // variant='chat'은 작업 폴더 없는 순수 대화 모드용 — 대화 중심 추천을 보여준다.
@@ -1816,7 +1963,7 @@ export function WelcomeState({
   onPick: (text: string) => void
   variant?: 'agent' | 'chat'
 }) {
-  const copy = WELCOME_COPY[variant]
+  const copy = welcomeCopy(variant)
   return (
     <div className="welcome">
       {/* 정지 마스코트 — 그려지는(draw-loop) 로봇은 "작업 중" 인디케이터 전용, 대기
@@ -1824,7 +1971,12 @@ export function WelcomeState({
       <div className="wc-mark">
         <IconMascot size={46} />
       </div>
-      <div className="wc-title">무엇을 도와드릴까요{userName ? `, ${userName}님` : ''}?</div>
+      <div className="wc-title">
+        {t(
+          `무엇을 도와드릴까요${userName ? `, ${userName}님` : ''}?`,
+          `What can I help with${userName ? `, ${userName}` : ''}?`
+        )}
+      </div>
       <div className="wc-sub">{copy.sub}</div>
       <div className="wc-grid">
         {copy.suggestions.map((s) => (
@@ -1882,7 +2034,7 @@ export function remainTone(left: number): '' | 'warn' | 'crit' {
 function usageLineNode(parts: { label: string; left: number }[]): ReactNode {
   return (
     <>
-      {'남음 '}
+      {t('남음 ', 'Left ')}
       {parts.map((p, i) => {
         const tone = remainTone(p.left)
         const text = `${p.label} ${p.left}%`
@@ -1902,9 +2054,9 @@ function usageLineNode(parts: { label: string; left: number }[]): ReactNode {
 function acctUsageLine(u?: AccountUsage): ReactNode {
   if (!u) return null
   const parts: { label: string; left: number }[] = []
-  if (u.fiveHourPct != null) parts.push({ label: '5시간', left: 100 - u.fiveHourPct })
+  if (u.fiveHourPct != null) parts.push({ label: t('5시간', '5h'), left: 100 - u.fiveHourPct })
   if (u.fablePct != null) parts.push({ label: 'Fable', left: 100 - u.fablePct })
-  if (u.weeklyPct != null) parts.push({ label: '주간', left: 100 - u.weeklyPct })
+  if (u.weeklyPct != null) parts.push({ label: t('주간', 'Weekly'), left: 100 - u.weeklyPct })
   if (!parts.length) return null
   return usageLineNode(parts)
 }
@@ -2002,17 +2154,17 @@ function useCodexUsage(engine: EngineId | undefined, codexAccount: string | unde
 
 // 추론 슬라이더 — 6단계 스냅 (최소~최대, EFFORTS.level 0~5)
 function EffortSlide({ effort, onChange }: { effort: EffortId; onChange: (e: EffortId) => void }) {
-  const cur = EFFORTS.find((e) => e.id === effort) ?? EFFORTS[2]
+  const cur = effortOpts().find((e) => e.id === effort) ?? effortOpts()[2]
   const pct = cur.level * 20
   const snap = (clientX: number, el: HTMLDivElement): void => {
     const r = el.getBoundingClientRect()
     const idx = Math.min(5, Math.max(0, Math.round(((clientX - r.left) / r.width) * 5)))
-    const opt = EFFORTS.find((x) => x.level === idx)
+    const opt = effortOpts().find((x) => x.level === idx)
     if (opt && opt.id !== effort) onChange(opt.id)
   }
   return (
     <div className="eslide">
-      <span className="elabel">추론</span>
+      <span className="elabel">{t('추론', 'Reasoning')}</span>
       <div className="etrack" onClick={(e) => snap(e.clientX, e.currentTarget)}>
         <i className="efill" style={{ width: pct + '%' }} />
         {[0, 1, 2, 3, 4, 5].map((i) => (
@@ -2082,10 +2234,10 @@ export function PickerChip({
   const engine: EngineId = picker.engine === 'codex' ? 'codex' : 'claude'
   const codexModels = useCodexModels(engine)
   const codexId = picker.codexModel ?? CODEX_DEFAULT_MODEL
-  const codexOpt = codexModels.find((m) => m.id === codexId) ?? codexModels[0] ?? CODEX_FALLBACK[0]
-  const modelOpt = MODELS.find((m) => m.id === picker.model) ?? MODELS[0]
-  const effortOpt = EFFORTS.find((e) => e.id === picker.effort) ?? EFFORTS[2]
-  const modeOpt = MODES.find((m) => m.id === picker.mode) ?? MODE_FALLBACK
+  const codexOpt = codexModels.find((m) => m.id === codexId) ?? codexModels[0] ?? codexFallback()[0]
+  const modelOpt = modelOpts().find((m) => m.id === picker.model) ?? modelOpts()[0]
+  const effortOpt = effortOpts().find((e) => e.id === picker.effort) ?? effortOpts()[2]
+  const modeOpt = modeOpts().find((m) => m.id === picker.mode) ?? modeFallback()
 
   // 계정 목록 — 마운트 시 한 번(캐시) + 팝오버를 열 때 갱신 (구독 실행에만 의미)
   const [accounts, setAccounts] = useState<AccountInfo[]>(() => acctCache?.list ?? [])
@@ -2143,7 +2295,7 @@ export function PickerChip({
         <div className="picker-pop scroll">
           {/* 엔진 세그먼트 — 영어 표기 (PoC). 대화가 시작되면 잠긴다 (prop 주석 참고) */}
           <div className="pprov">
-            {ENGINES.map((en) => (
+            {engineOpts().map((en) => (
               <button
                 key={en.id}
                 className={engine === en.id ? 'on' : ''}
@@ -2160,10 +2312,12 @@ export function PickerChip({
               </button>
             ))}
           </div>
-          {engineLocked && <div className="pp-lock">대화가 시작된 채팅은 엔진을 바꿀 수 없어요</div>}
-          <div className="pp-h4">모델</div>
+          {engineLocked && (
+            <div className="pp-lock">{t('대화가 시작된 채팅은 엔진을 바꿀 수 없어요', "You can't switch engines once a chat has started")}</div>
+          )}
+          <div className="pp-h4">{t('모델', 'Model')}</div>
           {engine === 'claude'
-            ? MODELS.map((m) => (
+            ? modelOpts().map((m) => (
                 <Fragment key={m.id}>
                   <PPRow sel={m.id === picker.model} main={m.v} sub={m.d} onClick={() => setPicker({ ...picker, model: m.id })} />
                   <div className={'edrawer' + (m.id === picker.model ? ' open' : '')}>
@@ -2184,19 +2338,22 @@ export function PickerChip({
                 </Fragment>
               ))}
           <div className="pp-sep" />
-          <div className="pp-h4">모드</div>
-          {MODES.map((m) => (
+          <div className="pp-h4">{t('모드', 'Mode')}</div>
+          {modeOpts().map((m) => (
             <PPRow key={m.id} sel={m.id === picker.mode} main={m.v} sub={m.d} onClick={() => setPicker({ ...picker, mode: m.id })} />
           ))}
           {/* 과금 — 두 엔진 모두: API 모드면 Anthropic은 Anthropic 키, Codex는 OpenAI 키로 과금 */}
           {onApiModeChange && (
             <>
               <div className="pp-sep" />
-              <div className="pp-h4">과금</div>
+              <div className="pp-h4">{t('과금', 'Billing')}</div>
               <PPRow
                 sel={!apiMode}
-                main="구독"
-                sub={(engine === 'codex' ? 'ChatGPT' : 'Claude') + ' 구독(정액)으로 실행'}
+                main={t('구독', 'Subscription')}
+                sub={t(
+                  (engine === 'codex' ? 'ChatGPT' : 'Claude') + ' 구독(정액)으로 실행',
+                  'Run on your ' + (engine === 'codex' ? 'ChatGPT' : 'Claude') + ' subscription (flat rate)'
+                )}
                 onClick={() => onApiModeChange(false, engine)}
               />
               <PPRow
@@ -2204,8 +2361,8 @@ export function PickerChip({
                 main="API"
                 sub={
                   (engine === 'codex' ? apiReadyCodex : apiReady)
-                    ? '저장된 API 키로 종량 과금'
-                    : 'API 키 필요 — 설정 → API에서 등록'
+                    ? t('저장된 API 키로 종량 과금', 'Pay per use with your saved API key')
+                    : t('API 키 필요 — 설정 → API에서 등록', 'API key required — add one in Settings → API')
                 }
                 onClick={() => onApiModeChange(true, engine)}
               />
@@ -2215,7 +2372,7 @@ export function PickerChip({
           {engine === 'claude' && !apiMode && (accounts.length > 0 || picker.account) && (
             <>
               <div className="pp-sep" />
-              <div className="pp-h4">계정</div>
+              <div className="pp-h4">{t('계정', 'Account')}</div>
               {accounts.map((a) => (
                 <PPRow
                   key={a.email}
@@ -2223,7 +2380,12 @@ export function PickerChip({
                   main={a.email.split('@')[0]}
                   // 잔여 한도가 본문 — 플랜 접두를 붙이면 줄이 길어져 '주간'이 잘린다(실측).
                   // 한도가 아직 안 왔을 때만 플랜으로 대신한다.
-                  sub={acctUsageLine(aUsage[a.email]) || (a.subscriptionType ? `${a.subscriptionType} 구독` : '등록된 계정')}
+                  sub={
+                    acctUsageLine(aUsage[a.email]) ||
+                    (a.subscriptionType
+                      ? t(`${a.subscriptionType} 구독`, `${a.subscriptionType} subscription`)
+                      : t('등록된 계정', 'Signed-in account'))
+                  }
                   // 기본 계정을 고르면 바인딩을 푼다(기본을 따라감) — 다른 계정은 이 채팅에 고정
                   onClick={() => setPicker({ ...picker, account: a.isDefault ? undefined : a.email })}
                 />
@@ -2234,14 +2396,17 @@ export function PickerChip({
           {engine === 'codex' && !apiMode && (cxAccounts.length > 0 || picker.codexAccount) && (
             <>
               <div className="pp-sep" />
-              <div className="pp-h4">계정</div>
+              <div className="pp-h4">{t('계정', 'Account')}</div>
               {cxAccounts.map((a) => (
                 <PPRow
                   key={a.email}
                   sel={a.email === cxEffective}
                   main={a.email.split('@')[0]}
                   // Anthropic과 같은 문법 — 잔여 한도(5시간·주간)가 본문, 조회 전엔 플랜
-                  sub={cxUsageLine(cxUsage[a.email]) || chatgptPlanLabel(a.plan) + ' 구독'}
+                  sub={
+                    cxUsageLine(cxUsage[a.email]) ||
+                    t(chatgptPlanLabel(a.plan) + ' 구독', chatgptPlanLabel(a.plan) + ' subscription')
+                  }
                   onClick={() => setPicker({ ...picker, codexAccount: a.isDefault ? undefined : a.email })}
                 />
               ))}
@@ -2257,7 +2422,7 @@ export function PickerChip({
 // nominal window when the SDK hasn't reported one yet. Shared by the composer strip
 // and the multi-agent panels' context gauge.
 export function windowTokensFor(model: ModelId, contextWindow: number | null): number {
-  const opt = MODELS.find((m) => m.id === model) ?? MODELS[0]
+  const opt = modelOpts().find((m) => m.id === model) ?? modelOpts()[0]
   return contextWindow ?? opt.ctx * 1000
 }
 
@@ -2284,18 +2449,18 @@ export function extraCreditVisible(x: ExtraCreditInfo | null | undefined): x is 
   return !!x && (x.enabled || x.outOfCredits)
 }
 function resetText(resetsAt: number | null, useDays: boolean): string {
-  if (resetsAt == null) return '초기화 시간 미상'
+  if (resetsAt == null) return t('초기화 시간 미상', 'Reset time unknown')
   const rem = resetsAt - Math.floor(Date.now() / 1000)
-  if (rem <= 0) return '곧 초기화'
+  if (rem <= 0) return t('곧 초기화', 'Resets soon')
   const mins = Math.floor(rem / 60)
   let h = Math.floor(mins / 60)
   const m = mins % 60
   if (useDays && h >= 24) {
     const d = Math.floor(h / 24)
     h = h % 24
-    return `${d}일 ${h}시간 후 초기화`
+    return t(`${d}일 ${h}시간 후 초기화`, `Resets in ${d}d ${h}h`)
   }
-  return h > 0 ? `${h}시간 ${m}분 후 초기화` : `${m}분 후 초기화`
+  return h > 0 ? t(`${h}시간 ${m}분 후 초기화`, `Resets in ${h}h ${m}m`) : t(`${m}분 후 초기화`, `Resets in ${m}m`)
 }
 
 // WorkBar 컨텍스트 팝오버 행 (PoC .prow 문법) — 라벨+부제, 오른쪽 "남음 n%"(굵게),
@@ -2306,11 +2471,11 @@ function limitRow(label: string, w: UsageWindow | null, useDays: boolean): CtxRo
   const rem = w ? Math.max(0, 100 - Math.round(w.pct)) : null
   return {
     label,
-    sub: w ? resetText(w.resetsAt, useDays) : '데이터 없음',
+    sub: w ? resetText(w.resetsAt, useDays) : t('데이터 없음', 'No data'),
     end:
       rem != null ? (
         <>
-          <b>{rem}%</b> 남음
+          <b>{rem}%</b> {t('남음', 'left')}
         </>
       ) : (
         '—'
@@ -2322,11 +2487,11 @@ function limitRow(label: string, w: UsageWindow | null, useDays: boolean): CtxRo
 function extraCreditRow(x: ExtraCreditInfo): CtxRow {
   if (!x.enabled && x.outOfCredits)
     return {
-      label: '추가 크레딧',
-      sub: '크레딧 소진 — claude.ai에서 충전해야 다시 쓸 수 있어요',
+      label: t('추가 크레딧', 'Extra credits'),
+      sub: t('크레딧 소진 — claude.ai에서 충전해야 다시 쓸 수 있어요', 'Out of credits — top up at claude.ai to keep using them'),
       end: (
         <>
-          <b>{fmtCredit(0, x.currency)}</b> 남음
+          <b>{fmtCredit(0, x.currency)}</b> {t('남음', 'left')}
         </>
       ),
       bar: 0,
@@ -2334,12 +2499,15 @@ function extraCreditRow(x: ExtraCreditInfo): CtxRow {
     }
   const left = x.pct != null ? Math.max(0, 100 - Math.round(x.pct)) : null
   return {
-    label: '추가 크레딧',
-    sub: `이번 달 ${fmtCredit(x.used ?? 0, x.currency)} 사용${x.cap != null ? ` · 월 한도 ${fmtCredit(x.cap, x.currency)}` : ''}`,
+    label: t('추가 크레딧', 'Extra credits'),
+    sub: t(
+      `이번 달 ${fmtCredit(x.used ?? 0, x.currency)} 사용${x.cap != null ? ` · 월 한도 ${fmtCredit(x.cap, x.currency)}` : ''}`,
+      `${fmtCredit(x.used ?? 0, x.currency)} used this month${x.cap != null ? ` · ${fmtCredit(x.cap, x.currency)} monthly cap` : ''}`
+    ),
     end:
       x.balance != null ? (
         <>
-          <b>{fmtCredit(x.balance, x.currency)}</b> 남음
+          <b>{fmtCredit(x.balance, x.currency)}</b> {t('남음', 'left')}
         </>
       ) : (
         '—'
@@ -2353,18 +2521,19 @@ type WorkTab = 'todo' | 'sub' | 'sh' | 'file' | 'ctx'
 
 // 셸의 상태 문구 — stopped는 사유까지: 사용자가 누른 중지 / Claude(모델)가 끊음 /
 // 턴이 끝나며 CLI가 같이 정리함은 다른 사건이다 (sleep이 완료된 걸로 오해하기 쉬운 지점).
-function bgStatusLabel(t: BgTask): string {
-  switch (t.status) {
+// 인자 이름은 tk — i18n의 t()를 가리지 않게 (원래 t였다)
+function bgStatusLabel(tk: BgTask): string {
+  switch (tk.status) {
     case 'running':
-      return '실행 중'
+      return t('실행 중', 'Running')
     case 'completed':
-      return '완료'
+      return t('완료', 'Done')
     case 'failed':
-      return '실패'
+      return t('실패', 'Failed')
     default:
-      if (t.byUser) return '중지됨 — 직접 중지'
-      if (t.teardown) return '턴 종료로 정리됨'
-      return '중지됨 — Claude가 중지'
+      if (tk.byUser) return t('중지됨 — 직접 중지', 'Stopped — by you')
+      if (tk.teardown) return t('턴 종료로 정리됨', 'Cleaned up when the turn ended')
+      return t('중지됨 — Claude가 중지', 'Stopped — by Claude')
   }
 }
 
@@ -2383,21 +2552,22 @@ export function hasRunningBash(messages: ThreadItem[]): boolean {
 
 // 백그라운드 셸 한 줄 — PoC .prow: 상태 아이콘(스피너/✓/✕) + 설명/서브, 실행 중이면
 // 끝에 중지 알약. 행을 누르면 출력(라이브 테일 포함) 카드가 열린다.
-function BgTaskRow({ t, onOpen, onStop }: { t: BgTask; onOpen: (id: string) => void; onStop?: (id: string) => void }) {
-  const running = t.status === 'running'
+// prop 이름은 t 그대로, 안에서는 tk로 받는다 — i18n의 t()를 가리지 않게
+function BgTaskRow({ t: tk, onOpen, onStop }: { t: BgTask; onOpen: (id: string) => void; onStop?: (id: string) => void }) {
+  const running = tk.status === 'running'
   // 완료=흐림+초록 ✓ · 실패/직접 중지=빨간 ✕ · 턴 정리는 중립 회색 ✕ (사고 아님)
-  const rowCls = t.status === 'completed' ? ' done' : t.status === 'failed' || (t.status === 'stopped' && !t.teardown) ? ' err' : ''
+  const rowCls = tk.status === 'completed' ? ' done' : tk.status === 'failed' || (tk.status === 'stopped' && !tk.teardown) ? ' err' : ''
   return (
-    <div className={'wb-prow act' + rowCls} onClick={() => onOpen(t.id)}>
+    <div className={'wb-prow act' + rowCls} onClick={() => onOpen(tk.id)}>
       <span className="ic">
-        {running ? <span className="spin" /> : t.status === 'completed' ? <IconCheck size={12} /> : <IconClose size={12} />}
+        {running ? <span className="spin" /> : tk.status === 'completed' ? <IconCheck size={12} /> : <IconClose size={12} />}
       </span>
       <span className="grow">
-        {t.description || t.id}
+        {tk.description || tk.id}
         <span className="sub">
-          {bgStatusLabel(t)}
+          {bgStatusLabel(tk)}
           {/* 요약이 설명과 같은 문장으로 오는 경우(중지 통지)가 있어 중복이면 생략 */}
-          {t.status !== 'running' && t.summary && t.summary !== t.description ? ` — ${t.summary}` : ''}
+          {tk.status !== 'running' && tk.summary && tk.summary !== tk.description ? ` — ${tk.summary}` : ''}
         </span>
       </span>
       {running && onStop && (
@@ -2405,10 +2575,10 @@ function BgTaskRow({ t, onOpen, onStop }: { t: BgTask; onOpen: (id: string) => v
           className="wb-stop"
           onClick={(e) => {
             e.stopPropagation()
-            onStop(t.id)
+            onStop(tk.id)
           }}
         >
-          중지
+          {t('중지', 'Stop')}
         </button>
       )}
     </div>
@@ -2417,37 +2587,38 @@ function BgTaskRow({ t, onOpen, onStop }: { t: BgTask; onOpen: (id: string) => v
 
 // 셸 카드 상태 배지 — PoC .stbadge: 실행 중=중립+스피너, 완료=초록, 실패/중지=빨강,
 // 턴 종료 정리는 중립(사고가 아니라 수명 종료)
-function bgBadge(t: BgTask): ReactNode {
-  if (t.status === 'running')
+// 인자 이름은 tk — i18n의 t()를 가리지 않게 (원래 t였다)
+function bgBadge(tk: BgTask): ReactNode {
+  if (tk.status === 'running')
     return (
       <span className="dc-badge n">
         <span className="spin" />
-        실행 중
+        {t('실행 중', 'Running')}
       </span>
     )
-  if (t.status === 'completed')
+  if (tk.status === 'completed')
     return (
       <span className="dc-badge">
         <span className="d" />
-        완료
+        {t('완료', 'Done')}
       </span>
     )
-  if (t.status === 'failed')
+  if (tk.status === 'failed')
     return (
       <span className="dc-badge err">
         <span className="d" />
-        실패
+        {t('실패', 'Failed')}
       </span>
     )
-  return t.teardown ? (
+  return tk.teardown ? (
     <span className="dc-badge n">
       <span className="d" />
-      정리됨
+      {t('정리됨', 'Cleaned up')}
     </span>
   ) : (
     <span className="dc-badge err">
       <span className="d" />
-      중지됨
+      {t('중지됨', 'Stopped')}
     </span>
   )
 }
@@ -2456,23 +2627,24 @@ function bgBadge(t: BgTask): ReactNode {
 // 본문은 터미널(경로 스트립 + 라이브 테일). 실행 중이면 출력 파일(엔진이 유도한 경로)을
 // 1.2초마다 다시 읽어 테일을 보여준다. readFile IPC는 절대경로를 그대로 받고, 파일이
 // 아직 없으면 에러를 돌려줘 조용히 대기한다.
-function BgTaskModal({ t, onStop, onClose }: { t: BgTask | null; onStop?: (id: string) => void; onClose: () => void }) {
+// prop 이름은 t 그대로, 안에서는 tk로 받는다 — i18n의 t()를 가리지 않게
+function BgTaskModal({ t: tk, onStop, onClose }: { t: BgTask | null; onStop?: (id: string) => void; onClose: () => void }) {
   const [out, setOut] = useState<{ text: string | null; err: string | null }>({ text: null, err: null })
   // 본문(.dc-body)이 유일한 스크롤러 — 테일 따라가기도 이 엘리먼트를 내린다
   const bodyRef = useRef<HTMLDivElement>(null)
   const [copied, setCopied] = useState(false)
   // 마우스 제스처(U/D 스크롤·DR 닫기)의 대상 카드 엘리먼트
   const [cardEl, setCardEl] = useState<HTMLDivElement | null>(null)
-  const file = t?.outputFile
-  const running = t?.status === 'running'
+  const file = tk?.outputFile
+  const running = tk?.status === 'running'
   useEffect(() => {
-    if (!t) return
+    if (!tk) return
     const onKey = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') onClose()
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [t, onClose])
+  }, [tk, onClose])
   useEffect(() => {
     setOut({ text: null, err: null })
     if (!file) return
@@ -2504,7 +2676,7 @@ function BgTaskModal({ t, onStop, onClose }: { t: BgTask | null; onStop?: (id: s
     const el = bodyRef.current
     if (el) el.scrollTop = el.scrollHeight
   }, [out.text])
-  if (!t) return null
+  if (!tk) return null
   const tail = out.text ? out.text.split('\n').slice(-400).join('\n').trimEnd() : ''
   const copyPath = (): void => {
     if (!file) return
@@ -2524,33 +2696,38 @@ function BgTaskModal({ t, onStop, onClose }: { t: BgTask | null; onStop?: (id: s
             <IconTerminal size={19} />
           </div>
           <div className="dc-tt">
-            <span className="dc-title mono">{t.description || t.id}</span>
-            <div className="dc-sub">백그라운드 셸 · {bgStatusLabel(t)}</div>
+            <span className="dc-title mono">{tk.description || tk.id}</span>
+            <div className="dc-sub">
+              {t('백그라운드 셸', 'Background shell')} · {bgStatusLabel(tk)}
+            </div>
           </div>
-          {bgBadge(t)}
+          {bgBadge(tk)}
           {running && onStop && (
-            <button className="dc-stop" onClick={() => onStop(t.id)}>
-              중지
+            <button className="dc-stop" onClick={() => onStop(tk.id)}>
+              {t('중지', 'Stop')}
             </button>
           )}
-          <button className="dc-close" onClick={onClose} aria-label="닫기">
+          <button className="dc-close" onClick={onClose} aria-label={t('닫기', 'Close')}>
             <IconClose size={16} />
           </button>
         </div>
         <div className="dc-body scroll" ref={bodyRef}>
-          {!running && t.summary && t.summary !== t.description && (
+          {!running && tk.summary && tk.summary !== tk.description && (
             <>
               <div className="dc-sec">
-                <span>요약</span>
+                <span>{t('요약', 'Summary')}</span>
                 <i className="dc-ln" />
               </div>
               <div className="dc-box">
-                <div className="dc-md">{t.summary}</div>
+                <div className="dc-md">{tk.summary}</div>
               </div>
             </>
           )}
           <div className="dc-sec">
-            <span>출력{running ? ' — 실시간' : ''}</span>
+            <span>
+              {t('출력', 'Output')}
+              {running ? t(' — 실시간', ' — live') : ''}
+            </span>
             <i className="dc-ln" />
           </div>
           <div className="dc-term">
@@ -2561,7 +2738,7 @@ function BgTaskModal({ t, onStop, onClose }: { t: BgTask | null; onStop?: (id: s
                 </span>
                 <button className={'dc-copy' + (copied ? ' on' : '')} onClick={copyPath}>
                   <IconCopy size={12} />
-                  {copied ? '복사됨 ✓' : '경로 복사'}
+                  {copied ? t('복사됨 ✓', 'Copied ✓') : t('경로 복사', 'Copy path')}
                 </button>
               </div>
             )}
@@ -2569,7 +2746,11 @@ function BgTaskModal({ t, onStop, onClose }: { t: BgTask | null; onStop?: (id: s
               {tail ? (
                 <pre className="dc-term-pre">{tail}</pre>
               ) : (
-                <div className="ag-none">{running ? '아직 출력이 없어요 (쌓이는 대로 여기 보여요)' : '출력 결과가 없어요'}</div>
+                <div className="ag-none">
+                  {running
+                    ? t('아직 출력이 없어요 (쌓이는 대로 여기 보여요)', 'No output yet (it shows up here as it arrives)')
+                    : t('출력 결과가 없어요', 'No output')}
+                </div>
               )}
             </div>
           </div>
@@ -2577,9 +2758,16 @@ function BgTaskModal({ t, onStop, onClose }: { t: BgTask | null; onStop?: (id: s
         <div className="dc-foot">
           {/* 테일은 끝 400줄만 유지 — 캡에 닿았으면 전체가 아니라 끝부분임을 밝힌다 */}
           <span className="dc-stat">
-            출력 <b>{tail ? (tail.split('\n').length >= 400 ? '끝부분 400줄' : `${tail.split('\n').length}줄`) : '0줄'}</b>
+            {t('출력', 'Output')}{' '}
+            <b>
+              {tail
+                ? tail.split('\n').length >= 400
+                  ? t('끝부분 400줄', 'last 400 lines')
+                  : t(`${tail.split('\n').length}줄`, `${tail.split('\n').length} lines`)
+                : t('0줄', '0 lines')}
+            </b>
           </span>
-          {running && <span className="dc-stat">하단 따라가는 중</span>}
+          {running && <span className="dc-stat">{t('하단 따라가는 중', 'Following the tail')}</span>}
         </div>
       </div>
       {/* 우클릭 드래그 제스처 — 뷰어와 같은 문법. 스크롤러는 본문(.dc-body) 하나 */}
@@ -2587,7 +2775,7 @@ function BgTaskModal({ t, onStop, onClose }: { t: BgTask | null; onStop?: (id: s
         target={cardEl}
         actions={[
           ...scrollGestures(() => cardEl?.querySelector('.dc-body')),
-          { pattern: 'DR', label: '카드 닫기', run: onClose }
+          { pattern: 'DR', label: t('카드 닫기', 'Close card'), run: onClose }
         ]}
       />
     </div>,
@@ -2644,10 +2832,34 @@ export const WorkBar = memo(function WorkBar({
   onBgTask?: (req: BgTaskRequest) => void // 셸 중지 / 포그라운드 도구 백그라운드화
   onRefreshUsage?: () => void // 컨텍스트 팝오버를 열 때 사용량 강제 새로고침
 }) {
+  useLang() // memo 컴포넌트 — 언어 전환에 재렌더로 반응하도록 구독
   const [open, setOpen] = useState<WorkTab | null>(null)
   // 셸 행 클릭 → 출력 카드. id로 들고 있어야 라이브 갱신(REPLACE·정착 통지)이 카드에 흐른다.
   const [openBgId, setOpenBgId] = useState<string | null>(null)
   const ref = useRef<HTMLDivElement>(null)
+  const popRef = useRef<HTMLDivElement>(null)
+
+  // 팝오버 가로 배치 — "클릭한 칩 왼쪽 정렬 + 바 범위 클램프"를 페인트 전에 인라인으로.
+  // CSS만으론 못 한다: 멀티 패널은 좁은 패널 클리핑 방지로 앵커가 칩이 아니라 바 전체라
+  // (.wb-cell{position:static}) left:0이 "바 왼쪽 끝"이 돼, 넓은 패널에서 오른쪽 칩을
+  // 눌러도 팝오버가 왼쪽 끝에 떴다. 단일 모드(앵커=칩)에서도 같은 식이 성립해 공통 적용
+  // — 클램프 덕에 오른쪽 끝 칩(.r의 right:0)과 같은 착지가 된다. 배율(zoom .9) 보정 포함.
+  useLayoutEffect(() => {
+    const pop = popRef.current
+    const bar = ref.current
+    const parent = pop?.offsetParent as HTMLElement | null
+    if (!open || !pop || !bar || !parent) return
+    const cell = pop.parentElement as HTMLElement // .wb-cell (칩의 셀)
+    const parentRect = parent.getBoundingClientRect()
+    const barRect = bar.getBoundingClientRect()
+    // getBoundingClientRect는 시각(배율 적용) px, style.left는 로컬 CSS px — 배율로 환산
+    const scale = parent.offsetWidth ? parentRect.width / parent.offsetWidth : 1
+    const want = cell.getBoundingClientRect().left - parentRect.left
+    const min = barRect.left - parentRect.left
+    const max = barRect.right - parentRect.left - pop.getBoundingClientRect().width
+    pop.style.left = `${Math.max(min, Math.min(want, max)) / scale}px`
+    pop.style.right = 'auto'
+  }, [open])
 
   // 팝오버는 Esc / 바깥 클릭으로 닫는다 (네이티브 다이얼로그 금지 — 카드 패턴 유지)
   useEffect(() => {
@@ -2678,18 +2890,29 @@ export const WorkBar = memo(function WorkBar({
   // 첫 행(현재 컨텍스트) 뒤 구분선. 현재 컨텍스트 바는 사용분, 한도 바는 남은 비율 —
   // 오른쪽 "남음 n%" 텍스트와 바가 같은 것을 가리키게. API 모드는 한도가 의미 없으니
   // 비용 행으로 바꾼다(이번 대화 비용 + 남은 예산/누적 사용액 — 진행 바는 예산 행만).
-  const ctxDetail = `${contextTokens != null ? fmtTok(contextTokens) : 0} / ${fmtWindow(Math.round(winTokens / 1000))} 토큰`
+  const ctxDetail = t(
+    `${contextTokens != null ? fmtTok(contextTokens) : 0} / ${fmtWindow(Math.round(winTokens / 1000))} 토큰`,
+    `${contextTokens != null ? fmtTok(contextTokens) : 0} / ${fmtWindow(Math.round(winTokens / 1000))} tokens`
+  )
   // Codex 엔진이면 Anthropic 한도(5시간·Fable·주간) 대신 이 계정의 OpenAI 한도를 그린다.
   // 조회는 팝오버가 열렸을 때만 (계정마다 app-server 1회 — 무거운 조회)
   const cxU = useCodexUsage(engine, codexAccount, open === 'ctx')
   const ctxRows: CtxRow[] = [
-    { label: '현재 컨텍스트', sub: '이 대화가 차지하는 컨텍스트 창', end: <b>{ctxPct}%</b>, bar: ctxPct },
+    {
+      label: t('현재 컨텍스트', 'Current context'),
+      sub: t('이 대화가 차지하는 컨텍스트 창', 'How much of the context window this chat takes'),
+      end: <b>{ctxPct}%</b>,
+      bar: ctxPct
+    },
     ...(engine === 'codex'
       ? apiMode
         ? [
             {
-              label: 'API 과금',
-              sub: 'Codex는 실행 비용을 보고하지 않아요 — 사용액은 platform.openai.com에서',
+              label: t('API 과금', 'API billing'),
+              sub: t(
+                'Codex는 실행 비용을 보고하지 않아요 — 사용액은 platform.openai.com에서',
+                'Codex does not report run costs — check your spend at platform.openai.com'
+              ),
               end: <b>—</b>,
               bar: null
             }
@@ -2697,11 +2920,11 @@ export const WorkBar = memo(function WorkBar({
         : (cxU?.windows ?? []).map((w) => {
             const rem = Math.max(0, 100 - Math.round(w.usedPct))
             return {
-              label: `${w.label} 한도`,
-              sub: 'ChatGPT 구독 사용량 기준',
+              label: t(`${w.label} 한도`, `${w.label} limit`),
+              sub: t('ChatGPT 구독 사용량 기준', 'Based on ChatGPT subscription usage'),
               end: (
                 <>
-                  <b>{rem}%</b> 남음
+                  <b>{rem}%</b> {t('남음', 'left')}
                 </>
               ),
               bar: rem,
@@ -2710,29 +2933,42 @@ export const WorkBar = memo(function WorkBar({
           })
       : apiMode
         ? [
-            { label: '이번 대화 비용', sub: 'API 모드 실행의 누적 비용', end: <b>{fmtUsd(chatSpentUsd)}</b>, bar: null },
+            {
+              label: t('이번 대화 비용', 'This chat’s cost'),
+              sub: t('API 모드 실행의 누적 비용', 'Total cost of API-mode runs'),
+              end: <b>{fmtUsd(chatSpentUsd)}</b>,
+              bar: null
+            },
             budgetUsd != null
               ? (() => {
                   const left = Math.max(0, 100 - Math.round((totalSpentUsd / budgetUsd) * 100))
                   return {
-                    label: '남은 예산',
-                    sub: `예산 ${fmtUsd(budgetUsd)} 중 ${fmtUsd(totalSpentUsd)} 사용`,
+                    label: t('남은 예산', 'Budget left'),
+                    sub: t(
+                      `예산 ${fmtUsd(budgetUsd)} 중 ${fmtUsd(totalSpentUsd)} 사용`,
+                      `${fmtUsd(totalSpentUsd)} of the ${fmtUsd(budgetUsd)} budget used`
+                    ),
                     end: (
                       <>
-                        <b>{fmtUsd(Math.max(0, budgetUsd - totalSpentUsd))}</b> 남음
+                        <b>{fmtUsd(Math.max(0, budgetUsd - totalSpentUsd))}</b> {t('남음', 'left')}
                       </>
                     ),
                     bar: left,
                     tone: remainTone(left)
                   }
                 })()
-              : { label: '누적 사용액', sub: '전체 워크스페이스 · 설정 → API에서 예산 입력 가능', end: <b>{fmtUsd(totalSpentUsd)}</b>, bar: null }
+              : {
+                  label: t('누적 사용액', 'Total spend'),
+                  sub: t('전체 워크스페이스 · 설정 → API에서 예산 입력 가능', 'All workspaces · set a budget in Settings → API'),
+                  end: <b>{fmtUsd(totalSpentUsd)}</b>,
+                  bar: null
+                }
           ]
         : [
-            limitRow('5시간 한도', usage.fiveHour, false),
+            limitRow(t('5시간 한도', '5h limit'), usage.fiveHour, false),
             // Fable 5 전용 주간 한도 — 플랜에 없으면(null) 행 자체를 숨긴다 (행 순서는 PoC와 동일)
-            ...(usage.weeklyFable ? [limitRow('Fable 주간 한도', usage.weeklyFable, true)] : []),
-            limitRow('주간 한도', usage.weekly, true),
+            ...(usage.weeklyFable ? [limitRow(t('Fable 주간 한도', 'Fable weekly limit'), usage.weeklyFable, true)] : []),
+            limitRow(t('주간 한도', 'Weekly limit'), usage.weekly, true),
             // 추가 사용 크레딧 (claude.ai 설정 → 사용 크레딧) — 켜져 있거나 소진 상태일 때만
             ...(extraCreditVisible(usage.extraCredit) ? [extraCreditRow(usage.extraCredit)] : [])
           ])
@@ -2742,7 +2978,12 @@ export const WorkBar = memo(function WorkBar({
   // 말하고 한도 환산을 주장하지 않는다. 캐시는 읽기+쓰기 합산 한 칸. 아직 보고가 없는
   // 새 대화도 0으로 항상 보여준다(행이 생겼다 없어졌다 하지 않게) — 모델별 내역 행만
   // 실제 보고가 쌓인 뒤(2개 모델 이상) 붙는다.
-  const tokBk = (t: TokenTally): string => `입력 ${fmtTok(t.inTok)} · 출력 ${fmtTok(t.outTok)} · 캐시 ${fmtTok(t.cacheRead + t.cacheWrite)}`
+  // 인자 이름은 tk — i18n의 t()를 가리지 않게 (원래 t였다)
+  const tokBk = (tk: TokenTally): string =>
+    t(
+      `입력 ${fmtTok(tk.inTok)} · 출력 ${fmtTok(tk.outTok)} · 캐시 ${fmtTok(tk.cacheRead + tk.cacheWrite)}`,
+      `In ${fmtTok(tk.inTok)} · Out ${fmtTok(tk.outTok)} · Cache ${fmtTok(tk.cacheRead + tk.cacheWrite)}`
+    )
   const tokEntries = Object.entries(tokenTotals)
     .map(([m, t]) => ({ model: m, tally: t, total: t.inTok + t.outTok + t.cacheRead + t.cacheWrite }))
     .filter((t) => t.total > 0)
@@ -2754,7 +2995,7 @@ export const WorkBar = memo(function WorkBar({
   const tokRows: CtxRow[] = [
     {
       // 대화 팝오버 안이라 '이번 대화' 수식은 군더더기 — 스코프는 위치가 이미 말한다
-      label: '토큰 사용량',
+      label: t('토큰 사용량', 'Token usage'),
       // 모델이 하나면 헤더 한 줄로 끝낸다(내역 행과 완전히 겹치므로) — 모델명을 부제에
       sub: tokEntries.length === 1 ? `${tokEntries[0].model} · ${tokBk(tokEntries[0].tally)}` : tokBk(tokGrand),
       end: <b>{fmtTok(tokEntries.reduce((n, t) => n + t.total, 0))}</b>,
@@ -2780,11 +3021,11 @@ export const WorkBar = memo(function WorkBar({
 
   const chips: { key: WorkTab; ring?: number; icon?: ReactNode; label: string; value: string; detail: string; tip: string; align?: 'r' }[] = [
     // 빈 목록은 실행 중에도 "계획 수립 중"이라 추측하지 않는다 — 팝오버 문구와 같은 이유
-    { key: 'todo', icon: <IconList size={14} />, label: '할 일', value: `${todoDone}/${todoTotal || 0}`, detail: todoTotal ? `${todoPct}% 완료` : '없음', tip: 'Claude가 세운 작업 계획 — 누르면 할 일 목록' },
-    { key: 'sub', icon: <IconBot size={14} />, label: '서브에이전트', value: `${doneSub}/${subTotal || 0}`, detail: runningSub > 0 ? `${runningSub}개 실행 중` : subTotal ? '모두 완료' : '없음', tip: 'Claude가 띄운 보조 에이전트의 진행 상황 — 누르면 목록' },
-    { key: 'sh', icon: <IconTerminal size={14} />, label: '백그라운드 셸', value: `${endedBg}/${bgTasks.length || 0}`, detail: runningBg > 0 ? `${runningBg}개 실행 중` : bgTasks.length ? '모두 종료' : '없음', tip: 'Claude가 백그라운드로 돌리는 셸 — 누르면 목록·중지' },
-    { key: 'file', icon: <IconFile size={14} />, label: '변경된 파일', value: `${files.length}`, detail: files.length ? `+${totalAdd} −${totalDel}` : '없음', tip: '이번 작업에서 생성·수정된 파일 — 누르면 목록·diff' },
-    { key: 'ctx', ring: ctxPct, label: '컨텍스트', value: `${ctxPct}%`, detail: ctxDetail, tip: apiMode ? '대화의 컨텍스트 사용량·API 비용 — 누르면 자세히' : '대화의 컨텍스트 사용량·사용 한도 — 누르면 자세히', align: 'r' }
+    { key: 'todo', icon: <IconList size={14} />, label: t('할 일', 'To-dos'), value: `${todoDone}/${todoTotal || 0}`, detail: todoTotal ? t(`${todoPct}% 완료`, `${todoPct}% done`) : t('없음', 'None'), tip: t('Claude가 세운 작업 계획 — 누르면 할 일 목록', 'The task plan Claude made — click for the to-do list') },
+    { key: 'sub', icon: <IconBot size={14} />, label: t('서브에이전트', 'Subagents'), value: `${doneSub}/${subTotal || 0}`, detail: runningSub > 0 ? t(`${runningSub}개 실행 중`, `${runningSub} running`) : subTotal ? t('모두 완료', 'All done') : t('없음', 'None'), tip: t('Claude가 띄운 보조 에이전트의 진행 상황 — 누르면 목록', 'Progress of the helper agents Claude spawned — click for the list') },
+    { key: 'sh', icon: <IconTerminal size={14} />, label: t('백그라운드 셸', 'Background shells'), value: `${endedBg}/${bgTasks.length || 0}`, detail: runningBg > 0 ? t(`${runningBg}개 실행 중`, `${runningBg} running`) : bgTasks.length ? t('모두 종료', 'All ended') : t('없음', 'None'), tip: t('Claude가 백그라운드로 돌리는 셸 — 누르면 목록·중지', 'Shells Claude runs in the background — click to view or stop') },
+    { key: 'file', icon: <IconFile size={14} />, label: t('변경된 파일', 'Changed files'), value: `${files.length}`, detail: files.length ? `+${totalAdd} −${totalDel}` : t('없음', 'None'), tip: t('이번 작업에서 생성·수정된 파일 — 누르면 목록·diff', 'Files created or edited in this run — click for the list and diffs') },
+    { key: 'ctx', ring: ctxPct, label: t('컨텍스트', 'Context'), value: `${ctxPct}%`, detail: ctxDetail, tip: apiMode ? t('대화의 컨텍스트 사용량·API 비용 — 누르면 자세히', 'Context use and API cost for this chat — click for details') : t('대화의 컨텍스트 사용량·사용 한도 — 누르면 자세히', 'Context use and rate limits for this chat — click for details'), align: 'r' }
   ]
 
   const popBody = (key: WorkTab): ReactNode => {
@@ -2792,23 +3033,25 @@ export const WorkBar = memo(function WorkBar({
       return (
         <>
           <div className="wb-pop-h">
-            <span className="t">할 일</span>
+            <span className="t">{t('할 일', 'To-dos')}</span>
             <span className="c">
               {todoDone}/{todoTotal || 0}
-              {todoTotal ? ` · ${todoPct}% 완료` : ''}
+              {todoTotal ? t(` · ${todoPct}% 완료`, ` · ${todoPct}% done`) : ''}
             </span>
           </div>
           {/* 실행 중이어도 "계획 수립 중"이라고 추측하지 않는다 — 간단한 작업은 할 일
               목록을 아예 만들지 않으므로, 없으면 그냥 없다고 말하는 게 정직하다 */}
-          {todoTotal ? <Todos todos={todos} /> : <div className="ag-none">아직 할 일이 없어요</div>}
+          {todoTotal ? <Todos todos={todos} /> : <div className="ag-none">{t('아직 할 일이 없어요', 'No to-dos yet')}</div>}
         </>
       )
     if (key === 'sub')
       return (
         <>
           <div className="wb-pop-h">
-            <span className="t">서브에이전트</span>
-            <span className="c">{runningSub > 0 ? runningSub + ' 실행 중' : doneSub + '/' + (subTotal || 0)}</span>
+            <span className="t">{t('서브에이전트', 'Subagents')}</span>
+            <span className="c">
+              {runningSub > 0 ? t(runningSub + ' 실행 중', runningSub + ' running') : doneSub + '/' + (subTotal || 0)}
+            </span>
           </div>
           {subTotal ? (
             <div className="wb-pop-list">
@@ -2824,7 +3067,7 @@ export const WorkBar = memo(function WorkBar({
               ))}
             </div>
           ) : (
-            <div className="ag-none">아직 서브에이전트가 없어요</div>
+            <div className="ag-none">{t('아직 서브에이전트가 없어요', 'No subagents yet')}</div>
           )}
         </>
       )
@@ -2832,8 +3075,10 @@ export const WorkBar = memo(function WorkBar({
       return (
         <>
           <div className="wb-pop-h">
-            <span className="t">백그라운드 셸</span>
-            <span className="c">{runningBg > 0 ? runningBg + ' 실행 중' : `${endedBg}/${bgTasks.length || 0}`}</span>
+            <span className="t">{t('백그라운드 셸', 'Background shells')}</span>
+            <span className="c">
+              {runningBg > 0 ? t(runningBg + ' 실행 중', runningBg + ' running') : `${endedBg}/${bgTasks.length || 0}`}
+            </span>
           </div>
           {bgTasks.length ? (
             <div className="wb-pop-list">
@@ -2850,17 +3095,20 @@ export const WorkBar = memo(function WorkBar({
               ))}
             </div>
           ) : (
-            <div className="ag-none">아직 백그라운드 셸이 없어요</div>
+            <div className="ag-none">{t('아직 백그라운드 셸이 없어요', 'No background shells yet')}</div>
           )}
           {/* 터미널 Ctrl+B 패리티 — 지금 막고 있는 포그라운드 Bash(빌드 등)를 백그라운드로
               보내고 턴을 계속 진행시킨다. 건너뛸 명령이 실제로 있을 때만 보여준다. */}
           {busy && canSkipWait && onBgTask && (
             <button
               className="wb-bg-all has-tip tip-wrap"
-              data-tip="막고 있는 포그라운드 명령을 백그라운드로 보내고 Claude가 다음 작업을 계속하게 합니다 (터미널의 Ctrl+B)"
+              data-tip={t(
+                '막고 있는 포그라운드 명령을 백그라운드로 보내고 Claude가 다음 작업을 계속하게 합니다 (터미널의 Ctrl+B)',
+                'Send the blocking foreground command to the background so Claude can keep going (Ctrl+B in the terminal)'
+              )}
               onClick={() => onBgTask({ action: 'background' })}
             >
-              기다리는 명령 건너뛰고 계속하기
+              {t('기다리는 명령 건너뛰고 계속하기', 'Skip the waiting command and continue')}
             </button>
           )}
         </>
@@ -2869,7 +3117,7 @@ export const WorkBar = memo(function WorkBar({
       return (
         <>
           <div className="wb-pop-h">
-            <span className="t">변경된 파일</span>
+            <span className="t">{t('변경된 파일', 'Changed files')}</span>
             <span className="c">{files.length}</span>
           </div>
           {files.length ? (
@@ -2886,14 +3134,14 @@ export const WorkBar = memo(function WorkBar({
               ))}
             </div>
           ) : (
-            <div className="ag-none">아직 변경된 파일이 없어요</div>
+            <div className="ag-none">{t('아직 변경된 파일이 없어요', 'No changed files yet')}</div>
           )}
         </>
       )
     return (
       <>
         <div className="wb-pop-h">
-          <span className="t">컨텍스트</span>
+          <span className="t">{t('컨텍스트', 'Context')}</span>
           <span className="c">{ctxDetail}</span>
         </div>
         {ctxRows.map((r, i) => (
@@ -2964,7 +3212,7 @@ export const WorkBar = memo(function WorkBar({
                 <span className="cc-detail">{c.detail}</span>
               </span>
             </button>
-            {open === c.key && <div className={'wb-pop' + (c.align === 'r' ? ' r' : '')}>{popBody(c.key)}</div>}
+            {open === c.key && <div ref={popRef} className={'wb-pop' + (c.align === 'r' ? ' r' : '')}>{popBody(c.key)}</div>}
           </div>
         ))}
       </div>
@@ -3014,12 +3262,19 @@ export function QuestionModal({
   )
 }
 
-// the three permission choices — flat qcard options picked with the 1·2·3 keys
-const PERM_CHOICES = [
-  { key: 'allow', label: '허용', desc: '이번 한 번만 실행을 허용해요' },
-  { key: 'allow_always', label: '항상 허용', desc: '이번 세션 동안 이 도구를 자동 허용해요' },
-  { key: 'deny', label: '거부', desc: '이 작업을 실행하지 않아요' }
-] as const
+// the three permission choices — flat qcard options picked with the 1·2·3 keys.
+// 표시 문자열이 있어 모듈 상수로 두면 언어가 박제된다 — 렌더 때 평가되게 함수로.
+function permChoices(): { key: 'allow' | 'allow_always' | 'deny'; label: string; desc: string }[] {
+  return [
+    { key: 'allow', label: t('허용', 'Allow'), desc: t('이번 한 번만 실행을 허용해요', 'Allow this action just once') },
+    {
+      key: 'allow_always',
+      label: t('항상 허용', 'Always allow'),
+      desc: t('이번 세션 동안 이 도구를 자동 허용해요', 'Auto-allow this tool for the rest of the session')
+    },
+    { key: 'deny', label: t('거부', 'Deny'), desc: t('이 작업을 실행하지 않아요', 'Do not run this action') }
+  ]
+}
 
 // The agent's tool-permission request — 질문 카드와 같은 qcard 문법: 마스코트 헤더
 // ('Claude/GPT의 승인 요청' + 도구 칩) + 볼드 질문 + 모노 명령 웰 + 플랫 선택지.
@@ -3044,9 +3299,10 @@ export function PermissionModal({
         return
       }
       const n = parseInt(e.key, 10)
-      if (Number.isInteger(n) && n >= 1 && n <= PERM_CHOICES.length) {
+      const choices = permChoices()
+      if (Number.isInteger(n) && n >= 1 && n <= choices.length) {
         e.preventDefault()
-        onRespond(PERM_CHOICES[n - 1].key)
+        onRespond(choices[n - 1].key)
       }
     }
     window.addEventListener('keydown', onKey)
@@ -3059,15 +3315,19 @@ export function PermissionModal({
       <div className="qcard scroll" role="dialog" aria-modal="true">
         <div className="qhead">
           <IconMascot size={17} />
-          <span className="qhl">{permission.engine === 'codex' ? 'GPT의 승인 요청' : 'Claude의 승인 요청'}</span>
+          <span className="qhl">
+            {permission.engine === 'codex'
+              ? t('GPT의 승인 요청', 'GPT’s permission request')
+              : t('Claude의 승인 요청', 'Claude’s permission request')}
+          </span>
           <span className="qsp" />
           {permission.toolName && <span className="qtool">{permission.toolName}</span>}
         </div>
         <div className="qwrap">
-          <div className="qbt">이 작업을 실행할까요?</div>
+          <div className="qbt">{t('이 작업을 실행할까요?', 'Run this action?')}</div>
           {permission.summary && <div className="qsum">{permission.summary}</div>}
           <div className="qopts">
-            {PERM_CHOICES.map((c) => (
+            {permChoices().map((c) => (
               <button key={c.key} className={'qopt' + (c.key === 'deny' ? ' qopt-deny' : '')} onClick={() => onRespond(c.key)}>
                 <span className="ql">{c.label}</span>
                 <span className="qd">{c.desc}</span>
@@ -3255,11 +3515,15 @@ function QuestionDialog({
     return (
       <div className="q-mini" onClick={() => setMinimized(false)}>
         <IconMascot size={15} />
-        <span className="qmt">{multi ? `질문 ${questions.length}개 대기 중 — 클릭해서 답하기` : '질문 대기 중 — 클릭해서 답하기'}</span>
+        <span className="qmt">
+          {multi
+            ? t(`질문 ${questions.length}개 대기 중 — 클릭해서 답하기`, `${questions.length} questions waiting — click to answer`)
+            : t('질문 대기 중 — 클릭해서 답하기', 'A question is waiting — click to answer')}
+        </span>
         <button
           className="qmx has-tip"
-          data-tip="건너뛰기"
-          aria-label="건너뛰기"
+          data-tip={t('건너뛰기', 'Skip')}
+          aria-label={t('건너뛰기', 'Skip')}
           onClick={(e) => {
             e.stopPropagation()
             onDismiss()
@@ -3279,16 +3543,21 @@ function QuestionDialog({
       <div className="qcard scroll" ref={modalRef} tabIndex={-1} role="dialog" aria-modal="true">
         <div className="qhead">
           <IconMascot size={17} />
-          <span className="qhl">{engine === 'codex' ? 'GPT의 질문' : 'Claude의 질문'}</span>
+          <span className="qhl">{engine === 'codex' ? t('GPT의 질문', 'GPT’s question') : t('Claude의 질문', 'Claude’s question')}</span>
           <span className="qsp" />
           {/* 좁은 패널에서만 제공 — 패널 확장으로 넘어가면 카드가 리마운트돼 지금까지의
               선택이 초기화되므로, 답을 고르기 전에 누르는 걸 상정한다 */}
           {onExpand && (
-            <button className="qmin" onClick={onExpand} aria-label="크게 보기" title="크게 보기">
+            <button className="qmin" onClick={onExpand} aria-label={t('크게 보기', 'Expand')} title={t('크게 보기', 'Expand')}>
               <IconExpand size={14} />
             </button>
           )}
-          <button className="qmin" onClick={() => setMinimized(true)} aria-label="접어두기" title="접어두기 (Esc)">
+          <button
+            className="qmin"
+            onClick={() => setMinimized(true)}
+            aria-label={t('접어두기', 'Collapse')}
+            title={t('접어두기 (Esc)', 'Collapse (Esc)')}
+          >
             <IconChevDown size={15} />
           </button>
         </div>
@@ -3296,14 +3565,12 @@ function QuestionDialog({
         {/* 한 번에 한 질문 — key=step 리마운트로 방향 슬라이드가 재생된다 */}
         <div key={step} className={'qwrap' + (dir === 'fwd' ? ' qstep' : dir === 'back' ? ' qstep-b' : '')}>
           <div className="qbl">
-            <span>
-              질문 {step + 1}/{questions.length}
-            </span>
+            <span>{t(`질문 ${step + 1}/${questions.length}`, `Question ${step + 1}/${questions.length}`)}</span>
             <span className="qsp" />
             {step > 0 && (
               <button className="qback" onClick={() => goTo(step - 1, 'back')}>
                 <IconChevLeft size={11} />
-                이전 질문
+                {t('이전 질문', 'Previous question')}
               </button>
             )}
           </div>
@@ -3325,7 +3592,7 @@ function QuestionDialog({
             <div className={'qopt qopt-free' + (freeOn ? ' on' : '')} onClick={() => freeRef.current?.focus()}>
               <input
                 ref={freeRef}
-                placeholder="원하는 답을 직접 입력… (Enter)"
+                placeholder={t('원하는 답을 직접 입력… (Enter)', 'Type your own answer… (Enter)')}
                 value={custom[step]}
                 onChange={(e) => setCustomAt(step, e.target.value)}
                 onKeyDown={(e) => {
@@ -3343,9 +3610,9 @@ function QuestionDialog({
           {/* 다중 선택만 진행 버튼이 필요하다 — 단일 선택은 고르는 즉시 넘어간다 */}
           {cur.multiSelect && (
             <div className="qfoot">
-              <span className="qhint">여러 개 선택 가능</span>
+              <span className="qhint">{t('여러 개 선택 가능', 'You can pick more than one')}</span>
               <button className="qgo" disabled={!curChosen} onClick={proceed}>
-                {last ? '완료' : '다음'}
+                {last ? t('완료', 'Done') : t('다음', 'Next')}
               </button>
             </div>
           )}
@@ -3396,15 +3663,18 @@ export function WorkflowDock({ wf, onStop }: { wf: WorkflowState | null; onStop?
     return { d: list.filter((a) => a.state === 'done').length, t: list.length }
   }
   const mins = Math.floor(wf.durationMs / 60_000)
-  const elapsed = mins > 0 ? `${mins}분 ${Math.floor((wf.durationMs % 60_000) / 1000)}초` : `${Math.floor(wf.durationMs / 1000)}초`
+  const elapsed =
+    mins > 0
+      ? t(`${mins}분 ${Math.floor((wf.durationMs % 60_000) / 1000)}초`, `${mins}m ${Math.floor((wf.durationMs % 60_000) / 1000)}s`)
+      : t(`${Math.floor(wf.durationMs / 1000)}초`, `${Math.floor(wf.durationMs / 1000)}s`)
 
   if (!open) {
     return (
-      <div className="wf-mini" onClick={() => setOpen(true)} role="button" aria-label="워크플로 카드 펼치기">
+      <div className="wf-mini" onClick={() => setOpen(true)} role="button" aria-label={t('워크플로 카드 펼치기', 'Expand workflow card')}>
         <span className="st run" />
-        <span className="wt">워크플로</span>
+        <span className="wt">{t('워크플로', 'Workflow')}</span>
         <span className="ws">
-          {(phases.find((p) => p.index === curPhase)?.title || '진행 중') + ` · ${doneAll}/${agents.length}`}
+          {(phases.find((p) => p.index === curPhase)?.title || t('진행 중', 'In progress')) + ` · ${doneAll}/${agents.length}`}
         </span>
         <span className="wx">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -3417,10 +3687,10 @@ export function WorkflowDock({ wf, onStop }: { wf: WorkflowState | null; onStop?
 
   return (
     <div className="wf-card scroll" ref={setCardEl}>
-      <MouseGestureLayer target={cardEl} actions={[{ pattern: 'DR', label: '내려두기', run: () => setOpen(false) }]} />
+      <MouseGestureLayer target={cardEl} actions={[{ pattern: 'DR', label: t('내려두기', 'Minimize'), run: () => setOpen(false) }]} />
       <div className="wf-head">
         <span className="st run" />
-        <span className="whl">워크플로</span>
+        <span className="whl">{t('워크플로', 'Workflow')}</span>
         <span className="wsum" title={wf.summary}>
           {wf.summary}
         </span>
@@ -3428,7 +3698,7 @@ export function WorkflowDock({ wf, onStop }: { wf: WorkflowState | null; onStop?
           {doneAll}/{agents.length} · {elapsed}
           {wf.totalTokens >= 1000 ? ` · ${fmtTok(wf.totalTokens)} tok` : ''}
         </span>
-        <button className="wmin" onClick={() => setOpen(false)} aria-label="내려두기" data-tip="내려두기" >
+        <button className="wmin" onClick={() => setOpen(false)} aria-label={t('내려두기', 'Minimize')} data-tip={t('내려두기', 'Minimize')} >
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
             <path d="m6 9 6 6 6-6" />
           </svg>
@@ -3436,8 +3706,10 @@ export function WorkflowDock({ wf, onStop }: { wf: WorkflowState | null; onStop?
       </div>
 
       <div className="wf-title">
-        {selTitle ? `${sel}단계 ${selTitle}` : '준비 중'}
-        {selAgents.length > 0 ? ` — 에이전트 ${inPhase(sel).d}/${inPhase(sel).t}` : ''}
+        {selTitle ? t(`${sel}단계 ${selTitle}`, `Phase ${sel} — ${selTitle}`) : t('준비 중', 'Getting ready')}
+        {selAgents.length > 0
+          ? t(` — 에이전트 ${inPhase(sel).d}/${inPhase(sel).t}`, ` · Agents ${inPhase(sel).d}/${inPhase(sel).t}`)
+          : ''}
       </div>
       <div className="wf-prog">
         <div className="bar">
@@ -3462,14 +3734,14 @@ export function WorkflowDock({ wf, onStop }: { wf: WorkflowState | null; onStop?
                 <span className="no">{p.index}</span>
                 <span className="pn">{p.title}</span>
                 <span className="pc">
-                  {done ? '✓' : c.t > 0 ? `${c.d}/${c.t}` : '대기'}
+                  {done ? '✓' : c.t > 0 ? `${c.d}/${c.t}` : t('대기', 'Queued')}
                 </span>
               </button>
             )
           })}
         </div>
         <div className="wf-agents">
-          {selAgents.length === 0 && <div className="wf-empty">앞 단계가 끝나면 시작돼요</div>}
+          {selAgents.length === 0 && <div className="wf-empty">{t('앞 단계가 끝나면 시작돼요', 'Starts once the previous phase finishes')}</div>}
           {selAgents.map((a, i) => (
             <div className="wf-ag" key={`${a.phase}-${i}`}>
               <span className={`st ${a.state === 'done' ? 'ok' : a.state === 'error' ? 'err' : a.state === 'queued' ? 'wait' : 'run'}`} />
@@ -3479,7 +3751,7 @@ export function WorkflowDock({ wf, onStop }: { wf: WorkflowState | null; onStop?
               {a.model && <span className="mt">{a.model}</span>}
               <span className="rt">
                 {typeof a.tokens === 'number' && a.tokens >= 1000 ? `${fmtTok(a.tokens)} tok` : ''}
-                {typeof a.toolCalls === 'number' && a.toolCalls > 0 ? ` · 도구 ${a.toolCalls}` : ''}
+                {typeof a.toolCalls === 'number' && a.toolCalls > 0 ? t(` · 도구 ${a.toolCalls}`, ` · ${a.toolCalls} tools`) : ''}
               </span>
             </div>
           ))}
@@ -3487,10 +3759,15 @@ export function WorkflowDock({ wf, onStop }: { wf: WorkflowState | null; onStop?
       </div>
 
       <div className="wf-foot">
-        <span className="wf-hint">결과가 나오면 대화로 정리해 드려요 — 그동안에도 대화는 계속할 수 있어요.</span>
+        <span className="wf-hint">
+          {t(
+            '결과가 나오면 대화로 정리해 드려요 — 그동안에도 대화는 계속할 수 있어요.',
+            'We’ll summarize the results in the chat — you can keep chatting in the meantime.'
+          )}
+        </span>
         {onStop && (
           <button className="wf-stop" onClick={onStop}>
-            중지
+            {t('중지', 'Stop')}
           </button>
         )}
       </div>
@@ -3522,7 +3799,7 @@ export function Composer({
   onOpenImage,
   cwd,
   mentionBase,
-  commands = SLASH_COMMANDS,
+  commands = slashCommands(),
   inputRef
 }: {
   value: string
@@ -3548,7 +3825,7 @@ export function Composer({
   onOpenImage?: (images: string[], index: number) => void
   cwd: string // project dir — scopes which skills the "/" palette loads
   mentionBase?: string // @ 멘션이 파일을 뜨우는 기준 폴더(탐색기가 보는 폴더). 없으면 cwd
-  commands?: SlashCmd[] // "/" 팔레트의 내장 명령 목록 (기본: SLASH_COMMANDS 전체)
+  commands?: SlashCmd[] // "/" 팔레트의 내장 명령 목록 (기본: slashCommands() 전체)
   inputRef?: React.RefObject<HTMLTextAreaElement | null>
 }) {
   const [focus, setFocus] = useState(false)
@@ -3721,7 +3998,7 @@ export function Composer({
       ? mLocRel
       : baseName + '/' + mLocRel
     : baseIsMain
-      ? '프로젝트 루트'
+      ? t('프로젝트 루트', 'Project root')
       : baseName
 
   useEffect(() => {
@@ -3870,27 +4147,27 @@ export function Composer({
             <div className="sched-head">
               <span className="sched-pulse" />
               <span className="sched-title">
-                예약된 메시지
+                {t('예약된 메시지', 'Queued messages')}
                 <span className="sched-count">{queued.length}</span>
               </span>
-              <span className="sched-hint">작업이 끝나면 순서대로 전송돼요</span>
+              <span className="sched-hint">{t('작업이 끝나면 순서대로 전송돼요', 'They’ll be sent in order when the run ends')}</span>
             </div>
             <div className="sched-list">
               {queued.map((m, i) => (
                 <div className="sched-item" key={m.id}>
                   <span className="sched-num">{i + 1}</span>
                   <span className="sched-text">
-                    {m.text.trim() || (m.images.length ? `첨부 ${m.images.length}개` : '')}
+                    {m.text.trim() || (m.images.length ? t(`첨부 ${m.images.length}개`, `${m.images.length} attachments`) : '')}
                   </span>
                   {m.images.length > 0 && (
-                    <span className="sched-img has-tip" data-tip={`첨부 ${m.images.length}개`}>
+                    <span className="sched-img has-tip" data-tip={t(`첨부 ${m.images.length}개`, `${m.images.length} attachments`)}>
                       <IconPaperclip size={13} />
                     </span>
                   )}
                   <button
                     className="sched-x has-tip"
-                    aria-label="예약 취소"
-                    data-tip="예약 취소"
+                    aria-label={t('예약 취소', 'Remove from queue')}
+                    data-tip={t('예약 취소', 'Remove from queue')}
                     onClick={() => onRemoveQueued(m.id)}
                   >
                     <IconX2 size={13} />
@@ -3922,12 +4199,12 @@ export function Composer({
           {dragOver && (
             <div className="drop-hint">
               <IconPaperclip size={15} />
-              <span>파일을 여기에 놓으세요</span>
+              <span>{t('파일을 여기에 놓으세요', 'Drop files here')}</span>
             </div>
           )}
           {slashOpen && (
             <div className="slash-menu scroll" ref={slashRef} role="listbox">
-              {cmdHits.length > 0 && <div className="slash-sec">명령어</div>}
+              {cmdHits.length > 0 && <div className="slash-sec">{t('명령어', 'Commands')}</div>}
               {cmdHits.map((c, i) => {
                 const Ic = c.icon
                 return (
@@ -3951,7 +4228,7 @@ export function Composer({
                   </button>
                 )
               })}
-              {skillHits.length > 0 && <div className="slash-sec">스킬</div>}
+              {skillHits.length > 0 && <div className="slash-sec">{t('스킬', 'Skills')}</div>}
               {skillHits.map((s, i) => {
                 const gi = cmdHits.length + i
                 return (
@@ -3971,7 +4248,7 @@ export function Composer({
                       <IconBook size={15} />
                     </span>
                     <span className="slash-name">{s.name}</span>
-                    <span className="slash-desc">{s.description || '설명이 없습니다.'}</span>
+                    <span className="slash-desc">{s.description || t('설명이 없습니다.', 'No description.')}</span>
                   </button>
                 )
               })}
@@ -3983,7 +4260,10 @@ export function Composer({
                 {mention.mode === 'search' ? (
                   <>
                     <IconSearch size={11} />
-                    <span>‘{mention.term}’ 검색{!baseIsMain || mLocRel ? ' · ' + mLocFull : ''}</span>
+                    <span>
+                      {t(`‘${mention.term}’ 검색`, `Search ‘${mention.term}’`)}
+                      {!baseIsMain || mLocRel ? ' · ' + mLocFull : ''}
+                    </span>
                   </>
                 ) : (
                   <>
@@ -4025,7 +4305,7 @@ export function Composer({
                       </span>
                       <span className="slash-name path">{e.name}</span>
                       {mention.mode === 'search' && (
-                        <span className="slash-desc">{e.dir ? e.dir.replace(/\/$/, '') : '루트'}</span>
+                        <span className="slash-desc">{e.dir ? e.dir.replace(/\/$/, '') : t('루트', 'root')}</span>
                       )}
                     </>
                   )}
@@ -4051,7 +4331,7 @@ export function Composer({
                     >
                       <img src={imageSrc(p)} alt={imageName(p)} draggable={false} />
                     </button>
-                    <button className="img-thumb-x has-tip" onClick={() => onRemoveImage(i)} aria-label="제거" data-tip="제거">
+                    <button className="img-thumb-x has-tip" onClick={() => onRemoveImage(i)} aria-label={t('제거', 'Remove')} data-tip={t('제거', 'Remove')}>
                       <IconX2 size={11} />
                     </button>
                   </div>
@@ -4061,7 +4341,7 @@ export function Composer({
                       <FileBadge path={p} size={15} />
                       <span className="doc-name">{imageName(p)}</span>
                     </span>
-                    <button className="img-thumb-x has-tip" onClick={() => onRemoveImage(i)} aria-label="제거" data-tip="제거">
+                    <button className="img-thumb-x has-tip" onClick={() => onRemoveImage(i)} aria-label={t('제거', 'Remove')} data-tip={t('제거', 'Remove')}>
                       <IconX2 size={11} />
                     </button>
                   </div>
@@ -4072,13 +4352,24 @@ export function Composer({
           {/* 한 줄 고스트 필 (PoC): [+ 첨부] [입력] [모델 칩 → 통합 팝오버] [보내기]
               — 입력이 여러 줄이면 two-line이 서서 입력칸 전체 폭 + 컨트롤 아랫줄로 승격 */}
           <div className={'composer-row' + (multi ? ' two-line' : '')}>
-            <button className="plus has-tip" aria-label="파일 첨부" data-tip="파일 첨부 (이미지·텍스트)" onClick={onPickImages}>
+            <button
+              className="plus has-tip"
+              aria-label={t('파일 첨부', 'Attach files')}
+              data-tip={t('파일 첨부 (이미지·텍스트)', 'Attach files (images · text)')}
+              onClick={onPickImages}
+            >
               <IconPlus size={11} stroke={2.2} />
             </button>
             <textarea
               ref={inputRef}
               rows={1}
-              placeholder={busy ? '다음 메시지를 예약하세요… (작업 후 자동 전송)' : started ? '메세지를 입력하세요.' : '오늘 어떤 도움을 드릴까요?'}
+              placeholder={
+                busy
+                  ? t('다음 메시지를 예약하세요… (작업 후 자동 전송)', 'Queue your next message… (sent when the run ends)')
+                  : started
+                    ? t('메세지를 입력하세요.', 'Type a message.')
+                    : t('오늘 어떤 도움을 드릴까요?', 'How can I help you today?')
+              }
               value={value}
               onChange={(e) => {
                 onChange(e.target.value)
@@ -4112,16 +4403,21 @@ export function Composer({
             />
             {busy ? (
               value.trim() || images.length > 0 ? (
-                <button className="send schedule has-tip" aria-label="예약" data-tip="작업 후 전송 예약 (Enter)" onClick={onSchedule}>
+                <button
+                  className="send schedule has-tip"
+                  aria-label={t('예약', 'Queue')}
+                  data-tip={t('작업 후 전송 예약 (Enter)', 'Queue to send after the run (Enter)')}
+                  onClick={onSchedule}
+                >
                   <IconClock size={15} />
                 </button>
               ) : (
-                <button className="send stop has-tip" aria-label="중지" data-tip="실행 중지" onClick={onStop}>
+                <button className="send stop has-tip" aria-label={t('중지', 'Stop')} data-tip={t('실행 중지', 'Stop the run')} onClick={onStop}>
                   <IconClose size={15} />
                 </button>
               )
             ) : (
-              <button className="send has-tip" aria-label="보내기" data-tip="보내기 (Enter)" disabled={!value.trim() && images.length === 0} onClick={onSend}>
+              <button className="send has-tip" aria-label={t('보내기', 'Send')} data-tip={t('보내기 (Enter)', 'Send (Enter)')} disabled={!value.trim() && images.length === 0} onClick={onSend}>
                 <IconSend size={15} />
               </button>
             )}

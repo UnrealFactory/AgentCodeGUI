@@ -6,6 +6,7 @@ import { computeLineDiff, newFileDiff } from './claude/diff'
 import { loadActiveQuery } from './engine/versions'
 import { accountRunDir, defaultAccountEmail } from './auth'
 import { envKeyChoice } from './apiConfig'
+import { t } from './lang'
 import type {
   EffortId,
   FileDiff,
@@ -45,8 +46,8 @@ const exec = (
 // git 에러는 stderr가 본문 — 렌더러 한 줄 표시용으로 다듬는다 (fatal: 접두 제거)
 function errLine(stderr: string, stdout = ''): string {
   const raw = (stderr || stdout || '').trim()
-  const first = raw.split('\n').find((l) => l.trim()) ?? '알 수 없는 오류'
-  return first.replace(/^fatal:\s*/i, '').replace(/^error:\s*/i, '').trim() || '알 수 없는 오류'
+  const first = raw.split('\n').find((l) => l.trim()) ?? t('알 수 없는 오류', 'Unknown error')
+  return first.replace(/^fatal:\s*/i, '').replace(/^error:\s*/i, '').trim() || t('알 수 없는 오류', 'Unknown error')
 }
 
 const NOT_REPO: GitStatus = {
@@ -175,33 +176,34 @@ export async function gitStatus(cwd: string): Promise<GitStatus> {
   }
   const toks = st.stdout.split('\0')
   for (let i = 0; i < toks.length; i++) {
-    const t = toks[i]
-    if (!t) continue
-    if (t.startsWith('# branch.head ')) {
-      const h = t.slice('# branch.head '.length)
+    // 토큰 변수는 tok — 이름이 t면 i18n의 t()를 가린다(같은 줄에서 둘 다 쓴다)
+    const tok = toks[i]
+    if (!tok) continue
+    if (tok.startsWith('# branch.head ')) {
+      const h = tok.slice('# branch.head '.length)
       out.detached = h === '(detached)'
-      out.branch = out.detached ? 'HEAD 분리됨' : h
-    } else if (t.startsWith('# branch.upstream ')) {
-      out.upstream = t.slice('# branch.upstream '.length)
-    } else if (t.startsWith('# branch.ab ')) {
-      const m = /\+(\d+) -(\d+)/.exec(t)
+      out.branch = out.detached ? t('HEAD 분리됨', 'Detached HEAD') : h
+    } else if (tok.startsWith('# branch.upstream ')) {
+      out.upstream = tok.slice('# branch.upstream '.length)
+    } else if (tok.startsWith('# branch.ab ')) {
+      const m = /\+(\d+) -(\d+)/.exec(tok)
       if (m) {
         out.ahead = parseInt(m[1], 10)
         out.behind = parseInt(m[2], 10)
       }
-    } else if (t.startsWith('1 ')) {
-      const m = /^1 (\S{2}) \S+ \S+ \S+ \S+ \S+ \S+ (.*)$/s.exec(t)
+    } else if (tok.startsWith('1 ')) {
+      const m = /^1 (\S{2}) \S+ \S+ \S+ \S+ \S+ \S+ (.*)$/s.exec(tok)
       if (m) out.files.push({ path: m[2], status: collapseXY(m[1]) })
-    } else if (t.startsWith('2 ')) {
+    } else if (tok.startsWith('2 ')) {
       // 개명 — 원래 경로는 다음 NUL 토큰
-      const m = /^2 (\S{2}) \S+ \S+ \S+ \S+ \S+ \S+ \S+ (.*)$/s.exec(t)
+      const m = /^2 (\S{2}) \S+ \S+ \S+ \S+ \S+ \S+ \S+ (.*)$/s.exec(tok)
       const orig = toks[++i]
       if (m) out.files.push({ path: m[2], status: 'R', renamedFrom: orig || undefined })
-    } else if (t.startsWith('u ')) {
-      const m = /^u (\S{2}) \S+ \S+ \S+ \S+ \S+ \S+ \S+ \S+ (.*)$/s.exec(t)
+    } else if (tok.startsWith('u ')) {
+      const m = /^u (\S{2}) \S+ \S+ \S+ \S+ \S+ \S+ \S+ \S+ (.*)$/s.exec(tok)
       if (m) out.files.push({ path: m[2], status: 'U' })
-    } else if (t.startsWith('? ')) {
-      out.files.push({ path: t.slice(2), status: 'A', untracked: true })
+    } else if (tok.startsWith('? ')) {
+      out.files.push({ path: tok.slice(2), status: 'A', untracked: true })
     }
   }
   out.files.sort((a, b) => a.path.localeCompare(b.path, undefined, { sensitivity: 'base' }))
@@ -259,10 +261,10 @@ async function showAt(root: string, rev: string, rel: string): Promise<string | 
 
 function buildFileDiff(rel: string, base: string | null, cur: string | null): GitFileDiffResult {
   if ((base && base.length > MAX_DIFF_BYTES) || (cur && cur.length > MAX_DIFF_BYTES))
-    return { diff: null, error: '파일이 너무 커요 — diff 표시는 1.5MB까지만' }
+    return { diff: null, error: t('파일이 너무 커요 — diff 표시는 1.5MB까지만', 'File is too large — diffs are shown up to 1.5MB') }
   if ((base && looksBinary(base)) || (cur && looksBinary(cur)))
-    return { diff: null, error: '바이너리 파일 — diff를 표시할 수 없어요' }
-  if (base == null && cur == null) return { diff: null, error: '내용을 읽을 수 없어요' }
+    return { diff: null, error: t('바이너리 파일 — diff를 표시할 수 없어요', 'Binary file — cannot show a diff') }
+  if (base == null && cur == null) return { diff: null, error: t('내용을 읽을 수 없어요', 'Could not read the contents') }
   let diff: FileDiff
   if (base == null || base === '') {
     const d = newFileDiff(cur ?? '')
@@ -277,9 +279,9 @@ function buildFileDiff(rel: string, base: string | null, cur: string | null): Gi
 /** 워킹트리 파일 diff — HEAD ↔ 디스크. 새 파일(HEAD에 없음)은 전체 추가. */
 export async function gitFileDiff(cwd: string, rel: string): Promise<GitFileDiffResult> {
   const root = await repoRoot(cwd)
-  if (!root) return { diff: null, error: 'Git 저장소가 아니에요' }
+  if (!root) return { diff: null, error: t('Git 저장소가 아니에요', 'Not a Git repository') }
   const abs = absOf(root, rel)
-  if (!abs) return { diff: null, error: '잘못된 경로' }
+  if (!abs) return { diff: null, error: t('잘못된 경로', 'Invalid path') }
   const base = await showAt(root, 'HEAD', rel)
   let cur: string | null = null
   try {
@@ -287,7 +289,7 @@ export async function gitFileDiff(cwd: string, rel: string): Promise<GitFileDiff
   } catch {
     cur = null // 삭제된 파일
   }
-  if (cur == null && base == null) return { diff: null, error: '내용을 읽을 수 없어요' }
+  if (cur == null && base == null) return { diff: null, error: t('내용을 읽을 수 없어요', 'Could not read the contents') }
   const d = buildFileDiff(rel, base, cur ?? '')
   // 디스크에서 지워진 파일 — 뷰어가 읽을 게 없으니 HEAD 스냅샷을 같이 준다
   if (cur == null && base != null && !looksBinary(base) && base.length <= MAX_DIFF_BYTES) d.headContent = base
@@ -339,7 +341,7 @@ export async function gitCommitFileDiff(
   rel: string
 ): Promise<GitFileDiffResult & { content: string | null }> {
   const root = await repoRoot(cwd)
-  if (!root || !/^[0-9a-f]{4,40}$/i.test(hash)) return { diff: null, content: null, error: 'Git 저장소가 아니에요' }
+  if (!root || !/^[0-9a-f]{4,40}$/i.test(hash)) return { diff: null, content: null, error: t('Git 저장소가 아니에요', 'Not a Git repository') }
   const [base, cur] = await Promise.all([showAt(root, `${hash}^`, rel), showAt(root, hash, rel)])
   const d = buildFileDiff(rel, base, cur ?? '')
   return { ...d, content: cur ?? '' }
@@ -350,9 +352,9 @@ export async function gitCommitFileDiff(
 /** 고른 파일만 커밋 — add(그 경로만) 후 commit. 스테이징 용어는 UI에 없다. */
 export async function gitCommit(cwd: string, files: string[], subject: string, body: string): Promise<GitResult> {
   const root = await repoRoot(cwd)
-  if (!root) return { ok: false, error: 'Git 저장소가 아니에요' }
-  if (!files.length) return { ok: false, error: '커밋할 파일이 없어요' }
-  if (!subject.trim()) return { ok: false, error: '커밋 메시지를 입력해 주세요' }
+  if (!root) return { ok: false, error: t('Git 저장소가 아니에요', 'Not a Git repository') }
+  if (!files.length) return { ok: false, error: t('커밋할 파일이 없어요', 'No files to commit') }
+  if (!subject.trim()) return { ok: false, error: t('커밋 메시지를 입력해 주세요', 'Enter a commit message') }
   const add = await exec(root, ['add', '-A', '--', ...files])
   if (!add.ok) return { ok: false, error: errLine(add.stderr) }
   const args = ['commit', '-m', subject.trim()]
@@ -363,7 +365,13 @@ export async function gitCommit(cwd: string, files: string[], subject: string, b
     await exec(root, ['reset', '--', ...files])
     const e = r.stderr + r.stdout
     if (/user\.(name|email)/i.test(e))
-      return { ok: false, error: 'git 사용자 정보가 없어요 — 터미널에서 git config --global user.name / user.email을 설정해 주세요' }
+      return {
+        ok: false,
+        error: t(
+          'git 사용자 정보가 없어요 — 터미널에서 git config --global user.name / user.email을 설정해 주세요',
+          'Git identity is not set — run git config --global user.name / user.email in a terminal'
+        )
+      }
     return { ok: false, error: errLine(r.stderr, r.stdout) }
   }
   return { ok: true }
@@ -371,22 +379,27 @@ export async function gitCommit(cwd: string, files: string[], subject: string, b
 
 export async function gitPush(cwd: string): Promise<GitResult> {
   const root = await repoRoot(cwd)
-  if (!root) return { ok: false, error: 'Git 저장소가 아니에요' }
+  if (!root) return { ok: false, error: t('Git 저장소가 아니에요', 'Not a Git repository') }
   const st = await gitStatus(root)
   // 업스트림이 없으면 첫 푸시 — origin에 현재 브랜치를 만든다
   const args = st.upstream ? ['push'] : ['push', '-u', 'origin', 'HEAD']
-  if (!st.hasRemote) return { ok: false, error: '원격 저장소(remote)가 없어요 — git remote add origin <url> 후 다시' }
+  if (!st.hasRemote)
+    return {
+      ok: false,
+      error: t('원격 저장소(remote)가 없어요 — git remote add origin <url> 후 다시', 'No remote configured — run git remote add origin <url> and try again')
+    }
   const r = await exec(root, args)
   return r.ok ? { ok: true } : { ok: false, error: errLine(r.stderr, r.stdout) }
 }
 
 export async function gitPull(cwd: string): Promise<GitResult> {
   const root = await repoRoot(cwd)
-  if (!root) return { ok: false, error: 'Git 저장소가 아니에요' }
+  if (!root) return { ok: false, error: t('Git 저장소가 아니에요', 'Not a Git repository') }
   const r = await exec(root, ['pull'])
   if (!r.ok) {
     const e = r.stderr + r.stdout
-    if (/CONFLICT/i.test(e)) return { ok: false, error: '병합 충돌이 났어요 — 충돌 파일을 정리한 뒤 커밋해 주세요' }
+    if (/CONFLICT/i.test(e))
+      return { ok: false, error: t('병합 충돌이 났어요 — 충돌 파일을 정리한 뒤 커밋해 주세요', 'Merge conflict — resolve the conflicted files, then commit') }
     return { ok: false, error: errLine(r.stderr, r.stdout) }
   }
   return { ok: true }
@@ -394,7 +407,7 @@ export async function gitPull(cwd: string): Promise<GitResult> {
 
 export async function gitFetch(cwd: string): Promise<GitResult> {
   const root = await repoRoot(cwd)
-  if (!root) return { ok: false, error: 'Git 저장소가 아니에요' }
+  if (!root) return { ok: false, error: t('Git 저장소가 아니에요', 'Not a Git repository') }
   const r = await exec(root, ['fetch', '--prune'])
   return r.ok ? { ok: true } : { ok: false, error: errLine(r.stderr, r.stdout) }
 }
@@ -402,15 +415,15 @@ export async function gitFetch(cwd: string): Promise<GitResult> {
 /** 파일 하나 되돌리기 — 추적 파일은 HEAD로, 새(미추적) 파일은 휴지통으로(복구 가능). */
 export async function gitDiscard(cwd: string, rel: string, untracked: boolean): Promise<GitResult> {
   const root = await repoRoot(cwd)
-  if (!root) return { ok: false, error: 'Git 저장소가 아니에요' }
+  if (!root) return { ok: false, error: t('Git 저장소가 아니에요', 'Not a Git repository') }
   const abs = absOf(root, rel)
-  if (!abs) return { ok: false, error: '잘못된 경로' }
+  if (!abs) return { ok: false, error: t('잘못된 경로', 'Invalid path') }
   if (untracked) {
     try {
       await shell.trashItem(abs)
       return { ok: true }
     } catch {
-      return { ok: false, error: '파일을 휴지통으로 보내지 못했어요' }
+      return { ok: false, error: t('파일을 휴지통으로 보내지 못했어요', 'Could not move the file to the recycle bin') }
     }
   }
   // index에 올라가 있어도(A 포함) 한 번에 HEAD 상태로 — 스테이징·워크트리 모두 복원
@@ -423,7 +436,7 @@ export async function gitDiscard(cwd: string, rel: string, untracked: boolean): 
       await shell.trashItem(abs)
       return { ok: true }
     } catch {
-      return { ok: false, error: '파일을 휴지통으로 보내지 못했어요' }
+      return { ok: false, error: t('파일을 휴지통으로 보내지 못했어요', 'Could not move the file to the recycle bin') }
     }
   }
   return { ok: false, error: errLine(r.stderr) }
@@ -450,12 +463,12 @@ export async function gitBranches(cwd: string): Promise<GitBranch[]> {
 
 export async function gitSwitchBranch(cwd: string, name: string): Promise<GitResult> {
   const root = await repoRoot(cwd)
-  if (!root) return { ok: false, error: 'Git 저장소가 아니에요' }
+  if (!root) return { ok: false, error: t('Git 저장소가 아니에요', 'Not a Git repository') }
   const r = await exec(root, ['switch', name])
   if (!r.ok) {
     const e = r.stderr + r.stdout
     if (/would be overwritten|충돌|conflict/i.test(e))
-      return { ok: false, error: '지금 변경과 충돌해요 — 커밋하거나 되돌린 뒤 전환해 주세요' }
+      return { ok: false, error: t('지금 변경과 충돌해요 — 커밋하거나 되돌린 뒤 전환해 주세요', 'Conflicts with your current changes — commit or discard them, then switch') }
     return { ok: false, error: errLine(r.stderr, r.stdout) }
   }
   return { ok: true }
@@ -463,11 +476,11 @@ export async function gitSwitchBranch(cwd: string, name: string): Promise<GitRes
 
 export async function gitCreateBranch(cwd: string, name: string): Promise<GitResult> {
   const root = await repoRoot(cwd)
-  if (!root) return { ok: false, error: 'Git 저장소가 아니에요' }
+  if (!root) return { ok: false, error: t('Git 저장소가 아니에요', 'Not a Git repository') }
   const clean = name.trim()
-  if (!clean) return { ok: false, error: '브랜치 이름을 입력해 주세요' }
+  if (!clean) return { ok: false, error: t('브랜치 이름을 입력해 주세요', 'Enter a branch name') }
   const chk = await exec(root, ['check-ref-format', '--branch', clean])
-  if (!chk.ok) return { ok: false, error: '브랜치 이름으로 쓸 수 없는 형식이에요' }
+  if (!chk.ok) return { ok: false, error: t('브랜치 이름으로 쓸 수 없는 형식이에요', 'Not a valid branch name') }
   const r = await exec(root, ['switch', '-c', clean])
   return r.ok ? { ok: true } : { ok: false, error: errLine(r.stderr, r.stdout) }
 }
@@ -500,17 +513,19 @@ export async function gitAiMessage(
   opts?: { account?: string; model?: ModelId; effort?: EffortId }
 ): Promise<{ ok: boolean; subject?: string; body?: string; error?: string }> {
   const root = await repoRoot(cwd)
-  if (!root) return { ok: false, error: 'Git 저장소가 아니에요' }
-  if (!files.length) return { ok: false, error: '커밋에 담긴 파일이 없어요' }
+  if (!root) return { ok: false, error: t('Git 저장소가 아니에요', 'Not a Git repository') }
+  if (!files.length) return { ok: false, error: t('커밋에 담긴 파일이 없어요', 'No files in this commit') }
   const query = await loadActiveQuery().catch(() => null)
-  if (!query) return { ok: false, error: '설치된 엔진이 없어요 — 설정 → Engine에서 먼저 설치해 주세요' }
+  if (!query)
+    return { ok: false, error: t('설치된 엔진이 없어요 — 설정 → Engine에서 먼저 설치해 주세요', 'No engine installed — install one in Settings → Engine first') }
   const email = opts?.account || defaultAccountEmail()
-  if (!email) return { ok: false, error: '등록된 클로드 계정이 없어요 — 설정 → Account에서 로그인해 주세요' }
+  if (!email)
+    return { ok: false, error: t('등록된 클로드 계정이 없어요 — 설정 → Account에서 로그인해 주세요', 'No Claude account registered — sign in via Settings → Account') }
   let accountDir: string
   try {
     accountDir = accountRunDir(email)
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : '계정 준비에 실패했어요' }
+    return { ok: false, error: e instanceof Error ? e.message : t('계정 준비에 실패했어요', 'Failed to prepare the account') }
   }
 
   // diff 수집 — 예산을 넘겨도 파일이 사라지진 않는다: 본문만 접고 헤더(+N −M)는 남긴다
@@ -518,9 +533,13 @@ export async function gitAiMessage(
   for (const rel of files) {
     const d = await gitFileDiff(root, rel)
     const head = d.diff ? `### ${rel} (+${d.diff.add} −${d.diff.del})` : `### ${rel}`
-    let chunk = d.diff ? serializeDiff(rel, d.diff) : `${head} (diff 본문 없음: ${d.error ?? '표시 불가'})`
-    if (d.diff && chunk.length > AI_FILE_CAP) chunk = `${head} — 본문 생략(파일이 너무 큼): 규모만 참고`
-    if (diffText.length + chunk.length > AI_DIFF_CAP) chunk = `${head} — 본문 생략(총량 상한): 규모만 참고`
+    let chunk = d.diff
+      ? serializeDiff(rel, d.diff)
+      : `${head} ${t(`(diff 본문 없음: ${d.error ?? '표시 불가'})`, `(no diff body: ${d.error ?? 'not displayable'})`)}`
+    if (d.diff && chunk.length > AI_FILE_CAP)
+      chunk = `${head} ${t('— 본문 생략(파일이 너무 큼): 규모만 참고', '— body omitted (file too large): use the size only')}`
+    if (diffText.length + chunk.length > AI_DIFF_CAP)
+      chunk = `${head} ${t('— 본문 생략(총량 상한): 규모만 참고', '— body omitted (total cap reached): use the size only')}`
     diffText += (diffText ? '\n\n' : '') + chunk
   }
 
@@ -530,13 +549,21 @@ export async function gitAiMessage(
   // 출력은 <commit> 마커로 감싸게 한다 — "아래와 같이 제안합니다…" 같은 서두를 모델이
   // 붙여도(금지 문구로는 안 막힘, 실측) 마커 안만 취하면 제목 칸에 잡담이 못 들어간다.
   const prompt = [
-    '아래 diff로 git 커밋 메시지를 작성해줘.',
-    tone ? `\n[이 저장소의 최근 커밋 제목들 — 이 톤과 형식을 그대로 따라줘]\n${tone}` : '',
-    '\n[출력 형식 — 아래 마커 블록 하나만 출력한다. 마커 밖에는 어떤 글자도 쓰지 마라 (인사·설명·코드펜스 금지)]',
+    t('아래 diff로 git 커밋 메시지를 작성해줘.', 'Write a git commit message for the diff below.'),
+    tone
+      ? t(
+          `\n[이 저장소의 최근 커밋 제목들 — 이 톤과 형식을 그대로 따라줘]\n${tone}`,
+          `\n[Recent commit subjects in this repo — follow this tone and format exactly]\n${tone}`
+        )
+      : '',
+    t(
+      '\n[출력 형식 — 아래 마커 블록 하나만 출력한다. 마커 밖에는 어떤 글자도 쓰지 마라 (인사·설명·코드펜스 금지)]',
+      '\n[Output format — print exactly one marker block as below. Write nothing outside the markers (no greetings, explanations, or code fences)]'
+    ),
     '<commit>',
-    '제목 한 줄 (한국어, 72자 이내, 마침표 없이)',
+    t('제목 한 줄 (한국어, 72자 이내, 마침표 없이)', 'One-line subject (English, 72 characters max, no trailing period)'),
     '',
-    '(선택) 빈 줄 하나 뒤 본문 2~4줄 — 변경이 여러 갈래일 때만',
+    t('(선택) 빈 줄 하나 뒤 본문 2~4줄 — 변경이 여러 갈래일 때만', '(optional) after one blank line, a 2-4 line body — only when the change has multiple strands'),
     '</commit>',
     `\n[diff]\n${diffText}`
   ].join('\n')
@@ -589,14 +616,14 @@ export async function gitAiMessage(
       .filter((l) => !/^\s*```/.test(l))
       .join('\n')
       .trim()
-    if (!clean) return { ok: false, error: '메시지를 받지 못했어요 — 다시 시도해 주세요' }
+    if (!clean) return { ok: false, error: t('메시지를 받지 못했어요 — 다시 시도해 주세요', 'No message received — please try again') }
     const nl = clean.indexOf('\n')
     const subject = (nl < 0 ? clean : clean.slice(0, nl)).trim()
     const body = nl < 0 ? '' : clean.slice(nl + 1).trim()
     return { ok: true, subject, body }
   } catch (e) {
-    if (abort.signal.aborted) return { ok: false, error: '시간이 너무 걸려 중단했어요 — 다시 시도해 주세요' }
-    return { ok: false, error: e instanceof Error ? e.message : 'AI 메시지 생성에 실패했어요' }
+    if (abort.signal.aborted) return { ok: false, error: t('시간이 너무 걸려 중단했어요 — 다시 시도해 주세요', 'Took too long and was stopped — please try again') }
+    return { ok: false, error: e instanceof Error ? e.message : t('AI 메시지 생성에 실패했어요', 'Failed to generate the AI message') }
   } finally {
     clearTimeout(timer)
   }

@@ -40,6 +40,7 @@ import { buildSemDict, type StructOv } from '../lib/semTokens'
 import { readDiffField, type DiffMarks } from '../lib/cmDiff'
 import { findField, setFindHits, computeMatches } from '../lib/cmFind'
 import { paletteClassFor } from './fileType'
+import { t } from '../lib/i18n'
 import { IconSearch, IconChevDown, IconClose, IconAlert } from './icons'
 import { HoverContent, identAt } from './FileModal'
 
@@ -510,7 +511,7 @@ export const CmEditor = forwardRef<
       // 저장 자체는 diff를 건드릴 필요가 없다(부모는 불변 — 내 변경이 초록으로 합쳐져 보임).
       onSavedRef.current?.()
     } else {
-      setSaveErr(r.error || '알 수 없는 오류')
+      setSaveErr(r.error || t('알 수 없는 오류', 'Unknown error'))
     }
   }, [cwd, path])
   const saveRef = useRef(doSave)
@@ -986,7 +987,7 @@ export const CmEditor = forwardRef<
                 const ln = Math.max(1, Math.min(b.start, v.state.doc.lines))
                 v.dispatch({ effects: EditorView.scrollIntoView(v.state.doc.line(ln).from, { y: 'center' }) })
               }}
-              aria-label={`${b.start}번째 줄 변경으로 이동`}
+              aria-label={t(`${b.start}번째 줄 변경으로 이동`, `Go to change at line ${b.start}`)}
             />
           ))}
         </div>
@@ -1024,11 +1025,11 @@ function SaveErrorDialog({ message, onClose }: { message: string; onClose: () =>
         <div className="sd-ic">
           <IconAlert size={22} />
         </div>
-        <div className="sd-title">저장하지 못했어요</div>
+        <div className="sd-title">{t('저장하지 못했어요', "Couldn't save")}</div>
         <div className="sd-msg">{message}</div>
         <div className="sd-btns">
           <button className="sd-go" onClick={onClose} autoFocus>
-            확인
+            {t('확인', 'OK')}
           </button>
         </div>
       </div>
@@ -1103,7 +1104,7 @@ function CmFindBar({ view, onClose }: { view: EditorView; onClose: () => void })
         ref={inputRef}
         autoFocus
         value={query}
-        placeholder="파일 내 검색…"
+        placeholder={t('파일 내 검색…', 'Find in file…')}
         onChange={(e) => setQuery(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === 'Enter') {
@@ -1112,14 +1113,14 @@ function CmFindBar({ view, onClose }: { view: EditorView; onClose: () => void })
           }
         }}
       />
-      <span className="cnt">{total ? `${cur + 1}/${total}` : query ? '0개' : ''}</span>
-      <button className="has-tip" data-tip="이전 (Shift+Enter)" aria-label="이전 결과" onClick={() => step(-1)} disabled={!total}>
+      <span className="cnt">{total ? `${cur + 1}/${total}` : query ? t('0개', 'No results') : ''}</span>
+      <button className="has-tip" data-tip={t('이전 (Shift+Enter)', 'Previous (Shift+Enter)')} aria-label={t('이전 결과', 'Previous match')} onClick={() => step(-1)} disabled={!total}>
         <IconChevDown size={14} style={{ transform: 'rotate(180deg)' }} />
       </button>
-      <button className="has-tip" data-tip="다음 (Enter)" aria-label="다음 결과" onClick={() => step(1)} disabled={!total}>
+      <button className="has-tip" data-tip={t('다음 (Enter)', 'Next (Enter)')} aria-label={t('다음 결과', 'Next match')} onClick={() => step(1)} disabled={!total}>
         <IconChevDown size={14} />
       </button>
-      <button className="has-tip" data-tip="닫기 (Esc)" aria-label="검색 닫기" onClick={onClose}>
+      <button className="has-tip" data-tip={t('닫기 (Esc)', 'Close (Esc)')} aria-label={t('검색 닫기', 'Close find')} onClick={onClose}>
         <IconClose size={14} />
       </button>
     </div>

@@ -28,6 +28,7 @@ import type {
 } from '@shared/protocol'
 import { computeLineDiff, newFileDiff } from './diff'
 import { lspManager } from '../lsp/manager'
+import { t } from '../lang'
 
 type Emit = (event: EngineEvent) => void
 
@@ -507,15 +508,22 @@ export class ClaudeEngine {
     // 백그라운드가 없는 보통 실행은 result 직후 여기로 — 기존과 동일.
     const maybeCloseInput = (): void => {
       if (!liveWorkflows.size && !liveBgIds.size && !liveBgAgents.size && !wfWrapPending && this.turnEnded) closeInput()
+      else armHoldIdle() // 계속 상주 — 사유에 맞는 안전망을 다시 장전
     }
-    // 상주 안전망 — 워크플로 완료 통지 후 재기동(정리 턴)을 기다리는 상태에서만 건다.
+    // 상주 안전망 — 두 경우에만 건다. (1) 워크플로 완료 통지 후 재기동(정리 턴) 대기:
     // 그 프레임은 곧 와야 정상이라 10분 무소식 = CLI 급사/행 → 닫고 정리로 흐른다.
-    // (셸/에이전트 유지 상주는 dev 서버처럼 몇 시간씩 조용한 게 정상이라 타이머를 걸지
+    // (2) 에이전트'만' 남은 상주: 살아있는 백그라운드 서브에이전트는 사이드체인 프레임
+    // (내레이션·도구)을 계속 흘리므로, 30분 무프레임 = 죽었는데 정착 통지가 누락된 것 —
+    // 집합이 영영 안 비어 CLI가 수백 MB짜리 좀비로 상주하는 릭을 여기서 끊는다.
+    // (셸 유지 상주는 dev 서버처럼 몇 시간씩 조용한 게 정상이라 타이머를 걸지
     // 않는다 — CLI가 죽으면 스트림이 스스로 끝나 finally로 흐른다.)
     let holdIdleTimer: NodeJS.Timeout | null = null
     const armHoldIdle = (): void => {
       if (holdIdleTimer) clearTimeout(holdIdleTimer)
-      holdIdleTimer = wfWrapPending ? setTimeout(closeInput, 10 * 60_000) : null
+      if (wfWrapPending) holdIdleTimer = setTimeout(closeInput, 10 * 60_000)
+      else if (this.turnEnded && liveBgAgents.size && !liveBgIds.size && !liveWorkflows.size)
+        holdIdleTimer = setTimeout(closeInput, 30 * 60_000)
+      else holdIdleTimer = null
     }
     // 종결 status(done/error)를 이미 보냈는지 — 못 보낸 채 스트림이 닫히면(CLI 급사,
     // result 프레임 없는 종료) 렌더러의 busy가 영영 안 풀리므로 finally의 안전망이 챙긴다
@@ -549,15 +557,27 @@ export class ClaudeEngine {
       const apiKey = useApi ? getApiKey() : null
 
       if (!query) {
-        throw new Error('설치된 Claude Code 엔진이 없습니다. 설정 → 버전에서 엔진을 먼저 설치해 주세요.')
+        throw new Error(
+          t(
+            '설치된 Claude Code 엔진이 없습니다. 설정 → 버전에서 엔진을 먼저 설치해 주세요.',
+            'No Claude Code engine is installed. Install one in Settings → Versions first.'
+          )
+        )
       }
       if (useApi && !apiKey) {
-        throw new Error('API 모드가 켜져 있지만 저장된 API 키가 없습니다. 설정 → API에서 키를 먼저 등록해 주세요.')
+        throw new Error(
+          t(
+            'API 모드가 켜져 있지만 저장된 API 키가 없습니다. 설정 → API에서 키를 먼저 등록해 주세요.',
+            'API mode is on, but no API key is saved. Add a key in Settings → API first.'
+          )
+        )
       }
       if (!useApi) {
         accountEmail = req.account ?? defaultAccountEmail()
         if (!accountEmail) {
-          throw new Error('등록된 클로드 계정이 없어요 — 설정 → Account에서 로그인해 주세요.')
+          throw new Error(
+            t('등록된 클로드 계정이 없어요 — 설정 → Account에서 로그인해 주세요.', 'No Claude account is registered — sign in from Settings → Account.')
+          )
         }
         accountDir = accountRunDir(accountEmail) // 등록 없음/손상 → throw로 에러 표시
       }
@@ -573,7 +593,7 @@ export class ClaudeEngine {
       if (envKey) {
         let choice = envKeyChoice(envKey)
         if (!choice) {
-          const useLabel = 'API 키로 과금'
+          const useLabel = t('API 키로 과금', 'Bill to API key')
           const requestId = `ask-${runId}-${++this.permReqCounter}`
           const answers = await new Promise<string[][] | null>((resolve) => {
             this.questionWaiters.set(requestId, resolve)
@@ -587,13 +607,27 @@ export class ClaudeEngine {
               requestId,
               questions: [
                 {
-                  question:
+                  question: t(
                     '시스템 환경변수에 ANTHROPIC_API_KEY가 설정돼 있어요. 이 키로 실행하면 구독이 아니라 API 크레딧으로 과금됩니다. 어떻게 할까요?',
-                  header: 'API 키 감지',
+                    'ANTHROPIC_API_KEY is set in your system environment. Running with this key bills API credits instead of your subscription. What would you like to do?'
+                  ),
+                  header: t('API 키 감지', 'API key detected'),
                   multiSelect: false,
                   options: [
-                    { label: useLabel, description: '환경변수의 API 키로 실행합니다 — API 크레딧이 차감돼요. 이 키에 대한 선택은 기억됩니다.' },
-                    { label: '구독으로 실행', description: '이 키를 무시하고 로그인한 구독 계정으로 실행합니다. 이 키에 대한 선택은 기억됩니다.' }
+                    {
+                      label: useLabel,
+                      description: t(
+                        '환경변수의 API 키로 실행합니다 — API 크레딧이 차감돼요. 이 키에 대한 선택은 기억됩니다.',
+                        'Runs with the API key from the environment — API credits will be charged. Your choice is remembered for this key.'
+                      )
+                    },
+                    {
+                      label: t('구독으로 실행', 'Use subscription'),
+                      description: t(
+                        '이 키를 무시하고 로그인한 구독 계정으로 실행합니다. 이 키에 대한 선택은 기억됩니다.',
+                        'Ignores this key and runs with the signed-in subscription account. Your choice is remembered for this key.'
+                      )
+                    }
                   ]
                 }
               ]
@@ -696,7 +730,8 @@ export class ClaudeEngine {
             }
             // AskUserQuestion 카드 재사용 — 모든 표면(코드 메인·채팅·세션 창·멀티 패널)이
             // 이미 렌더한다. requestId가 ask- 접두라 finally의 waiter 정리도 그대로 적용.
-            const contLabel = `${to}로 전환해 계속`
+            const contLabel = t(`${to}로 전환해 계속`, `Switch to ${to} and continue`)
+            const reason = fallbackReason(p.originalModel, p.apiRefusalCategory)
             const requestId = `ask-${runId}-${++this.permReqCounter}`
             const answers = await new Promise<string[][] | null>((resolve) => {
               this.questionWaiters.set(requestId, resolve)
@@ -710,12 +745,24 @@ export class ClaudeEngine {
                 requestId,
                 questions: [
                   {
-                    question: `${fallbackReason(p.originalModel, p.apiRefusalCategory)} ${to} 모델로 전환해 계속할까요?`,
-                    header: '모델 전환',
+                    question: t(`${reason} ${to} 모델로 전환해 계속할까요?`, `${reason} Switch to ${to} and continue?`),
+                    header: t('모델 전환', 'Model switch'),
                     multiSelect: false,
                     options: [
-                      { label: contLabel, description: `이 요청을 ${to}로 다시 시도하고, 이후 대화도 ${to}로 진행합니다.` },
-                      { label: '중단', description: '전환하지 않고 여기서 끝냅니다. 프롬프트를 고쳐 다시 보낼 수 있어요.' }
+                      {
+                        label: contLabel,
+                        description: t(
+                          `이 요청을 ${to}로 다시 시도하고, 이후 대화도 ${to}로 진행합니다.`,
+                          `Retries this request on ${to}; the rest of the conversation continues on ${to}.`
+                        )
+                      },
+                      {
+                        label: t('중단', 'Stop'),
+                        description: t(
+                          '전환하지 않고 여기서 끝냅니다. 프롬프트를 고쳐 다시 보낼 수 있어요.',
+                          'Ends here without switching. You can revise your prompt and try again.'
+                        )
+                      }
                     ]
                   }
                 ]
@@ -728,7 +775,10 @@ export class ClaudeEngine {
                 this.emit({
                   type: 'notice',
                   runId,
-                  text: `모델을 전환하지 않아 이 요청은 ${from}의 거부로 종료됐어요. 프롬프트를 수정해 다시 시도할 수 있어요.`
+                  text: t(
+                    `모델을 전환하지 않아 이 요청은 ${from}의 거부로 종료됐어요. 프롬프트를 수정해 다시 시도할 수 있어요.`,
+                    `The model was not switched, so this request ended with ${from}'s refusal. You can revise your prompt and try again.`
+                  )
                 })
               }
               return { behavior: 'cancelled' as const }
@@ -739,7 +789,10 @@ export class ClaudeEngine {
               runId,
               fromModel: typeof p.originalModel === 'string' ? p.originalModel : '',
               toModel: typeof p.fallbackModel === 'string' ? p.fallbackModel : '',
-              text: `${fallbackReason(p.originalModel, p.apiRefusalCategory)} ${to} 모델로 전환해 계속해요. 이후 대화도 ${to} 모델로 진행됩니다.`,
+              text: t(
+                `${reason} ${to} 모델로 전환해 계속해요. 이후 대화도 ${to} 모델로 진행됩니다.`,
+                `${reason} Switching to ${to} to continue. The rest of the conversation will use ${to}.`
+              ),
               // the refused leg's streamed partial — the retried answer must start
               // a fresh bubble, not append to it
               retractMessageId: curTextId
@@ -779,7 +832,7 @@ export class ClaudeEngine {
         const resultText = msg.is_error
           ? Array.isArray(msg.errors) && msg.errors.length
             ? msg.errors.join('; ')
-            : msg.result ?? '실행이 실패했습니다.'
+            : msg.result ?? t('실행이 실패했습니다.', 'The run failed.')
           : msg.result ?? ''
         // use the last per-turn context, NOT contextFromUsage(msg.usage): the
         // result's usage is cumulative across the whole run and would overstate
@@ -941,12 +994,21 @@ export class ClaudeEngine {
               // 이 실행은 실제로 API 크레딧으로 과금된다 (직접 켠 경우·전역 ANTHROPIC_API_KEY 둘 다)
               // 백틱으로 감싼 부분은 렌더러가 색을 넣는다 (하단 '과금' 토글과 바꿀 값 '구독')
               authNotice = useApi
-                ? '이 대화는 API 크레딧으로 과금돼요 (구독이 아닙니다). 실수로 API를 골랐다면 하단 `과금`을 `구독`으로 바꾸세요.'
-                : '이 대화는 API 키로 과금돼요 (환경변수 ANTHROPIC_API_KEY 사용). 구독 크레딧은 쓰이지 않습니다.'
+                ? t(
+                    '이 대화는 API 크레딧으로 과금돼요 (구독이 아닙니다). 실수로 API를 골랐다면 하단 `과금`을 `구독`으로 바꾸세요.',
+                    'This chat is billed to API credits (not your subscription). If you picked API by mistake, switch the bottom `billing` toggle to `subscription`.'
+                  )
+                : t(
+                    '이 대화는 API 키로 과금돼요 (환경변수 ANTHROPIC_API_KEY 사용). 구독 크레딧은 쓰이지 않습니다.',
+                    'This chat is billed to an API key (via the ANTHROPIC_API_KEY environment variable). Subscription credits are not used.'
+                  )
               once = 'api-billing'
             } else if (useApi) {
               // API 모드를 켰는데 구독으로 붙음 = 의도(API 과금)가 실패한 불일치 → 한 번만 알림
-              authNotice = 'API 모드가 켜져 있지만 이 실행은 구독 인증으로 연결됐어요. 과금이 API 키로 되지 않았을 수 있습니다.'
+              authNotice = t(
+                'API 모드가 켜져 있지만 이 실행은 구독 인증으로 연결됐어요. 과금이 API 키로 되지 않았을 수 있습니다.',
+                'API mode is on, but this run connected with subscription auth. Billing may not have gone to the API key.'
+              )
               once = 'api-mismatch'
             }
             if (authNotice) this.emit({ type: 'notice', runId, text: authNotice, ...(once ? { once } : {}) })
@@ -1124,7 +1186,14 @@ export class ClaudeEngine {
             // handleToolResult가 카드를 실행 중으로 유지한다), 완료는 이 통지가 맡는다.
             if (typeof tuid === 'string' && this.subagents.has(tuid)) {
               this.subagents.delete(tuid)
-              const label = st === 'completed' ? '완료' : st === 'stopped' ? (this.turnEnded ? '턴 종료로 정리됨' : '중지됨') : '실패'
+              const label =
+                st === 'completed'
+                  ? t('완료', 'Done')
+                  : st === 'stopped'
+                    ? this.turnEnded
+                      ? t('턴 종료로 정리됨', 'Cleaned up at turn end')
+                      : t('중지됨', 'Stopped')
+                    : t('실패', 'Failed')
               const saMeta = this.tools.get(tuid)
               this.emit({
                 type: 'subagent',
@@ -1243,7 +1312,10 @@ export class ClaudeEngine {
                 runId,
                 fromModel: curModelDisplay,
                 toModel: msg.message?.model ?? mk,
-                text: `모델이 ${curModelDisplay}에서 ${mk}로 전환되었어요. 이후 답변은 ${mk}로 생성됩니다.`,
+                text: t(
+                  `모델이 ${curModelDisplay}에서 ${mk}로 전환되었어요. 이후 답변은 ${mk}로 생성됩니다.`,
+                  `The model switched from ${curModelDisplay} to ${mk}. Later replies will be generated by ${mk}.`
+                ),
                 retractMessageId: null
               })
               curModelDisplay = mk
@@ -1409,7 +1481,7 @@ export class ClaudeEngine {
               name: '',
               role: '',
               status: 'done',
-              activity: '턴 종료로 정리됨',
+              activity: t('턴 종료로 정리됨', 'Cleaned up at turn end'),
               tools: [],
               durationMs: saMeta ? Date.now() - saMeta.startedAt : undefined
             }
@@ -1422,7 +1494,7 @@ export class ClaudeEngine {
         // 실행 경계 가드(curRunId)가 이 늦은 status를 걸러낸다.
         if (!sentTerminalStatus) {
           if (!abort.signal.aborted) {
-            this.emit({ type: 'notice', runId, text: '엔진이 응답 없이 종료됐어요 — 메시지를 다시 보내 주세요.' })
+            this.emit({ type: 'notice', runId, text: t('엔진이 응답 없이 종료됐어요 — 메시지를 다시 보내 주세요.', 'The engine exited without responding — please send your message again.') })
             this.emit({ type: 'status', runId, status: 'error' })
           } else {
             this.emit({ type: 'status', runId, status: 'done' })
@@ -1460,9 +1532,9 @@ export class ClaudeEngine {
         agent: {
           id,
           name: subType,
-          role: oneLine(desc, 40) || '서브에이전트',
+          role: oneLine(desc, 40) || t('서브에이전트', 'Subagent'),
           status: 'running',
-          activity: oneLine(desc, 200) || '작업 중',
+          activity: oneLine(desc, 200) || t('작업 중', 'Working'),
           tools: []
         }
       })
@@ -1582,7 +1654,9 @@ export class ClaudeEngine {
     if (hugeOnDisk || (cur?.length ?? 0) > HUGE || next.length > HUGE) {
       this.baselines.delete(abs)
       const tag = cur == null && !hugeOnDisk ? ('new' as const) : ('edit' as const)
-      const lines = [{ t: 'hunk' as const, text: '@@ 파일이 너무 커서 변경 미리보기를 생략했어요 @@' }]
+      const lines = [
+        { t: 'hunk' as const, text: t('@@ 파일이 너무 커서 변경 미리보기를 생략했어요 @@', '@@ File is too large — change preview skipped @@') }
+      ]
       return { whole: true, file: { path: rel, add: 0, del: 0, tag }, diff: { path: rel, tag, add: 0, del: 0, lines } }
     }
     if (!this.baselines.has(abs)) this.baselines.set(abs, cur)
@@ -1613,7 +1687,14 @@ export class ClaudeEngine {
         this.emit({
           type: 'subagent',
           runId,
-          agent: { id, name: '', role: '', status: 'running', activity: '백그라운드에서 진행 중', tools: [] }
+          agent: {
+            id,
+            name: '',
+            role: '',
+            status: 'running',
+            activity: t('백그라운드에서 진행 중', 'Running in the background'),
+            tools: []
+          }
         })
         return
       }
@@ -1627,7 +1708,7 @@ export class ClaudeEngine {
           name: '',
           role: '',
           status: 'done',
-          activity: agentResult(text) || '완료',
+          activity: agentResult(text) || t('완료', 'Done'),
           tools: [],
           durationMs: meta ? Date.now() - meta.startedAt : undefined
         }
@@ -1650,7 +1731,7 @@ export class ClaudeEngine {
       for (const ln of lines) {
         if (ln.trim()) this.emit({ type: 'terminal', runId, line: { type: isError ? 'err' : 'out', text: ln } })
       }
-      if (!isError) this.emit({ type: 'terminal', runId, line: { type: 'ok', text: '✓ 완료' } })
+      if (!isError) this.emit({ type: 'terminal', runId, line: { type: 'ok', text: t('✓ 완료', '✓ Done') } })
     }
 
     // Panel-feeding tools (TodoWrite / Task*) produce no tool log row.
@@ -1662,10 +1743,10 @@ export class ClaudeEngine {
       const result =
         meta.pending && !isError
           ? meta.pending.file.tag === 'new'
-            ? '새 파일'
+            ? t('새 파일', 'New file')
             : `+${meta.pending.file.add} -${meta.pending.file.del}`
           : links
-            ? `${links.length}개 결과`
+            ? t(`${links.length}개 결과`, `${links.length} results`)
             : resultSummary(meta.name, text, isError)
       // Bash rows carry their output tail so the chat can show it as an inline log
       const output = meta.name === 'Bash' ? tailOutput(text) : undefined
@@ -1737,7 +1818,9 @@ export class ClaudeEngine {
         options?.signal?.addEventListener('abort', onAbort, { once: true })
         this.emit({ type: 'permission-request', runId, requestId, toolName, summary })
       })
-      if (choice.behavior === 'deny') return { behavior: 'deny', message: choice.message || '사용자가 거부했습니다.' }
+      // 모델이 읽는 거부 사유 — 뒤이은 답변이 사용자에게 보이므로 UI 언어를 따른다
+      if (choice.behavior === 'deny')
+        return { behavior: 'deny', message: choice.message || t('사용자가 거부했습니다.', 'The user denied this.') }
       // 항상 허용 → add a session-scoped allow rule for this tool so the SDK stops asking
       // for it this session (no settings-file write — destination is in-memory 'session').
       if (choice.behavior === 'allow_always') {
@@ -1757,7 +1840,7 @@ export class ClaudeEngine {
 function modelDisplay(id: unknown): string {
   const s = typeof id === 'string' ? id : ''
   const m = /claude-(fable|opus|sonnet|haiku)-(\d+)(?:-(\d{1,2}))?\b/i.exec(s)
-  if (!m) return s || '다른 모델'
+  if (!m) return s || t('다른 모델', 'another model')
   return m[1][0].toUpperCase() + m[1].slice(1).toLowerCase() + ' ' + m[2] + (m[3] ? '.' + m[3] : '')
 }
 
@@ -1777,21 +1860,34 @@ function isApiKeyBilled(source: string | null | undefined): boolean {
   return !!source && source !== 'oauth' && source !== 'none'
 }
 
-// stop_details.category 코드 → 한국어 라벨. Open string — 새 분류가 스키마보다
+// stop_details.category 코드 → 표시 라벨. Open string — 새 분류가 스키마보다
 // 먼저 생길 수 있어서, 모르는 값은 코드 그대로 보여준다.
-const REFUSAL_CATEGORY_LABEL: Record<string, string> = { cyber: '사이버 보안', bio: '생물학' }
+// (모듈 상수로 두면 언어가 첫 로드 시점에 박제되므로 호출마다 만든다)
+function refusalCategoryLabel(code: string): string {
+  const map: Record<string, string> = { cyber: t('사이버 보안', 'cybersecurity'), bio: t('생물학', 'biology') }
+  return map[code] ?? code
+}
 
 // 거부 사유 한 줄 — 전환 확인 질문 카드와 전환 배너가 공유한다
 function fallbackReason(from: unknown, category: unknown): string {
   const f = modelDisplay(from)
-  const c = typeof category === 'string' && category ? ` (감지 분류: ${REFUSAL_CATEGORY_LABEL[category] ?? category})` : ''
-  return `${f}의 안전 정책이 이 요청에 대한 응답을 거부했어요${c}.`
+  const c =
+    typeof category === 'string' && category
+      ? t(` (감지 분류: ${refusalCategoryLabel(category)})`, ` (detected category: ${refusalCategoryLabel(category)})`)
+      : ''
+  return t(
+    `${f}의 안전 정책이 이 요청에 대한 응답을 거부했어요${c}.`,
+    `${f}'s safety policy declined to answer this request${c}.`
+  )
 }
 
 // 다이얼로그 없이 CLI가 스스로 전환을 끝낸 경우(end-of-turn 통지만 온 경우)의 배너
 function fallbackNotice(from: unknown, to: unknown, category: unknown): string {
-  const t = modelDisplay(to)
-  return `${fallbackReason(from, category)} ${t} 모델로 자동 전환했어요. 이후 대화도 ${t} 모델로 진행됩니다.`
+  const tk = modelDisplay(to) // i18n t()를 가리지 않게 tk
+  return t(
+    `${fallbackReason(from, category)} ${tk} 모델로 자동 전환했어요. 이후 대화도 ${tk} 모델로 진행됩니다.`,
+    `${fallbackReason(from, category)} Automatically switched to ${tk}. The rest of the conversation will use ${tk}.`
+  )
 }
 
 function describeTool(
@@ -1832,19 +1928,22 @@ function describeTool(
 // call (its input streams in — a whole file body for Write — before the tool row
 // appears). Reuses describeTool's kind so it stays in sync with the tool-log icons.
 // Present-progressive so it also reads fine once the tool is actually running.
-const TOOL_GEN_LABEL: Record<import('@shared/protocol').ToolKind, string> = {
-  read: '파일 읽는 중',
-  search: '검색하는 중',
-  write: '파일 작성 중',
-  edit: '파일 수정 중',
-  bash: '명령 실행 중',
-  task: '서브에이전트 실행 중',
-  web: '웹 검색 중',
-  mcp: '도구 실행 중',
-  other: '도구 실행 중'
+// (모듈 상수가 아니라 호출마다 — 상수면 언어가 첫 로드 시점에 박제된다)
+function toolGenLabels(): Record<import('@shared/protocol').ToolKind, string> {
+  return {
+    read: t('파일 읽는 중', 'Reading a file'),
+    search: t('검색하는 중', 'Searching'),
+    write: t('파일 작성 중', 'Writing a file'),
+    edit: t('파일 수정 중', 'Editing a file'),
+    bash: t('명령 실행 중', 'Running a command'),
+    task: t('서브에이전트 실행 중', 'Running a subagent'),
+    web: t('웹 검색 중', 'Searching the web'),
+    mcp: t('도구 실행 중', 'Running a tool'),
+    other: t('도구 실행 중', 'Running a tool')
+  }
 }
 function toolGenLabel(name: string): string {
-  return TOOL_GEN_LABEL[describeTool(name, {}, '').kind]
+  return toolGenLabels()[describeTool(name, {}, '').kind]
 }
 
 // Parse the AskUserQuestion tool input into our AgentQuestion[] shape, tolerating
@@ -1875,36 +1974,47 @@ function parseQuestions(input: Record<string, unknown>): AgentQuestion[] {
 // Turn the user's selections into the tool-result text the model reads. Phrased as
 // an explicit instruction so the model proceeds with the choice instead of re-asking.
 function formatAnswers(questions: AgentQuestion[], answers: string[][] | null): string {
-  if (!answers) return '사용자가 질문에 답하지 않고 건너뛰었습니다. 합리적인 기본값으로 계속 진행하세요.'
+  // 모델이 읽는 지시문 — 이어지는 답변이 사용자 화면에 보이므로 UI 언어를 따른다
+  if (!answers)
+    return t(
+      '사용자가 질문에 답하지 않고 건너뛰었습니다. 합리적인 기본값으로 계속 진행하세요.',
+      'The user skipped the question without answering. Continue with reasonable defaults.'
+    )
   const lines = questions.map((q, i) => {
     const picked = (answers[i] ?? []).filter(Boolean)
-    const label = q.header || q.question || `질문 ${i + 1}`
-    return `- ${label}: ${picked.length ? picked.join(', ') : '(선택 없음)'}`
+    const label = q.header || q.question || t(`질문 ${i + 1}`, `Question ${i + 1}`)
+    return `- ${label}: ${picked.length ? picked.join(', ') : t('(선택 없음)', '(nothing selected)')}`
   })
-  return `사용자가 질문에 다음과 같이 답했습니다:\n${lines.join('\n')}\n\n이 선택을 반영해 계속 진행하세요. (같은 내용을 다시 묻지 마세요.)`
+  return t(
+    `사용자가 질문에 다음과 같이 답했습니다:\n${lines.join('\n')}\n\n이 선택을 반영해 계속 진행하세요. (같은 내용을 다시 묻지 마세요.)`,
+    `The user answered the question(s) as follows:\n${lines.join('\n')}\n\nContinue with these choices in mind. (Do not ask the same thing again.)`
+  )
 }
 
 function permissionSummary(toolName: string, input: Record<string, unknown>): string {
-  if (toolName === 'Bash') return `명령 실행: ${oneLine(String(input.command ?? ''), 80)}`
-  if (toolName === 'Write') return `파일 생성: ${String(input.file_path ?? '')}`
-  if (toolName === 'Edit' || toolName === 'MultiEdit') return `파일 편집: ${String(input.file_path ?? '')}`
-  return `${toolName} 실행`
+  if (toolName === 'Bash')
+    return t(`명령 실행: ${oneLine(String(input.command ?? ''), 80)}`, `Run command: ${oneLine(String(input.command ?? ''), 80)}`)
+  if (toolName === 'Write')
+    return t(`파일 생성: ${String(input.file_path ?? '')}`, `Create file: ${String(input.file_path ?? '')}`)
+  if (toolName === 'Edit' || toolName === 'MultiEdit')
+    return t(`파일 편집: ${String(input.file_path ?? '')}`, `Edit file: ${String(input.file_path ?? '')}`)
+  return t(`${toolName} 실행`, `Run ${toolName}`)
 }
 
 function resultSummary(name: string, text: string, isError: boolean): string {
-  if (isError) return '오류'
+  if (isError) return t('오류', 'Error')
   if (name === 'Grep') {
     const m = text.match(/(\d+)\s+(match|matches|lines?)/i)
-    if (m) return `${m[1]}개 일치`
+    if (m) return t(`${m[1]}개 일치`, `${m[1]} matches`)
     const count = text.split('\n').filter((l) => l.trim()).length
-    return count ? `${count}건` : '완료'
+    return count ? t(`${count}건`, `${count} hits`) : t('완료', 'Done')
   }
   if (name === 'Read') {
     const count = text.split('\n').length
-    return `${count}줄`
+    return t(`${count}줄`, `${count} lines`)
   }
   if (name === 'Bash') return '✓'
-  return '완료'
+  return t('완료', 'Done')
 }
 
 function resultText(content: unknown): string {

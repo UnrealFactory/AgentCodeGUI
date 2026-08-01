@@ -1,15 +1,18 @@
 import type { NotifyEntry, NotifyKind } from '@shared/protocol'
+import { t } from './lib/i18n'
 
 // 포커스 밖 알림 토스트 페이지 — main(notifyToast.ts)이 notifyShow로 표시 목록을
 // REPLACE로 밀어넣고, 렌더 후 콘텐츠 높이를 notifyResize로 보고하면 main이 창 크기를
 // 확정하고 보여준다. 1건=상세 카드, 여러 건=집계 행(행 클릭=그 채팅으로 점프).
 // 자동 닫힘 없음 — 클릭(점프)·✕·해당 창 포커스 회복(main이 지움)만이 소멸 경로다.
 
-const KIND_LABEL: Record<NotifyKind, string> = {
-  done: '답변 도착',
-  error: '오류로 끝났어요',
-  approve: '승인 대기 중',
-  ask: 'AI가 질문했어요'
+// 표시 문자열은 상수로 굳히지 않는다 — 모듈 로드 시점 언어로 박제되므로 렌더 때 평가한다
+// (이 창은 짧게 살고 표시 직전에 만들어지니, 언어는 i18n의 localStorage 미러가 정한다)
+function kindLabel(k: NotifyKind): string {
+  if (k === 'done') return t('답변 도착', 'Reply ready')
+  if (k === 'error') return t('오류로 끝났어요', 'Ended with an error')
+  if (k === 'approve') return t('승인 대기 중', 'Waiting for approval')
+  return t('AI가 질문했어요', 'The AI asked a question')
 }
 
 const ICONS: Record<NotifyKind, string> = {
@@ -28,7 +31,7 @@ function esc(s: string): string {
 }
 
 function titleOf(e: NotifyEntry): string {
-  return e.title.trim() || '새 채팅'
+  return e.title.trim() || t('새 채팅', 'New chat')
 }
 
 // 2.0 마스코트 로봇 — icons.tsx IconMascot의 정적 사본 (React 없는 페이지라 인라인)
@@ -46,7 +49,7 @@ function headHtml(): string {
     <div class="t-head">
       ${MASCOT}
       <span class="appname">AgentCodeGUI</span>
-      <button class="t-close" id="close" aria-label="닫기">✕</button>
+      <button class="t-close" id="close" aria-label="${esc(t('닫기', 'Close'))}">✕</button>
     </div>`
 }
 
@@ -62,7 +65,7 @@ function render(entries: NotifyEntry[]): void {
       <div class="t-body">
         <div class="t-ico ${e.kind}">${ICONS[e.kind]}</div>
         <div class="t-main">
-          <div class="t-title">${esc(KIND_LABEL[e.kind])}<span class="chat">${esc(titleOf(e))}</span></div>
+          <div class="t-title">${esc(kindLabel(e.kind))}<span class="chat">${esc(titleOf(e))}</span></div>
           ${e.preview ? `<div class="t-prev">${esc(e.preview)}</div>` : ''}
         </div>
       </div>`
@@ -70,7 +73,7 @@ function render(entries: NotifyEntry[]): void {
     card.innerHTML = `
       ${headHtml()}
       <div class="t-agg">
-        <div class="sum">받은 알림 ${entries.length}건</div>
+        <div class="sum">${esc(t(`받은 알림 ${entries.length}건`, `${entries.length} notifications`))}</div>
         <div class="t-rows">
           ${entries
             .map(
@@ -78,7 +81,7 @@ function render(entries: NotifyEntry[]): void {
             <button class="t-row" data-key="${esc(e.key)}">
               <i class="${e.kind}"></i>
               <span class="nm">${esc(titleOf(e))}</span>
-              <span class="st">${esc(KIND_LABEL[e.kind])}</span>
+              <span class="st">${esc(kindLabel(e.kind))}</span>
             </button>`
             )
             .join('')}
@@ -96,12 +99,13 @@ function render(entries: NotifyEntry[]): void {
 let current: NotifyEntry[] = []
 
 document.body.addEventListener('click', (ev) => {
-  const t = ev.target as HTMLElement
-  if (t.closest('#close')) {
+  // tgt — i18n의 t()를 가리지 않도록 리네임
+  const tgt = ev.target as HTMLElement
+  if (tgt.closest('#close')) {
     window.api.notify.close().catch(() => {})
     return
   }
-  const hit = t.closest('[data-key]') as HTMLElement | null
+  const hit = tgt.closest('[data-key]') as HTMLElement | null
   if (hit?.dataset.key) {
     window.api.notify.open(hit.dataset.key).catch(() => {})
     return

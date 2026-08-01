@@ -11,6 +11,7 @@ import {
   IconGear,
   IconX2
 } from './icons'
+import { t, useLang } from '../lib/i18n'
 
 // 2.0 사이드바 — 모드 탭 없이 일반/멀티/추가 채팅 3섹션이 상시 노출된다 (PoC v3).
 // 일반 항목 클릭=코드 뷰, 멀티 항목 클릭=멀티 뷰, 추가 항목 클릭=그 세션 창 포커스.
@@ -56,26 +57,32 @@ function dotClass(status: AgentStatus): string {
 export function relTime(ts?: number): string {
   if (!ts) return ''
   const s = Math.max(0, (Date.now() - ts) / 1000)
-  if (s < 60) return '지금'
+  if (s < 60) return t('지금', 'now')
   const m = s / 60
-  if (m < 60) return `${Math.floor(m)}분`
+  if (m < 60) return t(`${Math.floor(m)}분`, `${Math.floor(m)}m`)
   const h = m / 60
-  if (h < 24) return `${Math.floor(h)}시간`
+  if (h < 24) return t(`${Math.floor(h)}시간`, `${Math.floor(h)}h`)
   const d = h / 24
-  if (d < 7) return `${Math.floor(d)}일`
-  if (d < 35) return `${Math.floor(d / 7)}주`
+  if (d < 7) return t(`${Math.floor(d)}일`, `${Math.floor(d)}d`)
+  if (d < 35) return t(`${Math.floor(d / 7)}주`, `${Math.floor(d / 7)}w`)
   const mo = d / 30.44
-  if (mo < 12) return `${Math.max(1, Math.floor(mo))}개월`
-  return `${Math.floor(mo / 12)}년`
+  if (mo < 12) return t(`${Math.max(1, Math.floor(mo))}개월`, `${Math.max(1, Math.floor(mo))}mo`)
+  return t(`${Math.floor(mo / 12)}년`, `${Math.floor(mo / 12)}y`)
 }
 
 // 삭제 확인 문구 — 추가 채팅도 이제 대화가 영속이라 X는 여느 채팅처럼 '삭제'다
 // (창 닫기는 저장 후 정리라 확인이 필요 없고, 사이드바 X만 여기로 온다)
 function confirmOneText(title: string): { title: string; msg: string } {
-  return { title: '채팅 삭제', msg: `'${title}' 채팅이 삭제돼요. 되돌릴 수 없어요.` }
+  return {
+    title: t('채팅 삭제', 'Delete chat'),
+    msg: t(`'${title}' 채팅이 삭제돼요. 되돌릴 수 없어요.`, `'${title}' will be deleted. This can't be undone.`)
+  }
 }
 function confirmAllText(label: string, n: number): { title: string; msg: string } {
-  return { title: `${label} 모두 삭제`, msg: `채팅 ${n}개가 삭제돼요. 되돌릴 수 없어요.` }
+  return {
+    title: t(`${label} 모두 삭제`, `Delete all ${label}`),
+    msg: t(`채팅 ${n}개가 삭제돼요. 되돌릴 수 없어요.`, `${n} chats will be deleted. This can't be undone.`)
+  }
 }
 
 // 열려 있는 동안 F2/Del 단축키를 비켜야 하는 오버레이들 — 모달이 키보드를 소유한다
@@ -106,6 +113,7 @@ export const Sidebar = memo(function Sidebar({
   onNewChat: () => void
   onOpenSettings: () => void
 }) {
+  useLang() // 언어 전환 재렌더 구독
   // 섹션별 검색 — 라벨 행 돋보기로 여닫는 인라인 필터 (닫으면 초기화)
   const [searchOpen, setSearchOpen] = useState<Partial<Record<SidebarSectionKey, boolean>>>({})
   const [queries, setQueries] = useState<Partial<Record<SidebarSectionKey, string>>>({})
@@ -185,8 +193,8 @@ export const Sidebar = memo(function Sidebar({
     const chat = s?.chats.find((c) => c.id === id)
     if (!s || !chat) return
     if (s.busy && (s.currentId ?? s.activeId) === id) return // 실행이 흐르는 채팅은 지울 수 없다
-    const t = confirmOneText(chat.title || '새 채팅')
-    setConfirm({ sec, id, ...t })
+    const txt = confirmOneText(chat.title || t('새 채팅', 'New chat')) // txt: 지역 이름이 i18n t()를 가리지 않게
+    setConfirm({ sec, id, ...txt })
   }
   const startRename = (sec: SidebarSectionKey, id: string): void => {
     const s = sectionsRef.current.find((x) => x.key === sec)
@@ -230,20 +238,20 @@ export const Sidebar = memo(function Sidebar({
       {/* 새 채팅 — 일반/멀티 선택 모달을 연다 (PoC: 버튼이 곧장 만들지 않는다) */}
       <button className="sb-new" onClick={onNewChat}>
         <IconPlus size={16} />
-        <span>새 채팅</span>
+        <span>{t('새 채팅', 'New chat')}</span>
         <span className="kbd">{isMac ? '⌘N' : 'Ctrl+N'}</span>
       </button>
       {/* 추가 채팅 — 지금 작업과 따로 굴러가는 독립 대화를 새 창으로 연다 (호버 설명 없음 — 유저 결정) */}
       <button className="sb-new" onClick={() => window.api.openSessionWindow().catch(() => {})}>
         <IconMessage size={16} />
-        <span>추가 채팅</span>
+        <span>{t('추가 채팅', 'Extra chat')}</span>
         <span className="kbd">{isMac ? '⌘⇧N' : 'Ctrl+Shift+N'}</span>
       </button>
 
       <div className="sb-scroll scroll">
         {sections.map((s) => {
           const q = (queries[s.key] ?? '').trim().toLowerCase()
-          const filtered = q ? s.chats.filter((c) => (c.title || '새 채팅').toLowerCase().includes(q)) : s.chats
+          const filtered = q ? s.chats.filter((c) => (c.title || t('새 채팅', 'New chat')).toLowerCase().includes(q)) : s.chats
           const searching = !!searchOpen[s.key]
           return (
             <div className="sb-sec" key={s.key}>
@@ -251,8 +259,8 @@ export const Sidebar = memo(function Sidebar({
                 {s.label} <span className="sp" />
                 <button
                   className={'slb' + (searching ? ' on' : '')}
-                  title="검색"
-                  aria-label={`${s.label} 검색`}
+                  title={t('검색', 'Search')}
+                  aria-label={t(`${s.label} 검색`, `Search ${s.label}`)}
                   onClick={() => {
                     setSearchOpen((o) => ({ ...o, [s.key]: !o[s.key] }))
                     if (searching) setQueries((qs) => ({ ...qs, [s.key]: '' }))
@@ -263,8 +271,8 @@ export const Sidebar = memo(function Sidebar({
                 {s.onDeleteAll && (
                   <button
                     className="slb has-tip"
-                    data-tip={s.busy ? '작업이 끝난 뒤 지울 수 있어요' : '전체 삭제'}
-                    aria-label="전체 삭제"
+                    data-tip={s.busy ? t('작업이 끝난 뒤 지울 수 있어요', 'You can delete after the run finishes') : t('전체 삭제', 'Delete all')}
+                    aria-label={t('전체 삭제', 'Delete all')}
                     disabled={s.busy || s.chats.length === 0}
                     onClick={() => setConfirm({ sec: s.key, id: null, ...confirmAllText(s.label, s.chats.length) })}
                   >
@@ -278,7 +286,7 @@ export const Sidebar = memo(function Sidebar({
                   <IconSearch size={12} />
                   <input
                     autoFocus
-                    placeholder={`${s.label} 검색…`}
+                    placeholder={t(`${s.label} 검색…`, `Search ${s.label}…`)}
                     value={queries[s.key] ?? ''}
                     onChange={(e) => setQueries((qs) => ({ ...qs, [s.key]: e.target.value }))}
                     onKeyDown={(e) => {
@@ -291,7 +299,7 @@ export const Sidebar = memo(function Sidebar({
                   />
                   <button
                     className="sx"
-                    aria-label="검색 닫기"
+                    aria-label={t('검색 닫기', 'Close search')}
                     onClick={() => {
                       setSearchOpen((o) => ({ ...o, [s.key]: false }))
                       setQueries((qs) => ({ ...qs, [s.key]: '' }))
@@ -305,7 +313,7 @@ export const Sidebar = memo(function Sidebar({
               <div className="sb-list">
                 {filtered.length === 0 ? (
                   <div className="sb-empty">
-                    {q ? '검색 결과가 없어요' : '채팅이 없어요'}
+                    {q ? t('검색 결과가 없어요', 'No matching chats') : t('채팅이 없어요', 'No chats yet')}
                   </div>
                 ) : (
                   filtered.map((c) => {
@@ -339,7 +347,7 @@ export const Sidebar = memo(function Sidebar({
                         <span className={'dot ' + dotClass(c.status)} />
                         {isRenaming ? (
                           <RenameInput
-                            initial={c.title || '새 채팅'}
+                            initial={c.title || t('새 채팅', 'New chat')}
                             onDone={(commit, value) => {
                               setRenaming(null)
                               const v = value.trim()
@@ -348,7 +356,7 @@ export const Sidebar = memo(function Sidebar({
                           />
                         ) : (
                           <span className="t">
-                            <span className="tx">{c.title || '새 채팅'}</span>
+                            <span className="tx">{c.title || t('새 채팅', 'New chat')}</span>
                           </span>
                         )}
                         {!isRenaming && <span className="when">{relTime(c.updatedAt)}</span>}
@@ -362,7 +370,7 @@ export const Sidebar = memo(function Sidebar({
         })}
       </div>
 
-      <button className="sb-foot has-tip" data-tip="설정 열기" aria-label="설정 열기" onClick={onOpenSettings}>
+      <button className="sb-foot has-tip" data-tip={t('설정 열기', 'Open settings')} aria-label={t('설정 열기', 'Open settings')} onClick={onOpenSettings}>
         <div className="ava" style={{ background: user.avatarColor, color: '#fff' }}>
           {user.avatarText}
         </div>
@@ -377,7 +385,7 @@ export const Sidebar = memo(function Sidebar({
       {menu && menuSection && menuChat &&
         createPortal(
           <div ref={menuRef} className="ctx-menu" style={{ left: menu.x, top: menu.y }}>
-            <div className="cmh">{menuChat.title || '새 채팅'}</div>
+            <div className="cmh">{menuChat.title || t('새 채팅', 'New chat')}</div>
             {menuSection.onRename && (
               <button
                 className="ctx-item"
@@ -386,7 +394,7 @@ export const Sidebar = memo(function Sidebar({
                   startRename(menu.sec, menu.id)
                 }}
               >
-                <IconPencil size={15} /> 이름 변경
+                <IconPencil size={15} /> {t('이름 변경', 'Rename')}
               </button>
             )}
             <div className="ctx-sep" />
@@ -398,7 +406,7 @@ export const Sidebar = memo(function Sidebar({
                 askDelete(menu.sec, menu.id)
               }}
             >
-              <IconTrash size={15} /> 삭제
+              <IconTrash size={15} /> {t('삭제', 'Delete')}
             </button>
           </div>,
           document.body
@@ -417,7 +425,7 @@ export const Sidebar = memo(function Sidebar({
               <div className="sct">{confirm.msg}</div>
               <div className="scb">
                 <button className="cancel" onClick={() => setConfirm(null)}>
-                  취소
+                  {t('취소', 'Cancel')}
                 </button>
                 <button
                   className="danger"
@@ -428,7 +436,7 @@ export const Sidebar = memo(function Sidebar({
                     else sectionsRef.current.find((x) => x.key === c.sec)?.onDeleteAll?.()
                   }}
                 >
-                  {confirm.id ? '삭제' : '모두 삭제'}
+                  {confirm.id ? t('삭제', 'Delete') : t('모두 삭제', 'Delete all')}
                 </button>
               </div>
             </div>

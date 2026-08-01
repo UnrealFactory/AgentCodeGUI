@@ -16,6 +16,7 @@ import {
 import { FileBadge } from './fileType'
 import { Markdown } from './Markdown'
 import { MouseGestureLayer, scrollGestures } from './mouseGesture'
+import { t } from '../lib/i18n'
 
 // 미완료 할 일의 원형 마커 (PoC pop-todo의 circle glyph — 전용 아이콘이 없어 인라인)
 function TodoCircle() {
@@ -35,11 +36,12 @@ export function Todos({ todos }: { todos: Todo[] }) {
   return (
     <>
       <div className="todos scroll">
-        {todos.map((t) => (
-          <div key={t.id} className={'wb-prow' + (t.status === 'done' ? ' done' : '')}>
-            <span className="ic">{t.status === 'done' ? <IconCheck size={12} /> : <TodoCircle />}</span>
-            <span className="grow">{t.label}</span>
-            {t.status === 'running' && <span className="end">진행 중</span>}
+        {/* 항목 변수는 td — t는 i18n 함수라 가리면 안 된다 */}
+        {todos.map((td) => (
+          <div key={td.id} className={'wb-prow' + (td.status === 'done' ? ' done' : '')}>
+            <span className="ic">{td.status === 'done' ? <IconCheck size={12} /> : <TodoCircle />}</span>
+            <span className="grow">{td.label}</span>
+            {td.status === 'running' && <span className="end">{t('진행 중', 'In progress')}</span>}
           </div>
         ))}
       </div>
@@ -91,19 +93,20 @@ function dcToolIcon(kind: string, size: number): ReactNode {
   return <IconWrench size={size} />
 }
 
-const SA_STATUS_LABEL: Record<SubAgentStatus, string> = {
-  queued: '대기',
-  running: '실행 중',
-  done: '완료'
+// 라벨은 함수로 늦춰 렌더 때 t() 평가 — 모듈 스코프 상수에 언어가 박제되지 않게
+const SA_STATUS_LABEL: Record<SubAgentStatus, () => string> = {
+  queued: () => t('대기', 'Queued'),
+  running: () => t('실행 중', 'Running'),
+  done: () => t('완료', 'Done')
 }
 
 // 소요 표기 — PoC 푸터 칩: '42초' / '1분 8초'
 function fmtSaDur(ms: number): string {
   const s = Math.max(1, Math.round(ms / 1000))
-  if (s < 60) return `${s}초`
+  if (s < 60) return t(`${s}초`, `${s}s`)
   const m = Math.floor(s / 60)
   const r = s % 60
-  return r ? `${m}분 ${r}초` : `${m}분`
+  return r ? t(`${m}분 ${r}초`, `${m}m ${r}s`) : t(`${m}분`, `${m}m`)
 }
 
 // 팝오버 한 줄 — PoC .prow: 상태 아이콘(✓/스피너/점) + 이름/역할. 상세는 클릭해 여는
@@ -130,13 +133,13 @@ function saBadge(status: SubAgentStatus): ReactNode {
     return (
       <span className="dc-badge">
         <span className="d" />
-        {SA_STATUS_LABEL.done}
+        {SA_STATUS_LABEL.done()}
       </span>
     )
   return (
     <span className="dc-badge n">
       {status === 'running' ? <span className="spin" /> : <span className="d" />}
-      {SA_STATUS_LABEL[status]}
+      {SA_STATUS_LABEL[status]()}
     </span>
   )
 }
@@ -164,13 +167,13 @@ export function SubAgentModal({ agent, onClose }: { agent: SubAgentInfo | null; 
             <span className="dc-title">{agent.name}</span>
             {/* PoC msub: '서브에이전트 · Opus 5 · 읽기 전용 탐색' — 모델은 사이드체인 실측 */}
             <div className="dc-sub">
-              서브에이전트
+              {t('서브에이전트', 'Subagent')}
               {agent.model ? ` · ${agent.model}` : ''}
               {agent.role ? ` · ${agent.role}` : ''}
             </div>
           </div>
           {saBadge(agent.status)}
-          <button className="dc-close" onClick={onClose} aria-label="닫기">
+          <button className="dc-close" onClick={onClose} aria-label={t('닫기', 'Close')}>
             <IconClose size={16} />
           </button>
         </div>
@@ -178,7 +181,7 @@ export function SubAgentModal({ agent, onClose }: { agent: SubAgentInfo | null; 
           {agent.activity && (
             <>
               <div className="dc-sec">
-                <span>{agent.status === 'done' ? '결과' : '설명'}</span>
+                <span>{agent.status === 'done' ? t('결과', 'Result') : t('설명', 'Description')}</span>
                 <i className="dc-ln" />
               </div>
               <div className="dc-box">
@@ -193,7 +196,7 @@ export function SubAgentModal({ agent, onClose }: { agent: SubAgentInfo | null; 
           {agent.log && agent.log.length > 0 && (
             <>
               <div className="dc-sec">
-                <span>과정</span>
+                <span>{t('과정', 'Progress')}</span>
                 <i className="dc-ln" />
               </div>
               <div className="dc-box">
@@ -206,23 +209,24 @@ export function SubAgentModal({ agent, onClose }: { agent: SubAgentInfo | null; 
             </>
           )}
           <div className="dc-sec">
-            <span>도구 사용</span>
+            <span>{t('도구 사용', 'Tool use')}</span>
             <i className="dc-ln" />
           </div>
           {agent.tools.length ? (
             <div className="dc-box tools">
-              {agent.tools.map((t) => (
-                <div className="dc-tool" key={t.id}>
-                  <span className="tic">{dcToolIcon(t.kind, 15)}</span>
-                  <span className="tname">{t.verb}</span>
-                  <span className="targ">{t.target}</span>
+              {/* 항목 변수는 tu — t는 i18n 함수라 가리면 안 된다 */}
+              {agent.tools.map((tu) => (
+                <div className="dc-tool" key={tu.id}>
+                  <span className="tic">{dcToolIcon(tu.kind, 15)}</span>
+                  <span className="tname">{tu.verb}</span>
+                  <span className="targ">{tu.target}</span>
                   <span className="tend">
-                    {t.status === 'running' ? (
+                    {tu.status === 'running' ? (
                       <span className="spin" />
-                    ) : t.status === 'error' ? (
-                      <span style={{ color: 'var(--red)' }}>오류</span>
-                    ) : t.result ? (
-                      t.result
+                    ) : tu.status === 'error' ? (
+                      <span style={{ color: 'var(--red)' }}>{t('오류', 'Error')}</span>
+                    ) : tu.result ? (
+                      tu.result
                     ) : (
                       <span className="ok">
                         <IconCheck size={12} />
@@ -234,23 +238,23 @@ export function SubAgentModal({ agent, onClose }: { agent: SubAgentInfo | null; 
             </div>
           ) : (
             <div className="dc-box tools">
-              <div className="ag-none">사용한 도구가 없어요</div>
+              <div className="ag-none">{t('사용한 도구가 없어요', 'No tools were used')}</div>
             </div>
           )}
         </div>
         <div className="dc-foot">
           {agent.model && (
             <span className="dc-stat">
-              모델 <b>{agent.model}</b>
+              {t('모델', 'Model')} <b>{agent.model}</b>
             </span>
           )}
           {agent.durationMs != null && (
             <span className="dc-stat">
-              소요 <b>{fmtSaDur(agent.durationMs)}</b>
+              {t('소요', 'Duration')} <b>{fmtSaDur(agent.durationMs)}</b>
             </span>
           )}
           <span className="dc-stat">
-            도구 호출 <b>{agent.tools.length}회</b>
+            {t('도구 호출', 'Tool calls')} <b>{t(`${agent.tools.length}회`, `${agent.tools.length}`)}</b>
           </span>
         </div>
       </div>
@@ -259,7 +263,7 @@ export function SubAgentModal({ agent, onClose }: { agent: SubAgentInfo | null; 
         target={cardEl}
         actions={[
           ...scrollGestures(() => cardEl?.querySelector('.dc-body')),
-          { pattern: 'DR', label: '카드 닫기', run: onClose }
+          { pattern: 'DR', label: t('카드 닫기', 'Close card'), run: onClose }
         ]}
       />
     </div>

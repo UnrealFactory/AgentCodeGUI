@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { IconMessage, IconChevLeft } from './icons'
+import { t } from '../lib/i18n'
 
 // 새 채팅 선택 카드 (PoC nccard) — 1단계: 일반/멀티 타일, 2단계(멀티): 패널 수 2~6을
 // 배치 미리보기로 고른다. 베일 클릭/Esc = 닫기, 뒤로 = 1단계로 슬라이드백.
@@ -35,8 +36,13 @@ export function NewChatModal({
       <div className="nccard" onMouseDown={(e) => e.stopPropagation()}>
         {step === 1 ? (
           <div className={'ncstep' + (slide === 'back' ? ' nc-slide-b' : '')}>
-            <div className="nct">새 채팅</div>
-            <div className="ncs">어떤 구성으로 시작할까요? 폴더는 채팅 안에서 언제든 바꿀 수 있어요.</div>
+            <div className="nct">{t('새 채팅', 'New chat')}</div>
+            <div className="ncs">
+              {t(
+                '어떤 구성으로 시작할까요? 폴더는 채팅 안에서 언제든 바꿀 수 있어요.',
+                'How do you want to start? You can change the folder any time inside the chat.'
+              )}
+            </div>
             <div className="nctiles">
               <button
                 className={'nctile' + (busy ? ' off' : '')}
@@ -49,8 +55,8 @@ export function NewChatModal({
                 <span className="ncic">
                   <IconMessage size={15} />
                 </span>
-                <span className="ncl">일반 채팅</span>
-                <span className="ncd">채팅 하나로 시작해요 — 기본 구성</span>
+                <span className="ncl">{t('일반 채팅', 'General chat')}</span>
+                <span className="ncd">{t('채팅 하나로 시작해요 — 기본 구성', 'Start with a single chat — the default setup')}</span>
               </button>
               <button
                 className="nctile"
@@ -65,8 +71,10 @@ export function NewChatModal({
                     <path d="M9 4v16M15 4v16" />
                   </svg>
                 </span>
-                <span className="ncl">멀티 채팅</span>
-                <span className="ncd">패널 여러 개를 나란히 — 모델·계정을 패널마다 따로</span>
+                <span className="ncl">{t('멀티 채팅', 'Multi chat')}</span>
+                <span className="ncd">
+                  {t('패널 여러 개를 나란히 — 모델·계정을 패널마다 따로', 'Several panels side by side — model and account per panel')}
+                </span>
               </button>
             </div>
           </div>
@@ -79,10 +87,10 @@ export function NewChatModal({
                 setSlide('back')
               }}
             >
-              <IconChevLeft size={13} /> 뒤로
+              <IconChevLeft size={13} /> {t('뒤로', 'Back')}
             </button>
-            <div className="nct" style={{ marginTop: 10 }}>멀티 채팅</div>
-            <div className="ncs">패널을 몇 개로 시작할까요?</div>
+            <div className="nct" style={{ marginTop: 10 }}>{t('멀티 채팅', 'Multi chat')}</div>
+            <div className="ncs">{t('패널을 몇 개로 시작할까요?', 'How many panels do you want to start with?')}</div>
             <div className="nccnts">
               {COUNTS.map((n) => (
                 <button

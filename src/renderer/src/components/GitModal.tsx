@@ -14,6 +14,7 @@ import type {
   ModelId
 } from '@shared/protocol'
 import { relTime } from './Sidebar'
+import { t, isEn } from '../lib/i18n'
 import { getPref, setPref } from '../lib/prefs'
 import { discoverGitRepos } from '../lib/gitTrack'
 import { MouseGestureLayer, type GestureAction } from './mouseGesture'
@@ -48,14 +49,19 @@ function dayLabel(unix: number): string {
   const now = new Date()
   const startOf = (x: Date): number => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime()
   const diff = Math.round((startOf(now) - startOf(d)) / 86_400_000)
-  if (diff === 0) return '오늘'
-  if (diff === 1) return '어제'
+  if (diff === 0) return t('오늘', 'Today')
+  if (diff === 1) return t('어제', 'Yesterday')
+  if (isEn()) {
+    const opts: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric' }
+    if (d.getFullYear() !== now.getFullYear()) opts.year = 'numeric'
+    return d.toLocaleDateString('en-US', opts)
+  }
   const y = d.getFullYear() !== now.getFullYear() ? `${d.getFullYear()}년 ` : ''
   return `${y}${d.getMonth() + 1}월 ${d.getDate()}일`
 }
 
 function fullTime(unix: number): string {
-  return new Date(unix * 1000).toLocaleString('ko-KR', {
+  return new Date(unix * 1000).toLocaleString(isEn() ? 'en-US' : 'ko-KR', {
     year: 'numeric',
     month: 'long',
     day: 'numeric',
@@ -89,28 +95,30 @@ const AI_MODELS: { id: ModelId; label: string }[] = [
   { id: 'sonnet', label: 'Sonnet' },
   { id: 'haiku', label: 'Haiku' }
 ]
-const AI_EFFORTS: { id: EffortId; label: string }[] = [
-  { id: 'minimal', label: '최소' },
-  { id: 'low', label: '낮음' },
-  { id: 'medium', label: '중간' },
-  { id: 'high', label: '높음' },
-  { id: 'xhigh', label: '매우 높음' },
-  { id: 'max', label: '최대' }
+// 함수화 — 모듈 스코프 t()는 import 시점 언어로 박제되므로 렌더 때 평가한다
+const aiEffortOpts = (): { id: EffortId; label: string }[] => [
+  { id: 'minimal', label: t('최소', 'Minimal') },
+  { id: 'low', label: t('낮음', 'Low') },
+  { id: 'medium', label: t('중간', 'Medium') },
+  { id: 'high', label: t('높음', 'High') },
+  { id: 'xhigh', label: t('매우 높음', 'Very high') },
+  { id: 'max', label: t('최대', 'Max') }
 ]
 
 // 계정 행의 한도 요약 — "남은 %"로 말한다 (이 카드의 존재 이유가 남은 한도 비교라서).
 // 경고 장식 없이 숫자만 — 판단은 숫자가 이미 말해준다 (⚠는 실측 후 제거).
 function usageDesc(u: AccountUsage | undefined, loading: boolean): string {
-  if (!u) return loading ? '한도 확인 중…' : '한도 정보를 못 가져왔어요'
+  if (!u) return loading ? t('한도 확인 중…', 'Checking limits…') : t('한도 정보를 못 가져왔어요', 'Could not load limit info')
   const parts: string[] = []
   const push = (label: string, pct: number | null): void => {
     if (pct == null) return
-    parts.push(`${label} ${Math.max(0, Math.round(100 - pct))}% 남음`)
+    const left = Math.max(0, Math.round(100 - pct))
+    parts.push(t(`${label} ${left}% 남음`, `${label} ${left}% left`))
   }
-  push('5시간', u.fiveHourPct)
-  push('주간', u.weeklyPct)
+  push(t('5시간', '5h'), u.fiveHourPct)
+  push(t('주간', 'Weekly'), u.weeklyPct)
   push('Fable', u.fablePct)
-  return parts.length ? parts.join(' · ') : '한도 정보 없음'
+  return parts.length ? parts.join(' · ') : t('한도 정보 없음', 'No limit info')
 }
 
 /**
@@ -276,10 +284,10 @@ export function GitModal({
     if (busy) return false
     setBusy(kind)
     setErr(null)
-    const r = await fn().catch((e) => ({ ok: false, error: e instanceof Error ? e.message : '실패했어요' }))
+    const r = await fn().catch((e) => ({ ok: false, error: e instanceof Error ? e.message : t('실패했어요', 'Something went wrong') }))
     setBusy('')
     if (!r.ok) {
-      setErr(r.error ?? '실패했어요')
+      setErr(r.error ?? t('실패했어요', 'Something went wrong'))
       return false
     }
     notifyGit()
@@ -332,10 +340,13 @@ export function GitModal({
     setErr(null)
     const r = await window.api.git
       .aiMessage(repo, checkedFiles, opts)
-      .catch((e) => ({ ok: false as const, error: e instanceof Error ? e.message : 'AI 메시지 생성에 실패했어요' }))
+      .catch((e) => ({
+        ok: false as const,
+        error: e instanceof Error ? e.message : t('AI 메시지 생성에 실패했어요', 'Failed to generate AI message')
+      }))
     setBusy('')
     if (!r.ok) {
-      setErr(r.error ?? 'AI 메시지 생성에 실패했어요')
+      setErr(r.error ?? t('AI 메시지 생성에 실패했어요', 'Failed to generate AI message'))
       return
     }
     setSubject(r.subject ?? '')
@@ -380,7 +391,7 @@ export function GitModal({
     const r = await window.api.git.fileDiff(repo, f.path).catch(() => null)
     if (r?.headContent != null) {
       // 디스크에서 지워진 파일 — HEAD 스냅샷으로 "뭘 잃는지"를 보여준다
-      onOpenFile(absOf(f.path), { content: r.headContent, diff: null, label: 'HEAD · 삭제됨' })
+      onOpenFile(absOf(f.path), { content: r.headContent, diff: null, label: t('HEAD · 삭제됨', 'HEAD · deleted') })
       return
     }
     onOpenFile(absOf(f.path), { content: null, diff: r?.diff ?? null, label: null })
@@ -426,9 +437,9 @@ export function GitModal({
 
   // 우클릭 드래그 제스처 — 뷰어와 같은 문법: ↓→ 닫기, ←/→는 이 카드의 두 보기 전환
   const gestures: GestureAction[] = [
-    { pattern: 'L', label: '변경 보기', run: () => setView('changes') },
-    { pattern: 'R', label: '히스토리 보기', run: () => setView('history') },
-    { pattern: 'DR', label: '창 닫기', run: onClose }
+    { pattern: 'L', label: t('변경 보기', 'View changes'), run: () => setView('changes') },
+    { pattern: 'R', label: t('히스토리 보기', 'View history'), run: () => setView('history') },
+    { pattern: 'DR', label: t('창 닫기', 'Close window'), run: onClose }
   ]
 
   return (
@@ -447,7 +458,10 @@ export function GitModal({
           </span>
           <span className="gitm-name">Git</span>
           {st && (
-            <span className="gitm-br has-tip" data-tip={st.upstream ? `업스트림 ${st.upstream}` : '업스트림 없음 — 첫 푸시 전'}>
+            <span
+              className="gitm-br has-tip"
+              data-tip={st.upstream ? t(`업스트림 ${st.upstream}`, `Upstream ${st.upstream}`) : t('업스트림 없음 — 첫 푸시 전', 'No upstream — before first push')}
+            >
               {st.branch}
               {st.ahead > 0 && <em className="ab">↑{st.ahead}</em>}
               {st.behind > 0 && <em className="ab bh">↓{st.behind}</em>}
@@ -464,30 +478,37 @@ export function GitModal({
             className="gitm-btn has-tip"
             disabled={!!busy || !st?.hasRemote}
             onClick={doFetch}
-            data-tip="원격 상태 갱신 (fetch) — 받을·보낼 커밋 수를 새로 읽어요"
+            data-tip={t('원격 상태 갱신 (fetch) — 받을·보낼 커밋 수를 새로 읽어요', 'Refresh remote state (fetch) — recounts commits to pull and push')}
           >
             {busy === 'fetch' ? <span className="spin" /> : <IconRotate size={12} />}
-            갱신하기
+            {t('갱신하기', 'Fetch')}
           </button>
           <button
             className="gitm-btn has-tip"
             disabled={!!busy || !st?.hasRemote}
             onClick={doPull}
-            data-tip="원격의 새 커밋을 받아와요 (pull)"
+            data-tip={t('원격의 새 커밋을 받아와요 (pull)', 'Pull new commits from the remote')}
           >
             {busy === 'pull' && <span className="spin" />}
-            당겨오기{st && st.behind > 0 ? ` ↓${st.behind}` : ''}
+            {t('당겨오기', 'Pull')}
+            {st && st.behind > 0 ? ` ↓${st.behind}` : ''}
           </button>
           <button
             className="gitm-btn has-tip"
             disabled={!!busy || !st?.hasRemote}
             onClick={doPush}
-            data-tip="커밋을 원격에 올려요 (push) — 업스트림 없으면 origin에 만들어요"
+            data-tip={t('커밋을 원격에 올려요 (push) — 업스트림 없으면 origin에 만들어요', 'Push commits to the remote — creates an upstream on origin if missing')}
           >
             {busy === 'push' && <span className="spin" />}
-            올리기{st && st.ahead > 0 ? ` ↑${st.ahead}` : ''}
+            {t('올리기', 'Push')}
+            {st && st.ahead > 0 ? ` ↑${st.ahead}` : ''}
           </button>
-          <button className="gitm-btn has-tip" onClick={onClose} aria-label="닫기" data-tip="닫기 (Esc)">
+          <button
+            className="gitm-btn has-tip"
+            onClick={onClose}
+            aria-label={t('닫기', 'Close')}
+            data-tip={t('닫기 (Esc)', 'Close (Esc)')}
+          >
             <IconClose size={12} />
           </button>
         </div>
@@ -497,7 +518,7 @@ export function GitModal({
           <div className="gitm-nav scroll">
             {(repos?.length ?? 0) > 1 && (
               <>
-                <div className="gitm-sec">저장소</div>
+                <div className="gitm-sec">{t('저장소', 'Repositories')}</div>
                 {repos!.map(({ info, st: rs }) => (
                   <button
                     key={info.root}
@@ -521,22 +542,22 @@ export function GitModal({
                 ))}
               </>
             )}
-            <div className={'gitm-sec' + ((repos?.length ?? 0) > 1 ? ' line' : '')}>보기</div>
+            <div className={'gitm-sec' + ((repos?.length ?? 0) > 1 ? ' line' : '')}>{t('보기', 'View')}</div>
             <button className={'gitm-item' + (view === 'changes' ? ' on' : '')} onClick={() => setView('changes')}>
               <span className="ic">
                 <IconDiff size={13} />
               </span>
-              변경
+              {t('변경', 'Changes')}
               {(st?.files.length ?? 0) > 0 && <span className="n warn">{st?.files.length}</span>}
             </button>
             <button className={'gitm-item' + (view === 'history' ? ' on' : '')} onClick={() => setView('history')}>
               <span className="ic">
                 <IconClock size={13} />
               </span>
-              히스토리
+              {t('히스토리', 'History')}
             </button>
 
-            <div className="gitm-sec line">브랜치</div>
+            <div className="gitm-sec line">{t('브랜치', 'Branches')}</div>
             {branches.map((b) => (
               <button
                 key={b.name}
@@ -564,7 +585,7 @@ export function GitModal({
                 <input
                   className="gitm-newbr"
                   autoFocus
-                  placeholder="새 브랜치 이름"
+                  placeholder={t('새 브랜치 이름', 'New branch name')}
                   value={newBranch}
                   onChange={(e) => setNewBranch(e.target.value)}
                   onKeyDown={(e) => {
@@ -585,7 +606,7 @@ export function GitModal({
                 <span className="ic">
                   <IconPlus size={12} />
                 </span>
-                새 브랜치…
+                {t('새 브랜치…', 'New branch…')}
               </button>
             )}
           </div>
@@ -595,12 +616,12 @@ export function GitModal({
             {st === null ? (
               <div className="gitm-state">
                 <span className="spin" />
-                읽는 중…
+                {t('읽는 중…', 'Reading…')}
               </div>
             ) : view === 'changes' ? (
               <>
                 <div className="gitm-sec row" style={{ padding: '11px 18px 5px' }}>
-                  변경된 파일 {st.files.length}
+                  {t('변경된 파일', 'Changed files')} {st.files.length}
                   {st.files.length > 0 && (
                     <button
                       className="lnk"
@@ -608,13 +629,15 @@ export function GitModal({
                         setUnchecked(checkedFiles.length === st.files.length ? new Set(st.files.map((f) => f.path)) : new Set())
                       }
                     >
-                      {checkedFiles.length === st.files.length ? '모두 해제' : '모두 담기'}
+                      {checkedFiles.length === st.files.length ? t('모두 해제', 'Uncheck all') : t('모두 담기', 'Include all')}
                     </button>
                   )}
                 </div>
                 <div className="gitm-scroll scroll">
                   {st.files.length === 0 ? (
-                    <div className="gitm-state small">작업 트리가 깨끗해요 — 모든 변경이 커밋됐어요</div>
+                    <div className="gitm-state small">
+                      {t('작업 트리가 깨끗해요 — 모든 변경이 커밋됐어요', 'Working tree is clean — all changes are committed')}
+                    </div>
                   ) : (
                     st.files.map((f) => (
                       <button
@@ -643,7 +666,7 @@ export function GitModal({
                         <span
                           className="undo"
                           role="button"
-                          aria-label="변경 되돌리기"
+                          aria-label={t('변경 되돌리기', 'Discard changes')}
                           onClick={(e) => {
                             e.stopPropagation()
                             setConfirm({ kind: 'discard', file: f })
@@ -657,7 +680,7 @@ export function GitModal({
                 </div>
                 <div className="gitm-compose">
                   <input
-                    placeholder="커밋 메시지 (Ctrl+Enter로 커밋)"
+                    placeholder={t('커밋 메시지 (Ctrl+Enter로 커밋)', 'Commit message (Ctrl+Enter to commit)')}
                     value={subject}
                     spellCheck={false}
                     onChange={(e) => setSubject(e.target.value)}
@@ -667,7 +690,7 @@ export function GitModal({
                   />
                   <textarea
                     rows={2}
-                    placeholder="본문 (선택)"
+                    placeholder={t('본문 (선택)', 'Description (optional)')}
                     value={body}
                     spellCheck={false}
                     onChange={(e) => setBody(e.target.value)}
@@ -680,10 +703,10 @@ export function GitModal({
                       className="gitm-btn claude has-tip tip-wrap"
                       disabled={!!busy || checkedFiles.length === 0}
                       onClick={openAiFlow}
-                      data-tip="계정(남은 한도)·모델·사고 수준을 골라 diff로 메시지를 써줘요"
+                      data-tip={t('계정(남은 한도)·모델·사고 수준을 골라 diff로 메시지를 써줘요', 'Pick an account (remaining limits), model, and effort — writes a message from the diff')}
                     >
                       {busy === 'ai' ? <span className="spin" /> : <IconSpark size={12} />}
-                      {busy === 'ai' ? 'diff 읽는 중…' : 'AI 메시지'}
+                      {busy === 'ai' ? t('diff 읽는 중…', 'Reading diff…') : t('AI 메시지', 'AI message')}
                     </button>
                     <span className="sp" />
                     <button
@@ -692,7 +715,12 @@ export function GitModal({
                       onClick={doCommit}
                     >
                       {busy === 'commit' && <span className="spin" />}
-                      {checkedFiles.length === 0 ? '커밋할 파일 없음' : `${checkedFiles.length}개 파일 커밋`}
+                      {checkedFiles.length === 0
+                        ? t('커밋할 파일 없음', 'No files to commit')
+                        : t(
+                            `${checkedFiles.length}개 파일 커밋`,
+                            `Commit ${checkedFiles.length} file${checkedFiles.length === 1 ? '' : 's'}`
+                          )}
                     </button>
                   </div>
                 </div>
@@ -702,13 +730,13 @@ export function GitModal({
                 <div className="gitm-filter">
                   <IconSearch size={11} />
                   <input
-                    placeholder="커밋 검색 (제목·해시·작성자)"
+                    placeholder={t('커밋 검색 (제목·해시·작성자)', 'Search commits (subject · hash · author)')}
                     value={filter}
                     spellCheck={false}
                     onChange={(e) => setFilter(e.target.value)}
                   />
                   {filter && (
-                    <button className="x" aria-label="검색 지우기" onClick={() => setFilter('')}>
+                    <button className="x" aria-label={t('검색 지우기', 'Clear search')} onClick={() => setFilter('')}>
                       <IconX2 size={10} />
                     </button>
                   )}
@@ -717,11 +745,13 @@ export function GitModal({
                   {log === null ? (
                     <div className="gitm-state">
                       <span className="spin" />
-                      불러오는 중…
+                      {t('불러오는 중…', 'Loading…')}
                     </div>
                   ) : grouped.length === 0 ? (
                     <div className="gitm-state small">
-                      {filter ? `'${filter.trim()}'에 맞는 커밋이 없어요` : '아직 커밋이 없어요'}
+                      {filter
+                        ? t(`'${filter.trim()}'에 맞는 커밋이 없어요`, `No commits match '${filter.trim()}'`)
+                        : t('아직 커밋이 없어요', 'No commits yet')}
                     </div>
                   ) : (
                     grouped.map((g) => (
@@ -752,7 +782,7 @@ export function GitModal({
                                 <span className="c-hash">{c.shortHash}</span>
                                 <span>{c.author}</span>
                                 <span>{relTime(c.time * 1000)}</span>
-                                {c.unpushed && <span className="c-unp">푸시 안 됨</span>}
+                                {c.unpushed && <span className="c-unp">{t('푸시 안 됨', 'Not pushed')}</span>}
                               </span>
                             </span>
                           </button>
@@ -762,7 +792,7 @@ export function GitModal({
                   )}
                   {log !== null && hasMore && !filter && (
                     <button className="gitm-loadmore" disabled={logLoading} onClick={() => void loadLog(false)}>
-                      {logLoading ? '불러오는 중…' : '이전 커밋 더 보기'}
+                      {logLoading ? t('불러오는 중…', 'Loading…') : t('이전 커밋 더 보기', 'Load older commits')}
                     </button>
                   )}
                 </div>
@@ -774,11 +804,11 @@ export function GitModal({
           {view === 'history' && (
             <div className="gitm-detail scroll">
               {selHash === null ? (
-                <div className="gitm-state">커밋을 고르면 상세가 여기 보여요</div>
+                <div className="gitm-state">{t('커밋을 고르면 상세가 여기 보여요', 'Pick a commit to see its details here')}</div>
               ) : detail === null ? (
                 <div className="gitm-state">
                   <span className="spin" />
-                  읽는 중…
+                  {t('읽는 중…', 'Reading…')}
                 </div>
               ) : (
                 <>
@@ -791,13 +821,13 @@ export function GitModal({
                         <b>{detail.author}</b>
                         <i>{fullTime(detail.time)}</i>
                       </span>
-                      <button className="gd-hash has-tip" onClick={copyHash} data-tip="전체 해시 복사">
+                      <button className="gd-hash has-tip" onClick={copyHash} data-tip={t('전체 해시 복사', 'Copy full hash')}>
                         {detail.shortHash}
                       </button>
                     </div>
                   </div>
                   <div className="gitm-sec" style={{ padding: '4px 18px 5px' }}>
-                    바뀐 파일 {detail.files.length}
+                    {t('바뀐 파일', 'Changed files')} {detail.files.length}
                   </div>
                   {detail.files.map((f) => (
                     <button
@@ -810,7 +840,10 @@ export function GitModal({
                     </button>
                   ))}
                   <div className="gitm-hint">
-                    파일을 클릭하면 그 커밋 시점의 내용이 뷰어로 열려요 — 헤더의 해시 칩이 스냅샷임을 알려줘요.
+                    {t(
+                      '파일을 클릭하면 그 커밋 시점의 내용이 뷰어로 열려요 — 헤더의 해시 칩이 스냅샷임을 알려줘요.',
+                      'Click a file to open its content at that commit in the viewer — the hash chip in the header marks the snapshot.'
+                    )}
                   </div>
                 </>
               )}
@@ -835,24 +868,26 @@ export function GitModal({
             <div className="qcard">
               <div className="qhead">
                 <IconSpark size={15} />
-                <span className="qhl">AI 커밋 메시지</span>
+                <span className="qhl">{t('AI 커밋 메시지', 'AI commit message')}</span>
                 <span className="qsp" />
-                <button className="qmin" aria-label="닫기" onClick={() => setAiStep(0)}>
+                <button className="qmin" aria-label={t('닫기', 'Close')} onClick={() => setAiStep(0)}>
                   <IconClose size={14} />
                 </button>
               </div>
               {aiStep === 1 ? (
                 <div className="qwrap qstep-b" key="ai1">
-                  <div className="qbl">1 / 2 — 계정</div>
-                  <div className="qbt">어떤 계정으로 작성할까요?</div>
+                  <div className="qbl">{t('1 / 2 — 계정', '1 / 2 — Account')}</div>
+                  <div className="qbt">{t('어떤 계정으로 작성할까요?', 'Which account should write it?')}</div>
                   <div className="qopts">
                     {aiAccounts === null ? (
                       <div className="gitm-state small">
                         <span className="spin" />
-                        계정 목록 읽는 중…
+                        {t('계정 목록 읽는 중…', 'Reading account list…')}
                       </div>
                     ) : aiAccounts.length === 0 ? (
-                      <div className="gitm-state small">등록된 계정이 없어요 — 설정 → Account에서 로그인해 주세요</div>
+                      <div className="gitm-state small">
+                        {t('등록된 계정이 없어요 — 설정 → Account에서 로그인해 주세요', 'No accounts yet — sign in at Settings → Account')}
+                      </div>
                     ) : (
                       aiAccounts.map((a) => (
                         <button
@@ -862,7 +897,7 @@ export function GitModal({
                         >
                           <span className="ql">
                             {a.email}
-                            {a.isDefault ? ' · 기본' : ''}
+                            {a.isDefault ? t(' · 기본', ' · default') : ''}
                           </span>
                           <span className="qd">{usageDesc(aiUsage?.get(a.email), aiUsage === null)}</span>
                           <span className="qck">
@@ -878,12 +913,13 @@ export function GitModal({
                   <div className="qbl">
                     <button className="qback" onClick={() => setAiStep(1)}>
                       <IconChevLeft size={11} />
-                      계정 다시 고르기
+                      {t('계정 다시 고르기', 'Choose account again')}
                     </button>
-                    <span className="qsp" />2 / 2 — 모델 · 사고 수준
+                    <span className="qsp" />
+                    {t('2 / 2 — 모델 · 사고 수준', '2 / 2 — Model · effort')}
                   </div>
-                  <div className="qbt">무엇으로 작성할까요?</div>
-                  <div className="gai-lab">모델</div>
+                  <div className="qbt">{t('무엇으로 작성할까요?', 'What should it write with?')}</div>
+                  <div className="gai-lab">{t('모델', 'Model')}</div>
                   <div className="gai-seg">
                     {AI_MODELS.map((m) => (
                       <button key={m.id} className={aiModel === m.id ? 'on' : ''} onClick={() => setAiModel(m.id)}>
@@ -891,9 +927,9 @@ export function GitModal({
                       </button>
                     ))}
                   </div>
-                  <div className="gai-lab">사고 수준 (effort)</div>
+                  <div className="gai-lab">{t('사고 수준 (effort)', 'Effort')}</div>
                   <div className="gai-seg">
-                    {AI_EFFORTS.map((ef) => (
+                    {aiEffortOpts().map((ef) => (
                       <button key={ef.id} className={aiEffort === ef.id ? 'on' : ''} onClick={() => setAiEffort(ef.id)}>
                         {ef.label}
                       </button>
@@ -901,10 +937,14 @@ export function GitModal({
                   </div>
                   <div className="qfoot">
                     <span className="qhint">
-                      {aiAccount} · 담긴 파일 {checkedFiles.length}개의 diff로 작성해요
+                      {aiAccount} ·{' '}
+                      {t(
+                        `담긴 파일 ${checkedFiles.length}개의 diff로 작성해요`,
+                        `writes from the diff of ${checkedFiles.length} included file${checkedFiles.length === 1 ? '' : 's'}`
+                      )}
                     </span>
                     <button className="qgo" onClick={startAi}>
-                      작성
+                      {t('작성', 'Write')}
                     </button>
                   </div>
                 </div>
@@ -929,20 +969,26 @@ export function GitModal({
                   <div className="sd-ic">
                     <IconUndo size={22} />
                   </div>
-                  <div className="sd-title">이 파일의 변경을 되돌릴까요?</div>
+                  <div className="sd-title">{t('이 파일의 변경을 되돌릴까요?', 'Discard changes to this file?')}</div>
                   <div className="sd-msg">
                     <b>{confirm.file.path}</b>
                     <br />
                     {confirm.file.untracked
-                      ? '아직 커밋된 적 없는 새 파일이에요 — 휴지통으로 이동해요 (복구 가능).'
-                      : '마지막 커밋 상태로 돌아가요. 이 변경은 어디에도 저장되지 않고 사라져요.'}
+                      ? t(
+                          '아직 커밋된 적 없는 새 파일이에요 — 휴지통으로 이동해요 (복구 가능).',
+                          'This new file has never been committed — it goes to the Recycle Bin (recoverable).'
+                        )
+                      : t(
+                          '마지막 커밋 상태로 돌아가요. 이 변경은 어디에도 저장되지 않고 사라져요.',
+                          'Reverts to the last committed state. These changes are not saved anywhere and will be lost.'
+                        )}
                   </div>
                   <div className="sd-btns">
                     <button className="sd-cancel" onClick={() => setConfirm(null)}>
-                      취소
+                      {t('취소', 'Cancel')}
                     </button>
                     <button className="sd-go danger" onClick={() => doDiscard(confirm.file)}>
-                      되돌리기
+                      {t('되돌리기', 'Discard')}
                     </button>
                   </div>
                 </>
@@ -951,18 +997,28 @@ export function GitModal({
                   <div className="sd-ic warn">
                     <IconGitBranch size={22} />
                   </div>
-                  <div className="sd-title">변경이 있는 채 전환할까요?</div>
+                  <div className="sd-title">{t('변경이 있는 채 전환할까요?', 'Switch with uncommitted changes?')}</div>
                   <div className="sd-msg">
-                    커밋 안 한 변경 {st?.files.length ?? 0}개를 든 채 <b>{confirm.name}</b>(으)로 전환해요. git이
-                    변경을 가져갈 수 있으면 그대로 가져가고, 충돌하면 전환을 거부해요 — 그땐 커밋하거나 되돌린 뒤
-                    다시 시도해 주세요.
+                    {isEn() ? (
+                      <>
+                        Switches to <b>{confirm.name}</b> carrying {st?.files.length ?? 0} uncommitted change
+                        {(st?.files.length ?? 0) === 1 ? '' : 's'}. Git brings the changes along if it can; if they
+                        conflict, the switch is refused — commit or discard, then try again.
+                      </>
+                    ) : (
+                      <>
+                        커밋 안 한 변경 {st?.files.length ?? 0}개를 든 채 <b>{confirm.name}</b>(으)로 전환해요. git이
+                        변경을 가져갈 수 있으면 그대로 가져가고, 충돌하면 전환을 거부해요 — 그땐 커밋하거나 되돌린 뒤
+                        다시 시도해 주세요.
+                      </>
+                    )}
                   </div>
                   <div className="sd-btns">
                     <button className="sd-cancel" onClick={() => setConfirm(null)}>
-                      취소
+                      {t('취소', 'Cancel')}
                     </button>
                     <button className="sd-go" onClick={() => doSwitch(confirm.name)}>
-                      전환
+                      {t('전환', 'Switch')}
                     </button>
                   </div>
                 </>

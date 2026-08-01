@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { t } from '../lib/i18n'
 import { imageSrc, imageName } from '../lib/images'
 import { IconClose, IconChevLeft, IconChevRight, IconEye } from './icons'
 import { MouseGestureLayer, scrollGestures, type GestureAction } from './mouseGesture'
@@ -85,10 +86,10 @@ export function ImageViewer({
   // 우클릭 드래그 제스처 — ←/→는 이전/다음 사진(키보드 화살표와 동일), ↑/↓는 확대 스크롤,
   // ↓→(L자)는 닫기. 갈 곳이 없으면 라벨로 정직하게 알리고 실행은 no-op(코드 카드와 같은 규칙).
   const gestureActions: GestureAction[] = [
-    { pattern: 'L', label: multi ? '이전 사진' : '다른 사진 없음', run: () => go(-1) },
-    { pattern: 'R', label: multi ? '다음 사진' : '다른 사진 없음', run: () => go(1) },
+    { pattern: 'L', label: multi ? t('이전 사진', 'Previous image') : t('다른 사진 없음', 'No other images'), run: () => go(-1) },
+    { pattern: 'R', label: multi ? t('다음 사진', 'Next image') : t('다른 사진 없음', 'No other images'), run: () => go(1) },
     ...scrollGestures(() => rootEl?.querySelector('.iv-imgwrap')),
-    { pattern: 'DR', label: '닫기', run: onClose }
+    { pattern: 'DR', label: t('닫기', 'Close'), run: onClose }
   ]
 
   return (
@@ -114,20 +115,20 @@ export function ImageViewer({
         <span className="iv-spacer" />
         <button
           className="iv-tbtn htip"
-          data-tip="기본 앱으로 열기"
-          aria-label="기본 앱으로 열기"
+          data-tip={t('기본 앱으로 열기', 'Open in default app')}
+          aria-label={t('기본 앱으로 열기', 'Open in default app')}
           onClick={() => window.api.openPath('', path).catch(() => {})}
         >
           <IconEye size={16} />
         </button>
-        <button className="iv-tbtn htip" data-tip="닫기 (Esc)" aria-label="닫기" onClick={onClose}>
+        <button className="iv-tbtn htip" data-tip={t('닫기 (Esc)', 'Close (Esc)')} aria-label={t('닫기', 'Close')} onClick={onClose}>
           <IconClose size={17} />
         </button>
       </div>
 
       <div className="iv-stage" onClick={(e) => e.target === e.currentTarget && onClose()}>
         {multi && (
-          <button className="iv-nav prev" aria-label="이전" onClick={() => go(-1)}>
+          <button className="iv-nav prev" aria-label={t('이전', 'Previous')} onClick={() => go(-1)}>
             <IconChevLeft size={26} />
           </button>
         )}
@@ -149,7 +150,7 @@ export function ImageViewer({
           />
         </div>
         {multi && (
-          <button className="iv-nav next" aria-label="다음" onClick={() => go(1)}>
+          <button className="iv-nav next" aria-label={t('다음', 'Next')} onClick={() => go(1)}>
             <IconChevRight size={26} />
           </button>
         )}

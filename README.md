@@ -2,102 +2,113 @@
 
 # AgentCodeGUI
 
-**Claude Code와 Codex CLI를 위한 올인원 에이전트 앱**
+**The all-in-one agent app for Claude Code and Codex CLI**
 
-대화로 코딩하고, 그 자리에서 읽고 고칩니다.
+Code by conversation — then read and fix it right there.
+
+**English** · [한국어](README.ko.md)
 
 [![Release](https://img.shields.io/github/v/release/UnrealFactory/AgentCodeGUI?label=release&color=2ea44f)](https://github.com/UnrealFactory/AgentCodeGUI/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/UnrealFactory/AgentCodeGUI/total?color=blue)](https://github.com/UnrealFactory/AgentCodeGUI/releases)
+[![Stars](https://img.shields.io/github/stars/UnrealFactory/AgentCodeGUI?color=e3b341&label=stars)](https://github.com/UnrealFactory/AgentCodeGUI/stargazers)
 ![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078D6)
 
-<img src="docs/chat.png" width="900" alt="AgentCodeGUI — 채팅" />
+<img src="docs/chat.png" width="900" alt="AgentCodeGUI — chat" />
 
-<img src="docs/multi.png" width="900" alt="AgentCodeGUI — 멀티 에이전트" />
+<img src="docs/multi.png" width="900" alt="AgentCodeGUI — multi-agent" />
 
-<img src="docs/code.png" width="900" alt="AgentCodeGUI — 탐색기 · 코드 뷰어" />
+<img src="docs/code.png" width="900" alt="AgentCodeGUI — explorer · code viewer" />
 
 </div>
 
 ## Overview
 
-AgentCodeGUI는 터미널의 코딩 에이전트(**Claude Code** · **Codex CLI**)를 하나의 데스크탑 앱으로 옮긴 Windows 앱입니다. 채팅으로 작업을 시키고, 에이전트가 만진 코드를 **내장 탐색기와 LSP 코드 뷰어**로 그 자리에서 읽고, 여러 에이전트를 **나란히** 돌립니다.
+AgentCodeGUI is a Windows app that brings the terminal coding agents (**Claude Code** · **Codex CLI**) into a single desktop app. Give it work by chat, read the code the agent touched in the **built-in explorer and LSP code viewer**, and run multiple agents **side by side**.
 
-- **API 키 없이 시작** — Claude / ChatGPT 구독 계정으로 앱 안에서 로그인해 그대로 실행해요. API 키(종량)도 선택할 수 있습니다.
-- **설치는 한 번** — 엔진(Claude Code · Codex CLI)은 앱이 알아서 설치·업데이트하고, 시스템에 설치된 터미널 환경은 건드리지 않아요.
-- **Windows 11 아크릴 위 플랫 다크 디자인** — 한국어 UI.
+- **Start without an API key** — sign in with your Claude / ChatGPT subscription right in the app and run on it. API-key (pay-as-you-go) billing is available too.
+- **Install once** — the app installs and updates the engines (Claude Code · Codex CLI) by itself, and never touches your system-wide terminal setup.
+- **Flat dark design on Windows 11 acrylic** — English and Korean UI, switchable in Settings.
 
 ## Features
 
-**대화 · 에이전트**
+**Chat · Agents**
 
-- 스트리밍 응답 · 도구 호출 로그 · 승인/질문 카드(답한 문답은 대화에 흔적으로) · 실행 중 메시지 예약
-- **Claude 워크플로** — 멀티 에이전트 오케스트레이션이 백그라운드에서 완주하고, 끝나면 결과를 대화로 정리. 진행은 알약 → 단계·에이전트 보드로 실시간
-- **백그라운드 상주** — 셸(dev 서버)·서브에이전트·워크플로가 턴이 끝나도 유지되고, 그동안 보낸 메시지는 같은 세션에 이어져요
-- 서브에이전트 카드 — 실시간 내레이션과 과정 로그 · 백그라운드 셸 추적(라이브 출력·중지·`Ctrl+B` 건너뛰기)
-- 작업 바 — 할 일 · 서브에이전트 · 백그라운드 셸 · 변경된 파일 · 컨텍스트 게이지가 한 줄에
-- `Ctrl+F` 대화 검색 · 이미지/텍스트 파일 첨부 · `/` 명령·스킬 · `@` 파일 멘션 · `↑`/`↓` 보낸 메시지 복구
-- 우클릭 드래그 **마우스 제스처** — 스크롤·이전/다음 파일·창 제어·대화 비우기까지 손짓으로
+- Streaming replies · tool-call logs · approval/question cards (answered ones stay in the thread) · queue messages while a run is going
+- **Claude workflows** — multi-agent orchestration runs to completion in the background and posts a wrap-up reply when done. Progress flows live from a pill into a stage/agent board
+- **Background residency** — shells (dev servers), subagents, and workflows outlive the turn, and messages sent meanwhile continue in the same session
+- Subagent cards — live narration and process logs · background shell tracking (live output, stop, `Ctrl+B` skip)
+- Work bar — to-dos · subagents · background shells · changed files · context gauge in one line
+- `Ctrl+F` chat search · image/text attachments · `/` commands & skills · `@` file mentions · `↑`/`↓` recall sent messages
+- Right-drag **mouse gestures** — scroll, previous/next file, window control, even clearing the chat by hand
 
-**멀티 · 추가 채팅**
+**Multi · Extra chats**
 
-- 최대 6개 패널이 각자 **폴더·모델·계정**으로 동시 작업 — 속은 본채팅 그대로(컴포저·작업 바·승인 카드)
-- **추가 채팅**(`Ctrl+Shift+N`) — 코드 작업 옆에 띄우는 독립 OS 창, 대화는 닫아도 저장되고 재시작하면 복원
+- Up to 6 panels working at once, each with its own **folder, model, and account** — inside, it's the main chat verbatim (composer, work bar, approval cards)
+- **Extra chat** (`Ctrl+Shift+N`) — an independent OS window to keep beside your code; the conversation persists on close and restores on restart
 
-**코드 인텔리전스**
+**Code intelligence**
 
-- 내장 탐색기 + LSP 코드 뷰어 — **TS/JS · Python · C#(솔루션째) · C/C++ · 언리얼 Verse**
-- `F12` 정의 이동 · 시맨틱 색칠(JetBrains 팔레트) · 구조화 호버 카드 · 종류별 아이콘 자동완성
-- 공식 API 문서 **한국어 번역 호버**(언리얼 C++ · Verse) · C#은 어셈블리 심볼도 `F12`로 디컴파일 소스까지
-- diff 뷰어(추가=초록 행 · 삭제=빨간 고스트 줄) · **HTML은 열자마자 렌더 미리보기** · 마크다운 렌더
-- 에이전트가 만진 파일은 색·배지로, 폴더 우클릭 → **변경된 파일 모아보기**
-
-**계정 · 과금**
-
-- 구독 계정을 **엔진별로 여러 개 등록**, 채팅마다 실행 계정 바인딩 — 계정마다 **남은 한도 게이지**(5시간·주간·Fable)
-- 실행마다 **구독(정액) ↔ API 키(종량)** 선택 — API는 예산·비용 추적, 키는 암호화(DPAPI) 저장
+- Built-in explorer + LSP code viewer — **TS/JS · Python · C# (whole solutions) · C/C++ · Unreal Verse**
+- `F12` go-to-definition · semantic coloring (JetBrains palette) · structured hover cards · kind-aware completion icons
+- **Korean-translated hovers** for official API docs (Unreal C++ · Verse) · C# assembly symbols decompile on `F12`
+- Diff viewer (additions = green rows · deletions = red ghost lines) · **HTML opens straight into a rendered preview** · markdown rendering
+- Files the agent touched get colors and badges; right-click a folder → **collected changed files**
 
 ## Workflows
 
-Claude Code의 **Workflow 도구**(멀티 에이전트 오케스트레이션)를 앱에서 그대로 씁니다. "워크플로로 이 변경 전체를 감사해줘"라고 시키면 여러 에이전트가 단계별로 병렬 작업하고 — 터미널과 달리 **턴이 끝나도 백그라운드에서 완주**하며, 끝나면 결과 정리 답변이 저절로 도착해요.
+Claude Code's **Workflow tool** (multi-agent orchestration) works in the app as-is. Ask it to "audit this whole change with a workflow" and multiple agents work the stages in parallel — and unlike the terminal, the workflow **runs to completion in the background** even after the turn ends, delivering a wrap-up reply on its own.
 
 <div align="center">
-<img src="docs/workflow-run.png" width="900" alt="워크플로 실행 — 하단 알약으로 진행 표시" />
+<img src="docs/workflow-run.png" width="900" alt="Workflow run — progress in the bottom pill" />
 
-<img src="docs/workflow-board.png" width="900" alt="워크플로 보드 — 단계 레일 + 에이전트별 모델·토큰 실시간" />
+<img src="docs/workflow-board.png" width="900" alt="Workflow board — stage rail + per-agent model/tokens live" />
 </div>
 
-- 하단 **알약**이 진행을 요약하고, 누르면 **단계 레일 + 에이전트 보드**(에이전트별 모델·토큰·도구 수 실시간)가 펼쳐집니다
-- 워크플로가 도는 동안에도 **대화를 계속**할 수 있어요 — 같은 세션에 이어집니다
-- 카드의 **중지** 버튼, `Esc`·`↓→` 제스처로 내려두기 — 본채팅·멀티 패널·추가 채팅 모두 지원
+- The bottom **pill** summarizes progress; press it to unfold the **stage rail + agent board** (per-agent model, tokens, tool counts — live)
+- You can **keep chatting** while a workflow runs — it continues in the same session
+- **Stop** from the card, tuck it away with `Esc` or the `↓→` gesture — main chat, multi panels, and extra chats alike
+
+## Git
+
+<div align="center">
+<img src="docs/git.png" width="900" alt="Built-in Git — changed-file checklist · AI commit message · pull/push" />
+</div>
+
+A built-in Git surface for reviewing and shipping what your agents produced — no terminal detour.
+
+- **Changed-file checklist** — check exactly what goes into the commit, click any file to see its diff
+- **AI commit message** — one button drafts the message from the staged changes
+- Pull / push · history · branch switching and creation
+- **Nested repos auto-discovered** (up to 3 levels deep) — monorepo-ish folders each get their own card
 
 ## Supported AI Models
 
-| 엔진 | 모델 | 과금 |
+| Engine | Models | Billing |
 |---|---|---|
-| **Claude Code** (Anthropic) | Fable 5 · Opus 5 · Sonnet 5 · Haiku 4.5 | Claude 구독(Pro/Max) 또는 API 키 |
-| **Codex CLI** (OpenAI) | GPT-5.6-Sol · GPT-5.6-Terra · GPT-5.6-Luna | ChatGPT 구독(Plus/Pro) 또는 API 키 |
+| **Claude Code** (Anthropic) | Fable 5 · Opus 5 · Sonnet 5 · Haiku 4.5 | Claude subscription (Pro/Max) or API key |
+| **Codex CLI** (OpenAI) | GPT-5.6-Sol · GPT-5.6-Terra · GPT-5.6-Luna | ChatGPT subscription (Plus/Pro) or API key |
 
-모델 목록은 설치된 엔진에서 실시간으로 불러와 — 새 모델이 나오면 picker에 자동으로 뜹니다. 엔진·모델·추론 강도·권한 모드는 컴포저에서 채팅마다 따로 골라요.
+The model list loads live from the installed engine — when a new model ships, it just appears in the picker. Engine, model, reasoning effort, and permission mode are chosen per chat in the composer.
 
 ## Accounts
 
 <div align="center">
-<img src="docs/accounts.png" width="900" alt="설정 — Account" />
+<img src="docs/accounts.png" width="900" alt="Settings — Account" />
 </div>
 
-설정 → **Account**에서 구독 계정을 엔진별로 등록·관리합니다 — Anthropic·OpenAI 각각 **여러 개**를 등록해두고, 채팅마다 실행 계정을 골라 쓸 수 있어요(안 고르면 **기본** 계정). 계정마다 **남은 한도**(5시간·주간·Fable)가 게이지로 붙어 여유 있는 쪽으로 갈아탑니다.
+Register and manage subscription accounts per engine in Settings → **Account** — keep **several** Anthropic and OpenAI accounts and bind any chat to any of them (unbound chats use the **default** account). Each account shows a **remaining-limit gauge** (5-hour · weekly · Fable) so you can hop to whichever has headroom.
 
-계정 크리덴셜은 전부 `~/.agentcodegui`에 암호화(DPAPI) 저장되고, 터미널 Claude Code(`~/.claude`)·codex(`~/.codex`)의 로그인과는 **완전히 분리**돼 서로 영향을 주지 않아요.
+All credentials are stored encrypted (DPAPI) under `~/.agentcodegui`, **fully separated** from your terminal Claude Code (`~/.claude`) and codex (`~/.codex`) logins — neither side affects the other.
 
 ## Installation
 
-1. [**Releases**](https://github.com/UnrealFactory/AgentCodeGUI/releases/latest)에서 `AgentCodeGUI-Setup-<버전>.exe`를 받아 실행합니다.
-2. 코드 서명이 없어 SmartScreen 경고가 뜨면 **"추가 정보 → 실행"** 으로 넘어갑니다.
-3. 첫 실행에 엔진이 자동으로 설치됩니다. 설정 → **Account**에서 구독 계정으로 로그인하면(또는 설정 → **API**에 키 등록) 바로 시작이에요.
+1. Grab `AgentCodeGUI-Setup-<version>.exe` from [**Releases**](https://github.com/UnrealFactory/AgentCodeGUI/releases/latest) and run it.
+2. If SmartScreen warns (the build is unsigned), continue via **"More info → Run anyway"**.
+3. Engines install automatically on first launch. Sign in with a subscription account in Settings → **Account** (or add a key in Settings → **API**) and you're off.
 
-- 요구 사항: **Windows 10/11**
-- 새 버전은 **자동 업데이트** — 사이드바에 배지가 뜨면 클릭 한 번으로 조용히 설치됩니다.
-- 폴더 우클릭 → **"AgentCodeGUI로 열기"** 로 그 폴더를 작업 폴더 삼아 바로 엽니다.
+- Requirements: **Windows 10/11**
+- New versions **auto-update** — when the sidebar badge appears, one click installs quietly.
+- Right-click a folder → **"Open with AgentCodeGUI"** to open it as the working folder directly.
 
 ### Code signing
 
@@ -106,15 +117,15 @@ Free code signing provided by [SignPath.io](https://signpath.io), certificate by
 ## Development
 
 ```bash
-npm install          # 의존성 설치
+npm install          # install dependencies
 npm run dev          # electron-vite dev (HMR)
-npm run typecheck    # tsc — main(node) + renderer(web)
-npm run package      # NSIS 설치 파일(.exe) 빌드
-npm run release      # 빌드 + GitHub Releases 게시 (GH_TOKEN 필요)
+npm run typecheck    # tsc — main (node) + renderer (web)
+npm run package      # build the NSIS installer (.exe)
+npm run release      # build + publish to GitHub Releases (needs GH_TOKEN)
 ```
 
 ```
-src/main      Electron 메인 — claude/ · codex/ 엔진 어댑터, lsp/, 영속화(~/.agentcodegui)
-src/renderer  React UI — components/, store/session.ts(EngineEvent 리듀서)
-src/shared    IPC 프로토콜·타입 (main ↔ renderer 계약)
+src/main      Electron main — claude/ · codex/ engine adapters, lsp/, persistence (~/.agentcodegui)
+src/renderer  React UI — components/, store/session.ts (EngineEvent reducer)
+src/shared    IPC protocol & types (the main ↔ renderer contract)
 ```

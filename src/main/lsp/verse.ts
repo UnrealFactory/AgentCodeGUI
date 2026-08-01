@@ -4,6 +4,7 @@ import fsp from 'node:fs/promises'
 import { spawn } from 'node:child_process'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 import { APP_HOME } from '../engine/versions'
+import { t } from '../lang'
 import { translateVerseDoc } from './verseDocKo'
 import { formatVerseDoc } from './verseDocFormat'
 import { verseIndent, verseDocAbove, verseAttrsAbove, verseEnclosingLine, VERSE_PARENS, VERSE_NAME_TRAIL } from '@shared/verseSyntax'
@@ -62,7 +63,7 @@ function run(cmd: string, args: string[]): Promise<void> {
   return new Promise((resolve, reject) => {
     const child = spawn(cmd, args, { windowsHide: true, stdio: 'ignore' })
     child.on('error', reject)
-    child.on('close', (code) => (code === 0 ? resolve() : reject(new Error(`${cmd} 종료 코드 ${code}`))))
+    child.on('close', (code) => (code === 0 ? resolve() : reject(new Error(t(`${cmd} 종료 코드 ${code}`, `${cmd} exited with code ${code}`)))))
   })
 }
 
@@ -94,7 +95,7 @@ async function extractVsixExe(vsix: string, destExe: string): Promise<void> {
   }
   if (!fs.existsSync(member)) {
     await fsp.rm(tmp, { recursive: true, force: true }).catch(() => {})
-    throw new Error('이 vsix 안에서 verse-lsp.exe(Win64)를 찾지 못했어요')
+    throw new Error(t('이 vsix 안에서 verse-lsp.exe(Win64)를 찾지 못했어요', 'Could not find verse-lsp.exe (Win64) in this vsix'))
   }
   await fsp.copyFile(member, destExe)
   await fsp.rm(tmp, { recursive: true, force: true }).catch(() => {})
@@ -107,19 +108,19 @@ async function extractVsixExe(vsix: string, destExe: string): Promise<void> {
  */
 export async function setVerseExe(srcPath: string): Promise<{ ok: boolean; error?: string }> {
   const p = (srcPath || '').trim().replace(/^"|"$/g, '')
-  if (!p) return { ok: false, error: '경로가 비어 있어요' }
-  if (process.platform !== 'win32') return { ok: false, error: 'Windows에서만 지원해요' }
+  if (!p) return { ok: false, error: t('경로가 비어 있어요', 'Path is empty') }
+  if (process.platform !== 'win32') return { ok: false, error: t('Windows에서만 지원해요', 'Only supported on Windows') }
   try {
-    if (!fs.existsSync(p)) return { ok: false, error: '경로를 찾을 수 없어요' }
+    if (!fs.existsSync(p)) return { ok: false, error: t('경로를 찾을 수 없어요', 'Path not found') }
     await fsp.mkdir(VERSE_DIR, { recursive: true })
     const ext = path.extname(p).toLowerCase()
     if (ext === '.vsix') await extractVsixExe(p, VERSE_EXE)
     else if (ext === '.exe') await fsp.copyFile(p, VERSE_EXE)
-    else return { ok: false, error: 'Verse.vsix 또는 verse-lsp.exe 를 지정해 주세요' }
+    else return { ok: false, error: t('Verse.vsix 또는 verse-lsp.exe 를 지정해 주세요', 'Choose a Verse.vsix or verse-lsp.exe') }
     await fsp.writeFile(VERSE_CONFIG, JSON.stringify({ source: p } satisfies VerseConfig, null, 2))
     return { ok: true }
   } catch (e) {
-    return { ok: false, error: (e as Error).message || '설정에 실패했어요' }
+    return { ok: false, error: (e as Error).message || t('설정에 실패했어요', 'Setup failed') }
   }
 }
 

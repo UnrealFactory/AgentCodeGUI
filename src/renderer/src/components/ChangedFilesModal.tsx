@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ChangedFile } from '@shared/protocol'
+import { t } from '../lib/i18n'
 import { FileBadge } from './fileType'
 import { IconClose, IconFolder } from './icons'
 import { MouseGestureLayer, scrollGestures } from './mouseGesture'
@@ -36,9 +37,9 @@ export function ChangedFilesModal({
   const shown = cat === 'all' ? list : list.filter((f) => f.tag === cat)
 
   const SEGS: { k: Cat; t: string; c: number; dot?: string }[] = [
-    { k: 'all', t: '전체', c: list.length },
-    { k: 'edit', t: '수정됨', c: list.length - nNew, dot: 'var(--yellow)' },
-    { k: 'new', t: '새 파일', c: nNew, dot: 'var(--green)' }
+    { k: 'all', t: t('전체', 'All'), c: list.length },
+    { k: 'edit', t: t('수정됨', 'Modified'), c: list.length - nNew, dot: 'var(--yellow)' },
+    { k: 'new', t: t('새 파일', 'New'), c: nNew, dot: 'var(--green)' }
   ]
 
   // Esc — 위에 떠 있는 파일 뷰어가 우선 (뷰어의 Esc가 그쪽 카드만 닫는다, Git 카드와 같은 가드)
@@ -71,7 +72,7 @@ export function ChangedFilesModal({
     >
       <MouseGestureLayer
         target={cardEl}
-        actions={[...scrollGestures(() => bodyEl), { pattern: 'DR', label: '창 닫기', run: onClose }]}
+        actions={[...scrollGestures(() => bodyEl), { pattern: 'DR', label: t('창 닫기', 'Close window'), run: onClose }]}
       />
       <div className="chgm-modal" ref={setCardEl}>
         {/* ── 헤더 (PoC mhead) — 폴더 타일 + 2줄 제목, 오른쪽 ± 합계 알약 + 닫기 ── */}
@@ -81,12 +82,16 @@ export function ChangedFilesModal({
           </span>
           <span className="chgm-tt">
             <span className="mt">{scope.label}</span>
-            <span className="msub">{(scope.rel || scope.label) + ' · 변경된 파일 ' + list.length + '개'}</span>
+            <span className="msub">
+              {(scope.rel || scope.label) +
+                ' · ' +
+                t('변경된 파일 ' + list.length + '개', list.length === 1 ? '1 changed file' : list.length + ' changed files')}
+            </span>
           </span>
           <span className="sp" />
           {sumAdd > 0 && <span className="dpill add">+{sumAdd}</span>}
           {sumDel > 0 && <span className="dpill del">−{sumDel}</span>}
-          <button className="chgm-close htip" onClick={onClose} aria-label="닫기" data-tip="닫기 (Esc)">
+          <button className="chgm-close htip" onClick={onClose} aria-label={t('닫기', 'Close')} data-tip={t('닫기 (Esc)', 'Close (Esc)')}>
             <IconClose size={15} />
           </button>
         </div>
@@ -108,7 +113,7 @@ export function ChangedFilesModal({
           </div>
           <div className="chgm-list">
             {shown.length === 0 ? (
-              <div className="chgm-empty">변경된 파일이 없어요</div>
+              <div className="chgm-empty">{t('변경된 파일이 없어요', 'No changed files')}</div>
             ) : (
               shown.map((f) => {
                 // 스코프 기준 상대 경로 — 이름과 흐린 위치(부모 폴더, 스코프 바로 아래면 '·')로 나눈다

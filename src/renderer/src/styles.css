@@ -753,7 +753,16 @@ input,textarea{ font-family:inherit; }
 /* "맨 아래로" 점프 버튼 — 위로 스크롤해 바닥에서 멀어지면 뜬다. 스크롤 영역 안의
    0높이 sticky 래퍼라 컴포저/워크바 높이와 무관하게 항상 스크롤 뷰포트 바닥 위에 붙고,
    스크롤 흐름에 자리를 차지하지 않는다(레이아웃 이동 없음). */
-.jump-bottom-wrap{ position:sticky; bottom:18px; height:0; display:flex; justify-content:center; z-index:6; pointer-events:none; }
+.jump-bottom-wrap{ position:sticky; bottom:18px; height:0; display:flex; justify-content:center; z-index:6; pointer-events:none; transition:bottom .18s ease; }
+/* 알약(내려둔 질문·워크플로)이 하단 중앙에 떠 있으면 화살표가 그 위로 비켜난다 — 알약은
+   각 표면 루트(.win-body/.sw/.ma-panel)의 직계 자식이라 :has(>)가 그 표면만 반응시킨다.
+   패널의 질문 알약(10px)은 스크롤러 밖이라 워크플로 알약(84px)만 조건에 든다 */
+.win-body:has(> .q-mini, > .wf-mini) .chat-scroll .jump-bottom-wrap,
+.sw:has(> .q-mini, > .wf-mini) .jump-bottom-wrap,
+.ma-panel:has(> .wf-mini) .jump-bottom-wrap{ bottom:64px; }
+/* 둘 다 내려둔 경우 — 워크플로 알약이 질문 알약 위(140px)로 가므로 화살표는 한 층 더 */
+.win-body:has(> .q-mini):has(> .wf-mini) .chat-scroll .jump-bottom-wrap,
+.sw:has(> .q-mini):has(> .wf-mini) .jump-bottom-wrap{ bottom:110px; }
 .jump-bottom{ pointer-events:auto; display:grid; place-items:center; width:38px; height:38px; margin-top:-38px;
   border-radius:99px; background:rgba(28,28,28,.72); border:1px solid rgba(255,255,255,.10); color:var(--text-2);
   backdrop-filter:blur(32px) saturate(1.25); -webkit-backdrop-filter:blur(32px) saturate(1.25);
@@ -771,6 +780,7 @@ input,textarea{ font-family:inherit; }
 .thread > .msg + .toollog{ margin-top:15px; }
 .thread > .toollog + .msg{ margin-top:8px; }
 .thread > * + .worked{ margin-top:10px; }
+.thread > * + .stopline{ margin-top:10px; }
 /* 본문 칼럼 = PoC .col: 88% 폭 · 1500px 상한 (컴포저/WorkBar는 880px 칼럼) */
 .chat--talk .thread,
 .chat--code .thread{ max-width:clamp(calc(760px / var(--z, 1)), 88%, calc(1500px / var(--z, 1))); }
@@ -835,11 +845,23 @@ input,textarea{ font-family:inherit; }
 .msg.user .content{ color:var(--text); line-height:1.6; }
 .content p{ margin:0; white-space:pre-wrap; word-break:break-word; }
 .content p + p{ margin-top:12px; }
-.msg.error .content{ color:var(--red); }
 
 /* 턴 마무리 줄 — 'N초 동안 작업함' (PoC .worked): 답변 뒤에 붙는 조용한 턴 푸터.
    margin 쇼트핸드 금지 — 스레드 owl(.thread > * + *)과 특이도가 같아 위 여백을 덮는다 */
 .worked{ margin-left:2px; margin-right:2px; font-size:13px; color:var(--text-3); animation:fade .2s ease both; }
+
+/* 중단 마커 — Esc/중지로 턴을 끊은 자리 (클로드 코드의 'Interrupted' 문법).
+   '잘림'을 그대로 그리는 컷 라인: ⏹ 중단함 뒤로 빨간 헤어라인이 사라진다.
+   면을 깐 알약 1차안은 어두운 배경에서 탁한 갈색 덩어리로 보여 기각 — 선·글자만 쓴다 */
+.stopline{
+  display:flex; align-items:center; gap:8px;
+  margin-left:2px; margin-right:2px;
+  font-size:12.5px; font-weight:600; letter-spacing:.01em; color:var(--red);
+  animation:fade .2s ease both;
+}
+.stopline svg{ flex:0 0 auto; }
+.stopline svg rect{ fill:currentColor; stroke:none; }
+.stopline::after{ content:''; flex:1; height:1px; margin-left:2px; background:rgba(221,122,107,.34); }
 
 /* tools the assistant ran — 테두리 없이 명도로만 (PoC .trow): 아이콘 45% ·
    이름 82% · 인자 모노 56% · 결과 50%. 색 아이콘 대신 무채색. */
@@ -1287,6 +1309,20 @@ input,textarea{ font-family:inherit; }
 .notice-kw{ color:var(--yellow); font-weight:600; }
 .notice-time{ flex:0 0 auto; font-size:11px; color:var(--text-3); margin-top:2px; }
 
+/* 오류 줄 — 노란 안내(notice-row)와 같은 문법의 빨간 판. 맨몸 빨간 텍스트로 흘리던
+   오류에 고유 디자인을 입힌다: X 아이콘 + '오류' 제목 + 본문(원문 그대로, 줄바꿈 보존) */
+.error-row{
+  display:flex; gap:10px; align-items:flex-start; padding:12px 15px;
+  background:var(--red-soft); border:1px solid var(--red-soft); border-radius:14px;
+  animation:rise .16s cubic-bezier(.2,.8,.2,1) both;
+}
+.error-ic{ flex:0 0 auto; display:grid; place-items:center; margin-top:2px; color:var(--red); }
+.error-body{ flex:1; min-width:0; }
+.error-head{ display:flex; align-items:baseline; gap:8px; }
+.error-title{ font-size:13px; font-weight:700; letter-spacing:-.01em; color:var(--red); }
+.error-time{ margin-left:auto; flex:0 0 auto; font-size:11px; color:var(--text-3); }
+.error-text{ margin-top:3px; font-size:13px; line-height:1.6; color:var(--text-2); white-space:pre-wrap; word-break:break-word; }
+
 /* "/command 완료" summary card rendered in the chat thread */
 .cmd-card{
   display:flex; gap:12px; align-items:flex-start; padding:13px 15px;
@@ -1598,9 +1634,10 @@ button.wb-prow{ width:100%; text-align:left; }
 .qstep-b{ animation:qslideb .22s ease; }
 @keyframes qslide{ from{ opacity:0; transform:translateX(16px); } }
 @keyframes qslideb{ from{ opacity:0; transform:translateX(-16px); } }
-/* 내려둔 질문 — 하단 중앙 알약 (PoC qmini): 클릭해 다시 펼침, ✕는 건너뛰기 */
+/* 내려둔 질문 — 하단 중앙 알약 (PoC qmini): 클릭해 다시 펼침, ✕는 건너뛰기.
+   알약·워크플로 표면은 z30 — 채팅 내용 위, 모든 오버레이(Git 55 이상)·컴포저 팝오버(45+) 아래 */
 .q-mini{
-  position:absolute; left:50%; transform:translateX(-50%); bottom:96px; z-index:80;
+  position:absolute; left:50%; transform:translateX(-50%); bottom:96px; z-index:30;
   display:flex; align-items:center; gap:9px; padding:7px 8px 7px 15px; border-radius:99px;
   background:var(--bg); border:1px solid var(--line-2);
   box-shadow:0 14px 40px -10px rgba(0,0,0,.7), inset 0 1px 0 rgba(255,255,255,.05);
@@ -1615,7 +1652,7 @@ button.wb-prow{ width:100%; text-align:left; }
 /* ── 워크플로 도크 — 알약(q-mini 문법) ↔ 펼침 카드(qcard 문법) ────────────
    상주 워크플로 전용. 상태 점(.st)은 도크 안에서만 쓰는 로컬 문법. */
 .wf-mini{
-  position:absolute; left:50%; transform:translateX(-50%); bottom:96px; z-index:80;
+  position:absolute; left:50%; transform:translateX(-50%); bottom:96px; z-index:30;
   display:flex; align-items:center; gap:9px; padding:7px 9px 7px 15px; border-radius:99px;
   background:var(--bg); border:1px solid var(--line-2);
   box-shadow:0 14px 40px -10px rgba(0,0,0,.7), inset 0 1px 0 rgba(255,255,255,.05);
@@ -1627,6 +1664,9 @@ button.wb-prow{ width:100%; text-align:left; }
 .wf-mini .ws{ color:var(--text-3); }
 .wf-mini .wx{ width:24px; height:24px; border-radius:99px; display:grid; place-items:center; color:var(--text-4); }
 .wf-mini:hover .wx{ background:var(--hover); color:var(--text); }
+/* 질문 알약과 동시 상주 — 같은 자리(96px)라 워크플로가 한 층 위로 비킨다.
+   멀티 패널은 자체 오프셋(84/10px)으로 이미 갈라져 있어 그 규칙이 이긴다 */
+.wf-mini:has(~ .q-mini){ bottom:140px; }
 .wf-mini .st, .wf-card .st{ width:7px; height:7px; border-radius:50%; flex:0 0 auto; }
 .wf-mini .st.run, .wf-card .st.run{ background:var(--accent); animation:wfpulse 1.5s ease-in-out infinite; }
 .wf-card .st.ok{ background:var(--green); }
@@ -1636,7 +1676,7 @@ button.wb-prow{ width:100%; text-align:left; }
 
 /* 펼친 카드 — 질문 카드처럼 중앙, 채팅 영역을 거의 다 차지하는 보드 */
 .wf-card{
-  position:absolute; left:50%; transform:translateX(-50%); top:56px; bottom:110px; z-index:80;
+  position:absolute; left:50%; transform:translateX(-50%); top:56px; bottom:110px; z-index:30;
   width:min(760px, calc(100% - 56px));
   display:flex; flex-direction:column;
   padding:18px 22px 14px; border-radius:18px;
@@ -2861,6 +2901,12 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
 .set-input.num{ width:92px; font-family:var(--font-mono); -moz-appearance:textfield; appearance:textfield; }
 .set-input.num::-webkit-outer-spin-button,
 .set-input.num::-webkit-inner-spin-button{ -webkit-appearance:none; margin:0; }
+/* Language — 언어 선택 행(라디오 카드): on = 라인 강조 + 우측 점 링 */
+.sc2.pick{ cursor:pointer; }
+.sc2.pick:hover{ background:rgba(255,255,255,.05); }
+.sc2.pick.on{ border-color:var(--accent-line); }
+.pick-dot{ flex:0 0 auto; width:15px; height:15px; border-radius:99px; box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.22); transition:box-shadow .12s; }
+.pick-dot.on{ box-shadow:inset 0 0 0 4.5px var(--accent-2); }
 /* Code(LSP) — 디스클로저 행(셰브론 회전) + 들여쓴 하위 옵션 카드 */
 .sc2.disc{ cursor:pointer; }
 .sc2 .chev{ flex:0 0 auto; display:inline-flex; align-items:center; color:var(--text-4); margin:0 -4px 0 -3px; transition:transform .16s ease, color .14s; }
@@ -3503,10 +3549,11 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
 }
 /* 카드가 곧 패널 — 자체 테두리·포커스 링(.focused)은 카드 프레임에 양보 */
 .ma-expand-card > .ma-panel{ flex:1; min-height:0; border:none; border-radius:0; box-shadow:none; }
-/* 확대 중 뒤 그리드 패널의 질문/승인 카드·알약(z80)은 베일 밑으로 — .ma-panel은 스태킹
+/* 확대 중 뒤 그리드 패널의 질문/승인 카드(z80)는 베일 밑으로 — .ma-panel은 스태킹
    컨텍스트가 아니라 z80이 루트 층에서 베일(55) 위로 떠오른다. 상태 칩(응답 대기)이
-   대신 알리고, 숫자 키로 그 패널을 카드로 갈아끼워 답한다 */
-.multi.expanded .ma-panel .q-overlay, .multi.expanded .ma-panel .q-mini{ z-index:40; }
+   대신 알리고, 숫자 키로 그 패널을 카드로 갈아끼워 답한다.
+   알약·워크플로 표면은 기본 z30이라 손대지 않아도 베일 아래에 깔린다 */
+.multi.expanded .ma-panel .q-overlay{ z-index:40; }
 /* 베일이 멀티 헤더를 덮는 동안 창 드래그 띠 해제 — drag 영역은 z 무시·평면 합산이라
    (자동 숨김 사이드바와 같은 함정) 카드 상단 클릭이 창 드래그로 먹힌다 */
 .win-body:has(.ma-expand-overlay) .ma-head{ -webkit-app-region:no-drag; }

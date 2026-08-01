@@ -151,12 +151,16 @@ export interface WindowApi {
   getChats(): Promise<unknown>
   /** persist the chat list blob so conversations survive a restart */
   saveChats(data: unknown): Promise<void>
+  /** read one chat's saved file — 비활성 채팅 스냅샷의 지연 로드(전환 시에만 메모리로) */
+  loadChat(id: string): Promise<unknown>
   /** load the renderer UI prefs blob (viewer size/zoom, chat zoom) from the app home folder */
   getUiPrefs(): Promise<Record<string, unknown>>
   /** persist the whole UI prefs blob to ~/.agentcodegui/ui-prefs.json */
   saveUiPrefs(prefs: Record<string, unknown>): Promise<void>
   /** 유리(벽지 비침) 값 변경 구독 — 어느 창에서 바꾸든 전 창이 같은 값을 받는다 */
   onUiGlassChanged(cb: (v: number) => void): () => void
+  /** UI 언어(ko/en) 변경 구독 — 어느 창의 설정에서 바꾸든 전 창이 따라온다 */
+  onUiLangChanged(cb: (v: string) => void): () => void
   /** open a file (cwd-relative) with the OS default app */
   openPath(cwd: string, relPath: string): Promise<void>
   /** reveal (highlight) a file/folder in the OS file manager — explorer "파일 탐색기에서 보기" */
@@ -393,6 +397,8 @@ export interface WindowApi {
     getState(): Promise<unknown>
     /** persist the multi-agent workspace blob so it survives a restart */
     saveState(data: unknown): Promise<void>
+    /** read one saved session — 비활성 세션 패널 스냅샷의 지연 로드(전환 시에만 메모리로) */
+    loadSession(id: string): Promise<unknown>
     /** subscribe to one panel's streaming engine events (returns an unsubscribe fn) */
     onEvent(panelId: string, cb: (event: EngineEvent) => void): () => void
   }

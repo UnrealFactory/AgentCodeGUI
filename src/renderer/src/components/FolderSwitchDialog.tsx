@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { IconFolder } from './icons'
+import { t, isEn } from '../lib/i18n'
 
 function basename(p: string): string {
   const parts = p.split(/[\\/]+/).filter(Boolean)
@@ -44,12 +45,25 @@ export function FolderSwitchDialog({
         <div className="sd-ic">
           <IconFolder size={22} />
         </div>
-        <div className="sd-title">작업 폴더를 변경할까요?</div>
+        <div className="sd-title">{t('작업 폴더를 변경할까요?', 'Change the working folder?')}</div>
+        {/* 문장 사이에 <b>가 끼는 문구라 t() 한 벌로는 못 담는다 — isEn() 삼항으로 JSX를 통째로 고른다 */}
         <div className="sd-msg">
           {multi ? (
+            isEn() ? (
+              <>
+                Every panel&apos;s working folder becomes <b>{basename(to)}</b>. Panels with a conversation in
+                progress are cleared and start over.
+              </>
+            ) : (
+              <>
+                모든 패널의 작업 폴더가 <b>{basename(to)}</b>(으)로 바뀝니다. 대화가 진행 중인 패널은 내용이
+                지워지고 새 대화로 시작됩니다.
+              </>
+            )
+          ) : isEn() ? (
             <>
-              모든 패널의 작업 폴더가 <b>{basename(to)}</b>(으)로 바뀝니다. 대화가 진행 중인 패널은 내용이
-              지워지고 새 대화로 시작됩니다.
+              A conversation is scoped to its folder, so switching <b>{basename(from)}</b> →{' '}
+              <b>{basename(to)}</b> clears this conversation and starts a new one.
             </>
           ) : (
             <>
@@ -60,10 +74,10 @@ export function FolderSwitchDialog({
         </div>
         <div className="sd-btns">
           <button className="sd-cancel" onClick={onCancel}>
-            취소
+            {t('취소', 'Cancel')}
           </button>
           <button className="sd-go danger" onClick={onConfirm}>
-            변경
+            {t('변경', 'Change')}
           </button>
         </div>
       </div>

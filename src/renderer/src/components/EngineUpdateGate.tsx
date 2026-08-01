@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { EngineUpdateStatus } from '@shared/protocol'
+import { t } from '../lib/i18n'
 import { IconAlert, IconCheck, IconClaude, IconMascot, LogoOpenAI } from './icons'
 
 function fmtBytes(n: number): string {
@@ -68,13 +69,13 @@ export function EngineUpdateGate() {
             {st.done ? failed ? <IconAlert size={18} /> : <IconCheck size={18} /> : <IconMascot size={21} />}
           </span>
           <div>
-            <div className="eu-title">엔진 업데이트</div>
+            <div className="eu-title">{t('엔진 업데이트', 'Engine update')}</div>
             <div className="eu-sub">
               {st.done
                 ? failed
-                  ? '일부 엔진을 업데이트하지 못했어요'
-                  : '최신 버전으로 준비됐어요'
-                : '새 버전을 설치하는 중이에요 — 잠시만요'}
+                  ? t('일부 엔진을 업데이트하지 못했어요', 'Some engines failed to update')
+                  : t('최신 버전으로 준비됐어요', 'Up to date and ready')
+                : t('새 버전을 설치하는 중이에요 — 잠시만요', 'Installing the new version — just a moment')}
             </div>
           </div>
         </div>
@@ -89,7 +90,7 @@ export function EngineUpdateGate() {
                     {i.from} <span className="eu-arrow">→</span> {i.to}
                   </>
                 ) : (
-                  <>{i.to} 새로 설치</>
+                  <>{i.to} {t('새로 설치', 'new install')}</>
                 )}
               </span>
               <span className={'eu-st ' + i.status}>
@@ -104,8 +105,10 @@ export function EngineUpdateGate() {
             </div>
           ))}
           <div className="eu-row eu-clean">
-            <span className="eu-name">이전 버전 정리</span>
-            <span className="eu-vers">{st.cleanup === 'done' && st.freedBytes > 0 ? fmtBytes(st.freedBytes) + ' 확보' : ''}</span>
+            <span className="eu-name">{t('이전 버전 정리', 'Old version cleanup')}</span>
+            <span className="eu-vers">
+              {st.cleanup === 'done' && st.freedBytes > 0 ? fmtBytes(st.freedBytes) + t(' 확보', ' freed') : ''}
+            </span>
             <span className={'eu-st ' + (st.cleanup === 'done' ? 'done' : st.cleanup === 'running' ? 'installing' : 'pending')}>
               {st.cleanup === 'running' ? <span className="set-spin" /> : st.cleanup === 'done' ? <IconCheck size={13} /> : null}
             </span>
@@ -113,9 +116,12 @@ export function EngineUpdateGate() {
         </div>
         {st.done && failed && (
           <div className="eu-foot">
-            <div className="eu-err">{st.items.find((i) => i.error)?.error ?? '네트워크 상태를 확인한 뒤 다시 시작하면 재시도해요.'}</div>
+            <div className="eu-err">
+              {st.items.find((i) => i.error)?.error ??
+                t('네트워크 상태를 확인한 뒤 다시 시작하면 재시도해요.', 'Check your network and relaunch to retry.')}
+            </div>
             <button className="sd-go" onClick={() => setHidden(true)}>
-              확인
+              {t('확인', 'OK')}
             </button>
           </div>
         )}

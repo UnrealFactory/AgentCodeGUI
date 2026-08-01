@@ -16,6 +16,7 @@ import { pushRecentDir, seedRecentDirs } from './lib/recentDirs'
 import { MultiWorkspace, useMultiSessions, type MultiExplorerInfo } from './components/MultiAgent'
 import { NewChatModal } from './components/NewChatModal'
 import { getPref, setPref } from './lib/prefs'
+import { t, useLang } from './lib/i18n'
 import {
   SIDEBAR_AUTOHIDE,
   SIDEBAR_AUTOHIDE_TRIGGER,
@@ -59,6 +60,11 @@ interface ChatMeta {
   draft?: string // 보내지 않은 컴포저 초안 — 채팅 전환/재시작에도 유지
   draftImages?: string[]
   updatedAt?: number // 마지막 활동(프롬프트 전송) 시각 — 사이드바 상대 시간 표시용
+  // 스냅샷이 메모리에 없다는 표식 — snapshot은 자리표시자(initialSessionState)고 진짜는
+  // 디스크의 채팅 파일에 있다(전환 시 loadChat으로 되읽음). 모든 채팅의 전체 스냅샷을
+  // 상주시키던 것이 이틀 상주 렌더러를 1GB대로 키우던 주범이라, 활성 채팅만 산다.
+  // 저장 페이로드의 이 표식은 main(chats.ts)이 "메타만 덮고 파일 스냅샷은 지켜라"로 읽는다.
+  unloaded?: boolean
 }
 
 // fallback for fresh chats and for chats saved before the picker was persisted
@@ -118,14 +124,17 @@ function sanitizeRefDirs(v: unknown): string[] {
 
 // ── chat persistence (~/.agentcodegui/chats.json) ───────────────────────────
 const CHATS_VERSION = 1
+// 저장 페이로드의 채팅 — unloaded 채팅은 스냅샷 없이(메타만) 나간다
+type PersistedChat = Omit<ChatMeta, 'snapshot'> & { snapshot?: SessionState }
 interface PersistedChats {
   version: number
-  chats: ChatMeta[]
+  chats: PersistedChat[]
   activeChatId: string
 }
 
 function MainApp({ user }: { user: AppUser }) {
-  const { state, elapsed, busy, begin, clearPermission, clearQuestion, answerQuestion, load, retractTurn } = useAgentSession()
+  const lang = useLang() // 언어 전환 시 아래 useMemo(사이드바 섹션 라벨 등)가 새 언어로 재계산되게
+  const { state, elapsed, busy, begin, clearPermission, clearQuestion, answerQuestion, load, interruptTurn } = useAgentSession()
   // 워크플로 상주 중(턴은 끝나 busy=false) — 전송·채팅 전환이 워크플로를 죽이지 않게 잠근다
   const wfAlive = state.workflow?.status === 'running'
   // 턴을 막고 있는 포그라운드 Bash가 있을 때만 셸 팝오버에 "건너뛰기"(Ctrl+B) 버튼을 노출
@@ -174,6 +183,10 @@ function MainApp({ user }: { user: AppUser }) {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [chats, setChats] = useState<ChatMeta[]>(() => [newChatMeta()])
   const [activeChatId, setActiveChatId] = useState<string>(() => chats[0].id)
+  // 저장 완료 콜백(비동기)에서 "지금" 활성인 채팅을 지키기 위한 ref — 클로저의 낡은
+  // activeChatId로 방금 전환해 온 채팅의 스냅샷을 내리면 안 된다
+  const activeChatIdRef = useRef(activeChatId)
+  activeChatIdRef.current = activeChatId
   // 일반(단일) / 멀티 뷰 — 2.0: 모드 탭이 사라지고 사이드바 항목 선택이 뷰를 정한다.
   // 1.x의 'chat'(순수 채팅 모드) 저장값은 'single'로 위생 처리 (모드 자체가 은퇴).
   const [mode, setMode] = useState<'single' | 'multi'>(() =>
@@ -461,16 +474,26 @@ function MainApp({ user }: { user: AppUser }) {
         if (!alive) return
         const data = raw as PersistedChats | null
         // guard each snapshot against missing fields from an older/corrupt file —
-        // including the per-chat folder, so restoring an old chat never sets undefined
+        // including the per-chat folder, so restoring an old chat never sets undefined.
+        // 활성 채팅만 스냅샷을 통째로 살린다 — 비활성은 자리표시자+unloaded로 두고 전환 때
+        // 디스크에서 되읽는다(모든 채팅의 전체 스냅샷 상주가 렌더러 힙을 GB대로 키웠다)
+        const bootActiveId =
+          data && Array.isArray(data.chats) && data.chats.length
+            ? ((data.chats.find((c) => c?.id === data.activeChatId) ?? data.chats[0])?.id ?? '')
+            : ''
         const restored =
           data && Array.isArray(data.chats) && data.chats.length
-            ? data.chats.map((c) => ({
-                ...c,
-                manualCwd: c.manualCwd ?? '',
-                refDirs: sanitizeRefDirs(c.refDirs),
-                picker: sanitizePicker(c.picker),
-                snapshot: sanitizeSnapshot(c.snapshot)
-              }))
+            ? data.chats.map((c) => {
+                const keep = c.id === bootActiveId || !(c.snapshot as SessionState | undefined)?.messages?.length
+                return {
+                  ...c,
+                  manualCwd: c.manualCwd ?? '',
+                  refDirs: sanitizeRefDirs(c.refDirs),
+                  picker: sanitizePicker(c.picker),
+                  snapshot: keep ? sanitizeSnapshot(c.snapshot) : initialSessionState,
+                  unloaded: keep ? undefined : true
+                }
+              })
             : null
         const talk = talkRaw as { chats?: Partial<ChatMeta>[] } | null
         const have = new Set((restored ?? []).map((c) => c.id))
@@ -525,13 +548,29 @@ function MainApp({ user }: { user: AppUser }) {
     // 조립하면 매 토큰이 모든 채팅의 snapshotForPersist를 물게 된다(600ms 안에 취소될
     // 작업인데도). 안으로 옮기면 토큰당 비용은 setTimeout 예약뿐이다.
     const t = setTimeout(() => {
-      const list = chats.map((c) =>
+      const list: PersistedChat[] = chats.map((c) =>
         c.id === activeChatId
-          ? { ...c, snapshot: snapshotForPersist(state), manualCwd, refDirs, picker, draft: input, draftImages: images }
-          : { ...c, snapshot: snapshotForPersist(c.snapshot) }
+          ? { ...c, snapshot: snapshotForPersist(state), unloaded: undefined, manualCwd, refDirs, picker, draft: input, draftImages: images }
+          : c.unloaded
+            ? { ...c, snapshot: undefined } // 스냅샷은 디스크에 있다 — 메타만 보내 파일의 것을 지키게(chats.ts)
+            : { ...c, snapshot: snapshotForPersist(c.snapshot) }
       )
       const payload: PersistedChats = { version: CHATS_VERSION, chats: list, activeChatId }
-      window.api.saveChats(payload).catch(() => {})
+      window.api.saveChats(payload)
+        .then(() => {
+          // 디스크에 닿았다 — 비활성 채팅의 스냅샷은 내려도 된다(전환 때 되읽음). 저장
+          // 사이에 활성이 바뀌었을 수 있으니 ref로 "지금" 활성만 지킨다.
+          setChats((cur) => {
+            let changed = false
+            const next = cur.map((c) => {
+              if (c.id === activeChatIdRef.current || c.unloaded || c.snapshot.messages.length === 0) return c
+              changed = true
+              return { ...c, snapshot: initialSessionState, unloaded: true }
+            })
+            return changed ? next : cur
+          })
+        })
+        .catch(() => {})
     }, 600)
     return () => clearTimeout(t)
   }, [hydrated, chats, activeChatId, state, manualCwd, refDirs, picker, input, images])
@@ -581,8 +620,8 @@ function MainApp({ user }: { user: AppUser }) {
   // 대화 스레드 ↑/↓ 제스처 — ↑는 스트리밍 중 rAF 바닥 고정이 도로 끌어내리지 않게 고정을
   // 풀고(재고정 150ms 가드도 무장), ↓는 '맨 아래로' 버튼과 같은 규칙으로 다시 고정한다
   const chatGestures: GestureAction[] = [
-    { pattern: 'U', label: '맨 위로', run: () => follow.scrollTop() },
-    { pattern: 'D', label: '맨 아래로', run: () => follow.jumpBottom() },
+    { pattern: 'U', label: t('맨 위로', 'Scroll to top'), run: () => follow.scrollTop() },
+    { pattern: 'D', label: t('맨 아래로', 'Scroll to bottom'), run: () => follow.jumpBottom() },
     sessionWindowGesture(),
     // clearConversation은 아래에서 선언 — 배열 생성 시점(TDZ)을 피해 실행 시점에 참조한다
     clearGesture(() => clearConversation())
@@ -629,19 +668,41 @@ function MainApp({ user }: { user: AppUser }) {
   // 만드는 대신 createChat이 재사용하므로 빈 채팅은 여전히 최대 1개다.
   const saveActive = (list: ChatMeta[]): ChatMeta[] =>
     list.map((c) =>
-      c.id === activeChatId ? { ...c, snapshot: state, manualCwd, refDirs, picker, draft: input, draftImages: images } : c
+      c.id === activeChatId
+        ? { ...c, snapshot: state, unloaded: undefined, manualCwd, refDirs, picker, draft: input, draftImages: images }
+        : c
     )
 
   // load a chat's saved snapshot into the live session + restore its directory,
-  // its own 모델·effort·모드 selection and any unsent composer draft
+  // its own 모델·effort·모드 selection and any unsent composer draft.
+  // unloaded 채팅(스냅샷이 메모리에 없음)은 디스크에서 되읽은 뒤 착지한다 — 전환 연타로
+  // 지연 로드가 겹치면 seq 가드로 마지막 요청만 이긴다(동기 전환도 진행 중인 로드를 무효화).
+  const restoreSeq = useRef(0)
   const restore = (c: ChatMeta): void => {
-    load(c.snapshot)
-    setManualCwd(c.manualCwd)
-    setRefDirs(c.refDirs ?? [])
-    setPicker(c.picker ?? DEFAULT_PICKER)
-    setInput(c.draft ?? '')
-    setImages(c.draftImages ?? [])
-    setActiveChatId(c.id)
+    const land = (snap: SessionState): void => {
+      load(snap)
+      setManualCwd(c.manualCwd)
+      setRefDirs(c.refDirs ?? [])
+      setPicker(c.picker ?? DEFAULT_PICKER)
+      setInput(c.draft ?? '')
+      setImages(c.draftImages ?? [])
+      setActiveChatId(c.id)
+    }
+    if (!c.unloaded) {
+      restoreSeq.current++
+      land(c.snapshot)
+      return
+    }
+    const seq = ++restoreSeq.current
+    window.api
+      .loadChat(c.id)
+      .then((raw) => {
+        if (seq !== restoreSeq.current) return
+        const snap = sanitizeSnapshot((raw as { snapshot?: unknown } | null)?.snapshot)
+        setChats((list) => list.map((x) => (x.id === c.id ? { ...x, snapshot: snap, unloaded: undefined } : x)))
+        land(snap)
+      })
+      .catch(() => {})
   }
 
   const createChat = (): void => {
@@ -654,7 +715,7 @@ function MainApp({ user }: { user: AppUser }) {
     }
     // 이미 만들어둔 빈 채팅이 있으면 새로 만들지 않고 거기로 복귀 — 골라둔
     // 모델·모드·계정·폴더·초안이 그대로 살아 돌아온다 (빈 채팅 최대 1개 규칙)
-    const blank = chats.find((c) => c.id !== activeChatId && !c.title && c.snapshot.messages.length === 0)
+    const blank = chats.find((c) => c.id !== activeChatId && !c.unloaded && !c.title && c.snapshot.messages.length === 0)
     if (blank) {
       setChats((list) => saveActive(list))
       restore(blank)
@@ -764,16 +825,13 @@ function MainApp({ user }: { user: AppUser }) {
     return () => window.removeEventListener('keydown', onKey)
   }, [])
 
-  // 취소 = 회수 — 스트리밍 중이던 미완성 턴(보낸 말풍선 + 반쯤 온 답)을 스레드에서 걷고,
-  // 보낸 문장은 컴포저로 되살린다(쓰던 초안이 있으면 초안을 지킴). busy가 아니라 상주
-  // 워크플로만 도는 경우엔 이미 완결된 턴이므로 걷지 않고 워크플로만 끊는다.
+  // 취소 = 중단 — 클로드 코드처럼 턴을 그 자리에서 끊는다. 보낸 말풍선과 반쯤 온 답은
+  // 스레드에 그대로 남고(CLI 세션에도 실제로 남아 있는 내용이라 화면과 어긋나지 않는다)
+  // '중단함' 마커가 붙는다. 보낸 문장은 ↑ 히스토리로 다시 불러올 수 있다. busy가 아니라
+  // 상주 워크플로만 도는 경우엔 이미 완결된 턴이므로 워크플로만 끊는다.
   // Esc와 컴포저 중지 버튼이 같은 경로를 쓴다.
   const cancelRun = (): void => {
-    if (busy) {
-      const last = [...state.messages].reverse().find((m) => m.kind === 'msg' && m.role === 'user')
-      retractTurn()
-      if (last && 'text' in last && last.text) setInput((v) => (v.trim() ? v : last.text))
-    }
+    if (busy) interruptTurn()
     window.api.cancel()
     setQueue([])
   }
@@ -856,7 +914,7 @@ function MainApp({ user }: { user: AppUser }) {
     begin(text, cmd, imgs)
     // derive the chat title from the prompt (command → its friendly title) unless renamed.
     // a folder switch starts a fresh conversation, so it re-titles even a renamed chat.
-    const title = cmd ? commandTitleOf(cmd) : text.trim().slice(0, 80) || '파일 첨부'
+    const title = cmd ? commandTitleOf(cmd) : text.trim().slice(0, 80) || t('파일 첨부', 'File attachment')
     setChats((list) =>
       list.map((c) => {
         if (c.id !== activeChatId) return c
@@ -873,9 +931,13 @@ function MainApp({ user }: { user: AppUser }) {
       const notes: string[] = []
       const mentions = extractMentions(text)
       if (mentions.length)
-        notes.push(`[멘션된 파일 — 필요하면 Read 도구로 확인하세요]\n${mentions.map((p) => '- ' + p).join('\n')}`)
+        notes.push(
+          `${t('[멘션된 파일 — 필요하면 Read 도구로 확인하세요]', '[Mentioned files — read them with the Read tool if needed]')}\n${mentions.map((p) => '- ' + p).join('\n')}`
+        )
       if (imgs.length)
-        notes.push(`[첨부 파일 — Read 도구로 확인하세요]\n${imgs.map((p) => '- ' + p).join('\n')}`)
+        notes.push(
+          `${t('[첨부 파일 — Read 도구로 확인하세요]', '[Attached files — read them with the Read tool]')}\n${imgs.map((p) => '- ' + p).join('\n')}`
+        )
       if (notes.length) promptForEngine = `${text}\n\n${notes.join('\n\n')}`
     }
     const extraDirs = refDirs.filter((p) => !sameCwd(p, dir))
@@ -950,7 +1012,7 @@ function MainApp({ user }: { user: AppUser }) {
   // and the "이 부분" the ask refers to. Then focus + grow the textarea so the user can
   // tweak it and send. Appends to any text already typed.
   const onElaborateSelection = (text: string): void => {
-    const base = `<selection>\n${text.trim()}\n</selection>\n\n이 부분 더 자세히 설명해줘`
+    const base = `<selection>\n${text.trim()}\n</selection>\n\n${t('이 부분 더 자세히 설명해줘', 'Explain this part in more detail')}`
     setInput((cur) => (cur.trim() ? cur + '\n\n' + base : base))
     requestAnimationFrame(() => {
       const el = composerRef.current
@@ -1118,7 +1180,8 @@ function MainApp({ user }: { user: AppUser }) {
   const chatSummaries = useMemo(
     () =>
       chats
-        .filter((c) => (c.id === activeChatId ? state.messages.length > 0 : c.snapshot.messages.length > 0) || c.title !== '')
+        // unloaded 채팅은 스냅샷이 자리표시자(빈 messages)지만 내용이 있어서 내려간 것이다
+        .filter((c) => (c.id === activeChatId ? state.messages.length > 0 : c.unloaded || c.snapshot.messages.length > 0) || c.title !== '')
         .map((c) => ({
           id: c.id,
           title: c.title,
@@ -1187,8 +1250,8 @@ function MainApp({ user }: { user: AppUser }) {
     sessionWins.forEach((w) => window.api.sessionWindows.close(w.id).catch(() => {}))
   })
   const extraSummaries = useMemo<ChatSummary[]>(
-    () => sessionWins.map((w) => ({ id: w.id, title: w.title || '새 채팅', status: w.status, updatedAt: w.updatedAt })),
-    [sessionWins]
+    () => sessionWins.map((w) => ({ id: w.id, title: w.title || t('새 채팅', 'New chat'), status: w.status, updatedAt: w.updatedAt })),
+    [sessionWins, lang]
   )
   // 사이드바 3섹션 — active 하이라이트는 지금 보이는 뷰의 항목 하나만(PoC 규칙).
   // currentId는 busy 잠금 예외용: 실행이 흐르는 채팅은 멀티 뷰에서도 눌러 돌아올 수 있다
@@ -1196,7 +1259,7 @@ function MainApp({ user }: { user: AppUser }) {
     () => [
       {
         key: 'general' as const,
-        label: '일반 채팅',
+        label: t('일반 채팅', 'General chats'),
         chats: chatSummaries,
         activeId: mode === 'single' ? activeChatId : undefined,
         currentId: activeChatId,
@@ -1208,7 +1271,7 @@ function MainApp({ user }: { user: AppUser }) {
       },
       {
         key: 'multi' as const,
-        label: '멀티 채팅',
+        label: t('멀티 채팅', 'Multi chats'),
         chats: multi.summaries,
         activeId: mode === 'multi' ? multi.activeId : undefined,
         onSelect: onSelectMulti,
@@ -1218,7 +1281,7 @@ function MainApp({ user }: { user: AppUser }) {
       },
       {
         key: 'extra' as const,
-        label: '추가 채팅',
+        label: t('추가 채팅', 'Chat windows'),
         chats: extraSummaries,
         onSelect: onFocusSessionWin,
         onRename: onRenameSessionWin,
@@ -1228,7 +1291,7 @@ function MainApp({ user }: { user: AppUser }) {
     ],
     // useEvent 핸들러·multi CRUD는 stable — 데이터/선택 상태만 의존한다
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [chatSummaries, multi.summaries, multi.activeId, extraSummaries, mode, activeChatId, busy]
+    [chatSummaries, multi.summaries, multi.activeId, extraSummaries, mode, activeChatId, busy, lang]
   )
   return (
     <div className="win">
@@ -1281,7 +1344,7 @@ function MainApp({ user }: { user: AppUser }) {
           />
         </div>
         {mode === 'multi' ? (
-          <ErrorBoundary label="멀티 에이전트">
+          <ErrorBoundary label={t('멀티 에이전트', 'Multi-agent')}>
             <MultiWorkspace
               multi={multi}
               usage={usage}
@@ -1340,8 +1403,8 @@ function MainApp({ user }: { user: AppUser }) {
               <div className="jump-bottom-wrap">
                 <button
                   className="jump-bottom has-tip"
-                  data-tip="맨 아래로"
-                  aria-label="맨 아래로"
+                  data-tip={t('맨 아래로', 'Scroll to bottom')}
+                  aria-label={t('맨 아래로', 'Scroll to bottom')}
                   onClick={follow.jumpBottom}
                 >
                   <IconChevDown size={17} />
@@ -1486,8 +1549,8 @@ function MainApp({ user }: { user: AppUser }) {
       {triggerPrev.show && (
         <div className="autohide-trigger-preview" style={{ width: `${triggerPrev.w}px` }}>
           <div className="atp-lbl">
-            감지 폭 {triggerPrev.w}px
-            <span>이 안에 마우스가 오면 펼쳐져요</span>
+            {t(`감지 폭 ${triggerPrev.w}px`, `Trigger zone ${triggerPrev.w}px`)}
+            <span>{t('이 안에 마우스가 오면 펼쳐져요', 'Opens when the mouse enters this zone')}</span>
           </div>
         </div>
       )}
@@ -1531,6 +1594,7 @@ function userFromProfile(p: UserProfile): AppUser {
 const DEFAULT_USER: AppUser = { name: 'User', avatarText: 'U', avatarColor: '#6366F1' }
 
 export default function App() {
+  useLang() // 언어 전환 시 전체 트리 재렌더 — 모든 t()가 새 언어로 다시 평가된다
   const [ready, setReady] = useState(false)
   const [user, setUser] = useState<AppUser>(DEFAULT_USER)
 
@@ -1561,7 +1625,7 @@ export default function App() {
           <div className="boot-logo"><IconMascot size={30} /></div>
           <div className="boot-name">AgentCodeGUI</div>
           <div className="boot-spin" />
-          <div className="boot-sub">불러오는 중…</div>
+          <div className="boot-sub">{t('불러오는 중…', 'Loading…')}</div>
         </div>
       </div>
     )
@@ -1569,7 +1633,7 @@ export default function App() {
   // 최상위 안전망 — MainApp 자체 렌더(단일 모드 스레드 포함)에서 난 예외까지 잡는다.
   // 워크스페이스별 경계가 먼저 잡고, 여기는 그 밖(사이드바·모달 등)을 커버한다.
   return (
-    <ErrorBoundary label="앱">
+    <ErrorBoundary label={t('앱', 'App')}>
       <MainApp user={user} />
     </ErrorBoundary>
   )

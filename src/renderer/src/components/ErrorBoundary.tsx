@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
+import { t } from '../lib/i18n'
 
 // 렌더 중 예외 하나가 앱 전체를 백지로 만드는 것을 막는 마지막 안전망. React는 렌더
 // 예외가 잡히지 않으면 트리 전체를 언마운트하므로, 워크스페이스 단위로 감싸 크래시를
@@ -29,18 +30,20 @@ export class ErrorBoundary extends Component<Props, State> {
     return (
       <div className="eb">
         <div className="eb-card">
-          <div className="eb-title">문제가 발생했어요</div>
+          <div className="eb-title">{t('문제가 발생했어요', 'Something went wrong')}</div>
           <div className="eb-sub">
-            {this.props.label ? `${this.props.label} 화면` : '이 화면'}을 그리는 중 오류가 났어요. 대화 기록은 저장되어
-            있습니다.
+            {t(
+              `${this.props.label ? `${this.props.label} 화면` : '이 화면'}을 그리는 중 오류가 났어요. 대화 기록은 저장되어 있습니다.`,
+              `An error occurred while rendering ${this.props.label ? `the ${this.props.label} screen` : 'this screen'}. Your conversation history is saved.`
+            )}
           </div>
           <div className="eb-msg">{msg}</div>
           <div className="eb-actions">
             <button className="eb-btn" onClick={() => this.setState({ error: null })}>
-              다시 시도
+              {t('다시 시도', 'Try again')}
             </button>
             <button className="eb-btn eb-btn--ghost" onClick={() => window.location.reload()}>
-              앱 새로고침
+              {t('앱 새로고침', 'Reload app')}
             </button>
           </div>
         </div>

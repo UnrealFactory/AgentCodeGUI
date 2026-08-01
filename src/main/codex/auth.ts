@@ -15,6 +15,7 @@ import { safeStorage, shell, type WebContents } from 'electron'
 import { IPC } from '@shared/protocol'
 import type { CodexAccountInfo, CodexAccountUsage } from '@shared/protocol'
 import { codexBin } from './versions'
+import { t } from '../lang'
 
 const APP_HOME = path.join(os.homedir(), '.agentcodegui')
 const STORE_PATH = path.join(APP_HOME, 'codex-accounts.json')
@@ -194,9 +195,21 @@ function linkSharedState(dir: string): void {
 // (직전 실행에서 CLI가 리프레시) 남겨두고, 백업이 더 신선하면(재로그인) 백업으로 덮는다.
 export function codexAccountRunDir(email: string): string {
   const target = readStoreFile().accounts.find((a) => a.email === email)
-  if (!target) throw new Error(`'${email}' OpenAI 계정이 등록 목록에 없어요 — 설정 → Account에서 로그인해 주세요.`)
+  if (!target)
+    throw new Error(
+      t(
+        `'${email}' OpenAI 계정이 등록 목록에 없어요 — 설정 → Account에서 로그인해 주세요.`,
+        `The OpenAI account '${email}' is not registered — sign in from Settings → Account.`
+      )
+    )
   const raw = dec(target.authEnc)
-  if (!raw) throw new Error(`'${email}' OpenAI 계정 데이터를 복호화하지 못했어요 — 설정 → Account에서 다시 로그인해 주세요.`)
+  if (!raw)
+    throw new Error(
+      t(
+        `'${email}' OpenAI 계정 데이터를 복호화하지 못했어요 — 설정 → Account에서 다시 로그인해 주세요.`,
+        `Could not decrypt the data for the OpenAI account '${email}' — sign in again from Settings → Account.`
+      )
+    )
   const dir = path.join(ACCOUNTS_DIR, accountSlug(email))
   fs.mkdirSync(dir, { recursive: true })
   const authPath = path.join(dir, 'auth.json')
@@ -424,12 +437,17 @@ function codexRpcOnce(home: string, method: string): Promise<unknown | null> {
   })
 }
 
-// 윈도 길이(분) → 한국어 라벨 (300=5시간, 10080=주간 — 실측 값 기준, 그 외는 일반화)
+// 윈도 길이(분) → 표시 라벨 (300=5시간, 10080=주간 — 실측 값 기준, 그 외는 일반화)
+// 영어는 '5h'/'Weekly' 규약 — 렌더러(Settings LimRow)가 라벨 텍스트로 시간창을 판별한다.
 function windowLabel(mins: number): string {
-  if (mins <= 0) return '한도'
-  if (mins <= 1440) return `${Math.max(1, Math.round(mins / 60))}시간`
-  if (Math.round(mins / 1440) === 7) return '주간'
-  return `${Math.round(mins / 1440)}일`
+  if (mins <= 0) return t('한도', 'Limit')
+  if (mins <= 1440) {
+    const h = Math.max(1, Math.round(mins / 60))
+    return t(`${h}시간`, `${h}h`)
+  }
+  const d = Math.round(mins / 1440)
+  if (d === 7) return t('주간', 'Weekly')
+  return t(`${d}일`, `${d}d`)
 }
 
 // 조회 결과는 계정별 캐시(2분) + 실패 시 마지막 성공값 유지 — 호출마다 app-server를

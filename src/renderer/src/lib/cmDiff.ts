@@ -3,6 +3,7 @@ import { StateField, type EditorState, type Range } from '@codemirror/state'
 import type { FileDiff } from '@shared/protocol'
 import { diffLineOps } from '@shared/lineDiff'
 import { highlightCode } from './highlight'
+import { t } from './i18n'
 
 // ── changed-file decorations (diff painted onto the live file) ───────────────
 // The agent's cumulative whole-file diff (run baseline → current) mapped onto the
@@ -99,7 +100,8 @@ class GhostWidget extends WidgetType {
     if (this.gs.length > MAX_GHOST_ROWS) {
       const more = document.createElement('div')
       more.className = 'cm-ghost-row'
-      more.textContent = `… 외 ${(this.gs.length - MAX_GHOST_ROWS).toLocaleString()}줄 삭제`
+      const n = (this.gs.length - MAX_GHOST_ROWS).toLocaleString()
+      more.textContent = t(`… 외 ${n}줄 삭제`, `… ${n} more deleted lines`)
       wrap.appendChild(more)
     }
     return wrap

@@ -1,6 +1,7 @@
 import { app } from 'electron'
 import { spawn } from 'node:child_process'
 import electronUpdater from 'electron-updater'
+import { t } from './lang'
 import type { UpdateStatus } from '@shared/protocol'
 
 // electron-updater is CommonJS — pull `autoUpdater` off the default export so it
@@ -61,24 +62,35 @@ export function initAutoUpdater(send: (s: UpdateStatus) => void): void {
       // 확인 사이클마다 로그·이전 오류를 새로 시작 — 주기 재확인으로 로그가 무한히 안 자라게
       state = { ...state, log: [] }
       lastLoggedStep = -1
-      set({ phase: 'checking', error: null }, '업데이트를 확인하는 중…')
+      set({ phase: 'checking', error: null }, t('업데이트를 확인하는 중…', 'Checking for updates…'))
     })
     autoUpdater.on('update-available', (info) =>
-      set({ phase: 'available', version: info.version }, `새 버전 v${info.version}을(를) 찾았어요 · 다운로드를 시작합니다`)
+      set(
+        { phase: 'available', version: info.version },
+        t(`새 버전 v${info.version}을(를) 찾았어요 · 다운로드를 시작합니다`, `Found new version v${info.version} · starting download`)
+      )
     )
-    autoUpdater.on('update-not-available', () => set({ phase: 'none' }, '이미 최신 버전이에요'))
+    autoUpdater.on('update-not-available', () => set({ phase: 'none' }, t('이미 최신 버전이에요', 'Already up to date')))
     autoUpdater.on('download-progress', (p) => {
       const percent = Math.max(0, Math.min(100, Math.round(p.percent)))
       // append a log line only every 5% so the log reads cleanly instead of flooding
       const step = Math.floor(percent / 5)
-      const line = step !== lastLoggedStep ? `다운로드 ${percent}% · ${mb(p.transferred)} / ${mb(p.total)} MB` : undefined
+      const line =
+        step !== lastLoggedStep
+          ? `${t('다운로드', 'Downloading')} ${percent}% · ${mb(p.transferred)} / ${mb(p.total)} MB`
+          : undefined
       if (line) lastLoggedStep = step
       set({ phase: 'downloading', percent }, line)
     })
     autoUpdater.on('update-downloaded', (info) =>
-      set({ phase: 'downloaded', version: info.version, percent: 100 }, '다운로드 완료 · 업데이트 버튼으로 적용할 수 있어요')
+      set(
+        { phase: 'downloaded', version: info.version, percent: 100 },
+        t('다운로드 완료 · 업데이트 버튼으로 적용할 수 있어요', 'Download complete · press Update to apply')
+      )
     )
-    autoUpdater.on('error', (err) => set({ phase: 'error', error: err?.message ?? String(err) }, '업데이트 중 오류가 발생했어요'))
+    autoUpdater.on('error', (err) =>
+      set({ phase: 'error', error: err?.message ?? String(err) }, t('업데이트 중 오류가 발생했어요', 'Something went wrong while updating'))
+    )
   }
 
   checkForUpdates()
@@ -113,7 +125,9 @@ export function checkForUpdates(): void {
 function showUpdateSplash(version: string | null): void {
   if (process.platform !== 'win32') return
   const ver = (version || '').replace(/[^0-9A-Za-z.\-]/g, '')
-  const sub = ver ? `v${ver} 설치가 끝나면 자동으로 다시 열려요` : '설치가 끝나면 자동으로 다시 열려요'
+  const sub = ver
+    ? t(`v${ver} 설치가 끝나면 자동으로 다시 열려요`, `Reopens automatically once v${ver} is installed`)
+    : t('설치가 끝나면 자동으로 다시 열려요', 'Reopens automatically once the install finishes')
   const ps = `Add-Type -AssemblyName PresentationFramework
 $script:t0 = Get-Date
 $xaml = @'
@@ -137,7 +151,7 @@ $xaml = @'
           </Viewbox>
         </Border>
         <StackPanel Margin="12,0,0,0" VerticalAlignment="Center">
-          <TextBlock Text="새 버전으로 업데이트하는 중" Foreground="#F2F2F2" FontSize="14" FontWeight="SemiBold" FontFamily="Segoe UI"/>
+          <TextBlock Text="${t('새 버전으로 업데이트하는 중', 'Updating to the new version')}" Foreground="#F2F2F2" FontSize="14" FontWeight="SemiBold" FontFamily="Segoe UI"/>
           <TextBlock Text="${sub}" Foreground="#9A9A9A" FontSize="11.5" Margin="0,3,0,0" FontFamily="Segoe UI"/>
         </StackPanel>
       </StackPanel>

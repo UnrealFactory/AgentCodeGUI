@@ -23,6 +23,7 @@ import { computeLineDiff, newFileDiff } from '../claude/diff'
 import { getOpenaiApiKey } from '../apiConfig'
 import { codexBin } from './versions'
 import { lspManager } from '../lsp/manager'
+import { isEn, t } from '../lang'
 import type {
   AgentQuestion,
   BgTaskRequest,
@@ -97,7 +98,7 @@ const HUGE_PREVIEW_CHARS = 4_000_000
 // 수십 MB 파일의 동기 통읽기가 스트림 루프를 막지 않게 한다.
 const HUGE_PREVIEW_BYTES = 16_000_000
 const hugePreviewRows = (): DiffLine[] => [
-  { t: 'hunk', text: '@@ 파일이 너무 커서 변경 미리보기를 생략했어요 @@' }
+  { t: 'hunk', text: t('@@ 파일이 너무 커서 변경 미리보기를 생략했어요 @@', '@@ File is too large — change preview skipped @@') }
 ]
 function readDiskText(abs: string): string | null {
   try {
@@ -125,11 +126,11 @@ function cxActivityLine(inner: Record<string, unknown> | undefined): string {
       const changes = ((inner.changes as { path?: string }[] | undefined) ?? [])
         .map((c) => String(c.path ?? '').split(/[\\/]/).pop())
         .filter(Boolean)
-      return changes.length ? oneLine('파일 수정: ' + changes.join(', '), 200) : '파일 수정'
+      return changes.length ? oneLine(t('파일 수정: ', 'Edited: ') + changes.join(', '), 200) : t('파일 수정', 'File edit')
     }
     case 'webSearch': {
-      const t = cxWebSearchTarget(inner)
-      return t ? oneLine('검색: ' + t, 200) : ''
+      const target = cxWebSearchTarget(inner)
+      return target ? oneLine(t('검색: ', 'Search: ') + target, 200) : ''
     }
     case 'mcpToolCall':
       return oneLine('MCP: ' + String(inner.tool ?? ''), 200)
@@ -156,7 +157,7 @@ function cxWebSearchTarget(item: Record<string, unknown>): string {
   const queries = Array.isArray(action.queries) ? action.queries.filter(Boolean) : []
   const query = String(item.query ?? '') || String(action.query ?? '') || queries.join(' · ')
   if (query) return oneLine(query, 200)
-  return action.type === 'other' ? '검색한 페이지 열람' : ''
+  return action.type === 'other' ? t('검색한 페이지 열람', 'Browsed pages') : ''
 }
 
 // ── 모델 수용량 초과(ServerOverloaded) 판정 ──────────────────
@@ -313,12 +314,16 @@ export class CodexEngine {
     })
     proc.on('exit', () => {
       // 진행 중이던 요청은 모두 실패 처리 — 다음 run이 새 프로세스를 띄운다
-      for (const [, p] of this.pending) p.reject(new Error('codex app-server 종료'))
+      for (const [, p] of this.pending) p.reject(new Error(t('codex app-server 종료', 'codex app-server exited')))
       this.pending.clear()
       this.initialized = null
       if (this.proc === proc) this.proc = null
       if (this.activeRunId) {
-        this.emit({ type: 'error', runId: this.activeRunId, message: 'Codex CLI(app-server)가 종료됐어요. 다시 시도해 주세요.' })
+        this.emit({
+          type: 'error',
+          runId: this.activeRunId,
+          message: t('Codex CLI(app-server)가 종료됐어요. 다시 시도해 주세요.', 'Codex CLI (app-server) exited. Please try again.')
+        })
         this.finishRun('error')
       }
     })
@@ -391,7 +396,7 @@ export class CodexEngine {
       const p = this.pending.get(msg.id as number)
       if (p) {
         this.pending.delete(msg.id as number)
-        if (msg.error) p.reject(new Error((msg.error as { message?: string })?.message ?? 'Codex RPC 오류'))
+        if (msg.error) p.reject(new Error((msg.error as { message?: string })?.message ?? t('Codex RPC 오류', 'Codex RPC error')))
         else p.resolve(msg.result)
       }
       return
@@ -420,21 +425,21 @@ export class CodexEngine {
       case 'item/commandExecution/requestApproval': {
         const cmd = (params.command as string) ?? ''
         const reason = (params.reason as string) ?? ''
-        ask('command', 'Bash', cmd || reason || '명령 실행')
+        ask('command', 'Bash', cmd || reason || t('명령 실행', 'Run command'))
         return
       }
       case 'execCommandApproval': {
         const cmd = Array.isArray(params.command) ? (params.command as string[]).join(' ') : String(params.command ?? '')
-        ask('legacy-exec', 'Bash', cmd || '명령 실행')
+        ask('legacy-exec', 'Bash', cmd || t('명령 실행', 'Run command'))
         return
       }
       case 'item/fileChange/requestApproval': {
         const reason = (params.reason as string) ?? ''
-        ask('file', 'Edit', reason || '파일 변경 적용')
+        ask('file', 'Edit', reason || t('파일 변경 적용', 'Apply file changes'))
         return
       }
       case 'applyPatchApproval': {
-        ask('legacy-patch', 'Edit', '파일 변경 적용')
+        ask('legacy-patch', 'Edit', t('파일 변경 적용', 'Apply file changes'))
         return
       }
       // 선택형 질문 — 스키마가 AgentQuestion과 1:1이라(header/question/options{label,
@@ -602,12 +607,18 @@ export class CodexEngine {
         const err = params.error as { message?: string; codexErrorInfo?: unknown } | undefined
         const willRetry = params.willRetry === true
         if (willRetry) {
-          this.emit({ type: 'notice', runId, text: `Codex: ${err?.message ?? '일시적인 오류'} — 다시 시도하는 중이에요.` })
+          this.emit({
+            type: 'notice',
+            runId,
+            text: isEn()
+              ? `Codex: ${err?.message ?? 'temporary error'} — retrying.`
+              : `Codex: ${err?.message ?? '일시적인 오류'} — 다시 시도하는 중이에요.`
+          })
         } else if (isCapacityErr(err) && this.activeThreadId) {
           // 수용량 초과는 여기서 실행을 죽이지 않는다 — 같은 오류의 turn/completed
           // (failed)가 곧 따라오고(실측), settleTurn의 모델 전환 확인 카드가 잇는다
         } else {
-          this.emit({ type: 'error', runId, message: err?.message ?? 'Codex 실행 오류' })
+          this.emit({ type: 'error', runId, message: err?.message ?? t('Codex 실행 오류', 'Codex run error') })
           this.finishRun('error')
         }
         return
@@ -632,7 +643,7 @@ export class CodexEngine {
         return
       case 'fileChange': {
         const changes = (item.changes as { path: string }[]) ?? []
-        start('edit', 'Edit', changes.map((c) => c.path).join(', ') || '파일 변경')
+        start('edit', 'Edit', changes.map((c) => c.path).join(', ') || t('파일 변경', 'File change'))
         return
       }
       case 'mcpToolCall':
@@ -641,7 +652,7 @@ export class CodexEngine {
       case 'webSearch':
         // 검색어는 item/completed에만 실린다(실측: started는 query가 빈 문자열) —
         // 실행 중엔 자리 문구를 두고, 완료 처리가 tool-end.target으로 덮는다
-        start('web', 'WebSearch', cxWebSearchTarget(item) || '검색 중…')
+        start('web', 'WebSearch', cxWebSearchTarget(item) || t('검색 중…', 'Searching…'))
         return
       // Codex 서브에이전트(collab) — 도구 행이 아니라 Claude와 같은 서브에이전트
       // 칩/카드로. spawnAgent 콜이 오는 흐름은 카드를 여기서 만들고(receiverThreadIds[0]
@@ -662,9 +673,9 @@ export class CodexEngine {
             agent: {
               id: aid,
               name: 'Agent',
-              role: oneLine(prompt, 40) || '서브에이전트',
+              role: oneLine(prompt, 40) || t('서브에이전트', 'Subagent'),
               status: 'running',
-              activity: oneLine(prompt, 200) || '작업 중',
+              activity: oneLine(prompt, 200) || t('작업 중', 'Working'),
               tools: [],
               model: item.model ? String(item.model) : undefined
             }
@@ -697,7 +708,14 @@ export class CodexEngine {
       this.emit({
         type: 'subagent',
         runId,
-        agent: { id: aid, name, role: '서브에이전트', status: 'running', activity: '작업 중', tools: [] }
+        agent: {
+          id: aid,
+          name,
+          role: t('서브에이전트', 'Subagent'),
+          status: 'running',
+          activity: t('작업 중', 'Working'),
+          tools: []
+        }
       })
       return
     }
@@ -742,8 +760,8 @@ export class CodexEngine {
         if (type === 'commandExecution') tool('bash', 'Bash', oneLine(String(item.command ?? ''), 200))
         else if (type === 'fileChange') {
           const changes = (item.changes as { path: string }[]) ?? []
-          tool('edit', 'Edit', changes.map((c) => c.path).join(', ') || '파일 변경')
-        } else if (type === 'webSearch') tool('web', 'WebSearch', cxWebSearchTarget(item) || '검색 중…')
+          tool('edit', 'Edit', changes.map((c) => c.path).join(', ') || t('파일 변경', 'File change'))
+        } else if (type === 'webSearch') tool('web', 'WebSearch', cxWebSearchTarget(item) || t('검색 중…', 'Searching…'))
         else if (type === 'mcpToolCall') tool('mcp', String(item.tool ?? 'MCP'), String(item.server ?? ''))
         return
       }
@@ -883,7 +901,7 @@ export class CodexEngine {
           runId,
           id,
           status: failed ? 'error' : 'done',
-          result: failed ? '적용 안 됨' : undefined,
+          result: failed ? t('적용 안 됨', 'Not applied') : undefined,
           durationMs: meta ? Date.now() - meta.startedAt : undefined
         })
         if (!failed) {
@@ -972,7 +990,7 @@ export class CodexEngine {
               role: '',
               status: 'done',
               // 활동 줄은 비워 마지막 답변/작업 줄을 남긴다 (빈 값은 reducer가 안 덮음)
-              activity: /error/i.test(st) ? '실패' : '',
+              activity: /error/i.test(st) ? t('실패', 'Failed') : '',
               tools: [],
               durationMs: Date.now() - meta.startedAt
             }
@@ -1004,9 +1022,10 @@ export class CodexEngine {
     }
     if (this.activeRunId !== runId) return // 기다리는 사이 턴이 끝남 — finishRun이 정리했다
     let changed = false
-    for (const t of res?.data ?? []) {
-      const itemId = String(t.itemId ?? '')
-      const pid = String(t.processId ?? '')
+    for (const tk of res?.data ?? []) {
+      // 항목 변수는 tk — 이 스코프에서 i18n t()를 써야 해 t로 두면 가려진다
+      const itemId = String(tk.itemId ?? '')
+      const pid = String(tk.processId ?? '')
       if (!itemId || !pid || this.bgTerms.has(itemId)) continue
       changed = true
       const meta = this.items.get(itemId)
@@ -1016,10 +1035,17 @@ export class CodexEngine {
       } catch {
         /* 테일만 빈다 — 추적은 계속 */
       }
-      this.bgTerms.set(itemId, { processId: pid, command: String(t.command ?? ''), outputFile, startedAt: meta?.startedAt ?? Date.now() })
+      this.bgTerms.set(itemId, { processId: pid, command: String(tk.command ?? ''), outputFile, startedAt: meta?.startedAt ?? Date.now() })
       this.bgByProcess.set(pid, itemId)
       if (meta) {
-        this.emit({ type: 'tool-end', runId, id: itemId, status: 'done', result: '백그라운드로 전환', durationMs: Date.now() - meta.startedAt })
+        this.emit({
+          type: 'tool-end',
+          runId,
+          id: itemId,
+          status: 'done',
+          result: t('백그라운드로 전환', 'Moved to background'),
+          durationMs: Date.now() - meta.startedAt
+        })
         this.items.delete(itemId)
       }
     }
@@ -1080,7 +1106,11 @@ export class CodexEngine {
       type: 'result',
       runId,
       isError: failed,
-      text: failed ? turn?.error?.message ?? '실행이 실패했어요' : interrupted ? '중단됨' : '',
+      text: failed
+        ? turn?.error?.message ?? t('실행이 실패했어요', 'The run failed.')
+        : interrupted
+          ? t('중단됨', 'Stopped')
+          : '',
       costUsd: null,
       // 서버가 durationMs를 안 주면 turn/start 시각으로 계산 — '작업함' 줄이 Codex에서도 뜬다
       durationMs: turn?.durationMs ?? (this.turnStartedAt ? Date.now() - this.turnStartedAt : null),
@@ -1115,13 +1145,20 @@ export class CodexEngine {
     const to = (def ? [def, ...ids.filter((i) => i !== def)] : ids).find((id) => !this.triedModels.has(id))
     if (this.activeRunId !== runId) return // 목록을 기다리는 사이 정리됨
     if (!to) {
-      this.emit({ type: 'error', runId, message: `${label(from)} 모델이 수용량 한계로 응답하지 못했어요. 잠시 후 다시 시도해 주세요.` })
+      this.emit({
+        type: 'error',
+        runId,
+        message: t(
+          `${label(from)} 모델이 수용량 한계로 응답하지 못했어요. 잠시 후 다시 시도해 주세요.`,
+          `${label(from)} is at capacity and could not respond. Please try again shortly.`
+        )
+      })
       this.finishRun('error')
       return
     }
     this.thinkingShown = false
     this.emit({ type: 'thinking-clear', runId })
-    const contLabel = `${label(to)}로 전환해 다시 시도`
+    const contLabel = t(`${label(to)}로 전환해 다시 시도`, `Switch to ${label(to)} and retry`)
     const requestId = `cxcap-${LAUNCH_TAG}-${++this.permCounter}`
     const answers = await new Promise<string[][] | null>((resolve) => {
       this.localQuestionWaiters.set(requestId, resolve)
@@ -1132,12 +1169,27 @@ export class CodexEngine {
         engine: 'codex',
         questions: [
           {
-            question: `${label(from)} 모델이 지금 수용량 한계예요(요청이 몰리고 있어요). ${label(to)} 모델로 전환해 다시 시도할까요?`,
-            header: '모델 전환',
+            question: t(
+              `${label(from)} 모델이 지금 수용량 한계예요(요청이 몰리고 있어요). ${label(to)} 모델로 전환해 다시 시도할까요?`,
+              `${label(from)} is at capacity right now (requests are surging). Switch to ${label(to)} and retry?`
+            ),
+            header: t('모델 전환', 'Model switch'),
             multiSelect: false,
             options: [
-              { label: contLabel, description: `방금 요청을 ${label(to)}로 다시 보내고, 이후 대화도 ${label(to)}로 진행합니다.` },
-              { label: '중단', description: '전환하지 않고 여기서 끝냅니다. 잠시 후 같은 모델로 다시 보낼 수 있어요.' }
+              {
+                label: contLabel,
+                description: t(
+                  `방금 요청을 ${label(to)}로 다시 보내고, 이후 대화도 ${label(to)}로 진행합니다.`,
+                  `Resends the last request on ${label(to)}; the rest of the conversation continues on ${label(to)}.`
+                )
+              },
+              {
+                label: t('중단', 'Stop'),
+                description: t(
+                  '전환하지 않고 여기서 끝냅니다. 잠시 후 같은 모델로 다시 보낼 수 있어요.',
+                  'Ends here without switching. You can retry on the same model shortly.'
+                )
+              }
             ]
           }
         ]
@@ -1149,7 +1201,10 @@ export class CodexEngine {
       this.emit({
         type: 'error',
         runId,
-        message: `${label(from)} 모델이 수용량 한계로 응답하지 못했어요. 잠시 후 다시 시도하거나 다른 모델을 선택해 주세요.`
+        message: t(
+          `${label(from)} 모델이 수용량 한계로 응답하지 못했어요. 잠시 후 다시 시도하거나 다른 모델을 선택해 주세요.`,
+          `${label(from)} is at capacity and could not respond. Try again shortly or pick a different model.`
+        )
       })
       this.finishRun('error')
       return
@@ -1161,7 +1216,10 @@ export class CodexEngine {
       fromModel: from,
       toModel: to,
       engine: 'codex',
-      text: `${label(from)} 모델이 수용량 한계라 ${label(to)}로 전환해 다시 시도해요. 이후 대화도 ${label(to)} 모델로 진행됩니다.`,
+      text: t(
+        `${label(from)} 모델이 수용량 한계라 ${label(to)}로 전환해 다시 시도해요. 이후 대화도 ${label(to)} 모델로 진행됩니다.`,
+        `${label(from)} is at capacity, so we're switching to ${label(to)} and retrying. The rest of the conversation will use ${label(to)}.`
+      ),
       retractMessageId: null // 수용량 초과는 요청 단계 실패 — 지울 부분 답변이 없다
     })
     try {
@@ -1191,7 +1249,7 @@ export class CodexEngine {
         void this.askCapacityFallback(runId)
         return
       }
-      this.emit({ type: 'error', runId, message: msg || 'Codex 실행을 다시 시작하지 못했어요' })
+      this.emit({ type: 'error', runId, message: msg || t('Codex 실행을 다시 시작하지 못했어요', 'Could not restart the Codex run') })
       this.finishRun('error')
     }
   }
@@ -1260,7 +1318,7 @@ export class CodexEngine {
           name: '',
           role: '',
           status: 'done',
-          activity: '턴 종료로 정리됨',
+          activity: t('턴 종료로 정리됨', 'Cleaned up at turn end'),
           tools: [],
           durationMs: Date.now() - meta.startedAt
         }
@@ -1486,7 +1544,13 @@ export class CodexEngine {
     const devNotes: string[] = []
     if (req.systemPrompt?.trim()) devNotes.push(req.systemPrompt.trim())
     if (addDirs.length)
-      devNotes.push(`[참조 폴더] 작업 폴더 외에 아래 폴더도 함께 사용할 수 있다 (읽기·수정 허용):\n${addDirs.map((p) => '- ' + p).join('\n')}`)
+      devNotes.push(
+        // 모델이 읽는 지시문 — 그 결과가 사용자 화면에 보이므로 UI 언어를 따른다
+        t(
+          `[참조 폴더] 작업 폴더 외에 아래 폴더도 함께 사용할 수 있다 (읽기·수정 허용):\n${addDirs.map((p) => '- ' + p).join('\n')}`,
+          `[Reference folders] Besides the working folder, these folders are also available (read and edit allowed):\n${addDirs.map((p) => '- ' + p).join('\n')}`
+        )
+      )
     const developerInstructions = devNotes.join('\n\n')
     const model = req.codexModel || 'gpt-5.6-terra'
     // 수용량 초과 재시도(askCapacityFallback)가 같은 턴을 다시 보낼 수 있게 원본 보관
@@ -1502,7 +1566,10 @@ export class CodexEngine {
         const apiKey = getOpenaiApiKey()
         if (!apiKey) {
           throw new Error(
-            'API 모드가 켜져 있지만 저장된 OpenAI API 키가 없어요 — 설정 → API에서 키를 등록하거나 컴포저의 API 토글을 꺼 주세요.'
+            t(
+              'API 모드가 켜져 있지만 저장된 OpenAI API 키가 없어요 — 설정 → API에서 키를 등록하거나 컴포저의 API 토글을 꺼 주세요.',
+              'API mode is on, but no OpenAI API key is saved — add a key in Settings → API, or turn off the API toggle in the composer.'
+            )
           )
         }
         this.activeAccountEmail = null
@@ -1512,7 +1579,12 @@ export class CodexEngine {
         // 그 계정의 격리 CODEX_HOME으로 app-server를 띄운다(계정이 바뀌면 재기동).
         const email = req.codexAccount ?? codexDefaultAccountEmail()
         if (!email) {
-          throw new Error('등록된 OpenAI 계정이 없어요 — 설정 → Account에서 로그인해 주세요.')
+          throw new Error(
+            t(
+              '등록된 OpenAI 계정이 없어요 — 설정 → Account에서 로그인해 주세요.',
+              'No OpenAI account is registered — sign in from Settings → Account.'
+            )
+          )
         }
         this.activeAccountEmail = email
         this.setHome(codexAccountRunDir(email))
@@ -1553,7 +1625,7 @@ export class CodexEngine {
           ...(developerInstructions ? { developerInstructions } : {})
         })
         threadId = r?.thread?.id ?? ''
-        if (!threadId) throw new Error('thread/start가 스레드 id를 주지 않았어요')
+        if (!threadId) throw new Error(t('thread/start가 스레드 id를 주지 않았어요', 'thread/start did not return a thread id'))
       }
       this.activeThreadId = threadId
       // 토큰 누적 베이스 — 다른 스레드로 갈아탔으면 서버 카운터가 이어지지 않으므로
@@ -1584,14 +1656,18 @@ export class CodexEngine {
       this.bgPollTimer = setInterval(() => void this.pollBgTerminals(), 5000)
       // 이후는 알림 스트림이 끌고 간다 (turn/completed → result → finishRun)
     } catch (e) {
-      const msg = (e as Error)?.message ?? 'Codex 실행을 시작하지 못했어요'
+      const msg = (e as Error)?.message ?? t('Codex 실행을 시작하지 못했어요', 'Could not start the Codex run')
       // turn/start 자체가 수용량 초과로 거절된 경우도(스레드는 이미 섰다) 전환 확인으로
       if (this.activeRunId === runId && this.activeThreadId && isCapacityErr({ message: msg })) {
         void this.askCapacityFallback(runId)
         return runId
       }
-      const hint = /ENOENT|not (found|recognized)|종료/.test(msg)
-        ? 'Codex CLI가 설치돼 있는지 확인해 주세요 (npm i -g @openai/codex).'
+      // '종료'/'exited'는 위 프로세스 종료 메시지(t로 두 벌) — 두 언어 모두에서 힌트가 뜨게
+      const hint = /ENOENT|not (found|recognized)|종료|exited/.test(msg)
+        ? t(
+            'Codex CLI가 설치돼 있는지 확인해 주세요 (npm i -g @openai/codex).',
+            'Check that the Codex CLI is installed (npm i -g @openai/codex).'
+          )
         : msg
       this.emit({ type: 'error', runId, message: hint })
       this.finishRun('error')

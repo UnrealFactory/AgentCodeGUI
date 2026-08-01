@@ -1,5 +1,6 @@
 import type { DiffLine } from '@shared/protocol'
 import { diffLineOps } from '@shared/lineDiff'
+import { t } from '../lang'
 
 /**
  * 라인 diff — Edit/Write 훙크를 UI에 그리기 위한 전체 파일 diff.
@@ -47,7 +48,9 @@ export function newFileDiff(content: string): { lines: DiffLine[]; add: number }
   const lf = content.replace(/\r\n/g, '\n') // computeLineDiff와 같은 이유의 LF 정규화
   const normalized = lf.endsWith('\n') ? lf.slice(0, -1) : lf
   const body = normalized.length ? normalized.split('\n') : []
-  const lines: DiffLine[] = [{ t: 'hunk', text: `@@ 새 파일 +1,${body.length} @@` }]
+  const lines: DiffLine[] = [
+    { t: 'hunk', text: t(`@@ 새 파일 +1,${body.length} @@`, `@@ New file +1,${body.length} @@`) }
+  ]
   for (const text of body) lines.push({ t: 'add', text })
   return { lines, add: body.length }
 }

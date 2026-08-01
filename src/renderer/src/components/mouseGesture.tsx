@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { getPref } from '../lib/prefs'
+import { t } from '../lib/i18n'
 
 // ── 우클릭 드래그 마우스 제스처 (브라우저 제스처 확장 문법) ──
 // target 안에서 우버튼을 누른 채 시작 거리(px)를 넘게 움직이면 제스처 모드: 전체 화면 포털에
@@ -107,14 +108,14 @@ export function GestureGlyph({ pattern, size = 26 }: { pattern: string; size?: n
 export function sessionWindowGesture(): GestureAction {
   return {
     pattern: 'UL',
-    label: '추가 채팅 열기',
+    label: t('추가 채팅 열기', 'Open a chat window'),
     run: () => window.api.openSessionWindow().catch(() => {})
   }
 }
 
 /** ↑↓ — 대화 비우기(/clear와 같은 착지점). 실제 초기화는 화면마다 달라 콜백으로 받는다. */
 export function clearGesture(run: () => void): GestureAction {
-  return { pattern: 'UD', label: '대화 비우기', run }
+  return { pattern: 'UD', label: t('대화 비우기', 'Clear conversation'), run }
 }
 
 /** 스크롤러 하나짜리 화면의 ↑/↓ 제스처 한 벌 — 대상은 실행 시점에 찾는다(재마운트 안전). */
@@ -124,8 +125,8 @@ export function scrollGestures(el: () => Element | null | undefined): GestureAct
     if (s) s.scrollTo({ top: top ? 0 : s.scrollHeight, behavior: 'smooth' })
   }
   return [
-    { pattern: 'U', label: '맨 위로', run: () => go(true) },
-    { pattern: 'D', label: '맨 아래로', run: () => go(false) }
+    { pattern: 'U', label: t('맨 위로', 'Scroll to top'), run: () => go(true) },
+    { pattern: 'D', label: t('맨 아래로', 'Scroll to bottom'), run: () => go(false) }
   ]
 }
 
@@ -186,7 +187,8 @@ export function MouseGestureLayer({
       if (raf) cancelAnimationFrame(raf)
       raf = 0
       if (fade) {
-        setTrail((t) => (t ? { ...t, out: true } : t))
+        // tr — i18n의 t()를 가리지 않도록 지역 인자를 리네임
+        setTrail((tr) => (tr ? { ...tr, out: true } : tr))
         window.clearTimeout(fadeTimer)
         fadeTimer = window.setTimeout(() => setTrail(null), 240)
       } else {

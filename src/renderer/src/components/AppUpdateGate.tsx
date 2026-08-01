@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { UpdateStatus } from '@shared/protocol'
+import { t } from '../lib/i18n'
 import { IconAlert, IconDownload } from './icons'
 
 /**
@@ -71,14 +72,18 @@ export function AppUpdateGate() {
           {err ? <IconAlert size={14} stroke={2.2} /> : <IconDownload size={14} stroke={2} />}
         </div>
         <div>
-          <div className="ut">{err ? '업데이트 오류' : '새 버전이 나왔어요'}</div>
+          <div className="ut">{err ? t('업데이트 오류', 'Update error') : t('새 버전이 나왔어요', 'New version available')}</div>
           <div className="us">
             {err ? (
-              status.error || '업데이트에 실패했어요 · 잠시 후 다시 시도해요'
+              status.error || t('업데이트에 실패했어요 · 잠시 후 다시 시도해요', 'Update failed · will retry shortly')
             ) : (
               <>
                 <span className="uk">{verLine}</span>
-                {applying ? ' · 적용하는 중…' : ready ? ' · 바로 적용돼요' : ` · 받는 중 — ${status.percent}%`}
+                {applying
+                  ? t(' · 적용하는 중…', ' · Applying…')
+                  : ready
+                    ? t(' · 바로 적용돼요', ' · Ready to apply')
+                    : t(` · 받는 중 — ${status.percent}%`, ` · Downloading — ${status.percent}%`)}
               </>
             )}
           </div>
@@ -92,7 +97,7 @@ export function AppUpdateGate() {
       {!applying && (
         <div className="ub">
           <button className="later" onClick={() => setDismissed(true)}>
-            {err ? '확인' : '나중에'}
+            {err ? t('확인', 'OK') : t('나중에', 'Later')}
           </button>
           {ready && (
             <button
@@ -103,7 +108,7 @@ export function AppUpdateGate() {
                 window.api.app.installUpdate()
               }}
             >
-              업데이트
+              {t('업데이트', 'Update')}
             </button>
           )}
         </div>

@@ -103,9 +103,11 @@ const api: WindowApi = {
   saveProfile: (profile: UserProfile) => ipcRenderer.invoke(IPC.profileSave, profile),
   getChats: () => ipcRenderer.invoke(IPC.chatsGet),
   saveChats: (data: unknown) => ipcRenderer.invoke(IPC.chatsSave, data),
+  loadChat: (id: string) => ipcRenderer.invoke(IPC.chatLoad, id),
   getUiPrefs: () => ipcRenderer.invoke(IPC.uiPrefsGet) as Promise<Record<string, unknown>>,
   saveUiPrefs: (prefs: Record<string, unknown>) => ipcRenderer.invoke(IPC.uiPrefsSave, prefs),
   onUiGlassChanged: (cb) => subscribe(IPC.uiGlassChanged, cb),
+  onUiLangChanged: (cb) => subscribe(IPC.uiLangChanged, cb),
   openPath: (cwd, relPath) => ipcRenderer.invoke(IPC.shellOpenPath, { cwd, relPath }),
   revealPath: (cwd, relPath) => ipcRenderer.invoke(IPC.shellRevealPath, { cwd, relPath }),
   renamePath: (cwd, relPath, newName) => ipcRenderer.invoke(IPC.fsRename, { cwd, relPath, newName }),
@@ -246,6 +248,7 @@ const api: WindowApi = {
     dispose: (panelId: string) => ipcRenderer.invoke(IPC.maDispose, panelId),
     getState: () => ipcRenderer.invoke(IPC.maGet),
     saveState: (data: unknown) => ipcRenderer.invoke(IPC.maSave, data),
+    loadSession: (id: string) => ipcRenderer.invoke(IPC.maLoadSession, id),
     // one shared channel for every panel's engine — deliver only the events for `panelId`
     onEvent: (panelId: string, cb: (e: EngineEvent) => void) =>
       subscribe(IPC.maEvent, (p: MultiEngineEvent) => {

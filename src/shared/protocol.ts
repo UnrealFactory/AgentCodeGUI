@@ -881,6 +881,7 @@ export const IPC = {
   maDispose: 'ma:dispose', // cancel + drop a panel's engine (panel removed)
   maGet: 'ma:get', // load the persisted multi-agent workspace (layout + panel snapshots)
   maSave: 'ma:save', // persist the multi-agent workspace so it survives a restart
+  maLoadSession: 'ma:load-session', // read one saved session (지연 로드 — 비활성 세션 패널은 메모리에 없다)
   // 채팅 — a pure-conversation workspace on its OWN engine instance, with its own
   // conversation list. No project folder, explorer, or tools UI.
   talkRun: 'talk:run',
@@ -945,9 +946,11 @@ export const IPC = {
   profileSave: 'profile:save', // persist nickname + avatar color
   chatsGet: 'chats:get', // load the saved chat list + active id (or null)
   chatsSave: 'chats:save', // persist the chat list so conversations survive a restart
+  chatLoad: 'chats:load', // read one chat's saved file (지연 로드 — 비활성 스냅샷은 메모리에 없다)
   uiPrefsGet: 'ui-prefs:get', // load renderer UI prefs blob (viewer size/zoom, chat zoom)
   uiPrefsSave: 'ui-prefs:save', // persist the whole UI prefs blob to ~/.agentcodegui
   uiGlassChanged: 'ui-glass:changed', // 유리(벽지 비침) 값 브로드캐스트 → 전 창 틴트 동기화
+  uiLangChanged: 'ui-lang:changed', // UI 언어(ko/en) 브로드캐스트 → 전 창 표시 언어 동기화
   skillList: 'skill:list', // enumerate global + project skills with their on/off state
   skillSetEnabled: 'skill:set-enabled', // turn a skill on/off (persisted to the app home)
   mcpList: 'mcp:list', // enumerate user + project + local MCP servers with on/off state

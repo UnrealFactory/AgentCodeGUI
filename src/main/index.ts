@@ -10,6 +10,7 @@ import { CodexEngine } from './codex/engine'
 import * as engineVersions from './engine/versions'
 import { readProfile, writeProfile } from './profile'
 import { readUiPrefs, writeUiPrefs } from './uiPrefs'
+import { setUiLang, t } from './lang'
 import { apiConfigStatus, setApiKey, clearApiKey, setOpenaiApiKey, clearOpenaiApiKey, setBudget, resetBudget } from './apiConfig'
 import { readApiUsage } from './apiUsage'
 import { authLogin, authLogout, authLoginCancel, listAccounts, setDefaultAccount, removeAccount, accountsUsage, defaultAccountEmail, freshAccountToken, usageSlot, migrateAccounts } from './auth'
@@ -18,10 +19,10 @@ import * as codexVersions from './codex/versions'
 import { setVerseDocKo } from './lsp/verseDocKo'
 import { setUeDocKo } from './lsp/ueDocKo'
 import { bumpVerseRegistryRev } from './lsp/verseMemberDb'
-import { readChats, writeChats } from './chats'
+import { readChat, readChats, writeChats } from './chats'
 import { initNotifyToast } from './notifyToast'
 import { writeFileAtomic } from './atomicWrite'
-import { readMulti, writeMulti } from './maStore'
+import { readMulti, readMultiSession, writeMulti } from './maStore'
 import { readTalk, writeTalk } from './talkStore'
 import { readSessionChats, writeSessionChats, type SessionChatRecord } from './sessionChats'
 import { listSkills, setSkillEnabled } from './skills'
@@ -217,7 +218,8 @@ function openedDirFromArgv(argv: string[]): string | null {
 
 // Instant splash (logo + spinner) shown while the heavier main window loads, so
 // launching the app gives immediate feedback instead of a blank delay then a pop-in.
-const SPLASH_HTML = `<!doctype html><html><head><meta charset="utf-8" />
+// 함수인 이유: 모듈 스코프 상수로 조립하면 t()가 언어 로드 전에 박제된다 — 호출 시점 조립.
+const splashHtml = (): string => `<!doctype html><html><head><meta charset="utf-8" />
 <style>
   html,body{margin:0;height:100%;background:transparent;overflow:hidden;
     font-family:'Wanted Sans Variable',system-ui,-apple-system,sans-serif;-webkit-user-select:none;user-select:none}
@@ -236,7 +238,7 @@ const SPLASH_HTML = `<!doctype html><html><head><meta charset="utf-8" />
   <div class="logo"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5.5" y="8" width="13" height="10" rx="4.5"/><circle cx="10.2" cy="13" r=".95" fill="currentColor" stroke="none"/><circle cx="13.8" cy="13" r=".95" fill="currentColor" stroke="none"/><path d="M9.5 8Q9 5.8 7.3 4.9"/><circle cx="7" cy="4.7" r=".85" fill="currentColor" stroke="none"/><path d="M14.5 8Q15 5.8 16.7 4.9"/><circle cx="17" cy="4.7" r=".85" fill="currentColor" stroke="none"/><path d="M4.4 10.6C3 11.5 3 14.5 4.4 15.4"/><path d="M19.6 10.6C21 11.5 21 14.5 19.6 15.4"/></svg></div>
   <div class="name">AgentCodeGUI</div>
   <div class="spin"></div>
-  <div class="sub">시작하는 중…</div>
+  <div class="sub">${t('시작하는 중…', 'Starting…')}</div>
 </div></body></html>`
 
 function createSplash(): void {
@@ -253,7 +255,7 @@ function createSplash(): void {
       show: false,
       center: true
     })
-    splashWindow.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(SPLASH_HTML))
+    splashWindow.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(splashHtml()))
     splashWindow.once('ready-to-show', () => splashWindow?.show())
     // safety: never let the splash linger if the main window fails to signal
     setTimeout(closeSplash, 12000)
@@ -479,7 +481,7 @@ function createSessionWindow(chatId?: string): void {
     // hide the default "File Edit View Window" menu bar too; Alt still reveals it so the
     // standard edit accelerators (copy/paste/…) stay intact.
     autoHideMenuBar: true,
-    title: '추가 채팅 — AgentCodeGUI',
+    title: t('추가 채팅 — AgentCodeGUI', 'Extra chat — AgentCodeGUI'),
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.mjs'),
       contextIsolation: true,
@@ -901,6 +903,7 @@ function registerIpc(): void {
   })
   ipcMain.handle(IPC.maGet, async () => readMulti())
   ipcMain.handle(IPC.maSave, async (_e, data: unknown) => writeMulti(data))
+  ipcMain.handle(IPC.maLoadSession, async (_e, id: unknown) => readMultiSession(id))
 
   ipcMain.handle(IPC.pickDirectory, async (_e) => {
     // parent the picker to the window that asked (so a 추가 채팅 창의 다이얼로그가 그 창 위에 뜬다);
@@ -909,7 +912,7 @@ function registerIpc(): void {
     if (!owner) return null
     const r = await dialog.showOpenDialog(owner, {
       properties: ['openDirectory'],
-      title: '작업할 프로젝트 폴더 선택'
+      title: t('작업할 프로젝트 폴더 선택', 'Choose a project folder to work in')
     })
     return r.canceled || !r.filePaths[0] ? null : r.filePaths[0]
   })
@@ -925,11 +928,11 @@ function registerIpc(): void {
     if (!mainWindow) return []
     const r = await dialog.showOpenDialog(mainWindow, {
       properties: ['openFile', 'multiSelections'],
-      title: '첨부할 파일 선택',
+      title: t('첨부할 파일 선택', 'Choose files to attach'),
       filters: [
-        { name: '첨부 가능한 파일', extensions: [...ATTACH_IMAGE_EXTS, ...ATTACH_TEXT_EXTS] },
-        { name: '이미지', extensions: [...ATTACH_IMAGE_EXTS] },
-        { name: '텍스트·문서', extensions: [...ATTACH_TEXT_EXTS] }
+        { name: t('첨부 가능한 파일', 'Attachable files'), extensions: [...ATTACH_IMAGE_EXTS, ...ATTACH_TEXT_EXTS] },
+        { name: t('이미지', 'Images'), extensions: [...ATTACH_IMAGE_EXTS] },
+        { name: t('텍스트·문서', 'Text & documents'), extensions: [...ATTACH_TEXT_EXTS] }
       ]
     })
     return r.canceled ? [] : r.filePaths
@@ -1007,12 +1010,16 @@ function registerIpc(): void {
   // chat history, persisted so conversations continue after a restart
   ipcMain.handle(IPC.chatsGet, async () => readChats())
   ipcMain.handle(IPC.chatsSave, async (_e, data: unknown) => writeChats(data))
+  ipcMain.handle(IPC.chatLoad, async (_e, id: unknown) => readChat(id))
 
   // renderer UI prefs (viewer size/zoom, chat zoom, verse doc language), in the app home folder
   ipcMain.handle(IPC.uiPrefsGet, async () => readUiPrefs())
   // 유리 슬라이더(ui.glass)의 마지막 브로드캐스트 값 — prefs 블롭은 뷰어 줌 등 딴 변경에도
   // 통째로 저장되므로, 값이 실제로 바뀐 저장에만 전 창 브로드캐스트를 쏜다
   let lastGlass = readUiPrefs()['ui.glass']
+  // UI 언어(ko/en) — 시작 때 저장값으로 메인 캐시를 세팅, 이후엔 저장 시점마다 갱신
+  let lastLang: 'ko' | 'en' = readUiPrefs()['ui.lang'] === 'en' ? 'en' : 'ko'
+  setUiLang(lastLang)
   // 포커스 밖 알림 on/off — 저장 시점마다 캐시해 알림 이벤트가 파일을 읽지 않게 한다
   let notifyToastOn = readUiPrefs()['notify.toast'] !== false
   initNotifyToast({
@@ -1036,6 +1043,15 @@ function registerIpc(): void {
       lastGlass = g
       for (const w of BrowserWindow.getAllWindows()) {
         if (!w.isDestroyed()) w.webContents.send(IPC.uiGlassChanged, g)
+      }
+    }
+    // UI 언어(ko/en) — 메인 캐시 갱신 + 바뀐 저장에만 전 창 브로드캐스트(유리와 같은 결)
+    const lang = prefs?.['ui.lang'] === 'en' ? 'en' : 'ko'
+    if (lang !== lastLang) {
+      lastLang = lang
+      setUiLang(lang)
+      for (const w of BrowserWindow.getAllWindows()) {
+        if (!w.isDestroyed()) w.webContents.send(IPC.uiLangChanged, lang)
       }
     }
   })
@@ -1112,15 +1128,16 @@ function registerIpc(): void {
       try {
         const abs = path.isAbsolute(a.relPath) ? a.relPath : path.join(a.cwd || '', a.relPath)
         const name = (a.newName || '').trim()
-        if (!name || /[\\/]/.test(name) || name === '.' || name === '..') return { ok: false, error: '올바른 이름이 아니에요' }
+        if (!name || /[\\/]/.test(name) || name === '.' || name === '..')
+          return { ok: false, error: t('올바른 이름이 아니에요', 'That name is not valid') }
         const dest = path.join(path.dirname(abs), name)
         if (path.resolve(dest) === path.resolve(abs)) return { ok: true } // unchanged
-        if (fs.existsSync(dest)) return { ok: false, error: '같은 이름이 이미 있어요' }
+        if (fs.existsSync(dest)) return { ok: false, error: t('같은 이름이 이미 있어요', 'Something with that name already exists') }
         await fs.promises.rename(abs, dest)
         notifyMoved(abs, dest)
         return { ok: true }
       } catch (e) {
-        return { ok: false, error: (e as Error)?.message || '이름을 바꿀 수 없어요' }
+        return { ok: false, error: (e as Error)?.message || t('이름을 바꿀 수 없어요', 'Could not rename it') }
       }
     }
   )
@@ -1136,7 +1153,7 @@ function registerIpc(): void {
         lspManager.notifyWatchedFiles(gone.map((f) => ({ abs: f, kind: 'deleted' as const })))
         return { ok: true }
       } catch (e) {
-        return { ok: false, error: (e as Error)?.message || '삭제할 수 없어요' }
+        return { ok: false, error: (e as Error)?.message || t('삭제할 수 없어요', 'Could not delete it') }
       }
     }
   )
@@ -1150,15 +1167,17 @@ function registerIpc(): void {
         const src = path.resolve(root, a.srcRel)
         const dest = path.resolve(root, a.destRel)
         const inside = (p: string): boolean => p === root || p.startsWith(root + path.sep)
-        if (!inside(src) || !inside(dest)) return { ok: false, error: '경로가 프로젝트 밖이에요' }
+        if (!inside(src) || !inside(dest)) return { ok: false, error: t('경로가 프로젝트 밖이에요', 'That path is outside the project') }
         if (src === dest) return { ok: true }
-        if (dest === src || dest.startsWith(src + path.sep)) return { ok: false, error: '폴더를 자기 안으로 옮길 수 없어요' }
-        if (fs.existsSync(dest)) return { ok: false, error: '대상에 같은 이름이 이미 있어요' }
+        if (dest === src || dest.startsWith(src + path.sep))
+          return { ok: false, error: t('폴더를 자기 안으로 옮길 수 없어요', 'A folder cannot be moved into itself') }
+        if (fs.existsSync(dest))
+          return { ok: false, error: t('대상에 같은 이름이 이미 있어요', 'Something with that name already exists at the destination') }
         await fs.promises.rename(src, dest)
         notifyMoved(src, dest)
         return { ok: true }
       } catch (e) {
-        return { ok: false, error: (e as Error)?.message || '옮길 수 없어요' }
+        return { ok: false, error: (e as Error)?.message || t('옮길 수 없어요', 'Could not move it') }
       }
     }
   )
@@ -1168,7 +1187,7 @@ function registerIpc(): void {
     async (_e, a: { cwd: string; relPath: string; dir: boolean }): Promise<{ ok: boolean; error?: string }> => {
       try {
         const abs = path.isAbsolute(a.relPath) ? a.relPath : path.join(a.cwd || '', a.relPath)
-        if (fs.existsSync(abs)) return { ok: false, error: '같은 이름이 이미 있어요' }
+        if (fs.existsSync(abs)) return { ok: false, error: t('같은 이름이 이미 있어요', 'Something with that name already exists') }
         if (a.dir) {
           await fs.promises.mkdir(abs, { recursive: true })
         } else {
@@ -1178,7 +1197,7 @@ function registerIpc(): void {
         }
         return { ok: true }
       } catch (e) {
-        return { ok: false, error: (e as Error)?.message || '만들 수 없어요' }
+        return { ok: false, error: (e as Error)?.message || t('만들 수 없어요', 'Could not create it') }
       }
     }
   )
@@ -1196,24 +1215,26 @@ function registerIpc(): void {
     }
     try {
       const st = await fs.promises.stat(abs)
-      if (!st.isFile()) return { path: a.relPath, content: null, truncated: false, error: '파일이 아니에요' }
+      if (!st.isFile()) return { path: a.relPath, content: null, truncated: false, error: t('파일이 아니에요', 'Not a file') }
       if (st.size > MAX) {
         const fd = await fs.promises.open(abs, 'r')
         try {
           const buf = Buffer.alloc(MAX)
           const { bytesRead } = await fd.read(buf, 0, MAX, 0)
           const head = buf.subarray(0, bytesRead)
-          if (isBinary(head)) return { path: a.relPath, content: null, truncated: false, error: '미리보기를 지원하지 않는 파일이에요' }
+          if (isBinary(head))
+            return { path: a.relPath, content: null, truncated: false, error: t('미리보기를 지원하지 않는 파일이에요', 'This file type cannot be previewed') }
           return { path: a.relPath, content: head.toString('utf8'), truncated: true }
         } finally {
           await fd.close()
         }
       }
       const buf = await fs.promises.readFile(abs)
-      if (isBinary(buf)) return { path: a.relPath, content: null, truncated: false, error: '미리보기를 지원하지 않는 파일이에요' }
+      if (isBinary(buf))
+        return { path: a.relPath, content: null, truncated: false, error: t('미리보기를 지원하지 않는 파일이에요', 'This file type cannot be previewed') }
       return { path: a.relPath, content: buf.toString('utf8'), truncated: false }
     } catch {
-      return { path: a.relPath, content: null, truncated: false, error: '파일을 열 수 없어요' }
+      return { path: a.relPath, content: null, truncated: false, error: t('파일을 열 수 없어요', 'Could not open the file') }
     }
   })
 
@@ -1240,7 +1261,7 @@ function registerIpc(): void {
       lspManager.fileWritten(a.cwd || '', a.relPath)
       return { ok: true }
     } catch (e) {
-      return { ok: false, error: (e as Error)?.message || '파일을 저장할 수 없어요' }
+      return { ok: false, error: (e as Error)?.message || t('파일을 저장할 수 없어요', 'Could not save the file') }
     }
   })
 
@@ -1371,25 +1392,25 @@ function registerIpc(): void {
     lspManager
       .uninstallServer(id)
       .then(() => ({ ok: true as const }))
-      .catch((e) => ({ ok: false as const, error: (e as Error).message || '삭제하지 못했어요' }))
+      .catch((e) => ({ ok: false as const, error: (e as Error).message || t('삭제하지 못했어요', 'Could not delete it') }))
   )
   ipcMain.handle(IPC.lspPickVerseServer, async () => {
     if (!mainWindow) return null
     const r = await dialog.showOpenDialog(mainWindow, {
       properties: ['openFile'],
-      title: 'Verse 언어 서버 선택 (Verse.vsix 또는 verse-lsp.exe)',
-      filters: [{ name: 'Verse 서버', extensions: ['vsix', 'exe'] }]
+      title: t('Verse 언어 서버 선택 (Verse.vsix 또는 verse-lsp.exe)', 'Choose the Verse language server (Verse.vsix or verse-lsp.exe)'),
+      filters: [{ name: t('Verse 서버', 'Verse server'), extensions: ['vsix', 'exe'] }]
     })
     return r.canceled || !r.filePaths[0] ? null : r.filePaths[0]
   })
   ipcMain.handle(IPC.lspSetVersePath, async (_e, p: string) =>
-    lspManager.setVersePath(p || '').catch((e) => ({ ok: false as const, error: (e as Error).message || '설정 실패' }))
+    lspManager.setVersePath(p || '').catch((e) => ({ ok: false as const, error: (e as Error).message || t('설정 실패', 'Setup failed') }))
   )
   ipcMain.handle(IPC.lspClearVersePath, async () =>
     lspManager
       .clearVersePath()
       .then(() => ({ ok: true as const }))
-      .catch((e) => ({ ok: false as const, error: (e as Error).message || '해제하지 못했어요' }))
+      .catch((e) => ({ ok: false as const, error: (e as Error).message || t('해제하지 못했어요', 'Could not clear it') }))
   )
 
   // window controls resolve to the CALLING window — 전 창이 네이티브 최대화/복원.
@@ -1613,15 +1634,16 @@ function bootstrap(): void {
     }
     engUpdate = { active: true, items: work.map((w) => w.item), cleanup: 'pending', freedBytes: 0, done: false }
     pushEngUpdate()
-    for (const { t, item } of work) {
+    // 대상 변수는 tgt — 이름이 t면 i18n의 t()를 가린다(아래 실패 문구에서 둘 다 쓴다)
+    for (const { t: tgt, item } of work) {
       item.status = 'installing'
       pushEngUpdate()
       try {
-        if (!(await t.state()).installed.includes(item.to)) {
-          const r = await t.install(item.to)
-          if (!r.ok) throw new Error(r.error ?? '설치 실패')
+        if (!(await tgt.state()).installed.includes(item.to)) {
+          const r = await tgt.install(item.to)
+          if (!r.ok) throw new Error(r.error ?? t('설치 실패', 'Install failed'))
         }
-        t.setActive(item.to)
+        tgt.setActive(item.to)
         item.status = 'done'
       } catch (e) {
         item.status = 'error'

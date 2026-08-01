@@ -5,6 +5,7 @@ import { spawn } from 'node:child_process'
 import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import { APP_HOME } from '../engine/versions'
+import { t } from '../lang'
 import type { LspInstallProgress } from '@shared/protocol'
 
 /* ============================================================
@@ -60,10 +61,10 @@ export const DOWNLOADS: Record<string, DownloadSpec> = {
       const res = await fetch(`https://api.nuget.org/v3-flatcontainer/${pkg}/index.json`, {
         headers: { 'user-agent': 'AgentCodeGUI' }
       })
-      if (!res.ok) throw new Error(`NuGet 응답 오류 (${res.status})`)
+      if (!res.ok) throw new Error(t(`NuGet 응답 오류 (${res.status})`, `NuGet request failed (${res.status})`))
       const j = (await res.json()) as { versions?: string[] }
       const v = j.versions?.[j.versions.length - 1] // flat-container lists versions ascending
-      if (!v) throw new Error('roslyn-language-server 버전을 찾을 수 없어요')
+      if (!v) throw new Error(t('roslyn-language-server 버전을 찾을 수 없어요', 'Could not find a roslyn-language-server version'))
       return `https://api.nuget.org/v3-flatcontainer/${pkg}/${v}/${pkg}.${v}.nupkg`
     },
     // the .nupkg extracts to tools/<tfm>/win-x64/Microsoft.CodeAnalysis.LanguageServer.exe
@@ -77,10 +78,10 @@ export const DOWNLOADS: Record<string, DownloadSpec> = {
       const res = await fetch('https://api.github.com/repos/clangd/clangd/releases/latest', {
         headers: { 'user-agent': 'AgentCodeGUI', accept: 'application/vnd.github+json' }
       })
-      if (!res.ok) throw new Error(`GitHub API 응답 오류 (${res.status})`)
+      if (!res.ok) throw new Error(t(`GitHub API 응답 오류 (${res.status})`, `GitHub API request failed (${res.status})`))
       const j = (await res.json()) as { assets?: { name?: string; browser_download_url?: string }[] }
       const asset = j.assets?.find((a) => /^clangd-windows-[\d.]+\.zip$/.test(a.name ?? ''))
-      if (!asset?.browser_download_url) throw new Error('clangd Windows 빌드를 찾을 수 없어요')
+      if (!asset?.browser_download_url) throw new Error(t('clangd Windows 빌드를 찾을 수 없어요', 'Could not find a clangd Windows build'))
       return asset.browser_download_url
     },
     findBin: (dir) => {
@@ -120,7 +121,7 @@ export function installedBin(id: string): string | null {
 
 async function download(url: string, dest: string, onPct: (pct: number | null) => void): Promise<void> {
   const res = await fetch(url, { headers: { 'user-agent': 'AgentCodeGUI' } })
-  if (!res.ok || !res.body) throw new Error(`다운로드 실패 (${res.status})`)
+  if (!res.ok || !res.body) throw new Error(t(`다운로드 실패 (${res.status})`, `Download failed (${res.status})`))
   const total = Number(res.headers.get('content-length')) || 0
   let got = 0
   let lastPct = -1
@@ -142,7 +143,7 @@ function run(cmd: string, args: string[]): Promise<void> {
   return new Promise((resolve, reject) => {
     const child = spawn(cmd, args, { windowsHide: true, stdio: 'ignore' })
     child.on('error', reject)
-    child.on('close', (code) => (code === 0 ? resolve() : reject(new Error(`${cmd} 종료 코드 ${code}`))))
+    child.on('close', (code) => (code === 0 ? resolve() : reject(new Error(t(`${cmd} 종료 코드 ${code}`, `${cmd} exited with code ${code}`)))))
   })
 }
 
@@ -191,7 +192,7 @@ export async function uninstall(id: string): Promise<void> {
   try {
     await fsp.rm(path.join(LSP_DIR, id), { recursive: true, force: true, maxRetries: 8, retryDelay: 250 })
   } catch {
-    throw new Error('파일이 아직 사용 중이에요. 잠시 후 다시 시도하거나 앱을 재시작해 주세요.')
+    throw new Error(t('파일이 아직 사용 중이에요. 잠시 후 다시 시도하거나 앱을 재시작해 주세요.', 'Files are still in use. Try again in a moment or restart the app.'))
   }
 }
 
@@ -204,10 +205,10 @@ export async function install(
   onProgress: (p: LspInstallProgress) => void
 ): Promise<{ ok: boolean; error?: string }> {
   const spec = DOWNLOADS[id]
-  if (!spec) return { ok: false, error: '알 수 없는 서버' }
+  if (!spec) return { ok: false, error: t('알 수 없는 서버', 'Unknown server') }
   if (installing.has(id)) return { ok: true }
   if (installedBin(id)) return { ok: true }
-  if (process.platform !== 'win32') return { ok: false, error: 'Windows에서만 자동 설치를 지원해요' }
+  if (process.platform !== 'win32') return { ok: false, error: t('Windows에서만 자동 설치를 지원해요', 'Automatic install is only supported on Windows') }
 
   installing.add(id)
   const dir = path.join(LSP_DIR, id)
@@ -216,19 +217,19 @@ export async function install(
   try {
     await fsp.rm(dir, { recursive: true, force: true })
     await fsp.mkdir(dir, { recursive: true })
-    emit({ line: `${spec.label} 다운로드 주소 확인 중…` })
+    emit({ line: t(`${spec.label} 다운로드 주소 확인 중…`, `Resolving download URL for ${spec.label}…`) })
     const url = await spec.resolveUrl()
-    emit({ line: `다운로드 중: ${url}`, percent: 0 })
+    emit({ line: t(`다운로드 중: ${url}`, `Downloading: ${url}`), percent: 0 })
     const zip = path.join(dir, '_download.zip')
     await download(url, zip, (pct) => emit({ percent: pct }))
-    emit({ line: '압축 해제 중…', percent: 99 })
+    emit({ line: t('압축 해제 중…', 'Extracting…'), percent: 99 })
     await extractZip(zip, dir)
     await fsp.rm(zip, { force: true })
-    if (!spec.findBin(dir)) throw new Error('설치 후 실행 파일을 찾을 수 없어요')
+    if (!spec.findBin(dir)) throw new Error(t('설치 후 실행 파일을 찾을 수 없어요', 'Could not find the executable after install'))
     emit({ done: true, ok: true, percent: 100 })
     return { ok: true }
   } catch (e) {
-    const error = (e as Error).message || '설치 실패'
+    const error = (e as Error).message || t('설치 실패', 'Install failed')
     await fsp.rm(dir, { recursive: true, force: true }).catch(() => {})
     emit({ done: true, ok: false, error })
     return { ok: false, error }

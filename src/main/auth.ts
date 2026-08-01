@@ -12,6 +12,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { app, safeStorage, shell, type WebContents } from 'electron'
 import { IPC } from '@shared/protocol'
+import { t } from './lang'
 import type { AuthStatus, AccountInfo, AccountUsage } from '@shared/protocol'
 
 // 번들된 네이티브 claude 실행 파일을 찾는다(dev: 앱 node_modules, prod: asar.unpacked).
@@ -53,7 +54,7 @@ function parseStatus(stdout: string): AuthStatus {
 // 특정 config 폴더의 로그인 상태 — CLAUDE_CONFIG_DIR로 그 폴더만 본다(전역 무관).
 function statusForDir(dir: string): Promise<AuthStatus> {
   const bin = claudeBin()
-  if (!bin) return Promise.resolve({ loggedIn: false, error: 'claude 실행 파일을 찾지 못했어요' })
+  if (!bin) return Promise.resolve({ loggedIn: false, error: t('claude 실행 파일을 찾지 못했어요', 'Could not find the claude executable') })
   return new Promise((resolve) => {
     execFile(
       bin,
@@ -273,9 +274,18 @@ function linkSharedState(dir: string): void {
 // 등) 백업으로 덮는다. 스냅샷이 없거나 깨졌으면 던진다(엔진이 에러 카드로 표시).
 export function accountRunDir(email: string): string {
   const target = readStore().find((a) => a.email === email)
-  if (!target) throw new Error(`'${email}' 계정이 등록 목록에 없어요 — 설정 → Account에서 로그인해 주세요.`)
+  if (!target)
+    throw new Error(
+      t(`'${email}' 계정이 등록 목록에 없어요 — 설정 → Account에서 로그인해 주세요.`, `Account '${email}' is not registered — sign in via Settings → Account.`)
+    )
   const raw = decCreds(target.credEnc)
-  if (!raw) throw new Error(`'${email}' 계정 데이터를 복호화하지 못했어요 — 설정 → Account에서 다시 로그인해 주세요.`)
+  if (!raw)
+    throw new Error(
+      t(
+        `'${email}' 계정 데이터를 복호화하지 못했어요 — 설정 → Account에서 다시 로그인해 주세요.`,
+        `Could not decrypt data for account '${email}' — sign in again via Settings → Account.`
+      )
+    )
   let snap: AccountSnapshot
   try {
     snap = JSON.parse(raw) as AccountSnapshot
@@ -283,7 +293,9 @@ export function accountRunDir(email: string): string {
     snap = { creds: '', account: null }
   }
   if (!snap.creds || !snap.account) {
-    throw new Error(`'${email}' 계정 데이터가 손상됐어요 — 설정 → Account에서 다시 로그인해 주세요.`)
+    throw new Error(
+      t(`'${email}' 계정 데이터가 손상됐어요 — 설정 → Account에서 다시 로그인해 주세요.`, `Data for account '${email}' is corrupted — sign in again via Settings → Account.`)
+    )
   }
   const dir = path.join(ACCOUNTS_DIR, accountSlug(email))
   fs.mkdirSync(dir, { recursive: true })
@@ -609,7 +621,7 @@ export function authLoginCancel(): void {
 
 export async function authLogin(wc: WebContents, useConsole: boolean): Promise<AuthStatus & { ok: boolean }> {
   const bin = claudeBin()
-  if (!bin) return { ok: false, loggedIn: false, error: 'claude 실행 파일을 찾지 못했어요' }
+  if (!bin) return { ok: false, loggedIn: false, error: t('claude 실행 파일을 찾지 못했어요', 'Could not find the claude executable') }
   authLoginCancel() // 이전 시도가 있으면 정리
   try {
     fs.rmSync(LOGIN_DIR, { recursive: true, force: true }) // 이전의 부분 상태 제거

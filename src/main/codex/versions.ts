@@ -10,6 +10,7 @@ import fs from 'node:fs'
 import fsp from 'node:fs/promises'
 import { execFile, spawn } from 'node:child_process'
 import { writeFileAtomic } from '../atomicWrite'
+import { t } from '../lang'
 import type { EngineVersionEntry, EngineVersionState, EngineInstallProgress, EngineCleanupResult } from '@shared/protocol'
 
 const PACKAGE = '@openai/codex'
@@ -93,7 +94,7 @@ export async function codexEngineState(): Promise<EngineVersionState> {
 
 export function codexSetActive(version: string | null): void {
   if (version && installedVersionAt(version) == null) {
-    throw new Error(`버전 ${version}이(가) 설치되어 있지 않습니다.`)
+    throw new Error(t(`버전 ${version}이(가) 설치되어 있지 않습니다.`, `Version ${version} is not installed.`))
   }
   writeConfig({ activeVersion: version })
 }
@@ -103,7 +104,7 @@ export async function codexListAvailable(): Promise<{ latest: string | null; ver
   const timer = setTimeout(() => ctrl.abort(), 8000)
   try {
     const res = await fetch(`https://registry.npmjs.org/${PACKAGE}`, { signal: ctrl.signal })
-    if (!res.ok) throw new Error(`레지스트리 응답 오류 (${res.status})`)
+    if (!res.ok) throw new Error(t(`레지스트리 응답 오류 (${res.status})`, `Registry responded with an error (${res.status})`))
     const j = (await res.json()) as {
       'dist-tags'?: Record<string, string>
       versions?: Record<string, unknown>
@@ -140,7 +141,7 @@ export async function codexInstall(
       JSON.stringify({ name: `agent-code-gui-codex-${version}`, version: '0.0.0', private: true }, null, 2)
     )
   } catch (e) {
-    return { ok: false, error: `폴더 생성 실패: ${(e as Error).message}` }
+    return { ok: false, error: t(`폴더 생성 실패: ${(e as Error).message}`, `Failed to create the folder: ${(e as Error).message}`) }
   }
 
   const isWin = process.platform === 'win32'
@@ -160,7 +161,11 @@ export async function codexInstall(
     child.stdout?.on('data', onData)
     child.stderr?.on('data', onData)
     child.on('error', (e) => {
-      const error = `npm 실행 실패: ${e.message}. npm(Node.js)이 설치돼 있고 PATH에 있는지 확인하세요.`
+      // 지역 t(line.trim())는 onData 안에만 있어 여기의 i18n t()를 가리지 않는다
+      const error = t(
+        `npm 실행 실패: ${e.message}. npm(Node.js)이 설치돼 있고 PATH에 있는지 확인하세요.`,
+        `Failed to run npm: ${e.message}. Make sure npm (Node.js) is installed and on your PATH.`
+      )
       onProgress({ version, done: true, ok: false, error })
       resolve({ ok: false, error })
     })
@@ -169,7 +174,7 @@ export async function codexInstall(
         onProgress({ version, done: true, ok: true })
         resolve({ ok: true })
       } else {
-        const error = `설치 실패 (npm 종료 코드 ${code})`
+        const error = t(`설치 실패 (npm 종료 코드 ${code})`, `Install failed (npm exit code ${code})`)
         onProgress({ version, done: true, ok: false, error })
         resolve({ ok: false, error })
       }

@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { IconAlert, IconClose } from './icons'
+import { t } from '../lib/i18n'
 
 // 간단한 알림 카드 — 탐색기 드래그 이동 실패 등 네이티브 alert을 대체한다(앱 .pr-* 카드 톤).
 export function NoticeModal({ title, message, onClose }: { title: string; message: string; onClose: () => void }) {
@@ -22,7 +23,12 @@ export function NoticeModal({ title, message, onClose }: { title: string; messag
           <div className="pr-titles">
             <div className="pr-title">{title}</div>
           </div>
-          <button className="pr-close has-tip" data-tip="닫기 (Esc)" aria-label="닫기" onClick={onClose}>
+          <button
+            className="pr-close has-tip"
+            data-tip={t('닫기 (Esc)', 'Close (Esc)')}
+            aria-label={t('닫기', 'Close')}
+            onClick={onClose}
+          >
             <IconClose size={15} />
           </button>
         </div>
@@ -32,7 +38,7 @@ export function NoticeModal({ title, message, onClose }: { title: string; messag
         <div className="pr-foot">
           <span className="sp" />
           <button className="pr-save" onClick={onClose}>
-            확인
+            {t('확인', 'OK')}
           </button>
         </div>
       </div>

@@ -28,6 +28,7 @@ import {
 } from './icons'
 import { FileOpModal, type FileOp } from './FileOpModal'
 import { NoticeModal } from './NoticeModal'
+import { t, isEn, useLang } from '../lib/i18n'
 import {
   getHideDirs,
   getHideEnabled,
@@ -102,6 +103,7 @@ export const Explorer = memo(function Explorer({
   onOpenSettings?: () => void // 하단 프로필 행 → 설정. 탐색기로 전환하면 사이드바 footer가 사라져 설정을 열 길이 없던 구멍을 메운다
   onOpenGit?: (root?: string) => void // Git 스트립 클릭 → Git 카드 (root = 그 줄의 저장소). 미지정이면 스트립을 그리지 않는다
 }) {
+  useLang() // 언어 전환 재렌더 구독
   // Verse 프로젝트면 자동으로 채워지는 보기 전용 API digest 루트(Verse.org/Fortnite.com/…).
   // 영속하지 않고 매번 .vproject에서 다시 발견한다. 트리 맨 아래 접이식 그룹으로 노출.
   const [verseRefs, setVerseRefs] = useState<{ path: string; name: string }[]>([])
@@ -539,7 +541,7 @@ export const Explorer = memo(function Explorer({
       return r
     }
     // newFile / newFolder
-    if (/[\\/]/.test(value) || value === '.' || value === '..') return { ok: false, error: '이름에 / 나 \\ 는 쓸 수 없어요' }
+    if (/[\\/]/.test(value) || value === '.' || value === '..') return { ok: false, error: t('이름에 / 나 \\ 는 쓸 수 없어요', "Names can't contain / or \\") }
     const childRel = op.parentRel ? op.parentRel + '/' + value : value
     const r = await window.api.createPath(root, childRel, op.kind === 'newFolder')
     if (r.ok) {
@@ -617,7 +619,7 @@ export const Explorer = memo(function Explorer({
     const destRel = destFolderRel ? destFolderRel + '/' + name : name
     void window.api.movePath(root, src, destRel).then((r) => {
       if (!r.ok) {
-        setNotice({ title: '옮길 수 없어요', message: r.error || '옮길 수 없어요' })
+        setNotice({ title: t('옮길 수 없어요', "Can't move"), message: r.error || t('옮길 수 없어요', "Can't move") })
         return
       }
       loadDir(src.includes('/') ? src.slice(0, src.lastIndexOf('/')) : '') // 옛 부모
@@ -676,14 +678,14 @@ export const Explorer = memo(function Explorer({
     if (!list) {
       return (
         <div className="fx-empty" style={dstyle(depth)} key={base + '/…'}>
-          읽는 중…
+          {t('읽는 중…', 'Reading…')}
         </div>
       )
     }
     if (list.length === 0) {
       return (
         <div className="fx-empty" style={dstyle(depth)} key={base + '/∅'}>
-          비어 있음
+          {t('비어 있음', 'Empty')}
         </div>
       )
     }
@@ -751,7 +753,7 @@ export const Explorer = memo(function Explorer({
     if (list.length > shown.length) {
       rows.push(
         <div className="fx-empty" style={dstyle(depth)} key={base + '/…'}>
-          외 {list.length - shown.length}개 항목 생략
+          {t(`외 ${list.length - shown.length}개 항목 생략`, `${list.length - shown.length} more items omitted`)}
         </div>
       )
     }
@@ -774,7 +776,7 @@ export const Explorer = memo(function Explorer({
                     setCtx(null)
                   }}
                 >
-                  <IconDiff size={15} /> 변경된 파일 보기
+                  <IconDiff size={15} /> {t('변경된 파일 보기', 'View changed files')}
                   <span className="cnt">{ctxChg}</span>
                 </button>
                 <div className="ctx-sep" />
@@ -784,10 +786,10 @@ export const Explorer = memo(function Explorer({
             {(ctx.dir || ctx.root) && (
               <>
                 <button className="ctx-item" onClick={() => startCreate('newFile')}>
-                  <IconFile size={15} /> 새 파일
+                  <IconFile size={15} /> {t('새 파일', 'New file')}
                 </button>
                 <button className="ctx-item" onClick={() => startCreate('newFolder')}>
-                  <IconFolder size={15} /> 새 폴더
+                  <IconFolder size={15} /> {t('새 폴더', 'New folder')}
                 </button>
                 <div className="ctx-sep" />
               </>
@@ -800,19 +802,19 @@ export const Explorer = memo(function Explorer({
                   setCtx(null)
                 }}
               >
-                <IconPencil size={15} /> 이름 변경
+                <IconPencil size={15} /> {t('이름 변경', 'Rename')}
               </button>
             )}
             <button className="ctx-item" onClick={doCopyPath}>
-              <IconCopy size={15} /> 경로 복사
+              <IconCopy size={15} /> {t('경로 복사', 'Copy path')}
             </button>
             <button className="ctx-item" onClick={doReveal}>
-              <IconFolderOpen size={15} /> 파일 탐색기에서 보기
+              <IconFolderOpen size={15} /> {t('파일 탐색기에서 보기', 'Reveal in File Explorer')}
             </button>
             {/* 수동 Git 추적 — .git 있는 미추적 폴더에서만 등장 (자동 발견 깊이 3 밖 커버) */}
             {ctx.dir && !ctx.root && ctxGit && (
               <button className="ctx-item" onClick={doGitTrack}>
-                <IconGitBranch size={15} /> {ctxGit === 'add' ? '이 폴더 Git 추적' : 'Git 추적 해제'}
+                <IconGitBranch size={15} /> {ctxGit === 'add' ? t('이 폴더 Git 추적', 'Track this folder in Git') : t('Git 추적 해제', 'Untrack from Git')}
               </button>
             )}
             {ctx.root && (
@@ -823,14 +825,14 @@ export const Explorer = memo(function Explorer({
                   setCtx(null)
                 }}
               >
-                <IconRefresh size={15} /> 새로고침
+                <IconRefresh size={15} /> {t('새로고침', 'Refresh')}
               </button>
             )}
             {!ctx.root && (
               <>
                 <div className="ctx-sep" />
                 <button className="ctx-item" onClick={() => addHide(ctx.name, ctx.dir)}>
-                  <IconEyeOff size={15} /> ‘{shortName(ctx.name)}’ 숨김 목록에 추가
+                  <IconEyeOff size={15} /> {t(`‘${shortName(ctx.name)}’ 숨김 목록에 추가`, `Add ‘${shortName(ctx.name)}’ to hide list`)}
                 </button>
                 <div className="ctx-sep" />
                 <button
@@ -840,7 +842,7 @@ export const Explorer = memo(function Explorer({
                     setCtx(null)
                   }}
                 >
-                  <IconTrash size={15} /> 삭제
+                  <IconTrash size={15} /> {t('삭제', 'Delete')}
                 </button>
               </>
             )}
@@ -869,13 +871,13 @@ export const Explorer = memo(function Explorer({
         <span className="t">AgentCodeGUI</span>
         <span className="sp" />
         {/* 새로고침 — 우클릭 메뉴의 '새로고침'과 동일(루트+펼친 폴더 재읽기), 헤더 상시 노출 */}
-        <button className="has-tip" data-tip="새로고침" aria-label="새로고침" onClick={refresh} disabled={!cwd}>
+        <button className="has-tip" data-tip={t('새로고침', 'Refresh')} aria-label={t('새로고침', 'Refresh')} onClick={refresh} disabled={!cwd}>
           <IconRotate size={13} />
         </button>
         <button
           className={'has-tip' + (showHidden ? ' on' : '')}
-          data-tip={showHidden ? '숨긴 항목 보는 중 — 클릭하면 다시 숨김' : '숨긴 항목 보기'}
-          aria-label="숨긴 항목 보기"
+          data-tip={showHidden ? t('숨긴 항목 보는 중 — 클릭하면 다시 숨김', 'Showing hidden items — click to hide again') : t('숨긴 항목 보기', 'Show hidden items')}
+          aria-label={t('숨긴 항목 보기', 'Show hidden items')}
           aria-pressed={showHidden}
           onClick={toggleShowHidden}
           disabled={!cwd}
@@ -889,7 +891,7 @@ export const Explorer = memo(function Explorer({
           <div className="fxs">
             <IconSearch size={11} />
             <input
-              placeholder="파일 검색"
+              placeholder={t('파일 검색', 'Search files')}
               spellCheck={false}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
@@ -902,7 +904,7 @@ export const Explorer = memo(function Explorer({
               }}
             />
             {query && (
-              <button className="sx" aria-label="검색 지우기" onClick={() => setQuery('')}>
+              <button className="sx" aria-label={t('검색 지우기', 'Clear search')} onClick={() => setQuery('')}>
                 <IconX2 size={11} />
               </button>
             )}
@@ -910,9 +912,9 @@ export const Explorer = memo(function Explorer({
           {searching ? (
             <div className="fxtree scroll">
               {allFiles === null ? (
-                <div className="fx-empty">파일 목록 읽는 중…</div>
+                <div className="fx-empty">{t('파일 목록 읽는 중…', 'Reading file list…')}</div>
               ) : hits.length === 0 ? (
-                <div className="fx-empty">‘{query.trim()}’에 맞는 파일이 없어요</div>
+                <div className="fx-empty">{t(`‘${query.trim()}’에 맞는 파일이 없어요`, `No files match ‘${query.trim()}’`)}</div>
               ) : (
                 hits.map((f) => {
                   const cut = f.lastIndexOf('/')
@@ -972,9 +974,9 @@ export const Explorer = memo(function Explorer({
                       <span
                         className={'v-filter has-tip' + (verseFilter ? ' on' : '')}
                         role="button"
-                        aria-label="Verse 위주로 보기"
+                        aria-label={t('Verse 위주로 보기', 'Verse-focused view')}
                         aria-pressed={verseFilter}
-                        data-tip={verseFilter ? 'Verse 위주로 보기 — 켜짐' : '모든 파일 보임'}
+                        data-tip={verseFilter ? t('Verse 위주로 보기 — 켜짐', 'Verse-focused view — on') : t('모든 파일 보임', 'Showing all files')}
                         onClick={(e) => {
                           e.stopPropagation()
                           toggleFilter()
@@ -1006,12 +1008,22 @@ export const Explorer = memo(function Explorer({
             <IconFolder size={18} />
           </div>
           <div className="exp-blank-text">
-            폴더를 선택하면
-            <br />
-            프로젝트 파일이 표시돼요
+            {isEn() ? (
+              <>
+                Select a folder to
+                <br />
+                see your project files
+              </>
+            ) : (
+              <>
+                폴더를 선택하면
+                <br />
+                프로젝트 파일이 표시돼요
+              </>
+            )}
           </div>
           <button className="exp-blank-btn" onClick={onPickFolder}>
-            폴더 선택
+            {t('폴더 선택', 'Select folder')}
           </button>
         </div>
       )}
@@ -1026,7 +1038,7 @@ export const Explorer = memo(function Explorer({
             key={info.root}
             className="git-strip has-tip"
             onClick={() => onOpenGit(info.root)}
-            data-tip={info.rel ? `Git — ${info.rel}` : 'Git — 변경·커밋·히스토리'}
+            data-tip={info.rel ? `Git — ${info.rel}` : t('Git — 변경·커밋·히스토리', 'Git — changes · commits · history')}
           >
             <IconGitBranch size={12} />
             {info.rel && <span className="rp">{info.rel}</span>}
@@ -1038,7 +1050,7 @@ export const Explorer = memo(function Explorer({
             {st.files.length === 0 && st.ahead === 0 && st.behind === 0 && (
               <span className="pill clean">
                 <IconCheck size={8} stroke={3} />
-                {st.upstream ? '최신' : '깨끗'}
+                {st.upstream ? t('최신', 'Up to date') : t('깨끗', 'Clean')}
               </span>
             )}
           </button>
@@ -1052,7 +1064,7 @@ export const Explorer = memo(function Explorer({
             .map(({ info, st }) => `${info.rel || st.branch}${st.files.length ? ` ●${st.files.length}` : ''}`)
             .join(' · ')}
         >
-          외 {gitRepos!.length - 3}곳
+          {t(`외 ${gitRepos!.length - 3}곳`, `+${gitRepos!.length - 3} more`)}
           {(() => {
             const n = gitRepos!.slice(3).reduce((a, x) => a + x.st.files.length, 0)
             return n > 0 ? ` · ●${n}` : ''
@@ -1064,7 +1076,7 @@ export const Explorer = memo(function Explorer({
           탐색기로 전환하면 사이드바가 통째로 사라져 설정을 열 길이 없던 구멍을 메운다.
           트리(flex:1) 아래 flex:0 항목이라 폴더 유무와 무관하게 항상 패널 맨 아래 붙는다 */}
       {user && onOpenSettings && (
-        <button className="sb-foot has-tip" data-tip="설정 열기" aria-label="설정 열기" onClick={onOpenSettings}>
+        <button className="sb-foot has-tip" data-tip={t('설정 열기', 'Open settings')} aria-label={t('설정 열기', 'Open settings')} onClick={onOpenSettings}>
           <div className="ava" style={{ background: user.avatarColor, color: '#fff' }}>
             {user.avatarText}
           </div>

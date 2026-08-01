@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { t, isEn } from '../lib/i18n'
 import { IconClose, IconFile, IconFolder, IconInfo, IconPencil, IconTrash } from './icons'
 
 // 탐색기 파일 작업(이름 변경·새 파일/폴더·삭제)을 앱 공통 카드(.pr-*) 스타일로 띄운다.
@@ -52,14 +53,14 @@ export function FileOpModal({
     if (busy) return
     const v = val.trim()
     if (isInput && !v) {
-      setErr('이름을 입력해 주세요')
+      setErr(t('이름을 입력해 주세요', 'Enter a name'))
       return
     }
     setBusy(true)
     const r = await onSubmit(isInput ? v : '')
     setBusy(false)
     if (r.ok) onClose()
-    else setErr(r.error || '실패했어요')
+    else setErr(r.error || t('실패했어요', 'Something went wrong'))
   }
 
   // 삭제 확인은 채팅 삭제 확인과 같은 중앙 유리 카드(.sconfirm) 문법 — 입력류만 .pr-* 카드
@@ -70,10 +71,19 @@ export function FileOpModal({
           <div className="scic">
             <IconTrash size={19} />
           </div>
-          <div className="sctt">{op.dir ? '폴더 삭제' : '파일 삭제'}</div>
+          <div className="sctt">{op.dir ? t('폴더 삭제', 'Delete Folder') : t('파일 삭제', 'Delete File')}</div>
           <div className="sct">
-            &lsquo;{op.name}&rsquo; {op.dir ? '폴더를' : '파일을'} 휴지통으로 보내요. 휴지통에서 다시 복구할 수
-            있어요.
+            {isEn() ? (
+              <>
+                Moves the {op.dir ? 'folder' : 'file'} &lsquo;{op.name}&rsquo; to the Recycle Bin. You can restore it
+                from there.
+              </>
+            ) : (
+              <>
+                &lsquo;{op.name}&rsquo; {op.dir ? '폴더를' : '파일을'} 휴지통으로 보내요. 휴지통에서 다시 복구할 수
+                있어요.
+              </>
+            )}
           </div>
           {err && (
             <div className="fop-err">
@@ -82,10 +92,10 @@ export function FileOpModal({
           )}
           <div className="scb">
             <button className="cancel" onClick={onClose}>
-              취소
+              {t('취소', 'Cancel')}
             </button>
             <button className="danger" onClick={() => void submit()} disabled={busy}>
-              삭제
+              {t('삭제', 'Delete')}
             </button>
           </div>
         </div>
@@ -94,12 +104,12 @@ export function FileOpModal({
   }
 
   const META = {
-    rename: { title: '이름 변경', icon: <IconPencil size={18} stroke={2} />, btn: '변경' },
-    newFile: { title: '새 파일', icon: <IconFile size={18} stroke={2} />, btn: '만들기' },
-    newFolder: { title: '새 폴더', icon: <IconFolder size={18} stroke={2} />, btn: '만들기' }
+    rename: { title: t('이름 변경', 'Rename'), icon: <IconPencil size={18} stroke={2} />, btn: t('변경', 'Rename') },
+    newFile: { title: t('새 파일', 'New File'), icon: <IconFile size={18} stroke={2} />, btn: t('만들기', 'Create') },
+    newFolder: { title: t('새 폴더', 'New Folder'), icon: <IconFolder size={18} stroke={2} />, btn: t('만들기', 'Create') }
   }[op.kind]
 
-  const sub = op.kind === 'rename' ? op.name : `${op.parentLabel} 안에 만들기`
+  const sub = op.kind === 'rename' ? op.name : t(`${op.parentLabel} 안에 만들기`, `Create in ${op.parentLabel}`)
 
   return (
     <div className="pr-overlay" onMouseDown={onClose}>
@@ -110,7 +120,7 @@ export function FileOpModal({
             <div className="pr-title">{META.title}</div>
             <div className="pr-sub">{sub}</div>
           </div>
-          <button className="pr-close has-tip" data-tip="닫기 (Esc)" aria-label="닫기" onClick={onClose}>
+          <button className="pr-close has-tip" data-tip={t('닫기 (Esc)', 'Close (Esc)')} aria-label={t('닫기', 'Close')} onClick={onClose}>
             <IconClose size={15} />
           </button>
         </div>
@@ -121,7 +131,13 @@ export function FileOpModal({
             className="pr-input"
             value={val}
             spellCheck={false}
-            placeholder={op.kind === 'newFolder' ? '폴더 이름' : op.kind === 'newFile' ? '파일 이름 (예: test.txt)' : '새 이름'}
+            placeholder={
+              op.kind === 'newFolder'
+                ? t('폴더 이름', 'Folder name')
+                : op.kind === 'newFile'
+                  ? t('파일 이름 (예: test.txt)', 'File name (e.g. test.txt)')
+                  : t('새 이름', 'New name')
+            }
             onChange={(e) => {
               setVal(e.target.value)
               setErr(null)
@@ -143,7 +159,7 @@ export function FileOpModal({
         <div className="pr-foot">
           <span className="sp" />
           <button className="pr-cancel" onClick={onClose}>
-            취소
+            {t('취소', 'Cancel')}
           </button>
           <button className="pr-save" onClick={() => void submit()} disabled={busy}>
             {META.btn}

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { t } from '../lib/i18n'
 import { IconAlert, IconCheck, IconClaude } from './icons'
 
 type Phase = 'hidden' | 'prompt' | 'installing' | 'done' | 'error'
@@ -58,7 +59,7 @@ export function EngineGate() {
   const doInstall = async (): Promise<void> => {
     installingRef.current = true
     setError(null)
-    setLog(['설치를 준비하는 중…'])
+    setLog([t('설치를 준비하는 중…', 'Preparing install…')])
     setPhase('installing')
     try {
       const r = await window.api.engine.install(target)
@@ -66,7 +67,7 @@ export function EngineGate() {
         await window.api.engine.setActive(target)
         setPhase('done')
       } else {
-        setError(r.error ?? '알 수 없는 오류로 설치에 실패했습니다.')
+        setError(r.error ?? t('알 수 없는 오류로 설치에 실패했습니다.', 'Install failed with an unknown error.'))
         setPhase('error')
       }
     } catch (e) {
@@ -86,14 +87,19 @@ export function EngineGate() {
           <div className="sd-ic warn">
             <IconClaude size={22} />
           </div>
-          <div className="sd-title">Claude 엔진 설치</div>
-          <div className="sd-msg">{`Claude Code 엔진이 아직 설치되지 않았습니다. 최신 버전(${target})을 설치하면 바로 사용할 수 있어요.`}</div>
+          <div className="sd-title">{t('Claude 엔진 설치', 'Install Claude engine')}</div>
+          <div className="sd-msg">
+            {t(
+              `Claude Code 엔진이 아직 설치되지 않았습니다. 최신 버전(${target})을 설치하면 바로 사용할 수 있어요.`,
+              `The Claude Code engine isn't installed yet. Install the latest version (${target}) to start right away.`
+            )}
+          </div>
           <div className="sd-btns">
             <button className="sd-cancel" onClick={() => setPhase('hidden')}>
-              나중에
+              {t('나중에', 'Later')}
             </button>
             <button className="sd-go" onClick={doInstall}>
-              설치
+              {t('설치', 'Install')}
             </button>
           </div>
         </div>
@@ -122,7 +128,11 @@ export function EngineGate() {
             )}
           </span>
           <span className="ic-title">
-            {phase === 'installing' ? '엔진 설치 중' : phase === 'done' ? '설치 완료' : '설치 실패'}
+            {phase === 'installing'
+              ? t('엔진 설치 중', 'Installing engine')
+              : phase === 'done'
+                ? t('설치 완료', 'Install complete')
+                : t('설치 실패', 'Install failed')}
           </span>
           <span className="ic-ver">{target}</span>
         </div>
@@ -137,18 +147,18 @@ export function EngineGate() {
         <div className="ic-foot">
           <span className={'ic-status ' + statusCls}>
             {phase === 'installing'
-              ? '설치하는 중…'
+              ? t('설치하는 중…', 'Installing…')
               : phase === 'done'
-                ? '설치가 완료되었습니다'
-                : '설치에 실패했습니다'}
+                ? t('설치가 완료되었습니다', 'Installation complete')
+                : t('설치에 실패했습니다', 'Installation failed')}
           </span>
           {phase === 'error' && (
             <button className="sd-cancel" onClick={doInstall}>
-              다시 시도
+              {t('다시 시도', 'Retry')}
             </button>
           )}
           <button className="sd-go" onClick={() => setPhase('hidden')} disabled={phase === 'installing'}>
-            확인
+            {t('확인', 'OK')}
           </button>
         </div>
       </div>

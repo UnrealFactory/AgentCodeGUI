@@ -42,6 +42,7 @@ import {
 import { getCached, setCached, gcDeadBuckets } from './semcache'
 import { minimalRangeChange } from './minimalChange'
 import { APP_HOME } from '../engine/versions'
+import { t } from '../lang'
 import {
   glossaryLineDoc,
   keywordPriorityDoc,
@@ -93,7 +94,9 @@ interface ServerDef {
   // external = a user-supplied binary we can't ship/download (Verse: Epic's verse-lsp.exe)
   kind: 'bundled' | 'download' | 'external'
   exts: Record<string, string> // extension → LSP languageId
-  requires?: string // external prerequisite, shown in settings (e.g. .NET SDK)
+  // external prerequisite, shown in settings (e.g. .NET SDK) — 함수인 이유: 모듈 스코프
+  // 상수에 t()를 박으면 시작 시점 언어로 박제된다 (표시 시점에 현재 언어로 평가)
+  requires?: () => string
   /** how to launch the server for a given project root, or null when its
    *  binary/module is missing. `root` lets clangd point at the project's
    *  out-of-tree compile DB; bundled servers ignore it. */
@@ -440,6 +443,14 @@ const MAX_OPEN_DOCS = 32
 // a crashed/failed server isn't respawned until this much time has passed,
 // so a broken install can't spawn-loop
 const RESPAWN_COOLDOWN = 30_000
+// 유휴 서버 회수 — 마지막 사용(ensure 경유)에서 이만큼 지나면 프로세스째 접는다. 서버는
+// 작업 폴더(루트)마다 lazy-spawn되는데 회수가 없으면 폴더 수만큼 무한 누적된다(tsserver-ls
+// 세트는 프로세스 4개·수백 MB — 실측 이틀 상주에 6세트 3GB+). 접어도 다음 요청이 도로
+// 스폰하고, 토큰 디스크 캐시+prewarm 덕에 복귀가 싸다. 무거운 서버(Roslyn 솔루션 인덱싱·
+// clangd 인덱스·verse)는 재기동 비용이 커 더 길게 둔다.
+const IDLE_TTL_LIGHT = 10 * 60_000 // bundled(ts 등)
+const IDLE_TTL_HEAVY = 30 * 60_000 // cs·cpp·verse
+const IDLE_SWEEP_EVERY = 60_000
 // verse only: minimum gap between checks of the workspace's digest/.vproject mtimes (a restart
 // trigger after a UEFN Verse rebuild) — without it we'd stat the digests on every hover
 const VERSE_WS_RECHECK = 4_000
@@ -467,6 +478,10 @@ interface ServerHandle {
   ready: Promise<void>
   docs: Map<string, DocState> // uri → sync state (insertion order = open order)
   diedAt: number
+  // 마지막으로 누가 이 서버를 찾은 시각(모든 요청·status 폴링이 ensure를 지나며 찍는다) —
+  // sweepIdle이 TTL 지난 서버를 접는 기준. 인덱싱 중엔 렌더러의 status 폴링이 계속 찍으므로
+  // 오래 걸리는 초기화가 회수되는 일은 없다.
+  lastUsedAt: number
   // verse only: when this server spawned (Date.now), and when we last checked the workspace's
   // digest/.vproject mtimes against it. UEFN regenerates those on every Verse build; once they
   // climb past startedAt the server's index is stale and ensure() restarts it (throttled by
@@ -654,7 +669,20 @@ const SERVERS: ServerDef[] = [
     initializationOptions: () => {
       // pin the bundled tsserver so resolution never depends on the opened project
       const tsserver = shippedModule('typescript', 'lib', 'tsserver.js')
-      return tsserver ? { tsserver: { path: tsserver } } : undefined
+      return {
+        // ATA(@types 자동 다운로드)를 끄면 typingsInstaller 프로세스가 아예 안 뜬다(세트당
+        // ~125MB). 타입이 설치돼 있는 일반 TS 프로젝트는 영향 없고, 선언 없는 순수 JS
+        // 프로젝트의 외부 모듈 호버/완성만 얕아진다 — 뷰어 부하에선 맞는 트레이드.
+        disableAutomaticTypingAcquisition: true,
+        // tsserver V8 힙 상한(VSCode 기본값과 동일) — 초대형 프로젝트에서의 폭주 가드
+        maxTsServerMemory: 3072,
+        tsserver: {
+          // syntax 전용 보조 tsserver를 띄우지 않는다(세트당 ~130MB) — semantic 서버가
+          // 바쁠 때 문법 요청 응답성을 내주는 트레이드지만 뷰어 부하에선 체감이 없다
+          useSyntaxServer: 'never',
+          ...(tsserver ? { path: tsserver } : {})
+        }
+      }
     }
   },
   {
@@ -670,7 +698,7 @@ const SERVERS: ServerDef[] = [
     label: 'C#',
     langs: 'C#',
     kind: 'download',
-    requires: '.NET SDK 10+ 필요',
+    requires: () => t('.NET SDK 10+ 필요', 'Requires .NET SDK 10+'),
     exts: { cs: 'csharp', csx: 'csharp' },
     // Roslyn LSP: self-contained apphost launched over stdio. Needs the .NET 10 runtime
     // (+ SDK for MSBuild project loads) — a given on modern C# dev machines.
@@ -1090,6 +1118,9 @@ function hoverContentString(h: { contents?: unknown } | null): string {
 
 class LspManager {
   private servers = new Map<string, ServerHandle>()
+  // 유휴 서버 회수 타이머 — 첫 스폰에서 시작(서버가 하나도 없으면 돌 이유가 없다),
+  // disposeAll에서 정리
+  private idleSweep: ReturnType<typeof setInterval> | null = null
   // 파일별 마지막으로 디스크 캐시에 기록한 토큰+본문 지문 — 뷰어의 안정화 폴링이 같은
   // 결과를 거듭 보내와도 직렬화·쓰기를 반복하지 않게 한다(상한 512, 오래된 것부터 정리)
   private semWrites = new Map<string, string>()
@@ -1339,7 +1370,7 @@ class LspManager {
     const abs = this.resolve(cwd, relPath)
     const def = abs ? serverDefFor(abs) : null
     if (!def || def.kind !== 'download' || !DOWNLOADS[def.id]) {
-      return { ok: false, error: '설치형 분석 서버가 아니에요' }
+      return { ok: false, error: t('설치형 분석 서버가 아니에요', 'Not an installable language server') }
     }
     return install(def.id, onProgress)
   }
@@ -1501,7 +1532,7 @@ class LspManager {
       const exts = Object.keys(def.exts)
         .map((e) => '.' + e)
         .join(' ')
-      const base = { id: def.id, label: def.label, langs: def.langs, exts, requires: def.requires }
+      const base = { id: def.id, label: def.label, langs: def.langs, exts, requires: def.requires?.() }
       if (def.kind === 'bundled') {
         // bundled 서버는 root와 무관하게 모듈 존재 여부만 본다
         return { ...base, kind: 'bundled' as const, state: def.command('') ? ('bundled' as const) : ('none' as const) }
@@ -1524,7 +1555,7 @@ class LspManager {
   /** Download a server by id (settings tab). */
   async installServer(id: string, onProgress: (p: LspInstallProgress) => void): Promise<{ ok: boolean; error?: string }> {
     const def = SERVERS.find((s) => s.id === id)
-    if (!def || def.kind !== 'download') return { ok: false, error: '설치형 분석 서버가 아니에요' }
+    if (!def || def.kind !== 'download') return { ok: false, error: t('설치형 분석 서버가 아니에요', 'Not an installable language server') }
     return install(id, onProgress)
   }
 
@@ -2187,6 +2218,10 @@ class LspManager {
 
   /** Kill every server (app quit). */
   disposeAll(): void {
+    if (this.idleSweep) {
+      clearInterval(this.idleSweep)
+      this.idleSweep = null
+    }
     for (const s of this.servers.values()) {
       closeWatchers(s)
       s.rpc.dispose('앱 종료')
@@ -2210,6 +2245,7 @@ class LspManager {
     const key = `${def.id}|${rRoot.toLowerCase()}`
     const existing = this.servers.get(key)
     if (existing) {
+      existing.lastUsedAt = Date.now()
       if (existing.status === 'error') {
         if (Date.now() - existing.diedAt < RESPAWN_COOLDOWN) return existing
         this.servers.delete(key) // cooled down — try a fresh spawn below
@@ -2273,6 +2309,7 @@ class LspManager {
       ready: Promise.resolve(),
       docs: new Map(),
       diedAt: 0,
+      lastUsedAt: Date.now(),
       startedAt: Date.now(),
       wsCheckedAt: Date.now(),
       semLegend: null,
@@ -2422,7 +2459,29 @@ class LspManager {
     })
 
     this.servers.set(key, handle)
+    if (!this.idleSweep) {
+      this.idleSweep = setInterval(() => this.sweepIdle(), IDLE_SWEEP_EVERY)
+      this.idleSweep.unref?.()
+    }
     return handle
+  }
+
+  /** 유휴 서버 회수 — 마지막 사용에서 TTL 지난 서버를 프로세스째 접는다(다음 요청이 도로
+   *  스폰). restart()와 같은 순서로 맵에서 먼저 지워 exit 핸들러의 쿨다운을 우회한다.
+   *  죽은(error) 항목도 같이 걷어 맵이 루트 수만큼 자라는 것도 막는다. */
+  private sweepIdle(): void {
+    const now = Date.now()
+    for (const [key, s] of [...this.servers]) {
+      const id = key.slice(0, key.indexOf('|'))
+      const def = SERVERS.find((d) => d.id === id)
+      // 무거운 서버(솔루션 인덱싱 Roslyn·clangd 인덱스·verse)는 재기동 비용이 커 길게 둔다
+      const heavy = !def || def.kind !== 'bundled' || !!def.awaitsProjectInit
+      if (now - s.lastUsedAt < (heavy ? IDLE_TTL_HEAVY : IDLE_TTL_LIGHT)) continue
+      this.servers.delete(key)
+      closeWatchers(s)
+      s.rpc.dispose('유휴 서버 회수')
+      killTree(s.child)
+    }
   }
 
   /**

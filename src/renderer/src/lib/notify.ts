@@ -47,8 +47,8 @@ export function useTurnNotifyList(items: NotifyWatchItem[]): void {
       if (!p.perm && cur.perm) send('approve', it.state.pendingPermission?.summary ?? '')
       if (!p.q && cur.q) send('ask', it.state.pendingQuestion?.questions[0]?.question ?? '')
       // 턴 종료 — 승인/질문 카드로 멈춘 게 아니라 진짜 끝난 경우만 (카드는 위에서 알렸다).
-      // retracting = 취소(회수)로 내려간 busy — 완료가 아니므로 '답변 도착'을 쏘지 않는다.
-      if (p.busy && !cur.busy && !cur.perm && !cur.q && !it.state.retracting) {
+      // interrupted = 취소(중단)로 내려간 busy — 완료가 아니므로 '답변 도착'을 쏘지 않는다.
+      if (p.busy && !cur.busy && !cur.perm && !cur.q && !it.state.interrupted) {
         const err = it.state.status === 'error'
         send(err ? 'error' : 'done', lastAssistantText(it.state))
       }

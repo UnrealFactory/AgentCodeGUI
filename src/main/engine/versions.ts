@@ -6,6 +6,7 @@ import fsp from 'node:fs/promises'
 import { spawn } from 'node:child_process'
 import { pathToFileURL } from 'node:url'
 import { writeFileAtomic } from '../atomicWrite'
+import { t } from '../lang'
 import type {
   EngineVersionEntry,
   EngineVersionState,
@@ -146,7 +147,7 @@ export function getState(): EngineVersionState {
 
 export function setActive(version: string | null): void {
   if (version && installedVersionAt(version) == null) {
-    throw new Error(`버전 ${version}이(가) 설치되어 있지 않습니다.`)
+    throw new Error(t(`버전 ${version}이(가) 설치되어 있지 않습니다.`, `Version ${version} is not installed.`))
   }
   writeConfig({ activeVersion: version })
 }
@@ -157,7 +158,7 @@ export async function listAvailable(): Promise<{ latest: string | null; versions
   const timer = setTimeout(() => ctrl.abort(), 8000)
   try {
     const res = await fetch(`https://registry.npmjs.org/${PACKAGE}`, { signal: ctrl.signal })
-    if (!res.ok) throw new Error(`레지스트리 응답 오류 (${res.status})`)
+    if (!res.ok) throw new Error(t(`레지스트리 응답 오류 (${res.status})`, `Registry request failed (${res.status})`))
     const j = (await res.json()) as {
       'dist-tags'?: Record<string, string>
       versions?: Record<string, unknown>
@@ -211,7 +212,7 @@ export async function install(
       JSON.stringify({ name: `agent-code-gui-engine-${version}`, version: '0.0.0', private: true }, null, 2)
     )
   } catch (e) {
-    return { ok: false, error: `폴더 생성 실패: ${(e as Error).message}` }
+    return { ok: false, error: t(`폴더 생성 실패: ${(e as Error).message}`, `Could not create the folder: ${(e as Error).message}`) }
   }
 
   const isWin = process.platform === 'win32'
@@ -226,14 +227,18 @@ export async function install(
     const child = spawn(npmCmd, spawnArgs, { cwd: dir, env: process.env, windowsHide: true, shell: isWin })
     const onData = (buf: Buffer): void => {
       for (const line of buf.toString().split(/\r?\n/)) {
-        const t = line.trim()
-        if (t) onProgress({ version, line: t })
+        // 줄 변수는 tk — 이름이 t면 i18n의 t()를 가린다(같은 파일에서 t()를 쓴다)
+        const tk = line.trim()
+        if (tk) onProgress({ version, line: tk })
       }
     }
     child.stdout?.on('data', onData)
     child.stderr?.on('data', onData)
     child.on('error', (e) => {
-      const error = `npm 실행 실패: ${e.message}. npm(Node.js)이 설치돼 있고 PATH에 있는지 확인하세요.`
+      const error = t(
+        `npm 실행 실패: ${e.message}. npm(Node.js)이 설치돼 있고 PATH에 있는지 확인하세요.`,
+        `Failed to run npm: ${e.message}. Make sure npm (Node.js) is installed and on your PATH.`
+      )
       onProgress({ version, done: true, ok: false, error })
       resolve({ ok: false, error })
     })
@@ -244,7 +249,7 @@ export async function install(
         onProgress({ version, done: true, ok: true })
         resolve({ ok: true })
       } else {
-        const error = `설치 실패 (npm 종료 코드 ${code})`
+        const error = t(`설치 실패 (npm 종료 코드 ${code})`, `Install failed (npm exit code ${code})`)
         onProgress({ version, done: true, ok: false, error })
         resolve({ ok: false, error })
       }

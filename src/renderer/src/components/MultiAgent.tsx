@@ -40,6 +40,7 @@ import { useTurnNotifyList } from '../lib/notify'
 import { mergeRefs, useZoom, ZoomBadge } from './zoom'
 import { MouseGestureLayer, clearGesture, sessionWindowGesture } from './mouseGesture'
 import { IconFolder, IconChevDown, IconMascot, IconPanelRight, IconExpand, IconCollapse } from './icons'
+import { t, useLang } from '../lib/i18n'
 
 // A multi-agent SESSION is a group of N panels that work together. The recent-tasks
 // list shows one entry per session (not per panel); "새 작업" opens a fresh session and
@@ -53,12 +54,13 @@ const SLOTS = [0, 1, 2, 3, 4, 5]
 // 그리드 배치는 .ma-grid.nN 클래스가 결정 (PoC: 2·3=한 줄, 4=2×2, 5=3+2 스팬, 6=3×2)
 const COUNT_OPTIONS = [2, 3, 4, 5, 6]
 
-const STATUS_META: Record<AgentStatus, { label: string; cls: string }> = {
-  idle: { label: '대기', cls: 'idle' },
-  analyzing: { label: '분석 중', cls: 'analyzing' },
-  working: { label: '작업 중', cls: 'working' },
-  done: { label: '완료', cls: 'done' },
-  error: { label: '오류', cls: 'error' }
+// 라벨은 함수로 늦춰 렌더 때 t() 평가 — 모듈 스코프 상수에 언어가 박제되지 않게
+const STATUS_META: Record<AgentStatus, { label: () => string; cls: string }> = {
+  idle: { label: () => t('대기', 'Idle'), cls: 'idle' },
+  analyzing: { label: () => t('분석 중', 'Analyzing'), cls: 'analyzing' },
+  working: { label: () => t('작업 중', 'Working'), cls: 'working' },
+  done: { label: () => t('완료', 'Done'), cls: 'done' },
+  error: { label: () => t('오류', 'Error'), cls: 'error' }
 }
 
 // multi-agent panels default to bypass — autonomous parallel work shouldn't stop on
@@ -119,6 +121,11 @@ interface PersistedSession {
   count: number
   panels: PersistedPanel[] // length SLOT_COUNT
   updatedAt?: number // 마지막 활동(실행 시작) 시각 — 사이드바 상대 시간 표시용
+  // 패널 스냅샷이 메모리에 없다는 표식 — panels는 빈 배열이고 진짜는 디스크(maStore)에
+  // 있다(전환 시 loadSession으로 되읽음). 모든 세션×6패널 스냅샷을 상주시키면 렌더러
+  // 힙이 세션 수에 비례해 큰다. 저장 페이로드의 이 표식은 maStore가 "메타만 덮고
+  // 저장된 패널은 지켜라"로 읽는다.
+  unloaded?: boolean
 }
 interface MultiPersist {
   version: number
@@ -283,6 +290,7 @@ const PanelView = memo(function PanelView({
   onAnswer,
   onDismissQuestion,
 }: PanelViewProps) {
+  useLang() // 언어 전환 재렌더 구독 (memo 컴포넌트라 루트 재렌더를 안 탄다)
   const scrollRef = useRef<HTMLDivElement>(null)
   const composerRef = useRef<HTMLTextAreaElement>(null)
   // 마우스 제스처(↑/↓) 대상 — 이 패널의 스레드 엘리먼트를 state로 추적 (패널별 독립)
@@ -293,12 +301,12 @@ const PanelView = memo(function PanelView({
 
   const cwd = meta.cwd || ''
   // 폴더를 고르지 않으면 엔진이 바탕화면에서 동작한다 — 라벨로 그 기본값을 알린다
-  const cwdLabel = meta.cwd ? basename(meta.cwd) : '바탕화면'
+  const cwdLabel = meta.cwd ? basename(meta.cwd) : t('바탕화면', 'Desktop')
 
   // 승인/질문 카드가 떠 있는 동안은 상태를 "응답 대기"로 덮어쓴다 — 엔진은 busy지만
   // 실제로는 사용자를 기다리는 중이라, 그냥 작업 중인 패널과 한눈에 구분돼야 한다
   const waiting = !!(state.pendingPermission || state.pendingQuestion)
-  const status = waiting ? { label: '응답 대기', cls: 'ask' } : STATUS_META[state.status]
+  const status = waiting ? { label: () => t('응답 대기', 'Needs input'), cls: 'ask' } : STATUS_META[state.status]
   const started = state.messages.length > 0
   // 턴을 막고 있는 포그라운드 Bash가 있을 때만 셸 팝오버에 "건너뛰기"(Ctrl+B) 노출 (본채팅과 동일)
   const canSkipWait = useMemo(() => hasRunningBash(state.messages), [state.messages])
@@ -316,7 +324,7 @@ const PanelView = memo(function PanelView({
   // "더 자세히" — 채팅에서 선택한 글을 <selection> 태그로 감싸 이 패널의 작성칸에 붙인다
   // (단일 모드와 동일). 작성칸에 이미 글이 있으면 아래에 이어 붙인다.
   const onElaborate = (text: string): void => {
-    const sel = `<selection>\n${text.trim()}\n</selection>\n\n이 부분 더 자세히 설명해줘`
+    const sel = `<selection>\n${text.trim()}\n</selection>\n\n${t('이 부분 더 자세히 설명해줘', 'Explain this part in more detail')}`
     onInput(slot, meta.input.trim() ? meta.input + '\n\n' + sel : sel)
     onFocusPanel(slot)
     requestAnimationFrame(() => {
@@ -367,7 +375,7 @@ const PanelView = memo(function PanelView({
           아래 WorkBar·Composer(본채팅 문법)가 이미 말하므로 헤더는 신원과 상태만 남긴다 */}
       <div className="ma-p-head">
         <span className={'ma-p-num' + (focused ? ' on' : '')}>{slot + 1}</span>
-        <span className="ma-p-title">{meta.title || '새 작업'}</span>
+        <span className="ma-p-title">{meta.title || t('새 작업', 'New task')}</span>
         <span className="ma-spacer" />
         {/* 작업 폴더 칩 — 본채팅 헤더와 같은 FolderPop(공유 최근 폴더 + 찾아보기)이 열린다.
             .hfold 래퍼가 팝오버 기준점 + 안쪽 클릭의 바깥닫힘 전파 차단을 겸한다 */}
@@ -375,7 +383,11 @@ const PanelView = memo(function PanelView({
           {/* 팝오버가 열려 있는 동안은 has-tip을 떼어 툴팁이 팝오버 위에 겹치지 않게 한다 */}
           <button
             className={'ma-p-folder' + (folderPop ? ' on' : ' has-tip tip-wrap')}
-            data-tip={meta.cwd ? meta.cwd + ' · 클릭해 폴더 변경' : '바탕화면 · 클릭해 폴더 선택'}
+            data-tip={
+              meta.cwd
+                ? meta.cwd + t(' · 클릭해 폴더 변경', ' · Click to change folder')
+                : t('바탕화면 · 클릭해 폴더 선택', 'Desktop · Click to choose a folder')
+            }
             onClick={() => {
               onFocusPanel(slot)
               setFolderPop((o) => !o)
@@ -404,14 +416,14 @@ const PanelView = memo(function PanelView({
         <span className={'ma-status ' + status.cls}>
           {/* 응답 대기 중엔 스피너를 숨긴다 — 도는 건 에이전트가 아니라 사용자 차례 */}
           {busy && !waiting && <span className="ma-status-spin" />}
-          <span>{status.label}</span>
+          <span>{status.label()}</span>
           {busy && <span className="ma-status-time">{fmtElapsed(elapsed)}</span>}
         </span>
         {/* 크게 보기 ⟷ 원래 크기로 — 이 패널을 본채팅 크기의 오버레이 카드로 (작은 글씨 대책) */}
         <button
           className="ma-p-expand has-tip"
-          data-tip={expanded ? '원래 크기로 (Esc)' : '크게 보기'}
-          aria-label={expanded ? '원래 크기로' : '크게 보기'}
+          data-tip={expanded ? t('원래 크기로 (Esc)', 'Restore size (Esc)') : t('크게 보기', 'Expand')}
+          aria-label={expanded ? t('원래 크기로', 'Restore size') : t('크게 보기', 'Expand')}
           onClick={() => onToggleExpand(slot)}
         >
           {expanded ? <IconCollapse size={12} /> : <IconExpand size={12} />}
@@ -426,7 +438,7 @@ const PanelView = memo(function PanelView({
               <div className="ma-p-empty-ic">
                 <IconMascot size={38} />
               </div>
-              <div className="ma-p-empty-text">메시지를 입력해 작업을 시작하세요</div>
+              <div className="ma-p-empty-text">{t('메시지를 입력해 작업을 시작하세요', 'Type a message to start working')}</div>
             </div>
           ) : (
             // 본채팅과 같은 .thread 마크업 — 패널에선 CSS(zoom .8·풀폭)만 다르고,
@@ -448,7 +460,12 @@ const PanelView = memo(function PanelView({
           {/* 따라가기를 풀고 위를 읽는 중 — 본채팅과 같은 "맨 아래로" 점프 버튼 */}
           {follow.showJump && (
             <div className="jump-bottom-wrap">
-              <button className="jump-bottom has-tip" data-tip="맨 아래로" aria-label="맨 아래로" onClick={follow.jumpBottom}>
+              <button
+                className="jump-bottom has-tip"
+                data-tip={t('맨 아래로', 'Scroll to bottom')}
+                aria-label={t('맨 아래로', 'Scroll to bottom')}
+                onClick={follow.jumpBottom}
+              >
                 <IconChevDown size={17} />
               </button>
             </div>
@@ -465,13 +482,13 @@ const PanelView = memo(function PanelView({
         target={threadEl}
         actions={[
           // ↑/↓는 follow 래치 규칙(본채팅과 동일) — ↑는 고정을 풀고 올라가고, ↓는 재고정
-          { pattern: 'U', label: '맨 위로', run: () => follow.scrollTop() },
-          { pattern: 'D', label: '맨 아래로', run: () => follow.jumpBottom() },
+          { pattern: 'U', label: t('맨 위로', 'Scroll to top'), run: () => follow.scrollTop() },
+          { pattern: 'D', label: t('맨 아래로', 'Scroll to bottom'), run: () => follow.jumpBottom() },
           sessionWindowGesture(),
           clearGesture(() => onClear(slot)),
           ...(expanded
-            ? [{ pattern: 'DR', label: '원래 크기로', run: () => onToggleExpand(slot) }]
-            : [{ pattern: 'RU', label: '크게 보기', run: () => onToggleExpand(slot) }])
+            ? [{ pattern: 'DR', label: t('원래 크기로', 'Restore size'), run: () => onToggleExpand(slot) }]
+            : [{ pattern: 'RU', label: t('크게 보기', 'Expand'), run: () => onToggleExpand(slot) }])
         ]}
       />
 
@@ -1019,7 +1036,7 @@ function ActiveSession({
       !!sess.state.session && sess.state.messages.length > 0 && !sameCwd(sess.state.session.cwd, dir)
     if (folderSwitched) sess.load(initialSessionState)
     sess.begin(text, cmd, imgs)
-    const title = cmd ? commandTitleOf(cmd) : text.slice(0, 80) || '파일 첨부'
+    const title = cmd ? commandTitleOf(cmd) : text.slice(0, 80) || t('파일 첨부', 'File attachment')
     if (firstInSession) onFirstPrompt(sessionId, title)
     setMetas((prev) =>
       prev.map((pm, i) =>
@@ -1043,9 +1060,11 @@ function ActiveSession({
       const notes: string[] = []
       const mentions = extractMentions(text)
       if (mentions.length)
-        notes.push(`[멘션된 파일 — 필요하면 Read 도구로 확인하세요]\n${mentions.map((p) => '- ' + p).join('\n')}`)
+        notes.push(
+          `${t('[멘션된 파일 — 필요하면 Read 도구로 확인하세요]', '[Mentioned files — read them with the Read tool if needed]')}\n${mentions.map((p) => '- ' + p).join('\n')}`
+        )
       if (imgs.length)
-        notes.push(`[첨부 파일 — Read 도구로 확인하세요]\n${imgs.map((p) => '- ' + p).join('\n')}`)
+        notes.push(`${t('[첨부 파일 — Read 도구로 확인하세요]', '[Attached files — check them with the Read tool]')}\n${imgs.map((p) => '- ' + p).join('\n')}`)
       if (notes.length) promptForEngine = `${text}\n\n${notes.join('\n\n')}`
     }
     // 참조 폴더 — 작업 폴더와 겹치는 항목은 걸러서 전달
@@ -1137,14 +1156,10 @@ function ActiveSession({
   })
 
   const stopPanel = useEvent((slot: number) => {
-    // 취소 = 회수 — 스트리밍 중이던 미완성 턴을 스레드에서 걷고 보낸 문장을 컴포저에
-    // 복원한다(초안이 있으면 지킴). 상주 워크플로만 도는 경우엔 완결된 턴이라 걷지 않는다.
+    // 취소 = 중단 — 턴의 흔적은 패널 스레드에 그대로 남기고 '중단함' 마커만 붙인다
+    // (본채팅과 동일). 상주 워크플로만 도는 경우엔 완결된 턴이라 마커 없이 끊는다.
     const sess = sessions[slot]
-    if (sess.busy) {
-      const last = [...sess.state.messages].reverse().find((m) => m.kind === 'msg' && m.role === 'user')
-      sess.retractTurn()
-      if (last && 'text' in last && last.text && !metas[slot].input.trim()) patchMeta(slot, { input: last.text })
-    }
+    if (sess.busy) sess.interruptTurn()
     // stopping the run also abandons anything queued behind it (mirrors single mode)
     window.api.multi?.cancel(chan(sessionId, slot)).catch(() => {})
     setMetas((prev) => prev.map((m, i) => (i === slot && m.queue.length ? { ...m, queue: [] } : m)))
@@ -1242,7 +1257,7 @@ function ActiveSession({
             각 패널 WorkBar 컨텍스트 팝오버가 말한다 */}
         <div className="ma-head">
           <span className="ma-spacer" />
-          <div className="ma-count" role="tablist" aria-label="패널 수">
+          <div className="ma-count" role="tablist" aria-label={t('패널 수', 'Panel count')}>
             {COUNT_OPTIONS.map((n) => (
               <button
                 key={n}
@@ -1268,8 +1283,12 @@ function ActiveSession({
           {onToggleExplorer && (
             <button
               className={'h-ic has-tip' + (explorerHidden ? '' : ' on')}
-              data-tip={explorerHidden ? '파일 탐색기 — 왼쪽 목록과 전환 (`)' : '채팅 목록으로 (`)'}
-              aria-label="파일 탐색기"
+              data-tip={
+                explorerHidden
+                  ? t('파일 탐색기 — 왼쪽 목록과 전환 (`)', 'File explorer — swaps with the left list (`)')
+                  : t('채팅 목록으로 (`)', 'Back to chat list (`)')
+              }
+              aria-label={t('파일 탐색기', 'File explorer')}
               onClick={onToggleExplorer}
             >
               <IconPanelRight size={15} />
@@ -1287,7 +1306,7 @@ function ActiveSession({
               // (.ma-panel 클래스 유지: n5 스팬 등 그리드 배치 규칙이 그대로 먹게)
               <div key={slot} className="ma-panel ma-ghost" data-slot={slot}>
                 <span className="ma-p-num on">{slot + 1}</span>
-                <span className="ma-ghost-text">크게 보는 중</span>
+                <span className="ma-ghost-text">{t('크게 보는 중', 'Expanded')}</span>
               </div>
             ) : (
               renderPanel(slot)
@@ -1363,6 +1382,10 @@ export function useMultiSessions() {
   const dataRef = useRef<Record<string, PersistedSession>>({})
   const [order, setOrder] = useState<string[]>([]) // session ids, most recent first
   const [activeId, setActiveId] = useState<string>('')
+  // 저장 완료 콜백(비동기)에서 "지금" 활성인 세션을 지키기 위한 ref — 낡은 클로저의
+  // activeId로 방금 전환해 온 세션의 패널을 내리면 안 된다
+  const activeIdRef = useRef(activeId)
+  activeIdRef.current = activeId
   const [titles, setTitles] = useState<Record<string, { title: string; custom: boolean }>>({})
   const [statuses, setStatuses] = useState<Record<string, AgentStatus>>({})
   // 세션별 마지막 활동 시각 — 사이드바 상대 시간. 실행 시작·첫 프롬프트에서 갱신
@@ -1383,7 +1406,17 @@ export function useMultiSessions() {
         })
         .filter(Boolean) as PersistedSession[]
     }
-    window.api.multi?.saveState?.(blob).catch(() => {})
+    window.api.multi
+      ?.saveState?.(blob)
+      .then(() => {
+        // 디스크에 닿았다 — 비활성 세션의 패널 스냅샷은 메모리에서 내린다(전환 때 되읽음).
+        // ref 변이라 리렌더 없음: 이 데이터는 영속·재마운트(initialOf)에만 쓰인다.
+        for (const [id, d] of Object.entries(dataRef.current)) {
+          if (id === activeIdRef.current || d.unloaded || !d.panels?.some((p) => p?.snapshot)) continue
+          dataRef.current[id] = { ...d, panels: [], unloaded: true }
+        }
+      })
+      .catch(() => {})
   })
   const scheduleSave = useEvent(() => {
     if (saveTimer.current) clearTimeout(saveTimer.current)
@@ -1415,7 +1448,14 @@ export function useMultiSessions() {
         )
         if (sessions.length) {
           const ord = sessions.map((s) => s.id)
-          sessions.forEach((s) => (dataRef.current[s.id] = s))
+          const act = data!.activeSessionId && ord.includes(data!.activeSessionId) ? data!.activeSessionId : ord[0]
+          // 활성 세션만 패널 스냅샷을 통째로 든다 — 비활성은 마커만 두고 전환 때 디스크에서
+          // 되읽는다(전 세션×6패널 상주가 렌더러 힙을 세션 수에 비례해 키웠다). 상태 배지는
+          // 아래에서 원본(sessions)으로 계산하므로 잃는 것 없음.
+          sessions.forEach((s) => {
+            dataRef.current[s.id] =
+              s.id === act || !(s.panels ?? []).some((p) => p?.snapshot) ? s : { ...s, panels: [], unloaded: true }
+          })
           setOrder(ord)
           setTitles(Object.fromEntries(sessions.map((s) => [s.id, { title: s.title ?? '', custom: !!s.custom }])))
           setTimes(
@@ -1428,7 +1468,7 @@ export function useMultiSessions() {
               sessions.map((s) => [s.id, aggregateStatus((s.panels ?? []).map((p) => p?.snapshot?.status ?? 'idle'))])
             )
           )
-          setActiveId(data!.activeSessionId && ord.includes(data!.activeSessionId) ? data!.activeSessionId : ord[0])
+          setActiveId(act)
         } else {
           seed()
         }
@@ -1465,10 +1505,12 @@ export function useMultiSessions() {
   })
   const onFirstPrompt = useEvent((sid: string, prompt: string) => {
     setTimes((t) => ({ ...t, [sid]: Date.now() }))
+    // 업데이터 파라미터 t가 i18n t를 가리므로 번역은 밖에서 미리 평가한다
+    const title = prompt.slice(0, 80) || t('멀티 세션', 'Multi session')
     setTitles((t) => {
       const cur = t[sid]
       if (cur?.custom || (cur && cur.title)) return t // already named
-      return { ...t, [sid]: { title: prompt.slice(0, 80) || '멀티 세션', custom: false } }
+      return { ...t, [sid]: { title, custom: false } }
     })
   })
   const onStatus = useEvent((sid: string, status: AgentStatus) => {
@@ -1502,10 +1544,34 @@ export function useMultiSessions() {
       if (replacing) delete next[replacing]
       return next
     })
-    setActiveId(id)
+    activate(id)
+  })
+  // 세션 착지 — unloaded(패널이 메모리에 없음)면 디스크에서 되읽은 뒤 활성화한다.
+  // 전환 연타로 로드가 겹치면 seq 가드로 마지막 요청만 이긴다.
+  const activateSeq = useRef(0)
+  const activate = useEvent((id: string) => {
+    const d = dataRef.current[id]
+    if (!d?.unloaded) {
+      activateSeq.current++ // 진행 중이던 지연 로드 무효화 — 동기 전환이 항상 이긴다
+      setActiveId(id)
+      return
+    }
+    const seq = ++activateSeq.current
+    window.api.multi
+      ?.loadSession?.(id)
+      .then((raw) => {
+        if (seq !== activateSeq.current) return
+        const s = raw as PersistedSession | null
+        dataRef.current[id] =
+          s && typeof s === 'object' && Array.isArray(s.panels)
+            ? { ...d, count: s.count ?? d.count, panels: s.panels, unloaded: undefined }
+            : { ...blankSession(id), title: d.title, custom: d.custom } // 파일에 없던 세션(비정상) — 빈 세션으로나마 착지
+        setActiveId(id)
+      })
+      .catch(() => {})
   })
   const selectSession = useEvent((id: string) => {
-    if (id !== activeId) setActiveId(id)
+    if (id !== activeId) activate(id)
   })
   const renameSession = useEvent((id: string, name: string) => {
     setTitles((t) => ({ ...t, [id]: { title: name, custom: true } }))
@@ -1542,10 +1608,10 @@ export function useMultiSessions() {
         setTitles((t) => ({ ...t, [nid]: { title: '', custom: false } }))
         setStatuses((s) => ({ ...s, [nid]: 'idle' }))
         setOrder([nid])
-        setActiveId(nid)
+        activate(nid)
       } else {
         setOrder(next)
-        setActiveId(next[0])
+        activate(next[0]) // unloaded 세션이면 되읽고 착지 (잠깐의 빈 화면은 로드가 메운다)
       }
     } else {
       setOrder(next)
@@ -1562,7 +1628,7 @@ export function useMultiSessions() {
     setStatuses({ [nid]: 'idle' })
     setTimes({})
     setOrder([nid])
-    setActiveId(nid)
+    activate(nid)
   })
 
   // recent-tasks list = sessions that actually have content. A fresh blank session
