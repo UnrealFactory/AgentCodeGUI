@@ -272,6 +272,11 @@ const api: WindowApi = {
     onShow: (cb) => subscribe(IPC.notifyShow, cb),
     onJump: (cb) => subscribe(IPC.notifyJump, cb)
   },
+  trayMenu: {
+    action: (id: string) => ipcRenderer.invoke(IPC.trayMenuAction, id),
+    resize: (height: number) => ipcRenderer.invoke(IPC.trayMenuResize, height),
+    onShow: (cb) => subscribe(IPC.trayMenuShow, cb)
+  },
   onEngineEvent: (cb: (e: EngineEvent) => void) => subscribe(IPC.engineEvent, cb),
   onWinState: (cb: (s: WindowState) => void) => subscribe(IPC.winState, cb)
 }

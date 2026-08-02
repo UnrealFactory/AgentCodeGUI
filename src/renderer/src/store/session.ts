@@ -725,6 +725,10 @@ export function reducer(state: SessionState, action: Action): SessionState {
         })
         return { ...state, subagents }
       }
+      // 모르는 id의 종결(done) 이벤트는 버린다 — 첫 스폰은 두 엔진 모두 running으로 오므로,
+      // done으로 처음 보는 id는 /clear로 백지가 된 대화에 흘러든 teardown 잔재다
+      // ('턴 종료로 정리됨' 유령 칩 방지)
+      if (e.agent.status === 'done') return state
       return { ...state, subagents: [...state.subagents, e.agent] }
     }
 

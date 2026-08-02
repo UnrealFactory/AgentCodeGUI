@@ -28,6 +28,118 @@ type LocalizedRelease = { ko: Release; en: Release }
 // 지난 1.x 노트들은 은퇴한 UpdateNotes와 함께 정리했다(이제 보여줄 경로가 없다).
 const MAX_VERSIONS = 5
 const RELEASES: Record<string, LocalizedRelease> = {
+  '2.3.4': {
+    ko: {
+      eyebrow: 'FIX',
+      lead: '클리어한 대화가 백그라운드 작업이 끝나는 순간 되살아나던 문제와, 중단 직후 보낸 메시지가 답 없이 씹히던 문제를 고쳤습니다. 멀티 채팅이 가로로 밀리던 것도 잡고, 트레이 우클릭 메뉴는 새로 그렸어요.',
+      notes: [
+        {
+          tag: '클리어',
+          name: '지운 대화가 되살아나지 않아요',
+          desc: (
+            <>
+              /clear(↑↓ 제스처 포함)가 <b>화면만 지우고</b> 뒤에서 돌던 워크플로·셸·에이전트는
+              살려 둬서, 그 작업이 끝나는 순간 정리 턴이 <b>빈 대화 위에서 되살아났습니다</b> —
+              이제 클리어가 그 대화의 <b>백그라운드 작업까지 함께 회수</b>합니다(본채팅·추가
+              채팅 창·멀티 패널 모두). 지웠으면 정말 끝이에요.
+            </>
+          )
+        },
+        {
+          tag: '채팅',
+          name: '중단 직후 보낸 메시지가 씹히지 않아요',
+          desc: (
+            <>
+              백그라운드 작업 중 턴을 중단하면 완료 통지가 세션에 밀려 남는데, 다음 메시지가 그
+              통지를 소화하는 <b>무음 턴</b>의 끝을 진짜 끝으로 오판해 — 줄 서 있던{' '}
+              <b>진짜 답변 턴을 엔진째 닫아</b>버렸습니다. &quot;응답 없이 끝났어요&quot;만 남고
+              답이 영영 안 오던 그 증상이에요. 이제 통지를 소화한 턴은 <b>진짜 턴이 시작될
+              때까지 기다립니다</b>.
+            </>
+          )
+        },
+        {
+          tag: '멀티',
+          name: '패널이 가로로 밀리지 않아요',
+          desc: (
+            <>
+              긴 파일 경로처럼 <b>안 꺾이는 글자</b>가 목록 안에 오면 좁은 패널 폭을 뚫고
+              스레드가 <b>가로로 밀리던</b> 문제 — 목록·제목까지 줄바꿈 규칙을 넓히고, 스레드의{' '}
+              <b>가로 스크롤 자체를 잠갔습니다</b>(본채팅·추가 창도 같은 잠금). 코드 블록과 표는
+              지금처럼 자기 안에서만 가로 스크롤해요.
+            </>
+          )
+        },
+        {
+          tag: '트레이',
+          name: '우클릭 메뉴 새 단장',
+          desc: (
+            <>
+              투박한 시스템 기본 메뉴 대신 <b>앱과 같은 결의 다크 카드</b>로 —{' '}
+              <b>AgentCodeGUI 열기 / 완전히 종료</b> 두 줄, 호버 하이라이트, 커서 위로 조용히
+              떠오릅니다. 언어 전환도 즉시 반영돼요.
+            </>
+          )
+        }
+      ]
+    },
+    en: {
+      eyebrow: 'FIX',
+      lead: 'Fixed cleared chats coming back to life the moment a background task finished, and messages sent right after a stop getting swallowed with no reply. Multi-chat no longer drifts sideways, and the tray right-click menu got a redesign.',
+      notes: [
+        {
+          tag: 'Clear',
+          name: 'Cleared chats stay cleared',
+          desc: (
+            <>
+              /clear (and the ↑↓ gesture) only <b>wiped the screen</b> while workflows, shells,
+              and agents kept running behind it — so the cleanup turn <b>resurrected the empty
+              chat</b> the moment they finished. Clearing now <b>reclaims that chat&apos;s
+              background work too</b> (main chat, extra chat windows, and multi panels alike).
+              Cleared means gone.
+            </>
+          )
+        },
+        {
+          tag: 'Chat',
+          name: 'Messages after a stop are no longer swallowed',
+          desc: (
+            <>
+              Stopping a turn mid-background-work leaves a completion notice queued in the
+              session; the next message digests it as a <b>silent mini-turn</b>, whose end was
+              mistaken for the real end — <b>shutting down the engine with your actual reply
+              turn still queued</b>. That was the &quot;ended without a reply&quot; that never
+              recovered. The digest turn now <b>waits for the real turn to start</b>.
+            </>
+          )
+        },
+        {
+          tag: 'Multi',
+          name: 'Panels no longer drift sideways',
+          desc: (
+            <>
+              An <b>unbreakable token</b> like a long file path inside a list could punch past a
+              narrow panel&apos;s width and drag the thread <b>sideways</b> — wrapping rules now
+              cover lists and headings, and the thread&apos;s <b>horizontal scrolling is locked</b>{' '}
+              (main chat and extra windows too). Code blocks and tables still scroll within
+              themselves as before.
+            </>
+          )
+        },
+        {
+          tag: 'Tray',
+          name: 'Right-click menu redesigned',
+          desc: (
+            <>
+              The clunky stock system menu is replaced with a <b>dark card that matches the
+              app</b> — two rows, <b>Open AgentCodeGUI / Quit completely</b>, hover highlights,
+              rising quietly above the cursor. Language switches apply instantly.
+            </>
+          )
+        }
+      ]
+    }
+  },
   '2.3.3': {
     ko: {
       eyebrow: 'UPDATE',
@@ -444,68 +556,6 @@ const RELEASES: Record<string, LocalizedRelease> = {
               While you are <b>writing</b>, ↑/↓ stay line movement; <b>only when the composer is
               empty</b> do they recall sent messages — no more being yanked into history
               mid-draft.
-            </>
-          )
-        }
-      ]
-    }
-  },
-  '2.2.3': {
-    ko: {
-      eyebrow: 'FIX',
-      lead: '멀티 채팅에서 컨텍스트를 누르면 나오는 사용 한도가 패널에 묶은 계정을 따라가지 않던 문제를 고쳤습니다 — 이제 패널마다 자기가 실제로 소비하는 계정의 남은 한도를 보여줘요.',
-      notes: [
-        {
-          tag: '멀티',
-          name: '한도가 패널 계정을 따라갑니다',
-          desc: (
-            <>
-              패널마다 <b>다른 계정</b>을 묶어도 컨텍스트 팝업의 <b>5시간·주간 한도</b>가 전부{' '}
-              <b>한 계정 수치</b>로 나오던 버그 — 이제 <b>그 패널이 실제로 소비하는 계정</b>{' '}
-              기준으로 조회합니다. 팝업을 여는 순간 그 계정으로 새로 받아와, 계정을 막 바꾼
-              직후에도 맞는 수치가 떠요.
-            </>
-          )
-        },
-        {
-          tag: '멀티',
-          name: '기본 계정 패널도 정확하게',
-          desc: (
-            <>
-              계정을 따로 묶지 않은 패널은 <b>기본 계정</b> 기준이어야 하는데, 본채팅이 마지막으로
-              보던 <b>다른 계정의 수치를 물려받을 수 있던</b> 것도 함께 고쳤습니다. 패널 실행이
-              끝나면 화면 속 패널 계정들을 <b>모두 새로 받아</b> 방금 쓴 소비가 바로 반영돼요.
-            </>
-          )
-        }
-      ]
-    },
-    en: {
-      eyebrow: 'FIX',
-      lead: 'Fixed the usage limits behind the context chip in multi chat not following the account bound to each panel — every panel now shows the remaining limits of the account it actually consumes.',
-      notes: [
-        {
-          tag: 'Multi',
-          name: 'Limits follow the panel account',
-          desc: (
-            <>
-              Even with a <b>different account</b> bound per panel, the context popup showed the{' '}
-              <b>5-hour / weekly limits</b> of <b>one account</b> for all of them — they are now
-              queried against <b>the account that panel actually consumes</b>. The popup
-              refetches for that account the moment it opens, so the numbers are right even just
-              after switching accounts.
-            </>
-          )
-        },
-        {
-          tag: 'Multi',
-          name: 'Default-account panels, accurate too',
-          desc: (
-            <>
-              Panels with no bound account should read the <b>default account</b>, but they could{' '}
-              <b>inherit numbers from another account</b> the main chat looked at last — fixed as
-              well. When a panel run ends, every panel account on screen is <b>refetched</b> so
-              the consumption you just made shows up right away.
             </>
           )
         }

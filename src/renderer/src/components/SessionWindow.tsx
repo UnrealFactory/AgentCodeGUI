@@ -471,8 +471,11 @@ export function SessionWindow(): React.ReactElement {
 
   // /clear — reset this window's conversation (client command, same as 본채팅).
   // 컴포저의 /clear와 스레드의 ↑↓ 제스처가 같은 착지점을 쓴다.
+  // 상주 백그라운드(워크플로·셸·에이전트)도 함께 회수한다 — 화면만 지우면 완료 통지의
+  // 정리 턴이 백지가 된 대화 위에서 되살아난다 (본채팅과 동일한 처방).
   const clearConversation = (): void => {
     if (busy) return
+    window.api.session?.cancel().catch(() => {})
     load(initialSessionState)
     setInput('')
     setImages([])

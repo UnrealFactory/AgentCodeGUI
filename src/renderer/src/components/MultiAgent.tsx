@@ -1014,8 +1014,11 @@ function ActiveSession({
     // an image-only message (attachments, no text) is allowed.
     // 워크플로/백그라운드 작업이 도는 중의 전송은 엔진이 같은 프로세스에 주입한다(tryInject)
     if ((!text && imgs.length === 0) || sess.busy) return
-    // /clear is a client command — reset just this panel's conversation (never sent to the engine)
+    // /clear is a client command — reset just this panel's conversation (never sent to the engine).
+    // 이 패널의 상주 백그라운드(워크플로·셸·에이전트)도 함께 회수한다 — 화면만 지우면
+    // 완료 통지의 정리 턴이 백지가 된 패널 위에서 되살아난다 (본채팅과 동일한 처방).
     if (text === '/clear') {
+      window.api.multi?.cancel(chan(sessionId, slot)).catch(() => {})
       sess.load(initialSessionState)
       patchMeta(slot, { title: '', custom: false, ...(opts ? {} : { input: '', images: [] }) })
       return
@@ -1147,10 +1150,12 @@ function ActiveSession({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [busySig, metas])
 
-  // ↑↓ 제스처의 대화 비우기 — 컴포저 /clear와 같은 착지점(이 패널만 백지로)
+  // ↑↓ 제스처의 대화 비우기 — 컴포저 /clear와 같은 착지점(이 패널만 백지로).
+  // 상주 백그라운드 회수도 동일하게 — sendPanel의 /clear 분기 주석 참고.
   const clearPanel = useEvent((slot: number) => {
     const sess = sessions[slot]
     if (sess.busy) return
+    window.api.multi?.cancel(chan(sessionId, slot)).catch(() => {})
     sess.load(initialSessionState)
     patchMeta(slot, { title: '', custom: false, input: '', images: [] })
   })

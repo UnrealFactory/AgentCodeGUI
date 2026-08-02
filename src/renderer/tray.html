@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <title>메뉴 — AgentCodeGUI</title>
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/gh/wanteddev/wanted-sans@v1.0.3/packages/wanted-sans/fonts/webfonts/variable/split/WantedSansVariable.min.css"
+    />
+    <!-- 트레이 우클릭 메뉴 — 창=카드(frameless 불투명 검정, main이 커서 기준 위치를
+         잡는다). 네이티브 Win32 트레이 메뉴가 투박해 토스트와 같은 초경량 페이지로
+         직접 그린다. 라운드는 DWM(창)이 깎으므로 여기선 헤어라인 링만 얹는다. -->
+    <style>
+      :root {
+        --hover: rgba(255, 255, 255, 0.06);
+        --line: rgba(255, 255, 255, 0.07);
+        --line-2: rgba(255, 255, 255, 0.11);
+        --text: rgba(255, 255, 255, 0.9);
+        --font-sans: 'Wanted Sans Variable', 'Wanted Sans', system-ui, -apple-system, sans-serif;
+      }
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      html, body { overflow: hidden; background: transparent; }
+      body {
+        font-family: var(--font-sans);
+        color: var(--text);
+        background: #151515;
+        box-shadow: inset 0 0 0 1px var(--line-2);
+        user-select: none;
+        cursor: default;
+      }
+      #menu { padding: 5px; }
+      #menu.in { animation: m-in 0.13s ease-out; }
+      @keyframes m-in {
+        from { opacity: 0; transform: translateY(4px); }
+        to { opacity: 1; transform: none; }
+      }
+      button {
+        font-family: inherit; color: inherit; cursor: pointer; border: none; background: none;
+      }
+      .row {
+        display: block; width: 100%; text-align: left;
+        padding: 8px 12px; border-radius: 8px;
+        font-size: 13px; font-weight: 500; letter-spacing: -0.01em; line-height: 1.4;
+      }
+      .row:hover { background: var(--hover); }
+      .sep { height: 1px; margin: 4px 9px; background: var(--line); }
+    </style>
+  </head>
+  <body>
+    <div id="menu"></div>
+    <script type="module" src="/src/tray.ts"></script>
+  </body>
+</html>

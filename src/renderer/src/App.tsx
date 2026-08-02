@@ -862,8 +862,13 @@ function MainApp({ user }: { user: AppUser }) {
   // /clear — wipe the current conversation back to a blank slate (a client action
   // mirroring Claude Code's /clear; never sent to the engine, so the visible message
   // list and the engine's context stay in sync). Keeps the project folder.
+  // 상주 백그라운드(워크플로·셸·에이전트)도 함께 회수한다 — 화면만 지우면 살아남은
+  // 프로세스가 완료 통지에서 정리 턴을 재기동해, 백지가 된 대화(curRunId=null이라 실행
+  // 경계 가드도 무장 해제) 위에서 되살아난다. Esc 취소와 같은 착지점이고, 상주가 없으면
+  // 엔진 쪽에서 무해한 no-op이다.
   const clearConversation = (): void => {
     if (busy) return
+    window.api.cancel()
     load(initialSessionState)
     setInput('')
     setImages([])

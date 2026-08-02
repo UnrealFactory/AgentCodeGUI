@@ -38,7 +38,9 @@ export default defineConfig({
         input: {
           index: resolve(__dirname, 'src/renderer/index.html'),
           // 포커스 밖 알림 토스트 창 — React 없는 초경량 페이지 (main/notifyToast.ts가 띄운다)
-          toast: resolve(__dirname, 'src/renderer/toast.html')
+          toast: resolve(__dirname, 'src/renderer/toast.html'),
+          // 트레이 우클릭 메뉴 창 — 같은 초경량 패턴 (main/index.ts showTrayMenu가 띄운다)
+          tray: resolve(__dirname, 'src/renderer/tray.html')
         }
       }
     },

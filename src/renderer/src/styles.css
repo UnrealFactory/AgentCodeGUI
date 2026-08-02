@@ -749,7 +749,8 @@ input,textarea{ font-family:inherit; }
 .chat-head-toggle.has-tip::after{ bottom:auto; top:100%; left:0; margin-bottom:0; margin-top:8px; transform:translate(0, -3px); }
 .chat-head-toggle.has-tip:hover::after{ transform:translate(0, 0); }
 
-.chat-scroll{ flex:1; overflow-y:auto; min-height:0; }
+/* overflow-x:hidden — .ma-p-thread와 같은 잠금(본채팅·추가 창 공용 스크롤러) */
+.chat-scroll{ flex:1; overflow-y:auto; overflow-x:hidden; min-height:0; }
 /* "맨 아래로" 점프 버튼 — 위로 스크롤해 바닥에서 멀어지면 뜬다. 스크롤 영역 안의
    0높이 sticky 래퍼라 컴포저/워크바 높이와 무관하게 항상 스크롤 뷰포트 바닥 위에 붙고,
    스크롤 흐름에 자리를 차지하지 않는다(레이아웃 이동 없음). */
@@ -846,7 +847,9 @@ input,textarea{ font-family:inherit; }
 /* 메시지 — 아바타·메타 없는 문법(PoC): 유저=풀폭 필, AI=맨몸 텍스트 */
 .msg{ display:flex; gap:0; }
 .msg .msg-main{ flex:1; min-width:0; }
-.content{ font-size:15.5px; line-height:1.72; color:rgba(255,255,255,.86); }
+/* word-break은 상속된다 — p에만 걸면 불릿(li)·헤딩 속 긴 무공백 토큰(파일경로:줄,
+   인라인 코드)이 안 꺾여 좁은 멀티 패널 폭을 뚫었다(스레드가 가로로 밀리는 주범) */
+.content{ font-size:15.5px; line-height:1.72; color:rgba(255,255,255,.86); word-break:break-word; }
 /* 유저 메시지 = 풀폭 필 */
 .msg.user .msg-main{
   background:rgba(255,255,255,.03); border:1px solid var(--line-2);
@@ -3474,7 +3477,10 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
    zoom으로만 비례 축소한 미니어처(PoC 컴팩트 카드 컨셉). 패널 폭에 맞춰
    칼럼 상한(max-width)만 풀어 메시지가 패널을 꽉 채운다.
    전부 .ma-grid 스코프 — 크게 보기 카드 안 패널은 본채팅 서식 그대로여야 한다. */
-.ma-p-thread{ flex:1; min-height:0; overflow-y:auto; }
+/* overflow-x는 명시로 잠근다 — overflow-y:auto만 선언하면 x도 auto로 계산돼(CSS 규칙),
+   폭을 넘는 내용이 있을 때 스레드가 가로 스크롤러가 된다. 넓은 내용은 각자 자기 안에서
+   해결한다(코드블록·표는 자체 overflow-x:auto, 이미지는 max-width) */
+.ma-p-thread{ flex:1; min-height:0; overflow-y:auto; overflow-x:hidden; }
 .ma-grid .ma-panel .ma-p-thread{ zoom:.8; }
 /* WorkBar 칩(할 일·서브에이전트…)·컴포저는 스레드보다 살짝 크게 — .8은 칩 글자가
    안 읽힌다는 피드백. 스레드 글자는 Ctrl+휠(multi.zoom, 기본 120%)이 따로 키운다 */

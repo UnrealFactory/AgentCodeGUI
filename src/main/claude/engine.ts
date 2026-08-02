@@ -921,12 +921,17 @@ export class ClaudeEngine {
       // 판정을 미룬다(진짜 턴의 첫 토큰은 2.5초를 훌쩍 넘기기 일쑤 — 아침 실측 13초.
       // 고정 2.5초가 '응답 없음' 오탐의 주범이었다). 재장전 상한(총 ~22초)을 둬, 진행
       // 프레임이 끊임없이 흐르는 상주에서도 진짜 무음 턴은 언젠가 정착한다.
+      // 통지를 소화한 턴(deliveredNotifs)은 무프레임 침묵도 포기 사유가 아니다 — 그 빈
+      // result는 밀린 통지 미니턴의 것이고, 큐에 밀린 진짜 턴(사용자 프롬프트 재생)이
+      // 뒤에 온다. 침묵 2.5초 만에 정착하면 maybeCloseInput이 입력을 닫아 그 진짜 턴이
+      // CLI와 함께 죽는다(실측: 중단 → 재전송 턴이 통째로 씹히고 '응답 없음'만 남음).
+      // 상한까지 기다리면 프롬프트 재생 프레임(아래 user 텍스트 판별)이 보류를 푼다.
       let heldRearms = 0
       const armHeldSettle = (): void => {
         const seqAtArm = frameSeq
         setTimeout(() => {
           if (!heldResult || this.activeRunId !== runId || abort.signal.aborted) return
-          if (frameSeq !== seqAtArm && heldRearms < 8) {
+          if ((frameSeq !== seqAtArm || deliveredNotifs.size) && heldRearms < 8) {
             heldRearms++
             armHeldSettle()
             return

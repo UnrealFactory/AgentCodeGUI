@@ -58,6 +58,7 @@ import type {
   NotifyEventPayload,
   NotifyEntry,
   NotifyTarget,
+  TrayMenuItem,
 } from './protocol'
 
 /** The surface exposed to the renderer via `window.api` (contextBridge). */
@@ -429,6 +430,14 @@ export interface WindowApi {
     resize(height: number): Promise<void>
     onShow(cb: (entries: NotifyEntry[]) => void): () => void
     onJump(cb: (target: NotifyTarget) => void): () => void
+  }
+  /** 트레이 우클릭 메뉴 페이지 전용 — main이 항목을 밀어넣고(onShow), 페이지가 렌더 후
+   *  높이를 보고하면(resize) main이 커서 기준 위치를 확정해 보여준다. action은 클릭한
+   *  항목 id, ''(빈 값)는 Esc 닫기. */
+  trayMenu: {
+    action(id: string): Promise<void>
+    resize(height: number): Promise<void>
+    onShow(cb: (items: TrayMenuItem[]) => void): () => void
   }
   /** Subscribe to streaming engine events. Returns an unsubscribe fn. */
   onEngineEvent(cb: (event: EngineEvent) => void): () => void

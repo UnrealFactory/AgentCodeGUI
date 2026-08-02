@@ -49,7 +49,7 @@ import { lspManager } from './lsp/manager'
 import { initAutoUpdater, checkForUpdates, quitAndInstall, getUpdateStatus } from './updater'
 import { IPC } from '@shared/protocol'
 import { ATTACH_IMAGE_EXTS, ATTACH_TEXT_EXTS } from '@shared/attachments'
-import type { EngineEvent, RunRequest, PermissionResponse, QuestionResponse, BgTaskRequest, UsageInfo, UsageWindow, FileReadResult, FileWriteResult, UserProfile, MultiRunRequest, MultiPermissionResponse, MultiQuestionResponse, LspPos, AgentStatus, SessionWindowInfo, SessionPersistPayload, SessionHydrateData, EngineUpdateItem, EngineUpdateStatus, ModelId, EffortId } from '@shared/protocol'
+import type { EngineEvent, RunRequest, PermissionResponse, QuestionResponse, BgTaskRequest, UsageInfo, UsageWindow, FileReadResult, FileWriteResult, UserProfile, MultiRunRequest, MultiPermissionResponse, MultiQuestionResponse, LspPos, AgentStatus, SessionWindowInfo, SessionPersistPayload, SessionHydrateData, EngineUpdateItem, EngineUpdateStatus, ModelId, EffortId, TrayMenuItem } from '@shared/protocol'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -603,13 +603,14 @@ function showMainWindow(): void {
   mainWindow.focus()
 }
 
-// 함수인 이유: 메뉴 라벨은 만들 때 언어가 박제된다 — UI 언어가 바뀌면 다시 조립해 교체
+// 네이티브 폴백 메뉴 — 커스텀 팝업 창 생성이 실패했을 때만 쓴다(popUpContextMenu는
+// 호출마다 새로 조립하므로 언어는 항상 표시 시점 것)
 function trayMenu(): Menu {
   return Menu.buildFromTemplate([
-    { label: t('열기', 'Open'), click: showMainWindow },
+    { label: t('AgentCodeGUI 열기', 'Open AgentCodeGUI'), click: showMainWindow },
     { type: 'separator' },
     {
-      label: t('종료', 'Quit'),
+      label: t('완전히 종료', 'Quit completely'),
       click: () => {
         appQuitting = true
         app.quit()
@@ -618,11 +619,104 @@ function trayMenu(): Menu {
   ])
 }
 
+// ── 트레이 우클릭 메뉴 — 커스텀 팝업 창 ──
+// 네이티브 Win32 트레이 메뉴는 구형 서식(각진 검은 박스·큰 행 간격)이라 창=카드로 직접
+// 그린다(notifyToast와 같은 패턴: frameless 페이지가 렌더 후 높이를 보고하면 위치 확정 +
+// 표시 — 깜빡임 없음). blur = 닫기(네이티브 메뉴와 같은 소멸 규칙). 라벨은 표시 시점
+// t()로 채워 언어 전환 재조립이 필요 없다.
+const TRAYMENU_W = 218
+let trayMenuWin: BrowserWindow | null = null
+// 위치 기준은 우클릭 순간의 커서 — 높이 보고가 도착할 때쯤 커서는 이미 떠났을 수 있다
+let trayMenuAnchor = { x: 0, y: 0 }
+
+function destroyTrayMenu(): void {
+  const w = trayMenuWin
+  trayMenuWin = null
+  if (w && !w.isDestroyed()) w.destroy()
+}
+
+function trayMenuItems(): TrayMenuItem[] {
+  return [
+    { id: 'open', label: t('AgentCodeGUI 열기', 'Open AgentCodeGUI') },
+    { id: 'quit', label: t('완전히 종료', 'Quit completely') }
+  ]
+}
+
+function showTrayMenu(): void {
+  if (trayMenuWin) {
+    // 떠 있는 중의 우클릭 = 토글 닫기 (네이티브 메뉴의 재우클릭과 같은 감각)
+    destroyTrayMenu()
+    return
+  }
+  trayMenuAnchor = screen.getCursorScreenPoint()
+  try {
+    const win = new BrowserWindow({
+      width: TRAYMENU_W,
+      height: 92,
+      show: false,
+      frame: false,
+      resizable: false,
+      movable: false,
+      minimizable: false,
+      maximizable: false,
+      skipTaskbar: true,
+      alwaysOnTop: true,
+      // 토스트와 같은 불투명 검정 카드 — 로드 직전 프레임의 흰 번쩍임 방지
+      backgroundColor: '#151515',
+      webPreferences: {
+        preload: path.join(__dirname, '../preload/index.mjs'),
+        contextIsolation: true,
+        sandbox: false
+      }
+    })
+    win.on('blur', destroyTrayMenu) // 바깥 클릭/포커스 이탈 = 닫기
+    win.on('closed', () => {
+      if (trayMenuWin === win) trayMenuWin = null
+    })
+    win.webContents.on('did-finish-load', () => {
+      if (!win.isDestroyed()) win.webContents.send(IPC.trayMenuShow, trayMenuItems())
+    })
+    const devUrl = process.env['ELECTRON_RENDERER_URL']
+    if (devUrl) win.loadURL(devUrl + '/tray.html')
+    else win.loadFile(path.join(__dirname, '../renderer/tray.html'))
+    trayMenuWin = win
+  } catch {
+    // 팝업 창을 못 만들면 네이티브 메뉴로 — 투박해도 기능은 지킨다
+    destroyTrayMenu()
+    tray?.popUpContextMenu(trayMenu())
+  }
+}
+
+// 메뉴 페이지의 콘텐츠 높이 보고 — 우클릭 커서 기준(트레이는 화면 아래이므로 위쪽)으로
+// 위치를 확정하고 보여준다. show()가 포커스를 가져가는 게 blur 소멸 규칙의 발판.
+ipcMain.handle(IPC.trayMenuResize, async (e, height: number) => {
+  const win = trayMenuWin
+  if (!win || win.isDestroyed() || e.sender !== win.webContents) return
+  const wa = screen.getDisplayNearestPoint(trayMenuAnchor).workArea
+  const h = Math.max(40, Math.min(Math.round(height), wa.height - 16))
+  const x = Math.min(Math.max(trayMenuAnchor.x - Math.round(TRAYMENU_W / 2), wa.x + 8), wa.x + wa.width - TRAYMENU_W - 8)
+  let y = trayMenuAnchor.y - h - 10
+  if (y < wa.y + 8) y = Math.min(trayMenuAnchor.y + 10, wa.y + wa.height - h - 8)
+  win.setBounds({ x, y, width: TRAYMENU_W, height: h })
+  win.show()
+})
+
+ipcMain.handle(IPC.trayMenuAction, async (e, id: string) => {
+  if (!trayMenuWin || e.sender !== trayMenuWin.webContents) return
+  destroyTrayMenu()
+  if (id === 'open') showMainWindow()
+  else if (id === 'quit') {
+    appQuitting = true
+    app.quit()
+  }
+})
+
 function createTray(): void {
   try {
     tray = new Tray(trayIconPath())
     tray.setToolTip('AgentCodeGUI')
-    tray.setContextMenu(trayMenu())
+    // setContextMenu는 쓰지 않는다 — 걸면 OS가 네이티브 메뉴를 자동으로 띄워 커스텀과 겹친다
+    tray.on('right-click', showTrayMenu)
     tray.on('click', showMainWindow)
     tray.on('double-click', showMainWindow)
   } catch {
@@ -1126,7 +1220,7 @@ function registerIpc(): void {
     if (lang !== lastLang) {
       lastLang = lang
       setUiLang(lang)
-      tray?.setContextMenu(trayMenu()) // 메뉴 라벨은 조립 시점 언어로 박제 — 새로 조립해 교체
+      // 트레이 메뉴는 재조립 불필요 — 커스텀 팝업(라벨은 표시 시점 t())으로 바뀌었다
       for (const w of BrowserWindow.getAllWindows()) {
         if (!w.isDestroyed()) w.webContents.send(IPC.uiLangChanged, lang)
       }

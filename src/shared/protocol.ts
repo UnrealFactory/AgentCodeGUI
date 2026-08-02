@@ -765,6 +765,12 @@ export interface NotifyEntry extends NotifyEventPayload {
   key: string
 }
 
+/** 트레이 우클릭 메뉴(커스텀 팝업 창)의 항목 — 라벨은 main이 표시 시점 언어로 채운다 */
+export interface TrayMenuItem {
+  id: 'open' | 'quit'
+  label: string
+}
+
 /** 세션 창 렌더러 → 메인: 이 창의 대화 저장(디바운스/닫기 flush). 스냅샷 모양은
  *  렌더러(SessionState)가 소유하고 메인은 그대로 저장만 한다. empty = 메시지 0 —
  *  창을 닫을 때 목록에 남기지 않는 판정용. */
@@ -1049,5 +1055,9 @@ export const IPC = {
   notifyClose: 'notify:close', // 토스트→main: ✕ — 전부 지우고 닫기
   notifyResize: 'notify:resize', // 토스트→main: 콘텐츠 높이 보고 → 창 크기 확정 + 표시
   notifyShow: 'notify:show', // main→토스트: 표시할 항목 목록(REPLACE, 최신이 앞)
-  notifyJump: 'notify:jump' // main→메인 창: 클릭 라우팅(뷰 전환 + 채팅/세션 선택)
+  notifyJump: 'notify:jump', // main→메인 창: 클릭 라우팅(뷰 전환 + 채팅/세션 선택)
+  // 트레이 우클릭 메뉴 — 네이티브 Win32 메뉴가 투박해 창=카드로 직접 그린다(토스트 패턴)
+  trayMenuShow: 'traymenu:show', // main→메뉴 페이지: 항목 목록(표시 시점 언어)
+  trayMenuResize: 'traymenu:resize', // 메뉴 페이지→main: 콘텐츠 높이 보고 → 위치 확정 + 표시
+  trayMenuAction: 'traymenu:action' // 메뉴 페이지→main: 클릭한 항목 id ('' = Esc 닫기)
 } as const
