@@ -2,6 +2,7 @@ import { app } from 'electron'
 import { spawn } from 'node:child_process'
 import electronUpdater from 'electron-updater'
 import { t } from './lang'
+import { compareVersionsDesc } from './engine/versions'
 import type { UpdateStatus } from '@shared/protocol'
 
 // electron-updater is CommonJS — pull `autoUpdater` off the default export so it
@@ -19,6 +20,12 @@ let wired = false
 // 확인 한 번 = latest.yml(수백 바이트) GET 하나라 10분 주기여도 부담이 없다.
 const RECHECK_MS = 10 * 60 * 1000 // 10분
 let recheckTimer: ReturnType<typeof setInterval> | null = null
+// 받아둔(downloaded) 상태의 '조용한 재확인' 표식 — 받아둔 뒤에 더 새 릴리즈가 올라왔는지만
+// 본다. 같은 버전이 다시 잡히는 동안엔 상태를 일절 건드리지 않아('나중에'로 접은 카드는
+// phase가 downloaded로 다시 구르는 순간 되뜨므로), 침묵이 곧 카드 보호다. 더 새 버전이
+// 발견되면 표식을 내리고 일반 흐름(available→downloading→downloaded)으로 복귀한다 —
+// v2.3.1을 받아둔 채 v2.3.2가 올라와도 업데이트 버튼은 항상 가장 마지막 패치본을 설치.
+let probing = false
 
 function emit(): void {
   sender?.(state)
@@ -59,19 +66,36 @@ export function initAutoUpdater(send: (s: UpdateStatus) => void): void {
   if (!wired) {
     wired = true
     autoUpdater.on('checking-for-update', () => {
+      if (probing) return // 조용한 재확인 — 받아둔 카드·로그를 건드리지 않는다
       // 확인 사이클마다 로그·이전 오류를 새로 시작 — 주기 재확인으로 로그가 무한히 안 자라게
       state = { ...state, log: [] }
       lastLoggedStep = -1
       set({ phase: 'checking', error: null }, t('업데이트를 확인하는 중…', 'Checking for updates…'))
     })
-    autoUpdater.on('update-available', (info) =>
+    autoUpdater.on('update-available', (info) => {
+      if (probing) {
+        // 받아둔 버전과 같으면(또는 아래면) 침묵 유지 — autoDownload가 pending 캐시를
+        // 재검증하고 update-downloaded를 다시 쏘지만 그 역시 아래에서 삼켜진다.
+        // 더 새 버전이 올라왔을 때만 일반 흐름으로 복귀해 새로 받는다.
+        if (state.version && compareVersionsDesc(info.version, state.version) >= 0) return
+        probing = false
+        state = { ...state, log: [] }
+        lastLoggedStep = -1
+      }
       set(
         { phase: 'available', version: info.version },
         t(`새 버전 v${info.version}을(를) 찾았어요 · 다운로드를 시작합니다`, `Found new version v${info.version} · starting download`)
       )
-    )
-    autoUpdater.on('update-not-available', () => set({ phase: 'none' }, t('이미 최신 버전이에요', 'Already up to date')))
+    })
+    autoUpdater.on('update-not-available', () => {
+      if (probing) {
+        probing = false // 받아둔 상태 그대로 — 카드·설치본 불변
+        return
+      }
+      set({ phase: 'none' }, t('이미 최신 버전이에요', 'Already up to date'))
+    })
     autoUpdater.on('download-progress', (p) => {
+      if (probing) return // 같은 버전 재검증(캐시 소실 시 재다운로드) — 침묵
       const percent = Math.max(0, Math.min(100, Math.round(p.percent)))
       // append a log line only every 5% so the log reads cleanly instead of flooding
       const step = Math.floor(percent / 5)
@@ -82,26 +106,35 @@ export function initAutoUpdater(send: (s: UpdateStatus) => void): void {
       if (line) lastLoggedStep = step
       set({ phase: 'downloading', percent }, line)
     })
-    autoUpdater.on('update-downloaded', (info) =>
+    autoUpdater.on('update-downloaded', (info) => {
+      if (probing) {
+        probing = false // 같은 버전 재확인 완료 — 이미 downloaded, 아무것도 안 바뀐다
+        return
+      }
       set(
         { phase: 'downloaded', version: info.version, percent: 100 },
         t('다운로드 완료 · 업데이트 버튼으로 적용할 수 있어요', 'Download complete · press Update to apply')
       )
-    )
-    autoUpdater.on('error', (err) =>
+    })
+    autoUpdater.on('error', (err) => {
+      if (probing) {
+        probing = false // 받아둔 설치본은 그대로 유효 — 조용히 다음 주기에 재시도
+        return
+      }
       set({ phase: 'error', error: err?.message ?? String(err) }, t('업데이트 중 오류가 발생했어요', 'Something went wrong while updating'))
-    )
+    })
   }
 
   checkForUpdates()
 
-  // 주기 재확인 — 단, 내려받는 중/받아둔 상태에선 쉰다. 같은 버전으로 phase가
-  // 다시 구르면(available→downloaded 전이) 닫아둔 카드가 주기마다 되뜨기 때문.
-  // 받아둔 버전은 카드의 업데이트 버튼으로 깔리고, 그보다 새 릴리즈는
-  // 재시작 직후의 launch 확인이 이어받는다. 오류/최신 상태에서는 계속 재시도.
+  // 주기 재확인 — 확인 중/내려받는 중에만 쉰다. 받아둔(downloaded) 상태는 조용한
+  // 재확인(probing)으로 계속 본다: 같은 버전이면 상태를 일절 건드리지 않아 '나중에'로
+  // 접은 카드가 되뜨지 않고, 그 사이 더 새 패치본이 올라왔으면 일반 흐름으로 복귀해
+  // 최신을 다시 받는다 — 업데이트 버튼이 낡은 버전을 설치하는 일이 없게.
   if (!recheckTimer) {
     recheckTimer = setInterval(() => {
-      if (state.phase === 'checking' || state.phase === 'downloading' || state.phase === 'downloaded') return
+      if (state.phase === 'checking' || state.phase === 'downloading') return
+      probing = state.phase === 'downloaded'
       checkForUpdates()
     }, RECHECK_MS)
   }

@@ -28,6 +28,95 @@ type LocalizedRelease = { ko: Release; en: Release }
 // 지난 1.x 노트들은 은퇴한 UpdateNotes와 함께 정리했다(이제 보여줄 경로가 없다).
 const MAX_VERSIONS = 5
 const RELEASES: Record<string, LocalizedRelease> = {
+  '2.3.3': {
+    ko: {
+      eyebrow: 'UPDATE',
+      lead: 'X를 눌러도 앱이 꺼지지 않습니다 — 트레이로 내려가 하던 일을 계속해요. 업데이트는 이제 항상 가장 마지막 패치본을 설치하고, 워크플로 알약이 대화 마지막 줄을 가리던 것도 고쳤습니다.',
+      notes: [
+        {
+          tag: '트레이',
+          name: '닫기는 이제 트레이로',
+          desc: (
+            <>
+              창의 <b>X</b>(또는 Alt+F4)는 이제 앱을 끄지 않고 <b>시스템 트레이로 최소화</b>
+              합니다 — 돌던 워크플로·백그라운드 셸·에이전트·추가 채팅이 그대로 이어져요. 트레이
+              아이콘을 <b>클릭</b>하면 창이 돌아오고, 진짜 종료는 아이콘 <b>우클릭 → 종료</b>
+              입니다. 처음 숨을 때 한 번, 계속 실행 중이라는 풍선 안내가 떠요.
+            </>
+          )
+        },
+        {
+          tag: '업데이트',
+          name: '항상 가장 마지막 패치본으로',
+          desc: (
+            <>
+              새 버전을 받아둔 채 앱을 켜 두는 사이 <b>더 새 패치본</b>이 올라오면, 이전엔
+              재시작 전까지 몰라서 <b>낡은 버전을 설치</b>했어요 — 이제 받아둔 상태에서도{' '}
+              <b>10분마다 조용히 재확인</b>해 더 새 버전이 보이면 자동으로 갈아 받습니다.
+              같은 버전 확인으로는 <b>나중에</b>로 접어둔 카드가 되뜨지 않아요.
+            </>
+          )
+        },
+        {
+          tag: '채팅',
+          name: '알약이 마지막 줄을 가리지 않아요',
+          desc: (
+            <>
+              워크플로·질문 알약이 하단에 떠 있는 동안 대화의 <b>마지막 줄이 그 뒤에 숨던</b>{' '}
+              문제 — 알약이 있는 동안 <b>본문 바닥 여백이 자동으로 늘어나</b>, 바닥에 붙어
+              읽어도 마지막 줄이 알약 위로 올라옵니다. 두 알약이 이층으로 쌓이면 여백도 한 층
+              더 올라가요.
+            </>
+          )
+        }
+      ]
+    },
+    en: {
+      eyebrow: 'UPDATE',
+      lead: 'Pressing X no longer quits the app — it minimizes to the system tray and keeps working. Updates now always install the very latest patch, and the workflow pill no longer covers the last line of the chat.',
+      notes: [
+        {
+          tag: 'Tray',
+          name: 'Close now goes to the tray',
+          desc: (
+            <>
+              The window&apos;s <b>X</b> (or Alt+F4) no longer quits the app — it{' '}
+              <b>minimizes to the system tray</b>, so running workflows, background shells,
+              agents, and extra chats carry on. <b>Click</b> the tray icon to bring the window
+              back; to really quit, <b>right-click the icon → Quit</b>. The first time it hides,
+              a one-time balloon notes it is still running.
+            </>
+          )
+        },
+        {
+          tag: 'Update',
+          name: 'Always the very latest patch',
+          desc: (
+            <>
+              If a <b>newer patch</b> was published while a downloaded update sat waiting, the
+              app used to <b>install the stale one</b> until a restart — it now{' '}
+              <b>quietly re-checks every 10 minutes</b> even in that state and swaps in the
+              newer download automatically. Same-version checks never re-open a card you
+              dismissed with <b>Later</b>.
+            </>
+          )
+        },
+        {
+          tag: 'Chat',
+          name: 'Pills no longer cover the last line',
+          desc: (
+            <>
+              While a workflow or question pill floated at the bottom, the chat&apos;s{' '}
+              <b>last line could hide behind it</b> — the thread&apos;s bottom padding now{' '}
+              <b>grows automatically</b> while a pill is docked, so the last line sits above it
+              even when pinned to the bottom. When both pills stack, the padding steps up one
+              more tier.
+            </>
+          )
+        }
+      ]
+    }
+  },
   '2.3.2': {
     ko: {
       eyebrow: 'FIX',
@@ -417,116 +506,6 @@ const RELEASES: Record<string, LocalizedRelease> = {
               <b>inherit numbers from another account</b> the main chat looked at last — fixed as
               well. When a panel run ends, every panel account on screen is <b>refetched</b> so
               the consumption you just made shows up right away.
-            </>
-          )
-        }
-      ]
-    }
-  },
-  '2.2.2': {
-    ko: {
-      eyebrow: 'UPDATE',
-      lead: '멀티 채팅 패널을 본채팅 크기의 카드로 크게 볼 수 있습니다 — 작은 글씨를 확대경 없이 읽고, 숫자 키로 패널을 크게 넘겨보세요. 작업 폴더엔 즐겨찾기와 참조 폴더가 생겨 여러 프로젝트를 함께 무는 작업이 쉬워졌어요.',
-      notes: [
-        {
-          tag: '멀티',
-          name: '패널 크게 보기',
-          desc: (
-            <>
-              패널 헤더 오른쪽의 <b>크게 보기</b> 버튼(또는 스레드에서 <b>→↑ 제스처</b>)을
-              누르면 그 패널이 <b>본채팅 크기의 카드</b>로 화면을 채웁니다 — 진행 중인 실행·
-              쓰던 초안 그대로요. <b>숫자 키(1~6)</b>로 카드 속 패널을 갈아끼우며 크게 확인하고,
-              <b>Esc</b>·베일 클릭·<b>↓→ 제스처</b>로 제자리. 카드 안 <b>Ctrl+휠</b> 글자
-              크기는 그리드와 따로 기억됩니다.
-            </>
-          )
-        },
-        {
-          tag: '멀티',
-          name: '실행 중에도 위로 스크롤',
-          desc: (
-            <>
-              에이전트가 답을 쓰는 동안 패널에서 <b>위로 올라갈 수 없던</b> 문제를 고쳤습니다 —
-              본채팅과 같은 규칙으로, 휠을 올리면 따라가기가 풀려 지난 내용을 읽을 수 있고
-              바닥에 닿거나 <b>맨 아래로</b> 버튼을 누르면 다시 따라갑니다.
-            </>
-          )
-        },
-        {
-          tag: '폴더',
-          name: '작업 폴더 즐겨찾기',
-          desc: (
-            <>
-              작업 폴더 팝오버의 폴더에 <b>별</b>을 달아 고정하세요 — 목록이{' '}
-              <b>즐겨찾기 / 최근</b> 섹션으로 나뉘고, 즐겨찾기는 최근에서 밀려나도 항상
-              남습니다. 본채팅·멀티 패널·추가 채팅이 같은 목록을 공유해요.
-            </>
-          )
-        },
-        {
-          tag: '폴더',
-          name: '참조 폴더 — 다른 폴더도 함께',
-          desc: (
-            <>
-              작업 폴더 외에 AI가 <b>함께 인식할 폴더</b>를 채팅마다 얹을 수 있습니다(최대 8개,
-              Claude Code의 <b>--add-dir</b>과 같은 기능). 팝오버에서 즐겨찾기·최근 폴더의{' '}
-              <b>+</b>를 누르거나 직접 골라 추가하면 폴더 칩에 <b>+N</b>이 붙고, 그 폴더의 코드
-              읽기·수정이 대화 리셋 없이 바로 열려요. Claude·Codex(GPT) 모두 지원합니다.
-            </>
-          )
-        }
-      ]
-    },
-    en: {
-      eyebrow: 'UPDATE',
-      lead: 'Multi-chat panels can now be viewed as a card the size of the main chat — read small text without a magnifier and flip through panels with the number keys. Working folders gain favorites and reference folders, making it easy to work across several projects at once.',
-      notes: [
-        {
-          tag: 'Multi',
-          name: 'Panel zoom view',
-          desc: (
-            <>
-              Press the <b>zoom</b> button on the right of a panel header (or the{' '}
-              <b>→↑ gesture</b> in the thread) and that panel fills the screen as a{' '}
-              <b>main-chat-sized card</b> — with its running work and draft intact. Swap the
-              panel in the card with the <b>number keys (1–6)</b>, and return with <b>Esc</b>, a
-              click on the veil, or the <b>↓→ gesture</b>. <b>Ctrl+wheel</b> text size inside the
-              card is remembered separately from the grid.
-            </>
-          )
-        },
-        {
-          tag: 'Multi',
-          name: 'Scroll up while it runs',
-          desc: (
-            <>
-              Fixed <b>not being able to scroll up</b> in a panel while the agent writes — same
-              rule as the main chat: wheel up releases follow mode so you can read back, and
-              touching the bottom or pressing <b>to bottom</b> re-engages it.
-            </>
-          )
-        },
-        {
-          tag: 'Folders',
-          name: 'Working-folder favorites',
-          desc: (
-            <>
-              Pin folders with a <b>star</b> in the working-folder popover — the list splits into{' '}
-              <b>Favorites / Recent</b>, and favorites stay even when pushed out of recent. Main
-              chat, multi panels, and extra chat windows share one list.
-            </>
-          )
-        },
-        {
-          tag: 'Folders',
-          name: 'Reference folders — bring other folders along',
-          desc: (
-            <>
-              Per chat, add folders the AI should <b>see alongside</b> the working folder (up to
-              8 — same as Claude Code&apos;s <b>--add-dir</b>). Press <b>+</b> on a
-              favorite/recent folder in the popover or pick one directly; a <b>+N</b> appears on
-              the folder chip and reading/editing code in that folder opens up without resetting
-              the conversation. Works with both Claude and Codex (GPT).
             </>
           )
         }

@@ -763,6 +763,16 @@ input,textarea{ font-family:inherit; }
 /* 둘 다 내려둔 경우 — 워크플로 알약이 질문 알약 위(140px)로 가므로 화살표는 한 층 더 */
 .win-body:has(> .q-mini):has(> .wf-mini) .chat-scroll .jump-bottom-wrap,
 .sw:has(> .q-mini):has(> .wf-mini) .jump-bottom-wrap{ bottom:110px; }
+/* 알약이 떠 있는 동안 대화 끝이 그 뒤에 숨지 않게 — 본문 바닥 여백(기본 30px)을 알약
+   위까지 늘려, 바닥에 붙어 읽을 때 마지막 줄이 알약 위로 올라온다. px를 --z로 나누는 건
+   .thread max-width와 같은 줌 보정 — 확대해도 "보이는 여백"이 일정하다. 펼침 카드
+   (.wf-card)도 조건에 두는 건 알약↔카드 토글 때 본문이 출렁이지 않게 하는 고정핀. */
+.win-body:has(> .q-mini, > .wf-mini, > .wf-card) .chat-scroll .thread,
+.sw:has(> .q-mini, > .wf-mini, > .wf-card) .thread{ padding-bottom:calc(76px / var(--z, 1)); }
+.ma-panel:has(> .wf-mini, > .wf-card) .thread{ padding-bottom:calc(60px / var(--z, 1)); }
+/* 둘 다 내려둔 경우 — 위층 워크플로 알약(140px) 기준으로 여백도 한 층 더 */
+.win-body:has(> .q-mini):has(> .wf-mini) .chat-scroll .thread,
+.sw:has(> .q-mini):has(> .wf-mini) .thread{ padding-bottom:calc(108px / var(--z, 1)); }
 .jump-bottom{ pointer-events:auto; display:grid; place-items:center; width:38px; height:38px; margin-top:-38px;
   border-radius:99px; background:rgba(28,28,28,.72); border:1px solid rgba(255,255,255,.10); color:var(--text-2);
   backdrop-filter:blur(32px) saturate(1.25); -webkit-backdrop-filter:blur(32px) saturate(1.25);

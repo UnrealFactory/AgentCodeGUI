@@ -1,4 +1,4 @@
-import { app, BrowserWindow, crashReporter, ipcMain, dialog, shell, session, screen, protocol, type WebContents } from 'electron'
+import { app, BrowserWindow, crashReporter, ipcMain, dialog, shell, session, screen, protocol, Tray, Menu, type WebContents } from 'electron'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import fs from 'node:fs'
@@ -193,6 +193,11 @@ function attachmentsDir(): string {
 
 let mainWindow: BrowserWindow | null = null
 let splashWindow: BrowserWindow | null = null
+// 시스템 트레이 — 메인 창의 X는 종료가 아니라 여기로 최소화된다(createTray 참조)
+let tray: Tray | null = null
+// 트레이로 처음 숨을 때 한 번만 "계속 실행 중" 풍선 안내 — X가 종료가 아니게 된 것을
+// 모르는 사용자가 "앱이 안 꺼진다"고 오해하지 않게. 실행마다 최초 1회.
+let trayBalloonShown = false
 
 // A folder passed via the "AgentCodeGUI로 열기" context menu at launch. Held until
 // the renderer asks for it (app:get-initial-dir), then cleared so it's applied once.
@@ -578,6 +583,54 @@ function focusSessionChat(id: string): void {
   if (sessionChats.has(id)) createSessionWindow(id)
 }
 
+// ── 시스템 트레이 — X = 트레이로 최소화 ─────────────────────────────────────
+// 백그라운드 상주(턴을 넘어 완주하는 워크플로·셸·에이전트)와 짝: 창을 닫아도 앱은
+// 트레이에 남아 하던 일을 계속 돈다. 아이콘 클릭(또는 메뉴 '열기')이 창을 되살리고,
+// 진짜 종료는 트레이 메뉴 '종료'뿐이다(앱 업데이트 적용의 quitAndInstall은 before-quit을
+// 거치므로 그대로 동작).
+function trayIconPath(): string {
+  // 패키지 빌드는 extraResources로 resources/icon.ico가 함께 깔린다 — dev는 build/ 원본
+  return app.isPackaged ? path.join(process.resourcesPath, 'icon.ico') : path.join(app.getAppPath(), 'build', 'icon.ico')
+}
+
+function showMainWindow(): void {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    createWindow()
+    return
+  }
+  if (!mainWindow.isVisible()) mainWindow.show()
+  if (mainWindow.isMinimized()) mainWindow.restore()
+  mainWindow.focus()
+}
+
+// 함수인 이유: 메뉴 라벨은 만들 때 언어가 박제된다 — UI 언어가 바뀌면 다시 조립해 교체
+function trayMenu(): Menu {
+  return Menu.buildFromTemplate([
+    { label: t('열기', 'Open'), click: showMainWindow },
+    { type: 'separator' },
+    {
+      label: t('종료', 'Quit'),
+      click: () => {
+        appQuitting = true
+        app.quit()
+      }
+    }
+  ])
+}
+
+function createTray(): void {
+  try {
+    tray = new Tray(trayIconPath())
+    tray.setToolTip('AgentCodeGUI')
+    tray.setContextMenu(trayMenu())
+    tray.on('click', showMainWindow)
+    tray.on('double-click', showMainWindow)
+  } catch {
+    // 트레이가 없으면 X는 종전대로 진짜 닫기 — 숨긴 창을 되찾을 길이 없기 때문
+    tray = null
+  }
+}
+
 function createWindow(): void {
   const state = loadWindowState()
   const positioned = isOnScreen(state)
@@ -624,7 +677,30 @@ function createWindow(): void {
   })
   mainWindow.on('resize', scheduleSave)
   mainWindow.on('move', scheduleSave)
-  mainWindow.on('close', saveWindowState)
+  // X(·Alt+F4) = 종료가 아니라 트레이로 최소화 — 창만 숨기고 앱(진행 중 턴·워크플로·
+  // 셸·추가 채팅)은 그대로 산다. 진짜 종료는 트레이 메뉴 '종료'와 업데이트 적용
+  // (quitAndInstall → before-quit)뿐. 트레이 생성이 실패했다면 종전대로 진짜 닫기.
+  mainWindow.on('close', (e) => {
+    saveWindowState()
+    if (appQuitting || !tray) return
+    e.preventDefault()
+    mainWindow?.hide()
+    if (!trayBalloonShown && process.platform === 'win32') {
+      trayBalloonShown = true
+      try {
+        tray.displayBalloon({
+          icon: trayIconPath(),
+          title: 'AgentCodeGUI',
+          content: t(
+            '앱이 트레이에서 계속 실행돼요 · 아이콘을 누르면 다시 열려요',
+            'Still running in the tray · click the icon to reopen'
+          )
+        })
+      } catch {
+        /* 풍선은 안내일 뿐 — 실패해도 무해 */
+      }
+    }
+  })
   // 숨은 추가 채팅 창(닫기 정리 대기 또는 백그라운드 턴 실행 중)은 메인 창이 죽으면 함께
   // 정리해 보이지 않는 창이 window-all-closed(앱 종료)를 막는 일을 없앤다. 대화는 마지막
   // 저장본으로 디스크에 남는다. 보이는(또는 최소화된) 세션 창은 지금처럼 독립 생존하고,
@@ -651,9 +727,9 @@ function createWindow(): void {
     const allowed = (dev && url.startsWith(dev)) || url.startsWith('file:')
     if (!allowed) event.preventDefault()
   })
-  // Ctrl/⌘+W는 Electron 기본 메뉴의 '창 닫기' 단축키라, 누르면 앱이 그대로 꺼진다 —
-  // 삼켜서 앱 종료는 막되(before-input-event는 메뉴 단축키까지 차단), 렌더러엔 알려
-  // 열린 코드 뷰어만 닫게 한다. (앱 종료는 창 닫기 버튼/Alt+F4로만)
+  // Ctrl/⌘+W는 Electron 기본 메뉴의 '창 닫기' 단축키라, 누르면 창이 그대로 닫힌다 —
+  // 삼켜서 창 닫힘은 막되(before-input-event는 메뉴 단축키까지 차단), 렌더러엔 알려
+  // 열린 코드 뷰어만 닫게 한다. (창 닫기는 X/Alt+F4 → 트레이, 종료는 트레이 메뉴)
   mainWindow.webContents.on('before-input-event', (event, input) => {
     if (input.type === 'keyDown' && (input.control || input.meta) && !input.alt && input.key.toLowerCase() === 'w') {
       event.preventDefault()
@@ -1050,6 +1126,7 @@ function registerIpc(): void {
     if (lang !== lastLang) {
       lastLang = lang
       setUiLang(lang)
+      tray?.setContextMenu(trayMenu()) // 메뉴 라벨은 조립 시점 언어로 박제 — 새로 조립해 교체
       for (const w of BrowserWindow.getAllWindows()) {
         if (!w.isDestroyed()) w.webContents.send(IPC.uiLangChanged, lang)
       }
@@ -1478,6 +1555,7 @@ if (!gotSingleInstanceLock) {
 } else {
   app.on('second-instance', (_e, argv) => {
     if (!mainWindow) return
+    if (!mainWindow.isVisible()) mainWindow.show() // 트레이로 숨어 있던 창도 되살린다
     if (mainWindow.isMinimized()) mainWindow.restore()
     mainWindow.focus()
     const dir = openedDirFromArgv(argv)
@@ -1574,6 +1652,7 @@ function bootstrap(): void {
     })
   }
   createWindow()
+  createTray()
   // ── 엔진 CLI 자동 업데이트 (설정 → Engine → 공통 토글, 기본 켬) ─────────────
   // 부팅 게이트: "새 버전이 있어요" 물어보는 창 대신, 부팅 직후 — 아직 어떤 세션도
   // 돌기 전이라 옛 버전 삭제가 실행 중 CLI(또는 상시 codex app-server)를 물 수 없는
@@ -1714,7 +1793,9 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', () => {
-  appQuitting = true // 세션 창 닫기 가로채기 해제 — 저장 후 정리 흐름이 quit을 막지 않게
+  appQuitting = true // 세션 창·메인 창 닫기 가로채기 해제 — 트레이 최소화가 quit을 막지 않게
+  tray?.destroy() // Windows는 죽은 프로세스의 트레이 아이콘이 호버 전까지 남는다 — 즉시 제거
+  tray = null
   lspManager.disposeAll()
   disposeEngines()
 })
