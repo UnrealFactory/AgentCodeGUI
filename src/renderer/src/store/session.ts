@@ -36,7 +36,9 @@ export type ThreadItem =
       failed?: boolean
     }
   // 시스템 경고를 스레드에 인라인으로 보여주는 줄 (예: 정책 거부 → 모델 자동 전환, API 과금 안내)
-  | { kind: 'notice'; id: string; text: string; time: string }
+  // silent: '이번 턴이 응답 없이 끝났어요' 무음 턴 안내 표식 — 같은 실행이 이어서 내용을
+  // 내면(밀린 통지 소화 턴 뒤 진짜 턴) 오탐이었던 것이므로 stripSilentTail이 걷어낸다
+  | { kind: 'notice'; id: string; text: string; time: string; silent?: boolean }
   // 턴 마무리 줄 (PoC .worked) — 'N초 동안 작업함'. result의 durationMs로 답변 앞에 끼운다
   | { kind: 'worked'; id: string; ms: number }
   // 중단 마커 — Esc/중지로 턴을 끊은 자리 (클로드 코드의 'Interrupted' 문법).
@@ -280,6 +282,28 @@ export function liveMsgIndex(list: ThreadItem[]): number {
 function capThread(list: ThreadItem[]): ThreadItem[] {
   return list.length > MAX_THREAD_ITEMS ? list.slice(list.length - MAX_THREAD_ITEMS) : list
 }
+// 무음 턴 안내 오탐 회수 — '이번 턴이 응답 없이 끝났어요'(silent notice)를 남긴 뒤 같은
+// 실행이 이어서 내용을 내면(밀린 통지 소화 미니턴의 조기 종결 뒤 진짜 턴이 온 경우) 그
+// 안내는 거짓이었던 것. 꼬리의 silent notice(와 함께 붙은 '작업함' 줄)만 걷어낸다 —
+// silent가 없으면 원본 배열 그대로 반환(불필요한 리렌더 방지).
+function stripSilentTail(list: ThreadItem[]): ThreadItem[] {
+  let end = list.length
+  let sawSilent = false
+  while (end > 0) {
+    const m = list[end - 1]
+    if (m.kind === 'worked') {
+      end--
+      continue
+    }
+    if (m.kind === 'notice' && m.silent) {
+      end--
+      sawSilent = true
+      continue
+    }
+    break
+  }
+  return sawSilent ? list.slice(0, end) : list
+}
 function capPush<T>(list: T[], item: T, max: number): T[] {
   return list.length >= max ? [...list.slice(-(max - 1)), item] : [...list, item]
 }
@@ -498,6 +522,9 @@ export function reducer(state: SessionState, action: Action): SessionState {
       // analyzing = 모든 실행의 첫 이벤트 (엔진 계약) — 이 실행을 현재 실행으로 채택
       if (e.status === 'analyzing') return { ...state, status: 'analyzing', curRunId: e.runId, interrupted: false }
       if (staleRun(e.runId)) return state
+      // 같은 실행의 재점등(done→working: 무음 오판 뒤 진짜 턴 재개) — 방금 붙인
+      // '응답 없이 끝났어요' 안내는 오탐이었으므로 걷어낸다
+      if (e.status === 'working') return { ...state, status: e.status, interrupted: false, messages: stripSilentTail(state.messages) }
       return { ...state, status: e.status, interrupted: false }
 
     case 'session':
@@ -524,7 +551,8 @@ export function reducer(state: SessionState, action: Action): SessionState {
         messages[messages.length - 1] = { ...last, text: last.text + e.delta }
         return { ...state, thinkingText: null, streaming: true, openGroupId: null, messages }
       }
-      const without = state.messages.filter((m) => m.id !== THINKING_ID)
+      // 새 말풍선을 여는 경로 — 직전의 무음 턴 안내(오탐)가 꼬리에 남아 있으면 걷어낸다
+      const without = stripSilentTail(state.messages.filter((m) => m.id !== THINKING_ID))
       const exists = without.some((m) => m.id === e.messageId)
       const messages = exists
         ? without.map((m) => (m.id === e.messageId && m.kind === 'msg' ? { ...m, text: m.text + e.delta } : m))
@@ -536,7 +564,7 @@ export function reducer(state: SessionState, action: Action): SessionState {
       // finalize: if the message was streamed, replace its text with the
       // authoritative final text; otherwise add it fresh.
       if (state.interrupted) return state // 중단 직후의 늦은 마무리 프레임도 동일하게 버린다 — 부분 답변을 그대로 둔다
-      const without = state.messages.filter((m) => m.id !== THINKING_ID)
+      const without = stripSilentTail(state.messages.filter((m) => m.id !== THINKING_ID))
       const exists = without.some((m) => m.id === e.messageId)
       if (exists) {
         return {
@@ -902,7 +930,9 @@ export function reducer(state: SessionState, action: Action): SessionState {
             '이번 턴이 응답 없이 끝났어요 — 직접 중지한 게 아니라면 메시지를 다시 보내 주세요.',
             'This turn ended without a reply — if you did not stop it yourself, try sending the message again.'
           ),
-          time: nowTime()
+          time: nowTime(),
+          // 오탐 회수 표식 — 같은 실행이 이어서 내용을 내면 stripSilentTail이 걷어낸다
+          silent: true
         })
       }
       // 턴 마무리 줄(PoC .worked) — 'N초 동안 작업함'. 답변 앞은 "읽기 전에 걸리적"

@@ -28,6 +28,122 @@ type LocalizedRelease = { ko: Release; en: Release }
 // 지난 1.x 노트들은 은퇴한 UpdateNotes와 함께 정리했다(이제 보여줄 경로가 없다).
 const MAX_VERSIONS = 5
 const RELEASES: Record<string, LocalizedRelease> = {
+  '2.3.2': {
+    ko: {
+      eyebrow: 'FIX',
+      lead: '백그라운드로 돌던 워크플로·에이전트가 도중에 소리 없이 끊기던 심각한 버그를 고쳤습니다 — 유휴 엔진 정리 안전망이 일하는 중인 엔진을 잘못 회수하던 게 원인이에요. 답이 오는데도 "응답 없이 끝났어요"가 뜨던 오탐도 함께 잡았습니다.',
+      notes: [
+        {
+          tag: '상주',
+          name: '일하는 엔진은 회수하지 않아요',
+          desc: (
+            <>
+              안 쓰는 엔진을 정리하는 안전망(10/30분)이 내부 플래그 꼬임으로{' '}
+              <b>워크플로가 한창 도는 상주 엔진</b>을 종료시킬 수 있었습니다 — 몇 시간짜리 검증
+              루프가 새벽에 통째로 끊긴 실제 사고를 역추적해 찾았어요. 이제 타이머가{' '}
+              <b>끄기 직전에 현재 상태를 재검증</b>하고, 살아있는 셸·워크플로·에이전트가
+              하나라도 있으면 닫지 않습니다. 에이전트는 <b>전사 파일이 최근에 쓰였는지</b>까지
+              확인해 조용히 일하는 중이면 살려 둬요.
+            </>
+          )
+        },
+        {
+          tag: '상주',
+          name: '에이전트 완료 보고가 잘리지 않아요',
+          desc: (
+            <>
+              백그라운드 에이전트가 끝나는 <b>그 순간</b> 엔진을 정리해 버려, 결과를 정리해 주는{' '}
+              <b>보고 턴이 잘리고</b> 후속 진행이 멈추던 문제 — 워크플로가 받던 유예를
+              에이전트·셸도 똑같이 받아 <b>보고 턴까지 기다렸다</b> 정리합니다. 백그라운드로
+              시킨 일이 끝나면 결과 정리가 대화에 제대로 도착해요.
+            </>
+          )
+        },
+        {
+          tag: '오탐',
+          name: '"응답 없이 끝났어요" 오탐 수정',
+          desc: (
+            <>
+              밀린 완료 통지를 소화하는 <b>무음 턴</b>을 진짜 답변의 끝으로 오판해, 답이
+              스트리밍되기 직전에 안내가 뜨던 버그 — 판정을 <b>프레임이 흐르는 동안 미루고</b>,
+              다음 턴이 이어지는 게 보이면 아예 띄우지 않으며, 그래도 떴다면 답변이 오는 순간{' '}
+              <b>자동으로 걷어냅니다</b>. 진짜 무음 턴의 안내는 그대로예요.
+            </>
+          )
+        },
+        {
+          tag: '안내',
+          name: '백그라운드 작업이 정리되면 이유를 남겨요',
+          desc: (
+            <>
+              상주 중 <b>모델·모드·계정</b> 같은 실행 설정을 바꿔 보내면 백그라운드 작업을
+              이어받을 수 없어 정리되는데, 지금까진 <b>아무 말 없이 사라졌습니다</b> — 이제 왜
+              정리됐는지 스레드에 한 줄 안내가 남아요.
+            </>
+          )
+        }
+      ]
+    },
+    en: {
+      eyebrow: 'FIX',
+      lead: 'Fixed a serious bug where background workflows and agents were silently cut down mid-run — the idle-engine reclaimer was mistakenly collecting engines that were still working. Also fixed the false "ended without a reply" notice that appeared even as the answer was on its way.',
+      notes: [
+        {
+          tag: 'Resident',
+          name: 'Working engines are never reclaimed',
+          desc: (
+            <>
+              The safety net that cleans up unused engines (10/30 min) could, through a stuck
+              internal flag, shut down a resident engine <b>while a workflow was still
+              running</b> — traced from a real incident where an hours-long verification loop
+              was cut overnight. Timers now <b>re-validate live state right before closing</b>{' '}
+              and never close while any shell, workflow, or agent is alive. For agents we even
+              check <b>whether their transcript files were written recently</b>, so quiet
+              workers stay alive.
+            </>
+          )
+        },
+        {
+          tag: 'Resident',
+          name: 'Agent wrap-up replies survive',
+          desc: (
+            <>
+              Finishing a background agent used to tear the engine down <b>at that very
+              moment</b>, cutting off the <b>wrap-up turn</b> that reports its results and
+              continues the work — agents and shells now get the same grace workflows do: the
+              engine <b>waits for the report turn</b> before cleaning up. When background work
+              finishes, the wrap-up now lands in the chat properly.
+            </>
+          )
+        },
+        {
+          tag: 'False alarm',
+          name: 'False "ended without a reply" fixed',
+          desc: (
+            <>
+              A <b>silent turn</b> digesting backlogged completion notices was mistaken for the
+              end of the real answer, so the notice appeared right before the reply streamed in
+              — the verdict is now <b>deferred while frames keep flowing</b>, skipped entirely
+              when the next turn is seen coming, and if it still slipped through, it is{' '}
+              <b>retracted automatically</b> the moment the answer arrives. Genuine silent-turn
+              notices stay.
+            </>
+          )
+        },
+        {
+          tag: 'Notice',
+          name: 'Cleaned-up background work now says why',
+          desc: (
+            <>
+              Sending with changed run settings (<b>model, mode, account</b>) while resident
+              means background tasks cannot be carried over and get cleaned up — until now they{' '}
+              <b>vanished without a word</b>. A one-line notice in the thread now explains why.
+            </>
+          )
+        }
+      ]
+    }
+  },
   '2.3.1': {
     ko: {
       eyebrow: 'UPDATE',
@@ -417,250 +533,6 @@ const RELEASES: Record<string, LocalizedRelease> = {
       ]
     }
   },
-  '2.2.1': {
-    ko: {
-      eyebrow: 'UPDATE',
-      lead: '작업 폴더에 .git이 없어도 이제 하위 폴더의 저장소를 알아서 찾아냅니다 — 언리얼 프로젝트처럼 플러그인 폴더에만 Git이 있는 구성도 스트립·카드로 그대로 이어져요. 자동 숨김 사이드바에서 탐색기 헤더 버튼이 안 눌리던 것도 고쳤습니다.',
-      notes: [
-        {
-          tag: 'Git',
-          name: '하위 저장소도 알아서 찾아요',
-          desc: (
-            <>
-              작업 폴더 자체엔 <b>.git이 없고</b> 하위 폴더(예: 언리얼 프로젝트의 플러그인)에만
-              저장소가 있는 구성 — 이제 하위 <b>3단계까지 가볍게 훑어</b> 저장소를 찾아 탐색기
-              하단에 <b>저장소별 한 줄씩</b> 보여줍니다. 하위 저장소는 경로 라벨로 구분되고,
-              여러 곳이면 최대 3줄 + <b>외 N곳</b>으로 접혀요. 줄을 누르면 카드가 <b>바로 그
-              저장소</b>로 열립니다.
-            </>
-          )
-        },
-        {
-          tag: 'Git',
-          name: 'Git 카드에서 저장소 전환',
-          desc: (
-            <>
-              저장소가 2곳 이상이면 카드 왼쪽에 <b>저장소 목록</b>이 생깁니다 — 클릭 한 번으로
-              변경·히스토리·브랜치·원격 동작이 <b>통째로 그 저장소 기준</b>으로 바뀌어요.
-              저장소마다 <b>커밋 대기 수</b>가 항상 보여서, 다른 저장소에 남은 변경도 카드 안에서
-              바로 눈에 들어옵니다. 1곳뿐인 프로젝트에선 지금까지와 똑같아요.
-            </>
-          )
-        },
-        {
-          tag: 'Git',
-          name: '우클릭 “이 폴더 Git 추적”',
-          desc: (
-            <>
-              자동 발견(3단계) 너머 깊은 곳의 저장소는 탐색기에서 그 폴더를 <b>우클릭</b>해 직접
-              추가하세요 — <b>.git이 있는 폴더에서만</b> 항목이 나타나고, 프로젝트별로 기억됩니다.
-              추적 중인 폴더에선 같은 자리에서 <b>해제</b>할 수 있어요.
-            </>
-          )
-        },
-        {
-          tag: '탐색기',
-          name: '헤더 버튼이 안 눌리던 것 수정',
-          desc: (
-            <>
-              사이드바 <b>자동 숨김</b> 상태에서 탐색기 헤더의 <b>새로고침·숨긴 항목 보기</b>{' '}
-              버튼에 호버·클릭이 안 먹고, 버튼으로 가는 길에 사이드바가 <b>먼저 접혀버리던</b>{' '}
-              문제를 고쳤습니다 — 뒤에 깔린 본문의 창 끌기 띠가 버튼 위를 덮는 게 원인이었고,
-              사이드바가 펼쳐진 동안엔 그 띠를 꺼서 해결했어요.
-            </>
-          )
-        },
-        {
-          tag: '모델',
-          name: 'Opus 5',
-          desc: (
-            <>
-              Anthropic의 새 모델 출시에 맞춰 모델 선택지가 <b>Opus 4.8 → Opus 5</b>로
-              올라갑니다. 별칭으로 실행되는 구조라 기존 채팅도 자동으로 최신 Opus를 써요.
-            </>
-          )
-        }
-      ]
-    },
-    en: {
-      eyebrow: 'UPDATE',
-      lead: 'Even without .git in the working folder, repositories in subfolders are now discovered automatically — setups like Unreal projects with Git only inside a plugin folder carry straight into the strip and card. Also fixed explorer header buttons being unclickable with the auto-hide sidebar.',
-      notes: [
-        {
-          tag: 'Git',
-          name: 'Sub-repositories found automatically',
-          desc: (
-            <>
-              For setups where the working folder itself has <b>no .git</b> and only subfolders
-              do (e.g. an Unreal project&apos;s plugins) — we now <b>sweep up to 3 levels
-              down</b>, find the repositories, and show <b>one line per repository</b> at the
-              bottom of the explorer. Sub-repos carry a path label; with many, they fold to 3
-              lines + <b>N more</b>. Click a line and the card opens <b>right on that
-              repository</b>.
-            </>
-          )
-        },
-        {
-          tag: 'Git',
-          name: 'Switch repositories in the Git card',
-          desc: (
-            <>
-              With 2+ repositories, a <b>repository list</b> appears on the card&apos;s left —
-              one click and changes, history, branches, and remote actions switch{' '}
-              <b>wholesale to that repository</b>. Each repo always shows its{' '}
-              <b>pending-commit count</b>, so changes left in other repos are visible right in
-              the card. Single-repo projects look exactly as before.
-            </>
-          )
-        },
-        {
-          tag: 'Git',
-          name: 'Right-click “Track this folder in Git”',
-          desc: (
-            <>
-              For repositories deeper than auto-discovery (3 levels), <b>right-click</b> that
-              folder in the explorer to add it yourself — the item appears <b>only on folders
-              with .git</b> and is remembered per project. On tracked folders the same spot
-              offers <b>Untrack</b>.
-            </>
-          )
-        },
-        {
-          tag: 'Explorer',
-          name: 'Header buttons not clickable — fixed',
-          desc: (
-            <>
-              With sidebar <b>auto-hide</b> on, the explorer header&apos;s{' '}
-              <b>refresh / show-hidden</b> buttons ignored hover and clicks, and the sidebar
-              would <b>fold on the way</b> to them — the window-drag strip behind the content was
-              covering the buttons. The strip is now off while the sidebar is out.
-            </>
-          )
-        },
-        {
-          tag: 'Model',
-          name: 'Opus 5',
-          desc: (
-            <>
-              Following Anthropic&apos;s new model release, the model choices move from{' '}
-              <b>Opus 4.8 to Opus 5</b>. Runs go through an alias, so existing chats pick up the
-              newest Opus automatically.
-            </>
-          )
-        }
-      ]
-    }
-  },
-  '2.2.0': {
-    ko: {
-      eyebrow: 'UPDATE',
-      lead: '이제 다른 모니터를 보고 있어도 AI가 끝나면 압니다 — 마우스가 있는 화면에 작은 알림 카드가 뜨고, 클릭하면 그 채팅 앞으로 바로 갑니다. 탐색기에는 Git 카드가 생겨 커밋부터 push까지 앱 안에서 끝나요.',
-      notes: [
-        {
-          tag: '알림',
-          name: '눈 돌린 사이 끝나면, 보고 있는 화면으로',
-          desc: (
-            <>
-              다른 모니터에서 일하거나 창을 내려둔 사이 <b>답변이 도착</b>하거나 AI가{' '}
-              <b>승인·질문으로 기다리기 시작</b>하면, <b>마우스가 있는 모니터</b> 우하단에 작은
-              알림 카드가 뜹니다. 포커스를 뺏지 않고 조용히 떠 있고, 시간이 지나도 혼자
-              사라지지 않아요 — 앱을 다시 보는 순간에만 스스로 물러납니다. 여러 채팅의 소식이
-              겹치면 <b>한 장에 모아</b> 보여줘요.
-            </>
-          )
-        },
-        {
-          tag: '알림',
-          name: '클릭 한 번이면 그 채팅 앞으로',
-          desc: (
-            <>
-              알림을 <b>클릭하면</b> 앱 창이 있던 자리 그대로 앞으로 나오며 <b>그 채팅으로 바로
-              이동</b>합니다 — 일반·멀티·추가 채팅 창 모두요. 모아 보기에선 줄마다 제 채팅으로
-              갑니다. 필요 없으면 설정 › Display › 알림에서 끌 수 있어요(기본 켬).
-            </>
-          )
-        },
-        {
-          tag: 'Git',
-          name: '탐색기에 Git 카드',
-          desc: (
-            <>
-              탐색기 하단의 <b>상태 스트립</b>(브랜치·변경 수)을 누르면 <b>Git 카드</b>가
-              열립니다 — 변경 파일을 <b>체크해 골라 커밋</b>하고, 히스토리를 훑고,{' '}
-              <b>브랜치 전환·생성</b>과 push/pull까지 앱 안에서 끝나요. 파일을 누르면 그
-              변경분이 코드 뷰어로 열립니다. 커밋 메시지는 골라둔 변경만 보고{' '}
-              <b>AI가 초안</b>해 줍니다.
-            </>
-          )
-        },
-        {
-          tag: '사이드바',
-          name: '옆 모니터로 나가도 얌전히 접혀요',
-          desc: (
-            <>
-              자동 숨김이 켜진 채 마우스가 <b>창 밖(옆 모니터)</b>으로 나가면, 펼쳐진 사이드바가
-              접히지 않고 얼어붙던 것을 고쳤습니다 — 듀얼 모니터에서 실제로 겪은 보고예요.
-            </>
-          )
-        }
-      ]
-    },
-    en: {
-      eyebrow: 'UPDATE',
-      lead: 'You now know when the AI finishes even while watching another monitor — a small toast appears on the screen your mouse is on, and one click takes you straight to that chat. The explorer gains a Git card: commit through push without leaving the app.',
-      notes: [
-        {
-          tag: 'Alerts',
-          name: 'Done while you looked away? It finds your screen',
-          desc: (
-            <>
-              While you work on another monitor or keep the window down, when a{' '}
-              <b>reply arrives</b> or the AI <b>starts waiting on an approval or question</b>, a
-              small toast appears at the bottom-right of <b>the monitor your mouse is on</b>. It
-              doesn&apos;t steal focus and won&apos;t vanish on a timer — it steps away only the
-              moment you look at the app again. News from several chats <b>stacks into one
-              card</b>.
-            </>
-          )
-        },
-        {
-          tag: 'Alerts',
-          name: 'One click, straight to that chat',
-          desc: (
-            <>
-              <b>Click</b> the toast and the app window comes forward right where it was,{' '}
-              <b>jumping to that chat</b> — regular, multi, and extra chat windows alike. In the
-              stacked view each line goes to its own chat. Turn it off in Settings › Display ›
-              Notifications if you don&apos;t need it (on by default).
-            </>
-          )
-        },
-        {
-          tag: 'Git',
-          name: 'A Git card in the explorer',
-          desc: (
-            <>
-              Press the <b>status strip</b> (branch · change count) at the bottom of the explorer
-              and the <b>Git card</b> opens — <b>check files to commit selectively</b>, skim
-              history, <b>switch/create branches</b>, and push/pull without leaving the app.
-              Click a file and its diff opens in the code viewer. Commit messages get an{' '}
-              <b>AI draft</b> based only on the changes you picked.
-            </>
-          )
-        },
-        {
-          tag: 'Sidebar',
-          name: 'Folds politely when you leave the window',
-          desc: (
-            <>
-              Fixed the expanded sidebar freezing open when the mouse left the window{' '}
-              <b>(to a side monitor)</b> with auto-hide on — a report from real dual-monitor use.
-            </>
-          )
-        }
-      ]
-    }
-  }
 }
 
 // 카드가 보여줄 버전 목록 — 최신부터, 최대 MAX_VERSIONS개 (가독성 캡)
