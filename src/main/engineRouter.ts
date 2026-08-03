@@ -45,6 +45,12 @@ export class EngineRouter {
     await Promise.all([this.claude.cancel(), this.codex?.cancel()])
   }
 
+  /** Esc/중지의 소프트 중단 — 클로드는 턴만 끊고 CLI·백그라운드 상주를 지킨다.
+   *  Codex는 상주 주입 모델이 아니라 기존 cancel 그대로(동작 변화 없음). */
+  async interruptTurn(): Promise<void> {
+    await Promise.all([this.claude.interruptTurn(), this.codex?.cancel()])
+  }
+
   respondPermission(res: PermissionResponse): void {
     this.claude.respondPermission(res)
     this.codex?.respondPermission(res)

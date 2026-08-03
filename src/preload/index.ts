@@ -55,6 +55,7 @@ function subscribe<T>(channel: string, cb: (payload: T) => void): () => void {
 const api: WindowApi = {
   run: (req: RunRequest) => ipcRenderer.invoke(IPC.runStart, req),
   cancel: () => ipcRenderer.invoke(IPC.runCancel),
+  interrupt: () => ipcRenderer.invoke(IPC.runInterrupt),
   respondPermission: (res: PermissionResponse) => ipcRenderer.invoke(IPC.permissionRespond, res),
   respondQuestion: (res: QuestionResponse) => ipcRenderer.invoke(IPC.questionRespond, res),
   bgTask: (req: BgTaskRequest) => ipcRenderer.invoke(IPC.bgTask, req),
@@ -223,6 +224,7 @@ const api: WindowApi = {
   session: {
     run: (req: RunRequest) => ipcRenderer.invoke(IPC.sessionRun, req),
     cancel: () => ipcRenderer.invoke(IPC.sessionCancel),
+    interrupt: () => ipcRenderer.invoke(IPC.sessionInterrupt),
     respondPermission: (res: PermissionResponse) => ipcRenderer.invoke(IPC.sessionPermissionRespond, res),
     respondQuestion: (res: QuestionResponse) => ipcRenderer.invoke(IPC.sessionQuestionRespond, res),
     bgTask: (req: BgTaskRequest) => ipcRenderer.invoke(IPC.sessionBgTask, req),
@@ -242,6 +244,7 @@ const api: WindowApi = {
   multi: {
     run: (req: MultiRunRequest) => ipcRenderer.invoke(IPC.maRun, req),
     cancel: (panelId: string) => ipcRenderer.invoke(IPC.maCancel, panelId),
+    interrupt: (panelId: string) => ipcRenderer.invoke(IPC.maInterrupt, panelId),
     respondPermission: (res: MultiPermissionResponse) => ipcRenderer.invoke(IPC.maPermissionRespond, res),
     respondQuestion: (res: MultiQuestionResponse) => ipcRenderer.invoke(IPC.maQuestionRespond, res),
     bgTask: (panelId: string, req: BgTaskRequest) => ipcRenderer.invoke(IPC.maBgTask, panelId, req),

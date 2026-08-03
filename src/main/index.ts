@@ -957,6 +957,10 @@ function registerIpc(): void {
   ipcMain.handle(IPC.runCancel, async () => {
     await engine.cancel()
   })
+  // Esc/중지의 소프트 중단 — 턴만 끊고 CLI·백그라운드는 상주 유지 (cancel은 갈아엎는 경로 전용)
+  ipcMain.handle(IPC.runInterrupt, async () => {
+    await engine.interruptTurn()
+  })
   ipcMain.handle(IPC.permissionRespond, async (_e, res: PermissionResponse) => engine.respondPermission(res))
   ipcMain.handle(IPC.questionRespond, async (_e, res: QuestionResponse) => engine.respondQuestion(res))
   ipcMain.handle(IPC.bgTask, async (_e, req: BgTaskRequest) => engine.bgTask(req))
@@ -980,6 +984,9 @@ function registerIpc(): void {
   ipcMain.handle(IPC.sessionRun, async (_e, req: RunRequest) => sessionEngineFor(_e.sender).run(req))
   ipcMain.handle(IPC.sessionCancel, async (_e) => {
     await sessionEngines.get(_e.sender.id)?.cancel()
+  })
+  ipcMain.handle(IPC.sessionInterrupt, async (_e) => {
+    await sessionEngines.get(_e.sender.id)?.interruptTurn()
   })
   ipcMain.handle(IPC.sessionPermissionRespond, async (_e, res: PermissionResponse) =>
     sessionEngines.get(_e.sender.id)?.respondPermission(res)
@@ -1052,6 +1059,9 @@ function registerIpc(): void {
   ipcMain.handle(IPC.maRun, async (_e, req: MultiRunRequest) => maEngine(req.panelId).run(req))
   ipcMain.handle(IPC.maCancel, async (_e, panelId: string) => {
     await maEngines.get(panelId)?.cancel()
+  })
+  ipcMain.handle(IPC.maInterrupt, async (_e, panelId: string) => {
+    await maEngines.get(panelId)?.interruptTurn()
   })
   ipcMain.handle(IPC.maPermissionRespond, async (_e, res: MultiPermissionResponse) =>
     maEngines.get(res.panelId)?.respondPermission(res)

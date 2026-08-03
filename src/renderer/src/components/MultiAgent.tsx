@@ -1282,11 +1282,18 @@ function ActiveSession({
 
   const stopPanel = useEvent((slot: number) => {
     // 취소 = 중단 — 턴의 흔적은 패널 스레드에 그대로 남기고 '중단함' 마커만 붙인다
-    // (본채팅과 동일). 상주 워크플로만 도는 경우엔 완결된 턴이라 마커 없이 끊는다.
+    // (본채팅과 동일). 소프트 중단 — 턴만 끊고 그 패널 CLI·백그라운드는 상주 유지
+    // (cancel은 고아 통지 → 상주 꼬임 루프의 진입점 — 본채팅 cancelRun과 같은 이유).
+    // 상주 워크플로만 도는 경우엔 완결된 턴이라 마커 없이 워크플로만 그레이스풀 중지.
     const sess = sessions[slot]
-    if (sess.busy) sess.interruptTurn()
+    if (sess.busy) {
+      sess.interruptTurn()
+      window.api.multi?.interrupt?.(chan(sessionId, slot)).catch(() => {})
+    } else {
+      for (const w of sess.state.workflows)
+        if (w.status === 'running') onPanelBgTask(slot, { action: 'stop', id: w.id })
+    }
     // stopping the run also abandons anything queued behind it (mirrors single mode)
-    window.api.multi?.cancel(chan(sessionId, slot)).catch(() => {})
     setMetas((prev) => prev.map((m, i) => (i === slot && m.queue.length ? { ...m, queue: [] } : m)))
   })
   const onPermission = useEvent((slot: number, behavior: 'allow' | 'allow_always' | 'deny') => {

@@ -2,7 +2,7 @@ import path from 'node:path'
 import os from 'node:os'
 import fs from 'node:fs'
 import { app } from 'electron'
-import { loadActiveQuery } from '../engine/versions'
+import { loadActiveQuery, APP_HOME } from '../engine/versions'
 import { disabledSkillOverrides } from '../skills'
 import { deniedMcpServers } from '../mcp'
 import { getApiKey, addSpend, envKeyChoice, setEnvKeyChoice } from '../apiConfig'
@@ -236,6 +236,19 @@ let blockCounter = 0
 const LAUNCH_TAG = Math.random().toString(36).slice(2, 8)
 const nextBlockId = (): string => `m${LAUNCH_TAG}-${++blockCounter}`
 
+// ── 엔진 진단 로그(옵트인) — CCG_ENGINE_LOG=1일 때만 APP_HOME/engine-debug.log에 남긴다.
+// 상주 CLI가 "언제·왜 닫혔는지"는 재현이 어렵고 로그 없인 사후 추적이 불가능했다(2026-08-03
+// 중단 고아 통지 → 턴마다 CLI 사망 꼬임 사고의 교훈). 프로덕션 기본은 무음·무비용.
+const ENGINE_DEBUG = !!process.env.CCG_ENGINE_LOG
+function dlog(msg: string): void {
+  if (!ENGINE_DEBUG) return
+  try {
+    fs.appendFileSync(path.join(APP_HOME, 'engine-debug.log'), `${new Date().toISOString()} ${msg}\n`)
+  } catch {
+    /* 진단 로그는 절대 본작업을 방해하지 않는다 */
+  }
+}
+
 export class ClaudeEngine {
   private emit: Emit
   /** 이 엔진이 속한 화면 (chat/talk/ma) — API 사용 원장의 분류 축 */
@@ -339,6 +352,7 @@ export class ClaudeEngine {
   }
 
   async cancel(): Promise<void> {
+    dlog(`cancel: hard (turnEnded=${this.turnEnded})`)
     // interrupt는 진행 중인 턴에만 보낸다 — result 후 정리 유예(~5s) 중인 CLI는 응답할
     // 턴이 없어 여기서 유예가 끝날 때까지 조용히 막혔다(답변 직후 보낸 다음 메시지가
     // 몇 초간 "씹힌" 것처럼 보이는 주범). 턴이 끝났으면 바로 abort로 가고, 진행 중이어도
@@ -375,6 +389,48 @@ export class ClaudeEngine {
     }
   }
 
+  /** 턴 종료(또는 실행 소멸)까지 대기 — true=턴 끝남/실행 없음, false=타임아웃.
+   *  이벤트 배선 없이 200ms 폴링 — 대기 지점이 둘뿐이고 정밀도가 중요치 않다. */
+  private waitTurnEnd(ms: number): Promise<boolean> {
+    return new Promise((resolve) => {
+      const t0 = Date.now()
+      const tick = (): void => {
+        if (this.turnEnded || !this.isRunning) return resolve(true)
+        if (Date.now() - t0 >= ms) return resolve(false)
+        setTimeout(tick, 200)
+      }
+      tick()
+    })
+  }
+
+  /** Esc/중지 = 지금 턴만 우아하게 중단 — cancel()과 달리 CLI 프로세스를 죽이지 않아
+   *  백그라운드(셸·워크플로·에이전트)와 상주가 살아남는다. 프로세스째 죽이면 그 작업들이
+   *  고아 통지로 남아 다음 턴부터 "새 CLI가 통지 소화 → 턴 종료 직후 사망"을 반복하는
+   *  꼬임 루프의 진입점이 됐다(실측 2026-08-03). CLI가 interrupt에 응답하지 않으면(행)
+   *  기존 cancel로 강등해 프로세스를 정리한다. 턴이 이미 끝난 상주는 건드릴 게 없다 —
+   *  상주 워크플로 중지는 렌더러가 bgTask(stop)로 따로 보낸다. */
+  async interruptTurn(): Promise<void> {
+    if (!this.isRunning || this.turnEnded) return
+    if (!this.handle?.interrupt) return this.cancel()
+    dlog('interruptTurn: graceful interrupt')
+    // 턴이 끝나며 카드도 의미를 잃는다 — 대기 중인 승인/질문을 풀어 프로미스가 매달리지 않게
+    for (const [, waiter] of this.permissionWaiters) waiter({ behavior: 'deny', message: 'cancelled' })
+    this.permissionWaiters.clear()
+    for (const [, waiter] of this.questionWaiters) waiter(null)
+    this.questionWaiters.clear()
+    try {
+      await Promise.race([this.handle.interrupt().catch(() => {}), new Promise((r) => setTimeout(r, 4000))])
+    } catch {
+      /* ignore */
+    }
+    // 접수만으로는 부족 — 중단된 턴의 result 프레임까지 봐야 끝난 것. 안 오면 행으로 보고 강제 정리.
+    const ended = await this.waitTurnEnd(6000)
+    if (!ended) {
+      dlog('interruptTurn: no result after interrupt — hard cancel')
+      await this.cancel()
+    } else dlog('interruptTurn: turn ended, CLI kept alive')
+  }
+
   /** 앱 종료 시 정리 — cancel()과 달리 아무것도 기다리지 않는다(quit 핸들러는 동기).
    *  abort가 SDK로 전달돼 CLI 자식 프로세스가 정리를 시작하고(못 미치면 job object가
    *  앱 종료와 함께 거둔다), 떠 있던 권한/질문 대기자는 즉시 풀어 프로미스가 매달린
@@ -393,14 +449,35 @@ export class ClaudeEngine {
     // 백그라운드 작업(셸·에이전트·워크플로)이 살아 있는 열린 스트림이 있으면 거기에 주입 —
     // 새 스폰은 이전 프로세스를 죽여 그 작업들이 전부 사망한다(유지의 핵심 경로)
     const injected = this.tryInject?.(req)
-    if (injected) return injected
+    if (injected) {
+      dlog(`run: injected into resident stream (runId=${injected})`)
+      return injected
+    }
     // 주입 불가 사유(지킬 백그라운드가 있었던 경우에만 기록됨) — analyzing 뒤 안내에 쓴다
-    const injectMiss = this.injectMissReason
+    let injectMiss = this.injectMissReason
     this.injectMissReason = null
+    // 'busy' = 지킬 백그라운드가 살아 있는데 턴(대개 정착 통지를 소화하는 기상 미니턴)이
+    // 진행 중이라 주입이 밀린 경우. 여기서 바로 cancel로 자르면 CLI째 죽어 그 작업들이
+    // 고아 통지로 남고, 다음 턴이 그 통지를 소화하다 또 죽는 꼬임 루프의 연료가 된다
+    // (실측 2026-08-03: 릴리즈 빌드 3연속 사망). 미니턴은 짧다 — 종결을 기다렸다 재주입.
+    if (injectMiss === 'busy') {
+      dlog('run: inject miss (busy) — waiting for turn end to re-inject')
+      if (await this.waitTurnEnd(15_000)) {
+        const late = this.tryInject?.(req)
+        if (late) {
+          dlog('run: late inject succeeded')
+          return late
+        }
+        injectMiss = this.injectMissReason ?? injectMiss
+        this.injectMissReason = null
+      }
+      dlog('run: late inject unavailable — falling back to respawn')
+    }
     if (this.isRunning) await this.cancel()
 
     let runId = nextRunId()
     this.activeRunId = runId
+    dlog(`run: fresh spawn (runId=${runId}${injectMiss ? `, injectMiss=${injectMiss}` : ''})`)
     this.turnEnded = false // 새 턴 — cancel이 다시 우아한 interrupt 경로를 쓴다
     this.tools.clear()
     this.subagents.clear()
@@ -549,8 +626,10 @@ export class ClaudeEngine {
     // 입력을 닫는다 → 루프가 기존 수명(턴 종료 = CLI 정리 = finally)으로 흐른다.
     // 백그라운드가 없는 보통 실행은 result 직후 여기로 — 기존과 동일.
     const maybeCloseInput = (): void => {
-      if (!liveWorkflows.size && !liveBgIds.size && !liveBgAgents.size && !pendingSettles.size && this.turnEnded) closeInput()
-      else armHoldIdle() // 계속 상주 — 사유에 맞는 안전망을 다시 장전
+      if (!liveWorkflows.size && !liveBgIds.size && !liveBgAgents.size && !pendingSettles.size && this.turnEnded) {
+        dlog('closeInput: all clear at turn end')
+        closeInput()
+      } else armHoldIdle() // 계속 상주 — 사유에 맞는 안전망을 다시 장전
     }
     // 보고 턴 마감 판정 — result에서 부른다. 통지 이후 시작된 턴(재기동/정리 턴)이면 대기
     // 전부를, 아니면 이 턴에 실제로 주입된 통지(deliveredNotifs)의 것만 걷는다. 후자가
@@ -611,6 +690,7 @@ export class ClaudeEngine {
         armHoldIdle() // 조용하지만 일하는 중 — 재장전
         return
       }
+      dlog('closeInput: hold-idle safety fired')
       closeInput()
     }
     const armHoldIdle = (): void => {
@@ -1235,6 +1315,9 @@ export class ClaudeEngine {
             .map((t) => ({ id: t.task_id!, kind: t.task_type ?? '', description: t.description ?? '', outputFile: outFile(t.task_id!) }))
           liveBgIds.clear()
           for (const t of tasks) liveBgIds.add(t.id)
+          dlog(
+            `bg REPLACE: shells=[${[...liveBgIds].join(',')}] wf=[${[...liveWorkflows].join(',')}] agents=[${[...liveBgAgents].join(',')}] settles=[${[...pendingSettles].join(',')}]`
+          )
           this.emit({ type: 'bg-tasks', runId, tasks })
           maybeCloseInput() // 마지막 백그라운드 작업이 걷힌 REPLACE면 유지 상주를 끝낸다
           continue
@@ -1297,6 +1380,7 @@ export class ClaudeEngine {
           const st = msg.status
           if (typeof msg.task_id === 'string' && (st === 'completed' || st === 'failed' || st === 'stopped')) {
             const byUser = this.userBgStops.has(msg.task_id)
+            dlog(`task_notification: ${msg.task_id} ${st}${byUser ? ' (byUser)' : ''}`)
             // 정착 = 보고 턴 대기 — 워크플로·에이전트·셸 공통. CLI가 통지를 주입하고 스스로
             // 깨어나 보고 턴을 내므로 그때까지 입력을 연다(pendingSettles — 보고 턴의
             // result가 마감). 직접 중지만 즉시 정리한다(중지 = 여기서 끝내라, 보고 턴 없음).
@@ -1630,6 +1714,7 @@ export class ClaudeEngine {
         // 미뤄둔 settled 스냅샷이 정리 턴을 못 만나고 스트림이 끝남(취소 등) → 지금 방출.
         // 아직 running이던 워크플로가 스트림 종료와 함께 죽음(취소·CLI 급사·상주 안전망) →
         // stopped로 마감. 어느 쪽이든 알약이 도는 채로 남지 않게 워크플로마다 챙긴다.
+        dlog('stream end: run loop tearing down')
         flushWfSettled()
         for (const wf of wfSnaps.values()) {
           if (wf.status === 'running') this.emit({ type: 'workflow', runId, wf: { ...wf, status: 'stopped' } })

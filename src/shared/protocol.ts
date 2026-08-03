@@ -873,6 +873,9 @@ export const IPC = {
   // renderer → main (invoke)
   runStart: 'claude:run',
   runCancel: 'claude:cancel',
+  // Esc/중지의 소프트 중단 — 턴만 끊고 CLI·백그라운드(셸·워크플로·에이전트)는 상주 유지.
+  // cancel(프로세스째 종료)은 /clear·폴더 전환·계정 전환처럼 정말 갈아엎는 경로 전용.
+  runInterrupt: 'claude:interrupt',
   permissionRespond: 'claude:permission-respond',
   questionRespond: 'claude:question-respond',
   bgTask: 'claude:bg-task', // 백그라운드 작업 컨트롤 (중지 / 포그라운드 전부 백그라운드로)
@@ -881,6 +884,7 @@ export const IPC = {
   // back wrapped with the panelId on the shared maEvent channel.
   maRun: 'ma:run',
   maCancel: 'ma:cancel',
+  maInterrupt: 'ma:interrupt', // 패널 Esc/중지의 소프트 중단 (runInterrupt와 같은 규칙)
   maPermissionRespond: 'ma:permission-respond',
   maQuestionRespond: 'ma:question-respond',
   maBgTask: 'ma:bg-task', // 패널 WorkBar의 백그라운드 셸 컨트롤(중지/Ctrl+B) — 그 패널 엔진으로
@@ -903,6 +907,7 @@ export const IPC = {
   openSessionWindow: 'win:open-session', // 새 세션 창을 띄운다 (타이틀바 + / Ctrl+Shift+N)
   sessionRun: 'session:run',
   sessionCancel: 'session:cancel',
+  sessionInterrupt: 'session:interrupt', // 추가 채팅 Esc/중지의 소프트 중단 (runInterrupt와 같은 규칙)
   sessionPermissionRespond: 'session:permission-respond',
   sessionQuestionRespond: 'session:question-respond',
   sessionBgTask: 'session:bg-task',

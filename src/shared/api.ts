@@ -65,6 +65,8 @@ import type {
 export interface WindowApi {
   run(req: RunRequest): Promise<string>
   cancel(): Promise<void>
+  /** Esc/중지의 소프트 중단 — 턴만 끊고 CLI·백그라운드는 상주 유지 (cancel=프로세스째 종료와 구분) */
+  interrupt(): Promise<void>
   respondPermission(res: PermissionResponse): Promise<void>
   respondQuestion(res: QuestionResponse): Promise<void>
   /** 백그라운드 작업 컨트롤 — 중지(stop) / 포그라운드 도구 전부 백그라운드로(background, Ctrl+B 패리티) */
@@ -357,6 +359,8 @@ export interface WindowApi {
   session: {
     run(req: RunRequest): Promise<string>
     cancel(): Promise<void>
+    /** Esc/중지의 소프트 중단 — 턴만 끊고 CLI·백그라운드는 상주 유지 */
+    interrupt(): Promise<void>
     respondPermission(res: PermissionResponse): Promise<void>
     respondQuestion(res: QuestionResponse): Promise<void>
     bgTask(req: BgTaskRequest): Promise<void>
@@ -388,6 +392,8 @@ export interface WindowApi {
   multi: {
     run(req: MultiRunRequest): Promise<string>
     cancel(panelId: string): Promise<void>
+    /** 패널 Esc/중지의 소프트 중단 — 턴만 끊고 그 패널 CLI·백그라운드는 상주 유지 */
+    interrupt(panelId: string): Promise<void>
     respondPermission(res: MultiPermissionResponse): Promise<void>
     respondQuestion(res: MultiQuestionResponse): Promise<void>
     /** 패널 WorkBar의 백그라운드 셸 컨트롤(중지/Ctrl+B) — 그 패널의 엔진으로 라우팅 */

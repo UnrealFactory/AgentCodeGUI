@@ -827,12 +827,19 @@ function MainApp({ user }: { user: AppUser }) {
 
   // 취소 = 중단 — 클로드 코드처럼 턴을 그 자리에서 끊는다. 보낸 말풍선과 반쯤 온 답은
   // 스레드에 그대로 남고(CLI 세션에도 실제로 남아 있는 내용이라 화면과 어긋나지 않는다)
-  // '중단함' 마커가 붙는다. 보낸 문장은 ↑ 히스토리로 다시 불러올 수 있다. busy가 아니라
-  // 상주 워크플로만 도는 경우엔 이미 완결된 턴이므로 워크플로만 끊는다.
+  // '중단함' 마커가 붙는다. 보낸 문장은 ↑ 히스토리로 다시 불러올 수 있다.
+  // 소프트 중단 — 턴만 끊고 CLI·백그라운드(셸·워크플로·에이전트)는 상주로 살린다.
+  // 프로세스째 죽이던 예전 cancel은 백그라운드를 고아 통지로 남겨 다음 턴부터 상주가
+  // 턴마다 죽는 꼬임 루프를 시작시켰다(실측 2026-08-03). busy가 아니라 상주 워크플로만
+  // 도는 경우엔 완결된 턴이므로 워크플로만 그레이스풀 중지(CLI는 살아 보고 턴을 낸다).
   // Esc와 컴포저 중지 버튼이 같은 경로를 쓴다.
   const cancelRun = (): void => {
-    if (busy) interruptTurn()
-    window.api.cancel()
+    if (busy) {
+      interruptTurn()
+      window.api.interrupt()
+    } else {
+      for (const w of state.workflows) if (w.status === 'running') onBgTaskMain({ action: 'stop', id: w.id })
+    }
     setQueue([])
   }
 

@@ -421,11 +421,17 @@ export function SessionWindow(): React.ReactElement {
   const wfAlive = state.workflows.some((w) => w.status === 'running')
 
   // 취소 = 중단 — 턴의 흔적은 스레드에 그대로 남기고 '중단함' 마커만 붙인다(본채팅과
-  // 동일). 보낸 문장은 ↑ 히스토리로 복구. 상주 워크플로만 도는 경우엔 완결된 턴이라
-  // 마커 없이 워크플로만 끊는다. Esc·중지 버튼 공용.
+  // 동일). 보낸 문장은 ↑ 히스토리로 복구. 소프트 중단 — 턴만 끊고 CLI·백그라운드는 상주
+  // 유지(본채팅 cancelRun과 같은 이유 — cancel은 고아 통지 → 상주 꼬임 루프의 진입점).
+  // 상주 워크플로만 도는 경우엔 완결된 턴이라 마커 없이 워크플로만 그레이스풀 중지.
+  // Esc·중지 버튼 공용.
   const cancelRun = (): void => {
-    if (busy) interruptTurn()
-    window.api.session?.cancel().catch(() => {})
+    if (busy) {
+      interruptTurn()
+      window.api.session?.interrupt().catch(() => {})
+    } else {
+      for (const w of state.workflows) if (w.status === 'running') onBgTaskSession({ action: 'stop', id: w.id })
+    }
     setQueue([])
   }
 

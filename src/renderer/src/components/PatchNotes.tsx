@@ -28,6 +28,92 @@ type LocalizedRelease = { ko: Release; en: Release }
 // 지난 1.x 노트들은 은퇴한 UpdateNotes와 함께 정리했다(이제 보여줄 경로가 없다).
 const MAX_VERSIONS = 5
 const RELEASES: Record<string, LocalizedRelease> = {
+  '2.3.6': {
+    ko: {
+      eyebrow: 'FIX',
+      lead: '중단(Esc) 한 번이 백그라운드 작업을 조용히 죽이고, 그 뒤로 대화가 계속 꼬이던 문제를 고쳤습니다. 이제 중단은 "지금 답변만 멈춰"입니다 — 뒤에서 돌던 작업은 계속 돌아요.',
+      notes: [
+        {
+          tag: '중단',
+          name: 'Esc가 백그라운드를 죽이지 않아요',
+          desc: (
+            <>
+              중단(Esc·중지 버튼)이 답변만 끊는 게 아니라 <b>엔진 프로세스째 내려서</b>, 뒤에서
+              돌던 셸·워크플로·에이전트가 통째로 사라졌습니다 — 이제 <b>지금 턴만 우아하게
+              끊고</b> 백그라운드는 계속 돕니다. 상주 워크플로 위에서 Esc를 누르면 워크플로만
+              곱게 멈추고, 중지 보고도 대화에 제대로 도착해요.
+            </>
+          )
+        },
+        {
+          tag: '상주',
+          name: '중단 후 계속 꼬이던 루프 수정',
+          desc: (
+            <>
+              중단으로 죽은 백그라운드 작업이 <b>미결 통지</b>로 남아, 그 뒤 매 턴이 &quot;통지
+              소화 → 턴 종료 직후 상주 사망 → 새 작업도 또 사망&quot;을 반복하는 <b>자기 영속
+              루프</b>에 빠질 수 있었습니다(백그라운드로 시킨 일이 몇십 초 만에 소리 없이 죽고
+              &quot;응답 없음&quot;이 뜨던 그 증상). 진입점이 사라져 루프가 시작되지 않아요.
+            </>
+          )
+        },
+        {
+          tag: '채팅',
+          name: '통지 처리 중 보낸 메시지가 작업을 자르지 않아요',
+          desc: (
+            <>
+              백그라운드 작업의 완료 통지를 소화하는 <b>짧은 무음 턴</b>이 도는 사이에 메시지를
+              보내면, 상주를 잘라내고 새로 시작하며 살아있던 작업까지 죽였습니다 — 이제 그
+              턴이 끝나길 <b>잠깐 기다렸다 이어붙입니다</b>. 타이밍 나쁘게 보내도 안전해요.
+            </>
+          )
+        }
+      ]
+    },
+    en: {
+      eyebrow: 'FIX',
+      lead: 'Fixed a single stop (Esc) silently killing background work and leaving the chat tangled afterwards. Stop now means "stop this reply" — work running behind it keeps going.',
+      notes: [
+        {
+          tag: 'Stop',
+          name: 'Esc no longer kills background work',
+          desc: (
+            <>
+              Stopping (Esc / the stop button) didn&apos;t just cut the reply — it took the{' '}
+              <b>whole engine process down</b>, and background shells, workflows, and agents died
+              with it. It now <b>gracefully ends just the current turn</b> while background work
+              keeps running. Esc over a resident workflow stops only the workflow, and its
+              wrap-up report still lands in the chat.
+            </>
+          )
+        },
+        {
+          tag: 'Resident',
+          name: 'The post-stop tangle loop is gone',
+          desc: (
+            <>
+              Work killed by a stop lingered as an <b>undelivered notice</b>, and every turn
+              after could repeat &quot;digest notice → resident dies right after the turn → new
+              work dies too&quot; — a <b>self-perpetuating loop</b> (the one where background
+              jobs silently died within seconds and &quot;ended without a reply&quot; appeared).
+              The entry point is gone, so the loop never starts.
+            </>
+          )
+        },
+        {
+          tag: 'Chat',
+          name: 'Messages during notice handling no longer cut work',
+          desc: (
+            <>
+              Sending a message while a <b>short silent turn</b> was digesting a completion
+              notice used to cut the resident engine and respawn, killing live work — it now{' '}
+              <b>briefly waits for that turn to end and attaches</b>. Bad timing is safe.
+            </>
+          )
+        }
+      ]
+    }
+  },
   '2.3.5': {
     ko: {
       eyebrow: 'UPDATE',
@@ -444,113 +530,6 @@ const RELEASES: Record<string, LocalizedRelease> = {
               Sending with changed run settings (<b>model, mode, account</b>) while resident
               means background tasks cannot be carried over and get cleaned up — until now they{' '}
               <b>vanished without a word</b>. A one-line notice in the thread now explains why.
-            </>
-          )
-        }
-      ]
-    }
-  },
-  '2.3.1': {
-    ko: {
-      eyebrow: 'UPDATE',
-      lead: '영어 UI를 지원합니다 — 설정에서 한국어/영어를 재시작 없이 바로 전환해요. 그리고 메모리 대수술: 분석 서버·대화 스냅샷·상주 엔진이 쓰던 메모리를 절반 이하로 줄였습니다.',
-      notes: [
-        {
-          tag: '언어',
-          name: '한국어 · English',
-          desc: (
-            <>
-              설정 › <b>Language</b>에서 UI 언어를 고릅니다 — <b>재시작 없이 즉시</b> 바뀌고, 채팅
-              화면부터 업데이트 안내·git 메시지 같은 구석까지 <b>앱 전체</b>가 따라와요. 추가
-              채팅 창 등 다른 창도 함께 전환됩니다.
-            </>
-          )
-        },
-        {
-          tag: '메모리',
-          name: '분석 서버가 쌓이지 않아요',
-          desc: (
-            <>
-              코드 분석(LSP) 서버가 <b>작업 폴더마다 하나씩 쌓여</b> 며칠 상주하면 수 GB까지
-              커지던 문제 — 이제 <b>안 쓰는 서버는 알아서 접고</b>(10~30분), 필요하면 다시
-              띄웁니다. TS 서버는 구성 다이어트로 <b>세트당 프로세스 4→2개</b>. 실측 사례로{' '}
-              <b>3.3GB → 약 1.5GB</b>예요.
-            </>
-          )
-        },
-        {
-          tag: '메모리',
-          name: '대화는 활성만 메모리에',
-          desc: (
-            <>
-              쌓인 채팅·멀티 세션의 대화 기록을 전부 들고 있던 것을, <b>보고 있는 대화만</b> 들고
-              나머지는 <b>전환할 때 디스크에서</b> 읽어오게 바꿨어요. 대화가 많을수록 컸던
-              메모리가 가벼워지고, 유휴 애니메이션 루프도 멈춰 오래 켜둘수록 무거워지던 증상이
-              사라집니다.
-            </>
-          )
-        },
-        {
-          tag: '수정',
-          name: '자잘한 정리',
-          desc: (
-            <>
-              멀티 패널의 작업 바 팝오버(변경된 파일 등)가 <b>클릭한 칩 위에</b> 뜨도록 고쳤어요.
-              완료 통지를 놓친 백그라운드 에이전트가 엔진 프로세스를 붙잡고 상주하던 것도{' '}
-              <b>30분 안전망</b>으로 정리됩니다.
-            </>
-          )
-        }
-      ]
-    },
-    en: {
-      eyebrow: 'UPDATE',
-      lead: 'The UI now speaks English — switch between Korean and English in Settings, no restart needed. Plus a memory overhaul: language servers, chat snapshots, and resident engines now use less than half the memory.',
-      notes: [
-        {
-          tag: 'Language',
-          name: '한국어 · English',
-          desc: (
-            <>
-              Pick your UI language under Settings › <b>Language</b> — it switches{' '}
-              <b>instantly, no restart</b>, and covers the <b>whole app</b>: from the chat surface
-              down to updater notices and git messages. Extra chat windows follow along too.
-            </>
-          )
-        },
-        {
-          tag: 'Memory',
-          name: 'Language servers no longer pile up',
-          desc: (
-            <>
-              Code-intelligence (LSP) servers used to <b>accumulate one per working folder</b>,
-              growing to multiple GB over a few days. Now <b>idle servers fold themselves up</b>{' '}
-              (10–30 min) and respawn on demand, and the TS server set slimmed from{' '}
-              <b>4 processes to 2</b>. Measured case: <b>3.3GB → about 1.5GB</b>.
-            </>
-          )
-        },
-        {
-          tag: 'Memory',
-          name: 'Only the active chat stays in memory',
-          desc: (
-            <>
-              Instead of holding every chat and multi-session transcript at once, the app now
-              keeps <b>only what you are looking at</b> and reads the rest <b>from disk on
-              switch</b>. Memory no longer grows with your chat history, and idle animation loops
-              now stop — so the app stays light however long it runs.
-            </>
-          )
-        },
-        {
-          tag: 'Fixes',
-          name: 'Small clean-ups',
-          desc: (
-            <>
-              Work-bar popovers in multi panels (changed files and friends) now open{' '}
-              <b>above the chip you clicked</b>. Background agents that missed their completion
-              notice used to keep the engine process resident — a <b>30-minute safety net</b>{' '}
-              now reclaims them.
             </>
           )
         }
