@@ -3623,29 +3623,97 @@ function QuestionDialog({
 }
 
 /* ── 워크플로 도크 — 상주 워크플로의 알약(q-mini 문법) ↔ 펼침 카드(qcard 문법) ──
-   running일 때만 뜬다. 정착하면 통째로 사라지고 흔적(notice 줄)+정리 턴이 대화에 남는다.
+   running인 워크플로만 뜬다. 여러 개가 동시에 돌면 하단 중앙 도크에 알약이 가로로
+   늘어서고, 클릭한 알약만 카드로 펼친다(카드 헤더의 번호 탭으로 다른 워크플로 전환).
+   정착하면 그 알약이 사라지고 흔적+정리 턴이 대화에 남는다.
    카드는 CLI /workflows와 같은 2열(단계 레일 클릭 전환 + 그 단계의 에이전트 행) 구조. */
-export function WorkflowDock({ wf, onStop }: { wf: WorkflowState | null; onStop?: () => void }) {
-  const [open, setOpen] = useState(false)
-  // null = 진행 중인 단계를 따라간다 — 단계를 클릭하면 고정, 진행 단계를 다시 클릭하면 복귀
-  const [selPhase, setSelPhase] = useState<number | null>(null)
-  // 카드 위 우클릭 드래그 ↓→(닫기 문법) = 내려두기 — 크게 보기 카드와 같은 제스처
-  const [cardEl, setCardEl] = useState<HTMLDivElement | null>(null)
-  const running = !!wf && wf.status === 'running'
+export function WorkflowDock({ wfs, onStop }: { wfs: WorkflowState[]; onStop?: (id: string) => void }) {
+  const [openId, setOpenId] = useState<string | null>(null)
+  const running = wfs.filter((w) => w.status === 'running')
+  // 펼쳐둔 워크플로가 정착해 사라지면 카드도 자연히 접힌다 (openId만 남고 대상 없음)
+  const openWf = openId ? (running.find((w) => w.id === openId) ?? null) : null
+  const cardOpen = !!openWf
   // Esc = 내려두기 (질문 카드의 Esc=접기와 같은 기대). 캡처 단계에서 삼켜야 각 표면의
   // Esc=실행취소 핸들러(App·멀티·세션 창)가 같은 키로 워크플로를 죽이지 않는다.
   useEffect(() => {
-    if (!running || !open) return
+    if (!cardOpen) return
     const onKey = (e: KeyboardEvent): void => {
       if (e.key !== 'Escape') return
       e.preventDefault()
       e.stopImmediatePropagation()
-      setOpen(false)
+      setOpenId(null)
     }
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
-  }, [running, open])
-  if (!wf || wf.status !== 'running') return null
+  }, [cardOpen])
+  if (!running.length) return null
+
+  if (openWf) {
+    return (
+      <WorkflowCard
+        key={openWf.id}
+        wf={openWf}
+        peers={running}
+        onSwitch={setOpenId}
+        onMin={() => setOpenId(null)}
+        onStop={onStop ? () => onStop(openWf.id) : undefined}
+      />
+    )
+  }
+
+  return (
+    <div className="wf-dock">
+      {running.map((w) => {
+        const doneAll = w.agents.filter((a) => a.state === 'done').length
+        const phases = [...w.phases].sort((a, b) => a.index - b.index)
+        // 진행 단계 = 아직 안 끝난 에이전트가 있는 가장 앞 단계 (전부 끝났으면 마지막 = 정리 중)
+        const curPhase =
+          phases.find((p) => w.agents.some((a) => a.phase === p.index && a.state !== 'done'))?.index ??
+          phases[phases.length - 1]?.index ??
+          1
+        return (
+          <div
+            key={w.id}
+            className="wf-mini"
+            onClick={() => setOpenId(w.id)}
+            role="button"
+            title={w.summary}
+            aria-label={t('워크플로 카드 펼치기', 'Expand workflow card')}
+          >
+            <span className="st run" />
+            <span className="wt">{t('워크플로', 'Workflow')}</span>
+            <span className="ws">
+              {(phases.find((p) => p.index === curPhase)?.title || t('진행 중', 'In progress')) + ` · ${doneAll}/${w.agents.length}`}
+            </span>
+            <span className="wx">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                <path d="m18 15-6-6-6 6" />
+              </svg>
+            </span>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function WorkflowCard({
+  wf,
+  peers,
+  onSwitch,
+  onMin,
+  onStop
+}: {
+  wf: WorkflowState
+  peers: WorkflowState[]
+  onSwitch: (id: string) => void
+  onMin: () => void
+  onStop?: () => void
+}) {
+  // null = 진행 중인 단계를 따라간다 — 단계를 클릭하면 고정, 진행 단계를 다시 클릭하면 복귀
+  const [selPhase, setSelPhase] = useState<number | null>(null)
+  // 카드 위 우클릭 드래그 ↓→(닫기 문법) = 내려두기 — 크게 보기 카드와 같은 제스처
+  const [cardEl, setCardEl] = useState<HTMLDivElement | null>(null)
 
   const phases = [...wf.phases].sort((a, b) => a.index - b.index)
   const agents = wf.agents
@@ -3668,29 +3736,21 @@ export function WorkflowDock({ wf, onStop }: { wf: WorkflowState | null; onStop?
       ? t(`${mins}분 ${Math.floor((wf.durationMs % 60_000) / 1000)}초`, `${mins}m ${Math.floor((wf.durationMs % 60_000) / 1000)}s`)
       : t(`${Math.floor(wf.durationMs / 1000)}초`, `${Math.floor(wf.durationMs / 1000)}s`)
 
-  if (!open) {
-    return (
-      <div className="wf-mini" onClick={() => setOpen(true)} role="button" aria-label={t('워크플로 카드 펼치기', 'Expand workflow card')}>
-        <span className="st run" />
-        <span className="wt">{t('워크플로', 'Workflow')}</span>
-        <span className="ws">
-          {(phases.find((p) => p.index === curPhase)?.title || t('진행 중', 'In progress')) + ` · ${doneAll}/${agents.length}`}
-        </span>
-        <span className="wx">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-            <path d="m18 15-6-6-6 6" />
-          </svg>
-        </span>
-      </div>
-    )
-  }
-
   return (
     <div className="wf-card scroll" ref={setCardEl}>
-      <MouseGestureLayer target={cardEl} actions={[{ pattern: 'DR', label: t('내려두기', 'Minimize'), run: () => setOpen(false) }]} />
+      <MouseGestureLayer target={cardEl} actions={[{ pattern: 'DR', label: t('내려두기', 'Minimize'), run: onMin }]} />
       <div className="wf-head">
         <span className="st run" />
         <span className="whl">{t('워크플로', 'Workflow')}</span>
+        {peers.length > 1 && (
+          <span className="wf-tabs">
+            {peers.map((w, i) => (
+              <button key={w.id} className={w.id === wf.id ? 'on' : ''} title={w.summary} onClick={() => onSwitch(w.id)}>
+                {i + 1}
+              </button>
+            ))}
+          </span>
+        )}
         <span className="wsum" title={wf.summary}>
           {wf.summary}
         </span>
@@ -3698,7 +3758,7 @@ export function WorkflowDock({ wf, onStop }: { wf: WorkflowState | null; onStop?
           {doneAll}/{agents.length} · {elapsed}
           {wf.totalTokens >= 1000 ? ` · ${fmtTok(wf.totalTokens)} tok` : ''}
         </span>
-        <button className="wmin" onClick={() => setOpen(false)} aria-label={t('내려두기', 'Minimize')} data-tip={t('내려두기', 'Minimize')} >
+        <button className="wmin" onClick={onMin} aria-label={t('내려두기', 'Minimize')} data-tip={t('내려두기', 'Minimize')} >
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
             <path d="m6 9 6 6 6-6" />
           </svg>

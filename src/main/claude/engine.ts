@@ -532,11 +532,16 @@ export class ClaudeEngine {
     // 지금 턴이 사용자 주입 턴인지 — 통지와 정리 턴 사이에 사용자가 끼어들 수 있다.
     // 주입 턴의 result는 wrap을 마감하지 않는다(정리 턴은 CLI 재기동 턴 몫).
     let turnFromInject = false
-    let lastWf: WorkflowState | null = null
-    // 정착 스냅샷의 지연 방출분 — 렌더러의 전송 게이트(wfAlive)가 wf.status==='running'에
+    // id별 마지막 스냅샷 — 동시 워크플로가 서로의 알약을 덮어쓰지 않게 워크플로마다 든다
+    const wfSnaps = new Map<string, WorkflowState>()
+    // 정착 스냅샷의 지연 방출분(id별) — 렌더러의 전송 게이트(wfAlive)가 wf.status==='running'에
     // 매달리므로, 정리 턴이 끝나기 전에 settled를 내보내면 그 틈에 새 전송이 끼어들어
     // 정리 턴을 자른다. 정리 턴의 result(또는 무음 정착·스트림 종료)에서 내보낸다.
-    let wfSettledEmit: WorkflowState | null = null
+    const wfSettledEmits = new Map<string, WorkflowState>()
+    const flushWfSettled = (): void => {
+      for (const wf of wfSettledEmits.values()) this.emit({ type: 'workflow', runId, wf })
+      wfSettledEmits.clear()
+    }
     // 백그라운드 서브에이전트 생존 추적 — bg 목록의 셸도 워크플로도 아닌 항목(subagent류).
     // 셸(liveBgIds)·워크플로와 함께 "파이프를 열어둘 이유"가 된다.
     const liveBgAgents = new Set<string>()
@@ -937,10 +942,7 @@ export class ClaudeEngine {
             return
           }
           heldRearms = 0
-          if (wfSettledEmit) {
-            this.emit({ type: 'workflow', runId, wf: wfSettledEmit })
-            wfSettledEmit = null
-          }
+          flushWfSettled()
           const held = heldResult
           heldResult = null
           settleResult(held)
@@ -1265,8 +1267,8 @@ export class ClaudeEngine {
               }
             }
             const u = (msg as { usage?: { total_tokens?: number; tool_uses?: number; duration_ms?: number } }).usage
-            const prevSummary: string = lastWf ? lastWf.summary : ''
-            lastWf = {
+            const prevSummary: string = wfSnaps.get(msg.task_id)?.summary ?? ''
+            const wf: WorkflowState = {
               id: msg.task_id,
               summary: msg.summary?.trim() || prevSummary,
               status: 'running',
@@ -1276,8 +1278,9 @@ export class ClaudeEngine {
               toolUses: u?.tool_uses ?? 0,
               durationMs: u?.duration_ms ?? 0
             }
+            wfSnaps.set(msg.task_id, wf)
             wfIds.add(msg.task_id)
-            this.emit({ type: 'workflow', runId, wf: lastWf })
+            this.emit({ type: 'workflow', runId, wf })
           }
           continue
         }
@@ -1316,13 +1319,15 @@ export class ClaudeEngine {
             // 셸 id만 반영하므로 무해하다.
             if (wfIds.has(msg.task_id)) {
               liveWorkflows.delete(msg.task_id)
-              if (lastWf?.id === msg.task_id && lastWf.status === 'running') {
+              const snap = wfSnaps.get(msg.task_id)
+              if (snap && snap.status === 'running') {
                 // summary는 진행 프레임의 원문을 지킨다 — 정착 통지의 문장은
                 // 'Dynamic workflow "…" completed' 꼴이라 흔적 줄에서 '완료'와 중복된다
-                lastWf = { ...lastWf, status: st, summary: lastWf.summary || msg.summary?.trim() || '' }
+                const settled: WorkflowState = { ...snap, status: st, summary: snap.summary || msg.summary?.trim() || '' }
+                wfSnaps.set(msg.task_id, settled)
                 // 직접 중지는 보고 턴이 없으므로 즉시, 그 외엔 보고 턴 뒤로 미룬다
-                if (byUser) this.emit({ type: 'workflow', runId, wf: lastWf })
-                else wfSettledEmit = lastWf
+                if (byUser) this.emit({ type: 'workflow', runId, wf: settled })
+                else wfSettledEmits.set(msg.task_id, settled)
               }
             }
             liveBgIds.delete(msg.task_id)
@@ -1578,10 +1583,7 @@ export class ClaudeEngine {
           // busy 해제보다 앞서야 렌더러 게이트·드레인이 어긋나지 않는다). 보고 턴 대기는
           // finishWrap이 푼다 — 통지 이후 시작된 턴이거나 이 턴에 통지가 실제 주입된
           // 경우만. 다 풀리면 입력을 닫아 기존 수명으로 흐른다.
-          if (wfSettledEmit) {
-            this.emit({ type: 'workflow', runId, wf: wfSettledEmit })
-            wfSettledEmit = null
-          }
+          flushWfSettled()
           settleResult(msg)
           finishWrap()
           maybeCloseInput()
@@ -1627,12 +1629,10 @@ export class ClaudeEngine {
       if (this.activeRunId === runId) {
         // 미뤄둔 settled 스냅샷이 정리 턴을 못 만나고 스트림이 끝남(취소 등) → 지금 방출.
         // 아직 running이던 워크플로가 스트림 종료와 함께 죽음(취소·CLI 급사·상주 안전망) →
-        // stopped로 마감. 어느 쪽이든 알약이 도는 채로 남지 않게 한다.
-        if (wfSettledEmit) {
-          this.emit({ type: 'workflow', runId, wf: wfSettledEmit })
-        } else if (lastWf && lastWf.status === 'running') {
-          lastWf = { ...lastWf, status: 'stopped' }
-          this.emit({ type: 'workflow', runId, wf: lastWf })
+        // stopped로 마감. 어느 쪽이든 알약이 도는 채로 남지 않게 워크플로마다 챙긴다.
+        flushWfSettled()
+        for (const wf of wfSnaps.values()) {
+          if (wf.status === 'running') this.emit({ type: 'workflow', runId, wf: { ...wf, status: 'stopped' } })
         }
         // 스트림이 닫히면 CLI 프로세스도 죽으므로 백그라운드 작업은 전부 사라진다 —
         // 통지가 못 온 잔여 항목은 "턴 종료로 정리됨"으로 명시하고 빈 REPLACE로 마감한다.

@@ -136,7 +136,7 @@ function MainApp({ user }: { user: AppUser }) {
   const lang = useLang() // 언어 전환 시 아래 useMemo(사이드바 섹션 라벨 등)가 새 언어로 재계산되게
   const { state, elapsed, busy, begin, clearPermission, clearQuestion, answerQuestion, load, interruptTurn } = useAgentSession()
   // 워크플로 상주 중(턴은 끝나 busy=false) — 전송·채팅 전환이 워크플로를 죽이지 않게 잠근다
-  const wfAlive = state.workflow?.status === 'running'
+  const wfAlive = state.workflows.some((w) => w.status === 'running')
   // 턴을 막고 있는 포그라운드 Bash가 있을 때만 셸 팝오버에 "건너뛰기"(Ctrl+B) 버튼을 노출
   const canSkipWait = useMemo(() => hasRunningBash(state.messages), [state.messages])
   const [input, setInput] = useState('')
@@ -1522,7 +1522,7 @@ function MainApp({ user }: { user: AppUser }) {
 
       {/* 워크플로 알약/카드 — 메인 채팅 표면에서만 (멀티 패널은 자기 표면이 따로 붙는다) */}
       {mode === 'single' && (
-        <WorkflowDock wf={state.workflow ?? null} onStop={state.workflow ? () => onBgTaskMain({ action: 'stop', id: state.workflow!.id }) : undefined} />
+        <WorkflowDock wfs={state.workflows} onStop={(id) => onBgTaskMain({ action: 'stop', id })} />
       )}
 
       <QuestionModal question={state.pendingQuestion} onAnswer={onAnswer} onDismiss={onDismissQuestion} />

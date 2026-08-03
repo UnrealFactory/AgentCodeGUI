@@ -39,7 +39,7 @@ import { extractMentions } from '../lib/mentions'
 import { useTurnNotifyList } from '../lib/notify'
 import { mergeRefs, useZoom, ZoomBadge } from './zoom'
 import { MouseGestureLayer, clearGesture, sessionWindowGesture } from './mouseGesture'
-import { IconFolder, IconChevDown, IconMascot, IconPanelRight, IconExpand, IconCollapse } from './icons'
+import { IconFolder, IconChevDown, IconMascot, IconPanelRight, IconExpand, IconCollapse, IconPencil } from './icons'
 import { t, useLang } from '../lib/i18n'
 
 // A multi-agent SESSION is a group of N panels that work together. The recent-tasks
@@ -95,6 +95,7 @@ const MULTI_VERSION = 2
 interface PanelMeta {
   title: string
   custom: boolean // user-renamed → keep the title instead of deriving it from the prompt
+  color: string // 컬러 태그('' = 슬롯 기본색) — 헤더 하단 라인. cwd·picker 같은 패널 설정이라 /clear에도 유지
   cwd: string // this panel's working dir
   refDirs: string[] // 참조 폴더(--add-dir) — 작업 폴더 외에 이 패널 엔진이 함께 인식할 폴더들
   picker: PickerState
@@ -107,6 +108,7 @@ interface PanelMeta {
 interface PersistedPanel {
   title: string
   custom: boolean
+  color?: string // 없으면(예전 저장본) 태그 없음
   cwd: string
   refDirs?: string[] // 없으면(예전 저장본) 빈 목록
   picker: PickerState
@@ -151,11 +153,28 @@ export interface MultiExplorerInfo {
 }
 
 function freshPanel(api = false): PanelMeta {
-  return { title: '', custom: false, cwd: '', refDirs: [], picker: { ...DEFAULT_PICKER }, api, input: '', images: [], queue: [] }
+  return { title: '', custom: false, color: '', cwd: '', refDirs: [], picker: { ...DEFAULT_PICKER }, api, input: '', images: [], queue: [] }
 }
 // 저장본의 참조 폴더 위생 — 문자열 배열만, 상한 8 (본채팅 sanitizeRefDirs와 같은 규칙)
 function sanitizeRefDirs(v: unknown): string[] {
   return Array.isArray(v) ? v.filter((s): s is string => typeof s === 'string' && !!s).slice(0, 8) : []
+}
+// 컬러 태그 순환 팔레트 — 탈채도 기능색(:root 변수명 그대로). 해제 상태는 없다(유저 결정:
+// 모든 패널이 항상 색으로 구분). 저장값 ''은 "슬롯 기본색"으로 읽어 예전 저장본도 자동 착색.
+const TAG_COLORS = ['violet', 'blue', 'amber', 'teal', 'green', 'yellow', 'red']
+function defaultTag(slot: number): string {
+  return TAG_COLORS[slot % TAG_COLORS.length]
+}
+function nextTag(c: string): string {
+  return TAG_COLORS[(TAG_COLORS.indexOf(c) + 1) % TAG_COLORS.length]
+}
+function sanitizeTag(v: unknown): string {
+  return typeof v === 'string' && TAG_COLORS.includes(v) ? v : ''
+}
+// 패널 자동 제목 — 첫 프롬프트(명령이면 카드 제목) 유래. 직접 지정 제목을 비워 저장하면 여기로 복귀
+function deriveTitle(text: string): string {
+  const cmd = commandOf(text)
+  return cmd ? commandTitleOf(cmd) : text.slice(0, 80) || t('파일 첨부', 'File attachment')
 }
 function blankSession(id: string, count = 4): PersistedSession {
   return {
@@ -248,6 +267,10 @@ interface PanelViewProps {
   onPermission: (slot: number, behavior: 'allow' | 'allow_always' | 'deny') => void
   onAnswer: (slot: number, answers: string[][]) => void
   onDismissQuestion: (slot: number) => void
+  renaming: boolean // 제목 인라인 편집 중 — 더블클릭/연필/F2로 진입 (상태는 ActiveSession 소유)
+  onStartRename: (slot: number) => void
+  onRename: (slot: number, title: string | null, custom: boolean) => void // null = 취소(닫기만)
+  onCycleColor: (slot: number) => void // 번호 칩 클릭 — 컬러 태그 순환
 }
 
 const PanelView = memo(function PanelView({
@@ -289,6 +312,10 @@ const PanelView = memo(function PanelView({
   onPermission,
   onAnswer,
   onDismissQuestion,
+  renaming,
+  onStartRename,
+  onRename,
+  onCycleColor,
 }: PanelViewProps) {
   useLang() // 언어 전환 재렌더 구독 (memo 컴포넌트라 루트 재렌더를 안 탄다)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -311,15 +338,34 @@ const PanelView = memo(function PanelView({
   // 턴을 막고 있는 포그라운드 Bash가 있을 때만 셸 팝오버에 "건너뛰기"(Ctrl+B) 노출 (본채팅과 동일)
   const canSkipWait = useMemo(() => hasRunningBash(state.messages), [state.messages])
 
-  // 이 패널에서 내가 보낸 메시지(오래된→최신) — 작성칸에서 ↑/↓로 셸처럼 다시 불러온다
-  const sentHistory = useMemo(
+  // 이 패널의 사용자 메시지(오래된→최신) — ↑↓ 히스토리·첫 지시 미리보기·자동 제목 복귀의 공용 재료
+  const userMsgs = useMemo(
     () =>
-      state.messages
-        .filter((m): m is Extract<SessionState['messages'][number], { kind: 'msg' }> => m.kind === 'msg' && m.role === 'user')
-        .map((m) => m.text)
-        .filter((t) => t.trim().length > 0),
+      state.messages.filter(
+        (m): m is Extract<SessionState['messages'][number], { kind: 'msg' }> => m.kind === 'msg' && m.role === 'user'
+      ),
     [state.messages]
   )
+  // 작성칸에서 ↑/↓로 셸처럼 다시 불러오는 히스토리
+  const sentHistory = useMemo(() => userMsgs.map((m) => m.text).filter((t) => t.trim().length > 0), [userMsgs])
+  // 첫 지시 — 제목 호버 미리보기 카드의 원문 (제목은 요약, 원문은 한 호버 거리에)
+  const firstUser = userMsgs[0]
+
+  // 제목 편집 커밋은 한 번만 — Enter 커밋 직후 인풋 언마운트가 blur를 한 번 더 쏴도 재진입 없음
+  const renameDoneRef = useRef(false)
+  useEffect(() => {
+    if (renaming) renameDoneRef.current = false
+  }, [renaming])
+  const commitRename = (v: string | null): void => {
+    if (renameDoneRef.current) return
+    renameDoneRef.current = true
+    if (v === null) return onRename(slot, null, false)
+    const tv = v.trim()
+    // 자동 제목을 안 고치고 닫음 → custom으로 잠그지 않는다 / 비워서 저장 → 자동 제목 복귀
+    if (!tv) return onRename(slot, firstUser ? deriveTitle(firstUser.text) : '', false)
+    if (tv === meta.title && !meta.custom) return onRename(slot, null, false)
+    onRename(slot, tv, true)
+  }
 
   // "더 자세히" — 채팅에서 선택한 글을 <selection> 태그로 감싸 이 패널의 작성칸에 붙인다
   // (단일 모드와 동일). 작성칸에 이미 글이 있으면 아래에 이어 붙인다.
@@ -374,8 +420,60 @@ const PanelView = memo(function PanelView({
       {/* PoC .mph — 한 줄 헤더: [번호][제목] ─ [폴더 칩][상태 칩]. 컨텍스트·모델·과금은
           아래 WorkBar·Composer(본채팅 문법)가 이미 말하므로 헤더는 신원과 상태만 남긴다 */}
       <div className="ma-p-head">
-        <span className={'ma-p-num' + (focused ? ' on' : '')}>{slot + 1}</span>
-        <span className="ma-p-title">{meta.title || t('새 작업', 'New task')}</span>
+        {/* 번호 칩 = 컬러 태그 토글 — 클릭마다 7색 순환 후 해제. 색은 헤더 하단 라인(.ma-p-tag)에 */}
+        <button
+          className={'ma-p-num has-tip' + (focused ? ' on' : '')}
+          data-tip={t('컬러 태그 — 클릭해 색 변경', 'Color tag — click to change')}
+          onClick={() => onCycleColor(slot)}
+        >
+          {slot + 1}
+        </button>
+        {/* 제목 묶음 — 더블클릭/연필/F2로 그 자리 편집, 호버 0.35s 후 첫 지시 원문 미리보기 */}
+        <span className="ma-p-tw">
+          {renaming ? (
+            <input
+              className="ma-p-tin"
+              defaultValue={meta.title}
+              placeholder={t('패널 제목', 'Panel title')}
+              ref={(el) => {
+                if (el) {
+                  el.focus()
+                  el.select()
+                }
+              }}
+              onKeyDown={(e) => {
+                // Esc가 패널 키보드(실행 취소 분기)로 새면 안 된다 — 편집 중 키는 여기서 끝
+                e.stopPropagation()
+                if (e.key === 'Enter') commitRename(e.currentTarget.value)
+                else if (e.key === 'Escape') commitRename(null)
+              }}
+              onBlur={(e) => commitRename(e.currentTarget.value)}
+              onMouseDown={(e) => e.stopPropagation()}
+            />
+          ) : (
+            <>
+              <span className={'ma-p-title' + (meta.custom ? ' custom' : '')} onDoubleClick={() => onStartRename(slot)}>
+                {meta.title || t('새 작업', 'New task')}
+              </span>
+              <button
+                className="ma-p-tedit"
+                aria-label={t('패널 이름 바꾸기 (F2)', 'Rename panel (F2)')}
+                onClick={() => onStartRename(slot)}
+              >
+                <IconPencil size={11} />
+              </button>
+              {firstUser && (
+                <span className="ma-p-peek">
+                  <span className="pk-l">
+                    {t('첫 지시', 'First instruction')} · {firstUser.time} ·{' '}
+                    {t(`${userMsgs.length}턴`, `${userMsgs.length} turn${userMsgs.length > 1 ? 's' : ''}`)}
+                  </span>
+                  <span className="pk-b">{firstUser.text.trim() || t('파일 첨부', 'File attachment')}</span>
+                </span>
+              )}
+            </>
+          )}
+        </span>
         <span className="ma-spacer" />
         {/* 작업 폴더 칩 — 본채팅 헤더와 같은 FolderPop(공유 최근 폴더 + 찾아보기)이 열린다.
             .hfold 래퍼가 팝오버 기준점 + 안쪽 클릭의 바깥닫힘 전파 차단을 겸한다 */}
@@ -428,6 +526,8 @@ const PanelView = memo(function PanelView({
         >
           {expanded ? <IconCollapse size={12} /> : <IconExpand size={12} />}
         </button>
+        {/* 컬러 태그 — 헤더 하단 전폭 2px 라인. 기본은 슬롯 색(1=보라, 2=파랑…), 번호 칩 클릭으로 순환 */}
+        <span className="ma-p-tag" style={{ background: `var(--${meta.color || defaultTag(slot)})` }} />
       </div>
 
       <div className="ma-p-body">
@@ -551,10 +651,7 @@ const PanelView = memo(function PanelView({
       {/* 패널 스코프 카드 — .ma-panel(position:relative) 안에서 그 패널만 덮으므로
           어느 패널의 요청인지 위치로 식별된다. 키보드는 포커스된 패널의 카드만
           받는다 — 동시에 여러 카드가 떠도 키 한 번이 전부에 응답되지 않도록. */}
-      <WorkflowDock
-        wf={state.workflow ?? null}
-        onStop={state.workflow ? () => onBgTask(slot, { action: 'stop', id: state.workflow!.id }) : undefined}
-      />
+      <WorkflowDock wfs={state.workflows} onStop={(id) => onBgTask(slot, { action: 'stop', id })} />
       <PermissionModal
         permission={state.pendingPermission}
         onRespond={(b) => onPermission(slot, b)}
@@ -639,6 +736,7 @@ function ActiveSession({
         ? {
             title: p.title ?? '',
             custom: !!p.custom,
+            color: sanitizeTag(p.color),
             cwd: typeof p.cwd === 'string' ? p.cwd : '',
             refDirs: sanitizeRefDirs(p.refDirs),
             picker: sanitizePanelPicker(p.picker),
@@ -678,6 +776,8 @@ function ActiveSession({
   }, [busyCount])
 
   const [focusedSlot, setFocusedSlot] = useState<number | null>(null)
+  // 제목 인라인 편집 중인 슬롯 — F2(포커스 패널)·더블클릭·연필로 진입, 커밋/취소로 해제
+  const [renamingSlot, setRenamingSlot] = useState<number | null>(null)
   // 포커스 밖 알림 — 6패널 각각의 전이(턴 종료/승인/질문)를 감시한다. sub=슬롯이라
   // 패널별로 항목이 따로 쌓이고, 클릭 라우팅은 세션 단위(이 세션이 열린다).
   useTurnNotifyList(
@@ -777,6 +877,7 @@ function ActiveSession({
       return {
         title: m.title,
         custom: m.custom,
+        color: m.color,
         cwd: m.cwd,
         refDirs: m.refDirs,
         picker: m.picker,
@@ -810,7 +911,7 @@ function ActiveSession({
     const sess = sessions[slot]
     // 상주 워크플로(busy=false지만 도는 중)도 Esc 취소 대상 — 중지 버튼과 같은 의미.
     // 회수(턴 걷기 + 문장 복원)는 stopPanel이 공통으로 처리한다.
-    if (!sess.busy && sess.state.workflow?.status !== 'running') return false
+    if (!sess.busy && !sess.state.workflows.some((w) => w.status === 'running')) return false
     stopPanel(slot)
     return true
   })
@@ -818,7 +919,7 @@ function ActiveSession({
   // 여럿이면 어느 걸 멈추라는 건지 모호하므로 가만히 둔다(패널을 포커스해 취소).
   const escCancelSole = useEvent((): boolean => {
     const running = sessions
-      .map((s, i) => (s.busy || s.state.workflow?.status === 'running' ? i : -1))
+      .map((s, i) => (s.busy || s.state.workflows.some((w) => w.status === 'running') ? i : -1))
       .filter((i) => i >= 0)
     return running.length === 1 ? escCancelPanel(running[0]) : false
   })
@@ -860,6 +961,13 @@ function ActiveSession({
         return
       }
       if (e.metaKey || e.ctrlKey || e.altKey || typing) return
+
+      // F2 = 포커스 패널의 제목 편집 — 사이드바 F2(세션 이름 변경)는 패널 선택 중엔 양보한다
+      if (e.key === 'F2' && focusedSlot != null) {
+        e.preventDefault()
+        setRenamingSlot(focusedSlot)
+        return
+      }
 
       if (e.key === 'Enter' && !e.shiftKey) {
         const ta = document.querySelector('.ma-panel.focused .composer textarea') as HTMLTextAreaElement | null
@@ -918,6 +1026,18 @@ function ActiveSession({
   )
   const onPicker = useEvent((slot: number, picker: PickerState) => patchMeta(slot, { picker }))
   const onFocusPanel = useEvent((slot: number) => setFocusedSlot(slot))
+  // ── 패널 제목 편집 + 컬러 태그 ──
+  const onStartRename = useEvent((slot: number) => {
+    setFocusedSlot(slot)
+    setRenamingSlot(slot)
+  })
+  const onRenamePanel = useEvent((slot: number, title: string | null, custom: boolean) => {
+    setRenamingSlot(null)
+    if (title !== null) patchMeta(slot, { title, custom })
+  })
+  const onCycleColor = useEvent((slot: number) =>
+    setMetas((prev) => prev.map((m, i) => (i === slot ? { ...m, color: nextTag(m.color || defaultTag(slot)) } : m)))
+  )
   // 크게 보기 토글 — 열릴 때 카드 컴포저로 바로 커서(숫자 키 점프와 같은 착지)
   const onToggleExpand = useEvent((slot: number) => {
     const opening = expandedSlot !== slot
@@ -1039,7 +1159,7 @@ function ActiveSession({
       !!sess.state.session && sess.state.messages.length > 0 && !sameCwd(sess.state.session.cwd, dir)
     if (folderSwitched) sess.load(initialSessionState)
     sess.begin(text, cmd, imgs)
-    const title = cmd ? commandTitleOf(cmd) : text.slice(0, 80) || t('파일 첨부', 'File attachment')
+    const title = deriveTitle(text)
     if (firstInSession) onFirstPrompt(sessionId, title)
     setMetas((prev) =>
       prev.map((pm, i) =>
@@ -1249,6 +1369,10 @@ function ActiveSession({
         onPermission={onPermission}
         onAnswer={onAnswer}
         onDismissQuestion={onDismissQuestion}
+        renaming={renamingSlot === slot}
+        onStartRename={onStartRename}
+        onRename={onRenamePanel}
+        onCycleColor={onCycleColor}
       />
     )
   }
@@ -1274,6 +1398,7 @@ function ActiveSession({
                   // 줄어든 그리드 밖을 가리키던 선택/모달 슬롯은 정리 — 안 보이는
                   // 패널이 오버레이로 계속 떠 있거나 포커스를 쥐고 있지 않게
                   setFocusedSlot((s) => (s != null && s >= n ? null : s))
+                  setRenamingSlot((s) => (s != null && s >= n ? null : s))
                   setExpandedSlot((s) => (s != null && s >= n ? null : s))
                   setOpenFile((f) => (f && f.slot >= n ? null : f))
                   setOpenSub((s) => (s && s.slot >= n ? null : s))

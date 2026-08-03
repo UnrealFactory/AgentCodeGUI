@@ -213,6 +213,8 @@ export const Sidebar = memo(function Sidebar({
       const act = sectionsRef.current.find((s) => s.activeId && s.chats.some((c) => c.id === s.activeId))
       if (!act) return
       if (e.key === 'F2') {
+        // 멀티 뷰에서 패널이 선택돼 있으면 F2는 그 패널의 제목 편집 몫 — 세션 이름 변경은 양보
+        if (document.querySelector('.ma-panel.focused')) return
         e.preventDefault()
         startRename(act.key, act.activeId!)
       } else {

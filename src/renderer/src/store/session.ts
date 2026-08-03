@@ -57,9 +57,10 @@ export interface SessionState {
   subagents: SubAgentInfo[]
   // 백그라운드 작업(셸 등) — 살아있는 건 bg-tasks REPLACE로, 종료 상세는 bg-task-end로 갱신
   bgTasks: BgTask[]
-  // 워크플로 스냅샷 (Workflow 도구) — running이면 알약/카드가 그리고, 정착하면 흔적만 남는다.
+  // 워크플로 스냅샷들 (Workflow 도구) — running이면 알약/카드가 그리고, 정착하면 흔적만 남는다.
+  // 동시 워크플로가 있을 수 있어 id별 배열이고, 이벤트는 id 기준 upsert REPLACE로 흐른다.
   // 엔진은 정리 턴이 끝날 때까지 running을 유지한다(전송 게이트 wfAlive가 그 값에 매달림).
-  workflow: WorkflowState | null
+  workflows: WorkflowState[]
   // engine — 요청한 엔진(카드 헤더 'Claude의 승인 요청'/'GPT의 승인 요청' 표기), 생략=claude
   pendingPermission: { requestId: string; toolName: string; summary: string; engine?: EngineId } | null
   // engine — 질문을 던진 엔진(카드 헤더 'Claude의 질문'/'GPT의 질문' 표기), 생략=claude
@@ -202,8 +203,8 @@ export function snapshotForPersist(s: SessionState): SessionState {
     subagents: s.subagents.map((a) => (a.status === 'done' ? a : { ...a, status: 'done' as const })),
     // 백그라운드 작업은 CLI 프로세스와 함께 죽으므로 "실행 중"으로 복원되면 거짓말이 된다
     bgTasks: s.bgTasks.map((t) => (t.status === 'running' ? { ...t, status: 'stopped' as const, teardown: true } : t)),
-    // 워크플로도 같은 운명 — 도는 채로 복원되면 거짓 알약이 뜬다 (옛 스냅샷은 필드 없음 → null)
-    workflow: s.workflow?.status === 'running' ? { ...s.workflow, status: 'stopped' as const } : s.workflow ?? null,
+    // 워크플로도 같은 운명 — 도는 채로 복원되면 거짓 알약이 뜬다 (옛 스냅샷은 필드 없음 → [])
+    workflows: (s.workflows ?? []).map((w) => (w.status === 'running' ? { ...w, status: 'stopped' as const } : w)),
     interrupted: false
   }
 }
@@ -217,7 +218,7 @@ export const initialSessionState: SessionState = {
   terminal: [],
   subagents: [],
   bgTasks: [],
-  workflow: null,
+  workflows: [],
   pendingPermission: null,
   pendingQuestion: null,
   session: null,
@@ -778,9 +779,15 @@ export function reducer(state: SessionState, action: Action): SessionState {
     }
 
     case 'workflow': {
-      // 워크플로 스냅샷 REPLACE — 정착(completed/failed/stopped)하면 알약/카드가 사라지고,
-      // 결과는 뒤따르는 정리 턴 말풍선이 말한다 (별도 흔적 줄은 경고처럼 보여 뺐다)
-      return { ...state, workflow: e.wf }
+      // 워크플로 스냅샷 id 기준 upsert REPLACE — 정착(completed/failed/stopped)하면 그 알약이
+      // 사라지고, 결과는 뒤따르는 정리 턴 말풍선이 말한다 (별도 흔적 줄은 경고처럼 보여 뺐다).
+      // 기존 항목은 제자리 교체(알약 순서 고정), 새 항목은 뒤에 붙이고, 그 김에 지난 정착
+      // 흔적을 걷어 배열이 자라지 않게 한다.
+      const exists = state.workflows.some((w) => w.id === e.wf.id)
+      const workflows = exists
+        ? state.workflows.map((w) => (w.id === e.wf.id ? e.wf : w)).filter((w) => w.status === 'running' || w.id === e.wf.id)
+        : [...state.workflows.filter((w) => w.status === 'running'), e.wf]
+      return { ...state, workflows }
     }
 
     case 'model-fallback': {

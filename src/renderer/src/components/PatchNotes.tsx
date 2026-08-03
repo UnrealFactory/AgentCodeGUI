@@ -28,6 +28,111 @@ type LocalizedRelease = { ko: Release; en: Release }
 // 지난 1.x 노트들은 은퇴한 UpdateNotes와 함께 정리했다(이제 보여줄 경로가 없다).
 const MAX_VERSIONS = 5
 const RELEASES: Record<string, LocalizedRelease> = {
+  '2.3.5': {
+    ko: {
+      eyebrow: 'UPDATE',
+      lead: '멀티에이전트 패널을 한눈에 구분합니다 — 패널마다 이름을 직접 짓고, 컬러 태그가 기본으로 깔리고, 제목에 마우스를 올리면 처음 시킨 지시가 그대로 떠요. 워크플로 여러 개를 동시에 돌려도 이제 각자 알약으로 따로 추적됩니다.',
+      notes: [
+        {
+          tag: '멀티',
+          name: '패널 이름을 직접 지어요',
+          desc: (
+            <>
+              패널 제목을 <b>더블클릭</b>(또는 호버 연필, 포커스한 패널에선 <b>F2</b>)하면 그
+              자리에서 바로 수정합니다. 직접 지은 이름은 <b>다음 지시를 보내도 유지</b>되고,
+              비워서 저장하면 원래의 자동 제목(첫 지시)으로 돌아와요.
+            </>
+          )
+        },
+        {
+          tag: '멀티',
+          name: '패널마다 컬러 태그',
+          desc: (
+            <>
+              모든 패널 헤더 아래 <b>고유 색 라인</b>이 기본으로 깔립니다 — 1번 보라, 2번 파랑,
+              3번 주황… 슬롯마다 색이 달라 &quot;어느 패널이더라&quot;가 <b>글보다 색으로 먼저</b>{' '}
+              잡혀요. <b>번호 칩을 클릭</b>하면 7색을 돌며 바꿀 수 있고, 고른 색은 대화를 비워도
+              유지됩니다.
+            </>
+          )
+        },
+        {
+          tag: '멀티',
+          name: '뭘 시켰는지 바로 확인',
+          desc: (
+            <>
+              패널 제목에 <b>마우스를 올리면</b> 그 패널에 처음 시킨 <b>지시 원문</b>이 보낸
+              시각·대화 턴 수와 함께 카드로 떠요. 제목은 요약, 원문은 한 호버 거리 —
+              &quot;이 패널에 뭐 시켰더라&quot;가 사라집니다.
+            </>
+          )
+        },
+        {
+          tag: '워크플로',
+          name: '동시 워크플로를 각자 추적해요',
+          desc: (
+            <>
+              한 대화에서 워크플로를 여러 개 돌리면 진행 표시가 <b>서로를 덮어쓰던</b> 문제 —
+              이제 하단 도크에 <b>알약이 나란히</b> 뜨고, 펼친 카드의 <b>번호 탭</b>으로 오가며,
+              중지도 각자 누릅니다. 끝난 워크플로의 알약만 조용히 사라져요.
+            </>
+          )
+        }
+      ]
+    },
+    en: {
+      eyebrow: 'UPDATE',
+      lead: 'Multi-agent panels are now easy to tell apart — name each panel yourself, color tags come on by default, and hovering a title shows the original first instruction. Multiple workflows in one chat are now tracked separately, each with its own pill.',
+      notes: [
+        {
+          tag: 'Multi',
+          name: 'Name your panels',
+          desc: (
+            <>
+              <b>Double-click</b> a panel title (or the hover pencil — <b>F2</b> on the focused
+              panel) to edit it in place. A name you set <b>survives further prompts</b>, and
+              saving it empty falls back to the automatic title (the first instruction).
+            </>
+          )
+        },
+        {
+          tag: 'Multi',
+          name: 'A color tag on every panel',
+          desc: (
+            <>
+              Every panel header now carries a <b>distinct color line</b> by default — violet
+              for 1, blue for 2, orange for 3… so &quot;which panel was that&quot; registers{' '}
+              <b>by color before you read a word</b>. <b>Click the number chip</b> to cycle
+              through 7 colors; your pick survives clearing the chat.
+            </>
+          )
+        },
+        {
+          tag: 'Multi',
+          name: 'See what you asked, instantly',
+          desc: (
+            <>
+              <b>Hover a panel title</b> and a card shows the <b>original first instruction</b>{' '}
+              you gave that panel, with its time and turn count. The title is the summary; the
+              full text is one hover away — no more &quot;what did I ask this one again?&quot;
+            </>
+          )
+        },
+        {
+          tag: 'Workflow',
+          name: 'Concurrent workflows, tracked separately',
+          desc: (
+            <>
+              Running several workflows in one chat used to make their progress{' '}
+              <b>overwrite each other</b> — pills now line up <b>side by side</b> in the dock,
+              the expanded card switches between them with <b>number tabs</b>, and each has its
+              own stop. Only a finished workflow&apos;s pill quietly disappears.
+            </>
+          )
+        }
+      ]
+    }
+  },
   '2.3.4': {
     ko: {
       eyebrow: 'FIX',
@@ -446,116 +551,6 @@ const RELEASES: Record<string, LocalizedRelease> = {
               <b>above the chip you clicked</b>. Background agents that missed their completion
               notice used to keep the engine process resident — a <b>30-minute safety net</b>{' '}
               now reclaims them.
-            </>
-          )
-        }
-      ]
-    }
-  },
-  '2.3.0': {
-    ko: {
-      eyebrow: 'UPDATE',
-      lead: 'Claude 워크플로를 지원합니다 — 여러 에이전트가 단계별로 병렬 작업하는 워크플로가 백그라운드에서 완주하고, 끝나면 결과를 대화로 정리해 줘요. 백그라운드 셸·에이전트도 이제 턴이 끝나도 유지되고, 취소는 즉시·깨끗하게 됩니다.',
-      notes: [
-        {
-          tag: '워크플로',
-          name: '워크플로가 앱에서 완주합니다',
-          desc: (
-            <>
-              Claude의 <b>Workflow 도구</b>(멀티 에이전트 오케스트레이션)를 시키면, 턴이 끝나도
-              워크플로가 <b>백그라운드에서 계속 돌고</b> 완료되면 <b>결과 정리 답변이 저절로</b>{' '}
-              도착합니다. 진행은 하단 <b>알약</b>으로 — 누르면 <b>단계 레일 + 에이전트 보드</b>
-              (모델·토큰·도구 수 실시간)가 펼쳐져요. 카드의 <b>중지</b>, <b>Esc</b>·<b>↓→ 제스처</b>
-              로 내려두기까지.
-            </>
-          )
-        },
-        {
-          tag: '상주',
-          name: '백그라운드가 턴을 넘습니다',
-          desc: (
-            <>
-              백그라운드 <b>셸</b>(dev 서버 등)과 <b>서브에이전트</b>가 턴 종료와 함께 죽지 않고{' '}
-              <b>계속 살아 있어요</b>. 도는 동안 보낸 메시지는 <b>같은 세션에 이어져</b> 작업이
-              끊기지 않고, 폴더·모델·계정을 바꾸면 기존처럼 새 세션으로 시작합니다. 본채팅·멀티·
-              추가 채팅 모두요.
-            </>
-          )
-        },
-        {
-          tag: '취소',
-          name: '취소는 즉시, 그리고 회수로',
-          desc: (
-            <>
-              <b>Esc</b>·중지 버튼이 실행을 <b>즉시</b> 끊고, 보냈던 메시지와 반쯤 오던 답을
-              스레드에서 걷어 <b>보낸 문장을 컴포저에 되살립니다</b> — 다듬어 다시 보내면 돼요
-              (쓰던 초안은 지켜요). 멀티 채팅에서 취소가 안 먹던 문제도 함께 고쳤습니다.
-            </>
-          )
-        },
-        {
-          tag: '입력',
-          name: '↑/↓ 히스토리는 빈 입력에서만',
-          desc: (
-            <>
-              메시지를 <b>쓰는 중</b>의 ↑/↓는 줄 이동으로 남고, <b>입력창이 빌 때만</b> 보낸
-              메시지 다시 불러오기로 들어갑니다 — 초안을 쓰다 히스토리로 튀지 않아요.
-            </>
-          )
-        }
-      ]
-    },
-    en: {
-      eyebrow: 'UPDATE',
-      lead: 'Claude workflows are now supported — multi-agent, multi-stage runs finish in the background and post a wrap-up reply to the chat when they are done. Background shells and agents now outlive the turn too, and cancel is instant and clean.',
-      notes: [
-        {
-          tag: 'Workflow',
-          name: 'Workflows run to completion in the app',
-          desc: (
-            <>
-              Ask Claude to use its <b>Workflow tool</b> (multi-agent orchestration) and the
-              workflow <b>keeps running in the background</b> after the turn ends — when it
-              completes, a <b>wrap-up reply arrives on its own</b>. Follow progress with the{' '}
-              <b>pill</b> at the bottom: press it to unfold the <b>stage rail + agent board</b>{' '}
-              (model, tokens, tool counts — live). Stop from the card, or tuck it away with{' '}
-              <b>Esc</b> / the <b>↓→ gesture</b>.
-            </>
-          )
-        },
-        {
-          tag: 'Resident',
-          name: 'Background work outlives the turn',
-          desc: (
-            <>
-              Background <b>shells</b> (dev servers and the like) and <b>subagents</b> no longer
-              die with the turn — they <b>stay alive</b>. Messages sent while they run{' '}
-              <b>continue in the same session</b> so the work never breaks, and changing folder,
-              model, or account starts a fresh session as before. Main chat, multi panels, and
-              extra chat windows alike.
-            </>
-          )
-        },
-        {
-          tag: 'Cancel',
-          name: 'Cancel is instant — and takes it back',
-          desc: (
-            <>
-              <b>Esc</b> / the stop button now cuts the run <b>immediately</b>, sweeps your sent
-              message and the half-arrived answer out of the thread, and{' '}
-              <b>restores your sentence to the composer</b> — polish it and send again (a draft
-              in progress is kept). Also fixed cancel not taking effect in multi chat.
-            </>
-          )
-        },
-        {
-          tag: 'Input',
-          name: '↑/↓ history only on an empty composer',
-          desc: (
-            <>
-              While you are <b>writing</b>, ↑/↓ stay line movement; <b>only when the composer is
-              empty</b> do they recall sent messages — no more being yanked into history
-              mid-draft.
             </>
           )
         }

@@ -418,7 +418,7 @@ export function SessionWindow(): React.ReactElement {
   }, [])
 
   // 상주 워크플로 — busy가 풀린 뒤에도 도는 중이면 전송은 예약으로, Esc는 취소로 흐른다
-  const wfAlive = state.workflow?.status === 'running'
+  const wfAlive = state.workflows.some((w) => w.status === 'running')
 
   // 취소 = 중단 — 턴의 흔적은 스레드에 그대로 남기고 '중단함' 마커만 붙인다(본채팅과
   // 동일). 보낸 문장은 ↑ 히스토리로 복구. 상주 워크플로만 도는 경우엔 완결된 턴이라
@@ -730,10 +730,7 @@ export function SessionWindow(): React.ReactElement {
       </div>
 
       <PermissionModal permission={state.pendingPermission} onRespond={onPermission} />
-      <WorkflowDock
-        wf={state.workflow ?? null}
-        onStop={state.workflow ? () => onBgTaskSession({ action: 'stop', id: state.workflow!.id }) : undefined}
-      />
+      <WorkflowDock wfs={state.workflows} onStop={(id) => onBgTaskSession({ action: 'stop', id })} />
       <QuestionModal question={state.pendingQuestion} onAnswer={onAnswer} onDismiss={onDismissQuestion} />
 
       {pendingFolder && (
