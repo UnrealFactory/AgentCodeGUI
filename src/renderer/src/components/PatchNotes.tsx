@@ -28,6 +28,93 @@ type LocalizedRelease = { ko: Release; en: Release }
 // 지난 1.x 노트들은 은퇴한 UpdateNotes와 함께 정리했다(이제 보여줄 경로가 없다).
 const MAX_VERSIONS = 5
 const RELEASES: Record<string, LocalizedRelease> = {
+  '2.3.7': {
+    ko: {
+      eyebrow: 'UPDATE',
+      lead: '자주 쓰는 프롬프트를 저장해 두고 클릭 한 번으로 복사해 쓰는 프롬프트 라이브러리가 생겼습니다. 작업 폴더의 최근 목록도 이제 안 쓰는 항목을 지울 수 있어요.',
+      notes: [
+        {
+          tag: '프롬프트',
+          name: '자주 쓰는 프롬프트를 저장해 두세요',
+          desc: (
+            <>
+              사이드바 <b>추가 채팅 아래 &apos;프롬프트&apos;</b> 버튼이 라이브러리 카드를
+              엽니다 — 자주 쓰는 지시를 저장해 두고, 목록에서 <b>행을 클릭하면 바로
+              클립보드에 복사</b>돼요(초록 &apos;복사됨&apos; 피드백). 제목은 비워도 첫 줄로
+              표시되고, 호버하면 복사·수정·삭제가 나옵니다. 저장한 목록은{' '}
+              <b>모든 창이 공유</b>해요.
+            </>
+          )
+        },
+        {
+          tag: '프롬프트',
+          name: 'Enter로 저장, 제스처로 닫기',
+          desc: (
+            <>
+              편집 화면은 테두리 없는 <b>종이 같은 캔버스</b> — 큰 제목과 본문이 밑줄 하나로
+              나뉩니다. 채팅 입력창과 같은 문법으로 <b>Enter 저장 · Shift+Enter 줄바꿈</b>,
+              마우스 제스처 <b>↓→ 닫기</b>와 목록 <b>↑/↓ 스크롤</b>도 다른 카드들과 똑같이
+              통해요.
+            </>
+          )
+        },
+        {
+          tag: '폴더',
+          name: '최근 폴더를 지울 수 있어요',
+          desc: (
+            <>
+              작업 폴더 목록의 최근 항목에 <b>호버하면 ✕</b>가 나타납니다 — 한 번 눌러본
+              폴더가 계속 목록에 남는 게 싫을 때 그 자리에서 지워요. 지운 폴더는 다시
+              사용하면 재등장하고, <b>비운 목록이 재시작 때 되살아나지도 않습니다</b>.
+            </>
+          )
+        }
+      ]
+    },
+    en: {
+      eyebrow: 'UPDATE',
+      lead: 'A prompt library is here — save the prompts you reuse and copy them with a single click. The working-folder recents list can finally be pruned, too.',
+      notes: [
+        {
+          tag: 'Prompts',
+          name: 'Save the prompts you reuse',
+          desc: (
+            <>
+              The new <b>&apos;Prompts&apos; button under Extra chat</b> in the sidebar opens a
+              library card — save instructions you use often, and <b>click a row to copy it
+              straight to the clipboard</b> (with a green &apos;Copied&apos; flash). Leave the
+              title empty and the first line stands in; hover for copy, edit, and delete. The
+              list is <b>shared across every window</b>.
+            </>
+          )
+        },
+        {
+          tag: 'Prompts',
+          name: 'Enter saves, gestures close',
+          desc: (
+            <>
+              Editing happens on a borderless, <b>paper-like canvas</b> — a large title and the
+              body split by a single underline. Same grammar as the chat composer:{' '}
+              <b>Enter saves, Shift+Enter breaks a line</b>, and the mouse gestures work like
+              every other card — <b>↓→ closes</b>, <b>↑/↓ scroll</b> the list.
+            </>
+          )
+        },
+        {
+          tag: 'Folders',
+          name: 'Recent folders can be removed',
+          desc: (
+            <>
+              <b>Hover a recent entry</b> in the working-folder list and an <b>✕</b> appears —
+              remove a folder you tried once and never meant to keep, right there. It comes
+              back if you use it again, and <b>an emptied list no longer resurrects on
+              restart</b>.
+            </>
+          )
+        }
+      ]
+    }
+  },
   '2.3.6': {
     ko: {
       eyebrow: 'FIX',
@@ -414,122 +501,6 @@ const RELEASES: Record<string, LocalizedRelease> = {
               <b>grows automatically</b> while a pill is docked, so the last line sits above it
               even when pinned to the bottom. When both pills stack, the padding steps up one
               more tier.
-            </>
-          )
-        }
-      ]
-    }
-  },
-  '2.3.2': {
-    ko: {
-      eyebrow: 'FIX',
-      lead: '백그라운드로 돌던 워크플로·에이전트가 도중에 소리 없이 끊기던 심각한 버그를 고쳤습니다 — 유휴 엔진 정리 안전망이 일하는 중인 엔진을 잘못 회수하던 게 원인이에요. 답이 오는데도 "응답 없이 끝났어요"가 뜨던 오탐도 함께 잡았습니다.',
-      notes: [
-        {
-          tag: '상주',
-          name: '일하는 엔진은 회수하지 않아요',
-          desc: (
-            <>
-              안 쓰는 엔진을 정리하는 안전망(10/30분)이 내부 플래그 꼬임으로{' '}
-              <b>워크플로가 한창 도는 상주 엔진</b>을 종료시킬 수 있었습니다 — 몇 시간짜리 검증
-              루프가 새벽에 통째로 끊긴 실제 사고를 역추적해 찾았어요. 이제 타이머가{' '}
-              <b>끄기 직전에 현재 상태를 재검증</b>하고, 살아있는 셸·워크플로·에이전트가
-              하나라도 있으면 닫지 않습니다. 에이전트는 <b>전사 파일이 최근에 쓰였는지</b>까지
-              확인해 조용히 일하는 중이면 살려 둬요.
-            </>
-          )
-        },
-        {
-          tag: '상주',
-          name: '에이전트 완료 보고가 잘리지 않아요',
-          desc: (
-            <>
-              백그라운드 에이전트가 끝나는 <b>그 순간</b> 엔진을 정리해 버려, 결과를 정리해 주는{' '}
-              <b>보고 턴이 잘리고</b> 후속 진행이 멈추던 문제 — 워크플로가 받던 유예를
-              에이전트·셸도 똑같이 받아 <b>보고 턴까지 기다렸다</b> 정리합니다. 백그라운드로
-              시킨 일이 끝나면 결과 정리가 대화에 제대로 도착해요.
-            </>
-          )
-        },
-        {
-          tag: '오탐',
-          name: '"응답 없이 끝났어요" 오탐 수정',
-          desc: (
-            <>
-              밀린 완료 통지를 소화하는 <b>무음 턴</b>을 진짜 답변의 끝으로 오판해, 답이
-              스트리밍되기 직전에 안내가 뜨던 버그 — 판정을 <b>프레임이 흐르는 동안 미루고</b>,
-              다음 턴이 이어지는 게 보이면 아예 띄우지 않으며, 그래도 떴다면 답변이 오는 순간{' '}
-              <b>자동으로 걷어냅니다</b>. 진짜 무음 턴의 안내는 그대로예요.
-            </>
-          )
-        },
-        {
-          tag: '안내',
-          name: '백그라운드 작업이 정리되면 이유를 남겨요',
-          desc: (
-            <>
-              상주 중 <b>모델·모드·계정</b> 같은 실행 설정을 바꿔 보내면 백그라운드 작업을
-              이어받을 수 없어 정리되는데, 지금까진 <b>아무 말 없이 사라졌습니다</b> — 이제 왜
-              정리됐는지 스레드에 한 줄 안내가 남아요.
-            </>
-          )
-        }
-      ]
-    },
-    en: {
-      eyebrow: 'FIX',
-      lead: 'Fixed a serious bug where background workflows and agents were silently cut down mid-run — the idle-engine reclaimer was mistakenly collecting engines that were still working. Also fixed the false "ended without a reply" notice that appeared even as the answer was on its way.',
-      notes: [
-        {
-          tag: 'Resident',
-          name: 'Working engines are never reclaimed',
-          desc: (
-            <>
-              The safety net that cleans up unused engines (10/30 min) could, through a stuck
-              internal flag, shut down a resident engine <b>while a workflow was still
-              running</b> — traced from a real incident where an hours-long verification loop
-              was cut overnight. Timers now <b>re-validate live state right before closing</b>{' '}
-              and never close while any shell, workflow, or agent is alive. For agents we even
-              check <b>whether their transcript files were written recently</b>, so quiet
-              workers stay alive.
-            </>
-          )
-        },
-        {
-          tag: 'Resident',
-          name: 'Agent wrap-up replies survive',
-          desc: (
-            <>
-              Finishing a background agent used to tear the engine down <b>at that very
-              moment</b>, cutting off the <b>wrap-up turn</b> that reports its results and
-              continues the work — agents and shells now get the same grace workflows do: the
-              engine <b>waits for the report turn</b> before cleaning up. When background work
-              finishes, the wrap-up now lands in the chat properly.
-            </>
-          )
-        },
-        {
-          tag: 'False alarm',
-          name: 'False "ended without a reply" fixed',
-          desc: (
-            <>
-              A <b>silent turn</b> digesting backlogged completion notices was mistaken for the
-              end of the real answer, so the notice appeared right before the reply streamed in
-              — the verdict is now <b>deferred while frames keep flowing</b>, skipped entirely
-              when the next turn is seen coming, and if it still slipped through, it is{' '}
-              <b>retracted automatically</b> the moment the answer arrives. Genuine silent-turn
-              notices stay.
-            </>
-          )
-        },
-        {
-          tag: 'Notice',
-          name: 'Cleaned-up background work now says why',
-          desc: (
-            <>
-              Sending with changed run settings (<b>model, mode, account</b>) while resident
-              means background tasks cannot be carried over and get cleaned up — until now they{' '}
-              <b>vanished without a word</b>. A one-line notice in the thread now explains why.
             </>
           )
         }

@@ -9,9 +9,11 @@ import {
   IconMessage,
   IconMascot,
   IconGear,
-  IconX2
+  IconX2,
+  IconClipList
 } from './icons'
 import { t, useLang } from '../lib/i18n'
+import { PromptLibrary } from './PromptLibrary'
 
 // 2.0 사이드바 — 모드 탭 없이 일반/멀티/추가 채팅 3섹션이 상시 노출된다 (PoC v3).
 // 일반 항목 클릭=코드 뷰, 멀티 항목 클릭=멀티 뷰, 추가 항목 클릭=그 세션 창 포커스.
@@ -124,6 +126,8 @@ export const Sidebar = memo(function Sidebar({
   const [renaming, setRenaming] = useState<{ sec: SidebarSectionKey; id: string } | null>(null)
   const [confirm, setConfirm] = useState<ConfirmState | null>(null)
   const [removing, setRemoving] = useState<{ sec: SidebarSectionKey; id: string } | null>(null)
+  // 프롬프트 라이브러리 모달 — 자주 쓰는 프롬프트를 저장해 두고 복사해 쓴다
+  const [plibOpen, setPlibOpen] = useState(false)
   // 상대 시간은 스스로 흐른다 — 1분마다 다시 그려 '지금'이 '1분'이 되게
   const [, setTick] = useState(0)
   useEffect(() => {
@@ -248,6 +252,11 @@ export const Sidebar = memo(function Sidebar({
         <IconMessage size={16} />
         <span>{t('추가 채팅', 'Extra chat')}</span>
         <span className="kbd">{isMac ? '⌘⇧N' : 'Ctrl+Shift+N'}</span>
+      </button>
+      {/* 프롬프트 — 자주 쓰는 프롬프트 라이브러리 모달 (저장해 두고 복사해 쓰기) */}
+      <button className="sb-new" onClick={() => setPlibOpen(true)}>
+        <IconClipList size={16} />
+        <span>{t('프롬프트', 'Prompts')}</span>
       </button>
 
       <div className="sb-scroll scroll">
@@ -445,6 +454,9 @@ export const Sidebar = memo(function Sidebar({
           </div>,
           document.body
         )}
+
+      {/* 프롬프트 라이브러리 — 다른 오버레이처럼 body 포털 (fixed 좌표가 조상에 안 묶이게) */}
+      {plibOpen && createPortal(<PromptLibrary onClose={() => setPlibOpen(false)} />, document.body)}
     </aside>
   )
 })

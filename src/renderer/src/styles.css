@@ -3173,6 +3173,96 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
 .sccard .fop-err{ justify-content:center; margin-top:10px; }
 .pr-ic.danger{ background:var(--red-soft); color:var(--red); }
 
+/* ── 프롬프트 라이브러리 (.plib-*) — 사이드바 '프롬프트'가 여는 카드 ──────────
+   껍데기는 공용 .pr-modal(오버레이 가드 재사용), 속은 에디토리얼:
+   배지 없는 큰 타이틀 헤더 + 개수 칩 · 행 호버 시 시간↔액션이 고정폭 레일에서
+   스왑(제목이 밀리지 않게) · 복사 피드백은 초록 '복사됨' + 행 배경 플래시 ·
+   편집 뷰는 박스 입력 대신 무테 캔버스(제목+본문이 한 종이처럼). */
+.plib-modal{ width:min(620px, 100%); }
+.plib-head{ padding:18px 14px 13px 22px; border-bottom:1px solid var(--line); }
+.plib-head .row{ display:flex; align-items:center; gap:9px; }
+.plib-head .tt{ font-size:16px; font-weight:750; letter-spacing:-.02em; color:var(--text); }
+.plib-head .n{
+  font-family:var(--font-mono); font-size:10px; font-weight:600; color:var(--text-3);
+  background:var(--surface-2); border-radius:99px; padding:2px 7px;
+}
+.plib-head .sp{ flex:1; }
+.plib-head .sub{ margin-top:3px; font-size:12px; color:var(--text-3); }
+/* 닫기 버튼이 카드 상단 모서리라 툴팁은 아래로 (pr-head와 같은 처리) */
+.plib-head .has-tip::after{ bottom:auto; top:100%; left:auto; right:0; margin-bottom:0; margin-top:8px; transform:translateY(3px); }
+.plib-head .has-tip:hover::after{ transform:translateY(0); }
+
+.plib-list{ overflow-y:auto; min-height:0; padding:10px 12px 12px; display:flex; flex-direction:column; gap:2px; }
+.plib-row{ padding:9px 11px; border-radius:10px; cursor:pointer; transition:background .12s, box-shadow .12s; }
+.plib-row:hover{ background:var(--hover); box-shadow:var(--hover-ring); }
+.plib-row:focus-visible{ outline:none; box-shadow:var(--hover-ring); }
+.plib-row.copied{ background:var(--green-soft); }
+.plib-row .tl{ display:flex; align-items:center; gap:8px; }
+.plib-row .tl .tt{ flex:1; min-width:0; font-size:13.5px; font-weight:600; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.plib-row .tx{
+  margin-top:3px; font-size:12px; line-height:1.5; color:var(--text-3);
+  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; word-break:break-word;
+}
+/* 오른쪽 레일 — 평소 시간, 호버에 액션. 고정폭 슬롯 안 절대배치 스왑이라 제목이 안 밀린다 */
+.plib-row .rail{ position:relative; flex:0 0 auto; width:76px; height:22px; }
+.plib-row .when{
+  position:absolute; right:3px; top:50%; transform:translateY(-50%);
+  font-family:var(--font-mono); font-size:10px; color:var(--text-4); transition:opacity .12s;
+}
+.plib-row .acts{
+  position:absolute; right:-3px; top:50%; transform:translateY(-50%);
+  display:flex; gap:1px; opacity:0; transition:opacity .12s;
+}
+.plib-row:hover .when, .plib-row:focus-visible .when{ opacity:0; }
+.plib-row:hover .acts, .plib-row:focus-visible .acts{ opacity:1; }
+.plib-act{ width:22px; height:22px; border-radius:6px; display:grid; place-items:center; color:var(--text-4); transition:background .12s, color .12s; }
+.plib-act:hover{ background:rgba(255,255,255,.09); color:var(--text); }
+.plib-act.danger:hover{ background:var(--red-soft); color:var(--red); }
+.plib-done{
+  position:absolute; right:0; top:50%; transform:translateY(-50%);
+  display:inline-flex; align-items:center; gap:4px; font-size:11px; font-weight:650; color:var(--green); white-space:nowrap;
+}
+
+.plib-empty{ display:flex; flex-direction:column; align-items:center; gap:4px; padding:44px 0 40px; color:var(--text-4); }
+.plib-empty svg{ margin-bottom:6px; }
+.plib-empty .e1{ font-size:13.5px; font-weight:600; color:var(--text-2); }
+.plib-empty .e2{ font-size:12px; color:var(--text-3); }
+
+/* 목록 맨 아래 '+ 새 프롬프트' — 푸터 대신 목록 안 고스트 행 (Notion의 + New 문법) */
+.plib-sep{ height:1px; flex:0 0 auto; background:var(--line); margin:8px 4px; }
+.plib-add{
+  display:flex; align-items:center; justify-content:center; gap:6px; flex:0 0 auto;
+  padding:9px 11px; border-radius:10px; font-size:12.5px; font-weight:600; color:var(--text-2);
+  transition:background .12s, color .12s;
+}
+.plib-add:hover{ background:var(--hover); color:var(--text); }
+
+/* 편집 캔버스 — 무테 제목 + 본문. 둘 사이는 양옆 22px 인셋 헤어라인 밑줄로 구분
+   (포커스 시 살짝 밝아짐). Enter 저장·Shift+Enter 줄바꿈은 푸터 kbd 힌트가 말한다 */
+.plib-ed{ display:flex; flex-direction:column; min-height:0; }
+.plib-ed .ti{
+  margin:16px 22px 0; padding:0 0 11px; background:none; outline:none;
+  border:none; border-bottom:1px solid var(--line); transition:border-color .16s;
+  font-size:15.5px; font-weight:700; letter-spacing:-.01em; color:var(--text);
+}
+.plib-ed .ti:focus{ border-bottom-color:var(--line-strong); }
+.plib-ed .ti::placeholder{ color:var(--text-4); font-weight:700; }
+.plib-ed .tx{
+  margin-top:12px; padding:0 22px 16px; min-height:240px; max-height:52vh; overflow-y:auto;
+  background:none; border:none; outline:none; resize:none;
+  font-size:13.5px; line-height:1.65; color:var(--text);
+}
+.plib-ed .tx::placeholder{ color:var(--text-4); }
+.plib-foot{ display:flex; align-items:center; gap:9px; padding:13px 16px 14px; border-top:1px solid var(--line); }
+.plib-foot .hint{ display:inline-flex; align-items:center; gap:6px; font-size:11px; color:var(--text-4); }
+.plib-foot kbd{
+  font-family:var(--font-mono); font-size:9.5px; color:var(--text-3);
+  background:var(--surface-2); border:1px solid var(--line); border-radius:5px; padding:1.5px 5px;
+}
+.plib-foot .sp{ flex:1; }
+/* 프롬프트 모달(z 120) 위에 뜨는 삭제 확인 — 기본 .sconfirm(z 80)이 카드 뒤로 가라앉지 않게 */
+.sconfirm.up{ z-index:130; }
+
 /* animations */
 @keyframes spin{ to{ transform:rotate(360deg); } }
 @keyframes pulse{ 0%,100%{ opacity:1; } 50%{ opacity:.35; } }

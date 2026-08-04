@@ -26,7 +26,7 @@ import type {
 } from '@shared/protocol'
 import { t, useLang } from '../lib/i18n'
 import { sameCwd, type ThreadItem } from '../store/session'
-import { loadRecentDirs, loadFavDirs, toggleFavDir } from '../lib/recentDirs'
+import { loadRecentDirs, loadFavDirs, toggleFavDir, removeRecentDir } from '../lib/recentDirs'
 import { relTime } from './Sidebar'
 import { Markdown } from './Markdown'
 import { FileBadge } from './fileType'
@@ -1183,9 +1183,10 @@ export function FolderPop({
       document.removeEventListener('keydown', onKey)
     }
   }, [onClose])
-  // 즐겨찾기가 있으면 목록을 "즐겨찾기 / 최근" 섹션(캡션+밑줄)으로 나눈다. 별 토글은
-  // 라이브 재구성 — 별을 달면 그 행이 즐겨찾기 섹션으로 올라가는 게 눈에 보인다.
-  const [favRev, setFavRev] = useState(0)
+  // 즐겨찾기가 있으면 목록을 "즐겨찾기 / 최근" 섹션(캡션+밑줄)으로 나눈다. 별 토글과
+  // 최근 ✕는 라이브 재구성 — 별을 달면 그 행이 즐겨찾기 섹션으로 올라가고, ✕를 누르면
+  // 그 자리에서 사라지는 게 눈에 보인다.
+  const [rev, setRev] = useState(0)
   const { curRow, favRows, recRows, favList } = useMemo(() => {
     const favs = loadFavDirs()
     const shared = loadRecentDirs()
@@ -1198,18 +1199,18 @@ export function FolderPop({
       favRows: favs.filter(notCur).map((p) => ({ path: p, t: tOf(p), current: false })),
       recRows: shared
         .filter((x) => notCur(x.p) && !favs.some((f) => sameCwd(f, x.p)))
-        .map((x) => ({ path: x.p, t: x.t, current: false }))
+        .map((x) => ({ path: x.p, t: x.t, current: false, rec: true }))
         .slice(0, 6)
     }
-  }, [cwd, favRev])
+  }, [cwd, rev])
   const baseOf = (p: string): string => p.split(/[\\/]+/).filter(Boolean).pop() ?? p
   // 별 토글 — 팝오버는 닫지 않는다 (행 클릭의 폴더 선택과 분리, stopPropagation)
   const onStar = (e: React.MouseEvent, path: string): void => {
     e.stopPropagation()
     toggleFavDir(path)
-    setFavRev((r) => r + 1)
+    setRev((r) => r + 1)
   }
-  const renderRow = (f: { path: string; t: number; current: boolean }): React.ReactNode => {
+  const renderRow = (f: { path: string; t: number; current: boolean; rec?: boolean }): React.ReactNode => {
     const fav = favList.some((p) => sameCwd(p, f.path))
     const ref = (refDirs ?? []).some((p) => sameCwd(p, f.path))
     return (
@@ -1257,6 +1258,22 @@ export function FolderPop({
             }}
           >
             {ref ? <IconCheck size={12} stroke={2.4} /> : <IconPlus size={12} />}
+          </span>
+        )}
+        {/* 최근에서 제거 ✕ — 최근 섹션 행에만 (즐겨찾기는 별 해제, 현재 폴더는 대상 아님).
+            다시 그 폴더를 사용하면 최근에 재등장한다 */}
+        {f.rec && (
+          <span
+            className="hstar hx"
+            role="button"
+            aria-label={t('최근 목록에서 제거', 'Remove from recent list')}
+            onClick={(e) => {
+              e.stopPropagation()
+              removeRecentDir(f.path)
+              setRev((r) => r + 1)
+            }}
+          >
+            <IconClose size={11} />
           </span>
         )}
       </button>

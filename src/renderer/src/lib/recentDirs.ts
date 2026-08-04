@@ -37,11 +37,22 @@ export function pushRecentDir(dir: string): void {
   }
 }
 
-// 콜드 스타트 시드 — 목록이 비어 있을 때만, 기존 채팅들이 쓰던 폴더로 1회 채운다
-// (이 기능 도입 전부터 쓰던 사용자의 팝오버가 빈 채로 시작하지 않게)
+// 최근 목록에서 제거 — 팝오버 최근 행의 ✕. 그 폴더를 다시 사용하면 pushRecentDir로 재등장
+export function removeRecentDir(dir: string): void {
+  if (!dir) return
+  try {
+    localStorage.setItem(KEY, JSON.stringify(loadRecentDirs().filter((x) => !sameCwd(x.p, dir))))
+  } catch {
+    /* no-op */
+  }
+}
+
+// 콜드 스타트 시드 — 한 번도 초기화된 적 없을 때만, 기존 채팅들이 쓰던 폴더로 1회 채운다
+// (이 기능 도입 전부터 쓰던 사용자의 팝오버가 빈 채로 시작하지 않게). '비어 있으면'이
+// 아니라 '키 자체가 없으면'인 이유: ✕로 모두 지운 목록이 재시작마다 부활하면 안 된다
 export function seedRecentDirs(entries: { p: string; t: number }[]): void {
   try {
-    if (loadRecentDirs().length > 0) return
+    if (localStorage.getItem(KEY) !== null) return
     const items: RecentDir[] = []
     for (const e of entries) {
       if (!e.p) continue
