@@ -13,8 +13,8 @@ import { readUiPrefs, writeUiPrefs } from './uiPrefs'
 import { setUiLang, t } from './lang'
 import { apiConfigStatus, setApiKey, clearApiKey, setOpenaiApiKey, clearOpenaiApiKey, setBudget, resetBudget } from './apiConfig'
 import { readApiUsage } from './apiUsage'
-import { authLogin, authLogout, authLoginCancel, listAccounts, setDefaultAccount, removeAccount, accountsUsage, defaultAccountEmail, freshAccountToken, usageSlot, migrateAccounts } from './auth'
-import { codexListAccounts, codexLogin, codexLogout, codexSetDefaultAccount, codexLoginCancel, codexAccountsUsage, migrateCodexAccounts } from './codex/auth'
+import { authLogin, authLogout, authLoginCancel, listAccounts, setDefaultAccount, removeAccount, reorderAccounts, accountsUsage, defaultAccountEmail, freshAccountToken, usageSlot, migrateAccounts } from './auth'
+import { codexListAccounts, codexLogin, codexLogout, codexSetDefaultAccount, codexReorderAccounts, codexLoginCancel, codexAccountsUsage, migrateCodexAccounts } from './codex/auth'
 import * as codexVersions from './codex/versions'
 import { setVerseDocKo } from './lsp/verseDocKo'
 import { setUeDocKo } from './lsp/ueDocKo'
@@ -1135,6 +1135,7 @@ function registerIpc(): void {
   ipcMain.handle(IPC.authListAccounts, async () => listAccounts())
   ipcMain.handle(IPC.authSetDefaultAccount, async (_e, email: string) => setDefaultAccount(email))
   ipcMain.handle(IPC.authRemoveAccount, async (_e, email: string) => removeAccount(email))
+  ipcMain.handle(IPC.authReorderAccounts, async (_e, emails: string[]) => reorderAccounts(emails))
   ipcMain.handle(IPC.authAccountsUsage, async () => accountsUsage())
   // Codex(OpenAI) 계정 — Anthropic과 동일한 문법 (앱 등록 계정만, 전역 ~/.codex 불가침)
   ipcMain.handle(IPC.codexListAccounts, async () => codexListAccounts())
@@ -1142,6 +1143,7 @@ function registerIpc(): void {
   ipcMain.handle(IPC.codexLogout, async (_e, email: string) => codexLogout(email))
   ipcMain.handle(IPC.codexSetDefaultAccount, async (_e, email: string) => codexSetDefaultAccount(email))
   ipcMain.handle(IPC.codexLoginCancel, async () => codexLoginCancel())
+  ipcMain.handle(IPC.codexReorderAccounts, async (_e, emails: string[]) => codexReorderAccounts(emails))
   ipcMain.handle(IPC.codexAccountsUsage, async () => codexAccountsUsage())
   // 두 엔진 CLI 공통 자동 업데이트 토글 — 인자 있으면 설정, 항상 현재 값을 반환
   ipcMain.handle(IPC.engineAutoUpdate, async (_e, enabled?: boolean) => {

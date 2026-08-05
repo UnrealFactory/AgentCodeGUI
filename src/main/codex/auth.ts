@@ -157,6 +157,16 @@ export async function codexSetDefaultAccount(email: string): Promise<CodexAccoun
   return codexListAccounts()
 }
 
+// 계정 순서 변경 — Anthropic 쪽 reorderAccounts와 동일한 규칙(순서에 없는 계정은 뒤에 보존)
+export async function codexReorderAccounts(emails: string[]): Promise<CodexAccountInfo[]> {
+  const f = readStoreFile()
+  const by = new Map(f.accounts.map((a) => [a.email, a]))
+  const next = emails.map((e) => by.get(e)).filter((a): a is StoredCodexAccount => !!a)
+  for (const a of f.accounts) if (!next.includes(a)) next.push(a)
+  writeStoreFile(next, f.defaultEmail)
+  return codexListAccounts()
+}
+
 function ensureSharedRoot(): void {
   try {
     for (const name of SHARED_DIRS) fs.mkdirSync(path.join(SHARED_ROOT, name), { recursive: true })

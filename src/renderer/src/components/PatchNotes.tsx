@@ -28,6 +28,92 @@ type LocalizedRelease = { ko: Release; en: Release }
 // 지난 1.x 노트들은 은퇴한 UpdateNotes와 함께 정리했다(이제 보여줄 경로가 없다).
 const MAX_VERSIONS = 5
 const RELEASES: Record<string, LocalizedRelease> = {
+  '2.3.8': {
+    ko: {
+      eyebrow: 'UPDATE',
+      lead: '멀티채팅 패널이 일을 마치면 자기 컬러 태그 색 테두리로 알려줍니다. AI가 도는 중에도 패널 이름이 제대로 바뀌고, 설정의 계정 카드는 꾹 눌러 끌면 순서를 바꿀 수 있어요.',
+      notes: [
+        {
+          tag: '멀티',
+          name: '끝난 패널은 자기 색으로 빛나요',
+          desc: (
+            <>
+              패널이 <b>완료</b> 상태가 되면 그 패널의 <b>컬러 태그 색 테두리</b>가 패널을
+              둘러쌉니다 — 헤더 하단 라인과 같은 색이라, 여러 패널을 돌려놓고도{' '}
+              <b>어느 패널이 끝났는지</b> 색만으로 한눈에 읽혀요. 새 지시를 보내거나 대화를
+              비우면 테두리도 함께 내려갑니다.
+            </>
+          )
+        },
+        {
+          tag: '멀티',
+          name: 'AI 작업 중에도 이름이 바뀌어요',
+          desc: (
+            <>
+              패널이 답변을 스트리밍하는 동안 이름을 바꾸면 <b>입력한 글자가 계속 덮여
+              지워지던</b> 문제를 고쳤습니다 — 매 토큰 렌더마다 입력칸 전체 선택이 다시
+              걸리던 것으로, 한글 조합이 깨지던 것도 같은 원인이었어요. 이제 <b>연필·더블클릭
+              ·F2</b> 어느 길로 들어가도 작업 중 여부와 무관하게 편안히 바뀝니다.
+            </>
+          )
+        },
+        {
+          tag: '계정',
+          name: '계정 카드를 꾹 눌러 끌어 정렬하세요',
+          desc: (
+            <>
+              설정 › Account의 계정 카드를 <b>0.35초 꾹 누르면 집혀서</b>, 위아래로 끌면
+              순서가 바뀝니다 — Anthropic·OpenAI 목록 모두요. 이 순서는{' '}
+              <b>채팅의 계정 선택 목록에도 그대로</b> 반영돼, 자주 쓰는 계정을 맨 위로 올려둘
+              수 있어요. 삭제·기본 버튼 클릭과는 충돌하지 않습니다.
+            </>
+          )
+        }
+      ]
+    },
+    en: {
+      eyebrow: 'UPDATE',
+      lead: 'Multi-chat panels now announce completion with a border in their own tag color. Renaming a panel works even while the AI is running, and account cards in Settings can be press-and-hold dragged into a new order.',
+      notes: [
+        {
+          tag: 'Multi',
+          name: 'Finished panels glow in their own color',
+          desc: (
+            <>
+              When a panel reaches <b>Done</b>, a border in that panel&apos;s{' '}
+              <b>color-tag hue</b> wraps around it — the same color as the header underline, so
+              with several panels running you can tell <b>which one finished</b> at a glance.
+              Sending a new instruction or clearing the chat lifts the border again.
+            </>
+          )
+        },
+        {
+          tag: 'Multi',
+          name: 'Renaming works while the AI is busy',
+          desc: (
+            <>
+              Renaming a panel during a streaming reply used to <b>keep wiping what you
+              typed</b> — every token re-render re-selected the whole input, which also broke
+              Korean IME composition. Fixed at the root: whether you enter via{' '}
+              <b>pencil, double-click, or F2</b>, editing now behaves the same busy or idle.
+            </>
+          )
+        },
+        {
+          tag: 'Account',
+          name: 'Press and hold to reorder accounts',
+          desc: (
+            <>
+              In Settings › Account, <b>hold a card for 0.35s to pick it up</b>, then drag it
+              up or down to reorder — both the Anthropic and OpenAI lists. The order carries
+              over to <b>the account picker in chats</b>, so your go-to account can sit on
+              top. It never collides with the Delete / Make-default buttons.
+            </>
+          )
+        }
+      ]
+    }
+  },
   '2.3.7': {
     ko: {
       eyebrow: 'UPDATE',
@@ -412,95 +498,6 @@ const RELEASES: Record<string, LocalizedRelease> = {
               The clunky stock system menu is replaced with a <b>dark card that matches the
               app</b> — two rows, <b>Open AgentCodeGUI / Quit completely</b>, hover highlights,
               rising quietly above the cursor. Language switches apply instantly.
-            </>
-          )
-        }
-      ]
-    }
-  },
-  '2.3.3': {
-    ko: {
-      eyebrow: 'UPDATE',
-      lead: 'X를 눌러도 앱이 꺼지지 않습니다 — 트레이로 내려가 하던 일을 계속해요. 업데이트는 이제 항상 가장 마지막 패치본을 설치하고, 워크플로 알약이 대화 마지막 줄을 가리던 것도 고쳤습니다.',
-      notes: [
-        {
-          tag: '트레이',
-          name: '닫기는 이제 트레이로',
-          desc: (
-            <>
-              창의 <b>X</b>(또는 Alt+F4)는 이제 앱을 끄지 않고 <b>시스템 트레이로 최소화</b>
-              합니다 — 돌던 워크플로·백그라운드 셸·에이전트·추가 채팅이 그대로 이어져요. 트레이
-              아이콘을 <b>클릭</b>하면 창이 돌아오고, 진짜 종료는 아이콘 <b>우클릭 → 종료</b>
-              입니다. 처음 숨을 때 한 번, 계속 실행 중이라는 풍선 안내가 떠요.
-            </>
-          )
-        },
-        {
-          tag: '업데이트',
-          name: '항상 가장 마지막 패치본으로',
-          desc: (
-            <>
-              새 버전을 받아둔 채 앱을 켜 두는 사이 <b>더 새 패치본</b>이 올라오면, 이전엔
-              재시작 전까지 몰라서 <b>낡은 버전을 설치</b>했어요 — 이제 받아둔 상태에서도{' '}
-              <b>10분마다 조용히 재확인</b>해 더 새 버전이 보이면 자동으로 갈아 받습니다.
-              같은 버전 확인으로는 <b>나중에</b>로 접어둔 카드가 되뜨지 않아요.
-            </>
-          )
-        },
-        {
-          tag: '채팅',
-          name: '알약이 마지막 줄을 가리지 않아요',
-          desc: (
-            <>
-              워크플로·질문 알약이 하단에 떠 있는 동안 대화의 <b>마지막 줄이 그 뒤에 숨던</b>{' '}
-              문제 — 알약이 있는 동안 <b>본문 바닥 여백이 자동으로 늘어나</b>, 바닥에 붙어
-              읽어도 마지막 줄이 알약 위로 올라옵니다. 두 알약이 이층으로 쌓이면 여백도 한 층
-              더 올라가요.
-            </>
-          )
-        }
-      ]
-    },
-    en: {
-      eyebrow: 'UPDATE',
-      lead: 'Pressing X no longer quits the app — it minimizes to the system tray and keeps working. Updates now always install the very latest patch, and the workflow pill no longer covers the last line of the chat.',
-      notes: [
-        {
-          tag: 'Tray',
-          name: 'Close now goes to the tray',
-          desc: (
-            <>
-              The window&apos;s <b>X</b> (or Alt+F4) no longer quits the app — it{' '}
-              <b>minimizes to the system tray</b>, so running workflows, background shells,
-              agents, and extra chats carry on. <b>Click</b> the tray icon to bring the window
-              back; to really quit, <b>right-click the icon → Quit</b>. The first time it hides,
-              a one-time balloon notes it is still running.
-            </>
-          )
-        },
-        {
-          tag: 'Update',
-          name: 'Always the very latest patch',
-          desc: (
-            <>
-              If a <b>newer patch</b> was published while a downloaded update sat waiting, the
-              app used to <b>install the stale one</b> until a restart — it now{' '}
-              <b>quietly re-checks every 10 minutes</b> even in that state and swaps in the
-              newer download automatically. Same-version checks never re-open a card you
-              dismissed with <b>Later</b>.
-            </>
-          )
-        },
-        {
-          tag: 'Chat',
-          name: 'Pills no longer cover the last line',
-          desc: (
-            <>
-              While a workflow or question pill floated at the bottom, the chat&apos;s{' '}
-              <b>last line could hide behind it</b> — the thread&apos;s bottom padding now{' '}
-              <b>grows automatically</b> while a pill is docked, so the last line sits above it
-              even when pinned to the bottom. When both pills stack, the padding steps up one
-              more tier.
             </>
           )
         }

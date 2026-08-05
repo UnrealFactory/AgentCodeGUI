@@ -75,6 +75,7 @@ const api: WindowApi = {
     listAccounts: () => ipcRenderer.invoke(IPC.authListAccounts),
     setDefaultAccount: (email: string) => ipcRenderer.invoke(IPC.authSetDefaultAccount, email),
     removeAccount: (email: string) => ipcRenderer.invoke(IPC.authRemoveAccount, email),
+    reorderAccounts: (emails: string[]) => ipcRenderer.invoke(IPC.authReorderAccounts, emails),
     accountsUsage: () => ipcRenderer.invoke(IPC.authAccountsUsage)
   },
   codexAuth: {
@@ -83,6 +84,7 @@ const api: WindowApi = {
     logout: (email: string) => ipcRenderer.invoke(IPC.codexLogout, email),
     setDefaultAccount: (email: string) => ipcRenderer.invoke(IPC.codexSetDefaultAccount, email),
     cancelLogin: () => ipcRenderer.invoke(IPC.codexLoginCancel),
+    reorderAccounts: (emails: string[]) => ipcRenderer.invoke(IPC.codexReorderAccounts, emails),
     accountsUsage: () => ipcRenderer.invoke(IPC.codexAccountsUsage)
   },
   engineAutoUpdate: (enabled?: boolean) => ipcRenderer.invoke(IPC.engineAutoUpdate, enabled),

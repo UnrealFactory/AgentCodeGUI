@@ -183,6 +183,18 @@ export async function removeAccount(email: string): Promise<AccountInfo[]> {
   return listAccounts()
 }
 
+// 계정 순서 변경 — 설정 Account 탭의 꾹-드래그 재정렬. 스토어 배열 순서가 곧 표시
+// 순서(설정·채팅 계정 picker 공통)다. 주어진 순서에 없는 계정은 기존 순서대로 뒤에
+// 남겨 유실이 없다(드래그 중 다른 창에서 로그인해 목록이 어긋나도 안전).
+export async function reorderAccounts(emails: string[]): Promise<AccountInfo[]> {
+  const f = readStoreFile()
+  const by = new Map(f.accounts.map((a) => [a.email, a]))
+  const next = emails.map((e) => by.get(e)).filter((a): a is StoredAccount => !!a)
+  for (const a of f.accounts) if (!next.includes(a)) next.push(a)
+  writeStoreFile(next, f.defaultEmail)
+  return listAccounts()
+}
+
 // ── 계정별 격리 config 폴더 (CLAUDE_CONFIG_DIR) ─────────────────
 // 모든 구독 실행이 계정 폴더를 CLAUDE_CONFIG_DIR로 받는다(빈 폴더=로그아웃, 토큰+신원을
 // 넣은 폴더=그 계정 인식 — 실측 검증).

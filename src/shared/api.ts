@@ -103,6 +103,8 @@ export interface WindowApi {
     setDefaultAccount(email: string): Promise<AccountInfo[]>
     /** 등록 목록에서 계정 제거(토큰 해지 없이 — 해지는 logout) → 갱신된 목록 */
     removeAccount(email: string): Promise<AccountInfo[]>
+    /** 계정 표시 순서 변경(설정 꾹-드래그) — 채팅 계정 picker에도 같은 순서 → 갱신된 목록 */
+    reorderAccounts(emails: string[]): Promise<AccountInfo[]>
     /** 등록 계정별 한도 사용률(5시간·주간·Fable) — 각 계정 토큰으로 일괄 조회 */
     accountsUsage(): Promise<AccountUsage[]>
   }
@@ -117,6 +119,8 @@ export interface WindowApi {
     /** 새 채팅·미지정 채팅이 쓸 기본 계정 지정 → 갱신된 목록 */
     setDefaultAccount(email: string): Promise<CodexAccountInfo[]>
     cancelLogin(): Promise<void>
+    /** 계정 표시 순서 변경(설정 꾹-드래그) → 갱신된 목록 */
+    reorderAccounts(emails: string[]): Promise<CodexAccountInfo[]>
     /** 등록 계정별 한도(rateLimits) 일괄 조회 — planType은 표시 플랜으로도 우선 사용 */
     accountsUsage(): Promise<CodexAccountUsage[]>
   }

@@ -936,6 +936,7 @@ export const IPC = {
   authSetDefaultAccount: 'auth:set-default-account', // (email) 새 채팅의 기본 계정 지정 — 새 목록 반환
   authRemoveAccount: 'auth:remove-account', // 등록 목록에서 계정 제거(토큰 해지 없이 — 해지는 logout)
   authAccountsUsage: 'auth:accounts-usage', // 등록 계정별 한도 사용률(5시간·주간·Fable) 일괄 조회
+  authReorderAccounts: 'auth:reorder-accounts', // (emails) 계정 표시 순서 변경(꾹-드래그) — 새 목록 반환
   // Codex(OpenAI) 계정 — Anthropic과 동일한 문법: 앱 등록 계정만, 전역 ~/.codex 불가침
   codexListAccounts: 'codex-auth:list-accounts', // 등록 계정 목록 + 기본 표시
   codexLogin: 'codex-auth:login', // `codex login` (격리 CODEX_HOME 브라우저 OAuth) — 완료 시 편입 + 새 목록
@@ -943,6 +944,7 @@ export const IPC = {
   codexSetDefaultAccount: 'codex-auth:set-default-account', // (email) 기본 계정 지정 — 새 목록
   codexLoginCancel: 'codex-auth:login-cancel',
   codexAccountsUsage: 'codex-auth:accounts-usage', // 등록 계정별 한도(rateLimits) 일괄 조회
+  codexReorderAccounts: 'codex-auth:reorder-accounts', // (emails) 계정 표시 순서 변경(꾹-드래그) — 새 목록
   engineAutoUpdate: 'engine:auto-update', // (get: 인자 없음 / set: boolean) 두 엔진 CLI 자동 업데이트 토글
   engineUpdateStatus: 'engine:update-status', // 부팅 자동 업데이트 스냅샷 조회 — 카드가 마운트 때 따라잡는다
   apiConfigGet: 'api-config:get', // API 키/예산/누적 사용액 스냅샷 (키 원문 제외)

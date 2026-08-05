@@ -353,8 +353,14 @@ const PanelView = memo(function PanelView({
 
   // 제목 편집 커밋은 한 번만 — Enter 커밋 직후 인풋 언마운트가 blur를 한 번 더 쏴도 재진입 없음
   const renameDoneRef = useRef(false)
+  // 포커스+전체선택은 편집 진입 때 한 번만 — 인라인 ref 콜백은 렌더마다 재실행이라
+  // 스트리밍(토큰마다 재렌더) 중엔 입력할 때마다 전체선택이 다시 걸려 글자가 덮여 지워졌다
+  const renameInRef = useRef<HTMLInputElement>(null)
   useEffect(() => {
-    if (renaming) renameDoneRef.current = false
+    if (!renaming) return
+    renameDoneRef.current = false
+    renameInRef.current?.focus()
+    renameInRef.current?.select()
   }, [renaming])
   const commitRename = (v: string | null): void => {
     if (renameDoneRef.current) return
@@ -413,8 +419,10 @@ const PanelView = memo(function PanelView({
 
   return (
     <div
-      className={'ma-panel' + (focused ? ' focused' : '')}
+      className={'ma-panel' + (state.status === 'done' ? ' done' : '') + (focused ? ' focused' : '')}
       data-slot={slot}
+      // 이 패널의 컬러 태그를 변수로 — 헤더 하단 라인(.ma-p-tag)과 완료 테두리(.done)가 같이 쓴다
+      style={{ '--ptag': `var(--${meta.color || defaultTag(slot)})` } as CSSProperties}
       onMouseDown={() => onFocusPanel(slot)}
     >
       {/* PoC .mph — 한 줄 헤더: [번호][제목] ─ [폴더 칩][상태 칩]. 컨텍스트·모델·과금은
@@ -435,12 +443,7 @@ const PanelView = memo(function PanelView({
               className="ma-p-tin"
               defaultValue={meta.title}
               placeholder={t('패널 제목', 'Panel title')}
-              ref={(el) => {
-                if (el) {
-                  el.focus()
-                  el.select()
-                }
-              }}
+              ref={renameInRef}
               onKeyDown={(e) => {
                 // Esc가 패널 키보드(실행 취소 분기)로 새면 안 된다 — 편집 중 키는 여기서 끝
                 e.stopPropagation()
@@ -526,8 +529,9 @@ const PanelView = memo(function PanelView({
         >
           {expanded ? <IconCollapse size={12} /> : <IconExpand size={12} />}
         </button>
-        {/* 컬러 태그 — 헤더 하단 전폭 2px 라인. 기본은 슬롯 색(1=보라, 2=파랑…), 번호 칩 클릭으로 순환 */}
-        <span className="ma-p-tag" style={{ background: `var(--${meta.color || defaultTag(slot)})` }} />
+        {/* 컬러 태그 — 헤더 하단 전폭 2px 라인. 기본은 슬롯 색(1=보라, 2=파랑…), 번호 칩 클릭으로 순환.
+            색은 패널 루트의 --ptag(완료 테두리와 공유) */}
+        <span className="ma-p-tag" />
       </div>
 
       <div className="ma-p-body">

@@ -203,6 +203,90 @@ function ProfileView(): React.ReactElement {
   )
 }
 
+// 배열 원소 이동(from → to) — 꾹-드래그 재정렬의 낙관 갱신용
+function arrMove<T>(arr: T[], from: number, to: number): T[] {
+  const next = arr.slice()
+  const [it] = next.splice(from, 1)
+  next.splice(to, 0, it)
+  return next
+}
+
+// ── 계정 카드 꾹-드래그 재정렬 ──────────────────────────────────────────────
+// 카드를 0.35초 꾹 누르면 집힌다(버튼 위 프레스는 제외 — 삭제/기본 클릭과 충돌 없음).
+// 집힌 뒤 세로 드래그로 목록이 즉시 재배열(move)되고, 놓으면 drop이 순서를 저장한다.
+// 홀드 전에 6px 이상 움직이거나 먼저 떼면 그냥 클릭 — 드래그로 승격하지 않는다.
+function useHoldReorder(
+  count: number,
+  move: (from: number, to: number) => void,
+  drop: () => void
+): { drag: number | null; press: (i: number) => (e: React.PointerEvent<HTMLDivElement>) => void } {
+  const [drag, setDrag] = useState<number | null>(null)
+  const press =
+    (i: number) =>
+    (e: React.PointerEvent<HTMLDivElement>): void => {
+      if (e.button !== 0 || count < 2) return
+      if ((e.target as HTMLElement).closest('button, a, input')) return
+      const el = e.currentTarget
+      const pid = e.pointerId
+      const startX = e.clientX
+      const startY = e.clientY
+      // 한 칸 이동 거리 = 행 높이 + 카드 간격(.sc2 + .sc2 의 8px) — 계정 카드 높이는 균일
+      const step = el.offsetHeight + 8
+      let active = false
+      let cur = i
+      const cleanup = (): void => {
+        window.clearTimeout(timer)
+        window.removeEventListener('pointermove', onMove)
+        window.removeEventListener('pointerup', onUp)
+        window.removeEventListener('pointercancel', onUp)
+        document.body.style.userSelect = ''
+        try {
+          el.releasePointerCapture(pid)
+        } catch {
+          /* 캡처 전 종료 */
+        }
+      }
+      const timer = window.setTimeout(() => {
+        active = true
+        setDrag(i)
+        // 프레스 중 시작된 텍스트 선택을 걷어내고, 드래그 동안 새 선택을 막는다
+        window.getSelection()?.removeAllRanges()
+        document.body.style.userSelect = 'none'
+        try {
+          el.setPointerCapture(pid)
+        } catch {
+          /* ignore */
+        }
+      }, 350)
+      const onMove = (ev: PointerEvent): void => {
+        if (ev.pointerId !== pid) return
+        if (!active) {
+          if (Math.abs(ev.clientX - startX) > 6 || Math.abs(ev.clientY - startY) > 6) cleanup()
+          return
+        }
+        // 프레스 지점 대비 이동량을 칸 수로 환산 — 배열이 이미 재배열돼도 기준은 원래 자리(i)
+        const to = Math.max(0, Math.min(count - 1, i + Math.round((ev.clientY - startY) / step)))
+        if (to !== cur) {
+          move(cur, to)
+          cur = to
+          setDrag(to)
+        }
+      }
+      const onUp = (ev: PointerEvent): void => {
+        if (ev.pointerId !== pid) return
+        cleanup()
+        if (active) {
+          setDrag(null)
+          if (cur !== i) drop()
+        }
+      }
+      window.addEventListener('pointermove', onMove)
+      window.addEventListener('pointerup', onUp)
+      window.addEventListener('pointercancel', onUp)
+    }
+  return { drag, press }
+}
+
 // ── Account (구독 로그인 Anthropic·OpenAI — 앱 등록 계정만, 전환 개념 없음) ───────
 // 로그인/로그아웃 전부 격리 CONFIG_DIR(main/auth.ts) — 전역 ~/.claude 불가침.
 // PoC 문법: 계정 카드(아바타·이메일·기본 배지·플랜) + 잔여 한도 미니 게이지 + 점선 추가 행.
@@ -311,6 +395,28 @@ function AccountView(): React.ReactElement {
   const planLabel = (ty?: string): string =>
     ty ? ty.charAt(0).toUpperCase() + ty.slice(1) + t(' 플랜', ' plan') : t('구독', 'Subscription')
 
+  // ── 꾹-드래그 재정렬 — 스토어 배열 순서가 곧 표시 순서(채팅 계정 picker 공통)라 로컬을
+  // 즉시 재배열(낙관)하고, 놓을 때 최종 순서를 저장한다(실패하면 reload로 서버 순서 복원).
+  // drop의 함수형 setState는 저장 시점에 "마지막 move까지 반영된" 배열을 읽기 위한 것.
+  const antDrag = useHoldReorder(
+    accounts?.length ?? 0,
+    (from, to) => setAccounts((prev) => (prev ? arrMove(prev, from, to) : prev)),
+    () =>
+      setAccounts((prev) => {
+        if (prev) void window.api.auth.reorderAccounts(prev.map((a) => a.email)).then(setAccounts).catch(() => reload())
+        return prev
+      })
+  )
+  const cxDrag = useHoldReorder(
+    cxAccounts?.length ?? 0,
+    (from, to) => setCxAccounts((prev) => (prev ? arrMove(prev, from, to) : prev)),
+    () =>
+      setCxAccounts((prev) => {
+        if (prev) void window.api.codexAuth.reorderAccounts(prev.map((a) => a.email)).then(setCxAccounts).catch(() => reload())
+        return prev
+      })
+  )
+
   return (
     <>
       <div className="set-h1">Account</div>
@@ -318,12 +424,14 @@ function AccountView(): React.ReactElement {
         {isEn() ? (
           <>
             Subscription sign-in — managed per engine. Runs only use accounts registered here — each chat can pick
-            its own account, and chats without one run on the <strong>default</strong> account.
+            its own account, and chats without one run on the <strong>default</strong> account. Press and hold a
+            card to drag it into a different order.
           </>
         ) : (
           <>
             구독 계정 로그인 — 엔진별로 따로 관리돼요. 실행에는 여기 등록된 계정만 쓰여요 — 채팅마다 계정을 따로
-            고를 수 있고, 안 고른 채팅은 <strong>기본</strong> 계정으로 실행돼요.
+            고를 수 있고, 안 고른 채팅은 <strong>기본</strong> 계정으로 실행돼요. 계정 카드는 꾹 눌러 끌면 순서를
+            바꿀 수 있어요.
           </>
         )}
       </div>
@@ -338,7 +446,11 @@ function AccountView(): React.ReactElement {
       ) : (
         <>
           {accounts.map((a, i) => (
-            <div className="sc2 acct" key={a.email}>
+            <div
+              className={'sc2 acct' + (antDrag.drag === i ? ' drag' : '')}
+              key={a.email}
+              onPointerDown={busy == null ? antDrag.press(i) : undefined}
+            >
               <div className="ava2" style={{ background: AVA_SWATCHES[i % AVA_SWATCHES.length] }}>
                 {a.email.charAt(0).toUpperCase()}
               </div>
@@ -393,7 +505,11 @@ function AccountView(): React.ReactElement {
       ) : (
         <>
           {cxAccounts.map((a, i) => (
-            <div className="sc2 acct" key={a.email}>
+            <div
+              className={'sc2 acct' + (cxDrag.drag === i ? ' drag' : '')}
+              key={a.email}
+              onPointerDown={busy == null ? cxDrag.press(i) : undefined}
+            >
               <div className="ava2" style={{ background: AVA_SWATCHES[(i + 6) % AVA_SWATCHES.length] }}>
                 {a.email.charAt(0).toUpperCase()}
               </div>
