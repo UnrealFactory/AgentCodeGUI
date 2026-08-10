@@ -17,8 +17,9 @@ let sender: ((s: UpdateStatus) => void) | null = null
 let lastLoggedStep = -1
 let wired = false
 // 켜둔 채로 며칠을 쓰는 사용 패턴에서, 그 사이 올라온 릴리즈도 알아채도록 주기 재확인.
-// 확인 한 번 = latest.yml(수백 바이트) GET 하나라 10분 주기여도 부담이 없다.
-const RECHECK_MS = 10 * 60 * 1000 // 10분
+// 확인 한 번 = latest.yml(수백 바이트) GET 하나. 릴리즈 주기가 하루 단위라 30분이면
+// 충분히 빠르고, 배터리에서 10분마다 네트워크를 깨울 이유가 없다.
+const RECHECK_MS = 30 * 60 * 1000 // 30분
 let recheckTimer: ReturnType<typeof setInterval> | null = null
 // 받아둔(downloaded) 상태의 '조용한 재확인' 표식 — 받아둔 뒤에 더 새 릴리즈가 올라왔는지만
 // 본다. 같은 버전이 다시 잡히는 동안엔 상태를 일절 건드리지 않아('나중에'로 접은 카드는

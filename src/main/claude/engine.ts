@@ -318,6 +318,13 @@ export class ClaudeEngine {
     return this.activeRunId !== null
   }
 
+  /** 유휴 회수(스윕) 판단용 — 턴이 돌고 있거나, 백그라운드(셸·워크플로·에이전트)를
+   *  지키려 열어 둔 상주 입력 스트림이 살아 있으면 true. 이때 엔진을 거두면 그 작업들이
+   *  고아 통지로 남아 다음 턴부터 CLI가 죽는 꼬임 루프의 진입점이 된다. */
+  get hasLiveStream(): boolean {
+    return this.activeRunId !== null || this.closeInput !== null
+  }
+
   /** Resolve a permission prompt that the renderer answered. */
   respondPermission(res: PermissionResponse): void {
     const waiter = this.permissionWaiters.get(res.requestId)

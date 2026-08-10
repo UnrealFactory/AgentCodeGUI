@@ -261,7 +261,7 @@ export function MouseGestureLayer({
     // down은 target에서(카드 안에서 시작한 제스처만), move/up은 window에서(카드 밖까지 추적).
     // down을 캡처로 받아 자식이 pointerdown 전파를 막아도 제스처는 시작되게 한다.
     target.addEventListener('pointerdown', onDown, true)
-    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointermove', onMove, { passive: true }) // preventDefault 없음 — 스크롤 강등 방지
     window.addEventListener('pointerup', onUp)
     window.addEventListener('pointercancel', onCancel)
     window.addEventListener('blur', onCancel)

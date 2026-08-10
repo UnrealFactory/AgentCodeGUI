@@ -34,6 +34,9 @@ export default defineConfig({
       }
     },
     build: {
+      // electron-vite의 렌더러 기본값이 minify:false다 — 미지정 시 JS 2.97MB·CSS 295KB가
+      // 주석까지 통째로 나가 로드·파스·V8 코드 메모리를 3배로 만든다(실측). 명시로 켠다.
+      minify: 'esbuild',
       rollupOptions: {
         input: {
           index: resolve(__dirname, 'src/renderer/index.html'),

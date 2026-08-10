@@ -282,6 +282,9 @@ export class CodexEngine {
     return this.activeRunId !== null
   }
 
+  /** 마지막 사용 시각 — 유휴 회수(sweep) 판단용. run/listModels가 갱신한다. */
+  lastUsedAt = Date.now()
+
   // ── 프로세스/RPC 배관 ─────────────────────────────────────────
   // app-server는 CODEX_HOME(계정 폴더) 하나로 뜬다 — 다른 계정으로 실행하려면 재기동.
   // 실행은 엔진 인스턴스당 한 번에 하나라 턴 사이 재기동은 안전하다(스레드는
@@ -1239,7 +1242,9 @@ export class CodexEngine {
       // 헤더의 모델 표기 동기화 — 스레드는 그대로, 모델만 바뀌었다
       this.emit({ type: 'session', runId, sessionId: this.activeThreadId ?? '', model: to, cwd: this.activeCwd, tools: [] })
       // 첫 turn/start가 거절돼 폴링이 시작 전이면 여기서 — 재시도 턴도 셸 추적을 받게
-      if (!this.bgPollTimer) this.bgPollTimer = setInterval(() => void this.pollBgTerminals(), 5000)
+      // (run()의 폴링 시작과 같은 가드 — 실행이 이미 끝났으면 좀비 타이머를 세우지 않는다)
+      if (this.activeRunId === runId && !this.bgPollTimer)
+        this.bgPollTimer = setInterval(() => void this.pollBgTerminals(), 5000)
       // 이후는 평소처럼 알림 스트림이 끌고 간다 (turn/completed → result → finishRun)
     } catch (e) {
       if (this.activeRunId !== runId) return
@@ -1261,15 +1266,17 @@ export class CodexEngine {
   }
 
   private finishRun(status: 'done' | 'error'): void {
+    // 폴링 타이머는 조기 반환보다 먼저 거둔다 — activeRunId가 이미 빈 상태에서 살아 있는
+    // 타이머는 전부 좀비다(살아야 할 타이머는 각 턴의 정상 경로가 매번 새로 세운다)
+    if (this.bgPollTimer) {
+      clearInterval(this.bgPollTimer)
+      this.bgPollTimer = null
+    }
     const runId = this.activeRunId
     if (!runId) return
     // 백그라운드 터미널 수명 통일(유저 결정) — Codex 터미널은 턴을 넘어 살 수 있지만
     // Claude 셸 규칙(턴 종료와 함께 정리)에 맞춘다. terminate는 fire-and-forget,
     // 칩은 여기서 즉시 정착(activeRunId가 곧 비므로 늦은 item/completed는 버려진다).
-    if (this.bgPollTimer) {
-      clearInterval(this.bgPollTimer)
-      this.bgPollTimer = null
-    }
     const threadId = this.activeThreadId
     for (const bg of this.bgTerms.values()) {
       // 직접 중지했는데 완료 통지가 아직인 항목도 여기서 정착 — 안 그러면 칩이 영영 스피너
@@ -1441,6 +1448,7 @@ export class CodexEngine {
 
   /** 설정/엔진 picker용 모델 목록 — app-server의 model/list (5분 캐시). */
   async listModels(): Promise<CodexModelInfo[]> {
+    this.lastUsedAt = Date.now()
     if (this.modelCache && Date.now() - this.modelCache.at < 300_000) return this.modelCache.models
     // 프로세스가 아직 없으면 기본 계정의 CODEX_HOME으로 띄운다 (모델 목록도 인증 필요)
     if (!this.proc || this.proc.exitCode !== null) {
@@ -1516,6 +1524,7 @@ export class CodexEngine {
   async run(req: RunRequest): Promise<string> {
     if (this.isRunning) await this.cancel()
 
+    this.lastUsedAt = Date.now()
     const runId = nextRunId()
     this.activeRunId = runId
     this.activeTurnId = null // 잔재 보험 — 스테일 id가 새 턴의 통지를 mismatch로 버리지 않게
@@ -1652,8 +1661,12 @@ export class CodexEngine {
       // activeTurnId가 다음 실행의 통지를 mismatch로 버리게 된다)
       if (this.activeRunId === runId)
         this.activeTurnId = turnObj?.turn?.id ?? (typeof turnObj?.id === 'string' ? turnObj.id : this.activeTurnId)
-      // 백그라운드 터미널 폴링 시작 — 푸시 알림이 없어 5초 간격 list (finishRun이 멈춘다)
-      this.bgPollTimer = setInterval(() => void this.pollBgTerminals(), 5000)
+      // 백그라운드 터미널 폴링 시작 — 푸시 알림이 없어 5초 간격 list (finishRun이 멈춘다).
+      // turn/start를 기다리는 사이 Esc·초고속 정착으로 finishRun이 먼저 지나갔으면
+      // (activeRunId ≠ runId) 세우지 않는다 — 무조건 대입이던 시절엔 그 좀비 핸들을
+      // 다음 턴의 대입이 덮어써 5초 폴링이 영구히 샜다. 기존 타이머도 덮어쓰지 않는다.
+      if (this.activeRunId === runId && !this.bgPollTimer)
+        this.bgPollTimer = setInterval(() => void this.pollBgTerminals(), 5000)
       // 이후는 알림 스트림이 끌고 간다 (turn/completed → result → finishRun)
     } catch (e) {
       const msg = (e as Error)?.message ?? t('Codex 실행을 시작하지 못했어요', 'Could not start the Codex run')
@@ -1675,8 +1688,12 @@ export class CodexEngine {
     return runId
   }
 
-  /** 프로세스 정리 — 앱 종료 시 호출 (선택). */
+  /** 프로세스 정리 — 앱 종료·유휴 회수 시 호출 (선택). */
   dispose(): void {
+    if (this.bgPollTimer) {
+      clearInterval(this.bgPollTimer)
+      this.bgPollTimer = null
+    }
     try {
       this.proc?.kill()
     } catch {

@@ -2,7 +2,7 @@ import { Fragment, memo, useEffect, useLayoutEffect, useMemo, useRef, useState, 
 import { createPortal } from 'react-dom'
 import type { AppUser, ChangedFile, DirEntry, GitRepoInfo, GitStatus } from '@shared/protocol'
 import { FileBadge } from './fileType'
-import { getPref, setPref } from '../lib/prefs'
+import { getPref, setPref, delPref, prefKeys } from '../lib/prefs'
 import { addGitExtra, discoverGitRepos, isGitExtra, removeGitExtra } from '../lib/gitTrack'
 import {
   IconCheck,
@@ -62,6 +62,26 @@ function verseFilterKey(cwd: string): string {
 // 앱을 껐다 켜거나 같은 채팅을 다시 열어도 보던 폴더(예: /Verse.org)로 복원한다
 function viewKey(cwd: string): string {
   return 'explorer.view:' + cwd.replace(/[\\/]+/g, '/').toLowerCase()
+}
+
+// 폴더 스코프 키(위 4종)의 LRU — 폴더별 키는 지워지는 일이 없어 열어 본 폴더 수만큼
+// ui-prefs 블롭이 무한히 자랐다(저장은 블롭 통째라 키가 늘수록 매 저장이 무거워진다).
+// 최근 24개 폴더만 유지하고, 밀려난 폴더의 키는 쓰기 시점에 함께 지운다.
+const FOLDER_KEY_RE = /^explorer\.(?:expanded|verseOpen|verseFilter|view):(.+)$/
+const FOLDER_ROOTS_CAP = 24
+function setFolderPref(key: string, value: unknown): void {
+  setPref(key, value)
+  const folder = FOLDER_KEY_RE.exec(key)?.[1]
+  if (!folder) return
+  const list = getPref<string[]>('explorer.roots', [])
+  if (list[0] === folder) return
+  const next = [folder, ...list.filter((r) => r !== folder)].slice(0, FOLDER_ROOTS_CAP)
+  const keep = new Set(next)
+  for (const k of prefKeys()) {
+    const m = FOLDER_KEY_RE.exec(k)
+    if (m && !keep.has(m[1])) delPref(k)
+  }
+  setPref('explorer.roots', next)
 }
 
 // 행 들여쓰기 — 깊이는 CSS 변수로 넘겨 .fxr가 패딩·세로 가이드라인을 함께 계산한다 (PoC)
@@ -226,7 +246,7 @@ export const Explorer = memo(function Explorer({
 
   // 보고 있는 폴더가 바뀔 때마다 프로젝트별로 저장
   useEffect(() => {
-    if (cwd) setPref(viewKey(cwd), view)
+    if (cwd) setFolderPref(viewKey(cwd), view)
   }, [cwd, view])
 
   // Verse 프로젝트면 .vproject의 패키지(digest)를 발견해 보기 전용 루트로 자동 노출.
@@ -405,7 +425,7 @@ export const Explorer = memo(function Explorer({
       loadDir(rel) // (re)read on every expand, so reopening a folder shows fresh contents
     }
     setExpanded(next)
-    if (root) setPref(expandedKey(root), Array.from(next).slice(0, 300))
+    if (root) setFolderPref(expandedKey(root), Array.from(next).slice(0, 300))
   }
 
   const openFile = (rel: string): void => {
@@ -418,14 +438,14 @@ export const Explorer = memo(function Explorer({
   const toggleVerse = (): void => {
     const next = !verseOpen
     setVerseOpen(next)
-    if (cwd) setPref(verseOpenKey(cwd), next)
+    if (cwd) setFolderPref(verseOpenKey(cwd), next)
   }
 
   // "Verse 위주로 보기" 켜기/끄기 — 트리는 filterSig 변화로 자동 재로드
   const toggleFilter = (): void => {
     const next = !verseFilter
     setVerseFilter(next)
-    if (cwd) setPref(verseFilterKey(cwd), next)
+    if (cwd) setFolderPref(verseFilterKey(cwd), next)
   }
 
   // 수동 새로고침(빈 영역 우클릭 메뉴) — 지금 보는 폴더(루트 + 펼쳐둔 하위)를 다시 읽는다
@@ -549,7 +569,7 @@ export const Explorer = memo(function Explorer({
         setExpanded((prev) => {
           const n = new Set(prev)
           n.add(op.parentRel)
-          if (root) setPref(expandedKey(root), Array.from(n).slice(0, 300))
+          if (root) setFolderPref(expandedKey(root), Array.from(n).slice(0, 300))
           return n
         })
       }

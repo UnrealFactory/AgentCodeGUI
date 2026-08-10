@@ -249,6 +249,11 @@ const META_DEF_CACHE_CAP = 500
 // 지금까지 definition 결과로 본 MetadataAsSource 파일들 (소문자 → 원본 경로). 아래 "컨테이너
 // 경유 복구"가 타입 이름으로 이미 생성된 임시 파일을 되찾는 데 쓴다.
 const metaFilesSeen = new Map<string, string>()
+// MetadataAsSource 맵(주인 루트·본 파일)의 상한 — F12로 들어간 임시 파일 수만큼 무한히
+// 자란다. 오래된 것부터 접는다(주인을 잃은 파일은 lastCsRoot 폴백으로 계속 동작).
+const META_FILES_CAP = 500
+// 폴더별 UE 판정 memo 상한 — 넘으면 통째로 비운다(재계산이 폴더당 existsSync 워크 하나라 싸다)
+const UE_DIR_MEMO_CAP = 5000
 
 /**
  * 빈 정의 응답의 컨테이너 경유 복구 — Roslyn의 1회용은 심볼이 아니라 '생성 파일' 단위라,
@@ -2482,6 +2487,17 @@ class LspManager {
       s.rpc.dispose('유휴 서버 회수')
       killTree(s.child)
     }
+    // 루트/폴더 메모의 만료 항목도 여기서 회수 — TTL 검사는 신선도만 보고 지우질 않아
+    // 방문 경로 수만큼 자랐다(느린 누적이지만 회수 경로가 아예 없었다).
+    for (const [k, m] of csRootMemo) if (now - m.at >= CS_ROOT_TTL) csRootMemo.delete(k)
+    for (const [k, m] of ueRulesMemo) if (now - m.at >= CS_ROOT_TTL) ueRulesMemo.delete(k)
+    if (ueDirMemo.size > UE_DIR_MEMO_CAP) ueDirMemo.clear()
+    for (const map of [metadataAsSourceRoot, metaFilesSeen])
+      while (map.size > META_FILES_CAP) {
+        const oldest = map.keys().next().value
+        if (oldest == null) break
+        map.delete(oldest)
+      }
   }
 
   /**

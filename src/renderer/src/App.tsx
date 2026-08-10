@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react'
 import type { ApiConfigStatus, AppUser, BgTaskRequest, EngineId, RunRequest, SessionWindowInfo, SubAgentInfo, UsageInfo, UserProfile } from '@shared/protocol'
 
 // 백그라운드 셸 컨트롤(중지/Ctrl+B) — window.api는 전역이라 모듈 스코프의 고정 함수로
@@ -26,11 +26,13 @@ import {
   SIDEBAR_AUTOHIDE_TRIGGER_PREVIEW_EVENT,
   type AutohideTriggerPreviewDetail
 } from './lib/sidebarAutohide'
-import { ChatHeader, ChatFind, Composer, MessageView, QuestionModal, PermissionModal, SelectionToolbar, WelcomeState, WorkBar, WorkflowDock, WorkingIndicator, hasRunningBash, nextMode, pickerModelOf, useThreadFollow, type PickerState, type ScheduledMsg } from './components/Chat'
+import { ChatHeader, ChatFind, Composer, MessageView, QuestionModal, PermissionModal, SelectionToolbar, WelcomeState, WorkBar, WorkflowDock, WorkingIndicator, hasRunningBash, nextMode, pickerModelOf, useThreadFollow, useThreadWindow, type PickerState, type ScheduledMsg } from './components/Chat'
 import { SubAgentModal } from './components/AgentPanel'
 import { Explorer } from './components/Explorer'
 import { FolderSwitchDialog } from './components/FolderSwitchDialog'
-import { FileModal } from './components/FileModal'
+// 지연 로드 — FileModal이 CodeMirror 전체(+cm 유틸·semTokens)를 끌고 와 번들의 ~1/3이다.
+// 뷰어를 처음 열 때 로컬 청크 한 번만 로드하면 되고, 그 전엔 파스·메모리 비용이 0이 된다.
+const FileModal = lazy(() => import('./components/FileModal').then((m) => ({ default: m.FileModal })))
 import { ChangedFilesModal } from './components/ChangedFilesModal'
 import { GitModal, type GitViewerOverride } from './components/GitModal'
 import { ImageViewer } from './components/ImageViewer'
@@ -391,8 +393,16 @@ function MainApp({ user }: { user: AppUser }) {
   // 키가 사라졌으면 API 모드도 끈다(키 없는 API 모드는 실행이 실패하므로).
   // 사용량도 다시 — Account 탭에서 활성 계정을 전환했을 수 있다(토큰이 바뀌면
   // 메인 캐시가 자동 미스라 새 계정 수치가 바로 온다).
+  const settingsWasOpen = useRef(false)
   useEffect(() => {
-    if (settingsOpen) return
+    if (settingsOpen) {
+      settingsWasOpen.current = true
+      return
+    }
+    // 마운트 직후(열린 적 없음)엔 건너뛴다 — 위 마운트 이펙트(getUsage·apiConfig)와
+    // 같은 요청을 한 번 더 쏘던 중복 발사 제거. 진짜 "열었다 닫음" 전이에서만 재조회.
+    if (!settingsWasOpen.current) return
+    settingsWasOpen.current = false
     window.api.getUsage(true, picker.account).then(setUsage).catch(() => {})
     window.api.apiConfig
       .get()
@@ -484,7 +494,9 @@ function MainApp({ user }: { user: AppUser }) {
         const restored =
           data && Array.isArray(data.chats) && data.chats.length
             ? data.chats.map((c) => {
-                const keep = c.id === bootActiveId || !(c.snapshot as SessionState | undefined)?.messages?.length
+                // main이 부팅 페이로드를 경량화해 보낸 비활성 채팅(unloaded 마커, 스냅샷 없음)은
+                // 그대로 마커로 둔다 — keep으로 오판하면 "내용 있는 채팅"이 빈 채팅으로 둔갑한다
+                const keep = !c.unloaded && (c.id === bootActiveId || !(c.snapshot as SessionState | undefined)?.messages?.length)
                 return {
                   ...c,
                   manualCwd: c.manualCwd ?? '',
@@ -602,6 +614,8 @@ function MainApp({ user }: { user: AppUser }) {
   // 스레드 바닥 따라가기 — 래치·점프 버튼·스트리밍 rAF 고정을 훅이 소유한다
   // (본채팅·추가 채팅 공용 — Chat.tsx의 useThreadFollow)
   const follow = useThreadFollow(scrollEl, busy)
+  // 꼬리 윈도잉 — 긴 세션의 DOM 상주를 꼬리 N개로 제한 (채팅 전환 시 꼬리로 리셋)
+  const twin = useThreadWindow(scrollEl, state.messages.length, activeChatId)
 
   // switching/opening a chat always re-pins to the bottom (runs before the
   // message-arrive effect below, so the freshly loaded thread lands at the bottom)
@@ -620,7 +634,8 @@ function MainApp({ user }: { user: AppUser }) {
   // 대화 스레드 ↑/↓ 제스처 — ↑는 스트리밍 중 rAF 바닥 고정이 도로 끌어내리지 않게 고정을
   // 풀고(재고정 150ms 가드도 무장), ↓는 '맨 아래로' 버튼과 같은 규칙으로 다시 고정한다
   const chatGestures: GestureAction[] = [
-    { pattern: 'U', label: t('맨 위로', 'Scroll to top'), run: () => follow.scrollTop() },
+    // 맨 위로 = 전체 히스토리 의도 — 윈도를 먼저 다 펼치고 올라간다 (센티널 연쇄 로드 방지)
+    { pattern: 'U', label: t('맨 위로', 'Scroll to top'), run: () => { twin.showAll(); follow.scrollTop() } },
     { pattern: 'D', label: t('맨 아래로', 'Scroll to bottom'), run: () => follow.jumpBottom() },
     sessionWindowGesture(),
     // clearConversation은 아래에서 선언 — 배열 생성 시점(TDZ)을 피해 실행 시점에 참조한다
@@ -1398,11 +1413,12 @@ function MainApp({ user }: { user: AppUser }) {
               // --z: 줌 배율을 CSS에도 전달 — .thread가 px 폭 경계를 역보정해
               // 확대해도 칼럼의 보이는 폭은 유지한 채 글자만 커지게 한다
               <div className="thread" style={{ zoom: chatZoom.zoom, '--z': chatZoom.zoom } as React.CSSProperties}>
-                {state.messages.map((m, idx) => (
+                {twin.start > 0 && <div className="thread-older" ref={twin.sentinelRef} aria-hidden="true" />}
+                {state.messages.slice(twin.start).map((m, i) => (
                   <MessageView
                     key={m.id}
                     item={m}
-                    live={idx === liveIdx && m.kind === 'msg' && m.role === 'assistant' && !m.error}
+                    live={twin.start + i === liveIdx && m.kind === 'msg' && m.role === 'assistant' && !m.error}
                     running={busy}
                     onOpenFile={onOpenToolFile}
                     onOpenImage={openViewer}
@@ -1425,7 +1441,7 @@ function MainApp({ user }: { user: AppUser }) {
             )}
           </div>
           <SelectionToolbar scrollRef={scrollRef} onElaborate={onElaborateSelection} />
-          <ChatFind scrollRef={scrollRef} />
+          <ChatFind scrollRef={scrollRef} onOpenChange={(o) => o && twin.reveal()} />
           <MouseGestureLayer target={scrollEl} actions={chatGestures} />
           <WorkBar
             todos={state.todos}
@@ -1504,17 +1520,24 @@ function MainApp({ user }: { user: AppUser }) {
         />
       )}
 
-      <FileModal
-        path={openFilePath}
-        cwd={cwd}
-        diffs={state.diffs}
-        override={gitViewer}
-        onClose={() => {
-          setOpenFilePath(null)
-          setGitViewer(null)
-        }}
-        onAskSelection={onAskSelection}
-      />
+      {/* 조건 마운트 — 닫힌 FileModal은 어차피 null을 그렸고(path 가드), 상시 마운트면
+          lazy 청크가 부팅에 로드돼 지연 로드가 무력화된다. fallback 없음 = 첫 오픈 시
+          로컬 청크 로드 한 프레임(체감 0)만 비었다가 뜬다 */}
+      {(openFilePath !== null || gitViewer !== null) && (
+        <Suspense fallback={null}>
+          <FileModal
+            path={openFilePath}
+            cwd={cwd}
+            diffs={state.diffs}
+            override={gitViewer}
+            onClose={() => {
+              setOpenFilePath(null)
+              setGitViewer(null)
+            }}
+            onAskSelection={onAskSelection}
+          />
+        </Suspense>
+      )}
 
       {viewer && (
         <ImageViewer

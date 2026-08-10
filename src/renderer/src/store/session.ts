@@ -243,6 +243,9 @@ const MAX_THREAD_ITEMS = 500
 const MAX_TOOLS_PER_GROUP = 400
 const MAX_SUBAGENT_TOOLS = 200
 const MAX_SUBAGENT_LOG = 100
+// 서브에이전트 칩 배열 자체의 상한 — 개별 칩(tools 200·log 100)은 캡이 있는데 배열은
+// 무캡이라 대량 스폰 자율 턴에서 이것만 무한히 자랐다. 오래된 칩부터 떨어진다.
+const MAX_SUBAGENTS = 100
 const MAX_TERMINAL_LINES = 500
 // 파일 하나의 diff 라인 상한. 4000이던 시절은 훙크 조각이 편집마다 concat되던 보험이었고
 // (지금은 엔진이 whole=true 전체 diff로 교체 방출), 크래시 원인이던 diff DP는 셀 캡
@@ -253,6 +256,10 @@ const MAX_DIFF_LINES = 30_000
 // 안 지움) 장기 자율 실행에선 만진 파일 수만큼 무한 누적된다(diff가 개당 최대 수 MB).
 // files는 최근 터치 순 정렬이라 꼬리 = 가장 오래 안 만진 파일부터 접는다.
 const MAX_CHANGED_FILES = 200
+// 풀 diff 라인을 유지하는 파일 수 — 그 밖(오래 안 만진) 파일의 diff는 요약 행으로 접는다.
+// +N/−N 칩·목록·파일 열람은 그대로고 뷰어의 변경 마킹만 접힘. 개당 최대 수 MB(30k줄)가
+// 파일 수만큼 상주·스냅샷에 실리는 걸 막는 렌더러 힙 예산.
+const MAX_FULL_DIFF_FILES = 40
 
 // 실행 1건분의 모델별 토큰(result.tokenUsage)을 대화 누적(tokenTotals)에 더한다.
 // 보고가 없으면(생략·빈 배열) 기존 객체를 그대로 돌려줘 불필요한 리렌더를 만들지 않는다.
@@ -694,6 +701,16 @@ export function reducer(state: SessionState, action: Action): SessionState {
       if (files.length > MAX_CHANGED_FILES) {
         for (const f of files.splice(MAX_CHANGED_FILES)) delete diffs[f.path]
       }
+      // 전역 diff 예산 — 최근 터치 순 상위만 풀 라인 유지 (MAX_FULL_DIFF_FILES 주석 참고).
+      // 이미 접힌 diff(요약 행 1개)는 건너뛰어 객체 churn을 만들지 않는다.
+      for (let i = MAX_FULL_DIFF_FILES; i < files.length; i++) {
+        const d = diffs[files[i].path]
+        if (d && !(d.lines.length === 1 && d.lines[0].t === 'hunk'))
+          diffs[files[i].path] = {
+            ...d,
+            lines: [{ t: 'hunk' as const, text: t('@@ 오래된 변경 — 미리보기를 접었어요 @@', '@@ Older change — preview collapsed @@') }]
+          }
+      }
       return { ...state, files, diffs }
     }
 
@@ -730,7 +747,7 @@ export function reducer(state: SessionState, action: Action): SessionState {
       // done으로 처음 보는 id는 /clear로 백지가 된 대화에 흘러든 teardown 잔재다
       // ('턴 종료로 정리됨' 유령 칩 방지)
       if (e.agent.status === 'done') return state
-      return { ...state, subagents: [...state.subagents, e.agent] }
+      return { ...state, subagents: capPush(state.subagents, e.agent, MAX_SUBAGENTS) }
     }
 
     case 'bg-tasks': {

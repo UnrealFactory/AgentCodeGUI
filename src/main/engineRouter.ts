@@ -65,6 +65,23 @@ export class EngineRouter {
     await Promise.all([this.claude.bgTask(req), this.codex?.bgTask(req)])
   }
 
+  /** 유휴 회수(스윕) 판단 — 턴이 진행 중이거나 클로드 상주 스트림(백그라운드 셸·워크플로·
+   *  에이전트 보유)이 살아 있으면 true. codex의 상시 app-server는 회수해도 스레드가
+   *  디스크에 남아 다음 run의 resume으로 이어지므로 busy에 넣지 않는다(= 회수 대상). */
+  get busy(): boolean {
+    return this.claude.hasLiveStream || (this.codex?.isRunning ?? false)
+  }
+
+  /** 유휴 codex app-server 회수 — 상주 프로세스가 마지막 사용 후 ttl 이상 놀면 거둔다.
+   *  스레드는 디스크에 남아 다음 run의 resume으로 이어지고, 엔진은 재생성된다(투명). */
+  sweepIdleCodex(ttl: number): void {
+    const cx = this.codex
+    if (!cx || cx.isRunning) return
+    if (Date.now() - cx.lastUsedAt < ttl) return
+    this.codex = null
+    cx.dispose()
+  }
+
   dispose(): void {
     this.claude.dispose()
     this.codex?.dispose()

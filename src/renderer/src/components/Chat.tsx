@@ -277,7 +277,12 @@ function Typewriter({ text }: { text: string }) {
     start.current = Date.now()
   }
   useEffect(() => {
-    const id = setInterval(() => force((t) => t + 1), 30)
+    // 다 그려진 뒤에도 30ms 강제 재렌더가 영구 상주하지 않게 — 완료를 본 틱에서 스스로 멈춘다
+    // (현재 Typewriter 사용처는 user+animate뿐이라 도달 불가지만, 조건이 바뀌는 회귀의 보험)
+    const id = setInterval(() => {
+      if (Math.floor((Date.now() - start.current) / TYPE_SPEED) >= textRef.current.length) clearInterval(id)
+      force((t) => t + 1)
+    }, 30)
     return () => clearInterval(id)
   }, [text])
   const n = Math.min(text.length, Math.floor((Date.now() - start.current) / TYPE_SPEED))
@@ -579,6 +584,11 @@ function WebRow({ t: tl }: { t: ToolLogItem }) {
 // colored type icon · verb · target (wraps in full) · result on the right.
 // File rows (read/write/edit) are clickable to open the file.
 //
+// 그룹당 화면에 펼치는 툴 행 상한 — 스토어 캡(그룹당 400)을 전부 DOM에 그리면 장기
+// 자율 턴에서 이 로그가 스레드 무게의 주범이 된다(500항목 × 400행 최악). 최근 행만
+// 보이고, 이전 행은 클릭으로 전부 펼친다(스트리밍 중엔 창이 자연히 최신을 따라간다).
+const TOOLLOG_VISIBLE_ROWS = 60
+
 function ToolGroup({
   item,
   onOpenFile
@@ -586,11 +596,19 @@ function ToolGroup({
   item: Extract<ThreadItem, { kind: 'toolgroup' }>
   onOpenFile?: (path: string) => void
 }) {
+  const [showAll, setShowAll] = useState(false)
   if (!item.tools.length) return null
+  const hidden = showAll ? 0 : Math.max(0, item.tools.length - TOOLLOG_VISIBLE_ROWS)
+  const rows = hidden > 0 ? item.tools.slice(hidden) : item.tools
   return (
     <div className="toollog">
+      {hidden > 0 && (
+        <button className="t-more" onClick={() => setShowAll(true)}>
+          {t(`이전 도구 ${hidden}개 펼치기`, `Show ${hidden} earlier tools`)}
+        </button>
+      )}
       {/* map 인자 이름이 t면 i18n의 t()를 가려서 tl(tool log)로 받는다 */}
-      {item.tools.map((tl) => {
+      {rows.map((tl) => {
         if (tl.kind === 'web') return <WebRow t={tl} key={tl.id} />
         if (tl.kind === 'bash') return <BashRow t={tl} key={tl.id} />
         const openable =
@@ -1617,11 +1635,13 @@ function collectChatRanges(root: HTMLElement, q: string): Range[] {
 export function ChatFind({
   scrollRef,
   active = true,
-  panel = false
+  panel = false,
+  onOpenChange
 }: {
   scrollRef: React.RefObject<HTMLElement | null>
   active?: boolean // Ctrl+F에 반응할지 — 멀티 모드에선 포커스/확대된 패널만 true
   panel?: boolean // 멀티 패널 안(작은 폭)에 뜨는 변형
+  onOpenChange?: (open: boolean) => void // 열림/닫힘 통지 — 스레드 윈도잉이 열릴 때 전체를 펼친다
 }) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -1689,6 +1709,8 @@ export function ChatFind({
   // 헤더 돋보기의 켜짐 표시 — 열림/닫힘을 창 이벤트로 알린다 (ChatHeader가 구독)
   useEffect(() => {
     window.dispatchEvent(new CustomEvent('ccg:chat-find-state', { detail: open }))
+    onOpenChange?.(open)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
   // 비활성(멀티 모드에서 포커스를 잃은 패널)이 되면 닫아 한 번에 하나만 열리게 한다
@@ -1929,6 +1951,100 @@ export function useThreadFollow(scrollEl: HTMLElement | null, busy: boolean) {
     scrollEl?.scrollTo({ top: 0, behavior: 'smooth' })
   }, [scrollEl])
   return { showJump, pin, reset, snapIfStuck, jumpBottom, scrollTop }
+}
+
+// ── 스레드 꼬리 윈도잉 ────────────────────────────────────────────
+// 긴 세션은 메시지 DOM이 수만 노드로 쌓여 상주 메모리와 매 델타 재조정 비용을 키운다
+// (content-visibility는 페인트만 건너뛰고 노드는 전부 살아 있다). 렌더만 꼬리 N개로
+// 자르고 데이터(state.messages)는 그대로 둔다 — 검색·resume·peek이 데이터를 본다.
+// 위로 올라가 센티널에 닿으면 STEP씩 넓히고, 바닥으로 돌아오면 도로 꼬리로 줄인다.
+const THREAD_TAIL = 60 // 기본 렌더 꼬리 (메시지 수)
+const THREAD_STEP = 60 // 맨 위 도달 시 위로 넓히는 폭
+const THREAD_TRIM_SLACK = 40 // 바닥 복귀 시 꼬리보다 이만큼 넘게 커져 있어야 트림 (널뛰기 방지)
+
+export function useThreadWindow(scrollEl: HTMLElement | null, total: number, resetKey?: unknown) {
+  const [start, setStart] = useState(() => Math.max(0, total - THREAD_TAIL))
+  const startRef = useRef(start)
+  startRef.current = start
+  const totalRef = useRef(total)
+  totalRef.current = total
+  const elRef = useRef(scrollEl)
+  elRef.current = scrollEl
+  // 확장/트림 직전의 스크롤 기하 — 렌더 반영 후 높이 델타만큼 scrollTop을 되돌려
+  // 보던 위치를 고정한다 (위에 내용이 생기거나 사라져도 화면이 점프하지 않게)
+  const compRef = useRef<{ top: number; height: number } | null>(null)
+
+  const shiftTo = useCallback((next: number): void => {
+    if (next === startRef.current) return
+    const el = elRef.current
+    if (el) compRef.current = { top: el.scrollTop, height: el.scrollHeight }
+    setStart(next)
+  }, [])
+
+  // 채팅 전환 — 새 스레드는 꼬리부터 (렌더 중 상태 조정 패턴: 전환 프레임에 바로 반영)
+  const [prevKey, setPrevKey] = useState(resetKey)
+  if (prevKey !== resetKey) {
+    setPrevKey(resetKey)
+    compRef.current = null
+    setStart(Math.max(0, total - THREAD_TAIL))
+  } else if (start > total) {
+    // /clear 등으로 스레드가 통째로 줄었을 때 — 범위 밖 인덱스 방지
+    compRef.current = null
+    setStart(Math.max(0, total - THREAD_TAIL))
+  }
+
+  // 스크롤 보정 — 커밋 직후·페인트 전에 실행돼 사용자는 이동을 보지 못한다.
+  // 절댓값 대입이라 브라우저 자체 scroll anchoring과 겹쳐도 이중 보정되지 않는다.
+  useLayoutEffect(() => {
+    const c = compRef.current
+    if (!c) return
+    compRef.current = null
+    const el = elRef.current
+    if (el) el.scrollTop = c.top + (el.scrollHeight - c.height)
+  }, [start])
+
+  // 맨 위 센티널 — 보이면(200px 여유) 위로 STEP만큼 넓힌다. start=0이면 렌더 안 됨.
+  const [sentEl, setSentEl] = useState<HTMLElement | null>(null)
+  useEffect(() => {
+    if (!sentEl || !scrollEl) return
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((e) => e.isIntersecting)) return
+        const s = startRef.current
+        if (s > 0) shiftTo(Math.max(0, s - THREAD_STEP))
+      },
+      { root: scrollEl, rootMargin: '200px 0px 0px 0px' }
+    )
+    io.observe(sentEl)
+    return () => io.disconnect()
+  }, [sentEl, scrollEl, shiftTo])
+
+  // 바닥 복귀 = 히스토리 다 읽었다는 신호 — 넓힌 윈도를 도로 꼬리로 (히스테리시스).
+  // 스트리밍 중 rAF 바닥 고정이 scroll을 계속 내므로 긴 실행에서도 윈도가 유계로 유지된다.
+  useEffect(() => {
+    const el = scrollEl
+    if (!el) return
+    const onScroll = (): void => {
+      if (el.scrollHeight - el.scrollTop - el.clientHeight > FOLLOW_BOTTOM_EPSILON) return
+      const tail = Math.max(0, totalRef.current - THREAD_TAIL)
+      if (tail - startRef.current > THREAD_TRIM_SLACK) shiftTo(tail)
+    }
+    el.addEventListener('scroll', onScroll, { passive: true })
+    return () => el.removeEventListener('scroll', onScroll)
+  }, [scrollEl, shiftTo])
+
+  // 전부 렌더 — '맨 위로' 제스처용. 보정 없이 펼친다 (호출측이 곧장 맨 위로 스크롤)
+  const showAll = useCallback((): void => {
+    compRef.current = null
+    setStart(0)
+  }, [])
+  // 전부 렌더(보정 있음) — 찾기(Ctrl+F)가 열릴 때. DOM 검색이라 잘린 메시지는 매치가
+  // 안 잡히므로 펼치되, 보던 위치는 그대로 둔다. 닫혀도 되감지 않는다 — 바닥 복귀 트림이 회수.
+  const reveal = useCallback((): void => {
+    if (startRef.current > 0) shiftTo(0)
+  }, [shiftTo])
+
+  return { start, sentinelRef: setSentEl, showAll, reveal }
 }
 
 // 표시 문자열이라 상수가 아니라 함수 — 모듈 스코프 t()는 import 시점 언어로 박제된다
@@ -3565,15 +3681,15 @@ function QuestionDialog({
           {/* 좁은 패널에서만 제공 — 패널 확장으로 넘어가면 카드가 리마운트돼 지금까지의
               선택이 초기화되므로, 답을 고르기 전에 누르는 걸 상정한다 */}
           {onExpand && (
-            <button className="qmin" onClick={onExpand} aria-label={t('크게 보기', 'Expand')} title={t('크게 보기', 'Expand')}>
+            <button className="qmin has-tip" onClick={onExpand} aria-label={t('크게 보기', 'Expand')} data-tip={t('크게 보기', 'Expand')}>
               <IconExpand size={14} />
             </button>
           )}
           <button
-            className="qmin"
+            className="qmin has-tip"
             onClick={() => setMinimized(true)}
             aria-label={t('접어두기', 'Collapse')}
-            title={t('접어두기 (Esc)', 'Collapse (Esc)')}
+            data-tip={t('접어두기 (Esc)', 'Collapse (Esc)')}
           >
             <IconChevDown size={15} />
           </button>
@@ -3691,10 +3807,10 @@ export function WorkflowDock({ wfs, onStop }: { wfs: WorkflowState[]; onStop?: (
         return (
           <div
             key={w.id}
-            className="wf-mini"
+            className="wf-mini has-tip tip-wrap"
             onClick={() => setOpenId(w.id)}
             role="button"
-            title={w.summary}
+            data-tip={w.summary || t('워크플로 카드 펼치기', 'Expand workflow card')}
             aria-label={t('워크플로 카드 펼치기', 'Expand workflow card')}
           >
             <span className="st run" />
@@ -3762,20 +3878,25 @@ function WorkflowCard({
         {peers.length > 1 && (
           <span className="wf-tabs">
             {peers.map((w, i) => (
-              <button key={w.id} className={w.id === wf.id ? 'on' : ''} title={w.summary} onClick={() => onSwitch(w.id)}>
+              <button
+                key={w.id}
+                className={'has-tip tip-wrap' + (w.id === wf.id ? ' on' : '')}
+                data-tip={w.summary || t('워크플로 전환', 'Switch workflow')}
+                onClick={() => onSwitch(w.id)}
+              >
                 {i + 1}
               </button>
             ))}
           </span>
         )}
-        <span className="wsum" title={wf.summary}>
+        <span className="wsum has-tip tip-wrap" data-tip={wf.summary}>
           {wf.summary}
         </span>
         <span className="wmeta">
           {doneAll}/{agents.length} · {elapsed}
           {wf.totalTokens >= 1000 ? ` · ${fmtTok(wf.totalTokens)} tok` : ''}
         </span>
-        <button className="wmin" onClick={onMin} aria-label={t('내려두기', 'Minimize')} data-tip={t('내려두기', 'Minimize')} >
+        <button className="wmin has-tip" onClick={onMin} aria-label={t('내려두기', 'Minimize')} data-tip={t('내려두기 (Esc)', 'Minimize (Esc)')}>
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
             <path d="m6 9 6 6 6-6" />
           </svg>
@@ -3822,7 +3943,7 @@ function WorkflowCard({
           {selAgents.map((a, i) => (
             <div className="wf-ag" key={`${a.phase}-${i}`}>
               <span className={`st ${a.state === 'done' ? 'ok' : a.state === 'error' ? 'err' : a.state === 'queued' ? 'wait' : 'run'}`} />
-              <span className="nm" title={a.note || a.label}>
+              <span className="nm has-tip tip-wrap" data-tip={a.note || a.label}>
                 {a.label}
               </span>
               {a.model && <span className="mt">{a.model}</span>}

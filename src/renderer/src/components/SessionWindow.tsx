@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ApiConfigStatus, AppUser, BgTaskRequest, ChangedFile, EngineId, RunRequest, SessionPersistPayload, SubAgentInfo, UserProfile, UsageInfo } from '@shared/protocol'
 
 // 백그라운드 셸 컨트롤 — 이 창의 세션 엔진으로 라우팅 (memo된 WorkBar용 고정 함수)
@@ -35,13 +35,14 @@ import {
   PermissionModal,
   QuestionModal,
   useThreadFollow,
+  useThreadWindow,
   type PickerState,
   type ScheduledMsg
 } from './Chat'
 import { pushRecentDir } from '../lib/recentDirs'
 import { ImageViewer } from './ImageViewer'
 import { SubAgentModal } from './AgentPanel'
-import { FileModal } from './FileModal'
+const FileModal = lazy(() => import('./FileModal').then((m) => ({ default: m.FileModal }))) // CodeMirror 청크 지연 로드 (App.tsx와 동일)
 import { FolderSwitchDialog } from './FolderSwitchDialog'
 import { useZoom, ZoomBadge, mergeRefs } from './zoom'
 import { MouseGestureLayer, clearGesture, sessionWindowGesture, type GestureAction } from './mouseGesture'
@@ -202,6 +203,8 @@ export function SessionWindow(): React.ReactElement {
   const canSkipWait = useMemo(() => hasRunningBash(state.messages), [state.messages])
   // 스레드 바닥 따라가기 — 본채팅과 같은 래치·점프 버튼·스트리밍 rAF 고정 (공용 훅)
   const follow = useThreadFollow(scrollEl, busy)
+  // 꼬리 윈도잉 — 본채팅과 동일 (/clear로 스레드가 비면 훅이 스스로 꼬리로 되돌린다)
+  const twin = useThreadWindow(scrollEl, state.messages.length)
 
   const started = state.messages.length > 0
   const onRefreshUsage = (): void => {
@@ -616,7 +619,8 @@ export function SessionWindow(): React.ReactElement {
   // ↓→ 닫기 — 대화는 저장돼 사이드바 '추가 채팅'에 남는다(실행 중이면 턴을 마저 돌리고
   // 정리, 삭제는 사이드바 X). 그래서 확인 없이 닫는다.
   const gestures: GestureAction[] = [
-    { pattern: 'U', label: t('맨 위로', 'Scroll to top'), run: () => follow.scrollTop() },
+    // 맨 위로 = 전체 히스토리 의도 — 윈도를 먼저 다 펼치고 올라간다 (본채팅과 동일)
+    { pattern: 'U', label: t('맨 위로', 'Scroll to top'), run: () => { twin.showAll(); follow.scrollTop() } },
     { pattern: 'D', label: t('맨 아래로', 'Scroll to bottom'), run: () => follow.jumpBottom() },
     sessionWindowGesture(),
     clearGesture(clearConversation),
@@ -655,11 +659,12 @@ export function SessionWindow(): React.ReactElement {
             />
           ) : (
             <div className="thread" style={{ zoom: chatZoom.zoom, '--z': chatZoom.zoom } as React.CSSProperties}>
-              {state.messages.map((m, idx) => (
+              {twin.start > 0 && <div className="thread-older" ref={twin.sentinelRef} aria-hidden="true" />}
+              {state.messages.slice(twin.start).map((m, i) => (
                 <MessageView
                   key={m.id}
                   item={m}
-                  live={idx === liveIdx && m.kind === 'msg' && m.role === 'assistant' && !m.error}
+                  live={twin.start + i === liveIdx && m.kind === 'msg' && m.role === 'assistant' && !m.error}
                   running={busy}
                   onOpenFile={onOpenToolFile}
                   onOpenImage={openViewer}
@@ -682,7 +687,7 @@ export function SessionWindow(): React.ReactElement {
           )}
         </div>
         <SelectionToolbar scrollRef={scrollRef} onElaborate={onElaborateSelection} />
-        <ChatFind scrollRef={scrollRef} />
+        <ChatFind scrollRef={scrollRef} onOpenChange={(o) => o && twin.reveal()} />
         <MouseGestureLayer target={scrollEl} actions={gestures} />
         <WorkBar
           todos={state.todos}
@@ -750,13 +755,15 @@ export function SessionWindow(): React.ReactElement {
 
       {/* 작업 바/툴 로그에서 연 파일 뷰어 — cwd는 엔진이 실제로 쓴 폴더(세션 보고값) */}
       {openWorkFile && (
-        <FileModal
-          path={openWorkFile}
-          cwd={state.session?.cwd ?? cwd}
-          diffs={state.diffs}
-          onClose={() => setOpenWorkFile(null)}
-          onAskSelection={onAskSelection}
-        />
+        <Suspense fallback={null}>
+          <FileModal
+            path={openWorkFile}
+            cwd={state.session?.cwd ?? cwd}
+            diffs={state.diffs}
+            onClose={() => setOpenWorkFile(null)}
+            onAskSelection={onAskSelection}
+          />
+        </Suspense>
       )}
       <SubAgentModal agent={openSubagent} onClose={() => setOpenSubagentId(null)} />
 

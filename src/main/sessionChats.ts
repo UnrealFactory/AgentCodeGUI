@@ -5,10 +5,21 @@ import { APP_HOME } from './engine/versions'
 import { writeFileAtomic } from './atomicWrite'
 
 // 추가 채팅(세션 창)의 영속 목록 — 창을 닫아도, 앱을 재시작해도 사이드바 '추가 채팅'에
-// 남는 대화들. 스냅샷 모양(SessionState)은 렌더러가 소유하고, 이 모듈은 talk/multi처럼
-// 앱 홈의 단일 JSON 블롭으로 레코드를 읽고 쓰기만 한다. 세션 창은 동시에 몇 개 수준이라
-// 채팅별 파일 팬아웃(chats.ts) 없이 블롭 하나로 충분하다.
-const FILE = path.join(APP_HOME, 'session-chats.json')
+// 남는 대화들. 스냅샷 모양(SessionState)은 렌더러가 소유하고 main의 Map이 전체 레코드를
+// 들고 있다(마커 없음). 저장은 chats.ts처럼 채팅별 파일 팬아웃 + 내용 해시 비교 —
+// 단일 블롭 시절엔 창 하나의 오토세이브마다 모든 추가 채팅의 스냅샷을 통째로 다시
+// 직렬화·기록했다. 옛 단일 session-chats.json은 첫 read에서 마이그레이션.
+const DIR = path.join(APP_HOME, 'session-chats')
+const INDEX_PATH = path.join(DIR, 'index.json')
+const LEGACY_BLOB = path.join(APP_HOME, 'session-chats.json')
+
+const chatFile = (id: string): string => path.join(DIR, `${id}.json`)
+// ids come from main's randomUUID(); reject anything else (no path traversal)
+const safeId = (id: unknown): id is string => typeof id === 'string' && /^[A-Za-z0-9._-]+$/.test(id)
+
+// id → last-seen file JSON, so a save only touches files whose content changed
+const cache = new Map<string, string>()
+let indexCache: string | null = null
 
 export interface SessionChatRecord {
   id: string
@@ -25,24 +36,92 @@ export interface SessionChatRecord {
   updatedAt?: number
 }
 
+const isRecord = (c: unknown): c is SessionChatRecord =>
+  !!c && typeof c === 'object' && typeof (c as SessionChatRecord).id === 'string' && !!(c as SessionChatRecord).id
+
 export function readSessionChats(): SessionChatRecord[] {
+  // primary: per-chat files listed by index.json
+  let index: { order?: unknown[] } | null = null
   try {
-    const raw = JSON.parse(fs.readFileSync(FILE, 'utf8')) as { chats?: unknown }
-    if (!Array.isArray(raw?.chats)) return []
-    return raw.chats.filter(
-      (c): c is SessionChatRecord => !!c && typeof c === 'object' && typeof (c as SessionChatRecord).id === 'string' && !!(c as SessionChatRecord).id
-    )
+    index = JSON.parse(fs.readFileSync(INDEX_PATH, 'utf8'))
+  } catch {
+    index = null // no index yet — legacy migration below
+  }
+  if (index) {
+    cache.clear()
+    const chats: SessionChatRecord[] = []
+    for (const id of Array.isArray(index.order) ? index.order : []) {
+      if (!safeId(id)) continue
+      try {
+        const raw = fs.readFileSync(chatFile(id), 'utf8')
+        const rec = JSON.parse(raw)
+        if (!isRecord(rec)) continue
+        cache.set(id, raw)
+        chats.push(rec)
+      } catch {
+        /* skip a missing / corrupt chat file */
+      }
+    }
+    // 인덱스가 있으면 비어 있어도 여기서 끝 — 레거시로 넘어가면 지운 채팅이 부활한다
+    return chats
+  }
+
+  // migration: an older single session-chats.json → fan out, then drop it
+  try {
+    const raw = JSON.parse(fs.readFileSync(LEGACY_BLOB, 'utf8')) as { chats?: unknown }
+    const chats = Array.isArray(raw?.chats) ? raw.chats.filter(isRecord) : []
+    writeSessionChats(chats)
+    try {
+      fs.unlinkSync(LEGACY_BLOB)
+    } catch {
+      /* ignore */
+    }
+    return chats
   } catch {
     return []
   }
 }
 
-/** 목록 저장 (best effort). 빈 대화는 디스크에 남기지 않는다 — 열었다 그냥 닫은 창이
- *  재시작 후 목록을 어지럽히지 않게. */
+/** 목록 저장 (best effort) — 바뀐 레코드의 파일만 다시 쓴다. 빈 대화는 디스크에 남기지
+ *  않는다 — 열었다 그냥 닫은 창이 재시작 후 목록을 어지럽히지 않게. */
 export function writeSessionChats(chats: SessionChatRecord[]): void {
   try {
-    fs.mkdirSync(APP_HOME, { recursive: true })
-    writeFileAtomic(FILE, JSON.stringify({ version: 1, chats: chats.filter((c) => !c.empty && c.snapshot != null) }))
+    fs.mkdirSync(DIR, { recursive: true })
+    const present = new Set<string>()
+    const order: string[] = []
+    for (const rec of chats) {
+      if (rec.empty || rec.snapshot == null || !safeId(rec.id)) continue
+      present.add(rec.id)
+      order.push(rec.id)
+      const json = JSON.stringify(rec)
+      if (cache.get(rec.id) !== json) {
+        writeFileAtomic(chatFile(rec.id), json)
+        cache.set(rec.id, json)
+      }
+    }
+    // prune files for chats that no longer exist (or emptied back out)
+    let existing: string[] = []
+    try {
+      existing = fs.readdirSync(DIR).filter((f) => f.endsWith('.json') && f !== 'index.json')
+    } catch {
+      /* dir was just created */
+    }
+    for (const f of existing) {
+      const id = f.slice(0, -'.json'.length)
+      if (!present.has(id)) {
+        try {
+          fs.unlinkSync(path.join(DIR, f))
+        } catch {
+          /* ignore */
+        }
+        cache.delete(id)
+      }
+    }
+    const indexJson = JSON.stringify({ version: 1, order })
+    if (indexCache !== indexJson) {
+      writeFileAtomic(INDEX_PATH, indexJson)
+      indexCache = indexJson
+    }
   } catch {
     /* ignore — 이번 저장만 건너뛴다 */
   }

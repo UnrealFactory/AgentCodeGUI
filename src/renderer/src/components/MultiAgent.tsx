@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { Suspense, lazy, memo, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import type { AgentStatus, BgTaskRequest, ChangedFile, EngineId, UsageInfo, MultiRunRequest, EngineEvent, SubAgentInfo } from '@shared/protocol'
 import {
   useAgentSession,
@@ -23,6 +23,7 @@ import {
   ChatFind,
   FolderPop,
   useThreadFollow,
+  useThreadWindow,
   hasRunningBash,
   pickerModelOf,
   type PickerState,
@@ -31,7 +32,7 @@ import {
 import type { ChatSummary } from './Sidebar'
 import { WinControls } from './TitleBar'
 import { FolderSwitchDialog } from './FolderSwitchDialog'
-import { FileModal } from './FileModal'
+const FileModal = lazy(() => import('./FileModal').then((m) => ({ default: m.FileModal }))) // CodeMirror 청크 지연 로드 (App.tsx와 동일)
 import { pushRecentDir } from '../lib/recentDirs'
 import { SubAgentModal } from './AgentPanel'
 import { ImageViewer } from './ImageViewer'
@@ -128,6 +129,9 @@ interface PersistedSession {
   // 힙이 세션 수에 비례해 큰다. 저장 페이로드의 이 표식은 maStore가 "메타만 덮고
   // 저장된 패널은 지켜라"로 읽는다.
   unloaded?: boolean
+  // main의 부팅 경량화(readMulti light)가 마커에 실어 주는 패널 상태 요약 — 배지 계산용.
+  // 파일엔 저장되지 않고(활성화 merge·maStore가 걷어냄) 부팅 한 번만 쓰인다.
+  panelStatuses?: AgentStatus[]
 }
 interface MultiPersist {
   version: number
@@ -398,6 +402,8 @@ const PanelView = memo(function PanelView({
   // 휠 업이면 따라가기를 풀어 위 내용을 읽을 수 있고, 바닥에 다시 닿으면 재개된다.
   // (예전의 무조건 scrollTop=scrollHeight는 실행 중 위로 못 올라가는 원인이었다)
   const follow = useThreadFollow(threadEl, busy)
+  // 꼬리 윈도잉 — 패널마다 독립 (긴 세션 DOM 상주가 패널 수만큼 곱해지는 걸 막는다)
+  const twin = useThreadWindow(threadEl, state.messages.length)
   useEffect(() => {
     follow.snapIfStuck()
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -548,11 +554,12 @@ const PanelView = memo(function PanelView({
             // 본채팅과 같은 .thread 마크업 — 패널에선 CSS(zoom .8·풀폭)만 다르고,
             // Ctrl+휠 읽기 크기(chat.zoom)는 그 위에 곱으로 얹힌다(전 패널 공통)
             <div className="thread" style={{ zoom, '--z': zoom } as CSSProperties}>
-              {state.messages.map((m, idx) => (
+              {twin.start > 0 && <div className="thread-older" ref={twin.sentinelRef} aria-hidden="true" />}
+              {state.messages.slice(twin.start).map((m, i) => (
                 <MessageView
                   key={m.id}
                   item={m}
-                  live={idx === liveIdx && m.kind === 'msg' && m.role === 'assistant' && !m.error}
+                  live={twin.start + i === liveIdx && m.kind === 'msg' && m.role === 'assistant' && !m.error}
                   running={busy}
                   onOpenFile={openFile}
                   onOpenImage={onOpenImage}
@@ -575,7 +582,7 @@ const PanelView = memo(function PanelView({
             </div>
           )}
         </div>
-        <ChatFind scrollRef={scrollRef} active={focused} panel />
+        <ChatFind scrollRef={scrollRef} active={focused} panel onOpenChange={(o) => o && twin.reveal()} />
       </div>
 
       <SelectionToolbar scrollRef={scrollRef} onElaborate={onElaborate} />
@@ -585,8 +592,8 @@ const PanelView = memo(function PanelView({
       <MouseGestureLayer
         target={threadEl}
         actions={[
-          // ↑/↓는 follow 래치 규칙(본채팅과 동일) — ↑는 고정을 풀고 올라가고, ↓는 재고정
-          { pattern: 'U', label: t('맨 위로', 'Scroll to top'), run: () => follow.scrollTop() },
+          // ↑/↓는 follow 래치 규칙(본채팅과 동일) — ↑는 윈도를 다 펼치고 고정을 풀며 올라간다
+          { pattern: 'U', label: t('맨 위로', 'Scroll to top'), run: () => { twin.showAll(); follow.scrollTop() } },
           { pattern: 'D', label: t('맨 아래로', 'Scroll to bottom'), run: () => follow.jumpBottom() },
           sessionWindowGesture(),
           clearGesture(() => onClear(slot)),
@@ -1487,12 +1494,14 @@ function ActiveSession({
       {/* 폴더 팝오버에서 연 파일 — 그 패널의 cwd·diffs로 코드 뷰어. 패널이 아니라 여기서
           한 번만 렌더해 .fv-overlay(absolute inset:0)가 .win-body 전체를 덮게 한다 */}
       {openFile && (
-        <FileModal
-          path={openFile.path}
-          cwd={metas[openFile.slot].cwd || sessions[openFile.slot].state.session?.cwd || ''}
-          diffs={sessions[openFile.slot].state.diffs}
-          onClose={() => setOpenFile(null)}
-        />
+        <Suspense fallback={null}>
+          <FileModal
+            path={openFile.path}
+            cwd={metas[openFile.slot].cwd || sessions[openFile.slot].state.session?.cwd || ''}
+            diffs={sessions[openFile.slot].state.diffs}
+            onClose={() => setOpenFile(null)}
+          />
+        </Suspense>
       )}
 
       {/* WorkBar 서브에이전트 상세 카드 — 매 렌더 라이브 조회라 상태/도구 갱신이 흐른다 (본채팅과 동일) */}
@@ -1606,7 +1615,11 @@ export function useMultiSessions() {
           )
           setStatuses(
             Object.fromEntries(
-              sessions.map((s) => [s.id, aggregateStatus((s.panels ?? []).map((p) => p?.snapshot?.status ?? 'idle'))])
+              sessions.map((s) => [
+                s.id,
+                // 경량 페이로드의 마커 세션은 panels가 비어 온다 — 배지는 요약(panelStatuses)으로
+                aggregateStatus(s.panelStatuses ?? (s.panels ?? []).map((p) => p?.snapshot?.status ?? 'idle'))
+              ])
             )
           )
           setActiveId(act)
@@ -1705,7 +1718,7 @@ export function useMultiSessions() {
         const s = raw as PersistedSession | null
         dataRef.current[id] =
           s && typeof s === 'object' && Array.isArray(s.panels)
-            ? { ...d, count: s.count ?? d.count, panels: s.panels, unloaded: undefined }
+            ? { ...d, count: s.count ?? d.count, panels: s.panels, unloaded: undefined, panelStatuses: undefined }
             : { ...blankSession(id), title: d.title, custom: d.custom } // 파일에 없던 세션(비정상) — 빈 세션으로나마 착지
         setActiveId(id)
       })

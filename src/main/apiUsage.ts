@@ -8,11 +8,23 @@ import type { ApiUsageRecord } from '@shared/protocol'
 // 수천 건이어도 가볍지만, 읽기는 최근 MAX_RECORDS건으로 캡을 둔다.
 const USAGE_PATH = path.join(APP_HOME, 'api-usage.jsonl')
 const MAX_RECORDS = 20000
+// 회전 임계 — append-only 원장이라 상한 없이는 파일도, 읽기(전량 파싱)도 영영 자란다.
+// MAX_RECORDS(2만 건 × ~200B ≈ 4MB)를 넉넉히 넘는 크기에서 뒤쪽 절반만 남긴다.
+const ROTATE_BYTES = 8 * 1024 * 1024
 
 /** 실행 1건을 원장에 추가한다. 실패해도 실행 자체엔 영향을 주지 않는다(베스트 에포트). */
 export function recordApiUsage(rec: ApiUsageRecord): void {
   try {
     fs.mkdirSync(APP_HOME, { recursive: true })
+    try {
+      if (fs.statSync(USAGE_PATH).size > ROTATE_BYTES) {
+        // 앞쪽 절반을 버린다 — 잘린 첫 줄은 readApiUsage의 손상 줄 스킵이 걸러 준다
+        const tail = fs.readFileSync(USAGE_PATH, 'utf8').slice(-Math.floor(ROTATE_BYTES / 2))
+        fs.writeFileSync(USAGE_PATH, tail.slice(tail.indexOf('\n') + 1))
+      }
+    } catch {
+      /* 파일 없음/스탯 실패 — 회전 없이 진행 */
+    }
     fs.appendFileSync(USAGE_PATH, JSON.stringify(rec) + '\n')
   } catch {
     /* ignore */

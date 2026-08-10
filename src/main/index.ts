@@ -68,6 +68,11 @@ if (!app.isPackaged && process.env.CCG_HOME) {
 // crashReporter는 네이티브 크래시(V8 OOM abort 등)의 미니덤프를 로컬에 남긴다
 // (업로드 없음 — app.getPath('crashDumps')에서 확인). app ready 전에 시작해야 한다.
 crashReporter.start({ uploadToServer: false })
+// 에이전트 턴이 돌린 dotnet 빌드가 남기는 MSBuild /nodeReuse 상주 노드 차단 — 부모가
+// 죽어도 노드가 수백 MB로 잔존한다(실측 2026-08-10: 좀비 2개 ~290MB). 자식(CLI·LSP·셸)
+// 전부가 이 env를 물려받는다. 대가: 턴 안의 반복 빌드가 노드를 재사용하지 못해 회당
+// 1~3초 느려질 수 있다 — 상주 메모리 쪽을 지키는 선택.
+process.env.MSBUILDDISABLENODEREUSE = '1'
 // uncaughtException의 기본 동작은 즉시 종료 — 대화 중이던 앱이 통째로 사라진다.
 // 진단 로그(~/.agentcodegui/crash.log)를 남기고 계속 산다: 상태가 이상해질 수는
 // 있지만, 사용자가 저장 안 된 작업을 잃고 원인도 모른 채 꺼지는 것보다는 낫다.
@@ -357,7 +362,29 @@ function maEngine(panelId: string): EngineRouter {
     eng = new EngineRouter(coalesceStream((event: EngineEvent) => send(IPC.maEvent, { panelId, event })), 'ma')
     maEngines.set(panelId, eng)
   }
+  maLastUsed.set(panelId, Date.now())
   return eng
+}
+// 패널 엔진 유휴 회수 — 해제 경로가 렌더러의 maDispose(세션 삭제)뿐이라, codex를 한 번
+// 돌린 패널의 상시 app-server가 세션을 지우기 전까지 무한 누적됐다(LSP 서버 누적과 같은
+// 패턴). 턴 진행·클로드 상주(백그라운드 셸·워크플로)는 건너뛰고 15분 유휴면 프로세스를
+// 거둔다. 엔진은 다음 maRun 때 같은 panelId로 재생성되고 대화는 resume id로 이어지므로
+// 회수는 화면에서 보이지 않는다.
+const MA_IDLE_TTL = 15 * 60_000
+const maLastUsed = new Map<string, number>()
+function sweepIdleMaEngines(): void {
+  const now = Date.now()
+  for (const [panelId, eng] of maEngines) {
+    if (eng.busy) {
+      maLastUsed.set(panelId, now) // 유휴 카운트는 일이 끝난 시점부터
+      continue
+    }
+    if (now - (maLastUsed.get(panelId) ?? now) < MA_IDLE_TTL) continue
+    // LSP sweepIdle과 같은 순서 — 맵에서 먼저 내리고 죽인다
+    maEngines.delete(panelId)
+    maLastUsed.delete(panelId)
+    eng.dispose()
+  }
 }
 
 // picker의 OpenAI 모델 목록 — 실행과 무관하게 조회만 하는 공용 Codex 인스턴스
@@ -383,6 +410,17 @@ function sessionEngineFor(wc: WebContents): EngineRouter {
       'chat'
     )
     sessionEngines.set(wc.id, eng)
+    // 생성과 같은 자리에서 정리를 등록 — 세션 창은 'closed' 핸들러가 지워 주지만, 그 외
+    // webContents가 이 채널을 타면 지울 곳이 없어 엔진이 영구 잔존했다(생성/정리 비대칭).
+    // 창 닫힘 정리가 먼저 지웠으면 여기는 조용한 no-op.
+    const wcId = wc.id
+    wc.once('destroyed', () => {
+      const orphan = sessionEngines.get(wcId)
+      if (orphan) {
+        sessionEngines.delete(wcId)
+        orphan.dispose()
+      }
+    })
   }
   return eng
 }
@@ -391,7 +429,8 @@ function sessionEngineFor(wc: WebContents): EngineRouter {
 // (메인 채팅처럼 재시작 후에도 사이드바에 유지), 창은 그 채팅을 "열어 보는" 뷰일 뿐이다.
 // 닫기 = 저장 후 창 정리(대화는 목록에 남음), 사이드바 X = 대화 삭제.
 const sessionChats = new Map<string, SessionChatRecord>()
-for (const r of readSessionChats()) sessionChats.set(r.id, r)
+// 시드는 bootstrap(whenReady)에서 — 모듈 평가 시점의 동기 파일 읽기(스냅샷 전문 포함)가
+// 부트 첫 구간을 막지 않게 한다 (사용처가 전부 IPC 핸들러·창 생성이라 그 전에만 차면 됨)
 function persistSessionChats(): void {
   writeSessionChats([...sessionChats.values()])
 }
@@ -1079,9 +1118,10 @@ function registerIpc(): void {
     if (eng) {
       await eng.cancel()
       maEngines.delete(panelId)
+      maLastUsed.delete(panelId)
     }
   })
-  ipcMain.handle(IPC.maGet, async () => readMulti())
+  ipcMain.handle(IPC.maGet, async () => readMulti(true)) // light — chatsGet과 같은 부팅 경량화
   ipcMain.handle(IPC.maSave, async (_e, data: unknown) => writeMulti(data))
   ipcMain.handle(IPC.maLoadSession, async (_e, id: unknown) => readMultiSession(id))
 
@@ -1190,7 +1230,9 @@ function registerIpc(): void {
   ipcMain.handle(IPC.profileSave, async (_e, profile: UserProfile) => writeProfile(profile))
 
   // chat history, persisted so conversations continue after a restart
-  ipcMain.handle(IPC.chatsGet, async () => readChats())
+  // light: 부팅 페이로드는 활성 채팅만 스냅샷을 싣는다 — 비활성 스냅샷은 IPC로 건너가자마자
+  // 버려지던 것(렌더러가 unloaded 마커로 대체). 전환 시엔 chatLoad가 그 채팅만 되읽는다.
+  ipcMain.handle(IPC.chatsGet, async () => readChats(true))
   ipcMain.handle(IPC.chatsSave, async (_e, data: unknown) => writeChats(data))
   ipcMain.handle(IPC.chatLoad, async (_e, id: unknown) => readChat(id))
 
@@ -1676,6 +1718,7 @@ function bootstrap(): void {
   pendingOpenDir = openedDirFromArgv(process.argv)
   // carry over an engine installed under the old (pre-rebrand) home folder
   engineVersions.migrateLegacyHome()
+  for (const r of readSessionChats()) sessionChats.set(r.id, r) // 추가 채팅 시드 (선언부 주석 참고)
   registerIpc()
   // serve attached images to the renderer: ccg-img://local/?p=<absolute path>
   protocol.handle('ccg-img', async (request) => {
@@ -1700,7 +1743,14 @@ function bootstrap(): void {
       const u = new URL(request.url)
       const p = path.normalize(decodeURIComponent(u.pathname).replace(/^\//, ''))
       const key = p.toLowerCase()
-      if (![...pageRoots].some((r) => key.startsWith(r))) return new Response('not found', { status: 404 })
+      // 뷰어의 HEAD 폴링이 이 경로를 계속 때린다 — 요청마다 배열을 새로 뜨지 않게 Set 직회
+      let allowed = false
+      for (const r of pageRoots)
+        if (key.startsWith(r)) {
+          allowed = true
+          break
+        }
+      if (!allowed) return new Response('not found', { status: 404 })
       const st = await fs.promises.stat(p)
       if (!st.isFile()) return new Response('not found', { status: 404 })
       const ext = path.extname(p).toLowerCase()
@@ -1872,6 +1922,18 @@ function bootstrap(): void {
   }
   setTimeout(() => void runBootEngineUpdate(), 1500) // 렌더러가 뜬 뒤 카드가 보이게 살짝 늦춘다
   setInterval(() => void silentEngineUpdate(), 6 * 60 * 60 * 1000)
+  // 유휴 회수 스윕 — 패널 엔진(선언부 주석) + 각 채널의 codex app-server(상주 프로세스가
+  // 마지막 실행 후 15분 유휴면 회수 — 스레드는 디스크에 있어 다음 run의 resume으로 투명)
+  setInterval(() => {
+    sweepIdleMaEngines()
+    engine.sweepIdleCodex(MA_IDLE_TTL)
+    talkEngine.sweepIdleCodex(MA_IDLE_TTL)
+    for (const [, e] of sessionEngines) e.sweepIdleCodex(MA_IDLE_TTL)
+    if (codexList && !codexList.isRunning && Date.now() - codexList.lastUsedAt >= MA_IDLE_TTL) {
+      codexList.dispose()
+      codexList = null
+    }
+  }, 60_000)
   // background auto-update against GitHub Releases (no-op in dev). Status is streamed
   // to the renderer so the UI can surface an "update available / ready" banner.
   initAutoUpdater((e) => send(IPC.updateEvent, e))
@@ -1888,7 +1950,10 @@ function disposeEngines(): void {
   engine.dispose()
   talkEngine.dispose()
   for (const [, e] of maEngines) e.dispose()
+  maEngines.clear()
+  maLastUsed.clear()
   for (const [, e] of sessionEngines) e.dispose()
+  sessionEngines.clear()
   codexList?.dispose()
 }
 

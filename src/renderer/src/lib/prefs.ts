@@ -66,6 +66,19 @@ export function setPref(key: string, value: unknown): void {
   saveTimer = window.setTimeout(flush, 250)
 }
 
+/** Remove a pref and schedule the debounced save (no-op when absent). */
+export function delPref(key: string): void {
+  if (!(key in cache)) return
+  delete cache[key]
+  window.clearTimeout(saveTimer)
+  saveTimer = window.setTimeout(flush, 250)
+}
+
+/** 현재 캐시의 키 목록 — 폴더별 키 프룬(Explorer LRU) 같은 스캔용. */
+export function prefKeys(): string[] {
+  return Object.keys(cache)
+}
+
 /** 다른 창의 변경 브로드캐스트를 캐시에만 반영 — 저장을 걸지 않는다. 여기서 저장까지 하면
  *  원본 창의 flush와 통(blob)째 저장이 경합하고, 반영을 안 하면 이 창의 다음 flush가 낡은
  *  값으로 되돌려 쓴다(둘 다 실측 가능한 함정). */

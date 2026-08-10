@@ -43,14 +43,17 @@ interface ChatsBlob {
   activeChatId?: string
 }
 
-/** Reassembles the saved chats into the renderer's blob shape, or null when none. */
-export function readChats(): unknown {
+/** Reassembles the saved chats into the renderer's blob shape, or null when none.
+ *  light: 부팅용 — 활성 채팅(activeChatId, 없으면 첫 채팅)만 스냅샷을 싣고 나머지는
+ *  unloaded 마커로 보낸다. 비활성 스냅샷은 IPC 직렬화→역직렬화를 건너가자마자 렌더러가
+ *  버리던 페이로드라, 여기서 만들지 않는 게 순이익이다. 전환 시엔 readChat이 되읽는다. */
+export function readChats(light = false): unknown {
   // primary: per-chat files listed by index.json
   try {
     const index = JSON.parse(fs.readFileSync(INDEX_PATH, 'utf8'))
     const order: unknown[] = Array.isArray(index.order) ? index.order : []
     cache.clear()
-    const chats: unknown[] = []
+    const chats: Record<string, unknown>[] = []
     for (const id of order) {
       if (!safeId(id)) continue
       try {
@@ -61,7 +64,20 @@ export function readChats(): unknown {
         /* skip a missing / corrupt chat file */
       }
     }
-    if (chats.length) return { version: index.version ?? 1, chats, activeChatId: index.activeChatId ?? '' }
+    if (chats.length) {
+      const activeChatId = index.activeChatId ?? ''
+      let out: unknown[] = chats
+      if (light) {
+        // 렌더러의 keep 판정(활성이거나 빈 스냅샷이면 유지)과 정확히 같은 기준으로 접는다
+        const act = chats.find((c) => c.id === activeChatId) ?? chats[0]
+        out = chats.map((c) => {
+          const msgs = (c.snapshot as { messages?: unknown[] } | undefined)?.messages
+          if (c === act || !Array.isArray(msgs) || !msgs.length) return c
+          return { ...c, snapshot: null, unloaded: true }
+        })
+      }
+      return { version: index.version ?? 1, chats: out, activeChatId }
+    }
   } catch {
     /* no index yet — fall through to legacy migration */
   }
