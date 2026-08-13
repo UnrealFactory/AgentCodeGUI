@@ -28,6 +28,72 @@ type LocalizedRelease = { ko: Release; en: Release }
 // 지난 1.x 노트들은 은퇴한 UpdateNotes와 함께 정리했다(이제 보여줄 경로가 없다).
 const MAX_VERSIONS = 5
 const RELEASES: Record<string, LocalizedRelease> = {
+  '2.3.10': {
+    ko: {
+      eyebrow: 'FIX',
+      lead: '워크플로를 중지하거나 앱을 껐다 켠 뒤 첫 메시지가 답 없이 증발하던 문제를 뿌리부터 잡았습니다. 계정 선택도 쓸 수 있는 계정만 보여줘요.',
+      notes: [
+        {
+          tag: '안정성',
+          name: '메시지가 답 없이 끝나던 문제를 잡았어요',
+          desc: (
+            <>
+              워크플로·백그라운드 작업이 돌던 대화를 <b>Esc로 중지</b>하거나 <b>앱을 껐다 켠</b>{' '}
+              뒤, 다음 메시지가 &quot;응답 없이 끝났어요&quot;로 증발하는 일이 있었습니다.
+              엔진이 다시 뜨며 밀린 작업 통지를 소화하는 턴이 <b>메시지를 함께 삼키는 경합</b>이
+              원인 — 이제 그 시그니처를 감지하면 <b>메시지를 자동으로 다시 전달</b>합니다.
+              직접 중지한 턴은 되살리지 않아요.
+            </>
+          )
+        },
+        {
+          tag: '계정',
+          name: '주간 한도가 끝난 계정은 숨겨요',
+          desc: (
+            <>
+              계정 선택 목록에서 <b>주간 한도 잔여 0%</b>인 계정은 보이지 않습니다 — 골라도
+              실행이 거부될 뿐이니까요. <b>5시간 한도</b> 소진은 곧 풀리니 그대로 보이고, 지금
+              이 채팅이 쓰는 계정은 소진돼도 남아 다른 계정으로 벗어날 수 있어요. Claude와
+              OpenAI(Codex) 계정 모두 같은 규칙입니다.
+            </>
+          )
+        }
+      ]
+    },
+    en: {
+      eyebrow: 'FIX',
+      lead: 'Fixed the root cause of a first message silently vanishing after stopping a workflow or relaunching the app. The account picker now only offers accounts you can actually use.',
+      notes: [
+        {
+          tag: 'Stability',
+          name: 'Messages no longer end with no reply',
+          desc: (
+            <>
+              After <b>stopping a workflow with Esc</b> or <b>relaunching the app</b> while
+              background work was running, the next message could vanish with &quot;this turn
+              ended without a reply&quot;. The engine&apos;s restart turn that digests pending
+              task notifications was <b>swallowing your message along with them</b> — the app
+              now detects that signature and <b>automatically re-delivers your message</b>.
+              Turns you interrupted yourself are never resurrected.
+            </>
+          )
+        },
+        {
+          tag: 'Accounts',
+          name: 'Accounts out of weekly quota are hidden',
+          desc: (
+            <>
+              The account picker no longer lists accounts with <b>0% weekly limit left</b> —
+              picking one would only get the run rejected. A drained <b>5-hour window</b> stays
+              visible since it recovers soon, and the account this chat is currently bound to
+              stays listed even when drained so you can switch away. The same rule applies to
+              both Claude and OpenAI (Codex) accounts.
+            </>
+          )
+        }
+      ]
+    }
+  },
   '2.3.9': {
     ko: {
       eyebrow: 'PERFORMANCE',
@@ -416,111 +482,6 @@ const RELEASES: Record<string, LocalizedRelease> = {
               Sending a message while a <b>short silent turn</b> was digesting a completion
               notice used to cut the resident engine and respawn, killing live work — it now{' '}
               <b>briefly waits for that turn to end and attaches</b>. Bad timing is safe.
-            </>
-          )
-        }
-      ]
-    }
-  },
-  '2.3.5': {
-    ko: {
-      eyebrow: 'UPDATE',
-      lead: '멀티에이전트 패널을 한눈에 구분합니다 — 패널마다 이름을 직접 짓고, 컬러 태그가 기본으로 깔리고, 제목에 마우스를 올리면 처음 시킨 지시가 그대로 떠요. 워크플로 여러 개를 동시에 돌려도 이제 각자 알약으로 따로 추적됩니다.',
-      notes: [
-        {
-          tag: '멀티',
-          name: '패널 이름을 직접 지어요',
-          desc: (
-            <>
-              패널 제목을 <b>더블클릭</b>(또는 호버 연필, 포커스한 패널에선 <b>F2</b>)하면 그
-              자리에서 바로 수정합니다. 직접 지은 이름은 <b>다음 지시를 보내도 유지</b>되고,
-              비워서 저장하면 원래의 자동 제목(첫 지시)으로 돌아와요.
-            </>
-          )
-        },
-        {
-          tag: '멀티',
-          name: '패널마다 컬러 태그',
-          desc: (
-            <>
-              모든 패널 헤더 아래 <b>고유 색 라인</b>이 기본으로 깔립니다 — 1번 보라, 2번 파랑,
-              3번 주황… 슬롯마다 색이 달라 &quot;어느 패널이더라&quot;가 <b>글보다 색으로 먼저</b>{' '}
-              잡혀요. <b>번호 칩을 클릭</b>하면 7색을 돌며 바꿀 수 있고, 고른 색은 대화를 비워도
-              유지됩니다.
-            </>
-          )
-        },
-        {
-          tag: '멀티',
-          name: '뭘 시켰는지 바로 확인',
-          desc: (
-            <>
-              패널 제목에 <b>마우스를 올리면</b> 그 패널에 처음 시킨 <b>지시 원문</b>이 보낸
-              시각·대화 턴 수와 함께 카드로 떠요. 제목은 요약, 원문은 한 호버 거리 —
-              &quot;이 패널에 뭐 시켰더라&quot;가 사라집니다.
-            </>
-          )
-        },
-        {
-          tag: '워크플로',
-          name: '동시 워크플로를 각자 추적해요',
-          desc: (
-            <>
-              한 대화에서 워크플로를 여러 개 돌리면 진행 표시가 <b>서로를 덮어쓰던</b> 문제 —
-              이제 하단 도크에 <b>알약이 나란히</b> 뜨고, 펼친 카드의 <b>번호 탭</b>으로 오가며,
-              중지도 각자 누릅니다. 끝난 워크플로의 알약만 조용히 사라져요.
-            </>
-          )
-        }
-      ]
-    },
-    en: {
-      eyebrow: 'UPDATE',
-      lead: 'Multi-agent panels are now easy to tell apart — name each panel yourself, color tags come on by default, and hovering a title shows the original first instruction. Multiple workflows in one chat are now tracked separately, each with its own pill.',
-      notes: [
-        {
-          tag: 'Multi',
-          name: 'Name your panels',
-          desc: (
-            <>
-              <b>Double-click</b> a panel title (or the hover pencil — <b>F2</b> on the focused
-              panel) to edit it in place. A name you set <b>survives further prompts</b>, and
-              saving it empty falls back to the automatic title (the first instruction).
-            </>
-          )
-        },
-        {
-          tag: 'Multi',
-          name: 'A color tag on every panel',
-          desc: (
-            <>
-              Every panel header now carries a <b>distinct color line</b> by default — violet
-              for 1, blue for 2, orange for 3… so &quot;which panel was that&quot; registers{' '}
-              <b>by color before you read a word</b>. <b>Click the number chip</b> to cycle
-              through 7 colors; your pick survives clearing the chat.
-            </>
-          )
-        },
-        {
-          tag: 'Multi',
-          name: 'See what you asked, instantly',
-          desc: (
-            <>
-              <b>Hover a panel title</b> and a card shows the <b>original first instruction</b>{' '}
-              you gave that panel, with its time and turn count. The title is the summary; the
-              full text is one hover away — no more &quot;what did I ask this one again?&quot;
-            </>
-          )
-        },
-        {
-          tag: 'Workflow',
-          name: 'Concurrent workflows, tracked separately',
-          desc: (
-            <>
-              Running several workflows in one chat used to make their progress{' '}
-              <b>overwrite each other</b> — pills now line up <b>side by side</b> in the dock,
-              the expanded card switches between them with <b>number tabs</b>, and each has its
-              own stop. Only a finished workflow&apos;s pill quietly disappears.
             </>
           )
         }

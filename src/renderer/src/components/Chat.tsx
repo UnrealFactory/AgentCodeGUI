@@ -2405,6 +2405,17 @@ export function PickerChip({
   const cxDefaultEmail = cxAccounts.find((a) => a.isDefault)?.email
   const cxEffective = picker.codexAccount ?? cxDefaultEmail
 
+  // 주간 한도를 다 쓴(잔여 0%) 계정은 목록에서 숨긴다 — 골라도 실행이 거부될 뿐이다.
+  // 5시간 창 소진은 곧 풀리고 Fable 창 소진은 다른 모델로 쓸 수 있어 숨기지 않는다.
+  // 단 지금 유효한 계정은 소진돼도 남긴다 — 선택 표시가 있어야 다른 계정으로 벗어난다.
+  const usableAccounts = accounts.filter((a) => a.email === effective || (aUsage[a.email]?.weeklyPct ?? 0) < 100)
+  const cxUsableAccounts = cxAccounts.filter((a) => {
+    if (a.email === cxEffective) return true
+    // 주간 창 판별은 라벨 규약('주간'/'Weekly') — Settings LimRow와 같은 방식
+    const wk = cxUsage[a.email]?.windows.find((w) => w.label === '주간' || w.label === 'Weekly')
+    return !wk || wk.usedPct < 100
+  })
+
   // 칩 라벨 = 모델·추론·모드 + 계정. 계정은 항상 표시(기본 계정 포함) — API 모드면
   // 계정 대신 'API'. 계정 목록이 아직 안 왔으면(유효 계정 미상) 꼬리표를 생략한다.
   const modelLabel = engine === 'claude' ? modelOpt.v : codexOpt.v
@@ -2502,11 +2513,11 @@ export function PickerChip({
             </>
           )}
           {/* 계정 — 구독 실행에만 (API 모드는 키로 과금되니 계정 선택이 무의미) */}
-          {engine === 'claude' && !apiMode && (accounts.length > 0 || picker.account) && (
+          {engine === 'claude' && !apiMode && (usableAccounts.length > 0 || picker.account) && (
             <>
               <div className="pp-sep" />
               <div className="pp-h4">{t('계정', 'Account')}</div>
-              {accounts.map((a) => (
+              {usableAccounts.map((a) => (
                 <PPRow
                   key={a.email}
                   sel={a.email === effective}
@@ -2526,11 +2537,11 @@ export function PickerChip({
             </>
           )}
           {/* OpenAI 계정 — Anthropic과 동일한 문법 (Codex 엔진 실행이 소비할 계정) */}
-          {engine === 'codex' && !apiMode && (cxAccounts.length > 0 || picker.codexAccount) && (
+          {engine === 'codex' && !apiMode && (cxUsableAccounts.length > 0 || picker.codexAccount) && (
             <>
               <div className="pp-sep" />
               <div className="pp-h4">{t('계정', 'Account')}</div>
-              {cxAccounts.map((a) => (
+              {cxUsableAccounts.map((a) => (
                 <PPRow
                   key={a.email}
                   sel={a.email === cxEffective}

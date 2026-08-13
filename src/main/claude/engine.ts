@@ -277,6 +277,9 @@ export class ClaudeEngine {
    *  보내지 않는다(응답할 턴이 없어 유예가 끝날 때까지 cancel이 막힌다). 실행이 없으면 true.
    *  bg 통지의 atTurnEnd('중지됨' vs '턴 종료로 정리됨') 판정도 이 값을 쓴다. */
   private turnEnded = true
+  /** 이 턴에 사용자 중단(Esc/중지)이 요청됐는지 — 통지 삼킴 리플레이가 사용자가 방금 끊은
+   *  턴의 프롬프트를 되살리지 않게 막는다. 새 턴(스폰·주입)마다 리셋. */
+  private interruptRequested = false
   /** resolves when the active run's stream loop has fully torn down */
   private runLoop: Promise<void> | null = null
   /** pending canUseTool resolvers keyed by requestId */
@@ -360,6 +363,7 @@ export class ClaudeEngine {
 
   async cancel(): Promise<void> {
     dlog(`cancel: hard (turnEnded=${this.turnEnded})`)
+    this.interruptRequested = true // 사용자/시스템이 끊은 턴 — 삼킴 리플레이 대상에서 제외
     // interrupt는 진행 중인 턴에만 보낸다 — result 후 정리 유예(~5s) 중인 CLI는 응답할
     // 턴이 없어 여기서 유예가 끝날 때까지 조용히 막혔다(답변 직후 보낸 다음 메시지가
     // 몇 초간 "씹힌" 것처럼 보이는 주범). 턴이 끝났으면 바로 abort로 가고, 진행 중이어도
@@ -420,6 +424,7 @@ export class ClaudeEngine {
     if (!this.isRunning || this.turnEnded) return
     if (!this.handle?.interrupt) return this.cancel()
     dlog('interruptTurn: graceful interrupt')
+    this.interruptRequested = true // 사용자가 끊은 턴 — 삼킴 리플레이가 되살리지 않게
     // 턴이 끝나며 카드도 의미를 잃는다 — 대기 중인 승인/질문을 풀어 프로미스가 매달리지 않게
     for (const [, waiter] of this.permissionWaiters) waiter({ behavior: 'deny', message: 'cancelled' })
     this.permissionWaiters.clear()
@@ -486,6 +491,7 @@ export class ClaudeEngine {
     this.activeRunId = runId
     dlog(`run: fresh spawn (runId=${runId}${injectMiss ? `, injectMiss=${injectMiss}` : ''})`)
     this.turnEnded = false // 새 턴 — cancel이 다시 우아한 interrupt 경로를 쓴다
+    this.interruptRequested = false
     this.tools.clear()
     this.subagents.clear()
     this.subagentModels.clear()
@@ -1029,6 +1035,8 @@ export class ClaudeEngine {
             return
           }
           heldRearms = 0
+          // 무음 정착 직전 삼킴 판정 — 통지를 소화한 턴이면 정착 대신 프롬프트를 되살린다
+          if (tryNotifReplay()) return
           flushWfSettled()
           const held = heldResult
           heldResult = null
@@ -1089,6 +1097,39 @@ export class ClaudeEngine {
         sentTerminalStatus = true
       }
 
+      // ── 통지 삼킴 리플레이 ──
+      // 고아/밀린 <task-notification>을 소화하는 기상 턴이 사용자 프롬프트와 한 턴으로
+      // 묶이면 모델이 통지 규약대로 'No response requested.'만 내고 프롬프트를 삼킨다
+      // (실측 2026-08-13 전사: 워크플로를 쥔 CLI가 죽은 뒤 — Esc 중지(TaskStop)는 전사에
+      // 완료 기록을 안 남긴다 — 재기동 첫 턴에서 CLI가 고아 통지를 합성·주입해 재현.
+      // 렌더러엔 '응답 없이 끝났어요'만 남고 메시지가 증발, 수동 재전송은 정상 동작했다).
+      // 시그니처: 통지가 이 턴에 실제 주입됐고(deliveredNotifs) 눈에 보이는 활동이 전혀
+      // 없이 성공 종결 — 정착시키지 않고 같은 스트림에 프롬프트를 한 번 다시 밀어넣는다
+      // (수동 재전송의 자동화). 활동이 있었으면 부분 실행 위험이 있어 건드리지 않고,
+      // 사용자가 직접 끊은 턴(interruptRequested)도 되살리지 않는다. 실행당 1회.
+      let lastPrompt = req.prompt
+      let promptReplayed = false
+      const tryNotifReplay = (): boolean => {
+        if (promptReplayed || inputClosed || abort.signal.aborted || this.interruptRequested) return false
+        if (sawTurnActivity || !deliveredNotifs.size) return false
+        promptReplayed = true
+        dlog('notif swallow: replaying prompt into resident stream')
+        finishWrap() // 통지 보고는 이 턴으로 끝났다 — 보고 턴 대기만 걷는다
+        heldResult = null
+        heldRearms = 0
+        this.turnEnded = false // 턴이 이어진다 — Esc가 다시 우아한 interrupt 경로
+        turnStartSeq = frameSeq
+        turnFromInject = true // 사용자 프롬프트 턴 — 이 턴의 result가 wrap을 마감하지 않게
+        inbox.push({
+          type: 'user',
+          message: { role: 'user', content: [{ type: 'text', text: lastPrompt }] },
+          parent_tool_use_id: null,
+          session_id: ''
+        })
+        wakeInput?.()
+        return true
+      }
+
       // ── 상주 유지 주입의 문 — run()이 새 스폰 대신 이 스트림에 다음 턴을 밀어넣는다 ──
       // 조건: 이전 턴이 끝났고(result 지남), 지킬 백그라운드 작업(워크플로·셸·에이전트,
       // 보고 턴 대기 포함)이 살아 있고, 스폰 시점에만 정할 수 있는 옵션이 전부 같을 때만.
@@ -1121,10 +1162,13 @@ export class ClaudeEngine {
         runId = nextRunId()
         this.activeRunId = runId
         this.turnEnded = false
+        this.interruptRequested = false
         sentTerminalStatus = false
         sawTurnActivity = false
         heldResult = null
         heldRearms = 0
+        lastPrompt = nreq.prompt // 삼킴 리플레이가 이 턴의 프롬프트를 되살리게
+        promptReplayed = false // 주입 = 새 턴 — 리플레이 기회도 새로
         turnStartSeq = frameSeq // 주입 턴 시작점 — wrap 마감 판정의 기준
         turnFromInject = true
         sawTool = false
@@ -1670,6 +1714,9 @@ export class ClaudeEngine {
             armHeldSettle()
             continue
           }
+          // result에 텍스트는 실렸는데 활동이 전혀 없던 성공 종결 — 기상 턴이 프롬프트째
+          // 삼킨 시그니처('No response requested.'가 result로만 온다). 정착 대신 리플레이.
+          if (!msg.is_error && !sawTurnActivity && tryNotifReplay()) continue
           // 워크플로 마감 — 미뤄둔 settled 스냅샷을 result보다 먼저 내보낸다(알약 소등이
           // busy 해제보다 앞서야 렌더러 게이트·드레인이 어긋나지 않는다). 보고 턴 대기는
           // finishWrap이 푼다 — 통지 이후 시작된 턴이거나 이 턴에 통지가 실제 주입된

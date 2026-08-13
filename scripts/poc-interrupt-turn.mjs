@@ -21,6 +21,8 @@ execSync(
     `--outfile=${JSON.stringify(bundle)} --external:react --alias:@shared=./src/shared`,
   { cwd: root, stdio: 'pipe' }
 )
+// i18n(lib/i18n.ts)이 모듈 스코프에서 localStorage를 읽는다 — Node 구동용 최소 스텁
+globalThis.localStorage ??= { getItem: () => null, setItem: () => {}, removeItem: () => {} }
 const { reducer, initialSessionState } = await import(pathToFileURL(bundle).href)
 fs.rmSync(bundle, { force: true })
 
