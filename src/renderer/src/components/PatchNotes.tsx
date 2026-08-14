@@ -28,6 +28,71 @@ type LocalizedRelease = { ko: Release; en: Release }
 // 지난 1.x 노트들은 은퇴한 UpdateNotes와 함께 정리했다(이제 보여줄 경로가 없다).
 const MAX_VERSIONS = 5
 const RELEASES: Record<string, LocalizedRelease> = {
+  '2.4.0': {
+    ko: {
+      eyebrow: 'NEW',
+      lead: '사용 한도에 막혀도 이제 앱이 알아서 기다립니다 — 한도가 풀리는 시각에 중단한 곳부터 자동으로 이어가요.',
+      notes: [
+        {
+          tag: '자동 이어서',
+          name: '한도가 풀리면 자동으로 계속해요',
+          desc: (
+            <>
+              모델 칩 → 과금에서 <b>자동 이어서</b>를 켜 두면, 구독 한도에 막혀 멈춘 대화를{' '}
+              <b>한도가 초기화되는 시각</b>에 맞춰 자동으로 이어갑니다. 기다리는 동안 컴포저 위
+              상태줄이 남은 시간을 보여주고(언제든 취소), 보내기 직전에 <b>정말 풀렸는지 다시
+              확인</b>한 뒤에만 이어가요. 본채팅·멀티 패널·추가 채팅 어디서든 동작하고,
+              본채팅의 대기는 앱을 껐다 켜도 이어집니다.
+            </>
+          )
+        },
+        {
+          tag: '계정',
+          name: '소진된 계정도 펼쳐서 고를 수 있어요',
+          desc: (
+            <>
+              지난 버전에서 숨겼던 <b>주간 한도 0% 계정</b>을 계정 목록 끝의 &quot;소진된 계정
+              N개 표시&quot;로 다시 펼칠 수 있습니다. 소진 계정엔 잔여 % 대신 <b>언제
+              돌아오는지</b>가 표시돼요 — 자동 이어서와 함께라면, 소진 계정을 미리 골라 두고
+              풀리는 시각에 이어가게 할 수 있습니다.
+            </>
+          )
+        }
+      ]
+    },
+    en: {
+      eyebrow: 'NEW',
+      lead: 'Hitting a usage limit no longer ends your flow — the app now waits and picks up right where you left off when the limit resets.',
+      notes: [
+        {
+          tag: 'Auto-continue',
+          name: 'Continues automatically when the limit resets',
+          desc: (
+            <>
+              Turn on <b>Auto-continue</b> under model chip → Billing, and a conversation
+              stopped by a subscription limit resumes on its own at the <b>reset time</b>.
+              While waiting, a strip above the composer shows the countdown (cancel anytime),
+              and the app <b>double-checks the limit is actually lifted</b> before sending.
+              Works in the main chat, multi-agent panels, and extra chat windows — the main
+              chat&apos;s wait even survives an app restart.
+            </>
+          )
+        },
+        {
+          tag: 'Accounts',
+          name: 'Exhausted accounts can be shown again',
+          desc: (
+            <>
+              Weekly-exhausted accounts (hidden since the last release) can be revealed with
+              &quot;Show exhausted accounts&quot; at the tail of the account list. They now
+              show <b>when they come back</b> instead of a meaningless 0% — pair one with
+              auto-continue to wait out the reset on purpose.
+            </>
+          )
+        }
+      ]
+    }
+  },
   '2.3.10': {
     ko: {
       eyebrow: 'FIX',
@@ -396,92 +461,6 @@ const RELEASES: Record<string, LocalizedRelease> = {
               remove a folder you tried once and never meant to keep, right there. It comes
               back if you use it again, and <b>an emptied list no longer resurrects on
               restart</b>.
-            </>
-          )
-        }
-      ]
-    }
-  },
-  '2.3.6': {
-    ko: {
-      eyebrow: 'FIX',
-      lead: '중단(Esc) 한 번이 백그라운드 작업을 조용히 죽이고, 그 뒤로 대화가 계속 꼬이던 문제를 고쳤습니다. 이제 중단은 "지금 답변만 멈춰"입니다 — 뒤에서 돌던 작업은 계속 돌아요.',
-      notes: [
-        {
-          tag: '중단',
-          name: 'Esc가 백그라운드를 죽이지 않아요',
-          desc: (
-            <>
-              중단(Esc·중지 버튼)이 답변만 끊는 게 아니라 <b>엔진 프로세스째 내려서</b>, 뒤에서
-              돌던 셸·워크플로·에이전트가 통째로 사라졌습니다 — 이제 <b>지금 턴만 우아하게
-              끊고</b> 백그라운드는 계속 돕니다. 상주 워크플로 위에서 Esc를 누르면 워크플로만
-              곱게 멈추고, 중지 보고도 대화에 제대로 도착해요.
-            </>
-          )
-        },
-        {
-          tag: '상주',
-          name: '중단 후 계속 꼬이던 루프 수정',
-          desc: (
-            <>
-              중단으로 죽은 백그라운드 작업이 <b>미결 통지</b>로 남아, 그 뒤 매 턴이 &quot;통지
-              소화 → 턴 종료 직후 상주 사망 → 새 작업도 또 사망&quot;을 반복하는 <b>자기 영속
-              루프</b>에 빠질 수 있었습니다(백그라운드로 시킨 일이 몇십 초 만에 소리 없이 죽고
-              &quot;응답 없음&quot;이 뜨던 그 증상). 진입점이 사라져 루프가 시작되지 않아요.
-            </>
-          )
-        },
-        {
-          tag: '채팅',
-          name: '통지 처리 중 보낸 메시지가 작업을 자르지 않아요',
-          desc: (
-            <>
-              백그라운드 작업의 완료 통지를 소화하는 <b>짧은 무음 턴</b>이 도는 사이에 메시지를
-              보내면, 상주를 잘라내고 새로 시작하며 살아있던 작업까지 죽였습니다 — 이제 그
-              턴이 끝나길 <b>잠깐 기다렸다 이어붙입니다</b>. 타이밍 나쁘게 보내도 안전해요.
-            </>
-          )
-        }
-      ]
-    },
-    en: {
-      eyebrow: 'FIX',
-      lead: 'Fixed a single stop (Esc) silently killing background work and leaving the chat tangled afterwards. Stop now means "stop this reply" — work running behind it keeps going.',
-      notes: [
-        {
-          tag: 'Stop',
-          name: 'Esc no longer kills background work',
-          desc: (
-            <>
-              Stopping (Esc / the stop button) didn&apos;t just cut the reply — it took the{' '}
-              <b>whole engine process down</b>, and background shells, workflows, and agents died
-              with it. It now <b>gracefully ends just the current turn</b> while background work
-              keeps running. Esc over a resident workflow stops only the workflow, and its
-              wrap-up report still lands in the chat.
-            </>
-          )
-        },
-        {
-          tag: 'Resident',
-          name: 'The post-stop tangle loop is gone',
-          desc: (
-            <>
-              Work killed by a stop lingered as an <b>undelivered notice</b>, and every turn
-              after could repeat &quot;digest notice → resident dies right after the turn → new
-              work dies too&quot; — a <b>self-perpetuating loop</b> (the one where background
-              jobs silently died within seconds and &quot;ended without a reply&quot; appeared).
-              The entry point is gone, so the loop never starts.
-            </>
-          )
-        },
-        {
-          tag: 'Chat',
-          name: 'Messages during notice handling no longer cut work',
-          desc: (
-            <>
-              Sending a message while a <b>short silent turn</b> was digesting a completion
-              notice used to cut the resident engine and respawn, killing live work — it now{' '}
-              <b>briefly waits for that turn to end and attaches</b>. Bad timing is safe.
             </>
           )
         }

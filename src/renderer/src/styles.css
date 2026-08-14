@@ -1265,6 +1265,29 @@ input,textarea{ font-family:inherit; }
 .pp-sub .warn{ color:var(--amber); }
 .pp-sub .crit{ color:var(--red); }
 .pp-check{ margin-left:auto; color:var(--text-2); flex:0 0 auto; display:grid; place-items:center; }
+/* 과금 헤더 오른쪽의 '자동 이어서' 미니 필 — 켜짐=액센트 필(멀티 패널 수 탭 문법).
+   행(라벨+스위치)로 그리면 라디오 행 사이의 이물이라는 실측 피드백으로 헤더 승격 */
+.pp-h4.row{ display:flex; align-items:center; gap:8px; margin-right:2px; }
+.pp-h4.row .sp{ flex:1; }
+.pp-flag{
+  font-size:10px; font-weight:600; padding:2.5px 8px; border-radius:99px;
+  color:var(--text-4); background:rgba(255,255,255,.05); transition:background .12s, color .12s;
+}
+.pp-flag:hover{ color:var(--text-2); background:rgba(255,255,255,.09); }
+.pp-flag.on{ color:var(--on-accent); background:var(--accent); }
+.pp-flag.on:hover{ color:var(--on-accent); background:var(--accent); filter:brightness(1.08); }
+/* 필 툴팁 — 기본(중앙 정렬)은 292px 팝오버 오른쪽 끝에서 overflow에 잘린다(실측) →
+   오른끝 정렬로 왼쪽을 향해 펼친다 (win-ctl·qhead와 같은 잘림 방향 보정 문법) */
+.pp-flag.has-tip::after{ left:auto; right:0; transform:translate(0, 3px); }
+.pp-flag.has-tip:hover::after{ transform:translate(0, 0); }
+/* 숨긴 소진 계정 펼치기 — ToolGroup '이전 도구 N개 펼치기'와 같은 접기 행 문법 */
+.pp-more{
+  display:flex; align-items:center; gap:6px; width:100%; padding:5px 7px; border-radius:7px;
+  font-size:10.5px; color:var(--text-4); text-align:left; transition:background .12s, color .12s;
+}
+.pp-more:hover{ background:var(--hover); color:var(--text-2); }
+.pp-more svg{ flex:0 0 auto; transition:transform .15s; }
+.pp-more.open svg{ transform:rotate(180deg); }
 /* 추론 슬라이더 — 선택한 모델 아래로 슬라이드 오픈 (PoC .edrawer) */
 .edrawer{ max-height:0; overflow:hidden; transition:max-height .22s ease; }
 .edrawer.open{ max-height:44px; }
@@ -1472,6 +1495,31 @@ input,textarea{ font-family:inherit; }
   color:var(--text-4); transition:background .12s, color .12s;
 }
 .sched-x:hover{ background:var(--red-soft); color:var(--red); }
+/* 한도 자동 이어서 상태줄 — 컴포저 위 .sched와 같은 유리 카드 문법의 한 줄 스트립.
+   구독 한도에 막힌 대화와 재개 예정(카운트다운)을 보여준다. 토글은 과금 picker에.
+   래퍼가 컴포저와 같은 폭 규칙(28px 사이드 + 880px 중앙)을 그대로 따라 정렬을 맞춘다 */
+.limit-hold-wrap{ flex:0 0 auto; padding:6px 28px 0; }
+.limit-hold{
+  position:relative; display:flex; align-items:center; gap:7px;
+  max-width:880px; margin:0 auto; padding:8px 7px 8px 11px; border-radius:12px;
+  background:rgba(28,28,28,.68); border:1px solid rgba(255,255,255,.10);
+  backdrop-filter:blur(32px) saturate(1.25); -webkit-backdrop-filter:blur(32px) saturate(1.25);
+  box-shadow:0 18px 44px -18px rgba(0,0,0,.7), inset 0 1px 0 rgba(255,255,255,.05);
+  animation:rise .16s cubic-bezier(.2,.8,.2,1);
+  color:var(--amber); font-size:11px;
+}
+.limit-hold::before{
+  content:""; position:absolute; top:-1px; left:16%; right:16%; height:1px;
+  background:linear-gradient(90deg, transparent, rgba(255,255,255,.38), transparent);
+}
+.limit-hold > svg{ flex:0 0 auto; }
+.lh-title{ flex:0 0 auto; font-weight:650; color:var(--text-2); }
+.lh-sub{ flex:1; min-width:0; margin-left:2px; color:var(--text-4); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.lh-x{
+  flex:0 0 auto; display:grid; place-items:center; width:22px; height:22px; border-radius:7px;
+  color:var(--text-4); transition:background .12s, color .12s;
+}
+.lh-x:hover{ background:var(--red-soft); color:var(--red); }
 /* 예약 상태의 컴포저(.scheduling)는 별도 장식 없음 — 옛 액센트 링은 2.0 무채색에선
    흰 광륜으로 보여 걷어냈다. 글래스 카드와 플레이스홀더가 이미 문맥을 말한다. */
 
@@ -3686,6 +3734,10 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
 .ma-grid .ma-panel .ma-p-head .wb-pop.hpop{ max-width:100%; }
 .ma-grid .ma-panel .composer-wrap{ padding:8px 12px 12px; }
 .ma-grid .ma-panel .composer-inner{ max-width:none; }
+/* 한도 자동 이어서 상태줄 — 패널 미니어처: 컴포저와 같은 배율(zoom .9)·같은 사이드
+   패딩(12px)으로 줄을 맞추고, 880px 중앙 정렬은 좁은 패널에선 무의미라 푼다 */
+.ma-grid .ma-panel .limit-hold-wrap{ padding:4px 12px 0; zoom:.9; }
+.ma-grid .ma-panel .limit-hold{ max-width:none; }
 .ma-p-empty{
   height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:11px;
   padding:20px; text-align:center;

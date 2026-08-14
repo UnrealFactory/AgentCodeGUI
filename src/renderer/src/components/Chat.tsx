@@ -26,6 +26,8 @@ import type {
 } from '@shared/protocol'
 import { t, useLang } from '../lib/i18n'
 import { sameCwd, type ThreadItem } from '../store/session'
+import { resumeDelayMs, type LimitHold } from '../lib/limitResume'
+import { getPref, setPref } from '../lib/prefs'
 import { loadRecentDirs, loadFavDirs, toggleFavDir, removeRecentDir } from '../lib/recentDirs'
 import { relTime } from './Sidebar'
 import { Markdown } from './Markdown'
@@ -2186,6 +2188,14 @@ function usageLineNode(parts: { label: string; left: number }[]): ReactNode {
 // 조회 못 한 항목은 조용히 빠진다(저장 토큰 만료 등 — 실행하면 CLI가 리프레시한다).
 function acctUsageLine(u?: AccountUsage): ReactNode {
   if (!u) return null
+  // 주간 소진 계정(표시 토글로 보임 · 유효 계정은 상시)은 잔여 % 대신 "언제 돌아오는지"가
+  // 정보다 — 자동 이어서로 이 계정을 골라 기다리는 흐름의 판단 재료
+  if (u.weeklyPct != null && u.weeklyPct >= 100)
+    return (
+      <>
+        <span className="crit">{t('주간 소진', 'Weekly exhausted')}</span> · {resetText(u.weeklyResetsAt ?? null, true)}
+      </>
+    )
   const parts: { label: string; left: number }[] = []
   if (u.fiveHourPct != null) parts.push({ label: t('5시간', '5h'), left: 100 - u.fiveHourPct })
   if (u.fablePct != null) parts.push({ label: 'Fable', left: 100 - u.fablePct })
@@ -2258,6 +2268,14 @@ function fetchCodexUsage(): Promise<Record<string, CodexAccountUsage>> {
 // Codex 계정 옵션의 잔여 한도 줄 — Anthropic acctUsageLine과 같은 관례(잔여 % = 100 − 사용률)
 function cxUsageLine(u?: CodexAccountUsage): ReactNode {
   if (!u || !u.windows.length) return null
+  // 주간 창 소진이면 리셋 시각이 정보 (라벨 규약 '주간'/'Weekly' — acctUsageLine과 동일한 이유)
+  const wk = u.windows.find((w) => (w.label === '주간' || w.label === 'Weekly') && w.usedPct >= 100)
+  if (wk)
+    return (
+      <>
+        <span className="crit">{t('주간 소진', 'Weekly exhausted')}</span> · {resetText(wk.resetsAt ?? null, true)}
+      </>
+    )
   return usageLineNode(u.windows.map((w) => ({ label: w.label, left: Math.max(0, 100 - Math.round(w.usedPct)) })))
 }
 
@@ -2333,7 +2351,9 @@ export function PickerChip({
   apiReady = false,
   apiReadyCodex = false,
   engineLocked = false,
-  onApiModeChange
+  onApiModeChange,
+  autoResume = false,
+  onAutoResumeChange
 }: {
   picker: PickerState
   setPicker: (p: PickerState) => void
@@ -2345,6 +2365,10 @@ export function PickerChip({
   // 모드·계정은 그대로 자유. /clear·폴더 변경으로 대화가 리셋되면 다시 풀린다.
   engineLocked?: boolean
   onApiModeChange?: (next: boolean, engine?: EngineId) => void
+  // 한도 자동 이어서 — 구독 행 아래 체크 행. 핸들러가 준 화면(본채팅)에서만 그린다
+  // (추가 채팅·멀티 패널은 자동 재개 배선이 아직 없어 행을 숨긴다 — 헛약속 금지)
+  autoResume?: boolean
+  onAutoResumeChange?: (on: boolean) => void
 }) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLSpanElement>(null)
@@ -2405,16 +2429,31 @@ export function PickerChip({
   const cxDefaultEmail = cxAccounts.find((a) => a.isDefault)?.email
   const cxEffective = picker.codexAccount ?? cxDefaultEmail
 
-  // 주간 한도를 다 쓴(잔여 0%) 계정은 목록에서 숨긴다 — 골라도 실행이 거부될 뿐이다.
-  // 5시간 창 소진은 곧 풀리고 Fable 창 소진은 다른 모델로 쓸 수 있어 숨기지 않는다.
-  // 단 지금 유효한 계정은 소진돼도 남긴다 — 선택 표시가 있어야 다른 계정으로 벗어난다.
-  const usableAccounts = accounts.filter((a) => a.email === effective || (aUsage[a.email]?.weeklyPct ?? 0) < 100)
-  const cxUsableAccounts = cxAccounts.filter((a) => {
-    if (a.email === cxEffective) return true
+  // 주간 한도를 다 쓴(잔여 0%) 계정 — 기본은 숨김(골라도 실행이 거부될 뿐이었다).
+  // '한도 풀리면 자동 이어서'가 생기면서 소진 계정을 일부러 골라 리셋을 기다리는 흐름이
+  // 유효해져, 목록 꼬리의 토글로 표시를 선택할 수 있다(소진 계정엔 리셋 시각 병기).
+  // 5시간 창 소진은 곧 풀리고 Fable 창 소진은 다른 모델로 쓸 수 있어 애초에 안 숨긴다.
+  // 지금 유효한 계정은 소진돼도 항상 표시 — 선택 표시가 있어야 다른 계정으로 벗어난다.
+  // 전역 pref — 팝오버를 열 때 되읽어 다른 화면(멀티·추가 채팅)에서 바꾼 값을 따라잡는다.
+  const [showExhausted, setShowExhausted] = useState<boolean>(() => getPref<boolean>('accounts.showExhausted', false))
+  useEffect(() => {
+    if (open) setShowExhausted(getPref<boolean>('accounts.showExhausted', false))
+  }, [open])
+  const toggleExhausted = (): void => {
+    setPref('accounts.showExhausted', !showExhausted)
+    setShowExhausted(!showExhausted)
+  }
+  const isExhausted = (a: AccountInfo): boolean => a.email !== effective && (aUsage[a.email]?.weeklyPct ?? 0) >= 100
+  const exhaustedCount = accounts.filter(isExhausted).length
+  const usableAccounts = showExhausted ? accounts : accounts.filter((a) => !isExhausted(a))
+  const cxIsExhausted = (a: CodexAccountInfo): boolean => {
+    if (a.email === cxEffective) return false
     // 주간 창 판별은 라벨 규약('주간'/'Weekly') — Settings LimRow와 같은 방식
     const wk = cxUsage[a.email]?.windows.find((w) => w.label === '주간' || w.label === 'Weekly')
-    return !wk || wk.usedPct < 100
-  })
+    return !!wk && wk.usedPct >= 100
+  }
+  const cxExhaustedCount = cxAccounts.filter(cxIsExhausted).length
+  const cxUsableAccounts = showExhausted ? cxAccounts : cxAccounts.filter((a) => !cxIsExhausted(a))
 
   // 칩 라벨 = 모델·추론·모드 + 계정. 계정은 항상 표시(기본 계정 포함) — API 모드면
   // 계정 대신 'API'. 계정 목록이 아직 안 왔으면(유효 계정 미상) 꼬리표를 생략한다.
@@ -2490,7 +2529,24 @@ export function PickerChip({
           {onApiModeChange && (
             <>
               <div className="pp-sep" />
-              <div className="pp-h4">{t('과금', 'Billing')}</div>
+              {/* 과금 헤더 오른쪽의 '자동 이어서' 미니 필 — 한도 자동 이어서 토글. 행으로
+                  그리면 라디오(구독/API) 사이의 이물이라는 실측 피드백 2회로 헤더 승격:
+                  켜짐=액센트 필(패널 수 탭 문법), 설명은 툴팁. 구독 과금일 때만 보인다 */}
+              <div className="pp-h4 row">
+                {t('과금', 'Billing')}
+                <span className="sp" />
+                {!apiMode && onAutoResumeChange && (
+                  <button
+                    className={'pp-flag has-tip' + (autoResume ? ' on' : '')}
+                    data-tip={t('한도가 풀리면 중단한 곳부터 자동으로 계속', 'Auto-continue where you left off when the limit resets')}
+                    role="switch"
+                    aria-checked={autoResume}
+                    onClick={() => onAutoResumeChange(!autoResume)}
+                  >
+                    {t('자동 이어서', 'Auto-continue')}
+                  </button>
+                )}
+              </div>
               <PPRow
                 sel={!apiMode}
                 main={t('구독', 'Subscription')}
@@ -2512,8 +2568,9 @@ export function PickerChip({
               />
             </>
           )}
-          {/* 계정 — 구독 실행에만 (API 모드는 키로 과금되니 계정 선택이 무의미) */}
-          {engine === 'claude' && !apiMode && (usableAccounts.length > 0 || picker.account) && (
+          {/* 계정 — 구독 실행에만 (API 모드는 키로 과금되니 계정 선택이 무의미).
+              전부 소진으로 숨겨져도 섹션은 남아야 표시 토글로 되살릴 수 있다 */}
+          {engine === 'claude' && !apiMode && (usableAccounts.length > 0 || picker.account || exhaustedCount > 0) && (
             <>
               <div className="pp-sep" />
               <div className="pp-h4">{t('계정', 'Account')}</div>
@@ -2534,10 +2591,20 @@ export function PickerChip({
                   onClick={() => setPicker({ ...picker, account: a.isDefault ? undefined : a.email })}
                 />
               ))}
+              {/* 숨긴 소진 계정 펼치기 — ToolGroup '이전 도구 N개 펼치기'와 같은 접기 행.
+                  자동 이어서로 소진 계정을 골라 리셋을 기다리는 흐름의 입구 */}
+              {exhaustedCount > 0 && (
+                <button className={'pp-more' + (showExhausted ? ' open' : '')} onClick={toggleExhausted}>
+                  <IconChevDown size={11} />
+                  {showExhausted
+                    ? t('소진된 계정 숨기기', 'Hide exhausted accounts')
+                    : t(`소진된 계정 ${exhaustedCount}개 표시`, `Show ${exhaustedCount} exhausted account${exhaustedCount === 1 ? '' : 's'}`)}
+                </button>
+              )}
             </>
           )}
           {/* OpenAI 계정 — Anthropic과 동일한 문법 (Codex 엔진 실행이 소비할 계정) */}
-          {engine === 'codex' && !apiMode && (cxUsableAccounts.length > 0 || picker.codexAccount) && (
+          {engine === 'codex' && !apiMode && (cxUsableAccounts.length > 0 || picker.codexAccount || cxExhaustedCount > 0) && (
             <>
               <div className="pp-sep" />
               <div className="pp-h4">{t('계정', 'Account')}</div>
@@ -2554,11 +2621,76 @@ export function PickerChip({
                   onClick={() => setPicker({ ...picker, codexAccount: a.isDefault ? undefined : a.email })}
                 />
               ))}
+              {cxExhaustedCount > 0 && (
+                <button className={'pp-more' + (showExhausted ? ' open' : '')} onClick={toggleExhausted}>
+                  <IconChevDown size={11} />
+                  {showExhausted
+                    ? t('소진된 계정 숨기기', 'Hide exhausted accounts')
+                    : t(`소진된 계정 ${cxExhaustedCount}개 표시`, `Show ${cxExhaustedCount} exhausted account${cxExhaustedCount === 1 ? '' : 's'}`)}
+                </button>
+              )}
             </>
           )}
         </div>
       )}
     </span>
+  )
+}
+
+// 한도 상태줄 카운트다운 — '2시간 10분' / '5분' (주간 리셋처럼 하루를 넘기면 일 단위)
+function fmtEta(ms: number): string {
+  const mins = Math.max(1, Math.ceil(ms / 60_000))
+  const h = Math.floor(mins / 60)
+  const m = mins % 60
+  if (h >= 24) return t(`${Math.floor(h / 24)}일 ${h % 24}시간`, `${Math.floor(h / 24)}d ${h % 24}h`)
+  return h > 0 ? t(`${h}시간 ${m}분`, `${h}h ${m}m`) : t(`${m}분`, `${m}m`)
+}
+
+// 한도 자동 이어서 상태줄 — 세 화면(본채팅·멀티 패널·추가 채팅) 공용. 구독 한도에
+// 막힌 대화와 재개 예정(카운트다운)을 보여준다. 토글 자체는 과금 picker(구독 →
+// '한도 소진 시 자동 이어서')에 있고, 카운트다운 갱신은 useLimitResume의 30초 틱이
+// 호스트를 재렌더해서 온다. 래퍼가 컴포저와 같은 폭 규칙(28px 사이드+880px 중앙)을 따른다.
+export function LimitHoldBar({ hold, enabled, onCancel }: { hold: LimitHold | null; enabled: boolean; onCancel: () => void }) {
+  // 카운트다운 재렌더 틱(30초) — 배너가 스스로 갱신한다. 호스트 재렌더에 기대면
+  // memo 미니어처(멀티 PanelView) 안에서 숫자가 멎는다.
+  const [, setTick] = useState(0)
+  useEffect(() => {
+    if (!hold || hold.ready) return
+    const id = window.setInterval(() => setTick((v) => v + 1), 30_000)
+    return () => window.clearInterval(id)
+  }, [hold])
+  if (!hold) return null
+  return (
+    <div className="limit-hold-wrap">
+      <div className="limit-hold">
+        <IconAlert size={13} />
+        <span className="lh-title">{t('사용 한도에 도달했어요', 'Usage limit reached')}</span>
+        <span className="lh-sub">
+          {hold.ready
+            ? t('한도가 풀렸어요 — 이어서 계속해요', 'Limit lifted — continuing')
+            : enabled
+              ? hold.resetsAt
+                ? t(
+                    `약 ${fmtEta(resumeDelayMs(hold.resetsAt, Date.now()))} 뒤 자동으로 이어서 계속해요`,
+                    `Auto-continues in ~${fmtEta(resumeDelayMs(hold.resetsAt, Date.now()))}`
+                  )
+                : t('10분마다 확인해서 풀리면 자동으로 이어서 계속해요', 'Checks every 10 minutes and auto-continues once lifted')
+              : t(
+                  "과금 메뉴의 '한도 소진 시 자동 이어서'를 켜면 풀릴 때 자동으로 계속해요",
+                  "Turn on 'Auto-continue after limit resets' in the billing menu to resume automatically"
+                )}
+        </span>
+        <button
+          className="lh-x has-tip"
+          // 꺼짐 상태엔 취소할 '대기'가 없다 — 그때의 ✕는 대기표 폐기 + 안내 닫기
+          data-tip={enabled ? t('대기 취소', 'Cancel the wait') : t('안내 닫기', 'Dismiss')}
+          aria-label={enabled ? t('대기 취소', 'Cancel the wait') : t('안내 닫기', 'Dismiss')}
+          onClick={onCancel}
+        >
+          <IconX2 size={13} />
+        </button>
+      </div>
+    </div>
   )
 }
 
@@ -4001,6 +4133,8 @@ export function Composer({
   apiReady = false,
   apiReadyCodex = false,
   onApiModeChange,
+  autoResume = false,
+  onAutoResumeChange,
   images,
   onPickImages,
   onAddImagePaths,
@@ -4027,6 +4161,8 @@ export function Composer({
   apiReady?: boolean // 설정 → API에 Anthropic 키가 저장돼 있는지 (없으면 API 선택이 설정을 연다)
   apiReadyCodex?: boolean // OpenAI 키 존재 여부 — Codex 엔진의 과금 선택이 쓴다
   onApiModeChange?: (next: boolean, engine?: EngineId) => void // 제공될 때만 과금 picker를 그린다
+  autoResume?: boolean // 한도 소진 시 자동 이어서 — 과금 picker의 구독 하위 체크 행
+  onAutoResumeChange?: (on: boolean) => void // 제공될 때만 행을 그린다 (본채팅 전용 배선)
   images: string[]
   onPickImages: () => void
   onAddImagePaths: (paths: string[]) => void
@@ -4609,6 +4745,8 @@ export function Composer({
               apiReadyCodex={apiReadyCodex}
               engineLocked={started}
               onApiModeChange={onApiModeChange}
+              autoResume={autoResume}
+              onAutoResumeChange={onAutoResumeChange}
             />
             {busy ? (
               value.trim() || images.length > 0 ? (

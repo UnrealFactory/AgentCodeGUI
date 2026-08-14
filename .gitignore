@@ -34,3 +34,4 @@ promo/
 
 # dev 격리 홈 (CCG_HOME)
 .devhome/
+.dev-home/

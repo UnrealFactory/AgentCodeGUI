@@ -13,6 +13,7 @@ import {
 } from '../store/session'
 import {
   Composer,
+  LimitHoldBar,
   MessageView,
   WorkingIndicator,
   WorkBar,
@@ -29,6 +30,8 @@ import {
   type PickerState,
   type ScheduledMsg
 } from './Chat'
+import type { LimitHold } from '../lib/limitResume'
+import { useLimitResume, type LimitResumeSurface } from '../lib/useLimitResume'
 import type { ChatSummary } from './Sidebar'
 import { WinControls } from './TitleBar'
 import { FolderSwitchDialog } from './FolderSwitchDialog'
@@ -54,6 +57,10 @@ const SLOTS = [0, 1, 2, 3, 4, 5]
 
 // 그리드 배치는 .ma-grid.nN 클래스가 결정 (PoC: 2·3=한 줄, 4=2×2, 5=3+2 스팬, 6=3×2)
 const COUNT_OPTIONS = [2, 3, 4, 5, 6]
+
+// 한도 자동 이어서 토글의 미제공 폴백 — 모듈 상수여야 한다: 렌더마다 새 함수를 만들면
+// PanelView(memo) 전 패널이 매 렌더 리렌더된다
+const NOOP_AUTORESUME = (_on: boolean): void => {}
 
 // 라벨은 함수로 늦춰 렌더 때 t() 평가 — 모듈 스코프 상수에 언어가 박제되지 않게
 const STATUS_META: Record<AgentStatus, { label: () => string; cls: string }> = {
@@ -256,6 +263,10 @@ interface PanelViewProps {
   apiReady: boolean // Anthropic 키 존재 여부 (없으면 API 선택이 설정을 연다)
   apiReadyCodex: boolean // OpenAI 키 존재 여부 — Codex 패널의 과금 선택용
   onApiMode: (slot: number, next: boolean, engine?: EngineId) => void // 패널별 과금 선택
+  limitHold: LimitHold | null // 이 패널의 한도 대기표 — 컴포저 위 상태줄
+  autoResume: boolean // 한도 자동 이어서(전역) — 과금 picker 체크 + 상태줄 문구
+  onCancelHold: (slot: number) => void // 상태줄 ✕ — 대기 취소
+  onAutoResume: (on: boolean) => void // 과금 picker의 '한도 소진 시 자동 이어서' 체크
   onPickFolder: (slot: number) => void // 찾아보기 — OS 폴더 선택
   onSelectFolder: (slot: number, path: string) => void // 작업 폴더 팝오버 목록에서 선택
   onAddRefDir: (slot: number) => void // 참조 폴더(--add-dir) 추가 — OS 픽커
@@ -301,6 +312,10 @@ const PanelView = memo(function PanelView({
   apiReady,
   apiReadyCodex,
   onApiMode,
+  limitHold,
+  autoResume,
+  onCancelHold,
+  onAutoResume,
   onPickFolder,
   onSelectFolder,
   onAddRefDir,
@@ -628,6 +643,8 @@ const PanelView = memo(function PanelView({
         onOpenSubagent={openSubagent}
         onRefreshUsage={refreshUsage}
       />
+      {/* 한도 자동 이어서 상태줄 — 이 패널 대기표의 재개 예정 (본채팅과 같은 공용 바) */}
+      <LimitHoldBar hold={limitHold} enabled={autoResume} onCancel={() => onCancelHold(slot)} />
       <Composer
         value={meta.input}
         onChange={(t) => onInput(slot, t)}
@@ -649,6 +666,8 @@ const PanelView = memo(function PanelView({
         apiReady={apiReady}
         apiReadyCodex={apiReadyCodex}
         onApiModeChange={(next, eng) => onApiMode(slot, next, eng)}
+        autoResume={autoResume}
+        onAutoResumeChange={onAutoResume}
         images={meta.images}
         onPickImages={pickImages}
         onAddImagePaths={(paths) => onAddImages(slot, paths)}
@@ -692,6 +711,8 @@ function ActiveSession({
   apiReady,
   apiReadyCodex,
   onOpenApiSettings,
+  autoResume,
+  onAutoResumeChange,
   onFirstPrompt,
   onStatus,
   onCommit,
@@ -706,6 +727,8 @@ function ActiveSession({
   apiReady: boolean // Anthropic 키 존재 여부 — 없으면 패널에서 API 선택 시 설정을 연다
   apiReadyCodex: boolean // OpenAI 키 존재 여부 — Codex 패널의 API 선택 가드
   onOpenApiSettings: () => void // 설정 → API 탭 열기 (키 미등록 가드)
+  autoResume: boolean // 한도 자동 이어서(전역 pref) — 패널 과금 picker 체크 + 대기표 발화 게이트
+  onAutoResumeChange: (on: boolean) => void // 체크 토글 (본채팅과 같은 pref를 쓴다)
   onFirstPrompt: (sessionId: string, prompt: string) => void
   onStatus: (sessionId: string, status: AgentStatus) => void
   onCommit: (sessionId: string, payload: CommitPayload) => void
@@ -1152,6 +1175,8 @@ function ActiveSession({
       window.api.multi?.cancel(chan(sessionId, slot)).catch(() => {})
       sess.load(initialSessionState)
       patchMeta(slot, { title: '', custom: false, ...(opts ? {} : { input: '', images: [] }) })
+      // 한도 대기표도 함께 — 백지가 된 패널 위에 옛 프롬프트가 자동 재전송되면 사고 (본채팅과 동일)
+      lrs[slot].setHold(null)
       return
     }
     // a built-in slash command (/init·/compact·/review·/security-review) → tracked so it
@@ -1244,6 +1269,36 @@ function ActiveSession({
     setMetas((prev) => prev.map((m, i) => (i === slot ? { ...m, queue: m.queue.filter((q) => q.id !== id) } : m)))
   )
 
+  // ── 한도 자동 이어서 — 슬롯마다 독립 대기표 (본채팅과 같은 useLimitResume 공용 훅).
+  // 소유 키는 슬롯 고정 — 멀티 세션 전환·패널 수 변경은 ActiveSession 재마운트(key)라
+  // 대기표가 함께 내려간다(런타임 전용: 이 세션 화면을 떠나면 자동 재개 약속도 접힌다).
+  // 아래 큐 드레인 effect보다 먼저 선언돼야 한다 — 장전(ref 동기 갱신)이 같은 커밋의
+  // 드레인 가드에 보이는 순서 보장.
+  const lrOptsFor = (slot: number, sess: { state: SessionState; busy: boolean }): LimitResumeSurface => {
+    const m = metas[slot]
+    const engine = m.picker.engine === 'codex' ? ('codex' as const) : ('claude' as const)
+    return {
+      state: sess.state,
+      busy: sess.busy,
+      enabled: autoResume,
+      apiMode: m.api,
+      engine,
+      account: engine === 'codex' ? m.picker.codexAccount : m.picker.account,
+      fable: engine === 'claude' && m.picker.model === 'fable',
+      holdKey: String(slot),
+      // 재개 전송 — 예약 재생과 같은 opts 경로라 그 패널의 초안을 지우지 않는다
+      send: (p) => void sendPanel(slot, { text: p, images: [], picker: metas[slot].picker })
+    }
+  }
+  const lr0 = useLimitResume(lrOptsFor(0, s0))
+  const lr1 = useLimitResume(lrOptsFor(1, s1))
+  const lr2 = useLimitResume(lrOptsFor(2, s2))
+  const lr3 = useLimitResume(lrOptsFor(3, s3))
+  const lr4 = useLimitResume(lrOptsFor(4, s4))
+  const lr5 = useLimitResume(lrOptsFor(5, s5))
+  const lrs = [lr0, lr1, lr2, lr3, lr4, lr5]
+  const onCancelHold = useEvent((slot: number) => lrs[slot].setHold(null))
+
   // drain each panel's queue one message at a time on its busy→idle transition. The
   // `was` guard (only act when that slot was busy and now isn't) prevents a double-send:
   // dequeuing changes `metas` and re-runs this effect before the next run's busy flips on.
@@ -1257,7 +1312,9 @@ function ActiveSession({
     const was = prevBusyRef.current
     prevBusyRef.current = busySig
     SLOTS.forEach((slot) => {
-      if (busySig[slot] === '1' || was[slot] !== '1' || drainingRef.current.has(slot)) return
+      // 한도 대기표가 걸린 패널은 드레인 보류 — 지금 보내봐야 같은 한도에 막혀 에러만
+      // 쌓인다. 자동/수동 재개 턴이 끝난 다음 idle 전환이 이어받는다 (본채팅과 동일).
+      if (busySig[slot] === '1' || was[slot] !== '1' || drainingRef.current.has(slot) || lrs[slot].holdRef.current) return
       // 런을 시작하지 않는 클라이언트 명령(/clear)은 busy 전환이 다시 오지 않아 뒤 항목이
       // 영영 갇힌다 — 앞쪽의 /clear 들을 연달아 소진하고, 엔진 런을 시작할 첫 일반 항목까지
       // 한 번에 내보낸다(그 런이 끝나면 다음 idle 전환이 나머지를 이어받는다).
@@ -1289,6 +1346,7 @@ function ActiveSession({
     window.api.multi?.cancel(chan(sessionId, slot)).catch(() => {})
     sess.load(initialSessionState)
     patchMeta(slot, { title: '', custom: false, input: '', images: [] })
+    lrs[slot].setHold(null) // 한도 대기표도 함께 — sendPanel의 /clear 분기와 같은 이유
   })
 
   const stopPanel = useEvent((slot: number) => {
@@ -1338,6 +1396,7 @@ function ActiveSession({
     if (!p) return
     patchMeta(p.slot, { cwd: p.cwd, title: '', custom: false })
     sessions[p.slot].load(initialSessionState)
+    lrs[p.slot].setHold(null) // 폴더 변경 = 새 대화 — 옛 대화의 한도 대기표는 무효
     pushRecentDir(p.cwd) // 공유 최근 폴더에 반영
     setPendingFolder(null)
   })
@@ -1372,6 +1431,10 @@ function ActiveSession({
         apiReady={apiReady}
         apiReadyCodex={apiReadyCodex}
         onApiMode={onPanelApi}
+        limitHold={lrs[slot].hold}
+        autoResume={autoResume}
+        onCancelHold={onCancelHold}
+        onAutoResume={onAutoResumeChange}
         onPickFolder={onPickFolder}
         onSelectFolder={onSelectFolder}
         onAddRefDir={onAddRefDir}
@@ -1830,6 +1893,8 @@ export function MultiWorkspace({
   apiReady,
   apiReadyCodex = false,
   onOpenApiSettings,
+  autoResume = false,
+  onAutoResumeChange,
   onExplorerInfo,
   explorerHidden,
   onToggleExplorer
@@ -1840,6 +1905,8 @@ export function MultiWorkspace({
   apiReady: boolean
   apiReadyCodex?: boolean // OpenAI 키 존재 여부 — Codex 패널의 과금 선택용
   onOpenApiSettings: () => void // 설정 → API 탭 열기 (키 미등록 가드)
+  autoResume?: boolean // 한도 자동 이어서(전역 pref) — App이 소유, 패널 picker·대기표가 쓴다
+  onAutoResumeChange?: (on: boolean) => void
   onExplorerInfo?: (info: MultiExplorerInfo) => void // 왼쪽 칼럼 탐색기가 따라갈 패널 보고
   explorerHidden?: boolean // 헤더 토글 버튼 상태 — 탐색기가 내려가 있으면 true
   onToggleExplorer?: () => void // 헤더 토글 버튼 — 사이드바 ⟷ 탐색기
@@ -1860,6 +1927,8 @@ export function MultiWorkspace({
       apiReady={apiReady}
       apiReadyCodex={apiReadyCodex}
       onOpenApiSettings={onOpenApiSettings}
+      autoResume={autoResume}
+      onAutoResumeChange={onAutoResumeChange ?? NOOP_AUTORESUME}
       onFirstPrompt={multi.onFirstPrompt}
       onStatus={multi.onStatus}
       onCommit={multi.onCommit}

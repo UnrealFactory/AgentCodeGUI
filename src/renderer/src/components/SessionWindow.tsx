@@ -23,6 +23,7 @@ import {
   ChatHeader,
   ChatFind,
   Composer,
+  LimitHoldBar,
   WorkflowDock,
   MessageView,
   WorkingIndicator,
@@ -40,6 +41,7 @@ import {
   type ScheduledMsg
 } from './Chat'
 import { pushRecentDir } from '../lib/recentDirs'
+import { useLimitResume } from '../lib/useLimitResume'
 import { ImageViewer } from './ImageViewer'
 import { SubAgentModal } from './AgentPanel'
 const FileModal = lazy(() => import('./FileModal').then((m) => ({ default: m.FileModal }))) // CodeMirror 청크 지연 로드 (App.tsx와 동일)
@@ -150,8 +152,16 @@ export function SessionWindow(): React.ReactElement {
   // 창 포커스마다 다시 읽어 메인에서 방금 등록/삭제한 키를 따라잡는다.
   const [apiMode, setApiMode] = useState<boolean>(() => getPref<boolean>('api.mode', false))
   const [apiCfg, setApiCfg] = useState<ApiConfigStatus | null>(null)
+  // 한도 자동 이어서 — 본채팅과 같은 전역 pref. 이 창의 대기표 상태 머신은 아래
+  // useLimitResume(공용 훅)이 굴린다. 포커스마다 pref를 되읽어 메인 창에서 바꾼 값을 따라잡는다.
+  const [autoResume, setAutoResume] = useState<boolean>(() => getPref<boolean>('limitResume.on', false))
+  const onAutoResumeChange = (on: boolean): void => {
+    setPref('limitResume.on', on)
+    setAutoResume(on)
+  }
   useEffect(() => {
     const refresh = (): void => {
+      setAutoResume(getPref<boolean>('limitResume.on', false))
       window.api.apiConfig
         .get()
         .then((s) => {
@@ -248,6 +258,7 @@ export function SessionWindow(): React.ReactElement {
     if (!pendingFolder) return
     load(initialSessionState)
     setQueue([])
+    limitResume.setHold(null) // 폴더 변경 = 새 대화 — 옛 대화의 한도 대기표는 무효
     setCwd(pendingFolder)
     persistCwd(pendingFolder)
     setPendingFolder(null)
@@ -489,6 +500,8 @@ export function SessionWindow(): React.ReactElement {
     setInput('')
     setImages([])
     setQueue([])
+    // 한도 대기표도 함께 — 백지가 된 대화 위에 옛 프롬프트가 자동 재전송되면 사고 (본채팅과 동일)
+    limitResume.setHold(null)
   }
 
   const runPrompt = (text: string, opts?: { images?: string[]; picker?: PickerState; keepDraft?: boolean }): void => {
@@ -555,11 +568,28 @@ export function SessionWindow(): React.ReactElement {
     setImages([])
     composerRef.current?.focus()
   }
+  // ── 한도 자동 이어서 — 본채팅과 같은 useLimitResume 공용 훅. 창당 대화가 하나라
+  // 소유 키는 고정('')이고, 대기표는 창이 살아 있는 동안만 유효하다(런타임 전용 —
+  // 창을 닫으면 자동 재개 약속도 접힌다). 아래 큐 드레인 effect보다 먼저 선언돼야
+  // 장전(ref 동기 갱신)이 같은 커밋의 드레인 가드에 보인다.
+  const limitResume = useLimitResume({
+    state,
+    busy,
+    enabled: autoResume,
+    apiMode,
+    engine: picker.engine === 'codex' ? 'codex' : 'claude',
+    account: picker.engine === 'codex' ? picker.codexAccount : picker.account,
+    fable: picker.engine !== 'codex' && picker.model === 'fable',
+    holdKey: '',
+    send: (p) => runPrompt(p, { keepDraft: true })
+  })
+
   const prevBusyRef = useRef(busy)
   useEffect(() => {
     const was = prevBusyRef.current
     prevBusyRef.current = busy
-    if (busy || !was || queue.length === 0) return
+    // 한도 대기표가 있으면 드레인 보류 — 지금 보내봐야 같은 한도에 막혀 에러만 쌓인다 (본채팅과 동일)
+    if (busy || !was || queue.length === 0 || limitResume.holdRef.current) return
     const next = queue[0]
     setQueue((q) => q.slice(1))
     runPrompt(next.text, { images: next.images, picker: next.picker, keepDraft: true })
@@ -712,6 +742,8 @@ export function SessionWindow(): React.ReactElement {
           onOpenSubagent={openSubagentCard}
           onRefreshUsage={onRefreshUsage}
         />
+        {/* 한도 자동 이어서 상태줄 — 이 창 대화의 대기표 (본채팅과 같은 공용 바) */}
+        <LimitHoldBar hold={limitResume.hold} enabled={autoResume} onCancel={() => limitResume.setHold(null)} />
         <Composer
           value={input}
           onChange={setInput}
@@ -729,6 +761,8 @@ export function SessionWindow(): React.ReactElement {
           apiReady={!!apiCfg?.hasKey}
           apiReadyCodex={!!apiCfg?.hasOpenaiKey}
           onApiModeChange={onApiModeChange}
+          autoResume={autoResume}
+          onAutoResumeChange={onAutoResumeChange}
           images={images}
           onPickImages={addImagesFromPicker}
           onAddImagePaths={addImagePaths}

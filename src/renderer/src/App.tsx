@@ -15,8 +15,10 @@ import { Sidebar, type ChatSummary, type SidebarSection } from './components/Sid
 import { pushRecentDir, seedRecentDirs } from './lib/recentDirs'
 import { MultiWorkspace, useMultiSessions, type MultiExplorerInfo } from './components/MultiAgent'
 import { NewChatModal } from './components/NewChatModal'
-import { getPref, setPref } from './lib/prefs'
+import { getPref, setPref, delPref } from './lib/prefs'
 import { t, useLang } from './lib/i18n'
+import { sanitizeHold } from './lib/limitResume'
+import { useLimitResume } from './lib/useLimitResume'
 import {
   SIDEBAR_AUTOHIDE,
   SIDEBAR_AUTOHIDE_TRIGGER,
@@ -26,7 +28,7 @@ import {
   SIDEBAR_AUTOHIDE_TRIGGER_PREVIEW_EVENT,
   type AutohideTriggerPreviewDetail
 } from './lib/sidebarAutohide'
-import { ChatHeader, ChatFind, Composer, MessageView, QuestionModal, PermissionModal, SelectionToolbar, WelcomeState, WorkBar, WorkflowDock, WorkingIndicator, hasRunningBash, nextMode, pickerModelOf, useThreadFollow, useThreadWindow, type PickerState, type ScheduledMsg } from './components/Chat'
+import { ChatHeader, ChatFind, Composer, LimitHoldBar, MessageView, QuestionModal, PermissionModal, SelectionToolbar, WelcomeState, WorkBar, WorkflowDock, WorkingIndicator, hasRunningBash, nextMode, pickerModelOf, useThreadFollow, useThreadWindow, type PickerState, type ScheduledMsg } from './components/Chat'
 import { SubAgentModal } from './components/AgentPanel'
 import { Explorer } from './components/Explorer'
 import { FolderSwitchDialog } from './components/FolderSwitchDialog'
@@ -163,6 +165,15 @@ function MainApp({ user }: { user: AppUser }) {
   // the image lightbox/multi-viewer: the set being viewed + the active index (null = closed)
   const [viewer, setViewer] = useState<{ images: string[]; index: number } | null>(null)
   const [usage, setUsage] = useState<UsageInfo>({ fiveHour: null, weekly: null, weeklyFable: null, extraCredit: null })
+  // 한도 자동 이어서 — 과금 picker(구독 → '한도 소진 시 자동 이어서')로 켜는 앱 단위
+  // 설정. 켜두면 구독 한도에 막혀 죽은 턴을 리셋 시각에 자동 재개한다 (클로드 코드
+  // 데스크톱의 auto-continue 체크박스 패리티). 상태 머신은 useLimitResume(아래) 공용 —
+  // 본채팅·멀티 패널이 이 한 쌍(상태+토글 핸들러)을 같이 쓴다.
+  const [autoResume, setAutoResume] = useState<boolean>(() => getPref<boolean>('limitResume.on', false))
+  const onAutoResumeChange = useEvent((on: boolean) => {
+    setPref('limitResume.on', on)
+    setAutoResume(on)
+  })
   // API 모드 — 켜면 실행이 구독(OAuth) 대신 저장된 API 키로 과금된다. 앱 단위 설정
   // (채팅별 picker와 달리 과금 수단이라 전역이 자연스럽다) — uiPrefs에 영속.
   const [apiMode, setApiMode] = useState<boolean>(() => getPref<boolean>('api.mode', false))
@@ -472,6 +483,44 @@ function MainApp({ user }: { user: AppUser }) {
       setFsTick((t) => t + 1)
     }
   }, [state.status])
+
+  // ── 한도 자동 이어서 (useLimitResume 공용 훅 — PoC: scripts/poc-limit-resume.mjs) ──
+  // 본채팅은 리듀서 하나를 채팅들이 갈아타는 구조라 소유 키=activeChatId. canSend의
+  // unloaded 가드 덕에 다른 채팅을 보다 돌아온 경우도 스냅샷 되읽기가 끝난 다음에야
+  // 보낸다(readyDep=chats — 되읽기 완료가 effect를 다시 태운다).
+  const limitResume = useLimitResume({
+    state,
+    busy,
+    enabled: autoResume,
+    apiMode,
+    engine: picker.engine === 'codex' ? 'codex' : 'claude',
+    account: picker.engine === 'codex' ? picker.codexAccount : picker.account,
+    fable: picker.engine !== 'codex' && picker.model === 'fable',
+    holdKey: activeChatId,
+    send: (p) => void runPrompt(p, { keepDraft: true }),
+    canSend: (h) => !chats.find((c) => c.id === h.key)?.unloaded,
+    readyDep: chats
+  })
+
+  // 재시작 복원 — 한도를 기다리다 앱을 껐다 켜는 흐름이 흔해 대기표를 ui-prefs에
+  // 살린다. 활성 채팅 것만 되살린다(비활성 채팅 표는 전환·로드 조건이 얽혀 위험 대비
+  // 이득이 없다) — 24시간 만료·형태 위생은 sanitizeHold가 본다.
+  useEffect(() => {
+    if (!hydrated) return
+    const saved = sanitizeHold(getPref<unknown>('limitResume.hold', null), Date.now())
+    if (saved && saved.key === activeChatIdRef.current) limitResume.setHold(saved)
+    else if (saved) delPref('limitResume.hold')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hydrated])
+  // 대기표 영속 — ready(풀림 표시)는 저장하지 않는다: 복원 후 발화 재검증이 다시 판정한다.
+  // 위 복원 effect가 먼저 선언돼 있어야 한다 — 순서가 뒤집히면 첫 실행의 delPref가
+  // 복원이 읽기 전에 저장본을 지운다.
+  useEffect(() => {
+    if (!hydrated) return
+    if (limitResume.hold) setPref('limitResume.hold', { ...limitResume.hold, ready: undefined })
+    else delPref('limitResume.hold')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [limitResume.hold, hydrated])
 
   // restore saved conversations on mount, then load the active chat's snapshot
   // into the live session so it picks up right where it left off.
@@ -894,6 +943,9 @@ function MainApp({ user }: { user: AppUser }) {
     load(initialSessionState)
     setInput('')
     setImages([])
+    // 이 채팅의 한도 대기표도 함께 — 백지가 된 대화 위에 옛 프롬프트가 자동
+    // 재전송되면(세션이 없어 lastPrompt 폴백을 탄다) 방금 지운 작업이 되살아난다
+    if (limitResume.holdRef.current?.key === activeChatId) limitResume.setHold(null)
     setChats((list) =>
       list.map((c) => (c.id === activeChatId ? { ...c, title: '', custom: false, snapshot: initialSessionState } : c))
     )
@@ -939,6 +991,8 @@ function MainApp({ user }: { user: AppUser }) {
     const folderSwitched = !!state.session && state.messages.length > 0 && !sameCwd(state.session.cwd, dir)
     if (folderSwitched) load(initialSessionState)
     begin(text, cmd, imgs)
+    // 한도 대기표 해제는 useLimitResume의 busy 상승 에지가 처리한다 — 이 채팅(소유 키
+    // 일치)의 새 실행만 해제하고, 다른 채팅의 재개 약속은 보존된다.
     // derive the chat title from the prompt (command → its friendly title) unless renamed.
     // a folder switch starts a fresh conversation, so it re-titles even a renamed chat.
     const title = cmd ? commandTitleOf(cmd) : text.trim().slice(0, 80) || t('파일 첨부', 'File attachment')
@@ -1019,7 +1073,10 @@ function MainApp({ user }: { user: AppUser }) {
   useEffect(() => {
     const was = prevBusyRef.current
     prevBusyRef.current = busy
-    if (busy || queueRef.current.length === 0 || !was) return
+    // 이 채팅에 한도 대기표가 있으면 드레인 보류 — 지금 보내봐야 같은 한도에 막혀
+    // 에러만 쌓인다. 자동/수동 재개 턴이 끝난 다음 idle 전환이 이어받는다. (ref인 이유:
+    // 훅의 장전 effect와 이 effect가 같은 status 변화에서 도는데 state 반영은 다음 렌더라 늦다)
+    if (busy || queueRef.current.length === 0 || !was || limitResume.holdRef.current?.key === activeChatIdRef.current) return
     void (async () => {
       while (queueRef.current.length > 0) {
         const next = queueRef.current[0]
@@ -1379,6 +1436,8 @@ function MainApp({ user }: { user: AppUser }) {
               apiReady={!!apiCfg?.hasKey}
               apiReadyCodex={!!apiCfg?.hasOpenaiKey}
               onOpenApiSettings={openApiSettings}
+              autoResume={autoResume}
+              onAutoResumeChange={onAutoResumeChange}
               onExplorerInfo={setMultiExp}
               explorerHidden={!explorerOpen}
               onToggleExplorer={toggleExplorer}
@@ -1466,6 +1525,13 @@ function MainApp({ user }: { user: AppUser }) {
             onOpenSubagent={onOpenSubagent}
             onRefreshUsage={onRefreshUsage}
           />
+          {/* 한도 자동 이어서 상태줄 — 이 채팅 소유의 대기표만 보여준다.
+              토글 자체는 과금 picker(구독 → '한도 소진 시 자동 이어서')에 있다 */}
+          <LimitHoldBar
+            hold={limitResume.hold?.key === activeChatId ? limitResume.hold : null}
+            enabled={autoResume}
+            onCancel={() => limitResume.setHold(null)}
+          />
           <Composer
             value={input}
             onChange={setInput}
@@ -1483,6 +1549,8 @@ function MainApp({ user }: { user: AppUser }) {
             apiReady={!!apiCfg?.hasKey}
             apiReadyCodex={!!apiCfg?.hasOpenaiKey}
             onApiModeChange={onApiModeChange}
+            autoResume={autoResume}
+            onAutoResumeChange={onAutoResumeChange}
             images={images}
             onPickImages={addImagesFromPicker}
             onAddImagePaths={addImagePaths}
