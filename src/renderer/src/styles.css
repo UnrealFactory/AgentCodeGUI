@@ -3637,6 +3637,20 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
 }
 .ma-p-tw:hover .ma-p-tedit, .ma-p-tedit:focus-visible{ opacity:1; }
 .ma-p-tedit:hover{ background:var(--hover); color:var(--text-2); }
+/* 자물쇠 — 제목 잠금 토글. 해제 상태는 연필과 같은 호버 노출, 잠김(.on)은 상태 표식이라
+   호버 없이도 항상 보인다 (제목이 클리어를 버틴다는 사실이 한눈에 읽혀야 한다) */
+.ma-p-tlock{
+  opacity:0; flex:0 0 auto; display:grid; place-items:center; padding:3px; border-radius:5px;
+  color:var(--text-4); transition:opacity .12s, background .12s, color .12s;
+}
+.ma-p-tw:hover .ma-p-tlock, .ma-p-tlock:focus-visible{ opacity:1; }
+.ma-p-tlock:hover{ background:var(--hover); color:var(--text-2); }
+.ma-p-tlock.on{ opacity:1; color:var(--text-3); }
+/* 자물쇠·번호 칩 툴팁은 아래로 — 기본(위)은 1행 패널에서 ma-grid(overflow:auto) 위
+   모서리에 잘려 글자가 반토막 난다(폴더 칩이 아래로 뒤집힌 것과 같은 이유). 버튼
+   왼끝 정렬 — 가운데(-50%)는 왼쪽 칼럼 패널에서 그리드 왼 모서리에 또 잘린다 */
+.ma-p-num.has-tip::after, .ma-p-tlock.has-tip::after{ bottom:auto; top:100%; left:0; margin-bottom:0; margin-top:8px; transform:translate(0, -3px); }
+.ma-p-num.has-tip:hover::after, .ma-p-tlock.has-tip:hover::after{ transform:translate(0, 0); }
 /* 편집 상태 — 그 자리 밑줄 인풋 (Enter 저장 · Esc 취소 · 비우면 자동 제목 복귀) */
 .ma-p-tin{
   flex:0 1 auto; width:170px; min-width:60px; background:transparent; border:none; outline:none;
@@ -3655,6 +3669,8 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
   transition:opacity .12s ease, visibility 0s linear .12s;
 }
 .ma-p-tw:hover .ma-p-peek{ opacity:1; visibility:visible; transition-delay:.35s, .35s; }
+/* 자물쇠 호버 중엔 미리보기 억제 — 잠금 툴팁과 첫 지시 카드가 겹쳐 뜨는 소음 방지 */
+.ma-p-tw:has(.ma-p-tlock:hover) .ma-p-peek{ opacity:0; visibility:hidden; transition-delay:0s, 0s; }
 .ma-p-peek .pk-l{ display:block; font-family:var(--font-mono); font-size:9.5px; color:var(--text-4); margin-bottom:5px; }
 .ma-p-peek .pk-b{
   display:-webkit-box; -webkit-line-clamp:5; -webkit-box-orient:vertical; overflow:hidden;

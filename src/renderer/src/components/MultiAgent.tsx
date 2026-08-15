@@ -43,7 +43,7 @@ import { extractMentions } from '../lib/mentions'
 import { useTurnNotifyList } from '../lib/notify'
 import { mergeRefs, useZoom, ZoomBadge } from './zoom'
 import { MouseGestureLayer, clearGesture, sessionWindowGesture } from './mouseGesture'
-import { IconFolder, IconChevDown, IconMascot, IconPanelRight, IconExpand, IconCollapse, IconPencil } from './icons'
+import { IconFolder, IconChevDown, IconMascot, IconPanelRight, IconExpand, IconCollapse, IconPencil, IconLock, IconLockOpen } from './icons'
 import { t, useLang } from '../lib/i18n'
 
 // A multi-agent SESSION is a group of N panels that work together. The recent-tasks
@@ -103,6 +103,7 @@ const MULTI_VERSION = 2
 interface PanelMeta {
   title: string
   custom: boolean // user-renamed → keep the title instead of deriving it from the prompt
+  locked: boolean // 제목 잠금 — /clear·제스처 비우기·폴더 변경·매 전송 자동 유도에도 현 제목 동결
   color: string // 컬러 태그('' = 슬롯 기본색) — 헤더 하단 라인. cwd·picker 같은 패널 설정이라 /clear에도 유지
   cwd: string // this panel's working dir
   refDirs: string[] // 참조 폴더(--add-dir) — 작업 폴더 외에 이 패널 엔진이 함께 인식할 폴더들
@@ -116,6 +117,7 @@ interface PanelMeta {
 interface PersistedPanel {
   title: string
   custom: boolean
+  locked?: boolean // 없으면(예전 저장본) 잠금 해제
   color?: string // 없으면(예전 저장본) 태그 없음
   cwd: string
   refDirs?: string[] // 없으면(예전 저장본) 빈 목록
@@ -164,7 +166,7 @@ export interface MultiExplorerInfo {
 }
 
 function freshPanel(api = false): PanelMeta {
-  return { title: '', custom: false, color: '', cwd: '', refDirs: [], picker: { ...DEFAULT_PICKER }, api, input: '', images: [], queue: [] }
+  return { title: '', custom: false, locked: false, color: '', cwd: '', refDirs: [], picker: { ...DEFAULT_PICKER }, api, input: '', images: [], queue: [] }
 }
 // 저장본의 참조 폴더 위생 — 문자열 배열만, 상한 8 (본채팅 sanitizeRefDirs와 같은 규칙)
 function sanitizeRefDirs(v: unknown): string[] {
@@ -285,6 +287,7 @@ interface PanelViewProps {
   renaming: boolean // 제목 인라인 편집 중 — 더블클릭/연필/F2로 진입 (상태는 ActiveSession 소유)
   onStartRename: (slot: number) => void
   onRename: (slot: number, title: string | null, custom: boolean) => void // null = 취소(닫기만)
+  onToggleLock: (slot: number) => void // 자물쇠 클릭 — 제목 잠금 토글 (잠그면 클리어에도 제목 유지)
   onCycleColor: (slot: number) => void // 번호 칩 클릭 — 컬러 태그 순환
 }
 
@@ -334,6 +337,7 @@ const PanelView = memo(function PanelView({
   renaming,
   onStartRename,
   onRename,
+  onToggleLock,
   onCycleColor,
 }: PanelViewProps) {
   useLang() // 언어 전환 재렌더 구독 (memo 컴포넌트라 루트 재렌더를 안 탄다)
@@ -485,6 +489,20 @@ const PanelView = memo(function PanelView({
                 onClick={() => onStartRename(slot)}
               >
                 <IconPencil size={11} />
+              </button>
+              {/* 제목 잠금 — 잠그면 /clear·제스처 비우기·폴더 변경에도 제목이 남는다.
+                  잠김 상태는 호버 없이도 보여야 하는 상태 표식이라 .on은 상시 표시 */}
+              <button
+                className={'ma-p-tlock has-tip' + (meta.locked ? ' on' : '')}
+                data-tip={
+                  meta.locked
+                    ? t('제목 잠금 해제', 'Unlock title')
+                    : t('제목 잠금 — 대화를 비워도 유지', 'Lock title — kept when the chat is cleared')
+                }
+                aria-label={meta.locked ? t('제목 잠금 해제', 'Unlock title') : t('제목 잠금', 'Lock title')}
+                onClick={() => onToggleLock(slot)}
+              >
+                {meta.locked ? <IconLock size={11} /> : <IconLockOpen size={11} />}
               </button>
               {firstUser && (
                 <span className="ma-p-peek">
@@ -770,6 +788,7 @@ function ActiveSession({
         ? {
             title: p.title ?? '',
             custom: !!p.custom,
+            locked: !!p.locked,
             color: sanitizeTag(p.color),
             cwd: typeof p.cwd === 'string' ? p.cwd : '',
             refDirs: sanitizeRefDirs(p.refDirs),
@@ -911,6 +930,7 @@ function ActiveSession({
       return {
         title: m.title,
         custom: m.custom,
+        locked: m.locked,
         color: m.color,
         cwd: m.cwd,
         refDirs: m.refDirs,
@@ -1069,6 +1089,9 @@ function ActiveSession({
     setRenamingSlot(null)
     if (title !== null) patchMeta(slot, { title, custom })
   })
+  // 제목 잠금 토글 — 잠긴 동안엔 클리어·폴더 변경·자동 유도가 제목을 못 건드린다
+  // (직접 이름 바꾸기는 잠긴 채로도 가능 — 잠금은 '자동으로 안 바뀜'이지 '수정 불가'가 아니다)
+  const onToggleLock = useEvent((slot: number) => setMetas((prev) => prev.map((m, i) => (i === slot ? { ...m, locked: !m.locked } : m))))
   const onCycleColor = useEvent((slot: number) =>
     setMetas((prev) => prev.map((m, i) => (i === slot ? { ...m, color: nextTag(m.color || defaultTag(slot)) } : m)))
   )
@@ -1174,7 +1197,8 @@ function ActiveSession({
     if (text === '/clear') {
       window.api.multi?.cancel(chan(sessionId, slot)).catch(() => {})
       sess.load(initialSessionState)
-      patchMeta(slot, { title: '', custom: false, ...(opts ? {} : { input: '', images: [] }) })
+      // 잠긴 제목은 클리어에도 남긴다 — 패널을 역할 이름으로 두고 대화만 비우는 흐름
+      patchMeta(slot, { ...(m.locked ? {} : { title: '', custom: false }), ...(opts ? {} : { input: '', images: [] }) })
       // 한도 대기표도 함께 — 백지가 된 패널 위에 옛 프롬프트가 자동 재전송되면 사고 (본채팅과 동일)
       lrs[slot].setHold(null)
       return
@@ -1206,8 +1230,9 @@ function ActiveSession({
               ...(opts ? {} : { input: '', images: [] }),
               // cwd는 여기서 만지지 않는다 — 사용자가 폴더를 고르면 onPickFolder가 쓰고,
               // 미선택(바탕화면 폴백) 패널은 빈 값을 유지해 칩 라벨이 '바탕화면'으로 남는다
-              title: pm.custom && !folderSwitched ? pm.title : title,
-              custom: folderSwitched ? false : pm.custom
+              // 잠긴 제목은 폴더 전환에도 동결 — 단, 빈 제목 잠금은 첫 프롬프트 유도까지는 허용
+              title: pm.locked && pm.title ? pm.title : pm.custom && !folderSwitched ? pm.title : title,
+              custom: pm.locked ? pm.custom : folderSwitched ? false : pm.custom
             }
           : pm
       )
@@ -1345,7 +1370,8 @@ function ActiveSession({
     if (sess.busy) return
     window.api.multi?.cancel(chan(sessionId, slot)).catch(() => {})
     sess.load(initialSessionState)
-    patchMeta(slot, { title: '', custom: false, input: '', images: [] })
+    // 잠긴 제목 유지 — 컴포저 /clear 분기와 같은 규칙
+    patchMeta(slot, { ...(metas[slot].locked ? {} : { title: '', custom: false }), input: '', images: [] })
     lrs[slot].setHold(null) // 한도 대기표도 함께 — sendPanel의 /clear 분기와 같은 이유
   })
 
@@ -1394,7 +1420,8 @@ function ActiveSession({
   const confirmFolder = useEvent(() => {
     const p = pendingFolder
     if (!p) return
-    patchMeta(p.slot, { cwd: p.cwd, title: '', custom: false })
+    // 잠긴 제목은 폴더가 바뀌어도 유지 — 잠금은 '이 패널의 역할 이름'이지 프로젝트 소속이 아니다
+    patchMeta(p.slot, { cwd: p.cwd, ...(metas[p.slot].locked ? {} : { title: '', custom: false }) })
     sessions[p.slot].load(initialSessionState)
     lrs[p.slot].setHold(null) // 폴더 변경 = 새 대화 — 옛 대화의 한도 대기표는 무효
     pushRecentDir(p.cwd) // 공유 최근 폴더에 반영
@@ -1453,6 +1480,7 @@ function ActiveSession({
         renaming={renamingSlot === slot}
         onStartRename={onStartRename}
         onRename={onRenamePanel}
+        onToggleLock={onToggleLock}
         onCycleColor={onCycleColor}
       />
     )

@@ -241,6 +241,19 @@ export const IconPencil = (p: IconProps) => (
     <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" />
   </Icon>
 )
+// 자물쇠(잠김/열림) — 멀티 패널 제목 잠금 토글
+export const IconLock = (p: IconProps) => (
+  <Icon {...p}>
+    <rect x={5} y={11} width={14} height={9} rx={2} />
+    <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+  </Icon>
+)
+export const IconLockOpen = (p: IconProps) => (
+  <Icon {...p}>
+    <rect x={5} y={11} width={14} height={9} rx={2} />
+    <path d="M8 11V7a4 4 0 0 1 7.8-1.3" />
+  </Icon>
+)
 // 왼쪽 +/− 두 줄 + 오른쪽 브래킷 — 변경(diff) 보기 토글 글리프
 export const IconDiff = (p: IconProps) => (
   <Icon {...p}>

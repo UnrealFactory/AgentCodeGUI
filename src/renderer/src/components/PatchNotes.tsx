@@ -28,6 +28,48 @@ type LocalizedRelease = { ko: Release; en: Release }
 // 지난 1.x 노트들은 은퇴한 UpdateNotes와 함께 정리했다(이제 보여줄 경로가 없다).
 const MAX_VERSIONS = 5
 const RELEASES: Record<string, LocalizedRelease> = {
+  '2.4.2': {
+    ko: {
+      eyebrow: 'NEW',
+      lead: '멀티채팅 패널 이름을 자물쇠로 고정해 둘 수 있습니다 — 대화를 비우거나 작업 폴더를 바꿔도 그 이름 그대로예요.',
+      notes: [
+        {
+          tag: '멀티',
+          name: '패널 이름을 자물쇠로 고정해요',
+          desc: (
+            <>
+              패널 제목 옆 <b>자물쇠</b>를 누르면 그 이름이 고정됩니다. 지금까지는{' '}
+              <b>/clear</b>·제스처로 대화를 비우거나 <b>작업 폴더를 바꾸면</b> 이름이 지워지고
+              다음 지시로 다시 지어졌지만, 잠가 두면 &quot;프론트&quot;·&quot;테스트&quot;처럼{' '}
+              <b>역할 이름을 붙여 둔 패널</b>이 그대로 남습니다. 잠긴 채로도 <b>직접 이름
+              바꾸기</b>는 그대로 되고(연필·더블클릭·F2), 잠금 상태는 자물쇠 아이콘이 계속
+              켜져 있어 한눈에 보여요.
+            </>
+          )
+        }
+      ]
+    },
+    en: {
+      eyebrow: 'NEW',
+      lead: 'Multi-chat panel titles can now be pinned with a lock — clearing the conversation or switching the working folder no longer renames them.',
+      notes: [
+        {
+          tag: 'Multi-agent',
+          name: 'Lock a panel title in place',
+          desc: (
+            <>
+              Click the <b>lock</b> next to a panel title to pin it. Until now,{' '}
+              <b>/clear</b>, the clear gesture, or <b>changing the working folder</b> wiped the
+              title and let the next prompt name it again — with the lock on, panels you&apos;ve
+              named by role (&quot;Frontend&quot;, &quot;Tests&quot;) keep that name. You can
+              still <b>rename by hand</b> while locked (pencil, double-click, F2), and the lock
+              icon stays lit so the state is visible at a glance.
+            </>
+          )
+        }
+      ]
+    }
+  },
   '2.4.1': {
     ko: {
       eyebrow: 'FIX',
@@ -356,92 +398,6 @@ const RELEASES: Record<string, LocalizedRelease> = {
               spots; those now use the app&apos;s own hint styling (repositioned so they never
               clip outside the card). Update checks eased to <b>every 30 minutes</b> to wake the
               network less on battery.
-            </>
-          )
-        }
-      ]
-    }
-  },
-  '2.3.8': {
-    ko: {
-      eyebrow: 'UPDATE',
-      lead: '멀티채팅 패널이 일을 마치면 자기 컬러 태그 색 테두리로 알려줍니다. AI가 도는 중에도 패널 이름이 제대로 바뀌고, 설정의 계정 카드는 꾹 눌러 끌면 순서를 바꿀 수 있어요.',
-      notes: [
-        {
-          tag: '멀티',
-          name: '끝난 패널은 자기 색으로 빛나요',
-          desc: (
-            <>
-              패널이 <b>완료</b> 상태가 되면 그 패널의 <b>컬러 태그 색 테두리</b>가 패널을
-              둘러쌉니다 — 헤더 하단 라인과 같은 색이라, 여러 패널을 돌려놓고도{' '}
-              <b>어느 패널이 끝났는지</b> 색만으로 한눈에 읽혀요. 새 지시를 보내거나 대화를
-              비우면 테두리도 함께 내려갑니다.
-            </>
-          )
-        },
-        {
-          tag: '멀티',
-          name: 'AI 작업 중에도 이름이 바뀌어요',
-          desc: (
-            <>
-              패널이 답변을 스트리밍하는 동안 이름을 바꾸면 <b>입력한 글자가 계속 덮여
-              지워지던</b> 문제를 고쳤습니다 — 매 토큰 렌더마다 입력칸 전체 선택이 다시
-              걸리던 것으로, 한글 조합이 깨지던 것도 같은 원인이었어요. 이제 <b>연필·더블클릭
-              ·F2</b> 어느 길로 들어가도 작업 중 여부와 무관하게 편안히 바뀝니다.
-            </>
-          )
-        },
-        {
-          tag: '계정',
-          name: '계정 카드를 꾹 눌러 끌어 정렬하세요',
-          desc: (
-            <>
-              설정 › Account의 계정 카드를 <b>0.35초 꾹 누르면 집혀서</b>, 위아래로 끌면
-              순서가 바뀝니다 — Anthropic·OpenAI 목록 모두요. 이 순서는{' '}
-              <b>채팅의 계정 선택 목록에도 그대로</b> 반영돼, 자주 쓰는 계정을 맨 위로 올려둘
-              수 있어요. 삭제·기본 버튼 클릭과는 충돌하지 않습니다.
-            </>
-          )
-        }
-      ]
-    },
-    en: {
-      eyebrow: 'UPDATE',
-      lead: 'Multi-chat panels now announce completion with a border in their own tag color. Renaming a panel works even while the AI is running, and account cards in Settings can be press-and-hold dragged into a new order.',
-      notes: [
-        {
-          tag: 'Multi',
-          name: 'Finished panels glow in their own color',
-          desc: (
-            <>
-              When a panel reaches <b>Done</b>, a border in that panel&apos;s{' '}
-              <b>color-tag hue</b> wraps around it — the same color as the header underline, so
-              with several panels running you can tell <b>which one finished</b> at a glance.
-              Sending a new instruction or clearing the chat lifts the border again.
-            </>
-          )
-        },
-        {
-          tag: 'Multi',
-          name: 'Renaming works while the AI is busy',
-          desc: (
-            <>
-              Renaming a panel during a streaming reply used to <b>keep wiping what you
-              typed</b> — every token re-render re-selected the whole input, which also broke
-              Korean IME composition. Fixed at the root: whether you enter via{' '}
-              <b>pencil, double-click, or F2</b>, editing now behaves the same busy or idle.
-            </>
-          )
-        },
-        {
-          tag: 'Account',
-          name: 'Press and hold to reorder accounts',
-          desc: (
-            <>
-              In Settings › Account, <b>hold a card for 0.35s to pick it up</b>, then drag it
-              up or down to reorder — both the Anthropic and OpenAI lists. The order carries
-              over to <b>the account picker in chats</b>, so your go-to account can sit on
-              top. It never collides with the Delete / Make-default buttons.
             </>
           )
         }
