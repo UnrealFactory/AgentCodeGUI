@@ -11,7 +11,7 @@ import { spawn, type ChildProcess } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { safeStorage, shell, type WebContents } from 'electron'
+import { safeStorage, type WebContents } from 'electron'
 import { IPC } from '@shared/protocol'
 import type { CodexAccountInfo, CodexAccountUsage } from '@shared/protocol'
 import { codexBin } from './versions'
@@ -347,12 +347,14 @@ export async function codexLogin(wc: WebContents): Promise<CodexAccountInfo[]> {
     })
     loginProc = child
     let opened = false
+    // 브라우저는 CLI가 직접 연다 — 앱이 또 열면 이중 탭. 게다가 출력의 첫 URL은 인증
+    // 페이지가 아니라 로컬 로그인 서버(`http://localhost:1455.` — 문장 끝 마침표까지 붙어
+    // 404 텍스트 페이지가 뜬다). https만 잡아 렌더러 폴백 링크로 전달한다.
     const onData = (buf: Buffer): void => {
-      const m = buf.toString().match(/https?:\/\/[^\s"'）)]+/)
+      const m = buf.toString().match(/https:\/\/[^\s"'）)]+/)
       if (m && !opened) {
         opened = true
-        shell.openExternal(m[0]).catch(() => {})
-        if (!wc.isDestroyed()) wc.send(IPC.authLoginUrl, m[0])
+        if (!wc.isDestroyed()) wc.send(IPC.authLoginUrl, m[0].replace(/[.,]+$/, ''))
       }
     }
     child.stdout?.on('data', onData)

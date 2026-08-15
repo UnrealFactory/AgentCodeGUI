@@ -28,6 +28,74 @@ type LocalizedRelease = { ko: Release; en: Release }
 // 지난 1.x 노트들은 은퇴한 UpdateNotes와 함께 정리했다(이제 보여줄 경로가 없다).
 const MAX_VERSIONS = 5
 const RELEASES: Record<string, LocalizedRelease> = {
+  '2.4.1': {
+    ko: {
+      eyebrow: 'FIX',
+      lead: '계정을 추가할 때 브라우저 탭이 두 장(하나는 404) 뜨던 문제와, 파일을 고칠 때마다 도구 행의 +/- 숫자가 계속 불어나던 문제를 고쳤습니다.',
+      notes: [
+        {
+          tag: '로그인',
+          name: '로그인 탭이 하나만 열려요',
+          desc: (
+            <>
+              계정을 추가하면 <b>인증 페이지가 두 장</b> 열리고, 그중 하나는{' '}
+              <b>404 오류 페이지</b>인 일이 있었습니다. CLI가 이미 브라우저를 여는데 앱도 같이
+              열면서, 앱이 잡은 주소가 인증 페이지가 아니라 <b>내부 로그인 서버 주소</b>였던 게
+              원인 — 이제 브라우저는 한 번만 열립니다. 브라우저가 안 뜨는 환경을 위한{' '}
+              <b>수동 링크</b>는 그대로 남아 있고, 링크 끝에 마침표가 붙어 깨지던 것도
+              고쳤어요. Claude와 OpenAI(Codex) 로그인 모두 해당됩니다.
+            </>
+          )
+        },
+        {
+          tag: '도구 행',
+          name: '+/- 줄 수가 그 편집의 크기를 보여줘요',
+          desc: (
+            <>
+              같은 파일을 여러 번 고치면 도구 행의 <b>+N −N이 회를 거듭할수록 불어나</b> 한 줄만
+              고쳐도 큰 숫자가 뜨고, 대화 중에 새로 만든 파일은 이후 편집도 계속{' '}
+              <b>&apos;새 파일&apos;</b>로 표시됐습니다. 이제 각 행은 <b>그 편집 하나의 증감</b>을
+              보여줍니다 — 파일 전체 변경량은 원래대로 <b>변경 파일 목록과 diff</b>에서 볼 수
+              있어요.
+            </>
+          )
+        }
+      ]
+    },
+    en: {
+      eyebrow: 'FIX',
+      lead: 'Fixed adding an account opening two browser tabs (one of them a 404), and tool rows whose +/- line counts kept growing with every edit to the same file.',
+      notes: [
+        {
+          tag: 'Sign-in',
+          name: 'Only one sign-in tab opens',
+          desc: (
+            <>
+              Adding an account could open <b>two auth tabs</b>, one of them a{' '}
+              <b>404 error page</b>. The CLI already opens the browser, and the app opened one
+              too — using an address that was the <b>internal login server</b>, not the auth
+              page. Now the browser opens exactly once. The <b>manual link</b> for environments
+              where no browser opens is still there, and it no longer breaks on a trailing
+              period. Applies to both Claude and OpenAI (Codex) sign-in.
+            </>
+          )
+        },
+        {
+          tag: 'Tool rows',
+          name: '+/- counts now reflect that one edit',
+          desc: (
+            <>
+              Editing the same file repeatedly made each tool row&apos;s <b>+N −N grow
+              cumulatively</b> — a one-line change could show a huge number — and a file created
+              during the conversation kept reading <b>&quot;New file&quot;</b> on every later
+              edit. Each row now shows <b>the size of that single edit</b>; the total change per
+              file is still in the <b>changed-files list and diff</b>, as before.
+            </>
+          )
+        }
+      ]
+    }
+  },
   '2.4.0': {
     ko: {
       eyebrow: 'NEW',
@@ -374,93 +442,6 @@ const RELEASES: Record<string, LocalizedRelease> = {
               up or down to reorder — both the Anthropic and OpenAI lists. The order carries
               over to <b>the account picker in chats</b>, so your go-to account can sit on
               top. It never collides with the Delete / Make-default buttons.
-            </>
-          )
-        }
-      ]
-    }
-  },
-  '2.3.7': {
-    ko: {
-      eyebrow: 'UPDATE',
-      lead: '자주 쓰는 프롬프트를 저장해 두고 클릭 한 번으로 복사해 쓰는 프롬프트 라이브러리가 생겼습니다. 작업 폴더의 최근 목록도 이제 안 쓰는 항목을 지울 수 있어요.',
-      notes: [
-        {
-          tag: '프롬프트',
-          name: '자주 쓰는 프롬프트를 저장해 두세요',
-          desc: (
-            <>
-              사이드바 <b>추가 채팅 아래 &apos;프롬프트&apos;</b> 버튼이 라이브러리 카드를
-              엽니다 — 자주 쓰는 지시를 저장해 두고, 목록에서 <b>행을 클릭하면 바로
-              클립보드에 복사</b>돼요(초록 &apos;복사됨&apos; 피드백). 제목은 비워도 첫 줄로
-              표시되고, 호버하면 복사·수정·삭제가 나옵니다. 저장한 목록은{' '}
-              <b>모든 창이 공유</b>해요.
-            </>
-          )
-        },
-        {
-          tag: '프롬프트',
-          name: 'Enter로 저장, 제스처로 닫기',
-          desc: (
-            <>
-              편집 화면은 테두리 없는 <b>종이 같은 캔버스</b> — 큰 제목과 본문이 밑줄 하나로
-              나뉩니다. 채팅 입력창과 같은 문법으로 <b>Enter 저장 · Shift+Enter 줄바꿈</b>,
-              마우스 제스처 <b>↓→ 닫기</b>와 목록 <b>↑/↓ 스크롤</b>도 다른 카드들과 똑같이
-              통해요.
-            </>
-          )
-        },
-        {
-          tag: '폴더',
-          name: '최근 폴더를 지울 수 있어요',
-          desc: (
-            <>
-              작업 폴더 목록의 최근 항목에 <b>호버하면 ✕</b>가 나타납니다 — 한 번 눌러본
-              폴더가 계속 목록에 남는 게 싫을 때 그 자리에서 지워요. 지운 폴더는 다시
-              사용하면 재등장하고, <b>비운 목록이 재시작 때 되살아나지도 않습니다</b>.
-            </>
-          )
-        }
-      ]
-    },
-    en: {
-      eyebrow: 'UPDATE',
-      lead: 'A prompt library is here — save the prompts you reuse and copy them with a single click. The working-folder recents list can finally be pruned, too.',
-      notes: [
-        {
-          tag: 'Prompts',
-          name: 'Save the prompts you reuse',
-          desc: (
-            <>
-              The new <b>&apos;Prompts&apos; button under Extra chat</b> in the sidebar opens a
-              library card — save instructions you use often, and <b>click a row to copy it
-              straight to the clipboard</b> (with a green &apos;Copied&apos; flash). Leave the
-              title empty and the first line stands in; hover for copy, edit, and delete. The
-              list is <b>shared across every window</b>.
-            </>
-          )
-        },
-        {
-          tag: 'Prompts',
-          name: 'Enter saves, gestures close',
-          desc: (
-            <>
-              Editing happens on a borderless, <b>paper-like canvas</b> — a large title and the
-              body split by a single underline. Same grammar as the chat composer:{' '}
-              <b>Enter saves, Shift+Enter breaks a line</b>, and the mouse gestures work like
-              every other card — <b>↓→ closes</b>, <b>↑/↓ scroll</b> the list.
-            </>
-          )
-        },
-        {
-          tag: 'Folders',
-          name: 'Recent folders can be removed',
-          desc: (
-            <>
-              <b>Hover a recent entry</b> in the working-folder list and an <b>✕</b> appears —
-              remove a folder you tried once and never meant to keep, right there. It comes
-              back if you use it again, and <b>an emptied list no longer resurrects on
-              restart</b>.
             </>
           )
         }

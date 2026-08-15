@@ -10,7 +10,7 @@ import { execFile, spawn, type ChildProcess } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { app, safeStorage, shell, type WebContents } from 'electron'
+import { app, safeStorage, type WebContents } from 'electron'
 import { IPC } from '@shared/protocol'
 import { t } from './lang'
 import type { AuthStatus, AccountInfo, AccountUsage } from '@shared/protocol'
@@ -646,13 +646,13 @@ export async function authLogin(wc: WebContents, useConsole: boolean): Promise<A
     const child = spawn(bin, args, { windowsHide: true, env: { ...process.env, CLAUDE_CONFIG_DIR: LOGIN_DIR } })
     loginProc = child
     let opened = false
-    // CLI가 출력하는 OAuth URL을 잡아 브라우저로 연다(CLI가 자동으로 열기도 하지만 이중 안전).
+    // 브라우저는 CLI가 직접 연다("Opening browser to sign in…" 실측) — 앱이 URL을 또 열면
+    // 같은 인증 페이지가 두 장 뜬다. 여기선 렌더러 폴백 링크로만 전달한다(안 열린 환경 대비).
     const onData = (buf: Buffer): void => {
-      const m = buf.toString().match(/https?:\/\/[^\s"'）)]+/)
+      const m = buf.toString().match(/https:\/\/[^\s"'）)]+/)
       if (m && !opened) {
         opened = true
-        shell.openExternal(m[0]).catch(() => {})
-        if (!wc.isDestroyed()) wc.send(IPC.authLoginUrl, m[0])
+        if (!wc.isDestroyed()) wc.send(IPC.authLoginUrl, m[0].replace(/[.,]+$/, ''))
       }
     }
     child.stdout?.on('data', onData)

@@ -289,7 +289,7 @@ export class ClaudeEngine {
   /** tool_use id → metadata so we can interpret tool_results (incl. a deferred file change).
    *  startedAt은 tool-end의 durationMs(실행 시간 — bash 행 요약에 표시)를 계산한다. */
   // abs: Write/Edit 대상의 절대 경로 — 성공 시 LSP에 파일 변화를 통지하는 데 쓴다(rel은 cwd 밖이면 모호)
-  private tools = new Map<string, { name: string; cwd: string; startedAt: number; abs?: string; pending?: { whole: boolean; file: ChangedFile; diff: FileDiff } }>()
+  private tools = new Map<string, { name: string; cwd: string; startedAt: number; abs?: string; pending?: { whole: boolean; file: ChangedFile; diff: FileDiff; op: { isNew: boolean; add: number; del: number } } }>()
   /** tool_use ids of subagent-spawn tools (Task/Agent), to flip them to done on result */
   private subagents = new Set<string>()
   /** 서브에이전트별 사이드체인 모델 표시명 — 프레임마다 오므로 변화 시 1회만 emit */
@@ -1948,6 +1948,9 @@ export class ClaudeEngine {
   // tool runs; the first time a path is touched this run it becomes the baseline, so
   // later edits diff against the run's original state (cumulative). A path with no
   // baseline (didn't exist) renders as an all-added new file.
+  // `op`는 별도 축 — 누적이 아니라 "이 도구 한 번"(cur→next)의 증감. 도구 행의 +N −N은
+  // 이걸 쓴다: 같은 파일을 여러 번 고칠 때 행마다 그 편집의 크기가 나와야지, 런 누적이
+  // 행에 실리면 편집할수록 숫자만 불어난다 (누적은 diff 모달·변경 파일 패널의 몫).
   private fileChangePending(
     rel: string,
     abs: string,
@@ -1955,7 +1958,7 @@ export class ClaudeEngine {
     next: string,
     // 호출측 stat 가드가 읽기를 생략한 파일 — cur=null이지만 새 파일이 아니라 거대 파일
     hugeOnDisk = false
-  ): { whole: boolean; file: ChangedFile; diff: FileDiff } {
+  ): { whole: boolean; file: ChangedFile; diff: FileDiff; op: { isNew: boolean; add: number; del: number } } {
     // A very large file makes the whole-file diff itself the hazard: the line array
     // balloons the IPC payload, the renderer's state, and the persisted snapshot —
     // and holding the baseline text pins megabytes for the rest of the run. Keep a
@@ -1968,16 +1971,36 @@ export class ClaudeEngine {
       const lines = [
         { t: 'hunk' as const, text: t('@@ 파일이 너무 커서 변경 미리보기를 생략했어요 @@', '@@ File is too large — change preview skipped @@') }
       ]
-      return { whole: true, file: { path: rel, add: 0, del: 0, tag }, diff: { path: rel, tag, add: 0, del: 0, lines } }
+      return {
+        whole: true,
+        file: { path: rel, add: 0, del: 0, tag },
+        diff: { path: rel, tag, add: 0, del: 0, lines },
+        op: { isNew: tag === 'new', add: 0, del: 0 }
+      }
     }
     if (!this.baselines.has(abs)) this.baselines.set(abs, cur)
     const base = this.baselines.get(abs) ?? null
+    // 이 도구 한 번의 증감(cur→next). 디스크가 아직 기준선 그대로면(첫 접촉 포함) 누적
+    // diff와 같으니 재계산을 생략하고 그 수치를 물려받는다.
+    const opCounts = (cumAdd: number, cumDel: number): { isNew: boolean; add: number; del: number } => {
+      if (base === cur) return { isNew: false, add: cumAdd, del: cumDel }
+      const d = computeLineDiff(cur ?? '', next)
+      return { isNew: false, add: d.add, del: d.del }
+    }
     if (base == null) {
       const { lines, add } = newFileDiff(next)
-      return { whole: true, file: { path: rel, add, del: 0, tag: 'new' }, diff: { path: rel, tag: 'new', add, del: 0, lines } }
+      // 런에서 태어난 파일의 후속 편집(cur≠null)은 누적으로는 여전히 '새 파일 한 장'이지만
+      // 도구 행은 이 편집의 실제 증감으로 — 매번 '새 파일'로 뜨는 오표기를 막는다.
+      const op = cur == null ? { isNew: true, add, del: 0 } : opCounts(add, 0)
+      return { whole: true, file: { path: rel, add, del: 0, tag: 'new' }, diff: { path: rel, tag: 'new', add, del: 0, lines }, op }
     }
     const { lines, add, del } = computeLineDiff(base, next)
-    return { whole: true, file: { path: rel, add, del, tag: 'edit' }, diff: { path: rel, tag: 'edit', add, del, lines } }
+    return {
+      whole: true,
+      file: { path: rel, add, del, tag: 'edit' },
+      diff: { path: rel, tag: 'edit', add, del, lines },
+      op: opCounts(add, del)
+    }
   }
 
   // ── tool_result → events ───────────────────────────────────
@@ -2033,7 +2056,8 @@ export class ClaudeEngine {
       // 살아있는 LSP 서버들에도 디스크 변화를 통지 — 클라이언트 워칭에 기대는 서버가
       // 에이전트가 만든/고친 파일을 곧바로 알게 한다 (자세한 역할 분담은 notifyWatchedFiles 주석)
       if (meta.abs) {
-        lspManager.notifyWatchedFiles([{ abs: meta.abs, kind: meta.pending.file.tag === 'new' ? 'created' : 'changed' }])
+        // op.isNew — 누적 tag는 런에서 태어난 파일의 후속 편집도 'new'라 created를 반복 통지한다
+        lspManager.notifyWatchedFiles([{ abs: meta.abs, kind: meta.pending.op.isNew ? 'created' : 'changed' }])
       }
     }
 
@@ -2051,11 +2075,13 @@ export class ClaudeEngine {
       // — 채팅에서 행을 클릭하면 목록이 펼쳐지고 각 링크는 브라우저로 열린다
       const links = meta.name === 'WebSearch' && !isError ? extractWebLinks(text) : undefined
       // edit/write surface their +/- line counts (or 새 파일); other tools use a summary
+      // — 수치는 op(이 도구 한 번의 cur→next)다. 누적(file.add/del)을 실으면 같은 파일을
+      // 거듭 고칠 때 행마다 런 전체 증감이 반복돼 "한 줄 고쳤는데 +300"으로 읽힌다.
       const result =
         meta.pending && !isError
-          ? meta.pending.file.tag === 'new'
+          ? meta.pending.op.isNew
             ? t('새 파일', 'New file')
-            : `+${meta.pending.file.add} -${meta.pending.file.del}`
+            : `+${meta.pending.op.add} -${meta.pending.op.del}`
           : links
             ? t(`${links.length}개 결과`, `${links.length} results`)
             : resultSummary(meta.name, text, isError)
