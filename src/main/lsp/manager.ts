@@ -176,9 +176,7 @@ function csprojUris(root: string): string[] {
 // 보는 파일은 csproj 하나여도, 그 csproj를 '참조하는' 솔루션(.sln/.slnx)이 있으면 솔루션
 // 폴더를 루트로 삼아 솔루션째 연다 — 한 Roslyn이 프로젝트 전부(크로스 참조 포함)를 담당하고,
 // 프로젝트를 오가며 봐도 서버가 하나만 뜬다. '참조하는지'를 실제로 검사하므로 UE 루트의
-// 무관한 자동화 sln(예전 휴리스틱이 무서워하던 것)은 자연히 걸러진다. UnrealSharp 배치는
-// 관리 솔루션이 <UE루트>/Script에 있고 플러그인 스크립트는 Plugins/<P>/Script에 있어 조상
-// 관계가 아니다 — ueRoot로 따로 찾는다(플러그인 폴더만 열었어도 게임의 관리 솔루션을 쓴다).
+// 무관한 자동화 sln(예전 휴리스틱이 무서워하던 것)은 자연히 걸러진다.
 interface CsRootHit {
   root: string
   sln: string | null // 참조 확인된 솔루션 파일의 절대 경로 (afterInitialized가 정확히 이걸 연다)
@@ -335,8 +333,92 @@ function slnReferencing(dir: string, csprojs: Set<string>): { sln: string; proje
   return null
 }
 
+// ── UnrealNetCore 합성 스크립트 프로젝트 ─────────────────────────
+// UnrealNetCore의 게임 스크립트(<uproject>/Script/**/*.cs)는 곁에 프로젝트 파일이 없다 —
+// 규약이 그렇다(사용자는 .cs만 만들고, 프로젝트 파일이 사용자 눈에 보이면 "빌드가 안 되면
+// 그걸 고친다"가 절차가 돼 참조가 바뀔 때마다 사용자 쪽에서 낡는다). 진짜 주인은 에디터가
+// 합성하는 <uproject>/Intermediate/UnrealNetCore/Script/<Unit>/<Unit>.csproj다: 멤버십은
+// 글롭이 아니라 절대경로 <Compile Include>, 참조는 HintPath DLL. 유닛 csproj들을 읽어
+// "파일 → 유닛 폴더"와 "소스 폴더 → 유닛 폴더" 두 맵을 만든다 — 정확 매치가 1순위, 아직
+// csproj에 편입 안 된 새 파일은 같은 소스 폴더(조상 포함)를 쓰는 유닛으로 보낸다(편입은
+// 합성 재생성 몫 — 재생성되면 csproj 변화가 watchCsSolution의 단독 로드 분기로 흘러
+// project/open 재통지로 로드된다). 스캔은 유닛 폴더 readdir + 작은 csproj 몇 개 읽기라
+// csRootMemo와 같은 TTL로 memo — 합성 프로젝트가 나중에 생겨도(클론 직후 첫 Reload) TTL
+// 뒤엔 잡힌다.
+interface NetCoreUnits {
+  files: Map<string, string> // 소문자 절대경로 → 유닛 폴더
+  dirs: Map<string, string> // 소문자 소스 폴더 → 유닛 폴더 (새 파일의 폴더 매칭용)
+}
+const netCoreUnitsMemo = new Map<string, { at: number; units: NetCoreUnits | null }>()
+function unrealNetCoreUnits(ur: string): NetCoreUnits | null {
+  const key = path.resolve(ur).toLowerCase()
+  const memo = netCoreUnitsMemo.get(key)
+  if (memo && Date.now() - memo.at < CS_ROOT_TTL) return memo.units
+  let units: NetCoreUnits | null = null
+  try {
+    const base = path.join(ur, 'Intermediate', 'UnrealNetCore', 'Script')
+    for (const e of fs.readdirSync(base, { withFileTypes: true })) {
+      if (!e.isDirectory()) continue
+      const unitDir = path.join(base, e.name)
+      let txt = ''
+      try {
+        txt = fs.readFileSync(path.join(unitDir, `${e.name}.csproj`), 'utf8')
+      } catch {
+        continue // csproj 없는 폴더 — 유닛이 아니다
+      }
+      const re = /<Compile\s+Include="([^"]+)"/gi
+      let m: RegExpExecArray | null
+      while ((m = re.exec(txt))) {
+        let abs = ''
+        try {
+          abs = path.resolve(unitDir, m[1]).toLowerCase()
+        } catch {
+          continue // 이상한 경로 항목 — 다음 항목으로
+        }
+        units ??= { files: new Map(), dirs: new Map() }
+        if (!units.files.has(abs)) units.files.set(abs, unitDir)
+        const dir = path.dirname(abs)
+        if (!units.dirs.has(dir)) units.dirs.set(dir, unitDir)
+      }
+    }
+  } catch {
+    /* Intermediate 합성 프로젝트 미생성(UnrealNetCore 미사용·클론 직후) — 기존 폴백 유지 */
+  }
+  netCoreUnitsMemo.set(key, { at: Date.now(), units })
+  return units
+}
+
+/** abs(.cs)를 소유한 UnrealNetCore 유닛 폴더 — 정확 매치 우선, 새 파일은 폴더 조상 워크. */
+export function unrealNetCoreUnitFor(ur: string, abs: string): string | null {
+  const units = unrealNetCoreUnits(ur)
+  if (!units) return null
+  const key = path.resolve(abs).toLowerCase()
+  const hit = units.files.get(key)
+  if (hit) return hit
+  let dir = path.dirname(key)
+  for (let i = 0; i < 16; i++) {
+    const d = units.dirs.get(dir)
+    if (d) return d
+    const parent = path.dirname(dir)
+    if (parent === dir) break
+    dir = parent
+  }
+  return null
+}
+
+/** <uproject>/Script 소스를 소유한 유닛 폴더 — prewarm용(사용자 대면 게임 스크립트 유닛). */
+export function unrealNetCoreScriptUnit(ur: string): string | null {
+  const units = unrealNetCoreUnits(ur)
+  if (!units) return null
+  const scriptDir = path.join(path.resolve(ur), 'Script').toLowerCase()
+  for (const [dir, unit] of units.dirs) {
+    if (dir === scriptDir || dir.startsWith(scriptDir + path.sep)) return unit
+  }
+  return null
+}
+
 /** 파일의 C# 서버 루트: 참조 솔루션 폴더(있으면) > 가장 가까운 csproj 폴더 > cwd. */
-function csRootFor(abs: string, cwd: string): string {
+export function csRootFor(abs: string, cwd: string): string {
   // F12로 들어간 MetadataAsSource 임시 파일 — 만들어 준 서버로 되돌려 보낸다 (위 주석 참조)
   if (META_AS_SOURCE_RE.test(abs)) {
     const owner = metadataAsSourceRoot.get(path.resolve(abs).toLowerCase())
@@ -345,19 +427,18 @@ function csRootFor(abs: string, cwd: string): string {
   }
   const projDir = nearestCsProjectRoot(abs, cwd)
   if (!projDir) {
-    // UnrealSharp UHT 글루(<플러그인>/Intermediate/UnrealSharp/UHT/**)는 csproj 조상이 없다 —
-    // 진짜 소유자는 <플러그인>/Managed/UnrealSharp/UnrealSharp/UnrealSharp.csproj의 글롭
-    // include다. 그 프로젝트로 위임해 UnrealSharp.sln째 열면 글루 문서가 로드된 프로젝트에
-    // 매칭돼 심볼이 전부 풀린다 — 위임 없이는 cwd 루트(무관한 C++ 솔루션)로 스폰돼 misc
-    // 워크스페이스행: 로컬만 풀리고 IntPtr 같은 크로스 어셈블리 심볼은 전멸한다.
-    // (게임 쪽 글루는 폴더에 자체 csproj가 UBT로 생성돼 있어 위의 일반 경로로 풀린다)
-    const glue = /^(.*?)[/\\]Intermediate[/\\]UnrealSharp[/\\]UHT[/\\]/i.exec(abs)
-    if (glue) {
-      const owner = path.join(glue[1], 'Managed', 'UnrealSharp', 'UnrealSharp', 'UnrealSharp.csproj')
-      try {
-        if (fs.existsSync(owner)) return csRootFor(owner, cwd)
-      } catch {
-        /* 접근 불가 — cwd 폴백 */
+    const ur = ueRoot(path.dirname(abs))
+    // UnrealNetCore 스크립트 — 주인은 Intermediate의 합성 유닛 프로젝트다(unrealNetCoreUnits
+    // 주석). 그 폴더로 'csproj 단독 로드' 위임한다: 규약상 어떤 솔루션도 합성 csproj를
+    // 참조하지 않고(UE 루트의 UBT 솔루션은 C++뿐), 참조가 전부 HintPath DLL이라 솔루션이
+    // 보태 줄 것도 없다 — 파일 몇 개짜리 유닛 하나면 수 초 만에 로드·프라임까지 끝난다.
+    // 위임 없이는 cwd 루트로 스폰돼 misc 워크스페이스행: BCL만 색이 붙고 플러그인 API·
+    // 프로젝트 심볼은 전멸한다(ElmwoodOnline에서 실측).
+    if (ur) {
+      const unit = unrealNetCoreUnitFor(ur, abs)
+      if (unit) {
+        lastCsRoot = unit // F12(디컴파일 소스)의 주인 미상 폴백도 이 서버로
+        return unit
       }
     }
     // UE 룰 파일(Build.cs·Target.cs)도 csproj 조상이 없다 — 진짜 주인은 UBT의 룰 전용
@@ -366,7 +447,6 @@ function csRootFor(abs: string, cwd: string): string {
     // 평소 규칙대로면 그 솔루션째(엔진 자동화 프로젝트 수십 개) 열리기 때문 — 룰 프로젝트
     // 하나면 몇 초 만에 색·호버가 전부 나온다.
     if (/\.(build|target)\.cs$/i.test(abs)) {
-      const ur = ueRoot(path.dirname(abs))
       if (ur) {
         const rules = ueRulesProjectDir(ur)
         if (rules) {
@@ -396,11 +476,10 @@ function csRootFor(abs: string, cwd: string): string {
   }
   let hit: CsRootHit = { root: projDir, sln: null }
   if (csprojs.size) {
-    // 후보 수집: ① csproj 폴더에서 cwd 경계까지 조상 워크 + ② UnrealSharp 특례(<UE루트>/Script —
-    // 관리 솔루션이 플러그인 스크립트와 조상 관계가 아니라 따로 본다; cwd 밖이어도).
-    // 그중 "참조 프로젝트 수가 가장 많은" 솔루션을 고른다(동률이면 안쪽 우선) — csproj 폴더에
-    // 도구가 떨궈 둔 단일 프로젝트 sln이 진짜(전체) 솔루션을 가리면, 프라임이 형제 프로젝트를
-    // 커버하지 못해 크로스 프로젝트 심볼이 무색으로 남는다(UnrealSharp에서 실측).
+    // 후보 수집: csproj 폴더에서 cwd 경계까지 조상 워크. 그중 "참조 프로젝트 수가 가장 많은"
+    // 솔루션을 고른다(동률이면 안쪽 우선) — csproj 폴더에 도구가 떨궈 둔 단일 프로젝트 sln이
+    // 진짜(전체) 솔루션을 가리면, 프라임이 형제 프로젝트를 커버하지 못해 크로스 프로젝트
+    // 심볼이 무색으로 남는다(실측).
     const candidates: { root: string; sln: string; projects: number }[] = []
     const stop = cwd ? path.resolve(cwd).toLowerCase() : ''
     let dir = projDir
@@ -411,14 +490,6 @@ function csRootFor(abs: string, cwd: string): string {
       const parent = path.dirname(dir)
       if (parent === dir) break
       dir = parent
-    }
-    const ur = ueRoot(projDir)
-    if (ur) {
-      const scriptDir = path.join(ur, 'Script')
-      const c = slnReferencing(scriptDir, csprojs)
-      if (c && !candidates.some((x) => x.sln.toLowerCase() === c.sln.toLowerCase())) {
-        candidates.push({ root: scriptDir, ...c })
-      }
     }
     let best: { root: string; sln: string; projects: number } | null = null
     for (const c of candidates) if (!best || c.projects > best.projects) best = c
@@ -531,17 +602,19 @@ interface ServerHandle {
   // 돌려보내야 한다. gen(세대)으로 렌더러의 지연 resolve가 낡은 목록을 집는 걸 막는다.
   complRaw: { gen: number; items: RawCompletionItem[] } | null
   complGen: number
-  // C# 전용: 로드한 솔루션 파일(.sln/.slnx)의 워처 — UnrealSharp가 플러그인 생성/삭제로
-  // 솔루션을 재생성하면 solution/open을 재통지해 새 프로젝트를 로드한다(watchCsSolution).
-  // 서버가 죽으면 반드시 close (안 하면 워처가 유령으로 남아 죽은 rpc에 notify한다).
+  // C# 전용: 로드한 솔루션 파일(.sln/.slnx) — csproj 단독 로드면 루트 csproj — 의 워처.
+  // 외부 도구가 멤버십을 재생성하면 solution/open·project/open을 재통지해 새 멤버십을
+  // 로드한다(watchCsSolution). 서버가 죽으면 반드시 close (안 하면 워처가 유령으로 남아
+  // 죽은 rpc에 notify한다).
   slnWatch?: fs.FSWatcher
   // C# 전용: 서버 루트의 재귀 워처 — 앱을 '거치지 않은' 디스크 변화(에이전트 Bash, 외부
   // 도구의 코드 재생성, 외부 에디터, git)를 notifyWatchedFiles로 흘린다(watchCsRoot).
   // slnWatch와 같은 자리들에서 close.
   dirWatch?: fs.FSWatcher
-  // C# 전용: 솔루션이 참조하는 '루트 밖' csproj 폴더들의 재귀 워처(watchCsProjects) —
-  // 솔루션(<UE루트>\Script)이 플러그인 쪽 관리 프로젝트(Plugins\…\Managed)를 참조하는
-  // 배치에서 dirWatch가 못 보는 폴더의 외부 변화를 흘린다. 닫는 자리는 위와 동일.
+  // C# 전용: 루트 '밖' 소스/프로젝트 폴더들의 재귀 워처(watchCsProjects) — 솔루션이 루트 밖
+  // csproj를 참조하거나, 합성 프로젝트(UnrealNetCore 유닛)가 루트 밖 소스(<uproject>/Script)를
+  // 절대경로 include하는 배치에서 dirWatch가 못 보는 폴더의 외부 변화를 흘린다. 닫는 자리는
+  // 위와 동일.
   projWatch?: fs.FSWatcher[]
   // C# 전용: 참조 DLL 드랍 폴더(<플러그인>\Binaries\Managed)의 워처(watchCsDllDrop) —
   // <Reference HintPath> 참조는 프로젝트가 아니라 '빌드된 DLL'이라, 재빌드돼도 서버가
@@ -582,6 +655,115 @@ function uePluginRoot(dir: string): string | null {
     d = parent
   }
   return null
+}
+
+// C# 서버의 보조 감시 대상 — watchCsProjects가 로드 형태(솔루션/단독)별로 뽑는다.
+interface CsWatchTargets {
+  srcDirs: string[] // 소스 워처 후보 폴더(원본 케이스 — 루트 밖 필터·조상 접기는 호출부 몫)
+  dllDrops: string[] // 참조 DLL 드랍 폴더 — 갱신 감지 시 서버 재시작(watchCsDllDrop)
+  ownNames: Set<string> // 소속 프로젝트 이름(소문자) — 자기 산출물은 드랍 재시작에서 제외
+}
+
+/** 솔루션 로드 루트의 감시 대상 — 참조 csproj 폴더(소스 워처 후보)와, 그 폴더들의 UE 플러그인
+ *  드랍(<플러그인>/Binaries/Managed)을 얻는다: 게임 솔루션이 플러그인 관리 코드를
+ *  <Reference HintPath>(빌드 산출물)로 참조하는 배치에서, 그 DLL이 재빌드되면 서버 재시작
+ *  없이는 새 타입이 영영 미해석이다(실측 PoC — scheduleCsRestart 주석). */
+function slnWatchTargets(sln: string): CsWatchTargets {
+  const srcDirs: string[] = []
+  const dllDrops: string[] = []
+  const ownNames = new Set<string>()
+  const seenDrop = new Set<string>()
+  let txt = ''
+  try {
+    txt = fs.readFileSync(sln, 'utf8')
+  } catch {
+    return { srcDirs, dllDrops, ownNames }
+  }
+  const re = /"([^"]+\.csproj)"/gi
+  let m: RegExpExecArray | null
+  while ((m = re.exec(txt))) {
+    try {
+      const p = path.resolve(path.dirname(sln), m[1])
+      ownNames.add(path.basename(p, path.extname(p)).toLowerCase())
+      const d = path.dirname(p)
+      if (fs.existsSync(d)) srcDirs.push(d)
+      const plugin = uePluginRoot(d)
+      if (plugin) {
+        const drop = path.join(plugin, 'Binaries', 'Managed')
+        const key = drop.toLowerCase()
+        if (!seenDrop.has(key) && fs.existsSync(drop)) {
+          seenDrop.add(key)
+          dllDrops.push(drop)
+        }
+      }
+    } catch {
+      /* 이상한 경로 항목 — 다음 항목으로 */
+    }
+  }
+  return { srcDirs, dllDrops, ownNames }
+}
+
+/** csproj 단독 로드 루트의 감시 대상 — 루트 csproj들을 직접 파싱한다. 합성 프로젝트
+ *  (UnrealNetCore 유닛)는 ① 소스가 절대경로 <Compile Include>로 루트 밖(<uproject>/Script)에
+ *  살아 루트 재귀 워처가 못 보고(거기서의 git·외부 에디터 변화가 재프라임 신호 없이 새면
+ *  새 타입이 열린 문서에서 무색으로 고착) ② 참조가 HintPath DLL + Analyzer/SourceGenerator
+ *  DLL이라 재빌드 시 재시작 없이는 메타데이터·생성 멤버가 안 갱신된다 — 소스 폴더와 DLL
+ *  드랍을 여기서 얻는다. PoC(poc-cs-netcore-root.mjs)가 직접 검증한다. */
+export function csprojWatchTargets(root: string): CsWatchTargets {
+  const srcDirs: string[] = []
+  const dllDrops: string[] = []
+  const ownNames = new Set<string>()
+  const seenSrc = new Set<string>()
+  const seenDrop = new Set<string>()
+  let names: string[] = []
+  try {
+    names = fs.readdirSync(root)
+  } catch {
+    return { srcDirs, dllDrops, ownNames }
+  }
+  for (const n of names) {
+    if (!n.toLowerCase().endsWith('.csproj')) continue
+    ownNames.add(path.basename(n, path.extname(n)).toLowerCase())
+    let txt = ''
+    try {
+      txt = fs.readFileSync(path.join(root, n), 'utf8')
+    } catch {
+      continue
+    }
+    const inc = /<Compile\s+Include="([^"]+)"/gi
+    let m: RegExpExecArray | null
+    while ((m = inc.exec(txt))) {
+      try {
+        const d = path.dirname(path.resolve(root, m[1]))
+        const key = d.toLowerCase()
+        if (!seenSrc.has(key) && fs.existsSync(d)) {
+          seenSrc.add(key)
+          srcDirs.push(d)
+        }
+      } catch {
+        /* 이상한 경로 항목 — 다음 항목으로 */
+      }
+    }
+    const dll = /<HintPath>\s*([^<]*?\.dll)\s*<|<Analyzer\s+Include="([^"]+\.dll)"/gi
+    while ((m = dll.exec(txt))) {
+      try {
+        const dp = path.dirname(path.resolve(root, m[1] ?? m[2]))
+        // UE 플러그인 드랍(<플러그인>/Binaries/Managed) 아래면 드랍째 하나로 접는다 —
+        // DLL마다 하위 폴더가 달라도 워처는 하나면 된다
+        const plugin = uePluginRoot(dp)
+        const managed = plugin ? path.join(plugin, 'Binaries', 'Managed') : null
+        const drop = managed && (dp.toLowerCase() + path.sep).startsWith(managed.toLowerCase() + path.sep) ? managed : dp
+        const key = drop.toLowerCase()
+        if (!seenDrop.has(key) && fs.existsSync(drop)) {
+          seenDrop.add(key)
+          dllDrops.push(drop)
+        }
+      } catch {
+        /* 이상한 경로 항목 — 다음 항목으로 */
+      }
+    }
+  }
+  return { srcDirs, dllDrops, ownNames }
 }
 
 // Resolve a file that ships in the app's node_modules. In a packaged build the
@@ -1188,9 +1370,9 @@ class LspManager {
     if (!cwd) return { state: 'idle', percent: null }
     const root = path.resolve(cwd).toLowerCase()
     const prefix = root + path.sep
-    // UE 프로젝트의 하위 폴더(플러그인 Script 등)를 연 경우, 그 파일들을 담당하는 서버는
-    // UE 루트 쪽(<UE루트>/Script의 C# 솔루션 서버 등)에 뜬다 — cwd 접두사 매칭만으로는
-    // 배지가 그 서버를 못 보므로 UE 루트 아래 서버도 포함한다.
+    // UE 프로젝트의 하위 폴더(플러그인 폴더 등)를 연 경우, 그 파일들을 담당하는 서버는
+    // UE 루트 쪽(Intermediate의 합성 유닛 프로젝트 서버 등)에 뜰 수 있다 — cwd 접두사
+    // 매칭만으로는 배지가 그 서버를 못 보므로 UE 루트 아래 서버도 포함한다.
     const ur = ueRoot(root)
     const urPrefix = ur && path.resolve(ur).toLowerCase() !== root ? path.resolve(ur).toLowerCase() + path.sep : null
     let analyzing = false
@@ -1471,21 +1653,16 @@ class LspManager {
     this.maybeUeDb(root)
     const def = this.detectProjectServer(root)
     if (def && def.command(root)) void this.ensure(def, root)
-    // UnrealSharp: UE 프로젝트에 관리(C#) 솔루션(<UE루트>/Script/*.slnx|sln)이 있으면 Roslyn도
-    // 함께 데운다 — 주력 언어 감지는 cpp라 안 잡히지만, 솔루션 로드는 수 초 걸리므로 첫 .cs를
-    // 보기 전에 미리. csRootFor가 같은 Script 폴더를 루트로 고르므로 이 서버가 그대로 재사용된다.
+    // UnrealNetCore: UE 프로젝트에 게임 스크립트(<uproject>/Script)를 소유한 합성 유닛
+    // 프로젝트가 있으면 Roslyn도 함께 데운다 — 주력 언어 감지는 cpp라 안 잡히지만, 프로젝트
+    // 로드는 수 초 걸리므로 첫 .cs를 보기 전에 미리. csRootFor가 같은 유닛 폴더를 루트로
+    // 고르므로 이 서버가 그대로 재사용된다.
     if (def?.id !== 'cs' && installState('cs') === 'installed') {
       const ur = ueRoot(root)
-      const scriptDir = ur ? path.join(ur, 'Script') : null
-      let hasSln = false
-      try {
-        hasSln = !!scriptDir && fs.readdirSync(scriptDir).some((n) => /\.slnx?$/i.test(n))
-      } catch {
-        /* Script 폴더 없음 — UnrealSharp 미사용 */
-      }
-      if (scriptDir && hasSln) {
+      const unit = ur ? unrealNetCoreScriptUnit(ur) : null
+      if (unit) {
         const cs = SERVERS.find((s) => s.id === 'cs')
-        if (cs) void this.ensure(cs, scriptDir)
+        if (cs) void this.ensure(cs, unit)
       }
     }
     // Verse 워크스페이스면 멤버 DB(digest/소스 파스)도 지금 데워 둔다 — 안 그러면 첫 완성/
@@ -2150,9 +2327,10 @@ class LspManager {
    *  ② onFilesChanged 브로드캐스트 — 열려 있는 뷰어의 멈춘 토큰 폴링을 깨워, 재프라임 뒤의
    *     좋아진 토큰을 실제로 받아 가게 한다(재열람 없이도 색 회복).
    *
-   * 서버 root 포함 여부로 거르지 않는다: C#의 root(sln 폴더)가 cwd 밖 형제 프로젝트의 파일
-   * (UnrealSharp 플러그인 Script)을 경로상 '포함'하지 않는 배치가 실제로 있다. 대신 그 서버가
-   * 관심 가질 확장자(def.exts + C#은 프로젝트/솔루션 파일)만 골라 보낸다.
+   * 서버 root 포함 여부로 거르지 않는다: C#의 root가 소스를 경로상 '포함'하지 않는 배치가
+   * 실제로 있다(UnrealNetCore 합성 유닛 — root는 Intermediate의 csproj 폴더, 소스는
+   * <uproject>/Script). 대신 그 서버가 관심 가질 확장자(def.exts + C#은 프로젝트/솔루션
+   * 파일)만 골라 보낸다.
    */
   notifyWatchedFiles(changes: { abs: string; kind: 'created' | 'changed' | 'deleted' }[]): void {
     if (!changes.length) return
@@ -2517,21 +2695,28 @@ class LspManager {
   /**
    * C# 서버가 로드한 솔루션 파일(.sln/.slnx)을 감시하다가 바뀌면 solution/open을 재통지한다.
    *
-   * 왜: Roslyn은 솔루션 '멤버십'을 로드 시점에 한 번만 읽는다. UnrealSharp는 플러그인을
-   * 만들면 솔루션을 재생성해 새 csproj 참조를 더하는데, 이미 떠 있는 서버는 그걸 모른 채
-   * 새 프로젝트의 모든 .cs를 떠돌이(misc) 문서로 취급한다 — BCL만 색이 붙고 UnrealSharp/
-   * 프로젝트 심볼은 무색(실측 재현). 같은 경로로 solution/open을 다시 보내면 수 초 안에
-   * 새 프로젝트가 로드되고, '이미 열려 있던' misc 문서까지 그 자리에서 회복된다(실측) —
-   * 서버 재시작(수 분짜리 재인덱싱)이 필요 없다.
+   * 왜: Roslyn은 솔루션 '멤버십'을 로드 시점에 한 번만 읽는다. 외부 도구가 프로젝트를
+   * 더하며 솔루션을 재생성해도 이미 떠 있는 서버는 그걸 모른 채 새 프로젝트의 모든 .cs를
+   * 떠돌이(misc) 문서로 취급한다 — BCL만 색이 붙고 플러그인/프로젝트 심볼은 무색(실측
+   * 재현). 같은 경로로 solution/open을 다시 보내면 수 초 안에 새 프로젝트가 로드되고,
+   * '이미 열려 있던' misc 문서까지 그 자리에서 회복된다(실측) — 서버 재시작(수 분짜리
+   * 재인덱싱)이 필요 없다.
    *
    * 로드된 프로젝트 '안'의 새 파일은 이 감시가 필요 없다: didChangeWatchedFiles를 선언하지
    * 않은 클라이언트에겐 Roslyn이 자체 폴백 워처를 돌려 수 초 안에 스스로 편입한다(실측).
    * 파일을 직접 감시하지 않고 폴더를 감시해 이름으로 거른다 — 재생성(삭제+생성/교체)이
    * 파일 핸들 워치를 끊는 Windows 특성 회피.
+   *
+   * csproj 단독 로드(솔루션 없음)면 같은 이유로 루트의 csproj를 감시한다(watchCsProjectOpen)
+   * — 합성 프로젝트(UnrealNetCore 유닛)는 멤버십이 글롭 없는 명시 <Compile Include>라, 새
+   * .cs는 폴백 워처의 글롭 편입이 아니라 'csproj 재생성'으로만 들어온다.
    */
   private watchCsSolution(s: ServerHandle, root: string): void {
     const sln = csSolutionByRoot.get(root.toLowerCase()) ?? null
-    if (!sln) return // csproj 단독 로드 — 감시할 솔루션이 없다
+    if (!sln) {
+      this.watchCsProjectOpen(s, root)
+      return
+    }
     let timer: ReturnType<typeof setTimeout> | null = null
     try {
       const name = path.basename(sln).toLowerCase()
@@ -2561,6 +2746,39 @@ class LspManager {
       })
       // 폴더 삭제 등으로 워처가 에러를 내면 조용히 끝낸다 — 'error' 이벤트를 안 받으면
       // 프로세스째 uncaughtException으로 죽는다
+      s.slnWatch.on('error', () => {})
+    } catch {
+      /* 감시 실패(권한 등) — 없던 기능이니 조용히 포기, 색칠은 재시작 시 회복 */
+    }
+  }
+
+  /**
+   * csproj 단독 로드 루트의 프로젝트 파일 감시 — 바뀌면 project/open을 재통지한다
+   * (watchCsSolution의 단독 로드 짝). 합성 프로젝트(UnrealNetCore 유닛)는 사용자가 새 .cs를
+   * 만들고 에디터가 csproj를 재생성해야 편입되는데, 떠 있는 서버는 그걸 모른다 — 같은
+   * 경로의 project/open 재통지로 재로드를 걸고(solution/open 재통지와 같은 처방), 재프라임
+   * 예약 + 열린 뷰어 깨우기 + 워처 집합 재구성(Compile include 소스 폴더·참조 DLL 드랍이
+   * 함께 바뀌었을 수 있다)까지 솔루션 분기와 같은 후처리를 한다.
+   */
+  private watchCsProjectOpen(s: ServerHandle, root: string): void {
+    let timer: ReturnType<typeof setTimeout> | null = null
+    try {
+      s.slnWatch = fs.watch(root, (_ev, fn) => {
+        if (!fn || !String(fn).toLowerCase().endsWith('.csproj')) return
+        // 재생성은 이벤트가 여러 번 튄다(쓰기·교체) — 마지막 이벤트 후 2초 조용해지면 1회 재통지
+        if (timer) clearTimeout(timer)
+        timer = setTimeout(() => {
+          timer = null
+          if (s.status !== 'ready') return
+          const projects = csprojUris(root)
+          if (!projects.length) return // 삭제-후-재생성 중간이면 다음 생성 이벤트가 다시 재운다
+          s.rpc.notify('project/open', { projects })
+          s.primeDirtyAt = Date.now()
+          s.wsSymPrime = undefined
+          this.watchCsProjects(s, root)
+          this.onFilesChanged?.({ paths: [], exts: ['cs', 'csx'] })
+        }, 2000)
+      })
       s.slnWatch.on('error', () => {})
     } catch {
       /* 감시 실패(권한 등) — 없던 기능이니 조용히 포기, 색칠은 재시작 시 회복 */
@@ -2631,14 +2849,14 @@ class LspManager {
   }
 
   /**
-   * 솔루션이 참조하는 csproj 폴더 중 서버 루트 '밖'의 것들을 추가 감시 — 솔루션
-   * (<UE루트>\Script)이 플러그인 쪽 관리 프로젝트(Plugins\…\Managed\…)를 참조하는 배치에선
-   * 루트 재귀 워처(dirWatch)가 그 폴더들을 못 본다: 거기서 에이전트 Bash·외부 도구·git이
-   * 소스를 바꾸면 재프라임 신호가 영영 없어 새 타입이 무색으로 고착된다(Write/Edit는 엔진
-   * 배선이 커버하지만 그 밖은 구멍이었다). 조상이 이미 목록에 있으면 자식은 접고 상한 12개 —
-   * 워처 수 폭주 방지. 솔루션 재생성 때(watchCsSolution) 다시 불러 멤버십 변화를 따라간다.
-   * 한계: csproj 밖 글롭 include(플러그인 UHT 글루)는 여전히 미감시 — 그 재생성은 대개
-   * 프로젝트/솔루션 파일 변화를 동반해 간접 신호는 온다.
+   * 서버 루트 '밖'의 소스 폴더 + 참조 DLL 드랍 폴더를 추가 감시. 대상은 로드 형태별로 뽑는다
+   * (slnWatchTargets/csprojWatchTargets 주석): 솔루션이 루트 밖 csproj를 참조하거나, 합성
+   * 프로젝트(UnrealNetCore 유닛 — 루트는 Intermediate, 소스는 <uproject>/Script)가 루트 밖
+   * 소스를 include하는 배치에선 루트 재귀 워처(dirWatch)가 그 폴더들을 못 본다: 거기서
+   * 에이전트 Bash·외부 도구·git이 소스를 바꾸면 재프라임 신호가 영영 없어 새 타입이 무색으로
+   * 고착된다(Write/Edit는 엔진 배선이 커버하지만 그 밖은 구멍이었다). 조상이 이미 목록에
+   * 있으면 자식은 접고 상한 12개 — 워처 수 폭주 방지. 멤버십 재생성 때(watchCsSolution·
+   * watchCsProjectOpen) 다시 불러 변화를 따라간다.
    */
   private watchCsProjects(s: ServerHandle, root: string): void {
     for (const w of s.projWatch ?? []) w.close()
@@ -2646,29 +2864,9 @@ class LspManager {
     for (const w of s.dllWatch ?? []) w.close()
     s.dllWatch = undefined
     const sln = csSolutionByRoot.get(path.resolve(root).toLowerCase())
-    if (!sln) return // csproj 단독 로드 — 루트 워처가 전부 커버
-    let txt = ''
-    try {
-      txt = fs.readFileSync(sln, 'utf8')
-    } catch {
-      return
-    }
+    const targets = sln ? slnWatchTargets(sln) : csprojWatchTargets(root)
     const rootLc = path.resolve(root).toLowerCase() + path.sep
-    const all: string[] = [] // 참조 csproj 폴더 전부 (드랍 폴더 탐지에도 쓴다)
-    const ownNames = new Set<string>() // 솔루션 소속 프로젝트 이름(소문자) — 드랍 필터
-    const re = /"([^"]+\.csproj)"/gi
-    let m: RegExpExecArray | null
-    while ((m = re.exec(txt))) {
-      try {
-        const p = path.resolve(path.dirname(sln), m[1])
-        ownNames.add(path.basename(p, path.extname(p)).toLowerCase())
-        const d = path.dirname(p)
-        if (fs.existsSync(d)) all.push(d)
-      } catch {
-        /* 이상한 경로 항목 — 다음 항목으로 */
-      }
-    }
-    const dirs = all.filter((d) => !(d.toLowerCase() + path.sep).startsWith(rootLc)) // 루트 워처가 커버하는 건 제외
+    const dirs = targets.srcDirs.filter((d) => !(d.toLowerCase() + path.sep).startsWith(rootLc)) // 루트 워처가 커버하는 건 제외
     dirs.sort((a, b) => a.length - b.length) // 조상 우선 — 아래 접기가 자식을 걸러낸다
     const watchers: fs.FSWatcher[] = []
     const picked: string[] = []
@@ -2681,24 +2879,9 @@ class LspManager {
       if (watchers.length >= 12) break
     }
     if (watchers.length) s.projWatch = watchers
-    // 참조 DLL 드랍 폴더(<플러그인>\Binaries\Managed) 감시 — 게임 프로젝트가 플러그인
-    // 관리 코드를 <Reference HintPath>(빌드 산출물)로 참조하는 배치에서, 그 DLL이
-    // 재빌드되면 서버 재시작 없이는 새 타입이 영영 미해석이다(실측 PoC — dllWatch 주석).
-    // 드랍 후보는 sln csproj들의 .uplugin 조상 기준으로 찾는다.
-    const drops = new Set<string>()
-    for (const d of all) {
-      const plugin = uePluginRoot(d)
-      if (!plugin) continue
-      const drop = path.join(plugin, 'Binaries', 'Managed')
-      try {
-        if (fs.existsSync(drop)) drops.add(drop)
-      } catch {
-        /* 접근 불가 — 다음 후보로 */
-      }
-    }
     const dllWatchers: fs.FSWatcher[] = []
-    for (const drop of drops) {
-      const w = this.watchCsDllDrop(s, root, drop, ownNames)
+    for (const drop of targets.dllDrops) {
+      const w = this.watchCsDllDrop(s, root, drop, targets.ownNames)
       if (w) dllWatchers.push(w)
       if (dllWatchers.length >= 8) break
     }
