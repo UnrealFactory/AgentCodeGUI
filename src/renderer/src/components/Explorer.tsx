@@ -1070,7 +1070,7 @@ export const Explorer = memo(function Explorer({
             {st.files.length === 0 && st.ahead === 0 && st.behind === 0 && (
               <span className="pill clean">
                 <IconCheck size={8} stroke={3} />
-                {st.upstream ? t('최신', 'Up to date') : t('깨끗', 'Clean')}
+                {t('최신', 'Up to date')}
               </span>
             )}
           </button>
