@@ -518,6 +518,38 @@ export interface MultiEngineEvent {
   event: EngineEvent
 }
 
+/** 패널 팝아웃 창의 상태 꾸러미 — 열 때(부트)와 닫힐 때(복귀) 같은 모양으로 오간다.
+ *  picker·queue·snapshot은 렌더러 소유 타입이라 여기선 불투명(unknown)으로 나른다
+ *  (maSave 블롭과 같은 규칙 — 검증은 렌더러의 sanitize가 담당). */
+export interface PanelPopState {
+  panelId: string
+  slot: number
+  num: number // 팝아웃 시점의 자리 번호 — 창 헤더 번호 칩 표기용
+  title: string
+  custom: boolean
+  locked: boolean
+  color: string
+  cwd: string
+  refDirs: string[]
+  picker: unknown
+  api: boolean
+  input: string
+  images: string[]
+  queue: unknown[]
+  snapshot: unknown
+}
+/** main→메인 창: 팝아웃 창 닫힘 통지 — flush는 그 창의 마지막 페르시스트(없으면 null) */
+export interface PanelPopClosed {
+  panelId: string
+  flush: PanelPopState | null
+}
+/** 세션 마운트 시점의 팝아웃 현황 — open은 아직 떠 있는 창들, leftovers는 그 세션 화면이
+ *  내려가 있는 동안 닫힌 창들의 미회수 복귀분(조회가 곧 소비 — 두 번 적용되지 않는다) */
+export interface PanelPopStates {
+  open: string[]
+  leftovers: PanelPopState[]
+}
+
 export interface PermissionResponse {
   requestId: string
   // 'allow_always' = allow now AND stop asking for this tool for the rest of the session
@@ -892,6 +924,16 @@ export const IPC = {
   maGet: 'ma:get', // load the persisted multi-agent workspace (layout + panel snapshots)
   maSave: 'ma:save', // persist the multi-agent workspace so it survives a restart
   maLoadSession: 'ma:load-session', // read one saved session (지연 로드 — 비활성 세션 패널은 메모리에 없다)
+  // 패널 팝아웃 창 — 멀티 패널 하나를 별도 OS 창으로(크게 보기의 창 버전, 듀얼 모니터용).
+  // 엔진은 그대로 메인의 패널 풀(panelId)이고, 그 panelId의 maEvent가 이 창에도 팬아웃된다.
+  // 창을 닫으면 마지막 페르시스트(초안·메타·스냅샷)가 메인 창으로 되돌아와 그리드에 복귀한다.
+  maPanelOpen: 'ma:panel-open', // 메인 창 → 팝아웃 창 열기 (부트 페이로드 동봉)
+  maPanelHydrate: 'ma:panel-hydrate', // 팝아웃 창 → 자기 부트 페이로드 조회 (마운트 복원)
+  maPanelPersist: 'ma:panel-persist', // 팝아웃 창 → 자기 상태 저장 (디바운스 — 닫힘 때 메인 창 복귀분)
+  maPanelFocus: 'ma:panel-focus', // 메인 창 → 열린 팝아웃 창을 앞으로 (유령 클릭)
+  maPanelClose: 'ma:panel-close', // 메인 창 → 팝아웃 창 닫기 (closed가 복귀 통지를 담당)
+  maPanelStates: 'ma:panel-states', // 메인 창 마운트 → 이 세션의 열린 팝아웃 + 미회수 복귀분 조회(소비)
+  maPanelLeftoverClear: 'ma:panel-leftover-clear', // 메인 창 → 라이브로 회수한 복귀분의 잔여 사본 폐기
   // 채팅 — a pure-conversation workspace on its OWN engine instance, with its own
   // conversation list. No project folder, explorer, or tools UI.
   talkRun: 'talk:run',
@@ -1048,6 +1090,7 @@ export const IPC = {
   openDirectory: 'app:open-directory', // a folder opened via "AgentCodeGUI로 열기" while already running
   updateEvent: 'app:update-event', // streamed auto-update status
   maEvent: 'ma:event', // streamed events from every multi-agent engine (wrapped with panelId)
+  maPanelClosed: 'ma:panel-closed', // main→메인 창: 팝아웃 창이 닫힘 (마지막 페르시스트 동봉 — 그리드 복귀)
   talkEvent: 'talk:event', // streamed events from the 채팅 (pure conversation) engine
   sessionEvent: 'session:event', // streamed events from a session window's own engine
   sessionWindowsChanged: 'session-wins:changed', // main→메인 창: 추가 채팅 목록 변경

@@ -28,6 +28,95 @@ type LocalizedRelease = { ko: Release; en: Release }
 // 지난 1.x 노트들은 은퇴한 UpdateNotes와 함께 정리했다(이제 보여줄 경로가 없다).
 const MAX_VERSIONS = 5
 const RELEASES: Record<string, LocalizedRelease> = {
+  '2.5.0': {
+    ko: {
+      eyebrow: 'NEW',
+      lead: '멀티 패널이 자유로워집니다 — 패널을 별도 창으로 뽑아 다른 모니터에 두고, 끌어서 순서도 바꿔요. 긴 작업에서 끝난 워크플로 알약이 쌓이던 것도 정리했습니다.',
+      notes: [
+        {
+          tag: '멀티',
+          name: '패널을 별도 창으로 — 듀얼 모니터에서 나란히',
+          desc: (
+            <>
+              패널 헤더의 새 버튼(크게 보기 옆 ↗)으로 그 패널을 <b>독립 창</b>으로 띄웁니다.
+              창은 자유롭게 옮기고 크기를 바꿀 수 있어 — <b>확대해 볼 패널은 왼쪽 모니터에,
+              나머지 그리드는 오른쪽에</b> 두는 식으로 나란히 쓸 수 있어요. 실행 중인 턴과
+              백그라운드 작업은 <b>끊기지 않고</b>, 창을 닫으면 쓰던 초안·설정까지 그대로
+              그리드로 돌아옵니다. 그리드의 빈 자리를 클릭하면 그 창이 앞으로 와요.
+            </>
+          )
+        },
+        {
+          tag: '멀티',
+          name: '패널 순서를 끌어서 바꿔요',
+          desc: (
+            <>
+              패널 헤더를 <b>잠깐 길게 누르면</b> 집어 들 수 있습니다 — 끌어서 원하는 자리에
+              놓으면 끝. 바꾼 순서는 세션에 저장돼 다시 켜도 유지돼요. 번호는 <b>자리
+              기준</b>(왼쪽부터 1·2·3…)이라 옮기면 새 자리 번호를 받고, 대화·실행·색 태그는
+              패널을 그대로 따라갑니다. 쓰임이 없던 숫자 키(1~N) 패널 점프는 정리했어요.
+            </>
+          )
+        },
+        {
+          tag: '워크플로',
+          name: '끝난 워크플로 알약이 바로 걷혀요',
+          desc: (
+            <>
+              에이전트가 턴을 끝내지 않은 채 워크플로를 연달아 돌리는 <b>긴 작업</b>에서, 이미
+              끝난 워크플로 알약이 화면 아래에 <b>계속 쌓여 남던</b> 문제를 고쳤습니다. 이제
+              완료·중지되는 <b>즉시 사라지고</b>, 실제로 돌고 있는 것만 남아요.
+            </>
+          )
+        }
+      ]
+    },
+    en: {
+      eyebrow: 'NEW',
+      lead: 'Multi panels break free — pop a panel out into its own window on another monitor, and drag panels to reorder them. Finished workflow pills no longer pile up during long runs.',
+      notes: [
+        {
+          tag: 'Multi',
+          name: 'Pop a panel out — side by side on two monitors',
+          desc: (
+            <>
+              A new button in the panel header (↗, next to Expand) opens that panel in its{' '}
+              <b>own window</b> — move and resize it freely, so the panel you want big sits on{' '}
+              <b>the left monitor while the grid stays on the right</b>. Running turns and
+              background work <b>keep going uninterrupted</b>, and closing the window returns
+              everything — even the draft you were typing — right back to the grid. Clicking
+              the placeholder in the grid brings the window forward.
+            </>
+          )
+        },
+        {
+          tag: 'Multi',
+          name: 'Drag panels to reorder them',
+          desc: (
+            <>
+              <b>Press and hold</b> a panel header for a moment to pick it up — drag it to the
+              spot you want and drop. The order is saved per session. Numbers follow the{' '}
+              <b>position</b> (1·2·3… from the left), so a moved panel takes its new spot&apos;s
+              number while its conversation, runs, and color tag travel with it. The unused
+              number-key (1–N) panel jump has been retired.
+            </>
+          )
+        },
+        {
+          tag: 'Workflow',
+          name: 'Finished workflow pills clear right away',
+          desc: (
+            <>
+              During <b>long runs</b> where the agent keeps its turn going while running one
+              workflow after another, pills for already-finished workflows used to{' '}
+              <b>pile up</b> at the bottom of the chat. They now disappear <b>the moment</b> a
+              workflow completes or stops — only what&apos;s actually running stays.
+            </>
+          )
+        }
+      ]
+    }
+  },
   '2.4.3': {
     ko: {
       eyebrow: 'IMPROVED',
@@ -286,72 +375,6 @@ const RELEASES: Record<string, LocalizedRelease> = {
               &quot;Show exhausted accounts&quot; at the tail of the account list. They now
               show <b>when they come back</b> instead of a meaningless 0% — pair one with
               auto-continue to wait out the reset on purpose.
-            </>
-          )
-        }
-      ]
-    }
-  },
-  '2.3.10': {
-    ko: {
-      eyebrow: 'FIX',
-      lead: '워크플로를 중지하거나 앱을 껐다 켠 뒤 첫 메시지가 답 없이 증발하던 문제를 뿌리부터 잡았습니다. 계정 선택도 쓸 수 있는 계정만 보여줘요.',
-      notes: [
-        {
-          tag: '안정성',
-          name: '메시지가 답 없이 끝나던 문제를 잡았어요',
-          desc: (
-            <>
-              워크플로·백그라운드 작업이 돌던 대화를 <b>Esc로 중지</b>하거나 <b>앱을 껐다 켠</b>{' '}
-              뒤, 다음 메시지가 &quot;응답 없이 끝났어요&quot;로 증발하는 일이 있었습니다.
-              엔진이 다시 뜨며 밀린 작업 통지를 소화하는 턴이 <b>메시지를 함께 삼키는 경합</b>이
-              원인 — 이제 그 시그니처를 감지하면 <b>메시지를 자동으로 다시 전달</b>합니다.
-              직접 중지한 턴은 되살리지 않아요.
-            </>
-          )
-        },
-        {
-          tag: '계정',
-          name: '주간 한도가 끝난 계정은 숨겨요',
-          desc: (
-            <>
-              계정 선택 목록에서 <b>주간 한도 잔여 0%</b>인 계정은 보이지 않습니다 — 골라도
-              실행이 거부될 뿐이니까요. <b>5시간 한도</b> 소진은 곧 풀리니 그대로 보이고, 지금
-              이 채팅이 쓰는 계정은 소진돼도 남아 다른 계정으로 벗어날 수 있어요. Claude와
-              OpenAI(Codex) 계정 모두 같은 규칙입니다.
-            </>
-          )
-        }
-      ]
-    },
-    en: {
-      eyebrow: 'FIX',
-      lead: 'Fixed the root cause of a first message silently vanishing after stopping a workflow or relaunching the app. The account picker now only offers accounts you can actually use.',
-      notes: [
-        {
-          tag: 'Stability',
-          name: 'Messages no longer end with no reply',
-          desc: (
-            <>
-              After <b>stopping a workflow with Esc</b> or <b>relaunching the app</b> while
-              background work was running, the next message could vanish with &quot;this turn
-              ended without a reply&quot;. The engine&apos;s restart turn that digests pending
-              task notifications was <b>swallowing your message along with them</b> — the app
-              now detects that signature and <b>automatically re-delivers your message</b>.
-              Turns you interrupted yourself are never resurrected.
-            </>
-          )
-        },
-        {
-          tag: 'Accounts',
-          name: 'Accounts out of weekly quota are hidden',
-          desc: (
-            <>
-              The account picker no longer lists accounts with <b>0% weekly limit left</b> —
-              picking one would only get the run rejected. A drained <b>5-hour window</b> stays
-              visible since it recovers soon, and the account this chat is currently bound to
-              stays listed even when drained so you can switch away. The same rule applies to
-              both Claude and OpenAI (Codex) accounts.
             </>
           )
         }

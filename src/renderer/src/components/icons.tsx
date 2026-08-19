@@ -456,6 +456,14 @@ export const IconExpand = (p: IconProps) => (
     <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
   </Icon>
 )
+// 별도 창으로 — 멀티 패널 팝아웃 (창 사각형 + 밖으로 나가는 화살)
+export const IconPopout = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M13 5H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-7" />
+    <path d="M14 4h6v6" />
+    <path d="M20 4 11 13" />
+  </Icon>
+)
 // collapse the full-screen modal back into its panel (IconExpand의 안쪽 화살 짝)
 export const IconCollapse = (p: IconProps) => (
   <Icon {...p}>

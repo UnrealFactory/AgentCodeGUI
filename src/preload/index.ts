@@ -12,6 +12,8 @@ import type {
   MultiRunRequest,
   MultiPermissionResponse,
   MultiQuestionResponse,
+  PanelPopState,
+  PanelPopClosed,
   MultiEngineEvent,
   AgentStatus,
   SessionWindowInfo,
@@ -258,7 +260,16 @@ const api: WindowApi = {
     onEvent: (panelId: string, cb: (e: EngineEvent) => void) =>
       subscribe(IPC.maEvent, (p: MultiEngineEvent) => {
         if (p.panelId === panelId) cb(p.event)
-      })
+      }),
+    // 패널 팝아웃 창 — 열기/부트 조회/상태 저장/포커스/정리 + 닫힘 구독 (메인 창 몫)
+    openPanelWindow: (state: PanelPopState) => ipcRenderer.invoke(IPC.maPanelOpen, state),
+    panelHydrate: () => ipcRenderer.invoke(IPC.maPanelHydrate),
+    panelPersist: (state: PanelPopState) => ipcRenderer.invoke(IPC.maPanelPersist, state),
+    panelFocus: (panelId: string) => ipcRenderer.invoke(IPC.maPanelFocus, panelId),
+    panelClose: (panelId: string) => ipcRenderer.invoke(IPC.maPanelClose, panelId),
+    panelStates: (sessionId: string) => ipcRenderer.invoke(IPC.maPanelStates, sessionId),
+    panelClearLeftover: (panelId: string) => ipcRenderer.invoke(IPC.maPanelLeftoverClear, panelId),
+    onPanelClosed: (cb: (p: PanelPopClosed) => void) => subscribe(IPC.maPanelClosed, cb)
   },
   app: {
     getVersion: () => ipcRenderer.invoke(IPC.appGetVersion) as Promise<string>,

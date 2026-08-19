@@ -49,7 +49,7 @@ import { lspManager } from './lsp/manager'
 import { initAutoUpdater, checkForUpdates, quitAndInstall, getUpdateStatus } from './updater'
 import { IPC } from '@shared/protocol'
 import { ATTACH_IMAGE_EXTS, ATTACH_TEXT_EXTS } from '@shared/attachments'
-import type { EngineEvent, RunRequest, PermissionResponse, QuestionResponse, BgTaskRequest, UsageInfo, UsageWindow, FileReadResult, FileWriteResult, UserProfile, MultiRunRequest, MultiPermissionResponse, MultiQuestionResponse, LspPos, AgentStatus, SessionWindowInfo, SessionPersistPayload, SessionHydrateData, EngineUpdateItem, EngineUpdateStatus, ModelId, EffortId, TrayMenuItem } from '@shared/protocol'
+import type { EngineEvent, RunRequest, PermissionResponse, QuestionResponse, BgTaskRequest, UsageInfo, UsageWindow, FileReadResult, FileWriteResult, UserProfile, MultiRunRequest, MultiPermissionResponse, MultiQuestionResponse, MultiEngineEvent, PanelPopState, PanelPopClosed, LspPos, AgentStatus, SessionWindowInfo, SessionPersistPayload, SessionHydrateData, EngineUpdateItem, EngineUpdateStatus, ModelId, EffortId, TrayMenuItem } from '@shared/protocol'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -359,11 +359,19 @@ const maEngines = new Map<string, EngineRouter>()
 function maEngine(panelId: string): EngineRouter {
   let eng = maEngines.get(panelId)
   if (!eng) {
-    eng = new EngineRouter(coalesceStream((event: EngineEvent) => send(IPC.maEvent, { panelId, event })), 'ma')
+    eng = new EngineRouter(coalesceStream((event: EngineEvent) => sendMaEvent({ panelId, event })), 'ma')
     maEngines.set(panelId, eng)
   }
   maLastUsed.set(panelId, Date.now())
   return eng
+}
+// 패널 이벤트 팬아웃 — 메인 창(그리드 미러) + 그 panelId의 팝아웃 창(열려 있으면).
+// 두 창이 같은 이벤트를 각자 리듀스하므로 팝아웃 중에도 메인 쪽 상태가 계속 최신이다
+// (창이 닫히면 마지막 페르시스트가 초안·카드 정리 같은 렌더러 로컬 변화를 되메운다).
+function sendMaEvent(payload: MultiEngineEvent): void {
+  send(IPC.maEvent, payload)
+  const w = panelWinOf(payload.panelId)
+  if (w) w.webContents.send(IPC.maEvent, payload)
 }
 // 패널 엔진 유휴 회수 — 해제 경로가 렌더러의 maDispose(세션 삭제)뿐이라, codex를 한 번
 // 돌린 패널의 상시 app-server가 세션을 지우기 전까지 무한 누적됐다(LSP 서버 누적과 같은
@@ -620,6 +628,91 @@ function focusSessionChat(id: string): void {
     return
   }
   if (sessionChats.has(id)) createSessionWindow(id)
+}
+
+// ── 패널 팝아웃 창 — 멀티 패널 하나를 별도 OS 창으로 (크게 보기의 창 버전) ──────
+// 엔진은 그대로 패널 풀(maEngines) 소유 — 이 창은 그 panelId의 maEvent를 함께 받아
+// 그리는 미러 뷰라서, 창을 열고 닫아도 실행·백그라운드는 끊기지 않는다. 닫히면 마지막
+// 페르시스트(panelFlushes)가 메인 창으로 돌아가(maPanelClosed) 그리드 유령이 복귀한다.
+const panelWins = new Map<number, { win: BrowserWindow; panelId: string }>() // webContents id 키
+const panelBoots = new Map<number, PanelPopState>() // wcId → 부트 페이로드 (마운트 복원 1회분)
+const panelFlushes = new Map<string, PanelPopState>() // panelId → 마지막 페르시스트 (닫힘 복귀분)
+// 닫힘 복귀분의 잔여 사본 — 그 세션 화면(ActiveSession)이 내려가 있는 동안 창이 닫히면
+// maPanelClosed를 받는 이가 없어 팝아웃에서의 진행이 증발한다. 사본을 남겨 두고, 라이브
+// 회수가 지우거나(레이스 차단) 다음 마운트의 maPanelStates 조회가 소비한다.
+const panelLeftovers = new Map<string, PanelPopState>()
+function panelWinOf(panelId: string): BrowserWindow | null {
+  for (const p of panelWins.values()) if (p.panelId === panelId && !p.win.isDestroyed()) return p.win
+  return null
+}
+function createPanelWindow(state: PanelPopState): void {
+  const existing = panelWinOf(state.panelId)
+  if (existing) {
+    // 같은 패널을 또 열면 새 창 대신 있던 창을 앞으로 (부트 페이로드는 처음 것 유지 —
+    // 그 창이 이미 라이브 상태를 쥐고 있다)
+    if (!existing.isVisible()) existing.show()
+    if (existing.isMinimized()) existing.restore()
+    existing.focus()
+    return
+  }
+  const win = new BrowserWindow({
+    width: 1100,
+    height: 820,
+    minWidth: 560,
+    minHeight: 480,
+    show: false,
+    // 추가 채팅 창과 같은 아크릴 껍데기 — 프레임리스여도 OS 리사이즈·스냅이 산다
+    frame: false,
+    backgroundMaterial: 'acrylic',
+    autoHideMenuBar: true,
+    title: t('패널 — AgentCodeGUI', 'Panel — AgentCodeGUI'),
+    webPreferences: {
+      preload: path.join(__dirname, '../preload/index.mjs'),
+      contextIsolation: true,
+      sandbox: false
+    }
+  })
+  const wcId = win.webContents.id
+  keepAcrylicWhenBlurred(win)
+  win.once('ready-to-show', () => win.show())
+  // never navigate the app away; open external links in the OS browser (mirrors mainWindow)
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    try {
+      const { protocol: p } = new URL(url)
+      if (p === 'https:' || p === 'http:') shell.openExternal(url)
+    } catch {
+      /* malformed URL — ignore */
+    }
+    return { action: 'deny' }
+  })
+  win.webContents.on('will-navigate', (event, url) => {
+    const dev = process.env['ELECTRON_RENDERER_URL']
+    const allowed = (dev && url.startsWith(dev)) || url.startsWith('file:')
+    if (!allowed) event.preventDefault()
+  })
+  win.on('maximize', () => win.webContents.send(IPC.winState, { maximized: true }))
+  win.on('unmaximize', () => win.webContents.send(IPC.winState, { maximized: false }))
+  // 닫힘 = 그리드 복귀 — 마지막 페르시스트를 메인 창에 넘긴다(초안·메타·카드 정리까지
+  // 되메움). 앱 종료 중엔 통지 생략(메인 창도 함께 내려간다). 세션 전환 정리(maPanelClose)
+  // 로 닫혀도 같은 길 — 새 세션 화면은 panelId 불일치로 무시하니 무해하다.
+  win.on('closed', () => {
+    panelWins.delete(wcId)
+    panelBoots.delete(wcId)
+    const flush = panelFlushes.get(state.panelId) ?? null
+    panelFlushes.delete(state.panelId)
+    if (flush && !appQuitting) panelLeftovers.set(state.panelId, flush)
+    if (!appQuitting) send(IPC.maPanelClosed, { panelId: state.panelId, flush } satisfies PanelPopClosed)
+  })
+  panelWins.set(wcId, { win, panelId: state.panelId })
+  panelBoots.set(wcId, state)
+  // 초기 복귀분 = 부트 상태 — 창이 첫 페르시스트 전에 닫혀도 초안·메타가 증발하지 않는다
+  panelFlushes.set(state.panelId, state)
+  const devUrl = process.env['ELECTRON_RENDERER_URL']
+  if (devUrl) {
+    win.loadURL(devUrl + '#mapanel')
+  } else {
+    win.loadFile(path.join(__dirname, '../renderer/index.html'), { hash: 'mapanel' })
+  }
 }
 
 // ── 시스템 트레이 — X = 트레이로 최소화 ─────────────────────────────────────
@@ -1124,6 +1217,42 @@ function registerIpc(): void {
   ipcMain.handle(IPC.maGet, async () => readMulti(true)) // light — chatsGet과 같은 부팅 경량화
   ipcMain.handle(IPC.maSave, async (_e, data: unknown) => writeMulti(data))
   ipcMain.handle(IPC.maLoadSession, async (_e, id: unknown) => readMultiSession(id))
+  // 패널 팝아웃 창 — 열기/부트 조회/상태 저장/포커스/정리
+  ipcMain.handle(IPC.maPanelOpen, async (_e, state: PanelPopState) => {
+    if (state && typeof state.panelId === 'string') createPanelWindow(state)
+  })
+  ipcMain.handle(IPC.maPanelHydrate, async (e) => panelBoots.get(e.sender.id) ?? null)
+  ipcMain.handle(IPC.maPanelPersist, async (e, state: PanelPopState) => {
+    // 자기 창의 panelId만 갱신 — 다른 창/panelId를 건드릴 수 없게 sender로 검증
+    const rec = panelWins.get(e.sender.id)
+    if (rec && state && state.panelId === rec.panelId) panelFlushes.set(rec.panelId, state)
+  })
+  ipcMain.handle(IPC.maPanelFocus, async (_e, panelId: string) => {
+    const w = panelWinOf(panelId)
+    if (!w) return
+    if (!w.isVisible()) w.show()
+    if (w.isMinimized()) w.restore()
+    w.focus()
+  })
+  ipcMain.handle(IPC.maPanelClose, async (_e, panelId: string) => {
+    panelWinOf(panelId)?.destroy() // 'closed'가 복귀 통지·맵 정리를 담당
+  })
+  ipcMain.handle(IPC.maPanelStates, async (_e, sessionId: string) => {
+    const prefix = String(sessionId) + '::'
+    const open: string[] = []
+    for (const p of panelWins.values()) if (!p.win.isDestroyed() && p.panelId.startsWith(prefix)) open.push(p.panelId)
+    const leftovers: PanelPopState[] = []
+    for (const [pid, st] of [...panelLeftovers]) {
+      if (pid.startsWith(prefix)) {
+        leftovers.push(st)
+        panelLeftovers.delete(pid) // 조회가 곧 소비 — 같은 복귀분이 두 번 적용되지 않는다
+      }
+    }
+    return { open, leftovers }
+  })
+  ipcMain.handle(IPC.maPanelLeftoverClear, async (_e, panelId: string) => {
+    panelLeftovers.delete(String(panelId))
+  })
 
   ipcMain.handle(IPC.pickDirectory, async (_e) => {
     // parent the picker to the window that asked (so a 추가 채팅 창의 다이얼로그가 그 창 위에 뜬다);

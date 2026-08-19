@@ -3585,6 +3585,19 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
 .ma-grid.n5 > .ma-panel:nth-child(4), .ma-grid.n5 > .ma-panel:nth-child(5){ grid-column:span 3; }
 .ma-grid.n6{ grid-template-columns:repeat(3, minmax(0, 1fr)); }
 
+/* ── 패널 위치 변경 — 헤더 빈 곳을 길게 누르면(0.35s) 집어 들고 끌어서 놓는다 ──
+   헤더가 손잡이라 grab 커서로 힌트(버튼·폴더 칩은 전역 button 커서가 이긴다).
+   드래그 중엔 그리드 전체 grabbing + 텍스트 선택 억제, 집힌 패널은 포커스 링과
+   같은 문법의 강조 + 그림자로 "들려 있음"을 만든다. */
+.ma-grid .ma-p-head{ cursor:grab; } /* 크게 보기 카드의 헤더는 드래그 불가 — 그리드 스코프만 */
+.ma-grid.reordering{ user-select:none; }
+.ma-grid.reordering, .ma-grid.reordering *{ cursor:grabbing !important; }
+.ma-panel.drag-lift{
+  border-color:var(--accent-line);
+  box-shadow:0 0 0 1px var(--accent-line), 0 12px 30px -6px rgba(0,0,0,.55);
+  opacity:.92; z-index:5;
+}
+
 /* one panel. No overflow:hidden — the picker / folder dropdowns and tool tooltips
    must be free to escape the panel box; the top/bottom corners are rounded on the
    header and footer instead so the frame still reads as a single rounded card.
@@ -3612,7 +3625,7 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
 /* position:relative — 컬러 태그 라인(.ma-p-tag)·첫 지시 미리보기(.ma-p-peek)의 앵커
    (그리드 스코프의 hpop 앵커 규칙과 겹쳐도 무해 — 크게 보기 카드에서도 같은 기준) */
 .ma-p-head{ flex:0 0 auto; display:flex; align-items:center; gap:8px; height:36px; padding:0 10px 0 12px; position:relative; }
-/* slot number — doubles as the keyboard shortcut hint; lights up when the panel is selected */
+/* 자리 번호(1‥N) — 드래그로 옮기면 그 자리 번호를 새로 받는다; lights up when the panel is selected */
 .ma-p-num{
   flex:0 0 auto; min-width:17px; height:17px; padding:0 4px; border-radius:5px;
   display:grid; place-items:center; font-family:var(--font-mono); font-size:10.5px; font-weight:700;
@@ -3820,7 +3833,7 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
 .ma-expand-card > .ma-panel{ flex:1; min-height:0; border:none; border-radius:0; box-shadow:none; }
 /* 확대 중 뒤 그리드 패널의 질문/승인 카드(z80)는 베일 밑으로 — .ma-panel은 스태킹
    컨텍스트가 아니라 z80이 루트 층에서 베일(55) 위로 떠오른다. 상태 칩(응답 대기)이
-   대신 알리고, 숫자 키로 그 패널을 카드로 갈아끼워 답한다.
+   대신 알리고, 카드를 접고 그 패널을 클릭해 답한다.
    알약·워크플로 표면은 기본 z30이라 손대지 않아도 베일 아래에 깔린다 */
 .multi.expanded .ma-panel .q-overlay{ z-index:40; }
 /* 베일이 멀티 헤더를 덮는 동안 창 드래그 띠 해제 — drag 영역은 z 무시·평면 합산이라
@@ -3830,6 +3843,18 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
 /* 크게 보는 패널의 그리드 자리 지킴이 — 배치 규칙 유지용 .ma-panel + 점선 프레임 */
 .ma-panel.ma-ghost{ flex-direction:row; align-items:center; justify-content:center; gap:8px; border-style:dashed; }
 .ma-ghost-text{ font-size:12px; color:var(--text-4); }
+/* 팝아웃 유령 — 실물은 별도 OS 창. 클릭하면 그 창을 앞으로 (호버로 클릭 유도) */
+.ma-ghost.pop{ cursor:pointer; transition:border-color .14s; }
+.ma-ghost.pop:hover{ border-color:var(--accent-line); }
+
+/* ── 패널 팝아웃 창 (#mapanel) — PanelView 하나가 창 전체를 쓴다 ─────────────
+   .sw 껍데기(고정 풀스크린·chat-bg) 위에 슬림 드래그 띠 + 창 컨트롤, 아래는
+   크게 보기 카드와 같은 전체 크기 패널(테두리 없음 — 창 프레임이 곧 카드). */
+.pw-head{ flex:0 0 auto; height:34px; display:flex; align-items:center; padding:0 6px 0 12px; -webkit-app-region:drag; }
+.pw-head .pw-drag{ flex:1; }
+.pw-head button{ -webkit-app-region:no-drag; }
+.pw-body{ flex:1; min-height:0; display:flex; position:relative; }
+.pw-body > .ma-panel{ flex:1; min-width:0; min-height:0; border:none; border-radius:0; box-shadow:none; }
 
 /* hydration spinner + empty hint */
 .ma-hydrate{ position:absolute; inset:52px 0 0; display:grid; place-items:center; background:var(--bg); }

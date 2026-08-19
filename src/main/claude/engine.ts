@@ -624,9 +624,11 @@ export class ClaudeEngine {
     let turnFromInject = false
     // id별 마지막 스냅샷 — 동시 워크플로가 서로의 알약을 덮어쓰지 않게 워크플로마다 든다
     const wfSnaps = new Map<string, WorkflowState>()
-    // 정착 스냅샷의 지연 방출분(id별) — 렌더러의 전송 게이트(wfAlive)가 wf.status==='running'에
-    // 매달리므로, 정리 턴이 끝나기 전에 settled를 내보내면 그 틈에 새 전송이 끼어들어
-    // 정리 턴을 자른다. 정리 턴의 result(또는 무음 정착·스트림 종료)에서 내보낸다.
+    // 정착 스냅샷의 지연 방출분(id별) — 유휴 상주(턴 종료 후) 정착 전용. 렌더러의 전송
+    // 게이트(wfAlive)가 wf.status==='running'에 매달리므로, 정리 턴이 끝나기 전에 settled를
+    // 내보내면 그 틈에 새 전송이 끼어들어 정리 턴을 자른다. 정리 턴의 result(또는 무음
+    // 정착·스트림 종료)에서 내보낸다. 진행 중인 턴의 정착은 busy가 전송을 막고 있어
+    // 즉시 방출한다(통지 처리 분기) — 미루면 턴이 긴 동안 알약이 안 걷히고 쌓인다.
     const wfSettledEmits = new Map<string, WorkflowState>()
     const flushWfSettled = (): void => {
       for (const wf of wfSettledEmits.values()) this.emit({ type: 'workflow', runId, wf })
@@ -1460,8 +1462,10 @@ export class ClaudeEngine {
                 // 'Dynamic workflow "…" completed' 꼴이라 흔적 줄에서 '완료'와 중복된다
                 const settled: WorkflowState = { ...snap, status: st, summary: snap.summary || msg.summary?.trim() || '' }
                 wfSnaps.set(msg.task_id, settled)
-                // 직접 중지는 보고 턴이 없으므로 즉시, 그 외엔 보고 턴 뒤로 미룬다
-                if (byUser) this.emit({ type: 'workflow', runId, wf: settled })
+                // 직접 중지는 보고 턴이 없고, 진행 중인 턴의 정착은 busy가 이미 전송을
+                // 예약 큐로 막고 있어 미룰 이유가 없다(미루면 마라톤 턴에서 완료 알약이
+                // 안 걷히고 계속 쌓인다) — 둘 다 즉시 방출. 유휴 상주의 정착만 미룬다.
+                if (byUser || !this.turnEnded) this.emit({ type: 'workflow', runId, wf: settled })
                 else wfSettledEmits.set(msg.task_id, settled)
               }
             }

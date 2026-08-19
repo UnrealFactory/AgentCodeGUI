@@ -6,6 +6,9 @@ import type {
   MultiRunRequest,
   MultiPermissionResponse,
   MultiQuestionResponse,
+  PanelPopState,
+  PanelPopClosed,
+  PanelPopStates,
   EngineEvent,
   WindowState,
   UsageInfo,
@@ -412,6 +415,22 @@ export interface WindowApi {
     loadSession(id: string): Promise<unknown>
     /** subscribe to one panel's streaming engine events (returns an unsubscribe fn) */
     onEvent(panelId: string, cb: (event: EngineEvent) => void): () => void
+    /** 패널 팝아웃 창 열기 — 이미 열려 있으면 그 창을 앞으로 (메인 창에서 호출) */
+    openPanelWindow(state: PanelPopState): Promise<void>
+    /** 팝아웃 창 → 자기 부트 페이로드(연 순간의 패널 상태) 조회 */
+    panelHydrate(): Promise<PanelPopState | null>
+    /** 팝아웃 창 → 자기 상태 저장(디바운스) — 창이 닫힐 때 메인 창으로 되돌아간다 */
+    panelPersist(state: PanelPopState): Promise<void>
+    /** 메인 창 → 열린 팝아웃 창을 앞으로 (그리드 유령 클릭) */
+    panelFocus(panelId: string): Promise<void>
+    /** 메인 창 → 팝아웃 창 닫기 (closed가 복귀 통지를 담당) */
+    panelClose(panelId: string): Promise<void>
+    /** 세션 마운트 → 이 세션의 열린 팝아웃 + 미회수 복귀분 조회(leftover는 조회가 곧 소비) */
+    panelStates(sessionId: string): Promise<PanelPopStates>
+    /** 라이브 복귀를 마친 뒤 잔여 사본 폐기 — 다음 마운트에서 낡은 복귀분이 두 번 적용되지 않게 */
+    panelClearLeftover(panelId: string): Promise<void>
+    /** 메인 창: 팝아웃 창 닫힘 구독 — 마지막 페르시스트를 받아 그리드로 복귀시킨다 */
+    onPanelClosed(cb: (p: PanelPopClosed) => void): () => void
   }
   /** App metadata + auto-update (electron-updater, GitHub Releases). */
   app: {

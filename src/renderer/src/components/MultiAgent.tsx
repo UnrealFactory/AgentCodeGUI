@@ -1,5 +1,5 @@
 import { Suspense, lazy, memo, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
-import type { AgentStatus, BgTaskRequest, ChangedFile, EngineId, UsageInfo, MultiRunRequest, EngineEvent, SubAgentInfo } from '@shared/protocol'
+import type { AgentStatus, BgTaskRequest, ChangedFile, EngineId, UsageInfo, MultiRunRequest, EngineEvent, SubAgentInfo, PanelPopState, PanelPopClosed } from '@shared/protocol'
 import {
   useAgentSession,
   initialSessionState,
@@ -43,7 +43,7 @@ import { extractMentions } from '../lib/mentions'
 import { useTurnNotifyList } from '../lib/notify'
 import { mergeRefs, useZoom, ZoomBadge } from './zoom'
 import { MouseGestureLayer, clearGesture, sessionWindowGesture } from './mouseGesture'
-import { IconFolder, IconChevDown, IconMascot, IconPanelRight, IconExpand, IconCollapse, IconPencil, IconLock, IconLockOpen } from './icons'
+import { IconFolder, IconChevDown, IconMascot, IconPanelRight, IconExpand, IconCollapse, IconPopout, IconPencil, IconLock, IconLockOpen } from './icons'
 import { t, useLang } from '../lib/i18n'
 
 // A multi-agent SESSION is a group of N panels that work together. The recent-tasks
@@ -76,14 +76,14 @@ const STATUS_META: Record<AgentStatus, { label: () => string; cls: string }> = {
 const DEFAULT_PICKER: PickerState = { model: 'opus', effort: 'xhigh', mode: 'bypass' }
 
 // 아직 조회 전인 계정의 빈 사용량 — 컨텍스트 팝오버 한도 행이 '데이터 없음'으로 그려진다
-const EMPTY_USAGE: UsageInfo = { fiveHour: null, weekly: null, weeklyFable: null, extraCredit: null }
+export const EMPTY_USAGE: UsageInfo = { fiveHour: null, weekly: null, weeklyFable: null, extraCredit: null }
 
 // a picker restored from disk may be missing, truncated (crash mid-save), or hold ids
 // this build no longer knows — each field falls back to the default individually
 const PICKER_MODELS = ['fable', 'opus', 'sonnet', 'haiku']
 const PICKER_EFFORTS = ['max', 'xhigh', 'high', 'medium', 'low', 'minimal']
 const PICKER_MODES = ['normal', 'plan', 'acceptEdits', 'auto', 'bypass']
-function sanitizePanelPicker(p?: Partial<PickerState> | null): PickerState {
+export function sanitizePanelPicker(p?: Partial<PickerState> | null): PickerState {
   return {
     model: p?.model && PICKER_MODELS.includes(p.model) ? p.model : DEFAULT_PICKER.model,
     effort: p?.effort && PICKER_EFFORTS.includes(p.effort) ? p.effort : DEFAULT_PICKER.effort,
@@ -100,7 +100,7 @@ function sanitizePanelPicker(p?: Partial<PickerState> | null): PickerState {
 const MULTI_VERSION = 2
 
 // one panel's live state within a session (input + images + queue are draft-only, not persisted)
-interface PanelMeta {
+export interface PanelMeta {
   title: string
   custom: boolean // user-renamed → keep the title instead of deriving it from the prompt
   locked: boolean // 제목 잠금 — /clear·제스처 비우기·폴더 변경·매 전송 자동 유도에도 현 제목 동결
@@ -131,6 +131,10 @@ interface PersistedSession {
   title: string
   custom: boolean
   count: number
+  // 패널 표시 순서 — 슬롯 번호의 순열(길이 SLOT_COUNT). 헤더 길게 누르기 드래그로 바꾼
+  // 자리 배치다. 슬롯 정체성(엔진 채널·훅·메타 인덱스·번호 칩)은 패널을 따라가고 그리드
+  // 위치만 바뀐다. 없으면(예전 저장본) 기본 순서.
+  panelOrder?: number[]
   panels: PersistedPanel[] // length SLOT_COUNT
   updatedAt?: number // 마지막 활동(실행 시작) 시각 — 사이드바 상대 시간 표시용
   // 패널 스냅샷이 메모리에 없다는 표식 — panels는 빈 배열이고 진짜는 디스크(maStore)에
@@ -150,6 +154,7 @@ interface MultiPersist {
 // the active session's panels reported up for persistence
 interface CommitPayload {
   count: number
+  panelOrder: number[]
   panels: PersistedPanel[]
 }
 
@@ -165,27 +170,27 @@ export interface MultiExplorerInfo {
   pickFolder: () => void // 그 패널의 폴더 선택 (OS 픽커 + 확인 카드 흐름)
 }
 
-function freshPanel(api = false): PanelMeta {
+export function freshPanel(api = false): PanelMeta {
   return { title: '', custom: false, locked: false, color: '', cwd: '', refDirs: [], picker: { ...DEFAULT_PICKER }, api, input: '', images: [], queue: [] }
 }
 // 저장본의 참조 폴더 위생 — 문자열 배열만, 상한 8 (본채팅 sanitizeRefDirs와 같은 규칙)
-function sanitizeRefDirs(v: unknown): string[] {
+export function sanitizeRefDirs(v: unknown): string[] {
   return Array.isArray(v) ? v.filter((s): s is string => typeof s === 'string' && !!s).slice(0, 8) : []
 }
 // 컬러 태그 순환 팔레트 — 탈채도 기능색(:root 변수명 그대로). 해제 상태는 없다(유저 결정:
 // 모든 패널이 항상 색으로 구분). 저장값 ''은 "슬롯 기본색"으로 읽어 예전 저장본도 자동 착색.
 const TAG_COLORS = ['violet', 'blue', 'amber', 'teal', 'green', 'yellow', 'red']
-function defaultTag(slot: number): string {
+export function defaultTag(slot: number): string {
   return TAG_COLORS[slot % TAG_COLORS.length]
 }
-function nextTag(c: string): string {
+export function nextTag(c: string): string {
   return TAG_COLORS[(TAG_COLORS.indexOf(c) + 1) % TAG_COLORS.length]
 }
-function sanitizeTag(v: unknown): string {
+export function sanitizeTag(v: unknown): string {
   return typeof v === 'string' && TAG_COLORS.includes(v) ? v : ''
 }
 // 패널 자동 제목 — 첫 프롬프트(명령이면 카드 제목) 유래. 직접 지정 제목을 비워 저장하면 여기로 복귀
-function deriveTitle(text: string): string {
+export function deriveTitle(text: string): string {
   const cmd = commandOf(text)
   return cmd ? commandTitleOf(cmd) : text.slice(0, 80) || t('파일 첨부', 'File attachment')
 }
@@ -201,6 +206,11 @@ function blankSession(id: string, count = 4): PersistedSession {
 function clampCount(n: unknown): number {
   const v = typeof n === 'number' ? n : 4
   return Math.max(2, Math.min(SLOT_COUNT, Math.round(v)))
+}
+// 패널 표시 순서 위생 — 슬롯 번호의 온전한 순열만 인정(길이·구성원 검사), 어긋나면
+// (예전 저장본·크래시 반토막) 기본 순서. 표시만 바꾸는 값이라 폴백이 안전하다.
+function sanitizePanelOrder(v: unknown): number[] {
+  return Array.isArray(v) && v.length === SLOT_COUNT && SLOTS.every((s) => v.includes(s)) ? (v as number[]) : [...SLOTS]
 }
 function basename(p: string): string {
   const parts = p.split(/[\\/]+/).filter(Boolean)
@@ -227,7 +237,7 @@ function aggregateStatus(sts: AgentStatus[]): AgentStatus {
 
 // stable callback identity that always calls the latest closure (memoized panels skip
 // re-render on a sibling's keystroke without stale closures)
-function useEvent<A extends unknown[], R>(fn: (...args: A) => R): (...args: A) => R {
+export function useEvent<A extends unknown[], R>(fn: (...args: A) => R): (...args: A) => R {
   const ref = useRef(fn)
   ref.current = fn
   return useRef((...args: A) => ref.current(...args)).current
@@ -243,6 +253,7 @@ function subFor(channel: string) {
 // 미니어처다. 패널 고유의 것은 헤더(번호·제목·폴더 칩·상태)와 패널 스코프 카드뿐.
 interface PanelViewProps {
   slot: number
+  num: number // 자리 번호(1‥N) — 그리드 위치 기준. 드래그로 옮기면 바뀐다
   meta: PanelMeta
   state: SessionState
   busy: boolean
@@ -281,6 +292,7 @@ interface PanelViewProps {
   onRefreshUsage: (slot: number) => void // 컨텍스트 팝오버를 열 때 이 패널 계정의 사용량 강제 새로고침
   onFocusPanel: (slot: number) => void
   onToggleExpand: (slot: number) => void // 헤더 버튼 — 크게 보기 ⟷ 원래 크기로
+  onPopout?: (slot: number) => void // 헤더 버튼 — 별도 OS 창으로 (팝아웃 창 안에선 미제공=숨김)
   onPermission: (slot: number, behavior: 'allow' | 'allow_always' | 'deny') => void
   onAnswer: (slot: number, answers: string[][]) => void
   onDismissQuestion: (slot: number) => void
@@ -291,8 +303,9 @@ interface PanelViewProps {
   onCycleColor: (slot: number) => void // 번호 칩 클릭 — 컬러 태그 순환
 }
 
-const PanelView = memo(function PanelView({
+export const PanelView = memo(function PanelView({
   slot,
+  num,
   meta,
   state,
   busy,
@@ -331,6 +344,7 @@ const PanelView = memo(function PanelView({
   onRefreshUsage,
   onFocusPanel,
   onToggleExpand,
+  onPopout,
   onPermission,
   onAnswer,
   onDismissQuestion,
@@ -459,7 +473,7 @@ const PanelView = memo(function PanelView({
           data-tip={t('컬러 태그 — 클릭해 색 변경', 'Color tag — click to change')}
           onClick={() => onCycleColor(slot)}
         >
-          {slot + 1}
+          {num}
         </button>
         {/* 제목 묶음 — 더블클릭/연필/F2로 그 자리 편집, 호버 0.35s 후 첫 지시 원문 미리보기 */}
         <span className="ma-p-tw">
@@ -559,6 +573,17 @@ const PanelView = memo(function PanelView({
           <span>{status.label()}</span>
           {busy && <span className="ma-status-time">{fmtElapsed(elapsed)}</span>}
         </span>
+        {/* 별도 창으로 — 이 패널을 독립 OS 창으로 팝아웃 (듀얼 모니터: 창은 왼쪽, 그리드는 오른쪽) */}
+        {onPopout && (
+          <button
+            className="ma-p-expand has-tip"
+            data-tip={t('별도 창으로', 'Open in its own window')}
+            aria-label={t('별도 창으로', 'Open in its own window')}
+            onClick={() => onPopout(slot)}
+          >
+            <IconPopout size={12} />
+          </button>
+        )}
         {/* 크게 보기 ⟷ 원래 크기로 — 이 패널을 본채팅 크기의 오버레이 카드로 (작은 글씨 대책) */}
         <button
           className="ma-p-expand has-tip"
@@ -829,6 +854,12 @@ function ActiveSession({
   }, [busyCount])
 
   const [focusedSlot, setFocusedSlot] = useState<number | null>(null)
+  // 패널 표시 순서(슬롯 순열) — 헤더 길게 누르기 드래그로 바꾼다. 그리드가 이 순서로
+  // 그리고, 슬롯 정체성(엔진·대화·컬러 태그)은 패널을 따라간다. 세션에 영속.
+  // 번호 칩은 자리 기준(1‥N) — 옮기면 그 자리의 번호를 새로 받는다.
+  const [panelOrder, setPanelOrder] = useState<number[]>(() => sanitizePanelOrder(initial.panelOrder))
+  // 지금 보이는 슬롯들, 자리 순서대로 — 번호(인덱스+1)·그리드 렌더의 단일 소스
+  const visibleSlots = panelOrder.filter((s) => s < count)
   // 제목 인라인 편집 중인 슬롯 — F2(포커스 패널)·더블클릭·연필로 진입, 커밋/취소로 해제
   const [renamingSlot, setRenamingSlot] = useState<number | null>(null)
   // 포커스 밖 알림 — 6패널 각각의 전이(턴 종료/승인/질문)를 감시한다. sub=슬롯이라
@@ -922,9 +953,10 @@ function ActiveSession({
 
   // build the persistable form of this session (latest closure kept in a ref so the
   // unmount commit captures the final state)
-  const buildRef = useRef<() => CommitPayload>(() => ({ count, panels: [] }))
+  const buildRef = useRef<() => CommitPayload>(() => ({ count, panelOrder: [...SLOTS], panels: [] }))
   buildRef.current = () => ({
     count,
+    panelOrder,
     panels: SLOTS.map((i) => {
       const m = metas[i]
       return {
@@ -945,14 +977,13 @@ function ActiveSession({
     const t = setTimeout(() => onCommit(sessionId, buildRef.current()), 600)
     return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [count, metas, sig])
+  }, [count, metas, sig, panelOrder])
   useEffect(() => {
     return () => onCommit(sessionId, buildRef.current())
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Panel keyboard control (only while focus isn't in a field):
-  //  · 1‥N        jump straight into that panel's composer (selects it + focuses the input)
   //  · Enter      drop the cursor into the selected panel's composer (e.g. after a click)
   //  · Esc        cancel the focused panel's RUN if it's busy (단일 모드의 Esc=작업 취소와
   //               같은 기대), else release the selection
@@ -974,7 +1005,8 @@ function ActiveSession({
   const escCancelSole = useEvent((): boolean => {
     const running = sessions
       .map((s, i) => (s.busy || s.state.workflows.some((w) => w.status === 'running') ? i : -1))
-      .filter((i) => i >= 0)
+      // 팝아웃 패널은 제외 — 다른 창에서 보고 있는 실행을 그리드의 눈먼 Esc가 끊으면 사고
+      .filter((i) => i >= 0 && !popped[i])
     return running.length === 1 ? escCancelPanel(running[0]) : false
   })
   useEffect(() => {
@@ -983,8 +1015,8 @@ function ActiveSession({
       // 있으면 항상 양보한다
       if (document.querySelector('.set-dialog-overlay, .pr-overlay, .fv-overlay, .hpop')) return
       // 승인/질문 카드는 패널 안에 뜬다(스코프 오버레이). 키보드를 받는 건 포커스된
-      // 패널의 카드뿐이니 그때만 양보하고, 다른 패널의 카드는 1‥N 이동을 막지 않는다 —
-      // 번호를 누르면 그 패널이 포커스되며 카드가 키를 넘겨받는다. 패널 밖 .q-overlay
+      // 패널의 카드뿐이니 그때만 양보하고, 다른 패널의 카드는 남은 키(Esc·F2·Enter)를
+      // 막지 않는다 — 패널을 클릭해 포커스하면 카드가 키를 넘겨받는다. 패널 밖 .q-overlay
       // (ask 모달의 질문 등)는 예전처럼 전역으로 키보드를 가진다.
       for (const el of Array.from(document.querySelectorAll('.q-overlay'))) {
         const panel = el.closest('.ma-panel')
@@ -1031,32 +1063,211 @@ function ActiveSession({
         }
         return
       }
-      const n = parseInt(e.key, 10)
-      if (Number.isInteger(n) && n >= 1 && n <= count) {
-        e.preventDefault()
-        const slot = n - 1
-        setFocusedSlot(slot)
-        // 크게 보기 중엔 카드를 그 패널로 갈아끼운다 — 숫자 키로 패널들을 크게 넘겨본다
-        if (expandedSlot != null) {
-          setExpandedSlot(slot)
-          requestAnimationFrame(() => {
-            const ta = document.querySelector('.ma-expand-card .composer textarea') as HTMLTextAreaElement | null
-            ta?.focus()
-          })
-          return
-        }
-        // jump straight into that panel's composer (next frame, once the grid is settled)
-        requestAnimationFrame(() => {
-          const ta = document.querySelector(
-            `.ma-grid .ma-panel[data-slot="${slot}"] .composer textarea`
-          ) as HTMLTextAreaElement | null
-          ta?.focus()
-        })
-      }
+      // (숫자 키 1‥N 패널 점프는 쓰는 사람이 없어 폐쇄 — 패널 선택은 클릭, 번호 칩은
+      // 자리 표시로만 남는다)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [focusedSlot, count, expandedSlot])
+
+  // ── 패널 위치 변경 — 헤더 빈 곳을 길게 누르면(0.35s) 집어 들고, 끌어서 놓는다 ──
+  // 그리드 위임 한 곳에서 처리해 memo 패널(PanelView)엔 손대지 않는다. 드래그 중엔
+  // 포인터가 올라탄 패널의 자리로 곧장 끼워 넣어(라이브 미리보기) 놓는 순간이 곧 확정.
+  // 집힌 패널 강조는 같은 엘리먼트가 순서 이동에도 유지되는 점(React key=slot)을 믿고
+  // classList로 직접 건다 — 상태로 돌리면 전 패널이 리렌더된다.
+  const [reordering, setReordering] = useState(false) // 그리드 커서·선택 억제 CSS 훅
+  const dragRef = useRef<{
+    slot: number
+    el: HTMLElement
+    pointerId: number
+    timer: ReturnType<typeof setTimeout> | null
+    sx: number
+    sy: number
+    active: boolean
+  } | null>(null)
+  const endPanelDrag = useEvent(() => {
+    const d = dragRef.current
+    if (!d) return
+    if (d.timer) clearTimeout(d.timer)
+    if (d.active) {
+      d.el.classList.remove('drag-lift')
+      try {
+        d.el.releasePointerCapture(d.pointerId)
+      } catch {
+        /* 이미 풀렸음(pointercancel 등) */
+      }
+      setReordering(false)
+    }
+    dragRef.current = null
+    window.removeEventListener('pointermove', onPanelDragMove)
+    window.removeEventListener('pointerup', endPanelDrag)
+    window.removeEventListener('pointercancel', endPanelDrag)
+    window.removeEventListener('blur', endPanelDrag)
+  })
+  const onPanelDragMove = useEvent((e: PointerEvent) => {
+    const d = dragRef.current
+    if (!d) return
+    // 길게 누르기 판정 전의 이동은 드래그 의도가 아니다 — 흔들림 허용치를 넘으면 무장 해제
+    if (!d.active) {
+      if (Math.abs(e.clientX - d.sx) > 6 || Math.abs(e.clientY - d.sy) > 6) endPanelDrag()
+      return
+    }
+    // 포인터 밑의 패널 자리로 삽입 — 이동하면 집힌 패널이 그 자리로 따라와 자연히 안정된다
+    const over = (document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null)?.closest?.(
+      '.ma-grid .ma-panel'
+    ) as HTMLElement | null
+    const target = over ? Number(over.dataset.slot) : NaN
+    if (!Number.isInteger(target) || target === d.slot) return
+    setPanelOrder((prev) => {
+      const from = prev.indexOf(d.slot)
+      const to = prev.indexOf(target)
+      if (from < 0 || to < 0 || from === to) return prev
+      const next = [...prev]
+      next.splice(from, 1)
+      next.splice(to, 0, d.slot)
+      return next
+    })
+  })
+  const onGridPointerDown = useEvent((e: React.PointerEvent) => {
+    if (e.button !== 0 || expandedSlot != null || dragRef.current) return
+    const t = e.target as HTMLElement
+    // 핸들 = 헤더의 빈 곳·제목·상태 칩 — 상호작용 요소(번호 칩·연필·자물쇠·폴더 칩·
+    // 제목 입력·확대 버튼)는 제 역할대로 두고 드래그를 안 건다
+    if (!t.closest('.ma-p-head') || t.closest('button, input, .hfold, .ma-p-peek')) return
+    const panel = t.closest('.ma-panel') as HTMLElement | null
+    if (!panel || panel.classList.contains('ma-ghost')) return
+    const slot = Number(panel.dataset.slot)
+    if (!Number.isInteger(slot)) return
+    const d = {
+      slot,
+      el: panel,
+      pointerId: e.pointerId,
+      timer: null as ReturnType<typeof setTimeout> | null,
+      sx: e.clientX,
+      sy: e.clientY,
+      active: false
+    }
+    d.timer = setTimeout(() => {
+      d.timer = null
+      d.active = true
+      window.getSelection()?.removeAllRanges() // 누르는 사이 생긴 제목 텍스트 선택 정리
+      try {
+        d.el.setPointerCapture(d.pointerId) // 창 밖 release도 pointerup으로 돌아오게
+      } catch {
+        /* 포인터가 이미 사라짐(원버튼 탭 등) — 캡처 없이도 window 리스너가 처리 */
+      }
+      d.el.classList.add('drag-lift')
+      setReordering(true)
+    }, 350)
+    dragRef.current = d
+    window.addEventListener('pointermove', onPanelDragMove)
+    window.addEventListener('pointerup', endPanelDrag)
+    window.addEventListener('pointercancel', endPanelDrag)
+    window.addEventListener('blur', endPanelDrag)
+  })
+  // 세션 전환 등으로 드래그 중 언마운트되면 리스너·타이머를 걷는다
+  useEffect(() => () => endPanelDrag(), [endPanelDrag])
+
+  // ── 패널 팝아웃 창 — 이 세션의 슬롯이 별도 OS 창으로 나가 있는 동안 그리드엔 유령 ──
+  // 창은 메인 창의 화면 전환·세션 전환과 무관하게 산다(엔진은 어차피 메인 프로세스의
+  // 패널 풀). 마운트 때 현황(panelStates)을 조회해 유령을 복원하고, 이 화면이 내려가
+  // 있는 사이 닫힌 창의 복귀분(leftover)도 그때 받아 되메운다.
+  const [popped, setPopped] = useState<Record<number, boolean>>({})
+  const slotOfPanelId = (panelId: string): number | null => {
+    const prefix = sessionId + '::'
+    if (!panelId.startsWith(prefix)) return null
+    const s = Number(panelId.slice(prefix.length))
+    return Number.isInteger(s) && s >= 0 && s < SLOT_COUNT ? s : null
+  }
+  // 복귀분 적용 — 팝아웃 창의 마지막 상태(초안·메타·카드 정리·스냅샷)를 이 슬롯에 되메운다
+  const applyPanelFlush = useEvent((f: PanelPopState) => {
+    const slot = slotOfPanelId(f.panelId)
+    if (slot == null) return
+    patchMeta(slot, {
+      title: typeof f.title === 'string' ? f.title : '',
+      custom: !!f.custom,
+      locked: !!f.locked,
+      color: sanitizeTag(f.color),
+      cwd: typeof f.cwd === 'string' ? f.cwd : '',
+      refDirs: sanitizeRefDirs(f.refDirs),
+      picker: sanitizePanelPicker(f.picker as Partial<PickerState> | null),
+      api: !!f.api,
+      input: typeof f.input === 'string' ? f.input : '',
+      images: Array.isArray(f.images) ? f.images.filter((x): x is string => typeof x === 'string') : [],
+      queue: Array.isArray(f.queue) ? (f.queue as ScheduledMsg[]).filter((q) => q && typeof q.text === 'string') : []
+    })
+    if (f.snapshot) sessions[slot].load(sanitizeSnapshot(f.snapshot as SessionState))
+  })
+  const onPanelWindowClosed = useEvent((p: PanelPopClosed) => {
+    const slot = slotOfPanelId(p.panelId)
+    if (slot == null) return
+    setPopped((prev) => {
+      if (!prev[slot]) return prev
+      const next = { ...prev }
+      delete next[slot]
+      return next
+    })
+    if (p.flush) {
+      applyPanelFlush(p.flush)
+      // 라이브로 회수했다 — 다음 마운트가 같은 복귀분을 또 적용하지 않게 잔여 사본 폐기
+      window.api.multi?.panelClearLeftover?.(p.panelId).catch(() => {})
+    }
+  })
+  useEffect(() => {
+    const off = window.api.multi?.onPanelClosed?.(onPanelWindowClosed)
+    window.api.multi
+      ?.panelStates?.(sessionId)
+      .then((r) => {
+        if (!r) return
+        const slots: Record<number, boolean> = {}
+        for (const pid of r.open) {
+          const s = slotOfPanelId(pid)
+          if (s != null) slots[s] = true
+        }
+        if (Object.keys(slots).length) setPopped((prev) => ({ ...prev, ...slots }))
+        for (const f of r.leftovers) applyPanelFlush(f)
+      })
+      .catch(() => {})
+    return off
+    // 구독·현황 조회는 마운트 1회 — 핸들러는 useEvent(최신 클로저)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+  // 팝아웃 — 이 패널을 별도 OS 창으로. 초안·예약 큐 소유권은 창으로 넘어가고(양쪽 드레인
+  // 중복 방지), 한도 대기표 상태 머신도 창 쪽이 이어받는다(lrOptsFor의 enabled 게이트와 짝).
+  const onPopout = useEvent((slot: number) => {
+    const panelId = chan(sessionId, slot)
+    if (popped[slot]) {
+      window.api.multi?.panelFocus?.(panelId).catch(() => {})
+      return
+    }
+    const m = metas[slot]
+    const state: PanelPopState = {
+      panelId,
+      slot,
+      num: visibleSlots.indexOf(slot) + 1,
+      title: m.title,
+      custom: m.custom,
+      locked: m.locked,
+      color: m.color,
+      cwd: m.cwd,
+      refDirs: m.refDirs,
+      picker: m.picker,
+      api: m.api,
+      input: m.input,
+      images: m.images,
+      queue: m.queue,
+      snapshot: snapshotForPersist(sessions[slot].state)
+    }
+    window.api.multi
+      ?.openPanelWindow?.(state)
+      .then(() => {
+        setPopped((prev) => ({ ...prev, [slot]: true }))
+        patchMeta(slot, { input: '', images: [], queue: [] })
+        if (expandedSlot === slot) setExpandedSlot(null)
+        lrs[slot].setHold(null)
+      })
+      .catch(() => {})
+  })
 
   // ── stable per-panel handlers ──
   const patchMeta = useEvent((slot: number, patch: Partial<PanelMeta>) =>
@@ -1095,7 +1306,7 @@ function ActiveSession({
   const onCycleColor = useEvent((slot: number) =>
     setMetas((prev) => prev.map((m, i) => (i === slot ? { ...m, color: nextTag(m.color || defaultTag(slot)) } : m)))
   )
-  // 크게 보기 토글 — 열릴 때 카드 컴포저로 바로 커서(숫자 키 점프와 같은 착지)
+  // 크게 보기 토글 — 열릴 때 카드 컴포저로 바로 커서
   const onToggleExpand = useEvent((slot: number) => {
     const opening = expandedSlot !== slot
     setExpandedSlot(opening ? slot : null)
@@ -1305,7 +1516,9 @@ function ActiveSession({
     return {
       state: sess.state,
       busy: sess.busy,
-      enabled: autoResume,
+      // 팝아웃 중엔 창 쪽 useLimitResume이 대기표를 굴린다 — 여기 미러까지 켜 두면
+      // 같은 한도 에러에 양쪽이 재개 턴을 이중 전송한다
+      enabled: autoResume && !popped[slot],
       apiMode: m.api,
       engine,
       account: engine === 'codex' ? m.picker.codexAccount : m.picker.account,
@@ -1436,6 +1649,7 @@ function ActiveSession({
       <PanelView
         key={slot}
         slot={slot}
+        num={visibleSlots.indexOf(slot) + 1}
         meta={metas[slot]}
         state={sess.state}
         busy={sess.busy}
@@ -1474,6 +1688,7 @@ function ActiveSession({
         onRefreshUsage={onRefreshUsage}
         onFocusPanel={onFocusPanel}
         onToggleExpand={onToggleExpand}
+        onPopout={onPopout}
         onPermission={onPermission}
         onAnswer={onAnswer}
         onDismissQuestion={onDismissQuestion}
@@ -1537,15 +1752,28 @@ function ActiveSession({
           <WinControls />
         </div>
 
-        {/* 배치는 .nN 클래스가 결정 — PoC: 2·3=한 줄, 4=2×2, 5=3+2(스팬), 6=3×2 */}
-        <div className={'ma-grid scroll n' + count} ref={multiZoom.ref}>
-          {SLOTS.slice(0, count).map((slot) =>
+        {/* 배치는 .nN 클래스가 결정 — PoC: 2·3=한 줄, 4=2×2, 5=3+2(스팬), 6=3×2.
+            순서는 panelOrder(헤더 길게 누르기 드래그) — 슬롯 정체성은 패널을 따라간다 */}
+        <div className={'ma-grid scroll n' + count + (reordering ? ' reordering' : '')} ref={multiZoom.ref} onPointerDown={onGridPointerDown}>
+          {visibleSlots.map((slot, i) =>
             slot === expandedSlot ? (
               // 크게 보는 패널의 그리드 자리 지킴이 — 실물 PanelView는 오버레이 카드에 가 있다
               // (.ma-panel 클래스 유지: n5 스팬 등 그리드 배치 규칙이 그대로 먹게)
               <div key={slot} className="ma-panel ma-ghost" data-slot={slot}>
-                <span className="ma-p-num on">{slot + 1}</span>
+                <span className="ma-p-num on">{i + 1}</span>
                 <span className="ma-ghost-text">{t('크게 보는 중', 'Expanded')}</span>
+              </div>
+            ) : popped[slot] ? (
+              // 팝아웃 유령 — 실물은 별도 OS 창에. 클릭하면 그 창을 앞으로.
+              <div
+                key={slot}
+                className="ma-panel ma-ghost pop"
+                data-slot={slot}
+                role="button"
+                onClick={() => window.api.multi?.panelFocus?.(chan(sessionId, slot)).catch(() => {})}
+              >
+                <span className="ma-p-num on">{i + 1}</span>
+                <span className="ma-ghost-text">{t('별도 창에서 보는 중 — 클릭해 창으로', 'In its own window — click to focus it')}</span>
               </div>
             ) : (
               renderPanel(slot)
@@ -1557,8 +1785,7 @@ function ActiveSession({
 
       {/* 크게 보기 — 그 패널을 본채팅 크기의 오버레이 카드로. 상태는 전부 이 컴포넌트
           소유라 스레드·작성 중 초안·실행이 그대로 이어진다. 베일 클릭/Esc/헤더 버튼으로
-          제자리, 숫자 키로 카드 안 패널 전환. 파일 뷰어(z60)·서브에이전트 카드(z70)는
-          이 베일(z55) 위에 뜬다 */}
+          제자리. 파일 뷰어(z60)·서브에이전트 카드(z70)는 이 베일(z55) 위에 뜬다 */}
       {expandedSlot != null && (
         <div
           className="ma-expand-overlay"
@@ -1744,6 +1971,7 @@ export function useMultiSessions() {
       title: prev?.title ?? '',
       custom: prev?.custom ?? false,
       count: payload.count,
+      panelOrder: payload.panelOrder,
       panels: payload.panels
     }
     scheduleSave()
@@ -1809,7 +2037,7 @@ export function useMultiSessions() {
         const s = raw as PersistedSession | null
         dataRef.current[id] =
           s && typeof s === 'object' && Array.isArray(s.panels)
-            ? { ...d, count: s.count ?? d.count, panels: s.panels, unloaded: undefined, panelStatuses: undefined }
+            ? { ...d, count: s.count ?? d.count, panelOrder: s.panelOrder ?? d.panelOrder, panels: s.panels, unloaded: undefined, panelStatuses: undefined }
             : { ...blankSession(id), title: d.title, custom: d.custom } // 파일에 없던 세션(비정상) — 빈 세션으로나마 착지
         setActiveId(id)
       })
