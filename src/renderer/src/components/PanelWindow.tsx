@@ -369,14 +369,36 @@ function PanelHost({ boot }: { boot: PanelPopState }): React.ReactElement {
   // 읽기 배율 — 크게 보기 카드와 같은 표면(multi.expand.zoom)을 쓴다
   const zoom = useZoom('multi.expand.zoom', true, 1)
 
-  // Esc = 실행 중지 (그리드 패널 Esc와 같은 의미) — 열린 카드/모달이 있으면 그쪽에 양보
+  // 창이 열리면 컴포저로 바로 커서 — 크게 보기 카드가 열릴 때와 같은 규칙
+  useEffect(() => {
+    requestAnimationFrame(() => {
+      const ta = document.querySelector('.composer textarea') as HTMLTextAreaElement | null
+      ta?.focus()
+    })
+  }, [])
+
+  // Esc = 실행 중지 (그리드 패널 Esc와 같은 의미) — 열린 카드/모달이 있으면 그쪽에 양보.
+  // Enter = 컴포저로 포커스 (그리드의 포커스 패널 Enter와 같은 의미 — 이 창은 패널이
+  // 하나뿐이라 항상 그 컴포저) — 질문 카드·모달이 떠 있으면 그쪽 Enter에 양보.
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
-      if (e.key !== 'Escape') return
-      if (!busy && !state.workflows.some((w) => w.status === 'running')) return
-      if (document.querySelector('.q-overlay, .q-mini, .wf-card, .set-dialog-overlay, .pr-overlay, .fv-overlay, .iv-overlay, .sa-overlay, .ctx-menu, .sel-bar, .hpop')) return
-      e.preventDefault()
-      stop()
+      if (e.key === 'Escape') {
+        if (!busy && !state.workflows.some((w) => w.status === 'running')) return
+        if (document.querySelector('.q-overlay, .q-mini, .wf-card, .set-dialog-overlay, .pr-overlay, .fv-overlay, .iv-overlay, .sa-overlay, .ctx-menu, .sel-bar, .hpop')) return
+        e.preventDefault()
+        stop()
+        return
+      }
+      if (e.key === 'Enter' && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        const ae = document.activeElement as HTMLElement | null
+        if (ae && (['INPUT', 'TEXTAREA', 'SELECT'].includes(ae.tagName) || ae.isContentEditable)) return
+        if (document.querySelector('.q-overlay, .q-mini, .set-dialog-overlay, .pr-overlay, .fv-overlay, .iv-overlay, .sa-overlay, .hpop')) return
+        const ta = document.querySelector('.composer textarea') as HTMLTextAreaElement | null
+        if (ta) {
+          e.preventDefault()
+          ta.focus()
+        }
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)

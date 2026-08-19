@@ -28,6 +28,67 @@ type LocalizedRelease = { ko: Release; en: Release }
 // 지난 1.x 노트들은 은퇴한 UpdateNotes와 함께 정리했다(이제 보여줄 경로가 없다).
 const MAX_VERSIONS = 5
 const RELEASES: Record<string, LocalizedRelease> = {
+  '2.5.2': {
+    ko: {
+      eyebrow: 'IMPROVED',
+      lead: '멀티 패널 팝아웃이 더 손에 붙습니다 — 크게 보기에서 같은 제스처 한 번 더면 별도 창으로, 별도 창에선 Enter로 바로 입력창에 커서가 갑니다.',
+      notes: [
+        {
+          tag: '멀티',
+          name: '크게 보기 제스처 한 번 더 = 별도 창으로',
+          desc: (
+            <>
+              그리드에서 <b>→↑ 제스처</b>로 패널을 크게 보고 있을 때, <b>같은 →↑를 한 번
+              더</b> 그으면 그 패널이 <b>별도 창</b>으로 빠집니다 — 확대의 다음 단계라 획도
+              같아요. 원래 크기로 돌아가는 ↓→는 그대로입니다.
+            </>
+          )
+        },
+        {
+          tag: '멀티',
+          name: '별도 창에서 Enter로 입력창 포커스',
+          desc: (
+            <>
+              팝아웃 창에서 대화를 읽다가 <b>Enter</b>를 치면 이제 <b>입력창으로 커서가
+              이동</b>합니다 — 그리드에서 선택한 패널에 Enter 치던 것과 같은 규칙이에요. 창이
+              처음 열릴 때도 크게 보기 카드처럼 <b>입력창에 바로 커서</b>가 가서, 뽑자마자
+              이어서 타이핑할 수 있습니다.
+            </>
+          )
+        }
+      ]
+    },
+    en: {
+      eyebrow: 'IMPROVED',
+      lead: 'Panel pop-out gets smoother — repeat the Expand gesture to open the panel in its own window, and in that window Enter now jumps to the input box.',
+      notes: [
+        {
+          tag: 'Multi',
+          name: 'Repeat the Expand gesture to pop out',
+          desc: (
+            <>
+              While a panel is expanded via the <b>→↑ gesture</b>, drawing the <b>same →↑
+              again</b> pops it out into its <b>own window</b> — the next step up from
+              expanding, so it shares the stroke. ↓→ to restore size works as before.
+            </>
+          )
+        },
+        {
+          tag: 'Multi',
+          name: 'Enter focuses the input in a popped-out window',
+          desc: (
+            <>
+              Reading the conversation in a popped-out window, pressing <b>Enter</b> now{' '}
+              <b>moves the cursor to the input box</b> — the same rule as pressing Enter on a
+              focused panel in the grid. The window also <b>focuses the input right when it
+              opens</b>, like the expand card does, so you can keep typing the moment it pops
+              out.
+            </>
+          )
+        }
+      ]
+    }
+  },
   '2.5.1': {
     ko: {
       eyebrow: 'IMPROVED',
@@ -285,74 +346,6 @@ const RELEASES: Record<string, LocalizedRelease> = {
               named by role (&quot;Frontend&quot;, &quot;Tests&quot;) keep that name. You can
               still <b>rename by hand</b> while locked (pencil, double-click, F2), and the lock
               icon stays lit so the state is visible at a glance.
-            </>
-          )
-        }
-      ]
-    }
-  },
-  '2.4.1': {
-    ko: {
-      eyebrow: 'FIX',
-      lead: '계정을 추가할 때 브라우저 탭이 두 장(하나는 404) 뜨던 문제와, 파일을 고칠 때마다 도구 행의 +/- 숫자가 계속 불어나던 문제를 고쳤습니다.',
-      notes: [
-        {
-          tag: '로그인',
-          name: '로그인 탭이 하나만 열려요',
-          desc: (
-            <>
-              계정을 추가하면 <b>인증 페이지가 두 장</b> 열리고, 그중 하나는{' '}
-              <b>404 오류 페이지</b>인 일이 있었습니다. CLI가 이미 브라우저를 여는데 앱도 같이
-              열면서, 앱이 잡은 주소가 인증 페이지가 아니라 <b>내부 로그인 서버 주소</b>였던 게
-              원인 — 이제 브라우저는 한 번만 열립니다. 브라우저가 안 뜨는 환경을 위한{' '}
-              <b>수동 링크</b>는 그대로 남아 있고, 링크 끝에 마침표가 붙어 깨지던 것도
-              고쳤어요. Claude와 OpenAI(Codex) 로그인 모두 해당됩니다.
-            </>
-          )
-        },
-        {
-          tag: '도구 행',
-          name: '+/- 줄 수가 그 편집의 크기를 보여줘요',
-          desc: (
-            <>
-              같은 파일을 여러 번 고치면 도구 행의 <b>+N −N이 회를 거듭할수록 불어나</b> 한 줄만
-              고쳐도 큰 숫자가 뜨고, 대화 중에 새로 만든 파일은 이후 편집도 계속{' '}
-              <b>&apos;새 파일&apos;</b>로 표시됐습니다. 이제 각 행은 <b>그 편집 하나의 증감</b>을
-              보여줍니다 — 파일 전체 변경량은 원래대로 <b>변경 파일 목록과 diff</b>에서 볼 수
-              있어요.
-            </>
-          )
-        }
-      ]
-    },
-    en: {
-      eyebrow: 'FIX',
-      lead: 'Fixed adding an account opening two browser tabs (one of them a 404), and tool rows whose +/- line counts kept growing with every edit to the same file.',
-      notes: [
-        {
-          tag: 'Sign-in',
-          name: 'Only one sign-in tab opens',
-          desc: (
-            <>
-              Adding an account could open <b>two auth tabs</b>, one of them a{' '}
-              <b>404 error page</b>. The CLI already opens the browser, and the app opened one
-              too — using an address that was the <b>internal login server</b>, not the auth
-              page. Now the browser opens exactly once. The <b>manual link</b> for environments
-              where no browser opens is still there, and it no longer breaks on a trailing
-              period. Applies to both Claude and OpenAI (Codex) sign-in.
-            </>
-          )
-        },
-        {
-          tag: 'Tool rows',
-          name: '+/- counts now reflect that one edit',
-          desc: (
-            <>
-              Editing the same file repeatedly made each tool row&apos;s <b>+N −N grow
-              cumulatively</b> — a one-line change could show a huge number — and a file created
-              during the conversation kept reading <b>&quot;New file&quot;</b> on every later
-              edit. Each row now shows <b>the size of that single edit</b>; the total change per
-              file is still in the <b>changed-files list and diff</b>, as before.
             </>
           )
         }

@@ -644,9 +644,10 @@ export const PanelView = memo(function PanelView({
       </div>
 
       <SelectionToolbar scrollRef={scrollRef} onElaborate={onElaborate} />
-      {/* 그리드에선 RU(→↑, 최대화 문법)=크게 보기, 카드에선 DR(↓→, 닫기 문법)=원래
-          크기로. 카드의 RU 토글 닫기는 최대화 제스처와 헷갈려 뺐다(사용자 피드백) —
-          닫기는 다른 카드·뷰어와 같은 ↓→ 하나로 통일 */}
+      {/* 그리드에선 RU(→↑, 최대화 문법)=크게 보기, 카드에선 같은 RU 한 번 더=별도 창으로
+          (확대의 다음 단계라 같은 획이 자연스럽다 — 팝아웃 창 안에선 onPopout이 없어 무동작),
+          DR(↓→, 닫기 문법)=원래 크기로. 카드의 RU '토글 닫기'는 최대화 제스처와 헷갈려
+          뺐던 자리(사용자 피드백) — 닫기는 다른 카드·뷰어와 같은 ↓→ 하나로 통일 */}
       <MouseGestureLayer
         target={threadEl}
         actions={[
@@ -656,7 +657,12 @@ export const PanelView = memo(function PanelView({
           sessionWindowGesture(),
           clearGesture(() => onClear(slot)),
           ...(expanded
-            ? [{ pattern: 'DR', label: t('원래 크기로', 'Restore size'), run: () => onToggleExpand(slot) }]
+            ? [
+                { pattern: 'DR', label: t('원래 크기로', 'Restore size'), run: () => onToggleExpand(slot) },
+                ...(onPopout
+                  ? [{ pattern: 'RU', label: t('별도 창으로', 'Open in its own window'), run: () => onPopout(slot) }]
+                  : [])
+              ]
             : [{ pattern: 'RU', label: t('크게 보기', 'Expand'), run: () => onToggleExpand(slot) }])
         ]}
       />
