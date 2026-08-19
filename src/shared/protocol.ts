@@ -450,6 +450,12 @@ export type EngineEvent =
     }
   // live context-token estimate emitted per assistant turn (before the final result)
   | { type: 'context'; runId: string; contextTokens: number }
+  // 대화 압축 경계 (CLI system/compact_boundary) — 컨텍스트가 가득 차 CLI가 스스로 요약한
+  // 지점(auto) 또는 /compact(manual). preTokens는 압축 직전 컨텍스트(CLI 보고), afterTokens는
+  // 압축 후 첫 assistant 프레임의 실측 컨텍스트 — 엔진이 그 프레임과 짝지어 한 번에 내보내므로
+  // 게이지가 떨어지는 순간과 카드가 같이 뜬다(뒤 프레임 없이 턴이 끝나면 null). manual은
+  // 명령 카드(pendingCommand 정착)가 이미 표시하므로 렌더러가 거른다.
+  | { type: 'compact'; runId: string; trigger: 'auto' | 'manual'; preTokens: number | null; afterTokens: number | null }
   // Fable 5가 안전 정책으로 응답을 거부(stop_reason 'refusal')해 엔진이 CLI처럼 폴백
   // 모델로 자동 전환·재시도한 경우. 렌더러는 경고 배너를 스레드에 표시하고, 거부된
   // 쪽의 스트리밍 부분 답변(retractMessageId)을 지우고, 모델 picker를 toModel로 바꾼다.

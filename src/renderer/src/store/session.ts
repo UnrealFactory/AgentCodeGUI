@@ -848,6 +848,45 @@ export function reducer(state: SessionState, action: Action): SessionState {
     case 'question-request':
       return { ...state, pendingQuestion: { requestId: e.requestId, questions: e.questions, engine: e.engine } }
 
+    case 'compact': {
+      // 컨텍스트가 가득 차 CLI가 스스로 대화를 요약함(auto-compact) — 게이지가 곧 뚝
+      // 떨어지므로(엔진이 이 이벤트를 압축 후 첫 context보다 먼저 보낸다) 이유를 카드로
+      // 남긴다. 수동 /compact는 명령 카드(pendingCommand → result 정착)가 이미 표시한다.
+      if (e.trigger !== 'auto' || state.pendingCommand?.name === 'compact') return state
+      const seq = state.seq + 1
+      const before = e.preTokens
+      const after = e.afterTokens
+      const window = state.result?.contextWindow ?? null
+      // 실측 전/후가 있을 때만 절약을 표기 — 수동 카드와 같은 규약(절대 지어내지 않는다)
+      let stats: string | null = null
+      if (before != null && after != null && after < before) {
+        const saved = fmtTokShort(before - after)
+        stats = window
+          ? t(
+              `컨텍스트 ${Math.round((before / window) * 100)}% → ${Math.round((after / window) * 100)}% 로 절약 · 토큰 ${saved} 회수`,
+              `Context ${Math.round((before / window) * 100)}% → ${Math.round((after / window) * 100)}% · ${saved} tokens reclaimed`
+            )
+          : t(`토큰 ${saved} 회수`, `${saved} tokens reclaimed`)
+      }
+      return {
+        ...state,
+        seq,
+        messages: capThread([
+          ...state.messages,
+          {
+            kind: 'cmdresult',
+            id: `ac${seq}`,
+            name: 'compact',
+            title: t('컨텍스트가 가득 차 대화를 자동으로 요약했어요', 'Context was full — conversation auto-summarized'),
+            sub: t('이전 대화를 핵심 요약으로 압축하고 이어서 진행합니다.', 'Compressed the earlier conversation into a summary and carried on.'),
+            stats,
+            time: nowTime(),
+            running: false
+          }
+        ])
+      }
+    }
+
     case 'context': {
       // live mid-run update of just the context-token gauge
       const prev = state.result

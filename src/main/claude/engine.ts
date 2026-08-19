@@ -176,6 +176,8 @@ interface SdkMsg {
   status?: string
   summary?: string
   output_file?: string
+  // system/compact_boundary (대화 압축 지점 — trigger 'auto'=컨텍스트 만료 자동, 'manual'=/compact)
+  compact_metadata?: { trigger?: string; pre_tokens?: number }
 }
 
 interface PermissionResult {
@@ -1008,6 +1010,12 @@ export class ClaudeEngine {
       // overstate the window, so we never use it for the gauge.
       let lastContextTokens: number | null = null
 
+      // 압축 경계(compact_boundary) 보류분 — 압축 후 컨텍스트는 다음 assistant 프레임의
+      // usage가 처음 반영하므로, 경계에서 바로 내보내지 않고 그 프레임과 짝지어 전/후를
+      // 한 번에 알린다(카드와 게이지 하락이 같은 순간에 뜬다). 뒤 프레임 없이 턴이 끝나면
+      // settleResult가 afterTokens: null로 흘린다.
+      let pendingCompact: { trigger: 'auto' | 'manual'; preTokens: number | null } | null = null
+
       // 이 실행에 눈에 보이는 턴 활동(답변 텍스트·도구·tool_result)이 있었는지 — 생각만
       // 한 프레임은 스레드에 아무것도 안 남기므로 세지 않는다(무음 턴 notice 기준과 일치)
       let sawTurnActivity = false
@@ -1079,6 +1087,12 @@ export class ClaudeEngine {
             durationMs: msg.duration_ms ?? null,
             numTurns: msg.num_turns ?? null
           })
+        }
+        // 짝지을 assistant 프레임 없이 턴이 끝난 압축 경계(수동 /compact 턴, 경계 직후
+        // 중단 등) — 전 값만이라도 흘려 보류가 다음 턴으로 새지 않게 한다.
+        if (pendingCompact) {
+          this.emit({ type: 'compact', runId, trigger: pendingCompact.trigger, preTokens: pendingCompact.preTokens, afterTokens: null })
+          pendingCompact = null
         }
         this.emit({
           type: 'result',
@@ -1325,6 +1339,18 @@ export class ClaudeEngine {
           const prominent = msg.level === 'warning' || msg.level === 'suggestion'
           if (text && prominent && !(msg as { tool_use_id?: string }).tool_use_id) {
             this.emit({ type: 'notice', runId, text })
+          }
+          continue
+        }
+
+        // 대화 압축 경계 — 컨텍스트가 가득 차 CLI가 스스로 요약했거나(/compact면 manual)
+        // 그 지점 표식. 여기서는 보류만 하고, 압축 후 컨텍스트를 아는 다음 assistant
+        // 프레임에서 전/후 짝으로 내보낸다.
+        if (msg.type === 'system' && msg.subtype === 'compact_boundary') {
+          const meta = msg.compact_metadata
+          pendingCompact = {
+            trigger: meta?.trigger === 'manual' ? 'manual' : 'auto',
+            preTokens: typeof meta?.pre_tokens === 'number' ? meta.pre_tokens : null
           }
           continue
         }
@@ -1629,6 +1655,12 @@ export class ClaudeEngine {
           // conversation so far → update the gauge before the final result lands.
           const ctx = contextFromUsage(msg.message?.usage)
           if (ctx != null) {
+            // 압축 직후 첫 실측 — 미뤄둔 압축 알림을 전/후 값과 함께, 게이지를 떨어뜨릴
+            // context 이벤트보다 먼저 내보낸다(카드가 하락을 설명하는 순서).
+            if (pendingCompact) {
+              this.emit({ type: 'compact', runId, trigger: pendingCompact.trigger, preTokens: pendingCompact.preTokens, afterTokens: ctx })
+              pendingCompact = null
+            }
             lastContextTokens = ctx
             this.emit({ type: 'context', runId, contextTokens: ctx })
           }

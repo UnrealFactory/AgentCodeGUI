@@ -28,6 +28,49 @@ type LocalizedRelease = { ko: Release; en: Release }
 // 지난 1.x 노트들은 은퇴한 UpdateNotes와 함께 정리했다(이제 보여줄 경로가 없다).
 const MAX_VERSIONS = 5
 const RELEASES: Record<string, LocalizedRelease> = {
+  '2.5.1': {
+    ko: {
+      eyebrow: 'IMPROVED',
+      lead: '긴 대화에서 컨텍스트가 가득 차 자동으로 요약될 때, 이제 그 순간을 카드로 알려드립니다 — 게이지가 말없이 뚝 떨어지는 일이 없어요.',
+      notes: [
+        {
+          tag: '컨텍스트',
+          name: '자동 요약이 보이게 됐어요',
+          desc: (
+            <>
+              대화가 길어져 컨텍스트가 가득 차면 Claude가 <b>스스로 이전 대화를 요약</b>해
+              자리를 비우는데, 지금까지는 아무 표시 없이 게이지만 갑자기 떨어졌습니다. 이제
+              그 지점에 <b>/compact 계열 카드</b>가 떠서 자동 요약이 일어났음을 알려주고,{' '}
+              <b>컨텍스트 절약(전 → 후 %)과 회수한 토큰</b>도 실측으로 함께 보여줘요. 카드는
+              게이지가 떨어지는 바로 그 순간에 나타나 이유를 설명합니다 — 본채팅·멀티
+              패널·팝아웃·추가 채팅 어디서든요.
+            </>
+          )
+        }
+      ]
+    },
+    en: {
+      eyebrow: 'IMPROVED',
+      lead: 'When a long conversation fills the context and gets auto-summarized, a card now marks the moment — no more gauge silently plummeting.',
+      notes: [
+        {
+          tag: 'Context',
+          name: 'Auto-compaction is now visible',
+          desc: (
+            <>
+              When the context fills up, Claude <b>summarizes the earlier conversation on its
+              own</b> to make room — but until now the only sign was the gauge suddenly
+              dropping. A <b>/compact-style card</b> now appears right at that point, showing
+              that an auto-summary happened along with the <b>measured savings (before → after
+              %) and tokens reclaimed</b>. The card lands at the exact moment the gauge drops,
+              explaining it — in the main chat, multi panels, pop-outs, and extra chat windows
+              alike.
+            </>
+          )
+        }
+      ]
+    }
+  },
   '2.5.0': {
     ko: {
       eyebrow: 'NEW',
@@ -310,71 +353,6 @@ const RELEASES: Record<string, LocalizedRelease> = {
               during the conversation kept reading <b>&quot;New file&quot;</b> on every later
               edit. Each row now shows <b>the size of that single edit</b>; the total change per
               file is still in the <b>changed-files list and diff</b>, as before.
-            </>
-          )
-        }
-      ]
-    }
-  },
-  '2.4.0': {
-    ko: {
-      eyebrow: 'NEW',
-      lead: '사용 한도에 막혀도 이제 앱이 알아서 기다립니다 — 한도가 풀리는 시각에 중단한 곳부터 자동으로 이어가요.',
-      notes: [
-        {
-          tag: '자동 이어서',
-          name: '한도가 풀리면 자동으로 계속해요',
-          desc: (
-            <>
-              모델 칩 → 과금에서 <b>자동 이어서</b>를 켜 두면, 구독 한도에 막혀 멈춘 대화를{' '}
-              <b>한도가 초기화되는 시각</b>에 맞춰 자동으로 이어갑니다. 기다리는 동안 컴포저 위
-              상태줄이 남은 시간을 보여주고(언제든 취소), 보내기 직전에 <b>정말 풀렸는지 다시
-              확인</b>한 뒤에만 이어가요. 본채팅·멀티 패널·추가 채팅 어디서든 동작하고,
-              본채팅의 대기는 앱을 껐다 켜도 이어집니다.
-            </>
-          )
-        },
-        {
-          tag: '계정',
-          name: '소진된 계정도 펼쳐서 고를 수 있어요',
-          desc: (
-            <>
-              지난 버전에서 숨겼던 <b>주간 한도 0% 계정</b>을 계정 목록 끝의 &quot;소진된 계정
-              N개 표시&quot;로 다시 펼칠 수 있습니다. 소진 계정엔 잔여 % 대신 <b>언제
-              돌아오는지</b>가 표시돼요 — 자동 이어서와 함께라면, 소진 계정을 미리 골라 두고
-              풀리는 시각에 이어가게 할 수 있습니다.
-            </>
-          )
-        }
-      ]
-    },
-    en: {
-      eyebrow: 'NEW',
-      lead: 'Hitting a usage limit no longer ends your flow — the app now waits and picks up right where you left off when the limit resets.',
-      notes: [
-        {
-          tag: 'Auto-continue',
-          name: 'Continues automatically when the limit resets',
-          desc: (
-            <>
-              Turn on <b>Auto-continue</b> under model chip → Billing, and a conversation
-              stopped by a subscription limit resumes on its own at the <b>reset time</b>.
-              While waiting, a strip above the composer shows the countdown (cancel anytime),
-              and the app <b>double-checks the limit is actually lifted</b> before sending.
-              Works in the main chat, multi-agent panels, and extra chat windows — the main
-              chat&apos;s wait even survives an app restart.
-            </>
-          )
-        },
-        {
-          tag: 'Accounts',
-          name: 'Exhausted accounts can be shown again',
-          desc: (
-            <>
-              Weekly-exhausted accounts (hidden since the last release) can be revealed with
-              &quot;Show exhausted accounts&quot; at the tail of the account list. They now
-              show <b>when they come back</b> instead of a meaningless 0% — pair one with
-              auto-continue to wait out the reset on purpose.
             </>
           )
         }
