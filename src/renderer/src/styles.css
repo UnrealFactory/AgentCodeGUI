@@ -1767,15 +1767,19 @@ button.wb-prow{ width:100%; text-align:left; }
 }
 .btw-mini{
   display:flex; align-items:center; gap:9px; padding:7px 9px 7px 15px; border-radius:99px;
-  background:var(--bg); border:1px solid var(--line-2);
+  /* btw 전용 색 = --blue(#7fa7d8) 테두리 — 워크플로(무채)·질문(무채) 알약과 한눈에 갈리게 */
+  background:var(--bg); border:1px solid rgba(127,167,216,.40);
   box-shadow:0 14px 40px -10px rgba(0,0,0,.7), inset 0 1px 0 rgba(255,255,255,.05);
   font-size:12.5px; color:var(--text-2); cursor:pointer; white-space:nowrap;
   animation:minidrop .22s ease-out;
 }
-.btw-mini:hover{ color:var(--text); border-color:var(--line-strong); }
+.btw-mini:hover{ color:var(--text); border-color:rgba(127,167,216,.68); }
 .btw-mini.closed{ opacity:.72; }
 .btw-mini.closed:hover{ opacity:1; }
-.btw-mini .wt{ font-weight:700; font-size:10.5px; letter-spacing:.05em; color:var(--text-4); text-transform:lowercase; }
+.btw-mini .wt{ font-weight:700; font-size:10.5px; letter-spacing:.05em; color:var(--blue); text-transform:lowercase; }
+/* ✕ 호버 중엔 알약 자체 툴팁('창 다시 열기')을 접는다 — 부모·자식 has-tip이 동시에 떠
+   서로 겹치던 버그. 이미지 썸네일 ✕(.img-thumb-x)와 같은 관례 */
+.btw-mini.has-tip:has(.wx:hover)::after{ content:none; }
 .btw-mini .ws{ color:var(--text); max-width:220px; overflow:hidden; text-overflow:ellipsis; }
 .btw-mini .st{ width:7px; height:7px; border-radius:50%; flex:0 0 auto; }
 .btw-mini .st.run{ background:var(--accent); animation:wfpulse 1.5s ease-in-out infinite; }
@@ -1788,12 +1792,14 @@ button.wb-prow{ width:100%; text-align:left; }
    (DOM 순서: btw 도크 → wf 도크 → q-mini — App 렌더 순서와 짝) */
 .btw-dock:has(~ .wf-dock), .btw-dock:has(~ .q-mini){ bottom:140px; }
 .btw-dock:has(~ .wf-dock):has(~ .q-mini){ bottom:184px; }
-/* btw 창 상단 출신 안내 칩 — 첫 메시지 전까지만 (SessionWindow) */
-.btw-note{
-  margin:14px auto 0; width:fit-content; max-width:min(560px, 86%); text-align:center;
-  font-size:11.5px; line-height:1.5; color:var(--text-4); word-break:keep-all;
-  padding:6px 14px; border-radius:99px; border:1px solid var(--line-2); background:rgba(255,255,255,.03);
+/* btw 웰컴(BtwWelcome)의 정체성 칩 — 알약과 같은 블루 테두리, 마스코트와 제목 사이 */
+.wc-btw{
+  width:fit-content; margin:16px auto 0; padding:4px 13px; border-radius:99px;
+  border:1px solid rgba(127,167,216,.40); color:var(--blue); background:rgba(127,167,216,.07);
+  font-size:11px; font-weight:700; letter-spacing:.05em; text-transform:lowercase;
 }
+/* 칩이 낀 자리는 제목 간격을 줄인다 — 마크→제목 22px 리듬이 칩 때문에 벌어지지 않게 */
+.wc-btw + .wc-title{ margin-top:12px; }
 
 /* 펼친 카드 — 질문 카드처럼 중앙, 채팅 영역을 거의 다 차지하는 보드 */
 .wf-card{

@@ -2146,6 +2146,63 @@ export function WelcomeState({
   )
 }
 
+/** /btw 질문 창의 빈 화면 — 일반 웰컴("무엇을 도와드릴까요?") 대신 이 창의 정체를
+ *  말한다: 원본 대화의 컨텍스트를 이어받았고, 여기서의 문답은 원본에 흔적을 남기지
+ *  않는다는 것. carried=false(이어받을 세션 없음 — 첫 응답 전·Codex)는 그 사정을
+ *  제목에서 바로 밝힌다. 추천 카드도 곁다리 질문에 맞는 것들로 — 컨텍스트가 있을 때만
+ *  "지금까지의 작업"을 전제로 한 질문을 권한다. */
+export function BtwWelcome({ carried, onPick }: { carried: boolean; onPick: (text: string) => void }) {
+  const suggestions = carried
+    ? [
+        { icon: IconList, label: t('지금까지 한 작업을 간단히 요약해줘', 'Summarize what we’ve done so far') },
+        { icon: IconSearch, label: t('방금 그 방식을 고른 이유가 뭐야?', 'Why did you choose that approach?') },
+        { icon: IconAlert, label: t('지금 접근의 리스크나 대안을 짚어줘', 'Point out risks or alternatives to this approach') },
+        { icon: IconBook, label: t('관련 개념 하나만 쉽게 설명해줘', 'Explain one related concept simply') }
+      ]
+    : [
+        // 대화 컨텍스트는 없어도 작업 폴더·설정은 원본 그대로 — 프로젝트를 아는 곁다리 질문들
+        { icon: IconFolder, label: t('이 프로젝트가 뭘 하는지 훑어보고 설명해줘', 'Skim this project and explain what it does') },
+        { icon: IconSearch, label: t('라이브러리·API 사용법을 빠르게 찾아줘', 'Quickly look up how to use a library or API') },
+        { icon: IconBook, label: t('에러 메시지를 해석해줄래? 붙여넣을게', 'Help me decode an error message — I’ll paste it') },
+        { icon: IconBolt, label: t('아이디어 하나만 가볍게 브레인스토밍해줘', 'Brainstorm one quick idea with me') }
+      ]
+  return (
+    <div className="welcome">
+      <div className="wc-mark">
+        <IconMascot size={46} />
+      </div>
+      {/* btw 정체성 칩 — 알약과 같은 블루 테두리 */}
+      <div className="wc-btw">btw</div>
+      <div className="wc-title">
+        {carried
+          ? t('지금까지의 대화를 그대로 이어받았어요', 'Carrying the conversation so far')
+          : t('이어받을 컨텍스트가 없어 새로 시작해요', 'No context to carry over — starting fresh')}
+      </div>
+      <div className="wc-sub">
+        {carried
+          ? t(
+              '곁다리 질문을 위한 btw 창이에요 — 여기서 무엇을 묻든 원본 대화에는 흔적이 남지 않고, 원본의 컨텍스트도 소모하지 않아요.',
+              'A btw window for side questions — nothing you ask here leaves a trace in the original chat, or uses up its context.'
+            )
+          : t(
+              '원본에 아직 대화가 없거나 Codex 엔진(포크 미지원)이에요 — 그래도 여기서의 문답은 원본 대화에 흔적을 남기지 않아요.',
+              'The original chat has no conversation yet, or runs on Codex (no forking) — questions here still leave no trace in it.'
+            )}
+      </div>
+      <div className="wc-grid">
+        {suggestions.map((s) => (
+          <button key={s.label} className="wc-card" onClick={() => onPick(s.label)}>
+            <span className="wc-ic">
+              <s.icon size={16} />
+            </span>
+            <span className="wc-lbl">{s.label}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // ── 계정 목록 캐시 (계정 picker 공용) ─────────────────────────
 // listAccounts는 메인이 CLI 프로세스를 하나 띄워 상태를 묻는다(auth status) — picker
 // 마운트마다 부르면 무겁다. 모듈 캐시 + TTL로 화면의 여러 picker(컴포저·패널들)가
@@ -3994,9 +4051,11 @@ export function WorkflowDock({ wfs, onStop }: { wfs: WorkflowState[]; onStop?: (
 
 /* ── btw 도크 — /btw 질문 창의 알약 (wf-dock 문법) ──────────────────────────
    원본 채팅 화면 하단 중앙에, 그 채팅에서 띄운 btw 질문 채팅들이 알약로 늘어선다.
-   창이 떠 있든 내려갔든 알약은 남는다 — 클릭 = 창 앞으로/다시 열기(대화는 영속이라
-   그대로 이어짐), ✕ = 질문 채팅 삭제(열린 창도 닫힘). 상태 점이 진행(펄스)/완료(초록)/
-   오류(빨강)/대기(테두리)를 전한다 — 창을 내려도 답이 다 됐는지 여기서 보인다. */
+   창이 화면에 떠 있는 동안엔 그 알약은 숨는다(창=곧 그 존재 — 둘이 동시에 보이면 어수선,
+   질문 카드의 접어두기와 같은 문법). 최소화·닫기로 내리면 알약이 나타나고, 클릭 = 창
+   복원/다시 열기(대화는 영속), ✕ = 질문 채팅 삭제 — 삭제 경로는 이 ✕(와 사이드바 X)뿐,
+   창의 X는 언제나 알약으로 내려앉는다. 상태 점이 진행(펄스)/완료(초록)/오류(빨강)/
+   대기(테두리)를 전한다 — 창을 내려둔 사이 답이 다 됐는지 여기서 보인다. */
 export function BtwDock({
   wins,
   onFocus,
@@ -4006,24 +4065,28 @@ export function BtwDock({
   onFocus: (id: string) => void
   onClose: (id: string) => void
 }) {
-  if (!wins.length) return null
+  // 화면에 보이는 창(shown)의 알약은 숨긴다 — 내려간(최소화·닫힘·숨김 상주) 것만 도크에
+  const parked = wins.filter((w) => !w.shown)
+  if (!parked.length) return null
   return (
     <div className="btw-dock">
-      {wins.map((w) => {
+      {parked.map((w) => {
         const busy = w.status === 'analyzing' || w.status === 'working'
         const st = busy ? 'run' : w.status === 'error' ? 'err' : w.status === 'done' ? 'ok' : 'wait'
+        // 레코드 제목은 'BTW - 원본 제목' — 알약엔 btw 칩이 따로 있어 접두를 접고 원본 제목만
+        const label = (w.title || '').replace(/^BTW\s*-\s*/i, '')
         return (
           <div
             key={w.id}
             className={'btw-mini has-tip tip-wrap' + (w.open ? '' : ' closed')}
             role="button"
-            data-tip={w.open ? t('창 앞으로', 'Bring window to front') : t('창 다시 열기', 'Reopen window')}
-            aria-label={w.open ? t('btw 창 앞으로', 'Bring btw window to front') : t('btw 창 다시 열기', 'Reopen btw window')}
+            data-tip={w.open ? t('창 복원', 'Restore window') : t('창 다시 열기', 'Reopen window')}
+            aria-label={w.open ? t('btw 창 복원', 'Restore btw window') : t('btw 창 다시 열기', 'Reopen btw window')}
             onClick={() => onFocus(w.id)}
           >
             <span className={'st ' + st} />
             <span className="wt">btw</span>
-            <span className="ws">{w.title || t('새 질문', 'New question')}</span>
+            <span className="ws">{label || t('새 질문', 'New question')}</span>
             <button
               className="wx has-tip"
               data-tip={t('질문 채팅 삭제', 'Delete this question chat')}

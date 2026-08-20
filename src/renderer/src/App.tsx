@@ -967,6 +967,8 @@ function MainApp({ user }: { user: AppUser }) {
     window.api
       .btwOpen({
         origin: activeChatId,
+        // btw 채팅 이름 = 'BTW - <이 채팅 제목>' (제목 전 새 채팅이면 '새 채팅')
+        originTitle: activeChat?.title || t('새 채팅', 'New chat'),
         cwd: dir,
         refDirs,
         picker,

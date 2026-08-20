@@ -780,12 +780,16 @@ export interface SessionWindowInfo {
   // /btw로 만들어진 질문 채팅이면 원본(일반 채팅) id — 그 채팅 화면의 btw 알약 도크가
   // 이 값으로 자기 것만 골라 그린다. 일반 추가 채팅은 없음.
   btwOf?: string
+  // 창이 지금 화면에 보이는 상태인지(떠 있고 최소화 아님). btw 알약은 창이 보이는 동안엔
+  // 숨고, 최소화/닫힘(숨김 상주 포함)일 때만 뜬다 — 창과 알약이 동시에 보이지 않게.
+  shown?: boolean
 }
 
 /** /btw — 현재 대화의 컨텍스트를 포크해 별도 질문 창(추가 채팅)으로 여는 요청.
  *  fork가 없으면(세션 없음·폴더 불일치·Codex) 컨텍스트 없이 새 대화로 연다. */
 export interface BtwOpenRequest {
   origin: string // 원본 채팅 id ('' = 메인이 sender로 보완 — 추가 채팅 창에서 부른 경우)
+  originTitle?: string | null // 원본 채팅/패널의 제목 — btw 채팅 이름이 'BTW - <이 제목>'이 된다
   cwd: string
   refDirs?: string[]
   picker?: unknown // 원본 채팅의 모델·모드·계정 스냅샷 — 창이 sanitize해서 복원
@@ -853,9 +857,11 @@ export interface SessionHydrateData {
   draft?: string
   draftImages?: string[]
   // /btw 질문 창의 시드 — btw: 이 창이 btw로 만들어졌다는 표식(안내 칩·기본 제목),
+  // btwTitle: 레코드 제목('BTW - 원본 제목') — 창 헤더·알림이 이 이름을 쓴다,
   // btwFork/btwForkCwd: 첫 실행이 포크할 원본 세션(자기 세션이 생기기 전까지만 의미),
   // btwPrompt: 자동 전송할 인라인 질문 — 메인이 '읽으면 소비'로 한 번만 내려준다.
   btw?: boolean
+  btwTitle?: string
   btwFork?: string
   btwForkCwd?: string
   btwPrompt?: string

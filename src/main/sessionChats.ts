@@ -92,14 +92,16 @@ export function readSessionChats(): SessionChatRecord[] {
 }
 
 /** 목록 저장 (best effort) — 바뀐 레코드의 파일만 다시 쓴다. 빈 대화는 디스크에 남기지
- *  않는다 — 열었다 그냥 닫은 창이 재시작 후 목록을 어지럽히지 않게. */
+ *  않는다 — 열었다 그냥 닫은 창이 재시작 후 목록을 어지럽히지 않게. 단 /btw 채팅은
+ *  빈 채로도 남긴다: 창 X = 무조건 알약(삭제는 알약 ✕뿐)이 규칙이라, 재시작 후에도
+ *  알약이 그대로 있어야 한다. */
 export function writeSessionChats(chats: SessionChatRecord[]): void {
   try {
     fs.mkdirSync(DIR, { recursive: true })
     const present = new Set<string>()
     const order: string[] = []
     for (const rec of chats) {
-      if (rec.empty || rec.snapshot == null || !safeId(rec.id)) continue
+      if ((rec.empty && !rec.btwOf) || rec.snapshot == null || !safeId(rec.id)) continue
       present.add(rec.id)
       order.push(rec.id)
       const json = JSON.stringify(rec)

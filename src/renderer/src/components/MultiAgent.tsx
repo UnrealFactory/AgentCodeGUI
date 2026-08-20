@@ -1321,9 +1321,12 @@ function ActiveSession({
     const m = metas[slot]
     const dir = m.cwd || sess.state.session?.cwd || ''
     const seed = btwForkOf(sess.state.session, dir, pk.engine === 'codex' ? 'codex' : 'claude')
+    const num = visibleSlots.indexOf(slot) + 1
     window.api
       .btwOpen({
         origin: chan(sessionId, slot),
+        // btw 채팅 이름 = 'BTW - <이 패널 제목>' (제목 전이면 자리 번호로)
+        originTitle: m.title || t(`패널 ${num}`, `Panel ${num}`),
         cwd: dir,
         refDirs: m.refDirs,
         picker: pk,

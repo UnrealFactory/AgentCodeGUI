@@ -20,6 +20,7 @@ import {
 } from '../store/session'
 import { extractMentions } from '../lib/mentions'
 import {
+  BtwWelcome,
   ChatHeader,
   ChatFind,
   Composer,
@@ -206,6 +207,8 @@ export function SessionWindow(): React.ReactElement {
   // 원본 세션(자기 세션이 생기면 자연히 무시). autoAsk: 자동 전송할 인라인 질문 —
   // hydrate가 '읽으면 소비'로 한 번만 주므로 재열람·재시작엔 되살아나지 않는다.
   const [btwWin, setBtwWin] = useState(false)
+  // 레코드 제목('BTW - 원본 제목') — 창 헤더·알림·재포크(원본 이름 전달)가 쓴다
+  const [btwTitle, setBtwTitle] = useState('')
   const btwSeedRef = useRef<{ fork: string; cwd: string } | null>(null)
   const [autoAsk, setAutoAsk] = useState<string | null>(null)
   // 마지막 활동(프롬프트 전송) 시각 — persist에 실어 사이드바 상대 시간이 된다
@@ -313,7 +316,8 @@ export function SessionWindow(): React.ReactElement {
 
   // 포커스 밖 알림 — 이 창의 전이 보고. 대상 채팅 id는 메인이 sender(webContents)로
   // 채우므로 여기선 비워 보낸다 (창은 자기 영속 채팅 id를 모른다).
-  useTurnNotify(state, busy, winTitle, { surface: 'session', id: '' })
+  // btw 창은 레코드 이름('BTW - 원본 제목')으로 — 토스트에서 어느 곁다리인지 보이게.
+  useTurnNotify(state, busy, btwTitle || winTitle, { surface: 'session', id: '' })
 
   // ── 영속화 (persist) ────────────────────────────────────────
   // 메인 채팅과 같은 규칙(600ms 디바운스) — 대화·폴더·picker·초안을 채팅 레코드로 저장해
@@ -375,6 +379,7 @@ export function SessionWindow(): React.ReactElement {
         // /btw 시드 — 포크 소스(자기 세션 전까지만 의미)와 자동 질문(대화가 이미 있으면
         // 재열람이므로 보내지 않는다 — 메인의 '읽으면 소비'에 얹는 이중 안전벨트)
         if (h.btw) setBtwWin(true)
+        if (typeof h.btwTitle === 'string' && h.btwTitle) setBtwTitle(h.btwTitle)
         if (typeof h.btwFork === 'string' && h.btwFork)
           btwSeedRef.current = { fork: h.btwFork, cwd: (typeof h.btwForkCwd === 'string' && h.btwForkCwd) || h.cwd || '' }
         if (typeof h.btwPrompt === 'string' && h.btwPrompt && snap.messages.length === 0) setAutoAsk(h.btwPrompt)
@@ -531,6 +536,8 @@ export function SessionWindow(): React.ReactElement {
     window.api
       .btwOpen({
         origin: '',
+        // btw 채팅 이름 = 'BTW - <이 창 제목>' — 원본이 btw 채팅이면 main이 접두를 한 번만 남긴다
+        originTitle: btwTitle || winTitle || t('추가 채팅', 'Chat window'),
         cwd: dir,
         refDirs,
         picker,
@@ -728,7 +735,7 @@ export function SessionWindow(): React.ReactElement {
           호출 창(webContents) 기준으로 이 창을 제어한다. */}
       <div className="chat chat--code">
         <ChatHeader
-          title={winTitle || (btwWin ? t('btw 질문', 'btw question') : t('추가 채팅', 'Chat window'))}
+          title={btwTitle || winTitle || (btwWin ? t('btw 질문', 'btw question') : t('추가 채팅', 'Chat window'))}
           cwd={cwd || state.session?.cwd || ''}
           placeholder={t('바탕화면', 'Desktop')}
           onSelectFolder={requestFolder}
@@ -740,30 +747,27 @@ export function SessionWindow(): React.ReactElement {
         />
         <ZoomBadge pct={chatZoom.pct} show={chatZoom.flash} />
         <div className="chat-scroll scroll" ref={swScrollRef}>
-          {/* /btw 창의 출신 안내 — 첫 메시지 전까지만. 시드 유무로 문구가 갈린다
-              (세션 없음·Codex(포크 미지원)로 시드 없이 열렸으면 그 사정을 말해준다) */}
-          {btwWin && !started && (
-            <div className="btw-note">
-              {btwSeedRef.current
-                ? t(
-                    '원본 대화의 컨텍스트를 이어받았어요 — 여기서 물어봐도 원본 대화에는 흔적이 남지 않아요.',
-                    'Carries the original chat’s context — asking here leaves no trace in it.'
-                  )
-                : t(
-                    '이어받을 컨텍스트가 없어 새 대화로 시작해요. (첫 응답 전이거나 Codex 엔진은 포크가 안 돼요)',
-                    'No context to carry over — starting fresh. (Before the first reply, or the Codex engine, can’t fork)'
-                  )}
-            </div>
-          )}
           {!started && !busy ? (
-            <WelcomeState
-              userName={user.name}
-              variant={cwd ? 'agent' : 'chat'}
-              onPick={(t) => {
-                setInput(t)
-                composerRef.current?.focus()
-              }}
-            />
+            btwWin ? (
+              // /btw 창의 빈 화면 — 일반 웰컴 대신 이 창의 정체(컨텍스트 이어받음·원본
+              // 무흔적)를 설명하고, 곁다리 질문에 맞는 추천을 준다. 시드 유무로 문구가 갈린다.
+              <BtwWelcome
+                carried={!!btwSeedRef.current}
+                onPick={(t) => {
+                  setInput(t)
+                  composerRef.current?.focus()
+                }}
+              />
+            ) : (
+              <WelcomeState
+                userName={user.name}
+                variant={cwd ? 'agent' : 'chat'}
+                onPick={(t) => {
+                  setInput(t)
+                  composerRef.current?.focus()
+                }}
+              />
+            )
           ) : (
             <div className="thread" style={{ zoom: chatZoom.zoom, '--z': chatZoom.zoom } as React.CSSProperties}>
               {twin.start > 0 && <div className="thread-older" ref={twin.sentinelRef} aria-hidden="true" />}

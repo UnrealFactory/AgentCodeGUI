@@ -42,20 +42,24 @@ const RELEASES: Record<string, LocalizedRelease> = {
               <b>그대로 이어받은 별도 창</b>이 뜨고 질문이 바로 전송됩니다. 대화를{' '}
               <b>포크</b>해서 열기 때문에 곁다리 문답이 <b>원래 대화에는 전혀 남지
               않아요</b> — 컨텍스트도 안 먹습니다. 질문 없이 <b>/btw</b>만 치면 빈 질문
-              창이 열려요. 본채팅·추가 채팅·멀티 패널(별도 창 포함) 어디서든 됩니다 —
-              멀티에선 알약이 그 패널 안에 떠요.
+              창이 열리고, <b>btw 전용 시작 화면</b>이 컨텍스트를 이어받았는지와 곁다리
+              질문 추천을 보여줘요. 본채팅·추가 채팅·멀티 패널(별도 창 포함) 어디서든
+              됩니다 — 멀티에선 알약이 그 패널 안에 떠요.
             </>
           )
         },
         {
           tag: '채팅',
-          name: 'btw 알약 — 내려도 잃지 않아요',
+          name: 'btw 알약 — 내리면 알약, 삭제는 ✕로만',
           desc: (
             <>
-              질문 창을 닫아도 원래 채팅 하단에 <b>btw 알약</b>이 남습니다 — 상태 점이{' '}
-              <b>진행 중(펄스)/답 완료(초록)</b>를 알려주고, <b>클릭하면 창이 다시
-              열려</b> 문답이 그대로 이어져요. ✕는 질문 채팅 삭제. 알약은 재시작 후에도
-              남고, 사이드바 <b>추가 채팅</b> 목록에서도 찾을 수 있습니다.
+              질문 창을 <b>최소화하거나 닫으면</b> 원래 채팅 하단에 <b>btw 알약</b>으로
+              내려앉습니다(창이 떠 있는 동안엔 알약이 숨어요). 이름은 <b>BTW - 원본 채팅
+              제목</b>, 다른 알약과 구분되는 <b>파란 테두리</b>예요. 상태 점이 <b>진행
+              중(펄스)/답 완료(초록)</b>를 알려주고, <b>클릭하면 창이 다시 열려</b> 문답이
+              그대로 이어져요. 창의 X는 언제나 알약으로 남고, <b>삭제는 알약의
+              ✕뿐</b>입니다. 알약은 재시작 후에도 남고, 사이드바 <b>추가 채팅</b>{' '}
+              목록에서도 찾을 수 있습니다.
             </>
           )
         }
@@ -73,22 +77,28 @@ const RELEASES: Record<string, LocalizedRelease> = {
               Type <b>/btw your question</b> (even mid-run!) and a <b>separate window
               opens carrying the conversation so far</b>, sending the question right
               away. It <b>forks</b> the session, so the side chat <b>leaves no trace in
-              the original</b> — and costs it no context. Bare <b>/btw</b> opens an
-              empty question window. Works in the main chat, extra chat windows, and
-              multi-panel chats (popped-out panels too) — panel pills live inside the panel.
+              the original</b> — and costs it no context. Bare <b>/btw</b> opens an empty
+              question window with a <b>btw-specific start screen</b> showing whether
+              context was carried over, plus side-question suggestions. Works in the main
+              chat, extra chat windows, and multi-panel chats (popped-out panels too) —
+              panel pills live inside the panel.
             </>
           )
         },
         {
           tag: 'Chat',
-          name: 'btw pills — put it down, not away',
+          name: 'btw pills — put it down, delete only via ✕',
           desc: (
             <>
-              Closing the question window leaves a <b>btw pill</b> at the bottom of the
-              original chat — its dot shows <b>working (pulse) / answered (green)</b>,
-              and <b>clicking reopens the window</b> with the thread intact. ✕ deletes
-              the question chat. Pills survive restarts, and the chats also appear under{' '}
-              <b>Chat windows</b> in the sidebar.
+              <b>Minimizing or closing</b> the question window parks it as a <b>btw
+              pill</b> at the bottom of the original chat (the pill hides while the
+              window is on screen). It&apos;s named <b>BTW - the original chat&apos;s
+              title</b>, with a <b>blue border</b> that sets it apart from other pills.
+              The dot shows <b>working (pulse) / answered (green)</b>, and <b>clicking
+              reopens the window</b> with the thread intact. The window&apos;s X always
+              parks it — <b>only the pill&apos;s ✕ deletes</b> the question chat. Pills
+              survive restarts, and the chats also appear under <b>Chat windows</b> in
+              the sidebar.
             </>
           )
         }

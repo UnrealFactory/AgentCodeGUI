@@ -200,6 +200,8 @@ function PanelHost({ boot }: { boot: PanelPopState }): React.ReactElement {
     window.api
       .btwOpen({
         origin: panelId,
+        // btw 채팅 이름 = 'BTW - <이 패널 제목>' (제목 전이면 자리 번호로)
+        originTitle: meta.title || t(`패널 ${boot.num}`, `Panel ${boot.num}`),
         cwd: dir,
         refDirs: meta.refDirs,
         picker: pk,

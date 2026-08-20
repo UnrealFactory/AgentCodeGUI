@@ -463,7 +463,13 @@ function pushEngUpdate(): void {
 }
 function sessionWinList(): SessionWindowInfo[] {
   const live = new Map<string, AgentStatus>()
-  for (const [, s] of sessionWins) if (!s.win.isDestroyed()) live.set(s.chatId, s.status)
+  // 창이 화면에 보이는 상태(떠 있고 최소화 아님) — btw 알약은 이때 숨는다(창과 동시 노출 방지)
+  const shown = new Map<string, boolean>()
+  for (const [, s] of sessionWins) {
+    if (s.win.isDestroyed()) continue
+    live.set(s.chatId, s.status)
+    shown.set(s.chatId, s.win.isVisible() && !s.win.isMinimized())
+  }
   return [...sessionChats.values()].map((r) => ({
     id: r.id,
     title: r.title,
@@ -471,7 +477,8 @@ function sessionWinList(): SessionWindowInfo[] {
     open: live.has(r.id),
     updatedAt: r.updatedAt,
     // /btw 질문 채팅의 원본 채팅 id — 그 채팅 화면의 btw 알약 도크가 자기 것만 골라 그린다
-    ...(r.btwOf ? { btwOf: r.btwOf } : {})
+    ...(r.btwOf ? { btwOf: r.btwOf } : {}),
+    ...(shown.get(r.id) ? { shown: true } : {})
   }))
 }
 function broadcastSessionWins(): void {
@@ -577,6 +584,13 @@ function createSessionWindow(chatId?: string): void {
   win.on('maximize', () => win.webContents.send(IPC.winState, { maximized: true }))
   win.on('unmaximize', () => win.webContents.send(IPC.winState, { maximized: false }))
 
+  // 가시성 변화(최소화/복원/표시/숨김)를 목록에 반영 — btw 알약은 창이 보이는 동안 숨고
+  // 내리면(최소화·닫기 숨김 상주) 나타나므로, 전이마다 shown을 다시 계산해 뿌린다
+  win.on('minimize', broadcastSessionWins)
+  win.on('restore', broadcastSessionWins)
+  win.on('show', broadcastSessionWins)
+  win.on('hide', broadcastSessionWins)
+
   // 닫기(X·Alt+F4·↓→ 제스처) = 저장 후 창 정리 — 대화는 사이드바 '추가 채팅'에 남고,
   // 항목을 누르면 창을 다시 만들어 이어간다. 실행 중이면 창만 숨겨 턴을 끝까지 돌리고
   // (백그라운드 계속 실행), 끝나는 시점(sessionReport)에 마지막 스냅샷을 받아 정리한다.
@@ -600,9 +614,11 @@ function createSessionWindow(chatId?: string): void {
     }
     const s = sessionWins.get(wcId)
     if (s?.flushTimer) clearTimeout(s.flushTimer)
-    // 빈 대화(첫 메시지 전)는 목록에 남길 이유가 없다 — 창이 사라질 때 항목째 정리
+    // 빈 대화(첫 메시지 전)는 목록에 남길 이유가 없다 — 창이 사라질 때 항목째 정리.
+    // 단 /btw 채팅은 예외: 창 X = 무조건 알약이 규칙이라 빈 채로도 남긴다(삭제는 알약
+    // ✕ 또는 사이드바 X = sessionWindowClose 경로뿐 — 거기서만 레코드가 지워진다).
     const rec = s ? sessionChats.get(s.chatId) : undefined
-    if (rec && (rec.empty || rec.snapshot == null)) {
+    if (rec && !rec.btwOf && (rec.empty || rec.snapshot == null)) {
       sessionChats.delete(rec.id)
       persistSessionChats()
     }
@@ -1186,6 +1202,7 @@ function registerIpc(): void {
       draft: rec.draft,
       draftImages: rec.draftImages,
       ...(rec.btwOf ? { btw: true } : {}),
+      ...(rec.btwOf && rec.title ? { btwTitle: rec.title } : {}),
       ...(rec.btwSeed ? { btwFork: rec.btwSeed.fork, btwForkCwd: rec.btwSeed.cwd } : {}),
       ...(rec.btwPrompt ? { btwPrompt: rec.btwPrompt } : {})
     }
@@ -1223,9 +1240,13 @@ function registerIpc(): void {
     // 추가 채팅 창에서 부른 /btw는 자기 채팅 id를 모른다('') — sender로 보완한다
     const origin =
       (typeof p.origin === 'string' && p.origin) || sessionWins.get(_e.sender.id)?.chatId || ''
+    // 이름 규칙: 'BTW - <원본 채팅/패널 제목>' — 원본이 btw 채팅이어도(포크의 포크)
+    // 접두를 한 번만 남긴다. custom으로 굳혀 창의 자동 제목 보고(첫 질문)가 못 덮게.
+    const originTitle = (typeof p.originTitle === 'string' ? p.originTitle : '').trim()
     const rec: SessionChatRecord = {
       id: randomUUID(),
-      title: '',
+      title: originTitle ? 'BTW - ' + originTitle.replace(/^BTW\s*-\s*/i, '') : '',
+      custom: !!originTitle,
       status: 'idle',
       cwd: typeof p.cwd === 'string' ? p.cwd : '',
       refDirs: Array.isArray(p.refDirs) ? p.refDirs.filter((d): d is string => typeof d === 'string' && !!d).slice(0, 8) : undefined,
