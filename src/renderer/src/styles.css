@@ -2936,6 +2936,10 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
 .set-chipbtn:hover{ background:rgba(255,255,255,.11); color:var(--text); }
 .set-chipbtn.danger{ color:var(--red); background:rgba(221,122,107,.10); }
 .set-chipbtn.danger:hover{ background:rgba(221,122,107,.18); }
+/* 계정 정렬 칩 행 — 뷰 정렬 3종(기본/초기화 임박/한도 적음). on = 현재 정렬 */
+.set-sortrow{ display:flex; align-items:center; gap:6px; margin:16px 1px 0; }
+.set-sortrow .sl{ font-size:9.5px; font-weight:700; letter-spacing:.09em; text-transform:uppercase; color:var(--text-4); margin-right:3px; }
+.set-chipbtn.on{ color:var(--text); background:rgba(255,255,255,.13); box-shadow:inset 0 0 0 1px var(--accent-line); }
 /* 계정 카드 — 잔여 한도가 카드 안 미니 게이지로 (.sc2 스코프 필수 — 다른 .acct와 겹침 방지) */
 /* 신원 칼럼(.who)이 남는 폭을 갖고 이메일(.emt)만 말줄임 — 긴 이메일·좁은 창에서
    '기본' 배지가 다음 줄로 내려가거나 버튼·게이지가 카드 밖으로 밀려 잘리던 것.

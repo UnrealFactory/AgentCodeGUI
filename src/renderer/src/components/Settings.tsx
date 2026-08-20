@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import type {
   EngineVersionEntry,
   EngineVersionState,
@@ -287,6 +287,47 @@ function useHoldReorder(
   return { drag, press }
 }
 
+// ── Account 정렬 — 기본(저장 순서) / 초기화 임박순 / 한도 적게 남은순 ────────────
+// 표시 순서만 바꾸는 뷰 정렬: 저장 순서(채팅 계정 picker가 따르는)는 건드리지 않고,
+// 기본이 아닐 땐 꾹-드래그 재정렬이 잠긴다(계산된 순서 위 드래그는 놓는 순간 도로 튐).
+type AcctSort = 'default' | 'reset' | 'left'
+const ACCT_SORT_KEY = 'account.sort'
+// 라벨은 ko/en 필드 + 렌더 시 isEn() 분기 — 모듈 스코프 t() 금지(언어 전환이 못 따라옴)
+const ACCT_SORTS: { id: AcctSort; ko: string; en: string }[] = [
+  { id: 'default', ko: '기본', en: 'Default' },
+  { id: 'reset', ko: '초기화 임박순', en: 'Resets soonest' },
+  { id: 'left', ko: '한도 적게 남은순', en: 'Least limit left' }
+]
+// 정렬 키 — 초기화(reset)는 주간류(Fable·주간) 창 중 가장 이른 시각: 5시간 창은 어느
+// 계정이든 엇비슷하게 곧 돌아와("1시간 안팎") 섞으면 정렬을 지배해버린다(실측 — 주간
+// 12시간 남은 계정이 1일 22시간 계정 뒤로 밀림). 주간류가 없을 때만 5시간으로 폴백.
+// 잔여(left)는 모든 창 중 가장 적게 남은 % — 가장 급한 창이 계정을 대표한다. 조회 못 한
+// 계정(토큰 만료·아직 로딩 전)은 Infinity로 맨 뒤 — 동률 비교의 NaN은 sort 규약상 0 취급.
+type AcctSortKeys = { reset: number; left: number }
+function antSortKeys(u?: AccountUsage): AcctSortKeys {
+  const weekly = [u?.fableResetsAt, u?.weeklyResetsAt].filter((x): x is number => x != null)
+  const resets = weekly.length ? weekly : [u?.fiveHourResetsAt].filter((x): x is number => x != null)
+  const lefts = [u?.fiveHourPct, u?.fablePct, u?.weeklyPct].filter((x): x is number => x != null).map((p) => 100 - p)
+  return { reset: resets.length ? Math.min(...resets) : Infinity, left: lefts.length ? Math.min(...lefts) : Infinity }
+}
+function cxSortKeys(u?: CodexAccountUsage): AcctSortKeys {
+  const wins = u?.windows ?? []
+  // 시간 단위 창('5시간' 등) 제외 — 주간/일 단위 창이 하나도 없을 때만 전체로 폴백
+  const long = wins.filter((w) => !/^\d+시간$/.test(w.label))
+  const resets = (long.length ? long : wins).map((w) => w.resetsAt).filter((x): x is number => x != null)
+  const lefts = wins.map((w) => 100 - w.usedPct)
+  return { reset: resets.length ? Math.min(...resets) : Infinity, left: lefts.length ? Math.min(...lefts) : Infinity }
+}
+// 기본이면 원본 그대로(참조 유지 — 드래그 낙관 재배열이 곧 화면), 아니면 키로 정렬한 사본.
+// Array.sort는 안정 정렬이라 동률(둘 다 조회 전 등)은 저장 순서를 지킨다.
+function sortAccounts<T>(list: T[] | null, sort: AcctSort, keys: (a: T) => AcctSortKeys): T[] | null {
+  if (!list || sort === 'default') return list
+  return list
+    .map((a) => ({ a, k: keys(a) }))
+    .sort((x, y) => (sort === 'reset' ? x.k.reset - y.k.reset : x.k.left - y.k.left))
+    .map((x) => x.a)
+}
+
 // ── Account (구독 로그인 Anthropic·OpenAI — 앱 등록 계정만, 전환 개념 없음) ───────
 // 로그인/로그아웃 전부 격리 CONFIG_DIR(main/auth.ts) — 전역 ~/.claude 불가침.
 // PoC 문법: 계정 카드(아바타·이메일·기본 배지·플랜) + 잔여 한도 미니 게이지 + 점선 추가 행.
@@ -302,6 +343,12 @@ function AccountView(): React.ReactElement {
   const [cxAccounts, setCxAccounts] = useState<CodexAccountInfo[] | null>(null)
   // Codex 계정별 한도(rateLimits) — 목록과 별도로 나중에 도착(계정마다 app-server 1회 스폰)
   const [cxUsage, setCxUsage] = useState<Record<string, CodexAccountUsage>>({})
+  // 정렬 — 두 엔진 목록에 함께 적용. 탭을 닫아도 기억(ui-prefs)
+  const [sort, setSortSt] = useState<AcctSort>(() => getPref<AcctSort>(ACCT_SORT_KEY, 'default'))
+  const setSort = (s: AcctSort): void => {
+    setSortSt(s)
+    setPref(ACCT_SORT_KEY, s)
+  }
 
   const reload = (): void => {
     window.api.auth.listAccounts().then(setAccounts).catch(() => setAccounts([]))
@@ -417,6 +464,11 @@ function AccountView(): React.ReactElement {
       })
   )
 
+  // 정렬 뷰 — 기본이면 스토어 배열 그대로(드래그 낙관 갱신 포함), 아니면 한도 키로 정렬한
+  // 사본. 아바타 색·드래그 인덱스는 저장 배열 기준(indexOf)이라 정렬을 토글해도 안 바뀐다.
+  const antView = useMemo(() => sortAccounts(accounts, sort, (a) => antSortKeys(usage[a.email])), [accounts, sort, usage])
+  const cxView = useMemo(() => sortAccounts(cxAccounts, sort, (a) => cxSortKeys(cxUsage[a.email])), [cxAccounts, sort, cxUsage])
+
   return (
     <>
       <div className="set-h1">Account</div>
@@ -425,15 +477,31 @@ function AccountView(): React.ReactElement {
           <>
             Subscription sign-in — managed per engine. Runs only use accounts registered here — each chat can pick
             its own account, and chats without one run on the <strong>default</strong> account. Press and hold a
-            card to drag it into a different order.
+            card to drag it into a different order (while sorting is <strong>Default</strong>).
           </>
         ) : (
           <>
             구독 계정 로그인 — 엔진별로 따로 관리돼요. 실행에는 여기 등록된 계정만 쓰여요 — 채팅마다 계정을 따로
             고를 수 있고, 안 고른 채팅은 <strong>기본</strong> 계정으로 실행돼요. 계정 카드는 꾹 눌러 끌면 순서를
-            바꿀 수 있어요.
+            바꿀 수 있어요(정렬이 <strong>기본</strong>일 때).
           </>
         )}
+      </div>
+
+      {/* 정렬 칩 — 두 엔진 목록에 함께 적용되는 뷰 정렬 */}
+      <div className="set-sortrow" role="radiogroup" aria-label={t('정렬', 'Sort')}>
+        <span className="sl">{t('정렬', 'Sort')}</span>
+        {ACCT_SORTS.map((o) => (
+          <button
+            key={o.id}
+            className={'set-chipbtn' + (sort === o.id ? ' on' : '')}
+            role="radio"
+            aria-checked={sort === o.id}
+            onClick={() => setSort(o.id)}
+          >
+            {isEn() ? o.en : o.ko}
+          </button>
+        ))}
       </div>
 
       <div className="set-sec">Anthropic</div>
@@ -445,11 +513,14 @@ function AccountView(): React.ReactElement {
         </div>
       ) : (
         <>
-          {accounts.map((a, i) => (
+          {(antView ?? accounts).map((a) => {
+            // 인덱스는 저장 배열 기준 — 정렬 뷰에서도 아바타 색이 계정을 따라간다
+            const i = accounts.indexOf(a)
+            return (
             <div
               className={'sc2 acct' + (antDrag.drag === i ? ' drag' : '')}
               key={a.email}
-              onPointerDown={busy == null ? antDrag.press(i) : undefined}
+              onPointerDown={busy == null && sort === 'default' ? antDrag.press(i) : undefined}
             >
               <div className="ava2" style={{ background: AVA_SWATCHES[i % AVA_SWATCHES.length] }}>
                 {a.email.charAt(0).toUpperCase()}
@@ -473,7 +544,8 @@ function AccountView(): React.ReactElement {
                 </button>
               </div>
             </div>
-          ))}
+            )
+          })}
           {busy === 'login' ? (
             <div className="sc2 acct">
               <div className="ava2" style={{ background: 'rgba(255,255,255,.12)' }}>
@@ -504,11 +576,13 @@ function AccountView(): React.ReactElement {
         </div>
       ) : (
         <>
-          {cxAccounts.map((a, i) => (
+          {(cxView ?? cxAccounts).map((a) => {
+            const i = cxAccounts.indexOf(a)
+            return (
             <div
               className={'sc2 acct' + (cxDrag.drag === i ? ' drag' : '')}
               key={a.email}
-              onPointerDown={busy == null ? cxDrag.press(i) : undefined}
+              onPointerDown={busy == null && sort === 'default' ? cxDrag.press(i) : undefined}
             >
               <div className="ava2" style={{ background: AVA_SWATCHES[(i + 6) % AVA_SWATCHES.length] }}>
                 {a.email.charAt(0).toUpperCase()}
@@ -533,7 +607,8 @@ function AccountView(): React.ReactElement {
                 </button>
               </div>
             </div>
-          ))}
+            )
+          })}
           {busy === 'codex-login' ? (
             <div className="sc2 acct">
               <div className="ava2" style={{ background: 'rgba(255,255,255,.12)' }}>
@@ -587,7 +662,8 @@ function chatgptPlan(plan: string | null | undefined): string {
   return 'ChatGPT' + (plan ? ' ' + plan.charAt(0).toUpperCase() + plan.slice(1) : '') + t(' 플랜', ' plan')
 }
 
-// 한도 초기화 시각 — '7/18 (토) 15:00' (주간류 긴 창은 풀 표기를 바로 보여준다)
+// 한도 초기화 절대 시각 — '7/18 (토) 15:00'. 표시는 남은 시간(fmtResetIn)이 맡고,
+// 이건 그 칸의 호버 툴팁으로만 남는다(정확한 시각이 궁금할 때).
 function fmtResetAt(ts?: number | null): string | null {
   if (!ts) return null
   const d = new Date(ts * 1000)
@@ -597,7 +673,8 @@ function fmtResetAt(ts?: number | null): string | null {
   const hm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
   return `${d.getMonth() + 1}/${d.getDate()} (${day}) ${hm}`
 }
-// 5시간처럼 짧은 창은 날짜보다 남은 시간이 유용 — '2시간 10분 뒤'
+// 초기화까지 남은 시간 — '2시간 10분 뒤', 하루를 넘기면 '7일 3시간 뒤'. 주간류 긴 창도
+// 절대 날짜('8/21 (금) 15:00')보다 "얼마나 남았나"가 유용하다는 실사용 피드백으로 전 창 통일.
 function fmtResetIn(ts?: number | null): string | null {
   if (!ts) return null
   const diff = ts * 1000 - Date.now()
@@ -606,18 +683,18 @@ function fmtResetIn(ts?: number | null): string | null {
   if (m < 60) return t(`${m}분 뒤`, `in ${m}m`)
   const h = Math.floor(m / 60)
   const mm = m % 60
-  return mm ? t(`${h}시간 ${mm}분 뒤`, `in ${h}h ${mm}m`) : t(`${h}시간 뒤`, `in ${h}h`)
+  if (h < 24) return mm ? t(`${h}시간 ${mm}분 뒤`, `in ${h}h ${mm}m`) : t(`${h}시간 뒤`, `in ${h}h`)
+  const d = Math.floor(h / 24)
+  const hh = h % 24
+  return hh ? t(`${d}일 ${hh}시간 뒤`, `in ${d}d ${hh}h`) : t(`${d}일 뒤`, `in ${d}d`)
 }
 
-// 한도 게이지 한 행 — 라벨 · 잔여 바 · "n% 남음" · 초기화 시각. 맨숫자는 방향(남은량/
+// 한도 게이지 한 행 — 라벨 · 잔여 바 · "n% 남음" · 초기화까지 남은 시간. 맨숫자는 방향(남은량/
 // 소모량)을 못 말해줘 "남음"을 숫자마다 붙인다(컨텍스트 팝오버와 같은 표기). 잔량이
 // 낮으면(잔량 톤) 바·숫자가 색으로 도드라진다.
-// 시간 단위 창('5시간' 등)은 남은 시간, 주간류는 절대 시각. 초기화 시각을 모르는
-// 항목(구 캐시 등)도 빈 칸을 그려 열 정렬을 유지한다.
+// 시간 칸은 창 길이와 무관하게 남은 시간('7일 3시간 뒤') — 절대 시각은 호버 툴팁.
+// 초기화 시각을 모르는 항목(구 캐시 등)도 빈 칸을 그려 열 정렬을 유지한다.
 function LimRow({ label, left, resetsAt }: { label: string; left: number; resetsAt?: number | null }): React.ReactElement {
-  // 시간 창 판정 — 한국어 'n시간'과 영어 'nh'(시간창 라벨 규약) 둘 다 상대시간 포맷을 탄다
-  const hourly = label.includes('시간') || /^\d+\s*h$/i.test(label)
-  const reset = hourly ? fmtResetIn(resetsAt) : fmtResetAt(resetsAt)
   const tone = remainTone(left)
   return (
     <div className={'lim' + (tone ? ' ' + tone : '')}>
@@ -628,7 +705,9 @@ function LimRow({ label, left, resetsAt }: { label: string; left: number; resets
       <span className="lv">
         <b>{left}%</b> {t('남음', 'left')}
       </span>
-      <span className="lr">{reset}</span>
+      <span className="lr" title={fmtResetAt(resetsAt) ?? undefined}>
+        {fmtResetIn(resetsAt)}
+      </span>
     </div>
   )
 }
