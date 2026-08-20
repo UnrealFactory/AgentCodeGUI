@@ -28,6 +28,72 @@ type LocalizedRelease = { ko: Release; en: Release }
 // 지난 1.x 노트들은 은퇴한 UpdateNotes와 함께 정리했다(이제 보여줄 경로가 없다).
 const MAX_VERSIONS = 5
 const RELEASES: Record<string, LocalizedRelease> = {
+  '2.6.1': {
+    ko: {
+      eyebrow: 'IMPROVED',
+      lead: '설정 Account의 계정 한도가 더 읽기 쉬워졌습니다 — 초기화 시각을 남은 시간으로 통일하고, 급한 계정부터 보는 정렬을 더했어요.',
+      notes: [
+        {
+          tag: '설정',
+          name: '한도 초기화, 남은 시간으로 통일',
+          desc: (
+            <>
+              주간·Fable 한도의 초기화 시각이 <b>&apos;8/21 (금) 15:00&apos;</b> 같은 날짜
+              대신 <b>&apos;1일 22시간 뒤&apos;</b>처럼 <b>남은 시간</b>으로 표시됩니다 —
+              5시간 창과 같은 문법이라 어느 창이 먼저 돌아오는지 한눈에 비교돼요. 정확한
+              날짜·시각이 궁금하면 그 칸에 <b>마우스를 올려</b> 확인할 수 있습니다.
+            </>
+          )
+        },
+        {
+          tag: '설정',
+          name: '계정 정렬 — 초기화 임박순 · 한도 적게 남은순',
+          desc: (
+            <>
+              계정 목록 위 <b>정렬 칩</b>으로 <b>기본(내가 정한 순서)</b> 외에{' '}
+              <b>초기화 임박순</b>과 <b>한도 적게 남은순</b>을 고를 수 있습니다 — 어느
+              계정이 먼저 풀리는지, 어디가 아직 여유 있는지 바로 보여요. 화면 표시만
+              바꾸는 정렬이라 <b>채팅의 계정 선택 순서는 그대로</b>고, 고른 정렬은 저장돼
+              다음에도 유지됩니다(정렬 중엔 꾹-드래그 순서 바꾸기가 잠겨요).
+            </>
+          )
+        }
+      ]
+    },
+    en: {
+      eyebrow: 'IMPROVED',
+      lead: 'Account limits in Settings are easier to read — reset times now show as time remaining, plus sorting to surface the most urgent account first.',
+      notes: [
+        {
+          tag: 'Settings',
+          name: 'Limit resets shown as time remaining',
+          desc: (
+            <>
+              Weekly and Fable limit resets now read as <b>time remaining</b> — like{' '}
+              <b>&quot;in 1d 22h&quot;</b> — instead of a date like{' '}
+              <b>&quot;Fri 8/21 15:00&quot;</b>. It&apos;s the same style as the 5-hour
+              window, so you can compare at a glance which window comes back first.{' '}
+              <b>Hover the cell</b> for the exact date and time.
+            </>
+          )
+        },
+        {
+          tag: 'Settings',
+          name: 'Sort accounts — resets soonest · least limit left',
+          desc: (
+            <>
+              <b>Sort chips</b> above the account list add <b>Resets soonest</b> and{' '}
+              <b>Least limit left</b> alongside <b>Default (your own order)</b> — see
+              right away which account frees up first and which still has headroom. The
+              sort only changes the view: <b>the account picker order in chats stays
+              put</b>, and your choice is remembered for next time (long-press drag
+              reordering locks while a sort is active).
+            </>
+          )
+        }
+      ]
+    }
+  },
   '2.6.0': {
     ko: {
       eyebrow: 'NEW',
@@ -319,95 +385,6 @@ const RELEASES: Record<string, LocalizedRelease> = {
               workflow after another, pills for already-finished workflows used to{' '}
               <b>pile up</b> at the bottom of the chat. They now disappear <b>the moment</b> a
               workflow completes or stops — only what&apos;s actually running stays.
-            </>
-          )
-        }
-      ]
-    }
-  },
-  '2.4.3': {
-    ko: {
-      eyebrow: 'IMPROVED',
-      lead: 'C# 코드 색칠·호버가 언리얼 프로젝트에서도 제대로 나옵니다 — 스크립트 폴더에 .cs만 있어도 알아서 프로젝트를 찾아내요.',
-      notes: [
-        {
-          tag: 'C#',
-          name: '프로젝트 파일이 안 보여도 색이 제대로 나와요',
-          desc: (
-            <>
-              폴더에 <b>.cs 파일만</b> 있고 프로젝트 파일(.csproj)이 안 보이는 경우, 지금까지는
-              앱이 그 파일들을 <b>소속 없는 낱파일</b>로 다뤄서 기본 문법만 색이 붙고{' '}
-              <b>라이브러리·엔진 타입은 무색</b>이었습니다. 이제 프로젝트 파일이 다른 곳에
-              생성돼 있으면 그걸 찾아내 함께 읽습니다 — <b>참조 라이브러리와 자동 생성
-              코드까지</b> 색과 <b>호버 설명·F12 이동</b>이 모두 살아나요. 필요한 만큼만 열어
-              분석하므로 <b>몇 초</b>면 준비됩니다.
-            </>
-          )
-        },
-        {
-          tag: 'C#',
-          name: '코드가 바뀌면 색도 알아서 따라가요',
-          desc: (
-            <>
-              파일을 새로 만들거나, 다른 도구·터미널에서 코드가 바뀌거나,{' '}
-              <b>참조 라이브러리를 다시 빌드</b>했을 때도 색과 호버가 <b>스스로 갱신</b>됩니다.
-              예전엔 이런 변화가 반영되지 않아 새 타입이 무색으로 남고, 앱을 다시 켜야 회복되던
-              자리들이에요.
-            </>
-          )
-        },
-        {
-          tag: '탐색기',
-          name: 'Git 상태 라벨을 하나로',
-          desc: (
-            <>
-              변경사항이 없는 저장소가 브랜치 종류에 따라 <b>&apos;깨끗&apos;</b>과{' '}
-              <b>&apos;최신&apos;</b> 두 이름으로 갈려 보이던 것을 <b>&apos;최신&apos;</b> 하나로
-              통일했습니다.
-            </>
-          )
-        }
-      ]
-    },
-    en: {
-      eyebrow: 'IMPROVED',
-      lead: 'C# highlighting and hovers now work properly in Unreal projects — a script folder with nothing but .cs files finds its project on its own.',
-      notes: [
-        {
-          tag: 'C#',
-          name: 'Colors work even with no project file in sight',
-          desc: (
-            <>
-              When a folder holds <b>only .cs files</b> with no project file (.csproj) beside
-              them, the app used to treat them as <b>loose files with no project</b> — basic
-              syntax got colored, but <b>library and engine types stayed plain</b>. Now the app
-              locates the project file even when it&apos;s generated elsewhere and reads it too,
-              so <b>referenced libraries and generated code</b> get full coloring,{' '}
-              <b>hover docs, and go-to-definition</b>. It opens only what it needs, so it&apos;s
-              ready in <b>seconds</b>.
-            </>
-          )
-        },
-        {
-          tag: 'C#',
-          name: 'Colors keep up when code changes',
-          desc: (
-            <>
-              Adding a new file, editing code from another tool or the terminal, or{' '}
-              <b>rebuilding a referenced library</b> now refreshes coloring and hovers{' '}
-              <b>on its own</b>. Previously those changes went unnoticed — new types stayed
-              plain until you restarted the app.
-            </>
-          )
-        },
-        {
-          tag: 'Explorer',
-          name: 'One label for a clean repo',
-          desc: (
-            <>
-              A repository with no changes showed up as either <b>&quot;Clean&quot;</b> or{' '}
-              <b>&quot;Up to date&quot;</b> depending on the branch — it&apos;s now always{' '}
-              <b>&quot;Up to date&quot;</b>.
             </>
           )
         }
