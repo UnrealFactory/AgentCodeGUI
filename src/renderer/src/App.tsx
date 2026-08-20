@@ -28,7 +28,8 @@ import {
   SIDEBAR_AUTOHIDE_TRIGGER_PREVIEW_EVENT,
   type AutohideTriggerPreviewDetail
 } from './lib/sidebarAutohide'
-import { ChatHeader, ChatFind, Composer, LimitHoldBar, MessageView, QuestionModal, PermissionModal, SelectionToolbar, WelcomeState, WorkBar, WorkflowDock, WorkingIndicator, hasRunningBash, nextMode, pickerModelOf, useThreadFollow, useThreadWindow, type PickerState, type ScheduledMsg } from './components/Chat'
+import { BtwDock, ChatHeader, ChatFind, Composer, LimitHoldBar, MessageView, QuestionModal, PermissionModal, SelectionToolbar, WelcomeState, WorkBar, WorkflowDock, WorkingIndicator, hasRunningBash, nextMode, pickerModelOf, slashCommandsWithBtw, useThreadFollow, useThreadWindow, type PickerState, type ScheduledMsg } from './components/Chat'
+import { parseBtw, btwForkOf } from './lib/btw'
 import { SubAgentModal } from './components/AgentPanel'
 import { Explorer } from './components/Explorer'
 import { FolderSwitchDialog } from './components/FolderSwitchDialog'
@@ -951,6 +952,32 @@ function MainApp({ user }: { user: AppUser }) {
     )
   }
 
+  // ── /btw — 지금 컨텍스트를 이어받은 별도 질문 창 (클로드 코드의 btw 패리티) ──
+  // 현재 세션을 포크(forkSession)해 추가 채팅 창으로 연다: 같은 폴더·모델·모드·계정,
+  // 인라인 질문('/btw 어쩌구')은 창이 열리자마자 자동 전송. 이 대화의 세션 파일은 그대로라
+  // 원본 채팅엔 흔적이 남지 않고, 하단 btw 알약이 창을 되부른다. 턴이 도는 중에도 동작
+  // (예약 큐를 타지 않고 즉시) — 디스크에 흘러간 데까지의 컨텍스트로 포크된다.
+  // 이어받을 세션이 없거나(첫 응답 전), Codex 엔진이면(app-server엔 포크가 없다) 새
+  // 컨텍스트로 열리고, 그 사정은 창 안 안내 칩이 말한다.
+  const tryBtw = (text: string): boolean => {
+    const p = parseBtw(text)
+    if (!p) return false
+    const dir = cwd || state.session?.cwd || ''
+    const seed = btwForkOf(state.session, dir, picker.engine === 'codex' ? 'codex' : 'claude')
+    window.api
+      .btwOpen({
+        origin: activeChatId,
+        cwd: dir,
+        refDirs,
+        picker,
+        fork: seed?.fork ?? null,
+        forkCwd: seed?.cwd ?? null,
+        prompt: p.prompt || null
+      })
+      .catch(() => {})
+    return true
+  }
+
   // `opts` lets a queued message replay with the attachments + run settings it was
   // scheduled with (instead of the composer's current state); interactive sends omit it.
   // keepDraft: 컴포저 밖에서 만들어진 프롬프트(파일 뷰어 질문, 큐 재생)는 사용자가
@@ -970,6 +997,11 @@ function MainApp({ user }: { user: AppUser }) {
     // /clear is a client command — reset the conversation instead of calling the engine
     if (text.trim() === '/clear') {
       clearConversation()
+      return false
+    }
+    // /btw — 클라이언트 명령: 엔진 대신 별도 질문 창을 연다 (이 대화엔 아무 흔적 없음)
+    if (tryBtw(text)) {
+      if (!opts?.keepDraft) setInput('')
       return false
     }
     // a built-in slash command (/init·/compact·/review·/security-review) → tracked so
@@ -1055,6 +1087,11 @@ function MainApp({ user }: { user: AppUser }) {
   // queue the current draft (while the agent is busy) to auto-send when the run ends
   const scheduleMessage = (): void => {
     if (!busy || (!input.trim() && images.length === 0)) return
+    // /btw는 예약하지 않고 즉시 연다 — "작업 도는 동안 곁다리 질문"이 이 명령의 존재 이유
+    if (tryBtw(input)) {
+      setInput('')
+      return
+    }
     const id = crypto.randomUUID ? crypto.randomUUID() : `q-${Date.now()}-${queue.length}`
     setQueue((q) => [...q, { id, text: input, images, picker }])
     setInput('')
@@ -1337,6 +1374,10 @@ function MainApp({ user }: { user: AppUser }) {
     () => sessionWins.map((w) => ({ id: w.id, title: w.title || t('새 채팅', 'New chat'), status: w.status, updatedAt: w.updatedAt })),
     [sessionWins, lang]
   )
+  // 이 채팅에서 띄운 /btw 질문 창들 — 하단 btw 알약 도크가 그린다 (다른 채팅 것은 안 보임)
+  const btwWins = useMemo(() => sessionWins.filter((w) => w.btwOf === activeChatId), [sessionWins, activeChatId])
+  // "/" 팔레트 — 본채팅은 /btw가 배선돼 있어 팔레트에도 끼운다 (멀티 패널은 미배선이라 기본 목록)
+  const composerCommands = useMemo(() => slashCommandsWithBtw(), [lang])
   // 사이드바 3섹션 — active 하이라이트는 지금 보이는 뷰의 항목 하나만(PoC 규칙).
   // currentId는 busy 잠금 예외용: 실행이 흐르는 채팅은 멀티 뷰에서도 눌러 돌아올 수 있다
   const sections: SidebarSection[] = useMemo(
@@ -1558,6 +1599,7 @@ function MainApp({ user }: { user: AppUser }) {
             onOpenImage={openViewer}
             cwd={cwd}
             mentionBase={mentionBase}
+            commands={composerCommands}
             inputRef={composerRef}
           />
         </div>
@@ -1617,6 +1659,10 @@ function MainApp({ user }: { user: AppUser }) {
       )}
 
       <SubAgentModal agent={openSubagent} onClose={() => setOpenSubagentId(null)} />
+
+      {/* btw 알약 도크 — 이 채팅에서 띄운 질문 창들. DOM에서 워크플로 도크보다 앞이어야
+          동시 상주 시 형제 선택자(:has ~)로 한 층 위로 비킨다 */}
+      {mode === 'single' && <BtwDock wins={btwWins} onFocus={onFocusSessionWin} onClose={onCloseSessionWin} />}
 
       {/* 워크플로 알약/카드 — 메인 채팅 표면에서만 (멀티 패널은 자기 표면이 따로 붙는다) */}
       {mode === 'single' && (

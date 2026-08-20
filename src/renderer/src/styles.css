@@ -1757,6 +1757,44 @@ button.wb-prow{ width:100%; text-align:left; }
 .wf-card .st.wait{ background:transparent; border:1.5px solid var(--text-4); }
 @keyframes wfpulse{ 0%,100%{ opacity:1 } 50%{ opacity:.3 } }
 
+/* ── btw 도크 — /btw 질문 창 알약 (wf-dock 문법: 하단 중앙, 여러 개면 가로) ──────
+   창이 떠 있든 내려갔든 알약이 남아 창을 되부른다. 상태 점: 진행(펄스)/완료(초록)/
+   오류(빨강)/대기(테두리). 닫힌 창의 알약은 톤을 살짝 접어 "내려둠"을 전한다. */
+.btw-dock{
+  position:absolute; left:50%; transform:translateX(-50%); bottom:96px; z-index:30;
+  display:flex; flex-wrap:wrap; justify-content:center; align-items:center; gap:8px;
+  max-width:calc(100% - 32px);
+}
+.btw-mini{
+  display:flex; align-items:center; gap:9px; padding:7px 9px 7px 15px; border-radius:99px;
+  background:var(--bg); border:1px solid var(--line-2);
+  box-shadow:0 14px 40px -10px rgba(0,0,0,.7), inset 0 1px 0 rgba(255,255,255,.05);
+  font-size:12.5px; color:var(--text-2); cursor:pointer; white-space:nowrap;
+  animation:minidrop .22s ease-out;
+}
+.btw-mini:hover{ color:var(--text); border-color:var(--line-strong); }
+.btw-mini.closed{ opacity:.72; }
+.btw-mini.closed:hover{ opacity:1; }
+.btw-mini .wt{ font-weight:700; font-size:10.5px; letter-spacing:.05em; color:var(--text-4); text-transform:lowercase; }
+.btw-mini .ws{ color:var(--text); max-width:220px; overflow:hidden; text-overflow:ellipsis; }
+.btw-mini .st{ width:7px; height:7px; border-radius:50%; flex:0 0 auto; }
+.btw-mini .st.run{ background:var(--accent); animation:wfpulse 1.5s ease-in-out infinite; }
+.btw-mini .st.ok{ background:var(--green); }
+.btw-mini .st.err{ background:var(--red); }
+.btw-mini .st.wait{ background:transparent; border:1.5px solid var(--text-4); }
+.btw-mini .wx{ width:24px; height:24px; border-radius:99px; display:grid; place-items:center; color:var(--text-4); flex:0 0 auto; }
+.btw-mini .wx:hover{ background:var(--red-soft); color:var(--red); }
+/* 동시 상주 — 아래(96px)를 쓰는 워크플로/질문 알약이 있으면 btw가 한 층씩 비킨다
+   (DOM 순서: btw 도크 → wf 도크 → q-mini — App 렌더 순서와 짝) */
+.btw-dock:has(~ .wf-dock), .btw-dock:has(~ .q-mini){ bottom:140px; }
+.btw-dock:has(~ .wf-dock):has(~ .q-mini){ bottom:184px; }
+/* btw 창 상단 출신 안내 칩 — 첫 메시지 전까지만 (SessionWindow) */
+.btw-note{
+  margin:14px auto 0; width:fit-content; max-width:min(560px, 86%); text-align:center;
+  font-size:11.5px; line-height:1.5; color:var(--text-4); word-break:keep-all;
+  padding:6px 14px; border-radius:99px; border:1px solid var(--line-2); background:rgba(255,255,255,.03);
+}
+
 /* 펼친 카드 — 질문 카드처럼 중앙, 채팅 영역을 거의 다 차지하는 보드 */
 .wf-card{
   position:absolute; left:50%; transform:translateX(-50%); top:56px; bottom:110px; z-index:30;

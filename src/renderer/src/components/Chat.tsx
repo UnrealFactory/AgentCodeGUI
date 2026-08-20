@@ -22,7 +22,8 @@ import type {
   AccountInfo,
   AccountUsage,
   TokenTally,
-  WorkflowState
+  WorkflowState,
+  SessionWindowInfo
 } from '@shared/protocol'
 import { t, useLang } from '../lib/i18n'
 import { sameCwd, type ThreadItem } from '../store/session'
@@ -72,6 +73,7 @@ import {
   IconMascot,
   IconMascotDraw,
   IconPanelRight,
+  IconPopout,
   IconSquare,
   type IconProps
 } from './icons'
@@ -267,6 +269,22 @@ export function slashCommands(): SlashCmd[] {
     { name: 'review', desc: t('변경 사항 코드 리뷰', 'Code-review the changes'), icon: IconEye },
     { name: 'security-review', desc: t('변경 사항의 보안 취약점 검토', 'Check the changes for security issues'), icon: IconShieldChk }
   ]
+}
+/** /btw 팔레트 항목 — 배선이 있는 표면(본채팅·추가 채팅)만 commands에 끼워 넣는다.
+ *  slashCommands()에 넣지 않는 이유: 멀티 패널 등 미배선 표면의 팔레트에 뜨면
+ *  골라도 그냥 모델에게 텍스트로 가서 "고장난 명령"처럼 보인다. */
+export function btwSlashCmd(): SlashCmd {
+  return {
+    name: 'btw',
+    desc: t('지금 컨텍스트를 이어받은 별도 질문 창 — 이 대화엔 흔적 없음', 'Side-question window with this context — leaves no trace here'),
+    icon: IconPopout
+  }
+}
+/** 표면별 "/" 팔레트 조립 — 기본 명령 사이(clear 다음)에 /btw를 끼운다 */
+export function slashCommandsWithBtw(): SlashCmd[] {
+  const all = slashCommands()
+  all.splice(2, 0, btwSlashCmd())
+  return all
 }
 
 // ── Typewriter (used for animated assistant messages) ─────────
@@ -3966,6 +3984,56 @@ export function WorkflowDock({ wfs, onStop }: { wfs: WorkflowState[]; onStop?: (
                 <path d="m18 15-6-6-6 6" />
               </svg>
             </span>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+/* ── btw 도크 — /btw 질문 창의 알약 (wf-dock 문법) ──────────────────────────
+   원본 채팅 화면 하단 중앙에, 그 채팅에서 띄운 btw 질문 채팅들이 알약로 늘어선다.
+   창이 떠 있든 내려갔든 알약은 남는다 — 클릭 = 창 앞으로/다시 열기(대화는 영속이라
+   그대로 이어짐), ✕ = 질문 채팅 삭제(열린 창도 닫힘). 상태 점이 진행(펄스)/완료(초록)/
+   오류(빨강)/대기(테두리)를 전한다 — 창을 내려도 답이 다 됐는지 여기서 보인다. */
+export function BtwDock({
+  wins,
+  onFocus,
+  onClose
+}: {
+  wins: SessionWindowInfo[]
+  onFocus: (id: string) => void
+  onClose: (id: string) => void
+}) {
+  if (!wins.length) return null
+  return (
+    <div className="btw-dock">
+      {wins.map((w) => {
+        const busy = w.status === 'analyzing' || w.status === 'working'
+        const st = busy ? 'run' : w.status === 'error' ? 'err' : w.status === 'done' ? 'ok' : 'wait'
+        return (
+          <div
+            key={w.id}
+            className={'btw-mini has-tip tip-wrap' + (w.open ? '' : ' closed')}
+            role="button"
+            data-tip={w.open ? t('창 앞으로', 'Bring window to front') : t('창 다시 열기', 'Reopen window')}
+            aria-label={w.open ? t('btw 창 앞으로', 'Bring btw window to front') : t('btw 창 다시 열기', 'Reopen btw window')}
+            onClick={() => onFocus(w.id)}
+          >
+            <span className={'st ' + st} />
+            <span className="wt">btw</span>
+            <span className="ws">{w.title || t('새 질문', 'New question')}</span>
+            <button
+              className="wx has-tip"
+              data-tip={t('질문 채팅 삭제', 'Delete this question chat')}
+              aria-label={t('질문 채팅 삭제', 'Delete this question chat')}
+              onClick={(e) => {
+                e.stopPropagation()
+                onClose(w.id)
+              }}
+            >
+              <IconClose size={12} />
+            </button>
           </div>
         )
       })}

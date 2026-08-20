@@ -32,6 +32,7 @@ import {
   hasRunningBash,
   nextMode,
   pickerModelOf,
+  slashCommandsWithBtw,
   WorkBar,
   PermissionModal,
   QuestionModal,
@@ -40,6 +41,7 @@ import {
   type PickerState,
   type ScheduledMsg
 } from './Chat'
+import { parseBtw, btwForkOf, btwRunResume } from '../lib/btw'
 import { pushRecentDir } from '../lib/recentDirs'
 import { useLimitResume } from '../lib/useLimitResume'
 import { ImageViewer } from './ImageViewer'
@@ -199,6 +201,13 @@ export function SessionWindow(): React.ReactElement {
   // 저장본 복원이 끝났는지 — 끝나기 전엔 보고/persist를 막아 저장된 대화를 빈 상태로 덮지 않는다
   const [hydrated, setHydrated] = useState(false)
   const hydratedRef = useRef(false)
+  // ── /btw 질문 창 시드 ──
+  // btwWin: 이 창이 /btw로 만들어졌다(기본 제목·안내 칩). btwSeedRef: 첫 실행이 포크할
+  // 원본 세션(자기 세션이 생기면 자연히 무시). autoAsk: 자동 전송할 인라인 질문 —
+  // hydrate가 '읽으면 소비'로 한 번만 주므로 재열람·재시작엔 되살아나지 않는다.
+  const [btwWin, setBtwWin] = useState(false)
+  const btwSeedRef = useRef<{ fork: string; cwd: string } | null>(null)
+  const [autoAsk, setAutoAsk] = useState<string | null>(null)
   // 마지막 활동(프롬프트 전송) 시각 — persist에 실어 사이드바 상대 시간이 된다
   const lastActiveRef = useRef<number | undefined>(undefined)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -356,12 +365,19 @@ export function SessionWindow(): React.ReactElement {
       const h = (await window.api.session?.hydrate?.().catch(() => null)) ?? null
       if (!alive) return
       if (h) {
-        load(sanitizeSnapshot(h.snapshot))
+        const snap = sanitizeSnapshot(h.snapshot)
+        load(snap)
         if (Array.isArray(h.refDirs)) setRefDirs(h.refDirs.filter((x): x is string => typeof x === 'string' && !!x).slice(0, 8))
         // picker는 사용자 조작이 아니므로 setPicker — 새 창 기본값(localStorage)은 안 건드린다
         if (h.picker) setPicker(sanitizePicker(h.picker as Partial<PickerState>))
         if (typeof h.draft === 'string' && h.draft) setInput(h.draft)
         if (Array.isArray(h.draftImages)) setImages(h.draftImages.filter((x): x is string => typeof x === 'string'))
+        // /btw 시드 — 포크 소스(자기 세션 전까지만 의미)와 자동 질문(대화가 이미 있으면
+        // 재열람이므로 보내지 않는다 — 메인의 '읽으면 소비'에 얹는 이중 안전벨트)
+        if (h.btw) setBtwWin(true)
+        if (typeof h.btwFork === 'string' && h.btwFork)
+          btwSeedRef.current = { fork: h.btwFork, cwd: (typeof h.btwForkCwd === 'string' && h.btwForkCwd) || h.cwd || '' }
+        if (typeof h.btwPrompt === 'string' && h.btwPrompt && snap.messages.length === 0) setAutoAsk(h.btwPrompt)
       }
       let dir = h?.cwd || ''
       if (!dir) {
@@ -504,12 +520,39 @@ export function SessionWindow(): React.ReactElement {
     limitResume.setHold(null)
   }
 
+  // /btw — 이 창에서도 곁다리 질문 창을 또 딸 수 있다(포크의 포크). 원본 채팅 id는 이
+  // 창이 모르므로 ''로 보내고 메인이 sender로 보완한다 — 알약은 원본이 일반 채팅일 때만
+  // 그려지므로 여기서 딴 창은 사이드바 '추가 채팅' 목록으로만 되찾는다.
+  const tryBtw = (text: string): boolean => {
+    const p = parseBtw(text)
+    if (!p) return false
+    const dir = cwd || state.session?.cwd || ''
+    const seed = btwForkOf(state.session, dir, picker.engine === 'codex' ? 'codex' : 'claude')
+    window.api
+      .btwOpen({
+        origin: '',
+        cwd: dir,
+        refDirs,
+        picker,
+        fork: seed?.fork ?? null,
+        forkCwd: seed?.cwd ?? null,
+        prompt: p.prompt || null
+      })
+      .catch(() => {})
+    return true
+  }
+
   const runPrompt = (text: string, opts?: { images?: string[]; picker?: PickerState; keepDraft?: boolean }): void => {
     const imgs = opts?.images ?? images
     const pk = opts?.picker ?? picker
     if ((!text.trim() && imgs.length === 0) || busy) return
     if (text.trim() === '/clear') {
       clearConversation()
+      return
+    }
+    // /btw — 클라이언트 명령: 엔진 대신 별도 질문 창 (이 대화엔 흔적 없음, 본채팅과 동일)
+    if (tryBtw(text)) {
+      if (!opts?.keepDraft) setInput('')
       return
     }
     // 내장 슬래시 명령(/init·/compact·/review…) — 본채팅처럼 요약 카드로 렌더되게 추적
@@ -535,6 +578,9 @@ export function SessionWindow(): React.ReactElement {
     }
     // 참조 폴더 — 작업 폴더와 겹치는 항목은 걸러서 전달
     const extraDirs = refDirs.filter((p) => !sameCwd(p, cwd || state.session?.cwd || ''))
+    // resume — 자기 세션이 생겼으면 그걸 잇고, /btw 창의 첫 실행이면 원본 세션을 포크한다
+    // (폴더를 바꿨거나 Codex로 바꿨으면 시드를 접고 새 대화 — lib/btw의 단일 판정)
+    const rs = btwRunResume(state.session?.sessionId, btwSeedRef.current, cwd || '', pk.engine === 'codex' ? 'codex' : 'claude')
     const req: RunRequest = {
       prompt: promptForEngine,
       model: pk.model,
@@ -545,7 +591,8 @@ export function SessionWindow(): React.ReactElement {
       codexModel: pk.codexModel,
       cwd, // 지정한 작업 폴더. 빈 값이면 엔진이 바탕화면으로 폴백
       addDirs: extraDirs.length ? extraDirs : undefined,
-      resume: state.session?.sessionId,
+      resume: rs.resume,
+      forkSession: rs.forkSession,
       // 과금 모드 — API를 골랐으면 이 창의 실행도 API 키로 과금 (메인과 같은 전역 설정)
       useApi: apiMode || undefined,
       // 실행 계정 — 클로드는 격리 CLAUDE_CONFIG_DIR, Codex는 격리 CODEX_HOME (미지정=기본 계정)
@@ -559,9 +606,24 @@ export function SessionWindow(): React.ReactElement {
     window.api.session?.run(req).catch(() => {})
   }
 
+  // /btw 자동 질문 — 창이 뜨자마자 인라인 질문을 보낸다. hydrated가 맨 끝에 서므로
+  // 이 effect가 돌 땐 폴더·picker 복원이 이미 커밋돼 있다(스테일 cwd로 포크할 일 없음).
+  useEffect(() => {
+    if (!hydrated || !autoAsk || busy) return
+    const q = autoAsk
+    setAutoAsk(null)
+    runPrompt(q, { keepDraft: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hydrated, autoAsk])
+
   // queue a draft while busy → auto-send when the run ends (same as 채팅)
   const scheduleMessage = (): void => {
     if (!busy || (!input.trim() && images.length === 0)) return
+    // /btw는 예약하지 않고 즉시 연다 — 작업 도는 동안의 곁다리 질문이 이 명령의 존재 이유
+    if (tryBtw(input)) {
+      setInput('')
+      return
+    }
     const id = crypto.randomUUID ? crypto.randomUUID() : `q-${queue.length}-${state.messages.length}`
     setQueue((q) => [...q, { id, text: input, images, picker }])
     setInput('')
@@ -666,7 +728,7 @@ export function SessionWindow(): React.ReactElement {
           호출 창(webContents) 기준으로 이 창을 제어한다. */}
       <div className="chat chat--code">
         <ChatHeader
-          title={winTitle || t('추가 채팅', 'Chat window')}
+          title={winTitle || (btwWin ? t('btw 질문', 'btw question') : t('추가 채팅', 'Chat window'))}
           cwd={cwd || state.session?.cwd || ''}
           placeholder={t('바탕화면', 'Desktop')}
           onSelectFolder={requestFolder}
@@ -678,6 +740,21 @@ export function SessionWindow(): React.ReactElement {
         />
         <ZoomBadge pct={chatZoom.pct} show={chatZoom.flash} />
         <div className="chat-scroll scroll" ref={swScrollRef}>
+          {/* /btw 창의 출신 안내 — 첫 메시지 전까지만. 시드 유무로 문구가 갈린다
+              (세션 없음·Codex(포크 미지원)로 시드 없이 열렸으면 그 사정을 말해준다) */}
+          {btwWin && !started && (
+            <div className="btw-note">
+              {btwSeedRef.current
+                ? t(
+                    '원본 대화의 컨텍스트를 이어받았어요 — 여기서 물어봐도 원본 대화에는 흔적이 남지 않아요.',
+                    'Carries the original chat’s context — asking here leaves no trace in it.'
+                  )
+                : t(
+                    '이어받을 컨텍스트가 없어 새 대화로 시작해요. (첫 응답 전이거나 Codex 엔진은 포크가 안 돼요)',
+                    'No context to carry over — starting fresh. (Before the first reply, or the Codex engine, can’t fork)'
+                  )}
+            </div>
+          )}
           {!started && !busy ? (
             <WelcomeState
               userName={user.name}
@@ -770,6 +847,7 @@ export function SessionWindow(): React.ReactElement {
           onOpenImage={openViewer}
           cwd={cwd}
           mentionBase={cwd}
+          commands={slashCommandsWithBtw()}
           inputRef={composerRef}
         />
       </div>

@@ -171,17 +171,9 @@ function fmtTokShort(n: number): string {
   return String(n)
 }
 
-// Whether two working-directory paths point at the same folder. Used to gate session
-// resume: a Claude Code session id is scoped to the project it was created in (its file
-// lives under that cwd), so resuming it after the folder changed fails with
-// "No conversation found with session ID". The engine echoes a cwd that can differ in
-// format from what we sent (separators / trailing slash / drive-letter case), so we
-// normalize before comparing — and treat a folder change as "start a fresh conversation".
-export function sameCwd(a: string | undefined | null, b: string | undefined | null): boolean {
-  if (!a || !b) return false
-  const norm = (p: string): string => p.replace(/[\\/]+/g, '/').replace(/\/+$/, '').toLowerCase()
-  return norm(a) === norm(b)
-}
+// sameCwd(폴더 동일성 — 세션 resume 게이트)는 lib/btw.ts로 이사했다: /btw 판정 PoC가
+// React 무의존 순수 모듈을 요구해서다. 기존 임포트가 전부 여기를 보므로 재수출로 잇는다.
+export { sameCwd } from '../lib/btw'
 
 // Strip live/ephemeral fields before persisting a session snapshot: an in-flight run
 // is frozen to idle, transient UI (terminal, open modals, thinking text) is dropped,

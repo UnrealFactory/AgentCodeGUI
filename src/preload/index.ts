@@ -5,6 +5,7 @@ import type {
   PermissionResponse,
   QuestionResponse,
   BgTaskRequest,
+  BtwOpenRequest,
   EngineEvent,
   WindowState,
   UserProfile,
@@ -225,6 +226,7 @@ const api: WindowApi = {
     onEvent: (cb: (e: EngineEvent) => void) => subscribe(IPC.talkEvent, cb)
   },
   openSessionWindow: () => ipcRenderer.invoke(IPC.openSessionWindow),
+  btwOpen: (req: BtwOpenRequest) => ipcRenderer.invoke(IPC.btwOpen, req),
   session: {
     run: (req: RunRequest) => ipcRenderer.invoke(IPC.sessionRun, req),
     cancel: () => ipcRenderer.invoke(IPC.sessionCancel),

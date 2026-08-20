@@ -49,7 +49,7 @@ import { lspManager } from './lsp/manager'
 import { initAutoUpdater, checkForUpdates, quitAndInstall, getUpdateStatus } from './updater'
 import { IPC } from '@shared/protocol'
 import { ATTACH_IMAGE_EXTS, ATTACH_TEXT_EXTS } from '@shared/attachments'
-import type { EngineEvent, RunRequest, PermissionResponse, QuestionResponse, BgTaskRequest, UsageInfo, UsageWindow, FileReadResult, FileWriteResult, UserProfile, MultiRunRequest, MultiPermissionResponse, MultiQuestionResponse, MultiEngineEvent, PanelPopState, PanelPopClosed, LspPos, AgentStatus, SessionWindowInfo, SessionPersistPayload, SessionHydrateData, EngineUpdateItem, EngineUpdateStatus, ModelId, EffortId, TrayMenuItem } from '@shared/protocol'
+import type { EngineEvent, RunRequest, PermissionResponse, QuestionResponse, BgTaskRequest, BtwOpenRequest, UsageInfo, UsageWindow, FileReadResult, FileWriteResult, UserProfile, MultiRunRequest, MultiPermissionResponse, MultiQuestionResponse, MultiEngineEvent, PanelPopState, PanelPopClosed, LspPos, AgentStatus, SessionWindowInfo, SessionPersistPayload, SessionHydrateData, EngineUpdateItem, EngineUpdateStatus, ModelId, EffortId, TrayMenuItem } from '@shared/protocol'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -469,7 +469,9 @@ function sessionWinList(): SessionWindowInfo[] {
     title: r.title,
     status: live.get(r.id) ?? (r.status === 'done' || r.status === 'error' ? r.status : 'idle'),
     open: live.has(r.id),
-    updatedAt: r.updatedAt
+    updatedAt: r.updatedAt,
+    // /btw 질문 채팅의 원본 채팅 id — 그 채팅 화면의 btw 알약 도크가 자기 것만 골라 그린다
+    ...(r.btwOf ? { btwOf: r.btwOf } : {})
   }))
 }
 function broadcastSessionWins(): void {
@@ -533,7 +535,10 @@ function createSessionWindow(chatId?: string): void {
     // hide the default "File Edit View Window" menu bar too; Alt still reveals it so the
     // standard edit accelerators (copy/paste/…) stay intact.
     autoHideMenuBar: true,
-    title: t('추가 채팅 — AgentCodeGUI', 'Extra chat — AgentCodeGUI'),
+    // /btw 질문 창은 작업 표시줄에서 구분되게 제목만 다르다 — 껍데기는 추가 채팅 그대로
+    title: rec.btwOf
+      ? t('btw 질문 — AgentCodeGUI', 'btw question — AgentCodeGUI')
+      : t('추가 채팅 — AgentCodeGUI', 'Extra chat — AgentCodeGUI'),
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.mjs'),
       contextIsolation: true,
@@ -1164,8 +1169,26 @@ function registerIpc(): void {
   ipcMain.handle(IPC.sessionHydrate, async (_e): Promise<SessionHydrateData | null> => {
     const s = sessionWins.get(_e.sender.id)
     const rec = s ? sessionChats.get(s.chatId) : undefined
-    if (!rec || rec.snapshot == null) return null
-    return { snapshot: rec.snapshot, cwd: rec.cwd, refDirs: rec.refDirs, picker: rec.picker, draft: rec.draft, draftImages: rec.draftImages }
+    // 저장된 대화가 없는 새 창은 복원할 게 없다 — 단, /btw 창은 첫 저장 전에도 시드
+    // (폴더·picker·포크 소스·자동 질문)를 내려줘야 하므로 통과시킨다
+    if (!rec || (rec.snapshot == null && !rec.btwOf)) return null
+    const out: SessionHydrateData = {
+      snapshot: rec.snapshot,
+      cwd: rec.cwd,
+      refDirs: rec.refDirs,
+      picker: rec.picker,
+      draft: rec.draft,
+      draftImages: rec.draftImages,
+      ...(rec.btwOf ? { btw: true } : {}),
+      ...(rec.btwSeed ? { btwFork: rec.btwSeed.fork, btwForkCwd: rec.btwSeed.cwd } : {}),
+      ...(rec.btwPrompt ? { btwPrompt: rec.btwPrompt } : {})
+    }
+    // 인라인 질문은 '읽으면 소비' — 남겨두면 /clear 후 재열람 때 옛 질문이 또 자동 전송된다
+    if (rec.btwPrompt) {
+      delete rec.btwPrompt
+      persistSessionChats()
+    }
+    return out
   })
   ipcMain.handle(IPC.sessionPersist, async (_e, p: SessionPersistPayload) => {
     const s = sessionWins.get(_e.sender.id)
@@ -1185,6 +1208,31 @@ function registerIpc(): void {
     persistSessionChats()
     if (s.flushing) finishFlush(_e.sender.id) // 닫기 대기 중이던 창 — 저장이 끝났으니 정리
     broadcastSessionWins()
+  })
+  // /btw — 현재 대화의 컨텍스트를 포크해 별도 질문 창으로. 추가 채팅 레코드에 원본
+  // 채팅(btwOf)과 시드(포크 소스 세션·인라인 질문)를 심어 두면, 창의 hydrate가 시드를
+  // 받아 첫 실행을 resume+forkSession으로 보낸다. 창·영속·알림은 추가 채팅 그대로.
+  ipcMain.handle(IPC.btwOpen, async (_e, p: BtwOpenRequest) => {
+    if (!p || typeof p !== 'object') return
+    // 추가 채팅 창에서 부른 /btw는 자기 채팅 id를 모른다('') — sender로 보완한다
+    const origin =
+      (typeof p.origin === 'string' && p.origin) || sessionWins.get(_e.sender.id)?.chatId || ''
+    const rec: SessionChatRecord = {
+      id: randomUUID(),
+      title: '',
+      status: 'idle',
+      cwd: typeof p.cwd === 'string' ? p.cwd : '',
+      refDirs: Array.isArray(p.refDirs) ? p.refDirs.filter((d): d is string => typeof d === 'string' && !!d).slice(0, 8) : undefined,
+      snapshot: null,
+      picker: p.picker,
+      btwOf: origin || 'unknown',
+      ...(typeof p.fork === 'string' && p.fork
+        ? { btwSeed: { fork: p.fork, cwd: (typeof p.forkCwd === 'string' && p.forkCwd) || (typeof p.cwd === 'string' ? p.cwd : '') } }
+        : {}),
+      ...(typeof p.prompt === 'string' && p.prompt.trim() ? { btwPrompt: p.prompt.trim() } : {})
+    }
+    sessionChats.set(rec.id, rec)
+    createSessionWindow(rec.id)
   })
 
   // multi-agent — route each command to its panel's engine (lazily created on first run)

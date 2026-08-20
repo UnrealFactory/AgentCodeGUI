@@ -488,6 +488,10 @@ export interface RunRequest {
   engine?: EngineId
   codexModel?: string
   resume?: string // session id to resume — carries this chat's conversation history
+  // resume와 함께 켜면 그 세션을 '이어쓰기'가 아니라 '포크'한다 — 원본 세션 파일은 그대로
+  // 두고 새 세션 id로 컨텍스트만 복제(SDK forkSession). /btw 질문 창의 첫 실행이 쓴다.
+  // claude 전용 — Codex app-server엔 포크가 없다(렌더러가 애초에 켜지 않는다).
+  forkSession?: boolean
   systemPrompt?: string // 채팅/패널별 프롬프트 — appended to the preset system prompt every run
   // 참조 폴더 — 작업 폴더(cwd) 외에 엔진이 작업 루트로 인식할 추가 폴더들.
   // claude: SDK additionalDirectories(CLI --add-dir). codex: 샌드박스 쓰기 루트
@@ -773,6 +777,21 @@ export interface SessionWindowInfo {
   status: AgentStatus
   open: boolean
   updatedAt?: number // 마지막 활동(프롬프트 전송) 시각 — 사이드바 상대 시간 표시용
+  // /btw로 만들어진 질문 채팅이면 원본(일반 채팅) id — 그 채팅 화면의 btw 알약 도크가
+  // 이 값으로 자기 것만 골라 그린다. 일반 추가 채팅은 없음.
+  btwOf?: string
+}
+
+/** /btw — 현재 대화의 컨텍스트를 포크해 별도 질문 창(추가 채팅)으로 여는 요청.
+ *  fork가 없으면(세션 없음·폴더 불일치·Codex) 컨텍스트 없이 새 대화로 연다. */
+export interface BtwOpenRequest {
+  origin: string // 원본 채팅 id ('' = 메인이 sender로 보완 — 추가 채팅 창에서 부른 경우)
+  cwd: string
+  refDirs?: string[]
+  picker?: unknown // 원본 채팅의 모델·모드·계정 스냅샷 — 창이 sanitize해서 복원
+  fork?: string | null // 포크 소스 세션 id (claude 전용)
+  forkCwd?: string | null // 그 세션의 폴더 — 창에서 폴더를 바꾸면 포크를 접는 가드
+  prompt?: string | null // '/btw 질문' 꼴의 인라인 질문 — 창이 열리자마자 자동 전송
 }
 
 // ── 포커스 밖 알림 (토스트) ──────────────────────────────────────────────────
@@ -833,6 +852,13 @@ export interface SessionHydrateData {
   picker?: unknown
   draft?: string
   draftImages?: string[]
+  // /btw 질문 창의 시드 — btw: 이 창이 btw로 만들어졌다는 표식(안내 칩·기본 제목),
+  // btwFork/btwForkCwd: 첫 실행이 포크할 원본 세션(자기 세션이 생기기 전까지만 의미),
+  // btwPrompt: 자동 전송할 인라인 질문 — 메인이 '읽으면 소비'로 한 번만 내려준다.
+  btw?: boolean
+  btwFork?: string
+  btwForkCwd?: string
+  btwPrompt?: string
 }
 
 // ── 엔진 자동 업데이트 (부팅 게이트) ─────────────────────────
@@ -969,6 +995,9 @@ export const IPC = {
   sessionReport: 'session-wins:report', // 세션 창 렌더러 → 자기 제목·상태 보고
   sessionHydrate: 'session-wins:hydrate', // 세션 창 렌더러 → 자기 채팅의 저장본 조회(마운트 복원)
   sessionPersist: 'session-wins:persist', // 세션 창 렌더러 → 자기 대화 스냅샷 저장(디바운스/flush)
+  // /btw — 현재 대화의 컨텍스트를 포크(SDK forkSession)해 별도 질문 창으로. 원본 채팅에는
+  // 흔적이 남지 않고, 원본 화면 하단의 btw 알약이 창을 되부른다(창=추가 채팅 인프라 재사용).
+  btwOpen: 'btw:open',
   pickDirectory: 'dialog:pick-directory',
   dirExists: 'fs:dir-exists', // 저장된 작업 폴더가 아직 존재하는지 확인(추가 채팅의 폴더 복원 검증)
   pickAttachments: 'dialog:pick-attachments', // open dialog filtered to attachable files (images + text); returns absolute paths

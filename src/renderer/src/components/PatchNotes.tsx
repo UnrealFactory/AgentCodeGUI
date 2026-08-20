@@ -28,6 +28,71 @@ type LocalizedRelease = { ko: Release; en: Release }
 // 지난 1.x 노트들은 은퇴한 UpdateNotes와 함께 정리했다(이제 보여줄 경로가 없다).
 const MAX_VERSIONS = 5
 const RELEASES: Record<string, LocalizedRelease> = {
+  '2.6.0': {
+    ko: {
+      eyebrow: 'NEW',
+      lead: '/btw — 지금 대화의 컨텍스트를 그대로 이어받은 별도 질문 창. 곁다리 질문을 던져도 원래 대화는 깨끗하게 유지됩니다.',
+      notes: [
+        {
+          tag: '채팅',
+          name: '/btw — 컨텍스트를 이어받은 질문 창',
+          desc: (
+            <>
+              작성칸에 <b>/btw 질문</b>을 치면(작업 중에도!) 지금까지의 대화 내용을{' '}
+              <b>그대로 이어받은 별도 창</b>이 뜨고 질문이 바로 전송됩니다. 대화를{' '}
+              <b>포크</b>해서 열기 때문에 곁다리 문답이 <b>원래 대화에는 전혀 남지
+              않아요</b> — 컨텍스트도 안 먹습니다. 질문 없이 <b>/btw</b>만 치면 빈 질문
+              창이 열려요. 본채팅과 추가 채팅 어디서든 됩니다.
+            </>
+          )
+        },
+        {
+          tag: '채팅',
+          name: 'btw 알약 — 내려도 잃지 않아요',
+          desc: (
+            <>
+              질문 창을 닫아도 원래 채팅 하단에 <b>btw 알약</b>이 남습니다 — 상태 점이{' '}
+              <b>진행 중(펄스)/답 완료(초록)</b>를 알려주고, <b>클릭하면 창이 다시
+              열려</b> 문답이 그대로 이어져요. ✕는 질문 채팅 삭제. 알약은 재시작 후에도
+              남고, 사이드바 <b>추가 채팅</b> 목록에서도 찾을 수 있습니다.
+            </>
+          )
+        }
+      ]
+    },
+    en: {
+      eyebrow: 'NEW',
+      lead: '/btw — a side-question window that carries your current chat’s context. Ask away; the original conversation stays untouched.',
+      notes: [
+        {
+          tag: 'Chat',
+          name: '/btw — a question window with your context',
+          desc: (
+            <>
+              Type <b>/btw your question</b> (even mid-run!) and a <b>separate window
+              opens carrying the conversation so far</b>, sending the question right
+              away. It <b>forks</b> the session, so the side chat <b>leaves no trace in
+              the original</b> — and costs it no context. Bare <b>/btw</b> opens an
+              empty question window. Works in the main chat and extra chat windows.
+            </>
+          )
+        },
+        {
+          tag: 'Chat',
+          name: 'btw pills — put it down, not away',
+          desc: (
+            <>
+              Closing the question window leaves a <b>btw pill</b> at the bottom of the
+              original chat — its dot shows <b>working (pulse) / answered (green)</b>,
+              and <b>clicking reopens the window</b> with the thread intact. ✕ deletes
+              the question chat. Pills survive restarts, and the chats also appear under{' '}
+              <b>Chat windows</b> in the sidebar.
+            </>
+          )
+        }
+      ]
+    }
+  },
   '2.5.2': {
     ko: {
       eyebrow: 'IMPROVED',
@@ -304,48 +369,6 @@ const RELEASES: Record<string, LocalizedRelease> = {
               A repository with no changes showed up as either <b>&quot;Clean&quot;</b> or{' '}
               <b>&quot;Up to date&quot;</b> depending on the branch — it&apos;s now always{' '}
               <b>&quot;Up to date&quot;</b>.
-            </>
-          )
-        }
-      ]
-    }
-  },
-  '2.4.2': {
-    ko: {
-      eyebrow: 'NEW',
-      lead: '멀티채팅 패널 이름을 자물쇠로 고정해 둘 수 있습니다 — 대화를 비우거나 작업 폴더를 바꿔도 그 이름 그대로예요.',
-      notes: [
-        {
-          tag: '멀티',
-          name: '패널 이름을 자물쇠로 고정해요',
-          desc: (
-            <>
-              패널 제목 옆 <b>자물쇠</b>를 누르면 그 이름이 고정됩니다. 지금까지는{' '}
-              <b>/clear</b>·제스처로 대화를 비우거나 <b>작업 폴더를 바꾸면</b> 이름이 지워지고
-              다음 지시로 다시 지어졌지만, 잠가 두면 &quot;프론트&quot;·&quot;테스트&quot;처럼{' '}
-              <b>역할 이름을 붙여 둔 패널</b>이 그대로 남습니다. 잠긴 채로도 <b>직접 이름
-              바꾸기</b>는 그대로 되고(연필·더블클릭·F2), 잠금 상태는 자물쇠 아이콘이 계속
-              켜져 있어 한눈에 보여요.
-            </>
-          )
-        }
-      ]
-    },
-    en: {
-      eyebrow: 'NEW',
-      lead: 'Multi-chat panel titles can now be pinned with a lock — clearing the conversation or switching the working folder no longer renames them.',
-      notes: [
-        {
-          tag: 'Multi-agent',
-          name: 'Lock a panel title in place',
-          desc: (
-            <>
-              Click the <b>lock</b> next to a panel title to pin it. Until now,{' '}
-              <b>/clear</b>, the clear gesture, or <b>changing the working folder</b> wiped the
-              title and let the next prompt name it again — with the lock on, panels you&apos;ve
-              named by role (&quot;Frontend&quot;, &quot;Tests&quot;) keep that name. You can
-              still <b>rename by hand</b> while locked (pencil, double-click, F2), and the lock
-              icon stays lit so the state is visible at a glance.
             </>
           )
         }

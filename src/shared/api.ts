@@ -3,6 +3,7 @@ import type {
   PermissionResponse,
   QuestionResponse,
   BgTaskRequest,
+  BtwOpenRequest,
   MultiRunRequest,
   MultiPermissionResponse,
   MultiQuestionResponse,
@@ -360,6 +361,9 @@ export interface WindowApi {
    *  resizable, movable to a second monitor) running its own conversation on its own
    *  engine. Callable from any mode; each window is fully independent of the others. */
   openSessionWindow(): Promise<void>
+  /** /btw — 현재 대화의 컨텍스트를 포크(forkSession)해 별도 질문 창(추가 채팅)으로 연다.
+   *  fork가 없으면 컨텍스트 없이 새 대화. 원본 채팅 화면의 btw 알약이 창을 되부른다. */
+  btwOpen(req: BtwOpenRequest): Promise<void>
   /** 세션 창 — the chat that lives inside a session window. Its own engine per window,
    *  events routed only to that window (sessionEvent). Same payload shapes as the main
    *  chat; the run/cancel/respond are resolved to the calling window's engine in main. */

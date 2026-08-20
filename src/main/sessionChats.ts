@@ -34,6 +34,15 @@ export interface SessionChatRecord {
   draftImages?: string[]
   empty?: boolean // 메시지 0 — 창을 닫을 때 목록에서 지우는 판정용
   updatedAt?: number
+  // ── /btw 질문 채팅 (원본 대화의 컨텍스트를 포크해 시작한 추가 채팅) ──
+  // btwOf: 원본 채팅 id — 그 채팅 화면의 btw 알약 도크가 이 채팅을 그린다.
+  // btwSeed: 창의 첫 실행이 포크할 원본 세션(id+그 폴더). 자기 세션이 생기면 무시되므로
+  // 지울 필요가 없다(폴더가 바뀌면 창 쪽 가드가 접는다).
+  // btwPrompt: 자동 전송할 인라인 질문 — hydrate가 '읽으면 소비'로 한 번만 내려준다
+  // (남겨두면 /clear 후 재열람 때 옛 질문이 되살아난다).
+  btwOf?: string
+  btwSeed?: { fork: string; cwd: string }
+  btwPrompt?: string
 }
 
 const isRecord = (c: unknown): c is SessionChatRecord =>

@@ -864,6 +864,9 @@ export class ClaudeEngine {
           // continue this chat's conversation (loads prior history) instead of
           // starting fresh every message
           ...(req.resume ? { resume: req.resume } : {}),
+          // /btw 질문 창의 첫 실행 — resume한 세션을 이어쓰지 않고 새 세션 id로 포크한다.
+          // 원본 세션 파일은 그대로라 원본 대화는 여기서의 문답을 전혀 모른다.
+          ...(req.resume && req.forkSession ? { forkSession: true } : {}),
           // 'bypassPermissions' is inert unless this companion flag is set — the SDK
           // only passes --allow-dangerously-skip-permissions when it's true.
           ...(permissionMode === 'bypassPermissions' ? { allowDangerouslySkipPermissions: true } : {}),
