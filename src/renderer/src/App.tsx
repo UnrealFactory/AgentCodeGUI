@@ -1376,7 +1376,7 @@ function MainApp({ user }: { user: AppUser }) {
   )
   // 이 채팅에서 띄운 /btw 질문 창들 — 하단 btw 알약 도크가 그린다 (다른 채팅 것은 안 보임)
   const btwWins = useMemo(() => sessionWins.filter((w) => w.btwOf === activeChatId), [sessionWins, activeChatId])
-  // "/" 팔레트 — 본채팅은 /btw가 배선돼 있어 팔레트에도 끼운다 (멀티 패널은 미배선이라 기본 목록)
+  // "/" 팔레트 — /btw 포함 (배선된 표면 공통 조립: 본채팅·추가 채팅·멀티 패널·팝아웃)
   const composerCommands = useMemo(() => slashCommandsWithBtw(), [lang])
   // 사이드바 3섹션 — active 하이라이트는 지금 보이는 뷰의 항목 하나만(PoC 규칙).
   // currentId는 busy 잠금 예외용: 실행이 흐르는 채팅은 멀티 뷰에서도 눌러 돌아올 수 있다

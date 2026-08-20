@@ -1,7 +1,8 @@
-import { Suspense, lazy, useEffect, useRef, useState } from 'react'
-import type { ApiConfigStatus, BgTaskRequest, PanelPopState, UsageInfo } from '@shared/protocol'
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react'
+import type { ApiConfigStatus, BgTaskRequest, PanelPopState, SessionWindowInfo, UsageInfo } from '@shared/protocol'
 import type { EngineId } from '@shared/protocol'
 import { useAgentSession, initialSessionState, sameCwd, commandOf, sanitizeSnapshot, snapshotForPersist, type SessionState } from '../store/session'
+import { parseBtw, btwForkOf } from '../lib/btw'
 import { getPref, setPref } from '../lib/prefs'
 import { t, useLang } from '../lib/i18n'
 import { extractMentions } from '../lib/mentions'
@@ -188,6 +189,35 @@ function PanelHost({ boot }: { boot: PanelPopState }): React.ReactElement {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [busy])
 
+  // ── /btw 질문 창 — 팝아웃 창에서도 곁다리 질문 (원본 키 = 이 창의 panelId).
+  // 알약은 이 창의 패널 도크에 뜨고, 창을 닫아 그리드로 복귀하면 같은 panelId 도크가
+  // 이어받아 그린다 (목록 브로드캐스트가 전 창 공통이라 어느 쪽이든 최신).
+  const tryBtw = (text: string, pk: PickerState): boolean => {
+    const p = parseBtw(text)
+    if (!p) return false
+    const dir = meta.cwd || state.session?.cwd || ''
+    const seed = btwForkOf(state.session, dir, pk.engine === 'codex' ? 'codex' : 'claude')
+    window.api
+      .btwOpen({
+        origin: panelId,
+        cwd: dir,
+        refDirs: meta.refDirs,
+        picker: pk,
+        fork: seed?.fork ?? null,
+        forkCwd: seed?.cwd ?? null,
+        prompt: p.prompt || null
+      })
+      .catch(() => {})
+    return true
+  }
+  // 이 panelId에서 띄운 질문 창들 — 패널 안 btw 알약 도크 (브로드캐스트 구독)
+  const [sessionWins, setSessionWins] = useState<SessionWindowInfo[]>([])
+  useEffect(() => {
+    window.api.sessionWindows.list().then(setSessionWins).catch(() => {})
+    return window.api.sessionWindows.onChanged(setSessionWins)
+  }, [])
+  const btwWins = useMemo(() => sessionWins.filter((w) => w.btwOf === panelId), [sessionWins, panelId])
+
   // ── 전송 (ActiveSession.sendPanel의 단일 패널판 — panelId 고정) ──
   const send = useEvent(async (opts?: { text: string; images: string[]; picker: PickerState }) => {
     const text = (opts?.text ?? meta.input).trim()
@@ -199,6 +229,11 @@ function PanelHost({ boot }: { boot: PanelPopState }): React.ReactElement {
       load(initialSessionState)
       patch({ ...(meta.locked ? {} : { title: '', custom: false }), ...(opts ? {} : { input: '', images: [] }) })
       limitResume.setHold(null)
+      return
+    }
+    // /btw — 클라이언트 명령: 이 패널의 컨텍스트를 포크한 별도 질문 창 (패널 대화엔 흔적 없음)
+    if (tryBtw(text, pk)) {
+      if (!opts) patch({ input: '' })
       return
     }
     const cmd = commandOf(text)
@@ -264,6 +299,11 @@ function PanelHost({ boot }: { boot: PanelPopState }): React.ReactElement {
   // 예약 큐 — 이 창이 소유(그리드 쪽 큐는 팝아웃 때 비워짐). 드레인 규칙은 그리드와 동일.
   const schedule = useEvent(() => {
     if (!busy || (!meta.input.trim() && meta.images.length === 0)) return
+    // /btw는 예약하지 않고 즉시 연다 — 작업 도는 동안의 곁다리 질문 (그리드 패널과 동일)
+    if (tryBtw(meta.input.trim(), meta.picker)) {
+      patch({ input: '' })
+      return
+    }
     const id = crypto.randomUUID ? crypto.randomUUID() : `q-${Date.now()}-${meta.queue.length}`
     setMeta((m) => ({ ...m, input: '', images: [], queue: [...m.queue, { id, text: m.input, images: m.images, picker: m.picker }] }))
   })
@@ -473,6 +513,7 @@ function PanelHost({ boot }: { boot: PanelPopState }): React.ReactElement {
           onPermission={(_s, b) => onPermission(b)}
           onAnswer={(_s, a) => onAnswer(a)}
           onDismissQuestion={() => onDismissQuestion()}
+          btwWins={btwWins}
         />
       </div>
       <ZoomBadge pct={zoom.pct} show={zoom.flash} />

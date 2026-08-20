@@ -42,7 +42,8 @@ const RELEASES: Record<string, LocalizedRelease> = {
               <b>그대로 이어받은 별도 창</b>이 뜨고 질문이 바로 전송됩니다. 대화를{' '}
               <b>포크</b>해서 열기 때문에 곁다리 문답이 <b>원래 대화에는 전혀 남지
               않아요</b> — 컨텍스트도 안 먹습니다. 질문 없이 <b>/btw</b>만 치면 빈 질문
-              창이 열려요. 본채팅과 추가 채팅 어디서든 됩니다.
+              창이 열려요. 본채팅·추가 채팅·멀티 패널(별도 창 포함) 어디서든 됩니다 —
+              멀티에선 알약이 그 패널 안에 떠요.
             </>
           )
         },
@@ -73,7 +74,8 @@ const RELEASES: Record<string, LocalizedRelease> = {
               opens carrying the conversation so far</b>, sending the question right
               away. It <b>forks</b> the session, so the side chat <b>leaves no trace in
               the original</b> — and costs it no context. Bare <b>/btw</b> opens an
-              empty question window. Works in the main chat and extra chat windows.
+              empty question window. Works in the main chat, extra chat windows, and
+              multi-panel chats (popped-out panels too) — panel pills live inside the panel.
             </>
           )
         },

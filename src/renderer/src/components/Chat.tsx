@@ -270,9 +270,10 @@ export function slashCommands(): SlashCmd[] {
     { name: 'security-review', desc: t('변경 사항의 보안 취약점 검토', 'Check the changes for security issues'), icon: IconShieldChk }
   ]
 }
-/** /btw 팔레트 항목 — 배선이 있는 표면(본채팅·추가 채팅)만 commands에 끼워 넣는다.
- *  slashCommands()에 넣지 않는 이유: 멀티 패널 등 미배선 표면의 팔레트에 뜨면
- *  골라도 그냥 모델에게 텍스트로 가서 "고장난 명령"처럼 보인다. */
+/** /btw 팔레트 항목 — tryBtw 인터셉트가 배선된 표면만 commands에 끼워 넣는다(현재
+ *  본채팅·추가 채팅·멀티 패널·팝아웃 전부). slashCommands() 기본 목록에 넣지 않는
+ *  이유: 앞으로 새 컴포저 표면이 생겼을 때 배선 없이 팔레트에만 뜨면 골라도 그냥
+ *  모델에게 텍스트로 가서 "고장난 명령"처럼 보인다 — 명시 옵트인으로 그 사고를 막는다. */
 export function btwSlashCmd(): SlashCmd {
   return {
     name: 'btw',

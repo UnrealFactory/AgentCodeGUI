@@ -475,7 +475,13 @@ function sessionWinList(): SessionWindowInfo[] {
   }))
 }
 function broadcastSessionWins(): void {
-  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(IPC.sessionWindowsChanged, sessionWinList())
+  // 메인 창(사이드바·본채팅 btw 도크)뿐 아니라 전 창에 — 멀티 패널 팝아웃 창도 자기
+  // panelId의 btw 알약을 그리므로 목록 변화를 같이 받아야 한다. 구독 없는 창(토스트·
+  // 트레이 등)엔 조용히 무시되는 송신일 뿐이다.
+  const list = sessionWinList()
+  for (const w of BrowserWindow.getAllWindows()) {
+    if (!w.isDestroyed()) w.webContents.send(IPC.sessionWindowsChanged, list)
+  }
 }
 
 // 숨긴 창의 마지막 스냅샷을 받아낸 뒤 창을 정리한다 — 렌더러에 flush를 요청하고, persist가

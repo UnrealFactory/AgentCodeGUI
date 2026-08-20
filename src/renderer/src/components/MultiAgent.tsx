@@ -1,5 +1,5 @@
 import { Suspense, lazy, memo, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
-import type { AgentStatus, BgTaskRequest, ChangedFile, EngineId, UsageInfo, MultiRunRequest, EngineEvent, SubAgentInfo, PanelPopState, PanelPopClosed } from '@shared/protocol'
+import type { AgentStatus, BgTaskRequest, ChangedFile, EngineId, UsageInfo, MultiRunRequest, EngineEvent, SubAgentInfo, PanelPopState, PanelPopClosed, SessionWindowInfo } from '@shared/protocol'
 import {
   useAgentSession,
   initialSessionState,
@@ -12,6 +12,7 @@ import {
   type SessionState
 } from '../store/session'
 import {
+  BtwDock,
   Composer,
   LimitHoldBar,
   MessageView,
@@ -23,6 +24,7 @@ import {
   SelectionToolbar,
   ChatFind,
   FolderPop,
+  slashCommandsWithBtw,
   useThreadFollow,
   useThreadWindow,
   hasRunningBash,
@@ -30,6 +32,7 @@ import {
   type PickerState,
   type ScheduledMsg
 } from './Chat'
+import { parseBtw, btwForkOf } from '../lib/btw'
 import type { LimitHold } from '../lib/limitResume'
 import { useLimitResume, type LimitResumeSurface } from '../lib/useLimitResume'
 import type { ChatSummary } from './Sidebar'
@@ -61,6 +64,12 @@ const COUNT_OPTIONS = [2, 3, 4, 5, 6]
 // 한도 자동 이어서 토글의 미제공 폴백 — 모듈 상수여야 한다: 렌더마다 새 함수를 만들면
 // PanelView(memo) 전 패널이 매 렌더 리렌더된다
 const NOOP_AUTORESUME = (_on: boolean): void => {}
+
+// /btw 알약 도크 핸들러 — 창 포커스/삭제는 전역 API라 모듈 상수로 (memo PanelView에 안전).
+// 빈 목록도 모듈 상수 — 알약 없는 패널이 브로드캐스트마다 새 []로 리렌더되지 않게.
+const btwFocus = (id: string): void => void window.api.sessionWindows.focus(id).catch(() => {})
+const btwClose = (id: string): void => void window.api.sessionWindows.close(id).catch(() => {})
+const EMPTY_BTW: SessionWindowInfo[] = []
 
 // 라벨은 함수로 늦춰 렌더 때 t() 평가 — 모듈 스코프 상수에 언어가 박제되지 않게
 const STATUS_META: Record<AgentStatus, { label: () => string; cls: string }> = {
@@ -301,6 +310,7 @@ interface PanelViewProps {
   onRename: (slot: number, title: string | null, custom: boolean) => void // null = 취소(닫기만)
   onToggleLock: (slot: number) => void // 자물쇠 클릭 — 제목 잠금 토글 (잠그면 클리어에도 제목 유지)
   onCycleColor: (slot: number) => void // 번호 칩 클릭 — 컬러 태그 순환
+  btwWins: SessionWindowInfo[] // 이 패널에서 띄운 /btw 질문 창들 — 패널 안 btw 알약 도크
 }
 
 export const PanelView = memo(function PanelView({
@@ -353,6 +363,7 @@ export const PanelView = memo(function PanelView({
   onRename,
   onToggleLock,
   onCycleColor,
+  btwWins,
 }: PanelViewProps) {
   useLang() // 언어 전환 재렌더 구독 (memo 컴포넌트라 루트 재렌더를 안 탄다)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -724,12 +735,15 @@ export const PanelView = memo(function PanelView({
         onOpenImage={onOpenImage}
         cwd={cwd}
         mentionBase={cwd}
+        commands={slashCommandsWithBtw()}
         inputRef={composerRef}
       />
 
       {/* 패널 스코프 카드 — .ma-panel(position:relative) 안에서 그 패널만 덮으므로
           어느 패널의 요청인지 위치로 식별된다. 키보드는 포커스된 패널의 카드만
-          받는다 — 동시에 여러 카드가 떠도 키 한 번이 전부에 응답되지 않도록. */}
+          받는다 — 동시에 여러 카드가 떠도 키 한 번이 전부에 응답되지 않도록.
+          btw 도크는 워크플로 도크보다 DOM 앞 — 동시 상주 시 :has(~)로 한 층 위로 비킨다 */}
+      <BtwDock wins={btwWins} onFocus={btwFocus} onClose={btwClose} />
       <WorkflowDock wfs={state.workflows} onStop={(id) => onBgTask(slot, { action: 'stop', id })} />
       <PermissionModal
         permission={state.pendingPermission}
@@ -1275,6 +1289,52 @@ function ActiveSession({
       .catch(() => {})
   })
 
+  // ── /btw 질문 창 — 패널에서도 곁다리 질문 (원본 키 = panelId, 알약은 그 패널 안 도크) ──
+  // 목록은 메인의 추가 채팅 레지스트리 브로드캐스트 그대로 — btwOf(=panelId)로 슬롯을
+  // 되찾아 패널별로 가른다. 슬롯별 배열은 useMemo + 모듈 상수 EMPTY_BTW로 참조를 고정해
+  // 브로드캐스트가 없는 렌더에선 memo PanelView가 리렌더되지 않는다.
+  const [sessionWins, setSessionWins] = useState<SessionWindowInfo[]>([])
+  useEffect(() => {
+    window.api.sessionWindows.list().then(setSessionWins).catch(() => {})
+    return window.api.sessionWindows.onChanged(setSessionWins)
+  }, [])
+  const btwWinsBySlot = useMemo(() => {
+    const map = new Map<number, SessionWindowInfo[]>()
+    for (const w of sessionWins) {
+      if (!w.btwOf) continue
+      const slot = slotOfPanelId(w.btwOf)
+      if (slot == null) continue
+      const arr = map.get(slot)
+      if (arr) arr.push(w)
+      else map.set(slot, [w])
+    }
+    return map
+    // slotOfPanelId는 sessionId 클로저 — 세션이 바뀌면 매핑도 다시
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionWins, sessionId])
+  // /btw 판정+요청 — sendPanel(일반 전송)과 schedulePanel(busy 중 전송)이 같은 경로를 쓴다.
+  // 본채팅 tryBtw의 패널판: 포크 소스는 이 패널의 세션, 상속물은 이 패널의 폴더·picker.
+  const tryBtwPanel = (slot: number, text: string, pk: PickerState): boolean => {
+    const p = parseBtw(text)
+    if (!p) return false
+    const sess = sessions[slot]
+    const m = metas[slot]
+    const dir = m.cwd || sess.state.session?.cwd || ''
+    const seed = btwForkOf(sess.state.session, dir, pk.engine === 'codex' ? 'codex' : 'claude')
+    window.api
+      .btwOpen({
+        origin: chan(sessionId, slot),
+        cwd: dir,
+        refDirs: m.refDirs,
+        picker: pk,
+        fork: seed?.fork ?? null,
+        forkCwd: seed?.cwd ?? null,
+        prompt: p.prompt || null
+      })
+      .catch(() => {})
+    return true
+  }
+
   // ── stable per-panel handlers ──
   const patchMeta = useEvent((slot: number, patch: Partial<PanelMeta>) =>
     setMetas((prev) => prev.map((m, i) => (i === slot ? { ...m, ...patch } : m)))
@@ -1420,6 +1480,11 @@ function ActiveSession({
       lrs[slot].setHold(null)
       return
     }
+    // /btw — 클라이언트 명령: 이 패널의 컨텍스트를 포크한 별도 질문 창 (패널 대화엔 흔적 없음)
+    if (tryBtwPanel(slot, text, pk)) {
+      if (!opts) patchMeta(slot, { input: '' })
+      return
+    }
     // a built-in slash command (/init·/compact·/review·/security-review) → tracked so it
     // renders a summary card instead of a raw bubble; null for a normal prompt / skill
     const cmd = commandOf(text)
@@ -1498,6 +1563,11 @@ function ActiveSession({
   const schedulePanel = useEvent((slot: number) => {
     const m = metas[slot]
     if (!sessions[slot].busy || (!m.input.trim() && m.images.length === 0)) return
+    // /btw는 예약하지 않고 즉시 연다 — 작업 도는 동안의 곁다리 질문이 이 명령의 존재 이유 (본채팅과 동일)
+    if (tryBtwPanel(slot, m.input.trim(), m.picker)) {
+      patchMeta(slot, { input: '' })
+      return
+    }
     const id = crypto.randomUUID ? crypto.randomUUID() : `q-${Date.now()}-${m.queue.length}`
     setMetas((prev) =>
       prev.map((pm, i) =>
@@ -1703,6 +1773,7 @@ function ActiveSession({
         onRename={onRenamePanel}
         onToggleLock={onToggleLock}
         onCycleColor={onCycleColor}
+        btwWins={btwWinsBySlot.get(slot) ?? EMPTY_BTW}
       />
     )
   }
