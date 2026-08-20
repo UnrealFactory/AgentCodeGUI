@@ -62,6 +62,19 @@ const RELEASES: Record<string, LocalizedRelease> = {
               목록에서도 찾을 수 있습니다.
             </>
           )
+        },
+        {
+          tag: '멀티',
+          name: '별도 창으로 뺀 패널의 자리도 클릭하면 선택',
+          desc: (
+            <>
+              별도 창으로 뽑아둔 패널의 그리드 자리(점선 칸)를 클릭하면 이제 <b>그 패널이
+              선택</b>되어 포커스 링이 뜨고, 파일 탐색기(`)가 <b>그 패널의 폴더</b>를
+              따라갑니다 — 창을 앞으로 가져오는 기존 동작은 그대로예요. 선택된 상태에서{' '}
+              <b>Enter</b>를 치면 그 창으로 가고, <b>Esc</b>는 선택만 놓습니다(다른
+              창에서 보고 있는 실행을 여기 Esc가 끊지 않아요).
+            </>
+          )
         }
       ]
     },
@@ -99,6 +112,20 @@ const RELEASES: Record<string, LocalizedRelease> = {
               parks it — <b>only the pill&apos;s ✕ deletes</b> the question chat. Pills
               survive restarts, and the chats also appear under <b>Chat windows</b> in
               the sidebar.
+            </>
+          )
+        },
+        {
+          tag: 'Multi',
+          name: 'Popped-out panel slots are selectable too',
+          desc: (
+            <>
+              Clicking the grid slot (dashed box) of a panel you popped into its own
+              window now <b>selects that panel</b> — it gets the focus ring, and the file
+              explorer (`) follows <b>that panel&apos;s folder</b>. Bringing the window to
+              front still works as before. While selected, <b>Enter</b> jumps to the
+              window and <b>Esc</b> just releases the selection (it never cancels a run
+              you&apos;re watching in the other window).
             </>
           )
         }

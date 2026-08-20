@@ -3894,8 +3894,9 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
 /* 크게 보는 패널의 그리드 자리 지킴이 — 배치 규칙 유지용 .ma-panel + 점선 프레임 */
 .ma-panel.ma-ghost{ flex-direction:row; align-items:center; justify-content:center; gap:8px; border-style:dashed; }
 .ma-ghost-text{ font-size:12px; color:var(--text-4); }
-/* 팝아웃 유령 — 실물은 별도 OS 창. 클릭하면 그 창을 앞으로 (호버로 클릭 유도) */
-.ma-ghost.pop{ cursor:pointer; transition:border-color .14s; }
+/* 팝아웃 유령 — 실물은 별도 OS 창. 클릭=그 창 앞으로 + 그리드 포커스(탐색기 따라가기).
+   transition은 .ma-panel 베이스(border+box-shadow)를 그대로 — 포커스 링도 페이드 */
+.ma-ghost.pop{ cursor:pointer; }
 .ma-ghost.pop:hover{ border-color:var(--accent-line); }
 
 /* ── 패널 팝아웃 창 (#mapanel) — PanelView 하나가 창 전체를 쓴다 ─────────────

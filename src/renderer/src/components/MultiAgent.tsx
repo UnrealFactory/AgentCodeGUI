@@ -1013,6 +1013,9 @@ function ActiveSession({
   // 재바인딩되므로 클로저의 sessions는 그 사이 얼어 있다(막 busy로 바뀐 패널을
   // 못 보고 선택만 풀던 원인).
   const escCancelPanel = useEvent((slot: number): boolean => {
+    // 팝아웃 유령도 포커스가 되므로(폴더 탐색기 따라가기) 여기로 올 수 있다 — 그 실행은
+    // 다른 창에서 보고 있으니 그리드의 눈먼 Esc로 끊으면 사고(escCancelSole과 같은 규칙)
+    if (popped[slot]) return false
     const sess = sessions[slot]
     // 상주 워크플로(busy=false지만 도는 중)도 Esc 취소 대상 — 중지 버튼과 같은 의미.
     // 회수(턴 걷기 + 문장 복원)는 stopPanel이 공통으로 처리한다.
@@ -1020,6 +1023,10 @@ function ActiveSession({
     stopPanel(slot)
     return true
   })
+  // 팝아웃 여부 — 키보드 핸들러용 접근자. popped 상태는 아래(팝아웃 블록)에서 선언되고
+  // 키보드 effect는 [focusedSlot, count, expandedSlot]에만 재바인딩되므로, dep에 넣는
+  // 대신(선언 전 참조 = TDZ) useEvent로 이벤트 시점의 최신값을 읽는다(sessions와 동일).
+  const isPopped = useEvent((slot: number): boolean => !!popped[slot])
   // 포커스 없이 Esc — 도는 패널(busy 또는 상주 워크플로)이 딱 하나면 그걸 취소한다.
   // 여럿이면 어느 걸 멈추라는 건지 모호하므로 가만히 둔다(패널을 포커스해 취소).
   const escCancelSole = useEvent((): boolean => {
@@ -1069,13 +1076,20 @@ function ActiveSession({
       if (e.metaKey || e.ctrlKey || e.altKey || typing) return
 
       // F2 = 포커스 패널의 제목 편집 — 사이드바 F2(세션 이름 변경)는 패널 선택 중엔 양보한다
-      if (e.key === 'F2' && focusedSlot != null) {
+      // (팝아웃 유령은 제외 — 편집 UI가 저쪽 창에 있어 여기선 보이지 않는 상태만 남는다)
+      if (e.key === 'F2' && focusedSlot != null && !isPopped(focusedSlot)) {
         e.preventDefault()
         setRenamingSlot(focusedSlot)
         return
       }
 
       if (e.key === 'Enter' && !e.shiftKey) {
+        // 포커스가 팝아웃 유령이면 컴포저도 저쪽 창에 있다 — 클릭과 같은 의미로 그 창으로
+        if (focusedSlot != null && isPopped(focusedSlot)) {
+          e.preventDefault()
+          window.api.multi?.panelFocus?.(chan(sessionId, focusedSlot)).catch(() => {})
+          return
+        }
         const ta = document.querySelector('.ma-panel.focused .composer textarea') as HTMLTextAreaElement | null
         if (ta) {
           e.preventDefault()
@@ -1845,11 +1859,14 @@ function ActiveSession({
               </div>
             ) : popped[slot] ? (
               // 팝아웃 유령 — 실물은 별도 OS 창에. 클릭하면 그 창을 앞으로.
+              // mousedown은 실물 패널과 똑같이 그리드 포커스도 잡는다 — 왼쪽 파일
+              // 탐색기가 "포커스한 패널의 폴더"를 따라가는 약속이 유령에도 통하게.
               <div
                 key={slot}
-                className="ma-panel ma-ghost pop"
+                className={'ma-panel ma-ghost pop' + (focusedSlot === slot ? ' focused' : '')}
                 data-slot={slot}
                 role="button"
+                onMouseDown={() => onFocusPanel(slot)}
                 onClick={() => window.api.multi?.panelFocus?.(chan(sessionId, slot)).catch(() => {})}
               >
                 <span className="ma-p-num on">{i + 1}</span>
