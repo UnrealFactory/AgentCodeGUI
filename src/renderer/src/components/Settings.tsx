@@ -813,12 +813,13 @@ function ClaudeStyleCard(): React.ReactElement {
       </div>
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }} role="radiogroup" aria-label={t('출력 스타일', 'Output style')}>
         {CLAUDE_STYLES.map((s) => (
+          // 설명 툴팁은 앱 커스텀(has-tip/data-tip) — 네이티브 title은 윈도우 기본 툴팁이 떠서 이질적
           <button
             key={s.id}
-            className={'set-chipbtn' + (style === s.id ? ' on' : '')}
+            className={'set-chipbtn has-tip tip-wrap' + (style === s.id ? ' on' : '')}
             role="radio"
             aria-checked={style === s.id}
-            title={isEn() ? s.en : s.ko}
+            data-tip={isEn() ? s.en : s.ko}
             onClick={() => pick(s.id)}
           >
             {s.label || t('기본', 'Default')}
