@@ -761,6 +761,74 @@ function AccountLimits({ u }: { u?: AccountUsage }): React.ReactElement | null {
 // api 표면(state/listAvailable/install/…)을 받아 완전히 같은 UI로 관리된다.
 type EngineApi = (typeof window.api)['engine']
 
+// ── Claude Code 출력 스타일 — CLI 내장 스타일(2.1.237 실측) + '기본' ─────────────
+// 스타일명은 CLI 고유명이라 영문 그대로, 설명은 CLI의 공식 설명을 옮긴 것. '기본'은
+// 아무것도 주입하지 않아 사용자의 ~/.claude 설정(있다면)이 그대로 적용된다. 값은
+// ui-prefs('claude.outputStyle')에 저장되고 main(claude/engine.ts)이 실행 스폰마다 읽어
+// --settings의 outputStyle로 넣는다 — 다음 메시지부터 적용.
+// 라벨/설명은 ko/en 필드 + 렌더 시 isEn() 분기 — 모듈 스코프 t() 금지(언어 전환이 못 따라옴)
+const CLAUDE_STYLE_KEY = 'claude.outputStyle'
+const CLAUDE_STYLES: { id: string; label: string; ko: string; en: string }[] = [
+  { id: 'default', label: '', ko: '클로드 코드 기본 스타일이에요', en: "Claude Code's default style" },
+  {
+    id: 'Concise',
+    label: 'Concise',
+    ko: '결과부터 짧게 답해요 — 서론·과정 내레이션은 건너뛰어요',
+    en: 'Responds tersely, leading with results and skipping preamble and narration'
+  },
+  {
+    id: 'Explanatory',
+    label: 'Explanatory',
+    ko: '구현 선택과 코드베이스 패턴을 설명하며 진행해요',
+    en: 'Explains its implementation choices and codebase patterns'
+  },
+  {
+    id: 'Learning',
+    label: 'Learning',
+    ko: '잠깐씩 멈춰 작은 코드를 직접 써 보게 해요 — 실습용',
+    en: 'Pauses and asks you to write small pieces of code for hands-on practice'
+  },
+  {
+    id: 'Proactive',
+    label: 'Proactive',
+    ko: '계획·확인보다 즉시 실행을 우선해요',
+    en: 'Executes immediately, minimizes interruptions, and prefers action over planning'
+  }
+]
+
+function ClaudeStyleCard(): React.ReactElement {
+  const [style, setStyle] = useState<string>(() => getPref<string>(CLAUDE_STYLE_KEY, 'default'))
+  const pick = (id: string): void => {
+    setStyle(id)
+    setPref(CLAUDE_STYLE_KEY, id)
+  }
+  const cur = CLAUDE_STYLES.find((s) => s.id === style) ?? CLAUDE_STYLES[0]
+  return (
+    <div className="sc2 tgl" style={{ flexWrap: 'wrap', rowGap: 9 }}>
+      <div style={{ minWidth: 200, flex: '1 1 0' }}>
+        <div className="em">{t('출력 스타일', 'Output style')}</div>
+        <div className="meta">
+          {isEn() ? cur.en : cur.ko} · {t('다음 메시지부터 적용돼요', 'Applies from the next message')}
+        </div>
+      </div>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }} role="radiogroup" aria-label={t('출력 스타일', 'Output style')}>
+        {CLAUDE_STYLES.map((s) => (
+          <button
+            key={s.id}
+            className={'set-chipbtn' + (style === s.id ? ' on' : '')}
+            role="radio"
+            aria-checked={style === s.id}
+            title={isEn() ? s.en : s.ko}
+            onClick={() => pick(s.id)}
+          >
+            {s.label || t('기본', 'Default')}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function EngineView(): React.ReactElement {
   // 두 엔진 공통 자동 업데이트 — null=아직 조회 전(토글 비활성), 낙관 갱신 후 서버 값으로 확정
   const [auto, setAuto] = useState<boolean | null>(null)
@@ -784,6 +852,8 @@ function EngineView(): React.ReactElement {
       </div>
       <div className="set-sec">Anthropic</div>
       <EngineCard name="Claude Code" tile={<LogoClaude size={20} />} fallback={t('번들', 'bundled')} api={window.api.engine} />
+      {/* 출력 스타일 — Claude Code 실행의 응답 결(Concise 등). Codex엔 대응 개념이 없어 여기만 */}
+      <ClaudeStyleCard />
       <div className="set-sec">OpenAI</div>
       <EngineCard name="Codex CLI" tile={<LogoOpenAI size={20} />} fallback={t('전역 설치', 'global install')} api={window.api.codexEngine} />
       <div className="set-sec">{t('공통', 'Common')}</div>

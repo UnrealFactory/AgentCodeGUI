@@ -3,6 +3,7 @@ import os from 'node:os'
 import fs from 'node:fs'
 import { app } from 'electron'
 import { loadActiveQuery, APP_HOME } from '../engine/versions'
+import { readUiPrefs } from '../uiPrefs'
 import { disabledSkillOverrides } from '../skills'
 import { deniedMcpServers } from '../mcp'
 import { getApiKey, addSpend, envKeyChoice, setEnvKeyChoice } from '../apiConfig'
@@ -45,6 +46,18 @@ function defaultCwd(): string {
 // Claude Agent SDK permission modes (string literals, kept local to avoid
 // depending on the SDK's exact exported type names across versions).
 type SdkPermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan'
+
+// 설정 → Engine의 Claude Code 출력 스타일(ui-prefs 'claude.outputStyle'). CLI 내장
+// 스타일(2.1.237 실측: Concise/Explanatory/Learning/Proactive)일 때만 --settings의
+// outputStyle로 주입한다 — '기본'(그 외 값)은 미지정으로 두어 사용자의 ~/.claude 설정을
+// 존중한다(플래그 설정 계층은 사용자 설정을 이기므로, 안 보낼 때만 전역이 산다).
+// 스폰마다 디스크에서 읽는다(스폰 빈도가 낮아 비용 무시 가능) — 상주 주입 게이트
+// (optsMatch)가 스폰 시점 값과 현재 값을 비교해, 스타일 변경을 옵션 불일치(새 스폰)로 다룬다.
+const CLAUDE_OUTPUT_STYLES = new Set(['Concise', 'Explanatory', 'Learning', 'Proactive'])
+function claudeOutputStyle(): string | null {
+  const v = readUiPrefs()['claude.outputStyle']
+  return typeof v === 'string' && CLAUDE_OUTPUT_STYLES.has(v) ? v : null
+}
 
 // Minimal structural views of the SDK message/content shapes we consume.
 // Typed loosely on purpose — the SDK's concrete types vary by version and we
@@ -838,6 +851,8 @@ export class ClaudeEngine {
         : null
       if (subEnv && dropEnvKey) delete subEnv.ANTHROPIC_API_KEY
 
+      // 출력 스타일 — 스폰 시점 값으로 굳힌다(주입 게이트가 변경을 감지해 새 스폰으로)
+      const outputStyle = claudeOutputStyle()
       const q = query({
         prompt: promptStream(),
         options: {
@@ -853,6 +868,9 @@ export class ClaudeEngine {
           // the user's global file. (canUseTool remains the real allow/deny gate.)
           settings: {
             permissions: { defaultMode: permissionMode },
+            // 설정 → Engine의 출력 스타일(Concise 등) — CLI가 시스템 프롬프트에 반영
+            // (claude_code 프리셋 경로 실측: -p + --settings로 스타일 활성 확인)
+            ...(outputStyle ? { outputStyle } : {}),
             ...(skillOverrides ? { skillOverrides } : {}),
             ...(mcpDenied ? { deniedMcpServers: mcpDenied } : {})
           },
@@ -1173,7 +1191,9 @@ export class ClaudeEngine {
           !!nreq.useApi === useApi &&
           (nreq.account ?? null) === (req.account ?? null) &&
           (nreq.systemPrompt?.trim() ?? '') === (req.systemPrompt?.trim() ?? '') &&
-          JSON.stringify(nreq.addDirs ?? []) === JSON.stringify(req.addDirs ?? [])
+          JSON.stringify(nreq.addDirs ?? []) === JSON.stringify(req.addDirs ?? []) &&
+          // 출력 스타일도 스폰에만 정해지는 옵션 — 설정을 바꿨으면 새 스폰으로 반영
+          claudeOutputStyle() === outputStyle
         if (!optsMatch) {
           this.injectMissReason = 'opts'
           return null
