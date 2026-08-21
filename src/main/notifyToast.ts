@@ -20,6 +20,10 @@ interface Deps {
   focusSessionChat(chatId: string): void
   /** 이 webContents가 추가 채팅 창이면 그 영속 채팅 id (아니면 null) */
   sessionChatIdFor(wcId: number): string | null
+  /** 멀티 패널이 별도 창으로 나가 있으면 그 팝아웃 창 (아니면 null) — 이벤트는 메인 창의
+   *  MultiAgent(상태 소유자)가 보내지만, 그 패널의 "사는 창"은 팝아웃이다: 표시 판정
+   *  (그 창이 비포커스인가)·소멸(그 창 포커스 회복)·클릭 점프 전부 팝아웃 기준이어야 한다 */
+  panelWindowFor(target: NotifyTarget): BrowserWindow | null
   /** 설정 › 알림 on/off (ui-prefs notify.toast, 기본 on) */
   isEnabled(): boolean
 }
@@ -132,14 +136,19 @@ export function initNotifyToast(d: Deps): void {
   ipcMain.handle(IPC.notifyEvent, async (e, p: NotifyEventPayload) => {
     if (!deps || !deps.isEnabled()) return
     const win = BrowserWindow.fromWebContents(e.sender)
-    if (!win || win.isDestroyed() || win.isFocused()) return
+    if (!win || win.isDestroyed()) return
     // 추가 채팅 창의 이벤트는 메인이 대상 채팅 id를 채운다 — 렌더러는 자기 id를 모른다
     const sessionId = deps.sessionChatIdFor(e.sender.id)
     const target: NotifyTarget = sessionId ? { surface: 'session', id: sessionId } : p.target
+    // 팝아웃 패널이면 소유 창을 팝아웃으로 바꿔 단다 — 보내는 건 메인 창(상태 소유자)이라
+    // 메인 창 포커스로 판정하면 두 방향 다 틀린다(팝아웃을 보고 있는데 토스트가 뜨거나,
+    // 메인에서 딴 패널을 만지는 동안 안 보이는 팝아웃의 완료가 조용히 묻히거나).
+    const owner = deps.panelWindowFor(target) ?? win
+    if (owner.isFocused()) return
     const key = `${target.surface}:${target.id}${target.sub ? ':' + target.sub : ''}`
-    watchWindow(win)
+    watchWindow(owner)
     pending.delete(key) // 재삽입으로 끝(최신)으로 보낸다
-    pending.set(key, { ...p, target, key, winId: win.id })
+    pending.set(key, { ...p, target, key, winId: owner.id })
     pushEntries()
   })
 
@@ -166,6 +175,16 @@ export function initNotifyToast(d: Deps): void {
     clearFor(entry.winId) // 포커스 이벤트로도 지워지지만, 라우팅 실패에도 남지 않게 즉시
     if (entry.target.surface === 'session') {
       deps.focusSessionChat(entry.target.id)
+      return
+    }
+    // 팝아웃 패널의 알림 — 그 패널이 실제로 사는 팝아웃 창으로 (메인 창의 그리드 유령을
+    // 앞세우면 "클릭했는데 엉뚱한 창이 온다"가 된다 — 실사용 보고). 클릭 시점 재조회라
+    // 그 사이 창을 닫아 그리드로 복귀했으면 자연히 아래 메인 창 경로로 흐른다.
+    const pw = deps.panelWindowFor(entry.target)
+    if (pw) {
+      if (pw.isMinimized()) pw.restore()
+      pw.show()
+      pw.focus()
       return
     }
     const main = deps.getMainWindow()

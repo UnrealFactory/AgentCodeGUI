@@ -1454,6 +1454,8 @@ function registerIpc(): void {
     getMainWindow: () => mainWindow,
     focusSessionChat,
     sessionChatIdFor: (wcId) => sessionWins.get(wcId)?.chatId ?? null,
+    // 멀티 패널 대상(sub=슬롯)이 팝아웃돼 있으면 그 창 — 패널 채널 규약(sessionId::slot)
+    panelWindowFor: (tg) => (tg.surface === 'multi' && tg.sub != null ? panelWinOf(`${tg.id}::${tg.sub}`) : null),
     isEnabled: () => notifyToastOn
   })
   ipcMain.handle(IPC.uiPrefsSave, async (_e, prefs: Record<string, unknown>) => {
