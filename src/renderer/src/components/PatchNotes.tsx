@@ -40,9 +40,9 @@ const RELEASES: Record<string, LocalizedRelease> = {
             <>
               턴이 끝나도 <b>백그라운드 셸·서브에이전트·워크플로</b>가 아직 돌고 있으면
               이제 완료로 치지 않습니다 — 패널의 <b>완료 컬러 테두리</b>와 상태 칩은{' '}
-              <b>작업 중</b>으로 남고, <b>&apos;답변 도착&apos; 알림</b>도 전부 걷힌
-              순간에 옵니다. 완료 색이 보이면 <b>정말 시킬 일이 없는 상태</b>라는 뜻이
-              돼요.
+              <b>작업 중</b>으로 남아요. <b>&apos;답변 도착&apos; 알림</b>은 지금처럼
+              중간중간 답변이 올 때마다 오고, 완료 색이 보이면 <b>정말 시킬 일이 없는
+              상태</b>라는 뜻이 돼요.
             </>
           )
         },
@@ -108,9 +108,9 @@ const RELEASES: Record<string, LocalizedRelease> = {
             <>
               A finished turn no longer counts as done while <b>background shells,
               subagents, or workflows</b> are still running — the panel&apos;s{' '}
-              <b>done-colored border</b> and status chip stay on <b>Working</b>, and the{' '}
-              <b>&quot;Reply ready&quot; notification</b> arrives only once everything
-              has wound down. When you see the done color, there&apos;s{' '}
+              <b>done-colored border</b> and status chip stay on <b>Working</b>. The{' '}
+              <b>&quot;Reply ready&quot; notification</b> still arrives with each reply
+              along the way; when you see the done color, there&apos;s{' '}
               <b>truly nothing left running</b>.
             </>
           )
