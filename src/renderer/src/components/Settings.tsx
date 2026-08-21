@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import type {
   EngineVersionEntry,
   EngineVersionState,
@@ -287,14 +287,15 @@ function useHoldReorder(
   return { drag, press }
 }
 
-// ── Account 정렬 — 기본(저장 순서) / 초기화 임박순 / 한도 적게 남은순 ────────────
-// 표시 순서만 바꾸는 뷰 정렬: 저장 순서(채팅 계정 picker가 따르는)는 건드리지 않고,
-// 기본이 아닐 땐 꾹-드래그 재정렬이 잠긴다(계산된 순서 위 드래그는 놓는 순간 도로 튐).
-type AcctSort = 'default' | 'reset' | 'left'
-const ACCT_SORT_KEY = 'account.sort'
+// ── Account 정렬 — 초기화 임박순 / 한도 적게 남은순 ─────────────────────────────
+// 클릭 = 그 기준으로 "저장 순서 자체"를 재배열하고 저장한다(꾹-드래그로 옮긴 것과 동일
+// 경로 — reorderAccounts). 순간 뷰 정렬이던 초판은 화면을 벗어나면 도로 흐트러지고
+// 드래그까지 잠갔는데, 사용자가 원한 건 "누르면 그 순서로 굳는" 쪽(실사용 피드백) —
+// 그래서 뷰 모드·영속 pref('account.sort')·드래그 잠금을 전부 걷었다. 정렬 결과는 채팅
+// 계정 picker에도 그대로 반영되고, 이후 꾹-드래그로 언제든 다시 다듬을 수 있다.
+type AcctSort = 'reset' | 'left'
 // 라벨은 ko/en 필드 + 렌더 시 isEn() 분기 — 모듈 스코프 t() 금지(언어 전환이 못 따라옴)
 const ACCT_SORTS: { id: AcctSort; ko: string; en: string }[] = [
-  { id: 'default', ko: '기본', en: 'Default' },
   { id: 'reset', ko: '초기화 임박순', en: 'Resets soonest' },
   { id: 'left', ko: '한도 적게 남은순', en: 'Least limit left' }
 ]
@@ -318,10 +319,8 @@ function cxSortKeys(u?: CodexAccountUsage): AcctSortKeys {
   const lefts = wins.map((w) => 100 - w.usedPct)
   return { reset: resets.length ? Math.min(...resets) : Infinity, left: lefts.length ? Math.min(...lefts) : Infinity }
 }
-// 기본이면 원본 그대로(참조 유지 — 드래그 낙관 재배열이 곧 화면), 아니면 키로 정렬한 사본.
-// Array.sort는 안정 정렬이라 동률(둘 다 조회 전 등)은 저장 순서를 지킨다.
-function sortAccounts<T>(list: T[] | null, sort: AcctSort, keys: (a: T) => AcctSortKeys): T[] | null {
-  if (!list || sort === 'default') return list
+// 키로 정렬한 사본 — Array.sort는 안정 정렬이라 동률(둘 다 조회 전 등)은 기존 순서를 지킨다.
+function sortAccounts<T>(list: T[], sort: AcctSort, keys: (a: T) => AcctSortKeys): T[] {
   return list
     .map((a) => ({ a, k: keys(a) }))
     .sort((x, y) => (sort === 'reset' ? x.k.reset - y.k.reset : x.k.left - y.k.left))
@@ -343,12 +342,6 @@ function AccountView(): React.ReactElement {
   const [cxAccounts, setCxAccounts] = useState<CodexAccountInfo[] | null>(null)
   // Codex 계정별 한도(rateLimits) — 목록과 별도로 나중에 도착(계정마다 app-server 1회 스폰)
   const [cxUsage, setCxUsage] = useState<Record<string, CodexAccountUsage>>({})
-  // 정렬 — 두 엔진 목록에 함께 적용. 탭을 닫아도 기억(ui-prefs)
-  const [sort, setSortSt] = useState<AcctSort>(() => getPref<AcctSort>(ACCT_SORT_KEY, 'default'))
-  const setSort = (s: AcctSort): void => {
-    setSortSt(s)
-    setPref(ACCT_SORT_KEY, s)
-  }
 
   const reload = (): void => {
     window.api.auth.listAccounts().then(setAccounts).catch(() => setAccounts([]))
@@ -464,10 +457,26 @@ function AccountView(): React.ReactElement {
       })
   )
 
-  // 정렬 뷰 — 기본이면 스토어 배열 그대로(드래그 낙관 갱신 포함), 아니면 한도 키로 정렬한
-  // 사본. 아바타 색·드래그 인덱스는 저장 배열 기준(indexOf)이라 정렬을 토글해도 안 바뀐다.
-  const antView = useMemo(() => sortAccounts(accounts, sort, (a) => antSortKeys(usage[a.email])), [accounts, sort, usage])
-  const cxView = useMemo(() => sortAccounts(cxAccounts, sort, (a) => cxSortKeys(cxUsage[a.email])), [cxAccounts, sort, cxUsage])
+  // 정렬 버튼 = 저장 순서 재배열 — 꾹-드래그의 drop과 같은 경로(낙관 재배열 → reorder 저장,
+  // 실패하면 reload로 서버 순서 복원). 두 엔진 목록에 한 번에 적용하고, 이미 그 순서면
+  // (안정 정렬이 같은 배열을 내면) 저장을 건너뛴다. 함수형 setState라 드래그 직후의
+  // 마지막 배열을 그대로 재료로 쓴다.
+  const applySort = (sort: AcctSort): void => {
+    setAccounts((prev) => {
+      if (!prev || prev.length < 2) return prev
+      const next = sortAccounts(prev, sort, (a) => antSortKeys(usage[a.email]))
+      if (next.every((a, i) => a === prev[i])) return prev
+      void window.api.auth.reorderAccounts(next.map((a) => a.email)).then(setAccounts).catch(() => reload())
+      return next
+    })
+    setCxAccounts((prev) => {
+      if (!prev || prev.length < 2) return prev
+      const next = sortAccounts(prev, sort, (a) => cxSortKeys(cxUsage[a.email]))
+      if (next.every((a, i) => a === prev[i])) return prev
+      void window.api.codexAuth.reorderAccounts(next.map((a) => a.email)).then(setCxAccounts).catch(() => reload())
+      return next
+    })
+  }
 
   return (
     <>
@@ -477,28 +486,24 @@ function AccountView(): React.ReactElement {
           <>
             Subscription sign-in — managed per engine. Runs only use accounts registered here — each chat can pick
             its own account, and chats without one run on the <strong>default</strong> account. Press and hold a
-            card to drag it into a different order (while sorting is <strong>Default</strong>).
+            card to drag it into a different order; the sort buttons reorder and <strong>save</strong> that order
+            (the chat account picker follows it).
           </>
         ) : (
           <>
             구독 계정 로그인 — 엔진별로 따로 관리돼요. 실행에는 여기 등록된 계정만 쓰여요 — 채팅마다 계정을 따로
-            고를 수 있고, 안 고른 채팅은 <strong>기본</strong> 계정으로 실행돼요. 계정 카드는 꾹 눌러 끌면 순서를
-            바꿀 수 있어요(정렬이 <strong>기본</strong>일 때).
+            고를 수 있고, 안 고른 채팅은 <strong>기본</strong> 계정으로 실행돼요. 계정 카드는 꾹 눌러 끌어 순서를
+            바꾸고, 정렬 버튼은 그 기준으로 순서를 <strong>저장</strong>까지 해요(채팅 계정 picker도 이 순서를
+            따라요).
           </>
         )}
       </div>
 
-      {/* 정렬 칩 — 두 엔진 목록에 함께 적용되는 뷰 정렬 */}
-      <div className="set-sortrow" role="radiogroup" aria-label={t('정렬', 'Sort')}>
+      {/* 정렬 버튼 — 클릭 = 그 기준으로 저장 순서 재배열(두 엔진 목록 함께) */}
+      <div className="set-sortrow" role="group" aria-label={t('정렬', 'Sort')}>
         <span className="sl">{t('정렬', 'Sort')}</span>
         {ACCT_SORTS.map((o) => (
-          <button
-            key={o.id}
-            className={'set-chipbtn' + (sort === o.id ? ' on' : '')}
-            role="radio"
-            aria-checked={sort === o.id}
-            onClick={() => setSort(o.id)}
-          >
+          <button key={o.id} className="set-chipbtn" onClick={() => applySort(o.id)}>
             {isEn() ? o.en : o.ko}
           </button>
         ))}
@@ -513,14 +518,12 @@ function AccountView(): React.ReactElement {
         </div>
       ) : (
         <>
-          {(antView ?? accounts).map((a) => {
-            // 인덱스는 저장 배열 기준 — 정렬 뷰에서도 아바타 색이 계정을 따라간다
-            const i = accounts.indexOf(a)
+          {accounts.map((a, i) => {
             return (
             <div
               className={'sc2 acct' + (antDrag.drag === i ? ' drag' : '')}
               key={a.email}
-              onPointerDown={busy == null && sort === 'default' ? antDrag.press(i) : undefined}
+              onPointerDown={busy == null ? antDrag.press(i) : undefined}
             >
               <div className="ava2" style={{ background: AVA_SWATCHES[i % AVA_SWATCHES.length] }}>
                 {a.email.charAt(0).toUpperCase()}
@@ -576,13 +579,12 @@ function AccountView(): React.ReactElement {
         </div>
       ) : (
         <>
-          {(cxView ?? cxAccounts).map((a) => {
-            const i = cxAccounts.indexOf(a)
+          {cxAccounts.map((a, i) => {
             return (
             <div
               className={'sc2 acct' + (cxDrag.drag === i ? ' drag' : '')}
               key={a.email}
-              onPointerDown={busy == null && sort === 'default' ? cxDrag.press(i) : undefined}
+              onPointerDown={busy == null ? cxDrag.press(i) : undefined}
             >
               <div className="ava2" style={{ background: AVA_SWATCHES[(i + 6) % AVA_SWATCHES.length] }}>
                 {a.email.charAt(0).toUpperCase()}
