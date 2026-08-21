@@ -46,6 +46,37 @@ export function btwForkOf(
   return { fork: session.sessionId, cwd: session.cwd }
 }
 
+/** 포크 첫 실행의 질문에 앞세우는 곁다리 질문 리마인더 — 클로드 코드 /btw의 실물
+ *  system-reminder(CLI 2.1.237 실측 추출)를 이 앱의 창 구조에 맞게 옮긴 것.
+ *  원문은 "도구 없음·단발 응답"인 오버레이 전제라 그대로 쓰면 거짓말이 된다(이 창은
+ *  도구도 후속 턴도 있는 온전한 채팅) — 그래서 그 두 줄만 "읽기 전용으로 답하고,
+ *  작업 이어하기·파일 수정은 금지(이 창에서 명시로 시키기 전까지)"로 바꿨다.
+ *  핵심 목적은 동일: 컨텍스트를 통째로 이어받은 포크가 원본 작업을 마저 개발하려
+ *  드는 사고(실사용 보고)를 막고, '질문에 답하는 별도 인스턴스'로 정체를 굳힌다.
+ *  모델용 문구라 영어 고정(i18n 대상 아님) — 화면에는 안 보인다(엔진 전송분에만 붙음). */
+export const BTW_SIDE_REMINDER = `<system-reminder>This is a side question from the user, asked in a separate window forked from the main conversation.
+
+IMPORTANT CONTEXT:
+- You are a separate instance spawned to answer this side question
+- The main agent is NOT interrupted — it continues working independently, and its conversation never sees this window
+- You share the conversation context up to this point, but you are a completely separate instance
+- Do NOT reference being interrupted or what you were "previously doing" — that framing is incorrect
+
+CRITICAL CONSTRAINTS:
+- Do NOT continue, resume, or advance the main conversation's task — no file edits, no state-changing commands, no commits
+- Answer the question directly from what you already know from the conversation context; you may use read-only tools (reading files, searching) if needed for an accurate answer
+- Only make changes or take actions if the user explicitly asks for them in THIS window in a later message
+
+Simply answer the question with the information you have.</system-reminder>`
+
+/** 포크를 쏘는 실행(forkSession=true)의 엔진 전송 프롬프트 래핑 — 리마인더 + 원문.
+ *  표시(스레드 말풍선)는 원문 그대로 두고 엔진에 보내는 텍스트에만 앞세운다
+ *  (멘션/첨부 노트가 표시와 전송을 가르는 기존 문법과 동일). 이후 턴은 세션 컨텍스트에
+ *  이 리마인더가 이미 남아 있으므로 다시 붙이지 않는다. */
+export function wrapBtwFork(prompt: string): string {
+  return `${BTW_SIDE_REMINDER}\n\n${prompt}`
+}
+
 /** btw 창의 실행이 쓸 resume/forkSession.
  *  자기 세션(own)이 생겼으면 보통 resume(포크는 첫 실행 한 번이면 끝),
  *  아직이면 시드 포크 — 단 원본 폴더 그대로일 때만(바꿨으면 세션을 못 찾는다),

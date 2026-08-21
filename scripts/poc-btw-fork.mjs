@@ -12,6 +12,9 @@
  *  C. btwForkOf — 세션 없음·폴더 불일치·Codex는 null(새 컨텍스트), 정상만 {fork, cwd}
  *  D. btwRunResume — 자기 세션 > 시드 포크(원본 폴더·claude 한정) > 새 대화,
  *     자기 세션이 있으면 절대 forkSession을 켜지 않는다(매 턴 재포크 = 세션 분열)
+ *  E. wrapBtwFork — 포크 실행의 곁다리 질문 리마인더(클로드 코드 실물 이식):
+ *     리마인더가 질문 앞에 서고, 원문은 무손상, system-reminder 여닫음이 짝이 맞는다
+ *     (틀리면 포크가 원본 작업을 마저 개발하려 드는 원 사고가 재발한다)
  *
  * 실행: node scripts/poc-btw-fork.mjs   (esbuild로 lib를 번들 후 인메모리 구동)
  */
@@ -85,6 +88,16 @@ eq('폴더를 바꿨으면 시드 접기 → 새 대화', lib.btwRunResume(undef
 eq('Codex로 바꿨으면 시드 접기 → 새 대화', lib.btwRunResume(undefined, SEED, 'C:/Code/App', 'codex'), {})
 eq('시드 없음(일반 추가 채팅 첫 실행)', lib.btwRunResume(undefined, null, 'C:/Code/App'), {})
 eq('빈 cwd(바탕화면 폴백)는 시드와 불일치', lib.btwRunResume(undefined, SEED, ''), {})
+
+// ── E. 포크 실행의 곁다리 질문 리마인더 래핑 ─────────────────────────
+console.log('E. wrapBtwFork')
+const Q = '이 함수 왜 이렇게 짰어?\n둘째 줄'
+const wrapped = lib.wrapBtwFork(Q)
+eq('원문이 끝에 무손상으로 남는다', wrapped.endsWith('\n\n' + Q), true)
+eq('리마인더로 시작한다', wrapped.startsWith('<system-reminder>'), true)
+eq('여닫음 짝(1쌍)', [wrapped.split('<system-reminder>').length - 1, wrapped.split('</system-reminder>').length - 1], [1, 1])
+eq('핵심 제약 포함 — 작업 이어하기 금지', wrapped.includes('Do NOT continue, resume, or advance'), true)
+eq('핵심 정체 포함 — 별도 인스턴스', wrapped.includes('completely separate instance'), true)
 
 console.log(`\n${fail === 0 ? 'PASS' : 'FAIL'} — ${pass} passed, ${fail} failed`)
 process.exit(fail === 0 ? 0 : 1)

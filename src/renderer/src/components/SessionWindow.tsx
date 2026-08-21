@@ -42,7 +42,7 @@ import {
   type PickerState,
   type ScheduledMsg
 } from './Chat'
-import { parseBtw, btwForkOf, btwRunResume } from '../lib/btw'
+import { parseBtw, btwForkOf, btwRunResume, wrapBtwFork } from '../lib/btw'
 import { pushRecentDir } from '../lib/recentDirs'
 import { useLimitResume } from '../lib/useLimitResume'
 import { ImageViewer } from './ImageViewer'
@@ -588,6 +588,10 @@ export function SessionWindow(): React.ReactElement {
     // resume — 자기 세션이 생겼으면 그걸 잇고, /btw 창의 첫 실행이면 원본 세션을 포크한다
     // (폴더를 바꿨거나 Codex로 바꿨으면 시드를 접고 새 대화 — lib/btw의 단일 판정)
     const rs = btwRunResume(state.session?.sessionId, btwSeedRef.current, cwd || '', pk.engine === 'codex' ? 'codex' : 'claude')
+    // 포크를 쏘는 실행 = 원본 컨텍스트가 통째로 들어오는 순간 — 클로드 코드 /btw의
+    // 곁다리 질문 리마인더를 엔진 전송분에만 앞세운다(스레드 표시는 원문 그대로).
+    // 없으면 이어받은 컨텍스트에 이끌려 원본 작업을 마저 개발하려 든다(실사용 보고).
+    if (rs.forkSession) promptForEngine = wrapBtwFork(promptForEngine)
     const req: RunRequest = {
       prompt: promptForEngine,
       model: pk.model,
