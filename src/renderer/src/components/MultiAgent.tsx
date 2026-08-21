@@ -9,6 +9,7 @@ import {
   commandOf,
   commandTitleOf,
   liveMsgIndex,
+  effectiveStatus,
   type SessionState
 } from '../store/session'
 import {
@@ -381,7 +382,10 @@ export const PanelView = memo(function PanelView({
   // 승인/질문 카드가 떠 있는 동안은 상태를 "응답 대기"로 덮어쓴다 — 엔진은 busy지만
   // 실제로는 사용자를 기다리는 중이라, 그냥 작업 중인 패널과 한눈에 구분돼야 한다
   const waiting = !!(state.pendingPermission || state.pendingQuestion)
-  const status = waiting ? { label: () => t('응답 대기', 'Needs input'), cls: 'ask' } : STATUS_META[state.status]
+  // 턴이 끝나도 백그라운드(셸·에이전트·워크플로)가 남아 돌면 아직 '완료'가 아니다 —
+  // 완료 칩·컬러 링은 전부 걷힌 순간에만 켠다 (진짜 완료 판정 — store의 단일 규칙)
+  const effStatus = effectiveStatus(state)
+  const status = waiting ? { label: () => t('응답 대기', 'Needs input'), cls: 'ask' } : STATUS_META[effStatus]
   const started = state.messages.length > 0
   // 턴을 막고 있는 포그라운드 Bash가 있을 때만 셸 팝오버에 "건너뛰기"(Ctrl+B) 노출 (본채팅과 동일)
   const canSkipWait = useMemo(() => hasRunningBash(state.messages), [state.messages])
@@ -469,7 +473,7 @@ export const PanelView = memo(function PanelView({
 
   return (
     <div
-      className={'ma-panel' + (state.status === 'done' ? ' done' : '') + (focused ? ' focused' : '')}
+      className={'ma-panel' + (effStatus === 'done' ? ' done' : '') + (focused ? ' focused' : '')}
       data-slot={slot}
       // 이 패널의 컬러 태그를 변수로 — 헤더 하단 라인(.ma-p-tag)과 완료 테두리(.done)가 같이 쓴다
       style={{ '--ptag': `var(--${meta.color || defaultTag(slot)})` } as CSSProperties}
@@ -953,7 +957,8 @@ function ActiveSession({
   const sig = sessions.map((s) => s.state.status + ':' + s.state.messages.length).join('|')
 
   // report aggregate status up for the recent-list dot
-  const aggStatus = aggregateStatus(sessions.map((s) => s.state.status))
+  // 세션 레일 점도 '진짜 완료' 규칙 — 백그라운드가 남아 도는 패널은 working으로 집계
+  const aggStatus = aggregateStatus(sessions.map((s) => effectiveStatus(s.state)))
   useEffect(() => {
     onStatus(sessionId, aggStatus)
     // eslint-disable-next-line react-hooks/exhaustive-deps

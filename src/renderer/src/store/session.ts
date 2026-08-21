@@ -201,6 +201,25 @@ export function snapshotForPersist(s: SessionState): SessionState {
   }
 }
 
+// ── '진짜 완료' 판정 — 턴 종료(status done)만으론 끝이 아니다 ─────────────────
+// 턴이 끝나도 백그라운드 셸·백그라운드 에이전트(턴을 넘겨 도는 서브에이전트 칩)·
+// 워크플로는 상주 CLI에서 계속 돈다. 이게 살아 있는 동안 '완료' 표시(패널 컬러 링·
+// '답변 도착' 토스트)를 켜면 "이제 시킬 일 없나?"라는 신호로 거짓말이 된다(실사용
+// 피드백). 전부 걷힌 순간이 진짜 완료다 — 엔진이 스트림 종료·정착 통지에서 세 목록을
+// 반드시 정리하므로(stopped/done/빈 REPLACE) 이 판정이 영영 안 풀리는 일은 없다.
+export function bgActive(s: SessionState): boolean {
+  return (
+    s.bgTasks.some((b) => b.status === 'running') ||
+    (s.workflows ?? []).some((w) => w.status === 'running') ||
+    s.subagents.some((a) => a.status === 'running')
+  )
+}
+/** 표시용 상태 — 턴은 끝났어도(done) 백그라운드가 남아 돌면 '작업 중'으로 유지한다.
+ *  (busy 판정은 원시 status 그대로 — 전송 게이트·예약 큐가 백그라운드에 묶이면 안 된다) */
+export function effectiveStatus(s: SessionState): AgentStatus {
+  return s.status === 'done' && bgActive(s) ? 'working' : s.status
+}
+
 export const initialSessionState: SessionState = {
   status: 'idle',
   messages: [],
