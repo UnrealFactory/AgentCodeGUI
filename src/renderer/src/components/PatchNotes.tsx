@@ -28,6 +28,147 @@ type LocalizedRelease = { ko: Release; en: Release }
 // 지난 1.x 노트들은 은퇴한 UpdateNotes와 함께 정리했다(이제 보여줄 경로가 없다).
 const MAX_VERSIONS = 5
 const RELEASES: Record<string, LocalizedRelease> = {
+  '2.6.2': {
+    ko: {
+      eyebrow: 'IMPROVED',
+      lead: '완료·알림의 기준이 정직해집니다 — 백그라운드까지 다 끝나야 완료, 별도 창 알림은 그 창으로. /btw는 클로드 코드 방식으로 질문에만 집중하고, 출력 스타일(Concise 등)도 고를 수 있어요.',
+      notes: [
+        {
+          tag: '알림',
+          name: "'완료'는 진짜 다 끝났을 때만",
+          desc: (
+            <>
+              턴이 끝나도 <b>백그라운드 셸·서브에이전트·워크플로</b>가 아직 돌고 있으면
+              이제 완료로 치지 않습니다 — 패널의 <b>완료 컬러 테두리</b>와 상태 칩은{' '}
+              <b>작업 중</b>으로 남고, <b>&apos;답변 도착&apos; 알림</b>도 전부 걷힌
+              순간에 옵니다. 완료 색이 보이면 <b>정말 시킬 일이 없는 상태</b>라는 뜻이
+              돼요.
+            </>
+          )
+        },
+        {
+          tag: '알림',
+          name: '별도 창 패널의 알림은 그 창으로',
+          desc: (
+            <>
+              별도 창으로 뽑아둔 패널의 알림을 클릭하면 이제 <b>그 창이 바로
+              앞으로</b> 옵니다 — 예전엔 메인 창의 멀티 화면만 포커스돼 엉뚱한 곳으로
+              갔어요. 반대로 <b>그 창을 보고 있는 동안엔</b> 그 패널의 알림이 뜨지
+              않습니다(다른 창과 같은 규칙).
+            </>
+          )
+        },
+        {
+          tag: '채팅',
+          name: '/btw — 곁다리 질문에만 집중하도록',
+          desc: (
+            <>
+              컨텍스트를 이어받은 /btw 창이 <b>원래 하던 작업을 마저 개발하려 들던</b>{' '}
+              문제를 고쳤습니다. 클로드 코드의 /btw와 같은 방식으로 — 자신이 <b>질문에
+              답하는 별도 인스턴스</b>임을 알고, 본 작업을 이어하거나 파일을 고치지
+              않고 <b>아는 내용으로 바로 답</b>해요(이 창에서 따로 시키면 그때는
+              움직입니다).
+            </>
+          )
+        },
+        {
+          tag: '엔진',
+          name: 'Claude Code 출력 스타일 — Concise 등',
+          desc: (
+            <>
+              설정 → <b>Engine</b>에서 Claude Code의 <b>출력 스타일</b>을 고를 수
+              있습니다 — <b>Concise</b>(결과부터 짧게)·<b>Explanatory</b>(선택 이유
+              설명)·<b>Learning</b>(실습형)·<b>Proactive</b>(즉시 실행) 또는 기본.
+              다음 메시지부터 모든 채팅에 적용돼요.
+            </>
+          )
+        },
+        {
+          tag: '설정',
+          name: '계정 정렬 — 이제 누르면 그 순서로 저장',
+          desc: (
+            <>
+              Account의 <b>초기화 임박순·한도 적게 남은순</b> 버튼이 화면 표시만 바꾸는
+              대신 <b>계정 순서 자체를 재배열해 저장</b>합니다 — 꾹 눌러 끌어 옮긴 것과
+              똑같이요. 채팅의 <b>계정 선택 목록도 이 순서</b>를 따르고, 정렬 후에도
+              드래그로 언제든 다시 다듬을 수 있습니다.
+            </>
+          )
+        }
+      ]
+    },
+    en: {
+      eyebrow: 'IMPROVED',
+      lead: 'Honest signals — done means background work is done too, and popped-out panel notifications jump to their window. /btw now sticks to side questions like Claude Code, and you can pick an output style (Concise and more).',
+      notes: [
+        {
+          tag: 'Alerts',
+          name: "'Done' only when everything is done",
+          desc: (
+            <>
+              A finished turn no longer counts as done while <b>background shells,
+              subagents, or workflows</b> are still running — the panel&apos;s{' '}
+              <b>done-colored border</b> and status chip stay on <b>Working</b>, and the{' '}
+              <b>&quot;Reply ready&quot; notification</b> arrives only once everything
+              has wound down. When you see the done color, there&apos;s{' '}
+              <b>truly nothing left running</b>.
+            </>
+          )
+        },
+        {
+          tag: 'Alerts',
+          name: 'Popped-out panel alerts jump to their window',
+          desc: (
+            <>
+              Clicking a notification for a panel you popped into its own window now
+              brings <b>that window</b> to the front — it used to focus the main
+              window&apos;s multi view instead. And <b>while you&apos;re looking at that
+              window</b>, its panel&apos;s notifications stay quiet (same rule as other
+              windows).
+            </>
+          )
+        },
+        {
+          tag: 'Chat',
+          name: '/btw — focused on the side question',
+          desc: (
+            <>
+              The /btw window, carrying your conversation&apos;s context, used to{' '}
+              <b>pick up the original task and keep developing it</b>. Fixed — matching
+              Claude Code&apos;s /btw, it now knows it&apos;s a <b>separate instance
+              answering a question</b>: it won&apos;t resume the main work or edit files,
+              and <b>answers from what it already knows</b> (ask it explicitly in that
+              window if you do want action).
+            </>
+          )
+        },
+        {
+          tag: 'Engine',
+          name: 'Claude Code output styles — Concise and more',
+          desc: (
+            <>
+              Pick Claude Code&apos;s <b>output style</b> under Settings → <b>Engine</b>:{' '}
+              <b>Concise</b> (results first, tersely), <b>Explanatory</b> (explains its
+              choices), <b>Learning</b> (hands-on practice), <b>Proactive</b> (acts
+              immediately), or the default. Applies to every chat from the next message.
+            </>
+          )
+        },
+        {
+          tag: 'Settings',
+          name: 'Account sort now saves the order',
+          desc: (
+            <>
+              The <b>Resets soonest / Least limit left</b> buttons in Account no longer
+              just change the view — they <b>reorder and save the account list</b>,
+              exactly like dragging cards by hand. The <b>chat account picker follows</b>{' '}
+              the new order, and you can still fine-tune by dragging anytime.
+            </>
+          )
+        }
+      ]
+    }
+  },
   '2.6.1': {
     ko: {
       eyebrow: 'IMPROVED',
@@ -296,95 +437,6 @@ const RELEASES: Record<string, LocalizedRelease> = {
               %) and tokens reclaimed</b>. The card lands at the exact moment the gauge drops,
               explaining it — in the main chat, multi panels, pop-outs, and extra chat windows
               alike.
-            </>
-          )
-        }
-      ]
-    }
-  },
-  '2.5.0': {
-    ko: {
-      eyebrow: 'NEW',
-      lead: '멀티 패널이 자유로워집니다 — 패널을 별도 창으로 뽑아 다른 모니터에 두고, 끌어서 순서도 바꿔요. 긴 작업에서 끝난 워크플로 알약이 쌓이던 것도 정리했습니다.',
-      notes: [
-        {
-          tag: '멀티',
-          name: '패널을 별도 창으로 — 듀얼 모니터에서 나란히',
-          desc: (
-            <>
-              패널 헤더의 새 버튼(크게 보기 옆 ↗)으로 그 패널을 <b>독립 창</b>으로 띄웁니다.
-              창은 자유롭게 옮기고 크기를 바꿀 수 있어 — <b>확대해 볼 패널은 왼쪽 모니터에,
-              나머지 그리드는 오른쪽에</b> 두는 식으로 나란히 쓸 수 있어요. 실행 중인 턴과
-              백그라운드 작업은 <b>끊기지 않고</b>, 창을 닫으면 쓰던 초안·설정까지 그대로
-              그리드로 돌아옵니다. 그리드의 빈 자리를 클릭하면 그 창이 앞으로 와요.
-            </>
-          )
-        },
-        {
-          tag: '멀티',
-          name: '패널 순서를 끌어서 바꿔요',
-          desc: (
-            <>
-              패널 헤더를 <b>잠깐 길게 누르면</b> 집어 들 수 있습니다 — 끌어서 원하는 자리에
-              놓으면 끝. 바꾼 순서는 세션에 저장돼 다시 켜도 유지돼요. 번호는 <b>자리
-              기준</b>(왼쪽부터 1·2·3…)이라 옮기면 새 자리 번호를 받고, 대화·실행·색 태그는
-              패널을 그대로 따라갑니다. 쓰임이 없던 숫자 키(1~N) 패널 점프는 정리했어요.
-            </>
-          )
-        },
-        {
-          tag: '워크플로',
-          name: '끝난 워크플로 알약이 바로 걷혀요',
-          desc: (
-            <>
-              에이전트가 턴을 끝내지 않은 채 워크플로를 연달아 돌리는 <b>긴 작업</b>에서, 이미
-              끝난 워크플로 알약이 화면 아래에 <b>계속 쌓여 남던</b> 문제를 고쳤습니다. 이제
-              완료·중지되는 <b>즉시 사라지고</b>, 실제로 돌고 있는 것만 남아요.
-            </>
-          )
-        }
-      ]
-    },
-    en: {
-      eyebrow: 'NEW',
-      lead: 'Multi panels break free — pop a panel out into its own window on another monitor, and drag panels to reorder them. Finished workflow pills no longer pile up during long runs.',
-      notes: [
-        {
-          tag: 'Multi',
-          name: 'Pop a panel out — side by side on two monitors',
-          desc: (
-            <>
-              A new button in the panel header (↗, next to Expand) opens that panel in its{' '}
-              <b>own window</b> — move and resize it freely, so the panel you want big sits on{' '}
-              <b>the left monitor while the grid stays on the right</b>. Running turns and
-              background work <b>keep going uninterrupted</b>, and closing the window returns
-              everything — even the draft you were typing — right back to the grid. Clicking
-              the placeholder in the grid brings the window forward.
-            </>
-          )
-        },
-        {
-          tag: 'Multi',
-          name: 'Drag panels to reorder them',
-          desc: (
-            <>
-              <b>Press and hold</b> a panel header for a moment to pick it up — drag it to the
-              spot you want and drop. The order is saved per session. Numbers follow the{' '}
-              <b>position</b> (1·2·3… from the left), so a moved panel takes its new spot&apos;s
-              number while its conversation, runs, and color tag travel with it. The unused
-              number-key (1–N) panel jump has been retired.
-            </>
-          )
-        },
-        {
-          tag: 'Workflow',
-          name: 'Finished workflow pills clear right away',
-          desc: (
-            <>
-              During <b>long runs</b> where the agent keeps its turn going while running one
-              workflow after another, pills for already-finished workflows used to{' '}
-              <b>pile up</b> at the bottom of the chat. They now disappear <b>the moment</b> a
-              workflow completes or stops — only what&apos;s actually running stays.
             </>
           )
         }
