@@ -415,6 +415,18 @@ pub fn session_report(app: &AppHandle, label: &str, title: Option<&str>, status:
     broadcast_sessions(app);
 }
 
+/// 창 라벨 → 그 창이 보는 채팅 id. 엔진 글루의 주소 번역(`session:*` → chatId)이 쓴다.
+/// 지금은 창 하나 = 채팅 하나(2.6.2 sessionWins와 같은 1:1)라 레코드의 id가 곧 채팅이다.
+pub fn chat_for_label(label: &str) -> Option<String> {
+    SESSIONS.lock().unwrap().iter().find(|s| s.label == label).map(|s| s.id.clone())
+}
+
+/// 역인덱스 — 이 채팅을 보고 있는 창의 라벨(§6.1 "chatId → label 역인덱스").
+/// 이벤트 팬아웃이 **그 창에만** 보내려고 쓴다.
+pub fn session_label_for_chat(chat: &str) -> Option<String> {
+    SESSIONS.lock().unwrap().iter().find(|s| s.id == chat).map(|s| s.label.clone())
+}
+
 pub fn session_focus(app: &AppHandle, id: &str) {
     let label = SESSIONS.lock().unwrap().iter().find(|s| s.id == id).map(|s| s.label.clone());
     if let Some(w) = label.and_then(|l| app.get_webview_window(&l)) {

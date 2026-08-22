@@ -2,6 +2,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod crash;
+mod engine;
 mod ipc;
 mod webview_args;
 mod win;
@@ -47,6 +48,8 @@ fn main() {
         .invoke_handler(tauri::generate_handler![ipc::ipc_call])
         .setup(|app| {
             win::create_main(app.handle())?;
+            // 엔진 허브 — 창이 선 뒤에 띄운다(첫 브로드캐스트가 갈 곳이 있어야 한다).
+            engine::boot(app.handle());
             Ok(())
         })
         .build(tauri::generate_context!())
@@ -64,6 +67,11 @@ fn main() {
                     // 정상 종료다. 여기서부터 브라우저 프로세스가 죽는 건 크래시가 아니다 —
                     // 감시자가 오인하면 **닫아도 다시 뜨는 앱**이 된다.
                     crash::begin_shutdown();
+                    // ★D15 — 상태 flush. `chat:status`의 디스크 쓰기는 500ms 디바운스라
+                    // (m-logic §5.8 규약 4) 마지막 전이가 안 내려간 채로 프로세스가 끝날 수
+                    // 있다. 그러면 다음 부팅의 재장전 후보(hold·큐)가 **한 세대 낡는다**.
+                    // 허브도 여기서 닫아 남은 claude.exe를 거둔다(job object가 2차 안전망).
+                    engine::shutdown();
                 }
             }
         });

@@ -107,9 +107,56 @@ pub mod ch {
     pub const BOARD_LOAD: &str = "board:load";
     pub const BOARD_SAVE: &str = "board:save";
     /// main → 렌더러: 전 채팅 경량 상태 REPLACE(§4.3).
-    /// 방출 주체는 M-LOGIC의 상태기계다 — 여기는 **이름의 단일 소스**로만 존재한다.
-    #[allow(dead_code)]
+    /// 방출 주체는 M-LOGIC의 상태기계다(`engine/hub.rs`).
     pub const CHAT_STATUS: &str = "chat:status";
+
+    // ── M-LOGIC 실행 채널 (engine/ 글루) ─────────────────────────────────────
+    // 3.0 코어 — 주소는 페이로드의 `chatId` 하나(m-logic §4.3 ★R2).
+    pub const CHAT_RUN: &str = "chat:run";
+    pub const CHAT_INTERRUPT: &str = "chat:interrupt";
+    pub const CHAT_CANCEL: &str = "chat:cancel";
+    pub const CHAT_PERMISSION: &str = "chat:permission";
+    pub const CHAT_ANSWER: &str = "chat:answer";
+    pub const CHAT_RESPOND_DIALOG: &str = "chat:respond-dialog";
+    pub const CHAT_BG_TASK: &str = "chat:bg-task";
+    pub const CHAT_DISPOSE: &str = "chat:dispose";
+    pub const CHAT_IDENTITY_GET: &str = "chat:identity-get";
+    pub const CHAT_IDENTITY_SET: &str = "chat:identity-set";
+    pub const CHAT_IDENTITY_REVERT: &str = "chat:identity-revert";
+    pub const CHAT_QUEUE_MUTATE: &str = "chat:queue-mutate";
+    pub const CHAT_FORCE_SETTLE: &str = "chat:force-settle";
+    // 브로드캐스트(main → 렌더러)
+    pub const CHAT_EVENT: &str = "chat:event";
+    pub const CHAT_IDENTITY: &str = "chat:identity";
+    pub const CHAT_QUEUE: &str = "chat:queue";
+    pub const CHAT_RUN_STATE: &str = "chat:run-state";
+    pub const CHAT_VERDICT: &str = "chat:verdict";
+    /// 셸 내부 진단 — 계약면(protocol.ts)에 없다. 하네스가 런타임 회계를 읽는다.
+    pub const ENGINE_DEBUG: &str = "engine:debug";
+
+    // ── 과도기 별칭: 2.6.2 실행 표면(§6.2) ───────────────────────────────────
+    pub const CLAUDE_RUN: &str = "claude:run";
+    pub const CLAUDE_CANCEL: &str = "claude:cancel";
+    pub const CLAUDE_INTERRUPT: &str = "claude:interrupt";
+    pub const CLAUDE_PERMISSION_RESPOND: &str = "claude:permission-respond";
+    pub const CLAUDE_QUESTION_RESPOND: &str = "claude:question-respond";
+    pub const CLAUDE_BG_TASK: &str = "claude:bg-task";
+    pub const ENGINE_EVENT: &str = "engine:event";
+    pub const SESSION_RUN: &str = "session:run";
+    pub const SESSION_CANCEL: &str = "session:cancel";
+    pub const SESSION_INTERRUPT: &str = "session:interrupt";
+    pub const SESSION_PERMISSION_RESPOND: &str = "session:permission-respond";
+    pub const SESSION_QUESTION_RESPOND: &str = "session:question-respond";
+    pub const SESSION_BG_TASK: &str = "session:bg-task";
+    pub const SESSION_EVENT: &str = "session:event";
+    pub const MA_RUN: &str = "ma:run";
+    pub const MA_CANCEL: &str = "ma:cancel";
+    pub const MA_INTERRUPT: &str = "ma:interrupt";
+    pub const MA_PERMISSION_RESPOND: &str = "ma:permission-respond";
+    pub const MA_QUESTION_RESPOND: &str = "ma:question-respond";
+    pub const MA_BG_TASK: &str = "ma:bg-task";
+    pub const MA_DISPOSE: &str = "ma:dispose";
+    pub const MA_EVENT: &str = "ma:event";
 }
 
 static NULL: Value = Value::Null;
@@ -133,6 +180,11 @@ fn dispatch(app: &AppHandle, window: &WebviewWindow, channel: &str, p: &Value) -
         if let Some(v) = unified::dispatch(app, channel, p) {
             return v;
         }
+    }
+    // 실행(엔진) 채널. 스토어 별칭보다 **뒤**에 둔다 — `chats:*`·`ma:get` 같은 조회는
+    // 엔진과 무관하고, 엔진 채널(`chat:run`·`claude:*`)과 이름이 겹치지도 않는다.
+    if let Some(v) = crate::engine::dispatch(app, window, channel, p) {
+        return v;
     }
     if let Some(v) = app_meta::dispatch(channel, p) {
         return v;

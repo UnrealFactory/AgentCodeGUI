@@ -47,6 +47,7 @@ dependencies = [
 name = "agentcodegui"
 version = "3.0.0-beta.1"
 dependencies = [
+ "ccg-engine",
  "ccg-store",
  "serde",
  "serde_json",
@@ -323,6 +324,17 @@ checksum = "0ad534f4357a5264cce5019c989cf66a4f0dc4e0d1b1d15f8aacec0ff7360273"
 dependencies = [
  "find-msvc-tools",
  "shlex",
+]
+
+[[package]]
+name = "ccg-auth"
+version = "3.0.0-beta.1"
+dependencies = [
+ "ccg-store",
+ "serde",
+ "serde_json",
+ "sha2",
+ "windows",
 ]
 
 [[package]]
