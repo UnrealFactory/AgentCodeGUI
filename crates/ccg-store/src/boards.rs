@@ -96,3 +96,57 @@ pub fn sanitize_order(v: Option<&Value>) -> Vec<usize> {
         def
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::testkit::temp_home;
+
+    fn seed(h: &crate::testkit::Home) {
+        h.write(
+            "boards/b1.json",
+            &json!({ "id": "b1", "count": 2, "chrome": "grid", "order": [3, 1, 0, 2, 4, 5],
+                     "slots": ["c-a", "c-b", "c-c", "c-d", Value::Null, Value::Null] })
+            .to_string(),
+        );
+        h.write("boards/index.json", r#"{"version":1,"order":["b1"],"activeBoardId":"b1"}"#);
+        invalidate();
+    }
+
+    #[test]
+    fn visible_chat_ids_follows_the_order_permutation_not_the_slot_index() {
+        let h = temp_home("boards-visible");
+        seed(&h);
+        // order 앞 count(2)개 = 자리 3, 1 → 'c-d', 'c-b' (접힌 자리는 스냅샷을 안 싣는다)
+        assert_eq!(visible_chat_ids(), vec!["c-d".to_string(), "c-b".to_string()]);
+    }
+
+    #[test]
+    fn a_broken_board_index_still_lists_the_boards() {
+        let h = temp_home("boards-broken");
+        seed(&h);
+        h.write("boards/index.json", "{{{");
+        invalidate();
+        let blob = read_boards();
+        assert_eq!(blob["boards"].as_array().map(Vec::len), Some(1), "보드 목록이 전멸했다");
+    }
+
+    #[test]
+    fn writing_a_subset_while_the_index_is_broken_keeps_the_other_board_files() {
+        let h = temp_home("boards-prune-gate");
+        seed(&h);
+        h.write("boards/b2.json", &json!({ "id": "b2", "count": 1, "slots": [] }).to_string());
+        h.write("boards/index.json", "not json");
+        invalidate();
+        write_boards(&json!({ "version": 1, "activeBoardId": "b1", "boards": [{ "id": "b1", "count": 1, "slots": [] }] }));
+        assert!(h.path("boards/b2.json").is_file(), "인덱스를 못 믿는데 보드 파일을 지웠다");
+    }
+
+    #[test]
+    fn order_sanitizer_rejects_anything_that_is_not_a_permutation() {
+        assert_eq!(sanitize_order(Some(&json!([5, 4, 3, 2, 1, 0]))), vec![5, 4, 3, 2, 1, 0]);
+        assert_eq!(sanitize_order(Some(&json!([0, 0, 1, 2, 3, 4]))), vec![0, 1, 2, 3, 4, 5]);
+        assert_eq!(sanitize_order(Some(&json!([0, 1, 2]))), vec![0, 1, 2, 3, 4, 5]);
+        assert_eq!(sanitize_order(None), vec![0, 1, 2, 3, 4, 5]);
+    }
+}

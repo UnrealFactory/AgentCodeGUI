@@ -27,7 +27,17 @@ const OLD_DIRS: [&str; 3] = ["chats", "multi-agent", "session-chats"];
 const TALK_FILE: &str = "chat-talk.json";
 
 fn read_json(p: &Path) -> Option<Value> {
-    serde_json::from_str(&std::fs::read_to_string(p).ok()?).ok()
+    crate::parse_json_source(&std::fs::read_to_string(p).ok()?)
+}
+
+/// 파싱 불가 원본을 **격리 보관**한다 — 마이그레이션이 못 읽었어도 사용자는 파일을
+/// 잃지 않는다(옛 디렉터리도 남지만, 여기 모아 두면 "무엇이 문제였나"가 한자리에 보인다).
+fn quarantine(home: &Path, stamp: u128, dir: &str, name: &str) -> bool {
+    let dst = home.join("quarantine").join(format!("{stamp}")).join(dir);
+    if std::fs::create_dir_all(&dst).is_err() {
+        return false;
+    }
+    std::fs::copy(home.join(dir).join(name), dst.join(name)).is_ok()
 }
 
 fn stamp() -> u128 {
@@ -37,20 +47,80 @@ fn stamp() -> u128 {
         .unwrap_or(0)
 }
 
-/// 인덱스가 나열하는 순서대로 항목 파일을 읽는다(스토어 캐시를 타지 않는 생 읽기).
-fn read_fanout(home: &Path, dir: &str) -> (Value, Vec<(String, Value)>) {
+/// 원본 팬아웃 읽기 — **인덱스 + 디렉터리 합집합**(★R2 D4).
+///
+/// R1은 `index.order`만 돌고 `read_json` 실패는 조용히 `continue`였다. 그래서
+/// ① 잘린/인코딩 깨진/깊은 중첩 파일 ② 인덱스에 없는 파일 ③ 인덱스 자체가 깨진 경우가
+/// 전부 **경고 한 줄 없이** 사라졌다(공격 1·2·3·8·10). 규약을 바꾼다:
+///
+///  - 인덱스를 못 읽으면 **디렉터리를 훑는다**(파일이 진실) + `unreadable_index` 경고
+///  - 인덱스에 없는 파일도 **뒤에 붙여 옮긴다** + `not_in_index` 경고
+///  - 그래도 못 읽은 파일은 `unreadable_source` 경고 + `quarantine/`에 원본 보관
+///  - 인덱스가 가리키는데 없는 파일은 `missing_source_file` 경고
+///
+/// 즉 "조용한 드랍"이 구조적으로 불가능해진다 — 보존하거나, 경고를 남기거나 둘 중 하나다.
+fn read_fanout(home: &Path, dir: &str, stamp: u128, warnings: &mut Vec<Value>) -> (Value, Vec<(String, Value)>) {
     let d = home.join(dir);
-    let index = read_json(&d.join("index.json")).unwrap_or(Value::Null);
-    let empty = vec![];
-    let order = index.get("order").and_then(Value::as_array).unwrap_or(&empty);
+    if !d.is_dir() {
+        return (Value::Null, Vec::new());
+    }
+    let index_path = d.join("index.json");
+    let index_raw = std::fs::read_to_string(&index_path).ok();
+    let index = index_raw.as_deref().and_then(crate::parse_json_source);
+    if index_raw.is_some() && index.is_none() {
+        warnings.push(json!({ "kind": "unreadable_index", "dir": dir }));
+        quarantine(home, stamp, dir, "index.json");
+    }
+    let index = index.unwrap_or(Value::Null);
+
+    let mut order: Vec<String> = index
+        .get("order")
+        .and_then(Value::as_array)
+        .map(|a| a.iter().filter_map(Value::as_str).filter(|s| crate::fanout::safe_id_str(s)).map(str::to_string).collect())
+        .unwrap_or_default();
+
+    // 디렉터리 전수 스캔 — 인덱스가 모르는 파일을 꼬리에 붙인다(이름순, 결정론)
+    let mut on_disk: Vec<String> = std::fs::read_dir(&d)
+        .map(|it| {
+            it.flatten()
+                .filter_map(|e| {
+                    let n = e.file_name().to_string_lossy().to_string();
+                    if !n.ends_with(".json") || n == "index.json" {
+                        return None;
+                    }
+                    let id = n.trim_end_matches(".json").to_string();
+                    if crate::fanout::safe_id_str(&id) && e.path().is_file() {
+                        Some(id)
+                    } else {
+                        None
+                    }
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    on_disk.sort();
+    let listed: HashSet<String> = order.iter().cloned().collect();
+    for id in &on_disk {
+        if !listed.contains(id) {
+            warnings.push(json!({ "kind": "not_in_index", "dir": dir, "id": id }));
+            order.push(id.clone());
+        }
+    }
+
+    let present: HashSet<String> = on_disk.into_iter().collect();
     let mut out = Vec::new();
     for id in order {
-        let Some(id) = id.as_str() else { continue };
-        if !crate::fanout::safe_id_str(id) {
+        if !present.contains(&id) {
+            warnings.push(json!({ "kind": "missing_source_file", "dir": dir, "id": id }));
             continue;
         }
-        let Some(v) = read_json(&d.join(format!("{id}.json"))) else { continue };
-        out.push((id.to_string(), v));
+        match read_json(&d.join(format!("{id}.json"))) {
+            Some(v) => out.push((id, v)),
+            None => {
+                let kept = quarantine(home, stamp, dir, &format!("{id}.json"));
+                warnings.push(json!({ "kind": "unreadable_source", "dir": dir, "id": id, "quarantined": kept }));
+            }
+        }
     }
     (index, out)
 }
@@ -114,6 +184,10 @@ fn opt_copy(src: &Value, dst: &mut Map<String, Value>, keys: &[&str]) {
 pub const ORIGIN_CHAT: &str = "chat";
 pub const ORIGIN_PANEL: &str = "panel";
 pub const ORIGIN_SESSION: &str = "session";
+/// ★R2(D9) — 칸을 모르는 레코드. **아무도 못 지우고 어느 옛 목록에도 안 낀다.**
+/// 코어 `chats_v3::write_chats`가 만든 채팅(= M-LOGIC이 만든 채팅)이 여기 앉는다:
+/// 기본값이 `chat`이던 R1에서는 그 채팅이 낡은 렌더러 저장 한 번에 삭제됐다.
+pub const ORIGIN_UNKNOWN: &str = "unknown";
 
 fn origin_of(source: Source) -> &'static str {
     match source {
@@ -133,7 +207,17 @@ fn build_chat(id: &str, rec: &Value, source: Source, g: &Globals) -> Built {
     // ★ 없던 필드 → 기본값 주입(§4.2 — R1이 "그대로"라 적은 것은 오류)
     o.insert("locked".into(), json!(b(rec, "locked")));
     o.insert("color".into(), json!(s(rec, "color")));
-    o.insert("identity".into(), to_raw_identity(rec, source, g));
+    let identity = to_raw_identity(rec, source, g);
+    // ★R2 D5 — api 모드에서는 `billing` 태그드 유니온에 계정 칸이 없다. 그대로 두면
+    // **채팅별 계정 오버라이드가 전부 사라진다**(2.6.2에서 실제로 쓰이는 기능이다).
+    // 정체성 축이 아니라 **레코드의 보존 칸**에 원시 값을 남긴다(별칭 계층과 함께 소멸).
+    if identity.get("billing").and_then(|b| b.get("kind")).and_then(Value::as_str) == Some("api_key") {
+        let acc = rec.get("picker").and_then(|p| p.get("account")).and_then(Value::as_str).unwrap_or("");
+        if !acc.is_empty() {
+            o.insert("legacyAccount".into(), json!(acc));
+        }
+    }
+    o.insert("identity".into(), identity);
     // 초안 — 멀티 패널은 **공집합**이다(MultiAgent.tsx:127-137, 애초에 영속 안 됨)
     if source != Source::Panel {
         opt_copy(rec, &mut o, &["draft", "draftImages"]);
@@ -141,7 +225,26 @@ fn build_chat(id: &str, rec: &Value, source: Source, g: &Globals) -> Built {
     opt_copy(rec, &mut o, &["btwSeed", "btwPrompt", "empty", "updatedAt"]);
     o.insert("snapshot".into(), rec.get("snapshot").cloned().unwrap_or(Value::Null));
     let status = status_of(rec, source != Source::SessionChat);
+    // ★R2 D12 — 얼린 상태를 **레코드에도** 남긴다. `status.json`은 파생 캐시(§4.3 규약 5)라
+    // 지워질 수 있는데, 그때 재구성할 곳이 여기밖에 없다. 2.6.2는 이 값을
+    // `session-chats/<id>.json`에 들고 있었다 = 없으면 회귀다(`done` → 전부 `idle`).
+    o.insert("status".into(), json!(status));
     Built { id: id.to_string(), chat: Value::Object(o), status }
+}
+
+/// 이미 쓰인 id면 `-b`, `-c`… 를 붙여 비운다(결정론 — 같은 입력이면 같은 결과).
+fn uniquify(base: String, taken: &HashSet<String>, warnings: &mut Vec<Value>, kind: &str) -> String {
+    if !taken.contains(&base) {
+        return base;
+    }
+    for suffix in 'b'..='z' {
+        let cand = format!("{base}-{suffix}");
+        if !taken.contains(&cand) {
+            warnings.push(json!({ "kind": "id_collision", "old": base, "new": cand, "source": kind }));
+            return cand;
+        }
+    }
+    base
 }
 
 /// `btwOf` 재작성(§4.2) — 매핑표만으로는 안 된다.
@@ -157,10 +260,15 @@ fn rewrite_btw_of(v: &str, id_map: &HashMap<String, String>) -> Option<String> {
 }
 
 /// 이미 마이그레이션됐는가.
+///
+/// ★R2 D8 — 커밋은 rename **둘**(`chats-v3`, `boards`)이다. 그 사이에서 죽거나 두 번째가
+/// 실패하면 `chats-v3`만 제자리에 앉는데, R1은 `migratedAt`만 보고 "완료"로 읽어
+/// **보드 없는 영구 상태**(멀티가 전부 마커)로 굳었다. 둘 다 서야 완료다.
 pub fn is_migrated() -> bool {
-    crate::read_home_json(&format!("{}/index.json", crate::chats_v3::DIR))
+    let marked = crate::read_home_json(&format!("{}/index.json", crate::chats_v3::DIR))
         .and_then(|v| v.get("migratedAt").cloned())
-        .is_some()
+        .is_some();
+    marked && crate::app_home().join(crate::boards::DIR).join("index.json").is_file()
 }
 
 /// 부팅 훅 — 아직 안 됐으면 1회 돌린다(플래그가 켜진 경로에서만 불린다).
@@ -175,25 +283,58 @@ pub fn ensure_migrated() -> Value {
 pub fn migrate(backup: bool) -> Value {
     let home = crate::app_home();
     let t0 = std::time::Instant::now();
-    let g = Globals::read();
-    let prefs = crate::prefs::read_ui_prefs();
     let now = stamp();
+    let mut warnings: Vec<Value> = Vec::new();
+
+    // ★R2 D14 — 깨진 전역 pref가 **틀린 값**으로 굳는 것을 막는다. 물질화는 되돌리기
+    // 어려운 1회성 결정이라(전 채팅의 billing·outputStyle) 조용히 기본값으로 넘어가면
+    // `api.mode:true` 사용자가 전부 `subscription`이 된다. 온전한 상위 쌍까지 건져 쓰고
+    // 무엇을 건졌는지 경고로 남긴다.
+    let (prefs, prefs_damage) = crate::prefs::read_ui_prefs_salvaged();
+    if let Some(d) = prefs_damage {
+        warnings.push(json!({ "kind": "globals_unreadable", "file": "ui-prefs.json", "salvage": d }));
+    }
+    let g = Globals::from_prefs(&prefs);
 
     // ── 1. 원본 읽기 ────────────────────────────────────────────────────────
-    let (chats_index, chats) = read_fanout(&home, "chats");
-    let (ma_index, sessions) = read_fanout(&home, "multi-agent");
-    let (sc_index, session_chats) = read_fanout(&home, "session-chats");
-    let talk = read_json(&home.join(TALK_FILE)).unwrap_or(Value::Null);
+    let (chats_index, chats) = read_fanout(&home, "chats", now, &mut warnings);
+    let (ma_index, sessions) = read_fanout(&home, "multi-agent", now, &mut warnings);
+    let (sc_index, session_chats) = read_fanout(&home, "session-chats", now, &mut warnings);
+    let talk_raw = std::fs::read_to_string(home.join(TALK_FILE)).ok();
+    let talk = match talk_raw.as_deref().map(|r| (r, crate::parse_json_source(r))) {
+        Some((_, Some(v))) => v,
+        Some((_, None)) => {
+            warnings.push(json!({ "kind": "unreadable_source", "dir": ".", "id": TALK_FILE, "quarantined": quarantine(&home, now, ".", TALK_FILE) }));
+            Value::Null
+        }
+        None => Value::Null,
+    };
 
     let mut built: Vec<Built> = Vec::new();
     let mut id_map: HashMap<String, String> = HashMap::new(); // 옛 주소 → 새 id
     let mut taken: HashSet<String> = HashSet::new();
-    let mut warnings: Vec<Value> = Vec::new();
+
+    // ★R2 D10 — 옛 주소가 겹치면 **먼저 온 것이 이긴다**. R1은 `insert`라 뒤에 오는
+    // 추가 채팅/talk가 매핑을 덮어써 `hold.key`·`btwOf`가 남의 채팅으로 갔다.
+    macro_rules! map_id {
+        ($old:expr, $new:expr) => {{
+            let old: String = $old;
+            let new: String = $new;
+            match id_map.entry(old.clone()) {
+                std::collections::hash_map::Entry::Occupied(e) => {
+                    warnings.push(json!({ "kind": "graph_ambiguous", "old": old, "kept": e.get(), "ignored": new }));
+                }
+                std::collections::hash_map::Entry::Vacant(e) => {
+                    e.insert(new);
+                }
+            }
+        }};
+    }
 
     // ── 2. 일반 채팅 (id 유지) ──────────────────────────────────────────────
     for (id, rec) in &chats {
         built.push(build_chat(id, rec, Source::Chat, &g));
-        id_map.insert(id.clone(), id.clone());
+        map_id!(id.clone(), id.clone());
         taken.insert(id.clone());
     }
 
@@ -208,9 +349,11 @@ pub fn migrate(backup: bool) -> Value {
             if i >= crate::boards::SLOT_COUNT || !panel_has_content(p) {
                 continue;
             }
-            let new_id = format!("ma-{sid}-{i}");
+            // ★R2 D11 — 결정론 id가 이미 쓰였으면(일반 채팅 id가 `ma-<sid>-<i>` 모양)
+            // 파일이 덮이고 `index.order`에 중복 id가 남았다. 한 줄로 닫는다.
+            let new_id = uniquify(format!("ma-{sid}-{i}"), &taken, &mut warnings, "panel");
             built.push(build_chat(&new_id, p, Source::Panel, &g));
-            id_map.insert(format!("{sid}::{i}"), new_id.clone());
+            map_id!(format!("{sid}::{i}"), new_id.clone());
             taken.insert(new_id.clone());
             slots[i] = json!(new_id);
             ma_panel_count += 1;
@@ -232,12 +375,14 @@ pub fn migrate(backup: bool) -> Value {
 
     // ── 4. 추가 채팅 (충돌 시 sc- 접두사) ──────────────────────────────────
     for (id, rec) in &session_chats {
-        let new_id = if taken.contains(id) { format!("sc-{id}") } else { id.clone() };
-        if new_id != *id {
-            warnings.push(json!({ "kind": "id_collision", "old": id, "new": new_id }));
-        }
+        let new_id = if taken.contains(id) {
+            warnings.push(json!({ "kind": "id_collision", "old": id, "new": format!("sc-{id}") }));
+            uniquify(format!("sc-{id}"), &taken, &mut warnings, "session")
+        } else {
+            id.clone()
+        };
         built.push(build_chat(&new_id, rec, Source::SessionChat, &g));
-        id_map.insert(id.clone(), new_id.clone());
+        map_id!(id.clone(), new_id.clone());
         taken.insert(new_id);
     }
 
@@ -253,9 +398,14 @@ pub fn migrate(backup: bool) -> Value {
         if s(rec, "title").is_empty() && msg_count(rec) == 0 {
             continue;
         }
-        let new_id = if taken.contains(&id) { format!("talk-{id}") } else { id.clone() };
+        let new_id = if taken.contains(&id) {
+            warnings.push(json!({ "kind": "id_collision", "old": id, "new": format!("talk-{id}") }));
+            uniquify(format!("talk-{id}"), &taken, &mut warnings, "talk")
+        } else {
+            id.clone()
+        };
         built.push(build_chat(&new_id, rec, Source::Talk, &g));
-        id_map.insert(id.clone(), new_id.clone());
+        map_id!(id.clone(), new_id.clone());
         taken.insert(new_id);
         talk_absorbed += 1;
     }
@@ -360,6 +510,34 @@ pub fn migrate(backup: bool) -> Value {
         return json!({ "ok": false, "error": "스테이징 디렉터리 생성 실패" });
     }
 
+    // ── 재마이그레이션 보존 규칙 (★R2 D3 — "안내 카드"가 데이터 파괴 버튼이 되지 않게) ──
+    //
+    // `chats-v3`가 이미 서 있으면(=마이그레이션 완료 마커) 그건 **3.0이 그 뒤로 계속 쓴
+    // 살림**이다. 소스(2.6.2 시점에서 얼어 있는 옛 디렉터리)로 덮으면 그 사이에 쌓인
+    // 제목·메시지가 통째로 되감긴다. 그래서 **이미 있는 레코드는 소스가 절대 덮지 않는다** —
+    // 재마이그레이션은 "2.6.2에서 *새로* 만든 대화만 데려오는" 연산이다.
+    let v3_dir = home.join(crate::chats_v3::DIR);
+    let already_migrated = crate::read_home_json(&format!("{}/index.json", crate::chats_v3::DIR))
+        .and_then(|v| v.get("migratedAt").cloned())
+        .is_some();
+    let existing_v3: HashSet<String> = if already_migrated {
+        std::fs::read_dir(&v3_dir)
+            .map(|it| {
+                it.flatten()
+                    .filter_map(|e| {
+                        let n = e.file_name().to_string_lossy().to_string();
+                        if !n.ends_with(".json") || n == "index.json" || n == "status.json" {
+                            return None;
+                        }
+                        Some(n.trim_end_matches(".json").to_string())
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    } else {
+        HashSet::new()
+    };
+
     // 재실행(재마이그레이션)에서 3.0이 만든 채팅은 보존한다 — 소스가 만든 id는 소스가 이긴다
     let mut carried: Vec<String> = Vec::new();
     if let Some(prev) = crate::read_home_json(&format!("{}/index.json", crate::chats_v3::DIR)) {
@@ -369,7 +547,7 @@ pub fn migrate(backup: bool) -> Value {
             if taken.contains(id) {
                 continue;
             }
-            let src = home.join(crate::chats_v3::DIR).join(format!("{id}.json"));
+            let src = v3_dir.join(format!("{id}.json"));
             if std::fs::copy(&src, staged_chats.join(format!("{id}.json"))).is_ok() {
                 carried.push(id.to_string());
             }
@@ -378,7 +556,32 @@ pub fn migrate(backup: bool) -> Value {
 
     let mut statuses: BTreeMap<String, Value> = BTreeMap::new();
     let mut msg_total = 0usize;
+    let mut kept_v3 = 0usize;
     for item in &built {
+        // D3 — 이미 chats-v3에 있는 레코드는 **그대로 옮긴다**(소스로 덮지 않는다)
+        if existing_v3.contains(&item.id)
+            && std::fs::copy(v3_dir.join(format!("{}.json", item.id)), staged_chats.join(format!("{}.json", item.id))).is_ok()
+        {
+            kept_v3 += 1;
+            warnings.push(json!({ "kind": "kept_v3_record", "id": item.id }));
+            let kept = read_json(&staged_chats.join(format!("{}.json", item.id))).unwrap_or(Value::Null);
+            msg_total += msg_count(&kept);
+            let mut lite = crate::status::empty_lite(&item.id);
+            if let Some(o) = lite.as_object_mut() {
+                o.insert("status".into(), kept.get("status").cloned().unwrap_or(json!(item.status)));
+                o.insert("queued".into(), json!(kept.get("queue").and_then(Value::as_array).map(|a| a.len()).unwrap_or(0)));
+                o.insert(
+                    "hold".into(),
+                    match kept.get("hold") {
+                        Some(h) if h.is_object() => json!({ "resetAt": h.get("resetsAt").cloned().unwrap_or(Value::Null), "ready": false }),
+                        _ => Value::Null,
+                    },
+                );
+                o.insert("updatedAt".into(), kept.get("updatedAt").cloned().unwrap_or(json!(0)));
+            }
+            statuses.insert(item.id.clone(), lite);
+            continue;
+        }
         msg_total += msg_count(&item.chat);
         let text = serde_json::to_string(&item.chat).unwrap_or_default();
         if std::fs::write(staged_chats.join(format!("{}.json", item.id)), &text).is_err() {
@@ -402,12 +605,22 @@ pub fn migrate(backup: bool) -> Value {
     let mut full_order = order.clone();
     full_order.extend(carried.iter().cloned());
 
+    // 재마이그레이션이면 이전 인덱스의 활성 선택·세대(D13)를 그대로 이어받는다
+    let prev_index = crate::read_home_json(&format!("{}/index.json", crate::chats_v3::DIR));
+    let active_gen = prev_index.as_ref().and_then(|p| p.get("activeGen").and_then(Value::as_u64)).unwrap_or(0);
+    let active_chat_id = match prev_index.as_ref().and_then(|p| p.get("activeChatId").and_then(Value::as_str)) {
+        Some(prev) if active_gen > 0 && !prev.is_empty() => prev.to_string(),
+        _ => active_chat_id,
+    };
     let index = json!({
         "version": 1,
         "order": full_order,
         "activeChatId": active_chat_id,
+        "activeGen": active_gen,
         "migratedFrom": "2.6.2",
         "migratedAt": now as f64,
+        // ★R2 D8 — 완료 마커. `is_migrated()`는 이 표식 **+ boards/index.json**을 함께 본다.
+        "migrationComplete": true,
     });
     let _ = std::fs::write(staged_chats.join("index.json"), serde_json::to_string(&index).unwrap_or_default());
     let _ = std::fs::write(
@@ -416,10 +629,43 @@ pub fn migrate(backup: bool) -> Value {
             .unwrap_or_default(),
     );
 
+    // D3는 보드에도 그대로 적용된다 — 재마이그레이션이 3.0에서 바꾼 **자리 배치**를
+    // 2.6.2 시점으로 되감으면 안 된다(패널이 다른 채팅을 가리키면 대화가 남의 자리로 간다).
+    let boards_dir = home.join(crate::boards::DIR);
+    let mut kept_boards = 0usize;
     for bd in &all_boards {
         let id = s(bd, "id");
+        if already_migrated
+            && boards_dir.join(format!("{id}.json")).is_file()
+            && std::fs::copy(boards_dir.join(format!("{id}.json")), staged_boards.join(format!("{id}.json"))).is_ok()
+        {
+            kept_boards += 1;
+            warnings.push(json!({ "kind": "kept_v3_board", "id": id }));
+            continue;
+        }
         let _ = std::fs::write(staged_boards.join(format!("{id}.json")), serde_json::to_string(bd).unwrap_or_default());
     }
+    // 3.0에서 만든 보드(소스에 없는 id)도 그대로 옮긴다
+    let mut board_order = board_order;
+    let prev_boards_index = crate::read_home_json(&format!("{}/index.json", crate::boards::DIR));
+    if already_migrated {
+        if let Some(prev) = prev_boards_index.as_ref() {
+            let pe = vec![];
+            for id in prev.get("order").and_then(Value::as_array).unwrap_or(&pe) {
+                let Some(id) = id.as_str() else { continue };
+                if board_order.iter().any(|b| b == id) {
+                    continue;
+                }
+                if std::fs::copy(boards_dir.join(format!("{id}.json")), staged_boards.join(format!("{id}.json"))).is_ok() {
+                    board_order.push(id.to_string());
+                }
+            }
+        }
+    }
+    let active_board_id = match prev_boards_index.as_ref().and_then(|p| p.get("activeBoardId").and_then(Value::as_str)) {
+        Some(prev) if already_migrated && board_order.iter().any(|b| b == prev) => prev.to_string(),
+        _ => active_board_id,
+    };
     let _ = std::fs::write(
         staged_boards.join("index.json"),
         serde_json::to_string(&json!({ "version": 1, "order": board_order, "activeBoardId": active_board_id }))
@@ -449,6 +695,9 @@ pub fn migrate(backup: bool) -> Value {
             "sessionChats": session_chats.len(),
             "talkAbsorbed": talk_absorbed,
             "carried": carried.len(),
+            // D3 — 소스가 덮지 않고 3.0 사본을 그대로 옮긴 레코드 수(재마이그레이션에서만 >0)
+            "keptV3": kept_v3,
+            "keptV3Boards": kept_boards,
             "total": built.len(),
             "messages": msg_total,
             "boards": all_boards.len(),
@@ -595,5 +844,171 @@ mod tests {
         assert!(!panel_has_content(&json!({ "title": "", "snapshot": { "messages": [] } })));
         assert!(panel_has_content(&json!({ "title": "x", "snapshot": null })));
         assert!(panel_has_content(&json!({ "title": "", "snapshot": { "messages": [1] } })));
+    }
+
+    // ── ★R2 ────────────────────────────────────────────────────────────────
+    use crate::testkit::{seed_262, snap, temp_home};
+
+    fn warn_kinds(r: &Value) -> Vec<String> {
+        r["warnings"]
+            .as_array()
+            .map(|a| a.iter().filter_map(|w| w["kind"].as_str().map(str::to_string)).collect())
+            .unwrap_or_default()
+    }
+
+    #[test]
+    fn remigration_never_overwrites_a_record_that_3_0_kept_writing() {
+        let h = temp_home("mig-remig");
+        seed_262(&h);
+        assert_eq!(migrate(false)["ok"], true);
+        // 3.0에서 그 채팅을 계속 썼다 — 제목이 바뀌고 메시지가 늘었다
+        let mut rec = h.read_json("chats-v3/c-1.json").unwrap();
+        rec["title"] = json!("3.0에서 바꾼 제목");
+        rec["snapshot"]["messages"].as_array_mut().unwrap().push(json!({ "id": "new", "role": "user", "text": "3.0" }));
+        let want = rec.clone();
+        h.write("chats-v3/c-1.json", &rec.to_string());
+        crate::chats_v3::invalidate();
+
+        // 사용자가 "다시 가져올까요?" 카드를 눌렀다
+        let again = migrate(false);
+        assert_eq!(again["ok"], true);
+        assert_eq!(h.read_json("chats-v3/c-1.json").unwrap(), want, "재마이그레이션이 3.0의 변경을 2.6.2 시점으로 덮었다");
+        assert!(again["counts"]["keptV3"].as_u64().unwrap() > 0);
+        assert!(warn_kinds(&again).contains(&"kept_v3_record".to_string()));
+    }
+
+    #[test]
+    fn remigration_still_brings_in_a_chat_created_in_2_6_2_afterwards() {
+        let h = temp_home("mig-remig-new");
+        seed_262(&h);
+        assert_eq!(migrate(false)["ok"], true);
+        // 그 뒤 2.6.2로 되돌아가 새 대화를 하나 만들었다
+        h.write(
+            "chats/c-late.json",
+            &json!({ "id": "c-late", "title": "2.6.2에서 나중에", "picker": {}, "manualCwd": "", "snapshot": snap(2, "s-late") }).to_string(),
+        );
+        h.write("chats/index.json", r#"{"version":1,"order":["c-1","c-2","c-late"],"activeChatId":"c-1"}"#);
+        crate::chats_v3::invalidate();
+        assert_eq!(migrate(false)["ok"], true);
+        assert!(h.path("chats-v3/c-late.json").is_file(), "재마이그레이션이 새 대화를 안 데려왔다");
+    }
+
+    #[test]
+    fn a_torn_commit_is_not_read_as_complete() {
+        let h = temp_home("mig-torn");
+        seed_262(&h);
+        assert_eq!(migrate(false)["ok"], true);
+        assert!(is_migrated());
+        std::fs::remove_dir_all(h.path("boards")).unwrap(); // rename 둘 사이에서 죽은 것과 같은 상태
+        assert!(!is_migrated(), "보드가 없는데 '완료'로 읽었다 = 다시는 마이그레이션 안 한다");
+        assert_eq!(ensure_migrated()["ok"], true, "재시도가 보드를 되세워야 한다");
+        assert!(h.path("boards/index.json").is_file());
+    }
+
+    #[test]
+    fn unreadable_sources_are_reported_and_quarantined_not_dropped_in_silence() {
+        let h = temp_home("mig-unreadable");
+        seed_262(&h);
+        h.write("chats/c-2.json", "{\"id\":\"c-2\",\"snap"); // 잘린 원본
+        let r = migrate(false);
+        assert_eq!(r["ok"], true);
+        let kinds = warn_kinds(&r);
+        assert!(kinds.contains(&"unreadable_source".to_string()), "조용히 버렸다: {kinds:?}");
+        let stamp = r["migratedAt"].as_f64().unwrap() as u128;
+        assert!(h.path(&format!("quarantine/{stamp}/chats/c-2.json")).is_file(), "격리 보관이 없다");
+    }
+
+    #[test]
+    fn files_the_index_forgot_are_migrated_with_a_warning() {
+        let h = temp_home("mig-orphan");
+        seed_262(&h);
+        h.write(
+            "chats/c-orphan.json",
+            &json!({ "id": "c-orphan", "title": "인덱스가 모르는 대화", "picker": {}, "manualCwd": "", "snapshot": snap(6, "s-orph") }).to_string(),
+        );
+        let r = migrate(false);
+        assert!(h.path("chats-v3/c-orphan.json").is_file(), "인덱스 밖 파일이 조용히 사라졌다");
+        assert!(warn_kinds(&r).contains(&"not_in_index".to_string()));
+    }
+
+    #[test]
+    fn a_broken_source_index_does_not_lose_the_whole_directory() {
+        let h = temp_home("mig-brokenidx");
+        seed_262(&h);
+        h.write("chats/index.json", "{\"order\":[\"c-1\"");
+        let r = migrate(false);
+        assert_eq!(r["counts"]["chats"], 2, "인덱스가 깨지자 본채팅이 통째로 미이관됐다");
+        assert!(warn_kinds(&r).contains(&"unreadable_index".to_string()));
+    }
+
+    #[test]
+    fn duplicate_ids_keep_the_first_mapping_so_hold_and_btw_stay_put() {
+        let h = temp_home("mig-dup");
+        seed_262(&h);
+        h.write(
+            "ui-prefs.json",
+            &json!({ "workspace.mode": "multi", "limitResume.hold": { "key": "c-1", "engine": "claude", "resetsAt": 2_000_000_000_000i64, "at": stamp() as f64, "lastPrompt": "이어서" } })
+                .to_string(),
+        );
+        // 추가 채팅이 본채팅과 같은 id를 들고 있다
+        h.write(
+            "session-chats/c-1.json",
+            &json!({ "id": "c-1", "title": "중복 id 추가 채팅", "status": "done", "cwd": "", "snapshot": snap(2, "s-dup") }).to_string(),
+        );
+        h.write(
+            "session-chats/w-2.json",
+            &json!({ "id": "w-2", "title": "btw 자식", "status": "done", "cwd": "", "snapshot": snap(2, "s-w2"), "btwOf": "c-1" }).to_string(),
+        );
+        h.write("session-chats/index.json", r#"{"version":1,"order":["c-1","w-1","w-2"]}"#);
+        let r = migrate(false);
+        assert_eq!(r["ok"], true);
+        assert!(h.path("chats-v3/sc-c-1.json").is_file(), "중복 id 추가 채팅이 사라졌다");
+        assert!(h.read_json("chats-v3/c-1.json").unwrap().get("hold").is_some(), "hold가 남의 채팅으로 갔다");
+        assert_eq!(h.read_json("chats-v3/w-2.json").unwrap()["btwOf"], "c-1", "btw 간선이 오배선됐다");
+        assert!(warn_kinds(&r).contains(&"graph_ambiguous".to_string()));
+    }
+
+    #[test]
+    fn a_chat_id_shaped_like_a_panel_id_does_not_overwrite_the_panel() {
+        let h = temp_home("mig-panelid");
+        seed_262(&h);
+        h.write(
+            "chats/ma-sess-A-0.json",
+            &json!({ "id": "ma-sess-A-0", "title": "패널 id를 쓴 본채팅", "picker": {}, "manualCwd": "", "snapshot": snap(11, "s-clash") }).to_string(),
+        );
+        h.write("chats/index.json", r#"{"version":1,"order":["c-1","c-2","ma-sess-A-0"],"activeChatId":"c-1"}"#);
+        let r = migrate(false);
+        assert_eq!(r["ok"], true);
+        assert_eq!(h.read_json("chats-v3/ma-sess-A-0.json").unwrap()["title"], "패널 id를 쓴 본채팅");
+        assert_eq!(h.read_json("chats-v3/ma-sess-A-0-b.json").unwrap()["title"], "P0", "패널이 덮였다");
+        let order: Vec<String> =
+            h.read_json("chats-v3/index.json").unwrap()["order"].as_array().unwrap().iter().map(|v| v.as_str().unwrap().to_string()).collect();
+        let uniq: HashSet<&String> = order.iter().collect();
+        assert_eq!(order.len(), uniq.len(), "index.order에 중복 id가 남았다: {order:?}");
+    }
+
+    #[test]
+    fn a_damaged_global_pref_is_salvaged_instead_of_flipping_every_chat() {
+        let h = temp_home("mig-prefs");
+        seed_262(&h);
+        let good = r#"{"workspace.mode":"multi","api.mode":true,"claude.outputStyle":"Explanatory"}"#;
+        h.write("ui-prefs.json", &good[..good.len() - 3]); // 꼬리만 잘린 JSON
+        let r = migrate(false);
+        assert_eq!(h.read_json("chats-v3/c-1.json").unwrap()["identity"]["billing"]["kind"], "api_key", "손상 pref가 전 채팅을 구독으로 뒤집었다");
+        assert!(warn_kinds(&r).contains(&"globals_unreadable".to_string()));
+    }
+
+    #[test]
+    fn the_frozen_status_lands_in_the_record_not_only_in_the_cache() {
+        let h = temp_home("mig-status");
+        seed_262(&h);
+        assert_eq!(migrate(false)["ok"], true);
+        assert_eq!(h.read_json("chats-v3/w-1.json").unwrap()["status"], "done");
+        // 파생 캐시를 지워도 재구성된다(§4.3 규약 5)
+        std::fs::remove_file(h.path("chats-v3/status.json")).unwrap();
+        crate::status::forget();
+        crate::chats_v3::invalidate();
+        let st = crate::chats_v3::boot_statuses();
+        assert_eq!(st["w-1"]["status"], "done", "status.json이 없으면 얼린 done이 풀린다");
     }
 }

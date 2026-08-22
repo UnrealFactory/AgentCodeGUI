@@ -40,6 +40,9 @@ pub struct ChatLite {
     pub id: String,
     pub queue: Option<Vec<serde::de::IgnoredAny>>,
     pub hold: Option<HoldLite>,
+    /// ★R2(D12) — 마이그레이션이 얼려 둔 상태. `status.json`이 없거나 깨졌을 때
+    /// 재구성할 **유일한 진실**이다(2.6.2는 `session-chats/<id>.json`에 들고 있었다).
+    pub status: Option<String>,
 }
 
 #[derive(Deserialize, Default, Clone, Debug)]
@@ -91,7 +94,16 @@ pub fn load_boot(chat_ids: &[String]) -> BTreeMap<String, Value> {
 
     let mut out: BTreeMap<String, Value> = BTreeMap::new();
     for id in chat_ids {
-        let mut lite = stored.get(id).cloned().filter(Value::is_object).unwrap_or_else(|| empty_lite(id));
+        // 규약 5 — status.json이 없거나 그 채팅을 모르면 `<chatId>.json`의 얕은 스캔으로
+        // **재구성**한다. R1은 `empty_lite`(=idle)로만 채워, 파일 하나가 사라지면 얼려 둔
+        // `done`이 전부 풀렸다(크리틱 E2).
+        let mut lite = stored.get(id).cloned().filter(Value::is_object).unwrap_or_else(|| {
+            let mut e = empty_lite(id);
+            if let (Some(o), Some(s)) = (e.as_object_mut(), read_chat_lite(id).and_then(|l| l.status)) {
+                o.insert("status".into(), json!(s));
+            }
+            e
+        });
         if let Some(o) = lite.as_object_mut() {
             o.insert("chatId".into(), json!(id));
             // 규약 4 — 부팅 강제(유령 알약 방지). queued·hold는 건드리지 않는다.
@@ -247,6 +259,14 @@ fn ensure_writer() {
             }
         })
         .ok();
+}
+
+/// 메모리 상태를 비운다 — **홈이 갈릴 때**(테스트·격리 홈 전환) 전용.
+pub fn forget() {
+    let (m, _) = state();
+    let mut st = m.lock().unwrap_or_else(|e| e.into_inner());
+    st.map.clear();
+    st.dirty = false;
 }
 
 /// 마이그레이션이 만든 초기 상태 맵을 통째로 심는다(그리고 즉시 쓴다).

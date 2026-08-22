@@ -209,14 +209,108 @@ function normalizeMirror(raw, ctx) {
 const msgsOf = (rec) => (Array.isArray(rec?.snapshot?.messages) ? rec.snapshot.messages : [])
 const hasContent = (rec) => !!(rec?.title || msgsOf(rec).length > 0)
 
+/** ★R2 — **before 인벤토리는 인덱스가 아니라 디렉터리에서 만든다**(§5.2 · 크리틱 R1 §7).
+ *
+ *  R1의 이 함수는 `index.order`만 돌았다. 마이그레이터도 같은 규칙이었으므로
+ *  "파일은 있는데 인덱스에 없는 대화"가 **before/after 양쪽에서 동시에 사라져** 검사에
+ *  안 걸렸다 — 게이트가 마이그레이터와 같은 눈을 쓰면 통과는 신호가 아니다.
+ *
+ *  이제 목록은 **디스크의 파일**이 만들고 인덱스는 *순서*만 준다. 인덱스가 모르는 파일은
+ *  이름순으로 꼬리에 붙고, 우리가 읽을 수 있는데 목적지에 없으면 그건 손실이다. */
 function fanout(dir) {
   const idx = readJSON(path.join(dir, 'index.json'))
+  const order = (Array.isArray(idx?.order) ? idx.order : []).map(String)
+  let names = []
+  try {
+    names = fs.readdirSync(dir)
+  } catch {
+    /* 디렉터리 자체가 없다 */
+  }
+  const onDisk = names
+    .filter((n) => n.endsWith('.json') && n !== 'index.json' && n !== 'status.json')
+    .map((n) => n.slice(0, -5))
+    .sort()
+  const listed = new Set(order)
+  const present = new Set(onDisk)
+  const ids = [...order.filter((id) => present.has(id)), ...onDisk.filter((id) => !listed.has(id))]
   const out = []
-  for (const id of Array.isArray(idx?.order) ? idx.order : []) {
+  const unreadable = []
+  for (const id of ids) {
     const rec = readJSON(path.join(dir, `${id}.json`))
     if (rec) out.push([String(id), rec])
+    else unreadable.push(String(id))
   }
-  return { index: idx ?? {}, items: out }
+  return {
+    index: idx ?? {},
+    items: out,
+    // 게이트가 "무엇을 더 봤는지" 리포트에 남긴다 — 마이그레이터의 눈과의 차이가 곧 격차다
+    indexReadable: idx !== null,
+    notInIndex: onDisk.filter((id) => !listed.has(id)),
+    missingFiles: order.filter((id) => !present.has(id)),
+    unreadable
+  }
+}
+
+/** ★R2 — 원본 레코드의 **리프 전수 감사**.
+ *  "매핑표에 없어서 조용히 사라진 값"을 잡는 그물. 값이 같은지가 아니라 **되찾을 수
+ *  있는지**를 본다(다른 이름·다른 자리라도 살아 있으면 통과). before/after를 같은 매핑에
+ *  통과시켜 비교하면 매핑이 잃는 것은 양쪽에서 똑같이 잃어 안 걸린다. */
+const AUDIT_MAPPED = new Set([
+  'id', 'title', 'custom', 'locked', 'color', 'snapshot', 'picker', 'manualCwd', 'cwd', 'refDirs', 'api',
+  'draft', 'draftImages', 'updatedAt', 'btwOf', 'btwSeed', 'btwPrompt', 'empty', 'status', 'unloaded'
+])
+function leafAudit(srcRec, source, dstRec) {
+  const lost = []
+  const t = dstRec ?? {}
+  const idty = t.identity ?? {}
+  const has = (v) => v !== undefined && v !== null && v !== '' && !(Array.isArray(v) && !v.length)
+  const p = srcRec?.picker ?? {}
+  // picker.account — 구독이면 billing.account, api 모드면 legacyAccount 보존 칸(D5)
+  if (has(p.account) && idty.billing?.account !== p.account && t.legacyAccount !== p.account) {
+    lost.push({ leaf: 'picker.account', value: p.account, whereGone: `billing.kind=${idty.billing?.kind}` })
+  }
+  // codex 채팅의 클로드 모델 — 역투영에서 되살아나지 않는다(알려진 손실)
+  if (p.engine === 'codex' && has(p.model) && idty.engine?.model !== p.model) {
+    lost.push({ leaf: 'picker.model(codex 채팅)', value: p.model, whereGone: `engine.model=${idty.engine?.model}`, known: true })
+  }
+  const refs = (Array.isArray(srcRec?.refDirs) ? srcRec.refDirs : []).filter((s) => typeof s === 'string' && s)
+  if (refs.length && canon(refs.slice(0, 8)) !== canon(idty.addDirs ?? [])) {
+    lost.push({ leaf: 'refDirs', value: refs.slice(0, 8), whereGone: canon(idty.addDirs ?? []) })
+  }
+  for (const k of Object.keys(srcRec ?? {})) {
+    if (AUDIT_MAPPED.has(k) || !has(srcRec[k])) continue
+    if (canon(t[k]) === canon(srcRec[k])) continue
+    lost.push({ leaf: `미지 키 ${k}`, value: srcRec[k], whereGone: '목적지 레코드에 없음' })
+  }
+  if (source !== 'panel') {
+    for (const k of ['draft', 'draftImages']) {
+      if (has(srcRec?.[k]) && canon(srcRec[k]) !== canon(t[k])) lost.push({ leaf: k, value: srcRec[k], whereGone: canon(t[k]) })
+    }
+  }
+  return lost
+}
+
+/** ★R2 — 멱등을 **내용 해시**로 본다(§5.3-5). id 집합만 보면 재마이그레이션이 제목·
+ *  메시지를 2.6.2 시점으로 덮어도 통과한다(크리틱 D3가 그 구멍으로 들어왔다). */
+function storeContentHash(home) {
+  const parts = []
+  for (const [dir, skip] of [['chats-v3', ['index.json', 'status.json']], ['boards', ['index.json']]]) {
+    const d = path.join(home, dir)
+    let names = []
+    try {
+      names = fs.readdirSync(d).sort()
+    } catch {
+      /* 없음 */
+    }
+    for (const n of names) {
+      if (!n.endsWith('.json') || skip.includes(n)) continue
+      parts.push(`${dir}/${n}:` + sha(canon(readJSON(path.join(d, n)))))
+    }
+    const idx = readJSON(path.join(d, 'index.json'))
+    // migratedAt은 실행마다 바뀌는 표식이다 — 내용 비교에서만 뺀다(§5.4의 화이트리스트 규칙)
+    parts.push(`${dir}/index:` + sha(canon({ ...(idx ?? {}), migratedAt: null })))
+  }
+  return sha(parts.join('\n'))
 }
 
 function entryOf(id, rec, source, g, statusValue) {
@@ -238,7 +332,10 @@ function entryOf(id, rec, source, g, statusValue) {
     status: statusValue,
     btwOf: rec.btwOf ?? null,
     queue: Array.isArray(rec.queue) ? rec.queue.length : 0,
-    raw: toRawIdentity(rec, source, g)
+    raw: toRawIdentity(rec, source, g),
+    // ★R2 — 리프 전수 감사의 원본(매핑을 통과시키기 **전** 레코드)
+    src: rec,
+    srcKind: source
   }
 }
 
@@ -338,6 +435,12 @@ function inventoryBefore(home) {
       chats: countJson(path.join(home, 'chats')),
       ma: countJson(path.join(home, 'multi-agent')),
       sessionChats: countJson(path.join(home, 'session-chats'))
+    },
+    // ★R2 §7 — 게이트가 **디렉터리에서** 본 것. 마이그레이터의 눈과 다른 부분이 곧 격차다.
+    disk: {
+      chats: { indexReadable: chats.indexReadable, notInIndex: chats.notInIndex, missingFiles: chats.missingFiles, unreadable: chats.unreadable },
+      multiAgent: { indexReadable: ma.indexReadable, notInIndex: ma.notInIndex, missingFiles: ma.missingFiles, unreadable: ma.unreadable },
+      sessionChats: { indexReadable: sc.indexReadable, notInIndex: sc.notInIndex, missingFiles: sc.missingFiles, unreadable: sc.unreadable }
     }
   }
 }
@@ -379,13 +482,29 @@ function inventoryAfter(home) {
   const index = readJSON(path.join(dir, 'index.json')) ?? {}
   const statuses = readJSON(path.join(dir, 'status.json'))?.statuses ?? {}
   const entries = new Map()
-  for (const id of Array.isArray(index.order) ? index.order : []) {
+  // ★R2 §7 — after도 **디렉터리에서** 센다. index.order로 세면 "인덱스가 잃은 파일"이
+  // before/after 양쪽에서 동시에 사라져 안 걸린다.
+  const orderIdx = (Array.isArray(index.order) ? index.order : []).map(String)
+  let afterNames = []
+  try {
+    afterNames = fs.readdirSync(dir)
+  } catch {
+    /* 없음 */
+  }
+  const onDisk = afterNames
+    .filter((n) => n.endsWith('.json') && n !== 'index.json' && n !== 'status.json')
+    .map((n) => n.slice(0, -5))
+    .sort()
+  const orphanFiles = onDisk.filter((id) => !orderIdx.includes(id))
+  const missingFiles = orderIdx.filter((id) => !onDisk.includes(id))
+  for (const id of [...orderIdx.filter((i) => onDisk.includes(i)), ...orphanFiles]) {
     const rec = readJSON(path.join(dir, `${id}.json`))
     if (!rec) continue
     const ms = msgsOf(rec)
     entries.set(String(id), {
       id: String(id),
-      origin: rec.origin ?? 'chat',
+      rec,
+      origin: rec.origin ?? 'unknown',
       title: rec.title ?? '',
       custom: !!rec.custom,
       locked: !!rec.locked,
@@ -414,7 +533,9 @@ function inventoryAfter(home) {
     boards,
     boardOrder: Array.isArray(bindex.order) ? bindex.order : [],
     activeBoardId: bindex.activeBoardId ?? '',
-    files: { chatsV3: countJson(dir), boards: countJson(bdir) }
+    files: { chatsV3: countJson(dir), boards: countJson(bdir) },
+    orphanFiles,
+    missingFiles
   }
 }
 
@@ -432,20 +553,31 @@ function leafDiff(a, b, prefix = '') {
   return out
 }
 
-function compare(before, after, ctx) {
+function compare(before, after, ctx, migWarnings = []) {
   const fails = []
   const warn = []
   const add = (item, detail) => fails.push({ item, ...detail })
+  // 마이그레이터가 **스스로 신고한** 드랍은 실패가 아니라 경고다(사용자에게 보일 수 있다).
+  // 신고 없이 사라진 것만 실패 — "조용한 드랍 0"이 이 게이트의 판정선이다.
+  const reported = new Set(
+    migWarnings
+      .filter((w) => ['unreadable_source', 'missing_source_file'].includes(w?.kind))
+      .map((w) => String(w.id ?? ''))
+  )
 
   // 채팅 수 / id 집합
   const bKeys = [...before.entries.keys()].sort()
   const aKeys = [...after.entries.keys()].sort()
   if (canon(bKeys) !== canon(aKeys)) {
-    add('채팅 id 집합', {
-      missing: bKeys.filter((k) => !after.entries.has(k)),
-      extra: aKeys.filter((k) => !before.entries.has(k))
-    })
+    const missing = bKeys.filter((k) => !after.entries.has(k))
+    const silent = missing.filter((k) => !reported.has(k) && !reported.has(before.entries.get(k)?.src?.id ?? ''))
+    const extra = aKeys.filter((k) => !before.entries.has(k))
+    if (silent.length || extra.length) add('채팅 id 집합', { missing: silent, extra })
+    const said = missing.filter((k) => !silent.includes(k))
+    if (said.length) warn.push({ item: '마이그레이터가 신고한 드랍', ids: said })
   }
+  if (after.orphanFiles.length) add('chats-v3 index가 모르는 파일', { files: after.orphanFiles })
+  if (after.missingFiles.length) add('chats-v3 index가 가리키는데 없는 파일', { files: after.missingFiles })
   const expectedTotal =
     before.counts.chats + before.counts.maPanels + before.counts.sessionChats + before.counts.talkAbsorbed
   if (expectedTotal !== after.entries.size) {
@@ -455,6 +587,7 @@ function compare(before, after, ctx) {
   // 항목별
   const identity1 = { compared: 0, mismatch: [] }
   const identity2 = { compared: 0, mismatch: [], unresolved: [] }
+  const leafLosses = []
   let msgBefore = 0
   let msgAfter = 0
   for (const [id, b] of before.entries) {
@@ -462,6 +595,9 @@ function compare(before, after, ctx) {
     msgBefore += b.messages
     if (!a) continue
     msgAfter += a.messages
+    // ★R2 — 원본 레코드의 리프가 목적지에서 되찾아지는가(매핑표 밖까지 전수)
+    const ll = leafAudit(b.src, b.srcKind, a.rec)
+    if (ll.length) leafLosses.push({ id, lost: ll })
     for (const f of ['title', 'custom', 'locked', 'color', 'draft', 'draftImages', 'updatedAt', 'messages', 'lastHash', 'threadHash', 'sessionId', 'status', 'queue']) {
       if (canon(b[f]) !== canon(a[f])) add(`항목 필드 ${f}`, { id, before: b[f] ?? null, after: a[f] ?? null })
     }
@@ -484,6 +620,13 @@ function compare(before, after, ctx) {
     }
   }
   if (msgBefore !== msgAfter) add('메시지 총수', { before: msgBefore, after: msgAfter })
+  {
+    // 알려진 손실(codex 채팅의 클로드 모델 — §4.2 역투영 주석)은 경고, 나머지는 실패
+    const hard = leafLosses.map((l) => ({ ...l, lost: l.lost.filter((x) => !x.known) })).filter((l) => l.lost.length)
+    const known = leafLosses.filter((l) => l.lost.every((x) => x.known))
+    if (hard.length) add('원본 리프 소실(매핑표 밖)', { count: hard.length, sample: hard.slice(0, 5) })
+    if (known.length) warn.push({ item: '알려진 리프 손실', count: known.length, sample: known.slice(0, 3) })
+  }
   if (identity1.mismatch.length) add('정체성 1차(원시 바이트)', { count: identity1.mismatch.length, sample: identity1.mismatch.slice(0, 3) })
   if (identity2.mismatch.length) add('정체성 2차(정규화 해시)', { count: identity2.mismatch.length, sample: identity2.mismatch.slice(0, 3) })
 
@@ -535,7 +678,7 @@ function compare(before, after, ctx) {
   if (after.files.chatsV3 !== expectFiles) add('chats-v3 파일 수', { expect: expectFiles, after: after.files.chatsV3 })
   if (after.files.boards !== expectBoardOrder.length) add('boards 파일 수', { expect: expectBoardOrder.length, after: after.files.boards })
 
-  return { fails, warn, identity1, identity2, msgBefore, msgAfter, expectedTotal }
+  return { fails, warn, identity1, identity2, leafLosses, msgBefore, msgAfter, expectedTotal }
 }
 
 // ── §5.3 추가 검사 ───────────────────────────────────────────────────────────
@@ -850,7 +993,9 @@ function run(label, home) {
     return rep
   }
   const after = inventoryAfter(home)
-  const cmp = compare(before, after, ctx)
+  const cmp = compare(before, after, ctx, mig.warnings ?? [])
+  rep.diskEyes = { before: before.disk, after: { orphanFiles: after.orphanFiles, missingFiles: after.missingFiles } }
+  rep.leafAudit = { chatsWithLoss: cmp.leafLosses.length, sample: cmp.leafLosses.slice(0, 5) }
   rep.counts = {
     before: { ...before.counts, expectedTotal: cmp.expectedTotal, messages: cmp.msgBefore, files: before.files },
     after: { chats: after.entries.size, messages: cmp.msgAfter, boards: after.boards.length, files: after.files }
@@ -874,13 +1019,39 @@ function run(label, home) {
   // §5.3 추가 검사
   fails.push(...extraChecks(home, before, after, rep))
 
-  // 5) 멱등성 — 2회 실행 후 채팅 수·id 집합 불변
+  // 5) 멱등성 — ★R2: **내용 해시**로 본다(§5.3-5).
+  //    id 집합만 보면 재마이그레이션이 3.0에서 바뀐 제목·추가된 메시지를 2.6.2 시점으로
+  //    되돌려도 통과한다(크리틱 D3가 그 구멍으로 들어왔다). 그래서 ① 있는 그대로 재실행,
+  //    ② "3.0이 계속 쓴 뒤" 재실행 둘 다 본다.
   const before2 = inventoryAfter(home)
+  const hash1 = storeContentHash(home)
   const mig2 = cli(home, ['migrate', '--no-backup'])
   const after2 = inventoryAfter(home)
+  const hash2 = storeContentHash(home)
   const idsSame = canon([...before2.entries.keys()].sort()) === canon([...after2.entries.keys()].sort())
-  rep.checks.idempotent = { ok: idsSame && mig2.ok, before: before2.entries.size, after: after2.entries.size }
-  if (!idsSame) fails.push({ item: '§5.3-5 멱등성', before: before2.entries.size, after: after2.entries.size })
+  rep.checks.idempotent = { ok: idsSame && mig2.ok && hash1 === hash2, ids: idsSame, contentHash: hash1 === hash2, before: before2.entries.size, after: after2.entries.size }
+  if (!idsSame) fails.push({ item: '§5.3-5 멱등성(id 집합)', before: before2.entries.size, after: after2.entries.size })
+  if (hash1 !== hash2) fails.push({ item: '§5.3-5 멱등성(내용 해시)', before: hash1, after: hash2 })
+
+  // 5b) 재마이그레이션이 **3.0에서 쌓인 것**을 덮지 않는가(안내 카드 §4.1이 부를 경로)
+  {
+    const victim = [...after2.entries.keys()][0]
+    if (victim) {
+      const f = path.join(home, 'chats-v3', `${victim}.json`)
+      const rec = readJSON(f)
+      const marked = {
+        ...rec,
+        title: '★3.0에서 바꾼 제목',
+        snapshot: { ...(rec.snapshot ?? {}), messages: [...msgsOf(rec), { id: 'poc-new', role: 'user', text: '3.0에서 추가' }] }
+      }
+      fs.writeFileSync(f, JSON.stringify(marked))
+      const want = sha(canon(marked))
+      const mig3 = cli(home, ['migrate', '--no-backup'])
+      const got = sha(canon(readJSON(f)))
+      rep.checks.remigrationKeepsV3 = { chatId: victim, clobbered: got !== want, keptV3: mig3.counts?.keptV3 ?? null }
+      if (got !== want) fails.push({ item: '§4.1 재마이그레이션이 3.0의 변경을 덮음', chatId: victim })
+    }
+  }
 
   // 6) 크래시 내성 / 롤백 — 옛 3디렉터리가 그대로인가 + 스테이징 잔여물 없음
   const nowHashes = {

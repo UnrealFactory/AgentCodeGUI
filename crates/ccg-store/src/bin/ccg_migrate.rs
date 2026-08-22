@@ -139,6 +139,12 @@ fn main() {
             ccg_store::chats_v3::set_owned(id, field, v);
             out(json!({ "ok": true }))
         }
+        // 키 쓰기 스킴 검증용(D6) — 키 원문은 인자로만 받고 출력에 싣지 않는다
+        "set-api-key" => {
+            let Some(k) = args.get(1) else { fail("set-api-key <키>") };
+            ccg_store::api_config::set_api_key(k);
+            out(json!({ "ok": true, "scheme": ccg_store::safe_storage::write_scheme() }))
+        }
         "api-status" => out(json!({
             "status": ccg_store::api_config::status(),
             // 키 원문은 절대 싣지 않는다 — 복호가 됐는지(승계 성공)와 길이만

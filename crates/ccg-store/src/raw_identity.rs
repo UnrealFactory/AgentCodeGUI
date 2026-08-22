@@ -64,8 +64,13 @@ pub struct Globals {
 
 impl Globals {
     /// 앱 홈의 전역 파일들에서 한 번에 읽는다.
+    /// ui-prefs가 깨져 있으면 **온전한 상위 쌍까지 건져 쓴다**(D14 — 조용한 값 뒤집기 방지).
     pub fn read() -> Self {
-        let prefs = crate::prefs::read_ui_prefs();
+        Self::from_prefs(&crate::prefs::read_ui_prefs_salvaged().0)
+    }
+
+    /// 이미 읽어 둔 ui-prefs 블롭에서 만든다(마이그레이션이 손상 표식을 함께 쓰려고 분리).
+    pub fn from_prefs(prefs: &Value) -> Self {
         let api_mode = prefs.get("api.mode").and_then(Value::as_bool).unwrap_or(false);
         let output_style = prefs
             .get("claude.outputStyle")

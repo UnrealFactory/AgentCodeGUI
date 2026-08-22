@@ -12,8 +12,18 @@
 //!  - `v10` 접두사 → Local State의 AES 키로 AES-256-GCM 복호
 //!  - 접두사 없음  → DPAPI 직접 복호(`CryptUnprotectData`) — OSCrypt가 키를 못 만든 환경
 //!
-//! **쓰기는 DPAPI 직접**이다. Chromium `DecryptString`은 `v10` 접두사가 없으면 DPAPI로
-//! 폴백하므로, 3.0이 쓴 키를 **2.6.2도 그대로 읽는다**(되돌아가도 키가 안 죽는다).
+//! **쓰기(★R2 D6)**: Local State의 OSCrypt 키가 있으면 **`v10`으로 쓴다.** 없을 때만
+//! DPAPI 직접이다.
+//!
+//! R1은 "Chromium `DecryptString`이 `v10` 접두사가 없으면 DPAPI로 폴백하니 2.6.2도 읽는다"고
+//! 적었는데 **거짓이었다.** Electron의 `safeStorage.decryptString`은 OSCrypt에 넘기기 전에
+//! 접두사를 검사하고 거부한다(실측 에러: *"Ciphertext does not appear to be encrypted."*).
+//! 그래서 3.0에서 키를 한 번 넣으면 2.6.2로 되돌렸을 때 `hasKey:true`인데 실행만 실패하는
+//! 조용한 불일치가 생겼다 = 롤백 경로가 끊겼다.
+//!
+//! 남은 정직한 제약 하나: **2.6.2가 없던 환경**(Local State 없음)에서는 OSCrypt 키가 없어
+//! DPAPI로 쓴다. 그 홈에서 2.6.2로 "되돌리면" 키는 다시 넣어야 한다 — 애초에 그 홈에는
+//! 되돌릴 2.6.2가 없다.
 //!
 //! `<CCG_HOME>/userData/Local State`를 먼저 본다 — 격리 홈(벤치·dev)이 설치본 키를
 //! 복사해 쓰는 규약과 같은 자리다. 없으면 설치본 경로(`%APPDATA%/agent-code-gui`).
@@ -145,11 +155,52 @@ pub fn decrypt(b64: &str) -> Option<String> {
     String::from_utf8(dpapi_unprotect(&blob)?).ok()
 }
 
-/// 원문 → 저장 값(base64, DPAPI). 2.6.2의 `safeStorage.decryptString`도 이 모양을 읽는다
-/// (Chromium `DecryptString`은 `v10` 접두사가 없으면 DPAPI 폴백).
+/// 암호학적 난수(BCryptGenRandom — 이미 있는 `windows` 크레이트, 새 의존성 없음).
+#[cfg(windows)]
+fn rand_bytes(n: usize) -> Option<Vec<u8>> {
+    use windows::Win32::Security::Cryptography::{BCryptGenRandom, BCRYPT_USE_SYSTEM_PREFERRED_RNG};
+    let mut buf = vec![0u8; n];
+    let st = unsafe { BCryptGenRandom(None, &mut buf, BCRYPT_USE_SYSTEM_PREFERRED_RNG) };
+    if st.is_ok() {
+        Some(buf)
+    } else {
+        None
+    }
+}
+
+/// 원문 → 저장 값(base64).
+///
+/// ★R2 D6 — **Local State의 OSCrypt 키가 있으면 `v10`으로 쓴다**(2.6.2 `safeStorage`가
+/// 읽는 유일한 모양). 키가 없는 환경에서만 DPAPI 직접으로 떨어진다.
 #[cfg(windows)]
 pub fn encrypt(plain: &str) -> Option<String> {
+    use aes_gcm::aead::{Aead, KeyInit};
+    use aes_gcm::{Aes256Gcm, Nonce};
+    if let Some(key) = os_crypt_key() {
+        if let (Some(nonce), Ok(cipher)) = (rand_bytes(12), Aes256Gcm::new_from_slice(&key)) {
+            if let Ok(ct) = cipher.encrypt(Nonce::from_slice(&nonce), plain.as_bytes()) {
+                let mut blob = V10.to_vec();
+                blob.extend_from_slice(&nonce);
+                blob.extend_from_slice(&ct);
+                return Some(b64_encode(&blob));
+            }
+        }
+    }
     Some(b64_encode(&dpapi_protect(plain.as_bytes())?))
+}
+
+/// 지금 쓰기가 어느 스킴을 쓰는가 — 리포트/하네스용(키 원문은 절대 나가지 않는다).
+#[cfg(windows)]
+pub fn write_scheme() -> &'static str {
+    if os_crypt_key().is_some() {
+        "v10"
+    } else {
+        "dpapi"
+    }
+}
+#[cfg(not(windows))]
+pub fn write_scheme() -> &'static str {
+    "none"
 }
 
 /// 암호화를 쓸 수 있는가 — 2.6.2 `safeStorage.isEncryptionAvailable()` 자리.
@@ -195,5 +246,34 @@ mod tests {
         }
         let enc = encrypt("sk-ant-test-0000").unwrap();
         assert_eq!(decrypt(&enc).as_deref(), Some("sk-ant-test-0000"));
+    }
+
+    /// ★R2 D6 — Local State가 있으면 **v10으로 쓴다**(2.6.2 `safeStorage`가 읽는 유일한 모양).
+    /// 없는 머신에서는 DPAPI 폴백이고, 그 갈래도 자기 자신은 읽는다.
+    #[cfg(windows)]
+    #[test]
+    fn the_write_scheme_is_v10_whenever_the_oscrypt_key_exists() {
+        let h = crate::testkit::temp_home("safestorage-v10");
+        let key_src = std::path::PathBuf::from(std::env::var("APPDATA").unwrap_or_default())
+            .join("agent-code-gui")
+            .join("Local State");
+        if !key_src.is_file() {
+            return; // 2.6.2 미설치 머신 — 폴백 갈래만 유효하다
+        }
+        std::fs::create_dir_all(h.path("userData")).unwrap();
+        std::fs::copy(&key_src, h.path("userData/Local State")).unwrap();
+        assert_eq!(write_scheme(), "v10");
+        let enc = encrypt("sk-ant-v10-roundtrip").unwrap();
+        assert!(b64_decode(&enc).unwrap().starts_with(V10), "v10 접두사가 없으면 2.6.2가 거부한다");
+        assert_eq!(decrypt(&enc).as_deref(), Some("sk-ant-v10-roundtrip"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn nonces_never_repeat() {
+        let a = rand_bytes(12).unwrap();
+        let b = rand_bytes(12).unwrap();
+        assert_ne!(a, b);
+        assert_eq!(a.len(), 12);
     }
 }

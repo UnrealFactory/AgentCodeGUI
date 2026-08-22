@@ -31,7 +31,18 @@ pub const DIR: &str = "chats-v3";
 /// Rust 소유 필드 — 저장 시 되끼우는 셋(§4.1 ★R3).
 pub const RUST_OWNED: [&str; 3] = ["identity", "queue", "hold"];
 
+/// **디스크 우선 보존 필드** — 렌더러 페이로드는 *저장된 레코드가 있는 한* 이기지 못한다.
+///  - `status`: 2.6.2가 `session-chats/<id>.json`에 들고 있던 **얼린 상태**의 유일 진실.
+///    `status.json`은 파생 캐시라 지워질 수 있는데, 그때 재구성할 곳이 여기밖에 없다
+///    (크리틱 D12 — 지금까지는 `done`이 전부 `idle`로 풀렸다).
+///  - `legacyAccount`: api 모드에서 `billing` 유니온이 담지 못하는 원시 `picker.account`
+///    (크리틱 D5). 통합 UI가 서면 별칭 계층과 함께 사라진다.
+pub const PRESERVED: [&str; 2] = ["status", "legacyAccount"];
+
 static STORE: Fanout = Fanout::new(DIR, &["index.json", "status.json"]);
+
+/// `index.json`의 활성 채팅 **세대 카운터**(D13). `chats:set-active`만 올린다.
+const ACTIVE_GEN: &str = "activeGen";
 
 pub fn chat_file(id: &str) -> std::path::PathBuf {
     STORE.file(id)
@@ -82,6 +93,26 @@ pub fn set_owned_mem(chat_id: &str, field: &str, value: Value) {
     });
 }
 
+/// 런타임 소유값 기억을 통째로 버린다 — **홈이 갈릴 때**(테스트·격리 홈 전환) 전용.
+/// 다른 홈의 정체성이 새 홈의 채팅에 붙는 사고를 막는다.
+pub fn forget_owned() {
+    *OWNED.lock().unwrap_or_else(|e| e.into_inner()) = None;
+}
+
+/// 이 채팅의 **정체성 진실이 이미 있는가** — 런타임 소유값 또는 디스크 레코드.
+/// 별칭 계층의 D1 가드가 "렌더러 사본을 저자로 인정할지"를 이걸로 가른다.
+pub fn has_identity_truth(chat_id: &str) -> bool {
+    if with_owned(|m| m.get(chat_id).and_then(|f| f.get("identity")).is_some_and(|v| !v.is_null())) {
+        return true;
+    }
+    STORE.stored(chat_id).and_then(|d| d.get("identity").cloned()).is_some_and(|v| v.is_object())
+}
+
+/// 인덱스를 완전히 판독했는가(D2) — 별칭 계층의 목록 prune도 이 값에 걸린다.
+pub fn index_trusted() -> bool {
+    STORE.index_trusted()
+}
+
 /// 지금 저장된 채팅 전체(마커 없이 통째로) — 별칭 계층의 병합 저장이 쓴다.
 pub fn all_chats() -> Vec<Value> {
     STORE.read_all().map(|(_, c)| c).unwrap_or_default()
@@ -128,6 +159,22 @@ fn apply_owned(id: &str, out: &mut Map<String, Value>, defaults: &mut Option<Val
     }
 }
 
+/// 디스크 우선 보존 필드 되끼움(`PRESERVED`). 저장된 레코드가 **있으면** 그 값이 이기고,
+/// 없으면(=이 프로세스가 처음 보는 새 채팅) 페이로드 값을 그대로 심는다(부트스트랩).
+fn apply_preserved(id: &str, out: &mut Map<String, Value>) {
+    let Some(disk) = STORE.stored(id) else { return };
+    for field in PRESERVED {
+        match disk.get(field).filter(|v| !v.is_null()) {
+            Some(v) => {
+                out.insert(field.to_string(), v.clone());
+            }
+            None => {
+                out.shift_remove(field);
+            }
+        }
+    }
+}
+
 /// unloaded 마커에 디스크의 스냅샷을 되끼운다(2.6.2 `chats.rs:151-172`와 같은 의미론).
 fn merge_marker(id: &str, chat: &Value) -> Map<String, Value> {
     let stored_snapshot = STORE.stored(id).and_then(|v| v.get("snapshot").cloned());
@@ -148,15 +195,25 @@ fn merge_marker(id: &str, chat: &Value) -> Map<String, Value> {
 /// 블롭 저장 — 팬아웃 + 두 되끼움. `statuses`는 페이로드에 **없다**(있어도 무시).
 pub fn write_chats(data: &Value) {
     let Some(chats) = data.get("chats").and_then(Value::as_array) else { return };
+    let prev = STORE.read_index();
     let mut extra = Map::new();
     extra.insert("version".into(), version_or_1(data));
-    extra.insert(
-        "activeChatId".into(),
-        json!(data.get("activeChatId").and_then(Value::as_str).unwrap_or("")),
-    );
-    // 마이그레이션 표식은 인덱스에 남아 있어야 한다(재마이그레이션 안내 카드의 근거)
-    if let Some(prev) = STORE.read_index() {
-        for k in ["migratedFrom", "migratedAt"] {
+    // ★R2 D13 — `chats:set-active`가 한 번이라도 쓰인 스토어에서는 activeChatId의 저자가
+    // 그 채널 **하나**다. 낡은 디바운스 저장(2.6.2 렌더러는 매 저장에 activeChatId를 싣는다)이
+    // 전환을 되돌리면 M-LOGIC의 실행 라우팅이 남의 채팅에 붙는다.
+    let gen = prev.as_ref().and_then(|p| p.get(ACTIVE_GEN).and_then(Value::as_u64)).unwrap_or(0);
+    let active = if gen > 0 {
+        prev.as_ref().and_then(|p| p.get("activeChatId").and_then(Value::as_str)).unwrap_or("").to_string()
+    } else {
+        data.get("activeChatId").and_then(Value::as_str).unwrap_or("").to_string()
+    };
+    extra.insert("activeChatId".into(), json!(active));
+    extra.insert(ACTIVE_GEN.into(), json!(gen));
+    // 마이그레이션 표식은 인덱스에 남아 있어야 한다(재마이그레이션 안내 카드의 근거).
+    // ★R2 D8 — `migrationComplete`(완료 마커)도 같이 이어받는다. 안 그러면 저장 한 번이
+    // 마커를 지워 다음 부팅이 "미완"으로 읽는다.
+    if let Some(prev) = prev.as_ref() {
+        for k in ["migratedFrom", "migratedAt", "migrationComplete"] {
             if let Some(v) = prev.get(k) {
                 extra.insert(k.into(), v.clone());
             }
@@ -170,6 +227,7 @@ pub fn write_chats(data: &Value) {
         out.shift_remove("statuses"); // 혹시 실려 와도 파일에 남기지 않는다(주인은 status.json)
         let mut d = defaults.lock().unwrap_or_else(|e| e.into_inner());
         apply_owned(id, &mut out, &mut d);
+        apply_preserved(id, &mut out);
         Value::Object(out)
     });
     // 사라진 채팅의 상태도 걷어낸다
@@ -179,16 +237,21 @@ pub fn write_chats(data: &Value) {
 
 /// `activeChatId`만 즉시 갱신한다 — `chats:set-active`(§6.2 U3).
 /// 저장 디바운스와 무관해야 "전환 직후 전송"이 남의 런타임에 붙지 않는다.
+///
+/// ★R2 D13 — **단조 세대 카운터**(`activeGen`)를 함께 올린다. 세대가 1 이상이면
+/// `write_chats`는 페이로드의 `activeChatId`를 더 이상 채택하지 않는다.
 pub fn set_active(chat_id: &str) -> bool {
     if !safe_id_str(chat_id) {
         return false;
     }
     let Some(mut index) = STORE.read_index() else { return false };
+    let gen = index.get(ACTIVE_GEN).and_then(Value::as_u64).unwrap_or(0);
     let Some(o) = index.as_object_mut() else { return false };
-    if o.get("activeChatId").and_then(Value::as_str) == Some(chat_id) {
+    if o.get("activeChatId").and_then(Value::as_str) == Some(chat_id) && gen > 0 {
         return true;
     }
     o.insert("activeChatId".into(), json!(chat_id));
+    o.insert(ACTIVE_GEN.into(), json!(gen + 1));
     let Ok(text) = serde_json::to_string(&index) else { return false };
     let ok = crate::write_atomic(&STORE.index_path(), &text).is_ok();
     if ok {
@@ -250,6 +313,8 @@ pub fn read_chats(light: bool, open_chat_ids: &[String]) -> Value {
         "version": version_or_1(&index),
         "chats": chats,
         "activeChatId": active_chat_id,
+        // D13 — 활성 전환의 세대. 0이면 아직 `chats:set-active`를 쓴 적이 없다(2.6.2 동작).
+        "activeGen": index.get(ACTIVE_GEN).and_then(Value::as_u64).unwrap_or(0),
         "statuses": Value::Object(smap),
     })
 }
@@ -264,8 +329,9 @@ pub fn read_chat(id: &Value) -> Value {
 
 /// 채팅 id 목록 — **index.json만** 읽는다(스레드 본문을 건드리지 않는다).
 /// 부팅 경로(§4.3)가 이걸로 돌아야 "채팅 200개에 수십 ms"가 성립한다.
+/// D2 — 인덱스를 못 읽으면 디렉터리 이름 스캔으로 대신한다(파일도 안 읽는다).
 pub fn chat_ids() -> Vec<String> {
-    let Some(index) = STORE.read_index() else { return vec![] };
+    let Some(index) = STORE.read_index() else { return STORE.scan_ids() };
     index
         .get("order")
         .and_then(Value::as_array)
@@ -288,5 +354,115 @@ pub fn boot_statuses() -> Value {
 /// 재장전 후보 — hold/큐가 있는 채팅(§4.3 부팅 경로 1단계).
 pub fn reload_candidates() -> Vec<String> {
     crate::status::reload_candidates(&chat_ids())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::testkit::{snap, temp_home, threads};
+
+    fn seed(h: &crate::testkit::Home) {
+        for (i, id) in ["a", "b"].iter().enumerate() {
+            h.write(
+                &format!("chats-v3/{id}.json"),
+                &json!({
+                    "id": id, "origin": "chat", "title": format!("채팅 {i}"),
+                    "identity": { "engine": { "kind": "claude", "model": "opus" }, "cwd": "C:\\Code" },
+                    "status": if i == 0 { "done" } else { "idle" },
+                    "legacyAccount": "me@example.com",
+                    "snapshot": snap(3 + i, &format!("s-{id}")),
+                })
+                .to_string(),
+            );
+        }
+        h.write("chats-v3/index.json", r#"{"version":1,"order":["a","b"],"activeChatId":"a"}"#);
+        invalidate();
+    }
+
+    #[test]
+    fn unloaded_markers_get_the_stored_snapshot_back() {
+        let h = temp_home("v3-marker");
+        seed(&h);
+        let before = threads(&h);
+        let markers: Vec<Value> = read_chats(false, &[])["chats"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|c| json!({ "id": c["id"], "origin": c["origin"], "title": c["title"], "unloaded": true, "snapshot": Value::Null }))
+            .collect();
+        write_chats(&json!({ "version": 1, "activeChatId": "a", "chats": markers }));
+        assert_eq!(threads(&h), before, "마커 저장이 스냅샷을 지웠다 = 대화 증발");
+    }
+
+    #[test]
+    fn the_payload_can_never_forge_the_rust_owned_three() {
+        let h = temp_home("v3-owned");
+        seed(&h);
+        let forged: Vec<Value> = read_chats(false, &[])["chats"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|c| {
+                let mut o = c.as_object().cloned().unwrap();
+                o.insert("identity".into(), json!({ "engine": { "model": "STALE" }, "cwd": "C:\\STALE" }));
+                o.insert("queue".into(), json!([{ "id": "fake" }]));
+                o.insert("hold".into(), json!({ "key": "x", "at": 1 }));
+                Value::Object(o)
+            })
+            .collect();
+        write_chats(&json!({ "version": 1, "activeChatId": "a", "chats": forged }));
+        let a = h.read_json("chats-v3/a.json").unwrap();
+        assert_eq!(a["identity"]["engine"]["model"], "opus", "위조된 정체성이 채택됐다");
+        assert!(a.get("queue").is_none() && a.get("hold").is_none(), "없는 것이 진실이다: {a}");
+    }
+
+    #[test]
+    fn set_active_wins_against_a_later_stale_save() {
+        let h = temp_home("v3-active");
+        seed(&h);
+        assert!(set_active("b"));
+        assert_eq!(h.read_json("chats-v3/index.json").unwrap()["activeChatId"], "b");
+        // 낡은 렌더러의 디바운스 저장이 옛 activeChatId를 싣고 도착한다
+        let chats = read_chats(false, &[])["chats"].clone();
+        write_chats(&json!({ "version": 1, "activeChatId": "a", "chats": chats }));
+        let idx = h.read_json("chats-v3/index.json").unwrap();
+        assert_eq!(idx["activeChatId"], "b", "낡은 저장이 set-active를 덮었다");
+        assert_eq!(idx["activeGen"], 1);
+    }
+
+    #[test]
+    fn frozen_status_and_legacy_account_outlive_a_renderer_save() {
+        let h = temp_home("v3-preserved");
+        seed(&h);
+        // 렌더러는 이 둘을 모른다 — 빠뜨리거나(status) 딴 값을 실어도(legacyAccount) 진다
+        let chats = json!([{ "id": "a", "origin": "chat", "title": "채팅 0", "legacyAccount": "hijack@x.com", "snapshot": snap(3, "s-a") }]);
+        write_chats(&json!({ "version": 1, "activeChatId": "a", "chats": chats }));
+        let a = h.read_json("chats-v3/a.json").unwrap();
+        assert_eq!(a["status"], "done", "얼린 status가 사라지면 추가 채팅의 done이 풀린다");
+        assert_eq!(a["legacyAccount"], "me@example.com");
+    }
+
+    #[test]
+    fn a_broken_index_does_not_turn_the_next_save_into_a_wipe() {
+        let h = temp_home("v3-broken-index");
+        seed(&h);
+        h.write("chats-v3/index.json", "{\"order\":[");
+        invalidate();
+        assert!(!index_trusted());
+        assert!(!read_chats(true, &[]).is_null(), "조회가 전멸하면 안 된다");
+        write_chats(&json!({ "version": 1, "activeChatId": "new", "chats": [{ "id": "new", "origin": "chat", "snapshot": snap(1, "s-n") }] }));
+        let files = h.files("chats-v3");
+        assert!(files.contains(&"a.json".to_string()) && files.contains(&"b.json".to_string()), "유일 사본이 지워졌다: {files:?}");
+    }
+
+    #[test]
+    fn identity_truth_is_runtime_then_disk() {
+        let h = temp_home("v3-truth");
+        seed(&h);
+        assert!(has_identity_truth("a"));
+        assert!(!has_identity_truth("nobody"));
+        set_owned_mem("nobody", "identity", json!({ "engine": { "model": "haiku" } }));
+        assert!(has_identity_truth("nobody"));
+    }
 }
 
