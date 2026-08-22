@@ -14,7 +14,8 @@ AgentCodeGUI를 Electron에서 Tauri + Rust 기반으로 완전히 재구축하�
 
 빠르고 가볍고 유지보수 가능한 3.0.0. 기존 기능 전부(멀티 패널·팝아웃·추가 채팅 창·
 계정 전환·한도 이어서·btw 포크·LSP 뷰어·HTML 미리보기 등)를 **화면 단위로 대조해
-하나도 빠뜨리지 않고**, 블라인드 나란히 비교에서 UI가 지지 않아야 한다. 여기에
+하나도 빠뜨리지 않고**(아래 "범위에서 빼는 것"의 Verse만 예외), 블라인드 나란히
+비교에서 UI가 지지 않아야 한다. 여기에
 신기능 세 개가 추가로 동작해야 한다:
 1. 멀티채팅 기준으로 MCP·Skill을 전용으로 볼 수 있는 방법
 2. 서로 다른 클로드 세션들끼리의 소통(클로드 코드 4개가 서로 대화하며 협업하는 수준)
@@ -35,6 +36,31 @@ AgentCodeGUI를 Electron에서 Tauri + Rust 기반으로 완전히 재구축하�
    도중 특수한 상황이 생기면 상태가 꼬이는 경우가 많다. 3.0에서는 **로직 자체가 깔끔해야
    한다.** 아래 M-LOGIC 조각이 이걸 담당하며, 이건 기능이 아니라 **기반**이라 M3(엔진)와
    같이 가야 한다.
+
+## 범위에서 **빼는** 것 (사용자 결정)
+
+- **Verse 지원 전체를 3.0.0에서 제거한다.** 유지 부담이 너무 크다는 사용자 판단.
+  2.6.2에는 있지만 3.0에는 **이식하지 않는다** — 파리티 감사에서 "빠진 기능"으로
+  잡지 마라. 이건 회귀가 아니라 **의도된 범위 축소**다.
+
+  구체적으로 옮기지 않을 것:
+  · `src/main/lsp/verse.ts`(1,100줄+)·`verseMemberDb.ts`·`verseDocKo.ts`·
+    `verseDocFormat.ts`·`verse-doc-ko.json`(480KB) — 합계 약 1,944줄 + 문서 데이터
+  · `src/renderer/src/lib/verseLang.ts`·`verseMembers.ts`·`verseRegistry.ts`
+  · `src/shared/verseKeywords.ts`·`verseSyntax.ts`
+    (`verseMemberDb`는 NUL 센티널 때문에 git이 바이너리로 취급하던 파일 — 그냥 안 옮기면 된다)
+  · IPC 6채널: `lspVerseRegistry`·`lspVerseDigests`·`lspVerseExcludes`·
+    `lspPickVerseServer`·`lspSetVersePath`·`lspClearVersePath`
+  · 프로토콜 타입: `VerseRegistry`·`VerseRegistrySnapshot`·`VERSE_BUILTIN_KIND`
+  · 설정 ▸ 코드 분석의 Verse 서버 항목(외부 exe 지정 UI), 탐색기의 Verse digests 폴더,
+    "Verse 위주로 보기" excludes, `.verse` VRS 배지·구문 강조
+  · `docs/screen-inventory.md`의 Verse 관련 화면들 — **범위 밖으로 표시**하고 A/B 대조
+    대상에서 제외하라.
+
+  판단이 필요한 지점 하나: `.verse` 구문 강조(색깔만 입히는 것)는 LSP 없이도 되는
+  싸구려 기능이라 남길 수도 있다. **기본 결정은 "이것도 함께 제거"** — Verse 지원을
+  통째로 걷어내는 게 사용자 의도이고, 어중간하게 남기면 "왜 색은 나오는데 아무것도
+  안 되냐"가 된다. 사용자가 원하면 나중에 강조만 되살리는 건 쉽다.
 
 ## 성능 기준 — 실측으로 박제됨 (`bench/results/`)
 
@@ -130,7 +156,8 @@ WebView2가 Chromium 4개(314MB) 자리에 6개(386MB)를 띄워 반납했다. "
 - **M4 Codex 엔진 + 엔진 버전 관리**
 - **M5 계정** — 로그인/전환/채팅별 격리(CLAUDE_CONFIG_DIR)/한도 조회 + OSCrypt 승계
 - **M6 파일·Git·뷰어** — fs ops·git 래퍼·HTML 미리보기 스킴·아이콘
-- **M7 코드 탐색기/LSP (사용자가 중요하다고 지목)** — 색인·호버·정의 이동·자동완성이
+- **M7 코드 탐색기/LSP (사용자가 중요하다고 지목)** — 대상 언어는 **TS/JS · Python ·
+  C# · C++** 넷이다(Verse는 위 "범위에서 빼는 것"에 따라 제외). 색인·호버·정의 이동·자동완성이
   **잘 되면서 성능도 좋고 버그도 없어야** 한다. 이 조각도 다른 조각처럼 **수치로 판정**하라
   — "잘 되는 것 같다"는 통과 근거가 아니다.
 
@@ -147,9 +174,6 @@ WebView2가 Chromium 4개(314MB) 자리에 6개(386MB)를 띄워 반납했다. "
     이후 새/수정 파일 타입은 재프라임 전까지 무색 — 변화 통지 시 재프라임하되 **3초 조용
     간격 필수**(워처 편입 전 프라임은 헛프라임). `.slnx` 재생성 시 solution/open 재통지.
     루트 선택은 "참조 프로젝트 최대" sln(단일 sln이 다른 프로젝트를 가리는 사고).
-  · **Verse**: 공식 심볼 호버가 안 되면 stale 인덱스 의심(UEFN 재빌드 감지 재시작).
-    verse-lsp는 타이핑 중 **어휘 스코프만** 주고 리시버 멤버를 못 준다 — 스캔 기반 로컬
-    멤버 소스가 필요하다(서버 한계, 클라이언트 버그 아님).
   · **시맨틱 토큰 디스크 캐시**(프로젝트별 버킷) + 프리웜이 재실행 체감의 핵심이다.
   · UE 컴파일 DB·clangd 인덱스는 앱 홈에 둔다(프로젝트 폴더 오염 금지).
 
