@@ -1,0 +1,37 @@
+[package]
+name = "ccg-auth"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "AgentCodeGUI 계정 도메인 — accounts.json(v3/v2)·codex-accounts.json(v1) 스토어, 격리 CONFIG_DIR 물질화, 토큰 진단·한도 조회 조립"
+
+[features]
+# 진단 프로브 전용 바이너리(리포트·크리틱 재현용). 기본 빌드에는 안 들어간다 —
+# 앱 번들에 CLI가 딸려 나갈 이유가 없다(ccg-store의 `cli`와 같은 규약).
+cli = []
+
+[[bin]]
+name = "ccg-auth-probe"
+path = "src/bin/ccg_auth_probe.rs"
+required-features = ["cli"]
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+# OSCrypt(safeStorage) 복호/암호와 앱 홈 경로·원자 저장은 ccg-store 것을 **그대로 쓴다**.
+# 같은 스킴을 두 벌 두면 한쪽만 고쳐지는 순간 사용자가 재로그인을 하게 된다(R8에서 v10
+# 쓰기까지 실측 검증된 코드 = crates/ccg-store/src/safe_storage.rs가 단일 소스다).
+ccg-store = { path = "../ccg-store" }
+# 토큰 지문(sha256 앞 12자) — 스냅샷 오염 진단의 판정 키. api_config.rs와 같은 레시피.
+sha2 = "0.10"
+
+# 계정 폴더의 공유 정션(projects·sessions…) — **정션이어야 resume이 산다**(심링크는
+# 개발자 모드/관리자 권한이 필요해 사용자 머신에서 조용히 실패한다). Node는
+# fs.symlinkSync(..., 'junction')로 이걸 해줬고, Rust std에는 대응물이 없어
+# FSCTL_SET_REPARSE_POINT를 직접 쓴다(src/junction.rs).
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.61", features = [
+  "Win32_Foundation",
+  "Win32_Storage_FileSystem",
+  "Win32_System_IO",
+] }
