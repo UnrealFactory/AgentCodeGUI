@@ -1,0 +1,181 @@
+{
+  "app": "tauri-3.0.0",
+  "kind": "tauri",
+  "at": "2026-08-22T20:37:03.592Z",
+  "viewport": {
+    "width": 1440,
+    "height": 900
+  },
+  "screens": [
+    {
+      "id": "chat-thread",
+      "label": "대화 스레드(코드 뷰)",
+      "area": "2. 본채팅",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 443,
+      "found": 1
+    },
+    {
+      "id": "chat-header",
+      "label": "채팅 헤더",
+      "area": "2. 본채팅",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 460,
+      "found": 1
+    },
+    {
+      "id": "composer",
+      "label": "컴포저(한 줄 고스트 필)",
+      "area": "2. 본채팅",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 444,
+      "found": 1
+    },
+    {
+      "id": "workbar",
+      "label": "작업 바(5칩)",
+      "area": "2. 본채팅",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 437,
+      "found": 5
+    },
+    {
+      "id": "chat-welcome",
+      "label": "웰컴(빈 채팅)",
+      "area": "2. 본채팅",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 1912,
+      "found": 1
+    },
+    {
+      "id": "chat-find",
+      "label": "대화에서 찾기 바",
+      "area": "2. 본채팅",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 875,
+      "found": 1
+    },
+    {
+      "id": "sidebar",
+      "label": "채팅 사이드바(2.6.2=3섹션 / 3.0=채팅·배치 2섹션)",
+      "area": "3. 사이드바",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 451,
+      "found": 3
+    },
+    {
+      "id": "sidebar-empty",
+      "label": "섹션 빈 상태",
+      "area": "3. 사이드바",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 445,
+      "found": 2
+    },
+    {
+      "id": "sidebar-ctx-menu",
+      "label": "채팅 우클릭 메뉴",
+      "area": "3. 사이드바",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 943,
+      "found": 2
+    },
+    {
+      "id": "sidebar-deleteall-confirm",
+      "label": "섹션 전체 삭제 확인 카드",
+      "area": "3. 사이드바",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 904,
+      "found": 1
+    },
+    {
+      "id": "explorer-git-strip",
+      "label": "Git 상태 스트립",
+      "area": "4. 탐색기",
+      "surface": "main-window",
+      "ok": false,
+      "ms": 12420,
+      "error": "waitFor timeout: .explorer .git-strip .br (1)"
+    },
+    {
+      "id": "git-repo-list",
+      "label": "Git — 저장소 선택(2곳 이상)",
+      "area": "6. Git",
+      "ok": false,
+      "skipped": true,
+      "reason": "하위 저장소가 2곳 이상인 작업 폴더가 필요 — 이 레포에는 중첩 .git이 없다(실측)"
+    },
+    {
+      "id": "settings-api",
+      "label": "설정 — API",
+      "area": "7. 설정",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 1756,
+      "found": 2
+    },
+    {
+      "id": "settings-mcp",
+      "label": "설정 — MCP",
+      "area": "7. 설정",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 1758,
+      "found": 3
+    },
+    {
+      "id": "settings-display",
+      "label": "설정 — Display",
+      "area": "7. 설정",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 1770,
+      "found": 3
+    },
+    {
+      "id": "multi-grid-empty",
+      "label": "멀티 — 빈 패널 그리드(4분할)",
+      "area": "8. 멀티",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 1575,
+      "found": 4
+    },
+    {
+      "id": "multi-grid-counts",
+      "label": "멀티 — 패널 수 배치(n6)",
+      "area": "8. 멀티",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 1939,
+      "found": 1
+    },
+    {
+      "id": "multi-panel-expanded",
+      "label": "멀티 — 크게 보기 오버레이 카드",
+      "area": "8. 멀티",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 798,
+      "found": 1
+    }
+  ],
+  "windowSized": true,
+  "summary": {
+    "defined": 156,
+    "attempted": 17,
+    "ok": 16,
+    "failed": 1,
+    "skipped": 1,
+    "successRatePct": 94.1
+  }
+}
