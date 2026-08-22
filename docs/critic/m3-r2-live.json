@@ -1,0 +1,176 @@
+{
+  "at": "2026-08-22T19:42:24.794Z",
+  "exe": "C:\\Code\\AgentCodeGUI\\target\\release\\agentcodegui.exe",
+  "steps": {
+    "r81": {
+      "listAtBoot": [
+        "sc-alpha",
+        "sc-beta"
+      ],
+      "changedPayloads": [
+        [
+          "s-28312-1",
+          "sc-alpha",
+          "sc-beta"
+        ]
+      ],
+      "listAfterOpen": [
+        "s-28312-1",
+        "sc-alpha",
+        "sc-beta"
+      ],
+      "persistedLostInBroadcast": [],
+      "verdict": "FIXED"
+    },
+    "live": {
+      "home": "C:\\Code\\AgentCodeGUI\\.poc-home-live",
+      "engine": "0.3.239",
+      "account": "lmg56634@gmail.com",
+      "steps": {
+        "boot": {
+          "apiUp": true,
+          "chats": [
+            "c-live"
+          ],
+          "active": "c-live",
+          "composer": true,
+          "migrated": true,
+          "ms": 87
+        },
+        "open": {
+          "active": "c-live",
+          "cwdShown": "work",
+          "title": "AgentCodeGUI"
+        },
+        "send": {
+          "via": "composer",
+          "result": "sent"
+        },
+        "stream": {
+          "deltas": 1,
+          "types": [
+            "status",
+            "session",
+            "assistant-stream"
+          ],
+          "userEchoed": true,
+          "domChars": 1455
+        },
+        "card": {
+          "head": "Claude의 승인 요청",
+          "tool": "Write",
+          "summary": "Write c:\\code\\agentcodegui\\.poc-home-live\\work\\live-approve.txt",
+          "opts": [
+            "허용",
+            "항상 허용",
+            "거부"
+          ]
+        },
+        "cardStillThereAfter3s": true,
+        "done": {
+          "result": {
+            "isError": false,
+            "text": "DONE",
+            "costUsd": 0.0191025,
+            "viaApi": false
+          },
+          "statuses": [
+            "analyzing",
+            "working",
+            "done"
+          ],
+          "replyInDom": true,
+          "fileOnDisk": true,
+          "turnMs": 6944,
+          "fileBody": "OK"
+        },
+        "finalDom": {
+          "chars": 1735,
+          "hasDone": true,
+          "hasPrompt": true,
+          "cardGone": true,
+          "events": {
+            "status": 3,
+            "session": 1,
+            "assistant-stream": 3,
+            "assistant-done": 2,
+            "context": 3,
+            "tool-start": 1,
+            "permission-request": 1,
+            "tool-end": 1,
+            "result": 1
+          },
+          "streamedText": "I'll create the file with the exact content \"OK\".DONE",
+          "assistantDone": [
+            "I'll create the file with the exact content \"OK\".",
+            "DONE"
+          ]
+        },
+        "engineDebug": {
+          "chats": [
+            {
+              "chatId": "c-live",
+              "state": "Idle",
+              "queued": 0,
+              "spawns": 1,
+              "exits": 1,
+              "session": "b0a83c72-bd24-4790-bd37-1432ce0eed20",
+              "pid": 15920
+            }
+          ],
+          "cli": "C:\\Code\\AgentCodeGUI\\.poc-home-live\\engines\\0.3.239\\node_modules/@anthropic-ai/claude-agent-sdk-win32-x64/claude.exe"
+        },
+        "savedOnDisk": {
+          "msgs": 5,
+          "sessionId": "b0a83c72-bd24-4790-bd37-1432ce0eed20",
+          "identityCwd": "c:\\code\\agentcodegui\\.poc-home-live\\work",
+          "identityModel": "haiku"
+        },
+        "statusJson": {
+          "chatId": "c-live",
+          "status": "done",
+          "busy": false,
+          "bgActive": false,
+          "ask": "none",
+          "hold": null,
+          "queued": 0,
+          "unread": 0,
+          "updatedAt": 1787427753396
+        },
+        "afterRestart": {
+          "lightMsgs": 5,
+          "loadedMsgs": 5,
+          "sessionId": "b0a83c72-bd24-4790-bd37-1432ce0eed20",
+          "texts": [
+            "Use the Write tool to create live-approv",
+            "I'll create the file with the exact cont",
+            "",
+            "DONE",
+            ""
+          ],
+          "domHasPrompt": true,
+          "domHasDone": true
+        }
+      },
+      "appLog": [
+        "[store] chats-v3 마이그레이션: {\"ok\":true,\"migratedAt\":1787427746496.0,\"elapsedMs\":9.0,\"backupDir\":\"C:\\\\Code\\\\AgentCodeGUI\\\\.poc-home-live\\\\backup-2.6.2-1787427746496\",\"counts\":{\"chats\":1,\"maSessions\":0,\"maPanels\":0,\"sessionChats\":0,\"talkAbsorbed\":0,\"carried\":0,\"keptV3\":0,\"keptV3Boards\":0,\"total\":1,\"messages\":0,\"boards\":1},\"idMap\":{\"c-live\":\"c-live\"},\"order\":[\"c-live\"],\"activeChatId\":\"c-live\",\"boardOrder\":[\"default\"],\"activeBoardId\":\"default\",\"activeSessionId\":\"\",\"btw\":{\"rewritten\":0,\"dropped\":0},\"holdMoved\":0,\"sourceIndexOrders\":{\"chats\":[\"c-live\"],\"multiAgent\":[],\"sessionChats\":[]},\"warnings\":[]}"
+      ],
+      "frames": {
+        "total": 42,
+        "kinds": {
+          "control_response": 1,
+          "system/init": 1,
+          "system/status": 2,
+          "stream_event": 31,
+          "assistant": 3,
+          "control_request": 1,
+          "rate_limit_event": 1,
+          "user": 1,
+          "result/success": 1
+        }
+      }
+    }
+  },
+  "findings": [],
+  "verdict": "PASS"
+}
