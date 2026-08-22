@@ -1,0 +1,224 @@
+{
+  "at": "2026-08-22T21:41:15.046Z",
+  "a": "bench/shots/tauri-builder",
+  "b": "bench/shots/tauri",
+  "thr": 24,
+  "leftColExcludedBelowX": 0,
+  "screens": {
+    "chat-find": {
+      "w": 1320,
+      "h": 880,
+      "rawDiffPx": 15,
+      "overThr": 15,
+      "overThrLeftCol": 0,
+      "maxChannel": 207,
+      "bbox": {
+        "x0": 1006,
+        "y0": 73,
+        "x1": 1006,
+        "y1": 87
+      },
+      "bboxLeftCol": null
+    },
+    "chat-header": {
+      "w": 1320,
+      "h": 880,
+      "rawDiffPx": 85234,
+      "overThr": 53413,
+      "overThrLeftCol": 0,
+      "maxChannel": 236,
+      "bbox": {
+        "x0": 334,
+        "y0": 47,
+        "x1": 1216,
+        "y1": 748
+      },
+      "bboxLeftCol": null
+    },
+    "chat-thread": {
+      "w": 1320,
+      "h": 880,
+      "rawDiffPx": 85234,
+      "overThr": 53413,
+      "overThrLeftCol": 0,
+      "maxChannel": 236,
+      "bbox": {
+        "x0": 334,
+        "y0": 47,
+        "x1": 1216,
+        "y1": 748
+      },
+      "bboxLeftCol": null
+    },
+    "chat-welcome": {
+      "w": 1320,
+      "h": 880,
+      "rawDiffPx": 0,
+      "overThr": 0,
+      "overThrLeftCol": 0,
+      "maxChannel": 0,
+      "bbox": null,
+      "bboxLeftCol": null
+    },
+    "composer": {
+      "w": 1320,
+      "h": 880,
+      "rawDiffPx": 85234,
+      "overThr": 53413,
+      "overThrLeftCol": 0,
+      "maxChannel": 236,
+      "bbox": {
+        "x0": 334,
+        "y0": 47,
+        "x1": 1216,
+        "y1": 748
+      },
+      "bboxLeftCol": null
+    },
+    "multi-grid-counts": {
+      "w": 1320,
+      "h": 880,
+      "rawDiffPx": 0,
+      "overThr": 0,
+      "overThrLeftCol": 0,
+      "maxChannel": 0,
+      "bbox": null,
+      "bboxLeftCol": null
+    },
+    "multi-grid-empty": {
+      "w": 1320,
+      "h": 880,
+      "rawDiffPx": 0,
+      "overThr": 0,
+      "overThrLeftCol": 0,
+      "maxChannel": 0,
+      "bbox": null,
+      "bboxLeftCol": null
+    },
+    "multi-panel-expanded": {
+      "w": 1320,
+      "h": 880,
+      "rawDiffPx": 1,
+      "overThr": 0,
+      "overThrLeftCol": 0,
+      "maxChannel": 1,
+      "bbox": null,
+      "bboxLeftCol": null
+    },
+    "mux-dial-one": {
+      "w": 1320,
+      "h": 880,
+      "rawDiffPx": 0,
+      "overThr": 0,
+      "overThrLeftCol": 0,
+      "maxChannel": 0,
+      "bbox": null,
+      "bboxLeftCol": null
+    },
+    "mux-fold-pop": {
+      "w": 1320,
+      "h": 880,
+      "rawDiffPx": 0,
+      "overThr": 0,
+      "overThrLeftCol": 0,
+      "maxChannel": 0,
+      "bbox": null,
+      "bboxLeftCol": null
+    },
+    "mux-grid-six": {
+      "w": 1320,
+      "h": 880,
+      "rawDiffPx": 0,
+      "overThr": 0,
+      "overThrLeftCol": 0,
+      "maxChannel": 0,
+      "bbox": null,
+      "bboxLeftCol": null
+    },
+    "settings-api": {
+      "w": 1320,
+      "h": 880,
+      "rawDiffPx": 0,
+      "overThr": 0,
+      "overThrLeftCol": 0,
+      "maxChannel": 0,
+      "bbox": null,
+      "bboxLeftCol": null
+    },
+    "settings-display": {
+      "w": 1320,
+      "h": 880,
+      "rawDiffPx": 0,
+      "overThr": 0,
+      "overThrLeftCol": 0,
+      "maxChannel": 0,
+      "bbox": null,
+      "bboxLeftCol": null
+    },
+    "settings-mcp": {
+      "w": 1320,
+      "h": 880,
+      "rawDiffPx": 0,
+      "overThr": 0,
+      "overThrLeftCol": 0,
+      "maxChannel": 0,
+      "bbox": null,
+      "bboxLeftCol": null
+    },
+    "sidebar-ctx-menu": {
+      "w": 1320,
+      "h": 880,
+      "rawDiffPx": 0,
+      "overThr": 0,
+      "overThrLeftCol": 0,
+      "maxChannel": 0,
+      "bbox": null,
+      "bboxLeftCol": null
+    },
+    "sidebar-deleteall-confirm": {
+      "w": 1320,
+      "h": 880,
+      "rawDiffPx": 0,
+      "overThr": 0,
+      "overThrLeftCol": 0,
+      "maxChannel": 0,
+      "bbox": null,
+      "bboxLeftCol": null
+    },
+    "sidebar-empty": {
+      "w": 1320,
+      "h": 880,
+      "rawDiffPx": 0,
+      "overThr": 0,
+      "overThrLeftCol": 0,
+      "maxChannel": 0,
+      "bbox": null,
+      "bboxLeftCol": null
+    },
+    "sidebar": {
+      "w": 1320,
+      "h": 880,
+      "rawDiffPx": 0,
+      "overThr": 0,
+      "overThrLeftCol": 0,
+      "maxChannel": 0,
+      "bbox": null,
+      "bboxLeftCol": null
+    },
+    "workbar": {
+      "w": 1320,
+      "h": 880,
+      "rawDiffPx": 85234,
+      "overThr": 53413,
+      "overThrLeftCol": 0,
+      "maxChannel": 236,
+      "bbox": {
+        "x0": 334,
+        "y0": 47,
+        "x1": 1216,
+        "y1": 748
+      },
+      "bboxLeftCol": null
+    }
+  }
+}

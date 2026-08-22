@@ -1,0 +1,795 @@
+{
+  "at": "2026-08-22T21:59:04.081Z",
+  "exe": "C:\\Code\\AgentCodeGUI\\target\\release\\agentcodegui.exe",
+  "gitHead": "c079304b4b6e5044b796ec58c69ba5d820a76804",
+  "steps": {
+    "spam": {
+      "before": [
+        "벤치 패널 1",
+        "벤치 패널 2",
+        "벤치 패널 3",
+        "벤치 패널 4",
+        "벤치 패널 5",
+        "벤치 패널 6"
+      ],
+      "rounds": [
+        {
+          "seq": [
+            1,
+            6,
+            1,
+            6
+          ],
+          "want": 6,
+          "panels": 6,
+          "cls": "ma-grid scroll n6",
+          "heads": 1,
+          "dials": 1
+        },
+        {
+          "seq": [
+            6,
+            1,
+            6,
+            1
+          ],
+          "want": 1,
+          "panels": 1,
+          "cls": "ma-grid scroll n1",
+          "heads": 0,
+          "dials": 1
+        },
+        {
+          "seq": [
+            1,
+            3,
+            1,
+            6
+          ],
+          "want": 6,
+          "panels": 6,
+          "cls": "ma-grid scroll n6",
+          "heads": 1,
+          "dials": 1
+        }
+      ],
+      "after": [
+        "벤치 패널 1",
+        "벤치 패널 2",
+        "벤치 패널 3",
+        "벤치 패널 4",
+        "벤치 패널 5",
+        "벤치 패널 6"
+      ],
+      "savedCount": null
+    },
+    "geom": {
+      "rects": {
+        "n6": {
+          "x": 976,
+          "y": 3,
+          "w": 174,
+          "h": 32
+        },
+        "n2": {
+          "x": 929,
+          "y": 3,
+          "w": 174,
+          "h": 32
+        },
+        "n1": {
+          "x": 947,
+          "y": 3,
+          "w": 174,
+          "h": 32
+        },
+        "single": {
+          "x": 949,
+          "y": 3,
+          "w": 174,
+          "h": 32
+        }
+      },
+      "delta": {
+        "n1_vs_n2": {
+          "dx": 18,
+          "dy": 0
+        },
+        "single_vs_n1": {
+          "dx": 2,
+          "dy": 0
+        }
+      }
+    },
+    "side": {
+      "atMulti1": [
+        {
+          "label": "채팅",
+          "hint": "⌄이 배치의 5개 자리가 접혔어요 — 대화는 그대로예요",
+          "items": [
+            {
+              "t": "벤치 패널 1",
+              "chip": "1",
+              "kind": "live",
+              "dot": "",
+              "run": false,
+              "active": true
+            },
+            {
+              "t": "벤치 패널 2",
+              "chip": "⌄2",
+              "kind": "folded",
+              "dot": "",
+              "run": false,
+              "active": false
+            },
+            {
+              "t": "벤치 패널 3",
+              "chip": "⌄3",
+              "kind": "folded",
+              "dot": "",
+              "run": false,
+              "active": false
+            },
+            {
+              "t": "벤치 패널 4",
+              "chip": "⌄4",
+              "kind": "folded",
+              "dot": "",
+              "run": false,
+              "active": false
+            },
+            {
+              "t": "벤치 패널 5",
+              "chip": "⌄5",
+              "kind": "folded",
+              "dot": "",
+              "run": false,
+              "active": false
+            },
+            {
+              "t": "벤치 패널 6",
+              "chip": "⌄6",
+              "kind": "folded",
+              "dot": "",
+              "run": false,
+              "active": false
+            },
+            {
+              "t": "벤치 긴 스레드",
+              "chip": "",
+              "kind": "",
+              "dot": "",
+              "run": false,
+              "active": false
+            }
+          ]
+        },
+        {
+          "label": "배치",
+          "hint": "",
+          "items": [
+            {
+              "t": "벤치 멀티",
+              "chip": "",
+              "kind": "",
+              "dot": "",
+              "run": false,
+              "active": true
+            }
+          ]
+        }
+      ],
+      "atSingle": [
+        {
+          "label": "채팅",
+          "hint": "⌄이 배치의 5개 자리가 접혔어요 — 대화는 그대로예요",
+          "items": [
+            {
+              "t": "벤치 패널 1",
+              "chip": "1",
+              "kind": "live",
+              "dot": "",
+              "run": false,
+              "active": false
+            },
+            {
+              "t": "벤치 패널 2",
+              "chip": "⌄2",
+              "kind": "folded",
+              "dot": "",
+              "run": false,
+              "active": false
+            },
+            {
+              "t": "벤치 패널 3",
+              "chip": "⌄3",
+              "kind": "folded",
+              "dot": "",
+              "run": false,
+              "active": false
+            },
+            {
+              "t": "벤치 패널 4",
+              "chip": "⌄4",
+              "kind": "folded",
+              "dot": "",
+              "run": false,
+              "active": false
+            },
+            {
+              "t": "벤치 패널 5",
+              "chip": "⌄5",
+              "kind": "folded",
+              "dot": "",
+              "run": false,
+              "active": false
+            },
+            {
+              "t": "벤치 패널 6",
+              "chip": "⌄6",
+              "kind": "folded",
+              "dot": "",
+              "run": false,
+              "active": false
+            },
+            {
+              "t": "벤치 긴 스레드",
+              "chip": "1",
+              "kind": "live",
+              "dot": "",
+              "run": false,
+              "active": true
+            }
+          ]
+        },
+        {
+          "label": "배치",
+          "hint": "",
+          "items": [
+            {
+              "t": "벤치 멀티",
+              "chip": "",
+              "kind": "",
+              "dot": "",
+              "run": false,
+              "active": false
+            }
+          ]
+        }
+      ],
+      "liveOnes": [
+        {
+          "t": "벤치 패널 1",
+          "chip": "1",
+          "kind": "live",
+          "dot": "",
+          "run": false,
+          "active": false
+        },
+        {
+          "t": "벤치 긴 스레드",
+          "chip": "1",
+          "kind": "live",
+          "dot": "",
+          "run": false,
+          "active": true
+        }
+      ],
+      "hintAtSingle": "⌄이 배치의 5개 자리가 접혔어요 — 대화는 그대로예요",
+      "foldedPicked": "벤치 패널 2",
+      "afterRaiseFromSingle": {
+        "backToBoard": true,
+        "shown": [
+          "벤치 패널 1"
+        ]
+      },
+      "afterRaiseInBoard": {
+        "pick": "벤치 패널 2",
+        "shown": [
+          "벤치 패널 2"
+        ]
+      }
+    },
+    "viewer": {
+      "ide": {
+        "explorerBtn": true,
+        "explorerMounted": 1,
+        "explorerRows": 0,
+        "explorerText": "AgentCodeGUI\n비어 있음\nB\nBench",
+        "gitStrip": 0,
+        "workbars": 6
+      },
+      "expand": {
+        "clicked": true,
+        "on": 2
+      },
+      "expandThenOne": {
+        "heads": 1,
+        "dials": 1,
+        "winCtl": 1,
+        "stillExpanded": 2
+      },
+      "popout": {
+        "clicked": true,
+        "ghost": true
+      },
+      "popoutThenOne": {
+        "heads": 1,
+        "dials": 1,
+        "winCtl": 1,
+        "soloIsGhost": 1
+      },
+      "popoutSidebar": [
+        {
+          "t": "벤치 패널 4",
+          "chip": "창",
+          "kind": "win",
+          "dot": "",
+          "run": false,
+          "active": true
+        },
+        {
+          "t": "벤치 패널 3",
+          "chip": "⌄2",
+          "kind": "folded",
+          "dot": "",
+          "run": false,
+          "active": false
+        },
+        {
+          "t": "벤치 패널 1",
+          "chip": "⌄3",
+          "kind": "folded",
+          "dot": "",
+          "run": false,
+          "active": false
+        },
+        {
+          "t": "벤치 패널 2",
+          "chip": "⌄4",
+          "kind": "folded",
+          "dot": "",
+          "run": false,
+          "active": false
+        },
+        {
+          "t": "벤치 패널 5",
+          "chip": "⌄5",
+          "kind": "folded",
+          "dot": "",
+          "run": false,
+          "active": false
+        },
+        {
+          "t": "벤치 패널 6",
+          "chip": "⌄6",
+          "kind": "folded",
+          "dot": "",
+          "run": false,
+          "active": false
+        },
+        {
+          "t": "벤치 긴 스레드",
+          "chip": "",
+          "kind": "",
+          "dot": "",
+          "run": false,
+          "active": false
+        }
+      ],
+      "popoutClickGhost": true
+    },
+    "busydel": {
+      "busy": true,
+      "busyBeforeCtx": true,
+      "ctxDelete": {
+        "found": true,
+        "disabled": false
+      },
+      "confirmCard": "'ATK 도는 채팅' 채팅이 삭제돼요. 되돌릴 수 없어요.",
+      "afterConfirm": {
+        "still": [
+          "ATK 도는 채팅"
+        ],
+        "anyNotice": ""
+      },
+      "busyBeforeAll": false,
+      "deleteAllBtn": {
+        "found": true,
+        "disabled": false,
+        "tip": "전체 삭제"
+      },
+      "deleteAllCard": "채팅 2개가 삭제돼요. 되돌릴 수 없어요.",
+      "afterDeleteAll": []
+    },
+    "bgdel": {
+      "runBadgeWhileAway": {
+        "t": "ATK 도는 채팅",
+        "chip": "",
+        "kind": "",
+        "dot": "run",
+        "run": true,
+        "active": false
+      },
+      "liveAtDelete": {
+        "ev0": 12,
+        "ev1": 20,
+        "streaming": true
+      },
+      "ctx": {
+        "found": true,
+        "disabled": false
+      },
+      "card": "'ATK 도는 채팅' 채팅이 삭제돼요. 되돌릴 수 없어요.",
+      "afterDelete": [
+        "ATK 옆 채팅"
+      ],
+      "chatEvAfter": {
+        "before": 28,
+        "after": 28
+      }
+    },
+    "queue": {
+      "queued": {
+        "text": "QUEUEDPROBE-9182",
+        "n": 1
+      },
+      "switched": true,
+      "side": {
+        "msgs": [
+          "QUEUEDPROBE-9182",
+          "I'm ready to assist. What would you like me to do with this AgentCodeGUI project"
+        ],
+        "hasProbe": true,
+        "busy": false,
+        "activeNow": "c-side"
+      },
+      "back": {
+        "msgs": 2,
+        "hasProbe": false,
+        "stillQueued": 0,
+        "tail": [
+          "Count from 1 to 80, one number per line, nothing else.",
+          "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n13\n14\n15\n16\n17\n18\n19\n20\n21\n22\n23\n24\n25\n26\n27\n28\n29\n30"
+        ]
+      }
+    },
+    "mid": {
+      "lenAtLeave": 23,
+      "liveWhileAway": {
+        "e0": 14,
+        "e1": 22,
+        "streaming": true
+      },
+      "sidebarWhileAway": [
+        {
+          "t": "ATK 도는 채팅",
+          "chip": "",
+          "kind": "",
+          "dot": "run",
+          "run": true,
+          "active": false
+        },
+        {
+          "t": "ATK 옆 채팅",
+          "chip": "1",
+          "kind": "live",
+          "dot": "",
+          "run": false,
+          "active": true
+        }
+      ],
+      "runBadge": {
+        "t": "ATK 도는 채팅",
+        "chip": "",
+        "kind": "",
+        "dot": "run",
+        "run": true,
+        "active": false
+      },
+      "evAtReturn": 22,
+      "onReturn": {
+        "lenBack": 1903,
+        "busyBack": true
+      },
+      "lenLater": 2691,
+      "finalLen": 2691,
+      "finalTail": "\n671\n672\n673\n674\n675\n676\n677\n678\n679\n680\n681\n682\n683\n684\n685\n686\n687\n688\n689\n690\n691\n692\n693\n694\n695\n696\n697\n698\n699\n700",
+      "numHoles": [],
+      "numCount": 700
+    },
+    "foldrun": {
+      "sent": "sent",
+      "running": true,
+      "panelLenBeforeFold": 963,
+      "whileFolded": {
+        "chip": "접힌 자리 실행 1",
+        "badge": "1",
+        "side": [
+          {
+            "t": "벤치 패널 1",
+            "chip": "1",
+            "kind": "live",
+            "dot": "",
+            "run": false,
+            "active": true
+          },
+          {
+            "t": "벤치 패널 2",
+            "chip": "⌄2",
+            "kind": "folded",
+            "dot": "run",
+            "run": true,
+            "active": false
+          },
+          {
+            "t": "벤치 긴 스레드",
+            "chip": "",
+            "kind": "",
+            "dot": "",
+            "run": false,
+            "active": false
+          }
+        ]
+      },
+      "chipCleared": true,
+      "afterDone": [
+        {
+          "t": "벤치 패널 1",
+          "chip": "1",
+          "kind": "live",
+          "dot": "",
+          "run": false,
+          "active": true
+        },
+        {
+          "t": "벤치 패널 2",
+          "chip": "⌄2",
+          "kind": "folded",
+          "dot": "",
+          "run": false,
+          "active": false
+        },
+        {
+          "t": "벤치 긴 스레드",
+          "chip": "",
+          "kind": "",
+          "dot": "",
+          "run": false,
+          "active": false
+        }
+      ],
+      "popRows": [
+        "2벤치 패널 2완료↥"
+      ],
+      "threadLens": [
+        302,
+        3092
+      ]
+    },
+    "raise": {
+      "before": {
+        "top": 3103,
+        "h": 6962,
+        "len": 2073
+      },
+      "title": "벤치 패널 3",
+      "popRows": [
+        "2벤치 패널 2완료↥",
+        "3벤치 패널 3완료↥",
+        "4벤치 패널 4완료↥",
+        "5벤치 패널 5완료↥",
+        "6벤치 패널 6완료↥"
+      ],
+      "picked": true,
+      "shown": [
+        "벤치 패널 3"
+      ],
+      "after": {
+        "top": 3777,
+        "h": 4676,
+        "len": 1613
+      },
+      "scrollKept": false,
+      "dialFromSingle": {
+        "before": 0,
+        "gridAfter": 4,
+        "cls": "ma-grid scroll n4",
+        "body": "AgentCodeGUI\n새 채팅\nCtrl+N\n추가 채팅\nCtrl+Shift+N\n프롬프트\n채팅\n⌄\n이 배치의 2개 자리가 접혔어요 — 대화는 그대로예요\n벤치 패널 3\n1\n벤치 패널 1\n2\n벤치 패널 2\n3\n벤치 패널 4\n4\n벤치 패널 5\n⌄5\n벤치 패널 6\n⌄6\n벤치 긴 스레드\n지금\n배치\n벤치 멀티\n지금\nB\nBench\n1\n2\n3\n4\n5\n6\n2\n1\n벤치 패널 "
+      }
+    },
+    "stale": {
+      "before": [
+        "벤치 패널 1",
+        "벤치 패널 2",
+        "벤치 패널 3",
+        "벤치 패널 4",
+        "벤치 패널 5",
+        "벤치 패널 6",
+        "벤치 긴 스레드"
+      ],
+      "card": "'벤치 멀티' 채팅이 삭제돼요. 되돌릴 수 없어요.",
+      "after": [
+        {
+          "label": "채팅",
+          "hint": "",
+          "items": [
+            {
+              "t": "벤치 긴 스레드",
+              "chip": "",
+              "kind": "",
+              "dot": "",
+              "run": false,
+              "active": false
+            }
+          ]
+        },
+        {
+          "label": "배치",
+          "hint": "",
+          "items": []
+        }
+      ],
+      "ghosts": []
+    }
+  },
+  "findings": [
+    {
+      "id": "viewer.ide-explorer-empty",
+      "why": "탐색기가 열리긴 하는데 트리가 비어 있다(3.0 백엔드에 fs 목록 채널이 없다) — 「1 = IDE 크롬」의 내용물은 아직 검증 불가",
+      "detail": {
+        "explorerBtn": true,
+        "explorerMounted": 1,
+        "explorerRows": 0,
+        "explorerText": "AgentCodeGUI\n비어 있음\nB\nBench",
+        "gitStrip": 0,
+        "workbars": 6
+      }
+    },
+    {
+      "id": "busydel.silent",
+      "why": "실행 중 삭제: 확인 카드까지 통과했는데 아무 일도 안 일어난다(침묵 no-op) — 이유를 말하지 않는다",
+      "detail": {
+        "still": [
+          "ATK 도는 채팅"
+        ],
+        "anyNotice": ""
+      }
+    },
+    {
+      "id": "bgdel.deleted-while-running",
+      "why": "자리 밖에서 **도는 채팅이 그대로 삭제됐다** — 「삭제만은 막는다」는 활성 채팅에만 걸려 있다",
+      "detail": {
+        "left": [
+          "ATK 옆 채팅"
+        ],
+        "chatEv": {
+          "before": 28,
+          "after": 28
+        },
+        "card": "'ATK 도는 채팅' 채팅이 삭제돼요. 되돌릴 수 없어요."
+      }
+    },
+    {
+      "id": "queue.misroute",
+      "why": "떠난 채팅의 예약 메시지가 **옆 채팅으로 발사됐다** — 남의 대화에 내 프롬프트가 들어간다",
+      "detail": {
+        "msgs": [
+          "QUEUEDPROBE-9182",
+          "I'm ready to assist. What would you like me to do with this AgentCodeGUI project"
+        ],
+        "hasProbe": true,
+        "busy": false,
+        "activeNow": "c-side"
+      }
+    },
+    {
+      "id": "queue.lost",
+      "why": "예약 메시지가 원래 채팅에서도 사라졌다 — 예약이 증발",
+      "detail": {
+        "msgs": 2,
+        "hasProbe": false,
+        "stillQueued": 0,
+        "tail": [
+          "Count from 1 to 80, one number per line, nothing else.",
+          "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n13\n14\n15\n16\n17\n18\n19\n20\n21\n22\n23\n24\n25\n26\n27\n28\n29\n30"
+        ]
+      }
+    },
+    {
+      "id": "raise.scroll",
+      "why": "접었다 되올리면 스크롤 위치가 리셋된다(자리 밖으로 나간 패널은 언마운트된다) — 「같은 자리로 돌아온다」는 대화만이고 읽던 지점은 아니다",
+      "detail": {
+        "before": {
+          "top": 3103,
+          "h": 6962,
+          "len": 2073
+        },
+        "after": {
+          "top": 3777,
+          "h": 4676,
+          "len": 1613
+        }
+      }
+    },
+    {
+      "id": "geom.move-1-2",
+      "why": "1↔2 전환에서 다이얼이 움직인다(dx=18 dy=0)",
+      "detail": {
+        "n6": {
+          "x": 976,
+          "y": 3,
+          "w": 174,
+          "h": 32
+        },
+        "n2": {
+          "x": 929,
+          "y": 3,
+          "w": 174,
+          "h": 32
+        },
+        "n1": {
+          "x": 947,
+          "y": 3,
+          "w": 174,
+          "h": 32
+        },
+        "single": {
+          "x": 949,
+          "y": 3,
+          "w": 174,
+          "h": 32
+        }
+      }
+    },
+    {
+      "id": "side.dup-slot1",
+      "why": "일반 채팅 화면에서 「1번 자리」 칩이 2개다 — 자리 하나에 대화 둘",
+      "detail": [
+        {
+          "t": "벤치 패널 1",
+          "chip": "1",
+          "kind": "live",
+          "dot": "",
+          "run": false,
+          "active": false
+        },
+        {
+          "t": "벤치 긴 스레드",
+          "chip": "1",
+          "kind": "live",
+          "dot": "",
+          "run": false,
+          "active": true
+        }
+      ]
+    },
+    {
+      "id": "side.stale-live",
+      "why": "보드 크롬을 떠났는데 보드 자리가 여전히 「보이는 자리」로 표시된다",
+      "detail": [
+        {
+          "t": "벤치 패널 1",
+          "chip": "1",
+          "kind": "live",
+          "dot": "",
+          "run": false,
+          "active": false
+        }
+      ]
+    },
+    {
+      "id": "side.raise-from-single",
+      "why": "접힌 대화를 골랐는데 1번 자리에 안 올라왔다 (1번=\"벤치 패널 1\")",
+      "detail": {
+        "backToBoard": true,
+        "shown": [
+          "벤치 패널 1"
+        ]
+      }
+    }
+  ],
+  "exeMtime": "2026-08-22T21:47:47.462Z",
+  "broke": 10
+}

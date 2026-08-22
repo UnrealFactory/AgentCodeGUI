@@ -1,0 +1,31 @@
+{
+  "at": "2026-08-22T21:16:04.486Z",
+  "exe": "C:\\Code\\AgentCodeGUI\\target\\release\\agentcodegui.exe",
+  "steps": {
+    "bg": {
+      "checks": {
+        "busyBeforeSwitch": true,
+        "switchedWhileBusy": true,
+        "sideClean": true,
+        "tailKept": true,
+        "aiMsgs": [
+          "BGDONE"
+        ],
+        "chatEv": {
+          "n": 8,
+          "ids": [
+            "c-run"
+          ]
+        }
+      },
+      "engine": "0.3.240"
+    }
+  },
+  "findings": [],
+  "fixture": {
+    "panels": 6,
+    "itemsPerPanel": 6,
+    "totalItems": 36
+  },
+  "pass": true
+}

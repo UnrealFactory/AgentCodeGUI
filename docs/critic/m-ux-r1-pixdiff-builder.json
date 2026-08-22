@@ -1,0 +1,299 @@
+{
+  "at": "2026-08-22T21:39:11.637Z",
+  "a": "bench/shots/tauri-before",
+  "b": "bench/shots/tauri-builder",
+  "thr": 24,
+  "leftColExcludedBelowX": 250,
+  "screens": {
+    "chat-find": {
+      "w": 1320,
+      "h": 880,
+      "rawDiffPx": 7338,
+      "overThr": 806,
+      "overThrLeftCol": 1260,
+      "maxChannel": 217,
+      "bbox": {
+        "x0": 953,
+        "y0": 7,
+        "x1": 1109,
+        "y1": 87
+      },
+      "bboxLeftCol": {
+        "x0": 17,
+        "y0": 138,
+        "x1": 221,
+        "y1": 372
+      }
+    },
+    "chat-header": {
+      "w": 1320,
+      "h": 880,
+      "rawDiffPx": 7323,
+      "overThr": 791,
+      "overThrLeftCol": 1260,
+      "maxChannel": 217,
+      "bbox": {
+        "x0": 953,
+        "y0": 7,
+        "x1": 1109,
+        "y1": 30
+      },
+      "bboxLeftCol": {
+        "x0": 17,
+        "y0": 138,
+        "x1": 221,
+        "y1": 372
+      }
+    },
+    "chat-thread": {
+      "w": 1320,
+      "h": 880,
+      "rawDiffPx": 7323,
+      "overThr": 791,
+      "overThrLeftCol": 1260,
+      "maxChannel": 217,
+      "bbox": {
+        "x0": 953,
+        "y0": 7,
+        "x1": 1109,
+        "y1": 30
+      },
+      "bboxLeftCol": {
+        "x0": 17,
+        "y0": 138,
+        "x1": 221,
+        "y1": 372
+      }
+    },
+    "chat-welcome": {
+      "w": 1320,
+      "h": 880,
+      "rawDiffPx": 7323,
+      "overThr": 791,
+      "overThrLeftCol": 1260,
+      "maxChannel": 217,
+      "bbox": {
+        "x0": 953,
+        "y0": 7,
+        "x1": 1109,
+        "y1": 30
+      },
+      "bboxLeftCol": {
+        "x0": 17,
+        "y0": 138,
+        "x1": 221,
+        "y1": 372
+      }
+    },
+    "composer": {
+      "w": 1320,
+      "h": 880,
+      "rawDiffPx": 7323,
+      "overThr": 791,
+      "overThrLeftCol": 1260,
+      "maxChannel": 217,
+      "bbox": {
+        "x0": 953,
+        "y0": 7,
+        "x1": 1109,
+        "y1": 30
+      },
+      "bboxLeftCol": {
+        "x0": 17,
+        "y0": 138,
+        "x1": 221,
+        "y1": 372
+      }
+    },
+    "multi-grid-counts": {
+      "w": 1320,
+      "h": 880,
+      "rawDiffPx": 954,
+      "overThr": 38,
+      "overThrLeftCol": 0,
+      "maxChannel": 96,
+      "bbox": {
+        "x0": 990,
+        "y0": 14,
+        "x1": 996,
+        "y1": 22
+      },
+      "bboxLeftCol": null
+    },
+    "multi-grid-empty": {
+      "w": 1320,
+      "h": 880,
+      "rawDiffPx": 954,
+      "overThr": 38,
+      "overThrLeftCol": 0,
+      "maxChannel": 96,
+      "bbox": {
+        "x0": 990,
+        "y0": 14,
+        "x1": 996,
+        "y1": 22
+      },
+      "bboxLeftCol": null
+    },
+    "multi-panel-expanded": {
+      "w": 1320,
+      "h": 880,
+      "rawDiffPx": 37171,
+      "overThr": 15,
+      "overThrLeftCol": 0,
+      "maxChannel": 207,
+      "bbox": {
+        "x0": 260,
+        "y0": 819,
+        "x1": 260,
+        "y1": 833
+      },
+      "bboxLeftCol": null
+    },
+    "settings-api": {
+      "w": 1320,
+      "h": 880,
+      "rawDiffPx": 5558,
+      "overThr": 753,
+      "overThrLeftCol": 0,
+      "maxChannel": 93,
+      "bbox": {
+        "x0": 951,
+        "y0": 5,
+        "x1": 980,
+        "y1": 32
+      },
+      "bboxLeftCol": null
+    },
+    "settings-display": {
+      "w": 1320,
+      "h": 880,
+      "rawDiffPx": 5558,
+      "overThr": 753,
+      "overThrLeftCol": 0,
+      "maxChannel": 93,
+      "bbox": {
+        "x0": 951,
+        "y0": 5,
+        "x1": 980,
+        "y1": 32
+      },
+      "bboxLeftCol": null
+    },
+    "settings-mcp": {
+      "w": 1320,
+      "h": 880,
+      "rawDiffPx": 5558,
+      "overThr": 753,
+      "overThrLeftCol": 0,
+      "maxChannel": 93,
+      "bbox": {
+        "x0": 951,
+        "y0": 5,
+        "x1": 980,
+        "y1": 32
+      },
+      "bboxLeftCol": null
+    },
+    "sidebar-ctx-menu": {
+      "w": 1320,
+      "h": 880,
+      "rawDiffPx": 7949,
+      "overThr": 791,
+      "overThrLeftCol": 1222,
+      "maxChannel": 217,
+      "bbox": {
+        "x0": 953,
+        "y0": 7,
+        "x1": 1109,
+        "y1": 30
+      },
+      "bboxLeftCol": {
+        "x0": 17,
+        "y0": 138,
+        "x1": 221,
+        "y1": 372
+      }
+    },
+    "sidebar-deleteall-confirm": {
+      "w": 1320,
+      "h": 880,
+      "rawDiffPx": 11636,
+      "overThr": 1712,
+      "overThrLeftCol": 190,
+      "maxChannel": 212,
+      "bbox": {
+        "x0": 606,
+        "y0": 5,
+        "x1": 980,
+        "y1": 441
+      },
+      "bboxLeftCol": {
+        "x0": 185,
+        "y0": 166,
+        "x1": 199,
+        "y1": 179
+      }
+    },
+    "sidebar-empty": {
+      "w": 1320,
+      "h": 880,
+      "rawDiffPx": 7323,
+      "overThr": 791,
+      "overThrLeftCol": 1260,
+      "maxChannel": 217,
+      "bbox": {
+        "x0": 953,
+        "y0": 7,
+        "x1": 1109,
+        "y1": 30
+      },
+      "bboxLeftCol": {
+        "x0": 17,
+        "y0": 138,
+        "x1": 221,
+        "y1": 372
+      }
+    },
+    "sidebar": {
+      "w": 1320,
+      "h": 880,
+      "rawDiffPx": 7323,
+      "overThr": 791,
+      "overThrLeftCol": 1260,
+      "maxChannel": 217,
+      "bbox": {
+        "x0": 953,
+        "y0": 7,
+        "x1": 1109,
+        "y1": 30
+      },
+      "bboxLeftCol": {
+        "x0": 17,
+        "y0": 138,
+        "x1": 221,
+        "y1": 372
+      }
+    },
+    "workbar": {
+      "w": 1320,
+      "h": 880,
+      "rawDiffPx": 7323,
+      "overThr": 791,
+      "overThrLeftCol": 1260,
+      "maxChannel": 217,
+      "bbox": {
+        "x0": 953,
+        "y0": 7,
+        "x1": 1109,
+        "y1": 30
+      },
+      "bboxLeftCol": {
+        "x0": 17,
+        "y0": 138,
+        "x1": 221,
+        "y1": 372
+      }
+    }
+  }
+}
