@@ -8,10 +8,10 @@
   },
   "bin": {
     "exe": "C:\\Code\\AgentCodeGUI\\target\\release\\agentcodegui.exe",
-    "exeMtime": "2026-08-22T11:33:00.765Z",
+    "exeMtime": "2026-08-22T12:32:03.800Z",
     "exeSize": 3835392,
-    "exeSha256": "aab524b88bd36857",
-    "gitHead": "e907dcd",
+    "exeSha256": "ffb01a4ed1db0115",
+    "gitHead": "ce1c735",
     "gitDirty": true
   },
   "armEnv": {
@@ -24,11 +24,11 @@
     "cpu": "13th Gen Intel(R) Core(TM) i7-13700KF",
     "os": "Microsoft Windows 11 Home 26200"
   },
-  "at": "2026-08-22T11:38:07.650Z",
+  "at": "2026-08-22T12:34:05.200Z",
   "attempts": [
     {
       "round": 1,
-      "at": "2026-08-22T11:38:20.694Z",
+      "at": "2026-08-22T12:34:18.254Z",
       "before": {
         "procs": 7,
         "roles": [
@@ -52,7 +52,7 @@
         "how": "taskkill /PID",
         "role": "renderer",
         "pids": [
-          27628
+          10712
         ]
       },
       "after": {
@@ -89,13 +89,13 @@
           }
         ],
         "allPagesMounted": true,
-        "recoveryMs": 504
+        "recoveryMs": 455
       },
       "verdict": "복구됨"
     },
     {
       "round": 2,
-      "at": "2026-08-22T11:38:29.199Z",
+      "at": "2026-08-22T12:34:26.427Z",
       "before": {
         "procs": 7,
         "roles": [
@@ -119,7 +119,7 @@
         "how": "taskkill /PID",
         "role": "renderer",
         "pids": [
-          12388
+          14148
         ]
       },
       "after": {
@@ -143,11 +143,11 @@
         "mainPageRemounted": true,
         "pagesMounted": [
           {
-            "url": "",
+            "url": "index.html#session",
             "mounted": true
           },
           {
-            "url": "index.html#session",
+            "url": "",
             "mounted": true
           },
           {
@@ -156,43 +156,43 @@
           }
         ],
         "allPagesMounted": true,
-        "recoveryMs": 493
+        "recoveryMs": 478
       },
       "verdict": "복구됨"
     }
   ],
   "shellLog": [
     {
-      "at": 1787398686336,
+      "at": 1787402043992,
       "event": "armed",
-      "pid": 12724,
+      "pid": 32748,
       "detail": {
         "label": "main",
-        "browserPid": 32556
+        "browserPid": 32480
       }
     },
     {
-      "at": 1787398690768,
+      "at": 1787402048287,
       "event": "armed",
-      "pid": 12724,
+      "pid": 32748,
       "detail": {
         "label": "session-1",
-        "browserPid": 32556
+        "browserPid": 32480
       }
     },
     {
-      "at": 1787398694270,
+      "at": 1787402051795,
       "event": "armed",
-      "pid": 12724,
+      "pid": 32748,
       "detail": {
         "label": "session-2",
-        "browserPid": 32556
+        "browserPid": 32480
       }
     },
     {
-      "at": 1787398701621,
+      "at": 1787402058934,
       "event": "process-failed",
-      "pid": 12724,
+      "pid": 32748,
       "detail": {
         "label": "main",
         "kind": 1,
@@ -203,42 +203,42 @@
       }
     },
     {
-      "at": 1787398701622,
+      "at": 1787402058935,
       "event": "recover-begin",
-      "pid": 12724,
+      "pid": 32748,
       "detail": {
         "mode": "reload-all",
         "n": 1
       }
     },
     {
-      "at": 1787398701622,
+      "at": 1787402058935,
       "event": "reloaded",
-      "pid": 12724,
-      "detail": {
-        "label": "session-2"
-      }
-    },
-    {
-      "at": 1787398701622,
-      "event": "reloaded",
-      "pid": 12724,
+      "pid": 32748,
       "detail": {
         "label": "session-1"
       }
     },
     {
-      "at": 1787398701623,
+      "at": 1787402058936,
       "event": "reloaded",
-      "pid": 12724,
+      "pid": 32748,
+      "detail": {
+        "label": "session-2"
+      }
+    },
+    {
+      "at": 1787402058936,
+      "event": "reloaded",
+      "pid": 32748,
       "detail": {
         "label": "main"
       }
     },
     {
-      "at": 1787398701625,
+      "at": 1787402058938,
       "event": "process-failed",
-      "pid": 12724,
+      "pid": 32748,
       "detail": {
         "label": "session-1",
         "kind": 1,
@@ -249,9 +249,9 @@
       }
     },
     {
-      "at": 1787398701629,
+      "at": 1787402058942,
       "event": "process-failed",
-      "pid": 12724,
+      "pid": 32748,
       "detail": {
         "label": "session-2",
         "kind": 1,
@@ -262,18 +262,18 @@
       }
     },
     {
-      "at": 1787398704123,
+      "at": 1787402061435,
       "event": "recover-done",
-      "pid": 12724,
+      "pid": 32748,
       "detail": {
-        "ms": 2501,
+        "ms": 2500,
         "n": 1
       }
     },
     {
-      "at": 1787398709867,
+      "at": 1787402067032,
       "event": "process-failed",
-      "pid": 12724,
+      "pid": 32748,
       "detail": {
         "label": "main",
         "kind": 1,
@@ -284,42 +284,42 @@
       }
     },
     {
-      "at": 1787398709867,
+      "at": 1787402067033,
       "event": "recover-begin",
-      "pid": 12724,
+      "pid": 32748,
       "detail": {
         "mode": "reload-all",
         "n": 2
       }
     },
     {
-      "at": 1787398709867,
+      "at": 1787402067033,
       "event": "reloaded",
-      "pid": 12724,
+      "pid": 32748,
       "detail": {
         "label": "session-2"
       }
     },
     {
-      "at": 1787398709867,
+      "at": 1787402067033,
       "event": "reloaded",
-      "pid": 12724,
-      "detail": {
-        "label": "session-1"
-      }
-    },
-    {
-      "at": 1787398709868,
-      "event": "reloaded",
-      "pid": 12724,
+      "pid": 32748,
       "detail": {
         "label": "main"
       }
     },
     {
-      "at": 1787398709870,
+      "at": 1787402067034,
+      "event": "reloaded",
+      "pid": 32748,
+      "detail": {
+        "label": "session-1"
+      }
+    },
+    {
+      "at": 1787402067036,
       "event": "process-failed",
-      "pid": 12724,
+      "pid": 32748,
       "detail": {
         "label": "session-1",
         "kind": 1,
@@ -330,9 +330,9 @@
       }
     },
     {
-      "at": 1787398709873,
+      "at": 1787402067039,
       "event": "process-failed",
-      "pid": 12724,
+      "pid": 32748,
       "detail": {
         "label": "session-2",
         "kind": 1,
@@ -343,11 +343,11 @@
       }
     },
     {
-      "at": 1787398712367,
+      "at": 1787402069534,
       "event": "recover-done",
-      "pid": 12724,
+      "pid": 32748,
       "detail": {
-        "ms": 2500,
+        "ms": 2501,
         "n": 2
       }
     }

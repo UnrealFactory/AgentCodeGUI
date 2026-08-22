@@ -60,6 +60,10 @@ fn main() {
                 if crash::is_recovering() {
                     api.prevent_exit();
                     crash::log("exit-prevented", serde_json::json!({ "why": "복구 중" }));
+                } else {
+                    // 정상 종료다. 여기서부터 브라우저 프로세스가 죽는 건 크래시가 아니다 —
+                    // 감시자가 오인하면 **닫아도 다시 뜨는 앱**이 된다.
+                    crash::begin_shutdown();
                 }
             }
         });

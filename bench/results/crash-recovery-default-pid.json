@@ -6,10 +6,10 @@
   "extraEnv": {},
   "bin": {
     "exe": "C:\\Code\\AgentCodeGUI\\target\\release\\agentcodegui.exe",
-    "exeMtime": "2026-08-22T11:33:00.765Z",
+    "exeMtime": "2026-08-22T12:32:03.800Z",
     "exeSize": 3835392,
-    "exeSha256": "aab524b88bd36857",
-    "gitHead": "e907dcd",
+    "exeSha256": "ffb01a4ed1db0115",
+    "gitHead": "ce1c735",
     "gitDirty": true
   },
   "armEnv": {
@@ -21,11 +21,11 @@
     "cpu": "13th Gen Intel(R) Core(TM) i7-13700KF",
     "os": "Microsoft Windows 11 Home 26200"
   },
-  "at": "2026-08-22T11:37:09.069Z",
+  "at": "2026-08-22T12:32:32.083Z",
   "attempts": [
     {
       "round": 1,
-      "at": "2026-08-22T11:37:22.140Z",
+      "at": "2026-08-22T12:32:45.131Z",
       "before": {
         "procs": 6,
         "roles": [
@@ -48,7 +48,7 @@
         "how": "taskkill /PID",
         "role": "renderer",
         "pids": [
-          18204
+          6984
         ]
       },
       "after": {
@@ -84,13 +84,13 @@
           }
         ],
         "allPagesMounted": true,
-        "recoveryMs": 530
+        "recoveryMs": 479
       },
       "verdict": "복구됨"
     },
     {
       "round": 2,
-      "at": "2026-08-22T11:37:30.521Z",
+      "at": "2026-08-22T12:32:53.386Z",
       "before": {
         "procs": 6,
         "roles": [
@@ -113,7 +113,7 @@
         "how": "taskkill /PID",
         "role": "renderer",
         "pids": [
-          32268
+          13568
         ]
       },
       "after": {
@@ -140,52 +140,52 @@
             "mounted": true
           },
           {
-            "url": "index.html#session",
+            "url": "",
             "mounted": true
           },
           {
-            "url": "",
+            "url": "index.html#session",
             "mounted": true
           }
         ],
         "allPagesMounted": true,
-        "recoveryMs": 356
+        "recoveryMs": 474
       },
       "verdict": "복구됨"
     }
   ],
   "shellLog": [
     {
-      "at": 1787398627743,
+      "at": 1787401950751,
       "event": "armed",
-      "pid": 15568,
+      "pid": 29896,
       "detail": {
         "label": "main",
-        "browserPid": 30596
+        "browserPid": 24472
       }
     },
     {
-      "at": 1787398632188,
+      "at": 1787401955188,
       "event": "armed",
-      "pid": 15568,
+      "pid": 29896,
       "detail": {
         "label": "session-1",
-        "browserPid": 30596
+        "browserPid": 24472
       }
     },
     {
-      "at": 1787398635689,
+      "at": 1787401958683,
       "event": "armed",
-      "pid": 15568,
+      "pid": 29896,
       "detail": {
         "label": "session-2",
-        "browserPid": 30596
+        "browserPid": 24472
       }
     },
     {
-      "at": 1787398642915,
+      "at": 1787401965812,
       "event": "process-failed",
-      "pid": 15568,
+      "pid": 29896,
       "detail": {
         "label": "main",
         "kind": 1,
@@ -196,42 +196,42 @@
       }
     },
     {
-      "at": 1787398642916,
+      "at": 1787401965812,
       "event": "recover-begin",
-      "pid": 15568,
+      "pid": 29896,
       "detail": {
         "mode": "reload-all",
         "n": 1
       }
     },
     {
-      "at": 1787398642916,
+      "at": 1787401965813,
       "event": "reloaded",
-      "pid": 15568,
+      "pid": 29896,
       "detail": {
         "label": "main"
       }
     },
     {
-      "at": 1787398642917,
+      "at": 1787401965813,
       "event": "reloaded",
-      "pid": 15568,
-      "detail": {
-        "label": "session-2"
-      }
-    },
-    {
-      "at": 1787398642917,
-      "event": "reloaded",
-      "pid": 15568,
+      "pid": 29896,
       "detail": {
         "label": "session-1"
       }
     },
     {
-      "at": 1787398642919,
+      "at": 1787401965813,
+      "event": "reloaded",
+      "pid": 29896,
+      "detail": {
+        "label": "session-2"
+      }
+    },
+    {
+      "at": 1787401965816,
       "event": "process-failed",
-      "pid": 15568,
+      "pid": 29896,
       "detail": {
         "label": "session-1",
         "kind": 1,
@@ -242,9 +242,9 @@
       }
     },
     {
-      "at": 1787398642923,
+      "at": 1787401965819,
       "event": "process-failed",
-      "pid": 15568,
+      "pid": 29896,
       "detail": {
         "label": "session-2",
         "kind": 1,
@@ -255,18 +255,18 @@
       }
     },
     {
-      "at": 1787398645417,
+      "at": 1787401968313,
       "event": "recover-done",
-      "pid": 15568,
+      "pid": 29896,
       "detail": {
         "ms": 2501,
         "n": 1
       }
     },
     {
-      "at": 1787398651270,
+      "at": 1787401974060,
       "event": "process-failed",
-      "pid": 15568,
+      "pid": 29896,
       "detail": {
         "label": "main",
         "kind": 1,
@@ -277,42 +277,42 @@
       }
     },
     {
-      "at": 1787398651271,
+      "at": 1787401974061,
       "event": "recover-begin",
-      "pid": 15568,
+      "pid": 29896,
       "detail": {
         "mode": "reload-all",
         "n": 2
       }
     },
     {
-      "at": 1787398651271,
+      "at": 1787401974061,
       "event": "reloaded",
-      "pid": 15568,
-      "detail": {
-        "label": "main"
-      }
-    },
-    {
-      "at": 1787398651272,
-      "event": "reloaded",
-      "pid": 15568,
-      "detail": {
-        "label": "session-2"
-      }
-    },
-    {
-      "at": 1787398651272,
-      "event": "reloaded",
-      "pid": 15568,
+      "pid": 29896,
       "detail": {
         "label": "session-1"
       }
     },
     {
-      "at": 1787398651273,
+      "at": 1787401974061,
+      "event": "reloaded",
+      "pid": 29896,
+      "detail": {
+        "label": "main"
+      }
+    },
+    {
+      "at": 1787401974062,
+      "event": "reloaded",
+      "pid": 29896,
+      "detail": {
+        "label": "session-2"
+      }
+    },
+    {
+      "at": 1787401974063,
       "event": "process-failed",
-      "pid": 15568,
+      "pid": 29896,
       "detail": {
         "label": "session-1",
         "kind": 1,
@@ -323,9 +323,9 @@
       }
     },
     {
-      "at": 1787398651277,
+      "at": 1787401974067,
       "event": "process-failed",
-      "pid": 15568,
+      "pid": 29896,
       "detail": {
         "label": "session-2",
         "kind": 1,
@@ -336,9 +336,9 @@
       }
     },
     {
-      "at": 1787398653771,
+      "at": 1787401976561,
       "event": "recover-done",
-      "pid": 15568,
+      "pid": 29896,
       "detail": {
         "ms": 2500,
         "n": 2

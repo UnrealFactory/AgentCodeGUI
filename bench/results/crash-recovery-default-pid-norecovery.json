@@ -8,10 +8,10 @@
   },
   "bin": {
     "exe": "C:\\Code\\AgentCodeGUI\\target\\release\\agentcodegui.exe",
-    "exeMtime": "2026-08-22T11:33:00.765Z",
+    "exeMtime": "2026-08-22T12:32:03.800Z",
     "exeSize": 3835392,
-    "exeSha256": "aab524b88bd36857",
-    "gitHead": "e907dcd",
+    "exeSha256": "ffb01a4ed1db0115",
+    "gitHead": "ce1c735",
     "gitDirty": true
   },
   "armEnv": {
@@ -24,11 +24,11 @@
     "cpu": "13th Gen Intel(R) Core(TM) i7-13700KF",
     "os": "Microsoft Windows 11 Home 26200"
   },
-  "at": "2026-08-22T11:38:53.647Z",
+  "at": "2026-08-22T12:34:36.210Z",
   "attempts": [
     {
       "round": 1,
-      "at": "2026-08-22T11:39:06.697Z",
+      "at": "2026-08-22T12:34:49.269Z",
       "before": {
         "procs": 6,
         "roles": [
@@ -51,7 +51,7 @@
         "how": "taskkill /PID",
         "role": "renderer",
         "pids": [
-          11628
+          32820
         ]
       },
       "after": {
@@ -93,27 +93,27 @@
   ],
   "shellLog": [
     {
-      "at": 1787398732421,
+      "at": 1787402074990,
       "event": "disabled",
-      "pid": 14568,
+      "pid": 6068,
       "detail": {
         "label": "main",
         "why": "CCG_CRASH_RECOVERY=0"
       }
     },
     {
-      "at": 1787398736689,
+      "at": 1787402079243,
       "event": "disabled",
-      "pid": 14568,
+      "pid": 6068,
       "detail": {
         "label": "session-1",
         "why": "CCG_CRASH_RECOVERY=0"
       }
     },
     {
-      "at": 1787398740191,
+      "at": 1787402082757,
       "event": "disabled",
-      "pid": 14568,
+      "pid": 6068,
       "detail": {
         "label": "session-2",
         "why": "CCG_CRASH_RECOVERY=0"

@@ -1,0 +1,101 @@
+{
+  "arm": "default",
+  "recovery": true,
+  "how": "close",
+  "rounds": 1,
+  "extraEnv": {},
+  "bin": {
+    "exe": "C:\\Code\\AgentCodeGUI\\target\\release\\agentcodegui.exe",
+    "exeMtime": "2026-08-22T12:32:03.800Z",
+    "exeSize": 3835392,
+    "exeSha256": "ffb01a4ed1db0115",
+    "gitHead": "ce1c735",
+    "gitDirty": true
+  },
+  "armEnv": {
+    "CCG_HOME": "C:\\Code\\AgentCodeGUI\\.bench-home-crash",
+    "CCG_CDP_PORT": "9461"
+  },
+  "env": {
+    "ramGB": 63.8,
+    "cpu": "13th Gen Intel(R) Core(TM) i7-13700KF",
+    "os": "Microsoft Windows 11 Home 26200"
+  },
+  "at": "2026-08-22T12:32:11.257Z",
+  "attempts": [
+    {
+      "round": 1,
+      "at": "2026-08-22T12:32:24.291Z",
+      "before": {
+        "procs": 6,
+        "roles": [
+          "browser",
+          "browser",
+          "crashpad-handler",
+          "utility",
+          "utility",
+          "renderer"
+        ],
+        "windows": [
+          "576x729 추가 채팅 — AgentCodeGUI",
+          "576x729 추가 채팅 — AgentCodeGUI",
+          "1336x889 AgentCodeGUI3"
+        ],
+        "cdpPages": 3,
+        "visibleWindows": 3
+      },
+      "killed": {
+        "how": "WM_CLOSE (정상 종료 스모크)",
+        "pids": [
+          33912,
+          32968,
+          21240,
+          18208,
+          20736,
+          21620
+        ]
+      },
+      "after": {
+        "hostAlive": false,
+        "procs": 0,
+        "roles": [],
+        "windows": [],
+        "visibleWindows": 0,
+        "mainPageRemounted": false,
+        "pagesMounted": null,
+        "allPagesMounted": null,
+        "recoveryMs": null
+      },
+      "verdict": "정상 종료 ✓"
+    }
+  ],
+  "shellLog": [
+    {
+      "at": 1787401930069,
+      "event": "armed",
+      "pid": 33912,
+      "detail": {
+        "label": "main",
+        "browserPid": 32968
+      }
+    },
+    {
+      "at": 1787401934361,
+      "event": "armed",
+      "pid": 33912,
+      "detail": {
+        "label": "session-1",
+        "browserPid": 32968
+      }
+    },
+    {
+      "at": 1787401937851,
+      "event": "armed",
+      "pid": 33912,
+      "detail": {
+        "label": "session-2",
+        "browserPid": 32968
+      }
+    }
+  ]
+}

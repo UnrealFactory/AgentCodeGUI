@@ -102,7 +102,30 @@ try {
 
     // ── 죽인다 ──
     const t0 = Date.now()
-    if (how === 'pagecrash') {
+    if (how === 'close') {
+      // **정상 종료 스모크** — 크래시가 아니다. 창을 사용자처럼 닫았을 때
+      // 감시자가 "브라우저가 죽었다"로 오인해 앱을 되살리면 안 된다(닫히지 않는 앱).
+      // 창을 전부 WM_CLOSE 한다.
+      const pids = (before.procs ?? []).map((p) => p.pid).join(',')
+      try {
+        execFileSync('powershell', ['-NoProfile', '-Command', String.raw`
+Add-Type @"
+using System; using System.Runtime.InteropServices;
+public class C { public delegate bool E(IntPtr h, IntPtr l);
+ [DllImport("user32.dll")] public static extern bool EnumWindows(E cb, IntPtr l);
+ [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
+ [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+ [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out R r);
+ [DllImport("user32.dll")] public static extern IntPtr PostMessageW(IntPtr h, uint m, IntPtr w, IntPtr l);
+ [StructLayout(LayoutKind.Sequential)] public struct R { public int L,T,Rt,B; }
+ public static int CloseAll(uint[] pids){ int n=0; EnumWindows((h,l)=>{ if(!IsWindowVisible(h)) return true; uint p; GetWindowThreadProcessId(h,out p);
+   bool m=false; foreach(var q in pids) if(q==p) m=true; if(!m) return true; R r; GetWindowRect(h,out r);
+   if((r.Rt-r.L)>=200 && (r.B-r.T)>=200){ PostMessageW(h, 0x0010, IntPtr.Zero, IntPtr.Zero); n++; } return true; }, IntPtr.Zero); return n; } }
+"@
+[C]::CloseAll([uint32[]]@(${pids}))`], { encoding: 'utf8', timeout: 30000 })
+      } catch { /* 이미 닫힘 */ }
+      att.killed = { how: 'WM_CLOSE (정상 종료 스모크)', pids: (before.procs ?? []).map((p) => p.pid) }
+    } else if (how === 'pagecrash') {
       // 응답이 오지 않는다 — race 필수(§9-7)
       await Promise.race([cdp.send('Page.crash').catch(() => {}), sleep(2500)])
       att.killed = { how: 'Page.crash' }
@@ -174,13 +197,16 @@ try {
       recoveryMs: recoveredMs
     }
     // 판정: (a) 되살아났거나, (b) 유령 없이 깨끗하게 죽었거나. 둘 다 아니면 실패.
-    att.verdict = remounted
-      ? (att.after.allPagesMounted === false ? '메인만 복구 — 일부 창이 유령' : '복구됨')
-      : !hostAlive
-        ? '정리 후 종료(유령 없음)'
-        : att.after.visibleWindows > 0
-          ? '**유령 창 — 실패**'
-          : '창은 사라졌으나 호스트가 남아 있음'
+    // `--how=close`는 반대다 — **되살아나면 실패**(닫아도 안 닫히는 앱).
+    att.verdict = how === 'close'
+      ? (!hostAlive ? '정상 종료 ✓' : remounted ? '**되살아났다 — 실패(앱이 안 닫힌다)**' : '호스트가 남아 있음 — 확인 필요')
+      : remounted
+        ? (att.after.allPagesMounted === false ? '메인만 복구 — 일부 창이 유령' : '복구됨')
+        : !hostAlive
+          ? '정리 후 종료(유령 없음)'
+          : att.after.visibleWindows > 0
+            ? '**유령 창 — 실패**'
+            : '창은 사라졌으나 호스트가 남아 있음'
     console.log(`  after: ${JSON.stringify(att.after)}\n  판정: ${att.verdict}`)
     out.attempts.push(att)
     if (!hostAlive) break

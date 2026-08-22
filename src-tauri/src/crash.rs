@@ -50,13 +50,30 @@ static RECOVERIES: AtomicU32 = AtomicU32::new(0);
 static LAST_AT: AtomicU64 = AtomicU64::new(0);
 /// 감시 스레드는 한 번만.
 static WATCHDOG: AtomicBool = AtomicBool::new(false);
+/// 앱이 정상 종료 중 — 이때의 브라우저 사망은 크래시가 아니다(아래 `begin_shutdown`).
+static SHUTTING_DOWN: AtomicBool = AtomicBool::new(false);
 
 const MAX_RECOVERIES: u32 = 5;
 /// 이 안에 또 오면 같은 사건으로 본다(창 3개가 각자 이벤트를 쏘므로 필요).
 const DEBOUNCE_MS: u64 = 4000;
+/// 이만큼 조용했으면 "연쇄 크래시"가 아니다 — 포기 카운터를 되돌린다.
+/// (안 되돌리면 한 주에 한 번씩 여섯 번째 크래시가 앱을 끝낸다.)
+const RECOVERY_RESET_MS: u64 = 300_000;
 
 pub fn is_recovering() -> bool {
     RECOVERING.load(Ordering::SeqCst)
+}
+
+/// **정상 종료 시작.** 앱이 끝날 때도 WebView2 브라우저 프로세스는 죽는다 —
+/// 감시자가 그걸 크래시로 오인하면 **닫아도 다시 뜨는 앱**이 된다(창 재생성 +
+/// `ExitRequested` 차단까지 겹친다). main.rs의 `RunEvent::ExitRequested`에서 부른다.
+/// 창이 하나도 없을 때도 같은 이유로 복구하지 않는다(watchdog 안에서 확인).
+pub fn begin_shutdown() {
+    SHUTTING_DOWN.store(true, Ordering::SeqCst);
+}
+
+fn shutting_down() -> bool {
+    SHUTTING_DOWN.load(Ordering::SeqCst)
 }
 
 fn now_ms() -> u64 {
@@ -203,7 +220,11 @@ fn start_watchdog(app: &AppHandle) {
     std::thread::spawn(move || loop {
         std::thread::sleep(Duration::from_millis(800));
         let pid = BROWSER_PID.load(Ordering::SeqCst);
-        if pid == 0 || is_recovering() {
+        if pid == 0 || is_recovering() || shutting_down() {
+            continue;
+        }
+        // 창이 하나도 없으면 되살릴 것도 없다 = 종료 경로다.
+        if app.webview_windows().is_empty() {
             continue;
         }
         if !pid_alive(pid) {
@@ -227,6 +248,9 @@ enum Cause {
 static PENDING_SESSIONS: Mutex<usize> = Mutex::new(0);
 
 fn recover(app: &AppHandle, cause: Cause) {
+    if shutting_down() {
+        return;
+    }
     let now = now_ms();
     let last = LAST_AT.load(Ordering::SeqCst);
     if now.saturating_sub(last) < DEBOUNCE_MS {
@@ -234,6 +258,10 @@ fn recover(app: &AppHandle, cause: Cause) {
     }
     if RECOVERING.swap(true, Ordering::SeqCst) {
         return;
+    }
+    // 오래 조용했으면 연쇄가 아니다 — 포기 카운터를 되돌린다.
+    if last != 0 && now.saturating_sub(last) > RECOVERY_RESET_MS {
+        RECOVERIES.store(0, Ordering::SeqCst);
     }
     LAST_AT.store(now, Ordering::SeqCst);
     let n = RECOVERIES.fetch_add(1, Ordering::SeqCst) + 1;

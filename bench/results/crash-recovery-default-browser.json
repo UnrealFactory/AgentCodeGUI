@@ -6,10 +6,10 @@
   "extraEnv": {},
   "bin": {
     "exe": "C:\\Code\\AgentCodeGUI\\target\\release\\agentcodegui.exe",
-    "exeMtime": "2026-08-22T11:33:00.765Z",
+    "exeMtime": "2026-08-22T12:32:03.800Z",
     "exeSize": 3835392,
-    "exeSha256": "aab524b88bd36857",
-    "gitHead": "e907dcd",
+    "exeSha256": "ffb01a4ed1db0115",
+    "gitHead": "ce1c735",
     "gitDirty": true
   },
   "armEnv": {
@@ -21,11 +21,11 @@
     "cpu": "13th Gen Intel(R) Core(TM) i7-13700KF",
     "os": "Microsoft Windows 11 Home 26200"
   },
-  "at": "2026-08-22T11:36:13.597Z",
+  "at": "2026-08-22T12:33:03.208Z",
   "attempts": [
     {
       "round": 1,
-      "at": "2026-08-22T11:36:26.666Z",
+      "at": "2026-08-22T12:33:16.259Z",
       "before": {
         "procs": 6,
         "roles": [
@@ -48,7 +48,7 @@
         "how": "taskkill /PID",
         "role": "browser(GPU 크래시 모사)",
         "pids": [
-          27720
+          18636
         ]
       },
       "after": {
@@ -85,13 +85,13 @@
           }
         ],
         "allPagesMounted": true,
-        "recoveryMs": 1368
+        "recoveryMs": 1467
       },
       "verdict": "복구됨"
     },
     {
       "round": 2,
-      "at": "2026-08-22T11:36:35.798Z",
+      "at": "2026-08-22T12:33:25.545Z",
       "before": {
         "procs": 7,
         "roles": [
@@ -115,7 +115,7 @@
         "how": "taskkill /PID",
         "role": "browser(GPU 크래시 모사)",
         "pids": [
-          8280
+          27564
         ]
       },
       "after": {
@@ -152,51 +152,56 @@
           }
         ],
         "allPagesMounted": true,
-        "recoveryMs": 1416
+        "recoveryMs": 1448
       },
       "verdict": "복구됨"
     }
   ],
   "shellLog": [
     {
-      "at": 1787398572223,
+      "at": 1787401981978,
       "event": "armed",
-      "pid": 15792,
+      "pid": 15344,
       "detail": {
         "label": "main",
-        "browserPid": 27720
+        "browserPid": 18636
       }
     },
     {
-      "at": 1787398576713,
+      "at": 1787401986343,
       "event": "armed",
-      "pid": 15792,
+      "pid": 15344,
       "detail": {
         "label": "session-1",
-        "browserPid": 27720
+        "browserPid": 18636
       }
     },
     {
-      "at": 1787398580232,
+      "at": 1787401989817,
       "event": "armed",
-      "pid": 15792,
+      "pid": 15344,
       "detail": {
         "label": "session-2",
-        "browserPid": 27720
+        "browserPid": 18636
       }
     },
     {
-      "at": 1787398587429,
-      "event": "watchdog-browser-gone",
-      "pid": 15792,
+      "at": 1787401997083,
+      "event": "process-failed",
+      "pid": 15344,
       "detail": {
-        "browserPid": 27720
+        "label": "main",
+        "kind": 0,
+        "exitCode": 1,
+        "desc": "",
+        "terminal": true,
+        "renderer": false
       }
     },
     {
-      "at": 1787398587430,
+      "at": 1787401997083,
       "event": "recover-begin",
-      "pid": 15792,
+      "pid": 15344,
       "detail": {
         "mode": "recreate-windows",
         "n": 1,
@@ -204,93 +209,9 @@
       }
     },
     {
-      "at": 1787398587431,
-      "event": "destroyed",
-      "pid": 15792,
-      "detail": {
-        "label": "session-1"
-      }
-    },
-    {
-      "at": 1787398587431,
-      "event": "destroyed",
-      "pid": 15792,
-      "detail": {
-        "label": "main"
-      }
-    },
-    {
-      "at": 1787398587432,
-      "event": "destroyed",
-      "pid": 15792,
-      "detail": {
-        "label": "session-2"
-      }
-    },
-    {
-      "at": 1787398587451,
-      "event": "exit-prevented",
-      "pid": 15792,
-      "detail": {
-        "why": "복구 중"
-      }
-    },
-    {
-      "at": 1787398588044,
-      "event": "armed",
-      "pid": 15792,
-      "detail": {
-        "label": "main",
-        "browserPid": 8280
-      }
-    },
-    {
-      "at": 1787398588044,
-      "event": "recreated",
-      "pid": 15792,
-      "detail": {
-        "label": "main"
-      }
-    },
-    {
-      "at": 1787398588114,
-      "event": "armed",
-      "pid": 15792,
-      "detail": {
-        "label": "session-1",
-        "browserPid": 8280
-      }
-    },
-    {
-      "at": 1787398588204,
-      "event": "armed",
-      "pid": 15792,
-      "detail": {
-        "label": "session-2",
-        "browserPid": 8280
-      }
-    },
-    {
-      "at": 1787398588204,
-      "event": "recreated-sessions",
-      "pid": 15792,
-      "detail": {
-        "n": 2
-      }
-    },
-    {
-      "at": 1787398590331,
-      "event": "recover-done",
-      "pid": 15792,
-      "detail": {
-        "ms": 2901,
-        "n": 1
-      }
-    },
-    {
-      "at": 1787398596463,
+      "at": 1787401997084,
       "event": "process-failed",
-      "pid": 15792,
+      "pid": 15344,
       "detail": {
         "label": "session-1",
         "kind": 0,
@@ -301,9 +222,119 @@
       }
     },
     {
-      "at": 1787398596463,
+      "at": 1787401997086,
+      "event": "destroyed",
+      "pid": 15344,
+      "detail": {
+        "label": "main"
+      }
+    },
+    {
+      "at": 1787401997086,
+      "event": "destroyed",
+      "pid": 15344,
+      "detail": {
+        "label": "session-2"
+      }
+    },
+    {
+      "at": 1787401997086,
+      "event": "destroyed",
+      "pid": 15344,
+      "detail": {
+        "label": "session-1"
+      }
+    },
+    {
+      "at": 1787401997086,
+      "event": "process-failed",
+      "pid": 15344,
+      "detail": {
+        "label": "session-2",
+        "kind": 0,
+        "exitCode": 1,
+        "desc": "",
+        "terminal": true,
+        "renderer": false
+      }
+    },
+    {
+      "at": 1787401997107,
+      "event": "exit-prevented",
+      "pid": 15344,
+      "detail": {
+        "why": "복구 중"
+      }
+    },
+    {
+      "at": 1787401997701,
+      "event": "armed",
+      "pid": 15344,
+      "detail": {
+        "label": "main",
+        "browserPid": 27564
+      }
+    },
+    {
+      "at": 1787401997701,
+      "event": "recreated",
+      "pid": 15344,
+      "detail": {
+        "label": "main"
+      }
+    },
+    {
+      "at": 1787401997767,
+      "event": "armed",
+      "pid": 15344,
+      "detail": {
+        "label": "session-1",
+        "browserPid": 27564
+      }
+    },
+    {
+      "at": 1787401997862,
+      "event": "armed",
+      "pid": 15344,
+      "detail": {
+        "label": "session-2",
+        "browserPid": 27564
+      }
+    },
+    {
+      "at": 1787401997862,
+      "event": "recreated-sessions",
+      "pid": 15344,
+      "detail": {
+        "n": 2
+      }
+    },
+    {
+      "at": 1787401999985,
+      "event": "recover-done",
+      "pid": 15344,
+      "detail": {
+        "ms": 2902,
+        "n": 1
+      }
+    },
+    {
+      "at": 1787402006245,
+      "event": "process-failed",
+      "pid": 15344,
+      "detail": {
+        "label": "session-2",
+        "kind": 0,
+        "exitCode": 1,
+        "desc": "",
+        "terminal": true,
+        "renderer": false
+      }
+    },
+    {
+      "at": 1787402006245,
       "event": "recover-begin",
-      "pid": 15792,
+      "pid": 15344,
       "detail": {
         "mode": "recreate-windows",
         "n": 2,
@@ -311,9 +342,22 @@
       }
     },
     {
-      "at": 1787398596465,
+      "at": 1787402006248,
       "event": "process-failed",
-      "pid": 15792,
+      "pid": 15344,
+      "detail": {
+        "label": "session-1",
+        "kind": 0,
+        "exitCode": 1,
+        "desc": "",
+        "terminal": true,
+        "renderer": false
+      }
+    },
+    {
+      "at": 1787402006250,
+      "event": "process-failed",
+      "pid": 15344,
       "detail": {
         "label": "main",
         "kind": 0,
@@ -324,99 +368,86 @@
       }
     },
     {
-      "at": 1787398596466,
-      "event": "process-failed",
-      "pid": 15792,
-      "detail": {
-        "label": "session-2",
-        "kind": 0,
-        "exitCode": 1,
-        "desc": "",
-        "terminal": true,
-        "renderer": false
-      }
-    },
-    {
-      "at": 1787398596469,
+      "at": 1787402006251,
       "event": "destroyed",
-      "pid": 15792,
-      "detail": {
-        "label": "session-1"
-      }
-    },
-    {
-      "at": 1787398596469,
-      "event": "destroyed",
-      "pid": 15792,
+      "pid": 15344,
       "detail": {
         "label": "main"
       }
     },
     {
-      "at": 1787398596469,
+      "at": 1787402006251,
       "event": "destroyed",
-      "pid": 15792,
+      "pid": 15344,
       "detail": {
         "label": "session-2"
       }
     },
     {
-      "at": 1787398596481,
+      "at": 1787402006251,
+      "event": "destroyed",
+      "pid": 15344,
+      "detail": {
+        "label": "session-1"
+      }
+    },
+    {
+      "at": 1787402006266,
       "event": "exit-prevented",
-      "pid": 15792,
+      "pid": 15344,
       "detail": {
         "why": "복구 중"
       }
     },
     {
-      "at": 1787398597092,
+      "at": 1787402006905,
       "event": "armed",
-      "pid": 15792,
+      "pid": 15344,
       "detail": {
         "label": "main",
-        "browserPid": 34148
+        "browserPid": 9260
       }
     },
     {
-      "at": 1787398597092,
+      "at": 1787402006905,
       "event": "recreated",
-      "pid": 15792,
+      "pid": 15344,
       "detail": {
         "label": "main"
       }
     },
     {
-      "at": 1787398597180,
+      "at": 1787402006985,
       "event": "armed",
-      "pid": 15792,
+      "pid": 15344,
       "detail": {
         "label": "session-1",
-        "browserPid": 34148
+        "browserPid": 9260
       }
     },
     {
-      "at": 1787398597264,
+      "at": 1787402007073,
       "event": "armed",
-      "pid": 15792,
+      "pid": 15344,
       "detail": {
         "label": "session-2",
-        "browserPid": 34148
+        "browserPid": 9260
       }
     },
     {
-      "at": 1787398597264,
+      "at": 1787402007074,
       "event": "recreated-sessions",
-      "pid": 15792,
+      "pid": 15344,
       "detail": {
         "n": 2
       }
     },
     {
-      "at": 1787398599367,
+      "at": 1787402009147,
       "event": "recover-done",
-      "pid": 15792,
+      "pid": 15344,
       "detail": {
-        "ms": 2904,
+        "ms": 2902,
         "n": 2
       }
     }

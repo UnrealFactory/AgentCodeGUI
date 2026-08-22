@@ -2,16 +2,16 @@
   "arm": "singleproc",
   "recovery": true,
   "how": "pid",
-  "rounds": 2,
+  "rounds": 1,
   "extraEnv": {
     "CCG_SINGLE_PROCESS": "1"
   },
   "bin": {
     "exe": "C:\\Code\\AgentCodeGUI\\target\\release\\agentcodegui.exe",
-    "exeMtime": "2026-08-22T11:33:00.765Z",
+    "exeMtime": "2026-08-22T12:32:03.800Z",
     "exeSize": 3835392,
-    "exeSha256": "aab524b88bd36857",
-    "gitHead": "e907dcd",
+    "exeSha256": "ffb01a4ed1db0115",
+    "gitHead": "ce1c735",
     "gitDirty": true
   },
   "armEnv": {
@@ -24,11 +24,11 @@
     "cpu": "13th Gen Intel(R) Core(TM) i7-13700KF",
     "os": "Microsoft Windows 11 Home 26200"
   },
-  "at": "2026-08-22T11:37:41.058Z",
+  "at": "2026-08-22T12:33:36.401Z",
   "attempts": [
     {
       "round": 1,
-      "at": "2026-08-22T11:37:54.112Z",
+      "at": "2026-08-22T12:33:49.460Z",
       "before": {
         "procs": 3,
         "roles": [
@@ -48,7 +48,7 @@
         "how": "taskkill /PID",
         "role": "browser(single-process)",
         "pids": [
-          16228
+          17064
         ]
       },
       "after": {
@@ -67,67 +67,98 @@
   ],
   "shellLog": [
     {
-      "at": 1787398659732,
+      "at": 1787402015167,
       "event": "armed",
-      "pid": 14844,
+      "pid": 23400,
       "detail": {
         "label": "main",
-        "browserPid": 16228
+        "browserPid": 17064
       }
     },
     {
-      "at": 1787398664142,
+      "at": 1787402019479,
       "event": "armed",
-      "pid": 14844,
+      "pid": 23400,
       "detail": {
         "label": "session-1",
-        "browserPid": 16228
+        "browserPid": 17064
       }
     },
     {
-      "at": 1787398667650,
+      "at": 1787402023000,
       "event": "armed",
-      "pid": 14844,
+      "pid": 23400,
       "detail": {
         "label": "session-2",
-        "browserPid": 16228
+        "browserPid": 17064
       }
     },
     {
-      "at": 1787398674939,
-      "event": "watchdog-browser-gone",
-      "pid": 14844,
+      "at": 1787402030102,
+      "event": "process-failed",
+      "pid": 23400,
       "detail": {
-        "browserPid": 16228
+        "label": "session-2",
+        "kind": 0,
+        "exitCode": 1,
+        "desc": "",
+        "terminal": true,
+        "renderer": false
       }
     },
     {
-      "at": 1787398674940,
+      "at": 1787402030103,
       "event": "recover-begin",
-      "pid": 14844,
+      "pid": 23400,
       "detail": {
         "mode": "teardown(single-process)",
         "n": 1
       }
     },
     {
-      "at": 1787398674940,
+      "at": 1787402030104,
       "event": "teardown",
-      "pid": 14844,
+      "pid": 23400,
       "detail": {}
     },
     {
-      "at": 1787398674960,
+      "at": 1787402030109,
+      "event": "process-failed",
+      "pid": 23400,
+      "detail": {
+        "label": "main",
+        "kind": 0,
+        "exitCode": 1,
+        "desc": "",
+        "terminal": true,
+        "renderer": false
+      }
+    },
+    {
+      "at": 1787402030110,
+      "event": "process-failed",
+      "pid": 23400,
+      "detail": {
+        "label": "session-1",
+        "kind": 0,
+        "exitCode": 1,
+        "desc": "",
+        "terminal": true,
+        "renderer": false
+      }
+    },
+    {
+      "at": 1787402030127,
       "event": "exit-prevented",
-      "pid": 14844,
+      "pid": 23400,
       "detail": {
         "why": "복구 중"
       }
     },
     {
-      "at": 1787398675541,
+      "at": 1787402030705,
       "event": "exit",
-      "pid": 14844,
+      "pid": 23400,
       "detail": {}
     }
   ]
