@@ -3,8 +3,33 @@ name = "ccg-store"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-description = "AgentCodeGUI 앱 홈 스토어 — 경로 결정·원자 저장·JSON 스토어(2.6.2 포맷 호환)"
+description = "AgentCodeGUI 앱 홈 스토어 — 경로 결정·원자 저장·JSON 스토어(2.6.2 포맷 호환 + 3.0 chats-v3)"
+
+[features]
+# 마이그레이션 하네스 전용 바이너리(scripts/poc-chat-unify-migrate.mjs가 부른다).
+# 기본 빌드에는 들어가지 않는다 — 앱 번들에 CLI가 딸려 나갈 이유가 없다.
+cli = []
+
+[[bin]]
+name = "ccg-migrate"
+path = "src/bin/ccg_migrate.rs"
+required-features = ["cli"]
 
 [dependencies]
 serde = { workspace = true }
 serde_json = { workspace = true }
+# api-config.json의 env 키 지문(sha256 앞 12자) — 2.6.2와 같은 레시피여야 답이 승계된다.
+# (워크스페이스 lock에 이미 있는 버전 — 새 패키지가 늘지 않는다)
+sha2 = "0.10"
+
+# safeStorage(Chromium OSCrypt) 복호 — 저장된 API 키를 재로그인 없이 승계한다.
+# v10 = AES-256-GCM(Local State의 DPAPI 키), 접두사 없음 = DPAPI 직접.
+[target.'cfg(windows)'.dependencies]
+aes-gcm = { version = "0.10", default-features = false, features = ["aes", "alloc"] }
+windows = { version = "0.61", features = [
+  "Win32_Foundation",
+  "Win32_Security_Cryptography",
+  # 부하 픽스처의 피크 메모리 실측(마이그레이션 리포트 §5.3-7)
+  "Win32_System_ProcessStatus",
+  "Win32_System_Threading",
+] }

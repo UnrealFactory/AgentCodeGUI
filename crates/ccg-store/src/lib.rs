@@ -5,10 +5,34 @@
 //! 의미론까지 src/main/{chats,uiPrefs,profile,atomicWrite}.ts를 그대로 옮겼다.
 //! (그 파일들이 원본 — 여기가 미러다.)
 
+// ── 2.6.2 포맷(얼림 — 통합 스토어 플래그가 꺼진 기본 경로) ──────────────────
 pub mod chats;
 pub mod ma;
 pub mod prefs;
+pub mod talk;
 pub mod window_state;
+
+// ── 3.0 통합 스토어(chats-v3) — CCG_UNIFIED_STORE=1 에서만 배선된다 ──────────
+pub mod boards;
+pub mod chats_v3;
+pub mod fanout;
+pub mod legacy_bridge;
+pub mod migrate_v3;
+pub mod raw_identity;
+pub mod status;
+
+// ── 그 외 도메인 ────────────────────────────────────────────────────────────
+pub mod api_config;
+pub mod api_usage;
+pub mod safe_storage;
+
+/// 통합 스토어 옵트인 — `CCG_UNIFIED_STORE=1`.
+///
+/// 기본값은 **꺼짐**이다. 마이그레이션 PoC와 크리틱을 통과하기 전에는 사용자의 실제
+/// 대화가 옛 3스토어 경로로만 오간다(되돌릴 곳이 있는 상태를 유지한다).
+pub fn unified_store_enabled() -> bool {
+    matches!(std::env::var("CCG_UNIFIED_STORE").as_deref(), Ok("1") | Ok("true"))
+}
 
 use std::io;
 use std::path::{Path, PathBuf};
