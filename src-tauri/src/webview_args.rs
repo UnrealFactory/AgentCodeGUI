@@ -17,61 +17,121 @@
 //! - `CCG_WEBVIEW_DISABLE_FEATURES`: `--disable-features` 목록에 **합류**(덮어쓰기 아님).
 //! - `CCG_WEBVIEW_ENABLE_FEATURES` : `--enable-features` 목록에 합류.
 //! - `CCG_CDP_PORT`                : `--remote-debugging-port=N` (벤치 전용).
+//! - `CCG_WEBVIEW_ARGS_BASE_ONLY`  : 채택 레버를 전부 빼고 wry 기본값만(대조군).
+//! - `CCG_GPU_PROCESS=1`           : `--in-process-gpu`를 빼고 GPU를 다시 별도 프로세스로.
+//! - `CCG_SINGLE_PROCESS=1`        : MS 미지원 단일 프로세스 모드(아래 `single_process`).
 //!
-//! `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS`(WebView2 로더가 읽는 공식 환경변수)를 쓰지
-//! 않는 이유: 그 변수가 `AdditionalBrowserArguments`를 **덮어쓰는지 합치는지** 문서가
-//! 모호하다. 덮어쓰기라면 벤치가 CDP 포트를 그 변수로 넣는 순간 제품이 박아둔 레버가
-//! 전부 날아가고, 그러면 "레버를 켠 채로 쟀다"는 말이 거짓이 된다. 그래서 3.0의 벤치는
-//! `CCG_CDP_PORT`로 **우리 조립기를 거쳐** 포트를 넣는다.
-//! (어느 쪽이 이기는지는 `bench/flags.mjs precedence`가 실측해 결과 파일에 남긴다.)
+//! ## R3에서 실측으로 **기각**한 것 (되살리기 전에 숫자부터 볼 것)
+//! - `--use-angle=gl` : 유휴 Priv 320→214MB로 가장 크게 줄고 스크롤도 60fps였지만,
+//!   WebGL renderer 문자열을 찍어 보니 **`Microsoft Basic Render Driver`** 였다 —
+//!   NVIDIA D3D11에서 소프트웨어 래스터라이저로 조용히 내려앉은 것이고, 그래서 GPU
+//!   프로세스의 Priv(드라이버 커밋)가 106→18MB로 사라진 것뿐이다. `--disable-gpu`와
+//!   같은 값을 다른 이름으로 치른다. 텍스트 UI라 이 벤치에서는 FPS가 안 떨어졌을 뿐이다.
+//! - `--use-angle=gl` + `--in-process-gpu` : 유휴 315/172MB로 목표를 크게 넘겼지만
+//!   **프레임 생성이 멈춘다**(rAF가 오지 않고 CDP 입력이 응답 없음 — 두 번 재현).
+//! - `--single-process` + `--use-angle=gl` : 같은 이유로 정지.
+//!
+//! ## `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` — **실측: 환경변수가 이긴다(덮어쓴다)**
+//! R2는 "문서가 모호하다"고만 적었는데, R3에서 `bench/flags.mjs precedence`로 갈랐다.
+//! 코드 인자에 `--remote-debugging-port=9411`, 환경변수에 `…=9412`를 동시에 주고 어느
+//! 포트가 응답하는지 봤다 → **9412만 응답**(`codeArgAnswered:false, envVarAnswered:true`,
+//! bench/results/webview-flags.json의 `precedence`).
+//! 즉 **누군가 그 환경변수를 세팅하면 이 파일의 레버가 전부 조용히 사라진다.** 벤치가
+//! CDP 포트를 그 변수로 넣던 R1 방식이 그래서 위험했고, 지금은 `CCG_CDP_PORT`로
+//! **우리 조립기를 거쳐** 포트를 넣는다. (외부 도구가 그 변수를 쓰는 환경이라면 이
+//! 레버들은 무효다 — 진단할 때 제일 먼저 볼 자리.)
 
 /// wry 기본값 복제 — 빼면 미니 메뉴/PDF OOUI/SmartScreen이 되살아난다.
 const FEATURES_OFF_WRY_DEFAULT: &[&str] = &["msWebOOUI", "msPdfOOUI", "msSmartScreenProtection"];
 
-/// R2에서 실측으로 채택한 레버(`--disable-features` 합류분).
-/// **하나씩 켜고 잰 기여도는 `bench/results/webview-flags.json`에 있다.**
-const FEATURES_OFF_ADOPTED: &[&str] = &[
-    // Edge/WebView2가 미리 띄워두는 예비 렌더러 프로세스. 우리는 창 하나에 문서 하나라
-    // 예비 렌더러가 쓰일 일이 없는데 프로세스 하나를 통째로 차지한다.
-    "SpareRendererForSitePerProcess",
-    // 오디오를 별도 유틸리티 프로세스로 빼는 기능. 앱이 소리를 내지 않는다.
-    "AudioServiceOutOfProcess",
-    // 번역 UI·힌트·백그라운드 최적화 — 앱 셸에서 쓰이지 않는다.
-    "Translate",
-    "OptimizationHints",
-    "OptimizationGuideModelDownloading",
-    // 뒤로가기 캐시: SPA 한 장짜리 앱엔 의미가 없고 문서 스냅샷만 붙든다.
-    "BackForwardCache",
-    // 미디어 라우팅(캐스트) 탐색 — 백그라운드 네트워킹의 주범.
-    "MediaRouter",
-];
+/// `--disable-features` 합류분 — **비었다.**
+///
+/// R2는 여기에 7개(SpareRendererForSitePerProcess·AudioServiceOutOfProcess·Translate·
+/// OptimizationHints·OptimizationGuideModelDownloading·BackForwardCache·MediaRouter)를
+/// 넣고 "기여도는 bench/results/webview-flags.json에 있다"고 적었는데 **그 파일이 없었다.**
+/// R3에서 실제로 스윕을 돌린 결과(멀티 4패널 유휴, CDP off, 2회 중앙값):
+///   SpareRendererForSitePerProcess  ws +28  priv +111  procs 7 (안 줄어듦)
+///   AudioServiceOutOfProcess        ws −13  priv  +7   procs 7
+///   위 5개 묶음(C1)                  ws  −9  priv +14   procs 7
+/// 어느 것도 **프로세스를 하나도 줄이지 못했다** = WebView2가 그 스위치를 무시한다.
+/// 근거 없는 스위치를 남기면 다음 사람이 되돌릴 수 없으므로 전부 걷었다.
+const FEATURES_OFF_ADOPTED: &[&str] = &[];
 
-/// `--enable-features` 합류분(실측 채택분).
-const FEATURES_ON_ADOPTED: &[&str] = &[
-    // 네트워크 서비스를 별도 유틸리티 프로세스가 아니라 브라우저 프로세스 안에서 돌린다.
-    // 프로세스 하나가 통째로 사라진다.
-    "NetworkServiceInProcess",
-];
+/// `--enable-features` 합류분 — **비었다.**
+/// R2가 넣었던 `NetworkServiceInProcess`는 실측에서 `utility:NetworkService` 프로세스를
+/// 그대로 남겼다(procs 7 유지, ws −14는 대조군 편향분). 스위치판(`--single-process-network`)
+/// 도 마찬가지였다. 둘 다 걷었다.
+const FEATURES_ON_ADOPTED: &[&str] = &[];
 
-/// feature 목록이 아닌 일반 스위치(실측 채택분).
-const SWITCHES_ADOPTED: &[&str] = &[
-    // 렌더러를 하나로 묶는다. 3.0의 메인 창은 문서 한 장이라 격리로 얻을 게 없다.
-    "--renderer-process-limit=1",
-    // 같은 사이트(tauri.localhost)의 문서는 프로세스를 공유. 위와 같은 이유.
-    "--process-per-site",
-    // 쓰지 않는 부팅 잡업: 확장·컴포넌트 업데이트·동기화·백그라운드 네트워킹.
-    "--disable-extensions",
-    "--disable-component-update",
-    "--disable-sync",
-    "--disable-background-networking",
-    // 첫 실행 안내/기본 브라우저 체크 등 셸에 무의미한 UI 경로.
-    "--no-first-run",
-    "--no-default-browser-check",
-    "--noerrdialogs",
-];
+/// feature 목록이 아닌 일반 스위치 — **실측으로 효과가 확인된 것만.**
+///
+/// | 스위치 | 무엇이 달라지나 (실측, bench/results/webview-flags.json · multi-*-arm-*.json) |
+/// |---|---|
+/// | `--process-per-site` | **창 하나 추가 비용 114.7MB/+2프로세스 → 14.8MB/+0프로세스.** 3.0이 Electron(110.7MB·+2)을 이기는 유일한 자리이자 이 조립기 전체에서 가장 큰 레버다. 단일 창 유휴에서는 기여가 0이라 R3 1차 스윕(창 1개)에서는 "무효 레버"로 보였다 — 무대가 틀렸던 것이다. |
+/// | `--in-process-gpu` | GPU 프로세스를 브라우저 프로세스 안으로. 유휴 Priv 320.6→249.6MB, 프로세스 7→6, 스크롤 60fps·드랍 0% 유지, **하드웨어 GPU 유지**(WebGL renderer가 여전히 NVIDIA D3D11). |
+///
+/// `--renderer-process-limit=1`은 **걷었다**: 단독으로 재니 창당 93.4MB/+2프로세스로
+/// wry 기본값과 차이가 없었다(WebView2는 이 상한을 보지 않는다). 창 비용을 잡는 건
+/// `--process-per-site` 쪽이다.
+const SWITCHES_ADOPTED: &[&str] = &["--process-per-site", "--in-process-gpu"];
+
+/// `--in-process-gpu`의 값과 탈출구.
+///
+/// 값(실측): 콜드 스타트 첫 가시 창 218→271ms, #root 마운트 328→376ms. 대신 **첫 픽셀은
+/// 374→294ms로 빨라진다**(합성기가 브라우저 프로세스 안에 있어 첫 프레임이 일찍 나온다).
+/// 위험: GPU 드라이버가 죽으면 프로세스 격리가 없어 웹뷰가 통째로 죽는다(멀티 프로세스
+/// 였다면 GPU 프로세스만 재시작된다).
+/// 그래서 되돌릴 수 있게 둔다 — `CCG_GPU_PROCESS=1`이면 GPU를 다시 별도 프로세스로.
+fn in_process_gpu_disabled() -> bool {
+    std::env::var("CCG_GPU_PROCESS").is_ok_and(|v| v != "0")
+}
+
+/// **MS 미지원 최대 절감 모드** — `CCG_SINGLE_PROCESS=1`일 때만.
+///
+/// 실측(멀티 4패널 유휴, CDP on): WS 358.8 / Priv 211.3 / **3프로세스**, 스크롤 60fps·
+/// 드랍 0%, 하드웨어 GPU 유지, 추가 창도 정상(창당 33.4MB). 콜드 스타트도 가장 빠르다
+/// (win 211 / paint 277 / root 326ms). 즉 **측정상으로는 모든 지표에서 이긴다.**
+///
+/// 그런데도 기본값이 아닌 이유: `--single-process`는 Chromium이 "디버깅 전용"이라 못박은
+/// 스위치이고 WebView2는 명시적으로 미지원이다. WebView2는 **Evergreen(자동 갱신)** 이라
+/// 다음 Edge 업데이트가 이 경로를 깨면 이미 배포된 앱이 전부 죽는다. 샌드박스와 렌더러
+/// 크래시 격리도 함께 사라진다. 실측 수치는 남기되 기본값으로 삼지 않는다 —
+/// 채택 여부는 이 트레이드를 아는 사람이 정할 일이다.
+fn single_process() -> bool {
+    std::env::var("CCG_SINGLE_PROCESS").is_ok_and(|v| v != "0")
+}
 
 fn split_list(s: &str) -> impl Iterator<Item = &str> {
     s.split(',').map(str::trim).filter(|x| !x.is_empty())
+}
+
+/// 공백 분리 — **큰따옴표 안의 공백은 지킨다**.
+/// `--js-flags="--optimize-for-size --max-semi-space-size=1"` 같은 "값 안에 공백이 있는"
+/// 스위치를 실험 훅으로 넣으려면 이게 필요하다. 단순 `split_whitespace()`면 두 번째
+/// 조각이 별개 스위치가 돼 Chromium이 조용히 무시한다(레버를 켰다고 착각하는 자리).
+/// 따옴표는 벗기지 않는다 — Chromium 자신이 `--js-flags="a b"`를 그렇게 파싱한다.
+fn split_args(s: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut cur = String::new();
+    let mut in_q = false;
+    for c in s.chars() {
+        match c {
+            '"' => {
+                in_q = !in_q;
+                cur.push(c);
+            }
+            c if c.is_whitespace() && !in_q => {
+                if !cur.is_empty() {
+                    out.push(std::mem::take(&mut cur));
+                }
+            }
+            c => cur.push(c),
+        }
+    }
+    if !cur.is_empty() {
+        out.push(cur);
+    }
+    out
 }
 
 /// 최종 인자 문자열. 조립 순서 = 기본 → 채택 레버 → 실험 훅 → CDP.
@@ -93,7 +153,17 @@ pub fn browser_args() -> String {
     if !base_only {
         off.extend(FEATURES_OFF_ADOPTED.iter().map(|s| s.to_string()));
         on.extend(FEATURES_ON_ADOPTED.iter().map(|s| s.to_string()));
-        switches.extend(SWITCHES_ADOPTED.iter().map(|s| s.to_string()));
+        switches.extend(
+            SWITCHES_ADOPTED
+                .iter()
+                .filter(|s| !(**s == "--in-process-gpu" && in_process_gpu_disabled()))
+                .map(|s| s.to_string()),
+        );
+        if single_process() {
+            // --single-process는 GPU도 같이 인프로세스로 끌고 온다 — 중복 지정 금지.
+            switches.retain(|s| s != "--in-process-gpu");
+            switches.push("--single-process".into());
+        }
     }
 
     if let Ok(v) = std::env::var("CCG_WEBVIEW_DISABLE_FEATURES") {
@@ -115,9 +185,7 @@ pub fn browser_args() -> String {
     args.extend(switches);
 
     if let Ok(extra) = std::env::var("CCG_WEBVIEW_ARGS_EXTRA") {
-        for tok in extra.split_whitespace() {
-            args.push(tok.to_string());
-        }
+        args.extend(split_args(&extra));
     }
     with_cdp(args.join(" "))
 }
