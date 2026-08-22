@@ -3,8 +3,13 @@ window.PROGRESS = {
   note: 'M3 게이트 통과 · M1은 메모리/콜드스타트 목표 미달로 루프 재가동(레버별 기여도 측정 의무) · 사용자 요청으로 디자인 리뉴얼 조각 신설',
   updatedAt: '2026-08-22 15:10',
   metrics: [
-    { name: '유휴 메모리 (프로세스 트리 WS 합)', unit: 'MB', base: 428.1, new: 415.6, target: '≤214', pass: false },
-    { name: '유휴 메모리 (Private 합)', unit: 'MB', base: 341.4, new: 351.4, target: '≤171', pass: false },
+    { name: '★ 멀티 4패널 유휴 WS', unit: 'MB', base: 712.8, new: null, target: '≤356' },
+    { name: '★ 멀티 4패널 + 추가 창 2개 WS', unit: 'MB', base: 934.1, new: null, target: '≤467' },
+    { name: '★ 4패널 동시 스트리밍 직후 WS', unit: 'MB', base: 1161, new: null, target: '≤580' },
+    { name: '★ 창 1개 추가 비용', unit: 'MB', base: 110.7, new: null, target: '≪110' },
+    { name: '★ 멀티 스크롤/스트리밍 FPS', unit: 'fps', base: 60, new: null, target: '≥60 · 드랍 0%' },
+    { name: '단일 유휴 메모리 (WS 합)', unit: 'MB', base: 428.1, new: 415.6, target: '≤214', pass: false },
+    { name: '단일 유휴 메모리 (Private 합)', unit: 'MB', base: 341.4, new: 351.4, target: '≤171', pass: false },
     { name: '콜드 스타트 → 첫 창 (웜 중앙값)', unit: 'ms', base: 336, new: 240, target: '≤168', pass: false },
     { name: '콜드 스타트 → UI 사용 가능', unit: 'ms', base: 422, new: 329, target: '≤211', pass: false },
     { name: '긴 스레드 스크롤 평균 FPS (471항목 전량 렌더)', unit: 'fps', base: 60, new: null, target: '≥60' },
@@ -29,6 +34,7 @@ window.PROGRESS = {
     { name: 'M12 패키징+최종 A/B', scope: 'NSIS 대체 설치본·전 화면 대조·최종 인증', state: 'wait' }
   ],
   log: [
+    { t: '기준 재정의', m: '사용자 지시로 멀티채팅을 주 게이트로 승격. 2.6.2 멀티 실측: 4패널 유휴 712.8MB → 추가 창 2개 붙이면 934.1MB(창당 110.7MB) → 4패널 동시 스트리밍 직후 1161MB. 렌더링은 여전히 60fps·드랍 0% — 문제는 순전히 메모리' },
     { t: '사용자 요구 추가', m: '알림/배너(모델 자동 전환 등) 디자인 정리 · 사이드바 유리가 진한 회색으로 급변하는 문제 수정 · 전반 모던화 — 3.0 완전 리뉴얼로 반영. 유리 원인 가설: 사이드바는 자체 배경 없이 body 틴트로 아크릴을 비추는 구조라 아크릴이 꺼지면 불투명 회색이 드러남' },
     { t: 'M1 R1 실측', m: '경고 — Tauri 유휴 WS 415.6MB(7프로세스)로 Electron 428MB와 거의 동일, Private는 351 vs 341로 악화. Rust 호스트로 번 85MB를 WebView2가 72MB 더 써서 반납. 메모리 전략 문서로 공격 순서 확정' },
     { t: 'M3 게이트', m: '통과 — 승인 왕복/중단 생존/포크/job object 좀비 차단 실증(크리틱이 대조 재실행·교란변수 제거). 남은 위험: 상주 회계 순서 의존성은 미해소' },

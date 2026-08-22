@@ -124,6 +124,81 @@ export function makeFixtureHome(homeDir, appVersion) {
   return { items: messages.length }
 }
 
+/**
+ * 멀티채팅 픽스처 — N개 패널이 각자 스레드를 가진 세션 1개.
+ * 사용자 지적: "여러 개 켰을 때가 항상 문제" → 이게 성능의 주 무대다.
+ * ui-prefs의 workspace.mode를 multi로 돌려 부팅 즉시 멀티 그리드가 뜨게 한다.
+ */
+export const MA_SESSION_ID = 'fix-multi-session'
+export function makeMultiFixture(homeDir, appVersion, { panels = 4, itemsPerPanel = 120 } = {}) {
+  makeFixtureHome(homeDir, appVersion)
+  const dir = path.join(homeDir, 'multi-agent')
+  fs.mkdirSync(dir, { recursive: true })
+
+  // 멀티 그리드로 부팅 (단일 픽스처가 써둔 ui-prefs를 갈아끼운다)
+  const prefsPath = path.join(homeDir, 'ui-prefs.json')
+  const prefs = JSON.parse(fs.readFileSync(prefsPath, 'utf8'))
+  prefs['workspace.mode'] = 'multi'
+  fs.writeFileSync(prefsPath, JSON.stringify(prefs))
+
+  const time = '오후 3:00'
+  const panelList = []
+  for (let p = 0; p < 6; p++) {
+    const live = p < panels
+    const messages = []
+    let seq = 0
+    for (let i = 0; live && messages.length < itemsPerPanel; i++) {
+      messages.push({ kind: 'msg', id: `p${p}u${++seq}`, role: 'user', text: `패널 ${p} 구간 ${i}: 이 모듈의 캐시 무효화를 점검해줘.`, animate: false, time })
+      messages.push({
+        kind: 'msg', id: `p${p}a${++seq}`, role: 'assistant', animate: false, time,
+        text: `### 패널 ${p} · 구간 ${i}\n\n검토 결과 **세대 비교** 경로는 정상이다.\n\n- 소비자 폴링 ${i % 3}곳을 이벤트 구독으로 전환 가능\n- 실패 경로는 상위 전파 유지\n\n\`\`\`ts\nexport function step${i}(rev: number) {\n  const snap = registry.at(rev)\n  return snap ? snap.tokens.length : -1\n}\n\`\`\`\n\n소요 ${100 + i}ms.`
+      })
+      messages.push({
+        kind: 'toolgroup', id: `p${p}tg${++seq}`, time,
+        tools: [
+          { id: `p${p}t${seq}a`, verb: 'Read', kind: 'read', target: `src/mod${i}/cache.ts`, status: 'done', result: '412줄', durationMs: 11 },
+          { id: `p${p}t${seq}b`, verb: 'Bash', kind: 'bash', target: `npm test -- m${i}`, status: 'done', result: '통과', durationMs: 640 }
+        ]
+      })
+    }
+    if (live) messages.push({ kind: 'worked', id: `p${p}w${++seq}`, ms: 92000 })
+    panelList.push({
+      title: live ? `벤치 패널 ${p + 1}` : '',
+      custom: live,
+      locked: false,
+      color: '',
+      cwd: 'C:\\Code\\AgentCodeGUI',
+      refDirs: [],
+      picker: { model: 'haiku', effort: 'minimal', mode: 'bypass' },
+      api: false,
+      snapshot: live
+        ? {
+            status: 'done', messages, todos: [], files: [], diffs: {}, subagents: [], bgTasks: [],
+            session: null,
+            result: { costUsd: 0, durationMs: 1000, numTurns: 1, contextTokens: 90000, contextWindow: 1000000 },
+            spentUsd: 0, tokenTotals: {}, seq: seq + 1, shownNotices: []
+          }
+        : null
+    })
+  }
+
+  const session = {
+    id: MA_SESSION_ID,
+    title: '벤치 멀티',
+    custom: true,
+    count: panels,
+    panelOrder: [0, 1, 2, 3, 4, 5],
+    panels: panelList,
+    updatedAt: Date.now()
+  }
+  fs.writeFileSync(path.join(dir, `${MA_SESSION_ID}.json`), JSON.stringify(session))
+  fs.writeFileSync(
+    path.join(dir, 'index.json'),
+    JSON.stringify({ version: 2, activeSessionId: MA_SESSION_ID, order: [MA_SESSION_ID] })
+  )
+  return { panels, itemsPerPanel, totalItems: panels * itemsPerPanel }
+}
+
 if (process.argv[1] && process.argv[1].endsWith('fixture.mjs') && process.argv[2]) {
   const home = path.resolve(process.argv[2])
   const ver = process.argv[3] ?? '2.6.2'
