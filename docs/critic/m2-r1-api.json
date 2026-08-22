@@ -1,0 +1,57 @@
+{
+  "at": "2026-08-22T16:41:44.922Z",
+  "findings": [
+    {
+      "item": "C. 3.0이 쓴 키를 2.6.2(Electron safeStorage)가 못 읽는다 — 보고서 §4 주장 반증",
+      "prefix": "01000000",
+      "scheme": "DPAPI 직접",
+      "electronDecrypts": false,
+      "electronError": "Error while decrypting the ciphertext provided to safeStorage.decryptString. Ciphertext does not appear to be encrypted."
+    }
+  ],
+  "inherit": {
+    "fileScheme": "v10(OSCrypt AES-GCM)",
+    "enc": true,
+    "keyTail": "ywAA",
+    "budgetUsd": 300,
+    "keyDecrypts": true,
+    "keyLen": 108,
+    "status": {
+      "hasKey": true,
+      "keyTail": "ywAA",
+      "budgetUsd": 300,
+      "spentUsd": 0,
+      "hasOpenaiKey": false,
+      "openaiKeyTail": null
+    },
+    "encryptionAvailable": true,
+    "localStateFound": true,
+    "usage": {
+      "records": 9
+    }
+  },
+  "electronToTauri": {
+    "electronPrefix": "v10",
+    "localStateSeededFromInstall": true,
+    "localState": true,
+    "keyDecrypts": true,
+    "keyLen": 22,
+    "statusBudget": 12.5
+  },
+  "tauriToElectron": {
+    "prefix": "01000000",
+    "scheme": "DPAPI 직접",
+    "electronDecrypts": false,
+    "electronError": "Error while decrypting the ciphertext provided to safeStorage.decryptString. Ciphertext does not appear to be encrypted."
+  },
+  "usageParity": {
+    "lines": 7,
+    "accepted": 3,
+    "tsList": [
+      1,
+      2,
+      3
+    ]
+  },
+  "ok": false
+}

@@ -1,0 +1,382 @@
+{
+  "at": "2026-08-22T16:28:46.266Z",
+  "root": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-m2-damage-1787416126265",
+  "cases": [
+    {
+      "case": "잘린 채팅 JSON",
+      "elapsedMs": 17,
+      "exit": 0,
+      "crashed": false,
+      "sourceThreads": 6,
+      "v3Files": 6,
+      "v3Order": 6,
+      "orphanFiles": [],
+      "missingFiles": [],
+      "brokenSources": [
+        "chats/c-bbb.json"
+      ],
+      "lostThreads": [],
+      "warnings": [],
+      "verdict": "silent-skip(손상 원본 무통지)"
+    },
+    {
+      "case": "잘린 chats/index.json",
+      "elapsedMs": 11,
+      "exit": 0,
+      "crashed": false,
+      "sourceThreads": 7,
+      "v3Files": 4,
+      "v3Order": 4,
+      "orphanFiles": [],
+      "missingFiles": [],
+      "brokenSources": [
+        "chats/index.json"
+      ],
+      "lostThreads": [
+        "chat:c-aaa",
+        "chat:c-bbb",
+        "chat:c-ccc"
+      ],
+      "warnings": [],
+      "verdict": "silent-drop"
+    },
+    {
+      "case": "인코딩 깨짐(UTF-8 아님)",
+      "elapsedMs": 14,
+      "exit": 0,
+      "crashed": false,
+      "sourceThreads": 6,
+      "v3Files": 6,
+      "v3Order": 6,
+      "orphanFiles": [],
+      "missingFiles": [],
+      "brokenSources": [
+        "chats/c-ccc.json"
+      ],
+      "lostThreads": [],
+      "warnings": [],
+      "verdict": "silent-skip(손상 원본 무통지)"
+    },
+    {
+      "case": "순환 참조 btwOf",
+      "elapsedMs": 16,
+      "exit": 0,
+      "crashed": false,
+      "sourceThreads": 10,
+      "v3Files": 10,
+      "v3Order": 10,
+      "orphanFiles": [],
+      "missingFiles": [],
+      "brokenSources": [],
+      "lostThreads": [],
+      "warnings": [],
+      "verdict": "preserved"
+    },
+    {
+      "case": "거대 첨부(32MB)",
+      "elapsedMs": 645,
+      "exit": 0,
+      "crashed": false,
+      "sourceThreads": 7,
+      "v3Files": 7,
+      "v3Order": 7,
+      "orphanFiles": [],
+      "missingFiles": [],
+      "brokenSources": [],
+      "lostThreads": [],
+      "warnings": [],
+      "verdict": "preserved"
+    },
+    {
+      "case": "중복 chatId(본채팅 ↔ 추가 채팅)",
+      "elapsedMs": 21,
+      "exit": 0,
+      "crashed": false,
+      "sourceThreads": 8,
+      "v3Files": 7,
+      "v3Order": 7,
+      "orphanFiles": [],
+      "missingFiles": [],
+      "brokenSources": [],
+      "lostThreads": [],
+      "warnings": [
+        {
+          "kind": "id_collision",
+          "old": "c-aaa",
+          "new": "sc-c-aaa"
+        }
+      ],
+      "verdict": "preserved",
+      "detail": {
+        "holdOn": [
+          "sc-c-aaa"
+        ],
+        "btwEdges": [
+          {
+            "child": "s-yyy",
+            "parent": "sc-c-aaa"
+          }
+        ],
+        "ids": [
+          "c-aaa",
+          "c-bbb",
+          "c-ccc",
+          "ma-s-1-0",
+          "ma-s-1-1",
+          "s-yyy",
+          "sc-c-aaa"
+        ]
+      }
+    },
+    {
+      "case": "존재하지 않는 세션 참조",
+      "elapsedMs": 13,
+      "exit": 0,
+      "crashed": false,
+      "sourceThreads": 7,
+      "v3Files": 7,
+      "v3Order": 7,
+      "orphanFiles": [],
+      "missingFiles": [],
+      "brokenSources": [],
+      "lostThreads": [],
+      "warnings": [
+        {
+          "kind": "btw_orphan",
+          "chat": "s-yyy",
+          "btwOf": "s-gone::3"
+        }
+      ],
+      "verdict": "preserved"
+    },
+    {
+      "case": "인덱스에 없는 채팅 파일",
+      "elapsedMs": 14,
+      "exit": 0,
+      "crashed": false,
+      "sourceThreads": 7,
+      "v3Files": 6,
+      "v3Order": 6,
+      "orphanFiles": [],
+      "missingFiles": [],
+      "brokenSources": [],
+      "lostThreads": [
+        "chat:c-ccc"
+      ],
+      "warnings": [],
+      "verdict": "silent-drop"
+    },
+    {
+      "case": "경로 탈출 id",
+      "elapsedMs": 15,
+      "exit": 0,
+      "crashed": false,
+      "sourceThreads": 7,
+      "v3Files": 7,
+      "v3Order": 7,
+      "orphanFiles": [],
+      "missingFiles": [],
+      "brokenSources": [],
+      "lostThreads": [],
+      "warnings": [],
+      "verdict": "preserved",
+      "detail": {
+        "homeEntries": [
+          "boards",
+          "chats",
+          "chats-v3",
+          "multi-agent",
+          "session-chats",
+          "ui-prefs.json"
+        ],
+        "evilOutside": false
+      }
+    },
+    {
+      "case": "깊은 중첩 JSON(1000단)",
+      "elapsedMs": 13,
+      "exit": 0,
+      "crashed": false,
+      "sourceThreads": 7,
+      "v3Files": 6,
+      "v3Order": 6,
+      "orphanFiles": [],
+      "missingFiles": [],
+      "brokenSources": [],
+      "lostThreads": [
+        "chat:c-bbb"
+      ],
+      "warnings": [],
+      "verdict": "silent-drop"
+    },
+    {
+      "case": "본채팅 id가 패널 id와 충돌",
+      "elapsedMs": 17,
+      "exit": 0,
+      "crashed": false,
+      "sourceThreads": 7,
+      "v3Files": 6,
+      "v3Order": 7,
+      "orphanFiles": [],
+      "missingFiles": [],
+      "brokenSources": [],
+      "lostThreads": [
+        "chat:ma-s-1-0"
+      ],
+      "warnings": [],
+      "verdict": "silent-drop",
+      "detail": {
+        "ids": [
+          "c-aaa",
+          "c-ccc",
+          "ma-s-1-0",
+          "ma-s-1-1",
+          "s-xxx",
+          "s-yyy"
+        ],
+        "orderHasDup": true,
+        "order": [
+          "c-aaa",
+          "ma-s-1-0",
+          "c-ccc",
+          "ma-s-1-0",
+          "ma-s-1-1",
+          "s-xxx",
+          "s-yyy"
+        ],
+        "collidedRecord": "패널0",
+        "collidedMsgs": 3
+      }
+    },
+    {
+      "case": "전역 pref 파일 손상",
+      "elapsedMs": 14,
+      "exit": 0,
+      "crashed": false,
+      "sourceThreads": 7,
+      "v3Files": 7,
+      "v3Order": 7,
+      "orphanFiles": [],
+      "missingFiles": [],
+      "brokenSources": [],
+      "lostThreads": [],
+      "warnings": [],
+      "verdict": "preserved",
+      "detail": {
+        "billing": {
+          "kind": "subscription",
+          "account": null,
+          "dropEnvKey": false
+        },
+        "outputStyle": null,
+        "expected": null
+      }
+    },
+    {
+      "case": "api.mode=true에서 채팅별 계정",
+      "elapsedMs": 17,
+      "exit": 0,
+      "crashed": false,
+      "sourceThreads": 7,
+      "v3Files": 7,
+      "v3Order": 7,
+      "orphanFiles": [],
+      "missingFiles": [],
+      "brokenSources": [],
+      "lostThreads": [],
+      "warnings": [],
+      "verdict": "silent-leaf-drop",
+      "detail": {
+        "cAaaBilling": {
+          "kind": "api_key"
+        },
+        "cAaaEngine": {
+          "kind": "claude",
+          "model": "fable",
+          "effort": "max",
+          "codexAccount": null
+        },
+        "cBbbBilling": {
+          "kind": "api_key"
+        },
+        "cBbbEngine": {
+          "kind": "codex",
+          "model": "gpt-5.6-sol",
+          "effort": "high",
+          "codexAccount": null
+        },
+        "accountsGone": [
+          "me@example.com",
+          "sub@example.com"
+        ]
+      }
+    },
+    {
+      "case": "손상 ui-prefs가 전역값을 뒤집음",
+      "elapsedMs": 20,
+      "exit": 0,
+      "crashed": false,
+      "sourceThreads": 7,
+      "v3Files": 7,
+      "v3Order": 7,
+      "orphanFiles": [],
+      "missingFiles": [],
+      "brokenSources": [],
+      "lostThreads": [],
+      "warnings": [],
+      "verdict": "silent-value-flip",
+      "detail": {
+        "billing": {
+          "kind": "subscription",
+          "account": null,
+          "dropEnvKey": false
+        },
+        "outputStyle": null,
+        "expected": {
+          "billing": "api_key",
+          "outputStyle": "Explanatory"
+        }
+      }
+    },
+    {
+      "case": "chat-talk id 중복",
+      "elapsedMs": 19,
+      "exit": 0,
+      "crashed": false,
+      "sourceThreads": 7,
+      "v3Files": 8,
+      "v3Order": 8,
+      "orphanFiles": [],
+      "missingFiles": [],
+      "brokenSources": [],
+      "lostThreads": [],
+      "warnings": [],
+      "verdict": "preserved",
+      "detail": {
+        "ids": [
+          "c-aaa",
+          "c-bbb",
+          "c-ccc",
+          "ma-s-1-0",
+          "ma-s-1-1",
+          "s-xxx",
+          "s-yyy",
+          "talk-c-aaa"
+        ],
+        "btwEdges": [
+          {
+            "child": "s-yyy",
+            "parent": "talk-c-aaa"
+          }
+        ]
+      }
+    }
+  ],
+  "summary": {
+    "silent-skip(손상 원본 무통지)": 2,
+    "silent-drop": 4,
+    "preserved": 7,
+    "silent-leaf-drop": 1,
+    "silent-value-flip": 1
+  }
+}

@@ -1,0 +1,101 @@
+{
+  "at": "2026-08-22T16:25:10.752Z",
+  "home": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-m2-repro-1787415910744",
+  "source": "real-home-clone",
+  "findings": [
+    {
+      "item": "재마이그레이션이 3.0의 변경을 덮어씀",
+      "chatId": "63f9811a-e4b1-4d70-b3e9-82da91613fde",
+      "titleAfter": "",
+      "msgsBefore": 1,
+      "msgsAfter": 0,
+      "clobbered": true
+    }
+  ],
+  "globals": {
+    "apiMode": false,
+    "outputStyle": "Concise",
+    "skills": [],
+    "mcp": [],
+    "workspaceMulti": true,
+    "hold": null
+  },
+  "before": {
+    "units": 5,
+    "broken": 0,
+    "bySource": {
+      "chat": 1,
+      "panel": 4
+    },
+    "messages": 312,
+    "notInIndex": {
+      "chats": [],
+      "sessionChats": [],
+      "multiAgent": []
+    }
+  },
+  "migrate": {
+    "status": 0,
+    "ok": true,
+    "wallMs": 64,
+    "counts": {
+      "chats": 1,
+      "maSessions": 1,
+      "maPanels": 4,
+      "sessionChats": 0,
+      "talkAbsorbed": 0,
+      "carried": 0,
+      "total": 5,
+      "messages": 312,
+      "boards": 2
+    },
+    "warnings": [],
+    "btw": {
+      "rewritten": 0,
+      "dropped": 0
+    }
+  },
+  "after": {
+    "files": 5,
+    "inIndex": 5,
+    "orphanFiles": [],
+    "missingFiles": []
+  },
+  "threads": {
+    "compared": 5,
+    "lost": 0,
+    "detail": []
+  },
+  "leafAudit": {
+    "chatsWithLoss": 0,
+    "sample": []
+  },
+  "identityPrimary": {
+    "compared": 5,
+    "mismatch": 0,
+    "sample": []
+  },
+  "rollback": {
+    "oldDirsPresent": [
+      "chats",
+      "multi-agent",
+      "session-chats"
+    ],
+    "backupDir": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-m2-repro-1787415910744\\backup-2.6.2-1787415910784",
+    "backupExists": true,
+    "backupHasChats": true
+  },
+  "status": {
+    "compared": 5,
+    "mismatch": 0,
+    "sample": []
+  },
+  "remigrationClobber": {
+    "chatId": "63f9811a-e4b1-4d70-b3e9-82da91613fde",
+    "titleAfter": "",
+    "msgsBefore": 1,
+    "msgsAfter": 0,
+    "clobbered": true
+  },
+  "ok": false
+}

@@ -1,0 +1,105 @@
+{
+  "at": "2026-08-22T16:45:49.845Z",
+  "home": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-m2-idcheck-1787417149686",
+  "engine": "ccg-engine::identity (실물)",
+  "result": {
+    "knownAccounts": 6,
+    "items": [
+      {
+        "file": "63f9811a-e4b1-4d70-b3e9-82da91613fde.json",
+        "rawIdentityDeserialize": true,
+        "rawHash": "f3e3f97176c056de7afe22145c276d9e",
+        "serdeRoundTripLossless": true,
+        "normalize": "ok",
+        "hash": "bd5c5907225811d2cc9424e2f313aecd"
+      },
+      {
+        "file": "ma-93fb41d4-239a-42df-89a9-4a6a9405b0e6-0.json",
+        "rawIdentityDeserialize": true,
+        "rawHash": "409ffac20e89685c4647c872d33cd9cb",
+        "serdeRoundTripLossless": true,
+        "normalize": "ok",
+        "hash": "732434fe2037d4bdaa3c80b69e8a2742"
+      },
+      {
+        "file": "ma-93fb41d4-239a-42df-89a9-4a6a9405b0e6-1.json",
+        "rawIdentityDeserialize": true,
+        "rawHash": "2b93f8451d39a5322df8e4098f029ef0",
+        "serdeRoundTripLossless": true,
+        "normalize": "ok",
+        "hash": "0f47f9047feef52d76c054f1ac01eede"
+      },
+      {
+        "file": "ma-93fb41d4-239a-42df-89a9-4a6a9405b0e6-2.json",
+        "rawIdentityDeserialize": true,
+        "rawHash": "3ca29300e21b90a756f495a9b1eaa195",
+        "serdeRoundTripLossless": true,
+        "normalize": "ok",
+        "hash": "69bbee2872e68a1cd00e5a41e3048975"
+      },
+      {
+        "file": "ma-93fb41d4-239a-42df-89a9-4a6a9405b0e6-3.json",
+        "rawIdentityDeserialize": true,
+        "rawHash": "c35ea1120b95c72f772c404e60a2d02a",
+        "serdeRoundTripLossless": true,
+        "normalize": "ok",
+        "hash": "4f1ed8c2a89fc15f3508ab70cfac7433"
+      }
+    ]
+  },
+  "unresolvedProbe": {
+    "home": "합성(api.mode=true·없는 cwd·codex)",
+    "noKey": {
+      "knownAccounts": 0,
+      "items": [
+        {
+          "file": "api-chat.json",
+          "rawIdentityDeserialize": true,
+          "rawHash": "b5f5c16596f263125e1cc90f7f14669c",
+          "serdeRoundTripLossless": false,
+          "normalize": "ApiKeyMissing"
+        },
+        {
+          "file": "codex-chat.json",
+          "rawIdentityDeserialize": true,
+          "rawHash": "ea68a17ca60929ad71429b0bcebcc348",
+          "serdeRoundTripLossless": false,
+          "normalize": "ApiKeyMissing"
+        },
+        {
+          "file": "gone-cwd.json",
+          "rawIdentityDeserialize": true,
+          "rawHash": "c4dee37cfa7530e6f954ddb946ee90a7",
+          "serdeRoundTripLossless": false,
+          "normalize": "ApiKeyMissing"
+        }
+      ]
+    },
+    "withKey": {
+      "knownAccounts": 0,
+      "items": [
+        {
+          "file": "api-chat.json",
+          "rawIdentityDeserialize": true,
+          "rawHash": "b5f5c16596f263125e1cc90f7f14669c",
+          "serdeRoundTripLossless": false,
+          "normalize": "CwdMissing(\"c:code\")"
+        },
+        {
+          "file": "codex-chat.json",
+          "rawIdentityDeserialize": true,
+          "rawHash": "ea68a17ca60929ad71429b0bcebcc348",
+          "serdeRoundTripLossless": false,
+          "normalize": "CwdMissing(\"c:code\")"
+        },
+        {
+          "file": "gone-cwd.json",
+          "rawIdentityDeserialize": true,
+          "rawHash": "c4dee37cfa7530e6f954ddb946ee90a7",
+          "serdeRoundTripLossless": false,
+          "normalize": "CwdMissing(\"c:절대없는폴더zzz\")"
+        }
+      ]
+    }
+  }
+}

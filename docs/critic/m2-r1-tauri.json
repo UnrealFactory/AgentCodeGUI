@@ -1,0 +1,219 @@
+{
+  "at": "2026-08-22T16:44:26.581Z",
+  "exe": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-m2-app.exe",
+  "findings": [
+    {
+      "item": "6. 마이그레이션된 추가 채팅에 3.0 UI가 전혀 닿지 않는다(사이드바·창 목록 모두 없음)",
+      "chats": {
+        "ids": [
+          "main-1"
+        ],
+        "n": 1
+      },
+      "sessionWins": [],
+      "multi": null,
+      "v3Files": [
+        "main-1.json",
+        "sc-alpha.json",
+        "sc-beta.json"
+      ],
+      "sessionChatFilesSurvived": 2,
+      "reachableInUi": 0
+    },
+    {
+      "item": "3.0이 쓴 API 키를 2.6.2(Electron safeStorage)가 못 읽는다",
+      "available": true,
+      "decryptsTo": null,
+      "matches": false,
+      "error": "Error while decrypting the ciphertext provided to safeStorage.decryptString. Ciphertext does not appear to be encrypted.",
+      "electronWroteV10": true
+    }
+  ],
+  "flagOn": {
+    "href": "http://tauri.localhost/",
+    "chats": {
+      "keys": [
+        "version",
+        "chats",
+        "activeChatId",
+        "statuses"
+      ],
+      "activeChatId": "63f9811a-e4b1-4d70-b3e9-82da91613fde",
+      "n": 1,
+      "ids": [
+        "63f9811a-e4b1-4d70-b3e9-82da91613fde"
+      ],
+      "unloaded": 0,
+      "msgs": [
+        0
+      ],
+      "pickers": [
+        {
+          "model": "opus",
+          "effort": "max",
+          "mode": "bypass",
+          "account": "junelius@naver.com"
+        }
+      ],
+      "hasStatuses": true
+    },
+    "chatLoad": {
+      "id": "63f9811a-e4b1-4d70-b3e9-82da91613fde",
+      "msgs": 0,
+      "picker": {
+        "model": "opus",
+        "effort": "max",
+        "mode": "bypass",
+        "account": "junelius@naver.com"
+      },
+      "manualCwd": "C:\\Users\\User\\AppData\\Local\\Programs\\AgentCodeGUI"
+    },
+    "multi": {
+      "version": 2,
+      "activeSessionId": "93fb41d4-239a-42df-89a9-4a6a9405b0e6",
+      "sessions": [
+        {
+          "id": "93fb41d4-239a-42df-89a9-4a6a9405b0e6",
+          "count": 4,
+          "unloaded": false,
+          "panels": 6,
+          "msgs": [
+            134,
+            72,
+            71,
+            35,
+            null,
+            null
+          ],
+          "titles": [
+            "NetCore",
+            "AgentMonitoring",
+            "AgentCode",
+            "VoxCreature",
+            "",
+            ""
+          ]
+        }
+      ]
+    },
+    "loadSession": {
+      "id": "93fb41d4-239a-42df-89a9-4a6a9405b0e6",
+      "panels": 6,
+      "msgs": [
+        134,
+        72,
+        71,
+        35,
+        null,
+        null
+      ]
+    },
+    "talk": {
+      "chats": 0
+    },
+    "sessionWins": 0,
+    "apiConfig": {
+      "hasKey": true,
+      "keyTail": "ywAA",
+      "budgetUsd": 300,
+      "spentUsd": 0,
+      "hasOpenaiKey": false,
+      "openaiKeyTail": null
+    },
+    "uiPrefs": 46,
+    "disk": {
+      "chatsV3": 7,
+      "boards": 3,
+      "backup": [
+        "backup-2.6.2-1787417066907"
+      ],
+      "oldChats": 2,
+      "oldMa": 2,
+      "migratedAt": 1787417066907,
+      "statusJson": true
+    },
+    "byOrigin": {
+      "chat": 1,
+      "panel": 4
+    },
+    "panelChatsVisibleInMainList": 0,
+    "sessionChatsReachable": {
+      "inMainList": 0,
+      "inSessionWinList": 0,
+      "count": 0
+    },
+    "afterRendererSave": {
+      "chatsV3Files": 7,
+      "byOrigin": {
+        "chat": 1,
+        "panel": 4
+      }
+    },
+    "apiSetKey": {
+      "hasKey": true,
+      "keyTail": "9999",
+      "budgetUsd": 300,
+      "spentUsd": 0,
+      "hasOpenaiKey": false,
+      "openaiKeyTail": null
+    },
+    "apiKeyOnDisk": {
+      "enc": true,
+      "keyTail": "9999",
+      "prefixV10": false,
+      "prefixDpapi": "01000000",
+      "len": 246,
+      "twoSpaceIndent": true
+    },
+    "home": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-m2-tauri-on-1787417066581",
+    "before": {
+      "chats": 2,
+      "ma": 2
+    },
+    "srcChatIds": [
+      "63f9811a-e4b1-4d70-b3e9-82da91613fde"
+    ]
+  },
+  "flagOff": {
+    "chats": {
+      "n": 1,
+      "ids": [
+        "63f9811a-e4b1-4d70-b3e9-82da91613fde"
+      ],
+      "unloaded": 0,
+      "hasStatuses": false
+    },
+    "multi": {
+      "sessions": 1
+    },
+    "disk": {
+      "chatsV3": false,
+      "boards": false
+    }
+  },
+  "syntheticSessionChats": {
+    "chats": {
+      "ids": [
+        "main-1"
+      ],
+      "n": 1
+    },
+    "sessionWins": [],
+    "multi": null,
+    "v3Files": [
+      "main-1.json",
+      "sc-alpha.json",
+      "sc-beta.json"
+    ],
+    "sessionChatFilesSurvived": 2,
+    "reachableInUi": 0
+  },
+  "electronCompat": {
+    "available": true,
+    "decryptsTo": null,
+    "matches": false,
+    "error": "Error while decrypting the ciphertext provided to safeStorage.decryptString. Ciphertext does not appear to be encrypted.",
+    "electronWroteV10": true
+  },
+  "ok": false
+}

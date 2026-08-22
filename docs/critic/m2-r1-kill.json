@@ -1,0 +1,159 @@
+{
+  "at": "2026-08-22T16:31:44.477Z",
+  "runs": [
+    {
+      "label": "early-15",
+      "killMs": 199,
+      "wallMs": 213,
+      "killed": true,
+      "oldDirsIntact": true,
+      "chatsV3": "absent",
+      "chatsV3Files": 0,
+      "boardsExists": false,
+      "boardsFiles": 0,
+      "tornCommit": false,
+      "leftovers": [],
+      "rerun": {
+        "ok": true,
+        "total": 350,
+        "messages": 17400,
+        "leftoversAfter": [],
+        "boardsAfter": 22,
+        "chatFiles": 350
+      }
+    },
+    {
+      "label": "mid-55",
+      "killMs": 730,
+      "wallMs": 735,
+      "killed": true,
+      "oldDirsIntact": true,
+      "chatsV3": "absent",
+      "chatsV3Files": 0,
+      "boardsExists": false,
+      "boardsFiles": 0,
+      "tornCommit": false,
+      "leftovers": [],
+      "rerun": {
+        "ok": true,
+        "total": 350,
+        "messages": 17400,
+        "leftoversAfter": [],
+        "boardsAfter": 22,
+        "chatFiles": 350
+      }
+    },
+    {
+      "label": "late-92",
+      "killMs": 1221,
+      "wallMs": 1484,
+      "killed": true,
+      "oldDirsIntact": true,
+      "chatsV3": "absent",
+      "chatsV3Files": 0,
+      "boardsExists": false,
+      "boardsFiles": 0,
+      "tornCommit": false,
+      "leftovers": [
+        "chats-v3.tmp-1787416311872"
+      ],
+      "rerun": {
+        "ok": true,
+        "total": 350,
+        "messages": 17400,
+        "leftoversAfter": [],
+        "boardsAfter": 22,
+        "chatFiles": 350
+      }
+    }
+  ],
+  "fullRunMs": 1327,
+  "probe": {
+    "label": "probe",
+    "killMs": 240000,
+    "wallMs": 1327,
+    "killed": false,
+    "oldDirsIntact": true,
+    "chatsV3": "complete",
+    "chatsV3Files": 352,
+    "boardsExists": true,
+    "boardsFiles": 22,
+    "tornCommit": false,
+    "leftovers": [],
+    "rerun": {
+      "ok": true,
+      "total": 350,
+      "messages": 17400,
+      "leftoversAfter": [],
+      "boardsAfter": 22,
+      "chatFiles": 350
+    }
+  },
+  "staging": [
+    {
+      "waitFiles": 5,
+      "sawStaging": true,
+      "filesAtKill": 22,
+      "oldDirsIntact": true,
+      "chatsV3Exists": false,
+      "chatsV3Complete": false,
+      "boardsExists": false,
+      "tornCommit": false,
+      "leftovers": [
+        "boards.tmp-1787416316206",
+        "chats-v3.tmp-1787416316206"
+      ],
+      "rerun": {
+        "ok": true,
+        "total": 350,
+        "leftoversAfter": []
+      }
+    },
+    {
+      "waitFiles": 200,
+      "sawStaging": true,
+      "filesAtKill": 233,
+      "oldDirsIntact": true,
+      "chatsV3Exists": false,
+      "chatsV3Complete": false,
+      "boardsExists": false,
+      "tornCommit": false,
+      "leftovers": [
+        "boards.tmp-1787416319181",
+        "chats-v3.tmp-1787416319181"
+      ],
+      "rerun": {
+        "ok": true,
+        "total": 350,
+        "leftoversAfter": []
+      }
+    }
+  ],
+  "tornCommit": {
+    "isMigratedStillTrue": true,
+    "readBoards": null,
+    "maGetNull": true,
+    "lightMarkers": 349,
+    "lightWithSnapshot": 1,
+    "totalChats": 350,
+    "manualRerunFixesBoards": true
+  },
+  "saveKill": {
+    "fullSaveMs": 465,
+    "killAt": 256,
+    "killed": true,
+    "chats": 350,
+    "lostOrCorrupt": 0,
+    "partiallyApplied": 150,
+    "tmpLeftovers": [
+      "chat-0150.json.tmp"
+    ],
+    "tmpLeftoverCount": 1
+  },
+  "verdict": {
+    "oldDirsAlwaysIntact": true,
+    "neverPartial": true,
+    "tornCommitSeen": [],
+    "rerunAlwaysRecovers": true
+  }
+}

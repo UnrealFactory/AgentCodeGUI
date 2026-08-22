@@ -1,0 +1,326 @@
+{
+  "at": "2026-08-22T16:36:12.947Z",
+  "checks": {
+    "markerMerge": {
+      "chats": 8,
+      "lost": []
+    },
+    "ownedForgery": {
+      "chats": 8,
+      "adopted": [],
+      "lost": []
+    },
+    "p3Regression": {
+      "chatId": "c-1",
+      "runtimeWon": false,
+      "runtime": {
+        "engine": {
+          "kind": "claude",
+          "model": "sonnet",
+          "effort": "low",
+          "codexAccount": null
+        },
+        "billing": {
+          "kind": "subscription",
+          "account": "fallback@x.com",
+          "dropEnvKey": false
+        },
+        "cwd": "C:\\Code",
+        "addDirs": [],
+        "mode": "auto",
+        "systemPrompt": null,
+        "outputStyle": "Concise",
+        "tools": {
+          "skillOverrides": {},
+          "deniedMcp": []
+        }
+      },
+      "onDisk": {
+        "engine": {
+          "kind": "claude",
+          "model": "opus",
+          "effort": "high",
+          "codexAccount": null
+        },
+        "billing": {
+          "kind": "subscription",
+          "account": "u0@x.com",
+          "dropEnvKey": false
+        },
+        "cwd": "C:\\Code",
+        "addDirs": [],
+        "mode": "auto",
+        "systemPrompt": null,
+        "outputStyle": "Concise",
+        "tools": {
+          "skillOverrides": {},
+          "deniedMcp": []
+        }
+      },
+      "stalePicker": {
+        "model": "opus",
+        "effort": "high",
+        "mode": "auto",
+        "account": "u0@x.com"
+      }
+    },
+    "p3Control": {
+      "onDisk": "opus",
+      "expect": "haiku"
+    },
+    "aliasChatsList": {
+      "ids": [
+        "c-1",
+        "c-2",
+        "c-3"
+      ]
+    },
+    "prunePrecision": {
+      "dropped": "c-2",
+      "lost": [
+        "c-2"
+      ]
+    },
+    "originMissing": {
+      "chatId": "w-1",
+      "lost": [],
+      "survived": true,
+      "leakedIntoMainList": true
+    },
+    "rustMadeChatPruned": {
+      "survived": false,
+      "lostOthers": []
+    },
+    "maSubsetSave": {
+      "lost": [
+        "ma-sess-B-0"
+      ],
+      "boards": [
+        "default",
+        "sess-A"
+      ]
+    },
+    "maMarkerSave": {
+      "markerSessions": [
+        "sess-B"
+      ],
+      "lost": []
+    },
+    "aliasIdempotent": {
+      "stable": true,
+      "snapshots": [
+        "2047be762eda4e5435442801bbad9e1190982c07723656b6fb42e092c273726a",
+        "2047be762eda4e5435442801bbad9e1190982c07723656b6fb42e092c273726a",
+        "2047be762eda4e5435442801bbad9e1190982c07723656b6fb42e092c273726a"
+      ],
+      "lost": []
+    },
+    "statusRebuild": {
+      "withFile": {
+        "c-1": "idle",
+        "c-2": "idle",
+        "c-3": "idle",
+        "ma-sess-A-0": "idle",
+        "ma-sess-A-1": "idle",
+        "ma-sess-B-0": "idle",
+        "w-1": "done",
+        "w-2": "done"
+      },
+      "afterDelete": {
+        "c-1": "idle",
+        "c-2": "idle",
+        "c-3": "idle",
+        "ma-sess-A-0": "idle",
+        "ma-sess-A-1": "idle",
+        "ma-sess-B-0": "idle",
+        "w-1": "idle",
+        "w-2": "idle"
+      },
+      "afterCorrupt": {
+        "c-1": "idle",
+        "c-2": "idle",
+        "c-3": "idle",
+        "ma-sess-A-0": "idle",
+        "ma-sess-A-1": "idle",
+        "ma-sess-B-0": "idle",
+        "w-1": "idle",
+        "w-2": "idle"
+      },
+      "statusLostOnRebuild": true,
+      "candidatesWithFile": [
+        "c-1"
+      ],
+      "candidatesAfterDelete": [
+        "c-1"
+      ],
+      "candidatesAfterCorrupt": [
+        "c-1"
+      ],
+      "halfWrittenLite": {
+        "chatId": "c-1",
+        "status": "idle",
+        "busy": false,
+        "bgActive": false,
+        "ask": "none",
+        "hold": {
+          "resetAt": 1800000000,
+          "ready": false
+        },
+        "queued": 2,
+        "unread": 0,
+        "updatedAt": 1000
+      },
+      "bootForced": {
+        "busy": false,
+        "ask": "none",
+        "bgActive": false,
+        "status": "idle",
+        "queued": 2,
+        "hold": {
+          "resetAt": 1800000000,
+          "ready": false
+        }
+      }
+    },
+    "brokenIndex": {
+      "filesOnDisk": 10,
+      "statusesSeen": 0,
+      "readChatsNull": true,
+      "aliasChatsNull": true
+    },
+    "brokenIndexThenSave": {
+      "survivors": [
+        "brand-new.json"
+      ],
+      "wiped": 9
+    },
+    "setActive": {
+      "target": "c-2",
+      "immediate": "c-2",
+      "afterStaleSave": "c-1",
+      "overwritten": true
+    }
+  },
+  "findings": [
+    {
+      "item": "B2. 낡은 렌더러 사본이 런타임 정체성을 되돌렸다(P3 재발)",
+      "chatId": "c-1",
+      "expect": {
+        "engine": {
+          "kind": "claude",
+          "model": "sonnet",
+          "effort": "low",
+          "codexAccount": null
+        },
+        "billing": {
+          "kind": "subscription",
+          "account": "fallback@x.com",
+          "dropEnvKey": false
+        },
+        "cwd": "C:\\Code",
+        "addDirs": [],
+        "mode": "auto",
+        "systemPrompt": null,
+        "outputStyle": "Concise",
+        "tools": {
+          "skillOverrides": {},
+          "deniedMcp": []
+        }
+      },
+      "got": {
+        "engine": {
+          "kind": "claude",
+          "model": "opus",
+          "effort": "high",
+          "codexAccount": null
+        },
+        "billing": {
+          "kind": "subscription",
+          "account": "u0@x.com",
+          "dropEnvKey": false
+        },
+        "cwd": "C:\\Code",
+        "addDirs": [],
+        "mode": "auto",
+        "systemPrompt": null,
+        "outputStyle": "Concise",
+        "tools": {
+          "skillOverrides": {},
+          "deniedMcp": []
+        }
+      }
+    },
+    {
+      "item": "B3. 폴백 이후 저장도 정체성을 되돌린다",
+      "onDisk": "opus",
+      "expect": "haiku"
+    },
+    {
+      "item": "C3b. origin 없는 레코드가 본채팅 목록으로 샜다",
+      "chatId": "w-1"
+    },
+    {
+      "item": "C3c. Rust가 만든 채팅(origin 없음)이 낡은 렌더러 저장 한 번에 삭제됐다",
+      "survived": false,
+      "lostOthers": []
+    },
+    {
+      "item": "C4. ma:save가 페이로드에 없는 세션의 패널 대화를 지웠다",
+      "lost": [
+        {
+          "id": "ma-sess-B-0",
+          "why": "파일 사라짐"
+        }
+      ],
+      "boards": [
+        "default",
+        "sess-A"
+      ]
+    },
+    {
+      "item": "E2. status.json 재구성이 얼려둔 status를 잃는다(전부 idle)",
+      "withFile": {
+        "c-1": "idle",
+        "c-2": "idle",
+        "c-3": "idle",
+        "ma-sess-A-0": "idle",
+        "ma-sess-A-1": "idle",
+        "ma-sess-B-0": "idle",
+        "w-1": "done",
+        "w-2": "done"
+      },
+      "afterDelete": {
+        "c-1": "idle",
+        "c-2": "idle",
+        "c-3": "idle",
+        "ma-sess-A-0": "idle",
+        "ma-sess-A-1": "idle",
+        "ma-sess-B-0": "idle",
+        "w-1": "idle",
+        "w-2": "idle"
+      }
+    },
+    {
+      "item": "E4. chats-v3/index.json이 깨지면 전 대화가 조회에서 사라진다",
+      "filesOnDisk": 10,
+      "statusesSeen": 0,
+      "readChatsNull": true,
+      "aliasChatsNull": true
+    },
+    {
+      "item": "E5. index.json 손상 후 저장 한 번이 chats-v3의 모든 대화 파일을 지웠다",
+      "survivors": [
+        "brand-new.json"
+      ],
+      "wiped": 9
+    },
+    {
+      "item": "F2. 낡은 chats:save가 set-active를 덮었다(activeChat 오배선 창)",
+      "target": "c-2",
+      "immediate": "c-2",
+      "afterStaleSave": "c-1",
+      "overwritten": true
+    }
+  ],
+  "ok": false
+}
