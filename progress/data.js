@@ -1,7 +1,7 @@
 window.PROGRESS = {
-  phase: 'M1 빌더 R1 · M3 PoC 게이트 · 화면 인벤토리 (3갈래 병렬)',
-  note: 'M0 기준 실측 완결(메모리·콜드 스타트·스크롤·스트리밍) · M3 와이어 프로토콜 스펙 확보(실검증 2회) · M1은 app 이식+ccg-store+src-tauri 진행 중',
-  updatedAt: '2026-08-22 13:40',
+  phase: 'M1 메모리 공격(R2~) · M-UI 디자인 리뉴얼 · A/B 하네스 (3갈래 병렬)',
+  note: 'M3 게이트 통과 · M1은 메모리/콜드스타트 목표 미달로 루프 재가동(레버별 기여도 측정 의무) · 사용자 요청으로 디자인 리뉴얼 조각 신설',
+  updatedAt: '2026-08-22 15:10',
   metrics: [
     { name: '유휴 메모리 (프로세스 트리 WS 합)', unit: 'MB', base: 428.1, new: 415.6, target: '≤214', pass: false },
     { name: '유휴 메모리 (Private 합)', unit: 'MB', base: 341.4, new: 351.4, target: '≤171', pass: false },
@@ -22,12 +22,14 @@ window.PROGRESS = {
     { name: 'M6 파일·Git·뷰어', scope: 'fs ops·git 래퍼·HTML 미리보기 스킴·아이콘', state: 'wait' },
     { name: 'M7 LSP', scope: 'TS/Py/C#/C++/Verse 서버 관리·토큰 캐시', state: 'wait' },
     { name: 'M8 멀티 창 표면', scope: '멀티 패널·팝아웃·추가 채팅·btw·토스트·트레이', state: 'wait' },
+    { name: 'M-UI 디자인 리뉴얼', scope: '알림/배너 계열 재설계 · 유리 회색 급변 수정 · 디자인 토큰·모던화 (사용자 요청)', state: 'build', round: 1, critic: '유리 원인 규명 → 디자인 시스템 스펙+목업 → 크리틱이 목업을 눈으로 열어 2.6.2와 대조' },
     { name: 'M9 신기능: MCP/Skill 뷰', scope: '멀티채팅 전용 MCP·Skill 가시화', state: 'wait' },
     { name: 'M10 신기능: 세션 간 협업', scope: '클로드 세션 4개 상호 대화 (stash 설계 부활)', state: 'wait' },
     { name: 'M11 신기능: 한도 자동 전환', scope: '소진 시 초기화 임박순 노는 계정 자동 이어가기', state: 'wait' },
     { name: 'M12 패키징+최종 A/B', scope: 'NSIS 대체 설치본·전 화면 대조·최종 인증', state: 'wait' }
   ],
   log: [
+    { t: '사용자 요구 추가', m: '알림/배너(모델 자동 전환 등) 디자인 정리 · 사이드바 유리가 진한 회색으로 급변하는 문제 수정 · 전반 모던화 — 3.0 완전 리뉴얼로 반영. 유리 원인 가설: 사이드바는 자체 배경 없이 body 틴트로 아크릴을 비추는 구조라 아크릴이 꺼지면 불투명 회색이 드러남' },
     { t: 'M1 R1 실측', m: '경고 — Tauri 유휴 WS 415.6MB(7프로세스)로 Electron 428MB와 거의 동일, Private는 351 vs 341로 악화. Rust 호스트로 번 85MB를 WebView2가 72MB 더 써서 반납. 메모리 전략 문서로 공격 순서 확정' },
     { t: 'M3 게이트', m: '통과 — 승인 왕복/중단 생존/포크/job object 좀비 차단 실증(크리틱이 대조 재실행·교란변수 제거). 남은 위험: 상주 회계 순서 의존성은 미해소' },
     { t: '판정 인프라', m: '화면 인벤토리 161건 완성(73건 CDP 실도달 검증) → 블라인드 A/B 캡처 하네스 제작 중 (좌우 무작위·정답 키 분리)' },
