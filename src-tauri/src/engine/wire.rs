@@ -6,18 +6,34 @@
 //! 모양으로 번역한다. (`docs/design/ux-chat-unify.md` §6.2 — "이벤트는 역방향:
 //! `chat:event`를 옛 렌더러가 구독한 `engine:event`로도 함께 내보낸다".)
 //!
-//! **범위**: 세로 조각(부팅→메시지→스트리밍→승인→완료)이 화면에 그려지는 데 필요한
-//! 프레임만 옮긴다. 안 옮긴 것은 파일 끝 「미배선」에 이름으로 남긴다 — 조용히 빠뜨리지
-//! 않는 것이 규약이다. 미지 프레임은 **아무 이벤트도 내지 않는다**(렌더러는 못 본 것과
-//! 같다). 절대 패닉하지 않는다.
+//! **범위(★R3)**: 계약면의 `EngineEvent` **23종 전부**를 옮긴다. R2까지는 세로 조각
+//! (부팅→메시지→스트리밍→승인→완료)에 필요한 14종뿐이었고 나머지 아홉 칸은 화면이
+//! 비어 있었다 — 할 일 · 변경 파일 · 터미널 · 서브에이전트 · 백그라운드 셸 · 워크플로 ·
+//! 생각 줄 정리 · 오류. 안 옮긴 **필드**는 파일 끝 「미배선」에 이름으로 남긴다 —
+//! 조용히 빠뜨리지 않는 것이 규약이다. 미지 프레임은 **아무 이벤트도 내지 않는다**
+//! (렌더러는 못 본 것과 같다). 절대 패닉하지 않는다.
+//!
+//! **원본**: 2.6.2 `src/main/claude/engine.ts`. 의도적으로 다르게 한 두 곳은 주석에
+//! 이유를 적었다(워크플로 정착 방출 순서 · 깨진 스트림의 `error` vs `notice`).
 
+use super::diff::{self, Baselines, PendingChange};
 use serde_json::{json, Map, Value};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
-/// 도구 한 행의 시작 시각 — `tool-end`의 `durationMs`를 만든다.
+/// 도구 한 행 — `tool-end`의 `durationMs`와 **보류된 파일 변경**을 들고 있다.
 struct ToolRow {
     verb: String,
+    name: String,
     started_ms: u64,
+    /// `Write`/`Edit`/`MultiEdit`가 **성공하면** 그때 `file-change`로 나갈 값.
+    pending: Option<PendingChange>,
+}
+
+/// 할 일 한 줄(`TaskCreate`/`TaskUpdate` 누적본). 삽입 순서가 표시 순서라 `Vec`다.
+struct TodoRow {
+    id: String,
+    label: String,
+    status: &'static str,
 }
 
 #[derive(Default)]
@@ -40,6 +56,37 @@ pub struct Wire {
     /// 폴백 확인 다이얼로그를 **질문 카드로** 그렸을 때의 `request_id` → 수락 선택지 라벨.
     /// 2.6.2 렌더러에는 다이얼로그 카드가 없다 — 질문 카드가 그 자리다(`engine.ts:930-1019`).
     dialogs: BTreeMap<String, DialogCard>,
+
+    // ── R3에서 채운 자리 ────────────────────────────────────────────────────
+    /// `system/init`의 `cwd` — 상대 경로 표시와 백그라운드 출력 파일 유도에 쓴다.
+    cwd: String,
+    session_id: String,
+    /// 이 런의 파일 기준선(누적 diff의 좌변).
+    baselines: Baselines,
+    /// 생각 줄이 열려 있나 — 답변 텍스트가 오면 `thinking-clear`로 닫는다.
+    thinking_open: bool,
+    /// 이 assistant 메시지에서 델타가 흘렀나(완성 프레임의 중복 생각 줄 방지).
+    streamed_this_msg: bool,
+    /// 살아 있는(스폰을 목격한) 서브에이전트 `tool_use_id`.
+    subagents: BTreeSet<String>,
+    /// 서브에이전트가 보고한 실행 모델 표시명 — **값이 바뀔 때만** 부분 업데이트.
+    subagent_models: BTreeMap<String, String>,
+    /// `TodoWrite`가 아니라 `TaskCreate`/`TaskUpdate` 계열이 채우는 누적 할 일.
+    todos: Vec<TodoRow>,
+    task_seq: u64,
+    /// 살아 있는 백그라운드 **셸**(`bg-tasks` 목록에 실리는 것) · 에이전트 · 워크플로.
+    live_bg: BTreeSet<String>,
+    live_bg_agents: BTreeSet<String>,
+    live_workflows: BTreeSet<String>,
+    /// 한 번이라도 워크플로였던 task_id — 정착 통지는 목록에서 빠진 **뒤에** 온다.
+    wf_ids: BTreeSet<String>,
+    wf_snaps: BTreeMap<String, Value>,
+    /// `task_started`의 `tool_use_id → task_id`(백그라운드 접수증 판별).
+    task_by_tool_use: BTreeMap<String, String>,
+    /// 사용자가 중지 버튼으로 끊은 작업 — 정착 통지의 표기를 가른다(`byUser`).
+    user_bg_stops: BTreeSet<String>,
+    /// `result`를 본 뒤인가 — 이후의 `stopped`는 사용자 중지가 아니라 CLI 정리다.
+    turn_ended: bool,
 }
 
 /// 폴백 확인 카드 1건 — 답을 `{behavior:…}`로 되옮기는 데 필요한 최소값.
@@ -60,6 +107,81 @@ fn s(v: &Value, k: &str) -> Option<String> {
     v.get(k).and_then(Value::as_str).map(str::to_string)
 }
 
+/// 공백을 접고 `max`자에서 자른다(2.6.2 `oneLine`).
+fn one_line(v: &str, max: usize) -> String {
+    let t = v.split_whitespace().collect::<Vec<_>>().join(" ");
+    if t.chars().count() > max {
+        t.chars().take(max.saturating_sub(1)).collect::<String>() + "…"
+    } else {
+        t
+    }
+}
+
+/// 모델 원시 id → 표시명(`claude-opus-5-1` → `Opus 5.1`). 워크플로 에이전트 칩과
+/// 서브에이전트 카드가 같은 문자열을 쓴다.
+fn model_display(id: &str) -> String {
+    let lower = id.to_ascii_lowercase();
+    let Some(rest) = lower.strip_prefix("claude-") else {
+        return id.to_string();
+    };
+    let mut it = rest.split('-');
+    let fam = it.next().unwrap_or("");
+    if !matches!(fam, "fable" | "opus" | "sonnet" | "haiku") {
+        return id.to_string();
+    }
+    let Some(major) = it.next().filter(|m| m.chars().all(|c| c.is_ascii_digit()) && !m.is_empty()) else {
+        return id.to_string();
+    };
+    let minor = it.next().filter(|m| m.len() <= 2 && !m.is_empty() && m.chars().all(|c| c.is_ascii_digit()));
+    let mut fam_disp = fam.to_string();
+    fam_disp[..1].make_ascii_uppercase();
+    match minor {
+        Some(m) => format!("{fam_disp} {major}.{m}"),
+        None => format!("{fam_disp} {major}"),
+    }
+}
+
+/// SDK 원시 상태값 → `TodoStatus`.
+fn todo_status(v: &str) -> &'static str {
+    match v {
+        "completed" | "done" => "done",
+        "in_progress" | "running" => "running",
+        _ => "pending",
+    }
+}
+
+/// 서브에이전트 결과에서 SDK가 붙이는 `agentId: …` 꼬리를 떼어 낸다(재개용 배관이지 답이 아니다).
+fn agent_result(text: &str) -> String {
+    let lower = text.to_ascii_lowercase();
+    match lower.find("agentid:") {
+        Some(i) => text[..i].trim_end().to_string(),
+        None => text.trim().to_string(),
+    }
+}
+
+/// 백그라운드 작업의 **라이브 출력 파일 후보**(CLI 실측 규칙).
+/// `%TEMP%\claude\<cwd의 영숫자 외→'-'>\<session>\tasks\<task_id>.output`.
+/// 종료 통지가 실제 경로를 실어 오면 렌더러가 그것으로 덮는다.
+fn bg_output_file(cwd: &str, session: &str, task_id: &str) -> Option<String> {
+    if session.is_empty() {
+        return None;
+    }
+    let slug: String = cwd
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+        .collect();
+    Some(
+        std::env::temp_dir()
+            .join("claude")
+            .join(slug)
+            .join(session)
+            .join("tasks")
+            .join(format!("{task_id}.output"))
+            .to_string_lossy()
+            .to_string(),
+    )
+}
+
 /// 도구 이름 → (표시 동사, `ToolKind`). 2.6.2 `toolLabel` 파리티의 축소판.
 fn tool_label(name: &str) -> (String, &'static str) {
     match name {
@@ -73,6 +195,23 @@ fn tool_label(name: &str) -> (String, &'static str) {
         "TodoWrite" => ("Todo".into(), "other"),
         n if n.starts_with("mcp__") => (n.to_string(), "mcp"),
         n => (n.to_string(), "other"),
+    }
+}
+
+/// 패널을 먹이는 도구 — 도구 행(로그)을 만들지 않는다.
+const TASK_TOOLS: [&str; 5] = ["TodoWrite", "TaskCreate", "TaskUpdate", "TaskList", "Task"];
+
+/// 도구 인자가 스트리밍되는 동안(도구 행이 아직 없는 구간) 표시할 라벨.
+fn tool_gen_label(name: &str) -> &'static str {
+    match tool_label(name).1 {
+        "read" => "파일 읽는 중",
+        "search" => "검색하는 중",
+        "write" => "파일 작성 중",
+        "edit" => "파일 수정 중",
+        "bash" => "명령 실행 중",
+        "task" => "서브에이전트 실행 중",
+        "web" => "웹 검색 중",
+        _ => "도구 실행 중",
     }
 }
 
@@ -98,7 +237,17 @@ impl Wire {
         self.cur_msg = None;
         self.said_working = false;
         self.saw_result = false;
+        self.thinking_open = false;
+        self.streamed_this_msg = false;
+        self.turn_ended = false;
+        // 파일 기준선은 **런 단위**다 — 새 턴은 지금 디스크를 다시 기준으로 잡는다.
+        self.baselines.clear();
         json!({ "type": "status", "runId": run_id, "status": "analyzing" })
+    }
+
+    /// 사용자가 중지 버튼으로 끊은 백그라운드 작업 — 정착 통지의 `byUser` 표식.
+    pub fn note_user_bg_stop(&mut self, id: &str) {
+        self.user_bg_stops.insert(id.to_string());
     }
 
     /// 이 `request_id`가 **다이얼로그를 질문 카드로 그린 것**인가 — 응답 번역에 쓴다.
@@ -137,10 +286,21 @@ impl Wire {
         } else {
             String::new()
         };
-        let mut out = vec![json!({
-            "type": "notice", "runId": run,
-            "text": format!("{why}{tail}. 다시 보내면 새 프로세스로 이어집니다.")
-        })];
+        // ★ **고아 알약 금지** — 스트림이 닫히면 CLI 프로세스도 죽으므로 워크플로·백그라운드
+        //   셸·서브에이전트는 **전부** 죽는다. 통지가 못 온 것들을 여기서 손수 정착시키지
+        //   않으면 알약이 도는 채로 화면에 남는다(m-logic P8의 백그라운드 판). 2.6.2도
+        //   런 루프 teardown에서 같은 셋을 냈다(`engine.ts:1826-1860`).
+        let mut out = self.settle_all_background(true);
+        // ★ `spawn_failed`·`crash`는 "끝난 것"이 아니라 "깨진 것"이다 — 2.6.2는 그 경로에서
+        //   안내(notice)가 아니라 **오류 말풍선**(`error`)을 냈다(`engine.ts:1796`). 같게 간다.
+        //   나머지 사유(외부 kill·정상 종료·유휴 회수·하드 취소)는 안내 한 줄 그대로다.
+        let broke = matches!(cause, "spawn_failed" | "crash");
+        out.push(if broke {
+            json!({ "type": "error", "runId": run, "message": format!("{why}{tail}.") })
+        } else {
+            json!({ "type": "notice", "runId": run,
+                    "text": format!("{why}{tail}. 다시 보내면 새 프로세스로 이어집니다.") })
+        });
         if !self.saw_result {
             // ★ 결과 없는 종료. `isError:true`로 두는 이유: 이 턴은 **끝난 게 아니라
             //   끊긴 것**이고, 렌더러의 명령 카드 정착 경로도 `isError`를 본다.
@@ -149,7 +309,10 @@ impl Wire {
             out.push(json!({
                 "type": "result", "runId": run,
                 "isError": true,
-                "text": format!("{why} — 이 턴은 완료되지 않았습니다."),
+                // 깨진 경로는 위의 `error`가 이미 빨간 말풍선을 세웠다 — 여기서 텍스트를
+                // 또 실으면 같은 사유가 두 벌 뜬다(`session.ts:1000` `rerr…`). 합성 result
+                // 자체는 여전히 필요하다: 카드 해제·스피너 정착·컴포저 해제가 여기 달려 있다.
+                "text": if broke { String::new() } else { format!("{why} — 이 턴은 완료되지 않았습니다.") },
                 "costUsd": Value::Null,
                 "durationMs": Value::Null,
                 "numTurns": Value::Null,
@@ -161,6 +324,52 @@ impl Wire {
         self.dialogs.clear();
         self.questions.clear();
         self.tools.clear();
+        self.baselines.clear();
+        out
+    }
+
+    /// **살아 있는 백그라운드 표시를 전부 정착시킨다.**
+    ///
+    /// 스트림이 닫히면(정상 종료·취소·급사 어느 쪽이든) CLI 프로세스와 함께 그 안에서
+    /// 돌던 워크플로 · 백그라운드 셸 · 서브에이전트가 **전부** 죽는다. 통지를 못 받은
+    /// 것들이 남으면 화면에는 영원히 도는 알약이 뜬다 — 그게 이 함수가 막는 것이다.
+    ///
+    /// `at_turn_end`는 표시 문구를 가른다(사용자가 중지한 것이 아니라 CLI 정리다).
+    fn settle_all_background(&mut self, at_turn_end: bool) -> Vec<Value> {
+        let run = self.run_id.clone();
+        let mut out = vec![];
+        for (id, snap) in std::mem::take(&mut self.wf_snaps) {
+            if snap.get("status").and_then(Value::as_str) == Some("running") {
+                let mut wf = snap;
+                if let Some(o) = wf.as_object_mut() {
+                    o.insert("status".into(), json!("stopped"));
+                }
+                out.push(json!({ "type": "workflow", "runId": run, "wf": wf }));
+            }
+            self.wf_ids.remove(&id);
+        }
+        for id in std::mem::take(&mut self.live_bg) {
+            out.push(json!({
+                "type": "bg-task-end", "runId": run, "id": id,
+                "status": "stopped", "atTurnEnd": at_turn_end
+            }));
+        }
+        if !out.is_empty() || !self.live_bg_agents.is_empty() {
+            out.push(json!({ "type": "bg-tasks", "runId": run, "tasks": [] }));
+        }
+        for id in std::mem::take(&mut self.subagents) {
+            let dur = self.tools.get(&id).map(|r| now_ms().saturating_sub(r.started_ms));
+            out.push(json!({
+                "type": "subagent", "runId": run,
+                "agent": { "id": id, "name": "", "role": "", "status": "done",
+                           "activity": "턴 종료로 정리됨", "tools": [], "durationMs": dur }
+            }));
+        }
+        self.live_workflows.clear();
+        self.live_bg_agents.clear();
+        self.subagent_models.clear();
+        self.task_by_tool_use.clear();
+        self.user_bg_stops.clear();
         out
     }
 
@@ -176,15 +385,276 @@ impl Wire {
         }
     }
 
+    /// `tool_use` 블록 1개 → 이벤트들. **패널을 먹이는 도구는 도구 행을 만들지 않는다**
+    /// (2.6.2 `handleToolUse` 규약): `Task`/`Agent` → 서브에이전트 카드,
+    /// `TodoWrite`/`Task*` → 할 일 패널, 나머지 → 도구 행(+ Bash면 터미널 줄,
+    /// Write/Edit면 **보류된** 파일 변경).
+    fn tool_start(&mut self, b: &Value, parent: Option<&str>) -> Vec<Value> {
+        let run = self.run_id.clone();
+        let mut out = vec![];
+        let id = s(b, "id").unwrap_or_default();
+        let name = s(b, "name").unwrap_or_default();
+        let input = b.get("input").cloned().unwrap_or(json!({}));
+        if id.is_empty() || name.is_empty() {
+            return out;
+        }
+        // 질문 카드는 도구 행이 아니다(`control_request`가 카드로 그린다).
+        if name == "AskUserQuestion" {
+            return out;
+        }
+
+        // ── 서브에이전트 스폰 ────────────────────────────────────────────────
+        if name == "Task" || name == "Agent" {
+            let sub_type = input
+                .get("subagent_type")
+                .and_then(Value::as_str)
+                .or_else(|| input.get("description").and_then(Value::as_str))
+                .unwrap_or("agent")
+                .to_string();
+            let desc = input
+                .get("description")
+                .and_then(Value::as_str)
+                .or_else(|| input.get("prompt").and_then(Value::as_str))
+                .unwrap_or("")
+                .to_string();
+            self.tools.insert(
+                id.clone(),
+                ToolRow { verb: "Task".into(), name: name.clone(), started_ms: now_ms(), pending: None },
+            );
+            self.subagents.insert(id.clone());
+            let role = one_line(&desc, 40);
+            let act = one_line(&desc, 200);
+            out.push(json!({
+                "type": "subagent", "runId": run,
+                "agent": {
+                    "id": id, "name": sub_type,
+                    "role": if role.is_empty() { "서브에이전트".to_string() } else { role },
+                    "status": "running",
+                    "activity": if act.is_empty() { "작업 중".to_string() } else { act },
+                    "tools": []
+                }
+            }));
+            return out;
+        }
+
+        // ── 할 일 패널 ──────────────────────────────────────────────────────
+        if name == "TodoWrite" {
+            let rows: Vec<Value> = input
+                .get("todos")
+                .and_then(Value::as_array)
+                .map(|a| {
+                    a.iter()
+                        .enumerate()
+                        .map(|(i, t)| {
+                            json!({
+                                "id": (i + 1).to_string(),
+                                "label": t.get("content").and_then(Value::as_str)
+                                    .or_else(|| t.get("activeForm").and_then(Value::as_str)).unwrap_or(""),
+                                "status": todo_status(t.get("status").and_then(Value::as_str).unwrap_or("pending")),
+                            })
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            out.push(json!({ "type": "todos", "runId": run, "todos": rows }));
+            return out;
+        }
+        if matches!(name.as_str(), "TaskCreate" | "TaskUpdate" | "TaskList") {
+            // id는 우리가 생성 순서로 발급한다 — 입력에는 없고, SDK의 세션 내 번호와 같은 규칙이다.
+            if name == "TaskCreate" {
+                let subject = input
+                    .get("subject")
+                    .and_then(Value::as_str)
+                    .or_else(|| input.get("description").and_then(Value::as_str))
+                    .unwrap_or("")
+                    .trim()
+                    .to_string();
+                if !subject.is_empty() {
+                    self.task_seq += 1;
+                    self.todos.push(TodoRow {
+                        id: self.task_seq.to_string(),
+                        label: subject,
+                        status: "pending",
+                    });
+                }
+            } else if name == "TaskUpdate" {
+                let tid = input.get("taskId").and_then(Value::as_str).unwrap_or("").to_string();
+                let st = input.get("status").and_then(Value::as_str).unwrap_or("");
+                if st == "deleted" {
+                    self.todos.retain(|t| t.id != tid);
+                } else if let Some(row) = self.todos.iter_mut().find(|t| t.id == tid) {
+                    if !st.is_empty() {
+                        row.status = todo_status(st);
+                    }
+                    if let Some(sj) = input.get("subject").and_then(Value::as_str) {
+                        row.label = sj.to_string();
+                    }
+                }
+            }
+            let rows: Vec<Value> = self
+                .todos
+                .iter()
+                .map(|t| json!({ "id": t.id, "label": t.label, "status": t.status }))
+                .collect();
+            out.push(json!({ "type": "todos", "runId": run, "todos": rows }));
+            return out;
+        }
+
+        // ── 보통 도구 행 ────────────────────────────────────────────────────
+        let (verb, kind) = tool_label(&name);
+        let target = tool_target(&input);
+        let mut row = ToolRow { verb: verb.clone(), name: name.clone(), started_ms: now_ms(), pending: None };
+        let mut tool = Map::new();
+        tool.insert("id".into(), json!(id));
+        tool.insert("verb".into(), json!(verb));
+        tool.insert("kind".into(), json!(kind));
+        tool.insert("target".into(), json!(target));
+        tool.insert("status".into(), json!("running"));
+        if let Some(p) = parent.filter(|p| !p.is_empty()) {
+            tool.insert("parentToolId".into(), json!(p));
+        }
+        out.push(json!({ "type": "tool-start", "runId": run, "tool": Value::Object(tool) }));
+
+        if name == "Bash" {
+            // 명령은 **즉시** 보여 준다. 출력은 tool_result가 온 뒤다.
+            let cmd = input.get("command").and_then(Value::as_str).unwrap_or("");
+            if !cmd.is_empty() {
+                out.push(json!({ "type": "terminal", "runId": run,
+                                 "line": { "type": "cmd", "text": cmd } }));
+            }
+        } else if matches!(name.as_str(), "Write" | "Edit" | "MultiEdit") {
+            // 디프는 **성공한 뒤에** 낸다 — 거부·실패한 편집이 유령 diff를 남기지 않게.
+            row.pending = diff::build_pending(&mut self.baselines, &name, &input, &self.cwd);
+        }
+        self.tools.insert(id, row);
+        out
+    }
+
+    /// `tool_result` 블록 1개 → 이벤트들(서브에이전트 완료 · 파일 변경 · 터미널 · 도구 행 종료).
+    fn tool_end(&mut self, b: &Value) -> Vec<Value> {
+        let run = self.run_id.clone();
+        let mut out = vec![];
+        let id = s(b, "tool_use_id").unwrap_or_default();
+        let is_err = b.get("is_error").and_then(Value::as_bool).unwrap_or(false);
+        let content = match &b["content"] {
+            Value::String(t) => t.clone(),
+            Value::Array(a) => a
+                .iter()
+                .filter_map(|x| x.get("text").and_then(Value::as_str))
+                .collect::<Vec<_>>()
+                .join("\n"),
+            _ => String::new(),
+        };
+
+        // ── 서브에이전트 종료 ────────────────────────────────────────────────
+        if self.subagents.contains(&id) {
+            // 백그라운드로 돌린 서브에이전트의 tool_result는 "백그라운드로 시작됨"
+            // **접수증**이다 — 완료가 아니다. 판정: 그 작업이 아직 살아 있으면 접수증.
+            let low = content.to_ascii_lowercase();
+            let receipt = !is_err
+                && (self.task_by_tool_use.contains_key(&id)
+                    || low.contains("running in background")
+                    || low.contains("backgrounded")
+                    || low.contains("async agent launched"));
+            if receipt {
+                out.push(json!({
+                    "type": "subagent", "runId": run,
+                    "agent": { "id": id, "name": "", "role": "", "status": "running",
+                               "activity": "백그라운드에서 진행 중", "tools": [] }
+                }));
+                return out;
+            }
+            self.subagents.remove(&id);
+            let dur = self.tools.get(&id).map(|r| now_ms().saturating_sub(r.started_ms));
+            let act = agent_result(&content);
+            out.push(json!({
+                "type": "subagent", "runId": run,
+                "agent": { "id": id, "name": "", "role": "", "status": "done",
+                           "activity": if act.is_empty() { "완료".to_string() } else { act },
+                           "tools": [], "durationMs": dur }
+            }));
+            return out;
+        }
+
+        let row = self.tools.remove(&id);
+        let dur = row.as_ref().map(|r| now_ms().saturating_sub(r.started_ms));
+
+        // ── 파일 변경 — 편집이 **실제로 성공한 뒤**에만 ───────────────────────
+        if let Some(p) = row.as_ref().and_then(|r| r.pending.as_ref()) {
+            if !is_err {
+                out.push(json!({
+                    "type": "file-change", "runId": run,
+                    "file": p.file, "diff": p.diff, "whole": p.whole
+                }));
+            }
+        }
+
+        // ── 터미널 줄 ────────────────────────────────────────────────────────
+        if row.as_ref().is_some_and(|r| r.name == "Bash") {
+            for ln in content.lines().take(200) {
+                if !ln.trim().is_empty() {
+                    out.push(json!({ "type": "terminal", "runId": run,
+                                     "line": { "type": if is_err { "err" } else { "out" }, "text": ln } }));
+                }
+            }
+            if !is_err {
+                out.push(json!({ "type": "terminal", "runId": run,
+                                 "line": { "type": "ok", "text": "✓ 완료" } }));
+            }
+        }
+
+        // 패널을 먹이는 도구(TodoWrite·Task*)는 도구 행이 없으므로 종료 행도 없다.
+        if row.as_ref().is_some_and(|r| TASK_TOOLS.contains(&r.name.as_str())) {
+            return out;
+        }
+
+        let tail: String = if content.chars().count() > 4000 {
+            content.chars().skip(content.chars().count() - 4000).collect()
+        } else {
+            content
+        };
+        let mut e = Map::new();
+        e.insert("type".into(), json!("tool-end"));
+        e.insert("runId".into(), json!(run));
+        e.insert("id".into(), json!(id));
+        e.insert("status".into(), json!(if is_err { "error" } else { "done" }));
+        // 편집 행의 요약은 +N −N이다(누적이 아니라 이 도구 한 번의 값 — `file.add/del`).
+        if let Some(p) = row.as_ref().and_then(|r| r.pending.as_ref()).filter(|_| !is_err) {
+            let (a, d) = (p.file["add"].as_u64().unwrap_or(0), p.file["del"].as_u64().unwrap_or(0));
+            e.insert(
+                "result".into(),
+                json!(if p.file["tag"] == "new" { format!("새 파일 +{a}") } else { format!("+{a} −{d}") }),
+            );
+        } else if !tail.is_empty() {
+            let one = tail.replace(['\r', '\n'], " ");
+            let short: String = one.chars().take(160).collect();
+            e.insert("result".into(), json!(short));
+            if row.as_ref().is_some_and(|r| r.verb == "Bash") {
+                e.insert("output".into(), json!(tail));
+            }
+        }
+        if let Some(d) = dur {
+            e.insert("durationMs".into(), json!(d));
+        }
+        out.push(Value::Object(e));
+        out
+    }
+
     /// 프레임 1개 → `EngineEvent` 0..N개.
     pub fn translate(&mut self, f: &Value) -> Vec<Value> {
         let mut out: Vec<Value> = vec![];
         let ty = f.get("type").and_then(Value::as_str).unwrap_or("");
         let sub = f.get("subtype").and_then(Value::as_str).unwrap_or("");
         let run = self.run_id.clone();
-        // 사이드체인(서브에이전트 내부)은 본 스레드에 섞지 않는다 — 2.6.2도 분리해
-        // 그렸다(메모리 「사이드체인 모델 프레임」). 이번 라운드는 **버린다**(미배선).
-        let sidechain = f.get("parent_tool_use_id").map(|x| !x.is_null()).unwrap_or(false);
+        // **사이드체인 조기 분리**(메모리 「사이드체인 모델 프레임 + 폴백 확인 카드」).
+        // 서브에이전트는 자기 정의대로 메인과 다른 모델로 돈다(Fable 메인 아래 Explore=Opus).
+        // 그 프레임을 메인 경로에 태우면 ① 모델 전환 배너가 인터리브마다 핑퐁으로 도배되고
+        // ② usage가 서브에이전트 컨텍스트라 게이지가 오염되고 ③ 내레이션이 메인 말풍선에
+        // 섞이고 ④ `cur_msg`가 중간에 리셋돼 말풍선이 쪼개진다. 그래서 **가장 먼저** 가른다.
+        // `subagent_type`도 함께 보는 이유: 부모 id 없이 종류만 실려 오는 판이 있다.
+        let sidechain = f.get("parent_tool_use_id").map(|x| !x.is_null()).unwrap_or(false)
+            || f.get("subagent_type").map(|x| !x.is_null()).unwrap_or(false);
+        let parent = s(f, "parent_tool_use_id");
 
         match ty {
             "system" if sub == "init" => {
@@ -192,6 +662,8 @@ impl Wire {
                     .get("apiKeySource")
                     .and_then(Value::as_str)
                     .is_some_and(|v| !v.is_empty() && v != "none");
+                self.cwd = s(f, "cwd").unwrap_or_default();
+                self.session_id = s(f, "session_id").unwrap_or_default();
                 out.push(json!({
                     "type": "session",
                     "runId": run,
@@ -216,13 +688,186 @@ impl Wire {
                     "afterTokens": Value::Null,
                 }));
             }
+            // ── 백그라운드 작업 REPLACE ─────────────────────────────────────
+            //
+            // **순서 규약**: 이 프레임은 *살아 있는 목록 전체*다(레벨 신호). 목록에서
+            // 빠진 항목은 렌더러가 곧바로 "끝난 것"으로 접고, **상세는 뒤따르는
+            // `bg-task-end`가 채운다**(`protocol.ts:409-415`). 그래서 우리는 프레임
+            // 도착 순서를 그대로 지키기만 하면 된다 — REPLACE 먼저, 정착 통지 나중.
+            // 목록에 워크플로·백그라운드 서브에이전트도 섞여 오지만 `bg-tasks`에는
+            // **셸 계열만** 싣는다(칩 이름값대로 — 나머지는 각자 전용 표시가 있다).
+            "system" if sub == "background_tasks_changed" => {
+                let empty = vec![];
+                let all = f.get("tasks").and_then(Value::as_array).unwrap_or(&empty);
+                self.live_workflows.clear();
+                self.live_bg_agents.clear();
+                let mut shells: Vec<Value> = vec![];
+                let mut next_shell = BTreeSet::new();
+                for t in all {
+                    let Some(id) = t.get("task_id").and_then(Value::as_str) else { continue };
+                    let kind = t.get("task_type").and_then(Value::as_str).unwrap_or("");
+                    let low = kind.to_ascii_lowercase();
+                    if low.contains("workflow") {
+                        self.live_workflows.insert(id.to_string());
+                        self.wf_ids.insert(id.to_string());
+                    } else if low.contains("bash") || low.contains("shell") {
+                        next_shell.insert(id.to_string());
+                        shells.push(json!({
+                            "id": id, "kind": kind,
+                            "description": t.get("description").and_then(Value::as_str).unwrap_or(""),
+                            "outputFile": bg_output_file(&self.cwd, &self.session_id, id),
+                        }));
+                    } else {
+                        self.live_bg_agents.insert(id.to_string());
+                    }
+                }
+                self.live_bg = next_shell;
+                out.push(json!({ "type": "bg-tasks", "runId": run, "tasks": shells }));
+            }
+            // 워크플로 진행 — `workflow_progress`가 실린 `task_progress`만 보드가 된다.
+            // 배열엔 phase와 agent가 섞여 오고 **매번 전체 스냅샷**이라 REPLACE로 흘린다.
+            "system" if sub == "task_progress" => {
+                let Some(task_id) = s(f, "task_id") else { return out };
+                let empty = vec![];
+                let wp = f.get("workflow_progress").and_then(Value::as_array).unwrap_or(&empty);
+                if wp.is_empty() {
+                    return out; // 그냥 하트비트다 — 표시할 것이 없다(상태기계가 리스만 재장전).
+                }
+                let mut phases: Vec<Value> = vec![];
+                let mut agents: Vec<Value> = vec![];
+                for e in wp {
+                    match e.get("type").and_then(Value::as_str) {
+                        Some("workflow_phase") => phases.push(json!({
+                            "index": e.get("index").and_then(Value::as_u64).unwrap_or(0),
+                            "title": e.get("title").and_then(Value::as_str).unwrap_or(""),
+                        })),
+                        Some("workflow_agent") => {
+                            let state = e.get("state").and_then(Value::as_str).unwrap_or("").to_string();
+                            let note_src = if state == "done" { "resultPreview" } else { "promptPreview" };
+                            let note = one_line(e.get(note_src).and_then(Value::as_str).unwrap_or(""), 140);
+                            let mut m = Map::new();
+                            m.insert("label".into(), json!(e.get("label").and_then(Value::as_str).unwrap_or("")));
+                            m.insert("phase".into(), json!(e.get("phaseIndex").and_then(Value::as_u64).unwrap_or(0)));
+                            m.insert("phaseTitle".into(), json!(e.get("phaseTitle").and_then(Value::as_str).unwrap_or("")));
+                            m.insert("model".into(), json!(model_display(e.get("model").and_then(Value::as_str).unwrap_or(""))));
+                            m.insert("state".into(), json!(state));
+                            for k in ["tokens", "toolCalls", "durationMs"] {
+                                if let Some(v) = e.get(k).and_then(Value::as_u64) {
+                                    m.insert(k.into(), json!(v));
+                                }
+                            }
+                            if !note.is_empty() {
+                                m.insert("note".into(), json!(note));
+                            }
+                            agents.push(Value::Object(m));
+                        }
+                        _ => {}
+                    }
+                }
+                let prev = self
+                    .wf_snaps
+                    .get(&task_id)
+                    .and_then(|w| w.get("summary").and_then(Value::as_str))
+                    .unwrap_or("")
+                    .to_string();
+                let summary = s(f, "summary").map(|x| x.trim().to_string()).filter(|x| !x.is_empty()).unwrap_or(prev);
+                let u = &f["usage"];
+                let wf = json!({
+                    "id": task_id, "summary": summary, "status": "running",
+                    "phases": phases, "agents": agents,
+                    "totalTokens": u["total_tokens"].as_u64().unwrap_or(0),
+                    "toolUses": u["tool_uses"].as_u64().unwrap_or(0),
+                    "durationMs": u["duration_ms"].as_u64().unwrap_or(0),
+                });
+                self.wf_snaps.insert(task_id.clone(), wf.clone());
+                self.wf_ids.insert(task_id);
+                out.push(json!({ "type": "workflow", "runId": run, "wf": wf }));
+            }
+            // 작업 시작 북엔드 — `tool_use ↔ task` 매핑(백그라운드 접수증 판별에 쓴다).
+            "system" if sub == "task_started" => {
+                if let (Some(tu), Some(tid)) = (s(f, "tool_use_id"), s(f, "task_id")) {
+                    self.task_by_tool_use.insert(tu, tid);
+                }
+            }
+            // 정착 통지 — 워크플로 마감 · `bg-task-end` · 백그라운드 서브에이전트 완료.
+            "system" if sub == "task_notification" => {
+                let Some(task_id) = s(f, "task_id") else { return out };
+                let st = f.get("status").and_then(Value::as_str).unwrap_or("");
+                if !matches!(st, "completed" | "failed" | "stopped") {
+                    return out;
+                }
+                let by_user = self.user_bg_stops.remove(&task_id);
+                let summary = s(f, "summary").map(|x| x.trim().to_string()).filter(|x| !x.is_empty());
+                // 워크플로는 bg 목록에서 **이미 빠진 뒤**에 통지가 온다 → `wf_ids`로 판별.
+                if self.wf_ids.contains(&task_id) {
+                    self.live_workflows.remove(&task_id);
+                    if let Some(snap) = self.wf_snaps.get_mut(&task_id) {
+                        if snap.get("status").and_then(Value::as_str) == Some("running") {
+                            if let Some(o) = snap.as_object_mut() {
+                                o.insert("status".into(), json!(st));
+                                if o.get("summary").and_then(Value::as_str).unwrap_or("").is_empty() {
+                                    o.insert("summary".into(), json!(summary.clone().unwrap_or_default()));
+                                }
+                            }
+                            out.push(json!({ "type": "workflow", "runId": run, "wf": snap.clone() }));
+                        }
+                    }
+                }
+                self.live_bg.remove(&task_id);
+                self.live_bg_agents.remove(&task_id);
+                let mut e = Map::new();
+                e.insert("type".into(), json!("bg-task-end"));
+                e.insert("runId".into(), json!(run));
+                e.insert("id".into(), json!(task_id));
+                e.insert("status".into(), json!(st));
+                if let Some(x) = &summary {
+                    e.insert("summary".into(), json!(x));
+                }
+                if let Some(x) = s(f, "output_file") {
+                    e.insert("outputFile".into(), json!(x));
+                }
+                e.insert("atTurnEnd".into(), json!(self.turn_ended));
+                if by_user {
+                    e.insert("byUser".into(), json!(true));
+                }
+                out.push(Value::Object(e));
+                // 백그라운드 서브에이전트의 **진짜** 완료. Task의 tool_result는 "백그라운드로
+                // 시작됨" 접수증이라 카드가 일찍 done이 되면 안 된다(아래 tool_result 분기가
+                // 그 경우 running을 유지한다) — 완료는 이 통지가 맡는다.
+                if let Some(tu) = s(f, "tool_use_id") {
+                    if self.subagents.remove(&tu) {
+                        let label = match st {
+                            "completed" => "완료",
+                            "stopped" if self.turn_ended => "턴 종료로 정리됨",
+                            "stopped" => "중지됨",
+                            _ => "실패",
+                        };
+                        let dur = self.tools.get(&tu).map(|r| now_ms().saturating_sub(r.started_ms));
+                        out.push(json!({
+                            "type": "subagent", "runId": run,
+                            "agent": { "id": tu, "name": "", "role": "", "status": "done",
+                                       "activity": summary.unwrap_or_else(|| label.to_string()),
+                                       "tools": [], "durationMs": dur }
+                        }));
+                    }
+                    self.task_by_tool_use.remove(&tu);
+                }
+            }
             "stream_event" if !sidechain => {
                 let ev = &f["event"];
                 match ev.get("type").and_then(Value::as_str).unwrap_or("") {
                     "content_block_start" => {
-                        if ev["content_block"]["type"] == "text" {
+                        let cb = &ev["content_block"];
+                        if cb["type"] == "text" {
                             let id = self.next_msg_id();
                             self.cur_msg = Some(id);
+                        } else if cb["type"] == "tool_use" && !self.thinking_open {
+                            // 도구 인자가 스트리밍되는 동안(Write면 파일 본문 전체)에는 답변
+                            // 텍스트도 도구 행도 없어 화면이 멈춘 것처럼 보인다. 그 구간을
+                            // 도구별 라벨로 채운다. `thinking_open`은 **건드리지 않는다** —
+                            // 완성 프레임에서 clear가 안 나야 1프레임 깜빡임이 없다.
+                            let name = cb.get("name").and_then(Value::as_str).unwrap_or("");
+                            out.push(json!({ "type": "thinking", "runId": run, "text": tool_gen_label(name) }));
                         }
                     }
                     "content_block_delta" => {
@@ -231,6 +876,11 @@ impl Wire {
                             "text_delta" => {
                                 let delta = d.get("text").and_then(Value::as_str).unwrap_or("");
                                 if !delta.is_empty() {
+                                    // 답변이 시작됐다 = 생각 줄은 끝났다.
+                                    if self.thinking_open {
+                                        self.thinking_open = false;
+                                        out.push(json!({ "type": "thinking-clear", "runId": run }));
+                                    }
                                     let id = match &self.cur_msg {
                                         Some(i) => i.clone(),
                                         None => {
@@ -239,6 +889,7 @@ impl Wire {
                                             i
                                         }
                                     };
+                                    self.streamed_this_msg = true;
                                     self.working(&mut out);
                                     out.push(json!({
                                         "type": "assistant-stream", "runId": run,
@@ -249,7 +900,9 @@ impl Wire {
                             "thinking_delta" => {
                                 let t = d.get("thinking").and_then(Value::as_str).unwrap_or("");
                                 if !t.is_empty() {
-                                    out.push(json!({ "type": "thinking", "runId": run, "text": t }));
+                                    self.thinking_open = true;
+                                    self.streamed_this_msg = true;
+                                    out.push(json!({ "type": "thinking", "runId": run, "text": one_line(t, 90) }));
                                 }
                             }
                             _ => {}
@@ -258,34 +911,84 @@ impl Wire {
                     _ => {}
                 }
             }
+            // ── 사이드체인(서브에이전트 내부) — **카드의 activity 한 줄로만** ────────
+            //
+            // 내부 `tool_use`는 부모 카드에 귀속(`parentToolId`), 내레이션/생각은 그 카드의
+            // activity로. 메인 말풍선·게이지·모델 전환 배너는 **여기서 절대 건드리지 않는다**.
+            "assistant" if sidechain => {
+                let pid = parent.unwrap_or_default();
+                if let Some(m) = f["message"]["model"].as_str() {
+                    let disp = model_display(m);
+                    if !pid.is_empty()
+                        && self.subagents.contains(&pid)
+                        && self.subagent_models.get(&pid) != Some(&disp)
+                    {
+                        self.subagent_models.insert(pid.clone(), disp.clone());
+                        out.push(json!({
+                            "type": "subagent", "runId": run,
+                            "agent": { "id": pid, "name": "", "role": "", "status": "running",
+                                       "activity": "", "tools": [], "model": disp }
+                        }));
+                    }
+                }
+                if let Some(blocks) = f["message"].get("content").and_then(Value::as_array) {
+                    for b in blocks {
+                        match b.get("type").and_then(Value::as_str).unwrap_or("") {
+                            "tool_use" => {
+                                let child = self.tool_start(b, Some(&pid));
+                                out.extend(child);
+                            }
+                            kind @ ("text" | "thinking") => {
+                                // 스폰을 목격한 서브에이전트만 — 모르는 pid에 빈 카드를 만들지 않는다.
+                                if pid.is_empty() || !self.subagents.contains(&pid) {
+                                    continue;
+                                }
+                                let key = if kind == "text" { "text" } else { "thinking" };
+                                let line = one_line(b.get(key).and_then(Value::as_str).unwrap_or(""), 200);
+                                if !line.is_empty() {
+                                    out.push(json!({
+                                        "type": "subagent", "runId": run,
+                                        "agent": { "id": pid, "name": "", "role": "", "status": "running",
+                                                   "activity": line, "tools": [] }
+                                    }));
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
             "assistant" if !sidechain => {
                 let msg = &f["message"];
                 let mut text = String::new();
                 if let Some(blocks) = msg.get("content").and_then(Value::as_array) {
+                    let mut saw = vec![];
                     for b in blocks {
                         match b.get("type").and_then(Value::as_str).unwrap_or("") {
                             "text" => text.push_str(b.get("text").and_then(Value::as_str).unwrap_or("")),
+                            "thinking" => {
+                                // 델타가 하나도 안 흐른 경우의 폴백(완성 프레임만 오는 판).
+                                let th = b.get("thinking").and_then(Value::as_str).unwrap_or("");
+                                if !self.streamed_this_msg && !th.is_empty() {
+                                    self.thinking_open = true;
+                                    out.push(json!({ "type": "thinking", "runId": run, "text": one_line(th, 90) }));
+                                }
+                            }
                             "tool_use" => {
-                                let id = s(b, "id").unwrap_or_default();
-                                let name = s(b, "name").unwrap_or_default();
-                                let (verb, kind) = tool_label(&name);
-                                let target = tool_target(&b["input"]);
-                                self.tools.insert(
-                                    id.clone(),
-                                    ToolRow {
-                                        verb: verb.clone(),
-                                        started_ms: now_ms(),
-                                    },
-                                );
                                 self.working(&mut out);
-                                out.push(json!({
-                                    "type": "tool-start", "runId": run,
-                                    "tool": { "id": id, "verb": verb, "kind": kind,
-                                              "target": target, "status": "running" }
-                                }));
+                                saw.push(b.clone());
                             }
                             _ => {}
                         }
+                    }
+                    // 답변 텍스트/도구 행이 자리를 넘겨받으면 생각 줄은 닫는다.
+                    if (!text.trim().is_empty() || !saw.is_empty()) && self.thinking_open {
+                        self.thinking_open = false;
+                        out.push(json!({ "type": "thinking-clear", "runId": run }));
+                    }
+                    for b in &saw {
+                        let evs = self.tool_start(b, None);
+                        out.extend(evs);
                     }
                 }
                 if !text.is_empty() {
@@ -297,6 +1000,7 @@ impl Wire {
                         "type": "assistant-done", "runId": run, "messageId": id, "text": text
                     }));
                 }
+                self.streamed_this_msg = false;
                 if let Some(t) = msg["usage"]["input_tokens"].as_u64() {
                     let ctx = t
                         + msg["usage"]["cache_read_input_tokens"].as_u64().unwrap_or(0)
@@ -304,47 +1008,17 @@ impl Wire {
                     out.push(json!({ "type": "context", "runId": run, "contextTokens": ctx }));
                 }
             }
-            "user" if !sidechain => {
+            // `tool_result`는 **사이드체인도 처리한다** — 서브에이전트의 자식 도구 행도
+            // 끝나야 한다(그 행은 `parentToolId`로 카드에 귀속돼 있다). 사이드체인에서
+            // 갈리는 것은 텍스트·usage뿐이고 그건 위 분기가 이미 가져갔다.
+            "user" => {
                 if let Some(blocks) = f["message"].get("content").and_then(Value::as_array) {
                     for b in blocks {
                         if b.get("type").and_then(Value::as_str) != Some("tool_result") {
                             continue;
                         }
-                        let id = s(b, "tool_use_id").unwrap_or_default();
-                        let is_err = b.get("is_error").and_then(Value::as_bool).unwrap_or(false);
-                        let row = self.tools.remove(&id);
-                        let dur = row.as_ref().map(|r| now_ms().saturating_sub(r.started_ms));
-                        let content = match &b["content"] {
-                            Value::String(t) => t.clone(),
-                            Value::Array(a) => a
-                                .iter()
-                                .filter_map(|x| x.get("text").and_then(Value::as_str))
-                                .collect::<Vec<_>>()
-                                .join("\n"),
-                            _ => String::new(),
-                        };
-                        let tail: String = if content.chars().count() > 4000 {
-                            content.chars().skip(content.chars().count() - 4000).collect()
-                        } else {
-                            content
-                        };
-                        let mut e = Map::new();
-                        e.insert("type".into(), json!("tool-end"));
-                        e.insert("runId".into(), json!(run));
-                        e.insert("id".into(), json!(id));
-                        e.insert("status".into(), json!(if is_err { "error" } else { "done" }));
-                        if !tail.is_empty() {
-                            let one = tail.replace(['\r', '\n'], " ");
-                            let short: String = one.chars().take(160).collect();
-                            e.insert("result".into(), json!(short));
-                            if row.as_ref().is_some_and(|r| r.verb == "Bash") {
-                                e.insert("output".into(), json!(tail));
-                            }
-                        }
-                        if let Some(d) = dur {
-                            e.insert("durationMs".into(), json!(d));
-                        }
-                        out.push(Value::Object(e));
+                        let evs = self.tool_end(b);
+                        out.extend(evs);
                     }
                 }
             }
@@ -405,7 +1079,22 @@ impl Wire {
             }
             "result" => {
                 let is_error = f.get("is_error").and_then(Value::as_bool).unwrap_or(false);
-                let text = s(f, "result").unwrap_or_default();
+                // 오류 계열 subtype은 `result` 대신 **`errors: string[]`**를 싣는다
+                // (`protocol-claude-cli.md` §5). R2까지는 그 경우 빈 문자열이 나갔다.
+                let text = s(f, "result").filter(|t| !t.is_empty()).unwrap_or_else(|| {
+                    let errs: Vec<&str> = f
+                        .get("errors")
+                        .and_then(Value::as_array)
+                        .map(|a| a.iter().filter_map(Value::as_str).collect())
+                        .unwrap_or_default();
+                    if errs.is_empty() {
+                        if is_error { "실행이 실패했습니다.".to_string() } else { String::new() }
+                    } else {
+                        errs.join("; ")
+                    }
+                });
+                // 이후의 `stopped` 통지는 사용자 중지가 아니라 **턴 종료 정리**다.
+                self.turn_ended = true;
                 let usage = &f["usage"];
                 let ctx = usage["input_tokens"].as_u64().map(|t| {
                     t + usage["cache_read_input_tokens"].as_u64().unwrap_or(0)
@@ -431,13 +1120,190 @@ impl Wire {
     }
 }
 
-// ── 미배선(이번 라운드) ──────────────────────────────────────────────────────
-// file-change(Write/Edit → 디프)  ·  terminal(Bash 실시간 줄)  ·  todos(TodoWrite)
-// subagent(사이드체인 말풍선)     ·  workflow  ·  bg-tasks / bg-task-end
-// thinking-clear                  ·  tokenUsage / contextWindow
+// ── 미배선 (R3 이후 남은 것) ─────────────────────────────────────────────────
+// `result.tokenUsage` / `result.contextWindow` — 둘 다 `null`로 나간다.
+//   결과: 컨텍스트 팝오버의 '토큰 사용량' 표가 비고, 게이지는 모델 기본 창으로 폴백한다.
+//   ("틀린 값"이 아니라 "그 칸만 비어 있다".)
+// `tool-end.links`(WebSearch가 찾은 페이지 목록) — 웹 행이 펼쳐지지 않는다.
+// Codex(app-server) 엔진 · `btw:open` 포크 · `allow_always`의 `updatedPermissions`.
 //
-// ★ 이 목록의 성격을 정확히 적는다(크리틱 배선 R1 §6 — R1의 마무리 문장이 "미배선 =
-//   무해"라는 인상을 줬다). 위 항목은 전부 **"그 UI만 비어 있다"**가 맞다. 반면
-//   `request_user_dialog`는 **"채팅이 굳는다"**였기 때문에 등급이 달랐고, 이번
-//   라운드에서 질문 카드로 배선했다. 미배선을 적을 때는 **결과가 빈 화면인지
-//   정지인지**를 함께 적는다.
+// ★ 등급을 함께 적는 것이 규약이다(크리틱 배선 R1 §6). 위 넷은 전부
+//   **"그 UI만 비어 있다"**다 — 정지·증발 등급은 R2에서 셋 다 닫혔다.
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn wire() -> Wire {
+        let mut w = Wire::default();
+        w.begin_run("r1");
+        w
+    }
+    fn types(evs: &[Value]) -> Vec<String> {
+        evs.iter().map(|e| e["type"].as_str().unwrap_or("").to_string()).collect()
+    }
+
+    #[test]
+    fn bg_replace_then_end_keeps_the_shell_chip_order() {
+        let mut w = wire();
+        w.translate(&json!({ "type": "system", "subtype": "init", "session_id": "S1", "cwd": "C:\\w" }));
+        let a = w.translate(&json!({
+            "type": "system", "subtype": "background_tasks_changed",
+            "tasks": [{ "task_id": "t1", "task_type": "local_bash", "description": "빌드" },
+                      { "task_id": "w1", "task_type": "local_workflow", "description": "wf" }]
+        }));
+        assert_eq!(types(&a), vec!["bg-tasks"]);
+        // 워크플로는 셸 칩 목록에 안 들어간다(전용 표시가 있다).
+        let tasks = a[0]["tasks"].as_array().unwrap();
+        assert_eq!(tasks.len(), 1);
+        assert_eq!(tasks[0]["id"], "t1");
+        assert!(tasks[0]["outputFile"].as_str().unwrap().ends_with("t1.output"));
+
+        // REPLACE가 먼저(목록에서 빠짐), 정착 상세가 나중 — protocol.ts의 순서 규약.
+        let b = w.translate(&json!({ "type": "system", "subtype": "background_tasks_changed", "tasks": [] }));
+        assert_eq!(b[0]["tasks"].as_array().unwrap().len(), 0);
+        let c = w.translate(&json!({
+            "type": "system", "subtype": "task_notification",
+            "task_id": "t1", "status": "completed", "summary": "끝", "output_file": "C:\\o.txt"
+        }));
+        assert_eq!(types(&c), vec!["bg-task-end"]);
+        assert_eq!(c[0]["status"], "completed");
+        assert_eq!(c[0]["summary"], "끝");
+        assert_eq!(c[0]["atTurnEnd"], false);
+    }
+
+    #[test]
+    fn a_running_workflow_never_survives_the_stream_close() {
+        let mut w = wire();
+        let a = w.translate(&json!({
+            "type": "system", "subtype": "task_progress", "task_id": "w1", "summary": "정리",
+            "usage": { "total_tokens": 10, "tool_uses": 2, "duration_ms": 5 },
+            "workflow_progress": [
+                { "type": "workflow_phase", "index": 1, "title": "조사" },
+                { "type": "workflow_agent", "label": "탐색", "phaseIndex": 1, "phaseTitle": "조사",
+                  "model": "claude-opus-5-1", "state": "start", "promptPreview": "무엇을\n찾을까" }
+            ]
+        }));
+        assert_eq!(types(&a), vec!["workflow"]);
+        assert_eq!(a[0]["wf"]["status"], "running");
+        assert_eq!(a[0]["wf"]["agents"][0]["model"], "Opus 5.1");
+        assert_eq!(a[0]["wf"]["agents"][0]["note"], "무엇을 찾을까");
+
+        // 스트림이 닫히면 알약이 남으면 안 된다(고아 알약 금지).
+        let closed = w.stream_closed("external_kill", 0);
+        let wf = closed.iter().find(|e| e["type"] == "workflow").expect("워크플로 정착");
+        assert_eq!(wf["wf"]["status"], "stopped");
+        assert!(closed.iter().any(|e| e["type"] == "notice"));
+    }
+
+    #[test]
+    fn a_broken_stream_is_an_error_bubble_not_a_notice() {
+        let mut w = wire();
+        let evs = w.stream_closed("spawn_failed", 0);
+        assert!(evs.iter().any(|e| e["type"] == "error"), "{:?}", types(&evs));
+        assert!(!evs.iter().any(|e| e["type"] == "notice"), "말을 두 번 하지 않는다");
+        let r = evs.iter().find(|e| e["type"] == "result").expect("합성 result");
+        assert_eq!(r["isError"], true, "카드 해제·컴포저 해제가 여기 달려 있다");
+        assert_eq!(r["text"], "", "사유는 error 말풍선이 이미 말했다 — 두 벌 금지");
+    }
+
+    #[test]
+    fn thinking_is_cleared_when_the_answer_starts() {
+        let mut w = wire();
+        let a = w.translate(&json!({ "type": "stream_event",
+            "event": { "type": "content_block_delta", "delta": { "type": "thinking_delta", "thinking": "음…" } } }));
+        assert_eq!(types(&a), vec!["thinking"]);
+        let b = w.translate(&json!({ "type": "stream_event",
+            "event": { "type": "content_block_delta", "delta": { "type": "text_delta", "text": "답" } } }));
+        assert_eq!(types(&b), vec!["thinking-clear", "status", "assistant-stream"]);
+    }
+
+    #[test]
+    fn a_bash_tool_paints_the_command_then_its_output() {
+        let mut w = wire();
+        let a = w.translate(&json!({ "type": "assistant", "message": { "content": [
+            { "type": "tool_use", "id": "tu1", "name": "Bash", "input": { "command": "echo hi" } }] } }));
+        assert_eq!(types(&a), vec!["status", "tool-start", "terminal"]);
+        assert_eq!(a[2]["line"]["type"], "cmd");
+        let b = w.translate(&json!({ "type": "user", "message": { "content": [
+            { "type": "tool_result", "tool_use_id": "tu1", "content": "hi" }] } }));
+        assert_eq!(types(&b), vec!["terminal", "terminal", "tool-end"]);
+        assert_eq!(b[0]["line"], json!({ "type": "out", "text": "hi" }));
+        assert_eq!(b[1]["line"]["type"], "ok");
+    }
+
+    #[test]
+    fn a_failed_write_leaves_no_phantom_diff() {
+        let mut w = wire();
+        let dir = std::env::temp_dir().join(format!("ccg-wire-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let p = dir.join("x.txt");
+        let _ = std::fs::remove_file(&p);
+        w.cwd = dir.to_string_lossy().to_string();
+        w.translate(&json!({ "type": "assistant", "message": { "content": [
+            { "type": "tool_use", "id": "tu1", "name": "Write",
+              "input": { "file_path": p.to_string_lossy(), "content": "a\nb\n" } }] } }));
+        let bad = w.translate(&json!({ "type": "user", "message": { "content": [
+            { "type": "tool_result", "tool_use_id": "tu1", "is_error": true, "content": "denied" }] } }));
+        assert!(!bad.iter().any(|e| e["type"] == "file-change"), "거부된 편집은 디프를 남기지 않는다");
+
+        w.translate(&json!({ "type": "assistant", "message": { "content": [
+            { "type": "tool_use", "id": "tu2", "name": "Write",
+              "input": { "file_path": p.to_string_lossy(), "content": "a\nb\n" } }] } }));
+        let good = w.translate(&json!({ "type": "user", "message": { "content": [
+            { "type": "tool_result", "tool_use_id": "tu2", "content": "ok" }] } }));
+        let fc = good.iter().find(|e| e["type"] == "file-change").expect("성공하면 디프가 나간다");
+        assert_eq!(fc["file"]["tag"], "new");
+        assert_eq!(fc["file"]["add"], 2);
+        assert_eq!(fc["whole"], true);
+    }
+
+    #[test]
+    fn a_sidechain_frame_never_touches_the_main_bubble_or_the_gauge() {
+        let mut w = wire();
+        w.translate(&json!({ "type": "assistant", "message": { "content": [
+            { "type": "tool_use", "id": "task1", "name": "Task",
+              "input": { "subagent_type": "Explore", "description": "찾아봐" } }] } }));
+        assert!(w.subagents.contains("task1"));
+        let evs = w.translate(&json!({
+            "type": "assistant", "parent_tool_use_id": "task1",
+            "message": { "model": "claude-opus-5", "content": [{ "type": "text", "text": "훑는 중" }],
+                         "usage": { "input_tokens": 99_999 } }
+        }));
+        assert_eq!(types(&evs), vec!["subagent", "subagent"], "모델 + 내레이션만");
+        assert_eq!(evs[0]["agent"]["model"], "Opus 5");
+        assert_eq!(evs[1]["agent"]["activity"], "훑는 중");
+        assert!(
+            !evs.iter().any(|e| e["type"] == "context" || e["type"] == "assistant-done"),
+            "게이지·말풍선 오염 금지"
+        );
+    }
+
+    #[test]
+    fn todos_come_from_todowrite_and_from_the_incremental_task_tools() {
+        let mut w = wire();
+        let a = w.translate(&json!({ "type": "assistant", "message": { "content": [
+            { "type": "tool_use", "id": "t1", "name": "TodoWrite", "input": { "todos": [
+                { "content": "하나", "status": "in_progress" }, { "content": "둘", "status": "pending" }] } }] } }));
+        let todos = a.iter().find(|e| e["type"] == "todos").expect("todos");
+        assert_eq!(todos["todos"][0], json!({ "id": "1", "label": "하나", "status": "running" }));
+        assert!(!a.iter().any(|e| e["type"] == "tool-start"), "패널 도구는 도구 행을 안 만든다");
+
+        w.translate(&json!({ "type": "assistant", "message": { "content": [
+            { "type": "tool_use", "id": "t2", "name": "TaskCreate", "input": { "subject": "셋" } }] } }));
+        let c = w.translate(&json!({ "type": "assistant", "message": { "content": [
+            { "type": "tool_use", "id": "t3", "name": "TaskUpdate", "input": { "taskId": "1", "status": "completed" } }] } }));
+        let last = c.iter().find(|e| e["type"] == "todos").unwrap();
+        assert_eq!(last["todos"][0]["status"], "done");
+    }
+
+    #[test]
+    fn an_error_result_carries_the_errors_array() {
+        let mut w = wire();
+        let evs = w.translate(&json!({
+            "type": "result", "subtype": "error_during_execution", "is_error": true,
+            "errors": ["ede_diagnostic", "aborted_tools"]
+        }));
+        assert_eq!(evs[0]["text"], "ede_diagnostic; aborted_tools");
+    }
+}

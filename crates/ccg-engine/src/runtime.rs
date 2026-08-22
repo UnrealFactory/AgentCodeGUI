@@ -260,6 +260,31 @@ pub struct ChatRuntime<D: CliDriver> {
     sent_user_texts: Vec<String>,
     /// `request_id` → 그 카드의 **응답 본문 오버라이드**(1회 소비). 비어 있는 것이 기본이다.
     staged_payloads: std::collections::BTreeMap<String, Value>,
+    /// **한도 해제를 스스로 발사해도 되는가**(스펙 ⑤ 기본값 — ux-chat-unify §8-5).
+    ///
+    /// R2 제안이 그대로 기본값이다: *"보이는 자리 + 열린 창 = 자동 발사 / 나머지 =
+    /// `ready`만 표시하고 사용자가 누르면 발사"*. 그래서 이 값은 **셸이 정한다**
+    /// (`set_auto_resume`) — 부팅 재장전은 화면 밖 채팅 6개가 동시에 토큰을 쓰기
+    /// 시작하는 일을 만들면 안 된다.
+    ///
+    /// 기본은 `true`다 — 라이브 경로(사용자가 지금 보고 있는 채팅에서 한도에 걸림)는
+    /// 2.6.2와 같아야 하고, 재생 시나리오 전부가 그 동작을 잠그고 있다.
+    auto_resume: bool,
+}
+
+/// 부팅 재장전이 실어 오는 한도 대기표(§5.8 2단계). 저장된 값은 이 둘뿐이고
+/// `account`는 **지금 정체성**에서 다시 만든다 — 계정이 바뀌었으면 대기표는 무효라는
+/// §7.3 규약을 재장전에도 그대로 적용하기 위해서다(발화 시점에 `check_hold`가 잰다).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ReloadHold {
+    /// **지금부터 남은 시간(ms)** — 절대 시각이 아니다.
+    ///
+    /// 디스크의 `resetsAt`은 epoch 초이고 런타임 시계는 프로세스 기동 기준 단조
+    /// 밀리초다(`SystemClock` — 사용자가 시각을 바꿔도 타이머가 과거로 점프하지 않게).
+    /// 두 축을 섞으면 대기표가 1970년으로 읽혀 **부팅이 곧 전송**이 된다. 그래서
+    /// 경계에서 남은 시간으로 옮기고, 여기서 `now`를 더한다.
+    pub in_ms: Option<Millis>,
+    pub ready: bool,
 }
 
 impl<D: CliDriver> ChatRuntime<D> {
@@ -308,6 +333,7 @@ impl<D: CliDriver> ChatRuntime<D> {
             task_by_tool_use: Default::default(),
             sent_user_texts: vec![],
             staged_payloads: Default::default(),
+            auto_resume: true,
         };
         rt.emit(Event::Identity {
             origin: RevisionOrigin::Default,
@@ -391,6 +417,71 @@ impl<D: CliDriver> ChatRuntime<D> {
     }
     pub fn hold(&self) -> Option<&LimitHold> {
         self.hold.as_ref()
+    }
+    pub fn auto_resume(&self) -> bool {
+        self.auto_resume
+    }
+    /// 스펙 ⑤ — **보이는 자리 + 열린 창만 자동 발사**. 셸이 부팅 재장전과 자리 변화에서 정한다.
+    pub fn set_auto_resume(&mut self, on: bool) {
+        self.auto_resume = on;
+    }
+
+    /// **부팅 재장전**(m-logic §5.8 부팅 경로 2단계 · ux-chat-unify §4.3).
+    ///
+    /// "복원"이 아니라 "재장전"이다: 저장된 `resetsAt`으로 타이머를 **다시 걸 뿐**이고
+    /// 발화 판정(계정 재검증 · `ready`)은 [`Self::check_hold`]가 그때 다시 한다.
+    ///
+    /// **드레인하지 않는다.** 앱을 켜는 것은 "보내라"가 아니다 — 예약분은 큐에 그대로
+    /// 서 있고, 나가는 계기는 ① 사용자의 다음 전송 ② 한도 해제(§7.3)뿐이다.
+    /// (2.6.2도 재시작 직후 예약을 스스로 쏘지 않았다.)
+    pub fn reload_state(&mut self, queued: Vec<String>, hold: Option<ReloadHold>) {
+        let now = self.sync_now();
+        for text in queued {
+            if text.is_empty() {
+                continue;
+            }
+            let m = self.make_queue_item(text, QueueOrigin::User, now);
+            self.queue.push_back(m);
+        }
+        if let Some(h) = hold {
+            self.hold = Some(LimitHold {
+                account: self.identity.billing().clone(),
+                // 저장된 값이 없으면 5분 뒤 재검증 — `arm_hold`의 2순위 규약과 같다.
+                resets_at: Some(now + h.in_ms.unwrap_or(5 * MIN)),
+                verified_at: None,
+                ready: h.ready,
+                armed_from_run: RunId(0),
+            });
+        }
+        self.broadcast_plan();
+    }
+
+    /// 사용자가 "이어서"를 눌렀다 — `ready`인 대기표를 **지금** 소진한다(스펙 ⑤ 후반부).
+    ///
+    /// 자동 발사가 꺼진 채팅(화면 밖)이 초록 점을 띄우고 기다리는 상태의 유일한 출구다.
+    /// 누른 것 자체가 "이 채팅은 이제 사용자가 보고 있다"는 뜻이므로 자동도 함께 켠다.
+    pub fn resume_now(&mut self) -> Verdict {
+        let ready = self.hold.as_ref().is_some_and(|h| h.ready);
+        self.auto_resume = true;
+        if !ready {
+            return Verdict::Rejected("hold_not_ready");
+        }
+        let now = self.sync_now();
+        let mut m = self.make_queue_item("이어서 진행해 주세요".into(), QueueOrigin::LimitResume, now);
+        m.on_drift = OnDrift::UseCurrent;
+        self.queue.push_front(m);
+        self.hold = None;
+        self.broadcast_plan();
+        self.drain_if_possible();
+        Verdict::Accepted
+    }
+
+    /// 드레인 게이트 — 대기표가 **열려 있는가**.
+    ///
+    /// `ready`만으로는 부족하다: 스펙 ⑤의 "나머지 = 눌러야 발사"는 *ready인데도 안 나가는*
+    /// 상태를 요구한다. 자동이 켜져 있으면(기본) 옛 조건과 글자 그대로 같다.
+    fn hold_gate_open(&self) -> bool {
+        self.hold.as_ref().is_none_or(|h| h.ready && self.auto_resume)
     }
     pub fn pending_preview(&self) -> Option<&RunIdentity> {
         self.pending.as_ref().map(|s| &s.preview)
@@ -1191,7 +1282,7 @@ impl<D: CliDriver> ChatRuntime<D> {
             if !(st == StateTag::Idle || st == StateTag::Resident) {
                 return;
             }
-            if self.hold.as_ref().is_some_and(|h| !h.ready) {
+            if !self.hold_gate_open() {
                 return;
             }
             let Some(m) = self.queue.front().cloned() else {
@@ -1277,7 +1368,7 @@ impl<D: CliDriver> ChatRuntime<D> {
             }
         }
 
-        let drainable = !self.queue.is_empty() && self.hold.as_ref().is_none_or(|h| h.ready);
+        let drainable = !self.queue.is_empty() && self.hold_gate_open();
         let empty = self.ledger.borrow().is_empty();
         match (empty, drainable) {
             (false, _) => {
@@ -2046,7 +2137,7 @@ impl<D: CliDriver> ChatRuntime<D> {
         if !empty || !observed {
             return;
         }
-        if !self.queue.is_empty() && self.hold.as_ref().is_none_or(|h| h.ready) {
+        if !self.queue.is_empty() && self.hold_gate_open() {
             self.drain_if_possible();
             return;
         }
@@ -2446,6 +2537,17 @@ impl<D: CliDriver> ChatRuntime<D> {
             h.ready = true;
             h.verified_at = Some(now);
         }
+        // ★ 스펙 ⑤ — 자동 발사가 꺼진 채팅(화면 밖 · 닫힌 창)은 **여기서 멈춘다**.
+        //   대기표는 `ready=true`로 남아 사이드바가 "이어갈 수 있음"을 그리고,
+        //   실제 발사는 사용자가 누를 때(`resume_now`)다. 게이트는 `hold_gate_open()`이
+        //   닫아 두므로 이 채팅의 예약분도 혼자 나가지 않는다.
+        if !self.auto_resume {
+            self.emit(Event::Notice(
+                "사용 한도가 풀렸어요 — 이 채팅은 화면 밖이라 자동으로 보내지 않았습니다. 눌러서 이어가세요.".into(),
+            ));
+            self.broadcast_plan();
+            return;
+        }
         // 재개 항목의 정체성 = **지금 값**(§7.3), onDrift=use_current.
         let mut m = self.make_queue_item("이어서 진행해 주세요".into(), QueueOrigin::LimitResume, now);
         m.on_drift = OnDrift::UseCurrent;
@@ -2717,5 +2819,151 @@ mod t22_tests {
             })
             .collect();
         assert_eq!(statuses, vec![TerminalStatus::Aborted], "중단은 Done이 아니다: {statuses:?}");
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 부팅 재장전 (§5.8 부팅 경로 2단계) + 스펙 ⑤ 자동/수동 발사
+//
+// R2까지 이 경로는 **없었다**(§R2.8-B: "재시작 후 자동 이어서가 조용히 안 산다").
+// 여기서 재는 것 셋: ① 재장전이 큐·대기표를 세우되 **아무것도 보내지 않는다**
+// ② 대기표가 풀리면 그때 이어진다 ③ 화면 밖 채팅은 `ready`만 켜고 멈춘다.
+// ─────────────────────────────────────────────────────────────────────────────
+#[cfg(test)]
+mod reload_tests {
+    use super::*;
+    use crate::clock::VirtualClock;
+    use crate::driver::SpawnSpec;
+    use crate::identity::*;
+    use std::collections::BTreeSet;
+
+    #[derive(Default)]
+    struct QuietCli {
+        alive: bool,
+        spawns: usize,
+    }
+    impl CliDriver for QuietCli {
+        fn spawn(&mut self, _spec: &SpawnSpec) -> std::io::Result<()> {
+            self.alive = true;
+            self.spawns += 1;
+            Ok(())
+        }
+        fn send(&mut self, _line: Value) {}
+        fn close_input(&mut self) {}
+        fn kill(&mut self) {
+            self.alive = false;
+        }
+        fn process_alive(&self) -> bool {
+            self.alive
+        }
+        fn poll_frames(&mut self, _now: Millis) -> Vec<Value> {
+            vec![]
+        }
+    }
+
+    fn rt(clock: Arc<VirtualClock>) -> ChatRuntime<QuietCli> {
+        let raw = RawIdentity {
+            engine: RawEngine {
+                kind: EngineKind::Claude,
+                model: "haiku".into(),
+                effort: EffortId::Minimal,
+                codex_account: None,
+            },
+            billing: RawBilling {
+                kind: BillingKind::Subscription,
+                account: Some("a@x".into()),
+                drop_env_key: Some(false),
+            },
+            cwd: r"C:\ccg-fixture\work".into(),
+            add_dirs: vec![],
+            mode: ModeId::Normal,
+            system_prompt: None,
+            output_style: None,
+            tools: RawTools::default(),
+        };
+        let defaults = IdentityDefaults {
+            known_accounts: BTreeSet::from(["a@x".to_string()]),
+            ..Default::default()
+        };
+        ChatRuntime::new("c-1", raw, defaults, clock, QuietCli::default()).expect("정규화")
+    }
+
+    #[test]
+    fn reload_restores_the_queue_and_hold_without_sending_anything() {
+        let clock = VirtualClock::new();
+        clock.advance_to(10 * SEC);
+        let mut r = rt(clock.clone());
+        r.reload_state(
+            vec!["예약1".into(), "예약2".into()],
+            Some(ReloadHold { in_ms: Some(60 * SEC), ready: false }),
+        );
+        assert_eq!(r.queue_len(), 2, "예약이 살아 있다");
+        assert!(r.hold().is_some(), "대기표가 재장전됐다");
+        assert_eq!(r.driver_ref().spawns, 0, "앱을 켜는 것은 '보내라'가 아니다");
+        assert!(r.sent_user_texts().is_empty());
+        // 대기표가 게이트를 닫고 있으므로 tick 몇 번으로도 안 나간다.
+        clock.advance_by(30 * SEC);
+        r.tick();
+        assert_eq!(r.driver_ref().spawns, 0);
+    }
+
+    #[test]
+    fn a_released_hold_resumes_the_reloaded_queue() {
+        let clock = VirtualClock::new();
+        clock.advance_to(10 * SEC);
+        let mut r = rt(clock.clone());
+        r.reload_state(
+            vec!["예약1".into()],
+            Some(ReloadHold { in_ms: Some(60 * SEC), ready: false }),
+        );
+        // resets_at = 재장전 시각(10s) + 남은 60s = 70s. due_at = +90s(§7.3 재검증 지연).
+        clock.advance_to(10 * SEC + 60 * SEC + 91 * SEC);
+        r.tick();
+        assert!(r.hold().is_none(), "소진된 대기표는 사라진다");
+        assert_eq!(r.driver_ref().spawns, 1, "해제되면 그때 이어진다");
+        assert_eq!(
+            r.sent_user_texts().first().map(String::as_str),
+            Some("이어서 진행해 주세요"),
+            "재개 항목이 큐 맨 앞에 들어간다: {:?}",
+            r.sent_user_texts()
+        );
+        assert_eq!(r.queue_len(), 1, "예약분은 이 턴이 끝난 뒤 순서대로 나간다");
+    }
+
+    #[test]
+    fn an_off_screen_chat_turns_ready_but_does_not_fire() {
+        // 스펙 ⑤ — "보이는 자리 + 열린 창 = 자동 / 나머지 = ready만 표시".
+        let clock = VirtualClock::new();
+        clock.advance_to(10 * SEC);
+        let mut r = rt(clock.clone());
+        r.set_auto_resume(false);
+        r.reload_state(
+            vec!["예약1".into()],
+            Some(ReloadHold { in_ms: Some(60 * SEC), ready: false }),
+        );
+        clock.advance_to(10 * SEC + 60 * SEC + 91 * SEC);
+        r.tick();
+        let hold = r.hold().cloned().expect("대기표는 남는다");
+        assert!(hold.ready, "풀렸다는 표식은 켠다(사이드바 초록 점)");
+        assert_eq!(r.driver_ref().spawns, 0, "화면 밖 6개가 동시에 토큰을 쓰기 시작하면 안 된다");
+        assert!(r.sent_user_texts().is_empty());
+        // 예약분도 혼자 나가지 않는다 — 게이트는 `ready && auto_resume`다.
+        clock.advance_by(10 * MIN);
+        r.tick();
+        assert_eq!(r.driver_ref().spawns, 0);
+
+        // 사용자가 누르면 그때 발사.
+        assert_eq!(r.resume_now(), Verdict::Accepted);
+        assert!(r.hold().is_none());
+        assert_eq!(r.driver_ref().spawns, 1);
+    }
+
+    #[test]
+    fn resume_now_on_a_chat_without_a_ready_hold_is_a_rejection_not_a_send() {
+        let clock = VirtualClock::new();
+        let mut r = rt(clock.clone());
+        r.reload_state(vec!["예약1".into()], None);
+        assert_eq!(r.resume_now(), Verdict::Rejected("hold_not_ready"));
+        assert_eq!(r.driver_ref().spawns, 0, "누른 것이 예약분을 대신 쏘면 안 된다");
     }
 }

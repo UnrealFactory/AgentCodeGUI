@@ -14,10 +14,13 @@
  *   node scripts/poc-live-chat.mjs --only=r81      # R8-1 브로드캐스트만(CLI 불필요)
  *   node scripts/poc-live-chat.mjs --only=dialog   # 폴백 확인 카드(가짜 CLI · $0)
  *   node scripts/poc-live-chat.mjs --only=winsave  # 추가 채팅 창 영속(가짜 CLI · $0)
+ *   node scripts/poc-live-chat.mjs --only=events   # ★R3 EngineEvent 9종(가짜 CLI · $0)
+ *   node scripts/poc-live-chat.mjs --only=reload   # ★R3 부팅 재장전 + 한도 이어서($0)
+ *   node scripts/poc-live-chat.mjs --only=slots    # ★R3 win:chat-* 4채널 + chat:windows
  *   node scripts/poc-live-chat.mjs --only=live     # 라이브 턴만
  *   node scripts/poc-live-chat.mjs --keep          # 홈·프레임 덤프 보존
  *
- *   ※ --only=dialog 전에:
+ *   ※ dialog·winsave·events·reload·slots 전에:
  *      cargo build -p ccg-engine --features fakecli --bin ccg-fakecli --release
  *
  * ── 안전 규칙 (사용자 실앱이 떠 있다) ───────────────────────────────────────
@@ -35,9 +38,14 @@ import { cdpTargets, connectMainPage, killTree, sleep, Cdp, REPO } from '../benc
 const args = process.argv.slice(2)
 const only = (args.find((a) => a.startsWith('--only=')) ?? '').split('=')[1] || 'all'
 const KEEP = args.includes('--keep')
-const EXE = path.join(REPO, 'target', 'release', 'agentcodegui.exe')
+// `--exe=…`로 **고정된 바이너리**를 잴 수 있다. 같은 레포에서 다른 라운드가 동시에
+// `rm -f target/release/agentcodegui.exe && npm run tauri:build`을 돌리면 주행 도중
+// exe가 사라진다(실제로 밟았다 — ENOENT). 스냅샷을 떠 두고 그것을 재는 길을 연다.
+const EXE = (args.find((a) => a.startsWith('--exe=')) ?? '').split('=')[1] || path.join(REPO, 'target', 'release', 'agentcodegui.exe')
 const REAL_HOME = path.join(os.homedir(), '.agentcodegui')
-const OUT = path.join(REPO, 'docs', 'critic', 'm3-r2-live.json')
+// 라운드마다 **자기 파일**에 쓴다 — R2의 산출물(`m3-r2-live.json`)을 덮으면 그 보고서의
+// 근거가 사라진다(R2 §2가 그 파일의 `steps.r81`을 인용한다).
+const OUT = path.join(REPO, 'docs', 'critic', 'm3-r3-live.json')
 
 const rep = { at: new Date().toISOString(), exe: EXE, steps: {}, findings: [] }
 const fail = (id, why, extra) => {
@@ -78,7 +86,19 @@ async function waitUntil(app, expr, ms = 30_000) {
   return false
 }
 
-const rmrf = (p) => fs.rmSync(p, { recursive: true, force: true })
+/// 격리 홈 삭제 — **재시도한다.** 방금 죽인 앱의 WebView2가 핸들을 놓는 데 한 박자
+/// 걸려 EPERM이 난다(실제로 밟았다: 다음 단계의 씨앗 뿌리기가 통째로 죽었다).
+const rmrf = (p) => {
+  for (let i = 0; i < 12; i++) {
+    try {
+      fs.rmSync(p, { recursive: true, force: true, maxRetries: 4, retryDelay: 200 })
+      return
+    } catch (e) {
+      if (i === 11) throw e
+      spawnSync('cmd', ['/c', 'ping', '127.0.0.1', '-n', '2'], { stdio: 'ignore' })
+    }
+  }
+}
 const write = (p, v) => {
   fs.mkdirSync(path.dirname(p), { recursive: true })
   fs.writeFileSync(p, typeof v === 'string' ? v : JSON.stringify(v))
@@ -767,6 +787,514 @@ async function phaseWinSave() {
   return rep.findings.length === 0
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 5) ★R3 — `EngineEvent` 9종이 **화면까지** 도달하는가 (가짜 CLI · $0)
+//
+//    R2까지 비어 있던 아홉 칸: workflow · bg-tasks · bg-task-end · subagent ·
+//    file-change · terminal · todos · thinking-clear · error.
+//    실 CLI로 이 아홉을 한 턴에 강제할 방법이 없다(워크플로·백그라운드는 모델이
+//    스스로 골라야 하고, error는 엔진이 깨져야 온다). 그래서 **엔진 자리에 꽂은
+//    스텁**이 그 프레임을 흘린다 — spawn → stdout → 상태기계 → wire → 렌더러까지
+//    전부 실제 배선이고 모델만 가짜다.
+//
+//    단언은 **두 겹**이다: ① 렌더러가 받은 이벤트(window.__ev) ② 화면(DOM).
+//    이벤트만 보면 "백엔드는 되는데 화면이 비었다"를 못 잡는다.
+// ─────────────────────────────────────────────────────────────────────────────
+function fakeHome(tag, chatId, steps, extra = {}) {
+  const HOME = path.join(REPO, `.poc-home-${tag}`)
+  const WORK = path.join(HOME, 'work')
+  rmrf(HOME)
+  fs.mkdirSync(WORK, { recursive: true })
+  const stub = path.join(REPO, 'target', 'release', 'ccg-fakecli.exe')
+  if (!fs.existsSync(stub)) {
+    throw new Error(`가짜 CLI가 없다: ${stub}\n  cargo build -p ccg-engine --features fakecli --bin ccg-fakecli --release`)
+  }
+  const ed = path.join(HOME, 'engines', 'fake', 'node_modules', '@anthropic-ai', 'claude-agent-sdk-win32-x64')
+  fs.mkdirSync(ed, { recursive: true })
+  fs.copyFileSync(stub, path.join(ed, 'claude.exe'))
+  write(path.join(HOME, 'config.json'), { activeVersion: 'fake' })
+  write(path.join(HOME, 'accounts.json'), { defaultEmail: 'fake@example.com', accounts: [{ email: 'fake@example.com' }] })
+  fs.mkdirSync(path.join(HOME, 'accounts', 'fake_example.com'), { recursive: true })
+  write(path.join(HOME, 'chats', 'index.json'), { version: 1, order: [chatId], activeChatId: chatId })
+  write(path.join(HOME, 'chats', `${chatId}.json`), {
+    id: chatId, title: tag, custom: true, manualCwd: WORK,
+    picker: { model: 'haiku', effort: 'minimal', mode: 'normal' }, refDirs: [],
+    snapshot: { messages: [] }, updatedAt: Date.now(), ...extra
+  })
+  write(path.join(HOME, 'ui-prefs.json'), { 'ui.lang': 'ko' })
+  write(path.join(HOME, 'profile.json'), { nickname: 'poc' })
+  const SCRIPT = path.join(HOME, 'script.jsonl')
+  fs.writeFileSync(SCRIPT, steps.map((s) => JSON.stringify(s)).join('\n') + '\n')
+  return { HOME, WORK, SCRIPT }
+}
+
+const init = (sid, cwd) => ({
+  type: 'system', subtype: 'init', session_id: sid, model: 'claude-haiku-4', cwd, tools: [], apiKeySource: 'none'
+})
+const ack = { type: 'control_response', response: { subtype: 'success', request_id: 'init-1', response: {} } }
+
+function eventScript(WORK) {
+  const target = path.join(WORK, 'r3-made.txt').replace(/\\/g, '\\\\')
+  return [
+    { afterMs: 100, emit: ack },
+    { emit: init('EV-1', WORK) },
+    // ① thinking → ② thinking-clear (답변 델타가 생각 줄을 닫는다)
+    { afterMs: 120, emit: { type: 'stream_event', event: { type: 'content_block_delta', delta: { type: 'thinking_delta', thinking: '무엇부터 할지 고르는 중' } } } },
+    { afterMs: 60, emit: { type: 'stream_event', event: { type: 'content_block_delta', delta: { type: 'text_delta', text: '시작합니다.' } } } },
+    // ③ todos (TodoWrite)
+    { afterMs: 60, emit: { type: 'assistant', session_id: 'EV-1', parent_tool_use_id: null, message: { role: 'assistant', content: [
+      { type: 'tool_use', id: 'tu_todo', name: 'TodoWrite', input: { todos: [
+        { content: '파일 만들기', status: 'in_progress' }, { content: '명령 실행', status: 'pending' }] } }] } } },
+    // ④ file-change (Write → tool_result 성공)
+    { afterMs: 60, emit: { type: 'assistant', session_id: 'EV-1', parent_tool_use_id: null, message: { role: 'assistant', content: [
+      { type: 'tool_use', id: 'tu_write', name: 'Write', input: { file_path: JSON.parse(`"${target}"`), content: 'R3-LINE-1\nR3-LINE-2\n' } }] } } },
+    { afterMs: 60, emit: { type: 'user', session_id: 'EV-1', parent_tool_use_id: null, message: { role: 'user', content: [
+      { type: 'tool_result', tool_use_id: 'tu_write', content: 'File created' }] } } },
+    // ⑤ terminal (Bash 명령 + 출력)
+    { afterMs: 60, emit: { type: 'assistant', session_id: 'EV-1', parent_tool_use_id: null, message: { role: 'assistant', content: [
+      { type: 'tool_use', id: 'tu_bash', name: 'Bash', input: { command: 'echo R3-TERM-OUT' } }] } } },
+    { afterMs: 60, emit: { type: 'user', session_id: 'EV-1', parent_tool_use_id: null, message: { role: 'user', content: [
+      { type: 'tool_result', tool_use_id: 'tu_bash', content: 'R3-TERM-OUT' }] } } },
+    // ⑥ subagent (Task 스폰 → 사이드체인 내레이션 → 완료)
+    { afterMs: 60, emit: { type: 'assistant', session_id: 'EV-1', parent_tool_use_id: null, message: { role: 'assistant', content: [
+      { type: 'tool_use', id: 'tu_task', name: 'Task', input: { subagent_type: 'Explore', description: 'R3-SUBAGENT-ROLE' } }] } } },
+    { afterMs: 60, emit: { type: 'assistant', session_id: 'EV-1', parent_tool_use_id: 'tu_task', message: { role: 'assistant', model: 'claude-opus-5', content: [
+      { type: 'text', text: 'R3-SIDECHAIN-NARRATION' }], usage: { input_tokens: 999999 } } } },
+    { afterMs: 60, emit: { type: 'user', session_id: 'EV-1', parent_tool_use_id: null, message: { role: 'user', content: [
+      { type: 'tool_result', tool_use_id: 'tu_task', content: 'R3-SUBAGENT-RESULT' }] } } },
+    // ⑦ bg-tasks (REPLACE) → ⑧ bg-task-end (정착 상세는 REPLACE 뒤)
+    { afterMs: 60, emit: { type: 'system', subtype: 'background_tasks_changed', session_id: 'EV-1', tasks: [
+      { task_id: 'bg-1', task_type: 'local_bash', description: 'R3-BG-SHELL' },
+      { task_id: 'wf-1', task_type: 'local_workflow', description: 'R3-WF' }] } },
+    // ⑨ workflow (task_progress 스냅샷 REPLACE)
+    { afterMs: 60, emit: { type: 'system', subtype: 'task_progress', session_id: 'EV-1', task_id: 'wf-1', summary: 'R3-WORKFLOW',
+      usage: { total_tokens: 1234, tool_uses: 3, duration_ms: 4567 },
+      workflow_progress: [
+        { type: 'workflow_phase', index: 1, title: 'R3-PHASE' },
+        { type: 'workflow_agent', label: 'R3-AGENT', phaseIndex: 1, phaseTitle: 'R3-PHASE', model: 'claude-opus-5-1', state: 'start', promptPreview: '조사한다' }] } },
+    { afterMs: 80, emit: { type: 'system', subtype: 'background_tasks_changed', session_id: 'EV-1', tasks: [] } },
+    { afterMs: 60, emit: { type: 'system', subtype: 'task_notification', session_id: 'EV-1', task_id: 'bg-1', status: 'completed', summary: 'R3-BG-DONE' } },
+    { afterMs: 60, emit: { type: 'system', subtype: 'task_notification', session_id: 'EV-1', task_id: 'wf-1', status: 'completed', summary: 'R3-WF-DONE' } },
+    { afterMs: 80, emit: { type: 'assistant', session_id: 'EV-1', parent_tool_use_id: null, message: { role: 'assistant', content: [{ type: 'text', text: 'R3-ALL-DONE' }], usage: { input_tokens: 20 } } } },
+    { emit: { type: 'result', subtype: 'success', is_error: false, result: 'R3-ALL-DONE', session_id: 'EV-1', total_cost_usd: 0, duration_ms: 1, num_turns: 1 } }
+  ]
+}
+
+async function phaseEvents() {
+  console.log('\n[EVENTS] EngineEvent 9종 — 가짜 CLI(제품 경로)')
+  const s = fakeHome('events', 'c-ev', eventScript(path.join(REPO, '.poc-home-events', 'work')))
+  const out = { home: s.HOME }
+  const app = await boot(s.HOME, 9367, { CCG_FAKECLI_SCRIPT: s.SCRIPT })
+  try {
+    await app.j(`(window.__ev = [], window.api.onEngineEvent((e) => window.__ev.push(e)), 'armed')`)
+    // 실행 중에만 존재하는 표시(워크플로 알약)는 **정착하면 사라지는 게 정답**이라
+    // 사후 스냅샷으로는 볼 수 없다. 턴이 도는 동안 DOM을 샘플링해 둔다.
+    await app.j(`(() => {
+      window.__seen = { wfDock: false, wfText: '' }
+      window.__seenTimer = setInterval(() => {
+        const d = document.querySelector('.wf-dock, .wf-card')
+        if (d) { window.__seen.wfDock = true; window.__seen.wfText = d.innerText.slice(0, 200) }
+      }, 60)
+      return 'armed'
+    })()`)
+    out.ready = await waitUntil(app, `(await window.api.getChats())?.activeChatId === 'c-ev' && !!document.querySelector('.composer-row textarea')`, 30_000)
+    await typeAndSend(app, '아홉 가지를 다 보여 줘')
+    const done = await waitUntil(app, `window.__ev.some((e) => e.type === 'result')`, 60_000)
+    out.turnDone = done
+    await sleep(800)
+    await app.j(`(clearInterval(window.__seenTimer), 'stopped')`)
+
+    out.events = await app.j(`window.__ev.reduce((m, e) => ((m[e.type] = (m[e.type] ?? 0) + 1), m), {})`)
+    out.byType = await app.j(`(() => {
+      const pick = (t) => window.__ev.filter((e) => e.type === t)
+      return {
+        todos: pick('todos').map((e) => e.todos),
+        fileChange: pick('file-change').map((e) => ({ path: e.file.path, add: e.file.add, tag: e.file.tag, whole: e.whole, lines: e.diff.lines.length })),
+        terminal: pick('terminal').map((e) => e.line),
+        subagent: pick('subagent').map((e) => ({ id: e.agent.id, status: e.agent.status, name: e.agent.name, activity: e.agent.activity, model: e.agent.model })),
+        bgTasks: pick('bg-tasks').map((e) => e.tasks.map((t) => t.id)),
+        bgTaskEnd: pick('bg-task-end').map((e) => ({ id: e.id, status: e.status, summary: e.summary, atTurnEnd: e.atTurnEnd })),
+        workflow: pick('workflow').map((e) => ({ id: e.wf.id, status: e.wf.status, summary: e.wf.summary, agents: e.wf.agents.map((a) => a.model + '/' + a.state), phases: e.wf.phases.length, tokens: e.wf.totalTokens })),
+        thinkingClear: pick('thinking-clear').length,
+        context: pick('context').map((e) => e.contextTokens),
+        modelFallback: pick('model-fallback').length
+      }
+    })()`)
+    // ── 화면(DOM) — 이벤트와 **독립**인 두 번째 증거 ─────────────────────────
+    //
+    // 화면 구조를 알고 재야 한다: 할 일 · 서브에이전트 · 백그라운드 셸 · 변경 파일은
+    // WorkBar의 **칩(개수)** 이고 목록은 눌러야 뜨는 팝오버다(`Chat.tsx:3395`).
+    // 워크플로는 **실행 중에만** 있는 독(`.wf-dock`)이라 사후에는 없는 게 정답이다.
+    out.chips = await app.j(`[...document.querySelectorAll('.workbar .wb-chip')].map((b) => ({
+      label: b.querySelector('.cc-label')?.textContent ?? '',
+      value: b.querySelector('.cc-pct')?.textContent ?? '',
+      detail: b.querySelector('.cc-detail')?.textContent ?? ''
+    }))`)
+    const chipVal = (label) => (out.chips.find((c) => c.label === label) ?? {}).value ?? null
+    // 칩을 눌러 목록이 실제로 그려지는지 — 팝오버 본문까지 본다.
+    out.pops = {}
+    for (const [key, label] of [['todo', '할 일'], ['sub', '서브에이전트'], ['sh', '백그라운드 셸'], ['file', '변경된 파일']]) {
+      out.pops[key] = await app.j(`await (async () => {
+        const btn = [...document.querySelectorAll('.workbar .wb-chip')].find((b) => b.querySelector('.cc-label')?.textContent === ${JSON.stringify(label)})
+        if (!btn) return null
+        btn.click()
+        await new Promise((r) => setTimeout(r, 220))
+        const pop = document.querySelector('.wb-pop')
+        const txt = pop ? pop.innerText : null
+        btn.click()
+        await new Promise((r) => setTimeout(r, 120))
+        return txt
+      })()`)
+    }
+    out.seen = await app.j('window.__seen')
+    out.dom = await app.j(`(() => {
+      const txt = document.body.innerText
+      return {
+        termOut: txt.includes('R3-TERM-OUT'),
+        reply: txt.includes('R3-ALL-DONE'),
+        wfDockGone: !document.querySelector('.wf-dock, .wf-card')
+      }
+    })()`)
+
+    const wants = [
+      ['할 일', '0/2', 'todo', '파일 만들기'],
+      ['서브에이전트', '1/1', 'sub', 'Explore'],
+      ['백그라운드 셸', '1/1', 'sh', 'R3-BG-SHELL'],
+      // 할 일 칩의 좌변은 **완료 수**다 — 픽스처는 running 1 + pending 1이라 `0/2`가 정답.
+      ['변경된 파일', '1', 'file', 'r3-made.txt']
+    ]
+    const badChip = wants.filter(([l, v]) => chipVal(l) !== v).map(([l, v]) => `${l}=${chipVal(l)}(기대 ${v})`)
+    if (badChip.length) fail('E9-화면(칩)', `WorkBar 칩 값이 다르다: ${badChip.join(' · ')}`, out.chips)
+    else ok('E9-화면(칩)', out.chips.map((c) => `${c.label} ${c.value}`))
+    const badPop = wants.filter(([, , k, needle]) => !(out.pops[k] ?? '').includes(needle)).map(([l]) => l)
+    if (badPop.length) fail('E9-화면(목록)', `팝오버에 내용이 없다: ${badPop.join(', ')}`, out.pops)
+    else ok('E9-화면(목록)', Object.fromEntries(Object.entries(out.pops).map(([k, v]) => [k, (v ?? '').split('\n').slice(0, 3).join(' / ')])))
+    if (!out.seen?.wfDock) fail('E9-화면(워크플로)', '실행 중에도 워크플로 독이 안 떴다', out.seen)
+    else if (!out.dom.wfDockGone) fail('E9-화면(워크플로)', '정착했는데 알약이 남았다(고아 알약)', out.dom)
+    else ok('E9-화면(워크플로)', { 실행중: out.seen.wfText.split('\n').slice(0, 2).join(' / '), 정착후: '없음' })
+    if (!out.dom.termOut || !out.dom.reply) fail('E9-화면(스레드)', '터미널 출력/답변이 스레드에 없다', out.dom)
+    else ok('E9-화면(스레드)', out.dom)
+
+    const need = ['todos', 'file-change', 'terminal', 'subagent', 'bg-tasks', 'bg-task-end', 'workflow', 'thinking-clear']
+    const missing = need.filter((t) => !out.events[t])
+    if (missing.length) fail('E9-이벤트', `도달 안 한 이벤트: ${missing.join(', ')}`, out.events)
+    else ok('E9-이벤트', out.events)
+
+    // 세부 규약 단언
+    const fc = out.byType.fileChange[0]
+    if (!fc || fc.tag !== 'new' || fc.add !== 2 || !fc.whole) fail('E9-file-change', '전체 파일 디프의 모양이 다르다', out.byType.fileChange)
+    else ok('E9-file-change', fc)
+    const term = out.byType.terminal.map((l) => l.type)
+    if (term[0] !== 'cmd' || !term.includes('out') || !term.includes('ok')) fail('E9-terminal', `cmd→out→ok 순서가 아니다: ${term}`, out.byType.terminal)
+    else ok('E9-terminal', term)
+    const bg = out.byType.bgTasks
+    if (!bg.length || !bg[0].includes('bg-1') || bg[0].includes('wf-1')) fail('E9-bg-tasks', '셸 칩 목록에 워크플로가 섞였거나 셸이 없다', bg)
+    else if (bg.at(-1).length !== 0) fail('E9-bg-tasks', '마지막 REPLACE가 비지 않았다', bg)
+    else ok('E9-bg-tasks', bg)
+    const end = out.byType.bgTaskEnd.find((e) => e.id === 'bg-1')
+    if (!end || end.status !== 'completed') fail('E9-bg-task-end', '셸 정착이 안 왔다', out.byType.bgTaskEnd)
+    else ok('E9-bg-task-end', end)
+    const wf = out.byType.workflow
+    if (!wf.length || wf[0].status !== 'running' || wf[0].agents[0] !== 'Opus 5.1/start') fail('E9-workflow(진행)', '워크플로 스냅샷이 다르다', wf)
+    else if (!wf.some((w) => w.status === 'completed')) fail('E9-workflow(정착)', '워크플로가 running으로 남았다(고아 알약)', wf)
+    else ok('E9-workflow', wf)
+    const sa = out.byType.subagent
+    if (!sa.length || sa[0].status !== 'running' || !sa.some((a) => a.model === 'Opus 5')) fail('E9-subagent', '사이드체인 모델/스폰이 안 잡혔다', sa)
+    else if (!sa.some((a) => a.status === 'done')) fail('E9-subagent', '서브에이전트가 실행 중으로 남았다', sa)
+    else ok('E9-subagent', sa.map((a) => a.status + (a.model ? `(${a.model})` : '')))
+    // ★ 사이드체인 조기 분리 — 그 프레임의 usage(999999)가 게이지에 섞이면 안 되고,
+    //   모델이 다르다고 전환 배너가 뜨면 안 된다(메모리의 배너 핑퐁 사고).
+    if (out.byType.context.some((n) => n >= 999_999)) fail('E9-사이드체인', '서브에이전트 usage가 컨텍스트 게이지를 오염시켰다', out.byType.context)
+    else if (out.byType.modelFallback > 0) fail('E9-사이드체인', '사이드체인 모델이 전환 배너를 띄웠다', out.byType.modelFallback)
+    else ok('E9-사이드체인 분리', { context: out.byType.context, banners: out.byType.modelFallback })
+
+    out.fileOnDisk = fs.existsSync(path.join(s.WORK, 'r3-made.txt'))
+  } catch (e) {
+    fail('EVENTS', String(e))
+  } finally {
+    rep.steps.events = out
+    try { killTree(app.child.pid) } catch {}
+    await sleep(700)
+    if (!KEEP) rmrf(s.HOME)
+  }
+  return rep.findings.length === 0
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 6) ★R3 — `error` 이벤트 (엔진이 **깨진** 경로)
+//
+//    2.6.2는 실행 루프의 예외를 `error` 말풍선으로 냈다(`engine.ts:1796`). 3.0에서
+//    같은 등급은 "스트림이 result 없이 깨졌다"이고, 스텁을 **아무 것도 안 보내게**
+//    두면 T3(20초 무응답)가 `SpawnFailed`로 그 경로를 만든다. 20초는 상태기계의
+//    START_TIMEOUT이라 줄일 수 없다 — 그래서 별도 단계다.
+// ─────────────────────────────────────────────────────────────────────────────
+async function phaseError() {
+  console.log('\n[ERROR] 깨진 엔진 → error 말풍선 (T3 20초)')
+  // 대본은 비어 있다: 스텁이 stdin만 붙들고 아무 프레임도 안 낸다 → init ack 없음 → T3.
+  const s = fakeHome('error', 'c-err', [{ afterMs: 50 }])
+  const out = { home: s.HOME }
+  const app = await boot(s.HOME, 9370, { CCG_FAKECLI_SCRIPT: s.SCRIPT })
+  try {
+    await app.j(`(window.__ev = [], window.api.onEngineEvent((e) => window.__ev.push(e)), 'armed')`)
+    out.ready = await waitUntil(app, `(await window.api.getChats())?.activeChatId === 'c-err' && !!document.querySelector('.composer-row textarea')`, 30_000)
+    await typeAndSend(app, '응답이 없을 질문')
+    out.arrived = await waitUntil(app, `window.__ev.some((e) => e.type === 'error')`, 45_000)
+    await sleep(800) // 이벤트 도착과 React 커밋은 다른 시점이다
+    out.events = await app.j(`window.__ev.map((e) => e.type + '/' + (e.status ?? '') + '#' + e.runId)`)
+    out.error = await app.j(`window.__ev.find((e) => e.type === 'error') ?? null`)
+    // 오류 말풍선은 "오류" 라벨 + 본문 두 줄로 그려진다(`오류: …` 한 줄이 아니다).
+    out.dom = await app.j(`(() => {
+      const thread = ([...document.querySelectorAll('.thread, .msgs, .msg-list, main')].map((n) => n.innerText).sort((a, b) => b.length - a.length)[0] ?? '')
+      return {
+        errorLabels: (thread.match(/오류/g) || []).length,
+        hasReason: thread.includes('엔진을 시작하지 못했어요'),
+        hasT3Notice: thread.includes('엔진이 20초 안에 응답하지 않았어요'),
+        composerFree: !document.querySelector('.composer-row textarea')?.disabled,
+        working: !!document.querySelector('.working, .thinking'),
+        thread: thread.slice(0, 700)
+      }
+    })()`)
+    if (!out.arrived) fail('E9-error', '20초 무응답에도 error 이벤트가 없다', out.events)
+    else if (!out.dom.hasReason || out.dom.errorLabels < 1) fail('E9-error(화면)', '이벤트는 왔는데 오류 말풍선이 없다', out.dom)
+    else if (out.dom.errorLabels > 1) fail('E9-error(중복)', `같은 사유가 오류 말풍선 ${out.dom.errorLabels}개로 뜬다`, out.dom)
+    else if (!out.dom.composerFree || out.dom.working) fail('E9-error(정지)', '오류 뒤 컴포저/스피너가 안 풀렸다', out.dom)
+    else ok('E9-error', { message: out.error?.message, labels: out.dom.errorLabels, t3: out.dom.hasT3Notice })
+  } catch (e) {
+    fail('ERROR', String(e))
+  } finally {
+    rep.steps.error = out
+    try { killTree(app.child.pid) } catch {}
+    await sleep(700)
+    if (!KEEP) rmrf(s.HOME)
+  }
+  return rep.findings.length === 0
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 7) ★R3 — 부팅 재장전 (§5.8 2단계) + 스펙 ⑤ 자동/수동 발사
+//
+//    R2까지 이 경로는 **없었다**(§R2.8-B: 재시작 후 자동 이어서가 조용히 안 산다).
+//    두 채팅을 심는다:
+//      · `c-see`  — 활성 채팅(= 보이는 자리). 대기표가 이미 지난 시각 → **자동 발사**.
+//      · `c-hide` — 화면 밖. 같은 대기표인데 `ready`만 켜지고 **안 나가야** 한다.
+//    한도는 **합성**이다(실제로 한도에 걸릴 수 없다) — 채팅 파일의 `hold`를 직접 심는다.
+// ─────────────────────────────────────────────────────────────────────────────
+function reloadScript(WORK) {
+  return [
+    { afterMs: 80, emit: ack },
+    { emit: init('RL-1', WORK) },
+    { afterMs: 120, emit: { type: 'assistant', session_id: 'RL-1', parent_tool_use_id: null, message: { role: 'assistant', content: [{ type: 'text', text: 'R3-RESUMED' }], usage: { input_tokens: 5 } } } },
+    { emit: { type: 'result', subtype: 'success', is_error: false, result: 'R3-RESUMED', session_id: 'RL-1', total_cost_usd: 0, duration_ms: 1, num_turns: 1 } }
+  ]
+}
+
+async function phaseReload() {
+  console.log('\n[RELOAD] 부팅 재장전 + 한도 해제 이어서(합성 hold · 가짜 CLI)')
+  const HOME = path.join(REPO, '.poc-home-reload')
+  const WORK = path.join(HOME, 'work')
+  const s = fakeHome('reload', 'c-see', reloadScript(WORK))
+  // 통합 스토어 포맷으로 직접 심는다 — 재장전은 `chats-v3/<id>.json`의 queue·hold를 읽는다.
+  // resetsAt은 **이미 지난** unix 초: due_at = resetsAt+90s도 지났으므로 첫 틱에 발화한다.
+  const past = Math.floor(Date.now() / 1000) - 600
+  const chat = (id, title, queue, hold) => ({
+    id, title, origin: 'chat', custom: true, cwd: WORK,
+    identity: { engine: { kind: 'claude', model: 'haiku', effort: 'minimal' },
+                billing: { kind: 'subscription', account: 'fake@example.com', dropEnvKey: false },
+                cwd: WORK, addDirs: [], mode: 'normal', tools: {} },
+    picker: { model: 'haiku', effort: 'minimal', mode: 'normal' },
+    manualCwd: WORK, refDirs: [], queue, hold,
+    snapshot: { messages: [{ kind: 'msg', id: 'm0', role: 'user', text: `${title} 원본` }] },
+    updatedAt: Date.now()
+  })
+  rmrf(path.join(HOME, 'chats'))
+  write(path.join(HOME, 'chats-v3', 'index.json'), {
+    version: 1, order: ['c-see', 'c-hide'], activeChatId: 'c-see',
+    chats: [{ id: 'c-see' }, { id: 'c-hide' }]
+  })
+  write(path.join(HOME, 'chats-v3', 'c-see.json'), chat('c-see', '보이는 채팅', ['예약 하나'], { key: 'c-see', resetsAt: past, ready: false }))
+  write(path.join(HOME, 'chats-v3', 'c-hide.json'), chat('c-hide', '화면 밖 채팅', ['예약 둘'], { key: 'c-hide', resetsAt: past, ready: false }))
+  write(path.join(HOME, 'chats-v3', 'status.json'), { version: 1, statuses: {} })
+  // 마이그레이션이 옛 폴더를 다시 흡수하지 않게 마커를 남긴다.
+  write(path.join(HOME, 'chats-v3', '.migrated'), { at: Date.now() })
+
+  const out = { home: HOME, resetsAt: past }
+  const app = await boot(HOME, 9368, { CCG_FAKECLI_SCRIPT: s.SCRIPT })
+  const dbg = async () => await app.j(`await window.__TAURI_INTERNALS__.invoke('ipc_call', { channel: 'engine:debug', payload: [] })`)
+  try {
+    // ① 재장전이 붙었는가 — 두 채팅 모두 런타임이 서고 큐·대기표를 들고 있어야 한다.
+    let d = null
+    for (let i = 0; i < 100; i++) {
+      d = await dbg()
+      if ((d?.chats ?? []).length >= 2) break
+      await sleep(150)
+    }
+    out.afterBoot = (d?.chats ?? []).map((c) => ({ id: c.chatId, queued: c.queued, hold: c.hold, auto: c.autoResume, spawns: c.spawns, queue: c.queue, now: c.nowMs, state: c.state }))
+    const see0 = out.afterBoot.find((c) => c.id === 'c-see')
+    const hide0 = out.afterBoot.find((c) => c.id === 'c-hide')
+    if (!see0 || !hide0) fail('B1-재장전', '후보 채팅의 런타임이 안 섰다', out.afterBoot)
+    else if (!see0.auto || hide0.auto) fail('B1-스펙⑤', `자동 발사 범위가 틀렸다(see:${see0.auto} hide:${hide0.auto})`, out.afterBoot)
+    else ok('B1-재장전', out.afterBoot)
+
+    // ② 대기표가 풀리면 **보이는 채팅만** 이어져야 한다.
+    //
+    //    발화는 즉시가 아니다: §7.3의 재검증 지연(`due_at = resets_at + 90s`)이 재장전에도
+    //    그대로 걸린다. 저장된 reset 시각이 이미 지났어도 런타임 시계 기준 `now + 90s`가
+    //    가장 이른 발화 시점이다 — "앱을 켜자마자 자동 전송"을 막는 바닥값이기도 하다
+    //    (2.6.2 `resumeDelayMs`의 15초 하한과 같은 성격, 값만 다르다). 그래서 130초를 준다.
+    //    ※ `waitUntil`은 표현식을 `!!(...)`로 감싼다 — **Promise를 넘기면 항상 참**이라
+    //      기다리지 않고 지나간다(1차 주행에서 실제로 밟았다: 130초를 준 줄 알았는데
+    //      런타임 시계가 1.4초밖에 안 갔다). 표현식 안에서 await 해야 한다.
+    const resumed = await waitUntil(app, `(await window.__TAURI_INTERNALS__.invoke('ipc_call', { channel: 'engine:debug', payload: [] })).chats?.some((c) => c.chatId === 'c-see' && c.spawns > 0)`, 130_000)
+    await sleep(1200)
+    d = await dbg()
+    out.afterHold = (d?.chats ?? []).map((c) => ({ id: c.chatId, queued: c.queued, hold: c.hold, auto: c.autoResume, spawns: c.spawns, now: c.nowMs, state: c.state }))
+    const see = out.afterHold.find((c) => c.id === 'c-see')
+    const hide = out.afterHold.find((c) => c.id === 'c-hide')
+    out.domReply = await app.j(`document.body.innerText.includes('R3-RESUMED')`)
+    if (!resumed || !see || see.spawns < 1) fail('B2-이어서', '한도가 풀렸는데 이어지지 않았다', out.afterHold)
+    else if (see.hold) fail('B2-이어서', '소진된 대기표가 남았다', see)
+    else ok('B2-이어서', { spawns: see.spawns, dom: out.domReply })
+    if (!hide || hide.spawns !== 0) fail('B3-스펙⑤', '화면 밖 채팅이 혼자 발사했다', out.afterHold)
+    else if (!hide.hold?.ready) fail('B3-스펙⑤', 'ready 표식이 안 켜졌다(사이드바 초록 점의 근거)', hide)
+    else ok('B3-화면밖은 대기', hide)
+
+    // ③ 사용자가 누르면(=`chat:queue-mutate {op:'resume'}`) 그때 발사.
+    out.resumeVerdict = await app.j(
+      `await window.__TAURI_INTERNALS__.invoke('ipc_call', { channel: 'chat:queue-mutate', payload: [{ chatId: 'c-hide', op: 'resume' }] })`
+    )
+    await sleep(1500)
+    d = await dbg()
+    out.afterPress = (d?.chats ?? []).map((c) => ({ id: c.chatId, spawns: c.spawns, hold: c.hold, auto: c.autoResume }))
+    const pressed = out.afterPress.find((c) => c.id === 'c-hide')
+    if (!pressed || pressed.spawns < 1) fail('B4-눌러서 이어가기', '누른 뒤에도 안 나갔다', out.afterPress)
+    else ok('B4-눌러서 이어가기', pressed)
+
+    // ④ `chat:status`가 재장전을 반영하는가(디스크 파생 캐시 · 규약 3).
+    out.statusJson = (() => {
+      try { return JSON.parse(fs.readFileSync(path.join(HOME, 'chats-v3', 'status.json'), 'utf8')).statuses } catch (e) { return { error: String(e) } }
+    })()
+  } catch (e) {
+    fail('RELOAD', String(e))
+  } finally {
+    rep.steps.reload = out
+    try { killTree(app.child.pid) } catch {}
+    await sleep(800)
+    if (!KEEP) rmrf(HOME)
+  }
+  return rep.findings.length === 0
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 8) ★R3 — 창 자리 4채널 + `chat:windows`
+//
+//    R2는 `session-wins:focus` 한 채널의 의미만 채웠다(채널 수 불변). 여기서 3.0
+//    계약면의 네 채널을 실제로 배선하고, **`win:chat-close`가 대화를 지우지 않는다**는
+//    통합 모델의 규약(자리는 뷰)을 실측한다 — `session-wins:close`와 정반대다.
+// ─────────────────────────────────────────────────────────────────────────────
+async function phaseSlots() {
+  console.log('\n[SLOTS] win:chat-* 4채널 + chat:windows')
+  const s = fakeHome('slots', 'c-main2', reloadScript(path.join(REPO, '.poc-home-slots', 'work')))
+  const out = { home: s.HOME }
+  const app = await boot(s.HOME, 9369, { CCG_FAKECLI_SCRIPT: s.SCRIPT })
+  const call = async (ch, payload) =>
+    await app.j(`await window.__TAURI_INTERNALS__.invoke('ipc_call', { channel: ${JSON.stringify(ch)}, payload: ${JSON.stringify(payload)} })`)
+  try {
+    // `chat:windows` 구독 — 얼려 둔 렌더러에는 이 채널의 구독자가 아직 없으므로
+    // (계약면만 있고 화면이 안 붙었다) `@tauri-apps/api/event`의 `listen`이 쓰는
+    // **바로 그 저수준 경로**로 직접 건다. `withGlobalTauri`가 꺼져 있어
+    // `window.__TAURI__`는 없다 — 내부 브리지를 쓴다.
+    out.subscribed = await app.j(`await (async () => {
+      window.__wins = []
+      const I = window.__TAURI_INTERNALS__
+      const handler = I.transformCallback((e) => window.__wins.push(e.payload))
+      await I.invoke('plugin:event|listen', { event: 'chat:windows', target: { kind: 'Any' }, handler })
+      return true
+    })()`)
+    out.listEmpty = await call('win:chat-list', [{}])
+    if (!Array.isArray(out.listEmpty) || out.listEmpty.length !== 0) fail('S1-list', '빈 목록이 아니다', out.listEmpty)
+    else ok('S1-list', out.listEmpty)
+
+    out.opened = await call('win:chat-open', [{ from: 'new' }])
+    const slot = (out.opened ?? [])[0]
+    if (!slot?.chatId || !slot?.label) fail('S2-open', '창 자리가 안 생겼다', out.opened)
+    else ok('S2-open', slot)
+    out.chatId = slot?.chatId
+    // `chat:windows` 브로드캐스트가 같은 사실을 실었는가.
+    await sleep(400)
+    out.broadcasts = await app.j('window.__wins.map((w) => w.map((x) => x.chatId))')
+    if (!out.broadcasts.length || !out.broadcasts.at(-1).includes(out.chatId)) fail('S3-chat:windows', '브로드캐스트가 창을 안 실었다', out.broadcasts)
+    else ok('S3-chat:windows', out.broadcasts.at(-1))
+
+    // 그 창에서 한 턴 돌려 대화를 만든다(닫아도 남아야 하니까).
+    const sp = await connectSessionPage(9369, null)
+    if (!sp) fail('S4-창페이지', '추가 채팅 창의 CDP 페이지를 못 찾았다')
+    else {
+      const se = async (e) => JSON.parse(await sp.eval(`(async () => JSON.stringify(${e}))()`, { awaitPromise: true }))
+      for (let i = 0; i < 400; i++) {
+        const up = await sp.eval(`(async () => { try { return !!(await window.api.app.getVersion()) } catch { return false } })()`, { awaitPromise: true }).catch(() => false)
+        if (up) break
+        await sleep(100)
+      }
+      await se(`(() => { try { localStorage.setItem('session.cwd', ${JSON.stringify(s.WORK)}) } catch {} return 'cwd' })()`)
+      await sp.eval(`location.reload()`).catch(() => {})
+      await sleep(1500)
+      const sp2 = await connectSessionPage(9369, null)
+      for (let i = 0; i < 400; i++) {
+        const up = await sp2.eval(`(async () => { try { return !!(await window.api.app.getVersion()) } catch { return false } })()`, { awaitPromise: true }).catch(() => false)
+        if (up) break
+        await sleep(100)
+      }
+      await sp2.eval(`(() => {
+        const ta = document.querySelector('.composer-row textarea') || document.querySelector('textarea')
+        if (!ta) return 'no-textarea'
+        const set = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set
+        set.call(ta, '자리 채널 검증'); ta.dispatchEvent(new Event('input', { bubbles: true }))
+        ta.focus(); ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }))
+        return 'sent'
+      })()`)
+      let replied = false
+      for (let i = 0; i < 400; i++) {
+        replied = JSON.parse(await sp2.eval(`(async () => JSON.stringify(document.body.innerText.includes('R3-RESUMED')))()`, { awaitPromise: true }).catch(() => 'false'))
+        if (replied) break
+        await sleep(100)
+      }
+      out.turnInWindow = replied
+      await sleep(1800)
+    }
+
+    // ★ `win:chat-close`는 **창만** 닫는다 — 대화는 남아야 한다.
+    out.closed = await call('win:chat-close', [{ chatId: out.chatId }])
+    await sleep(900)
+    out.listAfterClose = await call('win:chat-list', [{}])
+    out.recordAfterClose = (() => {
+      const v = readChatV3(s.HOME, out.chatId)
+      return v ? { msgs: v.snapshot?.messages?.length ?? 0, title: v.title } : null
+    })()
+    if (out.listAfterClose.length !== 0) fail('S5-close', '창이 안 닫혔다', out.listAfterClose)
+    else if (!out.recordAfterClose?.msgs) fail('S5-close(대화)', 'win:chat-close가 대화를 지웠다(자리는 뷰여야 한다)', out.recordAfterClose)
+    else ok('S5-close(창만)', out.recordAfterClose)
+
+    // `win:chat-focus`는 닫힌 자리를 **되만든다**.
+    out.focused = await call('win:chat-focus', [{ chatId: out.chatId }])
+    await sleep(1200)
+    out.listAfterFocus = await call('win:chat-list', [{}])
+    if ((out.listAfterFocus ?? []).length !== 1) fail('S6-focus', '닫힌 자리를 클릭해도 창이 안 뜬다', out.listAfterFocus)
+    else ok('S6-focus(되만들기)', out.listAfterFocus)
+    // 같은 채팅으로 다시 open → 창이 두 개가 되면 안 된다.
+    out.reopened = await call('win:chat-open', [{ chatId: out.chatId, from: 'grid' }])
+    if ((out.reopened ?? []).filter((w) => w.chatId === out.chatId).length !== 1) fail('S7-중복', '같은 채팅에 창이 둘 생겼다', out.reopened)
+    else ok('S7-중복없음', out.reopened.length)
+  } catch (e) {
+    fail('SLOTS', String(e))
+  } finally {
+    rep.steps.slots = out
+    try { killTree(app.child.pid) } catch {}
+    await sleep(800)
+    if (!KEEP) rmrf(s.HOME)
+  }
+  return rep.findings.length === 0
+}
+
 function readChatV3(home, id) {
   for (const p of [path.join(home, 'chats-v3', `${id}.json`), path.join(home, 'chats', `${id}.json`)]) {
     try {
@@ -802,6 +1330,10 @@ let allOk = true
 if (only === 'all' || only === 'r81') allOk = (await phaseR81()) && allOk
 if (only === 'all' || only === 'dialog') allOk = (await phaseDialog()) && allOk
 if (only === 'all' || only === 'winsave') allOk = (await phaseWinSave()) && allOk
+if (only === 'all' || only === 'events') allOk = (await phaseEvents()) && allOk
+if (only === 'all' || only === 'events' || only === 'error') allOk = (await phaseError()) && allOk
+if (only === 'all' || only === 'reload') allOk = (await phaseReload()) && allOk
+if (only === 'all' || only === 'slots') allOk = (await phaseSlots()) && allOk
 if (only === 'all' || only === 'live') allOk = (await phaseLive()) && allOk
 rep.verdict = rep.findings.length === 0 ? 'PASS' : 'FAIL'
 fs.mkdirSync(path.dirname(OUT), { recursive: true })

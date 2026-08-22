@@ -91,6 +91,18 @@ pub enum Op {
     /// 큐 조작 — `{op:'remove'|'clear'|'restore', id?|token?}`.
     QueueMutate(Value),
     ForceSettle(String),
+    /// 백그라운드 작업 중지 — 상태기계에 `stop_task`를 보내고, **와이어에 `byUser` 표식**을
+    /// 남긴다(정착 통지의 "직접 중지 / Claude가 중지 / 턴 종료 정리"를 가르는 근거).
+    BgStop(String),
+    /// **부팅 재장전**(§5.8 2단계). 큐·한도 대기표를 런타임에 세운다. `auto`는 스펙 ⑤ —
+    /// 보이는 자리 + 열린 창만 자동 발사, 나머지는 `ready`만 켜고 사용자를 기다린다.
+    Reload {
+        queued: Vec<String>,
+        hold: Option<ccg_engine::runtime::ReloadHold>,
+        auto: bool,
+    },
+    /// 사용자가 "이어서"를 눌렀다 — `ready`인 대기표를 지금 소진한다.
+    ResumeNow,
     Dispose,
     /// 진단 — 런타임 수·상태(하네스가 읽는다).
     /// (전 채팅 상태 스냅샷은 허브를 거치지 않는다 — `chats:get`이 `status.json`에서
@@ -319,7 +331,12 @@ impl Hub {
                         json!({ "chatId": id, "state": format!("{:?}", s.rt.state()),
                                 "queued": s.rt.queue_len(), "spawns": s.rt.spawns,
                                 "exits": s.rt.exits, "session": s.rt.session_id(),
-                                "pid": s.rt.driver_ref().pid() })
+                                "pid": s.rt.driver_ref().pid(),
+                                // 부팅 재장전·스펙 ⑤가 실제로 걸렸는지 하네스가 읽는다.
+                                "autoResume": s.rt.auto_resume(),
+                                "nowMs": s.rt.now(),
+                                "hold": s.rt.hold().map(|h| json!({ "resetsAt": h.resets_at, "ready": h.ready, "dueAt": h.due_at() })),
+                                "queue": s.rt.queue_texts() })
                     })
                     .collect();
                 answer(json!({ "chats": rows, "cli": self.cli.to_string_lossy() }));
@@ -487,6 +504,20 @@ impl Hub {
             Op::ForceSettle(id) => {
                 let v = slot.rt.dispatch(Cmd::ForceSettle { id });
                 answer(verdict_wire("force_settle", &v));
+            }
+            Op::BgStop(id) => {
+                slot.wire.note_user_bg_stop(&id);
+                let v = slot.rt.dispatch(Cmd::BgStop { id });
+                answer(verdict_wire("bg_task.stop", &v));
+            }
+            Op::Reload { queued, hold, auto } => {
+                slot.rt.set_auto_resume(auto);
+                slot.rt.reload_state(queued, hold);
+                answer(json!({ "queued": slot.rt.queue_len(), "hold": slot.rt.hold().is_some(), "auto": auto }));
+            }
+            Op::ResumeNow => {
+                let v = slot.rt.resume_now();
+                answer(verdict_wire("hold.resume", &v));
             }
             Op::Debug | Op::Dispose => unreachable!("위에서 처리"),
         }

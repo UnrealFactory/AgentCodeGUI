@@ -152,6 +152,33 @@ pub fn read_chat_lite(id: &str) -> Option<ChatLite> {
     serde_json::from_str::<ChatLite>(&raw).ok()
 }
 
+/// 재장전이 실제로 되살릴 **예약 본문**(§5.8 2단계 "queue 로드").
+///
+/// `read_chat_lite`는 개수만 세면 되므로 큐를 `IgnoredAny`로 건너뛴다 — 본문이 필요한
+/// 쪽은 여기다. 항목은 2.6.2 문자열 배열이거나 `{text}` 객체 배열이다(두 판 다 있다).
+/// 재장전에 필요한 것은 본문뿐이고, 정체성 스냅샷은 **다시 잡는다**(m-logic §5.8 —
+/// "복원이 아니라 재장전": 그 사이 폴더·계정이 바뀌었을 수 있다).
+pub fn read_chat_queue(id: &str) -> Vec<String> {
+    let Ok(raw) = std::fs::read_to_string(super::chats_v3::chat_file(id)) else { return vec![] };
+    let Ok(v) = serde_json::from_str::<Value>(&raw) else { return vec![] };
+    v.get("queue")
+        .and_then(Value::as_array)
+        .map(|a| {
+            a.iter()
+                .filter_map(|q| match q {
+                    Value::String(s) => Some(s.clone()),
+                    _ => q
+                        .get("text")
+                        .or_else(|| q.get("prompt"))
+                        .and_then(Value::as_str)
+                        .map(str::to_string),
+                })
+                .filter(|s| !s.trim().is_empty())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 /// **재장전 후보**(M-UX §4.3 / m-logic §5.8 부팅 경로 1단계) —
 /// `hold != null ∨ queued > 0`인 채팅. M-LOGIC이 이 목록으로 `ChatRuntime::ensure`를 돈다.
 /// 이 경로가 없으면 재시작 후 자동 이어서가 **조용히** 안 산다.
@@ -317,5 +344,29 @@ mod tests {
     fn missing_optional_fields_are_none() {
         let lite: ChatLite = serde_json::from_str(r#"{"id":"c2","snapshot":null}"#).unwrap();
         assert!(lite.queue.is_none() && lite.hold.is_none());
+    }
+
+    #[test]
+    fn queue_bodies_are_read_from_both_shapes() {
+        let h = crate::testkit::temp_home("status-queue");
+        h.write(
+            "chats-v3/c9.json",
+            &json!({ "id": "c9", "queue": ["문자열 항목", { "text": "객체 항목" }, { "text": "  " }] }).to_string(),
+        );
+        assert_eq!(read_chat_queue("c9"), vec!["문자열 항목", "객체 항목"]);
+        assert!(read_chat_queue("없는채팅").is_empty());
+    }
+
+    #[test]
+    fn reload_candidates_are_only_the_chats_with_something_to_reload() {
+        let h = crate::testkit::temp_home("status-cands");
+        h.write("chats-v3/a.json", &json!({ "id": "a", "queue": ["하나"] }).to_string());
+        h.write(
+            "chats-v3/b.json",
+            &json!({ "id": "b", "hold": { "resetsAt": 1_700_000_000.0, "ready": false } }).to_string(),
+        );
+        h.write("chats-v3/c.json", &json!({ "id": "c", "snapshot": { "messages": [] } }).to_string());
+        let ids = ["a".to_string(), "b".to_string(), "c".to_string()];
+        assert_eq!(reload_candidates(&ids), vec!["a".to_string(), "b".to_string()]);
     }
 }

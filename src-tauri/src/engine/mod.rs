@@ -22,14 +22,18 @@
 //! | `ma:*` `{panelId}` | 그 자리의 채팅 | [`panel_id_to_chat`] |
 //! | `session:*` | 그 창의 채팅 | [`chat_for_window`] |
 //!
-//! ## 이 라운드에서 **배선하지 않은** 것 (조용히 빠뜨리지 않는다)
+//! ## **배선하지 않은** 것 (조용히 빠뜨리지 않는다 — R3 갱신)
 //!
 //! - `btw:open`(포크 질문 창) · `talk:*`(은퇴) · Codex 엔진(app-server)
 //! - `chat:answer`의 답을 **선택지 요약 문장**으로 되먹이는 것까지는 했지만,
 //!   `allow_always`의 `updatedPermissions`는 아직 안 싣는다(허용은 1회로 동작).
-//! - 부팅 시 큐·한도 대기 **재장전**(§5.8 부팅 경로 2단계) — 엔진에 로더가 없다.
-//! - `file-change` / `terminal` / `todos` / `bg-tasks` 프레임(→ `wire.rs` 파일 끝 목록).
+//! - `chat:flush-req` — 렌더러가 창 닫기 전에 자체 저장을 한다(31 / 32채널).
+//! - `result.tokenUsage` · `contextWindow` · `tool-end.links`(→ `wire.rs` 파일 끝 목록).
+//!
+//! R3에서 닫힌 것: **부팅 재장전**([`reload_pending`]) · `EngineEvent` 9종(`wire.rs`) ·
+//! 창 자리 4채널 + `chat:windows`(`ipc/windows.rs`).
 
+mod diff;
 mod hub;
 mod ident;
 mod lite;
@@ -53,7 +57,68 @@ pub fn boot(app: &AppHandle) {
     let ids = all_chat_ids();
     ccg_store::status::load_boot(&ids);
     hub::start(app.clone());
+    reload_pending(&ids);
     let _ = app.emit(ch::CHAT_STATUS, status_array());
+}
+
+/// **부팅 재장전**(m-logic §5.8 부팅 경로 2단계 · ux-chat-unify §4.3).
+///
+/// 후보는 `hold != null ∨ queued > 0`인 채팅뿐이다(`status::reload_candidates` —
+/// `status.json`이 인덱스고, 없거나 깨졌으면 채팅 파일 전수 **얕은 스캔**으로 만든다).
+/// 후보마다 런타임을 물질화하고 큐·대기표를 세운다. 이 경로가 없으면 재시작 후
+/// 자동 이어서가 **조용히** 안 산다(§R2.8-B).
+///
+/// **자동 발사 범위 = 스펙 ⑤ 기본값**: *보이는 자리 + 열린 창만 자동*. 부팅 시점에
+/// 추가 채팅 창은 아직 하나도 없으므로(창 복원은 사용자 클릭이다) 자동 대상은
+/// **활성 채팅 + 활성 보드의 보이는 자리**다. 나머지는 `ready`만 켜고 멈춘다 —
+/// 화면 밖 채팅 여섯 개가 앱을 켜자마자 동시에 토큰을 쓰기 시작하면 안 된다.
+///
+/// **재장전은 전송이 아니다.** 예약분은 큐에 그대로 서 있고, 나가는 계기는 사용자의
+/// 다음 전송이거나 한도 해제뿐이다(`ChatRuntime::reload_state`가 드레인하지 않는다).
+fn reload_pending(ids: &[String]) {
+    let cands = ccg_store::status::reload_candidates(ids);
+    if cands.is_empty() {
+        return;
+    }
+    let mut auto: std::collections::BTreeSet<String> = ccg_store::boards::visible_chat_ids().into_iter().collect();
+    let active = active_chat_id();
+    if !active.is_empty() {
+        auto.insert(active);
+    }
+    for id in cands {
+        let Some(lite) = ccg_store::status::read_chat_lite(&id) else { continue };
+        let queued: Vec<String> = ccg_store::status::read_chat_queue(&id);
+        let hold = lite.hold.map(|h| ccg_engine::runtime::ReloadHold {
+            // 저장은 초 단위 epoch(2.6.2 `useLimitResume`의 `resetsAt` — `limitResume.ts:13`)
+            // 이고 런타임 시계는 프로세스 기동 기준 단조 밀리초다 — **남은 시간**으로 옮긴다.
+            in_ms: h.resets_at.map(remaining_ms),
+            ready: h.ready,
+        });
+        if queued.is_empty() && hold.is_none() {
+            continue;
+        }
+        hub::call(
+            &id,
+            hub::Op::Reload {
+                queued,
+                hold,
+                auto: auto.contains(&id),
+            },
+        );
+    }
+}
+
+/// 저장된 `resetsAt`(epoch 초)을 **런타임 시계의 밀리초**로 옮긴다.
+///
+/// 이 변환을 빼먹으면 대기표가 1970년으로 읽혀 부팅 즉시 발화한다(= 재시작이 곧 전송).
+/// 이미 지난 시각이면 0 — `due_at()`이 붙이는 90초 재검증 지연 뒤에 발화한다.
+fn remaining_ms(resets_at_epoch_secs: f64) -> u64 {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs_f64())
+        .unwrap_or(0.0);
+    let left = (resets_at_epoch_secs - now).max(0.0);
+    (left * 1000.0) as u64
 }
 
 /// 전 채팅 `ChatStatusLite` — 계약면은 **배열**이다(§6.1 `chat:status  ChatStatusLite[]`).
@@ -293,6 +358,11 @@ fn core_dispatch(channel: &str, p: &Value) -> Option<Value> {
             let to = a.get("revision").and_then(Value::as_u64).unwrap_or(0) as u32;
             hub::call(&chat(), hub::Op::IdentityRevert(to))
         }
+        // `op:'resume'`은 **스펙 ⑤의 후반부**다 — 자동 발사가 꺼진(화면 밖) 채팅의
+        // `ready` 대기표를 사용자가 눌러 소진하는 유일한 출구. 채널을 늘리지 않는다.
+        ch::CHAT_QUEUE_MUTATE if arg(p, 0).get("op").and_then(Value::as_str) == Some("resume") => {
+            hub::call(&chat(), hub::Op::ResumeNow)
+        }
         ch::CHAT_QUEUE_MUTATE => hub::call(&chat(), hub::Op::QueueMutate(arg(p, 0).clone())),
         ch::CHAT_FORCE_SETTLE => {
             let a = arg(p, 0);
@@ -376,10 +446,9 @@ fn bg_task(chat: &str, req: &Value) {
     match req.get("action").and_then(Value::as_str) {
         Some("stop") => {
             if let Some(id) = req.get("id").and_then(Value::as_str) {
-                hub::cast(
-                    chat,
-                    hub::Op::Cmd(Cmd::BgStop { id: id.to_string() }),
-                );
+                // `Op::BgStop`은 와이어에 **`byUser` 표식**을 남긴다 — 정착 통지의 표기가
+                // "직접 중지 / Claude가 중지 / 턴 종료 정리"로 갈린다(§bg-task-end).
+                hub::cast(chat, hub::Op::BgStop(id.to_string()));
             }
         }
         Some("background") => hub::cast(chat, hub::Op::Cmd(Cmd::BgBackground)),

@@ -773,3 +773,366 @@ done
 
 > **정직하게 남는 것**: 위 콜드/웜 표는 **주 게이트와 다른 픽스처**(패널 격자 없음)로 쟀다.
 > 두 표의 절대값을 섞어 읽으면 안 된다. 같은 표 안의 쌍별 Δ만 의미가 있다.
+
+---
+
+# §R3 — 빈 UI를 채운다 (EngineEvent 9종 · 부팅 재장전 · 창 자리 4채널 · F12)
+
+**범위**: `crates/ccg-engine`(재장전 API + 스펙 ⑤ 게이트) · `crates/ccg-store`(큐 본문 로더) ·
+`src-tauri/src/engine/`(와이어 9종 + 디프 + 허브 잡) · `src-tauri/src/ipc/windows.rs` ·
+`src-tauri/src/win.rs` · `scripts/poc-live-chat.mjs`
+**출발점**: §R2.9 남은 것 1·2·3·4 (부팅 재장전 · `EngineEvent` 9종 · 창 자리 채널 · F12)
+**규약**: 이 절도 §0~§7과 같다 — **사실만**, 자기 채점 없음. 판정은 크리틱 몫이다.
+
+**측정 바이너리**: `sha256 de9567b55554a70f`. 게이트 주행 중 **다른 라운드가 같은 레포에서
+`rm -f target/release/agentcodegui.exe && npm run tauri:build`을 돌려** 주행이 두 번 깨졌다
+(ENOENT). 그래서 하네스에 `--exe=`를 열고 `%TEMP%`에 스냅샷을 떠 그것을 쟀다 — 최종 주행의
+바이너리는 위 해시 하나다.
+
+**안전**: 이름 기반 kill 0회. 죽인 것은 내가 spawn한 PID 트리(`killTree`)뿐. 사용자 실앱
+6프로세스(`%LOCALAPPDATA%\Programs\AgentCodeGUI\`)는 시작·종료 시 동일. 실홈은 읽기/복사만
+(engines=정션, 자격증명=복사). 크리틱 소유 산출물(`wiring-r1-attacks.json`)과 벤치 기준
+결과(`bench/results/multi-tauri-3.0.0-default.json`)는 주행 뒤 `git checkout`으로 원복했다.
+**R2의 산출물을 덮지 않으려고** 하네스 출력 경로를 `m3-r2-live.json` → **`m3-r3-live.json`**
+으로 갈랐다(R2 §2가 그 파일을 인용한다).
+
+---
+
+## R3.0 한 장 요약
+
+| 항목 | R2 | R3 |
+|---|---|---|
+| `EngineEvent` 배선 | 14 / 23 | **23 / 23** (§R3.1) |
+| 3.0 코어 32채널 | 26 | **31**(`win:chat-*` 4 + `chat:windows`. 남은 1 = `chat:flush-req`) |
+| 부팅 재장전(§5.8 2단계) | **없음** — "재시작 후 자동 이어서가 조용히 안 산다" | **배선 + 실증**(§R3.3) |
+| 스펙 ⑤(보이는 자리만 자동) | 해당 없음 | **엔진 게이트로 구현**(`auto_resume`) · 실측 |
+| F12(첫 `chat:status` 레이스) | 열림 | **Rust 몫 닫음**(§R3.5) — 렌더러 몫은 남는다 |
+| 크레이트 테스트 | 104 / 58 | **108 green(+2 ignored) / 60 green** + `src-tauri` **14 신규** |
+| 세로 조각 하네스 | 4단계 | **8단계**(events · error · reload · slots 추가) · **PASS 결함 0** |
+| 크리틱 공격 A~F | green | **A~F green**(E는 2차 주행 — 1차는 모델이 Write를 안 골라 카드가 안 떴다) |
+| 주 게이트 | 5쌍 중앙값 430.7 / 246.4 | 4회 **440.5 / 254.7**(§R3.7 — **귀속 불가**: 같은 바이너리에 다른 3라운드의 변경이 함께 들어 있다) |
+
+---
+
+## R3.1 `EngineEvent` 9종 — 무엇을 어떻게 옮겼나
+
+원본은 2.6.2 `src/main/claude/engine.ts`다. 옮긴 자리는 `src-tauri/src/engine/wire.rs`
+(+ 디프 계산은 새 파일 `engine/diff.rs`). **의도적으로 다르게 한 것**은 아래 표의 마지막 칸에 적는다.
+
+| 이벤트 | 프레임 → 이벤트 | 2.6.2와 다른 점 |
+|---|---|---|
+| `thinking-clear` | 답변 텍스트 델타 / 완성 프레임의 텍스트·도구 블록이 생각 줄을 닫는다 | 없음. 도구 인자 스트리밍 구간의 `thinking`(도구별 라벨)도 같이 옮겼다 — 그게 없으면 `thinking-clear`가 닫을 것이 없다 |
+| `todos` | `TodoWrite`(전량 REPLACE) · `TaskCreate/Update/List`(증분 누적) | 없음. **도구 행을 만들지 않는다**(패널 전용 도구) |
+| `file-change` | `Write`/`Edit`/`MultiEdit`의 **성공한** `tool_result` | 없음. **런 기준선 대비 전체 파일 누적 디프** · `whole:true` · LF 정규화 · 거대 파일 요약 행까지 같다. LSP 통지만 소비자가 없다(§R3.8) |
+| `terminal` | `Bash` 도구 시작 = `cmd` 줄, 결과 = `out`/`err` 줄 + `✓ 완료` | 없음(200줄 상한 포함) |
+| `subagent` | `Task`/`Agent` 스폰 · **사이드체인** 내레이션/모델 · `tool_result` · 백그라운드 정착 통지 | 없음 |
+| `bg-tasks` | `system/background_tasks_changed` — **셸 계열만** 목록에 싣는다 | 없음. `outputFile` 유도 규칙(`%TEMP%\claude\<cwd슬러그>\<session>\tasks\<id>.output`)도 같다 |
+| `bg-task-end` | `system/task_notification` | 없음(`byUser` · `atTurnEnd` 포함) |
+| `workflow` | `system/task_progress`의 `workflow_progress`(전체 스냅샷 REPLACE) + 정착 통지 | **정착 방출을 미루지 않는다.** 2.6.2는 유휴 상주의 정착을 `wfSettledEmits`로 미뤄 `result`보다 앞세웠는데, 3.0은 펌프가 **① 와이어 이벤트 → ② 상태 이벤트** 순서라 순서가 구조로 보장된다 |
+| `error` | 스트림이 **깨져서** 닫힌 경우(`SpawnFailed` · `Crash`) | 2.6.2는 실행 루프의 예외였다. 3.0의 같은 등급은 이 둘이고, 그때는 **안내(`notice`) 대신** 오류 말풍선을 낸다(말을 두 번 하지 않는다) |
+
+### 순서 규약 둘 — 여기서 지킨 것
+
+**① `bg-tasks`는 REPLACE, 상세는 그 뒤.** `background_tasks_changed`는 *살아 있는 목록 전체*다.
+렌더러는 목록에서 빠진 실행 중 작업을 종료로 접고, 상태·요약은 뒤따르는 `bg-task-end`가 채운다
+(`protocol.ts:409-415`). 와이어는 프레임 도착 순서를 그대로 지키기만 하면 되고, 실측이 그렇다:
+`bg-tasks [bg-1]` → `bg-tasks []` → `bg-task-end{bg-1, completed}`.
+
+**② 스트림이 닫히면 전부 정착한다 — 고아 알약 금지.** CLI 프로세스가 죽으면 그 안에서 돌던
+워크플로 · 셸 · 서브에이전트도 **전부** 죽는다. 통지가 못 온 것을 손수 거두지 않으면 도는 알약이
+화면에 영원히 남는다(m-logic P8의 백그라운드 판). `wire::settle_all_background()`가
+`stream_closed`의 **첫 줄**에서 그 셋을 낸다: running 워크플로 → `stopped` · 남은 셸 →
+`bg-task-end{stopped, atTurnEnd}` · 빈 `bg-tasks` REPLACE · 살아 있던 서브에이전트 → `done`.
+오프라인 회귀가 잠근다(`a_running_workflow_never_survives_the_stream_close`).
+
+### 사이드체인 조기 분리 (메모리 「사이드체인 모델 프레임 + 폴백 확인 카드」)
+
+`translate()`의 **첫 줄**에서 가른다(`parent_tool_use_id` **또는** `subagent_type`).
+그 프레임이 메인 경로에 닿으면 네 가지가 깨진다 — ① 모델 전환 배너 핑퐁 ② 게이지 오염
+③ 내레이션이 메인 말풍선에 섞임 ④ `cur_msg` 리셋으로 말풍선 쪼개짐. 하네스가 그 넷 중
+측정 가능한 둘을 **실측으로 막는다**: 서브에이전트가 `usage.input_tokens: 999999`와
+`model: claude-opus-5`를 보고해도 `context` 이벤트는 `[20]`(메인 값)이고 `model-fallback`은 **0건**.
+
+---
+
+## R3.2 실증 — `node scripts/poc-live-chat.mjs --only=events` (가짜 CLI · $0)
+
+실 CLI로는 아홉을 한 턴에 강제할 수 없다(워크플로 · 백그라운드는 모델이 스스로 골라야 하고,
+`error`는 엔진이 깨져야 온다). 그래서 `ccg-fakecli`가 그 프레임을 흘린다 — spawn → stdout
+JSONL → 상태기계 → wire → 렌더러 → **DOM**까지 전부 실제 배선이고 모델만 가짜다.
+
+단언은 **두 겹**이다: ① 렌더러가 받은 이벤트 ② 화면. 그리고 화면은 **구조를 알고** 재야 한다 —
+할 일 · 서브에이전트 · 백그라운드 셸 · 변경 파일은 WorkBar의 **칩(개수)**이고 목록은 눌러야 뜨는
+팝오버다(`Chat.tsx:3395`). 워크플로는 **실행 중에만** 있는 독이라 사후에는 없는 것이 정답이다.
+
+```
+이벤트   status 3 · session 1 · thinking 1 · thinking-clear 1 · assistant-stream 1 ·
+         todos 1 · tool-start 2 · file-change 1 · tool-end 2 · terminal 3 · subagent 4 ·
+         bg-tasks 2 · workflow 2 · bg-task-end 2 · assistant-done 1 · context 1 · result 1
+
+file-change   {path:"r3-made.txt", add:2, tag:"new", whole:true, lines:3}
+terminal      ["cmd","out","ok"]
+bg-tasks      [["bg-1"], []]                     ← 워크플로(wf-1)는 셸 칩에 안 섞인다
+bg-task-end   {id:"bg-1", status:"completed", summary:"R3-BG-DONE", atTurnEnd:false}
+workflow      running{agents:["Opus 5.1/start"], phases:1, tokens:1234} → completed
+subagent      running → running(model "Opus 5") → running → done
+사이드체인     context [20] · model-fallback 0건  ← 999999 usage가 게이지에 안 섞였다
+
+화면(칩)      할 일 0/2 · 서브에이전트 1/1 · 백그라운드 셸 1/1 · 변경된 파일 1
+화면(목록)     todo→"파일 만들기" · sub→"Explore" · sh→"R3-BG-SHELL" · file→"r3-made.txt"
+화면(워크플로) 실행 중 .wf-dock "R3-PHASE · 0/1"  →  정착 후 **없음**(고아 알약 0)
+화면(스레드)   터미널 출력 · 답변 둘 다 있음
+```
+
+> **읽는 법**: `할 일 0/2`는 버그가 아니다 — 칩의 좌변은 **완료 수**이고 픽스처는
+> `in_progress 1 + pending 1`이다. 1차 주행에서 내가 `1/2`를 기대해 실패로 찍었고,
+> 화면 구조를 읽고 나서 기대값을 고쳤다.
+
+`error`는 별도 단계다(`--only=error`). 스텁이 **아무 프레임도 안 내면** T3(20초 무응답)가
+`SpawnFailed`를 만든다 — 상태기계의 `START_TIMEOUT`이라 줄일 수 없다.
+
+```
+events   status/analyzing → notice("엔진이 20초 안에 응답하지 않았어요") → status/error → error → result
+error    {message:"엔진을 시작하지 못했어요."}
+화면      오류 말풍선 **1개**(중복 없음) · 컴포저 · 스피너 해제
+```
+
+> **중복 하나를 여기서 없앴다**: 합성 `result`가 사유를 또 실으면 같은 문장이 빨간 말풍선
+> 두 벌로 뜬다(`session.ts:1000` `rerr…`). 깨진 경로에서는 `result.text`를 **빈 문자열**로
+> 둔다 — result 자체는 여전히 필요하다(카드 해제 · 스피너 정착 · 컴포저 해제가 거기 달려 있다).
+
+---
+
+## R3.3 부팅 재장전 (§R2.8-B 닫음)
+
+### 엔진에 연 것 (`crates/ccg-engine/src/runtime.rs`)
+
+| API | 하는 일 |
+|---|---|
+| `reload_state(queued, hold)` | 큐 본문과 대기표를 세운다. **드레인하지 않는다** — 앱을 켜는 것은 "보내라"가 아니다. 나가는 계기는 ① 사용자의 다음 전송 ② 한도 해제뿐이다 |
+| `ReloadHold { in_ms, ready }` | `in_ms`는 **지금부터 남은 시간**이다(절대 시각이 아니다). 디스크의 `resetsAt`은 epoch 초, 런타임 시계는 프로세스 기동 기준 단조 ms — 두 축을 섞으면 대기표가 1970년으로 읽혀 **부팅이 곧 전송**이 된다 |
+| `set_auto_resume(bool)` / `auto_resume()` | 스펙 ⑤. 기본 `true`(라이브 경로는 2.6.2와 같아야 하고 재생 시나리오 전부가 그 동작을 잠근다) |
+| `resume_now()` | 사용자가 "이어서"를 눌렀다 — `ready`인 대기표를 지금 소진한다. 누른 것 자체가 "이 채팅은 이제 보고 있다"이므로 자동도 함께 켠다 |
+| `hold_gate_open()` | 드레인 게이트를 `h.ready` → **`h.ready && auto_resume`**로. `ready`인데도 안 나가는 상태가 스펙 ⑤의 요구다. 자동이 켜져 있으면 옛 조건과 글자 그대로 같다 |
+
+`check_hold`는 자동이 꺼진 채팅에서 `ready`만 켜고 **멈춘다**(+ 사유 한 줄). 대기표가 남으므로
+사이드바가 "이어갈 수 있음"을 그릴 수 있고, 그 채팅의 **예약분도 혼자 나가지 않는다**.
+
+### 스토어에 연 것
+
+`ccg_store::status::read_chat_queue(id)` — `read_chat_lite`는 개수만 세려고 큐를
+`IgnoredAny`로 건너뛴다. 본문이 필요한 쪽이 이것이다(2.6.2 문자열 배열과 `{text}` 객체 배열 둘 다).
+후보 선정(`reload_candidates`)은 R2에 이미 있었고 호출자가 없었을 뿐이다.
+
+### 셸 (`engine::reload_pending`)
+
+```
+boot() → status::load_boot(ids) → hub::start → reload_pending(ids) → chat:status REPLACE
+
+reload_pending: 후보     = { chatId | hold != null ∨ queued > 0 }
+                자동 범위 = boards::visible_chat_ids() ∪ { activeChatId }
+                (부팅 시점에 추가 채팅 창은 하나도 없다 — 창 복원은 사용자 클릭이다)
+```
+
+### 실측 — `node scripts/poc-live-chat.mjs --only=reload` (합성 hold · 가짜 CLI · $0)
+
+두 채팅을 심는다: `c-see`(활성 = 보이는 자리) · `c-hide`(화면 밖). 둘 다 예약 1건 +
+**이미 지난** `resetsAt`(unix 초). 한도는 실제로 걸 수 없으므로 채팅 파일의 `hold`를 직접 심었다.
+
+```
+B1 재장전    c-see  {queued:1, queue:["예약 하나"], hold:{ready:false}, auto:true,  spawns:0}
+             c-hide {queued:1, queue:["예약 둘"],  hold:{ready:false}, auto:false, spawns:0}
+             ← 런타임은 섰고 **아무것도 안 나갔다**
+B2 이어서    c-see  spawns 1 · hold null · queued 0 · 화면에 답변("R3-RESUMED") 도착
+B3 화면 밖   c-hide hold {ready:true} · spawns **0** · queued 1 그대로
+B4 눌러서    chat:queue-mutate {chatId:'c-hide', op:'resume'} → spawns 1 · hold null · auto true
+```
+
+> **정직하게 남는 것**: 재장전된 대기표는 **부팅 후 최대 90초 뒤**에 발화한다.
+> §7.3의 재검증 지연(`due_at = resets_at + 90s`)을 재장전에도 그대로 걸기 때문이고,
+> 저장된 reset 시각이 한참 전이어도 그렇다. 이건 "앱을 켜자마자 자동 전송"을 막는 바닥값이기도
+> 하다(2.6.2 `resumeDelayMs`의 15초 하한과 같은 성격, 값만 다르다). 위 실측의 런타임 시계는
+> 발화 시점에 **91.4초**였다.
+
+### 오프라인 회귀 (`cargo test -p ccg-engine`, `mod reload_tests` 4건)
+
+`reload_restores_the_queue_and_hold_without_sending_anything` ·
+`a_released_hold_resumes_the_reloaded_queue` ·
+`an_off_screen_chat_turns_ready_but_does_not_fire` ·
+`resume_now_on_a_chat_without_a_ready_hold_is_a_rejection_not_a_send`.
+
+---
+
+## R3.4 창 자리 4채널 + `chat:windows`
+
+`win:chat-open` / `close` / `focus` / `list` + `chat:windows`(REPLACE) — 배선 자리는
+`src-tauri/src/ipc/windows.rs`다. **채널 이름 상수를 `ipc/mod.rs`의 `ch`가 아니라 그 파일에
+둔 이유**: `mod.rs`는 지금 다른 라운드(M6 파일·Git 도메인)가 소유해 한 줄 추가도 충돌을 만든다.
+문자열의 원본은 `src/shared/protocol.ts:1187-1198`이고 이 모듈이 유일한 소비자라 진실이 두 곳이 되지 않는다.
+
+**의미가 하나 정반대다. 그 하나가 이 절의 전부다.**
+
+```
+session-wins:close  = 대화 **삭제** (protocol.ts의 옛 계약: "열린 창이 있으면 저장 없이 닫는다")
+win:chat-close      = **창만** 닫기 (통합 모델: 자리는 뷰, 대화는 접힐 뿐 사라지지 않는다)
+```
+
+한 함수로 합치면 둘 중 하나가 반드시 대화를 잃는다 — `win.rs`도 `session_close` /
+`chat_window_close`로 나눠 뒀다. `broadcast_sessions()`는 **둘 다** 낸다
+(`session-wins:changed` + `chat:windows`) — 얼려 둔 렌더러는 앞의 것만 알고 3.0 화면은 뒤의
+것만 안다. 원천이 하나라 어긋날 수 없다.
+
+### 실측 — `--only=slots` (가짜 CLI · $0)
+
+```
+S1 list         []                                              (창 0개)
+S2 open         {label:"session-1", chatId:"sc-1787441940052-1", title:"", focused:true}
+S3 chat:windows 브로드캐스트 = ["sc-1787441940052-1"]            ← 저수준 listen으로 직접 구독
+                (그 창에서 실제 턴 1회 — 대화 2줄)
+S5 close        목록 0개 · **레코드는 남아 있다** {msgs:2, title:"자리 채널 검증"}
+S6 focus        닫힌 자리를 클릭 → 창이 새로 뜬다(session-2) · 제목 · 대화 복원
+S7 중복없음      같은 chatId로 다시 open → 창은 여전히 1개(앞으로 가져오기만)
+```
+
+`chat:flush-req`는 **여전히 미배선**이다(렌더러가 창 닫기 전에 자체 저장을 한다). 31 / 32.
+
+---
+
+## R3.5 F12 — 첫 `chat:status`의 Rust 몫
+
+`engine::boot()`은 첫 REPLACE를 창이 생기기 **전에** 쏘고, 그 뒤로는 상태 전이가 있어야만
+다시 쏜다. 유휴 앱에는 전이가 없다 → `chat:status`만 구독하는 화면은 영원히 빈 값으로 시작한다.
+
+Rust 몫은 "구독 시 현재 상태 1회 송신"이다. Tauri에는 렌더러의 `listen`을 셸이 관측할 방법이
+없으므로 **관측 가능한 가장 가까운 지점**인 `win:mounted`(splash.js가 `#root`에 자식이 생긴
+순간 쏜다)에 건다. 마운트는 `useEffect` 구독보다 **이르므로** 400ms 뒤 한 번 더 보낸다 —
+REPLACE라 두 번 받아도 무해하다. 창 자리 목록(`chat:windows`)도 같은 이유로 함께 보충한다.
+
+> **정직하게 남는 것**: 이것은 레이스를 **좁힌** 것이지 없앤 것이 아니다. 완전한 해법은
+> 렌더러가 구독 직후 스냅샷을 한 번 당겨 가는 것이고, `app/`은 이번 라운드 경계 밖이다.
+> 그리고 지금은 `chats:get`이 `statuses`를 합쳐 주므로 이 구멍이 화면에 보이지 않는다.
+
+---
+
+## R3.6 하네스에서 찾아 고친 것 (제품 결함 아님 — 기록)
+
+| # | 무엇 | 왜 중요한가 |
+|---|---|---|
+| H1 | `waitUntil(app, expr)`가 표현식을 `!!(...)`로 감싼다 — **Promise를 넘기면 항상 참**이라 기다리지 않고 지나간다 | 내가 "130초를 줬다"고 믿은 대기가 실제로는 **1.4초**였다(런타임 시계가 그렇게 찍혔다). 이런 하네스는 초록도 빨강도 의미가 없다 |
+| H2 | `rmrf`가 EPERM에 죽는다 | 방금 죽인 앱의 WebView2가 핸들을 놓는 데 한 박자 걸린다 → 다음 단계의 씨앗 뿌리기가 통째로 죽었다. 재시도로 감쌌다 |
+| H3 | exe 경로가 고정 | 같은 레포의 다른 라운드가 `rm -f … && npm run tauri:build`을 돌리면 주행 도중 exe가 사라진다(ENOENT 2회). `--exe=`를 열었다 |
+| H4 | 산출물 파일이 `m3-r2-live.json` | R2 보고서가 인용하는 근거 파일을 덮는다. `m3-r3-live.json`으로 갈랐다 |
+
+> 그리고 **하네스 홈 이름이 고정**(`.poc-home-*`)이라, 다른 라운드가 같은 하네스를 동시에
+> 돌리면 서로의 격리 홈을 지운다(실제로 한 번 겹쳤다 — 상대 주행이 끝나기를 기다렸다).
+> 고치지 않았다: 이름이 문서·보고서에 인용돼 있어 지금 바꾸면 추적성이 끊긴다.
+
+---
+
+## R3.7 게이트 주행 결과
+
+| 게이트 | 결과 |
+|---|---|
+| `cargo test -p ccg-engine --offline` | **108 green** / 2 ignored (R2의 104 + `reload_tests` 4) |
+| `cargo test -p ccg-store --offline` | **60 green** (R2의 58 + 큐 본문 · 재장전 후보 2) |
+| `cargo test`(`src-tauri`) | **14 green** — `engine::wire` 9 + `engine::diff` 5 (신규) |
+| `node scripts/poc-live-chat.mjs` (확장판 8단계) | **PASS · 결함 0** — `docs/critic/m3-r3-live.json` |
+| `critic-wiring-live.mjs --only=A,B,C,D` | A · B · C · D **green** |
+| `critic-wiring-live.mjs --only=E,F` → `--only=E` | F **green** · E는 **1차 실패 → 2차 green**. 1차는 haiku가 Write를 안 골라 승인 카드 자체가 안 떴다(공격 전제가 안 섰다). 2차: `E-정착 {afterSec:0, state:"idle"}` · 사유 *"엔진(CLI)이 외부에서 종료됐어요 — 진행 중이던 표시 2개를 정리했어요…"* |
+| `node bench/multi.mjs tauri` | 아래 |
+
+### 주 게이트 — 4회 (`--repeats=1` 1회 + `--repeats=3` 1회)
+
+| 지표 | 회차별 | 중앙값(3회 세트) | R2 기준(5쌍 중앙값) |
+|---|---|---|---|
+| idleGrid WS MB | 438.7 · 452.1 · 440.5 · 434.5 | **440.5** | 430.7 |
+| idleGrid Priv MB | 251.3 · 254.7 · 256.7 · 249.4 | **254.7** | 246.4 |
+| idleGrid procs | 5 · 5 · 5 · 5 | **5** | 5 |
+| idleWithWindows WS | 476.4 · 482.8 · 479.7 · 479.9 | **479.9** | 475.2 |
+| wsMB/window | 18.8 · 15.3 · 19.6 · 22.7 | **19.6** | 22.3 |
+| procsAdded | 0 (전 회차) | **0** | 0 |
+| scrollInPanel avgFps / p95 / drop% | 58.8 · 59.9 · 58.7 · 58.7 / ≤20.6 / **0** | 58.7 / 20.6 / 0 | 58.9 / 19.6 / 0.3 |
+| scrollAllPanels avgFps / p95 / drop% | 59.8 · 59.9 · 59.3 · 59.4 / ≤18.3 / **0** | 59.4 / 18.3 / 0 | 59.0 / 18.5 / 0 |
+
+**읽는 법(사실만)**:
+
+- **스크롤 회귀는 없다** — 4회 전부 드랍 0.
+- 유휴 WS는 R2 기준보다 **+9.8MB** 높다. **이 델타를 이번 라운드에 귀속할 수 없다**:
+  같은 바이너리에 **다른 세 라운드의 변경이 함께** 들어 있다(M-UX의 렌더러 4파일 ·
+  M6의 `ipc/fs.rs` · `ipc/git.rs` + **새 크레이트 `ccg-fs` 링크** · 그 외). R2가 자기 델타를
+  주장할 때 쓴 방법(같은 바이너리 인터리브 A/B)이 여기서는 성립하지 않는다 — 팔을 가를 플래그가 없다.
+- 이번 라운드의 코드가 **유휴에 도는 경로는 없다**: 벤치 픽스처에는 hold · 큐가 있는 채팅이
+  없어 `reload_pending`이 no-op이고, 런타임이 0개면 허브는 2초 틱(변경 없음)이다. 와이어 9종은
+  **프레임이 흐를 때만** 돈다. 다만 이건 **논증이지 측정이 아니다** — 분해 측정은 §R3.9-4로 남긴다.
+
+---
+
+## R3.8 알려진 구멍 — 갱신 (§R2.8 대체)
+
+| # | 구멍 | 결과의 등급 | 상태 |
+|---|---|---|---|
+| A | `activeChat()`의 진실 소스 | **틀린 주소** | **닫힘 — 병행 라운드의 렌더러 수정**(`unified.ts setActiveChat`) |
+| B | 부팅 시 큐 · 한도 대기 재장전 | 기능 미동작 | **닫힘(R3.3)** |
+| C | `allow_always`가 1회 허용과 같게 동작 | 조용한 축소(매번 다시 묻는다) | 열림 |
+| D | 사이드체인 프레임을 버린다 | 빈 UI | **닫힘(R3.1)** |
+| E~I | (R2에서 닫힘) | | 닫힘 |
+| **J** | `result.tokenUsage` · `result.contextWindow`가 `null` | **빈 칸**(토큰 사용량 표가 비고, 게이지가 모델 기본 창으로 폴백) | 열림 |
+| **K** | `tool-end.links`(WebSearch가 찾은 페이지) 미배선 | **빈 칸**(웹 행이 안 펼쳐진다) | 열림 |
+| **L** | `chat:flush-req` 미배선 | 없음(렌더러가 자체 저장) | 열림 — 31/32 |
+| **M** | `driver.spawn()`의 IO 오류를 **삼킨다**(`let _ = self.driver.spawn(...)`) | **20초 침묵**(`claude.exe`가 없으면 T3까지 아무 말도 없다) | 열림 — 이번 라운드에서 **발견만** 했다 |
+
+### 렌더러 몫 (이번 라운드 `app/` 금지 — 목록만)
+
+R2의 R2~R5 그대로 + 셋 추가:
+
+| # | 무엇 | 왜 렌더러인가 |
+|---|---|---|
+| R6 | **구독 직후 `chat:status` 스냅샷 당겨 오기** | §R3.5. 셸이 마운트에 맞춰 두 번 쏘는 것으로 레이스를 좁혔지만, 없애는 것은 구독자 쪽 한 줄이다 |
+| R7 | **`win:chat-*` · `chat:windows`를 쓰는 화면** | 셸은 4채널 + REPLACE를 다 낸다. 지금 그 값을 읽는 것은 하네스뿐이고, 화면은 여전히 `session-wins:*`를 쓴다 |
+| R8 | **`ready` 대기표를 눌러 이어가는 UI** | 스펙 ⑤의 후반부. 셸은 `chat:queue-mutate {op:'resume'}`를 받고 `hold.ready`를 `chat:status`에 싣는다 — 누를 자리가 아직 없다 |
+
+---
+
+## R3.9 남은 것 (다음 라운드 후보) — §R2.9 대체
+
+1. **렌더러 몫 R6~R8**(위 표) — 셸은 다 냈고 읽는 쪽이 없다.
+2. **`result.tokenUsage` · `contextWindow` · `tool-end.links`**(J · K) — 전부 "그 칸만 비어 있다" 등급.
+3. **`driver.spawn()` 오류 삼킴**(M) — 엔진 한 줄이면 20초 침묵이 즉시 안내로 바뀐다.
+   이번 라운드에 안 고친 이유: 발견이 게이트 주행 중이었고, 상태기계의 종결 경로를 건드리는
+   변경이라 재생 시나리오를 다시 봐야 한다.
+4. **유휴 메모리 귀속** — §R3.7의 +9.8MB는 네 라운드가 섞인 값이다. 라운드별 분해를 하려면
+   팔을 가를 수단(플래그 또는 라운드별 바이너리)이 먼저 필요하다.
+5. **재장전 대기표의 90초 지연**(§R3.3) — 저장된 reset 시각이 한참 전이면 즉시 재검증하는 쪽이
+   맞을 수도 있다. 지금은 안전한 바닥값으로 두었다. 바꾸려면 §7.3의 상수를 재장전 경로에서만
+   가르는 규약이 필요하다.
+6. `allow_always`의 `updatedPermissions`(C) · Codex(app-server) 엔진 · `btw:open` 포크.
+7. **워치독 ⑥ 능동 프로브의 라이브 관측**(O17) — R2에서 그대로 남았다.
+
+---
+
+## R3.10 재현
+
+```bash
+cargo test -p ccg-engine --offline          # 108 green / 2 ignored
+cargo test -p ccg-store  --offline          #  60 green
+(cd src-tauri && cargo test --offline)      #  14 green (engine::wire · engine::diff)
+
+rm -f target/release/agentcodegui.exe && npm run tauri:build
+cargo build -p ccg-engine --features fakecli --bin ccg-fakecli --release   # 가짜 CLI
+
+# 다른 라운드가 같은 레포에서 빌드를 돌면 주행 중 exe가 사라진다 — 스냅샷을 떠서 잰다
+cp target/release/agentcodegui.exe "$TEMP/ccg-r3-snap.exe"
+node scripts/poc-live-chat.mjs --exe="$TEMP/ccg-r3-snap.exe"   # 8단계 (게이트)
+node scripts/poc-live-chat.mjs --only=events    # EngineEvent 8종 ($0)
+node scripts/poc-live-chat.mjs --only=error     # error (T3 20초 · $0)
+node scripts/poc-live-chat.mjs --only=reload    # 부팅 재장전 + 스펙 ⑤ ($0 · 약 100초)
+node scripts/poc-live-chat.mjs --only=slots     # win:chat-* 4채널 + chat:windows ($0)
+#   결과: docs/critic/m3-r3-live.json
+
+node docs/critic/tools/critic-wiring-live.mjs --only=A,B,C,D
+node docs/critic/tools/critic-wiring-live.mjs --only=E,F
+#   ※ 크리틱 소유 산출물(wiring-r1-attacks.json)은 실행 뒤 git checkout
+
+node bench/multi.mjs tauri --repeats=3
+#   ※ bench/results/multi-tauri-3.0.0-default.json 은 추적 대상 — 확인 후 git checkout
+```

@@ -289,12 +289,13 @@ pub fn create_main(app: &AppHandle) -> tauri::Result<WebviewWindow> {
 // 공유하게 두면, 창이 늘어도 새로 생기는 건 창 하나와 그 문서의 DOM/힙뿐이다.
 // 기여도는 bench/results/webview-flags.json(window-cost 절)에 남긴다.
 pub fn open_session_window(app: &AppHandle) -> tauri::Result<()> {
-    open_session_window_for(app, None)
+    open_session_window_for(app, None).map(|_| ())
 }
 
 /// 창 하나를 띄운다. `chat`이 있으면 **그 영속 채팅을 여는 창**이고(사이드바에서
 /// 닫힌 추가 채팅을 클릭한 경로), 없으면 새 채팅 id를 발급한다.
-pub fn open_session_window_for(app: &AppHandle, chat: Option<&str>) -> tauri::Result<()> {
+/// 반환값은 만들어진 **창 라벨**(`win:chat-open`이 자리 정보를 돌려줘야 한다).
+pub fn open_session_window_for(app: &AppHandle, chat: Option<&str>) -> tauri::Result<String> {
     let n = SESSION_SEQ.fetch_add(1, Ordering::Relaxed) + 1;
     let label = format!("{SESSION_PREFIX}{n}");
     let id = match chat {
@@ -389,7 +390,7 @@ pub fn open_session_window_for(app: &AppHandle, chat: Option<&str>) -> tauri::Re
         _ => {}
     });
     broadcast_sessions(app);
-    Ok(())
+    Ok(label)
 }
 
 /// 추가 채팅 목록(계약면 SessionWindowInfo[]). 대화 영속은 M2 — 지금은 **열린 창**만이
@@ -417,6 +418,53 @@ pub fn broadcast_sessions(app: &AppHandle) {
         session_list()
     };
     let _ = app.emit_to(MAIN, crate::ipc::ch::SESSION_WINS_CHANGED, payload);
+    // 3.0 계약면의 같은 사실 — `chat:windows`(WindowSlotInfo[] REPLACE, §6.1).
+    // **둘 다 낸다**: 2.6.2 렌더러는 `session-wins:changed`만 알고, 3.0 화면은
+    // `chat:windows`만 안다. 두 페이로드의 원천은 하나이므로 어긋날 수 없다.
+    let _ = app.emit(crate::ipc::windows::CHAT_WINDOWS, window_slots(app));
+}
+
+/// 창 자리 목록 — `win:chat-list` / `chat:windows`의 페이로드(`WindowSlotInfo[]`).
+///
+/// `session_list()`와 다른 점: 이쪽은 **열려 있는 OS 창만**이고 창 라벨과 포커스를
+/// 싣는다(자리 = 뷰). 영속됐지만 창이 없는 추가 채팅은 여기 없다 — 그건 사이드바의
+/// 채팅 목록이 그리고, 클릭하면 `win:chat-focus`가 창을 되만든다.
+pub fn window_slots(app: &AppHandle) -> Value {
+    let list = SESSIONS.lock().unwrap().clone();
+    Value::Array(
+        list.iter()
+            .map(|s| {
+                let focused = app
+                    .get_webview_window(&s.label)
+                    .and_then(|w| w.is_focused().ok())
+                    .unwrap_or(false);
+                json!({ "label": s.label, "chatId": s.id, "title": s.title, "focused": focused })
+            })
+            .collect(),
+    )
+}
+
+/// `win:chat-close` — **창만 닫는다. 대화는 남는다.**
+///
+/// `session_close`(2.6.2 사이드바 X)와 의미가 정반대라 함수를 나눈다: 그쪽 계약은
+/// *"채팅 삭제 — 열린 창이 있으면 저장 없이 닫는다"*(protocol.ts)이고, 이쪽은 통합
+/// 모델의 *"자리는 뷰, 대화는 접힐 뿐 사라지지 않는다"*이다. 한 함수로 합치면
+/// 둘 중 하나가 반드시 대화를 잃는다.
+pub fn chat_window_close(app: &AppHandle, chat: &str) -> bool {
+    let label = {
+        let mut list = SESSIONS.lock().unwrap();
+        let label = list.iter().find(|s| s.id == chat).map(|s| s.label.clone());
+        // R2.3과 같은 순서 규약: 레지스트리에서 **먼저** 뺀 뒤 브로드캐스트한다
+        // (`w.close()`는 비동기라 그 전에 쏘면 이미 지운 항목이 실린 REPLACE가 나간다).
+        list.retain(|s| s.id != chat);
+        label
+    };
+    let found = label.is_some();
+    if let Some(w) = label.and_then(|l| app.get_webview_window(&l)) {
+        let _ = w.close();
+    }
+    broadcast_sessions(app);
+    found
 }
 
 /// 사이드바에서 이름을 바꿨다 — 열린 창의 표시 이름도 그 값으로 고정한다
@@ -489,6 +537,11 @@ pub fn session_focus(app: &AppHandle, id: &str) {
             eprintln!("[win] 추가 채팅 창 복원 실패: {e}");
         }
     }
+}
+
+/// 이 채팅을 보는 창이 지금 떠 있나 — `win:chat-open`의 "이미 있으면 새로 만들지 않는다".
+pub fn has_window_for(chat: &str) -> bool {
+    SESSIONS.lock().unwrap().iter().any(|s| s.id == chat)
 }
 
 /// 사이드바 X — **대화 삭제**다(protocol.ts: *"(id) 채팅 삭제 — 열린 창이 있으면
