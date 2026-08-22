@@ -226,3 +226,19 @@ CDN 왕복을 기다렸다. 자세한 실측은 `docs/m1-report-r3.md` §4.2.
 추가 채팅 창에는 `splash.js`를 주입하지 않으므로(오버레이가 필요 없다) 이 신호는 **메인
 창에서만** 온다. 추가 채팅 창은 셸 쪽 신호(`on_page_load(Finished)` → `page-load`)로만
 관측된다 — `--process-per-site`로 렌더러를 공유하므로 메인이 섰으면 같은 렌더러다.
+
+---
+
+## 6. M-UX 1단계 — `app/src`의 첫 **의도적** 분기 (커밋 d62ce52)
+
+여기까지의 장부는 "2.6.2와 같아야 하는데 어쩔 수 없이 다른 것"이었다. M-UX부터는
+성격이 다르다 — **설계(docs/design/ux-chat-unify.md)에 따라 일부러 갈라진 것**이고,
+파리티 감사는 이 목록을 회귀가 아니라 의도된 변경으로 취급해야 한다. 상세와 되집는
+자리는 `docs/m-ux-report-r1.md` §3.
+
+- 수정 5파일: 다이얼 1~6(하한 1·`visibleSlots = order.slice(0,count)`)·사이드바
+  「채팅」+「배치」 2섹션·`setVisible()` 관문+`reconcileChatRefs()`·n1=IDE 크롬·
+  busy 중 채팅 전환 허용(+`chat:event` 꼬리 수집기)
+- 신설 1파일: `app/src/api/unified.ts` — `chats:set-active` 등 통합 스토어 채널의
+  렌더러 쪽 어댑터(계약면 `src/shared`는 무수정)
+- 변경 화면의 A/B 기준은 2.6.2가 아니라 **목업**(docs/design/mockups/chat-unify-*)이다.
