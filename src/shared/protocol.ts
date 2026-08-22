@@ -1150,5 +1150,250 @@ export const IPC = {
   // 트레이 우클릭 메뉴 — 네이티브 Win32 메뉴가 투박해 창=카드로 직접 그린다(토스트 패턴)
   trayMenuShow: 'traymenu:show', // main→메뉴 페이지: 항목 목록(표시 시점 언어)
   trayMenuResize: 'traymenu:resize', // 메뉴 페이지→main: 콘텐츠 높이 보고 → 위치 확정 + 표시
-  trayMenuAction: 'traymenu:action' // 메뉴 페이지→main: 클릭한 항목 id ('' = Esc 닫기)
+  trayMenuAction: 'traymenu:action', // 메뉴 페이지→main: 클릭한 항목 id ('' = Esc 닫기)
+
+  // ══ 3.0 통합 채팅(chats-v3) — docs/design/ux-chat-unify.md §6.1의 32채널 ══════
+  // ★ 이 블록은 **순수 추가**다. 위의 2.6.2 채널은 한 글자도 바뀌지 않았고, 아래 채널은
+  //   Rust 쪽에서 `CCG_UNIFIED_STORE=1` 옵트인으로만 배선된다(기본은 옛 3스토어 경로).
+  //   이름 자체를 여기 먼저 두는 이유: 문자열의 단일 소스가 갈리면 그 채널만 조용히
+  //   미구현으로 떨어진다(디스패처는 미러다).
+  //
+  //   구현 상태(M2 라운드): 스토어 4 + 보드 3 = **7채널 구현**,
+  //   실행 8 · 정체성/큐 5 · 창 자리 4 · 이벤트 8은 **이름만**(M-LOGIC·M4 소관).
+
+  // ── 실행 (8) — M-LOGIC 소관. chatId 하나가 주소다(ChatRef 없음, §1.3)
+  chatRun: 'chat:run',
+  chatInterrupt: 'chat:interrupt', // 소프트 중단 (턴만; 상주 유지)
+  chatCancel: 'chat:cancel', // 프로세스째 (/clear·폴더 전환·계정 전환 전용)
+  chatPermission: 'chat:permission', // 매칭 키 = requestId
+  chatAnswer: 'chat:answer', // answers=null → 무응답 해제
+  chatRespondDialog: 'chat:respond-dialog', // 폴백 다이얼로그
+  chatBgTask: 'chat:bg-task',
+  chatDispose: 'chat:dispose', // 엔진 회수 (채팅 삭제·유휴 스윕)
+  // ── 정체성·큐·원장 (5) — M-LOGIC 소관
+  chatIdentityGet: 'chat:identity-get',
+  chatIdentitySet: 'chat:identity-set', // patch는 **서브필드 단위**(RawIdentityPatch)
+  chatIdentityRevert: 'chat:identity-revert',
+  chatQueueMutate: 'chat:queue-mutate',
+  chatForceSettle: 'chat:force-settle',
+  // ── 스토어 (4) — M2 구현. chats:get/save/load는 2.6.2와 **같은 이름**이라
+  //    플래그가 켜지면 별칭 어댑터가 앞에서 가로챈다(§6.2).
+  chatsSetActive: 'chats:set-active', // ★ 즉시 — 저장 디바운스와 무관(§6.2 U3)
+  // ── 보드 (3) — M2 구현
+  boardGet: 'board:get',
+  boardLoad: 'board:load',
+  boardSave: 'board:save',
+  // ── 창 자리 (4) — M4(창) 소관
+  winChatOpen: 'win:chat-open', // 추가채팅 + 팝아웃 + btw 통합
+  winChatClose: 'win:chat-close',
+  winChatFocus: 'win:chat-focus',
+  winChatList: 'win:chat-list',
+  // ── 이벤트 (8) — main → 렌더러
+  chatEvent: 'chat:event', // { chatId, event } 봉투 (ma:event의 일반화)
+  chatIdentityEvent: 'chat:identity',
+  chatQueueEvent: 'chat:queue', // 큐 전체 REPLACE
+  chatRunState: 'chat:run-state', // 상태기계 상태 + 라이브 원장 REPLACE
+  chatVerdict: 'chat:verdict', // 거부/큐잉 사유
+  chatStatus: 'chat:status', // ★ 전 채팅 경량 상태 REPLACE (§4.3)
+  chatWindows: 'chat:windows', // 창 자리 목록 REPLACE
+  chatFlushReq: 'chat:flush-req' // 창 닫기 전 마지막 저장 요청
 } as const
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * 3.0 통합 채팅 — 저장 스키마와 계약 타입 (순수 추가)
+ *
+ * 근거 문서: docs/design/ux-chat-unify.md §1.2·§4 / docs/design/m-logic.md §2.
+ * 2.6.2 렌더러는 이 타입을 하나도 참조하지 않는다 — 얼려 둔 화면의 타입체크를 깨지
+ * 않는 게 이 블록의 계약이다.
+ * ══════════════════════════════════════════════════════════════════════════ */
+
+// ── 실행 정체성 (m-logic §2.2·§2.5) ──────────────────────────
+/** 엔진별로 의미가 다른 축(모델 id 공간·계정 스토어)을 태그드 유니온으로 묶는다.
+ *  평평하게 두면 "codexModel은 claude일 때 무시" 같은 암묵 규칙이 비교식에 스며든다. */
+export type EngineAxis =
+  | { kind: 'claude'; model: ModelId; effort: EffortId }
+  | { kind: 'codex'; model: string; effort: EffortId; account?: string | null }
+
+/** 과금·자격 경로. `api_mode` 불리언 + `account` 문자열 두 필드로 두면
+ *  "useApi면 account 무시"라는 규칙이 비교식 밖에 남는다 → 하나로 접는다. */
+export type BillingAxis =
+  | { kind: 'subscription'; account: string; dropEnvKey: boolean } // 실 이메일(기본 계정도 해석해 채운다)
+  | { kind: 'api_key'; keyFp: string } // ★ 지문만 — 키 원문은 계약면에 절대 오르지 않는다
+
+/** 도구 정책 축 — 스폰 시점 settings 플래그로 굳는다. */
+export interface ToolPolicyAxis {
+  skillOverrides: Record<string, 'disabled'> // 정렬된 키
+  deniedMcp: string[] // 정렬·중복제거
+}
+
+/** **채팅 파일에 저장되는 완전 지정 원시 정체성**(물질화 — m-logic §2.4).
+ *  모든 축이 키로 존재한다. 값은 아직 미해석일 수 있다(빈 cwd = 앱 기본,
+ *  account:null = 기본 계정). 마이그레이션 무손실 비교의 **1차 키**가 이 객체의
+ *  정준 직렬화다(O12 수정판). 부분 override 필드는 **없다** — "미지정"이라는 상태가
+ *  저장 스키마에 존재하지 않으므로 전역 pref가 정체성에 개입할 수 없다. */
+export interface RawIdentity {
+  engine: { kind: EngineId; model: string; effort: EffortId; codexAccount?: string | null }
+  billing: { kind: 'subscription' | 'api_key'; account?: string | null; dropEnvKey?: boolean }
+  cwd: string
+  addDirs: string[]
+  mode: ModeId
+  systemPrompt: string | null
+  outputStyle: string | null
+  tools: { skillOverrides: Record<string, 'disabled'>; deniedMcp: string[] }
+}
+
+/** **서브필드 단위 부분 패치.** 없는 키 = 건드리지 않음.
+ *  ★ `engine.kind`를 지정하면 `engine.model`을 반드시 함께 지정해야 한다(모델 id 공간이 갈린다).
+ *  ★ `billing.keyFp`는 여기 없다 — 키 원문이 계약면에 오르지 않으므로 Rust가 저장된 키에서 계산한다. */
+export interface RawIdentityPatch {
+  engine?: { kind?: EngineId; model?: string; effort?: EffortId; codexAccount?: string | null }
+  billing?: { kind?: 'subscription' | 'api_key'; account?: string; dropEnvKey?: boolean }
+  cwd?: string
+  addDirs?: string[] // 전체 교체(집합이라 서브필드가 없다)
+  mode?: ModeId
+  systemPrompt?: string | null
+  outputStyle?: string | null
+  tools?: {
+    skillOverrides?: Record<string, 'disabled' | null> // null = 그 키를 지운다
+    deniedMcp?: Record<string, boolean> // true = 차단, false = 해제
+  }
+}
+
+/** Rust가 정규화해 돌려주는 확정 정체성. 렌더러는 이 값을 **그대로 그린다**(재해석 금지). */
+export interface RunIdentity {
+  engine: EngineAxis
+  billing: BillingAxis
+  cwd: string
+  addDirs: string[] // 정렬·중복제거된 정규 경로
+  mode: ModeId
+  systemPrompt: string | null
+  outputStyle: string | null
+  tools: ToolPolicyAxis
+  hash: string // 16바이트 hex — 큐 항목·리비전·로그가 참조하는 키
+}
+
+/** 리프 경로 15개 — diff·정착 사유·드리프트 보고·UI 문구의 어휘. */
+export type IdentityField =
+  | 'engine.kind'
+  | 'engine.model'
+  | 'engine.effort'
+  | 'engine.codexAccount'
+  | 'billing.kind'
+  | 'billing.account'
+  | 'billing.dropEnvKey'
+  | 'billing.keyFp'
+  | 'cwd'
+  | 'addDirs'
+  | 'mode'
+  | 'systemPrompt'
+  | 'outputStyle'
+  | 'tools.skillOverrides'
+  | 'tools.deniedMcp'
+
+/** 축 8개 — 문구를 뭉칠 때만 쓴다(`'engine.model' → 'engine'`). */
+export type IdentityAxis = 'engine' | 'billing' | 'cwd' | 'addDirs' | 'mode' | 'systemPrompt' | 'outputStyle' | 'tools'
+
+// ── 채팅 · 보드 저장 스키마 (ux-chat-unify §1.2·§4.1) ────────
+/** 한도 소진 대기표 — 2.6.2는 훅 인스턴스마다 흩어져 있던 것이 채팅에 붙는다.
+ *  **Rust 소유 필드**(저장 시 되끼움). `ready`는 영속하지 않는다(발화 재검증이 판정). */
+export interface LimitHold {
+  key: string // 소유 채팅 id
+  engine: EngineId
+  account?: string
+  resetsAt: number | null // unix 초 (null = 리셋 시각 미상 → 프로브)
+  fable: boolean
+  lastPrompt: string
+  at: number // 장전 시각(ms) — 24시간 만료 판정
+}
+
+/** 예약 큐 항목 — 프롬프트 + **정체성 스냅샷**(m-logic §7.1). */
+export interface QueuedMessage {
+  id: string
+  text: string
+  images: string[]
+  identity?: RawIdentity // 장전 시점 스냅샷 — 착지에서 드리프트 판정
+}
+
+/** 통합 채팅 — 유일한 진실. 실행 상태·초안·큐·정체성이 전부 여기 붙는다.
+ *  파일: `~/.agentcodegui/chats-v3/<id>.json`. */
+export interface UnifiedChat {
+  id: string // ★ 주소는 이 문자열 하나뿐이다 (§1.3)
+  title: string
+  custom: boolean
+  locked: boolean // ※ 2.6.2 일반 채팅엔 없던 필드 — 마이그레이션이 기본값 주입
+  color: string // ※ 동상 ('' = 기본색)
+  identity: RawIdentity // ★ Rust 소유 — chats:save에 실려 와도 되끼워진다
+  queue?: QueuedMessage[] // ★ Rust 소유
+  hold?: LimitHold // ★ Rust 소유
+  draft?: string
+  draftImages?: string[]
+  btwOf?: string
+  btwSeed?: { fork: string; cwd: string }
+  btwPrompt?: string
+  empty?: boolean // 메시지 0 — 디스크 skip 판정
+  lastSeenAt?: number // 읽지 않음 계산용 (3.0.0 미사용)
+  updatedAt?: number
+  snapshot?: unknown // 스레드 스냅샷(SessionState) — 마커일 땐 null
+  unloaded?: boolean // 스냅샷이 메모리에 없음 (chats.ts 규약 그대로)
+  /** 과도기 표식 — 어느 옛 스토어에서 왔는가. 별칭 계층이 "어디까지 지워도 되는지"를
+   *  판단하는 데만 쓴다(2.6.2 렌더러가 목록을 셋으로 나눠 들기 때문). 통합 UI가 서면
+   *  별칭 계층과 함께 사라진다. */
+  origin?: 'chat' | 'panel' | 'session'
+}
+
+/** 자리 배치(2.6.2 `PersistedSession`의 후신). 파일: `~/.agentcodegui/boards/<id>.json`. */
+export type BoardChrome = 'ide' | 'grid'
+export interface Board {
+  id: string
+  title: string
+  custom: boolean
+  count: number // 다이얼 1~6
+  chrome: BoardChrome // count=1의 기본은 'ide'
+  order: number[] // 자리 순열(길이 6). 앞 count개가 보이는 자리
+  slots: (string | null)[] // 길이 6. 인덱스=슬롯 정체성, 값=chatId
+  updatedAt?: number
+}
+
+/** 마커 채팅도 항상 갖는 경량 상태 — 스냅샷이 아니다(§4.3).
+ *  파일은 `chats-v3/status.json` **하나**이고 쓰기 주인은 **Rust**다(렌더러는 읽기만). */
+export interface ChatStatusLite {
+  chatId: string
+  status: AgentStatus
+  busy: boolean // 원시 상태(전송 게이트)
+  bgActive: boolean // 라이브 원장이 비었나 → 완료 링 판정(effectiveStatus 단일 소스)
+  ask: 'none' | 'permission' | 'question' | 'dialog'
+  hold: { resetAt: number | null; ready: boolean } | null // ★ 파생 요약 — 진실은 <chatId>.json
+  queued: number // 예약 큐 길이 — 동상
+  unread: number // ★ 3.0.0에서는 항상 0 (필드 예약 — 열린 문제 ⑪)
+  updatedAt: number
+}
+
+/** `chats:get` 인자 — 없으면 light=true. */
+export interface ChatsGetOptions {
+  light?: boolean
+  /** 열린 창의 채팅 — light 조회 (b). 이 목록은 스냅샷을 싣는다. */
+  openChatIds?: string[]
+}
+
+/** `chats:get` 응답 — `index.json` + `status.json`을 합쳐서 준다. */
+export interface UnifiedChatsBlob {
+  version: number
+  chats: UnifiedChat[]
+  activeChatId: string
+  statuses: Record<string, ChatStatusLite>
+}
+
+/** `board:get` 응답. */
+export interface BoardsBlob {
+  version: number
+  boards: Board[]
+  activeBoardId: string
+}
+
+/** 창 자리 하나(§1.2 `Slot{kind:'window'}`) — `win:chat-list` / `chat:windows`. */
+export interface WindowSlotInfo {
+  label: string // OS 창 라벨(창 레지스트리의 키)
+  chatId: string
+  title: string
+  focused: boolean
+}
