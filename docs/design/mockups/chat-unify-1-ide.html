@@ -4,17 +4,28 @@
 <meta charset="utf-8" />
 <title>채팅 통합 — 1 모드 (기존 IDE 레이아웃)</title>
 <link rel="stylesheet" href="chat-unify.css" />
+<style>
+  /* R2: 주석 말풍선이 콘텐츠를 가리던 문제 → 창 오른쪽 주석 칼럼으로 뺐다.
+     (크리틱 R1 목업 미흡 #3 — "판정용 캡처로는 손해") */
+  .mockmeta,.legend{max-width:1700px;}
+  .withnotes{display:flex;gap:14px;align-items:flex-start;max-width:1700px;margin:0 auto;}
+  .withnotes .win{flex:1;min-width:0;max-width:none;margin:0;}
+  .notecol{width:264px;flex:none;display:flex;flex-direction:column;gap:9px;padding-top:4px;}
+  .notecol .note{position:static;max-width:none;}
+  .notecol .note::after{display:none;}
+  .notecol .nh{font-size:10px;color:var(--text-4);letter-spacing:.04em;text-transform:uppercase;}
+</style>
 </head>
 <body>
 
 <div class="mockmeta">
   <h1>N=1 — 기존 일반 채팅 그대로</h1>
   <span class="sub">전체 IDE 레이아웃: 왼쪽 칼럼(사이드바 ⟷ 탐색기 <code>`</code> 전환) · 코드 뷰어 · Git 스트립 · 풀 워크바 · 풀 컴포저.
-  다르게 보이는 건 헤더 오른쪽 다이얼에 <b>1</b>이 켜져 있다는 것뿐.</span>
+  다르게 보이는 건 TopBar 오른쪽 다이얼에 <b>1</b>이 켜져 있다는 것뿐.</span>
   <span class="tag">chat-unify-1-ide</span>
 </div>
 
-<div class="relwrap">
+<div class="withnotes">
 <div class="win">
   <div class="win-body">
 
@@ -68,6 +79,8 @@
         </div>
         <span class="h-ic">⌕</span>
         <span class="h-ic on">▤</span>
+        <span class="vsep"></span>
+        <div class="wctl"><b>—</b><b>▢</b><b>✕</b></div>
       </div>
 
       <div class="scrollarea">
@@ -151,6 +164,8 @@
       <div class="vh">
         <span>🦀</span><span class="path">crates/ccg-store/src/chats.rs</span>
         <span class="sp"></span>
+        <!-- R2: 대상 채팅 칩 — 이 뷰어의 diff·질문이 어느 대화로 가는지. N=1이라 흐리게 -->
+        <span class="tgtchip dim">↳ 자리 1 · ipc 디스패처 레지스트리 정리</span>
         <span class="mode on">읽기</span><span class="mode">편집</span><span class="mode on">diff</span><span style="color:var(--text-4);margin-left:4px">✕</span>
       </div>
       <div class="code">
@@ -184,18 +199,38 @@
   </div>
 </div>
 
-<div class="note n-l" style="top:56px;left:1030px;">
-  <b>다이얼 위치 고정.</b> 여기가 2.6.2 멀티 헤더의 <code>.ma-count</code> 자리와 같은 x좌표.
-  1↔2를 눌러도 버튼이 안 움직인다.
-</div>
-<div class="note n-b" style="top:640px;left:262px;">
-  <b>표면은 한 벌.</b> 스레드·워크바·컴포저·한도 배너·btw 도크·승인/질문 카드 =
-  <code>&lt;ChatSurface chatId&gt;</code> 하나. 여기선 자리가 화면 전체일 뿐.
+<div class="notecol">
+  <div class="nh">R2 주석</div>
+  <div class="note">
+    <b>TopBar = 앱 크롬 한 줄.</b> 왼쪽은 자리 문맥(여기선 채팅 제목·폴더 칩),
+    오른쪽은 다이얼·찾기·탐색기 토글·창 컨트롤. count≥2면 왼쪽이 보드 제목으로 바뀔 뿐
+    <b>다이얼 x좌표는 안 움직인다</b> — 2.6.2 <code>.ma-count</code>와 같은 자리.
+  </div>
+  <div class="note">
+    <b>왼쪽 칼럼은 자리 밖이다.</b> 2.6.2도 <code>App.tsx:1432-1466</code>이 mode 분기 밖이라
+    멀티에서도 살아 있었다. R1 스펙 §3.1이 이걸 <code>&lt;IdeShell&gt;</code>(count=1 전용) 안에
+    넣었던 게 크리틱 U4 — <b>그림이 옳았고 글을 고쳤다.</b>
+  </div>
+  <div class="note">
+    <b>코드 뷰어도 자리 밖.</b> 2.6.2는 <code>FileModal</code>을 네 군데서 그렸다
+    (App:1640 · SessionWindow:879 · PanelWindow:528 · MultiAgent:1918).
+    통합 후 앱 크롬 1개 + 창 크롬 1개, 대상은 <code>viewerTarget {chatId,path}</code>.
+  </div>
+  <div class="note">
+    <b>표면은 한 벌.</b> 스레드·워크바·컴포저·한도 배너·btw 도크·승인/질문 카드 =
+    <code>&lt;ChatSurface chatId&gt;</code> 하나. 여기선 자리가 화면 전체일 뿐이고,
+    그리드 셀·별도 창에서 <b>같은 코드</b>가 돈다.
+  </div>
+  <div class="note">
+    <b>뷰어 선택 → 질문</b>은 <code>viewerTarget.chatId</code>로 간다. N=1이라 모호함이 없지만
+    헤더에 대상 채팅 칩을 흐리게 그려 둔다(N≥2에서 또렷해진다). 전송해도 <b>뷰어를 닫지 않는다</b>
+    — 2.6.2 <code>App.tsx:1157</code>의 강제 닫힘이 R2에서 사라졌다.
+  </div>
 </div>
 </div>
 
 <div class="legend">
-  <span><span class="sw"></span><b>노란 말풍선</b> = 목업 주석(실제 UI 아님)</span>
+  <span><span class="sw"></span><b>노란 카드</b> = 목업 주석(실제 UI 아님) — R2에서 창 밖 칼럼으로 뺐다</span>
   <span><b>왼쪽 칼럼</b>은 탐색기로 전환된 상태 — <code>`</code>로 사이드바와 맞바꾼다(2.6.2 <code>explorer.swap</code>)</span>
   <span><b>Git 스트립</b>은 탐색기 하단 고정</span>
 </div>

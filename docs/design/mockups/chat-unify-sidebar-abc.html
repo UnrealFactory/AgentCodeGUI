@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>채팅 통합 — 사이드바 3안 비교 (열린 문제 ①)</title>
+<link rel="stylesheet" href="chat-unify.css" />
+<style>
+  /* R2 신설 — 크리틱 목업 미흡 #5("(a)안만 그렸다. (b)(c)는 비교 그림 없이 열린 문제로만 남았다") */
+  .mockmeta,.legend,.abcrow{max-width:1780px;}
+  .abcbox .lcol{width:var(--lcol-w);}
+  .abcbox .stub .head{height:36px;padding-right:8px;}
+  .abcbox .stub .fill{flex-direction:column;gap:6px;text-align:center;line-height:1.6;padding:0 20px;}
+  .abccol .tally{display:flex;gap:10px;font-size:10.5px;color:var(--text-4);}
+  .abccol .tally b{color:var(--text-3);font-weight:600;}
+  .pro{color:var(--green);} .con{color:var(--red);}
+</style>
+</head>
+<body>
+
+<div class="mockmeta">
+  <h1>사이드바 3안 — 배치와 창을 어디에 둘까</h1>
+  <span class="sub">2.6.2는 3섹션(<b>일반 채팅 / 멀티 채팅 / 추가 채팅</b>, <code>App.tsx:1385-1422</code>).
+  통합 후엔 "채팅"이 한 종류라 섹션의 근거가 바뀐다 — 남는 축은 <b>배치(보드)</b>와 <b>창</b>뿐.
+  스펙 본편 목업은 (a)로 그렸다. <b>결정 필요 — 열린 문제 ①.</b></span>
+  <span class="tag">chat-unify-sidebar-abc</span>
+</div>
+
+<div class="abcrow">
+
+  <!-- ─────────────────────────── (a) 채팅 + 배치 2섹션 ─────────────────────────── -->
+  <div class="abccol">
+    <div class="cap"><b>(a) 「채팅」 + 「배치」 2섹션</b> — 스펙 본편 목업의 안</div>
+    <div class="sub"><span class="pro">＋</span> 2.6.2의 3섹션 감각을 거의 그대로 잇는다(멀티 세션 목록 = 배치 목록).
+      <span class="pro">＋</span> 자리 칩(<code>1</code>·<code>⌄2</code>·<code>창</code>)이 채팅 목록 안에 있어 "어디에 있나"가 한눈에.
+      <span class="con">−</span> 창이 목록으로 안 보인다 — 열린 창을 되찾으려면 채팅 항목의 <code>창</code> 칩을 눌러야 한다.</div>
+    <div class="abcbox">
+      <div class="lcol">
+        <div class="sb-top"><span class="mark">A</span><span class="name">AgentCodeGUI</span></div>
+        <button class="sb-new"><span class="ic">＋</span><span>새 채팅</span><span class="kbd">Ctrl+N</span></button>
+        <button class="sb-new"><span class="ic">⧉</span><span>새 창으로 열기</span><span class="kbd">⇧Ctrl+N</span></button>
+        <div class="sb-scroll">
+          <div class="sb-label"><span>채팅</span><span class="sp"></span><span class="n">14</span><span class="slb">⌕</span><span class="slb">🗑</span></div>
+          <div class="sb-list">
+            <div class="sb-item active"><span class="dot run"></span><span class="t">ipc 디스패처 레지스트리 정리</span><span class="slotchip" style="background:var(--violet)">1</span><span class="when">방금</span></div>
+            <div class="sb-item"><span class="dot done"></span><span class="t">ccg-store 팬아웃 포트</span><span class="slotchip" style="background:var(--blue)">2</span><span class="when">1분</span></div>
+            <div class="sb-item"><span class="dot ask"></span><span class="t">벤치 하네스 콜드스타트 재측정</span><span class="slotchip folded"><i>⌄</i>4</span><span class="when">방금</span></div>
+            <div class="sb-item"><span class="dot run"></span><span class="t">엔진 좀비 job object 검증</span><span class="slotchip" style="background:var(--text-3);color:#0d0d0f">창</span><span class="when">방금</span></div>
+            <div class="sb-item"><span class="dot"></span><span class="t">아크릴 + 네이티브 스냅 PoC</span><span class="slotchip folded"><i>⌄</i>5</span><span class="when">18분</span></div>
+            <div class="sb-item"><span class="dot err"></span><span class="t">패치노트 3.0.0-beta 초안</span><span class="slotchip folded"><i>⌄</i>6</span><span class="when">2시간</span></div>
+            <div class="sb-item"><span class="dot run"></span><span class="t">유휴 메모리 4차 패스 측정</span><span class="when">방금</span></div>
+            <div class="sb-item"><span class="dot done"></span><span class="t">토스트 라우팅 chatId 단일화</span><span class="when">3시간</span></div>
+            <div class="sb-item"><span class="dot"></span><span class="t">BTW - ipc 디스패처 …</span><span class="when">어제</span></div>
+            <div class="sb-item"><span class="dot"></span><span class="t">Roslyn 프라임 재현 스크립트</span><span class="when">어제</span></div>
+            <div class="sb-item"><span class="dot"></span><span class="t">토스트 창 높이 보고 레이스</span><span class="when">3일</span></div>
+          </div>
+          <div class="sb-label"><span>배치</span><span class="sp"></span><span class="n">3</span><span class="slb">🗑</span></div>
+          <div class="sb-list">
+            <div class="sb-item active"><span class="dot run"></span><span class="t">3.0 빌더 4분할</span><span class="when">방금</span></div>
+            <div class="sb-item"><span class="dot"></span><span class="t">크리틱 2분할</span><span class="when">어제</span></div>
+            <div class="sb-item"><span class="dot"></span><span class="t">LSP 6분할</span><span class="when">3일</span></div>
+          </div>
+        </div>
+        <div class="sb-foot"><span class="av">L</span><span>Liu</span><span style="flex:1"></span><span>⚙</span></div>
+      </div>
+      <div class="stub">
+        <div class="head">
+          <span class="title">3.0 빌더 4분할</span><span class="sp"></span>
+          <div class="dial"><button class="newone">1</button><button class="on">2</button><button>3</button><button>4</button><button>5</button><button>6</button></div>
+          <span class="foldbadge">⌄ <span class="cnt">4</span></span>
+        </div>
+        <div class="fill"><span>자리 영역</span><span style="font-size:10px">배치 전환 = 사이드바 「배치」 클릭</span></div>
+      </div>
+    </div>
+    <div class="tally"><span><b>섹션 2</b></span><span>창 = 채팅의 칩</span><span>배치 전환 = 목록 클릭</span></div>
+  </div>
+
+  <!-- ─────────────────────────── (b) 채팅 1섹션 + 헤더 드롭다운 ─────────────────────────── -->
+  <div class="abccol">
+    <div class="cap"><b>(b) 「채팅」 1섹션 + 배치는 헤더 드롭다운</b></div>
+    <div class="sub"><span class="pro">＋</span> 사이드바가 가장 단순하다 — 대화 목록 하나. 스크롤 경쟁이 없다.
+      <span class="pro">＋</span> 배치가 "지금 보고 있는 화면 구성"이라는 성격에 맞다(문서가 아니라 뷰 상태).
+      <span class="con">−</span> 배치 3개가 드롭다운에 숨어 상태 점(실행 중)이 안 보인다.
+      <span class="con">−</span> "그때 그 조합" 복원이 한 클릭 더 깊어진다.</div>
+    <div class="abcbox">
+      <div class="lcol">
+        <div class="sb-top"><span class="mark">A</span><span class="name">AgentCodeGUI</span></div>
+        <button class="sb-new"><span class="ic">＋</span><span>새 채팅</span><span class="kbd">Ctrl+N</span></button>
+        <button class="sb-new"><span class="ic">⧉</span><span>새 창으로 열기</span><span class="kbd">⇧Ctrl+N</span></button>
+        <div class="sb-scroll">
+          <div class="sb-label"><span>채팅</span><span class="sp"></span><span class="n">14</span><span class="slb">⌕</span><span class="slb">🗑</span></div>
+          <div class="sb-list">
+            <div class="sb-item active"><span class="dot run"></span><span class="t">ipc 디스패처 레지스트리 정리</span><span class="slotchip" style="background:var(--violet)">1</span><span class="when">방금</span></div>
+            <div class="sb-item"><span class="dot done"></span><span class="t">ccg-store 팬아웃 포트</span><span class="slotchip" style="background:var(--blue)">2</span><span class="when">1분</span></div>
+            <div class="sb-item"><span class="dot ask"></span><span class="t">벤치 하네스 콜드스타트 재측정</span><span class="slotchip folded"><i>⌄</i>4</span><span class="when">방금</span></div>
+            <div class="sb-item"><span class="dot run"></span><span class="t">엔진 좀비 job object 검증</span><span class="slotchip" style="background:var(--text-3);color:#0d0d0f">창</span><span class="when">방금</span></div>
+            <div class="sb-item"><span class="dot"></span><span class="t">아크릴 + 네이티브 스냅 PoC</span><span class="slotchip folded"><i>⌄</i>5</span><span class="when">18분</span></div>
+            <div class="sb-item"><span class="dot err"></span><span class="t">패치노트 3.0.0-beta 초안</span><span class="slotchip folded"><i>⌄</i>6</span><span class="when">2시간</span></div>
+            <div class="sb-item"><span class="dot run"></span><span class="t">유휴 메모리 4차 패스 측정</span><span class="when">방금</span></div>
+            <div class="sb-item"><span class="dot done"></span><span class="t">토스트 라우팅 chatId 단일화</span><span class="when">3시간</span></div>
+            <div class="sb-item"><span class="dot"></span><span class="t">BTW - ipc 디스패처 …</span><span class="when">어제</span></div>
+            <div class="sb-item"><span class="dot"></span><span class="t">Roslyn 프라임 재현 스크립트</span><span class="when">어제</span></div>
+            <div class="sb-item"><span class="dot"></span><span class="t">토스트 창 높이 보고 레이스</span><span class="when">3일</span></div>
+            <div class="sb-item"><span class="dot"></span><span class="t">Verse 제거 후 잔여 참조 훑기</span><span class="when">2일</span></div>
+            <div class="sb-item"><span class="dot"></span><span class="t">유리 버그 재현 케이스 정리</span><span class="when">4일</span></div>
+          </div>
+        </div>
+        <div class="sb-foot"><span class="av">L</span><span>Liu</span><span style="flex:1"></span><span>⚙</span></div>
+      </div>
+      <div class="stub">
+        <div class="head">
+          <!-- 배치는 헤더 드롭다운으로 -->
+          <span class="bdrop">▦ 3.0 빌더 4분할 <span class="cv">▾</span></span>
+          <span class="sp"></span>
+          <div class="dial"><button class="newone">1</button><button class="on">2</button><button>3</button><button>4</button><button>5</button><button>6</button></div>
+          <span class="foldbadge">⌄ <span class="cnt">4</span></span>
+        </div>
+        <div class="fill"><span>자리 영역</span><span style="font-size:10px">배치 전환 = 헤더 드롭다운 ▾</span></div>
+      </div>
+    </div>
+    <div class="tally"><span><b>섹션 1</b></span><span>창 = 채팅의 칩</span><span>배치 전환 = 드롭다운</span></div>
+  </div>
+
+  <!-- ─────────────────────────── (c) 채팅 + 배치 + 창 3섹션 ─────────────────────────── -->
+  <div class="abccol">
+    <div class="cap"><b>(c) 「채팅」 + 「배치」 + 「창」 3섹션</b> — 창은 지금 열려 있는 것만</div>
+    <div class="sub"><span class="pro">＋</span> 열린 창이 목록으로 보인다 — 듀얼 모니터에서 창을 잃어버리지 않는다(2.6.2 「추가 채팅」 섹션의 실제 효용).
+      <span class="pro">＋</span> <code>win:chat-list</code>가 이미 있으니 배선 비용이 0에 가깝다.
+      <span class="con">−</span> 섹션이 셋이라 2.6.2와 밀도가 같아진다 — 통합의 "단순해졌다" 체감이 약해진다.
+      <span class="con">−</span> 같은 채팅이 「채팅」과 「창」에 <b>두 번</b> 보인다(중복 항목).</div>
+    <div class="abcbox">
+      <div class="lcol">
+        <div class="sb-top"><span class="mark">A</span><span class="name">AgentCodeGUI</span></div>
+        <button class="sb-new"><span class="ic">＋</span><span>새 채팅</span><span class="kbd">Ctrl+N</span></button>
+        <button class="sb-new"><span class="ic">⧉</span><span>새 창으로 열기</span><span class="kbd">⇧Ctrl+N</span></button>
+        <div class="sb-scroll">
+          <div class="sb-label"><span>채팅</span><span class="sp"></span><span class="n">14</span><span class="slb">⌕</span><span class="slb">🗑</span></div>
+          <div class="sb-list">
+            <div class="sb-item active"><span class="dot run"></span><span class="t">ipc 디스패처 레지스트리 정리</span><span class="slotchip" style="background:var(--violet)">1</span><span class="when">방금</span></div>
+            <div class="sb-item"><span class="dot done"></span><span class="t">ccg-store 팬아웃 포트</span><span class="slotchip" style="background:var(--blue)">2</span><span class="when">1분</span></div>
+            <div class="sb-item"><span class="dot ask"></span><span class="t">벤치 하네스 콜드스타트 재측정</span><span class="slotchip folded"><i>⌄</i>4</span><span class="when">방금</span></div>
+            <div class="sb-item"><span class="dot"></span><span class="t">아크릴 + 네이티브 스냅 PoC</span><span class="slotchip folded"><i>⌄</i>5</span><span class="when">18분</span></div>
+            <div class="sb-item"><span class="dot err"></span><span class="t">패치노트 3.0.0-beta 초안</span><span class="slotchip folded"><i>⌄</i>6</span><span class="when">2시간</span></div>
+            <div class="sb-item"><span class="dot run"></span><span class="t">유휴 메모리 4차 패스 측정</span><span class="when">방금</span></div>
+            <div class="sb-item"><span class="dot done"></span><span class="t">토스트 라우팅 chatId 단일화</span><span class="when">3시간</span></div>
+            <div class="sb-item"><span class="dot"></span><span class="t">BTW - ipc 디스패처 …</span><span class="when">어제</span></div>
+          </div>
+          <div class="sb-label"><span>창</span><span class="sp"></span><span class="n">2</span></div>
+          <div class="sb-list">
+            <div class="sb-item"><span class="dot run"></span><span class="t">엔진 좀비 job object 검증</span><span class="when">새 창</span></div>
+            <div class="sb-item"><span class="dot run"></span><span class="t">ipc 디스패처 레지스트리 정리</span><span class="when">그리드에서</span></div>
+          </div>
+          <div class="sb-label"><span>배치</span><span class="sp"></span><span class="n">3</span><span class="slb">🗑</span></div>
+          <div class="sb-list">
+            <div class="sb-item active"><span class="dot run"></span><span class="t">3.0 빌더 4분할</span><span class="when">방금</span></div>
+            <div class="sb-item"><span class="dot"></span><span class="t">크리틱 2분할</span><span class="when">어제</span></div>
+            <div class="sb-item"><span class="dot"></span><span class="t">LSP 6분할</span><span class="when">3일</span></div>
+          </div>
+        </div>
+        <div class="sb-foot"><span class="av">L</span><span>Liu</span><span style="flex:1"></span><span>⚙</span></div>
+      </div>
+      <div class="stub">
+        <div class="head">
+          <span class="title">3.0 빌더 4분할</span><span class="sp"></span>
+          <div class="dial"><button class="newone">1</button><button class="on">2</button><button>3</button><button>4</button><button>5</button><button>6</button></div>
+          <span class="foldbadge">⌄ <span class="cnt">4</span></span>
+        </div>
+        <div class="fill"><span>자리 영역</span><span style="font-size:10px">창 되찾기 = 「창」 섹션 클릭</span></div>
+      </div>
+    </div>
+    <div class="tally"><span><b>섹션 3</b></span><span>창 = 별도 섹션</span><span>배치 전환 = 목록 클릭</span></div>
+  </div>
+
+</div>
+
+<div class="legend">
+  <span><b>공통</b>: 채팅 항목의 자리 칩 — <code>1</code>(보이는 자리) · <code>⌄4</code>(접힌 자리) · <code>창</code>(별도 창) · 없음(자리 밖)</span>
+  <span><b>공통</b>: 노란 점 = 응답 대기(<code>.dot.ask</code>, 신규) · 회전 점 = 실행 중 · 초록 = 완료 · 빨강 = 오류</span>
+  <span>2.6.2 3섹션(일반/멀티/추가)은 <b>어느 안에서도 부활하지 않는다</b> — 채팅이 한 종류가 됐으므로</span>
+  <span>결정하면 스펙 §8-1과 본편 목업을 그 안으로 통일한다</span>
+</div>
+
+</body>
+</html>

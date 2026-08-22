@@ -312,3 +312,69 @@ body{
 .legend .sw{display:inline-block;width:9px;height:9px;border-radius:2px;background:#d9c063;margin-right:5px;
   vertical-align:middle;}
 .relwrap{position:relative;max-width:1500px;margin:0 auto;}
+
+/* ══════════════════════════════════════════════════════════
+   R2 추가 — 크리틱 R1 대응(U1 접힘 알림 · U4 앱 크롬 · U9 대상 채팅 · 목업 미흡 4·5)
+   ══════════════════════════════════════════════════════════ */
+
+/* 대상 채팅 칩 — 뷰어/변경파일 카드가 "어느 대화로 가는지"를 보여준다 (U9) */
+.tgtchip{display:flex;align-items:center;gap:5px;height:20px;padding:0 8px;border-radius:6px;
+  background:var(--surface-2);border:1px solid var(--line-2);font-size:10.5px;color:var(--text-2);
+  max-width:270px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:0 0 auto;}
+.tgtchip.dim{background:transparent;border-color:var(--line);color:var(--text-4);}
+
+/* TopBar 요약 칩 — 「승인 대기 N」 / 「자리 밖 실행 N」 (§2.2-5, 열린 문제 ③) */
+.topchip{display:flex;align-items:center;gap:5px;height:26px;padding:0 8px;border-radius:8px;font-size:11px;
+  border:1px solid var(--line-2);background:var(--surface-2);color:var(--text-2);flex:0 0 auto;}
+.topchip .n{font-family:var(--font-mono);font-size:10px;}
+.topchip.ask{color:var(--yellow);border-color:rgba(217,192,99,.34);background:var(--yellow-soft);}
+.topchip.run{color:var(--text-2);}
+.topchip.run .dotp{width:6px;height:6px;border-radius:50%;background:var(--yellow);}
+
+/* 접힘 배지의 대기 표식 ‼N */
+.foldbadge .bang{display:inline-flex;align-items:center;gap:2px;margin-left:3px;padding:0 4px;height:15px;
+  border-radius:4px;background:var(--yellow);color:#0d0d0f;font-size:9.5px;font-weight:700;
+  font-family:var(--font-mono);}
+.foldbadge.alert{border-color:rgba(217,192,99,.45);background:var(--yellow-soft);color:var(--yellow);}
+.foldrow.waiting{background:var(--yellow-soft);}
+.foldrow .st.ask{color:var(--yellow);border-color:rgba(217,192,99,.45);background:rgba(217,192,99,.18);
+  font-weight:600;}
+
+/* 사이드바 대기 점 — 2.6.2엔 없던 상태(.dot.ask) */
+.sb-item .dot.ask{background:var(--yellow);box-shadow:0 0 0 3px rgba(217,192,99,.18);}
+.sb-item .unread{min-width:15px;height:15px;padding:0 4px;border-radius:8px;background:var(--surface-3);
+  color:var(--text-2);font-size:9.5px;font-family:var(--font-mono);display:grid;place-items:center;flex:0 0 auto;}
+
+/* 창 자리(WindowShell) 목업 — 데스크톱 위에 뜬 별도 OS 창 */
+.desk{max-width:1700px;margin:0 auto;position:relative;height:900px;border-radius:var(--radius);
+  overflow:hidden;background:transparent;}
+.oswin{position:absolute;display:flex;flex-direction:column;border-radius:10px;overflow:hidden;
+  background:var(--desktop);box-shadow:0 26px 60px -24px rgba(0,0,0,.85),0 0 0 1px var(--line-2);}
+.oswin .head{height:34px;}
+.oswin.small{width:660px;height:620px;}
+.winlabel{position:absolute;top:-19px;left:2px;font-size:10px;color:var(--text-4);letter-spacing:.03em;}
+
+/* 사이드바 3안 비교 (열린 문제 ①) */
+.abcrow{max-width:1700px;margin:0 auto;display:flex;gap:14px;align-items:flex-start;}
+.abccol{flex:1;min-width:0;display:flex;flex-direction:column;gap:8px;}
+.abccol .cap{font-size:11.5px;color:var(--text-2);}
+.abccol .cap b{color:var(--text);font-weight:600;}
+.abccol .sub{font-size:10.5px;color:var(--text-4);line-height:1.5;}
+.abcbox{height:660px;display:flex;border-radius:10px;overflow:hidden;background:var(--desktop);
+  box-shadow:0 18px 40px -22px rgba(0,0,0,.8),0 0 0 1px var(--line);}
+.abcbox .lcol{flex:0 0 auto;}
+.abcbox .stub{flex:1;min-width:0;background:var(--chat-bg);display:flex;flex-direction:column;}
+.abcbox .stub .head{padding-right:10px;}
+.abcbox .stub .fill{flex:1;display:grid;place-items:center;color:var(--text-4);font-size:11px;}
+.bdrop{display:flex;align-items:center;gap:6px;height:26px;padding:0 8px;border-radius:8px;
+  background:var(--surface-2);border:1px solid var(--line-2);font-size:11px;color:var(--text-2);}
+.bdrop .cv{color:var(--text-4);font-size:9px;}
+
+/* 토스트 미니어처 */
+.toastmini{position:absolute;width:290px;border-radius:10px;background:var(--bg);border:1px solid var(--line-2);
+  box-shadow:0 18px 40px -16px rgba(0,0,0,.85);padding:9px 11px;z-index:70;}
+.toastmini .th{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--yellow);}
+.toastmini .tt{font-size:11.5px;color:var(--text);margin-top:4px;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;}
+.toastmini .tp{font-size:10.5px;color:var(--text-3);margin-top:2px;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;}

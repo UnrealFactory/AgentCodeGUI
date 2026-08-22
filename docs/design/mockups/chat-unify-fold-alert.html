@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>채팅 통합 — 접힌 자리에서 승인/질문이 떴을 때</title>
+<link rel="stylesheet" href="chat-unify.css" />
+<style>
+  /* R2 신설 — 크리틱 U1 파생 + 목업 미흡 #4("접힌 자리의 승인 대기를 어떻게 알리나 — 스펙에도 없다") */
+  .mockmeta,.legend{max-width:1760px;}
+  .stage{display:flex;gap:14px;align-items:flex-start;max-width:1760px;margin:0 auto;}
+  .deskwrap{flex:1;min-width:0;position:relative;padding-bottom:104px;}
+  .deskwrap .win{max-width:none;margin:0;}
+  .notecol{width:274px;flex:none;display:flex;flex-direction:column;gap:9px;padding-top:4px;}
+  .notecol .note{position:static;max-width:none;}
+  .notecol .note::after{display:none;}
+  .notecol .nh{font-size:10px;color:var(--text-4);letter-spacing:.04em;text-transform:uppercase;}
+  /* 접힘 팝오버는 이 장면에서 대기 자리를 맨 위로 정렬한다 */
+  .foldpop{right:96px;width:336px;}
+  .foldpop .sect{padding:5px 8px 3px;font-size:10px;color:var(--text-4);letter-spacing:.03em;}
+  /* 접힌 자리 5개를 흐린 미니 스트립으로 — 콘텐츠(스레드)를 가리지 않게 가로 한 줄로 깐다 */
+  .foldstrip{position:absolute;left:24px;right:24px;bottom:12px;display:flex;flex-direction:column;gap:6px;z-index:5;}
+  .fsrow{display:flex;gap:8px;align-items:stretch;}
+  .fscell{flex:1;min-width:0;border:1px dashed var(--line-2);border-radius:8px;background:rgba(0,0,0,.30);
+    padding:7px 9px;font-size:10.5px;color:var(--text-4);overflow:hidden;}
+  .fscell .n{font-family:var(--font-mono);font-size:9.5px;color:var(--text-3);}
+  .fscell.wait{border-color:rgba(217,192,99,.45);background:rgba(217,192,99,.08);color:var(--yellow);}
+  .fscell .mini{margin-top:4px;font-size:10px;color:var(--text-3);white-space:nowrap;overflow:hidden;
+    text-overflow:ellipsis;}
+  .fshead{font-size:10px;color:var(--text-4);letter-spacing:.03em;padding-left:2px;}
+  /* OS 토스트 — 앱 창 밖(커서 모니터 구석)에 뜬다는 뜻으로 창 아래쪽에 겹치지 않게 둔다 */
+  .toastmini{right:10px;bottom:10px;}
+</style>
+</head>
+<body>
+
+<div class="mockmeta">
+  <h1>접힌 자리에서 승인 요청이 뜨면 — <b>카드는 자리 안, 알림은 밖</b></h1>
+  <span class="sub">스펙 §2.2-5. 접힌 자리의 카드는 화면에 없다(<b>자동 승격 금지</b> — 보던 화면을 뺏지 않는다).
+  대신 <b>네 곳</b>이 동시에 알린다: 접힘 배지 <code>‼N</code> · TopBar 「승인 대기 N」 칩 · 사이드바 대기 점 · 토스트.
+  키보드는 포커스 자리 전용이라 <b>보이지 않는 카드가 키를 먹지 않는다.</b></span>
+  <span class="tag">chat-unify-fold-alert</span>
+</div>
+
+<div class="stage">
+<div class="deskwrap">
+<div class="win">
+  <div class="win-body">
+
+    <div class="lcol">
+      <div class="sb-top"><span class="mark">A</span><span class="name">AgentCodeGUI</span></div>
+      <button class="sb-new"><span class="ic">＋</span><span>새 채팅</span><span class="kbd">Ctrl+N</span></button>
+      <button class="sb-new"><span class="ic">⧉</span><span>새 창으로 열기</span><span class="kbd">⇧Ctrl+N</span></button>
+      <button class="sb-new"><span class="ic">≡</span><span>프롬프트</span><span class="kbd">Ctrl+P</span></button>
+
+      <div class="sb-scroll">
+        <div class="sb-label"><span>채팅</span><span class="sp"></span><span class="n">14</span><span class="slb">⌕</span><span class="slb">🗑</span></div>
+        <div class="sb-list">
+          <div class="sb-item active"><span class="dot run"></span><span class="t">Roslyn 프라임 재현 스크립트</span><span class="slotchip" style="background:var(--amber)">1</span><span class="when">방금</span></div>
+          <!-- 대기 점 — 2.6.2엔 없던 상태(.dot.ask). 접힌 자리 2·4가 사용자를 기다린다 -->
+          <div class="sb-item"><span class="dot ask"></span><span class="t">ipc 디스패처 레지스트리 정리</span><span class="unread">2</span><span class="slotchip folded"><i>⌄</i>2</span><span class="when">방금</span></div>
+          <div class="sb-item"><span class="dot done"></span><span class="t">ccg-store 팬아웃 포트</span><span class="slotchip folded"><i>⌄</i>3</span><span class="when">1분</span></div>
+          <div class="sb-item"><span class="dot ask"></span><span class="t">벤치 하네스 콜드스타트 재측정</span><span class="unread">1</span><span class="slotchip folded"><i>⌄</i>4</span><span class="when">방금</span></div>
+          <div class="sb-item"><span class="dot run"></span><span class="t">아크릴 + 네이티브 스냅 PoC</span><span class="slotchip folded"><i>⌄</i>5</span><span class="when">방금</span></div>
+          <div class="sb-item"><span class="dot err"></span><span class="t">패치노트 3.0.0-beta 초안</span><span class="slotchip folded"><i>⌄</i>6</span><span class="when">2시간</span></div>
+          <div class="sb-item"><span class="dot run"></span><span class="t">엔진 좀비 job object 검증</span><span class="slotchip" style="background:var(--text-3);color:#0d0d0f">창</span><span class="when">방금</span></div>
+          <!-- 자리에도 창에도 없는데 계속 도는 채팅 — 감시 집합에 그대로 들어온다(§2.2-4, 열린 문제 ③) -->
+          <div class="sb-item"><span class="dot run"></span><span class="t">유휴 메모리 4차 패스 측정</span><span class="when">방금</span></div>
+          <div class="sb-item"><span class="dot done"></span><span class="t">토스트 라우팅 chatId 단일화</span><span class="when">3시간</span></div>
+          <div class="sb-item"><span class="dot"></span><span class="t">BTW - ipc 디스패처 …</span><span class="when">어제</span></div>
+        </div>
+
+        <div class="sb-label"><span>배치</span><span class="sp"></span><span class="n">3</span><span class="slb">🗑</span></div>
+        <div class="sb-list">
+          <div class="sb-item active"><span class="dot ask"></span><span class="t">3.0 빌더 4분할</span><span class="when">방금</span></div>
+          <div class="sb-item"><span class="dot"></span><span class="t">크리틱 2분할</span><span class="when">어제</span></div>
+          <div class="sb-item"><span class="dot"></span><span class="t">LSP 6분할</span><span class="when">3일</span></div>
+        </div>
+      </div>
+      <div class="sb-foot"><span class="av">L</span><span>Liu</span><span style="flex:1"></span><span>⚙</span></div>
+    </div>
+
+    <div class="chat">
+      <!-- TopBar — 다이얼 위치 고정 + 요약 칩 둘 -->
+      <div class="head">
+        <span class="title">Roslyn 프라임 재현 스크립트</span>
+        <span class="fchip">C:\Code\AgentCodeGUI <span class="ref">+1</span></span>
+        <span class="sp"></span>
+        <span class="topchip ask">‼ 승인 대기 <span class="n">2</span></span>
+        <span class="topchip run"><i class="dotp"></i>자리 밖 실행 <span class="n">4</span></span>
+        <div class="dial">
+          <button class="on newone">1</button><button>2</button><button>3</button>
+          <button>4</button><button>5</button><button>6</button>
+        </div>
+        <span class="foldbadge open alert">⌄ <span class="cnt">5</span><span class="bang">‼2</span></span>
+        <span class="h-ic">⌕</span><span class="h-ic on">▤</span>
+        <span class="vsep"></span>
+        <div class="wctl"><b>—</b><b>▢</b><b>✕</b></div>
+      </div>
+
+      <!-- 접힘 팝오버 — 대기 중인 자리를 맨 위로 정렬한다 -->
+      <div class="foldpop">
+        <div class="ph"><span>접힌 자리 5개</span><span class="sp"></span><span style="font-size:10px;color:var(--yellow)">2개가 답을 기다려요</span></div>
+        <div class="sect">답을 기다리는 자리</div>
+        <div class="foldrow waiting">
+          <span class="num" style="background:var(--violet)">2</span>
+          <span class="t">ipc 디스패처 레지스트리 정리</span>
+          <span class="st ask">승인 대기</span><span class="act">↥</span>
+        </div>
+        <div class="foldrow waiting">
+          <span class="num" style="background:var(--teal)">4</span>
+          <span class="t">벤치 하네스 콜드스타트 재측정</span>
+          <span class="st ask">질문 1/2</span><span class="act">↥</span>
+        </div>
+        <div class="sect">나머지</div>
+        <div class="foldrow">
+          <span class="num" style="background:var(--blue)">3</span>
+          <span class="t">ccg-store 팬아웃 포트</span>
+          <span class="st done">완료</span><span class="act">↥</span>
+        </div>
+        <div class="foldrow">
+          <span class="num" style="background:var(--green)">5</span>
+          <span class="t">아크릴 + 네이티브 스냅 PoC</span>
+          <span class="st run">작업 중</span><span class="act">↥</span>
+        </div>
+        <div class="foldrow">
+          <span class="num" style="background:var(--red)">6</span>
+          <span class="t">패치노트 3.0.0-beta 초안</span>
+          <span class="st" style="color:var(--red);border-color:rgba(221,122,107,.32)">오류</span><span class="act">↥</span>
+        </div>
+        <div class="pf">
+          <span>↥ = 1번 자리로 올리기(스왑)</span><span style="flex:1"></span><span>키보드는 올린 뒤에만</span>
+        </div>
+      </div>
+
+      <div class="scrollarea">
+        <div class="thread">
+          <div class="msg user">didOpen 중복으로 서버가 죽는 순간을 스크립트로 재현해줘. 종료 코드까지 잡아서.</div>
+          <div class="msg ai">
+            <p>같은 URI에 <code>didOpen</code>을 두 번 보내고 <code>range</code> 없는 <code>didChange</code>를 얹으면 재현된다. 프로토콜 위반이라 서버가 프로세스째 내려간다 — 클라이언트 예외가 아니라서 로그만 보면 원인이 안 보인다.</p>
+          </div>
+          <div class="toolgroup">
+            <div class="tg-h"><span>Bash — node scripts/poc-roslyn-didopen.mjs --repeat 3</span><span class="cnt">11.4s</span></div>
+            <div class="toolrow"><span class="k">출력</span><span class="p">run 1/3 — server exited: code 134 (SIGABRT) after 1.9s</span></div>
+            <div class="toolrow"><span class="k">출력</span><span class="p">run 2/3 — server exited: code 134 (SIGABRT) after 2.1s</span></div>
+            <div class="toolrow"><span class="k">결과</span><span class="p">재현율 3/3 · 평균 1.93s</span></div>
+          </div>
+          <div class="msg ai">
+            <p>3/3 재현. 이제 <code>openDoc</code> 레이스 가드를 Rust 쪽으로 옮기고 같은 스크립트로 0/3이 나오는지 확인하면 돼.</p>
+          </div>
+          <div class="runline"><i class="spin"></i><span>Edit — <code>crates/ccg-lsp/src/doc.rs</code> 열림 상태 집합 추가</span></div>
+        </div>
+
+        <!-- 접힌 자리 5개의 미니 스트립 — "카드는 저 안에 있다"는 감각용(호버/클릭으로 확장) -->
+        <div class="foldstrip">
+          <div class="fshead">접힌 자리 5개 — 화면 밖에서 계속 돈다 (감시 집합에 그대로 있다)</div>
+          <div class="fsrow">
+          <div class="fscell wait"><span class="n">자리 2</span> · 승인 대기
+            <div class="mini">Bash — cargo test -p ccg-proto</div></div>
+          <div class="fscell wait"><span class="n">자리 4</span> · 질문 1/2
+            <div class="mini">콜드스타트 기준 빌드는?</div></div>
+          <div class="fscell"><span class="n">자리 3</span> · 완료
+            <div class="mini">팬아웃 포트 · 3파일</div></div>
+          <div class="fscell"><span class="n">자리 5</span> · 작업 중
+            <div class="mini">아크릴 스냅 PoC · 0:52</div></div>
+          <div class="fscell"><span class="n">자리 6</span> · 오류
+            <div class="mini">패치노트 초안 · 1건</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="workbar">
+        <span class="wb on">파일 <i class="n">2</i></span>
+        <span class="wb on">셸 <i class="n">1</i></span>
+        <span class="wb">컨텍스트 <span class="bar"><i style="width:29%"></i></span> <i class="n">29% · 58k/200k</i></span>
+        <span class="wb warn">5h <i class="n">74%</i></span>
+        <span class="wb">주간 <i class="n">31%</i></span>
+      </div>
+
+      <div class="composer">
+        <div class="box">
+          <div class="ta">메시지를 입력하세요 — "/" 명령 · "@" 파일</div>
+          <div class="bar">
+            <span class="pchip"><i class="dotc" style="background:var(--amber)"></i>Sonnet</span>
+            <span class="pchip">high</span><span class="pchip">normal</span>
+            <span class="pchip">📁 AgentCodeGUI</span>
+            <span class="pchip ghost">liu@gmail.com</span>
+            <span class="sp"></span>
+            <span class="icbtn">🖼</span><span class="icbtn">📎</span><span class="icbtn">⏱</span><span class="sendbtn">↑</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 창이 비포커스일 때만 뜨는 토스트 — 판정은 main이 한다(2.6.2 규약 그대로) -->
+<div class="toastmini">
+  <div class="th">‼ 승인 대기 · 자리 2</div>
+  <div class="tt">ipc 디스패처 레지스트리 정리</div>
+  <div class="tp">Bash — cargo test -p ccg-proto 실행을 승인할까요?</div>
+</div>
+</div>
+
+<div class="notecol">
+  <div class="nh">R2 주석 — §2.2-4·§2.2-5</div>
+  <div class="note">
+    <b>감시자가 Rust로 갔다(U1).</b> 2.6.2는 <code>useTurnNotifyList</code>가 항목마다
+    <code>state: SessionState</code>를 요구했다(<code>notify.ts:34</code>) — 마커엔 스냅샷이 없으니
+    "접힘도 감시"와 "접힌 자리는 마커"가 정면 충돌했다.
+    3.0은 <code>ChatRuntime</code>이 뷰 없이도 살아 있어 <b>스냅샷 없이 전이를 판정</b>한다.
+  </div>
+  <div class="note">
+    <b>감시 집합 = ChatRuntime이 사는 모든 채팅.</b> 자리·창·다이얼·접힘과 무관.
+    사이드바의 「유휴 메모리 4차 패스 측정」은 <b>보드 slots에도 창에도 없는데</b> 계속 돈다 —
+    R1의 정의("보드 slots ∪ 창")는 이걸 놓쳤다(열린 문제 ③).
+  </div>
+  <div class="note">
+    <b>후퇴 없음.</b> 2.6.2는 활성 세션 6패널(<code>MultiAgent.tsx:891-898</code>) + 본채팅 1 +
+    열린 창 각 1을 감시했고 <b>비활성 세션 패널은 감시 밖</b>이었다. 3.0 집합은 그 상위집합이다.
+  </div>
+  <div class="note">
+    <b>오탐 토스트도 죽는다.</b> <code>prev</code> 맵이 컴포넌트 수명에 묶여 있어 감시 집합이
+    가변 길이가 되면 빠졌다 돌아온 채팅이 낡은 값과 비교돼 오탐이 났다.
+    Rust는 <code>prev</code>를 <code>ChatRuntime</code>에 둔다 — 마운트/언마운트가 없다.
+  </div>
+  <div class="note">
+    <b>표시값은 <code>ChatStatusLite</code>에서 온다(§4.3).</b> 사이드바 점·배지 <code>‼N</code>·
+    완료 링·읽지 않음 수는 전부 스냅샷 없이 계산된다. 부팅 값은
+    <code>chats-v3/index.json.statuses</code>(얼려 저장 — 2.6.2 <code>sessionChats.ts:28</code>·
+    <code>maStore.ts:94</code>의 일반화), 이후 <code>chat:status</code> REPLACE가 덮는다.
+  </div>
+  <div class="note">
+    <b>자동 승격 금지.</b> 접힌 자리의 카드가 화면을 뺏지 않는다. 올리는 것은
+    ↥ 또는 「승인 대기」 칩 클릭 <b>둘뿐</b>이고, 키보드(숫자·Enter·Esc)는
+    <code>focusedChatId</code> 게이트라 <b>보이지 않는 카드가 키를 먹지 않는다.</b>
+  </div>
+  <div class="note">
+    <b>읽지 않음 배지는 신규다.</b> 2.6.2엔 없다(사이드바는 상태 점뿐,
+    <code>styles.css:336-341</code>). 자리가 6개면 "내가 안 본 답변"이 실제로 생긴다 —
+    <b>열린 문제 ⑪</b>로 물어본다.
+  </div>
+</div>
+</div>
+
+<div class="legend">
+  <span><span class="sw"></span><b>노란 카드</b> = 목업 주석(실제 UI 아님)</span>
+  <span><b>‼</b> = 사용자 응답 대기(승인·질문). 실행 중(노란 점)과 구분되는 상태다</span>
+  <span>오른쪽 아래 <b>접힌 자리 스트립</b>은 선택적 표시 — 열린 문제 ②의 "얼마나 크게 알릴까"</span>
+  <span>토스트는 창이 <b>비포커스</b>일 때만. 판정은 main(2.6.2 규약 그대로)</span>
+</div>
+
+</body>
+</html>
