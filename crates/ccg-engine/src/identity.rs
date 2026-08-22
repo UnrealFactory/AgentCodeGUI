@@ -401,7 +401,7 @@ pub struct RawEngine {
     pub codex_account: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RawBilling {
     pub kind: BillingKind,
@@ -410,6 +410,40 @@ pub struct RawBilling {
     pub account: Option<AccountEmail>,
     #[serde(default)]
     pub drop_env_key: Option<bool>,
+}
+
+/// **★D17 — 스토어와 바이트가 같아야 한다.** 직렬화를 손으로 쓴 이유가 이것뿐이다.
+///
+/// 마이그레이션의 **1차 비교 키**는 `RawIdentity`의 정준 직렬화다(`raw_hash`). 그 값을
+/// 만드는 저자가 둘이다 — 마이그레이션은 `ccg-store::raw_identity::to_raw_identity`,
+/// 실행 중 저장은 이 크레이트의 `RunIdentity::to_raw()`. 그런데 `api_key` 변형에서
+/// 모양이 갈렸다:
+///
+/// | 저자 | `api_key`일 때 |
+/// |---|---|
+/// | `ccg-store` (+ 크리틱 독립 미러 `critic-m2-migrate.mjs:57`) | `{"kind":"api_key"}` |
+/// | 파생 `derive(Serialize)` | `{"kind":"api_key","account":null,"dropEnvKey":null}` |
+///
+/// 크리틱 하네스의 `canon()`은 **null을 지우지 않는다**(`critic-m2-lib.mjs:35-42`) —
+/// 엔진이 `to_raw()`를 저장하기 시작하는 순간 1차 비교가 **거짓 불일치**를 낸다
+/// (크리틱 R8 §4 후속 D17). 고치는 방향은 하나뿐이다: **엔진이 스토어에 맞춘다.**
+/// 반대로 스토어에 null 두 개를 넣으면 크리틱의 독립 미러가 깨지고, 그건 "판정자를
+/// 판정 대상에 맞추는" 수정이다.
+///
+/// 규칙: `kind`는 항상. `account`·`dropEnvKey`는 **구독일 때만**(값이 없으면 `null`로).
+/// 역직렬화는 파생 그대로라 두 모양 다 읽는다.
+impl Serialize for RawBilling {
+    fn serialize<S: serde::Serializer>(&self, ser: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let subscription = matches!(self.kind, BillingKind::Subscription);
+        let mut m = ser.serialize_map(Some(if subscription { 3 } else { 1 }))?;
+        m.serialize_entry("kind", &self.kind)?;
+        if subscription {
+            m.serialize_entry("account", &self.account)?;
+            m.serialize_entry("dropEnvKey", &self.drop_env_key)?;
+        }
+        m.end()
+    }
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -1020,4 +1054,39 @@ pub fn resolve_fallback_conflicts(
         }
     }
     (patch, kept)
+}
+
+#[cfg(test)]
+mod d17_tests {
+    use super::*;
+
+    /// ★D17 — `api_key` 정체성의 바이트가 **스토어(`ccg-store::raw_identity`)와 같아야** 한다.
+    /// 크리틱의 독립 미러(`docs/critic/tools/critic-m2-migrate.mjs:57`)도 같은 모양을 낸다:
+    /// `billing: api ? { kind: 'api_key' } : { kind:'subscription', account, dropEnvKey }`.
+    /// 이 테스트가 붉어지면 **마이그레이션 1차 비교가 거짓 불일치를 낸다**(대화가 바뀐 것처럼 보인다).
+    #[test]
+    fn api_key_billing_serializes_without_null_leftovers() {
+        let b = RawBilling {
+            kind: BillingKind::ApiKey,
+            account: None,
+            drop_env_key: None,
+        };
+        assert_eq!(serde_json::to_string(&b).unwrap(), r#"{"kind":"api_key"}"#);
+
+        // 구독은 두 키가 **항상** 있다(값이 없으면 null) — 스토어 to_raw_identity와 같은 모양.
+        let s = RawBilling {
+            kind: BillingKind::Subscription,
+            account: None,
+            drop_env_key: Some(false),
+        };
+        assert_eq!(
+            serde_json::to_string(&s).unwrap(),
+            r#"{"kind":"subscription","account":null,"dropEnvKey":false}"#
+        );
+
+        // 역직렬화는 두 모양 다 읽는다(옛 파일에 null이 박혀 있어도 로드된다).
+        let back: RawBilling = serde_json::from_str(r#"{"kind":"api_key","account":null,"dropEnvKey":null}"#).unwrap();
+        assert_eq!(back, b);
+        assert_eq!(serde_json::to_string(&back).unwrap(), r#"{"kind":"api_key"}"#);
+    }
 }

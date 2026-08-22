@@ -249,6 +249,8 @@ pub struct ChatRuntime<D: CliDriver> {
     task_by_tool_use: std::collections::BTreeMap<String, String>,
     /// stdin으로 나간 프롬프트 — 불변식 7(이중 전송 없음)이 읽는다.
     sent_user_texts: Vec<String>,
+    /// `request_id` → 그 카드의 **응답 본문 오버라이드**(1회 소비). 비어 있는 것이 기본이다.
+    staged_payloads: std::collections::BTreeMap<String, Value>,
 }
 
 impl<D: CliDriver> ChatRuntime<D> {
@@ -296,6 +298,7 @@ impl<D: CliDriver> ChatRuntime<D> {
             suspend_drain: false,
             task_by_tool_use: Default::default(),
             sent_user_texts: vec![],
+            staged_payloads: Default::default(),
         };
         rt.emit(Event::Identity {
             origin: RevisionOrigin::Default,
@@ -389,6 +392,15 @@ impl<D: CliDriver> ChatRuntime<D> {
     pub fn events(&self) -> Vec<Event> {
         self.sink.borrow().events.clone()
     }
+    /// **가져가면서 비운다** — 출하 셸(src-tauri 엔진 글루)의 브로드캐스트 펌프 전용.
+    ///
+    /// [`Self::events`]는 재생 하네스가 *순서 전체*를 단언하려고 누적본을 통째로 복사한다.
+    /// 상주 앱에서 그 모양을 쓰면 (a) 사인크가 턴마다 무한히 커지고 (b) 펌프가 매 틱
+    /// 전체를 다시 훑어 이미 보낸 이벤트를 또 보낸다. 하네스는 이 메서드를 부르지
+    /// 않으므로 97개 테스트의 단언 대상(누적본)은 한 글자도 바뀌지 않는다.
+    pub fn drain_events(&self) -> Vec<Event> {
+        std::mem::take(&mut self.sink.borrow_mut().events)
+    }
     pub fn driver(&mut self) -> &mut D {
         &mut self.driver
     }
@@ -426,6 +438,20 @@ impl<D: CliDriver> ChatRuntime<D> {
     }
     pub fn sent_user_texts(&self) -> Vec<String> {
         self.sent_user_texts.clone()
+    }
+
+    /// 다음 [`Cmd::Respond`]가 **이 본문 그대로** 나가게 세워 둔다(그 `request_id` 1회).
+    ///
+    /// 왜 필요한가: `Cmd::Respond`의 어휘는 `accept: bool`이다 — 재생 하네스가 60전이를
+    /// 밟는 데는 그것으로 충분하지만, **실 CLI 왕복에는 값이 더 필요한 카드가 있다.**
+    /// `AskUserQuestion`은 `canUseTool`이 allow/deny만 받으므로 2.6.2가 답을
+    /// **`deny` + `message`(선택 요약)** 로 되먹인다(`protocol-claude-cli.md` §4.4a
+    /// "AskUserQuestion 트릭"). `allow_always`도 `updatedPermissions` 배열이 실려야 산다.
+    ///
+    /// 그 2.6.2 파리티 본문을 **셸(엔진 글루)이 만들고**, 상태기계는 매칭·정착·`AskClosed`
+    /// 규약을 그대로 돈다. 세워 두지 않으면 기본 본문이라 기존 동작은 한 글자도 안 바뀐다.
+    pub fn stage_respond_payload(&mut self, request_id: &str, payload: Value) {
+        self.staged_payloads.insert(request_id.to_string(), payload);
     }
     /// 프롬프트 송신의 유일 경로 — 불변식 7(이중 전송 없음)이 이 목록을 읽는다.
     fn send_user(&mut self, text: &str) {
@@ -1400,7 +1426,9 @@ impl<D: CliDriver> ChatRuntime<D> {
             // 종류가 어긋난 응답은 **조용히 먹지 않는다**(N16·X9).
             return Verdict::Rejected("wrong_card_kind");
         }
-        let payload = match kind {
+        // 셸이 미리 세워 둔 응답 본문이 있으면 그걸 쓴다(§4.4a — 아래 stage_respond_payload).
+        // 없으면 재생 하네스가 쓰는 최소 본문. **매칭·정착·AskClosed는 어느 쪽이든 같다.**
+        let payload = self.staged_payloads.remove(request_id).unwrap_or_else(|| match kind {
             AskKind::Permission => {
                 if accept {
                     json!({ "behavior": "allow" })
@@ -1410,7 +1438,7 @@ impl<D: CliDriver> ChatRuntime<D> {
             }
             AskKind::Question => json!({ "behavior": "allow" }),
             AskKind::Dialog => json!({ "accepted": accept }),
-        };
+        });
         // ★ toolUseID는 항상 동봉한다(고아 경로가 이걸 키로 쓴다).
         self.driver.send(control_response(
             &ask.request_id,
