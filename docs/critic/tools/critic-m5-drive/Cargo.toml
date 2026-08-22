@@ -1,0 +1,11 @@
+[package]
+name = "m5drive"
+version = "0.0.0"
+edition = "2021"
+
+[dependencies]
+ccg-auth = { path = "../../../../crates/ccg-auth" }
+ccg-store = { path = "../../../../crates/ccg-store" }
+serde_json = { version = "1", features = ["preserve_order"] }
+
+[workspace]

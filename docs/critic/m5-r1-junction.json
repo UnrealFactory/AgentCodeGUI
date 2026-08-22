@@ -1,0 +1,14 @@
+{
+  "context": { "elevated": false, "developerMode": "미설정(끔)", "os": "Windows 11 26200" },
+  "created": { "linkType": "Junction", "target": "C:\...\shared\projects", "note": "PowerShell Get-Item이 Junction으로 판정 = 진짜 NTFS mount point(심링크 아님) / 관리자·개발자모드 없이 성공" },
+  "attacks": [
+    { "id": "A", "what": "unlink 없이 계정 폴더를 remove_dir_all", "result": "정션만 사라지고 원본 파일·폴더 잔존", "ok": true },
+    { "id": "B", "what": "SHARED_DIRS에 없는 **중첩** 정션(CLI가 판 것)까지 remove_dir_all", "result": "원본 잔존", "ok": true },
+    { "id": "C", "what": "조상을 가리키는 순환 정션 생성 후 remove_dir_all", "result": "생성 성공 / 재귀 폭주 없음 / 조상 파일 잔존", "ok": true },
+    { "id": "D", "what": "실폴더가 이미 있는 자리에 link_shared_state", "result": "실폴더 그대로(내용 보존) + 나머지 이름은 정션 생성", "ok": true },
+    { "id": "E1", "what": "대상이 없을 때 create", "result": "Err(NotFound) + **반쪽 빈 폴더 안 남김**(canonicalize가 create_dir보다 앞)", "ok": true },
+    { "id": "E2", "what": "링크 자리에 파일이 있을 때 create", "result": "Err(AlreadyExists) + 파일 온전", "ok": true },
+    { "id": "F", "what": "정션 대상이 또 정션일 때", "result": "체인이 **평탄화**된다(leaf→real). 2.6.2는 리터럴 경로를 저장해 leaf→mid. 동작 동등, 표기만 다름", "ok": true },
+    { "id": "G", "what": "unlink(실폴더)", "result": "no-op(Ok) + 내용 온전 — 2.6.2 isSymbolicLink 가드와 같은 의미", "ok": true }
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "harness": "docs/critic/tools/critic-m5-262reader.cjs — src/main/auth.ts의 readStoreFile/decCreds/accountSlug/credsExpiresAt/accountRunDir 판정부를 원문 이식해 **Electron 42 safeStorage** 위에서 실행. userData = 설치본 'Local State' 사본.",
+  "driver": "docs/critic/tools/critic-m5-drive — ccg-auth 공개 API만 호출(워크스페이스 밖 크레이트, 레포 미오염)",
+  "isolation": "CCG_HOME=스크래치 사본. 실홈 accounts.json md5는 작업 전후 21203beb2f74f6459347f80d9f2678b6 그대로.",
+  "roundtrip": {
+    "accountsJsonV3": { "bytesIn": 10380, "bytesOut": 10380, "identical": true, "accounts": 6 },
+    "codexAccountsV1": { "bytesIn": 36, "bytesOut": 36, "identical": true, "accounts": 0 }
+  },
+  "v2ToV3": {
+    "rustBytes": 3616,
+    "nodeBytes": 3616,
+    "md5Both": "611a0a26a4ff2b1d2becb6c421619bed",
+    "identical": true,
+    "note": "같은 v2 입력(accounts.json.bak-v2)을 ① ccg-auth write_store_file ② 2.6.2 writeStoreFile로 각각 승격해 바이트 비교"
+  },
+  "writePathAttack": [
+    { "step": "set_default_account(비-기본 계정)", "then262": "version 3 / defaultEmail 반영 / 6건 전부 복호+실행가능", "ok": true },
+    { "step": "reorder_accounts(역순)", "then262": "배열 순서 그대로 / 6건 전부 복호+실행가능", "ok": true },
+    { "step": "account_run_dir + 폴더 토큰 갱신 + sync_account_tokens(=credEnc 재암호화)", "then262": "재암호화 blob을 Electron safeStorage가 복호 / 스냅샷 키 [creds,account,userID] 보존 / 갱신된 expiresAt 반영", "ok": true },
+    { "step": "import_account_from_dir(로그인 완료 경로)", "then262": "7건째 계정을 2.6.2가 읽고 실행가능 / 레코드 키 순서 email→subscriptionType→credEnc", "ok": true },
+    { "step": "remove_account", "then262": "6건으로 복귀 / 공유 원본(shared/*) 전부 잔존", "ok": true }
+  ],
+  "cliBoot": {
+    "bin": "node_modules/@anthropic-ai/claude-agent-sdk-win32-x64/claude.exe",
+    "emptyDir": { "loggedIn": false, "authMethod": "none" },
+    "materializedDir": { "loggedIn": true, "authMethod": "claude.ai", "email": "synthetic@example.com", "orgId": "(oauthAccount.organizationUuid 그대로)", "subscriptionType": "max" },
+    "note": "실계정이 아니라 **합성 토큰**으로 확인했다 — 실토큰으로 CLI를 돌리면 리프레시 회전으로 사용자 실홈의 백업이 죽을 수 있다(그게 곧 재로그인).",
+    "sideEffect": "`auth status`는 읽기 전용이 아니다 — .claude.json에 firstStartTime·migrationVersion·seenNotifications 등을 **덧쓰고** backups/ 폴더를 만든다. account_run_dir의 병합 방식(기존 키 보존) 덕에 피해는 없다."
+  },
+  "realHomeJunctionCensus": {
+    "accounts": 6, "slots": 66, "liveJunctions": 47,
+    "byName": {
+      "projects": { "link": 6 }, "sessions": { "link": 6 }, "teams": { "link": 6 }, "agents": { "link": 6 },
+      "skills": { "link": 6 }, "plugins": { "link": 6 }, "commands": { "link": 6 },
+      "session-env": { "realdir": 5, "missing": 1 }, "tasks": { "link": 1, "realdir": 4, "missing": 1 },
+      "todos": { "link": 2, "missing": 4 }, "file-history": { "link": 2, "missing": 4 }
+    },
+    "verdict": "보고서 §3.5 표와 일치"
+  }
+}

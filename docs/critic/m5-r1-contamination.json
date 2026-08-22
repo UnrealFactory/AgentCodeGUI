@@ -1,0 +1,26 @@
+{
+  "what": "오염(같은 토큰 + 다른 이메일) 합성 → verify::preflight를 양방향으로 호출",
+  "seed": "a@x.com / b@x.com 둘 다 creds.claudeAiOauth.accessToken = 'SHARED-TOKEN' (2.6.2 스킴으로 실제 암호화)",
+  "runs": [
+    {
+      "storeOrder": ["a@x.com", "b@x.com"],
+      "preflight(a)": "Probe",   "probe(a)": true,
+      "preflight(b)": "Contaminated(\"a@x.com\")", "probe(b)": false,
+      "diagnose": { "a@x.com": "collides=b@x.com", "b@x.com": "collides=a@x.com" }
+    },
+    {
+      "storeOrder": ["b@x.com", "a@x.com"],
+      "note": "설정 → Account에서 드래그 재정렬 한 번",
+      "preflight(a)": "Contaminated(\"b@x.com\")", "probe(a)": false,
+      "preflight(b)": "Probe", "probe(b)": true,
+      "diagnose": { "b@x.com": "collides=a@x.com", "a@x.com": "collides=b@x.com" }
+    }
+  ],
+  "verdict": "diagnose()는 양쪽을 다 잡는다(지문→소유자 목록 맵). preflight()는 claude::token_owner의 **첫 일치**만 보므로, 오염 쌍 중 accounts.json에서 앞에 있는 쪽은 언제나 Probe로 통과한다 — 어느 쪽이 통과할지는 사용자의 드래그 순서가 정한다.",
+  "reorderRecordLoss": {
+    "what": "같은 이메일 레코드 2건(서로 다른 credEnc) + 정상 1건 = 3건인 스토어에서 reorder_accounts(['ok','dup'])",
+    "3.0": "2건 — dup의 두 번째 레코드(다른 토큰 백업)가 **사라진다**",
+    "2.6.2": "3건 — 참조 비교라 둘 다 남는다",
+    "note": "보고서 §7은 '입력에 같은 이메일이 두 번'만 의도적 차이로 적었는데, 실제로는 **스토어에 같은 이메일이 두 번**일 때 레코드가 유실된다"
+  }
+}

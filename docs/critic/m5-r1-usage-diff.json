@@ -1,0 +1,623 @@
+{
+  "harness": "docs/critic/tools/critic-m5-uparse262.cjs(2.6.2 auth.ts+index.ts 파싱 블록 원문 이식) vs ccg_auth::usage",
+  "note": "네트워크 호출 없음 — 응답 본문을 합성해 두 파서에 같이 먹였다",
+  "totalCases": 71,
+  "mismatches": 12,
+  "rows": [
+    {
+      "case": {
+        "five_hour": {
+          "utilization": 1000
+        },
+        "seven_day": {
+          "utilization": "1e2"
+        }
+      },
+      "v262": {
+        "account": {
+          "email": "e@x.com",
+          "fiveHourPct": 100,
+          "weeklyPct": 100,
+          "fablePct": null,
+          "fiveHourResetsAt": null,
+          "weeklyResetsAt": null,
+          "fableResetsAt": null
+        },
+        "info": {
+          "fiveHour": {
+            "pct": 100,
+            "resetsAt": null
+          },
+          "weekly": {
+            "pct": 100,
+            "resetsAt": null
+          },
+          "weeklyFable": null,
+          "extraCredit": null
+        }
+      },
+      "v30": {
+        "account": {
+          "email": "e@x.com",
+          "fiveHourPct": 100,
+          "weeklyPct": 1,
+          "fablePct": null,
+          "fiveHourResetsAt": null,
+          "weeklyResetsAt": null,
+          "fableResetsAt": null
+        },
+        "info": {
+          "fiveHour": {
+            "pct": 100,
+            "resetsAt": null
+          },
+          "weekly": {
+            "pct": 1,
+            "resetsAt": null
+          },
+          "weeklyFable": null,
+          "extraCredit": null
+        }
+      }
+    },
+    {
+      "case": {
+        "five_hour": {
+          "utilization": 40,
+          "resets_at": 12345
+        }
+      },
+      "v262": {
+        "account": {
+          "email": "e@x.com",
+          "fiveHourPct": 40,
+          "weeklyPct": null,
+          "fablePct": null,
+          "fiveHourResetsAt": 327403350000,
+          "weeklyResetsAt": null,
+          "fableResetsAt": null
+        },
+        "info": {
+          "fiveHour": {
+            "pct": 40,
+            "resetsAt": 327403350000
+          },
+          "weekly": null,
+          "weeklyFable": null,
+          "extraCredit": null
+        }
+      },
+      "v30": {
+        "account": {
+          "email": "e@x.com",
+          "fiveHourPct": 40,
+          "weeklyPct": null,
+          "fablePct": null,
+          "fiveHourResetsAt": null,
+          "weeklyResetsAt": null,
+          "fableResetsAt": null
+        },
+        "info": {
+          "fiveHour": {
+            "pct": 40,
+            "resetsAt": null
+          },
+          "weekly": null,
+          "weeklyFable": null,
+          "extraCredit": null
+        }
+      }
+    },
+    {
+      "case": {
+        "five_hour": {
+          "utilization": 40,
+          "resets_at": "2026-08-20"
+        }
+      },
+      "v262": {
+        "account": {
+          "email": "e@x.com",
+          "fiveHourPct": 40,
+          "weeklyPct": null,
+          "fablePct": null,
+          "fiveHourResetsAt": 1787184000,
+          "weeklyResetsAt": null,
+          "fableResetsAt": null
+        },
+        "info": {
+          "fiveHour": {
+            "pct": 40,
+            "resetsAt": 1787184000
+          },
+          "weekly": null,
+          "weeklyFable": null,
+          "extraCredit": null
+        }
+      },
+      "v30": {
+        "account": {
+          "email": "e@x.com",
+          "fiveHourPct": 40,
+          "weeklyPct": null,
+          "fablePct": null,
+          "fiveHourResetsAt": null,
+          "weeklyResetsAt": null,
+          "fableResetsAt": null
+        },
+        "info": {
+          "fiveHour": {
+            "pct": 40,
+            "resetsAt": null
+          },
+          "weekly": null,
+          "weeklyFable": null,
+          "extraCredit": null
+        }
+      }
+    },
+    {
+      "case": {
+        "limits": [
+          {
+            "kind": "weekly_scoped",
+            "percent": "77",
+            "scope": {
+              "model": {
+                "display_name": "Fable"
+              }
+            }
+          }
+        ]
+      },
+      "v262": {
+        "account": {
+          "email": "e@x.com",
+          "fiveHourPct": null,
+          "weeklyPct": null,
+          "fablePct": null,
+          "fiveHourResetsAt": null,
+          "weeklyResetsAt": null,
+          "fableResetsAt": null
+        },
+        "info": {
+          "fiveHour": null,
+          "weekly": null,
+          "weeklyFable": {
+            "pct": 77,
+            "resetsAt": null
+          },
+          "extraCredit": null
+        }
+      },
+      "v30": {
+        "account": {
+          "email": "e@x.com",
+          "fiveHourPct": null,
+          "weeklyPct": null,
+          "fablePct": null,
+          "fiveHourResetsAt": null,
+          "weeklyResetsAt": null,
+          "fableResetsAt": null
+        },
+        "info": {
+          "fiveHour": null,
+          "weekly": null,
+          "weeklyFable": {
+            "pct": 0,
+            "resetsAt": null
+          },
+          "extraCredit": null
+        }
+      }
+    },
+    {
+      "case": {
+        "spend": {
+          "enabled": 1,
+          "percent": 33.4
+        }
+      },
+      "v262": {
+        "account": {
+          "email": "e@x.com",
+          "fiveHourPct": null,
+          "weeklyPct": null,
+          "fablePct": null,
+          "fiveHourResetsAt": null,
+          "weeklyResetsAt": null,
+          "fableResetsAt": null
+        },
+        "info": {
+          "fiveHour": null,
+          "weekly": null,
+          "weeklyFable": null,
+          "extraCredit": {
+            "enabled": true,
+            "outOfCredits": false,
+            "currency": "USD",
+            "used": null,
+            "cap": null,
+            "balance": null,
+            "pct": 33
+          }
+        }
+      },
+      "v30": {
+        "account": {
+          "email": "e@x.com",
+          "fiveHourPct": null,
+          "weeklyPct": null,
+          "fablePct": null,
+          "fiveHourResetsAt": null,
+          "weeklyResetsAt": null,
+          "fableResetsAt": null
+        },
+        "info": {
+          "fiveHour": null,
+          "weekly": null,
+          "weeklyFable": null,
+          "extraCredit": {
+            "enabled": false,
+            "outOfCredits": false,
+            "currency": "USD",
+            "used": null,
+            "cap": null,
+            "balance": null,
+            "pct": 33
+          }
+        }
+      }
+    },
+    {
+      "case": {
+        "five_hour": {
+          "utilization": 40,
+          "resets_at": "2026-08-20T15:00Z"
+        }
+      },
+      "v262": {
+        "account": {
+          "email": "e@x.com",
+          "fiveHourPct": 40,
+          "weeklyPct": null,
+          "fablePct": null,
+          "fiveHourResetsAt": 1787238000,
+          "weeklyResetsAt": null,
+          "fableResetsAt": null
+        },
+        "info": {
+          "fiveHour": {
+            "pct": 40,
+            "resetsAt": 1787238000
+          },
+          "weekly": null,
+          "weeklyFable": null,
+          "extraCredit": null
+        }
+      },
+      "v30": {
+        "account": {
+          "email": "e@x.com",
+          "fiveHourPct": 40,
+          "weeklyPct": null,
+          "fablePct": null,
+          "fiveHourResetsAt": null,
+          "weeklyResetsAt": null,
+          "fableResetsAt": null
+        },
+        "info": {
+          "fiveHour": {
+            "pct": 40,
+            "resetsAt": null
+          },
+          "weekly": null,
+          "weeklyFable": null,
+          "extraCredit": null
+        }
+      }
+    },
+    {
+      "case": {
+        "five_hour": {
+          "utilization": 40,
+          "resets_at": "2026-08-20T15:00:00"
+        }
+      },
+      "v262": {
+        "account": {
+          "email": "e@x.com",
+          "fiveHourPct": 40,
+          "weeklyPct": null,
+          "fablePct": null,
+          "fiveHourResetsAt": 1787205600,
+          "weeklyResetsAt": null,
+          "fableResetsAt": null
+        },
+        "info": {
+          "fiveHour": {
+            "pct": 40,
+            "resetsAt": 1787205600
+          },
+          "weekly": null,
+          "weeklyFable": null,
+          "extraCredit": null
+        }
+      },
+      "v30": {
+        "account": {
+          "email": "e@x.com",
+          "fiveHourPct": 40,
+          "weeklyPct": null,
+          "fablePct": null,
+          "fiveHourResetsAt": 1787238000,
+          "weeklyResetsAt": null,
+          "fableResetsAt": null
+        },
+        "info": {
+          "fiveHour": {
+            "pct": 40,
+            "resetsAt": 1787238000
+          },
+          "weekly": null,
+          "weeklyFable": null,
+          "extraCredit": null
+        }
+      }
+    },
+    {
+      "case": {
+        "five_hour": {
+          "utilization": 40,
+          "resets_at": "2026-08-20T15:00:00+09"
+        }
+      },
+      "v262": {
+        "account": {
+          "email": "e@x.com",
+          "fiveHourPct": 40,
+          "weeklyPct": null,
+          "fablePct": null,
+          "fiveHourResetsAt": null,
+          "weeklyResetsAt": null,
+          "fableResetsAt": null
+        },
+        "info": {
+          "fiveHour": {
+            "pct": 40,
+            "resetsAt": null
+          },
+          "weekly": null,
+          "weeklyFable": null,
+          "extraCredit": null
+        }
+      },
+      "v30": {
+        "account": {
+          "email": "e@x.com",
+          "fiveHourPct": 40,
+          "weeklyPct": null,
+          "fablePct": null,
+          "fiveHourResetsAt": 1787205600,
+          "weeklyResetsAt": null,
+          "fableResetsAt": null
+        },
+        "info": {
+          "fiveHour": {
+            "pct": 40,
+            "resetsAt": 1787205600
+          },
+          "weekly": null,
+          "weeklyFable": null,
+          "extraCredit": null
+        }
+      }
+    },
+    {
+      "case": {
+        "five_hour": {
+          "utilization": "Infinity"
+        }
+      },
+      "v262": {
+        "account": {
+          "email": "e@x.com",
+          "fiveHourPct": 100,
+          "weeklyPct": null,
+          "fablePct": null,
+          "fiveHourResetsAt": null,
+          "weeklyResetsAt": null,
+          "fableResetsAt": null
+        },
+        "info": {
+          "fiveHour": {
+            "pct": 100,
+            "resetsAt": null
+          },
+          "weekly": null,
+          "weeklyFable": null,
+          "extraCredit": null
+        }
+      },
+      "v30": {
+        "account": {
+          "email": "e@x.com",
+          "fiveHourPct": null,
+          "weeklyPct": null,
+          "fablePct": null,
+          "fiveHourResetsAt": null,
+          "weeklyResetsAt": null,
+          "fableResetsAt": null
+        },
+        "info": {
+          "fiveHour": {
+            "pct": 0,
+            "resetsAt": null
+          },
+          "weekly": null,
+          "weeklyFable": null,
+          "extraCredit": null
+        }
+      }
+    },
+    {
+      "case": {
+        "seven_day": {
+          "utilization": "1e-7"
+        }
+      },
+      "v262": {
+        "account": {
+          "email": "e@x.com",
+          "fiveHourPct": null,
+          "weeklyPct": 0,
+          "fablePct": null,
+          "fiveHourResetsAt": null,
+          "weeklyResetsAt": null,
+          "fableResetsAt": null
+        },
+        "info": {
+          "fiveHour": null,
+          "weekly": {
+            "pct": 0,
+            "resetsAt": null
+          },
+          "weeklyFable": null,
+          "extraCredit": null
+        }
+      },
+      "v30": {
+        "account": {
+          "email": "e@x.com",
+          "fiveHourPct": null,
+          "weeklyPct": 1,
+          "fablePct": null,
+          "fiveHourResetsAt": null,
+          "weeklyResetsAt": null,
+          "fableResetsAt": null
+        },
+        "info": {
+          "fiveHour": null,
+          "weekly": {
+            "pct": 1,
+            "resetsAt": null
+          },
+          "weeklyFable": null,
+          "extraCredit": null
+        }
+      }
+    },
+    {
+      "case": {
+        "limits": [
+          {
+            "kind": "weekly_scoped",
+            "percent": true,
+            "scope": {
+              "model": {
+                "display_name": "Fable"
+              }
+            }
+          }
+        ]
+      },
+      "v262": {
+        "account": {
+          "email": "e@x.com",
+          "fiveHourPct": null,
+          "weeklyPct": null,
+          "fablePct": null,
+          "fiveHourResetsAt": null,
+          "weeklyResetsAt": null,
+          "fableResetsAt": null
+        },
+        "info": {
+          "fiveHour": null,
+          "weekly": null,
+          "weeklyFable": {
+            "pct": 1,
+            "resetsAt": null
+          },
+          "extraCredit": null
+        }
+      },
+      "v30": {
+        "account": {
+          "email": "e@x.com",
+          "fiveHourPct": null,
+          "weeklyPct": null,
+          "fablePct": null,
+          "fiveHourResetsAt": null,
+          "weeklyResetsAt": null,
+          "fableResetsAt": null
+        },
+        "info": {
+          "fiveHour": null,
+          "weekly": null,
+          "weeklyFable": {
+            "pct": 0,
+            "resetsAt": null
+          },
+          "extraCredit": null
+        }
+      }
+    },
+    {
+      "case": {
+        "spend": {
+          "enabled": "yes"
+        }
+      },
+      "v262": {
+        "account": {
+          "email": "e@x.com",
+          "fiveHourPct": null,
+          "weeklyPct": null,
+          "fablePct": null,
+          "fiveHourResetsAt": null,
+          "weeklyResetsAt": null,
+          "fableResetsAt": null
+        },
+        "info": {
+          "fiveHour": null,
+          "weekly": null,
+          "weeklyFable": null,
+          "extraCredit": {
+            "enabled": true,
+            "outOfCredits": false,
+            "currency": "USD",
+            "used": null,
+            "cap": null,
+            "balance": null,
+            "pct": null
+          }
+        }
+      },
+      "v30": {
+        "account": {
+          "email": "e@x.com",
+          "fiveHourPct": null,
+          "weeklyPct": null,
+          "fablePct": null,
+          "fiveHourResetsAt": null,
+          "weeklyResetsAt": null,
+          "fableResetsAt": null
+        },
+        "info": {
+          "fiveHour": null,
+          "weekly": null,
+          "weeklyFable": null,
+          "extraCredit": {
+            "enabled": false,
+            "outOfCredits": false,
+            "currency": "USD",
+            "used": null,
+            "cap": null,
+            "balance": null,
+            "pct": null
+          }
+        }
+      }
+    }
+  ]
+}
