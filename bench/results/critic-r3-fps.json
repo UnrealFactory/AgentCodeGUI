@@ -1,0 +1,258 @@
+{
+  "what": "스크롤 FPS — \"드랍 0%\"의 신뢰구간. 한 부팅 안에서 12회 반복 × 두 앱",
+  "claim": "빌더: 6회 중 1회 0.8% 드랍이 났고 레버와 무관한 팔에서도 같은 흔들림이 나 앰비언트로 봤다",
+  "tauri": {
+    "trials": 12,
+    "zeroDropTrials": 12,
+    "zeroDropWilson95Pct": [
+      75.7,
+      100
+    ],
+    "worstDroppedPct": 0,
+    "worstFrameMs": 17.3,
+    "medianAvgFps": 60,
+    "perTrial": [
+      {
+        "frames": 356,
+        "avgFps": 60,
+        "p95Ms": 16.8,
+        "worstMs": 16.8,
+        "droppedPct": 0,
+        "droppedFrames": 0,
+        "longTaskMs": 0
+      },
+      {
+        "frames": 359,
+        "avgFps": 60,
+        "p95Ms": 16.8,
+        "worstMs": 16.8,
+        "droppedPct": 0,
+        "droppedFrames": 0,
+        "longTaskMs": 0
+      },
+      {
+        "frames": 359,
+        "avgFps": 60,
+        "p95Ms": 16.8,
+        "worstMs": 16.8,
+        "droppedPct": 0,
+        "droppedFrames": 0,
+        "longTaskMs": 0
+      },
+      {
+        "frames": 358,
+        "avgFps": 59.9,
+        "p95Ms": 16.8,
+        "worstMs": 17.3,
+        "droppedPct": 0,
+        "droppedFrames": 0,
+        "longTaskMs": 0
+      },
+      {
+        "frames": 358,
+        "avgFps": 60,
+        "p95Ms": 16.8,
+        "worstMs": 16.8,
+        "droppedPct": 0,
+        "droppedFrames": 0,
+        "longTaskMs": 0
+      },
+      {
+        "frames": 358,
+        "avgFps": 60,
+        "p95Ms": 16.8,
+        "worstMs": 16.8,
+        "droppedPct": 0,
+        "droppedFrames": 0,
+        "longTaskMs": 0
+      },
+      {
+        "frames": 358,
+        "avgFps": 60,
+        "p95Ms": 16.8,
+        "worstMs": 16.8,
+        "droppedPct": 0,
+        "droppedFrames": 0,
+        "longTaskMs": 0
+      },
+      {
+        "frames": 358,
+        "avgFps": 60,
+        "p95Ms": 16.8,
+        "worstMs": 16.8,
+        "droppedPct": 0,
+        "droppedFrames": 0,
+        "longTaskMs": 0
+      },
+      {
+        "frames": 357,
+        "avgFps": 60,
+        "p95Ms": 16.8,
+        "worstMs": 16.8,
+        "droppedPct": 0,
+        "droppedFrames": 0,
+        "longTaskMs": 0
+      },
+      {
+        "frames": 358,
+        "avgFps": 60,
+        "p95Ms": 16.8,
+        "worstMs": 16.8,
+        "droppedPct": 0,
+        "droppedFrames": 0,
+        "longTaskMs": 0
+      },
+      {
+        "frames": 358,
+        "avgFps": 60,
+        "p95Ms": 16.8,
+        "worstMs": 16.8,
+        "droppedPct": 0,
+        "droppedFrames": 0,
+        "longTaskMs": 0
+      },
+      {
+        "frames": 358,
+        "avgFps": 60,
+        "p95Ms": 16.8,
+        "worstMs": 16.8,
+        "droppedPct": 0,
+        "droppedFrames": 0,
+        "longTaskMs": 0
+      }
+    ]
+  },
+  "electron": {
+    "trials": 12,
+    "zeroDropTrials": 12,
+    "zeroDropWilson95Pct": [
+      75.7,
+      100
+    ],
+    "worstDroppedPct": 0,
+    "worstFrameMs": 17.1,
+    "medianAvgFps": 60,
+    "perTrial": [
+      {
+        "frames": 356,
+        "avgFps": 60,
+        "p95Ms": 16.8,
+        "worstMs": 16.9,
+        "droppedPct": 0,
+        "droppedFrames": 0,
+        "longTaskMs": 0
+      },
+      {
+        "frames": 356,
+        "avgFps": 60,
+        "p95Ms": 16.8,
+        "worstMs": 16.9,
+        "droppedPct": 0,
+        "droppedFrames": 0,
+        "longTaskMs": 0
+      },
+      {
+        "frames": 357,
+        "avgFps": 60,
+        "p95Ms": 16.8,
+        "worstMs": 17.1,
+        "droppedPct": 0,
+        "droppedFrames": 0,
+        "longTaskMs": 0
+      },
+      {
+        "frames": 358,
+        "avgFps": 60,
+        "p95Ms": 16.8,
+        "worstMs": 16.8,
+        "droppedPct": 0,
+        "droppedFrames": 0,
+        "longTaskMs": 0
+      },
+      {
+        "frames": 356,
+        "avgFps": 60,
+        "p95Ms": 16.8,
+        "worstMs": 16.9,
+        "droppedPct": 0,
+        "droppedFrames": 0,
+        "longTaskMs": 0
+      },
+      {
+        "frames": 359,
+        "avgFps": 60,
+        "p95Ms": 16.8,
+        "worstMs": 16.8,
+        "droppedPct": 0,
+        "droppedFrames": 0,
+        "longTaskMs": 0
+      },
+      {
+        "frames": 357,
+        "avgFps": 60,
+        "p95Ms": 16.8,
+        "worstMs": 16.8,
+        "droppedPct": 0,
+        "droppedFrames": 0,
+        "longTaskMs": 0
+      },
+      {
+        "frames": 358,
+        "avgFps": 60,
+        "p95Ms": 16.8,
+        "worstMs": 16.9,
+        "droppedPct": 0,
+        "droppedFrames": 0,
+        "longTaskMs": 0
+      },
+      {
+        "frames": 356,
+        "avgFps": 60,
+        "p95Ms": 16.8,
+        "worstMs": 16.8,
+        "droppedPct": 0,
+        "droppedFrames": 0,
+        "longTaskMs": 0
+      },
+      {
+        "frames": 358,
+        "avgFps": 60,
+        "p95Ms": 16.8,
+        "worstMs": 16.8,
+        "droppedPct": 0,
+        "droppedFrames": 0,
+        "longTaskMs": 0
+      },
+      {
+        "frames": 356,
+        "avgFps": 59.9,
+        "p95Ms": 16.8,
+        "worstMs": 16.9,
+        "droppedPct": 0,
+        "droppedFrames": 0,
+        "longTaskMs": 0
+      },
+      {
+        "frames": 356,
+        "avgFps": 60,
+        "p95Ms": 16.8,
+        "worstMs": 16.8,
+        "droppedPct": 0,
+        "droppedFrames": 0,
+        "longTaskMs": 0
+      }
+    ]
+  },
+  "independentBoots": {
+    "note": "부팅을 분리한 회차(multi.mjs 1회당 1스크롤): 빌더 6 + 크리틱 5(기본 팔) = 11회",
+    "zeroDrop": 10,
+    "total": 11,
+    "wilson95Pct": [
+      62.3,
+      98.4
+    ]
+  },
+  "verdict": "빌더의 앰비언트 해석은 지지된다 — 크리틱 12회 반복에서 드랍 프레임 0개, 최악 프레임 17.3ms. Electron도 12/12 동일. 다만 게이트 문구(\"모든 회차 0%\")는 풀링 11회 중 10회라 문자 그대로는 아직 못 채웠다.",
+  "harnessWeakness": "이 스크롤 테스트는 두 앱 모두 p95 16.8ms로 붙어 변별력이 없다. 실패 경계 근처를 못 가므로 \"60fps/0%\"가 주는 정보가 거의 없다. 4패널 동시 스크롤 또는 스트리밍 중 스크롤 같은 부하 팔이 필요하다.",
+  "at": "2026-08-22T10:05:05.451Z"
+}

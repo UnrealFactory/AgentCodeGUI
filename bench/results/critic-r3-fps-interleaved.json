@@ -1,0 +1,148 @@
+{
+  "what": "NetworkServiceInProcess2의 부드러움 판정 — 세션 드리프트를 걸러내기 위한 교차(A-B-A-B) 측정",
+  "why": "같은 코드·같은 팔이 세션에 따라 60/16.8ms ↔ 57/21ms로 밴드째 이동한다. back-to-back 비교로는 레버 효과를 가릴 수 없다.",
+  "interleaved": {
+    "ctrl-1": {
+      "trials": 5,
+      "zeroDropTrials": 5,
+      "medianAvgFps": 59,
+      "worstFrameMs": 28.3,
+      "perTrial": [
+        {
+          "fps": 55.7,
+          "p95": 23.3,
+          "drop": 0
+        },
+        {
+          "fps": 58.8,
+          "p95": 19.5,
+          "drop": 0
+        },
+        {
+          "fps": 59,
+          "p95": 17,
+          "drop": 0
+        },
+        {
+          "fps": 59,
+          "p95": 17,
+          "drop": 0
+        },
+        {
+          "fps": 59,
+          "p95": 17,
+          "drop": 0
+        }
+      ]
+    },
+    "net-1": {
+      "trials": 5,
+      "zeroDropTrials": 5,
+      "medianAvgFps": 50.8,
+      "worstFrameMs": 28,
+      "perTrial": [
+        {
+          "fps": 57.2,
+          "p95": 21.6,
+          "drop": 0
+        },
+        {
+          "fps": 52.5,
+          "p95": 21.7,
+          "drop": 0
+        },
+        {
+          "fps": 50.8,
+          "p95": 19.7,
+          "drop": 0
+        },
+        {
+          "fps": 50.8,
+          "p95": 19.8,
+          "drop": 0
+        },
+        {
+          "fps": 50.8,
+          "p95": 19.8,
+          "drop": 0
+        }
+      ]
+    },
+    "ctrl-2": {
+      "trials": 5,
+      "zeroDropTrials": 5,
+      "medianAvgFps": 59,
+      "worstFrameMs": 25.4,
+      "perTrial": [
+        {
+          "fps": 57.3,
+          "p95": 20.8,
+          "drop": 0
+        },
+        {
+          "fps": 58.6,
+          "p95": 17.7,
+          "drop": 0
+        },
+        {
+          "fps": 59,
+          "p95": 17,
+          "drop": 0
+        },
+        {
+          "fps": 59,
+          "p95": 17,
+          "drop": 0
+        },
+        {
+          "fps": 59,
+          "p95": 17,
+          "drop": 0
+        }
+      ]
+    },
+    "net-2": {
+      "trials": 5,
+      "zeroDropTrials": 5,
+      "medianAvgFps": 59,
+      "worstFrameMs": 25.2,
+      "perTrial": [
+        {
+          "fps": 59.3,
+          "p95": 19.3,
+          "drop": 0
+        },
+        {
+          "fps": 58.7,
+          "p95": 18.3,
+          "drop": 0
+        },
+        {
+          "fps": 59,
+          "p95": 17,
+          "drop": 0
+        },
+        {
+          "fps": 59,
+          "p95": 17,
+          "drop": 0
+        },
+        {
+          "fps": 59,
+          "p95": 17,
+          "drop": 0
+        }
+      ]
+    }
+  },
+  "backToBack8trial": {
+    "netinproc2": {
+      "trials": 8,
+      "zeroDropTrials": 8,
+      "medianAvgFps": 55.3,
+      "worstFrameMs": 26.5
+    }
+  },
+  "verdict": "판정 불가(경고 있음). 드랍 프레임은 양쪽 다 0인데 새 레버 쪽만 평균 FPS가 가끔 내려앉는다(50.8/55.3/56.8/57.9/58.4/59.0). 대조군은 59~60을 안 벗어난다. 채택 조건이 \"60fps 유지\"이므로 부하·교차 하네스로 다시 재기 전에는 채택 불가.",
+  "at": "2026-08-22T11:02:03.246Z"
+}

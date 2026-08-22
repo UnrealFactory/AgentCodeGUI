@@ -1,0 +1,120 @@
+{
+  "what": "빌더 §3 \"우리 앱 몫 = WS 8.4MB\" 재판정",
+  "builderMethod": "bench/gpuprobe.mjs 5단계: document.getElementById('root').innerHTML=''",
+  "builderNumbers": {
+    "baseline": "446.2 / 301.4",
+    "emptyRoot": "437.8 / 277.1",
+    "delta": "WS 8.4 / Priv 24.3"
+  },
+  "criticGpuprobeRerun": {
+    "baseline": "436.9 / 230.2",
+    "emptyRoot": "412.9 / 213.8",
+    "delta": "WS 24 / Priv 16.4",
+    "procs": 6,
+    "note": "빌더 실행은 procs 7(별도 GPU 프로세스) = --in-process-gpu 이전 바이너리. 최종 빌드로 다시 재면 6프로세스이고 델타가 다르다."
+  },
+  "whyBuilderMethodIsWrong": {
+    "claim": "innerHTML='' 는 DOM을 떼어낼 뿐 해제하지 않는다 — React 파이버 트리가 모든 노드를 붙들고 있다",
+    "evidence": {
+      "beforeAfterInnerHTML": {
+        "domNodes": [
+          8486,
+          8313
+        ],
+        "jsEventListeners": [
+          641,
+          641
+        ],
+        "jsHeapMB": [
+          8.3,
+          8.3
+        ]
+      },
+      "interpretation": "노드는 8486 → 8313(173개만), 리스너는 641 → 641로 하나도 안 줄고, JS 힙도 그대로다. 사라진 건 레이아웃/페인트/합성 표면뿐이다."
+    }
+  },
+  "criticMethod": "Page.navigate → about:blank 로 문서를 통째로 언로드(같은 렌더러 프로세스, 새 문서). 번들·힙·DOM·리스너가 전부 사라진다.",
+  "steps": [
+    {
+      "step": "0-baseline-4panel",
+      "wsMB": 430.5,
+      "privMB": 222.8,
+      "jsHeapMB": 8.3,
+      "domNodes": 8486,
+      "listeners": 641
+    },
+    {
+      "step": "1-innerHTML-empty(빌더 재현)",
+      "wsMB": 408,
+      "privMB": 206.1,
+      "jsHeapMB": 8.3,
+      "domNodes": 8313,
+      "listeners": 641
+    },
+    {
+      "step": "2-about-blank(문서 언로드)",
+      "wsMB": 387.2,
+      "privMB": 188.8,
+      "jsHeapMB": 0.9,
+      "domNodes": 4,
+      "listeners": 3
+    }
+  ],
+  "realAppShare": {
+    "wsMB": 43.3,
+    "privMB": 34,
+    "caveat": "about:blank 뒤에도 PartitionAlloc/V8 아레나가 OS에 다 안 돌려주므로 이 값도 **하한**이다. 즉 앱 몫은 최소 이만큼이다."
+  },
+  "bracket": {
+    "blankDocumentFloorWsMB": 387.2,
+    "emptyHomeBootWsMB": 408.4,
+    "singleChatBootWsMB": 409.4,
+    "multi4BootWsMB": 430.5,
+    "bundleAndShellWsMB": 21.2,
+    "contentWsMB": 22.1
+  },
+  "verdict": "\"8.4MB\"는 재현되지 않고(같은 하네스 재실행 = 24.0MB), 방법 자체가 주장을 지지하지 않는다. 문서를 실제로 언로드하면 앱 몫은 WS 43.3 / Priv 34.0MB다 — 빌더 수치의 5배. 방향(바닥값이 격차를 지배한다)은 살아남지만 \"렌더러 다이어트는 죽은 길\"이라는 강한 결론은 과장이다.",
+  "at": "2026-08-22T10:05:05.452Z",
+  "secondConfiguration": {
+    "arm": "채택 세트 + --enable-features=NetworkServiceInProcess2 (5프로세스)",
+    "steps": [
+      {
+        "step": "0-baseline-4panel",
+        "wsMB": 394.5,
+        "privMB": 208.9,
+        "jsHeapMB": 8.3,
+        "domNodes": 8486,
+        "listeners": 641
+      },
+      {
+        "step": "1-innerHTML-empty(빌더 재현)",
+        "wsMB": 375.8,
+        "privMB": 195.9,
+        "jsHeapMB": 8.3,
+        "domNodes": 8313,
+        "listeners": 641
+      },
+      {
+        "step": "2-about-blank(문서 언로드)",
+        "wsMB": 351.1,
+        "privMB": 175.3,
+        "jsHeapMB": 0.9,
+        "domNodes": 4,
+        "listeners": 3
+      }
+    ],
+    "emptyHomeBootWsMB": 376.2,
+    "singleChatBootWsMB": 371.8,
+    "appShareWsMB": 43.4,
+    "appSharePrivMB": 33.6,
+    "note": "앱 몫이 6프로세스 구성(43.3)과 5프로세스 구성(43.4)에서 독립적으로 같은 값 — 이 수치는 신뢰할 수 있다. 반면 빈 문서 바닥값은 387.2 → 351.1로 내려가고 목표 356과의 여유는 4.9MB뿐이다."
+  },
+  "targetVsFloor": {
+    "targetWsMB": 356,
+    "blankDocFloorAdopted": 387.2,
+    "blankDocFloorWithNetSvc2": 351.1,
+    "headroomForEntireApp": 4.9,
+    "appNeedsWsMB": 43.4,
+    "verdict": "목표 356은 WebView2 빈 문서 바닥값과 사실상 같은 값이다. 앱을 통째로 언로드한 상태가 목표선이라 어떤 렌더러 최적화로도 닿을 수 없다."
+  }
+}

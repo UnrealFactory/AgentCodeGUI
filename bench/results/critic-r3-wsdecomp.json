@@ -1,0 +1,242 @@
+{
+  "what": "WS 지표가 무엇을 이중 계산하는가 — 총 워킹셋 / 사유 워킹셋 / 사유 커밋 3분해 + EmptyWorkingSet 조작성 평가",
+  "method": "Win32_Process.WorkingSetSize(공유 페이지 포함) 와 Win32_PerfRawData_PerfProc_Process.WorkingSetPrivate(사유 워킹셋)를 PID로 조인. 차 = 형제 프로세스끼리 같은 물리 페이지를 다시 센 몫. 멀티 4패널 픽스처, 35s 정착, CDP on.",
+  "arms": {
+    "tauriAdopted": {
+      "procs": 6,
+      "totals": {
+        "n": 6,
+        "wsMB": 443.1,
+        "wsPrivateMB": 153.3,
+        "wsSharedMB": 289.8,
+        "privCommitMB": 225.7,
+        "sharedPctOfWs": 65.4
+      },
+      "afterEmptyWorkingSet": {
+        "wsMB": 8.3,
+        "wsPrivateMB": 6.1,
+        "privCommitMB": 225.6
+      },
+      "afterTrimThenOneScroll": {
+        "wsMB": 154.2,
+        "wsPrivateMB": 96.5,
+        "privCommitMB": 240.3
+      },
+      "perProcess": [
+        {
+          "name": "agentcodegui.exe",
+          "sub": "",
+          "privCommitMB": 11.1,
+          "pid": 31220,
+          "wsMB": 28.5,
+          "role": "browser",
+          "wsPrivMB": 9.3
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "privCommitMB": 90,
+          "pid": 22720,
+          "wsMB": 180.1,
+          "role": "browser",
+          "wsPrivMB": 44.5
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "privCommitMB": 3.4,
+          "pid": 22136,
+          "wsMB": 18.7,
+          "role": "crashpad-handler",
+          "wsPrivMB": 2.1
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "network.mojom.NetworkService",
+          "privCommitMB": 13.3,
+          "pid": 30572,
+          "wsMB": 40.4,
+          "role": "utility",
+          "wsPrivMB": 6.9
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "storage.mojom.StorageService",
+          "privCommitMB": 8.9,
+          "pid": 16808,
+          "wsMB": 20,
+          "role": "utility",
+          "wsPrivMB": 3.1
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "privCommitMB": 99,
+          "pid": 5940,
+          "wsMB": 155.4,
+          "role": "renderer",
+          "wsPrivMB": 87.4
+        }
+      ]
+    },
+    "electron": {
+      "procs": 7,
+      "totals": {
+        "n": 7,
+        "wsMB": 674.3,
+        "wsPrivateMB": 227.7,
+        "wsSharedMB": 446.6,
+        "privCommitMB": 472.4,
+        "sharedPctOfWs": 66.2
+      },
+      "afterEmptyWorkingSet": {
+        "wsMB": 12.4,
+        "wsPrivateMB": 7.2,
+        "privCommitMB": 472.4
+      },
+      "afterTrimThenOneScroll": {
+        "wsMB": 177.7,
+        "wsPrivateMB": 125.6,
+        "privCommitMB": 479
+      },
+      "perProcess": [
+        {
+          "name": "electron.exe",
+          "sub": "",
+          "privCommitMB": 81.8,
+          "pid": 10736,
+          "wsMB": 112.7,
+          "role": "browser",
+          "wsPrivMB": 37.7
+        },
+        {
+          "name": "electron.exe",
+          "sub": "",
+          "privCommitMB": 11.6,
+          "pid": 2520,
+          "wsMB": 35.1,
+          "role": "crashpad-handler",
+          "wsPrivMB": 4.5
+        },
+        {
+          "name": "electron.exe",
+          "sub": "",
+          "privCommitMB": 150.2,
+          "pid": 22320,
+          "wsMB": 110.2,
+          "role": "gpu-process",
+          "wsPrivMB": 35.2
+        },
+        {
+          "name": "electron.exe",
+          "sub": "network.mojom.NetworkService",
+          "privCommitMB": 15.9,
+          "pid": 27904,
+          "wsMB": 54,
+          "role": "utility",
+          "wsPrivMB": 8.4
+        },
+        {
+          "name": "electron.exe",
+          "sub": "",
+          "privCommitMB": 109.5,
+          "pid": 10496,
+          "wsMB": 161.2,
+          "role": "renderer",
+          "wsPrivMB": 93.9
+        },
+        {
+          "name": "electron.exe",
+          "sub": "",
+          "privCommitMB": 60.8,
+          "pid": 25740,
+          "wsMB": 93.9,
+          "role": "browser",
+          "wsPrivMB": 17.9
+        },
+        {
+          "name": "electron.exe",
+          "sub": "",
+          "privCommitMB": 42.6,
+          "pid": 28720,
+          "wsMB": 107.2,
+          "role": "browser",
+          "wsPrivMB": 30.1
+        }
+      ]
+    },
+    "tauriSingleProcess": {
+      "procs": 3,
+      "totals": {
+        "n": 3,
+        "wsMB": 338.9,
+        "wsPrivateMB": 130.8,
+        "wsSharedMB": 208.1,
+        "privCommitMB": 183.9,
+        "sharedPctOfWs": 61.4
+      },
+      "afterEmptyWorkingSet": {
+        "wsMB": 14.5,
+        "wsPrivateMB": 12.5,
+        "privCommitMB": 183.9
+      },
+      "afterTrimThenOneScroll": {
+        "wsMB": 144.2,
+        "wsPrivateMB": 93.1,
+        "privCommitMB": 201.6
+      },
+      "perProcess": [
+        {
+          "name": "agentcodegui.exe",
+          "sub": "",
+          "privCommitMB": 11.7,
+          "pid": 33984,
+          "wsMB": 29.1,
+          "role": "browser",
+          "wsPrivMB": 9.8
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "privCommitMB": 168.9,
+          "pid": 21188,
+          "wsMB": 291.1,
+          "role": "browser",
+          "wsPrivMB": 118.9
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "privCommitMB": 3.3,
+          "pid": 11556,
+          "wsMB": 18.7,
+          "role": "crashpad-handler",
+          "wsPrivMB": 2.1
+        }
+      ]
+    }
+  },
+  "ratiosVsElectron": {
+    "totalWs": {
+      "tauriAdopted": 0.657,
+      "tauriSingleProcess": 0.503
+    },
+    "privateWs": {
+      "tauriAdopted": 0.673,
+      "tauriSingleProcess": 0.574
+    },
+    "privateCommit": {
+      "tauriAdopted": 0.478,
+      "tauriSingleProcess": 0.389
+    }
+  },
+  "findings": [
+    "두 앱 모두 총 WS의 **약 2/3가 공유 페이지**다(Tauri 65.4% · Electron 66.2% · single-process 61.4%). WS는 형제 프로세스가 같은 DLL/이미지 페이지를 다시 세는 값이다.",
+    "**그런데 그 중복을 걷어내도 비율은 나아지지 않는다**: 총 WS 비 0.657 → 사유 WS 비 0.673(오히려 소폭 악화). 두 앱이 같은 비율로 부풀어 있기 때문이다. → 지표 (c)를 \"공유 페이지 중복 제거\"로 정의하면 **얻는 게 없다**.",
+    "**WS는 한 줄로 조작된다**: 트리 전체에 EmptyWorkingSet을 걸면 443.1MB → **8.3MB**. 사유 커밋은 225.7 → 225.6으로 꿈쩍도 안 한다. 즉 WS 게이트는 유휴 타이머 한 줄로 \"통과\"시킬 수 있다 — 순수한 지표 조작이다.",
+    "트림 뒤 4초 스크롤 한 번으로 WS는 154.2까지만 돌아온다(443이 아니라). 즉 443MB 중 상당 부분은 **앱이 실제로 만지지 않는 페이지**이고, 메모리 압박이 오면 Windows가 앱 모르게 회수한다 — WS는 실제 압박을 과대평가한다.",
+    "**사유 커밋(현재의 Priv)이 유일하게 안정적이고 조작 불가능한 숫자다**: 트림에 불변(225.7→225.6), Electron 분모도 3회 재측정에서 505.3 / 502.9 / 502.2로 흔들리지 않았다(WS 분모는 712.8→794.1로 11% 이동).",
+    "따라서 지표 재정의의 방어 가능한 형태는 \"WS를 사유 워킹셋으로 바꾸자\"가 아니라 **\"WS를 합격/불합격 게이트에서 내리고 사유 커밋으로 판정하자\"**이다. 이건 봐주기가 아니다 — 사유 커밋 비는 0.478~0.504로 여전히 선 위다."
+  ],
+  "at": "2026-08-22T10:53:24.531Z"
+}

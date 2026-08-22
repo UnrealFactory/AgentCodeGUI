@@ -1,0 +1,287 @@
+{
+  "what": "크리틱 R3 — 주 게이트(멀티 4패널 × 120항목, bench/multi.mjs, CDP on) 독립 재측정",
+  "build": "현 HEAD를 npm run tauri:build로 재빌드한 target/release/agentcodegui.exe (2026-08-22 18:22 빌드)",
+  "verifiedSwitches": [
+    {
+      "role": "browser",
+      "processPerSite": false,
+      "inProcessGpu": false
+    },
+    {
+      "role": "browser",
+      "processPerSite": true,
+      "inProcessGpu": true
+    },
+    {
+      "role": "crashpad-handler",
+      "processPerSite": false,
+      "inProcessGpu": false
+    },
+    {
+      "role": "utility",
+      "processPerSite": false,
+      "inProcessGpu": false
+    },
+    {
+      "role": "utility",
+      "processPerSite": false,
+      "inProcessGpu": false
+    },
+    {
+      "role": "renderer",
+      "processPerSite": false,
+      "inProcessGpu": false
+    }
+  ],
+  "webglRenderer": {
+    "renderer": "ANGLE (NVIDIA, NVIDIA GeForce RTX 4070 Ti (0x00002782) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+    "vendor": "Google Inc. (NVIDIA)",
+    "version": "WebGL 2.0 (OpenGL ES 3.0 Chromium)"
+  },
+  "arms": {
+    "tauri-3.0.0 채택세트(기본값)": {
+      "runs": [
+        {
+          "idleWsMB": 464.8,
+          "idlePrivMB": 256.9,
+          "procs": 6,
+          "withWinWsMB": 509.1,
+          "withWinPrivMB": 260.8,
+          "withWinProcs": 6,
+          "wsPerWindowMB": 22.2,
+          "procsPerWindow": 0,
+          "scroll": "60 / 0%"
+        },
+        {
+          "idleWsMB": 455.4,
+          "idlePrivMB": 249.4,
+          "procs": 6,
+          "withWinWsMB": 501.3,
+          "withWinPrivMB": 256,
+          "withWinProcs": 6,
+          "wsPerWindowMB": 23,
+          "procsPerWindow": 0,
+          "scroll": "60 / 0%"
+        },
+        {
+          "idleWsMB": 457.1,
+          "idlePrivMB": 253.3,
+          "procs": 6,
+          "withWinWsMB": 506.8,
+          "withWinPrivMB": 262.7,
+          "withWinProcs": 6,
+          "wsPerWindowMB": 24.8,
+          "procsPerWindow": 0,
+          "scroll": "60 / 0%"
+        },
+        {
+          "idleWsMB": 461.9,
+          "idlePrivMB": 255.6,
+          "procs": 6,
+          "withWinWsMB": 513.5,
+          "withWinPrivMB": 267.1,
+          "withWinProcs": 6,
+          "wsPerWindowMB": 25.8,
+          "procsPerWindow": 0,
+          "scroll": "60 / 0%"
+        },
+        {
+          "idleWsMB": 456,
+          "idlePrivMB": 250.6,
+          "procs": 6,
+          "withWinWsMB": 501,
+          "withWinPrivMB": 256.2,
+          "withWinProcs": 6,
+          "wsPerWindowMB": 22.5,
+          "procsPerWindow": 0,
+          "scroll": "60 / 0%"
+        }
+      ],
+      "medianIdleWsMB": 457.1,
+      "medianIdlePrivMB": 253.3,
+      "procs": 6,
+      "medianWithWinWsMB": 506.8,
+      "medianWsPerWindowMB": 23,
+      "procsPerWindow": 0
+    },
+    "tauri-3.0.0 CCG_GPU_PROCESS=1(=in-process-gpu 끔)": {
+      "runs": [
+        {
+          "idleWsMB": 464.5,
+          "idlePrivMB": 323,
+          "procs": 7,
+          "withWinWsMB": 485.6,
+          "withWinPrivMB": 295.7,
+          "withWinProcs": 7,
+          "wsPerWindowMB": 10.6,
+          "procsPerWindow": 0,
+          "scroll": "60 / 0%"
+        },
+        {
+          "idleWsMB": 458.7,
+          "idlePrivMB": 326.3,
+          "procs": 7,
+          "withWinWsMB": 485.3,
+          "withWinPrivMB": 296.9,
+          "withWinProcs": 7,
+          "wsPerWindowMB": 13.3,
+          "procsPerWindow": 0,
+          "scroll": "59.9 / 0%"
+        }
+      ],
+      "medianIdleWsMB": 461.6,
+      "medianIdlePrivMB": 324.7,
+      "procs": 7,
+      "medianWithWinWsMB": 485.5,
+      "medianWsPerWindowMB": 12,
+      "procsPerWindow": 0
+    },
+    "tauri-3.0.0 CCG_SINGLE_PROCESS=1": {
+      "runs": [
+        {
+          "idleWsMB": 364.1,
+          "idlePrivMB": 213.8,
+          "procs": 3,
+          "withWinWsMB": 402.4,
+          "withWinPrivMB": 213.1,
+          "withWinProcs": 3,
+          "wsPerWindowMB": 19.1,
+          "procsPerWindow": 0,
+          "scroll": "60 / 0%"
+        },
+        {
+          "idleWsMB": 357.8,
+          "idlePrivMB": 209,
+          "procs": 3,
+          "withWinWsMB": 398.5,
+          "withWinPrivMB": 212.7,
+          "withWinProcs": 3,
+          "wsPerWindowMB": 20.3,
+          "procsPerWindow": 0,
+          "scroll": "60 / 0%"
+        },
+        {
+          "idleWsMB": 357.9,
+          "idlePrivMB": 211,
+          "procs": 3,
+          "withWinWsMB": 402.3,
+          "withWinPrivMB": 218,
+          "withWinProcs": 3,
+          "wsPerWindowMB": 22.2,
+          "procsPerWindow": 0,
+          "scroll": "60 / 0%"
+        }
+      ],
+      "medianIdleWsMB": 357.9,
+      "medianIdlePrivMB": 211,
+      "procs": 3,
+      "medianWithWinWsMB": 402.3,
+      "medianWsPerWindowMB": 20.3,
+      "procsPerWindow": 0
+    },
+    "tauri-3.0.0 BASE_ONLY(wry 기본값만 — process-per-site 없음)": {
+      "runs": [
+        {
+          "idleWsMB": 464.2,
+          "idlePrivMB": 325.1,
+          "procs": 7,
+          "withWinWsMB": 640.9,
+          "withWinPrivMB": 376.5,
+          "withWinProcs": 9,
+          "wsPerWindowMB": 88.4,
+          "procsPerWindow": 2,
+          "scroll": "60 / 0%"
+        }
+      ],
+      "medianIdleWsMB": 464.2,
+      "medianIdlePrivMB": 325.1,
+      "procs": 7,
+      "medianWithWinWsMB": 640.9,
+      "medianWsPerWindowMB": 88.4,
+      "procsPerWindow": 2
+    },
+    "electron-2.6.2 (오늘 재측정)": {
+      "runs": [
+        {
+          "idleWsMB": 794.1,
+          "idlePrivMB": 502.2,
+          "procs": 7,
+          "withWinWsMB": 1019.4,
+          "withWinPrivMB": 553.4,
+          "withWinProcs": 9,
+          "wsPerWindowMB": 112.6,
+          "procsPerWindow": 2,
+          "scroll": "60 / 0%"
+        }
+      ],
+      "medianIdleWsMB": 794.1,
+      "medianIdlePrivMB": 502.2,
+      "procs": 7,
+      "medianWithWinWsMB": 1019.4,
+      "medianWsPerWindowMB": 112.6,
+      "procsPerWindow": 2
+    }
+  },
+  "pooledDefaultArm": {
+    "note": "빌더 5회 + 크리틱 5회 = 10회 (같은 채택 세트·같은 하네스·같은 기계)",
+    "wsMB": [
+      455.4,
+      456,
+      457.1,
+      461.9,
+      464.8,
+      466.5,
+      470,
+      475.7,
+      479.3,
+      481.5
+    ],
+    "medianWsMB": 465.7,
+    "privMB": [
+      249.4,
+      250.6,
+      250.9,
+      251.5,
+      251.6,
+      252.5,
+      253.3,
+      255.6,
+      256.9,
+      258.4
+    ],
+    "medianPrivMB": 252.1,
+    "privOver253Count": 4,
+    "privOver253Of": 10
+  },
+  "denominators": {
+    "note": "목표(≤356/≤253)는 박제값 712.8/505.3의 0.5배다. WS 분모는 재측정마다 크게 흔들리고 Priv 분모는 안정적이다.",
+    "idleWsMB": {
+      "frozen": 712.8,
+      "builderRecheck": 730.1,
+      "criticRecheck": 794.1,
+      "spreadPct": 11.4
+    },
+    "idlePrivMB": {
+      "frozen": 505.3,
+      "builderRecheck": 502.9,
+      "criticRecheck": 502.2,
+      "spreadPct": 0.6
+    }
+  },
+  "ratios": {
+    "note": "docs/memory-strategy.md의 채택 조건은 절대값이 아니라 **Electron 대비 ≤0.5 비율**이다.",
+    "defaultArm": {
+      "wsVsFrozen": 0.641,
+      "wsVsToday": 0.576,
+      "privVsFrozen": 0.501,
+      "privVsToday": 0.504
+    },
+    "singleProcessArm": {
+      "wsVsFrozen": 0.502,
+      "wsVsToday": 0.451,
+      "privVsFrozen": 0.418,
+      "privVsToday": 0.42
+    }
+  },
+  "at": "2026-08-22T10:05:05.450Z"
+}

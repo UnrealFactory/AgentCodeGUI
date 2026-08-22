@@ -1,0 +1,188 @@
+{
+  "what": "콜드 스타트 재측정 + **양쪽 앱의 paintMs 대칭 비교**(빌더는 Electron paintMs를 안 쟀다)",
+  "coldstart": {
+    "tauriDefault": {
+      "runs": [
+        {
+          "winMs": 381,
+          "rootMs": 478,
+          "paintMs": 408
+        },
+        {
+          "winMs": 239,
+          "rootMs": 330,
+          "paintMs": 271
+        },
+        {
+          "winMs": 246,
+          "rootMs": 289,
+          "paintMs": 274
+        },
+        {
+          "winMs": 255,
+          "rootMs": 346,
+          "paintMs": 277
+        },
+        {
+          "winMs": 244,
+          "rootMs": 324,
+          "paintMs": 263
+        },
+        {
+          "winMs": 225,
+          "rootMs": 336,
+          "paintMs": 268
+        }
+      ],
+      "medianWinMs": 244,
+      "medianPaintMs": 271,
+      "medianRootMs": 330
+    },
+    "electron": {
+      "runs": [
+        {
+          "winMs": 372,
+          "rootMs": 625,
+          "paintMs": 547
+        },
+        {
+          "winMs": 346,
+          "rootMs": 410,
+          "paintMs": 571
+        },
+        {
+          "winMs": 329,
+          "rootMs": 329,
+          "paintMs": 610
+        },
+        {
+          "winMs": 350,
+          "rootMs": 412,
+          "paintMs": 569
+        },
+        {
+          "winMs": 332,
+          "rootMs": 424,
+          "paintMs": 593
+        },
+        {
+          "winMs": 350,
+          "rootMs": 418,
+          "paintMs": 567
+        }
+      ],
+      "medianWinMs": 346,
+      "medianPaintMs": 571,
+      "medianRootMs": 412
+    },
+    "tauriSingleProcess": {
+      "runs": [
+        {
+          "winMs": 239,
+          "rootMs": 319,
+          "paintMs": 266
+        },
+        {
+          "winMs": 211,
+          "rootMs": 297,
+          "paintMs": 337
+        },
+        {
+          "winMs": 192,
+          "rootMs": 276,
+          "paintMs": 295
+        },
+        {
+          "winMs": 208,
+          "rootMs": 311,
+          "paintMs": 263
+        },
+        {
+          "winMs": 213,
+          "rootMs": 269,
+          "paintMs": 344
+        }
+      ],
+      "medianWinMs": 210,
+      "medianPaintMs": 316,
+      "medianRootMs": 287
+    }
+  },
+  "bootBreakdown": {
+    "both:tauri-3.0.0": {
+      "spawnToTimeOriginMs": 208,
+      "perRunSpawnToTimeOrigin": [
+        206,
+        226,
+        208
+      ],
+      "domInteractiveMs": 34.5,
+      "reloadMountMs": 61.1,
+      "bootIpcCalls": 0
+    },
+    "both:electron-2.6.2": {
+      "spawnToTimeOriginMs": 197,
+      "perRunSpawnToTimeOrigin": [
+        197,
+        196,
+        199
+      ],
+      "domInteractiveMs": 92.6,
+      "reloadMountMs": 37,
+      "bootIpcCalls": 0
+    },
+    "singleProcess:tauri-3.0.0": {
+      "spawnToTimeOriginMs": 181,
+      "perRunSpawnToTimeOrigin": [
+        181,
+        180,
+        184
+      ],
+      "domInteractiveMs": 25.3,
+      "reloadMountMs": 58.5,
+      "bootIpcCalls": 0
+    },
+    "singleProcess:electron-2.6.2": {
+      "spawnToTimeOriginMs": 210,
+      "perRunSpawnToTimeOrigin": [
+        210,
+        204,
+        212
+      ],
+      "domInteractiveMs": 92.6,
+      "reloadMountMs": 36,
+      "bootIpcCalls": 0
+    }
+  },
+  "fairness": {
+    "issue": "winMs끼리의 비교는 서로 다른 사건을 비교한다.",
+    "electron": "2.6.2의 첫 가시 창은 300×240 스플래시 BrowserWindow이고 ready-to-show(=그 페이지가 이미 그려진 뒤)에 뜬다. 감시자의 200×200 필터를 통과한다(src/main/index.ts:256).",
+    "tauri": "3.0의 첫 가시 창은 풀사이즈 메인 창이고 '렌더 차단 CSS 준비' 시점에 뜬다 — 아직 한 프레임도 안 올라간 상태다(splash.js).",
+    "symmetricMetric": "두 앱 모두 **메인 페이지의 first-paint**를 재는 paintMs만이 같은 잣대다.",
+    "measured": {
+      "tauriPaintMs": 271,
+      "electronPaintMs": 571,
+      "ratio": 0.475
+    },
+    "consequence": "paintMs로 보면 3.0이 2.6.2의 0.47배다 — 유일하게 ≤0.5 규칙을 넘긴 지표인데 보고서에 없다. 반대로 winMs는 3.0에 불리하게 잡힌다."
+  },
+  "structuralFloor": {
+    "webRuntimeStartMs": {
+      "tauri": 208,
+      "electron": 197,
+      "tauriSingleProcess": 181
+    },
+    "purePageMountOnReloadMs": {
+      "tauri": 61.1,
+      "electron": 37
+    },
+    "verdict": "winMs ≤168 목표: 웹 런타임 기동만 208ms(단일 프로세스도 181ms)라 **구조적으로 불가능** — 빌더 주장 재현. rootMs ≤211 목표: 208 + 61 = 269ms가 이론 하한이라 역시 불가능 — 재현."
+  },
+  "harnessDefect": {
+    "file": "bench/boot.mjs:156",
+    "code": "prev[profile.name] = summary",
+    "problem": "profile.name이 팔(env)을 담지 않아 CCG_SINGLE_PROCESS=1 실행이 기본 팔 결과를 **덮어쓴다**. 커밋된 bench/results/boot-breakdown.json의 tauri-3.0.0 항목은 spawnToTimeOrigin 172 / reloadMount 105인데, 보고서 §4.1이 인용한 값(202~240 / 56)과 둘 다 다르다 — 보고서의 근거가 산출물에 남아 있지 않다.",
+    "suggestedFix": "const key = profile.name + (process.env.CCG_SINGLE_PROCESS ? '+single-process' : '') + (process.env.CCG_GPU_PROCESS ? '+gpu-process' : ''); prev[key] = { ...summary, arm: key, env: { CCG_SINGLE_PROCESS: process.env.CCG_SINGLE_PROCESS ?? null, CCG_GPU_PROCESS: process.env.CCG_GPU_PROCESS ?? null } }"
+  },
+  "at": "2026-08-22T10:05:05.453Z"
+}

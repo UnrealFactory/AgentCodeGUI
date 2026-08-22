@@ -1,0 +1,540 @@
+{
+  "what": "R3가 \"무효\"로 판정한 레버 3개 재측정 + 빌더가 안 본 각도 4개",
+  "method": {
+    "home": ".bench-home-flags(따뜻함)",
+    "cdp": false,
+    "settleSec": 25,
+    "repeats": 2
+  },
+  "sweepStage": [
+    {
+      "name": "A0-control-wry-default",
+      "wsMB": 453,
+      "privMB": 314,
+      "procs": 7,
+      "deltaWsMB": 0,
+      "deltaPrivMB": 0,
+      "deltaProcs": 0,
+      "byRole": {
+        "browser": {
+          "n": 2,
+          "wsMB": 147.7,
+          "privMB": 50.4
+        },
+        "crashpad-handler": {
+          "n": 1,
+          "wsMB": 10.8,
+          "privMB": 2.5
+        },
+        "gpu-process": {
+          "n": 1,
+          "wsMB": 77.4,
+          "privMB": 129.5
+        },
+        "utility:NetworkService": {
+          "n": 1,
+          "wsMB": 39.4,
+          "privMB": 12.7
+        },
+        "utility:StorageService": {
+          "n": 1,
+          "wsMB": 20.9,
+          "privMB": 8.9
+        },
+        "renderer": {
+          "n": 1,
+          "wsMB": 154.1,
+          "privMB": 108.9
+        }
+      },
+      "runs": [
+        {
+          "wsMB": 455.6,
+          "privMB": 314,
+          "procs": 7
+        },
+        {
+          "wsMB": 450.3,
+          "privMB": 313,
+          "procs": 7
+        }
+      ]
+    },
+    {
+      "name": "B1-spare-renderer-off",
+      "wsMB": 446,
+      "privMB": 308,
+      "procs": 7,
+      "deltaWsMB": -7,
+      "deltaPrivMB": -6,
+      "deltaProcs": 0,
+      "byRole": {
+        "browser": {
+          "n": 2,
+          "wsMB": 147.2,
+          "privMB": 49.5
+        },
+        "crashpad-handler": {
+          "n": 1,
+          "wsMB": 10.1,
+          "privMB": 2.5
+        },
+        "gpu-process": {
+          "n": 1,
+          "wsMB": 73.9,
+          "privMB": 124
+        },
+        "utility:NetworkService": {
+          "n": 1,
+          "wsMB": 39.6,
+          "privMB": 12.9
+        },
+        "utility:StorageService": {
+          "n": 1,
+          "wsMB": 20.1,
+          "privMB": 9
+        },
+        "renderer": {
+          "n": 1,
+          "wsMB": 153.2,
+          "privMB": 110.2
+        }
+      },
+      "runs": [
+        {
+          "wsMB": 446.9,
+          "privMB": 307.8,
+          "procs": 7
+        },
+        {
+          "wsMB": 444.2,
+          "privMB": 308,
+          "procs": 7
+        }
+      ]
+    },
+    {
+      "name": "B5-network-in-process",
+      "wsMB": 452,
+      "privMB": 314,
+      "procs": 7,
+      "deltaWsMB": -1,
+      "deltaPrivMB": 0,
+      "deltaProcs": 0,
+      "byRole": {
+        "browser": {
+          "n": 2,
+          "wsMB": 147.4,
+          "privMB": 49.7
+        },
+        "crashpad-handler": {
+          "n": 1,
+          "wsMB": 10.1,
+          "privMB": 2.5
+        },
+        "gpu-process": {
+          "n": 1,
+          "wsMB": 77.1,
+          "privMB": 125.7
+        },
+        "utility:NetworkService": {
+          "n": 1,
+          "wsMB": 39.6,
+          "privMB": 12.9
+        },
+        "utility:StorageService": {
+          "n": 1,
+          "wsMB": 20.1,
+          "privMB": 8.9
+        },
+        "renderer": {
+          "n": 1,
+          "wsMB": 157.6,
+          "privMB": 112.7
+        }
+      },
+      "runs": [
+        {
+          "wsMB": 452.7,
+          "privMB": 316.1,
+          "procs": 7
+        },
+        {
+          "wsMB": 451.9,
+          "privMB": 312.3,
+          "procs": 7
+        }
+      ]
+    },
+    {
+      "name": "B2-renderer-limit-1",
+      "wsMB": 445,
+      "privMB": 310,
+      "procs": 7,
+      "deltaWsMB": -8,
+      "deltaPrivMB": -4,
+      "deltaProcs": 0,
+      "byRole": {
+        "browser": {
+          "n": 2,
+          "wsMB": 146.9,
+          "privMB": 50
+        },
+        "crashpad-handler": {
+          "n": 1,
+          "wsMB": 10.1,
+          "privMB": 2.5
+        },
+        "gpu-process": {
+          "n": 1,
+          "wsMB": 73.7,
+          "privMB": 127.5
+        },
+        "utility:NetworkService": {
+          "n": 1,
+          "wsMB": 39.5,
+          "privMB": 12.8
+        },
+        "utility:StorageService": {
+          "n": 1,
+          "wsMB": 20.1,
+          "privMB": 8.9
+        },
+        "renderer": {
+          "n": 1,
+          "wsMB": 153.4,
+          "privMB": 110.2
+        }
+      },
+      "runs": [
+        {
+          "wsMB": 447,
+          "privMB": 307.9,
+          "procs": 7
+        },
+        {
+          "wsMB": 443.7,
+          "privMB": 311.8,
+          "procs": 7
+        }
+      ]
+    },
+    {
+      "name": "Z-adopted-default(재측정)",
+      "wsMB": 444,
+      "privMB": 240,
+      "procs": 6,
+      "deltaWsMB": -9,
+      "deltaPrivMB": -74,
+      "deltaProcs": -1,
+      "byRole": {
+        "browser": {
+          "n": 2,
+          "wsMB": 207.5,
+          "privMB": 100.6
+        },
+        "crashpad-handler": {
+          "n": 1,
+          "wsMB": 10.1,
+          "privMB": 2.5
+        },
+        "utility:NetworkService": {
+          "n": 1,
+          "wsMB": 39.4,
+          "privMB": 12.7
+        },
+        "utility:StorageService": {
+          "n": 1,
+          "wsMB": 20.1,
+          "privMB": 8.9
+        },
+        "renderer": {
+          "n": 1,
+          "wsMB": 165.8,
+          "privMB": 113.2
+        }
+      },
+      "runs": [
+        {
+          "wsMB": 445.4,
+          "privMB": 241.7,
+          "procs": 6
+        },
+        {
+          "wsMB": 443,
+          "privMB": 237.9,
+          "procs": 6
+        }
+      ]
+    },
+    {
+      "name": "N1-network-in-process2",
+      "wsMB": 413,
+      "privMB": 296,
+      "procs": 6,
+      "deltaWsMB": -40,
+      "deltaPrivMB": -18,
+      "deltaProcs": -1,
+      "byRole": {
+        "browser": {
+          "n": 2,
+          "wsMB": 155.8,
+          "privMB": 51.6
+        },
+        "crashpad-handler": {
+          "n": 1,
+          "wsMB": 10.1,
+          "privMB": 2.5
+        },
+        "gpu-process": {
+          "n": 1,
+          "wsMB": 73.1,
+          "privMB": 121.8
+        },
+        "utility:StorageService": {
+          "n": 1,
+          "wsMB": 20.2,
+          "privMB": 9
+        },
+        "renderer": {
+          "n": 1,
+          "wsMB": 153.7,
+          "privMB": 110
+        }
+      },
+      "runs": [
+        {
+          "wsMB": 412.8,
+          "privMB": 297,
+          "procs": 6
+        },
+        {
+          "wsMB": 412.8,
+          "privMB": 294.9,
+          "procs": 6
+        }
+      ]
+    },
+    {
+      "name": "N2-tile-and-image-budget",
+      "wsMB": 445,
+      "privMB": 312,
+      "procs": 7,
+      "deltaWsMB": -8,
+      "deltaPrivMB": -2,
+      "deltaProcs": 0,
+      "byRole": {
+        "browser": {
+          "n": 2,
+          "wsMB": 147.3,
+          "privMB": 50.6
+        },
+        "crashpad-handler": {
+          "n": 1,
+          "wsMB": 10.1,
+          "privMB": 2.5
+        },
+        "gpu-process": {
+          "n": 1,
+          "wsMB": 73.6,
+          "privMB": 128.5
+        },
+        "utility:NetworkService": {
+          "n": 1,
+          "wsMB": 39.5,
+          "privMB": 12.8
+        },
+        "utility:StorageService": {
+          "n": 1,
+          "wsMB": 20.1,
+          "privMB": 8.9
+        },
+        "renderer": {
+          "n": 1,
+          "wsMB": 153.8,
+          "privMB": 111.1
+        }
+      },
+      "runs": [
+        {
+          "wsMB": 444.5,
+          "privMB": 309.3,
+          "procs": 7
+        },
+        {
+          "wsMB": 444.5,
+          "privMB": 314.5,
+          "procs": 7
+        }
+      ]
+    },
+    {
+      "name": "N3-edge-memory-saver",
+      "wsMB": 444,
+      "privMB": 310,
+      "procs": 7,
+      "deltaWsMB": -9,
+      "deltaPrivMB": -4,
+      "deltaProcs": 0,
+      "byRole": {
+        "browser": {
+          "n": 2,
+          "wsMB": 147.6,
+          "privMB": 50.1
+        },
+        "crashpad-handler": {
+          "n": 1,
+          "wsMB": 10.1,
+          "privMB": 2.5
+        },
+        "gpu-process": {
+          "n": 1,
+          "wsMB": 73.5,
+          "privMB": 123.9
+        },
+        "utility:NetworkService": {
+          "n": 1,
+          "wsMB": 39.5,
+          "privMB": 12.8
+        },
+        "utility:StorageService": {
+          "n": 1,
+          "wsMB": 20.1,
+          "privMB": 9
+        },
+        "renderer": {
+          "n": 1,
+          "wsMB": 153.4,
+          "privMB": 110.1
+        }
+      },
+      "runs": [
+        {
+          "wsMB": 444.4,
+          "privMB": 312.6,
+          "procs": 7
+        },
+        {
+          "wsMB": 444.3,
+          "privMB": 308.3,
+          "procs": 7
+        }
+      ]
+    },
+    {
+      "name": "N4-adopted+both-utilities-in-process",
+      "wsMB": 413,
+      "privMB": 230,
+      "procs": 5,
+      "deltaWsMB": -40,
+      "deltaPrivMB": -84,
+      "deltaProcs": -2,
+      "byRole": {
+        "browser": {
+          "n": 2,
+          "wsMB": 215.6,
+          "privMB": 103.4
+        },
+        "crashpad-handler": {
+          "n": 1,
+          "wsMB": 10.1,
+          "privMB": 2.5
+        },
+        "utility:StorageService": {
+          "n": 1,
+          "wsMB": 21.2,
+          "privMB": 9.3
+        },
+        "renderer": {
+          "n": 1,
+          "wsMB": 165.6,
+          "privMB": 113.2
+        }
+      },
+      "runs": [
+        {
+          "wsMB": 414.2,
+          "privMB": 231.4,
+          "procs": 5
+        },
+        {
+          "wsMB": 412.5,
+          "privMB": 228.4,
+          "procs": 5
+        }
+      ]
+    }
+  ],
+  "spotCheckVerdicts": {
+    "SpareRendererForSitePerProcess off": {
+      "builderSweep": "ws +28 · priv +111 · procs 7",
+      "critic": "ws -7 · priv -6 · procs 7",
+      "verdict": "무효라는 결론은 맞다. 빌더가 적은 +111MB는 재현되지 않는다 — 노이즈였다. 그리고 대조군에도 예비 렌더러가 없다(렌더러 프로세스가 1개뿐) → 끌 게 애초에 없다는 것이 정확한 이유다."
+    },
+    "NetworkServiceInProcess on": {
+      "builderSweep": "procs 7 (그대로) → \"WebView2가 무시한다\"",
+      "critic": "procs 7 (그대로). 다만 이유가 다르다 — Chromium이 이 feature의 문자열 이름을 M96 무렵 \"NetworkServiceInProcess2\"로 바꿨다. 옛 이름은 존재하지 않는 feature라 조용히 버려진다.",
+      "verdict": "무효 재현 · **설명 반박**"
+    },
+    "--renderer-process-limit=1": {
+      "builderSweep": "창당 93.4MB/+2 = wry 기본값과 차이 없음",
+      "critic": "유휴 ws -8 · priv -4 · procs 7",
+      "verdict": "무효 재현"
+    }
+  },
+  "newLeverAtMainGate": {
+    "name": "--enable-features=NetworkServiceInProcess2",
+    "stage": "bench/multi.mjs 4패널 × 120항목, CDP on, 3회",
+    "runs": [
+      {
+        "idleWsMB": 428,
+        "idlePrivMB": 236.8,
+        "procs": 5,
+        "withWinWsMB": 468.8,
+        "wsPerWindowMB": 20.4,
+        "scroll": "57.9 / 0%"
+      },
+      {
+        "idleWsMB": 419.6,
+        "idlePrivMB": 237,
+        "procs": 5,
+        "withWinWsMB": 468.2,
+        "wsPerWindowMB": 24.3,
+        "scroll": "58.5 / 0%"
+      },
+      {
+        "idleWsMB": 419.3,
+        "idlePrivMB": 236.6,
+        "procs": 5,
+        "withWinWsMB": 467.8,
+        "wsPerWindowMB": 24.3,
+        "scroll": "56.8 / 0.3%"
+      }
+    ],
+    "medianIdleWsMB": 419.6,
+    "medianIdlePrivMB": 236.8,
+    "procs": 5,
+    "medianWithWinWsMB": 468.2,
+    "vsAdoptedSet": {
+      "deltaWsMB": -37.5,
+      "deltaPrivMB": -16.5,
+      "deltaProcs": -1,
+      "deltaWithWinWsMB": -38.6
+    },
+    "gl": {
+      "renderer": "ANGLE (NVIDIA, NVIDIA GeForce RTX 4070 Ti (0x00002782) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+      "vendor": "Google Inc. (NVIDIA)",
+      "version": "WebGL 2.0 (OpenGL ES 3.0 Chromium)"
+    },
+    "procCount": 5,
+    "risk": "네트워크 스택이 브라우저 프로세스 안에서 돈다. Chromium 정식 feature이고 Android Chrome의 기본 구성이다 — --single-process 같은 미지원 스위치가 아니다. 대가는 네트워크 서비스 크래시가 브라우저 프로세스를 같이 죽인다는 것(현 앱은 원격 폰트 CSS 2개 외에 네트워크를 쓰지 않는다).",
+    "caveat": "FPS 판정은 critic-r3-fps-interleaved.json 참조 — 세션 드리프트 때문에 back-to-back 비교로는 확정할 수 없었다."
+  },
+  "triedAndDead": {
+    "tile/image budget (--force-gpu-mem-discardable-limit-bytes, --max-decoded-image-size-mb, --default-tile-*, --disable-zero-copy)": "ws -8 · priv -2 · procs 7 — 무효",
+    "Edge 절전 계열 (msEdgeMemorySaver, HighEfficiencyModeAvailable, SleepingTabs, MemoryPurgeOnFreezeLimit, FreezingOnEnergySaver)": "ws -9 · priv -4 · procs 7 — 무효",
+    "StorageServiceOutOfProcess off (올바른 조합에서도)": "utility:StorageService(ws 20 / priv 9)가 그대로 남는다 — 진짜 무효",
+    "ICoreWebView2EnvironmentOptions 비-인자 옵션(ExclusiveUserDataFolderAccess 등)": "wry가 노출하지 않아 셸 수정 없이는 측정 불가 — R4 재료"
+  },
+  "at": "2026-08-22T10:53:24.529Z"
+}

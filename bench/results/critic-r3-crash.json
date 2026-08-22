@@ -1,0 +1,106 @@
+{
+  "what": "렌더러 크래시(Page.crash) 전파 — 창 3개(메인+추가2)를 띄운 상태에서",
+  "arms": {
+    "default": {
+      "arm": "default",
+      "extraEnv": {},
+      "at": "2026-08-22T10:42:27.862Z",
+      "before": {
+        "procs": 6,
+        "roles": [
+          "browser",
+          "browser",
+          "crashpad-handler",
+          "utility",
+          "utility",
+          "renderer"
+        ],
+        "visibleWindows": 3,
+        "cdpPages": 3
+      },
+      "after": {
+        "hostAlive": true,
+        "procs": 5,
+        "roles": [
+          "browser",
+          "browser",
+          "crashpad-handler",
+          "utility",
+          "utility"
+        ],
+        "visibleWindows": 3,
+        "mainPageRemounted": false
+      }
+    },
+    "single": {
+      "arm": "single",
+      "extraEnv": {
+        "CCG_SINGLE_PROCESS": "1"
+      },
+      "at": "2026-08-22T10:43:09.396Z",
+      "before": {
+        "procs": 3,
+        "roles": [
+          "browser",
+          "browser",
+          "crashpad-handler"
+        ],
+        "visibleWindows": 3,
+        "cdpPages": 3
+      },
+      "after": {
+        "hostAlive": true,
+        "procs": 1,
+        "roles": [
+          "browser"
+        ],
+        "visibleWindows": 3,
+        "mainPageRemounted": false
+      }
+    },
+    "gpuproc": {
+      "arm": "gpuproc",
+      "extraEnv": {
+        "CCG_GPU_PROCESS": "1"
+      },
+      "at": "2026-08-22T10:43:50.175Z",
+      "before": {
+        "procs": 7,
+        "roles": [
+          "browser",
+          "browser",
+          "crashpad-handler",
+          "gpu-process",
+          "utility",
+          "utility",
+          "renderer"
+        ],
+        "visibleWindows": 3,
+        "cdpPages": 3
+      },
+      "after": {
+        "hostAlive": true,
+        "procs": 6,
+        "roles": [
+          "browser",
+          "browser",
+          "crashpad-handler",
+          "gpu-process",
+          "utility",
+          "utility"
+        ],
+        "visibleWindows": 3,
+        "mainPageRemounted": false
+      }
+    }
+  },
+  "findings": [
+    "기본 팔(6프로세스): 렌더러만 죽는다(6→5). 브라우저·GPU(인프로세스)·유틸리티는 산다.",
+    "CCG_GPU_PROCESS=1 팔(7프로세스): 렌더러만 죽는다(7→6).",
+    "CCG_SINGLE_PROCESS=1 팔(3프로세스): **WebView2 브라우저 프로세스와 crashpad까지 같이 죽는다(3→1). 남는 건 Rust 호스트뿐이다.**",
+    "**세 팔 모두 OS 창 3개가 화면에 그대로 남고(유령 창), 메인 페이지는 다시 마운트되지 않는다(mainPageRemounted:false).** 즉 3.0에는 렌더러 크래시 복구 경로가 **아예 없다**.",
+    "2.6.2도 render-process-gone 핸들러가 없다(src/main 전체 grep 무일치) — 파리티 회귀는 아니지만, 두 앱 공통의 구멍이다.",
+    "다만 복구 **가능성**은 다르다: 다중 프로세스 팔은 브라우저 프로세스가 살아 있어 webview.reload()로 되살릴 수 있다(코드만 넣으면 된다). 단일 프로세스 팔은 브라우저 프로세스 자체가 없어져 그 경로가 존재하지 않는다."
+  ],
+  "at": "2026-08-22T10:53:24.532Z"
+}
