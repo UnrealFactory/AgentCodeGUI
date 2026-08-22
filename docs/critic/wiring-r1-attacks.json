@@ -1,0 +1,1151 @@
+{
+  "at": "2026-08-22T20:54:17.234Z",
+  "exe": "bench/scratch/pin/agentcodegui-critic.exe",
+  "attacks": {
+    "A": {
+      "deltasBeforeInterrupt": 3,
+      "beforeDbg": {
+        "chats": [
+          {
+            "chatId": "c-a",
+            "state": "Streaming",
+            "queued": 0,
+            "spawns": 1,
+            "exits": 0,
+            "session": "6d6b7314-2860-40ae-93f8-88358d6a861b",
+            "pid": 19996
+          }
+        ],
+        "cli": "C:\\Code\\AgentCodeGUI\\.critic-home-int\\engines\\0.3.240\\node_modules/@anthropic-ai/claude-agent-sdk-win32-x64/claude.exe"
+      },
+      "via": "Escape",
+      "afterInterrupt": {
+        "marker": true,
+        "working": false,
+        "composerDisabled": false,
+        "verdicts": [
+          "send:accepted",
+          "identity_set:noop",
+          "send:accepted",
+          "interrupt:accepted",
+          "interrupt:accepted"
+        ],
+        "lastStatus": [
+          {
+            "id": "c-a",
+            "s": "done",
+            "busy": false
+          }
+        ],
+        "runStates": [
+          "starting",
+          "streaming",
+          "interrupting",
+          "terminating",
+          "idle"
+        ],
+        "status262": [
+          "analyzing",
+          "working",
+          "done"
+        ],
+        "sidebarDot": [
+          "dot "
+        ]
+      },
+      "afterDbg": {
+        "chats": [
+          {
+            "chatId": "c-a",
+            "state": "Idle",
+            "queued": 0,
+            "spawns": 1,
+            "exits": 1,
+            "session": "6d6b7314-2860-40ae-93f8-88358d6a861b",
+            "pid": 19996
+          }
+        ],
+        "cli": "C:\\Code\\AgentCodeGUI\\.critic-home-int\\engines\\0.3.240\\node_modules/@anthropic-ai/claude-agent-sdk-win32-x64/claude.exe"
+      },
+      "resume": {
+        "text": "RESUMED",
+        "isError": false
+      },
+      "resumeDom": true,
+      "finalDbg": {
+        "chats": [
+          {
+            "chatId": "c-a",
+            "state": "Idle",
+            "queued": 0,
+            "spawns": 2,
+            "exits": 2,
+            "session": "6d6b7314-2860-40ae-93f8-88358d6a861b",
+            "pid": 15568
+          }
+        ],
+        "cli": "C:\\Code\\AgentCodeGUI\\.critic-home-int\\engines\\0.3.240\\node_modules/@anthropic-ai/claude-agent-sdk-win32-x64/claude.exe"
+      },
+      "leftoverCli": [
+        "32648 msedgewebview2.exe"
+      ],
+      "cliAfterKill": []
+    },
+    "B": {
+      "card": {
+        "tool": "Write",
+        "opts": [
+          "허용",
+          "항상 허용",
+          "거부"
+        ]
+      },
+      "clicked": "clicked:2",
+      "result": {
+        "isError": false,
+        "text": "I cannot proceed with this request as it has been denied. The system has rejecte"
+      },
+      "after": {
+        "cardGone": true,
+        "working": false,
+        "events": {
+          "status": 3,
+          "session": 1,
+          "tool-start": 1,
+          "context": 2,
+          "permission-request": 1,
+          "tool-end": 1,
+          "assistant-stream": 2,
+          "assistant-done": 1,
+          "result": 1
+        },
+        "toolEnd": [
+          {
+            "status": "error",
+            "result": "사용자가 거부했습니다."
+          }
+        ],
+        "lastStatus": [
+          {
+            "id": "c-a",
+            "s": "done",
+            "busy": false,
+            "ask": "none"
+          }
+        ],
+        "domTail": "때는 움직입니다).\n\n04\n엔진\nClaude Code 출력 스타일 — Concise 등\n\n설정 → Engine에서 Claude Code의 출력 스타일을 고를 수 있습니다 — Concise(결과부터 짧게)·Explanatory(선택 이유 설명)·Learning(실습형)·Proactive(즉시 실행) 또는 기본. 다음 메시지부터 모든 채팅에 적용돼요.\n\n05\n설정\n계정 정렬 — 이제 누르면 그 순서로 저장\n\nAccount의 초기화 임박순·한도 적게 남은순 버튼이 화면 표시만 바꾸는 대신 계정 순서 자체를 재배열해 저장합니다 — 꾹 눌러 끌어 옮긴 것과 똑같이요. 채팅의 계정 선택 목록도 이 순서를 따르고, 정렬 후에도 드래그로 언제든 다시 다듬을 수 있습니다.\n\n닫으면 이 버전 소식은 다시 뜨지 않아요\n시작하기"
+      },
+      "fileCreated": false,
+      "dbg": {
+        "chats": [
+          {
+            "chatId": "c-a",
+            "state": "Idle",
+            "queued": 0,
+            "spawns": 1,
+            "exits": 1,
+            "session": "7fa841c3-2cb5-4964-a3e2-0be732f752d5",
+            "pid": 1848
+          }
+        ],
+        "cli": "C:\\Code\\AgentCodeGUI\\.critic-home-deny\\engines\\0.3.240\\node_modules/@anthropic-ai/claude-agent-sdk-win32-x64/claude.exe"
+      }
+    },
+    "C": {
+      "sidebarBefore": [
+        {
+          "cls": "sb-item active",
+          "t": "크리틱 c-a"
+        },
+        {
+          "cls": "sb-item",
+          "t": "크리틱 c-b"
+        }
+      ],
+      "busyNow": true,
+      "sidebarBusy": [
+        {
+          "cls": "sb-item active",
+          "t": "크리틱 c-a"
+        },
+        {
+          "cls": "sb-item",
+          "t": "크리틱 c-b"
+        }
+      ],
+      "clickResult": "clicked",
+      "afterClick": {
+        "active": "c-b",
+        "sidebar": [
+          {
+            "cls": "sb-item",
+            "t": "크리틱 c-a"
+          },
+          {
+            "cls": "sb-item active",
+            "t": "크리틱 c-b"
+          }
+        ],
+        "threadHasCount": true
+      },
+      "switched": true,
+      "lockedClass": false,
+      "dbg": {
+        "chats": [
+          {
+            "chatId": "c-a",
+            "state": "Streaming",
+            "queued": 0,
+            "spawns": 1,
+            "exits": 0,
+            "session": "6f4d3c30-33af-4ee2-bc78-1867d470ed0e",
+            "pid": 28008
+          }
+        ],
+        "cli": "C:\\Code\\AgentCodeGUI\\.critic-home-sw\\engines\\0.3.240\\node_modules/@anthropic-ai/claude-agent-sdk-win32-x64/claude.exe"
+      }
+    },
+    "D": {
+      "beforeKill": {
+        "status": [
+          {
+            "id": "c-a",
+            "s": "working",
+            "busy": true
+          }
+        ],
+        "working": false
+      },
+      "dbgBeforeKill": {
+        "chats": [
+          {
+            "chatId": "c-a",
+            "state": "Streaming",
+            "queued": 0,
+            "spawns": 1,
+            "exits": 0,
+            "session": "191d2d02-b9a3-4e30-8de0-a79d17cef0aa",
+            "pid": 30836
+          }
+        ],
+        "cli": "C:\\Code\\AgentCodeGUI\\.critic-home-crash\\engines\\0.3.240\\node_modules/@anthropic-ai/claude-agent-sdk-win32-x64/claude.exe"
+      },
+      "cliBeforeKill": [
+        "20540 msedgewebview2.exe",
+        "30836 claude.exe"
+      ],
+      "cliAfterKill": [],
+      "statusJsonOnDisk": {
+        "version": 1,
+        "statuses": {
+          "c-a": {
+            "chatId": "c-a",
+            "status": "working",
+            "busy": true,
+            "bgActive": false,
+            "ask": "none",
+            "hold": null,
+            "queued": 0,
+            "unread": 0,
+            "updatedAt": 1787432077413
+          }
+        }
+      },
+      "chatFileOnDisk": {
+        "msgs": 1,
+        "status": "idle",
+        "queue": null
+      },
+      "afterRestart": {
+        "working": false,
+        "ghostText": false,
+        "dots": [
+          "dot "
+        ],
+        "composerDisabled": false,
+        "status": [],
+        "msgs": 1,
+        "domTail": "cise(결과부터 짧게)·Explanatory(선택 이유 설명)·Learning(실습형)·Proactive(즉시 실행) 또는 기본. 다음 메시지부터 모든 채팅에 적용돼요.\n\n05\n설정\n계정 정렬 — 이제 누르면 그 순서로 저장\n\nAccount의 초기화 임박순·한도 적게 남은순 버튼이 화면 표시만 바꾸는 대신 계정 순서 자체를 재배열해 저장합니다 — 꾹 눌러 끌어 옮긴 것과 똑같이요. 채팅의 계정 선택 목록도 이 순서를 따르고, 정렬 후에도 드래그로 언제든 다시 다듬을 수 있습니다.\n\n닫으면 이 버전 소식은 다시 뜨지 않아요\n시작하기"
+      },
+      "dbgAfterRestart": {
+        "chats": [],
+        "cli": "C:\\Code\\AgentCodeGUI\\.critic-home-crash\\engines\\0.3.240\\node_modules/@anthropic-ai/claude-agent-sdk-win32-x64/claude.exe"
+      },
+      "postRestartTurn": {
+        "text": "ALIVE"
+      }
+    },
+    "E": {
+      "dbgAtCard": {
+        "chats": [
+          {
+            "chatId": "c-a",
+            "state": "AwaitingUser",
+            "queued": 0,
+            "spawns": 1,
+            "exits": 0,
+            "session": "46fb9bbd-cf21-4921-8dab-cf6cac0b399d",
+            "pid": 29024
+          }
+        ],
+        "cli": "C:\\Code\\AgentCodeGUI\\.critic-home-kill\\engines\\0.3.240\\node_modules/@anthropic-ai/claude-agent-sdk-win32-x64/claude.exe"
+      },
+      "cliPid": 29024,
+      "killedAt": 1787432090340,
+      "pidStillAlive": false,
+      "samples": [
+        {
+          "t": 0,
+          "card": true,
+          "working": true,
+          "state": "awaiting_user",
+          "settled": [],
+          "live": 2,
+          "status": [
+            {
+              "s": "working",
+              "busy": true,
+              "ask": "permission"
+            }
+          ],
+          "notices": [],
+          "result": false
+        },
+        {
+          "t": 5,
+          "card": true,
+          "working": true,
+          "state": "awaiting_user",
+          "settled": [],
+          "live": 2,
+          "status": [
+            {
+              "s": "working",
+              "busy": true,
+              "ask": "permission"
+            }
+          ],
+          "notices": [],
+          "result": false
+        },
+        {
+          "t": 10,
+          "card": true,
+          "working": true,
+          "state": "awaiting_user",
+          "settled": [],
+          "live": 2,
+          "status": [
+            {
+              "s": "working",
+              "busy": true,
+              "ask": "permission"
+            }
+          ],
+          "notices": [],
+          "result": false
+        },
+        {
+          "t": 15,
+          "card": true,
+          "working": true,
+          "state": "awaiting_user",
+          "settled": [],
+          "live": 2,
+          "status": [
+            {
+              "s": "working",
+              "busy": true,
+              "ask": "permission"
+            }
+          ],
+          "notices": [],
+          "result": false
+        },
+        {
+          "t": 20,
+          "card": true,
+          "working": true,
+          "state": "awaiting_user",
+          "settled": [],
+          "live": 2,
+          "status": [
+            {
+              "s": "working",
+              "busy": true,
+              "ask": "permission"
+            }
+          ],
+          "notices": [],
+          "result": false
+        },
+        {
+          "t": 25,
+          "card": true,
+          "working": true,
+          "state": "awaiting_user",
+          "settled": [],
+          "live": 2,
+          "status": [
+            {
+              "s": "working",
+              "busy": true,
+              "ask": "permission"
+            }
+          ],
+          "notices": [],
+          "result": false
+        },
+        {
+          "t": 30,
+          "card": true,
+          "working": true,
+          "state": "awaiting_user",
+          "settled": [],
+          "live": 2,
+          "status": [
+            {
+              "s": "working",
+              "busy": true,
+              "ask": "permission"
+            }
+          ],
+          "notices": [],
+          "result": false
+        },
+        {
+          "t": 35,
+          "card": true,
+          "working": true,
+          "state": "awaiting_user",
+          "settled": [],
+          "live": 2,
+          "status": [
+            {
+              "s": "working",
+              "busy": true,
+              "ask": "permission"
+            }
+          ],
+          "notices": [],
+          "result": false
+        },
+        {
+          "t": 40,
+          "card": true,
+          "working": true,
+          "state": "awaiting_user",
+          "settled": [],
+          "live": 2,
+          "status": [
+            {
+              "s": "working",
+              "busy": true,
+              "ask": "permission"
+            }
+          ],
+          "notices": [],
+          "result": false
+        },
+        {
+          "t": 45,
+          "card": true,
+          "working": true,
+          "state": "awaiting_user",
+          "settled": [],
+          "live": 2,
+          "status": [
+            {
+              "s": "working",
+              "busy": true,
+              "ask": "permission"
+            }
+          ],
+          "notices": [],
+          "result": false
+        },
+        {
+          "t": 50,
+          "card": true,
+          "working": true,
+          "state": "awaiting_user",
+          "settled": [],
+          "live": 2,
+          "status": [
+            {
+              "s": "working",
+              "busy": true,
+              "ask": "permission"
+            }
+          ],
+          "notices": [],
+          "result": false
+        },
+        {
+          "t": 55,
+          "card": true,
+          "working": true,
+          "state": "awaiting_user",
+          "settled": [],
+          "live": 2,
+          "status": [
+            {
+              "s": "working",
+              "busy": true,
+              "ask": "permission"
+            }
+          ],
+          "notices": [],
+          "result": false
+        },
+        {
+          "t": 60,
+          "card": true,
+          "working": true,
+          "state": "awaiting_user",
+          "settled": [],
+          "live": 2,
+          "status": [
+            {
+              "s": "working",
+              "busy": true,
+              "ask": "permission"
+            }
+          ],
+          "notices": [],
+          "result": false
+        },
+        {
+          "t": 65,
+          "card": true,
+          "working": true,
+          "state": "awaiting_user",
+          "settled": [],
+          "live": 2,
+          "status": [
+            {
+              "s": "working",
+              "busy": true,
+              "ask": "permission"
+            }
+          ],
+          "notices": [],
+          "result": false
+        },
+        {
+          "t": 70,
+          "card": true,
+          "working": true,
+          "state": "awaiting_user",
+          "settled": [],
+          "live": 2,
+          "status": [
+            {
+              "s": "working",
+              "busy": true,
+              "ask": "permission"
+            }
+          ],
+          "notices": [],
+          "result": false
+        },
+        {
+          "t": 75,
+          "card": true,
+          "working": true,
+          "state": "awaiting_user",
+          "settled": [],
+          "live": 2,
+          "status": [
+            {
+              "s": "working",
+              "busy": true,
+              "ask": "permission"
+            }
+          ],
+          "notices": [],
+          "result": false
+        },
+        {
+          "t": 80,
+          "card": true,
+          "working": true,
+          "state": "awaiting_user",
+          "settled": [],
+          "live": 2,
+          "status": [
+            {
+              "s": "working",
+              "busy": true,
+              "ask": "permission"
+            }
+          ],
+          "notices": [],
+          "result": false
+        },
+        {
+          "t": 85,
+          "card": true,
+          "working": true,
+          "state": "awaiting_user",
+          "settled": [],
+          "live": 2,
+          "status": [
+            {
+              "s": "working",
+              "busy": true,
+              "ask": "permission"
+            }
+          ],
+          "notices": [],
+          "result": false
+        }
+      ],
+      "settledIn": -1,
+      "dbgAfter": {
+        "chats": [
+          {
+            "chatId": "c-a",
+            "state": "AwaitingUser",
+            "queued": 0,
+            "spawns": 1,
+            "exits": 0,
+            "session": "46fb9bbd-cf21-4921-8dab-cf6cac0b399d",
+            "pid": 29024
+          }
+        ],
+        "cli": "C:\\Code\\AgentCodeGUI\\.critic-home-kill\\engines\\0.3.240\\node_modules/@anthropic-ai/claude-agent-sdk-win32-x64/claude.exe"
+      },
+      "afterAllowClick": {
+        "card": false,
+        "state": "streaming",
+        "status": [
+          {
+            "s": "working",
+            "busy": true,
+            "ask": "none"
+          }
+        ],
+        "result": false
+      },
+      "afterEsc": {
+        "card": false,
+        "state": "idle",
+        "status": [
+          {
+            "s": "error",
+            "busy": false,
+            "ask": "none"
+          }
+        ]
+      },
+      "dbgAfterEsc": {
+        "chats": [
+          {
+            "chatId": "c-a",
+            "state": "Idle",
+            "queued": 0,
+            "spawns": 1,
+            "exits": 1,
+            "session": "46fb9bbd-cf21-4921-8dab-cf6cac0b399d",
+            "pid": 29024
+          }
+        ],
+        "cli": "C:\\Code\\AgentCodeGUI\\.critic-home-kill\\engines\\0.3.240\\node_modules/@anthropic-ai/claude-agent-sdk-win32-x64/claude.exe"
+      }
+    },
+    "F": {
+      "dbgBefore": {
+        "chats": [
+          {
+            "chatId": "c-a",
+            "state": "Streaming",
+            "queued": 0,
+            "spawns": 1,
+            "exits": 0,
+            "session": "6ef8a03a-70e5-463d-b590-f4a63060646b",
+            "pid": 10892
+          }
+        ],
+        "cli": "C:\\Code\\AgentCodeGUI\\.critic-home-killstream\\engines\\0.3.240\\node_modules/@anthropic-ai/claude-agent-sdk-win32-x64/claude.exe"
+      },
+      "cliPid": 10892,
+      "pidStillAlive": false,
+      "samples": [
+        {
+          "t": 0,
+          "working": false,
+          "state": "streaming",
+          "live": 0,
+          "status": [
+            {
+              "s": "working",
+              "busy": true
+            }
+          ],
+          "notices": [],
+          "result": false,
+          "composerDisabled": false
+        },
+        {
+          "t": 5,
+          "working": false,
+          "state": "streaming",
+          "live": 0,
+          "status": [
+            {
+              "s": "working",
+              "busy": true
+            }
+          ],
+          "notices": [],
+          "result": false,
+          "composerDisabled": false
+        },
+        {
+          "t": 10,
+          "working": false,
+          "state": "streaming",
+          "live": 0,
+          "status": [
+            {
+              "s": "working",
+              "busy": true
+            }
+          ],
+          "notices": [],
+          "result": false,
+          "composerDisabled": false
+        },
+        {
+          "t": 15,
+          "working": false,
+          "state": "streaming",
+          "live": 0,
+          "status": [
+            {
+              "s": "working",
+              "busy": true
+            }
+          ],
+          "notices": [],
+          "result": false,
+          "composerDisabled": false
+        },
+        {
+          "t": 20,
+          "working": false,
+          "state": "streaming",
+          "live": 0,
+          "status": [
+            {
+              "s": "working",
+              "busy": true
+            }
+          ],
+          "notices": [],
+          "result": false,
+          "composerDisabled": false
+        },
+        {
+          "t": 25,
+          "working": false,
+          "state": "streaming",
+          "live": 0,
+          "status": [
+            {
+              "s": "working",
+              "busy": true
+            }
+          ],
+          "notices": [],
+          "result": false,
+          "composerDisabled": false
+        },
+        {
+          "t": 30,
+          "working": false,
+          "state": "streaming",
+          "live": 0,
+          "status": [
+            {
+              "s": "working",
+              "busy": true
+            }
+          ],
+          "notices": [],
+          "result": false,
+          "composerDisabled": false
+        },
+        {
+          "t": 35,
+          "working": false,
+          "state": "streaming",
+          "live": 0,
+          "status": [
+            {
+              "s": "working",
+              "busy": true
+            }
+          ],
+          "notices": [],
+          "result": false,
+          "composerDisabled": false
+        },
+        {
+          "t": 40,
+          "working": false,
+          "state": "streaming",
+          "live": 0,
+          "status": [
+            {
+              "s": "working",
+              "busy": true
+            }
+          ],
+          "notices": [],
+          "result": false,
+          "composerDisabled": false
+        },
+        {
+          "t": 45,
+          "working": false,
+          "state": "streaming",
+          "live": 0,
+          "status": [
+            {
+              "s": "working",
+              "busy": true
+            }
+          ],
+          "notices": [],
+          "result": false,
+          "composerDisabled": false
+        },
+        {
+          "t": 50,
+          "working": false,
+          "state": "streaming",
+          "live": 0,
+          "status": [
+            {
+              "s": "working",
+              "busy": true
+            }
+          ],
+          "notices": [],
+          "result": false,
+          "composerDisabled": false
+        },
+        {
+          "t": 55,
+          "working": false,
+          "state": "streaming",
+          "live": 0,
+          "status": [
+            {
+              "s": "working",
+              "busy": true
+            }
+          ],
+          "notices": [],
+          "result": false,
+          "composerDisabled": false
+        },
+        {
+          "t": 60,
+          "working": false,
+          "state": "streaming",
+          "live": 0,
+          "status": [
+            {
+              "s": "working",
+              "busy": true
+            }
+          ],
+          "notices": [],
+          "result": false,
+          "composerDisabled": false
+        },
+        {
+          "t": 65,
+          "working": false,
+          "state": "streaming",
+          "live": 0,
+          "status": [
+            {
+              "s": "working",
+              "busy": true
+            }
+          ],
+          "notices": [],
+          "result": false,
+          "composerDisabled": false
+        },
+        {
+          "t": 70,
+          "working": false,
+          "state": "streaming",
+          "live": 0,
+          "status": [
+            {
+              "s": "working",
+              "busy": true
+            }
+          ],
+          "notices": [],
+          "result": false,
+          "composerDisabled": false
+        },
+        {
+          "t": 75,
+          "working": false,
+          "state": "streaming",
+          "live": 0,
+          "status": [
+            {
+              "s": "working",
+              "busy": true
+            }
+          ],
+          "notices": [],
+          "result": false,
+          "composerDisabled": false
+        },
+        {
+          "t": 80,
+          "working": false,
+          "state": "streaming",
+          "live": 0,
+          "status": [
+            {
+              "s": "working",
+              "busy": true
+            }
+          ],
+          "notices": [],
+          "result": false,
+          "composerDisabled": false
+        },
+        {
+          "t": 85,
+          "working": false,
+          "state": "streaming",
+          "live": 0,
+          "status": [
+            {
+              "s": "working",
+              "busy": true
+            }
+          ],
+          "notices": [],
+          "result": false,
+          "composerDisabled": false
+        },
+        {
+          "t": 90,
+          "working": false,
+          "state": "streaming",
+          "live": 0,
+          "status": [
+            {
+              "s": "working",
+              "busy": true
+            }
+          ],
+          "notices": [],
+          "result": false,
+          "composerDisabled": false
+        },
+        {
+          "t": 95,
+          "working": false,
+          "state": "streaming",
+          "live": 0,
+          "status": [
+            {
+              "s": "working",
+              "busy": true
+            }
+          ],
+          "notices": [],
+          "result": false,
+          "composerDisabled": false
+        },
+        {
+          "t": 100,
+          "working": false,
+          "state": "streaming",
+          "live": 0,
+          "status": [
+            {
+              "s": "working",
+              "busy": true
+            }
+          ],
+          "notices": [],
+          "result": false,
+          "composerDisabled": false
+        },
+        {
+          "t": 105,
+          "working": false,
+          "state": "streaming",
+          "live": 0,
+          "status": [
+            {
+              "s": "working",
+              "busy": true
+            }
+          ],
+          "notices": [],
+          "result": false,
+          "composerDisabled": false
+        },
+        {
+          "t": 110,
+          "working": false,
+          "state": "streaming",
+          "live": 0,
+          "status": [
+            {
+              "s": "working",
+              "busy": true
+            }
+          ],
+          "notices": [],
+          "result": false,
+          "composerDisabled": false
+        },
+        {
+          "t": 115,
+          "working": false,
+          "state": "streaming",
+          "live": 0,
+          "status": [
+            {
+              "s": "working",
+              "busy": true
+            }
+          ],
+          "notices": [],
+          "result": false,
+          "composerDisabled": false
+        }
+      ],
+      "dbgAfter": {
+        "chats": [
+          {
+            "chatId": "c-a",
+            "state": "Streaming",
+            "queued": 0,
+            "spawns": 1,
+            "exits": 0,
+            "session": "6ef8a03a-70e5-463d-b590-f4a63060646b",
+            "pid": 10892
+          }
+        ],
+        "cli": "C:\\Code\\AgentCodeGUI\\.critic-home-killstream\\engines\\0.3.240\\node_modules/@anthropic-ai/claude-agent-sdk-win32-x64/claude.exe"
+      },
+      "wedged": {
+        "queuedChip": false,
+        "composerText": "",
+        "sidebarLocked": [
+          "sb-item active"
+        ]
+      },
+      "pingResult": {
+        "timeout": true
+      },
+      "afterEsc": {
+        "state": "interrupting",
+        "status": [
+          {
+            "s": "working",
+            "busy": true
+          }
+        ],
+        "marker": true
+      },
+      "dbgAfterEsc": {
+        "chats": [
+          {
+            "chatId": "c-a",
+            "state": "Interrupting",
+            "queued": 0,
+            "spawns": 1,
+            "exits": 0,
+            "session": "6ef8a03a-70e5-463d-b590-f4a63060646b",
+            "pid": 10892
+          }
+        ],
+        "cli": "C:\\Code\\AgentCodeGUI\\.critic-home-killstream\\engines\\0.3.240\\node_modules/@anthropic-ai/claude-agent-sdk-win32-x64/claude.exe"
+      }
+    }
+  },
+  "findings": [
+    {
+      "id": "E-정착",
+      "why": "CLI가 죽었는데 승인 카드가 90초 뒤에도 살아 있다",
+      "t": 85,
+      "card": true,
+      "working": true,
+      "state": "awaiting_user",
+      "settled": [],
+      "live": 2,
+      "status": [
+        {
+          "s": "working",
+          "busy": true,
+          "ask": "permission"
+        }
+      ],
+      "notices": [],
+      "result": false
+    },
+    {
+      "id": "E-사유",
+      "why": "정착 사유가 화면에 안 보인다(notice/result 없음)",
+      "t": 85,
+      "card": true,
+      "working": true,
+      "state": "awaiting_user",
+      "settled": [],
+      "live": 2,
+      "status": [
+        {
+          "s": "working",
+          "busy": true,
+          "ask": "permission"
+        }
+      ],
+      "notices": [],
+      "result": false
+    },
+    {
+      "id": "F-정착",
+      "why": "스트리밍 중 CLI가 죽어도 120초까지 상태가 안 내려온다",
+      "t": 115,
+      "working": false,
+      "state": "streaming",
+      "live": 0,
+      "status": [
+        {
+          "s": "working",
+          "busy": true
+        }
+      ],
+      "notices": [],
+      "result": false,
+      "composerDisabled": false
+    }
+  ],
+  "runs": [
+    {
+      "at": "2026-08-22T20:54:17.234Z",
+      "exe": "bench/scratch/pin/agentcodegui-critic.exe",
+      "only": "all"
+    }
+  ],
+  "verdict": "FAIL"
+}

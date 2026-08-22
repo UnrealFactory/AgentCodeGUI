@@ -1,0 +1,1018 @@
+{
+  "at": "2026-08-22T20:34:00.739Z",
+  "repeats": 5,
+  "table": [
+    {
+      "label": "total WS MB",
+      "on": 431.3,
+      "off": 425.8,
+      "delta": 5.5
+    },
+    {
+      "label": "total Priv MB",
+      "on": 246.6,
+      "off": 242.8,
+      "delta": 3.8
+    },
+    {
+      "label": "browser(Rust) WS MB",
+      "on": 32.3,
+      "off": 30.3,
+      "delta": 2
+    },
+    {
+      "label": "browser(Rust) Priv MB",
+      "on": 13.3,
+      "off": 11.3,
+      "delta": 2
+    },
+    {
+      "label": "renderer WS MB",
+      "on": 183.5,
+      "off": 179.3,
+      "delta": 4.2
+    },
+    {
+      "label": "renderer Priv MB",
+      "on": 128.8,
+      "off": 126.2,
+      "delta": 2.6
+    },
+    {
+      "label": "other WS MB",
+      "on": 216.2,
+      "off": 216,
+      "delta": 0.2
+    },
+    {
+      "label": "JS heap used MB",
+      "on": 11.8,
+      "off": 11.9,
+      "delta": -0.1
+    },
+    {
+      "label": "DOM nodes",
+      "on": 16196,
+      "off": 16193,
+      "delta": 3
+    },
+    {
+      "label": "chats:get bytes",
+      "on": 150357,
+      "off": 149127,
+      "delta": 1230
+    },
+    {
+      "label": "ma:get bytes",
+      "on": 122517,
+      "off": 123297,
+      "delta": -780
+    },
+    {
+      "label": "board:get bytes",
+      "on": 455,
+      "off": 24,
+      "delta": 431
+    },
+    {
+      "label": "chat count",
+      "on": 1,
+      "off": 1,
+      "delta": 0
+    },
+    {
+      "label": "disk chats-v3 KB",
+      "on": 336,
+      "off": 0,
+      "delta": 336
+    },
+    {
+      "label": "disk boards KB",
+      "on": 0,
+      "off": 0,
+      "delta": 0
+    }
+  ],
+  "runs": [
+    {
+      "arm": "on",
+      "seq": 1,
+      "panels": 4,
+      "totalWsMB": 432.7,
+      "totalPrivMB": 248.6,
+      "procs": 5,
+      "bucket": {
+        "browser": {
+          "ws": 32.4,
+          "priv": 13.8,
+          "n": 1
+        },
+        "renderer": {
+          "ws": 184.3,
+          "priv": 130.2,
+          "n": 1
+        },
+        "other": {
+          "ws": 215.9,
+          "priv": 104.6,
+          "n": 3
+        }
+      },
+      "heapUsedMB": 11.7,
+      "heapTotalMB": 24,
+      "domNodes": {
+        "documents": 1,
+        "nodes": 16236,
+        "listeners": 1318
+      },
+      "payload": {
+        "chatsGetLight": 150357,
+        "boardGet": 455,
+        "maGet": 122517,
+        "sessionWins": 2,
+        "chatIds": [
+          "fix-long-thread"
+        ],
+        "domNodes": 4626
+      },
+      "shimUnimplemented": [
+        "engine:list-available",
+        "lsp:prewarm",
+        "ma:panel-states",
+        "usage:get"
+      ],
+      "diskKB": {
+        "chatsV3": 336,
+        "boards": 0,
+        "chatsLegacy": 190,
+        "maLegacy": 143,
+        "sessionChats": 0
+      },
+      "procDetail": [
+        {
+          "name": "agentcodegui.exe",
+          "role": "browser",
+          "sub": "",
+          "wsMB": 32.4,
+          "privMB": 13.8
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "role": "browser",
+          "sub": "",
+          "wsMB": 186.8,
+          "privMB": 93.2
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "role": "crashpad-handler",
+          "sub": "",
+          "wsMB": 9.5,
+          "privMB": 2.5
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "role": "utility",
+          "sub": "storage.mojom.StorageService",
+          "wsMB": 19.6,
+          "privMB": 8.9
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "role": "renderer",
+          "sub": "",
+          "wsMB": 184.3,
+          "privMB": 130.2
+        }
+      ]
+    },
+    {
+      "arm": "off",
+      "seq": 1,
+      "panels": 4,
+      "totalWsMB": 427.2,
+      "totalPrivMB": 244.8,
+      "procs": 5,
+      "bucket": {
+        "browser": {
+          "ws": 30.4,
+          "priv": 11.5,
+          "n": 1
+        },
+        "renderer": {
+          "ws": 180.3,
+          "priv": 127.6,
+          "n": 1
+        },
+        "other": {
+          "ws": 216.5,
+          "priv": 105.7,
+          "n": 3
+        }
+      },
+      "heapUsedMB": 11.9,
+      "heapTotalMB": 26.5,
+      "domNodes": {
+        "documents": 2,
+        "nodes": 16194,
+        "listeners": 1074
+      },
+      "payload": {
+        "chatsGetLight": 149127,
+        "boardGet": 24,
+        "maGet": 123297,
+        "sessionWins": 2,
+        "chatIds": [
+          "fix-long-thread"
+        ],
+        "domNodes": 4626
+      },
+      "shimUnimplemented": [
+        "engine:list-available",
+        "lsp:prewarm",
+        "ma:panel-states",
+        "usage:get"
+      ],
+      "diskKB": {
+        "chatsV3": 0,
+        "boards": 0,
+        "chatsLegacy": 190,
+        "maLegacy": 145,
+        "sessionChats": 0
+      },
+      "procDetail": [
+        {
+          "name": "agentcodegui.exe",
+          "role": "browser",
+          "sub": "",
+          "wsMB": 30.4,
+          "privMB": 11.5
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "role": "browser",
+          "sub": "",
+          "wsMB": 187.4,
+          "privMB": 94.3
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "role": "crashpad-handler",
+          "sub": "",
+          "wsMB": 9.5,
+          "privMB": 2.5
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "role": "utility",
+          "sub": "storage.mojom.StorageService",
+          "wsMB": 19.6,
+          "privMB": 8.9
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "role": "renderer",
+          "sub": "",
+          "wsMB": 180.3,
+          "privMB": 127.6
+        }
+      ]
+    },
+    {
+      "arm": "on",
+      "seq": 2,
+      "panels": 4,
+      "totalWsMB": 427.4,
+      "totalPrivMB": 242.7,
+      "procs": 5,
+      "bucket": {
+        "browser": {
+          "ws": 32.1,
+          "priv": 13.1,
+          "n": 1
+        },
+        "renderer": {
+          "ws": 179.1,
+          "priv": 125.2,
+          "n": 1
+        },
+        "other": {
+          "ws": 216.2,
+          "priv": 104.4,
+          "n": 3
+        }
+      },
+      "heapUsedMB": 11.8,
+      "heapTotalMB": 26,
+      "domNodes": {
+        "documents": 2,
+        "nodes": 16177,
+        "listeners": 1083
+      },
+      "payload": {
+        "chatsGetLight": 150357,
+        "boardGet": 455,
+        "maGet": 122517,
+        "sessionWins": 2,
+        "chatIds": [
+          "fix-long-thread"
+        ],
+        "domNodes": 4626
+      },
+      "shimUnimplemented": [
+        "engine:list-available",
+        "lsp:prewarm",
+        "ma:panel-states",
+        "usage:get"
+      ],
+      "diskKB": {
+        "chatsV3": 336,
+        "boards": 0,
+        "chatsLegacy": 190,
+        "maLegacy": 143,
+        "sessionChats": 0
+      },
+      "procDetail": [
+        {
+          "name": "agentcodegui.exe",
+          "role": "browser",
+          "sub": "",
+          "wsMB": 32.1,
+          "privMB": 13.1
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "role": "browser",
+          "sub": "",
+          "wsMB": 187.1,
+          "privMB": 93
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "role": "crashpad-handler",
+          "sub": "",
+          "wsMB": 9.5,
+          "privMB": 2.5
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "role": "utility",
+          "sub": "storage.mojom.StorageService",
+          "wsMB": 19.6,
+          "privMB": 8.9
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "role": "renderer",
+          "sub": "",
+          "wsMB": 179.1,
+          "privMB": 125.2
+        }
+      ]
+    },
+    {
+      "arm": "off",
+      "seq": 2,
+      "panels": 4,
+      "totalWsMB": 425.8,
+      "totalPrivMB": 244,
+      "procs": 5,
+      "bucket": {
+        "browser": {
+          "ws": 30.8,
+          "priv": 12.4,
+          "n": 1
+        },
+        "renderer": {
+          "ws": 179.1,
+          "priv": 126.2,
+          "n": 1
+        },
+        "other": {
+          "ws": 216,
+          "priv": 105.4,
+          "n": 3
+        }
+      },
+      "heapUsedMB": 11.9,
+      "heapTotalMB": 25,
+      "domNodes": {
+        "documents": 2,
+        "nodes": 16193,
+        "listeners": 1055
+      },
+      "payload": {
+        "chatsGetLight": 149127,
+        "boardGet": 24,
+        "maGet": 123297,
+        "sessionWins": 2,
+        "chatIds": [
+          "fix-long-thread"
+        ],
+        "domNodes": 4626
+      },
+      "shimUnimplemented": [
+        "engine:list-available",
+        "lsp:prewarm",
+        "ma:panel-states",
+        "usage:get"
+      ],
+      "diskKB": {
+        "chatsV3": 0,
+        "boards": 0,
+        "chatsLegacy": 190,
+        "maLegacy": 145,
+        "sessionChats": 0
+      },
+      "procDetail": [
+        {
+          "name": "agentcodegui.exe",
+          "role": "browser",
+          "sub": "",
+          "wsMB": 30.8,
+          "privMB": 12.4
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "role": "browser",
+          "sub": "",
+          "wsMB": 186.8,
+          "privMB": 93.9
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "role": "crashpad-handler",
+          "sub": "",
+          "wsMB": 9.5,
+          "privMB": 2.5
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "role": "utility",
+          "sub": "storage.mojom.StorageService",
+          "wsMB": 19.7,
+          "privMB": 9
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "role": "renderer",
+          "sub": "",
+          "wsMB": 179.1,
+          "privMB": 126.2
+        }
+      ]
+    },
+    {
+      "arm": "on",
+      "seq": 3,
+      "panels": 4,
+      "totalWsMB": 428.6,
+      "totalPrivMB": 244.3,
+      "procs": 5,
+      "bucket": {
+        "browser": {
+          "ws": 32,
+          "priv": 13.3,
+          "n": 1
+        },
+        "renderer": {
+          "ws": 179.4,
+          "priv": 126.2,
+          "n": 1
+        },
+        "other": {
+          "ws": 217.1,
+          "priv": 104.8,
+          "n": 3
+        }
+      },
+      "heapUsedMB": 12.1,
+      "heapTotalMB": 25.5,
+      "domNodes": {
+        "documents": 2,
+        "nodes": 16175,
+        "listeners": 1083
+      },
+      "payload": {
+        "chatsGetLight": 150357,
+        "boardGet": 455,
+        "maGet": 122517,
+        "sessionWins": 2,
+        "chatIds": [
+          "fix-long-thread"
+        ],
+        "domNodes": 4626
+      },
+      "shimUnimplemented": [
+        "engine:list-available",
+        "lsp:prewarm",
+        "ma:panel-states",
+        "usage:get"
+      ],
+      "diskKB": {
+        "chatsV3": 336,
+        "boards": 0,
+        "chatsLegacy": 190,
+        "maLegacy": 143,
+        "sessionChats": 0
+      },
+      "procDetail": [
+        {
+          "name": "agentcodegui.exe",
+          "role": "browser",
+          "sub": "",
+          "wsMB": 32,
+          "privMB": 13.3
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "role": "browser",
+          "sub": "",
+          "wsMB": 188,
+          "privMB": 93.3
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "role": "crashpad-handler",
+          "sub": "",
+          "wsMB": 9.5,
+          "privMB": 2.5
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "role": "utility",
+          "sub": "storage.mojom.StorageService",
+          "wsMB": 19.6,
+          "privMB": 9
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "role": "renderer",
+          "sub": "",
+          "wsMB": 179.4,
+          "privMB": 126.2
+        }
+      ]
+    },
+    {
+      "arm": "off",
+      "seq": 3,
+      "panels": 4,
+      "totalWsMB": 420,
+      "totalPrivMB": 236.7,
+      "procs": 5,
+      "bucket": {
+        "browser": {
+          "ws": 30.2,
+          "priv": 11.3,
+          "n": 1
+        },
+        "renderer": {
+          "ws": 173.9,
+          "priv": 119.9,
+          "n": 1
+        },
+        "other": {
+          "ws": 215.9,
+          "priv": 105.5,
+          "n": 3
+        }
+      },
+      "heapUsedMB": 11.7,
+      "heapTotalMB": 26.3,
+      "domNodes": {
+        "documents": 2,
+        "nodes": 16175,
+        "listeners": 1023
+      },
+      "payload": {
+        "chatsGetLight": 149127,
+        "boardGet": 24,
+        "maGet": 123297,
+        "sessionWins": 2,
+        "chatIds": [
+          "fix-long-thread"
+        ],
+        "domNodes": 4626
+      },
+      "shimUnimplemented": [
+        "engine:list-available",
+        "lsp:prewarm",
+        "ma:panel-states",
+        "usage:get"
+      ],
+      "diskKB": {
+        "chatsV3": 0,
+        "boards": 0,
+        "chatsLegacy": 190,
+        "maLegacy": 145,
+        "sessionChats": 0
+      },
+      "procDetail": [
+        {
+          "name": "agentcodegui.exe",
+          "role": "browser",
+          "sub": "",
+          "wsMB": 30.2,
+          "privMB": 11.3
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "role": "browser",
+          "sub": "",
+          "wsMB": 186.8,
+          "privMB": 94
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "role": "crashpad-handler",
+          "sub": "",
+          "wsMB": 9.5,
+          "privMB": 2.5
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "role": "utility",
+          "sub": "storage.mojom.StorageService",
+          "wsMB": 19.6,
+          "privMB": 9
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "role": "renderer",
+          "sub": "",
+          "wsMB": 173.9,
+          "privMB": 119.9
+        }
+      ]
+    },
+    {
+      "arm": "on",
+      "seq": 4,
+      "panels": 4,
+      "totalWsMB": 431.3,
+      "totalPrivMB": 246.6,
+      "procs": 5,
+      "bucket": {
+        "browser": {
+          "ws": 32.3,
+          "priv": 13.5,
+          "n": 1
+        },
+        "renderer": {
+          "ws": 183.5,
+          "priv": 128.8,
+          "n": 1
+        },
+        "other": {
+          "ws": 215.4,
+          "priv": 104.4,
+          "n": 3
+        }
+      },
+      "heapUsedMB": 11.7,
+      "heapTotalMB": 23.8,
+      "domNodes": {
+        "documents": 1,
+        "nodes": 16236,
+        "listeners": 1327
+      },
+      "payload": {
+        "chatsGetLight": 150357,
+        "boardGet": 455,
+        "maGet": 122517,
+        "sessionWins": 2,
+        "chatIds": [
+          "fix-long-thread"
+        ],
+        "domNodes": 4626
+      },
+      "shimUnimplemented": [
+        "engine:list-available",
+        "lsp:prewarm",
+        "ma:panel-states",
+        "usage:get"
+      ],
+      "diskKB": {
+        "chatsV3": 336,
+        "boards": 0,
+        "chatsLegacy": 190,
+        "maLegacy": 143,
+        "sessionChats": 0
+      },
+      "procDetail": [
+        {
+          "name": "agentcodegui.exe",
+          "role": "browser",
+          "sub": "",
+          "wsMB": 32.3,
+          "privMB": 13.5
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "role": "browser",
+          "sub": "",
+          "wsMB": 186.2,
+          "privMB": 92.9
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "role": "crashpad-handler",
+          "sub": "",
+          "wsMB": 9.5,
+          "privMB": 2.5
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "role": "utility",
+          "sub": "storage.mojom.StorageService",
+          "wsMB": 19.7,
+          "privMB": 9
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "role": "renderer",
+          "sub": "",
+          "wsMB": 183.5,
+          "privMB": 128.8
+        }
+      ]
+    },
+    {
+      "arm": "off",
+      "seq": 4,
+      "panels": 4,
+      "totalWsMB": 427.4,
+      "totalPrivMB": 242.7,
+      "procs": 5,
+      "bucket": {
+        "browser": {
+          "ws": 30.2,
+          "priv": 11.3,
+          "n": 1
+        },
+        "renderer": {
+          "ws": 179.3,
+          "priv": 125.6,
+          "n": 1
+        },
+        "other": {
+          "ws": 217.8,
+          "priv": 105.8,
+          "n": 3
+        }
+      },
+      "heapUsedMB": 11.9,
+      "heapTotalMB": 26,
+      "domNodes": {
+        "documents": 2,
+        "nodes": 16196,
+        "listeners": 1074
+      },
+      "payload": {
+        "chatsGetLight": 149127,
+        "boardGet": 24,
+        "maGet": 123297,
+        "sessionWins": 2,
+        "chatIds": [
+          "fix-long-thread"
+        ],
+        "domNodes": 4626
+      },
+      "shimUnimplemented": [
+        "engine:list-available",
+        "lsp:prewarm",
+        "ma:panel-states",
+        "usage:get"
+      ],
+      "diskKB": {
+        "chatsV3": 0,
+        "boards": 0,
+        "chatsLegacy": 190,
+        "maLegacy": 145,
+        "sessionChats": 0
+      },
+      "procDetail": [
+        {
+          "name": "agentcodegui.exe",
+          "role": "browser",
+          "sub": "",
+          "wsMB": 30.2,
+          "privMB": 11.3
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "role": "browser",
+          "sub": "",
+          "wsMB": 188.3,
+          "privMB": 94.4
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "role": "crashpad-handler",
+          "sub": "",
+          "wsMB": 9.9,
+          "privMB": 2.5
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "role": "utility",
+          "sub": "storage.mojom.StorageService",
+          "wsMB": 19.6,
+          "privMB": 8.9
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "role": "renderer",
+          "sub": "",
+          "wsMB": 179.3,
+          "privMB": 125.6
+        }
+      ]
+    },
+    {
+      "arm": "on",
+      "seq": 5,
+      "panels": 4,
+      "totalWsMB": 433.4,
+      "totalPrivMB": 249.6,
+      "procs": 5,
+      "bucket": {
+        "browser": {
+          "ws": 32.3,
+          "priv": 13,
+          "n": 1
+        },
+        "renderer": {
+          "ws": 184,
+          "priv": 131.2,
+          "n": 1
+        },
+        "other": {
+          "ws": 217.1,
+          "priv": 105.5,
+          "n": 3
+        }
+      },
+      "heapUsedMB": 12.1,
+      "heapTotalMB": 26.3,
+      "domNodes": {
+        "documents": 2,
+        "nodes": 16196,
+        "listeners": 1083
+      },
+      "payload": {
+        "chatsGetLight": 150357,
+        "boardGet": 455,
+        "maGet": 122517,
+        "sessionWins": 2,
+        "chatIds": [
+          "fix-long-thread"
+        ],
+        "domNodes": 4626
+      },
+      "shimUnimplemented": [
+        "engine:list-available",
+        "lsp:prewarm",
+        "ma:panel-states",
+        "usage:get"
+      ],
+      "diskKB": {
+        "chatsV3": 336,
+        "boards": 0,
+        "chatsLegacy": 190,
+        "maLegacy": 143,
+        "sessionChats": 0
+      },
+      "procDetail": [
+        {
+          "name": "agentcodegui.exe",
+          "role": "browser",
+          "sub": "",
+          "wsMB": 32.3,
+          "privMB": 13
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "role": "browser",
+          "sub": "",
+          "wsMB": 187.5,
+          "privMB": 94
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "role": "crashpad-handler",
+          "sub": "",
+          "wsMB": 9.9,
+          "privMB": 2.5
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "role": "utility",
+          "sub": "storage.mojom.StorageService",
+          "wsMB": 19.7,
+          "privMB": 9
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "role": "renderer",
+          "sub": "",
+          "wsMB": 184,
+          "privMB": 131.2
+        }
+      ]
+    },
+    {
+      "arm": "off",
+      "seq": 5,
+      "panels": 4,
+      "totalWsMB": 425.7,
+      "totalPrivMB": 242.8,
+      "procs": 5,
+      "bucket": {
+        "browser": {
+          "ws": 30.3,
+          "priv": 11.3,
+          "n": 1
+        },
+        "renderer": {
+          "ws": 179.7,
+          "priv": 127.2,
+          "n": 1
+        },
+        "other": {
+          "ws": 215.7,
+          "priv": 104.3,
+          "n": 3
+        }
+      },
+      "heapUsedMB": 11.8,
+      "heapTotalMB": 26.5,
+      "domNodes": {
+        "documents": 2,
+        "nodes": 16193,
+        "listeners": 1017
+      },
+      "payload": {
+        "chatsGetLight": 149127,
+        "boardGet": 24,
+        "maGet": 123297,
+        "sessionWins": 2,
+        "chatIds": [
+          "fix-long-thread"
+        ],
+        "domNodes": 4626
+      },
+      "shimUnimplemented": [
+        "engine:list-available",
+        "lsp:prewarm",
+        "ma:panel-states",
+        "usage:get"
+      ],
+      "diskKB": {
+        "chatsV3": 0,
+        "boards": 0,
+        "chatsLegacy": 190,
+        "maLegacy": 145,
+        "sessionChats": 0
+      },
+      "procDetail": [
+        {
+          "name": "agentcodegui.exe",
+          "role": "browser",
+          "sub": "",
+          "wsMB": 30.3,
+          "privMB": 11.3
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "role": "browser",
+          "sub": "",
+          "wsMB": 186.6,
+          "privMB": 92.9
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "role": "crashpad-handler",
+          "sub": "",
+          "wsMB": 9.5,
+          "privMB": 2.5
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "role": "utility",
+          "sub": "storage.mojom.StorageService",
+          "wsMB": 19.6,
+          "privMB": 8.9
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "role": "renderer",
+          "sub": "",
+          "wsMB": 179.7,
+          "privMB": 127.2
+        }
+      ]
+    }
+  ]
+}

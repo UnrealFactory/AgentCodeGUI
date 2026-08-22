@@ -1,0 +1,143 @@
+{
+  "at": "2026-08-22T20:46:45.108Z",
+  "exe": "bench/scratch/pin/agentcodegui-critic.exe",
+  "spots": {
+    "s1": {
+      "markers": [
+        {
+          "id": "c-1",
+          "marked": false,
+          "msgs": 6
+        },
+        {
+          "id": "c-2",
+          "marked": true,
+          "msgs": null
+        },
+        {
+          "id": "c-3",
+          "marked": true,
+          "msgs": null
+        }
+      ],
+      "before": {
+        "c-1": 6,
+        "c-2": 7,
+        "c-3": 8
+      },
+      "after": {
+        "c-1": 6,
+        "c-2": 7,
+        "c-3": 8
+      }
+    },
+    "s2": {
+      "panels0": [
+        {
+          "title": "P0",
+          "msgs": 5
+        },
+        {
+          "title": "P1",
+          "msgs": 4
+        },
+        {
+          "title": "",
+          "msgs": null
+        },
+        {
+          "title": "",
+          "msgs": null
+        },
+        {
+          "title": "",
+          "msgs": null
+        },
+        {
+          "title": "",
+          "msgs": null
+        }
+      ],
+      "panels1": [
+        {
+          "title": "P0-크리틱",
+          "msgs": 5
+        },
+        {
+          "title": "P1",
+          "msgs": 4
+        },
+        {
+          "title": "",
+          "msgs": null
+        },
+        {
+          "title": "",
+          "msgs": null
+        },
+        {
+          "title": "",
+          "msgs": null
+        },
+        {
+          "title": "",
+          "msgs": null
+        }
+      ],
+      "sessionIds": [
+        "sess-A"
+      ]
+    },
+    "s3": {
+      "listAtBoot": [
+        "w-1",
+        "w-2"
+      ],
+      "afterOpen": [
+        "s-31520-1",
+        "w-1",
+        "w-2"
+      ],
+      "openedId": "s-31520-1",
+      "allPayloads": [
+        [
+          "s-31520-1",
+          "w-1",
+          "w-2"
+        ],
+        [
+          "w-1",
+          "w-2"
+        ]
+      ],
+      "afterClose": [
+        "w-1",
+        "w-2"
+      ],
+      "listAfterClose": [
+        "w-1",
+        "w-2"
+      ],
+      "persistedLostOnClose": []
+    },
+    "s4": {
+      "session-wins:persist": "UNIMPLEMENTED",
+      "session-wins:hydrate": "UNIMPLEMENTED",
+      "session-wins:rename": "UNIMPLEMENTED",
+      "session-wins:report": "null",
+      "w1MsgsAfterPersist": 3
+    }
+  },
+  "findings": [
+    {
+      "id": "S4-추가채팅저장",
+      "why": "추가 채팅 창의 대화를 저장/복원할 채널이 없다: session-wins:persist, session-wins:hydrate, session-wins:rename",
+      "session-wins:persist": "UNIMPLEMENTED",
+      "session-wins:hydrate": "UNIMPLEMENTED",
+      "session-wins:rename": "UNIMPLEMENTED",
+      "session-wins:report": "null",
+      "w1MsgsAfterPersist": 3
+    }
+  ],
+  "verdict": "FAIL"
+}
