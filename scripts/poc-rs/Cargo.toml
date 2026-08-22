@@ -1,0 +1,25 @@
+# M3 PoC — Rust가 Node SDK 없이 Claude Code CLI를 직접 모는 최소 하네스.
+# ★ 빈 [workspace] 테이블: 이 크레이트를 부모(레포 루트) 워크스페이스에 편입시키지
+#   않는다. 루트 Cargo.toml / Cargo.lock을 건드리지 않고 독립으로 빌드·실행된다.
+[workspace]
+
+[package]
+name = "poc_engine"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+serde_json = "1"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = [
+  "Win32_Foundation",
+  "Win32_Security",
+  "Win32_System_JobObjects",
+  "Win32_System_Threading",
+] }
+
+[profile.dev]
+debug = 0

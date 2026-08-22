@@ -11,7 +11,8 @@
 | `sdk.d.ts` | 같은 폴더 `sdk.d.ts` (391,408 B) | 타입 선언 + 상세 JSDoc — **줄 번호** 인용 |
 | `claude.exe` | `.../claude-agent-sdk-win32-x64/claude.exe` (337,672,352 B) | bun 단일바이너리. **스트립 안 됨** — JS 소스 문자열이 그대로 들어 있어 grep 가능 |
 | `engine.ts` | `src/main/claude/engine.ts` (2537줄) | 2.6.2의 실전 의미론 — 줄 번호 인용 |
-| 실측 | `scripts/poc-claude-cli-wire.mjs` | 이 문서와 함께 추가. §7 참조 |
+| 실측 | `scripts/poc-claude-cli-wire.mjs` | 이 문서와 함께 추가. §7.1·7.2 |
+| 실측(Rust) | `scripts/poc-rs/` (`poc_engine`) + `docs/m3-poc-findings.md` | M3 게이트. SDK 없이 tokio가 직접 구동 — 승인 왕복·interrupt·resume/fork·job object. §7.4 |
 
 레포 기준 커밋: `571fb92` (2.6.2), 브랜치 `feature/3.0.0-beta`.
 CLI 실측 버전: **2.1.239** (SDK 래퍼 0.3.239, `manifest.json` `commit
@@ -556,11 +557,68 @@ suppress_always_allow_rule:…,requires_user_interaction:…})`.
 {"…":{"behavior":"deny","message":"모델이 읽을 사유","interrupt":false,"toolUseID":"toolu_…"}}
 ```
 
-> **`toolUseID`**: SDK는 콜백 반환값에 `{...result, toolUseID: request.tool_use_id}`를
-> **무조건 덧붙인다**(`sdk.mjs @953261`). Rust도 넣어 주는 게 안전하다.
+> **`toolUseID` — 3항 계약 (2026-08-22 실측으로 확정, `docs/m3-poc-findings.md` §2)**
+>
+> 1. **라이브 매칭 키는 `request_id`뿐이다.** `toolUseID`를 빼고 응답해도 진행 중인
+>    턴은 멈추지 않는다 — 실측에서 응답 **11 ms 뒤** `tool_result`가 왔다
+>    (`poc_engine approve-noid`).
+> 2. **그래도 항상 넣어야 한다.** CLI의 **고아/지연 재생 경로**
+>    (`claude.exe @310708475` `handleOrphanedPermission`)는 턴이 이미 끝났거나
+>    프로세스가 교체된 뒤 도착한 승인 응답을 다시 태울 때 `toolUseID`로
+>    assistant 메시지의 `tool_use` 블록을 찾는다. 없으면
+>    `"dropping orphaned permission — permissionResult is missing toolUseID"` 경고 한 줄만
+>    남기고 **통째로 버린다**(사용자가 누른 허용이 증발). 같은 함수가
+>    `updatedInput`이 비면 `{}`로 폴백하므로 **`allow`엔 원본 입력을 반드시 되넣는다.**
+> 3. CLI의 **중복 응답 방어가 `toolUseID`를 키로 삼는다**
+>    (`Ignoring duplicate control_response for already-resolved toolUseID=… request_id=…`).
+>
 > `null` 반환(= 응답을 아예 안 씀)은 "다른 경로로 이미 응답했다"는 뜻이며,
 > 실수로 그러면 **툴이 영원히 막힌다 — 승인 요청에는 park deadline이 없다**
-> (`sdk.d.ts:209-217` 경고).
+> (`sdk.d.ts:209-217` 경고). **실측 확인**: 90초 무응답 동안 진행 중이던 메시지의 꼬리
+> 3프레임 외에 아무것도 오지 않았고 타임아웃도 없었다. 바이너리에도 `can_use_tool`용
+> 타임아웃 문자열이 0건이다(`park deadline` 문자열은 `request_user_dialog`와
+> 팀 teardown 전용). 멈춘 턴은 **`interrupt`로만 풀린다**(아래).
+
+**★ 실측 페이로드는 최소 집합이다.** 2.1.239 / `--permission-mode default` / `Write`에서
+실제로 온 키는 `subtype, tool_name, display_name, description, input,
+permission_suggestions, tool_use_id` **7개뿐**. 위 표의 `title`·`decision_reason`·
+`decision_reason_type`·`classifier_approvable`·`matched_ask_rule`·`blocked_path`·
+`agent_id`·`suppress_always_allow_rule`은 **하나도 오지 않았다** → Rust 파서는
+`tool_name`/`input`/`tool_use_id` 외 **전부 `Option`**이어야 한다.
+`request_id`는 CLI가 **UUID**로 만든다(SDK의 base36과 무관 — 발신자 자유).
+
+**`requires_user_interaction`**: Write에는 **부재**, `AskUserQuestion`에는 **`true`**로
+왔다(실측). "모드와 무관하게 사람에게 물어야 하는 호출"이라는 CLI의 힌트다 →
+Rust는 이 값을 1차 기준, 도구 이름(`AskUserQuestion`)을 폴백으로 두면 CLI가 나중에
+다른 대화형 도구를 추가해도 자동으로 따라간다.
+
+**★ CLI → 앱 `control_cancel_request` (반드시 처리)**
+
+떠 있는 `can_use_tool`이 있는 상태에서 앱이 `interrupt`를 보내면, CLI는 **자기가 낸
+승인 요청을 스스로 철회**한다 — 실측 순서:
+
+```
+>>> control_request {"subtype":"interrupt"} (request_id "int-1")
+<<< {"type":"control_cancel_request","request_id":"<그 can_use_tool의 id>"}   ★
+<<< control_response success int-1 {"still_queued":[]}
+<<< user[tool_result is_error=true "The user doesn't want to proceed with this tool use…"]
+<<< user[text "[Request interrupted by user for tool use]"]
+<<< result/error_during_execution  terminal_reason="aborted_tools"
+```
+
+§4.1은 `control_cancel_request`를 "요청 보낸 쪽이 철회"라고만 적었지만, **앱은 받는
+쪽이기도 하다.** 이걸 처리하지 않으면 사용자 화면에 **이미 죽은 승인 카드가 영영 남는다**
+(2.6.2는 SDK의 `handleControlCancelRequest`가 대신 해 주고 있었다).
+받으면 그 `request_id`의 대기자를 "철회됨"으로 깨우고 **응답은 보내지 않는다.**
+
+**`updatedPermissions` 실측**: `{"type":"addRules","rules":[{"toolName":"Write"}],
+"behavior":"allow","destination":"session"}`로 답한 뒤 **같은 턴의 두 번째 `Write`는
+승인 요청 없이 통과**했다(`asks: 1`). CLI 쪽 대응 코드도 확인
+(`setSessionToolPermissionContext`) — 2.6.2의 "항상 허용"을 그대로 이식하면 된다.
+
+> **함정 — `Bash(echo …)`로는 승인 요청이 안 온다.** `--permission-mode default` +
+> `--permission-prompt-tool stdio`에서도 CLI의 커맨드 안전 분류기가 읽기 전용 셸 명령을
+> 스스로 통과시킨다(실측 `asks: 0`). 승인 경로를 시험하려면 **`Write` 등 MUTATING 도구**를 쓸 것.
 
 **2.6.2의 게이트 정책** (`engine.ts:2188-2231`) — Rust가 그대로 옮길 것:
 
@@ -807,6 +865,29 @@ requested_schema, title, display_name, description}`. 핸들러 없으면
 error_max_budget_usd | error_max_structured_output_retries`이고 `result` 대신
 **`errors: string[]`**.
 
+**중단된 턴의 result (실측)** — `terminal_reason`의 값 집합이 스키마에 없어 실측이 원전:
+
+```jsonc
+// 스트리밍 중 interrupt
+{"type":"result","subtype":"error_during_execution","is_error":true,
+ "stop_reason":null,"terminal_reason":"aborted_streaming","total_cost_usd":0,
+ "errors":[…],"permission_denials":[]}
+// 승인 대기 중 interrupt
+{"type":"result","subtype":"error_during_execution","is_error":true,
+ "stop_reason":"tool_use","terminal_reason":"aborted_tools",
+ "errors":["[ede_diagnostic] result_type=user last_content_type=n/a stop_reason=tool_use"],
+ "permission_denials":[{"tool_name":"Write","tool_use_id":"toolu_…",
+                        "tool_input":{…원본 입력…}}]}
+// 정상 종료
+{"…","subtype":"success","is_error":false,"stop_reason":"end_turn",
+ "terminal_reason":"completed","permission_denials":[]}
+```
+
+중단 턴은 `total_cost_usd`가 **0**으로 온다(누적값이 아니라 0 — 아래 참조).
+직전 프레임으로 **잘린 텍스트가 완성 `assistant` 프레임**으로 한 번 오고,
+이어서 `user` 텍스트 `"[Request interrupted by user]"`(도구 승인 중이면
+`"[Request interrupted by user for tool use]"`)가 온다.
+
 > **함정**: `subtype:"success"`인데 `is_error:true`일 수 있다(실측 §7.1 —
 > 미로그인). **`is_error`가 진실**이다. `engine.ts:1080-1085`가 정확히 그렇게 읽는다:
 > `is_error ? (errors?.join('; ') ?? result ?? '실행 실패') : (result ?? '')`.
@@ -820,7 +901,10 @@ error_max_budget_usd | error_max_structured_output_retries`이고 `result` 대�
 - **누적 의미**: `total_cost_usd`/`modelUsage`는 **스트리밍 입력 세션에서 턴을
   가로질러 누적**된다 — 마지막 result만 읽고 더하지 말 것(`sdk.d.ts:4646` JSDoc).
   2.6.2는 턴마다 `addSpend(total_cost_usd)`를 하는데, 이건 **상주 다중 턴에서
-  중복 가산**이 된다(§9 미지수 후보였으나 실사용상 상주는 백그라운드 있을 때뿐).
+  중복 가산**이 된다.
+  **✅ 실측 확정 (2026-08-22)**: 한 프로세스의 연속 3턴에서
+  `0 → 0.0029343 → 0.0055936`. 3번째 턴의 실제 비용은 0.0027 남짓인데 값은 누적치다.
+  → **Rust는 직전 result 값을 빼서 델타로 가산할 것.**
 
 ### 5.7 `system` / `compact_boundary`  (`sdk.d.ts:3159`)
 
@@ -1198,6 +1282,16 @@ node scripts/poc-claude-cli-wire.mjs          # 0원 스모크 (자격증명 없
 node scripts/poc-claude-cli-wire.mjs --live   # 실계정 1턴 (haiku + --thinking disabled)
 ```
 
+`scripts/poc-rs/` (Rust/tokio, §7.4). 같은 argv·같은 프레이밍을 **Node 없이** 재현하고
+승인 왕복·중단·resume/fork·job object까지 실행한다. 결과 전문은 `docs/m3-poc-findings.md`.
+
+```bash
+cd scripts/poc-rs && cargo build
+./target/debug/poc_engine.exe smoke     # 0원
+./target/debug/poc_engine.exe approve   # LIVE (approve-noid | park | ask | interrupt | resume)
+bash job-test.sh --with-job [--busy]    # 0원~극저 (job object 대조)
+```
+
 ### 7.1 Run A — 무인증 스모크 (0원)
 
 env: `CLAUDE_CONFIG_DIR=%TEMP%\ccg-cli-wire\noauth-config`(빈 폴더),
@@ -1266,9 +1360,31 @@ env: `CLAUDE_CONFIG_DIR=~/.agentcodegui/accounts/lmg56634_gmail.com-68e935`
 | `result.modelUsage[*].contextWindow` | ✅ 200000 |
 | `subtype:"success"` ∧ `is_error:true` 가능 | ✅ (Run A) |
 | stdin EOF → CLI 종료 | ✅ (exit 0 / 1) |
-| `--permission-prompt-tool stdio` 수용 | ✅ (플래그 거부 없음). **단 `can_use_tool` 왕복 자체는 미실행** (§9-1) |
+| `--permission-prompt-tool stdio` 수용 | ✅ (플래그 거부 없음). **왕복 자체는 §7.4에서 실행** |
 | `background_tasks_changed` / `task_*` / `workflow_progress` 모양 | 🔶 **바이너리 소스 문자열로 확인**(§5.11·5.13에 emitter 원문 인용), 라이브 미관측 |
-| `interrupt` / `set_permission_mode` / `hook_callback` / `mcp_message` / `request_user_dialog` | 🔶 `sdk.d.ts` 스키마 + `claude.exe` 문자열 존재 확인, 라이브 미관측 |
+| `can_use_tool` 왕복 / `interrupt` / `resume` / `fork-session` | ✅ **§7.4에서 라이브 실측** |
+| `set_permission_mode` / `hook_callback` / `mcp_message` / `request_user_dialog` | 🔶 `sdk.d.ts` 스키마 + `claude.exe` 문자열 존재 확인, 라이브 미관측 |
+
+### 7.4 Run C — Rust 하네스 (`scripts/poc-rs`, 2026-08-22)
+
+Node/SDK를 전혀 쓰지 않고 **Rust(tokio)가 직접** `claude.exe`를 몬 M3 게이트 실측.
+전문은 **`docs/m3-poc-findings.md`**. 라이브 스폰 11회 / 합계 ≈ $0.09.
+
+| 시나리오 | 명령 | 결론 |
+|---|---|---|
+| 스폰+init+스트리밍 | `poc_engine smoke` (0원) | ✅ 13,533 B짜리 initialize 응답이 8 KiB read 경계를 넘어 **2회 read로 재조립**(`spanning_reads=1`, `parse_err=0`). stderr는 완전 분리(잘못된 플래그 → stderr 1줄, stdout 0바이트) |
+| `can_use_tool` (toolUseID 포함) | `poc_engine approve` | ✅ allow 왕복 성공. `updatedPermissions addRules/session` → **둘째 Write는 재질문 없음** |
+| `can_use_tool` (toolUseID 제외) | `poc_engine approve-noid` | ✅ **안 멈춘다**(11 ms 뒤 tool_result). 매칭 키는 `request_id`. 단 고아 재생 경로 때문에 **항상 넣을 것** — §4.4a |
+| 무응답 park | `poc_engine park` | ✅ **park deadline 없음**(90초 무음) → `interrupt`로만 회수. CLI가 `control_cancel_request`를 되보낸다 |
+| AskUserQuestion | `poc_engine ask` | ✅ `deny`+`message` 트릭 유효. `requires_user_interaction:true` |
+| interrupt | `poc_engine interrupt` | ✅ 프로세스 생존, 2·3턴 정상. `terminal_reason:"aborted_streaming"`. **사망 루프 미재현** |
+| resume / fork | `poc_engine resume` | ✅ resume=같은 id·같은 파일에 append, fork=새 id·새 파일·원본 보존 |
+| job object | `job-test.sh --with-job|--no-job [--busy]` | ✅ `KILL_ON_JOB_CLOSE`가 claude.exe+손자 전원 회수. **job 없이 턴 중 크래시 = 전원 잔존** |
+
+부수 관측: `system/init`은 **턴마다** 오고 `session_id`는 그대로다(상주 3턴 실측 —
+세션 리셋 판정은 **id 변화**로만 할 것). 자격증명 없는 config의 init 응답
+`account`는 `{"apiProvider":"firstParty","tokenSource":"none"}` 형태다
+(§4.2 샘플의 `email`/`organization`/`subscriptionType`은 로그인 상태에서만).
 
 **바이너리 문자열 존재 확인** (§0의 스캔 레시피, 출현 횟수):
 `can_use_tool`×74, `request_user_dialog`×80, `set_permission_mode`×54,
@@ -1500,26 +1616,27 @@ Rust: safeStorage → **DPAPI**(`CryptProtectData`)로 대체(`ccg-store` 담당
 
 ## 9. 가장 위험한 미지수 (Rust 착수 전 반드시 PoC로 닫을 것)
 
-### ① `can_use_tool` / `request_user_dialog` / `interrupt` 왕복 — **스키마만 있고 라이브 미검증**
+### ① `can_use_tool` / `interrupt` 왕복 — ✅ **닫힘 (2026-08-22, `scripts/poc-rs`)**
 
-이번 실검증 예산(1턴)으로는 도구를 부르지 않는 턴만 돌렸다.
-스키마(`sdk.d.ts`)와 CLI 바이너리의 emitter 문자열은 확인했지만, 실제로 응답
-JSON을 CLI가 **받아들이는지**는 안 봤다. 특히:
+전문: **`docs/m3-poc-findings.md`**. 네 개의 미지수에 대한 답:
 
-- 응답에 `toolUseID`가 **필수인지 선택인지**. SDK는 무조건 덧붙인다
-  (`sdk.mjs @950450` `{...n, toolUseID: e.request.tool_use_id}`) — CLI가
-  `request_id`만으로 매칭하는지, 아니면 이 필드를 본다면 빠졌을 때 툴이 영구 정지한다.
-- `updatedPermissions`의 `destination:"session"`이 실제로 세션 스코프 규칙을
-  만들어 재질문을 멈추는지(2.6.2의 "항상 허용" — `engine.ts:2222-2228`).
-- `AskUserQuestion`을 `behavior:"deny"` + message로 답하는 트릭이 현행 CLI(2.1.239)
-  에서도 유효한지. CLI가 `requires_user_interaction:true`를 붙여 보내기 시작했으므로
-  (§4.4a) 취급이 달라졌을 수 있다.
-- `interrupt` 응답의 `still_queued` / `cancelled` 실제 페이로드, 그리고
-  "interrupt 접수 후 result가 온다"는 2.6.2의 전제가 2.1.239에서도 성립하는지.
+| 미지수 | 답 |
+|---|---|
+| 응답의 `toolUseID`가 필수인가 | **라이브 턴에선 선택**(매칭 키는 `request_id`, 응답 11 ms 뒤 실행). **그러나 고아/지연 재생 경로가 이 필드로 tool_use 블록을 찾으므로 없으면 조용히 버려진다** → 계약은 "항상 넣는다". `allow`의 `updatedInput`도 같은 이유로 필수(빈 값이면 `{}` 폴백). §4.4a에 3항 계약으로 반영 |
+| `updatedPermissions destination:"session"` | ✅ 유효. 같은 턴의 둘째 `Write`가 재질문 없이 통과(`asks: 1`) |
+| `AskUserQuestion` `deny`+message 트릭 | ✅ 2.1.239에서도 유효. message가 `tool_result(is_error=true)`로 모델에 전달되고 모델이 답으로 읽는다. `requires_user_interaction:true`가 붙어도 취급 동일 |
+| `interrupt` 접수 후 result | ✅ 성립. `{"still_queued":[]}` 접수 후 **8 ms** 만에 `result/error_during_execution`(`terminal_reason:"aborted_streaming"`). 프로세스는 살고 다음 2턴 정상 |
 
-**닫는 법**: `M3-PoC` 게이트(ARCHITECTURE-3.0.md:77-78)에 이 4개를 명시적 체크로
-넣는다. `--model haiku` + `--permission-mode default` + `Bash(echo hi)`를 유도하는
-1턴이면 can_use_tool·interrupt·always-allow를 한 번에 볼 수 있다(비용 ~$0.05).
+**추가로 밝혀진 것 (원래 미지수 목록에 없던 것)**
+
+- **승인 요청엔 정말 타임아웃이 없다.** 90초 무응답 = 완전 무음. 회수 수단은
+  `interrupt` 하나뿐이고, 그때 CLI가 **`control_cancel_request`를 앱에 되보낸다** →
+  앱이 이걸 처리해야 죽은 승인 카드가 안 남는다(§4.4a 신설 문단).
+- **`Bash(echo hi)`로는 승인 요청 자체가 안 온다** — 커맨드 안전 분류기가 통과시킨다.
+  (이 문서의 예전 서술 "`Bash(echo hi)` 1턴이면 can_use_tool을 볼 수 있다"는 **틀렸다.**
+  실측 `asks: 0`. 승인 경로 시험은 **`Write`**로 할 것.)
+- `total_cost_usd`가 프로세스 내 턴을 가로질러 누적됨을 3턴 연속 수치로 확정(§5.6).
+- `system/init`이 턴마다 오고 `session_id`는 유지된다(§7.4).
 
 ### ② 상주 회계(정착 ↔ 보고 턴 ↔ 입력 닫기)의 **순서 의존성**
 
@@ -1540,7 +1657,22 @@ Rust로 옮기면 타이밍(파싱 속도, 채널 지연, 스레드 스케줄링
 Esc 후 재전송)을 **프레임 기록 재생 하네스**로 만들어 Rust 상태기계에 오프라인
 주입한다. 라이브 비용 0.
 
-### ③ Windows 프로세스 수명 — job object 없이는 **337MB 좀비**가 남는다
+### ③ Windows 프로세스 수명 — job object 없이는 **337MB 좀비**가 남는다 (✅ 실측 확인·정밀화)
+
+> **2026-08-22 대조 실험** (`scripts/poc-rs/job-test.sh`, 부모를 `taskkill /F /PID 자기자신`으로 크래시시킴):
+>
+> | 실험 | claude.exe | 손자(cmd→ping) |
+> |---|---|---|
+> | job 없음 · CLI **유휴** | dead ※ | **잔존** |
+> | job 없음 · CLI **턴 스트리밍 중** | **잔존**(자기 자식까지 달고) | **잔존** |
+> | job(`KILL_ON_JOB_CLOSE`) · 유휴 | dead | dead |
+> | job(`KILL_ON_JOB_CLOSE`) · 턴 중 | **dead** | **dead** |
+>
+> ※ 유휴에서 죽은 건 job 덕이 아니라 **부모 소멸 → stdin 파이프 핸들 닫힘 → CLI가
+> EOF를 보고 스스로 정리 종료**(§3.2와 같은 경로)한 것이다. 그래서 **턴이 돌고 있으면
+> 그 우아한 경로가 안 먹고 그대로 남는다.** 아래 서술은 이 정밀화 위에서 읽을 것 —
+> "언제나 남는다"가 아니라 **"위험한 순간엔 반드시 남는다, 손자는 언제나 남는다"**이다.
+> job은 유휴/바쁨을 가리지 않고 커널 보장으로 전원을 거둔다.
 
 `claude.exe`는 337 MB 단일 바이너리이고, 그 아래로 bash/dotnet/dev 서버 손자
 프로세스를 만든다. 2.6.2는 Electron의 job object가 이걸 덮어 줬다.
