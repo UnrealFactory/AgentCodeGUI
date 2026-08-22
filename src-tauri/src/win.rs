@@ -25,6 +25,12 @@ use tauri::{
     WebviewWindowBuilder, WindowEvent,
 };
 
+// 유리(아크릴) 유지 모듈. `main.rs`에 `mod glass;`를 얹지 않고 여기서 매다는 이유:
+// main.rs는 M2(ipc 분할)와 M-CRASH가 함께 만지는 파일이라 한 줄 추가도 충돌을 만든다.
+// 이 모듈은 win.rs가 만든 창에만 붙으므로 소유 관계상으로도 여기가 맞는 자리다.
+#[path = "glass.rs"]
+pub mod glass;
+
 pub const MAIN: &str = "main";
 
 /// 셸이 주입하는 부팅 스플래시. 왜 별도 창이 아닌지는 splash.js 헤더에.
@@ -203,6 +209,13 @@ pub fn create_main(app: &AppHandle) -> tauri::Result<WebviewWindow> {
     // 렌더러/브라우저 사망 감지 — 유령 창을 남기지 않기 위한 자리(crash.rs).
     crate::crash::arm(app, &win);
 
+    // 유리 유지 — 백드롭 재단언 + 소실 시 렌더러 폴백 통지(glass.rs).
+    // `.effects(Acrylic)`은 **창을 만들 때 한 번** 걸릴 뿐이라, 그 뒤 OS가 합성을
+    // 갈아엎으면(테마 변경·모니터 탈착·세션 복귀·절전 복귀) 아무도 되돌려 주지 않는다.
+    if mode != 'c' {
+        glass::arm(app, &win);
+    }
+
     // 두 번째 안전망: 스플래시도 로드 완료도 오지 않는 최악(렌더러 크래시)에 대비.
     // 3.5초는 R1 실측 rootMs(336ms)의 10배 — 정상 경로에서는 절대 걸리지 않는다.
     {
@@ -304,6 +317,11 @@ pub fn open_session_window(app: &AppHandle) -> tauri::Result<()> {
     // 렌더러가 한 번 죽으면 이 창들도 같이 유령이 된다.
     crate::crash::arm(app, &win);
 
+    // 추가 채팅 창도 같은 껍데기(투명+아크릴)라 같은 방식으로 유리를 잃는다.
+    if chrome_mode() != 'c' {
+        glass::arm(app, &win);
+    }
+
     SESSIONS.lock().unwrap().push(SessionRec {
         id,
         label: label.clone(),
@@ -399,6 +417,10 @@ pub fn show_once(w: &WebviewWindow) {
 // 죽은 창의 레코드가 목록에 남는다.
 pub fn reset_shown() {
     SHOWN.store(false, Ordering::SeqCst);
+    // 유리 감시 목록도 비운다 — 부서진 창의 hwnd가 남아 있으면 감시 스레드가 죽은
+    // 핸들에 DWM 호출을 계속 던진다(IsWindow가 걸러 주지만, 재생성 창이 붙기 전까지
+    // "감시 중인 창 0"으로 스레드가 스스로 끝나는 경로와 겹쳐 헷갈린다).
+    glass::clear();
 }
 
 pub fn clear_sessions() {

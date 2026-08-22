@@ -11,7 +11,9 @@
 diff -rq src/renderer app --exclude=dist
 ```
 
-2026-08-22 (M1 R1) 기준 출력은 아래 4+4가 전부다(`app/dist`·`app/tsconfig.json` 제외).
+2026-08-23 기준 출력은 아래 **4(수정) + 5(신규)** 가 전부다(`app/dist`·`app/tsconfig.json` 제외).
+`src/renderer/src/**`의 .ts/.tsx 60개와 `styles.css`는 여전히 **한 글자도 안 바뀌었다** —
+유리 폴백조차 CSS를 고치지 않고 클래스 주입으로 넣었다(§3.6).
 
 ---
 
@@ -26,7 +28,7 @@ diff -rq src/renderer app --exclude=dist
 
 `src/renderer/src/**`의 나머지 60개 .ts/.tsx와 `styles.css`는 **한 글자도 바뀌지 않았다.**
 
-## 2. 새로 추가한 파일 (4개 — 원본에 대응물이 없다)
+## 2. 새로 추가한 파일 (5개 — 원본에 대응물이 없다)
 
 | 파일 | 역할 |
 |---|---|
@@ -34,6 +36,10 @@ diff -rq src/renderer app --exclude=dist
 | `app/tsconfig.json` | `npm run typecheck:app` — 심이 `WindowApi`를 **전부·타입대로** 구현하는지 검사하는 유일한 자리(vite build는 타입을 안 본다) |
 | `app/src/api/shim.ts` | `WindowApi` 전 메서드 구현. 호출은 `invoke('ipc_call', { channel, payload })` 하나, 이벤트는 Tauri `listen`(같은 채널명·preload의 허브 팬아웃 문법 그대로) |
 | `app/src/api/chrome.ts` | 렌더러 CSS의 `-webkit-app-region`(드래그 영역)을 WebView2에서 재현 |
+| `app/src/api/glassFallback.ts` | **유리 폴백 수신** — OS가 아크릴을 못 그릴 때 `<html>`에 클래스를 걸어 불투명 배경으로 갈아탄다 (아래 §3.6) |
+
+`shim.ts`에 붙은 줄은 **두 줄뿐**이다: `import { initGlassFallback } from './glassFallback'` 와
+파일 끝의 `initGlassFallback()` (기존 `initWindowChrome()` 바로 아래).
 
 ---
 
@@ -108,6 +114,47 @@ window.__CCG_BOOT = { "ui-prefs:get": {...}, "profile:get": {...}, "app:get-vers
 1회** `console.warn` 후 시그니처에 맞는 값(빈 배열/null/false/no-op)을 돌려준다. 예외는
 `saveAttachmentData` 하나 — "경로 없음"을 뜻하는 안전한 문자열이 없어 reject하고,
 유일한 호출부가 try/catch로 감싸 첨부를 건너뛴다(위 3.2).
+
+### 3.6 유리 폴백 — `styles.css`를 안 고치고 배경을 갈아 끼우기 (M-UI 추가)
+
+**왜 필요한가.** 사이드바에는 자체 배경이 없다 — `body`의 `--panel`(`rgba(21,21,21,.70)`)
+틴트가 DWM 아크릴 위에 얹혀 있을 뿐이다(`styles.css:7-20`). 3.0 창은 거기에
+`transparent(true)`까지 걸려 있어서(`win.rs` b안), OS가 아크릴을 못 그리면
+**벽지가 블러 없이 그대로 비친다** — 글자 뒤로 사진이 지나가 읽을 수 없다.
+실측: 백드롭을 NONE으로 내려도 사이드바 픽셀이 원색 3띠 판을 그대로 따라갔다(스윙 23).
+자세한 것은 `docs/design/ui-glass.md`.
+
+**신호.** 셸(`src-tauri/src/glass.rs`)이 백드롭을 재단언해 되살리려 하고, **전역 투명 효과가
+꺼져 있어 되살릴 수 없을 때만** `ui-glass:state`를 브로드캐스트한다.
+
+- 채널 이름이 비슷한 **기존 `ui-glass:changed`와 다른 것**이다. 저건 설정 › Display의
+  '벽지 비침' 슬라이더(0~100, 사용자 취향), 이건 OS 상태(bool)다.
+- `ipc.rs`(`dispatch`)에 **등록하지 않는다** — 렌더러가 부르는 채널이 아니라 셸이 쏘는
+  단방향 브로드캐스트라 항목이 필요 없다.
+- 셸이 부팅 직후 **250ms · 1s · 3s에 현재 상태를 무조건 한 번씩** 쏜다. Tauri `listen()`은
+  비동기 등록이라 구독 직후 공백이 있어서(위 §3.3와 같은 함정), 한 번만 쏘면 첫 화면이
+  틀린 채로 남는다.
+
+**적용 방식 — 클래스 주입.** `styles.css`는 한 글자도 고치지 않는다.
+
+1. `<html>`에 `ccg-glass-off` 클래스를 토글하고,
+2. 그 클래스에만 걸리는 규칙을 담은 `<style id="ccg-glass-fallback">` 하나를 문서에 넣는다.
+
+폴백이 걷히면 클래스만 떼면 되고 원본 CSS는 그대로 남는다. 덮는 것은 토큰 둘뿐:
+`--panel: #1d1d1d` · `--chat-bg: #141414`(사이드바가 본문보다 밝은 **위계를 아크릴 때와 같은
+순서로** 유지) + 아크릴의 광량 낙차를 흉내 낸 아주 옅은 좌상단 그라디언트.
+
+**`!important`가 필요한 이유(함정).** 설정 › Display의 '벽지 비침' 슬라이더
+(`app/src/lib/glass.ts`)는 값이 기본(50)이 아닐 때 `--panel`/`--chat-bg`를
+**documentElement의 인라인 스타일**로 덮어쓴다. 인라인은 어떤 셀렉터보다 세서,
+`!important`가 없으면 폴백이 슬라이더에 진다 — 유리가 죽었는데 사용자가 비침을 100으로
+올려 둔 창은 벽지가 **더 크게** 비치는 최악이 된다. 폴백이 켜진 동안에는 슬라이더가 의미를
+잃는 게 맞다(비칠 유리가 없다).
+
+**검증.** 전역 투명 효과를 끄는 것은 금지 규약(사용자 데스크톱)이라 셸에 테스트 레버를 뒀다:
+`CCG_GLASS_FORCE_OFF=1`(기본값에서는 no-op). 3띠 판 위 실측 — 폴백 전 스윙 21~23 →
+폴백 후 **(20,20,20) 세 띠 전부 동일 · 스윙 0**. 진단: `window.__ccgGlass`
+(`__ccgChrome`와 같은 규약).
 
 ---
 

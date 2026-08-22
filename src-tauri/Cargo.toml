@@ -39,4 +39,18 @@ windows = { version = "0.61", features = [
   "Win32_System_Threading",
   "Win32_System_Com",
   "Win32_UI_WindowsAndMessaging",
+  # ── 유리(아크릴) 유지 — src/glass.rs ──
+  # DWMWA_SYSTEMBACKDROP_TYPE 재단언(DwmSet/GetWindowAttribute)
+  "Win32_Graphics_Dwm",
+  # SetWindowSubclass/DefSubclassProc — tao의 wndproc을 갈아치우지 않고 **체인**으로
+  # WM_SETTINGCHANGE·WM_DWMCOMPOSITIONCHANGED 등을 엿본다(tauri는 메시지 훅을 안 준다)
+  "Win32_UI_Shell",
+  # 잠금/해제·사용자 전환 통지(WM_WTSSESSION_CHANGE)
+  "Win32_System_RemoteDesktop",
+  # 전역 투명 효과의 2순위 신호 EnableTransparency (1순위는 아래 WinRT)
+  "Win32_System_Registry",
+  # 1순위 진실 소스 — UISettings.AdvancedEffectsEnabled. 설정 앱 토글뿐 아니라
+  # 배터리 절약·원격 세션까지 한 값에 반영된다(DwmGetColorizationColor의
+  # pfOpaqueBlend는 Win11 26200에서 거짓을 돌려줘 쓸 수 없다 — glass.rs 헤더 실측)
+  "UI_ViewManagement",
 ] }

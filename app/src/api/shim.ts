@@ -53,6 +53,7 @@ import type {
 } from '@shared/protocol'
 import type { WindowApi } from '@shared/api'
 import { initWindowChrome } from './chrome'
+import { initGlassFallback } from './glassFallback'
 
 // ── 미구현 채널 안전망 ────────────────────────────────────────────────────────
 const warned = new Set<string>()
@@ -446,3 +447,8 @@ function dropPathFor(_file: File): string {
 
 // 창 껍데기 보조 — CSS의 -webkit-app-region(드래그 영역)을 WebView2에서 재현한다
 initWindowChrome()
+
+// 유리 폴백 — OS가 아크릴을 못 그릴 때(투명 효과 끔·원격 세션) 셸이 통지하면
+// 의도된 불투명 다크 배경으로 갈아탄다. 창이 transparent라 이게 없으면 벽지가
+// 생으로 비쳐 글자를 못 읽는다(glassFallback.ts 헤더 실측).
+initGlassFallback()

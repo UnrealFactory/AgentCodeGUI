@@ -1,0 +1,120 @@
+{
+  "note": "M-UI 유리 조사 실측 원본. docs/design/glass-shots/ 는 .gitignore(51행)에 걸려 커밋되지 않으므로, 판정에 필요한 수치는 여기로 옮겨 둔다. PNG는 scripts/poc-glass/repro.ps1 재실행으로 다시 만들 수 있다.",
+  "env": {
+    "os": "Windows 11 Home",
+    "build": 26200,
+    "monitors": 1,
+    "monitorNote": "같은 날 오전 실험 로그에는 모니터 2개였다(rect x=2680). 토폴로지가 실제로 바뀌는 기계다 — 후보 트리거 U6.",
+    "resolution": "2560x1440",
+    "battery": 0,
+    "enableTransparency": 1,
+    "advancedEffectsEnabled": true,
+    "remoteSession": false,
+    "at": "2026-08-23"
+  },
+
+  "signalReliability": {
+    "method": "같은 창에서 네 신호를 동시에 읽어 실제 상태와 대조",
+    "DWMWA_SYSTEMBACKDROP_TYPE_readback": {
+      "usable": false,
+      "why": "우리가 써 넣은 값을 되돌려줄 뿐이다. 투명 효과를 껐던 앞선 실행(docs/critic/glass-lab-electron.json 09~11번)에서도 3 그대로였다.",
+      "useFor": "드리프트 감지(누가 값을 바꿨나)"
+    },
+    "DwmGetColorizationColor_pfOpaqueBlend": {
+      "usable": false,
+      "measured": true,
+      "expectedIfWorking": false,
+      "why": "투명 효과가 켜져 있는데 True(=불투명 블렌드)를 돌려준다. 실제와 반대다."
+    },
+    "DwmIsCompositionEnabled": { "usable": false, "measured": true, "why": "Win8+에서 항상 true" },
+    "UISettings_AdvancedEffectsEnabled": {
+      "usable": true,
+      "measured": true,
+      "why": "설정 앱 토글 + 배터리 절약 + 원격 세션을 한 값에 반영",
+      "trap": "PowerShell 7에는 WinRT 투영이 없어 타입을 못 찾는다(PS 7.6.5 실측). Windows PowerShell 5.1에서는 뜬다."
+    },
+    "registry_EnableTransparency": {
+      "usable": true,
+      "rank": 2,
+      "why": "배터리 절약은 이 값을 바꾸지 않는다(런타임 오버라이드) — 그래서 2순위"
+    }
+  },
+
+  "reproduction": {
+    "tool": "scripts/poc-glass/repro.ps1",
+    "method": "원색 3띠 판(마젠타/시안/흰색) 위로 창을 옮기며 사이드바 픽셀을 잰다. swing = 세 위치 값의 채널별 최대 진폭. 아크릴이 살아 있으면 벽지를 따라 움직이고(swing 큼), 죽으면 어디서나 같다(swing 0). 폴백 회색 값을 맞히지 않아도 갈린다.",
+    "lever": "per-window DwmSetWindowAttribute(hwnd, 38, v) — OS 전역 투명 효과는 건드리지 않았다(사용자 데스크톱)",
+    "sampleXOffset": 46,
+
+    "electron_2_6_2_shell": {
+      "shell": "electron-lab, backgroundMaterial:'acrylic', transparent 아님",
+      "rows": [
+        { "backdrop": 3, "name": "ACRYLIC", "magenta": "85,15,62", "cyan": "15,60,69", "white": "58,58,58", "swing": 70, "glass": "LIVE" },
+        { "backdrop": 1, "name": "NONE",    "magenta": "15,15,15", "cyan": "15,15,15", "white": "15,15,15", "swing": 0,  "glass": "DEAD" },
+        { "backdrop": 0, "name": "AUTO",    "magenta": "15,15,15", "cyan": "15,15,15", "white": "15,15,15", "swing": 0,  "glass": "DEAD" },
+        { "backdrop": 2, "name": "MICA",    "magenta": "23,25,26", "cyan": "23,25,28", "white": "23,25,29", "swing": 3,  "glass": "DEAD" }
+      ],
+      "verdict": "아크릴이 죽으면 사이드바가 벽지와 무관한 평탄면 (15,15,15)이 된다 = 사용자가 말한 '진한 회색'. 흰 벽지 위에서는 58→15로 떨어져 변화가 극적이다."
+    },
+
+    "tauri_3_0_shell_before_fix": {
+      "shell": "target/release/agentcodegui.exe, decorations(false)+transparent(true)+Effect::Acrylic",
+      "rows": [
+        { "backdrop": 3, "name": "ACRYLIC", "magenta": "36,15,29",   "cyan": "15,29,31", "white": "21,21,21", "swing": 21, "glass": "LIVE" },
+        { "backdrop": 1, "name": "NONE",    "magenta": "38,15,30",   "cyan": "15,34,38", "white": "18,18,18", "swing": 23, "glass": "LIVE" },
+        { "backdrop": 0, "name": "AUTO",    "magenta": "38,15,30",   "cyan": "15,34,38", "white": "18,18,18", "swing": 23, "glass": "LIVE" },
+        { "backdrop": 2, "name": "MICA",    "magenta": "17.3,18,18", "cyan": "17,18,19", "white": "17,18,19", "swing": 1,  "glass": "DEAD" }
+      ],
+      "verdict": "3.0의 실패 모양은 2.6.2와 다르다. transparent(true)라 재질이 죽으면 불투명 회색이 아니라 벽지가 블러 없이 그대로 비친다(swing 23 — 아크릴일 때 21보다 크다). 글자 뒤로 사진이 지나가 읽을 수 없다."
+    },
+
+    "tauri_3_0_with_css_fallback": {
+      "how": "CCG_GLASS_FORCE_OFF=1 (glass.rs의 테스트 레버 — OS 전역 설정을 못 건드리므로)",
+      "rows": [
+        { "backdrop": 3, "name": "ACRYLIC", "magenta": "20,20,20", "cyan": "20,20,20", "white": "20,20,20", "swing": 0, "glass": "DEAD" }
+      ],
+      "verdict": "백드롭은 여전히 3(단언 정상)인데 렌더러가 불투명으로 갈아탔다. 세 띠 전부 (20,20,20) — 벽지 완전 차단. 폴백 전 같은 창은 21~23이었다."
+    },
+
+    "unresolvedValueDelta": {
+      "perWindowNONE": "15,15,15",
+      "osGlobalTransparencyOff": "40,40,40 (docs/critic/glass-lab-electron.json 10번 — 투명 끔 + 비활성)",
+      "why": "NONE은 백드롭을 없애 검정 위에 틴트를 얹고, 전역 끔은 백드롭을 단색으로 그린 뒤 그 위에 틴트를 얹는다. 증상 계열은 같고 값이 다르다. 방어는 둘 다 덮는다."
+    }
+  },
+
+  "defense": {
+    "tool": "scripts/poc-glass/glass.ps1 -Action knock",
+    "build": "npm run tauri:build (release), CCG_HOME=.glass-home-tauri 격리",
+    "method": "밖에서 백드롭을 1(NONE)로 걷어차고, 앱이 스스로 3으로 되돌리기까지의 시간을 폴링으로 잰다. -GapMs 2500(단언 열차 1660ms보다 길게).",
+    "silentDrift": {
+      "note": "메시지 없이 값만 바뀐 경우 = 주기 폴링만이 잡는다",
+      "trials": 8, "recovered": 8, "minMs": 309, "maxMs": 637, "avgMs": 359.2
+    },
+    "messagePath": {
+      "note": "걷어찬 직후 그 창에만 WM_SETTINGCHANGE('ImmersiveColorSet') 전송 = 실제 트리거가 타는 경로",
+      "trials": 8, "recovered": 8, "minMs": 61, "maxMs": 95, "avgMs": 71.5
+    },
+    "finalBuildRecheck": { "trials": 5, "recovered": 5, "ms": [77, 93, 86, 62, 63] },
+    "bugsFoundByMeasuring": [
+      "조건변수 신호 유실 — 감시 스레드가 대기 중이 아닐 때 온 notify_all이 사라져 사건이 700ms 늦게 처리됐다(넛지 8회 중 1회 693ms). 대기 전에 플래그를 먼저 보게 고쳤다.",
+      "측정 자체의 함정 — 시행 간격 900ms가 앞 시행의 단언 열차(60+400+1200=1660ms) 안에 떨어져 앱 반응 속도가 아니라 열차 잔여 시간이 찍혔다(76ms가 750ms로 보였다). -GapMs 기본값을 2500ms로 올렸다.",
+      "폴링 주기 2s → 700ms — 2s에서는 조용한 드리프트 복구가 평균 1166ms(최대 1599ms)로 눈에 보이는 번쩍임이었다. 비싼 검사(WinRT)는 4s로 따로 뺐다."
+    ]
+  },
+
+  "mockupDensity": {
+    "tool": "docs/design/mockups/ui-notify.js (렌더 후 실제 높이 자가 계측) + scripts/poc-glass/shot-html.mjs",
+    "unit": "px",
+    "rows": [
+      { "sheet": "0-system (7종 한 스레드)", "A": 918.5, "B": 803.9, "delta": -114.7 },
+      { "sheet": "1-fallback",              "A": 46.8,  "B": 47.0,  "delta": 0.2 },
+      { "sheet": "2-notice (3건)",           "A": 140.4, "B": 137.0, "delta": -3.4 },
+      { "sheet": "3-error (2건)",            "A": 180.2, "B": 199.3, "delta": 19.1, "note": "의도된 증가 — 오류 원문 코드 면" },
+      { "sheet": "4-interrupt",              "A": 18.8,  "B": 18.8,  "delta": 0 },
+      { "sheet": "5-compact",                "A": 99.8,  "B": 18.8,  "delta": -81.0 },
+      { "sheet": "6-command (3장)",          "A": 236.5, "B": 201.0, "delta": -35.5 },
+      { "sheet": "7-qa (2쌍)",               "A": 112.0, "B": 105.5, "delta": -6.5 }
+    ]
+  }
+}
