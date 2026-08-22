@@ -57,6 +57,9 @@ pub mod ch {
     /// 셸 내부 채널 — 렌더러 계약면(protocol.ts)에 없다. 주입된 splash.js가
     /// "첫 프레임을 그렸다"고 알리는 자리(win.rs 참고).
     pub const WIN_FIRST_PAINT: &str = "win:first-paint";
+    /// 셸 내부 채널 — splash.js가 `#root`에 자식이 생긴 순간(=React 마운트) 쏜다.
+    /// **크래시 복구가 실제로 붙었는지**를 가르는 하트비트다(crash.rs `note_mounted`).
+    pub const WIN_MOUNTED: &str = "win:mounted";
     // fs / dialog
     pub const DIR_EXISTS: &str = "fs:dir-exists";
     pub const PICK_DIRECTORY: &str = "dialog:pick-directory";
@@ -184,6 +187,10 @@ fn dispatch(app: &AppHandle, window: &WebviewWindow, channel: &str, p: &Value) -
             crate::win::show_once(window);
             Value::Null
         }
+        ch::WIN_MOUNTED => {
+            crate::crash::note_mounted(window.label());
+            Value::Null
+        }
 
         // ── fs / dialog ─────────────────────────────────────────────────────
         ch::DIR_EXISTS => {
@@ -299,19 +306,71 @@ fn broadcast_ui_prefs(app: &AppHandle, prefs: &Value) {
 }
 
 // ── 폴더 선택 ────────────────────────────────────────────────────────────────
+
+/// 지금 열려 있는 네이티브 파일 대화상자 수. 0이 아닐 때만 크래시 복구가
+/// 고아 창 정리(아래 `close_orphan_dialogs`)를 위해 Win32 창 목록을 훑는다.
+static DIALOGS_OPEN: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
 fn pick_directory(app: &AppHandle) -> Value {
+    use std::sync::atomic::Ordering;
     use tauri_plugin_dialog::DialogExt;
     let (tx, rx) = std::sync::mpsc::channel();
+    DIALOGS_OPEN.fetch_add(1, Ordering::SeqCst);
     app.dialog().file().pick_folder(move |p| {
         let _ = tx.send(p);
     });
-    match rx.recv() {
+    let r = rx.recv();
+    DIALOGS_OPEN.fetch_sub(1, Ordering::SeqCst);
+    match r {
         Ok(Some(p)) => p
             .into_path()
             .map(|pb| json!(pb.to_string_lossy().to_string()))
             .unwrap_or(Value::Null),
         _ => Value::Null,
     }
+}
+
+/// **고아 대화상자 정리** — 크래시 복구가 문서를 다시 세우기 직전에 부른다(crash.rs).
+///
+/// R4 크리틱 A5 실측: 네이티브 '폴더 선택'을 연 채 렌더러가 죽으면 복구는 되는데
+/// 대화상자만 화면에 남는다. 받을 렌더러가 없으니 사용자가 폴더를 골라도 아무 일도
+/// 안 일어난다 = 사용자가 실물 버그로 제보한 "고아 상태(유령 UI)" 계열이다.
+///
+/// 우리 프로세스의 **최상위 `#32770`(Win32 대화상자 클래스) 가시 창**에만 `WM_CLOSE`를
+/// 보낸다 = 사용자가 '취소'를 누른 것과 같다(rfd 콜백이 `None`으로 깨어나 `pick_folder`가
+/// 풀린다). tao가 만드는 우리 창의 클래스는 `Window Class`라 이 그물에 걸리지 않고,
+/// 열린 대화상자가 하나도 없으면 창 열거 자체를 하지 않는다.
+#[cfg(windows)]
+pub fn close_orphan_dialogs() -> usize {
+    use std::sync::atomic::Ordering;
+    use windows::core::{w, PCWSTR};
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        FindWindowExW, GetWindowThreadProcessId, IsWindowVisible, PostMessageW, WM_CLOSE,
+    };
+    if DIALOGS_OPEN.load(Ordering::SeqCst) == 0 {
+        return 0;
+    }
+    let me = std::process::id();
+    let mut closed = 0usize;
+    let mut prev: Option<HWND> = None;
+    unsafe {
+        // 최상위 창을 클래스로 훑는다(부모 None = 데스크톱의 자식 = 최상위).
+        while let Ok(h) = FindWindowExW(None, prev, w!("#32770"), PCWSTR::null()) {
+            prev = Some(h);
+            let mut pid: u32 = 0;
+            GetWindowThreadProcessId(h, Some(&mut pid));
+            if pid == me && IsWindowVisible(h).as_bool() && PostMessageW(Some(h), WM_CLOSE, Default::default(), Default::default()).is_ok() {
+                closed += 1;
+            }
+        }
+    }
+    closed
+}
+
+#[cfg(not(windows))]
+pub fn close_orphan_dialogs() -> usize {
+    0
 }
 
 // ── 계정 목록 (스토어 파일만 읽는다 — CLI 스폰·토큰 복호 없음) ───────────────

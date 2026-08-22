@@ -130,10 +130,26 @@ window.__CCG_BOOT = { "ui-prefs:get": {...}, "profile:get": {...}, "app:get-vers
 | 스크립트 | 언제 | 무엇 |
 |---|---|---|
 | `boot_payload_script()` (win.rs) | document-start | `window.__CCG_BOOT` (§3.4) |
-| `splash.js` (win.rs → include_str!) | document-start | 부팅 스플래시 오버레이 + **창 표시 신호**. 2.6.2는 별도 300x240 BrowserWindow였다 — 3.0에서 같은 짓을 하면 웹뷰가 하나 더 생긴다(렌더러 프로세스 +1) |
+| `splash.js` (win.rs → include_str!) | document-start | 부팅 스플래시 오버레이 + **창 표시 신호** + **마운트 하트비트**. 2.6.2는 별도 300x240 BrowserWindow였다 — 3.0에서 같은 짓을 하면 웹뷰가 하나 더 생긴다(렌더러 프로세스 +1) |
 
 `splash.js`의 표시 신호 규약(R3에서 고침): 오버레이를 DOM에 넣고 **렌더 차단 스타일시트가
 전부 도착한 순간** 셸에 `win:first-paint`를 보낸다. R2는 rAF 두 번을 기다렸는데,
 **창이 숨겨진 동안 WebView2는 프레임을 만들지 않아 rAF가 영영 오지 않는다**(닭-달걀) —
 그래서 창은 늘 안전망(`PageLoadEvent::Finished` = `load`)으로 떴고, `load`는 원격 폰트
 CDN 왕복을 기다렸다. 자세한 실측은 `docs/m1-report-r3.md` §4.2.
+
+### 5.1 마운트 하트비트 `win:mounted` (R5 추가)
+
+같은 스크립트가 스플래시를 걷는 순간(`#root`에 자식이 생김 = React 마운트) 셸 내부 채널
+`win:mounted`를 한 번 보낸다. **크래시 복구가 실제로 붙었는지 판정하는 유일한 신호다** —
+셸은 `reload()`를 걸어 놓고 그게 먹혔는지 알 방법이 없었고, 실패하면 로그 한 줄만 남긴 채
+영구 유령 창이 됐다(R4 크리틱 §1.3-(3)). 규약 세 가지:
+
+- **렌더러 번들의 계약면(protocol.ts)이 아니다.** 셸 내부 채널이라 번들이 몰라도 된다.
+- initialization_script라 **재로드마다 다시 온다** — 복구 후에도 반드시 온다.
+- 안 오면 셸이 `VERIFY_MS`(3s) 뒤 **창 재생성으로 승격**한다(`crash.rs`). 그래서 이 신호를
+  없애거나 늦추면 정상 복구가 매번 재생성으로 격상된다. 지연에 민감한 자리다.
+
+추가 채팅 창에는 `splash.js`를 주입하지 않으므로(오버레이가 필요 없다) 이 신호는 **메인
+창에서만** 온다. 추가 채팅 창은 셸 쪽 신호(`on_page_load(Finished)` → `page-load`)로만
+관측된다 — `--process-per-site`로 렌더러를 공유하므로 메인이 섰으면 같은 렌더러다.

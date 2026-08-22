@@ -52,18 +52,35 @@
     '<path d="M14.5 8Q15 5.8 16.7 4.9"/><circle cx="17" cy="4.7" r=".85" fill="currentColor" stroke="none"/>' +
     '<path d="M4.4 10.6C3 11.5 3 14.5 4.4 15.4"/><path d="M19.6 10.6C21 11.5 21 14.5 19.6 15.4"/></svg>'
 
+  /** 셸 내부 채널로 한 줄 보낸다(심이 아직 안 섰을 수 있어 내부 API를 직접 쓴다). */
+  function tell(channel) {
+    try {
+      var inv = window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke
+      if (inv) inv('ipc_call', { channel: channel, payload: [] })
+    } catch (e) {
+      /* 셸의 안전망(PageLoadEvent::Finished / 3.5초 타이머)이 받는다 */
+    }
+  }
+
   var notified = false
   /** 셸에 "그릴 것이 DOM에 있고 다음 프레임이 그것이다" — 여기서 창이 뜬다. */
   function notifyShell() {
     if (notified) return
     notified = true
-    try {
-      // 심(shim)이 아직 안 섰을 수 있어 내부 API를 직접 쓴다.
-      var inv = window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke
-      if (inv) inv('ipc_call', { channel: 'win:first-paint', payload: [] })
-    } catch (e) {
-      /* 셸의 안전망(PageLoadEvent::Finished / 3.5초 타이머)이 받는다 */
-    }
+    tell('win:first-paint')
+  }
+
+  var mounted = false
+  /**
+   * **마운트 하트비트** — `#root`에 자식이 생겼다 = 앱이 실제로 섰다.
+   * 크래시 복구(crash.rs)가 이 신호로 "복구가 붙었는지"를 판정한다. 이게 없으면
+   * 셸은 reload()를 걸어 놓고 그게 먹혔는지 영영 모른다(R4 크리틱 §1.3-(3)).
+   * 이 스크립트는 initialization_script라 **재로드마다 다시 도므로** 복구 뒤에도 온다.
+   */
+  function notifyMounted() {
+    if (mounted) return
+    mounted = true
+    tell('win:mounted')
   }
 
   /**
@@ -141,6 +158,7 @@
     function check() {
       var r = root || (root = document.getElementById('root'))
       if (r && r.children.length > 0) {
+        notifyMounted()
         done()
         return true
       }

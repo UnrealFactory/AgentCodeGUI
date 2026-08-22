@@ -30,7 +30,13 @@ ccg-store = { path = "../crates/ccg-store" }
 # 감싸주지 않으므로 `with_webview()`가 주는 ICoreWebView2Controller에 직접 붙인다.
 # 버전은 **tauri가 쓰는 것과 같아야 한다**(다르면 타입이 달라 controller()를 못 받는다):
 # tauri 2.11.5 → webview2-com 0.38 / windows 0.61 (Cargo.lock 확인).
-# windows의 두 feature는 tao가 이미 켜 둔 것이라 추가 컴파일 비용이 없다.
+# windows의 feature들은 tao가 이미 켜 둔 것이라 추가 컴파일 비용이 없다.
+# (Win32_UI_WindowsAndMessaging = 복구 직전 고아 대화상자 정리 — ipc.rs `close_orphan_dialogs`)
 [target.'cfg(windows)'.dependencies]
 webview2-com = "0.38"
-windows = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Threading", "Win32_System_Com"] }
+windows = { version = "0.61", features = [
+  "Win32_Foundation",
+  "Win32_System_Threading",
+  "Win32_System_Com",
+  "Win32_UI_WindowsAndMessaging",
+] }

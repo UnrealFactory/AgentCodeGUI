@@ -330,10 +330,15 @@ export function killTree(pid) {
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
+// 짝수 길이에서 **정수로 반올림하지 않는다**(R4 크리틱 §3.3). `Math.round`를 쓰면 참
+// 중앙값 58.5가 `59`로 찍혀 절대 게이트(`medianAvgFps >= 59.0`)를 반올림으로 통과한다.
+// 12시행·6쌍처럼 이 프로젝트의 대표 표본은 대부분 짝수라 상시로 걸리던 자리다.
+// 소수 2자리로만 다듬는다(부동소수 꼬리 제거 — 55.35000000000001 같은 값이 파일에 박히지 않게).
 export function median(nums) {
   const a = nums.filter((n) => n != null).sort((x, y) => x - y)
   if (!a.length) return null
-  return a.length % 2 ? a[(a.length - 1) / 2] : Math.round((a[a.length / 2 - 1] + a[a.length / 2]) / 2)
+  const m = a.length % 2 ? a[(a.length - 1) / 2] : (a[a.length / 2 - 1] + a[a.length / 2]) / 2
+  return Math.round(m * 100) / 100
 }
 
 export function envInfo() {

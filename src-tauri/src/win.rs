@@ -192,6 +192,8 @@ pub fn create_main(app: &AppHandle) -> tauri::Result<WebviewWindow> {
     // Finished는 그대로 안전망으로 남긴다 — 스플래시 주입이 실패해도 창은 뜬다.
     b = b.on_page_load(|w, payload| {
         if payload.event() == PageLoadEvent::Finished {
+            // 크래시 복구의 2순위 검증 신호 — 재로드마다 다시 온다(crash.rs `note_page_load`).
+            crate::crash::note_page_load(w.label());
             show_once(&w);
         }
     });
@@ -278,6 +280,7 @@ pub fn open_session_window(app: &AppHandle) -> tauri::Result<()> {
     .visible(false)
     .on_page_load(|w, payload| {
         if payload.event() == PageLoadEvent::Finished {
+            crate::crash::note_page_load(w.label());
             let _ = w.show();
             let _ = w.set_focus();
         }

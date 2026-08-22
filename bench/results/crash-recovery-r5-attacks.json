@@ -1,0 +1,430 @@
+{
+  "what": "R4 크리틱 — 크래시 복구 상태 기계를 깨뜨리려는 시나리오",
+  "arm": "default",
+  "bin": {
+    "exe": "C:\\Code\\AgentCodeGUI\\target\\release\\agentcodegui.exe",
+    "exeMtime": "2026-08-22T14:16:54.000Z",
+    "exeSize": 3842048,
+    "exeSha256": "5bb229e7d5be29bb",
+    "gitHead": "4506d77",
+    "gitDirty": true
+  },
+  "armEnv": {
+    "CCG_HOME": "C:\\Code\\AgentCodeGUI\\.bench-home-tauri",
+    "CCG_CDP_PORT": "9334"
+  },
+  "env": {
+    "ramGB": 63.8,
+    "cpu": "13th Gen Intel(R) Core(TM) i7-13700KF",
+    "os": "Microsoft Windows 11 Home 26200"
+  },
+  "at": "2026-08-22T14:19:50.992Z",
+  "results": [
+    {
+      "scenario": "boot-kill",
+      "at": "2026-08-22T14:16:58.354Z",
+      "killedRendererPid": 26172,
+      "killed": true,
+      "msAfterSpawn": 497,
+      "remountMs": 454,
+      "hostAlive": true,
+      "procsAfter": 5,
+      "windows": [
+        "1336x889 AgentCodeGUI3"
+      ],
+      "pages": [
+        {
+          "url": "",
+          "mounted": true
+        }
+      ],
+      "log": [
+        "armed",
+        "mounted",
+        "process-failed",
+        "recover-begin",
+        "reloaded",
+        "page-load",
+        "mounted",
+        "recover-done"
+      ],
+      "verdict": "복구됨 454ms"
+    },
+    {
+      "scenario": "rekill-gap-3000",
+      "at": "2026-08-22T14:17:03.519Z",
+      "gapMs": 3000,
+      "firstKillPid": 34680,
+      "firstRecoverMs": 338,
+      "deltaFromFirstKillMs": 3335,
+      "secondKillPid": 16616,
+      "secondKilled": true,
+      "secondRecoverMs": 573,
+      "hostAlive": true,
+      "windows": [
+        "576x729 추가 채팅 — AgentCodeGUI",
+        "576x729 추가 채팅 — AgentCodeGUI",
+        "1336x889 AgentCodeGUI3"
+      ],
+      "pages": [
+        {
+          "url": "",
+          "mounted": true
+        },
+        {
+          "url": "index.html#session",
+          "mounted": true
+        },
+        {
+          "url": "index.html#session",
+          "mounted": true
+        }
+      ],
+      "mounted": "3/3",
+      "recoverBeginCount": 2,
+      "log": [
+        "armed",
+        "mounted",
+        "page-load",
+        "armed",
+        "page-load",
+        "armed",
+        "page-load",
+        "process-failed",
+        "recover-begin",
+        "reloaded",
+        "reloaded",
+        "reloaded",
+        "process-failed",
+        "process-failed",
+        "page-load",
+        "page-load",
+        "page-load",
+        "mounted",
+        "recover-done",
+        "process-failed",
+        "recover-begin",
+        "reloaded",
+        "reloaded",
+        "reloaded",
+        "process-failed",
+        "process-failed",
+        "page-load",
+        "page-load",
+        "page-load",
+        "mounted",
+        "recover-done"
+      ],
+      "verdict": "2차도 복구됨 573ms"
+    },
+    {
+      "scenario": "rekill-gap-5000",
+      "at": "2026-08-22T14:17:23.620Z",
+      "gapMs": 5000,
+      "firstKillPid": 12952,
+      "firstRecoverMs": 315,
+      "deltaFromFirstKillMs": 5351,
+      "secondKillPid": 26664,
+      "secondKilled": true,
+      "secondRecoverMs": 302,
+      "hostAlive": true,
+      "windows": [
+        "576x729 추가 채팅 — AgentCodeGUI",
+        "576x729 추가 채팅 — AgentCodeGUI",
+        "1336x889 AgentCodeGUI3"
+      ],
+      "pages": [
+        {
+          "url": "index.html#session",
+          "mounted": true
+        },
+        {
+          "url": "index.html#session",
+          "mounted": true
+        },
+        {
+          "url": "",
+          "mounted": true
+        }
+      ],
+      "mounted": "3/3",
+      "recoverBeginCount": 2,
+      "log": [
+        "armed",
+        "mounted",
+        "page-load",
+        "armed",
+        "page-load",
+        "armed",
+        "page-load",
+        "process-failed",
+        "recover-begin",
+        "reloaded",
+        "reloaded",
+        "reloaded",
+        "process-failed",
+        "process-failed",
+        "page-load",
+        "page-load",
+        "page-load",
+        "mounted",
+        "recover-done",
+        "process-failed",
+        "recover-begin",
+        "reloaded",
+        "reloaded",
+        "reloaded",
+        "process-failed",
+        "process-failed",
+        "page-load",
+        "page-load",
+        "mounted",
+        "page-load",
+        "recover-done"
+      ],
+      "verdict": "2차도 복구됨 302ms"
+    },
+    {
+      "scenario": "giveup-6x",
+      "at": "2026-08-22T14:17:45.214Z",
+      "rows": [
+        {
+          "i": 1,
+          "pid": 16108,
+          "recoverMs": 315
+        },
+        {
+          "i": 2,
+          "pid": 33932,
+          "recoverMs": 308
+        },
+        {
+          "i": 3,
+          "pid": 18160,
+          "recoverMs": 309
+        },
+        {
+          "i": 4,
+          "pid": 10992,
+          "recoverMs": 300
+        },
+        {
+          "i": 5,
+          "pid": 33460,
+          "recoverMs": 309
+        },
+        {
+          "i": 6,
+          "pid": 16780,
+          "recoverMs": null
+        }
+      ],
+      "hostAlive": false,
+      "windows": [],
+      "gaveUp": true,
+      "log": [
+        "armed",
+        "mounted",
+        "page-load",
+        "armed",
+        "page-load",
+        "armed",
+        "page-load",
+        "process-failed",
+        "recover-begin",
+        "reloaded",
+        "reloaded",
+        "reloaded",
+        "process-failed",
+        "process-failed",
+        "page-load",
+        "page-load",
+        "page-load",
+        "mounted",
+        "recover-done",
+        "process-failed",
+        "recover-begin",
+        "reloaded",
+        "reloaded",
+        "reloaded",
+        "process-failed",
+        "process-failed",
+        "page-load",
+        "page-load",
+        "page-load",
+        "mounted",
+        "recover-done",
+        "process-failed",
+        "recover-begin",
+        "reloaded",
+        "reloaded",
+        "reloaded",
+        "process-failed",
+        "process-failed",
+        "page-load",
+        "mounted",
+        "page-load",
+        "page-load",
+        "recover-done",
+        "process-failed",
+        "recover-begin",
+        "reloaded",
+        "reloaded",
+        "reloaded",
+        "process-failed",
+        "process-failed",
+        "page-load",
+        "page-load",
+        "page-load",
+        "mounted",
+        "recover-done",
+        "process-failed",
+        "recover-begin",
+        "reloaded",
+        "reloaded",
+        "reloaded",
+        "process-failed",
+        "process-failed",
+        "page-load",
+        "page-load",
+        "mounted",
+        "page-load",
+        "recover-done",
+        "process-failed",
+        "give-up",
+        "teardown",
+        "exit-prevented",
+        "exit"
+      ],
+      "verdict": "포기 후 정리 종료(유령 없음)"
+    },
+    {
+      "scenario": "state-loss",
+      "at": "2026-08-22T14:19:00.847Z",
+      "setup": {
+        "scrollTop": 3988.75,
+        "scrollHeight": 9973,
+        "draft": "CRITIC-DRAFT-DO-NOT-LOSE",
+        "taFound": true
+      },
+      "confirmed": {
+        "scrollTop": 4693.75,
+        "draft": "CRITIC-DRAFT-DO-NOT-LOSE"
+      },
+      "post": {
+        "scrollTop": 9625,
+        "scrollHeight": 9973,
+        "draft": "",
+        "msgCount": 4,
+        "panels": 4
+      },
+      "recoverMs": 394,
+      "windowsAfter": 1,
+      "lost": [
+        "컴포저 초안"
+      ],
+      "verdict": "복구되나 **컴포저 초안 소실**"
+    },
+    {
+      "scenario": "cascade-renderer-then-browser",
+      "at": "2026-08-22T14:19:15.787Z",
+      "rendererPid": 26096,
+      "browserPid": 28836,
+      "browserKilled": true,
+      "gapMs": 3564,
+      "recoverMs": 1130,
+      "hostAlive": true,
+      "windows": [
+        "576x729 추가 채팅 — AgentCodeGUI",
+        "576x729 추가 채팅 — AgentCodeGUI",
+        "1336x889 AgentCodeGUI3"
+      ],
+      "pages": [
+        {
+          "url": "index.html#session",
+          "mounted": true
+        },
+        {
+          "url": "index.html#session",
+          "mounted": true
+        },
+        {
+          "url": "",
+          "mounted": true
+        }
+      ],
+      "log": [
+        "armed",
+        "mounted",
+        "page-load",
+        "armed",
+        "page-load",
+        "armed",
+        "page-load",
+        "process-failed",
+        "recover-begin",
+        "reloaded",
+        "reloaded",
+        "reloaded",
+        "process-failed",
+        "process-failed",
+        "page-load",
+        "page-load",
+        "page-load",
+        "mounted",
+        "recover-done",
+        "process-failed",
+        "recover-begin",
+        "process-failed",
+        "process-failed",
+        "destroyed",
+        "destroyed",
+        "destroyed",
+        "exit-prevented",
+        "armed",
+        "recreated",
+        "mounted",
+        "page-load",
+        "armed",
+        "armed",
+        "recreated-sessions",
+        "page-load",
+        "page-load",
+        "recover-done"
+      ],
+      "verdict": "복구됨 1130ms"
+    },
+    {
+      "scenario": "dialog-open-kill",
+      "at": "2026-08-22T14:19:36.749Z",
+      "windowsBefore": [
+        "1200x720 폴더 선택",
+        "1336x889 AgentCodeGUI3"
+      ],
+      "recoverMs": 414,
+      "hostAlive": true,
+      "windows": [
+        "1336x889 AgentCodeGUI3"
+      ],
+      "pages": [
+        {
+          "url": "",
+          "mounted": true
+        }
+      ],
+      "log": [
+        "armed",
+        "mounted",
+        "page-load",
+        "process-failed",
+        "dialogs-closed",
+        "recover-begin",
+        "reloaded",
+        "page-load",
+        "mounted",
+        "recover-done"
+      ],
+      "verdict": "복구됨 414ms (대화상자 창: 0개 잔존)"
+    }
+  ]
+}

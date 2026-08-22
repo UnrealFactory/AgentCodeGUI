@@ -35,7 +35,12 @@ const rounds = Number(argOf('rounds', 4))
 const trials = Number(argOf('trials', 3))
 const leverFeature = argOf('lever', 'NetworkServiceInProcess2')
 const HOME = path.join(REPO, '.bench-home-fpsab')
-const OUT = path.join(REPO, 'bench', 'results', 'fps-ab.json')
+// 고정 파일명 금지(R4 크리틱 §3.1) — `fps-ab.json` 한 자리에 쓰던 탓에 리드의 재실행이
+// R4 §2.3 표의 **근거 파일을 통째로 지웠다**(`git show ce1c735:…`로만 복원된다).
+// 기본값에도 레버 이름과 실행 시각을 박는다. `--out=이름` 으로 직접 줄 수도 있다.
+const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, '').replace('T', '-')
+const outName = (argOf('out', '') || `fps-ab-${leverFeature}-${stamp}`).replace(/\.json$/, '')
+const OUT = path.join(REPO, 'bench', 'results', `${outName}.json`)
 
 const ARMS = [
   { name: 'control', extraEnv: {}, note: '제품 채택 세트(--process-per-site --in-process-gpu)' },

@@ -27,6 +27,41 @@
 //! | 브라우저 사망(= `--in-process-gpu`에서 GPU 드라이버 크래시 포함) | 죽음 | 창을 전부 destroy 후 **재생성**. 이때 GPU를 별도 프로세스로 되돌린다(탈출구 자동 적용) |
 //! | 브라우저 사망 + `CCG_SINGLE_PROCESS=1` | 죽음 | 재생성 경로가 없다 → **유령 대신 창 정리 + 프로세스 종료**로 진다(아래 참조) |
 //!
+//! ## ★ R5 — 연쇄 크래시에서 사건이 증발하던 세 자리 (R4 크리틱 §1.3 A2a·A3)
+//!
+//! R4의 상태 기계는 **단발 크래시만** 살렸다. 크리틱이 두 방향으로 깨뜨렸고 둘 다
+//! 재현됐다. 원인은 셋이고, 셋 다 "감지는 했는데 아무도 받지 않는다"는 같은 모양이다.
+//!
+//! 1. **디바운스 사각지대.** `DEBOUNCE_MS(4000) > RECOVERING 해제(2500)`라서 그 사이
+//!    1.5초에 온 **진짜 새 크래시**가 디바운스 분기에서 조용히 반환됐다. 재크래시로
+//!    세지도 않으니 `MAX_RECOVERIES` 루프 가드도 안 걸린다. 복구가 `reload()`인 이상
+//!    콘텐츠발 결정성 크래시는 **몇 초 안에 같은 자리에서 또 죽는 게 기본 경로**다.
+//!    → 디바운스는 "같은 사건의 중복 이벤트"만 흡수하도록 좁히고(`DEBOUNCE_MS ≤ SETTLE_MS`
+//!      를 **컴파일 타임에 강제**한다), 그 밖의 사건은 **절대 버리지 않는다**:
+//!      복구 진행 중이면 `PENDING_CAUSE`에 적어 두고 게이트가 열리는 즉시 다시 태운다
+//!      (`deferred` → `deferred-retry`). 사각지대는 폭을 줄인 게 아니라 **없어졌다**.
+//! 2. **감시자 자해.** 워치독이 `recover()`가 받았는지 보지도 않고 `BROWSER_PID`를 0으로
+//!    지웠다. 디바운스에 버려지면 그 뒤로는 `pid == 0 → continue`라 **감시 스레드가
+//!    영구 실명**한다. 브라우저가 죽었으니 `ProcessFailed`도 못 오고 = 남은 감지 수단 0.
+//!    → `recover()`가 `bool`(수락 여부)을 돌려주고, PID는 **수락된 복구 안에서** 그것도
+//!      `pid_alive()`로 사망을 재확인한 뒤에만 지운다. 거부되면 PID를 살려 두고 다음
+//!      틱(800ms)에 다시 시도한다.
+//! 3. **복구했다는 로그만 있고 확인이 없었다.** `reload()`가 실패해도 한 줄 남기고 끝이라
+//!    그대로 영구 유령이다.
+//!    → 렌더러가 **실제로 문서를 세웠는지**를 하트비트로 판정한다: splash.js가 `#root`
+//!      마운트 순간 `win:mounted`를 쏘고(→ `note_mounted`), 창 빌더의
+//!      `on_page_load(Finished)`가 `note_page_load`를 부른다. 복구 후 `VERIFY_MS` 안에
+//!      마운트가 안 오면 `verify-failed`를 남기고 **창 재생성으로 승격**한다.
+//!      (하트비트가 이 빌드에서 한 번도 온 적이 없으면 — 주입 실패 등 — page-load로
+//!       갈음한다. 없는 신호를 기다리다 매번 재생성으로 승격하는 사고를 막는다.)
+//!
+//! 부수 효과로 두 가지가 더 닫혔다:
+//! - **고아 다이얼로그**(크리틱 A5): 복구 직전에 우리 프로세스의 네이티브 대화상자를
+//!   닫는다(`crate::ipc::close_orphan_dialogs`). 열려 있던 '폴더 선택'을 받을 렌더러가
+//!   없어 사용자가 폴더를 골라도 아무 일도 안 일어나던 자리다.
+//! - **헤드리스 좀비**: 복구가 끝났는데 창이 하나도 없으면(복구 중 `ExitRequested`가
+//!   막힌 뒤 등) 프로세스만 남는다 = 화면에 없는 유령. 그때는 정리하고 진다.
+//!
 //! ## single-process의 한계 (문서화 대상)
 //! `--single-process`는 렌더러가 브라우저 프로세스 **안**에 있어서 렌더러가 죽으면
 //! 브라우저가 같이 죽는다(실측 3프로세스 → 1). 남는 건 Rust 호스트뿐이고 그 시점엔
@@ -35,7 +70,7 @@
 //! 남기지 않고 정리 후 종료한다 — 사용자가 다시 실행하면 정상 상태로 돌아온다.
 //! 이 옵트인이 기본값이 될 수 없는 이유가 하나 더 늘어난 것이다.
 
-use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicU8, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Manager, WebviewWindow};
@@ -46,19 +81,40 @@ static RECOVERING: AtomicBool = AtomicBool::new(false);
 static BROWSER_PID: AtomicU32 = AtomicU32::new(0);
 /// 복구 횟수 — 무한 루프(복구 → 즉시 재크래시) 방지.
 static RECOVERIES: AtomicU32 = AtomicU32::new(0);
-/// 마지막 복구 시각(epoch ms) — 디바운스.
+/// 마지막으로 **수락된** 복구의 시작 시각(epoch ms) — 디바운스의 기준점.
 static LAST_AT: AtomicU64 = AtomicU64::new(0);
 /// 감시 스레드는 한 번만.
 static WATCHDOG: AtomicBool = AtomicBool::new(false);
 /// 앱이 정상 종료 중 — 이때의 브라우저 사망은 크래시가 아니다(아래 `begin_shutdown`).
 static SHUTTING_DOWN: AtomicBool = AtomicBool::new(false);
 
+/// 복구 중에 도착해 **유예된** 사건(0 = 없음). 게이트가 열리는 즉시 다시 태운다.
+/// 값은 `Cause::code()` — 큰 쪽(BrowserGone)이 이긴다(`fetch_max`).
+static PENDING_CAUSE: AtomicU8 = AtomicU8::new(0);
+/// 마지막으로 **문서가 섰다**는 신호가 온 시각(epoch ms). `on_page_load(Finished)`.
+static ALIVE_AT: AtomicU64 = AtomicU64::new(0);
+/// 마지막 **마운트 하트비트**(splash.js → `win:mounted`) 시각. 복구 검증의 1순위 신호.
+/// 0이면 "이 빌드에서 한 번도 온 적 없음" = 신호를 믿지 않는다(page-load로 갈음).
+static MOUNTED_AT: AtomicU64 = AtomicU64::new(0);
+
 const MAX_RECOVERIES: u32 = 5;
-/// 이 안에 또 오면 같은 사건으로 본다(창 3개가 각자 이벤트를 쏘므로 필요).
-const DEBOUNCE_MS: u64 = 4000;
+/// **같은 사건의 중복 이벤트만** 흡수하는 폭(창 3개가 각자 ProcessFailed를 쏜다).
+/// 복구가 이미 새 문서를 세운 뒤(`ALIVE_AT > LAST_AT`)라면 중복이 아니라 새 크래시이므로
+/// 이 창 안이라도 받는다 — `is_duplicate()` 참조.
+const DEBOUNCE_MS: u64 = 1200;
+/// 복구 게이트(`RECOVERING`)를 최소 이만큼 닫아 둔다. 재생성 중 종료 차단 + 이벤트 폭풍 흡수.
+const SETTLE_MS: u64 = 2500;
+/// 복구가 실제로 붙었는지(마운트 하트비트) 기다리는 상한.
+/// 실측 재마운트: reload 291~528ms · 창 재생성 1.33~1.43s — 5배 이상 여유.
+const VERIFY_MS: u64 = 3000;
 /// 이만큼 조용했으면 "연쇄 크래시"가 아니다 — 포기 카운터를 되돌린다.
 /// (안 되돌리면 한 주에 한 번씩 여섯 번째 크래시가 앱을 끝낸다.)
 const RECOVERY_RESET_MS: u64 = 300_000;
+
+/// **R4 블로커의 재발 방지선.** 디바운스 창이 복구 게이트보다 넓으면 그 차이만큼
+/// "디바운스에 버려지는데 아무도 재시도하지 않는" 사각지대가 생긴다(크리틱 R4 §1.3 A2a).
+/// 상수를 만지는 다음 사람은 여기서 컴파일 에러로 막힌다.
+const _: () = assert!(DEBOUNCE_MS <= SETTLE_MS);
 
 pub fn is_recovering() -> bool {
     RECOVERING.load(Ordering::SeqCst)
@@ -80,8 +136,16 @@ fn now_ms() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
 }
 
+/// 로그 직렬화 — 아래 주석 참조. 여러 스레드가 같은 파일에 붙인다.
+static LOG_LOCK: Mutex<()> = Mutex::new(());
+
 /// 복구 로그 — 앱 홈의 `crash-recovery.log`에 한 줄 JSON으로 붙인다.
 /// 벤치(bench/crash.mjs)가 이 파일을 읽어 **복구 시간**을 재고, 사용자 진단에도 쓴다.
+///
+/// ⚠ 한 줄을 **한 번의 write로** 쓴다. `writeln!`은 본문과 개행을 따로 쓸 수 있어서,
+/// 감시 스레드와 복구 스레드가 같은 순간에 찍으면 두 줄이 글자 단위로 섞여 **둘 다
+/// JSON 파싱에 실패한다**(R5 실측: `watchdog-browser-gone`과 `recover-begin`이 서로를
+/// 먹어 하네스 타임라인에 빈 항목 두 개로 찍혔다). 뮤텍스 + 단일 write_all로 막는다.
 pub fn log(event: &str, detail: serde_json::Value) {
     let line = serde_json::json!({
         "at": now_ms(),
@@ -92,9 +156,33 @@ pub fn log(event: &str, detail: serde_json::Value) {
     let path = ccg_store::app_home().join("crash-recovery.log");
     let _ = std::fs::create_dir_all(path.parent().unwrap_or(&path));
     use std::io::Write;
+    let buf = format!("{line}\n");
+    let _guard = LOG_LOCK.lock();
     if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
-        let _ = writeln!(f, "{line}");
+        let _ = f.write_all(buf.as_bytes());
     }
+}
+
+// ── 생존 하트비트 (복구 검증의 신호원) ───────────────────────────────────────
+//
+// "복구했다"고 로그만 찍고 확인은 안 하던 자리를 닫는다(R4 크리틱 §1.3-(3)).
+// 두 신호 다 **재로드마다 다시 온다** — 셸이 창을 안 부수는 reload 경로에서도
+// 문서는 새로 서므로 판정에 쓸 수 있다.
+
+/// 문서 하나가 로드를 마쳤다 — `WebviewWindowBuilder::on_page_load(Finished)`.
+/// 셸 쪽 신호라 렌더러 번들의 협조가 필요 없다(2순위).
+pub fn note_page_load(label: &str) {
+    ALIVE_AT.store(now_ms(), Ordering::SeqCst);
+    log("page-load", serde_json::json!({ "label": label }));
+}
+
+/// **마운트 하트비트** — splash.js가 `#root`에 자식이 생긴 순간 쏜다(`win:mounted`).
+/// "창은 있는데 문서가 안 섰다"(= 유령 창의 정의)를 가르는 유일한 신호다(1순위).
+pub fn note_mounted(label: &str) {
+    let t = now_ms();
+    MOUNTED_AT.store(t, Ordering::SeqCst);
+    ALIVE_AT.store(t, Ordering::SeqCst);
+    log("mounted", serde_json::json!({ "label": label }));
 }
 
 // ── ProcessFailed 등록 ───────────────────────────────────────────────────────
@@ -217,20 +305,35 @@ fn start_watchdog(app: &AppHandle) {
         return;
     }
     let app = app.clone();
-    std::thread::spawn(move || loop {
-        std::thread::sleep(Duration::from_millis(800));
-        let pid = BROWSER_PID.load(Ordering::SeqCst);
-        if pid == 0 || is_recovering() || shutting_down() {
-            continue;
-        }
-        // 창이 하나도 없으면 되살릴 것도 없다 = 종료 경로다.
-        if app.webview_windows().is_empty() {
-            continue;
-        }
-        if !pid_alive(pid) {
-            log("watchdog-browser-gone", serde_json::json!({ "browserPid": pid }));
-            BROWSER_PID.store(0, Ordering::SeqCst);
-            recover(&app, Cause::BrowserGone);
+    std::thread::spawn(move || {
+        // 같은 PID에 대한 반복 보고는 접는다 — 수락될 때까지 800ms마다 재시도하므로.
+        let mut reported: u32 = 0;
+        loop {
+            std::thread::sleep(Duration::from_millis(800));
+            let pid = BROWSER_PID.load(Ordering::SeqCst);
+            if pid == 0 || is_recovering() || shutting_down() {
+                continue;
+            }
+            // 창이 하나도 없으면 되살릴 것도 없다 = 종료 경로다.
+            if app.webview_windows().is_empty() {
+                continue;
+            }
+            if !pid_alive(pid) {
+                // ★ PID는 여기서 지우지 않는다. R4는 `recover()`가 받았는지 보지도 않고
+                //   먼저 0으로 지워서, 디바운스에 버려지면 **감시 스레드가 영구 실명**했다
+                //   (pid == 0 → continue, 브라우저가 죽었으니 ProcessFailed도 안 온다).
+                //   지우는 일은 수락된 복구 안에서 한다 — 거부되면 다음 틱에 또 시도한다.
+                let accepted = recover(&app, Cause::BrowserGone);
+                if reported != pid || accepted {
+                    log(
+                        "watchdog-browser-gone",
+                        serde_json::json!({ "browserPid": pid, "accepted": accepted }),
+                    );
+                    reported = pid;
+                }
+            } else {
+                reported = 0;
+            }
         }
     });
 }
@@ -243,21 +346,64 @@ enum Cause {
     BrowserGone,
 }
 
+impl Cause {
+    /// 유예 큐(`PENDING_CAUSE`)에 담기는 값. 큰 쪽이 이긴다 — 브라우저 사망은
+    /// reload로 못 고치므로 렌더러 사망 유예를 덮어써야 한다.
+    fn code(self) -> u8 {
+        match self {
+            Cause::RendererGone => 1,
+            Cause::BrowserGone => 2,
+        }
+    }
+    fn from_code(c: u8) -> Option<Self> {
+        match c {
+            1 => Some(Cause::RendererGone),
+            2 => Some(Cause::BrowserGone),
+            _ => None,
+        }
+    }
+    fn name(self) -> &'static str {
+        match self {
+            Cause::RendererGone => "renderer-gone",
+            Cause::BrowserGone => "browser-gone",
+        }
+    }
+}
+
 /// 재생성 시점에 되살려야 할 추가 채팅 창 수. 재생성 중에 SESSIONS가 비어 버리므로
 /// 미리 세어 둔다.
 static PENDING_SESSIONS: Mutex<usize> = Mutex::new(0);
 
-fn recover(app: &AppHandle, cause: Cause) {
+/// **같은 크래시가 창 수만큼 쏘는 중복 이벤트인가.**
+///
+/// 시간만으로는 못 가른다 — R4가 그래서 진짜 재크래시를 중복으로 버렸다. 여기서는
+/// "복구가 이미 새 문서를 세웠는가"를 같이 본다: `ALIVE_AT > LAST_AT`이면 우리가 만든
+/// 문서가 죽은 것이므로 **새 사건**이다. (중복 이벤트는 구조상 항상 reload보다 먼저
+/// 온다 — ProcessFailed 콜백도 reload 디스패치도 같은 메인 스레드라 콜백 소진이 먼저다.)
+fn is_duplicate(now: u64, last: u64) -> bool {
+    if last == 0 || now.saturating_sub(last) >= DEBOUNCE_MS {
+        return false;
+    }
+    ALIVE_AT.load(Ordering::SeqCst) <= last
+}
+
+/// 복구를 **수락했는가**. 거부(false)에는 세 가지가 있고 뜻이 다르다:
+///   - 종료 중 / 중복 이벤트 → 버린다(정상)
+///   - 복구 진행 중 → **유예한다**(`PENDING_CAUSE`) — 게이트가 열리면 다시 태운다
+fn recover(app: &AppHandle, cause: Cause) -> bool {
     if shutting_down() {
-        return;
+        return false;
     }
     let now = now_ms();
     let last = LAST_AT.load(Ordering::SeqCst);
-    if now.saturating_sub(last) < DEBOUNCE_MS {
-        return; // 같은 사건 — 창마다 이벤트가 오므로 첫 것만 처리
+    if is_duplicate(now, last) {
+        return false; // 같은 사건 — 창마다 이벤트가 오므로 첫 것만 처리
     }
     if RECOVERING.swap(true, Ordering::SeqCst) {
-        return;
+        // 복구 중에 온 **새** 사건이다. R4는 여기서 사건이 통째로 사라졌다(= 유령).
+        PENDING_CAUSE.fetch_max(cause.code(), Ordering::SeqCst);
+        log("deferred", serde_json::json!({ "cause": cause.name() }));
+        return false;
     }
     // 오래 조용했으면 연쇄가 아니다 — 포기 카운터를 되돌린다.
     if last != 0 && now.saturating_sub(last) > RECOVERY_RESET_MS {
@@ -269,26 +415,26 @@ fn recover(app: &AppHandle, cause: Cause) {
     if n > MAX_RECOVERIES {
         log("give-up", serde_json::json!({ "recoveries": n }));
         teardown_and_exit(app);
-        return;
+        return true;
     }
 
     let app2 = app.clone();
     std::thread::spawn(move || {
         let t0 = now_ms();
+        // 열려 있던 네이티브 대화상자는 받을 렌더러가 사라졌다 = 고아 UI(크리틱 A5).
+        // 복구가 문서를 다시 세우기 **전에** 걷는다.
+        let closed = crate::ipc::close_orphan_dialogs();
+        if closed > 0 {
+            log("dialogs-closed", serde_json::json!({ "n": closed }));
+        }
+
+        let mut mode = "reload-all";
         match cause {
             Cause::RendererGone => {
                 // 브라우저가 살아 있다 = 문서만 다시 세우면 된다. 창은 그대로 두므로
                 // 위치·크기·포커스가 유지되고 사용자 눈에는 "새로고침"으로 보인다.
-                log("recover-begin", serde_json::json!({ "mode": "reload-all", "n": n }));
-                let a = app2.clone();
-                let _ = app2.run_on_main_thread(move || {
-                    for (label, w) in a.webview_windows() {
-                        match w.reload() {
-                            Ok(()) => log("reloaded", serde_json::json!({ "label": label })),
-                            Err(e) => log("reload-failed", serde_json::json!({ "label": label, "why": e.to_string() })),
-                        }
-                    }
-                });
+                log("recover-begin", serde_json::json!({ "mode": mode, "n": n }));
+                reload_all(&app2);
             }
             Cause::BrowserGone => {
                 if crate::webview_args::single_process() {
@@ -297,43 +443,125 @@ fn recover(app: &AppHandle, cause: Cause) {
                     teardown_and_exit(&app2);
                     return;
                 }
+                // 브라우저가 **정말** 죽었을 때만 감시 PID를 비운다(재생성 경로의 arm()이
+                // 새 PID를 채운다). 오탐이면 살려 둬야 감시가 계속 산다.
+                let pid = BROWSER_PID.load(Ordering::SeqCst);
+                if pid != 0 && !pid_alive(pid) {
+                    BROWSER_PID.store(0, Ordering::SeqCst);
+                }
                 // `--in-process-gpu`면 브라우저 사망의 가장 흔한 원인이 GPU 드라이버다
                 // (TDR 포함). 재생성할 때는 탈출구로 간다 — GPU를 다시 별도 프로세스로.
                 let escaped = crate::webview_args::escape_in_process_gpu();
-                log("recover-begin", serde_json::json!({ "mode": "recreate-windows", "n": n, "gpuEscape": escaped }));
-                let sessions = crate::win::session_count();
-                *PENDING_SESSIONS.lock().unwrap() = sessions;
-                let a = app2.clone();
-                let _ = app2.run_on_main_thread(move || {
-                    for (label, w) in a.webview_windows() {
-                        let _ = w.destroy();
-                        log("destroyed", serde_json::json!({ "label": label }));
-                    }
-                });
-                std::thread::sleep(Duration::from_millis(400));
-                let a = app2.clone();
-                let _ = app2.run_on_main_thread(move || {
-                    crate::win::reset_shown();
-                    crate::win::clear_sessions();
-                    match crate::win::create_main(&a) {
-                        Ok(_) => log("recreated", serde_json::json!({ "label": "main" })),
-                        Err(e) => log("recreate-failed", serde_json::json!({ "why": e.to_string() })),
-                    }
-                    let want = *PENDING_SESSIONS.lock().unwrap();
-                    for _ in 0..want {
-                        let _ = crate::win::open_session_window(&a);
-                    }
-                    if want > 0 {
-                        log("recreated-sessions", serde_json::json!({ "n": want }));
-                    }
-                });
+                mode = "recreate-windows";
+                log("recover-begin", serde_json::json!({ "mode": mode, "n": n, "gpuEscape": escaped }));
+                recreate_windows(&app2);
             }
         }
-        // 복구가 실제로 붙을 시간을 준 뒤 게이트를 연다(재크래시 감지 재개).
-        std::thread::sleep(Duration::from_millis(2500));
+
+        // ── 복구가 **실제로 붙었는지** 확인한다 (R4: 로그만 찍고 확인이 없었다) ──
+        let mut verified = wait_recovered(t0);
+        if verified.is_none() && !app2.webview_windows().is_empty() && mode == "reload-all" {
+            // 창은 있는데 문서가 안 섰다 = 유령 창의 정의. reload로 안 되면 재생성으로 승격.
+            log("verify-failed", serde_json::json!({ "n": n, "after": mode, "escalate": "recreate-windows" }));
+            mode = "recreate-after-reload";
+            let t1 = now_ms();
+            recreate_windows(&app2);
+            verified = wait_recovered(t1);
+        }
+        if verified.is_none() {
+            log("verify-failed", serde_json::json!({ "n": n, "after": mode, "escalate": Option::<&str>::None }));
+        }
+
+        // 게이트는 최소 SETTLE_MS 동안 닫아 둔다(중복 흡수 + 재생성 중 종료 차단).
+        let held = now_ms().saturating_sub(t0);
+        if held < SETTLE_MS {
+            std::thread::sleep(Duration::from_millis(SETTLE_MS - held));
+        }
         RECOVERING.store(false, Ordering::SeqCst);
-        log("recover-done", serde_json::json!({ "ms": now_ms().saturating_sub(t0), "n": n }));
+        log(
+            "recover-done",
+            serde_json::json!({ "ms": now_ms().saturating_sub(t0), "n": n, "mode": mode, "verifiedMs": verified }),
+        );
+
+        // 복구 중에 온 사건은 버리지 않고 유예해 뒀다 — 게이트가 열렸으니 지금 태운다.
+        let pending = PENDING_CAUSE.swap(0, Ordering::SeqCst);
+        if let Some(c) = Cause::from_code(pending) {
+            log("deferred-retry", serde_json::json!({ "cause": c.name() }));
+            recover(&app2, c);
+            return;
+        }
+        // 창이 하나도 없이 복구가 끝났다 = 화면에 없는 프로세스만 남은 상태(헤드리스 좀비).
+        // 복구 중에 ExitRequested를 막았을 때 도달할 수 있다 — 유령이므로 정리하고 진다.
+        if !shutting_down() && app2.webview_windows().is_empty() {
+            log("no-windows-after-recover", serde_json::json!({ "n": n }));
+            teardown_and_exit(&app2);
+        }
     });
+    true
+}
+
+/// 모든 창의 문서를 다시 세운다(창은 부수지 않는다).
+fn reload_all(app: &AppHandle) {
+    let a = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        for (label, w) in a.webview_windows() {
+            match w.reload() {
+                Ok(()) => log("reloaded", serde_json::json!({ "label": label })),
+                Err(e) => log("reload-failed", serde_json::json!({ "label": label, "why": e.to_string() })),
+            }
+        }
+    });
+}
+
+/// 창을 전부 부수고 다시 만든다 — 브라우저 사망(웹뷰 환경이 통째로 죽은 경우)과
+/// reload가 문서를 못 세운 경우의 마지막 수단.
+fn recreate_windows(app: &AppHandle) {
+    let sessions = crate::win::session_count();
+    *PENDING_SESSIONS.lock().unwrap() = sessions;
+    let a = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        for (label, w) in a.webview_windows() {
+            let _ = w.destroy();
+            log("destroyed", serde_json::json!({ "label": label }));
+        }
+    });
+    std::thread::sleep(Duration::from_millis(400));
+    let a = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        crate::win::reset_shown();
+        crate::win::clear_sessions();
+        match crate::win::create_main(&a) {
+            Ok(_) => log("recreated", serde_json::json!({ "label": "main" })),
+            Err(e) => log("recreate-failed", serde_json::json!({ "why": e.to_string() })),
+        }
+        let want = *PENDING_SESSIONS.lock().unwrap();
+        for _ in 0..want {
+            let _ = crate::win::open_session_window(&a);
+        }
+        if want > 0 {
+            log("recreated-sessions", serde_json::json!({ "n": want }));
+        }
+    });
+}
+
+/// `since` 이후에 문서가 실제로 섰는가 — 섰으면 걸린 ms, 아니면 None.
+///
+/// 1순위는 마운트 하트비트(`win:mounted`)다. 그 신호가 이 실행에서 한 번도 온 적이
+/// 없으면(주입 실패·구형 번들) **없는 신호를 기다리다 매번 재생성으로 승격**하는 사고가
+/// 나므로 page-load로 갈음한다.
+fn wait_recovered(since: u64) -> Option<u64> {
+    let use_mount = MOUNTED_AT.load(Ordering::SeqCst) != 0;
+    let deadline = now_ms() + VERIFY_MS;
+    loop {
+        let at = if use_mount { MOUNTED_AT.load(Ordering::SeqCst) } else { ALIVE_AT.load(Ordering::SeqCst) };
+        if at > since {
+            return Some(at.saturating_sub(since));
+        }
+        if now_ms() >= deadline {
+            return None;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
 }
 
 /// 유령 창을 남기지 않고 진다 — 창을 전부 부수고 프로세스를 끝낸다.
