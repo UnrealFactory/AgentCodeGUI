@@ -1,0 +1,821 @@
+{
+  "at": "2026-08-22T15:37:24.985Z",
+  "exe": "C:\\Code\\AgentCodeGUI\\target\\debug\\ccg-migrate.exe",
+  "runs": [
+    {
+      "label": "실홈 복사본",
+      "home": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-unify-poc-real-1787413044867",
+      "checks": {
+        "crash": {
+          "normalRunMs": 182,
+          "killed": false,
+          "killMs": 64,
+          "oldDirsIntact": true,
+          "chatsV3": "complete",
+          "stagingLeftovers": [],
+          "sweptByRerun": null,
+          "note": "너무 빨라 중간에 못 죽였다(완주) — 부하 픽스처 쪽 수치를 보라"
+        },
+        "roundTrip": {
+          "ok": true,
+          "diffs": []
+        },
+        "markerMerge": {
+          "ok": true,
+          "lostChats": 0,
+          "staleAcceptedCount": 0,
+          "staleAccepted": []
+        },
+        "aliasMaRoundTrip": {
+          "ok": true,
+          "blobEqual": true,
+          "dataLoss": []
+        },
+        "aliasChatsRoundTrip": {
+          "ok": true,
+          "dataLoss": []
+        },
+        "lightQuery": {
+          "ok": true,
+          "wrong": [],
+          "loss": []
+        },
+        "setActive": {
+          "ok": true,
+          "picked": "ma-93fb41d4-239a-42df-89a9-4a6a9405b0e6-0",
+          "onDisk": "ma-93fb41d4-239a-42df-89a9-4a6a9405b0e6-0"
+        },
+        "bootReload": {
+          "ok": true,
+          "withStatusJson": true,
+          "afterStatusJsonDeleted": true,
+          "liteDerived": true,
+          "clearedAgain": true,
+          "lite": {
+            "chatId": "63f9811a-e4b1-4d70-b3e9-82da91613fde",
+            "status": "idle",
+            "busy": false,
+            "bgActive": false,
+            "ask": "none",
+            "hold": {
+              "resetAt": 1800000000,
+              "ready": false
+            },
+            "queued": 1,
+            "unread": 0,
+            "updatedAt": 0
+          }
+        },
+        "idempotent": {
+          "ok": true,
+          "before": 5,
+          "after": 5
+        },
+        "rollback": {
+          "oldDirsIntact": true,
+          "stagingLeftovers": [],
+          "backupExists": true,
+          "backupDir": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-unify-poc-real-1787413044867\\backup-2.6.2-1787413045273"
+        }
+      },
+      "at": "2026-08-22T15:37:24.986Z",
+      "migrate": {
+        "ok": true,
+        "migratedAt": 1787413045273,
+        "elapsedMs": 59,
+        "backupDir": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-unify-poc-real-1787413044867\\backup-2.6.2-1787413045273",
+        "counts": {
+          "chats": 1,
+          "maSessions": 1,
+          "maPanels": 4,
+          "sessionChats": 0,
+          "talkAbsorbed": 0,
+          "carried": 0,
+          "total": 5,
+          "messages": 299,
+          "boards": 2
+        },
+        "activeChatId": "63f9811a-e4b1-4d70-b3e9-82da91613fde",
+        "boardOrder": [
+          "default",
+          "93fb41d4-239a-42df-89a9-4a6a9405b0e6"
+        ],
+        "activeBoardId": "93fb41d4-239a-42df-89a9-4a6a9405b0e6",
+        "activeSessionId": "93fb41d4-239a-42df-89a9-4a6a9405b0e6",
+        "btw": {
+          "rewritten": 0,
+          "dropped": 0
+        },
+        "holdMoved": 0,
+        "sourceIndexOrders": {
+          "chats": [
+            "63f9811a-e4b1-4d70-b3e9-82da91613fde"
+          ],
+          "multiAgent": [
+            "93fb41d4-239a-42df-89a9-4a6a9405b0e6"
+          ],
+          "sessionChats": []
+        },
+        "warnings": [],
+        "peakWorkingSetBytes": 14204928,
+        "wallMs": 67
+      },
+      "migrateIdMapSize": 5,
+      "counts": {
+        "before": {
+          "chats": 1,
+          "maSessions": 1,
+          "maPanels": 4,
+          "sessionChats": 0,
+          "talkAbsorbed": 0,
+          "expectedTotal": 5,
+          "messages": 299,
+          "files": {
+            "chats": 1,
+            "ma": 1,
+            "sessionChats": 0
+          }
+        },
+        "after": {
+          "chats": 5,
+          "messages": 299,
+          "boards": 2,
+          "files": {
+            "chatsV3": 5,
+            "boards": 2
+          }
+        }
+      },
+      "identity": {
+        "primary": {
+          "compared": 5,
+          "mismatch": 0,
+          "sample": []
+        },
+        "secondary": {
+          "compared": 5,
+          "mismatch": 0,
+          "unresolved": 0,
+          "reasons": {}
+        }
+      },
+      "btw": {
+        "rewritten": 0,
+        "dropped": 0,
+        "expectRewritten": 0,
+        "expectDropped": 0
+      },
+      "warnings": [],
+      "apiConfig": {
+        "status": {
+          "hasKey": true,
+          "keyTail": "ywAA",
+          "budgetUsd": 300,
+          "spentUsd": 0,
+          "hasOpenaiKey": false,
+          "openaiKeyTail": null
+        },
+        "keyDecrypts": true,
+        "keyLen": ">0",
+        "openaiDecrypts": false,
+        "encryptionAvailable": true
+      },
+      "fails": [],
+      "ok": true
+    },
+    {
+      "label": "벤치 픽스처 홈",
+      "home": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-unify-poc-fixture-1787413044876",
+      "checks": {
+        "crash": {
+          "normalRunMs": 41,
+          "killed": true,
+          "killMs": 20,
+          "oldDirsIntact": true,
+          "chatsV3": "complete",
+          "stagingLeftovers": [],
+          "sweptByRerun": null
+        },
+        "roundTrip": {
+          "ok": true,
+          "diffs": []
+        },
+        "markerMerge": {
+          "ok": true,
+          "lostChats": 0,
+          "staleAcceptedCount": 0,
+          "staleAccepted": []
+        },
+        "aliasMaRoundTrip": {
+          "ok": true,
+          "skipped": "보드(멀티 세션)가 없다"
+        },
+        "aliasChatsRoundTrip": {
+          "ok": true,
+          "dataLoss": []
+        },
+        "lightQuery": {
+          "ok": true,
+          "wrong": [],
+          "loss": []
+        },
+        "setActive": {
+          "ok": true,
+          "picked": "fix-long-thread",
+          "onDisk": "fix-long-thread"
+        },
+        "bootReload": {
+          "ok": true,
+          "withStatusJson": true,
+          "afterStatusJsonDeleted": true,
+          "liteDerived": true,
+          "clearedAgain": true,
+          "lite": {
+            "chatId": "fix-long-thread",
+            "status": "idle",
+            "busy": false,
+            "bgActive": false,
+            "ask": "none",
+            "hold": {
+              "resetAt": 1800000000,
+              "ready": false
+            },
+            "queued": 1,
+            "unread": 0,
+            "updatedAt": 0
+          }
+        },
+        "idempotent": {
+          "ok": true,
+          "before": 1,
+          "after": 1
+        },
+        "rollback": {
+          "oldDirsIntact": true,
+          "stagingLeftovers": [],
+          "backupExists": true,
+          "backupDir": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-unify-poc-fixture-1787413044876\\backup-2.6.2-1787413046287"
+        }
+      },
+      "at": "2026-08-22T15:37:26.197Z",
+      "migrate": {
+        "ok": true,
+        "migratedAt": 1787413046287,
+        "elapsedMs": 22,
+        "backupDir": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-unify-poc-fixture-1787413044876\\backup-2.6.2-1787413046287",
+        "counts": {
+          "chats": 1,
+          "maSessions": 0,
+          "maPanels": 0,
+          "sessionChats": 0,
+          "talkAbsorbed": 0,
+          "carried": 0,
+          "total": 1,
+          "messages": 471,
+          "boards": 1
+        },
+        "activeChatId": "fix-long-thread",
+        "boardOrder": [
+          "default"
+        ],
+        "activeBoardId": "default",
+        "activeSessionId": "",
+        "btw": {
+          "rewritten": 0,
+          "dropped": 0
+        },
+        "holdMoved": 0,
+        "sourceIndexOrders": {
+          "chats": [
+            "fix-long-thread"
+          ],
+          "multiAgent": [],
+          "sessionChats": []
+        },
+        "warnings": [],
+        "peakWorkingSetBytes": 9068544,
+        "wallMs": 28
+      },
+      "migrateIdMapSize": 1,
+      "counts": {
+        "before": {
+          "chats": 1,
+          "maSessions": 0,
+          "maPanels": 0,
+          "sessionChats": 0,
+          "talkAbsorbed": 0,
+          "expectedTotal": 1,
+          "messages": 471,
+          "files": {
+            "chats": 1,
+            "ma": 0,
+            "sessionChats": 0
+          }
+        },
+        "after": {
+          "chats": 1,
+          "messages": 471,
+          "boards": 1,
+          "files": {
+            "chatsV3": 1,
+            "boards": 1
+          }
+        }
+      },
+      "identity": {
+        "primary": {
+          "compared": 1,
+          "mismatch": 0,
+          "sample": []
+        },
+        "secondary": {
+          "compared": 1,
+          "mismatch": 0,
+          "unresolved": 0,
+          "reasons": {}
+        }
+      },
+      "btw": {
+        "rewritten": 0,
+        "dropped": 0,
+        "expectRewritten": 0,
+        "expectDropped": 0
+      },
+      "warnings": [],
+      "apiConfig": {
+        "status": {
+          "hasKey": true,
+          "keyTail": "ywAA",
+          "budgetUsd": 300,
+          "spentUsd": 0,
+          "hasOpenaiKey": false,
+          "openaiKeyTail": null
+        },
+        "keyDecrypts": true,
+        "keyLen": ">0",
+        "openaiDecrypts": false,
+        "encryptionAvailable": true
+      },
+      "fails": [],
+      "ok": true
+    },
+    {
+      "label": "부하 픽스처(200/20×6/30)",
+      "home": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-unify-poc-load-1787413044928",
+      "checks": {
+        "crash": {
+          "normalRunMs": 1449,
+          "killed": true,
+          "killMs": 507,
+          "oldDirsIntact": true,
+          "chatsV3": "absent",
+          "stagingLeftovers": [],
+          "sweptByRerun": null
+        },
+        "roundTrip": {
+          "ok": true,
+          "diffs": []
+        },
+        "markerMerge": {
+          "ok": true,
+          "lostChats": 0,
+          "staleAcceptedCount": 0,
+          "staleAccepted": []
+        },
+        "aliasMaRoundTrip": {
+          "ok": true,
+          "blobEqual": true,
+          "dataLoss": []
+        },
+        "aliasChatsRoundTrip": {
+          "ok": true,
+          "dataLoss": []
+        },
+        "lightQuery": {
+          "ok": true,
+          "wrong": [],
+          "loss": []
+        },
+        "setActive": {
+          "ok": true,
+          "picked": "chat-0000",
+          "onDisk": "chat-0000"
+        },
+        "bootReload": {
+          "ok": true,
+          "withStatusJson": true,
+          "afterStatusJsonDeleted": true,
+          "liteDerived": true,
+          "clearedAgain": true,
+          "lite": {
+            "chatId": "chat-0000",
+            "status": "idle",
+            "busy": false,
+            "bgActive": false,
+            "ask": "none",
+            "hold": {
+              "resetAt": 1800000000,
+              "ready": false
+            },
+            "queued": 1,
+            "unread": 0,
+            "updatedAt": 0
+          }
+        },
+        "idempotent": {
+          "ok": true,
+          "before": 311,
+          "after": 311
+        },
+        "rollback": {
+          "oldDirsIntact": true,
+          "stagingLeftovers": [],
+          "backupExists": true,
+          "backupDir": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-unify-poc-load-1787413044928\\backup-2.6.2-1787413049043"
+        }
+      },
+      "at": "2026-08-22T15:37:26.732Z",
+      "migrate": {
+        "ok": true,
+        "migratedAt": 1787413049043,
+        "elapsedMs": 1470,
+        "backupDir": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-unify-poc-load-1787413044928\\backup-2.6.2-1787413049043",
+        "counts": {
+          "chats": 200,
+          "maSessions": 20,
+          "maPanels": 80,
+          "sessionChats": 30,
+          "talkAbsorbed": 1,
+          "carried": 0,
+          "total": 311,
+          "messages": 15810,
+          "boards": 21
+        },
+        "activeChatId": "chat-0003",
+        "boardOrder": [
+          "default",
+          "ms-0",
+          "ms-1",
+          "ms-2",
+          "ms-3",
+          "ms-4",
+          "ms-5",
+          "ms-6",
+          "ms-7",
+          "ms-8",
+          "ms-9",
+          "ms-10",
+          "ms-11",
+          "ms-12",
+          "ms-13",
+          "ms-14",
+          "ms-15",
+          "ms-16",
+          "ms-17",
+          "ms-18",
+          "ms-19"
+        ],
+        "activeBoardId": "ms-1",
+        "activeSessionId": "ms-1",
+        "btw": {
+          "rewritten": 20,
+          "dropped": 1
+        },
+        "holdMoved": 0,
+        "sourceIndexOrders": {
+          "chats": [
+            "chat-0000",
+            "chat-0001",
+            "chat-0002",
+            "chat-0003",
+            "chat-0004",
+            "chat-0005",
+            "chat-0006",
+            "chat-0007",
+            "chat-0008",
+            "chat-0009",
+            "chat-0010",
+            "chat-0011",
+            "chat-0012",
+            "chat-0013",
+            "chat-0014",
+            "chat-0015",
+            "chat-0016",
+            "chat-0017",
+            "chat-0018",
+            "chat-0019",
+            "chat-0020",
+            "chat-0021",
+            "chat-0022",
+            "chat-0023",
+            "chat-0024",
+            "chat-0025",
+            "chat-0026",
+            "chat-0027",
+            "chat-0028",
+            "chat-0029",
+            "chat-0030",
+            "chat-0031",
+            "chat-0032",
+            "chat-0033",
+            "chat-0034",
+            "chat-0035",
+            "chat-0036",
+            "chat-0037",
+            "chat-0038",
+            "chat-0039",
+            "chat-0040",
+            "chat-0041",
+            "chat-0042",
+            "chat-0043",
+            "chat-0044",
+            "chat-0045",
+            "chat-0046",
+            "chat-0047",
+            "chat-0048",
+            "chat-0049",
+            "chat-0050",
+            "chat-0051",
+            "chat-0052",
+            "chat-0053",
+            "chat-0054",
+            "chat-0055",
+            "chat-0056",
+            "chat-0057",
+            "chat-0058",
+            "chat-0059",
+            "chat-0060",
+            "chat-0061",
+            "chat-0062",
+            "chat-0063",
+            "chat-0064",
+            "chat-0065",
+            "chat-0066",
+            "chat-0067",
+            "chat-0068",
+            "chat-0069",
+            "chat-0070",
+            "chat-0071",
+            "chat-0072",
+            "chat-0073",
+            "chat-0074",
+            "chat-0075",
+            "chat-0076",
+            "chat-0077",
+            "chat-0078",
+            "chat-0079",
+            "chat-0080",
+            "chat-0081",
+            "chat-0082",
+            "chat-0083",
+            "chat-0084",
+            "chat-0085",
+            "chat-0086",
+            "chat-0087",
+            "chat-0088",
+            "chat-0089",
+            "chat-0090",
+            "chat-0091",
+            "chat-0092",
+            "chat-0093",
+            "chat-0094",
+            "chat-0095",
+            "chat-0096",
+            "chat-0097",
+            "chat-0098",
+            "chat-0099",
+            "chat-0100",
+            "chat-0101",
+            "chat-0102",
+            "chat-0103",
+            "chat-0104",
+            "chat-0105",
+            "chat-0106",
+            "chat-0107",
+            "chat-0108",
+            "chat-0109",
+            "chat-0110",
+            "chat-0111",
+            "chat-0112",
+            "chat-0113",
+            "chat-0114",
+            "chat-0115",
+            "chat-0116",
+            "chat-0117",
+            "chat-0118",
+            "chat-0119",
+            "chat-0120",
+            "chat-0121",
+            "chat-0122",
+            "chat-0123",
+            "chat-0124",
+            "chat-0125",
+            "chat-0126",
+            "chat-0127",
+            "chat-0128",
+            "chat-0129",
+            "chat-0130",
+            "chat-0131",
+            "chat-0132",
+            "chat-0133",
+            "chat-0134",
+            "chat-0135",
+            "chat-0136",
+            "chat-0137",
+            "chat-0138",
+            "chat-0139",
+            "chat-0140",
+            "chat-0141",
+            "chat-0142",
+            "chat-0143",
+            "chat-0144",
+            "chat-0145",
+            "chat-0146",
+            "chat-0147",
+            "chat-0148",
+            "chat-0149",
+            "chat-0150",
+            "chat-0151",
+            "chat-0152",
+            "chat-0153",
+            "chat-0154",
+            "chat-0155",
+            "chat-0156",
+            "chat-0157",
+            "chat-0158",
+            "chat-0159",
+            "chat-0160",
+            "chat-0161",
+            "chat-0162",
+            "chat-0163",
+            "chat-0164",
+            "chat-0165",
+            "chat-0166",
+            "chat-0167",
+            "chat-0168",
+            "chat-0169",
+            "chat-0170",
+            "chat-0171",
+            "chat-0172",
+            "chat-0173",
+            "chat-0174",
+            "chat-0175",
+            "chat-0176",
+            "chat-0177",
+            "chat-0178",
+            "chat-0179",
+            "chat-0180",
+            "chat-0181",
+            "chat-0182",
+            "chat-0183",
+            "chat-0184",
+            "chat-0185",
+            "chat-0186",
+            "chat-0187",
+            "chat-0188",
+            "chat-0189",
+            "chat-0190",
+            "chat-0191",
+            "chat-0192",
+            "chat-0193",
+            "chat-0194",
+            "chat-0195",
+            "chat-0196",
+            "chat-0197",
+            "chat-0198",
+            "chat-0199"
+          ],
+          "multiAgent": [
+            "ms-0",
+            "ms-1",
+            "ms-2",
+            "ms-3",
+            "ms-4",
+            "ms-5",
+            "ms-6",
+            "ms-7",
+            "ms-8",
+            "ms-9",
+            "ms-10",
+            "ms-11",
+            "ms-12",
+            "ms-13",
+            "ms-14",
+            "ms-15",
+            "ms-16",
+            "ms-17",
+            "ms-18",
+            "ms-19"
+          ],
+          "sessionChats": [
+            "sc-uuid-0",
+            "sc-uuid-1",
+            "sc-uuid-2",
+            "sc-uuid-3",
+            "sc-uuid-4",
+            "sc-uuid-5",
+            "sc-uuid-6",
+            "sc-uuid-7",
+            "sc-uuid-8",
+            "sc-uuid-9",
+            "sc-uuid-10",
+            "sc-uuid-11",
+            "sc-uuid-12",
+            "sc-uuid-13",
+            "sc-uuid-14",
+            "sc-uuid-15",
+            "sc-uuid-16",
+            "sc-uuid-17",
+            "sc-uuid-18",
+            "sc-uuid-19",
+            "sc-uuid-20",
+            "sc-uuid-21",
+            "sc-uuid-22",
+            "sc-uuid-23",
+            "sc-uuid-24",
+            "sc-uuid-25",
+            "sc-uuid-26",
+            "sc-uuid-27",
+            "sc-uuid-28",
+            "sc-uuid-29"
+          ]
+        },
+        "warnings": [
+          {
+            "kind": "btw_orphan",
+            "chat": "sc-uuid-29",
+            "btwOf": "gone-forever"
+          }
+        ],
+        "peakWorkingSetBytes": 53739520,
+        "wallMs": 1489
+      },
+      "migrateIdMapSize": 311,
+      "counts": {
+        "before": {
+          "chats": 200,
+          "maSessions": 20,
+          "maPanels": 80,
+          "sessionChats": 30,
+          "talkAbsorbed": 1,
+          "expectedTotal": 311,
+          "messages": 15810,
+          "files": {
+            "chats": 200,
+            "ma": 20,
+            "sessionChats": 30
+          }
+        },
+        "after": {
+          "chats": 311,
+          "messages": 15810,
+          "boards": 21,
+          "files": {
+            "chatsV3": 311,
+            "boards": 21
+          }
+        }
+      },
+      "identity": {
+        "primary": {
+          "compared": 311,
+          "mismatch": 0,
+          "sample": []
+        },
+        "secondary": {
+          "compared": 0,
+          "mismatch": 0,
+          "unresolved": 311,
+          "reasons": {
+            "account_unavailable": 291,
+            "api_key_missing": 20
+          }
+        }
+      },
+      "btw": {
+        "rewritten": 20,
+        "dropped": 1,
+        "expectRewritten": 20,
+        "expectDropped": 1
+      },
+      "warnings": [],
+      "apiConfig": {
+        "status": {
+          "hasKey": false,
+          "keyTail": null,
+          "budgetUsd": null,
+          "spentUsd": 0,
+          "hasOpenaiKey": false,
+          "openaiKeyTail": null
+        },
+        "keyDecrypts": false,
+        "keyLen": 0,
+        "openaiDecrypts": false,
+        "encryptionAvailable": true
+      },
+      "fails": [],
+      "ok": true
+    }
+  ],
+  "ok": true
+}
