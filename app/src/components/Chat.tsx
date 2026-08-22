@@ -28,6 +28,7 @@ import type {
 import { t, useLang } from '../lib/i18n'
 import { sameCwd, type ThreadItem } from '../store/session'
 import { resumeDelayMs, type LimitHold } from '../lib/limitResume'
+import { settleText, useSettledReason } from '../lib/settled'
 import { getPref, setPref } from '../lib/prefs'
 import { loadRecentDirs, loadFavDirs, toggleFavDir, removeRecentDir } from '../lib/recentDirs'
 import { relTime } from './Sidebar'
@@ -358,7 +359,21 @@ function fmtElapsedKo(s: number): string {
 // Bash는 '✓' 대신 실행 시간 · 출력 줄수 — 다른 도구의 '10줄'과 같은 문법.
 // prop 이름 t는 i18n의 t()를 가리므로 안에서는 tl(tool log)로 받는다
 function ToolResult({ t: tl }: { t: ToolLogItem }) {
-  if (tl.status === 'running') return <span className="t-res"><span className="spin" /></span>
+  // ★ 3.0 M-UX R2 — 이 도구가 **사유와 함께 정착**했나(`chat:run-state.settled[]`).
+  // 스트림이 밖에서 죽으면 합성 result가 busy만 내리고 도구 행은 안 건드린다 →
+  // R1에서는 이 스피너가 영원히 돌았다. m-logic §5.2: Completed만 "완료", 나머지는
+  // "정리됨" + 사유 부제(여기서는 툴팁 — 행 오른쪽 칸이 좁다).
+  const settled = useSettledReason(tl.id)
+  if (tl.status === 'running') {
+    const why = settled ? settleText(settled) : null
+    if (why)
+      return (
+        <span className="t-res settled" title={`${why.label} — ${why.sub}`}>
+          {why.label}
+        </span>
+      )
+    return <span className="t-res"><span className="spin" /></span>
+  }
   if (tl.status === 'error') return <span className="t-res err">{t('오류', 'Error')}</span>
   if (tl.kind === 'bash') {
     const parts = [
@@ -3588,6 +3603,19 @@ export const WorkBar = memo(function WorkBar({
 // The agent's AskUserQuestion — PoC 'Claude의 질문' 카드(qcard 문법): 마스코트 헤더,
 // 한 번에 한 질문(방향 슬라이드·이전 질문), 플랫 선택지 + 인라인 직접 입력. 숫자 키로
 // 선택, Esc는 내려두기(알약), 알약의 ✕가 건너뛰기 (agent uses defaults).
+/** ★ 3.0 M-UX R2 — 이 질문 카드가 실은 **폴백 확인 다이얼로그**인가 (m-logic §4.4b).
+ *
+ *  셸(`engine/wire.rs`)은 `request_user_dialog`를 2.6.2 파리티로 질문 카드로 그리고
+ *  `header`에 「폴백 확인」을 박는다. 그 표식이 렌더러가 가진 유일한 구분자다 —
+ *  선택지가 둘(계속/중단)이고 자유 입력이 의미 없는 **예/아니오 카드**라, 어휘도 답할
+ *  채널도 일반 질문과 다르다(`chat:respond-dialog`). */
+export const FALLBACK_ASK_HEADER = '폴백 확인'
+/** 「중단」 선택지 라벨 — 이 값이면 거절이다(wire.rs가 박는 문자열과 짝). */
+export const FALLBACK_ASK_CANCEL = '중단'
+export function isFallbackAsk(q: { questions: AgentQuestion[] } | null | undefined): boolean {
+  return !!q && q.questions.length === 1 && q.questions[0]?.header === FALLBACK_ASK_HEADER
+}
+
 export function QuestionModal({
   question,
   onAnswer,
@@ -3612,6 +3640,7 @@ export function QuestionModal({
       key={question.requestId}
       questions={question.questions}
       engine={question.engine}
+      dialog={isFallbackAsk(question)}
       onAnswer={onAnswer}
       onDismiss={onDismiss}
       hotkeys={hotkeys}
@@ -3701,6 +3730,7 @@ export function PermissionModal({
 function QuestionDialog({
   questions,
   engine,
+  dialog = false,
   onAnswer,
   onDismiss,
   hotkeys = true,
@@ -3708,6 +3738,9 @@ function QuestionDialog({
 }: {
   questions: AgentQuestion[]
   engine?: EngineId // 질문을 던진 엔진 — 헤더 표기('Claude의 질문'/'GPT의 질문')
+  /** ★ R2 — 폴백 확인 다이얼로그(§4.4b). 헤더 문구가 다르고 **자유 입력이 없다** —
+   *  답이 예/아니오라 임의 문자열은 원장이 해석할 수 없다. */
+  dialog?: boolean
   onAnswer: (answers: string[][]) => void
   onDismiss: () => void
   hotkeys?: boolean
@@ -3898,10 +3931,16 @@ function QuestionDialog({
     // backdrop click does NOT dismiss it (too easy to lose the prompt by accident).
     // 건너뛰기는 내려두기(⌄·Esc) 뒤 알약의 ✕ — PoC 문법대로 헤더에는 접기만 남긴다.
     <div className="q-overlay">
-      <div className="qcard scroll" ref={modalRef} tabIndex={-1} role="dialog" aria-modal="true">
+      <div className={'qcard scroll' + (dialog ? ' qcard-dialog' : '')} ref={modalRef} tabIndex={-1} role="dialog" aria-modal="true">
         <div className="qhead">
           <IconMascot size={17} />
-          <span className="qhl">{engine === 'codex' ? t('GPT의 질문', 'GPT’s question') : t('Claude의 질문', 'Claude’s question')}</span>
+          <span className="qhl">
+            {dialog
+              ? t('폴백 확인', 'Fallback confirmation')
+              : engine === 'codex'
+                ? t('GPT의 질문', 'GPT’s question')
+                : t('Claude의 질문', 'Claude’s question')}
+          </span>
           <span className="qsp" />
           {/* 좁은 패널에서만 제공 — 패널 확장으로 넘어가면 카드가 리마운트돼 지금까지의
               선택이 초기화되므로, 답을 고르기 전에 누르는 걸 상정한다 */}
@@ -3923,7 +3962,11 @@ function QuestionDialog({
         {/* 한 번에 한 질문 — key=step 리마운트로 방향 슬라이드가 재생된다 */}
         <div key={step} className={'qwrap' + (dir === 'fwd' ? ' qstep' : dir === 'back' ? ' qstep-b' : '')}>
           <div className="qbl">
-            <span>{t(`질문 ${step + 1}/${questions.length}`, `Question ${step + 1}/${questions.length}`)}</span>
+            <span>
+              {dialog
+                ? t('모델 폴백', 'Model fallback')
+                : t(`질문 ${step + 1}/${questions.length}`, `Question ${step + 1}/${questions.length}`)}
+            </span>
             <span className="qsp" />
             {step > 0 && (
               <button className="qback" onClick={() => goTo(step - 1, 'back')}>
@@ -3946,7 +3989,10 @@ function QuestionDialog({
                 </button>
               )
             })}
-            {/* 직접 입력 — 항상 마지막 줄의 인라인 입력 (PoC qopt-free). Enter로 답한다 */}
+            {/* 직접 입력 — 항상 마지막 줄의 인라인 입력 (PoC qopt-free). Enter로 답한다.
+                ★ R2: 폴백 확인은 예/아니오라 자유 입력이 없다(원장이 해석 못 하는 답을
+                만들 수 있으면 카드가 거짓말이 된다) */}
+            {!dialog && (
             <div className={'qopt qopt-free' + (freeOn ? ' on' : '')} onClick={() => freeRef.current?.focus()}>
               <input
                 ref={freeRef}
@@ -3964,6 +4010,7 @@ function QuestionDialog({
                 <IconCheck size={13} />
               </span>
             </div>
+            )}
           </div>
           {/* 다중 선택만 진행 버튼이 필요하다 — 단일 선택은 고르는 즉시 넘어간다 */}
           {cur.multiSelect && (

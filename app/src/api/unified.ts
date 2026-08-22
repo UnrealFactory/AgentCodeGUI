@@ -11,12 +11,32 @@
  * ============================================================ */
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
-import type { EngineEvent } from '@shared/protocol'
+import type { ChatStatusLite, EngineEvent, RunRequest } from '@shared/protocol'
 
 const CHATS_SET_ACTIVE = 'chats:set-active'
 const CHAT_EVENT = 'chat:event'
+const CHAT_RUN = 'chat:run'
+const CHAT_RUN_STATE = 'chat:run-state'
+const CHAT_STATUS = 'chat:status'
+const CHAT_RESPOND_DIALOG = 'chat:respond-dialog'
 
 let lastActive = ''
+
+/** 이 창의 구독 하나 — `listen()`이 비동기라 등록 전 해지도 안전하게 접는다. */
+function sub<T>(channel: string, cb: (payload: T) => void): () => void {
+  let dead = false
+  let off: (() => void) | undefined
+  void listen<T>(channel, (e) => cb(e.payload))
+    .then((f) => {
+      if (dead) f()
+      else off = f
+    })
+    .catch(() => {})
+  return () => {
+    dead = true
+    off?.()
+  }
+}
 
 /**
  * `chats:set-active` — 별칭 계층(`claude:*` → `chat:*`)이 들고 있는 **활성 채팅**을
@@ -43,25 +63,78 @@ export function setActiveChat(chatId: string): void {
  * 받아 둬야 한다 — 안 그러면 돌아왔을 때 대화가 잘려 있다.
  */
 export function onChatEvent(cb: (chatId: string, event: EngineEvent) => void): () => void {
-  let dead = false
-  let off: (() => void) | undefined
   // 진단 — 자리 밖 수집기가 "무엇을 몇 개 받았나"(shim의 window.__ccgChrome과 같은 규약).
   // 이게 없으면 "돌아왔더니 대화가 잘렸다"의 원인이 채널인지 수집기인지 구분할 수 없다.
   const dbg = ((window as unknown as { __ccgChatEv?: { n: number; ids: string[] } }).__ccgChatEv ??= { n: 0, ids: [] })
-  void listen<{ chatId?: string; event?: EngineEvent }>(CHAT_EVENT, (e) => {
-    const p = e.payload
+  return sub<{ chatId?: string; event?: EngineEvent }>(CHAT_EVENT, (p) => {
     if (!p || typeof p.chatId !== 'string' || !p.event) return
     dbg.n += 1
     if (!dbg.ids.includes(p.chatId)) dbg.ids.push(p.chatId)
     cb(p.chatId, p.event)
   })
-    .then((f) => {
-      if (dead) f()
-      else off = f
-    })
-    .catch(() => {})
-  return () => {
-    dead = true
-    off?.()
+}
+
+/**
+ * ★ R2 — `chat:run`. **주소가 페이로드에 있는 유일한 실행 채널**(m-logic §4.3).
+ *
+ * 옛 별칭(`claude:run`)은 주소를 안 실어서 "그 순간의 활성 채팅"으로 라우팅된다. 그래서
+ * 자리 밖에서 도는 채팅의 예약 큐를 드레인하려면 이 채널이어야 한다 — 별칭으로 쏘면
+ * **지금 보고 있는 남의 대화**로 발사된다(크리틱 M-UX R1 §2-① `queue.misroute`가 그 사고다).
+ *
+ * 반환은 runId 문자열(구 빌드/미구현이면 빈 문자열).
+ */
+export async function runChat(chatId: string, req: RunRequest): Promise<string> {
+  if (!chatId) return ''
+  try {
+    const v = await invoke('ipc_call', { channel: CHAT_RUN, payload: [{ chatId, ...req }] })
+    return typeof v === 'string' ? v : ''
+  } catch {
+    return ''
+  }
+}
+
+/** 상태기계 상태 + 라이브 원장 REPLACE. `settled[]`가 정착 사유의 유일한 원천(§5.2). */
+export interface RunStateWire {
+  chatId?: string
+  state?: string
+  runId?: string | null
+  live?: { id: string; kind: string }[]
+  settled?: { id: string; kind: string; reason: string }[]
+}
+export function onChatRunState(cb: (p: RunStateWire) => void): () => void {
+  return sub<RunStateWire>(CHAT_RUN_STATE, (p) => {
+    if (p && typeof p.chatId === 'string') cb(p)
+  })
+}
+
+/**
+ * 전 채팅 경량 상태 REPLACE(§4.3). **F12 주의**: `engine::boot()`의 첫 방출은 창이
+ * 생기기 전에 나가고 전이가 없으면 다시 안 온다 — 구독만 하면 첫 그림이 빈다.
+ * 구독자는 반드시 `chats:get`의 `statuses`로 한 번 따라잡아야 한다(App이 그렇게 한다).
+ */
+export function onChatStatus(cb: (rows: ChatStatusLite[]) => void): () => void {
+  return sub<unknown>(CHAT_STATUS, (rows) => {
+    if (Array.isArray(rows)) cb(rows as ChatStatusLite[])
+  })
+}
+
+/**
+ * 폴백 확인 카드의 응답(§4.4b). 셸은 이 카드를 2.6.2 파리티로 **질문 카드**로 그리고
+ * 질문 응답이 오면 종류를 되맞춰 주지만, 계약면의 정답은 이 채널이다.
+ *
+ * 되돌리는 값: 원장이 이 requestId를 다이얼로그로 알고 있어 수리됐으면 true.
+ * 어긋나면(`wrong_card_kind` 등) false — 호출부가 질문 채널로 되돌아갈 수 있게.
+ */
+export async function respondDialog(chatId: string, requestId: string, accepted: boolean): Promise<boolean> {
+  if (!chatId || !requestId) return false
+  try {
+    const v = (await invoke('ipc_call', {
+      channel: CHAT_RESPOND_DIALOG,
+      payload: [{ chatId, requestId, accepted }]
+    })) as { kind?: string; __unimplemented?: boolean } | null
+    if (!v || v.__unimplemented) return false
+    return v.kind === 'accepted'
+  } catch {
+    return false
   }
 }

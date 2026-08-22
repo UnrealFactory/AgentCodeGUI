@@ -214,10 +214,25 @@ export function bgActive(s: SessionState): boolean {
     s.subagents.some((a) => a.status === 'running')
   )
 }
+/** ★ R2 — 이 턴은 **중단으로** 끝났나 (m3 R2가 낸 `TerminalStatus::Aborted`의 렌더러 짝).
+ *
+ *  와이어에는 `Aborted`가 없다 — 2.6.2 어휘에 자리가 없어 셸이 `done`으로 접어 보낸다
+ *  (hub.rs `Event::Status`). 그래서 렌더러가 그냥 믿으면 **사용자가 끊은 턴이 "완료"로
+ *  보인다.** 화면에 남은 진실은 리듀서가 붙인 '중단함' 마커이고, 그 마커가 스레드의
+ *  마지막이면 이 턴은 완료가 아니다. (뒤에 무엇이든 더 붙었으면 주장하지 않는다 —
+ *  거짓 '중단됨'을 내느니 조용한 편이 낫다.) */
+export function abortedTurn(s: SessionState): boolean {
+  const last = s.messages[s.messages.length - 1]
+  return !!last && last.kind === 'interrupted'
+}
 /** 표시용 상태 — 턴은 끝났어도(done) 백그라운드가 남아 돌면 '작업 중'으로 유지한다.
+ *  중단으로 끝난 턴은 '완료'가 아니다 → 'idle'(대기)로 접는다. 완료 색·완료 칩·완료
+ *  링은 전부 이 한 함수를 보므로 어휘가 한 자리에서 갈린다.
  *  (busy 판정은 원시 status 그대로 — 전송 게이트·예약 큐가 백그라운드에 묶이면 안 된다) */
 export function effectiveStatus(s: SessionState): AgentStatus {
-  return s.status === 'done' && bgActive(s) ? 'working' : s.status
+  if (s.status === 'done' && bgActive(s)) return 'working'
+  if (s.status === 'done' && abortedTurn(s)) return 'idle'
+  return s.status
 }
 
 export const initialSessionState: SessionState = {

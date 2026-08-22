@@ -9,6 +9,7 @@ import {
   commandOf,
   commandTitleOf,
   liveMsgIndex,
+  abortedTurn,
   effectiveStatus,
   type SessionState
 } from '../store/session'
@@ -47,7 +48,7 @@ import { extractMentions } from '../lib/mentions'
 import { useTurnNotifyList } from '../lib/notify'
 import { mergeRefs, useZoom, ZoomBadge } from './zoom'
 import { MouseGestureLayer, clearGesture, sessionWindowGesture } from './mouseGesture'
-import { IconFolder, IconChevDown, IconMascot, IconPanelRight, IconExpand, IconCollapse, IconPopout, IconPencil, IconLock, IconLockOpen } from './icons'
+import { IconFolder, IconChevDown, IconMascot, IconPanelRight, IconSearch, IconExpand, IconCollapse, IconPopout, IconPencil, IconLock, IconLockOpen } from './icons'
 import { t, useLang } from '../lib/i18n'
 
 // A multi-agent SESSION is a group of N panels that work together. The recent-tasks
@@ -412,7 +413,15 @@ export const PanelView = memo(function PanelView({
   // 턴이 끝나도 백그라운드(셸·에이전트·워크플로)가 남아 돌면 아직 '완료'가 아니다 —
   // 완료 칩·컬러 링은 전부 걷힌 순간에만 켠다 (진짜 완료 판정 — store의 단일 규칙)
   const effStatus = effectiveStatus(state)
-  const status = waiting ? { label: () => t('응답 대기', 'Needs input'), cls: 'ask' } : STATUS_META[effStatus]
+  // ★ R2 — 중단으로 끝난 턴은 '완료'가 아니다(m3 R2의 `TerminalStatus::Aborted` 짝).
+  // 와이어에는 그 어휘가 없어 셸이 `done`으로 접어 보내므로, 화면에 남은 '중단함' 마커가
+  // 렌더러의 판정 근거다(store/session.ts `abortedTurn`). effectiveStatus가 이미 완료
+  // 색·완료 링을 껐고, 여기서는 칩 **문구**를 「중단됨」으로 바로잡는다.
+  const status = waiting
+    ? { label: () => t('응답 대기', 'Needs input'), cls: 'ask' }
+    : abortedTurn(state)
+      ? { label: () => t('중단됨', 'Stopped'), cls: 'idle' }
+      : STATUS_META[effStatus]
   const started = state.messages.length > 0
   // 턴을 막고 있는 포그라운드 Bash가 있을 때만 셸 팝오버에 "건너뛰기"(Ctrl+B) 노출 (본채팅과 동일)
   const canSkipWait = useMemo(() => hasRunningBash(state.messages), [state.messages])
@@ -811,6 +820,38 @@ export interface FoldRow {
   ask: boolean // 승인/질문이 대기 중 — 배지의 ‼N (§2.2-5)
   color: string
 }
+/** ★ 3.0 M-UX R2 — TopBar 돋보기. 본채팅 `ChatHeader`와 **같은 문법**:
+ *  `ccg:chat-find` 창 이벤트를 쏘고 열림 상태(`ccg:chat-find-state`)를 구독해 켜짐을 표시한다.
+ *  받는 쪽은 포커스된 패널의 `ChatFind` 하나뿐이라 카드가 여럿 열리는 일은 없다. */
+function PanelFindButton() {
+  const [on, setOn] = useState(false)
+  useEffect(() => {
+    const h = (e: Event): void => setOn(!!(e as CustomEvent).detail)
+    window.addEventListener('ccg:chat-find-state', h)
+    return () => window.removeEventListener('ccg:chat-find-state', h)
+  }, [])
+  return (
+    <button
+      className={'h-ic has-tip' + (on ? ' on' : '')}
+      data-tip={t('대화에서 찾기 (Ctrl+F)', 'Find in chat (Ctrl+F)')}
+      aria-label={t('대화에서 찾기', 'Find in chat')}
+      onClick={() => window.dispatchEvent(new Event('ccg:chat-find'))}
+    >
+      <IconSearch size={15} />
+    </button>
+  )
+}
+
+/** ★ 3.0 M-UX R2 — 본채팅(IDE 크롬)에서 **접힘 배지 자리만** 예약한다.
+ *  일반 채팅에는 접힐 자리가 없지만, 자리를 안 비우면 같은 다이얼이 보드 크롬(n1)보다
+ *  오른쪽에 앉는다 — 「1↔2에서 다이얼이 안 움직인다」는 규약이 크롬 경계에서 깨진다.
+ *  (모듈 상수 두 개로 정체성을 고정 — memo된 헤더가 렌더마다 새 prop을 받지 않게) */
+const EMPTY_FOLD_ROWS: FoldRow[] = []
+const NOOP_RAISE = (_slot: number): void => {}
+export function FoldSlotHold() {
+  return <FoldBadge rows={EMPTY_FOLD_ROWS} onRaise={NOOP_RAISE} />
+}
+
 function FoldBadge({ rows, onRaise }: { rows: FoldRow[]; onRaise: (slot: number) => void }) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLSpanElement>(null)
@@ -829,7 +870,22 @@ function FoldBadge({ rows, onRaise }: { rows: FoldRow[]; onRaise: (slot: number)
       window.removeEventListener('keydown', onKey)
     }
   }, [open])
-  if (rows.length === 0) return null
+  // ★ 3.0 M-UX R2 — 접힘이 없어도 **자리를 비워 둔다**(배지는 없고 폭만 남는다).
+  // §2.1은 *"1↔2 전환에서 다이얼 버튼이 화면에서 이동하지 않는다 — 위치 고정이 규약"*
+  // 이라 못 박았는데, 배지가 다이얼 **오른쪽**에서 나타났다 사라지면 오른쪽 정렬 줄에서
+  // 다이얼이 그만큼 밀린다(크리틱 M-UX R1 §2-⑥: n6 976 → n2 929, −47px. 같은 화면
+  // 좌표를 다시 누르면 「2」 자리에 「4」가 와 있다).
+  // 자리표시자는 **배지가 아니다** — 클래스를 나눠 두어 "n6인데 배지가 남았다"(유령)와
+  // 구분된다. 폭은 같은 박스 규칙(.ma-fold-badge/.ma-fold-hold 공용)에서 나온다.
+  if (rows.length === 0)
+    return (
+      <span className="ma-fold hold" aria-hidden="true">
+        <span className="ma-fold-hold">
+          <IconChevDown size={12} />
+          <span className="cnt">0</span>
+        </span>
+      </span>
+    )
   const asks = rows.filter((r) => r.ask).length
   // 대기 중인 자리를 맨 위로 — 배지를 눌러 여는 이유가 대개 그것이다(§2.2-5)
   const sorted = [...rows].sort((a, b) => Number(b.ask) - Number(a.ask))
@@ -1113,6 +1169,10 @@ function ActiveSession({
     const n = clampCount(nextCount)
     setPanelOrder(nextOrder)
     setCount(n)
+    // ★ R2 — n1은 자리가 하나뿐이니 그 자리가 곧 「지금 대화」다. 포커스를 안 세우면
+    // 그 패널의 ChatFind가 `active=false`라 **Ctrl+F도 헤더 돋보기도 죽는다**
+    // (일반 채팅에서는 되는 기능이 n1에서만 안 되는 것 — 두 갈래의 어포던스 격차).
+    if (n === 1) setFocusedSlot(nextOrder[0])
     reconcileChatRefs(nextOrder.slice(0, n))
   })
   // 다이얼 — 줄일 때 **포커스된 자리를 order 맨 앞으로** 올린다(§2.2-1 "현재 대화 = 1번 자리").
@@ -2110,6 +2170,12 @@ function ActiveSession({
       )}
       <PanelDial count={count} onPick={applyCount} />
       <FoldBadge rows={foldRows} onRaise={raiseSlot} />
+      {/* ★ R2 — 찾기. 스펙 §3.1/§2.1의 TopBar 목록과 목업 `chat-unify-collapse`에 다
+          있는데 R1 실물에만 없었다(크리틱 §2-⑦). Ctrl+F는 되므로 기능 손실이 아니라
+          **어포던스 손실**이고, "두 갈래지만 사용자 눈에는 같은 화면"이라는 주장이
+          이것 하나로 거짓이 된다. 본채팅 헤더와 같은 창 이벤트를 쓴다 — 받는 쪽은
+          포커스된 패널의 ChatFind 하나뿐이다(active 게이트). */}
+      <PanelFindButton />
       {/* 탐색기 토글 — 본채팅 헤더와 같은 버튼·툴팁: 단축키(`)를 모르는 사람도
           멀티 뷰에서 탐색기를 열 수 있게 (탐색기는 포커스한 패널의 폴더를 따라간다) */}
       {onToggleExplorer && (
@@ -2556,7 +2622,19 @@ export function useMultiSessions() {
   })
   // 사이드바에서 접힌 자리를 눌렀다 → 1번 자리로 올린다(§2.2-1b의 관문을 ActiveSession이 탄다)
   const [raiseSeed, setRaiseSeed] = useState<{ slot: number; seq: number } | undefined>(undefined)
-  const raiseSlot = useEvent((slot: number) => setRaiseSeed((r) => ({ slot, seq: (r?.seq ?? 0) + 1 })))
+  const raiseSlot = useEvent((slot: number) => {
+    // ★ R2 — **레코드의 순서도 같이 올린다**(countSeed와 같은 규약). seq만 올리면 보드가
+    // 아직 마운트 안 된 경우(일반 채팅 화면에서 접힌 대화를 고름)에 지고 만다:
+    // `ActiveSession`이 그 직후 마운트되면서 `raiseSeqRef`를 **이미 오른 seq로** 초기화해
+    // 승격이 통째로 삼켜지고, 1번 자리에는 엉뚱한 대화가 앉는다
+    // (크리틱 M-UX R1 §2-④ `side.raise-from-single`). 레코드가 곧 `initial.panelOrder`다.
+    const d = dataRef.current[activeId]
+    if (d) {
+      const cur = sanitizePanelOrder(d.panelOrder)
+      d.panelOrder = [slot, ...cur.filter((s) => s !== slot)]
+    }
+    setRaiseSeed((r) => ({ slot, seq: (r?.seq ?? 0) + 1 }))
+  })
   /** 활성 보드가 지금 몇 자리인가 — 일반 채팅 크롬의 다이얼 하이라이트·라우팅 판정용 */
   const activeCount = useEvent((): number => clampCount(dataRef.current[activeId]?.count ?? 4))
 

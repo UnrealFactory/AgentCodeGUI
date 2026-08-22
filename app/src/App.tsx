@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react'
-import type { ApiConfigStatus, AppUser, BgTaskRequest, EngineId, RunRequest, SessionWindowInfo, SubAgentInfo, UsageInfo, UserProfile } from '@shared/protocol'
+import type { ApiConfigStatus, AppUser, BgTaskRequest, ChatStatusLite, EngineId, RunRequest, SessionWindowInfo, SubAgentInfo, UsageInfo, UserProfile } from '@shared/protocol'
 
 // 백그라운드 셸 컨트롤(중지/Ctrl+B) — window.api는 전역이라 모듈 스코프의 고정 함수로
 // 만들어 memo된 WorkBar가 매 렌더마다 새 콜백을 받지 않게 한다
@@ -9,13 +9,14 @@ const onBgTaskMain = (req: BgTaskRequest): void => {
 import { extractMentions } from './lib/mentions'
 import { useTurnNotify } from './lib/notify'
 import type { NotifyTarget } from '@shared/protocol'
-import { useAgentSession, initialSessionState, reducer as sessionReducer, sanitizeSnapshot, snapshotForPersist, sameCwd, commandOf, commandTitleOf, liveMsgIndex, type SessionState } from './store/session'
+import { useAgentSession, initialSessionState, reducer as sessionReducer, sanitizeSnapshot, snapshotForPersist, sameCwd, commandOf, commandTitleOf, liveMsgIndex, nowTime, type SessionState } from './store/session'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { Sidebar, type ChatSummary, type SidebarSection } from './components/Sidebar'
 import { pushRecentDir, seedRecentDirs } from './lib/recentDirs'
-import { MultiWorkspace, PanelDial, useMultiSessions, type MultiExplorerInfo, type PanelSummary } from './components/MultiAgent'
-// ★ 3.0 M-UX — WindowApi에 없는 통합 채널 둘(§6.1·§6.2). 계약면(src/shared)은 안 건드린다.
-import { setActiveChat, onChatEvent } from './api/unified'
+import { FoldSlotHold, MultiWorkspace, PanelDial, useMultiSessions, type MultiExplorerInfo, type PanelSummary } from './components/MultiAgent'
+// ★ 3.0 M-UX — WindowApi에 없는 통합 채널들(§6.1·§6.2). 계약면(src/shared)은 안 건드린다.
+import { setActiveChat, onChatEvent, onChatRunState, onChatStatus, respondDialog, runChat } from './api/unified'
+import { noteSettled } from './lib/settled'
 import { NewChatModal } from './components/NewChatModal'
 import { getPref, setPref, delPref } from './lib/prefs'
 import { t, useLang } from './lib/i18n'
@@ -30,7 +31,7 @@ import {
   SIDEBAR_AUTOHIDE_TRIGGER_PREVIEW_EVENT,
   type AutohideTriggerPreviewDetail
 } from './lib/sidebarAutohide'
-import { BtwDock, ChatHeader, ChatFind, Composer, LimitHoldBar, MessageView, QuestionModal, PermissionModal, SelectionToolbar, WelcomeState, WorkBar, WorkflowDock, WorkingIndicator, hasRunningBash, nextMode, pickerModelOf, slashCommandsWithBtw, useThreadFollow, useThreadWindow, type PickerState, type ScheduledMsg } from './components/Chat'
+import { BtwDock, ChatHeader, ChatFind, Composer, FALLBACK_ASK_CANCEL, LimitHoldBar, MessageView, QuestionModal, PermissionModal, SelectionToolbar, WelcomeState, WorkBar, WorkflowDock, WorkingIndicator, hasRunningBash, isFallbackAsk, nextMode, pickerModelOf, slashCommandsWithBtw, useThreadFollow, useThreadWindow, type PickerState, type ScheduledMsg } from './components/Chat'
 import { parseBtw, btwForkOf } from './lib/btw'
 import { SubAgentModal } from './components/AgentPanel'
 import { Explorer } from './components/Explorer'
@@ -66,6 +67,14 @@ interface ChatMeta {
   picker: PickerState // 모델·effort·모드 — per chat, restored on switch
   draft?: string // 보내지 않은 컴포저 초안 — 채팅 전환/재시작에도 유지
   draftImages?: string[]
+  // ★ 3.0 M-UX R2 — 예약 큐는 **이 채팅의 것**이다 (ux-chat-unify `Chat.queue`).
+  // 앱 단위 단일 목록이던 시절의 전제("활성 채팅 = 유일하게 도는 채팅")를 스펙 ⑥이
+  // 깼고, 그 결과 A에서 예약한 프롬프트가 B로 발사됐다(크리틱 M-UX R1 §2-①).
+  // 소유자를 대화로 내리면 전환은 큐를 **주차**할 뿐이고, 발사는 그 대화의 턴 종료에만
+  // 일어난다. 디스크에는 안 실린다 — `queue`는 chats-v3의 Rust 소유 필드라
+  // `chats:save` 페이로드의 값이 어떤 경우에도 채택되지 않는다(chats_v3.rs `apply_owned`).
+  // 그래서 렌더러 사본은 **세션 메모리 수명**이고, 저장 페이로드에서 명시적으로 뺀다.
+  queue?: ScheduledMsg[]
   updatedAt?: number // 마지막 활동(프롬프트 전송) 시각 — 사이드바 상대 시간 표시용
   // 스냅샷이 메모리에 없다는 표식 — snapshot은 자리표시자(initialSessionState)고 진짜는
   // 디스크의 채팅 파일에 있다(전환 시 loadChat으로 되읽음). 모든 채팅의 전체 스냅샷을
@@ -129,10 +138,58 @@ function sanitizeRefDirs(v: unknown): string[] {
   return Array.isArray(v) ? v.filter((s): s is string => typeof s === 'string' && !!s).slice(0, 8) : []
 }
 
+// ── ★ 3.0 M-UX R2 — 실행 요청 조립 (두 드레인 경로의 단일 소스) ────────────────
+//
+// 활성 채팅은 `runPrompt`가, 자리 밖 채팅은 `drainBgQueue`가 보낸다. 두 경로가 프롬프트를
+// 다르게 만들면 "돌아와 보니 내 예약이 다른 문장으로 나갔다"가 된다 — 멘션/첨부 안내와
+// resume 게이트를 여기 한 곳에 둔다.
+function promptWithNotes(text: string, cmd: string | null, imgs: string[]): string {
+  if (cmd) return text // 명령은 extras를 안 받는다
+  const notes: string[] = []
+  const mentions = extractMentions(text)
+  if (mentions.length)
+    notes.push(
+      `${t('[멘션된 파일 — 필요하면 Read 도구로 확인하세요]', '[Mentioned files — read them with the Read tool if needed]')}\n${mentions.map((p) => '- ' + p).join('\n')}`
+    )
+  if (imgs.length)
+    notes.push(
+      `${t('[첨부 파일 — Read 도구로 확인하세요]', '[Attached files — read them with the Read tool]')}\n${imgs.map((p) => '- ' + p).join('\n')}`
+    )
+  return notes.length ? `${text}\n\n${notes.join('\n\n')}` : text
+}
+function buildRunRequest(a: {
+  text: string
+  images: string[]
+  picker: PickerState
+  cwd: string
+  refDirs: string[]
+  session: SessionState['session']
+  apiMode: boolean
+}): RunRequest {
+  const pk = a.picker
+  const extraDirs = a.refDirs.filter((p) => !sameCwd(p, a.cwd))
+  return {
+    prompt: promptWithNotes(a.text, commandOf(a.text), a.images),
+    model: pk.model,
+    effort: pk.effort,
+    mode: pk.mode,
+    engine: pk.engine,
+    codexModel: pk.codexModel,
+    cwd: a.cwd,
+    addDirs: extraDirs.length ? extraDirs : undefined,
+    // 세션 id는 폴더 스코프다 — 폴더가 바뀌었으면 이어붙이지 않는다("No conversation found")
+    resume: a.session && sameCwd(a.session.cwd, a.cwd) ? a.session.sessionId : undefined,
+    useApi: a.apiMode || undefined,
+    account: pk.account,
+    codexAccount: pk.codexAccount
+  }
+}
+
 // ── chat persistence (~/.agentcodegui/chats.json) ───────────────────────────
 const CHATS_VERSION = 1
-// 저장 페이로드의 채팅 — unloaded 채팅은 스냅샷 없이(메타만) 나간다
-type PersistedChat = Omit<ChatMeta, 'snapshot'> & { snapshot?: SessionState }
+// 저장 페이로드의 채팅 — unloaded 채팅은 스냅샷 없이(메타만) 나가고, `queue`는 아예
+// 안 나간다(Rust 소유 필드 — 통합 스토어가 페이로드 값을 버린다. 위 ChatMeta.queue 주석)
+type PersistedChat = Omit<ChatMeta, 'snapshot' | 'queue'> & { snapshot?: SessionState }
 interface PersistedChats {
   version: number
   chats: PersistedChat[]
@@ -161,10 +218,18 @@ function MainApp({ user }: { user: AppUser }) {
   // 참조 폴더(--add-dir) — 이 채팅의 작업 폴더 외 추가 작업 루트 (폴더 팝오버에서 관리)
   const [refDirs, setRefDirs] = useState<string[]>([])
   const [images, setImages] = useState<string[]>([])
-  // messages drafted while the agent is busy — queued here and auto-sent in order once
-  // the run ends (you can only enqueue while busy, and you can't switch chats while busy,
-  // so this single list always belongs to the active chat)
+  // ★ 3.0 M-UX R2 — **활성 채팅의** 예약 큐. 진실은 `ChatMeta.queue`이고 이 state는
+  // 그중 지금 화면에 있는 한 벌이다(초안 draft/draftImages와 같은 규약: 전환 때
+  // saveActive가 접어 넣고 restore가 되꺼낸다).
+  //
+  // 2.6.2의 주석은 *"busy 중에만 예약할 수 있고 busy 중엔 채팅을 못 떠나므로 이 단일
+  // 목록은 언제나 활성 채팅의 것"* 이었다. 스펙 ⑥이 뒷문장을 지웠는데 앞문장의 결론이
+  // 남아 A의 예약이 B로 발사됐다. 소유자를 아래 `queueOwnerRef`로 명시하고, 드레인은
+  // 소유자와 활성 채팅이 일치할 때만 돈다(자리 밖 채팅은 `drainBgQueue`가 `chat:run`으로).
   const [queue, setQueue] = useState<ScheduledMsg[]>([])
+  // 이 `queue` state가 **누구 것인가**. 전환 착지(restore/createChat/삭제 후 착지)에서만
+  // 바뀐다 — 렌더 순서에 기대지 않고 불변식을 코드로 들고 있기 위한 ref다.
+  const queueOwnerRef = useRef('')
   // the image lightbox/multi-viewer: the set being viewed + the active index (null = closed)
   const [viewer, setViewer] = useState<{ images: string[]; index: number } | null>(null)
   const [usage, setUsage] = useState<UsageInfo>({ fiveHour: null, weekly: null, weeklyFable: null, extraCredit: null })
@@ -536,6 +601,7 @@ function MainApp({ user }: { user: AppUser }) {
   // 은퇴했으므로(2.0), 편입 후 원본 파일은 비워 다음 실행에서 중복 편입되지 않게 한다.
   useEffect(() => {
     let alive = true
+    let landed = false // 아래 finally의 폴백 착지 판정 (저장본이 없으면 착지가 안 돈다)
     Promise.all([window.api.getChats().catch(() => null), window.api.talk.getState().catch(() => null)])
       .then(([raw, talkRaw]) => {
         if (!alive) return
@@ -588,6 +654,9 @@ function MainApp({ user }: { user: AppUser }) {
           seedRecentDirs(restored.map((c) => ({ p: c.manualCwd, t: c.updatedAt ?? 0 })))
           setChats([...restored, ...migrated])
           // 부팅도 착지점이다 — 별칭 계층이 첫 전송을 이 채팅으로 라우팅해야 한다(§6.2)
+          // ★ R2: 큐 소유자도 여기서 선다(부팅 직후의 드레인 게이트가 이 값을 본다)
+          queueOwnerRef.current = active.id
+          landed = true
           landActiveChat(active.id)
           load(active.snapshot)
           setManualCwd(active.manualCwd ?? '')
@@ -603,7 +672,17 @@ function MainApp({ user }: { user: AppUser }) {
       })
       .catch(() => {})
       .finally(() => {
-        if (alive) setHydrated(true)
+        if (!alive) return
+        // ★ R2 (잔여 착지점 대조) — 저장본이 없는 첫 실행·읽기 실패에서는 위의 착지가
+        // 안 돈다. 그러면 `chats:set-active`가 한 번도 안 나가고, 첫 전송이 저장 디바운스
+        // (600ms)보다 빠를 때 별칭 계층이 **빈 주소**로 라우팅한다. 부팅도 착지점이다.
+        // (착지가 이미 돌았으면 건드리지 않는다 — activeChatIdRef는 아직 커밋 전이라
+        //  여기서 다시 부르면 **낡은 id**가 나간다.)
+        if (!landed) {
+          queueOwnerRef.current = activeChatIdRef.current
+          landActiveChat(activeChatIdRef.current)
+        }
+        setHydrated(true)
       })
     return () => {
       alive = false
@@ -623,7 +702,7 @@ function MainApp({ user }: { user: AppUser }) {
       // (chat:event 수집기의 600ms 플러시 등으로) 스냅샷이 더 자라 있으면 그 최신분은
       // 디스크에 없다 — 내리는 순간 그 꼬리가 증발한다. 참조가 바뀐 채팅은 건너뛴다.
       const sentSnaps = new Map(chats.map((c) => [c.id, c.snapshot]))
-      const list: PersistedChat[] = chats.map((c) =>
+      const list: PersistedChat[] = chats.map(({ queue: _q, ...c }) =>
         c.id === activeChatId
           ? { ...c, snapshot: snapshotForPersist(state), unloaded: undefined, manualCwd, refDirs, picker, draft: input, draftImages: images }
           : c.unloaded
@@ -777,6 +856,14 @@ function MainApp({ user }: { user: AppUser }) {
   //  · 돌아오면(restore) ref의 최신 스냅샷으로 착지한다 — 플러시 대기분도 안 잃는다.
   const bgSnapRef = useRef<Map<string, SessionState>>(new Map())
   const bgTimerRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined)
+  // 추적 집합의 **렌더 가능한 사본**. 삭제 가드("도는 대화는 못 지운다")와 사이드바
+  // 실행 배지가 ref를 직접 읽으면 멤버십 변화에 다시 그려지지 않는다(ref는 렌더 신호가
+  // 아니다) — 마지막 대화가 정착한 순간에도 배지가 남고 가드가 안 풀린다.
+  const [bgIds, setBgIds] = useState<string[]>([])
+  const syncBgIds = (): void => {
+    const ids = [...bgSnapRef.current.keys()]
+    setBgIds((prev) => (prev.length === ids.length && prev.every((v, i) => v === ids[i]) ? prev : ids))
+  }
   const bgFlush = useEvent(() => {
     const map = bgSnapRef.current
     if (map.size === 0) {
@@ -794,12 +881,22 @@ function MainApp({ user }: { user: AppUser }) {
     // 정착한(더 안 도는) 채팅은 **밀어 넣은 뒤** 추적을 놓는다 — 순서가 뒤집히면
     // 마지막 턴의 꼬리가 스토어에 안 닿는다
     for (const [id, snap] of batch) {
-      if (snap.status !== 'working' && snap.status !== 'analyzing') map.delete(id)
+      if (snap.status === 'working' || snap.status === 'analyzing') continue
+      // ★ R2 — 이 채팅의 턴이 끝났다. **이 채팅이** 예약해 둔 것이 있으면 지금이 발사
+      // 시각이고, 발사처는 당연히 이 채팅이다(스펙 ⑥이 열어 둔 문 뒤의 소유권).
+      // 드레인이 새 턴을 시작하면 추적을 유지한다 — 놓으면 그 턴의 꼬리를 또 잃는다.
+      if (drainBgQueue(id, snap)) continue
+      map.delete(id)
     }
+    syncBgIds()
   })
   const bgTrack = (id: string, snap: SessionState): void => {
     bgSnapRef.current.set(id, snap)
     if (!bgTimerRef.current) bgTimerRef.current = setInterval(bgFlush, 600)
+    syncBgIds()
+  }
+  const bgUntrack = (id: string): void => {
+    if (bgSnapRef.current.delete(id)) syncBgIds()
   }
   useEffect(() => {
     const off = onChatEvent((id, event) => {
@@ -815,6 +912,83 @@ function MainApp({ user }: { user: AppUser }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // ── ★ R2 — 전 채팅 경량 상태 (`chat:status`) + **F12 따라잡기** ──────────────
+  //
+  // 이 채널이 없으면 "지금 화면에 없는 대화가 승인 카드를 띄운 채 멈춰 있다"를 목록이
+  // 말할 방법이 없다(§2.2-5). 함정은 **첫 REPLACE가 구독자보다 이르다**는 것이다 —
+  // `engine::boot()`이 창 생성 전에 쏘고 이후 전이가 없으면 다시 안 온다(배선 R2 F12).
+  // 그래서 구독 **직후 1회** `chats:get`의 `statuses`로 따라잡되, 그 사이에 이미 도착한
+  // 브로드캐스트는 절대 덮지 않는다(따라잡기는 비어 있는 키만 채운다).
+  const [chatStatus, setChatStatus] = useState<Record<string, ChatStatusLite>>({})
+  useEffect(() => {
+    const off = onChatStatus((rows) => {
+      const next: Record<string, ChatStatusLite> = {}
+      for (const r of rows) if (r?.chatId) next[r.chatId] = r
+      setChatStatus(next)
+    })
+    void window.api
+      .getChats()
+      .then((raw) => {
+        const statuses = (raw as { statuses?: Record<string, ChatStatusLite> } | null)?.statuses
+        if (!statuses) return
+        setChatStatus((cur) => {
+          const merged = { ...cur }
+          let changed = false
+          for (const [id, v] of Object.entries(statuses))
+            if (!merged[id] && v) {
+              merged[id] = v
+              changed = true
+            }
+          return changed ? merged : cur
+        })
+      })
+      .catch(() => {})
+    return off
+  }, [])
+
+  // ── ★ R2 — 정착 사유 (`chat:run-state.settled[]`) ───────────────────────────
+  // 셸은 사유(`stream_closed:externalkill` · `watchdog:none` …)를 실어 보내는데 R1엔
+  // 읽는 쪽이 없었다. 없으면 CLI가 밖에서 죽어도 도구 행 스피너가 영원히 돈다.
+  useEffect(() => onChatRunState((p) => noteSettled(p.settled)), [])
+
+  // ── ★ R2 — 자리 밖 채팅의 예약 드레인 (`chat:run`) ──────────────────────────
+  //
+  // 활성 채팅의 드레인은 아래 effect가 `runPrompt`로 한다(라이브 리듀서가 말풍선·busy를
+  // 소유하므로). 자리 밖 채팅은 그 리듀서가 없으니 두 가지를 직접 해야 한다:
+  //   ① **주소가 있는 채널로 발사** — `chat:run{chatId}`. 별칭(`claude:run`)으로 쏘면
+  //      "그 순간의 활성 채팅"으로 라우팅돼 남의 대화에 들어간다(§2-① 그 사고).
+  //   ② 사용자 말풍선을 그 채팅의 **배경 스냅샷에 접는다** — 돌아왔을 때 자기가 예약한
+  //      문장이 스레드에 있어야 한다. 답변은 `chat:event` 수집기가 이어서 접는다.
+  // 폴더를 모르는 채팅(첫 전송 전)은 발사하지 않는다 — 배경에서 폴더 선택 창을 띄울 수
+  // 없다. 그 예약은 큐에 남고 사용자가 돌아오면 평소 경로로 나간다.
+  const chatsRef = useRef<ChatMeta[]>(chats)
+  chatsRef.current = chats
+  const drainBgQueue = (id: string, snap: SessionState): boolean => {
+    const chat = chatsRef.current.find((c) => c.id === id)
+    const next = chat?.queue?.[0]
+    if (!chat || !next) return false
+    if (limitResume.holdRef.current?.key === id) return false // 한도 대기표 — 지금 보내도 막힌다
+    const dir = chat.manualCwd || snap.session?.cwd || ''
+    if (!dir) return false
+    setChats((list) => list.map((c) => (c.id === id ? { ...c, queue: c.queue?.slice(1), updatedAt: Date.now() } : c)))
+    // 배경 스냅샷에 사용자 말풍선 + '분석 중' 표식을 접는다(활성 경로의 begin과 같은 리듀서)
+    const cmd = commandOf(next.text)
+    bgSnapRef.current.set(
+      id,
+      sessionReducer(snap, { type: 'begin', text: next.text, time: nowTime(), command: cmd, images: next.images })
+    )
+    void runChat(id, buildRunRequest({
+      text: next.text,
+      images: next.images,
+      picker: next.picker,
+      cwd: dir,
+      refDirs: chat.refDirs ?? [],
+      session: snap.session,
+      apiMode
+    }))
+    return true
+  }
+
   // snapshot the live session into the currently active chat. 빈 채팅도 버리지 않고
   // 그대로 저장한다 — 새 채팅에서 골라둔 모델·모드·계정(picker)·폴더·초안이 다른 채팅에
   // 다녀와도 남아 있게. 사이드바 목록엔 원래 안 보이고(chatSummaries가 거름), 새로
@@ -822,7 +996,9 @@ function MainApp({ user }: { user: AppUser }) {
   const saveActive = (list: ChatMeta[]): ChatMeta[] =>
     list.map((c) =>
       c.id === activeChatId
-        ? { ...c, snapshot: state, unloaded: undefined, manualCwd, refDirs, picker, draft: input, draftImages: images }
+        ? // ★ R2 — 예약 큐도 초안과 같이 접어 넣는다. 이게 없으면 떠나는 순간 A의 예약이
+          // 화면 state에만 남아 다음 착지에서 **B의 것으로 오인**된다(§2-① misroute).
+          { ...c, snapshot: state, unloaded: undefined, manualCwd, refDirs, picker, draft: input, draftImages: images, queue }
         : c
     )
 
@@ -839,13 +1015,16 @@ function MainApp({ user }: { user: AppUser }) {
       setPicker(c.picker ?? DEFAULT_PICKER)
       setInput(c.draft ?? '')
       setImages(c.draftImages ?? [])
+      // ★ R2 — 큐 소유권 이전. 이 두 줄이 "예약은 대화의 것"이라는 불변식의 착지점이다.
+      setQueue(chatsRef.current.find((x) => x.id === c.id)?.queue ?? c.queue ?? [])
+      queueOwnerRef.current = c.id
       landActiveChat(c.id)
     }
     // ★ 자리 밖에서 돌던 채팅으로 돌아온다 — ref의 최신 스냅샷이 스토어보다 새롭다
     // (플러시는 600ms 간격이라 최대 그만큼 앞선다). 착지와 동시에 추적을 놓는다.
     const bg = bgSnapRef.current.get(c.id)
     if (bg) {
-      bgSnapRef.current.delete(c.id)
+      bgUntrack(c.id)
       restoreSeq.current++
       setChats((list) => list.map((x) => (x.id === c.id ? { ...x, snapshot: bg, unloaded: undefined } : x)))
       land(bg)
@@ -903,7 +1082,15 @@ function MainApp({ user }: { user: AppUser }) {
     load(initialSessionState)
     setInput('')
     setImages([])
-    landActiveChat(fresh.id)
+    landOnFreshChat(fresh.id)
+  }
+
+  /** 빈 채팅으로의 착지 — 새 채팅 · 마지막 하나 삭제 · 전체 삭제가 같은 자리를 쓴다.
+   *  ★ R2: 큐 소유권도 여기서 넘어간다(앞 채팅의 예약을 새 채팅이 물려받으면 안 된다). */
+  const landOnFreshChat = (id: string): void => {
+    setQueue([])
+    queueOwnerRef.current = id
+    landActiveChat(id)
   }
 
   const selectChat = (id: string): void => {
@@ -919,10 +1106,35 @@ function MainApp({ user }: { user: AppUser }) {
     setChats((list) => list.map((c) => (c.id === id ? { ...c, title: name, custom: true } : c)))
   }
 
+  // ── ★ 3.0 M-UX R2 — 삭제 잠금은 「도는 대화 전부」다 ─────────────────────────
+  //
+  // 2.6.2의 가드는 `id === activeChatId && busy`였고 그걸로 충분했다 — "busy인데 활성이
+  // 아닌 채팅"이라는 상태가 만들어질 수 없었으니까. 스펙 ⑥이 그 상태를 만들었고, 가드를
+  // 안 넓힌 대가로 **자리 밖에서 스트리밍 중인 대화가 아무 저지 없이 삭제됐다**
+  // (크리틱 M-UX R1 §2-②). 판정 근거는 이 라운드가 이미 들고 있는 두 가지다:
+  //   · 활성 채팅 → 라이브 `busy` / 상주 워크플로
+  //   · 그 밖 → 배경 추적 집합(`bgSnapRef`) 보유 = 지금 이 창이 꼬리를 접고 있는 대화
+  // 반환값은 **사용자에게 보여줄 이유**다. 빈 문자열이면 지울 수 있다 —
+  // 침묵 no-op(P7 위반)이 아니라 사이드바가 이 문장을 카드/툴팁으로 말한다.
+  const deleteLockOf = (id: string): string => {
+    if (id === activeChatId && (busy || wfAlive))
+      return t(
+        '지금 실행 중인 대화예요 — 중지하거나 끝난 뒤에 지울 수 있어요.',
+        "This chat is running — stop it or wait for it to finish before deleting."
+      )
+    if (bgIds.includes(id))
+      return t(
+        '이 대화는 자리 밖에서 아직 실행 중이에요 — 열어서 중지하거나 끝난 뒤에 지울 수 있어요.',
+        'This chat is still running off-screen — open it to stop it, or wait for it to finish.'
+      )
+    return ''
+  }
+
   const deleteChat = (id: string): void => {
-    // 삭제만은 실행 중에 막는다 — 도는 엔진의 대화는 되돌릴 수 없다(전환·새 채팅은 열렸다)
-    if (id === activeChatId && (busy || wfAlive)) return
-    bgSnapRef.current.delete(id) // 배경 추적 중이었다면 같이 놓는다
+    // 마지막 방어선 — 사이드바가 이미 막고 이유를 말하지만, 다른 호출 경로(단축키·미래의
+    // 표면)가 여기로 새어 들어와 **도는 엔진의 대화**를 지우는 일은 없어야 한다.
+    if (deleteLockOf(id)) return
+    bgUntrack(id) // 배경 추적 중이었다면 같이 놓는다
     const remaining = chats.filter((c) => c.id !== id)
     if (id === activeChatId) {
       if (remaining.length === 0) {
@@ -931,7 +1143,7 @@ function MainApp({ user }: { user: AppUser }) {
         setInput('')
         setImages([])
         setChats([fresh])
-        landActiveChat(fresh.id)
+        landOnFreshChat(fresh.id)
         return
       }
       restore(remaining[0])
@@ -939,17 +1151,34 @@ function MainApp({ user }: { user: AppUser }) {
     setChats(remaining)
   }
 
+  /** 「전체 삭제」가 막히는 이유(빈 문자열 = 지울 수 있다). 대상 중 **하나라도** 도는
+   *  대화가 있으면 전부 막는다 — 부분 삭제는 "무엇이 남았나"를 설명할 수 없다. */
+  const deleteAllLock = (): string => {
+    if (busy || wfAlive)
+      return t(
+        '지금 실행 중이에요 — 작업이 끝난 뒤 지울 수 있어요.',
+        'A run is in progress — you can delete after it finishes.'
+      )
+    if (bgIds.length)
+      return t(
+        `자리 밖에서 실행 중인 대화가 ${bgIds.length}개 있어요 — 끝난 뒤 지울 수 있어요.`,
+        `${bgIds.length} chats are still running off-screen — you can delete after they finish.`
+      )
+    return ''
+  }
+
   // 사이드바 라벨 행의 전체 삭제 — 확인 카드는 Sidebar가 띄우고, 여기선 빈 채팅
   // 하나로 리셋한다 (deleteChat의 remaining.length === 0 분기와 동일한 착지점)
   const deleteAllChats = (): void => {
-    if (busy || wfAlive) return
+    if (deleteAllLock()) return
     bgSnapRef.current.clear()
+    syncBgIds()
     const fresh = newChatMeta(manualCwd, picker, refDirs)
     load(initialSessionState)
     setInput('')
     setImages([])
     setChats([fresh])
-    landActiveChat(fresh.id)
+    landOnFreshChat(fresh.id)
   }
 
   // ⌘N / Ctrl+N — 새 채팅 선택 모달(일반/멀티)을 연다 (PoC: 버튼도 같은 모달)
@@ -1021,6 +1250,8 @@ function MainApp({ user }: { user: AppUser }) {
       for (const w of state.workflows) if (w.status === 'running') onBgTaskMain({ action: 'stop', id: w.id })
     }
     setQueue([])
+    // ★ R2 — 소유 대화의 사본도 같이 비운다(중지는 "뒤에 줄 선 것까지 취소"가 계약이다)
+    setChats((list) => list.map((c) => (c.id === activeChatIdRef.current ? { ...c, queue: [] } : c)))
   }
 
   // Esc stops the running conversation (single mode). A modal / menu / selection toolbar
@@ -1062,8 +1293,12 @@ function MainApp({ user }: { user: AppUser }) {
     // 이 채팅의 한도 대기표도 함께 — 백지가 된 대화 위에 옛 프롬프트가 자동
     // 재전송되면(세션이 없어 lastPrompt 폴백을 탄다) 방금 지운 작업이 되살아난다
     if (limitResume.holdRef.current?.key === activeChatId) limitResume.setHold(null)
+    // 백지가 된 대화 뒤에 줄 서 있던 예약도 같이 지운다 — 방금 지운 맥락 위로 발사된다
+    setQueue([])
     setChats((list) =>
-      list.map((c) => (c.id === activeChatId ? { ...c, title: '', custom: false, snapshot: initialSessionState } : c))
+      list.map((c) =>
+        c.id === activeChatId ? { ...c, title: '', custom: false, snapshot: initialSessionState, queue: [] } : c
+      )
     )
   }
 
@@ -1153,46 +1388,18 @@ function MainApp({ user }: { user: AppUser }) {
         return !c.custom || folderSwitched ? { ...base, title, custom: false } : base
       })
     )
-    // commands take no extras — only fold mention/attachment notes into normal prompts.
-    // `@path` mentions are already inline; the note just lists them so the engine reads
-    // the referenced files reliably (the Agent SDK doesn't expand "@" the way the CLI does).
-    let promptForEngine = text
-    if (!cmd) {
-      const notes: string[] = []
-      const mentions = extractMentions(text)
-      if (mentions.length)
-        notes.push(
-          `${t('[멘션된 파일 — 필요하면 Read 도구로 확인하세요]', '[Mentioned files — read them with the Read tool if needed]')}\n${mentions.map((p) => '- ' + p).join('\n')}`
-        )
-      if (imgs.length)
-        notes.push(
-          `${t('[첨부 파일 — Read 도구로 확인하세요]', '[Attached files — read them with the Read tool]')}\n${imgs.map((p) => '- ' + p).join('\n')}`
-        )
-      if (notes.length) promptForEngine = `${text}\n\n${notes.join('\n\n')}`
-    }
-    const extraDirs = refDirs.filter((p) => !sameCwd(p, dir))
-    const req: RunRequest = {
-      prompt: promptForEngine,
-      model: pk.model,
-      effort: pk.effort,
-      mode: pk.mode,
-      // 실행 엔진(claude/codex) + Codex GPT 모델 — 생략하면 Claude
-      engine: pk.engine,
-      codexModel: pk.codexModel,
+    // 요청 조립은 buildRunRequest 한 곳 — 자리 밖 드레인(drainBgQueue)과 **같은 문장**이
+    // 나가야 "돌아와 보니 예약이 다른 프롬프트로 나갔다"가 안 생긴다.
+    const req = buildRunRequest({
+      text,
+      images: imgs,
+      picker: pk,
       cwd: dir,
-      // 참조 폴더 — 작업 폴더와 겹치는 항목은 걸러서 (같은 폴더를 --add-dir로 또 주지 않게)
-      addDirs: extraDirs.length ? extraDirs : undefined,
-      // resume this chat's session so the conversation continues with full history —
-      // but only while still in the folder it was created in (a session id is scoped to
-      // its project, so resuming it elsewhere errors "No conversation found"). A folder
-      // change starts a fresh conversation in the new project.
-      resume: state.session && sameCwd(state.session.cwd, dir) ? state.session.sessionId : undefined,
-      // API 모드(컴포저 토글) — 이 실행을 구독 대신 저장된 API 키로 과금
-      useApi: apiMode || undefined,
-      // 실행 계정 — 클로드는 격리 CLAUDE_CONFIG_DIR, Codex는 격리 CODEX_HOME (미지정=기본 계정)
-      account: pk.account,
-      codexAccount: pk.codexAccount
-    }
+      refDirs,
+      // 폴더가 바뀌었으면 위에서 스레드를 리셋했다 — resume도 같이 끊는다
+      session: folderSwitched ? null : state.session,
+      apiMode
+    })
     if (!opts?.keepDraft) {
       setInput('')
       setImages([])
@@ -1210,11 +1417,23 @@ function MainApp({ user }: { user: AppUser }) {
       return
     }
     const id = crypto.randomUUID ? crypto.randomUUID() : `q-${Date.now()}-${queue.length}`
-    setQueue((q) => [...q, { id, text: input, images, picker }])
+    // ★ R2 — 예약은 곧바로 **그 대화의 것**이 된다. state와 ChatMeta를 함께 쓰는 이유:
+    // 전환이 saveActive를 못 타는 경로(창 닫기·크래시 직전 등)에서도 소유자가 남아야 한다.
+    const item: ScheduledMsg = { id, text: input, images, picker }
+    queueOwnerRef.current = activeChatId // 예약한 사람이 곧 소유자 (부팅 직후 착지가 없어도 맞다)
+    setQueue((q) => [...q, item])
+    setChats((list) => list.map((c) => (c.id === activeChatId ? { ...c, queue: [...(c.queue ?? []), item] } : c)))
     setInput('')
     setImages([])
     composerRef.current?.focus()
   }
+  /** 예약 취소 — state와 소유 대화의 사본을 같이 지운다(두 벌이 갈리면 유령 예약이 남는다). */
+  const removeQueued = useEvent((id: string) => {
+    setQueue((q) => q.filter((m) => m.id !== id))
+    setChats((list) =>
+      list.map((c) => (c.id === activeChatIdRef.current ? { ...c, queue: (c.queue ?? []).filter((m) => m.id !== id) } : c))
+    )
+  })
 
   // drain the queue on each busy→idle transition. 런을 시작하지 않는 클라이언트 명령
   // (/clear 등)은 busy가 다시 전환되지 않아 뒤 항목이 영영 갇히므로, 엔진 런이 하나
@@ -1227,15 +1446,23 @@ function MainApp({ user }: { user: AppUser }) {
   useEffect(() => {
     const was = prevBusyRef.current
     prevBusyRef.current = busy
+    // ★ R2 — **소유권 게이트.** 이 목록이 지금 활성인 채팅의 것이 아니면 여기서 쏘지
+    // 않는다. busy는 "이 창의 라이브 리듀서"가 내는 값이라 전환(=남의 idle 스냅샷 로드)
+    // 만으로도 true→false가 되고, 그 에지에 예약을 쏘면 **남의 대화로 발사된다**
+    // (크리틱 M-UX R1 §2-① `queue.misroute`). 자리 밖 채팅의 드레인은 그 채팅의 진짜
+    // 턴 종료를 보는 `drainBgQueue`가 `chat:run{chatId}`로 한다.
+    if (queueOwnerRef.current !== activeChatIdRef.current) return
     // 이 채팅에 한도 대기표가 있으면 드레인 보류 — 지금 보내봐야 같은 한도에 막혀
     // 에러만 쌓인다. 자동/수동 재개 턴이 끝난 다음 idle 전환이 이어받는다. (ref인 이유:
     // 훅의 장전 effect와 이 effect가 같은 status 변화에서 도는데 state 반영은 다음 렌더라 늦다)
     if (busy || queueRef.current.length === 0 || !was || limitResume.holdRef.current?.key === activeChatIdRef.current) return
     void (async () => {
+      const owner = queueOwnerRef.current
       while (queueRef.current.length > 0) {
         const next = queueRef.current[0]
         queueRef.current = queueRef.current.slice(1)
         setQueue((q) => q.slice(1))
+        setChats((list) => list.map((c) => (c.id === owner ? { ...c, queue: (c.queue ?? []).slice(1) } : c)))
         // 예약 메시지는 자체 텍스트/첨부로 재생 — 실행 중에 새로 쓰던 초안은 건드리지 않는다
         const started = await runPrompt(next.text, { images: next.images, picker: next.picker, keepDraft: true })
         if (started) break
@@ -1272,7 +1499,10 @@ function MainApp({ user }: { user: AppUser }) {
       setOpenFilePath(null)
       if (busy) {
         const id = crypto.randomUUID ? crypto.randomUUID() : `q-${Date.now()}-${queue.length}`
-        setQueue((q) => [...q, { id, text: prompt, images: [], picker }])
+        const item: ScheduledMsg = { id, text: prompt, images: [], picker }
+        queueOwnerRef.current = activeChatIdRef.current
+        setQueue((q) => [...q, item])
+        setChats((list) => list.map((c) => (c.id === activeChatIdRef.current ? { ...c, queue: [...(c.queue ?? []), item] } : c)))
       } else {
         void runPrompt(prompt, { images: [], keepDraft: true })
       }
@@ -1287,15 +1517,37 @@ function MainApp({ user }: { user: AppUser }) {
     clearPermission()
   }
 
+  // ── ★ 3.0 M-UX R2 — 폴백 확인 카드의 응답은 전용 채널로 (§4.4b) ─────────────
+  //
+  // 셸은 `request_user_dialog`를 2.6.2 파리티로 **질문 카드**로 그리고, 질문 채널로 온
+  // 답을 원장 종류에 맞춰 되맞춘다(hub.rs `ask_kind_of`). 계약면의 정답은 전용 채널이고
+  // 어휘도 다르다: `{behavior:'completed', result:'retry_fallback'}` / `{behavior:'cancelled'}`.
+  // 되맞춤에 기대지 않고 여기서 바로 옳은 채널로 답한다 — 다만 **거절되면 질문 채널로
+  // 되돌아간다**(구 빌드·원장이 이 id를 질문으로 아는 경우). 안 그러면 카드만 닫히고
+  // 엔진은 영원히 기다린다 — 이 라운드가 없애겠다고 한 바로 그 유령이다.
+  const answerFallbackDialog = (requestId: string, accepted: boolean, answers: string[][] | null): void => {
+    void respondDialog(activeChatIdRef.current, requestId, accepted).then((ok) => {
+      if (!ok) window.api.respondQuestion({ requestId, answers }).catch(() => {})
+    })
+  }
   const onAnswer = (answers: string[][]): void => {
-    if (!state.pendingQuestion) return
-    window.api.respondQuestion({ requestId: state.pendingQuestion.requestId, answers }).catch(() => {})
+    const pq = state.pendingQuestion
+    if (!pq) return
+    if (isFallbackAsk(pq)) {
+      const picked = answers[0]?.[0] ?? ''
+      answerFallbackDialog(pq.requestId, !!picked && picked !== FALLBACK_ASK_CANCEL, answers)
+    } else {
+      window.api.respondQuestion({ requestId: pq.requestId, answers }).catch(() => {})
+    }
     answerQuestion(answers) // 카드를 닫으며 문답 흔적을 스레드에 남긴다
   }
   // skip without answering (Esc / backdrop / ✕) → agent proceeds with its defaults
   const onDismissQuestion = (): void => {
-    if (!state.pendingQuestion) return
-    window.api.respondQuestion({ requestId: state.pendingQuestion.requestId, answers: null }).catch(() => {})
+    const pq = state.pendingQuestion
+    if (!pq) return
+    // 폴백 확인은 "무응답 진행"이라는 선택지가 없다 — 접어두기는 취소(=폴백 안 함)다
+    if (isFallbackAsk(pq)) answerFallbackDialog(pq.requestId, false, null)
+    else window.api.respondQuestion({ requestId: pq.requestId, answers: null }).catch(() => {})
     clearQuestion()
   }
 
@@ -1423,10 +1675,14 @@ function MainApp({ user }: { user: AppUser }) {
         .map((c) => ({
           id: c.id,
           title: c.title,
-          status: c.id === activeChatId ? state.status : c.snapshot.status,
+          // ★ R2 — 활성 채팅은 라이브 리듀서, 그 밖은 `chat:status`(Rust 소유 진실) →
+          // 스냅샷 순. 자리 밖에서 도는 대화의 점이 낡은 스냅샷으로 굳지 않는다.
+          status: c.id === activeChatId ? state.status : chatStatus[c.id]?.status ?? c.snapshot.status,
+          // 승인/질문 대기 — 화면에 없는 대화의 카드는 목록이 대신 말한다(§2.2-5)
+          ask: c.id === activeChatId ? undefined : (chatStatus[c.id]?.ask ?? 'none') !== 'none',
           updatedAt: c.updatedAt
         })),
-    [chats, activeChatId, state.messages.length, state.status]
+    [chats, activeChatId, state.messages.length, state.status, chatStatus]
   )
 
   // stable handlers for the memoized Sidebar / WorkBar
@@ -1523,13 +1779,20 @@ function MainApp({ user }: { user: AppUser }) {
           status: p.status,
           ask: p.ask,
           running: p.status === 'working' || p.status === 'analyzing',
+          // ★ R2 — 칩의 뜻은 *"이 대화가 지금 어느 자리에서 **보이는가**"* 다(Sidebar.tsx:27).
+          // 보드 크롬을 떠나 있으면 그 자리들은 **화면에 없다** — 그때도 「1」을 달아 두면
+          // 일반 채팅과 보드 1번 자리가 같은 자리를 동시에 주장한다(크리틱 M-UX R1 §2-⑤
+          // `side.dup-slot1`/`side.stale-live`, 스펙 §2.6 불변식 위반). 칩을 떼면 "어느
+          // 자리에도 안 얹힌 대화"라는 기존 어휘 그대로다 — 대화는 목록에 그대로 남는다.
           slot: p.popped
             ? { text: t('창', 'win'), kind: 'win' as const }
             : p.pos != null
-              ? { text: String(p.pos), kind: 'live' as const, tag: p.color }
+              ? mode === 'multi'
+                ? { text: String(p.pos), kind: 'live' as const, tag: p.color }
+                : undefined
               : { text: String(p.fold ?? ''), kind: 'folded' as const, tag: p.color }
         })),
-    [panelInfos, lang]
+    [panelInfos, mode, lang]
   )
   // 「채팅」 = 보드 자리 ∪ 창 ∪ 일반 채팅. 한 목록 안에서 자리 칩만 다르다(§8-①(a)).
   const unifiedChats = useMemo<ChatSummary[]>(
@@ -1540,10 +1803,13 @@ function MainApp({ user }: { user: AppUser }) {
         ...c,
         // 일반 채팅이 IDE 크롬(1 모드)을 차지하고 있으면 그게 1번 자리다
         slot: mode === 'single' && c.id === activeChatId ? { text: '1', kind: 'live' as const } : undefined,
-        running: c.id === activeChatId ? busy || wfAlive : bgSnapRef.current.has(c.id)
+        running: c.id === activeChatId ? busy || wfAlive : bgIds.includes(c.id),
+        // ★ R2 — 지울 수 없으면 **왜인지**를 목록이 들고 다닌다(침묵 no-op 금지, P7)
+        lock: deleteLockOf(c.id) || undefined
       }))
     ],
-    [boardSummaries, extraSummaries, chatSummaries, mode, activeChatId, busy, wfAlive]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [boardSummaries, extraSummaries, chatSummaries, mode, activeChatId, busy, wfAlive, bgIds, lang]
   )
   // 접힌 자리 수 — 사이드바 안내 줄("이 배치의 N개 자리가 접혔어요")
   const foldedCount = useMemo(() => panelInfos.filter((p) => !p.empty && p.pos == null && !p.popped).length, [panelInfos])
@@ -1604,8 +1870,10 @@ function MainApp({ user }: { user: AppUser }) {
         // 보드 크롬이면 1번 자리(= 지금 대화), 아니면 지금 보는 일반 채팅
         activeId: mode === 'multi' ? panelInfos.find((p) => p.pos === 1 && !p.empty)?.panelId : activeChatId,
         currentId: activeChatId,
+        // 접힘 안내는 **보드를 보고 있을 때만** — 화면에 없는 배치의 접힘을 계속 말하면
+        // 일반 채팅 화면에서 "지금 뭔가 접혀 있다"는 거짓 신호가 된다(§2-⑤와 같은 뿌리)
         hint:
-          foldedCount > 0
+          mode === 'multi' && foldedCount > 0
             ? t(
                 `이 배치의 ${foldedCount}개 자리가 접혔어요 — 대화는 그대로예요`,
                 `${foldedCount} slots in this board are folded — the chats are all still here`
@@ -1618,7 +1886,9 @@ function MainApp({ user }: { user: AppUser }) {
         // 전체 삭제 = 일반 채팅 + 창 대화. **보드 자리는 안 지운다**(그건 「배치」 소관)
         // 이라 목록 길이와 실제 개수가 다르다 → 확인 카드에 실제 개수를 준다
         onDeleteAll: onDeleteAllUnified,
-        deleteAllCount: chatSummaries.length + extraSummaries.length
+        deleteAllCount: chatSummaries.length + extraSummaries.length,
+        // ★ R2 — 도는 대화가 하나라도 있으면 「전체 삭제」는 이유를 말하며 잠긴다
+        deleteAllLock: deleteAllLock() || undefined
       },
       {
         key: 'multi' as const,
@@ -1634,7 +1904,7 @@ function MainApp({ user }: { user: AppUser }) {
     ],
     // useEvent 핸들러·multi CRUD는 stable — 데이터/선택 상태만 의존한다
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [unifiedChats, panelInfos, chatSummaries, extraSummaries, foldedCount, multi.summaries, multi.activeId, mode, activeChatId, lang]
+    [unifiedChats, panelInfos, chatSummaries, extraSummaries, foldedCount, multi.summaries, multi.activeId, mode, activeChatId, busy, wfAlive, bgIds, lang]
   )
   return (
     <div className="win">
@@ -1718,8 +1988,15 @@ function MainApp({ user }: { user: AppUser }) {
             explorerHidden={!explorerOpen}
             onToggleExplorer={toggleExplorer}
             /* ★ 3.0 M-UX — 다이얼은 두 크롬의 **같은 자리**에 산다(§2.1). 여기(IDE)에서
-               2‥6을 고르면 활성 보드가 그 자리 수로 열린다 — 1↔2 전환에서 버튼이 안 움직인다 */
-            dial={<PanelDial count={1} onPick={onDialPick} />}
+               2‥6을 고르면 활성 보드가 그 자리 수로 열린다 — 1↔2 전환에서 버튼이 안 움직인다.
+               R2: 접힘 배지 자리(FoldSlotHold)를 함께 예약해야 그 규약이 실제로 지켜진다 —
+               안 그러면 보드 크롬에만 있는 배지 폭만큼 이 화면의 다이얼이 오른쪽으로 간다 */
+            dial={
+              <>
+                <PanelDial count={1} onPick={onDialPick} />
+                <FoldSlotHold />
+              </>
+            }
           />
           <ZoomBadge pct={chatZoom.pct} show={chatZoom.flash} />
           <div className="chat-scroll scroll" ref={chatScrollRef}>
@@ -1803,7 +2080,7 @@ function MainApp({ user }: { user: AppUser }) {
             onStop={cancelRun}
             onSchedule={scheduleMessage}
             queued={queue}
-            onRemoveQueued={(id) => setQueue((q) => q.filter((m) => m.id !== id))}
+            onRemoveQueued={removeQueued}
             busy={busy}
             started={state.messages.length > 0}
             picker={picker}

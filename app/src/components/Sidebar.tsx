@@ -25,12 +25,17 @@ export interface ChatSummary {
   status: AgentStatus
   updatedAt?: number // 마지막 활동 시각 — 오른쪽 상대 시간(지금/28분/1시간)으로 표시
   /** ★ 3.0 M-UX — 자리 칩. 이 대화가 지금 어느 자리에서 보이는가(ux-chat-unify §2.2-3).
-   *  live=보이는 자리 번호 · folded=접힌 자리(⌄N, 대화는 그대로) · win=별도 창 */
+   *  live=보이는 자리 번호 · folded=접힌 자리(⌄N, 대화는 그대로) · win=별도 창.
+   *  ★ R2: `live`는 **지금 화면에 있는** 자리에만 붙는다 — 보드 크롬을 떠나면 그 자리
+   *  칩은 사라진다(안 그러면 「1번 자리」를 두 대화가 동시에 주장한다). */
   slot?: { text: string; kind: 'live' | 'folded' | 'win'; tag?: string }
   /** 승인/질문 대기 — 상태 점이 대기 색(2.6.2엔 없던 상태, §2.2-5) */
   ask?: boolean
   /** 실행 중 — 1 모드 busy 전환을 허용한 대신 목록에서 "돌고 있음"을 표시한다(스펙 ⑥) */
   running?: boolean
+  /** ★ 3.0 M-UX R2 — 삭제가 막히는 **이유**. 있으면 우클릭 「삭제」가 잠기고(툴팁=이 문장),
+   *  Delete 키로 들어와도 카드가 이 문장을 말한다. 침묵 no-op은 M-LOGIC P7 위반이다. */
+  lock?: string
 }
 
 // ★ 3.0 M-UX — 섹션이 셋(일반/멀티/추가)에서 **둘**(채팅/배치)로 접혔다.
@@ -60,6 +65,8 @@ export interface SidebarSection {
    *  함께 보여주지만 그 자리들은 삭제 대상이 아니라(배치 섹션 소관) 목록 길이와 다르다.
    *  주지 않으면 목록 길이를 쓴다(2.6.2 동작). */
   deleteAllCount?: number
+  /** ★ 3.0 M-UX R2 — 「전체 삭제」가 막히는 이유(있으면 잠기고 툴팁이 이 문장). */
+  deleteAllLock?: string
 }
 
 const isMac = typeof navigator !== 'undefined' && navigator.platform.toLowerCase().includes('mac')
@@ -122,6 +129,8 @@ interface ConfirmState {
   id: string | null // null = 전체 삭제
   title: string
   msg: string
+  /** ★ R2 — 삭제가 **막혔다**는 카드(파괴 버튼 없음, 「확인」 하나). 이유가 곧 msg다. */
+  blocked?: boolean
 }
 
 export const Sidebar = memo(function Sidebar({
@@ -216,7 +225,14 @@ export const Sidebar = memo(function Sidebar({
     const s = sectionsRef.current.find((x) => x.key === sec)
     const chat = s?.chats.find((c) => c.id === id)
     if (!s || !chat) return
-    if (s.busy && (s.currentId ?? s.activeId) === id) return // 실행이 흐르는 채팅은 지울 수 없다
+    // ★ R2 — 실행이 흐르는 대화는 못 지운다. 2.6.2는 여기서 조용히 `return` 했고(눌리지도
+    // 않았으니 무해했다) R1은 그 가드가 죽으면서 **확인 카드까지 통과한 뒤 아무 일도 안
+    // 일어나는** 형태가 됐다(크리틱 §2-③). 이제는 카드가 이유를 말한다.
+    const lock = chat.lock || (s.busy && (s.currentId ?? s.activeId) === id ? t('실행 중이에요', 'It is running') : '')
+    if (lock) {
+      setConfirm({ sec, id, title: t('지금은 지울 수 없어요', "Can't delete right now"), msg: lock, blocked: true })
+      return
+    }
     const txt = confirmOneText(chat.title || t('새 채팅', 'New chat')) // txt: 지역 이름이 i18n t()를 가리지 않게
     setConfirm({ sec, id, ...txt })
   }
@@ -302,9 +318,9 @@ export const Sidebar = memo(function Sidebar({
                 {s.onDeleteAll && (
                   <button
                     className="slb has-tip"
-                    data-tip={s.busy ? t('작업이 끝난 뒤 지울 수 있어요', 'You can delete after the run finishes') : t('전체 삭제', 'Delete all')}
+                    data-tip={s.deleteAllLock || (s.busy ? t('작업이 끝난 뒤 지울 수 있어요', 'You can delete after the run finishes') : t('전체 삭제', 'Delete all'))}
                     aria-label={t('전체 삭제', 'Delete all')}
-                    disabled={s.busy || (s.deleteAllCount ?? s.chats.length) === 0}
+                    disabled={s.busy || !!s.deleteAllLock || (s.deleteAllCount ?? s.chats.length) === 0}
                     onClick={() =>
                       setConfirm({ sec: s.key, id: null, ...confirmAllText(s.label, s.deleteAllCount ?? s.chats.length) })
                     }
@@ -454,9 +470,14 @@ export const Sidebar = memo(function Sidebar({
               </button>
             )}
             <div className="ctx-sep" />
+            {/* ★ R2 — 도는 대화는 여기서 잠긴다(2.6.2 파리티). 왜 잠겼는지는 title이 말하고,
+                단축키(Delete)로 들어오면 askDelete의 카드가 같은 문장을 말한다. */}
             <button
               className="ctx-item danger"
-              disabled={!!menuSection.busy && (menuSection.currentId ?? menuSection.activeId) === menu.id}
+              disabled={
+                !!menuChat.lock || (!!menuSection.busy && (menuSection.currentId ?? menuSection.activeId) === menu.id)
+              }
+              title={menuChat.lock || undefined}
               onClick={() => {
                 setMenu(null)
                 askDelete(menu.sec, menu.id)
@@ -464,6 +485,7 @@ export const Sidebar = memo(function Sidebar({
             >
               <IconTrash size={15} /> {t('삭제', 'Delete')}
             </button>
+            {menuChat.lock && <div className="cmwhy">{menuChat.lock}</div>}
           </div>,
           document.body
         )}
@@ -480,20 +502,29 @@ export const Sidebar = memo(function Sidebar({
               <div className="sctt">{confirm.title}</div>
               <div className="sct">{confirm.msg}</div>
               <div className="scb">
-                <button className="cancel" onClick={() => setConfirm(null)}>
-                  {t('취소', 'Cancel')}
-                </button>
-                <button
-                  className="danger"
-                  onClick={() => {
-                    const c = confirm
-                    setConfirm(null)
-                    if (c.id) runDelete(c.sec, c.id)
-                    else sectionsRef.current.find((x) => x.key === c.sec)?.onDeleteAll?.()
-                  }}
-                >
-                  {confirm.id ? t('삭제', 'Delete') : t('모두 삭제', 'Delete all')}
-                </button>
+                {confirm.blocked ? (
+                  // 막힌 카드에는 파괴 버튼이 없다 — 누를 것을 주면 또 침묵 no-op이 된다
+                  <button className="cancel" onClick={() => setConfirm(null)}>
+                    {t('확인', 'OK')}
+                  </button>
+                ) : (
+                  <>
+                    <button className="cancel" onClick={() => setConfirm(null)}>
+                      {t('취소', 'Cancel')}
+                    </button>
+                    <button
+                      className="danger"
+                      onClick={() => {
+                        const c = confirm
+                        setConfirm(null)
+                        if (c.id) runDelete(c.sec, c.id)
+                        else sectionsRef.current.find((x) => x.key === c.sec)?.onDeleteAll?.()
+                      }}
+                    >
+                      {confirm.id ? t('삭제', 'Delete') : t('모두 삭제', 'Delete all')}
+                    </button>
+                  </>
+                )}
               </div>
             </div>
           </div>,

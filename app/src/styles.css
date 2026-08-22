@@ -370,6 +370,8 @@ input,textarea{ font-family:inherit; }
 /* 메뉴 헤더 — 대상 채팅 이름 (PoC .cmh) */
 .ctx-menu .cmh{ max-width:220px; padding:5px 9px 7px; font-size:10px; color:var(--text-4);
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+/* ★ R2 — 잠긴 항목의 **이유 한 줄**. 비활성 버튼만 두면 왜 눌리지 않는지 알 수 없다(P7) */
+.ctx-menu .cmwhy{ max-width:230px; padding:1px 9px 5px; font-size:10px; line-height:1.4; color:var(--text-4); white-space:normal; }
 .ctx-item{
   width:100%; display:flex; align-items:center; gap:9px; padding:6.5px 9px;
   border-radius:8px; font-size:12px; color:var(--text-2);
@@ -683,10 +685,13 @@ input,textarea{ font-family:inherit; }
 .chat-head button, .chat-head .tb-left{ -webkit-app-region:no-drag; }
 .chat-head .h-title{ font-size:12px; font-weight:600; letter-spacing:-.01em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:50%; }
 .chat-head .spacer{ flex:1; }
-/* .h-ic 아이콘 버튼 — 멀티 헤더(.ma-head)의 탐색기 토글도 같은 문법을 쓴다 */
-.chat-head .h-ic, .ma-head .h-ic{ color:var(--text-3); padding:5px; border-radius:6px; display:grid; place-items:center; transition:background .12s,color .12s; }
-.chat-head .h-ic:hover, .ma-head .h-ic:hover{ background:var(--hover); color:var(--text); }
-.chat-head .h-ic.on, .ma-head .h-ic.on{ color:var(--text); background:rgba(255,255,255,.08); }
+/* .h-ic 아이콘 버튼 — 멀티 헤더(.ma-head)의 탐색기 토글도 같은 문법을 쓴다.
+   ★ R2: n1(IDE 크롬)에서는 TopBar가 **패널 헤더**에 얹히므로 그 스코프도 같이 잡는다 —
+   빠뜨리면 버튼이 padding 없이 그려져(25px → 15px) 두 개만큼 20px, 다이얼이 오른쪽으로
+   밀린다(§2.1 위반이 크롬 경계에서만 재발한다). */
+.chat-head .h-ic, .ma-head .h-ic, .ma-p-head .h-ic{ color:var(--text-3); padding:5px; border-radius:6px; display:grid; place-items:center; transition:background .12s,color .12s; }
+.chat-head .h-ic:hover, .ma-head .h-ic:hover, .ma-p-head .h-ic:hover{ background:var(--hover); color:var(--text); }
+.chat-head .h-ic.on, .ma-head .h-ic.on, .ma-p-head .h-ic.on{ color:var(--text); background:rgba(255,255,255,.08); }
 /* 헤더는 창 맨 위라 기본(위로 뜨는) 툴팁이 잘려 안 보인다 → 버튼 아래로 뒤집는다
    (창 컨트롤은 아래의 .win-ctl 자체 규칙이 오른쪽 정렬까지 마저 처리) */
 .chat-head .has-tip::after, .ma-head .has-tip::after{ bottom:auto; top:100%; margin-bottom:0; margin-top:8px; transform:translate(-50%, -3px); }
@@ -901,6 +906,8 @@ input,textarea{ font-family:inherit; }
 .t-res .add{ color:var(--green); }
 .t-res .del{ color:var(--red); }
 .t-res.err{ color:var(--red); }
+/* ★ R2 — 사유와 함께 정착한 도구(스트림이 밖에서 죽음 등). 완료도 오류도 아니다 */
+.t-res.settled{ color:var(--text-4); font-style:italic; }
 /* read/write/edit rows open the file on click */
 .t-row.openable{ cursor:pointer; }
 /* 밑줄은 .t-txt에 — flex 아이템에는 부모의 text-decoration이 전파되지 않는다 */
@@ -3597,7 +3604,9 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
    폴더는 패널 헤더 칩, 한도·비용은 각 패널 WorkBar 컨텍스트 팝오버가 담당) */
 /* 멀티 헤더 — 채팅 헤더와 같은 문법: 38px·경계선 없음·드래그 영역·창 컨트롤 */
 .ma-head{
-  height:38px; flex:0 0 38px; display:flex; align-items:center; gap:10px;
+  /* gap은 .chat-head(8px)·.ma-p-head(8px)와 **같아야 한다** — 다르면 오른쪽 정렬 줄에서
+     다이얼 x가 크롬마다 어긋난다(§2.1 「다이얼은 화면에서 안 움직인다」, R2 실측 보정) */
+  height:38px; flex:0 0 38px; display:flex; align-items:center; gap:8px;
   padding:0 4px 0 16px;
   -webkit-app-region:drag; user-select:none;
 }
@@ -4076,6 +4085,8 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
 /* 헤더가 곧 TopBar — 높이·드래그 띠를 .chat-head와 맞춘다. 재배치 드래그는 없다
    (보이는 자리가 하나뿐) → grab 커서도 끈다. */
 .ma-grid.n1 .ma-p-head{
+  /* gap은 .ma-p-head 기본값(8px) 그대로 — .chat-head·.ma-head와 같은 값이라
+     세 크롬에서 다이얼 x가 일치한다(§2.1) */
   height:38px; padding:0 4px 0 12px; cursor:default;
   -webkit-app-region:drag; user-select:none;
 }
@@ -4095,14 +4106,21 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
 
 /* ── 접힘 배지 + 팝오버 (§2.2-3 · 목업 chat-unify-collapse) ─────────────────── */
 .ma-fold{ position:relative; display:inline-flex; align-items:center; }
-.ma-fold-badge{
+/* ★ R2 — 접힘 0일 때의 자리표시자. §2.1 「다이얼은 화면에서 안 움직인다」가 규약이라
+   배지를 빼는 대신 **폭만 남긴다**(빼면 오른쪽 정렬 줄에서 다이얼이 47px 튄다).
+   박스 규칙은 배지와 공유하고 색·상호작용만 배지가 갖는다 — 폭이 갈리면 의미가 없다 */
+.ma-fold.hold{ visibility:hidden; pointer-events:none; }
+.ma-fold-badge, .ma-fold-hold{
   display:flex; align-items:center; gap:3px; height:26px; padding:0 7px; border-radius:8px;
-  background:var(--surface-2); border:1px solid var(--line-2); color:var(--text-2);
-  font-size:11px; transition:background .12s, color .12s, border-color .12s;
+  border:1px solid transparent; font-size:11px;
+}
+.ma-fold-badge{
+  background:var(--surface-2); border-color:var(--line-2); color:var(--text-2);
+  transition:background .12s, color .12s, border-color .12s;
 }
 .ma-fold-badge:hover{ background:var(--surface-3); color:var(--text); }
 .ma-fold-badge.open{ background:rgba(255,255,255,.10); border-color:var(--accent-line); color:var(--text); }
-.ma-fold-badge .cnt{ font-family:var(--font-mono); font-size:10px; color:var(--text); }
+.ma-fold-badge .cnt, .ma-fold-hold .cnt{ font-family:var(--font-mono); font-size:10px; color:var(--text); }
 /* 승인/질문이 접힌 자리에서 기다리는 중 — 자동 승격 대신 배지가 알린다(§2.2-5) */
 .ma-fold-badge.alert{ border-color:rgba(217,192,99,.45); background:var(--yellow-soft); color:var(--yellow); }
 .ma-fold-badge .bang{

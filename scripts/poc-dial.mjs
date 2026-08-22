@@ -14,6 +14,7 @@
  *   node scripts/poc-dial.mjs                # 전부
  *   node scripts/poc-dial.mjs --only=dial    # 1↔6↔1 왕복만
  *   node scripts/poc-dial.mjs --only=active  # chats:set-active 즉시성만
+ *   node scripts/poc-dial.mjs --only=queue   # ★ R2 예약 큐 소유권 (실 CLI 3턴)
  *   node scripts/poc-dial.mjs --keep         # 홈 보존(사후 조사용)
  *
  * ── 안전 규칙 (사용자 실앱이 떠 있다) ───────────────────────────────────────
@@ -315,8 +316,8 @@ async function stepActive() {
 // 실 CLI 1턴이 필요하다(값싼 조합: haiku·minimal·bypass — 승인 카드 없이 끝난다).
 const BG_PROMPT = 'Reply with exactly: BGDONE'
 
-function seedBgHome() {
-  const home = path.join(REPO, '.poc-home-dial-bg')
+function seedBgHome(name = 'bg') {
+  const home = path.join(REPO, `.poc-home-dial-${name}`)
   const work = path.join(home, 'work')
   const realHome = path.join(os.homedir(), '.agentcodegui')
   fs.rmSync(home, { recursive: true, force: true })
@@ -442,6 +443,164 @@ async function stepBg() {
   }
 }
 
+// ── 4. ★ R2 — 예약 큐의 **소유자는 채팅이다** ─────────────────────────────────
+//
+// 스펙 ⑥(busy 중 전환)을 열면 "활성 채팅 = 유일하게 도는 채팅"이라는 전제가 깨진다.
+// R1은 큐를 App 단위 단일 목록으로 뒀고, 전환이 만든 busy true→false 에지에서 드레인이
+// 돌아 **A의 예약이 B로 발사됐다**(크리틱 M-UX R1 §2-① `queue.misroute` — B의 엔진이
+// B의 폴더·모델·계정·모드로 실제로 돌았다).
+//
+// 이 단계가 잠그는 불변식 넷:
+//   ① 예약은 그 채팅에 **주차**된다 — 떠나면 B의 컴포저에 남의 예약이 안 보인다.
+//   ② 돌아오면 **되돌아온다** — 주차가 삭제가 아니다.
+//   ③ 발사는 **그 채팅의 턴 종료**에만, **그 채팅으로**(`chat:run{chatId}`) — 화면이
+//      B에 있어도 A로 나간다.
+//   ④ B는 처음부터 끝까지 **한 글자도 안 받는다**.
+//
+// 실 CLI 3턴(값싼 조합: haiku·minimal·bypass). 첫 턴은 예약을 걸 시간을 벌 만큼 길어야
+// 한다 — 짧으면 예약하기 전에 턴이 끝나 축 자체를 못 잰다(크리틱이 남긴 함정 그대로).
+const Q_LONG = 'Count from 1 to 300, one number per line, nothing else. Never stop early.'
+const Q_P1 = 'QOWNER-ALPHA'
+const Q_P2 = 'QOWNER-BETA'
+
+async function bootAt(home, port) {
+  const child = spawn(EXE, [], {
+    env: { ...process.env, CCG_HOME: home, WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port}` },
+    stdio: ['ignore', 'pipe', 'pipe']
+  })
+  const cdp = await connectMainPage(port, { timeoutMs: 60_000 })
+  for (let i = 0; i < 300; i++) {
+    const up = await cdp
+      .eval(`(async () => { try { return !!(await window.api.app.getVersion()) } catch { return false } })()`, { awaitPromise: true })
+      .catch(() => false)
+    if (up) break
+    await sleep(100)
+  }
+  await cdp.eval(`(() => {
+    window.__n = (sel) => document.querySelectorAll(sel).length
+    window.__txts = (sel) => [...document.querySelectorAll(sel)].map((e) => (e.textContent || '').trim())
+    window.__pick = (needle) => { const el = [...document.querySelectorAll('.sb-item')].find((e) => (e.textContent||'').includes(needle)); if (!el) return false; el.click(); return true }
+    window.__send = (text) => {
+      const ta = document.querySelector('.composer-row textarea') || document.querySelector('textarea')
+      if (!ta) return 'no-textarea'
+      Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set.call(ta, text)
+      ta.dispatchEvent(new Event('input', { bubbles: true }))
+      ta.focus()
+      ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }))
+      return 'sent'
+    }
+    return true
+  })()`)
+  return { child, cdp }
+}
+
+async function stepQueue() {
+  console.log('\n[queue] 예약 큐의 소유자는 채팅이다 — 떠나도 남의 대화로 안 나간다')
+  const s = (rep.steps.queue = { checks: {} })
+  let seed
+  try {
+    seed = seedBgHome('queue')
+  } catch (e) {
+    fail('queue.seed', `격리 홈을 못 만들었다: ${String(e.message ?? e)}`)
+    return
+  }
+  s.engine = seed.ver
+  const app = await bootAt(seed.home, PORT + 2)
+  try {
+    if (!(await waitFor(app.cdp, `__txts('.sb-item .t .tx').filter((x)=>x.startsWith('POC')).length === 2`))) {
+      fail('queue.boot', '두 채팅이 목록에 안 떴다', { titles: await app.cdp.eval(`__txts('.sb-item .t .tx')`) })
+      return
+    }
+    // A에서 긴 턴 시작
+    await app.cdp.eval(`__send(${JSON.stringify(Q_LONG)})`)
+    if (!(await waitFor(app.cdp, `!!document.querySelector('.send.stop, .send.schedule')`, { tries: 300 }))) {
+      fail('queue.busy', '전송 후 실행이 안 걸렸다')
+      return
+    }
+    // busy 중 예약 2건
+    await app.cdp.eval(`__send(${JSON.stringify(Q_P1)})`)
+    await sleep(300)
+    await app.cdp.eval(`__send(${JSON.stringify(Q_P2)})`)
+    await sleep(400)
+    const queued = await app.cdp.eval(`__txts('.sched-item .sched-text')`)
+    s.checks.queued = queued
+    if (queued.length !== 2) {
+      fail('queue.enqueue', '예약 2건이 안 걸렸다', { queued })
+      return
+    }
+    ok('queue.enqueue', queued)
+
+    // ① 떠나면 **주차** — 옆 채팅의 컴포저에 남의 예약이 없다
+    await app.cdp.eval(`__pick('POC 옆 채팅')`)
+    if (!(await waitFor(app.cdp, `(async () => (await window.api.getChats())?.activeChatId === 'c-side')()`, { tries: 80 }))) {
+      fail('queue.switch', '실행 중 전환이 안 됐다')
+      return
+    }
+    await sleep(800)
+    const sideQ = await app.cdp.eval(`__n('.sched-item')`)
+    s.checks.sideQueued = sideQ
+    if (sideQ !== 0) fail('queue.park', '옆 채팅 컴포저에 남의 예약이 보인다 — 큐가 앱 단위다', { sideQ })
+    else ok('queue.park')
+
+    // ② 돌아오면 **되돌아온다** — 주차는 삭제가 아니다.
+    //    강한 형태로 잰다: 돌아온 목록은 원래 목록의 **꼬리**여야 하고, 그 사이 빠진
+    //    항목은 **이 대화로 이미 나갔어야** 한다. (떠나 있는 동안 A의 턴이 끝나 정상
+    //    드레인이 도는 경우가 실제로 있다 — 단순 동일성 비교는 그걸 오판한다.)
+    await app.cdp.eval(`__pick('POC 도는 채팅')`)
+    await waitFor(app.cdp, `(async () => (await window.api.getChats())?.activeChatId === 'c-run')()`, { tries: 80 })
+    await sleep(800)
+    const backQ = await app.cdp.eval(`__txts('.sched-item .sched-text')`)
+    // 스레드 전문을 CDP로 끌어오지 않는다 — 300줄짜리 답이 들어 있어 직렬화가 잘린다
+    // (1차 실행에서 실제로 밟았다: 말풍선은 있는데 indexOf가 -1). 판정은 페이지 안에서.
+    const threadUsers = await app.cdp.eval(`__txts('.thread .msg.user').map((x) => x.slice(0, 80))`)
+    const firedAway = queued.slice(0, queued.length - backQ.length)
+    const isTail = backQ.every((x, i) => x === queued[queued.length - backQ.length + i])
+    s.checks.restoredQueue = { queued, backQ, firedAway }
+    if (!isTail) fail('queue.restore', '돌아온 예약이 원래 목록의 꼬리가 아니다 — 주차가 순서를 깼다', s.checks.restoredQueue)
+    else if (!firedAway.every((x) => threadUsers.some((u) => u.includes(x))))
+      fail('queue.restore', '떠난 사이 사라진 예약이 이 대화로도 안 나갔다 — 예약 증발', s.checks.restoredQueue)
+    else ok('queue.restore', { backQ, firedAway })
+
+    // ③ 다시 떠난 채로 A의 턴이 끝나기를 기다린다 — 발사는 A로 나가야 한다
+    await app.cdp.eval(`__pick('POC 옆 채팅')`)
+    await waitFor(app.cdp, `(async () => (await window.api.getChats())?.activeChatId === 'c-side')()`, { tries: 80 })
+    // 화면은 B다. A의 예약이 전부 소진될 때까지(마지막 프롬프트의 답이 A에 도착할 때까지)
+    // 기다린다 — 판정은 아래에서 A로 돌아가 스레드로 한다.
+    await sleep(150_000)
+
+    // ④ B는 처음부터 끝까지 한 글자도 안 받았다
+    const sideMsgs = await app.cdp.eval(`__txts('.thread .msg').map((x) => x.slice(0, 60))`)
+    s.checks.sideMsgs = sideMsgs
+    if (sideMsgs.length !== 0) fail('queue.misroute', '옆 채팅에 남의 예약이 발사됐다', { sideMsgs })
+    else ok('queue.no-misroute')
+
+    // 돌아가서 — 두 예약이 **A의 스레드에 순서대로** 있고 큐는 비었다
+    await app.cdp.eval(`__pick('POC 도는 채팅')`)
+    await sleep(3000)
+    const users = await app.cdp.eval(`__txts('.thread .msg.user').map((x) => x.slice(0, 80))`)
+    const left = await app.cdp.eval(`__n('.sched-item')`)
+    // 순서는 **말풍선 순번**으로 잰다(문자열 오프셋이 아니라) — 스레드 전문은 못 끌어온다
+    const i1 = users.findIndex((x) => x.includes(Q_P1))
+    const i2 = users.findIndex((x) => x.includes(Q_P2))
+    s.checks.home = { users: users.map((x) => x.slice(0, 40)), left, i1, i2 }
+    if (i1 < 0 || i2 < 0) fail('queue.fired-home', '돌아왔는데 예약한 프롬프트가 이 대화에 없다', s.checks.home)
+    else if (i1 > i2) fail('queue.order', '예약이 걸었던 순서대로 안 나갔다', s.checks.home)
+    else ok('queue.fired-home', { i1, i2 })
+    if (left !== 0) fail('queue.drained', '턴이 다 끝났는데 예약이 남아 있다', { left })
+    else ok('queue.drained')
+    // 답이 실제로 왔는가(발사가 표시만이 아니라 **엔진에 닿았다**는 증거)
+    const ai = await app.cdp.eval(`__n('.thread .msg.ai-msg')`)
+    s.checks.aiMsgs = ai
+    if (ai < 2) fail('queue.answered', '예약 턴의 답이 없다 — 발사가 엔진에 안 닿았다', { ai })
+    else ok('queue.answered', { ai })
+  } finally {
+    app.cdp.close()
+    killTree(app.child.pid)
+    await sleep(1200)
+    if (!KEEP) await rmHome(seed.home)
+  }
+}
+
 // ── main ─────────────────────────────────────────────────────────────────────
 ;(async () => {
   if (!fs.existsSync(EXE)) {
@@ -453,9 +612,11 @@ async function stepBg() {
   rep.fixture = fx
   console.log(`홈: ${HOME} (자리 ${fx.panels} · 자리당 항목 ${fx.itemsPerPanel})`)
 
-  if (only === 'all' || only === 'dial') await stepDial()
-  if (only === 'all' || only === 'active') await stepActive()
-  if (only === 'all' || only === 'bg') await stepBg()
+  const want = (id) => only === 'all' || only.split(',').includes(id)
+  if (want('dial')) await stepDial()
+  if (want('active')) await stepActive()
+  if (want('bg')) await stepBg()
+  if (want('queue')) await stepQueue()
 
   fs.mkdirSync(path.dirname(OUT), { recursive: true })
   rep.pass = rep.findings.length === 0

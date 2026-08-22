@@ -265,3 +265,263 @@ npm run tauri:build     → 성공 (target/release/agentcodegui.exe)
 | `docs/design/mockups/chat-unify-{apply-global,orphan-rebind,expand-overlay}.html` | 목업 3장 |
 | `scripts/poc-dial.mjs` | **신설** — 다이얼 1↔6 무손실 · set-active 즉시성 · 실행 중 전환 꼬리 보존 |
 | `bench/screens.mjs` | `multi-grid-counts` 도달을 **인덱스 → 라벨 텍스트**로(두 앱에서 같은 배치에 도달) · `sidebar` 라벨 |
+
+---
+
+# R2 — 문 뒤의 소유권을 옮겼다
+
+크리틱 `docs/critic/m-ux-r1.md`(조건부 불합격)의 판정 한 줄이 정확하다:
+*"스펙 ⑥을 '여는' 작업이 열리는 문 뒤의 상태 소유권을 안 옮겼다."*
+이 라운드는 그 소유권을 옮긴다. **⑥을 되집지 않았다** — 되집기는 사용자가 요청한 기능
+(실행 중 전환)을 도로 뺏는 것이고, 크리틱 자신도 "큐를 `Chat`으로 옮기고 삭제 가드를
+'도는 채팅 전부'로 넓히는 쪽이 정공법"이라고 적었다.
+
+## R2.0 한 줄 표
+
+| 크리틱 | 판정 | 이번 |
+|---|---|---|
+| ① `queue.misroute` (치명) | 예약이 남의 대화로 발사 | **큐 소유자 = 채팅** + 자리 밖 드레인은 `chat:run{chatId}` |
+| ② `bgdel.deleted-while-running` (높음) | 도는 대화가 삭제됨 | 삭제 잠금 = `busy‖wfAlive‖bgSnapRef.has(id)` |
+| ③ `busydel.silent` (높음·규약) | 확인까지 하고 침묵 no-op | 메뉴 잠금 + **이유를 말하는 카드** |
+| ④ `side.raise-from-single` (중상) | 접힌 대화를 골라도 다른 대화가 열림 | `raiseSlot`이 레코드의 `panelOrder`도 올린다 |
+| ⑤ `side.dup-slot1`·`stale-live` (중) | 「1번 자리」를 둘이 주장 | 보드 크롬 밖에서는 `live` 칩을 안 단다 |
+| ⑥ `geom.move-1-2` (중) | 다이얼이 47px 튄다 | 접힘 배지 **자리 예약** + 세 크롬의 gap·버튼 박스 통일 |
+| ⑦ n1 찾기 버튼 없음 (하) | 어포던스 손실 | TopBar에 돋보기 + n1 포커스 확정(Ctrl+F가 실제로 산다) |
+| ⑧ `raise.scroll` (하) | 읽던 위치 휘발 | **고치지 않았다** — 스펙 §2.5가 명시한 계약이다(아래 R2.7) |
+| ⑨ IDE 크롬 내용물 | 이 라운드 밖 | 그대로 (fs 채널은 M2/M6 몫) |
+| 배선 R2가 넘긴 R2·R3·R4·R5 | 렌더러 몫 | 폴백 카드 · `settled[]` · `Aborted` 어휘 · F12 따라잡기 **전부 배선** |
+
+## R2.1 큐 소유권 — 왜 렌더러에 남겼나 (스펙과의 거리를 먼저 적는다)
+
+지시는 *"렌더러 큐를 Rust 큐로 이관하는 것이 스펙 정답"* 이었다. **오늘의 배선으로는
+불가능하다.** 이 라운드의 경계(`src-tauri/`·`crates/` 금지) 안에서 확인한 사실 넷:
+
+| # | 사실 | 근거 |
+|---|---|---|
+| 1 | `chat:queue-mutate`에 **넣는 op이 없다** — `restore`(undo 토큰)뿐이고 나머지는 `Cmd::QueueMutate` 하나로 접수된다 | `src-tauri/src/engine/hub.rs` `Op::QueueMutate` |
+| 2 | 그 `Cmd::QueueMutate`는 런타임에서 **무동작**이다(`execute`의 `_ => verdict`) | `crates/ccg-engine/src/runtime.rs` |
+| 3 | 엔진 큐 항목은 **텍스트뿐**이다 — `Event::Queue{ items: Vec<String> }`, `queue_texts()`. 렌더러 예약은 `{text, images, picker}`라 첨부·모델·모드가 통째로 사라진다 | `runtime.rs` `broadcast_queue` |
+| 4 | 엔진이 스스로 드레인하면(`t16_inject`) **렌더러가 못 본다** — `wire.begin_run()`은 `Op::Run`에서만 불리므로 새 runId도, `analyzing` 상태도, 사용자 말풍선도 안 나간다 | `hub.rs` `Op::Run` ↔ `runtime.rs` `t16_inject` |
+
+게다가 렌더러 사본은 **디스크에 실을 수도 없다**: `queue`는 chats-v3의 Rust 소유 필드라
+`chats:save` 페이로드의 값이 어떤 경우에도 채택되지 않는다
+(`crates/ccg-store/src/chats_v3.rs` `RUST_OWNED` / `apply_owned` — *"페이로드 값은 어떤
+경우에도 채택되지 않는다"*). 그래서 이번 큐는 **세션 메모리 수명**이고, 저장 페이로드에서
+명시적으로 뺐다(2.6.2도 재시작에 큐를 안 지켰으므로 회귀는 없다).
+
+**대신 옮긴 것은 소유권이다.** 진실은 `ChatMeta.queue`이고 `queue` state는 그중 활성
+채팅의 한 벌이다(초안 `draft`/`draftImages`와 같은 규약). 불변식 셋을 코드가 들고 있다:
+
+1. **주차** — `saveActive`가 떠나는 채팅의 메타에 큐를 접어 넣고, `restore`의 `land()`가
+   착지하는 채팅의 큐로 갈아 끼운다(`queueOwnerRef`도 같이 넘어간다).
+2. **소유권 게이트** — 드레인 effect 맨 앞에
+   `queueOwnerRef.current !== activeChatIdRef.current → return`.
+   `busy`는 이 창의 라이브 리듀서가 내는 값이라 **전환(남의 idle 스냅샷 로드)만으로도**
+   true→false 에지가 생긴다. R1이 발사한 것이 정확히 그 에지다.
+3. **자리 밖 드레인** — 배경 채팅의 턴 종료는 `bgFlush`가 본다(이미 있던 꼬리 수집기).
+   거기서 `drainBgQueue`가 ① `chat:run{chatId}`로 **주소를 실어** 쏘고 ② 사용자 말풍선을
+   그 채팅의 배경 스냅샷에 `sessionReducer(begin)`으로 접는다(돌아오면 자기가 예약한 문장이
+   스레드에 있다). 옛 별칭 `claude:run`은 주소를 안 실어 "그 순간의 활성 채팅"으로 가므로
+   **그 채널로는 이 기능을 만들 수 없다** — `chat:run`이 배선돼 있어 가능했다.
+
+요청 조립은 `buildRunRequest` 한 곳으로 모았다(활성 경로 `runPrompt`와 자리 밖 드레인이
+같은 함수를 쓴다) — 두 경로가 프롬프트를 다르게 만들면 "돌아와 보니 내 예약이 다른 문장으로
+나갔다"가 된다.
+
+폴더를 아직 모르는 채팅(첫 전송 전)은 배경에서 쏘지 않는다 — 폴더 선택 창을 띄울 수 없다.
+그 예약은 큐에 남고 사용자가 돌아오면 평소 경로로 나간다. 한도 대기표가 걸린 채팅도 보류다.
+
+### 실증 — 크리틱 재현 시나리오가 뒤집힌다
+
+`node docs/critic/tools/critic-mux-attack.mjs --only=queue` (실 CLI · 크리틱 하네스 그대로)
+
+```
+o queue.enqueued    {"text":"QUEUEDPROBE-9182","n":1}
+o queue.switch
+o queue.no-misroute {"msgs":0}            ← B의 스레드는 **비어 있다**
+o queue.home        {"msgs":4,"hasProbe":true,"stillQueued":0,
+                     "tail":["1 … 30", "QUEUEDPROBE-9182",
+                             "I don't have context about a prior counting session …"]}
+```
+
+R1의 같은 명령은 `queue.misroute`(B의 엔진이 실제로 돌았다) + `queue.lost`(A에서 증발)였다.
+지금은 **B가 0건**이고, A로 돌아오면 그 프롬프트가 A의 스레드에 사용자 말풍선으로 있고
+그 뒤에 A의 답이 붙어 있다 — 화면이 B에 있는 동안 A로 나간 것이다.
+
+`node scripts/poc-dial.mjs --only=queue` (신설 · 실 CLI 3턴 · 예약 2건)
+
+```
+o queue.enqueue     ["QOWNER-ALPHA","QOWNER-BETA"]
+o queue.park        옆 채팅 컴포저의 .sched-item = 0
+o queue.restore     {"backQ":["QOWNER-ALPHA","QOWNER-BETA"],"firedAway":[]}
+o queue.no-misroute 옆 채팅 스레드 0건 (끝까지)
+o queue.fired-home  {"i1":1,"i2":2}       ← 사용자 말풍선 순번 = 걸었던 순서
+o queue.drained     남은 예약 0
+o queue.answered    {"ai":3}              ← 표시만이 아니라 **엔진에 닿았다**
+```
+
+> `queue.restore`는 단순 동일성 비교가 아니다. 떠나 있는 동안 A의 턴이 끝나 **정상 드레인이
+> 도는 경우가 실제로 있어서**(1차 실행에서 밟았다) 판정을 강한 형태로 바꿨다:
+> *돌아온 목록은 원래 목록의 꼬리여야 하고, 그 사이 빠진 항목은 이 대화로 이미 나갔어야 한다.*
+> 하네스가 잡은 두 번째 함정: 300줄짜리 답이 들어 있는 `.thread` 전문을 CDP로 끌어오면
+> 직렬화가 잘려 `indexOf`가 -1이 된다(말풍선은 멀쩡히 있는데). 순서 판정을 **말풍선 순번**으로 바꿨다.
+
+## R2.2 삭제 가드 — 「도는 채팅 전부」 + 이유를 말한다
+
+`deleteLockOf(id)`가 **이유 문자열**을 돌려준다(빈 문자열 = 지울 수 있다):
+활성 채팅은 `busy‖wfAlive`, 그 밖은 `bgSnapRef` 보유(= 지금 이 창이 꼬리를 접고 있는 대화).
+배경 집합은 렌더 신호가 아니므로 `bgIds` state로 미러링한다 — ref만 보면 마지막 대화가
+정착한 순간에도 배지·가드가 안 풀린다.
+
+그 문자열이 네 곳으로 흐른다:
+
+- 우클릭 「삭제」 **잠금**(2.6.2 파리티) + 메뉴 안 이유 한 줄(`.cmwhy`).
+- `askDelete`가 잠긴 항목이면 **파괴 버튼 없는 확인 카드**를 띄운다(Delete 키·경쟁 경로).
+  누를 것을 남겨 두면 또 침묵 no-op이 된다 — M-LOGIC P7.
+- 「전체 삭제」는 `deleteAllLock()`으로 잠기고 툴팁이 이유를 말한다.
+- `App.deleteChat`/`deleteAllChats`의 `return`은 **마지막 방어선**으로 남긴다.
+
+```
+--only=busydel : o busydel.ctx-disabled
+                 o busydel.all-disabled {"disabled":true,
+                    "tip":"지금 실행 중이에요 — 작업이 끝난 뒤 지울 수 있어요."}
+--only=bgdel   : o bgdel.live    {"ev0":13,"ev1":20,"streaming":true}   ← 진짜 도는 중
+                 o bgdel.blocked {"found":true,"disabled":true}
+```
+
+## R2.3 배선 R2가 넘긴 렌더러 몫 — 넷 다 배선
+
+| 항목 | 이번 구현 |
+|---|---|
+| **R2 폴백 확인 카드 + `chat:respond-dialog`** | 셸이 파리티로 그린 질문 카드를 `header==='폴백 확인'`으로 식별(`isFallbackAsk`)해 **전용 카드**로 그린다(헤더 문구·「모델 폴백」 라벨·**자유 입력 제거** — 답이 예/아니오라 임의 문자열은 원장이 해석 못 한다). 답은 `chat:respond-dialog`로 §4.4b 어휘를 태워 보내고, **거절되면 질문 채널로 되돌아간다** — 안 그러면 카드만 닫히고 엔진이 영원히 기다린다. Esc/접어두기는 취소(폴백 안 함)다 |
+| **R3 `settled[]` 사유 표시** | `chat:run-state.settled[]` → `app/src/lib/settled.ts` 레지스트리(항목 id는 전역 유일이라 프롭 드릴 대신 `useSyncExternalStore`). `settleText()`가 m-logic §5.2 어휘로 번역한다 — `completed`만 완료, 나머지는 **「정리됨」 + 사유 부제**(「엔진(CLI)이 외부에서 종료돼서」·「응답이 없어서」·「완료 통지를 못 받아서」…). 첫 소비자는 **도구 행**이다: 합성 `result`는 busy만 내리고 running 도구는 안 건드려서 R1에서는 그 스피너가 **영원히 돌았다** |
+| **R4 `Aborted` 어휘** | 와이어에 그 값이 없다(셸이 `done`으로 접는다). 화면에 남은 진실은 리듀서가 붙인 '중단함' 마커 → `abortedTurn(state)`. `effectiveStatus`가 완료 색·완료 링을 끄고(단일 소스), 패널 상태 칩은 「중단됨」으로 말한다 |
+| **R5 F12(첫 `chat:status`가 구독자보다 이르다)** | `onChatStatus` 구독 **직후 1회** `chats:get`의 `statuses`로 따라잡는다. 이미 도착한 브로드캐스트는 절대 덮지 않는다(비어 있는 키만 채운다). 소비처는 사이드바 — 화면에 없는 대화의 **승인/질문 대기 점**과 상태를 목록이 대신 말한다(§2.2-5) |
+
+## R2.4 크리틱 부수 지적
+
+- **⑦ 찾기 버튼** — TopBar에 돋보기 신설(`PanelFindButton`, 본채팅 헤더와 같은
+  `ccg:chat-find` 창 이벤트). 그리고 **n1에서 Ctrl+F가 실제로 살아 있게** 했다:
+  `setVisible`이 `n===1`이면 그 한 자리를 포커스로 세운다 — 안 그러면 그 패널의 `ChatFind`가
+  `active=false`라 돋보기도 Ctrl+F도 죽는다(크리틱은 포커스가 있는 상태에서 재서 "동작한다"고
+  적었지만, 부팅 직후 n1로 내려오면 `focusedSlot`이 `null`이다).
+  보고서 §3 새 결정 2의 *"사용자 눈에는 같은 화면"* 은 여전히 **거짓**이다 — n1 헤더에는
+  자리번호 칩·상태 칩·팝아웃·크게보기·컬러태그·제목잠금이 더 있다. 문장을 고친다:
+  **"1 모드는 두 갈래이고 화면도 같지 않다 — 공통은 다이얼·찾기·탐색기·창 컨트롤의 위치와
+  스레드/컴포저이고, 패널 어포던스 6개가 보드 쪽에만 더 있다."** 통합 풀이 열리는 2단계에
+  한 갈래로 접는다.
+- **⑤ 자리 칩** — 칩의 뜻은 *"이 대화가 지금 어느 자리에서 **보이는가**"*(`Sidebar.tsx:27`).
+  보드 크롬을 떠나면 그 자리는 화면에 없으므로 `live` 칩을 **안 단다**(대화는 목록에 그대로
+  남는다 — 사라지는 건 칩뿐이다). 접힘 안내 줄도 보드를 보고 있을 때만 뜬다.
+- **⑥ 다이얼 x 고정** — 원인 셋을 다 잡았다: ⓐ 접힘 배지가 다이얼 **오른쪽**에서 나타났다
+  사라진다 → 폭이 같은 **자리표시자**(`.ma-fold.hold` + `.ma-fold-hold`, 배지 클래스가
+  아니라서 "n6인데 배지가 남았다"는 유령 판정과 구분된다)로 고정 ⓑ `.ma-head`의 gap이 10px,
+  `.chat-head`/`.ma-p-head`가 8px → 8px로 통일 ⓒ `.h-ic` 규칙이 `.ma-p-head`를 스코프에
+  안 넣어 n1에서 버튼이 25px→15px로 그려짐(둘이니 20px) → 스코프 추가. 본채팅 헤더에도 같은
+  자리표시자(`FoldSlotHold`)를 넣어야 세 크롬이 일치한다.
+  실측: `n6 904 · n2 904 · n1 904 · 일반 채팅 904` (R1은 976 / 929 / 947 / 949).
+  목업 `chat-unify-collapse`가 배지를 다이얼 뒤에 두는 것은 그대로다 — **자리를 예약하는
+  폭 고정**이 그 배치와 규약을 동시에 만족시키는 방법이고, 이번 구현이 그것이다.
+- **`chats:set-active` 잔여 호출 지점 대조** — `setActiveChatId`는 `landActiveChat` 안에서만
+  불린다(정적 대조 완료: 착지 6곳 전부 `landActiveChat`/`landOnFreshChat` 경유).
+  **구멍 하나를 찾아 막았다**: 저장본이 없는 첫 실행·`chats:get` 실패에서는 하이드레이션의
+  착지가 안 돌아 `chats:set-active`가 **한 번도 안 나간다** → 첫 전송이 저장 디바운스(600ms)
+  보다 빠르면 별칭 계층이 빈 주소로 라우팅한다. `finally`에 폴백 착지를 넣되 이미 착지했으면
+  건드리지 않는다(그 시점의 `activeChatIdRef`는 아직 커밋 전이라 다시 부르면 **낡은 id**가 나간다).
+
+## R2.5 게이트
+
+| 게이트 | 결과 |
+|---|---|
+| `npm run typecheck:app` | 통과(오류 0) |
+| `npm run tauri:build` | 성공 (`rm -f target/release/agentcodegui.exe` 후 — os error 5 함정은 여전하다) |
+| `node scripts/poc-live-chat.mjs` | **PASS · 결함 0건** (E9/ERROR/RELOAD/SLOTS/LIVE 전 항목 ✓) |
+| `node scripts/poc-dial.mjs` | **PASS · 28검사** (dial 14 · active 2 · bg 5 · **queue 7 신설**) |
+| `critic-mux-attack` 11단계 | **10단계 green**, 남은 1건은 `raise.scroll`(R2.7 — 계약대로) |
+
+크리틱 하네스 항목별:
+
+| 단계 | R1 | R2 |
+|---|---|---|
+| `spam` | ✅ | ✅ (`badge-clean` 유지 — 자리표시자는 배지가 아니다) |
+| `geom` | ❌ move-1-2 | ✅ `fixed-1-2 {dx:0,dy:0}` · `fixed-single-n1 {dx:0,dy:0}` |
+| `side` | ❌ dup-slot1 · stale-live · raise-from-single | ✅ 5/5 |
+| `viewer` | ✅ | ✅ 5/5 |
+| `busydel` | ❌ silent | ✅ ctx-disabled · all-disabled |
+| `bgdel` | ❌ deleted-while-running | ✅ live(증명) · blocked |
+| `queue` | ❌ **misroute** · lost | ✅ no-misroute · home |
+| `mid` | ✅ | ✅ 숫자 700개 · 구멍 0 |
+| `foldrun` | ✅ | ✅ 7/7 |
+| `raise` | ❌ scroll | ❌ scroll (**계약대로** — R2.7) |
+| `stale` | ✅ | ✅ |
+
+## R2.6 파리티 A/B
+
+이번 라운드가 건드린 픽셀은 **여전히 다이얼 띠와 사이드바 안**이지만 **띠가 넓어졌다** —
+접힘 배지 자리 예약(모든 화면), `.ma-head` gap 10→8, n1 `.h-ic` 박스 복원, TopBar 돋보기 1개.
+전부 §2.1(다이얼 위치 고정) 규약을 지키기 위한 **의도된 이동**이고, R1이 이미 등재한
+분기(`docs/renderer-divergence.md` §6)와 같은 영역이다. 스레드·컴포저·워크바는 무변경.
+
+## R2.7 고치지 않은 것 — `raise.scroll` (⑧)
+
+접었다 되올리면 **읽던 위치**가 안 돌아온다. 고치지 않았다:
+
+- **스펙 §2.5가 "스크롤은 창 로컬 휘발, 이관하지 않는다"고 명시**했고 크리틱도
+  *"계약 위반은 아니다"* 라고 적었다(등급 하).
+- 접힌 자리는 렌더 대상에서 빠져 **언마운트**되고, 되올릴 때 꼬리 윈도잉(`useThreadWindow`)이
+  스레드를 꼬리로 리셋한다 — 실측 `scrollHeight 6962 → 4676`. 예전 `scrollTop`(3103)을 그대로
+  꽂으면 **다른 지점**에 착지한다. 하네스는 숫자만 보므로 통과하겠지만 사용자에게는 거짓이다.
+- 제대로 하려면 픽셀 오프셋이 아니라 **읽던 메시지 id**를 앵커로 복원해야 하고, 그건
+  윈도잉·팔로우 래치와 함께 설계할 일이다(꼬리 윈도잉을 소유한 라운드의 몫).
+
+보고서 §2.4의 문장을 고친다: *"되올리면 같은 **자리 번호**로 돌아온다 — 대화는 온전하지만
+**읽던 지점은 아니다**(스펙 §2.5: 스크롤은 창 로컬 휘발)."*
+
+## R2.8 남은 것
+
+**렌더러 밖(목록만 — 이번 경계 밖)**
+
+1. **큐를 진짜로 Rust로 옮기려면** 엔진에 셋이 필요하다(R2.1 표):
+   `chat:queue-mutate`에 `enqueue`/`remove`/`reorder` op · `QueuedMessage`에 `images`와
+   정체성 스냅샷(picker) · **드레인이 `wire.begin_run` + 사용자 에코를 내도록**.
+   셋 다 M-LOGIC 몫이고, 그때 렌더러는 `ChatMeta.queue` 대신 `chat:queue` REPLACE를
+   그리면 된다(소비 지점이 `queue` state 하나라 교체는 한 곳이다).
+2. `chat:status`의 `queued`(예약 수)는 지금 렌더러 큐와 **다른 값**이다(엔진 큐는 비어 있다).
+   1이 끝나야 하나가 된다 — 그 전까지 사이드바·컴포저는 렌더러 큐를 진실로 본다.
+3. `settled[]`의 나머지 소비처 — 백그라운드 셸 카드·서브에이전트 카드는 아직 자기 어휘
+   (`teardown`/`stopped`)를 쓴다. 원장 id와 화면 항목 id가 같으므로 붙이는 것은 한 줄씩이다.
+
+**렌더러 안(다음 라운드)**
+
+4. `raise.scroll` — 메시지 id 앵커 복원(R2.7).
+5. n1 두 갈래 통합 — 통합 풀 조회가 열리면 패널 어포던스 차이가 사라진다(§3 새 결정 2).
+6. R1 §5의 남은 것 1~8은 그대로 유효하다.
+
+## R2.9 파일 (R2에서 바뀐 것)
+
+| 파일 | R2 변경 |
+|---|---|
+| `app/src/App.tsx` | 큐 소유권(`ChatMeta.queue`·`queueOwnerRef`·`landOnFreshChat`) · `drainBgQueue` · `buildRunRequest`/`promptWithNotes` 공용화 · `deleteLockOf`/`deleteAllLock`·`bgIds` · `chat:status` 구독+F12 따라잡기 · `chat:run-state` 정착 구독 · 폴백 다이얼로그 응답 · 부팅 폴백 착지 |
+| `app/src/api/unified.ts` | `runChat`(`chat:run`) · `onChatRunState` · `onChatStatus` · `respondDialog` · 구독 헬퍼 |
+| `app/src/lib/settled.ts` | **신설** — 정착 사유 레지스트리 + m-logic §5.2 어휘(`settleText`) |
+| `app/src/store/session.ts` | `abortedTurn` 신설 · `effectiveStatus`가 중단 턴을 완료에서 뺀다 |
+| `app/src/components/Sidebar.tsx` | `ChatSummary.lock` / `SidebarSection.deleteAllLock` · 잠긴 항목의 이유 카드·메뉴 잠금 · `live` 칩 축소 |
+| `app/src/components/MultiAgent.tsx` | `raiseSlot`이 레코드 순서도 올린다 · n1 포커스 확정 · `PanelFindButton` · `FoldSlotHold`/자리 예약 · 「중단됨」 칩 |
+| `app/src/components/Chat.tsx` | 폴백 확인 카드(`isFallbackAsk`·`dialog` 변형) · `ToolResult`의 정착 표시 |
+| `app/src/styles.css` | `.ma-fold.hold`/`.ma-fold-hold` · `.ma-head` gap 8 · `.ma-p-head .h-ic` 스코프 · `.t-res.settled` · `.ctx-menu .cmwhy` |
+| `scripts/poc-dial.mjs` | `--only=queue` 신설(7검사) · `--only=a,b` 다중 선택 · `seedBgHome(name)` · `bootAt` |
+
+### 재현
+
+```
+npm run typecheck:app
+rm -f target/release/agentcodegui.exe && npm run tauri:build
+node scripts/poc-live-chat.mjs
+node scripts/poc-dial.mjs                      # 28검사 (queue 7 포함, 실 CLI)
+node scripts/poc-dial.mjs --only=dial,active   # 엔진 0턴만
+node docs/critic/tools/critic-mux-attack.mjs --only=spam,geom,side,viewer,raise,stale   # 엔진 0턴
+node docs/critic/tools/critic-mux-attack.mjs --only=queue,busydel,bgdel,mid,foldrun     # 실 CLI
+```
+
+> 크리틱 산출물(`docs/critic/m-ux-r1-{attack,dial}.json`)은 하네스가 덮으므로 이 라운드는
+> **원본을 `git checkout`으로 되돌려 두었다** — 위 수치의 원천은 콘솔 출력이다.
