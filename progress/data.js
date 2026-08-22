@@ -1,7 +1,7 @@
 window.PROGRESS = {
-  phase: 'M1 메모리 공격(R2~) · M-UI 디자인 리뉴얼 · A/B 하네스 (3갈래 병렬)',
-  note: 'M3 게이트 통과 · M1은 메모리/콜드스타트 목표 미달로 루프 재가동(레버별 기여도 측정 의무) · 사용자 요청으로 디자인 리뉴얼 조각 신설',
-  updatedAt: '2026-08-22 15:10',
+  phase: 'M1 R3 메모리 공격 · M-UX 통합 스펙 · M-LOGIC 상태기계 설계 (3갈래 병렬)',
+  note: 'R2 산출물 조각별 커밋 완료(셸·하네스·결과·크리틱·유리 실험대) · M1 남은 격차 = 멀티 유휴 0.64→0.5 + 콜드 329→211 · M-LOGIC은 M3 착수 전 설계 완료가 조건',
+  updatedAt: '2026-08-22 16:00',
   metrics: [
     { name: '★ 멀티 4패널 유휴 WS', unit: 'MB', base: 712.8, new: 455.5, target: '≤356', pass: false },
     { name: '★ 멀티 4패널 + 추가 창 2개 WS', unit: 'MB', base: 934.1, new: 488, target: '≤467', pass: false },
@@ -19,7 +19,7 @@ window.PROGRESS = {
   ],
   pieces: [
     { name: 'M0 기준 실측', scope: '2.6.2 수치 박제 (콜드 스타트·메모리·스크롤·스트리밍)', state: 'build' },
-    { name: 'M1 아키텍처+셸', scope: 'Tauri 워크스페이스·창 시스템·api 심·렌더러 이식 빌드', state: 'build', round: 1 },
+    { name: 'M1 아키텍처+셸', scope: 'Tauri 워크스페이스·창 시스템·api 심·렌더러 이식 빌드', state: 'build', round: 3, critic: 'R2 성과: 창당 비용 110.7→16.3MB·멀티 유휴 0.64. R3 목표: 유휴 그리드 ≤0.5·콜드 ≤211ms — 레버별 기여도(webview-flags.json) 의무' },
     { name: 'M2 스토리지', scope: 'chats·uiPrefs·profile·api-config 등 저장 도메인', state: 'wait' },
     { name: 'M3 Claude 엔진', scope: 'stream-json 상주 CLI·승인/질문·중단·포크·백그라운드', state: 'build', critic: '와이어 스펙 확보(1563줄, 실검증 2회) → PoC 게이트 실행 중: 승인 왕복 toolUseID·중단 생존·포크·job object 좀비 차단' },
     { name: 'M4 Codex 엔진+버전 관리', scope: 'app-server JSONL·엔진 설치/업데이트', state: 'wait' },
@@ -28,7 +28,7 @@ window.PROGRESS = {
     { name: 'M7 코드 탐색기/LSP', scope: 'TS/JS·Python·C#·C++ (Verse 제외 — 사용자 결정) · 색인·호버·정의이동·자동완성 수치 판정(첫 페인트·p50/p95·프리웜·유휴 회수) · ServerSpec 1항목으로 언어 추가', state: 'wait' },
     { name: 'M-WF 워크플로 카드 effort', scope: '모델만 나오는 카드에 effort 추가 — 와이어에 실려 오는지 실측 먼저, 없으면 지어내지 말 것 (사용자 요청)', state: 'wait' },
     { name: 'M8 멀티 창 표면', scope: '멀티 패널·팝아웃·추가 채팅·btw·토스트·트레이', state: 'wait' },
-    { name: 'M-LOGIC 채팅/실행 상태 정리', scope: 'RunIdentity 단일 값 · 명시적 상태기계 · 설정 변경=명령 · 예약 큐 정체성 스냅샷 · busy 침묵 no-op 제거 (사용자 지적: 계정 변경·폴백·특수 상황에서 꼬임)', state: 'wait' },
+    { name: 'M-LOGIC 채팅/실행 상태 정리', scope: 'RunIdentity 단일 값 · 명시적 상태기계 · 설정 변경=명령 · 예약 큐 정체성 스냅샷 · busy 침묵 no-op 제거 · 고아 정착 규약 (사용자 지적: 계정 변경·폴백·특수 상황에서 꼬임)', state: 'build', round: 1, critic: '설계 문서 → M3 빌더가 이 설계로 구현 → 재생 하네스 8조합으로 판정' },
     { name: 'M-UX 채팅 통합', scope: '일반+멀티 → 「채팅」 하나, 개수 다이얼 1~6 (1=기존 레이아웃) · 3스토어/3 IPC 세트 통합 · 무손실 마이그레이션', state: 'build', round: 1, critic: '설계 → 마이그레이션 PoC(손실 0 검증) → 크리틱이 161화면 대조로 기능 누락 사냥' },
     { name: 'M-UI 디자인 리뉴얼', scope: '알림/배너 계열 재설계 · 유리 회색 급변 수정 · 디자인 토큰·모던화 (사용자 요청)', state: 'build', round: 1, critic: '유리 원인 규명 → 디자인 시스템 스펙+목업 → 크리틱이 목업을 눈으로 열어 2.6.2와 대조' },
     { name: 'M9 신기능: MCP/Skill 뷰', scope: '멀티채팅 전용 MCP·Skill 가시화', state: 'wait' },
@@ -37,6 +37,7 @@ window.PROGRESS = {
     { name: 'M12 패키징+최종 A/B', scope: 'NSIS 대체 설치본·전 화면 대조·최종 인증', state: 'wait' }
   ],
   log: [
+    { t: 'R2 정리·R3 착수', m: 'R2 산출물 6커밋으로 정리(셸: 공유 WebView2 환경+스위치 조립기+주입 스플래시+추가 채팅 창+ma 스토어 / 하네스: ab·blind·flags·heap·wincost / 결과·크리틱 R1·유리 실험대). 3갈래 병렬 스폰: M1 R3(유휴 0.64→0.5·콜드 ≤211) · M-UX 통합 스펙+목업 · M-LOGIC 상태기계 설계' },
     { t: '통합 설계 착수', m: '사용자 아이디어 채택 — 일반/멀티를 「채팅」 하나로 합치고 개수 다이얼 1~6. 1=기존 전체 IDE 레이아웃, 2+=그리드, 1↔N 전환에 대화 보존. 이중 구현(승인 카드·한도 이어서·btw·토스트·계정) 제거가 핵심 이득. 마이그레이션 무손실 PoC 필수' },
     { t: '★ 멀티 성과', m: 'Tauri 멀티 실측 — 창당 비용 110.7MB·+1프로세스 → 16.3MB·+0프로세스(6.8배 개선). 패널4 유휴 712.8→455.5MB(비율 0.64, 목표 0.5 미달로 루프 계속). 스크롤 60fps·드랍 0% 유지' },
     { t: '기준 재정의', m: '사용자 지시로 멀티채팅을 주 게이트로 승격. 2.6.2 멀티 실측: 4패널 유휴 712.8MB → 추가 창 2개 붙이면 934.1MB(창당 110.7MB) → 4패널 동시 스트리밍 직후 1161MB. 렌더링은 여전히 60fps·드랍 0% — 문제는 순전히 메모리' },
