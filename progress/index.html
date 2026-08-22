@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>AgentCodeGUI 3.0.0 재구축 — 라이브 진행</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 28px 34px 60px; background: #101014; color: #d8dae2;
+         font: 14px/1.55 'Segoe UI', 'Malgun Gothic', sans-serif; }
+  h1 { font-size: 19px; margin: 0 0 4px; color: #fff; }
+  .sub { color: #8b8fa3; font-size: 12.5px; margin-bottom: 22px; }
+  .sub b { color: #b9bdcf; font-weight: 600; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: #7d8195;
+       margin: 30px 0 10px; }
+  table { border-collapse: collapse; width: 100%; max-width: 860px; }
+  th, td { text-align: left; padding: 7px 12px; border-bottom: 1px solid #23242e; font-size: 13px; }
+  th { color: #7d8195; font-weight: 600; font-size: 12px; }
+  td.num { font-variant-numeric: tabular-nums; }
+  .win { color: #4ade80; font-weight: 600; }
+  .lose { color: #f87171; }
+  .pend { color: #565a6e; }
+  .board { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px; max-width: 1100px; }
+  .piece { background: #16171d; border: 1px solid #23242e; border-radius: 10px; padding: 12px 14px; }
+  .piece .name { font-weight: 600; color: #e6e8f0; font-size: 13px; }
+  .piece .meta { font-size: 11.5px; color: #8b8fa3; margin-top: 3px; }
+  .piece .crit { font-size: 11.5px; color: #a8acbf; margin-top: 8px; border-top: 1px dashed #262838;
+                 padding-top: 7px; }
+  .tag { display: inline-block; font-size: 10.5px; padding: 1px 8px; border-radius: 99px;
+         margin-left: 8px; vertical-align: 1px; }
+  .t-wait { background: #23242e; color: #8b8fa3; }
+  .t-build { background: #1e2a45; color: #7aa5f7; }
+  .t-critic { background: #3a2b45; color: #c98bf5; }
+  .t-pass { background: #16351f; color: #4ade80; }
+  .t-fail { background: #3d1d22; color: #f87171; }
+  .log { max-width: 860px; }
+  .log .row { display: flex; gap: 14px; padding: 5px 0; border-bottom: 1px solid #1b1c24;
+              font-size: 12.5px; }
+  .log .t { color: #565a6e; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .stale { position: fixed; top: 10px; right: 14px; font-size: 11px; color: #565a6e; }
+</style>
+</head>
+<body>
+<h1>AgentCodeGUI 3.0.0 — Electron → Tauri + Rust 재구축</h1>
+<div class="sub" id="sub"></div>
+<div class="stale" id="updated"></div>
+
+<h2>기준(2.6.2 Electron) 대 3.0.0 — 실측</h2>
+<table id="metrics"></table>
+
+<h2>조각 보드 — 빌더 ↔ 크리틱 루프</h2>
+<div class="board" id="board"></div>
+
+<h2>이벤트 로그</h2>
+<div class="log" id="log"></div>
+
+<script>
+function esc(s){ return String(s ?? '').replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])) }
+function fmt(v, unit){ return v == null ? '<span class="pend">—</span>' : `${v}${unit ?? ''}` }
+function render() {
+  const P = window.PROGRESS
+  if (!P) return
+  document.getElementById('sub').innerHTML =
+    `브랜치 <b>feature/3.0.0-beta</b> · 단계 <b>${esc(P.phase)}</b> · ${esc(P.note ?? '')}`
+  document.getElementById('updated').textContent = '갱신: ' + esc(P.updatedAt)
+  const rows = [`<tr><th>지표</th><th>2.6.2 (기준)</th><th>3.0.0</th><th>목표</th><th>판정</th></tr>`]
+  for (const m of P.metrics ?? []) {
+    let verdict = '<span class="pend">측정 전</span>'
+    if (m.new != null && m.base != null) {
+      verdict = m.pass ? '<span class="win">달성</span>' : '<span class="lose">미달</span>'
+    }
+    rows.push(`<tr><td>${esc(m.name)}</td><td class="num">${fmt(m.base, m.unit)}</td>` +
+      `<td class="num">${fmt(m.new, m.unit)}</td><td class="num">${esc(m.target ?? '')}</td><td>${verdict}</td></tr>`)
+  }
+  document.getElementById('metrics').innerHTML = rows.join('')
+  const tags = { wait:['대기','t-wait'], build:['빌드 중','t-build'], critic:['크리틱 중','t-critic'],
+                 pass:['통과','t-pass'], fail:['반려','t-fail'] }
+  document.getElementById('board').innerHTML = (P.pieces ?? []).map(p => {
+    const [label, cls] = tags[p.state] ?? tags.wait
+    return `<div class="piece"><span class="name">${esc(p.name)}</span>` +
+      `<span class="tag ${cls}">${label}${p.round ? ' · R' + p.round : ''}</span>` +
+      `<div class="meta">${esc(p.scope)}</div>` +
+      (p.critic ? `<div class="crit">크리틱: ${esc(p.critic)}</div>` : '') + `</div>`
+  }).join('')
+  document.getElementById('log').innerHTML = (P.log ?? []).map(e =>
+    `<div class="row"><span class="t">${esc(e.t)}</span><span>${esc(e.m)}</span></div>`).join('')
+}
+function tick() {
+  const old = document.getElementById('data')
+  if (old) old.remove()
+  const s = document.createElement('script')
+  s.id = 'data'
+  s.src = 'data.js?t=' + Date.now()
+  s.onload = render
+  document.body.appendChild(s)
+}
+tick()
+setInterval(tick, 4000)
+</script>
+</body>
+</html>

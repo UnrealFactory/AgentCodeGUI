@@ -1,0 +1,39 @@
+{
+  "app": "electron-2.6.2",
+  "settleSec": 60,
+  "totalPrivMB": 341.4,
+  "totalWsMB": 428.1,
+  "procs": [
+    {
+      "pid": 29548,
+      "name": "electron.exe",
+      "privMB": 81.2,
+      "wsMB": 113.8
+    },
+    {
+      "pid": 27572,
+      "name": "electron.exe",
+      "privMB": 11.6,
+      "wsMB": 35.1
+    },
+    {
+      "pid": 29292,
+      "name": "electron.exe",
+      "privMB": 169,
+      "wsMB": 112.4
+    },
+    {
+      "pid": 11400,
+      "name": "electron.exe",
+      "privMB": 14.6,
+      "wsMB": 49.4
+    },
+    {
+      "pid": 31160,
+      "name": "electron.exe",
+      "privMB": 65,
+      "wsMB": 117.3
+    }
+  ],
+  "at": "2026-08-22T03:36:34.889Z"
+}

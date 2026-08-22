@@ -1,0 +1,245 @@
+// 공통 측정 라이브러리 — Electron(2.6.2)과 Tauri(3.0.0)를 같은 방법으로 잰다.
+// 공정성 = 대칭성: 두 앱 모두 (1) 프로세스 스폰 → 첫 가시 창(Win32 EnumWindows),
+// (2) 스폰 → 렌더러 #root 마운트(CDP), (3) 프로세스 트리 메모리 합산(CIM 워크)로 측정.
+import { spawn, execFileSync } from 'node:child_process'
+import fs from 'node:fs'
+import path from 'node:path'
+import os from 'node:os'
+
+export const REPO = path.resolve(import.meta.dirname, '..')
+export const BENCH_HOME = path.join(REPO, '.bench-home')
+
+// ── CDP 미니 클라이언트 (의존성 없음 — Node 22+ 전역 WebSocket) ──────────────
+export async function cdpTargets(port) {
+  const res = await fetch(`http://127.0.0.1:${port}/json/list`, { signal: AbortSignal.timeout(900) })
+  return await res.json()
+}
+
+export class Cdp {
+  constructor(ws) {
+    this.ws = ws
+    this.id = 0
+    this.pending = new Map()
+    this.listeners = []
+    ws.addEventListener('message', (ev) => {
+      const msg = JSON.parse(ev.data)
+      if (msg.id && this.pending.has(msg.id)) {
+        const { resolve, reject } = this.pending.get(msg.id)
+        this.pending.delete(msg.id)
+        if (msg.error) reject(new Error(msg.error.message))
+        else resolve(msg.result)
+      } else if (msg.method) {
+        for (const fn of this.listeners) fn(msg)
+      }
+    })
+  }
+  static async connect(wsUrl) {
+    const ws = new WebSocket(wsUrl)
+    await new Promise((res, rej) => {
+      ws.addEventListener('open', res, { once: true })
+      ws.addEventListener('error', () => rej(new Error('ws connect failed')), { once: true })
+    })
+    return new Cdp(ws)
+  }
+  send(method, params = {}) {
+    const id = ++this.id
+    this.ws.send(JSON.stringify({ id, method, params }))
+    return new Promise((resolve, reject) => this.pending.set(id, { resolve, reject }))
+  }
+  async eval(expr, { awaitPromise = false } = {}) {
+    const r = await this.send('Runtime.evaluate', {
+      expression: expr,
+      returnByValue: true,
+      awaitPromise
+    })
+    if (r.exceptionDetails) throw new Error('eval: ' + (r.exceptionDetails.exception?.description ?? 'error'))
+    return r.result?.value
+  }
+  close() {
+    try { this.ws.close() } catch { /* closed */ }
+  }
+}
+
+/** 메인 페이지 타깃(#root를 갖는 index.html — toast/tray/splash 제외)을 찾아 연결. */
+export async function connectMainPage(port, { timeoutMs = 30000 } = {}) {
+  const t0 = Date.now()
+  for (;;) {
+    if (Date.now() - t0 > timeoutMs) throw new Error('main page target not found')
+    try {
+      const targets = await cdpTargets(port)
+      const page = targets.find(
+        (t) =>
+          t.type === 'page' &&
+          /index\.html|localhost/.test(t.url) &&
+          !/toast|tray|data:/.test(t.url)
+      )
+      if (page?.webSocketDebuggerUrl) return await Cdp.connect(page.webSocketDebuggerUrl)
+    } catch { /* not listening yet */ }
+    await sleep(30)
+  }
+}
+
+// ── 첫 가시 창 감시자 (PowerShell, 스폰 전에 대기 시작 → 폴 지연 최소화) ──────
+const WATCHER_PS = String.raw`
+param($pidFile,$outFile)
+Add-Type @"
+using System; using System.Runtime.InteropServices;
+public class W {
+  public delegate bool EnumWindowsProc(IntPtr h, IntPtr l);
+  [DllImport("user32.dll")] public static extern bool EnumWindows(EnumWindowsProc cb, IntPtr l);
+  [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
+  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+  public static bool VisibleFor(uint target){
+    bool found=false;
+    EnumWindows((h,l)=>{
+      if(!IsWindowVisible(h)) return true;
+      uint p; GetWindowThreadProcessId(h,out p);
+      if(p==target){found=true; return false;}
+      return true;
+    }, IntPtr.Zero);
+    return found;
+  }
+}
+"@
+while(!(Test-Path $pidFile)){ Start-Sleep -Milliseconds 4 }
+$target=[uint32](Get-Content $pidFile -Raw).Trim()
+$sw=[System.Diagnostics.Stopwatch]::StartNew()
+while($sw.Elapsed.TotalSeconds -lt 60){
+  if([W]::VisibleFor($target)){
+    "$([math]::Round($sw.Elapsed.TotalMilliseconds))" | Out-File $outFile -Encoding ascii
+    exit 0
+  }
+  Start-Sleep -Milliseconds 8
+}
+"timeout" | Out-File $outFile -Encoding ascii
+`
+
+/**
+ * 앱을 스폰하고 (첫 가시 창 ms, #root 마운트 ms)를 잰다.
+ * cmd/args/env만 다르고 측정 경로는 두 앱이 완전히 같다.
+ */
+export async function measureColdStart({ cmd, args, env, cwd, port, mountExpr }) {
+  const tag = Math.random().toString(36).slice(2, 8)
+  const pidFile = path.join(os.tmpdir(), `ccg-bench-pid-${tag}`)
+  const outFile = path.join(os.tmpdir(), `ccg-bench-win-${tag}`)
+  const psFile = path.join(os.tmpdir(), `ccg-bench-watch-${tag}.ps1`)
+  fs.writeFileSync(psFile, WATCHER_PS)
+  const watcher = spawn('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', psFile, pidFile, outFile], {
+    stdio: 'ignore'
+  })
+  // 감시자의 Add-Type 컴파일이 끝나 pidFile 폴링에 들어갈 시간을 준다
+  await sleep(2500)
+
+  const t0 = performance.now()
+  const child = spawn(cmd, args, { env: { ...process.env, ...env }, cwd, stdio: 'ignore', detached: false })
+  fs.writeFileSync(pidFile, String(child.pid))
+
+  // #root 마운트 (앱이 "쓸 수 있는 상태") — CDP 폴링
+  let rootMs = null
+  try {
+    const cdp = await connectMainPage(port, { timeoutMs: 45000 })
+    for (;;) {
+      const ok = await cdp.eval(mountExpr).catch(() => false)
+      if (ok) { rootMs = Math.round(performance.now() - t0) ; break }
+      if (performance.now() - t0 > 45000) break
+      await sleep(25)
+    }
+    cdp.close()
+  } catch { /* CDP 실패 — rootMs null 기록 */ }
+
+  // 첫 가시 창
+  let winMs = null
+  for (let i = 0; i < 200; i++) {
+    if (fs.existsSync(outFile)) {
+      const v = fs.readFileSync(outFile, 'utf8').trim()
+      winMs = v === 'timeout' ? null : Number(v)
+      break
+    }
+    await sleep(50)
+  }
+
+  killTree(child.pid)
+  try { watcher.kill() } catch { /* gone */ }
+  for (const f of [pidFile, outFile, psFile]) { try { fs.unlinkSync(f) } catch { /* gone */ } }
+  return { winMs, rootMs }
+}
+
+// ── 프로세스 트리 메모리 (CIM 워크 — WorkingSet + PrivatePageCount 합산) ─────
+export function procTreeMem(rootPid) {
+  const ps = String.raw`
+$all = Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,WorkingSetSize,PrivatePageCount,Name,CreationDate
+$root = $all | Where-Object { $_.ProcessId -eq ${rootPid} }
+if (-not $root) { '{"error":"root gone"}'; exit }
+$kids = @{}
+foreach ($p in $all) {
+  if (-not $kids.ContainsKey([uint32]$p.ParentProcessId)) { $kids[[uint32]$p.ParentProcessId] = @() }
+  $kids[[uint32]$p.ParentProcessId] += $p
+}
+$tree = @(); $q = New-Object System.Collections.Queue; $q.Enqueue($root)
+while ($q.Count -gt 0) {
+  $cur = $q.Dequeue(); $tree += $cur
+  if ($kids.ContainsKey([uint32]$cur.ProcessId)) {
+    foreach ($c in $kids[[uint32]$cur.ProcessId]) {
+      if ($c.CreationDate -ge $root.CreationDate.AddSeconds(-2)) { $q.Enqueue($c) }
+    }
+  }
+}
+$rows = $tree | ForEach-Object { @{ pid=[uint32]$_.ProcessId; name=$_.Name; wsMB=[math]::Round($_.WorkingSetSize/1MB,1); privMB=[math]::Round($_.PrivatePageCount/1MB,1) } }
+@{ procs=@($rows); totalWsMB=[math]::Round(($tree | Measure-Object WorkingSetSize -Sum).Sum/1MB,1); totalPrivMB=[math]::Round(($tree | Measure-Object PrivatePageCount -Sum).Sum/1MB,1) } | ConvertTo-Json -Depth 4 -Compress
+`
+  const out = execFileSync('powershell', ['-NoProfile', '-Command', ps], { encoding: 'utf8', timeout: 30000 })
+  return JSON.parse(out)
+}
+
+export function killTree(pid) {
+  try { execFileSync('taskkill', ['/T', '/F', '/PID', String(pid)], { stdio: 'ignore', timeout: 15000 }) } catch { /* gone */ }
+}
+
+export const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+
+export function median(nums) {
+  const a = nums.filter((n) => n != null).sort((x, y) => x - y)
+  if (!a.length) return null
+  return a.length % 2 ? a[(a.length - 1) / 2] : Math.round((a[a.length / 2 - 1] + a[a.length / 2]) / 2)
+}
+
+export function envInfo() {
+  const ps = `@{cpu=(Get-CimInstance Win32_Processor).Name; ramGB=[math]::Round((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory/1GB,1); os=(Get-CimInstance Win32_OperatingSystem).Caption + ' ' + (Get-CimInstance Win32_OperatingSystem).BuildNumber} | ConvertTo-Json -Compress`
+  try {
+    return JSON.parse(execFileSync('powershell', ['-NoProfile', '-Command', ps], { encoding: 'utf8', timeout: 20000 }))
+  } catch {
+    return {}
+  }
+}
+
+// ── 앱별 실행 프로파일 ────────────────────────────────────────────────────────
+// Electron 2.6.2: 프로덕션 번들(out/, minify)을 electron 바이너리로 직접 실행.
+// 패키징본과의 차이는 asar 묶음 여부뿐 — 코드·런타임 동일. CCG_HOME으로 홈 격리
+// (설치본과 단일 인스턴스 락 충돌 방지 — isPackaged=false라 오버라이드가 산다).
+export function electronProfile({ port = 9333 } = {}) {
+  return {
+    name: 'electron-2.6.2',
+    cmd: path.join(REPO, 'node_modules', 'electron', 'dist', 'electron.exe'),
+    args: ['.', `--remote-debugging-port=${port}`],
+    env: { CCG_HOME: BENCH_HOME, NODE_ENV: 'production' },
+    cwd: REPO,
+    port,
+    mountExpr: `!!document.getElementById('root') && document.getElementById('root').children.length > 0`
+  }
+}
+
+// Tauri 3.0.0: 릴리즈 빌드 exe. WebView2에 CDP 포트는 환경변수로 주입.
+export function tauriProfile({ port = 9334, exe } = {}) {
+  return {
+    name: 'tauri-3.0.0',
+    cmd: exe ?? path.join(REPO, 'src-tauri', 'target', 'release', 'agentcodegui.exe'),
+    args: [],
+    env: {
+      CCG_HOME: BENCH_HOME + '-tauri',
+      WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port}`
+    },
+    cwd: REPO,
+    port,
+    mountExpr: `!!document.getElementById('root') && document.getElementById('root').children.length > 0`
+  }
+}
