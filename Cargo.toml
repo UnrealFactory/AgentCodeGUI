@@ -1,0 +1,26 @@
+# AgentCodeGUI 3.0 — Rust 워크스페이스.
+# docs/ARCHITECTURE-3.0.md의 배치 그대로: crates/*(도메인 크레이트) + src-tauri(앱 셸).
+# 2.6.2(Electron)의 src/는 이 워크스페이스와 무관하게 그대로 얼려둔다 — A/B 기준.
+[workspace]
+resolver = "2"
+members = ["src-tauri", "crates/ccg-store"]
+
+[workspace.package]
+version = "3.0.0-beta.1"
+edition = "2021"
+rust-version = "1.82"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+# preserve_order: 렌더러가 보낸 JSON의 키 순서를 그대로 되쓴다. 2.6.2가 저장한 파일과
+# 바이트 호환이어야 하고("내용 같으면 저장 스킵" 판정도 문자열 비교다), JS의
+# JSON.stringify는 삽입 순서를 지키기 때문에 이 기능이 없으면 매 저장이 순서를 흔든다.
+serde_json = { version = "1", features = ["preserve_order"] }
+
+# 릴리즈 프로파일 — 3.0의 목표는 풋프린트/시작 시간이다.
+[profile.release]
+opt-level = "s"   # 크기 우선 (핫 루프가 없는 셸 코드)
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

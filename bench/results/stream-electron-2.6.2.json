@@ -1,0 +1,16 @@
+{
+  "app": "electron-2.6.2",
+  "domNodes": 471,
+  "spawnMs": 89,
+  "busyMs": 4238,
+  "answerLen": 571,
+  "stream": {
+    "frames": 255,
+    "avgFps": 60,
+    "p95Ms": 16.8,
+    "worstMs": 16.9,
+    "droppedPct": 0,
+    "longTaskMs": 0
+  },
+  "at": "2026-08-22T03:53:28.312Z"
+}

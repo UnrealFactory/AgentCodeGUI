@@ -1,0 +1,23 @@
+{
+  "app": "electron-2.6.2",
+  "items": 471,
+  "windowedNodes": 61,
+  "revealedNodes": 471,
+  "sweepWindowed": {
+    "frames": 359,
+    "avgFps": 60,
+    "p95Ms": 16.8,
+    "worstMs": 17.5,
+    "droppedPct": 0,
+    "longTaskMs": 0
+  },
+  "sweepFull": {
+    "frames": 360,
+    "avgFps": 60,
+    "p95Ms": 16.8,
+    "worstMs": 17.3,
+    "droppedPct": 0,
+    "longTaskMs": 0
+  },
+  "at": "2026-08-22T03:49:16.474Z"
+}

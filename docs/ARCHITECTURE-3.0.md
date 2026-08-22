@@ -78,6 +78,20 @@ progress/      # 라이브 진행 페이지
   can_use_tool 왕복→interrupt→resume→forkSession 실증 스크립트가 통과해야 M3 착수.
 - Codex는 2.6.2도 app-server JSONL 직접 — 의미론 이식.
 
+## M5 제약 — 기존 계정을 그대로 살리는 법 (실측으로 확인됨)
+
+`~/.agentcodegui/accounts.json`의 토큰은 Electron safeStorage = **Chromium OSCrypt**로
+암호화돼 있다: userData의 `Local State` 안에 DPAPI로 감싼 AES 키가 있고, 값은 `v10`
+프리픽스 + AES-256-GCM. 벤치에서 홈만 옮기고 userData를 새로 만들었더니 앱이
+"계정 데이터를 복호화하지 못했어요"로 실행을 거부한 것이 그 증거(bench/fixture.mjs가
+설치본의 `%APPDATA%/agent-code-gui/Local State`를 복사해 해결).
+
+→ 3.0의 `ccg-auth`는 둘 중 하나여야 한다: (a) 같은 OSCrypt 스킴을 Rust로 읽어
+기존 계정을 무손실 승계, (b) 첫 실행 마이그레이션으로 재암호화(DPAPI 직접). **(a)를
+채택**한다 — 사용자가 3.0으로 옮겨도 재로그인이 필요 없어야 한다. `Local State`
+경로는 2.6.2 userData(`%APPDATA%/agent-code-gui`) 기준으로 읽고, 3.0이 새로 쓰는
+값은 DPAPI 직접(CryptProtectData, 사용자 스코프)으로 저장하되 읽기는 두 포맷 모두 지원.
+
 ## 파리티 판정법 (크리틱 계약)
 
 - 같은 렌더러·같은 CSS ⇒ 픽셀 파리티는 구조로 담보. 크리틱은 **백엔드 행동 파리티**를

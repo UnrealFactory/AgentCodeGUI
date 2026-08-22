@@ -1,0 +1,3850 @@
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { createPortal } from 'react-dom'
+import type { FileDiff, FileReadResult, LspLocation, LspSemanticTokens, LspStatus } from '@shared/protocol'
+import { Markdown } from './Markdown'
+import { CmEditor, type CmEditorHandle } from './CmEditor'
+import { highlightCode, highlightToLines } from '../lib/highlight'
+import { semByLine as semSpansByLine, buildSemDict, type SemSpan, type StructOv } from '../lib/semTokens'
+import { useCppStructOv } from '../lib/cppStruct'
+import { capMapSet } from '../lib/capMap'
+import { diffMarksOf, type DiffMarks } from '../lib/cmDiff'
+import { getPref, setPref } from '../lib/prefs'
+import { t, isEn } from '../lib/i18n'
+import { isImagePath, imageSrc } from '../lib/images'
+import { verseReg } from '../lib/verseRegistry'
+import { VERSE_SPECIFIERS, VERSE_ATTRIBUTES } from '@shared/verseKeywords'
+import { glossaryDoc, hasGlossary, UE_CPP_WORD_DOCS } from '@shared/langGlossary'
+import { FileBadge, fileTypeFor, paletteClassFor } from './fileType'
+import {
+  IconBook,
+  IconBot,
+  IconCheck,
+  IconChevDown,
+  IconChevLeft,
+  IconChevRight,
+  IconClose,
+  IconCode,
+  IconCopy,
+  IconDiff,
+  IconEye,
+  IconFolderOpen,
+  IconMax,
+  IconPencil,
+  IconRestore,
+  IconSearch,
+  IconSend
+} from './icons'
+import { useResizableModal, ModalResizeHandles } from './resizableModal'
+import { MouseGestureLayer, type GestureAction } from './mouseGesture'
+import { useZoom, ZoomBadge, mergeRefs } from './zoom'
+
+// beyond this size we skip syntax highlighting (highlight.js gets slow on very large
+// files) and show plain monospaced text instead — still readable, just uncolored
+const HL_LIMIT = 200_000
+// hover request debounce — long enough that sweeping the mouse across the code
+// doesn't spam the language server
+const HOVER_DELAY = 300
+
+// ── path helpers (renderer has no node:path; windows-first, '/'-tolerant) ───
+function displayPath(abs: string, cwd: string): string {
+  const a = abs.replace(/\//g, '\\')
+  const c = cwd.replace(/\//g, '\\').replace(/\\+$/, '')
+  if (c && a.toLowerCase().startsWith(c.toLowerCase() + '\\')) return abs.slice(c.length + 1)
+  return abs
+}
+function canonPath(p: string, cwd: string): string {
+  const isAbs = /^([a-zA-Z]:[\\/]|\\\\|\/)/.test(p)
+  const full = isAbs ? p : cwd.replace(/[\\/]+$/, '') + '\\' + p
+  return full.replace(/\//g, '\\').toLowerCase()
+}
+function isAbsPath(p: string): boolean {
+  return /^([a-zA-Z]:[\\/]|\\\\|\/)/.test(p)
+}
+function absPath(p: string, cwd: string): string {
+  return isAbsPath(p) ? p : cwd.replace(/[\\/]+$/, '') + '\\' + p
+}
+
+// 시맨틱 토큰 → 색 매핑(줄별 span·이름 사전)은 ../lib/semTokens 공용 — 뷰어와 CM 편집기가
+// 한 테이블·한 로직으로 칠한다(두 벌 유지 금지). Imported above.
+
+// ── hover card content — 서버 마크다운을 구조화해 IDE 툴팁처럼 ──────────────
+// clangd는 '### kind `name`' 헤더 → 메타(→ 반환형 · provided by · Type:) → 본문 →
+// 마지막에 시그니처 펜스 순서로, OmniSharp는 시그니처 펜스 → 본문 순서로 보낸다.
+// 둘 다 [종류 칩 + 심볼명] → 시그니처 스트립 → 메타 → 본문으로 재배열한다.
+// 형식이 안 맞으면(다른 서버·예상 밖 페이로드) 마크다운 그대로 렌더로 폴백.
+interface HoverParts {
+  kind: string | null
+  name: string | null
+  mods: string[] // 한정자 칩 — static·const·readonly·get/set… (시그니처에서 추출)
+  sig: string | null
+  sigLang: string
+  /** 구조화 행(이름·반환·매개변수)이 정보를 다 담으면 시그니처 전문은 숨긴다 —
+   *  매크로(#define+전개)처럼 시그니처가 본체인 것만 보여준다 */
+  showSig: boolean
+  // 라벨(return·type·…) + 값(마크다운) + 선택적 설명(@return 문서를 행에 합침)
+  metas: { k: string; v: string; doc?: string }[]
+  // 매개변수 — 한 줄에 하나씩, @param 문서가 있으면 옆에 설명으로 붙는다
+  params: { v: string; doc?: string }[]
+  // 제네릭 타입 인자 치환(Roslyn 'TKey is int' / 한국어 로케일 'TKey 은(는) int') —
+  // 본문 산문으로 두면 카드 디자인과 겉돌아(사용자 피드백) NAME 아래 GENERIC 행으로 올린다
+  targs: { v: string }[]
+  facts: { k: string; v: string }[] // 종류 칩 옆 알약 — clangd 필드의 size/align/offset
+  from: { k: string; v: string } | null // 출처 푸터 — clangd 'provided by', C# 'in'
+  docs: string
+}
+
+// OmniSharp 호버는 시그니처 펜스 + 문서뿐이라(clangd 같은 종류 헤더·출처 없음)
+// 시그니처를 파싱해 같은 구조를 만들어 준다. 형태는 세 갈래:
+//  · '(매개 변수) string Message'   — VS식 마커(로캘 따라 한글/영문)
+//  · 'readonly struct NS.Type'      — 타입 선언 (enum은 ': byte' 같은 기반 타입)
+//  · 'void Container.Name(args)'    — 멤버 (메서드/프로퍼티/필드는 괄호·중괄호로 구분)
+// 최상위 쉼표로 인자 목록 분리 — 제네릭(<>)·배열([])·중첩 괄호·객체 리터럴 타입({}) 안의 쉼표는 무시.
+// 화살표(`=>`)의 '>'는 제네릭 닫힘이 아니므로 깊이에서 뺀다 — 안 그러면 TS 함수 타입 매개변수
+// (`f: (a) => void, b: any`)에서 깊이가 음수로 틀어져 그 뒤 쉼표 분리가 전부 죽는다.
+function splitCsArgs(args: string): string[] {
+  const out: string[] = []
+  let depth = 0
+  let cur = ''
+  for (let i = 0; i < args.length; i++) {
+    const ch = args[i]
+    if (ch === '<' || ch === '(' || ch === '[' || ch === '{') depth++
+    else if ((ch === '>' && args[i - 1] !== '=') || ch === ')' || ch === ']' || ch === '}') depth--
+    if (ch === ',' && depth === 0) {
+      out.push(cur.trim())
+      cur = ''
+    } else cur += ch
+  }
+  if (cur.trim()) out.push(cur.trim())
+  return out.filter(Boolean)
+}
+
+// C# 시그니처 선두의 한정자 run — 마커 뒤(`(필드) static readonly nint …`)와 멤버 시그니처
+// 공용. 이걸 안 떼면 한정자가 TYPE 행에 새어 들어 'static readonly nint'처럼 중첩돼 보인다.
+const CS_LEAD_MODS =
+  /^(?:(?:public|private|protected|internal|static|readonly|virtual|override|sealed|abstract|async|extern|unsafe|new|partial|required|volatile|event|delegate)\s+)+/
+// 떼어낸 run → 표시용 한정자 목록. event/delegate는 한정자가 아니라 종류라 표시에서 뺀다.
+function csLeadMods(run: string): string[] {
+  return run
+    .trim()
+    .split(/\s+/)
+    .filter((m) => m !== 'event' && m !== 'delegate')
+}
+
+// C# 내장 타입 별칭 → 실제 종류. Roslyn은 내장 타입 참조 호버에 별칭 한 단어만 싣는다
+// (IntPtr→`nint`, String→`string`) — 그 단어로 STRUCT/CLASS 칩을 복원하는 데 쓴다.
+const CS_BUILTIN_KIND: Record<string, string> = {
+  int: 'struct',
+  long: 'struct',
+  short: 'struct',
+  byte: 'struct',
+  sbyte: 'struct',
+  uint: 'struct',
+  ulong: 'struct',
+  ushort: 'struct',
+  nint: 'struct',
+  nuint: 'struct',
+  float: 'struct',
+  double: 'struct',
+  decimal: 'struct',
+  bool: 'struct',
+  char: 'struct',
+  string: 'class',
+  object: 'class',
+  dynamic: 'class'
+}
+
+/** 줄의 col 위치 식별자 — 호버 카드에 "실제로 가리킨 이름"을 알려주는 용도(별칭 카드의
+ *  NAME↔ALIAS 분리). langGlossary의 wordAt과 같은 규칙. CmEditor도 가져다 쓴다. */
+export function identAt(line: string, col: number): string | null {
+  if (col < 0 || col > line.length) return null
+  let a = col
+  let b = col
+  const isW = (c: string): boolean => /[A-Za-z0-9_]/.test(c)
+  while (a > 0 && isW(line[a - 1])) a--
+  while (b < line.length && isW(line[b])) b++
+  const w = line.slice(a, b)
+  return /^[A-Za-z_]\w*$/.test(w) ? w : null
+}
+
+function parseCsSig(sig: string): {
+  kind: string
+  name: string
+  container: string | null
+  ret?: string
+  retLabel?: string
+  params?: string[]
+  value?: string
+  mods?: string[]
+} | null {
+  let s = sig.replace(/\s+/g, ' ').trim()
+  // 확장 메서드: Roslyn이 '(확장)'/'(extension)' 접두사를 붙여 보낸다 — 떼고 일반
+  // 멤버처럼 파싱하되 종류를 'extension method'로 분류해, 다른 메서드 호버와 똑같은
+  // 카드(종류 칩 + 이름·매개변수·반환) 구조로 만든다.
+  const isExt = /^\((확장|extension)\)\s*/.test(s)
+  if (isExt) s = s.replace(/^\((확장|extension)\)\s*/, '')
+  // ① VS식 마커
+  const marker = /^\((매개 변수|parameter|지역 변수|local variable|로컬 변수|상수|constant|필드|field)\)\s*(.*)$/.exec(s)
+  if (marker) {
+    const KIND: Record<string, string> = {
+      '매개 변수': 'parameter',
+      parameter: 'parameter',
+      // 칩 라벨은 'LOCAL'보다 'LOCAL VARIABLE'이 분명하다 — TS 파서('local var' 정규화)와도 통일
+      '지역 변수': 'local variable',
+      '로컬 변수': 'local variable',
+      'local variable': 'local variable',
+      상수: 'const',
+      constant: 'const',
+      필드: 'field',
+      field: 'field'
+    }
+    let rest = marker[2]
+    // 마커 뒤 선두 한정자(`static readonly nint …`)는 타입이 아니다 — TYPE 행에 새지 않게
+    // 떼어 한정자 목록으로 돌려준다(static은 종류 칩에, 나머지는 MODIFIERS 행에 얹힌다).
+    let mods: string[] | undefined
+    const lead = CS_LEAD_MODS.exec(rest)
+    if (lead) {
+      mods = csLeadMods(lead[0])
+      rest = rest.slice(lead[0].length)
+    }
+    // const/field 초기값: 'type Container.Name = value' — 값을 떼어 VALUE로 따로 둔다
+    // (안 떼면 끝 토큰인 값이 이름으로, 타입칸엔 'type ...Name ='가 들어가 깨진다)
+    let value: string | undefined
+    const eq = rest.indexOf(' = ')
+    if (eq >= 0) {
+      value = rest.slice(eq + 3).trim()
+      rest = rest.slice(0, eq).trim()
+    }
+    const sp = rest.lastIndexOf(' ')
+    if (sp < 0)
+      return {
+        kind: KIND[marker[1]],
+        name: rest,
+        container: null,
+        value,
+        mods
+      }
+    const qual = rest.slice(sp + 1)
+    const dot = qual.lastIndexOf('.')
+    // 한정명이 있으면 멤버다 — const는 C++의 'static field'처럼 'const field'로 통일한다
+    // (한정명이 없으면 메서드 안 지역 const라 그냥 'const')
+    let kindOut = KIND[marker[1]]
+    if (kindOut === 'const' && dot >= 0) kindOut = 'const field'
+    return {
+      kind: kindOut,
+      name: dot >= 0 ? qual.slice(dot + 1) : qual,
+      container: dot >= 0 ? qual.slice(0, dot) : null,
+      ret: rest.slice(0, sp),
+      retLabel: 'type',
+      value,
+      mods
+    }
+  }
+  // ② 타입/네임스페이스 선언
+  const decl = /\b(struct|class|interface|enum|namespace)\s+([\w.]+(?:<[^>]*>)?)(?:\s*:\s*(\w+))?/.exec(s)
+  if (decl && !s.includes('(')) {
+    const qual = decl[2]
+    const dot = qual.lastIndexOf('.')
+    const name = dot >= 0 ? qual.slice(dot + 1) : qual
+    // C# 어트리뷰트(…Attribute 관례) — `[UClass]` 사용처 호버가 'CLASS'로 뜨면 어긋난다.
+    // 이름 관례로 'attribute'로 재분류한다(선언부 호버도 어트리뷰트 클래스이므로 같이 적용).
+    const isAttr = decl[1] === 'class' && /Attribute$/.test(name)
+    return {
+      kind: isAttr ? 'attribute' : decl[1],
+      name,
+      container: dot >= 0 ? qual.slice(0, dot) : null,
+      ret: decl[1] === 'enum' && decl[3] ? decl[3] : undefined,
+      retLabel: 'type'
+    }
+  }
+  // ③ 내장 타입 별칭 — 내장/별칭 타입 참조 호버(IntPtr→`nint`, string…)는 시그니처가 단어
+  // 하나뿐이라 구조화가 안 돼 헐벗은 코드 박스로 떨어졌다. 종류·이름 카드로 만들어 준다.
+  // (카드 안 `nint` 토큰에 대면 용어집 설명도 뜬다 — onTokOver의 glossaryDoc 경로)
+  if (Object.prototype.hasOwnProperty.call(CS_BUILTIN_KIND, s)) return { kind: CS_BUILTIN_KIND[s], name: s, container: null }
+  // ④ 멤버 — 'ret Container.Name(args)' / 'ret Container.Name { get; }' / 'ret Container.Name'
+  let mods3: string[] | undefined
+  const lead3 = CS_LEAD_MODS.exec(s)
+  if (lead3) mods3 = csLeadMods(lead3[0])
+  let body = s.replace(CS_LEAD_MODS, '')
+  const paren = body.indexOf('(')
+  // 메서드 괄호가 없을 때의 top-level ' = value'는 초기값이다(enum 멤버 'Foo.Bar = 0',
+  // 필드 초기값). 메서드 기본 인자의 '='은 괄호 안이라 건드리지 않는다 — 떼어 둔다.
+  let value: string | undefined
+  if (paren < 0) {
+    const eq = body.indexOf(' = ')
+    if (eq >= 0) {
+      value = body.slice(eq + 3).trim()
+      body = body.slice(0, eq).trim()
+    }
+  }
+  const brace = body.indexOf('{')
+  const cut = paren >= 0 ? paren : brace >= 0 ? brace : body.length
+  const headPart = body.slice(0, cut).trim()
+  const sp = headPart.lastIndexOf(' ')
+  if (sp < 0) {
+    const d = headPart.lastIndexOf('.')
+    // 반환형 없는 한정 호출 — Roslyn 생성자 호버가 이 꼴이다(`FName.FName(string name)`).
+    // 이름 == 소속의 끝 세그먼트면 생성자, 아니면(드물게) 메서드로 구조화해 칩을 살린다.
+    if (paren >= 0 && d >= 0) {
+      const name = headPart.slice(d + 1)
+      const container = headPart.slice(0, d)
+      let params: string[] | undefined
+      const close = body.lastIndexOf(')')
+      if (close > paren) params = splitCsArgs(body.slice(paren + 1, close))
+      return {
+        kind: name === container.split('.').pop() ? 'constructor' : 'method',
+        name,
+        container,
+        params,
+        mods: mods3
+      }
+    }
+    // 타입 접두사 없는 한정명 + 값 → enum 멤버 ('EEnumTest.A = 0'). clangd의 enumerator와
+    // 같은 분류로 구조화한다(이름·값·소속). 값이 없으면 신뢰도가 낮아 raw로 둔다.
+    if (d >= 0 && value !== undefined) {
+      return {
+        kind: 'enum member',
+        name: headPart.slice(d + 1),
+        container: headPart.slice(0, d),
+        value,
+        mods: mods3
+      }
+    }
+    return null
+  }
+  const qual = headPart.slice(sp + 1)
+  const dot = qual.lastIndexOf('.')
+  if (dot < 0) return null // 한정명이 아니면 신뢰도가 낮다 — 구조화 포기
+  const name = qual.slice(dot + 1)
+  const container = qual.slice(0, dot)
+  const ret = headPart.slice(0, sp)
+  const kind =
+    paren >= 0
+      ? name === container.split('.').pop()
+        ? 'constructor'
+        : isExt
+          ? 'extension method'
+          : 'method'
+      : brace >= 0
+        ? 'property'
+        : /\bevent\b/.test(s)
+          ? 'event'
+          : 'field'
+  // 매개변수 — clangd의 'Parameters:' 목록에 해당하는 정보를 시그니처 괄호에서 복원
+  let params: string[] | undefined
+  if (paren >= 0) {
+    const close = body.lastIndexOf(')')
+    if (close > paren) params = splitCsArgs(body.slice(paren + 1, close))
+  }
+  return {
+    kind,
+    name,
+    container,
+    // void도 표시한다 — C++(clangd) 카드와 마찬가지로 반환형 줄이 항상 보이게
+    ret: ret && kind !== 'constructor' ? ret : undefined,
+    retLabel: /method/.test(kind) ? 'return' : 'type',
+    params,
+    value,
+    mods: mods3
+  }
+}
+
+// tsserver(typescript-language-server) 호버 시그니처의 구조화 — parseCsSig의 TS/JS판.
+// C#과 달리 이름이 앞, 타입이 `: 타입`으로 뒤에 온다. 형태 갈래:
+//  · '(method) Foo.bar<T>(x: T): T'  '(property) Foo.baz: number'  '(parameter) x: string'
+//  · 'const x: 3' / 'let y: string' / 'function f(a: string): void' / 'class Foo<T>'
+//  · '(alias) class Foo\nimport Foo' — 별명 너머의 실제 선언으로 다시 판별
+//  · '(enum member) Dir.Up = 0' — 이름·값·소속으로 구조화
+function parseTsSig(sig: string): {
+  kind: string
+  name: string
+  container: string | null
+  ret?: string
+  retLabel?: string
+  params?: string[]
+  value?: string
+  mods?: string[]
+} | null {
+  let s = sig.replace(/\s+/g, ' ').trim()
+  // (alias) 카드의 부가 줄('import Foo'/'export foo')은 정보가 겹친다 — 떼고 본 선언만 본다
+  s = s.replace(/\s+(?:import|export)\s+[\w.$]+$/, '')
+  const mods: string[] = []
+  let kind: string | null = null
+  const marker =
+    /^\((method|property|parameter|alias|local var|local function|local class|getter|setter|enum member|type parameter|JSX attribute|accessor)\)\s*/.exec(
+      s
+    )
+  if (marker) {
+    s = s.slice(marker[0].length)
+    const k = marker[1]
+    if (k === 'alias') {
+      // 별명 너머의 실제 선언(class/const/function …)으로 판별 — 실패하면 alias 카드로
+      const inner = parseTsSig(s)
+      if (inner) return inner
+      kind = 'alias'
+    } else if (k === 'local var') kind = 'local variable'
+    else if (k === 'local function') kind = 'function'
+    else if (k === 'local class') kind = 'class'
+    else if (k === 'getter') {
+      kind = 'property'
+      mods.push('get')
+    } else if (k === 'setter') {
+      kind = 'property'
+      mods.push('set')
+    } else if (k === 'JSX attribute') kind = 'attribute'
+    else if (k === 'type parameter') {
+      // '(type parameter) T in Foo<T>(…)' — 이름은 T, 소속은 'in' 뒤의 심볼
+      const m = /^([A-Za-z_$][\w$]*)(?:\s+in\s+(.+))?$/.exec(s)
+      if (m)
+        return {
+          kind: 'type parameter',
+          name: m[1],
+          container: m[2] ? m[2].split(/[<(]/)[0].trim() : null
+        }
+      kind = 'type parameter'
+    } else kind = k
+  }
+  // 'enum member': 'Dir.Up = 0' — clangd enumerator·C# enum 멤버와 같은 구조로
+  if (kind === 'enum member') {
+    const m = /^([\w$.]+?)(?:\s*=\s*(.+))?$/.exec(s)
+    if (!m) return null
+    const dot = m[1].lastIndexOf('.')
+    return {
+      kind: 'enum member',
+      name: dot >= 0 ? m[1].slice(dot + 1) : m[1],
+      container: dot >= 0 ? m[1].slice(0, dot) : null,
+      value: m[2]?.trim()
+    }
+  }
+  // 선언 키워드 (마커가 없을 때): class/interface/enum/namespace/type/function/let/const …
+  if (!kind) {
+    const decl = /^(abstract class|class|interface|enum|namespace|module|type|function|constructor|var|let|const|import)\s+/.exec(s)
+    if (!decl) return null // 키워드도 마커도 없으면 신뢰도가 낮다 — 구조화 포기(raw 폴백)
+    s = s.slice(decl[0].length)
+    let k = decl[1]
+    if (k === 'abstract class') {
+      mods.push('abstract')
+      k = 'class'
+    }
+    if (k === 'const' && /^enum\s+/.test(s)) {
+      s = s.replace(/^enum\s+/, '')
+      k = 'enum'
+    }
+    kind = k === 'let' || k === 'var' ? 'variable' : k === 'const' ? 'constant' : k === 'import' ? 'alias' : k
+  }
+  // 타입 별명: 'type Name<T> = RHS' — 우변을 VALUE로
+  if (kind === 'type') {
+    const m = /^([A-Za-z_$][\w$]*)(?:<[^=]*?>)?\s*=\s*(.+)$/.exec(s)
+    if (m)
+      return {
+        kind: 'type',
+        name: m[1],
+        container: null,
+        value: m[2].trim(),
+        mods: mods.length ? mods : undefined
+      }
+  }
+  // 타입/이름공간 선언: 이름 토큰만 취한다 ('class Foo<T> extends Bar' → Foo)
+  if (/^(class|interface|enum|namespace|module|alias|type)$/.test(kind)) {
+    const m = /^("[^"]+"|[A-Za-z_$][\w$.]*)/.exec(s)
+    if (!m) return null
+    const raw = m[1].replace(/"/g, '')
+    const dot = raw.lastIndexOf('.')
+    return {
+      kind,
+      name: dot >= 0 ? raw.slice(dot + 1) : raw,
+      container: dot >= 0 ? raw.slice(0, dot) : null,
+      mods: mods.length ? mods : undefined
+    }
+  }
+  // 일반형: '한정.이름<제네릭>?(params): ret' 또는 '한정.이름?: 타입' — 이름부를 top-level
+  // '('(값 매개변수) 또는 ':'(타입 구분) 앞까지 읽는다. 제네릭 <> 안의 기호는 지나간다.
+  let i = 0
+  let angle = 0
+  for (; i < s.length; i++) {
+    const c = s[i]
+    if (c === '<') angle++
+    else if (c === '>') angle = Math.max(0, angle - 1)
+    else if (angle === 0 && (c === '(' || c === ':')) break
+  }
+  const rawHead = s.slice(0, i).trim().replace(/\?$/, '')
+  // 제네릭 목록은 이름에서 뗀다 — 'Array<string>.map<U>' → 'Array.map' (첫 '<'에서 자르면
+  // 한정 경로 중간의 제네릭 때문에 이름이 'Array'로 깨진다). 꺾쇠 깊이를 세며 밖 글자만 남긴다.
+  let head = ''
+  let ang = 0
+  for (const ch of rawHead) {
+    if (ch === '<') ang++
+    else if (ch === '>') ang = Math.max(0, ang - 1)
+    else if (ang === 0) head += ch
+  }
+  if (!/^[A-Za-z_$][\w$.]*$/.test(head)) return null
+  const dot = head.lastIndexOf('.')
+  const name = dot >= 0 ? head.slice(dot + 1) : head
+  const container = dot >= 0 ? head.slice(0, dot) : null
+  if (s[i] === '(') {
+    // 함수류 — 괄호 균형으로 끊고 매개변수·반환형을 읽는다
+    let depth = 0
+    let end = -1
+    for (let j = i; j < s.length; j++) {
+      if (s[j] === '(') depth++
+      else if (s[j] === ')' && --depth === 0) {
+        end = j
+        break
+      }
+    }
+    if (end < 0) return null
+    const params = splitCsArgs(s.slice(i + 1, end))
+    const after = s.slice(end + 1).trim()
+    const rt = /^:\s*(.+)$/.exec(after)
+    const fkind = kind ?? (container ? 'method' : 'function')
+    return {
+      kind: fkind,
+      name,
+      container,
+      ret: fkind === 'constructor' ? undefined : rt?.[1]?.trim(),
+      retLabel: 'return',
+      params,
+      mods: mods.length ? mods : undefined
+    }
+  }
+  if (s[i] === ':') {
+    // 값류 — ': 타입'. 초기값은 tsserver가 타입 자리에 리터럴로 싣는다('const x: 3')
+    const ret = s.slice(i + 1).trim()
+    return {
+      kind: kind ?? 'property',
+      name,
+      container,
+      ret,
+      retLabel: 'type',
+      mods: mods.length ? mods : undefined
+    }
+  }
+  // 이름만 남은 형태 ('constructor Foo' 등) — 마커/키워드가 있어야 유의미
+  return kind ? { kind, name, container, mods: mods.length ? mods : undefined } : null
+}
+
+// pyright 호버 시그니처의 구조화 — parseCsSig의 Python판. 형태 갈래:
+//  · '(method) def bar(self, x: int) -> str' / '(function) def foo(...) -> None'
+//  · '(variable) x: int' / '(parameter) x: str' / '(property) y: float' / '(constant) MAX: int'
+//  · '(class) Foo' / 'class Foo(x: int)'(생성자 호출형) / '(module) os' / '(type alias) …'
+function parsePySig(sig: string): {
+  kind: string
+  name: string
+  container: string | null
+  ret?: string
+  retLabel?: string
+  params?: string[]
+  mods?: string[]
+} | null {
+  let s = sig.replace(/\s+/g, ' ').trim()
+  const mods: string[] = []
+  let kind: string | null = null
+  const marker = /^\((function|method|property|variable|parameter|class|module|constant|field|type alias|type parameter)\)\s*/.exec(s)
+  if (marker) {
+    kind = marker[1] === 'type alias' ? 'type' : marker[1]
+    s = s.slice(marker[0].length)
+  }
+  // 'def 이름(매개변수) -> 반환형' — async def 포함. 메서드의 관례적 self/cls는 뺀다.
+  const def = /^(async\s+)?def\s+/.exec(s)
+  if (def) {
+    if (def[1]) mods.push('async')
+    s = s.slice(def[0].length)
+    const nm = /^([A-Za-z_]\w*)/.exec(s)
+    if (!nm) return null
+    s = s.slice(nm[1].length).trim()
+    if (!s.startsWith('(')) return null
+    let depth = 0
+    let end = -1
+    for (let j = 0; j < s.length; j++) {
+      if (s[j] === '(') depth++
+      else if (s[j] === ')' && --depth === 0) {
+        end = j
+        break
+      }
+    }
+    if (end < 0) return null
+    let params = splitCsArgs(s.slice(1, end))
+    if (kind === 'method' && params.length && /^(self|cls)\b/.test(params[0])) params = params.slice(1)
+    const rt = /^\s*->\s*(.+)$/.exec(s.slice(end + 1))
+    return {
+      kind: kind ?? 'function',
+      name: nm[1],
+      container: null,
+      ret: rt?.[1]?.trim(),
+      retLabel: 'return',
+      params,
+      mods: mods.length ? mods : undefined
+    }
+  }
+  // 'class Foo(base…)' — 생성자 호출형이면 매개변수도 함께 (pyright가 호출 위치에서 준다)
+  const cls = /^class\s+([A-Za-z_][\w.]*)/.exec(s)
+  if (cls) {
+    const raw = cls[1]
+    const dot = raw.lastIndexOf('.')
+    const rest = s.slice(cls[0].length).trim()
+    let params: string[] | undefined
+    if (rest.startsWith('(')) {
+      let depth = 0
+      let end = -1
+      for (let j = 0; j < rest.length; j++) {
+        if (rest[j] === '(') depth++
+        else if (rest[j] === ')' && --depth === 0) {
+          end = j
+          break
+        }
+      }
+      if (end > 0) params = splitCsArgs(rest.slice(1, end))
+    }
+    return {
+      kind: 'class',
+      name: dot >= 0 ? raw.slice(dot + 1) : raw,
+      container: dot >= 0 ? raw.slice(0, dot) : null,
+      retLabel: 'type',
+      params
+    }
+  }
+  // '이름: 타입' — 변수/매개변수/속성/상수. 초기값 '= …'는 pyright가 잘 안 싣지만 오면 뗀다.
+  const tm = /^([A-Za-z_][\w.]*)\s*:\s*(.+?)(?:\s*=\s*.+)?$/.exec(s)
+  if (tm) {
+    const dot = tm[1].lastIndexOf('.')
+    return {
+      kind: kind ?? 'variable',
+      name: dot >= 0 ? tm[1].slice(dot + 1) : tm[1],
+      container: dot >= 0 ? tm[1].slice(0, dot) : null,
+      ret: tm[2].trim(),
+      retLabel: 'type',
+      mods: mods.length ? mods : undefined
+    }
+  }
+  // 이름만 남은 형태 — '(module) os' / '(class) int'. 마커가 있어야 유의미.
+  const bare = /^([A-Za-z_][\w.]*)$/.exec(s)
+  if (bare && kind) {
+    const dot = bare[1].lastIndexOf('.')
+    return {
+      kind,
+      name: dot >= 0 ? bare[1].slice(dot + 1) : bare[1],
+      container: dot >= 0 ? bare[1].slice(0, dot) : null
+    }
+  }
+  return null
+}
+
+// Verse 호버는 한 줄 시그니처를 MarkedString(```verse)로 보낸다. parseCsSig의 Verse판 —
+// '[var] (/모듈/경로:)이름<지정자…>(매개변수)<효과…>:타입' 꼴을 분해해 같은 카드(종류 칩 ·
+// 이름 · specifiers · params · return/type · module 푸터)로 구조화한다. 지정자는 <…>를 살려
+// 돌려줘 카드에서도 본문과 같은 Verse 색(지정자=구조체색)으로 칠해지게 한다.
+function parseVerseSig(sig: string): {
+  kind: string
+  name: string
+  container: string | null
+  ret?: string
+  retLabel?: string
+  params?: string[]
+  mods?: string[]
+} | null {
+  let s = sig.replace(/\s+/g, ' ').trim()
+  const mods: string[] = []
+  // <지정자> 묶음 흡수 — <…> 형태를 보존해 카드에서도 Verse 색(지정자=구조체색)으로 칠한다
+  const eatSpecs = (): void => {
+    let m: RegExpExecArray | null
+    while ((m = /^<([^>]*)>/.exec(s))) {
+      mods.push('<' + m[1] + '>')
+      s = s.slice(m[0].length).trim()
+    }
+  }
+  // 한정자 (/Module/Path:) — 심볼이 속한 모듈/클래스 경로. 흡수하고 경로를 돌려준다.
+  const eatQual = (): string | null => {
+    const q = /^\((\/[^()]*?):\)\s*/.exec(s)
+    if (!q) return null
+    s = s.slice(q[0].length)
+    return q[1]
+  }
+
+  // ① 타입 선언 shape — 종류 키워드가 맨 앞: 'interface (/Verse.org/Verse:)cancelable'.
+  // (class/struct/enum/interface/module은 Verse 예약어라 식별자와 충돌하지 않는다)
+  const tk = /^(class|struct|enum|interface|module)\b\s*/.exec(s)
+  if (tk) {
+    s = s.slice(tk[0].length)
+    const container = eatQual()
+    const nm = /^([A-Za-z_]\w*)/.exec(s)
+    if (!nm) return null
+    s = s.slice(nm[1].length).trim()
+    eatSpecs()
+    // an enum/struct VALUE reference comes as `enum (/path:)Type.Value` — the trailing `.Value` is
+    // the actual symbol; label it '<kind> value' (e.g. 'enum value') of the type `Type`.
+    const dot = /^\.([A-Za-z_]\w*)/.exec(s)
+    if (dot && (tk[1] === 'enum' || tk[1] === 'struct'))
+      return {
+        kind: tk[1] + ' value',
+        name: dot[1],
+        container: nm[1],
+        retLabel: 'type',
+        mods: mods.length ? mods : undefined
+      }
+    return {
+      kind: tk[1],
+      name: nm[1],
+      container,
+      retLabel: 'type',
+      mods: mods.length ? mods : undefined
+    }
+  }
+
+  // ② var / function / field shape: '[var] (/path:)Name<specs>(params)<effects>:type'. verse-lsp
+  // emits the binding keyword in EITHER order relative to the module qualifier — `var (/path:)Name…`
+  // AND `(/path:)var Name…` (the latter is what it sends for a class FIELD) — so strip `var`/`set`
+  // both before and after the qualifier. Handling only the first order made `(/path:)var Name:type`
+  // read the keyword `var` AS the name → the card showed 'Type `var`' instead of 'Variable `Name`'.
+  let bind: string | null = null
+  const eatBind = (): void => {
+    const kw = /^(var|set)\s+/.exec(s)
+    if (kw) {
+      bind = kw[1]
+      s = s.slice(kw[0].length)
+    }
+  }
+  eatBind()
+  const container = eatQual()
+  eatBind()
+  // 이름 — 보통 식별자, 또는 operator 형식(`operator'<기호>'`). verse-lsp는 연산자/점(.) 접근 등을
+  // 이렇게 준다. operator를 안 잡으면 `'…'` 때문에 'operator'에서 멈춰 매개변수도 못 읽고 종류가
+  // 'type'으로 깨졌다(예: Entity.GetLocalTransform → 종류 Type · 이름 operator). 연산자 토큰을 통째로
+  // 이름으로 잡으면 뒤의 (매개변수):반환형이 정상 파싱돼 함수 카드로 뜬다.
+  const opM = /^operator\s*'(?:[^'\\]|\\.)*'/.exec(s)
+  const nm = opM ?? /^([A-Za-z_]\w*)/.exec(s)
+  if (!nm) return null
+  // operator'.Member' (점 멤버 접근) — verse-lsp가 `X.Member` 호출을 이 꼴로 준다(예:
+  // operator'.GetLocalTransform'(InEntity:entity)…). 그땐 ① 멤버명만 이름으로 쓰고(→ GetLocalTransform),
+  // ② 첫 매개변수인 수신자(receiver, 호출 시의 X)는 진짜 매개변수가 아니라 뒤에서 뺀다. 일반
+  // 연산자(operator'+' 등)는 그 토큰을 그대로 이름으로 둔다.
+  const opToken = opM ? opM[0].replace(/\s+/g, '') : null
+  const dotMember = opToken ? /^operator'\.([A-Za-z_]\w*)'$/.exec(opToken) : null
+  const name = dotMember ? dotMember[1] : (opToken ?? nm[1])
+  s = s.slice(nm[0].length).trim()
+  eatSpecs() // 이름 뒤: 접근/선언 지정자
+  // 매개변수 (...) 또는 [...] — `<decides>` 실패형 함수는 verse-lsp가 사용처 호버에서 매개변수
+  // 목록을 대괄호로 준다(호출 구문 `f[]`을 그대로 반영). 둘 다 매개변수 목록으로 받아 함수로
+  // 분류해야 한다 — 안 그러면 `(`가 아니라 `[`로 시작해 params·ret 둘 다 못 잡고 종류가 'type'으로
+  // 깨졌다(예: Entity.GetPlayspaceForEntity[] → 종류 Type). 최상위 쉼표 분리는 splitCsArgs가 처리.
+  let params: string[] | undefined
+  if (s.startsWith('(') || s.startsWith('[')) {
+    const open = s[0]
+    const close = open === '(' ? ')' : ']'
+    let depth = 0
+    let end = -1
+    for (let i = 0; i < s.length; i++) {
+      const c = s[i]
+      if (c === open) depth++
+      else if (c === close && --depth === 0) {
+        end = i
+        break
+      }
+    }
+    if (end > 0) {
+      params = splitCsArgs(s.slice(1, end))
+      s = s.slice(end + 1).trim()
+    }
+  }
+  // 점 멤버 접근(operator'.Member')의 첫 매개변수는 수신자(receiver)이므로 진짜 매개변수에서 뺀다.
+  if (dotMember && params?.length) params = params.slice(1)
+  eatSpecs() // 매개변수 뒤: 효과 지정자 (<transacts><predicts> 등)
+  // 반환형/타입 — 남은 선두 ':'
+  let ret: string | undefined
+  const rt = /^:\s*(.+)$/.exec(s)
+  if (rt) ret = rt[1].trim()
+  // 종류 — Verse는 var(가변)와 비-var(불변)가 근본적으로 다르다: var/set→'var'(가변, 핑크),
+  // 매개변수 있으면 함수, :타입만 있는 비-var 바인딩은 'constant'(불변 상수, 청록), 셋 다 없으면
+  // 타입(키워드 없는 클래스 등). 이렇게 해야 var 변수와 일반 상수/파라미터가 색·라벨로 갈린다.
+  const kind = bind ? 'var' : params ? 'function' : ret ? 'constant' : 'type'
+  return {
+    kind,
+    name,
+    container,
+    ret,
+    retLabel: kind === 'function' ? 'return' : 'type',
+    params,
+    mods: mods.length ? mods : undefined
+  }
+}
+
+function parseHover(md: string): HoverParts | null {
+  // Roslyn은 줄바꿈을 CRLF로 보낸다 — 펜스 정규식(```lang\n)이 \r에 막혀 구조화에
+  // 실패하고 raw 마크다운으로 떨어지면 카드 디자인이 깨진다. 먼저 LF로 정규화한다.
+  let rest = md.replace(/\r\n?/g, '\n').trim()
+  let kind: string | null = null
+  let name: string | null = null
+  const head = /^###\s+([^\n`]+?)\s*`([^`\n]+)`\s*\n?/.exec(rest)
+  if (head) {
+    kind = head[1].trim()
+    name = head[2]
+    rest = rest.slice(head[0].length)
+    // clangd는 C++ static 데이터 멤버를 'static-property'라 부른다 — 인스턴스 멤버
+    // (field)·C#(static field)과 용어를 맞춘다
+    if (kind === 'static-property') kind = 'static field'
+    // clangd 종류는 'static-method'처럼 하이픈을 쓴다 — C#('static method')과 통일해
+    // 칩이 'STATIC-METHOD'가 아니라 'STATIC METHOD'로 뜨게 하이픈을 공백으로 바꾼다
+    kind = kind.replace(/-/g, ' ')
+  }
+  let sig: string | null = null
+  let sigLang = ''
+  const lead = /^```(\w*)\n([\s\S]*?)```\s*/.exec(rest) // 선두 펜스 (OmniSharp)
+  const tail = /```(\w*)\n([\s\S]*?)```\s*$/.exec(rest) // 말미 펜스 (clangd)
+  const m = lead ?? tail
+  if (m) {
+    sigLang = m[1]
+    sig = m[2].replace(/\n$/, '')
+    rest = lead ? rest.slice(m[0].length) : rest.slice(0, m.index)
+  }
+  if (!head && !sig) return null
+  if (sig) sig = sig.replace(/^\/\/ In .+\n/, '') // 소속 클래스 주석 — 헤더의 한정명과 중복
+  // Roslyn은 오버로드가 있으면 시그니처 끝에 '(+ 1 오버로드)'/'(+ 2 overloads)'를 붙여
+  // — parseCsSig의 타입/멤버 판별을 깨뜨리므로 떼어낸다 (메서드 인자 괄호는 '+'로 시작 안 함)
+  if (sig) sig = sig.replace(/\s*\(\+[^)]*\)\s*$/, '')
+  // 메타 줄은 '→ `bool`' 같은 기호 대신 라벨(return·type·value)로. 출처(provided
+  // by/in)는 푸터로, clangd가 본문에 풀어 쓰는 'Parameters:' 불릿은 구조화된
+  // 매개변수 목록으로 끌어올린다 — RETURN과 같은 격자에서 줄맞춰 보이게.
+  const metas: { k: string; v: string; doc?: string }[] = []
+  let params: { v: string; doc?: string }[] = []
+  const targs: { v: string }[] = []
+  const facts: { k: string; v: string }[] = []
+  let from: { k: string; v: string } | null = null
+  const sigMods: string[] = [] // Verse 지정자(parseVerseSig)처럼 시그니처 파서가 끌어낸 한정자
+  // 독시젠/문서 태그 — 본문에 '@param x …'로 날 것으로 두지 않고 스펙 행에 합친다
+  const paramDocs = new Map<string, string>()
+  let returnDoc = ''
+  const docLines: string[] = []
+  const lines = rest.split('\n')
+  for (let i = 0; i < lines.length; i++) {
+    const t = lines[i].trim()
+    // Roslyn 제네릭 치환 줄은 공백을 '&nbsp;' 엔티티로, 괄호를 '\('로 이스케이프해 보낸다
+    // (실측 덤프: 'TKey&nbsp;은\(는\)&nbsp;int  ') — 화면 렌더는 이를 풀어 보여주므로 눈으론
+    // 구분이 안 된다. 치환 줄 '판정'은 이 정규화 사본으로 한다(다른 분기·표시는 원문 그대로).
+    const tn = t.replace(/&nbsp;/gi, ' ').replace(/\\([()[\]`*_{}#+\-.!<>])/g, '$1')
+    if (t === '---') continue
+    if (t.startsWith('→')) metas.push({ k: 'return', v: t.slice(1).trim() })
+    else if (/^Type:/.test(t)) metas.push({ k: 'type', v: t.replace(/^Type:\s*/, '') })
+    else if (/^Value =/.test(t)) metas.push({ k: 'value', v: t.replace(/^Value =\s*/, '') })
+    else if (/^provided by\b/.test(t)) from = { k: 'provided by', v: t.replace(/^provided by\s*/, '') }
+    else if (/^#include\s/.test(t)) {
+      // clangd include-cleaner의 헤더 제안 — 본문에 날것으로 두지 않고 구조화 행으로
+      metas.push({ k: 'include', v: '`' + t + '`' })
+    } else if (/^Offset:\s*\d+\s*byte/.test(t)) {
+      // clangd 필드 메모리 정보 — 'Offset: 0 bytes' → 종류 칩 옆 알약으로
+      const m = /^Offset:\s*(\d+)\s*byte/.exec(t)
+      if (m) facts.push({ k: 'offset', v: m[1] + 'B' })
+    } else if (/^Size:\s*\d+\s*byte/.test(t)) {
+      // 'Size: 12 bytes (+4 bytes padding), alignment 4 bytes'
+      const sz = /^Size:\s*(\d+)\s*byte/.exec(t)
+      const pad = /\(\+(\d+)\s*bytes? padding\)/.exec(t)
+      const al = /alignment\s+(\d+)\s*byte/.exec(t)
+      if (sz) facts.push({ k: 'size', v: sz[1] + 'B' + (pad ? '+' + pad[1] : '') })
+      if (al) facts.push({ k: 'align', v: al[1] + 'B' })
+    } else if (/^Parameters:\s*$/.test(t)) {
+      while (i + 1 < lines.length) {
+        const b = lines[i + 1].trim()
+        if (!b) {
+          i++
+          continue
+        }
+        const item = /^[-*]\s+(.+)$/.exec(b)
+        if (!item) break
+        params.push({ v: item[1] })
+        i++
+      }
+    } else if (/^[@\\]param(?:\[[^\]]*\])?\s+\w+/.test(t)) {
+      const m = /^[@\\]param(?:\[[^\]]*\])?\s+(\w+)\s+(.+)$/.exec(t)
+      if (m) paramDocs.set(m[1], m[2])
+      else docLines.push(lines[i])
+    } else if (/^[@\\]returns?\s+\S/.test(t)) {
+      returnDoc = t.replace(/^[@\\]returns?\s+/, '')
+    } else if (/^\*@param\*/.test(t)) {
+      // tsserver JSDoc 태그: '*@param* `x` — 설명' — 본문에 날 것으로 두지 않고 스펙 행에 합친다
+      const m = /^\*@param\*\s+`?([\w$]+)`?\s*(?:—|–|-|:)?\s*(.*)$/.exec(t)
+      if (m && m[2]) paramDocs.set(m[1], m[2])
+      else if (!m) docLines.push(lines[i])
+    } else if (/^\*@returns?\*/.test(t)) {
+      const d = t.replace(/^\*@returns?\*\s*(?:—|–|-|:)?\s*/, '')
+      if (d) returnDoc = d
+    } else if (/^:param\s+/.test(t)) {
+      // pyright 독스트링(reST): ':param x: 설명' / ':param str x: 설명'
+      const m = /^:param\s+(?:[\w[\], .]+\s+)?(\w+):\s*(.+)$/.exec(t)
+      if (m) paramDocs.set(m[1], m[2])
+      else docLines.push(lines[i])
+    } else if (/^:returns?:\s*\S/.test(t)) {
+      returnDoc = t.replace(/^:returns?:\s*/, '')
+    } else if (/^:rtype:/.test(t)) {
+      // 반환 타입 표기는 시그니처가 이미 보여준다 — 본문 소음으로 두지 않는다
+    } else if (/^[A-Za-z_]\w*\s*(?:은\(는\)|이\(가\))\s*\S/.test(tn)) {
+      // Roslyn 제네릭 타입 인자 치환 줄, 한국어 로케일 — 'TKey 은(는) int'. 기계 서식이
+      // 확실한 조사 표기라 이름 관례 가드 없이 받는다. GENERIC 스펙 행으로 승격.
+      const m = /^([A-Za-z_]\w*)\s*(?:은\(는\)|이\(가\))\s*(\S.*)$/.exec(tn)
+      if (m) targs.push({ v: '`' + m[1] + ' = ' + m[2].replace(/\s*입니다\.?$/, '').trim() + '`' })
+    } else if (/^T(?:[A-Z0-9]\w*)?\s+is\s+[\w.:<>[\]()?*&]+(?:,\s*[\w.:<>[\]()?*&]+)*$/.test(tn)) {
+      // 영어 로케일 동일 줄 — 'TKey is int'. 'is'는 산문에도 흔해서(예: 'T is the element
+      // type') .NET 타입 매개변수 관례(T·TKey·T1…) + 우변이 타입 모양(공백은 제네릭/튜플의
+      // ', ' 뒤만)일 때만 받는다 — 아니면 본문 산문 그대로.
+      const m = /^(T(?:[A-Z0-9]\w*)?)\s+is\s+(\S.*)$/.exec(tn)
+      if (m) targs.push({ v: '`' + m[1] + ' = ' + m[2].trim() + '`' })
+    } else if (/^[@\\]brief\s+\S/.test(t)) {
+      docLines.push(t.replace(/^[@\\]brief\s+/, '')) // 태그만 벗기고 본문으로
+    } else docLines.push(lines[i])
+  }
+  // 종류 헤더가 없는 서버(Roslyn C#, tsserver, pyright, Verse)는 시그니처에서 종류·이름·반환형·
+  // 매개변수·소속을 끌어낸다. 펜스 언어(sigLang)로 그 서버의 시그니처 문법에 맞는 파서를 고른다.
+  if (!kind && sig) {
+    const isVerse = sigLang === 'verse'
+    const isPy = sigLang === 'python'
+    const isTs = /^(typescript|javascript|typescriptreact|javascriptreact|tsx|jsx|ts|js)$/.test(sigLang)
+    const e = isVerse ? parseVerseSig(sig) : isPy ? parsePySig(sig) : isTs ? parseTsSig(sig) : parseCsSig(sig)
+    if (e) {
+      kind = e.kind
+      name = e.name
+      if (e.ret) metas.unshift({ k: e.retLabel ?? 'type', v: '`' + e.ret + '`' })
+      if ('value' in e && e.value) metas.push({ k: 'value', v: '`' + e.value + '`' }) // const/field 초기값
+      if (e.params?.length) params = e.params.map((q) => ({ v: '`' + q + '`' }))
+      if ('mods' in e && e.mods?.length) sigMods.push(...e.mods) // Verse 지정자 → access 칩
+      if (e.container && !from) {
+        // Verse: 한정자는 모듈/클래스 경로 → 'module'. C#/C++: 타입은 namespace, 멤버는 in.
+        // attribute도 타입(…Attribute 클래스)이다 — 재분류 후에도 NAMESPACE 라벨을 유지한다.
+        const isType = /^(struct|class|interface|enum|delegate|namespace|attribute)$/.test(e.kind)
+        from = {
+          k: isVerse ? 'module' : isType ? 'namespace' : 'in',
+          v: '`' + e.container + '`'
+        }
+      }
+    }
+  }
+  // @param/@return 문서를 스펙 행에 붙인다 — 매개변수 이름은 언어별 어순을 따른다:
+  // TS/Python/Verse는 '이름: 타입'(첫 식별자, 단 C++의 `std::` 같은 '::'는 제외),
+  // C#/C++은 '타입 이름'(마지막 식별자).
+  if (paramDocs.size || returnDoc) {
+    const nameOf = (v: string): string => {
+      const code = v
+        .replace(/`/g, '')
+        .replace(/\(aka[^)]*\)\s*$/, '')
+        .trim()
+      const head = /^[*&]*\s*\??([A-Za-z_]\w*)\s*\??\s*:(?!:)/.exec(code)
+      if (head) return head[1]
+      const m = /([A-Za-z_]\w*)\s*$/.exec(code)
+      return m ? m[1] : ''
+    }
+    for (const q of params) {
+      const d = paramDocs.get(nameOf(q.v))
+      if (d) q.doc = d
+    }
+    if (returnDoc) {
+      const r = metas.find((m) => m.k === 'return')
+      if (r) r.doc = returnDoc
+      else metas.push({ k: 'return', v: '', doc: returnDoc }) // void인데 @return만 있는 경우
+    }
+  }
+  // 한정자 — 시그니처 전문을 치우면 잃기 쉬운 정보(static·const·접근자·Verse 지정자…)만 칩으로 승격
+  const mods: string[] = [...sigMods]
+  if (sig) {
+    const flat = sig.replace(/\s+/g, ' ')
+    const lead =
+      /^(?:template\s*<[^>]*>\s*)?((?:(?:public|private|protected|internal|static|virtual|override|abstract|readonly|async|sealed|partial|inline|constexpr|explicit|unsafe|friend|mutable)\b:?\s*)+)/.exec(
+        flat
+      )
+    if (lead) mods.push(...lead[1].replace(/:/g, ' ').trim().split(/\s+/))
+    if (/\)\s*const\b/.test(flat)) mods.push('const')
+    if (/\{\s*get;/.test(flat)) mods.push('get')
+    if (/\bset;\s*\}/.test(flat)) mods.push('set')
+    if (/\binit;\s*\}/.test(flat)) mods.push('init') // C# init-only 세터 — get/set과 같은 접근자 대접
+  }
+  const kindWords = (kind ?? '').toLowerCase()
+  const dedupMods = [...new Set(mods)].filter((m) => !kindWords.includes(m))
+  // 매크로의 #define/전개처럼 시그니처가 본체인 경우만 전문을 남긴다
+  const sigIsBody = !!sig && /#define|\/\/ Expands to/.test(sig)
+  const showSig = !!sig && (!(kind && name) || sigIsBody || /macro/.test(kindWords))
+  return {
+    kind,
+    name,
+    mods: dedupMods,
+    sig,
+    sigLang,
+    showSig,
+    metas,
+    params,
+    targs,
+    facts,
+    from,
+    docs: docLines.join('\n').trim()
+  }
+}
+
+// 종류 칩 색 — 코드 본문과 같은 팔레트(메서드 초록, 클래스 보라, 매크로 파랑…).
+// 본문에서 기본색인 변수·파라미터도 칩에서는 색을 가진다(회색 칩 없음 — 사용자 피드백):
+// 변수는 핑크(--code-num), 파라미터는 탄(--code-str), 그 외 미분류는 앱 액센트.
+function hoverKindClass(kind: string): string {
+  const k = kind.toLowerCase()
+  // Verse 지정자/속성 용어집 카드 — 코드에서 <지정자>가 갖는 구조체색 칩으로 통일
+  if (/access|effect|specifier|attribute/.test(k)) return 'k-type2'
+  if (/method|function|constructor|destructor|operator/.test(k)) return 'k-fn'
+  if (/struct|enum|union|delegate/.test(k)) return 'k-type2'
+  if (/class|interface|namespace|type|concept|module|alias/.test(k)) return 'k-type'
+  if (/macro/.test(k)) return 'k-kw'
+  if (/field|property|event|const/.test(k)) return 'k-member'
+  if (/variable|local|\bvar\b/.test(k)) return 'k-var'
+  if (/param/.test(k)) return 'k-param'
+  return 'k-plain'
+}
+
+// 비-Verse 종류 칩 설명 — verseKindDesc의 공용판. 카드의 종류 칩(METHOD·CLASS·PROPERTY…)에
+// 가까이 대면 그게 뭔지 하단 띠로 설명한다(Verse와 같은 UX). 언어 공통 개념이라 사전 하나로 간다.
+const GENERIC_KIND_DESC: Record<string, string> = {
+  method: '객체(타입)에 속한 함수입니다.',
+  'extension method': '기존 타입에 밖에서 덧붙인 메서드입니다.',
+  function: '호출하면 동작을 수행하고 값을 돌려줄 수 있는 함수입니다.',
+  constructor: '객체가 만들어질 때 호출되는 초기화 함수(생성자)입니다.',
+  destructor: '객체가 사라질 때 호출되는 정리 함수(소멸자)입니다.',
+  operator: '연산자(`+`, `==` …)를 이 타입에 맞게 재정의한 함수입니다.',
+  class: '객체를 찍어내는 틀(클래스) 타입입니다.',
+  struct: '값 형식 타입입니다. 대입하거나 넘길 때 복사됩니다.',
+  union: '여러 멤버가 같은 메모리를 공유하는 타입입니다.',
+  enum: '이름 붙은 값들을 나열한 목록 타입입니다.',
+  'enum member': '`enum` 에 나열된 값 중 하나입니다.',
+  enumerator: '`enum` 에 나열된 값 중 하나입니다.',
+  interface: '갖춰야 할 멤버들을 정해 둔 약속(인터페이스)입니다.',
+  namespace: '관련 코드를 묶는 이름 공간입니다.',
+  module: '관련 코드를 묶는 모듈입니다.',
+  property: '읽기/쓰기가 접근자(게터/세터)로 처리되는 멤버입니다.',
+  field: '타입 안에 저장되는 데이터 멤버입니다.',
+  event: '구독(`+=`)할 수 있는 알림 멤버입니다.',
+  delegate: '메서드를 값처럼 담아 전달하는 타입입니다.',
+  parameter: '함수에 전달되는 매개변수입니다.',
+  'type parameter': '제네릭에서 타입을 받는 자리(타입 매개변수)입니다.',
+  variable: '값을 담는 변수입니다.',
+  'local variable': '블록 안에서만 쓰이는 지역 변수입니다.',
+  constant: '한 번 정해지면 바뀌지 않는 값(상수)입니다.',
+  macro: '컴파일 전에 그 자리에서 텍스트로 치환되는 매크로입니다.',
+  type: '타입입니다.',
+  alias: '다른 심볼을 가리키는 별명(가져온 이름)입니다.',
+  attribute: '심볼에 부가 정보를 다는 속성입니다.'
+}
+// 영어 미러 — 모듈 스코프 상수는 import 시점 언어로 박제되므로, 사전 자체를 t()로 감싸는 대신
+// 조회 시점(genericKindDesc)에 isEn()으로 고른다.
+const GENERIC_KIND_DESC_EN: Record<string, string> = {
+  method: 'A function that belongs to an object (type).',
+  'extension method': 'A method added to an existing type from the outside.',
+  function: 'A function that performs work when called and can return a value.',
+  constructor: 'An initializer called when an object is created (constructor).',
+  destructor: 'A cleanup function called when an object is destroyed (destructor).',
+  operator: 'A function that redefines an operator (`+`, `==` …) for this type.',
+  class: 'A class type — a mold that objects are made from.',
+  struct: 'A value type. It is copied when assigned or passed.',
+  union: 'A type whose members share the same memory.',
+  enum: 'A type that lists named values.',
+  'enum member': 'One of the values listed in an `enum`.',
+  enumerator: 'One of the values listed in an `enum`.',
+  interface: 'A contract (interface) that defines the members to provide.',
+  namespace: 'A namespace that groups related code.',
+  module: 'A module that groups related code.',
+  property: 'A member whose reads/writes go through accessors (getter/setter).',
+  field: 'A data member stored inside the type.',
+  event: 'A notification member you can subscribe to (`+=`).',
+  delegate: 'A type that carries a method around like a value.',
+  parameter: 'A parameter passed to a function.',
+  'type parameter': 'A slot that receives a type in generics (type parameter).',
+  variable: 'A variable that holds a value.',
+  'local variable': 'A local variable used only inside its block.',
+  constant: 'A value that never changes once set (constant).',
+  macro: 'A macro replaced with text in place before compilation.',
+  type: 'A type.',
+  alias: 'An alias that points to another symbol (imported name).',
+  attribute: 'An attribute that attaches extra information to a symbol.'
+}
+function genericKindDesc(kind: string | null): string | undefined {
+  if (!kind) return undefined
+  const D = isEn() ? GENERIC_KIND_DESC_EN : GENERIC_KIND_DESC
+  const k = kind
+    .toLowerCase()
+    .replace(/^static\s+/, '')
+    .trim()
+  if (Object.prototype.hasOwnProperty.call(D, k)) return D[k]
+  if (k.includes('enum member') || k.includes('enumerator')) return D['enum member']
+  if (k.includes('param')) return D.parameter
+  if (k.includes('local')) return D['local variable']
+  if (k.includes('field')) return D.field
+  if (k.includes('const')) return D.constant
+  if (k.includes('method')) return D.method
+  if (k.includes('function')) return D.function
+  return undefined
+}
+
+// Verse 종류 칩 색 — 사용자 선호대로 Constant Variable ↔ Variable 색을 맞바꾸고, enum/struct 값은
+// 그 타입색(연보라)으로. 그 외는 공용 hoverKindClass.
+function verseKindClass(kind: string, display: string | null): string {
+  if (display === 'Enum Value' || display === 'Struct Value') return 'k-type2'
+  if (kind === 'constant') return 'k-var' // (was k-member) ↔ swapped
+  if (kind === 'var') return 'k-member' // (was k-var) ↔ swapped
+  // @attribute → its own coral chip (--verse-attr, same as the code body), NOT the struct colour
+  // (k-type2) — otherwise the attribute chip clashes with struct/enum cards.
+  if (kind === 'attribute') return 'k-attr'
+  return hoverKindClass(kind)
+}
+
+// Verse 지정자(<…>)는 의미가 갈린다 — 접근(가시성)·효과(계산 효과)·그 외 선언 지정자.
+// 카드에서 한 줄로 뭉치지 않고 access · effects · specifiers 세 줄로 나눠 보여 준다.
+const VERSE_ACCESS = new Set(['public', 'private', 'protected', 'internal', 'epic_internal'])
+const VERSE_EFFECT = new Set([
+  'transacts',
+  'computes',
+  'reads',
+  'writes',
+  'decides',
+  'varies',
+  'converges',
+  'suspends',
+  'no_rollback',
+  'allocates',
+  'predicts'
+])
+// Every name that is a genuine `<specifier>` (access · effect · declaration modifier). Built from the
+// SAME list that drives `<…>` completion (verseKeywords), so the two never drift. @attributes
+// (`@editable`, `@import_as`, …) are metadata, NOT specifiers — but verse-lsp folds them into its
+// hover's `<…>` too, so anything folded that ISN'T in this set is an attribute (see splitVerseSpecs).
+const VERSE_KNOWN_SPEC = new Set(VERSE_SPECIFIERS.map((s) => s.name))
+// '<public>' / '<getter(GetX)>' → 'public' / 'getter'
+function verseSpecName(spec: string): string {
+  const m = /^<\s*([A-Za-z_]\w*)/.exec(spec)
+  return m ? m[1] : spec.replace(/[<>]/g, '')
+}
+
+// 호버 카드 안의 토큰(<지정자>·@속성)·종류 칩에 "이게 뭔지" 네이티브 툴팁(title)을 달아 준다 —
+// 코드에서 그 토큰을 직접 호버했을 때 뜨는 글로서리와 같은 설명. 출처는 완성과 동일한
+// verseKeywords(VERSE_SPECIFIERS·VERSE_ATTRIBUTES)라 설명이 한 곳에서만 관리된다.
+const VERSE_TOK_DESC = new Map<string, string>()
+// 네이티브 title 툴팁은 플레인 텍스트 — 공유 용어집(호버 마크다운용)의 백틱만 벗겨 담는다.
+for (const s of [...VERSE_SPECIFIERS, ...VERSE_ATTRIBUTES]) if (s.doc) VERSE_TOK_DESC.set(s.name, s.doc.replace(/`/g, ''))
+// 토큰(`<override>` / `<getter(GetX)>` / `@editable`)의 설명. @editable_* 계열은 editable로 폴백.
+function verseTokDesc(tok: string): string | undefined {
+  const n = verseSpecName(tok).replace(/^@/, '')
+  return VERSE_TOK_DESC.get(n) ?? (n.startsWith('editable_') ? VERSE_TOK_DESC.get('editable') : undefined)
+}
+// 종류 칩(STRUCT·VARIABLE·ATTRIBUTE…)의 설명 — p.kind(원형) 기준.
+const VERSE_KIND_DESC: Record<string, string> = {
+  class: '객체 타입입니다. 상속·메서드를 가질 수 있고, 담아도 복사되지 않고 원본을 가리킵니다.',
+  struct: '데이터를 묶는 값 타입입니다. 넘기거나 대입할 때 전체가 복사됩니다.',
+  enum: '이름을 붙인 값들을 나열한 목록 타입입니다.',
+  interface: '구현해야 할 메서드들을 정해 둔 약속입니다. 클래스가 이를 구현합니다.',
+  module: '관련 코드를 묶는 단위입니다. 경로(`/My.com/Game`)로 구분됩니다.',
+  var: '값을 바꿀 수 있는 변수입니다. `set` 으로 새 값을 넣습니다.',
+  constant: '한 번 정해지면 바뀌지 않는 값(상수)입니다.',
+  function: '호출하면 동작을 수행하고 값을 돌려줄 수 있는 함수입니다.',
+  attribute: '심볼에 부가 정보를 다는 `@`속성입니다.',
+  type: '타입입니다.'
+}
+// 영어 미러 — GENERIC_KIND_DESC_EN과 같은 이유(조회 시점 isEn() 선택).
+const VERSE_KIND_DESC_EN: Record<string, string> = {
+  class: 'An object type. It can have inheritance and methods; storing it keeps a reference to the original instead of copying.',
+  struct: 'A value type that groups data. The whole thing is copied when passed or assigned.',
+  enum: 'A type that lists named values.',
+  interface: 'A contract of methods to implement. Classes implement it.',
+  module: 'A unit that groups related code, identified by a path (`/My.com/Game`).',
+  var: 'A variable whose value can change. Assign a new value with `set`.',
+  constant: 'A value that never changes once set (constant).',
+  function: 'A function that performs work when called and can return a value.',
+  attribute: 'An `@`attribute that attaches extra information to a symbol.',
+  type: 'A type.'
+}
+function verseKindDesc(kind: string | null): string | undefined {
+  if (!kind) return undefined
+  const k = kind.toLowerCase()
+  if (k.includes('enum value')) return t('`enum` 에 나열된 값 중 하나입니다.', 'One of the values listed in an `enum`.')
+  if (k.includes('struct value')) return t('`struct` 의 멤버 값입니다.', 'A member value of a `struct`.')
+  if (k.includes('param')) return t('함수에 전달되는 매개변수입니다.', 'A parameter passed to a function.')
+  if (k.includes('local')) return t('블록 안에서만 쓰이는 지역 변수입니다.', 'A local variable used only inside its block.')
+  return (isEn() ? VERSE_KIND_DESC_EN : VERSE_KIND_DESC)[k]
+}
+// 내장(원시) 타입 설명 — 본문 글로서리(main/lsp/verse.ts)와 같은 내용의 작은 미러. 카드 안 코드
+// (파라미터/반환형)에 나온 `char`·`float`·`void` 같은 타입에 가까이 댔을 때 설명을 띄우는 데 쓴다.
+const VERSE_BUILTIN_TYPE_DESC: Record<string, string> = {
+  int: '정수입니다.',
+  float: '소수점이 있는 수입니다.',
+  logic: '참이나 거짓 둘 중 하나를 담습니다.',
+  string: '글자들이 이어진 문자열입니다.',
+  void: '값이 사실상 없음을 뜻하는 타입입니다. 돌려줄 게 없는 함수의 반환형으로 씁니다.',
+  char: '글자 하나를 담습니다.',
+  char32: '유니코드 코드포인트 하나를 담는 글자입니다.',
+  char8: 'UTF-8 바이트 하나를 담는 글자입니다.',
+  rational: '오차 없이 정확한 분수를 담습니다.',
+  any: '모든 타입을 다 받는 가장 위쪽 타입입니다.',
+  comparable: '서로 같은지 비교할 수 있는 타입입니다.',
+  tuple: '여러 값을 한 묶음으로 담습니다.',
+  array: '여러 값을 순서대로 담는 배열입니다.',
+  map: '키로 값을 찾는 묶음입니다.',
+  weak_map: '영속 저장에 주로 쓰는 특수한 맵입니다.',
+  type: '타입 자체를 값처럼 다룹니다.',
+  subtype: '어떤 타입이거나 그 자식 타입이면 받아 주는 제약입니다.'
+}
+// 영어 미러 — 조회 시점(verseWordDesc)에 isEn()으로 고른다.
+const VERSE_BUILTIN_TYPE_DESC_EN: Record<string, string> = {
+  int: 'An integer.',
+  float: 'A number with a decimal point.',
+  logic: 'Holds one of two values: true or false.',
+  string: 'A string of characters.',
+  void: 'A type meaning there is effectively no value. Used as the return type of functions with nothing to return.',
+  char: 'Holds a single character.',
+  char32: 'A character holding one Unicode code point.',
+  char8: 'A character holding one UTF-8 byte.',
+  rational: 'Holds an exact fraction with no rounding error.',
+  any: 'The topmost type that accepts every type.',
+  comparable: 'A type whose values can be compared for equality.',
+  tuple: 'Holds several values as one bundle.',
+  array: 'An array holding several values in order.',
+  map: 'A collection that looks up values by key.',
+  weak_map: 'A special map mostly used for persistent storage.',
+  type: 'Treats a type itself as a value.',
+  subtype: 'A constraint that accepts a type or any of its subtypes.'
+}
+// 카드 안 코드 토큰(단어) 하나의 설명 — 지정자/속성 → 내장 타입 → (레지스트리로 아는) 사용자/엔진
+// 타입의 종류 순으로 찾는다. 없으면 undefined(설명 안 띄움).
+function verseWordDesc(word: string): string | undefined {
+  const tok = VERSE_TOK_DESC.get(word) ?? (word.startsWith('editable_') ? VERSE_TOK_DESC.get('editable') : undefined)
+  if (tok) return tok
+  const builtin = (isEn() ? VERSE_BUILTIN_TYPE_DESC_EN : VERSE_BUILTIN_TYPE_DESC)[word]
+  if (builtin) return builtin
+  const reg = verseReg()
+  if (reg.docs[word]) return reg.docs[word] // 그 타입(class/struct/enum)의 실제 주석(#/@doc) 우선
+  const k = reg.kind[word]
+  return k ? (isEn() ? VERSE_KIND_DESC_EN : VERSE_KIND_DESC)[k] : undefined // 주석이 없을 때만 종류 일반 설명으로 폴백
+}
+// 지정자 묶음을 access → specifiers(그 외) → effects 순의 (비어있지 않은) 행들로 가른다.
+// `kind`를 받아: ① 접근지시자가 없으면 Verse 기본값 `internal`을 명시해 보여 주고,
+// ② `var`는 읽기/쓰기 접근이 갈리므로 'read access'·'write access'로 나눠 보여 준다.
+function splitVerseSpecs(mods: string[], kind?: string, write?: string): { k: string; items: string[] }[] {
+  const access: string[] = []
+  const effects: string[] = []
+  const attrs: string[] = []
+  const other: string[] = []
+  for (const m of mods) {
+    const n = verseSpecName(m)
+    if (VERSE_ACCESS.has(n)) access.push(m)
+    else if (VERSE_EFFECT.has(n)) effects.push(m)
+    else if (VERSE_KNOWN_SPEC.has(n))
+      other.push(m) // a genuine declaration specifier → specifiers row
+    else attrs.push('@' + n) // not a known specifier → it's a folded @attribute (<import_as(…)> → @import_as)
+  }
+  // A DATA member with no access specifier defaults to `internal` — surface it so the card is
+  // unambiguous. Only for data/callable members (var/constant/function); type DEFINITIONS
+  // (class/struct/enum/interface) don't get the injected default (and synthesized param/local
+  // cards, whose kind is capitalised like 'Parameter', never match here either).
+  const isMemberDecl = !!kind && /^(var|constant|function)$/.test(kind)
+  if (!access.length && isMemberDecl) access.push('<internal>')
+  const rows: { k: string; items: string[] }[] = []
+  if (kind === 'var') {
+    // a `var`'s name-specifier is its READ (get) access; the WRITE (set) access is the explicit
+    // `var<…>` setter (`write`, looked up from the registry since verse-lsp drops it) and only
+    // falls back to the read access when no setter was specified.
+    const read = access[0] ?? '<internal>'
+    rows.push({ k: 'read access', items: [read] })
+    rows.push({ k: 'write access', items: [write ? `<${write}>` : read] })
+  } else if (access.length) {
+    rows.push({ k: 'access', items: access })
+  }
+  if (other.length) rows.push({ k: 'specifiers', items: other })
+  if (effects.length) rows.push({ k: 'effects', items: effects })
+  if (attrs.length) rows.push({ k: 'attributes', items: attrs })
+  return rows
+}
+
+// 비-Verse(C#/C++/TS…) 한정자 분류 — splitVerseSpecs의 일반 언어판. `partial`·`sealed` 같은
+// 건 접근 수준이 아닌데 ACCESS 행에 한 덩어리로 섞여 나왔다(사용자 피드백): 진짜 접근지시자만
+// access로, 프로퍼티 접근자(get/set)는 accessors로, 나머지는 modifiers로 가른다.
+const ACCESS_MODS = new Set(['public', 'private', 'protected', 'internal'])
+const ACCESSOR_MODS = new Set(['get', 'set', 'init'])
+function splitCsMods(mods: string[]): { k: string; items: string[] }[] {
+  const rows: { k: string; items: string[] }[] = []
+  const access = mods.filter((m) => ACCESS_MODS.has(m))
+  const other = mods.filter((m) => !ACCESS_MODS.has(m) && !ACCESSOR_MODS.has(m))
+  const accessors = mods.filter((m) => ACCESSOR_MODS.has(m))
+  if (access.length) rows.push({ k: 'access', items: access })
+  if (other.length) rows.push({ k: 'modifiers', items: other })
+  if (accessors.length) rows.push({ k: 'accessors', items: accessors })
+  return rows
+}
+
+// 세션 동안 배운 식별자→색 누적 사전 — 호버 시그니처가 참조하는 타입(TArray 등)이
+// "지금 열린 파일"에는 안 나와도, 전에 연 파일에서 배웠으면 칠할 수 있게 한다.
+// 오래 켜두고 많은 파일을 열어도 무한히 늘지 않게 크기 상한(초과분은 오래된 것부터 제거).
+const sessionSemDict = new Map<string, string>()
+const SESSION_SEM_MAX = 5000
+
+// C++ struct 구분 보정(cppRecordIsStruct/cppFieldOfStruct + 프로브)은 ../lib/cppStruct
+// (useCppStructOv 훅)로 옮겨 뷰어·CM이 공유한다.
+
+// UE 명명규칙 폴백 (C++ 전용) — 사전 어디에도 없는 이름이면 접두사로 추정:
+// F/U/A/S/T/I+대문자 → 타입 보라, E+대문자 → enum 연보라. 사전이 항상 우선이라
+// TEXT 같은 매크로는 본문 토큰(파랑)이 이긴다.
+const UE_TYPE_RE = /^[FUASTIE][A-Z]\w*$/
+
+// 호버 시그니처에 본문과 같은 시맨틱 색 입히기 — 시그니처 텍스트 조각은 LSP로
+// 분석할 수 없으니, 문서 토큰으로 만든 식별자→색 사전을 텍스트 매칭으로 적용한다.
+// hljs 토큰의 텍스트 노드를 쪼개 안쪽에 스팬을 끼우는 방식은 decorateLine과 동일;
+// 문자열·주석 안은 건드리지 않는다.
+function decorateIdents(html: string, resolve: (name: string) => string | null): string {
+  const root = document.createElement('div')
+  root.innerHTML = html
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+  const nodes: Text[] = []
+  for (let n = walker.nextNode() as Text | null; n; n = walker.nextNode() as Text | null) nodes.push(n)
+  for (const node of nodes) {
+    let skip = false
+    for (let el = node.parentElement; el && el !== root; el = el.parentElement) {
+      if (/hljs-(string|comment)/.test(el.className)) {
+        skip = true
+        break
+      }
+    }
+    if (skip) continue
+    const text = node.data
+    const hits: { start: number; end: number; cls: string }[] = []
+    const re = /[A-Za-z_][A-Za-z0-9_]*/g
+    let m: RegExpExecArray | null
+    while ((m = re.exec(text))) {
+      const cls = resolve(m[0])
+      if (cls) hits.push({ start: m.index, end: m.index + m[0].length, cls })
+    }
+    let cur = node
+    let offset = 0
+    for (const h of hits) {
+      const piece = h.start > offset ? cur.splitText(h.start - offset) : cur
+      const tail = piece.splitText(h.end - h.start)
+      const span = document.createElement('span')
+      span.className = h.cls
+      piece.parentNode?.replaceChild(span, piece)
+      span.appendChild(piece)
+      cur = tail
+      offset = h.end
+    }
+  }
+  return root.innerHTML
+}
+
+// exported so the CodeMirror editor (CmEditor) renders the identical hover card.
+// It's a function declaration → hoisted, so the FileModal↔CmEditor import cycle is safe.
+export function HoverContent({
+  md,
+  lang,
+  dict,
+  extraMods,
+  word
+}: {
+  md: string
+  lang: string
+  dict: Map<string, string> | null
+  extraMods?: string[] // C# 정의 줄에서 보강한 한정자 (시그니처 추출분과 합집합)
+  word?: string // 커서 밑 식별자 — 별칭 카드(Roslyn이 IntPtr→nint로 정규화)의 NAME 복원용
+}) {
+  const p = useMemo(() => parseHover(md), [md])
+  // Roslyn은 내장/별칭 타입 참조 호버를 별칭 한 단어(nint)로 정규화한다 — 실제로 가리킨
+  // 이름(IntPtr)이 NAME에서 사라지므로, 커서 밑 단어와 다르면 NAME은 그 단어로 되돌리고
+  // 별칭은 ALIAS 행으로 뺀다. `var` 호버(추론 타입이 별칭으로 옴)는 TYPE 행이 더 정확하다.
+  const aliasSwap =
+    lang === 'csharp' && !!word && !!p?.name && word !== p.name && Object.prototype.hasOwnProperty.call(CS_BUILTIN_KIND, p.name)
+  const dispName = aliasSwap ? word : p?.name
+  // static은 ACCESS 행이 아니라 종류 칩에 합친다 — 'STATIC METHOD'처럼 한눈에
+  const allMods = useMemo(() => [...new Set([...(p?.mods ?? []), ...(extraMods ?? [])])], [p, extraMods])
+  const kindDisplay = useMemo(() => {
+    if (!p?.kind) return null
+    // Verse: label by the CONTAINER's kind when the hovered symbol is a member of an enum/struct
+    // ('Enum Value' / 'Struct Value'); otherwise make data-member labels unambiguous — a non-`var`
+    // binding is an immutable 'Constant Variable', a `var` binding is a (mutable) 'Variable'.
+    if (lang === 'verse') {
+      // the dotted-value form (`enum (/…:)Type.Value`) already resolved to '<kind> value'
+      if (p.kind === 'enum value') return 'Enum Value'
+      if (p.kind === 'struct value') return 'Struct Value'
+      // otherwise: if the hover qualifier's last segment is itself an enum/struct, the symbol is a
+      // member of it (a use-site field/value). (The type itself has container = its module.)
+      const container = (p.from?.v ?? '').replace(/`/g, '').split('/').filter(Boolean).pop()
+      const ck = container ? verseReg().kind[container] : undefined
+      if (ck === 'enum' || ck === 'struct') return ck === 'enum' ? 'Enum Value' : 'Struct Value'
+      if (p.kind === 'constant') return 'Constant Variable'
+      if (p.kind === 'var') return 'Variable'
+      return p.kind
+    }
+    let k = p.kind
+    // C# 프로퍼티: 접근자는 별도 행 대신 종류 칩으로 승격 — 'GET SET PROPERTY'/'GET PROPERTY'.
+    // 접근자가 언어 차원의 특별함이라(일반 필드/변수와 다름) 칩 라벨이 그걸 바로 말해 준다.
+    if (k === 'property') {
+      const acc = ['get', 'set', 'init'].filter((m) => allMods.includes(m))
+      if (acc.length) k = acc.join(' ') + ' ' + k
+    }
+    // static은 ACCESS/MODIFIERS 행이 아니라 종류 칩 맨 앞에 — 'STATIC GET SET PROPERTY'처럼
+    if (allMods.includes('static') && !/static/i.test(k)) k = 'static ' + k
+    return k
+  }, [p, allMods, lang])
+  const mods = useMemo(() => {
+    if (!p) return []
+    // 칩에 승격된 단어(static·get·set·종류)는 행에서 뺀다 — 표시 기준이므로 kindDisplay로 거른다
+    const kindWords = (kindDisplay ?? p.kind ?? '').toLowerCase()
+    return allMods.filter((m) => m !== 'static' && !kindWords.includes(m))
+  }, [p, allMods, kindDisplay])
+  // Verse: the hovered symbol's OWN name is rendered as an isolated `Player` token, so the registry
+  // highlighter can't see it's a binding and promotes any name matching a type (UEFN asset classes are
+  // PascalCase, e.g. a project `Player` class) to the type colour — even when the card already knows
+  // it's a parameter/local/variable/constant. Force those names to the plain identifier colour so a
+  // `for (Player : …)` loop var or `(Player:player)` param doesn't read purple. Real types/functions
+  // keep the highlighter's colour.
+  const namePlain = useMemo(() => lang === 'verse' && /^(parameter|local variable|variable|constant|var)$/i.test(p?.kind ?? ''), [p, lang])
+  // a Verse `var`'s SETTER (write) access — verse-lsp's hover drops it, so look it up from the
+  // registry by the member's container (the hover qualifier's last path segment) + name.
+  const verseWrite = useMemo(() => {
+    if (lang !== 'verse' || p?.kind !== 'var' || !p.name) return undefined
+    const container = (p.from?.v ?? '').replace(/`/g, '').split('/').filter(Boolean).pop()
+    return container ? verseReg().setters[container]?.[p.name] : undefined
+  }, [p, lang])
+  // Verse: when the container is a TYPE, label the footer with the owner's KIND (struct/enum/class)
+  // and show its name — e.g. an Enum Value reads 'enum `weapon_kind`', a struct field 'struct
+  // `vector_pair`' — instead of the raw "module: /…/Type" path.
+  const verseFrom = useMemo(() => {
+    if (lang !== 'verse' || !p?.from) return p?.from
+    const owner = p.from.v.replace(/`/g, '').split('/').filter(Boolean).pop()
+    const ck = owner ? verseReg().kind[owner] : undefined
+    return ck ? { k: ck, v: '`' + owner + '`' } : p.from
+  }, [p, lang])
+  // 비-Verse footer 행들 — 멤버 카드의 소속(IN Container)을 "소속 타입의 종류" 라벨
+  // (CLASS/STRUCT/ENUM/INTERFACE + 이름)로 바꾸고, 한정명에 네임스페이스가 딸려 있으면
+  // NAMESPACE 행을 맨 밑에 따로 뺀다 — "어떤 클래스의 멤버인지"가 라벨로 바로 읽힌다
+  // (Verse footer와 같은 규칙). 소속의 종류는 시그니처에 없으므로 파일/세션 시맨틱 사전의
+  // 색 분류로 알아내고, 못 알아내면 기존 'in' 라벨 그대로 둔다.
+  const fromRows = useMemo((): { k: string; v: string }[] => {
+    if (lang === 'verse' || !p?.from) return []
+    const f = p.from
+    if (f.k !== 'in') return [f] // 'namespace'(타입 카드)·'provided by'(clangd) — 그대로 한 행
+    const full = f.v.replace(/`/g, '')
+    // 마지막 최상위 '.'에서 소속 타입과 네임스페이스를 가른다 — 제네릭 인자 안 '.'은 무시
+    let depth = 0
+    let cut = -1
+    for (let i = full.length - 1; i >= 0; i--) {
+      const c = full[i]
+      if (c === '>') depth++
+      else if (c === '<') depth--
+      else if (c === '.' && depth === 0) {
+        cut = i
+        break
+      }
+    }
+    const owner = cut >= 0 ? full.slice(cut + 1) : full
+    const ns = cut >= 0 ? full.slice(0, cut) : ''
+    const bare = owner.split('<')[0]
+    let k = 'in'
+    if (/^enum/.test(p.kind ?? ''))
+      k = 'enum' // enum 멤버의 소속은 정의상 enum
+    else {
+      const cls = dict?.get(bare) ?? sessionSemDict.get(bare)
+      if (cls === 'sem-type2') k = 'struct'
+      else if (cls === 'sem-type') k = lang === 'csharp' && /^I[A-Z]/.test(bare) ? 'interface' : 'class'
+    }
+    const rows = [{ k, v: '`' + owner + '`' }]
+    if (ns) rows.push({ k: 'namespace', v: '`' + ns + '`' })
+    return rows
+  }, [p, lang, dict])
+  // 카드 안의 모든 코드(시그니처·메타 칩·본문 인라인/펜스·푸터)는 본문과 같은
+  // 파이프라인 하나로: hljs 베이스 + 언어 팔레트 + 시맨틱 색 사전(decorate).
+  // 색 우선순위: 이 파일 사전 → 세션 누적 사전 → UE 명명규칙(C++만)
+  const deco = useMemo(() => {
+    const cpp = lang === 'cpp' || lang === 'c'
+    const resolve = (name: string): string | null => {
+      const own = dict?.get(name) ?? sessionSemDict.get(name)
+      if (own) return own
+      if (cpp && UE_TYPE_RE.test(name)) return name[0] === 'E' ? 'sem-type2' : 'sem-type'
+      return null
+    }
+    return (html: string): string => decorateIdents(html, resolve)
+  }, [dict, lang])
+  const sigHtml = useMemo(() => {
+    if (!p?.sig) return ''
+    const base = highlightCode(p.sig, p.sigLang || lang)
+    return deco ? deco(base) : base
+  }, [p, lang, deco])
+  // 카드 안 토큰(<지정자>·@속성·파라미터/반환형의 타입·종류 칩)에 가까이 대면 그게 뭔지 설명을 카드
+  // "하단 띠"에 보여 준다. 떠다니는 말풍선(깜빡임·흰 공·위치 깨짐) 대신 카드에 붙은 고정 영역이라 차분하다.
+  // 이벤트는 위임(델리게이션)으로 받아 char·color·void 같은 코드 안 타입까지 한 번에 처리한다.
+  // 설명은 카드 "바로 아래"(자리 없으면 위)에 한 곳에 떠서, 어느 토큰을 훑든 위치는 그대로 두고 글자만
+  // 바뀐다 — 토큰마다 새로 떴다 사라지지 않으니(요소를 계속 띄워 둠) 깜빡임·흰 공이 없다. 카드 밖에 있어
+  // 카드가 위로 떠도/스크롤돼도 안 가린다.
+  const [tip, setTip] = useState<{
+    text: string
+    left: number
+    top?: number
+    bottom?: number
+  } | null>(null)
+  const tipHideTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const showTokDesc = (text: string, anchor: HTMLElement): void => {
+    if (tipHideTimer.current) {
+      clearTimeout(tipHideTimer.current)
+      tipHideTimer.current = null
+    }
+    // 호버한 그 토큰 위치에 — 토큰 바로 위(가운데 정렬), 위 공간이 없으면 아래. 디자인은 검정 카드(.lh-tokdesc).
+    const r = anchor.getBoundingClientRect()
+    const left = Math.min(Math.max(r.left + r.width / 2, 176), window.innerWidth - 176)
+    const above = r.top > 92
+    const top = above ? undefined : r.bottom + 9
+    const bottom = above ? window.innerHeight - r.top + 9 : undefined
+    // 위치까지 비교 — 텍스트가 같아도(예: READ/WRITE 둘 다 <internal>) 다른 토큰이면 그 위치로 옮긴다.
+    // (같은 토큰 안에서의 중복 호출만 그대로 둬서 불필요한 리렌더를 막는다)
+    setTip((cur) =>
+      cur && cur.text === text && cur.left === left && cur.top === top && cur.bottom === bottom ? cur : { text, left, top, bottom }
+    )
+  }
+  const scheduleTokHide = (): void => {
+    if (tipHideTimer.current) clearTimeout(tipHideTimer.current)
+    tipHideTimer.current = setTimeout(() => setTip(null), 160)
+  }
+  const onTokOver = (e: React.MouseEvent): void => {
+    const t = e.target as HTMLElement
+    const tagged = t.closest?.('[data-tip]') as HTMLElement | null
+    if (tagged?.dataset.tip) return showTokDesc(tagged.dataset.tip, tagged)
+    // 코드 토큰(잎 스팬)의 단어로 설명을 찾는다 — 파라미터/반환형 안의 타입(char·number·void…)까지.
+    // Verse는 전용 사전(지정자·레지스트리 포함), 그 외 언어는 공유 용어집(langGlossary)으로.
+    if (t.childElementCount === 0) {
+      const w = (t.textContent ?? '').trim()
+      if (/^[A-Za-z_]\w*$/.test(w)) {
+        const d =
+          lang === 'verse'
+            ? verseWordDesc(w)
+            : (
+                glossaryDoc(lang, w) ??
+                // C/C++ 카드의 UE 타입·매크로(FString·TArray·UPROPERTY…)도 설명해 준다
+                (lang === 'cpp' || lang === 'c' ? UE_CPP_WORD_DOCS[w] : undefined)
+              )?.replace(/`/g, '')
+        if (d) return showTokDesc(d, t)
+      }
+    }
+    scheduleTokHide()
+  }
+  useEffect(() => () => void (tipHideTimer.current && clearTimeout(tipHideTimer.current)), [])
+  if (!p) return <Markdown text={md} codeLang={lang} decorate={deco} />
+  return (
+    <div className="lh-body" onMouseOver={onTokOver} onMouseLeave={scheduleTokHide}>
+      {p.kind && (
+        <div className="lh-head lh-kindrow">
+          <span
+            className={'lh-kind ' + (lang === 'verse' ? verseKindClass(p.kind, kindDisplay) : hoverKindClass(p.kind))}
+            data-tip={(lang === 'verse' ? verseKindDesc(p.kind) : genericKindDesc(p.kind)) || undefined}
+          >
+            {kindDisplay}
+          </span>
+        </div>
+      )}
+      {/* 메모리 정보 알약 — 종류 칩 아래 별도 줄, 아래에 전폭 밑줄로 단을 가른다 */}
+      {p.facts.length > 0 && (
+        <div className="lh-head lh-factrow">
+          {p.facts.map((f) => (
+            <span key={f.k} className="lh-fact">
+              <span className="k">{f.k}</span>
+              <span className="v">{f.v}</span>
+            </span>
+          ))}
+        </div>
+      )}
+      {p.showSig && p.sig && (
+        <div className="lh-sig">
+          <code className="hljs" dangerouslySetInnerHTML={{ __html: sigHtml }} />
+        </div>
+      )}
+      {/* 스펙 행 — NAME → GENERIC → ACCESS → MODIFIERS → ACCESSORS → PARAMS → RETURN 순서, 한 줄에 하나씩 */}
+      {(p.name || mods.length > 0 || p.params.length > 0 || p.metas.length > 0 || p.targs.length > 0 || (lang === 'verse' && verseFrom)) && (
+        <div className="lh-spec">
+          {/* NAME·ACCESS도 PARAMS·RETURN과 같은 코드 칩으로 — 행 전체가 한 결 */}
+          {dispName && (
+            <>
+              <span className="lh-spec-k">name</span>
+              <div className={'lh-spec-v lh-name-row' + (namePlain ? ' nm-plain' : '')}>
+                <Markdown text={'`' + dispName + '`'} codeLang={lang} decorate={deco} />
+              </div>
+            </>
+          )}
+          {aliasSwap && p.name && (
+            <>
+              <span className="lh-spec-k">{word === 'var' ? 'type' : 'alias'}</span>
+              <div className="lh-spec-v">
+                <Markdown text={'`' + p.name + '`'} codeLang={lang} decorate={deco} />
+              </div>
+            </>
+          )}
+          {/* 제네릭 타입 인자 치환(TKey = int) — NAME의 <TKey, T>가 이 사용처에서 뭘 받았는지.
+              본문 산문('TKey 은(는) int')으로 두면 디자인과 겉돌아 스펙 행으로 올린다 */}
+          {p.targs.length > 0 && (
+            <>
+              <span className="lh-spec-k">generic</span>
+              <div className="lh-spec-v">
+                {p.targs.map((q, i) => (
+                  <div key={i} className="lh-pline">
+                    <Markdown text={q.v} codeLang={lang} decorate={deco} />
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+          {/* Verse: 지정자를 access · specifiers · effects 로, 그 외 언어는 access · modifiers ·
+              accessors 로 갈라 각각 한 줄씩 — partial 같은 비접근 한정자가 ACCESS에 섞이지 않게 */}
+          {lang === 'verse'
+            ? splitVerseSpecs(mods, p.kind ?? undefined, verseWrite).map((row) => (
+                <Fragment key={row.k}>
+                  <span className="lh-spec-k">{row.k}</span>
+                  {/* 토큰마다 따로 칩 — 가까이 대면 native title로 "뭔지" 설명이 뜬다(글로서리와 동일) */}
+                  <div className="lh-spec-v">
+                    <div className="lh-spec-toks">
+                      {row.items.map((m, i) => {
+                        const d = verseTokDesc(m)
+                        return (
+                          <span key={i} className="lh-spec-tok" data-tip={d || undefined}>
+                            <Markdown text={'`' + m + '`'} codeLang={lang} decorate={deco} />
+                          </span>
+                        )
+                      })}
+                    </div>
+                  </div>
+                </Fragment>
+              ))
+            : splitCsMods(mods).map((row) => (
+                <Fragment key={row.k}>
+                  <span className="lh-spec-k">{row.k}</span>
+                  <div className="lh-spec-v">
+                    <Markdown text={row.items.map((m) => '`' + m + '`').join(' ')} codeLang={lang} decorate={deco} />
+                  </div>
+                </Fragment>
+              ))}
+          {p.params.length > 0 && (
+            <>
+              <span className="lh-spec-k">params</span>
+              <div className="lh-spec-v">
+                {p.params.map((q, i) => (
+                  <div key={i} className="lh-pline">
+                    <Markdown text={q.v} codeLang={lang} decorate={deco} />
+                    {q.doc && <span className="lh-pdoc">{q.doc}</span>}
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+          {p.metas.map((m, i) => (
+            <Fragment key={i}>
+              <span className="lh-spec-k">{m.k}</span>
+              <div className="lh-spec-v">
+                <div className="lh-pline">
+                  {m.v && <Markdown text={m.v} codeLang={lang} decorate={deco} />}
+                  {m.doc && <span className="lh-pdoc">{m.doc}</span>}
+                </div>
+              </div>
+            </Fragment>
+          ))}
+          {/* Verse: 소속 타입(struct/enum/class …)을 별도 구분선 footer가 아니라 스펙 그리드의
+              마지막 행으로 — name·access 와 같은 결로 한 줄 더 붙인다 */}
+          {lang === 'verse' && verseFrom && (
+            <>
+              <span className="lh-spec-k">{verseFrom.k}</span>
+              <div className="lh-spec-v">
+                <Markdown text={verseFrom.v} codeLang={lang} decorate={deco} />
+              </div>
+            </>
+          )}
+        </div>
+      )}
+      {p.docs && (
+        <div className="lh-docs">
+          <Markdown text={p.docs} codeLang={lang} decorate={deco} />
+        </div>
+      )}
+      {lang !== 'verse' && fromRows.length > 0 && (
+        <div className="lh-from">
+          {fromRows.map((f, i) => (
+            <Fragment key={i}>
+              <span className="lh-spec-k">{f.k}</span>
+              <Markdown text={f.v} codeLang={lang} decorate={deco} />
+            </Fragment>
+          ))}
+        </div>
+      )}
+      {/* 토큰 설명 — 카드 밖(아래/위)에 한 곳에 떠서 글자만 바뀐다. body 포털이라 카드 위(z)에 뜬다 */}
+      {tip &&
+        createPortal(
+          <div className="lh-tokdesc" style={{ left: tip.left, top: tip.top, bottom: tip.bottom }}>
+            {tip.text}
+          </div>,
+          document.body
+        )}
+    </div>
+  )
+}
+
+// Wrap [char, char+len) ranges of a line's text in classed spans. Wraps are applied
+// to text nodes (split at the boundaries), so a semantic span always ends up as the
+// innermost element and its color wins over the surrounding hljs token's.
+function decorateLine(html: string, spans: SemSpan[]): string {
+  const root = document.createElement('div')
+  root.innerHTML = html
+  for (const { char, len, cls } of spans) {
+    const targets: { node: Text; start: number; end: number }[] = []
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+    let pos = 0
+    for (let n = walker.nextNode() as Text | null; n; n = walker.nextNode() as Text | null) {
+      const s = Math.max(char, pos)
+      const e = Math.min(char + len, pos + n.data.length)
+      if (s < e) targets.push({ node: n, start: s - pos, end: e - pos })
+      pos += n.data.length
+      if (pos >= char + len) break
+    }
+    for (const t of targets) {
+      const piece = t.start > 0 ? t.node.splitText(t.start) : t.node
+      if (t.end - t.start < piece.data.length) piece.splitText(t.end - t.start)
+      const span = document.createElement('span')
+      span.className = cls
+      piece.parentNode?.replaceChild(span, piece)
+      span.appendChild(piece)
+    }
+  }
+  return root.innerHTML
+}
+
+// DiffMarks / diffMarksOf moved to ../lib/cmDiff (shared with the CM editor). Imported above.
+
+// where the mouse is, in LSP document coordinates (0-based line/character).
+// caretRangeFromPoint gives the text node + offset under the cursor; the character
+// is that offset plus the lengths of the line's earlier text nodes.
+function posAtPoint(x: number, y: number): { line: number; character: number } | null {
+  const el = document.elementFromPoint(x, y) as HTMLElement | null
+  const lineEl = el?.closest?.('[data-ln]') as HTMLElement | null
+  if (!lineEl) return null
+  const ln = Number(lineEl.dataset.ln)
+  if (!ln) return null
+  const range = document.caretRangeFromPoint(x, y)
+  if (!range || range.startContainer.nodeType !== Node.TEXT_NODE || !lineEl.contains(range.startContainer)) return null
+  let ch = range.startOffset
+  const walker = document.createTreeWalker(lineEl, NodeFilter.SHOW_TEXT)
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    if (n === range.startContainer) return { line: ln - 1, character: ch }
+    ch += n.textContent?.length ?? 0
+  }
+  return null
+}
+
+function posAt(e: React.MouseEvent): { line: number; character: number } | null {
+  return posAtPoint(e.clientX, e.clientY)
+}
+
+// 본문에서 드래그한 코드 → 그 자리에서 복사하거나 Claude에게 바로 질문하는 플로팅 바.
+// 채팅의 SelectionToolbar와 같은 패턴이고, 코드 뷰의 [data-ln] 줄 번호가 잡히면
+// 선택 범위(시작·끝 줄)도 함께 전달해 질문에 정확한 위치가 실리게 한다.
+function SelectionAskBar({
+  root,
+  onAsk
+}: {
+  root: HTMLElement | null
+  onAsk: (text: string, from: number | null, to: number | null) => void
+}) {
+  const barRef = useRef<HTMLDivElement>(null)
+  // 드래그를 마친 마우스 좌표(x·y)에 앵커 — rectTop/Left는 당시 선택 rect의 스냅샷으로,
+  // 스크롤 시 선택이 움직인 만큼만 바를 따라 옮기는 기준이 된다
+  const [pos, setPos] = useState<{
+    x: number
+    y: number
+    rectTop: number
+    rectLeft: number
+    text: string
+    from: number | null
+    to: number | null
+  } | null>(null)
+  const [copied, setCopied] = useState(false)
+
+  useEffect(() => {
+    if (!root) return
+    const lineOf = (node: Node | null): number | null => {
+      const el = node && (node.nodeType === Node.ELEMENT_NODE ? (node as HTMLElement) : node.parentElement)
+      const ln = el?.closest?.('[data-ln]') as HTMLElement | null
+      const n = ln ? Number(ln.dataset.ln) : NaN
+      return Number.isFinite(n) && n > 0 ? n : null
+    }
+    const read = (): {
+      rect: DOMRect
+      text: string
+      from: number | null
+      to: number | null
+    } | null => {
+      const sel = window.getSelection()
+      if (!sel || sel.isCollapsed || sel.rangeCount === 0) return null
+      const text = sel.toString().trim()
+      if (!text) return null
+      // 본문(코드/마크다운) 안에서 시작하고 끝난 선택만 — 헤더의 경로 드래그 등은 제외
+      const inBody = (n: Node | null): boolean => {
+        const el = n && (n.nodeType === Node.ELEMENT_NODE ? (n as HTMLElement) : n.parentElement)
+        // .cm-content = CodeMirror 편집기 본문도 본문으로 인정 (줄 번호는 data-ln이 없어
+        // null로 — 선택 텍스트만 질문에 실린다)
+        return !!el?.closest?.('.fv-code, .fv-md, .cm-content') && root.contains(n)
+      }
+      if (!inBody(sel.anchorNode) || !inBody(sel.focusNode)) return null
+      const range = sel.getRangeAt(0)
+      const rect = range.getBoundingClientRect()
+      if (rect.width === 0 && rect.height === 0) return null
+      return {
+        rect,
+        text,
+        from: lineOf(range.startContainer),
+        to: lineOf(range.endContainer)
+      }
+    }
+    // 새 드래그/클릭이 시작되는 순간(mousedown) 이전 툴바를 즉시 내린다 —
+    // mouseup까지 낡은 툴바가 남아 있으면 반응이 한 박자 늦게 느껴진다
+    const onMouseDown = (e: MouseEvent): void => {
+      if (barRef.current?.contains(e.target as Node)) return
+      setPos(null)
+    }
+    // 드래그(선택)만으론 안 띄우고, 선택 위에서 우클릭했을 때만 툴바를 연다(사용자 요청).
+    // 본문 선택이 없으면 막지 않고 기본 동작에 맡긴다.
+    const onContextMenu = (e: MouseEvent): void => {
+      if (barRef.current?.contains(e.target as Node)) return
+      const r = read()
+      if (!r) return
+      e.preventDefault()
+      setPos({
+        x: e.clientX || r.rect.right,
+        y: e.clientY || r.rect.bottom,
+        rectTop: r.rect.top,
+        rectLeft: r.rect.left,
+        text: r.text,
+        from: r.from,
+        to: r.to
+      })
+      setCopied(false)
+    }
+    // 스크롤은 캡처로 받아 내부 스크롤 페인(.fv-code 등)의 이동도 따라가게 한다 —
+    // 선택 rect가 움직인 변위만큼 마우스 앵커도 함께 이동
+    const onScroll = (): void =>
+      setPos((p) => {
+        if (!p) return p
+        const r = read()
+        if (!r) return null
+        return {
+          ...p,
+          x: p.x + (r.rect.left - p.rectLeft),
+          y: p.y + (r.rect.top - p.rectTop),
+          rectTop: r.rect.top,
+          rectLeft: r.rect.left
+        }
+      })
+    // Esc는 툴바만 접는다 — 뷰어의 Esc(카드 닫기)는 .sel-bar가 없을 때만 동작
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') {
+        setPos(null)
+        window.getSelection()?.removeAllRanges()
+      }
+      // Ctrl/⌘+C — 본문 선택을 클립보드로 복사하고 툴바는 내린다. 동기식
+      // execCommand가 1순위, 실패하면 clipboard API 폴백. read()가 null이면
+      // 본문 밖 선택(입력창·헤더)이니 네이티브 동작에 맡긴다.
+      // e.code(물리 키)로 본다 — 한글 IME에선 e.key가 'ㅊ'으로 와서 'c' 비교가 새는다.
+      if ((e.ctrlKey || e.metaKey) && (e.code === 'KeyC' || e.key.toLowerCase() === 'c')) {
+        const r = read()
+        if (r) {
+          let ok = false
+          try {
+            ok = document.execCommand('copy')
+          } catch {
+            /* execCommand 미지원 — 아래 폴백 */
+          }
+          if (!ok) {
+            const raw = window.getSelection()?.toString()
+            navigator.clipboard?.writeText(raw || r.text).catch(() => {})
+          }
+          setPos(null) // 복사했으면 툴바는 임무 종료
+        }
+      }
+    }
+    // 선택이 어디서든 사라지면(F12 점프의 removeAllRanges, 프로그램적 해제 등)
+    // 툴바도 같이 내려간다 — 마우스 이벤트만 보고 있으면 키보드 경로를 놓친다
+    const onSelChange = (): void => {
+      const sel = window.getSelection()
+      if (!sel || sel.isCollapsed) setPos(null)
+    }
+    document.addEventListener('mousedown', onMouseDown)
+    document.addEventListener('contextmenu', onContextMenu)
+    root.addEventListener('scroll', onScroll, true)
+    window.addEventListener('keydown', onKey)
+    document.addEventListener('selectionchange', onSelChange)
+    return () => {
+      document.removeEventListener('mousedown', onMouseDown)
+      document.removeEventListener('contextmenu', onContextMenu)
+      root.removeEventListener('scroll', onScroll, true)
+      window.removeEventListener('keydown', onKey)
+      document.removeEventListener('selectionchange', onSelChange)
+    }
+  }, [root])
+
+  if (!pos) return null
+  // 커서 오른쪽 아래가 기본 자리 — 화면 가장자리에 닿으면 반대쪽으로 뒤집는다
+  const BAR_W = 240
+  const BAR_H = 44
+  const flipX = pos.x + 14 + BAR_W > window.innerWidth - 8
+  const flipY = pos.y + 16 + BAR_H > window.innerHeight - 8
+  const style: CSSProperties = {
+    left: Math.max(8, flipX ? pos.x - 10 : pos.x + 14),
+    top: Math.max(8, flipY ? pos.y - 12 : pos.y + 16),
+    transform: [flipX ? 'translateX(-100%)' : '', flipY ? 'translateY(-100%)' : ''].join(' ').trim() || undefined
+  }
+  const copy = (): void => {
+    navigator.clipboard?.writeText(pos.text).then(
+      () => {
+        setCopied(true)
+        setTimeout(() => setPos(null), 500) // '복사됨'을 한 박자 보여주고 내린다
+      },
+      () => {}
+    )
+  }
+  const ask = (): void => {
+    onAsk(pos.text, pos.from, pos.to)
+    setPos(null)
+    window.getSelection()?.removeAllRanges()
+  }
+  // 포털로 body에 띄운다 — 오버레이의 backdrop-filter가 fixed 좌표의 기준을 바꿔
+  // 바가 엉뚱한 위치에 뜨던 문제를 원천 차단 (body 기준 = 진짜 뷰포트 좌표)
+  return createPortal(
+    <div
+      className="sel-bar"
+      ref={barRef}
+      style={style}
+      // keep the highlight alive when a button is pressed (mousedown would otherwise
+      // collapse the selection before our click handler reads it)
+      onMouseDown={(e) => e.preventDefault()}
+    >
+      <button className="sel-act" onClick={copy}>
+        {copied ? <IconCheck size={14} /> : <IconCopy size={14} />}
+        <span>{copied ? t('복사됨', 'Copied') : t('복사', 'Copy')}</span>
+      </button>
+      <span className="sel-div" />
+      <button className="sel-act" onClick={ask}>
+        <IconBot size={14} />
+        <span>{t('Claude에게 질문', 'Ask Claude')}</span>
+      </button>
+    </div>,
+    document.body
+  )
+}
+
+// ── 파일 내 검색 (Ctrl+F) ────────────────────────────────────
+// CSS Custom Highlight API로 본문 텍스트에 매치를 칠한다 — DOM(innerHTML)을 건드리지
+// 않아 구문 강조·시맨틱 토큰과 충돌하지 않는다. 코드 뷰는 줄([data-ln]) 단위로,
+// 마크다운/플레인 뷰는 본문 전체를 한 블록으로 스캔해 하이라이트 span 으로 쪼개진
+// 텍스트 노드 경계를 넘는 매치도 잡는다.
+interface HighlightCtor {
+  new (...r: Range[]): unknown
+}
+const HL = (globalThis as unknown as { Highlight?: HighlightCtor }).Highlight
+const hlReg = (CSS as unknown as { highlights?: Map<string, unknown> }).highlights
+
+function FindBar({ root, contentKey, onClose }: { root: HTMLElement | null; contentKey: string; onClose: () => void }) {
+  const inputRef = useRef<HTMLInputElement>(null)
+  const [query, setQuery] = useState('')
+  const [cur, setCur] = useState(0)
+  const [total, setTotal] = useState(0)
+  const ranges = useRef<Range[]>([])
+
+  // 닫힐 때 하이라이트도 같이 걷어낸다
+  useEffect(
+    () => () => {
+      hlReg?.delete('fvfind')
+      hlReg?.delete('fvfind-cur')
+    },
+    []
+  )
+
+  // 이미 열려 있는 상태에서 Ctrl+F를 또 누르면 입력으로 재포커스 (전체 선택)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 'f') {
+        e.preventDefault()
+        inputRef.current?.select()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  // 쿼리/본문이 바뀌면 매치를 다시 수집해 전체 하이라이트를 칠한다
+  useEffect(() => {
+    ranges.current = []
+    hlReg?.delete('fvfind')
+    hlReg?.delete('fvfind-cur')
+    const body = root?.querySelector('.fv-code, .fv-md')
+    const q = query.toLowerCase()
+    if (!body || !q) {
+      setTotal(0)
+      setCur(0)
+      return
+    }
+    const out: Range[] = []
+    const scan = (block: Element): void => {
+      const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT)
+      const nodes: Text[] = []
+      const offs: number[] = []
+      let text = ''
+      for (let n = walker.nextNode() as Text | null; n; n = walker.nextNode() as Text | null) {
+        nodes.push(n)
+        offs.push(text.length)
+        text += n.data
+      }
+      if (!text) return
+      const low = text.toLowerCase()
+      // pos(블록 내 문자 오프셋) → 그 글자가 든 텍스트 노드와 노드 내 오프셋
+      const locate = (pos: number, isEnd: boolean): { n: Text; o: number } => {
+        const p = isEnd ? pos - 1 : pos
+        let i = offs.length - 1
+        while (i > 0 && offs[i] > p) i--
+        return { n: nodes[i], o: pos - offs[i] }
+      }
+      let idx = low.indexOf(q)
+      while (idx >= 0 && out.length < 1500) {
+        const s = locate(idx, false)
+        const e = locate(idx + q.length, true)
+        try {
+          const r = document.createRange()
+          r.setStart(s.n, s.o)
+          r.setEnd(e.n, e.o)
+          out.push(r)
+        } catch {
+          /* 경계 계산이 어긋난 매치는 건너뛴다 */
+        }
+        idx = low.indexOf(q, idx + Math.max(q.length, 1))
+      }
+    }
+    const lines = body.querySelectorAll('[data-ln]')
+    if (lines.length) lines.forEach(scan)
+    else scan(body)
+    ranges.current = out
+    setTotal(out.length)
+    setCur(0)
+    if (out.length && HL && hlReg) hlReg.set('fvfind', new HL(...out))
+  }, [query, root, contentKey])
+
+  // 현재 매치 강조 + 화면 중앙으로 스크롤
+  useEffect(() => {
+    hlReg?.delete('fvfind-cur')
+    const r = ranges.current[cur]
+    if (!r) return
+    if (HL && hlReg) hlReg.set('fvfind-cur', new HL(r))
+    const el = r.startContainer.nodeType === Node.TEXT_NODE ? r.startContainer.parentElement : (r.startContainer as Element)
+    el?.scrollIntoView({ block: 'center' })
+  }, [cur, total, query])
+
+  const step = (d: number): void => {
+    if (total) setCur((c) => (c + d + total) % total)
+  }
+
+  return (
+    <div className="fv-find">
+      <IconSearch size={13} />
+      <input
+        ref={inputRef}
+        autoFocus
+        value={query}
+        placeholder={t('파일 내 검색…', 'Find in file…')}
+        onChange={(e) => setQuery(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault()
+            step(e.shiftKey ? -1 : 1)
+          } else if (e.key === 'Escape') {
+            e.stopPropagation()
+            onClose()
+          }
+        }}
+      />
+      <span className="cnt">{total ? `${cur + 1}/${total}` : query ? t('0개', '0 results') : ''}</span>
+      <button
+        className="has-tip"
+        data-tip={t('이전 (Shift+Enter)', 'Previous (Shift+Enter)')}
+        aria-label={t('이전 결과', 'Previous result')}
+        onClick={() => step(-1)}
+        disabled={!total}
+      >
+        <IconChevDown size={14} style={{ transform: 'rotate(180deg)' }} />
+      </button>
+      <button
+        className="has-tip"
+        data-tip={t('다음 (Enter)', 'Next (Enter)')}
+        aria-label={t('다음 결과', 'Next result')}
+        onClick={() => step(1)}
+        disabled={!total}
+      >
+        <IconChevDown size={14} />
+      </button>
+      <button className="has-tip" data-tip={t('닫기 (Esc)', 'Close (Esc)')} aria-label={t('검색 닫기', 'Close search')} onClick={onClose}>
+        <IconClose size={14} />
+      </button>
+    </div>
+  )
+}
+
+// an image file's body: the bitmap centered on a checkerboard, scaled to fit the card
+// (never upscaled) and then multiplied by the viewer's Ctrl+휠 zoom. The width is
+// computed in pixels (natural size × fit × zoom) so centering and overflow scrolling
+// stay exact; a corner chip reports the natural size and the effective scale.
+function ImageView({ src, alt, zoom }: { src: string; alt: string; zoom: number }) {
+  const boxRef = useRef<HTMLDivElement>(null)
+  const [nat, setNat] = useState<{ w: number; h: number } | null>(null)
+  const [fit, setFit] = useState(1)
+  const [err, setErr] = useState(false)
+
+  // fit-to-pane scale, re-measured when the (resizable) card changes size
+  useEffect(() => {
+    const el = boxRef.current
+    if (!el || !nat) return
+    const measure = (): void => {
+      const availW = Math.max(50, el.clientWidth - 40)
+      const availH = Math.max(50, el.clientHeight - 40)
+      setFit(Math.min(1, availW / nat.w, availH / nat.h))
+    }
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [nat])
+
+  if (err) return <div className="fv-empty">{t('이미지를 표시할 수 없어요', "Can't display this image")}</div>
+  const scale = fit * zoom
+  return (
+    <div className="fv-imgview">
+      <div className="fv-imgbody scroll" ref={boxRef}>
+        <img
+          className="fv-imgel"
+          src={src}
+          alt={alt}
+          draggable={false}
+          style={nat ? { width: Math.max(1, Math.round(nat.w * scale)) } : { visibility: 'hidden' }}
+          onLoad={(e) => {
+            const img = e.currentTarget
+            // an SVG without intrinsic dimensions reports 0×0 — give it a sane canvas
+            setNat({ w: img.naturalWidth || 800, h: img.naturalHeight || 600 })
+          }}
+          onError={() => setErr(true)}
+        />
+      </div>
+      {nat && (
+        <div className="fv-img-meta">
+          {nat.w} × {nat.h}
+          {Math.round(scale * 100) !== 100 ? ` · ${Math.round(scale * 100)}%` : ''}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// HTML 파일의 렌더된 페이지 보기 — 문서(와 상대경로 리소스)를 main의 ccg-page:// 스킴이
+// 디스크에서 서빙하고, sandbox iframe(opaque origin)에 띄워 페이지 스크립트가 앱에 손대지
+// 못하게 격리한다. LSP 워처는 html을 안 다루므로(코드 서버 확장자만) 문서 자체를 HEAD로
+// 가볍게 폴링해 last-modified가 바뀌면(에이전트 수정·코드 보기에서 저장) 다시 로드한다.
+// onBridgeKey: iframe이 포커스를 가지면 부모가 keydown을 못 받는다 — 서빙 시 문서에 덧붙는
+// 입력 브리지(main의 PAGE_KEY_BRIDGE)가 Ctrl+D('d')·Esc('escape')를 postMessage로 중계해 온다.
+// 우클릭 드래그(마우스 제스처)도 같은 브리지로 중계돼, iframe 좌표를 부모 좌표로 옮긴 합성
+// PointerEvent를 iframe 엘리먼트에 재디스패치한다 — 카드의 MouseGestureLayer(캡처 down +
+// window move/up)가 실제 이벤트와 구별 없이 받아 궤적·인식이 그대로 동작한다.
+function HtmlPreview({ cwd, filePath, onBridgeKey }: { cwd: string; filePath: string; onBridgeKey?: (k: string) => void }) {
+  const [url, setUrl] = useState<string | null>(null)
+  const [rev, setRev] = useState(0) // iframe 강제 리마운트 세대 (문서 변경 감지 시 +1)
+  const lastMod = useRef('')
+  const frameRef = useRef<HTMLIFrameElement>(null)
+  const onKeyRef = useRef(onBridgeKey)
+  onKeyRef.current = onBridgeKey
+  useEffect(() => {
+    const PTR_TYPE: Record<string, string> = {
+      pd: 'pointerdown',
+      pm: 'pointermove',
+      pu: 'pointerup',
+      pc: 'pointercancel'
+    }
+    const h = (ev: MessageEvent): void => {
+      const d = ev.data as {
+        ccgPageKey?: string
+        ccgPagePtr?: { t: string; x: number; y: number }
+      } | null
+      if (!d) return
+      // 우리 iframe(최상위 미리보기 문서)이 보낸 것만 — 중첩 프레임/딴 창은 무시
+      const f = frameRef.current
+      if (!f || ev.source !== f.contentWindow) return
+      if (d.ccgPageKey) {
+        onKeyRef.current?.(d.ccgPageKey)
+        return
+      }
+      const p = d.ccgPagePtr
+      const type = p && PTR_TYPE[p.t]
+      if (!p || !type) return
+      const r = f.getBoundingClientRect()
+      f.dispatchEvent(
+        new PointerEvent(type, {
+          bubbles: true,
+          cancelable: true,
+          clientX: r.left + p.x,
+          clientY: r.top + p.y,
+          // 실제 이벤트 규약대로: down/up만 우버튼(2), move는 -1 + buttons 플래그
+          button: p.t === 'pd' || p.t === 'pu' ? 2 : -1,
+          buttons: p.t === 'pm' ? 2 : 0,
+          pointerId: 7777,
+          pointerType: 'mouse',
+          isPrimary: true
+        })
+      )
+    }
+    window.addEventListener('message', h)
+    return () => window.removeEventListener('message', h)
+  }, [])
+  useEffect(() => {
+    setUrl(null)
+    setRev(0)
+    lastMod.current = ''
+    let alive = true
+    window.api
+      .htmlPreviewUrl(cwd, filePath)
+      .then((u) => alive && setUrl(u))
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [cwd, filePath])
+  useEffect(() => {
+    if (!url) return
+    let alive = true
+    const iv = setInterval(() => {
+      fetch(url, { method: 'HEAD' })
+        .then((r) => {
+          if (!alive) return
+          const m = r.headers.get('last-modified') || ''
+          if (lastMod.current && m && m !== lastMod.current) setRev((n) => n + 1)
+          lastMod.current = m
+        })
+        .catch(() => {})
+    }, 1500)
+    return () => {
+      alive = false
+      clearInterval(iv)
+    }
+  }, [url])
+  if (!url)
+    return (
+      <div className="fv-loading">
+        <span className="spin" />
+      </div>
+    )
+  return (
+    <iframe
+      key={rev}
+      ref={frameRef}
+      className="fv-htmlframe"
+      src={url}
+      // 스크립트는 돌리되(차트·데모) 앱과는 격리 — allow-same-origin은 주지 않는다
+      sandbox="allow-scripts allow-forms allow-modals"
+      title={t('HTML 미리보기', 'HTML preview')}
+    />
+  )
+}
+
+// the file's body: markdown files render as formatted markdown; everything else is
+// shown as line-numbered, syntax-highlighted source. When LSP is ready the code gets
+// hover type info and Ctrl+클릭 go-to-definition.
+function CodeView({
+  path,
+  content,
+  zoom,
+  cwd,
+  lsp,
+  coldHover = true,
+  sem,
+  structOv,
+  jump,
+  marks,
+  mdSource,
+  onNavigate
+}: {
+  path: string
+  content: string
+  zoom: number
+  cwd: string
+  lsp: boolean
+  // 서버 준비 전(콜드) 호버 허용 여부 — git 스냅샷처럼 화면 내용이 디스크와 다른 보기는
+  // 좌표가 거짓이 되므로 꺼야 한다 (FileModal이 ovContent 유무로 정한다)
+  coldHover?: boolean
+  sem: LspSemanticTokens | null
+  structOv: StructOv | null // C++ struct 연보라 보정 (FileModal에서 한 번 계산해 내려줌)
+  jump: { line: number; tick: number } | null
+  marks: DiffMarks | null // changed-file decorations (null = plain viewing)
+  mdSource?: boolean // markdown with a diff opens as source so the marks are visible
+  onNavigate: (loc: LspLocation) => void
+}) {
+  const t = fileTypeFor(path)
+  // 호버 게이트 — 서버 준비 전(콜드)에도 답할 수 있는 언어는 열어 둔다: Verse는 합성 카드
+  // (용어집·지역변수·선언부), 그 외 지원 언어는 키워드·내장 타입 용어집이 메인에서 나온다.
+  // 정의 이동(Ctrl+클릭/F12)·시맨틱 색은 여전히 서버(lsp=ready)가 있어야 한다.
+  const hoverOk = lsp || (coldHover && (t.lang === 'verse' || hasGlossary(t.lang)))
+  const scrollRef = useRef<HTMLDivElement>(null)
+  // defMods: C#용 한정자 보강 — OmniSharp 호버 시그니처엔 public/static이 안 실려서
+  // 정의 줄을 읽어 따로 채운다 (도착하면 카드의 ACCESS 행이 늦게 나타날 수 있음)
+  const [hover, setHover] = useState<{
+    x: number
+    y: number
+    below: boolean
+    md: string
+    defMods?: string[]
+    word?: string // 커서 밑 식별자 — 별칭 카드의 NAME 복원(HoverContent)
+  } | null>(null)
+  // Ctrl(정의 모드) 커서 표시는 React 상태가 아니라 DOM 클래스 직접 토글 —
+  // Control 키만 눌러도 일어나던 재렌더가 코드 줄의 텍스트 노드를 갈아끼워
+  // 선택(더블클릭 단어)을 파괴했고, 그 탓에 Ctrl+C 복사가 항상 빈손이었다.
+  const preRef = useRef<HTMLPreElement>(null)
+  const setCtrl = useCallback((on: boolean): void => {
+    preRef.current?.classList.toggle('lsp-ctrl', on)
+  }, [])
+  const [flash, setFlash] = useState<number | null>(null) // 1-based line to spotlight
+  // 오버뷰 룰러는 "스크롤해야 보이는 변경을 한눈에"가 목적이라 스크롤이 생길 때만 의미가
+  // 있다 — 파일이 화면에 다 들어오면 숨긴다. 카드 크기/본문/줌 변화에 다시 잰다.
+  const [rulerOverflows, setRulerOverflows] = useState(false)
+  const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const hoverSeq = useRef(0)
+  // F12(정의로 이동)의 대상 — 마지막 일반 클릭 위치(IDE의 캐럿), 없으면 현재 마우스 위치
+  const lastClickPos = useRef<{ line: number; character: number } | null>(null)
+  const mousePt = useRef<{ x: number; y: number } | null>(null)
+  // 떠 있는 호버 카드 엘리먼트 — 커서가 카드(와 그 길목) 안에 있는지 실측으로 판단
+  const hoverCardRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    lastClickPos.current = null
+    mousePt.current = null
+  }, [path])
+
+  const isMd = t.lang === 'markdown' && !mdSource
+  // drop a single trailing newline so the gutter and the rendered code agree on the
+  // line count (otherwise the final "\n" adds a phantom unnumbered line).
+  // memo — CodeView는 분석칩 %(800ms 폴링)·호버 카드 표시/해제마다 재렌더되므로
+  // O(파일) 문자열 일은 전부 memo로 묶는다(행 memo는 아래 gutterCells/codeRows).
+  const body = useMemo(() => (isMd ? '' : content.replace(/\n$/, '')), [isMd, content])
+  const lineCount = useMemo(() => (isMd ? 0 : body.split('\n').length), [isMd, body])
+
+  // semantic tokens grouped per line, mapped to color classes (skipping kinds we
+  // leave to hljs) — recomputed only when a new token set arrives. 매핑 로직은
+  // lib/semTokens.semByLine 공용(CM 편집기와 한 벌 — Rider 언어 modifier 매핑·
+  // C++ struct 보정·C# 타입 힌트·null 연산자 키워드색 포함).
+  const semByLine = useMemo(
+    () => (sem ? semSpansByLine(sem, t.lang, structOv, body) : null),
+    [sem, t.lang, body, structOv]
+  )
+  // 식별자 텍스트 → 색 클래스 사전 — 호버 카드의 시그니처를 본문과 같은 색으로 칠하는 데
+  // 쓴다(같은 이름 다수결 — lib/semTokens.buildSemDict 공용, CM 편집기와 한 벌). 세션
+  // 사전에도 누적해 다른 파일의 호버에서도 이 이름을 칠할 수 있게 한다(상한).
+  const semDict = useMemo(() => {
+    const dict = sem ? buildSemDict(sem, t.lang, body, structOv) : null
+    if (dict) for (const [text, cls] of dict) capMapSet(sessionSemDict, text, cls, SESSION_SEM_MAX)
+    return dict
+  }, [sem, t.lang, body, structOv])
+  const lines = useMemo(() => {
+    if (isMd || body.length > HL_LIMIT) return null
+    const base = highlightToLines(body, t.lang)
+    if (!semByLine) return base
+    return base.map((h, i) => {
+      const spans = semByLine.get(i)
+      return spans ? decorateLine(h, spans) : h
+    })
+  }, [isMd, body, t.lang, semByLine])
+
+  const clearHover = useCallback((): void => {
+    if (hoverTimer.current) clearTimeout(hoverTimer.current)
+    hoverTimer.current = null
+    hoverSeq.current++
+    setHover(null)
+  }, [])
+
+  // Ctrl/⌘ turns the pointer into "definition mode" — tracked globally so pressing
+  // the key without moving the mouse still updates the cursor
+  useEffect(() => {
+    if (!lsp) return
+    const down = (e: KeyboardEvent): void => {
+      if (e.key === 'Control' || e.key === 'Meta') {
+        setCtrl(true)
+        clearHover() // 정의 모드 진입 — 떠 있던/예약된 호버 카드 정리
+      }
+    }
+    const up = (e: KeyboardEvent): void => {
+      if (e.key === 'Control' || e.key === 'Meta') setCtrl(false)
+    }
+    const blur = (): void => setCtrl(false)
+    window.addEventListener('keydown', down)
+    window.addEventListener('keyup', up)
+    window.addEventListener('blur', blur)
+    return () => {
+      window.removeEventListener('keydown', down)
+      window.removeEventListener('keyup', up)
+      window.removeEventListener('blur', blur)
+      setCtrl(false)
+    }
+  }, [lsp, clearHover, setCtrl])
+
+  const goToDefinition = useCallback(
+    (pos: { line: number; character: number }): void => {
+      clearHover()
+      window.api.lsp
+        .definition(cwd, path, pos)
+        .then((locs) => {
+          if (locs?.[0]) onNavigate(locs[0])
+        })
+        .catch(() => {})
+    },
+    [cwd, path, clearHover, onNavigate]
+  )
+
+  // F12 = 정의로 이동 (IDE 관례) — 직전에 클릭한 심볼, 클릭이 없었으면 마우스가
+  // 가리키는 심볼로 점프한다. 입력창에 포커스가 있을 땐 끼어들지 않는다.
+  useEffect(() => {
+    if (!lsp) return
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key !== 'F12' || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return
+      const t = e.target as HTMLElement | null
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return
+      const pos = lastClickPos.current ?? (mousePt.current ? posAtPoint(mousePt.current.x, mousePt.current.y) : null)
+      if (!pos) return
+      e.preventDefault()
+      goToDefinition(pos)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [lsp, goToDefinition])
+
+  // a definition jump landed in this document — scroll the line into view + flash it.
+  // 긴 줄이면 scrollIntoView가 가로를 오른쪽 끝까지 끌고 가서 불편하다 — 세로만
+  // 가운데로 맞추고 가로는 항상 줄 시작(왼쪽)으로 되돌린다
+  useEffect(() => {
+    if (!jump || !lines) return
+    const el = scrollRef.current?.querySelector(`[data-ln="${jump.line}"]`)
+    if (!el) return
+    el.scrollIntoView({ block: 'center', inline: 'nearest' })
+    if (scrollRef.current) scrollRef.current.scrollLeft = 0
+    setFlash(jump.line)
+    const timer = setTimeout(() => setFlash(null), 1500)
+    return () => clearTimeout(timer)
+  }, [jump, lines])
+
+  // 스크롤 가능 여부를 재서 오버뷰 룰러 표시를 토글한다. 카드 크기 변화(최대화/복원·창
+  // 리사이즈)는 ResizeObserver로, 본문·줌 변화는 deps 재실행으로 다시 잰다.
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const measure = (): void => setRulerOverflows(el.scrollHeight > el.clientHeight + 1)
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [lines, body, zoom])
+
+  const onMove = (e: React.MouseEvent): void => {
+    mousePt.current = { x: e.clientX, y: e.clientY }
+    setCtrl((e.ctrlKey || e.metaKey) && lsp) // 정의 이동 커서는 서버가 있어야 의미 있다
+    // Ctrl/⌘(정의 모드)에서는 호버 카드를 띄우지 않는다 — 점프하려는 참에 카드가
+    // 시야와 클릭 대상을 가리지 않게
+    if (e.ctrlKey || e.metaKey) {
+      clearHover()
+      return
+    }
+    // 텍스트 선택 중/선택돼 있는 동안엔 호버를 띄우지 않는다 — 더블클릭 단어 선택,
+    // 드래그 선택과 카드·선택 툴바가 겹치며 싸우던 문제(IDE들도 같은 규칙)
+    const sel = window.getSelection()
+    if (sel && !sel.isCollapsed) {
+      clearHover()
+      return
+    }
+    // 떠 있는 카드는 커서가 앵커 지점에서 벗어나는 즉시 치운다 — 다음 LSP 응답이
+    // 올 때까지(디바운스+왕복) 낡은 카드가 끈적하게 남아 따라다니던 느낌 제거.
+    // 단, 카드 쪽으로 가는 중이면 살려둔다(복사하러 들어가는 길) — 카드 실측 영역
+    // + 여유 28px 안에 커서가 있으면 닫지 않는다.
+    setHover((h) => {
+      if (!h) return h
+      const card = hoverCardRef.current
+      if (card) {
+        const r = card.getBoundingClientRect()
+        const m = 28
+        if (e.clientX >= r.left - m && e.clientX <= r.right + m && e.clientY >= r.top - m && e.clientY <= r.bottom + m) return h
+      }
+      const dx = e.clientX - h.x
+      const dy = e.clientY - h.y
+      return dx * dx + dy * dy > 26 * 26 ? null : h
+    })
+    if (hoverTimer.current) clearTimeout(hoverTimer.current)
+    const seq = ++hoverSeq.current
+    hoverTimer.current = setTimeout(() => {
+      // 디바운스 사이에 선택이 생겼으면(더블클릭 등) 카드를 띄우지 않는다
+      const s2 = window.getSelection()
+      if (s2 && !s2.isCollapsed) return
+      const pos = posAt(e)
+      if (!pos) {
+        if (seq === hoverSeq.current) setHover(null)
+        return
+      }
+      window.api.lsp
+        .hover(cwd, path, pos)
+        .then((r) => {
+          if (seq !== hoverSeq.current) return // stale — the mouse moved on
+          if (!r || !r.contents) return setHover(null)
+          const s3 = window.getSelection()
+          if (s3 && !s3.isCollapsed) return // 응답 오는 사이 선택됨 — 양보
+          const word = identAt(content.split('\n')[pos.line] ?? '', pos.character) ?? undefined
+          setHover({
+            x: e.clientX,
+            y: e.clientY,
+            below: e.clientY < window.innerHeight * 0.55,
+            md: r.contents,
+            word
+          })
+          // C#: 시그니처에 접근지시자가 없다 — 정의 선언 줄을 읽어 ACCESS를 보강.
+          // (메타데이터 전용 심볼은 파일이 안 읽혀 조용히 생략된다)
+          if (t.lang === 'csharp') {
+            void window.api.lsp
+              .definition(cwd, path, pos)
+              .then(async (locs) => {
+                const loc = locs?.[0]
+                if (!loc || seq !== hoverSeq.current) return
+                const f = await window.api.readFile(cwd, loc.path).catch(() => null)
+                const line = f?.content?.split('\n')[loc.line]
+                if (!line) return
+                const m =
+                  /^\s*((?:(?:public|private|protected|internal|static|readonly|virtual|override|sealed|abstract|async|partial|extern|unsafe|required|new|const|event)\s+)+)/.exec(
+                    line
+                  )
+                if (!m) return
+                const mods = [...new Set(m[1].trim().split(/\s+/))]
+                if (seq === hoverSeq.current) setHover((h) => (h ? { ...h, defMods: mods } : h))
+              })
+              .catch(() => {})
+          }
+        })
+        .catch(() => {})
+    }, HOVER_DELAY)
+  }
+
+  // 코드 영역을 떠날 때 — 호버 카드는 body 포털(별개 요소)이라 카드로 건너가는
+  // 것도 mouseleave다. 카드(또는 그 길목)로 들어가는 중이면 치우지 않는다.
+  const onLeavePre = (e: React.MouseEvent): void => {
+    const card = hoverCardRef.current
+    if (card) {
+      const rt = e.relatedTarget
+      if (rt instanceof Node && card.contains(rt)) return
+      const r = card.getBoundingClientRect()
+      const m = 28
+      if (e.clientX >= r.left - m && e.clientX <= r.right + m && e.clientY >= r.top - m && e.clientY <= r.bottom + m) return
+    }
+    clearHover()
+  }
+
+  const onClick = (e: React.MouseEvent): void => {
+    if (!(e.ctrlKey || e.metaKey)) {
+      // 일반 클릭 = F12의 대상 지정 (IDE의 캐럿 역할) — 빈 곳 클릭은 대상 해제
+      lastClickPos.current = posAt(e)
+      return
+    }
+    const pos = posAt(e)
+    if (!pos) return
+    e.preventDefault()
+    goToDefinition(pos)
+  }
+
+  // decorations apply only while the diff's new side still matches the file on disk
+  // (per-line views only — the un-numbered plain block for huge files can't be marked);
+  // a file changed outside the agent after the diff was taken simply shows unmarked.
+  const deco = !isMd && lines != null && marks && marks.newCount === lineCount ? marks : null
+
+  // 거터·본문 행 memo — 렌더마다 수천 개 엘리먼트를 새로 만들지 않게 한다. CodeView는 분석칩
+  // %·호버 카드 때문에 자주 재렌더되는데, [lines, deco, flash]가 그대로면 행 엘리먼트 정체성이
+  // 유지돼 React 조정이 즉시 끝난다. 삭제된 코드는 그 경계 자리에 "고스트 줄"(빨간 틴트 + 옛
+  // 줄 번호)로 끼워 넣어 지워진 내용도 보인다. data-ln이 없는 표시 전용 행이라 LSP 호버·정의
+  // 이동·검색·줄 범위 선택 어디에도 잡히지 않고, 실제 줄 번호 매김도 흔들리지 않는다.
+  const { gutterCells, codeRows } = useMemo((): {
+    gutterCells: React.ReactNode[]
+    codeRows: React.ReactNode[] | null
+  } => {
+    const gutterCells: React.ReactNode[] = []
+    const codeRows: React.ReactNode[] | null = !isMd && lines != null ? [] : null
+    if (isMd) return { gutterCells, codeRows }
+    const decoCls = (i: number): string => (deco?.added.has(i + 1) ? ' dadd' : '')
+    if (codeRows) {
+      const pushGhosts = (b: number): void => {
+        const gs = deco?.ghosts.get(b)
+        if (!gs) return
+        for (const g of gs) {
+          gutterCells.push(
+            <span key={`g${b}:${g.n}`} className="gdel">
+              {g.n}
+            </span>
+          )
+          codeRows.push(
+            t.lang ? (
+              <div
+                key={`g${b}:${g.n}`}
+                className="fvl gdel"
+                dangerouslySetInnerHTML={{
+                  __html: highlightCode(g.text || ' ', t.lang)
+                }}
+              />
+            ) : (
+              <div key={`g${b}:${g.n}`} className="fvl gdel">
+                {g.text || ' '}
+              </div>
+            )
+          )
+        }
+      }
+      pushGhosts(0)
+      lines!.forEach((h, i) => {
+        gutterCells.push(
+          <span key={i} className={decoCls(i).trim() || undefined}>
+            {i + 1}
+          </span>
+        )
+        codeRows.push(
+          <div
+            key={i}
+            className={'fvl' + (flash === i + 1 ? ' flash' : '') + decoCls(i)}
+            data-ln={i + 1}
+            dangerouslySetInnerHTML={{ __html: h }}
+          />
+        )
+        pushGhosts(i + 1)
+      })
+      // 변경된 파일: 마지막 줄이 추가면 그 초록 틴트를 카드 아래 빈 높이까지 잇는 채움 행을
+      // 둔다 — 짧은 파일에서 풀폭 틴트가 뚝 끊겨 '검은 밑줄'처럼 보이던 경계를 없앤다.
+      // 표시 전용(data-ln 없음)이라 호버·검색·정의 이동엔 잡히지 않는다.
+      if (deco) {
+        const tailCls = decoCls(lines!.length - 1) // 마지막 줄이 추가면 ' dadd', 아니면 ''
+        gutterCells.push(<span key="fill" className={'fv-fill' + tailCls} aria-hidden="true" />)
+        codeRows.push(<div key="fill" className={'fvl fv-fill' + tailCls} aria-hidden="true" />)
+      }
+    } else {
+      for (let i = 0; i < lineCount; i++) gutterCells.push(<span key={i}>{i + 1}</span>)
+    }
+    return { gutterCells, codeRows }
+  }, [isMd, lines, deco, flash, lineCount, t.lang])
+
+  // a changed file opens at its first change — the edit may sit deep in a long file,
+  // and nothing else hints where it is. Once per opened file (not again when semantic
+  // tokens re-render the lines).
+  const hasDeco = deco != null
+  useEffect(() => {
+    if (!hasDeco || !deco) return
+    let first = Infinity
+    deco.added.forEach((n) => (first = Math.min(first, n)))
+    deco.delAfter.forEach((b) => (first = Math.min(first, Math.max(1, Math.min(b + 1, lineCount)))))
+    if (!Number.isFinite(first)) return
+    scrollRef.current?.querySelector(`[data-ln="${first}"]`)?.scrollIntoView({ block: 'center' })
+    if (scrollRef.current) scrollRef.current.scrollLeft = 0 // 긴 줄이 가로를 끌고 가지 않게
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [path, hasDeco])
+
+  if (isMd) {
+    return (
+      <div className="fv-md scroll">
+        <div className="content" style={{ zoom }}>
+          <Markdown text={content} />
+        </div>
+      </div>
+    )
+  }
+
+  const jumpToLine = (n: number): void => {
+    // scrollIntoView(smooth)는 긴 줄에서 가로까지 끌고 간다 — 세로만 직접 계산해
+    // 부드럽게 이동하고 가로는 줄 시작(왼쪽)으로 고정
+    const sc = scrollRef.current
+    const el = sc?.querySelector(`[data-ln="${Math.max(1, Math.min(n, lineCount))}"]`)
+    if (!sc || !el) return
+    const top = sc.scrollTop + el.getBoundingClientRect().top - sc.getBoundingClientRect().top - sc.clientHeight / 2
+    sc.scrollTo({ top, left: 0, behavior: 'smooth' })
+  }
+
+  return (
+    <div className="fv-wrap">
+      <div className={'fv-code scroll' + paletteClassFor(t.lang)} ref={scrollRef} onScroll={hoverOk ? clearHover : undefined}>
+        <div className="fv-inner" style={{ zoom }}>
+          <div className="fv-gutter" aria-hidden="true">
+            {gutterCells}
+          </div>
+          <pre
+            ref={preRef}
+            className={'fv-pre hljs' + (deco ? ' has-fill' : '')}
+            onMouseMove={hoverOk ? onMove : undefined}
+            onMouseLeave={hoverOk ? onLeavePre : undefined}
+            // 코드에 마우스를 누르는 순간 카드를 치운다 — 더블클릭/드래그 선택이
+            // 떠 있는 카드와 겹쳐 엉키지 않게 (카드 안에서의 클릭·복사는 그대로)
+            onMouseDown={hoverOk ? clearHover : undefined}
+            onClick={hoverOk ? onClick : undefined}
+          >
+            {codeRows ?? <code className="hljs">{body}</code>}
+          </pre>
+        </div>
+      </div>
+      {/* overview ruler — one clickable mark per changed block, mapped onto the file's
+          full height, so edits deep in a long file are visible without scrolling */}
+      {deco && deco.blocks.length > 0 && rulerOverflows && (
+        <div className="diff-ruler">
+          {deco.blocks.map((b, i) => (
+            <button
+              key={i}
+              className={'mark ' + b.type}
+              style={{
+                top: `${((Math.min(b.start, deco.newCount) - 1) / deco.newCount) * 100}%`,
+                height: `${((b.end - b.start + 1) / deco.newCount) * 100}%`
+              }}
+              onClick={() => jumpToLine(b.start)}
+              // 이 컴포넌트 안에선 t가 fileTypeFor 결과로 가려진다(shadowing) — isEn() 삼항으로
+              aria-label={isEn() ? `Go to the change at line ${b.start}` : `${b.start}번째 줄 변경으로 이동`}
+            />
+          ))}
+        </div>
+      )}
+      {hover &&
+        // 포털로 body에 띄운다 — 오버레이(backdrop-filter)/모달 안에서는 fixed 좌표의
+        // 기준이 뷰포트가 아니게 되어 카드가 커서에서 어긋난 곳에 떴다 (sel-bar와 동일 원인)
+        createPortal(
+          <div
+            ref={hoverCardRef}
+            // 팔레트 클래스를 같이 — body 포털이라 뷰어 컨테이너의 언어 팔레트가 닿지
+            // 않으면 칩·시그니처가 기본(IntelliJ) 색으로 떨어진다
+            className={'lsp-hover' + paletteClassFor(t.lang)}
+            style={{
+              // 카드 최대 폭(920px 또는 화면-48px) + 여백이 화면 오른쪽에 들어가게 당긴다
+              left: Math.max(8, Math.min(hover.x + 14, window.innerWidth - Math.min(920, window.innerWidth - 48) - 16)),
+              ...(hover.below ? { top: hover.y + 18 } : { bottom: window.innerHeight - hover.y + 14 })
+            }}
+            // 카드 안으로 들어오면 유지 — 시그니처/문서를 긁어 복사할 수 있다.
+            // 진입 시 대기 중인 호버 갱신을 취소해 읽는 도중 카드가 바뀌지 않게 한다.
+            onMouseEnter={() => {
+              if (hoverTimer.current) clearTimeout(hoverTimer.current)
+              hoverTimer.current = null
+              hoverSeq.current++
+            }}
+            onMouseLeave={clearHover}
+          >
+            <HoverContent md={hover.md} lang={t.lang} dict={semDict} extraMods={hover.defMods} word={hover.word} />
+          </div>,
+          document.body
+        )}
+    </div>
+  )
+}
+
+// a Ctrl+클릭 definition jump that left the originally opened file; 뒤로 unwinds these
+interface NavEntry {
+  path: string
+}
+interface ViewState {
+  root: string | null // the path prop this state belongs to
+  stack: NavEntry[] // 뒤로 트레일(정의 점프로 떠나온 파일들)
+  fwd: NavEntry[] // 앞으로 트레일(뒤로 가며 빠져나온 파일들 — 새 점프 시 비워진다)
+  jump: { line: number; tick: number } | null
+}
+
+// Card-style confirm for closing the viewer with unsaved CM edits — replaces the native
+// window.confirm (which both broke the card language and, by blocking the thread, left the
+// editor's IME/contentEditable wedged so typing died after a cancel). Esc/Enter both pick
+// the safe default (계속 편집): nothing is lost by mistake, and a real discard needs a click.
+function CloseConfirmDialog({ onStay, onLeave }: { onStay: () => void; onLeave: () => void }) {
+  useEffect(() => {
+    // capture + stopPropagation so the viewer's own window Esc handler stands down — this
+    // card owns Esc while it's open. Enter falls through to the autofocused 취소 button.
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key !== 'Escape') return
+      e.preventDefault()
+      e.stopPropagation()
+      onStay()
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [onStay, onLeave])
+
+  return (
+    <div className="set-dialog-overlay" onMouseDown={onStay}>
+      <div className="set-dialog" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="sd-ic">
+          <IconPencil size={22} />
+        </div>
+        <div className="sd-title">{t('저장하지 않고 닫을까요?', 'Close without saving?')}</div>
+        <div className="sd-msg">
+          {isEn() ? (
+            <>
+              You still have <b>unsaved changes</b>. If you close now, they will be lost.
+            </>
+          ) : (
+            <>
+              아직 <b>저장하지 않은 변경</b>이 있어요. 그대로 닫으면 이 변경 내용은 사라집니다.
+            </>
+          )}
+        </div>
+        <div className="sd-btns">
+          <button className="sd-cancel" onClick={onStay} autoFocus>
+            {t('계속 편집', 'Keep Editing')}
+          </button>
+          <button className="sd-go danger" onClick={onLeave}>
+            {t('저장 안 함', "Don't Save")}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// A read-only file preview shown as a centered card (same overlay/card language as
+// the diff & settings dialogs) instead of handing the file to the OS. Loads the
+// content over IPC on open; renders it with syntax highlighting / markdown. Code
+// files get LSP-powered hover + go-to-definition once the project's language server
+// is warm (TS/JS for now).
+export function FileModal({
+  path,
+  cwd,
+  diffs,
+  override,
+  onClose,
+  onAskSelection
+}: {
+  path: string | null
+  cwd: string
+  // 이 실행에서 에이전트가 바꾼 파일들의 누적 diff — 보고 있는 파일의 것이 있으면
+  // 코드 위에 변경 마킹(추가 줄 틴트·삭제 헤어라인·오버뷰 룰러)을 얹는다
+  diffs?: Record<string, FileDiff>
+  // Git 카드에서 연 파일 — content가 있으면 그 시점(커밋) 내용을 그대로 보여주고
+  // (디스크와 다를 수 있으니 LSP는 끔), 없으면 평소처럼 디스크에서 읽는다(LSP 유지).
+  // diff는 세션 diffs 대신 마킹에 쓰는 일회성 diff, label은 헤더의 커밋 해시 칩.
+  override?: {
+    content: string | null
+    diff: FileDiff | null
+    label: string | null
+  } | null
+  onClose: () => void
+  // 드래그 선택 → 뷰어 안 질문 패널에서 작성한 질문을 선택 텍스트·파일·줄 범위와 함께 전송
+  onAskSelection?: (p: { path: string; text: string; from: number | null; to: number | null; question: string }) => void
+}) {
+  const [res, setRes] = useState<FileReadResult | null>(null)
+  // lspStatus는 색칠·hover·정의이동 게이트 + 파일별 "심볼 분석 중" 칩 판정에 쓴다.
+  // (설치는 설정에서 — 코드창엔 분석 중 칩만 두고 ready/error/설치 칩은 안 둔다)
+  const [lspStatus, setLspStatus] = useState<LspStatus>('unsupported')
+  const [sem, setSem] = useState<LspSemanticTokens | null>(null)
+  const [noSem, setNoSem] = useState(false) // 서버가 이 파일엔 시맨틱 토큰이 없다고 알림 → 분석칩 끔
+  // 라이브(서버) 토큰이 실제로 도착했는가 — 디스크 캐시 색은 sem을 채우지만 서버가 이 파일을
+  // 파싱했다는 뜻이 아니다. 분석칩은 이 값 기준으로 유지해, 캐시 색이 칠해져 있어도 서버가
+  // 준비될 때까지 "심볼 분석 중"이 정직하게 보인다 (호버가 그때부터 되므로).
+  const [semLive, setSemLive] = useState(false)
+  // 호버(풀 시맨틱)까지 실제로 응답하는가 — 색 토큰은 frozen 계산이라 먼저 오고 호버는 몇 초
+  // 늦을 수 있다(Roslyn 메타 문서에서 두드러짐). 칩은 둘 다 준비돼야 내린다.
+  const [hoverReady, setHoverReady] = useState(false)
+  // 프로젝트의 '다른' 코드 파일이 바뀌었을 때 올리는 세대 — 멈춘 토큰 폴링을 다시 깨운다.
+  // C#(Roslyn)은 새/수정 파일의 타입이 main의 재프라임 '뒤' 요청부터 분류되므로, 이게 없으면
+  // 열려 있는 문서는 재열람 전까지 새 타입이 무색으로 남는다.
+  const [semEpoch, setSemEpoch] = useState(0)
+  const [anPct, setAnPct] = useState<number | null>(null) // 분석 진행률(프로젝트 인덱싱 %)
+  const [vs, setVs] = useState<ViewState>({
+    root: path,
+    stack: [],
+    fwd: [],
+    jump: null
+  })
+  // an SVG can be viewed both ways — as the rendered image (default) or as markup
+  const [svgCode, setSvgCode] = useState(false)
+  // 마크다운은 기본을 '렌더링된 문서'로 연다(변경 파일이어도) — 소스/변경(diff) 보기는
+  // Ctrl+D(또는 헤더 버튼)로 전환한다. true = 렌더, false = 변경 마킹 소스.
+  const [mdPreview, setMdPreview] = useState(true)
+  // HTML도 마크다운처럼 기본을 '렌더링된 페이지'(sandbox iframe)로 열고 Ctrl+D로 코드와
+  // 오간다. 코드 보기는 여느 코드 파일과 동일(CM 편집·diff) — 미리보기와 편집이 분리된다.
+  const [htmlPreview, setHtmlPreview] = useState(true)
+  // 편집 가능한 코드 파일은 CodeMirror 편집기로 연다(아래 cmEligible). 마크다운·이미지·
+  // git 스냅샷·잘린 파일은 읽기 전용 CodeView 유지.
+  const [cmDirty, setCmDirty] = useState(false) // CM 버퍼에 미저장 변경이 있는가
+  const [cmSaved, setCmSaved] = useState(false) // 방금 저장됨 — 잠깐 '저장됨' 표시
+  const [cmMode, setCmMode] = useState<'read' | 'edit'>('read') // 변경 파일은 읽기(diff)로 열고 '편집' 눌러 수정
+  // 읽기 모드의 변경 tint(초록/빨강) 표시 — Ctrl+D로 일반 보기와 토글. 선택한 보기는
+  // 파일·네비게이션을 넘어 전역으로 유지하고 디스크에도 남긴다(prefs). 기본은 OFF —
+  // 필요할 때만 Ctrl+D로 켠다(변경 파일 자체는 여전히 변경된 파일·배지로 확인 가능).
+  const [diffView, setDiffViewState] = useState(() => getPref('viewer.diffView', false))
+  const setDiffView = useCallback((next: boolean | ((v: boolean) => boolean)): void => {
+    setDiffViewState((v) => {
+      const nv = typeof next === 'function' ? next(v) : next
+      if (nv !== v) setPref('viewer.diffView', nv)
+      return nv
+    })
+  }, [])
+  const cmRef = useRef<CmEditorHandle>(null)
+  // 정의 이동 시 떠나는 파일의 캐럿 위치를 기억 → 뒤로가기로 돌아오면 그 자리로 복원 (CM)
+  const posMap = useRef(new Map<string, number>())
+  // 파일 내 검색(Ctrl+F) 열림 + 선택-질문 패널 (선택 텍스트·줄 범위와 질문 입력)
+  const [findOpen, setFindOpen] = useState(false)
+  const [ask, setAsk] = useState<{
+    text: string
+    from: number | null
+    to: number | null
+  } | null>(null)
+  const [askText, setAskText] = useState('')
+  const askInputRef = useRef<HTMLTextAreaElement>(null)
+  // a freshly opened file discards any definition-jump trail from the previous one
+  // (render-time state sync — avoids one frame of the stale document)
+  if (vs.root !== path) {
+    setVs({ root: path, stack: [], fwd: [], jump: null })
+    if (svgCode) setSvgCode(false)
+    if (!mdPreview) setMdPreview(true) // 새 파일은 마크다운 기본값(렌더)으로 되돌린다
+    if (!htmlPreview) setHtmlPreview(true) // HTML도 기본값(렌더)으로
+    if (findOpen) setFindOpen(false)
+    if (ask) setAsk(null)
+    if (askText) setAskText('')
+    if (cmDirty) setCmDirty(false)
+    if (cmSaved) setCmSaved(false)
+    // 네비게이션 세션 종료(닫기/다른 파일 열기) — 저장된 캐럿 위치를 비운다. 안 그러면
+    // 재오픈 때 복원 effect가 다시 돌며 이전 위치를 또 깜빡인다. (세션 내 뒤로가기는
+    // path가 안 바뀌어 여기 안 걸리므로 그대로 복원·깜빡임 유지)
+    posMap.current.clear()
+  }
+  const effPath = vs.stack.length ? vs.stack[vs.stack.length - 1].path : path
+  const isSvg = !!effPath && /\.svg$/i.test(effPath)
+  const isImg = !!effPath && isImagePath(effPath) && !(isSvg && svgCode)
+  // 정의 이동으로 다른 파일에 들어가면 override는 원래 파일의 것 — 적용하지 않는다
+  const ov = vs.stack.length === 0 ? (override ?? null) : null
+  const ovContent = ov?.content ?? null
+  // HTML은 렌더된 페이지(sandbox iframe, 디스크에서 ccg-page://로 서빙)와 코드 보기를
+  // Ctrl+D로 오간다. git 스냅샷(ov)은 디스크와 내용이 달라 미리보기가 거짓 — 코드만.
+  const isHtmlPage = !!effPath && /\.html?$/i.test(effPath)
+  const htmlCanToggle = isHtmlPage && !ov
+  const htmlView = htmlCanToggle && htmlPreview
+  // the viewed file's accumulated diff (keys are slash-relative paths; the definition-
+  // jump stack stores backslash ones) — drives the change marks and the header stats.
+  // Git 카드에서 온 일회성 diff(ov.diff)가 있으면 세션 diff 대신 그걸 쓴다.
+  const diff = ov ? ov.diff : (effPath && diffs?.[effPath.replace(/\\/g, '/')]) || null
+  const marks = useMemo(() => {
+    if (!diff) return null
+    // 훙크 조각 diff는 마킹 불가: diffMarksOf는 "전체 파일 diff"를 전제하므로 조각을 넣으면
+    // 줄번호·부모 복원이 훙크 기준이 되어 읽기 모드가 파일 전체를 변경(초록)으로 칠한다.
+    // 해당 케이스 = 구(舊) 세션의 Codex unified 훙크(지금 엔진은 전체 diff로 승격해 보냄),
+    // 역적용 폴백, 앞부분이 잘린 병합 diff('생략' 마커) — 마킹만 접고 +N/−N 칩은 유지.
+    // '생략' 요약 행은 표시 문자열이라 UI 언어를 탄다(엔진·store가 t()로 낸다) — 텍스트
+    // 대신 구조로 본다: 본문 줄(add/del/ctx)이 하나도 없는 훙크-only diff가 곧 그 요약분.
+    const fragment =
+      diff.lines.some((l) => l.t === 'hunk' && /^@@ -\d/.test(l.text)) || !diff.lines.some((l) => l.t !== 'hunk')
+    return fragment ? null : diffMarksOf(diff)
+  }, [diff])
+  // 파일이 바뀔 때마다 항상 읽기 모드로 연다(파일 종류 무관 일관). 편집은 Ctrl+E로.
+  // diff/일반 보기(diffView)는 여기서 리셋하지 않는다 — 사용자가 Ctrl+D로 고른 보기를
+  // 파일·네비게이션을 넘어 전역으로 유지한다.
+  useEffect(() => {
+    setCmMode('read')
+  }, [effPath])
+  const isMdFile = !!effPath && fileTypeFor(effPath).lang === 'markdown'
+  // CM PoC applies to non-markdown code files only (markdown keeps its render/source
+  // toggle for now). Computed here so the header toggle and the body swap agree.
+  const fLang = effPath ? fileTypeFor(effPath).lang : ''
+  // CM editing writes to the live file, so it's used only for real, fully-loaded on-disk
+  // files — not git-snapshot overrides (would overwrite the working copy with old content)
+  // and not truncated previews (saving would drop everything past the read cap).
+  // HTML 미리보기 중엔 CM(과 그 헤더 버튼·단축키)이 물러난다 — 코드 보기로 오면 복귀.
+  const cmEligible = !isImg && !isMdFile && !htmlView && res != null && res.content != null && !res.truncated && !ov
+  // C++ struct 연보라 보정 — 엔진(뷰어/CM) 무관하게 한 번 계산해 양쪽에 내려준다
+  const structOv = useCppStructOv(sem, fLang, res?.content ?? '', cwd, effPath ?? '')
+  // diff(변경 tint) 보기 토글 — 읽기 모드의 초록/빨강 diff를 Ctrl+D로 켜고 끈다(편집과 분리).
+  // 마크다운은 자체 '미리보기/변경사항' 토글이 있으니 제외. 끄면 marks를 안 내려보내 diff·
+  // 오버뷰 룰러가 모두 사라지고 평범한(잠긴) 뷰가 된다.
+  // Git 카드에서 온 일회성 diff(ov.diff)는 토글과 무관하게 항상 표시 — 사용자가 방금
+  // "이 파일의 변경"을 보러 온 것이라, 전역 기본(OFF)에 가려지면 빈 화면처럼 보인다.
+  const forcedDiff = !!ov?.diff
+  const canToggleDiff = !!marks && !isMdFile && !forcedDiff
+  // 마크다운(변경 파일)은 렌더↔소스(diff)를 Ctrl+D로 오간다 — 코드 파일의 diffView와 별개
+  const mdCanToggle = isMdFile && !!diff
+  // diff가 실제로 그려지는 맥락에서만 버튼·단축키가 의미 있다: 비-CM 읽기 뷰어이거나, CM 코드
+  // 파일을 읽기 모드로 보는 중일 때(편집 모드는 어차피 diff를 끄므로 토글이 무의미).
+  const diffVisibleCtx = canToggleDiff && (!cmEligible || cmMode === 'read')
+  const effMarks = forcedDiff ? marks : canToggleDiff && !diffView ? null : marks
+
+  const rz = useResizableModal('viewer.size', path != null, {
+    defaultMaximized: true
+  })
+  const z = useZoom('viewer.zoom', path != null)
+  // 선택 툴바가 "본문 안의 선택"을 판별하려면 카드 엘리먼트가 필요 — 상태 콜백 ref로 추적
+  const [cardEl, setCardEl] = useState<HTMLDivElement | null>(null)
+  const modalRef = useMemo(() => mergeRefs(rz.ref, z.ref, setCardEl), [rz.ref, z.ref])
+  // a backdrop click closes the card — but only when the *press* also started on the
+  // backdrop. Without this, selecting text inside the card and dragging out past its
+  // edge fires a `click` on the overlay (the common ancestor of down/up) and closes it.
+  const downOnOverlay = useRef(false)
+
+  // closing with unsaved CM edits asks first (Esc / backdrop / X / mouse-back all route
+  // through here). cmDirtyRef mirrors state so the keydown/mouse closures see it live.
+  const cmDirtyRef = useRef(false)
+  cmDirtyRef.current = cmDirty
+  // HTML 렌더↔코드 전환. 코드 보기에 미저장 편집이 있으면 저장하고 넘어간다 — 전환이
+  // CM을 내려 버퍼가 사라지고, 미리보기 자체도 디스크 기준이라 저장돼야 보인다.
+  // (doSave는 호출 시점에 버퍼를 동기로 캡처하므로 직후 언마운트에 안전)
+  const toggleHtmlPreview = useCallback((): void => {
+    if (cmDirtyRef.current) {
+      cmRef.current?.save()
+      setCmDirty(false)
+    }
+    setFindOpen(false) // 코드 보기의 검색 바는 미리보기 본문에 닿지 않는다 — 접고 전환
+    setHtmlPreview((v) => !v)
+  }, [])
+  // 미저장 변경이 있으면 곧장 닫지 않고 카드형 확인을 띄운다(네이티브 confirm 대신). 확인이
+  // 떠 있는 동안엔 뷰어의 Esc/단축키가 물러나고(아래 closeConfirmRef 가드), 취소하면 편집기로
+  // 포커스를 돌려준다 — confirm이 스레드를 막아 IME가 엉키던 "취소 후 입력 불가"도 함께 해소.
+  const [closeConfirm, setCloseConfirm] = useState(false)
+  const closeConfirmRef = useRef(false)
+  closeConfirmRef.current = closeConfirm
+  const requestClose = useCallback((): void => {
+    if (cmDirtyRef.current) {
+      setCloseConfirm(true)
+      return
+    }
+    onClose()
+  }, [onClose])
+  // 파일이 바뀌면(다른 파일 열기/뒤로) 떠 있던 확인 카드는 의미가 없어지므로 닫는다
+  useEffect(() => {
+    setCloseConfirm(false)
+  }, [effPath])
+
+  // Ctrl+W — main이 앱 종료를 막고 보내는 신호. 코드 뷰어가 열려 있으면 닫는다 (Esc와 동일)
+  useEffect(() => {
+    if (!path) return
+    return window.api.onCloseShortcut(requestClose)
+  }, [path, requestClose])
+
+  // (re)load whenever the viewed path changes; `alive` guards against a stale
+  // response landing after the user already switched files or closed the card.
+  // Images skip the text read entirely — their bytes are served over ccg-img://.
+  useEffect(() => {
+    setRes(null)
+    if (!effPath || isImg) return
+    // Git 카드가 건넨 커밋 시점 내용 — 디스크를 읽지 않고 그대로 보여준다
+    if (ovContent != null) {
+      setRes({ path: effPath, content: ovContent, truncated: false })
+      return
+    }
+    let alive = true
+    window.api
+      .readFile(cwd, effPath)
+      .then((r) => alive && setRes(r))
+      .catch(
+        () =>
+          alive &&
+          setRes({
+            path: effPath,
+            content: null,
+            truncated: false,
+            error: t('파일을 열 수 없어요', "Can't open this file")
+          })
+      )
+    return () => {
+      alive = false
+    }
+  }, [effPath, cwd, isImg, ovContent])
+
+  // code-intelligence status for the viewed file — drives only the feature gate
+  // (lsp={ready} below). The first ask lazily spawns the project's server, so poll
+  // while it warms up ('starting'/'installing'). 상태 칩은 코드창에 없다(폴더 배지로 이동).
+  useEffect(() => {
+    setLspStatus('unsupported')
+    // 커밋 시점 내용은 디스크와 다를 수 있다 — LSP 좌표가 거짓이 되므로 끈다
+    if (!effPath || isImg || ovContent != null) return
+    let alive = true
+    let tries = 0
+    const tick = (): void => {
+      window.api.lsp
+        .status(cwd, effPath)
+        .then((st) => {
+          if (!alive) return
+          setLspStatus(st)
+          // 촘촘히 폴링(400ms)해서 ready 감지 지연을 줄인다 — 그래야 ready 직후 색이
+          // 폴더 배지가 사라지기 전에/같이 들어온다. 워밍은 길 수 있어 창을 넓게(≈8분).
+          if ((st === 'starting' || st === 'installing') && tries++ < 1200) setTimeout(tick, 400)
+          // 'error'에서 폴링을 멈추면 서버가 쿨다운(30초) 뒤 되살아나도 이 파일은 영영
+          // lsp=off — 파일을 닫았다 열어야만 복구됐다. 느슨하게(3초) 계속 물어 다음
+          // ensure가 재스폰하면 자동으로 starting→ready 경로에 다시 올라탄다.
+          else if (st === 'error' && tries++ < 160) setTimeout(tick, 3000)
+        })
+        .catch(() => alive && setLspStatus('error'))
+    }
+    tick()
+    return () => {
+      alive = false
+    }
+  }, [effPath, cwd, isImg, ovContent])
+
+  // instant paint: on open, ask the disk cache for this file's last-known tokens
+  // (keyed by content hash — no server spawn) and paint immediately. The live
+  // fetch below upgrades them once the server answers. This is what makes a
+  // relaunch feel instant instead of waiting out the server warm-up every time.
+  // 커밋 시점 내용(ovContent)은 디스크와 달라 LSP 좌표가 거짓이 되므로 캐시도 끈다.
+  useEffect(() => {
+    setSem(null)
+    setNoSem(false)
+    setSemLive(false)
+    setHoverReady(false)
+    if (!effPath || isImg || ovContent != null || res?.content == null) return
+    let alive = true
+    window.api.lsp
+      .cachedTokens(cwd, effPath)
+      .then((t) => {
+        // 캐시는 라이브 토큰이 아직 없을 때만 채운다(prev ?? t). 서버가 prewarm으로 빨리
+        // ready돼 라이브(완성본)가 먼저 도착했는데, 늦게 끝난 캐시(옛/부분일 수 있음)가
+        // 그걸 덮어써 "완료인데 색이 부분만" 되던 레이스를 막는다. 라이브는 항상 우선.
+        if (alive && t && t.data.length) setSem((prev) => prev ?? t)
+      })
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [effPath, cwd, res, isImg, ovContent])
+
+  // 프로젝트의 다른 코드 파일이 바뀌면(에이전트 생성/수정, 탐색기 작업, 저장) 토큰 세대를
+  // 올려 아래 폴링을 다시 깨운다 — C#은 main이 예약한 재프라임 뒤에야 새 파일의 타입이
+  // 분류되는데, 폴링은 stable 2회면 멈춰 있어 신호 없인 재열람 전까지 무색으로 남는다.
+  // 보고 있는 파일 '자신'의 변화는 제외 — 뷰어 본문(res)은 연 시점 스냅샷이라, 새 디스크
+  // 기준 토큰을 그 위에 칠하면 좌표가 어긋난다(자신은 재열람 때 새 내용+새 색으로 회복).
+  useEffect(() => {
+    if (!effPath || isImg || ovContent != null) return
+    const ext = (/\.([^.\\/]+)$/.exec(effPath)?.[1] ?? '').toLowerCase()
+    if (!ext) return
+    const norm = (p: string): string => p.replace(/\\/g, '/').toLowerCase()
+    const self = norm(/^(?:[a-zA-Z]:[\\/]|[\\/])/.test(effPath) ? effPath : cwd ? cwd + '/' + effPath : effPath)
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const off = window.api.lsp.onFilesChanged((e) => {
+      if (!e.exts.includes(ext)) return
+      // 자기 자신이 끼어 있으면 통째로 건너뛴다 — 본문 스냅샷이 이미 낡아, 어떤 토큰을
+      // 받아도 좌표가 어긋난다(에이전트가 이 파일+새 파일을 함께 만진 턴 포함)
+      if (e.paths.some((p) => norm(p) === self)) return
+      // 연속 변화(에이전트 턴의 여러 편집)는 마지막 것만 — 재폴링 한 번으로 합친다
+      if (timer) clearTimeout(timer)
+      timer = setTimeout(() => setSemEpoch((n) => n + 1), 1000)
+    })
+    return () => {
+      if (timer) clearTimeout(timer)
+      off()
+    }
+  }, [effPath, cwd, isImg, ovContent])
+
+  // semantic highlighting: ask once the server is ready. Right after the server
+  // turns ready it may still be settling (OmniSharp keeps associating documents
+  // for a while after the solution loads) and answer with nothing — keep retrying
+  // for a generous window. Re-asks when the viewed file (or its content) changes,
+  // and when semEpoch bumps (다른 파일의 변화로 이 문서의 색이 좋아질 수 있는 순간).
+  // Doesn't reset sem — the cache paint above stays visible until live arrives.
+  useEffect(() => {
+    if (!effPath || lspStatus !== 'ready' || res?.content == null) return
+    let alive = true
+    let tries = 0
+    let lastSig = '' // 마지막으로 받은 토큰의 지문 — 개선 감시(아래) 비교 기준
+    let stable = 0 // 같은 결과가 연속으로 온 횟수 — 2번이면 확정으로 보고 폴링 종료
+    const sig = (d: number[]): string => {
+      let h = 0
+      for (let i = 0; i < d.length; i++) h = (h * 31 + d[i]) | 0
+      return d.length + ':' + h
+    }
+    const fetchTokens = (): void => {
+      window.api.lsp
+        .semanticTokens(cwd, effPath)
+        .then((t) => {
+          if (!alive) return
+          if (t && t.data.length) {
+            const s = sig(t.data)
+            if (s !== lastSig) {
+              lastSig = s
+              stable = 0
+              setSem(t)
+              setSemLive(true) // 서버가 이 파일을 실제로 파싱했다 — 분석칩 내림
+            } else stable++
+            // 토큰은 한 번 왔다고 최종이 아니다 — Roslyn(형제 프로젝트 컴파일 완료)·clangd
+            // (백그라운드 인덱싱)는 시간이 지나며 분류가 좋아진다. 두 번 연속 같은 결과가
+            // 나올 때까지 이어 물어 마지막 개선을 줍는다(보통 1~2번 만에 끝난다).
+            if (stable < 2 && tries++ < 90) setTimeout(fetchTokens, stable ? 2500 : 1200)
+          } else if (t && !lastSig && tries++ < 75) setTimeout(fetchTokens, 800)
+          // 빈 토큰이 재시도 한도까지 이어짐(컴파일 DB 밖 파일 등 — 서버가 이 문서에 끝내
+          // 토큰을 안 줌) 또는 토큰 미지원 서버 — 분석칩을 내리고 hljs 색으로 확정한다.
+          // 안 그러면 "심볼 분석 중" 배지가 영영 남는다. (이미 색이 있는데 빈 응답이 오면
+          // — 서버 재시작 등 — 받은 색을 유지하고 조용히 멈춘다)
+          else if (!lastSig) setNoSem(true)
+        })
+        .catch(() => {})
+    }
+    fetchTokens()
+    return () => {
+      alive = false
+    }
+  }, [effPath, cwd, lspStatus, res, semEpoch])
+
+  // 호버 준비 프로브 — 첫 라이브 토큰이 오면 첫 토큰 위치에 호버를 한 번 쏴서 "응답이 온다"를
+  // 확인한다. 내용(null이어도)과 무관하게 완료 자체가 풀 시맨틱 준비 신호다. 이걸 기다려야
+  // "칩은 사라졌는데 호버는 몇 초 더 걸리는" 거짓 구간이 없어진다. 서버가 오래 걸려도 칩을
+  // 15초 이상 잡아두지는 않는다(그때는 프로브 완료를 기다리지 않고 내림).
+  useEffect(() => {
+    if (!semLive || hoverReady) return
+    if (!effPath || !sem || sem.data.length < 2) {
+      setHoverReady(true)
+      return
+    }
+    let alive = true
+    const done = (): void => {
+      if (alive) setHoverReady(true)
+    }
+    const cap = setTimeout(done, 15000)
+    window.api.lsp.hover(cwd, effPath, { line: sem.data[0], character: sem.data[1] + 1 }).then(done, done)
+    return () => {
+      alive = false
+      clearTimeout(cap)
+    }
+  }, [semLive, hoverReady, effPath, cwd, sem])
+
+  // 파일별 "심볼 분석 중" 판정 — 서버의 라이브 토큰이 도착하고 호버(풀 시맨틱)까지 응답할 때
+  // 까지 true(서버 워밍/파싱 중). 디스크 캐시 색(sem)이 먼저 칠해져도 서버가 아직 이 파일을
+  // 파싱 전이면 칩을 유지한다 — 호버·정의 이동이 그때부터 되므로 이게 정직한 신호다.
+  // 시맨틱 토큰 없는 서버(noSem)·미지원/에러면 사라진다.
+  const isCodeView = !!effPath && !isImg && ovContent == null && res?.content != null
+  const analyzing =
+    isCodeView && !(semLive && hoverReady) && !noSem && (lspStatus === 'starting' || lspStatus === 'installing' || lspStatus === 'ready')
+  // 분석 중에만 프로젝트 인덱싱 %를 가볍게 폴링해 칩에 보여준다(없으면 % 없이 '심볼 분석 중')
+  useEffect(() => {
+    if (!analyzing || !cwd) {
+      setAnPct(null)
+      return
+    }
+    let alive = true
+    const tick = (): void => {
+      window.api.lsp
+        .projectStatus(cwd)
+        .then((s) => alive && setAnPct(s.state === 'analyzing' ? s.percent : null))
+        .catch(() => {})
+    }
+    tick()
+    const iv = setInterval(tick, 800)
+    return () => {
+      alive = false
+      clearInterval(iv)
+    }
+  }, [analyzing, cwd])
+
+  // 헤더 우클릭 메뉴 — 경로 복사 / 파일 탐색기에서 보기 (탐색기 ctx-menu와 같은 디자인·클램프)
+  const [headCtx, setHeadCtx] = useState<{ x: number; y: number } | null>(null)
+  const headCtxRef = useRef<HTMLDivElement>(null)
+  const headCtxOpenRef = useRef(false)
+  headCtxOpenRef.current = headCtx != null
+  // 화면 아래/오른쪽을 넘치면 실측 크기로 되민다 — paint 전에 실행돼 안 튄다
+  useLayoutEffect(() => {
+    const el = headCtxRef.current
+    if (!el || !headCtx) return
+    el.style.left = Math.max(8, Math.min(headCtx.x, window.innerWidth - el.offsetWidth - 8)) + 'px'
+    el.style.top = Math.max(8, Math.min(headCtx.y, window.innerHeight - el.offsetHeight - 8)) + 'px'
+  }, [headCtx])
+  // 메뉴 닫기 — 바깥 클릭 / 리사이즈 (Esc는 아래 레이어링 핸들러가 가진다)
+  useEffect(() => {
+    if (!headCtx) return
+    const close = (): void => setHeadCtx(null)
+    const onDown = (e: MouseEvent): void => {
+      if (headCtxRef.current && !headCtxRef.current.contains(e.target as Node)) close()
+    }
+    window.addEventListener('mousedown', onDown)
+    window.addEventListener('resize', close)
+    return () => {
+      window.removeEventListener('mousedown', onDown)
+      window.removeEventListener('resize', close)
+    }
+  }, [headCtx])
+
+  // Esc는 안쪽 레이어부터 차례로 접는다: 선택 툴바 → 질문 패널 → 파일 내 검색 → 카드
+  const askOpenRef = useRef(false)
+  askOpenRef.current = ask != null
+  const findOpenRef = useRef(false)
+  findOpenRef.current = findOpen
+  useEffect(() => {
+    if (!path) return
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key !== 'Escape') return
+      if (closeConfirmRef.current) return // 닫기 확인 카드가 떠 있으면 그 카드가 Esc를 가진다
+      if (headCtxOpenRef.current) {
+        setHeadCtx(null) // 헤더 우클릭 메뉴가 최상단 임시 레이어 — 그것부터 접는다
+        return
+      }
+      if (document.querySelector('.sel-bar')) return // 선택 툴바가 먼저 접힌다
+      if (document.querySelector('.cm-host .cm-find')) return // CM 검색 바가 열려 있으면 그게 먼저 닫힌다
+      if (askOpenRef.current) {
+        setAsk(null)
+        return
+      }
+      if (findOpenRef.current) {
+        setFindOpen(false)
+        return
+      }
+      requestClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [path, requestClose])
+
+  // Ctrl/⌘+F → 파일 내 검색 (카드가 열려 있는 동안은 탐색기 검색보다 우선).
+  // CM 편집기가 켜진 코드 파일에선 CM 자체 검색(가상화 대응)에 양보한다.
+  useEffect(() => {
+    if (!path) return
+    const onKey = (e: KeyboardEvent): void => {
+      if (!((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'f')) return
+      if (closeConfirmRef.current) return // 확인 카드가 떠 있으면 단축키는 물러난다
+      if (htmlView) return // 렌더된 페이지(iframe)는 부모에서 본문 검색이 닿지 않는다
+      e.preventDefault()
+      // CM 편집기 코드 파일은 CM 검색 패널(가상화 대응)을, 그 외엔 기존 FindBar를 연다
+      if (cmEligible) cmRef.current?.openSearch()
+      else setFindOpen(true)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [path, cmEligible, htmlView])
+
+  // Ctrl/⌘+E → 읽기 ↔ 편집 모드 토글. 편집 가능한 코드 파일이면 어디서나(토글 버튼과 동일 조건).
+  // capture로 잡아 CM 키맵보다 먼저 처리하고, 편집 모드 진입 시 포커스는 CmEditor가 잡는다.
+  useEffect(() => {
+    if (!path || !cmEligible) return
+    const onKey = (e: KeyboardEvent): void => {
+      if (!((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'e')) return
+      if (closeConfirmRef.current) return // 확인 카드가 떠 있으면 모드 토글을 막는다
+      e.preventDefault()
+      e.stopPropagation()
+      setCmMode((m) => (m === 'read' ? 'edit' : 'read'))
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [path, cmEligible])
+
+  // Ctrl/⌘+D → 마크다운은 렌더↔소스(변경 diff), HTML은 렌더↔코드, 그 외는 diff(변경
+  // tint)↔일반(무색) 토글. capture로 CM 키맵보다 먼저 잡고, IME가 켜져 있어도 잡히게
+  // 물리 키(e.code)도 함께 본다.
+  useEffect(() => {
+    if (!path || (!diffVisibleCtx && !mdCanToggle && !htmlCanToggle)) return
+    const onKey = (e: KeyboardEvent): void => {
+      if (!((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && (e.code === 'KeyD' || e.key.toLowerCase() === 'd'))) return
+      if (closeConfirmRef.current) return // 확인 카드가 떠 있으면 보기 토글을 막는다
+      e.preventDefault()
+      e.stopPropagation()
+      if (mdCanToggle) setMdPreview((v) => !v)
+      else if (htmlCanToggle) toggleHtmlPreview()
+      else setDiffView((v) => !v)
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [path, diffVisibleCtx, mdCanToggle, htmlCanToggle, toggleHtmlPreview])
+
+  // 질문 패널이 열리면 바로 입력에 포커스
+  useEffect(() => {
+    if (ask) askInputRef.current?.focus()
+  }, [ask])
+
+  // 정의 점프 트레일을 떠나기 전에 현재 파일 캐럿을 기억 — 뒤로/앞으로 돌아오면 그 자리로 복원
+  const effPathRef = useRef(effPath)
+  effPathRef.current = effPath
+  const rememberCaret = useCallback((): void => {
+    const leaving = cmRef.current?.getCaret()
+    if (leaving != null && effPathRef.current) posMap.current.set(canonPath(effPathRef.current, cwd), leaving)
+  }, [cwd])
+  // 뒤로 = 스택 한 단계 빼서 앞으로(fwd) 스택에 쌓기 / 앞으로 = 그 반대. 둘 다 캐럿 복원용으로 저장.
+  const goBack = useCallback((): void => {
+    rememberCaret()
+    setVs((v) =>
+      v.stack.length
+        ? {
+            ...v,
+            stack: v.stack.slice(0, -1),
+            fwd: [...v.fwd, v.stack[v.stack.length - 1]],
+            jump: null
+          }
+        : v
+    )
+  }, [rememberCaret])
+  const goForward = useCallback((): void => {
+    rememberCaret()
+    setVs((v) =>
+      v.fwd.length
+        ? {
+            ...v,
+            stack: [...v.stack, v.fwd[v.fwd.length - 1]],
+            fwd: v.fwd.slice(0, -1),
+            jump: null
+          }
+        : v
+    )
+  }, [rememberCaret])
+
+  // 마우스 옆 버튼: 뒤로(X1=button 3) / 앞으로(X2=button 4) — 브라우저·IDE 관례. 더 갈 곳이
+  // 없으면 아무것도 안 한다(실수로 코드창 닫히는 게 싫다는 피드백 — 닫기는 Esc·X·Ctrl+W로만).
+  useEffect(() => {
+    if (!path) return
+    const onUp = (e: MouseEvent): void => {
+      if (e.button === 3) {
+        e.preventDefault()
+        goBack()
+      } else if (e.button === 4) {
+        e.preventDefault()
+        goForward()
+      }
+    }
+    window.addEventListener('mouseup', onUp)
+    return () => window.removeEventListener('mouseup', onUp)
+  }, [path, goBack, goForward])
+
+  // 우클릭 드래그 마우스 제스처 — ←/→는 정의 점프 트레일(옆버튼과 같은 동작), ↑/↓는 본문
+  // 스크롤, ↓→(L자)는 닫기. 갈 곳이 없으면 라벨로 정직하게 알리고 실행은 no-op(옆버튼과
+  // 같은 규칙 — 실수로 닫히는 게 싫다는 피드백). 본문 스크롤러는 모드마다 하나뿐이라
+  // 셀렉터 한 줄로 찾는다(코드 .fv-code · 마크다운 .fv-md · 이미지 .fv-imgbody · CM .cm-scroller).
+  const scrollBody = useCallback(
+    (to: 'top' | 'bottom'): void => {
+      // HTML 미리보기는 스크롤러가 iframe 문서 안 — 브리지에 명령을 보내 페이지가 스크롤한다
+      const frame = cardEl?.querySelector('.fv-htmlframe') as HTMLIFrameElement | null
+      if (frame) {
+        frame.contentWindow?.postMessage({ ccgPageScroll: to }, '*')
+        return
+      }
+      const sc = cardEl?.querySelector('.cm-scroller, .fv-code, .fv-md, .fv-imgbody')
+      if (sc)
+        sc.scrollTo({
+          top: to === 'top' ? 0 : sc.scrollHeight,
+          behavior: 'smooth'
+        })
+    },
+    [cardEl]
+  )
+  const gestureActions: GestureAction[] = [
+    {
+      pattern: 'L',
+      label: vs.stack.length ? t('이전 파일', 'Previous file') : t('이전 파일 없음', 'No previous file'),
+      run: goBack
+    },
+    {
+      pattern: 'R',
+      label: vs.fwd.length ? t('다음 파일', 'Next file') : t('다음 파일 없음', 'No next file'),
+      run: goForward
+    },
+    { pattern: 'U', label: t('맨 위로', 'Scroll to top'), run: () => scrollBody('top') },
+    { pattern: 'D', label: t('맨 아래로', 'Scroll to bottom'), run: () => scrollBody('bottom') },
+    { pattern: 'DR', label: t('창 닫기', 'Close window'), run: requestClose }
+  ]
+
+  // Ctrl+클릭 definition target: same document → just jump; another file → stack it
+  // (with the jump), so 뒤로 can unwind. 새 점프는 앞으로(fwd) 기록을 무효화한다(브라우저처럼).
+  const handleNavigate = useCallback(
+    (loc: LspLocation) => {
+      // 점프 직전의 텍스트 선택(더블클릭 단어 등)은 도착지에서 무의미한데 선택
+      // 툴바까지 끌고 와 남는다 — 항해 시점에 정리
+      window.getSelection()?.removeAllRanges()
+      rememberCaret() // 떠나는 파일(CM) 캐럿 저장 — 뒤로/앞으로로 돌아오면 복원
+      const target = displayPath(loc.path, cwd)
+      setVs((v) => {
+        if (v.root == null) return v
+        const current = v.stack.length ? v.stack[v.stack.length - 1].path : v.root
+        const jump = { line: loc.line + 1, tick: (v.jump?.tick ?? 0) + 1 }
+        if (canonPath(current, cwd) === canonPath(target, cwd)) return { ...v, jump, fwd: [] }
+        return { ...v, stack: [...v.stack, { path: target }], jump, fwd: [] }
+      })
+    },
+    [cwd, rememberCaret]
+  )
+
+  // 헤더 서브라인·푸터 스탯용 파일 메타 — 줄 수는 큰 파일에서 매 렌더 세지 않게 메모
+  const fileInfo = useMemo(() => {
+    const c = res?.content
+    if (c == null) return null
+    let lines = 1
+    for (let i = 0; i < c.length; i++) if (c.charCodeAt(i) === 10) lines++
+    return { lines, eol: c.includes('\r\n') ? 'CRLF' : 'LF' }
+  }, [res])
+
+  if (!path || !effPath) return null
+  const name = effPath.split(/[\\/]/).pop() || effPath
+  const dir = effPath.slice(0, effPath.length - name.length)
+  const ext = name.includes('.') ? (name.split('.').pop() || '').toUpperCase() : ''
+  // PoC mhead 서브라인 — 경로 · 확장자 · 줄 수(잘린 파일은 N줄+).
+  // 프로젝트 루트 파일은 상대경로가 파일명과 같아 제목만 반복 → 절대경로(경로 복사와 같은 표기)로
+  const subPath = dir ? dir + name : absPath(effPath, cwd).replace(/\//g, '\\')
+  const sub = [
+    subPath,
+    ext,
+    fileInfo
+      ? t(
+          `${fileInfo.lines.toLocaleString()}줄${res?.truncated ? '+' : ''}`,
+          `${fileInfo.lines.toLocaleString()} ${fileInfo.lines === 1 ? 'line' : 'lines'}${res?.truncated ? '+' : ''}`
+        )
+      : ''
+  ]
+    .filter(Boolean)
+    .join(' · ')
+  // 모드·단축키 안내문은 안 둔다 — 모드는 헤더 vtool의 켜진 아이콘이 이미 말해준다
+  const showFoot = !!fileInfo && !isImg
+
+  return (
+    <div
+      className="fv-overlay"
+      onMouseDown={(e) => {
+        downOnOverlay.current = e.target === e.currentTarget
+      }}
+      onClick={(e) => {
+        if (downOnOverlay.current && e.target === e.currentTarget) requestClose()
+      }}
+    >
+      <div className="fv-modal rzm" ref={modalRef} style={rz.modalStyle}>
+        {headCtx &&
+          createPortal(
+            <div ref={headCtxRef} className="ctx-menu" style={{ left: headCtx.x, top: headCtx.y }}>
+              <button
+                className="ctx-item"
+                onClick={() => {
+                  void navigator.clipboard.writeText(absPath(effPath, cwd).replace(/\//g, '\\'))
+                  setHeadCtx(null)
+                }}
+              >
+                <IconCopy size={15} /> {t('경로 복사', 'Copy path')}
+              </button>
+              <div className="ctx-sep" />
+              <button
+                className="ctx-item"
+                onClick={() => {
+                  void window.api.revealPath(cwd, effPath)
+                  setHeadCtx(null)
+                }}
+              >
+                <IconFolderOpen size={15} /> {t('파일 탐색기에서 보기', 'Reveal in File Explorer')}
+              </button>
+            </div>,
+            document.body
+          )}
+        <div
+          className="diff-head"
+          onDoubleClick={rz.onHeaderDoubleClick}
+          onContextMenu={(e) => {
+            e.preventDefault()
+            setHeadCtx({ x: e.clientX, y: e.clientY })
+          }}
+        >
+          {vs.stack.length > 0 && (
+            <button
+              className="dclose htip fv-back"
+              onClick={goBack}
+              aria-label={t('뒤로', 'Back')}
+              data-tip={t('이전 파일로 (마우스 뒤로 버튼)', 'Previous file (mouse back button)')}
+            >
+              <IconChevLeft size={15} />
+            </button>
+          )}
+          {vs.fwd.length > 0 && (
+            <button
+              className="dclose htip fv-back"
+              onClick={goForward}
+              aria-label={t('앞으로', 'Forward')}
+              data-tip={t('다음 파일로 (마우스 앞으로 버튼)', 'Next file (mouse forward button)')}
+            >
+              <IconChevRight size={15} />
+            </button>
+          )}
+          {/* PoC mhead — 아이콘 타일 + 파일명/서브(경로·타입·줄 수) 2줄 제목 */}
+          <span className="fv-tile">
+            <FileBadge path={effPath} size={20} />
+          </span>
+          <span className="fv-tt">
+            <span className="fv-name">{name}</span>
+            <span className="fv-sub">{sub}</span>
+          </span>
+          {ov?.label && <span className="fv-glabel">{ov.label}</span>}
+          {/* PoC 아크릴 mhead 문법 — 왼쪽엔 파일 정체성(아이콘·경로·스냅샷 라벨)만, 상태·통계·
+              도구는 전부 오른쪽 클러스터로. 나타났다 사라지는 칩(분석 중·저장·일부만 표시)은
+              클러스터 왼끝에 둬 고정 컨트롤(+/− 알약·vtool·창 버튼)이 밀리지 않는다. */}
+          <span className="dspacer" />
+          {/* 파일별 심볼 분석 중 — 색 토큰이 들어오면 사라진다. ready/error/설치 칩은 없음 */}
+          {analyzing && (
+            <span className="fv-lsp starting">
+              <span className="spin" /> {t('심볼 분석 중', 'Analyzing symbols')}
+              {anPct != null ? ` ${anPct}%` : ''}
+            </span>
+          )}
+          {res?.truncated && <span className="fv-trunc">{t('일부만 표시', 'Partial view')}</span>}
+          {cmEligible && cmDirty && (
+            <button className="fv-lsp install htip" onClick={() => cmRef.current?.save()} data-tip={t('저장 (Ctrl+S)', 'Save (Ctrl+S)')}>
+              ● {t('저장', 'Save')}
+            </button>
+          )}
+          {cmEligible && !cmDirty && cmSaved && <span className="fv-lsp ready">{t('저장됨', 'Saved')}</span>}
+          {diff && (
+            <>
+              <span className={'tag ' + (diff.tag === 'new' ? 'new' : 'edit')}>{diff.tag === 'new' ? 'NEW' : 'EDIT'}</span>
+              <span className="dstat">
+                {/* 항상 +N −M 고정 표기 — 변경이 없으면 +0 −0(흐리게) */}
+                <span className={'add' + (diff.add ? '' : ' zero')}>+{diff.add || 0}</span>
+                <span className={'del' + (diff.del ? '' : ' zero')}>−{diff.del || 0}</span>
+              </span>
+            </>
+          )}
+          {/* PoC vtool — 미리보기/소스 │ 읽기/편집 │ diff. 뷰어 고유 기능만 세그먼트에, 최대화·닫기는 일반 창 버튼 */}
+          {(mdCanToggle || isSvg || htmlCanToggle || cmEligible || diffVisibleCtx) && (
+            <div className="vtool">
+              {/* 세그먼트 문법 — 상태마다 버튼 하나씩(눈=미리보기, <>=소스), 켜진 쪽만 밝게(.on).
+                  아이콘 스왑 단일 버튼도 시도했으나 두 상태가 다 보이는 이쪽이 확정 */}
+              {mdCanToggle && (
+                <>
+                  <button
+                    className={'htip' + (mdPreview ? ' on' : '')}
+                    onClick={() => setMdPreview(true)}
+                    aria-label={t('문서 미리보기', 'Document preview')}
+                    data-tip={t('렌더링된 문서로 보기 (Ctrl+D)', 'View as rendered document (Ctrl+D)')}
+                  >
+                    <IconEye size={14} />
+                  </button>
+                  <button
+                    className={'htip' + (!mdPreview ? ' on' : '')}
+                    onClick={() => setMdPreview(false)}
+                    aria-label={t('변경 소스', 'Diff source')}
+                    data-tip={t('변경 마킹이 표시된 소스로 보기 (Ctrl+D)', 'View source with change marks (Ctrl+D)')}
+                  >
+                    <IconCode size={14} />
+                  </button>
+                </>
+              )}
+              {isSvg && (
+                <>
+                  <button
+                    className={'htip' + (!svgCode ? ' on' : '')}
+                    onClick={() => setSvgCode(false)}
+                    aria-label={t('SVG 미리보기', 'SVG preview')}
+                    data-tip={t('렌더링된 이미지로 보기', 'View as rendered image')}
+                  >
+                    <IconEye size={14} />
+                  </button>
+                  <button
+                    className={'htip' + (svgCode ? ' on' : '')}
+                    onClick={() => setSvgCode(true)}
+                    aria-label={t('SVG 소스', 'SVG source')}
+                    data-tip={t('SVG 마크업을 소스로 보기', 'View SVG markup as source')}
+                  >
+                    <IconCode size={14} />
+                  </button>
+                </>
+              )}
+              {htmlCanToggle && (
+                <>
+                  <button
+                    className={'htip' + (htmlPreview ? ' on' : '')}
+                    // toggleHtmlPreview가 미저장 편집 자동 저장까지 처리 — 직접 세터 금지
+                    onClick={() => !htmlPreview && toggleHtmlPreview()}
+                    aria-label={t('페이지 미리보기', 'Page preview')}
+                    data-tip={t('렌더링된 페이지로 보기 (Ctrl+D)', 'View as rendered page (Ctrl+D)')}
+                  >
+                    <IconEye size={14} />
+                  </button>
+                  <button
+                    className={'htip' + (!htmlPreview ? ' on' : '')}
+                    onClick={() => htmlPreview && toggleHtmlPreview()}
+                    aria-label={t('코드 보기', 'Code view')}
+                    data-tip={t('소스 코드로 보기 (Ctrl+D)', 'View as source code (Ctrl+D)')}
+                  >
+                    <IconCode size={14} />
+                  </button>
+                </>
+              )}
+              {(mdCanToggle || isSvg || htmlCanToggle) && (cmEligible || diffVisibleCtx) && <span className="vsep2" />}
+              {cmEligible && (
+                <>
+                  <button
+                    className={'htip' + (cmMode === 'read' ? ' on' : '')}
+                    onClick={() => setCmMode('read')}
+                    aria-label={t('읽기 모드', 'Read mode')}
+                    data-tip={t('읽기 모드 (Ctrl+E)', 'Read mode (Ctrl+E)')}
+                  >
+                    <IconBook size={14} />
+                  </button>
+                  <button
+                    className={'htip' + (cmMode === 'edit' ? ' on' : '')}
+                    onClick={() => setCmMode('edit')}
+                    aria-label={t('편집 모드', 'Edit mode')}
+                    data-tip={t('편집 모드 (Ctrl+E)', 'Edit mode (Ctrl+E)')}
+                  >
+                    <IconPencil size={14} />
+                  </button>
+                </>
+              )}
+              {cmEligible && diffVisibleCtx && <span className="vsep2" />}
+              {diffVisibleCtx && (
+                <button
+                  className={'htip' + (diffView ? ' on' : '')}
+                  onClick={() => setDiffView((v) => !v)}
+                  aria-label={t('변경 보기', 'Show changes')}
+                  // HTML은 Ctrl+D가 렌더↔코드 전환에 쓰이므로 이 토글은 버튼으로만
+                  data-tip={
+                    (diffView ? t('변경 표시 끄기', 'Hide change marks') : t('변경 표시 켜기', 'Show change marks')) +
+                    (htmlCanToggle ? '' : ' (Ctrl+D)')
+                  }
+                >
+                  <IconDiff size={14} />
+                </button>
+              )}
+            </div>
+          )}
+          <button
+            className="dclose htip"
+            onClick={rz.toggleMaximize}
+            aria-label={rz.maximized ? t('이전 크기로', 'Restore') : t('최대화', 'Maximize')}
+            data-tip={rz.maximized ? t('이전 크기로', 'Restore') : t('최대화', 'Maximize')}
+          >
+            {rz.maximized ? <IconRestore size={15} /> : <IconMax size={13} />}
+          </button>
+          <button
+            className="dclose htip"
+            onClick={requestClose}
+            aria-label={t('닫기', 'Close')}
+            data-tip={t('닫기 (Esc)', 'Close (Esc)')}
+          >
+            <IconClose size={16} />
+          </button>
+        </div>
+        {!rz.maximized && <ModalResizeHandles onStart={rz.startResize} />}
+        {/* PoC mbody — 본문은 카드 위에 얹힌 인셋 패널(라운드·헤어라인), 아래 mfoot 스탯 줄 */}
+        <div className={'fv-body' + (showFoot ? '' : ' nofoot')}>
+          {isImg ? (
+            <ImageView key={effPath} src={imageSrc(absPath(effPath, cwd))} alt={name} zoom={z.zoom} />
+          ) : htmlView ? (
+            <HtmlPreview
+              key={effPath}
+              cwd={cwd}
+              filePath={effPath}
+              onBridgeKey={(k) => {
+                if (closeConfirmRef.current) return // 확인 카드가 떠 있으면 단축키는 물러난다
+                if (k === 'd') toggleHtmlPreview()
+                // escape — 뷰어의 Esc 레이어 순서(메뉴 → 질문 → 검색 → 카드)를 그대로 따른다
+                else if (headCtxOpenRef.current) setHeadCtx(null)
+                else if (askOpenRef.current) setAsk(null)
+                else if (findOpenRef.current) setFindOpen(false)
+                else requestClose()
+              }}
+            />
+          ) : res == null ? (
+            <div className="fv-loading">
+              <span className="spin" />
+            </div>
+          ) : res.error || res.content == null ? (
+            <div className="fv-empty">{res.error || t('내용이 없어요', 'Nothing to show')}</div>
+          ) : cmEligible ? (
+            <CmEditor
+              key={effPath}
+              ref={cmRef}
+              content={res.content}
+              lang={fLang}
+              path={effPath}
+              cwd={cwd}
+              sem={sem}
+              structOv={structOv}
+              marks={effMarks}
+              readOnly={cmMode === 'read'}
+              zoom={z.zoom}
+              lsp={lspStatus === 'ready'}
+              jump={vs.jump}
+              initialPos={posMap.current.get(canonPath(effPath, cwd))}
+              onNavigate={handleNavigate}
+              onDirtyChange={setCmDirty}
+              onSaved={() => {
+                setCmSaved(true)
+                window.setTimeout(() => setCmSaved(false), 1400)
+              }}
+            />
+          ) : (
+            <CodeView
+              path={effPath}
+              content={res.content}
+              zoom={z.zoom}
+              cwd={cwd}
+              lsp={lspStatus === 'ready'}
+              coldHover={ovContent == null}
+              sem={sem}
+              structOv={structOv}
+              jump={vs.jump}
+              marks={effMarks}
+              mdSource={isMdFile && !!diff && !mdPreview}
+              onNavigate={handleNavigate}
+            />
+          )}
+        </div>
+        {showFoot && (
+          <div className="fv-foot">
+            <span className="dspacer" />
+            <span className="fstat mono">UTF-8</span>
+            <span className="fstat mono">{fileInfo!.eol}</span>
+          </div>
+        )}
+        <ZoomBadge pct={z.pct} show={z.flash} />
+
+        {findOpen && !isImg && (
+          <FindBar root={cardEl} contentKey={effPath + ':' + (res?.content?.length ?? -1)} onClose={() => setFindOpen(false)} />
+        )}
+
+        {ask && onAskSelection && (
+          <div className="fv-ask">
+            <div className="fv-ask-head">
+              <FileBadge path={effPath} size={16} />
+              <span className="fv-ask-path">{name}</span>
+              {ask.from != null && ask.to != null && (
+                <span className="fv-ask-lines">
+                  {isEn()
+                    ? `Lines ${Math.min(ask.from, ask.to)}–${Math.max(ask.from, ask.to)}`
+                    : `${Math.min(ask.from, ask.to)}–${Math.max(ask.from, ask.to)}줄`}
+                </span>
+              )}
+              <span className="fv-ask-spacer" />
+              <button
+                className="fv-ask-x has-tip"
+                data-tip={t('닫기 (Esc)', 'Close (Esc)')}
+                onClick={() => setAsk(null)}
+                aria-label={t('질문 패널 닫기', 'Close ask panel')}
+              >
+                <IconClose size={14} />
+              </button>
+            </div>
+            <pre className="fv-ask-code scroll">{ask.text}</pre>
+            <div className="fv-ask-row">
+              <textarea
+                ref={askInputRef}
+                value={askText}
+                rows={1}
+                placeholder={t('선택한 코드에 대해 물어보세요…  (Enter 전송)', 'Ask about the selected code…  (Enter to send)')}
+                onChange={(e) => setAskText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault()
+                    if (askText.trim()) {
+                      onAskSelection({
+                        path: effPath,
+                        ...ask,
+                        question: askText.trim()
+                      })
+                      setAsk(null)
+                      setAskText('')
+                    }
+                  } else if (e.key === 'Escape') {
+                    e.stopPropagation()
+                    setAsk(null)
+                  }
+                }}
+              />
+              <button
+                className="send has-tip"
+                data-tip={t('Claude에게 보내기 (Enter)', 'Send to Claude (Enter)')}
+                aria-label={t('질문 보내기', 'Send question')}
+                disabled={!askText.trim()}
+                onClick={() => {
+                  if (!askText.trim()) return
+                  onAskSelection({
+                    path: effPath,
+                    ...ask,
+                    question: askText.trim()
+                  })
+                  setAsk(null)
+                  setAskText('')
+                }}
+              >
+                <IconSend size={15} />
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+      {onAskSelection && !isImg && !ask && <SelectionAskBar root={cardEl} onAsk={(text, from, to) => setAsk({ text, from, to })} />}
+      <MouseGestureLayer target={cardEl} actions={gestureActions} disabled={closeConfirm} />
+      {closeConfirm && (
+        <CloseConfirmDialog
+          onStay={() => {
+            setCloseConfirm(false)
+            cmRef.current?.focus() // 편집기로 포커스 복귀 — 곧바로 이어서 타이핑되도록
+          }}
+          onLeave={onClose}
+        />
+      )}
+    </div>
+  )
+}

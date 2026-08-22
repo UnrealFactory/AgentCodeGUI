@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AgentCodeGUI</title>
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/gh/wanteddev/wanted-sans@v1.0.3/packages/wanted-sans/fonts/webfonts/variable/split/WantedSansVariable.min.css"
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <div id="root"></div>
+    <!-- 3.0: preload가 하던 일(window.api)을 심이 대신한다. 모듈 스크립트는 문서 순서대로
+         실행되므로, 렌더러 진입점보다 앞서 두면 첫 코드가 돌기 전에 window.api가 선다. -->
+    <script type="module" src="/src/api/shim.ts"></script>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

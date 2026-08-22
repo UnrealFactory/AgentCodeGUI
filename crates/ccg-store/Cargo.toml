@@ -1,0 +1,10 @@
+[package]
+name = "ccg-store"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "AgentCodeGUI 앱 홈 스토어 — 경로 결정·원자 저장·JSON 스토어(2.6.2 포맷 호환)"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
