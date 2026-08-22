@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>알림 6/7 — 명령 카드 (cmdresult)</title>
+<link rel="stylesheet" href="ui-notify.css" />
+</head>
+<body>
+
+<div class="mockmeta">
+  <h1>6/7 — 명령 카드 <span class="tag">card(face) · neutral|danger · action=none</span></h1>
+  <span class="sub">
+    근거: <code>styles.css:1372-1397</code>(<code>.cmd-card</code>) · <code>Chat.tsx:925-946</code> ·
+    <code>store/session.ts:137</code>(<code>CMD_NAMES = ['init','compact','review','security-review']</code>) ·
+    <code>session.ts:943</code>(<code>isError</code> → <code>failed</code>).
+    <b>이 종은 거의 그대로 둔다.</b> 세 상태(running → done → failed)를 한 자리에서 갈아 끼우는 카드는
+    이미 옳은 형태다 — 형태가 바뀔 게 아니라 <b>체계 안에 들어오기만 하면 된다</b>.
+    바꾸는 것은 ① 수치 줄을 부제와 합쳐 한 줄 줄이고 ② 타일 32→30px ③ 반경 14→12px 로 다른 6종과 맞추는 것뿐.
+  </span>
+</div>
+
+<div class="ab">
+  <div class="pane" data-k="A">
+    <div class="ph"><span class="k">A</span><span class="t">현행</span><span class="m">.cmd-card</span></div>
+    <div class="thread">
+      <div class="msg user"><div class="msg-main"><div class="content">/init</div></div></div>
+      <div class="meas" data-m="k1">
+        <div class="o-card">
+          <span class="ic">◈</span>
+          <div class="bd">
+            <div class="hd"><span class="bg">/init</span><span class="ti">CLAUDE.md를 만들고 있어요…</span><span class="spin" style="margin-left:auto;width:14px;height:14px;border-radius:99px;border:2px solid var(--accent-soft);border-top-color:var(--accent);"></span></div>
+          </div>
+        </div>
+      </div>
+      <div class="meas" data-m="k2">
+        <div class="o-card">
+          <span class="ic">⌘</span>
+          <div class="bd">
+            <div class="hd"><span class="bg">/compact</span><span class="ti">대화를 요약했어요</span><span class="tm">17:12</span></div>
+            <div class="sb">이전 42개 메시지를 핵심 요약으로 압축했습니다.</div>
+            <div class="st">컨텍스트 88% → 19% 로 절약 · 토큰 96k 회수</div>
+          </div>
+        </div>
+      </div>
+      <div class="meas" data-m="k3">
+        <div class="o-card failed">
+          <span class="ic">⛨</span>
+          <div class="bd">
+            <div class="hd"><span class="bg">/security-review</span><span class="ti">명령을 완료하지 못했어요</span><span class="tm">17:20</span></div>
+            <div class="sb">요청이 한도에 걸렸어요. 5시간 창이 18:40에 초기화됩니다.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="pane" data-k="B">
+    <div class="ph"><span class="k">B</span><span class="t">제안</span><span class="m">card · face=on</span></div>
+    <div class="thread">
+      <div class="msg user"><div class="msg-main"><div class="content">/init</div></div></div>
+      <div class="meas" data-m="k1">
+        <div class="card">
+          <span class="tile">◈</span>
+          <div class="bd">
+            <div class="hd"><span class="bg">/init</span><span class="ti">CLAUDE.md를 만들고 있어요…</span><span class="spin"></span></div>
+          </div>
+        </div>
+      </div>
+      <div class="meas" data-m="k2">
+        <div class="card">
+          <span class="tile">⌘</span>
+          <div class="bd">
+            <div class="hd"><span class="bg">/compact</span><span class="ti">대화를 요약했어요</span><span class="tm">17:12</span></div>
+            <div class="sb">이전 42개 메시지를 압축<span class="dot">·</span><span class="st">컨텍스트 88% → 19% · 토큰 96k 회수</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="meas" data-m="k3">
+        <div class="card failed">
+          <span class="tile">⛨</span>
+          <div class="bd">
+            <div class="hd"><span class="bg">/security-review</span><span class="ti">완료하지 못했어요</span><span class="tm">17:20</span></div>
+            <div class="sb">한도에 걸렸어요 — <span class="st">18:40에 초기화</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="mockmeta" style="margin-top:22px">
+  <h1>실패 카드는 오류 band가 아니다 — 겹치지 않게 하는 규칙</h1>
+  <span class="sub">
+    현행에서 <code>/명령</code>이 실패하면 <b>실패 카드</b>가 뜨고(<code>session.ts:943</code>),
+    같은 실행이 오류면 <b>오류 band</b>도 뜬다. 두 개가 같은 사건을 두 번 말할 수 있다.
+    규약: <b>명령 턴의 실패는 카드가 삼킨다</b>(<code>pendingCommand</code>가 있으면 error band를 만들지 않는다) —
+    이미 <code>session.ts:943</code>의 분기가 그 구조라, 규약으로 못박기만 하면 된다.
+  </span>
+</div>
+<div class="ab">
+  <div class="pane" data-k="S1">
+    <div class="ph"><span class="k">✓</span><span class="t">옳음 — 카드 하나가 실패를 삼킨다</span></div>
+    <div class="thread">
+      <div class="msg user"><div class="msg-main"><div class="content">/review</div></div></div>
+      <div class="card failed">
+        <span class="tile">⌾</span>
+        <div class="bd">
+          <div class="hd"><span class="bg">/review</span><span class="ti">완료하지 못했어요</span><span class="tm">17:31</span></div>
+          <div class="sb">변경된 파일이 없어 검토할 대상이 없습니다.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="pane" data-k="S2">
+    <div class="ph"><span class="k">✕</span><span class="t">틀림 — 같은 사건을 두 번 말한다</span></div>
+    <div class="thread">
+      <div class="msg user"><div class="msg-main"><div class="content">/review</div></div></div>
+      <div class="card failed">
+        <span class="tile">⌾</span>
+        <div class="bd">
+          <div class="hd"><span class="bg">/review</span><span class="ti">완료하지 못했어요</span><span class="tm">17:31</span></div>
+          <div class="sb">변경된 파일이 없어 검토할 대상이 없습니다.</div>
+        </div>
+      </div>
+      <div class="band t-danger">
+        <span class="g">✕</span>
+        <div class="bd"><div class="tx">변경된 파일이 없어 검토할 대상이 없습니다.</div></div>
+        <div class="tray"><span class="tm">17:31</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="tally">
+  <div class="box"><h3>A — 카드 3장 합계</h3><p><span class="n" data-sum="A">—</span></p></div>
+  <div class="box"><h3>B — 카드 3장 합계</h3><p><span class="n" data-sum="B">—</span> · 판정: <b data-verdict>—</b></p></div>
+</div>
+
+<details class="legend">
+  <summary>설계 근거 (블라인드 판정 전에는 펼치지 말 것)</summary>
+  <p>
+  <b>거의 안 바꾼 이유.</b> 이 카드는 2.6.2에서 이미 제 일을 한다 — 스피너가 시각 자리를 대신하고
+  (<code>styles.css:1392</code>), 실패는 테두리·타일·배지 세 곳에 빨강을 얹는다.
+  체계를 만든다고 잘 되는 것을 흔들면 손해다.<br>
+  <b>바꾼 것 1 — 수치를 부제 줄로.</b> 현행 <code>.cmd-card-stats</code>는 <b>줄 하나를 통째로</b> 쓴다
+  (<code>margin-top:6px</code> + 12px 줄). 부제가 짧아 가로로 남으므로 <code>·</code>로 이어 붙인다.
+  긴 부제면 자연 줄바꿈되니 정보는 안 잃는다.<br>
+  <b>바꾼 것 2 — 치수 통일.</b> 타일 32→30px, 반경 14→12px, 배지 12→11.5px, 패딩 13/15→12/14.
+  전부 다른 6종과 같은 값으로 맞추는 것이지 "작아 보이게" 하는 게 아니다.<br>
+  <b>바꾼 것 3 — 제목의 군말.</b> "명령을 완료하지 못했어요" → "완료하지 못했어요".
+  배지가 이미 <code>/security-review</code>라고 말하고 있으므로 '명령'은 중복이다.<br>
+  <b>새 규약 — 중복 금지.</b> <code>pendingCommand</code>가 살아 있는 턴의 오류는
+  <b>카드만</b> 말한다. 위 오른쪽 패널이 지금 일어날 수 있는 모습이다.
+  </p>
+</details>
+
+<script src="ui-notify.js"></script>
+</body>
+</html>

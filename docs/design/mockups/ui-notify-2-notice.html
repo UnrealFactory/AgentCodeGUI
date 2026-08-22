@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>알림 2/7 — 안내 (notice)</title>
+<link rel="stylesheet" href="ui-notify.css" />
+</head>
+<body>
+
+<div class="mockmeta">
+  <h1>2/7 — 안내 <span class="tag">band · notice · action=none|inline</span></h1>
+  <span class="sub">
+    근거: <code>styles.css:1346</code>(<code>.notice-row</code>) · <code>Chat.tsx:865</code> ·
+    <code>store/session.ts:834</code>(<code>case 'notice'</code>, <code>once</code> 키로 대화당 1회).
+    현행 문법은 <b>백틱으로 감싼 낱말을 노란색으로</b> 칠한다(<code>.notice-kw</code>) — 하단 '과금' 토글 같은
+    <b>UI 지시어</b>를 가리키는 용도다. 3.0은 그 규약을 지키되, <b>가리키는 곳으로 갈 수 있게</b> 한다:
+    지시어가 실재하는 화면 요소면 알약이 붙는다(<code>action=inline</code>). 문장으로 길 안내를 하지 않는다.
+  </span>
+</div>
+
+<div class="ab">
+  <div class="pane" data-k="A">
+    <div class="ph"><span class="k">A</span><span class="t">현행</span><span class="m">.notice-row</span></div>
+    <div class="thread">
+      <div class="meas" data-m="n1">
+        <div class="o-notice">
+          <span class="ic">⚠</span>
+          <div class="tx">지금은 <span class="kw">API</span>로 과금 중이에요. 구독 한도가 아니라 크레딧이 차감됩니다. 하단 <span class="kw">과금</span> 토글에서 바꿀 수 있어요.</div>
+          <span class="tm">09:14</span>
+        </div>
+      </div>
+      <div class="msg user"><div class="msg-main"><div class="content">crates/ccg-store 테스트 돌려줘</div></div></div>
+      <div class="meas" data-m="n2">
+        <div class="o-notice">
+          <span class="ic">⚠</span>
+          <div class="tx">5시간 한도의 82%를 썼어요. 남은 요청이 곧 제한될 수 있습니다.</div>
+          <span class="tm">09:41</span>
+        </div>
+      </div>
+      <div class="meas" data-m="n3">
+        <div class="o-notice">
+          <span class="ic">⚠</span>
+          <div class="tx">클로드 코드 CLI가 <span class="kw">2.1.4</span>로 업데이트됐어요. 다음 실행부터 새 버전이 쓰입니다.</div>
+          <span class="tm">09:42</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="pane" data-k="B">
+    <div class="ph"><span class="k">B</span><span class="t">제안</span><span class="m">band · notice</span></div>
+    <div class="thread">
+      <div class="meas" data-m="n1">
+        <div class="band t-notice">
+          <span class="g">⚠</span>
+          <div class="bd"><div class="tx"><span class="b">API 크레딧</span>으로 과금 중이에요 — 구독 한도는 줄지 않습니다.</div></div>
+          <div class="tray"><button class="act">과금 끄기</button><span class="tm">09:14</span></div>
+        </div>
+      </div>
+      <div class="msg user"><div class="msg-main"><div class="content">crates/ccg-store 테스트 돌려줘</div></div></div>
+      <div class="meas" data-m="n2">
+        <div class="band t-notice">
+          <span class="g">⚠</span>
+          <div class="bd"><div class="tx">5시간 한도의 <span class="kw">82%</span>를 썼어요 — <span class="mono">18:40</span>에 초기화됩니다.</div></div>
+          <div class="tray"><span class="tm">09:41</span></div>
+        </div>
+      </div>
+      <div class="meas" data-m="n3">
+        <div class="band t-neutral">
+          <span class="g">↑</span>
+          <div class="bd"><div class="tx">클로드 코드 CLI가 <span class="b">2.1.4</span>로 업데이트됐어요 — 다음 실행부터 적용됩니다.</div></div>
+          <div class="tray"><span class="tm">09:42</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="tally">
+  <div class="box"><h3>A — 안내 3건 합계</h3><p><span class="n" data-sum="A">—</span></p></div>
+  <div class="box"><h3>B — 안내 3건 합계</h3><p><span class="n" data-sum="B">—</span> · 판정: <b data-verdict>—</b></p></div>
+</div>
+
+<details class="legend">
+  <summary>설계 근거 (블라인드 판정 전에는 펼치지 말 것)</summary>
+  <p>
+  <b>바꾼 것 1 — 색조를 심각도로 되돌렸다.</b> 현행은 <code>kind:'notice'</code>면 무조건 노랑이다.
+  그래서 "CLI가 업데이트됐다"(그냥 사실)와 "한도 82%"(경고)가 <b>같은 노랑</b>으로 뜬다.
+  노랑을 남발하면 노랑이 아무 뜻도 없어진다. 세 번째 항목은 <code>t-neutral</code>로 내렸다 —
+  같은 형태(band), 다른 색조. <b>이게 4축 문법의 요점이다.</b><br>
+  <b>바꾼 것 2 — 길 안내를 알약으로.</b> "하단 <code>과금</code> 토글에서 바꿀 수 있어요"는
+  <b>사용자에게 심부름을 시키는 문장</b>이다. 그 토글이 실재하니 버튼이 되는 게 맞다.
+  문장이 짧아져 2줄이 1줄이 됐다.<br>
+  <b>바꾼 것 3 — 한도 안내에 초기화 시각.</b> 82%만 말하고 "언제 풀리는지"를 안 말하면
+  사용자가 할 수 있는 일이 없다. 값은 이미 usage에 있다(<code>limitResume</code> 경로가 쓰는 그 값).<br>
+  <b>안 바꾼 것.</b> <code>once</code> 규약(대화당 1회, 방금 보낸 사용자 메시지 <b>바로 위</b>에 삽입 —
+  <code>session.ts:838-848</code>)은 그대로다. 삽입 위치는 이 화면에서 A/B가 같다.
+  </p>
+</details>
+
+<script src="ui-notify.js"></script>
+</body>
+</html>

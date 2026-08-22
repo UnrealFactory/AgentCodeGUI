@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>알림 7/7 — 문답 흔적 (qa)</title>
+<link rel="stylesheet" href="ui-notify.css" />
+</head>
+<body>
+
+<div class="mockmeta">
+  <h1>7/7 — 문답 흔적 <span class="tag">card(bare) · positive · action=none</span></h1>
+  <span class="sub">
+    근거: <code>styles.css:1871-1877</code>(<code>.qa</code>) · <code>Chat.tsx:841-861</code>.
+    현행 주석: "Q 마커+질문(흐림) 아래 ✓+답(볼드). <b>박스 없이 대화에 남는다</b>".
+    그 결정은 옳다 — 질문 카드가 <b>답을 받고 나면</b> 이건 더 이상 알림이 아니라 <b>기록</b>이고,
+    기록에 박스를 두르면 대화가 끊긴다.
+    3.0은 그 결정을 <b>규칙으로 승격</b>한다: card 형태는 <code>face</code>를 옵션으로 갖고,
+    <b>상태가 변하는 카드에만</b>(running→done→failed) 면을 준다. 문답은 절대 실패하지 않으므로 면이 없다.
+  </span>
+</div>
+
+<div class="ab">
+  <div class="pane" data-k="A">
+    <div class="ph"><span class="k">A</span><span class="t">현행</span><span class="m">.qa</span></div>
+    <div class="thread">
+      <div class="msg"><div class="msg-main"><div class="content">두 가지만 확인할게요.</div></div></div>
+      <div class="meas" data-m="q1">
+        <div class="o-qa">
+          <div>
+            <div class="qq"><span class="qm">Q1</span><span>기존 <code>ipc.rs</code>를 파일째 나눌까요, 아니면 한 파일 안에서 모듈로 나눌까요?</span></div>
+            <div class="qa2"><span class="ck">✓</span><span>파일째 나눈다</span></div>
+          </div>
+          <div>
+            <div class="qq"><span class="qm">Q2</span><span>채널 상수(<code>mod ch</code>)는 어디에 둘까요?</span></div>
+            <div class="qa2"><span class="ck">✓</span><span>mod.rs에 그대로 둔다</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="msg"><div class="msg-main"><div class="content">알겠습니다. <code>ipc/</code> 디렉터리를 만들고 dispatch를 6개 파일로 나눌게요.</div></div></div>
+      <div class="worked">3분 41초 동안 작업함</div>
+    </div>
+  </div>
+
+  <div class="pane" data-k="B">
+    <div class="ph"><span class="k">B</span><span class="t">제안</span><span class="m">card · face=off</span></div>
+    <div class="thread">
+      <div class="msg"><div class="msg-main"><div class="content">두 가지만 확인할게요.</div></div></div>
+      <div class="meas" data-m="q1">
+        <div class="card bare">
+          <span class="tile">?</span>
+          <div class="bd">
+            <div class="qa">
+              <div>
+                <div class="q"><span class="qm">Q1</span><span>기존 <code>ipc.rs</code>를 파일째 나눌까요, 아니면 한 파일 안에서 모듈로 나눌까요?</span></div>
+                <div class="a"><span class="ck">✓</span><span>파일째 나눈다</span></div>
+              </div>
+              <div>
+                <div class="q"><span class="qm">Q2</span><span>채널 상수(<code>mod ch</code>)는 어디에 둘까요?</span></div>
+                <div class="a"><span class="ck">✓</span><span>mod.rs에 그대로 둔다</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="tray" style="flex:0 0 auto;display:flex;align-items:center;gap:8px;margin-top:1px">
+            <span class="tm" style="font-size:11px;color:var(--text-4)">18:04</span>
+          </div>
+        </div>
+      </div>
+      <div class="msg"><div class="msg-main"><div class="content">알겠습니다. <code>ipc/</code> 디렉터리를 만들고 dispatch를 6개 파일로 나눌게요.</div></div></div>
+      <div class="worked">3분 41초 동안 작업함</div>
+    </div>
+  </div>
+</div>
+
+<div class="mockmeta" style="margin-top:22px">
+  <h1>face 규칙이 실제로 가르는 것</h1>
+  <span class="sub"><b>"실패할 수 있나?"</b> — 그 하나로 면의 유무가 정해진다.
+  왼쪽은 면이 필요한 것(상태가 바뀐다), 오른쪽은 면이 없어야 하는 것(이미 끝난 기록).
+  지금은 이 구분이 없어서 문답만 예외적으로 맨몸이고, 왜 그런지가 코드 주석에만 있다.</span>
+</div>
+<div class="ab">
+  <div class="pane" data-k="F1">
+    <div class="ph"><span class="k">면</span><span class="t">face=on — 상태가 변한다</span></div>
+    <div class="thread">
+      <div class="card"><span class="tile">◈</span><div class="bd"><div class="hd"><span class="bg">/init</span><span class="ti">CLAUDE.md를 만들고 있어요…</span><span class="spin"></span></div></div></div>
+      <div class="card"><span class="tile">⌘</span><div class="bd"><div class="hd"><span class="bg">/compact</span><span class="ti">대화를 요약했어요</span><span class="tm">17:12</span></div><div class="sb">이전 42개 메시지를 압축<span class="dot">·</span><span class="st">토큰 96k 회수</span></div></div></div>
+      <div class="card failed"><span class="tile">⛨</span><div class="bd"><div class="hd"><span class="bg">/security-review</span><span class="ti">완료하지 못했어요</span><span class="tm">17:20</span></div><div class="sb">한도에 걸렸어요 — <span class="st">18:40에 초기화</span></div></div></div>
+    </div>
+  </div>
+  <div class="pane" data-k="F2">
+    <div class="ph"><span class="k">맨몸</span><span class="t">face=off — 끝난 기록</span></div>
+    <div class="thread">
+      <div class="card bare"><span class="tile">?</span><div class="bd"><div class="qa"><div><div class="q"><span class="qm">Q1</span><span>어느 브랜치에 올릴까요?</span></div><div class="a"><span class="ck">✓</span><span>feature/3.0.0-beta</span></div></div></div></div></div>
+      <div class="card bare"><span class="tile">⌦</span><div class="bd"><div class="hd" style="gap:7px"><span class="ti" style="font-weight:600">권한 허용됨</span><span class="tm">18:09</span></div><div class="sb"><span class="mono" style="font-family:var(--font-mono);font-size:11.5px">Bash(cargo test -p ccg-store)</span> — 이 대화 동안</div></div></div>
+      <div class="card bare"><span class="tile">◫</span><div class="bd"><div class="hd" style="gap:7px"><span class="ti" style="font-weight:600">변경된 파일 7개</span><span class="tm">18:14</span></div><div class="sb">ipc/ 6파일 신규<span class="dot">·</span><span class="st">+842 −613</span></div></div></div>
+    </div>
+  </div>
+</div>
+
+<div class="tally">
+  <div class="box"><h3>A — 문답 2쌍 높이</h3><p><span class="n" data-sum="A">—</span></p></div>
+  <div class="box"><h3>B — 문답 2쌍 높이</h3><p><span class="n" data-sum="B">—</span> · 판정: <b data-verdict>—</b></p></div>
+</div>
+
+<details class="legend">
+  <summary>설계 근거 (블라인드 판정 전에는 펼치지 말 것)</summary>
+  <p>
+  <b>바꾼 것 1 — 왼쪽 마커 칸.</b> 현행 <code>.qa</code>는 스레드 왼쪽 끝에 그냥 붙어 있어서,
+  이게 <b>시스템이 남긴 기록</b>인지 <b>AI가 한 말</b>인지 구분되지 않는다(둘 다 맨몸 텍스트다).
+  card 격자의 15px 마커 칸을 쓰면 다른 6종과 <b>왼쪽 정렬선이 맞는다</b> — 면 없이도 계열이 보인다.<br>
+  <b>바꾼 것 2 — 시각.</b> 문답은 대화 흐름에서 <b>결정이 내려진 지점</b>이다. 나중에 "그때 뭐라고 답했지"를
+  찾을 때 시각이 있으면 스크롤 목표가 된다. 다른 6종 중 4종이 이미 시각을 갖고 있다.<br>
+  <b>바꾼 것 3 — 치수 정리.</b> 질문 13.5→13px, 답 15.5→14.5px, 쌍 간격 13→11px,
+  들여쓰기 24→22px. 답이 본문(15.5px)과 <b>같은 크기라서</b> AI 발화처럼 읽히던 것을 한 단 내렸다 —
+  기록은 본문보다 조용해야 한다.<br>
+  <b>안 바꾼 것 — 면 없음, 초록 체크.</b> 2.6.2의 판단 그대로다. 이번에 한 일은
+  그 판단을 <b>재사용 가능한 규칙</b>(face 옵션)으로 만든 것이고, 그 규칙이 권한 기록·변경 파일 요약 같은
+  아직 형태가 없는 것들에도 답을 준다(오른쪽 패널).
+  </p>
+</details>
+
+<script src="ui-notify.js"></script>
+</body>
+</html>

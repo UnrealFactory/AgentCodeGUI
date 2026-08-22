@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>알림 5/7 — 압축 경계 (auto-compact)</title>
+<link rel="stylesheet" href="ui-notify.css" />
+</head>
+<body>
+
+<div class="mockmeta">
+  <h1>5/7 — 압축 경계 <span class="tag">rule · neutral · split</span></h1>
+  <span class="sub">
+    근거: <code>store/session.ts:862-899</code>(<code>case 'compact'</code>, <code>trigger==='auto'</code>일 때만
+    <code>kind:'cmdresult'</code> 카드를 만든다) · <code>styles.css:1372</code>.
+    <b>현행의 진짜 문제는 크기가 아니라 의미다.</b> 자동 압축은 "명령이 하나 끝났다"가 아니라
+    <b>"이 지점 위로는 원문이 없다"</b>는 <b>경계</b>다. 그런데 명령 카드와 똑같이 생겨서,
+    위로 스크롤하는 사용자에게 그 경계가 보이지 않는다.
+    3.0은 형태를 <code>card</code> → <code>rule.split</code>으로 내린다 — 정보는 전부 들고, 높이는 ¼이 된다.
+  </span>
+</div>
+
+<div class="ab">
+  <div class="pane" data-k="A">
+    <div class="ph"><span class="k">A</span><span class="t">현행</span><span class="m">.cmd-card (auto)</span></div>
+    <div class="thread">
+      <div class="msg"><div class="msg-main"><div class="content">…그래서 <code>maEngines</code> 스윕 주기를 15분으로 잡았습니다.</div></div></div>
+      <div class="worked">2분 14초 동안 작업함</div>
+      <div class="meas" data-m="c1">
+        <div class="o-card">
+          <span class="ic">⌘</span>
+          <div class="bd">
+            <div class="hd"><span class="bg">/compact</span><span class="ti">컨텍스트가 가득 차 대화를 자동으로 요약했어요</span><span class="tm">16:03</span></div>
+            <div class="sb">이전 대화를 핵심 요약으로 압축하고 이어서 진행합니다.</div>
+            <div class="st">컨텍스트 95% → 24% 로 절약 · 토큰 114k 회수</div>
+          </div>
+        </div>
+      </div>
+      <div class="msg user"><div class="msg-main"><div class="content">이어서 워크플로 쪽도 봐줘</div></div></div>
+      <div class="toollog">
+        <div class="trow"><span class="ti">⌕</span><span class="tn">읽기</span><span class="ta">src/main/workflow/runner.ts</span><span class="tr">288줄</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="pane" data-k="B">
+    <div class="ph"><span class="k">B</span><span class="t">제안</span><span class="m">rule · neutral · split</span></div>
+    <div class="thread">
+      <div class="msg"><div class="msg-main"><div class="content">…그래서 <code>maEngines</code> 스윕 주기를 15분으로 잡았습니다.</div></div></div>
+      <div class="worked">2분 14초 동안 작업함</div>
+      <div class="meas" data-m="c1">
+        <div class="rule t-neutral split">
+          <span class="hair l"></span>
+          <span class="g"><span class="ch">⌘</span></span>
+          <span class="lb">여기까지 요약됨</span>
+          <span class="num">152k → 38k · 컨텍스트 95% → 24%</span>
+          <span class="hair"></span>
+          <span class="tm">16:03</span>
+        </div>
+      </div>
+      <div class="msg user"><div class="msg-main"><div class="content">이어서 워크플로 쪽도 봐줘</div></div></div>
+      <div class="toollog">
+        <div class="trow"><span class="ti">⌕</span><span class="tn">읽기</span><span class="ta">src/main/workflow/runner.ts</span><span class="tr">288줄</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="mockmeta" style="margin-top:22px">
+  <h1>수치가 없을 때 (엔진이 전/후를 안 준 경우)</h1>
+  <span class="sub">현행 규약: <b>절대 지어내지 않는다</b>(<code>session.ts:872</code> — <code>before</code>·<code>after</code>가
+  둘 다 있고 줄어들었을 때만 <code>stats</code>를 만든다). rule도 같은 규약을 따른다 —
+  <code>.num</code>이 통째로 빠지고 선이 그만큼 길어진다. 빈 자리를 문구로 메우지 않는다.</span>
+</div>
+<div class="ab">
+  <div class="pane" data-k="X1">
+    <div class="ph"><span class="k">X</span><span class="t">수치 있음 / 없음 / 수동 /compact</span></div>
+    <div class="thread">
+      <div class="rule t-neutral split"><span class="hair l"></span><span class="g"><span class="ch">⌘</span></span><span class="lb">여기까지 요약됨</span><span class="num">152k → 38k · 컨텍스트 95% → 24%</span><span class="hair"></span><span class="tm">16:03</span></div>
+      <div class="rule t-neutral split"><span class="hair l"></span><span class="g"><span class="ch">⌘</span></span><span class="lb">여기까지 요약됨</span><span class="hair"></span><span class="tm">16:11</span></div>
+      <div class="rule t-neutral split"><span class="hair l"></span><span class="g"><span class="ch">⌘</span></span><span class="lb">여기까지 요약됨</span><span class="num">이전 42개 메시지 · 토큰 114k 회수</span><span class="hair"></span><span class="tm">16:20</span></div>
+    </div>
+  </div>
+  <div class="pane" data-k="X2">
+    <div class="ph"><span class="k">X</span><span class="t">경계가 스크롤에서 하는 일</span><span class="m">위로 올라갔을 때</span></div>
+    <div class="thread">
+      <div class="msg"><div class="msg-main"><div class="content" style="color:rgba(255,255,255,.55)">(요약본 위쪽 — 원문은 엔진에 없다)</div></div></div>
+      <div class="rule t-neutral split"><span class="hair l"></span><span class="g"><span class="ch">⌘</span></span><span class="lb">여기까지 요약됨</span><span class="num">152k → 38k</span><span class="hair"></span><span class="tm">16:03</span></div>
+      <div class="msg user"><div class="msg-main"><div class="content">이어서 워크플로 쪽도 봐줘</div></div></div>
+      <div class="msg"><div class="msg-main"><div class="content">워크플로 러너는 <code>runner.ts:288</code>에서 스텝을 큐에 넣고…</div></div></div>
+    </div>
+  </div>
+</div>
+
+<div class="tally">
+  <div class="box"><h3>A — 압축 표시 높이</h3><p><span class="n" data-sum="A">—</span></p></div>
+  <div class="box"><h3>B — 압축 표시 높이</h3><p><span class="n" data-sum="B">—</span> · 판정: <b data-verdict>—</b></p></div>
+</div>
+
+<details class="legend">
+  <summary>설계 근거 (블라인드 판정 전에는 펼치지 말 것)</summary>
+  <p>
+  <b>가장 큰 승부처.</b> 자동 압축은 긴 대화에서 <b>여러 번</b> 일어난다. 그때마다 84px짜리
+  카드가 스레드에 박히면 대화가 카드로 끊긴다. rule은 20px다.<br>
+  <b>버린 문장.</b> "이전 대화를 핵심 요약으로 압축하고 이어서 진행합니다."는
+  <b>제목이 이미 말한 것을 다시 말한다</b>. 라벨 "여기까지 요약됨"이 같은 일을 6글자로 한다.<br>
+  <b>합친 수치.</b> 현행은 제목 줄·부제 줄·수치 줄 3단이다. 수치 두 쌍(토큰·퍼센트)을
+  라벨 옆 한 자리에 모으면 <b>가로로</b> 들어간다 — 스레드 폭이 760~1500px라 남는다.<br>
+  <b>버린 배지.</b> <code>/compact</code> 모노 배지는 <b>자동</b> 압축에서 거짓말이다 —
+  사용자가 그 명령을 친 적이 없다. 수동 <code>/compact</code>는 명령 카드(6/7)가 그대로 맡는다.
+  <b>즉 자동과 수동이 다른 형태를 갖는다</b> — 지금은 둘 다 카드라 구분이 안 된다.<br>
+  <b>선의 방향.</b> <code>.split</code>은 왼쪽에도 22px 선을 낸다. 중단선(오른쪽만)과
+  <b>눈으로 갈린다</b> — "끊겼다"와 "갈렸다"의 차이.
+  </p>
+</details>
+
+<script src="ui-notify.js"></script>
+</body>
+</html>

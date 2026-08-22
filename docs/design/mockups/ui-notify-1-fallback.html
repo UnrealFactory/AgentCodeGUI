@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>알림 1/7 — 모델 자동 전환 배너 (model-fallback)</title>
+<link rel="stylesheet" href="ui-notify.css" />
+</head>
+<body>
+
+<div class="mockmeta">
+  <h1>1/7 — 모델 자동 전환 배너 <span class="tag">band · notice · action=revert</span></h1>
+  <span class="sub">
+    근거: <code>store/session.ts:821</code>(<code>case 'model-fallback'</code> → <code>kind:'notice'</code>로 재사용) ·
+    <code>components/Chat.tsx:865</code> · <code>styles.css:1346</code>.
+    현행은 <b>notice와 같은 줄</b>이다 — 모델이 바뀌었다는 사실이 API 과금 안내와 같은 무게로 흐른다.
+    되돌릴 방법이 문장에도 UI에도 없다.
+    3.0은 M-LOGIC §6.2의 <code>ChatIdentityEvent{origin:'engine_fallback', fallback:{fromModel,toModel,cause,revertTo}}</code>에
+    접속해 <b>[되돌리기]</b>를 같은 줄에 얹는다(<code>chat:identity-revert(revertTo)</code>).
+  </span>
+</div>
+
+<div class="ab">
+
+  <!-- ════════ A — 2.6.2 현행 ════════ -->
+  <div class="pane" data-k="A">
+    <div class="ph"><span class="k">A</span><span class="t">현행</span><span class="m">notice-row 재사용</span></div>
+    <div class="thread">
+      <div class="msg user"><div class="msg-main"><div class="content">이 함수가 왜 느린지 프로파일링해서 고쳐줘</div></div></div>
+      <div class="meas" data-m="banner">
+        <div class="o-notice">
+          <span class="ic">⚠</span>
+          <div class="tx">정책상 응답할 수 없는 요청이라 Opus 5 모델로 전환해 계속해요. 이후 대화도 Opus 5 모델로 진행됩니다.</div>
+          <span class="tm">14:32</span>
+        </div>
+      </div>
+      <div class="toollog">
+        <div class="trow"><span class="ti">⌕</span><span class="tn">읽기</span><span class="ta">src/main/claude/engine.ts:990-1010</span><span class="tr">21줄</span></div>
+        <div class="trow"><span class="ti">✎</span><span class="tn">편집</span><span class="ta">src/main/claude/engine.ts</span><span class="tr">+4 −1</span></div>
+      </div>
+      <div class="msg"><div class="msg-main"><div class="content">프로파일링해 보니 <b>capThread()</b>가 매 이벤트마다 배열 전체를 다시 만들고 있었어요. 슬라이스 한 번으로 줄였습니다.</div></div></div>
+      <div class="worked">18초 동안 작업함</div>
+    </div>
+  </div>
+
+  <!-- ════════ B — 3.0 제안 ════════ -->
+  <div class="pane" data-k="B">
+    <div class="ph"><span class="k">B</span><span class="t">제안</span><span class="m">band · notice · revert</span></div>
+    <div class="thread">
+      <div class="msg user"><div class="msg-main"><div class="content">이 함수가 왜 느린지 프로파일링해서 고쳐줘</div></div></div>
+      <div class="meas" data-m="banner">
+        <div class="band t-notice">
+          <span class="g">⚠</span>
+          <div class="bd">
+            <div class="tx"><span class="b">Fable 5</span>가 정책상 거부해 <span class="kw">Opus 5</span>로 전환했어요 — 이후 대화도 같은 모델로 갑니다.</div>
+          </div>
+          <div class="tray">
+            <button class="act">되돌리기</button>
+            <span class="tm">14:32</span>
+          </div>
+        </div>
+      </div>
+      <div class="toollog">
+        <div class="trow"><span class="ti">⌕</span><span class="tn">읽기</span><span class="ta">src/main/claude/engine.ts:990-1010</span><span class="tr">21줄</span></div>
+        <div class="trow"><span class="ti">✎</span><span class="tn">편집</span><span class="ta">src/main/claude/engine.ts</span><span class="tr">+4 −1</span></div>
+      </div>
+      <div class="msg"><div class="msg-main"><div class="content">프로파일링해 보니 <b>capThread()</b>가 매 이벤트마다 배열 전체를 다시 만들고 있었어요. 슬라이스 한 번으로 줄였습니다.</div></div></div>
+      <div class="worked">18초 동안 작업함</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── 변형 3종: cause(FallbackVia) 3경로 · 되돌린 뒤 · 예약분 있음 ───────── -->
+<div class="mockmeta" style="margin-top:22px">
+  <h1>변형 — 같은 형태, 문장만 다르다</h1>
+  <span class="sub">M-LOGIC §6.2의 <code>FallbackVia</code> 3경로(<code>dialog</code> · <code>refusal_frame</code> ·
+  <code>model_delta</code>)는 <b>원인만 다르고 UI는 하나</b>다. 불변식 "전환 1회 = 리비전 1개 = 배너 1개"가
+  형태에서도 지켜지려면 경로마다 다른 컴포넌트를 만들면 안 된다.</span>
+</div>
+<div class="ab">
+  <div class="pane" data-k="V1">
+    <div class="ph"><span class="k">V</span><span class="t">cause 3경로 · 되돌린 뒤 · codex</span></div>
+    <div class="thread">
+      <div class="band t-notice">
+        <span class="g">⚠</span>
+        <div class="bd"><div class="tx"><span class="b">Fable 5</span>가 정책상 거부해 <span class="kw">Opus 5</span>로 전환했어요 — 이후 대화도 같은 모델로 갑니다.</div></div>
+        <div class="tray"><button class="act">되돌리기</button><span class="tm">14:32</span></div>
+      </div>
+      <div class="band t-notice">
+        <span class="g">⚠</span>
+        <div class="bd"><div class="tx">엔진이 <span class="b">Fable 5</span> 대신 <span class="kw">Sonnet 4.6</span>으로 답했어요 — 전환을 대화에 반영했습니다.</div></div>
+        <div class="tray"><button class="act">되돌리기</button><span class="tm">14:35</span></div>
+      </div>
+      <div class="band t-notice">
+        <span class="g">⚠</span>
+        <div class="bd"><div class="tx"><span class="b">GPT-5 Codex</span>가 수용량 한계라 <span class="kw">GPT-5 mini</span>로 전환해 다시 시도해요.</div></div>
+        <div class="tray"><button class="act">되돌리기</button><span class="tm">14:39</span></div>
+      </div>
+      <div class="band t-notice">
+        <span class="g">⚠</span>
+        <div class="bd"><div class="tx"><span class="b">Fable 5</span>가 정책상 거부해 <span class="kw">Opus 5</span>로 전환했어요 — 이후 대화도 같은 모델로 갑니다.</div></div>
+        <div class="tray"><button class="act done">되돌림 ✓</button><span class="tm">14:32</span></div>
+      </div>
+      <div class="band t-notice">
+        <span class="g">⚠</span>
+        <div class="bd"><div class="tx"><span class="b">Fable 5</span>가 정책상 거부해 <span class="kw">Opus 5</span>로 전환했어요 — 예약해 둔 <span class="mono">effort=high</span>는 <span class="b">다음 턴</span>에 함께 적용됩니다.</div></div>
+        <div class="tray"><button class="act">되돌리기</button><span class="tm">14:41</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="pane" data-k="V2">
+    <div class="ph"><span class="k">V</span><span class="t">좁은 폭 — 멀티 패널(420px) 안</span><span class="m">scope=panel</span></div>
+    <div class="thread" style="max-width:420px">
+      <div class="band t-notice">
+        <span class="g">⚠</span>
+        <div class="bd">
+          <div class="tx"><span class="b">Fable 5</span>가 정책상 거부해 <span class="kw">Opus 5</span>로 전환했어요 — 이후 대화도 같은 모델로 갑니다.</div>
+        </div>
+      </div>
+      <div class="band t-notice" style="flex-wrap:wrap">
+        <span class="g">⚠</span>
+        <div class="bd">
+          <div class="tx"><span class="b">Fable 5</span>가 정책상 거부해 <span class="kw">Opus 5</span>로 전환했어요.</div>
+        </div>
+        <div class="tray"><button class="act">되돌리기</button><span class="tm">14:32</span></div>
+      </div>
+      <div class="rule t-neutral" style="max-width:420px">
+        <span class="g"><span class="ch">↩</span></span><span class="lb">패널 폭이 좁으면 트레이가 아래로 접힌다</span><span class="hair"></span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="tally">
+  <div class="box"><h3>A — 현행 배너 높이</h3><p><span class="n" data-sum="A">—</span></p></div>
+  <div class="box"><h3>B — 제안 배너 높이</h3><p><span class="n" data-sum="B">—</span> · 판정: <b data-verdict>—</b></p></div>
+</div>
+
+<details class="legend">
+  <summary>설계 근거 (블라인드 판정 전에는 펼치지 말 것)</summary>
+  <p>
+  <b>바꾼 것 1 — 문장의 주어.</b> 현행 "정책상 응답할 수 없는 요청이라…"는 <b>주체가 없다</b>.
+  누가 거부했고 누가 대신 답하는지가 문장 안에 없어서, 사용자는 자기가 뭘 잘못했는지부터 의심한다.
+  제안은 <code>fromModel</code>/<code>toModel</code>을 그대로 문장의 주어·목적어로 세운다.<br>
+  <b>바꾼 것 2 — 되돌릴 수 있다.</b> M-LOGIC §6.2의 <code>revertTo</code>가 이미 배너 재료로 정의돼 있는데
+  현행 UI에는 그걸 쓸 자리가 없다. <code>.tray</code>가 그 자리이고, <b>줄을 늘리지 않는다</b> —
+  시각(<code>14:32</code>)이 이미 오른쪽 끝에 있었으므로 그 옆에 붙인다.<br>
+  <b>바꾼 것 3 — 반복을 뺐다.</b> "…Opus 5 모델로 전환해 계속해요. 이후 대화도 Opus 5 모델로 진행됩니다."는
+  같은 모델명을 두 번 말한다. 한 번으로 줄였다 — 좁은 폭(멀티 패널)에서 줄 수가 갈리는 여유가 그만큼 늘어난다.<br>
+  <b>높이는 사실상 동률이다(실측 A 46.8px · B 47.0px, +0.2px).</b> 이 폭에서는 둘 다 1줄이라,
+  패딩을 12→11px로 줄여 번 것을 <b>테두리를 실제로 보이게 만든 것</b>(face와 다른 edge)이 도로 먹었다.
+  여기서 얻은 것은 높이가 아니라 <b>[되돌리기]라는 기능</b>이다 — 줄을 늘리지 않고 넣었다는 게 요점.<br>
+  <b>안 바꾼 것.</b> 색조(yellow), 아이콘 글리프, 스레드 owl 간격, 시각 포맷. 학습된 것은 건드리지 않는다.<br>
+  <b>되돌린 뒤에도 배너는 남는다</b> — §6.3이 revert를 "새 리비전"으로 정의하므로 히스토리가 지워지면 거짓말이 된다.
+  버튼만 <code>[되돌림 ✓]</code>로 정착한다.
+  </p>
+</details>
+
+<script src="ui-notify.js"></script>
+</body>
+</html>

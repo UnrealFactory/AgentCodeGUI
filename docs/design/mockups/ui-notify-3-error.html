@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>알림 3/7 — 오류 (error)</title>
+<link rel="stylesheet" href="ui-notify.css" />
+</head>
+<body>
+
+<div class="mockmeta">
+  <h1>3/7 — 오류 <span class="tag">band · danger · action=inline</span></h1>
+  <span class="sub">
+    근거: <code>styles.css:1359</code>(<code>.error-row</code>) · <code>Chat.tsx:888</code>.
+    현행은 <b>'오류' 제목 줄 + 본문</b> 2단이고, 리듀서가 붙인 <code>'오류: '</code> 접두를 본문에서 다시 걷어낸다
+    (<code>Chat.tsx:896</code>). 즉 <b>같은 낱말이 세 곳</b>(빨간 아이콘·빨간 제목·원문 접두)에서 반복된다.
+    3.0은 색조가 이미 '오류'를 말하므로 제목 줄을 없애고, 그 자리에 <b>원문을 그대로 담는 코드 면</b>을 준다 —
+    스택 트레이스·경로가 줄바꿈으로 뭉개지지 않게.
+  </span>
+</div>
+
+<div class="ab">
+  <div class="pane" data-k="A">
+    <div class="ph"><span class="k">A</span><span class="t">현행</span><span class="m">.error-row</span></div>
+    <div class="thread">
+      <div class="msg user"><div class="msg-main"><div class="content">릴리즈 빌드 돌려줘</div></div></div>
+      <div class="toollog">
+        <div class="trow"><span class="ti">▸</span><span class="tn">셸</span><span class="ta">npm run tauri:build</span><span class="tr">실패</span></div>
+      </div>
+      <div class="meas" data-m="e1">
+        <div class="o-error">
+          <span class="ic">✕</span>
+          <div class="bd">
+            <div class="hd"><span class="ti">오류</span><span class="tm">15:07</span></div>
+            <div class="tx">error: failed to load manifest for workspace member `C:\Code\AgentCodeGUI\crates\ccg-engine`
+Caused by: no targets specified in the manifest
+either src/lib.rs, src/main.rs, a [lib] section, or [[bin]] section must be present</div>
+          </div>
+        </div>
+      </div>
+      <div class="meas" data-m="e2">
+        <div class="o-error">
+          <span class="ic">✕</span>
+          <div class="bd">
+            <div class="hd"><span class="ti">오류</span><span class="tm">15:09</span></div>
+            <div class="tx">요청이 한도에 걸렸어요. 5시간 창이 18:40에 초기화됩니다.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="pane" data-k="B">
+    <div class="ph"><span class="k">B</span><span class="t">제안</span><span class="m">band · danger</span></div>
+    <div class="thread">
+      <div class="msg user"><div class="msg-main"><div class="content">릴리즈 빌드 돌려줘</div></div></div>
+      <div class="toollog">
+        <div class="trow"><span class="ti">▸</span><span class="tn">셸</span><span class="ta">npm run tauri:build</span><span class="tr">실패</span></div>
+      </div>
+      <div class="meas" data-m="e1">
+        <div class="band t-danger">
+          <span class="g">✕</span>
+          <div class="bd">
+            <div class="tx"><span class="b">워크스페이스 매니페스트를 못 읽었어요</span> — <span class="mono">crates/ccg-engine</span>에 빌드 대상이 없습니다.</div>
+            <div class="raw">error: failed to load manifest for workspace member
+  `C:\Code\AgentCodeGUI\crates\ccg-engine`
+Caused by: no targets specified in the manifest
+  either src/lib.rs, src/main.rs, a [lib] section,
+  or [[bin]] section must be present</div>
+          </div>
+          <div class="tray"><button class="act ghost">복사</button><span class="tm">15:07</span></div>
+        </div>
+      </div>
+      <div class="meas" data-m="e2">
+        <div class="band t-danger">
+          <span class="g">✕</span>
+          <div class="bd"><div class="tx"><span class="b">한도에 걸렸어요</span> — 5시간 창이 <span class="mono">18:40</span>에 초기화됩니다.</div></div>
+          <div class="tray"><button class="act">한도 풀리면 이어서</button><span class="tm">15:09</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="tally">
+  <div class="box"><h3>A — 오류 2건 합계</h3><p><span class="n" data-sum="A">—</span></p></div>
+  <div class="box"><h3>B — 오류 2건 합계</h3><p><span class="n" data-sum="B">—</span> · 판정: <b data-verdict>—</b></p></div>
+</div>
+
+<details class="legend">
+  <summary>설계 근거 (블라인드 판정 전에는 펼치지 말 것)</summary>
+  <p>
+  <b>여기서는 B가 A보다 높다 — 그리고 그게 의도다.</b> 늘어난 높이는 여백이 아니라
+  <b>원문 코드 면</b>이다. 현행 <code>.error-text</code>는 <code>white-space:pre-wrap</code>이라
+  긴 경로가 산문 폭으로 재줄바꿈돼 <b>읽을 수 없는 덩어리</b>가 된다. 모노 + 인셋 면으로 바꾸면
+  줄 구조가 보존되고 <b>[복사]</b>가 의미를 갖는다. 밀도 규약은 "높이를 늘리지 마라"가 아니라
+  <b>"늘린 픽셀마다 정보가 들어 있어야 한다"</b>이다.<br>
+  <b>바꾼 것 1 — 제목 줄 제거.</b> 빨간 ✕ + 빨간 면이 이미 '오류'라고 말한다. 대신 그 자리에
+  <b>사람 말로 요약한 한 줄</b>을 둔다 — 원문은 아래 코드 면에 그대로 있으므로 잃는 정보가 없다.<br>
+  <b>바꾼 것 2 — 한도 오류에 행동.</b> 한도는 오류 중 <b>유일하게 사용자가 할 일이 있는</b> 것이다
+  (기존 <code>useLimitResume</code> 훅이 이미 하는 일). 그 버튼을 오류 줄에 얹으면 사용자가
+  컴포저까지 내려가 토글을 찾지 않아도 된다.<br>
+  <b>남는 위험.</b> 코드 면은 길어질 수 있다 — 규약: <b>최대 8줄, 넘으면 접고 [전체 보기]</b>.
+  이 목업은 6줄짜리라 접힘이 안 보인다.
+  </p>
+</details>
+
+<script src="ui-notify.js"></script>
+</body>
+</html>

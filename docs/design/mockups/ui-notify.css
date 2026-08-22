@@ -1,0 +1,283 @@
+/* M-UI 알림 체계 목업 공용 스타일.
+   토큰은 2.6.2 styles.css:7-84를 그대로 옮겼고(사본이 아니라 같은 값), 알림 관련
+   `--ntf-*`만 새로 정의한다. 밀도 기준은 실물급 — 목업이 실앱보다 헐거우면 판정이 거짓이 된다.
+
+   A 칼럼 = 2.6.2 현행(실물 CSS 수치 그대로 재현), B 칼럼 = 3.0 제안.
+   둘은 **같은 스레드 폭·같은 owl 간격**에 놓인다. 안 그러면 밀도 비교가 성립하지 않는다. */
+:root{
+  --desktop:#101010;
+  --panel:rgba(21,21,21,.70);
+  --chat-bg:rgba(16,16,16,.70);
+  --bg:rgba(21,21,21,.97);
+  --surface:rgba(255,255,255,.03);
+  --surface-2:rgba(255,255,255,.06);
+  --surface-3:rgba(255,255,255,.09);
+  --inset:rgba(0,0,0,.25);
+  --hover:rgba(255,255,255,.045);
+  --active:rgba(255,255,255,.07);
+  --line:rgba(255,255,255,.07);
+  --line-2:rgba(255,255,255,.11);
+  --line-strong:rgba(255,255,255,.20);
+  --text:rgba(255,255,255,.90);
+  --text-2:rgba(255,255,255,.62);
+  --text-3:rgba(255,255,255,.40);
+  --text-4:rgba(255,255,255,.26);
+  --accent:#e9e9e9;
+  --accent-2:rgba(255,255,255,.96);
+  --accent-soft:rgba(255,255,255,.10);
+  --accent-line:rgba(255,255,255,.26);
+  --green:#82c9a4; --blue:#7fa7d8; --yellow:#d9c063; --red:#dd7a6b;
+  --violet:#a690d8; --teal:#6fc3c3; --amber:#d9a05b;
+  --green-soft:rgba(130,201,164,.12); --red-soft:rgba(221,122,107,.13);
+  --blue-soft:rgba(127,167,216,.14); --yellow-soft:rgba(217,192,99,.12);
+  --font-sans:'Wanted Sans Variable','Wanted Sans',system-ui,-apple-system,'Malgun Gothic',sans-serif;
+  --font-mono:'JetBrains Mono',ui-monospace,'SFMono-Regular',Consolas,monospace;
+  --radius:12px;
+  --shadow-sm:0 2px 8px -2px rgba(0,0,0,.42);
+
+  /* ── 알림 체계 토큰 (신규) ────────────────────────────────────────────────
+     세로 패딩을 11px로 **줄였다**(현행 12px). "여백을 넓혀 깔끔하게"의 반대 방향 —
+     대신 아이콘·글자 정렬을 광학적으로 맞춰 답답해 보이지 않게 한다. */
+  --ntf-pad-y:11px;
+  --ntf-pad-x:14px;
+  --ntf-radius:12px;      /* 현행 14px → 12px. 카드/모달(--radius:12)과 한 값으로 */
+  --ntf-gap:10px;
+  --ntf-ic:15px;          /* band·rule 공통 글리프 */
+  --ntf-tile:30px;        /* card 타일 (현행 32 → 30, 카드 최소 높이 -2px) */
+  /* rule의 높이는 **글자 줄 높이 그대로**다(12.5px × 1.5 = 18.8px 실측).
+     min-height를 20px로 박았더니 현행 .stopline(18.8px)보다 1.3px 높아졌다 —
+     자가 계측(ui-notify.js)이 "밀도 손실"로 잡아냈고, 그래서 박지 않는다.
+     글리프 칸(15px)이 줄 높이보다 작아 자연 높이가 줄 높이로 결정된다. */
+  --ntf-title:13px;
+  --ntf-body:13px;
+  --ntf-meta:11px;
+  --ntf-lh:1.6;
+  --ntf-ease:cubic-bezier(.2,.8,.2,1);
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{height:100%;}
+body{
+  font-family:var(--font-sans); color:var(--text); font-size:13px; line-height:1.5;
+  /* 아크릴 뒤 벽지 흉내 — 실앱은 DWM DWMSBT_TRANSIENTWINDOW */
+  background:
+    radial-gradient(1200px 700px at 12% -10%, #2b3340 0%, transparent 60%),
+    radial-gradient(900px 600px at 92% 108%, #3a2f36 0%, transparent 62%),
+    linear-gradient(160deg,#151a20 0%,#0d0d0f 55%,#141114 100%);
+  padding:22px; overflow:auto;
+}
+.mockmeta{max-width:1580px;margin:0 auto 14px;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;}
+.mockmeta h1{font-size:14px;font-weight:600;color:var(--text);letter-spacing:-.01em;}
+.mockmeta .sub{font-size:11.5px;color:var(--text-3);max-width:1100px;line-height:1.6;}
+.mockmeta .tag{font-size:10px;color:var(--text-4);border:1px solid var(--line);border-radius:5px;padding:1px 6px;font-family:var(--font-mono);}
+.mockmeta code{font-family:var(--font-mono);font-size:11px;color:var(--text-2);}
+
+/* ── A/B 2열 ──────────────────────────────────────────── */
+.ab{max-width:1580px;margin:0 auto;display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start;}
+.pane{
+  border-radius:var(--radius);overflow:hidden;background:var(--chat-bg);
+  box-shadow:0 26px 60px -28px rgba(0,0,0,.78),0 0 0 1px var(--line);
+  backdrop-filter:blur(30px);
+}
+.pane .ph{
+  height:34px;display:flex;align-items:center;gap:8px;padding:0 14px;
+  border-bottom:1px solid var(--line);background:var(--panel);
+}
+.pane .ph .k{
+  width:18px;height:18px;display:grid;place-items:center;border-radius:5px;
+  background:var(--surface-2);color:var(--text-2);font-size:10.5px;font-weight:700;font-family:var(--font-mono);
+}
+.pane .ph .t{font-size:11.5px;color:var(--text-3);}
+.pane .ph .m{margin-left:auto;font-family:var(--font-mono);font-size:10px;color:var(--text-4);}
+
+/* 실앱 스레드 리듬 그대로: 패딩 26/28/30, owl 18px */
+.thread{padding:22px 24px 24px;display:flex;flex-direction:column;}
+.thread > * + *{margin-top:18px;}
+.thread > * + .rule{margin-top:10px;}
+.thread > .rule + *{margin-top:10px;}
+.thread > * + .worked{margin-top:10px;}
+.thread > .toollog + .msg{margin-top:8px;}
+.thread > .msg + .toollog{margin-top:15px;}
+
+/* ── 스레드 배경 요소 (밀도 대조군 — 알림만 떠 있으면 크기 감각이 거짓이 된다) ── */
+.msg .content{font-size:15.5px;line-height:1.72;color:rgba(255,255,255,.86);word-break:break-word;}
+.msg.user .msg-main{background:rgba(255,255,255,.03);border:1px solid var(--line-2);border-radius:12px;padding:11px 16px;}
+.msg.user .content{color:var(--text);line-height:1.6;font-size:15.5px;}
+.worked{margin-left:2px;font-size:13px;color:var(--text-3);}
+.toollog{display:flex;flex-direction:column;gap:2px;}
+.trow{display:flex;align-items:center;gap:8px;padding:4.5px 7px;margin:0 -7px;border-radius:7px;font-size:12.5px;}
+.trow .ti{width:17px;flex:0 0 17px;text-align:center;color:rgba(255,255,255,.45);font-size:11px;}
+.trow .tn{color:rgba(255,255,255,.82);}
+.trow .ta{font-family:var(--font-mono);font-size:11.5px;color:rgba(255,255,255,.56);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;}
+.trow .tr{margin-left:auto;color:rgba(255,255,255,.50);font-size:11.5px;flex:0 0 auto;}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   A — 2.6.2 현행 (styles.css 수치 그대로)
+   ══════════════════════════════════════════════════════════════════════════ */
+.o-notice{display:flex;gap:10px;align-items:flex-start;padding:12px 15px;
+  background:var(--yellow-soft);border:1px solid var(--yellow-soft);border-radius:14px;}
+.o-notice .ic{flex:0 0 auto;margin-top:1px;color:var(--yellow);display:grid;place-items:center;}
+.o-notice .tx{flex:1;min-width:0;font-size:13px;line-height:1.6;color:var(--text-2);word-break:keep-all;}
+.o-notice .kw{color:var(--yellow);font-weight:600;}
+.o-notice .tm{flex:0 0 auto;font-size:11px;color:var(--text-3);margin-top:2px;}
+
+.o-error{display:flex;gap:10px;align-items:flex-start;padding:12px 15px;
+  background:var(--red-soft);border:1px solid var(--red-soft);border-radius:14px;}
+.o-error .ic{flex:0 0 auto;margin-top:2px;color:var(--red);display:grid;place-items:center;}
+.o-error .bd{flex:1;min-width:0;}
+.o-error .hd{display:flex;align-items:baseline;gap:8px;}
+.o-error .ti{font-size:13px;font-weight:700;letter-spacing:-.01em;color:var(--red);}
+.o-error .tm{margin-left:auto;font-size:11px;color:var(--text-3);}
+.o-error .tx{margin-top:3px;font-size:13px;line-height:1.6;color:var(--text-2);white-space:pre-wrap;}
+
+.o-stop{display:flex;align-items:center;gap:8px;margin:0 2px;font-size:12.5px;font-weight:600;
+  letter-spacing:.01em;color:var(--red);}
+.o-stop .sq{width:9px;height:9px;background:currentColor;flex:0 0 auto;}
+.o-stop::after{content:'';flex:1;height:1px;margin-left:2px;background:rgba(221,122,107,.34);}
+
+.o-card{display:flex;gap:12px;align-items:flex-start;padding:13px 15px;background:var(--surface);
+  border:1px solid var(--line-2);border-radius:14px;box-shadow:var(--shadow-sm);}
+.o-card .ic{width:32px;height:32px;flex:0 0 auto;display:grid;place-items:center;border-radius:9px;
+  background:var(--surface-2);color:var(--text-3);margin-top:1px;font-size:15px;}
+.o-card .bd{flex:1;min-width:0;}
+.o-card .hd{display:flex;align-items:center;gap:9px;}
+.o-card .bg{font-family:var(--font-mono);font-size:12px;font-weight:600;color:var(--accent-2);
+  background:var(--accent-soft);padding:2px 8px;border-radius:7px;flex:0 0 auto;}
+.o-card .ti{font-size:13.5px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.o-card .tm{margin-left:auto;font-size:11px;color:var(--text-4);flex:0 0 auto;}
+.o-card .sb{font-size:12.5px;color:var(--text-3);margin-top:7px;line-height:1.5;}
+.o-card .st{font-size:12px;color:var(--text-4);margin-top:6px;font-variant-numeric:tabular-nums;}
+.o-card.failed{border-color:var(--red-soft);}
+.o-card.failed .ic{background:var(--red-soft);color:var(--red);}
+.o-card.failed .bg{color:var(--red);background:var(--red-soft);}
+
+.o-qa{display:flex;flex-direction:column;gap:13px;}
+.o-qa .qq{display:flex;align-items:baseline;gap:9px;font-size:13.5px;color:var(--text-3);}
+.o-qa .qm{font-size:10.5px;font-weight:700;color:var(--text-4);letter-spacing:.03em;}
+.o-qa .qa2{display:flex;align-items:center;gap:8px;margin-top:5px;padding-left:24px;font-size:15.5px;font-weight:600;color:var(--text);}
+.o-qa .qa2 .ck{color:var(--green);}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   B — 3.0 제안: 3형태(rule · band · card) × 4색조(neutral · notice · danger · positive)
+   형태는 "무엇에 대해 말하나"가 정하고, 색조는 심각도만 칠한다.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* 색조 — 현행과 달리 face(면)와 edge(테두리)를 **다른 값**으로 준다.
+   현행 .notice-row는 background와 border가 둘 다 yellow-soft라 윤곽이 사실상 없다
+   (styles.css:1348). 한 단 진한 edge가 있어야 판이 배경에서 떨어져 나온다. */
+.t-neutral { --fg:var(--text-2); --key:var(--text-3); --face:var(--surface); --edge:var(--line-2); }
+.t-notice  { --fg:var(--yellow); --key:var(--yellow);  --face:var(--yellow-soft); --edge:rgba(217,192,99,.26); }
+.t-danger  { --fg:var(--red);    --key:var(--red);     --face:var(--red-soft);    --edge:rgba(221,122,107,.28); }
+.t-positive{ --fg:var(--green);  --key:var(--green);   --face:var(--green-soft);  --edge:rgba(130,201,164,.26); }
+
+/* ── 형태 1: rule — 스레드의 앞뒤를 가르는 것 ──────────────────────────────
+   면 없음. 헤어라인 + 라벨 + 수치. 한 줄 20px. */
+.rule{
+  display:flex;align-items:center;gap:8px;margin:0 2px;
+  font-size:12.5px;font-weight:600;letter-spacing:.01em;color:var(--fg);
+}
+.rule .g{flex:0 0 auto;display:grid;place-items:center;width:var(--ntf-ic);height:var(--ntf-ic);}
+.rule .g .sq{width:9px;height:9px;background:currentColor;display:block;}
+.rule .g .ch{font-size:12px;line-height:1;}
+.rule .lb{flex:0 0 auto;}
+/* 수치는 라벨 오른쪽에 붙는다 — 줄을 하나 더 쓰지 않는다 */
+.rule .num{flex:0 0 auto;font-family:var(--font-mono);font-size:11px;font-weight:500;
+  color:var(--text-3);font-variant-numeric:tabular-nums;}
+.rule .hair{flex:1;height:1px;min-width:16px;background:var(--edge);}
+.rule .tm{flex:0 0 auto;font-size:var(--ntf-meta);font-weight:400;color:var(--text-4);
+  font-variant-numeric:tabular-nums;}
+/* 경계형 rule은 양쪽으로 선이 나간다(=여기서 갈렸다). 종결형 rule은 오른쪽만(=여기서 끊겼다). */
+.rule.split .hair.l{flex:0 0 22px;}
+
+/* ── 형태 2: band — 네 개입이 필요할 수 있는 것 ────────────────────────────
+   면 + 아이콘 + 문장 + (행동) + 시각. 1줄이면 39px(현행 41px보다 낮다). */
+.band{
+  display:flex;gap:var(--ntf-gap);align-items:flex-start;
+  padding:var(--ntf-pad-y) var(--ntf-pad-x);
+  background:var(--face);border:1px solid var(--edge);border-radius:var(--ntf-radius);
+  animation:rise .16s var(--ntf-ease) both;
+}
+.band .g{flex:0 0 auto;width:var(--ntf-ic);height:var(--ntf-ic);display:grid;place-items:center;
+  color:var(--fg);margin-top:1px;font-size:12px;}
+.band .g .sq{width:9px;height:9px;background:currentColor;display:block;}
+.band .bd{flex:1;min-width:0;}
+.band .tx{font-size:var(--ntf-body);line-height:var(--ntf-lh);color:var(--text-2);word-break:keep-all;}
+/* 강조는 색이 아니라 **무게**로 먼저 — 색은 심각도 몫이라 문장 안에서 또 쓰면 위계가 겹친다.
+   단 '무엇이 무엇으로 바뀌었다'의 도착값만 색조를 받는다(사용자가 찾는 단 하나의 낱말). */
+.band .b{font-weight:600;color:var(--text);}
+.band .kw{font-weight:600;color:var(--key);}
+.band .mono{font-family:var(--font-mono);font-size:12px;}
+/* 오류 본문 원문 — 제목 줄 없이 본문만. '오류'라는 낱말은 색이 이미 말한다 */
+.band .raw{margin-top:4px;font-family:var(--font-mono);font-size:11.5px;line-height:1.55;
+  color:var(--text-3);white-space:pre-wrap;word-break:break-word;
+  padding:7px 9px;border-radius:8px;background:var(--inset);}
+/* 오른쪽 트레이 — 행동 + 시각이 **같은 줄**에 산다(줄을 늘리지 않는 게 규약) */
+.band .tray{flex:0 0 auto;display:flex;align-items:center;gap:8px;margin-top:1px;}
+.band .tm{font-size:var(--ntf-meta);color:var(--text-3);font-variant-numeric:tabular-nums;}
+.act{
+  display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 9px;border-radius:7px;
+  border:1px solid var(--edge);background:transparent;color:var(--fg);
+  font-family:inherit;font-size:11.5px;font-weight:600;cursor:pointer;white-space:nowrap;
+  transition:background .12s,border-color .12s,color .12s;
+}
+.act:hover{background:rgba(255,255,255,.06);border-color:var(--fg);}
+.act.done{border-color:var(--line);color:var(--text-4);cursor:default;}
+.act.done:hover{background:transparent;border-color:var(--line);}
+.act.ghost{border-color:transparent;color:var(--text-3);}
+.act.ghost:hover{border-color:var(--line-2);color:var(--text-2);}
+
+/* ── 형태 3: card — 무엇이 만들어졌나 ──────────────────────────────────────
+   face는 **상태가 변하는 카드에만** 준다(running→done→failed는 담을 그릇이 필요하다).
+   정적 기록(문답)은 같은 격자를 쓰되 면 없이 — 박스가 대화를 끊지 않게. */
+.card{
+  display:flex;gap:12px;align-items:flex-start;padding:12px 14px;
+  background:var(--surface);border:1px solid var(--line-2);border-radius:var(--ntf-radius);
+  box-shadow:var(--shadow-sm);animation:rise .16s var(--ntf-ease) both;
+}
+.card.bare{background:none;border-color:transparent;box-shadow:none;padding:0 2px;}
+.card .tile{
+  width:var(--ntf-tile);height:var(--ntf-tile);flex:0 0 auto;display:grid;place-items:center;
+  border-radius:9px;background:var(--surface-2);color:var(--text-3);margin-top:1px;font-size:14px;
+}
+.card.bare .tile{width:var(--ntf-ic);height:var(--ntf-ic);background:none;border-radius:0;margin-top:3px;font-size:12px;color:var(--key);}
+.card .bd{flex:1;min-width:0;}
+.card .hd{display:flex;align-items:center;gap:9px;}
+.card .bg{font-family:var(--font-mono);font-size:11.5px;font-weight:600;color:var(--accent-2);
+  background:var(--accent-soft);padding:2px 7px;border-radius:6px;flex:0 0 auto;}
+.card .ti{font-size:13.5px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.card .tm{margin-left:auto;font-size:var(--ntf-meta);color:var(--text-4);flex:0 0 auto;font-variant-numeric:tabular-nums;}
+.card .sb{font-size:12.5px;color:var(--text-3);margin-top:6px;line-height:1.5;}
+/* 수치는 부제와 **같은 줄**에 이어 붙인다 — 현행은 줄을 하나 더 썼다(cmd-card-stats) */
+.card .sb .st{color:var(--text-4);font-variant-numeric:tabular-nums;}
+.card .sb .dot{color:var(--text-4);margin:0 6px;}
+.card .spin{margin-left:auto;width:14px;height:14px;flex:0 0 auto;border-radius:99px;
+  border:2px solid var(--accent-soft);border-top-color:var(--accent);animation:spin .7s linear infinite;}
+.card.failed{border-color:var(--red-soft);}
+.card.failed .tile{background:var(--red-soft);color:var(--red);}
+.card.failed .bg{color:var(--red);background:var(--red-soft);}
+/* 문답 기록 — bare card 안의 Q/A 격자 */
+.card .qa{display:flex;flex-direction:column;gap:11px;}
+.card .qa .q{display:flex;align-items:baseline;gap:8px;font-size:13px;color:var(--text-3);}
+.card .qa .qm{flex:0 0 auto;font-family:var(--font-mono);font-size:10px;font-weight:700;color:var(--text-4);letter-spacing:.03em;}
+.card .qa .a{display:flex;align-items:center;gap:7px;margin-top:4px;padding-left:22px;
+  font-size:14.5px;font-weight:600;color:var(--text);}
+.card .qa .a .ck{color:var(--green);font-size:12px;flex:0 0 auto;}
+
+@keyframes rise{from{opacity:0;transform:translateY(4px);}to{opacity:1;transform:none;}}
+@keyframes spin{to{transform:rotate(1turn);}}
+
+/* ── 측정 눈금 — 목업이 "실물급 밀도"인지 스스로 증명하게 ─────────────────
+   각 알림 옆에 실제 렌더 높이를 찍는다(스크립트가 채운다). 판정자가 자로 재지 않아도
+   A/B 어느 쪽이 높이를 먹는지 보인다. */
+.h-tag{position:absolute;right:6px;top:50%;transform:translateY(-50%);
+  font-family:var(--font-mono);font-size:9.5px;color:var(--text-4);
+  background:rgba(0,0,0,.4);border-radius:4px;padding:1px 4px;pointer-events:none;}
+.meas{position:relative;}
+.tally{max-width:1580px;margin:14px auto 0;display:grid;grid-template-columns:1fr 1fr;gap:18px;}
+.tally .box{border:1px solid var(--line);border-radius:9px;padding:10px 13px;background:rgba(0,0,0,.22);}
+.tally .box h3{font-size:11px;font-weight:600;color:var(--text-3);margin-bottom:6px;letter-spacing:.02em;}
+.tally .box p{font-size:11.5px;color:var(--text-2);line-height:1.65;}
+.tally .box .n{font-family:var(--font-mono);color:var(--text);font-variant-numeric:tabular-nums;}
+.legend{max-width:1580px;margin:14px auto 0;font-size:11.5px;color:var(--text-3);line-height:1.7;}
+.legend summary{cursor:pointer;color:var(--text-2);font-size:11.5px;}
+.legend b{color:var(--text-2);}
+.legend code{font-family:var(--font-mono);font-size:11px;color:var(--text-2);}

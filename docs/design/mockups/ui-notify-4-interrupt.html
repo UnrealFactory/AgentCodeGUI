@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>알림 4/7 — 중단선 (interrupted)</title>
+<link rel="stylesheet" href="ui-notify.css" />
+</head>
+<body>
+
+<div class="mockmeta">
+  <h1>4/7 — 중단선 <span class="tag">rule · danger · action=none</span></h1>
+  <span class="sub">
+    근거: <code>styles.css:870-881</code>(<code>.stopline</code>) · <code>Chat.tsx:832</code> ·
+    <code>styles.css:794</code>(owl 10px). 현행 주석이 못박아 둔 확정 사항 두 가지는 <b>건드리지 않는다</b>:
+    ① "면을 깐 알약 1차안은 어두운 배경에서 탁한 갈색 덩어리로 보여 기각 — 선·글자만 쓴다",
+    ② 흔적(말풍선·부분 답변·도구 로그)은 위에 그대로 남는다.
+    3.0이 바꾸는 것은 <b>이 요소가 혼자가 아니게 만드는 것</b> — 같은 <code>rule</code> 형태를
+    압축 경계(5/7)와 공유해, 스레드를 가르는 두 요소가 한 문법으로 읽히게 한다.
+  </span>
+</div>
+
+<div class="ab">
+  <div class="pane" data-k="A">
+    <div class="ph"><span class="k">A</span><span class="t">현행</span><span class="m">.stopline</span></div>
+    <div class="thread">
+      <div class="msg user"><div class="msg-main"><div class="content">전체 테스트 스위트 돌려줘</div></div></div>
+      <div class="toollog">
+        <div class="trow"><span class="ti">▸</span><span class="tn">셸</span><span class="ta">cargo test --workspace</span><span class="tr">진행 중</span></div>
+        <div class="trow"><span class="ti">⌕</span><span class="tn">읽기</span><span class="ta">crates/ccg-store/src/chats.rs</span><span class="tr">412줄</span></div>
+      </div>
+      <div class="msg"><div class="msg-main"><div class="content">테스트를 돌리는 중이에요. <code>ccg-store</code>의 병합 경로부터 확인하고</div></div></div>
+      <div class="meas" data-m="s1">
+        <div class="o-stop"><span class="sq"></span><span>중단함</span></div>
+      </div>
+      <div class="msg user"><div class="msg-main"><div class="content">아니 ccg-store만</div></div></div>
+    </div>
+  </div>
+
+  <div class="pane" data-k="B">
+    <div class="ph"><span class="k">B</span><span class="t">제안</span><span class="m">rule · danger</span></div>
+    <div class="thread">
+      <div class="msg user"><div class="msg-main"><div class="content">전체 테스트 스위트 돌려줘</div></div></div>
+      <div class="toollog">
+        <div class="trow"><span class="ti">▸</span><span class="tn">셸</span><span class="ta">cargo test --workspace</span><span class="tr">진행 중</span></div>
+        <div class="trow"><span class="ti">⌕</span><span class="tn">읽기</span><span class="ta">crates/ccg-store/src/chats.rs</span><span class="tr">412줄</span></div>
+      </div>
+      <div class="msg"><div class="msg-main"><div class="content">테스트를 돌리는 중이에요. <code>ccg-store</code>의 병합 경로부터 확인하고</div></div></div>
+      <div class="meas" data-m="s1">
+        <div class="rule t-danger">
+          <span class="g"><span class="sq"></span></span>
+          <span class="lb">중단함</span>
+          <span class="num">6초 · 도구 2</span>
+          <span class="hair"></span>
+          <span class="tm">15:22</span>
+        </div>
+      </div>
+      <div class="msg user"><div class="msg-main"><div class="content">아니 ccg-store만</div></div></div>
+    </div>
+  </div>
+</div>
+
+<div class="mockmeta" style="margin-top:22px">
+  <h1>rule 형태 — 두 쓰임이 한 문법을 쓴다</h1>
+  <span class="sub">종결형(오른쪽으로만 선이 나간다 = 여기서 끊겼다) vs 경계형(양쪽으로 나간다 = 여기서 갈렸다).
+  선의 방향 하나로 "끊김"과 "가름"이 갈린다 — 아이콘·색을 더 쓰지 않는다.</span>
+</div>
+<div class="ab">
+  <div class="pane" data-k="R1">
+    <div class="ph"><span class="k">R</span><span class="t">종결형 — 중단 · 백그라운드 중지</span></div>
+    <div class="thread">
+      <div class="rule t-danger"><span class="g"><span class="sq"></span></span><span class="lb">중단함</span><span class="num">6초 · 도구 2</span><span class="hair"></span><span class="tm">15:22</span></div>
+      <div class="rule t-danger"><span class="g"><span class="sq"></span></span><span class="lb">중단함</span><span class="hair"></span><span class="tm">15:24</span></div>
+      <div class="rule t-neutral"><span class="g"><span class="ch">▪</span></span><span class="lb">백그라운드 셸 중지됨</span><span class="num">npm run dev · 4분 12초</span><span class="hair"></span><span class="tm">15:31</span></div>
+      <div class="rule t-neutral"><span class="g"><span class="ch">↯</span></span><span class="lb">엔진이 재시작됨</span><span class="num">모델 변경</span><span class="hair"></span><span class="tm">15:33</span></div>
+    </div>
+  </div>
+  <div class="pane" data-k="R2">
+    <div class="ph"><span class="k">R</span><span class="t">경계형 — 압축 · 새 세션(5/7과 같은 형태)</span></div>
+    <div class="thread">
+      <div class="rule t-neutral split"><span class="hair l"></span><span class="g"><span class="ch">⌘</span></span><span class="lb">여기까지 요약됨</span><span class="num">152k → 38k · −114k</span><span class="hair"></span><span class="tm">15:40</span></div>
+      <div class="rule t-neutral split"><span class="hair l"></span><span class="g"><span class="ch">↻</span></span><span class="lb">이어서 대화 (resume)</span><span class="num">2일 전 대화</span><span class="hair"></span><span class="tm">09:02</span></div>
+    </div>
+  </div>
+</div>
+
+<div class="tally">
+  <div class="box"><h3>A — 중단선 높이</h3><p><span class="n" data-sum="A">—</span></p></div>
+  <div class="box"><h3>B — 중단선 높이</h3><p><span class="n" data-sum="B">—</span> · 판정: <b data-verdict>—</b></p></div>
+</div>
+
+<details class="legend">
+  <summary>설계 근거 (블라인드 판정 전에는 펼치지 말 것)</summary>
+  <p>
+  <b>바꾼 것 — 빈 오른쪽 끝을 쓴다.</b> 현행 <code>.stopline::after</code>는 남는 폭을 통째로
+  헤어라인으로 채운다. 그 선의 오른쪽 끝에 <b>시각과 "얼마나 하다 끊겼는지"</b>를 넣어도
+  <b>높이가 1px도 안 늘어난다</b>(둘 다 12.5px 줄 안에 산다). 스레드에서 "언제 끊었더라"를
+  찾으려면 지금은 위아래 말풍선의 시각을 추정해야 한다.<br>
+  <b>안 바꾼 것 — 색.</b> danger(red)를 유지한다. "사용자가 스스로 멈춘 것은 오류가 아니니
+  neutral로 내려야 한다"는 논거가 있지만, ① 클로드 코드의 <code>Interrupted</code>가 붉고
+  ② 사용자가 이미 학습한 신호이며 ③ 스레드에서 <b>찾기 쉬워야</b> 하는 요소다.
+  <b>뒤집을 수 있는 결정</b>으로 남긴다 — <code>t-neutral</code>로 한 글자 바꾸면 된다.<br>
+  <b>안 바꾼 것 — 면 없음.</b> 2.6.2 주석의 기각 사유("탁한 갈색 덩어리")가 여전히 유효하다.
+  rule 형태 자체가 "면을 깔지 않는다"를 규약으로 못박았다.<br>
+  <b>얻은 것 — 형태의 재사용.</b> 압축 경계·resume·엔진 재시작·백그라운드 중지가 전부
+  같은 20px 줄이 된다. 지금은 이것들이 각각 다른 모양(카드·배너·없음)으로 흩어져 있다.
+  </p>
+</details>
+
+<script src="ui-notify.js"></script>
+</body>
+</html>
