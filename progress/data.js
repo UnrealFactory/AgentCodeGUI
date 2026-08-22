@@ -1,7 +1,7 @@
 window.PROGRESS = {
-  phase: 'M1 빌더 R1 + M0 잔여(스크롤·스트리밍 기준)',
-  note: 'M1: Tauri 스캐폴드+렌더러 이식 빌더 가동(Opus·max) · M3 프로토콜 정찰 병행 · 정찰(픽스처 모양) 대기 중',
-  updatedAt: '2026-08-22 12:45',
+  phase: 'M1 빌더 R1 · M3 PoC 게이트 · 화면 인벤토리 (3갈래 병렬)',
+  note: 'M0 기준 실측 완결(메모리·콜드 스타트·스크롤·스트리밍) · M3 와이어 프로토콜 스펙 확보(실검증 2회) · M1은 app 이식+ccg-store+src-tauri 진행 중',
+  updatedAt: '2026-08-22 13:40',
   metrics: [
     { name: '유휴 메모리 (프로세스 트리 WS 합)', unit: 'MB', base: 428.1, new: null, target: '≤214' },
     { name: '유휴 메모리 (Private 합)', unit: 'MB', base: 341.4, new: null, target: '≤171' },
@@ -16,7 +16,7 @@ window.PROGRESS = {
     { name: 'M0 기준 실측', scope: '2.6.2 수치 박제 (콜드 스타트·메모리·스크롤·스트리밍)', state: 'build' },
     { name: 'M1 아키텍처+셸', scope: 'Tauri 워크스페이스·창 시스템·api 심·렌더러 이식 빌드', state: 'build', round: 1 },
     { name: 'M2 스토리지', scope: 'chats·uiPrefs·profile·api-config 등 저장 도메인', state: 'wait' },
-    { name: 'M3 Claude 엔진', scope: 'stream-json 상주 CLI·승인/질문·중단·포크·백그라운드', state: 'wait' },
+    { name: 'M3 Claude 엔진', scope: 'stream-json 상주 CLI·승인/질문·중단·포크·백그라운드', state: 'build', critic: '와이어 스펙 확보(1563줄, 실검증 2회) → PoC 게이트 실행 중: 승인 왕복 toolUseID·중단 생존·포크·job object 좀비 차단' },
     { name: 'M4 Codex 엔진+버전 관리', scope: 'app-server JSONL·엔진 설치/업데이트', state: 'wait' },
     { name: 'M5 계정 도메인', scope: '로그인·전환·per-chat 격리·한도 조회 (DPAPI)', state: 'wait' },
     { name: 'M6 파일·Git·뷰어', scope: 'fs ops·git 래퍼·HTML 미리보기 스킴·아이콘', state: 'wait' },
