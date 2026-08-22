@@ -7,138 +7,158 @@
   },
   "arms": {
     "tauri-shared-env": {
-      "windows": 2,
-      "gridPanels": 0,
+      "windows": 3,
+      "gridPanels": 4,
       "steps": [
         {
           "label": "grid-only",
-          "wsMB": 485.7,
-          "privMB": 323.6,
-          "procs": 7,
+          "wsMB": 449.6,
+          "privMB": 247.1,
+          "procs": 6,
           "cdpPages": 1,
           "osWindows": 1,
           "byRole": {
             "browser": {
               "n": 2,
-              "wsMB": 153.6,
-              "privMB": 50
+              "wsMB": 206.7,
+              "privMB": 103.2
             },
             "crashpad-handler": {
               "n": 1,
-              "wsMB": 10.4,
+              "wsMB": 10.1,
               "privMB": 2.5
-            },
-            "gpu-process": {
-              "n": 1,
-              "wsMB": 81.5,
-              "privMB": 118.7
             },
             "utility:network.mojom.NetworkService": {
               "n": 1,
-              "wsMB": 41.6,
-              "privMB": 12.1
+              "wsMB": 40.4,
+              "privMB": 13.4
             },
             "utility:storage.mojom.StorageService": {
               "n": 1,
-              "wsMB": 21.1,
-              "privMB": 9
+              "wsMB": 20,
+              "privMB": 8.9
             },
             "renderer": {
               "n": 1,
-              "wsMB": 177.7,
-              "privMB": 131.4
+              "wsMB": 172.4,
+              "privMB": 119.1
             }
           }
         },
         {
           "label": "+1 session window",
-          "wsMB": 508.3,
-          "privMB": 318.2,
-          "procs": 7,
+          "wsMB": 488.5,
+          "privMB": 268.7,
+          "procs": 6,
           "cdpPages": 2,
           "osWindows": 2,
           "byRole": {
             "browser": {
               "n": 2,
-              "wsMB": 164.2,
-              "privMB": 57
+              "wsMB": 226.6,
+              "privMB": 110.6
             },
             "crashpad-handler": {
               "n": 1,
-              "wsMB": 10.4,
+              "wsMB": 10.1,
               "privMB": 2.5
-            },
-            "gpu-process": {
-              "n": 1,
-              "wsMB": 86.2,
-              "privMB": 100.7
             },
             "utility:network.mojom.NetworkService": {
               "n": 1,
-              "wsMB": 41.7,
-              "privMB": 12.2
+              "wsMB": 40.7,
+              "privMB": 13.6
             },
             "utility:storage.mojom.StorageService": {
               "n": 1,
-              "wsMB": 21.1,
-              "privMB": 9
+              "wsMB": 20,
+              "privMB": 8.9
             },
             "renderer": {
               "n": 1,
-              "wsMB": 184.6,
-              "privMB": 136.8
+              "wsMB": 191.1,
+              "privMB": 133.1
             }
           }
         },
         {
           "label": "+2 session window",
-          "wsMB": 509.6,
-          "privMB": 322.3,
-          "procs": 7,
+          "wsMB": 500.1,
+          "privMB": 257.6,
+          "procs": 6,
           "cdpPages": 3,
           "osWindows": 3,
           "byRole": {
             "browser": {
               "n": 2,
-              "wsMB": 170.6,
-              "privMB": 62.9
+              "wsMB": 242.5,
+              "privMB": 116.7
             },
             "crashpad-handler": {
               "n": 1,
-              "wsMB": 19.1,
+              "wsMB": 18.7,
               "privMB": 3.4
-            },
-            "gpu-process": {
-              "n": 1,
-              "wsMB": 87.2,
-              "privMB": 115.6
             },
             "utility:network.mojom.NetworkService": {
               "n": 1,
-              "wsMB": 41.9,
-              "privMB": 12.2
+              "wsMB": 40.8,
+              "privMB": 13.5
             },
             "utility:storage.mojom.StorageService": {
               "n": 1,
-              "wsMB": 21.1,
+              "wsMB": 20,
               "privMB": 9
             },
             "renderer": {
               "n": 1,
-              "wsMB": 169.8,
-              "privMB": 119.2
+              "wsMB": 178,
+              "privMB": 115
+            }
+          }
+        },
+        {
+          "label": "+3 session window",
+          "wsMB": 522.4,
+          "privMB": 271.7,
+          "procs": 6,
+          "cdpPages": 4,
+          "osWindows": 4,
+          "byRole": {
+            "browser": {
+              "n": 2,
+              "wsMB": 260.3,
+              "privMB": 124.4
+            },
+            "crashpad-handler": {
+              "n": 1,
+              "wsMB": 13,
+              "privMB": 3.1
+            },
+            "utility:network.mojom.NetworkService": {
+              "n": 1,
+              "wsMB": 41.2,
+              "privMB": 13.8
+            },
+            "utility:storage.mojom.StorageService": {
+              "n": 1,
+              "wsMB": 20.1,
+              "privMB": 8.9
+            },
+            "renderer": {
+              "n": 1,
+              "wsMB": 187.8,
+              "privMB": 121.5
             }
           }
         }
       ],
       "perWindow": {
-        "wsMBPerWindow": 12,
-        "privMBPerWindow": -0.7,
+        "wsMBPerWindow": 24.3,
+        "privMBPerWindow": 8.2,
         "procsPerWindow": 0,
-        "osWindowsAdded": 2,
-        "cdpPagesAdded": 2
+        "osWindowsAdded": 3,
+        "cdpPagesAdded": 3
       },
-      "at": "2026-08-22T06:46:44.457Z"
+      "at": "2026-08-22T12:21:35.119Z"
     }
   }
 }

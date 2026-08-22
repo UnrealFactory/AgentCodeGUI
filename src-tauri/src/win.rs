@@ -198,6 +198,9 @@ pub fn create_main(app: &AppHandle) -> tauri::Result<WebviewWindow> {
 
     let win = b.build()?;
 
+    // 렌더러/브라우저 사망 감지 — 유령 창을 남기지 않기 위한 자리(crash.rs).
+    crate::crash::arm(app, &win);
+
     // 두 번째 안전망: 스플래시도 로드 완료도 오지 않는 최악(렌더러 크래시)에 대비.
     // 3.5초는 R1 실측 rootMs(336ms)의 10배 — 정상 경로에서는 절대 걸리지 않는다.
     {
@@ -294,6 +297,10 @@ pub fn open_session_window(app: &AppHandle) -> tauri::Result<()> {
     }
     .build()?;
 
+    // 추가 채팅 창도 같은 복구 경로를 탄다 — `--process-per-site`로 렌더러를 공유하므로
+    // 렌더러가 한 번 죽으면 이 창들도 같이 유령이 된다.
+    crate::crash::arm(app, &win);
+
     SESSIONS.lock().unwrap().push(SessionRec {
         id,
         label: label.clone(),
@@ -380,6 +387,24 @@ pub fn show_once(w: &WebviewWindow) {
     }
     let _ = w.show();
     let _ = w.set_focus();
+}
+
+// ── 크래시 복구가 쓰는 상태 리셋 (crash.rs) ──────────────────────────────────
+//
+// 브라우저 프로세스가 죽어 창을 **재생성**할 때는 셸의 "한 번만" 상태를 되돌려야 한다.
+// SHOWN을 안 지우면 새 메인 창이 영원히 안 보이고(= 또 다른 유령), SESSIONS를 안 지우면
+// 죽은 창의 레코드가 목록에 남는다.
+pub fn reset_shown() {
+    SHOWN.store(false, Ordering::SeqCst);
+}
+
+pub fn clear_sessions() {
+    SESSIONS.lock().unwrap().clear();
+    SESSION_SEQ.store(0, Ordering::Relaxed);
+}
+
+pub fn session_count() -> usize {
+    SESSIONS.lock().unwrap().len()
 }
 
 fn schedule_save(app: &AppHandle) {

@@ -1,6 +1,7 @@
 // 콘솔 창 없이 뜨게 (릴리즈만 — dev는 로그를 봐야 한다)
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod crash;
 mod ipc;
 mod webview_args;
 mod win;
@@ -48,6 +49,18 @@ fn main() {
             win::create_main(app.handle())?;
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("tauri 앱 실행 실패");
+        .build(tauri::generate_context!())
+        .expect("tauri 앱 빌드 실패")
+        // 브라우저 프로세스가 죽어 **창을 전부 부수고 다시 만드는** 복구 구간(crash.rs)에는
+        // 창 수가 잠깐 0이 된다. 기본 동작은 그때 앱을 끝내는 것이라, 복구가 창을 만들기
+        // 전에 프로세스가 사라진다 — 유령 창 대신 "앱이 조용히 없어지는" 실패가 된다.
+        // 복구 중일 때만 종료를 막는다(그 외에는 기본 동작 그대로).
+        .run(|_app, event| {
+            if let tauri::RunEvent::ExitRequested { api, .. } = &event {
+                if crash::is_recovering() {
+                    api.prevent_exit();
+                    crash::log("exit-prevented", serde_json::json!({ "why": "복구 중" }));
+                }
+            }
+        });
 }

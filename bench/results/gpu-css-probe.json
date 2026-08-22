@@ -293,5 +293,348 @@
       }
     ],
     "at": "2026-08-22T07:41:56.044Z"
+  },
+  "tauri-3.0.0+default": {
+    "panels": 4,
+    "settleSec": 14,
+    "arm": "default",
+    "bin": {
+      "exe": "C:\\Code\\AgentCodeGUI\\target\\release\\agentcodegui.exe",
+      "exeMtime": "2026-08-22T11:33:00.765Z",
+      "exeSize": 3835392,
+      "exeSha256": "aab524b88bd36857",
+      "gitHead": "d6be21f",
+      "gitDirty": true
+    },
+    "armEnv": {
+      "CCG_HOME": "C:\\Code\\AgentCodeGUI\\.bench-home-gpu-tauri",
+      "CCG_CDP_PORT": "9381"
+    },
+    "steps": [
+      {
+        "label": "0-baseline",
+        "wsMB": 436.6,
+        "privMB": 226.5,
+        "procs": 6,
+        "byRole": {
+          "browser": {
+            "n": 2,
+            "wsMB": 207.6,
+            "privMB": 103.1
+          },
+          "crashpad-handler": {
+            "n": 1,
+            "wsMB": 10.1,
+            "privMB": 2.5
+          },
+          "utility:NetworkService": {
+            "n": 1,
+            "wsMB": 41.5,
+            "privMB": 13.6
+          },
+          "utility:StorageService": {
+            "n": 1,
+            "wsMB": 20.6,
+            "privMB": 9
+          },
+          "renderer": {
+            "n": 1,
+            "wsMB": 156.6,
+            "privMB": 98.4
+          }
+        },
+        "jsHeap": {
+          "usedMB": 8.3,
+          "totalMB": 9.3
+        },
+        "dom": {
+          "documents": 1,
+          "nodes": 8486,
+          "jsEventListeners": 641
+        }
+      },
+      {
+        "label": "1-no-blurwarm",
+        "wsMB": 446,
+        "privMB": 227.1,
+        "procs": 6,
+        "byRole": {
+          "browser": {
+            "n": 2,
+            "wsMB": 207.9,
+            "privMB": 102.8
+          },
+          "crashpad-handler": {
+            "n": 1,
+            "wsMB": 18.7,
+            "privMB": 3.4
+          },
+          "utility:NetworkService": {
+            "n": 1,
+            "wsMB": 41.5,
+            "privMB": 13.5
+          },
+          "utility:StorageService": {
+            "n": 1,
+            "wsMB": 20.6,
+            "privMB": 9
+          },
+          "renderer": {
+            "n": 1,
+            "wsMB": 157.1,
+            "privMB": 98.5
+          }
+        },
+        "jsHeap": {
+          "usedMB": 8.3,
+          "totalMB": 9
+        },
+        "dom": {
+          "documents": 1,
+          "nodes": 8488,
+          "jsEventListeners": 641
+        }
+      },
+      {
+        "label": "2-no-backdrop-filter",
+        "wsMB": 445.7,
+        "privMB": 226.9,
+        "procs": 6,
+        "byRole": {
+          "browser": {
+            "n": 2,
+            "wsMB": 207.9,
+            "privMB": 102.8
+          },
+          "crashpad-handler": {
+            "n": 1,
+            "wsMB": 18.7,
+            "privMB": 3.4
+          },
+          "utility:NetworkService": {
+            "n": 1,
+            "wsMB": 41.5,
+            "privMB": 13.4
+          },
+          "utility:StorageService": {
+            "n": 1,
+            "wsMB": 20.6,
+            "privMB": 9
+          },
+          "renderer": {
+            "n": 1,
+            "wsMB": 156.9,
+            "privMB": 98.3
+          }
+        },
+        "jsHeap": {
+          "usedMB": 8.3,
+          "totalMB": 9
+        },
+        "dom": {
+          "documents": 1,
+          "nodes": 8488,
+          "jsEventListeners": 641
+        }
+      },
+      {
+        "label": "3-no-box-shadow",
+        "wsMB": 439.7,
+        "privMB": 223.6,
+        "procs": 6,
+        "byRole": {
+          "browser": {
+            "n": 2,
+            "wsMB": 209.9,
+            "privMB": 103.1
+          },
+          "crashpad-handler": {
+            "n": 1,
+            "wsMB": 13,
+            "privMB": 3.1
+          },
+          "utility:NetworkService": {
+            "n": 1,
+            "wsMB": 41.8,
+            "privMB": 13.5
+          },
+          "utility:StorageService": {
+            "n": 1,
+            "wsMB": 20.8,
+            "privMB": 8.9
+          },
+          "renderer": {
+            "n": 1,
+            "wsMB": 154.3,
+            "privMB": 95.1
+          }
+        },
+        "jsHeap": {
+          "usedMB": 8.3,
+          "totalMB": 9
+        },
+        "dom": {
+          "documents": 1,
+          "nodes": 8488,
+          "jsEventListeners": 641
+        }
+      },
+      {
+        "label": "4-one-panel-visible",
+        "wsMB": 426.5,
+        "privMB": 215,
+        "procs": 6,
+        "byRole": {
+          "browser": {
+            "n": 2,
+            "wsMB": 207.9,
+            "privMB": 103
+          },
+          "crashpad-handler": {
+            "n": 1,
+            "wsMB": 13,
+            "privMB": 3
+          },
+          "utility:NetworkService": {
+            "n": 1,
+            "wsMB": 42.3,
+            "privMB": 13.9
+          },
+          "utility:StorageService": {
+            "n": 1,
+            "wsMB": 20.8,
+            "privMB": 8.9
+          },
+          "renderer": {
+            "n": 1,
+            "wsMB": 142.6,
+            "privMB": 86.1
+          }
+        },
+        "jsHeap": {
+          "usedMB": 8.3,
+          "totalMB": 9
+        },
+        "dom": {
+          "documents": 1,
+          "nodes": 8365,
+          "jsEventListeners": 641
+        }
+      },
+      {
+        "label": "5-empty-root-innerHTML(대조·무효 예상)",
+        "wsMB": 412.3,
+        "privMB": 210.6,
+        "procs": 6,
+        "byRole": {
+          "browser": {
+            "n": 2,
+            "wsMB": 203.5,
+            "privMB": 102.9
+          },
+          "crashpad-handler": {
+            "n": 1,
+            "wsMB": 13,
+            "privMB": 3
+          },
+          "utility:NetworkService": {
+            "n": 1,
+            "wsMB": 42.1,
+            "privMB": 13.8
+          },
+          "utility:StorageService": {
+            "n": 1,
+            "wsMB": 20.8,
+            "privMB": 8.9
+          },
+          "renderer": {
+            "n": 1,
+            "wsMB": 132.9,
+            "privMB": 81.9
+          }
+        },
+        "jsHeap": {
+          "usedMB": 8.3,
+          "totalMB": 9
+        },
+        "dom": {
+          "documents": 1,
+          "nodes": 8315,
+          "jsEventListeners": 641
+        },
+        "release": {
+          "released": false,
+          "nodes": "8486 → 8315",
+          "jsEventListeners": "641 → 641",
+          "jsHeapMB": "8.3 → 8.3",
+          "droppedNodes": 171,
+          "droppedListeners": 0,
+          "droppedHeapMB": 0,
+          "verdict": "**무효** — DOM/리스너가 살아 있다. 이 델타는 앱 몫이 아니라 그리는 값이다"
+        }
+      },
+      {
+        "label": "6-about-blank(진짜 언로드)",
+        "wsMB": 391,
+        "privMB": 188.2,
+        "procs": 6,
+        "byRole": {
+          "browser": {
+            "n": 2,
+            "wsMB": 205.3,
+            "privMB": 103.6
+          },
+          "crashpad-handler": {
+            "n": 1,
+            "wsMB": 13,
+            "privMB": 3
+          },
+          "utility:NetworkService": {
+            "n": 1,
+            "wsMB": 42.1,
+            "privMB": 13.6
+          },
+          "utility:StorageService": {
+            "n": 1,
+            "wsMB": 20.8,
+            "privMB": 8.9
+          },
+          "renderer": {
+            "n": 1,
+            "wsMB": 109.8,
+            "privMB": 59.1
+          }
+        },
+        "jsHeap": {
+          "usedMB": 0.9,
+          "totalMB": 2.5
+        },
+        "dom": {
+          "documents": 1,
+          "nodes": 4,
+          "jsEventListeners": 3
+        },
+        "release": {
+          "released": true,
+          "nodes": "8486 → 4",
+          "jsEventListeners": "641 → 3",
+          "jsHeapMB": "8.3 → 0.9",
+          "droppedNodes": 8482,
+          "droppedListeners": 638,
+          "droppedHeapMB": 7.4,
+          "verdict": "해제됨 — 이 단계의 델타는 앱 몫(하한)으로 인용 가능"
+        }
+      }
+    ],
+    "appShare": {
+      "what": "앱 몫 = 4패널 기준선 − 빈 문서(about:blank). 이 값만 \"우리 UI의 값\"이라고 부를 수 있다.",
+      "wsMB": 45.6,
+      "privMB": 38.3,
+      "baselineWsMB": 436.6,
+      "blankWsMB": 391,
+      "valid": true,
+      "note": "언로드 검증 통과(노드·리스너 90%+ 감소)"
+    },
+    "at": "2026-08-22T11:41:58.556Z"
   }
 }

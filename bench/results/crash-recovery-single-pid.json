@@ -1,0 +1,134 @@
+{
+  "arm": "singleproc",
+  "recovery": true,
+  "how": "pid",
+  "rounds": 2,
+  "extraEnv": {
+    "CCG_SINGLE_PROCESS": "1"
+  },
+  "bin": {
+    "exe": "C:\\Code\\AgentCodeGUI\\target\\release\\agentcodegui.exe",
+    "exeMtime": "2026-08-22T11:33:00.765Z",
+    "exeSize": 3835392,
+    "exeSha256": "aab524b88bd36857",
+    "gitHead": "e907dcd",
+    "gitDirty": true
+  },
+  "armEnv": {
+    "CCG_HOME": "C:\\Code\\AgentCodeGUI\\.bench-home-crash",
+    "CCG_CDP_PORT": "9461",
+    "CCG_SINGLE_PROCESS": "1"
+  },
+  "env": {
+    "ramGB": 63.8,
+    "cpu": "13th Gen Intel(R) Core(TM) i7-13700KF",
+    "os": "Microsoft Windows 11 Home 26200"
+  },
+  "at": "2026-08-22T11:37:41.058Z",
+  "attempts": [
+    {
+      "round": 1,
+      "at": "2026-08-22T11:37:54.112Z",
+      "before": {
+        "procs": 3,
+        "roles": [
+          "browser",
+          "browser",
+          "crashpad-handler"
+        ],
+        "windows": [
+          "576x729 추가 채팅 — AgentCodeGUI",
+          "576x729 추가 채팅 — AgentCodeGUI",
+          "1336x889 AgentCodeGUI3"
+        ],
+        "cdpPages": 3,
+        "visibleWindows": 3
+      },
+      "killed": {
+        "how": "taskkill /PID",
+        "role": "browser(single-process)",
+        "pids": [
+          16228
+        ]
+      },
+      "after": {
+        "hostAlive": false,
+        "procs": 0,
+        "roles": [],
+        "windows": [],
+        "visibleWindows": 0,
+        "mainPageRemounted": false,
+        "pagesMounted": null,
+        "allPagesMounted": null,
+        "recoveryMs": null
+      },
+      "verdict": "정리 후 종료(유령 없음)"
+    }
+  ],
+  "shellLog": [
+    {
+      "at": 1787398659732,
+      "event": "armed",
+      "pid": 14844,
+      "detail": {
+        "label": "main",
+        "browserPid": 16228
+      }
+    },
+    {
+      "at": 1787398664142,
+      "event": "armed",
+      "pid": 14844,
+      "detail": {
+        "label": "session-1",
+        "browserPid": 16228
+      }
+    },
+    {
+      "at": 1787398667650,
+      "event": "armed",
+      "pid": 14844,
+      "detail": {
+        "label": "session-2",
+        "browserPid": 16228
+      }
+    },
+    {
+      "at": 1787398674939,
+      "event": "watchdog-browser-gone",
+      "pid": 14844,
+      "detail": {
+        "browserPid": 16228
+      }
+    },
+    {
+      "at": 1787398674940,
+      "event": "recover-begin",
+      "pid": 14844,
+      "detail": {
+        "mode": "teardown(single-process)",
+        "n": 1
+      }
+    },
+    {
+      "at": 1787398674940,
+      "event": "teardown",
+      "pid": 14844,
+      "detail": {}
+    },
+    {
+      "at": 1787398674960,
+      "event": "exit-prevented",
+      "pid": 14844,
+      "detail": {
+        "why": "복구 중"
+      }
+    },
+    {
+      "at": 1787398675541,
+      "event": "exit",
+      "pid": 14844,
+      "detail": {}
+    }
+  ]
+}

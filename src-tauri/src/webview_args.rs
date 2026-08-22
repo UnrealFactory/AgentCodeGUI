@@ -20,6 +20,7 @@
 //! - `CCG_WEBVIEW_ARGS_BASE_ONLY`  : 채택 레버를 전부 빼고 wry 기본값만(대조군).
 //! - `CCG_GPU_PROCESS=1`           : `--in-process-gpu`를 빼고 GPU를 다시 별도 프로세스로.
 //! - `CCG_SINGLE_PROCESS=1`        : MS 미지원 단일 프로세스 모드(아래 `single_process`).
+//! - `CCG_CRASH_RECOVERY=0`        : 크래시 복구를 끈다(crash.rs) — 유령 창 대조군용.
 //!
 //! ## R3에서 실측으로 **기각**한 것 (되살리기 전에 숫자부터 볼 것)
 //! - `--use-angle=gl` : 유휴 Priv 320→214MB로 가장 크게 줄고 스크롤도 60fps였지만,
@@ -41,6 +42,8 @@
 //! **우리 조립기를 거쳐** 포트를 넣는다. (외부 도구가 그 변수를 쓰는 환경이라면 이
 //! 레버들은 무효다 — 진단할 때 제일 먼저 볼 자리.)
 
+use std::sync::atomic::{AtomicBool, Ordering};
+
 /// wry 기본값 복제 — 빼면 미니 메뉴/PDF OOUI/SmartScreen이 되살아난다.
 const FEATURES_OFF_WRY_DEFAULT: &[&str] = &["msWebOOUI", "msPdfOOUI", "msSmartScreenProtection"];
 
@@ -53,14 +56,34 @@ const FEATURES_OFF_WRY_DEFAULT: &[&str] = &["msWebOOUI", "msPdfOOUI", "msSmartSc
 ///   SpareRendererForSitePerProcess  ws +28  priv +111  procs 7 (안 줄어듦)
 ///   AudioServiceOutOfProcess        ws −13  priv  +7   procs 7
 ///   위 5개 묶음(C1)                  ws  −9  priv +14   procs 7
-/// 어느 것도 **프로세스를 하나도 줄이지 못했다** = WebView2가 그 스위치를 무시한다.
+/// 어느 것도 **프로세스를 하나도 줄이지 못했다.**
 /// 근거 없는 스위치를 남기면 다음 사람이 되돌릴 수 없으므로 전부 걷었다.
+///
+/// ⚠ R3는 여기서 "프로세스가 안 줄었다 = WebView2가 그 스위치를 무시한다"를 도출했는데
+/// **그 추론은 한 번 틀렸다**(아래 `FEATURES_ON_ADOPTED` 참조). 위 목록도 현행 Chromium
+/// feature 이름과 대조하기 전까지는 "무효"가 아니라 "이 이름으로는 무효"다.
 const FEATURES_OFF_ADOPTED: &[&str] = &[];
 
-/// `--enable-features` 합류분 — **비었다.**
-/// R2가 넣었던 `NetworkServiceInProcess`는 실측에서 `utility:NetworkService` 프로세스를
-/// 그대로 남겼다(procs 7 유지, ws −14는 대조군 편향분). 스위치판(`--single-process-network`)
-/// 도 마찬가지였다. 둘 다 걷었다.
+/// `--enable-features` 합류분 — **비었다. 다만 사유가 R3와 다르다.**
+///
+/// R2가 넣은 `NetworkServiceInProcess`는 실측에서 `utility:NetworkService`를 그대로
+/// 남겼고 R3는 "WebView2가 무시한다"고 적었다. **틀린 설명이다** — Chromium이 M96 무렵
+/// 그 feature의 문자열 이름을 **`NetworkServiceInProcess2`** 로 바꿨고, 존재하지 않는
+/// feature 이름은 경고 없이 조용히 무시된다. 올바른 이름을 주면 그 프로세스가 사라진다:
+///   `ΔWS −30.5 / ΔPriv −5.7 / **Δprocs −1**` (BASE_ONLY 위 단독, 3회 중앙값)
+///   주 게이트 5회 중앙값: 유휴 450.7/248.1/6프로세스 → **426.3/241.6/5프로세스**,
+///   +창2 WS 500.9 → 471.8, 하드웨어 GPU 유지(NVIDIA D3D11), 드랍 0% 5/5.
+///
+/// **그런데도 여기 안 넣은 이유**: 채택 판정을 한 세션에서 **대조군조차 ≥60fps를 못
+/// 넘었다**(기계 전체가 밴드째 내려앉음 — 대조군 중앙 55~57fps, 크리틱 세션 59~60fps).
+/// 드랍 프레임은 양 팔 0개이고 짝지은 차도 ±0.15fps라 **레버가 나쁘다는 증거는 없다.**
+/// 절대 게이트를 평가할 수 없는 세션에서 제품 기본값을 바꾸지 않는다는 규약(R2가
+/// 근거 없이 17개를 채택한 실수)을 지킨 것뿐이다. 재판정은 명령 한 줄이면 된다:
+///   `node bench/fpsab.mjs --rounds=4 --trials=3`  ← 대조군 중앙 avgFps ≥59.0인 세션에서
+/// 재현 스위치(재빌드 불필요): `CCG_WEBVIEW_ENABLE_FEATURES=NetworkServiceInProcess2`
+/// 자세한 건 docs/m1-report-r4.md §2.
+///
+/// 스위치판(`--single-process-network`)은 올바른 이름과 무관하게 무효였다.
 const FEATURES_ON_ADOPTED: &[&str] = &[];
 
 /// feature 목록이 아닌 일반 스위치 — **실측으로 효과가 확인된 것만.**
@@ -82,8 +105,23 @@ const SWITCHES_ADOPTED: &[&str] = &["--process-per-site", "--in-process-gpu"];
 /// 위험: GPU 드라이버가 죽으면 프로세스 격리가 없어 웹뷰가 통째로 죽는다(멀티 프로세스
 /// 였다면 GPU 프로세스만 재시작된다).
 /// 그래서 되돌릴 수 있게 둔다 — `CCG_GPU_PROCESS=1`이면 GPU를 다시 별도 프로세스로.
+///
+/// **R4: 그 위험에 자동 대응이 붙었다.** 브라우저 프로세스가 죽으면(= 이 구성에서 GPU
+/// 드라이버 크래시·TDR이 보이는 모습) `crash.rs`가 창을 재생성하면서 아래
+/// `escape_in_process_gpu()`를 켠다 — 다시 만드는 웹뷰는 GPU를 별도 프로세스로 되돌린
+/// 인자로 뜨므로 같은 크래시가 무한 반복되지 않는다. 실측: 브라우저를 죽이면 1.4초 만에
+/// 창 3개가 재생성되고 프로세스 구성이 6 → 7(gpu-process 부활)이 된다.
 fn in_process_gpu_disabled() -> bool {
-    std::env::var("CCG_GPU_PROCESS").is_ok_and(|v| v != "0")
+    std::env::var("CCG_GPU_PROCESS").is_ok_and(|v| v != "0") || GPU_ESCAPE.load(Ordering::SeqCst)
+}
+
+/// **자동 탈출구.** 브라우저 프로세스가 죽으면(=`--in-process-gpu`에서 GPU 드라이버
+/// 크래시·TDR이 나면 이렇게 보인다) crash.rs가 창을 재생성하기 직전에 이걸 켠다.
+/// 그러면 다시 만드는 웹뷰는 GPU를 별도 프로세스로 되돌린 인자로 뜬다 — 같은 크래시가
+/// 무한히 반복되지 않는다. 반환값은 "이번에 처음 켰는가".
+static GPU_ESCAPE: AtomicBool = AtomicBool::new(false);
+pub fn escape_in_process_gpu() -> bool {
+    !GPU_ESCAPE.swap(true, Ordering::SeqCst)
 }
 
 /// **MS 미지원 최대 절감 모드** — `CCG_SINGLE_PROCESS=1`일 때만.
@@ -97,7 +135,15 @@ fn in_process_gpu_disabled() -> bool {
 /// 다음 Edge 업데이트가 이 경로를 깨면 이미 배포된 앱이 전부 죽는다. 샌드박스와 렌더러
 /// 크래시 격리도 함께 사라진다. 실측 수치는 남기되 기본값으로 삼지 않는다 —
 /// 채택 여부는 이 트레이드를 아는 사람이 정할 일이다.
-fn single_process() -> bool {
+///
+/// **R4 실측이 사유를 하나 더 늘렸다.** 렌더러를 죽이면 이 구성은 브라우저 프로세스까지
+/// 같이 죽는다(3프로세스 → 1). 되살릴 대상이 없어 `crash.rs`는 **창 정리 후 종료**로
+/// 진다 — 유령 창은 안 남지만 앱이 끝난다. 같은 크래시에서 다중 프로세스 팔은
+/// **356~530ms 만에 창 3개가 전부 복구된다.** 즉 "메모리는 이기고 복구는 진다".
+/// (bench/results/crash-recovery-single-pid.json vs crash-recovery-default-pid.json)
+/// 크래시 복구가 이 값을 본다 — 단일 프로세스에서는 브라우저가 같이 죽어
+/// 되살릴 대상이 없다(crash.rs 헤더).
+pub fn single_process() -> bool {
     std::env::var("CCG_SINGLE_PROCESS").is_ok_and(|v| v != "0")
 }
 

@@ -4,7 +4,7 @@
     "home": ".bench-home-flags — 멀티 4패널 × 120항목 픽스처(주 게이트와 같은 무대)",
     "cdp": false,
     "settleSec": 25,
-    "repeats": 2,
+    "repeats": 3,
     "control": "A0-control-wry-default"
   },
   "env": {
@@ -2737,112 +2737,104 @@
       "env": "(제품 기본값)",
       "runs": [
         {
-          "wsMB": 449.6,
-          "privMB": 319.8,
-          "procs": 7
+          "wsMB": 444.2,
+          "privMB": 240.9,
+          "procs": 6
         },
         {
-          "wsMB": 444.6,
-          "privMB": 281.2,
-          "procs": 7
+          "wsMB": 453.2,
+          "privMB": 241.9,
+          "procs": 6
+        },
+        {
+          "wsMB": 443.1,
+          "privMB": 239.2,
+          "procs": 6
         }
       ],
-      "wsMB": 447,
-      "privMB": 301,
-      "procs": 7,
+      "wsMB": 444.2,
+      "privMB": 240.9,
+      "procs": 6,
       "byRole": {
         "browser": {
           "n": 2,
-          "wsMB": 146.1,
-          "privMB": 48.9
+          "wsMB": 207.3,
+          "privMB": 102.1
         },
         "crashpad-handler": {
           "n": 1,
           "wsMB": 10.1,
           "privMB": 2.5
         },
-        "gpu-process": {
-          "n": 1,
-          "wsMB": 73.2,
-          "privMB": 94
-        },
         "utility:NetworkService": {
           "n": 1,
-          "wsMB": 37.4,
-          "privMB": 11.5
+          "wsMB": 39.4,
+          "privMB": 12.7
         },
         "utility:StorageService": {
           "n": 1,
-          "wsMB": 20.4,
-          "privMB": 9.4
+          "wsMB": 20.1,
+          "privMB": 8.9
         },
         "renderer": {
           "n": 1,
-          "wsMB": 157.3,
-          "privMB": 115
+          "wsMB": 166.2,
+          "privMB": 112.9
         }
       },
       "lastDetail": [
         {
           "name": "agentcodegui.exe",
           "sub": "",
-          "pid": 29240,
-          "wsMB": 28.8,
+          "pid": 21236,
+          "wsMB": 28.7,
           "role": "browser",
-          "privMB": 11.4
+          "privMB": 11.1
         },
         {
           "name": "msedgewebview2.exe",
           "sub": "",
-          "pid": 3192,
-          "wsMB": 117.3,
+          "pid": 5760,
+          "wsMB": 178.6,
           "role": "browser",
-          "privMB": 37.5
+          "privMB": 91
         },
         {
           "name": "msedgewebview2.exe",
           "sub": "",
-          "pid": 5068,
+          "pid": 25060,
           "wsMB": 10.1,
           "role": "crashpad-handler",
           "privMB": 2.5
         },
         {
           "name": "msedgewebview2.exe",
-          "sub": "",
-          "pid": 30292,
-          "wsMB": 73.2,
-          "role": "gpu-process",
-          "privMB": 94
-        },
-        {
-          "name": "msedgewebview2.exe",
           "sub": "network.mojom.NetworkService",
-          "pid": 34384,
-          "wsMB": 37.4,
+          "pid": 18952,
+          "wsMB": 39.4,
           "role": "utility",
-          "privMB": 11.5
+          "privMB": 12.7
         },
         {
           "name": "msedgewebview2.exe",
           "sub": "storage.mojom.StorageService",
-          "pid": 14836,
-          "wsMB": 20.4,
+          "pid": 30160,
+          "wsMB": 20.1,
           "role": "utility",
-          "privMB": 9.4
+          "privMB": 8.9
         },
         {
           "name": "msedgewebview2.exe",
           "sub": "",
-          "pid": 19544,
-          "wsMB": 157.3,
+          "pid": 26580,
+          "wsMB": 166.2,
           "role": "renderer",
-          "privMB": 115
+          "privMB": 112.9
         }
       ],
-      "deltaWsMB": -4,
-      "deltaPrivMB": -10,
-      "deltaProcs": 0
+      "deltaWsMB": -6.8,
+      "deltaPrivMB": -70.1,
+      "deltaProcs": -1
     },
     {
       "name": "Y1-angle-gl+in-process-gpu",
@@ -3113,14 +3105,122 @@
       "deltaWsMB": -142,
       "deltaPrivMB": -149,
       "deltaProcs": -4
+    },
+    {
+      "name": "B5b-network-in-process2",
+      "note": "현행 이름. utility:NetworkService 프로세스가 통째로 사라진다(R3 크리틱 실측 ΔWS −40 / Δprocs −1).",
+      "env": {
+        "CCG_WEBVIEW_ARGS_BASE_ONLY": "1",
+        "CCG_WEBVIEW_ENABLE_FEATURES": "NetworkServiceInProcess2"
+      },
+      "runs": [
+        {
+          "wsMB": 422.1,
+          "privMB": 307,
+          "procs": 6
+        },
+        {
+          "wsMB": 416.6,
+          "privMB": 305.3,
+          "procs": 6
+        },
+        {
+          "wsMB": 420.5,
+          "privMB": 297.6,
+          "procs": 6
+        }
+      ],
+      "wsMB": 420.5,
+      "privMB": 305.3,
+      "procs": 6,
+      "byRole": {
+        "browser": {
+          "n": 2,
+          "wsMB": 156.4,
+          "privMB": 52.1
+        },
+        "crashpad-handler": {
+          "n": 1,
+          "wsMB": 10.1,
+          "privMB": 2.5
+        },
+        "gpu-process": {
+          "n": 1,
+          "wsMB": 77.5,
+          "privMB": 120.9
+        },
+        "utility:StorageService": {
+          "n": 1,
+          "wsMB": 20.1,
+          "privMB": 9
+        },
+        "renderer": {
+          "n": 1,
+          "wsMB": 156.4,
+          "privMB": 113.2
+        }
+      },
+      "lastDetail": [
+        {
+          "name": "agentcodegui.exe",
+          "sub": "",
+          "pid": 11336,
+          "wsMB": 29.1,
+          "role": "browser",
+          "privMB": 11.6
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 20168,
+          "wsMB": 127.3,
+          "role": "browser",
+          "privMB": 40.5
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 25928,
+          "wsMB": 10.1,
+          "role": "crashpad-handler",
+          "privMB": 2.5
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 32344,
+          "wsMB": 77.5,
+          "role": "gpu-process",
+          "privMB": 120.9
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "storage.mojom.StorageService",
+          "pid": 34272,
+          "wsMB": 20.1,
+          "role": "utility",
+          "privMB": 9
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 34800,
+          "wsMB": 156.4,
+          "role": "renderer",
+          "privMB": 113.2
+        }
+      ],
+      "deltaWsMB": -30.5,
+      "deltaPrivMB": -5.7,
+      "deltaProcs": -1
     }
   ],
-  "at": "2026-08-22T08:51:37.799Z",
+  "at": "2026-08-22T12:20:28.426Z",
   "notes": [
     "R3 1차 스윕(2026-08-22)에서 A0 대조군만 WebView2 프로필이 차가웠다(seedHome 직후). 그 탓에 그 뒤 모든 레버가 약 −14MB씩 싸게 나오는 가짜 밴드가 생겼다 — A0를 `--keep`(따뜻한 홈)으로 다시 재서 대체했고, 그 이후 델타는 그 값 기준이다.",
-    "procs가 7에서 안 바뀌는 레버는 WebView2가 그 스위치를 무시했다는 뜻이다(SpareRenderer/NetworkServiceInProcess/StorageServiceOutOfProcess/--disable-breakpad 전부 해당).",
+    "**\"procs가 안 바뀌면 WebView2가 무시한 것\"은 틀린 추론이다(R3 크리틱 §5.1이 반증).** NetworkServiceInProcess가 무효로 보인 진짜 이유는 런타임이 무시해서가 아니라 **Chromium이 feature 이름을 바꿔서**(→ NetworkServiceInProcess2) 존재하지 않는 이름을 준 것이었다. 올바른 이름을 주면 utility:NetworkService가 사라진다. 무효 판정 전에 **현행 Chromium 이름부터 대조할 것**.",
     "Priv 절감의 정체는 GPU 프로세스의 D3D11 커밋이다: gpu-process Priv 106MB → --use-angle=gl 또는 --disable-gpu로 18MB.",
-    "앱(우리 UI)이 차지하는 몫은 bench/results/gpu-css-probe.json 기준 WS 8.4MB / Priv 24MB뿐이다(4패널 DOM을 통째로 비운 값과의 차이). 나머지는 웹 런타임 바닥값이다."
+    "앱(우리 UI)이 차지하는 몫은 **WS 43MB / Priv 34MB**다(gpu-css-probe.json의 `appShare`). 예전 주석의 \"8.4MB\"는 `innerHTML=''`로 잰 값이라 무효였다 — DOM을 떼어냈을 뿐 해제하지 않아 리스너·JS 힙이 그대로였다. 지금 하네스는 about:blank로 문서를 언로드하고 해제 여부를 판정 조건으로 찍는다."
   ],
   "precedence": {
     "codeArgPort": 9411,
@@ -3128,5 +3228,13 @@
     "codeArgAnswered": false,
     "envVarAnswered": true,
     "winner": "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS(환경변수)가 덮어쓴다"
+  },
+  "bin": {
+    "exe": "C:\\Code\\AgentCodeGUI\\target\\release\\agentcodegui.exe",
+    "exeMtime": "2026-08-22T11:33:00.765Z",
+    "exeSize": 3835392,
+    "exeSha256": "aab524b88bd36857",
+    "gitHead": "2ced4fa",
+    "gitDirty": true
   }
 }

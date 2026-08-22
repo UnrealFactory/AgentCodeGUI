@@ -1,0 +1,87 @@
+{
+  "app": "electron-2.6.2",
+  "arm": "default",
+  "bin": {
+    "exe": "C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe",
+    "exeMtime": "1979-12-31T15:00:00.000Z",
+    "exeSize": 223950848,
+    "exeSha256": "4e3b585c8cbbc45a",
+    "gitHead": "2ced4fa",
+    "gitDirty": true
+  },
+  "armEnv": {
+    "CCG_HOME": "C:\\Code\\AgentCodeGUI\\.bench-home"
+  },
+  "runs": [
+    {
+      "winMs": 401,
+      "rootMs": 538,
+      "paintMs": 565,
+      "winW": 300,
+      "winH": 240,
+      "winTitle": "agent-code-gui"
+    },
+    {
+      "winMs": 381,
+      "rootMs": 345,
+      "paintMs": 584,
+      "winW": 300,
+      "winH": 240,
+      "winTitle": "agent-code-gui"
+    },
+    {
+      "winMs": 398,
+      "rootMs": 401,
+      "paintMs": 572,
+      "winW": 300,
+      "winH": 240,
+      "winTitle": "agent-code-gui"
+    },
+    {
+      "winMs": 348,
+      "rootMs": 427,
+      "paintMs": 609,
+      "winW": 300,
+      "winH": 240,
+      "winTitle": "agent-code-gui"
+    },
+    {
+      "winMs": 354,
+      "rootMs": 425,
+      "paintMs": 573,
+      "winW": 300,
+      "winH": 240,
+      "winTitle": "agent-code-gui"
+    },
+    {
+      "winMs": 381,
+      "rootMs": 432,
+      "paintMs": 599,
+      "winW": 300,
+      "winH": 240,
+      "winTitle": "agent-code-gui"
+    }
+  ],
+  "firstRun": {
+    "winMs": 401,
+    "rootMs": 538,
+    "paintMs": 565,
+    "winW": 300,
+    "winH": 240,
+    "winTitle": "agent-code-gui"
+  },
+  "medianWinMs": 381,
+  "medianRootMs": 425,
+  "medianPaintMs": 584,
+  "firstWindow": {
+    "w": 300,
+    "h": 240,
+    "title": "agent-code-gui"
+  },
+  "env": {
+    "ramGB": 63.8,
+    "cpu": "13th Gen Intel(R) Core(TM) i7-13700KF",
+    "os": "Microsoft Windows 11 Home 26200"
+  },
+  "at": "2026-08-22T11:57:50.916Z"
+}

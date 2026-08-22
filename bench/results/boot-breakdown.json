@@ -788,5 +788,1505 @@
       }
     ],
     "at": "2026-08-22T09:03:10.882Z"
+  },
+  "tauri-3.0.0+default": {
+    "app": "tauri-3.0.0",
+    "arm": "default",
+    "bin": {
+      "exe": "C:\\Code\\AgentCodeGUI\\target\\release\\agentcodegui.exe",
+      "exeMtime": "2026-08-22T11:33:00.765Z",
+      "exeSize": 3835392,
+      "exeSha256": "aab524b88bd36857",
+      "gitHead": "d6be21f",
+      "gitDirty": true
+    },
+    "armEnv": {
+      "CCG_HOME": "C:\\Code\\AgentCodeGUI\\.bench-home-tauri",
+      "CCG_CDP_PORT": "9371"
+    },
+    "spawnToTimeOriginMs": 199,
+    "firstPaintMs": 44,
+    "splashPaintMs": 66,
+    "domInteractiveMs": 26.5,
+    "reloadMountMs": 49.2,
+    "bootIpcCalls": [],
+    "runs": [
+      {
+        "first": {
+          "timeOrigin": 1787398936722,
+          "nav": {
+            "responseEnd": 19.3,
+            "domInteractive": 24.3,
+            "domContentLoaded": 63.2,
+            "loadEnd": 63.4
+          },
+          "paints": {
+            "first-paint": 44,
+            "first-contentful-paint": 44
+          },
+          "splashPaint": 39.2,
+          "boot": null,
+          "res": [
+            {
+              "n": "index-DC_fTFSB.js",
+              "start": 21.8,
+              "dur": 12.4,
+              "size": 1045843
+            },
+            {
+              "n": "ipc_call",
+              "start": 37.9,
+              "dur": 10.5,
+              "size": 0
+            },
+            {
+              "n": "index-CF4LVUGW.css",
+              "start": 22.1,
+              "dur": 6.5,
+              "size": 198428
+            },
+            {
+              "n": "shim-DywXkf26.js",
+              "start": 22,
+              "dur": 5.3,
+              "size": 33562
+            },
+            {
+              "n": "i18n-DckKxfm5.js",
+              "start": 22.1,
+              "dur": 4.9,
+              "size": 9204
+            },
+            {
+              "n": "WantedSansVariable.min.css",
+              "start": 24,
+              "dur": 4.6,
+              "size": 11667
+            },
+            {
+              "n": "css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap",
+              "start": 24.1,
+              "dur": 4.6,
+              "size": 759
+            },
+            {
+              "n": "plugin%3Aevent%7Clisten",
+              "start": 62.4,
+              "dur": 1.1,
+              "size": 0
+            },
+            {
+              "n": "plugin%3Aevent%7Clisten",
+              "start": 62.3,
+              "dur": 0.9,
+              "size": 0
+            },
+            {
+              "n": "favicon.ico",
+              "start": 69.1,
+              "dur": 0.8,
+              "size": 1336
+            }
+          ],
+          "spawnToTimeOrigin": 202
+        },
+        "reload": {
+          "timeOrigin": 1787398936848,
+          "nav": {
+            "responseEnd": 4.6,
+            "domInteractive": 9.8,
+            "domContentLoaded": 48.2,
+            "loadEnd": 48.3
+          },
+          "paints": {
+            "first-paint": 48,
+            "first-contentful-paint": 48
+          },
+          "splashPaint": 48.4,
+          "boot": {
+            "mountAt": 49.2,
+            "ipc": []
+          },
+          "res": [
+            {
+              "n": "ipc_call",
+              "start": 61.4,
+              "dur": 23.6,
+              "size": 0
+            },
+            {
+              "n": "ipc_call",
+              "start": 61.1,
+              "dur": 21.7,
+              "size": 0
+            },
+            {
+              "n": "ipc_call",
+              "start": 61.1,
+              "dur": 21.6,
+              "size": 0
+            },
+            {
+              "n": "plugin%3Aevent%7Clisten",
+              "start": 61.3,
+              "dur": 21.6,
+              "size": 0
+            },
+            {
+              "n": "ipc_call",
+              "start": 60.5,
+              "dur": 21.5,
+              "size": 0
+            },
+            {
+              "n": "plugin%3Aevent%7Clisten",
+              "start": 60.9,
+              "dur": 21.5,
+              "size": 0
+            },
+            {
+              "n": "ipc_call",
+              "start": 61.5,
+              "dur": 21.4,
+              "size": 0
+            },
+            {
+              "n": "index-DC_fTFSB.js",
+              "start": 8.1,
+              "dur": 21.3,
+              "size": 1045843
+            },
+            {
+              "n": "plugin%3Aevent%7Clisten",
+              "start": 60.4,
+              "dur": 21.3,
+              "size": 0
+            },
+            {
+              "n": "plugin%3Aevent%7Clisten",
+              "start": 60.5,
+              "dur": 21.3,
+              "size": 0
+            }
+          ]
+        }
+      },
+      {
+        "first": {
+          "timeOrigin": 1787398938656,
+          "nav": {
+            "responseEnd": 21.3,
+            "domInteractive": 26.5,
+            "domContentLoaded": 64.6,
+            "loadEnd": 64.7
+          },
+          "paints": {
+            "first-paint": 52,
+            "first-contentful-paint": 52
+          },
+          "splashPaint": 66,
+          "boot": null,
+          "res": [
+            {
+              "n": "ipc_call",
+              "start": 33.1,
+              "dur": 14.6,
+              "size": 0
+            },
+            {
+              "n": "index-DC_fTFSB.js",
+              "start": 24,
+              "dur": 12.3,
+              "size": 1045843
+            },
+            {
+              "n": "index-CF4LVUGW.css",
+              "start": 24.1,
+              "dur": 6,
+              "size": 198428
+            },
+            {
+              "n": "i18n-DckKxfm5.js",
+              "start": 24.1,
+              "dur": 4.9,
+              "size": 9204
+            },
+            {
+              "n": "shim-DywXkf26.js",
+              "start": 24.1,
+              "dur": 4.7,
+              "size": 33562
+            },
+            {
+              "n": "WantedSansVariable.min.css",
+              "start": 26.1,
+              "dur": 4.1,
+              "size": 11667
+            },
+            {
+              "n": "css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap",
+              "start": 26.2,
+              "dur": 4.1,
+              "size": 759
+            },
+            {
+              "n": "favicon.ico",
+              "start": 70.7,
+              "dur": 1.8,
+              "size": 1336
+            },
+            {
+              "n": "plugin%3Aevent%7Clisten",
+              "start": 63.6,
+              "dur": 1,
+              "size": 0
+            },
+            {
+              "n": "plugin%3Aevent%7Clisten",
+              "start": 63.8,
+              "dur": 1,
+              "size": 0
+            }
+          ],
+          "spawnToTimeOrigin": 195
+        },
+        "reload": {
+          "timeOrigin": 1787398938783,
+          "nav": {
+            "responseEnd": 4.6,
+            "domInteractive": 10.2,
+            "domContentLoaded": 46.7,
+            "loadEnd": 46.8
+          },
+          "paints": {
+            "first-paint": 52,
+            "first-contentful-paint": 52
+          },
+          "splashPaint": 47.8,
+          "boot": {
+            "mountAt": 47.6,
+            "ipc": []
+          },
+          "res": [
+            {
+              "n": "ipc_call",
+              "start": 61.4,
+              "dur": 22.2,
+              "size": 0
+            },
+            {
+              "n": "ipc_call",
+              "start": 59.3,
+              "dur": 20.6,
+              "size": 0
+            },
+            {
+              "n": "plugin%3Aevent%7Clisten",
+              "start": 59.4,
+              "dur": 20.1,
+              "size": 0
+            },
+            {
+              "n": "ipc_call",
+              "start": 59.7,
+              "dur": 19.9,
+              "size": 0
+            },
+            {
+              "n": "plugin%3Aevent%7Clisten",
+              "start": 59.9,
+              "dur": 19.9,
+              "size": 0
+            },
+            {
+              "n": "ipc_call",
+              "start": 59.9,
+              "dur": 19.9,
+              "size": 0
+            },
+            {
+              "n": "ipc_call",
+              "start": 60,
+              "dur": 19.9,
+              "size": 0
+            },
+            {
+              "n": "ipc_call",
+              "start": 60.5,
+              "dur": 19.8,
+              "size": 0
+            },
+            {
+              "n": "plugin%3Aevent%7Clisten",
+              "start": 60.3,
+              "dur": 19.7,
+              "size": 0
+            },
+            {
+              "n": "plugin%3Aevent%7Clisten",
+              "start": 60.4,
+              "dur": 19.7,
+              "size": 0
+            }
+          ]
+        }
+      },
+      {
+        "first": {
+          "timeOrigin": 1787398940560,
+          "nav": {
+            "responseEnd": 22.3,
+            "domInteractive": 27.3,
+            "domContentLoaded": 63.6,
+            "loadEnd": 63.8
+          },
+          "paints": {
+            "first-paint": 44,
+            "first-contentful-paint": 44
+          },
+          "splashPaint": 69,
+          "boot": null,
+          "res": [
+            {
+              "n": "index-DC_fTFSB.js",
+              "start": 24.7,
+              "dur": 10.5,
+              "size": 1045843
+            },
+            {
+              "n": "ipc_call",
+              "start": 40.7,
+              "dur": 9.2,
+              "size": 0
+            },
+            {
+              "n": "index-CF4LVUGW.css",
+              "start": 24.9,
+              "dur": 4.5,
+              "size": 198428
+            },
+            {
+              "n": "shim-DywXkf26.js",
+              "start": 24.8,
+              "dur": 3.4,
+              "size": 33562
+            },
+            {
+              "n": "i18n-DckKxfm5.js",
+              "start": 24.9,
+              "dur": 3.4,
+              "size": 9204
+            },
+            {
+              "n": "css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap",
+              "start": 26.9,
+              "dur": 3.2,
+              "size": 759
+            },
+            {
+              "n": "WantedSansVariable.min.css",
+              "start": 26.9,
+              "dur": 3.1,
+              "size": 11667
+            },
+            {
+              "n": "plugin%3Aevent%7Clisten",
+              "start": 62.6,
+              "dur": 1,
+              "size": 0
+            },
+            {
+              "n": "plugin%3Aevent%7Clisten",
+              "start": 62.9,
+              "dur": 0.9,
+              "size": 0
+            }
+          ],
+          "spawnToTimeOrigin": 199
+        },
+        "reload": {
+          "timeOrigin": 1787398940693,
+          "nav": {
+            "responseEnd": 47.7,
+            "domInteractive": 66.4,
+            "domContentLoaded": 102,
+            "loadEnd": 102
+          },
+          "paints": {
+            "first-paint": 96,
+            "first-contentful-paint": 96
+          },
+          "splashPaint": 117,
+          "boot": {
+            "mountAt": 102.7,
+            "ipc": []
+          },
+          "res": [
+            {
+              "n": "ipc_call",
+              "start": 115.8,
+              "dur": 20.5,
+              "size": 0
+            },
+            {
+              "n": "index-DC_fTFSB.js",
+              "start": 64.4,
+              "dur": 19.8,
+              "size": 1045843
+            },
+            {
+              "n": "ipc_call",
+              "start": 114.5,
+              "dur": 19.2,
+              "size": 0
+            },
+            {
+              "n": "ipc_call",
+              "start": 115.3,
+              "dur": 18.9,
+              "size": 0
+            },
+            {
+              "n": "plugin%3Aevent%7Clisten",
+              "start": 114.6,
+              "dur": 18.8,
+              "size": 0
+            },
+            {
+              "n": "plugin%3Aevent%7Clisten",
+              "start": 114.8,
+              "dur": 18.8,
+              "size": 0
+            },
+            {
+              "n": "ipc_call",
+              "start": 115,
+              "dur": 18.8,
+              "size": 0
+            },
+            {
+              "n": "plugin%3Aevent%7Clisten",
+              "start": 115.1,
+              "dur": 18.8,
+              "size": 0
+            },
+            {
+              "n": "plugin%3Aevent%7Clisten",
+              "start": 115.2,
+              "dur": 18.8,
+              "size": 0
+            },
+            {
+              "n": "ipc_call",
+              "start": 114.8,
+              "dur": 18.7,
+              "size": 0
+            }
+          ]
+        }
+      }
+    ],
+    "at": "2026-08-22T11:42:22.358Z"
+  },
+  "tauri-3.0.0+singleproc": {
+    "app": "tauri-3.0.0",
+    "arm": "singleproc",
+    "bin": {
+      "exe": "C:\\Code\\AgentCodeGUI\\target\\release\\agentcodegui.exe",
+      "exeMtime": "2026-08-22T11:33:00.765Z",
+      "exeSize": 3835392,
+      "exeSha256": "aab524b88bd36857",
+      "gitHead": "d6be21f",
+      "gitDirty": true
+    },
+    "armEnv": {
+      "CCG_SINGLE_PROCESS": "1",
+      "CCG_HOME": "C:\\Code\\AgentCodeGUI\\.bench-home-tauri",
+      "CCG_CDP_PORT": "9371"
+    },
+    "spawnToTimeOriginMs": 165,
+    "firstPaintMs": 76,
+    "splashPaintMs": 66.1,
+    "domInteractiveMs": 18.3,
+    "reloadMountMs": 49,
+    "bootIpcCalls": [],
+    "runs": [
+      {
+        "first": {
+          "timeOrigin": 1787398944557,
+          "nav": {
+            "responseEnd": 13.8,
+            "domInteractive": 17.9,
+            "domContentLoaded": 59.4,
+            "loadEnd": 59.5
+          },
+          "paints": {
+            "first-paint": 72,
+            "first-contentful-paint": 72
+          },
+          "splashPaint": 66.1,
+          "boot": null,
+          "res": [
+            {
+              "n": "ipc_call",
+              "start": 25.4,
+              "dur": 13.5,
+              "size": 0
+            },
+            {
+              "n": "index-DC_fTFSB.js",
+              "start": 15.9,
+              "dur": 12.5,
+              "size": 1045843
+            },
+            {
+              "n": "index-CF4LVUGW.css",
+              "start": 15.9,
+              "dur": 5.3,
+              "size": 198428
+            },
+            {
+              "n": "i18n-DckKxfm5.js",
+              "start": 15.9,
+              "dur": 4.1,
+              "size": 9204
+            },
+            {
+              "n": "shim-DywXkf26.js",
+              "start": 15.9,
+              "dur": 3.7,
+              "size": 33562
+            },
+            {
+              "n": "css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap",
+              "start": 17.6,
+              "dur": 3.1,
+              "size": 759
+            },
+            {
+              "n": "WantedSansVariable.min.css",
+              "start": 17.6,
+              "dur": 3,
+              "size": 11667
+            },
+            {
+              "n": "plugin%3Aevent%7Clisten",
+              "start": 58.3,
+              "dur": 1.1,
+              "size": 0
+            },
+            {
+              "n": "plugin%3Aevent%7Clisten",
+              "start": 58.4,
+              "dur": 1.1,
+              "size": 0
+            },
+            {
+              "n": "favicon.ico",
+              "start": 68,
+              "dur": 0.9,
+              "size": 1336
+            }
+          ],
+          "spawnToTimeOrigin": 165
+        },
+        "reload": {
+          "timeOrigin": 1787398944678,
+          "nav": {
+            "responseEnd": 4,
+            "domInteractive": 10.8,
+            "domContentLoaded": 47.8,
+            "loadEnd": 47.9
+          },
+          "paints": {
+            "first-paint": 32,
+            "first-contentful-paint": 32
+          },
+          "splashPaint": 39.6,
+          "boot": {
+            "mountAt": 48.6,
+            "ipc": []
+          },
+          "res": [
+            {
+              "n": "ipc_call",
+              "start": 61.3,
+              "dur": 26.9,
+              "size": 0
+            },
+            {
+              "n": "ipc_call",
+              "start": 63,
+              "dur": 26.5,
+              "size": 0
+            },
+            {
+              "n": "ipc_call",
+              "start": 61.6,
+              "dur": 26.4,
+              "size": 0
+            },
+            {
+              "n": "plugin%3Aevent%7Clisten",
+              "start": 61.7,
+              "dur": 26.4,
+              "size": 0
+            },
+            {
+              "n": "ipc_call",
+              "start": 61.8,
+              "dur": 26.4,
+              "size": 0
+            },
+            {
+              "n": "plugin%3Aevent%7Clisten",
+              "start": 61.5,
+              "dur": 26.3,
+              "size": 0
+            },
+            {
+              "n": "ipc_call",
+              "start": 61.8,
+              "dur": 26.3,
+              "size": 0
+            },
+            {
+              "n": "plugin%3Aevent%7Clisten",
+              "start": 62,
+              "dur": 26.3,
+              "size": 0
+            },
+            {
+              "n": "plugin%3Aevent%7Clisten",
+              "start": 62.2,
+              "dur": 26.1,
+              "size": 0
+            },
+            {
+              "n": "ipc_call",
+              "start": 62.4,
+              "dur": 26,
+              "size": 0
+            }
+          ]
+        }
+      },
+      {
+        "first": {
+          "timeOrigin": 1787398946450,
+          "nav": {
+            "responseEnd": 14.8,
+            "domInteractive": 19.1,
+            "domContentLoaded": 60.5,
+            "loadEnd": 60.7
+          },
+          "paints": {
+            "first-paint": 80,
+            "first-contentful-paint": 80
+          },
+          "splashPaint": 115.4,
+          "boot": null,
+          "res": [
+            {
+              "n": "ipc_call",
+              "start": 25.9,
+              "dur": 18.1,
+              "size": 0
+            },
+            {
+              "n": "index-DC_fTFSB.js",
+              "start": 17,
+              "dur": 11.4,
+              "size": 1045843
+            },
+            {
+              "n": "index-CF4LVUGW.css",
+              "start": 17,
+              "dur": 5.6,
+              "size": 198428
+            },
+            {
+              "n": "shim-DywXkf26.js",
+              "start": 17,
+              "dur": 3.6,
+              "size": 33562
+            },
+            {
+              "n": "i18n-DckKxfm5.js",
+              "start": 17,
+              "dur": 3.4,
+              "size": 9204
+            },
+            {
+              "n": "WantedSansVariable.min.css",
+              "start": 18.8,
+              "dur": 2.9,
+              "size": 11667
+            },
+            {
+              "n": "css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap",
+              "start": 18.9,
+              "dur": 2.8,
+              "size": 759
+            },
+            {
+              "n": "favicon.ico",
+              "start": 68.3,
+              "dur": 2.4,
+              "size": 1336
+            },
+            {
+              "n": "plugin%3Aevent%7Clisten",
+              "start": 59.5,
+              "dur": 1,
+              "size": 0
+            },
+            {
+              "n": "plugin%3Aevent%7Clisten",
+              "start": 59.7,
+              "dur": 0.9,
+              "size": 0
+            }
+          ],
+          "spawnToTimeOrigin": 169
+        },
+        "reload": {
+          "timeOrigin": 1787398946575,
+          "nav": {
+            "responseEnd": 7,
+            "domInteractive": 15.3,
+            "domContentLoaded": 56.9,
+            "loadEnd": 57
+          },
+          "paints": {
+            "first-paint": 52,
+            "first-contentful-paint": 52
+          },
+          "splashPaint": 74.8,
+          "boot": {
+            "mountAt": 57.7,
+            "ipc": []
+          },
+          "res": [
+            {
+              "n": "ipc_call",
+              "start": 73.2,
+              "dur": 31.3,
+              "size": 0
+            },
+            {
+              "n": "ipc_call",
+              "start": 71.6,
+              "dur": 24.3,
+              "size": 0
+            },
+            {
+              "n": "plugin%3Aevent%7Clisten",
+              "start": 71.9,
+              "dur": 24,
+              "size": 0
+            },
+            {
+              "n": "ipc_call",
+              "start": 72.1,
+              "dur": 23.9,
+              "size": 0
+            },
+            {
+              "n": "plugin%3Aevent%7Clisten",
+              "start": 72.3,
+              "dur": 23.9,
+              "size": 0
+            },
+            {
+              "n": "ipc_call",
+              "start": 71.9,
+              "dur": 23.8,
+              "size": 0
+            },
+            {
+              "n": "ipc_call",
+              "start": 72.1,
+              "dur": 23.8,
+              "size": 0
+            },
+            {
+              "n": "plugin%3Aevent%7Clisten",
+              "start": 72.3,
+              "dur": 23.8,
+              "size": 0
+            },
+            {
+              "n": "ipc_call",
+              "start": 72.5,
+              "dur": 23.8,
+              "size": 0
+            },
+            {
+              "n": "plugin%3Aevent%7Clisten",
+              "start": 72.6,
+              "dur": 23.8,
+              "size": 0
+            }
+          ]
+        }
+      },
+      {
+        "first": {
+          "timeOrigin": 1787398948342,
+          "nav": {
+            "responseEnd": 14,
+            "domInteractive": 18.3,
+            "domContentLoaded": 58.3,
+            "loadEnd": 58.4
+          },
+          "paints": {
+            "first-paint": 76,
+            "first-contentful-paint": 76
+          },
+          "splashPaint": 65.8,
+          "boot": null,
+          "res": [
+            {
+              "n": "ipc_call",
+              "start": 24.3,
+              "dur": 13.1,
+              "size": 0
+            },
+            {
+              "n": "index-DC_fTFSB.js",
+              "start": 16.1,
+              "dur": 11.4,
+              "size": 1045843
+            },
+            {
+              "n": "index-CF4LVUGW.css",
+              "start": 16.2,
+              "dur": 5.2,
+              "size": 198428
+            },
+            {
+              "n": "shim-DywXkf26.js",
+              "start": 16.2,
+              "dur": 3.8,
+              "size": 33562
+            },
+            {
+              "n": "i18n-DckKxfm5.js",
+              "start": 16.2,
+              "dur": 3.6,
+              "size": 9204
+            },
+            {
+              "n": "css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap",
+              "start": 18,
+              "dur": 3.2,
+              "size": 759
+            },
+            {
+              "n": "WantedSansVariable.min.css",
+              "start": 18,
+              "dur": 3,
+              "size": 11667
+            },
+            {
+              "n": "plugin%3Aevent%7Clisten",
+              "start": 57.3,
+              "dur": 0.8,
+              "size": 0
+            },
+            {
+              "n": "plugin%3Aevent%7Clisten",
+              "start": 57.5,
+              "dur": 0.7,
+              "size": 0
+            },
+            {
+              "n": "ipc_call",
+              "start": 73.9,
+              "dur": 0.7,
+              "size": 0
+            }
+          ],
+          "spawnToTimeOrigin": 162
+        },
+        "reload": {
+          "timeOrigin": 1787398948464,
+          "nav": {
+            "responseEnd": 3.8,
+            "domInteractive": 10.5,
+            "domContentLoaded": 48.3,
+            "loadEnd": 48.4
+          },
+          "paints": {
+            "first-paint": 32,
+            "first-contentful-paint": 32
+          },
+          "splashPaint": 39.8,
+          "boot": {
+            "mountAt": 49,
+            "ipc": []
+          },
+          "res": [
+            {
+              "n": "ipc_call",
+              "start": 63.6,
+              "dur": 27,
+              "size": 0
+            },
+            {
+              "n": "ipc_call",
+              "start": 62.1,
+              "dur": 26.9,
+              "size": 0
+            },
+            {
+              "n": "plugin%3Aevent%7Clisten",
+              "start": 62.3,
+              "dur": 26.5,
+              "size": 0
+            },
+            {
+              "n": "ipc_call",
+              "start": 62.4,
+              "dur": 26.5,
+              "size": 0
+            },
+            {
+              "n": "plugin%3Aevent%7Clisten",
+              "start": 62.5,
+              "dur": 26.4,
+              "size": 0
+            },
+            {
+              "n": "ipc_call",
+              "start": 62.6,
+              "dur": 26.4,
+              "size": 0
+            },
+            {
+              "n": "plugin%3Aevent%7Clisten",
+              "start": 62.8,
+              "dur": 26.4,
+              "size": 0
+            },
+            {
+              "n": "ipc_call",
+              "start": 62.8,
+              "dur": 26.3,
+              "size": 0
+            },
+            {
+              "n": "ipc_call",
+              "start": 63,
+              "dur": 26.3,
+              "size": 0
+            },
+            {
+              "n": "plugin%3Aevent%7Clisten",
+              "start": 63.2,
+              "dur": 26.3,
+              "size": 0
+            }
+          ]
+        }
+      }
+    ],
+    "at": "2026-08-22T11:42:30.109Z"
+  },
+  "electron-2.6.2+default": {
+    "app": "electron-2.6.2",
+    "arm": "default",
+    "bin": {
+      "exe": "C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe",
+      "exeMtime": "1979-12-31T15:00:00.000Z",
+      "exeSize": 223950848,
+      "exeSha256": "4e3b585c8cbbc45a",
+      "gitHead": "d6be21f",
+      "gitDirty": true
+    },
+    "armEnv": {
+      "CCG_HOME": "C:\\Code\\AgentCodeGUI\\.bench-home"
+    },
+    "spawnToTimeOriginMs": 199,
+    "firstPaintMs": null,
+    "splashPaintMs": null,
+    "domInteractiveMs": 101.1,
+    "reloadMountMs": 50.3,
+    "bootIpcCalls": [],
+    "runs": [
+      {
+        "first": {
+          "timeOrigin": 1787398952847,
+          "nav": {
+            "responseEnd": 14.2,
+            "domInteractive": 110.1,
+            "domContentLoaded": 159.1,
+            "loadEnd": 161
+          },
+          "paints": {},
+          "splashPaint": null,
+          "boot": null,
+          "res": [
+            {
+              "n": "WantedSansVariable.min.css",
+              "start": 106.8,
+              "dur": 41.1,
+              "size": 0
+            },
+            {
+              "n": "css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap",
+              "start": 106.9,
+              "dur": 41.1,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.85.woff2",
+              "start": 183.2,
+              "dur": 4.2,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.86.woff2",
+              "start": 183.1,
+              "dur": 4.1,
+              "size": 0
+            },
+            {
+              "n": "tDbv2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKwBNntkaToggR7BYRbKPxDcwg.woff2",
+              "start": 174.6,
+              "dur": 2.3,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.90.woff2",
+              "start": 174.6,
+              "dur": 2.1,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.79.woff2",
+              "start": 191.2,
+              "dur": 1.2,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.87.woff2",
+              "start": 191,
+              "dur": 0.9,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.82.woff2",
+              "start": 202.3,
+              "dur": 0.9,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.72.woff2",
+              "start": 211.1,
+              "dur": 0.9,
+              "size": 0
+            }
+          ],
+          "spawnToTimeOrigin": 231
+        },
+        "reload": {
+          "timeOrigin": 1787398953208,
+          "nav": {
+            "responseEnd": 6.8,
+            "domInteractive": 26.2,
+            "domContentLoaded": 35.1,
+            "loadEnd": 35.3
+          },
+          "paints": {
+            "first-paint": 52,
+            "first-contentful-paint": 68
+          },
+          "splashPaint": null,
+          "boot": {
+            "mountAt": 51.3,
+            "ipc": []
+          },
+          "res": [
+            {
+              "n": "WantedSansVariable.min.css",
+              "start": 25.5,
+              "dur": 0,
+              "size": 0
+            },
+            {
+              "n": "css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap",
+              "start": 25.5,
+              "dur": 0,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.68.woff2",
+              "start": 29.9,
+              "dur": 0,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.72.woff2",
+              "start": 30,
+              "dur": 0,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.75.woff2",
+              "start": 30,
+              "dur": 0,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.78.woff2",
+              "start": 30,
+              "dur": 0,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.79.woff2",
+              "start": 30,
+              "dur": 0,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.80.woff2",
+              "start": 30,
+              "dur": 0,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.81.woff2",
+              "start": 30,
+              "dur": 0,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.82.woff2",
+              "start": 30,
+              "dur": 0,
+              "size": 0
+            }
+          ]
+        }
+      },
+      {
+        "first": {
+          "timeOrigin": 1787398955000,
+          "nav": {
+            "responseEnd": 14.3,
+            "domInteractive": 101.1,
+            "domContentLoaded": 125.9,
+            "loadEnd": 127.8
+          },
+          "paints": {},
+          "splashPaint": null,
+          "boot": null,
+          "res": [
+            {
+              "n": "WantedSansVariable.min.css",
+              "start": 97.9,
+              "dur": 15.4,
+              "size": 0
+            },
+            {
+              "n": "css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap",
+              "start": 98.1,
+              "dur": 15.3,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.85.woff2",
+              "start": 149,
+              "dur": 2.3,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.86.woff2",
+              "start": 149,
+              "dur": 2.2,
+              "size": 0
+            },
+            {
+              "n": "tDbv2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKwBNntkaToggR7BYRbKPxDcwg.woff2",
+              "start": 140.8,
+              "dur": 1.9,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.90.woff2",
+              "start": 140.8,
+              "dur": 1.3,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.79.woff2",
+              "start": 156.6,
+              "dur": 1.2,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.87.woff2",
+              "start": 156.3,
+              "dur": 1,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.82.woff2",
+              "start": 167.6,
+              "dur": 1,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.72.woff2",
+              "start": 176.3,
+              "dur": 1,
+              "size": 0
+            }
+          ],
+          "spawnToTimeOrigin": 199
+        },
+        "reload": {
+          "timeOrigin": 1787398955325,
+          "nav": {
+            "responseEnd": 5.8,
+            "domInteractive": 26.2,
+            "domContentLoaded": 33.3,
+            "loadEnd": 34.4
+          },
+          "paints": {
+            "first-paint": 52,
+            "first-contentful-paint": 104
+          },
+          "splashPaint": null,
+          "boot": {
+            "mountAt": 49.5,
+            "ipc": []
+          },
+          "res": [
+            {
+              "n": "WantedSansVariable.min.css",
+              "start": 25.5,
+              "dur": 0,
+              "size": 0
+            },
+            {
+              "n": "css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap",
+              "start": 25.5,
+              "dur": 0,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.68.woff2",
+              "start": 33.9,
+              "dur": 0,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.72.woff2",
+              "start": 34,
+              "dur": 0,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.75.woff2",
+              "start": 34,
+              "dur": 0,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.78.woff2",
+              "start": 34,
+              "dur": 0,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.79.woff2",
+              "start": 34,
+              "dur": 0,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.80.woff2",
+              "start": 34,
+              "dur": 0,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.81.woff2",
+              "start": 34,
+              "dur": 0,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.82.woff2",
+              "start": 34,
+              "dur": 0,
+              "size": 0
+            }
+          ]
+        }
+      },
+      {
+        "first": {
+          "timeOrigin": 1787398957112,
+          "nav": {
+            "responseEnd": 12,
+            "domInteractive": 92.3,
+            "domContentLoaded": 118.3,
+            "loadEnd": 120.2
+          },
+          "paints": {},
+          "splashPaint": null,
+          "boot": null,
+          "res": [
+            {
+              "n": "WantedSansVariable.min.css",
+              "start": 89.2,
+              "dur": 13.7,
+              "size": 0
+            },
+            {
+              "n": "css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap",
+              "start": 89.4,
+              "dur": 13.6,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.88.woff2",
+              "start": 149.1,
+              "dur": 1.6,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.87.woff2",
+              "start": 149.1,
+              "dur": 1.6,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.79.woff2",
+              "start": 149.6,
+              "dur": 1.2,
+              "size": 0
+            },
+            {
+              "n": "tDbv2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKwBNntkaToggR7BYRbKPxDcwg.woff2",
+              "start": 133.4,
+              "dur": 1.1,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.90.woff2",
+              "start": 133.4,
+              "dur": 1,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.86.woff2",
+              "start": 141.4,
+              "dur": 1,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.85.woff2",
+              "start": 141.4,
+              "dur": 1,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.84.woff2",
+              "start": 169.1,
+              "dur": 1,
+              "size": 0
+            }
+          ],
+          "spawnToTimeOrigin": 194
+        },
+        "reload": {
+          "timeOrigin": 1787398957427,
+          "nav": {
+            "responseEnd": 6.2,
+            "domInteractive": 26.6,
+            "domContentLoaded": 35.4,
+            "loadEnd": 35.4
+          },
+          "paints": {
+            "first-paint": 52,
+            "first-contentful-paint": 68
+          },
+          "splashPaint": null,
+          "boot": {
+            "mountAt": 50.3,
+            "ipc": []
+          },
+          "res": [
+            {
+              "n": "WantedSansVariable.min.css",
+              "start": 25.7,
+              "dur": 0,
+              "size": 0
+            },
+            {
+              "n": "css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap",
+              "start": 25.8,
+              "dur": 0,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.68.woff2",
+              "start": 30.3,
+              "dur": 0,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.72.woff2",
+              "start": 30.3,
+              "dur": 0,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.75.woff2",
+              "start": 30.3,
+              "dur": 0,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.78.woff2",
+              "start": 30.3,
+              "dur": 0,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.79.woff2",
+              "start": 30.3,
+              "dur": 0,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.80.woff2",
+              "start": 30.4,
+              "dur": 0,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.81.woff2",
+              "start": 30.4,
+              "dur": 0,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.82.woff2",
+              "start": 30.4,
+              "dur": 0,
+              "size": 0
+            }
+          ]
+        }
+      }
+    ],
+    "at": "2026-08-22T11:42:39.251Z"
   }
 }

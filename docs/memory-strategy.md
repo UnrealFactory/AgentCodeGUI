@@ -46,18 +46,26 @@ Electron보다 프로세스를 더 쪼개고 더 쓴다. 여기를 이기지 못
 
 전문은 `docs/m1-report-r3.md`. 다음 사람이 같은 길을 다시 파지 않도록 결론만 여기 박는다.
 
-### ★ 분모가 우리 앱이 아니다
+### ★ 분모가 우리 앱이 아니다 — **다만 R3가 적은 8.4MB는 무효였다(R4 정정)**
 
-`bench/gpuprobe.mjs`로 살아 있는 4패널 앱의 `#root`를 통째로 비워 봤다:
+R3는 `bench/gpuprobe.mjs`로 4패널 앱의 `#root`를 `innerHTML=''`로 비우고 "우리 UI 전부의
+값 = WS 8.4MB"라고 적었다. **그 방법이 틀렸다** — `innerHTML=''`은 DOM을 화면에서 뗄 뿐
+해제하지 않는다(React 파이버 트리가 노드를 붙들고 있다). R4에서 하네스를 고쳐
+`about:blank`로 문서를 통째로 언로드하고, 단계마다 노드·리스너·JS힙을 **판정 조건으로**
+찍게 했다(`gpu-css-probe.json`의 `release` / `appShare`):
 
-| | 총 WS / Priv |
-|---|---|
-| 4패널 × 120항목 | 446.2 / 301.4 |
-| **`#root` 비움(빈 문서)** | **437.8 / 277.1** |
+| 단계 | 총 WS | 총 Priv | JS 힙 | DOM 노드 | JS 리스너 | 해제? |
+|---|---|---|---|---|---|---|
+| 4패널 × 120항목 | 436.6 | 226.5 | 8.3 | 8,486 | 641 | — |
+| `#root` `innerHTML=''` (R3가 쓴 방법) | 412.3 | 210.6 | **8.3** | **8,315** | **641** | **✗ 무효** |
+| `about:blank`(진짜 언로드) | **391.0** | **188.2** | 0.9 | 4 | 3 | ✓ |
 
-**우리 UI 전부의 값 = WS 8.4MB / Priv 24MB.** `bench/heap.mjs`도 같은 말을 한다
-(v8+Blink 힙 24MB, DOM 4,616노드, 상위 항목이 전부 Blink 내부 자료구조).
-→ **2군(렌더러 다이어트)은 죽은 길이다.** 번들·힙·DOM을 아무리 줄여도 한 자릿수 MB다.
+**우리 UI 전부의 값 = WS 45.6MB / Priv 38.3MB** (크리틱 독립 측정 43.3 / 34.0).
+R3 수치의 5배다.
+
+→ 그래도 **렌더러 다이어트만으로는 목표에 못 닿는다**(격차 100MB의 20% 이하).
+"죽은 길"이 아니라 **마지막 20MB용 조각**으로 격하해 둔다. 다이어트로 되찾을 수 있는
+최대치가 43~46MB이고 현실적으로는 10~20MB다.
 
 ### 레버는 두 개만 살아남았다
 
@@ -67,11 +75,30 @@ Electron보다 프로세스를 더 쪼개고 더 쓴다. 여기를 이기지 못
 | `--in-process-gpu` | 멀티 유휴 Priv 337.4 → 251.6MB, 프로세스 7 → 6, 60fps 유지, 하드웨어 GPU 유지 |
 
 기각 15개(전부 실측): `SpareRendererForSitePerProcess`·`AudioServiceOutOfProcess`·
-`Translate`·`OptimizationHints`·`BackForwardCache`·`MediaRouter`·`NetworkServiceInProcess`·
+`Translate`·`OptimizationHints`·`BackForwardCache`·`MediaRouter`·
 `StorageServiceOutOfProcess`·`--disable-breakpad`·`--single-process-network`·
-`--renderer-process-limit=1`·부팅 잡업 스위치 7종 — **프로세스 수가 하나도 안 줄었다**
-= WebView2가 그 스위치들을 무시한다. `--use-angle=gl`/`--disable-gpu`는 Priv를 가장 크게
-줄이지만 WebGL renderer가 `Microsoft Basic Render Driver`로 바뀐다(= 소프트웨어 래스터).
+`--renderer-process-limit=1`·부팅 잡업 스위치 7종 — 프로세스 수가 하나도 안 줄었다.
+`--use-angle=gl`/`--disable-gpu`는 Priv를 가장 크게 줄이지만 WebGL renderer가
+`Microsoft Basic Render Driver`로 바뀐다(= 소프트웨어 래스터).
+
+> ### ⚠ 기각 사유 한 줄은 **틀렸다** (R3 크리틱 §5.1 · R4 정정)
+> R3는 "프로세스 수가 안 줄었다 = WebView2가 그 스위치를 무시한다"고 적었다.
+> **그 추론이 한 번 틀렸다.** `NetworkServiceInProcess`가 무효로 보인 진짜 이유는
+> 런타임이 무시해서가 아니라 **Chromium이 M96 무렵 feature 이름을
+> `NetworkServiceInProcess2`로 바꿔서** 존재하지 않는 이름을 준 것이었다(모르는 feature
+> 이름에 Chromium은 경고하지 않는다). 올바른 이름을 주면 `utility:NetworkService`가
+> 통째로 사라진다 — R4 실측 `ΔWS −30.5 / ΔPriv −5.7 / **Δprocs −1**`
+> (`webview-flags.json`의 `B5b-network-in-process2`).
+> → **규약: 무효로 적기 전에 현행 Chromium feature 이름부터 대조할 것.** 위 기각 목록의
+> `AudioServiceOutOfProcess`·`BackForwardCache` 등은 아직 이 대조를 안 거쳤다.
+> (`StorageServiceOutOfProcess`는 올바른 이름으로도 안 죽는 것을 확인했다 — 진짜 무효.)
+
+**`NetworkServiceInProcess2`(정식 이름)는 R4 시점 미채택이다.** 기여는 실재하고
+(주 게이트 5회 중앙값: 유휴 WS 450.7→426.3 · Priv 248.1→241.6 · **프로세스 6→5** ·
++창2 WS 500.9→471.8) FPS도 대조군과 같거나 낫지만, 채택 판정을 한 세션에서 **대조군조차
+≥60fps를 못 넘었다**(기계 부하). 재판정은 `node bench/fpsab.mjs --rounds=4 --trials=3`
+한 줄이면 끝난다 — 자세한 건 `docs/m1-report-r4.md` §2.
+재현 스위치: `CCG_WEBVIEW_ENABLE_FEATURES=NetworkServiceInProcess2`(재빌드 불필요).
 
 ### 남은 격차와, 그 격차를 넘는 유일한 실측 경로
 
@@ -136,3 +163,10 @@ Electron보다 프로세스를 더 쪼개고 더 쓴다. 여기를 이기지 못
 - 모든 스위치는 **하나씩 켜고 재서** 기여도를 기록한다. 뭉뚱그린 "플래그 세트"는
   다음 사람이 되돌릴 수 없다.
 - 결과는 `bench/results/webview-flags.json`에 표로 남긴다.
+- 무효 판정 전에 **현행 Chromium feature 이름부터 대조한다**(위 ⚠ 상자).
+- **FPS 게이트는 대조군이 같은 세션에서 기준을 넘을 때만 유효하다.** 기계가 밴드째
+  내려앉은 세션에서는 어느 팔도 60fps에 못 닿아 판정이 성립하지 않는다 —
+  대조군 중앙 avgFps를 먼저 보고, ≥59.0이 아니면 그 세션의 FPS 판정은 버린다
+  (R4에서 실제로 이 이유로 레버 채택을 보류했다). 교대·부하 하네스는 `bench/fpsab.mjs`.
+- 결과 파일에는 **어느 exe로 쟀는지**(exe mtime·SHA·gitHead)가 반드시 박혀 있어야 한다
+  (`lib.mjs`의 `binInfo`/`provenance`). 없으면 그 표는 인용하지 않는다.

@@ -1,0 +1,264 @@
+{
+  "env": {
+    "ramGB": 63.8,
+    "cpu": "13th Gen Intel(R) Core(TM) i7-13700KF",
+    "os": "Microsoft Windows 11 Home 26200"
+  },
+  "bin": {
+    "exe": "C:\\Code\\AgentCodeGUI\\target\\release\\agentcodegui.exe",
+    "exeMtime": "2026-08-22T11:33:00.765Z",
+    "exeSize": 3835392,
+    "exeSha256": "aab524b88bd36857",
+    "gitHead": "2ced4fa",
+    "gitDirty": true
+  },
+  "seeded": "fixture(471) both",
+  "runs": [
+    {
+      "i": 1,
+      "electron": {
+        "winMs": 431,
+        "rootMs": 434,
+        "paintMs": 651,
+        "winW": 300,
+        "winH": 240,
+        "winTitle": "agent-code-gui"
+      },
+      "tauri": {
+        "winMs": 240,
+        "rootMs": 377,
+        "paintMs": 319,
+        "winW": 1336,
+        "winH": 889,
+        "winTitle": "AgentCodeGUI3"
+      }
+    },
+    {
+      "i": 2,
+      "electron": {
+        "winMs": 384,
+        "rootMs": 464,
+        "paintMs": 653,
+        "winW": 300,
+        "winH": 240,
+        "winTitle": "agent-code-gui"
+      },
+      "tauri": {
+        "winMs": 262,
+        "rootMs": 348,
+        "paintMs": 278,
+        "winW": 1336,
+        "winH": 889,
+        "winTitle": "AgentCodeGUI3"
+      }
+    },
+    {
+      "i": 3,
+      "electron": {
+        "winMs": 358,
+        "rootMs": 452,
+        "paintMs": 572,
+        "winW": 300,
+        "winH": 240,
+        "winTitle": "agent-code-gui"
+      },
+      "tauri": {
+        "winMs": 257,
+        "rootMs": 348,
+        "paintMs": 276,
+        "winW": 1336,
+        "winH": 889,
+        "winTitle": "AgentCodeGUI3"
+      }
+    },
+    {
+      "i": 4,
+      "electron": {
+        "winMs": 542,
+        "rootMs": 630,
+        "paintMs": 815,
+        "winW": 300,
+        "winH": 240,
+        "winTitle": "agent-code-gui"
+      },
+      "tauri": {
+        "winMs": 257,
+        "rootMs": 380,
+        "paintMs": 284,
+        "winW": 1336,
+        "winH": 889,
+        "winTitle": "AgentCodeGUI3"
+      }
+    },
+    {
+      "i": 5,
+      "electron": {
+        "winMs": 351,
+        "rootMs": 413,
+        "paintMs": 575,
+        "winW": 300,
+        "winH": 240,
+        "winTitle": "agent-code-gui"
+      },
+      "tauri": {
+        "winMs": 243,
+        "rootMs": 329,
+        "paintMs": 278,
+        "winW": 1336,
+        "winH": 889,
+        "winTitle": "AgentCodeGUI3"
+      }
+    },
+    {
+      "i": 6,
+      "electron": {
+        "winMs": 351,
+        "rootMs": 418,
+        "paintMs": 559,
+        "winW": 300,
+        "winH": 240,
+        "winTitle": "agent-code-gui"
+      },
+      "tauri": {
+        "winMs": 229,
+        "rootMs": 334,
+        "paintMs": 268,
+        "winW": 1336,
+        "winH": 889,
+        "winTitle": "AgentCodeGUI3"
+      }
+    }
+  ],
+  "at": "2026-08-22T11:58:41.773Z",
+  "summary": {
+    "electron": {
+      "winMs": 371,
+      "paintMs": 613,
+      "rootMs": 443
+    },
+    "tauri": {
+      "winMs": 250,
+      "paintMs": 278,
+      "rootMs": 348
+    },
+    "firstWindow": {
+      "electron": "300x240 \"agent-code-gui\"",
+      "tauri": "1336x889 \"AgentCodeGUI3\"",
+      "note": "두 값이 다르면 winMs 비교는 서로 다른 사건을 비교하는 것이다 — paintMs를 봐라."
+    },
+    "ratio": {
+      "winMs": 0.67,
+      "paintMs": 0.45,
+      "rootMs": 0.79
+    },
+    "pass": {
+      "winMs": false,
+      "paintMs": true,
+      "rootMs": false
+    }
+  },
+  "idle": {
+    "electron": {
+      "totalWsMB": 620.2,
+      "totalPrivMB": 430.9,
+      "procs": 7
+    },
+    "tauri": {
+      "totalWsMB": 411.2,
+      "totalPrivMB": 186.3,
+      "procs": 6
+    },
+    "ratio": {
+      "wsMB": 0.66,
+      "privMB": 0.43
+    },
+    "procDetail": {
+      "electron": [
+        {
+          "pid": 18568,
+          "name": "electron.exe",
+          "privMB": 78.7,
+          "wsMB": 109.4
+        },
+        {
+          "pid": 28136,
+          "name": "electron.exe",
+          "privMB": 11.6,
+          "wsMB": 35.1
+        },
+        {
+          "pid": 29676,
+          "name": "electron.exe",
+          "privMB": 153.3,
+          "wsMB": 109
+        },
+        {
+          "pid": 24832,
+          "name": "electron.exe",
+          "privMB": 14.5,
+          "wsMB": 49.1
+        },
+        {
+          "pid": 30628,
+          "name": "electron.exe",
+          "privMB": 70,
+          "wsMB": 121.8
+        },
+        {
+          "pid": 7804,
+          "name": "electron.exe",
+          "privMB": 60.8,
+          "wsMB": 91.3
+        },
+        {
+          "pid": 24400,
+          "name": "electron.exe",
+          "privMB": 41.9,
+          "wsMB": 104.7
+        }
+      ],
+      "tauri": [
+        {
+          "pid": 18960,
+          "name": "agentcodegui.exe",
+          "privMB": 10.6,
+          "wsMB": 28.2
+        },
+        {
+          "pid": 30764,
+          "name": "msedgewebview2.exe",
+          "privMB": 92.2,
+          "wsMB": 193.1
+        },
+        {
+          "pid": 14356,
+          "name": "msedgewebview2.exe",
+          "privMB": 3.1,
+          "wsMB": 13.1
+        },
+        {
+          "pid": 11384,
+          "name": "msedgewebview2.exe",
+          "privMB": 13,
+          "wsMB": 39.9
+        },
+        {
+          "pid": 20064,
+          "name": "msedgewebview2.exe",
+          "privMB": 8.9,
+          "wsMB": 20.1
+        },
+        {
+          "pid": 10188,
+          "name": "msedgewebview2.exe",
+          "privMB": 58.6,
+          "wsMB": 116.8
+        }
+      ]
+    },
+    "pass": {
+      "wsMB": false,
+      "privMB": true
+    }
+  }
+}

@@ -25,3 +25,12 @@ tauri-plugin-dialog = "2"
 serde = { workspace = true }
 serde_json = { workspace = true }
 ccg-store = { path = "../crates/ccg-store" }
+
+# 렌더러/브라우저 사망 감지(src/crash.rs). wry·tauri는 WebView2의 ProcessFailed를
+# 감싸주지 않으므로 `with_webview()`가 주는 ICoreWebView2Controller에 직접 붙인다.
+# 버전은 **tauri가 쓰는 것과 같아야 한다**(다르면 타입이 달라 controller()를 못 받는다):
+# tauri 2.11.5 → webview2-com 0.38 / windows 0.61 (Cargo.lock 확인).
+# windows의 두 feature는 tao가 이미 켜 둔 것이라 추가 컴파일 비용이 없다.
+[target.'cfg(windows)'.dependencies]
+webview2-com = "0.38"
+windows = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Threading", "Win32_System_Com"] }

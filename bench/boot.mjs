@@ -19,7 +19,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { spawn } from 'node:child_process'
-import { electronProfile, tauriProfile, connectMainPage, killTree, median, sleep, envInfo, REPO } from './lib.mjs'
+import { electronProfile, tauriProfile, connectMainPage, killTree, median, sleep, envInfo, provenance, REPO } from './lib.mjs'
 import { makeFixtureHome } from './fixture.mjs'
 
 const kind = process.argv[2] ?? 'tauri'
@@ -140,8 +140,16 @@ for (let i = 0; i < runs + 1; i++) {
   console.log(`run ${i}/${runs}: spawn→timeOrigin=${r.first?.spawnToTimeOrigin}ms  fp=${r.first?.paints?.['first-paint']}  splash=${r.first?.splashPaint}  reloadMount=${r.reload?.boot?.mountAt}  bootIpc=${r.reload?.boot?.ipc?.length}`)
 }
 
+// ── 팔별로 따로 저장한다 (R3 크리틱 §9-1 결함) ────────────────────────────────
+// 전에는 `prev[profile.name] = summary` 였다. 같은 앱을 CCG_SINGLE_PROCESS=1 등으로
+// 다시 돌리면 직전 팔이 통째로 사라져, 보고서가 인용한 값(202~240 / 56)이 산출물
+// (172 / 105)과 달라도 아무도 못 알아챘다 — **근거가 파일에 남지 않는 하네스**였다.
+// 이제 키에 팔을 넣고, 어느 exe로 쟀는지(§9-6)도 같이 박는다.
+const prov = provenance(profile)
+const key = `${profile.name}+${prov.arm}`
 const summary = {
   app: profile.name,
+  ...prov,
   spawnToTimeOriginMs: median(rows.map((r) => r.first?.spawnToTimeOrigin)),
   firstPaintMs: median(rows.map((r) => r.first?.paints?.['first-paint'])),
   splashPaintMs: median(rows.map((r) => r.first?.splashPaint)),
@@ -153,7 +161,7 @@ const summary = {
 }
 const prev = fs.existsSync(OUT) ? JSON.parse(fs.readFileSync(OUT, 'utf8')) : {}
 prev.env ??= envInfo()
-prev[profile.name] = summary
+prev[key] = summary
 fs.writeFileSync(OUT, JSON.stringify(prev, null, 2))
 console.log(JSON.stringify({ ...summary, runs: undefined }, null, 2))
-console.log('saved:', OUT)
+console.log('saved:', OUT, '(key:', key + ')')

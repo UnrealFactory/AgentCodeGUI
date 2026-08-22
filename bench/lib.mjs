@@ -2,6 +2,7 @@
 // 공정성 = 대칭성: 두 앱 모두 (1) 프로세스 스폰 → 첫 가시 창(Win32 EnumWindows),
 // (2) 스폰 → 렌더러 #root 마운트(CDP), (3) 프로세스 트리 메모리 합산(CIM 워크)로 측정.
 import { spawn, execFileSync } from 'node:child_process'
+import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
@@ -15,16 +16,24 @@ export async function cdpTargets(port) {
   return await res.json()
 }
 
+// **모든 요청에 타임아웃이 있다.** 없으면 렌더러가 죽은 뒤 `Runtime.evaluate`가 영원히
+// 응답하지 않아 하네스가 통째로 멈춘다(크래시 복구 하네스를 쓰다가 실제로 밟았다 —
+// 크리틱의 §9-7 `Page.crash` 정지와 같은 계열의 결함이고, 그쪽은 한 호출만 감싸는
+// 국소 처방이었다). ws가 닫히면 대기 중인 요청도 전부 거부한다.
+const CDP_TIMEOUT_MS = 20000
+
 export class Cdp {
   constructor(ws) {
     this.ws = ws
     this.id = 0
     this.pending = new Map()
     this.listeners = []
+    this.dead = false
     ws.addEventListener('message', (ev) => {
       const msg = JSON.parse(ev.data)
       if (msg.id && this.pending.has(msg.id)) {
-        const { resolve, reject } = this.pending.get(msg.id)
+        const { resolve, reject, timer } = this.pending.get(msg.id)
+        clearTimeout(timer)
         this.pending.delete(msg.id)
         if (msg.error) reject(new Error(msg.error.message))
         else resolve(msg.result)
@@ -32,36 +41,57 @@ export class Cdp {
         for (const fn of this.listeners) fn(msg)
       }
     })
+    const die = (why) => {
+      this.dead = true
+      for (const [id, { reject, timer }] of this.pending) {
+        clearTimeout(timer)
+        this.pending.delete(id)
+        reject(new Error('cdp: ' + why))
+      }
+    }
+    ws.addEventListener('close', () => die('ws closed'), { once: true })
+    ws.addEventListener('error', () => die('ws error'), { once: true })
   }
-  static async connect(wsUrl) {
+  static async connect(wsUrl, { timeoutMs = 8000 } = {}) {
     const ws = new WebSocket(wsUrl)
     await new Promise((res, rej) => {
-      ws.addEventListener('open', res, { once: true })
-      ws.addEventListener('error', () => rej(new Error('ws connect failed')), { once: true })
+      const t = setTimeout(() => { try { ws.close() } catch { /* noop */ } rej(new Error('ws connect timeout')) }, timeoutMs)
+      ws.addEventListener('open', () => { clearTimeout(t); res() }, { once: true })
+      ws.addEventListener('error', () => { clearTimeout(t); rej(new Error('ws connect failed')) }, { once: true })
     })
     return new Cdp(ws)
   }
-  send(method, params = {}) {
+  send(method, params = {}, { timeoutMs = CDP_TIMEOUT_MS } = {}) {
+    if (this.dead) return Promise.reject(new Error('cdp: closed'))
     const id = ++this.id
-    this.ws.send(JSON.stringify({ id, method, params }))
-    return new Promise((resolve, reject) => this.pending.set(id, { resolve, reject }))
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.pending.delete(id)
+        reject(new Error(`cdp timeout: ${method}`))
+      }, timeoutMs)
+      this.pending.set(id, { resolve, reject, timer })
+      try { this.ws.send(JSON.stringify({ id, method, params })) } catch (e) {
+        clearTimeout(timer); this.pending.delete(id); reject(e)
+      }
+    })
   }
-  async eval(expr, { awaitPromise = false } = {}) {
+  async eval(expr, { awaitPromise = false, timeoutMs } = {}) {
     const r = await this.send('Runtime.evaluate', {
       expression: expr,
       returnByValue: true,
       awaitPromise
-    })
+    }, { timeoutMs: timeoutMs ?? CDP_TIMEOUT_MS })
     if (r.exceptionDetails) throw new Error('eval: ' + (r.exceptionDetails.exception?.description ?? 'error'))
     return r.result?.value
   }
   close() {
+    this.dead = true
     try { this.ws.close() } catch { /* closed */ }
   }
 }
 
 /** 메인 페이지 타깃(#root를 갖는 index.html — toast/tray/splash 제외)을 찾아 연결. */
-export async function connectMainPage(port, { timeoutMs = 30000 } = {}) {
+export async function connectMainPage(port, { timeoutMs = 30000, connectTimeoutMs = 8000 } = {}) {
   const t0 = Date.now()
   for (;;) {
     if (Date.now() - t0 > timeoutMs) throw new Error('main page target not found')
@@ -73,24 +103,34 @@ export async function connectMainPage(port, { timeoutMs = 30000 } = {}) {
           /index\.html|localhost/.test(t.url) &&
           !/toast|tray|data:/.test(t.url)
       )
-      if (page?.webSocketDebuggerUrl) return await Cdp.connect(page.webSocketDebuggerUrl)
+      if (page?.webSocketDebuggerUrl) return await Cdp.connect(page.webSocketDebuggerUrl, { timeoutMs: connectTimeoutMs })
     } catch { /* not listening yet */ }
     await sleep(30)
   }
 }
 
 // ── 첫 가시 창 감시자 (PowerShell, 스폰 전에 대기 시작 → 폴 지연 최소화) ──────
+//
+// R3 크리틱 §9-5 결함: 감시자는 "200×200 넘는 첫 가시 창"만 보고 **그 창이 무엇인지**
+// 남기지 않았다. 두 앱의 첫 창은 서로 다른 사건이다 —
+//   Electron 2.6.2: 300×240 스플래시 BrowserWindow, `ready-to-show`(=이미 그려진 뒤) 표시
+//   Tauri 3.0    : 풀사이즈 메인 창, "렌더 차단 CSS 준비"(=아직 한 프레임도 안 올라감) 표시
+// 필터를 통과하는 건 같지만 재고 있는 사건이 다르다. 그래서 이제 **잡은 창의 크기·제목을
+// 결과에 남긴다**(winW/winH/winTitle) — winMs를 인용할 때 무엇을 쟀는지 파일만 보고 알게.
+// 대표 비교 지표는 paintMs다(§4.3, 두 앱 모두 '메인 페이지 첫 픽셀'로 대칭).
 const WATCHER_PS = String.raw`
 param($pidFile,$outFile)
 Add-Type @"
-using System; using System.Runtime.InteropServices;
+using System; using System.Runtime.InteropServices; using System.Text;
 public class W {
   public delegate bool EnumWindowsProc(IntPtr h, IntPtr l);
   [DllImport("user32.dll")] public static extern bool EnumWindows(EnumWindowsProc cb, IntPtr l);
   [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
   [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
   [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
+  [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetWindowTextW(IntPtr h, StringBuilder s, int n);
   [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
+  public static int W_, H_; public static string T_ = "";
   // 200x200 미만은 앱 창이 아니다. tao(Tauri)는 프로세스 시작과 함께 16x16짜리
   // "Tao Thread Event Target" 보조 창을 **가시 상태로** 만든다 — 크기 조건이 없으면
   // 이 창이 잡혀 Tauri의 '첫 가시 창'이 5ms로 찍힌다(실측). Electron의 첫 창은
@@ -102,7 +142,11 @@ public class W {
       uint p; GetWindowThreadProcessId(h,out p);
       if(p!=target) return true;
       RECT r; GetWindowRect(h, out r);
-      if((r.Right-r.Left) >= 200 && (r.Bottom-r.Top) >= 200){ found=true; return false; }
+      if((r.Right-r.Left) >= 200 && (r.Bottom-r.Top) >= 200){
+        W_ = r.Right-r.Left; H_ = r.Bottom-r.Top;
+        StringBuilder sb = new StringBuilder(256); GetWindowTextW(h, sb, 256); T_ = sb.ToString();
+        found=true; return false;
+      }
       return true;
     }, IntPtr.Zero);
     return found;
@@ -114,12 +158,12 @@ $target=[uint32](Get-Content $pidFile -Raw).Trim()
 $sw=[System.Diagnostics.Stopwatch]::StartNew()
 while($sw.Elapsed.TotalSeconds -lt 60){
   if([W]::VisibleFor($target)){
-    "$([math]::Round($sw.Elapsed.TotalMilliseconds))" | Out-File $outFile -Encoding ascii
+    "$([math]::Round($sw.Elapsed.TotalMilliseconds))|$([W]::W_)|$([W]::H_)|$([W]::T_)" | Out-File $outFile -Encoding utf8
     exit 0
   }
   Start-Sleep -Milliseconds 8
 }
-"timeout" | Out-File $outFile -Encoding ascii
+"timeout" | Out-File $outFile -Encoding utf8
 `
 
 /**
@@ -169,12 +213,21 @@ export async function measureColdStart({ cmd, args, env, cwd, port, mountExpr })
     cdp.close()
   } catch { /* CDP 실패 — rootMs null 기록 */ }
 
-  // 첫 가시 창
+  // 첫 가시 창 — "ms|w|h|title" (감시자가 잡은 창의 정체를 같이 남긴다, §9-5)
   let winMs = null
+  let winW = null
+  let winH = null
+  let winTitle = null
   for (let i = 0; i < 200; i++) {
     if (fs.existsSync(outFile)) {
-      const v = fs.readFileSync(outFile, 'utf8').trim()
-      winMs = v === 'timeout' ? null : Number(v)
+      const v = fs.readFileSync(outFile, 'utf8').replace(/^﻿/, '').trim()
+      if (v !== 'timeout') {
+        const [ms, w, h, ...t] = v.split('|')
+        winMs = Number(ms)
+        winW = w != null ? Number(w) : null
+        winH = h != null ? Number(h) : null
+        winTitle = t.length ? t.join('|') : null
+      }
       break
     }
     await sleep(50)
@@ -183,7 +236,54 @@ export async function measureColdStart({ cmd, args, env, cwd, port, mountExpr })
   killTree(child.pid)
   try { watcher.kill() } catch { /* gone */ }
   for (const f of [pidFile, outFile, psFile]) { try { fs.unlinkSync(f) } catch { /* gone */ } }
-  return { winMs, rootMs, paintMs }
+  return { winMs, rootMs, paintMs, winW, winH, winTitle }
+}
+
+// ── 어느 바이너리로 쟀는가 (§9-6) ────────────────────────────────────────────
+// 커밋된 스윕 표의 Z행이 `procs 7`이었던 사고 = 채택 레버가 붙기 전 exe로 잰 값인데
+// 파일 어디에도 그게 안 남아 있었다. 이제 모든 결과 파일이 exe의 mtime·크기·SHA256 앞
+// 16자와 git HEAD를 박는다. 표를 인용하기 전에 이 세 줄만 보면 된다.
+export function binInfo(exePath) {
+  const info = { exe: exePath ?? null }
+  try {
+    const st = fs.statSync(exePath)
+    info.exeMtime = new Date(st.mtimeMs).toISOString()
+    info.exeSize = st.size
+  } catch { info.exeMissing = true }
+  try {
+    const buf = fs.readFileSync(exePath)
+    info.exeSha256 = crypto.createHash('sha256').update(buf).digest('hex').slice(0, 16)
+  } catch { /* 없거나 잠김 */ }
+  try {
+    info.gitHead = execFileSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: REPO, encoding: 'utf8' }).trim()
+    info.gitDirty = execFileSync('git', ['status', '--porcelain'], { cwd: REPO, encoding: 'utf8' }).trim().length > 0
+  } catch { /* git 없음 */ }
+  return info
+}
+
+/** 팔 이름 — env 조합을 결과 파일 키로 쓸 수 있는 짧은 슬러그로 (§9-1, §9-2). */
+export function armName(env = process.env) {
+  const parts = []
+  if (env.CCG_SINGLE_PROCESS && env.CCG_SINGLE_PROCESS !== '0') parts.push('singleproc')
+  if (env.CCG_GPU_PROCESS && env.CCG_GPU_PROCESS !== '0') parts.push('gpuproc')
+  if (env.CCG_WEBVIEW_ARGS_BASE_ONLY) parts.push('baseonly')
+  if (env.CCG_WEBVIEW_ENABLE_FEATURES) parts.push('on-' + env.CCG_WEBVIEW_ENABLE_FEATURES.replace(/[^A-Za-z0-9]+/g, ''))
+  if (env.CCG_WEBVIEW_DISABLE_FEATURES) parts.push('off-' + env.CCG_WEBVIEW_DISABLE_FEATURES.replace(/[^A-Za-z0-9]+/g, ''))
+  if (env.CCG_WEBVIEW_ARGS_EXTRA) parts.push('extra-' + env.CCG_WEBVIEW_ARGS_EXTRA.replace(/[^A-Za-z0-9]+/g, '').slice(0, 24))
+  if (env.CCG_WEBVIEW_ARGS) parts.push('argsreplaced')
+  if (env.CCG_CHROME) parts.push('chrome' + env.CCG_CHROME)
+  return parts.length ? parts.join('+') : 'default'
+}
+
+/** 결과 파일에 항상 같이 박는 출처 블록. */
+export function provenance(profile) {
+  return {
+    arm: armName({ ...process.env, ...(profile?.env ?? {}) }),
+    bin: binInfo(profile?.cmd),
+    armEnv: Object.fromEntries(
+      Object.entries({ ...process.env, ...(profile?.env ?? {}) }).filter(([k]) => k.startsWith('CCG_'))
+    )
+  }
 }
 
 // ── 프로세스 트리 메모리 (CIM 워크 — WorkingSet + PrivatePageCount 합산) ─────

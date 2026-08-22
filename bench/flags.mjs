@@ -14,7 +14,7 @@
 //    레버가 렌더러 힙에 미치는 영향이 과소평가된다.
 import fs from 'node:fs'
 import path from 'node:path'
-import { tauriProfile, measureIdle, median, sleep, envInfo, cdpTargets, killTree, REPO } from './lib.mjs'
+import { tauriProfile, measureIdle, median, sleep, envInfo, binInfo, cdpTargets, killTree, REPO } from './lib.mjs'
 import { makeMultiFixture } from './fixture.mjs'
 import { spawn } from 'node:child_process'
 
@@ -36,7 +36,9 @@ const LEVERS = [
   { name: 'B4-no-site-isolation', env: { CCG_WEBVIEW_ARGS_EXTRA: '--disable-site-isolation-trials' },
     note: '사이트 격리 해제(렌더러 통합)' },
   { name: 'B5-network-in-process', env: { CCG_WEBVIEW_ENABLE_FEATURES: 'NetworkServiceInProcess' },
-    note: '네트워크 서비스를 브라우저 프로세스 안에서' },
+    note: '**옛 이름 — 존재하지 않는 feature다.** Chromium이 M96 무렵 kNetworkServiceInProcess의 문자열 이름을 "NetworkServiceInProcess2"로 바꿨다. 모르는 feature 이름은 경고 없이 조용히 무시된다. 무효 판정의 근거로 쓰면 안 되는 줄 — 대조군으로만 남긴다(B5b가 진짜다).' },
+  { name: 'B5b-network-in-process2', env: { CCG_WEBVIEW_ENABLE_FEATURES: 'NetworkServiceInProcess2' },
+    note: '현행 이름. utility:NetworkService 프로세스가 통째로 사라진다(R3 크리틱 실측 ΔWS −40 / Δprocs −1).' },
   { name: 'B6-audio-in-process', env: { CCG_WEBVIEW_DISABLE_FEATURES: 'AudioServiceOutOfProcess' },
     note: '오디오 서비스 별도 프로세스 끄기' },
   { name: 'B7-in-process-gpu', env: { CCG_WEBVIEW_ARGS_EXTRA: '--in-process-gpu' },
@@ -268,9 +270,9 @@ if (mode === 'precedence') {
     what: 'WEBVIEW2 스위치 레버별 유휴 메모리 (CDP off · 첫 가시 창 기준 정착)',
     notes: [
       'R3 1차 스윕(2026-08-22)에서 A0 대조군만 WebView2 프로필이 차가웠다(seedHome 직후). 그 탓에 그 뒤 모든 레버가 약 −14MB씩 싸게 나오는 가짜 밴드가 생겼다 — A0를 `--keep`(따뜻한 홈)으로 다시 재서 대체했고, 그 이후 델타는 그 값 기준이다.',
-      'procs가 7에서 안 바뀌는 레버는 WebView2가 그 스위치를 무시했다는 뜻이다(SpareRenderer/NetworkServiceInProcess/StorageServiceOutOfProcess/--disable-breakpad 전부 해당).',
+      '**"procs가 안 바뀌면 WebView2가 무시한 것"은 틀린 추론이다(R3 크리틱 §5.1이 반증).** NetworkServiceInProcess가 무효로 보인 진짜 이유는 런타임이 무시해서가 아니라 **Chromium이 feature 이름을 바꿔서**(→ NetworkServiceInProcess2) 존재하지 않는 이름을 준 것이었다. 올바른 이름을 주면 utility:NetworkService가 사라진다. 무효 판정 전에 **현행 Chromium 이름부터 대조할 것**.',
       'Priv 절감의 정체는 GPU 프로세스의 D3D11 커밋이다: gpu-process Priv 106MB → --use-angle=gl 또는 --disable-gpu로 18MB.',
-      '앱(우리 UI)이 차지하는 몫은 bench/results/gpu-css-probe.json 기준 WS 8.4MB / Priv 24MB뿐이다(4패널 DOM을 통째로 비운 값과의 차이). 나머지는 웹 런타임 바닥값이다.'
+      '앱(우리 UI)이 차지하는 몫은 **WS 43MB / Priv 34MB**다(gpu-css-probe.json의 `appShare`). 예전 주석의 "8.4MB"는 `innerHTML=\'\'`로 잰 값이라 무효였다 — DOM을 떼어냈을 뿐 해제하지 않아 리스너·JS 힙이 그대로였다. 지금 하네스는 about:blank로 문서를 언로드하고 해제 여부를 판정 조건으로 찍는다.'
     ],
     method: {
       home: '.bench-home-flags — 멀티 4패널 × 120항목 픽스처(주 게이트와 같은 무대)',
@@ -279,6 +281,9 @@ if (mode === 'precedence') {
       repeats,
       control: 'A0-control-wry-default'
     },
+    // 어느 바이너리로 쟀는가 (§9-6) — 커밋된 표의 Z행이 procs 7이었던 사고(채택 레버가
+    // 붙기 전 exe)를 다음 사람이 파일만 보고 알아챌 수 있게 한다.
+    bin: binInfo(tauriProfile({}).cmd),
     env: envInfo(),
     results: merged,
     at: new Date().toISOString()
