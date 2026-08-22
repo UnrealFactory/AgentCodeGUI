@@ -32,11 +32,29 @@ Thumbs.db
 # 홍보 영상 렌더 작업장 (프레임 렌더러+스크린샷 텍스처+렌더 출력 — 대부분 재생성물, 34MB급)
 promo/
 
-# dev 격리 홈 (CCG_HOME)
+# dev 격리 홈 (CCG_HOME) — flags 스윕 등 벤치 홈 변형 전부
 .devhome/
 .dev-home/
-.bench-home/
-.bench-home-tauri/
+.bench-home*/
+
+# A/B 화면 캡처 — PNG 바이너리는 커밋하지 않는다(수백 장·수십 MB, 매 실행 재생성).
+# 단 report.json(도달 성공/실패 기록)은 파리티 판정의 근거라 커밋 대상.
+bench/shots/**
+!bench/shots/
+!bench/shots/*/
+!bench/shots/*/report.json
+# 뷰어 화면용 스크래치 파일 (ab.mjs가 매 실행 재생성)
+bench/scratch/
+# 크리틱/유리 조사 캡처 PNG — 수치 판정은 docs/critic/*.json에 있고, 캡처는
+# docs/critic/tools/·scripts/poc-glass/로 재생성 가능
+docs/critic/shots/
+docs/design/glass-shots/
+# poc-glass 실험대 PID·Chromium 프로필 스크래치
+scripts/poc-glass/.pid-*
+scripts/poc-glass/**/.userdata/
+scripts/poc-glass/**/shots/
+# tauri-glass PoC의 정적 프런트는 전역 dist/ 제외에서 되살린다(1파일짜리 실험대)
+!scripts/poc-glass/tauri-glass/dist/
 
 # 3.0 (Tauri/Rust) 산출물
 target/
