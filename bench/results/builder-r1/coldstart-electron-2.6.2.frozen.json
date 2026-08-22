@@ -1,0 +1,36 @@
+{
+  "app": "electron-2.6.2",
+  "runs": [
+    {
+      "winMs": 1967,
+      "rootMs": 2079
+    },
+    {
+      "winMs": 341,
+      "rootMs": 422
+    },
+    {
+      "winMs": 334,
+      "rootMs": 426
+    },
+    {
+      "winMs": 336,
+      "rootMs": 412
+    },
+    {
+      "winMs": 443,
+      "rootMs": 559
+    },
+    {
+      "winMs": 335,
+      "rootMs": 420
+    }
+  ],
+  "firstRun": {
+    "winMs": 1967,
+    "rootMs": 2079
+  },
+  "medianWinMs": 336,
+  "medianRootMs": 422,
+  "at": "2026-08-22T03:34:54.692Z"
+}

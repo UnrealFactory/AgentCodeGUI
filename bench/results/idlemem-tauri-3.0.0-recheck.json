@@ -1,0 +1,131 @@
+{
+  "note": "크리틱 재현: bench/idlemem.mjs tauri 60 을 같은 세션에서 3회.",
+  "builderReported": {
+    "wsMB": 415.6,
+    "privMB": 351.4,
+    "procs": 7
+  },
+  "runs": [
+    {
+      "wsMB": 421.6,
+      "privMB": 368.9,
+      "procs": 7,
+      "note": "크리틱 1회차 13:50"
+    },
+    {
+      "wsMB": 405.7,
+      "privMB": 266.8,
+      "procs": 7
+    },
+    {
+      "wsMB": 405.5,
+      "privMB": 260.4,
+      "procs": 7
+    }
+  ],
+  "full": [
+    {
+      "app": "tauri-3.0.0",
+      "settleSec": 60,
+      "totalPrivMB": 266.8,
+      "totalWsMB": 405.7,
+      "procs": [
+        {
+          "pid": 23512,
+          "name": "agentcodegui.exe",
+          "privMB": 10.3,
+          "wsMB": 30.7
+        },
+        {
+          "pid": 9188,
+          "name": "msedgewebview2.exe",
+          "privMB": 39.2,
+          "wsMB": 120.3
+        },
+        {
+          "pid": 26820,
+          "name": "msedgewebview2.exe",
+          "privMB": 3.1,
+          "wsMB": 13.1
+        },
+        {
+          "pid": 5052,
+          "name": "msedgewebview2.exe",
+          "privMB": 131.4,
+          "wsMB": 73.9
+        },
+        {
+          "pid": 32908,
+          "name": "msedgewebview2.exe",
+          "privMB": 13,
+          "wsMB": 40
+        },
+        {
+          "pid": 11332,
+          "name": "msedgewebview2.exe",
+          "privMB": 8.9,
+          "wsMB": 20.1
+        },
+        {
+          "pid": 29960,
+          "name": "msedgewebview2.exe",
+          "privMB": 60.9,
+          "wsMB": 107.7
+        }
+      ],
+      "at": "2026-08-22T05:12:31.377Z"
+    },
+    {
+      "app": "tauri-3.0.0",
+      "settleSec": 60,
+      "totalPrivMB": 260.4,
+      "totalWsMB": 405.5,
+      "procs": [
+        {
+          "pid": 29972,
+          "name": "agentcodegui.exe",
+          "privMB": 10.3,
+          "wsMB": 30.5
+        },
+        {
+          "pid": 32996,
+          "name": "msedgewebview2.exe",
+          "privMB": 38.1,
+          "wsMB": 120.2
+        },
+        {
+          "pid": 23312,
+          "name": "msedgewebview2.exe",
+          "privMB": 3.1,
+          "wsMB": 13.1
+        },
+        {
+          "pid": 12908,
+          "name": "msedgewebview2.exe",
+          "privMB": 127.2,
+          "wsMB": 76.4
+        },
+        {
+          "pid": 33172,
+          "name": "msedgewebview2.exe",
+          "privMB": 13,
+          "wsMB": 39.9
+        },
+        {
+          "pid": 15632,
+          "name": "msedgewebview2.exe",
+          "privMB": 8.9,
+          "wsMB": 20.2
+        },
+        {
+          "pid": 9412,
+          "name": "msedgewebview2.exe",
+          "privMB": 59.8,
+          "wsMB": 105.2
+        }
+      ],
+      "at": "2026-08-22T05:13:32.253Z"
+    }
+  ],
+  "at": "2026-08-22T05:15:44.438Z"
+}

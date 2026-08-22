@@ -1,0 +1,176 @@
+{
+  "note": "크리틱 재현: bench/idlemem.mjs electron 60 을 같은 세션에서 반복. 박제 기준(428.1/341.4/5proc)이 재현되지 않는다(7proc).",
+  "runs": [
+    {
+      "wsMB": 631.8,
+      "privMB": 415.2,
+      "procs": 7
+    },
+    {
+      "wsMB": 664,
+      "privMB": 483.8,
+      "procs": 7
+    },
+    {
+      "wsMB": 625.6,
+      "privMB": 422.9,
+      "procs": 7
+    }
+  ],
+  "full": [
+    {
+      "app": "electron-2.6.2",
+      "settleSec": 60,
+      "totalPrivMB": 415.2,
+      "totalWsMB": 631.8,
+      "procs": [
+        {
+          "pid": 19692,
+          "name": "electron.exe",
+          "privMB": 81.5,
+          "wsMB": 114.5
+        },
+        {
+          "pid": 24232,
+          "name": "electron.exe",
+          "privMB": 11.6,
+          "wsMB": 35.1
+        },
+        {
+          "pid": 28124,
+          "name": "electron.exe",
+          "privMB": 131.5,
+          "wsMB": 111.9
+        },
+        {
+          "pid": 26096,
+          "name": "electron.exe",
+          "privMB": 14.5,
+          "wsMB": 49.2
+        },
+        {
+          "pid": 8204,
+          "name": "electron.exe",
+          "privMB": 70.2,
+          "wsMB": 123.2
+        },
+        {
+          "pid": 31696,
+          "name": "electron.exe",
+          "privMB": 63.5,
+          "wsMB": 93.6
+        },
+        {
+          "pid": 14844,
+          "name": "electron.exe",
+          "privMB": 42.4,
+          "wsMB": 104.4
+        }
+      ],
+      "at": "2026-08-22T05:08:50.709Z"
+    },
+    {
+      "app": "electron-2.6.2",
+      "settleSec": 60,
+      "totalPrivMB": 483.8,
+      "totalWsMB": 664,
+      "procs": [
+        {
+          "pid": 32508,
+          "name": "electron.exe",
+          "privMB": 80.5,
+          "wsMB": 114.4
+        },
+        {
+          "pid": 29072,
+          "name": "electron.exe",
+          "privMB": 11.6,
+          "wsMB": 35.1
+        },
+        {
+          "pid": 15924,
+          "name": "electron.exe",
+          "privMB": 183.1,
+          "wsMB": 120.5
+        },
+        {
+          "pid": 18072,
+          "name": "electron.exe",
+          "privMB": 14.4,
+          "wsMB": 53.9
+        },
+        {
+          "pid": 24316,
+          "name": "electron.exe",
+          "privMB": 91.3,
+          "wsMB": 145.2
+        },
+        {
+          "pid": 32808,
+          "name": "electron.exe",
+          "privMB": 60,
+          "wsMB": 90.3
+        },
+        {
+          "pid": 5104,
+          "name": "electron.exe",
+          "privMB": 42.9,
+          "wsMB": 104.6
+        }
+      ],
+      "at": "2026-08-22T05:10:13.390Z"
+    },
+    {
+      "app": "electron-2.6.2",
+      "settleSec": 60,
+      "totalPrivMB": 422.9,
+      "totalWsMB": 625.6,
+      "procs": [
+        {
+          "pid": 33992,
+          "name": "electron.exe",
+          "privMB": 79,
+          "wsMB": 111.7
+        },
+        {
+          "pid": 11396,
+          "name": "electron.exe",
+          "privMB": 11.6,
+          "wsMB": 35.1
+        },
+        {
+          "pid": 10352,
+          "name": "electron.exe",
+          "privMB": 142.7,
+          "wsMB": 108.9
+        },
+        {
+          "pid": 3780,
+          "name": "electron.exe",
+          "privMB": 14.5,
+          "wsMB": 49.3
+        },
+        {
+          "pid": 23508,
+          "name": "electron.exe",
+          "privMB": 69.9,
+          "wsMB": 121.7
+        },
+        {
+          "pid": 3084,
+          "name": "electron.exe",
+          "privMB": 62.5,
+          "wsMB": 93.9
+        },
+        {
+          "pid": 20436,
+          "name": "electron.exe",
+          "privMB": 42.8,
+          "wsMB": 104.9
+        }
+      ],
+      "at": "2026-08-22T05:11:14.413Z"
+    }
+  ],
+  "at": "2026-08-22T05:15:35.211Z"
+}

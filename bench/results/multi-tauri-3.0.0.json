@@ -1,0 +1,66 @@
+{
+  "app": "tauri-3.0.0",
+  "panels": 4,
+  "itemsPerPanel": 120,
+  "gridPanels": 4,
+  "at": "2026-08-22T05:46:06.640Z",
+  "idleGrid": {
+    "totalWsMB": 455.5,
+    "totalPrivMB": 320.6,
+    "procs": 7
+  },
+  "idleWithWindows": {
+    "totalWsMB": 488,
+    "totalPrivMB": 326.5,
+    "procs": 7
+  },
+  "windowCost": {
+    "wsMBPerWindow": 16.3,
+    "procsAdded": 0
+  },
+  "scrollInPanel": {
+    "frames": 356,
+    "avgFps": 60,
+    "p95Ms": 16.8,
+    "worstMs": 16.8,
+    "droppedPct": 0,
+    "longTaskMs": 0
+  },
+  "procDetail": [
+    {
+      "name": "agentcodegui.exe",
+      "wsMB": 32.1,
+      "privMB": 14.6
+    },
+    {
+      "name": "msedgewebview2.exe",
+      "wsMB": 133,
+      "privMB": 48.8
+    },
+    {
+      "name": "msedgewebview2.exe",
+      "wsMB": 18.7,
+      "privMB": 3.4
+    },
+    {
+      "name": "msedgewebview2.exe",
+      "wsMB": 90.3,
+      "privMB": 124.2
+    },
+    {
+      "name": "msedgewebview2.exe",
+      "wsMB": 39.4,
+      "privMB": 12.3
+    },
+    {
+      "name": "msedgewebview2.exe",
+      "wsMB": 20.1,
+      "privMB": 9
+    },
+    {
+      "name": "msedgewebview2.exe",
+      "wsMB": 180.7,
+      "privMB": 132.3
+    }
+  ]
+}
