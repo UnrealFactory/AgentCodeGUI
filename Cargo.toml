@@ -3,7 +3,7 @@
 # 2.6.2(Electron)의 src/는 이 워크스페이스와 무관하게 그대로 얼려둔다 — A/B 기준.
 [workspace]
 resolver = "2"
-members = ["src-tauri", "crates/ccg-store", "crates/ccg-engine", "crates/ccg-auth"]
+members = ["src-tauri", "crates/ccg-store", "crates/ccg-engine", "crates/ccg-auth", "crates/ccg-fs"]
 
 [workspace.package]
 version = "3.0.0-beta.1"

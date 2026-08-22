@@ -1,7 +1,7 @@
 {
   "app": "tauri-3.0.0",
   "kind": "tauri",
-  "at": "2026-08-22T20:59:59.487Z",
+  "at": "2026-08-22T23:33:57.242Z",
   "viewport": {
     "width": 1440,
     "height": 900
@@ -98,13 +98,283 @@
       "found": 1
     },
     {
+      "id": "explorer-tree",
+      "label": "탐색기 트리",
+      "area": "4. 탐색기",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 828,
+      "found": 51
+    },
+    {
+      "id": "explorer-settings-foot",
+      "label": "탐색기 하단 프로필/설정 행",
+      "area": "4. 탐색기",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 454,
+      "found": 1
+    },
+    {
       "id": "explorer-git-strip",
       "label": "Git 상태 스트립",
       "area": "4. 탐색기",
       "surface": "main-window",
+      "ok": true,
+      "ms": 468,
+      "found": 1
+    },
+    {
+      "id": "explorer-search",
+      "label": "파일 검색 결과",
+      "area": "4. 탐색기",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 895,
+      "found": 2
+    },
+    {
+      "id": "explorer-search-empty",
+      "label": "검색 결과 없음",
+      "area": "4. 탐색기",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 892,
+      "found": 1
+    },
+    {
+      "id": "explorer-hidden-on",
+      "label": "숨긴 항목 보기 ON",
+      "area": "4. 탐색기",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 1152,
+      "found": 1
+    },
+    {
+      "id": "explorer-ctx-menu",
+      "label": "탐색기 우클릭 메뉴",
+      "area": "4. 탐색기",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 971,
+      "found": 8
+    },
+    {
+      "id": "explorer-fileop",
+      "label": "파일 작업 카드(새 파일)",
+      "area": "4. 탐색기",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 2634,
+      "found": 1
+    },
+    {
+      "id": "explorer-fileop-delete",
+      "label": "탐색기 삭제 확인 카드",
+      "area": "4. 탐색기",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 2864,
+      "found": 1
+    },
+    {
+      "id": "explorer-blank",
+      "label": "탐색기 — 폴더 없음",
+      "area": "4. 탐색기",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 3058,
+      "found": 1
+    },
+    {
+      "id": "viewer-code-read",
+      "label": "코드 뷰어 — 읽기 모드",
+      "area": "5. 뷰어",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 3234,
+      "found": 1
+    },
+    {
+      "id": "viewer-diff-on",
+      "label": "변경 마킹(diff) 표시",
+      "area": "5. 뷰어",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 2599,
+      "found": 1
+    },
+    {
+      "id": "viewer-code-edit",
+      "label": "코드 뷰어 — 편집 모드(Ctrl+E)",
+      "area": "5. 뷰어",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 2593,
+      "found": 1
+    },
+    {
+      "id": "viewer-cm-find",
+      "label": "CM 편집기 찾기 바",
+      "area": "5. 뷰어",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 7124,
+      "found": 1
+    },
+    {
+      "id": "viewer-code-dirty",
+      "label": "편집 중 미저장(● 저장 칩)",
+      "area": "5. 뷰어",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 3324,
+      "found": 1
+    },
+    {
+      "id": "viewer-close-confirm",
+      "label": "미저장 편집 닫기 확인",
+      "area": "5. 뷰어",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 2803,
+      "found": 1
+    },
+    {
+      "id": "viewer-markdown-preview",
+      "label": "마크다운 렌더 뷰",
+      "area": "5. 뷰어",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 2472,
+      "found": 1
+    },
+    {
+      "id": "viewer-markdown-source",
+      "label": "마크다운 — 변경 소스 보기",
+      "area": "5. 뷰어",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 2572,
+      "found": 1
+    },
+    {
+      "id": "viewer-find",
+      "label": "뷰어 찾기 바(비-CM)",
+      "area": "5. 뷰어",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 7065,
+      "found": 1
+    },
+    {
+      "id": "viewer-image",
+      "label": "이미지 뷰(뷰어 안)",
+      "area": "5. 뷰어",
+      "surface": "main-window",
       "ok": false,
-      "ms": 12442,
-      "error": "waitFor timeout: .explorer .git-strip .br (1)"
+      "ms": 12001,
+      "error": "waitFor timeout: .fv-body .fv-imgview .fv-imgel (1)"
+    },
+    {
+      "id": "viewer-html-preview",
+      "label": "HTML 페이지 미리보기(ccg-page)",
+      "area": "5. 뷰어",
+      "surface": "main-window",
+      "ok": false,
+      "ms": 14007,
+      "error": "waitFor timeout: .fv-body iframe.fv-htmlframe (1)"
+    },
+    {
+      "id": "viewer-svg-preview",
+      "label": "SVG 렌더 미리보기",
+      "area": "5. 뷰어",
+      "surface": "main-window",
+      "ok": false,
+      "ms": 12050,
+      "error": "waitFor timeout: .fv-body .fv-imgview (1)"
+    },
+    {
+      "id": "viewer-empty",
+      "label": "뷰어 — 내용 없음/오류",
+      "area": "5. 뷰어",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 2441,
+      "found": 1
+    },
+    {
+      "id": "viewer-truncated",
+      "label": "일부만 표시 칩",
+      "area": "5. 뷰어",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 2473,
+      "found": 1
+    },
+    {
+      "id": "viewer-header-ctx-menu",
+      "label": "뷰어 헤더 우클릭 메뉴",
+      "area": "5. 뷰어",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 2816,
+      "found": 2
+    },
+    {
+      "id": "viewer-maximized",
+      "label": "뷰어 최대화",
+      "area": "5. 뷰어",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 2894,
+      "found": 1
+    },
+    {
+      "id": "viewer-git-snapshot",
+      "label": "Git 커밋 스냅샷 뷰어",
+      "area": "5. 뷰어",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 2267,
+      "found": 1
+    },
+    {
+      "id": "git-changes",
+      "label": "Git — 변경 목록 + 커밋 컴포저",
+      "area": "6. Git",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 942,
+      "found": 1
+    },
+    {
+      "id": "git-history",
+      "label": "Git — 히스토리(커밋 리스트)",
+      "area": "6. Git",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 1076,
+      "found": 100
+    },
+    {
+      "id": "git-commit-detail",
+      "label": "Git — 커밋 상세(우측 패널)",
+      "area": "6. Git",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 1202,
+      "found": 1
+    },
+    {
+      "id": "git-new-branch",
+      "label": "Git — 새 브랜치 입력",
+      "area": "6. Git",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 1110,
+      "found": 1
     },
     {
       "id": "git-repo-list",
@@ -170,12 +440,13 @@
     }
   ],
   "windowSized": true,
+  "mergedFrom": "2026-08-22T23:15:28.716Z",
   "summary": {
     "defined": 156,
-    "attempted": 17,
-    "ok": 16,
-    "failed": 1,
+    "attempted": 47,
+    "ok": 44,
+    "failed": 3,
     "skipped": 1,
-    "successRatePct": 94.1
+    "successRatePct": 93.6
   }
 }

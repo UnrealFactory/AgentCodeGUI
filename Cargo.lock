@@ -48,6 +48,7 @@ name = "agentcodegui"
 version = "3.0.0-beta.1"
 dependencies = [
  "ccg-engine",
+ "ccg-fs",
  "ccg-store",
  "serde",
  "serde_json",
@@ -345,6 +346,16 @@ dependencies = [
  "serde_json",
  "sha2",
  "windows-sys 0.59.0",
+]
+
+[[package]]
+name = "ccg-fs"
+version = "3.0.0-beta.1"
+dependencies = [
+ "ccg-store",
+ "serde",
+ "serde_json",
+ "windows",
 ]
 
 [[package]]

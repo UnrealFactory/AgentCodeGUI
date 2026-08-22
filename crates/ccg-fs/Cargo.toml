@@ -1,0 +1,24 @@
+[package]
+name = "ccg-fs"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "AgentCodeGUI 파일·Git 도메인 — 탐색기 트리·파일 읽기/쓰기·휴지통·시스템 git CLI 래퍼·라인 diff(Myers)"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+# 표시 언어(ui-prefs `ui.lang`)를 읽어 사용자에게 닿는 에러 문구를 ko/en으로 고른다.
+# 2.6.2의 src/main/lang.ts가 하던 일 — 스토어를 두 벌 두지 않는다.
+ccg-store = { path = "../ccg-store" }
+
+[target.'cfg(windows)'.dependencies]
+# 휴지통(SHFileOperationW + FOF_ALLOWUNDO) · 기본 앱으로 열기(ShellExecuteW).
+# Electron의 shell.trashItem / shell.openPath 대응물이 std에는 없다.
+# CREATE_NO_WINDOW(=git.exe 콘솔 창 억제)는 std의 CommandExt::creation_flags로 충분해
+# 여기 feature를 늘리지 않는다.
+windows = { version = "0.61", features = [
+  "Win32_Foundation",
+  "Win32_UI_Shell",
+  "Win32_UI_WindowsAndMessaging",
+] }

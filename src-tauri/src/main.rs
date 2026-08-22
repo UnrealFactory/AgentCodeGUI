@@ -45,6 +45,34 @@ fn main() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        // ── 로컬 이미지 스킴(M6) ─────────────────────────────────────────────
+        // 렌더러는 자기 오리진에서 file://을 못 읽어(webSecurity), 첨부 이미지와 뷰어의
+        // 이미지/SVG 보기가 2.6.2부터 이 전용 스킴으로 바이트를 받아 간다.
+        // 서빙 판정은 전부 `ccg_fs::serve`에 있다(2.6.2 IMG_EXTS 표 그대로 + 64MB 캡).
+        //
+        // ★ 아직 렌더러가 이 URL을 만들지 못한다: `app/src/lib/images.ts imageSrc()`가
+        //   `ccg-img://local/?p=…`를 돌려주는데, **WebView2는 비표준 스킴을 못 받는다**.
+        //   wry는 그래서 커스텀 스킴을 `http://<scheme>.localhost/…`로 바꿔 거는데
+        //   (wry-0.55 webview2/mod.rs `work_around_uri_prefix`), 렌더러가 만든 리터럴
+        //   `ccg-img://`는 그 필터에 안 걸린다. 셸 쪽(여기)은 두 모양을 다 받게 해 뒀으니
+        //   렌더러 한 줄만 바뀌면 붙는다 — 자세한 건 docs/m6-report-r1.md §미구현.
+        .register_uri_scheme_protocol("ccg-img", |_ctx, request| {
+            use tauri::http::{header, Response, StatusCode};
+            match ccg_fs::serve::image_response(&request.uri().to_string()) {
+                Some((mime, bytes)) => Response::builder()
+                    .status(StatusCode::OK)
+                    .header(header::CONTENT_TYPE, mime)
+                    .header(header::CACHE_CONTROL, "no-cache")
+                    // sandbox iframe·CORS 요청도 같은 답을 받게 (2.6.2 ccg-page와 같은 관례)
+                    .header(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+                    .body(bytes)
+                    .unwrap_or_else(|_| Response::new(Vec::new())),
+                None => Response::builder()
+                    .status(StatusCode::NOT_FOUND)
+                    .body(Vec::new())
+                    .unwrap_or_else(|_| Response::new(Vec::new())),
+            }
+        })
         .invoke_handler(tauri::generate_handler![ipc::ipc_call])
         .setup(|app| {
             win::create_main(app.handle())?;

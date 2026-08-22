@@ -24,12 +24,17 @@
 //! 실행되지 않으므로 **기본 경로의 동작은 한 글자도 바뀌지 않는다.**
 
 mod app_meta;
+/// 파일·Git 도메인(M6). 다른 모듈과 달리 **블로킹 스레드**에서 돈다 — `ipc_call` 주석 참고.
+mod fs;
+mod git;
 mod stores;
 mod system;
 /// `pub`인 이유: 창 브로드캐스트(`win.rs broadcast_sessions`)가 이 모듈의 병합 함수를
 /// **조회 채널과 같은 원천으로** 써야 한다(R8-1).
 pub mod unified;
-mod windows;
+/// `pub`인 이유: `win.rs`가 창 슬롯 브로드캐스트를 쏠 때 **이 모듈의 채널 상수**를
+/// 그대로 써야 한다(문자열을 두 곳에 적으면 한쪽만 고쳐지는 순간 조용히 끊긴다).
+pub mod windows;
 
 use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter, Manager, WebviewWindow};
@@ -101,6 +106,45 @@ pub mod ch {
     // fs / dialog
     pub const DIR_EXISTS: &str = "fs:dir-exists";
     pub const PICK_DIRECTORY: &str = "dialog:pick-directory";
+
+    // ── 파일 탐색기 · 코드 뷰어 (M6 — ipc/fs.rs) ─────────────────────────────
+    /// 폴더 하나의 항목들. 탐색기가 폴더를 펼칠 때마다 부른다(지연 로드).
+    pub const FS_LIST_DIR: &str = "fs:list-dir";
+    /// 프로젝트 전체 파일(상대 경로) — "@" 멘션 팔레트 + 탐색기 검색 인덱스.
+    pub const FS_LIST_FILES: &str = "fs:list-files";
+    pub const FS_READ_FILE: &str = "fs:read-file";
+    pub const FS_WRITE_FILE: &str = "fs:write-file";
+    pub const FS_RENAME: &str = "fs:rename";
+    pub const FS_DELETE: &str = "fs:delete";
+    pub const FS_CREATE: &str = "fs:create";
+    pub const FS_MOVE: &str = "fs:move";
+    pub const SHELL_OPEN_PATH: &str = "shell:open-path";
+    pub const SHELL_REVEAL_PATH: &str = "shell:reveal-path";
+    /// ccg-page 스킴(뷰어 HTML 미리보기)은 **아직 없다** — 미구현으로 두면 심이 ''를
+    /// 돌려주고 렌더러는 스피너에 머문다(Ctrl+D 코드 보기로 빠져나갈 수 있다).
+    /// 상수만 두는 이유: 다음 라운드가 여기 한 줄을 붙이면 되게(M6 리포트 §미구현).
+    #[allow(dead_code)]
+    pub const FS_HTML_PREVIEW_URL: &str = "fs:html-preview-url";
+
+    // ── Git (M6 — ipc/git.rs) ────────────────────────────────────────────────
+    pub const GIT_REPOS: &str = "git:repos";
+    pub const GIT_STATUS: &str = "git:status";
+    pub const GIT_LOG: &str = "git:log";
+    pub const GIT_FILE_DIFF: &str = "git:file-diff";
+    pub const GIT_COMMIT_DETAIL: &str = "git:commit-detail";
+    pub const GIT_COMMIT_FILE_DIFF: &str = "git:commit-file-diff";
+    pub const GIT_COMMIT: &str = "git:commit";
+    pub const GIT_PUSH: &str = "git:push";
+    pub const GIT_PULL: &str = "git:pull";
+    pub const GIT_FETCH: &str = "git:fetch";
+    pub const GIT_DISCARD: &str = "git:discard";
+    pub const GIT_BRANCHES: &str = "git:branches";
+    pub const GIT_SWITCH_BRANCH: &str = "git:switch-branch";
+    pub const GIT_CREATE_BRANCH: &str = "git:create-branch";
+    /// AI 커밋 메시지 — diff를 읽어 엔진 CLI를 1턴 돌린다. 실행 계통에 붙어야 해서
+    /// 이번 라운드는 미구현(심이 `{ok:false}`로 갈음 → 사용자가 직접 쓴 메시지 유지).
+    #[allow(dead_code)]
+    pub const GIT_AI_MESSAGE: &str = "git:ai-message";
     // accounts (읽기 전용)
     pub const AUTH_LIST_ACCOUNTS: &str = "auth:list-accounts";
     pub const CODEX_LIST_ACCOUNTS: &str = "codex-auth:list-accounts";
@@ -177,6 +221,25 @@ pub(crate) fn unimplemented() -> Value {
 
 #[tauri::command]
 pub async fn ipc_call(app: AppHandle, window: WebviewWindow, channel: String, payload: Value) -> Value {
+    // ── 파일·Git만 블로킹 스레드로 (M6) ──────────────────────────────────────
+    // 나머지 채널은 메모리 스토어를 만지는 마이크로초짜리라 그대로 async 워커에서
+    // 돌아도 된다. 이 둘은 다르다: 디렉터리 걷기·1.5MB 파일 읽기는 수십 ms고,
+    // **git은 자식 프로세스**라 `push`/`pull`이 네트워크 왕복만큼(초 단위) 막힌다.
+    // tauri의 async 런타임은 코어 수만큼의 워커를 가진 tokio라, 여기서 블로킹하면
+    // 그 시간 동안 다른 창의 IPC(창 컨트롤·스토어 저장)가 통째로 굶는다.
+    // `spawn_blocking`은 전용 풀(기본 512)로 빼므로 굶기지 않는다.
+    if fs::owns(&channel) || git::owns(&channel) {
+        let ch = channel.clone();
+        return tauri::async_runtime::spawn_blocking(move || {
+            fs::dispatch(&ch, &payload)
+                .or_else(|| git::dispatch(&ch, &payload))
+                .unwrap_or_else(unimplemented)
+        })
+        .await
+        // 블로킹 작업이 panic으로 죽어도(=버그) 렌더러에는 안전값이 가야 한다.
+        // `panic = "abort"` 프로파일에선 여기까지 못 오지만, 계약은 계약이다.
+        .unwrap_or_else(|_| unimplemented());
+    }
     dispatch(&app, &window, &channel, &payload)
 }
 

@@ -1,0 +1,198 @@
+{
+  "app": "tauri",
+  "version": "3.0.0-beta.1",
+  "at": "2026-08-22T23:32:49.863Z",
+  "work": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-m6-repo",
+  "checks": [
+    {
+      "id": "explorer-tree",
+      "ok": true,
+      "ms": 378,
+      "detail": {
+        "rows": 28,
+        "first": [
+          ".github",
+          "app",
+          "bench",
+          "crates",
+          "docs",
+          "progress",
+          "scripts",
+          "src"
+        ]
+      }
+    },
+    {
+      "id": "explorer-git-strip",
+      "ok": true,
+      "ms": 1,
+      "detail": {
+        "branch": "feature/3.0.0-beta",
+        "pills": [
+          "●65",
+          "↑1"
+        ]
+      }
+    },
+    {
+      "id": "viewer-code-read",
+      "ok": true,
+      "ms": 1655,
+      "detail": {
+        "cmLines": 36,
+        "head": [
+          "{",
+          "\"name\": \"agent-code-gui\",",
+          "\"version\": \"2.6.2\","
+        ]
+      }
+    },
+    {
+      "id": "viewer-markdown",
+      "ok": true,
+      "ms": 1298,
+      "detail": {
+        "chars": 6543
+      }
+    },
+    {
+      "id": "git-changes",
+      "ok": true,
+      "ms": 738,
+      "detail": {
+        "rows": 0,
+        "sample": [
+          "Git",
+          "feature/3.0.0-beta",
+          "↑1",
+          "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-m6-repo",
+          "갱신하기",
+          "당겨오기",
+          "올리기 ↑1",
+          "보기",
+          "변경",
+          "65",
+          "히스토리",
+          "브랜치"
+        ]
+      }
+    },
+    {
+      "id": "git-history",
+      "ok": true,
+      "ms": 253,
+      "detail": {
+        "commits": 100
+      }
+    },
+    {
+      "id": "git-commit-detail",
+      "ok": true,
+      "ms": 142,
+      "detail": {
+        "chars": 2343,
+        "head": "R12 확인 크리틱 — 배선 R2·M5 R2 둘 다 확인(불일치 0), 남은 위험 6건"
+      }
+    },
+    {
+      "id": "big-diff-thousands",
+      "ok": true,
+      "ms": 116,
+      "detail": {
+        "add": 500,
+        "del": 500,
+        "lines": 8500,
+        "ms": 116
+      }
+    },
+    {
+      "id": "big-diff-cap-folds",
+      "ok": true,
+      "ms": 50,
+      "detail": {
+        "error": "파일이 너무 커요 — diff 표시는 1.5MB까지만"
+      }
+    },
+    {
+      "id": "alive-after-big-diff",
+      "ok": true,
+      "ms": 0,
+      "detail": {
+        "treeRows": 28
+      }
+    },
+    {
+      "id": "channel-surface",
+      "ok": true,
+      "ms": 75,
+      "detail": {
+        "listDir": 30,
+        "dirsFirst": true,
+        "listFiles": 773,
+        "readChars": 3606,
+        "readErr": null,
+        "repo": true,
+        "branch": "feature/3.0.0-beta",
+        "changed": 65,
+        "hasRemote": true,
+        "repos": 1,
+        "branches": 1,
+        "logCommits": 5,
+        "logMore": true
+      }
+    },
+    {
+      "id": "file-ops-write-path",
+      "ok": true,
+      "ms": 117,
+      "detail": {
+        "made": true,
+        "wrote": true,
+        "back": "hello\nworld\n",
+        "renamed": true,
+        "dupRefused": true,
+        "moved": true,
+        "escapeRefused": true,
+        "gone": true,
+        "swept": true
+      }
+    },
+    {
+      "id": "channel-audit",
+      "ok": true,
+      "ms": 510,
+      "detail": {
+        "probed": 22,
+        "ok": 20,
+        "unimplemented": [
+          "fs:html-preview-url=unimplemented",
+          "git:ai-message=unimplemented"
+        ]
+      }
+    },
+    {
+      "id": "local-image-scheme",
+      "ok": true,
+      "ms": 3,
+      "detail": {
+        "ok": true,
+        "w": 1472,
+        "h": 991
+      }
+    },
+    {
+      "id": "lsp-status-m7-boundary",
+      "ok": true,
+      "ms": 1,
+      "detail": {
+        "status": "unsupported",
+        "note": "M7까지 의도된 미지원"
+      }
+    }
+  ],
+  "summary": {
+    "total": 15,
+    "ok": 15,
+    "failed": 0
+  }
+}
