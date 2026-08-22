@@ -7,6 +7,19 @@
 //! 없어서 파서를 새로 쓰는 비용이 시나리오를 늘리는 비용보다 컸다. 대신 TOML이 주려던 것
 //! 셋(`close_policy` 선언 · `covers` 집계 · `kills` 집계)은 [`Scen`]에 그대로 남겼고,
 //! **선언한 `covers`를 실제로 밟았는지 러너가 검사**한다(선언이 거짓말을 못 한다).
+//!
+//! ## ★R2 — 선언이 아니라 **실행**을 남긴다 (크리틱 R1 C1·C4)
+//!
+//! R1의 커버리지 게이트는 `covers` **선언**의 합집합을 셌다. 그래서 `#[test]` 한 줄만 지우면
+//! 그 전이를 밟는 테스트가 0개가 돼도 게이트는 만점을 외쳤다(크리틱 §2.2가 실증).
+//! 이제 [`Sim::finish`]가 **런타임 실적**(실제로 밟은 전이 · 실제로 읽은 합성 픽스처 파일)을
+//! `$CARGO_TARGET_TMPDIR/ccg-cov/<바이너리>/`에 남기고, 게이트 바이너리
+//! (`tests/zz_coverage_gate.rs`)가 그 실적만 읽는다. 선언은 이제 **실적과 대조되는 쪽**이다.
+//!
+//! `synth[]`의 의미도 못박는다: **합성 픽스처 파일 의존**이다(인라인 `f_*` 헬퍼는 스펙 §5의
+//! 모양을 코드로 적은 것이라 파일 등급 표기가 없다). [`synth`] 로더가 실제 로드를 기록하고
+//! `finish()`가 선언과 **정확히** 대조한다 — R1에서 `S4`↔`S4C`의 `assumed` 귀속이 뒤집혀
+//! 있었는데 아무도 몰랐던 이유가 이 대조가 없어서였다(크리틱 §2.3).
 
 #![allow(dead_code)]
 
@@ -33,8 +46,118 @@ pub struct Scen {
     /// 이 시나리오가 밟는 전이 id. **러너가 실제로 밟았는지 검사한다.**
     pub covers: &'static [&'static str],
     pub close_policy: &'static str,
-    /// 합성 픽스처 의존(리포트에서 별도 줄로 센다). `assumed` 등급은 따로 표시.
+    /// 이 시나리오가 읽는 **합성 픽스처 파일**(`tests/fixtures/synth/<name>.jsonl`).
+    /// `assumed` 등급은 `"이름(assumed)"`로 표시한다. **러너가 실제 로드와 정확히 대조한다** —
+    /// 선언에 없는 파일을 읽어도, 선언만 하고 안 읽어도 그 자리에서 실패한다(★R2).
     pub synth: &'static [&'static str],
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 실행 실적 기록 (★R2 — 게이트가 선언이 아니라 실행을 세게 하는 배관)
+// ─────────────────────────────────────────────────────────────────────────────
+
+pub mod cov {
+    use std::collections::BTreeSet;
+    use std::path::PathBuf;
+    use std::sync::{Mutex, Once};
+
+    /// 시나리오·하네스 소스의 지문. **모든 테스트 바이너리가 같은 값을 컴파일 시점에 굽는다.**
+    /// 소스가 한 글자라도 바뀌면 지난 런의 실적은 자동으로 무효가 된다 —
+    /// "지난번엔 밟았으니까"로 게이트가 초록이 되는 구멍을 막는다.
+    pub const SRC_FP: u64 = fnv3(
+        include_str!("mod.rs"),
+        include_str!("../replay.rs"),
+        include_str!("../replay_standing.rs"),
+    );
+
+    const fn fnv1a(mut h: u64, s: &str) -> u64 {
+        let b = s.as_bytes();
+        let mut i = 0;
+        while i < b.len() {
+            h ^= b[i] as u64;
+            h = h.wrapping_mul(0x1000_0000_01b3);
+            i += 1;
+        }
+        h
+    }
+    pub const fn fnv3(a: &str, b: &str, c: &str) -> u64 {
+        fnv1a(fnv1a(fnv1a(0xcbf2_9ce4_8422_2325, a), b), c)
+    }
+    pub fn fnv(s: &str) -> u64 {
+        fnv1a(0xcbf2_9ce4_8422_2325, s)
+    }
+
+    pub fn root() -> PathBuf {
+        PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("ccg-cov")
+    }
+
+    /// `replay-<hash>.exe` → `replay`. 바이너리마다 제 칸을 쓴다(교차 오염 없음).
+    pub fn bin_tag() -> String {
+        let exe = std::env::current_exe().unwrap_or_default();
+        let stem = exe
+            .file_stem()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_else(|| "unknown".into());
+        match stem.rsplit_once('-') {
+            Some((head, tail)) if tail.len() >= 8 && tail.chars().all(|c| c.is_ascii_hexdigit()) => {
+                head.to_string()
+            }
+            _ => stem,
+        }
+    }
+
+    pub fn dir() -> PathBuf {
+        root().join(bin_tag())
+    }
+
+    static WIPE: Once = Once::new();
+    static WRITE_LOCK: Mutex<()> = Mutex::new(());
+
+    /// 프로세스 시작 시 **자기 칸만** 비운다. 그래서 이 바이너리의 실적은 언제나
+    /// "가장 최근 런에 실제로 돈 것"과 정확히 같다 — `#[test]`를 지우면 그 줄이 사라진다.
+    fn wipe_once() {
+        WIPE.call_once(|| {
+            let d = dir();
+            let _ = std::fs::remove_dir_all(&d);
+            let _ = std::fs::create_dir_all(&d);
+        });
+    }
+
+    /// 시나리오 1건의 실적. 같은 `Scen`을 두 테스트가 공유하면 **합집합**으로 누적한다.
+    pub fn record(
+        name: &str,
+        fired: &BTreeSet<String>,
+        kills: &[&str],
+        synth_used: &BTreeSet<String>,
+    ) {
+        wipe_once();
+        let _g = WRITE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let path = dir().join(format!("{:016x}.json", fnv(name)));
+        let (mut f, mut s) = (BTreeSet::new(), BTreeSet::new());
+        if let Ok(txt) = std::fs::read_to_string(&path) {
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&txt) {
+                if v["src_fp"].as_str() == Some(&format!("{SRC_FP:016x}")) {
+                    for x in v["fired"].as_array().into_iter().flatten() {
+                        f.insert(x.as_str().unwrap_or_default().to_string());
+                    }
+                    for x in v["synth"].as_array().into_iter().flatten() {
+                        s.insert(x.as_str().unwrap_or_default().to_string());
+                    }
+                }
+            }
+        }
+        f.extend(fired.iter().cloned());
+        s.extend(synth_used.iter().cloned());
+        let doc = serde_json::json!({
+            "name": name,
+            "src_fp": format!("{SRC_FP:016x}"),
+            "bin": bin_tag(),
+            "fired": f,
+            "kills": kills,
+            "synth": s,
+        });
+        let _ = std::fs::write(&path, serde_json::to_vec_pretty(&doc).unwrap_or_default());
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -215,7 +338,16 @@ pub fn wire_find(name: &str, pred: impl Fn(&Value) -> bool) -> Value {
         .find(|v| pred(v))
         .unwrap_or_else(|| panic!("wire/{name}.jsonl에 해당 프레임 없음"))
 }
+std::thread_local! {
+    /// 이 테스트(=스레드)가 실제로 읽은 합성 픽스처 파일. `Sim::new`가 비우고
+    /// `Sim::finish`가 선언과 대조한다.
+    static SYNTH_USED: std::cell::RefCell<BTreeSet<String>> =
+        std::cell::RefCell::new(BTreeSet::new());
+}
+
+/// 합성 픽스처 파일 로더. **읽은 사실이 기록된다**(선언 대조용 — ★R2).
 pub fn synth(name: &str) -> Vec<Value> {
+    SYNTH_USED.with(|s| s.borrow_mut().insert(name.to_string()));
     load_frames(&format!("synth/{name}.jsonl"))
 }
 
@@ -295,6 +427,12 @@ pub fn f_init(session: &str) -> Value {
     json!({"type":"system","subtype":"init","session_id":session,"model":"claude-fable-5",
            "cwd":"C:\\ccg-fixture\\work","tools":[],"permissionMode":"default","uuid":"U-i"})
 }
+/// `model` 없는 `system/init`. **파서가 허용하는 갈래**(`Frame::SystemInit.model: Option`)라
+/// 의미론을 못박아야 한다 — 실와이어에서 관측된 모양은 아니다(등급: parser_branch).
+pub fn f_init_nomodel(session: &str) -> Value {
+    json!({"type":"system","subtype":"init","session_id":session,
+           "cwd":"C:\\ccg-fixture\\work","tools":[],"permissionMode":"default","uuid":"U-i0"})
+}
 pub fn f_init_ack() -> Value {
     json!({"type":"control_response","response":{"subtype":"success","request_id":"init-1","response":{}}})
 }
@@ -346,6 +484,7 @@ pub struct Sim {
 
 impl Sim {
     pub fn new(scen: &'static Scen, id: RawIdentity) -> Sim {
+        SYNTH_USED.with(|s| s.borrow_mut().clear());
         let clock = VirtualClock::new();
         let driver = FakeCli::new(clock.clone());
         let policy = match scen.close_policy {
@@ -403,9 +542,10 @@ impl Sim {
         self.rt.on_frame(&v);
     }
     /// 불변식 10 — 시나리오마다 미지 프레임 1개를 흘려 넣는다(죽지 않아야 한다).
+    /// **러너가 자동으로 넣는 것**이라 `synth[]` 선언 대조 대상이 아니다(로더를 우회한다).
     pub fn inject_unknown(&mut self) {
         self.unknown_injected = true;
-        self.frame(synth("unknown-frame")[0].clone());
+        self.frame(load_frames("synth/unknown-frame.jsonl")[0].clone());
     }
 
     pub fn send(&mut self, text: &str) -> ccg_engine::event::Verdict {
@@ -486,7 +626,8 @@ impl Sim {
     pub fn fired(&self) -> BTreeSet<String> {
         self.rt.fired()
     }
-    /// 시나리오 종료 — 암묵 `app_quit`(불변식 9의 teardown) 후 공통 불변식을 전수 검사한다.
+    /// 시나리오 종료 — 암묵 `app_quit`(불변식 9의 teardown) 후 공통 불변식을 전수 검사하고,
+    /// **런타임 실적을 게이트가 읽을 자리에 남긴다**(★R2 — 게이트는 선언을 안 본다).
     pub fn finish(mut self) {
         if !self.unknown_injected {
             self.inject_unknown();
@@ -494,6 +635,8 @@ impl Sim {
         self.rt.app_quit();
         check_invariants(&self);
         check_covers(&self);
+        let used = check_synth(&self);
+        cov::record(self.scen.name, &self.fired(), self.scen.kills, &used);
     }
 }
 
@@ -660,6 +803,29 @@ fn check_banner_once_per_turn(ev: &[Event], name: &str) {
     }
 }
 
+/// 선언한 `synth[]`가 **실제로 읽은 합성 픽스처 파일과 같은지** 검사한다(★R2 — 크리틱 C4).
+///
+/// 양방향이다: 선언에만 있는 것(과대선언 — `S4`의 `assumed` 오귀속이 이 형태였다)도,
+/// 읽었는데 선언에 없는 것(`S4C`가 이 형태였다)도 실패다. 반환값은 게이트에 남길 실적.
+pub fn check_synth(sim: &Sim) -> BTreeSet<String> {
+    let used: BTreeSet<String> = SYNTH_USED.with(|s| s.borrow().clone());
+    let declared: BTreeSet<String> = sim
+        .scen
+        .synth
+        .iter()
+        .map(|s| s.split('(').next().unwrap_or(s).trim().to_string())
+        .collect();
+    assert_eq!(
+        declared,
+        used,
+        "[{}] synth 선언 ≠ 실제 로드 — 선언만 함 {:?} · 안 적고 읽음 {:?}",
+        sim.scen.name,
+        declared.difference(&used).collect::<Vec<_>>(),
+        used.difference(&declared).collect::<Vec<_>>()
+    );
+    used
+}
+
 /// 선언한 `covers`를 **실제로 밟았는지** 검사한다 — 선언이 거짓말을 못 하게.
 pub fn check_covers(sim: &Sim) {
     let fired = sim.fired();
@@ -720,7 +886,7 @@ pub static S1B: Scen = Scen {
     kills: &["P4", "P1c"],
     covers: &["T1", "T2", "T7", "T17", "F13"],
     close_policy: "on_idle",
-    synth: &["bg-shell"],
+    synth: &[],
 };
 
 pub static S2: Scen = Scen {
@@ -728,7 +894,7 @@ pub static S2: Scen = Scen {
     kills: &["P3", "P4"],
     covers: &["T1", "T2", "T7", "T17", "T29", "F10", "F13"],
     close_policy: "on_idle",
-    synth: &["bg-shell", "refusal-fallback", "model-delta"],
+    synth: &["refusal-fallback"],
 };
 
 pub static S2B: Scen = Scen {
@@ -768,7 +934,7 @@ pub static S4: Scen = Scen {
     kills: &["P5", "P6"],
     covers: &["T1", "T2", "T7", "T16", "T17", "T27", "T30", "T25", "T26"],
     close_policy: "on_idle",
-    synth: &["rate-limit-blocked(assumed)"],
+    synth: &[],
 };
 
 pub static S4B: Scen = Scen {
@@ -784,7 +950,7 @@ pub static S4C: Scen = Scen {
     kills: &["P6"],
     covers: &["T1", "T2", "T30", "T13", "T14"],
     close_policy: "on_idle",
-    synth: &[],
+    synth: &["rate-limit-blocked(assumed)"],
 };
 
 pub static S5A: Scen = Scen {
@@ -904,7 +1070,7 @@ pub static S9: Scen = Scen {
     kills: &["P8b"],
     covers: &["F13", "F17"],
     close_policy: "keep_open",
-    synth: &["bg-shell", "task-notification"],
+    synth: &[],
 };
 
 pub static S10: Scen = Scen {
@@ -984,7 +1150,7 @@ pub static S17: Scen = Scen {
     kills: &["P8b"],
     covers: &["F13", "F17"],
     close_policy: "keep_open",
-    synth: &["task-notification"],
+    synth: &[],
 };
 
 pub static S18: Scen = Scen {
@@ -1128,7 +1294,7 @@ pub static S33: Scen = Scen {
     kills: &["P8"],
     covers: &["T21b", "T20", "F13"],
     close_policy: "on_idle",
-    synth: &["bg-shell"],
+    synth: &[],
 };
 
 pub static S24: Scen = Scen {
@@ -1148,7 +1314,7 @@ pub static S34: Scen = Scen {
     kills: &["P8b"],
     covers: &["F3", "F4", "F5", "F7", "F8", "F11", "F16", "F20", "F21", "F13"],
     close_policy: "keep_open",
-    synth: &["workflow"],
+    synth: &[],
 };
 
 pub static S35: Scen = Scen {
@@ -1175,4 +1341,39 @@ pub static S37: Scen = Scen {
     synth: &["bg-shell"],
 };
 
-pub static ALL_SCENARIOS_EXTRA: &[&Scen] = &[&S34, &S35, &S36, &S37];
+// ── ★R2(크리틱 R1 대응) 신설분: 함정 A 뮤테이션 잠금 + T12 중단 가드 ────────────
+
+pub static S38: Scen = Scen {
+    name: "#38 중단 뒤 고아 통지 기상 턴 — T12가 프롬프트를 다시 밀어 넣지 않는다",
+    kills: &["P8", "P9"],
+    covers: &["T1", "T2", "T13", "T14", "T19", "T8", "T10", "T11", "T12", "T16", "F12", "F13"],
+    close_policy: "keep_open",
+    synth: &["bg-shell"],
+};
+
+pub static S39: Scen = Scen {
+    name: "#39 세션 시작 모델이 기준선 — 첫 assistant의 무음 강등이 폴백으로 보인다",
+    kills: &["P3"],
+    covers: &["T1", "T2", "F10", "T29", "T7", "T25", "T26"],
+    close_policy: "on_idle",
+    synth: &[],
+};
+
+pub static S40: Scen = Scen {
+    name: "#40 같은 모델의 다른 표기는 폴백이 아니다 — 재스폰 폭주 금지(함정 A)",
+    kills: &["P1", "P3"],
+    covers: &["T1", "T2", "F10", "T7", "T16"],
+    close_policy: "keep_open",
+    synth: &[],
+};
+
+pub static S41: Scen = Scen {
+    name: "#41 init이 모델을 안 실으면 첫 관측이 기준선(별칭 불일치도 폴백 아님)",
+    kills: &["P3"],
+    covers: &["T1", "T2", "F10", "T7", "T16"],
+    close_policy: "keep_open",
+    synth: &[],
+};
+
+pub static ALL_SCENARIOS_EXTRA: &[&Scen] =
+    &[&S34, &S35, &S36, &S37, &S38, &S39, &S40, &S41];

@@ -136,9 +136,9 @@ pub static LIFECYCLE: &[TransitionSpec] = &[
     TransitionSpec { id: "T7",   from: &[S::Streaming],   trigger: Trigger::Frame("result"),    guard: "턴 활동 ∨ 결과 텍스트", to: "§3.4", note: "result + 종결 status 1회, finish_wrap()" },
     TransitionSpec { id: "T8",   from: &[S::Streaming],   trigger: Trigger::Frame("result"),    guard: "무음", to: "HeldResult", note: "종결 보류, 재장전 0" },
     TransitionSpec { id: "T9",   from: &[S::HeldResult],  trigger: Trigger::Frame("활동 프레임"), guard: "-", to: "Streaming", note: "보류 취소, 미니턴 오판 복구" },
-    TransitionSpec { id: "T10",  from: &[S::HeldResult],  trigger: Trigger::Watchdog("2.5s"),   guard: "재장전<8", to: "HeldResult", note: "슬라이딩 재장전" },
+    TransitionSpec { id: "T10",  from: &[S::HeldResult],  trigger: Trigger::Watchdog("2.5s"),   guard: "재장전<8", to: "HeldResult", note: "슬라이딩 재장전. ★설계와 의도적 어긋남(보고서 §7 #9): 설계 가드는 '재장전<8 ∧ (프레임 흘렀음 ∨ delivered_notifs 있음)'인데 그대로 넣으면 **아무 프레임도 안 온 무음 보류가 첫 2.5s에 무너진다**(T11 즉시). 무음 보류의 존재 이유가 사라지므로 앞항만 채택" },
     TransitionSpec { id: "T11",  from: &[S::HeldResult],  trigger: Trigger::Watchdog("재장전 소진"), guard: "delivered_notifs 비었음", to: "§3.4", note: "무음 턴 정착 + notice(silent)" },
-    TransitionSpec { id: "T12",  from: &[S::HeldResult],  trigger: Trigger::Watchdog("만료"),   guard: "notifs 있음 ∧ replayed_once=false", to: "Streaming", note: "프롬프트 재주입(같은 턴 연장)" },
+    TransitionSpec { id: "T12",  from: &[S::HeldResult],  trigger: Trigger::Watchdog("만료"),   guard: "delivered_notifs 있음 ∧ 활동 없음 ∧ replayed_once=false ∧ 중단 요청 없음", to: "Streaming", note: "프롬프트 재주입(같은 턴 연장). ★R2 — '중단 요청 없음'이 R1 표에서 빠져 있었다(크리틱 C6): 중단 뒤 CLI가 고아 통지로 깬 턴에 기계가 다시 프롬프트를 밀어 넣던 자리다. '활동 없음'은 HeldResult 진입 조건(T8)이 이미 보장한다" },
     TransitionSpec { id: "T13",  from: &[S::Streaming, S::AwaitingUser, S::HeldResult], trigger: Trigger::Cmd("interrupt"), guard: "-", to: "Interrupting", note: "카드 전부 해제 → 큐 비움+undo+hold 해제 → control_request{interrupt}" },
     TransitionSpec { id: "T14",  from: &[S::Interrupting],trigger: Trigger::Frame("result(aborted_*)"), guard: "≤6s", to: "§3.4", note: "interrupted 마커, 재주입 금지 표식" },
     TransitionSpec { id: "T15",  from: &[S::Interrupting],trigger: Trigger::Watchdog("6s 무응답"), guard: "-", to: "Terminating{HardCancel}", note: "하드 강등" },
@@ -161,7 +161,7 @@ pub static LIFECYCLE: &[TransitionSpec] = &[
     TransitionSpec { id: "T29",  from: &[S::Streaming],   trigger: Trigger::Frame("model_refusal_fallback|message.model 변화"), guard: "메인 경로 ∧ §6.2가 '리비전 생성'", to: "Streaming", note: "정체성 자동 리비전 + 배너 + 되돌리기" },
     TransitionSpec { id: "T30",  from: &[S::Streaming],   trigger: Trigger::Frame("rate_limit blocked|result 한도"), guard: "-", to: "§3.4", note: "hold 장전 — 큐 게이트만" },
     TransitionSpec { id: "T31",  from: &[S::Resident, S::Idle], trigger: Trigger::Cmd("identity_set"), guard: "적용 가능", to: "같은 상태", note: "정체성 교체 + 리비전. Resident면 재스폰 비용 예고" },
-    TransitionSpec { id: "T32",  from: &[S::Resident],    trigger: Trigger::Watchdog("stream_idle_limit 6h"), guard: "턴 없음", to: "Terminating{IdleReclaim}", note: "행한 CLI의 마지막 탈출구" },
+    TransitionSpec { id: "T32",  from: &[S::Resident],    trigger: Trigger::Watchdog("stream_idle_limit 6h"), guard: "턴 없음", to: "Terminating{IdleReclaim}", note: "행한 CLI의 마지막 탈출구. ★설계와 의도적 어긋남(보고서 §7 #10): 설계 From은 `Resident{Unverified|Policy}`인데 `StateTag`가 `why`를 안 들고 다녀 표현할 수 없다. 실질 무해 — 6h 전에 T21이 Unverified로 내린다" },
     TransitionSpec { id: "T33",  from: &[S::Resident],    trigger: Trigger::Watchdog("linger 만료"), guard: "원장·큐 비었음", to: "Terminating{AllClear}", note: "close_input()" },
     TransitionSpec { id: "T34",  from: &[S::Starting],    trigger: Trigger::Cmd("interrupt|stop_all"), guard: "-", to: "Terminating{Cancelled}", note: "spawn 취소. 정착할 항목 없음. 큐는 T13과 동일" },
     TransitionSpec { id: "T35",  from: &[S::Resident],    trigger: Trigger::Cmd("interrupt"),   guard: "-", to: "Resident{LiveItems|Unverified}", note: "턴 없음 → interrupt 미송신. stop_task N회 + 큐 비움 + 결과 통지" },
@@ -271,8 +271,12 @@ pub fn transition(id: &str) -> Option<&'static TransitionSpec> {
     LIFECYCLE.iter().find(|t| t.id == id)
 }
 
-/// §3.7 사영표 — `protocol-claude-cli.md` §8.4의 24행 + 와이어에만 있는 4행.
+/// §3.7 사영표 — 설계 §3.7 **표 그대로 32행**(§8.4 매핑 28행 = 1b·4b·10b·22b 포함 + 와이어 4행).
 /// **빈칸이 하나라도 있으면 그 프레임은 진입점이 없다** = P8 계열 버그의 씨앗.
+///
+/// ★R2(크리틱 C8): R1 주석은 *"§8.4의 24행 + 와이어 4행"*이라 적었다. 24는 설계 **산문**의
+/// 수이고 같은 절의 **표**는 28행이다(설계 자체의 불일치). 코드는 표를 따랐으므로 32가 맞고,
+/// 틀린 것은 주석뿐이었다.
 pub static PROJECTION_8_4: &[(&str, &[&str])] = &[
     ("system/init (첫 도착)", &["T2"]),
     ("system/init (재도착)", &["F1"]),

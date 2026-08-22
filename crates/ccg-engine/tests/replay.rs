@@ -507,16 +507,30 @@ fn s04c_interrupt_during_hold_cancels_auto_resume() {
     assert!(sim.rt.hold().is_some(), "hold도 함께 복원된다");
     assert_eq!(sim.rt.sent_user_texts().len(), 1, "복원이 곧 전송이면 위험하다");
 
-    // 되돌린 대기표를 사용자가 다시 끈다 = 자동 이어서 포기. 그 뒤로는 혼자 나가지 않는다.
-    sim.rt.dispatch(Cmd::HoldCancel);
+    // 되돌린 대기표를 사용자가 다시 끈다 = **자동 이어서 포기**.
+    //
+    // ★R2(크리틱 C3): R1은 여기서 `HoldCancel`이 드레인을 깨워 큐 head "2"가 **그 자리에서**
+    // 나갔다(`texts == ["1","2"]`). `assert!(sent_after <= 3)`이 그 2건을 통과시켰고,
+    // 60분 뒤 추가 전송이 0인 진짜 이유는 hold 의미론이 아니라 **바로 앞 `StopAll`이 큐를
+    // 비웠기 때문**이었다 — 시나리오가 잠근다고 말하는 성질을 안 잠갔다.
+    // 이제 `StopAll` **전에** 정확값으로 박는다: 게이트만 내려가고 큐는 그대로 남는다.
+    assert_eq!(sim.cmd(Cmd::HoldCancel), Verdict::Accepted);
+    assert!(sim.rt.hold().is_none(), "대기표는 꺼졌다");
+    assert_eq!(
+        sim.rt.sent_user_texts(),
+        vec!["1"],
+        "★ 자동 이어서를 끈 클릭이 전송을 유발하면 안 된다(§7.4 L1)"
+    );
+    assert_eq!(sim.rt.queue_len(), 2, "큐는 사용자가 다시 보낼 때까지 그대로 있다");
+
     sim.rt.dispatch(Cmd::StopAll);
     sim.advance_to(60 * MIN);
-    // hold가 꺼졌으니 큐는 사용자가 다시 보낼 때까지 **가만히 있는다**.
-    // (hold를 켠 채 두면 §7.3대로 재개 항목이 들어간다 — 그 경로는 #4가 잠근다.)
+    // 몇 시간을 밀어도 혼자 나가지 않는다(=시나리오 이름이 약속한 것).
     let sent_after = sim.rt.sent_user_texts().len();
-    assert!(
-        sent_after <= 3,
-        "★ R1 설계였다면 중지 뒤에도 큐가 혼자 나갔다(L1의 최악 형태): {sent_after}"
+    assert_eq!(
+        sent_after, 1,
+        "★ 중지 뒤 큐가 혼자 나가면 L1의 최악 형태다: {:?}",
+        sim.rt.sent_user_texts()
     );
     // ⚠ 설계 §7.4의 토큰 유효기간은 **5분**인데 hold는 몇 시간짜리다.
     //   즉 §4 #4c의 "advance(resets_at+90s) 뒤 restore"는 두 규칙이 동시에 참일 수 없다.
@@ -812,9 +826,11 @@ fn s07b_prime_external_death_settles_in_93s() {
     let s = sim.settled();
     assert_eq!(s.len(), 2);
     assert!(s.iter().all(|(_, r, _)| r == "watchdog:active"));
+    // ★R2(크리틱 C5): 상한만 있으면 **조기 정착 회귀**(90s 리스가 30s로 줄어드는 것)를 못 잡는다.
+    //   형제 `s06c_iii`는 처음부터 양쪽을 걸고 있었다 — 여기만 비대칭이었다.
     assert!(
-        s.iter().all(|(_, _, at)| *at <= 95 * SEC),
-        "★ 30분이 아니라 ~93초: {s:?}"
+        s.iter().all(|(_, _, at)| *at >= 90 * SEC && *at <= 95 * SEC),
+        "★ 30분도 아니고 30초도 아니다 — 90~95s 창: {s:?}"
     );
     assert_eq!(sim.state(), StateTag::Idle, "T20이 프로세스를 정상 회수");
     assert_eq!(sim.count(|e| matches!(e, Event::CloseInput { .. })), 1);

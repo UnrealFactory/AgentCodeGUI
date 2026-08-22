@@ -135,7 +135,6 @@ pub struct ThreadLink {
 struct Turn {
     run_id: RunId,
     turn_ended: bool,
-    interrupt_requested: bool,
     saw_turn_activity: bool,
     held_until: Option<Millis>,
     rearms: u32,
@@ -157,7 +156,6 @@ impl Turn {
         Turn {
             run_id,
             turn_ended: false,
-            interrupt_requested: false,
             saw_turn_activity: false,
             held_until: None,
             rearms: 0,
@@ -192,6 +190,14 @@ struct Stream {
     cause: Rc<Cell<CloseCause>>,
     linger_deadline: Option<Millis>,
     interrupt_deadline: Option<Millis>,
+    /// **재주입 금지 표식**(T14 note · T12 가드의 "중단 요청 없음" — ★R2 크리틱 C6).
+    ///
+    /// 턴이 아니라 **스트림**에 붙는다. 중단은 턴을 끝내지만(T14) 그 뒤에 CLI가 고아 통지로
+    /// 스스로 깨는 턴(T19)이 남아 있고, 그 턴이 또 무음이면 T12가 *"이어서 진행해 주세요"*를
+    /// 자동으로 밀어 넣는다 — **사용자가 방금 세운 것을 기계가 다시 켜는 자리**다
+    /// (메모리의 실버그 *"중단 1회 → 고아 통지 → 턴마다 CLI 사망 루프"*와 정확히 인접하다).
+    /// 사용자가 **직접** 다음 턴을 시작하면(T16) 그때 내려간다.
+    interrupt_marker: bool,
     stop_deadline: Option<Millis>,
     stopping: Vec<LiveId>,
     closing: bool,
@@ -595,8 +601,17 @@ impl<D: CliDriver> ChatRuntime<D> {
             Cmd::IdentitySet { patch, policy, op } => self.set_identity(patch, policy, op),
             Cmd::IdentityRevert { to } => self.revert_identity(to),
             Cmd::HoldCancel => {
+                // "자동 이어서 끄기" = **포기**다. 게이트만 내리고 드레인을 깨우지 않는다.
+                //
+                // 설계 근거(★R2 — 크리틱 R1 C3): 드레인을 여는 유일한 hold 경로는 §7.3의
+                // **소진**(`ready` → 재개 항목 삽입 → 일반 드레인)이다. 취소는 그 반대쪽이다.
+                // §7.4는 같은 이유로 `queue.restore`가 드레인을 안 돌게 못박았고
+                // ("되돌리기가 곧 전송이면 위험하다"), §7.3은 interrupt/stop_all이 대기표를
+                // 함께 끄는 이유를 *"안 그러면 중지했는데 몇 시간 뒤 혼자 이어서 보낸다"*로 적었다.
+                // R1 구현은 `Esc → 되돌리기 → 자동 이어서 끄기`의 **마지막 클릭이 큐 head를
+                // 그 자리에서 전송**했다 — L1이 죽이려던 바로 그 형태다.
                 self.hold = None;
-                self.drain_if_possible();
+                self.broadcast_plan();
                 Verdict::Accepted
             }
             Cmd::ForkBtw => {
@@ -964,6 +979,7 @@ impl<D: CliDriver> ChatRuntime<D> {
             cause,
             linger_deadline: None,
             interrupt_deadline: None,
+            interrupt_marker: false,
             stop_deadline: None,
             stopping: vec![],
             closing: false,
@@ -992,6 +1008,8 @@ impl<D: CliDriver> ChatRuntime<D> {
         if let Some(s) = &mut self.stream {
             s.turn = Some(Turn::new(run_id, seq, false));
             s.linger_deadline = None;
+            // 사용자가 **직접** 다음 턴을 시작했다 → 재주입 금지 표식 해제(T12 가드).
+            s.interrupt_marker = false;
         }
         self.send_user(&m.text.clone());
         self.set_state("T16", StateTag::Streaming, None);
@@ -1267,9 +1285,7 @@ impl<D: CliDriver> ChatRuntime<D> {
         self.release_all_cards("interrupt");
         self.clear_queue_with_undo();
         if let Some(s) = &mut self.stream {
-            if let Some(t) = &mut s.turn {
-                t.interrupt_requested = true;
-            }
+            s.interrupt_marker = true; // T12 재주입 금지(§3.3 T12 가드 · T14 note)
             s.interrupt_deadline = Some(now + INTERRUPT_TIMEOUT);
         }
         self.send_control("interrupt", json!({}));
@@ -1330,6 +1346,7 @@ impl<D: CliDriver> ChatRuntime<D> {
         }
         self.clear_queue_with_undo();
         if let Some(s) = &mut self.stream {
+            s.interrupt_marker = true; // 상주 중단도 "중단 요청"이다(T12 가드)
             s.stopping = targets.clone();
             s.stop_deadline = Some(now + STOP_TASK_GRACE);
         }
@@ -2111,6 +2128,9 @@ impl<D: CliDriver> ChatRuntime<D> {
             .map(|t| !t.delivered_notifs.is_empty())
             .unwrap_or(false);
         let replayed = s.turn.as_ref().map(|t| t.replayed_once).unwrap_or(false);
+        // T12 가드의 넷째 항 — "중단 요청 없음"(§3.3). 중단한 사용자에게 기계가 다시
+        // 프롬프트를 밀어 넣지 않는다. 사용자가 손수 보낸 턴(T16)에서 해제된다.
+        let interrupted = s.interrupt_marker;
 
         match state {
             StateTag::Starting if now - started >= START_TIMEOUT => {
@@ -2125,7 +2145,7 @@ impl<D: CliDriver> ChatRuntime<D> {
                 return;
             }
             StateTag::HeldResult if held.is_some_and(|d| now >= d) => {
-                if notifs && !replayed {
+                if notifs && !replayed && !interrupted {
                     // T12 — 통지 삼킴 재주입(1회 제한)
                     if let Some(s) = &mut self.stream {
                         if let Some(t) = &mut s.turn {

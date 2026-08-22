@@ -829,3 +829,154 @@ fn s37_stop_all_cancels_everything() {
     assert!(sim.rt.driver_ref().killed);
     sim.finish();
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+// ★R2 — 크리틱 R1이 "잠겨 있지 않다"고 판정한 두 자리 (C2 · C6)
+// ════════════════════════════════════════════════════════════════════════════
+
+// ── #38 중단 뒤 고아 통지 기상 턴 — T12 가드의 "중단 요청 없음" ───────────────
+//
+// 설계 §3.3 T12의 가드는 넷째 항으로 **중단 요청 없음**을 요구하는데 R1의 표에도 코드에도
+// 없었다(크리틱 §3.3). 메모리의 실버그 *"중단 1회 → 고아 통지 → 턴마다 CLI 사망 루프"*와
+// 정확히 인접한 자리라, 여기서 **사용자가 세운 것을 기계가 다시 켜지 않는지**를 잠근다.
+
+#[test]
+fn s38_interrupt_blocks_notification_replay_until_user_sends() {
+    let mut sim = started(&S38);
+    sim.feed(&synth("bg-shell")); // 살아 있는 셸 → 중단 뒤에도 Resident
+    assert_eq!(sim.cmd(Cmd::Interrupt), Verdict::Accepted);
+    sim.frame(f_result_aborted()); // T14 — 재주입 금지 표식이 남는다
+    assert_eq!(sim.state(), StateTag::Resident);
+
+    // CLI가 고아 통지로 스스로 깬다(T19) → 그 턴이 무음이다(T8).
+    sim.frame(f_user_notif("bash-1"));
+    assert_eq!(sim.state(), StateTag::Streaming, "T19 — CLI 자발 기상 턴");
+    sim.frame(f_result_ok(""));
+    assert_eq!(sim.state(), StateTag::HeldResult, "T8 — 무음 보류");
+
+    sim.advance(3 * SEC);
+    assert_eq!(
+        sim.state(),
+        StateTag::HeldResult,
+        "★ 중단 뒤에는 T12가 안 돈다 — 여기서 Streaming이면 기계가 사용자를 되살린 것"
+    );
+    sim.advance(30 * SEC); // 재장전 소진 → T11 마감
+    assert_eq!(
+        sim.count(|e| matches!(e, Event::StateAssign { source: "T12", .. })),
+        0,
+        "★ 중단 요청이 있는 동안 재주입 0회"
+    );
+    assert_eq!(
+        sim.rt.driver_ref().sent_user_texts(),
+        vec!["작업"],
+        "★ 자동 프롬프트가 stdin에 실리지 않는다(드라이버가 본 것 전부)"
+    );
+
+    // 사용자가 **직접** 다음 턴을 시작하면 표식이 내려가고 T12는 원래대로 돈다.
+    sim.send("이어서");
+    assert_eq!(sim.state(), StateTag::Streaming);
+    sim.frame(f_user_notif("bash-1"));
+    sim.frame(f_result_ok(""));
+    sim.advance(3 * SEC);
+    assert_eq!(
+        sim.count(|e| matches!(e, Event::StateAssign { source: "T12", .. })),
+        1,
+        "★ 가드는 중단 동안만 — T12 자체를 죽이면 통지 삼킴(#11)이 되살아난다"
+    );
+    assert_eq!(
+        sim.rt.driver_ref().sent_user_texts(),
+        vec!["작업", "이어서", "이어서 진행해 주세요(통지 재주입)"],
+        "★ 재주입은 stdin에 실린다 — 1단계에서 이 줄이 없었다는 것이 가드의 증거다"
+    );
+    sim.frame(f_result_ok("보고"));
+    sim.rt.dispatch(Cmd::StopAll);
+    sim.finish();
+}
+
+// ── #39~#41 함정 A(모델 별칭) 뮤테이션 잠금 ──────────────────────────────────
+//
+// 크리틱 §6: 보고서가 "잠갔다"고 적은 함정 A는 3중 뮤테이션에 전부 초록이었다.
+// 실제 방어선은 **`system/init`이 기준선을 잡는 것**(`runtime.rs` `Frame::SystemInit` 가지)과
+// **별칭 접기**(`model_alias`) 둘인데, 그 둘을 없애도 죽는 테스트가 없었다.
+// 와이어에는 같은 모델의 표기가 여러 벌이다 — 날짜 붙은 스냅샷 id(`claude-haiku-4-5-20251001`),
+// 날짜 없는 id(`claude-haiku-4-5`), picker 별칭(`haiku`), 그리고 폴백 프레임의 `fallback_model`.
+// 어느 한 벌을 기준선으로 굳히면 나머지가 전부 "모델이 바뀌었다"로 보이고, 그 오판은
+// **리비전 → 정체성 변경 → 재스폰 폭주**로 번진다.
+
+#[test]
+fn s39_init_model_is_the_baseline_for_the_first_observation() {
+    let mut sim = Sim::new(&S39, raw("haiku", EffortId::Medium, "a@x"));
+    sim.send("1");
+    sim.feed(&handshake("interrupt")); // 실와이어 init: model=claude-haiku-4-5-20251001
+
+    // 세션은 haiku로 떴는데 첫 assistant가 sonnet으로 온다 = **무음 강등**.
+    // init 기준선이 없으면 이 첫 관측이 그대로 기준선이 되어 강등이 조용히 삼켜진다.
+    sim.frame(f_assistant_model("claude-sonnet-4-5-20250929"));
+    assert_eq!(
+        sim.banners(),
+        vec![("haiku".to_string(), "sonnet".to_string())],
+        "★ init 기준선 + 별칭 접기 — 둘 중 하나만 무너져도 이 줄이 깨진다"
+    );
+    assert_eq!(sim.rt.identity().model(), "sonnet", "정체성도 별칭 공간이다");
+    assert_eq!(
+        sim.identity_events().len(),
+        2,
+        "리비전 2개 — Default · EngineFallback{{ModelDelta}}"
+    );
+    assert!(sim.fired().contains("T29"), "폴백 리비전 전이 T29를 밟았다");
+    sim.frame(f_result_ok("끝"));
+    sim.finish();
+}
+
+#[test]
+fn s40_same_model_other_spelling_is_not_a_fallback() {
+    let mut sim = Sim::new(&S40, raw("haiku", EffortId::Medium, "a@x"));
+    sim.send("1");
+    sim.feed(&handshake("interrupt")); // 기준선 = claude-haiku-4-5-20251001 → haiku
+
+    // 같은 모델을 CLI가 **다른 표기**로 부른다(날짜 없는 id).
+    sim.frame(f_assistant_model("claude-haiku-4-5"));
+    assert_eq!(sim.banners().len(), 0, "★ 같은 모델의 다른 표기는 전환이 아니다");
+    assert_eq!(
+        sim.rt.identity().model(),
+        "haiku",
+        "정체성은 picker 별칭으로 남는다"
+    );
+    sim.frame(f_result_ok("끝"));
+
+    sim.send("2");
+    assert_eq!(
+        sim.rt.spawns, 1,
+        "★ 재스폰 폭주 금지 — 별칭 접기가 무너지면 정체성이 바뀌어 매 턴 새 프로세스다"
+    );
+    assert_eq!(
+        sim.count(|e| matches!(e, Event::StateAssign { source: "T16", .. })),
+        1,
+        "T16 주입 1회"
+    );
+    sim.frame(f_result_ok("끝2"));
+    sim.rt.dispatch(Cmd::StopAll);
+    sim.finish();
+}
+
+#[test]
+fn s41_first_observation_is_the_baseline_when_init_has_no_model() {
+    let mut sim = Sim::new(&S41, raw("haiku", EffortId::Medium, "a@x"));
+    sim.send("1");
+    // `model` 없는 init — 파서가 허용하는 갈래다(`Option<String>`). 기준선을 잡을 재료가 없다.
+    sim.feed(&[f_init_ack(), f_init_nomodel("S1")]);
+    sim.frame(f_assistant_model("claude-haiku-4-5-20251001"));
+    assert_eq!(
+        sim.banners().len(),
+        0,
+        "★ 첫 관측은 기준선이다 — picker 별칭과 표기가 달라도 폴백이 아니다"
+    );
+    assert_eq!(sim.rt.identity().model(), "haiku");
+    sim.frame(f_result_ok("끝"));
+
+    sim.send("2");
+    assert_eq!(sim.rt.spawns, 1, "기준선을 잘못 잡으면 여기서 재스폰이 난다");
+    sim.frame(f_result_ok("끝2"));
+    sim.rt.dispatch(Cmd::StopAll);
+    sim.finish();
+}
