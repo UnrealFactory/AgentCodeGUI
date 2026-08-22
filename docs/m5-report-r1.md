@@ -318,3 +318,233 @@ slug = `${safe}-${h.toString(36)}`
 - 실홈: **읽기/복사만.** 테스트는 `CCG_HOME`을 `%TEMP%`로 돌리고 종료 시 지운다. 프로브
   바이너리는 `CCG_HOME`이 없으면 실행을 거부한다.
 - 프로세스: 아무것도 스폰하지 않았다(`cargo`/`node` 외). 사용자 앱 kill 없음.
+
+---
+
+# §R2 — 크리틱 지적 반영 (M5 R1 크리틱 `docs/critic/m5-r1.md`)
+
+판정은 **조건부 합격**이었다. 깨진 것 1 + 잔금 3. 다섯 항목 전부 고쳤고, 고쳤다는 증거는
+**크리틱 자신의 도구를 그대로 다시 돌려** 냈다(내 하네스를 새로 만들지 않았다).
+
+| # | 크리틱 지적 | 상태 | 잠근 방법 |
+|---|---|---|---|
+| 4-1 | **[깨짐]** 오염가드가 계정 순서에 좌우된다 | 고침 | `token_owners`(목록) + `token_collision`(자기 제외) — `diagnose`와 **같은 로직 단일 소스**. 폴더 쪽 토큰도 본다 |
+| 4-2 | [잔금] `reorder_accounts`가 중복 이메일 레코드를 유실 | 고침 | 이메일이 아니라 **인덱스**로 잡는다(= 2.6.2 참조 비교). codex 쌍둥이도 같이 |
+| 4-3 | [잔금] usage 파서 12/71 불일치 | 고침 | `js.rs`(JS 강제변환·`Date.parse` 미러) + **71케이스 골든 편입** → 0/71 |
+| 4-4 | [잔금] `version: 3.0`·usage 캐시 관대성이 2.6.2보다 좁다 | 고침 | 버전 비교를 `as_f64`(JS `3.0 === 3`), 캐시는 `v && v.data` 규칙으로 직접 읽는다 |
+| 2/5 | `verify.rs`의 "`auth status`는 읽기 전용" 오기 | 고침 | 주석 정정 + **타입으로 봉인**(`IsolatedConfigDir`) |
+| 4-5 | [메모] 파서 커버리지 구멍 · 실홈 테스트의 선의의 실패 | 고침 | 골든 71케이스가 구멍을 덮고, 실홈 폴더 테스트는 **폴더 신원 기준**으로 뒤집었다 |
+
+테스트 **50 → 67**(+17). `cargo clippy -p ccg-auth --all-targets` 경고 **0**.
+
+---
+
+## R2-1. 오염가드 — 순서 의존 제거 (`claude.rs` · `verify.rs`)
+
+R1은 `token_owner`(`find_map` = 첫 일치)로 판정하고 `!= email`을 봤다. 그래서 오염 쌍 중
+스토어에서 **앞에 있는 쪽은 자기 자신을 찾아 통과**했다. 순서는 사용자가 설정 → Account에서
+드래그로 바꾸는 값이라, 같은 오염이 재정렬 한 번에 통과/차단으로 뒤집혔다.
+
+```rust
+pub fn token_owners(creds: &str) -> Vec<String>                     // 지문 일치 계정 전부
+pub fn token_collision(creds: &str, email: &str) -> Option<String>  // 자기 제외 첫 소유자
+```
+
+- `preflight`와 `import_account_from_dir`(`RejectTokenCollision`)이 **둘 다** `token_collision`을
+  쓴다. 편입 가드도 같은 비대칭을 갖고 있었다(크리틱이 preflight만 짚었지만 같은 병이다).
+- 곁다리 지적도 반영: `token_owner`는 **백업만** 비교해 폴더(`.credentials.json`) 쪽 오염을
+  못 봤다. `token_owners`는 계정 폴더의 살아 있는 토큰도 지문으로 대조한다 —
+  백업이 아직 안 갈렸어도 폴더끼리 같은 토큰이면 이미 오염이다.
+- `token_owner`는 **없앴다.** 남겨두면 "첫 일치" 함정이 다시 불려 갈 자리다.
+
+**크리틱 시나리오 재실행**(같은 도구 `m5drive.exe contamination`, CCG_HOME 격리):
+
+```
+배치 [a, b]           preflightA=Contaminated("b@x.com") probeA=false
+                      preflightB=Contaminated("a@x.com") probeB=false
+드래그 재정렬 [b, a]   preflightA=Contaminated("b@x.com") probeA=false
+                      preflightB=Contaminated("a@x.com") probeB=false
+diagnose              양쪽 배치에서 둘 다 collides_with 있음
+```
+
+R1은 여기서 앞엣것이 `Probe(통과!)`였다. 잠금 테스트 —
+`verify::tests::contamination_verdict_does_not_depend_on_store_order`(두 배치 × 두 계정 전수),
+`contamination_also_sees_the_folder_side_token`,
+`claude::tests::token_owners_lists_everyone_regardless_of_order`,
+`guarded_import_rejects_regardless_of_order`.
+
+## R2-2. `reorder_accounts` — 레코드 유실 제거 (`claude.rs` · `codex.rs`)
+
+2.6.2의 `if (!next.includes(a))`는 **참조 비교**라 같은 이메일 레코드가 둘이면 둘 다 남는다.
+R1은 이메일로 걸러서 두 번째 레코드(= 그 계정의 암호화 토큰 백업)가 드래그 한 번에 사라졌다.
+`next.push` 조건을 **인덱스**로 바꿔 참조 비교와 같은 의미론으로 만들었다.
+`new Map(...)`이 마지막 레코드를 고르는 것까지 `rposition`으로 맞췄다 — **순서도 2.6.2와 같다.**
+
+```
+스토어 [dup(TOK-1), dup(TOK-2), ok(TOK-3)] → reorder(['ok','dup'])
+  2.6.2 : [ok(TOK-3), dup(TOK-2), dup(TOK-1)]  3건
+  R1    : 2건 (TOK-2 백업 소멸)
+  R2    : [ok(TOK-3), dup(TOK-2), dup(TOK-1)]  3건 ← credEnc 지문 3개 전부 상이(실측)
+```
+
+같은 병이 `codex::reorder_accounts`에도 있어 같이 고쳤다(`authEnc` 유실).
+남은 의도적 차이 하나: **입력** `emails`에 같은 이메일이 두 번 오면 2.6.2는 레코드를 두 벌로
+**복제**해 저장한다. 우리는 한 번만 놓는다 — 복제는 없던 계정을 만드는 쪽이라 유실 금지 원칙과
+방향이 반대다(§7 표의 "의도적 차이" 항목을 이 문장으로 대체한다).
+
+## R2-3. usage 파서 — 12/71 → 0/71 (`js.rs` 신설 · `usage.rs`)
+
+2.6.2 파서는 **JS의 느슨한 변환에 그대로 기대고** 있다. `as_bool()`/`as_f64()`/`f64::round()`로
+옮긴 게 불일치의 원인이었다. 변환기를 따로 두고 규칙만 미러했다 — `crates/ccg-auth/src/js.rs`.
+
+| 크리틱이 짚은 입력 | 2.6.2 | R1 | R2 |
+|---|---|---|---|
+| `spend.enabled: 1` / `"yes"` | `true` | `false` | `true` (`js::truthy` = `!!`) |
+| `limits[].percent: "77"` / `true` | 77 / 1 | 0 / 0 | 77 / 1 (`js::to_number` = ToNumber, `parseFloat` 아님) |
+| `resets_at: "2026-08-20"` · `"…T15:00Z"` | 파싱됨 | `null` | 파싱됨 (ECMA Date Time String Format 전 형식) |
+| `resets_at: "…T15:00:00"`(존 없음) | 로컬시 | UTC | **로컬시** (`TzSpecificLocalTimeToSystemTime` — DST 규칙까지 OS에 묻는다) |
+| `resets_at: "…+09"`(분 없는 오프셋) | `null` | 파싱됨 | `null` (스펙대로 무효) |
+| `resets_at: 12345`(숫자) | 12345년 | `null` | 12345년 (`String()` 강제변환 + 레거시 연도) |
+| `utilization: "1e2"` / `"Infinity"` / `"1e-7"` | 100 / 100 / 0 | 1 / 0 / 1 | 100 / 100 / 0 |
+
+곁다리로 같이 맞춘 것(코퍼스엔 없지만 같은 계열): `Math.round`는 **half up(+∞ 쪽)** 이라
+`Math.round(-2.5) = -2`인데 Rust `f64::round`는 -3이다 → `js::round`. `win(o)`와 `spend`의
+존재 판정이 JS 진위값이라 `five_hour: 0`이면 창이 **없다**(R1은 창을 만들었다).
+
+**골든 편입**: `crates/ccg-auth/src/usage_golden_2_6_2.json`(71케이스 × 2.6.2 출력).
+손으로 적은 기대값이 **하나도 없다** — 크리틱 도구가 뽑은 그대로다.
+
+```bash
+node docs/critic/tools/critic-m5-ucases.cjs | node docs/critic/tools/critic-m5-uparse262.cjs
+```
+
+존 없는 시각이 로컬시라 골든에 `localOffsetMinutes: 540`을 적고 테스트가 그 오프셋을
+**고정**한다(`js::with_fixed_local_offset` — 스레드 로컬). 다른 타임존 머신에서도 같은 판정이
+나오고, 실환경 경로가 진짜 OS 오프셋을 쓰는지는 별도 테스트가 본다
+(`js::tests::production_path_uses_the_real_os_offset` — DST 없는 존에서는 바이어스와 정확히 일치).
+
+**크리틱 도구 재실행**(우리 파서 = 워크스페이스 밖 드라이버 `uparse.exe`):
+
+```
+node critic-m5-ucases.cjs | node critic-m5-uparse262.cjs   ->  A
+node critic-m5-ucases.cjs | %TEMP%/m5t/debug/uparse.exe    ->  B
+총 71케이스 / 불일치 0        (R1: 12)
+```
+
+**대역은 정직하게**: ECMA-262의 ToBoolean/ToNumber/ToString/`parseFloat`과 Date Time String
+Format은 그대로 옮겼고, `Date.parse`의 **V8 레거시 갈래**는 코퍼스가 밟는 만큼만 옮겼다
+(구분자 `t`/공백, `±HHmm` 오프셋, 폭이 자유로운 `Y-M-D`, 5~6자리 맨 연도 — 전부 존 표기가
+없으면 로컬시). 그 밖의 레거시 표기(`"Aug 20 2026"` 같은 자연어 날짜)는 `None`이다.
+`1e21` 이상의 숫자 문자열화도 JS의 `1e+21` 표기와 갈리는데, usage 응답에 그 값이 올 자리가 없다.
+
+## R2-4. 관대성 — 스토어 버전 · usage 캐시 (`claude.rs` · `codex.rs` · `usage.rs`)
+
+- `read_store_file`의 버전 비교를 `as_u64` → `as_f64`로. JS는 `3.0 === 3`이고, R1은 부동소수
+  표기 하나에 **빈 스토어 = 계정 0건 = 재로그인 화면**이 됐다. 문자열 `"3"`은 양쪽 다 폐기
+  (JS도 `'3' !== 3`). `codex::read_store_file`도 같이 고쳤다(같은 실패 모드).
+- `read_usage_cache`를 serde 파생 대신 **2.6.2 규칙(`if (v && v.data)`)** 으로 직접 읽는다.
+  `at` 누락·실수 `pct`·4키 폴백형을 더는 버리지 않는다. 캐시는 퍼센트뿐이라 관대해서 잃을 게
+  없고, 버리면 게이지가 빈 채로 뜬다.
+
+**크리틱 도구 재실행**(`edge.exe`):
+
+```
+version=3   -> accounts=1      version=2   -> accounts=1
+version=3.0 -> accounts=1  <-   version=2.0 -> accounts=1  <-   (R1: 둘 다 0)
+version="3" -> accounts=0      version=4   -> accounts=0
+usage cache 읽힌 키 = ["a@x.com","b@x.com","c@x.com","e@x.com"]   (R1: a,c 2건 / 2.6.2: 4건)
+nasty.json 357B · 슬러그 7종 전부 R1과 동일
+```
+
+## R2-5. `auth status`는 읽기 전용이 아니다 — 주석 정정 + **타입 봉인** (`lib.rs` · `verify.rs`)
+
+`verify.rs:22`의 "**읽기 전용**이다(파일을 쓰지 않는 것 실측)"는 틀린 주석이었다. 크리틱 §2.1
+실측대로, 실행 후 `.claude.json`에 `firstStartTime`·`migrationVersion`·`seenNotifications`·
+`opusProMigrationComplete`가 붙고 `backups/`가 생긴다. 주석을 그 실측으로 갈아끼웠다.
+
+주석만 고치면 다음 라운드가 또 밟는다. **"물질화 폴더 밖(실홈)을 향해 CLI를 돌리는 경로가
+없다"를 타입으로 보증**했다:
+
+```rust
+pub struct IsolatedConfigDir(PathBuf);        // 앱 홈 안에서만 만들어진다
+IsolatedConfigDir::new(&path)                 // 앱 홈 밖 · `..` 포함 · 홈 자기 자신 -> None
+IsolatedConfigDir::for_claude_account(email)  // = account_run_dir(물질화까지)
+IsolatedConfigDir::for_claude_login() / for_codex_account / for_codex_login
+
+pub fn status_command(bin: &str, config_dir: &IsolatedConfigDir) -> CommandSpec   // &Path 안 받는다
+pub fn logout_command(…) · codex_logout_command(…) · usage::codex_app_server_command(…)
+```
+
+`&Path`를 받는 CLI 조립기가 **하나도 없다**. 사용자 실홈(`~/.claude`·`~/.codex`)으로는 증표를
+만들 수 없고, 증표가 없으면 명령도 못 만든다 — 이 단정이 깨지려면 타입을 먼저 뜯어야 한다.
+`codex app-server`(한도 조회)도 같은 하자였다: `CODEX_HOME`을 실홈으로 주면 그쪽 토큰이 회전한다.
+
+테스트 `verify::tests::no_cli_command_can_ever_point_at_the_users_real_home` — `~/.claude`·
+`~/.codex`·`~/.agentcodegui`·홈 자기 자신·`..` 탈출·`C:\`가 전부 `None`이고, 조립되는 6개
+명령의 env가 전부 앱 홈 아래를 가리킨다.
+
+## R2-6. 실홈 테스트의 "선의의 실패" (`real_home_tests.rs`)
+
+`real_account_folders_match_our_slug_and_junction_rules`가 "등록 계정 **전부**에 폴더가 있다"를
+단정해서, 사용자가 계정을 추가만 하고 안 쓰면 빨개졌다. 진짜 위험은 반대쪽이다 — "그 계정의
+폴더가 **다른 이름으로** 이미 있다"(= 3.0이 새 폴더를 파고 재로그인). 판정을 폴더 쪽에서
+하도록 뒤집었다: `accounts/<name>/.claude.json`의 신원(`oauthAccount.emailAddress`)을 읽어
+`account_slug(email) == name`을 단정한다.
+
+```
+[m5] 실홈 계정 폴더: 신원 대조 6건 전부 슬러그 일치 · 등록 계정 중 폴더 있음 6/6
+     — 살아 있는 정션 47개 / 폴더 토큰 미만료 4 / 백업보다 신선 2
+```
+
+47개는 크리틱의 Node 센서스(§1)와 같은 값이다.
+
+---
+
+## R2-7. 재실행한 크리틱 도구 — 전부 green
+
+전부 **크리틱이 커밋한 도구 그대로**다(내가 만든 하네스가 아니다). 실홈은 읽기/복사만 했다.
+
+| 도구 | 결과 | R1 대비 |
+|---|---|---|
+| `cargo test -p ccg-auth --offline` | **67 passed / 0 failed** | 50 → 67 |
+| `cargo clippy -p ccg-auth --all-targets` | 경고 0 | 동일 |
+| `critic-m5-ucases.cjs \| uparse262` vs `uparse.exe` | 71케이스 **불일치 0** | 12 → 0 |
+| `m5drive.exe contamination`(배치 [a,b] / [b,a]) | 양쪽 배치 · 양쪽 계정 전부 `Contaminated` | 앞엣것 `Probe` → 고침 |
+| `m5drive.exe seed → reorder`(중복 이메일) | 3건 유지 · credEnc 지문 3개 상이 | 2건 → 3건 |
+| `edge.exe` | version 3.0/2.0 = 1건 · 캐시 4키 · nasty 357B · 슬러그 동일 | 3.0/2.0 0건, 캐시 2건 → 고침 |
+| `jattack.exe` | 정션 공격 8종 전부 R1과 동일한 결과 | 회귀 없음 |
+| `ccg-auth-probe roundtrip`(실홈 사본) | `accounts.json` 10,380B **identical** 6계정 · `codex-accounts.json` 36B identical | 동일 |
+| `ccg-auth-probe diagnose`(실홈 사본) | 복호 6/6 · 스냅샷 온전 6/6 · 오염 0 · 지문 6개 상이 · writeScheme v10 | 동일 |
+| `critic-m5-262reader.cjs read`(Electron 42 실 safeStorage) | 3.0이 reorder+setdefault+**credEnc 재암호화**한 뒤 v3 6계정 · `allRunnable=true` · 스냅샷 키 `[creds,account,userID]` · 복호 6/6 | 동일 |
+
+실홈 `accounts.json` md5는 작업 전후 `20bdd3c0c4d357f98c8e40ad76ad3773`으로 **같다**
+(크리틱 때의 `21203beb…`와 다른 건 그 사이 사용자가 앱을 써서 토큰이 되싱크됐기 때문 —
+내 작업은 전부 `%TEMP%` 사본에서 했다). 사용자 앱 프로세스는 건드리지 않았고
+(`AgentCodeGUI.exe` 3개 그대로 살아 있다), 내가 띄운 electron은 스스로 종료했다(잔류 0).
+네트워크로 나간 토큰은 0건이다 — 크레이트에 전송 계층이 없다.
+
+## R2-8. 공개 API 변경 (배선 라운드가 알아야 할 것)
+
+| 전 | 후 | 왜 |
+|---|---|---|
+| `claude::token_owner(creds) -> Option<String>` | **삭제** → `token_owners(creds) -> Vec<String>` · `token_collision(creds, email) -> Option<String>` | "첫 일치"가 순서 함정이라 자리를 없앴다 |
+| `usage::to_ts(Option<&str>)` | `usage::to_ts(Option<&Value>)` | 2.6.2는 문자열이 아닌 값도 `String()`으로 강제변환해 `Date.parse`에 넘긴다 |
+| `verify::status_command(bin, &Path)` | `(bin, &IsolatedConfigDir)` | 실홈을 향할 수 없게 |
+| `verify::logout_command(bin, &Path)` | `(bin, &IsolatedConfigDir)` | 〃 (해지는 되돌릴 수 없다) |
+| `verify::codex_logout_command(bin, &Path)` | `(bin, &IsolatedConfigDir)` | 〃 |
+| `usage::codex_app_server_command(bin, &Path)` | `(bin, &IsolatedConfigDir)` | 실홈 `CODEX_HOME`이면 그쪽 토큰이 회전한다 |
+| — | `pub mod js` 신설 | JS 강제변환·`Date.parse` 미러 |
+
+`Cargo.toml`은 `windows` 기능에 `Win32_System_Time` 한 줄이 늘었다(**새 패키지가 아니다** —
+로컬 타임존 조회용). `cargo check -p ccg-auth -p ccg-store -p ccg-engine` 통과.
+`cargo check --workspace`는 이 시점에 `src-tauri`가 다른 빌더의 작업 중(`Hub.route` 누락·
+`TerminalStatus::Aborted` 미처리)이라 빨간데, **`src-tauri`는 `ccg-auth`를 물지 않는다**
+(`src-tauri/Cargo.toml`에 `ccg-store`·`ccg-engine`만) — 내 변경과 무관하다.
+
+## R2-9. 이번에도 안 한 것
+
+- **live 응답 대조**: 여전히 안 했다. 파서는 골든 71 + 실홈 캐시 역직렬화로만 잠갔다.
+- **실토큰 CLI 턴**: 크리틱이 합성 토큰으로만 확인하고 "배선 크리틱 몫"으로 남긴 그대로다.
+  실토큰으로 `auth status`를 돌리면 리프레시 회전이 일어나 실홈 백업이 죽을 수 있다.
+- **`Date.parse`의 자연어 갈래**: §R2-3의 대역 문단대로 안 옮겼다.
+- **IPC 배선·HTTP 전송·로그인 실행·1회 마이그레이션**: §7 그대로 배선 라운드 몫.

@@ -34,4 +34,7 @@ windows = { version = "0.61", features = [
   "Win32_Foundation",
   "Win32_Storage_FileSystem",
   "Win32_System_IO",
+  # 존 표기가 없는 ISO 시각을 JS `Date.parse`처럼 **로컬시**로 읽는다(src/js.rs).
+  # DST 규칙까지 OS에 물어봐야 KST 밖에서도 맞다. 새 패키지가 아니라 기능 하나 추가다.
+  "Win32_System_Time",
 ] }

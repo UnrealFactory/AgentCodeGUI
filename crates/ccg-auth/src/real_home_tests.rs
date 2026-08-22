@@ -233,10 +233,27 @@ fn real_account_folders_match_our_slug_and_junction_rules() {
             }
         }
     }
+    // **슬러그 드리프트 판정은 폴더 쪽에서 한다.** "등록 계정 전부에 폴더가 있다"를 단정하면
+    // 사용자가 계정을 추가만 하고 아직 안 쓴 순간 **선의의 실패**로 빨개진다(M5 R1 크리틱 §4-5).
+    // 진짜 위험은 "그 계정의 폴더가 **다른 이름으로** 이미 있다"는 것 — 그러면 3.0이 새 폴더를
+    // 파고 사용자는 재로그인한다. 그건 폴더의 신원(`.claude.json`)으로 정확히 잡힌다.
+    let mut checked = 0;
+    if let Ok(rd) = std::fs::read_dir(real.join("accounts")) {
+        for e in rd.flatten() {
+            let name = e.file_name().to_string_lossy().to_string();
+            if !e.path().is_dir() {
+                continue;
+            }
+            let Some(cj) = crate::read_json_file(&e.path().join(".claude.json")) else { continue };
+            let Some(email) = cj.get("oauthAccount").and_then(|o| o.get("emailAddress")).and_then(|v| v.as_str()) else { continue };
+            checked += 1;
+            assert_eq!(crate::account_slug(email), name, "폴더 신원과 우리 슬러그가 어긋난다 — 3.0이 새 폴더를 판다");
+        }
+    }
     println!(
-        "[m5] 실홈 계정 폴더 {matched}/{}건이 우리 슬러그로 찾아진다 — 살아 있는 정션 {junctions}개 / 폴더 토큰 미만료 {live} / 백업보다 신선 {fresher_than_backup}",
+        "[m5] 실홈 계정 폴더: 신원 대조 {checked}건 전부 슬러그 일치 · 등록 계정 중 폴더 있음 {matched}/{} — 살아 있는 정션 {junctions}개 / 폴더 토큰 미만료 {live} / 백업보다 신선 {fresher_than_backup}",
         f.accounts.len()
     );
-    assert_eq!(matched, f.accounts.len(), "슬러그가 어긋나면 3.0이 새 폴더를 파고 사용자는 재로그인한다");
-    assert!(junctions > 0, "정션이 하나도 없으면 resume 공유가 끊긴 상태다");
+    assert!(checked > 0 || matched == 0, "폴더가 있는데 한 건도 대조를 못 했다 — 신원 레이아웃이 바뀐 것");
+    assert!(junctions > 0 || matched == 0, "정션이 하나도 없으면 resume 공유가 끊긴 상태다");
 }

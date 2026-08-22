@@ -28,6 +28,8 @@
 
 pub mod claude;
 pub mod codex;
+/// JS 강제변환·`Date.parse` 미러 — 2.6.2 파서가 기대고 있는 의미론(M5 R2).
+pub mod js;
 pub mod junction;
 pub mod usage;
 pub mod verify;
@@ -191,6 +193,70 @@ pub struct HttpRequest {
     pub body: Option<String>,
     /// 2.6.2가 쓰던 AbortController 타임아웃(ms).
     pub timeout_ms: u64,
+}
+
+/// CLI에 넘겨도 되는 config 폴더 — **앱 홈 안에서 물질화된 것만** 담는 증표다.
+///
+/// 왜 타입이 필요한가: `claude auth status --json`은 **읽기 전용이 아니다.** 돌리고 나면
+/// 그 폴더의 `.claude.json`에 `firstStartTime`·`migrationVersion`·`seenNotifications`·
+/// `opusProMigrationComplete`가 붙고 `backups/`가 생긴다(M5 R1 크리틱 §2.1 실측).
+/// 사용자 실홈(`~/.claude`·`~/.codex`)을 향해 돌리면 우리가 그 파일을 건드리는 것이고,
+/// CLI가 토큰 리프레시 회전까지 하면 **백업 refresh 토큰이 죽어 재로그인**이 된다 —
+/// 이 크레이트가 존재하는 이유 자체를 어기는 사고다.
+///
+/// 그래서 CLI 명령 조립기([`verify::status_command`] 등)는 `&Path`를 **안 받는다**.
+/// 앱 홈 밖 경로로는 이 타입을 만들 수 없고, 만들 수 없으면 명령도 못 만든다.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IsolatedConfigDir(PathBuf);
+
+impl IsolatedConfigDir {
+    /// 앱 홈(`CCG_HOME`/`~/.agentcodegui`) **안**이면 증표를 준다. 밖이면 `None`.
+    /// `..`가 한 조각이라도 있으면 거부한다(정규화 없이 탈출하는 경로 차단).
+    pub fn new(p: &Path) -> Option<IsolatedConfigDir> {
+        if p.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
+            return None;
+        }
+        under_app_home(p).then(|| IsolatedConfigDir(p.to_path_buf()))
+    }
+
+    /// 구독 계정의 격리 `CLAUDE_CONFIG_DIR`(물질화까지 한다).
+    pub fn for_claude_account(email: &str) -> Result<IsolatedConfigDir, AuthError> {
+        let d = claude::account_run_dir(email)?;
+        IsolatedConfigDir::new(&d).ok_or_else(|| AuthError::Io(format!("config dir escaped the app home: {}", d.display())))
+    }
+
+    /// 로그인 임시 폴더 — 이메일을 모르는 동안만 쓴다.
+    pub fn for_claude_login() -> IsolatedConfigDir {
+        IsolatedConfigDir(claude::login_dir())
+    }
+
+    pub fn for_codex_account(email: &str) -> Result<IsolatedConfigDir, AuthError> {
+        let d = codex::account_run_dir(email)?;
+        IsolatedConfigDir::new(&d).ok_or_else(|| AuthError::Io(format!("config dir escaped the app home: {}", d.display())))
+    }
+
+    pub fn for_codex_login() -> IsolatedConfigDir {
+        IsolatedConfigDir(codex::login_dir())
+    }
+
+    pub fn path(&self) -> &Path {
+        &self.0
+    }
+}
+
+/// 앱 홈 **안**인가(홈 자기 자신은 아니다). Windows는 대소문자·구분자를 눕혀서 본다.
+fn under_app_home(p: &Path) -> bool {
+    let home = app_home();
+    #[cfg(windows)]
+    {
+        let norm = |x: &Path| x.to_string_lossy().replace('/', "\\").trim_end_matches('\\').to_lowercase();
+        let (a, b) = (norm(p), norm(&home));
+        !b.is_empty() && a.len() > b.len() && a.starts_with(&b) && a.as_bytes()[b.len()] == b'\\'
+    }
+    #[cfg(not(windows))]
+    {
+        p != home && p.starts_with(&home)
+    }
 }
 
 /// 조립만 하고 스폰하지 않는 프로세스 — CLI 경유 경로(로그인·해지·codex app-server).

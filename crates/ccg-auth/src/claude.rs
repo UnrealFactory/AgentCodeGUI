@@ -76,14 +76,20 @@ pub fn subscription_of(a: &Value) -> Option<&str> {
 
 /// v2도 읽는다(계정 포맷 동일) — 마이그레이션 전에 불려도 계정이 사라져 보이지 않게.
 /// v1 이하는 신원이 없어 무효 → 빈 스토어.
+///
+/// 버전은 **JS 의미론으로** 읽는다(`3.0 === 3`). `as_u64()`는 `"version": 3.0`(부동소수
+/// 표기)에서 `None`을 내고 그러면 계정 0건 = 재로그인 화면이 된다 — 스토어가 통째로
+/// 사라지는 실패 모드치고 대가가 너무 싸다(M5 R1 크리틱 §4-4). 문자열 `"3"`은 양쪽 다
+/// 폐기다(JS도 `'3' !== 3`).
 pub fn read_store_file() -> StoreFile {
     let Some(m) = read_json_file(&store_path()) else {
         return StoreFile { version: STORE_VERSION, ..Default::default() };
     };
-    let version = m.get("version").and_then(Value::as_u64).unwrap_or(0);
-    if version != STORE_VERSION && version != 2 {
+    let raw = m.get("version").and_then(Value::as_f64).unwrap_or(0.0);
+    if raw != STORE_VERSION as f64 && raw != 2.0 {
         return StoreFile { version: STORE_VERSION, ..Default::default() };
     }
+    let version = raw as u64;
     StoreFile {
         version,
         default_email: m.get("defaultEmail").and_then(Value::as_str).map(str::to_string),
@@ -241,25 +247,31 @@ pub fn remove_account(email: &str) -> Vec<AccountInfo> {
 
 /// 순서 변경 — 주어진 순서에 없는 계정은 기존 순서대로 뒤에 남긴다(드래그 중 다른 창에서
 /// 로그인해 목록이 어긋나도 유실 없음).
+///
+/// **레코드를 절대 잃지 않는다.** 2.6.2는 `next.includes(a)`가 **참조 비교**라 같은 이메일
+/// 레코드가 둘이면 둘 다 남는데, 이메일로 걸러 버리면 두 번째 레코드의 `credEnc`(암호화 토큰
+/// 백업)가 드래그 한 번에 사라진다(M5 R1 크리틱 §4-2). 그래서 이메일이 아니라 **인덱스**로
+/// 잡는다 = 참조 비교와 같은 의미론.
+///
+/// 2.6.2와 의도적으로 다른 점 하나: 입력 `emails`에 같은 이메일이 두 번 오면 2.6.2는 같은
+/// 레코드를 **두 벌로 복제해** 저장한다(`new Map` + `emails.map`). 여기서는 한 번만 놓는다 —
+/// 복제는 없던 계정을 만드는 쪽이라 유실 금지 원칙과 방향이 반대다.
 pub fn reorder_accounts(emails: &[String]) -> Vec<AccountInfo> {
     let f = read_store_file();
-    let mut next: Vec<Value> = Vec::with_capacity(f.accounts.len());
+    let mut order: Vec<usize> = Vec::with_capacity(f.accounts.len());
     for e in emails {
-        if let Some(a) = f.accounts.iter().find(|a| email_of(a) == Some(e.as_str())) {
-            if !next.iter().any(|n| email_of(n) == Some(e.as_str())) {
-                next.push(a.clone());
-            }
+        // 2.6.2의 `new Map(accounts.map(a => [a.email, a]))` — 같은 이메일이 둘이면 **마지막**이 이긴다
+        let Some(i) = f.accounts.iter().rposition(|a| email_of(a) == Some(e.as_str())) else { continue };
+        if !order.contains(&i) {
+            order.push(i);
         }
     }
-    for a in &f.accounts {
-        let dup = match email_of(a) {
-            Some(e) => next.iter().any(|n| email_of(n) == Some(e)),
-            None => false,
-        };
-        if !dup {
-            next.push(a.clone());
+    for i in 0..f.accounts.len() {
+        if !order.contains(&i) {
+            order.push(i);
         }
     }
+    let next: Vec<Value> = order.into_iter().map(|i| f.accounts[i].clone()).collect();
     write_store_file(&next, f.default_email.as_deref());
     list_accounts()
 }
@@ -522,10 +534,9 @@ pub fn import_account_from_dir(
 ) -> Result<(), AuthError> {
     let creds = read_file_or_null(&dir.join(".credentials.json")).ok_or_else(|| AuthError::CorruptSnapshot(email.to_string()))?;
     if guard == ImportGuard::RejectTokenCollision {
-        if let Some(other) = token_owner(&creds) {
-            if other != email {
-                return Err(AuthError::TokenCollision(other));
-            }
+        // 자기 제외 소유자 탐색 — "첫 일치"로 잡으면 스토어 순서에 따라 통과/거부가 갈린다
+        if let Some(other) = token_collision(&creds, email) {
+            return Err(AuthError::TokenCollision(other));
         }
     }
     let cj = read_json_file(&dir.join(".claude.json")).unwrap_or_default();
@@ -556,13 +567,35 @@ pub fn import_account_from_dir(
 
 // ── 진단(스냅샷 오염) ───────────────────────────────────────────────────────
 
-/// 이 토큰 원문이 이미 저장돼 있는 계정의 이메일. 두 계정이 같은 값을 물고 있으면
-/// **이름표만 다르고 실토큰은 하나** — 1.6.1에서 "전환이 되돌아감"의 진짜 원인이었다.
-pub fn token_owner(creds: &str) -> Option<String> {
-    read_store_file().accounts.iter().find_map(|a| {
-        let raw = cred_enc_of(a).and_then(dec_creds)?;
-        (Snapshot::parse(&raw).creds()? == creds).then(|| email_of(a).unwrap_or_default().to_string())
-    })
+/// 이 토큰 원문을 물고 있는 계정 **전부**. 두 계정이 같은 값을 물고 있으면 이름표만 다르고
+/// 실토큰은 하나 — 1.6.1에서 "전환이 되돌아감"의 진짜 원인이었다.
+///
+/// **목록이어야 한다.** 예전엔 `find_map`(첫 일치)으로 소유자 하나만 돌려줬는데, 그러면
+/// 오염 쌍 중 `accounts.json`에서 **앞에 있는 쪽이 자기 자신을 찾아 통과**한다 — 순서는
+/// 사용자가 설정 → Account에서 드래그로 바꾸는 값이라 게이트가 순서에 좌우됐다
+/// (M5 R1 크리틱 §4-1). 판정은 [`token_collision`]이 한다.
+///
+/// 백업(credEnc)뿐 아니라 **계정 폴더의 `.credentials.json`도 본다** — 살아 있는 토큰의
+/// 거처가 폴더라, 폴더끼리 같은 토큰이면 백업이 아직 안 갈렸어도 이미 오염이다.
+pub fn token_owners(creds: &str) -> Vec<String> {
+    let fp = token_fingerprint(creds);
+    let same = |s: Option<&str>| s.map(token_fingerprint).as_deref() == Some(fp.as_str());
+    read_store_file()
+        .accounts
+        .iter()
+        .filter_map(|a| {
+            let email = email_of(a)?;
+            let backup = cred_enc_of(a).and_then(dec_creds).map(|raw| Snapshot::parse(&raw)).and_then(|s| s.creds().map(str::to_string));
+            let dir = read_file_or_null(&account_dir(email).join(".credentials.json"));
+            (same(backup.as_deref()) || same(dir.as_deref())).then(|| email.to_string())
+        })
+        .collect()
+}
+
+/// 이 토큰을 물고 있는 **다른** 계정(자기 자신 제외) — 오염 판정의 단일 소스.
+/// `diagnose()`의 `collides_with`와 같은 로직이라 진단과 게이트가 절대 갈리지 않는다.
+pub fn token_collision(creds: &str, email: &str) -> Option<String> {
+    token_owners(creds).into_iter().find(|o| o != email)
 }
 
 /// 계정 1건의 진단 카드 — **토큰 원문은 한 줄도 나가지 않는다**(지문만).
@@ -718,6 +751,95 @@ mod tests {
         let out = reorder_accounts(&["c@x.com".into(), "a@x.com".into()]);
         let emails: Vec<&str> = out.iter().map(|a| a.email.as_str()).collect();
         assert_eq!(emails, ["c@x.com", "a@x.com", "b@x.com"]);
+    }
+
+    /// **드래그 한 번에 credEnc가 사라지면 안 된다**(M5 R1 크리틱 §4-2).
+    /// 스토어에 같은 이메일 레코드가 둘일 때, 이메일로 걸러 넣으면 두 번째 레코드의
+    /// 암호화 토큰 백업이 통째로 날아간다. 2.6.2는 참조 비교라 둘 다 남긴다 — 같은 결과를
+    /// 인덱스로 낸다(순서까지 2.6.2와 같다).
+    #[test]
+    fn reorder_never_drops_a_duplicate_email_record() {
+        let _h = temp_home("reorder-dup");
+        seed("dup@x.com", "max", "TOK-1", 9e12);
+        seed("dup@x.com", "max", "TOK-2", 9e12);
+        seed("ok@x.com", "max", "TOK-3", 9e12);
+        assert_eq!(read_store_file().accounts.len(), 3);
+
+        reorder_accounts(&["ok@x.com".into(), "dup@x.com".into()]);
+        let after = read_store_file().accounts;
+        assert_eq!(after.len(), 3, "레코드가 사라졌다 — 토큰 백업 유실");
+        // 2.6.2: Map은 마지막 dup(TOK-2)을 골라 앞에 놓고, 남은 TOK-1은 참조 비교로 뒤에 붙는다
+        let tok = |a: &Value| {
+            let raw = dec_creds(cred_enc_of(a).unwrap()).unwrap();
+            let c = Snapshot::parse(&raw).creds().unwrap().to_string();
+            if c.contains("TOK-1") { "TOK-1" } else if c.contains("TOK-2") { "TOK-2" } else { "TOK-3" }
+        };
+        let got: Vec<(&str, &str)> = after.iter().map(|a| (email_of(a).unwrap(), tok(a))).collect();
+        assert_eq!(got, [("ok@x.com", "TOK-3"), ("dup@x.com", "TOK-2"), ("dup@x.com", "TOK-1")]);
+
+        // 입력에 같은 이메일이 두 번 와도 레코드를 **복제하지는** 않는다(2.6.2와의 의도적 차이)
+        reorder_accounts(&["dup@x.com".into(), "dup@x.com".into()]);
+        assert_eq!(read_store_file().accounts.len(), 3, "복제도 유실만큼 나쁘다");
+    }
+
+    /// `version: 3.0`(부동소수 표기) 하나로 스토어가 통째로 사라지면 안 된다 — JS는
+    /// `3.0 === 3`이다(M5 R1 크리틱 §4-4). 문자열 `"3"`은 양쪽 다 폐기(JS도 `'3' !== 3`).
+    #[test]
+    fn version_is_compared_with_js_semantics() {
+        let h = temp_home("version-tolerance");
+        let rec = r#"{"email":"a@x.com","credEnc":"XX"}"#;
+        for (v, want) in [("3", 1), ("3.0", 1), ("2", 1), ("2.0", 1), ("\"3\"", 0), ("4", 0), ("1", 0), ("3.5", 0)] {
+            h.write("accounts.json", &format!("{{\"version\": {v}, \"accounts\": [{rec}]}}"));
+            assert_eq!(read_store_file().accounts.len(), want, "version: {v}");
+        }
+        // 승격 경로도 그대로 — 3.0으로 읽어도 v3로 되쓴다
+        h.write("accounts.json", &format!("{{\"version\": 2.0, \"accounts\": [{rec}]}}"));
+        let f = read_store_file();
+        assert_eq!(f.version, 2);
+        write_store_file(&f.accounts, f.default_email.as_deref());
+        assert_eq!(read_store_file().version, 3);
+    }
+
+    /// 소유자 탐색이 **목록**이라 순서를 안 탄다(오염가드의 재료 — verify.rs가 판정한다).
+    #[test]
+    fn token_owners_lists_everyone_regardless_of_order() {
+        let _h = temp_home("token-owners");
+        seed("a@x.com", "max", "shared", 9e12);
+        seed("b@x.com", "max", "shared", 9e12);
+        seed("c@x.com", "max", "own", 9e12);
+        let shared = creds("shared", 9e12);
+        assert_eq!(token_owners(&shared), ["a@x.com", "b@x.com"]);
+        assert_eq!(token_collision(&shared, "a@x.com").as_deref(), Some("b@x.com"));
+        assert_eq!(token_collision(&shared, "b@x.com").as_deref(), Some("a@x.com"), "뒤에 있다고 통과하면 안 된다");
+        reorder_accounts(&["b@x.com".into(), "a@x.com".into()]);
+        assert_eq!(token_collision(&shared, "a@x.com").as_deref(), Some("b@x.com"));
+        assert_eq!(token_collision(&shared, "b@x.com").as_deref(), Some("a@x.com"), "재정렬해도 같은 답이어야 한다");
+        assert_eq!(token_collision(&creds("own", 9e12), "c@x.com"), None);
+        assert_eq!(token_owners(&creds("nobody", 9e12)), Vec::<String>::new());
+    }
+
+    /// 편입 가드도 같은 판정을 쓴다 — 스토어 순서가 바뀌어도 오염 토큰은 못 들어온다.
+    #[test]
+    fn guarded_import_rejects_regardless_of_order() {
+        let h = temp_home("import-order");
+        seed("a@x.com", "max", "same", 9e12);
+        seed("b@x.com", "max", "same", 9e12);
+        let g = h.path("global");
+        std::fs::create_dir_all(&g).unwrap();
+        std::fs::write(g.join(".credentials.json"), creds("same", 9e12)).unwrap();
+        for order in [["a@x.com", "b@x.com"], ["b@x.com", "a@x.com"]] {
+            reorder_accounts(&order.iter().map(|s| s.to_string()).collect::<Vec<_>>());
+            // 오염 쌍 중 한쪽 이름으로 다시 편입하려 해도 **다른 쪽**이 걸린다
+            for e in order {
+                let other = if e == "a@x.com" { "b@x.com" } else { "a@x.com" };
+                assert_eq!(
+                    import_account_from_dir(&g, e, None, ImportGuard::RejectTokenCollision).unwrap_err(),
+                    AuthError::TokenCollision(other.into()),
+                    "배치 {order:?} / {e}"
+                );
+            }
+            assert_eq!(read_store_file().accounts.len(), 2);
+        }
     }
 
     #[test]

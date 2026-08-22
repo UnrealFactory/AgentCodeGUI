@@ -58,11 +58,13 @@ pub fn plan_of(a: &Value) -> Option<&str> {
 }
 
 /// v1만 읽는다(2.6.2와 동일 — 다른 버전은 빈 스토어).
+/// 버전 비교는 `claude::read_store_file`과 같이 **JS 의미론**이다(`1.0 === 1`) — 부동소수
+/// 표기 하나로 계정이 통째로 사라지면 안 된다.
 pub fn read_store_file() -> StoreFile {
     let Some(m) = crate::read_json_file(&store_path()) else {
         return StoreFile { version: STORE_VERSION, ..Default::default() };
     };
-    if m.get("version").and_then(Value::as_u64) != Some(STORE_VERSION) {
+    if m.get("version").and_then(Value::as_f64) != Some(STORE_VERSION as f64) {
         return StoreFile { version: STORE_VERSION, ..Default::default() };
     }
     StoreFile {
@@ -255,22 +257,23 @@ pub fn set_default_account(email: &str) -> Vec<CodexAccountInfo> {
     list_accounts()
 }
 
+/// 순서 변경 — `claude::reorder_accounts`와 같은 규약이다(인덱스로 잡아 **레코드를 안 잃는다**.
+/// 이메일로 거르면 같은 이메일 레코드가 둘일 때 두 번째 `authEnc`가 드래그 한 번에 사라진다).
 pub fn reorder_accounts(emails: &[String]) -> Vec<CodexAccountInfo> {
     let f = read_store_file();
-    let mut next: Vec<Value> = Vec::with_capacity(f.accounts.len());
+    let mut order: Vec<usize> = Vec::with_capacity(f.accounts.len());
     for e in emails {
-        if let Some(a) = f.accounts.iter().find(|a| email_of(a) == Some(e.as_str())) {
-            if !next.iter().any(|n| email_of(n) == Some(e.as_str())) {
-                next.push(a.clone());
-            }
+        let Some(i) = f.accounts.iter().rposition(|a| email_of(a) == Some(e.as_str())) else { continue };
+        if !order.contains(&i) {
+            order.push(i);
         }
     }
-    for a in &f.accounts {
-        let dup = matches!(email_of(a), Some(e) if next.iter().any(|n| email_of(n) == Some(e)));
-        if !dup {
-            next.push(a.clone());
+    for i in 0..f.accounts.len() {
+        if !order.contains(&i) {
+            order.push(i);
         }
     }
+    let next: Vec<Value> = order.into_iter().map(|i| f.accounts[i].clone()).collect();
     write_store_file(&next, f.default_email.as_deref());
     list_accounts()
 }

@@ -13,19 +13,24 @@
 //! - 429·5xx·네트워크 오류도 `Unknown`(레이트리밋을 사망으로 오독하면 멀쩡한 계정이 지워진다).
 
 use crate::claude;
-use crate::{AuthError, CommandSpec, HttpRequest};
+use crate::{AuthError, CommandSpec, HttpRequest, IsolatedConfigDir};
 use serde_json::Value;
-use std::path::Path;
 
 // ── CLI 경로 조립 (Anthropic) ───────────────────────────────────────────────
 
-/// `claude auth status --json` — 그 config 폴더만 본다(전역 무관). **읽기 전용**이다
-/// (파일을 쓰지 않는 것 실측).
-pub fn status_command(bin: &str, config_dir: &Path) -> CommandSpec {
+/// `claude auth status --json` — 그 config 폴더만 본다(전역 무관).
+///
+/// **읽기 전용이 아니다.** 실행 후 그 폴더의 `.claude.json`에 `firstStartTime`·
+/// `migrationVersion`·`seenNotifications`·`opusProMigrationComplete`가 붙고 `backups/`가
+/// 생긴다(M5 R1 크리틱 §2.1 실측 — R1의 "파일을 쓰지 않는 것 실측"은 **틀린 주석**이었다).
+/// 우리 쪽 피해는 없다: `account_run_dir`가 기존 키를 **보존 병합**하고, 폴더는 앱 홈 안
+/// 물질화본이다. 그 두 번째 조건을 타입이 강제한다 — [`IsolatedConfigDir`]는 앱 홈 밖
+/// 경로로 만들 수 없어서, 사용자 실홈(`~/.claude`)을 향해 이 명령을 조립할 방법이 없다.
+pub fn status_command(bin: &str, config_dir: &IsolatedConfigDir) -> CommandSpec {
     CommandSpec {
         program: bin.into(),
         args: vec!["auth".into(), "status".into(), "--json".into()],
-        env: vec![("CLAUDE_CONFIG_DIR".into(), config_dir.to_string_lossy().to_string())],
+        env: vec![("CLAUDE_CONFIG_DIR".into(), config_dir.path().to_string_lossy().to_string())],
         timeout_ms: 20_000,
     }
 }
@@ -37,18 +42,19 @@ pub fn login_command(bin: &str, use_console: bool) -> CommandSpec {
     CommandSpec {
         program: bin.into(),
         args: vec!["auth".into(), "login".into(), if use_console { "--console".into() } else { "--claudeai".into() }],
-        env: vec![("CLAUDE_CONFIG_DIR".into(), claude::login_dir().to_string_lossy().to_string())],
+        env: vec![("CLAUDE_CONFIG_DIR".into(), IsolatedConfigDir::for_claude_login().path().to_string_lossy().to_string())],
         timeout_ms: 5 * 60 * 1000,
     }
 }
 
 /// `claude auth logout` — **서버에서 토큰을 해지한다(되돌릴 수 없다).**
 /// 해지가 실패해도 로컬은 지운다(목록에 거짓 항목을 남기지 않는다).
-pub fn logout_command(bin: &str, config_dir: &Path) -> CommandSpec {
+/// 실홈을 향해 이걸 조립할 수 없다는 게 [`IsolatedConfigDir`]의 가장 큰 값이다.
+pub fn logout_command(bin: &str, config_dir: &IsolatedConfigDir) -> CommandSpec {
     CommandSpec {
         program: bin.into(),
         args: vec!["auth".into(), "logout".into()],
-        env: vec![("CLAUDE_CONFIG_DIR".into(), config_dir.to_string_lossy().to_string())],
+        env: vec![("CLAUDE_CONFIG_DIR".into(), config_dir.path().to_string_lossy().to_string())],
         timeout_ms: 20_000,
     }
 }
@@ -59,16 +65,16 @@ pub fn codex_login_command(bin: &str) -> CommandSpec {
     CommandSpec {
         program: bin.into(),
         args: vec!["login".into()],
-        env: vec![("CODEX_HOME".into(), crate::codex::login_dir().to_string_lossy().to_string())],
+        env: vec![("CODEX_HOME".into(), IsolatedConfigDir::for_codex_login().path().to_string_lossy().to_string())],
         timeout_ms: 5 * 60 * 1000,
     }
 }
 
-pub fn codex_logout_command(bin: &str, codex_home: &Path) -> CommandSpec {
+pub fn codex_logout_command(bin: &str, codex_home: &IsolatedConfigDir) -> CommandSpec {
     CommandSpec {
         program: bin.into(),
         args: vec!["logout".into()],
-        env: vec![("CODEX_HOME".into(), codex_home.to_string_lossy().to_string())],
+        env: vec![("CODEX_HOME".into(), codex_home.path().to_string_lossy().to_string())],
         timeout_ms: 15_000,
     }
 }
@@ -174,10 +180,13 @@ pub fn preflight(email: &str) -> Preflight {
     let fp = Some(crate::token_fingerprint(&creds));
     // 오염가드가 생사검증보다 **먼저**다. 오염된 항목은 살아 있는 토큰을 물고 있어
     // 서버 확인을 통과해 버린다 — 통과시키면 그게 곧 "되돌아감"이다.
-    if let Some(other) = claude::token_owner(&creds) {
-        if other != email {
-            return mk(PreflightVerdict::Contaminated(other), fp, None);
-        }
+    //
+    // **자기 제외 소유자 탐색**이어야 한다(= `diagnose()`의 `collides_with`와 같은 로직).
+    // 예전엔 "첫 일치 소유자"를 물어 `!= email`을 봤는데, 그러면 오염 쌍 중 스토어에서
+    // 앞에 있는 쪽이 자기 자신을 찾아 **통과**했다 — 순서는 사용자가 드래그로 바꾸는 값이라
+    // 같은 오염이 재정렬 한 번에 통과/차단으로 뒤집혔다(M5 R1 크리틱 §4-1).
+    if let Some(other) = claude::token_collision(&creds, email) {
+        return mk(PreflightVerdict::Contaminated(other), fp, None);
     }
     match claude::account_access_token(email) {
         Some(tok) => mk(PreflightVerdict::Probe, fp, Some(crate::usage::usage_request(&tok))),
@@ -229,15 +238,70 @@ mod tests {
     #[test]
     fn commands_carry_the_isolating_env() {
         let h = temp_home("cmds");
-        let dir = h.path("accounts/a");
+        let dir = IsolatedConfigDir::new(&h.path("accounts/a")).expect("앱 홈 안 폴더");
         let c = status_command("claude.exe", &dir);
         assert_eq!(c.args, ["auth", "status", "--json"]);
-        assert_eq!(c.env, [("CLAUDE_CONFIG_DIR".to_string(), dir.to_string_lossy().to_string())]);
+        assert_eq!(c.env, [("CLAUDE_CONFIG_DIR".to_string(), dir.path().to_string_lossy().to_string())]);
         assert_eq!(logout_command("claude.exe", &dir).args, ["auth", "logout"]);
         assert_eq!(login_command("claude.exe", true).args, ["auth", "login", "--console"]);
         assert_eq!(login_command("claude.exe", false).args, ["auth", "login", "--claudeai"]);
         assert!(login_command("claude.exe", false).env[0].1.ends_with("login"), "로그인은 임시 폴더로 — 기존 계정을 위협하지 않는다");
         assert_eq!(codex_logout_command("codex", &dir).env[0].0, "CODEX_HOME");
+    }
+
+    /// **CLI가 실홈을 향할 수 있는 경로가 없다.** `auth status`조차 파일을 쓰기 때문에
+    /// (§2.1) 조립기들은 `&Path`가 아니라 [`IsolatedConfigDir`]만 받고, 그 타입은 앱 홈 밖
+    /// 경로로 만들어지지 않는다 — 즉 이 단정이 깨지려면 타입을 먼저 뜯어야 한다.
+    #[test]
+    fn no_cli_command_can_ever_point_at_the_users_real_home() {
+        let h = temp_home("cli-scope");
+        let user = std::env::var("USERPROFILE").or_else(|_| std::env::var("HOME")).map(std::path::PathBuf::from).unwrap();
+        // 실홈·전역 CLI 폴더·앱 홈 자기 자신·상위 탈출 — 전부 증표를 못 받는다
+        for p in [
+            user.join(".claude"),
+            user.join(".codex"),
+            user.join(".agentcodegui"),
+            user.clone(),
+            h.dir.clone(),
+            h.path("accounts/..").join("..").join(".claude"),
+            std::path::PathBuf::from("C:\\"),
+        ] {
+            assert!(IsolatedConfigDir::new(&p).is_none(), "앱 홈 밖인데 증표가 나왔다: {}", p.display());
+        }
+        // 반대로 물질화된 폴더는 받아준다
+        assert!(IsolatedConfigDir::new(&h.path("accounts/a_x.com-z9z23w")).is_some());
+        assert!(IsolatedConfigDir::new(&h.path("codex/accounts/x")).is_some());
+
+        // 조립되는 모든 명령의 env가 앱 홈 아래를 가리킨다(로그인 임시 폴더 포함)
+        let dir = IsolatedConfigDir::new(&h.path("accounts/a")).unwrap();
+        let cmds = [
+            status_command("claude.exe", &dir),
+            logout_command("claude.exe", &dir),
+            login_command("claude.exe", false),
+            codex_login_command("codex"),
+            codex_logout_command("codex", &dir),
+            crate::usage::codex_app_server_command("codex", &dir),
+        ];
+        let home = h.dir.to_string_lossy().to_lowercase();
+        for c in &cmds {
+            for (k, v) in &c.env {
+                assert!(matches!(k.as_str(), "CLAUDE_CONFIG_DIR" | "CODEX_HOME"), "예상 못한 env: {k}");
+                assert!(v.to_lowercase().starts_with(&home), "{k}={v} 가 앱 홈 밖이다");
+            }
+        }
+    }
+
+    /// 물질화 편의 생성자도 같은 증표를 통과해야 한다(계정 폴더 = 앱 홈 안).
+    #[test]
+    fn account_config_dirs_are_materialized_inside_the_app_home() {
+        let h = temp_home("cli-scope-materialize");
+        seed("a@x.com", "tok", 9e12);
+        let d = IsolatedConfigDir::for_claude_account("a@x.com").expect("물질화");
+        assert_eq!(d.path(), h.path("accounts/a_x.com-z9z23w"));
+        assert!(d.path().join(".credentials.json").is_file());
+        assert!(IsolatedConfigDir::for_claude_login().path().starts_with(&h.dir));
+        assert!(IsolatedConfigDir::for_codex_login().path().starts_with(&h.dir));
+        assert!(matches!(IsolatedConfigDir::for_claude_account("nobody@x.com"), Err(AuthError::NotRegistered(_))));
     }
 
     #[test]
@@ -288,6 +352,50 @@ mod tests {
         let p = preflight("b@x.com");
         assert_eq!(p.verdict, PreflightVerdict::Contaminated("a@x.com".into()));
         assert!(p.probe.is_none(), "오염 항목은 서버에 물어볼 것도 없다");
+    }
+
+    /// **게이트가 계정 순서에 좌우되면 안 된다**(M5 R1 크리틱 §4-1의 합성 오염 시나리오).
+    ///
+    /// R1은 `token_owner`(첫 일치)로 판정해서 오염 쌍 중 `accounts.json`에서 앞에 있는 쪽이
+    /// **자기 자신을 찾아 통과**했다. 순서는 설정 → Account에서 드래그로 바뀌는 값이라,
+    /// 같은 오염이 재정렬 한 번에 통과로 뒤집혔다 = 1.6.1의 "전환이 되돌아감" 재현.
+    /// 두 배치([a,b]와 [b,a]) 모두에서 **둘 다** Contaminated여야 한다.
+    #[test]
+    fn contamination_verdict_does_not_depend_on_store_order() {
+        let _h = temp_home("preflight-order");
+        seed("a@x.com", "shared-token", 9e12);
+        seed("b@x.com", "shared-token", 9e12);
+        for order in [["a@x.com", "b@x.com"], ["b@x.com", "a@x.com"]] {
+            claude::reorder_accounts(&order.iter().map(|s| s.to_string()).collect::<Vec<_>>());
+            let list = claude::list_accounts();
+            let got: Vec<&str> = list.iter().map(|a| a.email.as_str()).collect();
+            assert_eq!(got, order, "배치 준비 실패");
+            for e in order {
+                let p = preflight(e);
+                let other = if e == "a@x.com" { "b@x.com" } else { "a@x.com" };
+                assert_eq!(p.verdict, PreflightVerdict::Contaminated(other.into()), "배치 {order:?}에서 {e}가 통과했다");
+                assert!(p.probe.is_none());
+            }
+            // 진단과 게이트가 같은 답을 낸다(R1은 진단만 맞고 게이트가 틀렸다)
+            for d in claude::diagnose() {
+                assert!(d.collides_with.is_some(), "{} 진단이 오염을 놓쳤다", d.email);
+            }
+        }
+    }
+
+    /// 백업(credEnc)이 아직 안 갈렸어도 **계정 폴더끼리** 같은 토큰이면 이미 오염이다 —
+    /// 살아 있는 토큰의 거처가 폴더라서 다음 실행에서 CLI가 주인으로 자가 교정한다.
+    #[test]
+    fn contamination_also_sees_the_folder_side_token() {
+        let _h = temp_home("preflight-folder-collision");
+        seed("a@x.com", "tok-a", 9e12);
+        seed("b@x.com", "tok-b", 9e12);
+        assert_eq!(preflight("a@x.com").verdict, PreflightVerdict::Probe);
+        // b의 폴더에 a의 토큰이 떨어졌다(1.6.1이 실제로 만든 상태)
+        let dir = claude::account_run_dir("b@x.com").unwrap();
+        std::fs::write(dir.join(".credentials.json"), creds("tok-a", 9e12)).unwrap();
+        assert_eq!(preflight("a@x.com").verdict, PreflightVerdict::Contaminated("b@x.com".into()));
+        assert_eq!(claude::token_owners(&creds("tok-a", 9e12)), ["a@x.com", "b@x.com"]);
     }
 
     #[test]

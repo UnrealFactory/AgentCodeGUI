@@ -102,40 +102,23 @@ impl AccountUsage {
     }
 }
 
-/// 0~100 정수로 죈다. 2.6.2는 `utilization`이 문자열로도 오는 걸 실측해 `parseFloat`을 쓴다.
+/// 0~100 정수로 죈다 — 2.6.2 `pct`: `parseFloat(String(u.utilization ?? ''))`, NaN이면 없음.
+/// **JS `parseFloat`이어야** 한다(`"1e2"`→100 · `"Infinity"`→∞ · `"83%"`→83).
 fn pct(v: Option<&Value>) -> Option<i64> {
+    // `?? ''` — 키가 없거나 null이면 parseFloat('') = NaN = 없음
+    let v = v.filter(|x| !x.is_null())?;
+    let n = crate::js::parse_float(&crate::js::to_js_string(v));
+    (!n.is_nan()).then(|| crate::js::clamp_pct(n))
+}
+
+/// 값 → unix 초. 2.6.2 `toTs`: `if (!s) return null; Math.floor(Date.parse(s)/1000)`.
+/// **문자열이 아니어도** JS는 `String()`으로 강제변환해 넘긴다(`resets_at: 12345`).
+pub fn to_ts(v: Option<&Value>) -> Option<i64> {
     let v = v?;
-    let n = match v {
-        Value::Number(n) => n.as_f64()?,
-        Value::String(s) => parse_float_prefix(s)?,
-        _ => return None,
-    };
-    Some((n.round() as i64).clamp(0, 100))
-}
-
-/// JS `parseFloat` — 앞에서부터 읽히는 만큼만 숫자로 본다("83%" → 83).
-fn parse_float_prefix(s: &str) -> Option<f64> {
-    let t = s.trim_start();
-    let mut end = 0;
-    let b = t.as_bytes();
-    if end < b.len() && (b[end] == b'+' || b[end] == b'-') {
-        end += 1;
+    if !crate::js::truthy(Some(v)) {
+        return None; // JS `!s` — 0·""·false·null은 여기서 끝
     }
-    while end < b.len() && b[end].is_ascii_digit() {
-        end += 1;
-    }
-    if end < b.len() && b[end] == b'.' {
-        end += 1;
-        while end < b.len() && b[end].is_ascii_digit() {
-            end += 1;
-        }
-    }
-    t[..end].parse::<f64>().ok()
-}
-
-/// ISO 문자열 → unix 초. 2.6.2 `toTs`와 같은 규칙(파싱 실패는 null).
-pub fn to_ts(s: Option<&str>) -> Option<i64> {
-    let ms = crate::codex::parse_iso8601_ms(s?)?;
+    let ms = crate::js::date_parse(&crate::js::to_js_string(v))?;
     Some((ms / 1000.0).floor() as i64)
 }
 
@@ -144,7 +127,23 @@ pub fn to_ts(s: Option<&str>) -> Option<i64> {
 /// Fable 5 주간 한도는 `seven_day_*` 같은 legacy 필드가 아니라 **`limits[]`** 로 온다 —
 /// `kind === 'weekly_scoped'` + 모델 표시명에 `fable` 포함.
 pub fn parse_account_usage(email: &str, body: &Value) -> AccountUsage {
-    let fable = body.get("limits").and_then(Value::as_array).and_then(|ls| {
+    let fable = find_fable_limit(body);
+    AccountUsage {
+        email: email.into(),
+        five_hour_pct: pct(body.get("five_hour").and_then(|o| o.get("utilization"))),
+        weekly_pct: pct(body.get("seven_day").and_then(|o| o.get("utilization"))),
+        // 여기만 `typeof fable.percent === 'number'`다(아래 parse_usage_info는 `?? 0` + ToNumber).
+        // 2.6.2의 두 파서가 실제로 다르다 — 맞추면 골든이 갈린다.
+        fable_pct: fable.and_then(|f| f.get("percent")).and_then(Value::as_f64).map(crate::js::clamp_pct),
+        five_hour_resets_at: to_ts(body.get("five_hour").and_then(|o| o.get("resets_at"))),
+        weekly_resets_at: to_ts(body.get("seven_day").and_then(|o| o.get("resets_at"))),
+        fable_resets_at: to_ts(fable.and_then(|f| f.get("resets_at"))),
+    }
+}
+
+/// `kind === 'weekly_scoped'` + 모델 표시명에 `fable` — 두 파서가 같은 규칙을 쓴다.
+fn find_fable_limit(body: &Value) -> Option<&Value> {
+    body.get("limits").and_then(Value::as_array).and_then(|ls| {
         ls.iter().find(|l| {
             l.get("kind").and_then(Value::as_str) == Some("weekly_scoped")
                 && l.get("scope")
@@ -155,16 +154,7 @@ pub fn parse_account_usage(email: &str, body: &Value) -> AccountUsage {
                     .to_lowercase()
                     .contains("fable")
         })
-    });
-    AccountUsage {
-        email: email.into(),
-        five_hour_pct: pct(body.get("five_hour").and_then(|o| o.get("utilization"))),
-        weekly_pct: pct(body.get("seven_day").and_then(|o| o.get("utilization"))),
-        fable_pct: fable.and_then(|f| f.get("percent")).and_then(Value::as_f64).map(|n| (n.round() as i64).clamp(0, 100)),
-        five_hour_resets_at: to_ts(body.get("five_hour").and_then(|o| o.get("resets_at")).and_then(Value::as_str)),
-        weekly_resets_at: to_ts(body.get("seven_day").and_then(|o| o.get("resets_at")).and_then(Value::as_str)),
-        fable_resets_at: to_ts(fable.and_then(|f| f.get("resets_at")).and_then(Value::as_str)),
-    }
+    })
 }
 
 /// 컨텍스트 팝오버가 쓰는 더 넓은 모양 — 창 3종 + **추가 사용 크레딧**(claude.ai의 "사용
@@ -219,36 +209,33 @@ fn money(m: Option<&Value>) -> Option<f64> {
 
 pub fn parse_usage_info(body: &Value) -> UsageInfo {
     let win = |o: Option<&Value>| -> Option<UsageWindow> {
-        let o = o?;
+        // 2.6.2: `o ? {...} : null` — **JS 거짓값**이면 창 자체가 없다
+        let o = o.filter(|v| crate::js::truthy(Some(v)))?;
         Some(UsageWindow {
             // 2.6.2: parseFloat(...) || 0 — 못 읽으면 0으로 본다(null이 아니다)
             pct: pct(o.get("utilization")).unwrap_or(0),
-            resets_at: to_ts(o.get("resets_at").and_then(Value::as_str)),
+            resets_at: to_ts(o.get("resets_at")),
         })
     };
-    let fable = body.get("limits").and_then(Value::as_array).and_then(|ls| {
-        ls.iter().find(|l| {
-            l.get("kind").and_then(Value::as_str) == Some("weekly_scoped")
-                && l.get("scope")
-                    .and_then(|s| s.get("model"))
-                    .and_then(|m| m.get("display_name"))
-                    .and_then(Value::as_str)
-                    .unwrap_or("")
-                    .to_lowercase()
-                    .contains("fable")
-        })
-    });
-    let sp = body.get("spend").filter(|v| !v.is_null());
+    let fable = find_fable_limit(body);
+    let sp = body.get("spend").filter(|v| crate::js::truthy(Some(v)));
     let out_of_credits = sp.and_then(|s| s.get("disabled_reason")).and_then(Value::as_str) == Some("out_of_credits");
     UsageInfo {
         five_hour: win(body.get("five_hour")),
         weekly: win(body.get("seven_day")),
         weekly_fable: fable.map(|f| UsageWindow {
-            pct: (f.get("percent").and_then(Value::as_f64).unwrap_or(0.0).round() as i64).clamp(0, 100),
-            resets_at: to_ts(f.get("resets_at").and_then(Value::as_str)),
+            // 2.6.2: `Math.round(fable.percent ?? 0)` — **ToNumber**다(`"77"`→77 · `true`→1).
+            // (`parseFloat`이 아니다 — 그래서 `pct()`를 쓰면 안 된다.)
+            pct: match f.get("percent").filter(|v| !v.is_null()) {
+                None => 0,
+                // JS는 NaN을 그대로 흘려 JSON에서 null이 되지만 이 필드는 널이 아니다 → 0으로 굳힌다
+                Some(v) => crate::js::clamp_pct(crate::js::to_number(v)),
+            },
+            resets_at: to_ts(f.get("resets_at")),
         }),
         extra_credit: sp.map(|sp| ExtraCredit {
-            enabled: sp.get("enabled").and_then(Value::as_bool).unwrap_or(false),
+            // 2.6.2: `!!sp.enabled` — `1`·`"yes"`도 켜짐이다(`as_bool()`은 이걸 못 본다)
+            enabled: crate::js::truthy(sp.get("enabled")),
             out_of_credits,
             currency: sp
                 .get("used")
@@ -260,7 +247,8 @@ pub fn parse_usage_info(body: &Value) -> UsageInfo {
             used: money(sp.get("used")),
             cap: money(sp.get("cap")).or_else(|| money(sp.get("limit"))),
             balance: money(sp.get("balance")).or(if out_of_credits { Some(0.0) } else { None }),
-            pct: sp.get("percent").and_then(Value::as_f64).map(|n| (n.round() as i64).clamp(0, 100)),
+            // 여긴 `typeof sp.percent === 'number'` — 문자열 percent는 null이다
+            pct: sp.get("percent").and_then(Value::as_f64).map(crate::js::clamp_pct),
         }),
     }
 }
@@ -275,14 +263,31 @@ pub struct CachedUsage {
     pub data: AccountUsage,
 }
 
+/// 2.6.2의 `if (v && v.data)` — **data만 있으면 받는다.** serde 파생으로 읽으면 `at` 누락·
+/// 실수 `pct`·4키 폴백형이 통째로 버려져 게이지가 빈 채로 뜬다(M5 R1 크리틱 §4-4).
+/// 캐시는 퍼센트뿐이라 관대해서 잃을 게 없다.
 pub fn read_usage_cache() -> std::collections::BTreeMap<String, CachedUsage> {
     let mut out = std::collections::BTreeMap::new();
     let Some(Value::Object(m)) = ccg_store::read_home_json(USAGE_CACHE_FILE) else { return out };
+    let num = |v: Option<&Value>| v.and_then(Value::as_f64).filter(|n| n.is_finite()).map(|n| n as i64);
+    let p = |v: Option<&Value>| v.and_then(Value::as_f64).filter(|n| n.is_finite()).map(crate::js::clamp_pct);
     for (k, v) in m {
-        // 2.6.2: `if (v && v.data)` — 깨진 항목은 조용히 버린다
-        if let Ok(c) = serde_json::from_value::<CachedUsage>(v) {
-            out.insert(k, c);
-        }
+        let Some(d) = v.get("data").filter(|d| crate::js::truthy(Some(d))) else { continue };
+        out.insert(
+            k.clone(),
+            CachedUsage {
+                at: num(v.get("at")).unwrap_or(0),
+                data: AccountUsage {
+                    email: d.get("email").and_then(Value::as_str).unwrap_or(k.as_str()).to_string(),
+                    five_hour_pct: p(d.get("fiveHourPct")),
+                    weekly_pct: p(d.get("weeklyPct")),
+                    fable_pct: p(d.get("fablePct")),
+                    five_hour_resets_at: num(d.get("fiveHourResetsAt")),
+                    weekly_resets_at: num(d.get("weeklyResetsAt")),
+                    fable_resets_at: num(d.get("fableResetsAt")),
+                },
+            },
+        );
     }
     out
 }
@@ -299,11 +304,13 @@ pub const CODEX_RATE_LIMITS_METHOD: &str = "account/rateLimits/read";
 
 /// `codex app-server`를 그 계정의 `CODEX_HOME`으로 띄우는 명령. 2.6.2는 한 번 쏘고 죽인다
 /// (스폰이 ≈0.7s라 폴링이 프로세스를 반복 생성하지 않게 2분 캐시가 앞에 있다).
-pub fn codex_app_server_command(bin: &str, codex_home: &std::path::Path) -> CommandSpec {
+/// `CODEX_HOME`은 [`crate::IsolatedConfigDir`]만 받는다 — 사용자 실홈(`~/.codex`)으로
+/// app-server를 띄우면 그쪽 토큰이 회전한다.
+pub fn codex_app_server_command(bin: &str, codex_home: &crate::IsolatedConfigDir) -> CommandSpec {
     CommandSpec {
         program: bin.into(),
         args: vec!["app-server".into()],
-        env: vec![("CODEX_HOME".into(), codex_home.to_string_lossy().to_string())],
+        env: vec![("CODEX_HOME".into(), codex_home.path().to_string_lossy().to_string())],
         timeout_ms: 12_000,
     }
 }
@@ -463,6 +470,48 @@ mod tests {
         assert_eq!(e.balance, Some(0.0));
         assert_eq!(e.used, Some(7.5));
         assert_eq!(parse_usage_info(&json!({})).extra_credit, None);
+    }
+
+    /// **골든**: M5 R1 크리틱의 usage 차등 코퍼스 71종 × 2.6.2 파서(원문 이식) 출력.
+    /// `usage_golden_2_6_2.json`은 크리틱 도구가 뽑은 그대로다 —
+    /// `node docs/critic/tools/critic-m5-ucases.cjs | node docs/critic/tools/critic-m5-uparse262.cjs`.
+    /// 손으로 적은 기대값이 하나도 없어야 "우리 파서에 맞춰 골든을 고쳤다"가 불가능하다.
+    ///
+    /// 존 표기가 없는 시각은 로컬시라 골든이 뽑힌 오프셋(+09:00)을 고정한다 — 그래야
+    /// 다른 타임존 머신에서도 같은 판정이 나온다(`js::with_fixed_local_offset`).
+    #[test]
+    fn parsers_match_the_2_6_2_golden_on_all_71_critic_cases() {
+        let g: Value = serde_json::from_str(include_str!("usage_golden_2_6_2.json")).expect("골든 JSON");
+        let off = g["localOffsetMinutes"].as_i64().expect("골든의 로컬 오프셋");
+        let cases = g["cases"].as_array().expect("cases");
+        assert_eq!(cases.len(), 71, "크리틱 코퍼스가 줄면 안 된다");
+        let mut bad: Vec<String> = Vec::new();
+        crate::js::with_fixed_local_offset(off, || {
+            for (i, c) in cases.iter().enumerate() {
+                let body = &c["body"];
+                let got_a = canon(&serde_json::to_value(parse_account_usage("e@x.com", body)).unwrap());
+                let got_i = canon(&serde_json::to_value(parse_usage_info(body)).unwrap());
+                let (want_a, want_i) = (canon(&c["account"]), canon(&c["info"]));
+                if got_a != want_a {
+                    bad.push(format!("#{i} account\n  body {body}\n  2.6.2 {want_a}\n  3.0   {got_a}"));
+                }
+                if got_i != want_i {
+                    bad.push(format!("#{i} info\n  body {body}\n  2.6.2 {want_i}\n  3.0   {got_i}"));
+                }
+            }
+        });
+        assert!(bad.is_empty(), "2.6.2와 갈린 케이스 {}건:\n{}", bad.len(), bad.join("\n"));
+    }
+
+    /// serde_json은 `100`(정수)과 `100.0`(실수)을 **다른 값**으로 본다 — 골든은 Node가 쓴
+    /// JSON이라 표기만 다를 뿐 값은 같다. 비교 전에 숫자를 f64로 눕힌다.
+    fn canon(v: &Value) -> Value {
+        match v {
+            Value::Number(n) => serde_json::Number::from_f64(n.as_f64().unwrap_or(f64::NAN)).map_or(Value::Null, Value::Number),
+            Value::Array(a) => Value::Array(a.iter().map(canon).collect()),
+            Value::Object(o) => Value::Object(o.iter().map(|(k, v)| (k.clone(), canon(v))).collect()),
+            x => x.clone(),
+        }
     }
 
     #[test]
