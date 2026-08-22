@@ -1,0 +1,4 @@
+// synth/informational.jsonl — §5.7 system/notification · informational (F18)
+// 등급: spec_documented
+{"type":"system","subtype":"informational","text":"작업 공간에 변경사항이 있습니다","session_id":"S1","uuid":"U-inf-1"}
+{"type":"system","subtype":"notification","text":"백그라운드 셸이 종료되었습니다","session_id":"S1","uuid":"U-inf-2"}

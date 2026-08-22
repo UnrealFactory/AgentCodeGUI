@@ -1,0 +1,3 @@
+// synth/model-delta.jsonl — assistant.message.model 변화(메인 경로) = §6.2 경로 C
+// 등급: spec_documented
+{"type":"assistant","parent_tool_use_id":null,"message":{"role":"assistant","model":"opus","content":[{"type":"text","text":"계속합니다"}],"usage":{"input_tokens":10}},"session_id":"S1","uuid":"U-md-1"}

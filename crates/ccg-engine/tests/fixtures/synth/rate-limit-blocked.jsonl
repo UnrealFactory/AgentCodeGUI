@@ -1,0 +1,4 @@
+// synth/rate-limit-blocked.jsonl — ★ 등급: assumed. **아무도 이 모양을 본 적이 없다**(m-logic O14).
+// 실측된 rate_limit_event는 status:"allowed" 한 종류뿐이다(protocol §5.15 · 라이브 로그).
+// 이 파일에 기대는 시나리오는 리포트에서 별도 줄로 센다.
+{"type":"rate_limit_event","rate_limit_info":{"status":"blocked","resetsAt":600,"rateLimitType":"five_hour"},"session_id":"S1","uuid":"U-rl-1"}

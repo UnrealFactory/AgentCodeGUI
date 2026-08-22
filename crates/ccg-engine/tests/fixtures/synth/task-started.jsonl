@@ -1,0 +1,3 @@
+// synth/task-started.jsonl — 근거: §5.12 (tool_use_id → task_id 매핑, F14)
+// 등급: spec_documented
+{"type":"system","subtype":"task_started","task_id":"agent-1","tool_use_id":"toolu_01SUB","session_id":"S1","uuid":"U-ts-1"}

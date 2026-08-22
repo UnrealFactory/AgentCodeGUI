@@ -1,0 +1,3 @@
+// synth/refusal-fallback.jsonl — 근거: §5.9 system/model_refusal_fallback
+// 등급: spec_documented
+{"type":"system","subtype":"model_refusal_fallback","fallback_model":"opus","original_model":"fable","session_id":"S1","uuid":"U-rf-1"}

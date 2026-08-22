@@ -1,0 +1,96 @@
+{
+  "generatedAt": "2026-08-22T15:32:28.113Z",
+  "source": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-poc-rs",
+  "files": {
+    "smoke.jsonl": {
+      "origin": "wire",
+      "sourceSha256": "bce21fbfcf0f9ea1a0289f8429f2373f27ee9a1af478d907bf7b82a9893fd812",
+      "sourceMtime": "2026-08-22T04:27:39.729Z",
+      "frames": 5,
+      "cli": "claude.exe 2.1.239 (@anthropic-ai/claude-agent-sdk-win32-x64 0.3.239, 337,672,352 B)",
+      "account": "기본 계정(구독) — docs/critic/m3-poc.md 재현 런",
+      "capturedBy": "scripts/poc-rs (poc_engine.exe <scenario>)",
+      "note": "PoC 하네스가 stdin을 안 닫은 조건에서 채집 = close_policy KEEP_OPEN"
+    },
+    "approve.jsonl": {
+      "origin": "wire",
+      "sourceSha256": "efb72e9179a4f37659981ff570aee310d0612231d12f2feac73065c76e25c7b4",
+      "sourceMtime": "2026-08-22T04:31:53.500Z",
+      "frames": 73,
+      "cli": "claude.exe 2.1.239 (@anthropic-ai/claude-agent-sdk-win32-x64 0.3.239, 337,672,352 B)",
+      "account": "기본 계정(구독) — docs/critic/m3-poc.md 재현 런",
+      "capturedBy": "scripts/poc-rs (poc_engine.exe <scenario>)",
+      "note": "PoC 하네스가 stdin을 안 닫은 조건에서 채집 = close_policy KEEP_OPEN"
+    },
+    "approve-noid.jsonl": {
+      "origin": "wire",
+      "sourceSha256": "40628417f038abdace1aae6cd96003fe6c41fce730accfef204a11a91afb43b9",
+      "sourceMtime": "2026-08-22T04:31:31.132Z",
+      "frames": 44,
+      "cli": "claude.exe 2.1.239 (@anthropic-ai/claude-agent-sdk-win32-x64 0.3.239, 337,672,352 B)",
+      "account": "기본 계정(구독) — docs/critic/m3-poc.md 재현 런",
+      "capturedBy": "scripts/poc-rs (poc_engine.exe <scenario>)",
+      "note": "PoC 하네스가 stdin을 안 닫은 조건에서 채집 = close_policy KEEP_OPEN"
+    },
+    "ask.jsonl": {
+      "origin": "wire",
+      "sourceSha256": "0dd5b55a79937b748e07d14103f06dd6faf19036cee439f735b70bf8b2b8c8c1",
+      "sourceMtime": "2026-08-22T04:17:51.586Z",
+      "frames": 72,
+      "cli": "claude.exe 2.1.239 (@anthropic-ai/claude-agent-sdk-win32-x64 0.3.239, 337,672,352 B)",
+      "account": "기본 계정(구독) — docs/critic/m3-poc.md 재현 런",
+      "capturedBy": "scripts/poc-rs (poc_engine.exe <scenario>)",
+      "note": "PoC 하네스가 stdin을 안 닫은 조건에서 채집 = close_policy KEEP_OPEN"
+    },
+    "park.jsonl": {
+      "origin": "wire",
+      "sourceSha256": "97b132deb1ef7293d56b7518eb8dbecf0b395b7b5480c8d11a9e4a1fe09c30a9",
+      "sourceMtime": "2026-08-22T04:17:24.343Z",
+      "frames": 49,
+      "cli": "claude.exe 2.1.239 (@anthropic-ai/claude-agent-sdk-win32-x64 0.3.239, 337,672,352 B)",
+      "account": "기본 계정(구독) — docs/critic/m3-poc.md 재현 런",
+      "capturedBy": "scripts/poc-rs (poc_engine.exe <scenario>)",
+      "note": "PoC 하네스가 stdin을 안 닫은 조건에서 채집 = close_policy KEEP_OPEN"
+    },
+    "interrupt.jsonl": {
+      "origin": "wire",
+      "sourceSha256": "6febd4ed40af71dbe24055fd4330c669a775266fdf554da20844e2ac60856c5a",
+      "sourceMtime": "2026-08-22T04:32:09.005Z",
+      "frames": 33,
+      "cli": "claude.exe 2.1.239 (@anthropic-ai/claude-agent-sdk-win32-x64 0.3.239, 337,672,352 B)",
+      "account": "기본 계정(구독) — docs/critic/m3-poc.md 재현 런",
+      "capturedBy": "scripts/poc-rs (poc_engine.exe <scenario>)",
+      "note": "PoC 하네스가 stdin을 안 닫은 조건에서 채집 = close_policy KEEP_OPEN"
+    },
+    "resume-1.jsonl": {
+      "origin": "wire",
+      "sourceSha256": "6690478566ee86c4f5e4b8a3b7835f2a119559e0376db0fedac7b72aab80a409",
+      "sourceMtime": "2026-08-22T04:18:16.981Z",
+      "frames": 12,
+      "cli": "claude.exe 2.1.239 (@anthropic-ai/claude-agent-sdk-win32-x64 0.3.239, 337,672,352 B)",
+      "account": "기본 계정(구독) — docs/critic/m3-poc.md 재현 런",
+      "capturedBy": "scripts/poc-rs (poc_engine.exe <scenario>)",
+      "note": "PoC 하네스가 stdin을 안 닫은 조건에서 채집 = close_policy KEEP_OPEN"
+    },
+    "resume-2.jsonl": {
+      "origin": "wire",
+      "sourceSha256": "4b475ba121bef4e17cf09b5c7248a492db516d211306ca4413ffe2d5661a3ca0",
+      "sourceMtime": "2026-08-22T04:18:19.080Z",
+      "frames": 12,
+      "cli": "claude.exe 2.1.239 (@anthropic-ai/claude-agent-sdk-win32-x64 0.3.239, 337,672,352 B)",
+      "account": "기본 계정(구독) — docs/critic/m3-poc.md 재현 런",
+      "capturedBy": "scripts/poc-rs (poc_engine.exe <scenario>)",
+      "note": "PoC 하네스가 stdin을 안 닫은 조건에서 채집 = close_policy KEEP_OPEN"
+    },
+    "resume-3-fork.jsonl": {
+      "origin": "wire",
+      "sourceSha256": "c1b8954aab23581b405822af73d4124de81275995707bb2e379995f35b3110f5",
+      "sourceMtime": "2026-08-22T04:18:20.370Z",
+      "frames": 12,
+      "cli": "claude.exe 2.1.239 (@anthropic-ai/claude-agent-sdk-win32-x64 0.3.239, 337,672,352 B)",
+      "account": "기본 계정(구독) — docs/critic/m3-poc.md 재현 런",
+      "capturedBy": "scripts/poc-rs (poc_engine.exe <scenario>)",
+      "note": "PoC 하네스가 stdin을 안 닫은 조건에서 채집 = close_policy KEEP_OPEN"
+    }
+  }
+}

@@ -1,0 +1,3 @@
+// synth/bg-empty.jsonl — 빈 REPLACE = CLI가 직접 "아무것도 안 돈다"고 말한 것(관측된 빔 · T20)
+// 등급: spec_documented
+{"type":"system","subtype":"background_tasks_changed","tasks":[],"session_id":"S1","uuid":"U-bg-0"}

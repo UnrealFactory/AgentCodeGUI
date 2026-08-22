@@ -1,0 +1,3 @@
+// synth/hook-callback.jsonl — CLI→앱 control_request (c)~(f). F22가 자동 응답, UI 카드 0건.
+// 등급: spec_documented (protocol §4.4)
+{"type":"control_request","request_id":"hook-1","request":{"subtype":"hook_callback","callback_id":"h1","input":{}}}

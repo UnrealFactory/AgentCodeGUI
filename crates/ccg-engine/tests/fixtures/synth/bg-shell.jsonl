@@ -1,0 +1,3 @@
+// synth/bg-shell.jsonl — 근거: docs/protocol-claude-cli.md §5.11 (background_tasks_changed, REPLACE)
+// 등급: spec_documented. 라이브 관측이 생기면 wire/로 승격하고 이 파일을 지운다.
+{"type":"system","subtype":"background_tasks_changed","tasks":[{"task_id":"bash-1","task_type":"local_bash","description":"npm run dev"},{"task_id":"bash-2","task_type":"local_bash","description":"tail -f log"}],"session_id":"S1","uuid":"U-bg-1"}

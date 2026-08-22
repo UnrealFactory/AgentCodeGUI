@@ -1,0 +1,4 @@
+// synth/workflow.jsonl — 근거: docs/protocol-claude-cli.md §5.13 (claude.exe @312434010 emitter)
+// 등급: binary_observed (sdk.d.ts에는 workflow_progress가 없다 — 바이너리 emitter로만 확인)
+{"type":"system","subtype":"task_progress","task_id":"wf-1","description":"Critic","usage":{"total_tokens":1200,"tool_uses":3,"duration_ms":4000},"workflow_progress":[{"type":"workflow_phase","index":0,"title":"분석"},{"type":"workflow_agent","index":0,"label":"Critic","phaseIndex":0,"phaseTitle":"분석","model":"claude-opus-5","state":"running","promptPreview":"…"}],"session_id":"S1","uuid":"U-wf-1"}
+{"type":"system","subtype":"background_tasks_changed","tasks":[{"task_id":"wf-1","task_type":"local_workflow","description":"Critic"},{"task_id":"wf-2","task_type":"local_workflow","description":"Build"}],"session_id":"S1","uuid":"U-wf-2"}

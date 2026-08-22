@@ -1,0 +1,3 @@
+// synth/unknown-frame.jsonl — 미지 type/subtype (F21 · 불변식 10). 조용히 버리고 죽지 않는다.
+// 등급: spec_documented (규약 자체가 "모르는 건 버린다")
+{"type":"future_thing","subtype":"who_knows","payload":{"x":1},"session_id":"S1","uuid":"U-unk-1"}
