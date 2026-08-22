@@ -9,11 +9,13 @@ const onBgTaskMain = (req: BgTaskRequest): void => {
 import { extractMentions } from './lib/mentions'
 import { useTurnNotify } from './lib/notify'
 import type { NotifyTarget } from '@shared/protocol'
-import { useAgentSession, initialSessionState, sanitizeSnapshot, snapshotForPersist, sameCwd, commandOf, commandTitleOf, liveMsgIndex, type SessionState } from './store/session'
+import { useAgentSession, initialSessionState, reducer as sessionReducer, sanitizeSnapshot, snapshotForPersist, sameCwd, commandOf, commandTitleOf, liveMsgIndex, type SessionState } from './store/session'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { Sidebar, type ChatSummary, type SidebarSection } from './components/Sidebar'
 import { pushRecentDir, seedRecentDirs } from './lib/recentDirs'
-import { MultiWorkspace, useMultiSessions, type MultiExplorerInfo } from './components/MultiAgent'
+import { MultiWorkspace, PanelDial, useMultiSessions, type MultiExplorerInfo, type PanelSummary } from './components/MultiAgent'
+// ★ 3.0 M-UX — WindowApi에 없는 통합 채널 둘(§6.1·§6.2). 계약면(src/shared)은 안 건드린다.
+import { setActiveChat, onChatEvent } from './api/unified'
 import { NewChatModal } from './components/NewChatModal'
 import { getPref, setPref, delPref } from './lib/prefs'
 import { t, useLang } from './lib/i18n'
@@ -210,9 +212,14 @@ function MainApp({ user }: { user: AppUser }) {
     setMode(m)
     setPref('workspace.mode', m)
   }
-  // 멀티 세션 메타(목록·제목·상태·영속화) — App이 소유해 사이드바 '멀티 채팅' 섹션이
-  // 어느 뷰에서든 그려지고, 멀티 뷰는 이 번들을 받아 활성 세션만 렌더한다
+  // 멀티 세션 메타(목록·제목·상태·영속화) — App이 소유해 사이드바 '배치' 섹션이
+  // 어느 뷰에서든 그려지고, 멀티 뷰는 이 번들을 받아 활성 보드만 렌더한다
   const multi = useMultiSessions()
+  // ★ 3.0 M-UX — 활성 보드의 자리 요약(제목·상태·자리 번호·접힘). 통합 사이드바
+  // 「채팅」 목록이 일반 채팅과 **한 목록**으로 그린다(§8-①(a)).
+  // 보드 크롬을 떠나도(일반 채팅으로 전환) 비우지 않는다 — 다시 들어가면 새 마운트가
+  // 곧바로 덮어쓴다(multiExp와 같은 규약). 비우면 사이드바에서 대화가 사라져 보인다.
+  const [panelInfos, setPanelInfos] = useState<PanelSummary[]>([])
   // 열린 세션 창(추가 채팅) 목록 — 메인 프로세스 레지스트리 구독
   const [sessionWins, setSessionWins] = useState<SessionWindowInfo[]>([])
   useEffect(() => {
@@ -580,7 +587,8 @@ function MainApp({ user }: { user: AppUser }) {
           // 공유 최근 폴더 콜드 스타트 — 비어 있으면 기존 채팅들의 폴더로 1회 시드
           seedRecentDirs(restored.map((c) => ({ p: c.manualCwd, t: c.updatedAt ?? 0 })))
           setChats([...restored, ...migrated])
-          setActiveChatId(active.id)
+          // 부팅도 착지점이다 — 별칭 계층이 첫 전송을 이 채팅으로 라우팅해야 한다(§6.2)
+          landActiveChat(active.id)
           load(active.snapshot)
           setManualCwd(active.manualCwd ?? '')
           setRefDirs(active.refDirs ?? [])
@@ -610,6 +618,11 @@ function MainApp({ user }: { user: AppUser }) {
     // 조립하면 매 토큰이 모든 채팅의 snapshotForPersist를 물게 된다(600ms 안에 취소될
     // 작업인데도). 안으로 옮기면 토큰당 비용은 setTimeout 예약뿐이다.
     const t = setTimeout(() => {
+      // ★ 3.0 M-UX — 이 저장이 **무엇을 담았는지** 기억해 둔다. 아래 언로드 스윕이
+      // "디스크에 닿았으니 메모리에서 내려도 된다"를 근거로 도는데, 저장이 도는 사이
+      // (chat:event 수집기의 600ms 플러시 등으로) 스냅샷이 더 자라 있으면 그 최신분은
+      // 디스크에 없다 — 내리는 순간 그 꼬리가 증발한다. 참조가 바뀐 채팅은 건너뛴다.
+      const sentSnaps = new Map(chats.map((c) => [c.id, c.snapshot]))
       const list: PersistedChat[] = chats.map((c) =>
         c.id === activeChatId
           ? { ...c, snapshot: snapshotForPersist(state), unloaded: undefined, manualCwd, refDirs, picker, draft: input, draftImages: images }
@@ -625,7 +638,16 @@ function MainApp({ user }: { user: AppUser }) {
           setChats((cur) => {
             let changed = false
             const next = cur.map((c) => {
-              if (c.id === activeChatIdRef.current || c.unloaded || c.snapshot.messages.length === 0) return c
+              // ★ 자리 밖에서 도는 채팅은 내리지 않는다 — 스냅샷을 자리표시자로 바꾸면
+              // chat:event 수집기가 접을 바탕을 잃는다(그 대화의 꼬리가 통째로 증발)
+              if (
+                c.id === activeChatIdRef.current ||
+                c.unloaded ||
+                bgSnapRef.current.has(c.id) ||
+                c.snapshot.messages.length === 0 ||
+                c.snapshot !== sentSnaps.get(c.id) // 저장 이후에 더 자란 스냅샷 — 아직 디스크에 없다
+              )
+                return c
               changed = true
               return { ...c, snapshot: initialSessionState, unloaded: true }
             })
@@ -727,6 +749,72 @@ function MainApp({ user }: { user: AppUser }) {
   // ?. 가드: dev HMR로 렌더러만 갈리면 구 preload엔 notify가 없다 (onApiSettingsRequested와 동일)
   useEffect(() => window.api.notify?.onJump?.(onNotifyJump) ?? undefined, [onNotifyJump])
 
+  // ── ★ 3.0 M-UX — 활성 채팅 착지 (ux-chat-unify §6.2 U3, chats:set-active) ─────
+  //
+  // 별칭 계층(`claude:*` → `chat:*`)은 인자에 chatId가 없어서 **그 순간의 활성 채팅**으로
+  // 명령을 라우팅한다. 그 진실 소스가 `chats:set-active`다 — `chats:save`의 activeChatId는
+  // 600ms 디바운스라 "전환 직후 전송"에서 낡은 값이 가고, 그러면 실행이 남의 ChatRuntime
+  // (정체성·큐·라이브 원장·계정 CONFIG_DIR)에 붙는다.
+  // 렌더러 몫은 **전환 착지점마다 한 줄**이고, 착지점은 이 함수 하나로 모았다.
+  const landActiveChat = (id: string): void => {
+    setActiveChatId(id)
+    setActiveChat(id)
+  }
+
+  // ── ★ 3.0 M-UX — 자리 밖에서 도는 채팅의 꼬리를 받는다 (스펙 ⑥의 안전망) ────────
+  //
+  // 실행 중 채팅 전환을 허용하면(아래 selectChat) 떠난 채팅의 스트림은 메인 창에 더 이상
+  // 안 온다 — Rust가 `engine:event`를 **활성 채팅으로 게이팅**하기 때문이다
+  // (src-tauri/src/engine/hub.rs `fanout`). 게이팅이 없으면 남의 이벤트가 지금 보고 있는
+  // 스레드에 섞여 들어가므로 그 설계가 옳고, 대신 **누군가 꼬리를 받아 둬야** 돌아왔을 때
+  // 대화가 잘려 있지 않다. 통합 봉투 `chat:event { chatId, event }`가 전 창에 나가므로
+  // 그걸 받아 그 채팅의 스냅샷에 같은 리듀서로 접는다.
+  //
+  // 규약 셋:
+  //  · 대상은 "실행 중에 떠난 채팅"뿐이다(집합에 없는 chatId는 무시) — 활성 채팅은
+  //    라이브 리듀서가 소유하므로 절대 이중 적용되지 않는다.
+  //  · 스냅샷은 ref에 접고(토큰마다 setState 금지 — 스트리밍 fps), 600ms마다 스토어에 민다.
+  //  · 돌아오면(restore) ref의 최신 스냅샷으로 착지한다 — 플러시 대기분도 안 잃는다.
+  const bgSnapRef = useRef<Map<string, SessionState>>(new Map())
+  const bgTimerRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined)
+  const bgFlush = useEvent(() => {
+    const map = bgSnapRef.current
+    if (map.size === 0) {
+      clearInterval(bgTimerRef.current)
+      bgTimerRef.current = undefined
+      return
+    }
+    const batch = new Map(map)
+    setChats((list) =>
+      list.map((c) => {
+        const snap = batch.get(c.id)
+        return snap && snap !== c.snapshot ? { ...c, snapshot: snap, unloaded: undefined } : c
+      })
+    )
+    // 정착한(더 안 도는) 채팅은 **밀어 넣은 뒤** 추적을 놓는다 — 순서가 뒤집히면
+    // 마지막 턴의 꼬리가 스토어에 안 닿는다
+    for (const [id, snap] of batch) {
+      if (snap.status !== 'working' && snap.status !== 'analyzing') map.delete(id)
+    }
+  })
+  const bgTrack = (id: string, snap: SessionState): void => {
+    bgSnapRef.current.set(id, snap)
+    if (!bgTimerRef.current) bgTimerRef.current = setInterval(bgFlush, 600)
+  }
+  useEffect(() => {
+    const off = onChatEvent((id, event) => {
+      const cur = bgSnapRef.current.get(id)
+      if (!cur) return // 추적 대상이 아니다 (활성 채팅·차가운 채팅)
+      bgSnapRef.current.set(id, sessionReducer(cur, { type: 'engine', event }))
+    })
+    return () => {
+      off()
+      clearInterval(bgTimerRef.current)
+      bgTimerRef.current = undefined
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   // snapshot the live session into the currently active chat. 빈 채팅도 버리지 않고
   // 그대로 저장한다 — 새 채팅에서 골라둔 모델·모드·계정(picker)·폴더·초안이 다른 채팅에
   // 다녀와도 남아 있게. 사이드바 목록엔 원래 안 보이고(chatSummaries가 거름), 새로
@@ -751,7 +839,17 @@ function MainApp({ user }: { user: AppUser }) {
       setPicker(c.picker ?? DEFAULT_PICKER)
       setInput(c.draft ?? '')
       setImages(c.draftImages ?? [])
-      setActiveChatId(c.id)
+      landActiveChat(c.id)
+    }
+    // ★ 자리 밖에서 돌던 채팅으로 돌아온다 — ref의 최신 스냅샷이 스토어보다 새롭다
+    // (플러시는 600ms 간격이라 최대 그만큼 앞선다). 착지와 동시에 추적을 놓는다.
+    const bg = bgSnapRef.current.get(c.id)
+    if (bg) {
+      bgSnapRef.current.delete(c.id)
+      restoreSeq.current++
+      setChats((list) => list.map((x) => (x.id === c.id ? { ...x, snapshot: bg, unloaded: undefined } : x)))
+      land(bg)
+      return
     }
     if (!c.unloaded) {
       restoreSeq.current++
@@ -770,8 +868,19 @@ function MainApp({ user }: { user: AppUser }) {
       .catch(() => {})
   }
 
+  // ★ 3.0 M-UX (스펙 열린문제 ⑥ — 침묵 no-op 제거) ─────────────────────────────
+  // 2.6.2는 busy·상주 워크플로 중의 새 채팅/전환/삭제를 **아무 말 없이** 막았다
+  // (App.tsx:774,799,811). 통합 모델에서는 자리가 여럿이고 "실행은 그 자리에서 계속,
+  // 화면은 다른 채팅"이 기본값이다. 그래서 잠금을 풀되 **잃는 것이 없게** 두 가지를 건다:
+  //   ① 떠나는 채팅이 돌고 있으면 bgTrack — chat:event로 꼬리를 계속 접는다(위 수집기).
+  //   ② 사이드바에 실행 중 배지 — 지금 어느 대화가 도는지 목록에서 보인다.
+  // 삭제만은 여전히 막는다: 도는 엔진의 대화를 지우면 되돌릴 수 없다(no-op이 아니라
+  // 확인 카드가 이유를 말한다 — Sidebar의 busy 가드가 그 자리).
+  const leaveActive = (): void => {
+    if (busy || wfAlive) bgTrack(activeChatId, state)
+  }
+
   const createChat = (): void => {
-    if (busy || wfAlive) return // a run (or 상주 워크플로) streams into the active chat — don't switch mid-flight
     if (activeEmpty) {
       // already sitting on a blank chat — nothing to create, just reset drafts
       setInput('')
@@ -782,23 +891,26 @@ function MainApp({ user }: { user: AppUser }) {
     // 모델·모드·계정·폴더·초안이 그대로 살아 돌아온다 (빈 채팅 최대 1개 규칙)
     const blank = chats.find((c) => c.id !== activeChatId && !c.unloaded && !c.title && c.snapshot.messages.length === 0)
     if (blank) {
+      leaveActive()
       setChats((list) => saveActive(list))
       restore(blank)
       return
     }
     // a new chat starts from the settings you're currently using — not the app default
+    leaveActive()
     const fresh = newChatMeta(manualCwd, picker, refDirs)
     setChats((list) => [fresh, ...saveActive(list)])
     load(initialSessionState)
     setInput('')
     setImages([])
-    setActiveChatId(fresh.id)
+    landActiveChat(fresh.id)
   }
 
   const selectChat = (id: string): void => {
-    if (id === activeChatId || busy || wfAlive) return
+    if (id === activeChatId) return
     const target = chats.find((c) => c.id === id)
     if (!target) return
+    leaveActive() // 실행 중이면 그 채팅의 꼬리를 계속 받는다 (스펙 ⑥)
     setChats((list) => saveActive(list))
     restore(target)
   }
@@ -808,7 +920,9 @@ function MainApp({ user }: { user: AppUser }) {
   }
 
   const deleteChat = (id: string): void => {
+    // 삭제만은 실행 중에 막는다 — 도는 엔진의 대화는 되돌릴 수 없다(전환·새 채팅은 열렸다)
     if (id === activeChatId && (busy || wfAlive)) return
+    bgSnapRef.current.delete(id) // 배경 추적 중이었다면 같이 놓는다
     const remaining = chats.filter((c) => c.id !== id)
     if (id === activeChatId) {
       if (remaining.length === 0) {
@@ -817,7 +931,7 @@ function MainApp({ user }: { user: AppUser }) {
         setInput('')
         setImages([])
         setChats([fresh])
-        setActiveChatId(fresh.id)
+        landActiveChat(fresh.id)
         return
       }
       restore(remaining[0])
@@ -829,12 +943,13 @@ function MainApp({ user }: { user: AppUser }) {
   // 하나로 리셋한다 (deleteChat의 remaining.length === 0 분기와 동일한 착지점)
   const deleteAllChats = (): void => {
     if (busy || wfAlive) return
+    bgSnapRef.current.clear()
     const fresh = newChatMeta(manualCwd, picker, refDirs)
     load(initialSessionState)
     setInput('')
     setImages([])
     setChats([fresh])
-    setActiveChatId(fresh.id)
+    landActiveChat(fresh.id)
   }
 
   // ⌘N / Ctrl+N — 새 채팅 선택 모달(일반/멀티)을 연다 (PoC: 버튼도 같은 모달)
@@ -1358,6 +1473,14 @@ function MainApp({ user }: { user: AppUser }) {
     if (mode !== 'multi') switchMode('multi')
     multi.selectSession(id)
   })
+  // ★ 3.0 M-UX — 일반 채팅(IDE 크롬)의 다이얼. 1은 지금 화면이므로 아무 일도 안 하고,
+  // 2‥6은 활성 보드를 그 자리 수로 연다. 대화는 어느 쪽에서도 사라지지 않는다 —
+  // 일반 채팅은 「채팅」 목록에 그대로 있고, 보드 자리도 그대로다(§2.2).
+  const onDialPick = useEvent((n: number) => {
+    if (n <= 1) return
+    multi.setActiveCount(n)
+    if (mode !== 'multi') switchMode('multi')
+  })
   // 추가 채팅 — id는 영속 채팅 id. 클릭=창 포커스(닫힌 채팅이면 창을 다시 만들어 복원),
   // X=대화 삭제(열린 창이 있으면 그 창도 닫힘). 목록은 창을 닫아도/재시작해도 남는다.
   const onFocusSessionWin = useEvent((id: string) => {
@@ -1373,52 +1496,145 @@ function MainApp({ user }: { user: AppUser }) {
     sessionWins.forEach((w) => window.api.sessionWindows.close(w.id).catch(() => {}))
   })
   const extraSummaries = useMemo<ChatSummary[]>(
-    () => sessionWins.map((w) => ({ id: w.id, title: w.title || t('새 채팅', 'New chat'), status: w.status, updatedAt: w.updatedAt })),
+    () =>
+      sessionWins.map((w) => ({
+        id: w.id,
+        title: w.title || t('새 채팅', 'New chat'),
+        status: w.status,
+        updatedAt: w.updatedAt,
+        // ★ 3.0 M-UX — 추가 채팅은 더 이상 독립 섹션이 아니다. 「채팅」 목록 안에서
+        // **창 자리 칩**으로 구분된다(§3.3: 추가 채팅 창 = 자리를 창으로 뺀 것).
+        slot: { text: t('창', 'win'), kind: 'win' as const }
+      })),
     [sessionWins, lang]
   )
+  // ── ★ 3.0 M-UX — 활성 보드의 자리들을 「채팅」 목록 항목으로 ────────────────────
+  // 항목 키는 panelId(`${sessionId}::${slot}`) — 별칭 계층이 chatId로 번역하는 그 키다.
+  // 보이는 자리(1‥N) → 접힌 자리(⌄N) 순서. 빈 자리는 대화가 아니라 안 보인다(§2.4).
+  const boardSummaries = useMemo<ChatSummary[]>(
+    () =>
+      panelInfos
+        .filter((p) => !p.empty)
+        .slice()
+        .sort((a, b) => (a.pos ?? 100 + (a.fold ?? 0)) - (b.pos ?? 100 + (b.fold ?? 0)))
+        .map((p) => ({
+          id: p.panelId,
+          title: p.title || t('새 채팅', 'New chat'),
+          status: p.status,
+          ask: p.ask,
+          running: p.status === 'working' || p.status === 'analyzing',
+          slot: p.popped
+            ? { text: t('창', 'win'), kind: 'win' as const }
+            : p.pos != null
+              ? { text: String(p.pos), kind: 'live' as const, tag: p.color }
+              : { text: String(p.fold ?? ''), kind: 'folded' as const, tag: p.color }
+        })),
+    [panelInfos, lang]
+  )
+  // 「채팅」 = 보드 자리 ∪ 창 ∪ 일반 채팅. 한 목록 안에서 자리 칩만 다르다(§8-①(a)).
+  const unifiedChats = useMemo<ChatSummary[]>(
+    () => [
+      ...boardSummaries,
+      ...extraSummaries,
+      ...chatSummaries.map((c) => ({
+        ...c,
+        // 일반 채팅이 IDE 크롬(1 모드)을 차지하고 있으면 그게 1번 자리다
+        slot: mode === 'single' && c.id === activeChatId ? { text: '1', kind: 'live' as const } : undefined,
+        running: c.id === activeChatId ? busy || wfAlive : bgSnapRef.current.has(c.id)
+      }))
+    ],
+    [boardSummaries, extraSummaries, chatSummaries, mode, activeChatId, busy, wfAlive]
+  )
+  // 접힌 자리 수 — 사이드바 안내 줄("이 배치의 N개 자리가 접혔어요")
+  const foldedCount = useMemo(() => panelInfos.filter((p) => !p.empty && p.pos == null && !p.popped).length, [panelInfos])
+  // 통합 목록의 클릭 라우팅 — 항목 종류를 id로 판별한다(세 id 공간이 겹치지 않는다)
+  const onSelectUnified = useEvent((id: string) => {
+    const panel = panelInfos.find((p) => p.panelId === id)
+    if (panel) {
+      if (mode !== 'multi') switchMode('multi')
+      // 접힌 자리면 1번 자리로 올린다(setVisible 관문 — reconcileChatRefs가 따라 돈다)
+      multi.raiseSlot(panel.slot)
+      return
+    }
+    if (sessionWins.some((w) => w.id === id)) {
+      onFocusSessionWin(id)
+      return
+    }
+    onSelectGeneral(id)
+  })
+  const onRenameUnified = useEvent((id: string, name: string) => {
+    if (panelInfos.some((p) => p.panelId === id)) return // 패널 제목은 자리 안에서(F2·연필)
+    if (sessionWins.some((w) => w.id === id)) {
+      onRenameSessionWin(id, name)
+      return
+    }
+    onRenameChat(id, name)
+  })
+  // 「채팅」 전체 삭제 — 일반 채팅 전부 + 창 대화 전부. 보드 자리는 「배치」 소관이라 남는다
+  const onDeleteAllUnified = useEvent(() => {
+    onDeleteAllChats()
+    onCloseAllSessionWins()
+  })
+  const onDeleteUnified = useEvent((id: string) => {
+    if (panelInfos.some((p) => p.panelId === id)) return // 자리 비우기는 2단계(창 자리 채널 미배선)
+    if (sessionWins.some((w) => w.id === id)) {
+      onCloseSessionWin(id)
+      return
+    }
+    onDeleteChat(id)
+  })
   // 이 채팅에서 띄운 /btw 질문 창들 — 하단 btw 알약 도크가 그린다 (다른 채팅 것은 안 보임)
   const btwWins = useMemo(() => sessionWins.filter((w) => w.btwOf === activeChatId), [sessionWins, activeChatId])
   // "/" 팔레트 — /btw 포함 (배선된 표면 공통 조립: 본채팅·추가 채팅·멀티 패널·팝아웃)
   const composerCommands = useMemo(() => slashCommandsWithBtw(), [lang])
-  // 사이드바 3섹션 — active 하이라이트는 지금 보이는 뷰의 항목 하나만(PoC 규칙).
-  // currentId는 busy 잠금 예외용: 실행이 흐르는 채팅은 멀티 뷰에서도 눌러 돌아올 수 있다
+  // ── ★ 3.0 M-UX — 사이드바 **2섹션** (§8-①(a), 목업 chat-unify-collapse) ────────
+  //
+  // 2.6.2의 3섹션(일반/멀티/추가)은 "대화를 담는 그릇이 네 벌"이라는 사실이 화면에
+  // 새어 나온 것이었다. 통합 모델에서 대화는 하나의 풀이고 자리는 뷰다 →
+  //   「채팅」 = 대화 전부(보드 자리 · 창 · 일반). 어디에 있는지는 **자리 칩**이 말한다.
+  //   「배치」 = 보드 목록(2.6.2 멀티 세션의 후신 — "그때 그 조합" 복원을 잃지 않는다).
+  // 추가 채팅 섹션은 사라졌다 — 목록에서 창 칩으로만 구분된다(§3.3).
   const sections: SidebarSection[] = useMemo(
     () => [
       {
         key: 'general' as const,
-        label: t('일반 채팅', 'General chats'),
-        chats: chatSummaries,
-        activeId: mode === 'single' ? activeChatId : undefined,
+        label: t('채팅', 'Chats'),
+        chats: unifiedChats,
+        // 활성 항목 — 보드 크롬이면 포커스된 자리, 아니면 지금 보는 일반 채팅
+        // 보드 크롬이면 1번 자리(= 지금 대화), 아니면 지금 보는 일반 채팅
+        activeId: mode === 'multi' ? panelInfos.find((p) => p.pos === 1 && !p.empty)?.panelId : activeChatId,
         currentId: activeChatId,
-        busy,
-        onSelect: onSelectGeneral,
-        onRename: onRenameChat,
-        onDelete: onDeleteChat,
-        onDeleteAll: onDeleteAllChats
+        hint:
+          foldedCount > 0
+            ? t(
+                `이 배치의 ${foldedCount}개 자리가 접혔어요 — 대화는 그대로예요`,
+                `${foldedCount} slots in this board are folded — the chats are all still here`
+              )
+            : undefined,
+        // busy 잠금 없음 — 실행 중에도 전환된다(스펙 ⑥). 실행 중 표시는 항목의 배지가 한다.
+        onSelect: onSelectUnified,
+        onRename: onRenameUnified,
+        onDelete: onDeleteUnified,
+        // 전체 삭제 = 일반 채팅 + 창 대화. **보드 자리는 안 지운다**(그건 「배치」 소관)
+        // 이라 목록 길이와 실제 개수가 다르다 → 확인 카드에 실제 개수를 준다
+        onDeleteAll: onDeleteAllUnified,
+        deleteAllCount: chatSummaries.length + extraSummaries.length
       },
       {
         key: 'multi' as const,
-        label: t('멀티 채팅', 'Multi chats'),
+        label: t('배치', 'Boards'),
+        emptyText: t('배치가 없어요', 'No boards yet'),
         chats: multi.summaries,
         activeId: mode === 'multi' ? multi.activeId : undefined,
         onSelect: onSelectMulti,
         onRename: multi.renameSession,
         onDelete: multi.deleteSession,
         onDeleteAll: multi.deleteAllSessions
-      },
-      {
-        key: 'extra' as const,
-        label: t('추가 채팅', 'Chat windows'),
-        chats: extraSummaries,
-        onSelect: onFocusSessionWin,
-        onRename: onRenameSessionWin,
-        onDelete: onCloseSessionWin,
-        onDeleteAll: onCloseAllSessionWins
       }
     ],
     // useEvent 핸들러·multi CRUD는 stable — 데이터/선택 상태만 의존한다
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [chatSummaries, multi.summaries, multi.activeId, extraSummaries, mode, activeChatId, busy, lang]
+    [unifiedChats, panelInfos, chatSummaries, extraSummaries, foldedCount, multi.summaries, multi.activeId, mode, activeChatId, lang]
   )
   return (
     <div className="win">
@@ -1474,6 +1690,7 @@ function MainApp({ user }: { user: AppUser }) {
           <ErrorBoundary label={t('멀티 에이전트', 'Multi-agent')}>
             <MultiWorkspace
               multi={multi}
+              onPanelInfo={setPanelInfos}
               usage={usage}
               apiMode={apiMode}
               apiReady={!!apiCfg?.hasKey}
@@ -1500,6 +1717,9 @@ function MainApp({ user }: { user: AppUser }) {
             onRemoveRefDir={removeRefDir}
             explorerHidden={!explorerOpen}
             onToggleExplorer={toggleExplorer}
+            /* ★ 3.0 M-UX — 다이얼은 두 크롬의 **같은 자리**에 산다(§2.1). 여기(IDE)에서
+               2‥6을 고르면 활성 보드가 그 자리 수로 열린다 — 1↔2 전환에서 버튼이 안 움직인다 */
+            dial={<PanelDial count={1} onPick={onDialPick} />}
           />
           <ZoomBadge pct={chatZoom.pct} show={chatZoom.flash} />
           <div className="chat-scroll scroll" ref={chatScrollRef}>

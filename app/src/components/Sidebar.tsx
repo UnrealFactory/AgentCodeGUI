@@ -24,8 +24,17 @@ export interface ChatSummary {
   title: string
   status: AgentStatus
   updatedAt?: number // 마지막 활동 시각 — 오른쪽 상대 시간(지금/28분/1시간)으로 표시
+  /** ★ 3.0 M-UX — 자리 칩. 이 대화가 지금 어느 자리에서 보이는가(ux-chat-unify §2.2-3).
+   *  live=보이는 자리 번호 · folded=접힌 자리(⌄N, 대화는 그대로) · win=별도 창 */
+  slot?: { text: string; kind: 'live' | 'folded' | 'win'; tag?: string }
+  /** 승인/질문 대기 — 상태 점이 대기 색(2.6.2엔 없던 상태, §2.2-5) */
+  ask?: boolean
+  /** 실행 중 — 1 모드 busy 전환을 허용한 대신 목록에서 "돌고 있음"을 표시한다(스펙 ⑥) */
+  running?: boolean
 }
 
+// ★ 3.0 M-UX — 섹션이 셋(일반/멀티/추가)에서 **둘**(채팅/배치)로 접혔다.
+// 추가 채팅은 독립 섹션이 아니라 「채팅」 목록의 창 자리 칩이 됐다(§3.3·§8-①(a)).
 export type SidebarSectionKey = 'general' | 'multi' | 'extra'
 
 export interface SidebarSection {
@@ -43,12 +52,23 @@ export interface SidebarSection {
   onRename?: (id: string, name: string) => void
   onDelete?: (id: string) => void
   onDeleteAll?: () => void
+  /** ★ 3.0 M-UX — 목록 위 한 줄 안내(접힘 상태 등). 목업 chat-unify-collapse의 .foldhint */
+  hint?: string
+  /** 빈 목록 문구 — 섹션마다 세는 것이 다르다(「배치」는 채팅이 아니라 배치가 없는 것) */
+  emptyText?: string
+  /** ★ 3.0 M-UX — 「전체 삭제」가 실제로 지우는 개수. 통합 「채팅」 목록은 보드 자리도
+   *  함께 보여주지만 그 자리들은 삭제 대상이 아니라(배치 섹션 소관) 목록 길이와 다르다.
+   *  주지 않으면 목록 길이를 쓴다(2.6.2 동작). */
+  deleteAllCount?: number
 }
 
 const isMac = typeof navigator !== 'undefined' && navigator.platform.toLowerCase().includes('mac')
 
 // 상태 점 — 진행 중=노랑 · 에러=빨강 (완료·대기는 점 없음, PoC 확정)
-function dotClass(status: AgentStatus): string {
+// ★ 3.0 M-UX — 승인/질문 대기(ask)가 한 상태 더 붙었다: 접힌 자리에서 카드가 떠도
+// 화면엔 안 보이므로, 목록의 점이 그 사실을 대신 말한다(§2.2-5).
+function dotClass(status: AgentStatus, ask?: boolean): string {
+  if (ask) return 'ask'
   if (status === 'working' || status === 'analyzing') return 'run'
   if (status === 'error') return 'err'
   return ''
@@ -284,8 +304,10 @@ export const Sidebar = memo(function Sidebar({
                     className="slb has-tip"
                     data-tip={s.busy ? t('작업이 끝난 뒤 지울 수 있어요', 'You can delete after the run finishes') : t('전체 삭제', 'Delete all')}
                     aria-label={t('전체 삭제', 'Delete all')}
-                    disabled={s.busy || s.chats.length === 0}
-                    onClick={() => setConfirm({ sec: s.key, id: null, ...confirmAllText(s.label, s.chats.length) })}
+                    disabled={s.busy || (s.deleteAllCount ?? s.chats.length) === 0}
+                    onClick={() =>
+                      setConfirm({ sec: s.key, id: null, ...confirmAllText(s.label, s.deleteAllCount ?? s.chats.length) })
+                    }
                   >
                     <IconTrash size={12} />
                   </button>
@@ -321,10 +343,18 @@ export const Sidebar = memo(function Sidebar({
                 </div>
               )}
 
+              {/* ★ 접힘 안내 — "대화는 그대로"라는 사실을 목록 위에서 한 번 더 말한다.
+                  6→1로 내려도 아무것도 삭제되지 않는다는 것이 사용자 요구의 핵심이다 */}
+              {s.hint && !searching && (
+                <div className="sb-foldhint">
+                  <span>⌄</span>
+                  <span>{s.hint}</span>
+                </div>
+              )}
               <div className="sb-list">
                 {filtered.length === 0 ? (
                   <div className="sb-empty">
-                    {q ? t('검색 결과가 없어요', 'No matching chats') : t('채팅이 없어요', 'No chats yet')}
+                    {q ? t('검색 결과가 없어요', 'No matching chats') : (s.emptyText ?? t('채팅이 없어요', 'No chats yet'))}
                   </div>
                 ) : (
                   filtered.map((c) => {
@@ -355,7 +385,7 @@ export const Sidebar = memo(function Sidebar({
                           setMenu({ sec: s.key, id: c.id, x: e.clientX, y: e.clientY })
                         }}
                       >
-                        <span className={'dot ' + dotClass(c.status)} />
+                        <span className={'dot ' + dotClass(c.status, c.ask)} />
                         {isRenaming ? (
                           <RenameInput
                             initial={c.title || t('새 채팅', 'New chat')}
@@ -370,6 +400,21 @@ export const Sidebar = memo(function Sidebar({
                             <span className="tx">{c.title || t('새 채팅', 'New chat')}</span>
                           </span>
                         )}
+                        {/* ★ 자리 칩 — 「이 대화가 지금 어디에 있는가」. 접힌 자리는 흐린 ⌄N,
+                            별도 창은 창 칩. 칩이 없으면 어느 자리에도 안 얹힌 대화다(§2.2-3) */}
+                        {!isRenaming && c.slot && (
+                          <span
+                            className={
+                              'slotchip' +
+                              (c.slot.kind === 'folded' ? ' folded' : c.slot.kind === 'win' ? ' win' : '')
+                            }
+                            data-tag={c.slot.tag}
+                          >
+                            {c.slot.kind === 'folded' && <i>⌄</i>}
+                            {c.slot.text}
+                          </span>
+                        )}
+                        {!isRenaming && c.running && !c.ask && <span className="runbadge">{t('실행', 'run')}</span>}
                         {!isRenaming && <span className="when">{relTime(c.updatedAt)}</span>}
                       </div>
                     )

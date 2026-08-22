@@ -1085,7 +1085,9 @@ export const SCREENS = [
   },
 
   // ══ 3. 사이드바 · 새 채팅 · 프롬프트 ═══════════════════════════════════════════
-  { id: 'sidebar', label: '채팅 사이드바(3섹션)', area: '3. 사이드바', surface: 'main-window', needsEngine: false, needsAccount: false, reach: async (cdp, ctx) => { await ctx.closeExplorer() }, assert: '.lcol .sidebar .sb-sec' },
+  // ★ 3.0 M-UX — 2.6.2는 3섹션(일반/멀티/추가), 3.0은 2섹션(채팅/배치)이다. 도달 경로와
+  // 판정 셀렉터는 같고(섹션이 하나라도 있으면 통과) **화면만 다르다** — 의도된 변경 화면.
+  { id: 'sidebar', label: '채팅 사이드바(2.6.2=3섹션 / 3.0=채팅·배치 2섹션)', area: '3. 사이드바', surface: 'main-window', needsEngine: false, needsAccount: false, reach: async (cdp, ctx) => { await ctx.closeExplorer() }, assert: '.lcol .sidebar .sb-sec' },
   {
     id: 'sidebar-empty', label: '섹션 빈 상태', area: '3. 사이드바', surface: 'main-window', needsEngine: false, needsAccount: false,
     reach: async (cdp, ctx) => { await ctx.closeExplorer(); await ctx.waitFor('.sb-list .sb-empty', 5000) },
@@ -1748,14 +1750,17 @@ export const SCREENS = [
   },
   {
     id: 'multi-grid-counts', label: '멀티 — 패널 수 배치(n6)', area: '8. 멀티', surface: 'main-window', needsEngine: false, needsAccount: false,
+    // ★ 3.0 M-UX — 다이얼에 1이 들어와 **버튼 인덱스가 한 칸 밀렸다**(2.6.2: 0=2‥4=6 /
+    // 3.0: 0=1‥5=6). 인덱스로 집으면 두 앱이 다른 배치를 찍는다 = 비교가 아니라 우연.
+    // 라벨 텍스트로 집으면 앱을 분기하지 않고도 같은 화면에 도달한다(reach 무분기 규약).
     reach: async (cdp, ctx) => {
       await ensureMulti(ctx)
-      await ctx.click('.ma-count-btn', 4)
+      await ctx.clickText('.ma-count-btn', '6')
       await ctx.waitFor('.ma-grid.n6', 8000)
       await sleep(600)
     },
     assert: '.ma-grid.n6',
-    reset: async (cdp, ctx) => { await ctx.click('.ma-count-btn', 2).catch(() => {}); await sleep(600) }
+    reset: async (cdp, ctx) => { await ctx.clickText('.ma-count-btn', '4').catch(() => {}); await sleep(600) }
   },
   {
     id: 'multi-panel-expanded', label: '멀티 — 크게 보기 오버레이 카드', area: '8. 멀티', surface: 'main-window', needsEngine: false, needsAccount: false,

@@ -60,7 +60,11 @@ const SLOT_COUNT = 6
 const SLOTS = [0, 1, 2, 3, 4, 5]
 
 // 그리드 배치는 .ma-grid.nN 클래스가 결정 (PoC: 2·3=한 줄, 4=2×2, 5=3+2 스팬, 6=3×2)
-const COUNT_OPTIONS = [2, 3, 4, 5, 6]
+// ★ 3.0 M-UX — 다이얼에 **1**이 들어왔다(ux-chat-unify §2.1). 1 = 그리드가 아니라
+// **IDE 크롬**: 자리 하나가 화면 전체를 쓰고(.n1) 미니어처 배율(zoom .8/.9)이 풀리며,
+// 그 자리의 패널 헤더가 곧 TopBar가 된다(다이얼·접힘 배지·탐색기 토글·창 컨트롤을 얹는다).
+// 2‥6은 2.6.2 그리드 그대로.
+const COUNT_OPTIONS = [1, 2, 3, 4, 5, 6]
 
 // 한도 자동 이어서 토글의 미제공 폴백 — 모듈 상수여야 한다: 렌더마다 새 함수를 만들면
 // PanelView(memo) 전 패널이 매 렌더 리렌더된다
@@ -171,6 +175,23 @@ interface CommitPayload {
 // 왼쪽 칼럼 파일 탐색기(` 전환)가 따라갈 패널의 스냅샷 — ActiveSession이 App으로
 // 보고하고, App이 사이드바 자리(.lcol)에 이 정보로 Explorer를 그린다. 핸들러는
 // useEvent라 안정 — 파일 열기/폴더 선택이 그 패널의 뷰어·폴더 흐름으로 간다.
+// ── ★ 3.0 M-UX — 통합 사이드바가 보드 자리를 그리기 위해 받는 요약 (ux-chat-unify §8-①(a)) ──
+// 항목 키는 **panelId**(`${sessionId}::${slot}`)다 — 별칭 계층이 그대로 chatId로 번역하는
+// 그 키라(§6.2 `panelIdToChat`), 통합 스토어가 렌더러에 노출되는 2단계에서 chatId로
+// 바꿔 끼우면 사이드바 쪽 코드는 그대로 산다.
+export interface PanelSummary {
+  slot: number
+  panelId: string
+  title: string
+  status: AgentStatus
+  pos: number | null // 보이는 자리 번호(1‥N) — 접혀 있으면 null
+  fold: number | null // 접힘 집합 안의 자리 번호(count+1‥6) — 보이면 null
+  color: string
+  popped: boolean // 별도 창에서 보는 중(유령 셀)
+  ask: boolean // 승인/질문 대기
+  empty: boolean // 제목도 메시지도 없다 — 사이드바에 안 보인다(§2.4)
+}
+
 export interface MultiExplorerInfo {
   slot: number
   cwd: string // 그 패널의 작업 폴더 ('' = 아직 미선택 → 탐색기 빈 화면 + 폴더 선택 버튼)
@@ -213,9 +234,11 @@ function blankSession(id: string, count = 4): PersistedSession {
     panels: SLOTS.map(() => ({ title: '', custom: false, cwd: '', picker: { ...DEFAULT_PICKER } }))
   }
 }
+// ★ 3.0 M-UX — 하한이 2에서 **1**로 내려왔다. 1은 "패널 하나짜리 그리드"가 아니라
+// IDE 크롬이고, 나머지 자리는 삭제가 아니라 **접힘**이다(§2.2).
 function clampCount(n: unknown): number {
   const v = typeof n === 'number' ? n : 4
-  return Math.max(2, Math.min(SLOT_COUNT, Math.round(v)))
+  return Math.max(1, Math.min(SLOT_COUNT, Math.round(v)))
 }
 // 패널 표시 순서 위생 — 슬롯 번호의 온전한 순열만 인정(길이·구성원 검사), 어긋나면
 // (예전 저장본·크래시 반토막) 기본 순서. 표시만 바꾸는 값이라 폴백이 안전하다.
@@ -264,6 +287,9 @@ function subFor(channel: string) {
 interface PanelViewProps {
   slot: number
   num: number // 자리 번호(1‥N) — 그리드 위치 기준. 드래그로 옮기면 바뀐다
+  /** ★ 3.0 M-UX — n1(IDE 크롬)에서 이 패널의 헤더가 TopBar를 겸한다: 다이얼·접힘 배지·
+   *  탐색기 토글·창 컨트롤이 헤더 오른쪽에 얹힌다. 2‥6에서는 undefined(.ma-head가 그린다). */
+  topbar?: React.ReactNode
   meta: PanelMeta
   state: SessionState
   busy: boolean
@@ -317,6 +343,7 @@ interface PanelViewProps {
 export const PanelView = memo(function PanelView({
   slot,
   num,
+  topbar,
   meta,
   state,
   busy,
@@ -608,6 +635,9 @@ export const PanelView = memo(function PanelView({
         >
           {expanded ? <IconCollapse size={12} /> : <IconExpand size={12} />}
         </button>
+        {/* ★ n1(IDE 크롬) — 이 헤더가 TopBar를 겸한다. 다이얼의 x좌표가 2‥6의 .ma-head와
+            같은 자리(오른쪽 끝 창 컨트롤 앞)라 1↔2 전환에서 버튼이 안 움직인다(§2.1) */}
+        {topbar}
         {/* 컬러 태그 — 헤더 하단 전폭 2px 라인. 기본은 슬롯 색(1=보라, 2=파랑…), 번호 칩 클릭으로 순환.
             색은 패널 루트의 --ptag(완료 테두리와 공유) */}
         <span className="ma-p-tag" />
@@ -768,6 +798,122 @@ function fmtElapsed(s: number): string {
   return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`
 }
 
+// ── ★ 3.0 M-UX — 접힘 배지 + 팝오버 (ux-chat-unify §2.2-3, 목업 chat-unify-collapse) ──
+//
+// 다이얼을 내리면 나머지 자리는 **삭제가 아니라 접힘**이다. 대화가 어디로 갔는지
+// 화면이 답해야 하고(사용자 요구 "6→1로 내려도 나머지 대화가 삭제되면 안 된다"),
+// 답하는 자리가 셋이다 — 사이드바 「채팅」 목록 · 이 배지 · 헤더 실행 요약 칩.
+export interface FoldRow {
+  slot: number
+  num: number // 접힘 집합 안에서의 자리 번호 (count+1 부터)
+  title: string
+  status: AgentStatus
+  ask: boolean // 승인/질문이 대기 중 — 배지의 ‼N (§2.2-5)
+  color: string
+}
+function FoldBadge({ rows, onRaise }: { rows: FoldRow[]; onRaise: (slot: number) => void }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLSpanElement>(null)
+  useEffect(() => {
+    if (!open) return
+    const onDown = (e: MouseEvent): void => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false)
+    }
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') setOpen(false)
+    }
+    window.addEventListener('mousedown', onDown)
+    window.addEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('mousedown', onDown)
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [open])
+  if (rows.length === 0) return null
+  const asks = rows.filter((r) => r.ask).length
+  // 대기 중인 자리를 맨 위로 — 배지를 눌러 여는 이유가 대개 그것이다(§2.2-5)
+  const sorted = [...rows].sort((a, b) => Number(b.ask) - Number(a.ask))
+  return (
+    <span className="ma-fold" ref={ref}>
+      <button
+        className={'ma-fold-badge has-tip' + (open ? ' open' : '') + (asks ? ' alert' : '')}
+        data-tip={t(`접힌 자리 ${rows.length}개 — 대화는 그대로예요`, `${rows.length} folded slots — the chats are all still here`)}
+        aria-label={t('접힌 자리', 'Folded slots')}
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+      >
+        <IconChevDown size={12} />
+        <span className="cnt">{rows.length}</span>
+        {asks > 0 && <span className="bang">‼{asks}</span>}
+      </button>
+      {open && (
+        <div className="ma-fold-pop">
+          <div className="ph">
+            <span>{t(`접힌 자리 ${rows.length}개`, `${rows.length} folded slots`)}</span>
+            <span className="sp" />
+            <span>{t('이 배치에만 접혀 있어요', 'Folded in this board only')}</span>
+          </div>
+          {sorted.map((r) => (
+            <button
+              key={r.slot}
+              className={'ma-fold-row' + (r.ask ? ' waiting' : '')}
+              onClick={() => {
+                setOpen(false)
+                onRaise(r.slot)
+              }}
+            >
+              <span className="num" data-tag={r.color || defaultTag(r.slot)}>{r.num}</span>
+              <span className="t">{r.title || t('새 채팅', 'New chat')}</span>
+              <span className={'st ' + (r.ask ? 'ask' : statusKind(r.status))}>
+                {r.ask ? t('대기', 'Waiting') : statusLabel(r.status)}
+              </span>
+              <span className="act">↥</span>
+            </button>
+          ))}
+          <div className="pf">
+            <span>{t('↥ = 1번 자리로 올리기', '↥ = raise to slot 1')}</span>
+            <span className="sp" />
+            <span>{t('다이얼을 되올리면 전부 제자리', 'Turn the dial back up and they all return')}</span>
+          </div>
+        </div>
+      )}
+    </span>
+  )
+}
+function statusKind(s: AgentStatus): string {
+  if (s === 'working' || s === 'analyzing') return 'run'
+  if (s === 'done') return 'done'
+  if (s === 'error') return 'err'
+  return ''
+}
+function statusLabel(s: AgentStatus): string {
+  if (s === 'working' || s === 'analyzing') return t('작업 중', 'Working')
+  if (s === 'done') return t('완료', 'Done')
+  if (s === 'error') return t('오류', 'Error')
+  return t('대기', 'Idle')
+}
+
+// 다이얼 — .ma-count 마크업은 2.6.2 그대로다(1이 하나 늘었을 뿐). 두 크롬(n1 패널 헤더 /
+// 2‥6 .ma-head)이 **같은 조각**을 쓰기 때문에 1↔2 전환에서 버튼이 화면에서 안 움직인다(§2.1).
+export function PanelDial({ count, onPick }: { count: number; onPick: (n: number) => void }) {
+  return (
+    <div className="ma-count" role="tablist" aria-label={t('패널 수', 'Panel count')}>
+      {COUNT_OPTIONS.map((n) => (
+        <button
+          key={n}
+          role="tab"
+          aria-selected={count === n}
+          className={'ma-count-btn' + (count === n ? ' on' : '')}
+          data-count={n}
+          onClick={() => onPick(n)}
+        >
+          {n}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 // ── one active multi-agent session: its panel grid + header (keyed by sessionId in the
 //    workspace, so switching sessions cleanly remounts a fresh set of 6 panel hooks) ──
 function ActiveSession({
@@ -784,6 +930,9 @@ function ActiveSession({
   onStatus,
   onCommit,
   onExplorerInfo,
+  onPanelInfo,
+  countSeed,
+  raiseSeed,
   explorerHidden,
   onToggleExplorer
 }: {
@@ -800,6 +949,9 @@ function ActiveSession({
   onStatus: (sessionId: string, status: AgentStatus) => void
   onCommit: (sessionId: string, payload: CommitPayload) => void
   onExplorerInfo?: (info: MultiExplorerInfo) => void // 왼쪽 칼럼 탐색기가 따라갈 패널 보고
+  onPanelInfo?: (list: PanelSummary[]) => void // ★ 통합 사이드바 「채팅」에 실을 자리 요약
+  countSeed?: { n: number; seq: number } // ★ 다른 크롬(일반 채팅)의 다이얼이 고른 자리 수
+  raiseSeed?: { slot: number; seq: number } // ★ 사이드바에서 고른 접힌 자리 → 1번 자리로
   explorerHidden?: boolean // 탐색기가 내려가 있는가 — 헤더 토글 버튼의 상태 표시
   onToggleExplorer?: () => void // 헤더 토글 버튼 — 사이드바 ⟷ 탐색기 (본채팅 헤더와 동일)
 }) {
@@ -830,6 +982,20 @@ function ActiveSession({
   const [fsTick, setFsTick] = useState(0)
 
   const [count, setCount] = useState(() => clampCount(initial.count))
+  const [focusedSlot, setFocusedSlot] = useState<number | null>(null)
+  // 패널 표시 순서(슬롯 순열) — 헤더 길게 누르기 드래그로 바꾼다. 그리드가 이 순서로
+  // 그리고, 슬롯 정체성(엔진·대화·컬러 태그)은 패널을 따라간다. 세션에 영속.
+  // 번호 칩은 자리 기준(1‥N) — 옮기면 그 자리의 번호를 새로 받는다.
+  const [panelOrder, setPanelOrder] = useState<number[]>(() => sanitizePanelOrder(initial.panelOrder))
+  // 지금 보이는 슬롯들, 자리 순서대로 — 번호(인덱스+1)·그리드 렌더의 단일 소스.
+  //
+  // ★ 3.0 M-UX (ux-chat-unify §2.2) — 판정 기준이 **슬롯 번호**에서 **order 내 위치**로
+  // 바뀌었다. 2.6.2는 `panelOrder.filter(s => s < count)`라, 6→2로 줄이면 슬롯 4·5번
+  // 패널이 "보이던 자리"를 통째로 잃었다(자리 번호와 슬롯 번호가 묶여 있었다).
+  // 지금은 `order.slice(0, count)` — 접힌 자리는 `order.slice(count)`이고, 대화는
+  // 어디로도 가지 않는다. 되올리면 같은 자리로 돌아온다(slots를 안 건드리므로).
+  const visibleSlots = panelOrder.slice(0, count)
+  const foldedSlots = panelOrder.slice(count)
   const [metas, setMetas] = useState<PanelMeta[]>(() =>
     SLOTS.map((i) => {
       const p = initial.panels?.[i]
@@ -856,7 +1022,10 @@ function ActiveSession({
   // 그리니 제외. 구성이 바뀔 때만 미리 받아 둬(메인의 계정별 5분 캐시라 가볍다) 컨텍스트
   // 팝오버 첫 열림이 '데이터 없음'으로 시작하지 않게 한다.
   const acctSig = JSON.stringify(
-    Array.from(new Set(metas.slice(0, count).filter((m) => m.picker.engine !== 'codex').map((m) => m.picker.account ?? ''))).sort()
+    Array.from(
+      // ★ 보이는 자리 기준 — 슬롯 번호(slice(0,count))가 아니라 order 위치다(§2.2)
+      new Set(visibleSlots.map((i) => metas[i]).filter((m) => m.picker.engine !== 'codex').map((m) => m.picker.account ?? ''))
+    ).sort()
   )
   useEffect(() => {
     ;(JSON.parse(acctSig) as string[]).forEach((a) => fetchAcctUsage(a, false))
@@ -877,13 +1046,6 @@ function ActiveSession({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [busyCount])
 
-  const [focusedSlot, setFocusedSlot] = useState<number | null>(null)
-  // 패널 표시 순서(슬롯 순열) — 헤더 길게 누르기 드래그로 바꾼다. 그리드가 이 순서로
-  // 그리고, 슬롯 정체성(엔진·대화·컬러 태그)은 패널을 따라간다. 세션에 영속.
-  // 번호 칩은 자리 기준(1‥N) — 옮기면 그 자리의 번호를 새로 받는다.
-  const [panelOrder, setPanelOrder] = useState<number[]>(() => sanitizePanelOrder(initial.panelOrder))
-  // 지금 보이는 슬롯들, 자리 순서대로 — 번호(인덱스+1)·그리드 렌더의 단일 소스
-  const visibleSlots = panelOrder.filter((s) => s < count)
   // 제목 인라인 편집 중인 슬롯 — F2(포커스 패널)·더블클릭·연필로 진입, 커밋/취소로 해제
   const [renamingSlot, setRenamingSlot] = useState<number | null>(null)
   // 포커스 밖 알림 — 6패널 각각의 전이(턴 종료/승인/질문)를 감시한다. sub=슬롯이라
@@ -899,7 +1061,9 @@ function ActiveSession({
   // Ctrl+휠 읽기 크기 — 멀티 전용 배율(multi.zoom, 기본 120%): 패널은 미니어처(zoom .8)라
   // 시작점을 키워 두고, 본채팅(chat.zoom)·추가 채팅(session.zoom)과는 독립이다.
   // 그리드에서 굴리면 전 패널에 함께 적용된다.
-  const multiZoom = useZoom('multi.zoom', true, 1.2)
+  // ★ n1(IDE 크롬)은 미니어처가 아니라 본채팅과 같은 크기 — 배율 키도 본채팅 것을 쓴다
+  // (§4.2 zoom.ide←chat.zoom / zoom.grid←multi.zoom). useZoom은 키가 바뀌면 다시 읽는다.
+  const multiZoom = useZoom(count === 1 ? 'chat.zoom' : 'multi.zoom', true, count === 1 ? 1 : 1.2)
   // 크게 보기 — 이 슬롯의 패널을 본채팅 크기의 오버레이 카드로 띄운다. 패널 상태는 전부
   // 이 컴포넌트 소유라 같은 PanelView를 자리만 옮겨 그리면 스레드·초안·실행이 그대로다
   // (그리드 자리엔 고스트). 영속 안 함 — 세션 전환·재시작이면 접힌 채 시작.
@@ -912,11 +1076,80 @@ function ActiveSession({
   // 폴더 팝오버에서 연 파일 — 그 패널의 cwd·diffs로 코드 뷰어를 띄운다 (패널 안이 아니라
   // 여기서 한 번만 렌더해야 .fv-overlay(absolute)가 패널의 스태킹 컨텍스트에 갇혀
   // 그 패널 영역 안에서만 뜨는 사고가 없다)
-  const [openFile, setOpenFile] = useState<{ slot: number; path: string } | null>(null)
+  // rebound — 대상 패널이 접혀 다른 자리로 옮겨 붙었다는 표식(뷰어 헤더 한 줄 안내, §2.2-1b)
+  const [openFile, setOpenFile] = useState<{ slot: number; path: string; rebound?: boolean } | null>(null)
   // WorkBar 서브에이전트 행에서 연 상세 카드 — 열려 있는 동안 그 패널의 라이브 상태를 따른다
   const [openSub, setOpenSub] = useState<{ slot: number; id: string } | null>(null)
   // 스레드/컴포저 이미지 → 라이트박스 (본채팅과 동일한 뷰어를 세션 레벨에서 한 번만)
   const [viewer, setViewer] = useState<{ images: string[]; index: number } | null>(null)
+
+  // ── ★ 3.0 M-UX §2.2-1b — 고아 UI 정리 관문 ───────────────────────────────
+  //
+  // 보이는 자리 집합이 바뀌는 **모든** 전이는 setVisible을 지나고, setVisible은 반드시
+  // reconcileChatRefs를 부른다. 2.6.2는 이 정리가 다이얼 버튼 onClick 안에 인라인이라
+  // (MultiAgent.tsx:1823-1827) 다른 경로로 자리가 바뀌면 안 돌았다 — 접힌(=화면에 없는)
+  // 패널을 가리킨 채 뷰어·서브에이전트 카드가 남는 유령 UI가 그래서 생긴다.
+  //
+  // 닫기 vs 재바인드의 갈림은 "내용이 그 채팅의 것인가"다:
+  //   · 뷰어(openFile)  → **재바인드**. 파일 읽기는 채팅과 무관하고 뷰어는 앱 크롬이다.
+  //   · 서브에이전트·크게보기·라이트박스 → **닫는다**(그 채팅 원장/스레드의 내용).
+  //   · 포커스 → order[0]로 재바인드(키보드 스코프는 항상 정의돼 있어야 한다).
+  //   · 이름 편집 → 커밋 후 닫기(입력 중이던 글자를 버리지 않는다 — 인풋 onBlur가 커밋).
+  const reconcileChatRefs = useEvent((vis: number[]) => {
+    const seen = new Set(vis)
+    const fallback = vis[0] ?? 0
+    setFocusedSlot((s) => (s != null && !seen.has(s) ? fallback : s))
+    setRenamingSlot((s) => (s != null && !seen.has(s) ? null : s)) // 커밋은 인풋 blur가 한다
+    setExpandedSlot((s) => (s != null && !seen.has(s) ? null : s))
+    setOpenSub((v) => (v && !seen.has(v.slot) ? null : v))
+    // 이미지 라이트박스는 슬롯을 물고 있지 않다(열 때 이미지 배열을 사본으로 받는다) —
+    // 고아가 될 대상이 없어 여기서 손댈 것이 없다. 스펙 표의 lightboxSource는
+    // chatId를 들고 다니는 통합 모델(2단계)에서 생긴다.
+    setOpenFile((f) => (f && !seen.has(f.slot) ? { ...f, slot: fallback, rebound: true } : f))
+  })
+  // 보이는 자리 집합을 바꾸는 유일한 문 — 소비자: ① 다이얼 ② 접힘 팝오버 「↥ 1번 자리로」
+  // ③ 사이드바에서 접힌 대화 선택. 여섯 번째가 생겨도 규칙은 안 샌다(열거가 아니라 관문).
+  const setVisible = useEvent((nextOrder: number[], nextCount: number) => {
+    const n = clampCount(nextCount)
+    setPanelOrder(nextOrder)
+    setCount(n)
+    reconcileChatRefs(nextOrder.slice(0, n))
+  })
+  // 다이얼 — 줄일 때 **포커스된 자리를 order 맨 앞으로** 올린다(§2.2-1 "현재 대화 = 1번 자리").
+  // 나머지 상대 순서는 보존된다.
+  const applyCount = useEvent((n: number) => {
+    const next = clampCount(n)
+    const cur = panelOrder
+    const keep = focusedSlot != null && cur.includes(focusedSlot) ? focusedSlot : cur[0]
+    const promoted = next < count && cur.indexOf(keep) >= next ? [keep, ...cur.filter((s) => s !== keep)] : cur
+    setVisible(promoted, next)
+  })
+  // 접힌 자리를 1번 자리로 올린다(팝오버 ↥ · 사이드바 클릭). count는 그대로 —
+  // 자리 수를 바꾸지 않고 **누가 보이는가**만 바꾼다. 밀려난 자리는 접힘 집합 맨 앞으로.
+  const raiseSlot = useEvent((slot: number) => {
+    const cur = panelOrder
+    if (cur.indexOf(slot) < count) {
+      setFocusedSlot(slot) // 이미 보이는 자리 — 포커스만
+      return
+    }
+    setVisible([slot, ...cur.filter((s) => s !== slot)], count)
+    setFocusedSlot(slot)
+  })
+  // 접힘 배지가 세는 것 — **내용이 있는** 접힌 자리만(빈 자리는 대화가 아니다, §2.4).
+  // 자리 번호는 접힘 집합 안의 순서(count+1‥6) — 되올리면 그 번호로 돌아간다.
+  const foldRows: FoldRow[] = foldedSlots
+    .map((slot, i) => ({
+      slot,
+      num: count + i + 1,
+      title: metas[slot].title,
+      status: effectiveStatus(sessions[slot].state),
+      ask: !!(sessions[slot].state.pendingPermission || sessions[slot].state.pendingQuestion),
+      color: metas[slot].color
+    }))
+    .filter((r) => !!r.title || sessions[r.slot].state.messages.length > 0)
+  // 자리 밖 실행 — 접혀 있어도 엔진은 돈다(불변식 4). 헤더 요약 칩이 그 사실을 말한다.
+  const foldedRunning = foldRows.filter((r) => r.status === 'working' || r.status === 'analyzing').length
+
 
   // restore each panel's saved thread into its live session, once on mount
   useEffect(() => {
@@ -966,7 +1199,7 @@ function ActiveSession({
 
   // 예산(전역 누적) — API 과금 패널의 WorkBar 컨텍스트 팝오버(비용 행)용. API 패널이
   // 있을 때만 읽고, 실행이 끝날 때마다 다시 읽어 실행 직후 바로 맞아떨어지게 한다
-  const billApi = SLOTS.slice(0, count).filter((i) => metas[i].api).length
+  const billApi = visibleSlots.filter((i) => metas[i].api).length
   const [budget, setBudget] = useState<{ budgetUsd: number | null; spentUsd: number } | null>(null)
   useEffect(() => {
     if (!billApi) return
@@ -1168,7 +1401,8 @@ function ActiveSession({
     })
   })
   const onGridPointerDown = useEvent((e: React.PointerEvent) => {
-    if (e.button !== 0 || expandedSlot != null || dragRef.current) return
+    // n1(IDE 크롬)은 보이는 자리가 하나라 재배치할 것이 없다 — 헤더는 창 드래그 띠다
+    if (e.button !== 0 || count === 1 || expandedSlot != null || dragRef.current) return
     const t = e.target as HTMLElement
     // 핸들 = 헤더의 빈 곳·제목·상태 칩 — 상호작용 요소(번호 칩·연필·자물쇠·폴더 칩·
     // 제목 입력·확대 버튼)는 제 역할대로 두고 드래그를 안 건다
@@ -1466,10 +1700,13 @@ function ActiveSession({
   useEffect(() => {
     if (focusedSlot != null) setExpSlot(focusedSlot)
   }, [focusedSlot])
-  const eSlot = Math.min(expSlot, count - 1)
+  // ★ 3.0 M-UX — 판정이 슬롯 번호(`min(slot, count-1)`)가 아니라 **보이는 자리 집합**이다.
+  // 접힌 자리를 따라가면 왼쪽 칼럼이 화면에 없는 패널의 폴더를 그린다(고아 UI).
+  const visSlot = (s: number): number => (visibleSlots.includes(s) ? s : (visibleSlots[0] ?? 0))
+  const eSlot = visSlot(expSlot)
   // 파일 열기는 그 패널의 cwd·diffs 뷰어(openFile), 폴더 선택은 그 패널의 선택 흐름으로
-  const expOpenFile = useEvent((path: string) => setOpenFile({ slot: Math.min(expSlot, count - 1), path }))
-  const expPickFolder = useEvent(() => onPickFolder(Math.min(expSlot, count - 1)))
+  const expOpenFile = useEvent((path: string) => setOpenFile({ slot: visSlot(expSlot), path }))
+  const expPickFolder = useEvent(() => onPickFolder(visSlot(expSlot)))
   const expCwd = panelCwd(eSlot)
   const expFiles = sessions[eSlot].state.files
   useEffect(() => {
@@ -1748,6 +1985,9 @@ function ActiveSession({
         key={slot}
         slot={slot}
         num={visibleSlots.indexOf(slot) + 1}
+        // ★ n1(IDE 크롬)에서는 이 패널의 헤더가 곧 TopBar다 — 다이얼·접힘 배지·탐색기
+        // 토글·창 컨트롤이 여기 얹힌다(줄을 하나 더 쌓지 않는다, §2.1)
+        topbar={soloReal && slot === soloSlot && !expanded ? topBar : undefined}
         meta={metas[slot]}
         state={sess.state}
         busy={sess.busy}
@@ -1800,58 +2040,115 @@ function ActiveSession({
     )
   }
 
+  // ── ★ 3.0 M-UX — 사이드바 「채팅」에 이 보드의 자리들을 싣기 위한 보고 ──────────
+  //
+  // 통합 사이드바는 일반 채팅·보드 자리·창을 **한 목록**으로 그린다(§8-①(a)). 보드
+  // 자리의 제목·상태·자리 번호는 여기(ActiveSession)에만 있으므로 App으로 올려 보낸다.
+  // 시그니처가 바뀔 때만 보고한다 — 스트리밍 토큰마다 App을 다시 그리면 안 된다
+  // (메시지 수는 시그니처에 없다: 상태·제목·자리만 사이드바에 보인다).
+  const panelInfos: PanelSummary[] = SLOTS.map((slot) => {
+    const pos = visibleSlots.indexOf(slot)
+    const fold = foldedSlots.indexOf(slot)
+    return {
+      slot,
+      panelId: chan(sessionId, slot),
+      title: metas[slot].title,
+      status: effectiveStatus(sessions[slot].state),
+      pos: pos >= 0 ? pos + 1 : null,
+      fold: fold >= 0 ? count + fold + 1 : null,
+      color: metas[slot].color || defaultTag(slot),
+      popped: !!popped[slot],
+      ask: !!(sessions[slot].state.pendingPermission || sessions[slot].state.pendingQuestion),
+      empty: !metas[slot].title && sessions[slot].state.messages.length === 0
+    }
+  })
+  const panelInfoSig = JSON.stringify(panelInfos)
+  useEffect(() => {
+    onPanelInfo?.(JSON.parse(panelInfoSig) as PanelSummary[])
+    // 시그니처 문자열이 유일한 트리거 — 콜백은 App의 setState(stable)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [panelInfoSig])
+
+  // 다이얼을 **다른 화면에서** 돌린 경우(일반 채팅 크롬의 다이얼로 2‥6을 고름) — App이
+  // seq를 올려 보내면 여기서 같은 applyCount를 탄다. 값이 아니라 seq로 판정해야
+  // "같은 수를 다시 고름"도 전달된다.
+  const seedSeqRef = useRef(countSeed?.seq ?? 0)
+  useEffect(() => {
+    if (!countSeed || countSeed.seq === seedSeqRef.current) return
+    seedSeqRef.current = countSeed.seq
+    applyCount(countSeed.n)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [countSeed])
+  // 사이드바에서 접힌 대화를 눌렀다 — 같은 raiseSlot 관문을 탄다(자리 수는 안 바뀐다)
+  const raiseSeqRef = useRef(raiseSeed?.seq ?? 0)
+  useEffect(() => {
+    if (!raiseSeed || raiseSeed.seq === raiseSeqRef.current) return
+    raiseSeqRef.current = raiseSeed.seq
+    raiseSlot(raiseSeed.slot)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [raiseSeed])
+
+  // n1에서 TopBar를 이어받을 **진짜 패널**이 있는가. 그 한 자리가 팝아웃(유령 셀)이거나
+  // 「크게 보기」로 오버레이에 가 있으면 헤더를 얹을 몸통이 없다 → .ma-head 줄을 되살린다.
+  // (안 그러면 창 컨트롤·다이얼이 통째로 사라져 창을 닫을 수도 없다.)
+  const soloSlot = count === 1 ? visibleSlots[0] : undefined
+  const soloReal = soloSlot != null && !popped[soloSlot] && soloSlot !== expandedSlot
+
+  // ── ★ 3.0 M-UX — TopBar 조각. n1(IDE 크롬)에서는 그 자리 패널의 헤더 오른쪽에,
+  //    2‥6에서는 .ma-head에 얹힌다. **같은 조각**이라 1↔2 전환에서 다이얼이 안 움직인다(§2.1).
+  const topBar = (
+    <>
+      {/* 접힌 자리에서 도는 실행 — 안 보이는 곳에서 N개가 돌고 있다는 사실을 숨기지 않는다 */}
+      {foldedRunning > 0 && (
+        <span
+          className="ma-runsum has-tip"
+          data-tip={t('접힌 자리에서 도는 실행 — 접혀도 엔진은 계속 돌아요', 'Runs in folded slots — folding never stops an engine')}
+        >
+          <i className="ma-runsum-spin" />
+          {t(`접힌 자리 실행 ${foldedRunning}`, `${foldedRunning} running while folded`)}
+        </span>
+      )}
+      <PanelDial count={count} onPick={applyCount} />
+      <FoldBadge rows={foldRows} onRaise={raiseSlot} />
+      {/* 탐색기 토글 — 본채팅 헤더와 같은 버튼·툴팁: 단축키(`)를 모르는 사람도
+          멀티 뷰에서 탐색기를 열 수 있게 (탐색기는 포커스한 패널의 폴더를 따라간다) */}
+      {onToggleExplorer && (
+        <button
+          className={'h-ic has-tip' + (explorerHidden ? '' : ' on')}
+          data-tip={
+            explorerHidden
+              ? t('파일 탐색기 — 왼쪽 목록과 전환 (`)', 'File explorer — swaps with the left list (`)')
+              : t('채팅 목록으로 (`)', 'Back to chat list (`)')
+          }
+          aria-label={t('파일 탐색기', 'File explorer')}
+          onClick={onToggleExplorer}
+        >
+          <IconPanelRight size={15} />
+        </button>
+      )}
+      <span className="vsep" />
+      <WinControls />
+    </>
+  )
+
   return (
     <>
       {/* .expanded 플래그 — 크게 보기 중 뒤 그리드 패널의 질문 카드(z80)를 베일 밑으로 내리는 CSS 훅 */}
-      <section className={'multi' + (expandedSlot != null ? ' expanded' : '')}>
+      <section className={'multi' + (expandedSlot != null ? ' expanded' : '') + (count === 1 ? ' ide' : '')}>
         {/* 헤더 = 드래그 바: 아이콘/타이틀·일괄 폴더·한도 필은 2.0에서 삭제 — 남는 건
             오른쪽의 패널 수 탭과 창 컨트롤뿐(왼쪽 배치는 시도 후 롤백). 한도·비용은
-            각 패널 WorkBar 컨텍스트 팝오버가 말한다 */}
-        <div className="ma-head">
-          <span className="ma-spacer" />
-          <div className="ma-count" role="tablist" aria-label={t('패널 수', 'Panel count')}>
-            {COUNT_OPTIONS.map((n) => (
-              <button
-                key={n}
-                role="tab"
-                aria-selected={count === n}
-                className={'ma-count-btn' + (count === n ? ' on' : '')}
-                onClick={() => {
-                  setCount(n)
-                  // 줄어든 그리드 밖을 가리키던 선택/모달 슬롯은 정리 — 안 보이는
-                  // 패널이 오버레이로 계속 떠 있거나 포커스를 쥐고 있지 않게
-                  setFocusedSlot((s) => (s != null && s >= n ? null : s))
-                  setRenamingSlot((s) => (s != null && s >= n ? null : s))
-                  setExpandedSlot((s) => (s != null && s >= n ? null : s))
-                  setOpenFile((f) => (f && f.slot >= n ? null : f))
-                  setOpenSub((s) => (s && s.slot >= n ? null : s))
-                }}
-              >
-                {n}
-              </button>
-            ))}
+            각 패널 WorkBar 컨텍스트 팝오버가 말한다.
+            ★ n1(IDE 크롬)에서는 이 줄이 없다 — 그 자리 패널의 헤더가 곧 TopBar다.
+            줄을 하나 더 쌓으면 "기존 일반 채팅 그대로"가 깨진다(목업 chat-unify-1-ide). */}
+        {!soloReal && (
+          <div className="ma-head">
+            <span className="ma-spacer" />
+            {topBar}
           </div>
-          {/* 탐색기 토글 — 본채팅 헤더와 같은 버튼·툴팁: 단축키(`)를 모르는 사람도
-              멀티 뷰에서 탐색기를 열 수 있게 (탐색기는 포커스한 패널의 폴더를 따라간다) */}
-          {onToggleExplorer && (
-            <button
-              className={'h-ic has-tip' + (explorerHidden ? '' : ' on')}
-              data-tip={
-                explorerHidden
-                  ? t('파일 탐색기 — 왼쪽 목록과 전환 (`)', 'File explorer — swaps with the left list (`)')
-                  : t('채팅 목록으로 (`)', 'Back to chat list (`)')
-              }
-              aria-label={t('파일 탐색기', 'File explorer')}
-              onClick={onToggleExplorer}
-            >
-              <IconPanelRight size={15} />
-            </button>
-          )}
-          <span className="vsep" />
-          <WinControls />
-        </div>
+        )}
 
         {/* 배치는 .nN 클래스가 결정 — PoC: 2·3=한 줄, 4=2×2, 5=3+2(스팬), 6=3×2.
+            n1은 그리드가 아니라 전폭 한 칸(미니어처 배율도 풀린다 — styles.css .ma-grid.n1).
             순서는 panelOrder(헤더 길게 누르기 드래그) — 슬롯 정체성은 패널을 따라간다 */}
         <div className={'ma-grid scroll n' + count + (reordering ? ' reordering' : '')} ref={multiZoom.ref} onPointerDown={onGridPointerDown}>
           {visibleSlots.map((slot, i) =>
@@ -1922,6 +2219,28 @@ function ActiveSession({
             onClose={() => setOpenFile(null)}
           />
         </Suspense>
+      )}
+
+      {/* ★ 3.0 M-UX §2.2-1b — 뷰어는 **닫지 않고** 대상만 옮겨 붙었다는 한 줄.
+          2.6.2는 대상 패널이 접히면 뷰어를 통째로 닫았다(뷰어가 패널 안에 있었으니까).
+          3.0의 뷰어는 앱 크롬이고 파일 읽기는 채팅과 무관하다 — 닫으면 오히려 회귀다. */}
+      {openFile?.rebound && (
+        <div className="ma-rebind" role="status">
+          <span className="ic">↳</span>
+          <span>
+            {t(
+              `대상 채팅이 접혀서 「${metas[openFile.slot].title || t('새 채팅', 'New chat')}」로 바꿨어요 — diff도 새 대상 기준이에요`,
+              `The target chat was folded — switched to "${metas[openFile.slot].title || 'New chat'}" (diff follows the new target)`
+            )}
+          </span>
+          <button
+            className="x"
+            aria-label={t('닫기', 'Dismiss')}
+            onClick={() => setOpenFile((f) => (f ? { ...f, rebound: undefined } : f))}
+          >
+            ✕
+          </button>
+        </div>
       )}
 
       {/* WorkBar 서브에이전트 상세 카드 — 매 렌더 라이브 조회라 상태/도구 갱신이 흐른다 (본채팅과 동일) */}
@@ -2224,11 +2543,33 @@ export function useMultiSessions() {
 
   const initialOf = useEvent((id: string): PersistedSession => dataRef.current[id] ?? blankSession(id))
 
+  // ── ★ 3.0 M-UX — 다이얼이 두 크롬에 산다 ───────────────────────────────────
+  // 일반 채팅(IDE)에서 2‥6을 고르면 보드 크롬으로 넘어가야 하고, 그 순간 활성 보드의
+  // 자리 수가 그 값이어야 한다. 마운트돼 있으면 seq로 밀어 넣고(ActiveSession의 effect),
+  // 아직 마운트 전이면 레코드의 count가 곧 `initial.count`라 그대로 반영된다.
+  const [countSeed, setCountSeed] = useState<{ n: number; seq: number } | undefined>(undefined)
+  const setActiveCount = useEvent((n: number) => {
+    const v = clampCount(n)
+    const d = dataRef.current[activeId]
+    if (d) d.count = v
+    setCountSeed((c) => ({ n: v, seq: (c?.seq ?? 0) + 1 }))
+  })
+  // 사이드바에서 접힌 자리를 눌렀다 → 1번 자리로 올린다(§2.2-1b의 관문을 ActiveSession이 탄다)
+  const [raiseSeed, setRaiseSeed] = useState<{ slot: number; seq: number } | undefined>(undefined)
+  const raiseSlot = useEvent((slot: number) => setRaiseSeed((r) => ({ slot, seq: (r?.seq ?? 0) + 1 })))
+  /** 활성 보드가 지금 몇 자리인가 — 일반 채팅 크롬의 다이얼 하이라이트·라우팅 판정용 */
+  const activeCount = useEvent((): number => clampCount(dataRef.current[activeId]?.count ?? 4))
+
   return {
     hydrated,
     activeId,
     summaries,
     activeEmpty,
+    countSeed,
+    setActiveCount,
+    activeCount,
+    raiseSeed,
+    raiseSlot,
     newSession,
     selectSession,
     renameSession,
@@ -2254,6 +2595,7 @@ export function MultiWorkspace({
   autoResume = false,
   onAutoResumeChange,
   onExplorerInfo,
+  onPanelInfo,
   explorerHidden,
   onToggleExplorer
 }: {
@@ -2266,6 +2608,7 @@ export function MultiWorkspace({
   autoResume?: boolean // 한도 자동 이어서(전역 pref) — App이 소유, 패널 picker·대기표가 쓴다
   onAutoResumeChange?: (on: boolean) => void
   onExplorerInfo?: (info: MultiExplorerInfo) => void // 왼쪽 칼럼 탐색기가 따라갈 패널 보고
+  onPanelInfo?: (list: PanelSummary[]) => void // ★ 통합 사이드바 「채팅」에 실을 자리 요약
   explorerHidden?: boolean // 헤더 토글 버튼 상태 — 탐색기가 내려가 있으면 true
   onToggleExplorer?: () => void // 헤더 토글 버튼 — 사이드바 ⟷ 탐색기
 }) {
@@ -2291,6 +2634,9 @@ export function MultiWorkspace({
       onStatus={multi.onStatus}
       onCommit={multi.onCommit}
       onExplorerInfo={onExplorerInfo}
+      onPanelInfo={onPanelInfo}
+      countSeed={multi.countSeed}
+      raiseSeed={multi.raiseSeed}
       explorerHidden={explorerHidden}
       onToggleExplorer={onToggleExplorer}
     />

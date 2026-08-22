@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>채팅 통합 — 고아 UI 정리 (reconcileChatRefs)</title>
+<link rel="stylesheet" href="chat-unify.css" />
+<style>
+  /* §2.2-1b — 보이는 자리 집합이 바뀌면 "채팅을 지목한 상태" 전부를 재검증한다.
+     내용이 그 채팅의 것이면 닫고, 채팅과 무관하면 재바인드한다. */
+  .mockmeta,.legend,.tblwrap{max-width:1700px;}
+  .dual{display:flex;gap:14px;max-width:1700px;margin:0 auto;align-items:flex-start;}
+  .dual .col{flex:1;min-width:0;display:flex;flex-direction:column;gap:7px;}
+  .dual .cap{display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:var(--text-2);}
+  .dual .cap b{color:var(--text);font-weight:600;}
+  .dual .cap .k{font-family:var(--font-mono);font-size:10px;color:var(--text-4);border:1px solid var(--line);
+    border-radius:4px;padding:0 5px;}
+  .dual .win{max-width:none;margin:0;height:588px;}
+  .slotchip.folded{background:transparent;border:1px solid var(--line-2);color:var(--text-3);
+    line-height:12px;padding:0 3px;}
+  .slotchip.folded i{font-style:normal;color:var(--text-4);font-size:8.5px;margin-right:1px;}
+
+  /* 재바인드 한 줄 안내 — 뷰어 헤더 바로 밑 */
+  .rebind{display:flex;align-items:center;gap:7px;padding:5px 10px;font-size:10.5px;color:var(--blue);
+    background:var(--blue-soft);border-bottom:1px solid rgba(127,167,216,.24);}
+  .rebind .sp{flex:1;}
+  .rebind .x{color:var(--text-3);}
+  .tgtchip.moved{border-color:rgba(127,167,216,.42);background:rgba(127,167,216,.14);color:var(--text);}
+
+  /* 닫히는 것들 — before 프레임에서 X 표식으로 "이건 사라진다"를 보인다 */
+  .willclose{position:relative;}
+  .willclose::after{content:'닫힘';position:absolute;top:-8px;right:-6px;z-index:5;font-size:9px;
+    background:var(--red);color:#0d0d0f;border-radius:4px;padding:0 4px;font-weight:700;}
+  .willkeep::after{content:'유지';background:var(--green);}
+
+  /* 미니 서브에이전트 카드 (앱 크롬 — A+Aw) */
+  .sacard{position:absolute;right:14px;top:52px;width:270px;border-radius:10px;background:var(--bg);
+    border:1px solid var(--line-2);box-shadow:0 18px 40px -18px rgba(0,0,0,.82);z-index:45;overflow:hidden;}
+  .sacard .sah{display:flex;align-items:center;gap:7px;padding:8px 10px;border-bottom:1px solid var(--line);
+    font-size:11.5px;color:var(--text);}
+  .sacard .sah .sp{flex:1;}
+  .sacard .sab{padding:8px 10px;font-size:11px;color:var(--text-3);line-height:1.55;}
+  .sacard .sarow{display:flex;gap:7px;padding:3px 10px;font-size:10.5px;color:var(--text-3);}
+  .sacard .sarow .p{font-family:var(--font-mono);color:var(--text-2);}
+
+  /* 인라인 이름 변경 입력 */
+  .rnin{flex:1;min-width:0;font-family:var(--font-mono);font-size:10.5px;color:var(--text);
+    background:transparent;border:none;border-bottom:1px solid var(--accent-line);padding:0 0 2px;}
+
+  /* 표 */
+  .tblwrap{margin:16px auto 0;}
+  table.rt{width:100%;border-collapse:collapse;font-size:11.5px;}
+  table.rt th,table.rt td{border:1px solid var(--line);padding:7px 9px;vertical-align:top;text-align:left;}
+  table.rt th{color:var(--text-3);font-weight:500;font-size:10.5px;background:var(--surface);}
+  table.rt td{color:var(--text-2);}
+  table.rt td b{color:var(--text);}
+  table.rt code{font-family:var(--font-mono);font-size:10.5px;background:var(--inset);padding:1px 4px;border-radius:4px;}
+  table.rt .close{color:var(--red);} table.rt .keep{color:var(--blue);}
+</style>
+</head>
+<body>
+
+<div class="mockmeta">
+  <h1>다이얼 6 → 1 직후 — <b>지목 상태</b>는 어떻게 되나</h1>
+  <span class="sub">2.6.2는 축소에서 다섯 개를 <code>null</code>로 밀었다(<code>MultiAgent.tsx:1823-1827</code>).
+  통합 모델에서는 뷰어가 <b>앱 크롬</b>이라 닫으면 오히려 회귀 — <b>닫기와 재바인드를 갈라야 한다.</b>
+  관문은 <code>reconcileChatRefs(visibleSet)</code> 하나다.</span>
+  <span class="tag">chat-unify-orphan-rebind</span>
+</div>
+
+<div class="dual">
+  <!-- ── BEFORE — count 6, 세 가지 지목 상태가 동시에 떠 있다 ─────────────── -->
+  <div class="col">
+    <div class="cap"><b>전</b> — count=6 · 뷰어는 자리 4를, 서브에이전트 카드는 자리 2를 가리킨다 <span class="k">before</span></div>
+    <div class="win" style="position:relative">
+      <div class="win-body">
+        <div class="chat">
+          <div class="head">
+            <span class="title">3.0 빌더 6분할</span>
+            <span class="sp"></span>
+            <div class="dial"><button class="newone">1</button><button>2</button><button>3</button><button>4</button><button>5</button><button class="on">6</button></div>
+            <span class="h-ic">⌕</span><span class="h-ic">▤</span><span class="vsep"></span>
+            <div class="wctl"><b>—</b><b>▢</b><b>✕</b></div>
+          </div>
+          <div class="grid n6" style="grid-template-rows:repeat(2,minmax(0,1fr))">
+            <div class="panel focused"><div class="p-head"><span class="p-num" style="background:var(--violet)">1</span><span class="p-title">Roslyn 프라임 재현</span><span class="sp"></span><span class="p-status run"><i class="spin"></i></span></div><div class="p-body"><div class="thread"><div class="msg ai">didOpen 중복으로 서버가 내려가는 순간을 3/3 재현했어.</div></div></div></div>
+            <div class="panel willclose"><div class="p-head"><span class="p-num" style="background:var(--blue)">2</span><span class="p-title">ipc 디스패처 정리</span><span class="sp"></span><span class="p-status run"><i class="spin"></i></span></div><div class="p-body"><div class="thread"><div class="msg ai">별칭 테이블에 <code>panelIdToChat</code>을 붙였다.</div></div></div></div>
+            <div class="panel"><div class="p-head"><span class="p-num" style="background:var(--teal)">3</span><span class="p-title">ccg-store 팬아웃 포트</span><span class="sp"></span><span class="p-status done">완료</span></div><div class="p-body"></div></div>
+            <div class="panel willclose"><div class="p-head"><span class="p-num" style="background:var(--green)">4</span><span class="p-title">벤치 콜드스타트 재측정</span><span class="sp"></span><span class="p-status">대기</span></div><div class="p-body"></div></div>
+            <div class="panel willclose"><div class="p-head"><span class="p-num" style="background:var(--yellow)">5</span><input class="rnin" value="패치노트 3.0.0-beta 초안|" /><span class="sp"></span></div><div class="p-body"></div></div>
+            <div class="panel"><div class="p-head"><span class="p-num" style="background:var(--red)">6</span><span class="p-title">한도 이어서 재장전</span><span class="sp"></span><span class="p-status">대기</span></div><div class="p-body"></div></div>
+          </div>
+        </div>
+
+        <!-- 코드 뷰어 (앱 크롬) — 대상 = 자리 4 -->
+        <div class="viewer" style="width:330px">
+          <div class="vh">
+            <span>🦀</span><span class="path">bench/multi.mjs</span><span class="sp"></span>
+            <span class="tgtchip">↳ 자리 4 · 벤치 콜드스타트 재측정</span>
+            <span style="color:var(--text-4);margin-left:3px">✕</span>
+          </div>
+          <div class="code">
+            <div class="ln"><span class="g">41</span><span><span class="c-kw">const</span> repeats = <span class="c-fn">Number</span>(argv.<span class="c-mb">find</span>(…))</span></div>
+            <div class="ln"><span class="g">42</span><span><span class="c-kw">const</span> profile = kind === <span class="c-str">'tauri'</span></span></div>
+            <div class="ln add"><span class="g">43</span><span>&nbsp;&nbsp;? <span class="c-fn">tauriProfile</span>({ port: <span class="c-nm">9346</span> })</span></div>
+            <div class="ln"><span class="g">44</span><span>&nbsp;&nbsp;: <span class="c-fn">electronProfile</span>({ port: <span class="c-nm">9345</span> })</span></div>
+            <div class="ln"><span class="g">45</span><span></span></div>
+            <div class="ln"><span class="g">46</span><span><span class="c-cm">// 창당 비용 — 프로세스 트리 합으로 잰다</span></span></div>
+            <div class="ln"><span class="g">47</span><span><span class="c-kw">async function</span> <span class="c-fn">idle</span>(cdp) {</span></div>
+            <div class="ln"><span class="g">48</span><span>&nbsp;&nbsp;<span class="c-kw">await</span> <span class="c-fn">sleep</span>(<span class="c-nm">1500</span>);</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 서브에이전트 상세 카드 — 자리 2 원장의 항목 -->
+      <div class="sacard willclose">
+        <div class="sah"><span>서브에이전트</span><span class="sp"></span><span style="color:var(--text-4);font-size:10.5px">자리 2</span><span style="color:var(--text-4)">✕</span></div>
+        <div class="sab">Explore — 별칭 테이블이 실제로 몇 채널을 덮는지 세는 중</div>
+        <div class="sarow"><span>읽기</span><span class="p">src/shared/protocol.ts</span></div>
+        <div class="sarow"><span>읽기</span><span class="p">src-tauri/src/ipc/unified.rs</span></div>
+        <div class="sarow"><span>Grep</span><span class="p">"ma:|claude:|session:"</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── AFTER — count 1, 뷰어만 살아남고 대상이 옮겨 붙는다 ───────────────── -->
+  <div class="col">
+    <div class="cap"><b>후</b> — count=1 · 뷰어는 <b>안 닫는다</b>. 대상만 자리 1로 재바인드 <span class="k">after</span></div>
+    <div class="win" style="position:relative">
+      <div class="win-body">
+        <div class="chat">
+          <div class="head">
+            <span class="title">Roslyn 프라임 재현</span>
+            <span class="fchip">C:\Code\RookissAI_WorkSpace</span>
+            <span class="sp"></span>
+            <span class="foldbadge">⌄ <span class="cnt">5</span></span>
+            <div class="dial"><button class="on newone">1</button><button>2</button><button>3</button><button>4</button><button>5</button><button>6</button></div>
+            <span class="h-ic">⌕</span><span class="h-ic">▤</span><span class="vsep"></span>
+            <div class="wctl"><b>—</b><b>▢</b><b>✕</b></div>
+          </div>
+          <div class="scrollarea">
+            <div class="thread">
+              <div class="msg user">didOpen 중복으로 서버가 죽는 순간을 스크립트로 재현해줘.</div>
+              <div class="msg ai"><p>같은 URI에 <code>didOpen</code>을 두 번 보내고 <code>range</code> 없는 <code>didChange</code>를 얹으면 재현된다 — 3/3.</p></div>
+              <div class="runline"><i class="spin"></i><span>Edit — <code>crates/ccg-lsp/src/doc.rs</code></span></div>
+            </div>
+          </div>
+          <div class="workbar">
+            <span class="wb on">파일 <i class="n">2</i></span>
+            <span class="wb">컨텍스트 <span class="bar"><i style="width:29%"></i></span> <i class="n">29%</i></span>
+          </div>
+          <div class="composer"><div class="box"><div class="ta">메시지를 입력하세요 — "/" 명령 · "@" 파일</div>
+            <div class="bar"><span class="pchip"><i class="dotc" style="background:var(--violet)"></i>Opus</span><span class="pchip">xhigh</span><span class="sp"></span><span class="sendbtn">↑</span></div></div></div>
+        </div>
+
+        <!-- 뷰어는 그대로 열려 있다 — 대상 칩만 바뀌고 한 줄이 뜬다 -->
+        <div class="viewer willkeep" style="width:330px">
+          <div class="vh">
+            <span>🦀</span><span class="path">bench/multi.mjs</span><span class="sp"></span>
+            <span class="tgtchip moved">↳ 자리 1 · Roslyn 프라임 재현</span>
+            <span style="color:var(--text-4);margin-left:3px">✕</span>
+          </div>
+          <div class="rebind">
+            <span>↳</span><span>대상 채팅이 접혀서 <b>「Roslyn 프라임 재현」</b>으로 바꿨어요 — diff는 새 대상 기준으로 다시 계산했어요</span>
+            <span class="sp"></span><span class="x">✕</span>
+          </div>
+          <div class="code">
+            <div class="ln"><span class="g">41</span><span><span class="c-kw">const</span> repeats = <span class="c-fn">Number</span>(argv.<span class="c-mb">find</span>(…))</span></div>
+            <div class="ln"><span class="g">42</span><span><span class="c-kw">const</span> profile = kind === <span class="c-str">'tauri'</span></span></div>
+            <div class="ln"><span class="g">43</span><span>&nbsp;&nbsp;? <span class="c-fn">tauriProfile</span>({ port: <span class="c-nm">9346</span> })</span></div>
+            <div class="ln"><span class="g">44</span><span>&nbsp;&nbsp;: <span class="c-fn">electronProfile</span>({ port: <span class="c-nm">9345</span> })</span></div>
+            <div class="ln"><span class="g">45</span><span></span></div>
+            <div class="ln"><span class="g">46</span><span><span class="c-cm">// 창당 비용 — 프로세스 트리 합으로 잰다</span></span></div>
+            <div class="ln"><span class="g">47</span><span><span class="c-kw">async function</span> <span class="c-fn">idle</span>(cdp) {</span></div>
+            <div class="ln"><span class="g">48</span><span>&nbsp;&nbsp;<span class="c-kw">await</span> <span class="c-fn">sleep</span>(<span class="c-nm">1500</span>);</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 접힘 팝오버가 아니라 "무엇이 사라졌나"를 말하는 한 줄 -->
+      <div style="position:absolute;left:14px;bottom:14px;right:352px;display:flex;gap:6px;align-items:center;
+                  padding:6px 10px;border-radius:8px;background:var(--surface-2);border:1px solid var(--line-2);
+                  font-size:10.5px;color:var(--text-3);">
+        <span>자리 5의 이름 변경은 <b style="color:var(--text-2)">커밋</b>했고, 자리 2의 서브에이전트 카드와 「크게 보기」는 <b style="color:var(--text-2)">닫았어요</b>.
+          대화는 <b style="color:var(--text-2)">전부 그대로</b>예요 — 접힘 배지 ⌄5.</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="tblwrap">
+  <table class="rt">
+    <thead>
+      <tr><th style="width:172px">지목 상태</th><th style="width:190px">2.6.2 (<code>MultiAgent.tsx:1823-1827</code>)</th><th style="width:230px">3.0 — 대상이 보이지 않게 되면</th><th>왜</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>focusedChatId</code></td><td><code>focusedSlot &gt;= n</code> → null</td><td class="keep"><b>재바인드</b> → <code>order[0]</code>의 채팅</td><td>포커스는 항상 어딘가에 있어야 키보드 스코프가 정의된다</td></tr>
+      <tr><td><code>renamingChatId</code></td><td><code>renamingSlot &gt;= n</code> → null</td><td class="keep"><b>커밋 후 닫기</b></td><td>입력 중이던 글자를 버리지 않는다</td></tr>
+      <tr><td><code>expandedChatId</code> (크게 보기)</td><td><code>expandedSlot &gt;= n</code> → null</td><td class="close"><b>닫는다</b></td><td>오버레이 내용 = 그 채팅의 <code>ChatSurface</code></td></tr>
+      <tr><td><code>viewerTarget.chatId</code> (코드 뷰어)</td><td><code>openFile.slot &gt;= n</code> → null (<b>닫았다</b>)</td><td class="keep"><b>닫지 않고 대상만 재바인드</b> → <code>focusedChatId</code>. 칩 갱신 + 한 줄 안내 + diff 재계산(없으면 diff off)</td><td>2.6.2가 닫은 이유는 뷰어가 <b>패널 안</b>에 있었기 때문. 3.0의 뷰어는 앱 크롬이고 <b>파일 읽기는 채팅과 무관</b>하다 — 닫으면 오히려 회귀</td></tr>
+      <tr><td><code>subagentTarget{chatId,id}</code></td><td><code>openSub.slot &gt;= n</code> → null</td><td class="close"><b>닫는다</b></td><td>카드 내용 = 그 채팅 원장의 항목. 다른 채팅으로 재바인드할 수 없다</td></tr>
+      <tr><td><code>lightboxSource.chatId</code> (이미지)</td><td>(미정리 — 남아 있었다)</td><td class="close"><b>닫는다</b></td><td>이미지 목록이 그 채팅 스레드에서 온다</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="legend">
+  <span><b>관문이 규약이다</b> — 접힘 집합을 바꾸는 모든 동작은 <code>setVisible(order')</code> 하나를 지나고, 그 함수가 반드시 <code>reconcileChatRefs()</code>를 부른다(N13)</span>
+  <span><b>부르는 자리 5</b> — 다이얼 · 접힘 팝오버 ↥ · 토스트 라우팅 (b)(d) · 사이드바 ctx 「이 자리로 보내기」 (+ 채팅 삭제 · 보드 활성화 · 창 열기/닫기 · 마이그레이션 후 정화)</span>
+  <span><span class="sw" style="background:var(--red)"></span><b>닫힘</b> / <span class="sw" style="background:var(--green)"></span><b>유지</b> = 이 캡처의 표식(실제 UI 아님)</span>
+</div>
+
+</body>
+</html>

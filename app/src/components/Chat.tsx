@@ -1402,7 +1402,8 @@ export function ChatHeader({
   onAddRefDirPath,
   onRemoveRefDir,
   explorerHidden,
-  onToggleExplorer
+  onToggleExplorer,
+  dial
 }: {
   title: string
   cwd?: string
@@ -1415,6 +1416,10 @@ export function ChatHeader({
   onRemoveRefDir?: (path: string) => void
   explorerHidden?: boolean
   onToggleExplorer?: () => void
+  /** ★ 3.0 M-UX — 자리 수 다이얼(1~6). 멀티 헤더(.ma-head)와 **같은 x좌표**에 놓아
+   *  1↔2 전환에서 버튼이 화면에서 움직이지 않게 한다(ux-chat-unify §2.1).
+   *  추가 채팅 창처럼 자리 개념이 없는 표면은 안 넘긴다 = 안 그린다. */
+  dial?: React.ReactNode
 }) {
   const [fpop, setFpop] = useState(false)
   // 돋보기 켜짐 표시 — ChatFind가 알리는 열림 상태를 구독한다
@@ -1463,6 +1468,7 @@ export function ChatHeader({
         </span>
       )}
       <span className="spacer" />
+      {dial}
       <button
         className={'h-ic has-tip' + (findOn ? ' on' : '')}
         data-tip={t('대화에서 찾기 (Ctrl+F)', 'Find in chat (Ctrl+F)')}

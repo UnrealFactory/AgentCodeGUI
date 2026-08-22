@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>채팅 통합 — ExpandOverlay (4번째 자리 껍데기)</title>
+<link rel="stylesheet" href="chat-unify.css" />
+<style>
+  /* §3.1 (크리틱 N15) — 「크게 보기」는 앱 크롬이 호스팅하는 전폭 오버레이가
+     자리 하나를 담는 것이다. R2까지 글만 있고 그림이 없던 껍데기. */
+  .mockmeta,.legend{max-width:1700px;}
+  .withnotes{display:flex;gap:14px;align-items:flex-start;max-width:1700px;margin:0 auto;}
+  .withnotes .win{flex:1;min-width:0;max-width:none;margin:0;height:880px;position:relative;}
+  .notecol{width:286px;flex:none;display:flex;flex-direction:column;gap:9px;padding-top:4px;}
+  .notecol .note{position:static;max-width:none;}
+  .notecol .note::after{display:none;}
+  .notecol .nh{font-size:10px;color:var(--text-4);letter-spacing:.04em;text-transform:uppercase;}
+
+  /* z 층위 배지 — 이 그림이 말하려는 것의 절반은 "무엇이 무엇 위에 뜨나"다 */
+  .zlab{position:absolute;z-index:99;font-family:var(--font-mono);font-size:9px;color:#0d0d0f;background:var(--teal);
+    border-radius:4px;padding:0 5px;line-height:15px;}
+
+  /* 베일 + 카드 — 실앱 .ma-expand-overlay / .ma-expand-card */
+  .expveil{position:absolute;inset:0;background:rgba(6,6,7,.62);z-index:55;display:grid;place-items:center;padding:34px;}
+  .expcard{width:100%;height:100%;max-width:1180px;display:flex;flex-direction:column;border-radius:13px;
+    background:var(--chat-bg);border:1px solid var(--line-2);box-shadow:0 34px 80px -26px rgba(0,0,0,.9);overflow:hidden;}
+  /* 헤더 = GridCell 헤더 재사용 + 닫기 (자체 문법을 새로 만들지 않는다) */
+  .expcard .p-head{height:34px;padding:0 8px 0 10px;background:linear-gradient(180deg,rgba(255,255,255,.02),transparent);}
+  .expcard .p-head .p-title{font-size:12px;}
+  .expcard .tagline{height:2px;background:var(--blue);}
+  .expbody{flex:1;min-height:0;display:flex;flex-direction:column;}
+  .expbody .thread{max-width:790px;}
+  .expbody .workbar,.expbody .composer{max-width:790px;}
+
+  /* 뒤 그리드는 살아 있다 — 흐릿하게 보이되 실행은 계속된다 */
+  .behind{filter:saturate(.7);}
+  .slotchip.folded{background:transparent;border:1px solid var(--line-2);color:var(--text-3);
+    line-height:12px;padding:0 3px;}
+  .slotchip.folded i{font-style:normal;color:var(--text-4);font-size:8.5px;margin-right:1px;}
+
+  /* 껍데기 4종 미니 다이어그램 */
+  .shells{display:flex;gap:8px;margin:14px auto 0;max-width:1700px;}
+  .shell{flex:1;border:1px solid var(--line);border-radius:9px;padding:9px 11px;background:var(--surface);}
+  .shell .sn{font-family:var(--font-mono);font-size:11px;color:var(--text);}
+  .shell .sd{font-size:10.5px;color:var(--text-3);margin-top:4px;line-height:1.5;}
+  .shell.here{border-color:var(--accent-line);background:var(--surface-2);}
+  .shell.here .sn{color:var(--teal);}
+</style>
+</head>
+<body>
+
+<div class="mockmeta">
+  <h1>「크게 보기」 = <b>4번째 자리 껍데기</b> — <code>&lt;ExpandOverlay&gt;</code></h1>
+  <span class="sub">자리 하나를 <b>앱 크롬이 호스팅하는 전폭 오버레이</b>에 담는다. 담기는 것은 여전히
+  <code>&lt;ChatSurface chatId&gt;</code> 하나 — 스레드·워크바·컴포저·카드가 그리드 셀에서 돌던 그 코드 그대로다.
+  <b>앱 크롬(뷰어 z60 · 서브에이전트 z70)은 이 베일(z55) 위에 뜬다.</b></span>
+  <span class="tag">chat-unify-expand-overlay</span>
+</div>
+
+<div class="withnotes">
+<div class="win">
+  <div class="win-body behind">
+    <!-- 왼쪽 칼럼 — 오버레이 뒤에서도 앱 크롬이라 살아 있다 -->
+    <div class="lcol">
+      <div class="sb-top"><span class="mark">A</span><span class="name">AgentCodeGUI</span></div>
+      <button class="sb-new"><span class="ic">＋</span><span>새 채팅</span><span class="kbd">Ctrl+N</span></button>
+      <div class="sb-scroll">
+        <div class="sb-label"><span>채팅</span><span class="sp"></span><span class="n">9</span></div>
+        <div class="sb-list">
+          <div class="sb-item"><span class="dot run"></span><span class="t">Roslyn 프라임 재현</span><span class="slotchip" style="background:var(--violet)">1</span></div>
+          <div class="sb-item active"><span class="dot run"></span><span class="t">ipc 디스패처 레지스트리 정리</span><span class="slotchip" style="background:var(--blue)">2</span></div>
+          <div class="sb-item"><span class="dot done"></span><span class="t">ccg-store 팬아웃 포트</span><span class="slotchip" style="background:var(--teal)">3</span></div>
+          <div class="sb-item"><span class="dot"></span><span class="t">벤치 콜드스타트 재측정</span><span class="slotchip" style="background:var(--green)">4</span></div>
+          <div class="sb-item"><span class="dot"></span><span class="t">토스트 라우팅 chatId 단일화</span></div>
+        </div>
+        <div class="sb-label"><span>배치</span><span class="sp"></span><span class="n">3</span></div>
+        <div class="sb-list"><div class="sb-item active"><span class="dot run"></span><span class="t">3.0 빌더 4분할</span></div></div>
+      </div>
+      <div class="sb-foot"><span class="av">L</span><span>Liu</span><span style="flex:1"></span><span>⚙</span></div>
+    </div>
+
+    <div class="chat">
+      <div class="head">
+        <span class="title">3.0 빌더 4분할</span><span class="sp"></span>
+        <div class="dial"><button class="newone">1</button><button>2</button><button>3</button><button class="on">4</button><button>5</button><button>6</button></div>
+        <span class="h-ic">⌕</span><span class="h-ic">▤</span><span class="vsep"></span>
+        <div class="wctl"><b>—</b><b>▢</b><b>✕</b></div>
+      </div>
+      <div class="grid n4">
+        <div class="panel"><div class="p-head"><span class="p-num" style="background:var(--violet)">1</span><span class="p-title">Roslyn 프라임 재현</span><span class="sp"></span><span class="p-status run"><i class="spin"></i></span></div><div class="p-body"></div></div>
+        <!-- 크게 보는 패널의 자리 지킴이 — 실물은 오버레이 카드에 가 있다 -->
+        <div class="ghostcell"><span style="font-size:16px">⤢</span><span>크게 보는 중</span></div>
+        <div class="panel"><div class="p-head"><span class="p-num" style="background:var(--teal)">3</span><span class="p-title">ccg-store 팬아웃 포트</span><span class="sp"></span><span class="p-status done">완료</span></div><div class="p-body"></div></div>
+        <div class="panel"><div class="p-head"><span class="p-num" style="background:var(--green)">4</span><span class="p-title">벤치 콜드스타트 재측정</span><span class="sp"></span><span class="p-status">대기</span></div><div class="p-body"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 베일 + 카드 (z55) ─────────────────────────────────────────────── -->
+  <span class="zlab" style="left:12px;top:12px;">z55 · ExpandOverlay 베일</span>
+  <div class="expveil">
+    <div class="expcard">
+      <!-- GridCell 헤더 재사용 + 닫기 -->
+      <div class="p-head">
+        <span class="p-num" style="background:var(--blue)">2</span>
+        <span class="p-title">ipc 디스패처 레지스트리 정리</span>
+        <span class="p-folder">C:\Code\AgentCodeGUI</span>
+        <span class="sp"></span>
+        <span class="p-status run"><i class="spin"></i>작업 중 · 1분 42초</span>
+        <span class="p-ic">🔒</span>
+        <span class="p-ic">⧉</span>
+        <span class="p-ic" title="원래 크기로 (Esc)">⤡</span>
+      </div>
+      <div class="tagline"></div>
+
+      <div class="expbody">
+        <div class="scrollarea">
+          <div class="thread">
+            <div class="msg user">별칭 어댑터가 실제로 몇 채널을 덮는지 세어 줘. 그리고 <code>activeChat()</code>의 진실 소스도 확인해.</div>
+            <div class="msg ai">
+              <p>옛 채널 55개 중 <b>48개가 명령</b>, 7개가 이벤트다. 어댑터는 주소 변환 함수 <b>셋</b>만 쓴다 —
+                 <code>panelIdToChat</code> · <code>wcIdToChat</code> · <code>activeChat</code>.</p>
+              <p><code>activeChat()</code>의 진실 소스는 <b><code>chats:set-active</code></b>다. <code>chats:save</code>의
+                 <code>activeChatId</code>는 디바운스라 "전환 직후 전송"에서 낡은 값이 온다.</p>
+            </div>
+            <div class="toolgroup">
+              <div class="tg-h"><span>Grep — 옛 채널 참조</span><span class="cnt">48</span></div>
+              <div class="toolrow"><span class="k">claude:</span><span class="p">src/renderer/src/App.tsx · Chat.tsx</span><span class="add">6</span></div>
+              <div class="toolrow"><span class="k">ma:</span><span class="p">src/renderer/src/components/MultiAgent.tsx</span><span class="add">17</span></div>
+              <div class="toolrow"><span class="k">session:</span><span class="p">SessionWindow.tsx · PanelWindow.tsx</span><span class="add">6</span></div>
+              <div class="toolrow"><span class="k">talk:</span><span class="p">App.tsx (1회 편입 후 소멸)</span><span class="add">7</span></div>
+            </div>
+            <div class="msg ai"><p>지금 <code>chats:set-active</code>를 부르는 렌더러 지점은 <b>0곳</b>이야 — 전환 착지점 3곳에 한 줄씩 넣어야 해.</p></div>
+            <div class="runline"><i class="spin"></i><span>Edit — <code>app/src/App.tsx</code> selectChat 착지점</span></div>
+          </div>
+        </div>
+        <div class="workbar">
+          <span class="wb on">파일 <i class="n">4</i></span>
+          <span class="wb">셸 <i class="n">1</i></span>
+          <span class="wb">서브에이전트 <i class="n">1</i></span>
+          <span class="wb">컨텍스트 <span class="bar"><i style="width:41%"></i></span> <i class="n">41% · 82k/200k</i></span>
+          <span class="wb warn">5h <i class="n">68%</i></span>
+        </div>
+        <div class="composer"><div class="box">
+          <div class="ta">메시지를 입력하세요 — "/" 명령 · "@" 파일</div>
+          <div class="bar">
+            <span class="pchip"><i class="dotc" style="background:var(--blue)"></i>Opus</span>
+            <span class="pchip">xhigh</span><span class="pchip">bypass</span>
+            <span class="pchip">📁 AgentCodeGUI</span>
+            <span class="sp"></span><span class="icbtn">🖼</span><span class="icbtn">📎</span><span class="sendbtn">↑</span>
+          </div>
+        </div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 앱 크롬은 베일 위다 (N7·N15의 요지) ──────────────────────────── -->
+  <span class="zlab" style="right:352px;top:12px;background:var(--amber)">z60 · 코드 뷰어 (앱 크롬)</span>
+  <div class="viewer" style="position:absolute;right:0;top:0;bottom:0;width:340px;z-index:60;background:rgba(13,13,14,.96)">
+    <div class="vh">
+      <span>🦀</span><span class="path">src-tauri/src/ipc/unified.rs</span><span class="sp"></span>
+      <span class="tgtchip">↳ 자리 2 · ipc 디스패처 …</span>
+      <span style="color:var(--text-4);margin-left:3px">✕</span>
+    </div>
+    <div class="code">
+      <div class="ln"><span class="g">52</span><span>&nbsp;&nbsp;ch::<span class="c-nm">CHATS_SAVE</span> =&gt; {</span></div>
+      <div class="ln"><span class="g">53</span><span>&nbsp;&nbsp;&nbsp;&nbsp;ccg_store::legacy_bridge::<span class="c-fn">chats_save</span>(<span class="c-fn">arg</span>(p, <span class="c-nm">0</span>));</span></div>
+      <div class="ln"><span class="g">54</span><span>&nbsp;&nbsp;&nbsp;&nbsp;<span class="c-ty">Value</span>::<span class="c-ty">Null</span></span></div>
+      <div class="ln"><span class="g">55</span><span>&nbsp;&nbsp;}</span></div>
+      <div class="ln"><span class="g">56</span><span>&nbsp;&nbsp;<span class="c-cm">// ★ 즉시 반영 — 저장 디바운스와 무관해야 한다</span></span></div>
+      <div class="ln add"><span class="g">57</span><span>&nbsp;&nbsp;ch::<span class="c-nm">CHATS_SET_ACTIVE</span> =&gt; <span class="c-fn">json!</span>(<span class="c-fn">arg</span>(p, <span class="c-nm">0</span>)</span></div>
+      <div class="ln add"><span class="g">58</span><span>&nbsp;&nbsp;&nbsp;&nbsp;.<span class="c-mb">as_str</span>().<span class="c-mb">map</span>(chats_v3::set_active)…</span></div>
+      <div class="ln"><span class="g">59</span><span></span></div>
+      <div class="ln"><span class="g">60</span><span>&nbsp;&nbsp;<span class="c-cm">// ── 보드 ───────────────────────────</span></span></div>
+      <div class="ln"><span class="g">61</span><span>&nbsp;&nbsp;ch::<span class="c-nm">BOARD_GET</span> =&gt; ccg_store::boards::<span class="c-fn">read_boards</span>(),</span></div>
+    </div>
+  </div>
+
+  <span class="zlab" style="right:366px;top:300px;background:var(--violet)">z70 · 서브에이전트 카드 (앱 크롬)</span>
+  <div style="position:absolute;right:356px;top:326px;width:288px;z-index:70;border-radius:10px;background:var(--bg);
+              border:1px solid var(--line-2);box-shadow:0 20px 44px -18px rgba(0,0,0,.86);overflow:hidden;">
+    <div style="display:flex;align-items:center;gap:7px;padding:8px 10px;border-bottom:1px solid var(--line);font-size:11.5px;color:var(--text)">
+      <span>서브에이전트 — Explore</span><span style="flex:1"></span><span style="color:var(--text-4);font-size:10.5px">자리 2</span><span style="color:var(--text-4)">✕</span>
+    </div>
+    <div style="padding:8px 10px;font-size:11px;color:var(--text-3);line-height:1.55">별칭 테이블이 덮는 채널 수를 세는 중 — 48/55</div>
+    <div style="padding:0 10px 9px;display:flex;gap:5px;flex-wrap:wrap">
+      <span class="wb" style="height:20px;font-size:10px">읽기 <i class="n">7</i></span>
+      <span class="wb" style="height:20px;font-size:10px">Grep <i class="n">3</i></span>
+      <span class="wb on" style="height:20px;font-size:10px">토큰 <i class="n">18.4k</i></span>
+    </div>
+  </div>
+</div>
+
+<div class="notecol">
+  <div class="nh">R3 주석</div>
+  <div class="note">
+    <b>왜 4번째 껍데기인가.</b> R2는 껍데기를 3종(<code>IdeShell</code>·<code>GridCell</code>·
+    <code>WindowShell</code>)으로 적고 「크게 보기」는 사영표에 <code>A</code>로만 표기했다 —
+    <b><code>ChatSurface</code>를 담는 네 번째 호스트가 문서 어디에도 없었다</b>(N15).
+  </div>
+  <div class="note">
+    <b>헤더는 새로 만들지 않는다.</b> <code>GridCell</code> 헤더를 그대로 재사용하고 닫기만 더한다 —
+    번호 칩·컬러 태그·잠금·팝아웃이 카드 안에서도 같은 자리다.
+  </div>
+  <div class="note">
+    <b>자리 지킴이(유령 셀).</b> 그리드의 그 칸은 비지 않고 「크게 보는 중」을 남긴다 —
+    <code>.ma-panel</code> 클래스를 유지해야 n5 스팬 같은 배치 규칙이 안 깨진다.
+  </div>
+  <div class="note">
+    <b>앱 크롬은 베일 위.</b> 뷰어(z60)·서브에이전트(z70)·이미지 라이트박스는 <b>자리 밖</b>이라
+    이 베일(z55)을 덮는다. 이게 N7의 판정 근거다 — 카드를 <code>ChatSurface</code> 안에 넣으면
+    그리드에서 <b>1/6 셀 · zoom .8 안에 갇힌다</b>.
+  </div>
+  <div class="note">
+    <b>배율은 따로 산다.</b> 그리드는 <code>zoom.grid</code>(기본 120%), 이 카드는
+    <code>zoom.window</code> 계열로 본채팅 크기(100%)에서 시작한다 — 열린 문제 ⑫가
+    승계값을 고르는 자리.
+  </div>
+  <div class="note">
+    <b>닫기 셋.</b> 베일 클릭 · Esc · 헤더 ⤡. 마우스 제스처는 <code>DR</code>(닫기 문법) =
+    원래 크기로, <code>RU</code> 한 번 더 = 별도 창으로(다음 단계의 확대).
+  </div>
+</div>
+</div>
+
+<div class="shells">
+  <div class="shell"><div class="sn">&lt;IdeShell&gt;</div><div class="sd">count=1 · 전폭. 자체 헤더 없음 — TopBar가 그 역할.</div></div>
+  <div class="shell"><div class="sn">&lt;GridCell&gt;</div><div class="sd">count≥2 · 패널 헤더 + zoom .8 미니어처.</div></div>
+  <div class="shell"><div class="sn">&lt;WindowShell&gt;</div><div class="sd">별도 OS 창 · 창 크롬은 뷰어·라이트박스·서브에이전트 셋뿐.</div></div>
+  <div class="shell here"><div class="sn">&lt;ExpandOverlay&gt;</div><div class="sd"><b>이 화면.</b> 앱 크롬이 호스팅하는 전폭 오버레이가 자리 하나를 담는다. 사영표 기호는 <code>A(+S)</code>.</div></div>
+</div>
+
+<div class="legend">
+  <span><span class="sw" style="background:var(--teal)"></span><b>z 배지</b> = 층위 표시(실제 UI 아님)</span>
+  <span><b>담기는 것은 하나</b> — 껍데기가 넷이어도 <code>&lt;ChatSurface chatId&gt;</code>는 한 벌이다</span>
+  <span><b>뒤 그리드는 살아 있다</b> — 다른 자리의 실행은 오버레이와 무관하게 계속된다(불변식 4)</span>
+</div>
+
+</body>
+</html>

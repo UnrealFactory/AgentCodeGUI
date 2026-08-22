@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>채팅 통합 — 전역 토글 비즉시 + 일괄 적용 카드</title>
+<link rel="stylesheet" href="chat-unify.css" />
+<style>
+  /* R3 §4.2 물질화가 만든 유일한 새 화면. 주석은 창 밖 칼럼(1-ide 규약) */
+  .mockmeta,.legend{max-width:1700px;}
+  .withnotes{display:flex;gap:14px;align-items:flex-start;max-width:1700px;margin:0 auto;}
+  .withnotes .win{flex:1;min-width:0;max-width:none;margin:0;}
+  .notecol{width:280px;flex:none;display:flex;flex-direction:column;gap:9px;padding-top:4px;}
+  .notecol .note{position:static;max-width:none;}
+  .notecol .note::after{display:none;}
+  .notecol .nh{font-size:10px;color:var(--text-4);letter-spacing:.04em;text-transform:uppercase;}
+  /* 접힌 자리 칩 — collapse 목업과 같은 문법 */
+  .slotchip.folded{background:transparent;border:1px solid var(--line-2);color:var(--text-3);
+    line-height:12px;padding:0 3px;}
+  .slotchip.folded i{font-style:normal;color:var(--text-4);font-size:8.5px;margin-right:1px;}
+
+  /* 설정 모달 — 실앱 .set-overlay/.set-modal 문법의 목업판 */
+  .setveil{position:absolute;inset:0;background:rgba(6,6,7,.58);display:grid;place-items:center;z-index:50;}
+  .setmodal{width:min(940px,94%);height:600px;display:flex;border-radius:13px;background:var(--bg);
+    border:1px solid var(--line-2);box-shadow:0 30px 70px -26px rgba(0,0,0,.86);overflow:hidden;}
+  .setnav{width:176px;flex:0 0 auto;border-right:1px solid var(--line);padding:10px 8px;display:flex;
+    flex-direction:column;gap:2px;background:var(--surface);}
+  .setnav .sn{padding:6px 9px;border-radius:7px;font-size:11.5px;color:var(--text-3);}
+  .setnav .sn.on{background:var(--surface-3);color:var(--text);}
+  .setmain{flex:1;min-width:0;display:flex;flex-direction:column;}
+  .setmain .sh{height:38px;flex:0 0 auto;display:flex;align-items:center;gap:8px;padding:0 12px;
+    border-bottom:1px solid var(--line);font-size:12px;color:var(--text-2);}
+  .setmain .sh .sp{flex:1;}
+  .setbody{flex:1;min-height:0;overflow:hidden;padding:14px 16px;display:flex;flex-direction:column;gap:12px;}
+  .srow{display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:9px;background:var(--surface);
+    border:1px solid var(--line);}
+  .srow .lab{font-size:12px;color:var(--text);}
+  .srow .sub{font-size:10.5px;color:var(--text-4);margin-top:2px;}
+  .srow .sp{flex:1;}
+  .sw2{width:34px;height:19px;border-radius:11px;background:var(--inset);border:1px solid var(--line-2);
+    position:relative;flex:0 0 auto;}
+  .sw2 i{position:absolute;top:2px;left:2px;width:13px;height:13px;border-radius:50%;background:var(--text-3);}
+  .sw2.on{background:var(--accent);border-color:transparent;}
+  .sw2.on i{left:17px;background:var(--on-accent);}
+
+  /* 적용 카드 — 설정 본문 안에 인라인으로 자라난다(모달 위 모달 금지) */
+  .applycard{border-radius:10px;border:1px solid rgba(217,192,99,.34);background:var(--yellow-soft);padding:11px 12px;}
+  .applycard .ah{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--yellow);}
+  .applycard .at{font-size:12.5px;color:var(--text);margin-top:6px;line-height:1.5;}
+  .applycard .ab{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap;}
+  .abtn{height:26px;padding:0 11px;border-radius:7px;font-size:11.5px;color:var(--text-2);background:var(--surface-2);
+    border:1px solid var(--line-2);display:flex;align-items:center;}
+  .abtn.prim{background:var(--accent);color:var(--on-accent);border-color:transparent;font-weight:600;}
+  .abtn.ghost{background:none;border-color:transparent;color:var(--text-4);}
+  .applycard .hint{font-size:10.5px;color:var(--text-4);margin-top:8px;}
+
+  /* 집계 verdict 카드 */
+  .vcard{border-radius:10px;border:1px solid var(--line-2);background:var(--surface);overflow:hidden;}
+  .vcard .vh2{display:flex;align-items:center;gap:8px;padding:9px 12px;border-bottom:1px solid var(--line);
+    font-size:12px;color:var(--text);}
+  .vcard .vh2 .sp{flex:1;}
+  .vsum{display:flex;gap:6px;padding:9px 12px 4px;flex-wrap:wrap;}
+  .vpill{display:flex;align-items:center;gap:5px;height:22px;padding:0 8px;border-radius:6px;font-size:11px;
+    border:1px solid var(--line);color:var(--text-2);background:var(--surface-2);}
+  .vpill .n{font-family:var(--font-mono);font-size:10px;}
+  .vpill.ok{color:var(--green);border-color:rgba(130,201,164,.32);background:var(--green-soft);}
+  .vpill.later{color:var(--blue);border-color:rgba(127,167,216,.32);background:var(--blue-soft);}
+  .vpill.no{color:var(--red);border-color:rgba(221,122,107,.32);background:var(--red-soft);}
+  .vlist{padding:4px 6px 8px;display:flex;flex-direction:column;gap:1px;max-height:196px;overflow:hidden;}
+  .vrow{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:6px;font-size:11.5px;color:var(--text-2);}
+  .vrow:nth-child(odd){background:rgba(255,255,255,.015);}
+  .vrow .t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .vrow .slotchip{font-family:var(--font-mono);font-size:9px;color:var(--on-accent);background:var(--text-3);
+    border-radius:3px;padding:0 3px;line-height:13px;flex:0 0 auto;}
+  .vrow .st{font-size:10px;padding:1px 6px;border-radius:4px;border:1px solid var(--line);color:var(--text-3);flex:0 0 auto;}
+  .vrow .st.ok{color:var(--green);border-color:rgba(130,201,164,.3);background:var(--green-soft);}
+  .vrow .st.later{color:var(--blue);border-color:rgba(127,167,216,.3);background:var(--blue-soft);}
+  .vrow .st.no{color:var(--red);border-color:rgba(221,122,107,.32);background:var(--red-soft);}
+  .vrow .why{font-size:10.5px;color:var(--text-4);flex:0 0 auto;}
+  .vcard .vf{display:flex;align-items:center;gap:8px;padding:8px 12px;border-top:1px solid var(--line);
+    font-size:10.5px;color:var(--text-4);}
+  .vcard .vf .sp{flex:1;}
+</style>
+</head>
+<body>
+
+<div class="mockmeta">
+  <h1>전역 토글은 <b>즉시가 아니다</b> — 물질화의 유일한 새 화면</h1>
+  <span class="sub">설정에서 API 모드를 켜도 <b>열려 있던 채팅은 안 바뀐다</b>(§4.2 물질화). 대신 카드가 뜨고,
+  [전부 적용]은 <code>chat:identity-set</code>을 채팅마다 보낸 뒤 <b>verdict를 모아 한 장</b>으로 답한다.
+  전용 일괄 채널은 만들지 않는다 — 32채널 그대로.</span>
+  <span class="tag">chat-unify-apply-global</span>
+</div>
+
+<div class="withnotes">
+<div class="win" style="height:820px;position:relative">
+  <div class="win-body">
+    <!-- 뒤 화면 — 4분할 그리드가 그대로 돌고 있다(설정을 만져도 실행은 안 끊긴다) -->
+    <div class="lcol">
+      <div class="sb-top"><span class="mark">A</span><span class="name">AgentCodeGUI</span></div>
+      <button class="sb-new"><span class="ic">＋</span><span>새 채팅</span><span class="kbd">Ctrl+N</span></button>
+      <div class="sb-scroll">
+        <div class="sb-label"><span>채팅</span><span class="sp"></span><span class="n">12</span></div>
+        <div class="sb-list">
+          <div class="sb-item active"><span class="dot run"></span><span class="t">ipc 디스패처 레지스트리 정리</span><span class="slotchip" style="background:var(--violet)">1</span></div>
+          <div class="sb-item"><span class="dot run"></span><span class="t">ccg-store 팬아웃 포트</span><span class="slotchip" style="background:var(--blue)">2</span></div>
+          <div class="sb-item"><span class="dot"></span><span class="t">벤치 콜드스타트 재측정</span><span class="slotchip" style="background:var(--teal)">3</span></div>
+          <div class="sb-item"><span class="dot done"></span><span class="t">아크릴 폴백 상시화</span><span class="slotchip" style="background:var(--green)">4</span></div>
+          <div class="sb-item"><span class="dot"></span><span class="t">토스트 라우팅 chatId 단일화</span><span class="slotchip folded"><i>⌄</i>5</span></div>
+          <div class="sb-item"><span class="dot"></span><span class="t">패치노트 3.0.0-beta 초안</span><span class="slotchip folded"><i>⌄</i>6</span></div>
+          <div class="sb-item"><span class="dot"></span><span class="t">한도 이어서 재장전 경로</span></div>
+          <div class="sb-item"><span class="dot"></span><span class="t">Roslyn 프라임 재현</span></div>
+        </div>
+      </div>
+      <div class="sb-foot"><span class="av">L</span><span>Liu</span><span style="flex:1"></span><span>⚙</span></div>
+    </div>
+    <div class="chat">
+      <div class="head">
+        <span class="title">3.0 빌더 4분할</span><span class="sp"></span>
+        <div class="dial"><button class="newone">1</button><button>2</button><button>3</button><button class="on">4</button><button>5</button><button>6</button></div>
+        <span class="foldbadge">⌄ <span class="cnt">2</span></span>
+        <span class="h-ic">⌕</span><span class="h-ic">▤</span><span class="vsep"></span>
+        <div class="wctl"><b>—</b><b>▢</b><b>✕</b></div>
+      </div>
+      <div class="grid n4" style="opacity:.5">
+        <div class="panel"><div class="p-head"><span class="p-num" style="background:var(--violet)">1</span><span class="p-title">ipc 디스패처 레지스트리 정리</span><span class="sp"></span><span class="p-status run"><i class="spin"></i>작업 중</span></div><div class="p-body"></div></div>
+        <div class="panel"><div class="p-head"><span class="p-num" style="background:var(--blue)">2</span><span class="p-title">ccg-store 팬아웃 포트</span><span class="sp"></span><span class="p-status run"><i class="spin"></i>작업 중</span></div><div class="p-body"></div></div>
+        <div class="panel"><div class="p-head"><span class="p-num" style="background:var(--teal)">3</span><span class="p-title">벤치 콜드스타트 재측정</span><span class="sp"></span><span class="p-status">대기</span></div><div class="p-body"></div></div>
+        <div class="panel done"><div class="p-head"><span class="p-num" style="background:var(--green)">4</span><span class="p-title">아크릴 폴백 상시화</span><span class="sp"></span><span class="p-status done">완료</span></div><div class="p-body"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 설정 모달 — API 탭 -->
+  <div class="setveil">
+    <div class="setmodal">
+      <div class="setnav">
+        <div class="sn">일반</div><div class="sn">표시</div><div class="sn">계정</div>
+        <div class="sn on">API</div><div class="sn">엔진</div><div class="sn">코드 분석</div><div class="sn">버전</div>
+      </div>
+      <div class="setmain">
+        <div class="sh"><span>API</span><span class="sp"></span><span style="color:var(--text-4);font-size:11px">Esc로 닫기</span></div>
+        <div class="setbody">
+          <div class="srow">
+            <div>
+              <div class="lab">API 키로 과금</div>
+              <div class="sub">구독(OAuth) 대신 등록된 API 키로 실행 비용을 청구해요.</div>
+            </div>
+            <span class="sp"></span>
+            <span class="sw2 on"><i></i></span>
+          </div>
+
+          <!-- ① 방금 켠 직후 뜨는 카드 — 기본은 「적용 안 함」 -->
+          <div class="applycard">
+            <div class="ah">⚠ 이 설정은 <b>새 채팅부터</b> 적용돼요</div>
+            <div class="at">기존 채팅 <b>12개</b>에도 적용할까요?<br />
+              지금 열려 있는 대화는 만들 때 굳은 값(구독)으로 계속 돌아요.</div>
+            <div class="ab">
+              <span class="abtn prim">전부 적용</span>
+              <span class="abtn">지금 보이는 자리만 (4)</span>
+              <span class="abtn ghost">새 채팅부터</span>
+            </div>
+            <div class="hint">이 카드를 무시하면 <b>아무 일도 일어나지 않아요</b> — 기본은 「적용 안 함」이에요.</div>
+          </div>
+
+          <!-- ② [전부 적용]을 누른 뒤 — 채팅마다 chat:identity-set → verdict를 모은 한 장 -->
+          <div class="vcard">
+            <div class="vh2">
+              <span>기존 채팅에 적용한 결과</span>
+              <span class="sp"></span>
+              <span style="font-size:10.5px;color:var(--text-4)">12개 요청 · 방금</span>
+            </div>
+            <div class="vsum">
+              <span class="vpill ok">적용 <span class="n">9</span></span>
+              <span class="vpill later">턴 끝에 적용 <span class="n">2</span></span>
+              <span class="vpill no">거부 <span class="n">1</span></span>
+            </div>
+            <div class="vlist">
+              <div class="vrow"><span class="t">ipc 디스패처 레지스트리 정리</span><span class="slotchip" style="background:var(--violet)">1</span><span class="st later">턴 끝에</span><span class="why">지금 스트리밍 중</span></div>
+              <div class="vrow"><span class="t">ccg-store 팬아웃 포트</span><span class="slotchip" style="background:var(--blue)">2</span><span class="st later">턴 끝에</span><span class="why">지금 스트리밍 중</span></div>
+              <div class="vrow"><span class="t">벤치 콜드스타트 재측정</span><span class="slotchip" style="background:var(--teal)">3</span><span class="st ok">적용</span><span class="why">다음 전송부터</span></div>
+              <div class="vrow"><span class="t">아크릴 폴백 상시화</span><span class="slotchip" style="background:var(--green)">4</span><span class="st ok">적용</span><span class="why">다음 전송부터</span></div>
+              <div class="vrow"><span class="t">토스트 라우팅 chatId 단일화</span><span class="slotchip folded"><i>⌄</i>5</span><span class="st ok">적용</span><span class="why">접힌 자리도 같이</span></div>
+              <div class="vrow"><span class="t">Codex — app-server 재연결 조사</span><span class="st no">거부</span><span class="why">OpenAI 키 없음</span></div>
+              <div class="vrow"><span class="t">한도 이어서 재장전 경로</span><span class="st ok">적용</span><span class="why">다음 전송부터</span></div>
+            </div>
+            <div class="vf">
+              <span>거부 1건은 값을 바꾸지 않았어요 — 키를 등록하면 다시 시도할 수 있어요.</span>
+              <span class="sp"></span>
+              <span class="abtn" style="height:22px;font-size:11px">거부 1건만 다시</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="notecol">
+  <div class="nh">R3 주석</div>
+  <div class="note">
+    <b>왜 즉시가 아닌가.</b> 상속으로 두면 설정 한 번에 override 없는 <b>전 채팅의
+    <code>RunIdentity</code> 해시가 동시에 바뀌고</b> 다음 send가 전부 재스폰이 된다
+    (= P1d 부활). 물질화는 그 병리를 구조적으로 죽인다. §4.2
+  </div>
+  <div class="note">
+    <b>기본은 「적용 안 함」.</b> 카드를 무시하면 아무 일도 안 일어난다. 이게
+    열린문제 ⑬(b)로 사용자 승인을 받는 항목이다.
+  </div>
+  <div class="note">
+    <b>전용 일괄 채널은 없다.</b> 판정·비용 예고·거부 사유가 채팅마다 다른데
+    일괄 채널은 그걸 한 응답으로 뭉갠다(D7 위반). <code>chat:identity-set</code> N회 +
+    <b>집계 카드 1장</b>이 답이다 — 채널 수는 32 그대로.
+  </div>
+  <div class="note">
+    <b>verdict 3종이 그대로 보인다.</b> 즉시 적용 / 턴 끝에 적용(<code>PendingSettle</code>) /
+    거부(사유). m-logic §3.6의 판정표가 사용자 문장으로 번역된 자리다.
+  </div>
+  <div class="note">
+    <b>접힌 자리도 대상이다.</b> 적용은 <b>자리와 무관</b>하다 — 정체성은 채팅에 붙어 있고
+    접힘은 표시 상태일 뿐이다(불변식 5). 「지금 보이는 자리만」은 그걸 <b>일부러</b> 좁히는 선택지다.
+  </div>
+  <div class="note">
+    <b>설정 화면의 의미가 바뀐다.</b> 이 토글은 이제 <b>새 채팅 기본값</b>을 편집하는
+    화면이다. 같은 규칙이 출력 스타일·MCP/Skill on-off에도 그대로 적용된다(§4.2 표).
+  </div>
+</div>
+</div>
+
+<div class="legend">
+  <span><span class="sw"></span><b>노란 카드</b> = 목업 주석(실제 UI 아님)</span>
+  <span><b>모달 위 모달 금지</b> — 적용 카드는 설정 본문 안에서 자란다</span>
+  <span><b>거부는 값을 바꾸지 않는다</b> — 조용한 값 보정이 가장 위험한 마이그레이션 버그다(§5.2)</span>
+</div>
+
+</body>
+</html>

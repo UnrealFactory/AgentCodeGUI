@@ -4053,3 +4053,163 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
 /* 메인 앱의 .win 크롬을 안 쓰므로 뷰포트를 직접 채우고, 안은 .chat.chat--code 그대로다.
    타이틀바 역할은 ChatHeader(.chat-head)가 한다 — 이미 app-region:drag + 창 컨트롤 포함. */
 .sw{ position:fixed; inset:0; display:flex; flex-direction:column; background:var(--chat-bg); color:var(--text); }
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   ★ 3.0 M-UX 「채팅 통합」 1단계 — 다이얼 1~6 · IDE 크롬(n1) · 접힘 배지 · 자리 칩
+   계약: docs/design/ux-chat-unify.md · 목업: docs/design/mockups/chat-unify-*.html
+   규약: **기존 규칙은 한 줄도 고치지 않는다.** 여기 있는 것은 전부 새 셀렉터이거나
+        `.ma-grid.n1` 스코프의 덧칠이라, 2‥6 그리드와 본채팅 화면의 픽셀은 그대로다
+        (파리티 A/B가 그것을 잰다).
+   ══════════════════════════════════════════════════════════════════════════════ */
+
+/* ── n1 = IDE 크롬 ────────────────────────────────────────────────────────────
+   자리 하나가 화면 전체를 쓴다. 그리드 여백·카드 테두리·미니어처 배율(zoom .8/.9)이
+   전부 풀려 "기존 일반 채팅 그대로"가 된다(목업 chat-unify-1-ide). */
+.ma-grid.n1{ grid-template-columns:minmax(0, 1fr); gap:0; padding:0; overflow:hidden; }
+.ma-grid.n1 > .ma-panel{ border:none; border-radius:0; }
+.ma-grid.n1 > .ma-panel.focused{ box-shadow:none; }
+.ma-grid.n1 > .ma-panel.done{ border-color:transparent; box-shadow:none; }
+/* 미니어처 해제 — 본채팅과 같은 크기(배율은 chat.zoom이 따로 얹는다) */
+.ma-grid.n1 .ma-panel .ma-p-thread{ zoom:1; }
+.ma-grid.n1 .ma-panel .workbar-wrap, .ma-grid.n1 .ma-panel .composer-wrap{ zoom:1; }
+.ma-grid.n1 .ma-panel .limit-hold-wrap{ zoom:1; padding:8px 12px 0; }
+/* 헤더가 곧 TopBar — 높이·드래그 띠를 .chat-head와 맞춘다. 재배치 드래그는 없다
+   (보이는 자리가 하나뿐) → grab 커서도 끈다. */
+.ma-grid.n1 .ma-p-head{
+  height:38px; padding:0 4px 0 12px; cursor:default;
+  -webkit-app-region:drag; user-select:none;
+}
+/* 제목 묶음·폴더 칩·버튼·입력은 드래그 띠에서 뺀다 — 더블클릭 제목 편집이
+   창 최대화로 새는 것을 막는다(.chat-head의 no-drag 규약과 같은 자리) */
+.ma-grid.n1 .ma-p-head button,
+.ma-grid.n1 .ma-p-head input,
+.ma-grid.n1 .ma-p-head .ma-p-tw,
+.ma-grid.n1 .ma-p-head .hfold,
+.ma-grid.n1 .ma-p-head .ma-count,
+.ma-grid.n1 .ma-p-head .ma-fold{ -webkit-app-region:no-drag; }
+.ma-grid.n1 .ma-p-title{ font-size:12px; }
+/* 컬러 태그 라인은 n1에서 접는다 — 자리 구분이 필요 없는 화면이다 */
+.ma-grid.n1 .ma-p-tag{ display:none; }
+/* 스레드 폭 — 본채팅과 같은 읽기 폭으로 (px 경계는 줌 배율로 역보정) */
+.ma-grid.n1 .ma-p-thread .thread{ max-width:calc(820px / var(--z, 1)); margin:0 auto; }
+
+/* ── 접힘 배지 + 팝오버 (§2.2-3 · 목업 chat-unify-collapse) ─────────────────── */
+.ma-fold{ position:relative; display:inline-flex; align-items:center; }
+.ma-fold-badge{
+  display:flex; align-items:center; gap:3px; height:26px; padding:0 7px; border-radius:8px;
+  background:var(--surface-2); border:1px solid var(--line-2); color:var(--text-2);
+  font-size:11px; transition:background .12s, color .12s, border-color .12s;
+}
+.ma-fold-badge:hover{ background:var(--surface-3); color:var(--text); }
+.ma-fold-badge.open{ background:rgba(255,255,255,.10); border-color:var(--accent-line); color:var(--text); }
+.ma-fold-badge .cnt{ font-family:var(--font-mono); font-size:10px; color:var(--text); }
+/* 승인/질문이 접힌 자리에서 기다리는 중 — 자동 승격 대신 배지가 알린다(§2.2-5) */
+.ma-fold-badge.alert{ border-color:rgba(217,192,99,.45); background:var(--yellow-soft); color:var(--yellow); }
+.ma-fold-badge .bang{
+  display:inline-flex; align-items:center; height:15px; padding:0 4px; border-radius:4px;
+  background:var(--yellow); color:#0d0d0f; font-size:9.5px; font-weight:700; font-family:var(--font-mono);
+}
+.ma-fold-pop{
+  position:absolute; top:32px; right:0; width:308px; z-index:40; padding:6px;
+  border-radius:10px; background:var(--bg); border:1px solid var(--line-2);
+  box-shadow:0 22px 46px -18px rgba(0,0,0,.8);
+  -webkit-app-region:no-drag;
+}
+.ma-fold-pop .ph{
+  display:flex; align-items:center; gap:6px; padding:6px 8px 7px; margin-bottom:4px;
+  border-bottom:1px solid var(--line); font-size:11px; color:var(--text-3);
+}
+.ma-fold-pop .ph .sp{ flex:1; }
+.ma-fold-row{
+  width:100%; display:flex; align-items:center; gap:7px; padding:6px 8px; border-radius:7px;
+  font-size:12px; color:var(--text-2); text-align:left;
+}
+.ma-fold-row:hover{ background:var(--hover); color:var(--text); }
+.ma-fold-row.waiting{ background:var(--yellow-soft); }
+.ma-fold-row .num{
+  width:16px; height:16px; flex:0 0 auto; border-radius:4px; display:grid; place-items:center;
+  font-family:var(--font-mono); font-size:9.5px; font-weight:700; color:var(--on-accent);
+  background:var(--text-3);
+}
+.ma-fold-row .t{ flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.ma-fold-row .st{
+  flex:0 0 auto; font-size:10px; padding:1px 5px; border-radius:4px;
+  border:1px solid var(--line); color:var(--text-3);
+}
+.ma-fold-row .st.run{ color:var(--yellow); border-color:rgba(217,192,99,.35); background:var(--yellow-soft); }
+.ma-fold-row .st.done{ color:var(--green); border-color:rgba(130,201,164,.30); background:var(--green-soft); }
+.ma-fold-row .st.err{ color:var(--red); border-color:rgba(221,122,107,.32); background:var(--red-soft); }
+.ma-fold-row .st.ask{ color:var(--yellow); border-color:rgba(217,192,99,.45); background:rgba(217,192,99,.18); font-weight:600; }
+.ma-fold-row .act{ flex:0 0 auto; font-size:10.5px; color:var(--text-4); }
+.ma-fold-row:hover .act{ color:var(--text-2); }
+.ma-fold-pop .pf{
+  display:flex; gap:6px; padding:7px 8px 4px; margin-top:4px; border-top:1px solid var(--line);
+  font-size:10.5px; color:var(--text-4);
+}
+.ma-fold-pop .pf .sp{ flex:1; }
+/* 자리 색 — 팝오버 번호 칩은 그 패널의 컬러 태그를 그대로 쓴다 */
+.ma-fold-row .num[data-tag="violet"]{ background:var(--violet); }
+.ma-fold-row .num[data-tag="blue"]{ background:var(--blue); }
+.ma-fold-row .num[data-tag="amber"]{ background:var(--amber); }
+.ma-fold-row .num[data-tag="teal"]{ background:var(--teal); }
+.ma-fold-row .num[data-tag="green"]{ background:var(--green); }
+.ma-fold-row .num[data-tag="yellow"]{ background:var(--yellow); }
+.ma-fold-row .num[data-tag="red"]{ background:var(--red); }
+
+/* ── 헤더 실행 요약 칩 — "안 보이는 곳에서 N개가 돈다"를 숨기지 않는다(§2.2-3) ── */
+.ma-runsum{
+  display:flex; align-items:center; gap:6px; height:26px; padding:0 9px; border-radius:8px;
+  background:var(--yellow-soft); border:1px solid rgba(217,192,99,.30); color:var(--yellow);
+  font-size:11px; white-space:nowrap;
+}
+.ma-runsum-spin{
+  width:8px; height:8px; border-radius:50%; border:1.4px solid rgba(217,192,99,.35);
+  border-top-color:var(--yellow); animation:spin .9s linear infinite;
+}
+
+/* ── 뷰어 대상 재바인드 안내 (§2.2-1b) — 뷰어(z60) 위에 한 줄 ────────────────── */
+.ma-rebind{
+  position:fixed; top:46px; right:18px; z-index:65; max-width:520px;
+  display:flex; align-items:center; gap:8px; padding:7px 10px; border-radius:9px;
+  background:rgba(127,167,216,.14); border:1px solid rgba(127,167,216,.34);
+  color:var(--text-2); font-size:11.5px;
+  box-shadow:0 14px 30px -14px rgba(0,0,0,.7);
+}
+.ma-rebind .ic{ color:var(--blue); }
+.ma-rebind .x{ color:var(--text-4); padding:0 2px; }
+.ma-rebind .x:hover{ color:var(--text-2); }
+
+/* ── 사이드바 자리 칩 — 통합 「채팅」 목록의 자리 표기 (목업 chat-unify-collapse ①) ── */
+.sb-item .slotchip{
+  flex:0 0 auto; min-width:15px; padding:0 3.5px; border-radius:3px;
+  font-family:var(--font-mono); font-size:9px; font-weight:700; line-height:14px; text-align:center;
+  color:var(--on-accent); background:var(--text-3);
+}
+/* 접힌 자리 — 흐린 외곽선 칩 + ⌄ (대화는 그대로, 자리만 접혔다) */
+.sb-item .slotchip.folded{ background:transparent; border:1px solid var(--line-2); color:var(--text-3); font-weight:600; }
+.sb-item .slotchip.folded i{ font-style:normal; color:var(--text-4); font-size:8.5px; margin-right:1px; }
+/* 창 자리 — 별도 OS 창에서 보는 중 */
+.sb-item .slotchip.win{ background:transparent; border:1px solid var(--line-2); color:var(--text-3); font-weight:600; }
+.sb-item .slotchip[data-tag="violet"]{ background:var(--violet); }
+.sb-item .slotchip[data-tag="blue"]{ background:var(--blue); }
+.sb-item .slotchip[data-tag="amber"]{ background:var(--amber); }
+.sb-item .slotchip[data-tag="teal"]{ background:var(--teal); }
+.sb-item .slotchip[data-tag="green"]{ background:var(--green); }
+.sb-item .slotchip[data-tag="yellow"]{ background:var(--yellow); }
+.sb-item .slotchip[data-tag="red"]{ background:var(--red); }
+.sb-item .slotchip.folded[data-tag], .sb-item .slotchip.win[data-tag]{ background:transparent; }
+/* 승인/질문 대기 점 — 2.6.2엔 없던 상태(§2.2-5) */
+.sb-item .dot.ask{ background:var(--yellow); box-shadow:0 0 0 3px rgba(217,192,99,.18); }
+/* 실행 중 배지 — 1 모드 busy 전환을 허용하는 대신(스펙 ⑥) "이 채팅은 돌고 있다"를 표시한다 */
+.sb-item .runbadge{
+  flex:0 0 auto; font-size:9px; font-family:var(--font-mono); color:var(--yellow);
+  border:1px solid rgba(217,192,99,.32); background:var(--yellow-soft);
+  border-radius:3px; padding:0 3px; line-height:13px;
+}
+
+/* 접힘 안내 줄 — 사이드바 「채팅」 위의 한 줄 (목업 .foldhint) */
+.sb-foldhint{
+  display:flex; align-items:center; gap:6px; margin:4px 2px 0; padding:5px 8px; border-radius:7px;
+  background:var(--surface); border:1px solid var(--line); font-size:10.5px; color:var(--text-3);
+}
+.sb-foldhint .sp{ flex:1; }
