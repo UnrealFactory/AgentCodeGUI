@@ -379,8 +379,20 @@ pub fn session_list() -> Value {
     )
 }
 
+/// 추가 채팅 목록 브로드캐스트 — **`session-wins:list`와 같은 원천을 싣는다**(★R8-1).
+///
+/// 렌더러는 이 페이로드를 REPLACE로 먹는다(`App.tsx:219-220` `onChanged(setSessionWins)`).
+/// 그래서 여기서 열린 창만 실으면, 창을 하나 열거나 닫는 순간 **영속된 추가 채팅이
+/// 사이드바에서 사라진다** — 2.6.2에서 보이던 대화가 클릭 한 번에 증발하는 것과 구분되지
+/// 않는다(크리틱 R8 §2.5, `CCG_UNIFIED_STORE` 기본값 전환의 전제). 통합 스토어가 켜져
+/// 있으면 별칭 계층의 병합 함수를 그대로 쓰고, 꺼져 있으면 옛 동작(열린 창만) 그대로다.
 pub fn broadcast_sessions(app: &AppHandle) {
-    let _ = app.emit_to(MAIN, crate::ipc::ch::SESSION_WINS_CHANGED, session_list());
+    let payload = if ccg_store::unified_store_enabled() {
+        crate::ipc::unified::session_wins_list()
+    } else {
+        session_list()
+    };
+    let _ = app.emit_to(MAIN, crate::ipc::ch::SESSION_WINS_CHANGED, payload);
 }
 
 /// 창 라벨 → 그 창의 추가 채팅 레코드. `session:report` 같은 "자기 자신" 채널용.

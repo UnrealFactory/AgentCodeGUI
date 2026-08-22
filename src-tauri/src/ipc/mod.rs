@@ -26,7 +26,9 @@
 mod app_meta;
 mod stores;
 mod system;
-mod unified;
+/// `pub`인 이유: 창 브로드캐스트(`win.rs broadcast_sessions`)가 이 모듈의 병합 함수를
+/// **조회 채널과 같은 원천으로** 써야 한다(R8-1).
+pub mod unified;
 mod windows;
 
 use serde_json::{json, Value};

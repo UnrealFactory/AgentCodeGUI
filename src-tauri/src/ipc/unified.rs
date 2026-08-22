@@ -94,7 +94,13 @@ pub fn dispatch(_app: &AppHandle, channel: &str, p: &Value) -> Option<Value> {
 /// `win.rs session_list()`는 **열린 창만** 돌려주므로, 마이그레이션된 추가 채팅이 파일로는
 /// 살아 있는데 화면 어디에도 없었다 — 사용자 눈에는 대화 증발과 구분되지 않는다(크리틱 D7).
 /// 창 소유권은 그대로 셸에 두고, 여기서 **스토어의 진실만 얹는다**.
-fn session_wins_list() -> Value {
+///
+/// ★R8-1 — 이 함수는 `session-wins:list`와 **`session-wins:changed`의 공용 원천**이다.
+/// R2까지는 `list`만 이 병합을 탔고 브로드캐스트(`win.rs broadcast_sessions`)는 열린 창만
+/// 실었다. 렌더러는 `onChanged`를 REPLACE로 받으므로(`App.tsx:219-220`), 추가 채팅 창을
+/// **하나 열거나 닫는 평범한 클릭 한 번**에 영속 추가 채팅이 사이드바에서 통째로 사라졌다
+/// (크리틱 R8 §2.5 실측: 영속 2건 → changed 페이로드 1건). 원천을 하나로 합쳐 닫는다.
+pub fn session_wins_list() -> Value {
     let open = crate::win::session_list();
     let mut out: Vec<Value> = open.as_array().cloned().unwrap_or_default();
     let open_ids: std::collections::HashSet<String> =
