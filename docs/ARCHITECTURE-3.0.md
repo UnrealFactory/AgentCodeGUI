@@ -77,6 +77,27 @@ progress/      # 라이브 진행 페이지
 - **M3-PoC 게이트**(조각 루프 전 선행): 스폰→initialize 핸드셰이크→턴 1회 스트리밍→
   can_use_tool 왕복→interrupt→resume→forkSession 실증 스크립트가 통과해야 M3 착수.
 - Codex는 2.6.2도 app-server JSONL 직접 — 의미론 이식.
+- 스펙: `docs/protocol-claude-cli.md`(실와이어 2회 검증). CLI 실체는 337MB 네이티브
+  `claude.exe`. `systemPrompt`는 **생략**해야 claude_code 프리셋이 산다.
+
+### M3 위험 3개 — 빌더가 반드시 선제 처리한다
+
+1. **`can_use_tool` 왕복의 `toolUseID`**: SDK는 응답에 무조건 덧붙인다. 빠졌을 때 CLI가
+   매칭하지 못하면 **툴이 영구 정지**한다(승인 요청엔 park deadline이 없다). PoC가
+   실제 도구 호출 턴으로 승인/거부 왕복을 왕복시켜 필수 여부를 실증한 뒤 구현할 것.
+   AskUserQuestion을 `deny`+message로 답하는 2.6.2 트릭이 현행 CLI(`requires_user_interaction`)
+   에서도 유효한지도 같은 PoC에서 확인.
+2. **상주 회계의 순서 의존성**: SDK 타입 주석이 "레벨/에지 순서 미정의"라고 못박은 자리를
+   2.6.2는 3중 시퀀스 비교 + 슬라이딩 무음 정착 + hold-idle 휴리스틱으로 버틴다. Rust는
+   타이밍이 달라 같은 코드를 옮겨도 같은 순서가 안 나온다. 깨지면 증상이 "백그라운드
+   증발" 또는 "매 턴 CLI 사망 꼬임 루프" — 둘 다 2.6.2의 실제 릴리즈 사고다. →
+   ccg-engine은 순서 가정 대신 **명시적 상태기계 + 시퀀스 태깅**으로 재설계하고,
+   두 사고를 재현하는 회귀 PoC를 먼저 만든다.
+3. **Windows 좀비**: Electron이 주던 job object 보호가 Tauri엔 없다. 앱이 죽으면 337MB
+   `claude.exe` + 손자(bash/dotnet/dev 서버)가 통째로 잔존한다. `ccg-engine` **최초
+   커밋**에 `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` job object를 넣는다. 더불어
+   `CLAUDE_SECURESTORAGE_CONFIG_DIR` 미지정이 계속 안전한지 확인(바뀌면 계정 격리가
+   조용히 전역 자격증명으로 샌다 — 계정 오염은 2.6.2가 겪은 사고 유형).
 
 ## M5 제약 — 기존 계정을 그대로 살리는 법 (실측으로 확인됨)
 
