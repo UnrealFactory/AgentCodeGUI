@@ -6,6 +6,7 @@
 //! (그 파일들이 원본 — 여기가 미러다.)
 
 pub mod chats;
+pub mod ma;
 pub mod prefs;
 pub mod window_state;
 

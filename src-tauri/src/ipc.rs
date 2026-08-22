@@ -34,6 +34,17 @@ pub mod ch {
     pub const CHAT_LOAD: &str = "chats:load";
     pub const UI_PREFS_GET: &str = "ui-prefs:get";
     pub const UI_PREFS_SAVE: &str = "ui-prefs:save";
+    // 멀티채팅(주 게이트) 워크스페이스
+    pub const MA_GET: &str = "ma:get";
+    pub const MA_SAVE: &str = "ma:save";
+    pub const MA_LOAD_SESSION: &str = "ma:load-session";
+    // 추가 채팅 창
+    pub const OPEN_SESSION_WINDOW: &str = "win:open-session";
+    pub const SESSION_WINS_LIST: &str = "session-wins:list";
+    pub const SESSION_WINS_FOCUS: &str = "session-wins:focus";
+    pub const SESSION_WINS_CLOSE: &str = "session-wins:close";
+    pub const SESSION_REPORT: &str = "session-wins:report";
+    pub const SESSION_WINS_CHANGED: &str = "session-wins:changed";
     // broadcasts (main → renderer)
     pub const UI_GLASS_CHANGED: &str = "ui-glass:changed";
     pub const UI_LANG_CHANGED: &str = "ui-lang:changed";
@@ -43,6 +54,9 @@ pub mod ch {
     pub const WIN_MAXIMIZE_TOGGLE: &str = "win:maximize-toggle";
     pub const WIN_CLOSE: &str = "win:close";
     pub const WIN_IS_MAXIMIZED: &str = "win:is-maximized";
+    /// 셸 내부 채널 — 렌더러 계약면(protocol.ts)에 없다. 주입된 splash.js가
+    /// "첫 프레임을 그렸다"고 알리는 자리(win.rs 참고).
+    pub const WIN_FIRST_PAINT: &str = "win:first-paint";
     // fs / dialog
     pub const DIR_EXISTS: &str = "fs:dir-exists";
     pub const PICK_DIRECTORY: &str = "dialog:pick-directory";
@@ -115,6 +129,46 @@ fn dispatch(app: &AppHandle, window: &WebviewWindow, channel: &str, p: &Value) -
             Value::Null
         }
 
+        // ── 멀티채팅 워크스페이스 (chats와 같은 팬아웃·같은 unloaded 규약) ──
+        // 부팅 조회는 경량(light) — 활성 세션만 패널 스냅샷, 나머지는 마커.
+        ch::MA_GET => ccg_store::ma::read_multi(true),
+        ch::MA_SAVE => {
+            ccg_store::ma::write_multi(arg(p, 0));
+            Value::Null
+        }
+        ch::MA_LOAD_SESSION => ccg_store::ma::read_session(arg(p, 0)),
+
+        // ── 추가 채팅 창 (창당 비용이 3.0의 주 전장 — win.rs 헤더) ──────────
+        ch::OPEN_SESSION_WINDOW => {
+            if let Err(e) = crate::win::open_session_window(app) {
+                eprintln!("[win] 추가 채팅 창 생성 실패: {e}");
+            }
+            Value::Null
+        }
+        ch::SESSION_WINS_LIST => crate::win::session_list(),
+        ch::SESSION_WINS_FOCUS => {
+            if let Some(id) = arg(p, 0).as_str() {
+                crate::win::session_focus(app, id);
+            }
+            Value::Null
+        }
+        ch::SESSION_WINS_CLOSE => {
+            if let Some(id) = arg(p, 0).as_str() {
+                crate::win::session_close(app, id);
+            }
+            Value::Null
+        }
+        ch::SESSION_REPORT => {
+            let info = arg(p, 0);
+            crate::win::session_report(
+                app,
+                window.label(),
+                info.get("title").and_then(Value::as_str),
+                info.get("status").and_then(Value::as_str),
+            );
+            Value::Null
+        }
+
         // ── 창 컨트롤 ───────────────────────────────────────────────────────
         ch::WIN_MINIMIZE => {
             crate::win::minimize(window);
@@ -126,6 +180,10 @@ fn dispatch(app: &AppHandle, window: &WebviewWindow, channel: &str, p: &Value) -
             Value::Null
         }
         ch::WIN_IS_MAXIMIZED => json!(crate::win::is_maximized(window)),
+        ch::WIN_FIRST_PAINT => {
+            crate::win::show_once(window);
+            Value::Null
+        }
 
         // ── fs / dialog ─────────────────────────────────────────────────────
         ch::DIR_EXISTS => {
