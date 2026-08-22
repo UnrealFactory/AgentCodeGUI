@@ -3,10 +3,10 @@ window.PROGRESS = {
   note: 'M0 기준 실측 완결(메모리·콜드 스타트·스크롤·스트리밍) · M3 와이어 프로토콜 스펙 확보(실검증 2회) · M1은 app 이식+ccg-store+src-tauri 진행 중',
   updatedAt: '2026-08-22 13:40',
   metrics: [
-    { name: '유휴 메모리 (프로세스 트리 WS 합)', unit: 'MB', base: 428.1, new: null, target: '≤214' },
-    { name: '유휴 메모리 (Private 합)', unit: 'MB', base: 341.4, new: null, target: '≤171' },
-    { name: '콜드 스타트 → 첫 창 (웜 중앙값)', unit: 'ms', base: 336, new: null, target: '≤168' },
-    { name: '콜드 스타트 → UI 사용 가능', unit: 'ms', base: 422, new: null, target: '≤211' },
+    { name: '유휴 메모리 (프로세스 트리 WS 합)', unit: 'MB', base: 428.1, new: 415.6, target: '≤214', pass: false },
+    { name: '유휴 메모리 (Private 합)', unit: 'MB', base: 341.4, new: 351.4, target: '≤171', pass: false },
+    { name: '콜드 스타트 → 첫 창 (웜 중앙값)', unit: 'ms', base: 336, new: 240, target: '≤168', pass: false },
+    { name: '콜드 스타트 → UI 사용 가능', unit: 'ms', base: 422, new: 329, target: '≤211', pass: false },
     { name: '긴 스레드 스크롤 평균 FPS (471항목 전량 렌더)', unit: 'fps', base: 60, new: null, target: '≥60' },
     { name: '스트리밍 중 프레임 드랍 (긴 스레드 위)', unit: '%', base: 0, new: null, target: '0' },
     { name: '전송 → 엔진 busy', unit: 'ms', base: 89, new: null, target: '≤89' },
@@ -28,6 +28,8 @@ window.PROGRESS = {
     { name: 'M12 패키징+최종 A/B', scope: 'NSIS 대체 설치본·전 화면 대조·최종 인증', state: 'wait' }
   ],
   log: [
+    { t: 'M1 R1 실측', m: '경고 — Tauri 유휴 WS 415.6MB(7프로세스)로 Electron 428MB와 거의 동일, Private는 351 vs 341로 악화. Rust 호스트로 번 85MB를 WebView2가 72MB 더 써서 반납. 메모리 전략 문서로 공격 순서 확정' },
+    { t: 'M3 게이트', m: '통과 — 승인 왕복/중단 생존/포크/job object 좀비 차단 실증(크리틱이 대조 재실행·교란변수 제거). 남은 위험: 상주 회계 순서 의존성은 미해소' },
     { t: '판정 인프라', m: '화면 인벤토리 161건 완성(73건 CDP 실도달 검증) → 블라인드 A/B 캡처 하네스 제작 중 (좌우 무작위·정답 키 분리)' },
     { t: '측정', m: '교대 측정기 추가 — 병렬 부하 편향 제거(A/B/A/B 번갈아). tao 16x16 보조 창이 첫 창으로 잡히던 함정 보정' },
     { t: 'M3', m: '와이어 스펙 1563줄 확보(실검증 2회) — CLI 실체는 337MB claude.exe, systemPrompt는 생략해야 프리셋이 산다' },
