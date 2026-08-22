@@ -1,11 +1,33 @@
-# M-UX 「채팅 통합」 — 설계 스펙 **R2** (3.0.0)
+# M-UX 「채팅 통합」 — 설계 스펙 **R3** (3.0.0)
 
 상태: **스펙 확정 제안 + 목업**. 코드 없음.
-R1(2026-08-22) → **R2 개정**: `docs/critic/design-r1.md`의 M-UX 지적 전수 반영.
+R1 → R2 → **R3 개정**(2026-08-22): `docs/critic/design-r2.md`의 M-UX 지적(N5·N7·N9·N13·N14·N15·N16)과
+**문서 간 어긋남 X1~X9** 전수 반영 + **리드 확정 3건**.
 근거는 전부 얼린 2.6.2 소스(`src/`)에서 확인했고 파일:줄로 남겼다. 추측으로 쓴 문장은 없다.
 
 목업: `docs/design/mockups/chat-unify-*.html` (8장)
-동반 문서: **`docs/design/ux-parity-map.md`** — 156화면 전수 사영표(신설, R2의 핵심 산출물)
+동반 문서: **`docs/design/ux-parity-map.md`** — 156화면 전수 사영표(R2의 핵심 산출물, R3에서 수치 갱신)
+짝 문서: `docs/design/m-logic.md` R3 · `docs/design/m-logic-replay.md` R3
+
+---
+
+## R3 개정 요약 — 크리틱 R2 대응 + 리드 확정
+
+전수 대응표는 **§11**. 여기는 이 문서의 뼈대를 바꾼 것만.
+
+| 무엇 | 무게 | R3에서 무엇을 했나 | 절 |
+|---|---|---|---|
+| **[리드 확정] 전역 pref = 물질화** (N4/X7) | **높음** | R2의 "저장은 부분 override, 미지정은 전역 **상속**"을 **폐기**했다. `Chat.identityOverrides: Partial<RunIdentity>` → **`Chat.identity: RawIdentity`(완전 지정)**. 전역 토글은 **새 채팅에만**, 기존 채팅은 `chat:identity-set`(개별/일괄) + **집계 verdict 카드**로만. m-logic §2.4가 이긴다 | §1.2·§4.2·§5.2 |
+| **[리드 확정] O12 수정판** (N10/X4) | **중** | 마이그레이션 무손실 비교를 **저장된 원시 필드의 바이트 비교(1차·전 항목)** + **`RunIdentity::hash()` 교차검증(2차·정규화 성공분만)** 2단으로. 정규화 실패는 **게이트를 막지 않는다.** §5.2의 `cwd/picker` 행을 통째 교체 | §5.2 |
+| **[리드 확정] 패치 입도 = 서브필드** (N2/X5) | **중** | override 타입 문제의 진짜 답 — 부분 지정이 필요한 자리는 `Partial<RunIdentity>`가 아니라 **`RawIdentityPatch`**(m-logic §2.2)다. `.model/.effort/…` 평평한 접근은 **마이그레이션 매핑 함수 안에서만** 산다 | §1.2·§4.2 |
+| **`ChatStatusLite`의 주인** (N5·X8) | **중** | `statuses`를 `index.json`에서 빼 **`chats-v3/status.json`(Rust 전용)** 으로. `chats:save`에서 `statuses` 제거 + **Rust 소유 3필드 되끼움**(identity·queue·hold) + **부팅 hold/큐 재장전 경로** 명시 + `unread`는 3.0 범위 밖(값 0) | §4.1·§4.3 |
+| **고아 UI 정리가 얇다** (N9·N13) | **중/낮음** | 2.6.2 축소 정리는 **5개**(`MultiAgent.tsx:1823-1827`)인데 R2는 둘만 덮었다 → **`reconcileChatRefs(visibleSet)` 단일 함수** + 지목 상태 6종 표. "접힘 집합을 바꾸는 동작은 딱 둘"도 **함수 1 + 소비자 5**로 고쳤다 | §2.2-1 |
+| **`SubAgentModal`의 행선지 자기모순** (N7) | **중** | §3.1이 같은 카드를 `ChatSurface`와 「창 크롬」 양쪽에 넣었다. 뷰어·라이트박스와 같은 **A+Aw**로 통일(그리드 1/6 셀 · zoom .8 안에 갇히는 회귀 방지 — `MultiAgent.tsx:1913-1914` 주석이 같은 함정을 이미 경고) | §3.1 |
+| **4번째 자리 껍데기** (N15) | **낮음** | 「크게 보기」 오버레이가 `ChatSurface`를 담는데 껍데기 3종에 없었다 → **`<ExpandOverlay>`** 명시 | §3.1 |
+| **인용 오기 1건 + 카드 종류** (N16·X9) | **낮음** | `engine.ts:936` → **`:948`**(`:936`은 dialogKind 가드 · 질문 경로 `:802` · waiter `:950`). 카드 종류 판별자는 m-logic이 `live[].ask`로 실어 준다 | §6.1·§7 |
+| **파리티 변경이 승인 목록에 없다** (N14) | **낮음** | `interrupt`가 **자동 이어서 대기표까지** 취소하는 건 2.6.2와 다르다 → 열린 문제 ⑬(사용자 확인) + 사영표 §5-4·§6 | §8-⑬ |
+| **낡은 미결 표기** (X2·X3) | — | §7의 「여전히 열린 것」에서 L1(중단이 큐를 비움)·L7(스폰 축 4개)을 **내렸다** — m-logic R2에서 이미 확정된 것을 미결로 적고 있었다 | §7 |
+| **override 필드 이름** (X6) | — | `mcpOverrides`/`skillOverrides` → **`tools.deniedMcp`/`tools.skillOverrides`**(m-logic 이름)로 통일 | §4.2·§7 |
 
 ---
 
@@ -22,7 +44,7 @@ R1(2026-08-22) → **R2 개정**: `docs/critic/design-r1.md`의 M-UX 지적 전�
 | **U7** IPC 산수가 틀렸다(21이 아니다) | 중 | 다시 셌다 — **명령 24 + 이벤트 8 = 32채널**. m-logic 채널 포함, 블록과 수가 일치 | §6.1 |
 | **U8** 다이얼 축소 규칙이 재정렬·정리 로직 의미를 바꾼다 | 중 | 드래그는 **보이는 자리끼리만** 순서를 바꾼다 → 접힘 집합 불변. `focusedSlot`/`renamingSlot` 정리 규칙 재정의 | §2.2-1 |
 | **U9** 뷰어發 동작의 대상 채팅 미정 | 중 | `viewerTarget { chatId, path, from }` 신설 + 「대상 채팅 칩」. `chat-find`·`changed-files`·Git의 대상도 한 규약으로 | §3.4 |
-| **U10** 전역 pref의 채팅 물질화가 마이그레이션 표에 없다 | 중 | 저장은 **`identityOverrides`(부분)** 만. 미지정 = 전역 상속 → "전역을 꺼도 옛 채팅은 API로 돈다"가 안 생긴다. pref 이관 표 신설 | §4.2 |
+| ~~**U10** 전역 pref의 채팅 물질화~~ | 중 | ~~저장은 `identityOverrides`(부분)만. 미지정 = 전역 상속~~ → **★R3에서 폐기·역전됨**(N4/X7 리드 확정). 상속은 P1d를 부활시킨다 — **물질화**가 답이다. 현행 규약은 §4.2 | §4.2 |
 | **U11** `version: 3`은 다운그레이드 가드가 아니다 | 낮음 | 통합 스토어를 **`chats-v3/`** 새 디렉터리로. 2.6.2 디렉터리는 읽고 **남긴다** | §4.1 |
 | **U12** 빈 채팅 규칙 일반화가 반쪽 | 낮음 | light 조회의 「빈 스냅샷 채팅은 통째로 유지」 예외 보존. 빈 채팅은 "자리당 1개"가 아니라 **자리에 배정된 것만 존재** | §2.4·§4.3 |
 | 인용 오류 #3·4·5·7·8·9·10 | — | 전부 수정(§R2-끝 인덱스에 대조표) | §10 |
@@ -127,18 +149,26 @@ interface Chat {
   title: string; custom: boolean
   locked: boolean; color: string   // ※ 신규 필드 (일반 채팅 ChatMeta엔 없다 — App.tsx:57-73).
                                    //   멀티 패널만 갖고 있었다(PanelMeta:113-125) → 기본값 주입 필요
-  identityOverrides: Partial<RunIdentity>   // ★ 부분 지정. 미지정 필드는 전역 pref 상속 (§4.2 U10)
-                                   //   picker(3벌)·manualCwd·refDirs·api를 흡수
+  /** ★R3 (N4·X5) — **완전 지정된 원시 정체성**. 부분 override가 아니다.
+   *  타입은 m-logic §2.2의 `RawIdentity`. picker(3벌)·manualCwd·refDirs·api를 흡수한다.
+   *  - 생성/마이그레이션 시점에 전역 pref를 **읽어 굳힌다**(origin=`restore|default`).
+   *  - 그 뒤 전역을 바꿔도 이 값은 안 바뀐다 → P1d(전역이 상주를 뒤에서 끊음)가 구조적으로 죽는다.
+   *  - **쓰기 주인은 Rust다.** 렌더러가 `chats:save`에 실어 보내도 무시되고 되끼워진다(§4.1).
+   *  - 값을 바꾸는 유일한 경로 = `chat:identity-set { patch: RawIdentityPatch }`.
+   *  - 정규화 실패(폴더 없음·로그아웃·키 없음)는 **값을 고치지 않고** `unresolved` 표식만 단다. */
+  identity: RawIdentity
   draft: string; draftImages: string[]
   queue: ScheduledMsg[]            // 2.6.2는 본채팅만 App state(App.tsx:165), 패널은 PanelMeta.queue
   snapshot: SessionState           // 스레드 + session(resume id) + files + workflows
   hold?: LimitHold                 // 한도 대기표 — 2.6.2는 훅 인스턴스마다 흩어져 있다
   btwOf?: string; btwSeed?: {fork:string;cwd:string}; btwPrompt?: string   // sessionChats.ts:43-45
   empty?: boolean                  // 메시지 0 — 디스크 skip 판정 (sessionChats.ts:34·:104)
-  lastSeenAt?: number              // 읽지 않음 계산용 (신규 — 열린 문제 ⑪)
+  lastSeenAt?: number              // 읽지 않음 계산용 (신규 — 열린 문제 ⑪. ★R3: 3.0.0 미사용)
   updatedAt?: number
   unloaded?: boolean               // 스냅샷이 메모리에 없음 (chats.ts:22-35 규약 그대로)
 }
+// ★R3 Rust 소유 필드 3개 = identity · queue · hold. 렌더러는 **읽기 전용**이고
+//    저장 시 되끼워진다(§4.1). 2.6.2가 스냅샷(unloaded 마커)에 하던 규약의 확장이다.
 
 // ※ Chat.owner는 R2에서 삭제됐다 — U5. 구동은 Rust ChatRuntime, 창 배정은 WindowRegistry (§2.5)
 
@@ -247,16 +277,45 @@ count를 6→2로 줄이면 슬롯 4번 패널이 보이던 자리를 통째로 
 **"order 내 위치 < count"**(= `order.slice(0,count)`)로 바꾼다.
 
 > **U8 해소 — `order`가 두 역할을 겸직하는 문제.** 표시 순서와 접힘 우선순위가 한 배열에
-> 얹히므로, 규칙을 세 줄로 못 박는다.
+> 얹히므로, 규칙을 못 박는다.
 > - **드래그 재배치(`multi-reorder`)는 보이는 자리끼리만 순서를 바꾼다.** 즉
 >   `order[0..count-1]` 내부의 순열만 허용 — **접힘 집합 `order.slice(count)`는 불변.**
 >   (2.6.2에서도 드래그는 그리드 안에서만 일어났다. 이건 제약 추가가 아니라 명문화다.)
-> - 접힘 집합을 바꾸는 동작은 **딱 둘**: 다이얼 값 변경, 접힘 배지 팝오버의
->   「이 자리로 바꾸기」(= 보이는 위치 하나와 접힌 위치 하나를 swap).
-> - 2.6.2의 count 축소 정리(`MultiAgent.tsx:1819-1824`: `focusedSlot`/`renamingSlot`이
->   `>= n`이면 해제)는 기준이 "슬롯 번호"에서 **"order 내 위치"**로 바뀐다. 포커스는
->   `focusedChatId`로 승격되므로 규칙은 한 줄이 된다:
->   *포커스 채팅이 보이는 자리에 없으면 `order[0]`의 채팅으로 옮긴다.* 이름 편집 중이면 커밋.
+> - **★R3 (크리틱 N13) — "접힘 집합을 바꾸는 동작은 딱 둘"은 R2 안에서 이미 깨져 있었다.**
+>   §3.2 토스트 라우팅 (b)(접힌 채팅을 1번 자리로 swap)·(d)(어디에도 없는 채팅을 1번 자리에 얹고
+>   기존 1번을 접힘 집합 맨 앞으로)와 §3 사이드바 ctx 메뉴 「이 자리로 보내기」가 이미 셋을 더한다.
+>   **열거를 규칙으로 바꾼다**: 접힘 집합을 바꾸는 모든 동작은 **`setVisible(order')` 한 함수**를
+>   지나고, 그 함수가 반드시 `reconcileChatRefs()`(아래)를 부른다.
+>   현재 소비자 **다섯**: ① 다이얼 값 변경 ② 접힘 배지 팝오버 「이 자리로 바꾸기」
+>   ③ 토스트 라우팅 (b) ④ 토스트 라우팅 (d) ⑤ 사이드바 ctx 「이 자리로 보내기」.
+>   (드래그 재배치는 보이는 자리 내부 순열이라 **여기 없다** — 접힘 집합 불변.)
+>   소비자가 여섯 번째가 되어도 규칙은 안 바뀐다. 열거가 아니라 **관문이 규약**이기 때문이다.
+
+#### 2.2-1b ★R3 `reconcileChatRefs(visibleSet)` — 고아 UI 정리 (크리틱 N9)
+
+2.6.2는 count 축소에서 **다섯 개**를 정리한다(`MultiAgent.tsx:1823-1827`):
+`focusedSlot` · `renamingSlot` · `expandedSlot` · `openFile` · `openSub`.
+R2 §2.2-1은 **앞 둘만** 다루고 "한 줄이 된다"고 적었다. 통합 모델에서 나머지 셋은 **더 위험하다** —
+앱 크롬 뷰어(`viewerTarget.chatId`)·서브에이전트 카드·「크게 보기」 오버레이가
+**접힌(=화면에 없는) 채팅을 가리킨 채** 남는다. 메모리의 「고아 상태(유령 UI) 정리 규약」
+(커밋 `8e762d2`, 사용자 실물 제보)이 정확히 이 형태다.
+
+**규칙**: 보이는 자리 집합이 바뀌는 모든 전이에서, 화면에 떠 있는 **채팅 지목 상태 전부**를
+재검증한다. 내용이 그 채팅의 것이면 **닫고**, 채팅과 무관한 내용이면 **재바인드**한다.
+
+| 지목 상태 | 2.6.2 | 대상이 보이지 않게 되면 | 왜 |
+|---|---|---|---|
+| `focusedChatId` | `focusedSlot >= n` → null | **재바인드** → `order[0]`의 채팅 | 포커스는 항상 어딘가에 있어야 키보드 스코프가 정의된다 |
+| `renamingChatId` | `renamingSlot >= n` → null | **커밋 후 닫기** | 입력 중이던 글자를 버리지 않는다 |
+| `expandedChatId`(「크게 보기」) | `expandedSlot >= n` → null | **닫는다** | 오버레이 내용 = 그 채팅의 `ChatSurface` |
+| `viewerTarget.chatId`(코드 뷰어) | `openFile.slot >= n` → null | **뷰어는 닫지 않고 대상만 재바인드** → `focusedChatId`. 헤더의 대상 채팅 칩 갱신 + 한 줄 안내(*"대상 채팅이 접혀서 「○○」로 바꿨어요"*). diff는 새 대상의 `diffs`로 재계산(없으면 diff off) | 2.6.2가 닫은 이유는 **뷰어가 패널 안에** 있었기 때문이다. 3.0의 뷰어는 앱 크롬이고 **파일 읽기는 채팅과 무관**하다 — 닫으면 오히려 회귀. 위험한 건 "고아 대상"이므로 재바인드가 답 |
+| `subagentTarget{chatId,id}` | `openSub.slot >= n` → null | **닫는다** | 카드 내용 = 그 채팅 원장의 항목. 다른 채팅으로 재바인드할 수 없다 |
+| `lightboxSource.chatId`(이미지) | (2.6.2 미정리) | **닫는다** | 이미지 목록이 그 채팅 스레드에서 온다 |
+
+**부르는 자리**: `setVisible(order')` 하나 + 다음 넷 — 채팅 삭제 · 보드 활성화(§2.6) ·
+창 열기/닫기(자리가 창으로 나가거나 돌아옴) · 마이그레이션 후 보드 정화(§2.4-4).
+전부 같은 함수를 부르므로 새 진입점이 생겨도 규칙이 안 샌다.
+(2.6.2는 이 정리가 **다이얼 버튼의 `onClick` 안에 인라인**이라, 다른 경로로 자리가 바뀌면 안 돌았다.)
 
 **2. 접힌 자리는 살아 있다.** `slots` 배열은 손대지 않는다. 엔진도 죽이지 않는다
 (2.6.2 `ma:dispose`는 세션 삭제에서만 호출, `MultiAgent.tsx:2161`).
@@ -285,6 +344,16 @@ R1은 §2.2-4에서 "접힘은 감시 대상에서 빠지지 않는다"고 했�
 감시 집합 = ChatRuntime이 살아 있는 모든 채팅
           (= 이 앱 세션에서 한 번이라도 스폰됐거나, 큐·hold를 들고 있는 채팅)
 ```
+
+> **★R3 (크리틱 X8) — m-logic §3.1과 문장을 맞췄다.** m-logic R2는 *"채팅 1개 = 인스턴스 1개,
+> 앱 수명 동안"*이라 적었고 여기는 *"한 번이라도 스폰됐거나 큐·hold를 든 채팅"*이라 적어
+> **두 문서가 다른 집합을 말했다.** 그러면 런타임 없는 채팅에 대해 `chat:status`(전 채팅 REPLACE)를
+> 누가 만드는지가 빈다. 확정:
+> **`ChatRuntime`은 채팅당 최대 1개이고 `ChatRuntime::ensure(chatId)`로 지연 물질화된다** —
+> 명령·큐·hold·부팅 재장전 중 하나라도 닿으면 생기고, 그 뒤로는 앱 수명 동안 산다.
+> 닿은 적 없는 "차가운 채팅"은 런타임이 없고 상태의 진실은 `chats-v3/status.json`이다(§4.3).
+> `chat:status` REPLACE는 Rust가 **런타임 있는 것 + status.json의 나머지**를 합쳐 만든다.
+> 즉 위 정의는 그대로 유효하고, 그 밖의 채팅도 **표시값은 항상 있다**.
 
 - 자리(보드 slots)·창·다이얼·접힘과 **무관**하다.
 - §8-3의 "자리에서 빼도 계속 돈다" 시나리오 — 보드 slots에도 창에도 없는 채팅 — 이
@@ -352,7 +421,8 @@ R1은 §2.2-4에서 "접힘은 감시 대상에서 빠지지 않는다"고 했�
      전 채팅에 적용. 단 btw 채팅은 빈 채로도 남긴다(알약 규약).
   4. 3의 결과로 다음 부팅에 **보드 `slots[i]`가 없는 id를 가리킬 수 있다** → 보드 로드 시
      정화(sanitize): 존재하지 않는 chatId는 `null`로 내린다. (2.6.2 `sanitizePanelOrder`
-     `MultiAgent.tsx:222-224`와 같은 자리.)
+     `MultiAgent.tsx:222-224`와 같은 자리.) **★R3: 정화 직후 `reconcileChatRefs()`를 부른다**
+     (§2.2-1b) — 사라진 채팅을 가리키던 뷰어·카드가 부팅 화면에 그대로 뜨는 걸 막는다.
 
 ### 2.5 자리 번호와 창 — `Chat.owner`는 삭제한다 (U5)
 
@@ -437,31 +507,48 @@ activateBoard(b):
    │                     오른쪽: 다이얼 · 접힘 배지 · 실행 요약 칩 · 찾기 · 탐색기 토글 · 창 컨트롤
    ├ 왼쪽 칼럼          ← Sidebar ⟷ Explorer (` 전환). 2.6.2도 mode 분기 밖(App.tsx:1432-1466)
    ├ CodeViewer(FileModal)   ← 단일 인스턴스. 대상은 viewerTarget { chatId, path, from } (§3.4)
-   ├ GitModal · ChangedFilesModal · ImageViewer · SubAgentModal(앱 레벨 진입분)
+   ├ GitModal · ChangedFilesModal · ImageViewer
+   ├ **SubAgentModal**       ← ★R3 (N7) 자리 밖. 대상은 subagentTarget { chatId, id }
    ├ SettingsModal · PromptLibrary · NewChatModal
    └ 게이트류(엔진/앱 업데이트) · 토스트 창 · 트레이 창
 
 <ChatSurface chatId>            ← 채팅 하나를 그리는 유일한 컴포넌트
    ├ 스레드 (MessageView, useThreadWindow, useThreadFollow)
-   ├ WorkBar          (Chat.tsx:3142)
+   ├ WorkBar          (Chat.tsx:3142)      ← 서브에이전트 **팝오버**(workbar-subagent-pop)는 여기.
+   │                                          **상세 카드(SubAgentModal)는 앱 크롬**이다 — 다른 화면
    ├ Composer         (Chat.tsx:4251)
    ├ LimitHoldBar     (Chat.tsx:2729)      ← 30초 틱을 스스로 소유 (memo 함정, useLimitResume.ts:169-171)
-   ├ QuestionModal    (Chat.tsx:3585)      ← 자리 스코프
-   ├ PermissionModal  (Chat.tsx:3634)      ← 자리 스코프
+   ├ QuestionModal    (Chat.tsx:3585)      ← 자리 스코프. live[].ask.askKind==='question'
+   ├ PermissionModal  (Chat.tsx:3634)      ← 자리 스코프. askKind==='permission'
+   ├ FallbackDialogCard                    ← ★R3 askKind==='dialog' (m-logic §5.6). 2.6.2는
+   │                                          같은 질문 카드를 재사용했다(engine.ts:948 'ask-' 접두)
    ├ WorkflowDock     (Chat.tsx:3982)
    ├ BtwDock          (Chat.tsx:4059)
-   ├ BashLogModal / BgTaskModal / SubAgentModal (Chat.tsx:389·2983 · AgentPanel)
+   ├ BashLogModal / BgTaskModal (Chat.tsx:389·2983)
    └ FolderSwitchDialog                     ← M-LOGIC needs_confirm의 표시 형태
 
-자리 껍데기 3종 — ChatSurface를 담기만 한다 (앱 크롬을 담지 않는다)
-   ├ <IdeShell>    count=1 : 전폭. 자체 헤더 없음(TopBar가 그 역할)
-   ├ <GridCell>    count≥2 : 패널 헤더(자리번호·제목·폴더칩·상태·크게보기·팝아웃) + zoom .8
-   └ <WindowShell> 창      : 창 헤더(제목·폴더칩·찾기·WinControls) + 창 크롬 축소판
-                             창 크롬 = 뷰어 · 이미지 라이트박스 · 서브에이전트 카드 **셋뿐**
-                             (2.6.2 실측: SessionWindow/PanelWindow에 Explorer·Git·Settings import 0건)
+자리 껍데기 **4종** — ChatSurface를 담기만 한다 (앱 크롬을 담지 않는다)   ★R3 (N15)
+   ├ <IdeShell>       count=1 : 전폭. 자체 헤더 없음(TopBar가 그 역할)
+   ├ <GridCell>       count≥2 : 패널 헤더(자리번호·제목·폴더칩·상태·크게보기·팝아웃) + zoom .8
+   ├ <WindowShell>    창      : 창 헤더(제목·폴더칩·찾기·WinControls) + 창 크롬 축소판
+   │                            창 크롬 = 뷰어 · 이미지 라이트박스 · 서브에이전트 카드 **셋뿐**
+   │                            (2.6.2 실측: SessionWindow/PanelWindow에 Explorer·Git·Settings import 0건)
+   └ <ExpandOverlay>  「크게 보기」: **앱 크롬이 호스팅하는 전폭 오버레이**가 자리 하나를 담는다.
+                                헤더는 GridCell 헤더 재사용 + 닫기. 대상 = expandedChatId.
+                                R2는 이걸 껍데기 목록에 안 넣고 사영표에서 A로만 표기해,
+                                "ChatSurface를 담는 4번째 호스트"가 문서 어디에도 없었다(N15).
+                                `<ExpandOverlay>`는 **A가 호스팅**하므로 사영표 기호는 그대로 A(+S).
    └ 공통: ErrorBoundary 래퍼 1벌 — 자리 하나가 죽어도 나머지가 산다
            (2.6.2는 멀티 전체가 한 경계라 패널 하나의 예외가 6자리를 같이 죽였다, App.tsx:1474)
 ```
+
+> **★R3 — `SubAgentModal`이 자리 밖인 이유 (크리틱 N7).** R2 §3.1은 같은 카드를 `ChatSurface`
+> 목록에도, 「창 크롬 3종」에도 넣었고 사영표는 `S`(자리 안)로 적었다 — **한 문서 안의 모순**이다.
+> `S`로 넣으면 그리드에서 카드가 **1/6 셀 · zoom .8 안에** 갇힌다 = 읽을 수 없는 회귀.
+> 2.6.2가 같은 함정을 이미 주석으로 경고한다 — `MultiAgent.tsx:1913-1914`(코드 뷰어 오버레이에 대해):
+> *"패널이 아니라 여기서 한 번만 렌더해 `.fv-overlay(absolute inset:0)`가 `.win-body` 전체를 덮게 한다"*.
+> 서브에이전트 카드도 같은 이유로 **패널 밖 최상위**에서 렌더된다(`MultiAgent.tsx:1928` ·
+> `SessionWindow.tsx:888` · `PanelWindow.tsx:531`). → **A + Aw**로 통일한다(뷰어·라이트박스와 동일).
 
 2.6.2 대응: `App.tsx`(IDE) · `MultiAgent.tsx PanelView:317`(그리드) ·
 `SessionWindow.tsx`(창) · `PanelWindow.tsx`(창) 네 벌 → **앱 크롬 1 + ChatSurface 1 + 껍데기 3**.
@@ -500,7 +587,9 @@ activateBoard(b):
 (b) 접혀 있으면 1번 자리로 swap 후 포커스, (c) 창이면 창 포커스, (d) 어디에도 없으면
 **1번 자리에 얹는다**(기존 1번 자리 채팅은 접힘 집합의 맨 앞으로 밀린다 — 대화는 안 잃는다).
 
-**계정 오버라이드 / picker.** `Chat.identityOverrides`에 붙으므로 자리와 무관하게 따라간다.
+**계정 오버라이드 / picker.** `Chat.identity`에 붙으므로 자리와 무관하게 따라간다.
+picker의 `value`는 `chat:identity` 브로드캐스트, `onChange`는 `chat:identity-set{patch}`다
+(m-logic §4.1 — 렌더러 `setState`가 진실을 만들지 않는다).
 2.6.2의 3벌(§0 표)이 1벌. 계정별 `CLAUDE_CONFIG_DIR` 물질화·projects 정션 공유 규약은
 그대로(M-LOGIC/M5 소관).
 
@@ -572,6 +661,15 @@ viewerTarget: { chatId, path, from: 'explorer'|'thread'|'git'|'changed' } | null
 2. **대상이 보이게 한다.** 뷰어 헤더에 대상 채팅 칩(제목 + 자리 번호)을 항상 그린다.
    N=1이면 칩이 흐리게(정보만), N≥2면 또렷하게.
 
+**★R3 — 대상이 화면에서 사라지면 (크리틱 N9).** `viewerTarget.chatId`가 가리키는 채팅이
+접히거나 삭제되면 **뷰어를 닫지 않고 대상만 `focusedChatId`로 재바인드**한다.
+칩이 새 대상으로 갱신되고 한 줄이 뜬다 — *"대상 채팅이 접혀서 「○○」로 바꿨어요"*.
+diff는 새 대상의 `diffs`로 다시 계산하고, 없으면 diff를 끈다.
+2.6.2가 `openFile.slot >= n`에서 뷰어를 **닫은** 이유는 뷰어가 패널 안에 있었기 때문이고,
+3.0의 뷰어는 앱 크롬이라 **파일 읽기 자체는 채팅과 무관**하다 — 닫으면 오히려 회귀다.
+위험한 건 "고아 대상"(보이지 않는 채팅으로 질문이 나가는 것)이므로 재바인드가 답이다.
+전체 규칙은 §2.2-1b의 `reconcileChatRefs()` 표.
+
 ---
 
 ## 4. 저장 스키마
@@ -582,10 +680,14 @@ viewerTarget: { chatId, path, from: 'explorer'|'thread'|'git'|'changed' } | null
 ~/.agentcodegui/
   chats-v3/                     ← ★ 새 디렉터리. 2.6.2의 chats/ 를 재사용하지 않는다
     index.json            { version: 1, order: [chatId…], activeChatId,
-                            statuses: { <chatId>: ChatStatusLite },   ← §4.3
                             migratedFrom?: "2.6.2", migratedAt?: number }
-    <chatId>.json         { id, title, custom, locked, color, identityOverrides,
-                            draft, draftImages, queue?, hold?, btwOf?, btwSeed?, btwPrompt?,
+                          ← 주인 = **렌더러 팬아웃**(chats.ts:116-162 재사용)
+    status.json           { version: 1, statuses: { <chatId>: ChatStatusLite } }   ★R3 (N5)
+                          ← 주인 = **Rust 전용.** 렌더러는 읽기만. `chats:save`에 안 실린다
+    <chatId>.json         { id, title, custom, locked, color,
+                            identity,                    ← ★R3 Rust 소유(되끼움)
+                            queue?, hold?,               ← ★R3 Rust 소유(되끼움)
+                            draft, draftImages, btwOf?, btwSeed?, btwPrompt?,
                             empty?, lastSeenAt?, updatedAt, snapshot }
   boards/
     index.json            { version: 1, order: [boardId…], activeBoardId }
@@ -611,6 +713,15 @@ viewerTarget: { chatId, path, from: 'explorer'|'thread'|'git'|'changed' } | null
 - **unloaded 마커**: 규약 한 글자도 바꾸지 않는다. 렌더러가 스냅샷 없는 메타만 되보내면
   스토어가 디스크의 스냅샷을 되끼워 저장(`chats.ts:22-35`, `chats.rs:151-172`).
   **이걸 깨면 대화가 통째로 증발한다** — `chats.rs:1-12`가 그 경고를 이미 달고 있다.
+- **★R3 되끼움을 3필드로 확장 (크리틱 N5)**: `identity` · `queue` · `hold`의 진실은 **Rust**다.
+  렌더러가 `chats:save`에 그 셋을 실어 보내도 스토어는 **무시하고 Rust 값으로 되끼운다.**
+  근거: 저장이 디바운스라, 턴 중에 폴백으로 바뀐 정체성을 **낡은 렌더러 사본이 되돌린다**
+  (P3의 형태만 바꾼 재발). 스냅샷 마커 규약과 **같은 자리·같은 함수**이므로 구현 비용이 0에 가깝다.
+  → `poc-chat-unify-migrate.mjs` §5.3-2가 이 셋도 같이 검사한다.
+- **★R3 `statuses`를 index.json에서 뺀 이유 (N5)**: R2는 `index.json`에 `statuses`를 넣었는데
+  그 파일의 쓰기 주인은 **렌더러 팬아웃**이고 statuses의 진실은 **Rust**다 = 같은 파일 두 주인
+  = lost update. 파일을 쪼개면 경합이 **구조적으로 불가능**해진다.
+  `chats:get`은 두 파일을 합쳐 돌려주므로 렌더러 쪽 코드 모양은 그대로다.
 - **지연 로드**: 자리에 얹히는 순간 `chats:load`로 되읽는다(`App.tsx:746-771 restore`,
   `MultiAgent.tsx:2124-2147 activate`의 seq 가드 규약 — 연타 시 마지막 요청만 이긴다).
 
@@ -618,7 +729,7 @@ viewerTarget: { chatId, path, from: 'explorer'|'thread'|'git'|'changed' } | null
 
 | 2.6.2 | 3.0 통합 | 비고 |
 |---|---|---|
-| `chats/<id>.json` | `chats-v3/<id>.json` (id 유지) | `manualCwd`→`identityOverrides.cwd`, `refDirs`→`.addDirs`, `picker.*`→`.model/.effort/.mode/.engine/.account/.codexAccount`. 스냅샷·초안·updatedAt 그대로. **`locked`·`color`는 없던 필드 → 기본값 주입**(`false`, `''`) — R1이 "그대로"라 적은 것은 오류 |
+| `chats/<id>.json` | `chats-v3/<id>.json` (id 유지) | **★R3 매핑 함수 `toRawIdentity(rec, globals)`** 하나가 판다 — `manualCwd`→`identity.cwd`, `refDirs`→`.addDirs`, `picker.model/effort`→`.engine.{model,effort}`, `picker.engine`→`.engine.kind`, `picker.codexAccount`→`.engine.codexAccount`, `picker.mode`→`.mode`, `picker.account`+`api.mode`→`.billing`(§2.4 물질화 — **그 시점 전역값을 읽어 굳힌다**), 전역 `claude.outputStyle`→`.outputStyle`, 전역 MCP/Skill→`.tools`. 스냅샷·초안·updatedAt 그대로. **`locked`·`color`는 없던 필드 → 기본값 주입**(`false`, `''`) — R1이 "그대로"라 적은 것은 오류. ★ 평평한 `.model/.effort/…` 접근은 **이 함수 안에서만** 존재한다(X5) |
 | `chats/index.json.order` | `chats-v3/index.json.order` 앞부분 | 순서 보존 |
 | `chats/index.json.activeChatId` | 기본 보드 `slots[0]` + `activeChatId` | |
 | `multi-agent/<sid>.json.panels[i]` | `chats-v3/ma-<sid>-<i>.json` (새 id, 결정론적) | title/custom/locked/color/cwd/refDirs/picker/api/snapshot 그대로. 내용 없는 패널(제목·스냅샷 없음)은 생성하지 않고 `slots[i]=null` |
@@ -634,25 +745,48 @@ viewerTarget: { chatId, path, from: 'explorer'|'thread'|'git'|'changed' } | null
 | `chat-talk.json` | 남아 있으면 `chats-v3/`로 1회 편입 후 비움 | 2.6.2가 이미 하던 것(`App.tsx:528-594`) |
 | — | 기본 보드 `boards/default.json` | `count = ui-prefs의 workspace.mode==='multi' ? 마지막 세션 count : 1`, `slots[0] = 이전 activeChatId` |
 
-**★ 전역 pref → 채팅 층 이관 (U10 — R1에 표가 없었다)**
+**★R3 전역 pref → 채팅 층 이관 — 상속이 아니라 물질화 (N4/X7 리드 확정)**
 
 문제: `api.mode`는 **전역**이다(`App.tsx:180 getPref('api.mode')`, 실행 시 `App.tsx:1076 useApi: apiMode`).
 멀티 패널만 패널별(`PanelMeta.api`), 추가 채팅 레코드엔 필드 자체가 없다(`sessionChats.ts:24-46`).
 M-LOGIC이 `BillingAxis`를 **채팅별 정체성 축**으로 승격하므로, 마이그레이션 순간 기존 채팅
 전부가 그때의 전역값으로 굳는다 → 이후 전역 토글을 꺼도 옛 채팅은 API로 돈다.
 
-해결: **저장하는 것은 `identityOverrides`(부분)뿐이고, 미지정 필드는 전역을 상속한다.**
-`RunIdentity`(m-logic의 얼린 필드 집합)는 `전역 기본 + overrides`로 **계산**되므로 m-logic의
-정규화 규칙·골든 테스트와 충돌하지 않는다 — 얼린 것은 계산 결과의 필드 집합이지 저장 스키마가 아니다.
+**R2의 답(상속)은 틀렸다.** *"저장하는 것은 `identityOverrides`(부분)뿐이고 미지정 필드는 전역을
+상속한다"*로 가면 설정에서 출력 스타일을 한 번 바꾸는 순간 override 없는 **전 채팅의
+`RunIdentity` 해시가 동시에 바뀌고**, 다음 send가 전부 `IdentityChanged` 재스폰이 된다
+= **P1d(전역 값이 채팅 상주를 뒤에서 끊는다)의 부활**. m-logic §2.4가 죽였다고 선언한 바로 그 병리다.
+게다가 R2 §5.2의 검증행("상속으로 가는 필드는 전역값과 대조")이 그 해석을 **마이그레이션 게이트에
+박아 놨다** — 구현 전에 못 되돌리면 두 번 짜게 되는 자리였다(크리틱 N4/X7).
 
-| 전역 pref | 2.6.2 위치 | 3.0 |
+**R3의 답 = 물질화** (m-logic §2.4와 한 문장):
+
+1. 마이그레이션·채팅 생성 시점에 **전역값을 읽어 `Chat.identity`에 굳힌다.**
+   리비전 `origin: 'restore'`(마이그레이션) / `'default'`(새 채팅)로 기록 — 나중에
+   "왜 이 값이지?"를 추적할 수 있다(m-logic O5).
+2. 그 뒤 **전역을 바꿔도 기존 채팅은 안 바뀐다.**
+3. 기존 채팅에 적용하려면 **명시적 명령**: 설정에서 값을 바꾸면 카드가 뜬다 —
+   *"기존 채팅 12개에도 적용할까요? [전부 적용] [지금 보이는 자리만] [새 채팅부터]"*.
+   [전부 적용]은 채팅마다 `chat:identity-set`을 보내고 **verdict를 모아 한 카드로** 보여준다
+   (`9개 적용 · 2개는 턴 끝에 적용 · 1개 거부: 계정 없음`). 전용 채널은 안 만든다 — **32채널 그대로.**
+4. **기본은 「적용 안 함」.** 카드를 무시하면 아무 일도 안 일어난다.
+
+**대가(정직하게)**: 전역 토글의 즉시성이 사라진다. 설정에서 API 모드를 켜도 **열려 있던 채팅은
+구독으로 계속 돈다.** 이건 버그가 아니라 물질화의 값이며 카드 문장으로 보인다 → 열린 문제 ⑬.
+
+| 전역 pref | 2.6.2 위치 | 3.0 (★R3) |
 |---|---|---|
-| `api.mode` | `ui-prefs`(`App.tsx:180`) | 전역 기본 유지. 채팅 override는 **멀티 패널의 `PanelMeta.api`만** 승격(그건 이미 패널별이었다). 일반·추가 채팅은 **미지정(상속)** |
-| `claude.outputStyle` | `ui-prefs`(`engine.ts:57-59`) | 같은 규칙. 전 채팅 미지정으로 마이그레이션 |
-| `limitResume.on` (자동 이어서 토글) | `ui-prefs` | **전역 유지**(채팅별로 만들 이유가 없다). 열린 문제 ⑤와 별개 |
-| `limitResume.hold` (단일 슬롯, key=activeChatId) | `ui-prefs`(`App.tsx:506-515`, `sanitizeHold`) | `Chat.hold`로 이관 — **key가 가리키는 그 채팅 하나만.** 24시간 만료·형태 위생은 `sanitizeHold` 규칙 그대로 |
-| `chat.zoom` / `multi.zoom` / `multi.expand.zoom` / `session.zoom` | `ui-prefs` 4개 | 크롬별 3개로: `zoom.ide`←`chat.zoom`, `zoom.grid`←`multi.zoom`, `zoom.window`←? (`session.zoom`과 `multi.expand.zoom`이 합쳐진다 — 어느 값을 승계할지 열린 문제 ⑫) |
-| MCP/Skill on-off | 앱 전역(`protocol.ts:1050-1053`) | 전역 유지. 채팅 override는 M9의 확장점(`identityOverrides.mcpOverrides/skillOverrides`) |
+| `api.mode` | `ui-prefs`(`App.tsx:180`) | **채팅에 물질화** — `identity.billing.kind`. 마이그레이션 시 그 시점 전역값(멀티 패널은 `PanelMeta.api`가 이기고, 나머지는 전역)으로 굳는다. 전역 값은 **새 채팅 기본값**으로만 남는다 |
+| `claude.outputStyle` | `ui-prefs`(`engine.ts:57-59`) | **채팅에 물질화** — `identity.outputStyle`. 같은 규칙 |
+| MCP/Skill on-off | 앱 전역(`protocol.ts:1050-1053`) | **채팅에 물질화** — `identity.tools.deniedMcp` / `identity.tools.skillOverrides`(★R3 X6 — m-logic 이름으로 통일). 설정 화면은 **새 채팅 기본값**을 편집하는 화면이 된다. M9의 "채팅별 편집 UI"는 이 필드를 그대로 쓴다 |
+| `limitResume.on` (자동 이어서 토글) | `ui-prefs` | **전역 유지**(정체성 축이 아니다 — 스폰에 안 실린다). 열린 문제 ⑤와 별개 |
+| `limitResume.hold` (단일 슬롯, key=activeChatId) | `ui-prefs`(`App.tsx:506-515`, `sanitizeHold`) | `Chat.hold`로 이관 — **key가 가리키는 그 채팅 하나만.** 24시간 만료·형태 위생은 `sanitizeHold` 규칙 그대로. **Rust 소유 필드**(§4.1 되끼움) |
+| `chat.zoom` / `multi.zoom` / `multi.expand.zoom` / `session.zoom` | `ui-prefs` 4개 | 크롬별 3개로: `zoom.ide`←`chat.zoom`, `zoom.grid`←`multi.zoom`, `zoom.window`←? (`session.zoom`과 `multi.expand.zoom`이 합쳐진다 — 어느 값을 승계할지 열린 문제 ⑫). **정체성 축 아님**(표시 배율) |
+
+> **왜 "정체성 축이 아닌 것"은 전역으로 남는가**: 물질화의 근거는 *"스폰 시점에만 정해진다"*이다
+> (m-logic §2.1). `limitResume.on`·zoom은 스폰 argv/env에 실리지 않으므로 물질화할 이유가 없고,
+> 물질화하면 오히려 "설정을 바꿨는데 옛 채팅만 안 바뀐다"는 **불필요한 놀람**이 생긴다.
+> 판정 기준은 하나다 — **`RunIdentity`의 8축에 있는가.**
 
 **id 충돌.** `chats/`와 `session-chats/`는 둘 다 `randomUUID`라 충돌 확률은 무시할 수
 있지만 마이그레이터는 **검사하고 접두사를 붙인다**(`sc-`). 멀티 패널은 무조건 새 id
@@ -695,31 +829,62 @@ rewriteBtwOf(v):
 **`ChatStatusLite` — 마커 채팅의 표시값은 여기서 온다 (스냅샷이 아니다)**
 
 ```ts
-// 마커든 아니든 모든 채팅이 항상 갖는다. 파일에는 index.json에만 산다.
+// 마커든 아니든 모든 채팅이 항상 갖는다. 파일에는 chats-v3/status.json 에만 산다. (★R3)
 interface ChatStatusLite {
   chatId: string
   status: AgentStatus                 // idle | working | analyzing | done | error
   busy: boolean                       // 원시 상태(전송 게이트) — m-logic §3.2
   bgActive: boolean                   // 라이브 원장이 비었나 → 완료 링 판정(effectiveStatus 단일 소스)
-  ask: 'none' | 'permission' | 'question'
-  hold: { resetAt: number; ready: boolean } | null
-  queued: number                      // 예약 큐 길이
-  unread: number                      // lastSeenAt 이후 도착한 어시스턴트 턴 수 (신규 — 열린 문제 ⑪)
+  ask: 'none' | 'permission' | 'question' | 'dialog'   // ★R3 dialog 추가 (N16 — live[].ask.askKind)
+  hold: { resetAt: number; ready: boolean } | null     // ★ 파생 요약 — 진실은 <chatId>.json
+  queued: number                      // 예약 큐 길이 — 동상
+  unread: number                      // ★R3 **3.0.0에서는 항상 0** (아래)
   updatedAt: number
 }
 ```
 
+**★R3 — 쓰기 주인·시점·경합 (크리틱 N5. m-logic §5.8과 같은 문장)**
+
+| # | 규약 |
+|---|---|
+| 1 | **주인은 Rust 하나.** 파일은 `chats-v3/status.json`이고 **렌더러는 읽기만** 한다. `chats:save` 페이로드에 `statuses`가 **없다** → 두 주인이 구조적으로 불가능. R2는 이걸 `index.json`(렌더러 팬아웃이 쓰는 파일)에 넣어 lost update를 만들 뻔했다 |
+| 2 | **쓰기 시점**: 상태 전이마다 메모리 갱신 + `chat:status` REPLACE 브로드캐스트(즉시), 디스크는 **500ms 디바운스 + 앱 종료 flush**(`write_atomic`). 크래시 창 최대 500ms |
+| 3 | **이중 진실 우선순위**: `hold`·`queued`의 진실은 **`<chatId>.json`**. `status.json`은 파생 캐시(요약)다. 반쪽 쓰기로 어긋나면 **`<chatId>.json`이 이긴다** |
+| 4 | **부팅 강제**: `busy=false`·`ask='none'`·`bgActive=false`(유령 알약 방지 — `sessionChats.ts:28` 파리티). **`queued`·`hold`는 강제하지 않는다** — 재장전 대상이다 |
+| 5 | **`status.json`은 캐시이지 유일 진실이 아니다.** 없거나 깨졌으면 `chats-v3/*.json` 전수 **얕은 스캔**(`identity`·`queue`·`hold` 키만 부분 파싱)으로 재구성한다. 채팅 200개 기준 부팅 1회 수십 ms |
+
+**★R3 부팅 hold/큐 재장전 경로** (R2에 없어서 "재시작 후 자동 이어서가 조용히 안 산다"가 남았다)
+
+```
+boot:
+  1. status.json 로드 → **재장전 후보** = { chatId | hold != null ∨ queued > 0 }
+       (없으면 규약 5의 전수 얕은 스캔)
+  2. 후보마다 Rust가 ChatRuntime::ensure(chatId)   ← m-logic §3.1. 스레드 본문은 안 읽는다
+       identity 로드·정규화(실패는 unresolved 표식) / queue 로드 / hold **재장전**
+  3. chat:status REPLACE 1회 (전 채팅 = 런타임 있는 것 + status.json의 나머지)
+```
+
+- 이 경로는 **light 조회(§4.3 상단)와 독립**이다. 스냅샷을 싣는 채팅과 런타임을 세우는 채팅은
+  다른 집합이다 — 접힌 채팅도 hold가 있으면 런타임이 선다.
+- "복원"이 아니라 **"재장전"**이다: 장전 판정이 Rust로 갔으므로 대기표는 저장된 `resetsAt`으로
+  타이머를 다시 걸고 발화 시점에 usage를 **재검증**한다(m-logic §7.3). 열린 문제 ⑤가 이 위에 얹힌다.
+
+**`unread`는 3.0.0 범위 밖이다 (★R3)**. 마커 채팅에서는 재계산이 불가능하므로(스레드가 없다 =
+마커의 정의) `status.json`이 유일 진실이어야 하는데, 그러려면 "읽음" 리셋 채널이 하나 더 필요하다.
+표시 여부 자체가 미결(열린 문제 ⑪)이므로 **필드는 예약하되 값은 항상 0**으로 출하한다.
+표시하기로 정해지면 그때 `chat:mark-read` 1채널 추가(32 → 33) + Rust가 턴 종료마다 증가.
+
 출처 둘, 우선순위 있음:
-1. **부팅** — `chats-v3/index.json.statuses`. 저장 시점에 얼려 온다. 2.6.2가 이미 하던 두 규약의
+1. **부팅** — `chats-v3/status.json`. 저장 시점에 얼려 온다. 2.6.2가 이미 하던 두 규약의
    일반화다: `sessionChats.ts:28`(`status`를 idle/done/error로 얼려 저장 — 실행 중 상태 복원 방지)
    + `maStore.ts:94`(light가 마커에 `panelStatuses`를 실어 보냄).
-   부팅 직후엔 `busy=false`·`ask='none'`·`bgActive=false`로 **강제**한다.
-2. **런타임** — `chat:status` 이벤트(REPLACE, 전 채팅). Rust가 `ChatRuntime` 상태에서 파생해
-   내보낸다. 도착하는 순간 1의 값을 덮는다.
+2. **런타임** — `chat:status` 이벤트(REPLACE, 전 채팅). Rust가 `ChatRuntime` 상태 + `status.json`의
+   차가운 채팅분을 **합쳐서** 내보낸다. 도착하는 순간 1의 값을 덮는다.
 
 > **이것이 R1 §2.2-4와 §4.1의 충돌을 없앤다.** "마커"는 *감시 대상에서 뺀다*는 뜻이 아니라
 > *스레드 본문을 메모리에 안 들고 있다*는 뜻일 뿐이다. 상태는 스냅샷 없이 항상 있고,
 > 전이 판정은 애초에 렌더러가 하지 않는다(§2.2-4).
+> ★R3: 그리고 **영속 경로에도 주인이 생겼다** — 크리틱 §1.3이 ❌로 남겨 둔 마지막 칸이다.
 
 무엇이 무엇을 읽는가:
 
@@ -729,7 +894,7 @@ interface ChatStatusLite {
 | 접힘 배지 숫자 / `‼N` | 접힌 자리들의 `status`·`ask` 집계 | ✗ |
 | 자리 완료 링 | `status === 'done' && !bgActive` | ✗ |
 | TopBar 「승인 대기 N」 / 「자리 밖 실행 N」 | `ask` / `busy\|\|bgActive` 집계 | ✗ |
-| 읽지 않음 배지 | `unread` | ✗ |
+| 읽지 않음 배지 | `unread` (★R3: 3.0.0에선 항상 0 — 열린 문제 ⑪) | ✗ |
 | 토스트 본문 미리보기 | Rust `notify_tail`(200자 링버퍼) | ✗ |
 | 스레드 본문·검색·diff | `snapshot` | **✓** (자리에 얹힐 때 `chats:load`) |
 
@@ -759,7 +924,8 @@ interface ChatStatusLite {
 | 마지막 메시지 해시 | `sha256(canon(messages.at(-1)))` | 동일 | 집합·맵 동일 |
 | 스레드 전체 해시 | `sha256(canon(messages))` | 동일 | 맵 동일 (순서까지 검증) |
 | 세션 id(resume) | `snapshot.session.id` | 동일 | 맵 동일 — **깨지면 이어하기가 죽는다** |
-| cwd / picker | `{cwd, refDirs[], model, effort, mode, engine, account, codexAccount, api}` | `identityOverrides` **∪ 전역 기본**의 사영 | 맵 동일. ★ override가 비어 상속으로 가는 필드는 **전역값과 대조**한다(U10 — 비교 대상이 달라졌음을 명시) |
+| **정체성** ★R3 **1차(필수)** | `blake3(canon_cbor( toRawIdentity(rec, globals) ))` — 2.6.2 레코드 + **그 시점 전역값**을 매핑 함수에 넣어 만든 `RawIdentity`의 바이트 | `blake3(canon_cbor( chats-v3/<id>.json.identity ))` | **맵 동일.** 정규화가 실패하는 데이터(지운 폴더·로그아웃 계정·사라진 키)에서도 **항상 정의된다** — 그래서 1차다 |
+| **정체성** ★R3 **2차(교차검증)** | `RunIdentity::normalize(raw).hash()` | 동일 | **`normalize()`가 성공하는 항목만** 비교. 불일치 = 실패. **정규화 실패 = 미수행(경고)** — 실패 항목은 `unresolved[]`에 사유(`cwd_missing`·`account_unavailable`·`api_key_missing`)와 건수로 리포트에 남고, **게이트를 막지 않는다** |
 | 제목·잠금·색 | `{title, custom, locked ?? false, color ?? ''}` | 동일 | 맵 동일. ★ 일반/추가 채팅은 `locked`/`color`가 없으므로 **기본값 주입 후** 비교 |
 | 초안 | `{draft, draftImages[]}` | 동일 | 맵 동일. ★ 멀티 패널은 **공집합**(영속 안 됨, `MultiAgent.tsx:127-137`) |
 | updatedAt | 값 | 값 | 동일 — `canon()` 화이트리스트에서 **제외하지 않는다**(§5.4) |
@@ -768,19 +934,42 @@ interface ChatStatusLite {
 | 보드/채팅 목록 순서 | `multi-agent/index.json.order`, `session-chats/index.json.order` | `boards/index.json.order`, `chats-v3/index.json.order` | 순서 동일(연결 규칙 §4.2) |
 | 활성 선택 | `activeChatId`, `activeSessionId` | `activeChatId`, `activeBoardId` | 대응 |
 | btw 그래프 | `{child: btwOf}` (원본 id **또는 panelId 형식**) | 새 id 공간 | **재작성 실패 0건** + 간선 수 동일(원본 부재로 drop한 건은 별도 카운트) |
-| 상태 | `SessionChatRecord.status`, 패널 `snapshot.status` | `index.json.statuses[id].status` | 맵 동일 |
+| 상태 | `SessionChatRecord.status`, 패널 `snapshot.status` | **`status.json.statuses[id].status`** (★R3 — 파일이 갈렸다) | 맵 동일 |
 | 파일 수 | `chats/*.json` + `multi-agent/*.json` + `session-chats/*.json` | `chats-v3/*.json` + `boards/*.json` | 기대값 계산과 일치 |
 
 `canon()` = 키 정렬 + undefined 제거 + 숫자 정규화 JSON. 스냅샷에 타임스탬프성 필드가
 있으면 화이트리스트로 제외하고, 제외 목록을 리포트에 명시한다.
+
+> **★R3 — 정체성 비교가 2단인 이유 (O12 수정판 · 리드 확정 · 크리틱 N10/X4)**
+>
+> R2 §5.2는 원시 필드 **맵**(`{cwd, refDirs[], model, effort, …}`)을 비교했고, 그와 별개로
+> m-logic O12는 *"검증은 `RunIdentity::hash()` **하나**로"*라고 정했다 — **두 문서가 다른 비교를
+> 하고 있었다**(X4). 게다가 O12만으로는 **첫 실행부터 못 돈다**: `normalize()`는 존재하지 않는 폴더 /
+> 미로그인 계정 / 키 없음에서 **실패**하고(m-logic §2.3), 마이그레이션 대상에는 그런 채팅이 실제로
+> 섞이므로 그 항목의 before/after 해시가 **정의되지 않는다**(N10).
+>
+> | 단 | 비교 키 | 대상 | 판정 |
+> |---|---|---|---|
+> | 1차 | **저장된 원시 필드의 정준 직렬화 바이트** | 전 항목 | 불일치 = **실패**(비영 종료 + 어긋난 키) |
+> | 2차 | `RunIdentity::hash()` | 정규화 성공분만 | 불일치 = **실패** / 미수행 = **경고**(건수·사유) |
+>
+> - **1차가 통과하고 2차가 미수행이어도 머지 가능**하다. 그 반대(1차 실패)는 불가.
+> - 매핑 함수 `toRawIdentity()`는 **M-UX 소관**, 두 비교 키의 정의는 **M-LOGIC 소관**.
+> - 정규화 실패를 마이그레이터가 **고치지 않는다.** 값을 그대로 옮기고 `unresolved` 표식만 단다 —
+>   앱에서 그 채팅의 첫 send가 같은 사유로 정직하게 거부된다(m-logic §4.2). 조용한 값 보정이
+>   가장 위험한 마이그레이션 버그다.
+> - m-logic의 `to_raw()` 왕복 골든 테스트(`normalize(to_raw(x)) == x`)가 이 2단 규약의 전제다.
 
 ### 5.3 추가로 반드시 도는 검사
 
 1. **왕복 안정성** — 마이그레이션 후 스토어를 읽어 렌더러 블롭으로 재조립 → 다시 저장 →
    인벤토리 재수집. 1회차와 동일해야 한다. (`poc-chats-merge.mjs`가 잡던 "병합이 대화를
    지우는" 사고의 통합 포맷판)
-2. **unloaded 병합** — 전 채팅을 마커로 만들어 저장 → 스냅샷이 전부 살아 있는지.
-   3.0에서 대화 증발이 나올 유일한 자리다(`chats.rs:1-12`).
+2. **unloaded 병합 + ★R3 Rust 소유 3필드 되끼움** — 전 채팅을 마커로 만들어 저장 → 스냅샷이
+   전부 살아 있는지. 3.0에서 대화 증발이 나올 유일한 자리다(`chats.rs:1-12`).
+   ★R3 추가: `identity`·`queue`·`hold`를 **일부러 낡은 값으로 실어** `chats:save`를 호출한 뒤
+   디스크를 다시 읽어 **Rust 값이 이겼는지** 확인한다(§4.1). 이게 깨지면 디바운스된 렌더러 저장이
+   폴백으로 바뀐 정체성을 되돌린다 — 조용하고 재현이 어려운 P3의 재발이다.
 3. **★ 별칭 계층 왕복** (R1 누락 — 크리틱 §6) — `ma:save`(옛 블롭) → `board:*`+`chats:*` →
    `ma:get`(재조립) 왕복이 무손실인가. §6.2가 옛 렌더러를 계속 돌리겠다고 했으므로
    **여기가 대화 증발의 두 번째 자리**다. `session-wins:persist`/`hydrate`, `chats:save`/`get`도 같이.
@@ -818,21 +1007,27 @@ chat:interrupt      { chatId }                        소프트 중단 (턴만; 
 chat:cancel         { chatId }                        프로세스째 (/clear·폴더 전환·계정 전환 전용)
 chat:permission     { chatId, requestId, behavior, message? }          ★ 매칭 키 = requestId
 chat:answer         { chatId, requestId, answers: string[][] | null }  ★ null = 무응답 해제
-chat:respond-dialog { chatId, requestId, accepted: boolean }           ★ 폴백 다이얼로그(engine.ts:936 'ask-' 계열)
+chat:respond-dialog { chatId, requestId, accepted: boolean }           ★ 폴백 다이얼로그
 chat:bg-task        { chatId, action, id? }
 chat:dispose        { chatId }                        엔진 회수 (채팅 삭제·유휴 스윕)
 
 ── 정체성·큐·원장 (5)  ※ M-LOGIC §4.3에서 이름을 가져오되 ref → chatId
 chat:identity-get     { chatId }                      → ChatIdentityState
-chat:identity-set     { chatId, patch, applyPolicy?, corrId? }  → IdentityVerdict
+chat:identity-set     { chatId, patch: RawIdentityPatch, applyPolicy?, pendingOp?, corrId? }
+                                                      → IdentityVerdict
+                      ★R3 patch는 **서브필드 단위**(m-logic §2.2). 일괄 적용은 이 명령을
+                        채팅마다 1회 보내고 verdict를 모아 카드 하나로 — **전용 채널 없음**(§4.2)
 chat:identity-revert  { chatId, revision }            → IdentityVerdict
 chat:queue-mutate     { chatId, op }                  → CommandVerdict
 chat:force-settle     { chatId, liveItemId }          → CommandVerdict     ★강제 해제
 
 ── 스토어 (4)
 chats:get           { light?: boolean }               → { version, chats, activeChatId, statuses }
+                                                        ★R3 statuses는 status.json에서 합쳐 온다(읽기)
 chats:load          { chatId }                        → 채팅 파일 (지연 로드)
 chats:save          { version, chats, activeChatId }  → void (팬아웃 저장)
+                                                        ★R3 statuses **없음**. identity·queue·hold는
+                                                        실려 와도 **무시하고 되끼운다**(§4.1)
 chats:set-active    { chatId }                        ★ 즉시. 저장 디바운스와 무관 (§6.2 U3)
 
 ── 보드 (3)
@@ -865,6 +1060,13 @@ chat:flush-req  { chatId }                       창 닫기 전 마지막 저장
 `win:chat-*` 4줄을 안 셌고 m-logic이 이미 잡아 둔 채널 5개(`chat:queue-mutate` + 이벤트 4)를
 빼먹었다(크리틱 U7·인용 #6). **덤으로 `notify:event`(렌더러→main)가 사라진다**(§2.2-4) —
 감시가 Rust로 가므로 렌더러가 알릴 게 없다.
+
+> **★R3 — 32는 그대로다.** R3에서 늘 뻔했던 채널 둘을 **안 늘렸다**:
+> ① **일괄 정체성 적용**(§4.2 규약 3) — `chat:identity-set` N회 + 집계 카드로 표현한다.
+>    판정·비용 예고·거부 사유가 채팅마다 다른데 일괄 채널은 그걸 한 응답으로 뭉갠다(D7 위반).
+> ② **`chat:mark-read`** — `unread`를 3.0.0 범위에서 뺐으므로 필요 없다(§4.3).
+>    읽지 않음 배지를 만들기로 하면 그때 32 → **33**이 된다(열린 문제 ⑪).
+> 대신 `status.json`이 새로 생겼지만 그건 **파일**이지 채널이 아니다 — `chats:get`이 합쳐서 준다.
 
 `ma:event`가 이미 `{ panelId, event }` 봉투다(`protocol.ts:1133`) — `chat:event`는 그
 일반화다. 창 라우팅은 WindowRegistry의 `chatId → label` 역인덱스로 `emit_to`
@@ -924,22 +1126,28 @@ R2의 규칙 셋:
 
 **M9 (멀티 기준 MCP/Skill 전용 뷰).**
 2.6.2의 MCP/Skill on/off는 앱 전역이다(`protocol.ts:1050-1053`). 통합 모델에서 자연스러운
-층은 **채팅**(picker와 같은 층)이다. 지금 스키마에 자리만 예약한다:
-`Chat.identityOverrides.mcpOverrides?: Record<string,boolean>` / `.skillOverrides?`.
+층은 **채팅**(picker와 같은 층)이다. **★R3: 자리 예약이 아니라 이미 있는 필드다** —
+`Chat.identity.tools.deniedMcp` / `.tools.skillOverrides`(m-logic `ToolPolicyAxis`).
 전용 뷰는 `Board.chrome`의 값 추가(`'mcp' | 'skill'`)로 붙는다 — 자리 배치는 그대로 두고
 각 자리에 다른 콘텐츠를 그리는 모드. 이 확장점이 `chrome` 필드를 지금 넣는 유일한 이유다.
 
-> **주의(m-logic L7과의 접점)**: m-logic §2.3의 골든 테스트가 `RunIdentity`의 필드 집합을
-> `["engine","billing","cwd","add_dirs","mode","system_prompt","output_style"]`로 얼렸다.
-> `mcpOverrides`/`skillOverrides`(+ 크리틱이 지적한 API 키 지문·`dropEnvKey` 답·`codexAccount`)는
-> 그 밖이다. **M-UX는 저장 스키마에 자리를 예약할 뿐이고, 정체성 축으로 승격할지는 M-LOGIC 결정**이다.
-> 두 문서가 같은 라운드에 닫아야 마이그레이션 검증표(§5.2 cwd/picker 행)가 성립한다.
+> **★R3 (크리틱 X3·X6) — L7은 이미 닫혔다.** R2는 여기에 *"정체성 축으로 승격할지는 M-LOGIC 결정"*
+> 이라 적어 두었지만, m-logic R2가 **그 라운드에 이미 승격했다**: 골든 목록은
+> `["engine","billing","cwd","add_dirs","mode","system_prompt","output_style","tools"]` **8축**이고
+> API 키 지문(`billing.keyFp`)·`dropEnvKey` 답·`codexAccount`도 전부 흡수됐다(m-logic §1 P1e·§2.2).
+> 커밋 순서상 M-UX가 나중이었는데 반영이 안 돼 **낡은 미결**로 남아 있었다.
+> R3에서 ① 미결 표기를 내리고 ② **이름을 m-logic 쪽으로 통일**했다(X6):
+> `mcpOverrides` → `tools.deniedMcp`, `skillOverrides` → `tools.skillOverrides`.
+> M9 확장점을 예약한 자리라 지금 맞춰 두는 게 싸다.
 
 **M11 (한도 소진 시 계정 자동 전환).**
 `useLimitResume`은 이미 `account`를 들고 재검증한다(`useLimitResume.ts:24,92-102,127-134`).
 통합 후 대기표가 채팅에 붙으므로 "이 채팅의 계정을 초기화 임박순 다음 계정으로 바꾸고 재개"는
-`chat:identity-set { patch: { account } }` + 기존 ready 소진 경로로 표현된다. 훅이 1벌이면
-전환 로직도 1벌 — 2.6.2였다면 9곳에 배선해야 했다.
+`chat:identity-set { patch: { billing: { account } } }`(★R3 서브필드 패치) + 기존 ready 소진 경로로
+표현된다. 훅이 1벌이면 전환 로직도 1벌 — 2.6.2였다면 9곳에 배선해야 했다.
+★R3 주의: 계정을 바꾸면 `hold.account != identity.billing`이 되어 **대기표가 무효화**된다
+(m-logic §7.3). M11은 "무효화 후 즉시 새 계정으로 재장전"을 한 동작으로 묶어야 하며,
+그 사이 큐 항목의 `billing`이 옛 계정이면 드리프트 배지가 뜬다(재생 #4b).
 
 **M-LOGIC (RunIdentity).**
 이 스펙은 두 가정만 공유한다: **패널 = 뷰**, **실행 상태는 채팅에 붙는다.**
@@ -949,37 +1157,66 @@ R2의 규칙 셋:
 | 이 문서(M-UX) | m-logic.md(M-LOGIC) |
 |---|---|
 | 채팅/자리/보드의 관계, 다이얼, 저장 포맷, IPC 채널 면, 감시 집합의 정의 | RunIdentity 내용, 상태기계 전이표, 재사용/재스폰 판정, 워치독 |
-| `chat:identity-*` 채널이 존재한다는 것 | 그 명령의 응답 4종과 판정 규칙 |
+| `chat:identity-*` 채널이 존재한다는 것 | 그 명령의 응답 5종과 판정 규칙 |
 | `chatId`가 유일한 주소라는 것(§1.3) | 그 주소로 색인되는 `ChatRuntime`의 내부 |
-| **저장 스키마는 `identityOverrides`(부분)** | **계산된 `RunIdentity`의 필드 집합** — 둘은 다른 것이다(§4.2) |
+| **저장 스키마가 `RawIdentity`(완전 지정)라는 것** + 2.6.2 → `RawIdentity` **매핑 함수** | **`RawIdentity`/`RawIdentityPatch`/`RunIdentity` 세 타입의 정의**, 정규화 규칙, 마이그레이션 **비교 키**(O12 수정판) |
+| 화면이 카드를 어디에 그리는가 | `live[].ask.askKind`로 **카드 종류를 알려 주는 것**(★R3 X9) |
 
-**두 문서의 합의 / R2에서 정리된 어긋남**
+**두 문서의 합의 / 정리된 어긋남**
 
 합의:
-- `ChatRuntime`이 채팅 1개당 1개, 앱 수명 동안 지속(`m-logic.md:352-360`) = 불변식 3.
-  **R2는 여기에 하나를 더 얹는다**: 그래서 감시(토스트)도 Rust가 한다(§2.2-4, 불변식 5).
-- 큐·한도 대기표(`hold`)가 `ChatRuntime`에 붙는다(`:357-358`) = `Chat.queue`/`Chat.hold`.
-- "패널/사이드바는 뷰다. 뷰를 옮겨도 실행은 계속된다"(`:501`, `:763`) = 불변식 1·4.
+- `ChatRuntime`은 **채팅당 최대 1개**이고 닿는 순간 물질화돼 앱 수명 동안 산다
+  (m-logic §3.1 `ensure` — ★R3에서 두 문서의 문장을 맞췄다, X8) = 불변식 3.
+  감시(토스트)도 Rust가 한다(§2.2-4, 불변식 5).
+- 큐·한도 대기표(`hold`)가 `ChatRuntime`에 붙는다 = `Chat.queue`/`Chat.hold`(**Rust 소유 필드**).
+- "패널/사이드바는 뷰다. 뷰를 옮겨도 실행은 계속된다" = 불변식 1·4.
 
 R2에서 닫은 어긋남:
-- **주소**: `ChatRef{surface,id}` → **`chatId` 문자열**(§1.3, 리드 확정). m-logic §4.3·§5.6의
-  `ref` 필드를 `chatId`로 바꿔야 한다.
+- **주소**: `ChatRef{surface,id}` → **`chatId` 문자열**(§1.3, 리드 확정). 양쪽 반영 완료(X1).
 - **구동 주체**: R1의 `Chat.owner`(렌더러 창이 드레인)는 m-logic §7.2와 충돌했다 →
-  **필드 삭제, 드레인은 Rust**(§2.5). ux §7의 "합의" 목록에서 이 항목을 내렸다.
+  **필드 삭제, 드레인은 Rust**(§2.5).
 - **순수 UI 상태**(m-logic O3): 초안·이미지·큐 = 스토어(이전 없음) / 스크롤·접힘·모달 포커스
   = 창 로컬 휘발(**이관 없음**을 명시) / 키보드 스코프 = 포커스 창의 `focusedChatId`.
 
-여전히 열린 것(M-LOGIC 쪽 결정 필요):
-- `RunIdentity` 축에 API 키 지문·`dropEnvKey` 답·`codexAccount`·MCP/Skill override를 넣는가
-  (크리틱 L7). 넣지 않으면 §5.2 cwd/picker 검증표의 비교 필드가 줄어야 한다.
-- `interrupt`가 예약 큐를 비우는가(크리틱 L1). **M-UX의 `composer-queue` 화면 동작이 여기 달려 있다** —
-  2.6.2는 Esc가 큐를 통째로 버렸다(`App.tsx:905-908 setQueue([])`).
+**★R3에서 닫은 어긋남 (크리틱 X2~X9)**:
+- **X2 — L1(중단이 예약 큐를 비운다)은 확정됐다.** m-logic **§7.4**가 "비움 + 안내 + 되돌리기
+  토큰"으로 정했고 T13/T23/T34에 액션이, §3.6에 셀이, 명령표에 `queue.restore` 행이 있다.
+  R2의 이 절은 그걸 "여전히 열린 것"에 남겨 두고 있었다(커밋 순서상 M-UX가 나중인데 미반영).
+  → **M-UX의 `composer-queue` 화면 동작 확정**: 중지(Esc/중지 버튼)를 누르면 큐 칩이 **전부
+  사라지고** 그 자리에 한 줄이 뜬다 — *"대기 3건과 자동 이어서 대기를 취소했어요 — [되돌리기]"*.
+  되돌리기는 순서·정체성 스냅샷·`origin`·`hold`까지 복원하고 **자동 전송은 하지 않는다.**
+  토큰은 다음 성공 send 또는 5분에 만료된다.
+- **X3 — L7(스폰 축 4개)도 확정됐다.** 위 M9 절의 각주 참조. 미결 표기를 내렸다.
+- **X4 — §5.2 검증표는 O12 수정판으로 교체됐다.** "상속 필드는 전역값과 대조" 행은 **소멸**했다
+  (N4로 상속 자체가 없어졌다).
+- **X5 — 부분 지정 타입은 `RawIdentityPatch`다.** `Partial<RunIdentity>`는 성립하지 않는다
+  (`RunIdentity`에 `.model`/`.effort`/`.account` 같은 평평한 필드가 없다 — 태그드 유니온 안에 있다).
+  저장은 `RawIdentity`(완전 지정), 패치는 `RawIdentityPatch`(리프 단위).
+- **X6 — override 필드 이름을 m-logic 쪽으로 통일**: `tools.deniedMcp` / `tools.skillOverrides`.
+  사영표 §2의 `workbar-context-pop-api` 행도 `identity.billing`으로 맞췄다.
+- **X7 — 전역 pref는 물질화**(리드 확정). §4.2 전문.
+- **X8 — `ChatRuntime` 수명**: 위 합의 첫 줄.
+- **X9 — 카드 종류 판별자**: m-logic §5.6의 `live[].ask.askKind`(`permission|question|dialog`).
+  M-UX가 응답 채널을 셋으로 쪼갠 대가를 원장이 갚는다. 종류가 어긋난 응답은
+  `rejected{wrong_card_kind}` — 2.6.2가 셋을 한 `questionWaiters`로 받던 것(`engine.ts:950`)을
+  **표시 계층에서만** 분리한 셈이다.
+
+**여전히 열린 것(M-LOGIC 쪽)**: 없음. m-logic의 남은 미결은 전부 §10 O-목록에 있고
+M-UX 화면 동작을 막는 항목은 O1(소유 모델 — 이 문서가 답이다)·O6(강제 해제 UI 위치)뿐이다.
 
 ---
 
-## 8. 열린 문제 — 사용자에게 물어야 할 결정
+## 8. 열린 문제
 
-R2에서 답이 바뀐 항목은 **[R2]**로 표시하고, 남은 질문만 물어본다.
+**★R3 — 두 부류로 나눈다** (m-logic §10과 같은 규약).
+
+- **[U] 사용자 결정 대기** — 코드를 쓰기 전에 사용자가 골라야 한다: **①②③④⑦⑧⑨⑩⑪⑫⑬**
+- **[B] 구현 중 확정** — 방향은 정해졌고 구현·실측이 숫자를 정한다: **⑤⑥**
+- **[C] 이번 라운드에 닫힘** — U10(전역 pref 상속 vs 물질화) · O12(마이그레이션 비교 규약) ·
+  `identityOverrides` 타입 · `ChatStatusLite` 주인 · `SubAgentModal` 행선지 · 고아 UI 정리 규칙.
+  추적성 때문에 §11 대응표에 남긴다.
+
+R2에서 답이 바뀐 항목은 **[R2]**, R3에서 바뀐 항목은 **[R3]**으로 표시하고, 남은 질문만 물어본다.
 
 1. **사이드바 구조.** 2.6.2는 3섹션(일반/멀티/추가 채팅, `App.tsx:1385-1422`). 통합 후
    후보: (a) 「채팅」 1섹션 평평 + 「배치」 1섹션, (b) 「채팅」 1섹션만 두고 배치는 헤더
@@ -1017,13 +1254,30 @@ R2에서 답이 바뀐 항목은 **[R2]**로 표시하고, 남은 질문만 물�
    *`Board.chrome`을 사용자에게 노출할 필요가 있나?* 없으면 필드는 M9 전용 내부값으로 남긴다.
 10. **새 채팅 모달의 운명.** 2.6.2 `NewChatModal`은 1단계 일반/멀티, 2단계 패널 수 2~6.
     통합 후 1단계는 확실히 사라진다(파리티 맵 §5-1 승인 문장). 2단계도 없애고 다이얼만 남길까?
-11. **★[신규] 읽지 않음 배지를 만들까.** 2.6.2엔 없다(사이드바는 상태 점뿐,
+11. **[U] 읽지 않음 배지를 만들까.** 2.6.2엔 없다(사이드바는 상태 점뿐,
     `styles.css:336-341`). 자리가 6개가 되면 "내가 안 본 답변"이 실제로 생긴다.
-    `ChatStatusLite.unread`는 스키마에 자리만 잡아 뒀다 — 표시할지는 결정 필요.
-12. **★[신규] 읽기 배율 키 합류.** 2.6.2는 4개(`chat.zoom`·`multi.zoom`·`multi.expand.zoom`·
+    → **[R3] 3.0.0 출하 범위에서는 뺐다** — 필드(`ChatStatusLite.unread`)는 예약하되 **값은 항상 0**.
+    이유: 마커 채팅에서는 재계산이 불가능해 `status.json`이 유일 진실이어야 하고, 그러면
+    "읽음" 리셋 채널이 하나 더 필요하다(32 → 33). 표시하기로 정하면 그때 추가한다.
+    **남은 질문은 "만들까" 하나다.**
+12. **[U] 읽기 배율 키 합류.** 2.6.2는 4개(`chat.zoom`·`multi.zoom`·`multi.expand.zoom`·
     `session.zoom`). 통합 후 3개(`zoom.ide`/`zoom.grid`/`zoom.window`)로 접히는데,
     `zoom.window`가 **추가 채팅 창(`session.zoom`)과 팝아웃 창(`multi.expand.zoom`) 중
     어느 값을 승계**할지 골라야 한다(둘 다 쓰던 사용자는 하나를 잃는다).
+13. **★[U][신규 R3] 두 가지 동작 변경을 승인해 주세요** (크리틱 N14 + N4의 대가).
+    둘 다 2.6.2와 **다르게 동작**하는데 R2까지는 승인 목록에 없었다.
+    - **(a) 중지가 「자동 이어서」 대기표까지 취소한다.**
+      2.6.2 `cancelRun`은 큐만 비우고 `hold`는 건드리지 않는다(`App.tsx:901-909`).
+      3.0은 같이 해제한다 — 안 그러면 *"중지했는데 몇 시간 뒤 혼자 이어서 보낸다"*가 된다.
+      문구는 *"대기 3건과 **자동 이어서 대기**를 취소했어요 — [되돌리기]"*이고
+      되돌리기가 `hold`까지 복원한다. **R3 제안: 이대로.** (자동 이어서는 사용자가 아끼는 기능이라
+      말없이 못 바꾼다 — 그래서 여기 올린다.)
+    - **(b) 설정의 전역 토글이 기존 채팅에 즉시 반영되지 않는다.**
+      §4.2 물질화의 대가다. 출력 스타일·API 모드·MCP/Skill을 설정에서 바꿔도 **열려 있던 채팅은
+      옛 값으로 계속 돈다.** 대신 카드가 뜬다 — *"기존 채팅 12개에도 적용할까요?
+      [전부 적용] [지금 보이는 자리만] [새 채팅부터]"*.
+      **R3 제안: 이대로.** 반대급부는 "다른 채팅에서 설정을 만졌더니 이 채팅의 백그라운드가
+      전부 죽었다"(P1d)가 사라지는 것이다. 기본이 [적용 안 함]인 것도 같이 봐 주세요.
 
 ---
 
@@ -1047,6 +1301,14 @@ R2에서 답이 바뀐 항목은 **[R2]**로 표시하고, 남은 질문만 물�
 따랐다("여백만 넓힌 깔끔함"은 사용자가 기각).
 
 여전히 안 그린 것(다음 라운드): 워크플로 도크 확장 카드, 백그라운드 셸 칩 팝오버, q-mini.
+**★R3에서 추가된 미작성 3장**(전부 R3의 새 규약이 만든 화면이라 코드 착수 전에 필요하다):
+- **`chat-unify-apply-global.html`** — 「기존 채팅 12개에도 적용할까요?」 카드 + **집계 결과 카드**
+  (`9개 적용 · 2개는 턴 끝에 적용 · 1개 거부: 계정 없음`). §4.2 물질화의 유일한 새 화면이고
+  열린문제 ⑬(b) 승인의 근거 그림이다.
+- **`chat-unify-orphan-rebind.html`** — 다이얼 6→1 직후, 뷰어 대상 채팅 칩이 재바인드되며
+  뜨는 한 줄 + 서브에이전트 카드·크게보기가 닫히는 전/후. §2.2-1b.
+- **`chat-unify-expand-overlay.html`** — `<ExpandOverlay>`(4번째 자리 껍데기)의 실물.
+  R2까지는 "앱 크롬 오버레이"라는 글만 있었고 그림이 없었다(N15).
 
 ---
 
@@ -1068,3 +1330,47 @@ R2에서 답이 바뀐 항목은 **[R2]**로 표시하고, 남은 질문만 물�
 그 외 R1의 인용(수십 건)은 크리틱이 "전부 정확"으로 확인했다 — `optsMatch`·`armHoldIdle`·
 `activeRunId` 가드·`tryNotifReplay`·`snapshotForPersist`·`useLimitResume` 3규약·팝아웃
 소유권 이전 4지점. R2는 그것들을 그대로 유지했다.
+
+### 10.1 ★R3 — R2가 새로 만든 인용 오기 (크리틱 N16) + 자체 정정
+
+| # | R2가 적은 것 | 실제 | R3 |
+|---|---|---|---|
+| 11 | §6.1 "`chat:respond-dialog` … 폴백 다이얼로그(**`engine.ts:936`** 'ask-' 계열)" | **`:936`은 `dialogKind !== 'refusal_fallback_prompt'` 가드**(모르는 종류는 `{behavior:'cancelled'}`로 자동 응답)다. `ask-` 접두 `requestId`를 만드는 줄은 **`:948`**, 일반 질문 경로는 **`:802`**, 그리고 셋 다 **`questionWaiters`로 받는다**(`:950`) | §6.1에서 오기 제거 + §3.1·§7(X9)에 정확한 세 줄을 실었다. 이 인용이 중요한 이유: **2.6.2는 폴백 다이얼로그를 질문 카드로 재사용**했으므로 채널을 쪼갠 3.0은 카드 종류 판별자가 **반드시** 필요하다 |
+| 12 (자체) | §2.2-1 "count 축소 정리(**`MultiAgent.tsx:1819-1824`**: `focusedSlot`/`renamingSlot`)" | 정리는 **5줄**이고 위치는 **`:1823-1827`**이다(`setFocusedSlot`·`setRenamingSlot`·`setExpandedSlot`·`setOpenFile`·`setOpenSub`). `:1819`는 `onClick` 시작 줄 | §2.2-1b에서 5개 전부를 다루고 줄 번호를 고쳤다 |
+| 13 (자체) | §3.1 "창 크롬 = 뷰어·라이트박스·서브에이전트 카드 셋" ↔ `ChatSurface` 목록에도 `SubAgentModal` | 2.6.2는 서브에이전트 카드를 **패널 밖 최상위**에서 렌더한다(`MultiAgent.tsx:1928`·`SessionWindow.tsx:888`·`PanelWindow.tsx:531`). 같은 함정의 경고 주석이 코드 뷰어 쪽에 있다(`MultiAgent.tsx:1913-1914`) | §3.1에서 `ChatSurface` 목록에서 제거, 사영표 행을 **A+Aw**로 |
+
+---
+
+## 11. 크리틱 R2 대응표 (M-UX 소관 전수) ★R3
+
+`docs/critic/design-r2.md` §6(N1~N16 중 M-UX 소관) · §4(어긋남 X1~X9) · §3(사영표 spot-check).
+M-LOGIC 소관은 "→ m-logic"으로만 표시하고 실물은 `m-logic.md` §13에 있다.
+
+| # | 무게 | 판정 | R3 처리 | 위치 |
+|---|---|---|---|---|
+| **N1** 워치독 루프 상태 가드 | 높음 | → m-logic | — | m-logic §5.4-c |
+| **N2** 패치 입도 | 높음 | **반영(리드 결정 1)** | 저장은 `Chat.identity: RawIdentity`(완전 지정), 패치는 `RawIdentityPatch`(리프). 평평한 접근은 마이그레이션 매핑 함수 안에서만 | §1.2·§4.2 |
+| **N3** §3.4 close 보류 | 높음 | → m-logic | (M-UX 화면 영향: 드레인 계획 문구가 "프로세스 2개로 나눠 보냅니다"로 바뀐다) | m-logic §3.4-a |
+| **N4** 상속 ↔ 물질화 | 높음 | **반영(리드 결정 2)** | 물질화 채택. U10을 폐기하고 §4.2를 통째로 다시 씀 + 전역 변경 시 **집계 verdict 카드** + 대가를 열린문제 ⑬(b)로 승인 요청 | §4.2·§1.2·§8-⑬ |
+| **N5** `ChatStatusLite` 주인 | 중 | **반영** | `chats-v3/status.json`(Rust 전용) 분리 · `chats:save`에서 statuses 제거 · **Rust 소유 3필드 되끼움** · 이중 진실 우선순위 · **부팅 재장전 경로** · `unread` 범위 밖 | §4.1·§4.3 |
+| **N6** 능동 프로브 | 중 | → m-logic | (M-UX 영향: 조용한 셸의 알약이 유지된다 = 2.6.2 파리티 복원) | m-logic §5.4-b |
+| **N7** `SubAgentModal` 행선지 | 중 | **반영** | `ChatSurface` 목록에서 제거, **A + Aw**로 통일. 워크바 **팝오버**(`workbar-subagent-pop`)는 S로 남는다 — 다른 화면 | §3.1 · 사영표 §2·§4-3 |
+| **N8** `Resident` interrupt 전이 | 중 | → m-logic | — | m-logic T35 |
+| **N9** 축소 정리 5개 | 중 | **반영** | `reconcileChatRefs(visibleSet)` 단일 함수 + 지목 상태 **6종** 표(닫기 vs 재바인드) + 부르는 자리 5곳. 뷰어는 **닫지 않고 대상만 재바인드**(3.0의 뷰어는 앱 크롬이므로 2.6.2처럼 닫으면 오히려 회귀) | §2.2-1b |
+| **N10** O12 계산 불가 | 중 | **반영(리드 결정 3)** | 2단 비교(원시 바이트 1차 · 해시 2차). 정규화 실패는 게이트를 막지 않고 `unresolved[]`로 | §5.2 |
+| **N11** 커버리지 시나리오 | 중 | → m-logic | — | m-logic-replay §5 #25~#33 |
+| **N12** `PendingSettle` 증거 | 낮음 | → m-logic | — | m-logic §5.1·§5.4-b |
+| **N13** "접힘 집합을 바꾸는 동작은 딱 둘" | 낮음 | **반영** | 열거 → **관문 함수 `setVisible(order')` + 소비자 5**. 소비자가 늘어도 규칙이 안 샌다 | §2.2-1 |
+| **N14** interrupt가 hold까지 취소 | 낮음 | **반영** | 열린문제 ⑬(a) 승인 항목 + 사영표 §5-4·§6 행 | §8-⑬ · 사영표 |
+| **N15** 사영표 자기모순 2건 | 낮음 | **반영** | (a) §5 제목을 §7 게이트 문장으로 통일 (b) **`<ExpandOverlay>`**를 4번째 자리 껍데기로 명시하고 행선지를 `A(오버레이)+S`로 | §3.1 · 사영표 §1·§2·§3-§8·§7 |
+| **N16** 인용 오기 + 카드 종류 | 낮음 | **반영** | `engine.ts:936` → `:948` 정정(§10.1) + 카드 종류는 `live[].ask.askKind`(m-logic §5.6) + `FallbackDialogCard`를 `ChatSurface`에 명시 | §10.1·§3.1·§7 |
+
+**어긋남 X1~X9**: X1 이미 닫힘 · **X2·X3 반영**(§7에서 낡은 미결 표기를 내렸다) ·
+**X4 반영**(§5.2 교체) · **X5 반영**(`RawIdentity`/`RawIdentityPatch`) ·
+**X6 반영**(`tools.*` 이름 통일) · **X7 반영**(= N4) · **X8 반영**(`ensure` 수명, §2.2-4 각주) ·
+**X9 반영**(= N16 후단).
+
+**사영표 spot-check(크리틱 §3.1) 대응**: 20행 중 17행은 그대로 통과. 어긋난 3행 —
+`subagent-modal`(N7) · `multi-panel-expanded`(N15) · `multi-reorder`(N9) — 전부 고쳤고
+그에 따라 `ux-parity-map.md` §2 통계의 "두 칸 이상" 수가 **35 → 37**로 갱신됐다.
+"미배정 0 · 유령 행 0 · 분모 156"은 기계 대조를 통과한 값이라 **건드리지 않았다**.

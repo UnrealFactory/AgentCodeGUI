@@ -1,7 +1,17 @@
 # 화면 사영표 — 2.6.2의 모든 화면은 통합 모델의 어디로 가는가
 
-동반 문서: `docs/design/ux-chat-unify.md` (M-UX 채팅 통합 스펙 R2)
+동반 문서: `docs/design/ux-chat-unify.md` (M-UX 채팅 통합 스펙 **R3**)
 대조 원본: `docs/screen-inventory.md` · 얼린 2.6.2 소스(`src/`)
+
+> **★R3 개정 (2026-08-22)** — `docs/critic/design-r2.md` §3(사영표 spot-check)·N7·N9·N13·N14·N15 반영.
+> 크리틱은 어려운 20행을 실물 대조해 **17행 성립 / 3행 모순**으로 판정했다. 그 3행을 고쳤다:
+> ① `subagent-modal` **S → A + Aw**(N7 — S로 두면 그리드 1/6 셀·zoom .8 안에 갇힌다),
+> ② `multi-panel-expanded` **A → A(오버레이) + S**(N15 — 그 오버레이는 `ChatSurface`를 담는
+>    4번째 호스트다. `<ExpandOverlay>`로 이름을 줬다),
+> ③ `multi-reorder`의 정리 규칙을 5개 전부로(N9).
+> 그에 따라 **§2 통계의 "두 칸 이상" 35 → 37**. 기계 대조를 통과한 값
+> (분모 156 · 미배정 0 · 유령 행 0)은 **건드리지 않았다.**
+> 그 밖에 §5 제목의 자기모순(N15a)·§5-4 동작 변경 승인 문장(N14)·§6 행 2개를 추가했다.
 
 ## 0. 이 표가 존재하는 이유
 
@@ -25,7 +35,7 @@ R2 §3.1이 확정한 껍데기 구조에 대응한다.
 | **I** | `IdeShell` | count=1 자리 껍데기 (전폭) |
 | **G** | `GridCell` | count≥2 자리 껍데기 (패널 헤더 + zoom .8) |
 | **W** | `WindowShell` | 별도 OS 창 자리 껍데기 (추가 채팅 창 + 팝아웃 창 통합) |
-| **A** | 앱 크롬 | 자리 **밖**. 메인 창에 하나만 있고 다이얼 값과 무관하다 (왼쪽 칼럼·코드 뷰어·Git·설정·토스트…) |
+| **A** | 앱 크롬 | 자리 **밖**. 메인 창에 하나만 있고 다이얼 값과 무관하다 (왼쪽 칼럼·코드 뷰어·Git·설정·토스트…). ★R3: 「크게 보기」 오버레이 **`<ExpandOverlay>`**도 여기 속한다 — **앱 크롬이 호스팅하는 4번째 자리 껍데기**로, 그 안에 `S`를 담는다(ux §3.1). 그래서 그 행의 표기가 `A(오버레이) + S`다 |
 | **Aw** | 창 크롬 | `WindowShell`이 자기 창 안에 갖는 **앱 크롬 축소판**. 2.6.2 실측 = 뷰어·이미지 라이트박스·서브에이전트 카드 **셋뿐**(탐색기·Git·설정은 메인 창 전용 — `SessionWindow.tsx`·`PanelWindow.tsx`에 import 0건) |
 | **X** | 사라짐 | 통합으로 화면 자체가 없어진다 — §5에 승인 문장 |
 | **N** | 범위 밖 | 3.0.0에서 이식하지 않음(Verse — 커밋 `f3b8104`, 사용자 결정) |
@@ -43,8 +53,9 @@ R2 §3.1이 확정한 껍데기 구조에 대응한다.
 | 범위 밖(Verse) — 화면 통째 | **2** (`explorer-verse-section`, `explorer-verse-digest`) |
 | 범위 밖 — 화면 안의 일부 항목만 | **2** (`settings-code-lsp`의 Verse 서버 행, `settings-code-expanded`의 Verse 연결 하위옵션) |
 | 사라짐 | **1 확정**(`new-chat-step1`) + **1 조건부**(`new-chat-step2` — 열린 문제 ⑩) |
-| 행선지가 두 칸 이상인 **행** | **35** (§1 1 · §2 3 · §5 25 · §8 3 · §9 3) |
-| ─ 그중 「아직 이중 배선」이라 통합 방법을 적어야 하는 **갈래** | **14** (§4) |
+| 행선지가 두 칸 이상인 **행** | **37** ★R3 (§1 1 · §2 **4** · §5 25 · §8 **4** · §9 3) |
+| ─ R2 대비 늘어난 2행 | `subagent-modal` S→**A+Aw**(N7) · `multi-panel-expanded` A→**A+S**(N15) |
+| ─ 그중 「아직 이중 배선」이라 통합 방법을 적어야 하는 **갈래** | **14** (§4 — 수는 그대로. `subagent-modal`은 이미 §4-3으로 세어져 있었고 **행선지만** 바뀌었다) |
 | 2.6.2에서 이미 **4벌**로 배선돼 있던 것 | **5종** — 승인/질문 카드 · 코드 뷰어 · 이미지 라이트박스 · 서브에이전트 카드 · 폴더 변경 카드 |
 
 > **「161화면」은 표의 행 수이고 실제 화면은 156이다.** 인벤토리 자체는 틀리지 않았지만
@@ -80,7 +91,7 @@ R2 §3.1이 확정한 껍데기 구조에 대응한다.
 | `chat-header` | 3 (`.chat-head` · `.ma-p-head` · `.pw-head`) | **A(TopBar) + G + W** | 실제로 **다른 헤더 셋**이라 이중 배선이 아니다. 단 안쪽 부품(제목 칩·폴더 칩·상태 칩·찾기)은 공용 1벌 → §4-11 |
 | `composer` | 3 | **S** | |
 | `composer-two-line` | 3 | **S** | |
-| `composer-picker-pop` | **3 소유처** (App useState · `PanelMeta.picker` · `SessionChatRecord.picker`) | **S** | `Chat.identityOverrides` 하나. M-LOGIC의 `chat:identity-set` 왕복 |
+| `composer-picker-pop` | **3 소유처** (App useState · `PanelMeta.picker` · `SessionChatRecord.picker`) | **S** | `Chat.identity` 하나(★R3 완전 지정 `RawIdentity`). value = `chat:identity` 브로드캐스트, onChange = `chat:identity-set{patch}` (m-logic §4.1) |
 | `composer-slash-palette` | 3 | **S** | |
 | `composer-mention-palette` | 3 | **S** | 멘션 기준 폴더 = 그 채팅의 cwd |
 | `composer-attachments` | 3 | **S** | |
@@ -89,14 +100,14 @@ R2 §3.1이 확정한 껍데기 구조에 대응한다.
 | `limit-hold-bar` | **3 렌더 / 9 훅 인스턴스** | **S** | 훅 채팅당 1개. `LimitHoldBar`가 30초 틱 소유(`Chat.tsx:2729`·`useLimitResume.ts:169-171`) |
 | `workbar` | 3 | **S** | |
 | `workbar-todo-pop` | 3 | **S** | |
-| `workbar-subagent-pop` | 3 | **S** | |
+| `workbar-subagent-pop` | 3 | **S** | ★R3 **`subagent-modal`(A+Aw)과 다른 화면이다** — 팝오버는 워크바 안(자리 스코프), 상세 카드는 앱 크롬. 통합에서 갈라지므로 이름을 섞지 말 것 |
 | `workbar-shell-pop` | 3 | **S** | |
 | `workbar-file-pop` | 3 | **S** | |
 | `workbar-context-pop` | 3 | **S** | |
-| `workbar-context-pop-api` | 3 | **S** | 과금 = `identityOverrides.billing`(전역 `api.mode` 상속) — U10 |
+| `workbar-context-pop-api` | 3 | **S** | ★R3 과금 = `identity.billing`. **전역 상속이 아니라 채팅에 물질화**된다(ux §4.2 — U10 폐기·N4) |
 | `bash-log-modal` | 1 (`Chat.tsx:389`, 전 표면 공용) | **S** | |
 | `bgtask-modal` | 1 (`Chat.tsx:2983`) | **S** | |
-| `subagent-modal` | **4** (App:1663 · MA:1928 · SW:888 · PW:531) | **S** | R1 §0 표가 놓친 이중 배선 — §4-3 |
+| `subagent-modal` | **4** (App:1663 · MA:1928 · SW:888 · PW:531) | **A + Aw** ★R3 | R1 §0 표가 놓친 이중 배선 — §4-3. **R2는 `S`라 적었는데 4벌 전부 「패널 밖 최상위」다**(크리틱 N7). `S`로 넣으면 그리드에서 카드가 1/6 셀·zoom .8 안에 갇힌다 = 읽을 수 없는 회귀. 2.6.2가 같은 함정을 주석으로 경고한다(`MultiAgent.tsx:1913-1914`, 코드 뷰어 오버레이에 대해). → 뷰어·라이트박스와 **같은 취급**. 대상 = `subagentTarget{chatId,id}`, 자리가 접히면 **닫는다**(ux §2.2-1b) |
 | `cmd-result-card` | 1 | **S** | |
 | `question-card` | **4** (App:1674 · MA:757 · SW:865 · PW=PanelView) | **S** | 자리 스코프. 접힌 자리에서 뜨면 → R2 §2.2-5 알림 규약 |
 | `question-card-multistep` | 4 | **S** | |
@@ -150,7 +161,12 @@ R1 §3.1이 이걸 `<IdeShell>`(count=1 전용) 안에 넣은 것이 U4의 핵�
 | `explorer-settings-foot` | 2 | **A** | |
 | `changed-files-modal` | **1** (`App.tsx:1614` — 창엔 없다) | **A** | 대상 = `viewerTarget.chatId ?? 포커스 자리`. 2.6.2는 `mode==='multi' ? multiExp.files : state.files` 삼항 |
 
-### §5 코드 뷰어 (26) — **전부 앱 크롬 단일 인스턴스.** R1이 통째로 빠뜨린 갈래
+### §5 코드 뷰어 (26) — **코드는 1벌, 렌더 지점은 2개(메인 앱 크롬 + 창 크롬).** R1이 통째로 빠뜨린 갈래
+
+> **★R3 (크리틱 N15a)** — R2의 제목은 "전부 앱 크롬 **단일 인스턴스**"였는데 §7의 회귀 판정은
+> "렌더 지점 **각 2개**(메인+창)"였다. **두 문장이 다른 말을 한다.**
+> 게이트로 쓸 문장은 §7 쪽이므로 제목을 거기 맞췄다: **컴포넌트 코드는 1벌 · 렌더 지점은 2개**
+> (`A` = 메인 창, `Aw` = `WindowShell` 안). 창 크롬이 앱 크롬의 *다른 구현*이 되면 §4가 부활한다.
 
 2.6.2는 `FileModal`을 **네 군데**에서 렌더한다: `App.tsx:1640` · `SessionWindow.tsx:879` ·
 `PanelWindow.tsx:528` · `MultiAgent.tsx:1918`. `panel-window-viewer`는 인벤토리의 **[검증됨]** 화면이다.
@@ -209,12 +225,12 @@ diff 출처·질문 대상·변경파일 스코프가 전부 이 한 값에서 �
 | `settings-account` | 1 | **A** | 계정 **목록**은 앱, 채팅의 계정 선택은 S(picker) |
 | `settings-account-login` | 1 | **A** | |
 | `settings-account-logout-confirm` | 1 | **A** | 로그아웃 = 그 계정을 쓰는 채팅들의 identity 재판정(M-LOGIC `account_unavailable`) |
-| `settings-engine` | 1 | **A** | 출력 스타일 칩 = 전역 기본. 채팅 override는 `identityOverrides.outputStyle`(U10) |
+| `settings-engine` | 1 | **A** | ★R3 출력 스타일 칩 = **새 채팅 기본값**. 기존 채팅은 「전부 적용?」 카드를 거쳐야 바뀐다(ux §4.2). 채팅 값 = `identity.outputStyle` |
 | `settings-engine-confirm` | 1 | **A** | |
 | `settings-engine-install-card` | 1 | **A** | |
 | `settings-api` | 1 | **A** | 키·예산은 앱, **과금 모드는 채팅**으로 이동(U10) — 탭에 "기본값" 표시 |
-| `settings-mcp` | 1 | **A** | M9 확장점: `identityOverrides.mcpOverrides` |
-| `settings-skill` | 1 | **A** | M9 확장점: `identityOverrides.skillOverrides` |
+| `settings-mcp` | 1 | **A** | ★R3 채팅 값 = `identity.tools.deniedMcp`(m-logic 이름 — X6). 이 화면은 **새 채팅 기본값** 편집. M9 확장점 |
+| `settings-skill` | 1 | **A** | ★R3 채팅 값 = `identity.tools.skillOverrides`(X6). 이 화면은 **새 채팅 기본값** 편집. M9 확장점 |
 | `settings-display` | 1 | **A** | |
 | `settings-language` | 1 | **A** | |
 | `settings-code-lsp` | 1 | **A** (Verse 행만 **N**) | 대상 언어 TS/JS·Python·C#·C++ 넷 |
@@ -234,7 +250,7 @@ diff 출처·질문 대상·변경파일 스코프가 전부 이 한 값에서 �
 | `multi-grid-counts` | 1 | **A(다이얼) + G(배치)** | 다이얼에 **1** 추가. 위치 고정이 규약(R2 §2.1) |
 | `multi-panel-running` | 1 | **S + G(헤더 칩)** | 상태 단일 소스 = `effectiveStatus/bgActive` |
 | `multi-panel-done-ring` | 1 | **G** | 완료 링 = bg까지 걷혀야(메모리 '완료 표시 규칙') |
-| `multi-panel-expanded` | 1 | **A(오버레이)** | 「크게 보기」는 앱 크롬 오버레이 유지. 다이얼 1과 겹치는 문제 = 열린 문제 ⑨ |
+| `multi-panel-expanded` | 1 | **A(오버레이) + S** ★R3 | 「크게 보기」는 앱 크롬 오버레이 유지. **그 오버레이는 `ChatSurface`를 담는다** = `IdeShell`/`GridCell`/`WindowShell`에 이은 **4번째 자리 껍데기**인데 R2 §3.1에 없었다(크리틱 N15b) → `<ExpandOverlay>`로 명명(ux §3.1). 호스팅은 앱 크롬이라 기호는 `A`, 내용은 `S`. 대상 = `expandedChatId`, 자리가 접히면 **닫는다**(ux §2.2-1b). 다이얼 1과 겹치는 문제 = 열린 문제 ⑨ |
 | `multi-panel-ghost-expanded` | 1 | **G** | 유령 셀 |
 | `multi-panel-ghost-popped` | 1 | **G** | 유령이 **chatId**를 가리킨다(창 레지스트리 역인덱스) |
 | `multi-panel-rename` | 1 | **G** | 사이드바 인라인 편집과 같은 부품 → §4-8 |
@@ -245,7 +261,7 @@ diff 출처·질문 대상·변경파일 스코프가 전부 이 한 값에서 �
 | `multi-panel-btw-dock` | (=`btw-dock`) | **S** | |
 | `multi-panel-workflow-dock` | (=`workflow-dock`) | **S** | |
 | `multi-explorer` | 1 (`App.tsx:1452`) | **A** | 포커스 자리 추종. `explorer-tree`와 한 벌 |
-| `multi-reorder` | 1 | **G(제스처) + A(Board.order)** | R2 §2.2-1: 드래그는 **보이는 자리끼리만** 순서를 바꾼다 → 접힘 집합 불변(U8) |
+| `multi-reorder` | 1 | **G(제스처) + A(Board.order)** | R2 §2.2-1: 드래그는 **보이는 자리끼리만** 순서를 바꾼다 → 접힘 집합 불변(U8). ★R3(N9·N13): 접힘 집합을 바꾸는 동작은 **`setVisible(order')` 관문 하나**를 지나고 그 함수가 `reconcileChatRefs()`를 부른다 — 2.6.2가 다이얼 `onClick`에서 인라인으로 정리하던 **5개**(`MultiAgent.tsx:1823-1827`: focusedSlot·renamingSlot·**expandedSlot·openFile·openSub**) 전부를 덮는다. R2는 앞 둘만 덮어 「크게 보기」·코드 뷰어·서브에이전트 카드가 **접힌 채팅을 가리킨 채** 남았다(ux §2.2-1b) |
 
 ### §9 독립 창 (5)
 
@@ -280,7 +296,7 @@ R1 §0 표는 7종을 셌다. 실측하니 **여덟 갈래가 더 있었다**(2~
 |---|---|---|---|
 | 1 | 승인/질문 카드 | 4 (App:1674·1676 / MA:752·757 / SW:863·865 / PW=PanelView) | `ChatSurface` 안 1벌. 자리 스코프 유지, 키보드는 포커스 자리만 |
 | 2 | **코드 뷰어** | **4** (App:1640 / SW:879 / PW:528 / MA:1918) | 앱 크롬 1개 + 창 크롬 1개 = 코드 1벌. 대상은 `viewerTarget{chatId,path}` |
-| 3 | **서브에이전트 카드** | **4** (App:1663 / MA:1928 / SW:888 / PW:531) | `ChatSurface`의 워크바 안 1벌 |
+| 3 | **서브에이전트 카드** | **4** (App:1663 / MA:1928 / SW:888 / PW:531) | ★R3 **앱 크롬 1개 + 창 크롬 1개**(뷰어·라이트박스와 같은 취급 — N7). 대상 = `subagentTarget{chatId,id}`. R2의 "`ChatSurface`의 워크바 안 1벌"은 **틀렸다** — 2.6.2 4벌 전부 패널 밖 최상위다. 워크바 안에 남는 건 **팝오버**(`workbar-subagent-pop`)뿐 |
 | 4 | **이미지 라이트박스** | **4** (App:1655 / MA:1934 / SW:891 / PW:533) | 앱 크롬 1개 + 창 크롬 1개 |
 | 5 | **폴더 변경 확인 카드** | **4** (App:1679 / MA:1906 / SW:868 / PW:524) | M-LOGIC `needs_confirm` verdict의 표시 1벌 |
 | 6 | **탐색기** | **2 렌더 / mode 삼항** (App:1438·1452) | 앱 크롬 1벌 + 포커스 자리 추종. 삼항 소멸 |
@@ -307,6 +323,26 @@ R1 §0 표는 7종을 셌다. 실측하니 **여덟 갈래가 더 있었다**(2~
    Verse 지원 전체 제거(커밋 `f3b8104`, 사용자 결정)에 따른 **의도된 범위 축소**다.
    파리티 감사에서 회귀로 잡지 않는다.
 
+4. **★R3 [신설] 「사라지지는 않지만 동작이 바뀌는」 2건 — 별도 승인 문장이 필요하다.**
+   크리틱 N14가 지적한 대로, §5는 「사라짐」만 승인 목록에 올리고 **동작 변경**은 아무 데도
+   올리지 않았다. 아래 둘은 화면은 남지만 **사용자가 겪는 결과가 2.6.2와 다르다.**
+
+   4-a. **`limit-hold-bar` — 중지가 자동 이어서 대기표까지 취소한다**
+   > "대화를 중지하면(Esc 또는 중지 버튼) 예약해 둔 메시지뿐 아니라 **「자동 이어서」 대기표도
+   > 함께 취소**됩니다. 2.6.2는 대기표를 남겨 뒀는데, 그러면 중지한 뒤 몇 시간이 지나
+   > 한도가 풀렸을 때 **혼자 이어서 보내는** 일이 생깁니다. 취소한 사실은 한 줄로 알리고
+   > **[되돌리기]** 로 대기표까지 되살릴 수 있습니다. 이렇게 바꿔도 될까요?"
+   > (m-logic §7.4 · ux 열린문제 ⑬-a)
+
+   4-b. **`settings-engine` / `settings-api` / `settings-mcp` / `settings-skill` —
+        전역 토글이 기존 채팅에 즉시 반영되지 않는다**
+   > "출력 스타일·API 과금 모드·MCP/Skill 켜고 끄기를 설정에서 바꾸면, 이제 **새로 만드는
+   > 채팅에만** 적용됩니다. 이미 있는 채팅에는 *'기존 채팅 12개에도 적용할까요?'* 카드로
+   > 물어보고, 고른 채팅에만 적용합니다. 2.6.2는 전역 값이 모든 채팅에 즉시 먹었는데,
+   > 그 때문에 **다른 채팅에서 설정을 만지면 이 채팅의 백그라운드 작업이 전부 죽는** 문제가
+   > 있었습니다(m-logic P1d). 이렇게 바꿔도 될까요?"
+   > (m-logic §2.4 · ux §4.2 · 열린문제 ⑬-b)
+
 ## 6. 통합이 **없애는 게 아니라 늘리는** 화면 (회귀 아님)
 
 파리티 감사가 "새 화면이 생겼다"로 잡지 않게 미리 적는다.
@@ -318,11 +354,23 @@ R1 §0 표는 7종을 셌다. 실측하니 **여덟 갈래가 더 있었다**(2~
 | 접힘 배지 · 접힌 자리 팝오버 · 실행 요약 칩 | **없음** | 신규(6→1의 답) |
 | 빈 자리 타일 | 빈 패널 = 바로 대화 가능 | 「＋새 채팅 / 최근에서 고르기 / 이 자리 숨기기」 |
 | 대상 채팅 칩(뷰어 헤더) | 없음(모호함이 없었다) | 신규 — N≥2에서 필수 |
-| 읽지 않음 배지 | **없음**(사이드바는 상태 점뿐, `styles.css:336-341`) | 신규 제안 — 열린 문제 ⑪ |
+| 읽지 않음 배지 | **없음**(사이드바는 상태 점뿐, `styles.css:336-341`) | ★R3 **3.0.0 범위 밖**(필드만 예약, 값 0) — 열린 문제 ⑪ |
+| ★R3 `limit-hold-bar` 중지 문구 | 중지는 큐만 비운다(`App.tsx:901-909`) | **중지가 대기표도 취소** + *"대기 3건과 자동 이어서 대기를 취소했어요 — [되돌리기]"* 한 줄이 새로 생긴다(§5-4a 승인 필요) |
+| ★R3 「전역 설정을 기존 채팅에도 적용?」 카드 | **없음**(전역이 즉시 먹었다) | 신규 — 설정에서 정체성 축 값을 바꾸면 뜬다. 결과는 집계 카드(`9개 적용 · 2개 턴 끝 · 1개 거부`) (§5-4b 승인 필요) |
+| ★R3 `settings-mcp` / `settings-skill`의 의미 | 앱 전역 스위치 | **새 채팅 기본값** 편집 화면. 값 자체는 `identity.tools.*`로 채팅에 물질화(ux §4.2) |
+| ★R3 정체성 미해결 경고 줄(picker) | 없음 | 신규 — 마이그레이션·복원 후 폴더/계정/키가 사라진 채팅의 picker에 한 줄. 값은 고치지 않고 첫 send가 그 사유로 거부된다(m-logic §4.2) |
 
 ## 7. 이 표의 사용법 (파리티 게이트)
 
 - 3.0 화면 인벤토리를 다시 만들 때 **분모는 156 − 2(Verse) − 1(`new-chat-step1`) = 153**이다.
-- 「A/Aw 두 칸」 행은 코드 1벌이어야 한다 — 창 크롬이 앱 크롬의 **다른 구현**이 되면 §4가 부활한다.
+- 「A/Aw 두 칸」 행은 **코드 1벌 · 렌더 지점 2개**여야 한다 — 창 크롬이 앱 크롬의 **다른 구현**이 되면
+  §4가 부활한다.
   회귀 판정: `FileModal`·`ImageViewer`·`SubAgentModal`의 **렌더 지점이 각 2개(메인+창)를 넘지 않을 것**.
+  ★R3: §5 제목도 이 문장에 맞췄다(R2는 "단일 인스턴스"라 적어 서로 달랐다 — N15a).
+  **게이트 문장은 언제나 이 절이 기준**이고, 절 제목은 요약일 뿐이다.
 - 「S」 행은 렌더 지점이 **정확히 1개**여야 한다. grep으로 셀 수 있게 컴포넌트 이름을 바꾸지 말 것.
+- ★R3 **「A(오버레이) + S」 행**(`multi-panel-expanded`)은 `<ExpandOverlay>`가 `ChatSurface`를
+  **재사용**하는지 본다 — 별도 축소판을 만들면 5번째 배선이 생긴다.
+- ★R3 **고아 UI 회귀 판정**: 다이얼을 6→1로 줄이는 조작 하나에서 `focusedChatId`·`renamingChatId`·
+  `expandedChatId`·`viewerTarget.chatId`·`subagentTarget.chatId`·`lightboxSource.chatId` **여섯 개가
+  전부 재검증되는지**(ux §2.2-1b 표). 2.6.2가 다섯을 정리했으므로 다섯 미만이면 **회귀**다.
