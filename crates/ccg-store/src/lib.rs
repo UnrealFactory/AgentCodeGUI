@@ -26,12 +26,20 @@ pub mod api_config;
 pub mod api_usage;
 pub mod safe_storage;
 
-/// 통합 스토어 옵트인 — `CCG_UNIFIED_STORE=1`.
+/// 통합 스토어 — **기본 켜짐**. 끄는 탈출구는 `CCG_UNIFIED_STORE=0`.
 ///
-/// 기본값은 **꺼짐**이다. 마이그레이션 PoC와 크리틱을 통과하기 전에는 사용자의 실제
-/// 대화가 옛 3스토어 경로로만 오간다(되돌릴 곳이 있는 상태를 유지한다).
+/// R8까지는 기본 꺼짐이었다(옵트인). 전환의 전제로 크리틱이 세운 게이트 7칸 중 6칸은
+/// R8 확인 크리틱이 독립 재현으로 닫았고, 마지막 한 칸(`session-wins:changed`가 영속
+/// 추가 채팅을 UI에서 지운다 — R8-1)을 이 라운드가 닫았다(`src-tauri/src/win.rs`
+/// `broadcast_sessions`가 `list`와 같은 원천을 싣는다).
+///
+/// **탈출구를 남기는 이유**: 마이그레이션은 옛 3디렉터리를 지우지 않는다. 통합 경로에서
+/// 무엇이 잘못되면 `CCG_UNIFIED_STORE=0`으로 띄우는 것만으로 2.6.2 포맷 그대로 돌아간다
+/// (되돌릴 곳이 있는 상태를 계속 유지한다). 값 판정은 **"0/false만 끔"** — 오타
+/// (`CCG_UNIFIED_STORE=yes`)로 조용히 꺼져 사용자가 옛 스토어에 새 대화를 쌓는 사고를
+/// 막는다.
 pub fn unified_store_enabled() -> bool {
-    matches!(std::env::var("CCG_UNIFIED_STORE").as_deref(), Ok("1") | Ok("true"))
+    !matches!(std::env::var("CCG_UNIFIED_STORE").as_deref(), Ok("0") | Ok("false"))
 }
 
 use std::io;
