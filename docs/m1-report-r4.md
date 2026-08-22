@@ -492,3 +492,39 @@ WebView2 브라우저 프로세스는 죽는다 — 감시자가 그걸 크래�
 `fps-ab.json` · `multi-tauri-3.0.0-{default,on-NetworkServiceInProcess2}.json` ·
 `coldstart-{tauri-3.0.0,electron-2.6.2}-r4.json` · `pair-coldstart.json` ·
 `gpu-css-probe.json` · `boot-breakdown.json` · `webview-flags.json` · `window-cost.json`
+
+---
+
+## 8. (부록 — 리드 결정) `NetworkServiceInProcess2` 채택
+
+§2의 미채택은 빌더 규약("절대 게이트를 평가할 수 없는 세션에서 기본값을 바꾸지 않는다")에
+따른 보류였다. 리드가 재판정을 실행하고(§2가 지정한 명령 그대로 —
+`node bench/fpsab.mjs --rounds=4 --trials=3`, 결과 `bench/results/fps-ab.json`) 다음
+근거로 **채택**했다. 판정 주체와 근거가 다르므로 여기 따로 적는다.
+
+- 이 기계의 조용한 세션은 드물다(사용자 상주 앱들). 재판정 세션도 대조군 중앙
+  simple 56 / load 58로 절대 게이트(≥59) 미달 — **절대 밴드는 세션 속성이지 레버
+  속성이 아니다.** 레버 유해성의 판정자는 짝지은 차다.
+- 짝지은 차 중앙: simple +0.05 / load −0.6fps (라운드 간 노이즈 ±1 안).
+  드랍 프레임: 대조군 12시행 총 2, 레버 팔 동등. p95 같은 밴드.
+- 절대 게이트 자체는 같은 코드가 조용한 세션(R3 크리틱, 12/12 드랍 0·59~60fps)에서
+  이미 통과를 보였고, 짝지은 차 ≈0이므로 레버가 그 결론을 바꿀 근거가 없다.
+- 얻는 것(§2 실측): 유휴 450.7→426.3 / 248.1→241.6, 프로세스 6→5, +창2 500.9→471.8.
+
+**R4 크리틱 의무**: 자기 세션에서 절대 게이트 재검증 + 짝지은 차로 유해가 재현되면
+revert 지시(한 줄 — `FEATURES_ON_ADOPTED`에서 제거). 긴급 탈출구는 재빌드 없이
+`CCG_WEBVIEW_DISABLE_FEATURES=NetworkServiceInProcess2` (disable가 enable을 이긴다).
+
+채택 빌드의 기본값 확인 측정(exe에 레버가 박힌 상태, `bench/multi.mjs --repeats=5`):
+
+| 지표 | §2 훅 팔(참고) | **채택 빌드 기본값 (5회 중앙값)** | 목표 |
+|---|---|---|---|
+| 유휴 그리드 WS / Priv | 426.3 / 241.6 | **424.0 / 242.0** | ≤356 / ≤253 → Priv ✓ |
+| 프로세스 | 5 | **5** | |
+| +창2 WS / Priv | 471.8 / — | **471.8 / 250.7** | ≤467 → 선상(+4.8) |
+| 창당 비용 | 22.4 | **24.7 / +0프로세스** | ≪110 ✓ |
+| 1패널 스크롤 | — | 56.7fps · 드랍 0% 4/5 (최악 0.3%) | 세션 밴드(§2) |
+| 4패널 동시 스크롤 | — | **58.0fps · 드랍 0% 5/5** | |
+
+(`bench/results/multi-tauri-3.0.0-default.json`, arm=default — 레버가 exe에 박힌 상태.
+같은 세션 밴드라 avgFps 절대치는 §2와 같은 주의가 필요하다.)

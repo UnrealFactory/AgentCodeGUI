@@ -3,10 +3,10 @@
   "arm": "default",
   "bin": {
     "exe": "C:\\Code\\AgentCodeGUI\\target\\release\\agentcodegui.exe",
-    "exeMtime": "2026-08-22T11:33:00.765Z",
-    "exeSize": 3835392,
-    "exeSha256": "aab524b88bd36857",
-    "gitHead": "2ced4fa",
+    "exeMtime": "2026-08-22T12:51:08.284Z",
+    "exeSize": 3835904,
+    "exeSha256": "45ed7a63859081cc",
+    "gitHead": "307d94a",
     "gitDirty": true
   },
   "armEnv": {
@@ -21,22 +21,22 @@
     "os": "Microsoft Windows 11 Home 26200"
   },
   "summary": {
-    "idleGridWsMB": 450.7,
-    "idleGridPrivMB": 248.1,
-    "idleGridProcs": 6,
-    "idleWithWindowsWsMB": 500.9,
-    "idleWithWindowsPrivMB": 258.4,
-    "wsMBPerWindow": 25.1,
+    "idleGridWsMB": 424,
+    "idleGridPrivMB": 242,
+    "idleGridProcs": 5,
+    "idleWithWindowsWsMB": 471.8,
+    "idleWithWindowsPrivMB": 250.7,
+    "wsMBPerWindow": 24.7,
     "procsAdded": 0,
     "scrollInPanel": {
-      "avgFps": 56.9,
-      "p95Ms": 22.6,
-      "worstDroppedPct": 0,
-      "zeroDropRuns": 5
+      "avgFps": 56.7,
+      "p95Ms": 23.1,
+      "worstDroppedPct": 0.3,
+      "zeroDropRuns": 4
     },
     "scrollAllPanels": {
-      "avgFps": 57.9,
-      "p95Ms": 21.4,
+      "avgFps": 58,
+      "p95Ms": 20.1,
       "worstDroppedPct": 0,
       "zeroDropRuns": 5
     },
@@ -48,35 +48,35 @@
       "panels": 4,
       "itemsPerPanel": 120,
       "gridPanels": 4,
-      "at": "2026-08-22T12:03:59.512Z",
+      "at": "2026-08-22T12:51:16.160Z",
       "idleGrid": {
-        "totalWsMB": 448.7,
-        "totalPrivMB": 247.6,
-        "procs": 6
+        "totalWsMB": 419.5,
+        "totalPrivMB": 237.6,
+        "procs": 5
       },
       "idleWithWindows": {
-        "totalWsMB": 499.5,
-        "totalPrivMB": 258.4,
-        "procs": 6
+        "totalWsMB": 469.1,
+        "totalPrivMB": 248.2,
+        "procs": 5
       },
       "windowCost": {
-        "wsMBPerWindow": 25.4,
+        "wsMBPerWindow": 24.8,
         "procsAdded": 0
       },
       "scrollInPanel": {
-        "frames": 337,
-        "avgFps": 56.9,
-        "p95Ms": 24,
-        "worstMs": 31.2,
+        "frames": 344,
+        "avgFps": 57.7,
+        "p95Ms": 20.3,
+        "worstMs": 31.4,
         "droppedPct": 0,
         "droppedFrames": 0,
         "longTaskMs": 0
       },
       "scrollAllPanels": {
-        "frames": 344,
-        "avgFps": 57.7,
-        "p95Ms": 19.6,
-        "worstMs": 27.7,
+        "frames": 336,
+        "avgFps": 56.2,
+        "p95Ms": 23.1,
+        "worstMs": 28.6,
         "droppedPct": 0,
         "droppedFrames": 0,
         "longTaskMs": 0
@@ -84,33 +84,28 @@
       "procDetail": [
         {
           "name": "agentcodegui.exe",
-          "wsMB": 32.5,
-          "privMB": 15
+          "wsMB": 32.4,
+          "privMB": 15.2
         },
         {
           "name": "msedgewebview2.exe",
-          "wsMB": 221.2,
-          "privMB": 103.3
+          "wsMB": 231.2,
+          "privMB": 105.9
         },
         {
           "name": "msedgewebview2.exe",
           "wsMB": 18.7,
-          "privMB": 3.4
-        },
-        {
-          "name": "msedgewebview2.exe",
-          "wsMB": 40.9,
-          "privMB": 13.8
+          "privMB": 3.3
         },
         {
           "name": "msedgewebview2.exe",
           "wsMB": 20,
-          "privMB": 9
+          "privMB": 8.9
         },
         {
           "name": "msedgewebview2.exe",
-          "wsMB": 234.6,
-          "privMB": 161.1
+          "wsMB": 213.3,
+          "privMB": 140.1
         }
       ]
     },
@@ -119,106 +114,35 @@
       "panels": 4,
       "itemsPerPanel": 120,
       "gridPanels": 4,
-      "at": "2026-08-22T12:05:00.429Z",
+      "at": "2026-08-22T12:52:16.958Z",
       "idleGrid": {
-        "totalWsMB": 457.9,
-        "totalPrivMB": 253.4,
-        "procs": 6
+        "totalWsMB": 426.5,
+        "totalPrivMB": 245.2,
+        "procs": 5
       },
       "idleWithWindows": {
-        "totalWsMB": 506.5,
-        "totalPrivMB": 262.7,
-        "procs": 6
+        "totalWsMB": 475.9,
+        "totalPrivMB": 254.6,
+        "procs": 5
       },
       "windowCost": {
-        "wsMBPerWindow": 24.3,
+        "wsMBPerWindow": 24.7,
         "procsAdded": 0
       },
       "scrollInPanel": {
         "frames": 337,
-        "avgFps": 56.4,
-        "p95Ms": 22.6,
-        "worstMs": 30.4,
-        "droppedPct": 0,
-        "droppedFrames": 0,
+        "avgFps": 56.7,
+        "p95Ms": 22.9,
+        "worstMs": 33.2,
+        "droppedPct": 0.3,
+        "droppedFrames": 1,
         "longTaskMs": 0
       },
       "scrollAllPanels": {
-        "frames": 346,
-        "avgFps": 57.9,
-        "p95Ms": 22.4,
-        "worstMs": 26.1,
-        "droppedPct": 0,
-        "droppedFrames": 0,
-        "longTaskMs": 0
-      },
-      "procDetail": [
-        {
-          "name": "agentcodegui.exe",
-          "wsMB": 32.9,
-          "privMB": 15.6
-        },
-        {
-          "name": "msedgewebview2.exe",
-          "wsMB": 224.6,
-          "privMB": 103.8
-        },
-        {
-          "name": "msedgewebview2.exe",
-          "wsMB": 18.7,
-          "privMB": 3.4
-        },
-        {
-          "name": "msedgewebview2.exe",
-          "wsMB": 40.8,
-          "privMB": 13.6
-        },
-        {
-          "name": "msedgewebview2.exe",
-          "wsMB": 20.1,
-          "privMB": 9
-        },
-        {
-          "name": "msedgewebview2.exe",
-          "wsMB": 227.7,
-          "privMB": 155
-        }
-      ]
-    },
-    {
-      "seq": 3,
-      "panels": 4,
-      "itemsPerPanel": 120,
-      "gridPanels": 4,
-      "at": "2026-08-22T12:06:01.228Z",
-      "idleGrid": {
-        "totalWsMB": 450.7,
-        "totalPrivMB": 248.1,
-        "procs": 6
-      },
-      "idleWithWindows": {
-        "totalWsMB": 500.9,
-        "totalPrivMB": 258.4,
-        "procs": 6
-      },
-      "windowCost": {
-        "wsMBPerWindow": 25.1,
-        "procsAdded": 0
-      },
-      "scrollInPanel": {
-        "frames": 330,
-        "avgFps": 55.3,
-        "p95Ms": 22.7,
-        "worstMs": 30.4,
-        "droppedPct": 0,
-        "droppedFrames": 0,
-        "longTaskMs": 0
-      },
-      "scrollAllPanels": {
-        "frames": 339,
-        "avgFps": 57.2,
-        "p95Ms": 22.8,
-        "worstMs": 30.8,
+        "frames": 347,
+        "avgFps": 58,
+        "p95Ms": 20.1,
+        "worstMs": 28,
         "droppedPct": 0,
         "droppedFrames": 0,
         "longTaskMs": 0
@@ -227,164 +151,17 @@
         {
           "name": "agentcodegui.exe",
           "wsMB": 32.5,
-          "privMB": 15
+          "privMB": 15.1
         },
         {
           "name": "msedgewebview2.exe",
-          "wsMB": 223.1,
-          "privMB": 103.2
-        },
-        {
-          "name": "msedgewebview2.exe",
-          "wsMB": 18.7,
-          "privMB": 3.4
-        },
-        {
-          "name": "msedgewebview2.exe",
-          "wsMB": 40.9,
-          "privMB": 13.7
-        },
-        {
-          "name": "msedgewebview2.exe",
-          "wsMB": 20,
-          "privMB": 9
-        },
-        {
-          "name": "msedgewebview2.exe",
-          "wsMB": 218.2,
-          "privMB": 145.1
-        }
-      ]
-    },
-    {
-      "seq": 4,
-      "panels": 4,
-      "itemsPerPanel": 120,
-      "gridPanels": 4,
-      "at": "2026-08-22T12:07:01.749Z",
-      "idleGrid": {
-        "totalWsMB": 449.9,
-        "totalPrivMB": 247.8,
-        "procs": 6
-      },
-      "idleWithWindows": {
-        "totalWsMB": 498.7,
-        "totalPrivMB": 258.1,
-        "procs": 6
-      },
-      "windowCost": {
-        "wsMBPerWindow": 24.4,
-        "procsAdded": 0
-      },
-      "scrollInPanel": {
-        "frames": 342,
-        "avgFps": 57.3,
-        "p95Ms": 21,
-        "worstMs": 30.7,
-        "droppedPct": 0,
-        "droppedFrames": 0,
-        "longTaskMs": 0
-      },
-      "scrollAllPanels": {
-        "frames": 347,
-        "avgFps": 58.3,
-        "p95Ms": 21.4,
-        "worstMs": 28.1,
-        "droppedPct": 0,
-        "droppedFrames": 0,
-        "longTaskMs": 0
-      },
-      "procDetail": [
-        {
-          "name": "agentcodegui.exe",
-          "wsMB": 32.6,
-          "privMB": 15.5
-        },
-        {
-          "name": "msedgewebview2.exe",
-          "wsMB": 221.3,
-          "privMB": 103
+          "wsMB": 230.6,
+          "privMB": 105.8
         },
         {
           "name": "msedgewebview2.exe",
           "wsMB": 18.7,
           "privMB": 3.3
-        },
-        {
-          "name": "msedgewebview2.exe",
-          "wsMB": 40.7,
-          "privMB": 13.5
-        },
-        {
-          "name": "msedgewebview2.exe",
-          "wsMB": 20,
-          "privMB": 9
-        },
-        {
-          "name": "msedgewebview2.exe",
-          "wsMB": 234.4,
-          "privMB": 161.8
-        }
-      ]
-    },
-    {
-      "seq": 5,
-      "panels": 4,
-      "itemsPerPanel": 120,
-      "gridPanels": 4,
-      "at": "2026-08-22T12:08:02.274Z",
-      "idleGrid": {
-        "totalWsMB": 451.8,
-        "totalPrivMB": 249.7,
-        "procs": 6
-      },
-      "idleWithWindows": {
-        "totalWsMB": 503,
-        "totalPrivMB": 260.4,
-        "procs": 6
-      },
-      "windowCost": {
-        "wsMBPerWindow": 25.6,
-        "procsAdded": 0
-      },
-      "scrollInPanel": {
-        "frames": 337,
-        "avgFps": 56.9,
-        "p95Ms": 22,
-        "worstMs": 30.1,
-        "droppedPct": 0,
-        "droppedFrames": 0,
-        "longTaskMs": 0
-      },
-      "scrollAllPanels": {
-        "frames": 347,
-        "avgFps": 58.3,
-        "p95Ms": 19.5,
-        "worstMs": 27,
-        "droppedPct": 0,
-        "droppedFrames": 0,
-        "longTaskMs": 0
-      },
-      "procDetail": [
-        {
-          "name": "agentcodegui.exe",
-          "wsMB": 32.6,
-          "privMB": 15.2
-        },
-        {
-          "name": "msedgewebview2.exe",
-          "wsMB": 221.7,
-          "privMB": 102.8
-        },
-        {
-          "name": "msedgewebview2.exe",
-          "wsMB": 18.7,
-          "privMB": 3.3
-        },
-        {
-          "name": "msedgewebview2.exe",
-          "wsMB": 40.8,
-          "privMB": 13.7
         },
         {
           "name": "msedgewebview2.exe",
@@ -393,11 +170,209 @@
         },
         {
           "name": "msedgewebview2.exe",
-          "wsMB": 217.1,
-          "privMB": 143.5
+          "wsMB": 231.4,
+          "privMB": 158
+        }
+      ]
+    },
+    {
+      "seq": 3,
+      "panels": 4,
+      "itemsPerPanel": 120,
+      "gridPanels": 4,
+      "at": "2026-08-22T12:53:17.655Z",
+      "idleGrid": {
+        "totalWsMB": 418.6,
+        "totalPrivMB": 236,
+        "procs": 5
+      },
+      "idleWithWindows": {
+        "totalWsMB": 469,
+        "totalPrivMB": 246.7,
+        "procs": 5
+      },
+      "windowCost": {
+        "wsMBPerWindow": 25.2,
+        "procsAdded": 0
+      },
+      "scrollInPanel": {
+        "frames": 335,
+        "avgFps": 56.3,
+        "p95Ms": 23.4,
+        "worstMs": 31.7,
+        "droppedPct": 0,
+        "droppedFrames": 0,
+        "longTaskMs": 0
+      },
+      "scrollAllPanels": {
+        "frames": 355,
+        "avgFps": 58.5,
+        "p95Ms": 18.9,
+        "worstMs": 25.1,
+        "droppedPct": 0,
+        "droppedFrames": 0,
+        "longTaskMs": 0
+      },
+      "procDetail": [
+        {
+          "name": "agentcodegui.exe",
+          "wsMB": 32.6,
+          "privMB": 15.3
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "wsMB": 230.9,
+          "privMB": 105.4
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "wsMB": 18.7,
+          "privMB": 3.3
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "wsMB": 20.1,
+          "privMB": 9
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "wsMB": 220.5,
+          "privMB": 146.4
+        }
+      ]
+    },
+    {
+      "seq": 4,
+      "panels": 4,
+      "itemsPerPanel": 120,
+      "gridPanels": 4,
+      "at": "2026-08-22T12:54:18.382Z",
+      "idleGrid": {
+        "totalWsMB": 424,
+        "totalPrivMB": 242,
+        "procs": 5
+      },
+      "idleWithWindows": {
+        "totalWsMB": 471.8,
+        "totalPrivMB": 250.7,
+        "procs": 5
+      },
+      "windowCost": {
+        "wsMBPerWindow": 23.9,
+        "procsAdded": 0
+      },
+      "scrollInPanel": {
+        "frames": 337,
+        "avgFps": 56.7,
+        "p95Ms": 23.1,
+        "worstMs": 31.2,
+        "droppedPct": 0,
+        "droppedFrames": 0,
+        "longTaskMs": 0
+      },
+      "scrollAllPanels": {
+        "frames": 347,
+        "avgFps": 58.2,
+        "p95Ms": 18.8,
+        "worstMs": 27.5,
+        "droppedPct": 0,
+        "droppedFrames": 0,
+        "longTaskMs": 0
+      },
+      "procDetail": [
+        {
+          "name": "agentcodegui.exe",
+          "wsMB": 32.8,
+          "privMB": 15.6
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "wsMB": 230.6,
+          "privMB": 105.6
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "wsMB": 18.7,
+          "privMB": 3.3
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "wsMB": 20.1,
+          "privMB": 9
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "wsMB": 239.4,
+          "privMB": 166.3
+        }
+      ]
+    },
+    {
+      "seq": 5,
+      "panels": 4,
+      "itemsPerPanel": 120,
+      "gridPanels": 4,
+      "at": "2026-08-22T12:55:19.243Z",
+      "idleGrid": {
+        "totalWsMB": 430.2,
+        "totalPrivMB": 247.2,
+        "procs": 5
+      },
+      "idleWithWindows": {
+        "totalWsMB": 472.3,
+        "totalPrivMB": 251,
+        "procs": 5
+      },
+      "windowCost": {
+        "wsMBPerWindow": 21.1,
+        "procsAdded": 0
+      },
+      "scrollInPanel": {
+        "frames": 335,
+        "avgFps": 56.2,
+        "p95Ms": 23.3,
+        "worstMs": 28.6,
+        "droppedPct": 0,
+        "droppedFrames": 0,
+        "longTaskMs": 0
+      },
+      "scrollAllPanels": {
+        "frames": 346,
+        "avgFps": 57.9,
+        "p95Ms": 20.8,
+        "worstMs": 27.9,
+        "droppedPct": 0,
+        "droppedFrames": 0,
+        "longTaskMs": 0
+      },
+      "procDetail": [
+        {
+          "name": "agentcodegui.exe",
+          "wsMB": 32.4,
+          "privMB": 16.1
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "wsMB": 231,
+          "privMB": 105.7
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "wsMB": 18.7,
+          "privMB": 3.4
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "wsMB": 20.6,
+          "privMB": 9.1
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "wsMB": 215.4,
+          "privMB": 142
         }
       ]
     }
   ],
-  "at": "2026-08-22T12:09:00.765Z"
+  "at": "2026-08-22T12:56:17.362Z"
 }

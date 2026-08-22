@@ -64,7 +64,9 @@ const FEATURES_OFF_WRY_DEFAULT: &[&str] = &["msWebOOUI", "msPdfOOUI", "msSmartSc
 /// feature 이름과 대조하기 전까지는 "무효"가 아니라 "이 이름으로는 무효"다.
 const FEATURES_OFF_ADOPTED: &[&str] = &[];
 
-/// `--enable-features` 합류분 — **비었다. 다만 사유가 R3와 다르다.**
+/// `--enable-features` 합류분.
+///
+/// ## `NetworkServiceInProcess2` — 네트워크 유틸리티 프로세스를 브라우저 안으로
 ///
 /// R2가 넣은 `NetworkServiceInProcess`는 실측에서 `utility:NetworkService`를 그대로
 /// 남겼고 R3는 "WebView2가 무시한다"고 적었다. **틀린 설명이다** — Chromium이 M96 무렵
@@ -74,17 +76,23 @@ const FEATURES_OFF_ADOPTED: &[&str] = &[];
 ///   주 게이트 5회 중앙값: 유휴 450.7/248.1/6프로세스 → **426.3/241.6/5프로세스**,
 ///   +창2 WS 500.9 → 471.8, 하드웨어 GPU 유지(NVIDIA D3D11), 드랍 0% 5/5.
 ///
-/// **그런데도 여기 안 넣은 이유**: 채택 판정을 한 세션에서 **대조군조차 ≥60fps를 못
-/// 넘었다**(기계 전체가 밴드째 내려앉음 — 대조군 중앙 55~57fps, 크리틱 세션 59~60fps).
-/// 드랍 프레임은 양 팔 0개이고 짝지은 차도 ±0.15fps라 **레버가 나쁘다는 증거는 없다.**
-/// 절대 게이트를 평가할 수 없는 세션에서 제품 기본값을 바꾸지 않는다는 규약(R2가
-/// 근거 없이 17개를 채택한 실수)을 지킨 것뿐이다. 재판정은 명령 한 줄이면 된다:
-///   `node bench/fpsab.mjs --rounds=4 --trials=3`  ← 대조군 중앙 avgFps ≥59.0인 세션에서
-/// 재현 스위치(재빌드 불필요): `CCG_WEBVIEW_ENABLE_FEATURES=NetworkServiceInProcess2`
-/// 자세한 건 docs/m1-report-r4.md §2.
+/// ## 채택 경위 — R4 빌더는 보류했고, 리드가 채택했다 (판정 근거가 다르다)
+///
+/// R4 빌더의 보류 사유: 판정 세션에서 대조군조차 절대 게이트(중앙 ≥59fps)를 못 넘어
+/// "절대 게이트를 평가할 수 없는 세션에서 기본값을 바꾸지 않는다"는 규약을 지켰다.
+/// 리드 재판정(fpsab 4라운드×3시행, bench/results/fps-ab.json)도 같은 상황이었다
+/// (대조군 중앙 simple 56 / load 58 — 사용자 상주 앱들로 이 기계의 조용한 세션은
+/// 드물다). 그러나 **레버 유해성의 판정자는 절대 밴드가 아니라 짝지은 차다**:
+///   짝지은 차 중앙 simple +0.05 / load −0.6fps (라운드 노이즈 ±1 안),
+///   드랍 프레임 양 팔 동일(12시행 총 2 vs 유사), p95 동일 밴드.
+/// 절대 게이트 자체는 같은 코드가 조용한 세션(R3 크리틱)에서 59~60fps·드랍 0을 이미
+/// 보였다. 종합: 메모리 −24MB·프로세스 −1을 공짜로 얻고 부드러움 손실 증거는 없다.
+/// **단, R4 크리틱은 자기 세션에서 절대 게이트를 재검증하고, 짝지은 차로 유해가
+/// 재현되면 되돌려 보내라**(한 줄 revert). 긴급 탈출구(재빌드 불필요):
+///   `CCG_WEBVIEW_DISABLE_FEATURES=NetworkServiceInProcess2` (disable가 enable을 이긴다)
 ///
 /// 스위치판(`--single-process-network`)은 올바른 이름과 무관하게 무효였다.
-const FEATURES_ON_ADOPTED: &[&str] = &[];
+const FEATURES_ON_ADOPTED: &[&str] = &["NetworkServiceInProcess2"];
 
 /// feature 목록이 아닌 일반 스위치 — **실측으로 효과가 확인된 것만.**
 ///
