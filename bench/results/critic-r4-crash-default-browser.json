@@ -1,0 +1,451 @@
+{
+  "arm": "default",
+  "recovery": true,
+  "how": "browser",
+  "rounds": 2,
+  "extraEnv": {},
+  "bin": {
+    "exe": "C:\\Code\\AgentCodeGUI\\target\\release\\agentcodegui.exe",
+    "exeMtime": "2026-08-22T13:00:26.834Z",
+    "exeSize": 3835904,
+    "exeSha256": "682ad08988a40a17",
+    "gitHead": "c673b15",
+    "gitDirty": true
+  },
+  "armEnv": {
+    "CCG_HOME": "C:\\Code\\AgentCodeGUI\\.bench-home-crash",
+    "CCG_CDP_PORT": "9461"
+  },
+  "env": {
+    "ramGB": 63.8,
+    "cpu": "13th Gen Intel(R) Core(TM) i7-13700KF",
+    "os": "Microsoft Windows 11 Home 26200"
+  },
+  "at": "2026-08-22T13:03:33.300Z",
+  "attempts": [
+    {
+      "round": 1,
+      "at": "2026-08-22T13:03:46.356Z",
+      "before": {
+        "procs": 5,
+        "roles": [
+          "browser",
+          "browser",
+          "crashpad-handler",
+          "utility",
+          "renderer"
+        ],
+        "windows": [
+          "576x729 추가 채팅 — AgentCodeGUI",
+          "576x729 추가 채팅 — AgentCodeGUI",
+          "1336x889 AgentCodeGUI3"
+        ],
+        "cdpPages": 3,
+        "visibleWindows": 3
+      },
+      "killed": {
+        "how": "taskkill /PID",
+        "role": "browser(GPU 크래시 모사)",
+        "pids": [
+          18976
+        ]
+      },
+      "after": {
+        "hostAlive": true,
+        "procs": 6,
+        "roles": [
+          "browser",
+          "browser",
+          "crashpad-handler",
+          "gpu-process",
+          "utility",
+          "renderer"
+        ],
+        "windows": [
+          "576x729 추가 채팅 — AgentCodeGUI",
+          "576x729 추가 채팅 — AgentCodeGUI",
+          "1336x889 AgentCodeGUI3"
+        ],
+        "visibleWindows": 3,
+        "mainPageRemounted": true,
+        "pagesMounted": [
+          {
+            "url": "index.html#session",
+            "mounted": true
+          },
+          {
+            "url": "index.html#session",
+            "mounted": true
+          },
+          {
+            "url": "",
+            "mounted": true
+          }
+        ],
+        "allPagesMounted": true,
+        "recoveryMs": 1429
+      },
+      "verdict": "복구됨"
+    },
+    {
+      "round": 2,
+      "at": "2026-08-22T13:03:55.477Z",
+      "before": {
+        "procs": 6,
+        "roles": [
+          "browser",
+          "browser",
+          "crashpad-handler",
+          "gpu-process",
+          "utility",
+          "renderer"
+        ],
+        "windows": [
+          "576x729 추가 채팅 — AgentCodeGUI",
+          "576x729 추가 채팅 — AgentCodeGUI",
+          "1336x889 AgentCodeGUI3"
+        ],
+        "cdpPages": 3,
+        "visibleWindows": 3
+      },
+      "killed": {
+        "how": "taskkill /PID",
+        "role": "browser(GPU 크래시 모사)",
+        "pids": [
+          10844
+        ]
+      },
+      "after": {
+        "hostAlive": true,
+        "procs": 6,
+        "roles": [
+          "browser",
+          "browser",
+          "crashpad-handler",
+          "gpu-process",
+          "utility",
+          "renderer"
+        ],
+        "windows": [
+          "576x729 추가 채팅 — AgentCodeGUI",
+          "576x729 추가 채팅 — AgentCodeGUI",
+          "1336x889 AgentCodeGUI3"
+        ],
+        "visibleWindows": 3,
+        "mainPageRemounted": true,
+        "pagesMounted": [
+          {
+            "url": "index.html#session",
+            "mounted": true
+          },
+          {
+            "url": "index.html#session",
+            "mounted": true
+          },
+          {
+            "url": "",
+            "mounted": true
+          }
+        ],
+        "allPagesMounted": true,
+        "recoveryMs": 1331
+      },
+      "verdict": "복구됨"
+    }
+  ],
+  "shellLog": [
+    {
+      "at": 1787403812042,
+      "event": "armed",
+      "pid": 15128,
+      "detail": {
+        "label": "main",
+        "browserPid": 18976
+      }
+    },
+    {
+      "at": 1787403816577,
+      "event": "armed",
+      "pid": 15128,
+      "detail": {
+        "label": "session-1",
+        "browserPid": 18976
+      }
+    },
+    {
+      "at": 1787403819929,
+      "event": "armed",
+      "pid": 15128,
+      "detail": {
+        "label": "session-2",
+        "browserPid": 18976
+      }
+    },
+    {
+      "at": 1787403827041,
+      "event": "process-failed",
+      "pid": 15128,
+      "detail": {
+        "label": "session-2",
+        "kind": 0,
+        "exitCode": 1,
+        "desc": "",
+        "terminal": true,
+        "renderer": false
+      }
+    },
+    {
+      "at": 1787403827042,
+      "event": "recover-begin",
+      "pid": 15128,
+      "detail": {
+        "mode": "recreate-windows",
+        "n": 1,
+        "gpuEscape": true
+      }
+    },
+    {
+      "at": 1787403827047,
+      "event": "process-failed",
+      "pid": 15128,
+      "detail": {
+        "label": "main",
+        "kind": 0,
+        "exitCode": 1,
+        "desc": "",
+        "terminal": true,
+        "renderer": false
+      }
+    },
+    {
+      "at": 1787403827049,
+      "event": "destroyed",
+      "pid": 15128,
+      "detail": {
+        "label": "session-2"
+      }
+    },
+    {
+      "at": 1787403827049,
+      "event": "destroyed",
+      "pid": 15128,
+      "detail": {
+        "label": "session-1"
+      }
+    },
+    {
+      "at": 1787403827049,
+      "event": "destroyed",
+      "pid": 15128,
+      "detail": {
+        "label": "main"
+      }
+    },
+    {
+      "at": 1787403827050,
+      "event": "process-failed",
+      "pid": 15128,
+      "detail": {
+        "label": "session-1",
+        "kind": 0,
+        "exitCode": 1,
+        "desc": "",
+        "terminal": true,
+        "renderer": false
+      }
+    },
+    {
+      "at": 1787403827069,
+      "event": "exit-prevented",
+      "pid": 15128,
+      "detail": {
+        "why": "복구 중"
+      }
+    },
+    {
+      "at": 1787403827662,
+      "event": "armed",
+      "pid": 15128,
+      "detail": {
+        "label": "main",
+        "browserPid": 10844
+      }
+    },
+    {
+      "at": 1787403827663,
+      "event": "recreated",
+      "pid": 15128,
+      "detail": {
+        "label": "main"
+      }
+    },
+    {
+      "at": 1787403827764,
+      "event": "armed",
+      "pid": 15128,
+      "detail": {
+        "label": "session-1",
+        "browserPid": 10844
+      }
+    },
+    {
+      "at": 1787403827861,
+      "event": "armed",
+      "pid": 15128,
+      "detail": {
+        "label": "session-2",
+        "browserPid": 10844
+      }
+    },
+    {
+      "at": 1787403827861,
+      "event": "recreated-sessions",
+      "pid": 15128,
+      "detail": {
+        "n": 2
+      }
+    },
+    {
+      "at": 1787403829943,
+      "event": "recover-done",
+      "pid": 15128,
+      "detail": {
+        "ms": 2901,
+        "n": 1
+      }
+    },
+    {
+      "at": 1787403836085,
+      "event": "process-failed",
+      "pid": 15128,
+      "detail": {
+        "label": "session-1",
+        "kind": 0,
+        "exitCode": 1,
+        "desc": "",
+        "terminal": true,
+        "renderer": false
+      }
+    },
+    {
+      "at": 1787403836085,
+      "event": "recover-begin",
+      "pid": 15128,
+      "detail": {
+        "mode": "recreate-windows",
+        "n": 2,
+        "gpuEscape": false
+      }
+    },
+    {
+      "at": 1787403836086,
+      "event": "process-failed",
+      "pid": 15128,
+      "detail": {
+        "label": "main",
+        "kind": 0,
+        "exitCode": 1,
+        "desc": "",
+        "terminal": true,
+        "renderer": false
+      }
+    },
+    {
+      "at": 1787403836087,
+      "event": "process-failed",
+      "pid": 15128,
+      "detail": {
+        "label": "session-2",
+        "kind": 0,
+        "exitCode": 1,
+        "desc": "",
+        "terminal": true,
+        "renderer": false
+      }
+    },
+    {
+      "at": 1787403836091,
+      "event": "destroyed",
+      "pid": 15128,
+      "detail": {
+        "label": "main"
+      }
+    },
+    {
+      "at": 1787403836091,
+      "event": "destroyed",
+      "pid": 15128,
+      "detail": {
+        "label": "session-2"
+      }
+    },
+    {
+      "at": 1787403836091,
+      "event": "destroyed",
+      "pid": 15128,
+      "detail": {
+        "label": "session-1"
+      }
+    },
+    {
+      "at": 1787403836106,
+      "event": "exit-prevented",
+      "pid": 15128,
+      "detail": {
+        "why": "복구 중"
+      }
+    },
+    {
+      "at": 1787403836675,
+      "event": "armed",
+      "pid": 15128,
+      "detail": {
+        "label": "main",
+        "browserPid": 15516
+      }
+    },
+    {
+      "at": 1787403836675,
+      "event": "recreated",
+      "pid": 15128,
+      "detail": {
+        "label": "main"
+      }
+    },
+    {
+      "at": 1787403836768,
+      "event": "armed",
+      "pid": 15128,
+      "detail": {
+        "label": "session-1",
+        "browserPid": 15516
+      }
+    },
+    {
+      "at": 1787403836841,
+      "event": "armed",
+      "pid": 15128,
+      "detail": {
+        "label": "session-2",
+        "browserPid": 15516
+      }
+    },
+    {
+      "at": 1787403836842,
+      "event": "recreated-sessions",
+      "pid": 15128,
+      "detail": {
+        "n": 2
+      }
+    },
+    {
+      "at": 1787403838986,
+      "event": "recover-done",
+      "pid": 15128,
+      "detail": {
+        "ms": 2901,
+        "n": 2
+      }
+    }
+  ]
+}

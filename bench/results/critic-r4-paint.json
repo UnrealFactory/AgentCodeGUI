@@ -1,0 +1,178 @@
+{
+  "what": "paintMs가 두 앱에서 같은 사건인가 — 모든 페이지 타깃의 첫 픽셀",
+  "runs": 4,
+  "env": {
+    "ramGB": 63.8,
+    "cpu": "13th Gen Intel(R) Core(TM) i7-13700KF",
+    "os": "Microsoft Windows 11 Home 26200"
+  },
+  "at": "2026-08-22T13:36:20.201Z",
+  "apps": {
+    "electron-2.6.2": {
+      "bin": {
+        "exe": "C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe",
+        "exeMtime": "1979-12-31T15:00:00.000Z",
+        "exeSize": 223950848,
+        "exeSha256": "4e3b585c8cbbc45a",
+        "gitHead": "cd18d97",
+        "gitDirty": true
+      },
+      "perRun": [
+        [
+          {
+            "url": "file:///C:/Code/AgentCodeGUI/out/renderer/index.html",
+            "firstSeenMs": 280,
+            "paintMs": 666,
+            "rootMs": 634,
+            "splashMarkMs": null,
+            "visState": "visible",
+            "timeOriginMs": 238
+          },
+          {
+            "url": "data:text/html;charset=utf-8,%3C!doctype%20html%3E%3Chtml%3E%3Chead%3E%3Cmeta%20charset%3D",
+            "firstSeenMs": 319,
+            "paintMs": null,
+            "rootMs": null,
+            "splashMarkMs": null,
+            "visState": "visible",
+            "timeOriginMs": 227
+          }
+        ],
+        [
+          {
+            "url": "file:///C:/Code/AgentCodeGUI/out/renderer/index.html",
+            "firstSeenMs": 269,
+            "paintMs": 597,
+            "rootMs": 483,
+            "splashMarkMs": null,
+            "visState": "visible",
+            "timeOriginMs": 221
+          },
+          {
+            "url": "data:text/html;charset=utf-8,%3C!doctype%20html%3E%3Chtml%3E%3Chead%3E%3Cmeta%20charset%3D",
+            "firstSeenMs": 305,
+            "paintMs": null,
+            "rootMs": null,
+            "splashMarkMs": null,
+            "visState": "visible",
+            "timeOriginMs": 212
+          }
+        ],
+        [
+          {
+            "url": "file:///C:/Code/AgentCodeGUI/out/renderer/index.html",
+            "firstSeenMs": 282,
+            "paintMs": 640,
+            "rootMs": 468,
+            "splashMarkMs": null,
+            "visState": "visible",
+            "timeOriginMs": 224
+          },
+          {
+            "url": "data:text/html;charset=utf-8,%3C!doctype%20html%3E%3Chtml%3E%3Chead%3E%3Cmeta%20charset%3D",
+            "firstSeenMs": 302,
+            "paintMs": 423,
+            "rootMs": null,
+            "splashMarkMs": null,
+            "visState": "visible",
+            "timeOriginMs": 215
+          }
+        ],
+        [
+          {
+            "url": "file:///C:/Code/AgentCodeGUI/out/renderer/index.html",
+            "firstSeenMs": 267,
+            "paintMs": 563,
+            "rootMs": 441,
+            "splashMarkMs": null,
+            "visState": "visible",
+            "timeOriginMs": 207
+          },
+          {
+            "url": "data:text/html;charset=utf-8,%3C!doctype%20html%3E%3Chtml%3E%3Chead%3E%3Cmeta%20charset%3D",
+            "firstSeenMs": 280,
+            "paintMs": null,
+            "rootMs": null,
+            "splashMarkMs": null,
+            "visState": "visible",
+            "timeOriginMs": 197
+          }
+        ]
+      ],
+      "splashTargetPaintMs": 423,
+      "splashTargetSeenMs": 302,
+      "mainTargetPaintMs": 597,
+      "mainTargetRootMs": 468,
+      "inWindowSplashMarkMs": null
+    },
+    "tauri-3.0.0": {
+      "bin": {
+        "exe": "C:\\Code\\AgentCodeGUI\\target\\release\\agentcodegui.exe",
+        "exeMtime": "2026-08-22T13:00:26.834Z",
+        "exeSize": 3835904,
+        "exeSha256": "682ad08988a40a17",
+        "gitHead": "cd18d97",
+        "gitDirty": true
+      },
+      "perRun": [
+        [
+          {
+            "url": "http://tauri.localhost/",
+            "firstSeenMs": 257,
+            "paintMs": 300,
+            "rootMs": 401,
+            "splashMarkMs": 303,
+            "visState": "visible",
+            "timeOriginMs": 248
+          }
+        ],
+        [
+          {
+            "url": "http://tauri.localhost/",
+            "firstSeenMs": 255,
+            "paintMs": 274,
+            "rootMs": 440,
+            "splashMarkMs": 264,
+            "visState": "visible",
+            "timeOriginMs": 218
+          }
+        ],
+        [
+          {
+            "url": "http://tauri.localhost/",
+            "firstSeenMs": 251,
+            "paintMs": 271,
+            "rootMs": 445,
+            "splashMarkMs": 264,
+            "visState": "visible",
+            "timeOriginMs": 215
+          }
+        ],
+        [
+          {
+            "url": "http://tauri.localhost/",
+            "firstSeenMs": 250,
+            "paintMs": 280,
+            "rootMs": 447,
+            "splashMarkMs": 272,
+            "visState": "visible",
+            "timeOriginMs": 220
+          }
+        ]
+      ],
+      "splashTargetPaintMs": null,
+      "splashTargetSeenMs": null,
+      "mainTargetPaintMs": 274,
+      "mainTargetRootMs": 445,
+      "inWindowSplashMarkMs": 264
+    }
+  },
+  "verdict": {
+    "3.0 첫 픽셀(스플래시 오버레이)": 274,
+    "2.6.2 첫 픽셀(스플래시 창)": 423,
+    "2.6.2 본 UI 첫 픽셀(메인 창)": 597,
+    "보고서가 쓴 비 (3.0 스플래시 ÷ 2.6.2 본 UI)": 0.46,
+    "대칭 비 — 첫 픽셀 ÷ 첫 픽셀": 0.65,
+    "대칭 비 — 본 UI ÷ 본 UI (rootMs)": 0.95
+  }
+}

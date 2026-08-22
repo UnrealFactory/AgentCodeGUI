@@ -1,0 +1,863 @@
+{
+  "what": "NetSvc2 재판정 — 팔을 뒤집은 교대 A/B(off=대조군). bench/fpsab.mjs는 채택 이후 두 팔이 같아져 무효다.",
+  "arms": [
+    {
+      "name": "netsvc-OFF",
+      "env": {
+        "CCG_WEBVIEW_DISABLE_FEATURES": "NetworkServiceInProcess2"
+      },
+      "note": "대조군 — 레버를 끈다(=채택 전 구성)"
+    },
+    {
+      "name": "netsvc-ON",
+      "env": {},
+      "note": "제품 기본값 — 레버가 exe에 박혀 있다"
+    }
+  ],
+  "rounds": 4,
+  "trials": 3,
+  "bin": {
+    "exe": "C:\\Code\\AgentCodeGUI\\target\\release\\agentcodegui.exe",
+    "exeMtime": "2026-08-22T13:00:26.834Z",
+    "exeSize": 3835904,
+    "exeSha256": "682ad08988a40a17",
+    "gitHead": "cd18d97",
+    "gitDirty": true
+  },
+  "env": {
+    "ramGB": 63.8,
+    "cpu": "13th Gen Intel(R) Core(TM) i7-13700KF",
+    "os": "Microsoft Windows 11 Home 26200"
+  },
+  "leverAttached": {
+    "what": "§8의 긴급 탈출구(CCG_WEBVIEW_DISABLE_FEATURES)가 실제로 프로세스를 되살리는가",
+    "offProcs": [
+      6,
+      6,
+      6,
+      6
+    ],
+    "onProcs": [
+      5,
+      5,
+      5,
+      5
+    ],
+    "offHasNetworkService": [
+      true,
+      true,
+      true,
+      true
+    ],
+    "onHasNetworkService": [
+      false,
+      false,
+      false,
+      false
+    ],
+    "offRoles": [
+      "browser",
+      "browser",
+      "crashpad-handler",
+      "renderer",
+      "utility:NetworkService",
+      "utility:StorageService"
+    ],
+    "onRoles": [
+      "browser",
+      "browser",
+      "crashpad-handler",
+      "renderer",
+      "utility:StorageService"
+    ]
+  },
+  "memory": {
+    "offWsMB": 446.25,
+    "onWsMB": 416.6,
+    "offPrivMB": 242.55,
+    "onPrivMB": 233.65
+  },
+  "summary": {
+    "off": {
+      "simple": {
+        "trials": 12,
+        "medianAvgFps": 54.5,
+        "minAvgFps": 51.6,
+        "medianP95Ms": 24.75,
+        "worstFrameMs": 35.3,
+        "worstDroppedPct": 1,
+        "zeroDropTrials": 7,
+        "droppedFramesTotal": 7,
+        "perTrialAvgFps": [
+          55.9,
+          53,
+          55.8,
+          55.1,
+          51.7,
+          54.1,
+          59.3,
+          52.9,
+          54.9,
+          55.3,
+          52.9,
+          51.6
+        ]
+      },
+      "load": {
+        "trials": 12,
+        "medianAvgFps": 57.6,
+        "minAvgFps": 56.4,
+        "medianP95Ms": 21.5,
+        "worstFrameMs": 31.6,
+        "worstDroppedPct": 0,
+        "zeroDropTrials": 12,
+        "droppedFramesTotal": 0,
+        "perTrialAvgFps": [
+          57.6,
+          58.3,
+          57.6,
+          58.9,
+          57.5,
+          58.1,
+          57.6,
+          58.9,
+          56.7,
+          57.5,
+          57.7,
+          56.4
+        ]
+      }
+    },
+    "on": {
+      "simple": {
+        "trials": 12,
+        "medianAvgFps": 55.1,
+        "minAvgFps": 53.2,
+        "medianP95Ms": 23.95,
+        "worstFrameMs": 34.3,
+        "worstDroppedPct": 0.3,
+        "zeroDropTrials": 9,
+        "droppedFramesTotal": 3,
+        "perTrialAvgFps": [
+          56.3,
+          54.4,
+          56.1,
+          55.2,
+          54.3,
+          56.1,
+          56.3,
+          54.4,
+          56.6,
+          55,
+          53.2,
+          54.7
+        ]
+      },
+      "load": {
+        "trials": 12,
+        "medianAvgFps": 57.2,
+        "minAvgFps": 55.2,
+        "medianP95Ms": 22.1,
+        "worstFrameMs": 111.6,
+        "worstDroppedPct": 0.3,
+        "zeroDropTrials": 11,
+        "droppedFramesTotal": 1,
+        "perTrialAvgFps": [
+          58.4,
+          57,
+          55.9,
+          56.6,
+          58.2,
+          58.1,
+          58.9,
+          56.6,
+          56.6,
+          57.4,
+          55.2,
+          57.5
+        ]
+      }
+    }
+  },
+  "pairedSimple": [
+    {
+      "round": 1,
+      "offFps": 55.8,
+      "onFps": 56.1,
+      "deltaFps": 0.3
+    },
+    {
+      "round": 2,
+      "offFps": 54.1,
+      "onFps": 55.2,
+      "deltaFps": 1.1
+    },
+    {
+      "round": 3,
+      "offFps": 54.9,
+      "onFps": 56.3,
+      "deltaFps": 1.4
+    },
+    {
+      "round": 4,
+      "offFps": 52.9,
+      "onFps": 54.7,
+      "deltaFps": 1.8
+    }
+  ],
+  "pairedLoad": [
+    {
+      "round": 1,
+      "offFps": 57.6,
+      "onFps": 57,
+      "deltaFps": -0.6
+    },
+    {
+      "round": 2,
+      "offFps": 58.1,
+      "onFps": 58.1,
+      "deltaFps": 0
+    },
+    {
+      "round": 3,
+      "offFps": 57.6,
+      "onFps": 56.6,
+      "deltaFps": -1
+    },
+    {
+      "round": 4,
+      "offFps": 57.5,
+      "onFps": 57.4,
+      "deltaFps": -0.1
+    }
+  ],
+  "perBoot": [
+    {
+      "round": 1,
+      "arm": "netsvc-OFF",
+      "at": "2026-08-22T13:27:15.123Z",
+      "simple": [
+        {
+          "frames": 334,
+          "avgFps": 55.9,
+          "p95Ms": 24.5,
+          "worstMs": 30.3,
+          "droppedPct": 0,
+          "droppedFrames": 0,
+          "longTaskMs": 0
+        },
+        {
+          "frames": 315,
+          "avgFps": 53,
+          "p95Ms": 24.7,
+          "worstMs": 33.3,
+          "droppedPct": 0.3,
+          "droppedFrames": 1,
+          "longTaskMs": 0
+        },
+        {
+          "frames": 332,
+          "avgFps": 55.8,
+          "p95Ms": 25,
+          "worstMs": 33.7,
+          "droppedPct": 0.3,
+          "droppedFrames": 1,
+          "longTaskMs": 0
+        }
+      ],
+      "load": [
+        {
+          "frames": 342,
+          "avgFps": 57.6,
+          "p95Ms": 22.1,
+          "worstMs": 26.3,
+          "droppedPct": 0,
+          "droppedFrames": 0,
+          "longTaskMs": 0
+        },
+        {
+          "frames": 353,
+          "avgFps": 58.3,
+          "p95Ms": 18.9,
+          "worstMs": 26.9,
+          "droppedPct": 0,
+          "droppedFrames": 0,
+          "longTaskMs": 0
+        },
+        {
+          "frames": 345,
+          "avgFps": 57.6,
+          "p95Ms": 21.8,
+          "worstMs": 26,
+          "droppedPct": 0,
+          "droppedFrames": 0,
+          "longTaskMs": 0
+        }
+      ],
+      "procs": 6,
+      "roles": [
+        "browser",
+        "browser",
+        "crashpad-handler",
+        "renderer",
+        "utility:NetworkService",
+        "utility:StorageService"
+      ],
+      "hasNetworkService": true,
+      "wsMB": 447.2,
+      "privMB": 242.1,
+      "glRenderer": "ANGLE (NVIDIA, NVIDIA GeForce RTX 4070 Ti (0x00002782) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+      "panels": 4
+    },
+    {
+      "round": 1,
+      "arm": "netsvc-ON",
+      "at": "2026-08-22T13:28:13.662Z",
+      "simple": [
+        {
+          "frames": 335,
+          "avgFps": 56.3,
+          "p95Ms": 23.7,
+          "worstMs": 34.3,
+          "droppedPct": 0.3,
+          "droppedFrames": 1,
+          "longTaskMs": 0
+        },
+        {
+          "frames": 323,
+          "avgFps": 54.4,
+          "p95Ms": 24.7,
+          "worstMs": 33.7,
+          "droppedPct": 0.3,
+          "droppedFrames": 1,
+          "longTaskMs": 0
+        },
+        {
+          "frames": 334,
+          "avgFps": 56.1,
+          "p95Ms": 24.1,
+          "worstMs": 33.1,
+          "droppedPct": 0.3,
+          "droppedFrames": 1,
+          "longTaskMs": 0
+        }
+      ],
+      "load": [
+        {
+          "frames": 347,
+          "avgFps": 58.4,
+          "p95Ms": 20.3,
+          "worstMs": 32.6,
+          "droppedPct": 0,
+          "droppedFrames": 0,
+          "longTaskMs": 0
+        },
+        {
+          "frames": 340,
+          "avgFps": 57,
+          "p95Ms": 20.5,
+          "worstMs": 111.6,
+          "droppedPct": 0.3,
+          "droppedFrames": 1,
+          "longTaskMs": 0
+        },
+        {
+          "frames": 334,
+          "avgFps": 55.9,
+          "p95Ms": 23.9,
+          "worstMs": 27.1,
+          "droppedPct": 0,
+          "droppedFrames": 0,
+          "longTaskMs": 0
+        }
+      ],
+      "procs": 5,
+      "roles": [
+        "browser",
+        "browser",
+        "crashpad-handler",
+        "renderer",
+        "utility:StorageService"
+      ],
+      "hasNetworkService": false,
+      "wsMB": 418.4,
+      "privMB": 236,
+      "glRenderer": "ANGLE (NVIDIA, NVIDIA GeForce RTX 4070 Ti (0x00002782) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+      "panels": 4
+    },
+    {
+      "round": 2,
+      "arm": "netsvc-OFF",
+      "at": "2026-08-22T13:29:12.020Z",
+      "simple": [
+        {
+          "frames": 330,
+          "avgFps": 55.1,
+          "p95Ms": 24.8,
+          "worstMs": 32.7,
+          "droppedPct": 0,
+          "droppedFrames": 0,
+          "longTaskMs": 0
+        },
+        {
+          "frames": 308,
+          "avgFps": 51.7,
+          "p95Ms": 26.6,
+          "worstMs": 35.3,
+          "droppedPct": 1,
+          "droppedFrames": 3,
+          "longTaskMs": 0
+        },
+        {
+          "frames": 323,
+          "avgFps": 54.1,
+          "p95Ms": 24.5,
+          "worstMs": 34,
+          "droppedPct": 0.3,
+          "droppedFrames": 1,
+          "longTaskMs": 0
+        }
+      ],
+      "load": [
+        {
+          "frames": 355,
+          "avgFps": 58.9,
+          "p95Ms": 18.8,
+          "worstMs": 24.1,
+          "droppedPct": 0,
+          "droppedFrames": 0,
+          "longTaskMs": 0
+        },
+        {
+          "frames": 349,
+          "avgFps": 57.5,
+          "p95Ms": 23,
+          "worstMs": 26,
+          "droppedPct": 0,
+          "droppedFrames": 0,
+          "longTaskMs": 0
+        },
+        {
+          "frames": 346,
+          "avgFps": 58.1,
+          "p95Ms": 20.5,
+          "worstMs": 26.1,
+          "droppedPct": 0,
+          "droppedFrames": 0,
+          "longTaskMs": 0
+        }
+      ],
+      "procs": 6,
+      "roles": [
+        "browser",
+        "browser",
+        "crashpad-handler",
+        "renderer",
+        "utility:NetworkService",
+        "utility:StorageService"
+      ],
+      "hasNetworkService": true,
+      "wsMB": 451.2,
+      "privMB": 246.4,
+      "glRenderer": "ANGLE (NVIDIA, NVIDIA GeForce RTX 4070 Ti (0x00002782) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+      "panels": 4
+    },
+    {
+      "round": 2,
+      "arm": "netsvc-ON",
+      "at": "2026-08-22T13:30:10.893Z",
+      "simple": [
+        {
+          "frames": 328,
+          "avgFps": 55.2,
+          "p95Ms": 23.4,
+          "worstMs": 30.7,
+          "droppedPct": 0,
+          "droppedFrames": 0,
+          "longTaskMs": 0
+        },
+        {
+          "frames": 323,
+          "avgFps": 54.3,
+          "p95Ms": 24.6,
+          "worstMs": 30.3,
+          "droppedPct": 0,
+          "droppedFrames": 0,
+          "longTaskMs": 0
+        },
+        {
+          "frames": 335,
+          "avgFps": 56.1,
+          "p95Ms": 23.5,
+          "worstMs": 32.5,
+          "droppedPct": 0,
+          "droppedFrames": 0,
+          "longTaskMs": 0
+        }
+      ],
+      "load": [
+        {
+          "frames": 339,
+          "avgFps": 56.6,
+          "p95Ms": 23.1,
+          "worstMs": 30.1,
+          "droppedPct": 0,
+          "droppedFrames": 0,
+          "longTaskMs": 0
+        },
+        {
+          "frames": 344,
+          "avgFps": 58.2,
+          "p95Ms": 18.9,
+          "worstMs": 25.2,
+          "droppedPct": 0,
+          "droppedFrames": 0,
+          "longTaskMs": 0
+        },
+        {
+          "frames": 345,
+          "avgFps": 58.1,
+          "p95Ms": 20.5,
+          "worstMs": 28,
+          "droppedPct": 0,
+          "droppedFrames": 0,
+          "longTaskMs": 0
+        }
+      ],
+      "procs": 5,
+      "roles": [
+        "browser",
+        "browser",
+        "crashpad-handler",
+        "renderer",
+        "utility:StorageService"
+      ],
+      "hasNetworkService": false,
+      "wsMB": 414.8,
+      "privMB": 231.3,
+      "glRenderer": "ANGLE (NVIDIA, NVIDIA GeForce RTX 4070 Ti (0x00002782) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+      "panels": 4
+    },
+    {
+      "round": 3,
+      "arm": "netsvc-OFF",
+      "at": "2026-08-22T13:31:09.419Z",
+      "simple": [
+        {
+          "frames": 354,
+          "avgFps": 59.3,
+          "p95Ms": 19.1,
+          "worstMs": 25.3,
+          "droppedPct": 0,
+          "droppedFrames": 0,
+          "longTaskMs": 0
+        },
+        {
+          "frames": 315,
+          "avgFps": 52.9,
+          "p95Ms": 25.2,
+          "worstMs": 32.4,
+          "droppedPct": 0,
+          "droppedFrames": 0,
+          "longTaskMs": 0
+        },
+        {
+          "frames": 328,
+          "avgFps": 54.9,
+          "p95Ms": 24.1,
+          "worstMs": 32.7,
+          "droppedPct": 0,
+          "droppedFrames": 0,
+          "longTaskMs": 0
+        }
+      ],
+      "load": [
+        {
+          "frames": 342,
+          "avgFps": 57.6,
+          "p95Ms": 21.2,
+          "worstMs": 26.9,
+          "droppedPct": 0,
+          "droppedFrames": 0,
+          "longTaskMs": 0
+        },
+        {
+          "frames": 352,
+          "avgFps": 58.9,
+          "p95Ms": 18.9,
+          "worstMs": 25.2,
+          "droppedPct": 0,
+          "droppedFrames": 0,
+          "longTaskMs": 0
+        },
+        {
+          "frames": 339,
+          "avgFps": 56.7,
+          "p95Ms": 23.1,
+          "worstMs": 31.6,
+          "droppedPct": 0,
+          "droppedFrames": 0,
+          "longTaskMs": 0
+        }
+      ],
+      "procs": 6,
+      "roles": [
+        "browser",
+        "browser",
+        "crashpad-handler",
+        "renderer",
+        "utility:NetworkService",
+        "utility:StorageService"
+      ],
+      "hasNetworkService": true,
+      "wsMB": 445.3,
+      "privMB": 243,
+      "glRenderer": "ANGLE (NVIDIA, NVIDIA GeForce RTX 4070 Ti (0x00002782) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+      "panels": 4
+    },
+    {
+      "round": 3,
+      "arm": "netsvc-ON",
+      "at": "2026-08-22T13:32:08.081Z",
+      "simple": [
+        {
+          "frames": 336,
+          "avgFps": 56.3,
+          "p95Ms": 22.6,
+          "worstMs": 32,
+          "droppedPct": 0,
+          "droppedFrames": 0,
+          "longTaskMs": 0
+        },
+        {
+          "frames": 323,
+          "avgFps": 54.4,
+          "p95Ms": 25.2,
+          "worstMs": 30.4,
+          "droppedPct": 0,
+          "droppedFrames": 0,
+          "longTaskMs": 0
+        },
+        {
+          "frames": 338,
+          "avgFps": 56.6,
+          "p95Ms": 22.3,
+          "worstMs": 32.3,
+          "droppedPct": 0,
+          "droppedFrames": 0,
+          "longTaskMs": 0
+        }
+      ],
+      "load": [
+        {
+          "frames": 349,
+          "avgFps": 58.9,
+          "p95Ms": 19,
+          "worstMs": 26,
+          "droppedPct": 0,
+          "droppedFrames": 0,
+          "longTaskMs": 0
+        },
+        {
+          "frames": 342,
+          "avgFps": 56.6,
+          "p95Ms": 22.9,
+          "worstMs": 28.6,
+          "droppedPct": 0,
+          "droppedFrames": 0,
+          "longTaskMs": 0
+        },
+        {
+          "frames": 344,
+          "avgFps": 56.6,
+          "p95Ms": 23.1,
+          "worstMs": 30.1,
+          "droppedPct": 0,
+          "droppedFrames": 0,
+          "longTaskMs": 0
+        }
+      ],
+      "procs": 5,
+      "roles": [
+        "browser",
+        "browser",
+        "crashpad-handler",
+        "renderer",
+        "utility:StorageService"
+      ],
+      "hasNetworkService": false,
+      "wsMB": 419.1,
+      "privMB": 237.3,
+      "glRenderer": "ANGLE (NVIDIA, NVIDIA GeForce RTX 4070 Ti (0x00002782) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+      "panels": 4
+    },
+    {
+      "round": 4,
+      "arm": "netsvc-OFF",
+      "at": "2026-08-22T13:33:06.755Z",
+      "simple": [
+        {
+          "frames": 330,
+          "avgFps": 55.3,
+          "p95Ms": 24.7,
+          "worstMs": 30.6,
+          "droppedPct": 0,
+          "droppedFrames": 0,
+          "longTaskMs": 0
+        },
+        {
+          "frames": 313,
+          "avgFps": 52.9,
+          "p95Ms": 25.7,
+          "worstMs": 31.7,
+          "droppedPct": 0,
+          "droppedFrames": 0,
+          "longTaskMs": 0
+        },
+        {
+          "frames": 307,
+          "avgFps": 51.6,
+          "p95Ms": 26,
+          "worstMs": 34,
+          "droppedPct": 0.3,
+          "droppedFrames": 1,
+          "longTaskMs": 0
+        }
+      ],
+      "load": [
+        {
+          "frames": 342,
+          "avgFps": 57.5,
+          "p95Ms": 21.1,
+          "worstMs": 28.2,
+          "droppedPct": 0,
+          "droppedFrames": 0,
+          "longTaskMs": 0
+        },
+        {
+          "frames": 345,
+          "avgFps": 57.7,
+          "p95Ms": 22.5,
+          "worstMs": 26.2,
+          "droppedPct": 0,
+          "droppedFrames": 0,
+          "longTaskMs": 0
+        },
+        {
+          "frames": 343,
+          "avgFps": 56.4,
+          "p95Ms": 23.9,
+          "worstMs": 27,
+          "droppedPct": 0,
+          "droppedFrames": 0,
+          "longTaskMs": 0
+        }
+      ],
+      "procs": 6,
+      "roles": [
+        "browser",
+        "browser",
+        "crashpad-handler",
+        "renderer",
+        "utility:NetworkService",
+        "utility:StorageService"
+      ],
+      "hasNetworkService": true,
+      "wsMB": 443.1,
+      "privMB": 240.7,
+      "glRenderer": "ANGLE (NVIDIA, NVIDIA GeForce RTX 4070 Ti (0x00002782) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+      "panels": 4
+    },
+    {
+      "round": 4,
+      "arm": "netsvc-ON",
+      "at": "2026-08-22T13:34:05.451Z",
+      "simple": [
+        {
+          "frames": 328,
+          "avgFps": 55,
+          "p95Ms": 23.8,
+          "worstMs": 31.5,
+          "droppedPct": 0,
+          "droppedFrames": 0,
+          "longTaskMs": 0
+        },
+        {
+          "frames": 318,
+          "avgFps": 53.2,
+          "p95Ms": 25,
+          "worstMs": 32.3,
+          "droppedPct": 0,
+          "droppedFrames": 0,
+          "longTaskMs": 0
+        },
+        {
+          "frames": 325,
+          "avgFps": 54.7,
+          "p95Ms": 24.6,
+          "worstMs": 32,
+          "droppedPct": 0,
+          "droppedFrames": 0,
+          "longTaskMs": 0
+        }
+      ],
+      "load": [
+        {
+          "frames": 346,
+          "avgFps": 57.4,
+          "p95Ms": 21.3,
+          "worstMs": 27.3,
+          "droppedPct": 0,
+          "droppedFrames": 0,
+          "longTaskMs": 0
+        },
+        {
+          "frames": 335,
+          "avgFps": 55.2,
+          "p95Ms": 23.1,
+          "worstMs": 30.4,
+          "droppedPct": 0,
+          "droppedFrames": 0,
+          "longTaskMs": 0
+        },
+        {
+          "frames": 345,
+          "avgFps": 57.5,
+          "p95Ms": 23,
+          "worstMs": 28.1,
+          "droppedPct": 0,
+          "droppedFrames": 0,
+          "longTaskMs": 0
+        }
+      ],
+      "procs": 5,
+      "roles": [
+        "browser",
+        "browser",
+        "crashpad-handler",
+        "renderer",
+        "utility:StorageService"
+      ],
+      "hasNetworkService": false,
+      "wsMB": 411.7,
+      "privMB": 228.5,
+      "glRenderer": "ANGLE (NVIDIA, NVIDIA GeForce RTX 4070 Ti (0x00002782) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+      "panels": 4
+    }
+  ],
+  "at": "2026-08-22T13:35:05.783Z",
+  "pairedStats": {
+    "simpleMedian": 1.25,
+    "simpleMean": 1.15,
+    "simpleRange": [
+      0.3,
+      1.8
+    ],
+    "loadMedian": -0.35,
+    "loadMean": -0.43,
+    "loadRange": [
+      -1,
+      0
+    ]
+  }
+}

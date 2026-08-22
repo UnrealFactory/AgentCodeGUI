@@ -1,0 +1,336 @@
+{
+  "what": "R4 크리틱 — 크래시 복구 상태 기계를 깨뜨리려는 시나리오",
+  "arm": "default",
+  "bin": {
+    "exe": "C:\\Code\\AgentCodeGUI\\target\\release\\agentcodegui.exe",
+    "exeMtime": "2026-08-22T13:00:26.834Z",
+    "exeSize": 3835904,
+    "exeSha256": "682ad08988a40a17",
+    "gitHead": "c673b15",
+    "gitDirty": true
+  },
+  "armEnv": {
+    "CCG_HOME": "C:\\Code\\AgentCodeGUI\\.bench-home-tauri",
+    "CCG_CDP_PORT": "9334"
+  },
+  "env": {
+    "ramGB": 63.8,
+    "cpu": "13th Gen Intel(R) Core(TM) i7-13700KF",
+    "os": "Microsoft Windows 11 Home 26200"
+  },
+  "at": "2026-08-22T13:08:33.543Z",
+  "results": [
+    {
+      "scenario": "boot-kill",
+      "at": "2026-08-22T13:08:27.429Z",
+      "killedRendererPid": 14656,
+      "killed": true,
+      "msAfterSpawn": 426,
+      "remountMs": 444,
+      "hostAlive": true,
+      "procsAfter": 5,
+      "windows": [
+        "1336x889 AgentCodeGUI3"
+      ],
+      "pages": [
+        {
+          "url": "",
+          "mounted": true
+        }
+      ],
+      "log": [
+        "armed",
+        "process-failed",
+        "recover-begin",
+        "reloaded",
+        "recover-done"
+      ],
+      "verdict": "복구됨 444ms"
+    },
+    {
+      "scenario": "rekill-gap-3000",
+      "at": "2026-08-22T13:08:57.543Z",
+      "gapMs": 3000,
+      "firstKillPid": 12920,
+      "firstRecoverMs": 315,
+      "deltaFromFirstKillMs": 3340,
+      "secondKillPid": 4932,
+      "secondKilled": true,
+      "secondRecoverMs": null,
+      "hostAlive": true,
+      "windows": [
+        "576x729 추가 채팅 — AgentCodeGUI",
+        "576x729 추가 채팅 — AgentCodeGUI",
+        "1336x889 AgentCodeGUI3"
+      ],
+      "pages": [
+        {
+          "url": "",
+          "mounted": false
+        },
+        {
+          "url": "index.html#session",
+          "mounted": false
+        },
+        {
+          "url": "index.html#session",
+          "mounted": false
+        }
+      ],
+      "mounted": "0/3",
+      "recoverBeginCount": 1,
+      "log": [
+        "armed",
+        "armed",
+        "armed",
+        "process-failed",
+        "recover-begin",
+        "reloaded",
+        "reloaded",
+        "reloaded",
+        "process-failed",
+        "process-failed",
+        "recover-done",
+        "process-failed",
+        "process-failed",
+        "process-failed"
+      ],
+      "verdict": "**유령 창 3개 — 2차 크래시가 삼켜짐(디바운스)**"
+    },
+    {
+      "scenario": "rekill-gap-5000",
+      "at": "2026-08-22T13:09:47.082Z",
+      "gapMs": 5000,
+      "firstKillPid": 32244,
+      "firstRecoverMs": 274,
+      "deltaFromFirstKillMs": 5362,
+      "secondKillPid": 29312,
+      "secondKilled": true,
+      "secondRecoverMs": 291,
+      "hostAlive": true,
+      "windows": [
+        "576x729 추가 채팅 — AgentCodeGUI",
+        "576x729 추가 채팅 — AgentCodeGUI",
+        "1336x889 AgentCodeGUI3"
+      ],
+      "pages": [
+        {
+          "url": "",
+          "mounted": true
+        },
+        {
+          "url": "index.html#session",
+          "mounted": true
+        },
+        {
+          "url": "index.html#session",
+          "mounted": true
+        }
+      ],
+      "mounted": "3/3",
+      "recoverBeginCount": 2,
+      "log": [
+        "armed",
+        "armed",
+        "armed",
+        "process-failed",
+        "recover-begin",
+        "reloaded",
+        "reloaded",
+        "reloaded",
+        "process-failed",
+        "process-failed",
+        "recover-done",
+        "process-failed",
+        "recover-begin",
+        "reloaded",
+        "reloaded",
+        "reloaded",
+        "process-failed",
+        "process-failed",
+        "recover-done"
+      ],
+      "verdict": "2차도 복구됨 291ms"
+    },
+    {
+      "scenario": "cascade-renderer-then-browser",
+      "at": "2026-08-22T13:10:08.847Z",
+      "rendererPid": 31212,
+      "browserPid": 6332,
+      "browserKilled": true,
+      "gapMs": 3325,
+      "recoverMs": null,
+      "hostAlive": true,
+      "windows": [
+        "576x729 추가 채팅 — AgentCodeGUI",
+        "576x729 추가 채팅 — AgentCodeGUI",
+        "1336x889 AgentCodeGUI3"
+      ],
+      "pages": [],
+      "log": [
+        "armed",
+        "armed",
+        "armed",
+        "process-failed",
+        "recover-begin",
+        "reloaded",
+        "reloaded",
+        "reloaded",
+        "process-failed",
+        "process-failed",
+        "recover-done",
+        "process-failed",
+        "process-failed",
+        "process-failed",
+        "watchdog-browser-gone"
+      ],
+      "verdict": "**유령 창 3개**"
+    },
+    {
+      "scenario": "giveup-6x",
+      "at": "2026-08-22T13:11:27.373Z",
+      "rows": [
+        {
+          "i": 1,
+          "pid": 16480,
+          "recoverMs": 304
+        },
+        {
+          "i": 2,
+          "pid": 6656,
+          "recoverMs": 308
+        },
+        {
+          "i": 3,
+          "pid": 5440,
+          "recoverMs": 305
+        },
+        {
+          "i": 4,
+          "pid": 22876,
+          "recoverMs": 314
+        },
+        {
+          "i": 5,
+          "pid": 3752,
+          "recoverMs": 315
+        },
+        {
+          "i": 6,
+          "pid": 33892,
+          "recoverMs": null
+        }
+      ],
+      "hostAlive": false,
+      "windows": [],
+      "gaveUp": true,
+      "log": [
+        "armed",
+        "armed",
+        "armed",
+        "process-failed",
+        "recover-begin",
+        "reloaded",
+        "reloaded",
+        "reloaded",
+        "process-failed",
+        "process-failed",
+        "recover-done",
+        "process-failed",
+        "recover-begin",
+        "reloaded",
+        "reloaded",
+        "reloaded",
+        "process-failed",
+        "process-failed",
+        "recover-done",
+        "process-failed",
+        "recover-begin",
+        "reloaded",
+        "reloaded",
+        "reloaded",
+        "process-failed",
+        "process-failed",
+        "recover-done",
+        "process-failed",
+        "recover-begin",
+        "reloaded",
+        "reloaded",
+        "reloaded",
+        "process-failed",
+        "process-failed",
+        "recover-done",
+        "process-failed",
+        "recover-begin",
+        "reloaded",
+        "reloaded",
+        "reloaded",
+        "process-failed",
+        "process-failed",
+        "recover-done",
+        "process-failed",
+        "give-up",
+        "teardown",
+        "exit-prevented",
+        "exit"
+      ],
+      "verdict": "포기 후 정리 종료(유령 없음)"
+    },
+    {
+      "scenario": "state-loss",
+      "at": "2026-08-22T13:13:38.242Z",
+      "setup": {
+        "scrollTop": 3988.75,
+        "scrollHeight": 9973,
+        "draft": "CRITIC-DRAFT-DO-NOT-LOSE",
+        "taFound": true
+      },
+      "confirmed": {
+        "scrollTop": 4693.75,
+        "draft": "CRITIC-DRAFT-DO-NOT-LOSE"
+      },
+      "post": {
+        "scrollTop": 9625,
+        "scrollHeight": 9973,
+        "draft": "",
+        "msgCount": 4,
+        "panels": 4
+      },
+      "recoverMs": 376,
+      "windowsAfter": 1,
+      "lost": [
+        "컴포저 초안"
+      ],
+      "verdict": "복구되나 **컴포저 초안 소실**"
+    },
+    {
+      "scenario": "dialog-open-kill",
+      "at": "2026-08-22T13:12:57.971Z",
+      "windowsBefore": [
+        "1200x720 폴더 선택",
+        "1336x889 AgentCodeGUI3"
+      ],
+      "recoverMs": 400,
+      "hostAlive": true,
+      "windows": [
+        "1200x720 폴더 선택",
+        "1336x889 AgentCodeGUI3"
+      ],
+      "pages": [
+        {
+          "url": "",
+          "mounted": true
+        }
+      ],
+      "log": [
+        "armed",
+        "process-failed",
+        "recover-begin",
+        "reloaded",
+        "recover-done"
+      ],
+      "verdict": "복구됨 400ms (대화상자 창: 1개 잔존)"
+    }
+  ],
+  "note": "시나리오별로 나눠 실행한 결과를 병합. state-loss는 창 1개(추가 채팅 없음)로 재실행한 값."
+}

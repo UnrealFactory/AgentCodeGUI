@@ -1,0 +1,121 @@
+{
+  "arm": "default",
+  "recovery": false,
+  "how": "pid",
+  "rounds": 1,
+  "extraEnv": {
+    "CCG_CRASH_RECOVERY": "0"
+  },
+  "bin": {
+    "exe": "C:\\Code\\AgentCodeGUI\\target\\release\\agentcodegui.exe",
+    "exeMtime": "2026-08-22T13:00:26.834Z",
+    "exeSize": 3835904,
+    "exeSha256": "682ad08988a40a17",
+    "gitHead": "c673b15",
+    "gitDirty": true
+  },
+  "armEnv": {
+    "CCG_HOME": "C:\\Code\\AgentCodeGUI\\.bench-home-crash",
+    "CCG_CDP_PORT": "9461",
+    "CCG_CRASH_RECOVERY": "0"
+  },
+  "env": {
+    "ramGB": 63.8,
+    "cpu": "13th Gen Intel(R) Core(TM) i7-13700KF",
+    "os": "Microsoft Windows 11 Home 26200"
+  },
+  "at": "2026-08-22T13:04:14.650Z",
+  "attempts": [
+    {
+      "round": 1,
+      "at": "2026-08-22T13:04:27.707Z",
+      "before": {
+        "procs": 5,
+        "roles": [
+          "browser",
+          "browser",
+          "crashpad-handler",
+          "utility",
+          "renderer"
+        ],
+        "windows": [
+          "576x729 추가 채팅 — AgentCodeGUI",
+          "576x729 추가 채팅 — AgentCodeGUI",
+          "1336x889 AgentCodeGUI3"
+        ],
+        "cdpPages": 3,
+        "visibleWindows": 3
+      },
+      "killed": {
+        "how": "taskkill /PID",
+        "role": "renderer",
+        "pids": [
+          33704
+        ]
+      },
+      "after": {
+        "hostAlive": true,
+        "procs": 4,
+        "roles": [
+          "browser",
+          "browser",
+          "crashpad-handler",
+          "utility"
+        ],
+        "windows": [
+          "576x729 추가 채팅 — AgentCodeGUI",
+          "576x729 추가 채팅 — AgentCodeGUI",
+          "1336x889 AgentCodeGUI3"
+        ],
+        "visibleWindows": 3,
+        "mainPageRemounted": false,
+        "pagesMounted": [
+          {
+            "url": "index.html#session",
+            "mounted": false
+          },
+          {
+            "url": "index.html#session",
+            "mounted": false
+          },
+          {
+            "url": "",
+            "mounted": false
+          }
+        ],
+        "allPagesMounted": false,
+        "recoveryMs": null
+      },
+      "verdict": "**유령 창 — 실패**"
+    }
+  ],
+  "shellLog": [
+    {
+      "at": 1787403853369,
+      "event": "disabled",
+      "pid": 25400,
+      "detail": {
+        "label": "main",
+        "why": "CCG_CRASH_RECOVERY=0"
+      }
+    },
+    {
+      "at": 1787403857677,
+      "event": "disabled",
+      "pid": 25400,
+      "detail": {
+        "label": "session-1",
+        "why": "CCG_CRASH_RECOVERY=0"
+      }
+    },
+    {
+      "at": 1787403861192,
+      "event": "disabled",
+      "pid": 25400,
+      "detail": {
+        "label": "session-2",
+        "why": "CCG_CRASH_RECOVERY=0"
+      }
+    }
+  ]
+}
