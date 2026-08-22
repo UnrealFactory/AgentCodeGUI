@@ -1,0 +1,229 @@
+{
+  "at": "2026-08-22T18:31:34.828Z",
+  "exe": "C:\\Code\\AgentCodeGUI\\target\\debug\\ccg-migrate.exe",
+  "runs": [
+    {
+      "label": "실홈 복사본",
+      "home": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-unify-poc-real-1787423494820",
+      "checks": {
+        "crash": {
+          "normalRunMs": 105,
+          "killed": true,
+          "killMs": 37,
+          "oldDirsIntact": true,
+          "chatsV3": "absent",
+          "stagingLeftovers": [
+            "boards.tmp-1787423494969",
+            "chats-v3.tmp-1787423494969"
+          ],
+          "sweptByRerun": true
+        },
+        "roundTrip": {
+          "ok": true,
+          "diffs": []
+        },
+        "markerMerge": {
+          "ok": true,
+          "lostChats": 0,
+          "staleAcceptedCount": 0,
+          "staleAccepted": []
+        },
+        "aliasMaRoundTrip": {
+          "ok": true,
+          "blobEqual": true,
+          "dataLoss": []
+        },
+        "aliasChatsRoundTrip": {
+          "ok": true,
+          "dataLoss": []
+        },
+        "lightQuery": {
+          "ok": true,
+          "wrong": [],
+          "loss": []
+        },
+        "setActive": {
+          "ok": true,
+          "picked": "ma-93fb41d4-239a-42df-89a9-4a6a9405b0e6-0",
+          "onDisk": "ma-93fb41d4-239a-42df-89a9-4a6a9405b0e6-0"
+        },
+        "bootReload": {
+          "ok": true,
+          "withStatusJson": true,
+          "afterStatusJsonDeleted": true,
+          "liteDerived": true,
+          "clearedAgain": true,
+          "lite": {
+            "chatId": "63f9811a-e4b1-4d70-b3e9-82da91613fde",
+            "status": "idle",
+            "busy": false,
+            "bgActive": false,
+            "ask": "none",
+            "hold": {
+              "resetAt": 1800000000,
+              "ready": false
+            },
+            "queued": 1,
+            "unread": 0,
+            "updatedAt": 0
+          }
+        },
+        "idempotent": {
+          "ok": true,
+          "ids": true,
+          "contentHash": true,
+          "before": 5,
+          "after": 5
+        },
+        "remigrationKeepsV3": {
+          "chatId": "63f9811a-e4b1-4d70-b3e9-82da91613fde",
+          "clobbered": false,
+          "keptV3": 5
+        },
+        "rollback": {
+          "oldDirsIntact": true,
+          "stagingLeftovers": [],
+          "backupExists": true,
+          "backupDir": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-unify-poc-real-1787423494820\\backup-2.6.2-1787423495068"
+        }
+      },
+      "at": "2026-08-22T18:31:34.829Z",
+      "migrate": {
+        "ok": true,
+        "migratedAt": 1787423495068,
+        "elapsedMs": 55,
+        "backupDir": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-unify-poc-real-1787423494820\\backup-2.6.2-1787423495068",
+        "counts": {
+          "chats": 1,
+          "maSessions": 1,
+          "maPanels": 4,
+          "sessionChats": 0,
+          "talkAbsorbed": 0,
+          "carried": 0,
+          "keptV3": 0,
+          "keptV3Boards": 0,
+          "total": 5,
+          "messages": 333,
+          "boards": 2
+        },
+        "activeChatId": "63f9811a-e4b1-4d70-b3e9-82da91613fde",
+        "boardOrder": [
+          "default",
+          "93fb41d4-239a-42df-89a9-4a6a9405b0e6"
+        ],
+        "activeBoardId": "93fb41d4-239a-42df-89a9-4a6a9405b0e6",
+        "activeSessionId": "93fb41d4-239a-42df-89a9-4a6a9405b0e6",
+        "btw": {
+          "rewritten": 0,
+          "dropped": 0
+        },
+        "holdMoved": 0,
+        "sourceIndexOrders": {
+          "chats": [
+            "63f9811a-e4b1-4d70-b3e9-82da91613fde"
+          ],
+          "multiAgent": [
+            "93fb41d4-239a-42df-89a9-4a6a9405b0e6"
+          ],
+          "sessionChats": []
+        },
+        "warnings": [],
+        "peakWorkingSetBytes": 14721024,
+        "wallMs": 64
+      },
+      "migrateIdMapSize": 5,
+      "diskEyes": {
+        "before": {
+          "chats": {
+            "indexReadable": true,
+            "notInIndex": [],
+            "missingFiles": [],
+            "unreadable": []
+          },
+          "multiAgent": {
+            "indexReadable": true,
+            "notInIndex": [],
+            "missingFiles": [],
+            "unreadable": []
+          },
+          "sessionChats": {
+            "indexReadable": true,
+            "notInIndex": [],
+            "missingFiles": [],
+            "unreadable": []
+          }
+        },
+        "after": {
+          "orphanFiles": [],
+          "missingFiles": []
+        }
+      },
+      "leafAudit": {
+        "chatsWithLoss": 0,
+        "sample": []
+      },
+      "counts": {
+        "before": {
+          "chats": 1,
+          "maSessions": 1,
+          "maPanels": 4,
+          "sessionChats": 0,
+          "talkAbsorbed": 0,
+          "expectedTotal": 5,
+          "messages": 333,
+          "files": {
+            "chats": 1,
+            "ma": 1,
+            "sessionChats": 0
+          }
+        },
+        "after": {
+          "chats": 5,
+          "messages": 333,
+          "boards": 2,
+          "files": {
+            "chatsV3": 5,
+            "boards": 2
+          }
+        }
+      },
+      "identity": {
+        "primary": {
+          "compared": 5,
+          "mismatch": 0,
+          "sample": []
+        },
+        "secondary": {
+          "compared": 5,
+          "mismatch": 0,
+          "unresolved": 0,
+          "reasons": {}
+        }
+      },
+      "btw": {
+        "rewritten": 0,
+        "dropped": 0,
+        "expectRewritten": 0,
+        "expectDropped": 0
+      },
+      "warnings": [],
+      "apiConfig": {
+        "status": {
+          "hasKey": true,
+          "keyTail": "ywAA",
+          "budgetUsd": 300,
+          "spentUsd": 0,
+          "hasOpenaiKey": false,
+          "openaiKeyTail": null
+        },
+        "keyDecrypts": true,
+        "keyLen": ">0",
+        "openaiDecrypts": false,
+        "encryptionAvailable": true
+      },
+      "fails": [],
+      "ok": true
+    }
+  ],
+  "ok": true
+}
