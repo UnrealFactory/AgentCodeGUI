@@ -43,6 +43,15 @@ const LEVERS = [
     note: 'GPU 프로세스를 브라우저 안으로 (스크롤 FPS 확인 필수)' },
   { name: 'B8-single-process', env: { CCG_WEBVIEW_ARGS_EXTRA: '--single-process' },
     note: 'MS 미지원 — 데이터 포인트로만' },
+  // R3 추가: wincost의 role 태깅이 밝힌 실제 프로세스 구성에서 나온 레버들.
+  // 유휴 7프로세스 = browser(webview2) + agentcodegui(호스트) + renderer + gpu-process
+  //                 + utility:NetworkService + utility:StorageService + crashpad-handler
+  { name: 'B9-storage-in-process', env: { CCG_WEBVIEW_DISABLE_FEATURES: 'StorageServiceOutOfProcess' },
+    note: '스토리지 서비스를 브라우저 프로세스 안에서 (utility 하나 제거 시도)' },
+  { name: 'B10-no-crashpad', env: { CCG_WEBVIEW_ARGS_EXTRA: '--disable-breakpad --disable-crash-reporter' },
+    note: 'crashpad-handler 프로세스 제거 시도' },
+  { name: 'B11-net-in-process-switch', env: { CCG_WEBVIEW_ARGS_EXTRA: '--single-process-network' },
+    note: 'feature가 아니라 스위치로 네트워크 인프로세스 (B5가 안 먹을 때의 대안)' },
 
   // ── 2군: 서브시스템 끄기 ──────────────────────────────────────────────────
   { name: 'C1-features-off-bulk',
@@ -59,18 +68,66 @@ const LEVERS = [
     note: 'GPU 전면 끄기' },
   { name: 'D3-raster-1-thread', env: { CCG_WEBVIEW_ARGS_EXTRA: '--num-raster-threads=1 --disable-partial-raster' },
     note: '래스터 스레드 1개' },
+  // R3 추가: gpu-process가 Priv 118~124MB로 **렌더러 다음으로 큰 소비자**였다(role 태깅).
+  // 프로세스를 없애는 대신 그 안의 예산·캐시를 깎는 쪽부터 잰다(FPS 위험이 낮은 순).
+  { name: 'D4-gpu-mem-64', env: { CCG_WEBVIEW_ARGS_EXTRA: '--force-gpu-mem-available-mb=64' },
+    note: 'GPU 프로세스가 스스로 잡는 메모리 예산 상한' },
+  { name: 'D5-no-gpu-caches', env: { CCG_WEBVIEW_ARGS_EXTRA: '--disable-gpu-shader-disk-cache --disable-gpu-program-cache --disable-gpu-driver-bug-workarounds' },
+    note: 'GPU 셰이더/프로그램 캐시 끄기' },
+  { name: 'D6-no-accel-canvas', env: { CCG_WEBVIEW_ARGS_EXTRA: '--disable-accelerated-2d-canvas --disable-accelerated-video-decode --disable-accelerated-video-encode' },
+    note: '2D 캔버스·비디오 가속 끄기(앱이 쓰지 않는 경로)' },
+  { name: 'D7-angle-gl', env: { CCG_WEBVIEW_ARGS_EXTRA: '--use-angle=gl' },
+    note: 'ANGLE 백엔드를 D3D11 대신 GL (D3D 리소스 커밋 회피 시도)' },
+  { name: 'D8-gpu-mem-64+no-caches', env: { CCG_WEBVIEW_ARGS_EXTRA: '--force-gpu-mem-available-mb=64 --disable-gpu-shader-disk-cache --disable-gpu-program-cache' },
+    note: 'D4+D5 합 — 가산성 확인용' },
 
   // ── 4군: V8 힙 ────────────────────────────────────────────────────────────
   { name: 'E1-v8-heap-256', env: { CCG_WEBVIEW_ARGS_EXTRA: '--js-flags=--max-old-space-size=256' },
     note: 'V8 old space 상한 256MB' },
   { name: 'E2-low-end-device', env: { CCG_WEBVIEW_ARGS_EXTRA: '--enable-low-end-device-mode' },
     note: 'Chromium 저사양 모드(힙·래스터·예비 렌더러 일괄 축소)' },
+  // R3 추가: 값 안에 공백이 있는 스위치라 webview_args.rs의 따옴표 인지 분리가 필요하다.
+  { name: 'E3-v8-optimize-for-size', env: { CCG_WEBVIEW_ARGS_EXTRA: '--js-flags="--optimize-for-size"' },
+    note: 'V8이 속도보다 메모리를 택한다(코드 공간·인라인 캐시 축소)' },
+  { name: 'E4-v8-small-semispace', env: { CCG_WEBVIEW_ARGS_EXTRA: '--js-flags="--max-semi-space-size=1"' },
+    note: '영세대(semi space) 8MB→1MB — 스캐빈지가 잦아지므로 FPS 확인 필수' },
+  { name: 'E5-v8-both', env: { CCG_WEBVIEW_ARGS_EXTRA: '--js-flags="--optimize-for-size --max-semi-space-size=1"' },
+    note: 'E3+E4 (따옴표 안 공백 보존이 되는지 자체가 검증 대상)' },
+
+  // ── F군: 창 껍데기(아크릴/투명)의 메모리 값 — 플래그가 아니라 창 옵션이다 ────
+  // 투명 창은 합성기가 알파를 안고 가야 해서 표면·버퍼가 늘 수 있다. CCG_CHROME는
+  // R1이 만든 창 후보 전환 스위치라 재빌드 없이 대조군을 만들 수 있다(win.rs).
+  { name: 'F1-no-acrylic-opaque', env: { CCG_CHROME: 'c' },
+    note: '채택안(b)에서 아크릴+투명만 뺀 창 — 유리의 메모리 값' },
+  { name: 'F2-decorated-window', env: { CCG_CHROME: 'a' },
+    note: 'OS 캡션 창(파리티 불가·데이터 포인트)' },
+
+  // ── Y군: 조합(R3 1차 스윕에서 실제로 효과가 난 것만 쌓는다) ────────────────
+  // 개별 레버는 "대조군 + 하나"였다. 제품은 여러 개를 동시에 켜므로 가산성이
+  // 성립하는지 따로 재야 한다(GPU 백엔드와 GPU 프로세스 배치는 서로 간섭할 수 있다).
+  { name: 'Y1-angle-gl+in-process-gpu', env: { CCG_WEBVIEW_ARGS_EXTRA: '--use-angle=gl --in-process-gpu' },
+    note: 'D7+B7 — Priv 최대 절감 후보(FPS 게이트 필수)' },
+  { name: 'Y2-safe-set', env: { CCG_WEBVIEW_ARGS_EXTRA: '--use-angle=gl --in-process-gpu --process-per-site --disable-background-networking --disable-sync --disable-component-update --disable-extensions --no-first-run --no-default-browser-check --noerrdialogs' },
+    note: 'Y1 + 프로세스 공유 + 부팅 잡업 끄기 (MS 지원 범위 안)' },
+  { name: 'Y3-safe-set+v8', env: { CCG_WEBVIEW_ARGS_EXTRA: '--use-angle=gl --in-process-gpu --process-per-site --disable-background-networking --disable-sync --disable-component-update --disable-extensions --no-first-run --no-default-browser-check --noerrdialogs --js-flags="--optimize-for-size"' },
+    note: 'Y2 + V8 메모리 우선' },
+  { name: 'Y4-single-process+angle-gl', env: { CCG_WEBVIEW_ARGS_EXTRA: '--single-process --use-angle=gl' },
+    note: 'MS 미지원 조합 — 목표 도달 여부의 상한선을 알기 위한 데이터 포인트' },
 
   // ── Z: 제품 기본값(webview_args.rs에 박은 채택 세트) 그대로 ────────────────
   { name: 'Z-adopted-default', env: null, note: 'BASE_ONLY 없이 = 코드에 박힌 채택 세트' }
 ]
 
+// `--keep` = 홈을 그대로 쓴다(WebView2 프로필이 따뜻한 상태).
+// 왜 필요한가: seedHome()은 홈을 통째로 지우므로 **그 뒤 첫 레버만 WebView2 프로필을
+// 새로 만든다**(Default/ 생성·LevelDB 초기화·코드 캐시 없음). R3 1차 스윕에서 A0가
+// 맨 앞이었던 탓에 대조군만 차가웠고, 그 뒤 모든 레버가 약 −14MB씩 싸게 나오는
+// 가짜 밴드가 생겼다. 이후로는 (a) 스윕이면 대조군을 한 번 버리는 워밍업으로 돌리고,
+// (b) 한 레버만 다시 잴 때는 `--keep`으로 따뜻한 홈을 쓴다.
+const KEEP = process.argv.includes('--keep')
+
 function seedHome() {
+  if (KEEP && fs.existsSync(HOME)) return
   fs.rmSync(HOME, { recursive: true, force: true })
   makeMultiFixture(HOME, '3.0.0-beta.1', { panels: 4 })
 }
@@ -82,7 +139,7 @@ async function runLever(lever, { repeats, settleSec }) {
     profile.env.CCG_HOME = HOME
     let mem = null
     try {
-      mem = await measureIdle(profile, { settleSec, cdp: false })
+      mem = await measureIdle(profile, { settleSec, cdp: false, role: true })
     } catch (err) {
       runs.push({ error: String(err?.message ?? err) })
       continue
@@ -105,8 +162,24 @@ async function runLever(lever, { repeats, settleSec }) {
     wsMB: median(ok.map((r) => r.wsMB)),
     privMB: median(ok.map((r) => r.privMB)),
     procs: median(ok.map((r) => r.procs)),
+    // 총합만으로는 "무엇이 줄었나"를 못 본다 — 역할별(--type=)로도 남긴다.
+    byRole: roleSum(ok.at(-1)?.detail),
     lastDetail: ok.at(-1)?.detail ?? null
   }
+}
+
+/** 프로세스 목록 → 역할별 합계. wincost.mjs와 같은 문법. */
+function roleSum(procs) {
+  if (!procs) return null
+  const by = {}
+  for (const p of procs) {
+    const k = `${p.role ?? '?'}${p.sub ? ':' + p.sub.replace(/^.*\.mojom\./, '') : ''}`
+    by[k] ??= { n: 0, wsMB: 0, privMB: 0 }
+    by[k].n++
+    by[k].wsMB = Math.round((by[k].wsMB + p.wsMB) * 10) / 10
+    by[k].privMB = Math.round((by[k].privMB + p.privMB) * 10) / 10
+  }
+  return by
 }
 
 // ── env var vs 코드 인자 우선순위 실측 ────────────────────────────────────────
@@ -165,6 +238,13 @@ if (mode === 'precedence') {
     process.exit(2)
   }
   seedHome()
+  if (!only && !KEEP) {
+    // 대조군을 한 번 버리는 워밍업 — WebView2 프로필 생성 비용을 첫 레버가 뒤집어쓰지
+    // 않게 한다(위 seedHome 주석의 '가짜 −14MB 밴드' 방지).
+    process.stdout.write('— warmup (버리는 측정) … ')
+    const w = await runLever(LEVERS[0], { repeats: 1, settleSec: Math.min(settleSec, 15) })
+    console.log(`ws=${w.wsMB} priv=${w.privMB} (버림)`)
+  }
   const results = only ? { ...(prev.results ? Object.fromEntries(prev.results.map((r) => [r.name, r])) : {}) } : {}
   const acc = []
   for (const lever of list) {
@@ -186,6 +266,12 @@ if (mode === 'precedence') {
   const out = {
     ...prev,
     what: 'WEBVIEW2 스위치 레버별 유휴 메모리 (CDP off · 첫 가시 창 기준 정착)',
+    notes: [
+      'R3 1차 스윕(2026-08-22)에서 A0 대조군만 WebView2 프로필이 차가웠다(seedHome 직후). 그 탓에 그 뒤 모든 레버가 약 −14MB씩 싸게 나오는 가짜 밴드가 생겼다 — A0를 `--keep`(따뜻한 홈)으로 다시 재서 대체했고, 그 이후 델타는 그 값 기준이다.',
+      'procs가 7에서 안 바뀌는 레버는 WebView2가 그 스위치를 무시했다는 뜻이다(SpareRenderer/NetworkServiceInProcess/StorageServiceOutOfProcess/--disable-breakpad 전부 해당).',
+      'Priv 절감의 정체는 GPU 프로세스의 D3D11 커밋이다: gpu-process Priv 106MB → --use-angle=gl 또는 --disable-gpu로 18MB.',
+      '앱(우리 UI)이 차지하는 몫은 bench/results/gpu-css-probe.json 기준 WS 8.4MB / Priv 24MB뿐이다(4패널 DOM을 통째로 비운 값과의 차이). 나머지는 웹 런타임 바닥값이다.'
+    ],
     method: {
       home: '.bench-home-flags — 멀티 4패널 × 120항목 픽스처(주 게이트와 같은 무대)',
       cdp: false,

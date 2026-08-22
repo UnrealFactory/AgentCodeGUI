@@ -143,13 +143,27 @@ export async function measureColdStart({ cmd, args, env, cwd, port, mountExpr })
   fs.writeFileSync(pidFile, String(child.pid))
 
   // #root 마운트 (앱이 "쓸 수 있는 상태") — CDP 폴링
+  // paintMs = **웹 콘텐츠의 첫 픽셀**. winMs(=OS 창이 보이기 시작)만 보면 "창은 떴는데
+  // DWM 아크릴만 있고 안은 비어 있는" 구간을 놓친다. 두 앱의 창 표시 규약이 다르므로
+  // (Electron 2.6.2는 별도 스플래시 창, 3.0은 창 안 오버레이) 이 숫자가 있어야 같은
+  // 잣대로 비교된다. 페이지의 first-paint 엔트리 + timeOrigin을 스폰 시각에 맞춰 환산한다.
   let rootMs = null
+  let paintMs = null
   try {
     const cdp = await connectMainPage(port, { timeoutMs: 45000 })
     for (;;) {
       const ok = await cdp.eval(mountExpr).catch(() => false)
       if (ok) { rootMs = Math.round(performance.now() - t0) ; break }
       if (performance.now() - t0 > 45000) break
+      await sleep(25)
+    }
+    const spawnEpoch = Date.now() - Math.round(performance.now() - t0)
+    for (let i = 0; i < 60; i++) {
+      const p = await cdp.eval(
+        `(() => { const e = performance.getEntriesByType('paint')[0]
+          return e ? Math.round(performance.timeOrigin + e.startTime) : null })()`
+      ).catch(() => null)
+      if (p) { paintMs = p - spawnEpoch; break }
       await sleep(25)
     }
     cdp.close()
@@ -169,7 +183,7 @@ export async function measureColdStart({ cmd, args, env, cwd, port, mountExpr })
   killTree(child.pid)
   try { watcher.kill() } catch { /* gone */ }
   for (const f of [pidFile, outFile, psFile]) { try { fs.unlinkSync(f) } catch { /* gone */ } }
-  return { winMs, rootMs }
+  return { winMs, rootMs, paintMs }
 }
 
 // ── 프로세스 트리 메모리 (CIM 워크 — WorkingSet + PrivatePageCount 합산) ─────
@@ -305,7 +319,7 @@ export async function waitFirstWindow(pid, { timeoutMs = 60000 } = {}) {
  * 유휴 메모리 1회 측정. cdp:true면 #root 마운트를, false면 첫 가시 창을 기점으로
  * settleSec 만큼 방치한 뒤 프로세스 트리를 합산한다.
  */
-export async function measureIdle(profile, { settleSec = 60, cdp = true } = {}) {
+export async function measureIdle(profile, { settleSec = 60, cdp = true, role = false } = {}) {
   const child = spawn(profile.cmd, profile.args, {
     env: { ...process.env, ...profile.env }, cwd: profile.cwd, stdio: 'ignore'
   })
@@ -321,7 +335,7 @@ export async function measureIdle(profile, { settleSec = 60, cdp = true } = {}) 
       await waitFirstWindow(child.pid)
     }
     await sleep(settleSec * 1000)
-    return procTreeMem(child.pid)
+    return procTreeMem(child.pid, { role })
   } finally {
     killTree(child.pid)
     await sleep(1200)
