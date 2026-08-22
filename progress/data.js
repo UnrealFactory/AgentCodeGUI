@@ -1,7 +1,7 @@
 window.PROGRESS = {
-  phase: '구현 1단계(R6) — ccg-engine(상태기계·재생 테스트·드라이버) / M2 chats-v3+무손실 마이그레이션 / M-UI 유리 방어+알림 시스템 (병렬 3)',
-  note: 'R5 착지: 연쇄 크래시 사각지대 제거("감지된 사건은 증발하지 않는다" 불변식 — 크리틱 공격 전 항목 통과: 재kill +3s 573ms 복구·연쇄 1130ms·고아 다이얼로그 0). 설계 정합 완료(N1~N16·X1~X9 전수, 재생 정직 재계산 8/8=27시나리오, 전이 60) → 구현 게이트 전부 해제. 남은 사용자 결정: WS/콜드 목표 재협상 · UX ①~⑬ · m-logic O1·O6·O13·O16',
-  updatedAt: '2026-08-23 01:10',
+  phase: '구현 1단계 크리틱(R7) — 엔진 재생 게이트 공격·라이브 재현 / 마이그레이션 손상 홈 공격 / 유리 방어 반박·알림 블라인드 (병렬 3)',
+  note: 'R6 착지: ccg-engine 86 테스트 green(필수 재생 27/27·라이브 스모크 2턴·승인 왕복 933ms·M-WF effort는 와이어에 없음을 전수 추출로 확정 — fallbackModel은 옴) / M2 chats-v3 마이그레이션 3홈 PASS(실홈 복사본 바이트 불일치 0·SIGKILL 안전·키 무재로그인 복호, CCG_UNIFIED_STORE=1 옵트인) / M-UI 유리 방어 실측(드리프트 복구 359ms·메시지 경로 72ms·폴백 swing 0 — 발견: 3.0의 아크릴 소실은 회색이 아니라 벽지 생비침으로 더 나쁨) + 알림 7종 문법(형태 3×색조 4, 밀도 −114.7px 자가 계측)',
+  updatedAt: '2026-08-23 03:00',
   metrics: [
     { name: '★ 멀티 4패널 유휴 WS', unit: 'MB', base: 712.8, new: 421.3, target: '≤356 = WebView2 빈 문서 바닥값(351.5) + 4.5MB — 앱 몫이 47.3이라 구조적 불가, 재협상 대상 (NetSvc2 채택 후 크리틱 실측)', pass: false },
     { name: '★ 멀티 4패널 유휴 Private', unit: 'MB', base: 505.3, new: 239.3, target: '≤253 ✓ (NetSvc2 채택 후 크리틱 실측, 비 0.47)', pass: true },
@@ -23,13 +23,13 @@ window.PROGRESS = {
   pieces: [
     { name: 'M0 기준 실측', scope: '2.6.2 수치 박제 (콜드 스타트·메모리·스크롤·스트리밍)', state: 'build' },
     { name: 'M1 아키텍처+셸', scope: 'Tauri 워크스페이스·창 시스템·api 심·렌더러 이식 빌드', state: 'build', round: 3, critic: 'R2 성과: 창당 비용 110.7→16.3MB·멀티 유휴 0.64. R3 목표: 유휴 그리드 ≤0.5·콜드 ≤211ms — 레버별 기여도(webview-flags.json) 의무' },
-    { name: 'M2 스토리지', scope: 'chats·uiPrefs·profile·api-config 등 저장 도메인', state: 'wait' },
-    { name: 'M3 Claude 엔진', scope: 'stream-json 상주 CLI·승인/질문·중단·포크·백그라운드', state: 'build', critic: '와이어 스펙 확보(1563줄, 실검증 2회) → PoC 게이트 실행 중: 승인 왕복 toolUseID·중단 생존·포크·job object 좀비 차단' },
+    { name: 'M2 스토리지', scope: 'chats-v3 통합 스토어(보드·status.json)·3스토어 무손실 마이그레이션·api-config/usage(OSCrypt 승계)·talk — CCG_UNIFIED_STORE=1 옵트인, session-wins 별칭이 남아 기본값 미전환', state: 'build', round: 1, critic: '실홈 복사본 바이트 불일치 0·부하 311채팅 1.4s·SIGKILL 안전 — 크리틱이 손상 홈 공격 중' },
+    { name: 'M3 Claude 엔진', scope: 'ccg-engine: RunIdentity 3타입·60전이 표·라이브 원장·워치독·claude.exe 드라이버(job object 1커밋)·재생=cargo test', state: 'build', round: 1, critic: '86 테스트 green·필수 재생 27/27·라이브 승인 왕복 933ms — 크리틱이 커버리지 게이트 정직성 공격 중. 남은 것: src-tauri 배선·영속 재장전·O17' },
     { name: 'M4 Codex 엔진+버전 관리', scope: 'app-server JSONL·엔진 설치/업데이트', state: 'wait' },
     { name: 'M5 계정 도메인', scope: '로그인·전환·per-chat 격리·한도 조회 (DPAPI)', state: 'wait' },
     { name: 'M6 파일·Git·뷰어', scope: 'fs ops·git 래퍼·HTML 미리보기 스킴·아이콘', state: 'wait' },
     { name: 'M7 코드 탐색기/LSP', scope: 'TS/JS·Python·C#·C++ (Verse 제외 — 사용자 결정) · 색인·호버·정의이동·자동완성 수치 판정(첫 페인트·p50/p95·프리웜·유휴 회수) · ServerSpec 1항목으로 언어 추가', state: 'wait' },
-    { name: 'M-WF 워크플로 카드 effort', scope: '모델만 나오는 카드에 effort 추가 — 와이어에 실려 오는지 실측 먼저, 없으면 지어내지 말 것 (사용자 요청)', state: 'wait' },
+    { name: 'M-WF 워크플로 카드 effort', scope: '실측 확정: claude.exe 2.1.239 workflow_agent emitter 6개 전수 추출 — effort 없음(fallbackModel은 있음). 세션 effort 대체 표시는 거짓이라 기각. 대안: 모델+fallbackModel 칩 표시(사용자 확인 대기)', state: 'build', round: 1 },
     { name: 'M8 멀티 창 표면', scope: '멀티 패널·팝아웃·추가 채팅·btw·토스트·트레이', state: 'wait' },
     { name: 'M-LOGIC 채팅/실행 상태 정리', scope: 'RunIdentity 단일 값 · 명시적 상태기계 · 설정 변경=명령 · 예약 큐 정체성 스냅샷 · busy 침묵 no-op 제거 · 고아 정착 규약 (사용자 지적: 계정 변경·폴백·특수 상황에서 꼬임)', state: 'build', round: 1, critic: '설계 문서 → M3 빌더가 이 설계로 구현 → 재생 하네스 8조합으로 판정' },
     { name: 'M-UX 채팅 통합', scope: '일반+멀티 → 「채팅」 하나, 개수 다이얼 1~6 (1=기존 레이아웃) · 3스토어/3 IPC 세트 통합 · 무손실 마이그레이션', state: 'build', round: 1, critic: '설계 → 마이그레이션 PoC(손실 0 검증) → 크리틱이 161화면 대조로 기능 누락 사냥' },
