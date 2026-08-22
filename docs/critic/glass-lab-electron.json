@@ -1,0 +1,384 @@
+{
+  "at": "2026-08-22T05:25:06.131Z",
+  "app": "electron",
+  "states": [
+    {
+      "name": "01-normal-focused",
+      "note": "창 모드 · 포커스 있음",
+      "rect": {
+        "r": 4080,
+        "t": 90,
+        "h": 920,
+        "b": 1010,
+        "w": 1400,
+        "l": 2680
+      },
+      "sidebar": {
+        "g": 13.53,
+        "r": 12.53,
+        "b": 15.53,
+        "n": 10800
+      },
+      "chat": {
+        "g": 31.39,
+        "r": 30.43,
+        "b": 33.77,
+        "n": 16000
+      },
+      "backdropAttr": 3,
+      "focused": true,
+      "file": "electron-01-normal-focused.png"
+    },
+    {
+      "name": "02-normal-blurred",
+      "note": "창 모드 · 포커스 잃음(다른 창 클릭)",
+      "rect": {
+        "r": 1781,
+        "t": 158,
+        "h": 920,
+        "b": 1078,
+        "w": 1400,
+        "l": 381
+      },
+      "sidebar": {
+        "g": 48.47,
+        "r": 37.44,
+        "b": 42.55,
+        "n": 10800
+      },
+      "chat": {
+        "g": 25.18,
+        "r": 23.55,
+        "b": 22.15,
+        "n": 16000
+      },
+      "backdropAttr": 3,
+      "focused": false,
+      "file": "electron-02-normal-blurred.png"
+    },
+    {
+      "name": "03-refocused",
+      "note": "다시 포커스",
+      "rect": {
+        "r": 1781,
+        "t": 158,
+        "h": 920,
+        "b": 1078,
+        "w": 1400,
+        "l": 381
+      },
+      "sidebar": {
+        "g": 48.54,
+        "r": 37.55,
+        "b": 45.56,
+        "n": 10800
+      },
+      "chat": {
+        "g": 25.19,
+        "r": 23.61,
+        "b": 22.12,
+        "n": 16000
+      },
+      "backdropAttr": 3,
+      "focused": true,
+      "file": "electron-03-refocused.png"
+    },
+    {
+      "name": "04-maximized-focused",
+      "note": "최대화 · 포커스",
+      "rect": {
+        "r": 2568,
+        "t": -8,
+        "h": 1408,
+        "b": 1400,
+        "w": 2576,
+        "l": -8
+      },
+      "sidebar": {
+        "g": 41.86,
+        "r": 36.27,
+        "b": 38.98,
+        "n": 10800
+      },
+      "chat": {
+        "g": 24.89,
+        "r": 22.91,
+        "b": 21.08,
+        "n": 16000
+      },
+      "backdropAttr": 3,
+      "focused": true,
+      "file": "electron-04-maximized-focused.png"
+    },
+    {
+      "name": "05-maximized-blurred",
+      "note": "최대화 · 포커스 잃음",
+      "rect": {
+        "r": 2568,
+        "t": -8,
+        "h": 1408,
+        "b": 1400,
+        "w": 2576,
+        "l": -8
+      },
+      "sidebar": {
+        "g": 41.86,
+        "r": 36.27,
+        "b": 38.98,
+        "n": 10800
+      },
+      "chat": {
+        "g": 24.89,
+        "r": 22.91,
+        "b": 21.08,
+        "n": 16000
+      },
+      "backdropAttr": 3,
+      "focused": false,
+      "file": "electron-05-maximized-blurred.png"
+    },
+    {
+      "name": "06-restored",
+      "note": "복원",
+      "rect": {
+        "r": 4080,
+        "t": 90,
+        "h": 920,
+        "b": 1010,
+        "w": 1400,
+        "l": 2680
+      },
+      "sidebar": {
+        "g": 32.54,
+        "r": 32,
+        "b": 33,
+        "n": 10800
+      },
+      "chat": {
+        "g": 21.12,
+        "r": 20.88,
+        "b": 21.12,
+        "n": 16000
+      },
+      "backdropAttr": 3,
+      "focused": true,
+      "file": "electron-06-restored.png"
+    },
+    {
+      "name": "07-min-restore",
+      "note": "최소화 후 복원",
+      "rect": {
+        "r": 4080,
+        "t": 90,
+        "h": 920,
+        "b": 1010,
+        "w": 1400,
+        "l": 2680
+      },
+      "sidebar": {
+        "g": 32.54,
+        "r": 32,
+        "b": 33,
+        "n": 10800
+      },
+      "chat": {
+        "g": 21.27,
+        "r": 20.95,
+        "b": 21.48,
+        "n": 16000
+      },
+      "backdropAttr": 3,
+      "focused": true,
+      "file": "electron-07-min-restore.png"
+    },
+    {
+      "name": "08-snap-left",
+      "note": "좌측 절반(스냅과 같은 형상)",
+      "rect": {
+        "r": 3840,
+        "t": 0,
+        "h": 1392,
+        "b": 1392,
+        "w": 1280,
+        "l": 2560
+      },
+      "sidebar": {
+        "g": 32.28,
+        "r": 32.16,
+        "b": 33.11,
+        "n": 10800
+      },
+      "chat": {
+        "g": 21,
+        "r": 20.78,
+        "b": 21.01,
+        "n": 16000
+      },
+      "backdropAttr": 3,
+      "focused": true,
+      "file": "electron-08-snap-left.png"
+    },
+    {
+      "name": "09-transparency-off",
+      "note": "설정 › 색 › 투명 효과 끔 · 포커스",
+      "rect": {
+        "r": 4080,
+        "t": 90,
+        "h": 920,
+        "b": 1010,
+        "w": 1400,
+        "l": 2680
+      },
+      "sidebar": {
+        "g": 32.54,
+        "r": 32,
+        "b": 33,
+        "n": 10800
+      },
+      "chat": {
+        "g": 21.27,
+        "r": 20.95,
+        "b": 21.48,
+        "n": 16000
+      },
+      "backdropAttr": 3,
+      "focused": true,
+      "file": "electron-09-transparency-off.png"
+    },
+    {
+      "name": "10-transparency-off-blurred",
+      "note": "투명 효과 끔 · 포커스 잃음",
+      "rect": {
+        "r": 4080,
+        "t": 90,
+        "h": 920,
+        "b": 1010,
+        "w": 1400,
+        "l": 2680
+      },
+      "sidebar": {
+        "g": 40,
+        "r": 40,
+        "b": 40,
+        "n": 10800
+      },
+      "chat": {
+        "g": 23.07,
+        "r": 23.07,
+        "b": 23.07,
+        "n": 16000
+      },
+      "backdropAttr": 3,
+      "focused": false,
+      "file": "electron-10-transparency-off-blurred.png"
+    },
+    {
+      "name": "11-transparency-back",
+      "note": "투명 효과 복구",
+      "rect": {
+        "r": 4080,
+        "t": 90,
+        "h": 920,
+        "b": 1010,
+        "w": 1400,
+        "l": 2680
+      },
+      "sidebar": {
+        "g": 23,
+        "r": 23,
+        "b": 23,
+        "n": 10800
+      },
+      "chat": {
+        "g": 48.37,
+        "r": 45.36,
+        "b": 50.01,
+        "n": 16000
+      },
+      "backdropAttr": 3,
+      "focused": true,
+      "file": "electron-11-transparency-back.png"
+    },
+    {
+      "name": "12-overlapped-focused",
+      "note": "다른 창이 위에 겹침 · 앱은 포커스 유지",
+      "rect": {
+        "r": 2036,
+        "t": 300,
+        "h": 920,
+        "b": 1220,
+        "w": 1400,
+        "l": 636
+      },
+      "sidebar": {
+        "g": 40,
+        "r": 40,
+        "b": 40,
+        "n": 10800
+      },
+      "chat": {
+        "g": 23.07,
+        "r": 23.07,
+        "b": 23.07,
+        "n": 16000
+      },
+      "backdropAttr": 3,
+      "focused": false,
+      "file": "electron-12-overlapped-focused.png"
+    },
+    {
+      "name": "13-other-monitor",
+      "note": "다른 모니터로 이동(주 모니터, 판 없음)",
+      "rect": {
+        "r": 1600,
+        "t": 90,
+        "h": 920,
+        "b": 1010,
+        "w": 1400,
+        "l": 200
+      },
+      "sidebar": {
+        "g": 42.01,
+        "r": 35.91,
+        "b": 42.23,
+        "n": 10800
+      },
+      "chat": {
+        "g": 25.42,
+        "r": 24.18,
+        "b": 21.09,
+        "n": 16000
+      },
+      "backdropAttr": 3,
+      "focused": true,
+      "file": "electron-13-other-monitor.png"
+    },
+    {
+      "name": "14-back",
+      "note": "보조 모니터 복귀",
+      "rect": {
+        "r": 4080,
+        "t": 90,
+        "h": 920,
+        "b": 1010,
+        "w": 1400,
+        "l": 2680
+      },
+      "sidebar": {
+        "g": 32.54,
+        "r": 32,
+        "b": 33,
+        "n": 10800
+      },
+      "chat": {
+        "g": 21.12,
+        "r": 21.12,
+        "b": 21.27,
+        "n": 16000
+      },
+      "backdropAttr": 3,
+      "focused": true,
+      "file": "electron-14-back.png"
+    }
+  ]
+}

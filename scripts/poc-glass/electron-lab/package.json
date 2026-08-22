@@ -1,0 +1,7 @@
+{
+  "name": "ccg-glass-lab",
+  "private": true,
+  "version": "0.0.0",
+  "main": "main.js",
+  "description": "유리(아크릴) 트리거·해결안 A/B 실험대 — 제품 코드와 완전히 분리된 껍데기 하나"
+}

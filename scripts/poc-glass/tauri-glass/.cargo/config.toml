@@ -1,0 +1,3 @@
+# 부모 워크스페이스의 target/ 락과 나눠 쓰지 않는다 (다른 에이전트가 동시에 빌드 중).
+[build]
+target-dir = "target"

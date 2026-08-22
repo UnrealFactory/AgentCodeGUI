@@ -1,0 +1,30 @@
+# 유리(아크릴) PoC — 3.0(Tauri) 셸의 백드롭 거동만 뽑아낸 최소 재현기.
+#
+# 부모 워크스페이스와 분리한다(빈 [workspace]). 다른 에이전트가 src-tauri를 동시에
+# 빌드 중이라 target/ 락을 나눠 쓰면 서로 막힌다 — 타깃 디렉터리도 여기 안에 둔다
+# (.cargo/config.toml).
+[package]
+name = "tauri-glass"
+version = "0.1.0"
+edition = "2021"
+
+[workspace]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2" }
+window-vibrancy = "0.6"
+serde_json = "1"
+windows-sys = { version = "0.61", features = [
+  "Win32_Foundation",
+  "Win32_Graphics_Dwm",
+  "Win32_UI_WindowsAndMessaging",
+  "Win32_System_Power",
+  "Win32_System_Registry",
+] }
+
+# PoC는 빨리 뜨는 게 전부 — 최적화는 껐다(디버그 빌드로 돌린다)
+[profile.dev]
+opt-level = 0

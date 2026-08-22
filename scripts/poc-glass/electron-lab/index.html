@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>glass lab</title>
+<style>
+  /* 제품(src/renderer/src/styles.css)의 유리 구조만 그대로 옮긴 것:
+     사이드바는 자체 배경이 없고 body의 --panel 틴트가 아크릴 위에 얹힌다.
+     본문만 --chat-bg로 한 겹 더 진하다. 그래서 아크릴이 꺼지면 사이드바가 통째로 회색이 된다. */
+  :root{
+    --panel:   rgba(21,21,21,.70);
+    --chat-bg: rgba(16,16,16,.70);
+    --line:    rgba(255,255,255,.07);
+    --text:    rgba(255,255,255,.90);
+    --text-2:  rgba(255,255,255,.62);
+  }
+  *{ box-sizing:border-box; margin:0; padding:0; }
+  html,body{ height:100%; }
+  body{
+    font-family: "Segoe UI", system-ui, sans-serif;
+    background: var(--panel);
+    color: var(--text);
+    overflow:hidden;
+    display:flex;
+  }
+  /* (b)안 — 급변을 '의도된 미묘한 변화'로: 틴트만 부드럽게 갈아끼운다 */
+  body.xfade{ transition: background .26s cubic-bezier(.2,.8,.2,1); }
+  body.xfade .chat{ transition: background .26s cubic-bezier(.2,.8,.2,1); }
+
+  .sidebar{ width:242px; flex:0 0 auto; padding:10px 8px; display:flex; flex-direction:column; gap:8px; }
+  .sb-top{ display:flex; align-items:center; gap:8px; padding:5px 8px 10px; -webkit-app-region:drag; }
+  .mark{ width:23px; height:23px; border-radius:7px; background:rgba(255,255,255,.14); }
+  .name{ font-size:11.5px; font-weight:600; color:var(--text-2); }
+  .row{ padding:7px 9px; border-radius:8px; font-size:12px; color:var(--text-2); background:rgba(255,255,255,.03); }
+  .spacer{ flex:1; }               /* 표본점(사이드바 60% 높이)이 비어 있어야 한다 */
+  .chat{ flex:1; min-width:0; background:var(--chat-bg); position:relative; }
+  .hd{ height:52px; border-bottom:1px solid var(--line); display:flex; align-items:center; padding:0 16px; -webkit-app-region:drag; }
+  .tag{ font-size:13px; letter-spacing:.02em; color:var(--text); }
+  .st{ position:absolute; left:16px; bottom:14px; font:12px/1.7 ui-monospace,Consolas,monospace; color:var(--text-2); white-space:pre; }
+</style>
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="sb-top"><div class="mark"></div><div class="name">AgentCodeGUI</div></div>
+    <div class="row">새 채팅</div>
+    <div class="row">멀티 채팅</div>
+    <div class="spacer"></div>
+  </aside>
+  <main class="chat">
+    <div class="hd"><span class="tag" id="tag"></span></div>
+    <div class="st" id="st"></div>
+  </main>
+<script>
+  const $tag = document.getElementById('tag')
+  const $st = document.getElementById('st')
+
+  function apply(s){
+    if (!s) return
+    document.body.classList.toggle('xfade', s.cssMode === 'crossfade')
+    const root = document.documentElement.style
+
+    // (d)안 — 투명 효과가 꺼진 환경: DWM 폴백(무채색 회색) 위에 반투명 틴트를 얹으면
+    // "고장난 회색 덩어리"가 된다. 재질이 없다는 걸 알면 **디자인된 불투명 면**으로 바꾼다.
+    if (s.fallback === 'designed' && !s.transparency){
+      root.setProperty('--panel', 'linear-gradient(180deg,#191a1d 0%,#141518 62%,#111215 100%)')
+      root.setProperty('--chat-bg', 'linear-gradient(180deg,#121316 0%,#0e0f12 100%)')
+    } else if (s.cssMode === 'crossfade' && !s.focused){
+      // 비활성이면 DWM이 유리를 접고 폴백을 그린다 → 틴트를 살짝 낮춰 '한 단계 가라앉은 면'처럼
+      root.setProperty('--panel', 'rgba(24,24,26,.58)')
+      root.setProperty('--chat-bg', 'rgba(18,18,20,.58)')
+    } else {
+      root.setProperty('--panel', 'rgba(21,21,21,.70)')
+      root.setProperty('--chat-bg', 'rgba(16,16,16,.70)')
+    }
+
+    $tag.textContent = s.tag
+    $st.textContent = [
+      'focused    ' + s.focused,
+      'maximized  ' + s.maximized,
+      'css        ' + s.cssMode,
+      'fallback   ' + s.fallback,
+      'transparency ' + s.transparency
+    ].join('\n')
+  }
+  window.lab.on(apply)
+  window.lab.hello().then(apply)
+</script>
+</body>
+</html>
