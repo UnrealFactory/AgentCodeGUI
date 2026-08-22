@@ -120,28 +120,41 @@ function isDragTarget(el: Element | null, useComputed: boolean): boolean {
   return !(noDrag && drag.contains(noDrag))
 }
 
-export function initWindowChrome(): void {
-  const win = getCurrentWindow()
-  let useComputed = false
-  const ready = (async () => {
-    useComputed = probeComputedSupport()
-    if (!useComputed) await buildSelectorIndex()
-  })()
-  void ready
+/** 진단 카운터 — window.__ccgChrome로 노출(크리틱·회귀 확인용, 부작용 없음) */
+const diag = { mode: 'computed', dragSel: 0, noDragSel: 0, seen: 0, drags: 0 }
 
-  // 캡처 단계에서 듣되 이벤트를 삼키지 않는다 — 렌더러의 클릭/포커스 문법은 그대로.
+export function initWindowChrome(): void {
+  let useComputed = false
+  ;(window as unknown as { __ccgChrome?: unknown }).__ccgChrome = diag
+
+  // 리스너를 **먼저** 건다 — 아래 준비 작업이 어떤 이유로 throw해도 드래그 배관이
+  // 통째로 사라지는 일이 없게(창을 못 움직이는 앱이 된다).
+  // 캡처 단계에서 듣되 이벤트를 삼키지는 않는다 — 렌더러의 클릭/포커스 문법은 그대로.
   document.addEventListener(
     'mousedown',
     (e) => {
+      diag.seen++
       if (e.button !== 0) return
       const target = e.target as Element | null
       if (!isDragTarget(target, useComputed)) return
       // 텍스트 입력 안에서는 드래그하지 않는다(선택·캐럿이 우선)
       const tag = (target as HTMLElement)?.tagName
       if (tag === 'INPUT' || tag === 'TEXTAREA' || (target as HTMLElement)?.isContentEditable) return
+      diag.drags++
+      const win = getCurrentWindow()
       if (e.detail === 2) void win.toggleMaximize()
       else void win.startDragging()
     },
     true
   )
+
+  const mark = (): void => {
+    // 어떤 경로로 판정 중이고 셀렉터가 몇 개 잡혔는지
+    diag.mode = useComputed ? 'computed' : 'selectors'
+    diag.dragSel = dragSel.length
+    diag.noDragSel = noDragSel.length
+  }
+  useComputed = probeComputedSupport()
+  mark()
+  if (!useComputed) void buildSelectorIndex().then(mark)
 }

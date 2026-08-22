@@ -24,6 +24,7 @@ import type {
   AuthStatus,
   BgTaskRequest,
   BtwOpenRequest,
+  EngineCleanupResult,
   EngineEvent,
   EngineUpdateStatus,
   FileReadResult,
@@ -138,7 +139,7 @@ const NO_ENGINE_UPDATE: EngineUpdateStatus = {
 }
 const NO_ENGINE_STATE = { package: '', bundled: 'unknown', active: null, installed: [] as string[] }
 const NO_AVAILABLE = { latest: null as string | null, versions: [] }
-const NO_CLEANUP = { removed: [] as string[], kept: null as string | null, freedBytes: 0 }
+const NO_CLEANUP: EngineCleanupResult = { removed: [], kept: null, freedBytes: 0, activeSwitched: false }
 const failed = (error = 'unimplemented'): GitResult => ({ ok: false, error })
 const NO_GIT_STATUS: GitStatus = {
   repo: false,

@@ -1,0 +1,51 @@
+{
+  "app": "tauri-3.0.0",
+  "settleSec": 30,
+  "totalPrivMB": 345.2,
+  "totalWsMB": 417.4,
+  "procs": [
+    {
+      "pid": 3852,
+      "name": "agentcodegui.exe",
+      "privMB": 10.7,
+      "wsMB": 29
+    },
+    {
+      "pid": 18268,
+      "name": "msedgewebview2.exe",
+      "privMB": 39.2,
+      "wsMB": 119.1
+    },
+    {
+      "pid": 33964,
+      "name": "msedgewebview2.exe",
+      "privMB": 3.4,
+      "wsMB": 18.7
+    },
+    {
+      "pid": 17452,
+      "name": "msedgewebview2.exe",
+      "privMB": 204.2,
+      "wsMB": 78.5
+    },
+    {
+      "pid": 25624,
+      "name": "msedgewebview2.exe",
+      "privMB": 12.8,
+      "wsMB": 39.6
+    },
+    {
+      "pid": 32800,
+      "name": "msedgewebview2.exe",
+      "privMB": 8.9,
+      "wsMB": 20.2
+    },
+    {
+      "pid": 22852,
+      "name": "msedgewebview2.exe",
+      "privMB": 65.9,
+      "wsMB": 112.4
+    }
+  ],
+  "at": "2026-08-22T04:35:35.696Z"
+}

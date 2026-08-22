@@ -36,3 +36,13 @@ promo/
 .devhome/
 .dev-home/
 .bench-home/
+.bench-home-tauri/
+
+# 3.0 (Tauri/Rust) 산출물
+target/
+app/dist/
+src-tauri/gen/
+.poc-home-tauri/
+
+scripts/poc-rs/target/
+.poc-home-chats/

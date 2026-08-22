@@ -1,0 +1,27 @@
+[package]
+name = "agentcodegui"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "AgentCodeGUI 3.0 — Tauri 앱 셸 (창 레지스트리 + IPC 디스패처)"
+default-run = "agentcodegui"
+
+# 프로덕션 빌드 표식. tauri CLI(`tauri build`)가 이 피처를 켜고, 켜져 있어야 tauri가
+# **번들된 프론트엔드(app/dist)** 를 커스텀 프로토콜로 서빙한다. 켜지지 않으면 dev로
+# 간주해 tauri.conf.json의 devUrl(http://localhost:5273)을 로드한다 — 릴리즈 exe인데
+# vite dev 서버가 없으면 빈 오류 페이지가 뜬다(실측으로 밟은 함정. 벤치가 dev 서버를
+# 재는 사고로 이어진다). 그래서 빌드는 반드시 `npm run tauri:build`로,
+# 수동 cargo 빌드가 필요하면 `cargo build --release --features custom-protocol`.
+# default에 넣지 않는 이유: `tauri dev`는 dev 모드(=이 피처 꺼짐)여야 devUrl을 쓴다.
+[features]
+custom-protocol = ["tauri/custom-protocol"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["devtools"] }
+tauri-plugin-dialog = "2"
+serde = { workspace = true }
+serde_json = { workspace = true }
+ccg-store = { path = "../crates/ccg-store" }

@@ -3,7 +3,10 @@
 // "Auto-continue when the limit resets" 체크박스와 같은 동작을 우리 문법으로 옮긴 것.
 // 상태 머신(장전·발화·재검증)은 App.tsx가 소유하고, 여기는 부수효과 없는 판정만 둔다.
 // 검증: scripts/poc-limit-resume.mjs (실전 에러 문구 대본 + 창 조합 픽스처)
-import type { UsageInfo } from '../../../shared/protocol'
+// 3.0 이식: 2.6.2 원본은 상대 경로('../../../shared/protocol')였는데, app/으로 옮기면
+// 그 경로가 레포 밖을 가리킨다. 타입 전용 import라 번들은 통과하지만 타입 검사가 깨진다
+// → 앱 전체가 쓰는 별칭으로 통일. (docs/renderer-divergence.md에 기록)
+import type { UsageInfo } from '@shared/protocol'
 
 export interface LimitHit {
   hit: boolean

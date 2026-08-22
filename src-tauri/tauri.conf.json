@@ -1,0 +1,23 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "AgentCodeGUI3",
+  "version": "3.0.0-beta.1",
+  "identifier": "com.agentcodegui.app",
+  "build": {
+    "frontendDist": "../app/dist",
+    "devUrl": "http://localhost:5273",
+    "beforeDevCommand": "npm run app:dev",
+    "beforeBuildCommand": "npm run app:build"
+  },
+  "app": {
+    "withGlobalTauri": false,
+    "windows": [],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": false,
+    "icon": ["../build/icon.ico"]
+  }
+}
