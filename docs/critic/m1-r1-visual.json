@@ -1,0 +1,15 @@
+{
+  "at": "2026-08-22T04:56:17.107Z",
+  "dismissTauri": "none",
+  "dismissElectron": "none",
+  "tauriDom": {
+    "nodes": 1226,
+    "text": "AgentCodeGUI 새 채팅 Ctrl+N 추가 채팅 Ctrl+Shift+N 프롬프트 일반 채팅 벤치 긴 스레드 1시간 멀티 채팅 채팅이 없어요 추가 채팅 채팅이 없어요 B Bench 벤치 긴 스레드 C:\\Code\\AgentCodeGUI 100% Read src/mod99/cache.ts 412줄 Bash npm test -- cache99 0.8s · 4줄 Search invalidate\\(rev 7건 구간 99 자동 저장 완료 오후 3:00 Read src/mod100/cache.ts 412줄 Bash npm test -- cache100 0.8s · 4줄 Search invalidate\\(rev 3건 Read src/mod101/cache.ts 412줄 Bash npm test -- cache101 "
+  },
+  "electronDom": {
+    "nodes": 1225,
+    "text": "AgentCodeGUI 새 채팅 Ctrl+N 추가 채팅 Ctrl+Shift+N 프롬프트 일반 채팅 벤치 긴 스레드 1시간 멀티 채팅 채팅이 없어요 추가 채팅 채팅이 없어요 B Bench 벤치 긴 스레드 C:\\Code\\AgentCodeGUI 100% Read src/mod99/cache.ts 412줄 Bash npm test -- cache99 0.8s · 4줄 Search invalidate\\(rev 7건 구간 99 자동 저장 완료 오후 3:00 Read src/mod100/cache.ts 412줄 Bash npm test -- cache100 0.8s · 4줄 Search invalidate\\(rev 3건 Read src/mod101/cache.ts 412줄 Bash npm test -- cache101 "
+  },
+  "acctTauri": "ok",
+  "acctElectron": "ok"
+}

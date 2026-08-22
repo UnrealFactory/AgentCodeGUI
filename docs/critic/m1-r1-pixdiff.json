@@ -1,0 +1,54 @@
+{
+  "at": "2026-08-22T04:59:55.746Z",
+  "cases": {
+    "main": {
+      "w": 1224,
+      "h": 800,
+      "total": 979200,
+      "diffPx": 3158,
+      "pct": 0.323,
+      "maxChannel": 85,
+      "meanDiffOfChanged": 13.97
+    },
+    "settings": {
+      "w": 1224,
+      "h": 800,
+      "total": 979200,
+      "diffPx": 1790,
+      "pct": 0.183,
+      "maxChannel": 9,
+      "meanDiffOfChanged": 1.45
+    },
+    "account": {
+      "w": 1224,
+      "h": 800,
+      "total": 979200,
+      "diffPx": 1780,
+      "pct": 0.182,
+      "maxChannel": 9,
+      "meanDiffOfChanged": 1.45
+    },
+    "engine": {
+      "w": 1224,
+      "h": 800,
+      "total": 979200,
+      "diffPx": 5028,
+      "pct": 0.513,
+      "maxChannel": 211,
+      "meanDiffOfChanged": 31.58
+    },
+    "display": {
+      "w": 1224,
+      "h": 800,
+      "total": 979200,
+      "diffPx": 0,
+      "pct": 0,
+      "maxChannel": 0,
+      "meanDiffOfChanged": 0
+    }
+  },
+  "whatsnew": {
+    "tauri": "closed",
+    "electron": "absent"
+  }
+}

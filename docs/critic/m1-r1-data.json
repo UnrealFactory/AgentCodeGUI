@@ -1,0 +1,621 @@
+{
+  "at": "2026-08-22T04:53:14.869Z",
+  "tauri": {
+    "strayPackageJsonBefore": true,
+    "strayPackageJsonRecreated": false,
+    "win": {
+      "hwnd": 6096968,
+      "WS_MINIMIZEBOX": true,
+      "rect": {
+        "l": 1280,
+        "t": 60,
+        "b": 890,
+        "r": 2520
+      },
+      "maximized": false,
+      "WS_THICKFRAME": true,
+      "title": "AgentCodeGUI3",
+      "found": true,
+      "style": 349110272,
+      "client": {
+        "h": 821,
+        "w": 1224
+      },
+      "exstyle": 262416,
+      "minimized": false,
+      "WS_CAPTION": true,
+      "WS_MAXIMIZEBOX": true
+    },
+    "dom": {
+      "title": "AgentCodeGUI",
+      "href": "http://tauri.localhost/",
+      "rootKids": 1,
+      "nodes": 1320,
+      "win": true,
+      "sbTop": true,
+      "winCtl": 3,
+      "bodyBg": "rgba(21, 21, 21, 0.7)",
+      "bodyFont": "\"Wanted Sans Variable\", \"Wanted Sans\", system-ui, -apple-system, sans-serif",
+      "htmlBg": "rgba(0, 0, 0, 0)",
+      "dragRegion": "drag",
+      "noDragRegion": "no-drag",
+      "chatItems": 1,
+      "modals": 0,
+      "overlayText": null,
+      "classes": [
+        "win"
+      ],
+      "dpr": 1,
+      "vw": 1224,
+      "vh": 821
+    },
+    "surface": {
+      "has": true,
+      "missing": [],
+      "notFn": [],
+      "extra": [],
+      "tauriInternals": true,
+      "chrome": {
+        "mode": "computed",
+        "dragSel": 0,
+        "noDragSel": 0,
+        "seen": 0,
+        "drags": 0
+      }
+    },
+    "calls": [
+      {
+        "name": "getUsage",
+        "ok": true,
+        "ms": 2,
+        "v": "{\"fiveHour\":null,\"weekly\":null,\"weeklyFable\":null,\"extraCredit\":null}"
+      },
+      {
+        "name": "sessionWindows.list",
+        "ok": true,
+        "ms": 1,
+        "v": "[]"
+      },
+      {
+        "name": "git.status",
+        "ok": true,
+        "ms": 1,
+        "v": "{\"repo\":false,\"root\":\"\",\"branch\":\"\",\"detached\":false,\"ahead\":0,\"behind\":0,\"upstream\":null,\"hasRemote\":false,\"files\":[]}"
+      },
+      {
+        "name": "lsp.status",
+        "ok": true,
+        "ms": 1,
+        "v": "\"unsupported\""
+      },
+      {
+        "name": "talk.getState",
+        "ok": true,
+        "ms": 1,
+        "v": "null"
+      },
+      {
+        "name": "multi.getState",
+        "ok": true,
+        "ms": 1,
+        "v": "null"
+      },
+      {
+        "name": "skill.list",
+        "ok": true,
+        "ms": 1,
+        "v": "[]"
+      },
+      {
+        "name": "mcp.list",
+        "ok": true,
+        "ms": 1,
+        "v": "[]"
+      },
+      {
+        "name": "listDir",
+        "ok": true,
+        "ms": 1,
+        "v": "[]"
+      },
+      {
+        "name": "listFiles",
+        "ok": true,
+        "ms": 1,
+        "v": "[]"
+      },
+      {
+        "name": "readFile",
+        "ok": true,
+        "ms": 1,
+        "v": "{\"path\":\"package.json\",\"content\":null,\"truncated\":false,\"error\":\"unimplemented\"}"
+      },
+      {
+        "name": "app.getVersion",
+        "ok": true,
+        "ms": 1,
+        "v": "\"3.0.0-beta.1\""
+      },
+      {
+        "name": "app.getUpdateStatus",
+        "ok": true,
+        "ms": 1,
+        "v": "{\"phase\":\"idle\",\"version\":null,\"percent\":0,\"log\":[],\"error\":null}"
+      },
+      {
+        "name": "engine.state",
+        "ok": true,
+        "ms": 1,
+        "v": "{\"package\":\"@anthropic-ai/claude-agent-sdk\",\"bundled\":\"unknown\",\"active\":\"0.3.239\",\"installed\":[\"0.3.239\",\"0.3.238\"]}"
+      },
+      {
+        "name": "engine.listAvailable",
+        "ok": true,
+        "ms": 1,
+        "v": "{\"latest\":null,\"versions\":[]}"
+      },
+      {
+        "name": "codexEngine.state",
+        "ok": true,
+        "ms": 1,
+        "v": "{\"package\":\"@openai/codex\",\"bundled\":\"unknown\",\"active\":null,\"installed\":[]}"
+      },
+      {
+        "name": "codexModels",
+        "ok": true,
+        "ms": 1,
+        "v": "[]"
+      },
+      {
+        "name": "auth.listAccounts",
+        "ok": true,
+        "ms": 1,
+        "v": "[{\"email\":\"lmg56633@gmail.com\",\"subscriptionType\":\"max\",\"isDefault\":false},{\"email\":\"junelius@naver.com\",\"subscriptionType\":\"max\",\"isDefault\":false},{\"email\":\"l"
+      },
+      {
+        "name": "codexAuth.listAccounts",
+        "ok": true,
+        "ms": 1,
+        "v": "[]"
+      },
+      {
+        "name": "apiConfig.get",
+        "ok": true,
+        "ms": 1,
+        "v": "{\"hasKey\":false,\"keyTail\":null,\"budgetUsd\":null,\"spentUsd\":0,\"hasOpenaiKey\":false,\"openaiKeyTail\":null}"
+      },
+      {
+        "name": "getUiPrefs",
+        "ok": true,
+        "ms": 1,
+        "v": "{\"workspace.mode\":\"single\",\"explorer.swap\":false,\"chat.zoom\":1,\"sidebar.autohide\":false,\"whatsnew.seenVersion\":\"2.6.2\",\"ui.lang\":\"ko\"}"
+      },
+      {
+        "name": "getProfile",
+        "ok": true,
+        "ms": 1,
+        "v": "{\"nickname\":\"Bench\",\"color\":\"#0EA5E9\"}"
+      },
+      {
+        "name": "getChats",
+        "ok": true,
+        "ms": 5,
+        "v": "{\"version\":1,\"chats\":[{\"id\":\"fix-long-thread\",\"title\":\"벤치 긴 스레드\",\"custom\":true,\"manualCwd\":\"C:\\\\Code\\\\AgentCodeGUI\",\"picker\":{\"model\":\"haiku\",\"effort\":\"minimal\""
+      },
+      {
+        "name": "dirExists",
+        "ok": true,
+        "ms": 1,
+        "v": "true"
+      },
+      {
+        "name": "engineAutoUpdate",
+        "ok": true,
+        "ms": 1,
+        "v": "false"
+      },
+      {
+        "name": "engineUpdate.status",
+        "ok": true,
+        "ms": 1,
+        "v": "{\"active\":false,\"items\":[],\"cleanup\":\"pending\",\"freedBytes\":0,\"done\":false}"
+      },
+      {
+        "name": "multi.panelStates",
+        "ok": true,
+        "ms": 1,
+        "v": "{\"open\":[],\"leftovers\":[]}"
+      },
+      {
+        "name": "session.hydrate",
+        "ok": true,
+        "ms": 1,
+        "v": "null"
+      },
+      {
+        "name": "lsp.servers",
+        "ok": true,
+        "ms": 1,
+        "v": "[]"
+      },
+      {
+        "name": "lsp.cachedTokens",
+        "ok": true,
+        "ms": 1,
+        "v": "null"
+      },
+      {
+        "name": "git.repos",
+        "ok": true,
+        "ms": 1,
+        "v": "[]"
+      },
+      {
+        "name": "openSessionWindow",
+        "ok": true,
+        "ms": 1,
+        "v": "undefined"
+      },
+      {
+        "name": "btwOpen",
+        "ok": true,
+        "ms": 1,
+        "v": "undefined"
+      },
+      {
+        "name": "multi.openPanelWindow",
+        "ok": true,
+        "ms": 1,
+        "v": "undefined"
+      },
+      {
+        "name": "notify.event",
+        "ok": true,
+        "ms": 1,
+        "v": "undefined"
+      },
+      {
+        "name": "saveAttachmentData",
+        "ok": false,
+        "ms": 1,
+        "err": "saveAttachmentData: unimplemented"
+      },
+      {
+        "name": "pathForFile",
+        "ok": true,
+        "ms": 0,
+        "v": "\"\""
+      }
+    ],
+    "winRoundTrip": {
+      "before": {
+        "maximized": false,
+        "rect": {
+          "l": 1280,
+          "t": 60,
+          "b": 890,
+          "r": 2520
+        },
+        "client": {
+          "h": 821,
+          "w": 1224
+        }
+      },
+      "toggleMaximizeReturned": true,
+      "afterMaximize": {
+        "osMaximized": true,
+        "rect": {
+          "l": -8,
+          "t": -8,
+          "b": 1400,
+          "r": 2568
+        },
+        "client": {
+          "h": 1392,
+          "w": 2560
+        }
+      },
+      "isMaximizedAfterMax": true,
+      "toggleBackReturned": false,
+      "afterRestore": {
+        "osMaximized": false,
+        "rect": {
+          "l": 1280,
+          "t": 60,
+          "b": 890,
+          "r": 2520
+        }
+      },
+      "isMaximizedAfterRestore": false,
+      "afterMinimize": {
+        "osMinimized": true
+      },
+      "winStateEvents": [
+        {
+          "maximized": true
+        },
+        {
+          "maximized": false
+        }
+      ]
+    },
+    "uiDrive": [
+      {
+        "step": "find-settings",
+        "found": true,
+        "cls": "sb-foot has-tip",
+        "before": 0
+      },
+      {
+        "step": "after-settings",
+        "modals": 0,
+        "tabs": [
+          "Profile",
+          "Account",
+          "Engine",
+          "API",
+          "MCP",
+          "Skill",
+          "Display",
+          "Language",
+          "Code",
+          "Explorer",
+          "Gestures"
+        ],
+        "text": "AgentCodeGUI 새 채팅 Ctrl+N 추가 채팅 Ctrl+Shift+N 프롬프트 일반 채팅 벤치 긴 스레드 59분 멀티 채팅 채팅이 없어요 추가 채팅 채팅이 없어요 B Bench 벤치 긴 스레드 C:\\Code\\AgentCodeGUI 100% Read src/mod99/cache.ts 412줄 Bash npm test -- cache99 0.8s · 4줄 Search invalidate\\(rev 7건 구간 99 자동 저장 완료 오후 3:00 Read src/mod100/cache.ts 412줄 Bash npm test -- c"
+      }
+    ],
+    "afterEsc": 0,
+    "newChat": [
+      {
+        "step": "find-new",
+        "found": true,
+        "before": 0
+      },
+      {
+        "step": "after-new",
+        "modals": 0,
+        "text": "AgentCodeGUI 새 채팅 Ctrl+N 추가 채팅 Ctrl+Shift+N 프롬프트 일반 채팅 벤치 긴 스레드 59분 멀티 채팅 채팅이 없어요 추가 채팅 채팅이 없어요 B Bench 벤치 긴 스레드 C:\\Code\\AgentCodeGUI 100% Read src/mod99/cache.ts 412줄 Bash npm test -- cache99 0.8s · 4줄 Search invalidate"
+      }
+    ],
+    "afterEsc2": 0,
+    "console": [
+      {
+        "kind": "console",
+        "type": "warning",
+        "text": "[shim] api-config:get — 백엔드 미구현 채널 (3.0 M1: 안전값 반환)"
+      },
+      {
+        "kind": "console",
+        "type": "warning",
+        "text": "[shim] talk:get — 백엔드 미구현 채널 (3.0 M1: 안전값 반환)"
+      },
+      {
+        "kind": "console",
+        "type": "warning",
+        "text": "[shim] ma:get — 백엔드 미구현 채널 (3.0 M1: 안전값 반환)"
+      },
+      {
+        "kind": "console",
+        "type": "warning",
+        "text": "[shim] session-wins:list — 백엔드 미구현 채널 (3.0 M1: 안전값 반환)"
+      },
+      {
+        "kind": "console",
+        "type": "warning",
+        "text": "[shim] usage:get — 백엔드 미구현 채널 (3.0 M1: 안전값 반환)"
+      },
+      {
+        "kind": "console",
+        "type": "warning",
+        "text": "[shim] engine:list-available — 백엔드 미구현 채널 (3.0 M1: 안전값 반환)"
+      },
+      {
+        "kind": "console",
+        "type": "warning",
+        "text": "[shim] lsp:prewarm — 백엔드 미구현 채널 (3.0 M1: 안전값 반환)"
+      },
+      {
+        "kind": "console",
+        "type": "warning",
+        "text": "[shim] ma:save — 백엔드 미구현 채널 (3.0 M1: 안전값 반환)"
+      },
+      {
+        "kind": "console",
+        "type": "warning",
+        "text": "[shim] git:status — 백엔드 미구현 채널 (3.0 M1: 안전값 반환)"
+      },
+      {
+        "kind": "console",
+        "type": "warning",
+        "text": "[shim] lsp:status — 백엔드 미구현 채널 (3.0 M1: 안전값 반환)"
+      },
+      {
+        "kind": "console",
+        "type": "warning",
+        "text": "[shim] skill:list — 백엔드 미구현 채널 (3.0 M1: 안전값 반환)"
+      },
+      {
+        "kind": "console",
+        "type": "warning",
+        "text": "[shim] mcp:list — 백엔드 미구현 채널 (3.0 M1: 안전값 반환)"
+      },
+      {
+        "kind": "console",
+        "type": "warning",
+        "text": "[shim] fs:list-dir — 백엔드 미구현 채널 (3.0 M1: 안전값 반환)"
+      },
+      {
+        "kind": "console",
+        "type": "warning",
+        "text": "[shim] fs:list-files — 백엔드 미구현 채널 (3.0 M1: 안전값 반환)"
+      },
+      {
+        "kind": "console",
+        "type": "warning",
+        "text": "[shim] fs:read-file — 백엔드 미구현 채널 (3.0 M1: 안전값 반환)"
+      },
+      {
+        "kind": "console",
+        "type": "warning",
+        "text": "[shim] codex:models — 백엔드 미구현 채널 (3.0 M1: 안전값 반환)"
+      },
+      {
+        "kind": "console",
+        "type": "warning",
+        "text": "[shim] ma:panel-states — 백엔드 미구현 채널 (3.0 M1: 안전값 반환)"
+      },
+      {
+        "kind": "console",
+        "type": "warning",
+        "text": "[shim] session-wins:hydrate — 백엔드 미구현 채널 (3.0 M1: 안전값 반환)"
+      },
+      {
+        "kind": "console",
+        "type": "warning",
+        "text": "[shim] lsp:servers — 백엔드 미구현 채널 (3.0 M1: 안전값 반환)"
+      },
+      {
+        "kind": "console",
+        "type": "warning",
+        "text": "[shim] lsp:cached-tokens — 백엔드 미구현 채널 (3.0 M1: 안전값 반환)"
+      },
+      {
+        "kind": "console",
+        "type": "warning",
+        "text": "[shim] git:repos — 백엔드 미구현 채널 (3.0 M1: 안전값 반환)"
+      },
+      {
+        "kind": "console",
+        "type": "warning",
+        "text": "[shim] win:open-session — 백엔드 미구현 채널 (3.0 M1: 안전값 반환)"
+      },
+      {
+        "kind": "console",
+        "type": "warning",
+        "text": "[shim] btw:open — 백엔드 미구현 채널 (3.0 M1: 안전값 반환)"
+      },
+      {
+        "kind": "console",
+        "type": "warning",
+        "text": "[shim] ma:panel-open — 백엔드 미구현 채널 (3.0 M1: 안전값 반환)"
+      },
+      {
+        "kind": "console",
+        "type": "warning",
+        "text": "[shim] notify:event — 백엔드 미구현 채널 (3.0 M1: 안전값 반환)"
+      },
+      {
+        "kind": "console",
+        "type": "warning",
+        "text": "[shim] attachment:save-data — 백엔드 미구현 채널 (3.0 M1: 안전값 반환)"
+      },
+      {
+        "kind": "console",
+        "type": "warning",
+        "text": "[shim] pathForFile — Tauri에는 File→OS 경로 동기 해석이 없다 (3.0 M1: 안전값 반환)"
+      }
+    ],
+    "consoleErrors": 0,
+    "unimplementedWarns": 26
+  },
+  "electron": {
+    "win": {
+      "hwnd": 7801480,
+      "WS_MINIMIZEBOX": true,
+      "rect": {
+        "l": 20,
+        "t": 60,
+        "b": 890,
+        "r": 1260
+      },
+      "maximized": false,
+      "WS_THICKFRAME": true,
+      "title": "AgentCodeGUI",
+      "found": true,
+      "style": 348585984,
+      "client": {
+        "h": 822,
+        "w": 1224
+      },
+      "exstyle": 2097408,
+      "minimized": false,
+      "WS_CAPTION": true,
+      "WS_MAXIMIZEBOX": true
+    },
+    "dom": {
+      "title": "AgentCodeGUI",
+      "href": "file:///C:/Code/AgentCodeGUI/out/renderer/index.html",
+      "rootKids": 1,
+      "nodes": 1225,
+      "win": true,
+      "sbTop": true,
+      "winCtl": 3,
+      "bodyBg": "rgba(21, 21, 21, 0.7)",
+      "bodyFont": "\"Wanted Sans Variable\", \"Wanted Sans\", system-ui, -apple-system, sans-serif",
+      "htmlBg": "rgba(0, 0, 0, 0)",
+      "dragRegion": "drag",
+      "noDragRegion": "no-drag",
+      "chatItems": 1,
+      "modals": 0,
+      "overlayText": null,
+      "classes": [
+        "win"
+      ],
+      "dpr": 1,
+      "vw": 1224,
+      "vh": 822
+    },
+    "surface": {
+      "has": true,
+      "missing": [],
+      "notFn": [],
+      "extra": [],
+      "tauriInternals": false,
+      "chrome": null
+    },
+    "uiDrive": [
+      {
+        "step": "find-settings",
+        "found": true,
+        "cls": "sb-foot has-tip",
+        "before": 0
+      },
+      {
+        "step": "after-settings",
+        "modals": 0,
+        "tabs": [
+          "Profile",
+          "Account",
+          "Engine",
+          "API",
+          "MCP",
+          "Skill",
+          "Display",
+          "Language",
+          "Code",
+          "Explorer",
+          "Gestures"
+        ],
+        "text": "AgentCodeGUI 새 채팅 Ctrl+N 추가 채팅 Ctrl+Shift+N 프롬프트 일반 채팅 벤치 긴 스레드 59분 멀티 채팅 채팅이 없어요 추가 채팅 채팅이 없어요 B Bench 벤치 긴 스레드 C:\\Code\\AgentCodeGUI 100% Read src/mod99/cache.ts 412줄 Bash npm test -- cache99 0.8s · 4줄 Search invalidate\\(rev 7건 구간 99 자동 저장 완료 오후 3:00 Read src/mod100/cache.ts 412줄 Bash npm test -- c"
+      }
+    ],
+    "afterEsc": 0,
+    "newChat": [
+      {
+        "step": "find-new",
+        "found": true,
+        "before": 0
+      },
+      {
+        "step": "after-new",
+        "modals": 0,
+        "text": "AgentCodeGUI 새 채팅 Ctrl+N 추가 채팅 Ctrl+Shift+N 프롬프트 일반 채팅 벤치 긴 스레드 59분 멀티 채팅 채팅이 없어요 추가 채팅 채팅이 없어요 B Bench 벤치 긴 스레드 C:\\Code\\AgentCodeGUI 100% Read src/mod99/cache.ts 412줄 Bash npm test -- cache99 0.8s · 4줄 Search invalidate"
+      }
+    ],
+    "afterEsc2": 0,
+    "console": [],
+    "consoleErrors": 0
+  },
+  "expectedApiCount": 183
+}

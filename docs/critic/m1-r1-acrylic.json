@@ -1,0 +1,59 @@
+{
+  "at": "2026-08-22T04:57:43.184Z",
+  "dwm": {
+    "tauri": {
+      "found": true,
+      "captionColor": 0,
+      "backdrop": 3,
+      "hrCaption": -2147024809,
+      "hrBogus": -2147024809,
+      "hr": 0
+    },
+    "electron": {
+      "found": true,
+      "captionColor": 0,
+      "backdrop": 3,
+      "hrCaption": -2147024809,
+      "hrBogus": -2147024809,
+      "hr": 0
+    }
+  },
+  "pixel": {
+    "electronDark": {
+      "g": 32.4,
+      "r": 32.2,
+      "b": 33.2,
+      "n": 7500
+    },
+    "electronBright": {
+      "g": 32.4,
+      "r": 32.2,
+      "b": 33.2,
+      "n": 7500
+    },
+    "tauriDark": {
+      "g": 34.2,
+      "r": 33.9,
+      "b": 34.9,
+      "n": 7500
+    },
+    "tauriBright": {
+      "g": 34.2,
+      "r": 33.9,
+      "b": 34.9,
+      "n": 7500
+    }
+  },
+  "bleed": {
+    "electron": {
+      "dr": 0,
+      "dg": 0,
+      "db": 0
+    },
+    "tauri": {
+      "dr": 0,
+      "dg": 0,
+      "db": 0
+    }
+  }
+}

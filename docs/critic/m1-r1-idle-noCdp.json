@@ -1,0 +1,58 @@
+{
+  "at": "2026-08-22T05:01:26.090Z",
+  "bootSec": 12,
+  "settleSec": 60,
+  "apps": {
+    "tauri": {
+      "error": "root gone"
+    },
+    "electron": {
+      "totalPrivMB": 389.7,
+      "totalWsMB": 803.8,
+      "procs": [
+        {
+          "pid": 32124,
+          "name": "electron.exe",
+          "privMB": 78.5,
+          "wsMB": 137.6
+        },
+        {
+          "pid": 7696,
+          "name": "electron.exe",
+          "privMB": 11.6,
+          "wsMB": 82.1
+        },
+        {
+          "pid": 17968,
+          "name": "electron.exe",
+          "privMB": 108.9,
+          "wsMB": 146.6
+        },
+        {
+          "pid": 17304,
+          "name": "electron.exe",
+          "privMB": 14.4,
+          "wsMB": 88.8
+        },
+        {
+          "pid": 15532,
+          "name": "electron.exe",
+          "privMB": 73.7,
+          "wsMB": 143.4
+        },
+        {
+          "pid": 17416,
+          "name": "electron.exe",
+          "privMB": 60.7,
+          "wsMB": 96.4
+        },
+        {
+          "pid": 6872,
+          "name": "electron.exe",
+          "privMB": 41.9,
+          "wsMB": 108.9
+        }
+      ]
+    }
+  }
+}
