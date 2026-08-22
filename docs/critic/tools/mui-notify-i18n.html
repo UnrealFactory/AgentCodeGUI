@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>M-UI R1 — 알림 i18n 폭 실측 (ui-notify.md §7-4)</title>
+<link rel="stylesheet" href="../../design/mockups/ui-notify.css" />
+<style>
+  .grid{max-width:1580px;margin:0 auto;display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start;}
+  .col h3{font-size:12px;color:var(--text-2);margin:0 0 8px;font-weight:600;}
+  .w420 .thread{max-width:420px;}
+  .w760 .thread{max-width:760px;}
+  .meas{position:relative;}
+</style>
+</head>
+<body>
+<div class="mockmeta">
+  <h1>알림 i18n 폭 — 영문에서 몇 줄이 되나 <span class="tag">§7-4 열린 질문</span></h1>
+  <span class="sub">같은 band를 ko/en으로 두 폭(멀티 패널 420px · 스레드 하한 760px)에서 렌더해 높이를 잰다.
+  1줄 = 47px, 2줄 = 약 68px. 트레이(행동+시각)가 접히면 더 는다.</span>
+</div>
+
+<div class="grid">
+  <div class="col w420">
+    <h3>멀티 패널 폭 (420px)</h3>
+    <div class="pane" data-k="A">
+      <div class="ph"><span class="k">ko</span><span class="t">420px</span></div>
+      <div class="thread">
+        <div class="meas" data-m="ko-fallback"><div class="band t-notice">
+          <span class="g">⚠</span>
+          <div class="bd"><div class="tx"><span class="b">Fable 5</span>가 정책상 거부해 <span class="kw">Opus 5</span>로 전환했어요 — 이후 대화도 같은 모델로 갑니다.</div></div>
+          <div class="tray"><button class="act">되돌리기</button><span class="tm">14:32</span></div>
+        </div></div>
+        <div class="meas" data-m="ko-notice"><div class="band t-notice">
+          <span class="g">⚠</span>
+          <div class="bd"><div class="tx"><span class="b">API 크레딧</span>으로 과금 중이에요 — 구독 한도는 줄지 않습니다.</div></div>
+          <div class="tray"><button class="act">과금 끄기</button><span class="tm">09:14</span></div>
+        </div></div>
+        <div class="meas" data-m="ko-rule"><div class="rule t-neutral split">
+          <span class="hair l"></span><span class="g"><span class="ch">⌘</span></span><span class="lb">여기까지 요약됨</span>
+          <span class="num">152k → 38k · 컨텍스트 95% → 24%</span><span class="hair"></span><span class="tm">09:52</span>
+        </div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col w420">
+    <h3>멀티 패널 폭 (420px) — 영문</h3>
+    <div class="pane" data-k="B">
+      <div class="ph"><span class="k">en</span><span class="t">420px</span></div>
+      <div class="thread">
+        <div class="meas" data-m="en-fallback"><div class="band t-notice">
+          <span class="g">⚠</span>
+          <div class="bd"><div class="tx"><span class="b">Fable 5</span> refused on policy — switched to <span class="kw">Opus 5</span>. The rest of this chat uses the same model.</div></div>
+          <div class="tray"><button class="act">Revert</button><span class="tm">14:32</span></div>
+        </div></div>
+        <div class="meas" data-m="en-notice"><div class="band t-notice">
+          <span class="g">⚠</span>
+          <div class="bd"><div class="tx">Billing to <span class="b">API credits</span> — your subscription limit is untouched.</div></div>
+          <div class="tray"><button class="act">Turn off API</button><span class="tm">09:14</span></div>
+        </div></div>
+        <div class="meas" data-m="en-rule"><div class="rule t-neutral split">
+          <span class="hair l"></span><span class="g"><span class="ch">⌘</span></span><span class="lb">Summarized up to here</span>
+          <span class="num">152k → 38k · context 95% → 24%</span><span class="hair"></span><span class="tm">09:52</span>
+        </div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col w760">
+    <h3>스레드 하한 (760px) — 한국어</h3>
+    <div class="pane" data-k="C">
+      <div class="ph"><span class="k">ko</span><span class="t">760px</span></div>
+      <div class="thread">
+        <div class="meas" data-m="ko760-fallback"><div class="band t-notice">
+          <span class="g">⚠</span>
+          <div class="bd"><div class="tx"><span class="b">Fable 5</span>가 정책상 거부해 <span class="kw">Opus 5</span>로 전환했어요 — 이후 대화도 같은 모델로 갑니다.</div></div>
+          <div class="tray"><button class="act">되돌리기</button><span class="tm">14:32</span></div>
+        </div></div>
+        <div class="meas" data-m="ko760-pending"><div class="band t-notice">
+          <span class="g">⚠</span>
+          <div class="bd"><div class="tx"><span class="b">Fable 5</span>가 정책상 거부해 <span class="kw">Opus 5</span>로 전환했어요 — 예약해 둔 <span class="mono">effort=high</span>는 <span class="b">다음 턴</span>에 함께 적용됩니다.</div></div>
+          <div class="tray"><button class="act">되돌리기</button><span class="tm">14:41</span></div>
+        </div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col w760">
+    <h3>스레드 하한 (760px) — 영문</h3>
+    <div class="pane" data-k="D">
+      <div class="ph"><span class="k">en</span><span class="t">760px</span></div>
+      <div class="thread">
+        <div class="meas" data-m="en760-fallback"><div class="band t-notice">
+          <span class="g">⚠</span>
+          <div class="bd"><div class="tx"><span class="b">Fable 5</span> refused on policy — switched to <span class="kw">Opus 5</span>. The rest of this chat uses the same model.</div></div>
+          <div class="tray"><button class="act">Revert</button><span class="tm">14:32</span></div>
+        </div></div>
+        <div class="meas" data-m="en760-pending"><div class="band t-notice">
+          <span class="g">⚠</span>
+          <div class="bd"><div class="tx"><span class="b">Fable 5</span> refused on policy — switched to <span class="kw">Opus 5</span>. Your queued <span class="mono">effort=high</span> will be applied together on the <span class="b">next turn</span>.</div></div>
+          <div class="tray"><button class="act">Revert</button><span class="tm">14:41</span></div>
+        </div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="grid" style="margin-top:18px">
+  <div class="col w420">
+    <h3>420px — A(2.6.2 현행 notice-row)</h3>
+    <div class="pane" data-k="E">
+      <div class="ph"><span class="k">A</span><span class="t">420px · 현행</span></div>
+      <div class="thread">
+        <div class="meas" data-m="e-fallback"><div class="o-notice">
+          <span class="ic">⚠</span>
+          <div class="tx">정책상 응답할 수 없는 요청이라 Opus 5 모델로 전환해 계속해요. 이후 대화도 Opus 5 모델로 진행됩니다.</div>
+          <span class="tm">14:32</span>
+        </div></div>
+        <div class="meas" data-m="e-notice"><div class="o-notice">
+          <span class="ic">⚠</span>
+          <div class="tx">지금은 <span class="kw">API</span>로 과금 중이에요. 구독 한도가 아니라 크레딧이 차감됩니다. 하단 <span class="kw">과금</span> 토글에서 바꿀 수 있어요.</div>
+          <span class="tm">09:14</span>
+        </div></div>
+        <div class="meas" data-m="e-compact"><div class="o-card">
+          <span class="ic">⌘</span>
+          <div class="bd">
+            <div class="hd"><span class="bg">/compact</span><span class="ti">컨텍스트가 가득 차…</span><span class="tm">09:52</span></div>
+            <div class="sb">이전 대화를 핵심 요약으로 압축하고 이어서 진행합니다.</div>
+            <div class="st">컨텍스트 95% → 24% 로 절약 · 토큰 114k 회수</div>
+          </div>
+        </div></div>
+      </div>
+    </div>
+  </div>
+  <div class="col w420">
+    <h3>420px — B(3.0 제안) 같은 3건</h3>
+    <div class="pane" data-k="F">
+      <div class="ph"><span class="k">B</span><span class="t">420px · 제안</span></div>
+      <div class="thread">
+        <div class="meas" data-m="f-fallback"><div class="band t-notice">
+          <span class="g">⚠</span>
+          <div class="bd"><div class="tx"><span class="b">Fable 5</span>가 정책상 거부해 <span class="kw">Opus 5</span>로 전환했어요 — 이후 대화도 같은 모델로 갑니다.</div></div>
+          <div class="tray"><button class="act">되돌리기</button><span class="tm">14:32</span></div>
+        </div></div>
+        <div class="meas" data-m="f-notice"><div class="band t-notice">
+          <span class="g">⚠</span>
+          <div class="bd"><div class="tx"><span class="b">API 크레딧</span>으로 과금 중이에요 — 구독 한도는 줄지 않습니다.</div></div>
+          <div class="tray"><button class="act">과금 끄기</button><span class="tm">09:14</span></div>
+        </div></div>
+        <div class="meas" data-m="f-compact"><div class="rule t-neutral split">
+          <span class="hair l"></span><span class="g"><span class="ch">⌘</span></span><span class="lb">여기까지 요약됨</span>
+          <span class="num">152k → 38k · 95% → 24%</span><span class="hair"></span><span class="tm">09:52</span>
+        </div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="tally">
+  <div class="box"><h3>420px 열 — ko 합계</h3><p><span class="n" data-sum="A">—</span></p></div>
+  <div class="box"><h3>420px 열 — en 합계</h3><p><span class="n" data-sum="B">—</span> · 판정: <b data-verdict>—</b></p></div>
+</div>
+
+<script src="../../design/mockups/ui-notify.js"></script>
+</body>
+</html>

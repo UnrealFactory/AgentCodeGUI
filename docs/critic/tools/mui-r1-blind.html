@@ -1,0 +1,536 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8" />
+<title>M-UI R1 — 알림 블라인드 배치 비교</title>
+<link rel="stylesheet" href="../../design/mockups/ui-notify.css" />
+<style>
+  body{padding:18px 22px;}
+  .top{max-width:1580px;margin:0 auto 16px;}
+  .top h1{font-size:15px;font-weight:700;color:var(--text);margin-bottom:6px;}
+  .top p{font-size:11.5px;color:var(--text-3);line-height:1.7;max-width:1100px;}
+  .row{max-width:1580px;margin:0 auto 26px;}
+  .row h2{font-size:12px;font-weight:600;color:var(--text-2);margin:0 0 8px;display:flex;align-items:center;gap:8px;}
+  .row h2 .n{font-family:var(--font-mono);font-size:10px;color:var(--text-4);border:1px solid var(--line);border-radius:5px;padding:1px 6px;}
+  .side{position:relative;}
+  .lbl{position:absolute;top:-1px;left:-1px;z-index:5;font-family:var(--font-mono);font-size:10px;
+       color:var(--text-3);background:rgba(0,0,0,.55);border:1px solid var(--line);border-radius:0 0 6px 0;padding:2px 7px;}
+  /* 자가 계측 태그는 블라인드에서 답을 알려 준다 — 가린다 */
+  .h-tag{display:none !important;}
+</style></head>
+<body>
+<div class="top">
+  <h1>알림 7종 — 블라인드 배치 비교 (좌 / 우)</h1>
+  <p>같은 사건을 두 문법으로 그린 판을 나란히 놓았다. <b>어느 쪽이 현행이고 어느 쪽이 제안인지 표시하지 않았고,
+  행마다 좌우를 무작위로 뒤집었다.</b> 판정 기준: ① 같은 정보가 다 있나 ② 눈이 먼저 무엇에 닿나
+  ③ 스레드를 끊는가 잇는가 ④ 여백이 정보를 밀어냈나. 정답 키는 <code>docs/critic/mui-r1-blind-key.json</code>.</p>
+</div>
+
+<section class="row">
+  <h2><span class="n">0</span> 7종이 한 스레드에</h2>
+  <div class="ab">
+    <div class="side"><div class="lbl">좌</div><div class="pane" data-k="B">
+    <div class="thread" data-m="all">
+      <div class="msg user"><div class="msg-main"><div class="content">ipc.rs를 기능별로 쪼개고 테스트까지 붙여줘</div></div></div>
+
+      <div class="band t-notice">
+        <span class="g">⚠</span>
+        <div class="bd"><div class="tx"><span class="b">API 크레딧</span>으로 과금 중이에요 — 구독 한도는 줄지 않습니다.</div></div>
+        <div class="tray"><button class="act">과금 끄기</button><span class="tm">09:14</span></div>
+      </div>
+
+      <div class="card bare">
+        <span class="tile">?</span>
+        <div class="bd">
+          <div class="qa">
+            <div>
+              <div class="q"><span class="qm">Q1</span><span>파일째 나눌까요, 한 파일 안에서 모듈로 나눌까요?</span></div>
+              <div class="a"><span class="ck">✓</span><span>파일째 나눈다</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="tray" style="display:flex;align-items:center;margin-top:1px"><span class="tm" style="font-size:11px;color:var(--text-4)">09:16</span></div>
+      </div>
+
+      <div class="toollog">
+        <div class="trow"><span class="ti">⌕</span><span class="tn">읽기</span><span class="ta">src-tauri/src/ipc.rs</span><span class="tr">612줄</span></div>
+        <div class="trow"><span class="ti">✎</span><span class="tn">쓰기</span><span class="ta">src-tauri/src/ipc/mod.rs</span><span class="tr">+184</span></div>
+        <div class="trow"><span class="ti">✎</span><span class="tn">쓰기</span><span class="ta">src-tauri/src/ipc/stores.rs</span><span class="tr">+201</span></div>
+      </div>
+
+      <div class="band t-notice">
+        <span class="g">⚠</span>
+        <div class="bd"><div class="tx"><span class="b">Fable 5</span>가 정책상 거부해 <span class="kw">Opus 5</span>로 전환했어요 — 이후 대화도 같은 모델로 갑니다.</div></div>
+        <div class="tray"><button class="act">되돌리기</button><span class="tm">09:31</span></div>
+      </div>
+
+      <div class="msg"><div class="msg-main"><div class="content">디스패처를 6개 파일로 나눴어요. 채널 상수는 <code>mod.rs</code>에 그대로 뒀습니다.</div></div></div>
+
+      <div class="rule t-danger"><span class="g"><span class="sq"></span></span><span class="lb">중단함</span><span class="num">42초 · 도구 3</span><span class="hair"></span><span class="tm">09:44</span></div>
+
+      <div class="msg user"><div class="msg-main"><div class="content">테스트는 나중에. 일단 빌드만</div></div></div>
+
+      <div class="rule t-neutral split"><span class="hair l"></span><span class="g"><span class="ch">⌘</span></span><span class="lb">여기까지 요약됨</span><span class="num">152k → 38k · 컨텍스트 95% → 24%</span><span class="hair"></span><span class="tm">09:52</span></div>
+
+      <div class="card failed">
+        <span class="tile">⛨</span>
+        <div class="bd">
+          <div class="hd"><span class="bg">/review</span><span class="ti">완료하지 못했어요</span><span class="tm">09:58</span></div>
+          <div class="sb">변경된 파일이 없어 검토할 대상이 없습니다.</div>
+        </div>
+      </div>
+
+      <div class="band t-danger">
+        <span class="g">✕</span>
+        <div class="bd">
+          <div class="tx"><span class="b">워크스페이스 매니페스트를 못 읽었어요</span> — <span class="mono">crates/ccg-engine</span>에 빌드 대상이 없습니다.</div>
+          <div class="raw">error: failed to load manifest for workspace member
+  `C:\Code\AgentCodeGUI\crates\ccg-engine`
+Caused by: no targets specified in the manifest</div>
+        </div>
+        <div class="tray"><button class="act ghost">복사</button><span class="tm">10:03</span></div>
+      </div>
+
+      <div class="worked">14분 8초 동안 작업함</div>
+    </div>
+  </div></div>
+    <div class="side"><div class="lbl">우</div><div class="pane" data-k="A">
+    <div class="thread" data-m="all">
+      <div class="msg user"><div class="msg-main"><div class="content">ipc.rs를 기능별로 쪼개고 테스트까지 붙여줘</div></div></div>
+
+      <div class="o-notice">
+        <span class="ic">⚠</span>
+        <div class="tx">지금은 <span class="kw">API</span>로 과금 중이에요. 구독 한도가 아니라 크레딧이 차감됩니다. 하단 <span class="kw">과금</span> 토글에서 바꿀 수 있어요.</div>
+        <span class="tm">09:14</span>
+      </div>
+
+      <div class="o-qa">
+        <div>
+          <div class="qq"><span class="qm">Q1</span><span>파일째 나눌까요, 한 파일 안에서 모듈로 나눌까요?</span></div>
+          <div class="qa2"><span class="ck">✓</span><span>파일째 나눈다</span></div>
+        </div>
+      </div>
+
+      <div class="toollog">
+        <div class="trow"><span class="ti">⌕</span><span class="tn">읽기</span><span class="ta">src-tauri/src/ipc.rs</span><span class="tr">612줄</span></div>
+        <div class="trow"><span class="ti">✎</span><span class="tn">쓰기</span><span class="ta">src-tauri/src/ipc/mod.rs</span><span class="tr">+184</span></div>
+        <div class="trow"><span class="ti">✎</span><span class="tn">쓰기</span><span class="ta">src-tauri/src/ipc/stores.rs</span><span class="tr">+201</span></div>
+      </div>
+
+      <div class="o-notice">
+        <span class="ic">⚠</span>
+        <div class="tx">정책상 응답할 수 없는 요청이라 Opus 5 모델로 전환해 계속해요. 이후 대화도 Opus 5 모델로 진행됩니다.</div>
+        <span class="tm">09:31</span>
+      </div>
+
+      <div class="msg"><div class="msg-main"><div class="content">디스패처를 6개 파일로 나눴어요. 채널 상수는 <code>mod.rs</code>에 그대로 뒀습니다.</div></div></div>
+
+      <div class="o-stop"><span class="sq"></span><span>중단함</span></div>
+
+      <div class="msg user"><div class="msg-main"><div class="content">테스트는 나중에. 일단 빌드만</div></div></div>
+
+      <div class="o-card">
+        <span class="ic">⌘</span>
+        <div class="bd">
+          <div class="hd"><span class="bg">/compact</span><span class="ti">컨텍스트가 가득 차 대화를 자동으로 요약했어요</span><span class="tm">09:52</span></div>
+          <div class="sb">이전 대화를 핵심 요약으로 압축하고 이어서 진행합니다.</div>
+          <div class="st">컨텍스트 95% → 24% 로 절약 · 토큰 114k 회수</div>
+        </div>
+      </div>
+
+      <div class="o-card failed">
+        <span class="ic">⛨</span>
+        <div class="bd">
+          <div class="hd"><span class="bg">/review</span><span class="ti">명령을 완료하지 못했어요</span><span class="tm">09:58</span></div>
+          <div class="sb">변경된 파일이 없어 검토할 대상이 없습니다.</div>
+        </div>
+      </div>
+
+      <div class="o-error">
+        <span class="ic">✕</span>
+        <div class="bd">
+          <div class="hd"><span class="ti">오류</span><span class="tm">10:03</span></div>
+          <div class="tx">error: failed to load manifest for workspace member `C:\Code\AgentCodeGUI\crates\ccg-engine`
+Caused by: no targets specified in the manifest</div>
+        </div>
+      </div>
+
+      <div class="worked">14분 8초 동안 작업함</div>
+    </div>
+  </div></div>
+  </div>
+</section>
+
+<section class="row">
+  <h2><span class="n">1</span> 모델 자동 전환</h2>
+  <div class="ab">
+    <div class="side"><div class="lbl">좌</div><div class="pane" data-k="A">
+    <div class="thread">
+      <div class="msg user"><div class="msg-main"><div class="content">이 함수가 왜 느린지 프로파일링해서 고쳐줘</div></div></div>
+      <div class="meas" data-m="banner">
+        <div class="o-notice">
+          <span class="ic">⚠</span>
+          <div class="tx">정책상 응답할 수 없는 요청이라 Opus 5 모델로 전환해 계속해요. 이후 대화도 Opus 5 모델로 진행됩니다.</div>
+          <span class="tm">14:32</span>
+        </div>
+      </div>
+      <div class="toollog">
+        <div class="trow"><span class="ti">⌕</span><span class="tn">읽기</span><span class="ta">src/main/claude/engine.ts:990-1010</span><span class="tr">21줄</span></div>
+        <div class="trow"><span class="ti">✎</span><span class="tn">편집</span><span class="ta">src/main/claude/engine.ts</span><span class="tr">+4 −1</span></div>
+      </div>
+      <div class="msg"><div class="msg-main"><div class="content">프로파일링해 보니 <b>capThread()</b>가 매 이벤트마다 배열 전체를 다시 만들고 있었어요. 슬라이스 한 번으로 줄였습니다.</div></div></div>
+      <div class="worked">18초 동안 작업함</div>
+    </div>
+  </div></div>
+    <div class="side"><div class="lbl">우</div><div class="pane" data-k="B">
+    <div class="thread">
+      <div class="msg user"><div class="msg-main"><div class="content">이 함수가 왜 느린지 프로파일링해서 고쳐줘</div></div></div>
+      <div class="meas" data-m="banner">
+        <div class="band t-notice">
+          <span class="g">⚠</span>
+          <div class="bd">
+            <div class="tx"><span class="b">Fable 5</span>가 정책상 거부해 <span class="kw">Opus 5</span>로 전환했어요 — 이후 대화도 같은 모델로 갑니다.</div>
+          </div>
+          <div class="tray">
+            <button class="act">되돌리기</button>
+            <span class="tm">14:32</span>
+          </div>
+        </div>
+      </div>
+      <div class="toollog">
+        <div class="trow"><span class="ti">⌕</span><span class="tn">읽기</span><span class="ta">src/main/claude/engine.ts:990-1010</span><span class="tr">21줄</span></div>
+        <div class="trow"><span class="ti">✎</span><span class="tn">편집</span><span class="ta">src/main/claude/engine.ts</span><span class="tr">+4 −1</span></div>
+      </div>
+      <div class="msg"><div class="msg-main"><div class="content">프로파일링해 보니 <b>capThread()</b>가 매 이벤트마다 배열 전체를 다시 만들고 있었어요. 슬라이스 한 번으로 줄였습니다.</div></div></div>
+      <div class="worked">18초 동안 작업함</div>
+    </div>
+  </div></div>
+  </div>
+</section>
+
+<section class="row">
+  <h2><span class="n">2</span> 안내 3건</h2>
+  <div class="ab">
+    <div class="side"><div class="lbl">좌</div><div class="pane" data-k="A">
+    <div class="thread">
+      <div class="meas" data-m="n1">
+        <div class="o-notice">
+          <span class="ic">⚠</span>
+          <div class="tx">지금은 <span class="kw">API</span>로 과금 중이에요. 구독 한도가 아니라 크레딧이 차감됩니다. 하단 <span class="kw">과금</span> 토글에서 바꿀 수 있어요.</div>
+          <span class="tm">09:14</span>
+        </div>
+      </div>
+      <div class="msg user"><div class="msg-main"><div class="content">crates/ccg-store 테스트 돌려줘</div></div></div>
+      <div class="meas" data-m="n2">
+        <div class="o-notice">
+          <span class="ic">⚠</span>
+          <div class="tx">5시간 한도의 82%를 썼어요. 남은 요청이 곧 제한될 수 있습니다.</div>
+          <span class="tm">09:41</span>
+        </div>
+      </div>
+      <div class="meas" data-m="n3">
+        <div class="o-notice">
+          <span class="ic">⚠</span>
+          <div class="tx">클로드 코드 CLI가 <span class="kw">2.1.4</span>로 업데이트됐어요. 다음 실행부터 새 버전이 쓰입니다.</div>
+          <span class="tm">09:42</span>
+        </div>
+      </div>
+    </div>
+  </div></div>
+    <div class="side"><div class="lbl">우</div><div class="pane" data-k="B">
+    <div class="thread">
+      <div class="meas" data-m="n1">
+        <div class="band t-notice">
+          <span class="g">⚠</span>
+          <div class="bd"><div class="tx"><span class="b">API 크레딧</span>으로 과금 중이에요 — 구독 한도는 줄지 않습니다.</div></div>
+          <div class="tray"><button class="act">과금 끄기</button><span class="tm">09:14</span></div>
+        </div>
+      </div>
+      <div class="msg user"><div class="msg-main"><div class="content">crates/ccg-store 테스트 돌려줘</div></div></div>
+      <div class="meas" data-m="n2">
+        <div class="band t-notice">
+          <span class="g">⚠</span>
+          <div class="bd"><div class="tx">5시간 한도의 <span class="kw">82%</span>를 썼어요 — <span class="mono">18:40</span>에 초기화됩니다.</div></div>
+          <div class="tray"><span class="tm">09:41</span></div>
+        </div>
+      </div>
+      <div class="meas" data-m="n3">
+        <div class="band t-neutral">
+          <span class="g">↑</span>
+          <div class="bd"><div class="tx">클로드 코드 CLI가 <span class="b">2.1.4</span>로 업데이트됐어요 — 다음 실행부터 적용됩니다.</div></div>
+          <div class="tray"><span class="tm">09:42</span></div>
+        </div>
+      </div>
+    </div>
+  </div></div>
+  </div>
+</section>
+
+<section class="row">
+  <h2><span class="n">3</span> 오류 2건</h2>
+  <div class="ab">
+    <div class="side"><div class="lbl">좌</div><div class="pane" data-k="A">
+    <div class="thread">
+      <div class="msg user"><div class="msg-main"><div class="content">릴리즈 빌드 돌려줘</div></div></div>
+      <div class="toollog">
+        <div class="trow"><span class="ti">▸</span><span class="tn">셸</span><span class="ta">npm run tauri:build</span><span class="tr">실패</span></div>
+      </div>
+      <div class="meas" data-m="e1">
+        <div class="o-error">
+          <span class="ic">✕</span>
+          <div class="bd">
+            <div class="hd"><span class="ti">오류</span><span class="tm">15:07</span></div>
+            <div class="tx">error: failed to load manifest for workspace member `C:\Code\AgentCodeGUI\crates\ccg-engine`
+Caused by: no targets specified in the manifest
+either src/lib.rs, src/main.rs, a [lib] section, or [[bin]] section must be present</div>
+          </div>
+        </div>
+      </div>
+      <div class="meas" data-m="e2">
+        <div class="o-error">
+          <span class="ic">✕</span>
+          <div class="bd">
+            <div class="hd"><span class="ti">오류</span><span class="tm">15:09</span></div>
+            <div class="tx">요청이 한도에 걸렸어요. 5시간 창이 18:40에 초기화됩니다.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div></div>
+    <div class="side"><div class="lbl">우</div><div class="pane" data-k="B">
+    <div class="thread">
+      <div class="msg user"><div class="msg-main"><div class="content">릴리즈 빌드 돌려줘</div></div></div>
+      <div class="toollog">
+        <div class="trow"><span class="ti">▸</span><span class="tn">셸</span><span class="ta">npm run tauri:build</span><span class="tr">실패</span></div>
+      </div>
+      <div class="meas" data-m="e1">
+        <div class="band t-danger">
+          <span class="g">✕</span>
+          <div class="bd">
+            <div class="tx"><span class="b">워크스페이스 매니페스트를 못 읽었어요</span> — <span class="mono">crates/ccg-engine</span>에 빌드 대상이 없습니다.</div>
+            <div class="raw">error: failed to load manifest for workspace member
+  `C:\Code\AgentCodeGUI\crates\ccg-engine`
+Caused by: no targets specified in the manifest
+  either src/lib.rs, src/main.rs, a [lib] section,
+  or [[bin]] section must be present</div>
+          </div>
+          <div class="tray"><button class="act ghost">복사</button><span class="tm">15:07</span></div>
+        </div>
+      </div>
+      <div class="meas" data-m="e2">
+        <div class="band t-danger">
+          <span class="g">✕</span>
+          <div class="bd"><div class="tx"><span class="b">한도에 걸렸어요</span> — 5시간 창이 <span class="mono">18:40</span>에 초기화됩니다.</div></div>
+          <div class="tray"><button class="act">한도 풀리면 이어서</button><span class="tm">15:09</span></div>
+        </div>
+      </div>
+    </div>
+  </div></div>
+  </div>
+</section>
+
+<section class="row">
+  <h2><span class="n">4</span> 중단선</h2>
+  <div class="ab">
+    <div class="side"><div class="lbl">좌</div><div class="pane" data-k="B">
+    <div class="thread">
+      <div class="msg user"><div class="msg-main"><div class="content">전체 테스트 스위트 돌려줘</div></div></div>
+      <div class="toollog">
+        <div class="trow"><span class="ti">▸</span><span class="tn">셸</span><span class="ta">cargo test --workspace</span><span class="tr">진행 중</span></div>
+        <div class="trow"><span class="ti">⌕</span><span class="tn">읽기</span><span class="ta">crates/ccg-store/src/chats.rs</span><span class="tr">412줄</span></div>
+      </div>
+      <div class="msg"><div class="msg-main"><div class="content">테스트를 돌리는 중이에요. <code>ccg-store</code>의 병합 경로부터 확인하고</div></div></div>
+      <div class="meas" data-m="s1">
+        <div class="rule t-danger">
+          <span class="g"><span class="sq"></span></span>
+          <span class="lb">중단함</span>
+          <span class="num">6초 · 도구 2</span>
+          <span class="hair"></span>
+          <span class="tm">15:22</span>
+        </div>
+      </div>
+      <div class="msg user"><div class="msg-main"><div class="content">아니 ccg-store만</div></div></div>
+    </div>
+  </div></div>
+    <div class="side"><div class="lbl">우</div><div class="pane" data-k="A">
+    <div class="thread">
+      <div class="msg user"><div class="msg-main"><div class="content">전체 테스트 스위트 돌려줘</div></div></div>
+      <div class="toollog">
+        <div class="trow"><span class="ti">▸</span><span class="tn">셸</span><span class="ta">cargo test --workspace</span><span class="tr">진행 중</span></div>
+        <div class="trow"><span class="ti">⌕</span><span class="tn">읽기</span><span class="ta">crates/ccg-store/src/chats.rs</span><span class="tr">412줄</span></div>
+      </div>
+      <div class="msg"><div class="msg-main"><div class="content">테스트를 돌리는 중이에요. <code>ccg-store</code>의 병합 경로부터 확인하고</div></div></div>
+      <div class="meas" data-m="s1">
+        <div class="o-stop"><span class="sq"></span><span>중단함</span></div>
+      </div>
+      <div class="msg user"><div class="msg-main"><div class="content">아니 ccg-store만</div></div></div>
+    </div>
+  </div></div>
+  </div>
+</section>
+
+<section class="row">
+  <h2><span class="n">5</span> 압축 경계</h2>
+  <div class="ab">
+    <div class="side"><div class="lbl">좌</div><div class="pane" data-k="B">
+    <div class="thread">
+      <div class="msg"><div class="msg-main"><div class="content">…그래서 <code>maEngines</code> 스윕 주기를 15분으로 잡았습니다.</div></div></div>
+      <div class="worked">2분 14초 동안 작업함</div>
+      <div class="meas" data-m="c1">
+        <div class="rule t-neutral split">
+          <span class="hair l"></span>
+          <span class="g"><span class="ch">⌘</span></span>
+          <span class="lb">여기까지 요약됨</span>
+          <span class="num">152k → 38k · 컨텍스트 95% → 24%</span>
+          <span class="hair"></span>
+          <span class="tm">16:03</span>
+        </div>
+      </div>
+      <div class="msg user"><div class="msg-main"><div class="content">이어서 워크플로 쪽도 봐줘</div></div></div>
+      <div class="toollog">
+        <div class="trow"><span class="ti">⌕</span><span class="tn">읽기</span><span class="ta">src/main/workflow/runner.ts</span><span class="tr">288줄</span></div>
+      </div>
+    </div>
+  </div></div>
+    <div class="side"><div class="lbl">우</div><div class="pane" data-k="A">
+    <div class="thread">
+      <div class="msg"><div class="msg-main"><div class="content">…그래서 <code>maEngines</code> 스윕 주기를 15분으로 잡았습니다.</div></div></div>
+      <div class="worked">2분 14초 동안 작업함</div>
+      <div class="meas" data-m="c1">
+        <div class="o-card">
+          <span class="ic">⌘</span>
+          <div class="bd">
+            <div class="hd"><span class="bg">/compact</span><span class="ti">컨텍스트가 가득 차 대화를 자동으로 요약했어요</span><span class="tm">16:03</span></div>
+            <div class="sb">이전 대화를 핵심 요약으로 압축하고 이어서 진행합니다.</div>
+            <div class="st">컨텍스트 95% → 24% 로 절약 · 토큰 114k 회수</div>
+          </div>
+        </div>
+      </div>
+      <div class="msg user"><div class="msg-main"><div class="content">이어서 워크플로 쪽도 봐줘</div></div></div>
+      <div class="toollog">
+        <div class="trow"><span class="ti">⌕</span><span class="tn">읽기</span><span class="ta">src/main/workflow/runner.ts</span><span class="tr">288줄</span></div>
+      </div>
+    </div>
+  </div></div>
+  </div>
+</section>
+
+<section class="row">
+  <h2><span class="n">6</span> 명령 카드</h2>
+  <div class="ab">
+    <div class="side"><div class="lbl">좌</div><div class="pane" data-k="A">
+    <div class="thread">
+      <div class="msg user"><div class="msg-main"><div class="content">/init</div></div></div>
+      <div class="meas" data-m="k1">
+        <div class="o-card">
+          <span class="ic">◈</span>
+          <div class="bd">
+            <div class="hd"><span class="bg">/init</span><span class="ti">CLAUDE.md를 만들고 있어요…</span><span class="spin" style="margin-left:auto;width:14px;height:14px;border-radius:99px;border:2px solid var(--accent-soft);border-top-color:var(--accent);"></span></div>
+          </div>
+        </div>
+      </div>
+      <div class="meas" data-m="k2">
+        <div class="o-card">
+          <span class="ic">⌘</span>
+          <div class="bd">
+            <div class="hd"><span class="bg">/compact</span><span class="ti">대화를 요약했어요</span><span class="tm">17:12</span></div>
+            <div class="sb">이전 42개 메시지를 핵심 요약으로 압축했습니다.</div>
+            <div class="st">컨텍스트 88% → 19% 로 절약 · 토큰 96k 회수</div>
+          </div>
+        </div>
+      </div>
+      <div class="meas" data-m="k3">
+        <div class="o-card failed">
+          <span class="ic">⛨</span>
+          <div class="bd">
+            <div class="hd"><span class="bg">/security-review</span><span class="ti">명령을 완료하지 못했어요</span><span class="tm">17:20</span></div>
+            <div class="sb">요청이 한도에 걸렸어요. 5시간 창이 18:40에 초기화됩니다.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div></div>
+    <div class="side"><div class="lbl">우</div><div class="pane" data-k="B">
+    <div class="thread">
+      <div class="msg user"><div class="msg-main"><div class="content">/init</div></div></div>
+      <div class="meas" data-m="k1">
+        <div class="card">
+          <span class="tile">◈</span>
+          <div class="bd">
+            <div class="hd"><span class="bg">/init</span><span class="ti">CLAUDE.md를 만들고 있어요…</span><span class="spin"></span></div>
+          </div>
+        </div>
+      </div>
+      <div class="meas" data-m="k2">
+        <div class="card">
+          <span class="tile">⌘</span>
+          <div class="bd">
+            <div class="hd"><span class="bg">/compact</span><span class="ti">대화를 요약했어요</span><span class="tm">17:12</span></div>
+            <div class="sb">이전 42개 메시지를 압축<span class="dot">·</span><span class="st">컨텍스트 88% → 19% · 토큰 96k 회수</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="meas" data-m="k3">
+        <div class="card failed">
+          <span class="tile">⛨</span>
+          <div class="bd">
+            <div class="hd"><span class="bg">/security-review</span><span class="ti">완료하지 못했어요</span><span class="tm">17:20</span></div>
+            <div class="sb">한도에 걸렸어요 — <span class="st">18:40에 초기화</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div></div>
+  </div>
+</section>
+
+<section class="row">
+  <h2><span class="n">7</span> 문답 흔적</h2>
+  <div class="ab">
+    <div class="side"><div class="lbl">좌</div><div class="pane" data-k="B">
+    <div class="thread">
+      <div class="msg"><div class="msg-main"><div class="content">두 가지만 확인할게요.</div></div></div>
+      <div class="meas" data-m="q1">
+        <div class="card bare">
+          <span class="tile">?</span>
+          <div class="bd">
+            <div class="qa">
+              <div>
+                <div class="q"><span class="qm">Q1</span><span>기존 <code>ipc.rs</code>를 파일째 나눌까요, 아니면 한 파일 안에서 모듈로 나눌까요?</span></div>
+                <div class="a"><span class="ck">✓</span><span>파일째 나눈다</span></div>
+              </div>
+              <div>
+                <div class="q"><span class="qm">Q2</span><span>채널 상수(<code>mod ch</code>)는 어디에 둘까요?</span></div>
+                <div class="a"><span class="ck">✓</span><span>mod.rs에 그대로 둔다</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="tray" style="flex:0 0 auto;display:flex;align-items:center;gap:8px;margin-top:1px">
+            <span class="tm" style="font-size:11px;color:var(--text-4)">18:04</span>
+          </div>
+        </div>
+      </div>
+      <div class="msg"><div class="msg-main"><div class="content">알겠습니다. <code>ipc/</code> 디렉터리를 만들고 dispatch를 6개 파일로 나눌게요.</div></div></div>
+      <div class="worked">3분 41초 동안 작업함</div>
+    </div>
+  </div></div>
+    <div class="side"><div class="lbl">우</div><div class="pane" data-k="A">
+    <div class="thread">
+      <div class="msg"><div class="msg-main"><div class="content">두 가지만 확인할게요.</div></div></div>
+      <div class="meas" data-m="q1">
+        <div class="o-qa">
+          <div>
+            <div class="qq"><span class="qm">Q1</span><span>기존 <code>ipc.rs</code>를 파일째 나눌까요, 아니면 한 파일 안에서 모듈로 나눌까요?</span></div>
+            <div class="qa2"><span class="ck">✓</span><span>파일째 나눈다</span></div>
+          </div>
+          <div>
+            <div class="qq"><span class="qm">Q2</span><span>채널 상수(<code>mod ch</code>)는 어디에 둘까요?</span></div>
+            <div class="qa2"><span class="ck">✓</span><span>mod.rs에 그대로 둔다</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="msg"><div class="msg-main"><div class="content">알겠습니다. <code>ipc/</code> 디렉터리를 만들고 dispatch를 6개 파일로 나눌게요.</div></div></div>
+      <div class="worked">3분 41초 동안 작업함</div>
+    </div>
+  </div></div>
+  </div>
+</section>
+</body></html>

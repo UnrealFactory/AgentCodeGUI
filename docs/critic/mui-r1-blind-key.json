@@ -1,0 +1,53 @@
+{
+ "generatedAt": "2026-08-22T16:54:50.044Z",
+ "key": [
+  {
+   "sheet": "0-system",
+   "title": "7종이 한 스레드에",
+   "left": "B(3.0 제안)",
+   "right": "A(2.6.2 현행)"
+  },
+  {
+   "sheet": "1-fallback",
+   "title": "모델 자동 전환",
+   "left": "A(2.6.2 현행)",
+   "right": "B(3.0 제안)"
+  },
+  {
+   "sheet": "2-notice",
+   "title": "안내 3건",
+   "left": "A(2.6.2 현행)",
+   "right": "B(3.0 제안)"
+  },
+  {
+   "sheet": "3-error",
+   "title": "오류 2건",
+   "left": "A(2.6.2 현행)",
+   "right": "B(3.0 제안)"
+  },
+  {
+   "sheet": "4-interrupt",
+   "title": "중단선",
+   "left": "B(3.0 제안)",
+   "right": "A(2.6.2 현행)"
+  },
+  {
+   "sheet": "5-compact",
+   "title": "압축 경계",
+   "left": "B(3.0 제안)",
+   "right": "A(2.6.2 현행)"
+  },
+  {
+   "sheet": "6-command",
+   "title": "명령 카드",
+   "left": "A(2.6.2 현행)",
+   "right": "B(3.0 제안)"
+  },
+  {
+   "sheet": "7-qa",
+   "title": "문답 흔적",
+   "left": "B(3.0 제안)",
+   "right": "A(2.6.2 현행)"
+  }
+ ]
+}

@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>알림 0/7 — 7종 한 스레드 (밀도 판정)</title>
+<link rel="stylesheet" href="../../design/mockups/ui-notify.css" />
+<style>
+  /* 이 시트만 3열: A(현행) · B(제안) · 문법표 */
+  .ab3{max-width:1780px;margin:0 auto;display:grid;grid-template-columns:1fr 1fr 300px;gap:16px;align-items:start;}
+  .grammar{border-radius:var(--radius);background:rgba(0,0,0,.30);border:1px solid var(--line);padding:14px;}
+  .grammar h2{font-size:11px;font-weight:700;color:var(--text-3);letter-spacing:.05em;text-transform:uppercase;margin-bottom:9px;}
+  .grammar h2 + p{margin-top:-4px;}
+  .grammar p{font-size:11.5px;color:var(--text-2);line-height:1.7;margin-bottom:12px;}
+  .grammar table{width:100%;border-collapse:collapse;font-size:10.5px;margin-bottom:12px;}
+  .grammar th{text-align:left;color:var(--text-4);font-weight:600;padding:3px 4px;border-bottom:1px solid var(--line);}
+  .grammar td{padding:3.5px 4px;color:var(--text-2);border-bottom:1px solid rgba(255,255,255,.04);vertical-align:top;}
+  .grammar td.f{font-family:var(--font-mono);font-size:10px;color:var(--text-3);white-space:nowrap;}
+  .sw{display:inline-block;width:9px;height:9px;border-radius:2px;vertical-align:-1px;margin-right:4px;}
+  .grammar code{font-family:var(--font-mono);font-size:10px;color:var(--text-3);}
+  .ab3 .tally{grid-column:1/3;}
+</style>
+
+<style id="parity-fix">
+/* ── 크리틱 패리티 보정 ─────────────────────────────────────────────────────
+   목업의 A/B가 **같은 규칙 위에** 있지 않은 자리 셋을 실물(styles.css) 기준으로 맞춘다.
+   1) A의 .o-stop이 margin 쇼트핸드(margin:0 2px)를 써서 owl의 위 여백을 통째로 덮는다.
+      실물 styles.css:867은 그 함정을 주석으로 금지하고 margin-left/right만 쓴다.
+      실물에는 .thread > * + .stopline{margin-top:10px}가 있으므로 A도 10px를 받아야 한다.
+   2) A의 .o-error .tx에 word-break:break-word가 빠졌다(실물 styles.css:1369에는 있다).
+      제안 §5-3의 근거("긴 경로가 산문 폭으로 재줄바꿈돼 읽을 수 없다")를 A가 재현하지 못한다.
+   3) B에만 있는 .thread > .rule + *{margin-top:10px}는 실물에 대응 규칙이 없다
+      (실물은 .stopline **앞**만 10px). 형태 이득이 아니라 새 간격 제안이므로 분리해 잰다. */
+.o-stop{ margin:0 !important; margin-left:2px !important; margin-right:2px !important; }
+.thread > * + .o-stop{ margin-top:10px !important; }
+.o-error .tx{ word-break:break-word; }
+.thread > .rule + *{ margin-top:18px !important; }
+</style>
+</head>
+<body>
+
+<div class="mockmeta">
+  <h1>0/7 — 7종이 한 스레드에 다 있을 때 <span class="tag">밀도 판정용</span></h1>
+  <span class="sub">
+    개별 시트는 한 종씩만 본다 — 그러면 "조금 커진 것"이 안 보인다.
+    실제로 알림이 아픈 순간은 <b>긴 대화에서 일곱 가지가 섞여 쌓일 때</b>다.
+    같은 사건 열을 A(2.6.2 현행)와 B(3.0 제안)로 나란히 놓고 <b>스레드 전체 높이</b>를 잰다.
+    B가 A보다 높으면 제안은 실패다 — 그 판정이 아래 상자에 자동으로 찍힌다.
+  </span>
+</div>
+
+<div class="ab3">
+
+  <!-- ════════ A ════════ -->
+  <div class="pane" data-k="A">
+    <div class="ph"><span class="k">A</span><span class="t">현행 — 2.6.2</span><span class="m">7종</span></div>
+    <div class="thread" data-m="all">
+      <div class="msg user"><div class="msg-main"><div class="content">ipc.rs를 기능별로 쪼개고 테스트까지 붙여줘</div></div></div>
+
+      <div class="o-notice">
+        <span class="ic">⚠</span>
+        <div class="tx">지금은 <span class="kw">API</span>로 과금 중이에요. 구독 한도가 아니라 크레딧이 차감됩니다. 하단 <span class="kw">과금</span> 토글에서 바꿀 수 있어요.</div>
+        <span class="tm">09:14</span>
+      </div>
+
+      <div class="o-qa">
+        <div>
+          <div class="qq"><span class="qm">Q1</span><span>파일째 나눌까요, 한 파일 안에서 모듈로 나눌까요?</span></div>
+          <div class="qa2"><span class="ck">✓</span><span>파일째 나눈다</span></div>
+        </div>
+      </div>
+
+      <div class="toollog">
+        <div class="trow"><span class="ti">⌕</span><span class="tn">읽기</span><span class="ta">src-tauri/src/ipc.rs</span><span class="tr">612줄</span></div>
+        <div class="trow"><span class="ti">✎</span><span class="tn">쓰기</span><span class="ta">src-tauri/src/ipc/mod.rs</span><span class="tr">+184</span></div>
+        <div class="trow"><span class="ti">✎</span><span class="tn">쓰기</span><span class="ta">src-tauri/src/ipc/stores.rs</span><span class="tr">+201</span></div>
+      </div>
+
+      <div class="o-notice">
+        <span class="ic">⚠</span>
+        <div class="tx">정책상 응답할 수 없는 요청이라 Opus 5 모델로 전환해 계속해요. 이후 대화도 Opus 5 모델로 진행됩니다.</div>
+        <span class="tm">09:31</span>
+      </div>
+
+      <div class="msg"><div class="msg-main"><div class="content">디스패처를 6개 파일로 나눴어요. 채널 상수는 <code>mod.rs</code>에 그대로 뒀습니다.</div></div></div>
+
+      <div class="o-stop"><span class="sq"></span><span>중단함</span></div>
+
+      <div class="msg user"><div class="msg-main"><div class="content">테스트는 나중에. 일단 빌드만</div></div></div>
+
+      <div class="o-card">
+        <span class="ic">⌘</span>
+        <div class="bd">
+          <div class="hd"><span class="bg">/compact</span><span class="ti">컨텍스트가 가득 차 대화를 자동으로 요약했어요</span><span class="tm">09:52</span></div>
+          <div class="sb">이전 대화를 핵심 요약으로 압축하고 이어서 진행합니다.</div>
+          <div class="st">컨텍스트 95% → 24% 로 절약 · 토큰 114k 회수</div>
+        </div>
+      </div>
+
+      <div class="o-card failed">
+        <span class="ic">⛨</span>
+        <div class="bd">
+          <div class="hd"><span class="bg">/review</span><span class="ti">명령을 완료하지 못했어요</span><span class="tm">09:58</span></div>
+          <div class="sb">변경된 파일이 없어 검토할 대상이 없습니다.</div>
+        </div>
+      </div>
+
+      <div class="o-error">
+        <span class="ic">✕</span>
+        <div class="bd">
+          <div class="hd"><span class="ti">오류</span><span class="tm">10:03</span></div>
+          <div class="tx">error: failed to load manifest for workspace member `C:\Code\AgentCodeGUI\crates\ccg-engine`
+Caused by: no targets specified in the manifest</div>
+        </div>
+      </div>
+
+      <div class="worked">14분 8초 동안 작업함</div>
+    </div>
+  </div>
+
+  <!-- ════════ B ════════ -->
+  <div class="pane" data-k="B">
+    <div class="ph"><span class="k">B</span><span class="t">제안 — 3.0</span><span class="m">rule 2 · band 3 · card 2</span></div>
+    <div class="thread" data-m="all">
+      <div class="msg user"><div class="msg-main"><div class="content">ipc.rs를 기능별로 쪼개고 테스트까지 붙여줘</div></div></div>
+
+      <div class="band t-notice">
+        <span class="g">⚠</span>
+        <div class="bd"><div class="tx"><span class="b">API 크레딧</span>으로 과금 중이에요 — 구독 한도는 줄지 않습니다.</div></div>
+        <div class="tray"><button class="act">과금 끄기</button><span class="tm">09:14</span></div>
+      </div>
+
+      <div class="card bare">
+        <span class="tile">?</span>
+        <div class="bd">
+          <div class="qa">
+            <div>
+              <div class="q"><span class="qm">Q1</span><span>파일째 나눌까요, 한 파일 안에서 모듈로 나눌까요?</span></div>
+              <div class="a"><span class="ck">✓</span><span>파일째 나눈다</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="tray" style="display:flex;align-items:center;margin-top:1px"><span class="tm" style="font-size:11px;color:var(--text-4)">09:16</span></div>
+      </div>
+
+      <div class="toollog">
+        <div class="trow"><span class="ti">⌕</span><span class="tn">읽기</span><span class="ta">src-tauri/src/ipc.rs</span><span class="tr">612줄</span></div>
+        <div class="trow"><span class="ti">✎</span><span class="tn">쓰기</span><span class="ta">src-tauri/src/ipc/mod.rs</span><span class="tr">+184</span></div>
+        <div class="trow"><span class="ti">✎</span><span class="tn">쓰기</span><span class="ta">src-tauri/src/ipc/stores.rs</span><span class="tr">+201</span></div>
+      </div>
+
+      <div class="band t-notice">
+        <span class="g">⚠</span>
+        <div class="bd"><div class="tx"><span class="b">Fable 5</span>가 정책상 거부해 <span class="kw">Opus 5</span>로 전환했어요 — 이후 대화도 같은 모델로 갑니다.</div></div>
+        <div class="tray"><button class="act">되돌리기</button><span class="tm">09:31</span></div>
+      </div>
+
+      <div class="msg"><div class="msg-main"><div class="content">디스패처를 6개 파일로 나눴어요. 채널 상수는 <code>mod.rs</code>에 그대로 뒀습니다.</div></div></div>
+
+      <div class="rule t-danger"><span class="g"><span class="sq"></span></span><span class="lb">중단함</span><span class="num">42초 · 도구 3</span><span class="hair"></span><span class="tm">09:44</span></div>
+
+      <div class="msg user"><div class="msg-main"><div class="content">테스트는 나중에. 일단 빌드만</div></div></div>
+
+      <div class="rule t-neutral split"><span class="hair l"></span><span class="g"><span class="ch">⌘</span></span><span class="lb">여기까지 요약됨</span><span class="num">152k → 38k · 컨텍스트 95% → 24%</span><span class="hair"></span><span class="tm">09:52</span></div>
+
+      <div class="card failed">
+        <span class="tile">⛨</span>
+        <div class="bd">
+          <div class="hd"><span class="bg">/review</span><span class="ti">완료하지 못했어요</span><span class="tm">09:58</span></div>
+          <div class="sb">변경된 파일이 없어 검토할 대상이 없습니다.</div>
+        </div>
+      </div>
+
+      <div class="band t-danger">
+        <span class="g">✕</span>
+        <div class="bd">
+          <div class="tx"><span class="b">워크스페이스 매니페스트를 못 읽었어요</span> — <span class="mono">crates/ccg-engine</span>에 빌드 대상이 없습니다.</div>
+          <div class="raw">error: failed to load manifest for workspace member
+  `C:\Code\AgentCodeGUI\crates\ccg-engine`
+Caused by: no targets specified in the manifest</div>
+        </div>
+        <div class="tray"><button class="act ghost">복사</button><span class="tm">10:03</span></div>
+      </div>
+
+      <div class="worked">14분 8초 동안 작업함</div>
+    </div>
+  </div>
+
+  <!-- ════════ 문법표 ════════ -->
+  <div class="grammar">
+    <h2>형태 3</h2>
+    <p>형태는 <b>무엇에 대해 말하나</b>가 정한다. 색은 형태를 정하지 않는다.</p>
+    <table>
+      <tr><th>형태</th><th>주제</th><th>높이</th></tr>
+      <tr><td class="f">rule</td><td>대화의 구조 — 여기서 끊겼다 / 갈렸다</td><td class="f">19px</td></tr>
+      <tr><td class="f">band</td><td>네 개입이 필요할 수 있다</td><td class="f">39px+</td></tr>
+      <tr><td class="f">card</td><td>무엇이 만들어졌다</td><td class="f">56px+</td></tr>
+    </table>
+
+    <h2>색조 4</h2>
+    <p>색조는 <b>심각도만</b> 칠한다. 출처·종류에는 쓰지 않는다.</p>
+    <table>
+      <tr><td class="f"><span class="sw" style="background:var(--text-3)"></span>neutral</td><td>일어난 사실</td></tr>
+      <tr><td class="f"><span class="sw" style="background:var(--yellow)"></span>notice</td><td>알아야 할 변화</td></tr>
+      <tr><td class="f"><span class="sw" style="background:var(--red)"></span>danger</td><td>실패 · 끊김</td></tr>
+      <tr><td class="f"><span class="sw" style="background:var(--green)"></span>positive</td><td>확정된 답</td></tr>
+    </table>
+
+    <h2>7종 배치</h2>
+    <table>
+      <tr><th>종</th><th>형태·색조</th></tr>
+      <tr><td>모델 전환</td><td class="f">band · notice · <b>revert</b></td></tr>
+      <tr><td>안내</td><td class="f">band · notice|neutral</td></tr>
+      <tr><td>오류</td><td class="f">band · danger</td></tr>
+      <tr><td>중단</td><td class="f">rule · danger</td></tr>
+      <tr><td>압축 경계</td><td class="f">rule · neutral · split</td></tr>
+      <tr><td>명령</td><td class="f">card · face=on</td></tr>
+      <tr><td>문답</td><td class="f">card · face=off</td></tr>
+    </table>
+
+    <h2>밀도 규약</h2>
+    <p>
+      ① 행동 알약은 <b>시각과 같은 줄</b>에 산다 — 줄을 늘리지 않는다.<br>
+      ② 수치는 <b>라벨/부제 옆</b>에 붙인다 — 전용 줄을 주지 않는다.<br>
+      ③ 늘린 픽셀마다 <b>정보가 있어야</b> 한다(오류 원문 면이 유일한 증가분).<br>
+      ④ 없는 수치는 <b>자리를 비운다</b> — 문구로 메우지 않는다.
+    </p>
+  </div>
+
+  <div class="tally" style="margin-top:0">
+    <div class="box"><h3>A — 스레드 전체 높이</h3><p><span class="n" data-sum="A">—</span></p></div>
+    <div class="box"><h3>B — 스레드 전체 높이</h3><p><span class="n" data-sum="B">—</span> · 판정: <b data-verdict>—</b></p></div>
+  </div>
+</div>
+
+<script src="../../design/mockups/ui-notify.js"></script>
+</body>
+</html>

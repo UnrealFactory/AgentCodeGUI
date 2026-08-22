@@ -1,0 +1,154 @@
+﻿[
+    {
+        "value":  [
+                      {
+                          "ts":  "2026-08-23T01:33:26.0246771+09:00",
+                          "tag":  "b-armed-idle",
+                          "targetPid":  24944,
+                          "elapsedMs":  60009,
+                          "ghzAssumed":  3,
+                          "procs":  5,
+                          "totalCycles":  40737772,
+                          "totalApproxMs":  13.58,
+                          "totalPctOneCore":  0.0226,
+                          "mainOnlyCycles":  16278907,
+                          "perProc":  [
+                                          {
+                                              "pid":  4548,
+                                              "name":  "msedgewebview2",
+                                              "cycles":  18429517,
+                                              "approxMs":  6.14,
+                                              "pctOneCore":  0.0102
+                                          },
+                                          {
+                                              "pid":  24944,
+                                              "name":  "agentcodegui",
+                                              "cycles":  16278907,
+                                              "approxMs":  5.43,
+                                              "pctOneCore":  0.009
+                                          },
+                                          {
+                                              "pid":  33772,
+                                              "name":  "msedgewebview2",
+                                              "cycles":  4212343,
+                                              "approxMs":  1.4,
+                                              "pctOneCore":  0.0023
+                                          },
+                                          {
+                                              "pid":  15380,
+                                              "name":  "msedgewebview2",
+                                              "cycles":  1150497,
+                                              "approxMs":  0.38,
+                                              "pctOneCore":  0.0006
+                                          },
+                                          {
+                                              "pid":  15824,
+                                              "name":  "msedgewebview2",
+                                              "cycles":  666508,
+                                              "approxMs":  0.22,
+                                              "pctOneCore":  0.0004
+                                          }
+                                      ]
+                      },
+                      {
+                          "ts":  "2026-08-23T01:34:54.6035112+09:00",
+                          "tag":  "b-armed-under-attack-nudge",
+                          "targetPid":  24944,
+                          "elapsedMs":  26013,
+                          "ghzAssumed":  3,
+                          "procs":  5,
+                          "totalCycles":  1188237558,
+                          "totalApproxMs":  396.08,
+                          "totalPctOneCore":  1.5226,
+                          "mainOnlyCycles":  1180501942,
+                          "perProc":  [
+                                          {
+                                              "pid":  24944,
+                                              "name":  "agentcodegui",
+                                              "cycles":  1180501942,
+                                              "approxMs":  393.5,
+                                              "pctOneCore":  1.5127
+                                          },
+                                          {
+                                              "pid":  4548,
+                                              "name":  "msedgewebview2",
+                                              "cycles":  4927047,
+                                              "approxMs":  1.64,
+                                              "pctOneCore":  0.0063
+                                          },
+                                          {
+                                              "pid":  33772,
+                                              "name":  "msedgewebview2",
+                                              "cycles":  2366965,
+                                              "approxMs":  0.79,
+                                              "pctOneCore":  0.003
+                                          },
+                                          {
+                                              "pid":  15824,
+                                              "name":  "msedgewebview2",
+                                              "cycles":  239601,
+                                              "approxMs":  0.08,
+                                              "pctOneCore":  0.0003
+                                          },
+                                          {
+                                              "pid":  15380,
+                                              "name":  "msedgewebview2",
+                                              "cycles":  202003,
+                                              "approxMs":  0.07,
+                                              "pctOneCore":  0.0003
+                                          }
+                                      ]
+                      }
+                  ],
+        "Count":  2
+    },
+    {
+        "ts":  "2026-08-23T01:59:18.2363226+09:00",
+        "tag":  "c-opaque-noglass-idle",
+        "targetPid":  29716,
+        "elapsedMs":  60018,
+        "ghzAssumed":  3,
+        "procs":  5,
+        "totalCycles":  280839614,
+        "totalApproxMs":  93.61,
+        "totalPctOneCore":  0.156,
+        "mainOnlyCycles":  8873467,
+        "perProc":  [
+                        {
+                            "pid":  1964,
+                            "name":  "msedgewebview2",
+                            "cycles":  132954383,
+                            "approxMs":  44.32,
+                            "pctOneCore":  0.0738
+                        },
+                        {
+                            "pid":  30468,
+                            "name":  "msedgewebview2",
+                            "cycles":  105883824,
+                            "approxMs":  35.29,
+                            "pctOneCore":  0.0588
+                        },
+                        {
+                            "pid":  22660,
+                            "name":  "msedgewebview2",
+                            "cycles":  29993294,
+                            "approxMs":  10,
+                            "pctOneCore":  0.0167
+                        },
+                        {
+                            "pid":  29716,
+                            "name":  "agentcodegui",
+                            "cycles":  8873467,
+                            "approxMs":  2.96,
+                            "pctOneCore":  0.0049
+                        },
+                        {
+                            "pid":  17836,
+                            "name":  "msedgewebview2",
+                            "cycles":  3134646,
+                            "approxMs":  1.04,
+                            "pctOneCore":  0.0017
+                        }
+                    ]
+    }
+]

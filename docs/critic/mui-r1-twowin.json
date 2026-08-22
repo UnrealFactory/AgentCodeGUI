@@ -1,0 +1,46 @@
+﻿{
+    "ts":  "2026-08-23T01:36:14.0899026+09:00",
+    "targetPid":  24944,
+    "windows":  [
+                    {
+                        "hwnd":  14354758,
+                        "title":  "추가 채팅 — AgentCodeGUI",
+                        "backdrop":  3,
+                        "hr":  "0x00000000",
+                        "rect":  "418,418 576x729"
+                    },
+                    {
+                        "hwnd":  30934646,
+                        "title":  "AgentCodeGUI3",
+                        "backdrop":  3,
+                        "hr":  "0x00000000",
+                        "rect":  "338,338 1336x889"
+                    },
+                    {
+                        "hwnd":  65604068,
+                        "title":  "",
+                        "backdrop":  0,
+                        "hr":  "0x00000000",
+                        "rect":  "0,0 16x16"
+                    }
+                ],
+    "knockHwnd":  14354758,
+    "knock":  [
+                  {
+                      "trial":  1,
+                      "recoveredMs":  68
+                  },
+                  {
+                      "trial":  2,
+                      "recoveredMs":  313
+                  },
+                  {
+                      "trial":  3,
+                      "recoveredMs":  341
+                  },
+                  {
+                      "trial":  4,
+                      "recoveredMs":  311
+                  }
+              ]
+}

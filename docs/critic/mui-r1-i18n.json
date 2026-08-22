@@ -1,0 +1,222 @@
+[
+ {
+  "file": "docs/critic/tools/mui-notify-i18n.html",
+  "panes": {
+   "A": {
+    "threadH": 252.7,
+    "padY": 46,
+    "sumMt": 36,
+    "sumH": 170.8,
+    "chars": 174,
+    "digits": 32,
+    "buttons": 2,
+    "rows": [
+     {
+      "cls": "meas",
+      "h": 86.4,
+      "mt": 0,
+      "chars": 70,
+      "digits": 9,
+      "buttons": 1,
+      "text": "⚠ Fable 5가 정책상 거부해 Opus 5로 전환했어요 — 이후 대화도 같은 모"
+     },
+     {
+      "cls": "meas",
+      "h": 65.6,
+      "mt": 18,
+      "chars": 55,
+      "digits": 7,
+      "buttons": 1,
+      "text": "⚠ API 크레딧으로 과금 중이에요 — 구독 한도는 줄지 않습니다. 과금 끄기09:"
+     },
+     {
+      "cls": "meas",
+      "h": 18.8,
+      "mt": 18,
+      "chars": 49,
+      "digits": 16,
+      "buttons": 0,
+      "text": "⌘여기까지 요약됨 152k → 38k · 컨텍스트 95% → 24%09:52 18."
+     }
+    ]
+   },
+   "B": {
+    "threadH": 252.7,
+    "padY": 46,
+    "sumMt": 36,
+    "sumH": 170.8,
+    "chars": 265,
+    "digits": 32,
+    "buttons": 2,
+    "rows": [
+     {
+      "cls": "meas",
+      "h": 86.4,
+      "mt": 0,
+      "chars": 111,
+      "digits": 9,
+      "buttons": 1,
+      "text": "⚠ Fable 5 refused on policy — switched to Opus"
+     },
+     {
+      "cls": "meas",
+      "h": 65.6,
+      "mt": 18,
+      "chars": 89,
+      "digits": 7,
+      "buttons": 1,
+      "text": "⚠ Billing to API credits — your subscription l"
+     },
+     {
+      "cls": "meas",
+      "h": 18.8,
+      "mt": 18,
+      "chars": 65,
+      "digits": 16,
+      "buttons": 0,
+      "text": "⌘Summarized up to here 152k → 38k · context 95"
+     }
+    ]
+   },
+   "C": {
+    "threadH": 177,
+    "padY": 46,
+    "sumMt": 18,
+    "sumH": 113,
+    "chars": 152,
+    "digits": 16,
+    "buttons": 2,
+    "rows": [
+     {
+      "cls": "meas",
+      "h": 47,
+      "mt": 0,
+      "chars": 68,
+      "digits": 8,
+      "buttons": 1,
+      "text": "⚠ Fable 5가 정책상 거부해 Opus 5로 전환했어요 — 이후 대화도 같은 모"
+     },
+     {
+      "cls": "meas",
+      "h": 66,
+      "mt": 18,
+      "chars": 84,
+      "digits": 8,
+      "buttons": 1,
+      "text": "⚠ Fable 5가 정책상 거부해 Opus 5로 전환했어요 — 예약해 둔 effor"
+     }
+    ]
+   },
+   "D": {
+    "threadH": 177,
+    "padY": 46,
+    "sumMt": 18,
+    "sumH": 113,
+    "chars": 242,
+    "digits": 16,
+    "buttons": 2,
+    "rows": [
+     {
+      "cls": "meas",
+      "h": 47,
+      "mt": 0,
+      "chars": 109,
+      "digits": 8,
+      "buttons": 1,
+      "text": "⚠ Fable 5 refused on policy — switched to Opus"
+     },
+     {
+      "cls": "meas",
+      "h": 66,
+      "mt": 18,
+      "chars": 133,
+      "digits": 8,
+      "buttons": 1,
+      "text": "⚠ Fable 5 refused on policy — switched to Opus"
+     }
+    ]
+   },
+   "E": {
+    "threadH": 377.3,
+    "padY": 46,
+    "sumMt": 36,
+    "sumH": 295.3,
+    "chars": 252,
+    "digits": 31,
+    "buttons": 0,
+    "rows": [
+     {
+      "cls": "meas",
+      "h": 88.4,
+      "mt": 0,
+      "chars": 78,
+      "digits": 9,
+      "buttons": 0,
+      "text": "⚠ 정책상 응답할 수 없는 요청이라 Opus 5 모델로 전환해 계속해요. 이후 대화"
+     },
+     {
+      "cls": "meas",
+      "h": 88.4,
+      "mt": 18,
+      "chars": 76,
+      "digits": 7,
+      "buttons": 0,
+      "text": "⚠ 지금은 API로 과금 중이에요. 구독 한도가 아니라 크레딧이 차감됩니다. 하단 "
+     },
+     {
+      "cls": "meas",
+      "h": 118.5,
+      "mt": 18,
+      "chars": 98,
+      "digits": 15,
+      "buttons": 0,
+      "text": "⌘ /compact컨텍스트가 가득 차…09:52 이전 대화를 핵심 요약으로 압축하고"
+     }
+    ]
+   },
+   "F": {
+    "threadH": 252.7,
+    "padY": 46,
+    "sumMt": 36,
+    "sumH": 170.8,
+    "chars": 169,
+    "digits": 32,
+    "buttons": 2,
+    "rows": [
+     {
+      "cls": "meas",
+      "h": 86.4,
+      "mt": 0,
+      "chars": 70,
+      "digits": 9,
+      "buttons": 1,
+      "text": "⚠ Fable 5가 정책상 거부해 Opus 5로 전환했어요 — 이후 대화도 같은 모"
+     },
+     {
+      "cls": "meas",
+      "h": 65.6,
+      "mt": 18,
+      "chars": 55,
+      "digits": 7,
+      "buttons": 1,
+      "text": "⚠ API 크레딧으로 과금 중이에요 — 구독 한도는 줄지 않습니다. 과금 끄기09:"
+     },
+     {
+      "cls": "meas",
+      "h": 18.8,
+      "mt": 18,
+      "chars": 44,
+      "digits": 16,
+      "buttons": 0,
+      "text": "⌘여기까지 요약됨 152k → 38k · 95% → 24%09:52 18.8px"
+     }
+    ]
+   }
+  },
+  "sums": {
+   "A": "170.7px",
+   "B": "170.7px"
+  },
+  "verdict": "B = A (동률)"
+ }
+]

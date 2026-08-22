@@ -1,0 +1,250 @@
+[
+ {
+  "file": "docs/design/mockups/ui-notify-0-system.html",
+  "panes": {
+   "A": {
+    "threadH": 918.5,
+    "padY": 46,
+    "sumMt": 172,
+    "sumH": 700.8,
+    "chars": 680,
+    "digits": 43,
+    "buttons": 0,
+    "rows": [
+     {
+      "cls": "msg user",
+      "h": 48.8,
+      "mt": 0,
+      "chars": 26,
+      "digits": 0,
+      "buttons": 0,
+      "text": "ipc.rs를 기능별로 쪼개고 테스트까지 붙여줘"
+     },
+     {
+      "cls": "o-notice",
+      "h": 67.6,
+      "mt": 18,
+      "chars": 69,
+      "digits": 4,
+      "buttons": 0,
+      "text": "⚠ 지금은 API로 과금 중이에요. 구독 한도가 아니라 크레딧이 차감됩니다. 하단 "
+     },
+     {
+      "cls": "o-qa",
+      "h": 49,
+      "mt": 18,
+      "chars": 39,
+      "digits": 1,
+      "buttons": 0,
+      "text": "Q1파일째 나눌까요, 한 파일 안에서 모듈로 나눌까요? ✓파일째 나눈다"
+     },
+     {
+      "cls": "toollog",
+      "h": 87.3,
+      "mt": 18,
+      "chars": 94,
+      "digits": 9,
+      "buttons": 0,
+      "text": "⌕읽기src-tauri/src/ipc.rs612줄 ✎쓰기src-tauri/src/i"
+     },
+     {
+      "cls": "o-notice",
+      "h": 67.6,
+      "mt": 18,
+      "chars": 71,
+      "digits": 6,
+      "buttons": 0,
+      "text": "⚠ 정책상 응답할 수 없는 요청이라 Opus 5 모델로 전환해 계속해요. 이후 대화"
+     },
+     {
+      "cls": "msg",
+      "h": 27.7,
+      "mt": 18,
+      "chars": 43,
+      "digits": 1,
+      "buttons": 0,
+      "text": "디스패처를 6개 파일로 나눴어요. 채널 상수는 mod.rs에 그대로 뒀습니다."
+     },
+     {
+      "cls": "o-stop",
+      "h": 18.8,
+      "mt": 0,
+      "chars": 3,
+      "digits": 0,
+      "buttons": 0,
+      "text": "중단함"
+     },
+     {
+      "cls": "msg user",
+      "h": 48.8,
+      "mt": 18,
+      "chars": 16,
+      "digits": 0,
+      "buttons": 0,
+      "text": "테스트는 나중에. 일단 빌드만"
+     },
+     {
+      "cls": "o-card",
+      "h": 99.8,
+      "mt": 18,
+      "chars": 104,
+      "digits": 11,
+      "buttons": 0,
+      "text": "⌘ /compact컨텍스트가 가득 차 대화를 자동으로 요약했어요09:52 이전 대화"
+     },
+     {
+      "cls": "o-card failed",
+      "h": 75.8,
+      "mt": 18,
+      "chars": 52,
+      "digits": 4,
+      "buttons": 0,
+      "text": "⛨ /review명령을 완료하지 못했어요09:58 변경된 파일이 없어 검토할 대상이"
+     },
+     {
+      "cls": "o-error",
+      "h": 90.1,
+      "mt": 18,
+      "chars": 150,
+      "digits": 4,
+      "buttons": 0,
+      "text": "✕ 오류10:03 error: failed to load manifest for w"
+     },
+     {
+      "cls": "worked",
+      "h": 19.5,
+      "mt": 10,
+      "chars": 13,
+      "digits": 3,
+      "buttons": 0,
+      "text": "14분 8초 동안 작업함"
+     }
+    ]
+   },
+   "B": {
+    "threadH": 803.9,
+    "padY": 46,
+    "sumMt": 158,
+    "sumH": 600.1,
+    "chars": 662,
+    "digits": 56,
+    "buttons": 3,
+    "rows": [
+     {
+      "cls": "msg user",
+      "h": 48.8,
+      "mt": 0,
+      "chars": 26,
+      "digits": 0,
+      "buttons": 0,
+      "text": "ipc.rs를 기능별로 쪼개고 테스트까지 붙여줘"
+     },
+     {
+      "cls": "band t-notice",
+      "h": 47,
+      "mt": 18,
+      "chars": 48,
+      "digits": 4,
+      "buttons": 1,
+      "text": "⚠ API 크레딧으로 과금 중이에요 — 구독 한도는 줄지 않습니다. 과금 끄기09:"
+     },
+     {
+      "cls": "card bare",
+      "h": 47.8,
+      "mt": 18,
+      "chars": 47,
+      "digits": 5,
+      "buttons": 0,
+      "text": "? Q1파일째 나눌까요, 한 파일 안에서 모듈로 나눌까요? ✓파일째 나눈다 09:1"
+     },
+     {
+      "cls": "toollog",
+      "h": 87.3,
+      "mt": 18,
+      "chars": 94,
+      "digits": 9,
+      "buttons": 0,
+      "text": "⌕읽기src-tauri/src/ipc.rs612줄 ✎쓰기src-tauri/src/i"
+     },
+     {
+      "cls": "band t-notice",
+      "h": 47,
+      "mt": 18,
+      "chars": 63,
+      "digits": 6,
+      "buttons": 1,
+      "text": "⚠ Fable 5가 정책상 거부해 Opus 5로 전환했어요 — 이후 대화도 같은 모"
+     },
+     {
+      "cls": "msg",
+      "h": 27.7,
+      "mt": 18,
+      "chars": 43,
+      "digits": 1,
+      "buttons": 0,
+      "text": "디스패처를 6개 파일로 나눴어요. 채널 상수는 mod.rs에 그대로 뒀습니다."
+     },
+     {
+      "cls": "rule t-danger",
+      "h": 18.8,
+      "mt": 10,
+      "chars": 18,
+      "digits": 7,
+      "buttons": 0,
+      "text": "중단함42초 · 도구 309:44"
+     },
+     {
+      "cls": "msg user",
+      "h": 48.8,
+      "mt": 10,
+      "chars": 16,
+      "digits": 0,
+      "buttons": 0,
+      "text": "테스트는 나중에. 일단 빌드만"
+     },
+     {
+      "cls": "rule t-neutral split",
+      "h": 18.8,
+      "mt": 10,
+      "chars": 41,
+      "digits": 13,
+      "buttons": 0,
+      "text": "⌘여기까지 요약됨152k → 38k · 컨텍스트 95% → 24%09:52"
+     },
+     {
+      "cls": "card failed",
+      "h": 72,
+      "mt": 10,
+      "chars": 48,
+      "digits": 4,
+      "buttons": 0,
+      "text": "⛨ /review완료하지 못했어요09:58 변경된 파일이 없어 검토할 대상이 없습니"
+     },
+     {
+      "cls": "band t-danger",
+      "h": 116.6,
+      "mt": 18,
+      "chars": 205,
+      "digits": 4,
+      "buttons": 1,
+      "text": "✕ 워크스페이스 매니페스트를 못 읽었어요 — crates/ccg-engine에 빌드"
+     },
+     {
+      "cls": "worked",
+      "h": 19.5,
+      "mt": 10,
+      "chars": 13,
+      "digits": 3,
+      "buttons": 0,
+      "text": "14분 8초 동안 작업함"
+     }
+    ]
+   }
+  },
+  "sums": {
+   "A": "918.5px",
+   "B": "803.9px"
+  },
+  "verdict": "B가 114.7px 낮다 (밀도 유지·개선)"
+ }
+]

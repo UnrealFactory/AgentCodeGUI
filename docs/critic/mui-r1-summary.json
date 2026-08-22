@@ -1,0 +1,93 @@
+{
+ "note": "M-UI R1 크리틱 실측 원본. 각 수치는 이 세션에서 직접 돌린 명령의 콘솔 출력이다. 도구: docs/critic/tools/mui-*.ps1|mjs|cjs. (mui-r1-px.json은 PS 누적 버그로 앞 회차가 중첩돼 소실됐다 — 여기 표가 정본이고, 도구는 JSONL로 고쳐 두었다.)",
+ "env": {
+  "os": "Windows 11 Home 26200",
+  "cpu": "13th Gen Intel Core i7-13700KF",
+  "monitors": 1,
+  "resolution": "2560x1440",
+  "advancedEffectsEnabled": true,
+  "regTransparency": 1,
+  "remoteSession": false,
+  "gitHead": "28689e5",
+  "build": "npm run tauri:build (exit 0)",
+  "exeBytes": 4054016,
+  "rustc": "1.96.1"
+ },
+ "knockRecovery": {
+  "method": "scripts/poc-glass/glass.ps1 -Action knock -Backdrop 1 -IntervalMs 25 -Seconds 8",
+  "driftPath": { "recovered": "8/8", "minMs": 296, "maxMs": 529, "avgMs": 346.6, "builderClaim": "8/8 · 309~637 · 359" },
+  "messagePath": { "recovered": "8/8", "minMs": 62, "maxMs": 94, "avgMs": 82.8, "builderClaim": "8/8 · 61~95 · 72" },
+  "documentedCommandAsWritten": {
+   "cmd": "-Action knock -Backdrop 1 -Seconds 3   (ui-glass.md §5 그대로 — -IntervalMs 없음)",
+   "recoveredMs": [1017, 1003, 1003],
+   "why": "기본 -IntervalMs가 1000ms라 폴링 격자가 1초다. 문서의 명령으로는 문서의 수치가 안 나온다."
+  }
+ },
+ "pixelMatrix": {
+  "tool": "docs/critic/tools/mui-glass-px.ps1 — 배경판을 창 바로 아래 z-order에 끼우고 마젠타/시안/흰색/4px체커로 갈아 끼우며 사이드바 패치(120x150)를 잰다. swing=저주파 추적성, detailH=인접 픽셀 차 평균(선명도).",
+  "why": "빌더의 swing만으로는 '블러 없이 생비침'을 증명할 수 없다 — 블러 여부는 고주파 축이다.",
+  "rows": [
+   { "tag": "2.6.2 lab ACRYLIC", "magenta": "85,15,62", "cyan": "15,60,69", "white": "58,58,58", "checker": "45,45,45", "swing": 70, "checkDetailH": 0, "verdict": "유리 생존(블러)" },
+   { "tag": "2.6.2 lab NONE(held)", "magenta": "15,15,15", "cyan": "15,15,15", "white": "15,15,15", "checker": "15,15,15", "swing": 0, "checkDetailH": 0, "verdict": "평탄 단색 = 제보된 '진한 회색'" },
+   { "tag": "3.0 ACRYLIC", "magenta": "36,15,29", "cyan": "15,29,31", "white": "28,28,28", "checker": "24,24,24", "swing": 21, "checkDetailH": 0, "verdict": "유리 생존(블러 — 체커가 완전히 뭉개진다)" },
+   { "tag": "3.0 NONE(held, 25ms 해머)", "magenta": "38,15,30", "cyan": "15,34,38", "white": "38,38,38", "checker": "27,27,27", "swing": 23, "checkDetailH": 5.361, "checkStdev": 11, "verdict": "벽지 생비침 — 격자가 선명하게 통과(빌더 주장 확인)" },
+   { "tag": "3.0 CSS 폴백(CCG_GLASS_FORCE_OFF=1)", "magenta": "20,20,20", "cyan": "20,20,20", "white": "20,20,20", "checker": "20,20,20", "swing": 0, "checkDetailH": 0, "verdict": "완전 차단(빌더 주장 확인)" },
+   { "tag": "3.0 폴백 + 벽지비침 슬라이더 100(인라인 변수)", "checker": "20,20,20", "swing": 0, "checkDetailH": 0, "verdict": "!important가 인라인을 이긴다(확인)" },
+   { "tag": "3.0 CCG_CHROME=c (불투명·아크릴 없음)", "magenta": "38,38,38", "cyan": "38,38,38", "white": "38,38,38", "checker": "38,38,38", "swing": 0, "checkDetailH": 0, "verdict": "차단은 되지만 밝기가 폴백(20)·아크릴(15~38, 평균 24)과 다른 자리에 착지" }
+  ]
+ },
+ "attacks": {
+  "adversarialHammer": {
+   "cmd": "mui-hammer.ps1 -Seconds 30 -EveryMs 25 -Nudge",
+   "kicks": 934, "readBackWasThree": 55, "winRatePct": 5.9,
+   "recoveredAfterAttackMs": 374,
+   "cpuDuringAttack": { "mainProcCycles26s": 1180501942, "approxMs": 393.5, "pctOneCore": 1.51 },
+   "verdict": "폭주 없음 · 쐐기 없음 — 공격이 멈추면 374ms에 복귀. 사건 합류(플래그 1칸)가 실제로 코얼레스한다."
+  },
+  "twoWindows": {
+   "windows": [{ "hwnd": 30934646, "title": "AgentCodeGUI3", "backdrop": 3 }, { "hwnd": 14354758, "title": "추가 채팅", "backdrop": 3 }],
+   "knockOnSessionWindowMs": [68, 313, 341, 311],
+   "verdict": "추가 채팅 창도 방어된다"
+  },
+  "crashRecovery": {
+   "how": "내 인스턴스의 WebView2 브라우저 프로세스 kill → crash.rs BrowserGone → recreate_windows",
+   "recreated": [{ "hwnd": 25036816, "title": "AgentCodeGUI3", "backdrop": 3 }, { "hwnd": 15207144, "title": "추가 채팅", "backdrop": 3 }],
+   "knockOnRecreatedMainMs": [190, 344, 342],
+   "verdict": "재장전된다(백드롭 방어는 살아 돌아온다). 단, 렌더러 폴백은 살아 돌아오지 않는다 — defects 참조"
+  },
+  "idleCost": {
+   "armed": { "treeCycles60s": 40737772, "treeApproxMs": 13.58, "treePctOneCore": 0.023, "mainCycles60s": 16278907, "mainApproxMs": 5.43, "mainPctOneCore": 0.009 },
+   "control_CCG_CHROME_c": { "mainCycles60s": 8873467, "mainApproxMs": 2.96, "mainPctOneCore": 0.0049 },
+   "watchdogDelta": { "cyclesPerMin": 7405440, "approxMsPerMin": 2.5, "perWakeMicros": 29 },
+   "note": "TotalProcessorTime(15.6ms 틱)으로는 60초에 0ms로 찍혀 판정 불가 → QueryProcessCycleTime으로 측정"
+  }
+ },
+ "multiGate": {
+  "cmd": "node bench/multi.mjs tauri --repeats=1  (HEAD 28689e5 빌드)",
+  "note": "하네스가 baseline 파일(bench/results/multi-tauri-3.0.0-default.json)을 덮어써서 git checkout으로 복원하고, 내 회차는 docs/critic/mui-r1-multi-recheck.json에 뒀다.",
+  "mine_n1": { "idleGridWsMB": 426.8, "idleGridPrivMB": 241.6, "procs": 5, "idleWithWindowsWsMB": 473.7, "idleWithWindowsPrivMB": 250.8, "wsMBPerWindow": 23.4, "scrollInPanelFps": 57.7, "scrollInPanelP95": 22.6, "scrollAllFps": 59.4, "scrollAllP95": 17.4, "droppedPct": 0 },
+  "r5_baseline_n5": { "idleGridWsMB": 424.0, "idleGridPrivMB": 242.0, "procs": 5, "idleWithWindowsWsMB": 471.8, "idleWithWindowsPrivMB": 250.7, "wsMBPerWindow": 24.7, "scrollInPanelFps": 56.7, "scrollInPanelP95": 23.1, "scrollAllFps": 58.0, "scrollAllP95": 20.1 },
+  "verdict": "회귀 없음 (메모리 +2.8MB WS / −0.4MB Priv = 회차 노이즈 · FPS는 오히려 +1.0/+1.4)"
+ },
+ "fallbackReachability": {
+  "bootWindow": { "htmlClass": "ccg-glass-off", "rootPanel": "#1d1d1d", "rootChatBg": "#141414", "reason": "effects-off", "events": 3 },
+  "afterLocationReload": { "htmlClass": "", "hasFallbackStyle": false, "rootPanel": "rgba(21,21,21,.7)", "glassEvents": 0 },
+  "sessionWindowOpenedAfterBoot": { "htmlClass": "", "hasFallbackStyle": false, "rootPanel": "rgba(21,21,21,.7)", "glassEvents": 0 },
+  "verdict": "폴백은 부팅 순간 존재하던 문서에만 도달한다"
+ },
+ "diagnosticsFreeze": {
+  "afterAboutThousandDrifts": { "reasserts": 9, "drifts": 0, "events": 3 },
+  "why": "emit_state는 ok 전이에만 발화하고 부팅 3연발이 전부다. glass::health()는 호출자가 없다(dead code).",
+  "grep": "glass::health → 0 call sites"
+ },
+ "notify": {
+  "selfMeasureReproduced": { "0-system": [918.5, 803.9, -114.7], "1-fallback": [46.8, 47.0, 0.2], "2-notice": [140.4, 137.0, -3.4], "3-error": [180.2, 199.3, 19.1], "4-interrupt": [18.8, 18.8, 0], "5-compact": [99.8, 18.8, -81.0], "6-command": [236.5, 201.0, -35.5], "7-qa": [112.0, 105.5, -6.5] },
+  "parityCorrected0": { "A": 928.5, "B": 819.9, "delta": -108.7, "fixes": ["A .o-stop의 margin 쇼트핸드 제거 + .thread > * + .o-stop{10px}(실물 규칙) 부여 → A +10px", "A .o-error .tx에 word-break:break-word(실물) 추가 → 높이 변화 0", "B에만 있던 .thread > .rule + *{10px} 제거 → B +16px"] },
+  "composition0": { "압축경계": -89.0, "배너2개(문장 단축으로 2줄→1줄)": -41.2, "오류": 26.5, "명령카드": -3.8, "문답": -1.2, "총": -108.7, "압축경계_비중_pct": 82 },
+  "infoAtoms0": { "A": { "chars": 680, "digits": 43, "buttons": 0, "charsPerPx": 0.740 }, "B": { "chars": 662, "digits": 56, "buttons": 3, "charsPerPx": 0.824 }, "deltaPct": { "chars": -2.6, "digits": 30.2, "charsPerPx": 11.3 } },
+  "panelScope420": { "A_3건": 377.3, "B_3건": 252.7, "delta": -124.6, "deltaPct": -33, "note": "빌더가 안 잰 스코프. 여기서 더 크게 이긴다. 단 폴백 배너는 트레이가 접혀 86.4px(§4-1 '줄을 안 늘린다' 불변식이 패널 스코프에서 깨진다)" },
+  "i18n420": { "ko": [86.4, 65.6, 18.8], "en": [86.4, 65.6, 18.8], "verdict": "이 문장들에서는 ko/en 높이 동일 — §7-4 위험 없음(측정으로 닫음)" },
+  "contrastAA": { "pass": ["band 본문 6.42~6.77", "band 강조 11.76~12.67", "도착값 7.88~8.54", "오류 본문 6.67~6.99", "rule 라벨 6.06~6.42", "문답 체크 9.29~9.84"], "borderline_3to4.5": ["rule .num 11px 3.82", "band .raw 11.5px 3.65~3.74", "band .tm 3.57~3.68"], "fail_under3": ["rule .tm(--text-4 11px) 2.29~2.34", "card .tm 2.34~2.36"], "note": "제안이 새로 얹은 정보(수치·원문·시각)가 하필 가장 약한 두 등급에 있다" },
+  "staleClaims": ["ui-notify.css:192 주석 '1줄이면 39px(현행 41px)' — 실측 47.0 vs 46.8", "ui-notify-0-system.html:179 문법표 band '39px+' — 같은 시트가 47.0을 잰다"]
+ }
+}

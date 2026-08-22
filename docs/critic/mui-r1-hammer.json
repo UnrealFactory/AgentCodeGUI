@@ -1,0 +1,12 @@
+﻿{
+    "ts":  "2026-08-23T01:34:52.0164588+09:00",
+    "targetPid":  24944,
+    "hwnd":  30934646,
+    "seconds":  30,
+    "everyMs":  25,
+    "nudge":  true,
+    "kicks":  934,
+    "reads":  934,
+    "readBackWasThree":  55,
+    "recoveredAfterAttackMs":  374
+}
