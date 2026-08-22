@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>채팅 통합 — 1 모드 (기존 IDE 레이아웃)</title>
+<link rel="stylesheet" href="chat-unify.css" />
+</head>
+<body>
+
+<div class="mockmeta">
+  <h1>N=1 — 기존 일반 채팅 그대로</h1>
+  <span class="sub">전체 IDE 레이아웃: 왼쪽 칼럼(사이드바 ⟷ 탐색기 <code>`</code> 전환) · 코드 뷰어 · Git 스트립 · 풀 워크바 · 풀 컴포저.
+  다르게 보이는 건 헤더 오른쪽 다이얼에 <b>1</b>이 켜져 있다는 것뿐.</span>
+  <span class="tag">chat-unify-1-ide</span>
+</div>
+
+<div class="relwrap">
+<div class="win">
+  <div class="win-body">
+
+    <!-- 왼쪽 칼럼 — 탐색기로 전환된 상태(` 키). 사이드바 버전은 chat-unify-collapse.html 참고 -->
+    <div class="lcol">
+      <div class="sb-top"><span class="mark">A</span><span class="name">AgentCodeGUI</span></div>
+      <div class="sb-label" style="padding-top:2px"><span>탐색기</span><span class="sp"></span><span class="slb">⌕</span><span class="slb">↻</span><span class="slb">▤</span></div>
+      <div class="sb-scroll">
+        <div class="fxtree">
+          <div class="fxrow"><span class="ind">▾</span><span>📁 app</span></div>
+          <div class="fxrow" style="padding-left:20px"><span>▸</span><span>📁 src</span></div>
+          <div class="fxrow" style="padding-left:20px"><span>📄</span><span>vite.config.ts</span><span class="badge m">M</span></div>
+          <div class="fxrow"><span class="ind">▾</span><span>📁 crates</span></div>
+          <div class="fxrow" style="padding-left:20px"><span>▾</span><span>📁 ccg-store</span></div>
+          <div class="fxrow" style="padding-left:34px"><span>▾</span><span>📁 src</span></div>
+          <div class="fxrow" style="padding-left:48px"><span>🦀</span><span>chats.rs</span></div>
+          <div class="fxrow" style="padding-left:48px"><span>🦀</span><span>lib.rs</span><span class="badge m">M</span></div>
+          <div class="fxrow" style="padding-left:48px"><span>🦀</span><span>ma.rs</span><span class="badge a">A</span></div>
+          <div class="fxrow" style="padding-left:48px"><span>🦀</span><span>prefs.rs</span></div>
+          <div class="fxrow" style="padding-left:48px"><span>🦀</span><span>window_state.rs</span></div>
+          <div class="fxrow" style="padding-left:20px"><span>▸</span><span>📁 ccg-engine</span></div>
+          <div class="fxrow" style="padding-left:20px"><span>▸</span><span>📁 ccg-proto</span></div>
+          <div class="fxrow"><span class="ind">▾</span><span>📁 docs</span></div>
+          <div class="fxrow" style="padding-left:20px"><span>▾</span><span>📁 design</span></div>
+          <div class="fxrow" style="padding-left:34px"><span>📄</span><span>ux-chat-unify.md</span><span class="badge a">A</span></div>
+          <div class="fxrow" style="padding-left:34px"><span>▸</span><span>📁 mockups</span></div>
+          <div class="fxrow" style="padding-left:20px"><span>📄</span><span>ARCHITECTURE-3.0.md</span></div>
+          <div class="fxrow"><span class="ind">▾</span><span>📁 src-tauri</span></div>
+          <div class="fxrow" style="padding-left:20px"><span>▾</span><span>📁 src</span></div>
+          <div class="fxrow" style="padding-left:34px"><span>🦀</span><span>ipc.rs</span><span class="badge m">M</span></div>
+          <div class="fxrow" style="padding-left:34px"><span>🦀</span><span>main.rs</span><span class="badge m">M</span></div>
+          <div class="fxrow" style="padding-left:34px"><span>🦀</span><span>win.rs</span><span class="badge m">M</span></div>
+          <div class="fxrow"><span>📄</span><span>package.json</span></div>
+        </div>
+      </div>
+      <div class="gitstrip">
+        <span>⑂</span><span class="br">feature/3.0.0-beta</span><span class="ab">↑3 ↓0</span>
+        <span style="flex:1"></span><span class="ab">7 변경</span>
+      </div>
+    </div>
+
+    <!-- 채팅 표면 -->
+    <div class="chat">
+      <div class="head">
+        <span class="title">ipc 디스패처 레지스트리 정리</span>
+        <span class="fchip">C:\Code\AgentCodeGUI <span class="ref">+2</span></span>
+        <span class="sp"></span>
+        <div class="dial">
+          <button class="on newone">1</button>
+          <button>2</button><button>3</button><button>4</button><button>5</button><button>6</button>
+        </div>
+        <span class="h-ic">⌕</span>
+        <span class="h-ic on">▤</span>
+      </div>
+
+      <div class="scrollarea">
+        <div class="thread">
+          <div class="msg user">3.0의 IPC를 <code>chat:*</code> 한 벌로 접는 스케치를 보고 싶어. 옛 채널은 어댑터로 붙여서 이식 중인 렌더러가 계속 돌게.</div>
+
+          <div class="msg ai">
+            <p>디스패처를 두 층으로 나눴어. 정규 핸들러는 <code>chat:*</code> 15개만 등록하고, 옛 이름 55개는 <em>별칭 테이블</em>에서 페이로드 변환만 거쳐 같은 핸들러로 들어간다.</p>
+            <p><code>ma:run { panelId }</code>은 <code>panelIdToChat()</code>으로 chatId를 뽑고, <code>session:run</code>은 창 레지스트리에서 그 창의 chatId를 읽는다.</p>
+          </div>
+
+          <div class="toolgroup">
+            <div class="tg-h"><span>파일 편집</span><span class="cnt">4</span></div>
+            <div class="toolrow"><span class="k">편집</span><span class="p">src-tauri/src/ipc.rs</span><span class="add">+112</span><span class="del">−38</span></div>
+            <div class="toolrow"><span class="k">생성</span><span class="p">crates/ccg-proto/src/alias.rs</span><span class="add">+96</span></div>
+            <div class="toolrow"><span class="k">편집</span><span class="p">crates/ccg-store/src/lib.rs</span><span class="add">+8</span><span class="del">−1</span></div>
+            <div class="toolrow"><span class="k">읽기</span><span class="p">src/shared/protocol.ts</span></div>
+          </div>
+
+          <div class="msg ai">
+            <p>별칭 테이블은 이렇게 생겼어:</p>
+          </div>
+
+          <div class="toolgroup">
+            <div class="tg-h"><span>Bash — cargo check</span><span class="cnt">3.8s</span></div>
+            <div class="toolrow"><span class="k">출력</span><span class="p">Checking ccg-proto v0.1.0 … Finished in 3.81s</span></div>
+            <div class="toolrow"><span class="k">경고</span><span class="p">unused import: `HashSet` (alias.rs:4)</span></div>
+          </div>
+
+          <div class="msg user">경고 하나 정리하고, <code>chat:event</code> 팬아웃도 같이 붙여줘.</div>
+
+          <div class="msg ai">
+            <p>정리했어. 팬아웃은 창 레지스트리에 <code>chatId → [label]</code> 역인덱스를 두고 <code>emit_to</code>로 돌린다 — 2.6.2의 <code>maEvent</code> 미러 규약이 그대로 일반 규칙이 됐다.</p>
+          </div>
+
+          <div class="runline"><i class="spin"></i><span>Edit — <code>src-tauri/src/win.rs</code> 역인덱스 삽입 중</span></div>
+        </div>
+      </div>
+
+      <div class="limitbar">
+        <div class="inner">
+          <span>⏸</span>
+          <span>사용 한도 — <b>14:20</b>에 자동으로 이어서 (5시간 창)</span>
+          <span class="sp"></span>
+          <span class="x">✕</span>
+        </div>
+      </div>
+
+      <div class="btwdock">
+        <span class="btwmini"><span class="b">btw</span>포크 세션 리스폰 규약 <span style="color:var(--text-4)">✕</span></span>
+      </div>
+
+      <div class="workbar">
+        <span class="wb on">파일 <i class="n">7</i></span>
+        <span class="wb">셸 <i class="n">1</i></span>
+        <span class="wb">서브에이전트 <i class="n">2</i></span>
+        <span class="wb">워크플로 <i class="n">1</i></span>
+        <span class="wb">컨텍스트 <span class="bar"><i style="width:52%"></i></span> <i class="n">52% · 104k/200k</i></span>
+        <span class="wb warn">5h <i class="n">72%</i></span>
+        <span class="wb">주간 <i class="n">31%</i></span>
+      </div>
+
+      <div class="composer">
+        <div class="box">
+          <div class="ta typed">별칭 삭제 시점의 회귀 판정도 스펙에 넣어줘 — 옛 채널 참조 0건 grep + 화면 인벤토리 재주행</div>
+          <div class="bar">
+            <span class="pchip"><i class="dotc" style="background:var(--violet)"></i>Opus</span>
+            <span class="pchip">xhigh</span>
+            <span class="pchip">bypass</span>
+            <span class="pchip">📁 AgentCodeGUI</span>
+            <span class="pchip ghost">liu@gmail.com</span>
+            <span class="sp"></span>
+            <span class="icbtn">🖼</span><span class="icbtn">📎</span><span class="icbtn">⏱</span><span class="sendbtn">↑</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 코드 뷰어 -->
+    <div class="viewer">
+      <div class="vh">
+        <span>🦀</span><span class="path">crates/ccg-store/src/chats.rs</span>
+        <span class="sp"></span>
+        <span class="mode on">읽기</span><span class="mode">편집</span><span class="mode on">diff</span><span style="color:var(--text-4);margin-left:4px">✕</span>
+      </div>
+      <div class="code">
+        <div class="ln"><span class="g">148</span><span><span class="c-cm">/// unloaded 마커에 디스크의 스냅샷을 되끼운다.</span></span></div>
+        <div class="ln"><span class="g">149</span><span><span class="c-cm">/// 파일도 캐시도 없으면 `snapshot` 키 자체가 빠진다.</span></span></div>
+        <div class="ln"><span class="g">150</span><span><span class="c-kw">fn</span> <span class="c-fn">with_stored_snapshot</span>(id: &amp;<span class="c-ty">str</span>, chat: &amp;<span class="c-ty">Value</span>) -&gt; <span class="c-ty">Value</span> {</span></div>
+        <div class="ln"><span class="g">151</span><span>&nbsp;&nbsp;<span class="c-kw">let</span> stored = <span class="c-fn">with_cache</span>(|c| c.<span class="c-mb">get</span>(id).<span class="c-mb">cloned</span>())</span></div>
+        <div class="ln"><span class="g">152</span><span>&nbsp;&nbsp;&nbsp;&nbsp;.<span class="c-mb">or_else</span>(|| std::fs::<span class="c-fn">read_to_string</span>(<span class="c-fn">chat_file</span>(id)).<span class="c-mb">ok</span>())</span></div>
+        <div class="ln"><span class="g">153</span><span>&nbsp;&nbsp;&nbsp;&nbsp;.<span class="c-mb">and_then</span>(|raw| serde_json::<span class="c-fn">from_str</span>::&lt;<span class="c-ty">Value</span>&gt;(&amp;raw).<span class="c-mb">ok</span>())</span></div>
+        <div class="ln"><span class="g">154</span><span>&nbsp;&nbsp;&nbsp;&nbsp;.<span class="c-mb">and_then</span>(|v| v.<span class="c-mb">get</span>(<span class="c-str">"snapshot"</span>).<span class="c-mb">cloned</span>());</span></div>
+        <div class="ln"><span class="g">155</span><span></span></div>
+        <div class="ln del"><span class="g">156</span><span>&nbsp;&nbsp;<span class="c-kw">let</span> <span class="c-kw">mut</span> merged = chat.<span class="c-mb">as_object</span>().<span class="c-mb">cloned</span>().<span class="c-mb">unwrap</span>();</span></div>
+        <div class="ln add"><span class="g">156</span><span>&nbsp;&nbsp;<span class="c-kw">let</span> <span class="c-kw">mut</span> merged: <span class="c-ty">Map</span>&lt;<span class="c-ty">String</span>, <span class="c-ty">Value</span>&gt; =</span></div>
+        <div class="ln add"><span class="g">157</span><span>&nbsp;&nbsp;&nbsp;&nbsp;chat.<span class="c-mb">as_object</span>().<span class="c-mb">cloned</span>().<span class="c-mb">unwrap_or_default</span>();</span></div>
+        <div class="ln"><span class="g">158</span><span>&nbsp;&nbsp;<span class="c-kw">match</span> stored {</span></div>
+        <div class="ln"><span class="g">159</span><span>&nbsp;&nbsp;&nbsp;&nbsp;<span class="c-ty">Some</span>(s) =&gt; { merged.<span class="c-mb">insert</span>(<span class="c-str">"snapshot"</span>.<span class="c-mb">into</span>(), s); }</span></div>
+        <div class="ln"><span class="g">160</span><span>&nbsp;&nbsp;&nbsp;&nbsp;<span class="c-ty">None</span> =&gt; { merged.<span class="c-mb">shift_remove</span>(<span class="c-str">"snapshot"</span>); }</span></div>
+        <div class="ln"><span class="g">161</span><span>&nbsp;&nbsp;}</span></div>
+        <div class="ln"><span class="g">162</span><span>&nbsp;&nbsp;merged.<span class="c-mb">shift_remove</span>(<span class="c-str">"unloaded"</span>);</span></div>
+        <div class="ln"><span class="g">163</span><span>&nbsp;&nbsp;<span class="c-ty">Value</span>::<span class="c-ty">Object</span>(merged)</span></div>
+        <div class="ln"><span class="g">164</span><span>}</span></div>
+        <div class="ln"><span class="g">165</span><span></span></div>
+        <div class="ln"><span class="g">166</span><span><span class="c-cm">/// 블롭을 채팅별 파일로 저장. 바뀐 것만 쓰고, 사라진 것은 지운다.</span></span></div>
+        <div class="ln"><span class="g">167</span><span><span class="c-kw">pub fn</span> <span class="c-fn">write_chats</span>(data: &amp;<span class="c-ty">Value</span>) {</span></div>
+        <div class="ln"><span class="g">168</span><span>&nbsp;&nbsp;<span class="c-kw">let</span> <span class="c-ty">Some</span>(chats) = data.<span class="c-mb">get</span>(<span class="c-str">"chats"</span>).<span class="c-mb">and_then</span>(<span class="c-ty">Value</span>::<span class="c-mb">as_array</span>)</span></div>
+        <div class="ln"><span class="g">169</span><span>&nbsp;&nbsp;<span class="c-kw">else</span> { <span class="c-kw">return</span> };</span></div>
+        <div class="ln"><span class="g">170</span><span>&nbsp;&nbsp;<span class="c-kw">if</span> std::fs::<span class="c-fn">create_dir_all</span>(<span class="c-fn">chats_dir</span>()).<span class="c-mb">is_err</span>() { <span class="c-kw">return</span>; }</span></div>
+        <div class="ln"><span class="g">171</span><span>&nbsp;&nbsp;<span class="c-kw">let</span> <span class="c-kw">mut</span> present: <span class="c-ty">HashSet</span>&lt;<span class="c-ty">String</span>&gt; = <span class="c-ty">HashSet</span>::<span class="c-fn">new</span>();</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="note n-l" style="top:56px;left:1030px;">
+  <b>다이얼 위치 고정.</b> 여기가 2.6.2 멀티 헤더의 <code>.ma-count</code> 자리와 같은 x좌표.
+  1↔2를 눌러도 버튼이 안 움직인다.
+</div>
+<div class="note n-b" style="top:640px;left:262px;">
+  <b>표면은 한 벌.</b> 스레드·워크바·컴포저·한도 배너·btw 도크·승인/질문 카드 =
+  <code>&lt;ChatSurface chatId&gt;</code> 하나. 여기선 자리가 화면 전체일 뿐.
+</div>
+</div>
+
+<div class="legend">
+  <span><span class="sw"></span><b>노란 말풍선</b> = 목업 주석(실제 UI 아님)</span>
+  <span><b>왼쪽 칼럼</b>은 탐색기로 전환된 상태 — <code>`</code>로 사이드바와 맞바꾼다(2.6.2 <code>explorer.swap</code>)</span>
+  <span><b>Git 스트립</b>은 탐색기 하단 고정</span>
+</div>
+
+</body>
+</html>

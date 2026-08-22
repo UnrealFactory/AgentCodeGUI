@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>채팅 통합 — 4 그리드 (자리 스코프 카드 · 빈 자리 · 창 유령)</title>
+<link rel="stylesheet" href="chat-unify.css" />
+</head>
+<body>
+
+<div class="mockmeta">
+  <h1>N=4 그리드 — 자리 스코프 승인 카드 · 빈 자리 · 창으로 나간 자리</h1>
+  <span class="sub">승인/질문 카드는 항상 <code>&lt;ChatSurface&gt;</code> 안(= 자리 스코프)에 뜬다. 키보드는 <b>포커스 자리만</b>.
+  1 모드에서는 자리가 화면 전체라 지금과 똑같아 보인다 — 배선은 한 벌.</span>
+  <span class="tag">chat-unify-grid4</span>
+</div>
+
+<div class="relwrap">
+<div class="win">
+  <div class="win-body">
+
+    <div class="lcol">
+      <div class="sb-top"><span class="mark">A</span><span class="name">AgentCodeGUI</span></div>
+      <button class="sb-new"><span class="ic">＋</span><span>새 채팅</span><span class="kbd">Ctrl+N</span></button>
+      <button class="sb-new"><span class="ic">⧉</span><span>새 창으로 열기</span><span class="kbd">⇧Ctrl+N</span></button>
+      <button class="sb-new"><span class="ic">≡</span><span>프롬프트</span><span class="kbd">Ctrl+P</span></button>
+
+      <div class="sb-scroll">
+        <div class="sb-label"><span>채팅</span><span class="sp"></span><span class="n">14</span><span class="slb">⌕</span><span class="slb">🗑</span></div>
+        <div class="sb-list">
+          <div class="sb-item"><span class="dot run"></span><span class="t">ipc 디스패처 레지스트리 정리</span><span class="slotchip" style="background:var(--violet)">1</span><span class="when">방금</span></div>
+          <div class="sb-item"><span class="dot done"></span><span class="t">ccg-store 팬아웃 포트</span><span class="slotchip" style="background:var(--blue)">2</span><span class="when">1분</span></div>
+          <div class="sb-item active"><span class="dot run"></span><span class="t">Roslyn 프라임 재현 스크립트</span><span class="slotchip" style="background:var(--amber)">3</span><span class="when">방금</span></div>
+          <div class="sb-item"><span class="dot run"></span><span class="t">엔진 좀비 job object 검증</span><span class="slotchip" style="background:var(--text-3);color:#0d0d0f">창</span><span class="when">방금</span></div>
+          <div class="sb-item"><span class="dot"></span><span class="t">아크릴 + 네이티브 스냅 PoC</span><span class="when">18분</span></div>
+          <div class="sb-item"><span class="dot"></span><span class="t">벤치 하네스 콜드스타트 재측정</span><span class="when">41분</span></div>
+          <div class="sb-item"><span class="dot"></span><span class="t">패치노트 3.0.0-beta 초안</span><span class="when">2시간</span></div>
+          <div class="sb-item"><span class="dot done"></span><span class="t">토스트 라우팅 chatId 단일화</span><span class="when">3시간</span></div>
+          <div class="sb-item"><span class="dot"></span><span class="t">BTW - ipc 디스패처 …</span><span class="when">어제</span></div>
+          <div class="sb-item"><span class="dot"></span><span class="t">유휴 메모리 4차 패스 메모</span><span class="when">어제</span></div>
+          <div class="sb-item"><span class="dot"></span><span class="t">Verse 제거 후 잔여 참조 훑기</span><span class="when">2일</span></div>
+          <div class="sb-item"><span class="dot"></span><span class="t">토스트 창 높이 보고 레이스</span><span class="when">3일</span></div>
+        </div>
+        <div class="sb-label"><span>배치</span><span class="sp"></span><span class="n">3</span><span class="slb">🗑</span></div>
+        <div class="sb-list">
+          <div class="sb-item active"><span class="dot run"></span><span class="t">3.0 빌더 4분할</span><span class="when">방금</span></div>
+          <div class="sb-item"><span class="dot"></span><span class="t">크리틱 2분할</span><span class="when">어제</span></div>
+          <div class="sb-item"><span class="dot"></span><span class="t">LSP 6분할</span><span class="when">3일</span></div>
+        </div>
+      </div>
+      <div class="sb-foot"><span class="av">L</span><span>Liu</span><span style="flex:1"></span><span>⚙</span></div>
+    </div>
+
+    <div class="chat" style="background:transparent">
+      <div class="head">
+        <span class="title">3.0 빌더 4분할</span>
+        <span class="fchip">C:\Code\AgentCodeGUI <span class="ref">+2</span></span>
+        <span class="sp"></span>
+        <div class="dial">
+          <button class="newone">1</button><button>2</button><button>3</button>
+          <button class="on">4</button><button>5</button><button>6</button>
+        </div>
+        <span class="h-ic">▤</span>
+        <span class="vsep"></span>
+        <div class="wctl"><b>—</b><b>▢</b><b>✕</b></div>
+      </div>
+
+      <div class="grid n4">
+
+        <!-- 자리 1 -->
+        <section class="panel">
+          <div class="tagline" style="background:var(--violet)"></div>
+          <div class="p-head">
+            <span class="p-num" style="background:var(--violet)">1</span>
+            <span class="p-title">ipc 디스패처 레지스트리 정리</span>
+            <span class="p-folder">AgentCodeGUI</span>
+            <span class="sp"></span>
+            <span class="p-status run"><i class="spin"></i>작업 중 · 2:07</span>
+            <span class="p-ic">⤢</span><span class="p-ic">⧉</span>
+          </div>
+          <div class="p-body">
+            <div class="thread">
+              <div class="msg user">정규 <code>chat:*</code> 15개 + 별칭 55개 구조로 가자.</div>
+              <div class="msg ai"><p>별칭은 페이로드 변환만 들고 있어 로직 중복이 없어. <code>ma:panel-*</code>는 <code>win:chat-*</code>로 접힌다.</p></div>
+              <div class="toolgroup">
+                <div class="tg-h"><span>파일 편집</span><span class="cnt">3</span></div>
+                <div class="toolrow"><span class="k">생성</span><span class="p">crates/ccg-proto/src/alias.rs</span><span class="add">+96</span></div>
+                <div class="toolrow"><span class="k">편집</span><span class="p">src-tauri/src/ipc.rs</span><span class="add">+112</span><span class="del">−38</span></div>
+                <div class="toolrow"><span class="k">편집</span><span class="p">src-tauri/src/win.rs</span><span class="add">+24</span></div>
+              </div>
+              <div class="runline"><i class="spin"></i><span>Task — 옛 채널 참조 grep</span></div>
+            </div>
+          </div>
+          <div class="p-foot">
+            <div class="workbar">
+              <span class="wb on">파일 <i class="n">3</i></span><span class="wb on">서브에이전트 <i class="n">1</i></span>
+              <span class="wb">컨텍스트 <span class="bar"><i style="width:46%"></i></span> <i class="n">46%</i></span>
+            </div>
+            <div class="composer"><div class="box">
+              <div class="ta">메시지를 입력하세요</div>
+              <div class="bar"><span class="pchip"><i class="dotc" style="background:var(--violet)"></i>Opus</span><span class="pchip">xhigh</span><span class="pchip">bypass</span><span class="sp"></span><span class="sendbtn">↑</span></div>
+            </div></div>
+          </div>
+        </section>
+
+        <!-- 자리 2 — 창으로 나가 있음(유령) -->
+        <div class="ghostcell">
+          <div style="font-size:22px;opacity:.5">⧉</div>
+          <div>별도 창에서 보는 중 — 클릭해 창으로</div>
+          <div style="font-size:10.5px;color:var(--text-4)">엔진좀비 job object 검증 · 작업 중 0:48</div>
+          <div class="p-num" style="position:absolute;top:8px;left:8px;background:var(--text-3)">2</div>
+        </div>
+
+        <!-- 자리 3 — 포커스 + 자리 스코프 승인 카드 -->
+        <section class="panel focused">
+          <div class="tagline" style="background:var(--amber)"></div>
+          <div class="p-head">
+            <span class="p-num" style="background:var(--amber)">3</span>
+            <span class="p-title">Roslyn 프라임 재현 스크립트</span>
+            <span class="p-folder">RookissAI_WorkSpace</span>
+            <span class="sp"></span>
+            <span class="p-status run"><i class="spin"></i>대기 중 · 0:06</span>
+            <span class="p-ic">⤢</span><span class="p-ic">⧉</span>
+          </div>
+          <div class="p-body">
+            <div class="thread">
+              <div class="msg user">didOpen 중복으로 서버가 죽는 순간을 스크립트로 재현해줘.</div>
+              <div class="msg ai"><p>같은 URI에 <code>didOpen</code>을 두 번 보내고 <code>range</code> 없는 <code>didChange</code>를 얹으면 재현된다. 프로세스 종료 코드를 잡아두자.</p></div>
+              <div class="toolgroup">
+                <div class="tg-h"><span>파일 편집</span><span class="cnt">1</span></div>
+                <div class="toolrow"><span class="k">생성</span><span class="p">scripts/poc-roslyn-didopen.mjs</span><span class="add">+128</span></div>
+              </div>
+            </div>
+            <!-- 자리 스코프 승인 카드 — 이 패널 안에서만 뜬다 -->
+            <div class="qveil">
+              <div class="qcard">
+                <div class="qh">
+                  <div class="qk">도구 승인</div>
+                  <div class="qt">셸 명령을 실행할까요?</div>
+                </div>
+                <div class="qbody">node scripts/poc-roslyn-didopen.mjs --server roslyn --repeat 3</div>
+                <div class="qopts">
+                  <div class="qopt sel"><span class="kb">1</span><span>이번만 허용</span><span class="sp"></span><span class="kb">Enter</span></div>
+                  <div class="qopt"><span class="kb">2</span><span>이 대화에서 항상 허용</span></div>
+                  <div class="qopt deny"><span class="kb">3</span><span>거부하고 이유 말하기</span><span class="sp"></span><span class="kb">Esc</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="p-foot">
+            <div class="workbar">
+              <span class="wb on">파일 <i class="n">1</i></span>
+              <span class="wb">컨텍스트 <span class="bar"><i style="width:18%"></i></span> <i class="n">18%</i></span>
+              <span class="wb">주간 <i class="n">31%</i></span>
+            </div>
+            <div class="composer"><div class="box">
+              <div class="ta">응답 대기 중 — 카드에서 골라주세요</div>
+              <div class="bar"><span class="pchip"><i class="dotc" style="background:var(--amber)"></i>Sonnet</span><span class="pchip">high</span><span class="pchip">normal</span><span class="pchip ghost">liu@…</span><span class="sp"></span><span class="sendbtn">↑</span></div>
+            </div></div>
+          </div>
+        </section>
+
+        <!-- 자리 4 — 빈 자리 -->
+        <section class="panel">
+          <div class="tagline" style="background:var(--teal)"></div>
+          <div class="p-head">
+            <span class="p-num" style="background:var(--teal)">4</span>
+            <span class="p-title" style="color:var(--text-4)">빈 자리</span>
+            <span class="sp"></span>
+            <span class="p-ic">⤢</span><span class="p-ic">⧉</span>
+          </div>
+          <div class="p-empty">
+            <div style="font-size:20px;opacity:.4">＋</div>
+            <div>이 자리에 무엇을 놓을까요?</div>
+            <div class="tiles">
+              <span class="tile solid">＋ 새 채팅</span>
+              <span class="tile">최근 채팅에서 고르기</span>
+            </div>
+            <div style="font-size:10.5px;color:var(--text-4);margin-top:2px">이 자리 숨기기 (다이얼 3으로)</div>
+          </div>
+        </section>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="note n-l" style="top:352px;left:1052px;">
+  <b>자리 스코프 카드.</b> 승인/질문은 패널 안에서만 뜬다(2.6.2 <code>multi-panel-permission</code> 규약).
+  숫자/화살표/Enter는 <b>포커스 자리(3)</b>만 먹는다.
+</div>
+<div class="note n-r" style="top:150px;left:472px;">
+  <b>빈 자리는 대화가 아니다.</b> <code>slots[i]=null</code>. 첫 전송 순간 채팅이
+  생성돼 풀에 편입된다 — 그전엔 사이드바에 안 보인다.
+</div>
+<div class="note n-b" style="top:216px;left:790px;">
+  <b>창 유령.</b> 실물은 별도 OS 창에.<br>자리 번호는 그대로 지킨다.
+</div>
+</div>
+
+<div class="legend">
+  <span><span class="sw"></span><b>노란 말풍선</b> = 목업 주석(실제 UI 아님)</span>
+  <span><b>포커스 자리</b> = 흰 테두리 링(자리 3)</span>
+  <span><b>2px 컬러 라인</b> = 패널 컬러 태그 — 자리가 아니라 <b>채팅</b>을 따라간다</span>
+</div>
+
+</body>
+</html>

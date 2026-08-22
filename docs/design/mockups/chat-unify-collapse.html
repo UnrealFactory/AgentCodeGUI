@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>채팅 통합 — 6 → 1 전환 직후</title>
+<link rel="stylesheet" href="chat-unify.css" />
+<style>
+  /* 접힌 자리 칩 — 슬롯 칩의 흐린 변형 */
+  .sb-item .slotchip.folded{background:transparent;border:1px solid var(--line-2);color:var(--text-3);
+    padding:0 3px 0 2px;}
+  .sb-item .slotchip.folded i{font-style:normal;color:var(--text-4);font-size:8.5px;margin-right:1px;}
+  .foldhint{display:flex;align-items:center;gap:6px;margin:4px 2px 0;padding:5px 8px;border-radius:7px;
+    background:rgba(217,192,99,.08);border:1px solid rgba(217,192,99,.22);font-size:10.5px;color:var(--yellow);}
+  .foldhint .sp{flex:1;}
+  .foldhint .go{color:var(--text-3);font-size:10px;}
+  /* 접힌 자리에서 도는 실행 요약 칩 (헤더) */
+  .runsum{display:flex;align-items:center;gap:5px;height:26px;padding:0 8px;border-radius:8px;
+    background:var(--yellow-soft);border:1px solid rgba(217,192,99,.28);font-size:11px;color:var(--yellow);}
+  .runsum .spin{width:7px;height:7px;border-radius:50%;border:1.4px solid rgba(217,192,99,.35);border-top-color:var(--yellow);}
+</style>
+</head>
+<body>
+
+<div class="mockmeta">
+  <h1>6 → 1 전환 직후 — 나머지 5개 대화는 어디로 갔나</h1>
+  <span class="sub"><b>어디로도 가지 않았다.</b> 대화는 애초에 자리가 아니라 풀에 있었다.
+  UI에서는 세 곳에 동시에 있다 — 사이드바 「채팅」 목록 · 다이얼 옆 <b>접힘 배지</b>(팝오버) · 헤더의 <b>실행 중 요약 칩</b>.</span>
+  <span class="tag">chat-unify-collapse</span>
+</div>
+
+<div class="relwrap">
+<div class="win">
+  <div class="win-body">
+
+    <!-- 사이드바 상태 — 6개가 전부 목록에 있다. 자리 칩만 바뀐다 -->
+    <div class="lcol">
+      <div class="sb-top"><span class="mark">A</span><span class="name">AgentCodeGUI</span></div>
+      <button class="sb-new"><span class="ic">＋</span><span>새 채팅</span><span class="kbd">Ctrl+N</span></button>
+      <button class="sb-new"><span class="ic">⧉</span><span>새 창으로 열기</span><span class="kbd">⇧Ctrl+N</span></button>
+      <button class="sb-new"><span class="ic">≡</span><span>프롬프트</span><span class="kbd">Ctrl+P</span></button>
+
+      <div class="sb-scroll">
+        <div class="sb-label"><span>채팅</span><span class="sp"></span><span class="n">14</span><span class="slb">⌕</span><span class="slb">🗑</span></div>
+
+        <div class="foldhint">
+          <span>⌄</span><span>이 배치의 5개 자리가 접혔어요 — 대화는 그대로예요</span>
+          <span class="sp"></span><span class="go">보기</span>
+        </div>
+
+        <div class="sb-list" style="margin-top:4px">
+          <!-- 1번 자리 = 지금 보이는 대화 -->
+          <div class="sb-item active"><span class="dot run"></span><span class="t">Roslyn 프라임 재현 스크립트</span><span class="slotchip" style="background:var(--amber)">1</span><span class="when">방금</span></div>
+          <!-- 접힌 자리 5개 — 흐린 자리 칩 + 상태 점은 그대로 돈다 -->
+          <div class="sb-item"><span class="dot run"></span><span class="t">ipc 디스패처 레지스트리 정리</span><span class="slotchip folded"><i>⌄</i>2</span><span class="when">방금</span></div>
+          <div class="sb-item"><span class="dot done"></span><span class="t">ccg-store 팬아웃 포트</span><span class="slotchip folded"><i>⌄</i>3</span><span class="when">1분</span></div>
+          <div class="sb-item"><span class="dot run"></span><span class="t">벤치 하네스 콜드스타트 재측정</span><span class="slotchip folded"><i>⌄</i>4</span><span class="when">방금</span></div>
+          <div class="sb-item"><span class="dot"></span><span class="t">아크릴 + 네이티브 스냅 PoC</span><span class="slotchip folded"><i>⌄</i>5</span><span class="when">18분</span></div>
+          <div class="sb-item"><span class="dot err"></span><span class="t">패치노트 3.0.0-beta 초안</span><span class="slotchip folded"><i>⌄</i>6</span><span class="when">2시간</span></div>
+          <!-- 자리에 없는 채팅들 — 칩 없음 -->
+          <div class="sb-item"><span class="dot run"></span><span class="t">엔진 좀비 job object 검증</span><span class="slotchip" style="background:var(--text-3);color:#0d0d0f">창</span><span class="when">방금</span></div>
+          <div class="sb-item"><span class="dot done"></span><span class="t">토스트 라우팅 chatId 단일화</span><span class="when">3시간</span></div>
+          <div class="sb-item"><span class="dot"></span><span class="t">BTW - ipc 디스패처 …</span><span class="when">어제</span></div>
+          <div class="sb-item"><span class="dot"></span><span class="t">유휴 메모리 4차 패스 메모</span><span class="when">어제</span></div>
+          <div class="sb-item"><span class="dot"></span><span class="t">Verse 제거 후 잔여 참조 훑기</span><span class="when">2일</span></div>
+          <div class="sb-item"><span class="dot"></span><span class="t">토스트 창 높이 보고 레이스</span><span class="when">3일</span></div>
+        </div>
+
+        <div class="sb-label"><span>배치</span><span class="sp"></span><span class="n">3</span><span class="slb">🗑</span></div>
+        <div class="sb-list">
+          <div class="sb-item active"><span class="dot run"></span><span class="t">3.0 빌더 4분할</span><span class="when">방금</span></div>
+          <div class="sb-item"><span class="dot"></span><span class="t">크리틱 2분할</span><span class="when">어제</span></div>
+          <div class="sb-item"><span class="dot"></span><span class="t">LSP 6분할</span><span class="when">3일</span></div>
+        </div>
+      </div>
+      <div class="sb-foot"><span class="av">L</span><span>Liu</span><span style="flex:1"></span><span>⚙</span></div>
+    </div>
+
+    <!-- 본문 — 1 모드(IDE 크롬). 포커스였던 자리가 1번으로 승격됐다 -->
+    <div class="chat">
+      <div class="head">
+        <span class="title">Roslyn 프라임 재현 스크립트</span>
+        <span class="fchip">C:\Code\RookissAI_WorkSpace</span>
+        <span class="sp"></span>
+        <span class="runsum"><i class="spin"></i>접힌 자리 실행 <b>3</b></span>
+        <div class="dial">
+          <button class="on newone">1</button><button>2</button><button>3</button>
+          <button>4</button><button>5</button><button>6</button>
+        </div>
+        <span class="foldbadge open">⌄ <span class="cnt">5</span></span>
+        <span class="h-ic">⌕</span>
+        <span class="h-ic on">▤</span>
+        <span class="vsep"></span>
+        <div class="wctl"><b>—</b><b>▢</b><b>✕</b></div>
+      </div>
+
+      <!-- 접힘 팝오버 (열린 상태) -->
+      <div class="foldpop">
+        <div class="ph"><span>접힌 자리 5개</span><span class="sp"></span><span style="font-size:10px">이 배치에만 접혀 있어요</span></div>
+        <div class="foldrow">
+          <span class="num" style="background:var(--violet)">2</span>
+          <span class="t">ipc 디스패처 레지스트리 정리</span>
+          <span class="st run">작업 중</span><span class="act">↥</span>
+        </div>
+        <div class="foldrow">
+          <span class="num" style="background:var(--blue)">3</span>
+          <span class="t">ccg-store 팬아웃 포트</span>
+          <span class="st done">완료</span><span class="act">↥</span>
+        </div>
+        <div class="foldrow">
+          <span class="num" style="background:var(--teal)">4</span>
+          <span class="t">벤치 하네스 콜드스타트 재측정</span>
+          <span class="st run">작업 중</span><span class="act">↥</span>
+        </div>
+        <div class="foldrow">
+          <span class="num" style="background:var(--green)">5</span>
+          <span class="t">아크릴 + 네이티브 스냅 PoC</span>
+          <span class="st">대기</span><span class="act">↥</span>
+        </div>
+        <div class="foldrow">
+          <span class="num" style="background:var(--red)">6</span>
+          <span class="t">패치노트 3.0.0-beta 초안</span>
+          <span class="st" style="color:var(--red);border-color:rgba(221,122,107,.32)">오류</span><span class="act">↥</span>
+        </div>
+        <div class="pf">
+          <span>↥ = 1번 자리로 올리기</span><span style="flex:1"></span><span>다이얼을 되올리면 전부 제자리</span>
+        </div>
+      </div>
+
+      <div class="scrollarea">
+        <div class="thread">
+          <div class="msg user">didOpen 중복으로 서버가 죽는 순간을 스크립트로 재현해줘. 종료 코드까지 잡아서.</div>
+          <div class="msg ai">
+            <p>같은 URI에 <code>didOpen</code>을 두 번 보내고 <code>range</code> 없는 <code>didChange</code>를 얹으면 재현된다. 프로토콜 위반이라 서버가 프로세스째 내려간다 — 클라이언트 예외가 아니라서 로그만 보면 원인이 안 보인다.</p>
+            <p>재현 스크립트는 3단계로 짰어: (1) 정상 <code>initialize</code> → (2) 중복 <code>didOpen</code> → (3) 종료 코드 수집. 3회 반복해서 재현율을 낸다.</p>
+          </div>
+          <div class="toolgroup">
+            <div class="tg-h"><span>파일 편집</span><span class="cnt">2</span></div>
+            <div class="toolrow"><span class="k">생성</span><span class="p">scripts/poc-roslyn-didopen.mjs</span><span class="add">+128</span></div>
+            <div class="toolrow"><span class="k">편집</span><span class="p">crates/ccg-lsp/src/roslyn.rs</span><span class="add">+17</span><span class="del">−4</span></div>
+          </div>
+          <div class="toolgroup">
+            <div class="tg-h"><span>Bash — node scripts/poc-roslyn-didopen.mjs --repeat 3</span><span class="cnt">11.4s</span></div>
+            <div class="toolrow"><span class="k">출력</span><span class="p">run 1/3 — server exited: code 134 (SIGABRT) after 1.9s</span></div>
+            <div class="toolrow"><span class="k">출력</span><span class="p">run 2/3 — server exited: code 134 (SIGABRT) after 2.1s</span></div>
+            <div class="toolrow"><span class="k">출력</span><span class="p">run 3/3 — server exited: code 134 (SIGABRT) after 1.8s</span></div>
+            <div class="toolrow"><span class="k">결과</span><span class="p">재현율 3/3 · 평균 1.93s</span></div>
+          </div>
+          <div class="msg ai">
+            <p>3/3 재현. 이제 <code>openDoc</code> 레이스 가드를 Rust 쪽에 옮기고 같은 스크립트로 0/3이 나오는지 확인하면 돼.</p>
+          </div>
+          <div class="runline"><i class="spin"></i><span>Edit — <code>crates/ccg-lsp/src/doc.rs</code> 열림 상태 집합 추가</span></div>
+        </div>
+      </div>
+
+      <div class="workbar">
+        <span class="wb on">파일 <i class="n">2</i></span>
+        <span class="wb on">셸 <i class="n">1</i></span>
+        <span class="wb">컨텍스트 <span class="bar"><i style="width:29%"></i></span> <i class="n">29% · 58k/200k</i></span>
+        <span class="wb warn">5h <i class="n">74%</i></span>
+        <span class="wb">주간 <i class="n">31%</i></span>
+      </div>
+
+      <div class="composer">
+        <div class="box">
+          <div class="ta">메시지를 입력하세요 — "/" 명령 · "@" 파일</div>
+          <div class="bar">
+            <span class="pchip"><i class="dotc" style="background:var(--amber)"></i>Sonnet</span>
+            <span class="pchip">high</span>
+            <span class="pchip">normal</span>
+            <span class="pchip">📁 RookissAI_WorkSpace</span>
+            <span class="pchip ghost">liu@gmail.com</span>
+            <span class="sp"></span>
+            <span class="icbtn">🖼</span><span class="icbtn">📎</span><span class="icbtn">⏱</span><span class="sendbtn">↑</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="note n-r" style="top:150px;left:472px;">
+  <b>①</b> 사이드바 「채팅」 — 6개 전부 그대로. 자리 칩만 <b>흐린 ⌄N</b>으로 바뀐다.
+  실행 중인 대화의 점은 계속 돈다.
+</div>
+<div class="note n-l" style="top:104px;left:1178px;">
+  <b>②</b> 접힘 배지 → 팝오버. 자리 번호·제목·상태 + <b>↥ 1번 자리로 올리기</b>.
+  다이얼을 되올리면 전부 제자리로 돌아온다(<code>slots</code>를 안 건드렸으니까).
+</div>
+<div class="note n-b" style="top:52px;left:786px;">
+  <b>③</b> 헤더 실행 요약 — 안 보이는 곳에서 3개가 돌고 있다는 사실을 숨기지 않는다.
+</div>
+<div class="note n-t" style="top:96px;left:262px;">
+  <b>현재 대화 = 1번 자리.</b> 축소 시 포커스였던 자리가 <code>order</code> 맨 앞으로.
+  나머지 상대 순서는 보존.
+</div>
+</div>
+
+<div class="legend">
+  <span><span class="sw"></span><b>노란 말풍선</b> = 목업 주석(실제 UI 아님)</span>
+  <span><b>흐린 ⌄N 칩</b> = 이 배치에서 접힌 자리 번호</span>
+  <span><b>실행은 계속된다</b> — 접힘은 표시 상태일 뿐, 엔진도 토스트 감시도 살아 있다 (열린 문제 ③에서 확인 필요)</span>
+</div>
+
+</body>
+</html>

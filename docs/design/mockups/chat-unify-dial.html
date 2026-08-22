@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>채팅 통합 — 다이얼에 1 추가</title>
+<link rel="stylesheet" href="chat-unify.css" />
+<style>
+  /* 이 페이지 전용 — 다이얼 상태 스트립 */
+  .strip{max-width:1500px;margin:16px auto 0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;}
+  .scard{border:1px solid var(--line);border-radius:10px;background:var(--bg);padding:12px 13px 13px;}
+  .scard .st{font-size:11px;color:var(--text-3);margin-bottom:9px;}
+  .scard .row{display:flex;align-items:center;gap:7px;margin-bottom:9px;}
+  .scard .desc{font-size:11px;color:var(--text-4);line-height:1.5;}
+  .scard .desc em{color:var(--text-2);font-style:normal;}
+  .scard.big .dial button{min-width:26px;height:23px;font-size:12px;}
+</style>
+</head>
+<body>
+
+<div class="mockmeta">
+  <h1>다이얼에 <b>1</b>이 추가된 모습</h1>
+  <span class="sub">다이얼 = 활성 보드의 count. 1 = IDE 레이아웃, 2‥6 = 그리드. 위치는 2.6.2 <code>.ma-count</code> 자리 고정 —
+  1↔2 전환에서 버튼이 화면에서 움직이지 않는다.</span>
+  <span class="tag">chat-unify-dial</span>
+</div>
+
+<div class="relwrap">
+<div class="win short">
+  <div class="win-body">
+
+    <!-- 왼쪽 칼럼: 사이드바 (통합안 = 「채팅」 + 「배치」 2섹션) -->
+    <div class="lcol">
+      <div class="sb-top"><span class="mark">A</span><span class="name">AgentCodeGUI</span></div>
+      <button class="sb-new hov"><span class="ic">＋</span><span>새 채팅</span><span class="kbd">Ctrl+N</span></button>
+      <button class="sb-new"><span class="ic">⧉</span><span>새 창으로 열기</span><span class="kbd">⇧Ctrl+N</span></button>
+      <button class="sb-new"><span class="ic">≡</span><span>프롬프트</span><span class="kbd">Ctrl+P</span></button>
+
+      <div class="sb-scroll">
+        <div class="sb-label"><span>채팅</span><span class="sp"></span><span class="n">14</span><span class="slb">⌕</span><span class="slb">🗑</span></div>
+        <div class="sb-list">
+          <div class="sb-item active"><span class="dot run"></span><span class="t">ipc 디스패처 레지스트리 정리</span><span class="slotchip" style="background:var(--violet)">1</span><span class="when">방금</span></div>
+          <div class="sb-item"><span class="dot run"></span><span class="t">ccg-store 팬아웃 포트</span><span class="slotchip" style="background:var(--blue)">2</span><span class="when">2분</span></div>
+          <div class="sb-item"><span class="dot done"></span><span class="t">아크릴 + 네이티브 스냅 PoC</span><span class="when">18분</span></div>
+          <div class="sb-item"><span class="dot"></span><span class="t">벤치 하네스 콜드스타트 재측정</span><span class="when">41분</span></div>
+          <div class="sb-item"><span class="dot err"></span><span class="t">Roslyn 프라임 재현 스크립트</span><span class="when">1시간</span></div>
+          <div class="sb-item"><span class="dot"></span><span class="t">패치노트 3.0.0-beta 초안</span><span class="when">2시간</span></div>
+          <div class="sb-item"><span class="dot done"></span><span class="t">토스트 라우팅 chatId 단일화</span><span class="when">3시간</span></div>
+          <div class="sb-item"><span class="dot"></span><span class="t">BTW - ipc 디스패처 …</span><span class="when">어제</span></div>
+          <div class="sb-item"><span class="dot"></span><span class="t">유휴 메모리 4차 패스 메모</span><span class="when">어제</span></div>
+          <div class="sb-item"><span class="dot"></span><span class="t">Verse 제거 후 잔여 참조 훑기</span><span class="when">2일</span></div>
+        </div>
+
+        <div class="sb-label"><span>배치</span><span class="sp"></span><span class="n">3</span><span class="slb">🗑</span></div>
+        <div class="sb-list">
+          <div class="sb-item active"><span class="dot run"></span><span class="t">3.0 빌더 4분할</span><span class="when">방금</span></div>
+          <div class="sb-item"><span class="dot"></span><span class="t">크리틱 2분할</span><span class="when">어제</span></div>
+          <div class="sb-item"><span class="dot"></span><span class="t">LSP 6분할</span><span class="when">3일</span></div>
+        </div>
+      </div>
+
+      <div class="sb-foot"><span class="av">L</span><span>Liu</span><span style="flex:1"></span><span>⚙</span></div>
+    </div>
+
+    <!-- 본문: 2 그리드 -->
+    <div class="chat" style="background:transparent">
+      <div class="head">
+        <span class="title">3.0 빌더 4분할</span>
+        <span class="fchip">C:\Code\AgentCodeGUI <span class="ref">+2</span></span>
+        <span class="sp"></span>
+
+        <!-- ★ 다이얼 — 1이 추가됐다 -->
+        <div class="dial">
+          <button class="newone">1</button>
+          <button class="on">2</button>
+          <button>3</button>
+          <button>4</button>
+          <button>5</button>
+          <button>6</button>
+        </div>
+
+        <span class="h-ic on">▤</span>
+        <span class="vsep"></span>
+        <div class="wctl"><b>—</b><b>▢</b><b>✕</b></div>
+      </div>
+
+      <div class="grid n2">
+        <!-- 자리 1 -->
+        <section class="panel focused">
+          <div class="tagline" style="background:var(--violet)"></div>
+          <div class="p-head">
+            <span class="p-num" style="background:var(--violet)">1</span>
+            <span class="p-title">ipc 디스패처 레지스트리 정리</span>
+            <span class="p-folder">AgentCodeGUI</span>
+            <span class="sp"></span>
+            <span class="p-status run"><i class="spin"></i>작업 중 · 1:42</span>
+            <span class="p-ic">⤢</span><span class="p-ic">⧉</span>
+          </div>
+          <div class="p-body">
+            <div class="thread">
+              <div class="msg user">채널 레지스트리에서 <code>ma:*</code> 별칭을 어댑터로 빼줘. 핸들러는 하나만 남기고.</div>
+              <div class="msg ai">
+                <p><code>ipc_call</code> 디스패처의 매칭을 두 단계로 나눴어. 1단계는 정규 채널, 2단계가 별칭 테이블이야.</p>
+              </div>
+              <div class="toolgroup">
+                <div class="tg-h"><span>파일 편집</span><span class="cnt">3</span></div>
+                <div class="toolrow"><span class="k">편집</span><span class="p">src-tauri/src/ipc.rs</span><span class="add">+64</span><span class="del">−12</span></div>
+                <div class="toolrow"><span class="k">편집</span><span class="p">crates/ccg-proto/src/alias.rs</span><span class="add">+31</span></div>
+                <div class="toolrow"><span class="k">읽기</span><span class="p">src/shared/protocol.ts</span></div>
+              </div>
+              <div class="runline"><i class="spin"></i><span>Grep — <code>maPanel</code> 참조 17건 확인 중</span></div>
+            </div>
+          </div>
+          <div class="p-foot">
+            <div class="workbar">
+              <span class="wb on">파일 <i class="n">3</i></span>
+              <span class="wb">셸 <i class="n">1</i></span>
+              <span class="wb">서브에이전트 <i class="n">2</i></span>
+              <span class="wb">컨텍스트 <span class="bar"><i style="width:38%"></i></span> <i class="n">38%</i></span>
+              <span class="wb warn">5h <i class="n">72%</i></span>
+            </div>
+            <div class="composer">
+              <div class="box">
+                <div class="ta">메시지를 입력하세요 — "/" 명령 · "@" 파일</div>
+                <div class="bar">
+                  <span class="pchip"><i class="dotc" style="background:var(--violet)"></i>Opus</span>
+                  <span class="pchip">xhigh</span>
+                  <span class="pchip">bypass</span>
+                  <span class="pchip ghost">liu@…</span>
+                  <span class="sp"></span>
+                  <span class="icbtn">📎</span><span class="sendbtn">↑</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- 자리 2 -->
+        <section class="panel">
+          <div class="tagline" style="background:var(--blue)"></div>
+          <div class="p-head">
+            <span class="p-num" style="background:var(--blue)">2</span>
+            <span class="p-title">ccg-store 팬아웃 포트</span>
+            <span class="p-folder">AgentCodeGUI</span>
+            <span class="sp"></span>
+            <span class="p-status run"><i class="spin"></i>분석 중 · 0:21</span>
+            <span class="p-ic">⤢</span><span class="p-ic">⧉</span>
+          </div>
+          <div class="p-body">
+            <div class="thread">
+              <div class="msg user">boards/ 스토어를 chats/ 복제로 만들어줘. index.json 규약 그대로.</div>
+              <div class="msg ai">
+                <p><code>chats.rs</code>의 팬아웃·prune·캐시 비교를 제네릭으로 올리면 두 스토어가 같은 코드를 쓴다. unloaded 병합만 chats 전용으로 남겨야 해 —</p>
+              </div>
+              <div class="toolgroup">
+                <div class="tg-h"><span>파일 읽기</span><span class="cnt">2</span></div>
+                <div class="toolrow"><span class="k">읽기</span><span class="p">crates/ccg-store/src/chats.rs</span></div>
+                <div class="toolrow"><span class="k">읽기</span><span class="p">crates/ccg-store/src/ma.rs</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="p-foot">
+            <div class="workbar">
+              <span class="wb">파일 <i class="n">2</i></span>
+              <span class="wb">컨텍스트 <span class="bar"><i style="width:14%"></i></span> <i class="n">14%</i></span>
+              <span class="wb">API <i class="n">$0.42</i></span>
+            </div>
+            <div class="composer">
+              <div class="box">
+                <div class="ta typed">index.json 버전은 1로 시작</div>
+                <div class="bar">
+                  <span class="pchip"><i class="dotc" style="background:var(--green)"></i>gpt-5.6</span>
+                  <span class="pchip">high</span>
+                  <span class="pchip">auto</span>
+                  <span class="pchip ghost">API</span>
+                  <span class="sp"></span>
+                  <span class="icbtn">📎</span><span class="sendbtn">↑</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="note n-t" style="top:56px;right:214px;">
+  <b>다이얼에 1 추가.</b> 2.6.2 <code>COUNT_OPTIONS=[2,3,4,5,6]</code>(MultiAgent.tsx:63) →
+  <code>[1,2,3,4,5,6]</code>. <code>clampCount</code> 하한 2도 1로(:216-219).
+</div>
+</div>
+
+<!-- 다이얼 상태 스트립 -->
+<div class="strip">
+  <div class="scard big">
+    <div class="st">① N=1 · 접힌 자리 없음</div>
+    <div class="row">
+      <div class="dial"><button class="on newone">1</button><button>2</button><button>3</button><button>4</button><button>5</button><button>6</button></div>
+    </div>
+    <div class="desc">보드에 배정된 채팅이 1개뿐. 배지 없음. 크롬 = <em>IDE 레이아웃</em>(탐색기·뷰어·Git·풀 워크바).</div>
+  </div>
+
+  <div class="scard big">
+    <div class="st">② N=1 · 5개 접힘 (6→1 직후)</div>
+    <div class="row">
+      <div class="dial"><button class="on newone">1</button><button>2</button><button>3</button><button>4</button><button>5</button><button>6</button></div>
+      <span class="foldbadge">⌄ <span class="cnt">5</span></span>
+    </div>
+    <div class="desc"><em>접힘 배지</em>가 자리 수를 말한다. 대화는 삭제되지 않고 사이드바 「채팅」에 그대로 —
+    배지를 누르면 접힌 자리 팝오버가 열린다.</div>
+  </div>
+
+  <div class="scard big">
+    <div class="st">③ N=2 · 4개 접힘</div>
+    <div class="row">
+      <div class="dial"><button class="newone">1</button><button class="on">2</button><button>3</button><button>4</button><button>5</button><button>6</button></div>
+      <span class="foldbadge">⌄ <span class="cnt">4</span></span>
+    </div>
+    <div class="desc">축소는 <em>order 앞에서 count개</em>만 보이게 하는 것. <code>slots</code> 배열은 손대지 않으므로
+    되올리면 같은 자리로 복귀한다.</div>
+  </div>
+
+  <div class="scard big">
+    <div class="st">④ N=6 · 접힘 없음</div>
+    <div class="row">
+      <div class="dial"><button class="newone">1</button><button>2</button><button>3</button><button>4</button><button>5</button><button class="on">6</button></div>
+    </div>
+    <div class="desc">2.6.2 그대로. 자리 번호는 <em>order 내 위치</em>이고 슬롯 정체성(=chatId)은 패널을 따라간다.</div>
+  </div>
+</div>
+
+<div class="legend">
+  <span><span class="sw"></span><b>노란 말풍선</b> = 목업 주석(실제 UI 아님)</span>
+  <span><b>슬롯 칩</b>(사이드바 오른쪽 작은 번호) = 그 채팅이 지금 앉아 있는 자리</span>
+  <span><b>2px 컬러 라인</b> = 패널 컬러 태그(2.6.2 규약 유지)</span>
+</div>
+
+</body>
+</html>
