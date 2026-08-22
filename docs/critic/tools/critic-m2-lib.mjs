@@ -61,6 +61,33 @@ export function cloneReal(tag) {
   return dst
 }
 
+/**
+ * 설치본(2.6.2)의 `Local State`를 격리 userData로 복사한다 — 벤치 픽스처와 같은 규약.
+ *
+ * **왜 필수인가(R8 확인 크리틱 실측)**: 이걸 안 하면 Electron이 그 프로필만의 OSCrypt 키를
+ * 새로 만든다. 그 프로필에서는 **어떤 `v10` 암호문도 못 푼다** — 3.0이 쓴 것은 물론
+ * *Electron 자신이 다른 프로필에서 만든 v10*도 실패한다. 즉 시드 없는 프로필로 재는
+ * "2.6.2가 읽는가"는 **제품이 아니라 하네스를 재는 것**이다.
+ *
+ * 실측(같은 암호문, Local State만 다르게):
+ * ```
+ * 3.0 v10 / 시드 없음                 → FAIL "Error while decrypting the ciphertext…"
+ * 3.0 v10 / 설치본 Local State 시드    → OK   sk-ant-critic-m2-0000-TEST-9999
+ * Electron 자신의 v10 / 시드 없음      → FAIL (같은 에러) ← 형상 증명
+ * ```
+ * 참고: *포맷* 거부는 에러 문구가 다르다("Ciphertext does not appear to be encrypted.").
+ * 두 문구를 구별해야 D6(포맷) 회귀와 시드 누락(키)을 안 헷갈린다.
+ *
+ * @returns {boolean} 설치본 Local State를 실제로 복사했는가
+ */
+export function seedLocalState(userData) {
+  const src = path.join(process.env.APPDATA ?? '', 'agent-code-gui', 'Local State')
+  if (!fs.existsSync(src)) return false
+  fs.mkdirSync(userData, { recursive: true })
+  fs.copyFileSync(src, path.join(userData, 'Local State'))
+  return true
+}
+
 export function dirHash(dir) {
   if (!fs.existsSync(dir)) return 'ABSENT'
   const parts = []

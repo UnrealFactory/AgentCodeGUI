@@ -20,7 +20,7 @@ import path from 'node:path'
 import os from 'node:os'
 import { spawn, spawnSync } from 'node:child_process'
 import { connectMainPage, killTree, sleep } from '../../../bench/lib.mjs'
-import { REPO, cloneReal, readJSON, rmrf, writeResult } from './critic-m2-lib.mjs'
+import { REPO, cloneReal, readJSON, rmrf, seedLocalState, writeResult } from './critic-m2-lib.mjs'
 
 const EXE = fs.existsSync(path.join(os.tmpdir(), 'ccg-critic-m2-app.exe'))
   ? path.join(os.tmpdir(), 'ccg-critic-m2-app.exe')
@@ -215,10 +215,16 @@ const F = (item, d) => rep.findings.push({ item, ...d })
 }
 
 // ── 5b. Electron safeStorage로 복호(2.6.2가 읽을 수 있는가) ─────────────────
+//
+// ★R8 하네스 수정: `seedLocalState`가 빠져 있었다. 시드 없는 userData의 Electron은 자기만의
+// OSCrypt 키를 새로 만들어 **어떤 v10도** 못 푼다 — Electron 자신이 다른 프로필에서 만든
+// v10조차 같은 에러로 실패한다(`critic-m2-lib.seedLocalState` 주석의 실측 3행).
+// 그래서 시드 없는 형상으로는 제품이 아니라 하네스를 재게 된다.
 {
   const b64 = fs.readFileSync(path.join(os.tmpdir(), 'ccg-critic-m2-key.txt'), 'utf8')
   const dir = path.join(os.tmpdir(), `ccg-critic-m2-electron-${Date.now()}`)
   fs.mkdirSync(dir, { recursive: true })
+  const seeded = seedLocalState(path.join(dir, 'ud'))
   const main = path.join(dir, 'main.js')
   fs.writeFileSync(
     main,
@@ -239,13 +245,16 @@ app.whenReady().then(() => {
   const r = spawnSync(eexe, [dir], { encoding: 'utf8', timeout: 90_000, env: { ...process.env, ELECTRON_DISABLE_SECURITY_WARNINGS: '1' } })
   const res = readJSON(path.join(dir, 'out.json')) ?? { error: `electron 실행 실패: ${r.status} ${r.stderr?.slice(0, 300)}` }
   rep.electronCompat = {
+    localStateSeededFromInstall: seeded,
     available: res.available ?? null,
     decryptsTo: res.decrypted ? `${res.decrypted.slice(0, 12)}…${res.decrypted.slice(-4)}` : null,
     matches: res.decrypted === 'sk-ant-critic-m2-0000-TEST-9999',
     error: res.error ?? null,
+    scheme: Buffer.from(b64, 'base64').subarray(0, 3).toString() === 'v10' ? 'v10' : 'DPAPI 직접',
     electronWroteV10: res.reencrypted ? Buffer.from(res.reencrypted, 'base64').subarray(0, 3).toString() === 'v10' : null
   }
-  if (!rep.electronCompat.matches) F('3.0이 쓴 API 키를 2.6.2(Electron safeStorage)가 못 읽는다', rep.electronCompat)
+  if (!seeded) F('설치본 Local State가 없어 2.6.2 왕복을 잴 수 없다(판정 보류)', rep.electronCompat)
+  else if (!rep.electronCompat.matches) F('3.0이 쓴 API 키를 2.6.2(Electron safeStorage)가 못 읽는다', rep.electronCompat)
   rmrf(dir)
 }
 

@@ -204,8 +204,21 @@ async function killInStaging(src, waitFiles) {
   return out
 }
 
-/** 찢어진 커밋의 **결과**: chats-v3만 커밋되고 boards가 없다(rename 둘 사이 / boards 커밋 실패).
- *  `is_migrated()`는 index.json의 migratedAt만 보므로 **다시는 마이그레이션하지 않는다**. */
+/**
+ * 찢어진 커밋의 **결과**: chats-v3만 커밋되고 boards가 없다(rename 둘 사이 / boards 커밋 실패).
+ *
+ * ★R8 — 이 블록이 재는 것의 경계를 명시한다. `ccg-migrate.exe`의 `read-boards`·`alias-ma-get`은
+ * 스토어를 **직결**한다 — 그 CLI에는 `ensure_migrated()` 부팅 훅이 없다. 그래서 아래 값들은
+ * "찢어진 상태의 스토어가 무엇을 돌려주나"이지 **"앱이 복구하나"가 아니다.** R1의
+ * `isMigratedStillTrue`는 Rust 술어가 아니라 JSON 키 하나를 읽고 있었고(=고쳐도 그대로 true),
+ * 그 이름 때문에 다음 라운드가 "D8 미수정"으로 오독할 수 있다.
+ *
+ * 그래서 셋으로 나눠 적는다:
+ *   - `markerPresent`      — index.json에 `migratedAt`이 있나 (원래 필드가 재던 것)
+ *   - `isMigratedPredicate`— Rust `is_migrated()`와 **같은 규칙**: `migratedAt` ∧ `boards/index.json`
+ *   - `appAutoRecovers`    — 이 CLI로는 **잴 수 없다**. 실앱 프로브(R8: 부팅 2회 → boards 복원,
+ *                            멀티 6패널 귀환, verdict RECOVERED)에서 확인했다.
+ */
 function tornCommitConsequence(src) {
   const dir = path.join(ROOT, 'torn')
   rmrf(dir)
@@ -216,9 +229,16 @@ function tornCommitConsequence(src) {
   const ma = cli(dir, ['alias-ma-get'])
   const light = cli(dir, ['read-chats', '--light'])
   const chats = light.json?.chats ?? []
-  const again = cli(dir, ['migrate', '--no-backup']) // 사용자가 손으로 다시 돌렸을 때만 복구된다
+  const markerPresent = !!readJSON(path.join(dir, 'chats-v3', 'index.json'))?.migratedAt
+  // ★ 반드시 재실행 **전에** 잰다 — `again`이 boards를 되세우므로 뒤에서 재면 언제나 true다.
+  //   (R8 확인 크리틱이 이 순서를 처음에 틀렸다: 뒤에서 재서 `true`가 나왔다.)
+  const isMigratedPredicate = markerPresent && fs.existsSync(path.join(dir, 'boards', 'index.json'))
+  const again = cli(dir, ['migrate', '--no-backup']) // 사용자가 손으로 다시 돌렸을 때
   const out = {
-    isMigratedStillTrue: !!readJSON(path.join(dir, 'chats-v3', 'index.json'))?.migratedAt,
+    markerPresent,
+    // Rust `migrate_v3::is_migrated()`와 같은 규칙. **false여야** 앱이 다음 접촉에서 재시도한다.
+    isMigratedPredicate,
+    appAutoRecovers: 'CLI로는 측정 불가 — ensure_migrated() 훅이 없다(실앱 프로브 소관)',
     readBoards: boards.json,
     maGetNull: ma.json === null || ma.json === undefined,
     lightMarkers: chats.filter((c) => c.unloaded === true).length,

@@ -14,7 +14,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
 import { spawnSync } from 'node:child_process'
-import { REPO, cli, cloneReal, readJSON, rmrf, writeResult } from './critic-m2-lib.mjs'
+import { REPO, cli, cloneReal, readJSON, rmrf, seedLocalState, writeResult } from './critic-m2-lib.mjs'
 
 const rep = { at: new Date().toISOString(), findings: [] }
 const F = (item, d) => rep.findings.push({ item, ...d })
@@ -42,17 +42,6 @@ app.whenReady().then(() => {
   const res = readJSON(outFile) ?? { error: `electron 실패(${r.status}): ${(r.stderr || '').slice(0, 200)}` }
   rmrf(dir)
   return res
-}
-
-/** 설치본(2.6.2)의 Local State를 격리 userData로 복사 — 벤치 픽스처와 같은 규약.
- *  이게 없으면 Electron이 새 OSCrypt 키를 만들고, 그 키는 `app.exit()`에서 디스크에
- *  안 남아 v10 암호문이 **아무도 못 푸는 값**이 된다(테스트 아티팩트). */
-function seedLocalState(userData) {
-  const src = path.join(process.env.APPDATA ?? '', 'agent-code-gui', 'Local State')
-  if (!fs.existsSync(src)) return false
-  fs.mkdirSync(userData, { recursive: true })
-  fs.copyFileSync(src, path.join(userData, 'Local State'))
-  return true
 }
 
 // ── A. 실홈 복사본 승계 ─────────────────────────────────────────────────────
@@ -99,23 +88,44 @@ function seedLocalState(userData) {
   rmrf(home)
 }
 
-// ── C. 3.0(DPAPI) → 2.6.2(Electron) ─────────────────────────────────────────
+// ── C. 3.0 → 2.6.2(Electron) ────────────────────────────────────────────────
 // 3.0의 쓰기는 IPC에만 있으므로 critic-m2-tauri.mjs가 남긴 실제 암호문을 쓴다.
+//
+// ★R8 하네스 수정: `seedLocalState(ud)`가 없었다. 시드 없는 프로필의 Electron은 자기만의
+// OSCrypt 키를 새로 만들어 **어떤 v10도** 못 푼다(자기가 만든 것조차 — `critic-m2-lib`의
+// `seedLocalState` 주석에 실측 3행). 그래서 R1의 §C는 "2.6.2가 읽는가"가 아니라
+// "시드 없는 프로필이 읽는가"를 재고 있었다. §B는 처음부터 시드했다 = 비대칭.
+// 대조군(`seededProfile:false`)을 같이 실어 두 갈래가 구별되게 남긴다.
 {
   const keyFile = path.join(os.tmpdir(), 'ccg-critic-m2-key.txt')
   if (fs.existsSync(keyFile)) {
     const b64 = fs.readFileSync(keyFile, 'utf8')
-    const ud = path.join(os.tmpdir(), `ccg-critic-m2-ud-${Date.now()}`)
-    fs.mkdirSync(ud, { recursive: true })
-    const e = electron(`out.dec = safeStorage.decryptString(Buffer.from(${JSON.stringify(b64)}, 'base64'))`, { userData: ud })
-    rep.tauriToElectron = {
-      prefix: Buffer.from(b64, 'base64').subarray(0, 4).toString('hex'),
-      scheme: Buffer.from(b64, 'base64').subarray(0, 3).toString() === 'v10' ? 'v10' : 'DPAPI 직접',
-      electronDecrypts: typeof e.dec === 'string',
-      electronError: e.error ?? null
+    const bytes = Buffer.from(b64, 'base64')
+    const dec = (seed) => {
+      const ud = path.join(os.tmpdir(), `ccg-critic-m2-ud-${seed ? 'seed' : 'bare'}-${Date.now()}`)
+      fs.mkdirSync(ud, { recursive: true })
+      const seeded = seed ? seedLocalState(ud) : false
+      const e = electron(`out.dec = safeStorage.decryptString(Buffer.from(${JSON.stringify(b64)}, 'base64'))`, { userData: ud })
+      rmrf(ud)
+      return { seeded, ok: typeof e.dec === 'string', tail: typeof e.dec === 'string' ? e.dec.slice(-4) : null, error: e.error ?? null }
     }
-    if (!rep.tauriToElectron.electronDecrypts) F('C. 3.0이 쓴 키를 2.6.2(Electron safeStorage)가 못 읽는다 — 보고서 §4 주장 반증', rep.tauriToElectron)
-    rmrf(ud)
+    const seeded = dec(true)
+    const bare = dec(false)
+    rep.tauriToElectron = {
+      prefix: bytes.subarray(0, 4).toString('hex'),
+      scheme: bytes.subarray(0, 3).toString() === 'v10' ? 'v10' : 'DPAPI 직접',
+      localStateSeededFromInstall: seeded.seeded,
+      electronDecrypts: seeded.ok,
+      electronKeyTail: seeded.tail,
+      electronError: seeded.error,
+      // 대조군: 시드 없는 프로필. 여기서 실패하는 것은 **정상**(하네스 형상).
+      bareProfile: { decrypts: bare.ok, error: bare.error }
+    }
+    if (!seeded.seeded) {
+      F('C. 설치본 Local State가 없어 2.6.2 왕복을 잴 수 없다(판정 보류)', rep.tauriToElectron)
+    } else if (!seeded.ok) {
+      F('C. 3.0이 쓴 키를 2.6.2(Electron safeStorage)가 못 읽는다', rep.tauriToElectron)
+    }
   } else {
     rep.tauriToElectron = { skipped: 'critic-m2-tauri.mjs를 먼저 돌려라(3.0이 쓴 암호문이 필요하다)' }
   }
