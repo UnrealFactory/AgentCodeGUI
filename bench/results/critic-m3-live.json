@@ -1,0 +1,207 @@
+{
+  "tool": "critic-m3-r1",
+  "date": "2026-08-23",
+  "target": {
+    "crate": "crates/ccg-engine",
+    "commits": ["098814a", "1d8df4d", "344fa3f"],
+    "report": "docs/m3-report-r1.md",
+    "cli": "claude.exe 2.1.239 (engines/0.3.239, 337672352 B)"
+  },
+  "safety": {
+    "nameBasedKill": 0,
+    "killedPids": [28972],
+    "killedPidsNote": "내가 스폰한 크리틱 홀더 프로세스 1개 (taskkill /F /PID, /T 없음)",
+    "userAppClaudePidsBefore": [2976, 26940],
+    "userAppClaudePidsAfter": [2976, 26940],
+    "userHomeWrites": 0,
+    "userHomeCredMtime": "2026-08-22T19:41:28.947+09:00 (전·후 동일)",
+    "strayProcessesAfter": 0
+  },
+
+  "A_suite": {
+    "claim": "86 green",
+    "verdict": "CONFIRMED",
+    "breakdown": { "lib": 13, "frame_coverage": 3, "identity_golden": 11, "replay": 27, "replay_standing": 32, "live_smoke_ignored": 2 },
+    "total": 86,
+    "warnings": 0
+  },
+
+  "B_coverageGate": {
+    "claim": "covers 선언은 거짓말을 할 수 없다 · 전이 60/60",
+    "verdict": "PARTIAL",
+    "experiment1_falseCovers": {
+      "action": "S1.covers 에 T3·F5 추가(실제로 안 밟는 전이)",
+      "result": "s01 FAILED — 'covers 선언은 했는데 안 밟은 전이: [\"T3\", \"F5\"]'",
+      "conclusion": "실행되는 시나리오 안에서는 과대선언 불가 — 주장 성립"
+    },
+    "experiment2_orphanScen": {
+      "action": "s25_spawn_timeout 의 #[test] 제거(레지스트리의 S25 는 그대로)",
+      "result": "frame_coverage 여전히 '전이 60/60 밟음 · 안 밟은 전이 []' · 3 passed · 전체 초록",
+      "conclusion": "T3 를 밟는 테스트가 0개인데 게이트는 만점 — 게이트가 막겠다던 '표엔 있는데 테스트 없는 줄'이 구조적으로 만들어진다",
+      "rootCause": "frame_coverage.rs 는 declared() (정적 레지스트리)만 읽는다. 시나리오를 실행하는 replay.rs·replay_standing.rs 와 **다른 테스트 바이너리**라 런타임 fired 집합을 볼 수 없다."
+    },
+    "unverifiedDeclarations": {
+      "kills": "런타임 대조 없음 — '병리 15/15'는 순수 자기신고",
+      "synth": "런타임 대조 없음 + 실제 오귀속 확인(아래)",
+      "covers": "Sim::finish() 를 부르는 테스트에 한해서만 대조됨"
+    },
+    "synthMisattribution": {
+      "S4.synth": ["rate-limit-blocked(assumed)"],
+      "S4_actuallyUses": "f_result_err(문구 분류) — assumed 픽스처를 안 쓴다",
+      "S4C.synth": [],
+      "S4C_actuallyUses": "synth(\"rate-limit-blocked\") — assumed 픽스처를 쓴다",
+      "effect": "합계(assumed 의존 1)는 우연히 맞고 귀속은 뒤집혀 있다"
+    }
+  },
+
+  "C_designDiff": {
+    "lifecycleRows": { "design": 38, "code": 38, "match": true },
+    "frameDigestRows": { "design": 22, "code": 22, "match": true },
+    "commandTable": { "design": "23x8", "code": "23x8", "cellByCellMatch": true, "mismatches": [] },
+    "pathologies": { "design": 15, "code": 15, "set": ["P1","P1b","P1c","P1d","P1e","P2","P3","P4","P5","P6","P7","P8","P8b","P8c","P9"], "match": true },
+    "projection": {
+      "designProseSays": "§8.4 24행 + 와이어 3종",
+      "designTableActuallyHas": "28행(1b·4b·10b·22b 포함) + 와이어 4행",
+      "code": 32,
+      "verdict": "코드가 설계 **표**에 충실. 설계 **산문**(24+3)이 자기 표와 불일치"
+    },
+    "leafPaths": {
+      "designSaysBoth": ["§2.3: RawIdentityPatch::leaf_paths() == IdentityField::ALL (15)", "§2.2/§2.5: billing.keyFp 는 패치로 줄 수 없다"],
+      "verdict": "문서 내부 모순 — 빌더 주장 CONFIRMED",
+      "codeResolution": "ALL=15 유지 · leaf_paths()=ALL.filter(!is_derived())=14 · 나머지 14 전부 잠금",
+      "assessment": "설계 의도(N2 재발 방지) 훼손 없음"
+    },
+    "undocumentedDivergences": [
+      { "id": "T10", "design": "재장전<8 ∧ (프레임 흘렀음 ∨ delivered_notifs 있음)", "code": "재장전<8", "note": "§7 의도적 8건 목록에 없음" },
+      { "id": "T12", "design": "notifs 있음 ∧ 활동 없음 ∧ replayed_once=false ∧ **중단 요청 없음**", "code": "notifs 있음 ∧ replayed_once=false", "note": "중단 표식 조건이 표에서 빠짐" },
+      { "id": "T32", "design": "From = Resident{Unverified|Policy}", "code": "From = Resident(전 변형)", "note": "StateTag 가 why 를 안 들어 표현 불가 — 실질 무해" }
+    ],
+    "crossCrateWire": {
+      "checked": ["engine.kind", "billing.kind", "mode", "tools.skillOverrides", "tools.deniedMcp", "addDirs/systemPrompt/outputStyle camelCase"],
+      "ccgStoreEmits": "camelCase + claude|codex · subscription|api_key · normal|plan|acceptEdits|auto|bypass · disabled",
+      "ccgEngineExpects": "동일",
+      "verdict": "일치 — §7 #3·#7 의 camelCase 선택이 M2 와 화해한다"
+    }
+  },
+
+  "D_replaySpotCheck": {
+    "checked": ["#2c", "#2d-i/ii", "#4", "#5a", "#5b", "#6c-i/ii/iii", "#7b'", "#8b"],
+    "strong": ["#2c", "#2d-i", "#2d-ii", "#4", "#5a", "#5b", "#6c-i", "#6c-ii", "#6c-iii", "#8b"],
+    "weak": [
+      {
+        "test": "s04c_interrupt_during_hold_cancels_auto_resume",
+        "assertion": "assert!(sent_after <= 3)",
+        "actualValue": 2,
+        "sentTexts": ["1", "2"],
+        "claimInReport": "#4c … 몇 시간 뒤 자동 전송 0건",
+        "claimInTestComment": "hold가 꺼졌으니 큐는 사용자가 다시 보낼 때까지 가만히 있는다",
+        "verdict": "둘 다 거짓. HoldCancel 이 즉시 큐 head('2')를 자동 전송한다. `<=3` 경계가 그걸 가린다",
+        "alsoNote": "advance_to(60분) 뒤 전송 0건인 이유는 hold 의미론이 아니라 그 앞의 StopAll 이 큐를 비웠기 때문"
+      },
+      {
+        "test": "s07b_prime_external_death_settles_in_93s",
+        "assertion": "at <= 95*SEC (상한만)",
+        "siblingHas": "s06c_iii 는 90<=at<=95 양쪽",
+        "probe": "하한 추가해도 통과 — 조기 정착 회귀를 못 잡는다",
+        "verdict": "비대칭 · 약함"
+      }
+    ],
+    "synthProvenance": { "files": 12, "spec_documented": 10, "binary_observed": 1, "assumed": 1, "synthDependentScenarios": 33, "reportClaim": "33 / assumed 1", "verdict": "수치 일치" }
+  },
+
+  "E_mutationTesting": {
+    "note": "제품 코드를 일시 변조 → 어떤 테스트가 죽는지 관찰 → 원복(트리 clean 확인)",
+    "trapA_modelAlias": {
+      "m1_removeAliasFold": { "failed": ["s19_three_fallback_paths_converge_to_one_revision"], "note": "#5a 는 통과 — 보고서가 지목한 시나리오가 안 잡는다" },
+      "m2_removeFirstObservationBaseline": { "failed": [], "note": "86 전부 초록" },
+      "m3_assertOnMismatchPath": { "failed": [], "note": "단언이 한 번도 안 터짐 = 어떤 테스트도 '와이어 풀네임 vs 별칭' 불일치 경로를 밟지 않는다" },
+      "realProtection": "runtime.rs:1470-1474 — system/init 이 기준선을 잡는다(observe_model 의 None 가지는 실질 사문)",
+      "verdict": "NOT LOCKED — 보고서 §6-A 가 말한 회귀는 어떤 테스트도 잠그지 않는다"
+    },
+    "trapB_drainReentry": { "mutation": "suspend_drain 가드 제거", "failed": ["s04_queue_plus_limit_hold_resume"], "verdict": "LOCKED" },
+    "trapC_notifParser": { "mutation": "contains(\"<task-notification\") → contains(\"<task-notification>\")", "failed": ["s11_notification_replay_only_once", "s35_cli_initiated_turns_get_new_run_ids"], "verdict": "LOCKED" }
+  },
+
+  "F_live": {
+    "L1_oneTurn": {
+      "verdict": "REPRODUCED",
+      "frames": 12, "reportFrames": 12,
+      "totalCostUsd": 0.0025524, "reportCostUsd": 0.050516,
+      "costNote": "약 20배 저렴 — 프롬프트 캐시가 더워진 상태. 보고서 수치는 콜드캐시 1회값이라 재현되지 않는다",
+      "terminalReason": "completed", "result": "SMOKE",
+      "stateTrack": "T1→T2→§3.4→T25→T26", "spawns": 1, "exits": 1,
+      "model": "claude-haiku-4-5-20251001"
+    },
+    "L2_approvalRoundTrip": {
+      "verdict": "REPRODUCED",
+      "frames": 39, "reportFrames": 40,
+      "totalCostUsd": 0.0055879, "reportCostUsd": 0.0102365,
+      "approveToTurnEndMs": 834, "reportMs": 933,
+      "toolUseId": "toolu_013DCQmsFSr7s8J6nTtQyUip",
+      "fileCreated": "work/live-approve.txt = OK",
+      "spawns": 1, "exits": 1
+    },
+    "C1_softInterrupt_NEW": {
+      "verdict": "CONFIRMED (빌더 미실시)",
+      "interruptVerdict": "Accepted",
+      "resultSubtype": "error_during_execution",
+      "terminalReason": "aborted_streaming",
+      "elapsedMs": 25,
+      "pidBefore": 18048, "pidAfter": 18048,
+      "spawnsAfterSecondTurn": 1,
+      "secondTurnResult": "AFTER",
+      "note": "중단 후 **같은 프로세스**로 한 턴 더 성공 = T13→T14→T16 소프트 중단이 실물에서 성립",
+      "finalSpawns": 1, "finalExits": 1
+    },
+    "C2_jobObject_NEW": {
+      "verdict": "CONFIRMED (빌더 미실시)",
+      "tree": { "holder": 28972, "claude": 3828, "grandchildren": [15332, 21448] },
+      "grandchildNames": ["conhost.exe", "bash.exe"],
+      "action": "taskkill /F /PID 28972 (홀더만, /T 없음 → Rust Drop 안 돎)",
+      "after": { "28972": "dead", "3828": "dead", "15332": "dead", "21448": "dead" },
+      "elapsedSec": 4,
+      "userAppUntouched": true,
+      "strayPing": 0,
+      "note": "JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE 가 손자까지 실제로 거둔다"
+    },
+    "C3_O17_activeProbe_NEW": {
+      "verdict": "CLOSED — POSITIVE (빌더가 '미확인'으로 남긴 항목)",
+      "falseLead": "control_response(probe) 페이로드에는 background_tasks 가 없다(살아있는 셸이 원장에 있어도 없다). 그러나 코드는 응답 페이로드를 읽지 않는다 — 뒤따르는 REPLACE 가 판정한다(runtime.rs:1846-1872).",
+      "probe1_shellAlive": { "replaceAfterMs": 33, "tasks": ["bmu7qit88"], "meaning": "항목 존재 → rearm(ActiveProbe) → Alive" },
+      "probe2_shellFinished": { "replaceAfterMs": 35, "tasks": [], "meaning": "항목 부재 → T21b settle watchdog:active" },
+      "replaceHistory": [["bmu7qit88"], ["bmu7qit88"], [], []],
+      "causation": "프로브마다 REPLACE 가 ~35ms 안에 따라온다(3s 타임아웃 대비 100배 여유)",
+      "consequence": "T21b · #6c-ii · #6c-iii · #7b' · '30분이 아니라 ~93초' 주장 전부 실물 근거를 얻었다. FakeCli.probe_reply 는 실제 동작을 올바르게 모형화한다.",
+      "sideObservation": "재전송 initialize 응답은 최초 응답에 없던 pending_permission_requests · pending_user_dialog_requests 를 추가로 싣는다 — 상태 재동기화 용도로 쓸 여지"
+    }
+  },
+
+  "G_mwfEffort": {
+    "claim": "workflow_agent emitter 에 effort 없음 · fallbackModel 있음",
+    "verdict": "CONFIRMED (독립 추출)",
+    "method": "type:\"workflow_agent\" 를 품은 객체 리터럴을 중괄호 균형으로 잘라 최상위 키만 집계",
+    "emitters": 6, "reportEmitters": 6,
+    "unionKeyCount": 24,
+    "hasEffort": false,
+    "effortStringInsideEmitterBody": 0,
+    "hasFallbackModel": true,
+    "hasModel": true,
+    "methodologyNote": "넓은 창(±수천 바이트) 1차 추출은 이웃한 **에이전트 정의** 코드(we?.effort · bashCommandClamp · ot.effort??xA(W))를 긁어 effort=true 라는 거짓 양성을 냈다. 빌더의 부정 주장은 더 엄격한 방법에서도 살아남는다.",
+    "corroboration": {
+      "hookEffortString": "Active effort level for the current turn (e.g., \"low\", \"medium\", \"high\", \"xhigh\", \"max\"), after any silent downgrade for the selected model. Also exposed to hook commands and Bash as the CLAUDE_EFFORT env var. — 원문 확인",
+      "CLAUDE_EFFORT_occurrences": 3,
+      "StatusLineCommandInput_occurrences": 2,
+      "extra": "\"Reasoning effort applied to the current turn.\" — **턴 단위** 값임을 명시. 빌더의 '세션 effort 를 에이전트 칩에 붙이지 마라' 경고를 뒷받침"
+    },
+    "keys": ["agentId","agentType","attempt","blocked","cached","error","fallbackModel","index","isolation","label","lastAttemptReason","lastProgressAt","lastToolName","lastToolSummary","model","phaseIndex","phaseTitle","promptPreview","queuedAt","remoteSessionId","resultPreview","startedAt","state","type"],
+    "diffVsReport": "보고서 목록은 type 을 빼고 message 를 넣었다(24 vs 24). effort 판정에는 무관"
+  },
+
+  "H_mtimeProbe": {
+    "claim": "ClaudeDriver::mtime_fresh 가 항상 false — 출하 경로에서 ④가 무력",
+    "verdict": "CONFIRMED (ClaudeDriver 가 트레이트 기본값 false 를 그대로 씀)",
+    "builderRiskAssessment": "지금 상태로 출하하면 조용한 dev 서버는 ⑥에만 의존한다",
+    "criticRiskAssessment": "LOW — ⑥이 실물에서 동작함을 C3 가 증명했으므로 '⑥에만 의존'은 안전한 의존이다. 실제 비용은 (a) 30s마다 프로브 왕복 1회 추가, (b) CLI 가 **무응답**일 때 ④도 ⑥도 못 답해 30분 하드리밋까지 감 — 그런데 그 방향은 보수적(살아있는 셸을 안 죽인다). 오탐 사망 위험이 아니라 지연 비용이다.",
+    "testArtifact": "s07e 는 mtime_fresh_ids 를 FakeCli 에 직접 심어 probe_count==0 을 단언한다 — 출하 경로에서는 probe_count==1 이 된다. 테스트가 존재하지 않는 성질을 잠그고 있다."
+  }
+}

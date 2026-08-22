@@ -1,0 +1,159 @@
+{
+  "tool": "critic-m3-wfkeys",
+  "method": "brace-matched enclosing object of `type:\"workflow_agent\"`, top-level keys only",
+  "cli": "C:/Users/User/.agentcodegui/engines/0.3.239/node_modules/@anthropic-ai/claude-agent-sdk-win32-x64/claude.exe",
+  "cliBytes": 337672352,
+  "typedSites": 6,
+  "distinctEmitterObjects": 6,
+  "emitters": [
+    {
+      "at": 312777697,
+      "bytes": 345,
+      "keys": [
+        "type",
+        "index",
+        "label",
+        "phaseIndex",
+        "phaseTitle",
+        "agentType",
+        "isolation",
+        "model",
+        "state",
+        "blocked",
+        "error",
+        "queuedAt",
+        "promptPreview",
+        "lastProgressAt"
+      ]
+    },
+    {
+      "at": 312780598,
+      "bytes": 245,
+      "keys": [
+        "type",
+        "index",
+        "label",
+        "phaseIndex",
+        "phaseTitle",
+        "agentId",
+        "model",
+        "state",
+        "startedAt",
+        "lastProgressAt",
+        "cached",
+        "resultPreview",
+        "promptPreview"
+      ]
+    },
+    {
+      "at": 312781421,
+      "bytes": 312,
+      "keys": [
+        "type",
+        "index",
+        "label",
+        "phaseIndex",
+        "phaseTitle",
+        "agentType",
+        "isolation",
+        "model",
+        "state",
+        "queuedAt",
+        "promptPreview",
+        "lastProgressAt"
+      ]
+    },
+    {
+      "at": 312782023,
+      "bytes": 227,
+      "keys": [
+        "type",
+        "index",
+        "label",
+        "phaseIndex",
+        "phaseTitle",
+        "model",
+        "state",
+        "error",
+        "queuedAt",
+        "promptPreview",
+        "lastProgressAt"
+      ]
+    },
+    {
+      "at": 312791916,
+      "bytes": 311,
+      "keys": [
+        "type",
+        "index",
+        "label",
+        "phaseIndex",
+        "phaseTitle",
+        "agentId",
+        "agentType",
+        "isolation",
+        "model",
+        "fallbackModel",
+        "state",
+        "startedAt",
+        "queuedAt",
+        "attempt",
+        "lastAttemptReason",
+        "lastToolName",
+        "lastToolSummary",
+        "promptPreview",
+        "lastProgressAt"
+      ]
+    },
+    {
+      "at": 312802879,
+      "bytes": 201,
+      "keys": [
+        "type",
+        "index",
+        "label",
+        "phaseIndex",
+        "phaseTitle",
+        "agentId",
+        "isolation",
+        "remoteSessionId",
+        "state",
+        "startedAt",
+        "queuedAt",
+        "promptPreview",
+        "lastProgressAt"
+      ]
+    }
+  ],
+  "unionKeys": [
+    "agentId",
+    "agentType",
+    "attempt",
+    "blocked",
+    "cached",
+    "error",
+    "fallbackModel",
+    "index",
+    "isolation",
+    "label",
+    "lastAttemptReason",
+    "lastProgressAt",
+    "lastToolName",
+    "lastToolSummary",
+    "model",
+    "phaseIndex",
+    "phaseTitle",
+    "promptPreview",
+    "queuedAt",
+    "remoteSessionId",
+    "resultPreview",
+    "startedAt",
+    "state",
+    "type"
+  ],
+  "effortKeysFound": [],
+  "hasEffort": false,
+  "hasFallbackModel": true,
+  "hasModel": true,
+  "effortStringInsideEmitterBody": []
+}
