@@ -63,6 +63,10 @@ impl CliDriver for TapDriver {
     fn process_alive(&self) -> bool {
         self.inner.process_alive()
     }
+    /// T22의 신호는 **그대로 통과**시킨다 — 여기서 삼키면 감싼 값이 제품에서만 사라진다.
+    fn stream_eof(&mut self) -> Option<ccg_engine::live::CloseCause> {
+        self.inner.stream_eof()
+    }
     fn poll_frames(&mut self, now: Millis) -> Vec<Value> {
         let frames = self.inner.poll_frames(now);
         if !frames.is_empty() {

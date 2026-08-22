@@ -30,6 +30,8 @@ pub enum Frame {
         tool_use_id: Option<String>,
         dialog_kind: Option<String>,
         description: Option<String>,
+        /// `request_user_dialog`의 `payload.fallbackModel`(있을 때만 — §4.4b).
+        fallback_model: Option<String>,
     },
     ControlCancel {
         request_id: String,
@@ -136,6 +138,8 @@ impl Frame {
                     tool_use_id: s(r, "tool_use_id"),
                     dialog_kind: s(r, "dialog_kind").or_else(|| s(r, "kind")),
                     description: s(r, "description"),
+                    fallback_model: s(&r["payload"], "fallbackModel")
+                        .or_else(|| s(&r["payload"], "fallback_model")),
                 }
             }
             "control_cancel_request" => Frame::ControlCancel {

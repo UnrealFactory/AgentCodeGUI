@@ -5,6 +5,16 @@ edition.workspace = true
 rust-version.workspace = true
 description = "AgentCodeGUI 3.0 엔진 코어 — RunIdentity · 상태기계(60전이) · 라이브 원장 · claude.exe 드라이버"
 
+[features]
+# 하네스 전용 가짜 CLI(`scripts/poc-live-chat.mjs --only=dialog`가 부른다).
+# 기본 빌드에는 없다 — 앱 번들에 스텁이 딸려 나갈 이유가 없다(ccg-store의 `cli`와 같은 규약).
+fakecli = []
+
+[[bin]]
+name = "ccg-fakecli"
+path = "src/bin/ccg_fakecli.rs"
+required-features = ["fakecli"]
+
 [dependencies]
 serde = { workspace = true }
 serde_json = { workspace = true }

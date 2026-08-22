@@ -204,3 +204,106 @@ fn the_api_mode_account_survives_a_full_alias_round_trip() {
     chats_save(&blob);
     assert_eq!(h.read_json("chats-v3/c-1.json").unwrap()["legacyAccount"], "u0@x.com");
 }
+
+// ── S4 (크리틱 배선 R1 §5) — 추가 채팅 창의 대화가 저장·복원되는가 ────────────
+//
+// R1은 이 셋(`persist`/`hydrate`/`rename`)이 셸에 상수조차 없어 `__unimplemented`로
+// 떨어졌다. 그 라운드가 `session:*`을 배선해 그 창에서 **실제로 대화가 돌기 시작한**
+// 뒤였으므로, "Ctrl+Shift+N → 대화 → 창 닫기 = 증발"이 새로 열린 유실 경로였다.
+
+#[test]
+fn a_session_window_conversation_survives_persist_and_hydrate() {
+    let h = migrated("bridge-s4");
+    assert!(is_session_chat("w-1"), "마이그레이션된 추가 채팅이 session 칸에 있다");
+    let before = threads(&h);
+    // 창은 마운트에서 먼저 hydrate한다 — 그때 우리가 내보낸 옛 필드 묶음이
+    // `PROJECTED`에 기억되고, 그게 D1(에코 vs 저자) 판별의 기준이 된다.
+    let mount = session_chat_hydrate("w-1");
+    assert_eq!(mount["snapshot"]["messages"].as_array().unwrap().len(), 2);
+
+    let ok = session_chat_persist(
+        "w-1",
+        &json!({
+            "title": "창이 붙인 제목", "status": "done",
+            "cwd": "C:\\Code\\other", "refDirs": ["C:\\ref"],
+            "picker": { "model": "haiku", "effort": "minimal", "mode": "normal" },
+            "snapshot": snap(9, "s-w1"), "draft": "쓰다 만 글", "draftImages": [],
+            "empty": false, "updatedAt": 42
+        }),
+    );
+    assert!(ok, "persist가 실패했다");
+
+    let rec = h.read_json("chats-v3/w-1.json").unwrap();
+    assert_eq!(rec["origin"], "session", "칸이 바뀌면 목록에서 사라진다");
+    assert_eq!(rec["snapshot"]["messages"].as_array().unwrap().len(), 9);
+    assert_eq!(rec["identity"]["engine"]["model"], "haiku", "picker가 정체성으로 흡수됐다");
+    assert_eq!(rec["identity"]["cwd"], "C:\\Code\\other");
+    assert_eq!(rec["status"], "done", "얼린 상태의 저자는 이 창이다");
+    assert!(rec.get("picker").is_none(), "옛 평평한 필드는 레코드에 안 남는다");
+
+    let hy = session_chat_hydrate("w-1");
+    assert_eq!(hy["snapshot"]["messages"].as_array().unwrap().len(), 9);
+    assert_eq!(hy["cwd"], "C:\\Code\\other", "본채팅이 아니므로 manualCwd가 아니라 cwd다");
+    assert_eq!(hy["picker"]["model"], "haiku");
+    assert_eq!(hy["draft"], "쓰다 만 글");
+    assert_eq!(hy["refDirs"], json!(["C:\\ref"]));
+
+    // 남의 칸은 이 채널로 못 만진다 — 본채팅 c-1은 origin=chat이다.
+    assert!(!session_chat_persist("c-1", &json!({ "snapshot": snap(1, "x") })));
+    assert!(session_chat_hydrate("c-1").is_null());
+    assert_eq!(
+        threads(&h).get("c-1"),
+        before.get("c-1"),
+        "추가 채팅 저장이 본채팅 스레드를 건드렸다"
+    );
+}
+
+#[test]
+fn persisting_one_session_window_does_not_prune_the_others() {
+    // `write_chats`(목록 REPLACE)를 타면 여기서 남의 대화가 통째로 지워진다.
+    let h = migrated("bridge-s4-prune");
+    let before = threads(&h);
+    assert!(before.len() >= 4, "픽스처가 본채팅·패널·추가채팅을 갖고 있다: {before:?}");
+    session_chat_persist("w-1", &json!({ "status": "idle", "snapshot": snap(3, "s-w1") }));
+    let after = threads(&h);
+    for (k, v) in &before {
+        if k == "w-1" || k == "index" || k == "status" {
+            continue;
+        }
+        assert_eq!(after.get(k), Some(v), "{k} 의 대화가 갈렸다");
+    }
+}
+
+#[test]
+fn rename_wins_over_the_windows_auto_title() {
+    let h = migrated("bridge-s4-rename");
+    assert!(session_chat_rename("w-1", "내가 고른 이름"));
+    session_chat_persist("w-1", &json!({ "title": "창이 딴 제목", "status": "idle", "snapshot": snap(2, "s-w1") }));
+    let rec = h.read_json("chats-v3/w-1.json").unwrap();
+    assert_eq!(rec["title"], "내가 고른 이름");
+    assert_eq!(rec["custom"], true);
+    // 사이드바 목록에도 그 이름이 나간다
+    let info = session_chat_infos().into_iter().find(|c| c["id"] == json!("w-1")).unwrap();
+    assert_eq!(info["title"], "내가 고른 이름");
+    assert!(!session_chat_rename("c-1", "훔치기"), "본채팅은 이 채널로 못 고친다");
+}
+
+#[test]
+fn a_brand_new_session_chat_lands_in_the_index() {
+    // 앱이 새로 만든 추가 채팅(마이그레이션 산물이 아님) — 파일 + index.order 둘 다.
+    let h = migrated("bridge-s4-new");
+    assert!(session_chat_persist(
+        "sc-1700000000000-1",
+        &json!({ "title": "새 창", "status": "idle", "cwd": "C:\\Code",
+                 "picker": {}, "snapshot": snap(2, "s-new") })
+    ));
+    let idx = h.read_json("chats-v3/index.json").unwrap();
+    let order: Vec<String> = idx["order"].as_array().unwrap().iter().map(|v| v.as_str().unwrap().to_string()).collect();
+    assert!(order.contains(&"sc-1700000000000-1".to_string()), "인덱스에 안 들어갔다: {order:?}");
+    let ids: Vec<String> = session_chat_infos().iter().map(|c| c["id"].as_str().unwrap().to_string()).collect();
+    assert!(ids.contains(&"sc-1700000000000-1".to_string()), "목록에 안 뜬다: {ids:?}");
+    // 그 뒤의 본채팅 저장 한 번이 이 레코드를 지우면 안 된다(origin 칸막이).
+    let blob = chats_get(false, &[]);
+    chats_save(&blob);
+    assert!(h.read_json("chats-v3/sc-1700000000000-1.json").is_some(), "본채팅 저장이 추가 채팅을 prune했다");
+}

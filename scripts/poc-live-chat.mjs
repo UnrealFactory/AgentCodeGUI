@@ -12,8 +12,13 @@
  *
  *   node scripts/poc-live-chat.mjs                 # 전부
  *   node scripts/poc-live-chat.mjs --only=r81      # R8-1 브로드캐스트만(CLI 불필요)
+ *   node scripts/poc-live-chat.mjs --only=dialog   # 폴백 확인 카드(가짜 CLI · $0)
+ *   node scripts/poc-live-chat.mjs --only=winsave  # 추가 채팅 창 영속(가짜 CLI · $0)
  *   node scripts/poc-live-chat.mjs --only=live     # 라이브 턴만
  *   node scripts/poc-live-chat.mjs --keep          # 홈·프레임 덤프 보존
+ *
+ *   ※ --only=dialog 전에:
+ *      cargo build -p ccg-engine --features fakecli --bin ccg-fakecli --release
  *
  * ── 안전 규칙 (사용자 실앱이 떠 있다) ───────────────────────────────────────
  *  · **이름 기반 kill 금지.** 죽이는 것은 이 스크립트가 spawn한 PID 트리뿐이다.
@@ -25,7 +30,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
 import { spawn, spawnSync } from 'node:child_process'
-import { connectMainPage, killTree, sleep, REPO } from '../bench/lib.mjs'
+import { cdpTargets, connectMainPage, killTree, sleep, Cdp, REPO } from '../bench/lib.mjs'
 
 const args = process.argv.slice(2)
 const only = (args.find((a) => a.startsWith('--only=')) ?? '').split('=')[1] || 'all'
@@ -61,6 +66,16 @@ async function boot(home, port, env = {}) {
   }
   const j = async (expr) => JSON.parse(await cdp.eval(`(async () => JSON.stringify(${expr}))()`, { awaitPromise: true }))
   return { child, cdp, j, log: () => log }
+}
+
+/// 조건이 참이 될 때까지(또는 상한까지). 폴링 단언의 공용 형태.
+async function waitUntil(app, expr, ms = 30_000) {
+  const t0 = Date.now()
+  while (Date.now() - t0 < ms) {
+    if (await app.j(`await (async () => !!(${expr}))()`).catch(() => false)) return true
+    await sleep(120)
+  }
+  return false
 }
 
 const rmrf = (p) => fs.rmSync(p, { recursive: true, force: true })
@@ -406,6 +421,352 @@ async function phaseLive() {
   return rep.findings.length === 0
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 3) 폴백 확인 다이얼로그(`request_user_dialog`) — **가짜 CLI로 제품 경로 그대로**
+//
+//    이 프레임은 모델이 응답을 거부해야 오므로 라이브로 강제할 수가 없다. R1은 그래서
+//    코드 대조로만 남겼고, 크리틱이 "kill 없이도 §2-E와 같은 영구 정지에 도달한다"고
+//    지적했다(배선 R1 §3): 상태기계는 T4로 `AwaitingUser`에 들어가는데 화면에는 카드가
+//    안 떴다. 여기서 그 프레임을 **엔진 자리에 꽂은 스텁**이 흘린다 —
+//    spawn → stdout JSONL → 상태기계 → wire → 렌더러 카드 → 클릭 → stdin 응답까지
+//    전부 실제 배선이고 모델만 가짜다($0).
+// ─────────────────────────────────────────────────────────────────────────────
+function seedDialogHome() {
+  const HOME = path.join(REPO, '.poc-home-dialog')
+  const WORK = path.join(HOME, 'work')
+  rmrf(HOME)
+  fs.mkdirSync(WORK, { recursive: true })
+  const stub = path.join(REPO, 'target', 'release', 'ccg-fakecli.exe')
+  if (!fs.existsSync(stub)) {
+    throw new Error(`가짜 CLI가 없다: ${stub}\n  cargo build -p ccg-engine --features fakecli --bin ccg-fakecli --release`)
+  }
+  const enginedir = path.join(HOME, 'engines', 'fake', 'node_modules', '@anthropic-ai', 'claude-agent-sdk-win32-x64')
+  fs.mkdirSync(enginedir, { recursive: true })
+  fs.copyFileSync(stub, path.join(enginedir, 'claude.exe'))
+  write(path.join(HOME, 'config.json'), { activeVersion: 'fake' })
+  // 계정은 **이름만** 필요하다(정규화가 known_accounts로 판정한다) — 자격증명 0바이트.
+  write(path.join(HOME, 'accounts.json'), { defaultEmail: 'fake@example.com', accounts: [{ email: 'fake@example.com' }] })
+  fs.mkdirSync(path.join(HOME, 'accounts', 'fake_example.com'), { recursive: true })
+  write(path.join(HOME, 'chats', 'index.json'), { version: 1, order: ['c-dlg'], activeChatId: 'c-dlg' })
+  write(path.join(HOME, 'chats', 'c-dlg.json'), {
+    id: 'c-dlg',
+    title: '폴백 확인',
+    custom: true,
+    manualCwd: WORK,
+    picker: { model: 'fable', effort: 'minimal', mode: 'normal' },
+    refDirs: [],
+    snapshot: { messages: [] },
+    updatedAt: Date.now()
+  })
+  write(path.join(HOME, 'ui-prefs.json'), { 'ui.lang': 'ko' })
+  write(path.join(HOME, 'profile.json'), { nickname: 'poc' })
+
+  const SCRIPT = path.join(HOME, 'fake-script.jsonl')
+  const IN = path.join(HOME, 'fake-stdin.jsonl')
+  const steps = [
+    { afterMs: 120, emit: { type: 'control_response', response: { subtype: 'success', request_id: 'init-1', response: {} } } },
+    { emit: { type: 'system', subtype: 'init', session_id: 'FAKE-1', model: 'claude-fable-5', cwd: WORK, tools: [], apiKeySource: 'none' } },
+    {
+      afterMs: 250,
+      emit: {
+        type: 'control_request',
+        request_id: 'dlg-1',
+        request: {
+          subtype: 'request_user_dialog',
+          dialog_kind: 'refusal_fallback_prompt',
+          tool_use_id: 'toolu_fake_1',
+          payload: { originalModel: 'fable', fallbackModel: 'sonnet', apiRefusalCategory: 'policy' }
+        }
+      }
+    },
+    { awaitResponse: 'dlg-1' },
+    {
+      afterMs: 150,
+      emit: {
+        type: 'assistant',
+        session_id: 'FAKE-1',
+        parent_tool_use_id: null,
+        message: { role: 'assistant', content: [{ type: 'text', text: 'FALLBACK-OK' }], usage: { input_tokens: 11 } }
+      }
+    },
+    { emit: { type: 'result', subtype: 'success', is_error: false, result: 'FALLBACK-OK', session_id: 'FAKE-1', total_cost_usd: 0, duration_ms: 1, num_turns: 1 } }
+  ]
+  fs.writeFileSync(SCRIPT, steps.map((s) => JSON.stringify(s)).join('\n') + '\n')
+  return { HOME, WORK, SCRIPT, IN }
+}
+
+async function phaseDialog() {
+  console.log('\n[DIALOG] 폴백 확인 카드 — 가짜 CLI(제품 경로)')
+  const s = seedDialogHome()
+  const out = { home: s.HOME }
+  const app = await boot(s.HOME, 9364, { CCG_FAKECLI_SCRIPT: s.SCRIPT, CCG_FAKECLI_IN: s.IN })
+  try {
+    await app.j(`(window.__ev = [], window.api.onEngineEvent((e) => window.__ev.push(e)), 'armed')`)
+    // ★ 컴포저가 **활성 채팅을 잡은 뒤**에 보낸다. `window.api`가 답하는 시점과
+    //   렌더러가 채팅을 채택한 시점은 다르다 — 사이에 보내면 Enter가 조용히 삼켜진다
+    //   (전체 주행에서 실제로 한 번 밟았다).
+    out.ready = await waitUntil(app, `(await window.api.getChats())?.activeChatId === 'c-dlg' && !!document.querySelector('.composer-row textarea')`, 30_000)
+    await typeAndSend(app, '거부를 유발하는 질문')
+    // ① 카드가 **뜨는가** — R1에서는 여기가 영원히 비어 있었다.
+    let card = null
+    for (let i = 0; i < 400; i++) {
+      const c = await app.j(`(() => {
+        const el = document.querySelector('.q-overlay .qcard')
+        if (!el) return null
+        return { head: el.querySelector('.qhl')?.textContent ?? '',
+                 opts: [...el.querySelectorAll('.qopt .ql')].map((n) => n.textContent),
+                 text: el.textContent.slice(0, 200) }
+      })()`)
+      if (c) { card = c; break }
+      await sleep(100)
+    }
+    out.card = card ?? { timeout: true }
+    out.state = await app.j(`(await window.__TAURI_INTERNALS__.invoke('ipc_call', { channel: 'engine:debug', payload: [] })).chats?.[0]?.state ?? null`)
+    if (!card) {
+      fail('D1-카드', '폴백 확인 다이얼로그에 카드가 안 뜬다(= 카드 없는 영구 정지)', out)
+      return
+    }
+    ok('D1-카드', { opts: card.opts, state: out.state })
+    // ② 클릭 → **§4.4b 어휘로** 응답이 CLI stdin에 도달하는가
+    await app.j(`(() => { document.querySelector('.q-overlay .qcard .qopt').click(); return 'clicked' })()`)
+    let res = null
+    for (let i = 0; i < 400; i++) {
+      const r = await app.j(`(() => { const r = window.__ev.find((e) => e.type === 'result'); return r ? { isError: r.isError, text: (r.text||'').slice(0,40) } : null })()`)
+      if (r) { res = r; break }
+      await sleep(100)
+    }
+    out.result = res ?? { timeout: true }
+    out.stdin = (() => {
+      try {
+        return fs.readFileSync(s.IN, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l))
+      } catch { return [] }
+    })()
+    const answer = out.stdin.find((v) => v.type === 'control_response' && v.response?.request_id === 'dlg-1')
+    out.answer = answer?.response?.response ?? null
+    out.after = await app.j(`({
+      cardGone: !document.querySelector('.q-overlay .qcard'),
+      fallbackBanner: window.__ev.filter((e) => e.type === 'model-fallback').map((e) => e.text),
+      types: window.__ev.reduce((m, e) => ((m[e.type] = (m[e.type] ?? 0) + 1), m), {}),
+      domHasReply: document.body.innerText.includes('FALLBACK-OK')
+    })`)
+    out.identityAfter = await app.j(
+      `await window.__TAURI_INTERNALS__.invoke('ipc_call', { channel: 'chat:identity-get', payload: [{ chatId: 'c-dlg' }] })`
+    )
+    if (!out.answer) fail('D2-응답', '카드를 눌렀는데 CLI stdin에 control_response가 안 갔다', { stdin: out.stdin.map((v) => v.type) })
+    else if (out.answer.behavior !== 'completed' || out.answer.result !== 'retry_fallback')
+      fail('D2-응답', `§4.4b 어휘가 아니다: ${JSON.stringify(out.answer)}`, out.answer)
+    else if (out.answer.toolUseID !== 'toolu_fake_1') fail('D2-응답', 'toolUseID가 안 실렸다(고아 경로가 버린다)', out.answer)
+    else ok('D2-응답', out.answer)
+    if (!res) fail('D3-진행', '응답 뒤 턴이 안 끝났다(result 없음)', out)
+    else if (!out.after.cardGone) fail('D3-진행', '응답 뒤에도 카드가 남아 있다', out.after)
+    else ok('D3-진행', { result: res, banner: out.after.fallbackBanner })
+    const modelAfter = out.identityAfter?.raw?.engine?.model ?? out.identityAfter?.identity?.engine?.model ?? null
+    if (modelAfter !== 'sonnet')
+      fail('D4-폴백리비전', `수락이 정체성을 안 바꿨다(모델 ${modelAfter})`, out.identityAfter)
+    else ok('D4-폴백리비전', { model: modelAfter, revision: out.identityAfter?.revision })
+  } catch (e) {
+    fail('DIALOG', String(e))
+  } finally {
+    // ★ 실패 경로의 `return`이 기록을 건너뛰면 다음 사람이 진단할 재료가 없다.
+    rep.steps.dialog = out
+    try { killTree(app.child.pid) } catch {}
+    await sleep(600)
+    if (!KEEP) rmrf(s.HOME)
+  }
+  return rep.findings.length === 0
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 4) 추가 채팅 창 영속 — **닫아도, 앱을 껐다 켜도 그 대화가 남는가**
+//
+//    R1이 `session:*` 6채널을 배선해 그 창에서 대화가 실제로 돌기 시작했는데,
+//    저장 채널(`session-wins:persist/hydrate/rename`)은 셸에 상수조차 없어
+//    `{__unimplemented:true}`였다 → "Ctrl+Shift+N → 대화 → 창 닫기 = 증발"
+//    (크리틱 배선 R1 §5-S4). 게다가 그 창의 chatId가 `s-{pid}-{n}`이라 **앱을 다시
+//    켜면 값이 바뀐다** — 저장이 생겨도 다시 못 찾는다. 둘 다 여기서 잰다.
+// ─────────────────────────────────────────────────────────────────────────────
+function seedWinSaveHome() {
+  const HOME = path.join(REPO, '.poc-home-winsave')
+  const WORK = path.join(HOME, 'work')
+  rmrf(HOME)
+  fs.mkdirSync(WORK, { recursive: true })
+  const stub = path.join(REPO, 'target', 'release', 'ccg-fakecli.exe')
+  if (!fs.existsSync(stub)) throw new Error(`가짜 CLI가 없다: ${stub}`)
+  const ed = path.join(HOME, 'engines', 'fake', 'node_modules', '@anthropic-ai', 'claude-agent-sdk-win32-x64')
+  fs.mkdirSync(ed, { recursive: true })
+  fs.copyFileSync(stub, path.join(ed, 'claude.exe'))
+  write(path.join(HOME, 'config.json'), { activeVersion: 'fake' })
+  write(path.join(HOME, 'accounts.json'), { defaultEmail: 'fake@example.com', accounts: [{ email: 'fake@example.com' }] })
+  fs.mkdirSync(path.join(HOME, 'accounts', 'fake_example.com'), { recursive: true })
+  write(path.join(HOME, 'chats', 'index.json'), { version: 1, order: ['c-main'], activeChatId: 'c-main' })
+  write(path.join(HOME, 'chats', 'c-main.json'), {
+    id: 'c-main', title: '본채팅', custom: true, manualCwd: WORK,
+    picker: { model: 'haiku', effort: 'minimal', mode: 'normal' }, refDirs: [],
+    snapshot: { messages: [{ kind: 'msg', id: 'm0', role: 'user', text: '본채팅 원본' }] }, updatedAt: 1
+  })
+  write(path.join(HOME, 'ui-prefs.json'), { 'ui.lang': 'ko' })
+  write(path.join(HOME, 'profile.json'), { nickname: 'poc' })
+  const SCRIPT = path.join(HOME, 'script.jsonl')
+  fs.writeFileSync(
+    SCRIPT,
+    [
+      { afterMs: 100, emit: { type: 'control_response', response: { subtype: 'success', request_id: 'init-1', response: {} } } },
+      { emit: { type: 'system', subtype: 'init', session_id: 'WIN-1', model: 'claude-haiku', cwd: WORK, tools: [], apiKeySource: 'none' } },
+      { afterMs: 150, emit: { type: 'assistant', session_id: 'WIN-1', parent_tool_use_id: null, message: { role: 'assistant', content: [{ type: 'text', text: '창에서 답한 줄' }], usage: { input_tokens: 7 } } } },
+      { emit: { type: 'result', subtype: 'success', is_error: false, result: '창에서 답한 줄', session_id: 'WIN-1', total_cost_usd: 0, duration_ms: 1, num_turns: 1 } }
+    ]
+      .map((s) => JSON.stringify(s))
+      .join('\n') + '\n'
+  )
+  return { HOME, WORK, SCRIPT }
+}
+
+/// 추가 채팅 **창**의 CDP 페이지(메인이 아닌 index.html 문서).
+async function connectSessionPage(port, mainWsUrl) {
+  for (let i = 0; i < 300; i++) {
+    const targets = await cdpTargets(port).catch(() => [])
+    const p = targets.find((t) => t.type === 'page' && /index\.html/.test(t.url) && /#session/.test(t.url))
+    if (p?.webSocketDebuggerUrl && p.webSocketDebuggerUrl !== mainWsUrl) return await Cdp.connect(p.webSocketDebuggerUrl, { timeoutMs: 8000 })
+    await sleep(100)
+  }
+  return null
+}
+
+async function phaseWinSave() {
+  console.log('\n[WINSAVE] 추가 채팅 창 영속(가짜 CLI)')
+  const s = seedWinSaveHome()
+  const out = { home: s.HOME }
+  const app = await boot(s.HOME, 9365, { CCG_FAKECLI_SCRIPT: s.SCRIPT })
+  let ok1 = false
+  try {
+    out.listAtBoot = await app.j('(await window.api.sessionWindows.list()).map((w) => w.id)')
+    await app.j('(await window.api.openSessionWindow(), "opened")')
+    for (let i = 0; i < 80; i++) {
+      out.listAfterOpen = await app.j('(await window.api.sessionWindows.list()).map((w) => w.id)')
+      if (out.listAfterOpen.length > out.listAtBoot.length) break
+      await sleep(100)
+    }
+    out.winId = (out.listAfterOpen ?? []).find((id) => !out.listAtBoot.includes(id)) ?? null
+    if (!out.winId) {
+      fail('W1-창', '추가 채팅 창이 목록에 안 뜬다', out)
+      return
+    }
+    // ★ id 규약 — pid가 박히면 재시작 뒤 같은 대화를 못 찾는다.
+    if (/^s-\d+-\d+$/.test(out.winId)) fail('W1-id', `chatId에 pid가 박혔다: ${out.winId}`)
+    else ok('W1-id', out.winId)
+
+    const sp = await connectSessionPage(9365, null)
+    if (!sp) {
+      fail('W2-창페이지', '추가 채팅 창의 CDP 페이지를 못 찾았다')
+      return
+    }
+    const sj = async (e) => JSON.parse(await sp.eval(`(async () => JSON.stringify(${e}))()`, { awaitPromise: true }))
+    for (let i = 0; i < 400; i++) {
+      const up = await sp.eval(`(async () => { try { return !!(await window.api.app.getVersion()) } catch { return false } })()`, { awaitPromise: true }).catch(() => false)
+      if (up) break
+      await sleep(100)
+    }
+    // 그 창에서 실제로 한 턴 돌린다(작업 폴더가 있어야 전송이 대화상자로 안 빠진다)
+    // 새 창은 `localStorage['session.cwd']`(SessionWindow.tsx:106)로 폴더를 복원한다 —
+    // 안 심으면 전송이 **네이티브 폴더 선택 대화상자**로 빠져 하네스가 멈춘다.
+    await sj(`(() => { try { localStorage.setItem('session.cwd', ${JSON.stringify(s.WORK)}) } catch {} return 'cwd' })()`)
+    await sp.eval(`location.reload()`).catch(() => {})
+    await sleep(1500)
+    const sp2 = await connectSessionPage(9365, null)
+    const sj2 = async (e) => JSON.parse(await sp2.eval(`(async () => JSON.stringify(${e}))()`, { awaitPromise: true }))
+    for (let i = 0; i < 400; i++) {
+      const up = await sp2.eval(`(async () => { try { return !!(await window.api.app.getVersion()) } catch { return false } })()`, { awaitPromise: true }).catch(() => false)
+      if (up) break
+      await sleep(100)
+    }
+    out.sent = await sp2.eval(`(() => {
+      const ta = document.querySelector('.composer-row textarea') || document.querySelector('textarea')
+      if (!ta) return 'no-textarea'
+      const set = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set
+      set.call(ta, '창에서 보낸 질문')
+      ta.dispatchEvent(new Event('input', { bubbles: true }))
+      ta.focus(); ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }))
+      return 'sent'
+    })()`)
+    let replied = false
+    for (let i = 0; i < 400; i++) {
+      replied = await sj2(`document.body.innerText.includes('창에서 답한 줄')`)
+      if (replied) break
+      await sleep(100)
+    }
+    out.replyInWindow = replied
+    if (!replied) fail('W2-턴', '추가 채팅 창에서 턴이 안 돌았다', out)
+    else ok('W2-턴')
+    await sleep(1800) // 600ms 디바운스 저장
+
+    // 디스크 — 그 창의 대화가 레코드로 남았나
+    out.recordAfterTurn = (() => {
+      const v = readChatV3(s.HOME, out.winId)
+      return v ? { origin: v.origin, msgs: v.snapshot?.messages?.length ?? null, title: v.title, cwd: v.identity?.cwd ?? null } : null
+    })()
+    if (!out.recordAfterTurn || !out.recordAfterTurn.msgs)
+      fail('W3-저장', '창의 대화가 디스크에 없다(= 닫으면 증발)', out.recordAfterTurn)
+    else ok('W3-저장', out.recordAfterTurn)
+    // 본채팅은 안 건드렸다
+    out.mainAfter = readChatV3(s.HOME, 'c-main')?.snapshot?.messages?.length ?? null
+    if (out.mainAfter !== 1) fail('W3-격리', `추가 채팅 저장이 본채팅을 건드렸다(${out.mainAfter})`)
+    else ok('W3-격리')
+    ok1 = true
+  } catch (e) {
+    fail('WINSAVE', String(e))
+  } finally {
+    killTree(app.child.pid)
+    await sleep(1000)
+  }
+  if (!ok1) {
+    rep.steps.winsave = out
+    return false
+  }
+
+  // 재시작 — 목록에 남는가 · 클릭하면 창이 되살아나는가 · 대화가 복원되는가
+  const app2 = await boot(s.HOME, 9366, { CCG_FAKECLI_SCRIPT: s.SCRIPT })
+  try {
+    out.listAfterRestart = await app2.j('(await window.api.sessionWindows.list()).map((w) => ({ id: w.id, title: w.title, open: w.open }))')
+    const survived = (out.listAfterRestart ?? []).some((w) => w.id === out.winId)
+    if (!survived) fail('W4-재시작목록', '재시작 뒤 추가 채팅이 사이드바에서 사라졌다', out.listAfterRestart)
+    else ok('W4-재시작목록', out.listAfterRestart)
+    // 사이드바 클릭 = focus. 창이 없으면 **되만들어야** 한다(R1 §4.4-E).
+    await app2.j(`(window.api.sessionWindows.focus(${JSON.stringify(out.winId)}), 'focus')`)
+    const sp = await connectSessionPage(9366, null)
+    out.reopened = !!sp
+    if (!sp) {
+      fail('W5-되만들기', '닫힌 추가 채팅을 클릭해도 창이 안 뜬다', out)
+    } else {
+      for (let i = 0; i < 400; i++) {
+        const up = await sp.eval(`(async () => { try { return !!(await window.api.app.getVersion()) } catch { return false } })()`, { awaitPromise: true }).catch(() => false)
+        if (up) break
+        await sleep(100)
+      }
+      let restored = false
+      for (let i = 0; i < 400; i++) {
+        restored = JSON.parse(await sp.eval(`(async () => JSON.stringify(document.body.innerText.includes('창에서 답한 줄')))()`, { awaitPromise: true }).catch(() => 'false'))
+        if (restored) break
+        await sleep(100)
+      }
+      out.restoredInWindow = restored
+      if (!restored) fail('W5-복원', '되만든 창에 저장된 대화가 안 그려진다', out)
+      else ok('W5-복원')
+      out.listWhileOpen = await app2.j('(await window.api.sessionWindows.list()).map((w) => ({ id: w.id, open: w.open }))')
+      if ((out.listWhileOpen ?? []).filter((w) => w.id === out.winId).length !== 1)
+        fail('W5-중복', '되만든 창이 목록에 두 번 뜬다', out.listWhileOpen)
+      else ok('W5-중복없음')
+    }
+  } catch (e) {
+    fail('WINSAVE-2', String(e))
+  } finally {
+    killTree(app2.child.pid)
+    await sleep(800)
+    if (!KEEP) rmrf(s.HOME)
+  }
+  rep.steps.winsave = out
+  return rep.findings.length === 0
+}
+
 function readChatV3(home, id) {
   for (const p of [path.join(home, 'chats-v3', `${id}.json`), path.join(home, 'chats', `${id}.json`)]) {
     try {
@@ -439,6 +800,8 @@ if (!fs.existsSync(EXE)) {
 }
 let allOk = true
 if (only === 'all' || only === 'r81') allOk = (await phaseR81()) && allOk
+if (only === 'all' || only === 'dialog') allOk = (await phaseDialog()) && allOk
+if (only === 'all' || only === 'winsave') allOk = (await phaseWinSave()) && allOk
 if (only === 'all' || only === 'live') allOk = (await phaseLive()) && allOk
 rep.verdict = rep.findings.length === 0 ? 'PASS' : 'FAIL'
 fs.mkdirSync(path.dirname(OUT), { recursive: true })

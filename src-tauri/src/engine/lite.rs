@@ -23,6 +23,12 @@ pub enum Terminal {
     None,
     Done,
     Error,
+    /// 사용자가 끊은 턴. **`Done`으로 적으면 안 된다** — 이 값은 `status.json`에
+    /// 영속되고 `load_boot`는 `done`을 안 내리므로, 중단한 턴이 재시작 뒤에도
+    /// "완료"로 남는다(크리틱 배선 R1 F11). 2.6.2 `AgentStatus`에는 대응 어휘가
+    /// 없으므로 **`idle`로 접는다** — "완료도 오류도 아니다"가 지금 낼 수 있는
+    /// 가장 정확한 값이다(사이드바 점 색은 `done`과 같아 화면은 안 바뀐다).
+    Aborted,
 }
 
 pub fn build<D: CliDriver>(rt: &ChatRuntime<D>, terminal: Terminal, now_ms: u64) -> Value {
@@ -52,7 +58,7 @@ pub fn build<D: CliDriver>(rt: &ChatRuntime<D>, terminal: Terminal, now_ms: u64)
         _ => match terminal {
             Terminal::Done => "done",
             Terminal::Error => "error",
-            Terminal::None => "idle",
+            Terminal::Aborted | Terminal::None => "idle",
         },
     };
     // 키 이름은 `ccg_store::status::truth_from_chat_file`와 **같아야** 한다 —

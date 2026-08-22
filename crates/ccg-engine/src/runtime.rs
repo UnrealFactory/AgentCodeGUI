@@ -49,6 +49,15 @@ pub const HELD_SLIDE: Millis = 2500;
 pub const HELD_MAX_REARMS: u32 = 8;
 /// T35의 이탈 확인 유예.
 pub const STOP_TASK_GRACE: Millis = 3 * SEC;
+/// **T22 백스톱**(§5.4-b ⓪) — `Streaming`/`AwaitingUser`에서 프레임이 이만큼 끊기면
+/// ⓪ 프로세스 생존을 *한 번* 묻는다. `Alive`는 아무 의미도 없고(리스를 재장전하지
+/// **않는다**), **`Dead`일 때만** 정착시킨다.
+///
+/// 왜 필요한가: 1차 경로는 stdout EOF(T22)다. 그 신호가 유실되는 경우(리더 스레드가
+/// 막히거나 파이프가 상속돼 EOF가 안 오는 경우)에도 채팅이 영구히 굳지 않게 하는
+/// 두 번째 그물이다. **`AwaitingUser`의 승인 대기는 무기한이 계약이므로**(m-logic §3.2)
+/// 프로세스가 살아 있는 동안에는 이 아크가 절대 발화하지 않는다.
+pub const STREAM_STALL_BACKSTOP: Millis = 90 * SEC;
 
 #[derive(Debug, Clone)]
 pub enum Cmd {
@@ -419,6 +428,19 @@ impl<D: CliDriver> ChatRuntime<D> {
     }
     pub fn hung_probes(&self) -> u32 {
         self.stream.as_ref().map(|s| s.hung_probes).unwrap_or(0)
+    }
+    /// 이 `request_id`가 지금 원장에 어떤 **종류의 카드**로 떠 있나.
+    ///
+    /// 왜 공개하나: 얼려 둔 2.6.2 렌더러에는 다이얼로그 채널이 없어 폴백 확인을
+    /// **질문 카드**로 그린다(`engine.ts:930-1019` 파리티). 그러면 답이 질문 채널로
+    /// 돌아오는데 `t5_respond`는 종류가 어긋난 응답을 거부한다(N16) — 옳은 가드다.
+    /// 어긋남을 푸는 것은 **원장을 볼 수 있는 셸**의 몫이고, 그 조회창이 이 함수다.
+    pub fn ask_kind_of(&self, request_id: &str) -> Option<AskKind> {
+        self.ledger
+            .borrow()
+            .items()
+            .iter()
+            .find_map(|i| i.ask.as_ref().filter(|a| a.request_id == request_id).map(|a| a.ask_kind))
     }
 
     fn emit(&self, e: Event) {
@@ -1111,12 +1133,18 @@ impl<D: CliDriver> ChatRuntime<D> {
             return;
         };
         // 종결 status 1회 보장(§5.3 emit_terminal_status_once).
+        // 사용자가 끊은 경로(T23/T34/T15)는 **오류가 아니다** — F11과 같은 이유로
+        // 어휘를 가른다(그 값이 `status.json`에 남는다).
+        let terminal = match cause {
+            CloseCause::Cancelled | CloseCause::HardCancel => TerminalStatus::Aborted,
+            _ => TerminalStatus::Error,
+        };
         if let Some(t) = &mut s.turn {
             if !t.sent_terminal_status {
                 t.sent_terminal_status = true;
                 self.emit(Event::Status {
                     run_id: t.run_id,
-                    status: TerminalStatus::Error,
+                    status: terminal,
                 });
             }
         }
@@ -1204,12 +1232,20 @@ impl<D: CliDriver> ChatRuntime<D> {
 
     fn land_turn(&mut self) {
         let now = self.sync_now();
+        // ★ 중단으로 끝난 턴은 `Done`이 아니다(크리틱 배선 R1 F11). 이 값은
+        //   `status.json`에 영속되고 `load_boot`는 `done`을 안 내리므로, `Done`으로
+        //   적으면 사용자가 끊은 턴이 재시작 뒤에도 "완료"로 남는다.
+        let aborted = self.stream.as_ref().is_some_and(|s| s.interrupt_marker);
         if let Some(s) = &mut self.stream {
             if let Some(t) = &mut s.turn {
                 t.turn_ended = true;
                 if !t.sent_terminal_status {
                     t.sent_terminal_status = true;
-                    let status = TerminalStatus::Done;
+                    let status = if aborted {
+                        TerminalStatus::Aborted
+                    } else {
+                        TerminalStatus::Done
+                    };
                     let run_id = t.run_id;
                     self.sink.borrow_mut().emit(Event::Status { run_id, status });
                 }
@@ -1457,8 +1493,10 @@ impl<D: CliDriver> ChatRuntime<D> {
         if kind == AskKind::Dialog && accept {
             if let Some(m) = ask.dialog_kind.as_deref() {
                 if m == "refusal_fallback_prompt" {
-                    if let Some(to) = ask.tool_use_id.clone() {
-                        // 픽스처는 dialog에 대상 모델을 tool_use_id 자리에 싣는다(합성 규약).
+                    // 실물은 `payload.fallbackModel`이 대상 모델이다(§4.4b). 재생
+                    // 픽스처의 합성 규약(대상 모델을 `tool_use_id` 자리에)은 폴백으로
+                    // 남긴다 — 실 `toolu_…`를 모델로 삼으면 정체성이 도구 id로 덮인다.
+                    if let Some(to) = ask.fallback_model.clone().or_else(|| ask.tool_use_id.clone()) {
                         self.fallback_signal(&to, FallbackVia::Dialog);
                     }
                 }
@@ -1648,6 +1686,7 @@ impl<D: CliDriver> ChatRuntime<D> {
                 tool_use_id,
                 dialog_kind,
                 description,
+                fallback_model,
             } => {
                 match ask_kind_of(&subtype, tool_name.as_deref()) {
                     Some(kind) => {
@@ -1683,6 +1722,7 @@ impl<D: CliDriver> ChatRuntime<D> {
                             request_id: request_id.clone(),
                             tool_use_id: tool_use_id.clone(),
                             dialog_kind: dialog_kind.clone(),
+                            fallback_model: fallback_model.clone(),
                         });
                         self.ledger.borrow_mut().insert(item);
                         self.emit(Event::AskOpened {
@@ -2116,6 +2156,11 @@ impl<D: CliDriver> ChatRuntime<D> {
                 StateTag::Starting => put(Some(s.started_at + START_TIMEOUT)),
                 StateTag::Interrupting => put(s.interrupt_deadline),
                 StateTag::HeldResult => put(s.turn.as_ref().and_then(|t| t.held_until)),
+                // T22 백스톱 — 발화 조건은 `!process_alive()`라 살아 있는 스트림에서는
+                // 이 시각에 깨어나 아무것도 안 하고 지나간다(리스 재장전도 없다).
+                StateTag::Streaming | StateTag::AwaitingUser => {
+                    put(Some(s.last_frame_at + STREAM_STALL_BACKSTOP))
+                }
                 StateTag::Resident => {
                     put(s.linger_deadline);
                     put(s.stop_deadline);
@@ -2134,6 +2179,18 @@ impl<D: CliDriver> ChatRuntime<D> {
         let frames = self.driver.poll_frames(now);
         for f in frames {
             self.on_frame(&f);
+        }
+        // ★ T22 — stdout EOF/프로세스 exit. **프레임을 다 소화한 뒤에** 본다(마지막
+        //   result가 EOF와 같은 틱에 올 수 있다). 여기가 제품의 유일한 T22 진입점이다:
+        //   이게 없던 동안 `stream_died()`의 호출자는 재생 테스트뿐이었고, 외부에서 CLI가
+        //   죽으면 채팅이 영구히 굳었다(크리틱 배선 R1 §2-E/F = m-logic P8 그 자체).
+        if self.stream.is_some() {
+            if let Some(cause) = self.driver.stream_eof() {
+                self.stream_died(cause);
+                // 스트림이 없어졌다 — 이 틱의 타이머/워치독은 볼 것이 없다.
+                self.check_hold(now);
+                return;
+            }
         }
         self.timers(now);
         self.watchdog(now);
@@ -2198,6 +2255,17 @@ impl<D: CliDriver> ChatRuntime<D> {
                     self.fire("T11");
                     self.land_turn();
                 }
+                return;
+            }
+            // ★ T22 백스톱 아크(§5.4-b ⓪). R1까지 이 두 상태에는 아크가 **아예 없었다**
+            //   = 무한. 스트림이 조용해진 지 오래인데 프로세스가 **죽은 것이 관측되면**
+            //   그때만 정착시킨다. 살아 있으면 아무 일도 없다 — 승인 카드 무응답이
+            //   영구 대기인 계약(m-logic §3.2)을 이 아크가 깨지 않게 하는 유일한 가드다.
+            StateTag::Streaming | StateTag::AwaitingUser
+                if now.saturating_sub(last_frame) >= STREAM_STALL_BACKSTOP
+                    && !self.driver.process_alive() =>
+            {
+                self.stream_died(CloseCause::Crash);
                 return;
             }
             StateTag::Resident => {
@@ -2460,5 +2528,194 @@ trait Contig {
 impl Contig for VecDeque<QueuedMessage> {
     fn make_contiguous_ref(&self) -> Vec<QueuedMessage> {
         self.iter().cloned().collect()
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T22 제품 배선 — stdout EOF가 **런타임 안에서** 원장을 거두는가
+//
+// 재생 하네스(`tests/replay*.rs`)는 `stream_died()`를 **직접 부른다**. 그래서 97개
+// 시나리오가 초록인 채로 제품에는 진입점이 없었다(크리틱 배선 R1 §2-E/F). 여기서 재는
+// 것은 그 진입점 하나다: 드라이버가 EOF를 값으로 올리면 `tick()`이 T22를 밟는가.
+// ─────────────────────────────────────────────────────────────────────────────
+#[cfg(test)]
+mod t22_tests {
+    use super::*;
+    use crate::clock::Clock;
+    use crate::driver::SpawnSpec;
+    use crate::identity::*;
+    use std::collections::BTreeSet;
+
+    #[derive(Default)]
+    struct EofCli {
+        eof: Option<CloseCause>,
+        alive: bool,
+        sent: Vec<Value>,
+    }
+    impl CliDriver for EofCli {
+        fn spawn(&mut self, _spec: &SpawnSpec) -> std::io::Result<()> {
+            self.alive = true;
+            Ok(())
+        }
+        fn send(&mut self, line: Value) {
+            self.sent.push(line);
+        }
+        fn close_input(&mut self) {}
+        fn kill(&mut self) {
+            self.alive = false;
+        }
+        fn process_alive(&self) -> bool {
+            self.alive
+        }
+        fn stream_eof(&mut self) -> Option<CloseCause> {
+            self.eof
+        }
+        fn poll_frames(&mut self, _now: Millis) -> Vec<Value> {
+            vec![]
+        }
+    }
+
+    struct Fixed;
+    impl Clock for Fixed {
+        fn now_ms(&self) -> Millis {
+            1_000
+        }
+    }
+
+    fn rt() -> ChatRuntime<EofCli> {
+        let raw = RawIdentity {
+            engine: RawEngine {
+                kind: EngineKind::Claude,
+                model: "haiku".into(),
+                effort: EffortId::Minimal,
+                codex_account: None,
+            },
+            billing: RawBilling {
+                kind: BillingKind::Subscription,
+                account: Some("a@x".into()),
+                drop_env_key: Some(false),
+            },
+            cwd: r"C:\ccg-fixture\work".into(),
+            add_dirs: vec![],
+            mode: ModeId::Normal,
+            system_prompt: None,
+            output_style: None,
+            tools: RawTools::default(),
+        };
+        let defaults = IdentityDefaults {
+            known_accounts: BTreeSet::from(["a@x".to_string()]),
+            ..Default::default()
+        };
+        ChatRuntime::new("c-1", raw, defaults, Arc::new(Fixed), EofCli::default()).expect("정규화")
+    }
+
+    /// `Starting`→`Streaming`으로 올린 뒤 승인 카드를 세운다(공격 E의 자리).
+    fn to_awaiting_user(rt: &mut ChatRuntime<EofCli>) {
+        rt.dispatch(Cmd::Send { text: "안녕".into() });
+        rt.on_frame(&json!({
+            "type": "control_response",
+            "response": { "subtype": "success", "request_id": "init-1", "response": {} }
+        }));
+        rt.on_frame(&json!({ "type": "system", "subtype": "init", "session_id": "S1", "model": "claude-haiku" }));
+        assert_eq!(rt.state(), StateTag::Streaming, "T2까지 올라갔다");
+        rt.on_frame(&json!({
+            "type": "control_request", "request_id": "req-1",
+            "request": { "subtype": "can_use_tool", "tool_name": "Write",
+                         "tool_use_id": "toolu_1", "input": { "file_path": "a.txt" } }
+        }));
+        assert_eq!(rt.state(), StateTag::AwaitingUser);
+        assert_eq!(rt.ledger().items().len(), 1, "AskCard가 원장에 있다");
+    }
+
+    #[test]
+    fn stdout_eof_settles_the_ask_card_and_lands_idle() {
+        let mut r = rt();
+        to_awaiting_user(&mut r);
+        let _ = r.drain_events();
+
+        // CLI가 외부에서 죽었다 — 드라이버가 EOF를 값으로 올린다.
+        r.driver().eof = Some(CloseCause::ExternalKill);
+        r.tick();
+
+        assert_eq!(r.state(), StateTag::Idle, "T22 → T25 → T26으로 내려온다");
+        assert!(r.ledger().is_empty(), "파생 라이브 항목이 남으면 그게 유령 UI다");
+        let evs = r.drain_events();
+        let settled: Vec<_> = evs
+            .iter()
+            .filter_map(|e| match e {
+                Event::Settled { id, reason, .. } => Some((id.to_string(), reason.wire())),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            settled,
+            vec![("req-1".to_string(), "stream_closed:externalkill".to_string())],
+            "정착에 **사유가 실려야** 화면이 이유를 말할 수 있다"
+        );
+        assert!(
+            evs.iter().any(|e| matches!(e, Event::Exit { cause: CloseCause::ExternalKill, .. })),
+            "Exit(cause)가 셸까지 나가야 안내 문장을 만든다"
+        );
+        assert!(
+            evs.iter().any(|e| matches!(e, Event::Status { status: TerminalStatus::Error, .. })),
+            "종결 status 1회 보장(§5.3) — 이게 busy를 내린다"
+        );
+        assert!(r.fired().contains("T22"), "표의 T22를 실제로 밟았다");
+    }
+
+    #[test]
+    fn eof_while_streaming_settles_too() {
+        let mut r = rt();
+        r.dispatch(Cmd::Send { text: "안녕".into() });
+        r.on_frame(&json!({
+            "type": "control_response",
+            "response": { "subtype": "success", "request_id": "init-1", "response": {} }
+        }));
+        r.on_frame(&json!({ "type": "system", "subtype": "init", "session_id": "S1", "model": "claude-haiku" }));
+        r.on_frame(&json!({
+            "type": "assistant", "session_id": "S1",
+            "message": { "role": "assistant", "content": [
+                { "type": "tool_use", "id": "toolu_9", "name": "Bash", "input": { "command": "sleep 1" } }] }
+        }));
+        assert_eq!(r.ledger().items().len(), 1, "RunningTool이 원장에 있다");
+        let _ = r.drain_events();
+
+        r.driver().eof = Some(CloseCause::Crash);
+        r.tick();
+        assert_eq!(r.state(), StateTag::Idle);
+        assert!(r.ledger().is_empty());
+    }
+
+    #[test]
+    fn no_stream_no_t22() {
+        // 스트림이 없을 때의 EOF는 **아무것도 아니다** — 유령 정착을 만들지 않는다.
+        let mut r = rt();
+        r.driver().eof = Some(CloseCause::CliExit);
+        r.tick();
+        assert_eq!(r.state(), StateTag::Idle);
+        assert!(!r.fired().contains("T22"));
+    }
+
+    #[test]
+    fn interrupted_turn_is_aborted_not_done() {
+        // F11 — 사용자가 끊은 턴을 `Done`으로 적으면 재시작 뒤에도 "완료"로 남는다.
+        let mut r = rt();
+        to_awaiting_user(&mut r);
+        r.dispatch(Cmd::Interrupt);
+        assert_eq!(r.state(), StateTag::Interrupting);
+        let _ = r.drain_events();
+        r.on_frame(&json!({
+            "type": "result", "subtype": "error_during_execution", "is_error": false,
+            "result": "", "terminal_reason": "aborted_by_user", "session_id": "S1"
+        }));
+        let evs = r.drain_events();
+        let statuses: Vec<_> = evs
+            .iter()
+            .filter_map(|e| match e {
+                Event::Status { status, .. } => Some(*status),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(statuses, vec![TerminalStatus::Aborted], "중단은 Done이 아니다: {statuses:?}");
     }
 }

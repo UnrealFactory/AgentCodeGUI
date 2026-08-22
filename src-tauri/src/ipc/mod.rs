@@ -76,6 +76,12 @@ pub mod ch {
     pub const SESSION_WINS_FOCUS: &str = "session-wins:focus";
     pub const SESSION_WINS_CLOSE: &str = "session-wins:close";
     pub const SESSION_REPORT: &str = "session-wins:report";
+    /// ★ 추가 채팅 창의 **대화 저장/복원/이름**. 렌더러(`SessionWindow.tsx:342`·`:369`)는
+    /// 이 셋을 실제로 부르는데 R1까지 상수조차 없어 `{__unimplemented:true}`로 떨어졌다
+    /// → "Ctrl+Shift+N → 대화 → 창 닫기 = 증발"(크리틱 배선 R1 §5-S4).
+    pub const SESSION_PERSIST: &str = "session-wins:persist";
+    pub const SESSION_HYDRATE: &str = "session-wins:hydrate";
+    pub const SESSION_WINS_RENAME: &str = "session-wins:rename";
     pub const SESSION_WINS_CHANGED: &str = "session-wins:changed";
     // broadcasts (main → renderer)
     pub const UI_GLASS_CHANGED: &str = "ui-glass:changed";

@@ -34,6 +34,19 @@ pub struct Wire {
     said_working: bool,
     /// `AskUserQuestion` 카드의 `request_id` → 그 질문 목록(응답 문구 조립에 쓴다).
     pub questions: BTreeMap<String, Value>,
+    /// 이번 턴에 `result`를 이미 냈나. **스트림 급사(T22) 때 합성 종료를 낼지**를 가른다 —
+    /// 이미 냈으면 두 번 내지 않는다(렌더러가 결과 카드를 두 벌 그린다).
+    saw_result: bool,
+    /// 폴백 확인 다이얼로그를 **질문 카드로** 그렸을 때의 `request_id` → 수락 선택지 라벨.
+    /// 2.6.2 렌더러에는 다이얼로그 카드가 없다 — 질문 카드가 그 자리다(`engine.ts:930-1019`).
+    dialogs: BTreeMap<String, DialogCard>,
+}
+
+/// 폴백 확인 카드 1건 — 답을 `{behavior:…}`로 되옮기는 데 필요한 최소값.
+pub struct DialogCard {
+    /// "계속 진행" 선택지의 라벨(이 문자열로 돌아오면 수락).
+    pub accept_label: String,
+    pub from_model: String,
 }
 
 fn now_ms() -> u64 {
@@ -84,7 +97,71 @@ impl Wire {
         self.run_id = run_id.to_string();
         self.cur_msg = None;
         self.said_working = false;
+        self.saw_result = false;
         json!({ "type": "status", "runId": run_id, "status": "analyzing" })
+    }
+
+    /// 이 `request_id`가 **다이얼로그를 질문 카드로 그린 것**인가 — 응답 번역에 쓴다.
+    pub fn dialog(&self, request_id: &str) -> Option<&DialogCard> {
+        self.dialogs.get(request_id)
+    }
+    pub fn take_dialog(&mut self, request_id: &str) -> Option<DialogCard> {
+        self.dialogs.remove(request_id)
+    }
+
+    /// **T22 착지의 화면 문장**(m-logic §5.2 표시 규약 · §5.6).
+    ///
+    /// 스트림이 죽으면 상태기계가 원장을 사유와 함께 정착시키지만, 얼려 둔 2.6.2
+    /// 렌더러에는 그 사유를 읽는 구독자가 없다 — 카드를 닫는 이벤트는 `result`뿐이고
+    /// (`session.ts:933` `pendingPermission: null`), busy를 내리는 것은 종결 `status`다.
+    /// 그래서 여기서 셋을 만든다:
+    ///   ① `notice` — "정리됨(엔진 종료)" 사유 한 줄
+    ///   ② `result`(합성) — **CLI가 result를 못 보내고 죽은 경우에만**. 카드 해제 +
+    ///      말풍선/도구 스피너 정착 + 컴포저 해제가 이 하나에 달려 있다
+    ///   ③ 정착 목록은 `chat:run-state.settled`가 REPLACE로 이미 싣는다(hub.rs)
+    ///
+    /// 사용자 의사로 닫힌 경로(`AllClear`·`Cancelled`·`AppQuit`)와 재스폰
+    /// (`IdentityChanged`·`ThreadChanged`)은 **여기 오지 않는다** — 호출부가 가른다.
+    pub fn stream_closed(&mut self, cause: &str, settled: usize) -> Vec<Value> {
+        let run = self.run_id.clone();
+        let why = match cause {
+            "external_kill" => "엔진(CLI)이 외부에서 종료됐어요",
+            "cli_exit" => "엔진(CLI)이 스스로 종료했어요",
+            "spawn_failed" => "엔진을 시작하지 못했어요",
+            "idle_reclaim" => "오래 조용한 엔진을 정리했어요",
+            "hard_cancel" => "중단 응답이 없어 엔진을 강제로 정리했어요",
+            _ => "엔진(CLI)이 예기치 않게 종료됐어요",
+        };
+        let tail = if settled > 0 {
+            format!(" — 진행 중이던 표시 {settled}개를 정리했어요")
+        } else {
+            String::new()
+        };
+        let mut out = vec![json!({
+            "type": "notice", "runId": run,
+            "text": format!("{why}{tail}. 다시 보내면 새 프로세스로 이어집니다.")
+        })];
+        if !self.saw_result {
+            // ★ 결과 없는 종료. `isError:true`로 두는 이유: 이 턴은 **끝난 게 아니라
+            //   끊긴 것**이고, 렌더러의 명령 카드 정착 경로도 `isError`를 본다.
+            self.saw_result = true;
+            self.cur_msg = None;
+            out.push(json!({
+                "type": "result", "runId": run,
+                "isError": true,
+                "text": format!("{why} — 이 턴은 완료되지 않았습니다."),
+                "costUsd": Value::Null,
+                "durationMs": Value::Null,
+                "numTurns": Value::Null,
+                "contextTokens": Value::Null,
+                "contextWindow": Value::Null,
+                "viaApi": self.via_api,
+            }));
+        }
+        self.dialogs.clear();
+        self.questions.clear();
+        self.tools.clear();
+        out
     }
 
     fn next_msg_id(&mut self) -> String {
@@ -292,9 +369,39 @@ impl Wire {
                         "type": "permission-request", "runId": run,
                         "requestId": request_id, "toolName": tool_name, "summary": summary,
                     }));
+                } else if subtype == "request_user_dialog" {
+                    // **폴백 확인**(§4.4b). 상태기계는 이미 T4로 `AwaitingUser`에 들어가
+                    // 카드를 원장에 세운다 — 여기서 이벤트를 안 내면 화면에는 아무것도
+                    // 안 뜨는데 채팅만 굳는다(크리틱 배선 R1 §3: kill 없이 도달하는 §2-E).
+                    // 2.6.2는 이것을 **질문 카드**로 그렸다(`engine.ts:930-1019`) — 같은 모양.
+                    let p = &r["payload"];
+                    let from = p.get("originalModel").and_then(Value::as_str).unwrap_or("현재 모델").to_string();
+                    let to = p.get("fallbackModel").and_then(Value::as_str).unwrap_or("다른 모델").to_string();
+                    let why = p.get("apiRefusalCategory").and_then(Value::as_str).unwrap_or("");
+                    let accept_label = format!("{to}로 계속");
+                    let sub = if why.is_empty() {
+                        format!("{from} 이(가) 응답을 거부했어요.")
+                    } else {
+                        format!("{from} 이(가) 응답을 거부했어요({why}).")
+                    };
+                    self.dialogs.insert(
+                        request_id.clone(),
+                        DialogCard { accept_label: accept_label.clone(), from_model: from },
+                    );
+                    out.push(json!({
+                        "type": "question-request", "runId": run,
+                        "requestId": request_id,
+                        "questions": [{
+                            "question": format!("{sub} {to} 로 이어서 시도할까요?"),
+                            "header": "폴백 확인",
+                            "multiSelect": false,
+                            "options": [
+                                { "label": accept_label, "description": "거부된 답변을 지우고 다시 시도합니다" },
+                                { "label": "중단", "description": "이 턴을 여기서 멈춥니다" }
+                            ]
+                        }],
+                    }));
                 }
-                // `request_user_dialog`(폴백 확인)는 상태기계가 AskCard로 들고, 셸은
-                // `chat:run-state`의 ask 필드로 낸다 — 2.6.2 렌더러에는 대응 카드가 없다.
             }
             "result" => {
                 let is_error = f.get("is_error").and_then(Value::as_bool).unwrap_or(false);
@@ -316,6 +423,7 @@ impl Wire {
                     "viaApi": self.via_api,
                 }));
                 self.cur_msg = None;
+                self.saw_result = true;
             }
             _ => {}
         }
@@ -326,6 +434,10 @@ impl Wire {
 // ── 미배선(이번 라운드) ──────────────────────────────────────────────────────
 // file-change(Write/Edit → 디프)  ·  terminal(Bash 실시간 줄)  ·  todos(TodoWrite)
 // subagent(사이드체인 말풍선)     ·  workflow  ·  bg-tasks / bg-task-end
-// model-fallback(엔진 `Event::FallbackBanner`로는 나가지만 프레임 경로는 아직)
 // thinking-clear                  ·  tokenUsage / contextWindow
-// 전부 "이벤트를 안 낸다"이지 "틀린 값을 낸다"가 아니다 — 렌더러는 그 UI만 비어 있다.
+//
+// ★ 이 목록의 성격을 정확히 적는다(크리틱 배선 R1 §6 — R1의 마무리 문장이 "미배선 =
+//   무해"라는 인상을 줬다). 위 항목은 전부 **"그 UI만 비어 있다"**가 맞다. 반면
+//   `request_user_dialog`는 **"채팅이 굳는다"**였기 때문에 등급이 달랐고, 이번
+//   라운드에서 질문 카드로 배선했다. 미배선을 적을 때는 **결과가 빈 화면인지
+//   정지인지**를 함께 적는다.

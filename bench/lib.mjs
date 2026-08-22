@@ -272,6 +272,11 @@ export function armName(env = process.env) {
   if (env.CCG_WEBVIEW_ARGS_EXTRA) parts.push('extra-' + env.CCG_WEBVIEW_ARGS_EXTRA.replace(/[^A-Za-z0-9]+/g, '').slice(0, 24))
   if (env.CCG_WEBVIEW_ARGS) parts.push('argsreplaced')
   if (env.CCG_CHROME) parts.push('chrome' + env.CCG_CHROME)
+  // ★ 통합 스토어 A/B — 이게 없으면 켬/끔 두 팔이 **같은 결과 파일**에 쓴다(두 번째가
+  //   첫 팔을 지운다). R3 크리틱 §9-2가 닫았던 결함이 새 플래그로 되살아난 자리다
+  //   (크리틱 배선 R1 §4.4). 판정은 `ccg_store::unified_store_enabled()`와 같은 규약 —
+  //   **"0/false만 끔"**이라 오타(`=yes`)는 켬으로 읽히고 팔 이름도 그렇게 나온다.
+  if (env.CCG_UNIFIED_STORE === '0' || env.CCG_UNIFIED_STORE === 'false') parts.push('legacystore')
   return parts.length ? parts.join('+') : 'default'
 }
 

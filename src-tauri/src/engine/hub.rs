@@ -43,7 +43,7 @@ use ccg_engine::clock::SystemClock;
 use ccg_engine::driver::{ClaudeDriver, CliDriver};
 use ccg_engine::event::{Event, RevisionOrigin, TerminalStatus, Verdict};
 use ccg_engine::identity::{ApplyPolicy, PendingOp, RawIdentityPatch, RunIdentity};
-use ccg_engine::live::AskKind;
+use ccg_engine::live::{AskKind, CloseCause};
 use ccg_engine::runtime::{ChatRuntime, Cmd};
 use ccg_engine::state::StateTag;
 use serde_json::{json, Map, Value};
@@ -76,6 +76,9 @@ pub enum Op {
         request_id: String,
         accept: bool,
         payload: Option<Value>,
+        /// 질문 카드에서 사용자가 **고른 라벨**(원문). 폴백 확인 다이얼로그를 질문
+        /// 카드로 그렸을 때 수락/취소를 가르는 유일한 근거다(§4.4b).
+        answer_text: Option<String>,
     },
     IdentityGet,
     IdentitySet {
@@ -147,6 +150,10 @@ struct Slot {
     terminal: lite::Terminal,
     last_lite: Value,
     run_seq: u64,
+    /// 아직 `chat:run-state`에 실리지 않은 정착 목록. `Event::Settled`는 항목마다
+    /// 따로 오고 `Event::RunState`는 그 뒤에 온다 — 계약면(§5.6)의 `settled[]`를
+    /// 채우려면 사이에 모아 둬야 한다. R1은 이 배열이 **항상 비어 있었다**.
+    pending_settled: Vec<Value>,
 }
 
 struct Hub {
@@ -154,6 +161,32 @@ struct Hub {
     slots: HashMap<String, Slot>,
     job: Option<Arc<ccg_engine::job::Job>>,
     cli: std::path::PathBuf,
+    /// **팬아웃 라우팅 캐시**(크리틱 배선 R1 F8).
+    ///
+    /// R1의 `fanout()`은 이벤트 하나마다 디스크를 두 번 읽었다 — `active_chat_id()`가
+    /// `chats-v3/index.json`을, `panel_id_for_chat()`이 **보드 파일 전수**를 읽고
+    /// 캐시를 `clear()` 후 재삽입했다. 한 턴의 델타가 수십 개라 스트리밍 구간 내내
+    /// 파일 I/O 2종 + HashMap 재구축이 돌았다.
+    ///
+    /// **무효화 규약** — 이 캐시는 *펌프 한 바퀴* 동안만 유효하다:
+    ///  1. `pump()` 진입마다 통째로 버린다(= 최대 수명 20ms).
+    ///  2. `handle()`이 잡을 처리하면 버린다 — `chats:set-active`·`board:save`가
+    ///     **다른 스레드**에서 스토어를 갈아도, 그 뒤 첫 이벤트는 새 값을 읽는다.
+    ///  3. 값 자체는 스토어가 진실이다. 여기 없으면 항상 스토어에 묻는다.
+    route: RouteCache,
+}
+
+#[derive(Default)]
+struct RouteCache {
+    active: Option<String>,
+    panel: HashMap<String, Option<String>>,
+}
+
+impl RouteCache {
+    fn clear(&mut self) {
+        self.active = None;
+        self.panel.clear();
+    }
 }
 
 /// `claude.exe` 경로 — 앱 홈의 활성 엔진 버전(2.6.2 `config.json.activeVersion`).
@@ -215,6 +248,7 @@ impl Hub {
                     terminal: lite::Terminal::None,
                     last_lite: Value::Null,
                     run_seq: 0,
+                    pending_settled: vec![],
                 },
             );
         }
@@ -229,20 +263,37 @@ impl Hub {
     ///
     /// 창 라우팅(§6.1 "창 라우팅은 `chatId → label` 역인덱스"): 본채팅은 메인 창,
     /// 추가 채팅은 그 창, 멀티 패널은 `panelId` 봉투. 어느 것도 아니면 봉투만 나간다.
-    fn fanout(&self, chat: &str, ev: Value) {
+    fn fanout(&mut self, chat: &str, ev: Value) {
         let _ = self.app.emit(
             crate::ipc::ch::CHAT_EVENT,
             json!({ "chatId": chat, "event": ev.clone() }),
         );
-        if super::active_chat_id() == chat {
+        let active = match &self.route.active {
+            Some(a) => a.clone(),
+            None => {
+                let a = super::active_chat_id();
+                self.route.active = Some(a.clone());
+                a
+            }
+        };
+        if active == chat {
             let _ = self
                 .app
                 .emit_to(crate::win::MAIN, crate::ipc::ch::ENGINE_EVENT, ev.clone());
         }
+        // 창 레지스트리는 메모리 `Mutex<Vec<_>>`라 디스크를 안 탄다 — 캐시 대상이 아니다.
         if let Some(label) = crate::win::session_label_for_chat(chat) {
             let _ = self.app.emit_to(label.as_str(), crate::ipc::ch::SESSION_EVENT, ev.clone());
         }
-        if let Some(panel) = super::panel_id_for_chat(chat) {
+        let panel = match self.route.panel.get(chat) {
+            Some(p) => p.clone(),
+            None => {
+                let p = super::panel_id_for_chat(chat);
+                self.route.panel.insert(chat.to_string(), p.clone());
+                p
+            }
+        };
+        if let Some(panel) = panel {
             let _ = self
                 .app
                 .emit(crate::ipc::ch::MA_EVENT, json!({ "panelId": panel, "event": ev }));
@@ -250,6 +301,9 @@ impl Hub {
     }
 
     fn handle(&mut self, job: Job) {
+        // 명령은 스토어를 갈 수 있다(`chats:set-active`·`board:save`는 다른 스레드지만
+        // 사용자 조작은 같은 순간에 온다) — 라우팅 캐시를 여기서 버린다(무효화 규약 2).
+        self.route.clear();
         let Job { chat, op, reply } = job;
         let answer = |v: Value| {
             if let Some(tx) = &reply {
@@ -318,33 +372,56 @@ impl Hub {
                 let first = slot.wire.begin_run(&run_id);
                 slot.terminal = lite::Terminal::None;
                 let prompt = req.get("prompt").and_then(Value::as_str).unwrap_or("").to_string();
-                let v = slot.rt.dispatch(Cmd::Send { text: prompt });
+                // 판정 방출은 **런타임 하나**가 한다(`Event::Verdict` → `on_engine_event`).
+                // R1은 여기서도 쐈고 `runtime.rs`의 `dispatch`가 무조건 또 쐈다 —
+                // 전송 1회에 `send:accepted` 2건(크리틱 배선 R1 F6). 구독자가 붙는 순간
+                // 거부 사유가 두 번 뜬다. 저자를 하나로 줄인다.
+                let _ = slot.rt.dispatch(Cmd::Send { text: prompt });
                 let chat_id = chat.clone();
-                // 판정이 안 보이는 경로는 없다(D7).
-                self.emit_all(
-                    crate::ipc::ch::CHAT_VERDICT,
-                    json!({ "chatId": chat_id, "verdict": verdict_wire("send", &v) }),
-                );
                 self.fanout(&chat_id, first);
                 answer(json!(run_id));
             }
             Op::Cmd(cmd) => {
                 let name = cmd.name();
                 let v = slot.rt.dispatch(cmd);
-                let w = verdict_wire(name, &v);
-                let chat_id = chat.clone();
-                self.emit_all(
-                    crate::ipc::ch::CHAT_VERDICT,
-                    json!({ "chatId": chat_id, "verdict": w.clone() }),
-                );
-                answer(w);
+                // 판정 방출은 런타임 하나 — 여기서는 **호출자에게 돌려주기만** 한다(F6).
+                answer(verdict_wire(name, &v));
             }
             Op::Respond {
                 kind,
                 request_id,
                 accept,
                 payload,
+                answer_text,
             } => {
+                // ★ 폴백 확인 다이얼로그는 2.6.2 렌더러에 카드가 없어 **질문 카드**로
+                //   그렸다(wire.rs). 그러면 답이 질문 채널로 돌아온다 — 원장은 그것을
+                //   `Dialog`로 알고 있으므로 종류가 어긋나 `wrong_card_kind`로 튕긴다.
+                //   어긋남을 푸는 것은 원장을 볼 수 있는 **셸**의 몫이다(§4.4b 응답 어휘도
+                //   질문과 다르다: `{behavior:'completed'|'cancelled'}`).
+                let real = slot.rt.ask_kind_of(&request_id);
+                let mut cancelled_from: Option<String> = None;
+                let (kind, accept, payload) = if kind == AskKind::Question
+                    && real == Some(AskKind::Dialog)
+                {
+                    let accept = match (slot.wire.dialog(&request_id), answer_text.as_deref()) {
+                        (Some(d), Some(t)) => t.contains(&d.accept_label),
+                        // 답 없이 닫았다 = 취소(§4.4b — `cancelled`가 진짜 정착이다).
+                        _ => false,
+                    };
+                    let card = slot.wire.take_dialog(&request_id);
+                    if !accept {
+                        cancelled_from = card.map(|c| c.from_model);
+                    }
+                    let body = if accept {
+                        json!({ "behavior": "completed", "result": "retry_fallback" })
+                    } else {
+                        json!({ "behavior": "cancelled" })
+                    };
+                    (AskKind::Dialog, accept, Some(body))
+                } else {
+                    (kind, accept, payload)
+                };
                 if let Some(p) = payload {
                     slot.rt.stage_respond_payload(&request_id, p);
                 }
@@ -353,6 +430,17 @@ impl Hub {
                     request_id,
                     accept,
                 });
+                let run = slot.wire.run_id.clone();
+                // 수락은 엔진이 `FallbackBanner`로 말한다(§6.2 경로 A). 취소는
+                // 아무도 말하지 않으므로 여기서 한 줄 남긴다 — 침묵 금지(D7).
+                if let Some(from) = cancelled_from {
+                    let chat_id = chat.clone();
+                    self.fanout(
+                        &chat_id,
+                        json!({ "type": "notice", "runId": run,
+                                "text": format!("폴백을 취소했어요 — {from} 이(가) 거부한 채로 턴을 마칩니다.") }),
+                    );
+                }
                 answer(verdict_wire("respond", &v));
             }
             Op::IdentityGet => {
@@ -406,6 +494,8 @@ impl Hub {
 
     /// 한 바퀴: 모든 런타임 tick → 프레임 번역 → 엔진 이벤트 → 상태 lite.
     fn pump(&mut self) {
+        // 라우팅 캐시의 수명은 이 한 바퀴다(무효화 규약 1) — 최대 20ms 낡는다.
+        self.route.clear();
         let chats: Vec<String> = self.slots.keys().cloned().collect();
         for chat in chats {
             let (frames, events, evs_state) = {
@@ -448,6 +538,16 @@ impl Hub {
                 ledger_confidence,
                 settled,
             } => {
+                // §5.6 `settled[]`는 **사유를 UI가 문장으로 만드는 재료**다. 엔진은
+                // 항목마다 `Event::Settled`를 따로 내고 REPLACE는 그 뒤에 오므로,
+                // 사이에 모아 둔 것을 여기서 합친다(R1은 이 배열이 항상 비어 있었다).
+                let mut rows: Vec<Value> = settled
+                    .iter()
+                    .map(|s| json!({ "id": s.id, "kind": s.kind, "reason": s.reason.wire() }))
+                    .collect();
+                if let Some(slot) = self.slots.get_mut(chat) {
+                    rows.append(&mut slot.pending_settled);
+                }
                 let payload = json!({
                     "chatId": chat,
                     "state": state_wire(state),
@@ -455,11 +555,46 @@ impl Hub {
                     "runId": run_id.map(|r| r.0),
                     "live": live.iter().map(live_wire).collect::<Vec<_>>(),
                     "ledgerConfidence": serde_json::to_value(ledger_confidence).unwrap_or(Value::Null),
-                    "settled": settled.iter().map(|s| json!({
-                        "id": s.id, "kind": s.kind, "reason": s.reason.wire()
-                    })).collect::<Vec<_>>(),
+                    "settled": rows,
                 });
                 self.emit_all(crate::ipc::ch::CHAT_RUN_STATE, payload);
+            }
+            Event::Settled { id, kind, reason, .. } => {
+                if let Some(slot) = self.slots.get_mut(chat) {
+                    slot.pending_settled.push(
+                        json!({ "id": id.to_string(), "kind": kind, "reason": reason.wire() }),
+                    );
+                }
+            }
+            // ★ T22 착지 — 여기가 "카드 해제 · busy 해제 · 사유 안내"가 화면으로 나가는
+            //   유일한 자리다(m-logic §5.2·§5.6). 사용자 의사로 닫힌 경로와 재스폰은
+            //   각자 자기 안내가 이미 있으므로 **말을 두 번 하지 않는다**.
+            Event::Exit { cause, .. } => {
+                let unexpected = matches!(
+                    cause,
+                    CloseCause::CliExit
+                        | CloseCause::Crash
+                        | CloseCause::ExternalKill
+                        | CloseCause::HardCancel
+                        | CloseCause::SpawnFailed
+                        | CloseCause::IdleReclaim
+                );
+                if !unexpected {
+                    return;
+                }
+                let evs = {
+                    let Some(slot) = self.slots.get_mut(chat) else { return };
+                    let n = slot.pending_settled.len();
+                    let wire = format!("{cause:?}");
+                    slot.wire.stream_closed(&to_snake(&wire), n)
+                };
+                for ev in evs {
+                    self.fanout(chat, ev);
+                }
+                // 종결 표시값도 여기서 확정한다 — 완료도 오류도 아닌 "끊김"이다.
+                if let Some(slot) = self.slots.get_mut(chat) {
+                    slot.terminal = lite::Terminal::Error;
+                }
             }
             Event::Identity {
                 origin,
@@ -507,16 +642,19 @@ impl Hub {
             }
             Event::Status { status, .. } => {
                 // 2.6.2 렌더러의 상태 칩. runId는 와이어가 들고 있는 문자열을 쓴다.
+                // `Aborted`는 2.6.2 어휘에 없다 — 와이어로는 `done`(중단 마커는 렌더러의
+                // 로컬 리듀서가 이미 붙였다), **영속값은 `Terminal::Aborted`**로 가른다.
                 let (run, s) = (
                     self.slots.get(chat).map(|s| s.wire.run_id.clone()).unwrap_or_default(),
                     match status {
-                        TerminalStatus::Done => "done",
+                        TerminalStatus::Done | TerminalStatus::Aborted => "done",
                         TerminalStatus::Error => "error",
                     },
                 );
                 if let Some(slot) = self.slots.get_mut(chat) {
                     slot.terminal = match status {
                         TerminalStatus::Done => lite::Terminal::Done,
+                        TerminalStatus::Aborted => lite::Terminal::Aborted,
                         TerminalStatus::Error => lite::Terminal::Error,
                     };
                 }
@@ -585,17 +723,23 @@ impl Hub {
         self.emit_all(crate::ipc::ch::CHAT_STATUS, all);
     }
 
+    /// 다음 틱까지의 대기. **`Resident`는 유휴다.**
+    ///
+    /// R1은 두 갈래가 **모두** `TICK_ACTIVE`로 떨어졌다(첫 조건의 `!= Resident`를 둘째
+    /// 분기가 되돌렸다) — 상주 경로가 배선되는 순간 허브가 50Hz로 상시 회전한다
+    /// (크리틱 배선 R1 F10). `Resident`는 턴이 없고 타이머만 도는 상태라 250ms면 된다:
+    /// 그 상태의 가장 짧은 아크는 `Linger`(밀리초 단위 정밀도 불필요)이고, 프레임이
+    /// 오면 CLI가 스스로 깨우는 게 아니라 우리가 폴링하므로 **프레임 지연 상한**만
+    /// 250ms가 된다. 상주 중에는 렌더링할 스트림이 없으므로 그 지연은 보이지 않는다.
     fn wait(&self) -> Duration {
         if self.slots.is_empty() {
             return TICK_SLEEP;
         }
-        if self
+        let has_stream = self
             .slots
             .values()
-            .any(|s| s.rt.state() != StateTag::Idle && s.rt.state() != StateTag::Resident)
-        {
-            TICK_ACTIVE
-        } else if self.slots.values().any(|s| s.rt.state() == StateTag::Resident) {
+            .any(|s| !matches!(s.rt.state(), StateTag::Idle | StateTag::Resident));
+        if has_stream {
             TICK_ACTIVE
         } else {
             TICK_IDLE
@@ -617,6 +761,23 @@ fn state_wire(s: StateTag) -> &'static str {
         // `Ended`는 계약면에 없다 — T26이 같은 tick에 idle로 내보내므로 과도값이다.
         StateTag::Terminating | StateTag::Ended => "terminating",
     }
+}
+
+/// `ExternalKill` → `external_kill`. `CloseCause`의 와이어 표기는 `SettleReason::wire()`가
+/// 이미 소문자로 쓰므로(`stream_closed:externalkill`) 여기서는 사람이 읽을 키로 쪼갠다.
+fn to_snake(camel: &str) -> String {
+    let mut out = String::with_capacity(camel.len() + 4);
+    for (i, c) in camel.chars().enumerate() {
+        if c.is_uppercase() {
+            if i > 0 {
+                out.push('_');
+            }
+            out.extend(c.to_lowercase());
+        } else {
+            out.push(c);
+        }
+    }
+    out
 }
 
 fn origin_wire(o: &RevisionOrigin) -> String {
@@ -707,6 +868,7 @@ pub fn start(app: AppHandle) {
                 slots: HashMap::new(),
                 job,
                 cli: cli_path(),
+                route: RouteCache::default(),
             };
             loop {
                 let wait = hub.wait();

@@ -235,6 +235,89 @@ pub fn write_chats(data: &Value) {
     with_owned(|m| m.retain(|k, _| order.contains(k)));
 }
 
+/// **레코드 하나만** 심는다 — 목록 REPLACE(`write_chats`)를 타지 않는 저장 경로.
+///
+/// 왜 따로 두나: `write_chats`는 팬아웃 전체를 다시 쓰고 **목록에 없는 파일을 지운다**
+/// (D2 prune). 추가 채팅 창 하나가 자기 대화를 저장할 때 본채팅·패널 목록을 통째로
+/// 실어 보낼 수는 없으므로, 그 경로가 `write_chats`를 부르면 남의 대화가 증발한다.
+/// 여기는 **그 파일 + `index.order` 편입**만 한다(순서는 꼬리에 붙인다).
+///
+/// Rust 소유 3필드 되끼움(§4.1 ★R3)은 여기서도 그대로 돈다. **`PRESERVED`는 안 돈다** —
+/// 그 규약은 "스키마를 모르는 렌더러가 목록을 통째로 되보낼 때"의 방어이고, 이 함수는
+/// 스키마를 아는 호출자가 레코드 **하나**를 의도적으로 갱신하는 자리다(예: 추가 채팅
+/// 창의 `status`는 그 창이 유일한 저자다). 보존이 필요한 값은 호출자가 실어 보낸다.
+pub fn upsert_chat(id: &str, rec: &Value) -> bool {
+    if !safe_id_str(id) {
+        return false;
+    }
+    let mut out = rec.as_object().cloned().unwrap_or_default();
+    out.insert("id".into(), json!(id));
+    out.shift_remove("statuses");
+    let mut defaults = None;
+    apply_owned(id, &mut out, &mut defaults);
+    if !STORE.write_one(id, &Value::Object(out)) {
+        return false;
+    }
+    // 인덱스 편입 — 못 읽으면(깨졌으면) 건드리지 않는다. `chat_ids()`가 디렉터리
+    // 스캔으로 폴백하므로 파일만 있어도 목록에서 사라지지 않는다(D2).
+    let Some(mut index) = STORE.read_index() else { return true };
+    let already = index
+        .get("order")
+        .and_then(Value::as_array)
+        .is_some_and(|a| a.iter().any(|v| v.as_str() == Some(id)));
+    if already {
+        return true;
+    }
+    if let Some(o) = index.as_object_mut() {
+        let mut order: Vec<Value> = o.get("order").and_then(Value::as_array).cloned().unwrap_or_default();
+        order.push(json!(id));
+        o.insert("order".into(), Value::Array(order));
+    }
+    if let Ok(text) = serde_json::to_string(&index) {
+        if crate::write_atomic(&STORE.index_path(), &text).is_ok() {
+            STORE.invalidate_index_only();
+        }
+    }
+    true
+}
+
+/// 저장된 레코드 하나(없으면 `None`). 별칭 계층이 되그리기 전 원본을 볼 때 쓴다.
+pub fn stored_chat(id: &str) -> Option<Value> {
+    if !safe_id_str(id) {
+        return None;
+    }
+    STORE.stored(id)
+}
+
+/// 레코드 하나를 지운다(사용자가 사이드바에서 X를 눌렀을 때). 파일 + `index.order`.
+/// `write_chats`의 prune과 달리 **이 id 하나만** 건드린다.
+pub fn remove_chat(id: &str) -> bool {
+    if !safe_id_str(id) {
+        return false;
+    }
+    let _ = std::fs::remove_file(STORE.file(id));
+    STORE.forget_one(id);
+    crate::status::forget_one(id);
+    with_owned(|m| {
+        m.remove(id);
+    });
+    let Some(mut index) = STORE.read_index() else { return true };
+    if let Some(o) = index.as_object_mut() {
+        let order: Vec<Value> = o
+            .get("order")
+            .and_then(Value::as_array)
+            .map(|a| a.iter().filter(|v| v.as_str() != Some(id)).cloned().collect())
+            .unwrap_or_default();
+        o.insert("order".into(), Value::Array(order));
+    }
+    if let Ok(text) = serde_json::to_string(&index) {
+        if crate::write_atomic(&STORE.index_path(), &text).is_ok() {
+            STORE.invalidate_index_only();
+        }
+    }
+    true
+}
+
 /// `activeChatId`만 즉시 갱신한다 — `chats:set-active`(§6.2 U3).
 /// 저장 디바운스와 무관해야 "전환 직후 전송"이 남의 런타임에 붙지 않는다.
 ///

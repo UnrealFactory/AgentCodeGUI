@@ -139,6 +139,11 @@ pub struct AskInfo {
     pub request_id: String,
     pub tool_use_id: Option<String>,
     pub dialog_kind: Option<String>,
+    /// `refusal_fallback_prompt`의 `payload.fallbackModel` — **수락이 갈아탈 모델**.
+    /// 재생 픽스처는 이 값을 `tool_use_id` 자리에 싣는 합성 규약을 썼는데, 실 CLI의
+    /// `tool_use_id`는 `toolu_…`라 그대로 쓰면 정체성의 모델이 도구 id로 덮인다.
+    /// 실물 payload를 우선으로 삼고 픽스처 규약은 폴백으로 남긴다.
+    pub fallback_model: Option<String>,
 }
 
 // ── 리스 상수 (전부 첫 숫자다 — O7/O16/O18이 열려 있다) ─────────────────────────

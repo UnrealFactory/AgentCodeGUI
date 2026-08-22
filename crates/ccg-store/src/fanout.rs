@@ -76,6 +76,14 @@ impl Fanout {
         f(guard.get_or_insert_with(HashMap::new))
     }
 
+    /// 항목 하나의 캐시만 버린다 — 파일을 지웠을 때(같은 id가 다시 생기면 캐시가
+    /// "안 바뀌었다"로 오판해 파일을 다시 안 쓴다).
+    pub fn forget_one(&self, id: &str) {
+        self.with_cache(|c| {
+            c.remove(id);
+        });
+    }
+
     /// 캐시를 통째로 버린다 — 마이그레이션처럼 파일을 밖에서 갈아치운 뒤 부른다.
     /// (안 부르면 다음 저장이 "안 바뀌었다"로 오판해 새 파일을 안 쓴다)
     pub fn invalidate(&self) {

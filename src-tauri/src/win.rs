@@ -69,7 +69,7 @@ const SESSION_PREFIX: &str = "session-";
 static SESSION_SEQ: AtomicI64 = AtomicI64::new(0);
 
 /// 추가 채팅 창 레지스트리(라벨 → 표시 메타). 2.6.2의 sessionWins Map 자리.
-/// 엔진은 M3, 대화 영속은 M2 — 지금은 **창 비용을 재기 위한 최소 등록부**다.
+/// `id`는 **영속 채팅 id**다 — 창은 그 채팅을 열어 보는 뷰일 뿐이다.
 #[derive(Clone)]
 pub struct SessionRec {
     pub id: String,
@@ -78,6 +78,21 @@ pub struct SessionRec {
     pub status: String,
 }
 static SESSIONS: Mutex<Vec<SessionRec>> = Mutex::new(Vec::new());
+
+/// 추가 채팅의 **재시작 생존 id**.
+///
+/// R1은 `format!("s-{}-{}", std::process::id(), n)`이었다 — 앱을 다시 켤 때마다 값이
+/// 바뀌므로 저장 채널이 생겨도 그 창의 대화를 **다시 찾을 수 없다**(크리틱 배선 R1
+/// §5-S4 후단: *"저장 채널이 생겨도 id 규약을 먼저 고쳐야 한다"*). 프로세스와 무관한
+/// 값(밀리초 + 프로세스 내 일련번호)으로 바꾼다. 접두사는 2.6.2 추가 채팅과 같은 칸을
+/// 쓰므로 `sc-`다(파일명이 되므로 `safe_id_str` 문자만).
+fn mint_session_chat_id(n: i64) -> String {
+    let ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    format!("sc-{ms}-{n}")
+}
 
 /// 창을 보여주는 일은 여러 경로(첫 페인트·페이지 로드 완료·안전망 타이머)에서 오므로
 /// 한 번만 실행되게 막는다. 두 번 show()해도 무해하지만 set_focus가 겹치면 깜빡인다.
@@ -274,9 +289,18 @@ pub fn create_main(app: &AppHandle) -> tauri::Result<WebviewWindow> {
 // 공유하게 두면, 창이 늘어도 새로 생기는 건 창 하나와 그 문서의 DOM/힙뿐이다.
 // 기여도는 bench/results/webview-flags.json(window-cost 절)에 남긴다.
 pub fn open_session_window(app: &AppHandle) -> tauri::Result<()> {
+    open_session_window_for(app, None)
+}
+
+/// 창 하나를 띄운다. `chat`이 있으면 **그 영속 채팅을 여는 창**이고(사이드바에서
+/// 닫힌 추가 채팅을 클릭한 경로), 없으면 새 채팅 id를 발급한다.
+pub fn open_session_window_for(app: &AppHandle, chat: Option<&str>) -> tauri::Result<()> {
     let n = SESSION_SEQ.fetch_add(1, Ordering::Relaxed) + 1;
     let label = format!("{SESSION_PREFIX}{n}");
-    let id = format!("s-{}-{}", std::process::id(), n);
+    let id = match chat {
+        Some(c) => c.to_string(),
+        None => mint_session_chat_id(n),
+    };
 
     // 새 창은 메인 창에서 살짝 어긋나게(계단식) — 겹쳐서 안 보이는 사고 방지
     let (mx, my) = app
@@ -395,13 +419,31 @@ pub fn broadcast_sessions(app: &AppHandle) {
     let _ = app.emit_to(MAIN, crate::ipc::ch::SESSION_WINS_CHANGED, payload);
 }
 
+/// 사이드바에서 이름을 바꿨다 — 열린 창의 표시 이름도 그 값으로 고정한다
+/// (이후 그 창의 자동 제목 보고는 `custom` 때문에 레코드를 못 덮는다).
+pub fn session_rename(app: &AppHandle, id: &str, title: &str) {
+    {
+        let mut list = SESSIONS.lock().unwrap();
+        if let Some(rec) = list.iter_mut().find(|s| s.id == id) {
+            rec.title = title.to_string();
+        }
+    }
+    broadcast_sessions(app);
+}
+
 /// 창 라벨 → 그 창의 추가 채팅 레코드. `session:report` 같은 "자기 자신" 채널용.
 pub fn session_report(app: &AppHandle, label: &str, title: Option<&str>, status: Option<&str>) {
     {
         let mut list = SESSIONS.lock().unwrap();
         if let Some(rec) = list.iter_mut().find(|s| s.label == label) {
+            // 사용자가 사이드바에서 붙인 이름은 창의 **자동** 제목이 못 이긴다
+            // (`session-wins:rename`이 레코드에 `custom:true`를 세운다).
+            let renamed = ccg_store::unified_store_enabled()
+                && ccg_store::chats_v3::stored_chat(&rec.id)
+                    .and_then(|c| c.get("custom").and_then(Value::as_bool))
+                    .unwrap_or(false);
             if let Some(t) = title {
-                if !t.is_empty() {
+                if !t.is_empty() && !renamed {
                     rec.title = t.to_string();
                 }
             }
@@ -427,20 +469,50 @@ pub fn session_label_for_chat(chat: &str) -> Option<String> {
     SESSIONS.lock().unwrap().iter().find(|s| s.id == chat).map(|s| s.label.clone())
 }
 
+/// 사이드바 클릭 — 창이 있으면 앞으로, **닫힌 채팅이면 창을 다시 만들어 복원**한다.
+///
+/// R1은 앞 절반만 있었다(§4.4-E "영속된 추가 채팅을 클릭해서 창을 되만드는 경로가
+/// 없다"). 이제 저장 채널이 있으므로 되만든 창이 `session-wins:hydrate`로 대화를
+/// 되살린다 — 창 자리 채널(`win:chat-*`)을 새로 열지 않고 `session-wins:focus`
+/// **한 채널의 의미를 2.6.2와 같게** 채우는 쪽을 골랐다(채널 수 불변).
 pub fn session_focus(app: &AppHandle, id: &str) {
     let label = SESSIONS.lock().unwrap().iter().find(|s| s.id == id).map(|s| s.label.clone());
     if let Some(w) = label.and_then(|l| app.get_webview_window(&l)) {
         let _ = w.unminimize();
         let _ = w.show();
         let _ = w.set_focus();
+        return;
+    }
+    // 창이 없다 — 영속된 추가 채팅이면 되만든다. **아무 id나 열어 주지는 않는다.**
+    if ccg_store::unified_store_enabled() && ccg_store::legacy_bridge::is_session_chat(id) {
+        if let Err(e) = open_session_window_for(app, Some(id)) {
+            eprintln!("[win] 추가 채팅 창 복원 실패: {e}");
+        }
     }
 }
 
+/// 사이드바 X — **대화 삭제**다(protocol.ts: *"(id) 채팅 삭제 — 열린 창이 있으면
+/// 저장 없이 닫는다"*). 창만 닫고 레코드를 남기면 사용자가 지운 대화가 되살아난다.
 pub fn session_close(app: &AppHandle, id: &str) {
-    let label = SESSIONS.lock().unwrap().iter().find(|s| s.id == id).map(|s| s.label.clone());
+    // ★ 레지스트리에서 **먼저** 뺀다. `w.close()`는 비동기라 `Destroyed`가 언제 올지
+    //   모르는데, 그 전에 브로드캐스트하면 **이미 지운 항목이 실린 REPLACE**가 한 번
+    //   나간다(R8-1이 고친 것과 같은 종류의 과도 상태). 뒤늦게 오는 `Destroyed`의
+    //   retain은 no-op이 되고 브로드캐스트만 한 번 더 나간다 — REPLACE라 무해하다.
+    let label = {
+        let mut list = SESSIONS.lock().unwrap();
+        let label = list.iter().find(|s| s.id == id).map(|s| s.label.clone());
+        list.retain(|s| s.id != id);
+        label
+    };
     if let Some(w) = label.and_then(|l| app.get_webview_window(&l)) {
         let _ = w.close();
     }
+    if ccg_store::unified_store_enabled() && ccg_store::legacy_bridge::is_session_chat(id) {
+        ccg_store::chats_v3::remove_chat(id);
+        // 그 채팅의 런타임도 거둔다(엔진이 살아 있으면 좀비 CLI가 남는다).
+        crate::engine::dispose_chat(id);
+    }
+    broadcast_sessions(app);
 }
 
 /// 창 표시 — 어느 경로로 오든 한 번만.

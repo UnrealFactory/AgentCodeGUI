@@ -62,10 +62,15 @@ pub enum EvidenceSource {
     ProcessAlive,
 }
 
+/// 턴의 종결값. **`Done`은 "완료"라는 뜻이고 그 값이 `status.json`에 영속된다** —
+/// 사용자가 끊은 턴을 `Done`으로 적으면 재시작 뒤에도 "완료"로 남는다(크리틱 배선 R1 F11).
+/// 그래서 어휘를 셋으로 둔다: 끝난 방식이 셋이기 때문이다.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TerminalStatus {
     Done,
     Error,
+    /// 사용자가 중단한 턴(T13→T14/T15 · T23 · T34). 완료도 오류도 아니다.
+    Aborted,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

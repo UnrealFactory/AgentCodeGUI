@@ -140,6 +140,20 @@ pub fn chat_for_window(window: &WebviewWindow) -> String {
     crate::win::chat_for_label(window.label()).unwrap_or_else(active_chat_id)
 }
 
+/// 이 창이 보는 **추가 채팅**(메인 창이면 `None`). 저장/복원 채널의 주소다 —
+/// `chat_for_window`처럼 활성 채팅으로 폴백하면 **본채팅을 덮어쓴다.**
+pub fn session_chat_for_window(window: &WebviewWindow) -> Option<String> {
+    if window.label() == crate::win::MAIN {
+        return None;
+    }
+    crate::win::chat_for_label(window.label())
+}
+
+/// 채팅 하나의 런타임을 거둔다(대화 삭제 · 창 파기).
+pub fn dispose_chat(chat: &str) {
+    hub::cast(chat, hub::Op::Dispose);
+}
+
 // ── 채널 디스패치 ────────────────────────────────────────────────────────────
 
 pub fn dispatch(_app: &AppHandle, window: &WebviewWindow, channel: &str, p: &Value) -> Option<Value> {
@@ -237,7 +251,13 @@ fn core_dispatch(channel: &str, p: &Value) -> Option<Value> {
                     kind: AskKind::Dialog,
                     request_id: a.get("requestId").and_then(Value::as_str).unwrap_or("").to_string(),
                     accept: a.get("accepted").and_then(Value::as_bool).unwrap_or(false),
-                    payload: None,
+                    // §4.4b의 응답 어휘 — 재생 하네스의 최소 본문(`{accepted}`)이 아니다.
+                    payload: Some(if a.get("accepted").and_then(Value::as_bool) == Some(true) {
+                        json!({ "behavior": "completed", "result": "retry_fallback" })
+                    } else {
+                        json!({ "behavior": "cancelled" })
+                    }),
+                    answer_text: None,
                 },
             )
         }
@@ -304,6 +324,7 @@ fn respond_permission(chat: &str, res: &Value) {
             request_id,
             accept,
             payload: Some(payload),
+            answer_text: None,
         },
     );
 }
@@ -314,10 +335,10 @@ fn respond_permission(chat: &str, res: &Value) {
 fn respond_question(chat: &str, res: &Value) {
     let request_id = res.get("requestId").and_then(Value::as_str).unwrap_or("").to_string();
     let answers = res.get("answers");
-    let message = match answers.and_then(Value::as_array) {
-        Some(rows) if !rows.is_empty() => {
-            let picked: Vec<String> = rows
-                .iter()
+    let picked: Vec<String> = answers
+        .and_then(Value::as_array)
+        .map(|rows| {
+            rows.iter()
                 .map(|r| {
                     r.as_array()
                         .map(|opts| {
@@ -329,14 +350,13 @@ fn respond_question(chat: &str, res: &Value) {
                         .unwrap_or_default()
                 })
                 .filter(|s| !s.is_empty())
-                .collect();
-            if picked.is_empty() {
-                "사용자가 건너뛰었습니다. 합리적인 기본값으로 계속 진행하세요.".to_string()
-            } else {
-                format!("사용자가 질문에 다음과 같이 답했습니다: {}", picked.join(" / "))
-            }
-        }
-        _ => "사용자가 건너뛰었습니다. 합리적인 기본값으로 계속 진행하세요.".to_string(),
+                .collect()
+        })
+        .unwrap_or_default();
+    let message = if picked.is_empty() {
+        "사용자가 건너뛰었습니다. 합리적인 기본값으로 계속 진행하세요.".to_string()
+    } else {
+        format!("사용자가 질문에 다음과 같이 답했습니다: {}", picked.join(" / "))
     };
     hub::cast(
         chat,
@@ -346,6 +366,8 @@ fn respond_question(chat: &str, res: &Value) {
             // 답을 되먹이는 경로가 deny라 accept=false지만, 카드는 "응답됨"으로 정착한다.
             accept: false,
             payload: Some(json!({ "behavior": "deny", "message": message })),
+            // 고른 라벨 원문 — 허브가 **폴백 확인 카드**의 수락/취소를 이걸로 가른다.
+            answer_text: (!picked.is_empty()).then(|| picked.join(" / ")),
         },
     );
 }

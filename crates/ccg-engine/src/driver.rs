@@ -5,7 +5,7 @@
 
 use crate::clock::Millis;
 use crate::identity::{BillingAxis, EffortId, EngineAxis, ModeId, RunIdentity};
-use crate::live::LiveItem;
+use crate::live::{CloseCause, LiveItem};
 use serde_json::{json, Value};
 use std::collections::VecDeque;
 use std::io::Write;
@@ -13,6 +13,12 @@ use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::mpsc::{channel, Receiver, TryRecvError};
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
+
+/// stdout EOF를 봤는데 아직 종료 코드가 관측되지 않았을 때 기다리는 상한.
+/// 넘으면 `Crash`로 본다 — **EOF 자체가 이미 스트림의 죽음**이라 무한정 기다리면
+/// T22가 다시 유령이 된다(크리틱 배선 R1 §2-E/F).
+const EXIT_CODE_GRACE: Duration = Duration::from_millis(700);
 
 /// 한 프레임 상한. **누적 중에** 검사한다 — 다 읽은 뒤 버리면 상한이 아니다
 /// (`docs/critic/m3-poc.md` §5-3이 PoC `wire.rs`에서 지적한 결함).
@@ -225,7 +231,18 @@ pub trait CliDriver {
     fn kill(&mut self);
     /// ⓪ 프로세스 생존. **`Alive` 판정에 쓰면 안 된다** — 타입이 아니라 규약으로 막는 자리라
     /// 호출부(워치독)가 이 값을 `last_evidence`에 반영하지 않는지 불변식 11이 감시한다.
+    /// `false`는 **Dead 관측**이므로 T22 백스톱이 그것만 읽는다(§5.4-b ⓪).
     fn process_alive(&self) -> bool;
+    /// **T22의 진입점** — stdout EOF(리더 스레드 종료) = 스트림의 죽음을 *값으로* 올린다.
+    ///
+    /// 이게 없던 동안 `poll_frames`가 `Disconnected`를 `break`로 삼켰고, 상위에 신호가
+    /// 없어 `ChatRuntime::stream_died()`의 호출자가 **재생 테스트뿐**이었다 — 외부에서
+    /// CLI가 죽으면 채팅이 영구히 굳었다(크리틱 배선 R1 §2-E/F, m-logic P8).
+    ///
+    /// 기본값 `None`: 재생 드라이버는 EOF를 모른다(폴트는 `stream_died()` 직접 호출로 준다).
+    fn stream_eof(&mut self) -> Option<CloseCause> {
+        None
+    }
     /// 지금까지 도착한 프레임을 가져간다(재생 하네스는 예약된 응답을 여기서 흘린다).
     fn poll_frames(&mut self, now: Millis) -> Vec<Value>;
     /// ④ mtime 프로브 — 그 항목이 파일을 최근에 건드렸나.
@@ -252,6 +269,10 @@ pub struct ClaudeDriver {
     spawns: usize,
     /// 디버그 덤프 경로(`CCG_ENGINE_LOG`).
     dump: Option<PathBuf>,
+    /// stdout EOF를 **처음** 본 시각. `spawn`마다 리셋된다(드라이버는 스트림보다 오래 산다).
+    eof_at: Option<Instant>,
+    /// 관측된 종료 코드(있으면). `try_wait`은 한 번만 값을 주므로 기억해 둔다.
+    exit_code: Option<Option<i32>>,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -276,6 +297,8 @@ impl ClaudeDriver {
             stats: Arc::new(Mutex::new(FrameStats::default())),
             spawns: 0,
             dump,
+            eof_at: None,
+            exit_code: None,
         }
     }
     pub fn pid(&self) -> Option<u32> {
@@ -342,6 +365,10 @@ impl CliDriver for ClaudeDriver {
         self.rx = Some(rx);
         self.stderr_rx = Some(erx);
         self.spawns += 1;
+        // 새 스트림 = 새 생사. 앞 스트림의 EOF 표식이 남아 있으면 방금 뜬 CLI를
+        // T22로 즉사시킨다.
+        self.eof_at = None;
+        self.exit_code = None;
         Ok(())
     }
 
@@ -365,9 +392,31 @@ impl CliDriver for ClaudeDriver {
     }
 
     fn process_alive(&self) -> bool {
-        // `try_wait`는 &mut가 필요해 여기선 stdin/child 존재로만 근사한다.
-        // 정확한 종료 관측은 stdout EOF(리더 스레드 종료)가 준다 — 그게 T22의 트리거다.
-        self.child.is_some()
+        // `try_wait`는 &mut가 필요해 여기선 **관측된 사실만** 본다:
+        //  · 자식이 없다 = 스폰 전/후 → 살아 있다고 말할 근거가 없다
+        //  · stdout EOF를 봤다 = 리더 스레드가 끝났다 = **Dead 관측**(T22의 근거와 같다)
+        // 그 밖에는 `true`지만, 이 값이 `Alive` 증거로 쓰이면 불변식 11이 잡는다(§5.4-b ⓪).
+        self.child.is_some() && self.eof_at.is_none()
+    }
+
+    fn stream_eof(&mut self) -> Option<CloseCause> {
+        let at = self.eof_at?;
+        // 종료 코드로 **정상 종료(0)**와 외부 살해/크래시를 가른다. `try_wait`는 값을
+        // 한 번만 주므로 기억해 두고, 아직 회수되지 않았으면 짧게만 기다린다.
+        if self.exit_code.is_none() {
+            if let Some(c) = &mut self.child {
+                if let Ok(Some(st)) = c.try_wait() {
+                    self.exit_code = Some(st.code());
+                }
+            }
+        }
+        match self.exit_code {
+            Some(Some(0)) => Some(CloseCause::CliExit),
+            Some(_) => Some(CloseCause::ExternalKill),
+            // stdout은 닫혔는데 종료가 아직 안 보인다 — 유예 안에서는 다음 틱을 기다린다.
+            None if at.elapsed() < EXIT_CODE_GRACE => None,
+            None => Some(CloseCause::Crash),
+        }
     }
 
     fn poll_frames(&mut self, _now: Millis) -> Vec<Value> {
@@ -378,7 +427,11 @@ impl CliDriver for ClaudeDriver {
                     Ok(v) => out.push(v),
                     Err(TryRecvError::Empty) => break,
                     Err(TryRecvError::Disconnected) => {
-                        // stdout EOF — 스트림 급사/정상 종료. 상위(T22)가 처리한다.
+                        // stdout EOF — 스트림 급사/정상 종료. **삼키지 않는다**:
+                        // 표식을 남기고 `stream_eof()`가 상위(T22)에 값으로 올린다.
+                        if self.eof_at.is_none() {
+                            self.eof_at = Some(Instant::now());
+                        }
                         break;
                     }
                 }
@@ -673,6 +726,74 @@ mod tests {
         assert_eq!(v["request"]["forwardSubagentText"], true);
         let v2 = initialize_request("init-1", Some("추가 지시"));
         assert_eq!(v2["request"]["systemPrompt"]["preset"], "claude_code");
+    }
+
+    /// **T22의 1차 신호를 실 프로세스로** 잰다 — `read_frames` 스레드가 끝나면
+    /// `poll_frames`가 `Disconnected`를 보고, `stream_eof()`가 그것을 값으로 올린다.
+    /// 종료 코드로 정상 종료(0)와 비정상(≠0)을 가르는 것까지 여기서 확인한다.
+    #[cfg(windows)]
+    fn eof_cause_of(exit_code: i32) -> Option<CloseCause> {
+        let mut d = ClaudeDriver::new(None, None);
+        let spec = SpawnSpec {
+            cli: PathBuf::from("cmd.exe"),
+            argv: vec!["/c".into(), format!("exit {exit_code}")],
+            cwd: std::env::temp_dir(),
+            env_set: vec![],
+            env_remove: vec![],
+            resume: None,
+        };
+        d.spawn(&spec).expect("cmd.exe 스폰");
+        assert!(d.process_alive(), "EOF 전에는 Dead라고 말하지 않는다");
+        // 리더 스레드가 EOF를 볼 때까지(+ 종료 코드가 회수될 때까지) 짧게 돈다.
+        for _ in 0..200 {
+            let _ = d.poll_frames(0);
+            if let Some(c) = d.stream_eof() {
+                assert!(!d.process_alive(), "EOF = Dead 관측(⓪ 백스톱의 유일한 근거)");
+                return Some(c);
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        None
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn stdout_eof_becomes_a_close_cause() {
+        assert_eq!(eof_cause_of(0), Some(CloseCause::CliExit), "정상 종료");
+        assert_eq!(
+            eof_cause_of(1),
+            Some(CloseCause::ExternalKill),
+            "비정상 종료(taskkill /F의 코드가 1이다)"
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_fresh_spawn_clears_the_eof_latch() {
+        // 드라이버는 스트림보다 오래 산다 — 앞 스트림의 EOF가 남아 있으면 방금 뜬
+        // CLI를 T22로 즉사시킨다(재스폰이 조용히 죽는 회귀).
+        let mut d = ClaudeDriver::new(None, None);
+        let spec = |c: &str| SpawnSpec {
+            cli: PathBuf::from("cmd.exe"),
+            argv: vec!["/c".into(), c.into()],
+            cwd: std::env::temp_dir(),
+            env_set: vec![],
+            env_remove: vec![],
+            resume: None,
+        };
+        d.spawn(&spec("exit 0")).unwrap();
+        for _ in 0..200 {
+            let _ = d.poll_frames(0);
+            if d.stream_eof().is_some() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert!(d.stream_eof().is_some(), "첫 스트림은 EOF를 봤다");
+        d.spawn(&spec("timeout /t 5 /nobreak")).unwrap();
+        assert_eq!(d.stream_eof(), None, "새 스폰이 EOF 표식을 지웠다");
+        assert!(d.process_alive());
+        d.kill();
     }
 
     #[test]

@@ -233,6 +233,128 @@ pub fn session_chat_infos() -> Vec<Value> {
         .collect()
 }
 
+/// 이 id가 **영속된 추가 채팅**인가(`origin = session`). 창 밖에서 온 주소를
+/// 그대로 믿지 않기 위한 가드다 — 아무 채팅이나 이 채널로 덮어쓸 수 없어야 한다.
+pub fn is_session_chat(id: &str) -> bool {
+    crate::chats_v3::stored_chat(id)
+        .map(|c| origin_of(&c) == ORIGIN_SESSION)
+        .unwrap_or(false)
+}
+
+/// `session-wins:hydrate` — 그 창의 저장본(없으면 `Null`).
+///
+/// 계약면은 `SessionHydrateData`(protocol.ts:852)다: `snapshot`·`cwd`·`refDirs`·
+/// `picker`·`draft`·`draftImages` + btw 시드. 정체성은 저장 레코드에 `identity`로
+/// 있으므로 **옛 평평한 필드로 되그려서** 준다(`with_legacy`, `Source::SessionChat` —
+/// 그래야 `cwd` 키로 나간다. 본채팅은 `manualCwd`다).
+pub fn session_chat_hydrate(id: &str) -> Value {
+    let Some(rec) = crate::chats_v3::stored_chat(id) else { return Value::Null };
+    if origin_of(&rec) != ORIGIN_SESSION {
+        return Value::Null;
+    }
+    let v = with_legacy(rec, Source::SessionChat);
+    let o = v.as_object().cloned().unwrap_or_default();
+    let mut out = Map::new();
+    out.insert("snapshot".into(), o.get("snapshot").cloned().unwrap_or(Value::Null));
+    out.insert("cwd".into(), o.get("cwd").cloned().unwrap_or(json!("")));
+    out.insert("refDirs".into(), o.get("refDirs").cloned().unwrap_or(json!([])));
+    out.insert("picker".into(), o.get("picker").cloned().unwrap_or(Value::Null));
+    for k in ["draft", "draftImages", "btwTitle", "btwFork", "btwForkCwd"] {
+        if let Some(v) = o.get(k) {
+            out.insert(k.into(), v.clone());
+        }
+    }
+    if o.get("btwOf").is_some() || o.get("btwSeed").is_some() {
+        out.insert("btw".into(), json!(true));
+    }
+    // `btwPrompt`는 **읽으면 소비**다(메모리 규약) — 여기서 걷어내 두 번 보내지 않는다.
+    if let Some(p) = o.get("btwPrompt").and_then(Value::as_str).filter(|s| !s.is_empty()) {
+        out.insert("btwPrompt".into(), json!(p));
+        let mut rec = crate::chats_v3::stored_chat(id).unwrap_or(json!({}));
+        if let Some(m) = rec.as_object_mut() {
+            m.shift_remove("btwPrompt");
+        }
+        crate::chats_v3::upsert_chat(id, &rec);
+    }
+    Value::Object(out)
+}
+
+/// `session-wins:persist` — 그 창의 대화를 채팅 레코드로 저장한다.
+///
+/// **이번 라운드에 열린 데이터 유실 경로를 닫는 자리다**(크리틱 배선 R1 §5-S4):
+/// R1이 `session:*` 6채널을 배선해 추가 채팅 창에서 실제로 대화가 돌기 시작했는데,
+/// 렌더러가 부르는 저장 채널 셋(`persist`/`hydrate`/`rename`)이 셸에 **상수조차
+/// 없어서** `{__unimplemented:true}`로 떨어졌다 → "창 닫기 = 대화 증발".
+///
+/// 페이로드는 2.6.2 모양(`SessionPersistPayload`)이라 `picker`·`cwd`·`refDirs`를
+/// **정체성으로 흡수**하고(`absorb_legacy`), 나머지는 그대로 레코드에 앉힌다.
+/// 제목은 `custom`(사용자가 이름을 고쳤다)이면 페이로드가 이기지 못한다.
+pub fn session_chat_persist(id: &str, payload: &Value) -> bool {
+    if !crate::fanout::safe_id_str(id) {
+        return false;
+    }
+    let prev = crate::chats_v3::stored_chat(id);
+    if prev.as_ref().is_some_and(|c| origin_of(c) != ORIGIN_SESSION) {
+        return false; // 남의 칸(본채팅·패널)을 이 채널로 덮지 않는다
+    }
+    let g = Globals::read();
+    let absorbed = absorb_legacy(payload, id, Source::SessionChat, &g);
+    let mut o = absorbed.as_object().cloned().unwrap_or_default();
+    o.insert("id".into(), json!(id));
+    o.insert("origin".into(), json!(ORIGIN_SESSION));
+    // 사용자가 사이드바에서 고친 이름은 창의 자동 제목 보고가 이기지 못한다.
+    let custom = prev.as_ref().and_then(|c| c.get("custom")).and_then(Value::as_bool).unwrap_or(false);
+    if custom {
+        o.insert("custom".into(), json!(true));
+        if let Some(t) = prev.as_ref().and_then(|c| c.get("title")).cloned() {
+            o.insert("title".into(), t);
+        }
+    } else {
+        o.entry("custom".to_string()).or_insert(json!(false));
+        o.entry("title".to_string()).or_insert(json!(""));
+    }
+    for k in ["locked", "color"] {
+        if let Some(v) = prev.as_ref().and_then(|c| c.get(k)).cloned() {
+            o.entry(k.to_string()).or_insert(v);
+        }
+    }
+    // btw 시드·`legacyAccount`는 창이 안 보내는 값 — 디스크 것을 지키지 않으면
+    // 첫 저장에 날아간다(`upsert_chat`은 PRESERVED를 안 돌린다).
+    for k in ["btwOf", "btwSeed", "btwPrompt", "btwTitle", "btwFork", "btwForkCwd", "legacyAccount"] {
+        if let Some(v) = prev.as_ref().and_then(|c| c.get(k)).cloned() {
+            o.insert(k.into(), v);
+        }
+    }
+    if o.get("updatedAt").is_none() {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0);
+        o.insert("updatedAt".into(), json!(now));
+    }
+    // 얼린 상태 — 2.6.2가 `session-chats/<id>.json`에 들고 있던 값의 자리(D12).
+    // **이 창이 유일한 저자**다. 진행 중(`analyzing`/`working`)은 얼려 두지 않는다:
+    // 저장된 채로 앱이 죽으면 다음 부팅에 유령 알약이 된다(§5.8 규약 5의 짝).
+    let status = match payload.get("status").and_then(Value::as_str) {
+        Some(s @ ("done" | "error" | "idle")) => s,
+        _ => "idle",
+    };
+    o.insert("status".into(), json!(status));
+    crate::chats_v3::upsert_chat(id, &Value::Object(o))
+}
+
+/// `session-wins:rename` — 사이드바에서 이름 변경. 이후 창의 자동 제목 보고는 무시된다.
+pub fn session_chat_rename(id: &str, title: &str) -> bool {
+    let Some(mut rec) = crate::chats_v3::stored_chat(id) else { return false };
+    if origin_of(&rec) != ORIGIN_SESSION {
+        return false;
+    }
+    let Some(o) = rec.as_object_mut() else { return false };
+    o.insert("title".into(), json!(title));
+    o.insert("custom".into(), json!(!title.trim().is_empty()));
+    crate::chats_v3::upsert_chat(id, &rec)
+}
+
 // ── ma:get / ma:save / ma:load-session (보드 + 채팅 재조립) ──────────────────
 
 fn panel_of(chat: &Value) -> Value {

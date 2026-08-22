@@ -103,9 +103,29 @@ pub fn dispatch(_app: &AppHandle, channel: &str, p: &Value) -> Option<Value> {
 pub fn session_wins_list() -> Value {
     let open = crate::win::session_list();
     let mut out: Vec<Value> = open.as_array().cloned().unwrap_or_default();
+    let stored = ccg_store::legacy_bridge::session_chat_infos();
     let open_ids: std::collections::HashSet<String> =
         out.iter().filter_map(|w| w.get("id").and_then(Value::as_str).map(str::to_string)).collect();
-    for info in ccg_store::legacy_bridge::session_chat_infos() {
+    // 방금 되만든 창은 아직 자기 제목을 보고하지 않았다(hydrate 전에는 보고 금지가
+    // 렌더러 규약이다 — `SessionWindow.tsx:311`). 그동안 사이드바가 빈 이름이 되지
+    // 않게 **저장된 이름을 메운다.**
+    for w in out.iter_mut() {
+        let id = w.get("id").and_then(Value::as_str).unwrap_or("").to_string();
+        let blank = w.get("title").and_then(Value::as_str).unwrap_or("").is_empty();
+        if !blank {
+            continue;
+        }
+        if let Some(t) = stored
+            .iter()
+            .find(|s| s.get("id").and_then(Value::as_str) == Some(id.as_str()))
+            .and_then(|s| s.get("title").cloned())
+        {
+            if let Some(o) = w.as_object_mut() {
+                o.insert("title".into(), t);
+            }
+        }
+    }
+    for info in stored {
         let id = info.get("id").and_then(Value::as_str).unwrap_or("");
         if !open_ids.contains(id) {
             out.push(info);

@@ -213,6 +213,19 @@ pub fn retain(chat_ids: &[String]) {
     ensure_writer();
 }
 
+/// 채팅 **하나**의 상태만 걷어낸다(레코드 1건 삭제와 짝 — 목록 REPLACE가 아니다).
+pub fn forget_one(chat_id: &str) {
+    let (m, cv) = state();
+    {
+        let mut st = m.lock().unwrap_or_else(|e| e.into_inner());
+        if st.map.remove(chat_id).is_some() {
+            st.dirty = true;
+        }
+    }
+    cv.notify_all();
+    ensure_writer();
+}
+
 /// 지금 즉시 디스크에 쓴다(앱 종료 flush · 마이그레이션 마무리).
 pub fn flush() {
     let (m, _) = state();
