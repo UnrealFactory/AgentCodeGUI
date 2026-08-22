@@ -7,10 +7,17 @@
  *   그 오버레이가 **처음 그려진 순간** 창을 보여준다. 프로세스 0개 추가, 흰 화면 0프레임.
  *   부수 효과로 인상이 더 낫다: 작은 카드 → 큰 창으로 튀는 전환이 없다.
  *
- * 타이밍 계약:
- *   document_start에 붙어 body가 생기자마자 오버레이를 깔고, rAF 두 번(= 실제 프레임이
- *   합성기까지 갔다는 신호) 뒤에 셸에 'win:first-paint'를 보낸다. 셸은 그때 show()한다.
- *   #root에 자식이 생기면(=React 마운트) 오버레이를 130ms 페이드로 걷는다.
+ * 타이밍 계약 (R3에서 고침 — R2의 규약은 **실제로 한 번도 발화하지 않았다**):
+ *   document_start에 붙어 body가 생기자마자 오버레이를 깔고, **렌더 차단 스타일시트가
+ *   다 도착한 순간**(= 다음 프레임이 곧 스플래시다) 셸에 'win:first-paint'를 보낸다.
+ *   셸은 그때 show()한다. #root에 자식이 생기면(=React 마운트) 130ms 페이드로 걷는다.
+ *
+ *   R2는 rAF 두 번 뒤에 보냈다. 그런데 **창이 숨겨져 있는 동안 WebView2는 프레임을
+ *   만들지 않으므로 rAF가 영영 오지 않는다** — 창을 보여줘야 rAF가 오고, rAF가 와야
+ *   창을 보여주는 닭-달걀이다. 그래서 창은 결국 셸의 안전망(PageLoadEvent::Finished =
+ *   load 이벤트)으로 떴고, load는 **원격 웹폰트 CSS 두 개까지 기다린다**. 실측:
+ *   DOMContentLoaded 61~66ms인데 load 109~119ms — 창 표시가 네트워크에 50ms 묶여 있었고
+ *   오프라인이면 그만큼 더 늦었다. rAF는 이제 진단 표식(__ccgSplashPaintAt)에만 쓴다.
  *
  * 실패해도 앱을 막지 않는다: 셸에 3.5초 안전망이 있고(win.rs), 여기서 예외가 나도
  * try/catch로 삼킨다.
@@ -45,17 +52,47 @@
     '<path d="M14.5 8Q15 5.8 16.7 4.9"/><circle cx="17" cy="4.7" r=".85" fill="currentColor" stroke="none"/>' +
     '<path d="M4.4 10.6C3 11.5 3 14.5 4.4 15.4"/><path d="M19.6 10.6C21 11.5 21 14.5 19.6 15.4"/></svg>'
 
+  var notified = false
+  /** 셸에 "그릴 것이 DOM에 있고 다음 프레임이 그것이다" — 여기서 창이 뜬다. */
+  function notifyShell() {
+    if (notified) return
+    notified = true
+    try {
+      // 심(shim)이 아직 안 섰을 수 있어 내부 API를 직접 쓴다.
+      var inv = window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke
+      if (inv) inv('ipc_call', { channel: 'win:first-paint', payload: [] })
+    } catch (e) {
+      /* 셸의 안전망(PageLoadEvent::Finished / 3.5초 타이머)이 받는다 */
+    }
+  }
+
+  /**
+   * 렌더 차단 스타일시트가 전부 도착했는가. Blink는 그 전엔 **어떤 픽셀도** 올리지
+   * 않으므로, 여기가 "보여주면 곧바로 스플래시가 보이는" 가장 이른 지점이다.
+   * 원격 폰트 CSS는 vite가 media="print"로 비차단으로 바꿔 두므로 세지 않는다
+   * (app/vite.config.ts의 nonBlockingRemoteFonts — 그래서 오프라인에도 안 막힌다).
+   */
+  function paintReady() {
+    var links = document.querySelectorAll('link[rel="stylesheet"]')
+    for (var i = 0; i < links.length; i++) {
+      var m = links[i].media
+      if (m && m !== 'all' && m !== 'screen') continue
+      if (!links[i].sheet) return false
+    }
+    return true
+  }
+
   var painted = false
+  /** 실제 첫 프레임 — 진단 표식(bench/boot.mjs가 읽는다). 값 하나 대입이라 비용 0. */
   function firstPaint() {
     if (painted) return
     painted = true
     try {
-      // 셸에 "그렸다" — 심(shim)이 아직 안 섰을 수 있어 내부 API를 직접 쓴다.
-      var inv = window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke
-      if (inv) inv('ipc_call', { channel: 'win:first-paint', payload: [] })
+      window.__ccgSplashPaintAt = Math.round(performance.now() * 10) / 10
     } catch (e) {
-      /* 셸의 안전망이 받는다 */
+      /* 진단용 — 실패해도 무시 */
     }
+    notifyShell()
   }
 
   function mount() {
@@ -76,13 +113,20 @@
         (navigator.language && navigator.language.indexOf('ko') === 0 ? '시작하는 중…' : 'Starting…') +
         '</div>'
       document.body.appendChild(el)
-      // 프레임 두 번 = 합성기가 실제로 한 장을 올렸다는 뜻. 한 번으로는 이르다.
+      // 스타일시트가 준비되는 즉시 창을 띄운다(4ms 폴링, 120ms 상한).
+      // 상한은 CSS가 끝내 안 오는 경우의 안전망 — 그때도 창은 떠야 한다.
+      var t0 = Date.now()
+      ;(function waitPaintable() {
+        if (paintReady() || Date.now() - t0 > 120) notifyShell()
+        else setTimeout(waitPaintable, 4)
+      })()
+      // 프레임 두 번 = 합성기가 실제로 한 장을 올렸다는 뜻(창이 뜬 뒤에야 온다).
       requestAnimationFrame(function () {
         requestAnimationFrame(firstPaint)
       })
       watchRoot(el)
     } catch (e) {
-      firstPaint()
+      notifyShell()
     }
   }
 

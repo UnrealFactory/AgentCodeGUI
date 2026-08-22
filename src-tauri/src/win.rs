@@ -30,6 +30,28 @@ pub const MAIN: &str = "main";
 /// 셸이 주입하는 부팅 스플래시. 왜 별도 창이 아닌지는 splash.js 헤더에.
 const SPLASH_JS: &str = include_str!("splash.js");
 
+/// **부팅 페이로드 선주입** — #root 마운트 전에 도는 IPC 왕복을 0으로 만든다.
+///
+/// 렌더러의 진입점(app/src/main.tsx)은 `loadPrefs()`가 **resolve된 뒤에야** createRoot를
+/// 부른다(저장된 줌·유리·언어가 첫 페인트부터 맞아야 하므로 2.6.2부터의 규약이다).
+/// 즉 `ui-prefs:get` 왕복 하나가 rootMs의 임계 경로에 통째로 들어가 있다. 창을 만들 때
+/// 이미 디스크에서 읽어 오는 값이니, 문서 생성 시점에 `window.__CCG_BOOT`로 넣어 주면
+/// 심(shim.ts)이 그걸 먹고 왕복이 사라진다. 값은 **창이 만들어진 그 순간의 디스크 내용**
+/// 이라 첫 조회 결과와 같고, 심은 채널당 **한 번만** 쓰고 버린다(이후 조회는 정상 IPC).
+///
+/// 여기 넣는 것은 **작고 부팅 임계 경로에 있는 것만**이다. chats/ma 같은 큰 블롭을 넣으면
+/// document-start에 수백 KB짜리 JS 리터럴을 파싱하게 돼 첫 페인트가 오히려 늦는다
+/// (그리고 그 둘은 마운트 이후에 조회되므로 rootMs에 애초에 영향이 없다).
+fn boot_payload_script() -> String {
+    let payload = json!({
+        crate::ipc::ch::UI_PREFS_GET: ccg_store::prefs::read_ui_prefs(),
+        crate::ipc::ch::PROFILE_GET: ccg_store::prefs::read_profile(),
+        crate::ipc::ch::APP_GET_VERSION: env!("CARGO_PKG_VERSION"),
+    });
+    // JSON은 그대로 JS 리터럴로 유효하다(U+2028/2029도 ES2019+에서 문자열 안에 허용).
+    format!("window.__CCG_BOOT={payload};")
+}
+
 /// 추가 채팅 창 라벨 접두사. 창 하나 = 채팅 하나(2.6.2 sessionWins와 같은 1:1).
 const SESSION_PREFIX: &str = "session-";
 static SESSION_SEQ: AtomicI64 = AtomicI64::new(0);
@@ -127,6 +149,7 @@ pub fn create_main(app: &AppHandle) -> tauri::Result<WebviewWindow> {
         MAIN,
     )
         .title("AgentCodeGUI3")
+        .initialization_script(&boot_payload_script())
         .initialization_script(SPLASH_JS)
         .inner_size(st.width as f64, st.height as f64)
         .min_inner_size(
@@ -157,14 +180,16 @@ pub fn create_main(app: &AppHandle) -> tauri::Result<WebviewWindow> {
         });
     }
 
-    // 보여주는 시점 = **스플래시가 실제로 한 프레임 그려진 순간**(splash.js → win:first-paint).
-    // R1은 PageLoadEvent::Finished였는데, 그건 원격 웹폰트 CSS까지 다 받아야 오는 load
-    // 이벤트라 네트워크에 창 표시가 묶여 있었다. 게다가 그 시점에도 #root는 아직 비어
-    // 있어(React는 loadPrefs() 왕복 뒤에 마운트) 빈 창이 ~100ms 보였다.
-    // 지금은 Electron의 ready-to-show(=스플래시 창 표시)와 같은 잣대다: "그릴 게 하나
-    // 있고 실제로 그렸다".
+    // 보여주는 시점 = 스플래시 오버레이가 DOM에 있고 **렌더 차단 CSS가 다 와서 다음
+    // 프레임이 곧 그 스플래시인 순간**(splash.js → win:first-paint).
     //
-    // Finished는 안전망으로 남긴다 — 스플래시 주입이 실패해도 창은 뜬다.
+    // R2는 "rAF 두 번 뒤"라고 적어 두었지만 **그 경로는 한 번도 발화하지 않았다**:
+    // 창이 숨겨져 있는 동안 WebView2는 프레임을 만들지 않아 rAF가 오지 않는다(닭-달걀).
+    // 그래서 실제로는 아래 Finished(=load 이벤트) 안전망이 창을 띄우고 있었고, load는
+    // **원격 웹폰트 CSS 두 개를 기다린다** — 실측 DCL 61~66ms vs load 109~119ms.
+    // 창 표시가 네트워크에 50ms 묶여 있었다는 뜻이고, 오프라인이면 더 늦었다.
+    //
+    // Finished는 그대로 안전망으로 남긴다 — 스플래시 주입이 실패해도 창은 뜬다.
     b = b.on_page_load(|w, payload| {
         if payload.event() == PageLoadEvent::Finished {
             show_once(&w);
@@ -237,6 +262,8 @@ pub fn open_session_window(app: &AppHandle) -> tauri::Result<()> {
         &label,
     )
     .title("추가 채팅 — AgentCodeGUI")
+    // 추가 채팅 창도 같은 번들·같은 loadPrefs 경로를 탄다 — 왕복을 똑같이 없앤다.
+    .initialization_script(&boot_payload_script())
     .inner_size(560.0, 720.0)
     .min_inner_size(360.0, 440.0)
     .position(mx + 80.0 + off, my + 80.0 + off)

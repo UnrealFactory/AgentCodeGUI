@@ -66,8 +66,27 @@ function isUnimplemented(res: unknown): boolean {
   return !!res && typeof res === 'object' && (res as { __unimplemented?: boolean }).__unimplemented === true
 }
 
+// ── 부팅 페이로드 선주입 ──────────────────────────────────────────────────────
+// 셸(src-tauri/src/win.rs `boot_payload_script`)이 문서 생성 시점에 window.__CCG_BOOT로
+// 넣어 둔 값. 렌더러는 `loadPrefs()`가 resolve된 **뒤에야** createRoot를 부르므로
+// `ui-prefs:get` 왕복 하나가 #root 마운트의 임계 경로에 통째로 들어가 있었다.
+// 값은 창이 만들어진 그 순간 디스크에서 읽은 것이라 첫 조회 결과와 같고,
+// **채널당 한 번만** 소비한다 — 두 번째 조회부터는 보통의 IPC로 간다(저장 후 재조회가
+// 낡은 값을 보는 사고를 원천 차단). 인자가 있는 호출은 아예 손대지 않는다.
+type BootMap = Record<string, unknown>
+const boot: BootMap = (window as unknown as { __CCG_BOOT?: BootMap }).__CCG_BOOT ?? {}
+function takeBoot(channel: string, args: unknown[]): { v: unknown } | null {
+  if (args.length > 0) return null
+  if (!Object.prototype.hasOwnProperty.call(boot, channel)) return null
+  const v = boot[channel]
+  delete boot[channel] // 한 번 쓰고 버린다
+  return { v } // null도 정당한 값이라(profile:get) 박스로 감싼다
+}
+
 /** 채널 1회 호출. 미구현·에러면 fallback을 돌려준다(절대 throw 하지 않는다). */
 async function call<T>(channel: string, args: unknown[], fallback: T): Promise<T> {
+  const pre = takeBoot(channel, args)
+  if (pre) return pre.v as T
   let res: unknown
   try {
     res = await invoke('ipc_call', { channel, payload: args })
