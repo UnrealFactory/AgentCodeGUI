@@ -89,12 +89,20 @@ public class W {
   [DllImport("user32.dll")] public static extern bool EnumWindows(EnumWindowsProc cb, IntPtr l);
   [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
   [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
+  [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
+  // 200x200 미만은 앱 창이 아니다. tao(Tauri)는 프로세스 시작과 함께 16x16짜리
+  // "Tao Thread Event Target" 보조 창을 **가시 상태로** 만든다 — 크기 조건이 없으면
+  // 이 창이 잡혀 Tauri의 '첫 가시 창'이 5ms로 찍힌다(실측). Electron의 첫 창은
+  // 1320x880이라 이 조건에 영향받지 않는다(기준값 336ms는 rootMs보다 앞선 진짜 창).
   public static bool VisibleFor(uint target){
     bool found=false;
     EnumWindows((h,l)=>{
       if(!IsWindowVisible(h)) return true;
       uint p; GetWindowThreadProcessId(h,out p);
-      if(p==target){found=true; return false;}
+      if(p!=target) return true;
+      RECT r; GetWindowRect(h, out r);
+      if((r.Right-r.Left) >= 200 && (r.Bottom-r.Top) >= 200){ found=true; return false; }
       return true;
     }, IntPtr.Zero);
     return found;
@@ -229,10 +237,12 @@ export function electronProfile({ port = 9333 } = {}) {
 }
 
 // Tauri 3.0.0: 릴리즈 빌드 exe. WebView2에 CDP 포트는 환경변수로 주입.
+// 산출 경로는 **워크스페이스 루트**의 target/ — src-tauri는 루트 Cargo.toml의 멤버라
+// (crates/*와 같은 워크스페이스) cargo가 target 디렉터리를 루트에 하나로 둔다.
 export function tauriProfile({ port = 9334, exe } = {}) {
   return {
     name: 'tauri-3.0.0',
-    cmd: exe ?? path.join(REPO, 'src-tauri', 'target', 'release', 'agentcodegui.exe'),
+    cmd: exe ?? path.join(REPO, 'target', 'release', 'agentcodegui.exe'),
     args: [],
     env: {
       CCG_HOME: BENCH_HOME + '-tauri',
