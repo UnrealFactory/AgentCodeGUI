@@ -9,6 +9,7 @@ import {
   electronProfile, tauriProfile, measureColdStart, connectMainPage,
   procTreeMem, killTree, median, sleep, envInfo, REPO
 } from './lib.mjs'
+import { makeFixtureHome } from './fixture.mjs'
 
 const runs = Number(process.argv[2] ?? 6)
 const el = electronProfile({})
@@ -19,7 +20,15 @@ if (!fs.existsSync(ta.cmd)) {
   process.exit(2)
 }
 
-const out = { env: envInfo(), runs: [], at: new Date().toISOString() }
+// 두 홈을 같은 시드로 맞춘다 — 한쪽에만 긴 스레드 픽스처가 남아 있으면 그쪽이
+// 부팅에 더 많은 일을 하게 돼 비교가 무너진다. (스크롤/스트리밍 측정이 .bench-home에
+// 픽스처를 남기므로 실제로 일어나는 사고다.)
+fs.rmSync(el.env.CCG_HOME, { recursive: true, force: true })
+fs.rmSync(ta.env.CCG_HOME, { recursive: true, force: true })
+makeFixtureHome(el.env.CCG_HOME, '2.6.2')
+makeFixtureHome(ta.env.CCG_HOME, '3.0.0-beta.1')
+
+const out = { env: envInfo(), seeded: 'fixture(471) both', runs: [], at: new Date().toISOString() }
 
 // 웜업 1회씩 (OS 파일 캐시 — 첫 회는 항상 느리므로 대표값에서 제외)
 console.log('warmup…')
