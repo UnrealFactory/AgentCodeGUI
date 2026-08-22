@@ -38,6 +38,59 @@ function nonBlockingRemoteFonts(): Plugin {
   }
 }
 
+/**
+ * **스플래시가 먼저 한 프레임 그려지게 한다** — 앱 번들 실행을 rAF 두 번 뒤로 미룬다.
+ *
+ * 왜: 셸이 창을 띄우는 시점은 "렌더 차단 CSS가 다 와서 다음 프레임이 곧 스플래시인
+ * 순간"(src-tauri/src/splash.js)이다. 그런데 그 직후 곧바로 1MB 진입 청크가 실행돼
+ * 메인 스레드를 ~110ms 붙든다 — 합성기가 BeginFrame을 받을 틈이 없어서 **창은 떴는데
+ * 빈 아크릴만 보이는 구간**이 생긴다(실측: 창 21~29ms · 첫 페인트 140~160ms).
+ * 한 프레임만 양보하면 스플래시가 ~40ms에 뜨고, 앱 시작은 그만큼(≈1 프레임)만 늦다.
+ *
+ * `modulepreload`를 함께 심어 **내려받기는 원래대로 파서가 시작**하게 둔다 — 미루는 건
+ * 실행뿐이라 네트워크 왕복이 뒤로 밀리지 않는다.
+ *
+ * 안전망 두 겹: rAF가 끝내 안 오면 300ms 타이머가 실행하고, import 실패는 콘솔에 남긴다.
+ *
+ * **기본값은 꺼짐이다.** 실측(R3, 5회 중앙값)으로 값을 치른 게 확인됐다:
+ *   켬  — winMs 231 · rootMs 378 · 스플래시 픽셀 ≈ 300ms
+ *   끔  — winMs 243 · rootMs 335 · 스플래시 픽셀 ≈ 400ms(그 전엔 빈 아크릴)
+ * 창이 막 떠서 합성기가 첫 표면을 만드는 데 60~90ms가 걸리는데, 그동안 메인 스레드가
+ * 놀기 때문이다. "브랜드 스플래시를 100ms 일찍 보여주고 앱은 43ms 늦게 쓴다"는 교환이라
+ * 성능 목표(rootMs) 쪽을 택했다. 켜려면 `CCG_DEFER_APP_SCRIPTS=1`로 빌드.
+ *
+ * index.html에만 적용한다 — toast/tray는 스플래시가 없고 스크립트도 초경량이다.
+ */
+function paintSplashBeforeApp(): Plugin {
+  return {
+    name: 'ccg-defer-app-scripts',
+    enforce: 'post',
+    transformIndexHtml(html, ctx) {
+      if (!process.env.CCG_DEFER_APP_SCRIPTS) return html
+      if (!/(^|\/)index\.html$/.test(ctx.path.replace(/^\//, '') || 'index.html')) return html
+      const srcs: string[] = []
+      const stripped = html.replace(/<script\b[^>]*\btype=["']module["'][^>]*><\/script>\s*/g, (tag) => {
+        const m = /\bsrc=["']([^"']+)["']/.exec(tag)
+        if (!m) return tag // 인라인 모듈은 건드리지 않는다
+        srcs.push(m[1])
+        return ''
+      })
+      if (!srcs.length) return html
+      const list = JSON.stringify(srcs)
+      const boot =
+        `<script>(function(){var s=${list},d=0;` +
+        `function go(){if(d)return;d=1;s.reduce(function(p,u){return p.then(function(){return import(u)})},Promise.resolve())` +
+        `.catch(function(e){console.error('[boot] app import 실패',e)})}` +
+        // rAF 콜백 안에서 매크로태스크를 예약한다 = "이 프레임의 커밋이 끝난 직후".
+        // rAF 두 번으로 기다리면 다음 vsync(최대 16ms)를 통째로 버리고, 창이 막 떠서
+        // 합성기가 첫 표면을 만드는 동안 메인 스레드가 놀아 rootMs가 40ms 밀린다(실측).
+        `requestAnimationFrame(function(){setTimeout(go,0)});setTimeout(go,300)})()</script>`
+      const preload = srcs.map((s) => `<link rel="modulepreload" href="${s}">`).join('')
+      return stripped.replace('</head>', `${preload}</head>`).replace('</body>', `${boot}</body>`)
+    }
+  }
+}
+
 // 3.0 프론트엔드 루트 — src/renderer의 이식본(app/). 렌더러 코드는 2.6.2와 동일하고,
 // 메인과의 대화만 app/src/api/shim.ts(window.api)로 갈아끼운다.
 //
@@ -77,5 +130,5 @@ export default defineConfig({
       }
     }
   },
-  plugins: [react(), nonBlockingRemoteFonts()]
+  plugins: [react(), nonBlockingRemoteFonts(), paintSplashBeforeApp()]
 })
