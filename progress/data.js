@@ -1,7 +1,7 @@
 window.PROGRESS = {
-  phase: 'R5 마이크로 라운드 — 연쇄 크래시 3줄 수정·설계 정합(N1~N16·X1~X9) → 끝나면 구현 단계(M2·M3×M-LOGIC·M-UX 표면) 개시',
-  note: 'NetSvc2 기본 채택 확정(크리틱 뒤집은 A/B로 유해성 미재현·revert 없음 — 리드 최초 인용 수치는 §8.1로 정정). 크리틱 실측 주 게이트: WS 421.3(바닥값 351.5+앱47.3 — 목표 356은 구조적 불가·재협상 대상)·Priv 239.3 ✓(0.47)·+창2 470.9(선상). paintMs 0.45는 비대칭으로 반박(대칭 0.65~0.79). 연쇄 크래시 사각지대(재kill +3s 유령·감시자 실명) 수정 중. 설계 해소율 90%·신규 구멍 16건 반영 중',
-  updatedAt: '2026-08-22 23:59',
+  phase: '구현 1단계(R6) — ccg-engine(상태기계·재생 테스트·드라이버) / M2 chats-v3+무손실 마이그레이션 / M-UI 유리 방어+알림 시스템 (병렬 3)',
+  note: 'R5 착지: 연쇄 크래시 사각지대 제거("감지된 사건은 증발하지 않는다" 불변식 — 크리틱 공격 전 항목 통과: 재kill +3s 573ms 복구·연쇄 1130ms·고아 다이얼로그 0). 설계 정합 완료(N1~N16·X1~X9 전수, 재생 정직 재계산 8/8=27시나리오, 전이 60) → 구현 게이트 전부 해제. 남은 사용자 결정: WS/콜드 목표 재협상 · UX ①~⑬ · m-logic O1·O6·O13·O16',
+  updatedAt: '2026-08-23 01:10',
   metrics: [
     { name: '★ 멀티 4패널 유휴 WS', unit: 'MB', base: 712.8, new: 421.3, target: '≤356 = WebView2 빈 문서 바닥값(351.5) + 4.5MB — 앱 몫이 47.3이라 구조적 불가, 재협상 대상 (NetSvc2 채택 후 크리틱 실측)', pass: false },
     { name: '★ 멀티 4패널 유휴 Private', unit: 'MB', base: 505.3, new: 239.3, target: '≤253 ✓ (NetSvc2 채택 후 크리틱 실측, 비 0.47)', pass: true },
@@ -9,7 +9,7 @@ window.PROGRESS = {
     { name: '★ 4패널 동시 스트리밍 직후 WS', unit: 'MB', base: 1161, new: null, target: '≤580 (M3 엔진 필요)' },
     { name: '★ 창 1개 추가 비용', unit: 'MB', base: 110.7, new: 25.1, target: '≪110 (+0프로세스, 2.6.2는 +2)', pass: true },
     { name: '★ 멀티 스크롤 FPS', unit: 'fps', base: 60, new: 60, target: '드랍 0% 5/5 유지(1·4패널 모두). avgFps 56~58은 세션 부하 밴드(드랍 프레임 0)', pass: true },
-    { name: '★ 렌더러 크래시 복구 (R4 신설)', unit: 'ms', base: null, new: 479, target: '기본 복구 실증(렌더러 ~0.5s·브라우저 1.4s) — 단 크리틱이 연쇄 크래시 사각지대 발견(재kill +3s → 유령, 3줄 수정 적용 중)', pass: false },
+    { name: '★ 렌더러 크래시 복구 (R4 신설·R5 완결)', unit: 'ms', base: null, new: 479, target: '유령 창 0 — 렌더러 ~0.5s·브라우저 1.4s·재kill +3s 573ms·연쇄 1130ms 전 공격 통과, 정상 종료 오인 0, 고아 다이얼로그 정리', pass: true },
     { name: '콜드 첫 픽셀 paintMs (대칭 재측정)', unit: 'ms', base: 423, new: 274, target: '비 0.65 (본 UI끼리 0.79) — R4의 0.45는 비대칭 비교로 반박됨, ≤0.5 승점 아님', pass: false },
     { name: '단일 유휴 메모리 (WS 합)', unit: 'MB', base: 428.1, new: 438.3, target: '≤214 · 주의: 2.6.2 박제값이 오늘 재현 안 됨(626~660) — 분모 신뢰 불가', pass: false },
     { name: '단일 유휴 메모리 (Private 합)', unit: 'MB', base: 341.4, new: 197.2, target: '≤171', pass: false },
