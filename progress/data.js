@@ -3,11 +3,11 @@ window.PROGRESS = {
   note: 'M3 게이트 통과 · M1은 메모리/콜드스타트 목표 미달로 루프 재가동(레버별 기여도 측정 의무) · 사용자 요청으로 디자인 리뉴얼 조각 신설',
   updatedAt: '2026-08-22 15:10',
   metrics: [
-    { name: '★ 멀티 4패널 유휴 WS', unit: 'MB', base: 712.8, new: null, target: '≤356' },
-    { name: '★ 멀티 4패널 + 추가 창 2개 WS', unit: 'MB', base: 934.1, new: null, target: '≤467' },
+    { name: '★ 멀티 4패널 유휴 WS', unit: 'MB', base: 712.8, new: 455.5, target: '≤356', pass: false },
+    { name: '★ 멀티 4패널 + 추가 창 2개 WS', unit: 'MB', base: 934.1, new: 488, target: '≤467', pass: false },
     { name: '★ 4패널 동시 스트리밍 직후 WS', unit: 'MB', base: 1161, new: null, target: '≤580' },
-    { name: '★ 창 1개 추가 비용', unit: 'MB', base: 110.7, new: null, target: '≪110' },
-    { name: '★ 멀티 스크롤/스트리밍 FPS', unit: 'fps', base: 60, new: null, target: '≥60 · 드랍 0%' },
+    { name: '★ 창 1개 추가 비용', unit: 'MB', base: 110.7, new: 16.3, target: '≪110', pass: true },
+    { name: '★ 멀티 스크롤 FPS', unit: 'fps', base: 60, new: 60, target: '≥60 · 드랍 0%', pass: true },
     { name: '단일 유휴 메모리 (WS 합)', unit: 'MB', base: 428.1, new: 415.6, target: '≤214', pass: false },
     { name: '단일 유휴 메모리 (Private 합)', unit: 'MB', base: 341.4, new: 351.4, target: '≤171', pass: false },
     { name: '콜드 스타트 → 첫 창 (웜 중앙값)', unit: 'ms', base: 336, new: 240, target: '≤168', pass: false },
@@ -27,6 +27,7 @@ window.PROGRESS = {
     { name: 'M6 파일·Git·뷰어', scope: 'fs ops·git 래퍼·HTML 미리보기 스킴·아이콘', state: 'wait' },
     { name: 'M7 LSP', scope: 'TS/Py/C#/C++/Verse 서버 관리·토큰 캐시', state: 'wait' },
     { name: 'M8 멀티 창 표면', scope: '멀티 패널·팝아웃·추가 채팅·btw·토스트·트레이', state: 'wait' },
+    { name: 'M-UX 채팅 통합', scope: '일반+멀티 → 「채팅」 하나, 개수 다이얼 1~6 (1=기존 레이아웃) · 3스토어/3 IPC 세트 통합 · 무손실 마이그레이션', state: 'build', round: 1, critic: '설계 → 마이그레이션 PoC(손실 0 검증) → 크리틱이 161화면 대조로 기능 누락 사냥' },
     { name: 'M-UI 디자인 리뉴얼', scope: '알림/배너 계열 재설계 · 유리 회색 급변 수정 · 디자인 토큰·모던화 (사용자 요청)', state: 'build', round: 1, critic: '유리 원인 규명 → 디자인 시스템 스펙+목업 → 크리틱이 목업을 눈으로 열어 2.6.2와 대조' },
     { name: 'M9 신기능: MCP/Skill 뷰', scope: '멀티채팅 전용 MCP·Skill 가시화', state: 'wait' },
     { name: 'M10 신기능: 세션 간 협업', scope: '클로드 세션 4개 상호 대화 (stash 설계 부활)', state: 'wait' },
@@ -34,6 +35,8 @@ window.PROGRESS = {
     { name: 'M12 패키징+최종 A/B', scope: 'NSIS 대체 설치본·전 화면 대조·최종 인증', state: 'wait' }
   ],
   log: [
+    { t: '통합 설계 착수', m: '사용자 아이디어 채택 — 일반/멀티를 「채팅」 하나로 합치고 개수 다이얼 1~6. 1=기존 전체 IDE 레이아웃, 2+=그리드, 1↔N 전환에 대화 보존. 이중 구현(승인 카드·한도 이어서·btw·토스트·계정) 제거가 핵심 이득. 마이그레이션 무손실 PoC 필수' },
+    { t: '★ 멀티 성과', m: 'Tauri 멀티 실측 — 창당 비용 110.7MB·+1프로세스 → 16.3MB·+0프로세스(6.8배 개선). 패널4 유휴 712.8→455.5MB(비율 0.64, 목표 0.5 미달로 루프 계속). 스크롤 60fps·드랍 0% 유지' },
     { t: '기준 재정의', m: '사용자 지시로 멀티채팅을 주 게이트로 승격. 2.6.2 멀티 실측: 4패널 유휴 712.8MB → 추가 창 2개 붙이면 934.1MB(창당 110.7MB) → 4패널 동시 스트리밍 직후 1161MB. 렌더링은 여전히 60fps·드랍 0% — 문제는 순전히 메모리' },
     { t: '사용자 요구 추가', m: '알림/배너(모델 자동 전환 등) 디자인 정리 · 사이드바 유리가 진한 회색으로 급변하는 문제 수정 · 전반 모던화 — 3.0 완전 리뉴얼로 반영. 유리 원인 가설: 사이드바는 자체 배경 없이 body 틴트로 아크릴을 비추는 구조라 아크릴이 꺼지면 불투명 회색이 드러남' },
     { t: 'M1 R1 실측', m: '경고 — Tauri 유휴 WS 415.6MB(7프로세스)로 Electron 428MB와 거의 동일, Private는 351 vs 341로 악화. Rust 호스트로 번 85MB를 WebView2가 72MB 더 써서 반납. 메모리 전략 문서로 공격 순서 확정' },
