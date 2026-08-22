@@ -1,0 +1,294 @@
+{
+  "tauri-3.0.0": {
+    "app": "tauri-3.0.0",
+    "panels": 4,
+    "gridPanels": 4,
+    "at": "2026-08-22T07:39:53.309Z",
+    "jsHeap": {
+      "usedMB": 10.5,
+      "totalMB": 25.8
+    },
+    "domCounters": {
+      "documents": 2,
+      "nodes": 8507,
+      "jsEventListeners": 653
+    },
+    "dom": {
+      "allNodes": 4616,
+      "panels": 4,
+      "perPanelNodes": [
+        1117,
+        1117,
+        1117,
+        1117
+      ],
+      "msgRows": 156,
+      "toolGroups": 0,
+      "codeBlocks": 80,
+      "imgs": 0
+    },
+    "heapTotalMB": 24,
+    "nodeCount": 301876,
+    "byType": [
+      {
+        "type": "native",
+        "mb": 17.35
+      },
+      {
+        "type": "code",
+        "mb": 3.03
+      },
+      {
+        "type": "object",
+        "mb": 1.53
+      },
+      {
+        "type": "string",
+        "mb": 0.98
+      },
+      {
+        "type": "array",
+        "mb": 0.46
+      },
+      {
+        "type": "object shape",
+        "mb": 0.34
+      },
+      {
+        "type": "closure",
+        "mb": 0.22
+      },
+      {
+        "type": "concatenated string",
+        "mb": 0.06
+      },
+      {
+        "type": "regexp",
+        "mb": 0.03
+      },
+      {
+        "type": "number",
+        "mb": 0.01
+      },
+      {
+        "type": "sliced string",
+        "mb": 0
+      },
+      {
+        "type": "symbol",
+        "mb": 0
+      },
+      {
+        "type": "synthetic",
+        "mb": 0
+      }
+    ],
+    "topByConstructor": [
+      {
+        "name": "blink::HeapHashTableBacking<blink::HashTable<blink::FontCacheKey, blink::KeyValuePair<blink::FontCacheKey, cppgc::internal::BasicMember<const blink::SimpleFontData, cppgc::internal::WeakMemberTag, cppgc::internal::DijkstraWriteBarrierPolicy>>, blink::KeyValuePairExtractor, blink::HashMapValueTraits<blink::HashTraits<FontCacheKey>, blink::HashTraits<cppgc::internal::BasicMember<const blink::SimpleFontData, cppgc::internal::WeakMemberTag, cppgc::internal::DijkstraWriteBarrierPolicy>>>, blink::HashTraits<FontCacheKey>, blink::HeapAllocator>>",
+        "mb": 2.33,
+        "count": 187
+      },
+      {
+        "name": "system / ExternalStringData",
+        "mb": 2.03,
+        "count": 1398
+      },
+      {
+        "name": "system / InstructionStream",
+        "mb": 1.39,
+        "count": 1030
+      },
+      {
+        "name": "(string)",
+        "mb": 1.04,
+        "count": 41631
+      },
+      {
+        "name": "blink::HeapHashTableBacking<blink::HashTable<blink::AtomicString, blink::KeyValuePair<blink::AtomicString, cppgc::internal::BasicMember<const blink::ComputedStyle, cppgc::internal::StrongMemberTag, cppgc::internal::DijkstraWriteBarrierPolicy>>, blink::KeyValuePairExtractor, blink::HashMapValueTraits<blink::HashTraits<blink::AtomicString>, blink::HashTraits<cppgc::internal::BasicMember<const blink::ComputedStyle, cppgc::internal::StrongMemberTag, cppgc::internal::DijkstraWriteBarrierPolicy>>>, blink::HashTraits<blink::AtomicString>, blink::HeapAllocator>>",
+        "mb": 0.78,
+        "count": 3109
+      },
+      {
+        "name": "Iw",
+        "mb": 0.73,
+        "count": 7351
+      },
+      {
+        "name": "blink::GridSizingTrackCollection",
+        "mb": 0.72,
+        "count": 434
+      },
+      {
+        "name": "blink::SimpleFontData",
+        "mb": 0.66,
+        "count": 2688
+      },
+      {
+        "name": "Object",
+        "mb": 0.63,
+        "count": 24240
+      },
+      {
+        "name": "blink::ComputedStyleBase::StyleMisc7Data",
+        "mb": 0.49,
+        "count": 3185
+      },
+      {
+        "name": "blink::ComputedStyleBase::StyleInheritedData",
+        "mb": 0.44,
+        "count": 3385
+      },
+      {
+        "name": "system / BytecodeArray",
+        "mb": 0.4,
+        "count": 1360
+      },
+      {
+        "name": "blink::UniqueElementData",
+        "mb": 0.33,
+        "count": 3088
+      },
+      {
+        "name": "Text",
+        "mb": 0.32,
+        "count": 3678
+      },
+      {
+        "name": "blink::FontResource",
+        "mb": 0.28,
+        "count": 98
+      },
+      {
+        "name": "blink::GeometryMapperTransformCache",
+        "mb": 0.27,
+        "count": 858
+      },
+      {
+        "name": "blink::ComputedStyleBase::StyleMiscData",
+        "mb": 0.27,
+        "count": 3239
+      },
+      {
+        "name": "blink::NGShapeCache",
+        "mb": 0.27,
+        "count": 2688
+      },
+      {
+        "name": "blink::ComputedStyle",
+        "mb": 0.26,
+        "count": 3844
+      },
+      {
+        "name": "blink::ShapeResultRun",
+        "mb": 0.23,
+        "count": 3379
+      },
+      {
+        "name": "blink::TransformPaintPropertyNode",
+        "mb": 0.23,
+        "count": 942
+      },
+      {
+        "name": "system / TrustedByteArray",
+        "mb": 0.21,
+        "count": 2176
+      },
+      {
+        "name": "blink::PhysicalBoxFragment",
+        "mb": 0.2,
+        "count": 2225
+      },
+      {
+        "name": "system / FunctionTemplateInfo",
+        "mb": 0.2,
+        "count": 3218
+      },
+      {
+        "name": "system / Map",
+        "mb": 0.17,
+        "count": 4606
+      },
+      {
+        "name": "(object properties)",
+        "mb": 0.17,
+        "count": 262
+      },
+      {
+        "name": "blink::LayoutResult",
+        "mb": 0.17,
+        "count": 2225
+      },
+      {
+        "name": "(object elements)",
+        "mb": 0.17,
+        "count": 5435
+      },
+      {
+        "name": "blink::ComputedStyleBase::StyleHighlightDataData",
+        "mb": 0.17,
+        "count": 3110
+      },
+      {
+        "name": "blink::StyleRule",
+        "mb": 0.16,
+        "count": 2361
+      },
+      {
+        "name": "blink::LayoutBlockFlow",
+        "mb": 0.16,
+        "count": 1000
+      },
+      {
+        "name": "blink::NodeRareData",
+        "mb": 0.14,
+        "count": 4688
+      },
+      {
+        "name": "system / DescriptorArray",
+        "mb": 0.14,
+        "count": 1387
+      },
+      {
+        "name": "blink::ImmutableCSSPropertyValueSet",
+        "mb": 0.14,
+        "count": 1556
+      },
+      {
+        "name": "blink::ComputedStyleBase::StyleBoxData",
+        "mb": 0.13,
+        "count": 779
+      },
+      {
+        "name": "blink::ComputedStyleBase::StyleSurroundData",
+        "mb": 0.13,
+        "count": 439
+      },
+      {
+        "name": "blink::BoxOverflowModel",
+        "mb": 0.13,
+        "count": 1120
+      },
+      {
+        "name": "blink::HeapVectorBacking<blink::FragmentItem>",
+        "mb": 0.12,
+        "count": 850
+      },
+      {
+        "name": "blink::ClipPaintPropertyNode",
+        "mb": 0.12,
+        "count": 645
+      },
+      {
+        "name": "system / PropertyArray",
+        "mb": 0.12,
+        "count": 6082
+      }
+    ],
+    "procTree": {
+      "wsMB": 463.9,
+      "privMB": 318.7,
+      "procs": 7
+    }
+  }
+}

@@ -1,0 +1,168 @@
+{
+  "what": "M1 R3 팔(arm)별 실측 요약 — 무엇을 켜고 무엇이 얼마가 됐는지. 원자료는 같은 폴더의 개별 파일.",
+  "stage": "멀티 4패널 × 120항목(bench/multi.mjs, CDP on) / 콜드 스타트는 단일 채팅 픽스처(bench/coldstart.mjs, 4회 중 첫 회 제외 중앙값)",
+  "gate": {
+    "idleWsMB": 356,
+    "idlePrivMB": 253,
+    "withWindowsWsMB": 467,
+    "coldWinMs": 168,
+    "coldRootMs": 211,
+    "baselineElectron": {
+      "idleWsMB": 712.8,
+      "idlePrivMB": 505.3,
+      "withWindowsWsMB": 934.1,
+      "coldWinMs": 336,
+      "coldRootMs": 422
+    }
+  },
+  "arms": [
+    {
+      "name": "wry 기본값만(대조군)",
+      "flags": "CCG_WEBVIEW_ARGS_BASE_ONLY=1",
+      "idleWsMB": 481.8,
+      "idlePrivMB": 327.8,
+      "procs": 7,
+      "wsPerWindowMB": 114.7,
+      "procsPerWindow": 2,
+      "fps": "60 / 0%",
+      "gpu": "NVIDIA D3D11"
+    },
+    {
+      "name": "+ --process-per-site 단독",
+      "flags": "BASE_ONLY + --process-per-site",
+      "idleWsMB": 485.9,
+      "idlePrivMB": 328.6,
+      "procs": 7,
+      "wsPerWindowMB": 14.8,
+      "procsPerWindow": 0,
+      "fps": "59.9 / 0%",
+      "verdict": "채택 — 창 비용 레버"
+    },
+    {
+      "name": "+ --renderer-process-limit=1 단독",
+      "flags": "BASE_ONLY + --renderer-process-limit=1",
+      "idleWsMB": 478,
+      "idlePrivMB": 319.3,
+      "procs": 7,
+      "wsPerWindowMB": 93.4,
+      "procsPerWindow": 2,
+      "fps": "59.8 / 0.3%",
+      "verdict": "기각 — 무효"
+    },
+    {
+      "name": "R2 세트 + --use-angle=gl",
+      "flags": "--use-angle=gl",
+      "idleWsMB": 457.8,
+      "idlePrivMB": 214.6,
+      "procs": 7,
+      "wsPerWindowMB": 22.8,
+      "fps": "60 / 0%",
+      "gpu": "Microsoft Basic Render Driver(소프트웨어)",
+      "verdict": "기각 — --disable-gpu와 같은 값"
+    },
+    {
+      "name": "R2 세트 + --in-process-gpu",
+      "flags": "--in-process-gpu",
+      "idleWsMB": 453.4,
+      "idlePrivMB": 249.6,
+      "procs": 6,
+      "wsPerWindowMB": 26,
+      "fps": "60 / 0%",
+      "gpu": "NVIDIA D3D11",
+      "coldWinMs": 271,
+      "coldPaintMs": 294,
+      "coldRootMs": 376,
+      "verdict": "채택"
+    },
+    {
+      "name": "R2 세트 + --single-process",
+      "flags": "--single-process",
+      "idleWsMB": 358.8,
+      "idlePrivMB": 211.3,
+      "procs": 3,
+      "wsPerWindowMB": 33.4,
+      "fps": "60 / 0%",
+      "gpu": "NVIDIA D3D11",
+      "coldWinMs": 211,
+      "coldPaintMs": 277,
+      "coldRootMs": 326,
+      "verdict": "옵트인(CCG_SINGLE_PROCESS=1) — MS 미지원·Evergreen 리스크"
+    },
+    {
+      "name": "--use-angle=gl + --in-process-gpu",
+      "flags": "두 개 동시",
+      "idleWsMB": 400,
+      "idlePrivMB": 198.3,
+      "procs": 6,
+      "wsPerWindowMB": 8.9,
+      "fps": "측정 불가 — 프레임 생성 정지(rAF 안 옴 / CDP 입력 무응답, 2회 재현)",
+      "verdict": "기각"
+    },
+    {
+      "name": "--single-process + --use-angle=gl",
+      "flags": "두 개 동시",
+      "idleWsMB": 315.3,
+      "idlePrivMB": 171.9,
+      "procs": 3,
+      "wsPerWindowMB": 9.8,
+      "fps": "측정 불가 — 같은 정지",
+      "verdict": "기각"
+    },
+    {
+      "name": "★ 최종 채택 세트(제품 기본값)",
+      "flags": "wry 기본값 + --process-per-site + --in-process-gpu",
+      "idleWsMB": 479.3,
+      "idlePrivMB": 251.6,
+      "procs": 6,
+      "wsPerWindowMB": 19.4,
+      "fps": "60 / 0% (3회 중 2회; 1회 59.4 / 0.8%)",
+      "gpu": "NVIDIA D3D11",
+      "coldWinMs": 314,
+      "coldPaintMs": 337,
+      "coldRootMs": 397,
+      "runs": [
+        {
+          "ws": 470,
+          "priv": 251.6
+        },
+        {
+          "ws": 479.3,
+          "priv": 252.5
+        },
+        {
+          "ws": 481.5,
+          "priv": 250.9
+        }
+      ]
+    },
+    {
+      "name": "최종 세트 − --in-process-gpu",
+      "flags": "CCG_GPU_PROCESS=1",
+      "idleWsMB": 491.2,
+      "idlePrivMB": 337.4,
+      "procs": 7,
+      "wsPerWindowMB": 10.1,
+      "fps": "60 / 0%",
+      "coldWinMs": 266,
+      "coldPaintMs": 421,
+      "coldRootMs": 388
+    },
+    {
+      "name": "2.6.2 재측정(참고, 박제 파일은 미변경)",
+      "flags": "-",
+      "idleWsMB": 730.1,
+      "idlePrivMB": 502.9,
+      "procs": 7,
+      "wsPerWindowMB": 112,
+      "procsPerWindow": 2,
+      "fps": "60 / 0%"
+    }
+  ],
+  "appShare": {
+    "what": "4패널 UI를 통째로 비운 값과의 차이(bench/results/gpu-css-probe.json)",
+    "wsMB": 8.4,
+    "privMB": 24.3,
+    "v8BlinkHeapMB": 24,
+    "domNodes": 4616
+  }
+}

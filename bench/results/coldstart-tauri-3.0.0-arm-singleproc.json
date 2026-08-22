@@ -1,0 +1,35 @@
+{
+  "app": "tauri-3.0.0",
+  "runs": [
+    {
+      "winMs": 284,
+      "rootMs": 350,
+      "paintMs": 299
+    },
+    {
+      "winMs": 207,
+      "rootMs": 327,
+      "paintMs": 274
+    },
+    {
+      "winMs": 211,
+      "rootMs": 326,
+      "paintMs": 277
+    },
+    {
+      "winMs": 215,
+      "rootMs": 319,
+      "paintMs": 332
+    }
+  ],
+  "firstRun": {
+    "winMs": 284,
+    "rootMs": 350,
+    "paintMs": 299
+  },
+  "medianWinMs": 211,
+  "medianRootMs": 326,
+  "medianPaintMs": 277,
+  "at": "2026-08-22T08:34:28.344Z",
+  "arm": "중간 빌드(R2 레버 세트) + --single-process. 모든 팔 중 가장 빠르다."
+}

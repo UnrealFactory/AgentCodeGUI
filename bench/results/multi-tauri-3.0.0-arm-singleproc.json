@@ -1,0 +1,47 @@
+{
+  "app": "tauri-3.0.0",
+  "panels": 4,
+  "itemsPerPanel": 120,
+  "gridPanels": 4,
+  "at": "2026-08-22T08:22:09.955Z",
+  "idleGrid": {
+    "totalWsMB": 358.8,
+    "totalPrivMB": 211.3,
+    "procs": 3
+  },
+  "idleWithWindows": {
+    "totalWsMB": 425.7,
+    "totalPrivMB": 230.2,
+    "procs": 3
+  },
+  "windowCost": {
+    "wsMBPerWindow": 33.4,
+    "procsAdded": 0
+  },
+  "scrollInPanel": {
+    "frames": 359,
+    "avgFps": 60,
+    "p95Ms": 16.8,
+    "worstMs": 16.8,
+    "droppedPct": 0,
+    "longTaskMs": 0
+  },
+  "procDetail": [
+    {
+      "name": "agentcodegui.exe",
+      "wsMB": 32.4,
+      "privMB": 15.2
+    },
+    {
+      "name": "msedgewebview2.exe",
+      "wsMB": 403.8,
+      "privMB": 233.5
+    },
+    {
+      "name": "msedgewebview2.exe",
+      "wsMB": 18.7,
+      "privMB": 3.3
+    }
+  ],
+  "arm": "R2 레버 세트 + --single-process. WS 358.8 / Priv 211.3 / 3프로세스, 스크롤 60fps·드랍 0%, 하드웨어 GPU 유지. MS 미지원이라 옵트인(CCG_SINGLE_PROCESS=1)."
+}

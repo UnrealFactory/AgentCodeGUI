@@ -1,0 +1,297 @@
+{
+  "env": {
+    "ramGB": 63.8,
+    "cpu": "13th Gen Intel(R) Core(TM) i7-13700KF",
+    "os": "Microsoft Windows 11 Home 26200"
+  },
+  "what": "합성기/렌더러 메모리의 출처 — 살아 있는 앱에 CSS 오버라이드를 누적으로 얹으며 역할별 재측정",
+  "tauri-3.0.0": {
+    "panels": 4,
+    "settleSec": 14,
+    "steps": [
+      {
+        "label": "0-baseline",
+        "wsMB": 446.2,
+        "privMB": 301.4,
+        "procs": 7,
+        "byRole": {
+          "browser": {
+            "n": 2,
+            "wsMB": 146.4,
+            "privMB": 51
+          },
+          "crashpad-handler": {
+            "n": 1,
+            "wsMB": 10.1,
+            "privMB": 2.5
+          },
+          "gpu-process": {
+            "n": 1,
+            "wsMB": 79.1,
+            "privMB": 123
+          },
+          "utility:NetworkService": {
+            "n": 1,
+            "wsMB": 39.1,
+            "privMB": 12.3
+          },
+          "utility:StorageService": {
+            "n": 1,
+            "wsMB": 20,
+            "privMB": 8.9
+          },
+          "renderer": {
+            "n": 1,
+            "wsMB": 151.5,
+            "privMB": 103.8
+          }
+        },
+        "jsHeap": {
+          "usedMB": 8.4,
+          "totalMB": 9.3
+        },
+        "dom": {
+          "documents": 1,
+          "nodes": 8486,
+          "jsEventListeners": 641
+        }
+      },
+      {
+        "label": "1-no-blurwarm",
+        "wsMB": 452.6,
+        "privMB": 307.4,
+        "procs": 7,
+        "byRole": {
+          "browser": {
+            "n": 2,
+            "wsMB": 146.7,
+            "privMB": 50.8
+          },
+          "crashpad-handler": {
+            "n": 1,
+            "wsMB": 18.7,
+            "privMB": 3.4
+          },
+          "gpu-process": {
+            "n": 1,
+            "wsMB": 80.2,
+            "privMB": 132.7
+          },
+          "utility:NetworkService": {
+            "n": 1,
+            "wsMB": 39.1,
+            "privMB": 12.2
+          },
+          "utility:StorageService": {
+            "n": 1,
+            "wsMB": 20,
+            "privMB": 8.9
+          },
+          "renderer": {
+            "n": 1,
+            "wsMB": 147.9,
+            "privMB": 99.5
+          }
+        },
+        "jsHeap": {
+          "usedMB": 8.4,
+          "totalMB": 9.3
+        },
+        "dom": {
+          "documents": 1,
+          "nodes": 8488,
+          "jsEventListeners": 641
+        }
+      },
+      {
+        "label": "2-no-backdrop-filter",
+        "wsMB": 452,
+        "privMB": 306.7,
+        "procs": 7,
+        "byRole": {
+          "browser": {
+            "n": 2,
+            "wsMB": 146.7,
+            "privMB": 50.8
+          },
+          "crashpad-handler": {
+            "n": 1,
+            "wsMB": 18.7,
+            "privMB": 3.4
+          },
+          "gpu-process": {
+            "n": 1,
+            "wsMB": 80.2,
+            "privMB": 132.7
+          },
+          "utility:NetworkService": {
+            "n": 1,
+            "wsMB": 39.1,
+            "privMB": 12.1
+          },
+          "utility:StorageService": {
+            "n": 1,
+            "wsMB": 20,
+            "privMB": 8.9
+          },
+          "renderer": {
+            "n": 1,
+            "wsMB": 147.4,
+            "privMB": 98.9
+          }
+        },
+        "jsHeap": {
+          "usedMB": 8.4,
+          "totalMB": 9.3
+        },
+        "dom": {
+          "documents": 1,
+          "nodes": 8488,
+          "jsEventListeners": 641
+        }
+      },
+      {
+        "label": "3-no-box-shadow",
+        "wsMB": 450.9,
+        "privMB": 292,
+        "procs": 7,
+        "byRole": {
+          "browser": {
+            "n": 2,
+            "wsMB": 147.1,
+            "privMB": 50.7
+          },
+          "crashpad-handler": {
+            "n": 1,
+            "wsMB": 13,
+            "privMB": 3
+          },
+          "gpu-process": {
+            "n": 1,
+            "wsMB": 82.4,
+            "privMB": 117
+          },
+          "utility:NetworkService": {
+            "n": 1,
+            "wsMB": 39.1,
+            "privMB": 12
+          },
+          "utility:StorageService": {
+            "n": 1,
+            "wsMB": 20.1,
+            "privMB": 8.9
+          },
+          "renderer": {
+            "n": 1,
+            "wsMB": 149.2,
+            "privMB": 100.4
+          }
+        },
+        "jsHeap": {
+          "usedMB": 8.4,
+          "totalMB": 9.3
+        },
+        "dom": {
+          "documents": 1,
+          "nodes": 8488,
+          "jsEventListeners": 641
+        }
+      },
+      {
+        "label": "4-one-panel-visible",
+        "wsMB": 442.7,
+        "privMB": 287.6,
+        "procs": 7,
+        "byRole": {
+          "browser": {
+            "n": 2,
+            "wsMB": 147,
+            "privMB": 50.6
+          },
+          "crashpad-handler": {
+            "n": 1,
+            "wsMB": 13,
+            "privMB": 3
+          },
+          "gpu-process": {
+            "n": 1,
+            "wsMB": 82.3,
+            "privMB": 120.9
+          },
+          "utility:NetworkService": {
+            "n": 1,
+            "wsMB": 39.1,
+            "privMB": 12
+          },
+          "utility:StorageService": {
+            "n": 1,
+            "wsMB": 20.1,
+            "privMB": 8.9
+          },
+          "renderer": {
+            "n": 1,
+            "wsMB": 141.2,
+            "privMB": 92.1
+          }
+        },
+        "jsHeap": {
+          "usedMB": 8.4,
+          "totalMB": 9.3
+        },
+        "dom": {
+          "documents": 1,
+          "nodes": 8365,
+          "jsEventListeners": 641
+        }
+      },
+      {
+        "label": "5-empty-root",
+        "wsMB": 437.8,
+        "privMB": 277.1,
+        "procs": 7,
+        "byRole": {
+          "browser": {
+            "n": 2,
+            "wsMB": 147,
+            "privMB": 50.6
+          },
+          "crashpad-handler": {
+            "n": 1,
+            "wsMB": 13,
+            "privMB": 3
+          },
+          "gpu-process": {
+            "n": 1,
+            "wsMB": 80.9,
+            "privMB": 113.9
+          },
+          "utility:NetworkService": {
+            "n": 1,
+            "wsMB": 39.1,
+            "privMB": 12
+          },
+          "utility:StorageService": {
+            "n": 1,
+            "wsMB": 20.1,
+            "privMB": 8.9
+          },
+          "renderer": {
+            "n": 1,
+            "wsMB": 137.7,
+            "privMB": 88.7
+          }
+        },
+        "jsHeap": {
+          "usedMB": 8.4,
+          "totalMB": 9.3
+        },
+        "dom": {
+          "documents": 1,
+          "nodes": 8315,
+          "jsEventListeners": 641
+        }
+      }
+    ],
+    "at": "2026-08-22T07:41:56.044Z"
+  }
+}

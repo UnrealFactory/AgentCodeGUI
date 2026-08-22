@@ -62,5 +62,6 @@
       "wsMB": 189.8,
       "privMB": 137.8
     }
-  ]
+  ],
+  "arm": "최종 채택 세트에서 CCG_GPU_PROCESS=1로 --in-process-gpu만 뺀 팔. 이 파일 vs run1/run2가 그 레버의 A/B다."
 }

@@ -2,35 +2,33 @@
   "app": "tauri-3.0.0",
   "runs": [
     {
-      "winMs": 253,
-      "rootMs": 508
+      "winMs": 321,
+      "rootMs": 429,
+      "paintMs": 350
     },
     {
-      "winMs": 240,
-      "rootMs": 324
+      "winMs": 293,
+      "rootMs": 397,
+      "paintMs": 341
     },
     {
-      "winMs": 241,
-      "rootMs": 330
+      "winMs": 320,
+      "rootMs": 397,
+      "paintMs": 337
     },
     {
-      "winMs": 254,
-      "rootMs": 321
-    },
-    {
-      "winMs": 243,
-      "rootMs": 322
-    },
-    {
-      "winMs": 244,
-      "rootMs": 316
+      "winMs": 314,
+      "rootMs": 362,
+      "paintMs": 324
     }
   ],
   "firstRun": {
-    "winMs": 253,
-    "rootMs": 508
+    "winMs": 321,
+    "rootMs": 429,
+    "paintMs": 350
   },
-  "medianWinMs": 243,
-  "medianRootMs": 322,
-  "at": "2026-08-22T04:49:04.246Z"
+  "medianWinMs": 314,
+  "medianRootMs": 397,
+  "medianPaintMs": 337,
+  "at": "2026-08-22T08:47:15.520Z"
 }

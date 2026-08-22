@@ -3,49 +3,49 @@
   "panels": 4,
   "itemsPerPanel": 120,
   "gridPanels": 4,
-  "at": "2026-08-22T08:49:02.573Z",
+  "at": "2026-08-22T08:36:37.272Z",
   "idleGrid": {
-    "totalWsMB": 491.2,
-    "totalPrivMB": 337.4,
+    "totalWsMB": 485.9,
+    "totalPrivMB": 328.6,
     "procs": 7
   },
   "idleWithWindows": {
-    "totalWsMB": 511.4,
-    "totalPrivMB": 344.4,
+    "totalWsMB": 515.5,
+    "totalPrivMB": 320.1,
     "procs": 7
   },
   "windowCost": {
-    "wsMBPerWindow": 10.1,
+    "wsMBPerWindow": 14.8,
     "procsAdded": 0
   },
   "scrollInPanel": {
-    "frames": 356,
-    "avgFps": 60,
+    "frames": 357,
+    "avgFps": 59.9,
     "p95Ms": 16.8,
-    "worstMs": 16.9,
+    "worstMs": 16.8,
     "droppedPct": 0,
     "longTaskMs": 0
   },
   "procDetail": [
     {
       "name": "agentcodegui.exe",
-      "wsMB": 34.1,
-      "privMB": 15.6
+      "wsMB": 36.5,
+      "privMB": 16.2
     },
     {
       "name": "msedgewebview2.exe",
-      "wsMB": 137.1,
-      "privMB": 49.5
+      "wsMB": 137,
+      "privMB": 49.6
     },
     {
       "name": "msedgewebview2.exe",
-      "wsMB": 19.3,
-      "privMB": 3.4
+      "wsMB": 19.1,
+      "privMB": 3.3
     },
     {
       "name": "msedgewebview2.exe",
-      "wsMB": 90.5,
-      "privMB": 124.4
+      "wsMB": 93.6,
+      "privMB": 125.5
     },
     {
       "name": "msedgewebview2.exe",
@@ -54,13 +54,14 @@
     },
     {
       "name": "msedgewebview2.exe",
-      "wsMB": 21.5,
-      "privMB": 9.4
+      "wsMB": 21.2,
+      "privMB": 9
     },
     {
       "name": "msedgewebview2.exe",
-      "wsMB": 189.8,
-      "privMB": 137.8
+      "wsMB": 194.2,
+      "privMB": 141.8
     }
-  ]
+  ],
+  "arm": "BASE_ONLY + --process-per-site 단독. 창당 14.8MB/+0프로세스 — 창 비용 레버의 정체."
 }

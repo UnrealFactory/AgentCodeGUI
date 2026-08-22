@@ -1,0 +1,3132 @@
+{
+  "what": "WEBVIEW2 스위치 레버별 유휴 메모리 (CDP off · 첫 가시 창 기준 정착)",
+  "method": {
+    "home": ".bench-home-flags — 멀티 4패널 × 120항목 픽스처(주 게이트와 같은 무대)",
+    "cdp": false,
+    "settleSec": 25,
+    "repeats": 2,
+    "control": "A0-control-wry-default"
+  },
+  "env": {
+    "ramGB": 63.8,
+    "cpu": "13th Gen Intel(R) Core(TM) i7-13700KF",
+    "os": "Microsoft Windows 11 Home 26200"
+  },
+  "results": [
+    {
+      "name": "A0-control-wry-default",
+      "note": "wry 기본 인자만 (--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection)",
+      "env": {
+        "CCG_WEBVIEW_ARGS_BASE_ONLY": "1"
+      },
+      "runs": [
+        {
+          "wsMB": 449.4,
+          "privMB": 308.6,
+          "procs": 7
+        },
+        {
+          "wsMB": 453.5,
+          "privMB": 313.9,
+          "procs": 7
+        }
+      ],
+      "wsMB": 451,
+      "privMB": 311,
+      "procs": 7,
+      "byRole": {
+        "browser": {
+          "n": 2,
+          "wsMB": 149.5,
+          "privMB": 50.8
+        },
+        "crashpad-handler": {
+          "n": 1,
+          "wsMB": 10.1,
+          "privMB": 2.5
+        },
+        "gpu-process": {
+          "n": 1,
+          "wsMB": 74.6,
+          "privMB": 123.4
+        },
+        "utility:NetworkService": {
+          "n": 1,
+          "wsMB": 39.3,
+          "privMB": 12.6
+        },
+        "utility:StorageService": {
+          "n": 1,
+          "wsMB": 20.1,
+          "privMB": 9
+        },
+        "renderer": {
+          "n": 1,
+          "wsMB": 159.7,
+          "privMB": 115.6
+        }
+      },
+      "lastDetail": [
+        {
+          "name": "agentcodegui.exe",
+          "sub": "",
+          "pid": 32172,
+          "wsMB": 30.9,
+          "role": "browser",
+          "privMB": 11.8
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 12256,
+          "wsMB": 118.6,
+          "role": "browser",
+          "privMB": 39
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 24804,
+          "wsMB": 10.1,
+          "role": "crashpad-handler",
+          "privMB": 2.5
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 15888,
+          "wsMB": 74.6,
+          "role": "gpu-process",
+          "privMB": 123.4
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "network.mojom.NetworkService",
+          "pid": 17788,
+          "wsMB": 39.3,
+          "role": "utility",
+          "privMB": 12.6
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "storage.mojom.StorageService",
+          "pid": 14408,
+          "wsMB": 20.1,
+          "role": "utility",
+          "privMB": 9
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 18636,
+          "wsMB": 159.7,
+          "role": "renderer",
+          "privMB": 115.6
+        }
+      ],
+      "deltaWsMB": 0,
+      "deltaPrivMB": 0,
+      "deltaProcs": 0
+    },
+    {
+      "name": "B1-spare-renderer-off",
+      "note": "Edge가 미리 띄우는 예비 렌더러 프로세스 끄기",
+      "env": {
+        "CCG_WEBVIEW_ARGS_BASE_ONLY": "1",
+        "CCG_WEBVIEW_DISABLE_FEATURES": "SpareRendererForSitePerProcess"
+      },
+      "runs": [
+        {
+          "wsMB": 480.6,
+          "privMB": 325.8,
+          "procs": 7
+        },
+        {
+          "wsMB": 532.7,
+          "privMB": 521.6,
+          "procs": 7
+        }
+      ],
+      "wsMB": 507,
+      "privMB": 424,
+      "procs": 7,
+      "byRole": {
+        "browser": {
+          "n": 2,
+          "wsMB": 157.4,
+          "privMB": 51
+        },
+        "crashpad-handler": {
+          "n": 1,
+          "wsMB": 10.4,
+          "privMB": 2.5
+        },
+        "gpu-process": {
+          "n": 1,
+          "wsMB": 109.6,
+          "privMB": 303.3
+        },
+        "utility:NetworkService": {
+          "n": 1,
+          "wsMB": 42.4,
+          "privMB": 13.1
+        },
+        "utility:StorageService": {
+          "n": 1,
+          "wsMB": 21.2,
+          "privMB": 8.9
+        },
+        "renderer": {
+          "n": 1,
+          "wsMB": 191.6,
+          "privMB": 142.9
+        }
+      },
+      "lastDetail": [
+        {
+          "name": "agentcodegui.exe",
+          "sub": "",
+          "pid": 9244,
+          "wsMB": 32.3,
+          "role": "browser",
+          "privMB": 12.4
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 28848,
+          "wsMB": 125.1,
+          "role": "browser",
+          "privMB": 38.6
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 27032,
+          "wsMB": 10.4,
+          "role": "crashpad-handler",
+          "privMB": 2.5
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 16692,
+          "wsMB": 109.6,
+          "role": "gpu-process",
+          "privMB": 303.3
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "network.mojom.NetworkService",
+          "pid": 25692,
+          "wsMB": 42.4,
+          "role": "utility",
+          "privMB": 13.1
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "storage.mojom.StorageService",
+          "pid": 23360,
+          "wsMB": 21.2,
+          "role": "utility",
+          "privMB": 8.9
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 29960,
+          "wsMB": 191.6,
+          "role": "renderer",
+          "privMB": 142.9
+        }
+      ],
+      "deltaWsMB": 56,
+      "deltaPrivMB": 113,
+      "deltaProcs": 0
+    },
+    {
+      "name": "B2-renderer-limit-1",
+      "note": "렌더러 프로세스 상한 1",
+      "env": {
+        "CCG_WEBVIEW_ARGS_BASE_ONLY": "1",
+        "CCG_WEBVIEW_ARGS_EXTRA": "--renderer-process-limit=1"
+      },
+      "runs": [
+        {
+          "wsMB": 467.3,
+          "privMB": 312,
+          "procs": 7
+        },
+        {
+          "wsMB": 480.1,
+          "privMB": 312.4,
+          "procs": 7
+        }
+      ],
+      "wsMB": 474,
+      "privMB": 312,
+      "procs": 7,
+      "byRole": {
+        "browser": {
+          "n": 2,
+          "wsMB": 155.8,
+          "privMB": 50.8
+        },
+        "crashpad-handler": {
+          "n": 1,
+          "wsMB": 10.4,
+          "privMB": 2.5
+        },
+        "gpu-process": {
+          "n": 1,
+          "wsMB": 84.5,
+          "privMB": 118.8
+        },
+        "utility:NetworkService": {
+          "n": 1,
+          "wsMB": 42,
+          "privMB": 12.8
+        },
+        "utility:StorageService": {
+          "n": 1,
+          "wsMB": 21.2,
+          "privMB": 8.9
+        },
+        "renderer": {
+          "n": 1,
+          "wsMB": 166.3,
+          "privMB": 118.7
+        }
+      },
+      "lastDetail": [
+        {
+          "name": "agentcodegui.exe",
+          "sub": "",
+          "pid": 18336,
+          "wsMB": 32.1,
+          "role": "browser",
+          "privMB": 12
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 16516,
+          "wsMB": 123.7,
+          "role": "browser",
+          "privMB": 38.8
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 2636,
+          "wsMB": 10.4,
+          "role": "crashpad-handler",
+          "privMB": 2.5
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 22696,
+          "wsMB": 84.5,
+          "role": "gpu-process",
+          "privMB": 118.8
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "network.mojom.NetworkService",
+          "pid": 24680,
+          "wsMB": 42,
+          "role": "utility",
+          "privMB": 12.8
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "storage.mojom.StorageService",
+          "pid": 23924,
+          "wsMB": 21.2,
+          "role": "utility",
+          "privMB": 8.9
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 7304,
+          "wsMB": 166.3,
+          "role": "renderer",
+          "privMB": 118.7
+        }
+      ],
+      "deltaWsMB": 23,
+      "deltaPrivMB": 1,
+      "deltaProcs": 0
+    },
+    {
+      "name": "B3-process-per-site",
+      "note": "같은 사이트 문서는 프로세스 공유",
+      "env": {
+        "CCG_WEBVIEW_ARGS_BASE_ONLY": "1",
+        "CCG_WEBVIEW_ARGS_EXTRA": "--process-per-site"
+      },
+      "runs": [
+        {
+          "wsMB": 465.5,
+          "privMB": 311.8,
+          "procs": 7
+        },
+        {
+          "wsMB": 464.6,
+          "privMB": 308.7,
+          "procs": 7
+        }
+      ],
+      "wsMB": 465,
+      "privMB": 310,
+      "procs": 7,
+      "byRole": {
+        "browser": {
+          "n": 2,
+          "wsMB": 153,
+          "privMB": 50.3
+        },
+        "crashpad-handler": {
+          "n": 1,
+          "wsMB": 10.3,
+          "privMB": 2.5
+        },
+        "gpu-process": {
+          "n": 1,
+          "wsMB": 77.1,
+          "privMB": 118.5
+        },
+        "utility:NetworkService": {
+          "n": 1,
+          "wsMB": 42,
+          "privMB": 12.8
+        },
+        "utility:StorageService": {
+          "n": 1,
+          "wsMB": 20.8,
+          "privMB": 8.9
+        },
+        "renderer": {
+          "n": 1,
+          "wsMB": 161.4,
+          "privMB": 115.6
+        }
+      },
+      "lastDetail": [
+        {
+          "name": "agentcodegui.exe",
+          "sub": "",
+          "pid": 6604,
+          "wsMB": 29.4,
+          "role": "browser",
+          "privMB": 11.2
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 1784,
+          "wsMB": 123.6,
+          "role": "browser",
+          "privMB": 39.1
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 3052,
+          "wsMB": 10.3,
+          "role": "crashpad-handler",
+          "privMB": 2.5
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 16768,
+          "wsMB": 77.1,
+          "role": "gpu-process",
+          "privMB": 118.5
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "network.mojom.NetworkService",
+          "pid": 17508,
+          "wsMB": 42,
+          "role": "utility",
+          "privMB": 12.8
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "storage.mojom.StorageService",
+          "pid": 15416,
+          "wsMB": 20.8,
+          "role": "utility",
+          "privMB": 8.9
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 24624,
+          "wsMB": 161.4,
+          "role": "renderer",
+          "privMB": 115.6
+        }
+      ],
+      "deltaWsMB": 14,
+      "deltaPrivMB": -1,
+      "deltaProcs": 0
+    },
+    {
+      "name": "B4-no-site-isolation",
+      "note": "사이트 격리 해제(렌더러 통합)",
+      "env": {
+        "CCG_WEBVIEW_ARGS_BASE_ONLY": "1",
+        "CCG_WEBVIEW_ARGS_EXTRA": "--disable-site-isolation-trials"
+      },
+      "runs": [
+        {
+          "wsMB": 465,
+          "privMB": 309.6,
+          "procs": 7
+        },
+        {
+          "wsMB": 466.2,
+          "privMB": 303.2,
+          "procs": 7
+        }
+      ],
+      "wsMB": 466,
+      "privMB": 306,
+      "procs": 7,
+      "byRole": {
+        "browser": {
+          "n": 2,
+          "wsMB": 153.4,
+          "privMB": 49.6
+        },
+        "crashpad-handler": {
+          "n": 1,
+          "wsMB": 10.5,
+          "privMB": 2.5
+        },
+        "gpu-process": {
+          "n": 1,
+          "wsMB": 81,
+          "privMB": 118.7
+        },
+        "utility:NetworkService": {
+          "n": 1,
+          "wsMB": 41.6,
+          "privMB": 12.7
+        },
+        "utility:StorageService": {
+          "n": 1,
+          "wsMB": 21.1,
+          "privMB": 8.9
+        },
+        "renderer": {
+          "n": 1,
+          "wsMB": 158.6,
+          "privMB": 110.8
+        }
+      },
+      "lastDetail": [
+        {
+          "name": "agentcodegui.exe",
+          "sub": "",
+          "pid": 16816,
+          "wsMB": 29.9,
+          "role": "browser",
+          "privMB": 11.7
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 5168,
+          "wsMB": 123.5,
+          "role": "browser",
+          "privMB": 37.9
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 14568,
+          "wsMB": 10.5,
+          "role": "crashpad-handler",
+          "privMB": 2.5
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 33848,
+          "wsMB": 81,
+          "role": "gpu-process",
+          "privMB": 118.7
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "network.mojom.NetworkService",
+          "pid": 20020,
+          "wsMB": 41.6,
+          "role": "utility",
+          "privMB": 12.7
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "storage.mojom.StorageService",
+          "pid": 29512,
+          "wsMB": 21.1,
+          "role": "utility",
+          "privMB": 8.9
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 15656,
+          "wsMB": 158.6,
+          "role": "renderer",
+          "privMB": 110.8
+        }
+      ],
+      "deltaWsMB": 15,
+      "deltaPrivMB": -5,
+      "deltaProcs": 0
+    },
+    {
+      "name": "B5-network-in-process",
+      "note": "네트워크 서비스를 브라우저 프로세스 안에서",
+      "env": {
+        "CCG_WEBVIEW_ARGS_BASE_ONLY": "1",
+        "CCG_WEBVIEW_ENABLE_FEATURES": "NetworkServiceInProcess"
+      },
+      "runs": [
+        {
+          "wsMB": 464.3,
+          "privMB": 313.3,
+          "procs": 7
+        },
+        {
+          "wsMB": 466.6,
+          "privMB": 299.9,
+          "procs": 7
+        }
+      ],
+      "wsMB": 465,
+      "privMB": 307,
+      "procs": 7,
+      "byRole": {
+        "browser": {
+          "n": 2,
+          "wsMB": 153.6,
+          "privMB": 49.7
+        },
+        "crashpad-handler": {
+          "n": 1,
+          "wsMB": 10.4,
+          "privMB": 2.5
+        },
+        "gpu-process": {
+          "n": 1,
+          "wsMB": 81.1,
+          "privMB": 114.7
+        },
+        "utility:NetworkService": {
+          "n": 1,
+          "wsMB": 42.1,
+          "privMB": 13
+        },
+        "utility:StorageService": {
+          "n": 1,
+          "wsMB": 20.8,
+          "privMB": 8.9
+        },
+        "renderer": {
+          "n": 1,
+          "wsMB": 158.7,
+          "privMB": 111
+        }
+      },
+      "lastDetail": [
+        {
+          "name": "agentcodegui.exe",
+          "sub": "",
+          "pid": 20276,
+          "wsMB": 29.7,
+          "role": "browser",
+          "privMB": 11.5
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 22728,
+          "wsMB": 123.9,
+          "role": "browser",
+          "privMB": 38.2
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 30128,
+          "wsMB": 10.4,
+          "role": "crashpad-handler",
+          "privMB": 2.5
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 34336,
+          "wsMB": 81.1,
+          "role": "gpu-process",
+          "privMB": 114.7
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "network.mojom.NetworkService",
+          "pid": 6196,
+          "wsMB": 42.1,
+          "role": "utility",
+          "privMB": 13
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "storage.mojom.StorageService",
+          "pid": 3252,
+          "wsMB": 20.8,
+          "role": "utility",
+          "privMB": 8.9
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 19720,
+          "wsMB": 158.7,
+          "role": "renderer",
+          "privMB": 111
+        }
+      ],
+      "deltaWsMB": 14,
+      "deltaPrivMB": -4,
+      "deltaProcs": 0
+    },
+    {
+      "name": "B6-audio-in-process",
+      "note": "오디오 서비스 별도 프로세스 끄기",
+      "env": {
+        "CCG_WEBVIEW_ARGS_BASE_ONLY": "1",
+        "CCG_WEBVIEW_DISABLE_FEATURES": "AudioServiceOutOfProcess"
+      },
+      "runs": [
+        {
+          "wsMB": 467.3,
+          "privMB": 317.5,
+          "procs": 7
+        },
+        {
+          "wsMB": 465.6,
+          "privMB": 321.5,
+          "procs": 7
+        }
+      ],
+      "wsMB": 466,
+      "privMB": 320,
+      "procs": 7,
+      "byRole": {
+        "browser": {
+          "n": 2,
+          "wsMB": 154.3,
+          "privMB": 50.4
+        },
+        "crashpad-handler": {
+          "n": 1,
+          "wsMB": 10.3,
+          "privMB": 2.5
+        },
+        "gpu-process": {
+          "n": 1,
+          "wsMB": 79.9,
+          "privMB": 135.5
+        },
+        "utility:NetworkService": {
+          "n": 1,
+          "wsMB": 42.1,
+          "privMB": 12.9
+        },
+        "utility:StorageService": {
+          "n": 1,
+          "wsMB": 21.3,
+          "privMB": 8.9
+        },
+        "renderer": {
+          "n": 1,
+          "wsMB": 157.7,
+          "privMB": 111.3
+        }
+      },
+      "lastDetail": [
+        {
+          "name": "agentcodegui.exe",
+          "sub": "",
+          "pid": 33484,
+          "wsMB": 29.7,
+          "role": "browser",
+          "privMB": 11.2
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 28516,
+          "wsMB": 124.6,
+          "role": "browser",
+          "privMB": 39.2
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 32912,
+          "wsMB": 10.3,
+          "role": "crashpad-handler",
+          "privMB": 2.5
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 24508,
+          "wsMB": 79.9,
+          "role": "gpu-process",
+          "privMB": 135.5
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "network.mojom.NetworkService",
+          "pid": 16216,
+          "wsMB": 42.1,
+          "role": "utility",
+          "privMB": 12.9
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "storage.mojom.StorageService",
+          "pid": 15368,
+          "wsMB": 21.3,
+          "role": "utility",
+          "privMB": 8.9
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 13012,
+          "wsMB": 157.7,
+          "role": "renderer",
+          "privMB": 111.3
+        }
+      ],
+      "deltaWsMB": 15,
+      "deltaPrivMB": 9,
+      "deltaProcs": 0
+    },
+    {
+      "name": "B7-in-process-gpu",
+      "note": "GPU 프로세스를 브라우저 안으로 (스크롤 FPS 확인 필수)",
+      "env": {
+        "CCG_WEBVIEW_ARGS_BASE_ONLY": "1",
+        "CCG_WEBVIEW_ARGS_EXTRA": "--in-process-gpu"
+      },
+      "runs": [
+        {
+          "wsMB": 474.1,
+          "privMB": 242.3,
+          "procs": 6
+        },
+        {
+          "wsMB": 460.5,
+          "privMB": 241.8,
+          "procs": 6
+        }
+      ],
+      "wsMB": 467,
+      "privMB": 242,
+      "procs": 6,
+      "byRole": {
+        "browser": {
+          "n": 2,
+          "wsMB": 216,
+          "privMB": 103.4
+        },
+        "crashpad-handler": {
+          "n": 1,
+          "wsMB": 10.4,
+          "privMB": 2.5
+        },
+        "utility:NetworkService": {
+          "n": 1,
+          "wsMB": 41.8,
+          "privMB": 12.8
+        },
+        "utility:StorageService": {
+          "n": 1,
+          "wsMB": 21.1,
+          "privMB": 8.9
+        },
+        "renderer": {
+          "n": 1,
+          "wsMB": 171.1,
+          "privMB": 114.1
+        }
+      },
+      "lastDetail": [
+        {
+          "name": "agentcodegui.exe",
+          "sub": "",
+          "pid": 24688,
+          "wsMB": 30,
+          "role": "browser",
+          "privMB": 11.8
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 17732,
+          "wsMB": 186,
+          "role": "browser",
+          "privMB": 91.6
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 30284,
+          "wsMB": 10.4,
+          "role": "crashpad-handler",
+          "privMB": 2.5
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "network.mojom.NetworkService",
+          "pid": 5308,
+          "wsMB": 41.8,
+          "role": "utility",
+          "privMB": 12.8
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "storage.mojom.StorageService",
+          "pid": 9572,
+          "wsMB": 21.1,
+          "role": "utility",
+          "privMB": 8.9
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 29488,
+          "wsMB": 171.1,
+          "role": "renderer",
+          "privMB": 114.1
+        }
+      ],
+      "deltaWsMB": 16,
+      "deltaPrivMB": -69,
+      "deltaProcs": -1
+    },
+    {
+      "name": "B8-single-process",
+      "note": "MS 미지원 — 데이터 포인트로만",
+      "env": {
+        "CCG_WEBVIEW_ARGS_BASE_ONLY": "1",
+        "CCG_WEBVIEW_ARGS_EXTRA": "--single-process"
+      },
+      "runs": [
+        {
+          "wsMB": 354.7,
+          "privMB": 197.4,
+          "procs": 3
+        },
+        {
+          "wsMB": 350.3,
+          "privMB": 195.3,
+          "procs": 3
+        }
+      ],
+      "wsMB": 353,
+      "privMB": 196,
+      "procs": 3,
+      "byRole": {
+        "browser": {
+          "n": 2,
+          "wsMB": 339.9,
+          "privMB": 192.8
+        },
+        "crashpad-handler": {
+          "n": 1,
+          "wsMB": 10.4,
+          "privMB": 2.4
+        }
+      },
+      "lastDetail": [
+        {
+          "name": "agentcodegui.exe",
+          "sub": "",
+          "pid": 32184,
+          "wsMB": 29.7,
+          "role": "browser",
+          "privMB": 11.4
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 31196,
+          "wsMB": 310.2,
+          "role": "browser",
+          "privMB": 181.4
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 14012,
+          "wsMB": 10.4,
+          "role": "crashpad-handler",
+          "privMB": 2.4
+        }
+      ],
+      "deltaWsMB": -98,
+      "deltaPrivMB": -115,
+      "deltaProcs": -4
+    },
+    {
+      "name": "B9-storage-in-process",
+      "note": "스토리지 서비스를 브라우저 프로세스 안에서 (utility 하나 제거 시도)",
+      "env": {
+        "CCG_WEBVIEW_ARGS_BASE_ONLY": "1",
+        "CCG_WEBVIEW_DISABLE_FEATURES": "StorageServiceOutOfProcess"
+      },
+      "runs": [
+        {
+          "wsMB": 462.3,
+          "privMB": 309.9,
+          "procs": 7
+        },
+        {
+          "wsMB": 466.3,
+          "privMB": 316.3,
+          "procs": 7
+        }
+      ],
+      "wsMB": 464,
+      "privMB": 313,
+      "procs": 7,
+      "byRole": {
+        "browser": {
+          "n": 2,
+          "wsMB": 156.3,
+          "privMB": 51.2
+        },
+        "crashpad-handler": {
+          "n": 1,
+          "wsMB": 10.3,
+          "privMB": 2.5
+        },
+        "gpu-process": {
+          "n": 1,
+          "wsMB": 77,
+          "privMB": 127.6
+        },
+        "utility:NetworkService": {
+          "n": 1,
+          "wsMB": 42.1,
+          "privMB": 12.8
+        },
+        "utility:StorageService": {
+          "n": 1,
+          "wsMB": 20.9,
+          "privMB": 9
+        },
+        "renderer": {
+          "n": 1,
+          "wsMB": 159.6,
+          "privMB": 113.3
+        }
+      },
+      "lastDetail": [
+        {
+          "name": "agentcodegui.exe",
+          "sub": "",
+          "pid": 10460,
+          "wsMB": 32.5,
+          "role": "browser",
+          "privMB": 11.9
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 34356,
+          "wsMB": 123.8,
+          "role": "browser",
+          "privMB": 39.3
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 31040,
+          "wsMB": 10.3,
+          "role": "crashpad-handler",
+          "privMB": 2.5
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 8780,
+          "wsMB": 77,
+          "role": "gpu-process",
+          "privMB": 127.6
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "network.mojom.NetworkService",
+          "pid": 29428,
+          "wsMB": 42.1,
+          "role": "utility",
+          "privMB": 12.8
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "storage.mojom.StorageService",
+          "pid": 27012,
+          "wsMB": 20.9,
+          "role": "utility",
+          "privMB": 9
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 29436,
+          "wsMB": 159.6,
+          "role": "renderer",
+          "privMB": 113.3
+        }
+      ],
+      "deltaWsMB": 13,
+      "deltaPrivMB": 2,
+      "deltaProcs": 0
+    },
+    {
+      "name": "B10-no-crashpad",
+      "note": "crashpad-handler 프로세스 제거 시도",
+      "env": {
+        "CCG_WEBVIEW_ARGS_BASE_ONLY": "1",
+        "CCG_WEBVIEW_ARGS_EXTRA": "--disable-breakpad --disable-crash-reporter"
+      },
+      "runs": [
+        {
+          "wsMB": 470.7,
+          "privMB": 312.6,
+          "procs": 7
+        },
+        {
+          "wsMB": 465.4,
+          "privMB": 322.3,
+          "procs": 7
+        }
+      ],
+      "wsMB": 468,
+      "privMB": 317,
+      "procs": 7,
+      "byRole": {
+        "browser": {
+          "n": 2,
+          "wsMB": 153.8,
+          "privMB": 49.6
+        },
+        "crashpad-handler": {
+          "n": 1,
+          "wsMB": 10.4,
+          "privMB": 2.5
+        },
+        "gpu-process": {
+          "n": 1,
+          "wsMB": 80.3,
+          "privMB": 136.9
+        },
+        "utility:NetworkService": {
+          "n": 1,
+          "wsMB": 42.1,
+          "privMB": 13
+        },
+        "utility:StorageService": {
+          "n": 1,
+          "wsMB": 21,
+          "privMB": 9
+        },
+        "renderer": {
+          "n": 1,
+          "wsMB": 157.9,
+          "privMB": 111.4
+        }
+      },
+      "lastDetail": [
+        {
+          "name": "agentcodegui.exe",
+          "sub": "",
+          "pid": 34300,
+          "wsMB": 29.7,
+          "role": "browser",
+          "privMB": 11.4
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 30264,
+          "wsMB": 124.1,
+          "role": "browser",
+          "privMB": 38.2
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 7208,
+          "wsMB": 10.4,
+          "role": "crashpad-handler",
+          "privMB": 2.5
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 2092,
+          "wsMB": 80.3,
+          "role": "gpu-process",
+          "privMB": 136.9
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "network.mojom.NetworkService",
+          "pid": 17604,
+          "wsMB": 42.1,
+          "role": "utility",
+          "privMB": 13
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "storage.mojom.StorageService",
+          "pid": 27572,
+          "wsMB": 21,
+          "role": "utility",
+          "privMB": 9
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 13204,
+          "wsMB": 157.9,
+          "role": "renderer",
+          "privMB": 111.4
+        }
+      ],
+      "deltaWsMB": 17,
+      "deltaPrivMB": 6,
+      "deltaProcs": 0
+    },
+    {
+      "name": "B11-net-in-process-switch",
+      "note": "feature가 아니라 스위치로 네트워크 인프로세스 (B5가 안 먹을 때의 대안)",
+      "env": {
+        "CCG_WEBVIEW_ARGS_BASE_ONLY": "1",
+        "CCG_WEBVIEW_ARGS_EXTRA": "--single-process-network"
+      },
+      "runs": [
+        {
+          "wsMB": 463.5,
+          "privMB": 314.8,
+          "procs": 7
+        },
+        {
+          "wsMB": 465.9,
+          "privMB": 310.5,
+          "procs": 7
+        }
+      ],
+      "wsMB": 465,
+      "privMB": 313,
+      "procs": 7,
+      "byRole": {
+        "browser": {
+          "n": 2,
+          "wsMB": 153.8,
+          "privMB": 49.8
+        },
+        "crashpad-handler": {
+          "n": 1,
+          "wsMB": 10.3,
+          "privMB": 2.5
+        },
+        "gpu-process": {
+          "n": 1,
+          "wsMB": 80.9,
+          "privMB": 124.9
+        },
+        "utility:NetworkService": {
+          "n": 1,
+          "wsMB": 41.9,
+          "privMB": 12.9
+        },
+        "utility:StorageService": {
+          "n": 1,
+          "wsMB": 21.1,
+          "privMB": 8.9
+        },
+        "renderer": {
+          "n": 1,
+          "wsMB": 157.8,
+          "privMB": 111.4
+        }
+      },
+      "lastDetail": [
+        {
+          "name": "agentcodegui.exe",
+          "sub": "",
+          "pid": 17068,
+          "wsMB": 29.8,
+          "role": "browser",
+          "privMB": 11.7
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 22148,
+          "wsMB": 124,
+          "role": "browser",
+          "privMB": 38.1
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 20736,
+          "wsMB": 10.3,
+          "role": "crashpad-handler",
+          "privMB": 2.5
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 21204,
+          "wsMB": 80.9,
+          "role": "gpu-process",
+          "privMB": 124.9
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "network.mojom.NetworkService",
+          "pid": 25716,
+          "wsMB": 41.9,
+          "role": "utility",
+          "privMB": 12.9
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "storage.mojom.StorageService",
+          "pid": 16228,
+          "wsMB": 21.1,
+          "role": "utility",
+          "privMB": 8.9
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 19768,
+          "wsMB": 157.8,
+          "role": "renderer",
+          "privMB": 111.4
+        }
+      ],
+      "deltaWsMB": 14,
+      "deltaPrivMB": 2,
+      "deltaProcs": 0
+    },
+    {
+      "name": "C1-features-off-bulk",
+      "note": "번역·힌트·bfcache·캐스트·자동완성 서버통신 끄기",
+      "env": {
+        "CCG_WEBVIEW_ARGS_BASE_ONLY": "1",
+        "CCG_WEBVIEW_DISABLE_FEATURES": "Translate,OptimizationHints,OptimizationGuideModelDownloading,BackForwardCache,MediaRouter,InterestFeedContentSuggestions,AutofillServerCommunication"
+      },
+      "runs": [
+        {
+          "wsMB": 474.9,
+          "privMB": 338.5,
+          "procs": 7
+        },
+        {
+          "wsMB": 465.1,
+          "privMB": 316.2,
+          "procs": 7
+        }
+      ],
+      "wsMB": 470,
+      "privMB": 327,
+      "procs": 7,
+      "byRole": {
+        "browser": {
+          "n": 2,
+          "wsMB": 153,
+          "privMB": 49.5
+        },
+        "crashpad-handler": {
+          "n": 1,
+          "wsMB": 10.3,
+          "privMB": 2.5
+        },
+        "gpu-process": {
+          "n": 1,
+          "wsMB": 77.1,
+          "privMB": 126.7
+        },
+        "utility:NetworkService": {
+          "n": 1,
+          "wsMB": 42.2,
+          "privMB": 12.8
+        },
+        "utility:StorageService": {
+          "n": 1,
+          "wsMB": 21.2,
+          "privMB": 9
+        },
+        "renderer": {
+          "n": 1,
+          "wsMB": 161.1,
+          "privMB": 115.7
+        }
+      },
+      "lastDetail": [
+        {
+          "name": "agentcodegui.exe",
+          "sub": "",
+          "pid": 30672,
+          "wsMB": 29.8,
+          "role": "browser",
+          "privMB": 11.6
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 22388,
+          "wsMB": 123.2,
+          "role": "browser",
+          "privMB": 37.9
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 31580,
+          "wsMB": 10.3,
+          "role": "crashpad-handler",
+          "privMB": 2.5
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 34704,
+          "wsMB": 77.1,
+          "role": "gpu-process",
+          "privMB": 126.7
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "network.mojom.NetworkService",
+          "pid": 13060,
+          "wsMB": 42.2,
+          "role": "utility",
+          "privMB": 12.8
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "storage.mojom.StorageService",
+          "pid": 23172,
+          "wsMB": 21.2,
+          "role": "utility",
+          "privMB": 9
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 6312,
+          "wsMB": 161.1,
+          "role": "renderer",
+          "privMB": 115.7
+        }
+      ],
+      "deltaWsMB": 19,
+      "deltaPrivMB": 16,
+      "deltaProcs": 0
+    },
+    {
+      "name": "C2-bg-networking-off",
+      "note": "부팅 잡업(동기화·컴포넌트 업데이트·확장) 끄기",
+      "env": {
+        "CCG_WEBVIEW_ARGS_BASE_ONLY": "1",
+        "CCG_WEBVIEW_ARGS_EXTRA": "--disable-background-networking --disable-sync --disable-component-update --disable-extensions --no-first-run --no-default-browser-check --noerrdialogs"
+      },
+      "runs": [
+        {
+          "wsMB": 467.4,
+          "privMB": 320.9,
+          "procs": 7
+        },
+        {
+          "wsMB": 462.2,
+          "privMB": 318.8,
+          "procs": 7
+        }
+      ],
+      "wsMB": 465,
+      "privMB": 320,
+      "procs": 7,
+      "byRole": {
+        "browser": {
+          "n": 2,
+          "wsMB": 153.9,
+          "privMB": 49.1
+        },
+        "crashpad-handler": {
+          "n": 1,
+          "wsMB": 10.4,
+          "privMB": 2.5
+        },
+        "gpu-process": {
+          "n": 1,
+          "wsMB": 76.8,
+          "privMB": 132.7
+        },
+        "utility:NetworkService": {
+          "n": 1,
+          "wsMB": 39.9,
+          "privMB": 11.7
+        },
+        "utility:StorageService": {
+          "n": 1,
+          "wsMB": 21.1,
+          "privMB": 8.9
+        },
+        "renderer": {
+          "n": 1,
+          "wsMB": 160.2,
+          "privMB": 113.9
+        }
+      },
+      "lastDetail": [
+        {
+          "name": "agentcodegui.exe",
+          "sub": "",
+          "pid": 33512,
+          "wsMB": 32,
+          "role": "browser",
+          "privMB": 11.6
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 6556,
+          "wsMB": 121.9,
+          "role": "browser",
+          "privMB": 37.5
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 12740,
+          "wsMB": 10.4,
+          "role": "crashpad-handler",
+          "privMB": 2.5
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 16092,
+          "wsMB": 76.8,
+          "role": "gpu-process",
+          "privMB": 132.7
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "network.mojom.NetworkService",
+          "pid": 28736,
+          "wsMB": 39.9,
+          "role": "utility",
+          "privMB": 11.7
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "storage.mojom.StorageService",
+          "pid": 33564,
+          "wsMB": 21.1,
+          "role": "utility",
+          "privMB": 8.9
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 14612,
+          "wsMB": 160.2,
+          "role": "renderer",
+          "privMB": 113.9
+        }
+      ],
+      "deltaWsMB": 14,
+      "deltaPrivMB": 9,
+      "deltaProcs": 0
+    },
+    {
+      "name": "D1-disable-gpu-compositing",
+      "note": "GPU 합성 끄기",
+      "env": {
+        "CCG_WEBVIEW_ARGS_BASE_ONLY": "1",
+        "CCG_WEBVIEW_ARGS_EXTRA": "--disable-gpu-compositing"
+      },
+      "runs": [
+        {
+          "wsMB": 492.9,
+          "privMB": 252.4,
+          "procs": 7
+        },
+        {
+          "wsMB": 487.2,
+          "privMB": 250.2,
+          "procs": 7
+        }
+      ],
+      "wsMB": 490,
+      "privMB": 251,
+      "procs": 7,
+      "byRole": {
+        "browser": {
+          "n": 2,
+          "wsMB": 159.8,
+          "privMB": 50.9
+        },
+        "crashpad-handler": {
+          "n": 1,
+          "wsMB": 10.4,
+          "privMB": 2.5
+        },
+        "gpu-process": {
+          "n": 1,
+          "wsMB": 84.7,
+          "privMB": 62.1
+        },
+        "utility:NetworkService": {
+          "n": 1,
+          "wsMB": 41.9,
+          "privMB": 12.7
+        },
+        "utility:StorageService": {
+          "n": 1,
+          "wsMB": 21,
+          "privMB": 8.9
+        },
+        "renderer": {
+          "n": 1,
+          "wsMB": 169.3,
+          "privMB": 113.1
+        }
+      },
+      "lastDetail": [
+        {
+          "name": "agentcodegui.exe",
+          "sub": "",
+          "pid": 2668,
+          "wsMB": 29.8,
+          "role": "browser",
+          "privMB": 11.5
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 3052,
+          "wsMB": 130,
+          "role": "browser",
+          "privMB": 39.4
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 33116,
+          "wsMB": 10.4,
+          "role": "crashpad-handler",
+          "privMB": 2.5
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 4716,
+          "wsMB": 84.7,
+          "role": "gpu-process",
+          "privMB": 62.1
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "network.mojom.NetworkService",
+          "pid": 13128,
+          "wsMB": 41.9,
+          "role": "utility",
+          "privMB": 12.7
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "storage.mojom.StorageService",
+          "pid": 15764,
+          "wsMB": 21,
+          "role": "utility",
+          "privMB": 8.9
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 16312,
+          "wsMB": 169.3,
+          "role": "renderer",
+          "privMB": 113.1
+        }
+      ],
+      "deltaWsMB": 39,
+      "deltaPrivMB": -60,
+      "deltaProcs": 0
+    },
+    {
+      "name": "D2-disable-gpu",
+      "note": "GPU 전면 끄기",
+      "env": {
+        "CCG_WEBVIEW_ARGS_BASE_ONLY": "1",
+        "CCG_WEBVIEW_ARGS_EXTRA": "--disable-gpu"
+      },
+      "runs": [
+        {
+          "wsMB": 466.9,
+          "privMB": 208.7,
+          "procs": 7
+        },
+        {
+          "wsMB": 465.3,
+          "privMB": 206.9,
+          "procs": 7
+        }
+      ],
+      "wsMB": 466,
+      "privMB": 208,
+      "procs": 7,
+      "byRole": {
+        "browser": {
+          "n": 2,
+          "wsMB": 159.5,
+          "privMB": 50.6
+        },
+        "crashpad-handler": {
+          "n": 1,
+          "wsMB": 10.3,
+          "privMB": 2.5
+        },
+        "gpu-process": {
+          "n": 1,
+          "wsMB": 60.4,
+          "privMB": 18
+        },
+        "utility:NetworkService": {
+          "n": 1,
+          "wsMB": 42,
+          "privMB": 12.8
+        },
+        "utility:StorageService": {
+          "n": 1,
+          "wsMB": 21.1,
+          "privMB": 8.9
+        },
+        "renderer": {
+          "n": 1,
+          "wsMB": 172.1,
+          "privMB": 114
+        }
+      },
+      "lastDetail": [
+        {
+          "name": "agentcodegui.exe",
+          "sub": "",
+          "pid": 25160,
+          "wsMB": 29.9,
+          "role": "browser",
+          "privMB": 11.4
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 5064,
+          "wsMB": 129.6,
+          "role": "browser",
+          "privMB": 39.2
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 33156,
+          "wsMB": 10.3,
+          "role": "crashpad-handler",
+          "privMB": 2.5
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 28796,
+          "wsMB": 60.4,
+          "role": "gpu-process",
+          "privMB": 18
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "network.mojom.NetworkService",
+          "pid": 14752,
+          "wsMB": 42,
+          "role": "utility",
+          "privMB": 12.8
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "storage.mojom.StorageService",
+          "pid": 32152,
+          "wsMB": 21.1,
+          "role": "utility",
+          "privMB": 8.9
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 11248,
+          "wsMB": 172.1,
+          "role": "renderer",
+          "privMB": 114
+        }
+      ],
+      "deltaWsMB": 15,
+      "deltaPrivMB": -103,
+      "deltaProcs": 0
+    },
+    {
+      "name": "D3-raster-1-thread",
+      "note": "래스터 스레드 1개",
+      "env": {
+        "CCG_WEBVIEW_ARGS_BASE_ONLY": "1",
+        "CCG_WEBVIEW_ARGS_EXTRA": "--num-raster-threads=1 --disable-partial-raster"
+      },
+      "runs": [
+        {
+          "wsMB": 466,
+          "privMB": 315.4,
+          "procs": 7
+        },
+        {
+          "wsMB": 474.6,
+          "privMB": 316.4,
+          "procs": 7
+        }
+      ],
+      "wsMB": 470,
+      "privMB": 316,
+      "procs": 7,
+      "byRole": {
+        "browser": {
+          "n": 2,
+          "wsMB": 155.6,
+          "privMB": 50.5
+        },
+        "crashpad-handler": {
+          "n": 1,
+          "wsMB": 10.3,
+          "privMB": 2.5
+        },
+        "gpu-process": {
+          "n": 1,
+          "wsMB": 81.4,
+          "privMB": 123.3
+        },
+        "utility:NetworkService": {
+          "n": 1,
+          "wsMB": 41.9,
+          "privMB": 12.8
+        },
+        "utility:StorageService": {
+          "n": 1,
+          "wsMB": 21.2,
+          "privMB": 8.9
+        },
+        "renderer": {
+          "n": 1,
+          "wsMB": 164.2,
+          "privMB": 118.3
+        }
+      },
+      "lastDetail": [
+        {
+          "name": "agentcodegui.exe",
+          "sub": "",
+          "pid": 28884,
+          "wsMB": 32.2,
+          "role": "browser",
+          "privMB": 11.7
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 30576,
+          "wsMB": 123.4,
+          "role": "browser",
+          "privMB": 38.8
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 34668,
+          "wsMB": 10.3,
+          "role": "crashpad-handler",
+          "privMB": 2.5
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 25852,
+          "wsMB": 81.4,
+          "role": "gpu-process",
+          "privMB": 123.3
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "network.mojom.NetworkService",
+          "pid": 15976,
+          "wsMB": 41.9,
+          "role": "utility",
+          "privMB": 12.8
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "storage.mojom.StorageService",
+          "pid": 33484,
+          "wsMB": 21.2,
+          "role": "utility",
+          "privMB": 8.9
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 32208,
+          "wsMB": 164.2,
+          "role": "renderer",
+          "privMB": 118.3
+        }
+      ],
+      "deltaWsMB": 19,
+      "deltaPrivMB": 5,
+      "deltaProcs": 0
+    },
+    {
+      "name": "D4-gpu-mem-64",
+      "note": "GPU 프로세스가 스스로 잡는 메모리 예산 상한",
+      "env": {
+        "CCG_WEBVIEW_ARGS_BASE_ONLY": "1",
+        "CCG_WEBVIEW_ARGS_EXTRA": "--force-gpu-mem-available-mb=64"
+      },
+      "runs": [
+        {
+          "wsMB": 464.8,
+          "privMB": 316.3,
+          "procs": 7
+        },
+        {
+          "wsMB": 467.1,
+          "privMB": 318.4,
+          "procs": 7
+        }
+      ],
+      "wsMB": 466,
+      "privMB": 317,
+      "procs": 7,
+      "byRole": {
+        "browser": {
+          "n": 2,
+          "wsMB": 153.4,
+          "privMB": 50.6
+        },
+        "crashpad-handler": {
+          "n": 1,
+          "wsMB": 10.3,
+          "privMB": 2.5
+        },
+        "gpu-process": {
+          "n": 1,
+          "wsMB": 77.2,
+          "privMB": 125.2
+        },
+        "utility:NetworkService": {
+          "n": 1,
+          "wsMB": 42,
+          "privMB": 12.8
+        },
+        "utility:StorageService": {
+          "n": 1,
+          "wsMB": 21.4,
+          "privMB": 8.9
+        },
+        "renderer": {
+          "n": 1,
+          "wsMB": 162.7,
+          "privMB": 118.4
+        }
+      },
+      "lastDetail": [
+        {
+          "name": "agentcodegui.exe",
+          "sub": "",
+          "pid": 34592,
+          "wsMB": 30,
+          "role": "browser",
+          "privMB": 11.7
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 26872,
+          "wsMB": 123.4,
+          "role": "browser",
+          "privMB": 38.9
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 11424,
+          "wsMB": 10.3,
+          "role": "crashpad-handler",
+          "privMB": 2.5
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 18864,
+          "wsMB": 77.2,
+          "role": "gpu-process",
+          "privMB": 125.2
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "network.mojom.NetworkService",
+          "pid": 17176,
+          "wsMB": 42,
+          "role": "utility",
+          "privMB": 12.8
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "storage.mojom.StorageService",
+          "pid": 28992,
+          "wsMB": 21.4,
+          "role": "utility",
+          "privMB": 8.9
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 19940,
+          "wsMB": 162.7,
+          "role": "renderer",
+          "privMB": 118.4
+        }
+      ],
+      "deltaWsMB": 15,
+      "deltaPrivMB": 6,
+      "deltaProcs": 0
+    },
+    {
+      "name": "D5-no-gpu-caches",
+      "note": "GPU 셰이더/프로그램 캐시 끄기",
+      "env": {
+        "CCG_WEBVIEW_ARGS_BASE_ONLY": "1",
+        "CCG_WEBVIEW_ARGS_EXTRA": "--disable-gpu-shader-disk-cache --disable-gpu-program-cache --disable-gpu-driver-bug-workarounds"
+      },
+      "runs": [
+        {
+          "wsMB": 471.2,
+          "privMB": 308.1,
+          "procs": 7
+        },
+        {
+          "wsMB": 472.2,
+          "privMB": 316.3,
+          "procs": 7
+        }
+      ],
+      "wsMB": 472,
+      "privMB": 312,
+      "procs": 7,
+      "byRole": {
+        "browser": {
+          "n": 2,
+          "wsMB": 153.9,
+          "privMB": 51
+        },
+        "crashpad-handler": {
+          "n": 1,
+          "wsMB": 10.4,
+          "privMB": 2.5
+        },
+        "gpu-process": {
+          "n": 1,
+          "wsMB": 84.5,
+          "privMB": 129.5
+        },
+        "utility:NetworkService": {
+          "n": 1,
+          "wsMB": 42.1,
+          "privMB": 12.8
+        },
+        "utility:StorageService": {
+          "n": 1,
+          "wsMB": 21.1,
+          "privMB": 9
+        },
+        "renderer": {
+          "n": 1,
+          "wsMB": 160.2,
+          "privMB": 111.5
+        }
+      },
+      "lastDetail": [
+        {
+          "name": "agentcodegui.exe",
+          "sub": "",
+          "pid": 21448,
+          "wsMB": 29.9,
+          "role": "browser",
+          "privMB": 11.3
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 24684,
+          "wsMB": 124,
+          "role": "browser",
+          "privMB": 39.7
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 26284,
+          "wsMB": 10.4,
+          "role": "crashpad-handler",
+          "privMB": 2.5
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 29064,
+          "wsMB": 84.5,
+          "role": "gpu-process",
+          "privMB": 129.5
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "network.mojom.NetworkService",
+          "pid": 26200,
+          "wsMB": 42.1,
+          "role": "utility",
+          "privMB": 12.8
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "storage.mojom.StorageService",
+          "pid": 29192,
+          "wsMB": 21.1,
+          "role": "utility",
+          "privMB": 9
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 11424,
+          "wsMB": 160.2,
+          "role": "renderer",
+          "privMB": 111.5
+        }
+      ],
+      "deltaWsMB": 21,
+      "deltaPrivMB": 1,
+      "deltaProcs": 0
+    },
+    {
+      "name": "D6-no-accel-canvas",
+      "note": "2D 캔버스·비디오 가속 끄기(앱이 쓰지 않는 경로)",
+      "env": {
+        "CCG_WEBVIEW_ARGS_BASE_ONLY": "1",
+        "CCG_WEBVIEW_ARGS_EXTRA": "--disable-accelerated-2d-canvas --disable-accelerated-video-decode --disable-accelerated-video-encode"
+      },
+      "runs": [
+        {
+          "wsMB": 465.5,
+          "privMB": 304,
+          "procs": 7
+        },
+        {
+          "wsMB": 469.6,
+          "privMB": 319.4,
+          "procs": 7
+        }
+      ],
+      "wsMB": 468,
+      "privMB": 312,
+      "procs": 7,
+      "byRole": {
+        "browser": {
+          "n": 2,
+          "wsMB": 155.8,
+          "privMB": 50.3
+        },
+        "crashpad-handler": {
+          "n": 1,
+          "wsMB": 10.4,
+          "privMB": 2.5
+        },
+        "gpu-process": {
+          "n": 1,
+          "wsMB": 77.2,
+          "privMB": 127.6
+        },
+        "utility:NetworkService": {
+          "n": 1,
+          "wsMB": 41.9,
+          "privMB": 12.8
+        },
+        "utility:StorageService": {
+          "n": 1,
+          "wsMB": 21.1,
+          "privMB": 9
+        },
+        "renderer": {
+          "n": 1,
+          "wsMB": 163.2,
+          "privMB": 117.2
+        }
+      },
+      "lastDetail": [
+        {
+          "name": "agentcodegui.exe",
+          "sub": "",
+          "pid": 26148,
+          "wsMB": 31.8,
+          "role": "browser",
+          "privMB": 11.8
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 13128,
+          "wsMB": 124,
+          "role": "browser",
+          "privMB": 38.5
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 17536,
+          "wsMB": 10.4,
+          "role": "crashpad-handler",
+          "privMB": 2.5
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 17368,
+          "wsMB": 77.2,
+          "role": "gpu-process",
+          "privMB": 127.6
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "network.mojom.NetworkService",
+          "pid": 18332,
+          "wsMB": 41.9,
+          "role": "utility",
+          "privMB": 12.8
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "storage.mojom.StorageService",
+          "pid": 20012,
+          "wsMB": 21.1,
+          "role": "utility",
+          "privMB": 9
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 15596,
+          "wsMB": 163.2,
+          "role": "renderer",
+          "privMB": 117.2
+        }
+      ],
+      "deltaWsMB": 17,
+      "deltaPrivMB": 1,
+      "deltaProcs": 0
+    },
+    {
+      "name": "D7-angle-gl",
+      "note": "ANGLE 백엔드를 D3D11 대신 GL (D3D 리소스 커밋 회피 시도)",
+      "env": {
+        "CCG_WEBVIEW_ARGS_BASE_ONLY": "1",
+        "CCG_WEBVIEW_ARGS_EXTRA": "--use-angle=gl"
+      },
+      "runs": [
+        {
+          "wsMB": 452.7,
+          "privMB": 205.9,
+          "procs": 7
+        },
+        {
+          "wsMB": 450.1,
+          "privMB": 204.4,
+          "procs": 7
+        }
+      ],
+      "wsMB": 451,
+      "privMB": 205,
+      "procs": 7,
+      "byRole": {
+        "browser": {
+          "n": 2,
+          "wsMB": 154.2,
+          "privMB": 51.7
+        },
+        "crashpad-handler": {
+          "n": 1,
+          "wsMB": 10.1,
+          "privMB": 2.5
+        },
+        "utility:NetworkService": {
+          "n": 1,
+          "wsMB": 39.6,
+          "privMB": 12.9
+        },
+        "utility:StorageService": {
+          "n": 1,
+          "wsMB": 20.1,
+          "privMB": 9
+        },
+        "renderer": {
+          "n": 1,
+          "wsMB": 167.2,
+          "privMB": 110.5
+        },
+        "gpu-process": {
+          "n": 1,
+          "wsMB": 58.7,
+          "privMB": 17.9
+        }
+      },
+      "lastDetail": [
+        {
+          "name": "agentcodegui.exe",
+          "sub": "",
+          "pid": 8108,
+          "wsMB": 29.7,
+          "role": "browser",
+          "privMB": 12.5
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 30528,
+          "wsMB": 124.5,
+          "role": "browser",
+          "privMB": 39.2
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 25428,
+          "wsMB": 10.1,
+          "role": "crashpad-handler",
+          "privMB": 2.5
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "network.mojom.NetworkService",
+          "pid": 32364,
+          "wsMB": 39.6,
+          "role": "utility",
+          "privMB": 12.9
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "storage.mojom.StorageService",
+          "pid": 18828,
+          "wsMB": 20.1,
+          "role": "utility",
+          "privMB": 9
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 6612,
+          "wsMB": 167.2,
+          "role": "renderer",
+          "privMB": 110.5
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 23564,
+          "wsMB": 58.7,
+          "role": "gpu-process",
+          "privMB": 17.9
+        }
+      ],
+      "deltaWsMB": 0,
+      "deltaPrivMB": -106,
+      "deltaProcs": 0
+    },
+    {
+      "name": "D8-gpu-mem-64+no-caches",
+      "note": "D4+D5 합 — 가산성 확인용",
+      "env": {
+        "CCG_WEBVIEW_ARGS_BASE_ONLY": "1",
+        "CCG_WEBVIEW_ARGS_EXTRA": "--force-gpu-mem-available-mb=64 --disable-gpu-shader-disk-cache --disable-gpu-program-cache"
+      },
+      "runs": [
+        {
+          "wsMB": 456.9,
+          "privMB": 311.5,
+          "procs": 7
+        },
+        {
+          "wsMB": 449.9,
+          "privMB": 324.2,
+          "procs": 7
+        }
+      ],
+      "wsMB": 453,
+      "privMB": 318,
+      "procs": 7,
+      "byRole": {
+        "browser": {
+          "n": 2,
+          "wsMB": 147.5,
+          "privMB": 50.6
+        },
+        "crashpad-handler": {
+          "n": 1,
+          "wsMB": 10.1,
+          "privMB": 2.5
+        },
+        "gpu-process": {
+          "n": 1,
+          "wsMB": 78.1,
+          "privMB": 139.3
+        },
+        "utility:NetworkService": {
+          "n": 1,
+          "wsMB": 39.6,
+          "privMB": 13
+        },
+        "utility:StorageService": {
+          "n": 1,
+          "wsMB": 20.1,
+          "privMB": 8.9
+        },
+        "renderer": {
+          "n": 1,
+          "wsMB": 154.4,
+          "privMB": 109.9
+        }
+      },
+      "lastDetail": [
+        {
+          "name": "agentcodegui.exe",
+          "sub": "",
+          "pid": 32524,
+          "wsMB": 29,
+          "role": "browser",
+          "privMB": 11.7
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 25812,
+          "wsMB": 118.5,
+          "role": "browser",
+          "privMB": 38.9
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 31032,
+          "wsMB": 10.1,
+          "role": "crashpad-handler",
+          "privMB": 2.5
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 7812,
+          "wsMB": 78.1,
+          "role": "gpu-process",
+          "privMB": 139.3
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "network.mojom.NetworkService",
+          "pid": 16400,
+          "wsMB": 39.6,
+          "role": "utility",
+          "privMB": 13
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "storage.mojom.StorageService",
+          "pid": 25536,
+          "wsMB": 20.1,
+          "role": "utility",
+          "privMB": 8.9
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 25060,
+          "wsMB": 154.4,
+          "role": "renderer",
+          "privMB": 109.9
+        }
+      ],
+      "deltaWsMB": 2,
+      "deltaPrivMB": 7,
+      "deltaProcs": 0
+    },
+    {
+      "name": "E1-v8-heap-256",
+      "note": "V8 old space 상한 256MB",
+      "env": {
+        "CCG_WEBVIEW_ARGS_BASE_ONLY": "1",
+        "CCG_WEBVIEW_ARGS_EXTRA": "--js-flags=--max-old-space-size=256"
+      },
+      "runs": [
+        {
+          "wsMB": 447,
+          "privMB": 307.9,
+          "procs": 7
+        },
+        {
+          "wsMB": 451.5,
+          "privMB": 318.9,
+          "procs": 7
+        }
+      ],
+      "wsMB": 449,
+      "privMB": 313,
+      "procs": 7,
+      "byRole": {
+        "browser": {
+          "n": 2,
+          "wsMB": 148.9,
+          "privMB": 49.3
+        },
+        "crashpad-handler": {
+          "n": 1,
+          "wsMB": 10.1,
+          "privMB": 2.5
+        },
+        "gpu-process": {
+          "n": 1,
+          "wsMB": 74.9,
+          "privMB": 131.5
+        },
+        "utility:NetworkService": {
+          "n": 1,
+          "wsMB": 39.6,
+          "privMB": 12.9
+        },
+        "utility:StorageService": {
+          "n": 1,
+          "wsMB": 20.1,
+          "privMB": 9
+        },
+        "renderer": {
+          "n": 1,
+          "wsMB": 158,
+          "privMB": 113.8
+        }
+      },
+      "lastDetail": [
+        {
+          "name": "agentcodegui.exe",
+          "sub": "",
+          "pid": 1456,
+          "wsMB": 30.3,
+          "role": "browser",
+          "privMB": 11.3
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 4348,
+          "wsMB": 118.6,
+          "role": "browser",
+          "privMB": 38
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 18228,
+          "wsMB": 10.1,
+          "role": "crashpad-handler",
+          "privMB": 2.5
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 32824,
+          "wsMB": 74.9,
+          "role": "gpu-process",
+          "privMB": 131.5
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "network.mojom.NetworkService",
+          "pid": 23096,
+          "wsMB": 39.6,
+          "role": "utility",
+          "privMB": 12.9
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "storage.mojom.StorageService",
+          "pid": 17212,
+          "wsMB": 20.1,
+          "role": "utility",
+          "privMB": 9
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 10352,
+          "wsMB": 158,
+          "role": "renderer",
+          "privMB": 113.8
+        }
+      ],
+      "deltaWsMB": -2,
+      "deltaPrivMB": 2,
+      "deltaProcs": 0
+    },
+    {
+      "name": "E2-low-end-device",
+      "note": "Chromium 저사양 모드(힙·래스터·예비 렌더러 일괄 축소)",
+      "env": {
+        "CCG_WEBVIEW_ARGS_BASE_ONLY": "1",
+        "CCG_WEBVIEW_ARGS_EXTRA": "--enable-low-end-device-mode"
+      },
+      "runs": [
+        {
+          "wsMB": 438.5,
+          "privMB": 294.8,
+          "procs": 7
+        },
+        {
+          "wsMB": 455.5,
+          "privMB": 356.3,
+          "procs": 7
+        }
+      ],
+      "wsMB": 447,
+      "privMB": 326,
+      "procs": 7,
+      "byRole": {
+        "browser": {
+          "n": 2,
+          "wsMB": 149,
+          "privMB": 51.5
+        },
+        "crashpad-handler": {
+          "n": 1,
+          "wsMB": 10.1,
+          "privMB": 2.5
+        },
+        "gpu-process": {
+          "n": 1,
+          "wsMB": 93.8,
+          "privMB": 185.7
+        },
+        "utility:NetworkService": {
+          "n": 1,
+          "wsMB": 39.5,
+          "privMB": 12.8
+        },
+        "utility:StorageService": {
+          "n": 1,
+          "wsMB": 20.1,
+          "privMB": 9
+        },
+        "renderer": {
+          "n": 1,
+          "wsMB": 143,
+          "privMB": 94.9
+        }
+      },
+      "lastDetail": [
+        {
+          "name": "agentcodegui.exe",
+          "sub": "",
+          "pid": 5344,
+          "wsMB": 29,
+          "role": "browser",
+          "privMB": 11.7
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 16940,
+          "wsMB": 120,
+          "role": "browser",
+          "privMB": 39.8
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 16992,
+          "wsMB": 10.1,
+          "role": "crashpad-handler",
+          "privMB": 2.5
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 29392,
+          "wsMB": 93.8,
+          "role": "gpu-process",
+          "privMB": 185.7
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "network.mojom.NetworkService",
+          "pid": 26920,
+          "wsMB": 39.5,
+          "role": "utility",
+          "privMB": 12.8
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "storage.mojom.StorageService",
+          "pid": 33052,
+          "wsMB": 20.1,
+          "role": "utility",
+          "privMB": 9
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 21296,
+          "wsMB": 143,
+          "role": "renderer",
+          "privMB": 94.9
+        }
+      ],
+      "deltaWsMB": -4,
+      "deltaPrivMB": 15,
+      "deltaProcs": 0
+    },
+    {
+      "name": "Z-adopted-default",
+      "note": "BASE_ONLY 없이 = 코드에 박힌 채택 세트",
+      "env": "(제품 기본값)",
+      "runs": [
+        {
+          "wsMB": 449.6,
+          "privMB": 319.8,
+          "procs": 7
+        },
+        {
+          "wsMB": 444.6,
+          "privMB": 281.2,
+          "procs": 7
+        }
+      ],
+      "wsMB": 447,
+      "privMB": 301,
+      "procs": 7,
+      "byRole": {
+        "browser": {
+          "n": 2,
+          "wsMB": 146.1,
+          "privMB": 48.9
+        },
+        "crashpad-handler": {
+          "n": 1,
+          "wsMB": 10.1,
+          "privMB": 2.5
+        },
+        "gpu-process": {
+          "n": 1,
+          "wsMB": 73.2,
+          "privMB": 94
+        },
+        "utility:NetworkService": {
+          "n": 1,
+          "wsMB": 37.4,
+          "privMB": 11.5
+        },
+        "utility:StorageService": {
+          "n": 1,
+          "wsMB": 20.4,
+          "privMB": 9.4
+        },
+        "renderer": {
+          "n": 1,
+          "wsMB": 157.3,
+          "privMB": 115
+        }
+      },
+      "lastDetail": [
+        {
+          "name": "agentcodegui.exe",
+          "sub": "",
+          "pid": 29240,
+          "wsMB": 28.8,
+          "role": "browser",
+          "privMB": 11.4
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 3192,
+          "wsMB": 117.3,
+          "role": "browser",
+          "privMB": 37.5
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 5068,
+          "wsMB": 10.1,
+          "role": "crashpad-handler",
+          "privMB": 2.5
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 30292,
+          "wsMB": 73.2,
+          "role": "gpu-process",
+          "privMB": 94
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "network.mojom.NetworkService",
+          "pid": 34384,
+          "wsMB": 37.4,
+          "role": "utility",
+          "privMB": 11.5
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "storage.mojom.StorageService",
+          "pid": 14836,
+          "wsMB": 20.4,
+          "role": "utility",
+          "privMB": 9.4
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 19544,
+          "wsMB": 157.3,
+          "role": "renderer",
+          "privMB": 115
+        }
+      ],
+      "deltaWsMB": -4,
+      "deltaPrivMB": -10,
+      "deltaProcs": 0
+    },
+    {
+      "name": "Y1-angle-gl+in-process-gpu",
+      "note": "D7+B7 — Priv 최대 절감 후보(FPS 게이트 필수)",
+      "env": {
+        "CCG_WEBVIEW_ARGS_BASE_ONLY": "1",
+        "CCG_WEBVIEW_ARGS_EXTRA": "--use-angle=gl --in-process-gpu"
+      },
+      "runs": [
+        {
+          "wsMB": 387.6,
+          "privMB": 187.8,
+          "procs": 6
+        },
+        {
+          "wsMB": 405.6,
+          "privMB": 204.6,
+          "procs": 6
+        }
+      ],
+      "wsMB": 397,
+      "privMB": 196,
+      "procs": 6,
+      "byRole": {
+        "browser": {
+          "n": 2,
+          "wsMB": 183.3,
+          "privMB": 84.3
+        },
+        "crashpad-handler": {
+          "n": 1,
+          "wsMB": 27.1,
+          "privMB": 5.4
+        },
+        "utility:NetworkService": {
+          "n": 1,
+          "wsMB": 39.5,
+          "privMB": 12.9
+        },
+        "utility:StorageService": {
+          "n": 1,
+          "wsMB": 21.2,
+          "privMB": 9.3
+        },
+        "renderer": {
+          "n": 1,
+          "wsMB": 134.5,
+          "privMB": 92.8
+        }
+      },
+      "lastDetail": [
+        {
+          "name": "agentcodegui.exe",
+          "sub": "",
+          "pid": 31896,
+          "wsMB": 28.7,
+          "role": "browser",
+          "privMB": 11.6
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 22796,
+          "wsMB": 154.6,
+          "role": "browser",
+          "privMB": 72.7
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 34612,
+          "wsMB": 27.1,
+          "role": "crashpad-handler",
+          "privMB": 5.4
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "network.mojom.NetworkService",
+          "pid": 33992,
+          "wsMB": 39.5,
+          "role": "utility",
+          "privMB": 12.9
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "storage.mojom.StorageService",
+          "pid": 15940,
+          "wsMB": 21.2,
+          "role": "utility",
+          "privMB": 9.3
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 22660,
+          "wsMB": 134.5,
+          "role": "renderer",
+          "privMB": 92.8
+        }
+      ],
+      "deltaWsMB": -54,
+      "deltaPrivMB": -115,
+      "deltaProcs": -1
+    },
+    {
+      "name": "Y2-safe-set",
+      "note": "Y1 + 프로세스 공유 + 부팅 잡업 끄기 (MS 지원 범위 안)",
+      "env": {
+        "CCG_WEBVIEW_ARGS_BASE_ONLY": "1",
+        "CCG_WEBVIEW_ARGS_EXTRA": "--use-angle=gl --in-process-gpu --process-per-site --disable-background-networking --disable-sync --disable-component-update --disable-extensions --no-first-run --no-default-browser-check --noerrdialogs"
+      },
+      "runs": [
+        {
+          "wsMB": 401,
+          "privMB": 202.2,
+          "procs": 6
+        },
+        {
+          "wsMB": 398.9,
+          "privMB": 199.7,
+          "procs": 6
+        }
+      ],
+      "wsMB": 400,
+      "privMB": 201,
+      "procs": 6,
+      "byRole": {
+        "browser": {
+          "n": 2,
+          "wsMB": 179.5,
+          "privMB": 80.9
+        },
+        "crashpad-handler": {
+          "n": 1,
+          "wsMB": 27.5,
+          "privMB": 5.5
+        },
+        "utility:NetworkService": {
+          "n": 1,
+          "wsMB": 37.4,
+          "privMB": 11.6
+        },
+        "utility:StorageService": {
+          "n": 1,
+          "wsMB": 20.1,
+          "privMB": 8.9
+        },
+        "renderer": {
+          "n": 1,
+          "wsMB": 134.4,
+          "privMB": 92.8
+        }
+      },
+      "lastDetail": [
+        {
+          "name": "agentcodegui.exe",
+          "sub": "",
+          "pid": 30192,
+          "wsMB": 29,
+          "role": "browser",
+          "privMB": 11.7
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 3216,
+          "wsMB": 150.5,
+          "role": "browser",
+          "privMB": 69.2
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 24984,
+          "wsMB": 27.5,
+          "role": "crashpad-handler",
+          "privMB": 5.5
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "network.mojom.NetworkService",
+          "pid": 31588,
+          "wsMB": 37.4,
+          "role": "utility",
+          "privMB": 11.6
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "storage.mojom.StorageService",
+          "pid": 32948,
+          "wsMB": 20.1,
+          "role": "utility",
+          "privMB": 8.9
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 4844,
+          "wsMB": 134.4,
+          "role": "renderer",
+          "privMB": 92.8
+        }
+      ],
+      "deltaWsMB": -51,
+      "deltaPrivMB": -110,
+      "deltaProcs": -1
+    },
+    {
+      "name": "Y4-single-process+angle-gl",
+      "note": "MS 미지원 조합 — 목표 도달 여부의 상한선을 알기 위한 데이터 포인트",
+      "env": {
+        "CCG_WEBVIEW_ARGS_BASE_ONLY": "1",
+        "CCG_WEBVIEW_ARGS_EXTRA": "--single-process --use-angle=gl"
+      },
+      "runs": [
+        {
+          "wsMB": 312.1,
+          "privMB": 165.9,
+          "procs": 3
+        },
+        {
+          "wsMB": 305.3,
+          "privMB": 157.1,
+          "procs": 3
+        }
+      ],
+      "wsMB": 309,
+      "privMB": 162,
+      "procs": 3,
+      "byRole": {
+        "browser": {
+          "n": 2,
+          "wsMB": 277.8,
+          "privMB": 151.5
+        },
+        "crashpad-handler": {
+          "n": 1,
+          "wsMB": 27.5,
+          "privMB": 5.6
+        }
+      },
+      "lastDetail": [
+        {
+          "name": "agentcodegui.exe",
+          "sub": "",
+          "pid": 25092,
+          "wsMB": 29.1,
+          "role": "browser",
+          "privMB": 11.9
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 18472,
+          "wsMB": 248.7,
+          "role": "browser",
+          "privMB": 139.6
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "sub": "",
+          "pid": 9980,
+          "wsMB": 27.5,
+          "role": "crashpad-handler",
+          "privMB": 5.6
+        }
+      ],
+      "deltaWsMB": -142,
+      "deltaPrivMB": -149,
+      "deltaProcs": -4
+    }
+  ],
+  "at": "2026-08-22T08:51:37.799Z",
+  "notes": [
+    "R3 1차 스윕(2026-08-22)에서 A0 대조군만 WebView2 프로필이 차가웠다(seedHome 직후). 그 탓에 그 뒤 모든 레버가 약 −14MB씩 싸게 나오는 가짜 밴드가 생겼다 — A0를 `--keep`(따뜻한 홈)으로 다시 재서 대체했고, 그 이후 델타는 그 값 기준이다.",
+    "procs가 7에서 안 바뀌는 레버는 WebView2가 그 스위치를 무시했다는 뜻이다(SpareRenderer/NetworkServiceInProcess/StorageServiceOutOfProcess/--disable-breakpad 전부 해당).",
+    "Priv 절감의 정체는 GPU 프로세스의 D3D11 커밋이다: gpu-process Priv 106MB → --use-angle=gl 또는 --disable-gpu로 18MB.",
+    "앱(우리 UI)이 차지하는 몫은 bench/results/gpu-css-probe.json 기준 WS 8.4MB / Priv 24MB뿐이다(4패널 DOM을 통째로 비운 값과의 차이). 나머지는 웹 런타임 바닥값이다."
+  ],
+  "precedence": {
+    "codeArgPort": 9411,
+    "envVarPort": 9412,
+    "codeArgAnswered": false,
+    "envVarAnswered": true,
+    "winner": "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS(환경변수)가 덮어쓴다"
+  }
+}

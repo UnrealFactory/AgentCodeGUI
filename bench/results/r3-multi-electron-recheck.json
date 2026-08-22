@@ -1,0 +1,77 @@
+{
+  "app": "electron-2.6.2",
+  "panels": 4,
+  "itemsPerPanel": 120,
+  "gridPanels": 4,
+  "at": "2026-08-22T09:01:50.697Z",
+  "idleGrid": {
+    "totalWsMB": 730.1,
+    "totalPrivMB": 502.9,
+    "procs": 7
+  },
+  "idleWithWindows": {
+    "totalWsMB": 954.1,
+    "totalPrivMB": 548.6,
+    "procs": 9
+  },
+  "windowCost": {
+    "wsMBPerWindow": 112,
+    "procsAdded": 2
+  },
+  "scrollInPanel": {
+    "frames": 358,
+    "avgFps": 60,
+    "p95Ms": 16.8,
+    "worstMs": 17.1,
+    "droppedPct": 0,
+    "longTaskMs": 0
+  },
+  "procDetail": [
+    {
+      "name": "electron.exe",
+      "wsMB": 121.2,
+      "privMB": 84.2
+    },
+    {
+      "name": "electron.exe",
+      "wsMB": 36.3,
+      "privMB": 11.6
+    },
+    {
+      "name": "electron.exe",
+      "wsMB": 123.5,
+      "privMB": 139.5
+    },
+    {
+      "name": "electron.exe",
+      "wsMB": 55.7,
+      "privMB": 15.7
+    },
+    {
+      "name": "electron.exe",
+      "wsMB": 202.7,
+      "privMB": 146.8
+    },
+    {
+      "name": "electron.exe",
+      "wsMB": 97.3,
+      "privMB": 60
+    },
+    {
+      "name": "electron.exe",
+      "wsMB": 126.9,
+      "privMB": 57.2
+    },
+    {
+      "name": "electron.exe",
+      "wsMB": 128.7,
+      "privMB": 58.7
+    },
+    {
+      "name": "electron.exe",
+      "wsMB": 109.9,
+      "privMB": 41.9
+    }
+  ],
+  "note": "R3 재측정 — 박제된 기준값(multi-electron-2.6.2.json)은 건드리지 않았다. 이 파일은 같은 하네스·같은 픽스처로 R3 세션에서 다시 잰 값이다(크리틱이 idlemem에서 기준값 재현 실패를 보고한 뒤 주 게이트 분모도 확인)."
+}

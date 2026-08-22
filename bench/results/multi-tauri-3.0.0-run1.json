@@ -3,64 +3,60 @@
   "panels": 4,
   "itemsPerPanel": 120,
   "gridPanels": 4,
-  "at": "2026-08-22T08:49:02.573Z",
+  "at": "2026-08-22T08:42:40.705Z",
   "idleGrid": {
-    "totalWsMB": 491.2,
-    "totalPrivMB": 337.4,
-    "procs": 7
+    "totalWsMB": 470,
+    "totalPrivMB": 251.6,
+    "procs": 6
   },
   "idleWithWindows": {
-    "totalWsMB": 511.4,
-    "totalPrivMB": 344.4,
-    "procs": 7
+    "totalWsMB": 516.5,
+    "totalPrivMB": 259.7,
+    "procs": 6
   },
   "windowCost": {
-    "wsMBPerWindow": 10.1,
+    "wsMBPerWindow": 23.3,
     "procsAdded": 0
   },
   "scrollInPanel": {
-    "frames": 356,
+    "frames": 357,
     "avgFps": 60,
     "p95Ms": 16.8,
-    "worstMs": 16.9,
+    "worstMs": 16.8,
     "droppedPct": 0,
     "longTaskMs": 0
   },
   "procDetail": [
     {
       "name": "agentcodegui.exe",
-      "wsMB": 34.1,
-      "privMB": 15.6
+      "wsMB": 33.4,
+      "privMB": 14.8
     },
     {
       "name": "msedgewebview2.exe",
-      "wsMB": 137.1,
-      "privMB": 49.5
+      "wsMB": 220.6,
+      "privMB": 102.2
     },
     {
       "name": "msedgewebview2.exe",
-      "wsMB": 19.3,
-      "privMB": 3.4
+      "wsMB": 19.1,
+      "privMB": 3.3
     },
     {
       "name": "msedgewebview2.exe",
-      "wsMB": 90.5,
-      "privMB": 124.4
-    },
-    {
-      "name": "msedgewebview2.exe",
-      "wsMB": 43.7,
+      "wsMB": 43.6,
       "privMB": 13.7
     },
     {
       "name": "msedgewebview2.exe",
-      "wsMB": 21.5,
-      "privMB": 9.4
+      "wsMB": 21.2,
+      "privMB": 9
     },
     {
       "name": "msedgewebview2.exe",
-      "wsMB": 189.8,
-      "privMB": 137.8
+      "wsMB": 225.6,
+      "privMB": 154.9
     }
-  ]
+  ],
+  "arm": "최종 채택 세트(=제품 기본값) 반복 1/3."
 }

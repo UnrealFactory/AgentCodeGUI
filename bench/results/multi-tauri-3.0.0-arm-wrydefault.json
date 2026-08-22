@@ -1,0 +1,77 @@
+{
+  "app": "tauri-3.0.0",
+  "panels": 4,
+  "itemsPerPanel": 120,
+  "gridPanels": 4,
+  "at": "2026-08-22T08:35:29.770Z",
+  "idleGrid": {
+    "totalWsMB": 481.8,
+    "totalPrivMB": 327.8,
+    "procs": 7
+  },
+  "idleWithWindows": {
+    "totalWsMB": 711.1,
+    "totalPrivMB": 438.8,
+    "procs": 9
+  },
+  "windowCost": {
+    "wsMBPerWindow": 114.7,
+    "procsAdded": 2
+  },
+  "scrollInPanel": {
+    "frames": 359,
+    "avgFps": 60,
+    "p95Ms": 16.8,
+    "worstMs": 16.9,
+    "droppedPct": 0,
+    "longTaskMs": 0
+  },
+  "procDetail": [
+    {
+      "name": "agentcodegui.exe",
+      "wsMB": 33.8,
+      "privMB": 15.5
+    },
+    {
+      "name": "msedgewebview2.exe",
+      "wsMB": 143.5,
+      "privMB": 50.4
+    },
+    {
+      "name": "msedgewebview2.exe",
+      "wsMB": 19.1,
+      "privMB": 3.4
+    },
+    {
+      "name": "msedgewebview2.exe",
+      "wsMB": 94.3,
+      "privMB": 126.5
+    },
+    {
+      "name": "msedgewebview2.exe",
+      "wsMB": 43.8,
+      "privMB": 13.6
+    },
+    {
+      "name": "msedgewebview2.exe",
+      "wsMB": 21.2,
+      "privMB": 9.1
+    },
+    {
+      "name": "msedgewebview2.exe",
+      "wsMB": 174.3,
+      "privMB": 122.9
+    },
+    {
+      "name": "msedgewebview2.exe",
+      "wsMB": 89.8,
+      "privMB": 46.5
+    },
+    {
+      "name": "msedgewebview2.exe",
+      "wsMB": 116.7,
+      "privMB": 67.9
+    }
+  ],
+  "arm": "CCG_WEBVIEW_ARGS_BASE_ONLY=1 — wry 기본 인자만(대조군). 창당 114.7MB/+2프로세스."
+}

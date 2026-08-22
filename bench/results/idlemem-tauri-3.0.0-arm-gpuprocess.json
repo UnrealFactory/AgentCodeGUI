@@ -1,57 +1,66 @@
 {
   "app": "tauri-3.0.0",
   "settleSec": 60,
-  "totalPrivMB": 197.2,
-  "totalWsMB": 444.5,
+  "totalPrivMB": 288.1,
+  "totalWsMB": 457.1,
   "procs": [
     {
       "name": "agentcodegui.exe",
       "sub": "",
-      "pid": 30168,
-      "wsMB": 31.5,
+      "pid": 2188,
+      "wsMB": 31.9,
       "role": "browser",
-      "privMB": 11
+      "privMB": 11.3
     },
     {
       "name": "msedgewebview2.exe",
       "sub": "",
-      "pid": 34440,
-      "wsMB": 202.1,
+      "pid": 5708,
+      "wsMB": 125.7,
       "role": "browser",
-      "privMB": 91.9
+      "privMB": 39.1
     },
     {
       "name": "msedgewebview2.exe",
       "sub": "",
-      "pid": 5188,
-      "wsMB": 13.4,
+      "pid": 22580,
+      "wsMB": 13.5,
       "role": "crashpad-handler",
       "privMB": 3.1
     },
     {
       "name": "msedgewebview2.exe",
+      "sub": "",
+      "pid": 18120,
+      "wsMB": 84.2,
+      "role": "gpu-process",
+      "privMB": 124.7
+    },
+    {
+      "name": "msedgewebview2.exe",
       "sub": "network.mojom.NetworkService",
-      "pid": 16220,
-      "wsMB": 44,
+      "pid": 2668,
+      "wsMB": 42.6,
       "role": "utility",
-      "privMB": 13.9
+      "privMB": 12.9
     },
     {
       "name": "msedgewebview2.exe",
       "sub": "storage.mojom.StorageService",
-      "pid": 14908,
-      "wsMB": 21,
+      "pid": 27432,
+      "wsMB": 21.7,
       "role": "utility",
       "privMB": 8.9
     },
     {
       "name": "msedgewebview2.exe",
       "sub": "",
-      "pid": 30464,
-      "wsMB": 132.6,
+      "pid": 2480,
+      "wsMB": 137.5,
       "role": "renderer",
-      "privMB": 68.4
+      "privMB": 88.1
     }
   ],
-  "at": "2026-08-22T09:01:04.835Z"
+  "at": "2026-08-22T08:50:50.946Z",
+  "arm": "최종 빌드 + CCG_GPU_PROCESS=1. 단일 채팅 유휴 A/B."
 }

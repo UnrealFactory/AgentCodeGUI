@@ -1,0 +1,35 @@
+{
+  "app": "tauri-3.0.0",
+  "runs": [
+    {
+      "winMs": 403,
+      "rootMs": 488,
+      "paintMs": 519
+    },
+    {
+      "winMs": 266,
+      "rootMs": 378,
+      "paintMs": 420
+    },
+    {
+      "winMs": 268,
+      "rootMs": 388,
+      "paintMs": 421
+    },
+    {
+      "winMs": 266,
+      "rootMs": 404,
+      "paintMs": 435
+    }
+  ],
+  "firstRun": {
+    "winMs": 403,
+    "rootMs": 488,
+    "paintMs": 519
+  },
+  "medianWinMs": 266,
+  "medianRootMs": 388,
+  "medianPaintMs": 421,
+  "at": "2026-08-22T08:51:34.674Z",
+  "arm": "최종 빌드 + CCG_GPU_PROCESS=1(GPU 별도 프로세스). 채택본과의 A/B."
+}

@@ -1,0 +1,792 @@
+{
+  "env": {
+    "ramGB": 63.8,
+    "cpu": "13th Gen Intel(R) Core(TM) i7-13700KF",
+    "os": "Microsoft Windows 11 Home 26200"
+  },
+  "tauri-3.0.0": {
+    "app": "tauri-3.0.0",
+    "spawnToTimeOriginMs": 172,
+    "firstPaintMs": 56,
+    "splashPaintMs": 66,
+    "domInteractiveMs": 25,
+    "reloadMountMs": 105,
+    "bootIpcCalls": [],
+    "runs": [
+      {
+        "first": {
+          "timeOrigin": 1787383596361,
+          "nav": {
+            "responseEnd": 17.2,
+            "domInteractive": 21.8,
+            "domContentLoaded": 61.9,
+            "loadEnd": 0
+          },
+          "paints": {
+            "first-paint": 56,
+            "first-contentful-paint": 56
+          },
+          "splashPaint": 62.3,
+          "boot": null,
+          "res": [
+            {
+              "n": "index-DC_fTFSB.js",
+              "start": 19.7,
+              "dur": 12.4,
+              "size": 1045843
+            },
+            {
+              "n": "index-CF4LVUGW.css",
+              "start": 19.9,
+              "dur": 5.9,
+              "size": 198428
+            },
+            {
+              "n": "plugin%3Aevent%7Clisten",
+              "start": 60.6,
+              "dur": 4.4,
+              "size": 0
+            },
+            {
+              "n": "i18n-DckKxfm5.js",
+              "start": 19.9,
+              "dur": 4.2,
+              "size": 9204
+            },
+            {
+              "n": "shim-DywXkf26.js",
+              "start": 19.9,
+              "dur": 3.9,
+              "size": 33562
+            }
+          ],
+          "spawnToTimeOrigin": 172
+        },
+        "reload": {
+          "timeOrigin": 1787383596450,
+          "nav": {
+            "responseEnd": 18.6,
+            "domInteractive": 26.9,
+            "domContentLoaded": 68.8,
+            "loadEnd": 0
+          },
+          "paints": {
+            "first-paint": 64,
+            "first-contentful-paint": 64
+          },
+          "splashPaint": 78,
+          "boot": {
+            "mountAt": 69.4,
+            "ipc": []
+          },
+          "res": [
+            {
+              "n": "ipc_call",
+              "start": 74.5,
+              "dur": 42.9,
+              "size": 0
+            },
+            {
+              "n": "ipc_call",
+              "start": 76.2,
+              "dur": 42.8,
+              "size": 0
+            },
+            {
+              "n": "plugin%3Aevent%7Clisten",
+              "start": 75,
+              "dur": 42.5,
+              "size": 0
+            },
+            {
+              "n": "plugin%3Aevent%7Clisten",
+              "start": 74.7,
+              "dur": 42.4,
+              "size": 0
+            },
+            {
+              "n": "ipc_call",
+              "start": 74.9,
+              "dur": 42.4,
+              "size": 0
+            },
+            {
+              "n": "ipc_call",
+              "start": 75.1,
+              "dur": 42.4,
+              "size": 0
+            },
+            {
+              "n": "ipc_call",
+              "start": 75.2,
+              "dur": 42.4,
+              "size": 0
+            },
+            {
+              "n": "ipc_call",
+              "start": 75.6,
+              "dur": 42.4,
+              "size": 0
+            },
+            {
+              "n": "plugin%3Aevent%7Clisten",
+              "start": 75.4,
+              "dur": 42.3,
+              "size": 0
+            },
+            {
+              "n": "plugin%3Aevent%7Clisten",
+              "start": 75.5,
+              "dur": 42.3,
+              "size": 0
+            }
+          ]
+        }
+      },
+      {
+        "first": {
+          "timeOrigin": 1787383598276,
+          "nav": {
+            "responseEnd": 23.6,
+            "domInteractive": 27.7,
+            "domContentLoaded": 69.9,
+            "loadEnd": 0
+          },
+          "paints": {
+            "first-paint": 56,
+            "first-contentful-paint": 56
+          },
+          "splashPaint": 70.1,
+          "boot": null,
+          "res": [
+            {
+              "n": "WantedSansVariable.min.css",
+              "start": 27.5,
+              "dur": 28.2,
+              "size": 11667
+            },
+            {
+              "n": "index-DC_fTFSB.js",
+              "start": 25.8,
+              "dur": 12.5,
+              "size": 1045843
+            },
+            {
+              "n": "ipc_call",
+              "start": 70.2,
+              "dur": 11.2,
+              "size": 0
+            },
+            {
+              "n": "index-CF4LVUGW.css",
+              "start": 25.9,
+              "dur": 6.7,
+              "size": 198428
+            },
+            {
+              "n": "plugin%3Aevent%7Clisten",
+              "start": 69.2,
+              "dur": 6,
+              "size": 0
+            },
+            {
+              "n": "i18n-DckKxfm5.js",
+              "start": 25.8,
+              "dur": 4.9,
+              "size": 9204
+            },
+            {
+              "n": "shim-DywXkf26.js",
+              "start": 25.8,
+              "dur": 4.8,
+              "size": 33562
+            },
+            {
+              "n": "plugin%3Aevent%7Clisten",
+              "start": 69,
+              "dur": 4.1,
+              "size": 0
+            },
+            {
+              "n": "plugin%3Aevent%7Clisten",
+              "start": 83.7,
+              "dur": 0.7,
+              "size": 0
+            },
+            {
+              "n": "ipc_call",
+              "start": 83.9,
+              "dur": 0.7,
+              "size": 0
+            }
+          ],
+          "spawnToTimeOrigin": 172
+        },
+        "reload": {
+          "timeOrigin": 1787383598402,
+          "nav": {
+            "responseEnd": 31.9,
+            "domInteractive": 97.8,
+            "domContentLoaded": 138.6,
+            "loadEnd": 138.7
+          },
+          "paints": {
+            "first-paint": 128,
+            "first-contentful-paint": 128
+          },
+          "splashPaint": 138.9,
+          "boot": {
+            "mountAt": 139.9,
+            "ipc": []
+          },
+          "res": [
+            {
+              "n": "ipc_call",
+              "start": 154.2,
+              "dur": 33,
+              "size": 0
+            },
+            {
+              "n": "ipc_call",
+              "start": 156.1,
+              "dur": 32.6,
+              "size": 0
+            },
+            {
+              "n": "plugin%3Aevent%7Clisten",
+              "start": 154.5,
+              "dur": 32.3,
+              "size": 0
+            },
+            {
+              "n": "ipc_call",
+              "start": 154.7,
+              "dur": 32.3,
+              "size": 0
+            },
+            {
+              "n": "plugin%3Aevent%7Clisten",
+              "start": 154.7,
+              "dur": 32.3,
+              "size": 0
+            },
+            {
+              "n": "ipc_call",
+              "start": 154.8,
+              "dur": 32.3,
+              "size": 0
+            },
+            {
+              "n": "ipc_call",
+              "start": 154.9,
+              "dur": 32.3,
+              "size": 0
+            },
+            {
+              "n": "plugin%3Aevent%7Clisten",
+              "start": 155,
+              "dur": 32.3,
+              "size": 0
+            },
+            {
+              "n": "plugin%3Aevent%7Clisten",
+              "start": 155.1,
+              "dur": 32.2,
+              "size": 0
+            },
+            {
+              "n": "ipc_call",
+              "start": 155.4,
+              "dur": 32,
+              "size": 0
+            }
+          ]
+        }
+      }
+    ],
+    "at": "2026-08-22T07:26:40.031Z"
+  },
+  "electron-2.6.2": {
+    "app": "electron-2.6.2",
+    "spawnToTimeOriginMs": 210,
+    "firstPaintMs": null,
+    "splashPaintMs": null,
+    "domInteractiveMs": 92.6,
+    "reloadMountMs": 36,
+    "bootIpcCalls": [],
+    "runs": [
+      {
+        "first": {
+          "timeOrigin": 1787389384564,
+          "nav": {
+            "responseEnd": 14.9,
+            "domInteractive": 92.9,
+            "domContentLoaded": 125.5,
+            "loadEnd": 127.4
+          },
+          "paints": {},
+          "splashPaint": null,
+          "boot": null,
+          "res": [
+            {
+              "n": "WantedSansVariable.min.css",
+              "start": 90,
+              "dur": 25.1,
+              "size": 0
+            },
+            {
+              "n": "css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap",
+              "start": 90.2,
+              "dur": 25,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.87.woff2",
+              "start": 157.4,
+              "dur": 10,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.88.woff2",
+              "start": 157.4,
+              "dur": 9.9,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.79.woff2",
+              "start": 157.7,
+              "dur": 9.8,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.84.woff2",
+              "start": 178.8,
+              "dur": 2.1,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.85.woff2",
+              "start": 149.6,
+              "dur": 1.9,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.86.woff2",
+              "start": 149.6,
+              "dur": 1.7,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.78.woff2",
+              "start": 180.1,
+              "dur": 1.6,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.72.woff2",
+              "start": 178.5,
+              "dur": 1.4,
+              "size": 0
+            }
+          ],
+          "spawnToTimeOrigin": 210
+        },
+        "reload": {
+          "timeOrigin": 1787389384907,
+          "nav": {
+            "responseEnd": 3.5,
+            "domInteractive": 26.2,
+            "domContentLoaded": 34,
+            "loadEnd": 34.1
+          },
+          "paints": {
+            "first-paint": 72,
+            "first-contentful-paint": 104
+          },
+          "splashPaint": null,
+          "boot": {
+            "mountAt": 35.3,
+            "ipc": []
+          },
+          "res": [
+            {
+              "n": "WantedSansVariable.min.css",
+              "start": 23.4,
+              "dur": 0,
+              "size": 0
+            },
+            {
+              "n": "css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap",
+              "start": 23.5,
+              "dur": 0,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.68.woff2",
+              "start": 29.1,
+              "dur": 0,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.72.woff2",
+              "start": 29.2,
+              "dur": 0,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.75.woff2",
+              "start": 29.2,
+              "dur": 0,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.78.woff2",
+              "start": 29.2,
+              "dur": 0,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.79.woff2",
+              "start": 29.2,
+              "dur": 0,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.80.woff2",
+              "start": 29.2,
+              "dur": 0,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.81.woff2",
+              "start": 29.2,
+              "dur": 0,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.82.woff2",
+              "start": 29.3,
+              "dur": 0,
+              "size": 0
+            }
+          ]
+        }
+      },
+      {
+        "first": {
+          "timeOrigin": 1787389386749,
+          "nav": {
+            "responseEnd": 14,
+            "domInteractive": 92.1,
+            "domContentLoaded": 118.8,
+            "loadEnd": 120.9
+          },
+          "paints": {},
+          "splashPaint": null,
+          "boot": null,
+          "res": [
+            {
+              "n": "WantedSansVariable.min.css",
+              "start": 89.2,
+              "dur": 19,
+              "size": 0
+            },
+            {
+              "n": "css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap",
+              "start": 89.3,
+              "dur": 18.9,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.82.woff2",
+              "start": 163.3,
+              "dur": 12.5,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.72.woff2",
+              "start": 172.9,
+              "dur": 3,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.87.woff2",
+              "start": 151,
+              "dur": 2.6,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.88.woff2",
+              "start": 151,
+              "dur": 2.5,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.84.woff2",
+              "start": 173.4,
+              "dur": 2.5,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.79.woff2",
+              "start": 151.3,
+              "dur": 2.4,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.83.woff2",
+              "start": 178.8,
+              "dur": 1.7,
+              "size": 0
+            },
+            {
+              "n": "tDbv2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKwBNntkaToggR7BYRbKPxDcwg.woff2",
+              "start": 134.5,
+              "dur": 1.6,
+              "size": 0
+            }
+          ],
+          "spawnToTimeOrigin": 204
+        },
+        "reload": {
+          "timeOrigin": 1787389387092,
+          "nav": {
+            "responseEnd": 3,
+            "domInteractive": 26.3,
+            "domContentLoaded": 34.9,
+            "loadEnd": 34.9
+          },
+          "paints": {
+            "first-paint": 72,
+            "first-contentful-paint": 104
+          },
+          "splashPaint": null,
+          "boot": {
+            "mountAt": 36,
+            "ipc": []
+          },
+          "res": [
+            {
+              "n": "WantedSansVariable.min.css",
+              "start": 25.5,
+              "dur": 0,
+              "size": 0
+            },
+            {
+              "n": "css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap",
+              "start": 25.6,
+              "dur": 0,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.68.woff2",
+              "start": 30.2,
+              "dur": 0,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.72.woff2",
+              "start": 30.2,
+              "dur": 0,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.75.woff2",
+              "start": 30.2,
+              "dur": 0,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.78.woff2",
+              "start": 30.2,
+              "dur": 0,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.79.woff2",
+              "start": 30.2,
+              "dur": 0,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.80.woff2",
+              "start": 30.2,
+              "dur": 0,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.81.woff2",
+              "start": 30.2,
+              "dur": 0,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.82.woff2",
+              "start": 30.2,
+              "dur": 0,
+              "size": 0
+            }
+          ]
+        }
+      },
+      {
+        "first": {
+          "timeOrigin": 1787389388905,
+          "nav": {
+            "responseEnd": 16,
+            "domInteractive": 92.6,
+            "domContentLoaded": 119.9,
+            "loadEnd": 121.8
+          },
+          "paints": {},
+          "splashPaint": null,
+          "boot": null,
+          "res": [
+            {
+              "n": "WantedSansVariable.min.css",
+              "start": 89.5,
+              "dur": 16.1,
+              "size": 0
+            },
+            {
+              "n": "css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap",
+              "start": 89.7,
+              "dur": 15.9,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.87.woff2",
+              "start": 152.6,
+              "dur": 9.5,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.88.woff2",
+              "start": 152.6,
+              "dur": 9.4,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.79.woff2",
+              "start": 152.9,
+              "dur": 9.2,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.85.woff2",
+              "start": 144.6,
+              "dur": 1.8,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.86.woff2",
+              "start": 144.6,
+              "dur": 1.7,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.84.woff2",
+              "start": 174.9,
+              "dur": 1.4,
+              "size": 0
+            },
+            {
+              "n": "tDbv2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKwBNntkaToggR7BYRbKPxDcwg.woff2",
+              "start": 135.4,
+              "dur": 1.1,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.72.woff2",
+              "start": 174.4,
+              "dur": 1.1,
+              "size": 0
+            }
+          ],
+          "spawnToTimeOrigin": 212
+        },
+        "reload": {
+          "timeOrigin": 1787389389245,
+          "nav": {
+            "responseEnd": 2.5,
+            "domInteractive": 25.3,
+            "domContentLoaded": 34.2,
+            "loadEnd": 34.2
+          },
+          "paints": {
+            "first-paint": 72,
+            "first-contentful-paint": 104
+          },
+          "splashPaint": null,
+          "boot": {
+            "mountAt": 50.4,
+            "ipc": []
+          },
+          "res": [
+            {
+              "n": "WantedSansVariable.min.css",
+              "start": 24.5,
+              "dur": 0,
+              "size": 0
+            },
+            {
+              "n": "css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap",
+              "start": 24.5,
+              "dur": 0,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.68.woff2",
+              "start": 29.3,
+              "dur": 0,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.72.woff2",
+              "start": 29.4,
+              "dur": 0,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.75.woff2",
+              "start": 29.4,
+              "dur": 0,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.78.woff2",
+              "start": 29.4,
+              "dur": 0,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.79.woff2",
+              "start": 29.4,
+              "dur": 0,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.80.woff2",
+              "start": 29.4,
+              "dur": 0,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.81.woff2",
+              "start": 29.4,
+              "dur": 0,
+              "size": 0
+            },
+            {
+              "n": "WantedSansVariable.split.82.woff2",
+              "start": 29.4,
+              "dur": 0,
+              "size": 0
+            }
+          ]
+        }
+      }
+    ],
+    "at": "2026-08-22T09:03:10.882Z"
+  }
+}

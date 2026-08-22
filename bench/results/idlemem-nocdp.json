@@ -1,0 +1,145 @@
+{
+  "what": "유휴 메모리 — CDP 없이(제품 실사용 조건). 기점은 첫 가시 창, 정착은 고정 시간.",
+  "env": {
+    "ramGB": 63.8,
+    "cpu": "13th Gen Intel(R) Core(TM) i7-13700KF",
+    "os": "Microsoft Windows 11 Home 26200"
+  },
+  "tauri-3.0.0": {
+    "settleSec": 60,
+    "totalWsMB": 425.2,
+    "totalPrivMB": 190.5,
+    "procs": 6,
+    "procDetail": [
+      {
+        "name": "agentcodegui.exe",
+        "sub": "",
+        "pid": 18372,
+        "wsMB": 31.6,
+        "role": "browser",
+        "privMB": 10.9
+      },
+      {
+        "name": "msedgewebview2.exe",
+        "sub": "",
+        "pid": 5056,
+        "wsMB": 190.4,
+        "role": "browser",
+        "privMB": 91.4
+      },
+      {
+        "name": "msedgewebview2.exe",
+        "sub": "",
+        "pid": 10476,
+        "wsMB": 13.5,
+        "role": "crashpad-handler",
+        "privMB": 3.1
+      },
+      {
+        "name": "msedgewebview2.exe",
+        "sub": "network.mojom.NetworkService",
+        "pid": 2668,
+        "wsMB": 43.9,
+        "role": "utility",
+        "privMB": 13.9
+      },
+      {
+        "name": "msedgewebview2.exe",
+        "sub": "storage.mojom.StorageService",
+        "pid": 20184,
+        "wsMB": 21.1,
+        "role": "utility",
+        "privMB": 8.9
+      },
+      {
+        "name": "msedgewebview2.exe",
+        "sub": "",
+        "pid": 18668,
+        "wsMB": 124.7,
+        "role": "renderer",
+        "privMB": 62.4
+      }
+    ],
+    "at": "2026-08-22T09:00:03.865Z"
+  },
+  "electron-2.6.2": {
+    "settleSec": 60,
+    "totalWsMB": 659.6,
+    "totalPrivMB": 413.3,
+    "procs": 7,
+    "procDetail": [
+      {
+        "name": "electron.exe",
+        "sub": "",
+        "pid": 26148,
+        "wsMB": 118,
+        "role": "browser",
+        "privMB": 82.4
+      },
+      {
+        "name": "electron.exe",
+        "sub": "",
+        "pid": 30864,
+        "wsMB": 36.4,
+        "role": "crashpad-handler",
+        "privMB": 11.6
+      },
+      {
+        "name": "electron.exe",
+        "sub": "",
+        "pid": 25740,
+        "wsMB": 117,
+        "role": "gpu-process",
+        "privMB": 124.6
+      },
+      {
+        "name": "electron.exe",
+        "sub": "network.mojom.NetworkService",
+        "pid": 10424,
+        "wsMB": 55.2,
+        "role": "utility",
+        "privMB": 15.4
+      },
+      {
+        "name": "electron.exe",
+        "sub": "",
+        "pid": 34164,
+        "wsMB": 130.9,
+        "role": "renderer",
+        "privMB": 77.8
+      },
+      {
+        "name": "electron.exe",
+        "sub": "",
+        "pid": 13588,
+        "wsMB": 94.6,
+        "role": "browser",
+        "privMB": 60
+      },
+      {
+        "name": "electron.exe",
+        "sub": "",
+        "pid": 24184,
+        "wsMB": 107.6,
+        "role": "browser",
+        "privMB": 41.5
+      }
+    ],
+    "at": "2026-08-22T08:59:01.502Z"
+  },
+  "decision": {
+    "question": "대표값을 CDP 켠 값으로 계속 둘 것인가 (docs/memory-strategy.md 3군)",
+    "measured": {
+      "tauri-3.0.0": {
+        "cdpOn": "438.3 / 197.2 (5회 중앙값, 60s 정착, 단일 채팅 픽스처)",
+        "cdpOff": "425.2 / 190.5"
+      },
+      "electron-2.6.2": {
+        "cdpOn": "631.8~664 / 415~484 (크리틱 재현 3회, idlemem-electron-2.6.2-recheck.json)",
+        "cdpOff": "659.6 / 413.3"
+      }
+    },
+    "verdict": "차이가 작다 — Tauri +13MB WS / +7MB Priv(약 3%), Electron은 실행 간 편차 안. R1이 적은 \"CDP가 Priv +57MB\"는 현재 구성에서 재현되지 않는다. 대표값은 CDP 켠 쪽을 유지한다: 마운트 시점을 알 수 있는 유일한 방법이고, 편향이 두 앱 모두에서 노이즈 수준이다. 대신 이 파일이 CDP 없는 값을 항상 함께 남긴다.",
+    "caveat": "박제된 idlemem-electron-2.6.2.json(428.1 / 341.4 / 5프로세스)은 오늘 어떤 모드로도 재현되지 않는다(실측 7프로세스 · 626~660MB). 지시에 따라 그 파일은 갱신하지 않았다."
+  }
+}

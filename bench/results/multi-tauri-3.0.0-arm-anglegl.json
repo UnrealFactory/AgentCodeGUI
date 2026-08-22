@@ -3,64 +3,65 @@
   "panels": 4,
   "itemsPerPanel": 120,
   "gridPanels": 4,
-  "at": "2026-08-22T08:49:02.573Z",
+  "at": "2026-08-22T08:21:10.906Z",
   "idleGrid": {
-    "totalWsMB": 491.2,
-    "totalPrivMB": 337.4,
+    "totalWsMB": 457.8,
+    "totalPrivMB": 214.6,
     "procs": 7
   },
   "idleWithWindows": {
-    "totalWsMB": 511.4,
-    "totalPrivMB": 344.4,
+    "totalWsMB": 503.3,
+    "totalPrivMB": 222.6,
     "procs": 7
   },
   "windowCost": {
-    "wsMBPerWindow": 10.1,
+    "wsMBPerWindow": 22.8,
     "procsAdded": 0
   },
   "scrollInPanel": {
     "frames": 356,
     "avgFps": 60,
     "p95Ms": 16.8,
-    "worstMs": 16.9,
+    "worstMs": 16.8,
     "droppedPct": 0,
     "longTaskMs": 0
   },
   "procDetail": [
     {
       "name": "agentcodegui.exe",
-      "wsMB": 34.1,
-      "privMB": 15.6
+      "wsMB": 34.5,
+      "privMB": 15.2
     },
     {
       "name": "msedgewebview2.exe",
-      "wsMB": 137.1,
-      "privMB": 49.5
+      "wsMB": 138.6,
+      "privMB": 48.1
     },
     {
       "name": "msedgewebview2.exe",
-      "wsMB": 19.3,
+      "wsMB": 18.7,
       "privMB": 3.4
     },
     {
       "name": "msedgewebview2.exe",
-      "wsMB": 90.5,
-      "privMB": 124.4
+      "wsMB": 39.5,
+      "privMB": 12.4
     },
     {
       "name": "msedgewebview2.exe",
-      "wsMB": 43.7,
-      "privMB": 13.7
+      "wsMB": 20.1,
+      "privMB": 9
     },
     {
       "name": "msedgewebview2.exe",
-      "wsMB": 21.5,
-      "privMB": 9.4
+      "wsMB": 215.2,
+      "privMB": 147.6
     },
     {
       "name": "msedgewebview2.exe",
-      "wsMB": 189.8,
-      "privMB": 137.8
+      "wsMB": 78.2,
+      "privMB": 19.3
     }
-  ]
+  ],
+  "arm": "R2 레버 세트 + --use-angle=gl. Priv 214.6로 최저지만 WebGL renderer가 Microsoft Basic Render Driver = 소프트웨어 래스터(기각)."
 }

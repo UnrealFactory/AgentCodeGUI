@@ -3,49 +3,44 @@
   "panels": 4,
   "itemsPerPanel": 120,
   "gridPanels": 4,
-  "at": "2026-08-22T08:49:02.573Z",
+  "at": "2026-08-22T08:43:32.515Z",
   "idleGrid": {
-    "totalWsMB": 491.2,
-    "totalPrivMB": 337.4,
-    "procs": 7
+    "totalWsMB": 479.3,
+    "totalPrivMB": 252.5,
+    "procs": 6
   },
   "idleWithWindows": {
-    "totalWsMB": 511.4,
-    "totalPrivMB": 344.4,
-    "procs": 7
+    "totalWsMB": 522,
+    "totalPrivMB": 263.9,
+    "procs": 6
   },
   "windowCost": {
-    "wsMBPerWindow": 10.1,
+    "wsMBPerWindow": 21.3,
     "procsAdded": 0
   },
   "scrollInPanel": {
-    "frames": 356,
+    "frames": 358,
     "avgFps": 60,
     "p95Ms": 16.8,
-    "worstMs": 16.9,
+    "worstMs": 16.8,
     "droppedPct": 0,
     "longTaskMs": 0
   },
   "procDetail": [
     {
       "name": "agentcodegui.exe",
-      "wsMB": 34.1,
-      "privMB": 15.6
+      "wsMB": 33.1,
+      "privMB": 14.6
     },
     {
       "name": "msedgewebview2.exe",
-      "wsMB": 137.1,
-      "privMB": 49.5
+      "wsMB": 221,
+      "privMB": 101.9
     },
     {
       "name": "msedgewebview2.exe",
-      "wsMB": 19.3,
-      "privMB": 3.4
-    },
-    {
-      "name": "msedgewebview2.exe",
-      "wsMB": 90.5,
-      "privMB": 124.4
+      "wsMB": 19.1,
+      "privMB": 3.3
     },
     {
       "name": "msedgewebview2.exe",
@@ -54,13 +49,14 @@
     },
     {
       "name": "msedgewebview2.exe",
-      "wsMB": 21.5,
-      "privMB": 9.4
+      "wsMB": 21.1,
+      "privMB": 9
     },
     {
       "name": "msedgewebview2.exe",
-      "wsMB": 189.8,
-      "privMB": 137.8
+      "wsMB": 212.3,
+      "privMB": 140.8
     }
-  ]
+  ],
+  "arm": "최종 채택 세트(=제품 기본값) 반복 2/3. 3/3은 multi-tauri-3.0.0.json."
 }
