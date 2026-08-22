@@ -1,0 +1,156 @@
+{
+  "app": "electron-2.6.2",
+  "kind": "electron",
+  "at": "2026-08-22T05:14:26.293Z",
+  "viewport": {
+    "width": 1440,
+    "height": 900
+  },
+  "screens": [
+    {
+      "id": "boot-loading",
+      "label": "렌더러 로딩 화면",
+      "area": "1. 부팅",
+      "surface": "main-window",
+      "ok": false,
+      "ms": 60074,
+      "error": "boot 화면을 잡지 못함",
+      "resetError": "waitFor timeout: .chat .thread, .chat-scroll (1)"
+    },
+    {
+      "id": "bash-log-modal",
+      "label": "Bash 출력 카드",
+      "area": "2. 본채팅",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 813,
+      "found": 1
+    },
+    {
+      "id": "btw-dock",
+      "label": "/btw 질문 창 알약 도크",
+      "area": "2. 본채팅",
+      "surface": "main-window",
+      "ok": false,
+      "ms": 16653,
+      "error": "waitForNewWindow timeout: #session"
+    },
+    {
+      "id": "autohide-preview",
+      "label": "사이드바 감지 폭 미리보기 띠",
+      "area": "2. 본채팅",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 4082,
+      "found": 1
+    },
+    {
+      "id": "sidebar-autohide-edge",
+      "label": "사이드바 자동 숨김 — 접힘/가장자리 띠",
+      "area": "2. 본채팅",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 4860,
+      "found": 1
+    },
+    {
+      "id": "explorer-notice",
+      "label": "파일 작업 오류 알림 카드",
+      "area": "4. 탐색기",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 4421,
+      "found": 1
+    },
+    {
+      "id": "explorer-fileop-delete",
+      "label": "탐색기 삭제 확인 카드",
+      "area": "4. 탐색기",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 2089,
+      "found": 1
+    },
+    {
+      "id": "viewer-diff-on",
+      "label": "변경 마킹(diff) 표시",
+      "area": "5. 뷰어",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 2969,
+      "found": 1
+    },
+    {
+      "id": "viewer-loading",
+      "label": "뷰어 로딩 스피너",
+      "area": "5. 뷰어",
+      "surface": "main-window",
+      "ok": false,
+      "ms": 44989,
+      "error": "assert 실패: .fv-body .fv-loading .spin (0/1)"
+    },
+    {
+      "id": "viewer-selection-ask-bar",
+      "label": "코드 선택 툴바(복사/질문)",
+      "area": "5. 뷰어",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 2448,
+      "found": 2
+    },
+    {
+      "id": "viewer-ask-panel",
+      "label": "선택 코드 질문 패널",
+      "area": "5. 뷰어",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 2724,
+      "found": 1
+    },
+    {
+      "id": "viewer-maximized",
+      "label": "뷰어 최대화",
+      "area": "5. 뷰어",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 2884,
+      "found": 1
+    },
+    {
+      "id": "multi-explorer",
+      "label": "멀티 — 포커스 패널을 따라가는 탐색기",
+      "area": "8. 멀티",
+      "surface": "main-window",
+      "ok": false,
+      "ms": 23713,
+      "error": "waitFor timeout: .lcol .explorer .fxtree (1)"
+    },
+    {
+      "id": "multi-panel-btw-dock",
+      "label": "멀티 — 패널 btw 알약 도크",
+      "area": "8. 멀티",
+      "surface": "main-window",
+      "ok": false,
+      "ms": 16631,
+      "error": "waitForNewWindow timeout: #session"
+    },
+    {
+      "id": "session-window-btw",
+      "label": "btw 질문 창 — 이어받기 안내 웰컴",
+      "area": "9. 독립 창",
+      "surface": "session-window",
+      "ok": false,
+      "ms": 21821,
+      "error": "waitForNewWindow timeout: #session"
+    }
+  ],
+  "windowSized": false,
+  "summary": {
+    "defined": 156,
+    "attempted": 15,
+    "ok": 9,
+    "failed": 6,
+    "skipped": 0,
+    "successRatePct": 60
+  }
+}
