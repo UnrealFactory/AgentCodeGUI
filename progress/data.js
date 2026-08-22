@@ -27,6 +27,7 @@ window.PROGRESS = {
     { name: 'M6 파일·Git·뷰어', scope: 'fs ops·git 래퍼·HTML 미리보기 스킴·아이콘', state: 'wait' },
     { name: 'M7 LSP', scope: 'TS/Py/C#/C++/Verse 서버 관리·토큰 캐시', state: 'wait' },
     { name: 'M8 멀티 창 표면', scope: '멀티 패널·팝아웃·추가 채팅·btw·토스트·트레이', state: 'wait' },
+    { name: 'M-LOGIC 채팅/실행 상태 정리', scope: 'RunIdentity 단일 값 · 명시적 상태기계 · 설정 변경=명령 · 예약 큐 정체성 스냅샷 · busy 침묵 no-op 제거 (사용자 지적: 계정 변경·폴백·특수 상황에서 꼬임)', state: 'wait' },
     { name: 'M-UX 채팅 통합', scope: '일반+멀티 → 「채팅」 하나, 개수 다이얼 1~6 (1=기존 레이아웃) · 3스토어/3 IPC 세트 통합 · 무손실 마이그레이션', state: 'build', round: 1, critic: '설계 → 마이그레이션 PoC(손실 0 검증) → 크리틱이 161화면 대조로 기능 누락 사냥' },
     { name: 'M-UI 디자인 리뉴얼', scope: '알림/배너 계열 재설계 · 유리 회색 급변 수정 · 디자인 토큰·모던화 (사용자 요청)', state: 'build', round: 1, critic: '유리 원인 규명 → 디자인 시스템 스펙+목업 → 크리틱이 목업을 눈으로 열어 2.6.2와 대조' },
     { name: 'M9 신기능: MCP/Skill 뷰', scope: '멀티채팅 전용 MCP·Skill 가시화', state: 'wait' },
