@@ -179,17 +179,25 @@ body{
 .rule .g .sq{width:9px;height:9px;background:currentColor;display:block;}
 .rule .g .ch{font-size:12px;line-height:1;}
 .rule .lb{flex:0 0 auto;}
-/* 수치는 라벨 오른쪽에 붙는다 — 줄을 하나 더 쓰지 않는다 */
+/* 수치는 라벨 오른쪽에 붙는다 — 줄을 하나 더 쓰지 않는다.
+   색: text-3 → **text-2**. 11px 모노에 text-3(0.40)이면 합성 후 대비비 3.83으로 AA(4.5) 미달인데,
+   이 수치(152k→38k · 42초 · 도구 3)는 이 제안이 **새로 얹은 정보**다 — 밀도 논증의 전리품이
+   가장 안 읽히는 글자면 논증이 자기를 깎는다. 6.4로 올린다(높이 변화 0). */
 .rule .num{flex:0 0 auto;font-family:var(--font-mono);font-size:11px;font-weight:500;
-  color:var(--text-3);font-variant-numeric:tabular-nums;}
+  color:var(--text-2);font-variant-numeric:tabular-nums;}
 .rule .hair{flex:1;height:1px;min-width:16px;background:var(--edge);}
-.rule .tm{flex:0 0 auto;font-size:var(--ntf-meta);font-weight:400;color:var(--text-4);
+/* 색: text-4 → **text-3**. text-4(0.26)는 2.29로 3:1조차 미달이다. rule의 시각은 2.6.2에서
+   물려받은 자리가 아니라 **이 제안이 새로 넣은 자리**라 파리티 논거가 없다. 3.8로 올린다
+   (2.6.2 `.tm` 관례와 같은 등급). card의 시각은 파리티라 text-4 그대로 둔다. */
+.rule .tm{flex:0 0 auto;font-size:var(--ntf-meta);font-weight:400;color:var(--text-3);
   font-variant-numeric:tabular-nums;}
 /* 경계형 rule은 양쪽으로 선이 나간다(=여기서 갈렸다). 종결형 rule은 오른쪽만(=여기서 끊겼다). */
 .rule.split .hair.l{flex:0 0 22px;}
 
 /* ── 형태 2: band — 네 개입이 필요할 수 있는 것 ────────────────────────────
-   면 + 아이콘 + 문장 + (행동) + 시각. 1줄이면 39px(현행 41px보다 낮다). */
+   면 + 아이콘 + 문장 + (행동) + 시각. 1줄이면 **47.0px**(현행 46.8px과 사실상 동률).
+   ★ 여기 적혀 있던 "39px(현행 41px)"는 자가 계측과 어긋난 낡은 수치였다 — 같은 시트의
+   실측이 47.0/46.8이다. 형태가 번 것은 높이가 아니라 [되돌리기]다(문서 §4 표와 같은 결론). */
 .band{
   display:flex;gap:var(--ntf-gap);align-items:flex-start;
   padding:var(--ntf-pad-y) var(--ntf-pad-x);
@@ -206,9 +214,11 @@ body{
 .band .b{font-weight:600;color:var(--text);}
 .band .kw{font-weight:600;color:var(--key);}
 .band .mono{font-family:var(--font-mono);font-size:12px;}
-/* 오류 본문 원문 — 제목 줄 없이 본문만. '오류'라는 낱말은 색이 이미 말한다 */
+/* 오류 본문 원문 — 제목 줄 없이 본문만. '오류'라는 낱말은 색이 이미 말한다.
+   색: text-3 → **text-2**. 3.68로 AA 미달이었다. §5-3이 이 면을 만든 이유가 "줄 구조가
+   보존돼 스택 트레이스·경로가 **읽힌다**"인데 정작 가장 안 읽히는 등급이었다. 6.9. */
 .band .raw{margin-top:4px;font-family:var(--font-mono);font-size:11.5px;line-height:1.55;
-  color:var(--text-3);white-space:pre-wrap;word-break:break-word;
+  color:var(--text-2);white-space:pre-wrap;word-break:break-word;
   padding:7px 9px;border-radius:8px;background:var(--inset);}
 /* 오른쪽 트레이 — 행동 + 시각이 **같은 줄**에 산다(줄을 늘리지 않는 게 규약) */
 .band .tray{flex:0 0 auto;display:flex;align-items:center;gap:8px;margin-top:1px;}

@@ -185,9 +185,11 @@ $out = [ordered]@{
 }
 # JSONL 한 줄 추가. (배열을 다시 읽어 += 하면 ConvertFrom-Json이 배열을 PSObject로
 # 감싸 회차가 중첩되며 앞 기록이 사라진다 — 이 크리틱에서 실제로 밟았다.)
-($out | ConvertTo-Json -Depth 6 -Compress) | Add-Content -Path ($Json -replace '.json
-""
-"=== {0} : swing={1}  checkDetailH={2}  checkStdev={3} ===" -f $Tag, $out.swing, $out.checkDetailH, $out.checkStdev | Write-Host
-,'.jsonl') -Encoding UTF8
+# [M-UI R2 빌더의 수리 — 판정 로직은 한 글자도 안 건드렸다]
+# 커밋된 상태의 이 꼬리 여섯 줄은 붙여넣기 사고로 깨져 있어 **파서가 파일을 아예 못 읽는다**
+# (`TerminatorExpectedAtEndOfString` — Add-Content의 -replace 인자 안에 마지막 두 줄이
+# 통째로 삼켜져 있었다). 크리틱의 수치는 그 사고 이전 판으로 잰 것이고(도구 02:05 <
+# 결과 파일 02:02), 원래 의도는 주석이 말하는 "JSONL 한 줄 추가"다. 그대로 복원한다.
+($out | ConvertTo-Json -Depth 6 -Compress) | Add-Content -Path ($Json -replace '\.json$', '.jsonl') -Encoding UTF8
 ""
 "=== {0} : swing={1}  checkDetailH={2}  checkStdev={3} ===" -f $Tag, $out.swing, $out.checkDetailH, $out.checkStdev | Write-Host

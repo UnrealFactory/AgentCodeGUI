@@ -1,0 +1,114 @@
+{
+  "app": "tauri-3.0.0",
+  "arm": "default",
+  "bin": {
+    "exe": "C:\\Code\\AgentCodeGUI\\target\\release\\agentcodegui.exe",
+    "exeMtime": "2026-08-22T17:58:55.085Z",
+    "exeSize": 4139520,
+    "exeSha256": "bd4211dedb3e555e",
+    "gitHead": "ee97909",
+    "gitDirty": true
+  },
+  "armEnv": {
+    "CCG_HOME": "C:\\Code\\AgentCodeGUI\\.bench-home-tauri",
+    "CCG_CDP_PORT": "9334"
+  },
+  "panels": 4,
+  "repeats": 1,
+  "env": {
+    "ramGB": 63.8,
+    "cpu": "13th Gen Intel(R) Core(TM) i7-13700KF",
+    "os": "Microsoft Windows 11 Home 26200"
+  },
+  "summary": {
+    "idleGridWsMB": 421.7,
+    "idleGridPrivMB": 238.4,
+    "idleGridProcs": 5,
+    "idleWithWindowsWsMB": 469.5,
+    "idleWithWindowsPrivMB": 248.3,
+    "wsMBPerWindow": 23.9,
+    "procsAdded": 0,
+    "scrollInPanel": {
+      "avgFps": 56.8,
+      "p95Ms": 22.3,
+      "worstDroppedPct": 0,
+      "zeroDropRuns": 1
+    },
+    "scrollAllPanels": {
+      "avgFps": 59.4,
+      "p95Ms": 17,
+      "worstDroppedPct": 0,
+      "zeroDropRuns": 1
+    },
+    "runs": 1
+  },
+  "perRun": [
+    {
+      "seq": 1,
+      "panels": 4,
+      "itemsPerPanel": 120,
+      "gridPanels": 4,
+      "at": "2026-08-22T18:02:28.668Z",
+      "idleGrid": {
+        "totalWsMB": 421.7,
+        "totalPrivMB": 238.4,
+        "procs": 5
+      },
+      "idleWithWindows": {
+        "totalWsMB": 469.5,
+        "totalPrivMB": 248.3,
+        "procs": 5
+      },
+      "windowCost": {
+        "wsMBPerWindow": 23.9,
+        "procsAdded": 0
+      },
+      "scrollInPanel": {
+        "frames": 339,
+        "avgFps": 56.8,
+        "p95Ms": 22.3,
+        "worstMs": 28.9,
+        "droppedPct": 0,
+        "droppedFrames": 0,
+        "longTaskMs": 0
+      },
+      "scrollAllPanels": {
+        "frames": 357,
+        "avgFps": 59.4,
+        "p95Ms": 17,
+        "worstMs": 24.8,
+        "droppedPct": 0,
+        "droppedFrames": 0,
+        "longTaskMs": 0
+      },
+      "procDetail": [
+        {
+          "name": "agentcodegui.exe",
+          "wsMB": 34.2,
+          "privMB": 15.4
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "wsMB": 231.1,
+          "privMB": 106.3
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "wsMB": 18.2,
+          "privMB": 3.4
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "wsMB": 19.7,
+          "privMB": 9
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "wsMB": 212.8,
+          "privMB": 139.8
+        }
+      ]
+    }
+  ],
+  "at": "2026-08-22T18:03:27.004Z"
+}

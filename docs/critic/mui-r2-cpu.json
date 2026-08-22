@@ -1,0 +1,100 @@
+﻿[
+    {
+        "ts":  "2026-08-23T03:05:18.9456432+09:00",
+        "tag":  "R2-glass-on",
+        "targetPid":  12260,
+        "elapsedMs":  60012,
+        "ghzAssumed":  3,
+        "procs":  5,
+        "totalCycles":  404353155,
+        "totalApproxMs":  134.78,
+        "totalPctOneCore":  0.2246,
+        "mainOnlyCycles":  20499111,
+        "perProc":  [
+                        {
+                            "pid":  28916,
+                            "name":  "msedgewebview2",
+                            "cycles":  245587039,
+                            "approxMs":  81.86,
+                            "pctOneCore":  0.1364
+                        },
+                        {
+                            "pid":  15704,
+                            "name":  "msedgewebview2",
+                            "cycles":  106089599,
+                            "approxMs":  35.36,
+                            "pctOneCore":  0.0589
+                        },
+                        {
+                            "pid":  24724,
+                            "name":  "msedgewebview2",
+                            "cycles":  28798709,
+                            "approxMs":  9.6,
+                            "pctOneCore":  0.016
+                        },
+                        {
+                            "pid":  12260,
+                            "name":  "agentcodegui",
+                            "cycles":  20499111,
+                            "approxMs":  6.83,
+                            "pctOneCore":  0.0114
+                        },
+                        {
+                            "pid":  15880,
+                            "name":  "msedgewebview2",
+                            "cycles":  3378697,
+                            "approxMs":  1.13,
+                            "pctOneCore":  0.0019
+                        }
+                    ]
+    },
+    {
+        "ts":  "2026-08-23T03:07:49.7702883+09:00",
+        "tag":  "R2-control-chrome-c",
+        "targetPid":  15552,
+        "elapsedMs":  60016,
+        "ghzAssumed":  3,
+        "procs":  5,
+        "totalCycles":  968182709,
+        "totalApproxMs":  322.73,
+        "totalPctOneCore":  0.5377,
+        "mainOnlyCycles":  42674754,
+        "perProc":  [
+                        {
+                            "pid":  30108,
+                            "name":  "msedgewebview2",
+                            "cycles":  748125725,
+                            "approxMs":  249.38,
+                            "pctOneCore":  0.4155
+                        },
+                        {
+                            "pid":  32348,
+                            "name":  "msedgewebview2",
+                            "cycles":  141203384,
+                            "approxMs":  47.07,
+                            "pctOneCore":  0.0784
+                        },
+                        {
+                            "pid":  15552,
+                            "name":  "agentcodegui",
+                            "cycles":  42674754,
+                            "approxMs":  14.22,
+                            "pctOneCore":  0.0237
+                        },
+                        {
+                            "pid":  23176,
+                            "name":  "msedgewebview2",
+                            "cycles":  32244729,
+                            "approxMs":  10.75,
+                            "pctOneCore":  0.0179
+                        },
+                        {
+                            "pid":  16764,
+                            "name":  "msedgewebview2",
+                            "cycles":  3934117,
+                            "approxMs":  1.31,
+                            "pctOneCore":  0.0022
+                        }
+                    ]
+    }
+]

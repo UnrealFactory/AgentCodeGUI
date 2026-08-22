@@ -69,54 +69,74 @@
   </div>
 </div>
 
-<!-- ── 변형 3종: cause(FallbackVia) 3경로 · 되돌린 뒤 · 예약분 있음 ───────── -->
+<!-- ── 변형: cause 3경로 1:1 · 한 턴 2배너 · 되돌린 뒤 · 예약분 · 좁은 폭 ───── -->
 <div class="mockmeta" style="margin-top:22px">
-  <h1>변형 — 같은 형태, 문장만 다르다</h1>
-  <span class="sub">M-LOGIC §6.2의 <code>FallbackVia</code> 3경로(<code>dialog</code> · <code>refusal_frame</code> ·
-  <code>model_delta</code>)는 <b>원인만 다르고 UI는 하나</b>다. 불변식 "전환 1회 = 리비전 1개 = 배너 1개"가
-  형태에서도 지켜지려면 경로마다 다른 컴포넌트를 만들면 안 된다.</span>
+  <h1>변형 1 — <code>FallbackVia</code> 3경로에 문장 3종이 <b>1:1로</b> 붙는다</h1>
+  <span class="sub">
+    M-LOGIC §6.2의 <code>cause</code>는 <code>dialog</code> · <code>refusal_frame</code> · <code>model_delta</code> 셋이고,
+    <b>형태는 하나·문장은 셋</b>이다. 경로마다 컴포넌트를 만들면 불변식 "전환 1회 = 리비전 1개 = 배너 1개"가
+    형태에서 깨지고, 반대로 <b>문장까지 하나로 묶으면 거짓말</b>이 된다 —
+    <code>dialog</code>는 <b>사용자가 눌러서</b> 바뀐 것이라 "시스템이 정했다"로 읽히면 안 되고
+    (§3.6 <code>respond_dialog(accept)</code>), <code>model_delta</code>는 <b>사유 프레임이 아예 오지 않은</b> 경로다
+    (관측만으로 만든 리비전 — 표의 C″). 그래서 갈리는 낱말을 문장마다 하나씩 박았다:
+    <b>동의하셨어요</b> / <b>묻지 않고</b> / <b>사유는 오지 않았고</b>.
+    <b>codex 수용량</b> 사례는 <b>뺐다</b> — 그건 §6.2의 <code>cause</code>가 아니라 엔진 어댑터 쪽 사건이라,
+    같은 자리에 두면 3경로가 4개로 보인다.
+  </span>
 </div>
 <div class="ab">
   <div class="pane" data-k="V1">
-    <div class="ph"><span class="k">V</span><span class="t">cause 3경로 · 되돌린 뒤 · codex</span></div>
+    <div class="ph"><span class="k">V1</span><span class="t">cause 3경로 — 문장 3종</span><span class="m">1 형태 : 3 문장</span></div>
     <div class="thread">
+      <div class="rule t-neutral">
+        <span class="g"><span class="ch">›</span></span><span class="lb">cause = dialog</span>
+        <span class="num">사용자가 수락</span><span class="hair"></span><span class="tm">§3.6 accept</span>
+      </div>
       <div class="band t-notice">
         <span class="g">⚠</span>
-        <div class="bd"><div class="tx"><span class="b">Fable 5</span>가 정책상 거부해 <span class="kw">Opus 5</span>로 전환했어요 — 이후 대화도 같은 모델로 갑니다.</div></div>
+        <div class="bd"><div class="tx"><span class="b">Fable 5</span>가 거부한 요청이라 <span class="kw">Opus 5</span>로 바꾸는 데 <span class="b">동의하셨어요</span> — 이후 대화도 같은 모델로 갑니다.</div></div>
         <div class="tray"><button class="act">되돌리기</button><span class="tm">14:32</span></div>
       </div>
+      <div class="rule t-neutral">
+        <span class="g"><span class="ch">›</span></span><span class="lb">cause = refusal_frame</span>
+        <span class="num">수락 없이 전환</span><span class="hair"></span><span class="tm">§6.2 B′</span>
+      </div>
       <div class="band t-notice">
         <span class="g">⚠</span>
-        <div class="bd"><div class="tx">엔진이 <span class="b">Fable 5</span> 대신 <span class="kw">Sonnet 4.6</span>으로 답했어요 — 전환을 대화에 반영했습니다.</div></div>
+        <div class="bd"><div class="tx"><span class="b">Fable 5</span>가 정책상 거부해 엔진이 <span class="b">묻지 않고</span> <span class="kw">Opus 5</span>로 전환했어요 — 이후 대화도 같은 모델로 갑니다.</div></div>
         <div class="tray"><button class="act">되돌리기</button><span class="tm">14:35</span></div>
       </div>
+      <div class="rule t-neutral">
+        <span class="g"><span class="ch">›</span></span><span class="lb">cause = model_delta</span>
+        <span class="num">관측만으로</span><span class="hair"></span><span class="tm">§6.2 C″</span>
+      </div>
       <div class="band t-notice">
         <span class="g">⚠</span>
-        <div class="bd"><div class="tx"><span class="b">GPT-5 Codex</span>가 수용량 한계라 <span class="kw">GPT-5 mini</span>로 전환해 다시 시도해요.</div></div>
+        <div class="bd"><div class="tx">엔진이 <span class="b">Fable 5</span> 대신 <span class="kw">Sonnet 4.6</span>으로 답했어요 — <span class="b">사유는 오지 않았고</span>, 전환만 대화에 반영했습니다.</div></div>
         <div class="tray"><button class="act">되돌리기</button><span class="tm">14:39</span></div>
-      </div>
-      <div class="band t-notice">
-        <span class="g">⚠</span>
-        <div class="bd"><div class="tx"><span class="b">Fable 5</span>가 정책상 거부해 <span class="kw">Opus 5</span>로 전환했어요 — 이후 대화도 같은 모델로 갑니다.</div></div>
-        <div class="tray"><button class="act done">되돌림 ✓</button><span class="tm">14:32</span></div>
-      </div>
-      <div class="band t-notice">
-        <span class="g">⚠</span>
-        <div class="bd"><div class="tx"><span class="b">Fable 5</span>가 정책상 거부해 <span class="kw">Opus 5</span>로 전환했어요 — 예약해 둔 <span class="mono">effort=high</span>는 <span class="b">다음 턴</span>에 함께 적용됩니다.</div></div>
-        <div class="tray"><button class="act">되돌리기</button><span class="tm">14:41</span></div>
       </div>
     </div>
   </div>
   <div class="pane" data-k="V2">
-    <div class="ph"><span class="k">V</span><span class="t">좁은 폭 — 멀티 패널(420px) 안</span><span class="m">scope=panel</span></div>
-    <div class="thread" style="max-width:420px">
+    <div class="ph"><span class="k">V2</span><span class="t">되돌린 뒤 · 예약분 있음 · 좁은 폭(420px)</span><span class="m">scope=panel</span></div>
+    <div class="thread">
       <div class="band t-notice">
+        <span class="g">⚠</span>
+        <div class="bd"><div class="tx"><span class="b">Fable 5</span>가 정책상 거부해 엔진이 <span class="b">묻지 않고</span> <span class="kw">Opus 5</span>로 전환했어요 — 이후 대화도 같은 모델로 갑니다.</div></div>
+        <div class="tray"><button class="act done">되돌림 ✓</button><span class="tm">14:32</span></div>
+      </div>
+      <div class="band t-notice">
+        <span class="g">⚠</span>
+        <div class="bd"><div class="tx"><span class="b">Fable 5</span>가 거부한 요청이라 <span class="kw">Opus 5</span>로 바꾸는 데 <span class="b">동의하셨어요</span> — 예약해 둔 <span class="mono">effort=high</span>는 <span class="b">다음 턴</span>에 함께 적용됩니다.</div></div>
+        <div class="tray"><button class="act">되돌리기</button><span class="tm">14:41</span></div>
+      </div>
+      <div class="band t-notice" style="max-width:420px">
         <span class="g">⚠</span>
         <div class="bd">
           <div class="tx"><span class="b">Fable 5</span>가 정책상 거부해 <span class="kw">Opus 5</span>로 전환했어요 — 이후 대화도 같은 모델로 갑니다.</div>
         </div>
       </div>
-      <div class="band t-notice" style="flex-wrap:wrap">
+      <div class="band t-notice" style="max-width:420px;flex-wrap:wrap">
         <span class="g">⚠</span>
         <div class="bd">
           <div class="tx"><span class="b">Fable 5</span>가 정책상 거부해 <span class="kw">Opus 5</span>로 전환했어요.</div>
@@ -125,6 +145,70 @@
       </div>
       <div class="rule t-neutral" style="max-width:420px">
         <span class="g"><span class="ch">↩</span></span><span class="lb">패널 폭이 좁으면 트레이가 아래로 접힌다</span><span class="hair"></span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── 한 턴 2배너: fallback_arms가 벡터라는 사실을 형태가 감당하는가 ───────── -->
+<div class="mockmeta" style="margin-top:22px">
+  <h1>변형 2 — <b>한 턴에 전환 두 번</b> (<code>fable → opus → sonnet</code>)</h1>
+  <span class="sub">
+    ★R3에서 <code>fallback_arms</code>는 <b>단일 슬롯이 아니라 벡터</b>(<code>SmallVec&lt;[FallbackArm; 2]&gt;</code>)가 됐고,
+    매칭 키는 <code>to_model</code>이다. 즉 <b>한 턴 안에 배너가 둘 이상 설 수 있다</b> —
+    불변식 "전환 1회 = 리비전 1개 = 배너 1개"가 <b>시각적으로 시험되는 유일한 자리</b>인데
+    R1 목업에는 이 자리가 비어 있었다. 여기서 확인할 것 셋:
+    ① 두 배너가 <b>연속으로 서도 스레드가 안 끊긴다</b>(owl 18px 그대로 · 사이에 카드·선을 끼우지 않는다),
+    ② <b>[되돌리기]가 각각 자기 리비전을 가리킨다</b>(<code>revertTo</code>가 다르다 — 첫 배너를 되돌리면
+    두 번째 전환은 <b>사라지지 않고</b> 그 위에 새 리비전으로 쌓인다, §6.3),
+    ③ 두 번째 배너의 <code>fromModel</code>은 원본이 아니라 <b>직전 도착값</b>(<code>Opus 5</code>)이다 —
+    "Fable 5가 두 번 거부했다"로 읽히면 거짓말이 된다.
+  </span>
+</div>
+<div class="ab">
+  <div class="pane" data-k="V3">
+    <div class="ph"><span class="k">V3</span><span class="t">같은 턴 · 배너 2개</span><span class="m">arms = [opus, sonnet]</span></div>
+    <div class="thread">
+      <div class="msg user"><div class="msg-main"><div class="content">이 크래시 덤프 읽고 원인 짚어줘</div></div></div>
+      <div class="band t-notice">
+        <span class="g">⚠</span>
+        <div class="bd"><div class="tx"><span class="b">Fable 5</span>가 정책상 거부해 엔진이 <span class="b">묻지 않고</span> <span class="kw">Opus 5</span>로 전환했어요 — 이후 대화도 같은 모델로 갑니다.</div></div>
+        <div class="tray"><button class="act">되돌리기</button><span class="tm">14:32</span></div>
+      </div>
+      <div class="band t-notice">
+        <span class="g">⚠</span>
+        <div class="bd"><div class="tx"><span class="b">Opus 5</span>도 같은 이유로 거부해 <span class="kw">Sonnet 4.6</span>으로 한 번 더 전환했어요 — 이후 대화도 같은 모델로 갑니다.</div></div>
+        <div class="tray"><button class="act">되돌리기</button><span class="tm">14:32</span></div>
+      </div>
+      <div class="toollog">
+        <div class="trow"><span class="ti">⌕</span><span class="tn">읽기</span><span class="ta">crash-recovery.log</span><span class="tr">120줄</span></div>
+      </div>
+      <div class="msg"><div class="msg-main"><div class="content">덤프의 예외 코드는 <b>0x80000003</b>이에요 — diff DP가 스레드 하나를 통째로 먹은 자리입니다.</div></div></div>
+      <div class="worked">31초 동안 작업함</div>
+    </div>
+  </div>
+  <div class="pane" data-k="V4">
+    <div class="ph"><span class="k">V4</span><span class="t">첫 배너를 되돌린 뒤 — 히스토리는 안 지운다</span><span class="m">§6.3 revert = 새 리비전</span></div>
+    <div class="thread">
+      <div class="msg user"><div class="msg-main"><div class="content">이 크래시 덤프 읽고 원인 짚어줘</div></div></div>
+      <div class="band t-notice">
+        <span class="g">⚠</span>
+        <div class="bd"><div class="tx"><span class="b">Fable 5</span>가 정책상 거부해 엔진이 <span class="b">묻지 않고</span> <span class="kw">Opus 5</span>로 전환했어요 — 이후 대화도 같은 모델로 갑니다.</div></div>
+        <div class="tray"><button class="act done">되돌림 ✓</button><span class="tm">14:32</span></div>
+      </div>
+      <div class="band t-notice">
+        <span class="g">⚠</span>
+        <div class="bd"><div class="tx"><span class="b">Opus 5</span>도 같은 이유로 거부해 <span class="kw">Sonnet 4.6</span>으로 한 번 더 전환했어요 — 이후 대화도 같은 모델로 갑니다.</div></div>
+        <div class="tray"><button class="act">되돌리기</button><span class="tm">14:32</span></div>
+      </div>
+      <div class="rule t-neutral">
+        <span class="g"><span class="ch">↩</span></span><span class="lb">모델을 <b>Fable 5</b>로 되돌림</span>
+        <span class="num">리비전 4</span><span class="hair"></span><span class="tm">14:34</span>
+      </div>
+      <div class="msg user"><div class="msg-main"><div class="content">다시 해봐</div></div></div>
+      <div class="rule t-neutral">
+        <span class="g"><span class="ch">↺</span></span><span class="lb">모델 자동 전환 때문에 새 프로세스로 시작했어요</span>
+        <span class="num">engine.model</span><span class="hair"></span><span class="tm">14:34</span>
       </div>
     </div>
   </div>
@@ -151,7 +235,17 @@
   여기서 얻은 것은 높이가 아니라 <b>[되돌리기]라는 기능</b>이다 — 줄을 늘리지 않고 넣었다는 게 요점.<br>
   <b>안 바꾼 것.</b> 색조(yellow), 아이콘 글리프, 스레드 owl 간격, 시각 포맷. 학습된 것은 건드리지 않는다.<br>
   <b>되돌린 뒤에도 배너는 남는다</b> — §6.3이 revert를 "새 리비전"으로 정의하므로 히스토리가 지워지면 거짓말이 된다.
-  버튼만 <code>[되돌림 ✓]</code>로 정착한다.
+  버튼만 <code>[되돌림 ✓]</code>로 정착한다.<br>
+  <b>R2에서 더한 것 1 — cause 3경로에 문장 3종을 1:1로.</b> R1 목업은 <code>dialog</code>와
+  <code>refusal_frame</code>에 <b>같은 문장</b>을 썼다. 그런데 A 경로는 <b>사용자가 눌러서</b> 바뀐 것이라
+  "시스템이 정했다"로 읽히면 안 된다. 갈리는 낱말을 하나씩 박았다(동의하셨어요 / 묻지 않고 /
+  사유는 오지 않았고). codex 수용량 예시는 §6.2의 <code>cause</code>가 아니라서 뺐다.<br>
+  <b>R2에서 더한 것 2 — 한 턴 2배너.</b> <code>fallback_arms</code>는 벡터다(★R3). 형태의 불변식이
+  시각적으로 시험되는 유일한 자리인데 비어 있었다. 두 번째 배너의 <code>fromModel</code>이
+  <b>직전 도착값</b>이라는 것, 첫 배너를 되돌려도 두 번째가 안 사라진다는 것이 그 자리의 시험이다.<br>
+  <b>R2에서 더한 것 3 — 대비비.</b> <code>.rule .num</code>·<code>.band .raw</code>는 <code>--text-2</code>로,
+  <code>.rule .tm</code>은 <code>--text-3</code>으로 올렸다(높이 변화 0). 이 제안이 새로 얹은 정보가
+  가장 안 읽히는 등급에 있던 자리다 — 문서 §7-5.
   </p>
 </details>
 

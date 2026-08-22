@@ -53,6 +53,12 @@ fn boot_payload_script() -> String {
         crate::ipc::ch::UI_PREFS_GET: ccg_store::prefs::read_ui_prefs(),
         crate::ipc::ch::PROFILE_GET: ccg_store::prefs::read_profile(),
         crate::ipc::ch::APP_GET_VERSION: env!("CARGO_PKG_VERSION"),
+        // 유리 상태 스냅샷. 셸의 부팅 3연발은 **프로세스당 1회**라 나중에 태어난 창과
+        // 크래시 복구 재로드에는 오지 않는다(R1 크리틱 실증: events=0). 이 스크립트는
+        // 페이지 로드마다 다시 도므로 여기 실으면 그 두 구멍이 함께 닫힌다.
+        // 소비자는 app/src/api/glassFallback.ts — `call()`이 없는 채널이라 shim의
+        // takeBoot와 충돌하지 않는다(그쪽은 채널당 1회 소비, 이쪽은 읽기만).
+        glass::UI_GLASS_STATE: glass::boot_state(),
     });
     // JSON은 그대로 JS 리터럴로 유효하다(U+2028/2029도 ES2019+에서 문자열 안에 허용).
     format!("window.__CCG_BOOT={payload};")
@@ -184,6 +190,11 @@ pub fn create_main(app: &AppHandle) -> tauri::Result<WebviewWindow> {
             radius: None,
             color: None,
         });
+        // 유리 폴백 부트스트랩 — **문서가 만들어지는 그 순간** 기본값(불투명)을 심는다.
+        // `initialization_script`는 페이지 로드마다 다시 도므로 재로드·크래시 복구
+        // 재생성까지 함께 덮인다(R1 크리틱 §3.1 D1). mode 'c'는 아크릴을 아예 안 걸므로
+        // 폴백 개념 자체가 없다 — 대조군의 픽셀을 바꾸지 않기 위해 그때는 안 심는다.
+        b = b.initialization_script(&glass::boot_script());
     }
 
     // 보여주는 시점 = 스플래시 오버레이가 DOM에 있고 **렌더 차단 CSS가 다 와서 다음
@@ -200,6 +211,9 @@ pub fn create_main(app: &AppHandle) -> tauri::Result<WebviewWindow> {
         if payload.event() == PageLoadEvent::Finished {
             // 크래시 복구의 2순위 검증 신호 — 재로드마다 다시 온다(crash.rs `note_page_load`).
             crate::crash::note_page_load(w.label());
+            // 유리 상태를 **이 문서에** 다시 알린다. document-start 스냅샷이 이미 화면을
+            // 맞춰 두었지만, 그 사이에 상태가 바뀌었을 수 있고 구독은 비동기 등록이다.
+            glass::note_document(w.label());
             show_once(&w);
         }
     });
@@ -294,6 +308,9 @@ pub fn open_session_window(app: &AppHandle) -> tauri::Result<()> {
     .on_page_load(|w, payload| {
         if payload.event() == PageLoadEvent::Finished {
             crate::crash::note_page_load(w.label());
+            // 추가 채팅 창은 R1에서 폴백을 **영영 못 받던** 자리다(부팅 3연발이 이미
+            // 지나간 뒤에 태어난다). document-start 스냅샷 + 이 통지가 그 구멍이다.
+            glass::note_document(w.label());
             let _ = w.show();
             let _ = w.set_focus();
         }
@@ -308,6 +325,7 @@ pub fn open_session_window(app: &AppHandle) -> tauri::Result<()> {
             radius: None,
             color: None,
         })
+        .initialization_script(&glass::boot_script())
     } else {
         win
     }

@@ -1,0 +1,122 @@
+{
+ "A_normal": {
+  "cls": "",
+  "boot": {
+   "ok": true,
+   "tOn": 6.2,
+   "tOff": 6.3
+  },
+  "splashPaintAt": 30.3,
+  "flash": {
+   "onAt": null,
+   "offAt": null,
+   "opaqueMs": null,
+   "firstRafAt": 27.6,
+   "flips": [
+    [
+     "install",
+     false,
+     6.5
+    ]
+   ]
+  },
+  "glass": {
+   "events": 11,
+   "ok": true
+  }
+ },
+ "B_unproven": {
+  "cls": "",
+  "boot": {
+   "ok": true,
+   "tOn": 11.6,
+   "prev": {
+    "ok": false,
+    "at": 1787421552003
+   }
+  },
+  "splashPaintAt": 51.3,
+  "flash": {
+   "onAt": 11.9,
+   "offAt": 52.5,
+   "opaqueMs": 40.6,
+   "firstRafAt": 33.3,
+   "flips": [
+    [
+     "install",
+     true,
+     11.8
+    ],
+    [
+     "mut",
+     false,
+     52.5
+    ]
+   ]
+  },
+  "glass": {
+   "events": 14,
+   "ok": true
+  }
+ },
+ "C_restored": {
+  "cls": "",
+  "boot": {
+   "ok": true,
+   "tOn": 6.5,
+   "tOff": 6.6
+  },
+  "splashPaintAt": 45.8,
+  "flash": {
+   "onAt": null,
+   "offAt": null,
+   "opaqueMs": null,
+   "firstRafAt": 27.4,
+   "flips": [
+    [
+     "install",
+     false,
+     6.8
+    ]
+   ]
+  },
+  "glass": {
+   "events": 10,
+   "ok": true
+  }
+ },
+ "D_session_unproven": {
+  "cls": "",
+  "boot": {
+   "ok": true,
+   "tOn": 6.9,
+   "prev": {
+    "ok": false,
+    "at": 1787421565155
+   }
+  },
+  "splashPaintAt": null,
+  "flash": {
+   "onAt": 7.3,
+   "offAt": 194.4,
+   "opaqueMs": 187.1,
+   "firstRafAt": 19.4,
+   "flips": [
+    [
+     "install",
+     true,
+     7.3
+    ],
+    [
+     "mut",
+     false,
+     194.4
+    ]
+   ]
+  },
+  "glass": {
+   "events": 13,
+   "ok": true
+  }
+ }
+}

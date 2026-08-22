@@ -59,7 +59,13 @@ const USED = [
   ['no face (rule/qa)', 'text-3 (0.40)', 'rule 수치(.num) 11px'],
   ['no face (rule/qa)', 'text-4 (0.26)', 'rule 시각(.tm) 11px'],
   ['no face (rule/qa)', 'green', '문답 체크'],
-  ['neutral (surface .03)', 'text-4 (0.26)', 'card 시각 11px']
+  ['neutral (surface .03)', 'text-4 (0.26)', 'card 시각 11px'],
+  // ── [M-UI R2 빌더가 더한 행 — 계산식은 한 글자도 안 건드렸다] ──────────────
+  // 위 세 줄(AA 미달 3건)을 고친 뒤의 **같은 자리**를 같은 수식으로 다시 잰다.
+  // 원래 행을 지우지 않았으므로 한 표에서 전/후가 나란히 보인다.
+  ['no face (rule/qa)', 'text-2 (0.62)', '★R2 rule 수치(.num) — text-3 → text-2'],
+  ['danger (red-soft .13)', 'text-2 (0.62)', '★R2 오류 원문(.raw) — text-3 → text-2'],
+  ['no face (rule/qa)', 'text-3 (0.40)', '★R2 rule 시각(.tm) — text-4 → text-3']
 ]
 const rows = []
 for (const [face, token, what] of USED) {

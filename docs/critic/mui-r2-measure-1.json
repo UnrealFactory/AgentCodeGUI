@@ -1,0 +1,375 @@
+[
+ {
+  "file": "docs/design/mockups/ui-notify-1-fallback.html",
+  "panes": {
+   "A": {
+    "threadH": 325.9,
+    "padY": 46,
+    "sumMt": 54,
+    "sumH": 225.9,
+    "chars": 253,
+    "digits": 22,
+    "buttons": 0,
+    "rows": [
+     {
+      "cls": "msg user",
+      "h": 48.8,
+      "mt": 0,
+      "chars": 23,
+      "digits": 0,
+      "buttons": 0,
+      "text": "이 함수가 왜 느린지 프로파일링해서 고쳐줘"
+     },
+     {
+      "cls": "meas",
+      "h": 46.8,
+      "mt": 18,
+      "chars": 78,
+      "digits": 9,
+      "buttons": 0,
+      "text": "⚠ 정책상 응답할 수 없는 요청이라 Opus 5 모델로 전환해 계속해요. 이후 대화"
+     },
+     {
+      "cls": "toollog",
+      "h": 57.5,
+      "mt": 18,
+      "chars": 74,
+      "digits": 11,
+      "buttons": 0,
+      "text": "⌕읽기src/main/claude/engine.ts:990-101021줄 ✎편집sr"
+     },
+     {
+      "cls": "msg",
+      "h": 53.3,
+      "mt": 8,
+      "chars": 68,
+      "digits": 0,
+      "buttons": 0,
+      "text": "프로파일링해 보니 capThread()가 매 이벤트마다 배열 전체를 다시 만들고 있"
+     },
+     {
+      "cls": "worked",
+      "h": 19.5,
+      "mt": 10,
+      "chars": 10,
+      "digits": 2,
+      "buttons": 0,
+      "text": "18초 동안 작업함"
+     }
+    ]
+   },
+   "B": {
+    "threadH": 326.1,
+    "padY": 46,
+    "sumMt": 54,
+    "sumH": 226.1,
+    "chars": 244,
+    "digits": 21,
+    "buttons": 1,
+    "rows": [
+     {
+      "cls": "msg user",
+      "h": 48.8,
+      "mt": 0,
+      "chars": 23,
+      "digits": 0,
+      "buttons": 0,
+      "text": "이 함수가 왜 느린지 프로파일링해서 고쳐줘"
+     },
+     {
+      "cls": "meas",
+      "h": 47,
+      "mt": 18,
+      "chars": 69,
+      "digits": 8,
+      "buttons": 1,
+      "text": "⚠ Fable 5가 정책상 거부해 Opus 5로 전환했어요 — 이후 대화도 같은 모"
+     },
+     {
+      "cls": "toollog",
+      "h": 57.5,
+      "mt": 18,
+      "chars": 74,
+      "digits": 11,
+      "buttons": 0,
+      "text": "⌕읽기src/main/claude/engine.ts:990-101021줄 ✎편집sr"
+     },
+     {
+      "cls": "msg",
+      "h": 53.3,
+      "mt": 8,
+      "chars": 68,
+      "digits": 0,
+      "buttons": 0,
+      "text": "프로파일링해 보니 capThread()가 매 이벤트마다 배열 전체를 다시 만들고 있"
+     },
+     {
+      "cls": "worked",
+      "h": 19.5,
+      "mt": 10,
+      "chars": 10,
+      "digits": 2,
+      "buttons": 0,
+      "text": "18초 동안 작업함"
+     }
+    ]
+   },
+   "V1": {
+    "threadH": 349,
+    "padY": 46,
+    "sumMt": 50,
+    "sumH": 253.2,
+    "chars": 323,
+    "digits": 25,
+    "buttons": 3,
+    "rows": [
+     {
+      "cls": "rule t-neutral",
+      "h": 18.8,
+      "mt": 0,
+      "chars": 34,
+      "digits": 2,
+      "buttons": 0,
+      "text": "›cause = dialog 사용자가 수락§3.6 accept"
+     },
+     {
+      "cls": "band t-notice",
+      "h": 65.6,
+      "mt": 10,
+      "chars": 71,
+      "digits": 6,
+      "buttons": 1,
+      "text": "⚠ Fable 5가 거부한 요청이라 Opus 5로 바꾸는 데 동의하셨어요 — 이후 "
+     },
+     {
+      "cls": "rule t-neutral",
+      "h": 18.8,
+      "mt": 10,
+      "chars": 38,
+      "digits": 2,
+      "buttons": 0,
+      "text": "›cause = refusal_frame 수락 없이 전환§6.2 B′"
+     },
+     {
+      "cls": "band t-notice",
+      "h": 65.6,
+      "mt": 10,
+      "chars": 73,
+      "digits": 6,
+      "buttons": 1,
+      "text": "⚠ Fable 5가 정책상 거부해 엔진이 묻지 않고 Opus 5로 전환했어요 — 이"
+     },
+     {
+      "cls": "rule t-neutral",
+      "h": 18.8,
+      "mt": 10,
+      "chars": 33,
+      "digits": 2,
+      "buttons": 0,
+      "text": "›cause = model_delta 관측만으로§6.2 C″"
+     },
+     {
+      "cls": "band t-notice",
+      "h": 65.6,
+      "mt": 10,
+      "chars": 74,
+      "digits": 7,
+      "buttons": 1,
+      "text": "⚠ 엔진이 Fable 5 대신 Sonnet 4.6으로 답했어요 — 사유는 오지 않았"
+     }
+    ]
+   },
+   "V2": {
+    "threadH": 391.5,
+    "padY": 46,
+    "sumMt": 64,
+    "sumH": 281.6,
+    "chars": 280,
+    "digits": 20,
+    "buttons": 3,
+    "rows": [
+     {
+      "cls": "band t-notice",
+      "h": 65.6,
+      "mt": 0,
+      "chars": 74,
+      "digits": 6,
+      "buttons": 1,
+      "text": "⚠ Fable 5가 정책상 거부해 엔진이 묻지 않고 Opus 5로 전환했어요 — 이"
+     },
+     {
+      "cls": "band t-notice",
+      "h": 66,
+      "mt": 18,
+      "chars": 87,
+      "digits": 6,
+      "buttons": 1,
+      "text": "⚠ Fable 5가 거부한 요청이라 Opus 5로 바꾸는 데 동의하셨어요 — 예약해"
+     },
+     {
+      "cls": "band t-notice",
+      "h": 65.6,
+      "mt": 18,
+      "chars": 53,
+      "digits": 2,
+      "buttons": 0,
+      "text": "⚠ Fable 5가 정책상 거부해 Opus 5로 전환했어요 — 이후 대화도 같은 모"
+     },
+     {
+      "cls": "band t-notice",
+      "h": 65.6,
+      "mt": 18,
+      "chars": 43,
+      "digits": 6,
+      "buttons": 1,
+      "text": "⚠ Fable 5가 정책상 거부해 Opus 5로 전환했어요. 되돌리기14:32"
+     },
+     {
+      "cls": "rule t-neutral",
+      "h": 18.8,
+      "mt": 10,
+      "chars": 23,
+      "digits": 0,
+      "buttons": 0,
+      "text": "↩패널 폭이 좁으면 트레이가 아래로 접힌다"
+     }
+    ]
+   },
+   "V3": {
+    "threadH": 371.9,
+    "padY": 46,
+    "sumMt": 72,
+    "sumH": 254,
+    "chars": 259,
+    "digits": 27,
+    "buttons": 2,
+    "rows": [
+     {
+      "cls": "msg user",
+      "h": 48.8,
+      "mt": 0,
+      "chars": 18,
+      "digits": 0,
+      "buttons": 0,
+      "text": "이 크래시 덤프 읽고 원인 짚어줘"
+     },
+     {
+      "cls": "band t-notice",
+      "h": 65.6,
+      "mt": 18,
+      "chars": 73,
+      "digits": 6,
+      "buttons": 1,
+      "text": "⚠ Fable 5가 정책상 거부해 엔진이 묻지 않고 Opus 5로 전환했어요 — 이"
+     },
+     {
+      "cls": "band t-notice",
+      "h": 65.6,
+      "mt": 18,
+      "chars": 76,
+      "digits": 7,
+      "buttons": 1,
+      "text": "⚠ Opus 5도 같은 이유로 거부해 Sonnet 4.6으로 한 번 더 전환했어요 "
+     },
+     {
+      "cls": "toollog",
+      "h": 27.8,
+      "mt": 18,
+      "chars": 25,
+      "digits": 3,
+      "buttons": 0,
+      "text": "⌕읽기crash-recovery.log120줄"
+     },
+     {
+      "cls": "msg",
+      "h": 26.7,
+      "mt": 8,
+      "chars": 57,
+      "digits": 9,
+      "buttons": 0,
+      "text": "덤프의 예외 코드는 0x80000003이에요 — diff DP가 스레드 하나를 통째"
+     },
+     {
+      "cls": "worked",
+      "h": 19.5,
+      "mt": 10,
+      "chars": 10,
+      "digits": 2,
+      "buttons": 0,
+      "text": "31초 동안 작업함"
+     }
+    ]
+   },
+   "V4": {
+    "threadH": 378.3,
+    "padY": 46,
+    "sumMt": 66,
+    "sumH": 266.4,
+    "chars": 246,
+    "digits": 23,
+    "buttons": 2,
+    "rows": [
+     {
+      "cls": "msg user",
+      "h": 48.8,
+      "mt": 0,
+      "chars": 18,
+      "digits": 0,
+      "buttons": 0,
+      "text": "이 크래시 덤프 읽고 원인 짚어줘"
+     },
+     {
+      "cls": "band t-notice",
+      "h": 65.6,
+      "mt": 18,
+      "chars": 74,
+      "digits": 6,
+      "buttons": 1,
+      "text": "⚠ Fable 5가 정책상 거부해 엔진이 묻지 않고 Opus 5로 전환했어요 — 이"
+     },
+     {
+      "cls": "band t-notice",
+      "h": 65.6,
+      "mt": 18,
+      "chars": 76,
+      "digits": 7,
+      "buttons": 1,
+      "text": "⚠ Opus 5도 같은 이유로 거부해 Sonnet 4.6으로 한 번 더 전환했어요 "
+     },
+     {
+      "cls": "rule t-neutral",
+      "h": 18.8,
+      "mt": 10,
+      "chars": 28,
+      "digits": 6,
+      "buttons": 0,
+      "text": "↩모델을 Fable 5로 되돌림 리비전 414:34"
+     },
+     {
+      "cls": "msg user",
+      "h": 48.8,
+      "mt": 10,
+      "chars": 5,
+      "digits": 0,
+      "buttons": 0,
+      "text": "다시 해봐"
+     },
+     {
+      "cls": "rule t-neutral",
+      "h": 18.8,
+      "mt": 10,
+      "chars": 45,
+      "digits": 4,
+      "buttons": 0,
+      "text": "↺모델 자동 전환 때문에 새 프로세스로 시작했어요 engine.model14:34"
+     }
+    ]
+   }
+  },
+  "sums": {
+   "A": "46.8px",
+   "B": "47px"
+  },
+  "verdict": "B가 0.2px 높다 (밀도 손실 — 제안을 다시 깎아야 한다)"
+ }
+]
