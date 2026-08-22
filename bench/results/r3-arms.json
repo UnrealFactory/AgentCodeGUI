@@ -111,19 +111,27 @@
     {
       "name": "★ 최종 채택 세트(제품 기본값)",
       "flags": "wry 기본값 + --process-per-site + --in-process-gpu",
-      "idleWsMB": 479.3,
+      "idleWsMB": 475.7,
       "idlePrivMB": 251.6,
       "procs": 6,
-      "wsPerWindowMB": 19.4,
-      "fps": "60 / 0% (3회 중 2회; 1회 59.4 / 0.8%)",
+      "wsPerWindowMB": 22.7,
+      "fps": "60 / 0% (6회 중 5회; 1회 59.4 / 0.8%)",
       "gpu": "NVIDIA D3D11",
       "coldWinMs": 314,
       "coldPaintMs": 337,
       "coldRootMs": 397,
       "runs": [
         {
+          "ws": 466.5,
+          "priv": 251.5
+        },
+        {
           "ws": 470,
           "priv": 251.6
+        },
+        {
+          "ws": 475.7,
+          "priv": 258.4
         },
         {
           "ws": 479.3,
@@ -133,7 +141,8 @@
           "ws": 481.5,
           "priv": 250.9
         }
-      ]
+      ],
+      "note": "5회 중앙값. WS 편차 15MB(466.5~481.5), Priv는 1회(258.4)가 목표 253을 넘었다."
     },
     {
       "name": "최종 세트 − --in-process-gpu",
