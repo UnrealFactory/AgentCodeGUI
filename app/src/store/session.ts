@@ -1046,6 +1046,18 @@ export function reducer(state: SessionState, action: Action): SessionState {
       return { ...state, seq, messages: capThread([...state.messages, item]) }
     }
 
+    // ★ M9 — 이 채팅의 도구 환경(MCP·스킬) 스냅샷. **일부러 상태에 안 담는다.**
+    //
+    // 대화 내용이 아니라 실행 환경이고, 세션 스냅샷은 디스크에 절여져 재시작 때 되살아난다
+    // — 담으면 "지난주에 붙어 있던 MCP 서버"가 새 창에서 붙어 있는 척한다. 그리는 쪽
+    // (`McpSkillView`)이 같은 채널을 **직접** 구독하고, 첫 `system/init` 전에는 아무것도
+    // 안 그린다("없음"과 "아직 모름"은 다른 말이다).
+    //
+    // 여기서 조용히 `default:`로 흘리지 않는 이유: 그 자리는 소진 가드(`never`)라
+    // 컴파일이 멈춘다. 무시한다는 사실을 이 줄이 말한다.
+    case 'tooling':
+      return state
+
     case 'permission-request':
       return { ...state, pendingPermission: { requestId: e.requestId, toolName: e.toolName, summary: e.summary, engine: e.engine } }
 

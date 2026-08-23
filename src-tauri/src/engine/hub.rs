@@ -697,6 +697,25 @@ impl Hub {
                 }
                 let frames: Vec<Value> = slot.tap.borrow_mut().drain(..).collect();
                 let mut out: Vec<Value> = vec![];
+                // ★M9 — 이 채팅이 CLI에 실은 도구 정책(P1e `tools` 축)을 옮김기에 알린다.
+                // 끈 MCP 서버·스킬은 `system/init`에서 **행째로 사라지므로**(실측), 이 값이
+                // 없으면 "내가 껐다"와 "설정에 아예 없다"가 화면에서 같은 얼굴이 된다.
+                // 값이 바뀔 때만 true → 그때만 스냅샷을 다시 낸다(매 tick REPLACE 방지).
+                {
+                    let tools = slot.rt.identity().tools();
+                    let denied = tools.denied_mcp.clone();
+                    // `SkillOverride`는 지금 `Disabled` 한 종류다 — 있으면 껐다는 뜻.
+                    // 변종이 늘면 여기서 걸러야 하므로 `match`로 열어 둔다(빠뜨리면 컴파일 오류).
+                    let off: std::collections::BTreeSet<String> = tools
+                        .skill_overrides
+                        .iter()
+                        .filter(|(_, v)| matches!(v, ccg_engine::identity::SkillOverride::Disabled))
+                        .map(|(k, _)| k.clone())
+                        .collect();
+                    if slot.wire.set_policy(&denied, &off) {
+                        out.extend(slot.wire.tooling());
+                    }
+                }
                 for f in &frames {
                     out.extend(slot.wire.translate(f));
                 }

@@ -41,6 +41,7 @@ import { useLimitResume, type LimitResumeSurface } from '../lib/useLimitResume'
 import type { ChatSummary } from './Sidebar'
 import { WinControls } from './TitleBar'
 import { FolderSwitchDialog } from './FolderSwitchDialog'
+import { McpSkillView } from './McpSkillView'
 const FileModal = lazy(() => import('./FileModal').then((m) => ({ default: m.FileModal }))) // CodeMirror 청크 지연 로드 (App.tsx와 동일)
 import { pushRecentDir } from '../lib/recentDirs'
 import { SubAgentModal } from './AgentPanel'
@@ -291,6 +292,9 @@ interface PanelViewProps {
   /** ★ 3.0 M-UX R3 — 읽던 자리 앵커의 키(`chan(sessionId, slot)`). 자리 정체성이지
    *  화면 위치가 아니다 — 6분할의 3번 칸에서 접혀 n1의 1번 칸으로 되올라와도 같은 키다. */
   anchorKey: string
+  /** ★ 3.0 M9 — 이 패널의 엔진 채널(`chan(sessionId, slot)`). `anchorKey`와 갈라 두는
+   *  이유: 앵커는 껍데기마다 접미사가 붙지만(`::exp`·`::win`) 구독 주소는 하나여야 한다. */
+  panelId: string
   num: number // 자리 번호(1‥N) — 그리드 위치 기준. 드래그로 옮기면 바뀐다
   /** ★ 3.0 M-UX — n1(IDE 크롬)에서 이 패널의 헤더가 TopBar를 겸한다: 다이얼·접힘 배지·
    *  탐색기 토글·창 컨트롤이 헤더 오른쪽에 얹힌다. 2‥6에서는 undefined(.ma-head가 그린다). */
@@ -348,6 +352,7 @@ interface PanelViewProps {
 export const PanelView = memo(function PanelView({
   slot,
   anchorKey,
+  panelId,
   num,
   topbar,
   meta,
@@ -601,6 +606,10 @@ export const PanelView = memo(function PanelView({
           )}
         </span>
         <span className="ma-spacer" />
+        {/* ★M9 — 도구 환경 칩(MCP·스킬). 폴더 칩 **왼쪽**에 두는 이유: 목록이 폴더에서
+            오므로 읽는 순서가 「무엇이 붙어 있나 ← 어느 폴더인가」여야 인과가 맞다.
+            첫 `system/init` 전에는 스스로 아무것도 안 그린다(빈 칩을 세우지 않는다). */}
+        <McpSkillView panelId={panelId} cwd={cwd} />
         {/* 작업 폴더 칩 — 본채팅 헤더와 같은 FolderPop(공유 최근 폴더 + 찾아보기)이 열린다.
             .hfold 래퍼가 팝오버 기준점 + 안쪽 클릭의 바깥닫힘 전파 차단을 겸한다 */}
         <span className="hfold" onMouseDown={(e) => e.stopPropagation()}>
@@ -2096,6 +2105,8 @@ function ActiveSession({
         // ★ R3 — 읽던 자리 앵커의 키. 「크게 보기」는 같은 대화가 다른 껍데기로 옮겨
         // 가는 것이라 키를 갈라 둔다(그리드 자리의 앵커를 카드가 소비하면 안 된다).
         anchorKey={chan(sessionId, slot) + (expanded ? '::exp' : '')}
+        // ★M9 — 구독 주소는 껍데기와 무관하게 하나다(앵커에 붙는 `::exp`는 빼고 준다).
+        panelId={chan(sessionId, slot)}
         num={visibleSlots.indexOf(slot) + 1}
         // ★ n1(IDE 크롬)에서는 이 패널의 헤더가 곧 TopBar다 — 다이얼·접힘 배지·탐색기
         // 토글·창 컨트롤이 여기 얹힌다(줄을 하나 더 쌓지 않는다, §2.1)

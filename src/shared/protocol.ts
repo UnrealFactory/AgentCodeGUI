@@ -476,6 +476,51 @@ export type EngineEvent =
   // 방금 보낸 사용자 메시지 바로 위에 끼워 넣는다.
   | { type: 'notice'; runId: string; text: string; once?: string }
   | { type: 'error'; runId: string; message: string }
+  // ★ M9 — 이 채팅이 **실제로 들고 있는 도구 환경**(MCP 서버 · 스킬). REPLACE 의미:
+  // 받은 쪽은 자기 스냅샷을 통째로 갈아끼운다. 턴마다(system/init) 오고, 세션 중간에
+  // 커맨드 목록이 바뀌면(system/commands_changed) 한 번 더 온다.
+  //
+  // 2.6.2는 이 값을 **디스크에서 스캔**했다(src/main/mcp.ts·skills.ts가 ~/.claude.json과
+  // .claude/skills를 읽는다). 그건 "설정에 뭐가 적혀 있나"이지 "지금 이 대화에 뭐가
+  // 붙어 있나"가 아니다 — 연결 실패도, 승인 안 된 .mcp.json도, 플러그인이 들고 온
+  // 스킬도 디스크만 봐서는 모른다. 3.0은 와이어가 말하는 것만 싣는다.
+  | { type: 'tooling'; runId: string; tooling: ChatTooling }
+
+/** 이 채팅에 붙어 있는 MCP 서버 하나 (`system/init`의 `mcp_servers[]`). */
+export interface McpLive {
+  name: string // 설정된 서버 이름 (.mcp.json / ~/.claude.json의 키)
+  // CLI가 보고하는 연결 상태. 실측: 'connected' · 'failed'. 타입 선언상 가능한 나머지:
+  // 'needs-auth' · 'pending' · 'disabled'. 열린 집합으로 다룬다(모르는 값은 그대로 표시).
+  //
+  // 'off'는 **셸이 만든 값**이다: 설정에서 끈 서버(P1e deniedMcpServers)는 CLI가 아예
+  // 안 띄워 `init.mcp_servers`에서 행째로 사라진다 — 그러면 "내가 껐다"와 "설정에 없다"가
+  // 구분이 안 돼서, 셸이 자기 denylist로 그 행을 되붙인다.
+  status: string
+  // 이 서버가 붙인 도구 이름들. `system/init`의 `tools[]`에서 `mcp__<서버>__<도구>`
+  // 접두사로 갈라낸 값이라 **추가 왕복이 없다**. 서버 이름은 접두사에서 정규화되므로
+  // (비 [A-Za-z0-9_-] → _) 셸이 같은 규칙으로 되맞춘다.
+  tools: string[]
+}
+
+/** 이 채팅이 쓸 수 있는 스킬 하나. */
+export interface SkillLive {
+  name: string // `/이름`으로 부르는 그 이름
+  description: string // 커맨드 사전의 설명 (스코프 접미사는 떼어 scope로 옮겼다)
+  // 설명 꼬리의 `(user)`/`(project)` 표식에서 갈라낸 값. 내장 스킬처럼 표식이 없으면 null.
+  scope: 'user' | 'project' | 'local' | 'plugin' | null
+  // 설정에서 끈 스킬(P1e skillOverrides). MCP의 status:'off'와 같은 이유로 셸이 되붙인 행이다.
+  off?: boolean
+}
+
+/** 한 채팅의 도구 환경 스냅샷 — 패널 헤더 칩·팝오버가 그리는 값 전체. */
+export interface ChatTooling {
+  cwd: string // 이 스냅샷이 어느 폴더의 것인가 (패널마다 다른 이유 그 자체)
+  mcp: McpLive[]
+  skills: SkillLive[]
+  // 이 세션에 로드된 플러그인 (`system/init`의 `plugins[]`). 스킬·MCP를 함께 들고 오는
+  // 출처라 팝오버 꼬리에 한 줄로 적는다.
+  plugins: { name: string; version: string | null }[]
+}
 
 // ── Renderer → Main commands ─────────────────────────────────
 export interface RunRequest {

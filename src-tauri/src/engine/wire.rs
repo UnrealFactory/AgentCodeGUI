@@ -93,6 +93,83 @@ pub struct Wire {
     /// `system/init`이 보고한 실행 모델(원시 id). `modelUsage`가 없는 판에서
     /// `result.tokenUsage`의 모델 이름 폴백이다(2.6.2 `curModelDisplay || req.model`).
     cur_model: String,
+
+    // ── M9: 이 채팅의 도구 환경(MCP·스킬) ──────────────────────────────────
+    /// `/명령` 사전 — 이름 → 설명. **출처가 둘**이고 둘 다 REPLACE다:
+    ///  ① `initialize` 컨트롤 **응답**의 `commands[]` (스폰당 1회, `system/init`보다 먼저 온다)
+    ///  ② `system/commands_changed` 푸시 (세션 중간 변경 — `sdk.d.ts` "REPLACE your cached list")
+    ///
+    /// 왜 따로 드나: `system/init`의 `skills[]`는 **이름 문자열 배열**이다(실측 — 설명도
+    /// 스코프도 없다). 설명은 오직 커맨드 사전에만 있다. 두 벌을 여기서 조인해야 팝오버가
+    /// 이름만 나열하지 않는다.
+    ///
+    /// ★실측 주의(`poc-mcpskill.mjs --app`): ②는 CLI 수준에서는 확실히 오지만
+    /// (`result` **뒤**에 REPLACE 한 장) **이 앱에는 안 닿았다** — 턴이 끝나면 CLI가
+    /// 죽어서다(2턴 주행에서 `commands_changed` 0장 · `system/init` 3장). ②를 지우면
+    /// 안 되는 이유는 상주 판(중단 복귀·예약 드레인)에서는 프로세스가 턴을 넘겨 살고,
+    /// 그때 하위 폴더의 `.claude/skills`가 세션 중간에 발견되기 때문이다.
+    cmd_desc: BTreeMap<String, String>,
+    /// 마지막 `system/init`이 보고한 도구 환경 원재료. `None` = 아직 init을 못 봤다
+    /// (그 상태에서는 `tooling` 이벤트를 **안 낸다** — 빈 목록과 미지는 다르다).
+    env: Option<ToolEnv>,
+    /// 이 채팅이 CLI에 **실제로 실은** 정책(m-logic P1e `tools` 축) — 끈 MCP 서버 이름.
+    ///
+    /// ★실측(`poc-mcpskill.mjs` C 픽스처 — B와 **같은 폴더**를 끄기 정책으로 한 번 더
+    /// 띄운 판): `--settings`에 `deniedMcpServers:[{serverName}]`를 실으면 그 서버는
+    /// `init.mcp_servers`에서 **행째로 사라지고**(`status:"disabled"`로 오지 **않는다**)
+    /// `init.tools`의 `mcp__<서버>__*`도 함께 사라진다. 스킬의 `skillOverrides:{이름:'off'}`도
+    /// 똑같이 `init.skills`에서 없어지고, **커맨드 사전에서도 빠진다**(그래서 되붙인 off
+    /// 행에는 설명이 없다 — 화면은 「설정에서 껐어요」만 적는다). 안 끈 항목은 그대로 남아
+    /// 정책이 목록을 통째로 비우는 것이 아님도 같이 봤다.
+    ///
+    /// 그래서 와이어만 보면 **"내가 껐다"와 "설정에 아예 없다"가 같은 얼굴**이 된다 —
+    /// 사용자가 설정에서 끈 서버를 패널에서 찾으면 아무 흔적도 없다. 그 한 칸을 여기서
+    /// 되살린다.
+    denied_mcp: Vec<String>,
+    off_skills: Vec<String>,
+}
+
+/// `system/init` 한 장에서 뽑은 도구 환경 원재료(설명 조인 전).
+#[derive(Default)]
+struct ToolEnv {
+    /// `init.skills` — 이름 배열. **정렬하지 않는다**: CLI가 이미 개인·프로젝트 스킬을
+    /// 앞에, 내장 스킬을 뒤에 놓는다(실측 A: `gamma-personal`(user) · `alpha-probe`(project)
+    /// 뒤에 `deep-research`·`dataviz`… 14개). 이 폴더에서만 보이는 것이 먼저 읽혀야 하므로
+    /// 그 순서가 곧 우리가 원하는 순서다.
+    skills: Vec<String>,
+    /// `init.mcp_servers` — `(name, status)`. 실측 status: `connected` · `failed`.
+    mcp: Vec<(String, String)>,
+    /// 정규화된 서버 이름 → 그 서버가 붙인 도구 이름들. `init.tools`의 `mcp__<서버>__<도구>`
+    /// 접두사에서 갈라낸다 — **추가 컨트롤 왕복 없이** 서버별 도구 수를 아는 유일한 길이다.
+    mcp_tools: BTreeMap<String, Vec<String>>,
+    /// `init.plugins` — `(name, version?)`.
+    plugins: Vec<(String, Option<String>)>,
+    cwd: String,
+}
+
+/// MCP 도구 접두사의 서버 이름 정규화 — CLI가 `mcp__<정규화된 이름>__<도구>`를 만들 때
+/// 쓰는 규칙(`sdk.d.ts` `mcp_call`: "non-[a-zA-Z0-9_-] becomes _"). 설정된 이름과
+/// 접두사를 되맞추려면 이쪽에서 같은 변환을 해야 한다.
+fn mcp_norm(name: &str) -> String {
+    name.chars()
+        .map(|c| if c.is_ascii_alphanumeric() || c == '_' || c == '-' { c } else { '_' })
+        .collect()
+}
+
+/// 커맨드 설명 꼬리의 스코프 표식을 갈라낸다 — `"… (project)"` → `("…", Some("project"))`.
+///
+/// 실측(`scripts/poc-mcpskill.mjs`): 프로젝트 스킬은 `(project)`, 개인 스킬은 `(user)`가
+/// 설명 **끝에** 붙는다. 같은 자리에 스킬이 아닌 꼬리도 온다(`(dynamic workflow)`,
+/// `(Opus 5)`, `(resumable with /resume)`) — 그래서 **닫힌 집합만** 떼어낸다. 모르는
+/// 꼬리는 설명의 일부로 남긴다(지어내지 않는다).
+fn split_scope(desc: &str) -> (String, Option<&'static str>) {
+    for scope in ["user", "project", "local", "plugin"] {
+        let tail = format!(" ({scope})");
+        if let Some(head) = desc.strip_suffix(&tail) {
+            return (head.to_string(), Some(scope));
+        }
+    }
+    (desc.to_string(), None)
 }
 
 /// 폴백 확인 카드 1건 — 답을 `{behavior:…}`로 되옮기는 데 필요한 최소값.
@@ -417,6 +494,150 @@ impl Wire {
     /// `modelUsage`가 없는 판의 폴백 모델 표시명(2.6.2 `curModelDisplay || req.model`).
     fn model_display_now(&self) -> String {
         self.cur_model.clone()
+    }
+
+    // ── M9: 도구 환경(MCP·스킬) ────────────────────────────────────────────
+
+    /// 커맨드 사전을 갈아끼운다(REPLACE). 배열이 아니면 아무것도 안 하고 `false`.
+    ///
+    /// 반환값이 "스냅샷을 다시 낼 이유가 생겼나"다 — **내용이 실제로 바뀐 경우만** 참이다.
+    /// 빈 배열도 **유효한 REPLACE**로 받는다(커맨드가 전부 사라진 판을 낡은 사전으로 덮으면
+    /// 팝오버가 유령 스킬을 그린다).
+    ///
+    /// ★같은 사전을 다시 받았을 때 참을 주면 안 되는 이유(실측 `poc-mcpskill.mjs --app`):
+    /// 이 앱은 **턴마다 CLI를 다시 띄운다**(2턴 주행에서 `system/init` 3장 — 패널A 2 ·
+    /// 패널B 1). 그러면 2턴째 핸드셰이크의 `initialize` 응답이 **`system/init`보다 먼저**
+    /// 도착하는데, 그 시점의 `env`는 아직 **지난 턴 것**이다. 무조건 방출하면 매 턴
+    /// "직전 턴의 도구 환경"이 한 번씩 화면에 스쳤다가 곧바로 덮인다. 사전이 그대로면
+    /// 새로 말할 것도 없으므로, 여기서 접으면 그 깜빡임이 사라진다.
+    fn read_commands(&mut self, v: Option<&Value>) -> bool {
+        let Some(arr) = v.and_then(Value::as_array) else { return false };
+        let next: BTreeMap<String, String> = arr
+            .iter()
+            .filter_map(|c| {
+                let name = c.get("name").and_then(Value::as_str)?;
+                Some((
+                    name.to_string(),
+                    c.get("description").and_then(Value::as_str).unwrap_or("").to_string(),
+                ))
+            })
+            .collect();
+        if next == self.cmd_desc {
+            return false;
+        }
+        self.cmd_desc = next;
+        true
+    }
+
+    /// `system/init` 한 장에서 도구 환경 원재료를 뽑는다(REPLACE).
+    fn read_init_env(&mut self, f: &Value) {
+        let arr = |k: &str| f.get(k).and_then(Value::as_array).cloned().unwrap_or_default();
+        let mut env = ToolEnv { cwd: self.cwd.clone(), ..Default::default() };
+        env.skills = arr("skills").iter().filter_map(Value::as_str).map(str::to_string).collect();
+        env.mcp = arr("mcp_servers")
+            .iter()
+            .filter_map(|m| {
+                let name = m.get("name").and_then(Value::as_str)?;
+                // status가 없는 판이 와도 행을 버리지 않는다 — **서버가 있다는 사실**이
+                // 먼저다. 모르는 상태는 `unknown`으로 정직하게 적는다.
+                let st = m.get("status").and_then(Value::as_str).unwrap_or("unknown");
+                Some((name.to_string(), st.to_string()))
+            })
+            .collect();
+        for t in arr("tools").iter().filter_map(Value::as_str) {
+            // `mcp__<정규화된 서버>__<도구>`. 서버 이름 자체에 `__`가 들어갈 수 있으므로
+            // **뒤에서** 가른다 — 도구 이름에는 `__`가 없다고 보는 쪽이 오탐이 적다.
+            let Some(rest) = t.strip_prefix("mcp__") else { continue };
+            let Some((server, tool)) = rest.rsplit_once("__") else { continue };
+            env.mcp_tools.entry(server.to_string()).or_default().push(tool.to_string());
+        }
+        env.plugins = arr("plugins")
+            .iter()
+            .filter_map(|p| {
+                let name = p.get("name").and_then(Value::as_str)?;
+                Some((name.to_string(), p.get("version").and_then(Value::as_str).map(str::to_string)))
+            })
+            .collect();
+        self.env = Some(env);
+    }
+
+    /// 이 채팅의 도구 정책(P1e)을 옮김기에 알린다. **바뀔 때만** 스냅샷을 다시 낸다 —
+    /// 허브가 매 tick 부르므로 여기서 접지 않으면 20ms마다 REPLACE가 나간다.
+    ///
+    /// 반환값이 "스냅샷을 다시 낼 이유가 생겼나"다. 호출부는 그때만 [`Self::tooling`]을 부른다.
+    pub fn set_policy(&mut self, denied_mcp: &BTreeSet<String>, off_skills: &BTreeSet<String>) -> bool {
+        let denied: Vec<String> = denied_mcp.iter().cloned().collect();
+        let off: Vec<String> = off_skills.iter().cloned().collect();
+        if denied == self.denied_mcp && off == self.off_skills {
+            return false;
+        }
+        self.denied_mcp = denied;
+        self.off_skills = off;
+        self.env.is_some()
+    }
+
+    /// 스냅샷을 다시 내야 할 때 호출부가 쓰는 공개 창구(`set_policy`가 true를 준 뒤).
+    pub fn tooling(&self) -> Option<Value> {
+        self.tooling_event()
+    }
+
+    /// 지금 아는 것으로 `tooling` 스냅샷을 만든다. `system/init`을 아직 못 봤으면
+    /// **아무것도 내지 않는다** — 빈 목록("MCP 없음")과 미지("아직 모른다")는 다른 말이고,
+    /// 화면은 그 둘을 다르게 그려야 한다.
+    fn tooling_event(&self) -> Option<Value> {
+        let env = self.env.as_ref()?;
+        let mut skills: Vec<Value> = env
+            .skills
+            .iter()
+            .map(|n| {
+                let (desc, scope) = match self.cmd_desc.get(n) {
+                    Some(d) => split_scope(d),
+                    // 사전에 없는 이름 = 커맨드 응답이 아직 안 왔거나 이 판에 설명이 없다.
+                    // 이름만이라도 낸다(스킬이 있다는 사실이 설명보다 먼저다).
+                    None => (String::new(), None),
+                };
+                json!({ "name": n, "description": desc, "scope": scope })
+            })
+            .collect();
+        let mut mcp: Vec<Value> = env
+            .mcp
+            .iter()
+            .map(|(name, status)| {
+                let tools = env.mcp_tools.get(&mcp_norm(name)).cloned().unwrap_or_default();
+                json!({ "name": name, "status": status, "tools": tools })
+            })
+            .collect();
+        // 끈 것들을 **꼬리에** 되붙인다(`status:"off"`). 와이어가 지운 행이라 다른 어떤
+        // 경로로도 화면에 못 온다. 순서를 뒤가 아니라 앞으로 두면 "붙어 있는 것"보다
+        // "안 쓰는 것"이 먼저 읽혀 목록의 의미가 뒤집힌다.
+        for name in &self.denied_mcp {
+            if env.mcp.iter().any(|(n, _)| n == name) {
+                continue; // 껐는데도 와이어에 살아 있다면 와이어가 이긴다(재스폰 전 낡은 정책)
+            }
+            mcp.push(json!({ "name": name, "status": "off", "tools": [] }));
+        }
+        for name in &self.off_skills {
+            if env.skills.iter().any(|n| n == name) {
+                continue;
+            }
+            let desc = self.cmd_desc.get(name).map(|d| split_scope(d));
+            skills.push(json!({
+                "name": name,
+                "description": desc.as_ref().map(|(d, _)| d.clone()).unwrap_or_default(),
+                "scope": desc.and_then(|(_, s)| s),
+                "off": true,
+            }));
+        }
+        let plugins: Vec<Value> = env
+            .plugins
+            .iter()
+            .map(|(n, v)| json!({ "name": n, "version": v }))
+            .collect();
+        Some(json!({
+            "type": "tooling",
+            "runId": self.run_id,
+            "tooling": { "cwd": env.cwd, "mcp": mcp, "skills": skills, "plugins": plugins },
+        }))
     }
 
     /// 이 `request_id`가 **다이얼로그를 질문 카드로 그린 것**인가 — 응답 번역에 쓴다.
@@ -866,6 +1087,20 @@ impl Wire {
                     "cwd": s(f, "cwd").unwrap_or_default(),
                     "tools": f.get("tools").cloned().unwrap_or(json!([])),
                 }));
+                // ★M9 — 같은 프레임의 `mcp_servers`·`skills`·`plugins`·`tools`. R4까지
+                // `tools`만 `session`에 실려 갔고 나머지 셋은 **버려졌다**. 화면이 도구
+                // 환경을 물으려면 디스크를 다시 스캔하는 수밖에 없었고(2.6.2 방식), 그건
+                // "설정에 뭐가 적혀 있나"이지 "지금 이 대화에 뭐가 붙어 있나"가 아니다.
+                self.read_init_env(f);
+                out.extend(self.tooling_event());
+            }
+            // ★M9 — 커맨드 목록 REPLACE 푸시. 스킬은 세션 중간에도 늘어난다(에이전트가
+            // 하위 폴더로 내려가면 그 폴더의 `.claude/skills`가 발견된다 — `sdk.d.ts`
+            // `SDKCommandsChangedMessage`). 설명 사전만 갈고 스냅샷을 다시 낸다.
+            "system" if sub == "commands_changed" => {
+                if self.read_commands(f.get("commands")) {
+                    out.extend(self.tooling_event());
+                }
             }
             // `system/notification`·`informational`은 **여기서 옮기지 않는다.**
             //
@@ -1277,6 +1512,19 @@ impl Wire {
                         let evs = self.tool_end(b);
                         out.extend(evs);
                     }
+                }
+            }
+            // ★M9 — 앱→CLI 요청의 **응답**. R4까지 이 계열은 통째로 무시했다(상태기계가
+            // `initialize`/`interrupt` 응답을 따로 소화한다). 여기서 보는 것은 딱 하나,
+            // `initialize` 성공 응답의 `commands[]`다 — `/명령` 설명의 **유일한 원전**이고
+            // (`system/init`의 `skills[]`는 이름뿐), 스폰당 한 번 `system/init`보다 먼저 온다.
+            //
+            // subtype이 아니라 **모양으로** 고른다: 워치독의 능동 프로브(`probe-<pid>`)도
+            // 같은 `initialize`라 request_id는 못 믿고, `reload_plugins` 응답도 같은 키에
+            // 같은 뜻의 목록을 싣는다(`SDKControlReloadPluginsResponse`). 모양이 맞으면 받는다.
+            "control_response" => {
+                if self.read_commands(f.pointer("/response/response/commands")) {
+                    out.extend(self.tooling_event());
                 }
             }
             "control_request" => {
@@ -1823,5 +2071,164 @@ mod tests {
         assert!(!types(&evs).contains(&"file-change".to_string()));
         let end = evs.iter().find(|e| e["type"] == "tool-end").unwrap();
         assert_eq!(end["status"], "error");
+    }
+
+    // ── M9: 도구 환경(MCP·스킬) ────────────────────────────────────────────
+    // 아래 프레임은 전부 `scripts/poc-mcpskill.mjs`가 실 CLI 2.1.239에서 뜬 모양 그대로다
+    // (`%TEMP%\ccg-mcpskill\frames.B.noauth.jsonl`). 지어낸 필드는 없다.
+
+    /// 실 CLI가 보내는 순서 그대로 — `initialize` 응답이 `system/init`보다 **먼저** 온다.
+    fn init_pair() -> (Value, Value) {
+        let resp = json!({ "type": "control_response", "response": {
+            "subtype": "success", "request_id": "init-1", "response": { "commands": [
+                { "name": "beta-probe", "description": "B 픽스처 전용 스킬 (project)", "argumentHint": "" },
+                { "name": "gamma", "description": "개인 스킬 (user)", "argumentHint": "" },
+                { "name": "dataviz", "description": "차트를 그린다", "argumentHint": "" },
+                { "name": "deep-research", "description": "리서치 하네스 (dynamic workflow)", "argumentHint": "" },
+                { "name": "model", "description": "모델 바꾸기", "argumentHint": "" }
+            ] } } });
+        let init = json!({ "type": "system", "subtype": "init", "session_id": "S1", "cwd": "C:\\B",
+            "tools": ["Bash", "mcp__ccg-probe-b__echo", "mcp__ccg-probe-b__ping", "Write"],
+            "mcp_servers": [{ "name": "ccg-probe-b", "status": "connected" },
+                            { "name": "ccg-broken-b", "status": "failed" }],
+            "skills": ["beta-probe", "gamma", "dataviz", "deep-research"],
+            "plugins": [{ "name": "clangd-lsp", "path": "C:\\p", "version": "1.0.0" }] });
+        (resp, init)
+    }
+
+    #[test]
+    fn init_carries_the_chats_mcp_and_skill_snapshot() {
+        let mut w = wire();
+        let (resp, init) = init_pair();
+        // 커맨드 응답만으로는 아직 아무것도 안 낸다 — `system/init`을 못 봤으면 "미지"다.
+        assert!(w.translate(&resp).is_empty(), "init 전 커맨드 응답은 스냅샷을 못 만든다");
+        let evs = w.translate(&init);
+        let t = evs.iter().find(|e| e["type"] == "tooling").expect("tooling 이벤트");
+        let tl = &t["tooling"];
+        assert_eq!(tl["cwd"], "C:\\B");
+        // MCP — 이름·상태 그대로 + 그 서버가 붙인 도구를 `init.tools`에서 갈라낸 것.
+        assert_eq!(tl["mcp"][0]["name"], "ccg-probe-b");
+        assert_eq!(tl["mcp"][0]["status"], "connected");
+        assert_eq!(tl["mcp"][0]["tools"], json!(["echo", "ping"]));
+        // 실패한 서버도 **행이 남는다**(사라지면 "왜 안 붙었지"를 화면에서 물을 수 없다).
+        assert_eq!(tl["mcp"][1]["name"], "ccg-broken-b");
+        assert_eq!(tl["mcp"][1]["status"], "failed");
+        assert_eq!(tl["mcp"][1]["tools"], json!([]));
+        // 스킬 — 이름은 init, 설명은 커맨드 사전. 스코프 꼬리는 떼어 `scope`로.
+        assert_eq!(tl["skills"][0], json!({ "name": "beta-probe", "description": "B 픽스처 전용 스킬", "scope": "project" }));
+        assert_eq!(tl["skills"][1]["scope"], "user");
+        assert_eq!(tl["skills"][2], json!({ "name": "dataviz", "description": "차트를 그린다", "scope": null }));
+        // 스킬이 아닌 꼬리(`(dynamic workflow)`)는 **안 떼어낸다** — 닫힌 집합만 스코프다.
+        assert_eq!(tl["skills"][3]["description"], "리서치 하네스 (dynamic workflow)");
+        assert_eq!(tl["skills"][3]["scope"], Value::Null);
+        // `/model` 같은 내장 커맨드는 스킬이 아니므로 목록에 없다(init.skills가 기준).
+        assert_eq!(tl["skills"].as_array().unwrap().len(), 4);
+        assert_eq!(tl["plugins"][0], json!({ "name": "clangd-lsp", "version": "1.0.0" }));
+    }
+
+    #[test]
+    fn a_mid_session_commands_push_refreshes_the_snapshot() {
+        let mut w = wire();
+        let (resp, init) = init_pair();
+        w.translate(&resp);
+        w.translate(&init);
+        // 세션 중간에 커맨드 목록이 바뀐다(하위 폴더의 `.claude/skills` 발견 등).
+        let evs = w.translate(&json!({ "type": "system", "subtype": "commands_changed", "commands": [
+            { "name": "beta-probe", "description": "설명이 바뀌었다 (project)", "argumentHint": "" }
+        ] }));
+        let tl = &evs.iter().find(|e| e["type"] == "tooling").expect("tooling 재방출")["tooling"];
+        assert_eq!(tl["skills"][0]["description"], "설명이 바뀌었다");
+        // REPLACE라 사전에서 빠진 이름은 설명을 잃는다 — 그래도 **행은 남는다**
+        // (스킬이 있다는 사실이 설명보다 먼저다).
+        assert_eq!(tl["skills"][2]["name"], "dataviz");
+        assert_eq!(tl["skills"][2]["description"], "");
+        // MCP 쪽은 init이 진실이라 그대로다.
+        assert_eq!(tl["mcp"].as_array().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn the_next_turns_handshake_does_not_flash_the_previous_turns_environment() {
+        // ★실측(`poc-mcpskill.mjs --app`): 이 앱은 **턴마다 CLI를 다시 띄운다**
+        // (2턴 주행 = `system/init` 3장). 그래서 2턴째의 `initialize` 응답이 그 턴의
+        // `system/init`보다 먼저 오고, 그 순간 `env`는 아직 **지난 턴 것**이다.
+        // 같은 사전이면 아무 말도 하지 않아야 한다 — 안 그러면 매 턴 낡은 목록이
+        // 한 번 스쳤다가 덮인다(폴더를 바꾼 턴에서는 남의 폴더 목록이 스친다).
+        let mut w = wire();
+        let (resp, init) = init_pair();
+        w.translate(&resp);
+        w.translate(&init);
+        assert!(
+            w.translate(&resp).iter().all(|e| e["type"] != "tooling"),
+            "같은 커맨드 사전을 다시 받으면 스냅샷을 다시 내지 않는다"
+        );
+        // 사전이 **진짜로** 바뀐 핸드셰이크는 여전히 말한다(하위 폴더 스킬 발견 등).
+        let mut grown = resp.clone();
+        grown["response"]["response"]["commands"]
+            .as_array_mut()
+            .unwrap()
+            .push(json!({ "name": "beta-probe", "description": "설명이 바뀌었다 (project)" }));
+        assert!(
+            w.translate(&grown).iter().any(|e| e["type"] == "tooling"),
+            "사전이 바뀌면 스냅샷을 다시 낸다"
+        );
+    }
+
+    #[test]
+    fn mcp_tool_prefix_matches_the_normalized_server_name() {
+        // 실측 규칙: 접두사의 서버 이름은 비 `[A-Za-z0-9_-]`가 `_`로 바뀐 것이다.
+        // 설정 이름은 점을 갖고 있어도 되고, 그때도 도구가 그 행에 붙어야 한다.
+        let mut w = wire();
+        let evs = w.translate(&json!({ "type": "system", "subtype": "init", "session_id": "S", "cwd": "C:\\w",
+            "tools": ["mcp__my_co_tools__search"],
+            "mcp_servers": [{ "name": "my.co tools", "status": "connected" }],
+            "skills": [] }));
+        let tl = &evs.iter().find(|e| e["type"] == "tooling").unwrap()["tooling"];
+        assert_eq!(tl["mcp"][0]["name"], "my.co tools", "표시는 설정된 이름 그대로");
+        assert_eq!(tl["mcp"][0]["tools"], json!(["search"]), "도구는 정규화 이름으로 되맞춘다");
+    }
+
+    #[test]
+    fn a_server_turned_off_in_settings_still_gets_a_row() {
+        // ★실측: `deniedMcpServers`/`skillOverrides:'off'`를 실으면 그 항목은
+        // `system/init`에서 **행째로 사라진다**(`status:"disabled"`로 오지 않는다).
+        // 되붙이지 않으면 "내가 껐다"와 "설정에 아예 없다"가 화면에서 같은 얼굴이 된다.
+        let mut w = wire();
+        let (resp, init) = init_pair();
+        w.translate(&resp);
+        w.translate(&init);
+        let denied: BTreeSet<String> = ["ccg-off-server".to_string()].into_iter().collect();
+        let off: BTreeSet<String> = ["gamma".to_string(), "dataviz".to_string()].into_iter().collect();
+        assert!(w.set_policy(&denied, &off), "정책이 바뀌면 스냅샷을 다시 낸다");
+        let tl = &w.tooling().expect("스냅샷")["tooling"];
+        let mcp = tl["mcp"].as_array().unwrap();
+        assert_eq!(mcp.len(), 3, "붙은 둘 + 끈 하나");
+        assert_eq!(mcp[2], json!({ "name": "ccg-off-server", "status": "off", "tools": [] }));
+        assert_eq!(mcp[0]["name"], "ccg-probe-b", "끈 행은 **꼬리에** 붙는다");
+        // `dataviz`는 껐다고 적혔지만 init에 **살아 있다**(재스폰 전 낡은 정책) —
+        // 그때는 와이어가 이긴다. 유령 off 행을 만들지 않는다.
+        let skills = tl["skills"].as_array().unwrap();
+        assert_eq!(skills.iter().filter(|s| s["name"] == "dataviz").count(), 1);
+        assert!(skills.iter().find(|s| s["name"] == "dataviz").unwrap().get("off").is_none());
+        // `gamma`는 init에도 있어 같은 규칙 — 이 픽스처엔 없는 이름을 하나 더 끈다.
+        let off2: BTreeSet<String> = ["없는스킬".to_string()].into_iter().collect();
+        assert!(w.set_policy(&BTreeSet::new(), &off2));
+        let tl = &w.tooling().unwrap()["tooling"];
+        let last = tl["skills"].as_array().unwrap().last().unwrap();
+        assert_eq!(last["name"], "없는스킬");
+        assert_eq!(last["off"], true);
+        // 같은 정책을 또 주면 아무 일도 없다 — 허브가 매 tick 부르므로 이게 없으면
+        // 20ms마다 REPLACE가 나간다.
+        assert!(!w.set_policy(&BTreeSet::new(), &off2), "같은 정책은 재방출하지 않는다");
+    }
+
+    #[test]
+    fn a_chat_with_no_mcp_reports_an_empty_list_not_silence() {
+        // "MCP 없음"과 "아직 모른다"는 다른 말이다. init을 봤으면 빈 배열을 **낸다**.
+        let mut w = wire();
+        let evs = w.translate(&json!({ "type": "system", "subtype": "init", "session_id": "S", "cwd": "C:\\w",
+            "tools": ["Bash"], "mcp_servers": [], "skills": [] }));
+        let tl = &evs.iter().find(|e| e["type"] == "tooling").expect("빈 환경도 스냅샷을 낸다")["tooling"];
+        assert_eq!(tl["mcp"], json!([]));
+        assert_eq!(tl["skills"], json!([]));
     }
 }

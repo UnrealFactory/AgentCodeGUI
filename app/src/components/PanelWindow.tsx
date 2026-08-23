@@ -461,6 +461,8 @@ function PanelHost({ boot }: { boot: PanelPopState }): React.ReactElement {
           // ★ R3 — 팝아웃 창은 자기 창 안에서만 마운트/언마운트되므로 자리 키를 창으로 판다
           // (그리드 자리의 앵커를 여기서 소비하면 본창이 되올릴 때 착지할 것이 없다)
           anchorKey={panelId + '::win'}
+          // ★M9 — 구독 주소는 창이 바뀌어도 같은 패널이다(앵커의 `::win`은 자리 키 전용).
+          panelId={panelId}
           num={boot.num}
           meta={meta}
           state={state}
