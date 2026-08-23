@@ -1,0 +1,429 @@
+{
+  "at": "2026-08-23T07:47:07.630Z",
+  "a": "C:/Users/User/AppData/Local/Temp/muicrit-parity/base",
+  "b": "C:/Users/User/AppData/Local/Temp/muicrit-parity/new",
+  "thr": 1,
+  "leftColExcludedBelowX": 0,
+  "screens": {
+    "bgtask-modal": {
+      "w": 1440,
+      "h": 900,
+      "rawDiffPx": 0,
+      "overThr": 0,
+      "overThrLeftCol": 0,
+      "maxChannel": 0,
+      "bbox": null,
+      "bboxLeftCol": null
+    },
+    "changed-files-modal": {
+      "w": 1440,
+      "h": 900,
+      "rawDiffPx": 19508,
+      "overThr": 8421,
+      "overThrLeftCol": 0,
+      "maxChannel": 13,
+      "bbox": {
+        "x0": 47,
+        "y0": 81,
+        "x1": 219,
+        "y1": 834
+      },
+      "bboxLeftCol": null
+    },
+    "chat-find": {
+      "w": 1440,
+      "h": 900,
+      "rawDiffPx": 0,
+      "overThr": 0,
+      "overThrLeftCol": 0,
+      "maxChannel": 0,
+      "bbox": null,
+      "bboxLeftCol": null
+    },
+    "chat-header": {
+      "w": 1440,
+      "h": 900,
+      "rawDiffPx": 0,
+      "overThr": 0,
+      "overThrLeftCol": 0,
+      "maxChannel": 0,
+      "bbox": null,
+      "bboxLeftCol": null
+    },
+    "chat-welcome": {
+      "w": 1440,
+      "h": 900,
+      "rawDiffPx": 0,
+      "overThr": 0,
+      "overThrLeftCol": 0,
+      "maxChannel": 0,
+      "bbox": null,
+      "bboxLeftCol": null
+    },
+    "composer-picker-pop": {
+      "w": 1440,
+      "h": 900,
+      "rawDiffPx": 0,
+      "overThr": 0,
+      "overThrLeftCol": 0,
+      "maxChannel": 0,
+      "bbox": null,
+      "bboxLeftCol": null
+    },
+    "composer-slash-palette": {
+      "w": 1440,
+      "h": 900,
+      "rawDiffPx": 0,
+      "overThr": 0,
+      "overThrLeftCol": 0,
+      "maxChannel": 0,
+      "bbox": null,
+      "bboxLeftCol": null
+    },
+    "composer": {
+      "w": 1440,
+      "h": 900,
+      "rawDiffPx": 0,
+      "overThr": 0,
+      "overThrLeftCol": 0,
+      "maxChannel": 0,
+      "bbox": null,
+      "bboxLeftCol": null
+    },
+    "explorer-blank": {
+      "w": 1440,
+      "h": 900,
+      "rawDiffPx": 0,
+      "overThr": 0,
+      "overThrLeftCol": 0,
+      "maxChannel": 0,
+      "bbox": null,
+      "bboxLeftCol": null
+    },
+    "explorer-ctx-menu": {
+      "w": 1440,
+      "h": 900,
+      "rawDiffPx": 41,
+      "overThr": 39,
+      "overThrLeftCol": 0,
+      "maxChannel": 141,
+      "bbox": {
+        "x0": 212,
+        "y0": 828,
+        "x1": 217,
+        "y1": 834
+      },
+      "bboxLeftCol": null
+    },
+    "explorer-git-strip": {
+      "w": 1440,
+      "h": 900,
+      "rawDiffPx": 41,
+      "overThr": 39,
+      "overThrLeftCol": 0,
+      "maxChannel": 141,
+      "bbox": {
+        "x0": 212,
+        "y0": 828,
+        "x1": 217,
+        "y1": 834
+      },
+      "bboxLeftCol": null
+    },
+    "explorer-hidden-on": {
+      "w": 1440,
+      "h": 900,
+      "rawDiffPx": 41,
+      "overThr": 39,
+      "overThrLeftCol": 0,
+      "maxChannel": 141,
+      "bbox": {
+        "x0": 212,
+        "y0": 828,
+        "x1": 217,
+        "y1": 834
+      },
+      "bboxLeftCol": null
+    },
+    "explorer-search": {
+      "w": 1440,
+      "h": 900,
+      "rawDiffPx": 41,
+      "overThr": 39,
+      "overThrLeftCol": 0,
+      "maxChannel": 141,
+      "bbox": {
+        "x0": 212,
+        "y0": 828,
+        "x1": 217,
+        "y1": 834
+      },
+      "bboxLeftCol": null
+    },
+    "explorer-tree": {
+      "w": 1440,
+      "h": 900,
+      "rawDiffPx": 41,
+      "overThr": 39,
+      "overThrLeftCol": 0,
+      "maxChannel": 141,
+      "bbox": {
+        "x0": 212,
+        "y0": 828,
+        "x1": 217,
+        "y1": 834
+      },
+      "bboxLeftCol": null
+    },
+    "git-changes": {
+      "w": 1440,
+      "h": 900,
+      "rawDiffPx": 8094,
+      "overThr": 7952,
+      "overThrLeftCol": 0,
+      "maxChannel": 193,
+      "bbox": {
+        "x0": 242,
+        "y0": 112,
+        "x1": 1306,
+        "y1": 834
+      },
+      "bboxLeftCol": null
+    },
+    "git-commit-detail": {
+      "w": 1440,
+      "h": 900,
+      "rawDiffPx": 665,
+      "overThr": 612,
+      "overThrLeftCol": 0,
+      "maxChannel": 184,
+      "bbox": {
+        "x0": 241,
+        "y0": 151,
+        "x1": 415,
+        "y1": 440
+      },
+      "bboxLeftCol": null
+    },
+    "git-history": {
+      "w": 1440,
+      "h": 900,
+      "rawDiffPx": 667,
+      "overThr": 612,
+      "overThrLeftCol": 0,
+      "maxChannel": 184,
+      "bbox": {
+        "x0": 241,
+        "y0": 151,
+        "x1": 415,
+        "y1": 440
+      },
+      "bboxLeftCol": null
+    },
+    "multi-grid-counts": {
+      "w": 1440,
+      "h": 900,
+      "rawDiffPx": 0,
+      "overThr": 0,
+      "overThrLeftCol": 0,
+      "maxChannel": 0,
+      "bbox": null,
+      "bboxLeftCol": null
+    },
+    "multi-grid-empty": {
+      "w": 1440,
+      "h": 900,
+      "rawDiffPx": 0,
+      "overThr": 0,
+      "overThrLeftCol": 0,
+      "maxChannel": 0,
+      "bbox": null,
+      "bboxLeftCol": null
+    },
+    "multi-panel-expanded": {
+      "w": 1440,
+      "h": 900,
+      "rawDiffPx": 0,
+      "overThr": 0,
+      "overThrLeftCol": 0,
+      "maxChannel": 0,
+      "bbox": null,
+      "bboxLeftCol": null
+    },
+    "new-chat-step1": {
+      "w": 1440,
+      "h": 900,
+      "rawDiffPx": 0,
+      "overThr": 0,
+      "overThrLeftCol": 0,
+      "maxChannel": 0,
+      "bbox": null,
+      "bboxLeftCol": null
+    },
+    "prompt-library-list": {
+      "w": 1440,
+      "h": 900,
+      "rawDiffPx": 0,
+      "overThr": 0,
+      "overThrLeftCol": 0,
+      "maxChannel": 0,
+      "bbox": null,
+      "bboxLeftCol": null
+    },
+    "settings-api": {
+      "w": 1440,
+      "h": 900,
+      "rawDiffPx": 31,
+      "overThr": 0,
+      "overThrLeftCol": 0,
+      "maxChannel": 1,
+      "bbox": null,
+      "bboxLeftCol": null
+    },
+    "settings-display": {
+      "w": 1440,
+      "h": 900,
+      "rawDiffPx": 31,
+      "overThr": 0,
+      "overThrLeftCol": 0,
+      "maxChannel": 1,
+      "bbox": null,
+      "bboxLeftCol": null
+    },
+    "settings-profile": {
+      "w": 1440,
+      "h": 900,
+      "rawDiffPx": 31,
+      "overThr": 0,
+      "overThrLeftCol": 0,
+      "maxChannel": 1,
+      "bbox": null,
+      "bboxLeftCol": null
+    },
+    "sidebar-ctx-menu": {
+      "w": 1440,
+      "h": 900,
+      "rawDiffPx": 0,
+      "overThr": 0,
+      "overThrLeftCol": 0,
+      "maxChannel": 0,
+      "bbox": null,
+      "bboxLeftCol": null
+    },
+    "sidebar-deleteall-confirm": {
+      "w": 1440,
+      "h": 900,
+      "rawDiffPx": 0,
+      "overThr": 0,
+      "overThrLeftCol": 0,
+      "maxChannel": 0,
+      "bbox": null,
+      "bboxLeftCol": null
+    },
+    "sidebar-empty": {
+      "w": 1440,
+      "h": 900,
+      "rawDiffPx": 0,
+      "overThr": 0,
+      "overThrLeftCol": 0,
+      "maxChannel": 0,
+      "bbox": null,
+      "bboxLeftCol": null
+    },
+    "sidebar": {
+      "w": 1440,
+      "h": 900,
+      "rawDiffPx": 0,
+      "overThr": 0,
+      "overThrLeftCol": 0,
+      "maxChannel": 0,
+      "bbox": null,
+      "bboxLeftCol": null
+    },
+    "subagent-modal": {
+      "w": 1440,
+      "h": 900,
+      "rawDiffPx": 0,
+      "overThr": 0,
+      "overThrLeftCol": 0,
+      "maxChannel": 0,
+      "bbox": null,
+      "bboxLeftCol": null
+    },
+    "viewer-code-read": {
+      "w": 1440,
+      "h": 900,
+      "rawDiffPx": 31,
+      "overThr": 0,
+      "overThrLeftCol": 0,
+      "maxChannel": 1,
+      "bbox": null,
+      "bboxLeftCol": null
+    },
+    "viewer-diff-on": {
+      "w": 1440,
+      "h": 900,
+      "rawDiffPx": 49,
+      "overThr": 0,
+      "overThrLeftCol": 0,
+      "maxChannel": 1,
+      "bbox": null,
+      "bboxLeftCol": null
+    },
+    "viewer-empty": {
+      "w": 1440,
+      "h": 900,
+      "rawDiffPx": 13,
+      "overThr": 0,
+      "overThrLeftCol": 0,
+      "maxChannel": 1,
+      "bbox": null,
+      "bboxLeftCol": null
+    },
+    "viewer-markdown-preview": {
+      "w": 1440,
+      "h": 900,
+      "rawDiffPx": 31,
+      "overThr": 0,
+      "overThrLeftCol": 0,
+      "maxChannel": 1,
+      "bbox": null,
+      "bboxLeftCol": null
+    },
+    "viewer-maximized": {
+      "w": 1440,
+      "h": 900,
+      "rawDiffPx": 354,
+      "overThr": 320,
+      "overThrLeftCol": 0,
+      "maxChannel": 64,
+      "bbox": {
+        "x0": 81,
+        "y0": 592,
+        "x1": 95,
+        "y1": 772
+      },
+      "bboxLeftCol": null
+    },
+    "workbar-todo-pop": {
+      "w": 1440,
+      "h": 900,
+      "rawDiffPx": 0,
+      "overThr": 0,
+      "overThrLeftCol": 0,
+      "maxChannel": 0,
+      "bbox": null,
+      "bboxLeftCol": null
+    },
+    "workbar": {
+      "w": 1440,
+      "h": 900,
+      "rawDiffPx": 0,
+      "overThr": 0,
+      "overThrLeftCol": 0,
+      "maxChannel": 0,
+      "bbox": null,
+      "bboxLeftCol": null
+    }
+  }
+}

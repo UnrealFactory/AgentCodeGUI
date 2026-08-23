@@ -1,0 +1,149 @@
+{
+  "at": "2026-08-23T07:49:16.576Z",
+  "a": "C:/Users/User/AppData/Local/Temp/muicrit-noise/base",
+  "b": "C:/Users/User/AppData/Local/Temp/muicrit-noise/new",
+  "thr": 1,
+  "leftColExcludedBelowX": 0,
+  "screens": {
+    "changed-files-modal": {
+      "w": 1440,
+      "h": 900,
+      "rawDiffPx": 115348,
+      "overThr": 64595,
+      "overThrLeftCol": 0,
+      "maxChannel": 14,
+      "bbox": {
+        "x0": 339,
+        "y0": 47,
+        "x1": 1330,
+        "y1": 738
+      },
+      "bboxLeftCol": null
+    },
+    "explorer-ctx-menu": {
+      "w": 1440,
+      "h": 900,
+      "rawDiffPx": 41392,
+      "overThr": 41042,
+      "overThrLeftCol": 0,
+      "maxChannel": 236,
+      "bbox": {
+        "x0": 341,
+        "y0": 50,
+        "x1": 1329,
+        "y1": 734
+      },
+      "bboxLeftCol": null
+    },
+    "explorer-git-strip": {
+      "w": 1440,
+      "h": 900,
+      "rawDiffPx": 41392,
+      "overThr": 41042,
+      "overThrLeftCol": 0,
+      "maxChannel": 236,
+      "bbox": {
+        "x0": 341,
+        "y0": 50,
+        "x1": 1329,
+        "y1": 734
+      },
+      "bboxLeftCol": null
+    },
+    "explorer-hidden-on": {
+      "w": 1440,
+      "h": 900,
+      "rawDiffPx": 41392,
+      "overThr": 41042,
+      "overThrLeftCol": 0,
+      "maxChannel": 236,
+      "bbox": {
+        "x0": 341,
+        "y0": 50,
+        "x1": 1329,
+        "y1": 734
+      },
+      "bboxLeftCol": null
+    },
+    "explorer-tree": {
+      "w": 1440,
+      "h": 900,
+      "rawDiffPx": 41392,
+      "overThr": 41042,
+      "overThrLeftCol": 0,
+      "maxChannel": 236,
+      "bbox": {
+        "x0": 341,
+        "y0": 50,
+        "x1": 1329,
+        "y1": 734
+      },
+      "bboxLeftCol": null
+    },
+    "git-changes": {
+      "w": 1440,
+      "h": 900,
+      "rawDiffPx": 11861,
+      "overThr": 305,
+      "overThrLeftCol": 0,
+      "maxChannel": 153,
+      "bbox": {
+        "x0": 235,
+        "y0": 112,
+        "x1": 1306,
+        "y1": 834
+      },
+      "bboxLeftCol": null
+    },
+    "git-commit-detail": {
+      "w": 1440,
+      "h": 900,
+      "rawDiffPx": 11386,
+      "overThr": 214,
+      "overThrLeftCol": 0,
+      "maxChannel": 175,
+      "bbox": {
+        "x0": 235,
+        "y0": 150,
+        "x1": 414,
+        "y1": 440
+      },
+      "bboxLeftCol": null
+    },
+    "git-history": {
+      "w": 1440,
+      "h": 900,
+      "rawDiffPx": 11463,
+      "overThr": 214,
+      "overThrLeftCol": 0,
+      "maxChannel": 175,
+      "bbox": {
+        "x0": 235,
+        "y0": 150,
+        "x1": 414,
+        "y1": 440
+      },
+      "bboxLeftCol": null
+    },
+    "settings-api": {
+      "w": 1440,
+      "h": 900,
+      "rawDiffPx": 11629,
+      "overThr": 0,
+      "overThrLeftCol": 0,
+      "maxChannel": 1,
+      "bbox": null,
+      "bboxLeftCol": null
+    },
+    "viewer-maximized": {
+      "w": 1440,
+      "h": 900,
+      "rawDiffPx": 4375,
+      "overThr": 0,
+      "overThrLeftCol": 0,
+      "maxChannel": 1,
+      "bbox": null,
+      "bboxLeftCol": null
+    }
+  }
+}

@@ -1,0 +1,587 @@
+{
+ "at": "2026-08-23T07:54:42.372Z",
+ "round": "M-UI 실적용 R1 크리틱",
+ "density": {
+  "wide": {
+   "view": "1440x900 · thread 939px",
+   "a262": {
+    "thread": 902.5,
+    "inner": 846.5,
+    "glyphs": 573,
+    "digits": 38,
+    "numTok": 22,
+    "actions": 0
+   },
+   "a2TauriPreMui": {
+    "thread": 902.5,
+    "inner": 846.5,
+    "glyphs": 573,
+    "digits": 38,
+    "actions": 0
+   },
+   "b30mui": {
+    "thread": 783.2,
+    "inner": 727.2,
+    "glyphs": 545,
+    "digits": 49,
+    "numTok": 29,
+    "actions": 3
+   },
+   "deltaPx": -119.3,
+   "deltaPct": -13.22,
+   "glyphPerPx": {
+    "a": 0.6349,
+    "b": 0.6959,
+    "pct": 9.6
+   },
+   "rows": [
+    {
+     "item": "user",
+     "a": {
+      "h": 48.8,
+      "mt": 0,
+      "glyphs": 22,
+      "digits": 0,
+      "actions": 0,
+      "over": 0
+     },
+     "b": {
+      "h": 48.8,
+      "mt": 0,
+      "glyphs": 22,
+      "digits": 0,
+      "actions": 0,
+      "over": 0
+     },
+     "dh": 0,
+     "dg": 0
+    },
+    {
+     "item": "안내",
+     "a": {
+      "h": 46.8,
+      "mt": 18,
+      "glyphs": 57,
+      "digits": 3,
+      "actions": 0,
+      "over": 0
+     },
+     "b": {
+      "h": 47,
+      "mt": 18,
+      "glyphs": 37,
+      "digits": 3,
+      "actions": 1,
+      "over": 0
+     },
+     "dh": 0.2,
+     "dg": -20
+    },
+    {
+     "item": "문답",
+     "a": {
+      "h": 40,
+      "mt": 18,
+      "glyphs": 30,
+      "digits": 1,
+      "actions": 0,
+      "over": 0
+     },
+     "b": {
+      "h": 38,
+      "mt": 18,
+      "glyphs": 37,
+      "digits": 4,
+      "actions": 0,
+      "over": 0
+     },
+     "dh": -2,
+     "dg": 7
+    },
+    {
+     "item": "도구",
+     "a": {
+      "h": 82,
+      "mt": 18,
+      "glyphs": 97,
+      "digits": 9,
+      "actions": 0,
+      "over": 7
+     },
+     "b": {
+      "h": 82,
+      "mt": 18,
+      "glyphs": 97,
+      "digits": 9,
+      "actions": 0,
+      "over": 7
+     },
+     "dh": 0,
+     "dg": 0
+    },
+    {
+     "item": "전환",
+     "a": {
+      "h": 46.8,
+      "mt": 18,
+      "glyphs": 33,
+      "digits": 5,
+      "actions": 0,
+      "over": 0
+     },
+     "b": {
+      "h": 47,
+      "mt": 18,
+      "glyphs": 56,
+      "digits": 5,
+      "actions": 1,
+      "over": 0
+     },
+     "dh": 0.2,
+     "dg": 23
+    },
+    {
+     "item": "AI",
+     "a": {
+      "h": 26.7,
+      "mt": 18,
+      "glyphs": 35,
+      "digits": 1,
+      "actions": 0,
+      "over": 0
+     },
+     "b": {
+      "h": 26.7,
+      "mt": 18,
+      "glyphs": 35,
+      "digits": 1,
+      "actions": 0,
+      "over": 0
+     },
+     "dh": 0,
+     "dg": 0
+    },
+    {
+     "item": "중단",
+     "a": {
+      "h": 15,
+      "mt": 10,
+      "glyphs": 3,
+      "digits": 0,
+      "actions": 0,
+      "over": 0
+     },
+     "b": {
+      "h": 15,
+      "mt": 10,
+      "glyphs": 16,
+      "digits": 6,
+      "actions": 0,
+      "over": 0
+     },
+     "dh": 0,
+     "dg": 13
+    },
+    {
+     "item": "user2",
+     "a": {
+      "h": 48.8,
+      "mt": 18,
+      "glyphs": 13,
+      "digits": 0,
+      "actions": 0,
+      "over": 0
+     },
+     "b": {
+      "h": 48.8,
+      "mt": 10,
+      "glyphs": 13,
+      "digits": 0,
+      "actions": 0,
+      "over": 0
+     },
+     "dh": 0,
+     "dg": 0
+    },
+    {
+     "item": "압축",
+     "a": {
+      "h": 93.8,
+      "mt": 18,
+      "glyphs": 81,
+      "digits": 10,
+      "actions": 0,
+      "over": 0
+     },
+     "b": {
+      "h": 15,
+      "mt": 10,
+      "glyphs": 33,
+      "digits": 12,
+      "actions": 0,
+      "over": 0
+     },
+     "dh": -78.8,
+     "dg": -48
+    },
+    {
+     "item": "명령",
+     "a": {
+      "h": 73.8,
+      "mt": 18,
+      "glyphs": 43,
+      "digits": 3,
+      "actions": 0,
+      "over": 0
+     },
+     "b": {
+      "h": 69.8,
+      "mt": 10,
+      "glyphs": 40,
+      "digits": 3,
+      "actions": 0,
+      "over": 0
+     },
+     "dh": -4,
+     "dg": -3
+    },
+    {
+     "item": "오류",
+     "a": {
+      "h": 127.2,
+      "mt": 18,
+      "glyphs": 149,
+      "digits": 3,
+      "actions": 0,
+      "over": 0
+     },
+     "b": {
+      "h": 116.2,
+      "mt": 18,
+      "glyphs": 149,
+      "digits": 3,
+      "actions": 1,
+      "over": 0
+     },
+     "dh": -11,
+     "dg": 0
+    },
+    {
+     "item": "작업함",
+     "a": {
+      "h": 15,
+      "mt": 10,
+      "glyphs": 10,
+      "digits": 3,
+      "actions": 0,
+      "over": 0
+     },
+     "b": {
+      "h": 15,
+      "mt": 10,
+      "glyphs": 10,
+      "digits": 3,
+      "actions": 0,
+      "over": 0
+     },
+     "dh": 0,
+     "dg": 0
+    }
+   ]
+  },
+  "narrow420": {
+   "a262": {
+    "thread": 1012.4,
+    "inner": 956.4
+   },
+   "b30mui": {
+    "thread": 971.9,
+    "inner": 915.9
+   },
+   "deltaPx": -40.5,
+   "deltaPct": -4,
+   "rows": [
+    {
+     "item": "user",
+     "aH": 48.8,
+     "bH": 48.8,
+     "dh": 0,
+     "bOverflowRight": 0
+    },
+    {
+     "item": "안내",
+     "aH": 88.4,
+     "bH": 65.6,
+     "dh": -22.8,
+     "bOverflowRight": 0
+    },
+    {
+     "item": "문답",
+     "aH": 40,
+     "bH": 53,
+     "dh": 13,
+     "bOverflowRight": 0
+    },
+    {
+     "item": "도구",
+     "aH": 82,
+     "bH": 82,
+     "dh": 0,
+     "bOverflowRight": 7
+    },
+    {
+     "item": "전환",
+     "aH": 67.6,
+     "bH": 86.4,
+     "dh": 18.8,
+     "bOverflowRight": 0
+    },
+    {
+     "item": "AI",
+     "aH": 53.3,
+     "bH": 53.3,
+     "dh": 0,
+     "bOverflowRight": 0
+    },
+    {
+     "item": "중단",
+     "aH": 15,
+     "bH": 15,
+     "dh": 0,
+     "bOverflowRight": 0
+    },
+    {
+     "item": "user2",
+     "aH": 48.8,
+     "bH": 48.8,
+     "dh": 0,
+     "bOverflowRight": 0
+    },
+    {
+     "item": "압축",
+     "aH": 93.8,
+     "bH": 15,
+     "dh": -78.8,
+     "bOverflowRight": 61
+    },
+    {
+     "item": "명령",
+     "aH": 73.8,
+     "bH": 69.8,
+     "dh": -4,
+     "bOverflowRight": 0
+    },
+    {
+     "item": "오류",
+     "aH": 148,
+     "bH": 205.3,
+     "dh": 57.3,
+     "bOverflowRight": 0
+    },
+    {
+     "item": "작업함",
+     "aH": 15,
+     "bH": 15,
+     "dh": 0,
+     "bOverflowRight": 0
+    }
+   ]
+  }
+ },
+ "parityBaseVsNew": {
+  "screens": 37,
+  "zero": [
+   "bgtask-modal",
+   "chat-find",
+   "chat-header",
+   "chat-welcome",
+   "composer-picker-pop",
+   "composer-slash-palette",
+   "composer",
+   "explorer-blank",
+   "multi-grid-counts",
+   "multi-grid-empty",
+   "multi-panel-expanded",
+   "new-chat-step1",
+   "prompt-library-list",
+   "settings-api",
+   "settings-display",
+   "settings-profile",
+   "sidebar-ctx-menu",
+   "sidebar-deleteall-confirm",
+   "sidebar-empty",
+   "sidebar",
+   "subagent-modal",
+   "viewer-code-read",
+   "viewer-diff-on",
+   "viewer-empty",
+   "viewer-markdown-preview",
+   "workbar-todo-pop",
+   "workbar"
+  ],
+  "nonzero": [
+   {
+    "id": "changed-files-modal",
+    "over": 8421,
+    "max": 13,
+    "bbox": {
+     "x0": 47,
+     "y0": 81,
+     "x1": 219,
+     "y1": 834
+    }
+   },
+   {
+    "id": "explorer-ctx-menu",
+    "over": 39,
+    "max": 141,
+    "bbox": {
+     "x0": 212,
+     "y0": 828,
+     "x1": 217,
+     "y1": 834
+    }
+   },
+   {
+    "id": "explorer-git-strip",
+    "over": 39,
+    "max": 141,
+    "bbox": {
+     "x0": 212,
+     "y0": 828,
+     "x1": 217,
+     "y1": 834
+    }
+   },
+   {
+    "id": "explorer-hidden-on",
+    "over": 39,
+    "max": 141,
+    "bbox": {
+     "x0": 212,
+     "y0": 828,
+     "x1": 217,
+     "y1": 834
+    }
+   },
+   {
+    "id": "explorer-search",
+    "over": 39,
+    "max": 141,
+    "bbox": {
+     "x0": 212,
+     "y0": 828,
+     "x1": 217,
+     "y1": 834
+    }
+   },
+   {
+    "id": "explorer-tree",
+    "over": 39,
+    "max": 141,
+    "bbox": {
+     "x0": 212,
+     "y0": 828,
+     "x1": 217,
+     "y1": 834
+    }
+   },
+   {
+    "id": "git-changes",
+    "over": 7952,
+    "max": 193,
+    "bbox": {
+     "x0": 242,
+     "y0": 112,
+     "x1": 1306,
+     "y1": 834
+    }
+   },
+   {
+    "id": "git-commit-detail",
+    "over": 612,
+    "max": 184,
+    "bbox": {
+     "x0": 241,
+     "y0": 151,
+     "x1": 415,
+     "y1": 440
+    }
+   },
+   {
+    "id": "git-history",
+    "over": 612,
+    "max": 184,
+    "bbox": {
+     "x0": 241,
+     "y0": 151,
+     "x1": 415,
+     "y1": 440
+    }
+   },
+   {
+    "id": "viewer-maximized",
+    "over": 320,
+    "max": 64,
+    "bbox": {
+     "x0": 81,
+     "y0": 592,
+     "x1": 95,
+     "y1": 772
+    }
+   }
+  ]
+ },
+ "noiseBaseVsBase": [
+  {
+   "id": "changed-files-modal",
+   "over": 64595,
+   "max": 14
+  },
+  {
+   "id": "explorer-ctx-menu",
+   "over": 41042,
+   "max": 236
+  },
+  {
+   "id": "explorer-git-strip",
+   "over": 41042,
+   "max": 236
+  },
+  {
+   "id": "explorer-hidden-on",
+   "over": 41042,
+   "max": 236
+  },
+  {
+   "id": "explorer-tree",
+   "over": 41042,
+   "max": 236
+  },
+  {
+   "id": "git-changes",
+   "over": 305,
+   "max": 153
+  },
+  {
+   "id": "git-commit-detail",
+   "over": 214,
+   "max": 175
+  },
+  {
+   "id": "git-history",
+   "over": 214,
+   "max": 175
+  },
+  {
+   "id": "settings-api",
+   "over": 0,
+   "max": 1
+  },
+  {
+   "id": "viewer-maximized",
+   "over": 0,
+   "max": 1
+  }
+ ]
+}

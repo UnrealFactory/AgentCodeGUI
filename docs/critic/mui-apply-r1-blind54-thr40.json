@@ -1,0 +1,979 @@
+﻿{
+    "at":  "2026-08-23T16:46:11.5679317+09:00",
+    "dir":  "C:\\Code\\AgentCodeGUI\\bench\\shots\\blind",
+    "thr":  40,
+    "pairs":  {
+                  "chat-find":  {
+                                    "aw":  1320,
+                                    "ah":  880,
+                                    "bw":  1320,
+                                    "bh":  880,
+                                    "w":  1320,
+                                    "h":  880,
+                                    "rawDiffPx":  212764,
+                                    "overThr":  2971,
+                                    "maxChannel":  217,
+                                    "pct":  0.2558,
+                                    "bbox":  {
+                                                 "x0":  16,
+                                                 "y0":  7,
+                                                 "x1":  1300,
+                                                 "y1":  845
+                                             }
+                                },
+                  "viewer-cm-find":  {
+                                         "aw":  1320,
+                                         "ah":  880,
+                                         "bw":  1320,
+                                         "bh":  880,
+                                         "w":  1320,
+                                         "h":  880,
+                                         "rawDiffPx":  316324,
+                                         "overThr":  3014,
+                                         "maxChannel":  156,
+                                         "pct":  0.2595,
+                                         "bbox":  {
+                                                      "x0":  82,
+                                                      "y0":  6,
+                                                      "x1":  1168,
+                                                      "y1":  772
+                                                  }
+                                     },
+                  "viewer-truncated":  {
+                                           "aw":  1320,
+                                           "ah":  880,
+                                           "bw":  1320,
+                                           "bh":  880,
+                                           "w":  1320,
+                                           "h":  880,
+                                           "rawDiffPx":  244268,
+                                           "overThr":  598,
+                                           "maxChannel":  91,
+                                           "pct":  0.0515,
+                                           "bbox":  {
+                                                        "x0":  907,
+                                                        "y0":  6,
+                                                        "x1":  933,
+                                                        "y1":  30
+                                                    }
+                                       },
+                  "explorer-settings-foot":  {
+                                                 "aw":  1320,
+                                                 "ah":  880,
+                                                 "bw":  1320,
+                                                 "bh":  880,
+                                                 "w":  1320,
+                                                 "h":  880,
+                                                 "rawDiffPx":  256522,
+                                                 "overThr":  40406,
+                                                 "maxChannel":  236,
+                                                 "pct":  3.4785,
+                                                 "bbox":  {
+                                                              "x0":  16,
+                                                              "y0":  7,
+                                                              "x1":  1300,
+                                                              "y1":  858
+                                                          }
+                                             },
+                  "viewer-svg-preview":  {
+                                             "aw":  1320,
+                                             "ah":  880,
+                                             "bw":  1320,
+                                             "bh":  880,
+                                             "w":  1320,
+                                             "h":  880,
+                                             "rawDiffPx":  209451,
+                                             "overThr":  642,
+                                             "maxChannel":  98,
+                                             "pct":  0.0553,
+                                             "bbox":  {
+                                                          "x0":  69,
+                                                          "y0":  6,
+                                                          "x1":  1140,
+                                                          "y1":  484
+                                                      }
+                                         },
+                  "explorer-tree":  {
+                                        "aw":  1320,
+                                        "ah":  880,
+                                        "bw":  1320,
+                                        "bh":  880,
+                                        "w":  1320,
+                                        "h":  880,
+                                        "rawDiffPx":  256522,
+                                        "overThr":  40406,
+                                        "maxChannel":  236,
+                                        "pct":  3.4785,
+                                        "bbox":  {
+                                                     "x0":  16,
+                                                     "y0":  7,
+                                                     "x1":  1300,
+                                                     "y1":  858
+                                                 }
+                                    },
+                  "chat-welcome":  {
+                                       "aw":  1320,
+                                       "ah":  880,
+                                       "bw":  1320,
+                                       "bh":  880,
+                                       "w":  1320,
+                                       "h":  880,
+                                       "rawDiffPx":  109311,
+                                       "overThr":  1790,
+                                       "maxChannel":  217,
+                                       "pct":  0.1541,
+                                       "bbox":  {
+                                                    "x0":  16,
+                                                    "y0":  7,
+                                                    "x1":  1300,
+                                                    "y1":  845
+                                                }
+                                   },
+                  "git-new-branch":  {
+                                         "aw":  1320,
+                                         "ah":  880,
+                                         "bw":  1320,
+                                         "bh":  880,
+                                         "w":  1320,
+                                         "h":  880,
+                                         "rawDiffPx":  335075,
+                                         "overThr":  9466,
+                                         "maxChannel":  193,
+                                         "pct":  0.8149,
+                                         "bbox":  {
+                                                      "x0":  63,
+                                                      "y0":  6,
+                                                      "x1":  1241,
+                                                      "y1":  814
+                                                  }
+                                     },
+                  "settings-display":  {
+                                           "aw":  1320,
+                                           "ah":  880,
+                                           "bw":  1320,
+                                           "bh":  880,
+                                           "w":  1320,
+                                           "h":  880,
+                                           "rawDiffPx":  500318,
+                                           "overThr":  608,
+                                           "maxChannel":  91,
+                                           "pct":  0.0523,
+                                           "bbox":  {
+                                                        "x0":  73,
+                                                        "y0":  7,
+                                                        "x1":  1163,
+                                                        "y1":  531
+                                                    }
+                                       },
+                  "boot-loading":  {
+                                       "aw":  1320,
+                                       "ah":  880,
+                                       "bw":  1320,
+                                       "bh":  880,
+                                       "w":  1320,
+                                       "h":  880,
+                                       "rawDiffPx":  102192,
+                                       "overThr":  1600,
+                                       "maxChannel":  217,
+                                       "pct":  0.1377,
+                                       "bbox":  {
+                                                    "x0":  16,
+                                                    "y0":  7,
+                                                    "x1":  1300,
+                                                    "y1":  845
+                                                }
+                                   },
+                  "panel-window":  {
+                                       "aw":  1100,
+                                       "ah":  820,
+                                       "bw":  1100,
+                                       "bh":  820,
+                                       "w":  1100,
+                                       "h":  820,
+                                       "rawDiffPx":  7707,
+                                       "overThr":  10,
+                                       "maxChannel":  209,
+                                       "pct":  0.0011,
+                                       "bbox":  {
+                                                    "x0":  14,
+                                                    "y0":  16,
+                                                    "x1":  1078,
+                                                    "y1":  789
+                                                }
+                                   },
+                  "viewer-markdown-preview":  {
+                                                  "aw":  1320,
+                                                  "ah":  880,
+                                                  "bw":  1320,
+                                                  "bh":  880,
+                                                  "w":  1320,
+                                                  "h":  880,
+                                                  "rawDiffPx":  289373,
+                                                  "overThr":  612,
+                                                  "maxChannel":  98,
+                                                  "pct":  0.0527,
+                                                  "bbox":  {
+                                                               "x0":  907,
+                                                               "y0":  6,
+                                                               "x1":  1140,
+                                                               "y1":  78
+                                                           }
+                                              },
+                  "sidebar-empty":  {
+                                        "aw":  1320,
+                                        "ah":  880,
+                                        "bw":  1320,
+                                        "bh":  880,
+                                        "w":  1320,
+                                        "h":  880,
+                                        "rawDiffPx":  403251,
+                                        "overThr":  51902,
+                                        "maxChannel":  236,
+                                        "pct":  4.4681,
+                                        "bbox":  {
+                                                     "x0":  16,
+                                                     "y0":  7,
+                                                     "x1":  1300,
+                                                     "y1":  849
+                                                 }
+                                    },
+                  "viewer-svg-source":  {
+                                            "aw":  1320,
+                                            "ah":  880,
+                                            "bw":  1320,
+                                            "bh":  880,
+                                            "w":  1320,
+                                            "h":  880,
+                                            "rawDiffPx":  206833,
+                                            "overThr":  629,
+                                            "maxChannel":  91,
+                                            "pct":  0.0541,
+                                            "bbox":  {
+                                                         "x0":  69,
+                                                         "y0":  6,
+                                                         "x1":  1164,
+                                                         "y1":  82
+                                                     }
+                                        },
+                  "explorer-hidden-on":  {
+                                             "aw":  1320,
+                                             "ah":  880,
+                                             "bw":  1320,
+                                             "bh":  880,
+                                             "w":  1320,
+                                             "h":  880,
+                                             "rawDiffPx":  252712,
+                                             "overThr":  39140,
+                                             "maxChannel":  236,
+                                             "pct":  3.3695,
+                                             "bbox":  {
+                                                          "x0":  16,
+                                                          "y0":  7,
+                                                          "x1":  1300,
+                                                          "y1":  858
+                                                      }
+                                         },
+                  "multi-grid-counts":  {
+                                            "aw":  1320,
+                                            "ah":  880,
+                                            "bw":  1320,
+                                            "bh":  880,
+                                            "w":  1320,
+                                            "h":  880,
+                                            "rawDiffPx":  118918,
+                                            "overThr":  7863,
+                                            "maxChannel":  221,
+                                            "pct":  0.6769,
+                                            "bbox":  {
+                                                         "x0":  16,
+                                                         "y0":  7,
+                                                         "x1":  1300,
+                                                         "y1":  845
+                                                     }
+                                        },
+                  "sidebar-deleteall-confirm":  {
+                                                    "aw":  1320,
+                                                    "ah":  880,
+                                                    "bw":  1320,
+                                                    "bh":  880,
+                                                    "w":  1320,
+                                                    "h":  880,
+                                                    "rawDiffPx":  834958,
+                                                    "overThr":  4378,
+                                                    "maxChannel":  212,
+                                                    "pct":  0.3769,
+                                                    "bbox":  {
+                                                                 "x0":  35,
+                                                                 "y0":  6,
+                                                                 "x1":  1203,
+                                                                 "y1":  713
+                                                             }
+                                                },
+                  "settings-mcp":  {
+                                       "aw":  1320,
+                                       "ah":  880,
+                                       "bw":  1320,
+                                       "bh":  880,
+                                       "w":  1320,
+                                       "h":  880,
+                                       "rawDiffPx":  494271,
+                                       "overThr":  590,
+                                       "maxChannel":  91,
+                                       "pct":  0.0508,
+                                       "bbox":  {
+                                                    "x0":  75,
+                                                    "y0":  7,
+                                                    "x1":  978,
+                                                    "y1":  399
+                                                }
+                                   },
+                  "explorer-search":  {
+                                          "aw":  1320,
+                                          "ah":  880,
+                                          "bw":  1320,
+                                          "bh":  880,
+                                          "w":  1320,
+                                          "h":  880,
+                                          "rawDiffPx":  236480,
+                                          "overThr":  36238,
+                                          "maxChannel":  236,
+                                          "pct":  3.1197,
+                                          "bbox":  {
+                                                       "x0":  16,
+                                                       "y0":  7,
+                                                       "x1":  1300,
+                                                       "y1":  858
+                                                   }
+                                      },
+                  "workbar":  {
+                                  "aw":  1320,
+                                  "ah":  880,
+                                  "bw":  1320,
+                                  "bh":  880,
+                                  "w":  1320,
+                                  "h":  880,
+                                  "rawDiffPx":  189835,
+                                  "overThr":  1857,
+                                  "maxChannel":  217,
+                                  "pct":  0.1599,
+                                  "bbox":  {
+                                               "x0":  16,
+                                               "y0":  7,
+                                               "x1":  1300,
+                                               "y1":  845
+                                           }
+                              },
+                  "multi-panel-ghost-popped":  {
+                                                   "aw":  1320,
+                                                   "ah":  880,
+                                                   "bw":  1320,
+                                                   "bh":  880,
+                                                   "w":  1320,
+                                                   "h":  880,
+                                                   "rawDiffPx":  84349,
+                                                   "overThr":  2452,
+                                                   "maxChannel":  221,
+                                                   "pct":  0.2111,
+                                                   "bbox":  {
+                                                                "x0":  16,
+                                                                "y0":  7,
+                                                                "x1":  1300,
+                                                                "y1":  845
+                                                            }
+                                               },
+                  "viewer-image":  {
+                                       "aw":  1320,
+                                       "ah":  880,
+                                       "bw":  1320,
+                                       "bh":  880,
+                                       "w":  1320,
+                                       "h":  880,
+                                       "rawDiffPx":  289045,
+                                       "overThr":  600,
+                                       "maxChannel":  91,
+                                       "pct":  0.0517,
+                                       "bbox":  {
+                                                    "x0":  74,
+                                                    "y0":  6,
+                                                    "x1":  933,
+                                                    "y1":  76
+                                                }
+                                   },
+                  "sidebar":  {
+                                  "aw":  1320,
+                                  "ah":  880,
+                                  "bw":  1320,
+                                  "bh":  880,
+                                  "w":  1320,
+                                  "h":  880,
+                                  "rawDiffPx":  403251,
+                                  "overThr":  51887,
+                                  "maxChannel":  236,
+                                  "pct":  4.4669,
+                                  "bbox":  {
+                                               "x0":  16,
+                                               "y0":  7,
+                                               "x1":  1300,
+                                               "y1":  845
+                                           }
+                              },
+                  "git-changes":  {
+                                      "aw":  1320,
+                                      "ah":  880,
+                                      "bw":  1320,
+                                      "bh":  880,
+                                      "w":  1320,
+                                      "h":  880,
+                                      "rawDiffPx":  330653,
+                                      "overThr":  4141,
+                                      "maxChannel":  193,
+                                      "pct":  0.3565,
+                                      "bbox":  {
+                                                   "x0":  63,
+                                                   "y0":  6,
+                                                   "x1":  1241,
+                                                   "y1":  814
+                                               }
+                                  },
+                  "multi-grid-empty":  {
+                                           "aw":  1320,
+                                           "ah":  880,
+                                           "bw":  1320,
+                                           "bh":  880,
+                                           "w":  1320,
+                                           "h":  880,
+                                           "rawDiffPx":  98733,
+                                           "overThr":  50,
+                                           "maxChannel":  106,
+                                           "pct":  0.0043,
+                                           "bbox":  {
+                                                        "x0":  16,
+                                                        "y0":  14,
+                                                        "x1":  1300,
+                                                        "y1":  845
+                                                    }
+                                       },
+                  "viewer-maximized":  {
+                                           "aw":  1320,
+                                           "ah":  880,
+                                           "bw":  1320,
+                                           "bh":  880,
+                                           "w":  1320,
+                                           "h":  880,
+                                           "rawDiffPx":  1142994,
+                                           "overThr":  3007,
+                                           "maxChannel":  156,
+                                           "pct":  0.2589,
+                                           "bbox":  {
+                                                        "x0":  82,
+                                                        "y0":  7,
+                                                        "x1":  1168,
+                                                        "y1":  772
+                                                    }
+                                       },
+                  "viewer-empty":  {
+                                       "aw":  1320,
+                                       "ah":  880,
+                                       "bw":  1320,
+                                       "bh":  880,
+                                       "w":  1320,
+                                       "h":  880,
+                                       "rawDiffPx":  191651,
+                                       "overThr":  599,
+                                       "maxChannel":  91,
+                                       "pct":  0.0516,
+                                       "bbox":  {
+                                                    "x0":  83,
+                                                    "y0":  6,
+                                                    "x1":  933,
+                                                    "y1":  81
+                                                }
+                                   },
+                  "viewer-code-read":  {
+                                           "aw":  1320,
+                                           "ah":  880,
+                                           "bw":  1320,
+                                           "bh":  880,
+                                           "w":  1320,
+                                           "h":  880,
+                                           "rawDiffPx":  229916,
+                                           "overThr":  3139,
+                                           "maxChannel":  170,
+                                           "pct":  0.2702,
+                                           "bbox":  {
+                                                        "x0":  81,
+                                                        "y0":  6,
+                                                        "x1":  1123,
+                                                        "y1":  772
+                                                    }
+                                       },
+                  "viewer-code-edit":  {
+                                           "aw":  1320,
+                                           "ah":  880,
+                                           "bw":  1320,
+                                           "bh":  880,
+                                           "w":  1320,
+                                           "h":  880,
+                                           "rawDiffPx":  228361,
+                                           "overThr":  3020,
+                                           "maxChannel":  225,
+                                           "pct":  0.26,
+                                           "bbox":  {
+                                                        "x0":  122,
+                                                        "y0":  6,
+                                                        "x1":  1171,
+                                                        "y1":  728
+                                                    }
+                                       },
+                  "error-boundary":  {
+                                         "aw":  1320,
+                                         "ah":  880,
+                                         "bw":  1320,
+                                         "bh":  880,
+                                         "w":  1320,
+                                         "h":  880,
+                                         "rawDiffPx":  108418,
+                                         "overThr":  15,
+                                         "maxChannel":  53,
+                                         "pct":  0.0013,
+                                         "bbox":  {
+                                                      "x0":  568,
+                                                      "y0":  158,
+                                                      "x1":  649,
+                                                      "y1":  188
+                                                  }
+                                     },
+                  "viewer-diff-on":  {
+                                         "aw":  1320,
+                                         "ah":  880,
+                                         "bw":  1320,
+                                         "bh":  880,
+                                         "w":  1320,
+                                         "h":  880,
+                                         "rawDiffPx":  284153,
+                                         "overThr":  2981,
+                                         "maxChannel":  156,
+                                         "pct":  0.2566,
+                                         "bbox":  {
+                                                      "x0":  82,
+                                                      "y0":  6,
+                                                      "x1":  1168,
+                                                      "y1":  771
+                                                  }
+                                     },
+                  "explorer-fileop":  {
+                                          "aw":  1320,
+                                          "ah":  880,
+                                          "bw":  1320,
+                                          "bh":  880,
+                                          "w":  1320,
+                                          "h":  880,
+                                          "rawDiffPx":  785794,
+                                          "overThr":  782,
+                                          "maxChannel":  93,
+                                          "pct":  0.0673,
+                                          "bbox":  {
+                                                       "x0":  48,
+                                                       "y0":  6,
+                                                       "x1":  934,
+                                                       "y1":  682
+                                                   }
+                                      },
+                  "viewer-find":  {
+                                      "aw":  1320,
+                                      "ah":  880,
+                                      "bw":  1320,
+                                      "bh":  880,
+                                      "w":  1320,
+                                      "h":  880,
+                                      "rawDiffPx":  320057,
+                                      "overThr":  611,
+                                      "maxChannel":  97,
+                                      "pct":  0.0526,
+                                      "bbox":  {
+                                                   "x0":  907,
+                                                   "y0":  6,
+                                                   "x1":  1140,
+                                                   "y1":  78
+                                               }
+                                  },
+                  "git-history":  {
+                                      "aw":  1320,
+                                      "ah":  880,
+                                      "bw":  1320,
+                                      "bh":  880,
+                                      "w":  1320,
+                                      "h":  880,
+                                      "rawDiffPx":  324542,
+                                      "overThr":  815,
+                                      "maxChannel":  187,
+                                      "pct":  0.0702,
+                                      "bbox":  {
+                                                   "x0":  63,
+                                                   "y0":  6,
+                                                   "x1":  994,
+                                                   "y1":  818
+                                               }
+                                  },
+                  "explorer-blank":  {
+                                         "aw":  1320,
+                                         "ah":  880,
+                                         "bw":  1320,
+                                         "bh":  880,
+                                         "w":  1320,
+                                         "h":  880,
+                                         "rawDiffPx":  100341,
+                                         "overThr":  790,
+                                         "maxChannel":  217,
+                                         "pct":  0.068,
+                                         "bbox":  {
+                                                      "x0":  16,
+                                                      "y0":  7,
+                                                      "x1":  1300,
+                                                      "y1":  845
+                                                  }
+                                     },
+                  "cmd-result-card":  {
+                                          "aw":  1320,
+                                          "ah":  880,
+                                          "bw":  1320,
+                                          "bh":  880,
+                                          "w":  1320,
+                                          "h":  880,
+                                          "rawDiffPx":  323651,
+                                          "overThr":  52576,
+                                          "maxChannel":  236,
+                                          "pct":  4.5262,
+                                          "bbox":  {
+                                                       "x0":  16,
+                                                       "y0":  7,
+                                                       "x1":  1300,
+                                                       "y1":  845
+                                                   }
+                                      },
+                  "sidebar-ctx-menu":  {
+                                           "aw":  1320,
+                                           "ah":  880,
+                                           "bw":  1320,
+                                           "bh":  880,
+                                           "w":  1320,
+                                           "h":  880,
+                                           "rawDiffPx":  418397,
+                                           "overThr":  51789,
+                                           "maxChannel":  236,
+                                           "pct":  4.4584,
+                                           "bbox":  {
+                                                        "x0":  16,
+                                                        "y0":  7,
+                                                        "x1":  1300,
+                                                        "y1":  845
+                                                    }
+                                       },
+                  "explorer-ctx-menu":  {
+                                            "aw":  1320,
+                                            "ah":  880,
+                                            "bw":  1320,
+                                            "bh":  880,
+                                            "w":  1320,
+                                            "h":  880,
+                                            "rawDiffPx":  305723,
+                                            "overThr":  39189,
+                                            "maxChannel":  245,
+                                            "pct":  3.3737,
+                                            "bbox":  {
+                                                         "x0":  16,
+                                                         "y0":  7,
+                                                         "x1":  1300,
+                                                         "y1":  858
+                                                     }
+                                        },
+                  "viewer-code-dirty":  {
+                                            "aw":  1320,
+                                            "ah":  880,
+                                            "bw":  1320,
+                                            "bh":  880,
+                                            "w":  1320,
+                                            "h":  880,
+                                            "rawDiffPx":  228537,
+                                            "overThr":  3003,
+                                            "maxChannel":  170,
+                                            "pct":  0.2585,
+                                            "bbox":  {
+                                                         "x0":  190,
+                                                         "y0":  6,
+                                                         "x1":  1171,
+                                                         "y1":  728
+                                                     }
+                                        },
+                  "multi-panel-expanded":  {
+                                               "aw":  1320,
+                                               "ah":  880,
+                                               "bw":  1320,
+                                               "bh":  880,
+                                               "w":  1320,
+                                               "h":  880,
+                                               "rawDiffPx":  103259,
+                                               "overThr":  2,
+                                               "maxChannel":  205,
+                                               "pct":  0.0002,
+                                               "bbox":  {
+                                                            "x0":  260,
+                                                            "y0":  819,
+                                                            "x1":  260,
+                                                            "y1":  834
+                                                        }
+                                           },
+                  "viewer-markdown-source":  {
+                                                 "aw":  1320,
+                                                 "ah":  880,
+                                                 "bw":  1320,
+                                                 "bh":  880,
+                                                 "w":  1320,
+                                                 "h":  880,
+                                                 "rawDiffPx":  205452,
+                                                 "overThr":  618,
+                                                 "maxChannel":  91,
+                                                 "pct":  0.0532,
+                                                 "bbox":  {
+                                                              "x0":  907,
+                                                              "y0":  6,
+                                                              "x1":  1171,
+                                                              "y1":  76
+                                                          }
+                                             },
+                  "explorer-search-empty":  {
+                                                "aw":  1320,
+                                                "ah":  880,
+                                                "bw":  1320,
+                                                "bh":  880,
+                                                "w":  1320,
+                                                "h":  880,
+                                                "rawDiffPx":  236764,
+                                                "overThr":  36238,
+                                                "maxChannel":  236,
+                                                "pct":  3.1197,
+                                                "bbox":  {
+                                                             "x0":  16,
+                                                             "y0":  7,
+                                                             "x1":  1300,
+                                                             "y1":  858
+                                                         }
+                                            },
+                  "viewer-git-snapshot":  {
+                                              "aw":  1320,
+                                              "ah":  880,
+                                              "bw":  1320,
+                                              "bh":  880,
+                                              "w":  1320,
+                                              "h":  880,
+                                              "rawDiffPx":  416025,
+                                              "overThr":  14,
+                                              "maxChannel":  98,
+                                              "pct":  0.0012,
+                                              "bbox":  {
+                                                           "x0":  1081,
+                                                           "y0":  70,
+                                                           "x1":  1092,
+                                                           "y1":  78
+                                                       }
+                                          },
+                  "composer":  {
+                                   "aw":  1320,
+                                   "ah":  880,
+                                   "bw":  1320,
+                                   "bh":  880,
+                                   "w":  1320,
+                                   "h":  880,
+                                   "rawDiffPx":  189835,
+                                   "overThr":  1857,
+                                   "maxChannel":  217,
+                                   "pct":  0.1599,
+                                   "bbox":  {
+                                                "x0":  16,
+                                                "y0":  7,
+                                                "x1":  1300,
+                                                "y1":  845
+                                            }
+                               },
+                  "viewer-header-ctx-menu":  {
+                                                 "aw":  1320,
+                                                 "ah":  880,
+                                                 "bw":  1320,
+                                                 "bh":  880,
+                                                 "w":  1320,
+                                                 "h":  880,
+                                                 "rawDiffPx":  298748,
+                                                 "overThr":  2932,
+                                                 "maxChannel":  156,
+                                                 "pct":  0.2524,
+                                                 "bbox":  {
+                                                              "x0":  190,
+                                                              "y0":  6,
+                                                              "x1":  1168,
+                                                              "y1":  771
+                                                          }
+                                             },
+                  "viewer-close-confirm":  {
+                                               "aw":  1320,
+                                               "ah":  880,
+                                               "bw":  1320,
+                                               "bh":  880,
+                                               "w":  1320,
+                                               "h":  880,
+                                               "rawDiffPx":  296299,
+                                               "overThr":  15,
+                                               "maxChannel":  55,
+                                               "pct":  0.0013,
+                                               "bbox":  {
+                                                            "x0":  665,
+                                                            "y0":  500,
+                                                            "x1":  827,
+                                                            "y1":  536
+                                                        }
+                                           },
+                  "chat-header":  {
+                                      "aw":  1320,
+                                      "ah":  880,
+                                      "bw":  1320,
+                                      "bh":  880,
+                                      "w":  1320,
+                                      "h":  880,
+                                      "rawDiffPx":  237316,
+                                      "overThr":  36893,
+                                      "maxChannel":  236,
+                                      "pct":  3.1761,
+                                      "bbox":  {
+                                                   "x0":  16,
+                                                   "y0":  7,
+                                                   "x1":  1300,
+                                                   "y1":  845
+                                               }
+                                  },
+                  "explorer-git-strip":  {
+                                             "aw":  1320,
+                                             "ah":  880,
+                                             "bw":  1320,
+                                             "bh":  880,
+                                             "w":  1320,
+                                             "h":  880,
+                                             "rawDiffPx":  256522,
+                                             "overThr":  40406,
+                                             "maxChannel":  236,
+                                             "pct":  3.4785,
+                                             "bbox":  {
+                                                          "x0":  16,
+                                                          "y0":  7,
+                                                          "x1":  1300,
+                                                          "y1":  858
+                                                      }
+                                         },
+                  "git-commit-detail":  {
+                                            "aw":  1320,
+                                            "ah":  880,
+                                            "bw":  1320,
+                                            "bh":  880,
+                                            "w":  1320,
+                                            "h":  880,
+                                            "rawDiffPx":  366877,
+                                            "overThr":  807,
+                                            "maxChannel":  187,
+                                            "pct":  0.0695,
+                                            "bbox":  {
+                                                         "x0":  63,
+                                                         "y0":  6,
+                                                         "x1":  994,
+                                                         "y1":  818
+                                                     }
+                                        },
+                  "toast-aggregate":  {
+                                          "aw":  344,
+                                          "ah":  164,
+                                          "bw":  360,
+                                          "bh":  172,
+                                          "w":  344,
+                                          "h":  164,
+                                          "rawDiffPx":  56364,
+                                          "overThr":  818,
+                                          "maxChannel":  67,
+                                          "pct":  1.4499,
+                                          "bbox":  {
+                                                       "x0":  250,
+                                                       "y0":  17,
+                                                       "x1":  341,
+                                                       "y1":  149
+                                                   }
+                                      },
+                  "toast-single":  {
+                                       "aw":  344,
+                                       "ah":  103,
+                                       "bw":  360,
+                                       "bh":  109,
+                                       "w":  344,
+                                       "h":  103,
+                                       "rawDiffPx":  5409,
+                                       "overThr":  1067,
+                                       "maxChannel":  95,
+                                       "pct":  3.0114,
+                                       "bbox":  {
+                                                    "x0":  53,
+                                                    "y0":  17,
+                                                    "x1":  341,
+                                                    "y1":  91
+                                                }
+                                   },
+                  "chat-thread":  {
+                                      "aw":  1320,
+                                      "ah":  880,
+                                      "bw":  1320,
+                                      "bh":  880,
+                                      "w":  1320,
+                                      "h":  880,
+                                      "rawDiffPx":  269530,
+                                      "overThr":  41108,
+                                      "maxChannel":  236,
+                                      "pct":  3.5389,
+                                      "bbox":  {
+                                                   "x0":  16,
+                                                   "y0":  7,
+                                                   "x1":  1300,
+                                                   "y1":  845
+                                               }
+                                  },
+                  "explorer-fileop-delete":  {
+                                                 "aw":  1320,
+                                                 "ah":  880,
+                                                 "bw":  1320,
+                                                 "bh":  880,
+                                                 "w":  1320,
+                                                 "h":  880,
+                                                 "rawDiffPx":  805712,
+                                                 "overThr":  799,
+                                                 "maxChannel":  93,
+                                                 "pct":  0.0688,
+                                                 "bbox":  {
+                                                              "x0":  62,
+                                                              "y0":  6,
+                                                              "x1":  934,
+                                                              "y1":  785
+                                                          }
+                                             },
+                  "settings-api":  {
+                                       "aw":  1320,
+                                       "ah":  880,
+                                       "bw":  1320,
+                                       "bh":  880,
+                                       "w":  1320,
+                                       "h":  880,
+                                       "rawDiffPx":  525934,
+                                       "overThr":  589,
+                                       "maxChannel":  91,
+                                       "pct":  0.0507,
+                                       "bbox":  {
+                                                    "x0":  953,
+                                                    "y0":  7,
+                                                    "x1":  978,
+                                                    "y1":  30
+                                                }
+                                   }
+              }
+}

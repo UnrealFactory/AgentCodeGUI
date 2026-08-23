@@ -1,0 +1,42 @@
+{
+ "at": "2026-08-23T07:38:15.435Z",
+ "entry": "app/src/store/session.ts",
+ "failed": 0,
+ "rows": [
+  {
+   "name": "5 auto → boundary(compact) 경계 선",
+   "ok": true,
+   "detail": null
+  },
+  {
+   "name": "5 라벨 = 여기까지 요약됨",
+   "ok": true,
+   "detail": null
+  },
+  {
+   "name": "5 수치 = 150K → 12K · 컨텍스트 75% → 6%",
+   "ok": true,
+   "detail": null
+  },
+  {
+   "name": "6 manual 무시",
+   "ok": true,
+   "detail": null
+  },
+  {
+   "name": "7 pendingCommand=compact 중 무시",
+   "ok": true,
+   "detail": null
+  },
+  {
+   "name": "8 window 미상 → 토큰 전/후만",
+   "ok": true,
+   "detail": null
+  },
+  {
+   "name": "9 after 미상 → 수치 없음",
+   "ok": true,
+   "detail": null
+  }
+ ]
+}
