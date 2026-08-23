@@ -1,7 +1,7 @@
 {
   "app": "tauri-3.0.0",
   "kind": "tauri",
-  "at": "2026-08-23T06:01:39.729Z",
+  "at": "2026-08-23T07:05:23.629Z",
   "viewport": {
     "width": 1440,
     "height": 900
@@ -13,7 +13,7 @@
       "area": "2. 본채팅",
       "surface": "main-window",
       "ok": true,
-      "ms": 456,
+      "ms": 471,
       "found": 1
     },
     {
@@ -59,6 +59,15 @@
       "surface": "main-window",
       "ok": true,
       "ms": 888,
+      "found": 1
+    },
+    {
+      "id": "cmd-result-card",
+      "label": "내장 명령 결과 카드(/init 등)",
+      "area": "2. 본채팅",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 881,
       "found": 1
     },
     {
@@ -476,13 +485,13 @@
     }
   ],
   "windowSized": true,
-  "mergedFrom": "2026-08-22T23:33:57.242Z",
+  "mergedFrom": "2026-08-23T06:01:39.729Z",
   "summary": {
     "defined": 156,
-    "attempted": 51,
-    "ok": 48,
+    "attempted": 52,
+    "ok": 49,
     "failed": 3,
     "skipped": 1,
-    "successRatePct": 94.1
+    "successRatePct": 94.2
   }
 }

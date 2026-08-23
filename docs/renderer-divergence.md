@@ -229,12 +229,16 @@ CDN 왕복을 기다렸다. 자세한 실측은 `docs/m1-report-r3.md` §4.2.
 
 ---
 
-## 6. M-UX 1단계 — `app/src`의 첫 **의도적** 분기 (커밋 d62ce52)
+## 6. 의도적 분기 (설계에 따라 일부러 갈라진 것)
 
-여기까지의 장부는 "2.6.2와 같아야 하는데 어쩔 수 없이 다른 것"이었다. M-UX부터는
-성격이 다르다 — **설계(docs/design/ux-chat-unify.md)에 따라 일부러 갈라진 것**이고,
-파리티 감사는 이 목록을 회귀가 아니라 의도된 변경으로 취급해야 한다. 상세와 되집는
-자리는 `docs/m-ux-report-r1.md` §3.
+여기까지의 장부는 "2.6.2와 같아야 하는데 어쩔 수 없이 다른 것"이었다. 아래부터는
+성격이 다르다 — **설계 문서에 따라 일부러 갈라진 것**이고, 파리티 감사는 이 목록을
+회귀가 아니라 의도된 변경으로 취급해야 한다. 공통 규약 하나: **변경 화면의 A/B 기준은
+2.6.2가 아니라 목업**이다. 그 밖의 화면은 여전히 **픽셀 불변**이 계약이다.
+
+### 6.1 M-UX 1단계 — `app/src`의 첫 의도적 분기 (커밋 d62ce52)
+
+상세와 되집는 자리는 `docs/m-ux-report-r1.md` §3.
 
 - 수정 5파일: 다이얼 1~6(하한 1·`visibleSlots = order.slice(0,count)`)·사이드바
   「채팅」+「배치」 2섹션·`setVisible()` 관문+`reconcileChatRefs()`·n1=IDE 크롬·
@@ -242,3 +246,52 @@ CDN 왕복을 기다렸다. 자세한 실측은 `docs/m1-report-r3.md` §4.2.
 - 신설 1파일: `app/src/api/unified.ts` — `chats:set-active` 등 통합 스토어 채널의
   렌더러 쪽 어댑터(계약면 `src/shared`는 무수정)
 - 변경 화면의 A/B 기준은 2.6.2가 아니라 **목업**(docs/design/mockups/chat-unify-*)이다.
+
+### 6.2 M-UI — 스레드 알림 7종을 한 문법으로 (`docs/design/ui-notify.md`)
+
+기준은 목업 `docs/design/mockups/ui-notify-*.html`의 **B안**이다(크리틱 블라인드
+8승 0패). 상세·실측·되집는 자리는 `docs/m-ui-report-r1.md`.
+
+**변경 화면 (기준 = 목업, 2.6.2와 다른 게 정상):**
+
+| 종 | 2.6.2 | 3.0 | 형태·색조 |
+|---|---|---|---|
+| 모델 자동 전환 | `.notice-row` **재사용** | `kind:'fallback'` 전용 항목 + `[되돌리기]` | `band · notice · revert` |
+| 안내 | `.notice-row` (무조건 노랑) | `kind:'notice'` + `tone`/`action` | `band · notice\|neutral` |
+| 오류 | `.error-row` (제목 줄 '오류') | 제목 줄 제거 + **모노 원문 면** + `[복사]` | `band · danger` |
+| 중단 | `.stopline` | + 지속시간·도구 수·시각(높이 불변) | `rule` 종결형 · `danger` |
+| 압축 경계 | `.cmd-card`(auto) 93.8px | `kind:'boundary'` 15px | `rule` 경계형 · `neutral` |
+| 명령 | `.cmd-card` | 치수 통일 + 수치를 부제 줄로 합침 | `card · face=on` |
+| 문답 | `.qa` | 왼쪽 15px 마커 칸 + 시각 + 답 15.5→14.5px | `card · face=off` |
+
+**수정 파일 6 (전부 `app/src/`):**
+
+- `styles.css` — `--ntf-*` 토큰 + `.ntf-rule`/`.ntf-band`/`.ntf-card` × `.ntf-t-*` 4색조.
+  `.notice-row`·`.error-row`·`.stopline`·`.cmd-card*`·`.qa*` 블록은 **대체**(삭제 후 신설).
+- `store/session.ts` — `ThreadItem`에 `fallback`·`boundary` 신설, `notice.tone/action`,
+  `interrupted.ms/tools/time`, `qa.time`. `state.turnAt`(중단선 지속시간 근거, 영속 안 함).
+- `components/Chat.tsx` — `MessageView` 7분기 + `FallbackBand`·`ErrorBand` 신설,
+  `CmdResultCard`·`IdentityBand`를 새 문법으로.
+- `App.tsx`·`components/MultiAgent.tsx`·`components/SessionWindow.tsx` — `onNotify` 배선.
+
+**충돌 규약 (목업 → 실앱 이름 매핑):** 목업의 짧은 클래스(`.band .tx`, `.card .ti`,
+`.act`, `.num`, `.spin`, `.qa`…)는 `styles.css`에 **이미 같은 이름이 있다**(실측:
+`.act` 2 · `.num` 1 · `.tx` 4 · `.ti` 3 · `.spin` 6 · `.qa` 6). 그대로 심으면 무관한
+화면이 물든다 → **전부 `ntf-` 접두로 개명**해 심었다(픽셀은 같고 이름만 다르다).
+색조 변수도 `--ntf-fg/key/face/edge`다(색조 클래스가 자손에 값을 흘리므로).
+목업 로컬 `--shadow-sm`(0 2px 8px -2px)·`--font-mono`(Consolas)는 **채택하지 않았다** —
+실앱 값이 2.6.2 원본이고 `.cmd-card`가 이미 그 값이었다.
+
+**훅 클래스 2개는 남긴다:** `.cmd-card`·`.cmd-card-title`은 **스타일 없이** 이름만
+유지한다. 파리티 저울(`bench/screens.mjs:959·963`)이 두 앱을 **같은 셀렉터**로 밟기
+때문이다 — 한쪽만 이름을 갈면 그 화면은 3.0에서 캡처 자체가 안 된다.
+
+**경계 밖으로 새지 않은 것:** `src/shared/protocol.ts`는 무수정이다. 셸이 이미 싣고 있는
+`model-fallback.via`·`.revertTo`(`src-tauri/src/engine/hub.rs:885`)는 계약면 타입에
+없어서 리듀서에서 **좁은 캐스트로 읽기만** 한다(없으면 문장만 쓰고 버튼을 뺀다).
+
+**게이트 계약 1건 변경:** `scripts/poc-live-chat.mjs`의 `E9-error`는 오류 표면을
+낱말 '오류'의 개수로 셌다. M-UI가 그 제목 줄을 없앴으므로(§5-3 — 색조가 이미 말한다)
+그대로 두면 문법이 바뀌었다는 이유만으로 게이트가 빨개진다. 판정을
+`max(낱말 수, danger band 수)`로 바꿔 **두 렌더러 모두에서** "없다/두 번 말한다"를
+똑같이 잡게 했다(검사를 약하게 만든 게 아니라 렌더러 중립으로 만든 것).

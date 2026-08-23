@@ -35,17 +35,45 @@ export type ThreadItem =
       running: boolean
       failed?: boolean
     }
-  // 시스템 경고를 스레드에 인라인으로 보여주는 줄 (예: 정책 거부 → 모델 자동 전환, API 과금 안내)
+  // 시스템 경고를 스레드에 인라인으로 보여주는 줄 (예: API 과금 안내, CLI 배너)
   // silent: '이번 턴이 응답 없이 끝났어요' 무음 턴 안내 표식 — 같은 실행이 이어서 내용을
   // 내면(밀린 통지 소화 턴 뒤 진짜 턴) 오탐이었던 것이므로 stripSilentTail이 걷어낸다
-  | { kind: 'notice'; id: string; text: string; time: string; silent?: boolean }
+  // tone/action — M-UI §5-2. 색조는 **심각도만** 칠한다(출처가 아니라). 없으면 notice(노랑).
+  | { kind: 'notice'; id: string; text: string; time: string; silent?: boolean; tone?: NotifyTone; action?: NotifyAct }
+  // ★ M-UI — 모델 자동 전환 배너(band · notice · action=revert). 2.6.2는 이걸 kind:'notice'로
+  // 흘려 API 과금 안내와 같은 무게가 됐다(session.ts:821 · 병리 P3). 이제 M-LOGIC §6.2의
+  // 재료를 그대로 든다: 주어(from)·목적어(to)·사유(cause)·되돌릴 지점(revertTo).
+  // 한 턴에 전환이 둘 이상일 수 있어(fallback_arms는 벡터) 이 항목도 **여러 개** 설 수 있다.
+  // text — 엔진이 만든 완성 문장. cause/from/to가 비면 이걸 그대로 쓴다(지어내지 않는다).
+  | {
+      kind: 'fallback'
+      id: string
+      from: string
+      to: string
+      cause: 'dialog' | 'refusal_frame' | 'model_delta' | null
+      revertTo: number | null
+      reverted?: boolean
+      text: string
+      time: string
+    }
+  // ★ M-UI §5-5 — 압축/재개 **경계**(rule · neutral · split). "이 위로는 원문이 없다"는
+  // 구조적 사건이라 카드(84px)가 아니라 선(18.8px)이다. 긴 대화에서 여러 번 일어난다.
+  | { kind: 'boundary'; id: string; glyph: 'compact' | 'resume'; label: string; num: string | null; time: string }
   // 턴 마무리 줄 (PoC .worked) — 'N초 동안 작업함'. result의 durationMs로 답변 앞에 끼운다
   | { kind: 'worked'; id: string; ms: number }
   // 중단 마커 — Esc/중지로 턴을 끊은 자리 (클로드 코드의 'Interrupted' 문법).
-  // 끊긴 턴의 흔적(말풍선·부분 답변·도구 로그)은 그대로 위에 남는다
-  | { kind: 'interrupted'; id: string }
-  // AI 질문의 문답 흔적 (PoC .qa) — 답을 보내면 질문·선택을 스레드에 남긴다 (건너뛰면 없음)
-  | { kind: 'qa'; id: string; pairs: { q: string; a: string[] }[] }
+  // 끊긴 턴의 흔적(말풍선·부분 답변·도구 로그)은 그대로 위에 남는다.
+  // ms/tools/time — M-UI §5-4. 현행은 남는 폭을 통째로 헤어라인으로 채웠다. 그 오른쪽 끝에
+  // 지속시간·도구 수·시각을 넣어도 **높이가 1px도 안 는다**(같은 12.5px 줄 안). 없으면 비운다.
+  | { kind: 'interrupted'; id: string; ms?: number; tools?: number; time?: string }
+  // AI 질문의 문답 흔적 — 답을 보내면 질문·선택을 스레드에 남긴다 (건너뛰면 없음).
+  // M-UI에서 `card · face=off`(맨몸 카드)로 승격됐다 — 상태가 변하지 않는 기록엔 면이 없다.
+  | { kind: 'qa'; id: string; pairs: { q: string; a: string[] }[]; time?: string }
+
+/** 알림 색조 — 심각도만 칠한다(M-UI §2.1). 형태는 색이 정하지 않는다. */
+export type NotifyTone = 'neutral' | 'notice' | 'danger' | 'positive'
+/** band가 트레이에 놓는 행동. `band`만 행동을 가질 수 있다(M-UI §2.3 행동 규칙). */
+export type NotifyAct = 'billing-off'
 
 export interface SessionState {
   status: AgentStatus
@@ -105,6 +133,9 @@ export interface SessionState {
   // 새 실행이 밀어낼 때의 잔재)가 새 실행의 busy·결과를 덮지 못하게 한다.
   // null = 출처 불명(복원 직후 등) — 잘못 거르면 busy가 영영 안 풀리므로 가드 없이 통과.
   curRunId: string | null
+  // ★ M-UI §5-4 — 이번 턴이 시작한 시각(epoch ms). 중단선이 "얼마나 하다 끊겼는지"를
+  // 말하려면 이 값이 필요하다. 영속하지 않는다(복원 직후엔 없는 게 맞다 — 지어내지 않는다).
+  turnAt?: number
 }
 
 type Action =
@@ -264,7 +295,8 @@ export const initialSessionState: SessionState = {
   openGroupId: null,
   seq: 0,
   shownNotices: [],
-  curRunId: null
+  curRunId: null,
+  turnAt: undefined
 }
 
 // ── growth caps ──────────────────────────────────────────────
@@ -322,6 +354,66 @@ export function liveMsgIndex(list: ThreadItem[]): number {
 
 function capThread(list: ThreadItem[]): ThreadItem[] {
   return list.length > MAX_THREAD_ITEMS ? list.slice(list.length - MAX_THREAD_ITEMS) : list
+}
+
+/**
+ * ★ M-UI §5-1 — `FallbackVia`의 와이어 표기를 셋 중 하나로 좁힌다.
+ *
+ * 셸은 `format!("{via:?}")`로 싣는다(= `Dialog`/`RefusalFrame`/`ModelDelta`, Debug 표기).
+ * `#[serde(rename_all="snake_case")]`가 붙은 경로로 바뀌어도 읽히게 두 표기를 다 받는다.
+ * 모르는 값이면 **null** — 경로를 지어내면 "사용자가 눌러 수락했다"가 거짓이 될 수 있다.
+ */
+function fallbackCause(via: unknown): 'dialog' | 'refusal_frame' | 'model_delta' | null {
+  const v = typeof via === 'string' ? via.replace(/([a-z])([A-Z])/g, '$1_$2').toLowerCase() : ''
+  return v === 'dialog' || v === 'refusal_frame' || v === 'model_delta' ? v : null
+}
+
+/**
+ * ★ M-UI §5-2 — 안내의 **색조**. 노랑은 '알아야 할 변화'에만 쓴다.
+ *
+ * 현행은 `kind:'notice'`면 무조건 노랑이라 "엔진이 새 프로세스로 시작했다"(그냥 사실)와
+ * "API로 과금 중"(알아야 할 변화)이 같은 무게로 뜬다. 노랑을 남발하면 노랑이 아무 뜻도
+ * 없어진다. 다만 **남의 문장**(CLI가 REPL에 띄우는 배너)은 심각도를 판정할 근거가 없으므로
+ * 2.6.2 그대로 노랑을 유지한다 — 지어내지 않는다. 여기서 내리는 건 우리가 만든 문장뿐이다.
+ *
+ * `action` — "하단 `과금` 토글에서 바꿀 수 있어요"는 **심부름을 시키는 문장**이다.
+ * 그 토글이 실재하니 알약이 되는 게 맞다(문장이 짧아져 줄이 준다).
+ */
+const NEUTRAL_NOTICE = /새 프로세스에서 시작했|started in a new process/
+function noticeTone(text: string, once?: string): { text?: string; tone?: NotifyTone; action?: NotifyAct } {
+  if (once === 'api-billing') {
+    // 환경변수(ANTHROPIC_API_KEY) 과금은 **끌 토글이 없다** — 알약을 주면 거짓말이 된다.
+    // 그쪽 문장에는 심부름 절도 없으므로 문장도 그대로 둔다.
+    if (/ANTHROPIC_API_KEY/.test(text)) return { tone: 'notice' }
+    // 심부름 절을 알약으로 승격했으면 **문장에서도 빼야** 한다 — 안 그러면 같은 것을
+    // 두 번 말한다(§5-6 중복 금지와 같은 원리). 남는 사실은 "무엇으로 과금되나"뿐이다.
+    return {
+      tone: 'notice',
+      action: 'billing-off',
+      text: t('`API 크레딧`으로 과금 중이에요 — 구독 한도는 줄지 않습니다.', 'Billing to `API credits` — your subscription limit is untouched.')
+    }
+  }
+  if (NEUTRAL_NOTICE.test(text)) return { tone: 'neutral' }
+  return {}
+}
+
+/**
+ * ★ M-UI §5-4 — 중단선이 쓸 수치. 현행 `.stopline::after`는 남는 폭을 통째로 헤어라인으로
+ * 채운다. 그 오른쪽 끝에 지속시간·도구 수·시각을 넣어도 **높이가 1px도 안 는다**.
+ *
+ * 규약(§4-4): **없는 수치는 자리를 비운다.** 복원 직후처럼 `turnAt`이 없으면 지속시간을
+ * 지어내지 않고 빼고, 이번 턴에 도구를 안 썼으면 '도구 0'을 쓰지 않는다.
+ * 도구 수는 마지막 사용자 말풍선 **뒤**의 도구 행만 센다(이번 턴의 것).
+ */
+function interruptStats(s: SessionState): { ms?: number; tools?: number; time: string } {
+  let tools = 0
+  for (let i = s.messages.length - 1; i >= 0; i--) {
+    const m = s.messages[i]
+    if (m.kind === 'msg' && m.role === 'user') break
+    if (m.kind === 'toolgroup') tools += m.tools.length
+  }
+  const ms = s.turnAt ? Date.now() - s.turnAt : undefined
+  return { ...(ms && ms >= 1000 ? { ms } : {}), ...(tools > 0 ? { tools } : {}), time: nowTime() }
 }
 // 무음 턴 안내 오탐 회수 — '이번 턴이 응답 없이 끝났어요'(silent notice)를 남긴 뒤 같은
 // 실행이 이어서 내용을 내면(밀린 통지 소화 미니턴의 조기 종결 뒤 진짜 턴이 온 경우) 그
@@ -446,7 +538,8 @@ export function reducer(state: SessionState, action: Action): SessionState {
       ...state,
       seq,
       pendingQuestion: null,
-      messages: capThread([...state.messages, { kind: 'qa', id: `qa${seq}`, pairs }])
+      // time — M-UI §5-7. 문답은 **결정이 내려진 지점**이라 나중에 스크롤 목표가 된다.
+      messages: capThread([...state.messages, { kind: 'qa', id: `qa${seq}`, pairs, time: nowTime() }])
     }
   }
 
@@ -460,6 +553,8 @@ export function reducer(state: SessionState, action: Action): SessionState {
       status: 'analyzing',
       // 새 실행의 analyzing이 오기 전까지 종결 이벤트를 전부 잔재로 취급 (실행 경계 가드)
       curRunId: PENDING_RUN,
+      // 중단선이 "얼마나 하다 끊겼는지"를 말할 근거 (M-UI §5-4)
+      turnAt: Date.now(),
       // 살아있는 백그라운드 작업(셸·에이전트)은 상주 유지로 턴을 넘는다 — 칩을 유지하고
       // 지난 턴에 끝난 항목만 걷는다(죽은 셸이 대화마다 되살아나던 문제의 처방은 그대로).
       // 새 스폰으로 이어진 경우(주입 불가)엔 엔진의 teardown이 곧 stopped로 정리해 준다.
@@ -545,7 +640,7 @@ export function reducer(state: SessionState, action: Action): SessionState {
     const msgs = state.pendingCommand
       ? without.map((m) =>
           m.kind === 'cmdresult' && m.id === state.pendingCommand!.cardId
-            ? { ...m, running: false, failed: true, title: t('명령을 보내지 못했어요', "Couldn't send the command"), sub: null, stats: null, time: action.time }
+            ? { ...m, running: false, failed: true, title: t('보내지 못했어요', "Couldn't send"), sub: null, stats: null, time: action.time }
             : m
         )
       : without
@@ -587,10 +682,10 @@ export function reducer(state: SessionState, action: Action): SessionState {
     const next = state.pendingCommand
       ? msgs.map((m) =>
           m.kind === 'cmdresult' && m.id === state.pendingCommand!.cardId
-            ? { ...m, running: false, failed: true, title: t('명령을 중단했어요', 'Command stopped'), sub: null, stats: null, time: nowTime() }
+            ? { ...m, running: false, failed: true, title: t('중단했어요', 'Stopped'), sub: null, stats: null, time: nowTime() }
             : m
         )
-      : capThread([...msgs, { kind: 'interrupted' as const, id: `stop${seq}` }])
+      : capThread([...msgs, { kind: 'interrupted' as const, id: `stop${seq}`, ...interruptStats(state) }])
     return {
       ...state,
       // busy는 즉시 내린다 — 엔진 정리(interrupt 유예 + 루프 탈출)를 기다리면 인디케이터가
@@ -900,20 +995,38 @@ export function reducer(state: SessionState, action: Action): SessionState {
 
     case 'model-fallback': {
       // Fable 5가 정책상 응답을 거부해 폴백 모델로 전환됨 — 거부된 쪽이 스트리밍하던
-      // 부분 답변을 지우고(재시도 답변이 새 말풍선으로 오도록) 경고 배너를 끼워 넣는다.
+      // 부분 답변을 지우고(재시도 답변이 새 말풍선으로 오도록) 배너를 끼워 넣는다.
+      //
+      // ★ M-UI §5-1 — 2.6.2는 이걸 `kind:'notice'`로 흘려 과금 안내와 같은 무게가 됐고
+      // **되돌릴 재료가 없었다**(병리 P3). 셸의 와이어는 §6.2의 재료를 이미 싣고 있다
+      // (hub.rs `Event::FallbackBanner` → `via`·`revertTo`). 계약면 타입(`EngineEvent`)에
+      // 아직 없는 두 필드라 좁은 캐스트로 **읽기만** 한다 — 없으면 문장만 쓰고 버튼은 뺀다.
       const seq = state.seq + 1
       const without = state.messages.filter((m) => m.id !== THINKING_ID && (!e.retractMessageId || m.id !== e.retractMessageId))
+      const wire = e as unknown as { via?: unknown; revertTo?: unknown }
       return {
         ...state,
         seq,
         thinkingText: null,
-        messages: capThread([...without, { kind: 'notice', id: `fb${seq}`, text: e.text, time: nowTime() }])
+        messages: capThread([
+          ...without,
+          {
+            kind: 'fallback',
+            id: `fb${seq}`,
+            from: e.fromModel ?? '',
+            to: e.toModel ?? '',
+            cause: fallbackCause(wire.via),
+            revertTo: typeof wire.revertTo === 'number' && wire.revertTo >= 0 ? wire.revertTo : null,
+            text: e.text,
+            time: nowTime()
+          }
+        ])
       }
     }
 
     case 'notice': {
       const seq = state.seq + 1
-      const item = { kind: 'notice' as const, id: `n${seq}`, text: e.text, time: nowTime() }
+      const item = { kind: 'notice' as const, id: `n${seq}`, text: e.text, time: nowTime(), ...noticeTone(e.text, e.once) }
       // once 안내(예: API 과금)는 이 대화에서 그 key당 딱 한 번만, 방금 보낸 사용자 메시지
       // 바로 위에 끼워 넣는다 — 'API로 과금 중'을 자기 메시지 바로 위에서 한 번 알아채게.
       if (e.once) {
@@ -948,31 +1061,34 @@ export function reducer(state: SessionState, action: Action): SessionState {
       const before = e.preTokens
       const after = e.afterTokens
       const window = state.result?.contextWindow ?? null
-      // 실측 전/후가 있을 때만 절약을 표기 — 수동 카드와 같은 규약(절대 지어내지 않는다)
-      let stats: string | null = null
+      // 실측 전/후가 있을 때만 수치를 표기 — 수동 카드와 같은 규약(절대 지어내지 않는다).
+      // ★ M-UI §5-5 — 수치는 라벨 **오른쪽에 붙는다**(전용 줄을 주지 않는다). 토큰 전/후를
+      // 앞세우고 컨텍스트 비율을 잇는다: `152k → 38k · 컨텍스트 95% → 24%`.
+      let num: string | null = null
       if (before != null && after != null && after < before) {
-        const saved = fmtTokShort(before - after)
-        stats = window
+        const head = `${fmtTokShort(before)} → ${fmtTokShort(after)}`
+        num = window
           ? t(
-              `컨텍스트 ${Math.round((before / window) * 100)}% → ${Math.round((after / window) * 100)}% 로 절약 · 토큰 ${saved} 회수`,
-              `Context ${Math.round((before / window) * 100)}% → ${Math.round((after / window) * 100)}% · ${saved} tokens reclaimed`
+              `${head} · 컨텍스트 ${Math.round((before / window) * 100)}% → ${Math.round((after / window) * 100)}%`,
+              `${head} · context ${Math.round((before / window) * 100)}% → ${Math.round((after / window) * 100)}%`
             )
-          : t(`토큰 ${saved} 회수`, `${saved} tokens reclaimed`)
+          : head
       }
+      // 자동 압축은 "명령이 하나 끝났다"가 아니라 **"이 지점 위로는 원문이 없다"** 는
+      // 경계다 — 긴 대화에서 여러 번 일어나므로 84px 카드가 반복해 스레드를 끊었다.
+      // 수동 `/compact`는 명령 카드가 그대로 맡는다(자동과 수동이 다른 형태를 갖는다).
       return {
         ...state,
         seq,
         messages: capThread([
           ...state.messages,
           {
-            kind: 'cmdresult',
+            kind: 'boundary',
             id: `ac${seq}`,
-            name: 'compact',
-            title: t('컨텍스트가 가득 차 대화를 자동으로 요약했어요', 'Context was full — conversation auto-summarized'),
-            sub: t('이전 대화를 핵심 요약으로 압축하고 이어서 진행합니다.', 'Compressed the earlier conversation into a summary and carried on.'),
-            stats,
-            time: nowTime(),
-            running: false
+            glyph: 'compact',
+            label: t('여기까지 요약됨', 'Summarized up to here'),
+            num,
+            time: nowTime()
           }
         ])
       }
@@ -1029,7 +1145,7 @@ export function reducer(state: SessionState, action: Action): SessionState {
             ...base,
             messages: without.map((m) =>
               m.kind === 'cmdresult' && m.id === pc.cardId
-                ? { ...m, running: false, failed: true, title: t('명령을 완료하지 못했어요', "Couldn't finish the command"), sub: e.text || null, stats: null, time: nowTime() }
+                ? { ...m, running: false, failed: true, title: t('완료하지 못했어요', "Couldn't finish"), sub: e.text || null, stats: null, time: nowTime() }
                 : m
             )
           }
@@ -1110,6 +1226,26 @@ export function reducer(state: SessionState, action: Action): SessionState {
       if (state.interrupted) return state
       const seq = state.seq + 1
       const without = state.messages.filter((m) => m.id !== THINKING_ID)
+      // ★ M-UI §5-6 규약 — **중복 금지.** `pendingCommand`가 살아 있는 턴의 실패는
+      // **카드만** 말한다. 실패 카드(빨간 타일·빨간 배지)와 오류 band를 나란히 세우면
+      // 같은 사건을 두 번 말하는 것이고, 스레드에서 그 둘은 다른 사건처럼 읽힌다.
+      if (state.pendingCommand) {
+        const cardId = state.pendingCommand.cardId
+        return {
+          ...state,
+          seq,
+          pendingCommand: null,
+          pendingPermission: null,
+          pendingQuestion: null,
+          messages: capThread(
+            without.map((m) =>
+              m.kind === 'cmdresult' && m.id === cardId
+                ? { ...m, running: false, failed: true, title: t('완료하지 못했어요', "Couldn't finish"), sub: e.message, stats: null, time: nowTime() }
+                : m
+            )
+          )
+        }
+      }
       return {
         ...state,
         seq,

@@ -78,6 +78,8 @@ import {
   IconPanelRight,
   IconPopout,
   IconSquare,
+  IconInfo,
+  IconRotate,
   type IconProps
 } from './icons'
 
@@ -821,23 +823,42 @@ function MessageAttachments({
 
 // 안내(notice) 텍스트의 `백틱`으로 감싼 구간을 색 강조 span으로 바꾼다. 백틱이 없으면
 // 문자열 그대로 반환. 안내문은 엔진이 만든 신뢰 텍스트라 이 정도 가벼운 파싱이면 충분하다.
+// M-UI §3.2 — 색(`.ntf-kw`)은 '도착값 하나'에만 쓰는 게 규약이지만, 백틱은 **엔진이
+// 직접 가리킨 낱말**이라 그 예외다(2.6.2가 이미 그렇게 쓰던 자리 — 파리티).
 function renderNoticeText(text: string): ReactNode {
   if (!text.includes('`')) return text
-  return text.split('`').map((seg, i) => (i % 2 === 1 ? <span key={i} className="notice-kw">{seg}</span> : seg))
+  return text.split('`').map((seg, i) => (i % 2 === 1 ? <span key={i} className="ntf-kw">{seg}</span> : seg))
 }
+
+/* ── ★ M-UI — 알림 7종의 공용 문법 (docs/design/ui-notify.md) ──────────────────
+ *
+ * 형태 3(rule · band · card) × 색조 4(neutral · notice · danger · positive).
+ * **형태는 "무엇에 대해 말하나"가 정하고, 색조는 심각도만 칠한다.**
+ *   rule = 대화의 구조(앞뒤를 가른다) · band = 네 개입이 필요할 수 있다 · card = 산출물
+ * 행동(알약)을 가질 수 있는 형태는 band뿐이다 — rule은 사실의 기록, card는 끝난 산출물.
+ *
+ * 알약이 하는 일 중 **호스트가 알아야 하는 것**만 밖으로 나간다(`onNotify`). 복사·펼치기는
+ * 이 파일 안에서 끝난다. 호스트가 안 준 표면에서는 그 알약을 **아예 그리지 않는다** —
+ * 눌러도 아무 일 없는 버튼을 그리는 게 제일 나쁘다. */
+export type NotifyAction = { kind: 'revert'; revertTo: number } | { kind: 'billing-off' }
+
+/** 색조 클래스 한 벌 — 문자열을 여기서만 만든다(오타로 색이 통째로 빠지는 걸 막는다). */
+const tone = (t2: 'neutral' | 'notice' | 'danger' | 'positive'): string => `ntf-t-${t2}`
 
 export const MessageView = memo(function MessageView({
   item,
   live,
   running,
   onOpenFile,
-  onOpenImage
+  onOpenImage,
+  onNotify
 }: {
   item: ThreadItem
   live?: boolean // this is the latest assistant message (smooth-reveal it)
   running?: boolean // a run is in progress (start the reveal from empty)
   onOpenFile?: (path: string) => void // open a file referenced by a tool-log row
   onOpenImage?: (images: string[], index: number) => void // open the image viewer at an index
+  onNotify?: (a: NotifyAction) => void // 알림 band의 행동 알약 (없으면 알약을 안 그린다)
 }) {
   useLang() // 언어 전환 재렌더 구독 (memo 컴포넌트라 루트 재렌더가 여기까지 오지 않는다)
   if (item.kind === 'toolgroup') return <ToolGroup item={item} onOpenFile={onOpenFile} />
@@ -847,44 +868,93 @@ export const MessageView = memo(function MessageView({
   // 중단 마커 — Esc/중지로 턴을 끊은 자리. 흔적(말풍선·부분 답변·도구 로그)은 그대로
   // 위에 남는다 (클로드 코드의 'Interrupted' 문법)
   if (item.kind === 'interrupted') {
+    // 형태 = rule(종결형) · 색조 = danger. 색은 유지한다 — 클로드 코드의 `Interrupted`가
+    // 붉고, 사용자가 이미 학습한 신호이며, 스레드에서 **찾기 쉬워야** 하는 요소다.
+    // (뒤집을 수 있는 결정: `tone('neutral')` 한 글자 — M-UI §5-4)
+    // 없는 수치는 **자리를 비운다** — 문구로 메우지 않는다(밀도 규약 ④).
+    const num = [item.ms ? fmtElapsedKo(Math.round(item.ms / 1000)) : '', item.tools ? t(`도구 ${item.tools}`, `${item.tools} tools`) : '']
+      .filter(Boolean)
+      .join(' · ')
     return (
-      <div className="stopline">
-        <IconSquare size={9} />
-        <span>{t('중단함', 'Interrupted')}</span>
+      <div className={'ntf-rule ' + tone('danger')}>
+        <span className="ntf-g">
+          <IconSquare size={9} />
+        </span>
+        <span className="ntf-lb">{t('중단함', 'Interrupted')}</span>
+        {num && <span className="ntf-num">{num}</span>}
+        <span className="ntf-hair" />
+        {item.time && <span className="ntf-tm">{item.time}</span>}
       </div>
     )
   }
-  // 문답 흔적 (PoC .qa) — Q 마커+질문(흐림) 아래 ✓+답(볼드). 박스 없이 대화에 남는다
+  // ★ M-UI §5-5 — 압축/재개 경계. 형태 = rule(경계형 · 양쪽으로 선이 나간다) · neutral.
+  // 2.6.2는 이걸 99.8px 카드로 그렸다 — 긴 대화에서 여러 번 일어나 스레드를 반복해 끊었다.
+  if (item.kind === 'boundary') {
+    return (
+      <div className={'ntf-rule ntf-split ' + tone('neutral')}>
+        <span className="ntf-hair l" />
+        <span className="ntf-g">{item.glyph === 'resume' ? <IconRotate size={12} /> : <IconCompress size={12} />}</span>
+        <span className="ntf-lb">{item.label}</span>
+        {item.num && <span className="ntf-num">{item.num}</span>}
+        <span className="ntf-hair" />
+        <span className="ntf-tm">{item.time}</span>
+      </div>
+    )
+  }
+  // 문답 흔적 — 형태 = card · **face=off**(맨몸). 상태가 변하지 않는 기록엔 면이 없다.
+  // 왼쪽 15px 마커 칸이 다른 6종과 정렬선을 맞춘다(2.6.2는 AI 발화와 같은 자리였다).
   if (item.kind === 'qa') {
     return (
-      <div className="qa">
-        {item.pairs.map((p, i) => (
-          <div key={i}>
-            <div className="qq2">
-              <span className="qm">Q{i + 1}</span>
-              <span className="qt2">{p.q}</span>
-            </div>
-            {p.a.map((a, k) => (
-              <div className="qa2" key={k}>
-                <IconCheck size={14} />
-                <span>{a}</span>
+      <div className={'ntf-card ntf-bare ' + tone('positive')}>
+        <span className="ntf-tile">?</span>
+        <div className="ntf-bd">
+          <div className="ntf-qa">
+            {item.pairs.map((p, i) => (
+              <div key={i}>
+                <div className="ntf-q">
+                  <span className="ntf-qm">Q{i + 1}</span>
+                  <span className="ntf-qt">{p.q}</span>
+                </div>
+                {p.a.map((a, k) => (
+                  <div className="ntf-a" key={k}>
+                    <IconCheck size={12} />
+                    <span>{a}</span>
+                  </div>
+                ))}
               </div>
             ))}
           </div>
-        ))}
+        </div>
+        {item.time && (
+          <div className="ntf-tray">
+            <span className="ntf-tm" style={{ color: 'var(--text-4)' }}>
+              {item.time}
+            </span>
+          </div>
+        )}
       </div>
     )
   }
+  // ★ M-UI §5-1 — 모델 자동 전환. 형태 = band · notice · action=revert.
+  if (item.kind === 'fallback') return <FallbackBand item={item} onNotify={onNotify} />
   if (item.kind === 'notice') {
-    // 시스템 경고 줄 — 정책 거부로 모델이 자동 전환됐을 때, API 과금 안내 등.
-    // 텍스트의 `백틱`으로 감싼 부분은 색을 넣어 강조한다(예: 하단 '과금' 토글).
+    // 형태 = band. 색조는 **심각도만** 칠한다 — 그냥 사실(엔진 재시작 등)은 neutral,
+    // 알아야 할 변화(과금 등)는 notice. 텍스트의 `백틱`은 색으로 가리킨다.
+    const neutral = item.tone === 'neutral'
     return (
-      <div className="notice-row">
-        <span className="notice-ic">
-          <IconAlert size={15} />
-        </span>
-        <div className="notice-text">{renderNoticeText(item.text)}</div>
-        <span className="notice-time">{item.time}</span>
+      <div className={'ntf-band ' + tone(neutral ? 'neutral' : 'notice')}>
+        <span className="ntf-g">{neutral ? <IconInfo size={13} /> : <IconAlert size={13} />}</span>
+        <div className="ntf-bd">
+          <div className="ntf-tx">{renderNoticeText(item.text)}</div>
+        </div>
+        <div className="ntf-tray">
+          {item.action === 'billing-off' && onNotify && (
+            <button className="ntf-act" onClick={() => onNotify({ kind: 'billing-off' })}>
+              {t('과금 끄기', 'Turn API billing off')}
+            </button>
+          )}
+          <span className="ntf-tm">{item.time}</span>
+        </div>
       </div>
     )
   }
@@ -898,25 +968,9 @@ export const MessageView = memo(function MessageView({
       </div>
     )
   }
-  // 오류 — 맨몸 빨간 텍스트 대신 고유 카드 (노란 안내 notice-row와 같은 문법의 빨간 판).
-  // 리듀서가 붙인 '오류: ' 접두는 카드 제목이 그 역할이라 본문에서 걷는다
-  if (item.error) {
-    return (
-      <div className="error-row">
-        <span className="error-ic">
-          <IconX2 size={15} />
-        </span>
-        <div className="error-body">
-          <div className="error-head">
-            <span className="error-title">{t('오류', 'Error')}</span>
-            <span className="error-time">{item.time}</span>
-          </div>
-          {/* 리듀서가 붙인 접두는 언어에 따라 '오류: '/'Error: ' 둘 다 올 수 있다 */}
-          <div className="error-text">{item.text.replace(/^(오류|Error):\s*/, '')}</div>
-        </div>
-      </div>
-    )
-  }
+  // ★ M-UI §5-3 — 오류. 형태 = band · danger.
+  if (item.error) return <ErrorBand item={item} />
+
   const isUser = item.role === 'user'
   return (
     <div className={'msg ' + (isUser ? 'user' : 'ai-msg')}>
@@ -941,21 +995,185 @@ export const MessageView = memo(function MessageView({
 
 // Completion card for a finished slash command (/init·/compact·/review·/security-review).
 // Skills and /clear never reach here — only commands tracked in SLASH_COMMANDS.
+//
+// ★ M-UI §5-6 — 거의 그대로다. 이미 제 일을 하는 것(스피너가 시각 자리를 대신하고,
+// 실패는 세 곳에 빨강)을 체계를 만든다고 흔들면 손해다. 바꾼 것은 둘뿐:
+//   · 치수 통일(타일 32→30 · 반경 14→12 · 배지 12→11.5 · 패딩 13/15→12/14)
+//   · 수치 전용 줄(.cmd-card-stats)을 **부제 줄에 `·`로 이어 붙임** → 줄 하나가 준다
 function CmdResultCard({ item }: { item: Extract<ThreadItem, { kind: 'cmdresult' }> }) {
   const Ic = slashCommands().find((c) => c.name === item.name)?.icon ?? IconTerminal
   return (
-    <div className={'cmd-card' + (item.running ? ' running' : '') + (item.failed ? ' failed' : '')}>
-      <span className="cmd-card-ic">
-        <Ic size={16} />
+    // `cmd-card`·`cmd-card-title`은 **스타일이 없는 훅 클래스**로 남긴다 — 두 앱을 같은
+    // 조작으로 밟는 파리티 저울(bench/screens.mjs:959·963)이 이 셀렉터로 도달을 판정한다.
+    // 앱 한쪽에서만 이름을 갈면 그 화면은 3.0에서 캡처 자체가 안 된다(비교 불성립).
+    <div className={'ntf-card cmd-card' + (item.running ? ' running' : '') + (item.failed ? ' failed' : '')}>
+      <span className="ntf-tile">
+        <Ic size={15} />
       </span>
-      <div className="cmd-card-body">
-        <div className="cmd-card-head">
-          <span className="cmd-card-badge">/{item.name}</span>
-          <span className="cmd-card-title">{item.title}</span>
-          {item.running ? <span className="cmd-card-spin" /> : <span className="cmd-card-time">{item.time}</span>}
+      <div className="ntf-bd">
+        <div className="ntf-hd">
+          <span className="ntf-bg">/{item.name}</span>
+          <span className="ntf-ti cmd-card-title">{item.title}</span>
+          {item.running ? <span className="ntf-spin" /> : <span className="ntf-tm">{item.time}</span>}
         </div>
-        {item.sub && <div className="cmd-card-sub">{item.sub}</div>}
-        {item.stats && <div className="cmd-card-stats">{item.stats}</div>}
+        {(item.sub || item.stats) && (
+          <div className="ntf-sb">
+            {item.sub}
+            {item.sub && item.stats && <span className="ntf-dot">·</span>}
+            {item.stats && <span className="ntf-st">{item.stats}</span>}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/* ── ★ M-UI §5-1 — 모델 자동 전환 배너 (band · notice · action=revert) ─────────
+ *
+ * 2.6.2의 문장 "정책상 응답할 수 없는 요청이라 Opus 5 모델로 전환해 계속해요…"에는
+ * **주체가 없다** — 누가 거부했고 누가 대신 답하는지가 문장 안에 없어서 사용자는 자기가
+ * 뭘 잘못했는지부터 의심한다. 여기서는 from/to를 문장의 주어·목적어로 세운다.
+ *
+ * `cause` 3경로는 **형태는 하나, 문장은 셋**이다(M-LOGIC §6.2). 경로마다 컴포넌트를
+ * 만들면 불변식 "전환 1회 = 리비전 1개 = 배너 1개"가 형태에서 깨지고, 반대로 문장까지
+ * 하나로 묶으면 **거짓말**이 된다 — `dialog`는 사용자가 눌러 수락한 것이고
+ * (§3.6 `respond_dialog(accept)`), `model_delta`는 사유 프레임이 **아예 오지 않은** 경로다.
+ * 갈리는 낱말을 하나씩 박는다: 동의하셨어요 / 묻지 않고 / 사유는 오지 않았고.
+ *
+ * `cause`도 `revertTo`도 없으면(옛 스냅샷·다른 엔진) 엔진이 준 완성 문장을 그대로 쓰고
+ * 버튼을 뺀다 — **지어내지 않는다.**
+ */
+function FallbackBand({ item, onNotify }: { item: Extract<ThreadItem, { kind: 'fallback' }>; onNotify?: (a: NotifyAction) => void }) {
+  const label = (raw: string): string => {
+    if (!raw) return ''
+    const shown = pickerModelOf(raw) ?? raw
+    return modelOpts().find((m) => m.id === shown)?.v ?? raw
+  }
+  const from = label(item.from)
+  const to = label(item.to)
+  const b = (s: string): ReactNode => <span className="ntf-b">{s}</span>
+  const kw = (s: string): ReactNode => <span className="ntf-kw">{s}</span>
+  const tail = t(' — 이후 대화도 같은 모델로 갑니다.', ' — later turns use the same model too.')
+  let line: ReactNode = item.text
+  if (from && to) {
+    if (item.cause === 'dialog')
+      line = (
+        <>
+          {b(from)}
+          {t('가 거부한 요청이라 ', ' refused this request, and you ')}
+          {kw(to)}
+          {t('로 바꾸는 데 ', ' — switching to it was ')}
+          {b(t('동의하셨어요', 'something you agreed to'))}
+          {tail}
+        </>
+      )
+    else if (item.cause === 'model_delta')
+      line = (
+        <>
+          {t('엔진이 ', 'The engine answered with ')}
+          {b(from)}
+          {t(' 대신 ', ' instead of ')}
+          {kw(to)}
+          {t('으로 답했어요 — ', ' — ')}
+          {b(t('사유는 오지 않았고', 'no reason frame arrived'))}
+          {t(', 전환만 대화에 반영했습니다.', '; only the switch was recorded.')}
+        </>
+      )
+    else
+      line = (
+        <>
+          {b(from)}
+          {t('가 정책상 거부해 엔진이 ', ' refused on policy, so the engine switched to ')}
+          {item.cause === 'refusal_frame' ? b(t('묻지 않고 ', 'without asking ')) : null}
+          {kw(to)}
+          {t('로 전환했어요', '')}
+          {tail}
+        </>
+      )
+  }
+  return (
+    <div className={'ntf-band ' + tone('notice')}>
+      <span className="ntf-g">
+        <IconAlert size={13} />
+      </span>
+      <div className="ntf-bd">
+        <div className="ntf-tx">{line}</div>
+      </div>
+      <div className="ntf-tray">
+        {/* 되돌린 뒤에도 배너는 남는다 — §6.3이 revert를 '새 리비전'으로 정의하므로
+            히스토리를 지우면 거짓말이다. 버튼만 [되돌림 ✓]로 정착(비활성)한다. */}
+        {item.reverted ? (
+          <button className="ntf-act done" disabled>
+            {t('되돌림 ✓', 'Reverted ✓')}
+          </button>
+        ) : (
+          item.revertTo != null &&
+          onNotify && (
+            <button className="ntf-act" onClick={() => onNotify({ kind: 'revert', revertTo: item.revertTo as number })}>
+              {t('되돌리기', 'Undo')}
+            </button>
+          )
+        )}
+        <span className="ntf-tm">{item.time}</span>
+      </div>
+    </div>
+  )
+}
+
+/* ── ★ M-UI §5-3 — 오류 (band · danger) ────────────────────────────────────────
+ *
+ * 2.6.2는 '오류'라는 낱말을 **세 곳**에서 반복했다: 빨간 아이콘 · 빨간 제목 · 리듀서가
+ * 붙였다가 뷰가 다시 걷어내는 접두. 색조가 이미 말하므로 제목 줄을 없앤다.
+ *
+ * 그 자리에 **첫 줄(사람이 읽는 요약)**, 아래에 **모노 + 인셋 면의 원문**. 현행
+ * `.error-text`는 pre-wrap이라 긴 경로가 산문 폭으로 재줄바꿈돼 읽을 수 없는 덩어리가
+ * 됐다 — 줄 구조가 보존돼야 스택 트레이스·경로가 읽히고 [복사]가 의미를 갖는다.
+ *
+ * **요약을 지어내지 않는다.** 첫 줄을 요약으로 세우고 나머지를 원문 면에 넣을 뿐이다.
+ * 한 줄짜리 오류엔 면을 주지 않는다(늘린 픽셀마다 정보가 있어야 한다 — 밀도 규약 ③).
+ */
+function ErrorBand({ item }: { item: Extract<ThreadItem, { kind: 'msg' }> }) {
+  const [full, setFull] = useState(false)
+  const [copied, setCopied] = useState(false)
+  // 리듀서가 붙인 접두는 언어에 따라 '오류: '/'Error: ' 둘 다 올 수 있다
+  const body = item.text.replace(/^(오류|Error):\s*/, '')
+  const nl = body.indexOf('\n')
+  const head = nl < 0 ? body : body.slice(0, nl).trim()
+  const raw = nl < 0 ? '' : body.slice(nl + 1).replace(/\s+$/, '')
+  const lines = raw ? raw.split('\n').length : 0
+  return (
+    <div className={'ntf-band ' + tone('danger')}>
+      <span className="ntf-g">
+        <IconX2 size={13} />
+      </span>
+      <div className="ntf-bd">
+        <div className="ntf-tx">
+          <span className="ntf-b">{head}</span>
+        </div>
+        {raw && <div className={'ntf-raw' + (lines > 8 && !full ? ' clip' : '')}>{raw}</div>}
+        {/* 규약: 원문 면은 최대 8줄, 넘으면 접고 [전체 보기] */}
+        {lines > 8 && (
+          <button className="ntf-act ghost" style={{ marginTop: 6 }} onClick={() => setFull((v) => !v)}>
+            {full ? t('접기', 'Collapse') : t(`전체 보기 (${lines}줄)`, `Show all (${lines} lines)`)}
+          </button>
+        )}
+      </div>
+      <div className="ntf-tray">
+        <button
+          className="ntf-act ghost"
+          onClick={() => {
+            void navigator.clipboard?.writeText(body).then(
+              () => {
+                setCopied(true)
+                setTimeout(() => setCopied(false), 1400)
+              },
+              () => {}
+            )
+          }}
+        >
+          {copied ? t('복사됨', 'Copied') : t('복사', 'Copy')}
+        </button>
+        <span className="ntf-tm">{item.time}</span>
       </div>
     </div>
   )
@@ -3135,20 +3353,35 @@ export function IdentityBand({ notice, onRevert, onDismiss }: { notice: Identity
       : kept
         ? t(`${kept}은(는) 자동 전환값을 유지했어요 — 내가 고른 값이 아니에요.`, `${kept} kept the auto-switched value — not the one you picked.`)
         : t(`예약한 설정이 착지하면서 ${drifted}이(가) 달라졌어요.`, `${drifted} changed while the scheduled setting landed.`)
+  // ★ M-UI — 목업 `ui-notify-1-fallback.html` B안의 문법(band · notice · action=revert)
+  // 그대로다. 알림 7종과 **같은 문법**을 쓰는 게 요점이라 `.limit-hold`(상태줄 알약)에서
+  // `.ntf-band`로 갈아탄다. 자리(컴포저 위)는 그대로 — 이 줄은 스레드 기록이 아니라
+  // **지금 사실**을 말하는 상태줄이고, 스레드 쪽 사실은 `fallback` 항목이 이미 말한다.
+  // 행동 알약과 시각이 같은 줄에 산다 = 줄이 늘지 않는다(밀도 규약 ①).
+  const title = notice.origin === 'engine_fallback' ? t('모델이 자동 전환됐어요', 'Model switched automatically') : t('설정이 달라졌어요', 'A setting drifted')
   return (
     <div className="limit-hold-wrap">
-      <div className="limit-hold ident">
-        <IconAlert size={13} />
-        <span className="lh-title">{notice.origin === 'engine_fallback' ? t('모델이 자동 전환됐어요', 'Model switched automatically') : t('설정이 달라졌어요', 'A setting drifted')}</span>
-        <span className="lh-sub">{line}</span>
-        {notice.revision > 0 && (
-          <button className="lh-go" onClick={onRevert}>
-            {t('되돌리기', 'Undo')}
+      <div className={'ntf-band ' + tone('notice')}>
+        <span className="ntf-g">
+          <IconAlert size={13} />
+        </span>
+        <div className="ntf-bd">
+          <div className="ntf-tx">
+            <span className="ntf-b">{title}</span>
+            {' — '}
+            {line}
+          </div>
+        </div>
+        <div className="ntf-tray">
+          {notice.revision > 0 && (
+            <button className="ntf-act" onClick={onRevert}>
+              {t('되돌리기', 'Undo')}
+            </button>
+          )}
+          <button className="ntf-act ghost has-tip" data-tip={t('안내 닫기', 'Dismiss')} aria-label={t('안내 닫기', 'Dismiss')} onClick={onDismiss}>
+            <IconX2 size={12} />
           </button>
-        )}
-        <button className="lh-x has-tip" data-tip={t('안내 닫기', 'Dismiss')} aria-label={t('안내 닫기', 'Dismiss')} onClick={onDismiss}>
-          <IconX2 size={13} />
-        </button>
+        </div>
       </div>
     </div>
   )

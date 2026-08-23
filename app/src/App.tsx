@@ -49,7 +49,7 @@ import {
   SIDEBAR_AUTOHIDE_TRIGGER_PREVIEW_EVENT,
   type AutohideTriggerPreviewDetail
 } from './lib/sidebarAutohide'
-import { BtwDock, ChatHeader, ChatFind, Composer, FALLBACK_ASK_CANCEL, IdentityBand, LimitHoldBar, MessageView, QuestionModal, PermissionModal, SelectionToolbar, VerdictToast, WelcomeState, WorkBar, WorkflowDock, WorkingIndicator, hasRunningBash, isFallbackAsk, nextMode, pickerModelOf, slashCommandsWithBtw, useThreadFollow, useThreadWindow, type IdentityNotice, type PickerState, type ScheduledMsg, type VerdictToastItem } from './components/Chat'
+import { BtwDock, ChatHeader, ChatFind, Composer, FALLBACK_ASK_CANCEL, IdentityBand, LimitHoldBar, MessageView, QuestionModal, PermissionModal, SelectionToolbar, VerdictToast, WelcomeState, WorkBar, WorkflowDock, WorkingIndicator, hasRunningBash, isFallbackAsk, nextMode, pickerModelOf, slashCommandsWithBtw, useThreadFollow, useThreadWindow, type IdentityNotice, type NotifyAction, type PickerState, type ScheduledMsg, type VerdictToastItem } from './components/Chat'
 import { parseBtw, btwForkOf } from './lib/btw'
 import { SubAgentModal } from './components/AgentPanel'
 import { Explorer } from './components/Explorer'
@@ -1732,6 +1732,17 @@ function MainApp({ user }: { user: AppUser }) {
   }, [cwd])
   // 스레드 map 밖에서 한 번만 — 메시지마다 liveMsgIndex를 다시 계산하지 않게
   const liveIdx = liveMsgIndex(state.messages)
+  // ★ M-UI §5-6의 **중복 금지** 규약을 폴백에도 적용한다. 엔진은 전환 한 번에
+  // `chat:identity(engine_fallback)`과 런 이벤트 `model-fallback`을 **함께** 낸다
+  // (runtime.rs `fallback_signal` — apply_identity + Event::FallbackBanner가 한 문 안에).
+  // 이제 스레드의 `fallback` band가 되돌리기까지 들고 있으므로(그쪽은 엔진이 준 진짜
+  // `revertTo`를 쓴다 — 여기 상태줄은 `revision-1`로 **추정**한다), 같은 사건이면 상태줄은
+  // 비운다. 같은 사건 판정: 배너의 revertTo == 이 리비전의 직전(§6.2 — revert_to는 적용 전 값).
+  const identBandNotice = (() => {
+    const n = identNotices[activeChatId] ?? null
+    if (!n || n.origin !== 'engine_fallback') return n
+    return state.messages.some((m) => m.kind === 'fallback' && m.revertTo === n.revision - 1) ? null : n
+  })()
   // 작업 인디케이터(마스코트+문구+경과 초)는 '답변 본문 스트리밍 중'에만 숨긴다(그때는
   // 흐르는 답변 글자가 곧 피드백). 사고·도구·침묵 구간엔 계속 띄워 AI가 도는 걸 보여준다.
   // 질문/명령 카드가 떠 있으면 그 카드가 "작업 중"을 대신 전하므로 중복 인디케이터는 뺀다.
@@ -2135,6 +2146,14 @@ function MainApp({ user }: { user: AppUser }) {
       if (ok) dismissIdent(n.chatId)
     })
   })
+  // ★ M-UI — 스레드 알림 band의 행동 알약. 형태가 행동을 가질 수 있는 건 band뿐이고
+  // (rule=사실의 기록 · card=끝난 산출물), 그 행동이 **호스트 상태를 건드리는 것**만
+  // 여기로 온다(복사·펼치기는 뷰 안에서 끝난다).
+  const onNotifyAction = useEvent((a: NotifyAction) => {
+    if (a.kind === 'revert') void revertIdentity(activeChatId, a.revertTo)
+    // "하단 `과금` 토글에서 바꿀 수 있어요"라는 심부름 문장 대신 그 토글을 바로 누른다
+    else if (a.kind === 'billing-off') onApiModeChange(false, picker.engine)
+  })
 
   return (
     <div className="win">
@@ -2251,6 +2270,7 @@ function MainApp({ user }: { user: AppUser }) {
                     running={busy}
                     onOpenFile={onOpenToolFile}
                     onOpenImage={openViewer}
+                    onNotify={onNotifyAction}
                   />
                 ))}
                 {busy && showWorking && <WorkingIndicator elapsed={elapsed} />}
@@ -2298,7 +2318,7 @@ function MainApp({ user }: { user: AppUser }) {
           {/* ★ R4 — 엔진이 뒤에서 바꾼 정체성(폴백·드리프트) + [되돌리기]. 한도 배너와
               같은 줄에 서지만 말하는 사실이 다르다(m-logic §6.2 · M-UI 목업 1-fallback) */}
           <IdentityBand
-            notice={identNotices[activeChatId] ?? null}
+            notice={identBandNotice}
             onRevert={() => {
               const n = identNotices[activeChatId]
               if (n) onRevertIdent(n)

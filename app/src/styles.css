@@ -82,6 +82,36 @@
   /* app-wide signature hover: a 1px near-white ring just inside the element + a soft
      lift. Use on borderless rows/options (no layout shift). */
   --hover-ring: inset 0 0 0 1px var(--accent-line), var(--shadow-sm);
+
+  /* ── 알림 체계 (M-UI · docs/design/ui-notify.md §3) ─────────────────────────
+     스레드에 **남는** 알림 7종이 쓰는 유일한 치수표다. 위 토큰은 하나도 재정의하지
+     않는다 — 색·글꼴·그림자·반경은 전부 위 값을 그대로 빌려 쓰고, 여기서는 알림만의
+     리듬(패딩·글리프 칸·메타 크기)만 새로 정한다.
+
+     [충돌 규약]
+      1. 새 토큰은 **전부 `--ntf-` 접두**다. 기존 토큰(--radius·--text-*·--*-soft…)은
+         읽기만 하고 덮지 않는다 — 덮으면 알림 밖 화면의 픽셀이 따라 움직인다.
+      2. 목업(docs/design/mockups/ui-notify.css)의 짧은 클래스(.band/.card/.rule/.act/
+         .tx/.num/.ti/.spin/.qa…)는 이 파일에서 **`ntf-` 접두로 개명**해 심는다.
+         실측: `.act`(2) `.num`(1) `.tx`(4) `.ti`(3) `.spin`(6) `.qa`(6)가 이미 있어
+         그대로 심으면 무관한 화면이 물든다. 픽셀은 같고 이름만 다르다.
+      3. 색조 변수도 `--ntf-fg/key/face/edge`다. 색조 클래스가 자손에 값을 흘리는
+         구조라(캐스케이드) 짧은 이름이면 알림 안에 들어온 남의 컴포넌트가 오염된다.
+      4. 목업 로컬 `--shadow-sm`(0 2px 8px -2px)·`--font-mono`(Consolas 스택)는
+         **채택하지 않는다** — 실앱 값이 2.6.2 원본이고 `.cmd-card`가 이미 그 값이다.
+         알림만 다른 그림자를 쓰면 카드 계열이 두 벌로 갈린다.
+     ────────────────────────────────────────────────────────────────────────── */
+  --ntf-pad-y: 11px;   /* 현행 12px에서 **줄인** 값 — 여백을 넓히는 방향이 아니다 */
+  --ntf-pad-x: 14px;   /* 현행 15px */
+  --ntf-radius: 12px;  /* 현행 14px → --radius(12)와 한 값으로 */
+  --ntf-gap: 10px;
+  --ntf-ic: 15px;      /* band·rule 공통 글리프 칸 (현행 15/9/14 → 하나로) */
+  --ntf-tile: 30px;    /* card 타일 (현행 32) */
+  --ntf-title: 13.5px; /* card 제목 — 2.6.2 값 유지 */
+  --ntf-body: 13px;
+  --ntf-meta: 11px;    /* 시각·수치 — tabular-nums */
+  --ntf-lh: 1.6;
+  --ntf-ease: cubic-bezier(.2,.8,.2,1);
 }
 *{ box-sizing:border-box; margin:0; padding:0; }
 html,body{ height:100%; }
@@ -796,7 +826,10 @@ input,textarea{ font-family:inherit; }
 .thread > .msg + .toollog{ margin-top:15px; }
 .thread > .toollog + .msg{ margin-top:8px; }
 .thread > * + .worked{ margin-top:10px; }
-.thread > * + .stopline{ margin-top:10px; }
+/* rule(중단선·압축 경계)은 앞뒤를 가르는 선이라 owl 18px보다 붙는다 — 2.6.2의
+   `.thread > * + .stopline{10px}` 규칙을 형태 단위로 승격했다(양쪽 다 10px). */
+.thread > * + .ntf-rule{ margin-top:10px; }
+.thread > .ntf-rule + *{ margin-top:10px; }
 /* 본문 칼럼 = PoC .col: 88% 폭 · 1500px 상한 (컴포저/WorkBar는 880px 칼럼) */
 .chat--talk .thread,
 .chat--code .thread{ max-width:clamp(calc(760px / var(--z, 1)), 88%, calc(1500px / var(--z, 1))); }
@@ -872,18 +905,42 @@ input,textarea{ font-family:inherit; }
    margin 쇼트핸드 금지 — 스레드 owl(.thread > * + *)과 특이도가 같아 위 여백을 덮는다 */
 .worked{ margin-left:2px; margin-right:2px; font-size:13px; color:var(--text-3); animation:fade .2s ease both; }
 
-/* 중단 마커 — Esc/중지로 턴을 끊은 자리 (클로드 코드의 'Interrupted' 문법).
-   '잘림'을 그대로 그리는 컷 라인: ⏹ 중단함 뒤로 빨간 헤어라인이 사라진다.
-   면을 깐 알약 1차안은 어두운 배경에서 탁한 갈색 덩어리로 보여 기각 — 선·글자만 쓴다 */
-.stopline{
+/* ── 형태 1 · rule — 대화의 **구조**를 가르는 줄 (M-UI §2.2) ──────────────────
+   판정 질문: "스레드의 앞뒤를 가르나?" → 중단 · 압축 경계 · resume · 엔진 재시작.
+   면(surface)을 절대 깔지 않는다 — 2.6.2 주석의 기각 사유("어두운 배경에서 탁한
+   갈색 덩어리")가 그대로 유효하고, rule 형태가 그걸 규약으로 못박은 것이다.
+
+   높이는 **글자 줄 높이 그대로**(12.5 × 1.5 = 18.8px). min-height를 박으면 안 된다 —
+   목업 자가 계측이 20px 하한에서 +1.3px '밀도 손실'을 잡아냈다. 글리프 칸 15px이
+   줄 높이보다 작아 자연 높이가 줄 높이로 결정된다.
+
+   선의 **방향**이 두 쓰임을 가른다(아이콘·색을 더 쓰지 않고):
+     종결형(오른쪽만)   = 여기서 **끊겼다** — 중단 · 백그라운드 중지 · 엔진 재시작
+     경계형(.ntf-split) = 여기서 **갈렸다** — 압축 경계 · resume */
+.ntf-rule{
   display:flex; align-items:center; gap:8px;
   margin-left:2px; margin-right:2px;
-  font-size:12.5px; font-weight:600; letter-spacing:.01em; color:var(--red);
+  font-size:12.5px; font-weight:600; letter-spacing:.01em; color:var(--ntf-fg);
   animation:fade .2s ease both;
 }
-.stopline svg{ flex:0 0 auto; }
-.stopline svg rect{ fill:currentColor; stroke:none; }
-.stopline::after{ content:''; flex:1; height:1px; margin-left:2px; background:rgba(221,122,107,.34); }
+.ntf-rule .ntf-g{ flex:0 0 auto; display:grid; place-items:center; width:var(--ntf-ic); height:var(--ntf-ic); }
+.ntf-rule .ntf-g svg{ flex:0 0 auto; }
+.ntf-rule .ntf-g svg rect{ fill:currentColor; stroke:none; }
+.ntf-rule .ntf-g .ntf-ch{ font-size:12px; line-height:1; }
+.ntf-rule .ntf-lb{ flex:0 0 auto; }
+/* 수치는 라벨 **오른쪽에 붙는다** — 줄을 하나 더 쓰지 않는다(밀도 규약 ②).
+   색은 text-3이 아니라 **text-2**다: 11px 모노에 text-3(0.40)이면 합성 후 대비비
+   3.83으로 AA(4.5) 미달인데, 이 수치야말로 이 제안이 새로 얹은 정보다 —
+   밀도 논증의 전리품이 가장 안 읽히는 글자면 논증이 자기를 깎는다(6.4로 승급). */
+.ntf-rule .ntf-num{ flex:0 0 auto; font-family:var(--font-mono); font-size:var(--ntf-meta);
+  font-weight:500; color:var(--text-2); font-variant-numeric:tabular-nums; }
+.ntf-rule .ntf-hair{ flex:1; height:1px; min-width:16px; background:var(--ntf-edge); }
+/* 시각도 text-4 → **text-3**. text-4(0.26)는 2.29로 3:1조차 미달이다. rule의 시각은
+   2.6.2에서 물려받은 자리가 아니라 이 제안이 **새로 넣은** 자리라 파리티 논거가 없다
+   (3.82 = 비본문 3:1 통과). card의 시각은 파리티라 text-4 그대로 둔다 — §7-5. */
+.ntf-rule .ntf-tm{ flex:0 0 auto; font-size:var(--ntf-meta); font-weight:400; color:var(--text-3);
+  font-variant-numeric:tabular-nums; }
+.ntf-rule.ntf-split .ntf-hair.l{ flex:0 0 22px; }
 
 /* tools the assistant ran — 테두리 없이 명도로만 (PoC .trow): 아이콘 45% ·
    이름 82% · 인자 모노 56% · 결과 50%. 색 아이콘 대신 무채색. */
@@ -1349,59 +1406,106 @@ input,textarea{ font-family:inherit; }
 .slash-sec.mention-loc svg{ flex:0 0 auto; opacity:.8; }
 .slash-sec.mention-loc span{ min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-family:var(--font-mono); font-weight:600; }
 
-/* 시스템 경고 줄 — 정책 거부로 모델이 자동 전환됐을 때 등 스레드에 인라인 표시 */
-.notice-row{
-  display:flex; gap:10px; align-items:flex-start; padding:12px 15px;
-  background:var(--yellow-soft); border:1px solid var(--yellow-soft); border-radius:14px;
-  animation:rise .16s cubic-bezier(.2,.8,.2,1) both;
-}
-.notice-ic{ flex:0 0 auto; display:grid; place-items:center; margin-top:1px; color:var(--yellow); }
-.notice-text{ flex:1; min-width:0; font-size:13px; line-height:1.6; color:var(--text-2); word-break:keep-all; }
-/* 안내문에서 `백틱`으로 강조한 단어 (예: 하단 '과금' 토글) — 따옴표 대신 색으로 가리킨다 */
-.notice-kw{ color:var(--yellow); font-weight:600; }
-.notice-time{ flex:0 0 auto; font-size:11px; color:var(--text-3); margin-top:2px; }
+/* ══ 알림 색조 4쌍 — 색은 **심각도만** 칠한다(출처·종류에 쓰지 않는다) ══════════
+   현행 `.notice-row`/`.error-row`는 background와 border가 **같은 값**이라 테두리가
+   사실상 없었다. edge를 face보다 한 단 진하게 줘야 판이 아크릴 배경에서 떨어진다. */
+.ntf-t-neutral { --ntf-fg:var(--text-2); --ntf-key:var(--text-3); --ntf-face:var(--surface);     --ntf-edge:var(--line-2); }
+.ntf-t-notice  { --ntf-fg:var(--yellow); --ntf-key:var(--yellow); --ntf-face:var(--yellow-soft); --ntf-edge:rgba(217,192,99,.26); }
+.ntf-t-danger  { --ntf-fg:var(--red);    --ntf-key:var(--red);    --ntf-face:var(--red-soft);    --ntf-edge:rgba(221,122,107,.28); }
+.ntf-t-positive{ --ntf-fg:var(--green);  --ntf-key:var(--green);  --ntf-face:var(--green-soft);  --ntf-edge:rgba(130,201,164,.26); }
 
-/* 오류 줄 — 노란 안내(notice-row)와 같은 문법의 빨간 판. 맨몸 빨간 텍스트로 흘리던
-   오류에 고유 디자인을 입힌다: X 아이콘 + '오류' 제목 + 본문(원문 그대로, 줄바꿈 보존) */
-.error-row{
-  display:flex; gap:10px; align-items:flex-start; padding:12px 15px;
-  background:var(--red-soft); border:1px solid var(--red-soft); border-radius:14px;
-  animation:rise .16s cubic-bezier(.2,.8,.2,1) both;
+/* ── 형태 2 · band — 네 **개입이 필요할 수 있는** 것 (M-UI §2.2) ────────────────
+   면 + 글리프 + 문장 + (행동) + 시각. 1줄 47px. 모델 자동 전환 · 안내 · 오류가
+   같은 문법을 쓰고 색조로만 갈린다. **행동을 가질 수 있는 형태는 band뿐이다** —
+   rule은 사실의 기록이고 card는 이미 끝난 산출물이라 되돌릴 게 없다. */
+.ntf-band{
+  display:flex; flex-wrap:wrap; gap:var(--ntf-gap); align-items:flex-start;
+  padding:var(--ntf-pad-y) var(--ntf-pad-x);
+  background:var(--ntf-face); border:1px solid var(--ntf-edge); border-radius:var(--ntf-radius);
+  animation:rise .16s var(--ntf-ease) both;
 }
-.error-ic{ flex:0 0 auto; display:grid; place-items:center; margin-top:2px; color:var(--red); }
-.error-body{ flex:1; min-width:0; }
-.error-head{ display:flex; align-items:baseline; gap:8px; }
-.error-title{ font-size:13px; font-weight:700; letter-spacing:-.01em; color:var(--red); }
-.error-time{ margin-left:auto; flex:0 0 auto; font-size:11px; color:var(--text-3); }
-.error-text{ margin-top:3px; font-size:13px; line-height:1.6; color:var(--text-2); white-space:pre-wrap; word-break:break-word; }
+.ntf-band .ntf-g{ flex:0 0 auto; width:var(--ntf-ic); height:var(--ntf-ic); display:grid; place-items:center;
+  color:var(--ntf-fg); margin-top:1px; font-size:12px; }
+.ntf-band .ntf-bd{ flex:1; min-width:0; }
+.ntf-band .ntf-tx{ font-size:var(--ntf-body); line-height:var(--ntf-lh); color:var(--text-2); word-break:keep-all; }
+/* 강조는 색이 아니라 **무게**로 먼저 한다 — 색은 심각도 몫이라 문장 안에서 또 쓰면
+   위계가 겹친다. `.ntf-kw`(색)는 "무엇이 **무엇으로** 바뀌었다"의 **도착값 하나**에만. */
+.ntf-band .ntf-b{ font-weight:600; color:var(--text); }
+.ntf-band .ntf-kw{ font-weight:600; color:var(--ntf-key); }
+.ntf-band .ntf-mono{ font-family:var(--font-mono); font-size:12px; }
+/* 오류 원문 면 — 이 체계에서 **유일하게 높이를 늘리는 자리**이고 그게 의도다(§5-3).
+   현행 `.error-text`는 pre-wrap이라 긴 경로가 산문 폭으로 재줄바꿈돼 읽을 수 없는
+   덩어리가 됐다. 모노 + 인셋 면이면 줄 구조가 보존돼 [복사]가 의미를 갖는다.
+   색: text-3(3.68 · AA 미달) → **text-2**(6.9). 읽으라고 만든 면이 가장 안 읽히는
+   등급에 있으면 안 된다. 8줄 넘으면 접고 [전체 보기](뷰가 max-height로 자른다). */
+.ntf-band .ntf-raw{ margin-top:4px; font-family:var(--font-mono); font-size:11.5px; line-height:1.55;
+  color:var(--text-2); white-space:pre-wrap; word-break:break-word;
+  padding:7px 9px; border-radius:8px; background:var(--inset); }
+.ntf-band .ntf-raw.clip{ max-height:calc(11.5px * 1.55 * 8 + 14px); overflow:hidden; }
+/* 오른쪽 트레이 — 행동 알약과 시각이 **같은 줄**에 산다(밀도 규약 ①: 줄을 안 늘린다).
+   좁은 폭(멀티 패널 420px)에서는 flex-wrap으로 트레이가 아래로 접힌다. */
+.ntf-band .ntf-tray{ flex:0 0 auto; display:flex; align-items:center; gap:8px; margin-top:1px; }
+.ntf-band .ntf-tm{ font-size:var(--ntf-meta); color:var(--text-3); font-variant-numeric:tabular-nums; }
+.ntf-act{
+  display:inline-flex; align-items:center; gap:5px; height:22px; padding:0 9px; border-radius:7px;
+  border:1px solid var(--ntf-edge); background:transparent; color:var(--ntf-fg);
+  font-family:inherit; font-size:11.5px; font-weight:600; cursor:pointer; white-space:nowrap;
+  transition:background .12s, border-color .12s, color .12s;
+}
+.ntf-act:hover{ background:rgba(255,255,255,.06); border-color:var(--ntf-fg); }
+/* 되돌린 뒤에도 배너는 남는다(§6.3 — revert는 새 리비전이라 히스토리를 지우면 거짓말).
+   버튼만 [되돌림 ✓]로 정착(비활성)한다. */
+.ntf-act.done{ border-color:var(--line); color:var(--text-4); cursor:default; }
+.ntf-act.done:hover{ background:transparent; border-color:var(--line); }
+.ntf-act.ghost{ border-color:transparent; color:var(--text-3); }
+.ntf-act.ghost:hover{ border-color:var(--line-2); color:var(--text-2); }
 
-/* "/command 완료" summary card rendered in the chat thread */
-.cmd-card{
-  display:flex; gap:12px; align-items:flex-start; padding:13px 15px;
-  background:var(--surface); border:1px solid var(--line-2); border-radius:14px;
-  box-shadow:var(--shadow-sm); animation:rise .16s cubic-bezier(.2,.8,.2,1) both;
+/* ── 형태 3 · card — **무엇이 만들어졌나** (M-UI §2.2) ──────────────────────────
+   face(면)는 옵션이다. 규칙: **상태가 변하는 카드에만 면을 준다** —
+   running → done → failed를 한 자리에서 갈아 끼우려면 담을 그릇이 필요하다.
+   정적 기록(문답·권한 허용·변경 파일 요약)은 `.ntf-bare`로 같은 격자만 쓴다
+   (박스가 대화를 끊지 않게). 2.6.2가 `.qa`에서 이미 내린 판단을 규칙으로 승격한 것. */
+.ntf-card{
+  display:flex; gap:12px; align-items:flex-start; padding:12px 14px;
+  background:var(--surface); border:1px solid var(--line-2); border-radius:var(--ntf-radius);
+  box-shadow:var(--shadow-sm); animation:rise .16s var(--ntf-ease) both;
 }
-.cmd-card-ic{
-  width:32px; height:32px; flex:0 0 auto; display:grid; place-items:center;
-  border-radius:9px; background:var(--surface-2); color:var(--text-3); margin-top:1px;
+.ntf-card.ntf-bare{ background:none; border-color:transparent; box-shadow:none; padding:0 2px; }
+.ntf-card .ntf-tile{
+  width:var(--ntf-tile); height:var(--ntf-tile); flex:0 0 auto; display:grid; place-items:center;
+  border-radius:9px; background:var(--surface-2); color:var(--text-3); margin-top:1px; font-size:14px;
 }
-.cmd-card-body{ flex:1; min-width:0; }
-.cmd-card-head{ display:flex; align-items:center; gap:9px; }
-.cmd-card-badge{
-  font-family:var(--font-mono); font-size:12px; font-weight:600; color:var(--accent-2);
-  background:var(--accent-soft); padding:2px 8px; border-radius:7px; flex:0 0 auto;
+/* 맨몸 카드의 왼쪽 15px 마커 칸 — 면이 없어도 다른 6종과 **왼쪽 정렬선이 맞아**
+   계열이 보인다. 2.6.2의 `.qa`는 AI 발화와 같은 자리에서 시작해 구분이 안 됐다. */
+.ntf-card.ntf-bare .ntf-tile{ width:var(--ntf-ic); height:var(--ntf-ic); background:none; border-radius:0;
+  margin-top:3px; font-size:12px; color:var(--ntf-key); }
+.ntf-card .ntf-bd{ flex:1; min-width:0; }
+.ntf-card .ntf-hd{ display:flex; align-items:center; gap:9px; }
+.ntf-card .ntf-bg{
+  font-family:var(--font-mono); font-size:11.5px; font-weight:600; color:var(--accent-2);
+  background:var(--accent-soft); padding:2px 7px; border-radius:6px; flex:0 0 auto;
 }
-.cmd-card-title{ font-size:13.5px; font-weight:600; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.cmd-card-time{ margin-left:auto; font-size:11px; color:var(--text-4); flex:0 0 auto; }
-.cmd-card-sub{ font-size:12.5px; color:var(--text-3); margin-top:7px; line-height:1.5; }
-.cmd-card-stats{ font-size:12px; color:var(--text-4); margin-top:6px; font-variant-numeric:tabular-nums; }
-/* running: spinner stands in for the timestamp; icon tile stays the same grey as done */
-.cmd-card-spin{ margin-left:auto; width:14px; height:14px; flex:0 0 auto; border-radius:99px; border:2px solid var(--accent-soft); border-top-color:var(--accent); animation:spin .7s linear infinite; }
-.cmd-card.running .cmd-card-title{ color:var(--text-2); }
-/* failed: red accents on the badge + icon, keep the body legible */
-.cmd-card.failed{ border-color:var(--red-soft); }
-.cmd-card.failed .cmd-card-ic{ background:var(--red-soft); color:var(--red); }
-.cmd-card.failed .cmd-card-badge{ color:var(--red); background:var(--red-soft); }
+.ntf-card .ntf-ti{ font-size:var(--ntf-title); font-weight:600; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.ntf-card .ntf-tm{ margin-left:auto; font-size:var(--ntf-meta); color:var(--text-4); flex:0 0 auto; font-variant-numeric:tabular-nums; }
+.ntf-card .ntf-sb{ font-size:12.5px; color:var(--text-3); margin-top:6px; line-height:1.5; }
+/* 수치는 부제와 **같은 줄**에 이어 붙인다 — 현행은 줄을 하나 더 썼다(.cmd-card-stats) */
+.ntf-card .ntf-sb .ntf-st{ color:var(--text-4); font-variant-numeric:tabular-nums; }
+.ntf-card .ntf-sb .ntf-dot{ color:var(--text-4); margin:0 6px; }
+.ntf-card .ntf-spin{ margin-left:auto; width:14px; height:14px; flex:0 0 auto; border-radius:99px;
+  border:2px solid var(--accent-soft); border-top-color:var(--accent); animation:spin .7s linear infinite; }
+.ntf-card.running .ntf-ti{ color:var(--text-2); }
+.ntf-card.failed{ border-color:var(--red-soft); }
+.ntf-card.failed .ntf-tile{ background:var(--red-soft); color:var(--red); }
+.ntf-card.failed .ntf-bg{ color:var(--red); background:var(--red-soft); }
+/* 문답 기록 — 맨몸 카드 안의 Q/A 격자. 답 글자는 15.5 → 14.5px로 한 단 내린다:
+   본문과 같은 크기라 AI 발화처럼 읽혔다 — 기록은 본문보다 조용해야 한다. */
+.ntf-card .ntf-qa{ display:flex; flex-direction:column; gap:11px; }
+.ntf-card .ntf-qa .ntf-q{ display:flex; align-items:baseline; gap:8px; font-size:13px; color:var(--text-3); }
+.ntf-card .ntf-qa .ntf-qm{ flex:0 0 auto; font-family:var(--font-mono); font-size:10px; font-weight:700; color:var(--text-4); letter-spacing:.03em; }
+.ntf-card .ntf-qa .ntf-qt{ word-break:keep-all; }
+.ntf-card .ntf-qa .ntf-a{ display:flex; align-items:center; gap:7px; margin-top:4px; padding-left:22px;
+  font-size:14.5px; font-weight:600; color:var(--text); }
+.ntf-card .ntf-qa .ntf-a svg{ color:var(--green); flex:0 0 auto; }
 .composer textarea{
   flex:1; min-width:0; width:100%; background:none; border:none; outline:none; resize:none;
   color:var(--text); font-size:13px; line-height:1.55; max-height:160px; padding:3px 0;
@@ -1539,7 +1643,8 @@ input,textarea{ font-family:inherit; }
 .limit-hold.ready{ color:var(--text-3); }
 /* ★ 3.0 M-UX R4 — 정체성 배너(chat:identity). 한도 배너와 같은 자리·같은 유리지만
    "막혀 있음"이 아니라 "뒤에서 바뀌었음"이라 앰버가 아니라 중립이다(M-UI 목업 1-fallback) */
-.limit-hold.ident{ color:var(--text-3); }
+/* `.limit-hold.ident`는 M-UI에서 `.ntf-band`(알림 7종 공용 문법)로 갈아탔다 —
+   같은 자리, 다른 문법. 규칙이 하나여야 계열이 보인다(IdentityBand 주석 참조). */
 
 /* ★ 3.0 M-UX R4 — 다른 대화의 판정 토스트(chat:verdict). 활성 대화는 스레드 카드가
    말하고, 이 줄은 **보고 있지 않은 대화**의 거부만 띄운다. 컴포저·워크바를 가리지 않게
@@ -1911,13 +2016,9 @@ button.wb-prow{ width:100%; text-align:left; }
 .wf-stop{ font-size:12px; font-weight:600; color:var(--red); background:var(--red-soft); padding:6px 14px; border-radius:99px; flex:0 0 auto; }
 .wf-stop:hover{ background:rgba(221,122,107,.22); }
 
-/* 문답 흔적 (PoC .qa) — Q 마커+질문(흐림) 아래 ✓+답(볼드). 박스 없이 대화에 남는다 */
-.qa{ display:flex; flex-direction:column; gap:13px; animation:fade .2s ease both; }
-.qa .qq2{ display:flex; align-items:baseline; gap:9px; font-size:13.5px; color:var(--text-3); }
-.qa .qm{ font-size:10.5px; font-weight:700; color:var(--text-4); letter-spacing:.03em; }
-.qa .qt2{ word-break:keep-all; }
-.qa .qa2{ display:flex; align-items:center; gap:8px; margin-top:5px; padding-left:24px; font-size:15.5px; font-weight:600; color:var(--text); }
-.qa .qa2 svg{ color:var(--green); flex:0 0 auto; }
+/* 문답 흔적은 M-UI 알림 체계의 `card · face=off`로 옮겼다 — `.ntf-card.ntf-bare`
+   (위 '형태 3 · card' 블록). 2.6.2의 `.qa`(박스 없이 대화에 남는다)가 옳았고,
+   3.0은 그것을 **재사용 가능한 규칙**으로 승격했다: 상태가 변하지 않는 기록은 면이 없다. */
 
 /* 승인 카드 전용 파츠 — 같은 qcard 문법 위에 도구 칩 + 모노 명령 웰 + 거부 색 힌트.
    명령/경로는 JetBrains Mono, 한국어는 --font-mono 스택의 Wanted Sans 폴백. */

@@ -783,6 +783,11 @@ export function SessionWindow(): React.ReactElement {
                   running={busy}
                   onOpenFile={onOpenToolFile}
                   onOpenImage={openViewer}
+                  // ★ M-UI — 알림 band의 행동 알약. 추가 채팅 창엔 통합 스토어 chatId
+                  // 배선이 없어 `revert`는 못 준다(그 알약은 안 그려진다). 과금은 이 창 소유다.
+                  onNotify={(a) => {
+                    if (a.kind === 'billing-off') onApiModeChange(false, picker.engine)
+                  }}
                 />
               ))}
               {busy && showWorking && <WorkingIndicator elapsed={elapsed} />}

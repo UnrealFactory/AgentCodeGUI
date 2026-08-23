@@ -212,12 +212,15 @@ const withWindow = reducer(
   eng({ type: 'result', runId: 'r1', isError: false, text: '', costUsd: null, durationMs: null, numTurns: null, contextTokens: 150000, contextWindow: 200000, viaApi: false })
 )
 
-// 5) auto → 카드 + % stats
+// 5) auto → **경계 선(rule)** + 수치
+// ★ M-UI §5-5로 형태가 바뀌었다: 자동 압축은 "명령이 하나 끝났다"가 아니라 "이 지점
+// 위로는 원문이 없다"는 **구조적 경계**라, 93.8px 카드가 아니라 15px 선이다(실측
+// docs/m-ui-report-r1.md). 수치는 하나도 안 버렸고 라벨 오른쪽에 붙는다.
 const s5 = reducer(withWindow, eng(compactEv()))
 const m5 = lastMsg(s5)
-check('5 auto → cmdresult(compact) 카드', m5?.kind === 'cmdresult' && m5?.name === 'compact' && m5?.running === false, m5)
-check('5 제목 = 자동 요약 안내', m5?.title === '컨텍스트가 가득 차 대화를 자동으로 요약했어요', m5?.title)
-check('5 stats = 75% → 6% · 138K 회수', m5?.stats === '컨텍스트 75% → 6% 로 절약 · 토큰 138K 회수', m5?.stats)
+check('5 auto → boundary(compact) 경계 선', m5?.kind === 'boundary' && m5?.glyph === 'compact', m5)
+check('5 라벨 = 여기까지 요약됨', m5?.label === '여기까지 요약됨', m5?.label)
+check('5 수치 = 150K → 12K · 컨텍스트 75% → 6%', m5?.num === '150K → 12K · 컨텍스트 75% → 6%', m5?.num)
 
 // 6) manual → 무시 (수동 /compact 카드가 담당)
 check('6 manual 무시', reducer(withWindow, eng(compactEv({ trigger: 'manual' }))) === withWindow)
@@ -226,13 +229,13 @@ check('6 manual 무시', reducer(withWindow, eng(compactEv({ trigger: 'manual' }
 const pending = { ...withWindow, pendingCommand: { name: 'compact', beforeContext: 150000, beforeMsgs: 2, cardId: 'c1' } }
 check('7 pendingCommand=compact 중 무시', reducer(pending, eng(compactEv())) === pending)
 
-// 8) window 미상 → 토큰 회수만
+// 8) window 미상 → 토큰 전/후만 (비율은 지어내지 않는다)
 const m8 = lastMsg(reducer(initialSessionState, eng(compactEv())))
-check('8 window 미상 → 토큰 회수만', m8?.kind === 'cmdresult' && m8?.stats === '토큰 138K 회수', m8?.stats)
+check('8 window 미상 → 토큰 전/후만', m8?.kind === 'boundary' && m8?.num === '150K → 12K', m8?.num)
 
-// 9) after 미상(무프레임 종결 플러시) → stats 없이 카드만
+// 9) after 미상(무프레임 종결 플러시) → 수치 없이 선만 (§4-4 — 없는 수치는 자리를 비운다)
 const m9 = lastMsg(reducer(withWindow, eng(compactEv({ afterTokens: null }))))
-check('9 after 미상 → stats 없음', m9?.kind === 'cmdresult' && m9?.stats === null, m9?.stats)
+check('9 after 미상 → 수치 없음', m9?.kind === 'boundary' && m9?.num === null, m9?.num)
 
 fs.rmSync(cwd, { recursive: true, force: true })
 console.log(failed ? `\n${failed} FAILED` : '\nall ok')

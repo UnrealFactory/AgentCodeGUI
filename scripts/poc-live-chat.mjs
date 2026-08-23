@@ -1058,11 +1058,17 @@ async function phaseError() {
     await sleep(800) // 이벤트 도착과 React 커밋은 다른 시점이다
     out.events = await app.j(`window.__ev.map((e) => e.type + '/' + (e.status ?? '') + '#' + e.runId)`)
     out.error = await app.j(`window.__ev.find((e) => e.type === 'error') ?? null`)
-    // 오류 말풍선은 "오류" 라벨 + 본문 두 줄로 그려진다(`오류: …` 한 줄이 아니다).
+    // 오류 표면이 **정확히 하나** 그려졌는가. 세는 방법이 렌더러마다 다르다:
+    //  · 2.6.2 / 3.0-M-UI 이전 — `.error-row`에 빨간 '오류' 제목 줄이 있다 → 낱말로 센다.
+    //  · 3.0 M-UI 이후 — 제목 줄을 뺐다(색조가 이미 '오류'라고 말한다 · ui-notify §5-3).
+    //    그래서 낱말이 0이 된다. 대신 **danger band** 개수를 센다.
+    // 둘 중 **더 많이 잡힌 쪽**으로 판정한다 — 어느 렌더러에서도 "없다/두 번 말한다"를
+    // 똑같이 잡고, 문법이 바뀌었다는 이유만으로 게이트가 빨개지지 않는다.
     out.dom = await app.j(`(() => {
       const thread = ([...document.querySelectorAll('.thread, .msgs, .msg-list, main')].map((n) => n.innerText).sort((a, b) => b.length - a.length)[0] ?? '')
       return {
         errorLabels: (thread.match(/오류/g) || []).length,
+        errorSurfaces: document.querySelectorAll('.thread .error-row, .thread .ntf-band.ntf-t-danger').length,
         hasReason: thread.includes('엔진을 시작하지 못했어요'),
         hasT3Notice: thread.includes('엔진이 20초 안에 응답하지 않았어요'),
         composerFree: !document.querySelector('.composer-row textarea')?.disabled,
@@ -1070,11 +1076,12 @@ async function phaseError() {
         thread: thread.slice(0, 700)
       }
     })()`)
+    const errN = Math.max(out.dom?.errorLabels ?? 0, out.dom?.errorSurfaces ?? 0)
     if (!out.arrived) fail('E9-error', '20초 무응답에도 error 이벤트가 없다', out.events)
-    else if (!out.dom.hasReason || out.dom.errorLabels < 1) fail('E9-error(화면)', '이벤트는 왔는데 오류 말풍선이 없다', out.dom)
-    else if (out.dom.errorLabels > 1) fail('E9-error(중복)', `같은 사유가 오류 말풍선 ${out.dom.errorLabels}개로 뜬다`, out.dom)
+    else if (!out.dom.hasReason || errN < 1) fail('E9-error(화면)', '이벤트는 왔는데 오류 말풍선이 없다', out.dom)
+    else if (errN > 1) fail('E9-error(중복)', `같은 사유가 오류 말풍선 ${errN}개로 뜬다`, out.dom)
     else if (!out.dom.composerFree || out.dom.working) fail('E9-error(정지)', '오류 뒤 컴포저/스피너가 안 풀렸다', out.dom)
-    else ok('E9-error', { message: out.error?.message, labels: out.dom.errorLabels, t3: out.dom.hasT3Notice })
+    else ok('E9-error', { message: out.error?.message, labels: out.dom.errorLabels, surfaces: out.dom.errorSurfaces, t3: out.dom.hasT3Notice })
   } catch (e) {
     fail('ERROR', String(e))
   } finally {

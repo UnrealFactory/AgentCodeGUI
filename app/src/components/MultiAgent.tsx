@@ -694,6 +694,12 @@ export const PanelView = memo(function PanelView({
                   running={busy}
                   onOpenFile={openFile}
                   onOpenImage={onOpenImage}
+                  // ★ M-UI — 알림 band의 행동 알약. 패널엔 통합 스토어의 chatId 배선이
+                  // 아직 없어 `revert`는 못 준다 → 그 알약은 **아예 안 그려진다**
+                  // (누르면 아무 일 없는 버튼을 그리는 게 제일 나쁘다). 과금은 패널 소유다.
+                  onNotify={(a) => {
+                    if (a.kind === 'billing-off') onApiMode(slot, false, meta.picker.engine)
+                  }}
                 />
               ))}
               {busy && showWorking && <WorkingIndicator elapsed={elapsed} />}
