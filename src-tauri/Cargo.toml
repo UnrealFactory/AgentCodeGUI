@@ -36,6 +36,9 @@ ccg-auth = { path = "../crates/ccg-auth" }
 # 파일·Git 도메인(M6) — 탐색기 트리·뷰어 읽기/쓰기·시스템 git 래퍼·Myers 라인 diff.
 # 셸은 `ipc/fs.rs`·`ipc/git.rs`에서만 만진다(창·엔진 코드는 이 크레이트를 모른다).
 ccg-fs = { path = "../crates/ccg-fs" }
+# 코드 인텔리전스(M7) — 언어 서버 수명 관리 + LSP stdio + 시맨틱 토큰 디스크 캐시.
+# 셸은 `ipc/lsp.rs`에서만 만진다(창·엔진·파일 코드는 이 크레이트를 모른다).
+ccg-lsp = { path = "../crates/ccg-lsp" }
 
 # 렌더러/브라우저 사망 감지(src/crash.rs). wry·tauri는 WebView2의 ProcessFailed를
 # 감싸주지 않으므로 `with_webview()`가 주는 ICoreWebView2Controller에 직접 붙인다.

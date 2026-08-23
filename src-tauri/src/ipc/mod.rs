@@ -27,6 +27,8 @@ mod app_meta;
 /// 파일·Git 도메인(M6). 다른 모듈과 달리 **블로킹 스레드**에서 돈다 — `ipc_call` 주석 참고.
 mod fs;
 mod git;
+/// 코드 인텔리전스(M7). fs·git과 같은 이유로 블로킹 — 전부 언어 서버 자식 프로세스 왕복이다.
+mod lsp;
 mod stores;
 mod system;
 /// `pub`인 이유: 창 브로드캐스트(`win.rs broadcast_sessions`)가 이 모듈의 병합 함수를
@@ -125,6 +127,31 @@ pub mod ch {
     /// 상수만 두는 이유: 다음 라운드가 여기 한 줄을 붙이면 되게(M6 리포트 §미구현).
     #[allow(dead_code)]
     pub const FS_HTML_PREVIEW_URL: &str = "fs:html-preview-url";
+
+    // ── LSP 코드 인텔리전스 (M7 — ipc/lsp.rs) ────────────────────────────────
+    pub const LSP_STATUS: &str = "lsp:status";
+    pub const LSP_HOVER: &str = "lsp:hover";
+    pub const LSP_DEFINITION: &str = "lsp:definition";
+    pub const LSP_SEMANTIC_TOKENS: &str = "lsp:semantic-tokens";
+    pub const LSP_CACHED_TOKENS: &str = "lsp:cached-tokens";
+    pub const LSP_COMPLETION: &str = "lsp:completion";
+    pub const LSP_COMPLETION_RESOLVE: &str = "lsp:completion-resolve";
+    pub const LSP_PREWARM: &str = "lsp:prewarm";
+    pub const LSP_WARM: &str = "lsp:warm";
+    pub const LSP_PROJECT_STATUS: &str = "lsp:project-status";
+    pub const LSP_SERVERS: &str = "lsp:servers";
+    /// 코드 파일 변화 브로드캐스트(main→모든 창) — 열린 뷰어의 토큰 재폴링 신호.
+    /// **아직 쏘는 곳이 없다**(R2): 통지의 값어치는 C#처럼 "재프라임 전까지 새 타입이
+    /// 무색인" 서버에서 나온다. TS는 `openDoc`의 mtime 재검사만으로 스스로 회복하고,
+    /// 그 회복 시간을 하네스가 직접 잰다(`retokenize`). 쏘는 자리는 `fs:write-file`
+    /// 경로이고 그 파일은 이 라운드의 경계 밖이라, 상수만 먼저 박아 둔다.
+    #[allow(dead_code)]
+    pub const LSP_FILES_CHANGED: &str = "lsp:files-changed";
+    // Verse는 3.0 범위에서 제외(사용자 결정)지만 렌더러가 채널을 부른다 —
+    // 미구현 경고 대신 **명시적 안전값**을 돌려주기 위해 상수를 둔다(ipc/lsp.rs).
+    pub const LSP_VERSE_REGISTRY: &str = "lsp:verse-registry";
+    pub const LSP_VERSE_DIGESTS: &str = "lsp:verse-digests";
+    pub const LSP_VERSE_EXCLUDES: &str = "lsp:verse-excludes";
 
     // ── Git (M6 — ipc/git.rs) ────────────────────────────────────────────────
     pub const GIT_REPOS: &str = "git:repos";
@@ -228,15 +255,20 @@ pub async fn ipc_call(app: AppHandle, window: WebviewWindow, channel: String, pa
     // tauri의 async 런타임은 코어 수만큼의 워커를 가진 tokio라, 여기서 블로킹하면
     // 그 시간 동안 다른 창의 IPC(창 컨트롤·스토어 저장)가 통째로 굶는다.
     // `spawn_blocking`은 전용 풀(기본 512)로 빼므로 굶기지 않는다.
-    if fs::owns(&channel) || git::owns(&channel) {
+    // LSP도 같은 이유로 여기 붙는다(M7): 호버 한 번이 자식 프로세스 왕복이고, 콜드
+    // 시맨틱 토큰은 초 단위다. async 워커에서 돌면 그동안 다른 창의 IPC가 통째로 굶는다.
+    if fs::owns(&channel) || git::owns(&channel) || lsp::owns(&channel) {
         // ★R4 귀속 팔 — 파일·Git 도메인을 통째로 미구현으로 떨어뜨린다(심이 안전값).
-        if crate::flags::no_fs() {
+        // **LSP는 이 팔에 넣지 않는다** — 그 팔이 재는 것은 파일·Git 비용이고, 여기에
+        // 코드 인텔리전스까지 끼면 그 대조군이 다른 것을 재게 된다.
+        if crate::flags::no_fs() && !lsp::owns(&channel) {
             return unimplemented();
         }
         let ch = channel.clone();
         return tauri::async_runtime::spawn_blocking(move || {
             fs::dispatch(&ch, &payload)
                 .or_else(|| git::dispatch(&ch, &payload))
+                .or_else(|| lsp::dispatch(&ch, &payload))
                 .unwrap_or_else(unimplemented)
         })
         .await

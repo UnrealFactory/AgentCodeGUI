@@ -1,0 +1,38 @@
+[package]
+name = "ccg-lsp"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "AgentCodeGUI 코드 인텔리전스 — 언어 서버 수명 관리 + LSP stdio 전송 + 시맨틱 토큰 디스크 캐시. 언어 추가 = ServerSpec 1항목."
+
+# 셸 없이 실물 서버에 붙여 재는 프로브(bench/lsp.mjs의 크레이트 계층 짝).
+# `cli` 피처로 감춰 둔다 — 앱 빌드에는 들어가지 않는다.
+[features]
+cli = []
+
+[[bin]]
+name = "ccg-lspprobe"
+path = "src/bin/ccg_lspprobe.rs"
+required-features = ["cli"]
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+# 앱 홈(`~/.agentcodegui`) 경로 — 토큰 디스크 캐시와 내려받은 서버 바이너리가 사는 곳.
+# 2.6.2가 쓰던 그 자리(`<home>/lsp/semcache`, `<home>/lsp/bin`)를 그대로 쓴다.
+ccg-store = { path = "../ccg-store" }
+
+[target.'cfg(windows)'.dependencies]
+# Win32_System_JobObjects: 스폰한 언어 서버를 **KILL_ON_JOB_CLOSE 잡**에 넣는다.
+#   앱이 종료(정상·크래시·작업 관리자 강제 종료 불문)되는 순간 OS가 그 트리를 통째로
+#   죽인다 — 종료 훅에 의존하지 않는 유일한 보장이다(node.exe는 부모가 죽어도 살아남고,
+#   tsserver는 그 손자다). 2.6.2는 종료 훅 + killTree였고, 크래시 경로에선 새는 구조였다.
+# Win32_System_Threading: OpenProcess(잡에 넣을 핸들) · CREATE_NO_WINDOW 상수.
+# Win32_Security: CreateJobObjectW의 SECURITY_ATTRIBUTES 인자 타입(널로 넘기지만
+#   이 feature가 없으면 함수 자체가 노출되지 않는다).
+windows-sys = { version = "0.59", features = [
+  "Win32_Foundation",
+  "Win32_Security",
+  "Win32_System_Threading",
+  "Win32_System_JobObjects",
+] }
