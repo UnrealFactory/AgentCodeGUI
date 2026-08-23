@@ -1,0 +1,126 @@
+{
+  "at": "2026-08-23T18:54:46.841Z",
+  "exe": "C:\\Code\\AgentCodeGUI\\target\\release\\agentcodegui.exe",
+  "attacks": {
+    "D3": {
+      "home": "C:\\Code\\AgentCodeGUI\\.crit-home-m10r2-d3",
+      "sent": {
+        "text": "대화 연결 — 2번 자리 「구현」에 메시지를 보냈어요 · 홉 1/4 — 지금 그 세션의 턴이 시작됩니다.",
+        "dir": "out",
+        "from": "c-a",
+        "to": "c-b",
+        "toSlot": 2,
+        "toName": "구현",
+        "body": "RUNNING 본문입니다.",
+        "result": "delivered",
+        "hop": 1,
+        "maxHops": 4,
+        "chainId": "tk-1",
+        "spoof": false,
+        "guard": null
+      },
+      "envelopeInFlight": true,
+      "bStatusBefore": [
+        "analyzing"
+      ],
+      "stop": {
+        "version": 1,
+        "enabled": false,
+        "boards": {},
+        "maxHops": 4,
+        "maxMsgs": 12,
+        "maxFanout": 3,
+        "stoppedAt": 1787511287.965933,
+        "purged": 0
+      },
+      "purged": 0,
+      "bFinishedAfterStop": [
+        "DONE-AFTER-STOP 라고 답합니다."
+      ],
+      "bStatusAfter": [
+        "analyzing",
+        "done"
+      ]
+    },
+    "D8": {
+      "home": "C:\\Code\\AgentCodeGUI\\.crit-home-m10r2-d8",
+      "before": {
+        "chains": [
+          {
+            "id": "tk-1",
+            "msgs": 1
+          }
+        ],
+        "pos": [
+          {
+            "chat": "c-a",
+            "chain": "tk-1",
+            "hop": 0
+          },
+          {
+            "chat": "c-b",
+            "chain": "tk-1",
+            "hop": 1
+          }
+        ],
+        "restored": 0
+      },
+      "stateFile": {
+        "version": 1,
+        "seq": 1,
+        "chains": [
+          {
+            "id": "tk-1",
+            "msgs": 1
+          }
+        ],
+        "pos": [
+          {
+            "chat": "c-a",
+            "chain": "tk-1",
+            "hop": 0
+          },
+          {
+            "chat": "c-b",
+            "chain": "tk-1",
+            "hop": 1
+          }
+        ],
+        "savedAt": 1787511301.6017523
+      },
+      "after": {
+        "chains": [
+          {
+            "id": "tk-1",
+            "msgs": 1
+          }
+        ],
+        "pos": [
+          {
+            "chat": "c-a",
+            "chain": "tk-1",
+            "hop": 0
+          },
+          {
+            "chat": "c-b",
+            "chain": "tk-1",
+            "hop": 1
+          }
+        ],
+        "restored": 1
+      }
+    }
+  },
+  "broken": [
+    {
+      "id": "D3",
+      "why": "긴급 정지 뒤에도 주입된 턴이 끝까지 돌았다 — 정지는 「대기 줄」만 비우고 이미 CLI에 들어간 턴은 못 멈춘다",
+      "purged": 0,
+      "bText": [
+        "DONE-AFTER-STOP 라고 답합니다."
+      ]
+    }
+  ],
+  "ms": 22132,
+  "verdict": "BROKEN"
+}
