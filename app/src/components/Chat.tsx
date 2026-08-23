@@ -1001,10 +1001,15 @@ export const MessageView = memo(function MessageView({
   if (item.error) return <ErrorBand item={item} />
 
   const isUser = item.role === 'user'
+  // ★M10 R3(D5) — **이 말풍선을 누가 넣었나**를 구조로 말한다. 사람이 친 말과 다른
+  // 세션이 보낸 봉투가 똑같이 생겼으면, 구분 신호는 본문 첫 글자뿐이다 — 그런데 본문은
+  // 정확히 위조 시도의 표적이다(크리틱 C3에서 `[대화 연결]`이 본문에 복원됐다).
+  const injected = item.kind === 'msg' && item.origin === 'talk'
   return (
-    <div className={'msg ' + (isUser ? 'user' : 'ai-msg')}>
+    <div className={'msg ' + (isUser ? 'user' : 'ai-msg') + (injected ? ' injected' : '')}>
       <div className="msg-main">
         <div className="content">
+          {injected && <span className="msg-origin">{t('다른 세션이 보낸 메시지 · 사용자 입력 아님', 'From another session · not your input')}</span>}
           {item.kind === 'msg' && item.images && item.images.length > 0 && (
             <MessageAttachments images={item.images} onOpen={onOpenImage} onOpenFile={onOpenFile} />
           )}

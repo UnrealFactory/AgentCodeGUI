@@ -35,7 +35,7 @@ import {
 } from './api/unified'
 import { noteSettled } from './lib/settled'
 // ★M10 R2 — 대화 연결의 **긴급 정지**. R1은 채널만 있고 누를 자리가 0이었다(크리틱 D7).
-import { STOP_HOTKEY, isStopHotkey, stopTalk, useTalkConfig } from './lib/crosstalk'
+import { TalkStopPill } from './components/TalkStop'
 import { NewChatModal } from './components/NewChatModal'
 import { getPref, setPref, delPref } from './lib/prefs'
 import { t, useLang } from './lib/i18n'
@@ -2192,65 +2192,17 @@ function MainApp({ user }: { user: AppUser }) {
    * 자리를 **둘**로 두는 이유: 설정 모달을 열어야 누를 수 있으면 그건 긴급 정지가
    * 아니다. 켜져 있을 때만 뜨는 알약 하나 + 어디서나 듣는 단축키 하나.
    */
-  const { cfg: talkCfg } = useTalkConfig()
-  const [talkStopping, setTalkStopping] = useState(false)
-  const [talkSaid, setTalkSaid] = useState('')
-  const onTalkStop = useEvent(() => {
-    if (talkStopping) return
-    setTalkStopping(true)
-    void stopTalk()
-      .then((c) => {
-        // 상태는 `crosstalk:state`가 REPLACE로 그린다 — 여기서 낙관적으로 끄지 않는다.
-        // 정지를 눌렀는데 화면만 꺼지고 실제로는 도는 것이 이 기능에서 가장 나쁜 거짓말이다.
-        // 대신 **무엇이 실제로 멎었는지**를 한 줄로 말한다(침묵 금지 D7).
-        const n = c?.purged ?? 0
-        setTalkSaid(
-          c == null
-            ? t('정지 요청이 셸에 닿지 않았어요', 'The stop request never reached the shell')
-            : n > 0
-              ? t(`정지했어요 · 대기 중이던 메시지 ${n}건을 거둬들였습니다`, `Stopped · pulled back ${n} queued message(s)`)
-              : t('정지했어요 · 보드 동의도 전부 해제됐습니다', 'Stopped · every board opt-in was revoked')
-        )
-        window.setTimeout(() => setTalkSaid(''), 6000)
-      })
-      .finally(() => setTalkStopping(false))
-  })
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      if (!isStopHotkey(e)) return
-      e.preventDefault()
-      onTalkStop()
-    }
-    // 캡처 단계 — 입력창·에디터가 먼저 삼키면 "어디서나 멈춘다"가 거짓이 된다.
-    window.addEventListener('keydown', onKey, true)
-    return () => window.removeEventListener('keydown', onKey, true)
-  }, [onTalkStop])
+  //
+  // ★R3 C4 — 알약·단축키·상태 구독이 **한 덩어리**로 `components/TalkStop.tsx`에
+  // 들어갔다. R2는 이 셋이 여기(MainApp) 안에만 있었고, 렌더러 뿌리가 셋이라
+  // 추가 창·팝아웃에는 누를 자리가 없었다(크리틱 D6). 세 뿌리가 같은 것을 건다.
 
   return (
     <div className="win">
       <div className="blurwarm" />
       {/* 켜져 있을 때만 뜬다. 기본값이 꺼짐인 기능의 정지 버튼을 상시 띄우면 화면만
           시끄럽고, 꺼져 있으면 위험이 0이므로 자리도 0이어야 한다. */}
-      {(talkCfg.enabled || talkSaid) && (
-        <div className="talk-stop-wrap">
-          {talkCfg.enabled && (
-            <button
-              type="button"
-              className="talk-stop"
-              disabled={talkStopping}
-              onClick={onTalkStop}
-              title={t(
-                `대화 연결을 즉시 멈춥니다 (${STOP_HOTKEY}) — 도는 연쇄와 대기 중인 메시지를 전부 버리고 보드 동의를 해제해요`,
-                `Stop cross-talk now (${STOP_HOTKEY}) — drops running chains and queued messages, and revokes every board opt-in`
-              )}
-            >
-              <span className="talk-stop-dot" />
-              {t('대화 연결 정지', 'Stop cross-talk')}
-            </button>
-          )}
-          {talkSaid && <div className="talk-stop-said">{talkSaid}</div>}
-        </div>
-      )}
+      <TalkStopPill />
       <div className="win-body">
         {/* 왼쪽 칼럼 — 채팅 사이드바 ⟷ 파일 탐색기 전환 ( ` 또는 헤더 돋보기 옆 버튼).
             멀티 뷰의 탐색기는 마지막으로 클릭한 패널의 폴더를 따라간다(패널 전환 = 트리 전환).

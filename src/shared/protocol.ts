@@ -1495,6 +1495,10 @@ export type TalkResult =
   | 'rate_limited' // 같은 상대에게 너무 잦은 발신
   | 'duplicate' // 같은 내용 반복
   | 'stopped' // 긴급 정지
+  // ★R3 — 봉투를 받아 도는 턴은 **보낸 세션에게만** 회신한다(중계는 사람이 지시해야 한다).
+  | 'reply_only'
+  // ★R3 — 봉투 턴에 권한 하한을 못 걸어 넣지 않았다(fail-closed). 낮추지 못한 채로는 안 간다.
+  | 'picker_unavailable'
 
 /** `EngineEvent{type:'notice'}.talk` — 발신자 스레드에 남는 한 줄의 구조 본문.
  *
@@ -1515,9 +1519,17 @@ export interface TalkSent {
   chainId?: string // 같은 사람 지시에서 뻗어 나온 메시지들의 묶음
   /** ★R2 C1 — 본문에 사용자·시스템 사칭 문구가 있어 봉투에 경고를 붙였다. */
   spoof?: boolean
-  /** ★R2 C1 — 이 배달에 걸린 2차 벽. 지금은 `'mode_downgraded'` 하나(수신 채팅이
-   *  자동승인 모드라 그 턴만 승인 필수로 강등). */
+  /** ★R2 C1 — 이 배달에 걸린 2차 벽. `'read_only'`(그 턴만 계획 모드) ·
+   *  `'mode_downgraded'`(자동승인 → 승인 필수). **실제로 걸린 것만** 이름을 얻는다
+   *  (★R3 D4 — R2의 `guard`는 "시도했다"는 뜻이라 걸렸는지를 말하지 않았다). */
   guard?: string | null
+  /** ★R3 C1 — 이 봉투 턴이 **실제로 돌 모드**(`picker.mode`와 같은 어휘).
+   *  `guard`가 "무엇을 했나"라면 이 값은 "결과가 무엇인가"다 — 봉투 문면·발신자 통지·
+   *  큐 항목이 전부 이 값을 말한다. */
+  turnMode?: 'plan' | 'normal' | 'acceptEdits' | 'auto' | 'bypass'
+  /** ★R3 D2 — 긴급 정지가 거둬들였는데 **보낸 세션을 모른다**(장부에도 없는 옛 큐 항목).
+   *  이 줄은 수신자 스레드에 서고 `from`은 수신자다 — UI가 발신 기록으로 묶으면 안 된다. */
+  orphan?: boolean
 }
 
 /** `crosstalk:config` / `crosstalk:set` / `crosstalk:state`의 본문. 파일: `talk-config.json`. */
@@ -1531,8 +1543,20 @@ export interface TalkConfig {
   /** ★R2 D4 — **긴급 정지가 남긴 표식**(epoch 초). 디스크에서 정지와 그냥 꺼짐은 둘 다
    *  `enabled:false`지만 사용자에게 할 말이 정반대다. 다시 켜면 null로 지워진다. */
   stoppedAt?: number | null
+  /** ★R3 C1 — **봉투 턴의 권한 하한.** 기본 `'readonly'` = 봉투가 만든 턴 한 건만
+   *  계획 모드로 돈다(파일 수정·명령 실행의 수단이 그 턴에 아예 없다 — 사용자의
+   *  allowlist도 무력하다). `'ask'` = R2 동작(자동승인 3종만 승인 필수로 강등). */
+  injectPolicy?: 'readonly' | 'ask'
+  /** ★R3 — 켤 때 뜨는 **1회 고지 카드**를 읽고 눌렀다(epoch 초). 없으면 아직 안 봤다. */
+  noticeAckAt?: number | null
   /** `crosstalk:stop`의 응답에만 실린다 — **큐에서 실제로 뽑아낸 봉투 수**(R2 C3). */
   purged?: number
+  /** ★R3 C2 — 정지가 **이미 CLI에 들어가 도는 봉투 턴**에 중단을 보낸 수. R2는 이걸
+   *  못 해 놓고 알약이 「정지했어요」라고만 말했다(크리틱 D3 — 그 턴은 끝까지 갔다). */
+  interrupted?: number
+  /** ★R3 C2 — 도는 봉투 턴인데 **중단 명령이 안 받아들여진** 수. 0이 아니면 알약이
+   *  「M개는 끝까지 갑니다」라고 말한다 — 못 멈춘 것을 멈췄다고 하지 않는다. */
+  unstoppable?: number
 }
 
 /** 긴급 정지 상수 — 렌더러가 이 값으로 채널을 부른다(자유 문자열 금지). */

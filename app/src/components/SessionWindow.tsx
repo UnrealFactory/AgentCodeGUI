@@ -52,6 +52,7 @@ import { FolderSwitchDialog } from './FolderSwitchDialog'
 import { useZoom, ZoomBadge, mergeRefs } from './zoom'
 import { MouseGestureLayer, clearGesture, sessionWindowGesture, type GestureAction } from './mouseGesture'
 import { IconChevDown } from './icons'
+import { TalkStopPill } from './TalkStop'
 
 // ── 추가 채팅 (세션 창) ────────────────────────────────────────
 // A standalone conversation in its OWN native OS window (freely resizable, movable to a
@@ -734,6 +735,10 @@ export function SessionWindow(): React.ReactElement {
   return (
     <div className="sw">
       <div className="blurwarm" />
+      {/* ★M10 R3 C4 — 이 창에도 정지가 있다. R2는 알약·단축키·상태 구독이 전부
+          `App.tsx` 안에 있어서, 이 창에서 Ctrl+Shift+. 를 눌러도 아무 일이 없었다
+          (크리틱 D6). 설정은 그때도 "어느 화면에서든"이라고 적혀 있었다. */}
+      <TalkStopPill />
       {/* 본채팅 화면 그대로(사이드바만 없음) — ChatHeader가 곧 이 창의 타이틀바
           (전체 드래그 + 폴더 picker + 찾기 + 창 컨트롤). 창 컨트롤은 메인 프로세스가
           호출 창(webContents) 기준으로 이 창을 제어한다. */}

@@ -325,6 +325,23 @@ input,textarea{ font-family:inherit; }
   background:var(--surface-2); border:1px solid var(--line-2); box-shadow:var(--shadow-sm);
 }
 
+/* ★M10 R3(D5) — **주입된 사용자 말풍선의 구조 배지.**
+   R2까지 다른 세션이 보낸 봉투는 사용자가 친 말과 **똑같은 말풍선**이었고, 구분 신호는
+   본문 첫 글자(`[대화 연결]`)뿐이었다. 그런데 본문은 정확히 위조 시도의 표적이라
+   (크리틱 C3에서 그 글자가 본문 안에 복원됐다) 둘이 서로를 약화시켰다. 신호는 본문이
+   아니라 **틀**에서 와야 한다 — 이 배지는 셸이 준 `origin`으로만 뜬다. */
+.msg.user.injected .msg-main{
+  border-left:2px solid color-mix(in oklab, var(--amber, #c9922e) 70%, transparent);
+  padding-left:9px;
+}
+.msg-origin{
+  display:inline-block; margin-bottom:5px; padding:1px 7px; border-radius:999px;
+  font-size:10px; font-weight:700; letter-spacing:.1px;
+  color:var(--amber, #c9922e);
+  background:color-mix(in oklab, var(--amber, #c9922e) 14%, transparent);
+  border:1px solid color-mix(in oklab, var(--amber, #c9922e) 34%, transparent);
+}
+
 /* ---- sidebar — 재질이 은은히 비치는 면 (배경 없음 = body의 --panel 틴트) ---- */
 .sidebar{
   width:var(--lcol-w, 242px); flex:0 0 auto;

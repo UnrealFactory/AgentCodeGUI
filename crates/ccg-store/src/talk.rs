@@ -84,6 +84,14 @@ pub fn config() -> Value {
         // 둘 다 `enabled:false`로 보이지만 사용자에게 할 말이 정반대다: 정지 뒤에
         // 「설정에서 켜세요」라고 권하면 그건 정지가 아니다. 다시 켜면 사라진다.
         "stoppedAt": v.get("stoppedAt").and_then(Value::as_f64).map(Value::from).unwrap_or(Value::Null),
+        // ★R3 C1 — **봉투 턴 권한 하한.** `readonly`(기본) = 그 한 건만 계획 모드로
+        // 돈다 = 파일 수정·명령 실행의 수단이 아예 없다. `ask` = R2 동작(자동승인 3종만
+        // 승인 필수로 강등 — 사용자의 allowlist는 그대로 자동 실행된다).
+        // 모르는 값·손으로 고친 오타는 **안전한 쪽**으로 떨어진다.
+        "injectPolicy": if v.get("injectPolicy").and_then(Value::as_str) == Some("ask") { "ask" } else { "readonly" },
+        // ★R3 — 「켤 때 1회 확인 카드」를 본 적이 있나(고지의 영속). 카드 자체는 렌더러가
+        // 그리지만 **봤다는 사실**은 홈에 남아야 창을 옮겨도 다시 뜨지 않는다.
+        "noticeAckAt": v.get("noticeAckAt").and_then(Value::as_f64).map(Value::from).unwrap_or(Value::Null),
     })
 }
 
@@ -113,6 +121,21 @@ pub fn set_config(patch: &Value) -> Value {
     }
     if patch.get("clearBoards").and_then(Value::as_bool) == Some(true) {
         o.insert("boards".into(), json!({}));
+    }
+    // ★R3 C1 — 봉투 턴 하한. `readonly`/`ask` 둘뿐이고 그 외 값은 안 받는다
+    // (「오타 하나가 벽을 낮춘다」가 이 축에서 가장 싼 사고다).
+    if let Some(p) = patch.get("injectPolicy").and_then(Value::as_str) {
+        if p == "readonly" || p == "ask" {
+            o.insert("injectPolicy".into(), json!(p));
+        }
+    }
+    // ★R3 — 켤 때 1회 확인 카드를 읽고 눌렀다.
+    if patch.get("noticeAck").and_then(Value::as_bool) == Some(true) {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs_f64())
+            .unwrap_or(0.0);
+        o.insert("noticeAckAt".into(), json!(now));
     }
     for k in ["maxHops", "maxMsgs", "maxFanout"] {
         // 0은 받지 않는다 — "무제한"으로 읽힐 여지를 남기지 않기 위해서다.
@@ -251,6 +274,23 @@ mod m10_tests {
         let back = set_config(&json!({ "enabled": true }));
         assert_eq!(back["stoppedAt"], Value::Null);
         assert_eq!(back["boards"], json!({}), "전역만 켜면 아무 보드도 안 켜진 상태여야 한다");
+    }
+
+    /// ★R3 C1 — 봉투 턴 하한의 **기본값은 읽기 전용**이고, 손으로 고친 이상한 값은
+    /// 거기로 떨어진다. 그리고 켤 때의 1회 고지 표식은 껐다 켜도 남는다.
+    #[test]
+    fn the_injected_turn_floor_defaults_to_read_only_and_rejects_junk() {
+        let h = crate::testkit::temp_home("m10r3-policy");
+        assert_eq!(config()["injectPolicy"], json!("readonly"), "기본값이 읽기 전용이 아니다");
+        assert_eq!(config()["noticeAckAt"], Value::Null);
+        assert_eq!(set_config(&json!({ "injectPolicy": "ask" }))["injectPolicy"], json!("ask"));
+        // 오타·모르는 값은 **무시**된다(직전 값 유지). 파일을 직접 고쳐도 읽기 쪽에서 접는다.
+        assert_eq!(set_config(&json!({ "injectPolicy": "yolo" }))["injectPolicy"], json!("ask"));
+        h.write("talk-config.json", &json!({ "enabled": true, "injectPolicy": "off" }).to_string());
+        assert_eq!(config()["injectPolicy"], json!("readonly"), "손으로 고친 값이 하한을 낮췄다");
+        // 고지 표식은 한 번 서면 남는다 — 껐다 켜도 카드가 다시 뜨지 않게.
+        assert!(set_config(&json!({ "noticeAck": true }))["noticeAckAt"].as_f64().is_some());
+        assert!(set_config(&json!({ "enabled": false }))["noticeAckAt"].as_f64().is_some());
     }
 
     /// ★R2 C4 — 연쇄 회계는 디스크를 건너지만 **TTL이 지나면 안 안고 온다**.

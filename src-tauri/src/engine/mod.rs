@@ -131,6 +131,8 @@ fn reload_pending(ids: &[String]) {
                 // 않는다. 모르는 낱말은 `None`(사람)으로 떨어진다: 옛 파일과 2.6.2 문자열
                 // 배열이 그 경로이고, 둘 다 실제로 사람의 예약이다.
                 origin: origin_of(q.origin.as_deref()),
+                // 재장전은 정체성을 **다시 잡는다**(picker: None)라 게이트가 무의미하다.
+                require_picker: false,
             })
             .collect();
         let hold = lite.hold.map(|h| ccg_engine::runtime::ReloadHold {
@@ -495,6 +497,9 @@ fn queue_input(a: &Value) -> ccg_engine::queue::QueueInput {
         // ★M10 — 이 문은 **렌더러의 예약**이다(사람). 세션 간 주입은 채널을 타지 않고
         // 허브 안에서 `talk::Router::queue_input`으로 만들어진다.
         origin: None,
+        // 사람의 예약은 R4 폴백 그대로다 — 정체성 한 축이 어긋나도 예약이 사라지는 것보다
+        // 낫다. fail-closed는 **봉투 턴에만** 건다(M10 R3 D4).
+        require_picker: false,
     }
 }
 

@@ -9,6 +9,9 @@
  *
  *  1. **정지는 언제나 한 번의 동작이어야 한다.** 설정 모달을 열어야 누를 수 있으면
  *     그건 긴급 정지가 아니다 — 그래서 전역 알약 + 전역 단축키(Ctrl+Shift+.)를 둘 다 둔다.
+ *     ★R3 C4 — 「전역」이 R2에서는 **메인 창 하나**였다(크리틱 D6: 추가 창·팝아웃에는
+ *     알약도 단축키도 상태 구독도 없었는데 설정은 "어느 화면에서든"이라고 적었다).
+ *     이제 그 셋은 `components/TalkStop.tsx` 한 덩어리를 세 뿌리가 함께 건다.
  *  2. **켜져 있을 때만 보인다.** 기본값이 꺼짐인 기능의 정지 버튼을 상시 띄우면
  *     화면만 시끄럽고 "이게 뭐지"가 늘어난다. 꺼져 있으면 위험이 0이므로 자리도 0이다.
  *  3. **상태의 주인은 셸이다.** 여기서 낙관적으로 그리지 않는다 — 정지를 눌렀는데
@@ -26,7 +29,18 @@ const STOP = 'crosstalk:stop'
 const STATE = 'crosstalk:state'
 
 /** 꺼짐 — 채널이 없는 구 빌드에서도 화면이 이 값으로 조용히 산다. */
-export const TALK_OFF: TalkConfig = { version: 1, enabled: false, boards: {}, maxHops: 4, maxMsgs: 12, maxFanout: 3, stoppedAt: null }
+export const TALK_OFF: TalkConfig = {
+  version: 1,
+  enabled: false,
+  boards: {},
+  maxHops: 4,
+  maxMsgs: 12,
+  maxFanout: 3,
+  stoppedAt: null,
+  // ★R3 C1 — 채널이 없는 구 빌드로 떨어져도 **가장 좁은 값**을 그린다.
+  injectPolicy: 'readonly',
+  noticeAckAt: null
+}
 
 function asConfig(v: unknown): TalkConfig | null {
   const o = v as (Partial<TalkConfig> & { __unimplemented?: boolean }) | null
@@ -39,7 +53,12 @@ function asConfig(v: unknown): TalkConfig | null {
     maxMsgs: Number(o.maxMsgs) || TALK_OFF.maxMsgs,
     maxFanout: Number(o.maxFanout) || TALK_OFF.maxFanout,
     stoppedAt: typeof o.stoppedAt === 'number' ? o.stoppedAt : null,
-    purged: typeof o.purged === 'number' ? o.purged : undefined
+    // 모르는 값은 **안전한 쪽**으로 떨어진다(셸도 같은 규약이다 — ccg-store/talk.rs).
+    injectPolicy: o.injectPolicy === 'ask' ? 'ask' : 'readonly',
+    noticeAckAt: typeof o.noticeAckAt === 'number' ? o.noticeAckAt : null,
+    purged: typeof o.purged === 'number' ? o.purged : undefined,
+    interrupted: typeof o.interrupted === 'number' ? o.interrupted : undefined,
+    unstoppable: typeof o.unstoppable === 'number' ? o.unstoppable : undefined
   }
 }
 
@@ -57,10 +76,17 @@ export const setTalkConfig = (patch: Record<string, unknown>): Promise<TalkConfi
 export const setTalkBoard = (board: string, on: boolean): Promise<TalkConfig | null> => call(SET, [{ board, on }])
 
 /**
- * 긴급 정지 — 도는 연쇄 + **이미 큐에 선 봉투**까지 버리고, 보드 옵트인을 전부 걷는다.
- * 돌려주는 `purged`가 실제로 뽑아낸 봉투 수다(0이어도 성공이다).
+ * 긴급 정지 — 도는 연쇄 + **이미 큐에 선 봉투**를 버리고, **이미 CLI에 들어가 도는
+ * 봉투 턴**에 중단을 보내고, 보드 옵트인을 전부 걷는다.
+ *
+ * 응답의 숫자 셋이 「무엇이 실제로 멎었나」다: `purged`(큐에서 뽑음) ·
+ * `interrupted`(도는 턴에 중단 보냄) · `unstoppable`(못 세움). 화면은 이 셋으로만
+ * 말한다 — R2는 `purged`만 보고 「정지했어요」라고 했고, 그때 도는 턴은 끝까지 갔다.
  */
 export const stopTalk = (): Promise<TalkConfig | null> => call(STOP, [])
+
+/** ★R3 — 「켤 때 1회 고지 카드」를 읽고 눌렀다. 표식은 홈에 남아 창을 옮겨도 안 뜬다. */
+export const ackTalkNotice = (): Promise<TalkConfig | null> => call(SET, [{ noticeAck: true }])
 
 /**
  * 설정 전문 구독 + 첫 그림 따라잡기.

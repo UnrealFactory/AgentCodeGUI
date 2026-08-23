@@ -1177,6 +1177,19 @@ impl<D: CliDriver> ChatRuntime<D> {
     fn accept_user_message(&mut self, input: QueueInput, verdict: Verdict, now: Millis) -> Verdict {
         // ★M10 — 넣은 자가 사람이 아닐 수 있다(대화 연결: 다른 채팅의 세션).
         let origin = input.origin.unwrap_or(QueueOrigin::User);
+        // ★M10 R3 — **하한을 못 걸면 안 넣는다**(fail-closed · 크리틱 D4).
+        // `make_queue_item`의 폴백은 "정체성 오류로 예약이 사라지는 것보다 보던 대로가
+        // 낫다"인데, 봉투 턴의 picker는 *보던 대로*가 아니라 **권한 하한**이다.
+        if input.require_picker
+            && matches!(verdict, Verdict::Accepted | Verdict::Queued)
+            && input
+                .picker
+                .as_ref()
+                .filter(|p| !p.is_empty())
+                .is_some_and(|p| RunIdentity::normalize(self.identity_raw.patched(p), &self.defaults).is_err())
+        {
+            return Verdict::Rejected("picker_unavailable");
+        }
         // 사용자가 직접 말을 걸었다 = 엔진의 헛 재개 연쇄는 여기서 끊긴다(★R5).
         // **사람만** 끊는다: AI가 보낸 줄이 사람의 개입을 사칭하면 헛 재개 상한이
         // 세션 사이의 왕복만으로 무한정 초기화된다.
@@ -3740,6 +3753,7 @@ mod r4_queue_and_resume_tests {
             images: vec![r"C:\shot\a.png".into(), r"C:\shot\b.png".into()],
             picker: Some(pick),
             origin: None,
+            require_picker: false,
         }));
         assert_eq!(v, Verdict::Queued);
 
@@ -3761,6 +3775,7 @@ mod r4_queue_and_resume_tests {
             images: vec![r"C:\shot\a.png".into()],
             picker: None,
             origin: None,
+            require_picker: false,
         }));
         // Idle에서의 enqueue는 곧장 나간다(명령표 `enqueue`/Idle = Accept T27).
         let sent = r.sent_user_texts().join("\n");

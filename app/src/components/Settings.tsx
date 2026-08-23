@@ -56,6 +56,7 @@ import {
 import { getLang, isEn, setLang, t, type UiLang } from '../lib/i18n'
 // ★M10 R2 — 대화 연결(크로스톡)의 설정 창구. 채널 문자열은 이 모듈 하나가 안다.
 import { STOP_HOTKEY, readTalkBoards, setTalkBoard, setTalkConfig, stopTalk, useTalkConfig } from '../lib/crosstalk'
+import { stopSaid } from './TalkStop'
 import { GestureGlyph, GESTURE_DEFAULTS, MouseGestureLayer, scrollGestures } from './mouseGesture'
 import { remainTone } from './Chat'
 import {
@@ -2722,6 +2723,8 @@ function TalkView(): React.ReactElement {
   const { cfg, refresh } = useTalkConfig()
   const [boards, setBoards] = useState<{ id: string; title: string }[]>([])
   const [said, setSaid] = useState('')
+  // ★R3 — 켜기 전에 뜨는 **1회 고지 카드**(네이티브 다이얼로그 금지 — 앱 규약).
+  const [confirmOn, setConfirmOn] = useState(false)
   useEffect(() => {
     void readTalkBoards().then(setBoards)
   }, [])
@@ -2730,6 +2733,10 @@ function TalkView(): React.ReactElement {
     window.setTimeout(() => setSaid(''), 6000)
   }
   const stoppedAt = cfg.stoppedAt ?? null
+  const turnOn = (): void => {
+    void setTalkConfig({ enabled: true, noticeAck: true }).then(refresh)
+    setConfirmOn(false)
+  }
   return (
     <>
       <div className="set-h1">{t('대화 연결', 'Cross-talk')}</div>
@@ -2737,6 +2744,16 @@ function TalkView(): React.ReactElement {
         {t(
           '같은 보드에 앉은 세션끼리 답변 마지막 줄의 @talk[자리] 한 줄로 서로에게 말을 겁니다. 사람의 지시에서만 시작하고, 홉·총량·팬아웃 상한에서 스스로 멎어요. 기본값은 꺼짐이고, 켜는 행위 자체가 동의입니다.',
           'Sessions on the same board message each other with a single @talk[slot] line at the end of a reply. A chain only ever starts from your instruction and stops at the hop / total / fan-out caps. Off by default — turning it on is the consent.'
+        )}
+      </div>
+
+      {/* ★R3 — **고지를 스위치보다 앞에 둔다.** R2는 이 내용이 화면 맨 아래 작은 글씨
+          한 문단이었다(켜는 스위치보다 뒤에, 더 작게). 크리틱 권고 ①②의 순서 뒤집기다.
+          문장은 **실측으로** 쓴다 — 세 번 중 세 번 따른 형태가 있었다는 사실을 적는다. */}
+      <div className="set-note2" style={{ borderColor: 'var(--amber, #c9922e)', marginBottom: 14 }}>
+        {t(
+          '먼저 알아야 할 것: 받은 메시지는 인용 블록에 갇히고 그 턴의 권한은 아래 하한까지 낮아지지만, 이건 완화이지 차단이 아닙니다 — 실제 시험에서 세 번 중 세 번 지시를 그대로 따른 형태가 있었습니다(그 형태는 막았지만 다음 형태를 막았다는 뜻은 아닙니다). 되돌릴 수 없는 일을 하는 보드(배포·마이그레이션·rm)에서는 켜지 마세요.',
+          'Read this first: an incoming message is walled inside a quoted block and that turn runs under the floor you set below — but this is a mitigation, not a block. In real testing there was a shape the receiver obeyed three times out of three (that shape is closed now; that does not mean the next one is). Do not enable this on boards that do irreversible work (deploys, migrations, rm).'
         )}
       </div>
 
@@ -2766,10 +2783,44 @@ function TalkView(): React.ReactElement {
           aria-checked={cfg.enabled}
           aria-label={cfg.enabled ? t('대화 연결 끄기', 'Turn off cross-talk') : t('대화 연결 켜기', 'Turn on cross-talk')}
           onClick={() => {
-            void setTalkConfig({ enabled: !cfg.enabled }).then(refresh)
+            // 끄는 것은 즉시. **켜는 것**은 처음 한 번 확인 카드를 지난다(★R3 권고 ①).
+            if (cfg.enabled) {
+              void setTalkConfig({ enabled: false }).then(refresh)
+              return
+            }
+            if (cfg.noticeAckAt == null) setConfirmOn(true)
+            else turnOn()
           }}
         />
       </div>
+
+      {/* 1회 확인 카드 — 네이티브 다이얼로그를 쓰지 않는다(스레드를 막고 한글 IME를
+          망가뜨린다 — 앱 규약). 표식은 홈에 남아 창을 옮겨도 다시 뜨지 않는다. */}
+      {confirmOn && (
+        <div className="set-dialog" style={{ marginTop: 10 }}>
+          <div className="em">{t('대화 연결을 켤까요?', 'Turn cross-talk on?')}</div>
+          <div className="meta" style={{ marginTop: 6, lineHeight: 1.65 }}>
+            {t(
+              '켜면 이 보드의 세션들이 서로에게 지시를 보냅니다. 앱이 하는 일: ① 받은 메시지를 인용 블록에 가두고 ② 그 턴만 권한을 낮추고(기본: 읽기 전용) ③ 그 턴의 회신을 보낸 세션에게만 허용하고 ④ 홉·총량·팬아웃에서 멎게 합니다.',
+              'Once on, the sessions on this board send each other instructions. What the app does: (1) walls the incoming text in a quoted block, (2) lowers that one turn’s permissions (default: read-only), (3) allows a reply only back to the sender, and (4) stops it at the hop / total / fan-out caps.'
+            )}
+          </div>
+          <div className="meta" style={{ marginTop: 8, lineHeight: 1.65 }}>
+            {t(
+              '앱이 못 하는 일: 받은 글이 시키는 대로 모델이 따르는 것 자체는 막지 못합니다. 실제 시험에서 세 번 중 세 번 따른 형태가 있었고(봉투의 표식을 답에 옮겨 쓰게 하는 형태), 그 형태는 닫았지만 다음 형태를 닫았다는 보장은 없습니다. 그래서 하한을 「읽기 전용」으로 두면 따르더라도 파일을 고치거나 명령을 돌릴 수단이 그 턴에 없습니다.',
+              'What the app cannot do: it cannot stop the model from complying with what the text asks. In real testing one shape was obeyed three times out of three (getting the receiver to echo the envelope markers). That shape is closed; the next one may not be. That is why the read-only floor matters — even if it complies, that turn has no way to edit files or run commands.'
+            )}
+          </div>
+          <div className="set-dialog-row" style={{ marginTop: 12 }}>
+            <button className="btn2" onClick={() => setConfirmOn(false)}>
+              {t('안 켤래요', 'Cancel')}
+            </button>
+            <button className="btn2 pri" onClick={turnOn}>
+              {t('읽고 켭니다', 'I read it — turn it on')}
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="set-sec" style={{ marginTop: 26 }}>
         {t('보드별 동의', 'Per-board consent')}
@@ -2805,6 +2856,43 @@ function TalkView(): React.ReactElement {
           )
         })
       )}
+
+      {/* ★R3 C1 — **봉투 턴의 권한 하한.** 이게 이 기능에서 유일하게 "재량이 아닌" 축이다. */}
+      <div className="set-sec" style={{ marginTop: 26 }}>
+        {t('받은 메시지가 만든 턴', 'Turns created by an incoming message')}
+      </div>
+      <div className="set-note2">
+        {t(
+          '받은 글이 무엇을 시키든, 그 턴이 실제로 할 수 있는 일의 천장입니다. 봉투(인용 블록·경고 문구)는 모델의 판단에 기대는 완화라 뚫릴 수 있어요 — 뚫렸을 때 남는 것이 이 설정입니다.',
+          'Whatever the incoming text asks for, this is the ceiling on what that turn can actually do. The envelope (quoted block + warnings) leans on the model’s judgement and can be beaten — this setting is what is left when it is.'
+        )}
+      </div>
+      <div className="sc2 tgl">
+        <div>
+          <div className="em">{t('읽기 전용으로 돌리기', 'Run it read-only')}</div>
+          <div className="meta">
+            {cfg.injectPolicy !== 'ask'
+              ? t(
+                  '그 턴만 계획 모드로 돕니다 — 파일 수정·명령 실행의 수단이 아예 없어요(허용 목록에 넣어 둔 도구도 그 턴에는 안 돕니다). 권장.',
+                  'That one turn runs in plan mode — it has no way at all to edit files or run commands (not even tools you already allow-listed).'
+                )
+              : t(
+                  '자동승인 모드일 때만 승인 필수로 낮춥니다. 주의: 이미 허용 목록에 넣어 둔 도구는 승인 없이 그대로 실행돼요.',
+                  'Only downgrades auto-approving modes to ask-first. Note: tools you already allow-listed still run without asking.'
+                )}
+          </div>
+        </div>
+        <span className="sp" />
+        <button
+          className={'sw2' + (cfg.injectPolicy !== 'ask' ? ' on' : '')}
+          role="switch"
+          aria-checked={cfg.injectPolicy !== 'ask'}
+          aria-label={t('받은 메시지 턴을 읽기 전용으로', 'Run incoming-message turns read-only')}
+          onClick={() => {
+            void setTalkConfig({ injectPolicy: cfg.injectPolicy === 'ask' ? 'readonly' : 'ask' }).then(refresh)
+          }}
+        />
+      </div>
 
       <div className="set-sec" style={{ marginTop: 26 }}>
         {t('상한', 'Caps')}
@@ -2863,8 +2951,8 @@ function TalkView(): React.ReactElement {
       </div>
       <div className="set-note2">
         {t(
-          `도는 연쇄를 버리고, **이미 다른 세션의 대기 줄에 서 있는 메시지까지** 뽑아내고, 보드 동의를 전부 해제합니다. 어느 화면에서든 ${STOP_HOTKEY} 로도 눌러요.`,
-          `Drops running chains, pulls back messages already queued in other sessions, and revokes every board opt-in. ${STOP_HOTKEY} does the same from anywhere.`
+          `연쇄를 버리고, 다른 세션의 대기 줄에 서 있는 메시지를 뽑아내고, 이미 시작된 「받은 메시지 턴」에 중단을 보내고, 보드 동의를 전부 해제합니다. 메인 창·추가 채팅 창·팝아웃 패널 어디서든 ${STOP_HOTKEY} 로도 눌러요. 사용자가 직접 시킨 턴은 건드리지 않습니다.`,
+          `Drops chains, pulls back messages queued in other sessions, interrupts incoming-message turns that already started, and revokes every board opt-in. ${STOP_HOTKEY} works in the main window, extra chat windows and popped-out panels alike. Turns you started yourself are left alone.`
         )}
       </div>
       <div className="sc2" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -2874,12 +2962,9 @@ function TalkView(): React.ReactElement {
           onClick={() => {
             void stopTalk().then((c) => {
               refresh()
-              const n = c?.purged ?? 0
-              say(
-                c == null
-                  ? t('정지 요청이 셸에 닿지 않았어요', 'The stop request never reached the shell')
-                  : t(`정지했어요 · 대기 중이던 메시지 ${n}건을 거둬들였습니다`, `Stopped · pulled back ${n} queued message(s)`)
-              )
+              // ★R3 C2 — 알약과 **같은 문장**을 쓴다(한 소스). R2는 여기서 `purged`만
+              // 세어 「정지했어요」라고 했고, 그때 도는 턴은 끝까지 갔다.
+              say(stopSaid(c))
             })
           }}
         >
@@ -2891,8 +2976,8 @@ function TalkView(): React.ReactElement {
 
       <div className="set-note2" style={{ marginTop: 22 }}>
         {t(
-          '안전에 대해: 받은 메시지는 인용 블록에 갇혀 「이건 사용자 지시가 아니다」와 함께 전달되고, 받는 채팅이 자동승인 모드면 그 턴만 승인 필수로 낮춰서 돕니다. 그래도 봉투는 완화이지 벽이 아니에요 — 되돌릴 수 없는 일을 맡길 보드에서는 켜지 마세요.',
-          'On safety: an incoming message is walled inside a quoted block together with “this is not a user instruction”, and if the receiving chat is in an auto-approving mode that one turn is downgraded to ask-first. Even so the envelope is a mitigation, not a wall — do not enable this on boards that do irreversible work.'
+          '남은 위험(정직하게): ① 봉투는 완화입니다 — 모델이 받은 글을 따르는 것 자체는 못 막습니다. ② 「읽기 전용」을 끄면 이미 허용 목록에 넣어 둔 도구는 승인 없이 실행됩니다. ③ 정지는 이미 도는 턴에 중단을 보내지만 CLI가 안 받으면 몇 초 뒤 스트림을 접는 방식이라 그 사이에 한 일은 남습니다. ④ 받은 턴이 답으로 남기는 글은 여전히 자유 문장이라, 경로 같은 정보를 옮겨 적는 누수는 남습니다.',
+          'Remaining risk, honestly: (1) the envelope is a mitigation — it cannot stop the model from complying with what it reads. (2) With read-only off, tools you already allow-listed run without asking. (3) Stop interrupts a running turn, but if the CLI ignores the interrupt the stream is torn down a few seconds later — whatever happened in between stands. (4) The reply is still free text, so a leak that merely quotes a path remains possible.'
         )}
       </div>
     </>

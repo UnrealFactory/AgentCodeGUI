@@ -205,6 +205,10 @@ struct Slot {
     /// 따로 오고 `Event::RunState`는 그 뒤에 온다 — 계약면(§5.6)의 `settled[]`를
     /// 채우려면 사이에 모아 둬야 한다. R1은 이 배열이 **항상 비어 있었다**.
     pending_settled: Vec<Value>,
+    /// ★M10 R3 C2 — **지금 도는 턴이 봉투 턴인가.** `user-echo{origin:talk}`가 나가는
+    /// 순간(= 봉투가 실제로 CLI에 들어간 순간) 서고, 그 턴이 정착하면 내려간다.
+    /// 긴급 정지가 「큐 한 칸 안쪽」까지 닿으려면 이 표식이 있어야 한다.
+    talk_run: bool,
 }
 
 struct Hub {
@@ -231,26 +235,14 @@ struct Hub {
     /// ★M10 — **대화 연결 라우터**. 허브가 소유하는 이유는 하나다: 발신자의 턴이
     /// 정착하는 순간 **수신자의 런타임**을 만져야 하는데, 두 채팅을 동시에 볼 수 있는
     /// 자리가 여기뿐이다(런타임은 `!Send`라 다른 스레드에서 못 만진다).
+    /// ★R3 D2 — **아직 배달 안 된 봉투의 발신자 장부는 이제 라우터가 들고 디스크를
+    /// 건넌다**(`talk::Pending`). R2는 이 자리에 인메모리 `Vec`이 있었고, 그래서
+    /// 재시작을 건넌 봉투는 **100% 발신자 미상**이었다(예외가 아니라 기본값이었다).
     talk: talk::Router,
-    /// ★M10 R2 C3 — **아직 배달 안 된 봉투**의 발신자 장부.
-    ///
-    /// 긴급 정지가 수신자 큐에서 봉투를 뽑아낼 때, "누구에게 알려야 하나"의 답이 큐
-    /// 항목에는 없다(본문과 원본 표식뿐이다). 그래서 `queued` 판정이 난 순간 여기에
-    /// 한 줄 적고, 그 봉투가 실제로 CLI에 들어갈 때(`user-echo{origin:talk}`) 지운다.
-    /// 남아 있는 줄 = 아직 안 나간 봉투 = 정지가 거둬들일 대상이다.
-    talk_pending: Vec<TalkPending>,
     /// ★M11 — 한도 소진 시 갈아탈 계정을 고르는 훅(설정 옵션, 기본 꺼짐).
     /// **모든 슬롯이 같은 인스턴스를 공유한다**: 후보 판정의 "지금 태우고 있는 계정"은
     /// 채팅 하나가 아니라 앱 전체의 사실이고, usage 스냅샷·HTTP 예산도 앱당 하나다.
     switcher: Arc<super::acct_switch::Switcher>,
-}
-
-/// 큐에 서 있는 봉투 한 건의 **발신자 쪽 주소**(★M10 R2 C3).
-struct TalkPending {
-    to: String,
-    from: String,
-    to_name: String,
-    body: String,
 }
 
 #[derive(Default)]
@@ -338,6 +330,7 @@ impl Hub {
                     engine_run: None,
                     expect_runs: 0,
                     pending_settled: vec![],
+                    talk_run: false,
                 },
             );
         }
@@ -561,13 +554,22 @@ impl Hub {
             // `origin==Talk` 항목을 뽑는다. 채널을 새로 만들지 않는다 —
             // `QueueOp::Remove`가 이미 그 일을 하고, 그 길로 가야 `chat:queue` REPLACE와
             // 디스크 영속(`persist_queue`)이 공짜로 따라온다.
+            //
+            // ★R3 C2 — 그리고 **큐 한 칸 안쪽**까지 간다. R2는 이미 CLI에 들어가 도는
+            // 봉투 턴을 못 멈추면서 알약은 「정지했어요」라고만 말했다(크리틱 D3 —
+            // `purged:0` · 그 턴은 끝까지 돌아 `DONE-AFTER-STOP`을 냈다). 이제 셋을
+            // 세어 돌려준다: 큐에서 뽑은 수 · **중단을 보낸 도는 봉투 턴 수** ·
+            // 못 세운 수. 알약은 이 숫자로만 말한다(못 멈춘 것을 안 멈췄다고 말한다).
             Op::TalkStop => {
                 let cfg = self.talk.stop();
                 let purged = self.purge_talk_queues();
+                let (interrupted, unstoppable) = self.interrupt_talk_turns();
                 self.emit_all(crate::ipc::ch::CROSSTALK_STATE, cfg.clone());
                 let mut out = cfg;
                 if let Some(o) = out.as_object_mut() {
                     o.insert("purged".into(), json!(purged));
+                    o.insert("interrupted".into(), json!(interrupted));
+                    o.insert("unstoppable".into(), json!(unstoppable));
                 }
                 answer(out);
                 return;
@@ -1032,6 +1034,9 @@ impl Hub {
                         TerminalStatus::Aborted => lite::Terminal::Aborted,
                         TerminalStatus::Error => lite::Terminal::Error,
                     };
+                    // ★R3 C2 — 봉투 턴이 끝났다. 표를 내려야 다음 정지가 사람의 턴을
+                    // 「도는 봉투 턴」으로 오인하지 않는다.
+                    slot.talk_run = false;
                 }
                 self.fanout(chat, json!({ "type": "status", "runId": run, "status": s }));
                 // ★M10 — **턴 정착 훅**. 완주한 턴만 세션 간 발신의 출발점이다:
@@ -1151,10 +1156,13 @@ impl Hub {
         };
         self.fanout(chat, first);
         if let Some(e) = echo {
-            // 이 봉투가 실제로 CLI에 들어갔다 = 긴급 정지가 더는 못 거둔다(C3 장부 소비).
+            // 이 봉투가 실제로 CLI에 들어갔다 = 긴급 정지가 **큐에서는** 더는 못 거둔다
+            // (C3 장부 소비). 대신 표를 「도는 턴」으로 옮긴다 — ★R3 C2의 정지는 그
+            // 한 칸 안쪽까지 닿는다(`interrupt_talk_turns`).
             if e.origin == ccg_engine::queue::QueueOrigin::Talk {
-                if let Some(i) = self.talk_pending.iter().position(|p| p.to == chat) {
-                    self.talk_pending.remove(i);
+                self.talk.take_pending(chat);
+                if let Some(s) = self.slots.get_mut(chat) {
+                    s.talk_run = true;
                 }
             }
             let run = self.slots.get(chat).map(|s| s.wire.run_id.clone()).unwrap_or_default();
@@ -1180,13 +1188,15 @@ impl Hub {
     /// **거절도 반드시 말한다**(D7). 조용히 안 나가면 사용자는 두 세션이 왜 안 붙는지
     /// 알 길이 없고, 모델은 같은 줄을 다음 턴에 또 쓴다.
     fn talk_settle(&mut self, chat: &str, run: &str) {
+        let policy = talk::Router::policy();
         for act in self.talk.settle(chat, run) {
             match act {
                 talk::Action::Refused(notice) => self.fanout(chat, notice),
-                talk::Action::Send(plan) => {
-                    // ★R2 C1 — 수신 채팅이 **자동승인 모드면 이 턴만 승인 필수로 강등**한다.
-                    // 봉투는 모델 재량에 기대는 층이고 재량은 실 CLI 1회에 졌다(크리틱 A8);
-                    // 그 뒤에 남는 벽은 권한뿐인데 R1에는 이 상호작용이 설계에 없었다.
+                talk::Action::Send(mut plan) => {
+                    // ★R2 C1 / ★R3 C1 — 수신 채팅의 모드가 무엇이든 이 **한 건**에
+                    // 권한 하한을 건다. 기본(`ReadOnly`)은 계획 모드까지 낮춘다:
+                    // 봉투가 무엇을 요구하고 모델이 따르기로 하더라도 그 턴에는
+                    // 되돌릴 수 없는 일을 할 **수단이 없다**(allowlist도 무력하다).
                     let mode = self.slots.get(&plan.to).map(|s| s.rt.identity().mode());
                     let mode = match mode {
                         Some(m) => m,
@@ -1194,8 +1204,10 @@ impl Hub {
                         // (읽기 실패는 `Bypass`로 친다: 모르면 **강등하는** 쪽으로 틀린다.)
                         None => ident::raw_from_disk(&plan.to).map(|r| r.mode).unwrap_or(ccg_engine::identity::ModeId::Bypass),
                     };
-                    let guard = talk::downgrade_patch(mode).map(|_| "mode_downgraded");
-                    let input = talk::Router::queue_input(&plan, mode);
+                    // 봉투 문면과 발신자 통지가 **같은 값**을 말하게(크리틱 D4의 모호함).
+                    plan.turn_mode = talk::turn_mode_for(mode, policy);
+                    let guard = talk::guard_word(mode, policy);
+                    let input = talk::Router::queue_input(&plan, mode, policy);
                     let v = match self.ensure(&plan.to) {
                         Some(s) => s.rt.dispatch(Cmd::Enqueue(input)),
                         // `ensure`가 실패했다 = 수신자의 폴더·계정이 깨졌다. 그쪽 화면에는
@@ -1203,12 +1215,15 @@ impl Hub {
                         None => Verdict::Rejected("target_unavailable"),
                     };
                     // 큐에 **섰다** = 아직 안 나갔다 = 긴급 정지가 거둬들일 수 있다(C3).
+                    // ★R3 D2 — 장부는 라우터가 들고 디스크를 건넌다.
                     if v == Verdict::Queued {
-                        self.talk_pending.push(TalkPending {
+                        self.talk.note_pending(talk::Pending {
                             to: plan.to.clone(),
                             from: plan.from.clone(),
                             to_name: plan.to_name.clone(),
+                            from_name: plan.from_name.clone(),
                             body: plan.body.clone(),
+                            env_id: plan.env_id.clone(),
                         });
                     }
                     self.fanout(chat, talk::sent_notice(run, &plan, &v, guard));
@@ -1227,34 +1242,34 @@ impl Hub {
         let chats: Vec<String> = self.slots.keys().cloned().collect();
         let mut purged = 0usize;
         for id in chats {
-            let victims: Vec<String> = self
+            // ★R3 D2 — id뿐 아니라 **본문까지** 들고 나온다. 장부가 비어 있어도
+            // "무엇이 거둬들여졌나"를 말할 수 있어야 한다(R2는 `body:null`이었다).
+            let victims: Vec<(String, Option<String>)> = self
                 .slots
                 .get(&id)
                 .map(|s| {
                     s.rt.queue_items()
                         .filter(|m| m.origin == ccg_engine::queue::QueueOrigin::Talk)
-                        .map(|m| m.id.clone())
+                        .map(|m| (m.id.clone(), talk::body_from_envelope(&m.text)))
                         .collect()
                 })
                 .unwrap_or_default();
             let mut here = 0usize;
-            for qid in victims {
+            for (qid, body) in victims {
                 let Some(s) = self.slots.get_mut(&id) else { continue };
                 if s.rt.dispatch(Cmd::QueueMutate(QueueOp::Remove { id: qid })) != Verdict::Accepted {
                     continue;
                 }
                 here += 1;
                 // 이 봉투의 발신자를 장부에서 꺼내 그쪽 스레드에 앉힌다.
-                match self.talk_pending.iter().position(|p| p.to == id) {
-                    Some(i) => {
-                        let p = self.talk_pending.remove(i);
+                match self.talk.take_pending(&id) {
+                    Some(p) => {
                         let n = talk::stopped_notice(&p.from, &p.to, &p.to_name, Some(&p.body));
                         self.fanout(&p.from, n);
                     }
-                    // 장부에 없다(재시작을 건넌 봉투 등) — 그래도 침묵하지 않는다.
-                    // 발신자를 모르므로 **수신자** 스레드에 남긴다.
+                    // 장부에도 없다 — 그래도 침묵하지 않고, **모른다고 말한다**(D2).
                     None => {
-                        let n = talk::stopped_notice(&id, &id, &id, None);
+                        let n = talk::orphan_stopped_notice(&id, body.as_deref());
                         self.fanout(&id, n);
                     }
                 }
@@ -1267,8 +1282,37 @@ impl Hub {
             }
         }
         // 남은 장부는 의미가 없다 — 정지는 도는 것 전부를 버리는 연산이다.
-        self.talk_pending.clear();
+        self.talk.clear_pending();
         purged
+    }
+
+    /// ★R3 C2 — **이미 CLI에 들어가 도는 봉투 턴**에 중단을 보낸다. 반환은 `(보낸 수, 못 세운 수)`.
+    ///
+    /// R2의 정지는 큐까지 닿았지만 **한 칸 안쪽**을 못 봤다: 봉투가 이미 CLI에 들어가
+    /// 도는 중이면 그 턴은 끝까지 갔고(크리틱 D3 — `DONE-AFTER-STOP`이 실제로 나왔다),
+    /// `purged:0`이라 알약은 「정지했어요」라고만 말했다. 긴급 정지를 누르는 순간은 대체로
+    /// *지금 뭔가 이상하게 돌고 있다*이고, **그때 도는 것이 바로 그 턴**이다.
+    ///
+    /// 사람의 턴은 건드리지 않는다. 정지의 대상은 "앱이 넣은 턴"이지 "사용자가 시킨 일"이
+    /// 아니다 — 그래서 `talk_run`(봉투가 실제로 CLI에 들어간 슬롯)만 고른다.
+    fn interrupt_talk_turns(&mut self) -> (usize, usize) {
+        let chats: Vec<String> = self.slots.keys().cloned().collect();
+        let (mut hit, mut miss) = (0usize, 0usize);
+        for id in chats {
+            let Some(s) = self.slots.get_mut(&id) else { continue };
+            if !s.talk_run || !s.rt.busy() {
+                continue;
+            }
+            // 소프트 중단 규약 그대로(`resident-cli-interrupt-wedge`): 상태기계가
+            // `control_request{interrupt}`를 보내고, CLI가 안 받으면 6초 뒤 스트림을 접는다.
+            if s.rt.dispatch(Cmd::Interrupt) == Verdict::Accepted {
+                s.talk_run = false;
+                hit += 1;
+            } else {
+                miss += 1;
+            }
+        }
+        (hit, miss)
     }
 
     /// 큐·대기표를 **채팅 파일의 Rust 소유 필드**로 내린다(★R4).
@@ -1544,7 +1588,6 @@ pub fn start(app: AppHandle) {
                 // 재시작이 곧 예산 리셋이면 상한은 재부팅 한 번으로 우회된다(크리틱 C4).
                 // 레이트·중복 창은 안 안고 온다 — 그쪽은 초 단위 방어라 재부팅이 더 느리다.
                 talk: talk::Router::restored(),
-                talk_pending: vec![],
                 // ★M11 — 워커 스레드 하나를 여기서 띄운다(앱당 1개). 설정이 꺼져 있으면
                 // 그 스레드는 영원히 `recv()`에서 잠들어 있다 = 비용 0.
                 switcher: super::acct_switch::Switcher::start(),

@@ -1,0 +1,84 @@
+{
+  "at": "2026-08-23T21:01:00.018Z",
+  "exe": "C:\\Code\\AgentCodeGUI\\target\\release\\agentcodegui.exe",
+  "steps": {
+    "policy": {
+      "readonly": {
+        "policy": "readonly",
+        "home": "C:\\Code\\AgentCodeGUI\\.poc-home-talk-policy-readonly-m10r3pol",
+        "idBefore": "bypass",
+        "sent": {
+          "text": "대화 연결 — 2번 자리 「구현」에 메시지를 보냈어요 · 홉 1/4 — 지금 그 세션의 턴이 시작됩니다 · 이 턴만 읽기 전용(계획 모드)으로 낮췄어요.",
+          "dir": "out",
+          "from": "c-a",
+          "to": "c-b",
+          "toSlot": 2,
+          "toName": "구현",
+          "body": "빌드가 깨졌어요. 확인 부탁합니다.",
+          "result": "delivered",
+          "hop": 1,
+          "maxHops": 4,
+          "chainId": "tk-1",
+          "spoof": false,
+          "guard": "read_only",
+          "turnMode": "plan"
+        },
+        "turnMode": "plan",
+        "guard": "read_only",
+        "idAfter": "bypass",
+        "bResults": [
+          {
+            "result": "reply_only",
+            "to": null,
+            "target": "3"
+          },
+          {
+            "result": "delivered",
+            "to": "c-a"
+          }
+        ],
+        "cGotEnvelope": false
+      },
+      "ask": {
+        "policy": "ask",
+        "home": "C:\\Code\\AgentCodeGUI\\.poc-home-talk-policy-ask-m10r3pol",
+        "idBefore": "bypass",
+        "sent": {
+          "text": "대화 연결 — 2번 자리 「구현」에 메시지를 보냈어요 · 홉 1/4 — 지금 그 세션의 턴이 시작됩니다 · 그 채팅이 자동승인 모드라 이 턴만 승인 필수로 낮췄어요.",
+          "dir": "out",
+          "from": "c-a",
+          "to": "c-b",
+          "toSlot": 2,
+          "toName": "구현",
+          "body": "빌드가 깨졌어요. 확인 부탁합니다.",
+          "result": "delivered",
+          "hop": 1,
+          "maxHops": 4,
+          "chainId": "tk-1",
+          "spoof": false,
+          "guard": "mode_downgraded",
+          "turnMode": "normal"
+        },
+        "turnMode": "normal",
+        "guard": "mode_downgraded",
+        "idAfter": "bypass",
+        "bResults": [
+          {
+            "result": "reply_only",
+            "to": null,
+            "target": "3"
+          },
+          {
+            "result": "delivered",
+            "to": "c-a"
+          }
+        ],
+        "cGotEnvelope": false
+      }
+    }
+  },
+  "findings": [],
+  "ms": 9181,
+  "skipped": [],
+  "verdict": "PASS"
+}
