@@ -29,6 +29,8 @@ struct AcctCli {
     /// 지금 막혀 있는 계정(슬러그). **주행 중 바뀐다** — 한도는 시간이 지나면 풀리고,
     /// "풀린 뒤 깨끗한 턴"이 에피소드를 닫는지가 재생 ⑤의 과녁이다.
     limited: Arc<Mutex<BTreeSet<String>>>,
+    /// ★R2 — `(계정 슬러그, 나간 프롬프트)`. 재생 ⑩이 읽는다.
+    sent_by: Arc<Mutex<Vec<(String, String)>>>,
     account: String,
 }
 
@@ -59,6 +61,12 @@ impl CliDriver for AcctCli {
         if line["type"] != "user" {
             return;
         }
+        // ★R2 — **어느 계정으로 무슨 말이 나갔나.** 재생 ⑩(떠난 계정으로 나가는 나팔)의
+        // 관측 축이다. `sent_user_texts()`는 계정을 모르므로 여기서 짝지어 적는다.
+        self.sent_by.lock().unwrap().push((
+            self.account.clone(),
+            line["message"]["content"][0]["text"].as_str().unwrap_or("").to_string(),
+        ));
         let blocked = self.limited.lock().unwrap().contains(&self.account);
         if std::env::var("M11_TRACE").is_ok() {
             println!("  >> send as {:?} limited={blocked}", self.account);
@@ -142,6 +150,7 @@ struct Fx {
     spawned: Arc<Mutex<Vec<String>>>,
     sw: Arc<ScriptedSwitcher>,
     limited: Arc<Mutex<BTreeSet<String>>>,
+    sent_by: Arc<Mutex<Vec<(String, String)>>>,
 }
 
 impl Fx {
@@ -169,9 +178,11 @@ fn fx(accounts: &[&str], limited: &[&str], sw: ScriptedSwitcher) -> Fx {
     let spawned: Arc<Mutex<Vec<String>>> = Default::default();
     let blocked: Arc<Mutex<BTreeSet<String>>> =
         Arc::new(Mutex::new(limited.iter().map(|a| a.replace('@', "_")).collect()));
+    let sent_by: Arc<Mutex<Vec<(String, String)>>> = Default::default();
     let cli = AcctCli {
         spawned_as: spawned.clone(),
         limited: blocked.clone(),
+        sent_by: sent_by.clone(),
         ..Default::default()
     };
     let defaults = IdentityDefaults {
@@ -182,7 +193,7 @@ fn fx(accounts: &[&str], limited: &[&str], sw: ScriptedSwitcher) -> Fx {
     let rt = ChatRuntime::new("c-1", raw(accounts[0]), defaults, clock.clone(), cli)
         .expect("정규화")
         .with_account_switcher(sw.clone());
-    Fx { rt, clock, spawned, sw, limited: blocked }
+    Fx { rt, clock, spawned, sw, limited: blocked, sent_by }
 }
 
 fn pump(f: &mut Fx, secs: u64) {
@@ -610,4 +621,248 @@ fn a_late_candidate_switches_on_a_later_tick_and_the_typed_message_is_the_resume
         !sent.iter().any(|t| t.contains("이어서 진행해 주세요")),
         "★ 나팔까지 넣으면 한 번의 전환에 두 턴이 나간다: {sent:?}"
     );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ★R2 — R1 크리틱이 뚫은 자리들의 재생. 세 판 전부 R1 코드에서 **red**다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// ⑩ **재개 나팔은 떠난 계정으로 나가지 않는다** — R1 크리틱 "뮤테이션 ①a"(회귀 그물의 구멍).
+///
+/// 규약: `try_auto_switch`는 **발사하지 않는다**(나팔을 큐 head에 두고 나가면 tick의 끝이
+/// 안전한 발사대다). 그 규약을 깨고 함수 끝에서 드레인하면, 이 함수가 `arm_hold` →
+/// `on_result` 한복판에서 불릴 때 **옛 계정의 CLI가 아직 살아 있다**.
+///
+/// 크리틱이 그 뮤테이션을 심었을 때 재생 10판이 전부 초록이었다. 축이 없었기 때문이다 —
+/// 스폰 목록(`spawned_as`)은 "누가 떴나"만 알지 "누구에게 말했나"는 모른다. 그래서 이
+/// 판은 **계정별로 나간 프롬프트**를 센다: 한도로 죽은 a@x에게 두 번째 말을 걸면 red다.
+#[test]
+fn the_resume_nudge_never_goes_to_the_account_we_just_left() {
+    let mut f = fx(&["a@x", "b@x"], &["a@x"], scripted(&[("a@x", "b@x", Some(1_755_150_000))]));
+    f.rt.dispatch(Cmd::Send { text: "첫 턴".into() });
+    pump(&mut f, 30);
+
+    let sent = f.sent_by.lock().unwrap().clone();
+    println!("[m11-⑩] 계정별 발화={sent:?}");
+    assert_eq!(account_of(&f.rt), "b@x");
+    let to_a: Vec<&String> = sent.iter().filter(|(acct, _)| acct == "a_x").map(|(_, t)| t).collect();
+    assert_eq!(to_a, vec!["첫 턴"], "★ 한도로 죽은 계정에는 첫 질문 말고 아무것도 안 나간다");
+    let to_b: Vec<&String> = sent.iter().filter(|(acct, _)| acct == "b_x").map(|(_, t)| t).collect();
+    assert_eq!(to_b, vec!["이어서 진행해 주세요"], "★ 재개는 새 계정에서 정확히 한 번");
+    assert_eq!(f.spawned.lock().unwrap().clone(), vec!["a_x", "b_x"]);
+
+    // ★ 그리고 **순서**가 규약이다: 전환 배너 → 옛 스트림 종료 → 새 스폰.
+    //
+    // 크리틱이 심은 뮤테이션(전환 함수 **끝**에서 드레인)이 지금은 무해한 이유는
+    // `drain_if_possible`이 `Idle|Resident`가 아니면 즉시 돌아가기 때문이다(턴이 아직
+    // 살아 있는 `on_result` 한복판에서는 그 문이 닫혀 있다). 그 문이 언젠가 느슨해지면
+    // 나팔이 **옛 계정 프로세스로** 나가는데, 그때 제일 먼저 깨지는 것이 이 순서다.
+    let ev: Vec<String> = f.rt.events().iter().map(|e| format!("{e:?}")).collect();
+    let at = |pat: &str| ev.iter().position(|s| s.starts_with(pat));
+    let sw_i = at("AccountSwitched").expect("전환 배너");
+    let exit_i = at("Exit").expect("옛 스트림 종료");
+    let spawn2 = ev
+        .iter()
+        .enumerate()
+        .filter(|(_, s)| s.starts_with("Spawn"))
+        .map(|(i, _)| i)
+        .nth(1)
+        .expect("두 번째 스폰");
+    println!("[m11-⑩] 순서 switched={sw_i} exit={exit_i} spawn2={spawn2}");
+    assert!(sw_i < exit_i && exit_i < spawn2, "★ 전환이 그 자리에서 발사했다(옛 스트림이 살아 있는 채 새 스폰): {ev:?}");
+}
+
+/// ⑪ **스탬피드** — 같은 소진 계정에 묶여 대기하던 두 채팅이 **다른 계정으로** 갈린다
+/// (R1 크리틱 C2 · 공격 A3).
+///
+/// 허브 규약상 `busy`("지금 CLI가 살아 있는 채팅의 계정")는 **스폰이 끝나야** 참이 되고,
+/// 훅은 펌프 한 바퀴에 한 번 갱신된 값을 본다. 워커 스냅샷이 도착하는 순간 대기하던
+/// 채팅들이 동시에 열리면 전부 같은 1등을 받는다 — 그리고 둘이 한 5시간 창을 나눠 쓰다
+/// **둘 다** 막힌다(규칙 ①이 막으려던 그 상태다).
+///
+/// 여기서 훅은 **예약을 모르는** 스텁이다(구형·미배선 훅과 같은 모양). 그래도 갈려야
+/// 한다 — 마지막 문은 엔진의 `limit::SwitchLedger`가 닫는다.
+#[test]
+fn two_chats_opening_at_once_do_not_pile_onto_the_same_candidate() {
+    #[derive(Default)]
+    struct PumpLagged {
+        ready: std::sync::atomic::AtomicBool,
+        /// 허브가 펌프 **앞에서 한 번** 채워 주는 값(= 최대 한 바퀴 낡았다).
+        busy: Mutex<BTreeSet<String>>,
+        free: Vec<String>,
+        asked: Mutex<Vec<(String, String)>>,
+    }
+    impl AccountSwitcher for PumpLagged {
+        fn pending(&self) -> bool {
+            !self.ready.load(std::sync::atomic::Ordering::SeqCst)
+        }
+        fn pick(&self, req: &SwitchRequest) -> Option<SwitchPick> {
+            if self.pending() {
+                return None;
+            }
+            let BillingAxis::Subscription { account: cur, .. } = req.current else { return None };
+            let busy = self.busy.lock().unwrap().clone();
+            let to = self
+                .free
+                .iter()
+                .find(|e| *e != cur && !req.tried.contains(*e) && !busy.contains(*e))?
+                .clone();
+            self.asked.lock().unwrap().push((req.chat_id.to_string(), to.clone()));
+            Some(SwitchPick { account: to, soonest_reset: None })
+        }
+    }
+    let hook = Arc::new(PumpLagged {
+        ready: Default::default(),
+        busy: Mutex::new(BTreeSet::new()),
+        free: vec!["b@x".into(), "c@x".into()],
+        asked: Mutex::new(vec![]),
+    });
+    let clock = VirtualClock::new();
+    clock.advance_to(1_000 * SEC);
+    clock.set_epoch_base((1_755_150_000 - 5 * 3600) * 1_000 - 1_000 * SEC);
+    let limited = Arc::new(Mutex::new(BTreeSet::from(["a_x".to_string()])));
+    let mk = |id: &str| {
+        let cli = AcctCli {
+            spawned_as: Default::default(),
+            limited: limited.clone(),
+            ..Default::default()
+        };
+        let defaults = IdentityDefaults {
+            known_accounts: ["a@x", "b@x", "c@x"].iter().map(|s| s.to_string()).collect(),
+            ..Default::default()
+        };
+        ChatRuntime::new(id, raw("a@x"), defaults, clock.clone(), cli)
+            .expect("정규화")
+            .with_account_switcher(hook.clone())
+    };
+    let mut one = mk("chat-1");
+    let mut two = mk("chat-2");
+    one.dispatch(Cmd::Send { text: "1번 질문".into() });
+    two.dispatch(Cmd::Send { text: "2번 질문".into() });
+    // 허브 펌프 = busy 갱신 1회 + 슬롯 순서대로 tick.
+    let pump2 = |one: &mut ChatRuntime<AcctCli>, two: &mut ChatRuntime<AcctCli>| {
+        clock.advance_by(20);
+        let mut busy = BTreeSet::new();
+        for rt in [&*one, &*two] {
+            if rt.state() != ccg_engine::state::StateTag::Idle {
+                if let Some(a) = rt.identity().account() {
+                    busy.insert(a.to_string());
+                }
+            }
+        }
+        *hook.busy.lock().unwrap() = busy;
+        one.tick();
+        two.tick();
+    };
+    for _ in 0..40 {
+        pump2(&mut one, &mut two);
+    }
+    assert!(one.hold().is_some() && two.hold().is_some(), "둘 다 표가 서 있어야 한다");
+    // 워커 스냅샷 도착 — 대기하던 채팅이 **동시에** 열린다.
+    hook.ready.store(true, std::sync::atomic::Ordering::SeqCst);
+    for _ in 0..40 {
+        pump2(&mut one, &mut two);
+    }
+    let (a1, a2) = (account_of(&one), account_of(&two));
+    println!("[m11-⑪] chat-1={a1} chat-2={a2} 훅질문={:?}", hook.asked.lock().unwrap());
+    assert_ne!(a1, a2, "★ 두 채팅이 같은 계정으로 갈아탔다 — 규칙 ①(노는 계정만)이 뚫렸다");
+    assert_eq!((a1.as_str(), a2.as_str()), ("b@x", "c@x"), "임박순 1등은 먼저 연 채팅의 것");
+    assert!(one.hold().is_none() && two.hold().is_none(), "둘 다 이어졌다");
+}
+
+/// ⑫ **유령 대기 문장** — 표가 죽으면 미뤄 둔 대기 선언도 같이 죽는다(R1 크리틱 C3 · A1·A2).
+///
+/// 표를 죽이는 세 경로를 전부 재생한다. 어느 쪽이든, 사용자가 방금 「취소했어요」를 읽은
+/// **바로 뒤에** 「사용 한도에 걸려 대기합니다」가 붙으면 그 두 줄 중 하나는 거짓이다.
+#[test]
+fn a_dead_hold_never_announces_that_it_is_waiting() {
+    #[derive(Default)]
+    struct Slow {
+        ready: std::sync::atomic::AtomicBool,
+        to: Option<String>,
+    }
+    impl AccountSwitcher for Slow {
+        fn pending(&self) -> bool {
+            !self.ready.load(std::sync::atomic::Ordering::SeqCst)
+        }
+        fn pick(&self, req: &SwitchRequest) -> Option<SwitchPick> {
+            if self.pending() {
+                return None;
+            }
+            let to = self.to.as_ref()?;
+            if req.tried.contains(to) {
+                return None;
+            }
+            Some(SwitchPick { account: to.clone(), soonest_reset: None })
+        }
+    }
+    let waits = |rt: &ChatRuntime<AcctCli>| {
+        rt.events()
+            .iter()
+            .filter(|e| matches!(e, Event::Notice(t) if t.contains("사용 한도에 걸려 대기합니다")))
+            .count()
+    };
+    #[allow(clippy::type_complexity)]
+    let ways: Vec<(&str, Box<dyn Fn(&mut ChatRuntime<AcctCli>)>)> = vec![
+        (
+            "§7.3 계정 변경",
+            Box::new(|rt: &mut ChatRuntime<AcctCli>| {
+                let mut patch = RawIdentityPatch::default();
+                patch.billing.account = Some("b@x".into());
+                rt.dispatch(Cmd::IdentitySet { patch, policy: ApplyPolicy::Now, op: PendingOp::Merge });
+            }),
+        ),
+        (
+            "자동 이어서 끄기",
+            Box::new(|rt: &mut ChatRuntime<AcctCli>| {
+                rt.dispatch(Cmd::HoldCancel);
+            }),
+        ),
+        (
+            "중단(Esc) — 큐와 표를 함께 걷는다",
+            Box::new(|rt: &mut ChatRuntime<AcctCli>| {
+                // 세 번째 문 — `clear_queue_with_undo`. §7.3이 interrupt/stop_all에
+                // 대기표를 함께 끄게 한 그 자리다("중지했는데 몇 시간 뒤 혼자 이어서 보낸다").
+                rt.dispatch(Cmd::QueueMutate(ccg_engine::queue::QueueOp::Clear));
+            }),
+        ),
+    ];
+    for (name, kill) in ways {
+        let hook = Arc::new(Slow { ready: Default::default(), to: Some("b@x".into()) });
+        let clock = VirtualClock::new();
+        clock.advance_to(1_000 * SEC);
+        clock.set_epoch_base((1_755_150_000 - 5 * 3600) * 1_000 - 1_000 * SEC);
+        let cli = AcctCli {
+            spawned_as: Default::default(),
+            limited: Arc::new(Mutex::new(BTreeSet::from(["a_x".to_string()]))),
+            ..Default::default()
+        };
+        let defaults = IdentityDefaults {
+            known_accounts: BTreeSet::from(["a@x".to_string(), "b@x".to_string()]),
+            ..Default::default()
+        };
+        let mut rt = ChatRuntime::new("c-1", raw("a@x"), defaults, clock.clone(), cli)
+            .expect("정규화")
+            .with_account_switcher(hook.clone());
+        rt.dispatch(Cmd::Send { text: "첫 턴".into() });
+        for _ in 0..3 {
+            clock.advance_by(SEC);
+            rt.tick();
+        }
+        assert!(rt.hold().is_some(), "[{name}] 표는 서 있다(조회 중일 뿐)");
+        assert_eq!(waits(&rt), 0, "[{name}] 조회 중에는 대기 선언을 미룬다");
+
+        kill(&mut rt);
+        let died = rt.hold().is_none();
+        // 워커의 답이 도착한다 — 이제 "말할 사실"이 정해졌는데, 그 사실은 *표가 없다*이다.
+        hook.ready.store(true, std::sync::atomic::Ordering::SeqCst);
+        for _ in 0..10 {
+            clock.advance_by(SEC);
+            rt.tick();
+        }
+        let n = waits(&rt);
+        println!("[m11-⑫ {name}] 표죽음={died} 대기문장={n}");
+        assert!(died, "[{name}] 이 경로는 표를 죽여야 한다(전제)");
+        assert_eq!(n, 0, "★ [{name}] 표가 없는데 「사용 한도에 걸려 대기합니다」가 나왔다");
+    }
 }

@@ -301,14 +301,21 @@ pub struct ChatRuntime<D: CliDriver> {
     /// 장치다(B가 곧바로 또 막히면 A는 아직 안 풀렸을 확률이 높다). 한도 없이 착지한
     /// 턴이 `auto_resume_streak`과 함께 비운다 — 에피소드가 끝났다는 같은 신호다.
     switch_tried: BTreeSet<String>,
-    /// ★M11 — **아직 말하지 않은 대기 문장이 있다.** 훅이 "조회 중"이라 답을 미룬 상태고,
-    /// [`Self::check_hold`]가 판명 직후(또는 [`HOLD_NOTICE_GRACE`] 뒤) 대신 말한다.
-    hold_notice_due: bool,
+    /// ★M11 R2(C2) — **같은 훅을 쓰는 채팅들의 후보 예약 장부**(스탬피드 방지).
+    /// 훅을 안 꽂은 런타임은 자기만의 빈 장부를 들고 있어 아무 일도 안 한다.
+    switch_ledger: Arc<crate::limit::SwitchLedger>,
 }
 
 /// ★M11 — 대기 문장을 미뤄 둘 수 있는 최대 시간. 훅이 이 안에 답을 못 내면 그냥 말한다
 /// (침묵보다 늦은 말이 낫다 — D7).
 const HOLD_NOTICE_GRACE: Millis = 5_000;
+
+/// ★M11 R2(C2) — 훅이 낡은 답을 줬을 때 **다시 물어보는** 횟수 상한.
+///
+/// 대기하던 채팅들이 한 tick에 동시에 열리면 전부 같은 1등을 받는다. 이미 다른 채팅이
+/// 집은 계정이면([`crate::limit::SwitchLedger`]) 그 답은 낡은 것이므로 그 계정을 빼고
+/// 한 번 더 묻는다. 계정 수만큼 반복될 수 있으므로 상한을 둔다(무한 재질문 금지).
+const SWITCH_REASK_MAX: usize = 8;
 
 /// 셸이 사용자 에코를 그리는 데 필요한 최소값.
 #[derive(Debug, Clone)]
@@ -403,7 +410,7 @@ impl<D: CliDriver> ChatRuntime<D> {
             limit_probe: Arc::new(NoProbe),
             switcher: Arc::new(NoSwitch),
             switch_tried: BTreeSet::new(),
-            hold_notice_due: false,
+            switch_ledger: Arc::new(crate::limit::SwitchLedger::default()),
         };
         rt.emit(Event::Identity {
             origin: RevisionOrigin::Default,
@@ -433,6 +440,9 @@ impl<D: CliDriver> ChatRuntime<D> {
     /// 안 꽂으면 후보가 늘 없어서 옛 경로(대기표)만 남는다. 설정이 꺼져 있을 때 셸이
     /// 붙인 훅이 내는 값도 마찬가지 `None`이다 — **꺼짐 = 무동작**이 두 층에서 참이다.
     pub fn with_account_switcher(mut self, s: Arc<dyn crate::limit::AccountSwitcher>) -> Self {
+        // ★M11 R2(C2) — 같은 훅을 나눠 쓰는 채팅들은 **같은 예약 장부**를 본다.
+        // 그래야 한 tick에 동시에 열린 채팅들이 같은 계정을 두 번 집지 않는다.
+        self.switch_ledger = crate::limit::ledger_for(&s);
         self.switcher = s;
         self
     }
@@ -578,6 +588,9 @@ impl<D: CliDriver> ChatRuntime<D> {
                 // 재장전된 예약은 표와 **같은 순간**에 선다 — `>` 비교라 "표 뒤에 온
                 // 사용자 메시지"로 오인되지 않는다(그래야 §7.3의 재개 항목이 그대로 산다).
                 armed_at: now,
+                // 재장전은 문장을 말하지 않는다(부팅 직후 옛 한도 문구를 다시 뱉을 이유가
+                // 없다) — 미뤄 둔 문장도 없다.
+                notice_due: false,
             });
         }
         self.broadcast_plan();
@@ -683,17 +696,41 @@ impl<D: CliDriver> ChatRuntime<D> {
         let BillingAxis::Subscription { account: cur, .. } = old_axis.clone() else {
             return false;
         };
-        let pick = {
+        // ★M11 R2(C2) — **낡은 1등은 다시 묻는다.**
+        //
+        // 훅이 보는 `busy`는 스폰이 끝나야 참이 된다(허브가 `state != Idle`로 만든다).
+        // 그래서 워커 스냅샷이 도착한 그 tick에 대기하던 채팅들이 동시에 열리면 전부
+        // 같은 1등을 받는다 — 규칙 ①("노는 계정만")이 뚫리는 지점이다(R1 크리틱 C2).
+        // 방금 다른 채팅이 집은 계정이면([`SwitchLedger`]) 그 답을 **거절하고** 그
+        // 계정을 뺀 채 한 번 더 묻는다. 훅이 예약을 아는 경우(셸의 `Switcher`)에는
+        // 첫 답이 이미 옳아서 이 루프가 한 바퀴로 끝난다.
+        let now_epoch = self.clock.now_epoch_ms();
+        let mut refused: BTreeSet<String> = BTreeSet::new();
+        let pick = loop {
+            let tried: BTreeSet<String> = if refused.is_empty() {
+                BTreeSet::new()
+            } else {
+                self.switch_tried.union(&refused).cloned().collect()
+            };
             let req = crate::limit::SwitchRequest {
                 chat_id: self.chat_id.as_str(),
                 current: self.identity.billing(),
                 model: self.identity.model(),
-                tried: &self.switch_tried,
-                now_epoch_ms: self.clock.now_epoch_ms(),
+                tried: if refused.is_empty() { &self.switch_tried } else { &tried },
+                now_epoch_ms: now_epoch,
             };
-            self.switcher.pick(&req)
+            let Some(p) = self.switcher.pick(&req) else { break None };
+            if !self.switch_ledger.taken_by_other(self.chat_id.as_str(), &p.account, now_epoch)
+                || refused.len() >= SWITCH_REASK_MAX
+            {
+                break Some(p);
+            }
+            refused.insert(p.account);
         };
         let Some(pick) = pick else { return false };
+        if self.switch_ledger.taken_by_other(self.chat_id.as_str(), &pick.account, now_epoch) {
+            return false; // 재질문 상한까지 갔는데도 남이 집은 계정뿐이다 — 다음 tick에.
+        }
         if pick.account == cur {
             return false;
         }
@@ -714,6 +751,9 @@ impl<D: CliDriver> ChatRuntime<D> {
             return false;
         }
         let changed = self.identity.diff(&next);
+        // ★M11 R2(C2) — **집었다고 장부에 적는다.** 같은 tick의 다음 채팅은 이 줄을 보고
+        // 다른 계정을 고른다(정규화가 실패한 판에는 적지 않는다 — 안 집은 것이다).
+        self.switch_ledger.take(self.chat_id.as_str(), &pick.account, now_epoch);
         // ① 표를 걷는다(§7.3의 일반 무효화 문장이 이 전환을 가리지 않게).
         self.hold = None;
         // 계정이 바뀌었으니 옛 계정에서 센 헛발질은 이 계정과 무관하다.
@@ -2715,10 +2755,15 @@ impl<D: CliDriver> ChatRuntime<D> {
             attempts,
             armed_from_run: run,
             armed_at: now,
+            notice_due: false,
         });
         // ★M11 — 표를 걸자마자 **노는 계정**을 묻는다. 있으면 대기 없이 갈아타고,
         // 없으면(설정 꺼짐 · 후보 없음 · 오염) 아래 문장 그대로 대기표 경로다.
         // 훅이 미배선이면 이 줄은 즉시 false다 = 기존 동작.
+        //
+        // **`pending`이라도 묻는다.** 셸의 훅은 이 물음을 받고서야 워커를 깨우기 때문이다
+        // (★R2에서 부팅 프리웜을 걷어낸 뒤로는 *유일한* 계기다). `pending`일 때 안 물으면
+        // 스냅샷이 영원히 차갑고 전환은 한 번도 안 일어난다 — R2 주행에서 실제로 밟았다.
         if self.try_auto_switch() {
             return;
         }
@@ -2731,8 +2776,12 @@ impl<D: CliDriver> ChatRuntime<D> {
         // "조회 중"이었을 뿐인데, 그 사이를 대기 선언으로 메운 것이다.
         // 미루면 [`Self::check_hold`]가 판명 직후(또는 [`HOLD_NOTICE_GRACE`] 뒤) 말한다 —
         // 침묵 no-op(D7)이 아니라 **말할 사실이 정해질 때까지의 유예**다.
+        //
+        // ★R2(C3) — 미뤄 둔 문장은 이제 **표 안에** 산다. 표가 죽으면 같이 죽는다.
         if self.switcher.pending() {
-            self.hold_notice_due = true;
+            if let Some(h) = &mut self.hold {
+                h.notice_due = true;
+            }
             return;
         }
         self.emit_hold_notice(resets_at);
@@ -2740,7 +2789,9 @@ impl<D: CliDriver> ChatRuntime<D> {
 
     /// 대기표 문장 — 침묵 금지(D7). 언제 다시 볼지를 담는다("모른다"도 값이다).
     fn emit_hold_notice(&mut self, resets_at: Option<Millis>) {
-        self.hold_notice_due = false;
+        if let Some(h) = &mut self.hold {
+            h.notice_due = false;
+        }
         self.emit(Event::Notice(if resets_at.is_some() {
             "사용 한도에 걸려 대기합니다 — 풀리는 시각에 맞춰 이어서 보낼게요.".into()
         } else {
@@ -3044,14 +3095,19 @@ impl<D: CliDriver> ChatRuntime<D> {
         // 드레인은 **여기서** 한다(`try_auto_switch` 안이 아니라) — 아래 `consume_hold` 뒤의
         // 드레인과 같은 자리다. tick의 끝은 재진입이 없는 안전한 발사대다.
         if self.hold.is_some() && self.try_auto_switch() {
-            self.hold_notice_due = false; // 갈아탔다 = 미뤄 둔 대기 문장은 말할 사실이 아니다
+            // 갈아탔다 = 표가 사라졌고, 미뤄 둔 대기 문장도 그 표와 함께 죽었다(C3).
             self.drain_if_possible();
             return;
         }
         // 미뤄 둔 대기 문장(위 `arm_hold`) — **판명됐거나 유예가 끝나면** 말한다.
         // 유예 상한이 있는 이유: 훅이 영영 `pending`으로 굳으면(워커 사망) 그 채팅은
         // 아무 말도 못 듣는다 = D7 위반. 늦게라도 말하는 쪽이 항상 낫다.
-        if self.hold_notice_due {
+        //
+        // ★R2 C3 — 이 블록의 전제는 **표가 살아 있다**는 것이다. 표를 죽이는 자리는
+        // 다섯이고(전환 성사 · §7.3 계정 변경 · `Cmd::HoldCancel` · undo · 소진) 그중
+        // 셋은 이 플래그를 몰랐다. 이제 플래그가 표 안에 있어 표와 함께 죽는다 —
+        // 「취소했어요」 바로 뒤에 「기다립니다」가 붙는 유령 문장이 구조적으로 불가능하다.
+        if self.hold.as_ref().is_some_and(|h| h.notice_due) {
             let armed = self.hold.as_ref().map(|h| h.armed_at).unwrap_or(now);
             if !self.switcher.pending() || now.saturating_sub(armed) >= HOLD_NOTICE_GRACE {
                 let at = self.hold.as_ref().and_then(|h| h.resets_at);

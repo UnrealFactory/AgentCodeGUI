@@ -486,6 +486,10 @@ impl Hub {
                 // 물을 자리가 없으면 이 기능은 검증 불가능해진다. `skipped`는 계정마다
                 // 탈락 사유 낱말(`contaminated`·`no_headroom`·`usage_unknown`…)이다.
                 let plan = self.switcher.last_plan();
+                // ★M11 R2 — 예산 문의 **숫자**: 워커가 몇 번 돌았고 계정을 몇 건 물었나.
+                // R1의 치명(부팅마다 전 계정 조회 → 토큰 회전)은 문서에만 문이 있고
+                // 코드에는 없어서 생겼다. 이제 하네스가 0인지 확인할 수 있다.
+                let (runs, fetches) = self.switcher.worker_stats();
                 answer(json!({ "chats": rows, "cli": self.cli.to_string_lossy(),
                                "flags": crate::flags::active(),
                                // ★M10 — 라우터의 회계·거절 로그. 세션 간 메시지는 조용히
@@ -495,6 +499,7 @@ impl Hub {
                                "accountSwitch": {
                                    "on": self.switcher.enabled(),
                                    "busy": self.burning_accounts(),
+                                   "worker": { "runs": runs, "fetches": fetches },
                                    "picked": plan.picked,
                                    "skipped": plan.skipped.iter()
                                        .map(|(e, w)| json!({ "email": e, "why": w }))
@@ -784,9 +789,19 @@ impl Hub {
         self.switcher.set_busy(self.burning_accounts());
         let chats: Vec<String> = self.slots.keys().cloned().collect();
         for chat in chats {
-            let (frames, events, evs_state) = {
+            let (frames, events, evs_state, moved) = {
                 let Some(slot) = self.slots.get_mut(&chat) else { continue };
+                // ★M11 R2(C2) — **슬롯 tick 사이에도 busy를 갱신한다.**
+                //
+                // 펌프 앞에서 한 번만 돌리면, 같은 바퀴에서 채팅1이 b로 옮겨 스폰해도
+                // 채팅2가 보는 busy에는 b가 없다. 워커 스냅샷이 도착하는 순간 대기하던
+                // N개 채팅이 **동시에** 열리므로 이건 좁은 레이스가 아니라 정상 경로다
+                // (R1 크리틱 C2). 그래서 tick 전후로 이 슬롯의 (상태·계정)을 재고,
+                // 바뀌었으면 그때만 다시 모은다 — 안 바뀌면 비용은 비교 한 번이다.
+                let before = (slot.rt.state() != StateTag::Idle, slot.rt.identity().account().map(str::to_string));
                 slot.rt.tick();
+                let after = (slot.rt.state() != StateTag::Idle, slot.rt.identity().account().map(str::to_string));
+                let moved = before != after;
                 // stderr 한 줄도 상태기계의 프레임 최신성 근거가 아니다(F20) — 진단만.
                 let errs = slot.rt.driver().drain_stderr();
                 for l in errs {
@@ -817,8 +832,13 @@ impl Hub {
                     out.extend(slot.wire.translate(f));
                 }
                 let evs = slot.rt.drain_events();
-                (frames.len(), out, evs)
+                (frames.len(), out, evs, moved)
             };
+            // 이 슬롯이 계정을 갈았거나 프로세스가 생겼다/죽었다 = 다음 슬롯의 `pick`이
+            // 봐야 할 사실이 바뀌었다.
+            if moved {
+                self.switcher.set_busy(self.burning_accounts());
+            }
             let _ = frames;
             // ① 내용(2.6.2 EngineEvent) — 렌더러가 그리는 것.
             for ev in events {

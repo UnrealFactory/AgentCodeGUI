@@ -13,7 +13,7 @@ cli = ["net"]
 # 안전장치다: `cargo test -p ccg-auth`는 이 피처 없이 돌아 사용자 실계정에
 # **구조적으로** 닿을 수 없다(M5 R1 §1.2가 세운 성질을 그대로 유지한다).
 # 켜는 곳은 `src-tauri` 하나뿐이고, 켜도 `CCG_NO_NET=1`이면 전 호출이 즉시 거절된다.
-net = ["dep:ureq"]
+net = ["dep:ureq", "dep:native-tls"]
 
 [[bin]]
 name = "ccg-auth-probe"
@@ -33,9 +33,17 @@ sha2 = "0.10"
 # 부르는 자리가 전용 워커 스레드 하나이고(허브가 아니다 — `engine/acct_switch.rs`),
 # 그 스레드에 async 런타임을 하나 더 띄우면 상주 메모리가 그만큼 는다. reqwest는
 # blocking 피처조차 내부에 tokio 멀티스레드 런타임을 세운다 — 그래서 ureq다.
-# default-features를 끄고 `tls`(rustls + 번들 루트 인증서)만 켠다: gzip/json/cookies는
-# 이 크레이트가 안 쓰고(파싱은 usage.rs가 한다) 전부 바이너리 크기다.
-ureq = { version = "2.12", default-features = false, features = ["tls"], optional = true }
+# default-features를 끄고 TLS 하나만 켠다: gzip/json/cookies는 이 크레이트가 안 쓰고
+# (파싱은 usage.rs가 한다) 전부 바이너리 크기다.
+#
+# ★R2 — rustls + **번들 루트 인증서** 대신 OS 스토어(schannel)를 쓴다. R1 크리틱이 같은
+# 커밋에서 실측한 값이 근거다: 앱 바이너리 **−890,880 B**(M11 비용 +1.11MB → +0.22MB).
+# 인증서 신선도도 OS가 맡는다(번들은 앱을 새로 내야 갱신된다).
+# 대가 하나: schannel은 Windows 루트 저장소를 믿으므로 사내 MITM 프록시의 루트도
+# 신뢰하게 된다(rustls 번들은 거절했다). 이 앱은 Windows 전용이고 그 환경의 사용자에게는
+# 그게 기능이다 — 그래도 선택은 선택이라 여기 적어 둔다.
+ureq = { version = "2.12", default-features = false, features = ["native-tls"], optional = true }
+native-tls = { version = "0.2", optional = true }
 
 # 계정 폴더의 공유 정션(projects·sessions…) — **정션이어야 resume이 산다**(심링크는
 # 개발자 모드/관리자 권한이 필요해 사용자 머신에서 조용히 실패한다). Node는

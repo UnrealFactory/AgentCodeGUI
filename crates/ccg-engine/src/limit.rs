@@ -13,6 +13,7 @@
 
 use crate::clock::{Millis, HOUR, MIN, SEC};
 use crate::identity::BillingAxis;
+use std::sync::Arc;
 
 // ── 2.6.2 상수(limitResume.ts:85-87) ────────────────────────────────────────
 
@@ -263,6 +264,68 @@ pub struct SwitchRequest<'a> {
     /// 이 한도 에피소드에서 **이미 거쳐 온** 계정(A→B→A 핑퐁 금지).
     pub tried: &'a std::collections::BTreeSet<String>,
     pub now_epoch_ms: u64,
+}
+
+// ── ★M11 R2(C2) 후보 예약 장부 ──────────────────────────────────────────────
+
+/// 예약의 수명(ms). 갈아탄 채팅이 새 계정으로 **스폰을 끝내면** 그때부터는 셸의
+/// `busy`가 같은 사실을 말한다 — 그 사이를 메우는 시간이라 길 필요가 없다.
+pub const TAKEN_TTL_MS: u64 = 60_000;
+
+/// **방금 어느 채팅이 어느 계정을 집었나.** [`AccountSwitcher`] 훅 하나를 나눠 쓰는
+/// 채팅들이 공유한다([`ledger_for`]).
+///
+/// ## 왜 엔진에 있나 (R1 크리틱 C2 — 스탬피드)
+///
+/// 셸의 `busy`("지금 CLI가 살아 있는 채팅의 계정")는 **스폰이 끝나야** 참이 된다.
+/// 그런데 전환은 정체성만 바꾸고 스폰은 다음 tick이다. 워커의 한도 스냅샷이 도착하는
+/// 순간 대기하던 채팅 N개가 **동시에** 열리면, 전원이 같은 순위표를 보고 같은 1등을
+/// 집는다 — 그리고 둘이 한 5시간 창을 나눠 쓰다 **둘 다** 막힌다(규칙 ①이 막으려던
+/// 바로 그 상태다).
+///
+/// *"방금 누가 무엇을 집었다"* 를 아는 자리는 **전환을 실행하는 코드**뿐이다. 그래서
+/// 장부가 여기 있다: 훅이 예약을 알든 모르든(셸의 `Switcher`는 알고, 스텁·구형 훅은
+/// 모른다) 엔진이 같은 계정을 두 번 내주지 않는다.
+#[derive(Default)]
+pub struct SwitchLedger {
+    taken: std::sync::Mutex<std::collections::BTreeMap<String, (String, u64)>>,
+}
+
+impl SwitchLedger {
+    /// 집었다 — `now_epoch_ms`부터 [`TAKEN_TTL_MS`] 동안 다른 채팅에게는 "안 노는 계정"이다.
+    pub fn take(&self, chat_id: &str, account: &str, now_epoch_ms: u64) {
+        let mut g = self.taken.lock().unwrap_or_else(|e| e.into_inner());
+        g.retain(|_, (_, at)| now_epoch_ms.saturating_sub(*at) < TAKEN_TTL_MS);
+        g.insert(account.to_string(), (chat_id.to_string(), now_epoch_ms));
+    }
+
+    /// **다른** 채팅이 방금 집었나. 자기가 집은 것은 막지 않는다(재시도가 자기 예약에
+    /// 걸리면 그 채팅은 영영 못 옮긴다).
+    pub fn taken_by_other(&self, chat_id: &str, account: &str, now_epoch_ms: u64) -> bool {
+        let g = self.taken.lock().unwrap_or_else(|e| e.into_inner());
+        g.get(account)
+            .is_some_and(|(who, at)| who != chat_id && now_epoch_ms.saturating_sub(*at) < TAKEN_TTL_MS)
+    }
+}
+
+/// 훅 → 장부. **같은 `Arc`를 나눠 가진 채팅들만** 같은 장부를 본다.
+///
+/// 전역 하나가 아니라 훅마다인 이유: 재생 하네스는 테스트마다 훅을 새로 만든다.
+/// 전역이면 병렬로 도는 다른 재생의 예약이 이 재생의 후보를 지운다(계정 이름이 같다).
+/// 죽은 훅은 매번 걷어낸다 — 그래서 주소가 재사용돼도 남의 장부를 물려받지 않는다
+/// (`strong_count() == 0`인 항목을 **비교 전에** 지운다).
+pub fn ledger_for(hook: &Arc<dyn AccountSwitcher>) -> Arc<SwitchLedger> {
+    type Reg = Vec<(std::sync::Weak<dyn AccountSwitcher>, Arc<SwitchLedger>)>;
+    static REG: std::sync::Mutex<Reg> = std::sync::Mutex::new(Vec::new());
+    let key = Arc::as_ptr(hook) as *const ();
+    let mut g = REG.lock().unwrap_or_else(|e| e.into_inner());
+    g.retain(|(w, _)| w.strong_count() > 0);
+    if let Some((_, l)) = g.iter().find(|(w, _)| w.as_ptr() as *const () == key) {
+        return l.clone();
+    }
+    let l = Arc::new(SwitchLedger::default());
+    g.push((Arc::downgrade(hook), l.clone()));
+    l
 }
 
 /// 훅의 답 — "이 계정으로 갈아타라".

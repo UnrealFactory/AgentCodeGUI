@@ -340,6 +340,11 @@ function sortAccounts<T>(list: T[], sort: AcctSort, keys: (a: T) => AcctSortKeys
 //
 // 계정이 2개 미만이면 **행 자체를 안 그린다**: 갈아탈 데가 없는데 스위치를 보여 주면
 // 켜 놓고 "왜 안 되지"를 묻게 된다(계정 picker가 구독+계정≥2일 때만 뜨는 것과 같은 규약).
+//
+// ★R2(C5) — 여기서 세는 것은 **Claude(Anthropic) 구독 계정뿐**이다. R1은 Codex 계정까지
+// 더해서(`accounts + cxAccounts`) 셌는데, 판정식(`ccg-auth::switch::plan`)은 Claude
+// 구독 축만 본다. 클로드 1 + Codex 1이면 **켤 수 있는데 영원히 안 되는 스위치**가
+// 그려졌고, 켜는 순간 워커가 도는 것은 덤이었다.
 const AUTO_SWITCH_KEY = 'limitSwitch.on'
 function AutoAccountSwitchRow({ count }: { count: number }): React.ReactElement | null {
   const [on, setOn] = useState<boolean>(() => getPref<boolean>(AUTO_SWITCH_KEY, false))
@@ -558,7 +563,7 @@ function AccountView(): React.ReactElement {
         ))}
       </div>
 
-      <AutoAccountSwitchRow count={(accounts?.length ?? 0) + (cxAccounts?.length ?? 0)} />
+      <AutoAccountSwitchRow count={accounts?.length ?? 0} />
 
       <div className="set-sec">Anthropic</div>
       {accounts == null ? (
