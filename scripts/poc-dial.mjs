@@ -16,6 +16,7 @@
  *   node scripts/poc-dial.mjs --only=active  # chats:set-active 즉시성만
  *   node scripts/poc-dial.mjs --only=queue   # ★ R2 예약 큐 소유권 (실 CLI 3턴)
  *   node scripts/poc-dial.mjs --only=raise   # ★ R3 읽던 자리 앵커 복원 (엔진 0턴)
+ *   node scripts/poc-dial.mjs --only=settle  # ★ R4 앵커의 **정착 후** 실측 (엔진 0턴)
  *   node scripts/poc-dial.mjs --only=own     # ★ R3 재개 소유권 + 창 자리 UI (실 CLI 1턴)
  *   node scripts/poc-dial.mjs --keep         # 홈 보존(사후 조사용)
  *
@@ -745,11 +746,39 @@ async function stepRaise() {
     else if (Math.abs(lA.got - lA.want) > 2)
       fail('raise.anchor-land', '앵커 메시지가 저장 때와 다른 높이에 놓였다', s.checks.landA)
     else ok('raise.anchor-land', { id: lA.id, want: Math.round(lA.want), got: Math.round(lA.got) })
-    // 같은 크기 자리이므로 **scrollTop 픽셀까지** 같아야 한다(크리틱과 같은 40px 허용치)
+    // ★ R4 — **저울을 고쳤다.** R3의 검사식은 `|afterA.top − beforeA.top| < 40` 하나였고
+    // 그건 "자리 크기가 같으면 문서 높이도 같다"를 전제로 깔고 있다. 그 전제는 거짓이다:
+    // `.thread > .msg`의 content-visibility 때문에 **같은 스레드의 scrollHeight가 마운트
+    // 뒤에 줄어든다**(실측 6962 → 6687, 275px). 그러면 픽셀이 같다는 것은 오히려
+    // **다른 문단을 보고 있다**는 뜻이 된다. R14 확인 크리틱이 남긴 기준 산출이 그 증거다:
+    //
+    //   R14 beforeA  top 3148 · h 6962 · i 13 · off -163 · "패널 2 · 구간 4 검토 결과…"
+    //   R14 afterA   top 3148 · h 6687 · i 14 · off  -16 · "Read src/mod4/cache.ts 412줄…"
+    //   R14 deltaA   dTop 0  → **초록**            ← 픽셀은 같고 문단은 바뀌었다
+    //   R14 landA    top 2272.5                    ← 착지 기록은 화면과 875px 갈려 있었다
+    //
+    // 즉 이 검사는 F3(앵커가 정착 뒤 밀린다)을 **초록으로 덮고 있었다**. 그래서 둘로 나눈다:
+    //   · `raise.same-para` — 계약 그 자체. 되올린 화면의 맨 위 문단이 **같은 문단·같은
+    //     오프셋**인가를 착지 기록이 아니라 **화면에서** 잰다. 이게 주 검사다.
+    //   · `raise.same-pixel` — 픽셀은 **전제가 성립할 때만** 묻는다(w·ch·h 전부 같을 때).
+    //     높이가 변했으면 물어야 할 것은 "안 움직였나"가 아니라 "**변한 높이만큼** 움직였나"다.
     const dTop = Math.abs(afterA.top - beforeA.top)
-    s.checks.deltaA = { dTop, beforeTop: beforeA.top, afterTop: afterA.top, sameW: afterA.w === beforeA.w, sameCh: afterA.ch === beforeA.ch }
-    if (dTop >= 40)
-      fail('raise.same-pixel', '자리 크기가 같은데 스크롤 위치가 안 돌아왔다', { before: beforeA, after: afterA, dTop })
+    const dH = Math.abs(afterA.h - beforeA.h)
+    const sameLayout = afterA.w === beforeA.w && afterA.ch === beforeA.ch && afterA.h === beforeA.h
+    s.checks.deltaA = {
+      dTop, dH, beforeTop: beforeA.top, afterTop: afterA.top,
+      sameW: afterA.w === beforeA.w, sameCh: afterA.ch === beforeA.ch, sameH: afterA.h === beforeA.h
+    }
+    s.checks.paraA = { before: { i: beforeA.i, off: beforeA.off, text: beforeA.text }, after: { i: afterA.i, off: afterA.off, text: afterA.text } }
+    if (afterA.text !== beforeA.text)
+      fail('raise.same-para', '되올린 화면의 맨 위 문단이 접기 전과 다르다 — 읽던 자리를 잃었다', s.checks.paraA)
+    else if (Math.abs(afterA.off - beforeA.off) > 8)
+      fail('raise.same-para', '같은 문단인데 화면에서의 높이가 달라졌다', s.checks.paraA)
+    else ok('raise.same-para', { i: afterA.i, off: afterA.off, text: afterA.text.slice(0, 24) })
+    if (sameLayout && dTop >= 40)
+      fail('raise.same-pixel', '레이아웃이 완전히 같은데 스크롤 위치가 안 돌아왔다', { before: beforeA, after: afterA, dTop })
+    else if (!sameLayout && Math.abs(dTop - dH) >= 40)
+      fail('raise.same-pixel', '문서 높이가 변한 폭과 스크롤 이동 폭이 안 맞는다 — 문단 보존이 우연이었다는 뜻', { before: beforeA, after: afterA, dTop, dH })
     else ok('raise.same-pixel', s.checks.deltaA)
 
     // ── B. 자리 크기가 **다른** 되올림 (6분할 → n1, 크리틱과 같은 축) ──────────
@@ -814,6 +843,155 @@ async function stepRaise() {
     const atBottom = afterC ? afterC.h - afterC.top - afterC.ch <= 60 : false
     if (!atBottom) fail('raise.bottom-stays-bottom', '바닥에서 접었는데 되올림이 바닥이 아니다', afterC)
     else ok('raise.bottom-stays-bottom', { top: afterC.top, h: afterC.h, ch: afterC.ch })
+  } finally {
+    app.cdp.close()
+    killTree(app.child.pid)
+    await sleep(1200)
+    if (!KEEP) await rmHome(home)
+  }
+}
+
+// ── 5b. ★ R4 — 앵커의 **정착 후** 자리 (크리틱 R14 §5-F3) ─────────────────────
+//
+// 위 `raise` B 케이스는 `__ccgLandings()`를 읽는다. 그것은 **착지 기록** — 유지 루프가
+// 마지막으로 돈 순간의 값이지 리플로가 끝난 화면이 아니다. 크리틱은 같은 픽스처·같은
+// 파라미터(6분할 · frac 0.42 · 정착 1800ms)에서 착지 기록은 `want -331 → got -331`인데
+// **정착 뒤 그 행은 -696**이더라고 실측했다(오차 -365px · +1.2s/+2.6s/+5s/+9s 전부 동일 ·
+// 3/3 결정적). 즉 그 초록은 **구조적으로 이 사고를 볼 수 없다**.
+//
+// 그래서 저울을 바꾼다. 이 단계는 기록을 안 믿고 **화면을 다시 잰다**:
+//   ① 접기 전에 스레드의 모든 행을 (텍스트 지문, 오프셋)으로 찍어 앵커 행을 특정하고
+//   ② 되올린 뒤 네 시점에서 그 **지문으로 같은 행을 찾아** 오프셋을 직접 읽는다
+//   ③ 착지 기록과 실측이 갈리면 그것도 결함이다 — 저울이 거짓말을 하고 있다는 뜻이라
+//      다음 라운드가 또 초록을 믿는다.
+// 재현 파라미터는 크리틱 것을 그대로 쓴다(별도 홈·별도 부팅 — `raise`가 A를 먼저 도는
+// 바람에 저장 오프셋이 작아지던 그 차이를 없앤다).
+const SETTLE_FRAC = 0.42
+const SETTLE_PRE_MS = 1800
+const SETTLE_AT_MS = [1200, 2600, 5000, 9000]
+/** 허용 오차 — 되올림은 폭·zoom이 바뀌므로 시각 px 몇 개는 리플로 잡음이다. 365는 아니다. */
+const SETTLE_TOL_PX = 24
+
+const SETTLE_HELPERS = `(() => {
+  // 스레드의 **모든 행**을 (텍스트 지문, 뷰포트 상단 대비 오프셋)으로 — 앵커 행을 지문으로 추적한다
+  window.__rows = (n) => {
+    const p = document.querySelectorAll('.ma-grid > .ma-panel')[n]
+    const sc = p && p.querySelector('.ma-p-thread')
+    const th = sc && sc.querySelector(':scope > .thread')
+    if (!sc || !th) return null
+    const b = sc.getBoundingClientRect().top
+    return {
+      top: Math.round(sc.scrollTop), h: Math.round(sc.scrollHeight), ch: Math.round(sc.clientHeight),
+      w: Math.round(sc.getBoundingClientRect().width),
+      zoom: +(sc.getBoundingClientRect().height / Math.max(1, sc.clientHeight)).toFixed(3),
+      rows: [...th.children].map((c) => ({ tx: (c.innerText || '').replace(/\\s+/g, ' ').trim().slice(0, 40), off: Math.round(c.getBoundingClientRect().top - b) }))
+    }
+  }
+  return true
+})()`
+
+async function stepSettle() {
+  console.log('\n[settle] 되올린 앵커가 **정착 뒤에도** 그 자리인가 (착지 기록이 아니라 화면을 잰다)')
+  const s = (rep.steps.settle = { params: { frac: SETTLE_FRAC, pre: SETTLE_PRE_MS, at: SETTLE_AT_MS, tol: SETTLE_TOL_PX }, checks: {} })
+  const home = path.join(REPO, '.poc-home-dial-settle')
+  await rmHome(home)
+  makeMultiFixture(home, APP_VERSION, { panels: 6, itemsPerPanel: 30 })
+  const app = await bootAt(home, PORT + 4)
+  try {
+    await app.cdp.eval(`(() => { window.__c = (sel, n = 0) => { const e = document.querySelectorAll(sel)[n]; if (!e) return false; e.click(); return true }
+      window.__mdown = (sel, n = 0) => { const e = document.querySelectorAll(sel)[n]; if (!e) return false
+        e.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 })); return true }
+      return true })()`)
+    await app.cdp.eval(RAISE_HELPERS)
+    await app.cdp.eval(SETTLE_HELPERS)
+    if (!(await waitFor(app.cdp, `__n('.ma-grid > .ma-panel') === 6`))) {
+      fail('settle.boot', '6자리 그리드로 부팅하지 못했다')
+      return
+    }
+    await sleep(2500) // 마크다운·하이라이트 리플로가 멎을 때까지
+
+    await app.cdp.eval(`__panelScroll(2, ${SETTLE_FRAC})`)
+    await sleep(SETTLE_PRE_MS)
+    const before = await app.cdp.eval(`__rows(2)`)
+    const title = (await app.cdp.eval(`__txts('.ma-grid > .ma-panel .ma-p-title')`))[2]
+    s.checks.before = before && { top: before.top, h: before.h, ch: before.ch, w: before.w, zoom: before.zoom, rows: before.rows.length }
+    if (!before || before.top < 100) {
+      fail('settle.scroll', '3번 칸을 중간까지 못 올렸다(스레드가 짧다?)', { before: s.checks.before })
+      return
+    }
+    // 3번 칸이 아닌 자리를 포커스한 뒤 1로 접는다 → 3번 칸이 접힘 집합으로 간다
+    await app.cdp.eval(`__mdown('.ma-grid > .ma-panel', 0)`)
+    await sleep(200)
+    await app.cdp.eval(`__c('.ma-count-btn[data-count="1"]')`)
+    await waitFor(app.cdp, `__n('.ma-grid.n1 > .ma-panel') === 1`)
+    await sleep(700)
+    const anchors = (await app.cdp.eval(`__anchors()`)) ?? {}
+    const saved = Object.values(anchors)[0] ?? null
+    s.checks.anchor = { key: Object.keys(anchors)[0] ?? null, ...(saved ?? {}) }
+    if (!saved || typeof saved.off !== 'number') {
+      fail('settle.anchor-saved', '접힌 자리의 앵커가 저장되지 않았다 — 잴 대상이 없다', { anchors })
+      return
+    }
+    ok('settle.anchor-saved', { id: saved.id, off: Math.round(saved.off) })
+    // 앵커 행을 **지문**으로 특정 — 저장 오프셋과 같은 자리에 있던 행의 텍스트
+    const anchorRow = before.rows.reduce(
+      (best, r) => (best && Math.abs(best.off - saved.off) <= Math.abs(r.off - saved.off) ? best : r),
+      null
+    )
+    const dupes = before.rows.filter((r) => r.tx === anchorRow?.tx).length
+    s.checks.anchorRow = { ...(anchorRow ?? {}), dupes }
+    if (!anchorRow || !anchorRow.tx) {
+      fail('settle.row-id', '앵커 행의 텍스트 지문을 못 잡았다 — 이 저울은 쓸 수 없다', s.checks.anchorRow)
+      return
+    }
+    if (dupes !== 1) {
+      fail('settle.row-id', '같은 지문의 행이 둘 이상 — 엉뚱한 행을 재고 초록을 낼 수 있다', s.checks.anchorRow)
+      return
+    }
+
+    await raiseFolded(app.cdp, title)
+    await waitFor(app.cdp, `(__txts('.ma-grid > .ma-panel .ma-p-title')[0] || '') === ${JSON.stringify(title)}`)
+    const t0 = Date.now()
+    const track = []
+    for (const at of SETTLE_AT_MS) {
+      const wait = at - (Date.now() - t0)
+      if (wait > 0) await sleep(wait)
+      const now = await app.cdp.eval(`__rows(0)`)
+      const land = Object.values((await app.cdp.eval(`__landings()`)) ?? {}).sort((x, y) => y.at - x.at)[0] ?? null
+      const hit = (now?.rows ?? []).find((r) => r.tx === anchorRow.tx) ?? null
+      track.push({
+        at,
+        top: now?.top ?? null,
+        h: now?.h ?? null,
+        ch: now?.ch ?? null,
+        w: now?.w ?? null,
+        zoom: now?.zoom ?? null,
+        anchorOff: hit ? hit.off : null,
+        err: hit ? Math.round(hit.off - saved.off) : null,
+        landingGot: land ? Math.round(land.got) : null,
+        landingWant: land ? Math.round(land.want) : null
+      })
+    }
+    s.checks.track = track
+    const missing = track.filter((r) => r.anchorOff == null)
+    if (missing.length) {
+      fail('settle.row-found', '되올린 화면에서 앵커 행을 못 찾았다 — 창 밖으로 밀렸거나 사라졌다', { track })
+      return
+    }
+    const worst = track.reduce((m, r) => (Math.abs(r.err) > Math.abs(m.err) ? r : m), track[0])
+    if (Math.abs(worst.err) > SETTLE_TOL_PX)
+      fail('settle.after-reflow', `정착 뒤 앵커가 ${worst.err}px 어긋났다 — 착지 기록만 보는 저울은 이걸 못 본다`, { worst, track })
+    else ok('settle.after-reflow', { worstErr: worst.err, at: worst.at, samples: track.map((r) => r.err) })
+    // 저울 자체의 정직성 — 착지 기록과 실측이 갈리면 다음 라운드가 또 기록을 믿는다
+    const last = track[track.length - 1]
+    const gap = last.landingGot == null ? null : Math.round(last.anchorOff - last.landingGot)
+    s.checks.scaleGap = { gap, landingGot: last.landingGot, live: last.anchorOff }
+    if (gap == null) fail('settle.scale-agrees', '착지 기록이 없다 — 앵커 복원이 아예 안 돌았다', s.checks.scaleGap)
+    else if (Math.abs(gap) > SETTLE_TOL_PX)
+      fail('settle.scale-agrees', `착지 기록(${last.landingGot})과 정착 후 실측(${last.anchorOff})이 ${gap}px 갈린다 — 기록만 읽는 검사는 거짓 초록을 낸다`, s.checks.scaleGap)
+    else ok('settle.scale-agrees', s.checks.scaleGap)
+  } catch (e) {
+    fail('settle', String(e?.message ?? e))
   } finally {
     app.cdp.close()
     killTree(app.child.pid)
@@ -1042,6 +1220,7 @@ async function stepOwn() {
   if (want('dial')) await stepDial()
   if (want('active')) await stepActive()
   if (want('raise')) await stepRaise()
+  if (want('settle')) await stepSettle()
   if (want('own')) await stepOwn()
   if (want('bg')) await stepBg()
   if (want('queue')) await stepQueue()

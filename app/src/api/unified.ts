@@ -20,6 +20,9 @@ const CHAT_RUN_STATE = 'chat:run-state'
 const CHAT_STATUS = 'chat:status'
 const CHAT_RESPOND_DIALOG = 'chat:respond-dialog'
 const CHAT_QUEUE_MUTATE = 'chat:queue-mutate'
+const CHAT_VERDICT = 'chat:verdict'
+const CHAT_IDENTITY = 'chat:identity'
+const CHAT_IDENTITY_REVERT = 'chat:identity-revert'
 const CHAT_WINDOWS = 'chat:windows'
 const WIN_CHAT_CLOSE = 'win:chat-close'
 const WIN_CHAT_FOCUS = 'win:chat-focus'
@@ -158,6 +161,79 @@ export async function resumeHold(chatId: string): Promise<boolean> {
     })) as { kind?: string; __unimplemented?: boolean } | null
     if (!v || v.__unimplemented) return false
     return v.kind === 'accepted'
+  } catch {
+    return false
+  }
+}
+
+/**
+ * ★ R4 — `chat:verdict`. **거부·큐잉 사유의 유일한 통로**(m-logic D7 「침묵 no-op 금지」).
+ *
+ * 셸의 `hub::ensure()`는 정체성 정규화에 실패하면(`CwdMissing`·`AccountUnavailable`)
+ * 사유를 이 채널로 뿌리고 호출에는 `null`을 돌려준다(`hub.rs:262-268, 377`). R3까지
+ * 구독자가 **0**이라 그 실패는 화면 어디에도 안 나타났다 — 런타임이 없으니 T3(20초 침묵
+ * 감시)도 없어서 **40초를 봐도 오류 0건**이었다(크리틱 R14 §5-F4의 실측).
+ *
+ * 브로드캐스트라 창 전부에 온다 — 호출측이 `chatId`로 자기 것만 고른다.
+ */
+export interface VerdictWire {
+  kind?: string
+  cmd?: string
+  reason?: string | null
+}
+export function onChatVerdict(cb: (chatId: string, verdict: VerdictWire) => void): () => void {
+  // 진단 — `window.__ccgChatEv`와 같은 규약. "사유가 안 보인다"의 원인이 채널인지
+  // 화면인지 가르는 유일한 창구다(구독자 0이던 시절엔 이 값 자체가 없었다).
+  const dbg = ((window as unknown as { __ccgVerdicts?: { n: number; rows: unknown[] } }).__ccgVerdicts ??= { n: 0, rows: [] })
+  return sub<{ chatId?: string; verdict?: VerdictWire }>(CHAT_VERDICT, (p) => {
+    if (!p || typeof p.chatId !== 'string' || !p.verdict) return
+    dbg.n += 1
+    if (dbg.rows.length < 200) dbg.rows.push({ chatId: p.chatId, ...p.verdict })
+    cb(p.chatId, p.verdict)
+  })
+}
+
+/**
+ * ★ R4 — `chat:identity`. 정체성 리비전 브로드캐스트(m-logic §4.3 `ChatIdentityEvent`).
+ *
+ * R3까지 구독자가 **0**이었다(크리틱 R14 §4.3-M3). 그래서 엔진이 모델을 뒤에서 바꿔도
+ * (`origin:'engine_fallback'`) 화면은 그 사실을 **되돌릴 재료 없이** 배너 한 줄로만 알았다 —
+ * 2.6.2 병리 P3("뒤에서 바뀌는 picker · 되돌릴 수 없음") 그대로다. 최소 표면은 §6.2가 적은
+ * 세 가지다: 무엇이 바뀌었나 · 왜 바뀌었나 · **되돌리기**(`chat:identity-revert`).
+ *
+ * 셸이 싣는 값은 §4.3 초안의 부분집합이다(`fallback{}` 뭉치는 아직 없다 — 엔진 소관).
+ * 그래서 되돌릴 지점은 `revision - 1`로 잡는다: 없으면 엔진이 `no_revision` 거부를
+ * 돌려주고 그 사유는 이제 위 `chat:verdict` 구독자가 그린다(지어내지 않는다).
+ */
+export interface IdentityWire {
+  chatId?: string
+  identity?: { engine?: { kind?: string; model?: string; effort?: string; account?: string | null }; cwd?: string } | null
+  revision?: number
+  origin?: string
+  changed?: string[]
+  driftedFields?: string[]
+  keptByFallback?: string[]
+}
+export function onChatIdentity(cb: (p: IdentityWire) => void): () => void {
+  const dbg = ((window as unknown as { __ccgIdentity?: { n: number; rows: unknown[] } }).__ccgIdentity ??= { n: 0, rows: [] })
+  return sub<IdentityWire>(CHAT_IDENTITY, (p) => {
+    if (!p || typeof p.chatId !== 'string') return
+    dbg.n += 1
+    if (dbg.rows.length < 200) dbg.rows.push({ chatId: p.chatId, revision: p.revision, origin: p.origin, model: p.identity?.engine?.model })
+    cb(p)
+  })
+}
+
+/** 그 리비전의 정체성으로 되돌린다(히스토리 삭제가 아니라 **새 리비전** — m-logic §6.3). */
+export async function revertIdentity(chatId: string, revision: number): Promise<boolean> {
+  if (!chatId || !Number.isFinite(revision) || revision < 0) return false
+  try {
+    const v = (await invoke('ipc_call', {
+      channel: CHAT_IDENTITY_REVERT,
+      payload: [{ chatId, revision }]
+    })) as { kind?: string; __unimplemented?: boolean } | null
+    if (!v || v.__unimplemented) return false
+    return v.kind === 'applied' || v.kind === 'accepted'
   } catch {
     return false
   }

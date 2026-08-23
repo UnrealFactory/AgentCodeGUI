@@ -1537,6 +1537,32 @@ input,textarea{ font-family:inherit; }
 .lh-go:hover{ background:rgba(255,255,255,.17); border-color:rgba(255,255,255,.24); }
 /* ready면 앰버가 아니라 중립 — "막혀 있음"이 아니라 "누르면 간다"는 상태다 */
 .limit-hold.ready{ color:var(--text-3); }
+/* ★ 3.0 M-UX R4 — 정체성 배너(chat:identity). 한도 배너와 같은 자리·같은 유리지만
+   "막혀 있음"이 아니라 "뒤에서 바뀌었음"이라 앰버가 아니라 중립이다(M-UI 목업 1-fallback) */
+.limit-hold.ident{ color:var(--text-3); }
+
+/* ★ 3.0 M-UX R4 — 다른 대화의 판정 토스트(chat:verdict). 활성 대화는 스레드 카드가
+   말하고, 이 줄은 **보고 있지 않은 대화**의 거부만 띄운다. 컴포저·워크바를 가리지 않게
+   오른쪽 아래에 쌓이고 10초 뒤 스스로 사라진다 */
+.vtoast-wrap{
+  position:fixed; right:22px; bottom:96px; z-index:48;
+  display:flex; flex-direction:column; gap:6px; align-items:flex-end;
+  pointer-events:none;
+}
+.vtoast{
+  pointer-events:auto; position:relative; display:flex; align-items:flex-start; gap:7px;
+  max-width:360px; padding:9px 7px 9px 11px; border-radius:12px;
+  background:rgba(28,28,28,.82); border:1px solid rgba(255,255,255,.10);
+  backdrop-filter:blur(32px) saturate(1.25); -webkit-backdrop-filter:blur(32px) saturate(1.25);
+  box-shadow:0 18px 44px -18px rgba(0,0,0,.75), inset 0 1px 0 rgba(255,255,255,.05);
+  animation:rise .16s cubic-bezier(.2,.8,.2,1);
+  color:var(--amber); font-size:11px;
+}
+.vtoast > svg{ flex:0 0 auto; margin-top:1px; }
+.vt-body{ flex:1; min-width:0; display:flex; flex-direction:column; gap:2px; text-align:left; background:none; border:none; padding:0; cursor:pointer; }
+.vt-title{ font-weight:650; color:var(--text-2); }
+.vt-text{ color:var(--text-4); line-height:1.45; }
+.vt-detail{ color:var(--text-5, var(--text-4)); font-family:var(--font-mono); font-size:10px; word-break:break-all; opacity:.85; }
 /* 예약 상태의 컴포저(.scheduling)는 별도 장식 없음 — 옛 액센트 링은 2.0 무채색에선
    흰 광륜으로 보여 걷어냈다. 글래스 카드와 플레이스홀더가 이미 문맥을 말한다. */
 

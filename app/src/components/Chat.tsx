@@ -2130,8 +2130,22 @@ export function useThreadWindow(scrollEl: HTMLElement | null, total: number, res
 // `scrollHeight` 6962 → 6687(275px)로 뒤늦게 줄었다. 한 프레임에 앵커를 맞춰 놓고 손을
 // 떼면 그 275px이 앵커를 화면 밖으로 밀어낸다(1차 실행에서 실제로 밟았다). 그래서 착지는
 // 한 번이 아니라 **정착 창(SETTLE_MS) 동안 유지**다 — 사용자가 손대는 순간 즉시 물러난다.
+//
+// 함정 셋 — **브라우저 scroll anchoring이 낸 scroll 이벤트는 사용자가 아니다**(★R4).
+// R3의 앵커 모드는 *"scrollTop이 움직였다 = 사용자가 움직였다"*로 읽고 즉시 무장해제했다
+// (`|scrollTop − p.set| > 2 → stop()`). 그런데 되올림 리플로 중에 브라우저의 scroll
+// anchoring이 **스스로** scrollTop을 옮기고 그것도 scroll 이벤트를 낸다 — 유지 루프는 그
+// 보정을 사용자 이동으로 오독하고 물러났고, 그 뒤의 리플로를 아무도 되잡지 않아 앵커가
+// **정착 뒤 365px 밀렸다**(크리틱 R14 §5-F3, 3/3 결정적). 바닥 모드는 같은 사고를 이미
+// 겪고 「의사 신호」로 막아 뒀다(래치 + "scrollTop이 줄었을 때만 사용자") — 앵커 모드에는
+// 그 장치가 없었다. 여기서 두 모드가 같은 규약을 쓴다: **사용자 입력 제스처(휠·포인터·
+// 키)가 방금 있었을 때만** scrollTop 변화를 사용자 이동으로 읽고, 아니면 되잡는다.
 const ANCHOR_TOL_PX = 2 // 이 안쪽이면 제자리
 const SETTLE_MS = 4000 // 마운트 후 "아직 자리를 잡는 중"으로 보는 창(위 함정 둘)
+/** 제스처의 잔향 — 이 안에 난 scroll만 「사용자」다(관성 스크롤 한 번분). */
+const USER_GESTURE_MS = 450
+/** 되잡기 상한 — 브라우저 anchoring과 서로 밀면 여기서 손을 뗀다(무한 핑퐁 금지). */
+const MAX_REFIX = 240
 
 /** `.thread` 자식 중 이 메시지 인덱스가 그리는 엘리먼트. 첫 자식이 센티널일 수 있다. */
 function threadChildAt(threadEl: Element, start: number, idx: number): HTMLElement | null {
@@ -2156,12 +2170,16 @@ export function useThreadAnchor(o: {
   // id=null → **바닥 모드**(앵커 없음 = 접을 때 바닥이었다 · 첫 마운트). 팔로우 래치가
   // 마운트에서 한 번 바닥으로 놓지만, 위 함정 둘 때문에 그 뒤 높이가 자라 바닥에서
   // 밀려난다(실측 147px). 정착 창 동안 바닥에 붙여 두는 것이 래치의 뜻 그대로다.
-  const pend = useRef<{ id: string | null; off: number; factor: number; set: number; until: number } | null>(null)
+  const pend = useRef<{ id: string | null; off: number; factor: number; set: number; until: number; fixes: number } | null>(null)
+  /** 마지막 **사용자 입력 제스처** 시각 — 의사 스크롤(anchoring·리플로)과 가르는 유일한 축. */
+  const gestureAt = useRef(-1e9)
 
   const threadOf = (sc: HTMLElement): Element | null => sc.querySelector(':scope > .thread')
   const stop = useCallback((): void => {
     pend.current = null
   }, [])
+  /** 방금 사용자가 손을 댔나. 안 댔으면 scrollTop이 움직여도 **우리가 되잡을 몫**이다. */
+  const userMoved = useCallback((): boolean => performance.now() - gestureAt.current <= USER_GESTURE_MS, [])
 
   const tick = useCallback((): void => {
     const p = pend.current
@@ -2183,9 +2201,14 @@ export function useThreadAnchor(o: {
       p.set = sc.scrollTop
       return
     }
-    // 앵커 모드 — 여기서는 scrollTop이 움직였다는 것이 곧 사용자의 이동이다(래치는
-    // 이미 풀었고, anchoring 보정은 앵커를 제자리에 두므로 다음 패스가 no-op이다)
-    if (p.set >= 0 && Math.abs(sc.scrollTop - p.set) > ANCHOR_TOL_PX) return stop()
+    // 앵커 모드 — scrollTop이 움직였다는 것만으로는 사용자가 아니다(함정 셋). 제스처
+    // 잔향이 있으면 사용자가 읽던 자리를 바꾼 것이니 물러나고, 없으면 브라우저 anchoring이
+    // 낸 의사 이동이므로 **아래에서 되잡는다**. R3은 여기서 무조건 stop()이라 정착 뒤
+    // 365px 어긋난 화면을 아무도 고치지 않았다.
+    if (p.set >= 0 && Math.abs(sc.scrollTop - p.set) > ANCHOR_TOL_PX) {
+      if (userMoved() || p.fixes >= MAX_REFIX) return stop()
+      p.fixes += 1
+    }
     const idx = messages.findIndex((m) => m.id === p.id)
     if (idx < 0) return stop() // 그 메시지가 사라졌다(/clear·다른 대화) — 앵커를 버린다
     if (idx < start) return ref.current.ensureIndex(idx) // 윈도 밖 — 넓히고 다음 커밋에 다시
@@ -2211,7 +2234,7 @@ export function useThreadAnchor(o: {
     }
     p.set = sc.scrollTop
     noteLanding(anchorKey, { id: p.id, want: p.off, got, top: sc.scrollTop, at: Date.now() })
-  }, [stop])
+  }, [stop, userMoved])
 
   // ── 복원 — 스크롤러가 붙는 순간(=이 자리에 다시 그려졌다) ─────────────────
   //
@@ -2228,15 +2251,27 @@ export function useThreadAnchor(o: {
     if (!sc || doneRef.current === sc) return
     doneRef.current = sc
     const a = o.anchorKey ? takeAnchor(o.anchorKey) : null
-    pend.current = { id: a?.id ?? null, off: a?.off ?? 0, factor: 0, set: -1, until: performance.now() + SETTLE_MS }
+    pend.current = { id: a?.id ?? null, off: a?.off ?? 0, factor: 0, set: -1, until: performance.now() + SETTLE_MS, fixes: 0 }
+    gestureAt.current = -1e9 // 되올림 직전의 클릭(접힘 배지·자리 선택)이 잔향으로 남지 않게
     const th = threadOf(sc)
     const ro = th && typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => tick()) : null
     ro?.observe(th as Element)
+    // **사용자 제스처의 시각**을 여기서 찍는다. scroll 이벤트만으로는 누가 움직였는지 알 수
+    // 없다 — 브라우저 scroll anchoring도 똑같은 이벤트를 낸다(함정 셋). 이 네 가지는
+    // 사용자만 낸다: 휠 · 포인터(스크롤바 드래그 포함) · 터치 · 키.
+    const mark = (): void => {
+      gestureAt.current = performance.now()
+    }
+    for (const name of ['wheel', 'mousedown', 'touchstart', 'keydown'] as const)
+      sc.addEventListener(name, mark, { passive: true })
     // 사용자의 스크롤 한 번이면 끝 — tick이 스스로 쓴 값은 p.set와 같아 걸리지 않는다.
+    // 제스처 없이 움직인 값은 의사 스크롤이므로 **물러나는 대신 되잡는다**(F3).
     // (바닥 모드는 래치가 의사를 말하므로 여기서 끊지 않는다 — 위 tick의 주석 참고)
     const onScroll = (): void => {
       const p = pend.current
-      if (p?.id && p.set >= 0 && Math.abs(sc.scrollTop - p.set) > ANCHOR_TOL_PX) stop()
+      if (!p?.id || p.set < 0 || Math.abs(sc.scrollTop - p.set) <= ANCHOR_TOL_PX) return
+      if (userMoved()) return stop()
+      tick()
     }
     sc.addEventListener('scroll', onScroll, { passive: true })
     tick()
@@ -2245,6 +2280,7 @@ export function useThreadAnchor(o: {
       cancelAnimationFrame(raf)
       ro?.disconnect()
       sc.removeEventListener('scroll', onScroll)
+      for (const name of ['wheel', 'mousedown', 'touchstart', 'keydown'] as const) sc.removeEventListener(name, mark)
       stop()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -3034,6 +3070,136 @@ export function LimitHoldBar({
           <IconX2 size={13} />
         </button>
       </div>
+    </div>
+  )
+}
+
+/* ── ★ R4 — 정체성 브로드캐스트(`chat:identity`)의 **최소 표면** ────────────────
+ *
+ * R3까지 이 채널의 구독자는 0이었다(크리틱 R14 §4.3-M3). 엔진이 모델을 뒤에서 바꿔도
+ * 화면은 배너 한 줄만 봤고 **되돌릴 재료가 없었다** — 2.6.2 병리 P3 그대로다.
+ * M-LOGIC §6.2 전이 절차 3("스레드에 인라인 배너 + [되돌리기]")과 M-UI 목업
+ * `ui-notify-1-fallback.html` B안의 문법(band · notice · action=revert)을 옮긴다.
+ *
+ * 자리는 한도 배너와 같은 줄이다(컴포저 바로 위). 스레드 안이 아닌 이유: 스레드 항목을
+ * 늘리면 스냅샷 스키마 · 4개 표면의 MessageView가 전부 따라와야 하고, 그건 "최소 표면"이
+ * 아니다. 이 배너는 **지금 사실**을 말하는 상태줄이라 그 자리가 더 정직하다.
+ *
+ * 문장은 §6.2의 `cause` 3경로로 갈리는 게 옳지만(목업 변형 1) 셸의 와이어에는 아직
+ * `fallback{cause}`가 없다(엔진 소관) — 그래서 **지어내지 않고** 경로 중립 문장 하나만
+ * 쓴다. 값이 오면 여기 세 문장으로 갈면 된다. */
+export interface IdentityNotice {
+  /** 이 배너가 말하는 채팅 */
+  chatId: string
+  /** 리비전 번호 — 되돌릴 지점은 그 **직전**이다 */
+  revision: number
+  origin: string
+  /** 전환 뒤 모델(원본 id) */
+  model: string
+  /** 폴백에 밀려 버려진 패치 리프(§4.2-b 규약 2) — 있으면 문장이 한 줄 더 붙는다 */
+  keptByFallback: string[]
+  driftedFields: string[]
+}
+
+/** 리프 경로(`engine.model`)를 사람이 읽는 낱말로. 모르면 경로 그대로 — 지어내지 않는다. */
+function leafLabel(f: string): string {
+  switch (f) {
+    case 'engine.model':
+      return t('모델', 'model')
+    case 'engine.effort':
+      return t('사고 강도', 'effort')
+    case 'engine.account':
+    case 'billing.account':
+      return t('계정', 'account')
+    case 'mode':
+      return t('실행 모드', 'run mode')
+    case 'cwd':
+      return t('작업 폴더', 'working folder')
+    default:
+      return f
+  }
+}
+
+export function IdentityBand({ notice, onRevert, onDismiss }: { notice: IdentityNotice | null; onRevert: () => void; onDismiss: () => void }) {
+  if (!notice) return null
+  const shown = pickerModelOf(notice.model) ?? notice.model
+  const name = modelOpts().find((m) => m.id === shown)?.v ?? notice.model
+  const kept = notice.keptByFallback.map(leafLabel).join(', ')
+  const drifted = notice.driftedFields.map(leafLabel).join(', ')
+  const line =
+    notice.origin === 'engine_fallback'
+      ? t(
+          `엔진이 이 대화의 모델을 ${name}(으)로 바꿨어요 — 이후 대화도 같은 모델로 갑니다.`,
+          `The engine switched this chat to ${name} — later turns use the same model.`
+        )
+      : kept
+        ? t(`${kept}은(는) 자동 전환값을 유지했어요 — 내가 고른 값이 아니에요.`, `${kept} kept the auto-switched value — not the one you picked.`)
+        : t(`예약한 설정이 착지하면서 ${drifted}이(가) 달라졌어요.`, `${drifted} changed while the scheduled setting landed.`)
+  return (
+    <div className="limit-hold-wrap">
+      <div className="limit-hold ident">
+        <IconAlert size={13} />
+        <span className="lh-title">{notice.origin === 'engine_fallback' ? t('모델이 자동 전환됐어요', 'Model switched automatically') : t('설정이 달라졌어요', 'A setting drifted')}</span>
+        <span className="lh-sub">{line}</span>
+        {notice.revision > 0 && (
+          <button className="lh-go" onClick={onRevert}>
+            {t('되돌리기', 'Undo')}
+          </button>
+        )}
+        <button className="lh-x has-tip" data-tip={t('안내 닫기', 'Dismiss')} aria-label={t('안내 닫기', 'Dismiss')} onClick={onDismiss}>
+          <IconX2 size={13} />
+        </button>
+      </div>
+    </div>
+  )
+}
+
+/* ── ★ R4 — 다른 대화의 판정 토스트 (`chat:verdict`) ───────────────────────────
+ *
+ * 활성 대화의 거부는 스레드 안 카드가 말한다(리듀서의 `verdict` 액션). 문제는 **보고
+ * 있지 않은 대화**다 — 자리 밖 채팅의 예약 드레인이 폴더 소실로 튕기면 그 사실이 갈 곳이
+ * 없다(스냅샷에 접어 두긴 하지만 그건 나중에 열어야 보인다). 그래서 지금 창에 뜨는 줄을
+ * 하나 준다: 제목 + 사유 + 그 대화로 가기.
+ *
+ * 자동 소멸(10초) + ✕. OS 알림(`window.api.notify`)과 겹치지 않는다 — 그쪽은 창이 포커스
+ * 밖일 때만 뜨고 이쪽은 **보고 있는데도 못 본 사실**을 말한다. */
+export interface VerdictToastItem {
+  id: string
+  chatId: string
+  title: string
+  text: string
+  detail: string
+}
+export function VerdictToast({ items, onGo, onDismiss }: { items: VerdictToastItem[]; onGo: (chatId: string) => void; onDismiss: (id: string) => void }) {
+  // 소멸 타이머는 항목이 소유한다 — 목록 전체에 하나를 두면 새 항목이 옛 항목의 남은
+  // 수명을 늘린다(토스트가 안 사라진다는 흔한 사고).
+  const seen = useRef(new Set<string>())
+  useEffect(() => {
+    const timers: ReturnType<typeof setTimeout>[] = []
+    for (const it of items) {
+      if (seen.current.has(it.id)) continue
+      seen.current.add(it.id)
+      timers.push(setTimeout(() => onDismiss(it.id), 10_000))
+    }
+    return () => timers.forEach(clearTimeout)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items])
+  if (!items.length) return null
+  return (
+    <div className="vtoast-wrap">
+      {items.map((it) => (
+        <div className="vtoast" key={it.id}>
+          <IconAlert size={13} />
+          <button className="vt-body" onClick={() => onGo(it.chatId)}>
+            <span className="vt-title">{it.title}</span>
+            <span className="vt-text">{it.text}</span>
+            {it.detail && <span className="vt-detail">{it.detail}</span>}
+          </button>
+          <button className="lh-x has-tip" data-tip={t('닫기', 'Dismiss')} aria-label={t('닫기', 'Dismiss')} onClick={() => onDismiss(it.id)}>
+            <IconX2 size={13} />
+          </button>
+        </div>
+      ))}
     </div>
   )
 }

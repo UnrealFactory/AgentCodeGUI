@@ -118,6 +118,13 @@ type Action =
   // + 부분 답변)이 실제로 남아 재개 시 모델도 그걸 보므로, 화면에서 걷어내면 세션과
   // 화면이 어긋난다. 흔적은 그대로 두고 '중단함' 마커만 남긴다.
   | { type: 'interrupt-turn' }
+  // ★ R4 — 엔진이 **스스로 연 턴**의 사용자 말풍선(`user-echo`, hub.rs:823). 계약면
+  // (`EngineEvent`)에 없는 이벤트라 `{type:'engine'}`으로는 못 들어온다 — engineAction이
+  // 여기로 접는다. 한도 재개·예약 드레인이 이 경로다(크리틱 R14 §5-F5).
+  | { type: 'user-echo'; text: string; images?: string[]; time: string }
+  // ★ R4 — `chat:verdict`의 착지점. 거부는 **전송이 없던 일이 됐다**는 뜻이라 말풍선
+  // 하나로 끝나지 않는다: begin이 올려 둔 busy를 되감아야 침묵 정지가 사라진다(D7).
+  | { type: 'verdict'; text: string; blocked: boolean; time: string }
   | { type: 'load'; state: SessionState }
 
 const THINKING_ID = 'thinking'
@@ -497,6 +504,64 @@ export function reducer(state: SessionState, action: Action): SessionState {
       openGroupId: null,
       interrupted: false,
       seq
+    }
+  }
+
+  if (action.type === 'user-echo') {
+    // 엔진이 연 턴이다 — 화면은 이 말풍선을 그린 적이 없다(begin은 사용자 전송에서만 돈다).
+    // 중복 방어는 **꼬리 한 칸**만 본다: 렌더러가 연 턴은 셸이 `expect_runs`로 에코를 아예
+    // 안 내므로(hub.rs:803) 여기 걸릴 일이 거의 없고, 그래도 겹치면 같은 문장이 두 번
+    // 그려지는 쪽이 더 나쁘다. 스레드 중간을 뒤지지 않는 이유: 같은 말을 두 번 보내는 것은
+    // 정상이고 그걸 지우면 대화가 거짓이 된다.
+    const tail = state.messages[state.messages.length - 1]
+    if (tail && tail.kind === 'msg' && tail.role === 'user' && tail.text === action.text) return state
+    const seq = state.seq + 1
+    return {
+      ...state,
+      seq,
+      messages: capThread([
+        ...state.messages.filter((m) => m.id !== THINKING_ID),
+        {
+          kind: 'msg',
+          id: `ue${seq}`,
+          role: 'user',
+          text: action.text,
+          animate: false,
+          time: action.time,
+          images: action.images?.length ? action.images : undefined
+        }
+      ])
+    }
+  }
+
+  if (action.type === 'verdict') {
+    const seq = state.seq + 1
+    const without = state.messages.filter((m) => m.id !== THINKING_ID)
+    const item: ThreadItem = { kind: 'notice', id: `vd${seq}`, text: action.text, time: action.time }
+    if (!action.blocked) return { ...state, seq, messages: capThread([...without, item]) }
+    // 막혔다 = 이 턴은 **시작조차 못 했다**. 나레이션·중지 버튼·스피너가 계속 도는 것이
+    // m-logic P8("영구 정지 + 침묵")이고 3.0이 죽이겠다고 선언한 증상이다. 돌던 명령
+    // 카드도 여기서 정착시킨다 — 스피너로 남으면 그것도 같은 거짓말이다.
+    const msgs = state.pendingCommand
+      ? without.map((m) =>
+          m.kind === 'cmdresult' && m.id === state.pendingCommand!.cardId
+            ? { ...m, running: false, failed: true, title: t('명령을 보내지 못했어요', "Couldn't send the command"), sub: null, stats: null, time: action.time }
+            : m
+        )
+      : without
+    return {
+      ...state,
+      seq,
+      status: 'error',
+      // 이 실행은 없다 — 뒤늦게 오는 남의 종결 이벤트를 이 자리로 끌어오지 않는다
+      curRunId: null,
+      messages: capThread([...msgs, item]),
+      pendingCommand: null,
+      pendingPermission: null,
+      pendingQuestion: null,
+      thinkingText: null,
+      streaming: false,
+      openGroupId: null
     }
   }
 
@@ -1063,6 +1128,30 @@ export function reducer(state: SessionState, action: Action): SessionState {
   }
 }
 
+/**
+ * ★ R4 — 엔진 이벤트 한 장을 리듀서 액션으로 접는다.
+ *
+ * `user-echo`는 셸이 R4에 신설한 이벤트인데(hub.rs:823) **2.6.2 계약면(`EngineEvent`)에
+ * 없다** — `src/shared/protocol.ts`는 얼려 둔 면이라 여기서 못 늘린다. 그래서 리듀서의
+ * `switch`가 아니라 이 문 하나에서 갈린다. 안 갈라 두면 `default:`의 소진 가드로 조용히
+ * 흘러가고, **엔진이 스스로 연 턴(한도 재개·예약 드레인)에 사용자 말풍선이 없다**
+ * (크리틱 R14 §5-F5 — "내가 보낸 적 없는 답"이 스레드에 뜬다).
+ *
+ * 이벤트를 받는 표면 전부(본채팅·추가 채팅·멀티 패널·팝아웃·배경 수집기)가 이 함수를
+ * 지나야 한다 — 한 곳이라도 `{type:'engine'}`을 직접 만들면 그 화면만 말풍선이 없다.
+ */
+export function engineAction(event: EngineEvent): Action {
+  const e = event as unknown as { type?: string; text?: unknown; images?: unknown }
+  if (e?.type === 'user-echo' && typeof e.text === 'string')
+    return {
+      type: 'user-echo',
+      text: e.text,
+      images: Array.isArray(e.images) ? (e.images as string[]).filter((s) => typeof s === 'string') : undefined,
+      time: nowTime()
+    }
+  return { type: 'engine', event }
+}
+
 // `subscribe` defaults to the main engine channel; other surfaces (채팅·추가 채팅·
 // 멀티 패널) pass their own channel's onEvent so each isolated conversation drives
 // through the exact same reducer.
@@ -1077,7 +1166,7 @@ export function useAgentSession(
   // subscribe to streaming engine events (main channel by default, or the one passed in)
   useEffect(() => {
     const sub = subscribe ?? window.api.onEngineEvent
-    return sub((event) => dispatch({ type: 'engine', event }))
+    return sub((event) => dispatch(engineAction(event)))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -1112,6 +1201,8 @@ export function useAgentSession(
   const load = (snapshot: SessionState): void => dispatch({ type: 'load', state: snapshot })
   // 취소 = 중단 — 흔적은 남기고 턴만 끊는다 ('중단함' 마커·스피너 정착은 리듀서가)
   const interruptTurn = (): void => dispatch({ type: 'interrupt-turn' })
+  // ★ R4 — `chat:verdict`의 착지점. blocked면 되감기까지 리듀서가 한다(위 주석).
+  const noteVerdict = (text: string, blocked: boolean): void => dispatch({ type: 'verdict', text, blocked, time: nowTime() })
 
-  return { state, elapsed, busy, begin, clearPermission, clearQuestion, answerQuestion, load, interruptTurn }
+  return { state, elapsed, busy, begin, clearPermission, clearQuestion, answerQuestion, load, interruptTurn, noteVerdict }
 }

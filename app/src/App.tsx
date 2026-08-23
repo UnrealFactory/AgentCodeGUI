@@ -9,7 +9,8 @@ const onBgTaskMain = (req: BgTaskRequest): void => {
 import { extractMentions } from './lib/mentions'
 import { useTurnNotify } from './lib/notify'
 import type { NotifyTarget } from '@shared/protocol'
-import { useAgentSession, initialSessionState, reducer as sessionReducer, sanitizeSnapshot, snapshotForPersist, sameCwd, commandOf, commandTitleOf, liveMsgIndex, nowTime, type SessionState } from './store/session'
+import { useAgentSession, engineAction, initialSessionState, reducer as sessionReducer, sanitizeSnapshot, snapshotForPersist, sameCwd, commandOf, commandTitleOf, liveMsgIndex, nowTime, type SessionState } from './store/session'
+import { shellAuthored, verdictNote, verdictLine } from './lib/verdict'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { Sidebar, type ChatSummary, type SidebarSection } from './components/Sidebar'
 import { pushRecentDir, seedRecentDirs } from './lib/recentDirs'
@@ -20,11 +21,14 @@ import {
   focusChatWindow,
   listChatWindows,
   onChatEvent,
+  onChatIdentity,
   onChatRunState,
   onChatStatus,
+  onChatVerdict,
   onChatWindows,
   respondDialog,
   resumeHold,
+  revertIdentity,
   runChat,
   setActiveChat,
   type WindowSlot
@@ -45,7 +49,7 @@ import {
   SIDEBAR_AUTOHIDE_TRIGGER_PREVIEW_EVENT,
   type AutohideTriggerPreviewDetail
 } from './lib/sidebarAutohide'
-import { BtwDock, ChatHeader, ChatFind, Composer, FALLBACK_ASK_CANCEL, LimitHoldBar, MessageView, QuestionModal, PermissionModal, SelectionToolbar, WelcomeState, WorkBar, WorkflowDock, WorkingIndicator, hasRunningBash, isFallbackAsk, nextMode, pickerModelOf, slashCommandsWithBtw, useThreadFollow, useThreadWindow, type PickerState, type ScheduledMsg } from './components/Chat'
+import { BtwDock, ChatHeader, ChatFind, Composer, FALLBACK_ASK_CANCEL, IdentityBand, LimitHoldBar, MessageView, QuestionModal, PermissionModal, SelectionToolbar, VerdictToast, WelcomeState, WorkBar, WorkflowDock, WorkingIndicator, hasRunningBash, isFallbackAsk, nextMode, pickerModelOf, slashCommandsWithBtw, useThreadFollow, useThreadWindow, type IdentityNotice, type PickerState, type ScheduledMsg, type VerdictToastItem } from './components/Chat'
 import { parseBtw, btwForkOf } from './lib/btw'
 import { SubAgentModal } from './components/AgentPanel'
 import { Explorer } from './components/Explorer'
@@ -212,7 +216,7 @@ interface PersistedChats {
 
 function MainApp({ user }: { user: AppUser }) {
   const lang = useLang() // 언어 전환 시 아래 useMemo(사이드바 섹션 라벨 등)가 새 언어로 재계산되게
-  const { state, elapsed, busy, begin, clearPermission, clearQuestion, answerQuestion, load, interruptTurn } = useAgentSession()
+  const { state, elapsed, busy, begin, clearPermission, clearQuestion, answerQuestion, load, interruptTurn, noteVerdict } = useAgentSession()
   // 워크플로 상주 중(턴은 끝나 busy=false) — 전송·채팅 전환이 워크플로를 죽이지 않게 잠근다
   const wfAlive = state.workflows.some((w) => w.status === 'running')
   // 턴을 막고 있는 포그라운드 Bash가 있을 때만 셸 팝오버에 "건너뛰기"(Ctrl+B) 버튼을 노출
@@ -883,6 +887,10 @@ function MainApp({ user }: { user: AppUser }) {
   // 실행 배지가 ref를 직접 읽으면 멤버십 변화에 다시 그려지지 않는다(ref는 렌더 신호가
   // 아니다) — 마지막 대화가 정착한 순간에도 배지가 남고 가드가 안 풀린다.
   const [bgIds, setBgIds] = useState<string[]>([])
+  // ★ R4 — `chat:verdict`(자리 밖 대화의 거부) 토스트 스택 · `chat:identity`(폴백 배너 +
+  // 되돌리기). 둘 다 R3까지 **구독자 0**이던 채널의 착지점이다(크리틱 R14 §4.3-M2·M3).
+  const [verdictToasts, setVerdictToasts] = useState<VerdictToastItem[]>([])
+  const [identNotices, setIdentNotices] = useState<Record<string, IdentityNotice>>({})
   const syncBgIds = (): void => {
     const ids = [...bgSnapRef.current.keys()]
     setBgIds((prev) => (prev.length === ids.length && prev.every((v, i) => v === ids[i]) ? prev : ids))
@@ -925,7 +933,10 @@ function MainApp({ user }: { user: AppUser }) {
     const off = onChatEvent((id, event) => {
       const cur = bgSnapRef.current.get(id)
       if (!cur) return // 추적 대상이 아니다 (활성 채팅·차가운 채팅)
-      bgSnapRef.current.set(id, sessionReducer(cur, { type: 'engine', event }))
+      // ★ R4 — `engineAction`을 지나야 `user-echo`가 말풍선이 된다. 자리 밖 채팅의
+      // 예약 드레인·한도 재개가 정확히 이 경로라, 여기서 안 접으면 돌아왔을 때
+      // "내가 보낸 적 없는 답"만 있다(크리틱 R14 §5-F5).
+      bgSnapRef.current.set(id, sessionReducer(cur, engineAction(event)))
     })
     return () => {
       off()
@@ -1057,8 +1068,18 @@ function MainApp({ user }: { user: AppUser }) {
   // unloaded 채팅(스냅샷이 메모리에 없음)은 디스크에서 되읽은 뒤 착지한다 — 전환 연타로
   // 지연 로드가 겹치면 seq 가드로 마지막 요청만 이긴다(동기 전환도 진행 중인 로드를 무효화).
   const restoreSeq = useRef(0)
+  // ★ R4 — 자리 밖 대화의 거부 사유 대기열(`chat:verdict`). 그 대화가 열릴 때 접힌다.
+  const pendingVerdictRef = useRef<Map<string, { text: string; blocked: boolean; time: string }[]>>(new Map())
   const restore = (c: ChatMeta): void => {
-    const land = (snap: SessionState): void => {
+    const land = (raw: SessionState): void => {
+      // 열리는 순간이 이 대화의 "사유를 접을 자리"다 — 스냅샷이 이제야 손에 있다
+      const pend = pendingVerdictRef.current.get(c.id)
+      let snap = raw
+      if (pend?.length) {
+        pendingVerdictRef.current.delete(c.id)
+        snap = pend.reduce((s, v) => sessionReducer(s, { type: 'verdict', text: v.text, blocked: v.blocked, time: v.time }), raw)
+        setChats((list) => list.map((x) => (x.id === c.id ? { ...x, snapshot: snap, unloaded: undefined } : x)))
+      }
       load(snap)
       setManualCwd(c.manualCwd)
       setRefDirs(c.refDirs ?? [])
@@ -2011,6 +2032,110 @@ function MainApp({ user }: { user: AppUser }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [unifiedChats, panelInfos, chatSummaries, extraSummaries, foldedCount, multi.summaries, multi.activeId, mode, activeChatId, busy, wfAlive, bgIds, lang]
   )
+
+  // ── ★ R4 — 거부·큐잉 사유 (`chat:verdict`) ──────────────────────────────────
+  //
+  // 이 채널의 구독자가 0이던 동안 무슨 일이 있었나(크리틱 R14 §5-F4 실측): 채팅 폴더를
+  // 없는 경로로 바꾸고 한 줄 보내면 **말풍선이 그려지고 나레이션이 40초를 돌고 중지
+  // 버튼이 살아 있는데 오류·안내가 0건**이었다. 셸은 `hub::ensure()`에서 사유를 이 채널로
+  // 뿌리고 `null`을 돌려줬을 뿐이고, 런타임이 없으니 T3(20초 침묵 감시)도 없었다.
+  // m-logic P8("영구 정지 + 침묵") — 3.0이 죽이겠다고 선언한 그 증상이다.
+  //
+  // 착지는 둘로 갈린다. **보고 있는 대화**는 스레드 안 카드(+busy 되감기)로, **자리 밖
+  // 대화**는 토스트 + 그 대화의 스냅샷에 접기로. 뒤쪽을 스냅샷에만 접으면 열어야 보인다.
+  useEffect(() => {
+    const off = onChatVerdict((id, v) => {
+      const note = verdictNote(v)
+      if (!note) return // accepted·applied·noop — 판정 로그를 화면에 흘리지 않는다
+      const line = verdictLine(note)
+      // ★ R5 접점 — 셸의 `reject_spawn`이 사유를 **스레드로 직접** 내는 판정(`message` 동반)은
+      // 저자가 셸이다. 그 대화의 스레드에 렌더러가 같은 사실을 한 번 더 쓰면 두 벌이 된다.
+      // 렌더러가 남는 자리는 **셸의 fanout이 닿지 않는 곳**뿐이다:
+      //   · 토스트 — 셸에는 없는 표면(다른 대화를 보고 있을 때 이 사고를 알리는 유일한 길)
+      //   · 추적도 안 되는 차가운 대화 — `chat:event`를 아무도 안 받으므로 기록이 0이 된다
+      const shellSaid = shellAuthored(v)
+      if (id === activeChatIdRef.current) {
+        if (!shellSaid) noteVerdict(line, note.blocked)
+        return
+      }
+      // 자리 밖 대화 — 지금 창에 한 줄 띄우고(놓치면 다시 못 본다) 그 대화에도 접어 둔다
+      setVerdictToasts((cur) =>
+        [...cur, { id: `${id}:${note.key}:${Date.now()}`, chatId: id, title: note.title, text: note.text, detail: note.detail }].slice(-3)
+      )
+      const bg = bgSnapRef.current.get(id)
+      if (bg) {
+        // 배경 수집기가 셸의 `error` 말풍선을 이미 접고 있다 — 접을 것은 토스트뿐이다
+        if (!shellSaid)
+          bgSnapRef.current.set(id, sessionReducer(bg, { type: 'verdict', text: line, blocked: note.blocked, time: nowTime() }))
+        return
+      }
+      // 배경 추적 대상이 아니다 = 이 창의 메모리에 그 대화의 스냅샷이 없을 수도 있다
+      // (부팅 라이트 페이로드의 `unloaded` 마커). 그러면 지금 접을 자리가 없으므로
+      // **열릴 때 접는다**(`restore`의 착지점이 소비). 안 그러면 토스트가 사라지는 순간
+      // 사유도 함께 사라진다 — 자리 밖 대화에서 그건 사실상 침묵이다.
+      const q = pendingVerdictRef.current.get(id) ?? []
+      pendingVerdictRef.current.set(id, [...q, { text: line, blocked: note.blocked, time: nowTime() }].slice(-3))
+      while (pendingVerdictRef.current.size > 32) {
+        const first = pendingVerdictRef.current.keys().next()
+        if (first.done) break
+        pendingVerdictRef.current.delete(first.value)
+      }
+    })
+    return off
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // ── ★ R4 — 정체성 리비전 (`chat:identity`) ──────────────────────────────────
+  //
+  // 구독자 0이던 채널(크리틱 R14 §4.3-M3). 폴백 배너는 `model-fallback`이 이미 스레드에
+  // 한 줄 남기지만 그 줄에는 **되돌릴 재료가 없다**(리비전 번호가 계약면에 없다).
+  // 여기서 리비전을 받아 배너에 [되돌리기]를 얹는다 — m-logic §6.2 전이 절차 3.
+  useEffect(() => {
+    const off = onChatIdentity((p) => {
+      const id = p.chatId ?? ''
+      const origin = p.origin ?? ''
+      const kept = (p.keptByFallback ?? []).filter((s) => typeof s === 'string')
+      const drifted = (p.driftedFields ?? []).filter((s) => typeof s === 'string')
+      const show = origin === 'engine_fallback' || (origin === 'deferred_apply' && (kept.length > 0 || drifted.length > 0))
+      setIdentNotices((cur) => {
+        if (!show) {
+          // 사용자가 직접 바꿨거나 되돌렸다 = 이 배너가 말하던 사실이 더는 최신이 아니다
+          if (!cur[id]) return cur
+          const next = { ...cur }
+          delete next[id]
+          return next
+        }
+        return {
+          ...cur,
+          [id]: {
+            chatId: id,
+            revision: typeof p.revision === 'number' ? p.revision : 0,
+            origin,
+            model: p.identity?.engine?.model ?? '',
+            keptByFallback: kept,
+            driftedFields: drifted
+          }
+        }
+      })
+    })
+    return off
+  }, [])
+  const dismissIdent = useEvent((id: string) => {
+    setIdentNotices((cur) => {
+      if (!cur[id]) return cur
+      const next = { ...cur }
+      delete next[id]
+      return next
+    })
+  })
+  // 되돌리기 — 셸의 와이어에 `revertTo`가 없어 **직전 리비전**으로 되돌린다. 그 번호가
+  // 없으면 엔진이 `no_revision`으로 거절하고, 그 사유는 위 verdict 구독자가 그린다.
+  const onRevertIdent = useEvent((n: IdentityNotice) => {
+    void revertIdentity(n.chatId, n.revision - 1).then((ok) => {
+      if (ok) dismissIdent(n.chatId)
+    })
+  })
+
   return (
     <div className="win">
       <div className="blurwarm" />
@@ -2169,6 +2294,16 @@ function MainApp({ user }: { user: AppUser }) {
             onOpenFile={onOpenFile}
             onOpenSubagent={onOpenSubagent}
             onRefreshUsage={onRefreshUsage}
+          />
+          {/* ★ R4 — 엔진이 뒤에서 바꾼 정체성(폴백·드리프트) + [되돌리기]. 한도 배너와
+              같은 줄에 서지만 말하는 사실이 다르다(m-logic §6.2 · M-UI 목업 1-fallback) */}
+          <IdentityBand
+            notice={identNotices[activeChatId] ?? null}
+            onRevert={() => {
+              const n = identNotices[activeChatId]
+              if (n) onRevertIdent(n)
+            }}
+            onDismiss={() => dismissIdent(activeChatId)}
           />
           {/* 한도 자동 이어서 상태줄 — 이 채팅 소유의 대기표만 보여준다.
               토글 자체는 과금 picker(구독 → '한도 소진 시 자동 이어서')에 있다 */}
@@ -2330,6 +2465,17 @@ function MainApp({ user }: { user: AppUser }) {
 
       {/* 패치노트 릴리즈 카드 — 버전이 오른(또는 첫) 실행에 한 장. 엔진/앱 업데이트
           게이트보다 먼저 렌더해서(z-index 동급, DOM 뒤가 위) 게이트가 항상 위에 뜬다 */}
+      {/* ★ R4 — 자리 밖 대화의 거부 사유. 스레드 카드는 그 대화를 열어야 보이므로,
+          지금 창에 한 줄 띄워 "보낸 줄 알았는데 안 나갔다"를 그 순간에 알린다 */}
+      <VerdictToast
+        items={verdictToasts}
+        onGo={(id) => {
+          setVerdictToasts((cur) => cur.filter((v) => v.chatId !== id))
+          onSelectUnified(id)
+        }}
+        onDismiss={(id) => setVerdictToasts((cur) => cur.filter((v) => v.id !== id))}
+      />
+
       <PatchNotes />
 
       <EngineGate />

@@ -969,15 +969,30 @@ export function GitModal({
                   <div className="sd-ic">
                     <IconUndo size={22} />
                   </div>
-                  <div className="sd-title">{t('이 파일의 변경을 되돌릴까요?', 'Discard changes to this file?')}</div>
+                  {/* ★ 3.0 M6 R2.8 — 미추적 **폴더**는 한 행이 서브트리 통째다.
+                      `git status --porcelain=v2`가 미추적 디렉터리를 `? sub/` 한 줄로 접어
+                      보내고(기본 동작), 되돌리기는 `shell.trashItem(dir)`이라 그 아래
+                      전부가 함께 휴지통으로 간다(M6 실측: `폴더 통째 ok=true · 휴지통 +1`).
+                      "새 파일이에요"라고 말하면 그 반경을 숨기는 거짓말이 된다 — M6가
+                      "확인 카드 문구는 렌더러 소관"이라며 남긴 그 한 건이다. */}
+                  <div className="sd-title">
+                    {confirm.file.untracked && confirm.file.path.endsWith('/')
+                      ? t('이 폴더를 통째로 되돌릴까요?', 'Discard this entire folder?')
+                      : t('이 파일의 변경을 되돌릴까요?', 'Discard changes to this file?')}
+                  </div>
                   <div className="sd-msg">
                     <b>{confirm.file.path}</b>
                     <br />
                     {confirm.file.untracked
-                      ? t(
-                          '아직 커밋된 적 없는 새 파일이에요 — 휴지통으로 이동해요 (복구 가능).',
-                          'This new file has never been committed — it goes to the Recycle Bin (recoverable).'
-                        )
+                      ? confirm.file.path.endsWith('/')
+                        ? t(
+                            '아직 커밋된 적 없는 폴더예요 — 이 한 줄은 폴더 하나가 아니라 그 안의 모든 파일과 하위 폴더를 뜻해요. 통째로 휴지통으로 이동해요 (복구 가능).',
+                            'This folder has never been committed — this one row means the whole subtree, not a single entry. All of it goes to the Recycle Bin (recoverable).'
+                          )
+                        : t(
+                            '아직 커밋된 적 없는 새 파일이에요 — 휴지통으로 이동해요 (복구 가능).',
+                            'This new file has never been committed — it goes to the Recycle Bin (recoverable).'
+                          )
                       : t(
                           '마지막 커밋 상태로 돌아가요. 이 변경은 어디에도 저장되지 않고 사라져요.',
                           'Reverts to the last committed state. These changes are not saved anywhere and will be lost.'
@@ -988,7 +1003,9 @@ export function GitModal({
                       {t('취소', 'Cancel')}
                     </button>
                     <button className="sd-go danger" onClick={() => doDiscard(confirm.file)}>
-                      {t('되돌리기', 'Discard')}
+                      {confirm.file.untracked && confirm.file.path.endsWith('/')
+                        ? t('폴더 통째로 되돌리기', 'Discard whole folder')
+                        : t('되돌리기', 'Discard')}
                     </button>
                   </div>
                 </>
