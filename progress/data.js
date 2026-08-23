@@ -1,6 +1,6 @@
 window.PROGRESS = {
-  phase: 'R14 — 배선 R4(★Priv 게이트 회복·큐 Rust 이관·재개 단일 소유) / 렌더러 R3(이미지·앵커·창 UI) / M6 크리틱(discard 반경·스킴 탈출) 병렬 3',
-  note: 'R13 착지 — 렌더러 R2: 큐 소유권 이동(크리틱 misroute 하네스 green — A 예약이 A에 남고 A로만 발사), 크리틱 공격 11단계 중 10 green(raise.scroll은 앵커 설계로 이월) / 배선 R3: 이벤트 9종 DOM 도달 실증(워크플로 정착=고아 알약 0·사이드체인 조기분리·REPLACE 순서)+부팅 큐·한도 재장전+창 채널, 엔진 108·스토어 60·셸 14 green / M6 R1: fs/git 24채널+ccg-fs 크레이트, IDE 크롬 A/B 14검사 동일, diff 캡 3+1종(32MB stdout 캡 신설), 한글 정렬 실측 보정(600세트 불일치 0), ccg-img 스킴 셸 완성 / R12 확인: 불일치 0(백스톱 132초 반대 방향 검증 포함). ★유휴 Priv 254.7>253 재이탈 — R14 최우선',
+  phase: 'R15 — M6 R2(삭제 페일세이프·스킴 비동기·CORS) / R13·R14 확인 크리틱 (병렬 2) → 이후 리드가 조용한 세션에서 Priv 게이트 단독 재측정',
+  note: 'R14 착지 — 배선 R4: 유휴 귀속 완료(Rust 전체 13.6MB Priv·어떤 Rust 스위치도 ±1MB 못 움직임 → 표적은 렌더러+WebView2, 동시 주행 노이즈 ±11MB가 게이트 거리 1.2MB의 9배 — 조용한 재측정 필요), 큐 채널 완성(op 6종·첨부/picker·begin_run 에코·재시작 영속), 재개 단일 소유(resumeOwner=engine, 이중 전송 재생 잠금), 엔진 118 green / 렌더러 R3: 이미지 스킴 전환(뷰어 3화면 개통·pixdiff 0.06%), 스크롤 앵커(3케이스), useLimitResume 상호배제 소비(own.auto-fired spawns 1), poc-dial 43검사 / M6 크리틱: 조건부 확인 — 치명 2 신규(S1: 휴지통 불가 볼륨에서 조용한 영구 삭제·2.6.2는 페일세이프 / S2: 이미지 한 장이 UI 21초 정지) → R15 수정 중',
   updatedAt: '2026-08-23 04:20',
   metrics: [
     { name: '★ 멀티 4패널 유휴 WS', unit: 'MB', base: 712.8, new: 421.3, target: '≤356 = WebView2 빈 문서 바닥값(351.5) + 4.5MB — 앱 몫이 47.3이라 구조적 불가, 재협상 대상 (NetSvc2 채택 후 크리틱 실측)', pass: false },
