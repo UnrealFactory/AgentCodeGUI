@@ -39,6 +39,9 @@ const PRIME_MIN_OPEN_GAP_MS: u64 = 1_500;
 const PRIME_QUERY: &str = "zz__semantic_prime__";
 /// 프라임 왕복 상한(2.6.2와 같은 180초 — 대형 솔루션의 첫 전 컴파일).
 const PRIME_TIMEOUT: Duration = Duration::from_secs(180);
+/// 멤버십 파일(스펙의 [`ServerSpec::membership_files`]) 폴링 주기. 재통지는 **한 주기
+/// 조용해진 뒤** 한 번 — 2.6.2 `watchCsSolution`의 2초 디바운스와 같은 체감이다.
+pub const MEMBERSHIP_POLL: Duration = Duration::from_millis(2_000);
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Status {
@@ -293,7 +296,12 @@ impl Server {
                 "name": self.root.file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_default()
             })],
         };
-        let mut workspace = json!({ "workspaceFolders": true });
+        // `configuration`을 선언해야 서버가 `workspace/configuration`으로 **물어 온다**.
+        // R2는 스펙에 `configuration` 필드를 만들어 놓고 이 선언을 안 해서, pyright는
+        // 실측으로 그 경로를 **한 번도 밟지 않았다**(2.6.2도 같다 — 그쪽 `items.map(() => null)`
+        // 핸들러를 치는 서버는 Roslyn뿐이었다). 언어 이름이 없는 LSP 클라이언트 능력이라
+        // 다음 언어에서 이 줄이 다시 열리지 않는다.
+        let mut workspace = json!({ "workspaceFolders": true, "configuration": true });
         if self.spec.declare_watched_files {
             // 스펙이 명시적으로 켤 때만. 끄는 게 기본인 이유는 spec.rs 표 참고
             // (Roslyn은 이걸 선언하는 순간 자기 폴백 워처를 꺼 버린다).
@@ -387,6 +395,7 @@ impl Server {
                 }
                 self.state.lock().unwrap().status = Status::Ready;
                 self.ready_cv.notify_all();
+                self.watch_membership();
             }
             Err(e) => {
                 let tail = self.stderr_tail.lock().unwrap().clone();
@@ -534,6 +543,8 @@ impl Server {
     fn sync_locked(&self, uri: &str, abs: &Path, text: String, mtime_ms: i64, size: u64) -> Result<String, String> {
         let sync_kind = self.state.lock().unwrap().caps.sync_kind;
         let mut docs = self.docs.lock().unwrap();
+        // 이 동기화 **전에** 이 문서가 라이브 버퍼(-1)였는가 — 재프라임 판정이 이걸 본다(아래).
+        let was_live_buffer = docs.map.get(uri).map(|d| d.mtime_ms == -1).unwrap_or(false);
         let (notify_open, notify_change, evicted) = match docs.map.get_mut(uri) {
             None => {
                 docs.map.insert(
@@ -595,8 +606,21 @@ impl Server {
             );
         }
         drop(docs);
-        // 컴파일 입력이 실제로 바뀌었다 — 재프라임 스펙이 있으면 예약한다
-        if !notify_open && mtime_ms != -1 && matches!(self.spec.reprime, Reprime::WorkspaceSymbol { .. }) {
+        // 컴파일 입력이 **디스크에서** 바뀌었다 — 재프라임 스펙이 있으면 예약한다.
+        //
+        // 두 갈래를 뺀다(2.6.2 manager.ts:3098과 같은 조건):
+        //   `mtime_ms == -1`      = 지금 밀어 넣은 게 라이브 편집 버퍼다(타이핑 중)
+        //   `was_live_buffer`     = **직전이** 라이브 버퍼였다 = 이 재동기화는 그 버퍼를
+        //                           디스크 내용으로 되돌리는 것뿐이다
+        //
+        // 두 번째를 빠뜨리면(R3 실측) 완성을 한 번 쓴 뒤의 첫 디스크 재동기화가 매번
+        // 재프라임을 걸고, 그 다음 토큰 요청이 조용 간격(3초)만큼 통째로 세워진다 —
+        // C# 재정확화가 2.6.2의 323ms 대 **3,285ms**로 벌어졌던 자리가 정확히 이것이다.
+        if !notify_open
+            && mtime_ms != -1
+            && !was_live_buffer
+            && matches!(self.spec.reprime, Reprime::WorkspaceSymbol { .. })
+        {
             self.mark_prime_dirty();
         }
         Ok(uri.to_string())
@@ -679,6 +703,40 @@ impl Server {
         self.prime.lock().unwrap().done
     }
 
+    // ── 멤버십 감시 ──────────────────────────────────────────────────────────
+    /// 스펙이 댄 **멤버십 파일**(Roslyn: 로드한 sln/slnx·csproj)이 갈리는지 지켜본다.
+    /// 갈리면 스펙의 [`ServerSpec::reload_project`]가 서버에 다시 알리고, 엔진은 재프라임만
+    /// 예약한다 — **여기에도 언어 이름이 없다.**
+    ///
+    /// 2.6.2는 `fs.watch(솔루션 폴더) + 2초 디바운스`(watchCsSolution)였다. 여기서는 폴링인데
+    /// 이유가 있다: 재생성은 삭제→생성으로 이벤트가 여러 번 튀고 Windows의 파일 핸들 워치는
+    /// 그 사이에 끊긴다(2.6.2가 파일이 아니라 폴더를 감시한 이유). "한 주기 조용해진 뒤 한 번"은
+    /// 폴링으로 공짜로 얻고, 비용은 서버당 2초에 stat 한두 번이다.
+    fn watch_membership(self: &Arc<Self>) {
+        let Some(reload) = self.spec.reload_project else { return };
+        let weak = Arc::downgrade(self);
+        std::thread::Builder::new()
+            .name("ccg-lsp-membership".into())
+            .spawn(move || {
+                let mut seen: Option<String> = None;
+                let mut pending: Option<String> = None;
+                loop {
+                    std::thread::sleep(MEMBERSHIP_POLL);
+                    // 서버가 접혔으면(유휴 회수·종료) 이 스레드도 끝난다
+                    let Some(s) = weak.upgrade() else { return };
+                    if s.is_dead() {
+                        return;
+                    }
+                    let now = membership_stamp(&(s.spec.membership_files)(&s.root));
+                    let fire = membership_step(&mut seen, &mut pending, now);
+                    if fire && s.raw_status() == Status::Ready && reload(&s.rpc, &s.root) {
+                        s.mark_prime_dirty();
+                    }
+                }
+            })
+            .ok();
+    }
+
     // ── 외부 파일 변화(앱을 거친 쓰기) ───────────────────────────────────────
     /// 2.6.2 `notifyWatchedFiles`(manager.ts:2337)가 **한 서버에** 하던 네 가지를 그대로:
     /// ① 재프라임 예약 ② 열린 문서의 디스크 재동기화 ③ 삭제 문서 `didClose`
@@ -714,6 +772,22 @@ impl Server {
         // ④ 통지는 `declare_watched_files`와 무관하게 **항상** 보낸다 — 2.6.2와 같은
         //   "pyright류를 위한 최선 노력"(선언은 서버의 폴백 워처를 끄는 스위치일 뿐이다).
         self.rpc.notify("workspace/didChangeWatchedFiles", json!({ "changes": changes }));
+        // ⑤ 멤버십 파일(솔루션·프로젝트 파일)이 이 배치에 있으면 스펙에 재통지를 맡긴다 —
+        //   앱을 거친 변화의 짝(밖에서 일어난 재생성은 `watch_membership` 폴러가 잡는다).
+        self.reload_if_membership(paths);
+    }
+
+    /// 바뀐 경로에 멤버십 파일이 섞여 있으면 스펙의 재통지를 부르고 재프라임을 예약한다.
+    fn reload_if_membership(&self, paths: &[PathBuf]) {
+        let Some(reload) = self.spec.reload_project else { return };
+        let mem = (self.spec.membership_files)(&self.root);
+        let hit = paths.iter().any(|p| {
+            let a = p.to_string_lossy().to_ascii_lowercase();
+            mem.iter().any(|m| m.to_string_lossy().to_ascii_lowercase() == a)
+        });
+        if hit && reload(&self.rpc, &self.root) {
+            self.mark_prime_dirty();
+        }
     }
 
     /// 열린 문서 하나를 닫는다(삭제·축출). 서버 문서 맵과 우리 맵을 함께 지운다.
@@ -850,6 +924,53 @@ impl Server {
 }
 
 // ── 순수 함수(테스트 가능) ───────────────────────────────────────────────────
+
+/// 멤버십 폴러의 **판정 한 걸음**(순수 함수 — 스레드 없이 시험할 수 있게 뺐다).
+///
+/// 규칙: 지문이 갈리면 **한 주기 더 같은 값으로 조용해진 뒤에** 딱 한 번 `true`.
+/// 재생성은 삭제 → 생성으로 지문이 두세 번 튀는데, 그 중간(파일 없음) 상태로 재통지하면
+/// 서버가 빈 솔루션을 로드해 버린다(2.6.2가 `fs.watch`에 2초 디바운스를 건 이유).
+pub fn membership_step(seen: &mut Option<String>, pending: &mut Option<String>, now: String) -> bool {
+    let Some(prev) = seen.clone() else {
+        *seen = Some(now);
+        return false; // 첫 관측 — 기준선만 잡는다
+    };
+    if now == prev {
+        *pending = None;
+        return false;
+    }
+    if pending.as_deref() != Some(now.as_str()) {
+        *pending = Some(now); // 갈렸다 — 아직 흔들리는 중일 수 있다
+        return false;
+    }
+    *seen = Some(now);
+    *pending = None;
+    true
+}
+
+/// 멤버십 파일 묶음의 지문 — 경로·mtime·크기. **목록 자체가 바뀌어도**(새 csproj 생성,
+/// `.sln` → `.slnx` 교체) 지문이 달라지므로 "재생성"과 "추가"를 한 판정으로 잡는다.
+/// 없는 파일은 `-`로 남긴다 — 삭제 → 재생성 사이의 순간도 변화로 센다.
+pub fn membership_stamp(files: &[PathBuf]) -> String {
+    let mut out = String::new();
+    for f in files {
+        out.push_str(&f.to_string_lossy().to_ascii_lowercase());
+        match std::fs::metadata(f) {
+            Ok(md) => {
+                let t = md
+                    .modified()
+                    .ok()
+                    .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+                    .map(|d| d.as_millis())
+                    .unwrap_or(0);
+                out.push_str(&format!("|{t}|{}", md.len()));
+            }
+            Err(_) => out.push_str("|-"),
+        }
+        out.push(';');
+    }
+    out
+}
 
 /// `didChange`의 contentChanges. **불변식 ②** — incremental(2) 서버에는 range를 반드시 싣는다.
 /// 최소 range(공통 prefix/suffix 절단)로 만들어 페이로드와 서버 재파싱을 편집 조각 크기로 줄인다.
@@ -1084,6 +1205,71 @@ mod tests {
         let (s, _, t) = minimal_range_change("a😀b", "a😀c");
         assert_eq!(s, (0, 3), "이모지는 UTF-16 2유닛");
         assert_eq!(t, "c");
+    }
+
+    /// 멤버십 지문 — **목록이 바뀌어도**(새 csproj·`.sln`→`.slnx` 교체) 달라져야 한다.
+    /// 이게 같으면 폴러가 재생성을 못 보고, 새 프로젝트의 모든 파일이 무색으로 굳는다.
+    #[test]
+    fn membership_stamp_sees_content_and_list_changes() {
+        let dir = std::env::temp_dir().join("ccg-lsp-memstamp");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let a = dir.join("A.slnx");
+        std::fs::write(&a, "<Solution/>").unwrap();
+        let s1 = membership_stamp(&[a.clone()]);
+        assert_eq!(s1, membership_stamp(&[a.clone()]), "안 바뀌었는데 지문이 흔들리면 헛재통지가 돈다");
+        // 내용이 바뀌면(크기 변화) 지문이 달라진다
+        std::fs::write(&a, "<Solution><Project Path=\"x.csproj\" /></Solution>").unwrap();
+        assert_ne!(s1, membership_stamp(&[a.clone()]));
+        // 목록 자체가 갈려도 달라진다
+        let b = dir.join("B.slnx");
+        assert_ne!(membership_stamp(&[a.clone()]), membership_stamp(&[b.clone()]));
+        // 없는 파일은 `-` — 삭제→재생성의 '중간'도 변화로 센다
+        assert!(membership_stamp(&[b]).ends_with("|-;"));
+        assert_eq!(membership_stamp(&[]), "");
+    }
+
+    /// 폴러의 디바운스 — **한 주기 조용해진 뒤 한 번만** 재통지한다.
+    /// 흔들리는 동안 쏘면 삭제-후-재생성의 중간(빈/없는 솔루션)을 서버에 로드시킨다.
+    #[test]
+    fn membership_poller_fires_once_after_one_quiet_tick() {
+        let (mut seen, mut pending) = (None, None);
+        // 첫 관측 = 기준선. 같은 값이 이어지는 동안은 조용하다
+        assert!(!membership_step(&mut seen, &mut pending, "A".into()));
+        assert!(!membership_step(&mut seen, &mut pending, "A".into()));
+        // 재생성 시작(A → B → C: 삭제·쓰기·교체로 튄다) — 흔들리는 동안은 안 쏜다
+        assert!(!membership_step(&mut seen, &mut pending, "B".into()));
+        assert!(!membership_step(&mut seen, &mut pending, "C".into()));
+        // C로 조용해졌다 → 한 번 쏜다
+        assert!(membership_step(&mut seen, &mut pending, "C".into()));
+        // 그 뒤로는 다시 조용 — 같은 변화로 두 번 쏘지 않는다
+        assert!(!membership_step(&mut seen, &mut pending, "C".into()));
+        assert!(!membership_step(&mut seen, &mut pending, "C".into()));
+    }
+
+    /// 스펙 정합 — 재통지 훅이 있는 서버는 **감시할 파일을 실제로 댄다**(반대도).
+    /// 짝이 깨지면 폴러가 빈 목록을 돌거나(무해하지만 죽은 코드), 갈린 걸 보고도 보낼 게 없다.
+    #[test]
+    fn reload_hook_and_membership_files_come_as_a_pair() {
+        let dir = std::env::temp_dir().join("ccg-lsp-memberpair");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        // 세 언어의 프로젝트 파일을 한 폴더에 다 깔아 둔다 — 스펙이 자기 것만 집어야 한다
+        for n in ["tsconfig.json", "pyproject.toml", "A.csproj"] {
+            std::fs::write(dir.join(n), "x").unwrap();
+        }
+        for s in crate::spec::SPECS {
+            let files = (s.membership_files)(&dir);
+            assert_eq!(
+                s.reload_project.is_some(),
+                !files.is_empty(),
+                "{}: 재통지 훅과 멤버십 파일은 짝이다 ({files:?})",
+                s.id
+            );
+        }
+        // cs만 자기 프로젝트 파일을 집는다
+        let cs = crate::spec::spec_by_id("cs").unwrap();
+        assert_eq!((cs.membership_files)(&dir), vec![dir.join("A.csproj")]);
     }
 
     #[test]

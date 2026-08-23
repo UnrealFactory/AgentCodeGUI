@@ -10,6 +10,7 @@
 //! 실패는 전부 안전값(`unsupported`·`null`·빈 목록)으로 떨어진다 — **어떤 화면도
 //! 크래시하지 않는다**가 3.0의 계약이다.
 
+pub mod install;
 pub mod jobkill;
 pub mod launch;
 pub mod manager;
@@ -120,9 +121,34 @@ pub fn status(cwd: &str, rel: &str) -> &'static str {
     }
 }
 
-/// 내려받기가 진행 중인가 — R2(설치 UI)에서 실제 상태로 바뀐다.
-fn installing(_id: &str) -> bool {
-    false
+/// 내려받기가 진행 중인가 — 뷰어 칩이 `need-install`과 `installing`을 가르는 근거.
+fn installing(id: &str) -> bool {
+    install::is_installing(id)
+}
+
+// ── lsp:install-server · lsp:uninstall-server ────────────────────────────────
+/// 설치/삭제 — 계약면(`{ ok, error? }`) 모양으로 돌려준다. **블로킹**이다(수백 MB 내려받기).
+pub fn install_server(id: &str) -> Value {
+    match install::install(id) {
+        Ok(()) => json!({ "ok": true }),
+        Err(e) => json!({ "ok": false, "error": e }),
+    }
+}
+
+pub fn uninstall_server(id: &str) -> Value {
+    match install::uninstall(id) {
+        Ok(()) => json!({ "ok": true }),
+        Err(e) => json!({ "ok": false, "error": e }),
+    }
+}
+
+/// 뷰어의 "이 언어 서버를 설치할까요?" 버튼 — 파일 경로로 어느 서버인지 정한다.
+pub fn install_for_file(cwd: &str, rel: &str) -> Value {
+    let Some(abs) = resolve(cwd, rel) else { return json!({ "ok": false, "error": "경로를 알 수 없어요" }) };
+    let Some(spec) = spec::spec_for_path(&abs) else {
+        return json!({ "ok": false, "error": "이 파일 형식을 맡는 서버가 없어요" });
+    };
+    install_server(spec.id)
 }
 
 // ── lsp:project-status ───────────────────────────────────────────────────────
@@ -424,6 +450,17 @@ fn broadcast_exts(notified: &[PathBuf]) -> Vec<String> {
     exts
 }
 
+/// 이 파일의 서버가 **유효한 프라임을 들고 있는가**(진단·프로브 전용).
+/// `Some(false)` = 재프라임이 예약돼 있다 = 멤버십/입력 변화가 관측됐다는 뜻.
+/// 서버가 없거나 프라임 개념이 없는 언어면 `None`.
+pub fn primed(cwd: &str, rel: &str) -> Option<bool> {
+    let (spec, _abs, root) = spec_and_root(cwd, rel)?;
+    if matches!(spec.reprime, spec::Reprime::None) {
+        return None;
+    }
+    Some(manager::ensure(spec, &root).ok()?.primed())
+}
+
 /// 앱 종료 — 언어 서버를 전부 접는다.
 pub fn dispose_all() {
     manager::dispose_all();
@@ -448,10 +485,11 @@ mod tests {
     #[test]
     fn ts_spec_claims_the_right_extensions() {
         for e in ["ts", "TSX", "mjs", "cjs", "jsx"] {
-            assert!(spec::spec_for_ext(e).is_some(), "{e}");
+            assert_eq!(spec::spec_for_ext(e).map(|s| s.id), Some("ts"), "{e}");
         }
-        for e in ["cs", "py", "md", "verse"] {
-            assert!(spec::spec_for_ext(e).is_none(), "{e} — R1 범위 밖이어야 한다");
+        // R3에서 py·cs가 붙었다(확장자 소유는 spec.rs 테스트가 언어별로 본다).
+        for e in ["md", "verse", "cpp"] {
+            assert!(spec::spec_for_ext(e).is_none(), "{e} — R3 범위 밖이어야 한다");
         }
     }
 

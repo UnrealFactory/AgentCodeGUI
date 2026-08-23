@@ -617,3 +617,302 @@ serverId 자리에 붙여(`ts` → `ts2`) **그 서버의 캐시만** 버린다.
    물으면 회수되고, 다음 호버가 재기동 비용(실측 590~639ms)을 문다. 2.6.2는 상태 폴링이
    TTL을 되감아 그런 회수가 없었다 — **의도한 차이**이고(그 되감기가 C-1의 기전이었다)
    프리웜+디스크 캐시가 복귀를 싸게 만든다는 전제 위에 있다.
+
+---
+
+# §R3 — Python(pyright) · C#(Roslyn) 개통, 그리고 "스펙 한 항목"이라는 주장의 실측
+
+R2는 이렇게 적었다: *"pyright는 이제 `SPECS` 한 항목 + `py_configuration` 함수 하나로 선다
+(엔진 3파일 무수정)."* R3은 그 문장을 **실제로 붙여서** 검증하는 라운드였다.
+**절반은 맞았고 절반은 틀렸다.** 아래는 그 절반씩을 숫자로 적은 것이다.
+
+- 크레이트: `crates/ccg-lsp/`(`spec.rs`·`server.rs`·`launch.rs`·`lib.rs`·**신규 `install.rs`**)
+- 라우트: `src-tauri/src/ipc/lsp.rs` · 하네스: `bench/lsp.mjs` · 픽스처: `bench/lspfix.mjs`
+- 결과: `bench/results/lsp-{electron-2.6.2,tauri-3.0.0}-r3{ts2,py2,cs2}.json`
+  (기준 파일 `lsp-*-{2.6.2,3.0.0}.json`·R2의 `-r2` 무접촉)
+- 크리틱 도구 재주행: `docs/critic/m7-r3-*.json`(크리틱의 `m7-r1-*`·`m7-r2-*`는 무접촉)
+- 측정 조건: i7-13700KF · Win11 26200 · **빌더 4명 동시 주행 중**. 3.0 exe는 개인 타깃
+  (`%TEMP%/ccg-m7r3-rel`)에서 구웠고 공용 `target/release`는 안 건드렸다.
+
+## R3-1. 확장점 검증 — 엔진 3파일 diff 줄 수 (이 라운드의 본론)
+
+R1이 못 박은 판정 기준은 **"언어를 붙이는 diff가 `SPECS` 배열 증가로 끝나야 한다.
+엔진 파일이 열리면 그 설계는 실패한 것"** 이었다. 실측:
+
+| 엔진 파일 | 추가 줄 | 그중 코드 | 무엇 때문에 |
+|---|---:|---:|---|
+| `crates/ccg-lsp/src/manager.rs` | **0** | **0** | — |
+| `crates/ccg-lsp/src/rpc.rs` | **0** | **0** | — |
+| `crates/ccg-lsp/src/server.rs` | 189 | 123 | 아래 분해 |
+
+`server.rs`의 코드 123줄 분해(주석·빈 줄 66줄 제외):
+
+| 갈래 | 코드 줄 | 내용 |
+|---|---:|---|
+| **py 때문** | **1** | `initialize`에 `capabilities.workspace.configuration: true` 선언 |
+| **cs 때문** | **75** | 새 확장점 하나의 호출부 — 멤버십 폴러 23 · 통지 짝 12 · 순수 헬퍼 38(`membership_step`·`membership_stamp`) · 상수/호출 2 |
+| **버그 수정**(언어 무관) | **6** | 재프라임 트리거의 라이브 버퍼 조건(R3-5) |
+| 테스트 | 41 | 신규 단위 테스트 3개 |
+
+**판정: py는 주장에 가깝게 섰고(엔진 1줄), cs는 안 섰다(엔진 75줄).**
+자기 채점을 피하려고 두 줄로 나눠 적는다 —
+
+- **py의 +1줄은 R2의 주장이 틀렸다는 증거다.** R2가 만든 `configuration` 필드는 **죽어
+  있었다**: 엔진이 `capabilities.workspace.configuration`을 선언하지 않아 pyright는 그 경로로
+  **한 번도 묻지 않았다**(R3 실측 — 아래 R3-4). 필드가 있어도 값이 서버에 닿지 않았다.
+  다만 그 한 줄은 **언어 이름이 없는 LSP 클라이언트 능력**이라 다음 언어에서 다시 안 열린다.
+- **cs의 +75줄은 "스펙 필드로 표현할 수 없는 함정이 하나 남아 있었다"는 뜻이다.**
+  slnx 재생성 → `solution/open` 재통지는 값이 아니라 **행동**이고, R2의 스펙에는 그
+  행동을 걸 자리가 없었다. R3은 그 자리를 스펙 필드 두 개로 만들었다:
+  `membership_files: fn(&Path) -> Vec<PathBuf>` + `reload_project: Option<fn(&Rpc,&Path)->bool>`.
+  75줄은 **그 두 필드의 엔진 쪽 호출부**이고, 거기에 언어 이름은 한 번도 안 나온다.
+  2.6.2는 같은 일을 매니저 본문의 C# 전용 메서드 셋(`watchCsSolution`·`watchCsProjectOpen`·
+  `watchCsProjects`, 약 150줄, `csproj`/`sln` 하드코딩)으로 했다. **다음 라운드의 판정 기준**:
+  C++가 `compile_commands.json`을 멤버십 파일로 대는 것으로 끝나면 이 75줄은 값을 한 것이고,
+  또 열리면 이 설계도 틀린 것이다.
+
+경계 밖 파일 diff(참고): `spec.rs` +555/−64(스펙 두 항목 + 훅 함수 + 루트 규칙 본문 + 테스트 8개) ·
+`launch.rs` +35/−4 · `lib.rs` +44/−6 · `install.rs` 신규 246줄 · `ipc/lsp.rs` +26/−3.
+
+## R3-2. 언어별 수치표 — 2.6.2 대비 (TS와 같은 눈금)
+
+같은 세션·같은 하네스(`bench/lsp.mjs both --lang <lang>`), 콜드/웜 각 1주행.
+모든 "첫 …"은 **문서 시작(navigationStart) 기준**.
+
+| 눈금 | ts 2.6.2 | ts 3.0 | py 2.6.2 | py 3.0 | cs 2.6.2 | cs 3.0 |
+|---|---:|---:|---:|---:|---:|---:|
+| prewarm → `status:ready` ms | 206 | 295 | 444 | 483 | 2,218 | **1,961** |
+| 첫 색칠 · 캐시 미적중 ms | 789 | **576** | n/a | n/a | 5,124 | **4,769** |
+| 첫 색칠 · 캐시 적중 ms | 110 | 169 | n/a | n/a | 158 | 167 |
+| 토큰 왕복 ms | 31 | 32 | n/a | n/a | 208 | 206 |
+| 캐시 호출 첫 / p50 ms | 4.2 / 4.2 | 11.4 / 5.2 | 1.2 / 1.1 | 2.0 / 1.7 | 11.5 / 11.2 | 23.1 / 11.9 |
+| 호버 p50 / p95 ms | 2.0 / 3.3 | 2.4 / 3.5 | 1.3 / 1.6 | 1.9 / 3.4 | 4.5 / 8.0 | **3.3 / 7.1** |
+| 정의 p50 / p95 ms | 1.3 / 3.3 | 2.2 / 3.3 | 0.8 / 1.2 | 2.2 / 2.7 | 3.1 / 5.9 | **2.5 / 5.2** |
+| 완성 p50 / p95 ms | 7.6 / 34.6 | 11.8 / 36.5 | 1.7 / 120.6 | 4.7 / 233.8 | 10.3 / 146.8 | 11.8 / 139.5 |
+| 재정확화(토큰) ms | 100 | 117 | 24 | 34 | 328 | 372 |
+| 재정확화(호버·교차확인) ms | 2 | 2 | 1 | 2 | 37 | 33 |
+| fps 워밍 / 유휴 · 긴 프레임 | 56.8 / 59.9 · 3 | **59 / 60 · 2** | 57.1 / 59.9 · 3 | **59 / 60 · 1** | 58.7 / 60 · 4 | **59.4 / 60 · 2** |
+| 유휴 회수 | 주입 불가 | 회수 + 602ms | 주입 불가 | 회수 + 680ms | 주입 불가 | 회수 + 3,281ms |
+
+**정확성(수치보다 이쪽이 중요하다) — 세 언어 전부 결과가 같다:**
+
+| | ts 2.6.2 / 3.0 | py 2.6.2 / 3.0 | cs 2.6.2 / 3.0 |
+|---|---|---|---|
+| 시맨틱 토큰 수 | **10,925 / 10,925** | 없음 / 없음(서버가 안 냄) | **34,057 / 34,057** |
+| 호버 적중 | 48/48 / 48/48 | 48/48 / 48/48 | 48/48 / 48/48 |
+| 정의 적중(그중 크로스 파일) | 34/34(24) / 34/34(24) | 34/34(24) / 34/34(24) | 36/36(**26**) / 36/36(**26**) |
+| 완성 후보 수 | 4 / 4 | 29 / 29 | 8 / 8 |
+
+읽는 법:
+
+- **요청 계열(호버·정의·완성·토큰 왕복)은 세 언어 모두 대등**하고, C#에서는 3.0이 앞선다.
+- **부팅 계열(`ready`)은 주행마다 흔들린다.** 이 주행의 ts는 3.0이 +89ms인데, 같은 세션의
+  `m7-ready.mjs`(n=5·p50)는 **3.0 149.2ms 대 2.6.2 203.6ms**로 반대다(R3-7). 4명 동시
+  주행에서 `bench/lsp.mjs`의 단발 `prewarmMs`는 한 자리 유효숫자로 읽어야 한다.
+- **cs의 유휴 재기동 3,281ms**는 회귀가 아니라 값이다 — Roslyn은 솔루션을 다시 읽는다.
+  그래서 스펙의 `idle_ttl_ms`가 30분(2.6.2 `IDLE_TTL_HEAVY`와 같은 값)이다.
+- **py의 토큰 칸이 n/a인 이유는 R3-4**에 있다(제품 결함이 아니라 pyright의 사실).
+
+## R3-3. 뷰어 실증 — 실화면에서 색·호버·정의·완성 (CDP)
+
+`window.api`만 두드린 게 아니라 **화면에 뜨는지**를 DOM으로 본다.
+
+| 검사 | ts 3.0 | py 3.0 | cs 3.0 |
+|---|---|---|---|
+| `viewer-open` | ok (36줄) | ok (36줄) | ok (36줄) |
+| 색칠 | ok — 시맨틱 스팬 45 | ok — **문법 색(highlight.js) 스팬 63** | ok — 시맨틱 스팬 227 |
+| `viewer-hover-card` | ok 403ms · `FUNCTION NAME makeConfig …` | ok 417ms · `FUNCTION NAME make_config PARAMS id: int name: str …` | ok 416ms · `STATIC METHOD NAME MakeConfig ACCESS public …` |
+| `viewer-goto-definition` | ok 257ms · big.ts → **lib.ts** | ok 253ms · big.py → **lib.py** | ok 253ms · Big.cs → **Lib.cs**(다른 프로젝트) |
+| `viewer-completion-popup` | ok · 4후보 `lookup register size tagsOf` | ok · 29후보(`register` `lookup` `tags_of` `size` 포함) | ok · 8후보 `Lookup Register Size TagsOf …` |
+| **합계** | **5/5** | **5/5** | **5/5** |
+
+(호버 카드의 400ms대는 서버가 아니라 렌더러의 `HOVER_DELAY=300` + 하네스 폴링 200ms다.
+서버 왕복은 위 표의 호버 p50 쪽이다.)
+
+**2.6.2 팔은 이 세션에서 3/5로 나왔다 — 그리고 그건 2.6.2의 결함이 아니다.**
+실패한 둘은 언제나 **마우스로 하는 두 개**(호버 카드·Ctrl+클릭)이고, 키보드로 하는 완성
+팝업은 항상 통과한다. ts·py·cs 세 언어 × 4주행에서 같은 두 칸만 실패했다(R2 때는 5/5였다).
+같은 세션에서 **API 계층은 두 앱이 동일**하다 — 호버 48/48, 정의 34/34·36/36(크로스 파일
+24·26 동일), 완성 후보 수 동일. 즉 **2.6.2 팔의 합성 마우스 입력이 이 환경에서 안 먹는
+하네스 아티팩트**이고 제품 판정에는 쓸 수 없다. 결과 JSON에 그대로 남겼다.
+
+## R3-4. R2의 주장 정정 — 실측으로 뒤집힌 것 넷
+
+### (a) `configuration` 필드는 **죽어 있었다** (엔진 1줄이 필요했다)
+
+`node <pyright>/langserver.index.js --stdio`에 직접 `initialize`를 던져 봤다:
+
+| 클라이언트 능력 | pyright가 `workspace/configuration`을 묻는가 |
+|---|---|
+| `workspace: { workspaceFolders: true }` (= R2·**2.6.2와 같은 선언**) | **안 묻는다 (0회)** |
+| `workspace: { workspaceFolders: true, configuration: true }` | 묻는다 — `python` · `python.analysis` · `pyright` 3회 |
+
+LSP 규약대로다: 서버는 클라이언트가 `workspace.configuration`을 선언해야 물어본다.
+2.6.2의 `items.map(() => null)` 핸들러를 실제로 치는 서버는 **Roslyn 하나**뿐이었고
+(Roslyn은 능력 선언과 무관하게 razor·html 섹션 4개를 묻는다 — 실측), pyright의 인터프리터
+설정은 2.6.2에서도 **한 번도 전달된 적이 없다.** 3.0은 그 한 줄을 선언하고,
+`py_configuration`이 인터프리터를 실제로 실어 보낸다.
+
+인터프리터 탐색도 값으로 넣었다: venv(`.venv`/`venv`/`env`) → PATH → `%LOCALAPPDATA%\Programs\Python\*`.
+**Microsoft Store 앱 실행 별칭은 거른다** — 이 기계의 `PATH`에 걸리는 `python.exe`는
+121바이트짜리 리파스 포인트라 pyright가 stderr에 `Python`만 세 번 뱉고 인터프리터 없이
+뜬다(실측). 크기 4KB 미만이면 인터프리터로 안 쓴다.
+
+### (b) pyright에는 **시맨틱 토큰이 없다** (Pylance 전용 기능)
+
+`initialize` 응답에 `semanticTokensProvider`가 없다(실측 · `dist/pyright-internal.js`에
+`semanticTokens` 문자열 자체가 0회). 2.6.2도 3.0도 같다 — 파이썬 뷰어의 색은 두 앱 모두
+**highlight.js 문법 색**으로 떨어진다. 크레이트는 이 경우 `semantic_tokens`가 `null`을
+돌려주고(= "지원 안 함"), 렌더러는 그 신호로 폴링을 멈춘다. 그래서 py 행의 토큰 칸은
+"측정 실패"가 아니라 **없는 것**이다. 결과 JSON에 문자열로 남겼다(`noSemanticReason`).
+
+### (c) "하네스는 한 글자도 안 고친다"는 **절반만 맞았다**
+
+R1/R2가 적은 그 약속은 **수치 루프에서는 참**이었다(픽스처가 `hoverAt`·`defAt`·
+`completionProbe`·`edit`을 대면 그대로 돈다). 하지만 **뷰어 실증에는 TS 식별자가 네 군데
+박혀 있었고**(`big.ts`·`makeConfig`·`lib.ts`·`registry.`), 더 나쁜 건 **"모든 서버는 시맨틱
+토큰을 낸다"가 암묵 전제**였다는 것이다(pyright에서 120초 헛폴링이 돈다).
+그 둘을 픽스처 필드 다섯(`openName`·`symbol`·`crossName`·`typeText`·`semantic`)으로 뽑아냈고,
+그 과정에서 하네스 본문이 **순증 +91줄**(152 추가 / 61 삭제) 바뀌었다. 부수로 고친 것 둘:
+
+- 토큰 위치 찾기를 `span.textContent === '심볼'` → **텍스트 노드 Range**로 바꿨다.
+  시맨틱 색이 없으면 highlight.js는 식별자를 span으로 감싸지 않아 옛 방식이 py에서 통째로
+  실패했다(이 수정 전 py는 3/5, 후 **5/5**).
+- 스크린샷 폴더에 언어를 넣었다 — 안 그러면 py 주행이 ts 스크린샷을 조용히 덮는다.
+
+### (d) `installed_bin` 경로가 2.6.2와 달라서 **C#은 영원히 `need-install`이었다**
+
+R2까지 3.0은 `<앱 홈>/lsp/bin/<id>/<name>`을 봤는데, 2.6.2가 실제로 설치하는 자리는
+`<앱 홈>/lsp/<id>/`이고 실행 파일은 버전이 박힌 하위 폴더에 있다
+(`tools/net10.0/win-x64/Microsoft.CodeAnalysis.LanguageServer.exe`).
+그 자리는 아무도 채우지 않아서 C#은 코드가 다 있어도 기동 불가였다.
+2.6.2 `install.ts::findFile`과 같은 **재귀 탐색**으로 맞췄다 — 그 결과
+**2.6.2로 이미 받아 둔 159MB 설치를 3.0이 그대로 쓴다(다시 안 받는다).**
+`lsp:status`가 400ms마다 이 판정을 하므로 **찾은 결과는 메모**한다(매번 `exists()`로 되짚어
+삭제·재설치가 즉시 반영된다).
+
+## R3-5. R3이 벤치로 찾아 고친 실측 버그 — 재프라임이 토큰 응답을 3초 세웠다
+
+첫 cs 주행에서 재정확화가 **2.6.2 328ms 대 3.0 3,285ms**로 벌어졌다. 원인은 재프라임
+트리거의 조건 하나였다.
+
+```text
+2.6.2 (manager.ts:3098)  if (def.awaitsProjectInit && pre.mtimeMs !== -1)  ← '직전'이 라이브 버퍼였나
+3.0 R2 (server.rs)       if !notify_open && mtime_ms != -1                  ← '지금' 밀어 넣는 게 버퍼인가
+```
+
+3.0은 **반대편을 봤다.** 완성(라이브 버퍼 푸시)을 한 번 쓰고 나면 그 다음 디스크
+재동기화가 매번 재프라임을 예약하고, 이어지는 토큰 요청이 조용 간격(3초)만큼 통째로
+세워진다. 두 조건을 **둘 다** 보게 고쳤다(`was_live_buffer`).
+
+| | 2.6.2 | 3.0 (고치기 전) | 3.0 (고친 뒤) |
+|---|---:|---:|---:|
+| cs 재정확화(토큰) | 328 ms | **3,285 ms** | **372 ms** |
+| cs 재정확화(호버 교차확인) | 37 ms | — | **33 ms** |
+
+같은 자리에서 **하네스의 위양성도 하나 찾았다**: `tokensCover`는 "그 **줄 번호**에 토큰이
+있나"만 본다. C# 픽스처의 새 심볼이 원래 주석 토큰이 있던 앵커 줄(3790)에 앉아서,
+**바뀌기 전 토큰으로도 통과한다.** 그래서 호버로 이름을 직접 확인하는 교차 눈금
+(`retokenizeHover`)을 모든 언어에 추가했다. 위 표의 두 번째 행이 그것이고, 그쪽 값이
+"디스크 변화를 서버가 알기까지"의 진짜 값이다(cs 33 대 37ms — 대등).
+
+## R3-6. 멤버십 재통지(스펙 필드 두 개)의 런타임 증거
+
+2.6.2의 `watchCsSolution` — *"Roslyn은 솔루션 멤버십을 로드 때 한 번만 읽는다. 외부 도구가
+`.slnx`를 재생성하면 새 프로젝트의 모든 `.cs`가 misc(무색)로 남는다"* — 를 스펙 필드로 옮겼다.
+엔진은 **언제 부를지**만 알고, 무엇을 보낼지는 스펙이 정한다(`cs_reload_project`).
+두 경로가 있다: ① 앱을 거친 변화 통지(`files_changed`) ② 밖에서 일어난 재생성(폴러).
+
+`ccg-lspprobe`로 Roslyn을 실물로 띄운 뒤 `Bench.slnx`를 실제로 건드려 잰 값
+(`primed=false` = 재프라임이 예약됐다 = 훅이 돌았다):
+
+| 시나리오 | `primed` | 다음 토큰 왕복 |
+|---|---|---:|
+| 기준(프라임 유효) | `true` | 347 ms |
+| ① 파일 변경 + `files_changed` 통지 | **`false`** | 3,509 ms (조용 간격 3초를 문다) |
+| ② 파일 변경만(통지 없음) → 6초 대기 | **`false`** | 79 ms (간격이 이미 지났다) |
+| 대조군(아무것도 안 건드리고 6초) | `true` | 79 ms |
+
+②가 `false`인데 대조군이 `true`인 것이 **폴러가 실제로 돌았다**는 증거다.
+폴러의 디바운스("한 주기 조용해진 뒤 한 번")는 순수 함수(`membership_step`)로 빼서 단위
+테스트로 못 박았다 — 재생성은 삭제→생성으로 지문이 두세 번 튀는데, 중간(빈 솔루션)에
+재통지하면 서버가 그 빈 것을 로드한다.
+
+`RootRule::ReferencingSolution`도 본문이 생겼다(2.6.2 `csRootFor` 이식 · UE 특례 제외).
+픽스처에 **미끼**를 깔아 실물로 시험한다: `src/App/AppOnly.slnx`(프로젝트 1개, 안쪽) 대
+`Bench.slnx`(프로젝트 2개, 바깥). 크레이트 프로브가 고른 서버 루트는
+`…\lspbench_cs`(= 바깥)였고, 그래서 크로스 **프로젝트** 정의 이동이 36/36 중 26 전부
+`Lib.cs`(Core 프로젝트)로 갔다. 미끼가 이겼다면 이 칸이 0이 된다.
+
+## R3-7. 크리틱 도구 전량 재주행 (판정 도구는 한 글자도 안 고쳤다)
+
+산출은 `docs/critic/m7-r3-*.json`(크리틱의 `m7-r1-*`·`m7-r2-*` 무접촉).
+
+| 도구 | R3 결과 | R2 대비 |
+|---|---|---|
+| `m7-drive-all.mjs`(가짜 서버 8종) | `dupopen` didOpen/URI **1** · 생존 · `storm(sync2)` range 없는 didChange **0**/총 7,884B · 버전 단조 · `storm(sync1)` 120건 전부 range 없음(규약대로) · `config` **lspContractOk true**(`[null,null]`) · `death` **error→starting→ready · 30.0s 회복 · procStarts 2** · `cache` **패닉 0/8** · `manydocs` didOpen 400 / didClose **368**(=400−32) · 축출 뒤 재개통 ok · `spawnRace` **1,1,1,1,1** | 동일 |
+| `m7-kill.mjs`(tauri) | `error→starting→ready` · project `idle→ready` · 토큰 **30.7s** 회복 · 호버 회복 · 재기동 **32.8s**(새 PID) | 동일(R2 30.9/33.3s) |
+| `m7-buffer.mjs`(tauri) | 버퍼 호버 **6/6** · 버퍼 정의→lib.ts **6/6** · 디스크 대조군 **6/6** | 동일 |
+| `m7-cwdform.mjs` back/fwd/trail | 전부 **기동 1 · 생존 1** | 동일 |
+| `m7-ready.mjs`(n=5·p50) | tauri **ready 149.2ms** · 첫 status가 **`ready` 5/5** · electron(n=3) 203.6ms · 첫 status `starting` 3/3 | R2(188.9 대 238.2)보다 양쪽 다 개선 |
+| `m7-lifetime.mjs` | 유휴 회수 1→0 · 재기동 **36ms** · 잡 안전망 leaked **0** · `serverPidsSeen` 1개 | 동일 |
+| `m7-bigapp.mjs`(3,000 .ts + nm 15,000 · 600파일) | **600/600 토큰** · 파일당 **9.86ms**(R2 13.97) · fps **60/60 · 긴 프레임 0** · 서버 2→2(누수 0) | 개선 |
+| `m7-cachekey262.cjs` | **ts·cs 둘 다 MATCH true** — 버킷·키·본문이 2.6.2 식과 동일(ts 10,925 · **cs 34,057** 토큰) | cs로 확장 |
+| `cargo test -p ccg-lsp` | **46 통과**(R2 32 + 14) | — |
+
+새로 붙은 단위 테스트 14개 중 값어치 있는 것:
+`referencing_solution_prefers_the_biggest_referencing_solution`(미끼 sln이 진짜를 가리는 사고) ·
+`slnx_wins_over_sln` · `unrelated_solution_is_not_adopted`(UE 모노레포의 그 사고) ·
+`orphan_file_falls_back_to_cwd` · `membership_poller_fires_once_after_one_quiet_tick` ·
+`membership_stamp_sees_content_and_list_changes` · `store_alias_is_not_an_interpreter` ·
+`three_languages_claim_their_extensions`.
+
+## R3-8. 설치 경로(`lsp:install*`) — 최소로 열었다
+
+C#은 `Provision::Download`라 설치가 없으면 설정 화면에 누를 버튼이 없었다. 2.6.2
+`install.ts`의 **최소 이식**을 `crates/ccg-lsp/src/install.rs`(246줄)로 넣고
+`ipc/lsp.rs`에서 세 채널을 받는다(`lsp:install` · `lsp:install-server` · `lsp:uninstall-server`).
+2.6.2와 같게 지킨 것: 설치 자리(`<앱 홈>/lsp/<id>/`) · **System32 bsdtar 절대 경로**(PATH 앞쪽의
+GNU tar는 드라이브 콜론에 질식한다) · 삭제 전 그 폴더에서 도는 프로세스 먼저 죽이기.
+의존성 없이 `curl.exe`(Win10+ 기본)로 받고, 없으면 PowerShell로 떨어진다.
+
+**정직하게 다른 것: 진행률 스트리밍이 없다.** `lsp:install-progress`를 쏘려면 크레이트가
+창(AppHandle)을 알아야 하는데 그건 이 라운드의 경계 밖이다. 설정 카드는 "준비 중…"에서
+완료/실패로 한 번에 넘어간다. 네트워크를 타는 경로라 **이번 라운드에서 실제 다운로드는
+돌려 보지 않았다**(측정에 쓴 Roslyn은 실홈 설치를 격리 홈에 정션으로 이어 썼다) —
+단위 테스트는 "모르는 id는 거부" · "진행 플래그 수명"까지만 본다. 다음 크리틱이 확인할 칸이다.
+
+## R3-9. R3에서도 안 고친 것 / 다음 라운드
+
+1. **`lsp:files-changed`를 쏘는 자리는 여전히 없다.** 크레이트 쪽(`files_changed`)은 R2부터
+   실체가 있고 R3에서 멤버십 재통지까지 붙었지만, 호출부는 `fs:write-file`이고 그 파일은
+   이 라운드의 경계 밖이다. 한 줄이다:
+   `if let Some(v) = ccg_lsp::files_changed(&paths) { app.emit(ch::LSP_FILES_CHANGED, v) }`.
+   **이게 없으면 멤버십 재통지가 열린 뷰어를 못 깨운다** — 서버 쪽은 회복돼 호버·정의·완성이
+   바로 맞지만, 이미 칠해진 토큰은 그 문서를 다시 열 때까지 낡은 채로 남는다.
+2. **설치 진행률 스트리밍**(R3-8) · **실제 다운로드 미검증**.
+3. **`workspace/didChangeConfiguration` 푸시**는 아직 없다(설정 UI가 생기는 라운드).
+   지금은 `initialize` 시점의 pull(`workspace/configuration`)만 있다.
+4. **프리웜의 언어 감지가 `lib.rs`에 하드코딩**(ts/py/cs/cpp). 네 언어는 미리 적혀 있어
+   공짜지만 다섯 번째는 그 파일을 연다. 또 **프리웜은 `root_for`를 안 거친다** — 솔루션이
+   하위 폴더에 있는 C# 프로젝트에서는 프리웜이 cwd에 서버를 띄우고 실제 파일 열기는 솔루션
+   폴더에 또 띄운다(2.6.2도 같은 구조다. 유휴 회수가 걷지만 30분간 한 벌이 논다).
+5. **`ServerSpec::requires`가 하드코딩 한국어**(`".NET SDK 10+ 필요"`). 2.6.2는 `t()`를 썼다 —
+   Rust 쪽 문자열이라 렌더러의 i18n을 못 탄다. 계약면에 `{ko,en}`을 실어야 한다.
+6. **캐시 파일 쓰기가 비원자**(`fs::write`)고 손상 파일을 스스로 안 지운다(R2 잔여 그대로).
+7. **`bench/lsp.mjs`의 2.6.2 팔 합성 마우스 입력**이 이 환경에서 안 먹는다(R3-3).
+   3.0 팔은 되므로 A/B의 뷰어 칸만 비대칭이다 — 다음 크리틱이 재현·원인 규명할 자리.
+
+### 남은 언어: C/C++(clangd) 계획
+
+| 필요한 것 | 어디에 | R3에서 이미 선 것 |
+|---|---|---|
+| `Launch::Exe { extra_args }`로 앱 홈 compile DB 지정 | `SPECS` 항목 | **선다** — cs가 같은 필드로 `--extensionLogDirectory`를 넘긴다 |
+| 설치(`clangd-windows-<ver>.zip`, GitHub API) | `install.rs`의 `download_for`에 한 항목 | **선다** — 표만 늘리면 된다(cs와 같은 zip+tar 경로) |
+| 백그라운드 인덱싱 `$/progress` 배지 | 엔진에 이미 있다(`on_notify` + `project_state`) | **선다** — clangd가 `window.workDoneProgress` 선언에 gate돼 있고 그 선언은 R1부터 있다 |
+| `compile_commands.json` 재생성 → 재인덱싱 | **`membership_files` + `reload_project`** | **이 라운드가 만든 확장점의 두 번째 사용자** — 여기서 엔진이 또 열리면 R3의 75줄이 틀린 것이다 |
+| UE compile DB 생성기(`ue-db`) | 새 도메인(스펙 밖) | 안 섰다 — 2.6.2 `ue.ts` 275줄의 이식이 필요하다 |
+| `RootRule::NearestMarker`(CMakeLists·compile_commands) | 이미 구현돼 있다 | **선다** |
+
+즉 **C++의 게이트는 하나로 좁혀진다**: `SPECS` 한 항목 + `install.rs` 한 항목 + 픽스처 하나로
+끝나는가. 끝나면 R3의 확장점 설계가 값을 한 것이고, `server.rs`가 또 열리면 아니다.

@@ -1,0 +1,17 @@
+{
+  "form": "trail",
+  "cwd": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\",
+  "rel": "lspbench/big.ts",
+  "at": "2026-08-23T19:28:45.701Z",
+  "status": "ready",
+  "tokens": 3,
+  "serverStarts": 1,
+  "serverPids": [
+    35200
+  ],
+  "exitsWithin4s": 0,
+  "survivedToShutdown": 1,
+  "roots": [
+    "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo"
+  ]
+}

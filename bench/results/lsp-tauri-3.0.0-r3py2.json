@@ -1,0 +1,1088 @@
+{
+  "harness": "bench/lsp.mjs",
+  "at": "2026-08-23T19:42:15.633Z",
+  "kind": "tauri",
+  "version": "3.0.0",
+  "lang": "py",
+  "fixture": {
+    "work": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo",
+    "bigRel": "lspbench_py/big.py",
+    "libRel": "lspbench_py/lib.py",
+    "lines": 3370,
+    "bytes": 124795,
+    "hoverSamples": 48,
+    "defSamples": 34
+  },
+  "env": {
+    "ramGB": 63.8,
+    "cpu": "13th Gen Intel(R) Core(TM) i7-13700KF",
+    "os": "Microsoft Windows 11 Home 26200"
+  },
+  "arm": "default",
+  "bin": {
+    "exe": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-exe\\agentcodegui.exe",
+    "exeMtime": "2026-08-23T19:22:10.374Z",
+    "exeSize": 5988352,
+    "exeSha256": "1a11b139a1112b11",
+    "gitHead": "2a61755",
+    "gitDirty": true
+  },
+  "armEnv": {
+    "CCG_HOME": "C:\\Code\\AgentCodeGUI\\.bench-home-tauri",
+    "CCG_CDP_PORT": "9372"
+  },
+  "note": "메모리는 재지 않는다(동시 주행 노이즈 — 리드가 procs의 PID로 따로 잰다).",
+  "cold": {
+    "phase": "cold",
+    "home": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-home-tauri",
+    "pid": 26824,
+    "semantic": false,
+    "mounted": true,
+    "probeSurvived": true,
+    "ready": {
+      "installedAt": 62,
+      "watchStart": 62,
+      "readyAt": 483,
+      "states": [
+        "starting",
+        "ready"
+      ],
+      "statusErr": null
+    },
+    "prewarmMs": 483,
+    "prewarmFromProbeMs": 421,
+    "noSemanticReason": "서버에 semanticTokensProvider가 없다(pyright — Pylance 전용 기능)",
+    "semanticTokensNull": true,
+    "cached": {
+      "ms": 1.8,
+      "p50": 1.8,
+      "min": 1.7,
+      "n": 0,
+      "hit": false,
+      "rows": [
+        {
+          "ms": 1.8,
+          "n": 0,
+          "hit": false
+        },
+        {
+          "ms": 1.9,
+          "n": 0,
+          "hit": false
+        },
+        {
+          "ms": 1.7,
+          "n": 0,
+          "hit": false
+        }
+      ]
+    },
+    "fps": {
+      "frames": 126,
+      "spanMs": 2118,
+      "fps": 59,
+      "medGapMs": 16.7,
+      "p95GapMs": 16.8,
+      "maxGapMs": 50,
+      "longFrames": 1,
+      "window": "문서 시작 → 첫 색칠+토큰 왕복+캐시 표본 (최소 2s)"
+    },
+    "hover": {
+      "n": 48,
+      "hits": 48,
+      "hitRate": 100,
+      "p50": 1.9,
+      "p95": 3.4,
+      "max": 7.5,
+      "p50All": 1.9,
+      "rows": [
+        {
+          "ms": 3.4,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "make_config",
+          "meta": "```python\n(function) def make_config(\n    id: int,\n    name:"
+        },
+        {
+          "ms": 2,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "make_config",
+          "meta": "```python\n(function) def make_config(\n    id: int,\n    name:"
+        },
+        {
+          "ms": 2,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "make_config",
+          "meta": "```python\n(function) def make_config(\n    id: int,\n    name:"
+        },
+        {
+          "ms": 1.9,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "make_config",
+          "meta": "```python\n(function) def make_config(\n    id: int,\n    name:"
+        },
+        {
+          "ms": 2,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "make_config",
+          "meta": "```python\n(function) def make_config(\n    id: int,\n    name:"
+        },
+        {
+          "ms": 1.8,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "make_config",
+          "meta": "```python\n(function) def make_config(\n    id: int,\n    name:"
+        },
+        {
+          "ms": 1.9,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "make_config",
+          "meta": "```python\n(function) def make_config(\n    id: int,\n    name:"
+        },
+        {
+          "ms": 2.2,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "make_config",
+          "meta": "```python\n(function) def make_config(\n    id: int,\n    name:"
+        },
+        {
+          "ms": 1.9,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "make_config",
+          "meta": "```python\n(function) def make_config(\n    id: int,\n    name:"
+        },
+        {
+          "ms": 1.9,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "make_config",
+          "meta": "```python\n(function) def make_config(\n    id: int,\n    name:"
+        },
+        {
+          "ms": 1.8,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "make_config",
+          "meta": "```python\n(function) def make_config(\n    id: int,\n    name:"
+        },
+        {
+          "ms": 1.9,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "make_config",
+          "meta": "```python\n(function) def make_config(\n    id: int,\n    name:"
+        },
+        {
+          "ms": 1.7,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "make_config",
+          "meta": "```python\n(function) def make_config(\n    id: int,\n    name:"
+        },
+        {
+          "ms": 1.8,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "make_config",
+          "meta": "```python\n(function) def make_config(\n    id: int,\n    name:"
+        },
+        {
+          "ms": 2.1,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "summarize",
+          "meta": "```python\n(function) def summarize(\n    reg: BenchRegistry,\n"
+        },
+        {
+          "ms": 1.8,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "summarize",
+          "meta": "```python\n(function) def summarize(\n    reg: BenchRegistry,\n"
+        },
+        {
+          "ms": 1.9,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "summarize",
+          "meta": "```python\n(function) def summarize(\n    reg: BenchRegistry,\n"
+        },
+        {
+          "ms": 1.8,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "summarize",
+          "meta": "```python\n(function) def summarize(\n    reg: BenchRegistry,\n"
+        },
+        {
+          "ms": 1.7,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "summarize",
+          "meta": "```python\n(function) def summarize(\n    reg: BenchRegistry,\n"
+        },
+        {
+          "ms": 1.8,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "summarize",
+          "meta": "```python\n(function) def summarize(\n    reg: BenchRegistry,\n"
+        },
+        {
+          "ms": 1.9,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "summarize",
+          "meta": "```python\n(function) def summarize(\n    reg: BenchRegistry,\n"
+        },
+        {
+          "ms": 1.8,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "summarize",
+          "meta": "```python\n(function) def summarize(\n    reg: BenchRegistry,\n"
+        },
+        {
+          "ms": 1.8,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "summarize",
+          "meta": "```python\n(function) def summarize(\n    reg: BenchRegistry,\n"
+        },
+        {
+          "ms": 1.8,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "summarize",
+          "meta": "```python\n(function) def summarize(\n    reg: BenchRegistry,\n"
+        },
+        {
+          "ms": 2.2,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "summarize",
+          "meta": "```python\n(function) def summarize(\n    reg: BenchRegistry,\n"
+        },
+        {
+          "ms": 1.7,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "summarize",
+          "meta": "```python\n(function) def summarize(\n    reg: BenchRegistry,\n"
+        },
+        {
+          "ms": 6.8,
+          "ok": true,
+          "kind": "module-var",
+          "word": "registry",
+          "meta": "```python\n(variable) registry: BenchRegistry\n```"
+        },
+        {
+          "ms": 2.9,
+          "ok": true,
+          "kind": "module-var",
+          "word": "registry",
+          "meta": "```python\n(variable) registry: BenchRegistry\n```"
+        },
+        {
+          "ms": 7.5,
+          "ok": true,
+          "kind": "module-var",
+          "word": "registry",
+          "meta": "```python\n(variable) registry: BenchRegistry\n```"
+        },
+        {
+          "ms": 3,
+          "ok": true,
+          "kind": "module-var",
+          "word": "registry",
+          "meta": "```python\n(variable) registry: BenchRegistry\n```"
+        },
+        {
+          "ms": 3,
+          "ok": true,
+          "kind": "module-var",
+          "word": "registry",
+          "meta": "```python\n(variable) registry: BenchRegistry\n```"
+        },
+        {
+          "ms": 1.7,
+          "ok": true,
+          "kind": "module-var",
+          "word": "registry",
+          "meta": "```python\n(variable) registry: BenchRegistry\n```"
+        },
+        {
+          "ms": 1.9,
+          "ok": true,
+          "kind": "module-var",
+          "word": "registry",
+          "meta": "```python\n(variable) registry: BenchRegistry\n```"
+        },
+        {
+          "ms": 1.9,
+          "ok": true,
+          "kind": "module-var",
+          "word": "registry",
+          "meta": "```python\n(variable) registry: BenchRegistry\n```"
+        },
+        {
+          "ms": 1.7,
+          "ok": true,
+          "kind": "module-var",
+          "word": "registry",
+          "meta": "```python\n(variable) registry: BenchRegistry\n```"
+        },
+        {
+          "ms": 1.8,
+          "ok": true,
+          "kind": "module-var",
+          "word": "registry",
+          "meta": "```python\n(variable) registry: BenchRegistry\n```"
+        },
+        {
+          "ms": 1.8,
+          "ok": true,
+          "kind": "local",
+          "word": "local0000",
+          "meta": "```python\n(variable) local0000: BenchConfig\n```"
+        },
+        {
+          "ms": 1.7,
+          "ok": true,
+          "kind": "local",
+          "word": "local0000",
+          "meta": "```python\n(variable) local0000: BenchConfig\n```"
+        },
+        {
+          "ms": 1.8,
+          "ok": true,
+          "kind": "local",
+          "word": "local0000",
+          "meta": "```python\n(variable) local0000: BenchConfig\n```"
+        },
+        {
+          "ms": 1.9,
+          "ok": true,
+          "kind": "local",
+          "word": "local0000",
+          "meta": "```python\n(variable) local0000: BenchConfig\n```"
+        },
+        {
+          "ms": 1.8,
+          "ok": true,
+          "kind": "local",
+          "word": "local0001",
+          "meta": "```python\n(variable) local0001: BenchConfig\n```"
+        },
+        {
+          "ms": 1.8,
+          "ok": true,
+          "kind": "local",
+          "word": "local0001",
+          "meta": "```python\n(variable) local0001: BenchConfig\n```"
+        },
+        {
+          "ms": 1.9,
+          "ok": true,
+          "kind": "local",
+          "word": "local0001",
+          "meta": "```python\n(variable) local0001: BenchConfig\n```"
+        },
+        {
+          "ms": 1.7,
+          "ok": true,
+          "kind": "local",
+          "word": "local0001",
+          "meta": "```python\n(variable) local0001: BenchConfig\n```"
+        },
+        {
+          "ms": 1.8,
+          "ok": true,
+          "kind": "local",
+          "word": "local0002",
+          "meta": "```python\n(variable) local0002: BenchConfig\n```"
+        },
+        {
+          "ms": 1.8,
+          "ok": true,
+          "kind": "local",
+          "word": "local0002",
+          "meta": "```python\n(variable) local0002: BenchConfig\n```"
+        },
+        {
+          "ms": 1.7,
+          "ok": true,
+          "kind": "local",
+          "word": "local0002",
+          "meta": "```python\n(variable) local0002: BenchConfig\n```"
+        },
+        {
+          "ms": 2,
+          "ok": true,
+          "kind": "local",
+          "word": "local0002",
+          "meta": "```python\n(variable) local0002: BenchConfig\n```"
+        }
+      ]
+    },
+    "definition": {
+      "n": 34,
+      "hits": 34,
+      "hitRate": 100,
+      "p50": 2.2,
+      "p95": 2.7,
+      "max": 3.6,
+      "p50All": 2.2,
+      "crossFileHits": 24,
+      "rows": [
+        {
+          "ms": 2.7,
+          "ok": true,
+          "kind": "cross-file",
+          "word": "make_config",
+          "meta": "c:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench_py\\lib.py"
+        },
+        {
+          "ms": 2.2,
+          "ok": true,
+          "kind": "cross-file",
+          "word": "make_config",
+          "meta": "c:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench_py\\lib.py"
+        },
+        {
+          "ms": 1.7,
+          "ok": true,
+          "kind": "cross-file",
+          "word": "make_config",
+          "meta": "c:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench_py\\lib.py"
+        },
+        {
+          "ms": 2.4,
+          "ok": true,
+          "kind": "cross-file",
+          "word": "make_config",
+          "meta": "c:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench_py\\lib.py"
+        },
+        {
+          "ms": 2.3,
+          "ok": true,
+          "kind": "cross-file",
+          "word": "make_config",
+          "meta": "c:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench_py\\lib.py"
+        },
+        {
+          "ms": 2.3,
+          "ok": true,
+          "kind": "cross-file",
+          "word": "make_config",
+          "meta": "c:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench_py\\lib.py"
+        },
+        {
+          "ms": 1.9,
+          "ok": true,
+          "kind": "cross-file",
+          "word": "make_config",
+          "meta": "c:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench_py\\lib.py"
+        },
+        {
+          "ms": 3.6,
+          "ok": true,
+          "kind": "cross-file",
+          "word": "make_config",
+          "meta": "c:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench_py\\lib.py"
+        },
+        {
+          "ms": 2.1,
+          "ok": true,
+          "kind": "cross-file",
+          "word": "make_config",
+          "meta": "c:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench_py\\lib.py"
+        },
+        {
+          "ms": 2.2,
+          "ok": true,
+          "kind": "cross-file",
+          "word": "make_config",
+          "meta": "c:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench_py\\lib.py"
+        },
+        {
+          "ms": 2.5,
+          "ok": true,
+          "kind": "cross-file",
+          "word": "make_config",
+          "meta": "c:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench_py\\lib.py"
+        },
+        {
+          "ms": 2,
+          "ok": true,
+          "kind": "cross-file",
+          "word": "make_config",
+          "meta": "c:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench_py\\lib.py"
+        },
+        {
+          "ms": 2.1,
+          "ok": true,
+          "kind": "cross-file",
+          "word": "summarize",
+          "meta": "c:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench_py\\lib.py"
+        },
+        {
+          "ms": 2.6,
+          "ok": true,
+          "kind": "cross-file",
+          "word": "summarize",
+          "meta": "c:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench_py\\lib.py"
+        },
+        {
+          "ms": 2,
+          "ok": true,
+          "kind": "cross-file",
+          "word": "summarize",
+          "meta": "c:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench_py\\lib.py"
+        },
+        {
+          "ms": 2.2,
+          "ok": true,
+          "kind": "cross-file",
+          "word": "summarize",
+          "meta": "c:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench_py\\lib.py"
+        },
+        {
+          "ms": 2.3,
+          "ok": true,
+          "kind": "cross-file",
+          "word": "summarize",
+          "meta": "c:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench_py\\lib.py"
+        },
+        {
+          "ms": 1.9,
+          "ok": true,
+          "kind": "cross-file",
+          "word": "summarize",
+          "meta": "c:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench_py\\lib.py"
+        },
+        {
+          "ms": 2,
+          "ok": true,
+          "kind": "cross-file",
+          "word": "summarize",
+          "meta": "c:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench_py\\lib.py"
+        },
+        {
+          "ms": 2.4,
+          "ok": true,
+          "kind": "cross-file",
+          "word": "summarize",
+          "meta": "c:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench_py\\lib.py"
+        },
+        {
+          "ms": 1.8,
+          "ok": true,
+          "kind": "cross-file",
+          "word": "summarize",
+          "meta": "c:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench_py\\lib.py"
+        },
+        {
+          "ms": 1.8,
+          "ok": true,
+          "kind": "cross-file",
+          "word": "summarize",
+          "meta": "c:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench_py\\lib.py"
+        },
+        {
+          "ms": 1.8,
+          "ok": true,
+          "kind": "cross-file",
+          "word": "BenchRegistry",
+          "meta": "c:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench_py\\lib.py"
+        },
+        {
+          "ms": 2.1,
+          "ok": true,
+          "kind": "cross-file",
+          "word": "BenchRegistry",
+          "meta": "c:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench_py\\lib.py"
+        },
+        {
+          "ms": 2.5,
+          "ok": true,
+          "kind": "same-file",
+          "word": "local0000",
+          "meta": "c:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench_py\\big.py"
+        },
+        {
+          "ms": 1.9,
+          "ok": true,
+          "kind": "same-file",
+          "word": "local0000",
+          "meta": "c:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench_py\\big.py"
+        },
+        {
+          "ms": 2,
+          "ok": true,
+          "kind": "same-file",
+          "word": "local0000",
+          "meta": "c:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench_py\\big.py"
+        },
+        {
+          "ms": 2.3,
+          "ok": true,
+          "kind": "same-file",
+          "word": "local0000",
+          "meta": "c:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench_py\\big.py"
+        },
+        {
+          "ms": 2.2,
+          "ok": true,
+          "kind": "same-file",
+          "word": "local0001",
+          "meta": "c:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench_py\\big.py"
+        },
+        {
+          "ms": 2.2,
+          "ok": true,
+          "kind": "same-file",
+          "word": "local0001",
+          "meta": "c:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench_py\\big.py"
+        },
+        {
+          "ms": 2.1,
+          "ok": true,
+          "kind": "same-file",
+          "word": "local0001",
+          "meta": "c:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench_py\\big.py"
+        },
+        {
+          "ms": 2.3,
+          "ok": true,
+          "kind": "same-file",
+          "word": "local0001",
+          "meta": "c:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench_py\\big.py"
+        },
+        {
+          "ms": 2,
+          "ok": true,
+          "kind": "same-file",
+          "word": "local0002",
+          "meta": "c:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench_py\\big.py"
+        },
+        {
+          "ms": 2.3,
+          "ok": true,
+          "kind": "same-file",
+          "word": "local0002",
+          "meta": "c:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench_py\\big.py"
+        }
+      ]
+    },
+    "completion": {
+      "n": 10,
+      "hits": 10,
+      "hitRate": 100,
+      "p50": 4.7,
+      "p95": 233.8,
+      "max": 233.8,
+      "p50All": 4.7,
+      "items": 29,
+      "rows": [
+        {
+          "ms": 44.4,
+          "items": 29,
+          "ok": true,
+          "sample": [
+            "__doc__",
+            "__module__",
+            "__qualname__",
+            "__init__",
+            "register"
+          ]
+        },
+        {
+          "ms": 5.6,
+          "items": 29,
+          "ok": true,
+          "sample": [
+            "__doc__",
+            "__module__",
+            "__qualname__",
+            "__init__",
+            "register"
+          ]
+        },
+        {
+          "ms": 4.2,
+          "items": 29,
+          "ok": true,
+          "sample": [
+            "__doc__",
+            "__module__",
+            "__qualname__",
+            "__init__",
+            "register"
+          ]
+        },
+        {
+          "ms": 233.8,
+          "items": 29,
+          "ok": true,
+          "sample": [
+            "__doc__",
+            "__module__",
+            "__qualname__",
+            "__init__",
+            "register"
+          ]
+        },
+        {
+          "ms": 5.4,
+          "items": 29,
+          "ok": true,
+          "sample": [
+            "__doc__",
+            "__module__",
+            "__qualname__",
+            "__init__",
+            "register"
+          ]
+        },
+        {
+          "ms": 4.7,
+          "items": 29,
+          "ok": true,
+          "sample": [
+            "__doc__",
+            "__module__",
+            "__qualname__",
+            "__init__",
+            "register"
+          ]
+        },
+        {
+          "ms": 4.3,
+          "items": 29,
+          "ok": true,
+          "sample": [
+            "__doc__",
+            "__module__",
+            "__qualname__",
+            "__init__",
+            "register"
+          ]
+        },
+        {
+          "ms": 4.1,
+          "items": 29,
+          "ok": true,
+          "sample": [
+            "__doc__",
+            "__module__",
+            "__qualname__",
+            "__init__",
+            "register"
+          ]
+        },
+        {
+          "ms": 4.4,
+          "items": 29,
+          "ok": true,
+          "sample": [
+            "__doc__",
+            "__module__",
+            "__qualname__",
+            "__init__",
+            "register"
+          ]
+        },
+        {
+          "ms": 4.6,
+          "items": 29,
+          "ok": true,
+          "sample": [
+            "__doc__",
+            "__module__",
+            "__qualname__",
+            "__init__",
+            "register"
+          ]
+        }
+      ]
+    },
+    "retokenize": {
+      "ms": 34,
+      "tries": 0,
+      "line": 3368,
+      "via": "hover"
+    },
+    "retokenizeHover": {
+      "ms": 2,
+      "tries": 0
+    },
+    "fpsIdle": {
+      "frames": 181,
+      "spanMs": 3002,
+      "fps": 60,
+      "medGapMs": 16.7,
+      "p95GapMs": 16.8,
+      "maxGapMs": 16.8,
+      "longFrames": 0,
+      "window": "idle 3s (대조군)"
+    },
+    "procs": [
+      {
+        "pid": 26824,
+        "name": "agentcodegui.exe",
+        "lsp": null
+      },
+      {
+        "pid": 29092,
+        "name": "node.exe",
+        "lsp": "ts-ls"
+      },
+      {
+        "pid": 31648,
+        "name": "conhost.exe",
+        "lsp": null
+      },
+      {
+        "pid": 25284,
+        "name": "msedgewebview2.exe",
+        "lsp": null
+      },
+      {
+        "pid": 32176,
+        "name": "msedgewebview2.exe",
+        "lsp": null
+      },
+      {
+        "pid": 8644,
+        "name": "msedgewebview2.exe",
+        "lsp": null
+      },
+      {
+        "pid": 17060,
+        "name": "node.exe",
+        "lsp": "tsserver"
+      },
+      {
+        "pid": 30312,
+        "name": "msedgewebview2.exe",
+        "lsp": null
+      },
+      {
+        "pid": 15800,
+        "name": "node.exe",
+        "lsp": "pyright"
+      },
+      {
+        "pid": 22072,
+        "name": "conhost.exe",
+        "lsp": null
+      }
+    ],
+    "viewer": {
+      "checks": [
+        {
+          "id": "viewer-open",
+          "ok": true,
+          "ms": 2084,
+          "detail": {
+            "lines": 36
+          }
+        },
+        {
+          "id": "viewer-syntax-paint",
+          "ok": true,
+          "ms": 1,
+          "detail": {
+            "spans": 63,
+            "waitMs": 1,
+            "kind": "syntax(highlight.js)"
+          }
+        },
+        {
+          "id": "viewer-hover-card",
+          "ok": true,
+          "ms": 431,
+          "detail": {
+            "waitMs": 417,
+            "card": "FUNCTION NAME make_config PARAMS id: int name: str mode: BenchMode = DEFAULT_MODE RETURN BenchConfig"
+          }
+        },
+        {
+          "id": "viewer-goto-definition",
+          "ok": true,
+          "ms": 260,
+          "detail": {
+            "waitMs": 253,
+            "from": "big.py",
+            "title": "lib.py"
+          }
+        },
+        {
+          "id": "viewer-completion-popup",
+          "ok": true,
+          "ms": 3631,
+          "detail": {
+            "waitMs": 260,
+            "options": 29,
+            "first": [
+              "__doc__",
+              "__module__",
+              "__qualname__",
+              "__init__",
+              "register"
+            ]
+          }
+        }
+      ],
+      "shots": "C:\\Code\\AgentCodeGUI\\bench\\shots\\lsp-tauri",
+      "pass": 5,
+      "total": 5
+    }
+  },
+  "warm": {
+    "phase": "warm",
+    "home": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-home-tauri",
+    "pid": 5908,
+    "semantic": false,
+    "mounted": true,
+    "probeSurvived": true,
+    "ready": {
+      "installedAt": 44,
+      "watchStart": 44,
+      "readyAt": 524,
+      "states": [
+        "starting",
+        "ready"
+      ],
+      "statusErr": null
+    },
+    "prewarmMs": 524,
+    "prewarmFromProbeMs": 480,
+    "noSemanticReason": "서버에 semanticTokensProvider가 없다(pyright — Pylance 전용 기능)",
+    "semanticTokensNull": true,
+    "cached": {
+      "ms": 2,
+      "p50": 1.7,
+      "min": 1.6,
+      "n": 0,
+      "hit": false,
+      "rows": [
+        {
+          "ms": 2,
+          "n": 0,
+          "hit": false
+        },
+        {
+          "ms": 1.7,
+          "n": 0,
+          "hit": false
+        },
+        {
+          "ms": 1.6,
+          "n": 0,
+          "hit": false
+        }
+      ]
+    },
+    "fps": {
+      "frames": 122,
+      "spanMs": 2068,
+      "fps": 58.5,
+      "medGapMs": 16.7,
+      "p95GapMs": 16.8,
+      "maxGapMs": 50.1,
+      "longFrames": 2,
+      "window": "문서 시작 → 첫 색칠+토큰 왕복+캐시 표본 (최소 2s)"
+    },
+    "procs": [
+      {
+        "pid": 5908,
+        "name": "agentcodegui.exe",
+        "lsp": null
+      },
+      {
+        "pid": 33088,
+        "name": "node.exe",
+        "lsp": "ts-ls"
+      },
+      {
+        "pid": 31480,
+        "name": "conhost.exe",
+        "lsp": null
+      },
+      {
+        "pid": 14012,
+        "name": "msedgewebview2.exe",
+        "lsp": null
+      },
+      {
+        "pid": 23508,
+        "name": "msedgewebview2.exe",
+        "lsp": null
+      },
+      {
+        "pid": 22900,
+        "name": "node.exe",
+        "lsp": "tsserver"
+      },
+      {
+        "pid": 30916,
+        "name": "msedgewebview2.exe",
+        "lsp": null
+      },
+      {
+        "pid": 32984,
+        "name": "msedgewebview2.exe",
+        "lsp": null
+      },
+      {
+        "pid": 13888,
+        "name": "node.exe",
+        "lsp": "pyright"
+      },
+      {
+        "pid": 35976,
+        "name": "conhost.exe",
+        "lsp": null
+      }
+    ]
+  },
+  "idle": {
+    "supported": true,
+    "ttlMs": 6000,
+    "beforeIdle": [
+      {
+        "pid": 35104,
+        "kind": "ts-ls"
+      },
+      {
+        "pid": 32332,
+        "kind": "tsserver"
+      },
+      {
+        "pid": 26260,
+        "kind": "pyright"
+      }
+    ],
+    "afterIdle": [],
+    "reclaimed": true,
+    "respawnMs": 680,
+    "afterRespawn": [
+      {
+        "pid": 24300,
+        "kind": "pyright"
+      }
+    ],
+    "respawnedNewPid": true
+  }
+}

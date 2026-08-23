@@ -76,7 +76,20 @@ fn active_chat_cwd(dir: &std::path::Path) -> Option<String> {
     std::path::Path::new(cwd).is_dir().then(|| cwd.to_string())
 }
 
+// ── 설치 채널 이름 ───────────────────────────────────────────────────────────
+// `ch::` 상수로 안 올리고 여기 리터럴로 둔다: `ipc/mod.rs`는 이번 라운드에 세 빌더가
+// 함께 만지는 공유 파일이고, 이 세 이름은 LSP 도메인 밖으로 안 나간다.
+// 원본은 `src/shared/protocol.ts`의 `IPC.lspInstall*`이다(이 파일은 그 거울).
+const LSP_INSTALL: &str = "lsp:install";
+const LSP_INSTALL_SERVER: &str = "lsp:install-server";
+const LSP_UNINSTALL_SERVER: &str = "lsp:uninstall-server";
+
 pub fn owns(channel: &str) -> bool {
+    // 내려받기는 수백 MB짜리 네트워크 왕복이다 — **반드시** 블로킹 풀로 빠져야 한다
+    // (async 워커에서 돌면 그동안 다른 창의 IPC가 통째로 굶는다).
+    if matches!(channel, LSP_INSTALL | LSP_INSTALL_SERVER | LSP_UNINSTALL_SERVER) {
+        return true;
+    }
     matches!(
         channel,
         ch::LSP_STATUS
@@ -171,14 +184,24 @@ pub fn dispatch(channel: &str, p: &Value) -> Option<Value> {
 
         ch::LSP_SERVERS => json!(ccg_lsp::servers()),
 
+        // ── 내려받는 서버(C#) 설치·삭제 ─────────────────────────────────────
+        // 심의 계약면은 `{ ok, error? }`다(`app/src/api/shim.ts`의 `failed()` 기본값).
+        // **진행률(`lsp:install-progress`)은 아직 안 흘린다** — 크레이트가 창을 몰라서다.
+        // 설정 카드는 "준비 중…"에서 완료/실패로 한 번에 넘어간다(§R3 잔여).
+        LSP_INSTALL_SERVER => ccg_lsp::install_server(a.as_str().unwrap_or_default()),
+        LSP_UNINSTALL_SERVER => ccg_lsp::uninstall_server(a.as_str().unwrap_or_default()),
+        // 뷰어의 "설치할까요?" — 파일 경로로 어느 서버인지 정한다
+        LSP_INSTALL => ccg_lsp::install_for_file(s(a, "cwd"), s(a, "relPath")),
+
         // Verse는 3.0 범위에서 제외(사용자 결정) — 렌더러가 부르긴 하므로 **안전값**을
         // 명시적으로 돌려준다(미구현 경고를 띄우지 않는다: 없는 게 정상이다).
         ch::LSP_VERSE_REGISTRY => Value::Null,
         ch::LSP_VERSE_DIGESTS | ch::LSP_VERSE_EXCLUDES => json!([]),
 
-        // 설치 UI(`lsp:install`·`lsp:install-server`·`lsp:uninstall-server`)와 Verse 서버
-        // 지정 채널은 **일부러 여기서 안 받는다** — 디스패처가 `{__unimplemented:true}`로
-        // 떨어뜨리면 심이 채널당 1회 경고를 남긴다. "아직 없다"가 조용히 사라지지 않게.
+        // Verse 서버 지정 채널(`lsp:pick-verse-server`·`lsp:set-verse-path`·
+        // `lsp:clear-verse-path`)은 **일부러 여기서 안 받는다** — 디스패처가
+        // `{__unimplemented:true}`로 떨어뜨리면 심이 채널당 1회 경고를 남긴다.
+        // Verse는 3.0 범위 밖이라(사용자 결정) "아직 없다"가 조용히 사라지지 않게 둔다.
         _ => return None,
     })
 }

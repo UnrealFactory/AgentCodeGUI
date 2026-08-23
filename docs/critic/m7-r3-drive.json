@@ -1,0 +1,471 @@
+{
+  "at": "2026-08-23T19:27:10.727Z",
+  "drv": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-m7c-tgt3\\release\\m7drive.exe",
+  "work": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo",
+  "big": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-m7c-big",
+  "fakelspBase": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-m7c-fakelsp",
+  "scenarios": {
+    "dupopen": {
+      "cmd": "dupopen",
+      "cwd": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo",
+      "rel": "lspbench/big.ts",
+      "ready": "ready",
+      "readyMs": 81,
+      "didOpenPerUri": {
+        "file:///C:/Users/User/AppData/Local/Temp/ccg-lsp-repo/lspbench/big.ts": 1
+      },
+      "maxDidOpen": 1,
+      "serverAlive": true,
+      "procStarts": 1,
+      "tokensAfter": 3,
+      "__serverStarts": 1,
+      "__serverExits": 1,
+      "__selfKills": [],
+      "__tookMs": 833
+    },
+    "storm_sync2": {
+      "cmd": "storm",
+      "cwd": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo",
+      "rel": "lspbench/big.ts",
+      "ready": "ready",
+      "readyMs": 40,
+      "typing": {
+        "n": 120,
+        "completionNone": 0,
+        "p50": 0.77,
+        "p95": 0.91,
+        "max": 1.58
+      },
+      "didChange": {
+        "count": 120,
+        "rangeless": 0,
+        "versionsMonotonic": true,
+        "totalChangeTextBytes": 7884
+      },
+      "serverAlive": true,
+      "procStarts": 1,
+      "tokensAfterStorm": 3,
+      "hoverAfterStorm": true,
+      "__serverStarts": 1,
+      "__serverExits": 1,
+      "__selfKills": [],
+      "__tookMs": 647
+    },
+    "storm_sync1": {
+      "cmd": "storm",
+      "cwd": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo",
+      "rel": "lspbench/big.ts",
+      "ready": "ready",
+      "readyMs": 40,
+      "typing": {
+        "n": 120,
+        "completionNone": 0,
+        "p50": 1.05,
+        "p95": 1.43,
+        "max": 7.06
+      },
+      "didChange": {
+        "count": 120,
+        "rangeless": 120,
+        "versionsMonotonic": true,
+        "totalChangeTextBytes": 15285910
+      },
+      "serverAlive": true,
+      "procStarts": 1,
+      "tokensAfterStorm": 3,
+      "hoverAfterStorm": true,
+      "__serverStarts": 1,
+      "__serverExits": 1,
+      "__selfKills": [],
+      "__tookMs": 689
+    },
+    "config": {
+      "cmd": "config",
+      "cwd": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo",
+      "rel": "lspbench/big.ts",
+      "ready": "ready",
+      "readyMs": 40,
+      "serverAsked": {
+        "t": 2,
+        "wall": 1787513232953,
+        "pid": 26580,
+        "ev": "serverRequest",
+        "id": 1000,
+        "method": "workspace/configuration",
+        "items": 2
+      },
+      "clientAnswered": {
+        "t": 3,
+        "wall": 1787513232954,
+        "pid": 26580,
+        "ev": "reply",
+        "id": 1000,
+        "result": [
+          null,
+          null
+        ]
+      },
+      "lspContractOk": true,
+      "note": "LSP 규약: workspace/configuration 응답은 items 수만큼의 원소를 가진 배열이어야 한다",
+      "__serverStarts": 1,
+      "__serverExits": 1,
+      "__selfKills": [],
+      "__tookMs": 645
+    },
+    "death": {
+      "cmd": "death",
+      "cwd": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo",
+      "rel": "lspbench/big.ts",
+      "ready": "ready",
+      "readyMs": 40,
+      "tokensBefore": 3,
+      "samples": [
+        {
+          "sinceDeathMs": 0,
+          "status": "error",
+          "statusMs": 0.01,
+          "tokens": 0,
+          "tokensMs": 0,
+          "live": 0
+        },
+        {
+          "sinceDeathMs": 2000,
+          "status": "error",
+          "statusMs": 0.01,
+          "tokens": 0,
+          "tokensMs": 0,
+          "live": 0
+        },
+        {
+          "sinceDeathMs": 4000,
+          "status": "error",
+          "statusMs": 0.01,
+          "tokens": 0,
+          "tokensMs": 0,
+          "live": 0
+        },
+        {
+          "sinceDeathMs": 6000,
+          "status": "error",
+          "statusMs": 0.01,
+          "tokens": 0,
+          "tokensMs": 0,
+          "live": 0
+        },
+        {
+          "sinceDeathMs": 8001,
+          "status": "error",
+          "statusMs": 0.01,
+          "tokens": 0,
+          "tokensMs": 0,
+          "live": 0
+        },
+        {
+          "sinceDeathMs": 10001,
+          "status": "error",
+          "statusMs": 0.01,
+          "tokens": 0,
+          "tokensMs": 0,
+          "live": 0
+        },
+        {
+          "sinceDeathMs": 12002,
+          "status": "error",
+          "statusMs": 0.08,
+          "tokens": 0,
+          "tokensMs": 0,
+          "live": 0
+        },
+        {
+          "sinceDeathMs": 14003,
+          "status": "error",
+          "statusMs": 0.01,
+          "tokens": 0,
+          "tokensMs": 0,
+          "live": 0
+        },
+        {
+          "sinceDeathMs": 16003,
+          "status": "error",
+          "statusMs": 0.02,
+          "tokens": 0,
+          "tokensMs": 0,
+          "live": 0
+        },
+        {
+          "sinceDeathMs": 18003,
+          "status": "error",
+          "statusMs": 0.01,
+          "tokens": 0,
+          "tokensMs": 0,
+          "live": 0
+        },
+        {
+          "sinceDeathMs": 20004,
+          "status": "error",
+          "statusMs": 0.01,
+          "tokens": 0,
+          "tokensMs": 0,
+          "live": 0
+        },
+        {
+          "sinceDeathMs": 22004,
+          "status": "error",
+          "statusMs": 0.01,
+          "tokens": 0,
+          "tokensMs": 0,
+          "live": 0
+        },
+        {
+          "sinceDeathMs": 24004,
+          "status": "error",
+          "statusMs": 0.01,
+          "tokens": 0,
+          "tokensMs": 0,
+          "live": 0
+        },
+        {
+          "sinceDeathMs": 26004,
+          "status": "error",
+          "statusMs": 0.01,
+          "tokens": 0,
+          "tokensMs": 0,
+          "live": 0
+        },
+        {
+          "sinceDeathMs": 28005,
+          "status": "error",
+          "statusMs": 0.01,
+          "tokens": 0,
+          "tokensMs": 0,
+          "live": 0
+        },
+        {
+          "sinceDeathMs": 30042,
+          "status": "starting",
+          "statusMs": 0.05,
+          "tokens": 3,
+          "tokensMs": 36.85,
+          "live": 1
+        },
+        {
+          "sinceDeathMs": 32042,
+          "status": "ready",
+          "statusMs": 0.05,
+          "tokens": 3,
+          "tokensMs": 0.61,
+          "live": 1
+        },
+        {
+          "sinceDeathMs": 34043,
+          "status": "error",
+          "statusMs": 0.01,
+          "tokens": 0,
+          "tokensMs": 0,
+          "live": 0
+        },
+        {
+          "sinceDeathMs": 36043,
+          "status": "error",
+          "statusMs": 0.01,
+          "tokens": 0,
+          "tokensMs": 0,
+          "live": 0
+        },
+        {
+          "sinceDeathMs": 38043,
+          "status": "error",
+          "statusMs": 0.01,
+          "tokens": 0,
+          "tokensMs": 0,
+          "live": 0
+        }
+      ],
+      "procStarts": 2,
+      "statusesAfterDeath": [
+        "error",
+        "ready",
+        "starting"
+      ],
+      "recovered": true,
+      "__serverStarts": 2,
+      "__serverExits": 2,
+      "__selfKills": [
+        {
+          "t": 2506,
+          "wall": 1787513236104,
+          "pid": 33012,
+          "ev": "selfKill",
+          "afterMs": 2500
+        },
+        {
+          "t": 2515,
+          "wall": 1787513269859,
+          "pid": 35932,
+          "ev": "selfKill",
+          "afterMs": 2500
+        }
+      ],
+      "__tookMs": 43811
+    },
+    "cache": {
+      "cmd": "cache",
+      "cwd": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo",
+      "rel": "lspbench/big.ts",
+      "ready": "ready",
+      "liveTokens": 3,
+      "cacheFiles": 1,
+      "target": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-m7c-home-cache\\lsp\\semcache\\ccg-lsp-repo-90f3e3d7e327e563\\24\\24a24ae4ef7a7dca815938b9aa96346e38e1000d.json",
+      "restoredHit": 3,
+      "corruptFileStillThere": true,
+      "cases": [
+        {
+          "case": "truncated",
+          "noPanic": true,
+          "result": "null",
+          "ms": 6.37
+        },
+        {
+          "case": "empty",
+          "noPanic": true,
+          "result": "null",
+          "ms": 0.44
+        },
+        {
+          "case": "not-json",
+          "noPanic": true,
+          "result": "null",
+          "ms": 7.27
+        },
+        {
+          "case": "valid-json-wrong-shape",
+          "noPanic": true,
+          "result": "null",
+          "ms": 5.63
+        },
+        {
+          "case": "data-not-multiple-of-5",
+          "noPanic": true,
+          "result": {
+            "data": 3,
+            "types": 1
+          },
+          "ms": 6.5
+        },
+        {
+          "case": "out-of-range-indices",
+          "noPanic": true,
+          "result": {
+            "data": 5,
+            "types": 1
+          },
+          "ms": 7.85
+        },
+        {
+          "case": "u32-max",
+          "noPanic": true,
+          "result": {
+            "data": 5,
+            "types": 1
+          },
+          "ms": 3.84
+        },
+        {
+          "case": "huge-1M-entries",
+          "noPanic": true,
+          "result": {
+            "data": 1000000,
+            "types": 1
+          },
+          "ms": 24.92
+        }
+      ],
+      "__serverStarts": 1,
+      "__serverExits": 1,
+      "__selfKills": [],
+      "__tookMs": 1081
+    },
+    "manydocs": {
+      "cmd": "manydocs",
+      "cwd": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-m7c-big",
+      "rel": "400",
+      "files": 400,
+      "ready": "ready",
+      "readyMs": 40,
+      "totalMs": 2870,
+      "perFile": {
+        "p50": 7.02,
+        "p95": 9.42,
+        "max": 18.91,
+        "emptyTokens": 0
+      },
+      "didOpen": 400,
+      "didClose": 368,
+      "procStarts": 1,
+      "serverAlive": true,
+      "reopenFirst": 3,
+      "__serverStarts": 1,
+      "__serverExits": 1,
+      "__selfKills": [],
+      "__tookMs": 3529
+    },
+    "spawnRace": {
+      "note": "prewarm+status = 경쟁 스폰. 대조군(status만) = 1",
+      "runs": [
+        {
+          "starts": 1,
+          "pids": [
+            5240
+          ]
+        },
+        {
+          "starts": 1,
+          "pids": [
+            28908
+          ]
+        },
+        {
+          "starts": 1,
+          "pids": [
+            30128
+          ]
+        },
+        {
+          "starts": 1,
+          "pids": [
+            16324
+          ]
+        },
+        {
+          "starts": 1,
+          "pids": [
+            8512
+          ]
+        }
+      ],
+      "control": [
+        {
+          "scenario": "dupopen",
+          "starts": 1
+        },
+        {
+          "scenario": "storm2",
+          "starts": 1
+        },
+        {
+          "scenario": "config",
+          "starts": 1
+        },
+        {
+          "scenario": "cache",
+          "starts": 1
+        },
+        {
+          "scenario": "manydocs",
+          "starts": 1
+        }
+      ],
+      "alwaysTwo": false
+    }
+  }
+}

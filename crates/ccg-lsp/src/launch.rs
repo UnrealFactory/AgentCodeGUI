@@ -75,11 +75,65 @@ pub fn shipped_module(rel: &[&str]) -> Option<PathBuf> {
     roots.into_iter().map(|r| join(&r)).find(|p| p.exists())
 }
 
-/// 내려받은 네이티브 서버 — `<앱 홈>/lsp/bin/<id>/<name>` (2.6.2 `install.ts`와 같은 자리).
-#[allow(dead_code)] // R2(C#/C++)에서 배선
+/// 내려받은 네이티브 서버 — **2.6.2 `install.ts`와 같은 자리**인 `<앱 홈>/lsp/<id>/` 아래를
+/// 재귀로 뒤져 `name`을 찾는다.
+///
+/// 왜 재귀인가: Roslyn의 exe는 nupkg를 푼 `tools/<tfm>/<rid>/`에, clangd는
+/// `clangd_<버전>/bin/`에 들어간다 — 둘 다 **버전이 경로에 박혀 있어** 고정 경로로는 못 찾는다
+/// (2.6.2 `findFile`이 같은 이유로 재귀였다). 이 자리를 2.6.2와 같게 두는 값어치는 실제로
+/// 크다: 2.6.2로 이미 받아 둔 159MB짜리 Roslyn을 3.0이 **그대로 쓴다**(다시 안 받는다).
+///
+/// R2까지는 `<앱 홈>/lsp/bin/<id>/<name>`이라는 3.0 고유 경로였고, 그 자리는 아무도 채우지
+/// 않아 C#이 영원히 `need-install`이었다. 그 경로도 먼저 보긴 한다(내려받기 UI가 생기면 쓸 자리).
+/// **찾은 결과는 메모한다** — `lsp:status`는 400ms마다 오고, 여기서 `Provision::Download`
+/// 서버의 설치 여부를 판정한다. 메모가 없으면 폴링 한 번마다 159MB짜리 설치 폴더를 재귀로
+/// 걷는다. 메모는 **양성만** 담고 매번 `exists()`로 되짚는다 — 삭제/재설치가 그대로 반영된다
+/// (음성은 애초에 싸다: 폴더가 없으면 `read_dir`이 즉시 실패한다).
 pub fn installed_bin(id: &str, name: &str) -> Option<PathBuf> {
-    let p = ccg_store::app_home().join("lsp").join("bin").join(id).join(name);
-    p.exists().then_some(p)
+    use std::collections::HashMap;
+    use std::sync::{Mutex, OnceLock};
+    static MEMO: OnceLock<Mutex<HashMap<String, PathBuf>>> = OnceLock::new();
+    let lsp = ccg_store::app_home().join("lsp");
+    // 앱 홈까지 키에 넣는다 — 벤치·테스트가 CCG_HOME을 갈아 끼우면 다른 홈의 경로를
+    // 돌려주면 안 된다(`exists()`가 대개 걸러 주지만 키로 막는 편이 정직하다).
+    let key = format!("{}|{id}|{name}", lsp.to_string_lossy());
+    let memo = MEMO.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Some(p) = memo.lock().unwrap().get(&key) {
+        if p.exists() {
+            return Some(p.clone());
+        }
+    }
+    let direct = lsp.join("bin").join(id).join(name);
+    let found = if direct.exists() { Some(direct) } else { find_file(&lsp.join(id), name, 0) };
+    match found {
+        Some(p) => {
+            memo.lock().unwrap().insert(key, p.clone());
+            Some(p)
+        }
+        None => {
+            memo.lock().unwrap().remove(&key);
+            None
+        }
+    }
+}
+
+/// 이름이 정확히 일치하는 첫 파일(깊이 8까지) — 2.6.2 `install.ts::findFile`.
+fn find_file(dir: &Path, name: &str, depth: u32) -> Option<PathBuf> {
+    if depth > 8 {
+        return None;
+    }
+    let mut dirs: Vec<PathBuf> = Vec::new();
+    for e in std::fs::read_dir(dir).ok()?.flatten() {
+        let p = e.path();
+        if p.is_dir() {
+            dirs.push(p);
+        } else if p.file_name().and_then(|s| s.to_str()) == Some(name) {
+            return Some(p);
+        }
+    }
+    // 파일을 먼저 다 본 뒤 내려간다 — 얕은 자리에 있으면 재귀 없이 끝난다
+    dirs.sort();
+    dirs.into_iter().find_map(|d| find_file(&d, name, depth + 1))
 }
 
 fn which(name: &str) -> Option<PathBuf> {

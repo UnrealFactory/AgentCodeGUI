@@ -1,0 +1,85 @@
+{
+  "kind": "electron",
+  "version": "2.6.2",
+  "port": 9385,
+  "pid": 28104,
+  "at": "2026-08-23T19:32:27.337Z",
+  "fresh": true,
+  "probe": {
+    "installedAt": 76.7,
+    "url": "file:///C:/Code/AgentCodeGUI/out/renderer/index.html",
+    "apiAt": 76.8,
+    "st0SentAt": 76.8,
+    "st0RespAt": 86.6,
+    "st0": "starting",
+    "readyAt": 202.1,
+    "states": [
+      "starting",
+      "ready"
+    ],
+    "lag": [
+      {
+        "at": 97,
+        "lagMs": 0.4
+      },
+      {
+        "at": 118,
+        "lagMs": 0.7
+      },
+      {
+        "at": 139,
+        "lagMs": 0.9
+      },
+      {
+        "at": 160,
+        "lagMs": 1
+      },
+      {
+        "at": 181,
+        "lagMs": 1
+      },
+      {
+        "at": 202,
+        "lagMs": 1.1
+      },
+      {
+        "at": 222,
+        "lagMs": 0.2
+      },
+      {
+        "at": 243,
+        "lagMs": 0.9
+      }
+    ],
+    "polls": [
+      {
+        "sent": 77,
+        "ms": 9.8,
+        "st": "starting"
+      },
+      {
+        "sent": 202,
+        "ms": 0.3,
+        "st": "ready"
+      }
+    ]
+  },
+  "derived": {
+    "installedAt": 76.7,
+    "url": "file:///C:/Code/AgentCodeGUI/out/renderer/index.html",
+    "apiAt": 76.8,
+    "st0SentAt": 76.8,
+    "st0Ms": 9.8,
+    "st0": "starting",
+    "readyAt": 202.1,
+    "readyAfterFirstStatusMs": 125,
+    "polls": 2,
+    "pollMsFirst5": [
+      9.8,
+      0.3
+    ],
+    "lagMax2s": 1.1,
+    "lagOver50Before2s": 0,
+    "lagSpikes": []
+  }
+}

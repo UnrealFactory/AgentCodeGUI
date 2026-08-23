@@ -3,7 +3,7 @@
 //   node bench/lsp.mjs electron            2.6.2 기준 (out/ 빌드 + node_modules/electron)
 //   node bench/lsp.mjs tauri               3.0.0 (target/release/agentcodegui.exe)
 //   node bench/lsp.mjs both                둘 다
-//     --lang ts            픽스처 언어(기본 ts) — bench/lspfix.mjs의 FIXTURES 키
+//     --lang ts|py|cs      픽스처 언어(기본 ts) — bench/lspfix.mjs의 FIXTURES 키
 //     --out <suffix>       결과 파일 접미사 (lsp-<kind>-<ver><suffix>.json)
 //     --exe <path>         3.0 실행 파일(기본 target/release/agentcodegui.exe)
 //     --blocks 420         big.ts 블록 수
@@ -11,7 +11,7 @@
 //     --no-viewer          뷰어 CDP 실증 생략(수치만)
 //
 // 산출: bench/results/lsp-electron-2.6.2.json · lsp-tauri-3.0.0.json
-//       bench/shots/lsp-<kind>/*.png (뷰어 실증)
+//       bench/shots/lsp-<kind>-<lang>/*.png (뷰어 실증)
 //
 // ── 왜 이렇게 재는가 ──────────────────────────────────────────────────────────
 // **공정성 = 대칭성.** 두 앱의 렌더러는 같은 화면 코드(2.6.2 src/renderer ≡ 3.0 app/src)라
@@ -72,7 +72,7 @@ function makeWorkRepo() {
   return FIXTURES[LANG].make(WORK, { blocks: BLOCKS })
 }
 
-function makeHome(kind, version, fresh) {
+function makeHome(kind, version, fresh, fix) {
   const home = path.join(os.tmpdir(), `ccg-lsp-home-${kind}`)
   if (fresh) {
     fs.rmSync(home, { recursive: true, force: true })
@@ -82,6 +82,12 @@ function makeHome(kind, version, fresh) {
     chat.manualCwd = WORK
     if (chat.snapshot) chat.snapshot.cwd = WORK
     fs.writeFileSync(f, JSON.stringify(chat))
+  }
+  // 내려받는 서버(C#/C++)는 격리 홈에 설치가 없다 — 픽스처가 실홈 설치를 이어 준다.
+  // **두 앱 모두 같은 바이너리를 물어야** A/B가 성립한다(양쪽 모두 이 훅을 탄다).
+  if (fix?.prepareHome) {
+    const r = fix.prepareHome(home)
+    if (!r?.linked) console.log(`[lsp]   ! prepareHome(${kind}): ${r?.reason ?? '실패'}`)
   }
   return home
 }
@@ -232,6 +238,20 @@ const PROBE_JS = `(() => {
     }
   }
 
+  // 시맨틱 토큰이 없는 서버(pyright)의 재정확화 눈금 — 디스크에 새로 생긴 심볼 이름 위에서
+  // 호버가 그 이름을 말할 때까지. 재는 사건은 tokensCover와 같다("디스크 변화 → 서버가 앎").
+  L.hoverCovers = async (cwd, rel, line, character, word, budgetMs) => {
+    const t0 = performance.now()
+    let tries = 0
+    for (;;) {
+      const r = await L.api().hover(cwd, rel, { line, character }).catch(() => null)
+      if (r && r.contents && r.contents.includes(word)) return { ms: Math.round(performance.now() - t0), tries }
+      tries++
+      if (performance.now() - t0 > budgetMs) return { ms: null, tries, timeout: true }
+      await new Promise((r2) => setTimeout(r2, 250))
+    }
+  }
+
   // 토큰이 특정 문자열이 있는 줄을 담을 때까지 — 편집 반영(재정확화) 판정
   L.tokensCover = async (cwd, rel, line, budgetMs) => {
     const t0 = performance.now()
@@ -297,13 +317,15 @@ const PROBE_JS = `(() => {
 // addScriptToEvaluateOnNewDocument로 심으면 **양쪽 앱 모두** 문서 시작 시점에 심기고,
 // performance.now()의 원점(navigationStart)과 감시 시작이 같은 사건에 붙는다 —
 // prewarmMs가 하네스의 접속 속도에 흔들리지 않게 되는 부수 효과가 오히려 본체다.
-const bootProbe = (cwd, rel) => `${PROBE_JS};(() => {
+// `sem=false`면 첫 색칠 경주를 아예 안 건다 — 서버가 시맨틱 토큰을 안 내는 언어(pyright)에서
+// 120초짜리 헛폴링이 도는 것을 막는다(그 폴링 자체가 다른 눈금을 오염시킨다).
+const bootProbe = (cwd, rel, sem) => `${PROBE_JS};(() => {
   const L = window.__lsp
   if (L.started) return 'already'
   L.started = true
   L.fpsStart()
   L.watchReady(${JSON.stringify(cwd)}, ${JSON.stringify(rel)})
-  L.paintRace(${JSON.stringify(cwd)}, ${JSON.stringify(rel)})
+  ${sem ? `L.paintRace(${JSON.stringify(cwd)}, ${JSON.stringify(rel)})` : ''}
   return 'armed'
 })()`
 
@@ -391,7 +413,7 @@ async function boot(kind, home, exe, fix, extraEnv = {}) {
   const cdp = await connectMainPage(port, { timeoutMs: 90000 })
   await cdp.send('Runtime.enable')
   await cdp.send('Page.enable')
-  const source = bootProbe(WORK, fix.bigRel)
+  const source = bootProbe(WORK, fix.bigRel, fix.semantic !== false)
   // ① 앞으로 만들어질 모든 문서에 (3.0의 재항해를 잡는다)
   await cdp.send('Page.addScriptToEvaluateOnNewDocument', { source }).catch(() => {})
   // ② 지금 문서에도 (이미 로드가 끝난 경우 — 2.6.2가 보통 이쪽)
@@ -419,10 +441,12 @@ async function waitMount(cdp, profile, budget = 90000) {
 // ── 실행 1회분 ────────────────────────────────────────────────────────────────
 async function runOnce(kind, { fix, exe, fresh, phase, extraEnv }) {
   const version = kind === 'tauri' ? '3.0.0-beta.1' : '2.6.2'
-  const home = makeHome(kind, version, fresh)
+  const home = makeHome(kind, version, fresh, fix)
   const { child, cdp, profile, heal } = await boot(kind, home, exe, fix, extraEnv)
   const S = (v) => JSON.stringify(v)
-  const out = { phase, home, pid: child.pid }
+  /** 이 언어의 서버가 시맨틱 토큰을 내는가 — 안 내면 토큰 계열 눈금이 통째로 없다(pyright). */
+  const SEM = fix.semantic !== false
+  const out = { phase, home, pid: child.pid, semantic: SEM }
   try {
     out.mounted = await waitMount(cdp, profile)
     // 문서가 갈렸으면 여기서 드러난다 — 프로브가 살아 있어야 아래 측정이 성립한다
@@ -448,24 +472,36 @@ async function runOnce(kind, { fix, exe, fresh, phase, extraEnv }) {
       return out
     }
 
-    // ── ② 첫 색칠 — 문서 시작에 걸어 둔 경주의 결과를 거둔다 ────────────────
-    let paint = await cdp.eval(`window.__lsp.paintInfo()`)
-    const paintT0 = Date.now()
-    while (paint.liveAtMs == null && Date.now() - paintT0 < 120000) {
-      await sleep(150)
-      paint = await cdp.eval(`window.__lsp.paintInfo()`)
+    if (SEM) {
+      // ── ② 첫 색칠 — 문서 시작에 걸어 둔 경주의 결과를 거둔다 ────────────────
+      let paint = await cdp.eval(`window.__lsp.paintInfo()`)
+      const paintT0 = Date.now()
+      while (paint.liveAtMs == null && Date.now() - paintT0 < 120000) {
+        await sleep(150)
+        paint = await cdp.eval(`window.__lsp.paintInfo()`)
+      }
+      out.paint = paint
+
+      // ── ③ 시맨틱 토큰 왕복 비용(서버가 이미 이 문서를 아는 상태) ────────────
+      // ②와 다른 눈금이다: ②는 "열고 나서 처음 색이 오기까지", ③은 "이미 아는 문서를
+      // 다시 물었을 때의 왕복". 둘을 같은 칸에 적으면 무엇이 좋아졌는지 못 읽는다.
+      out.liveTokens = await cdp.eval(`window.__lsp.liveTokens(${S(WORK)}, ${S(fix.bigRel)}, 90000)`, {
+        awaitPromise: true, timeoutMs: 100000
+      })
+
+      // ── ④ 캐시 경로 비용(첫 호출 + p50) ─────────────────────────────────────
+      out.cached = await cdp.eval(`window.__lsp.cachedTokens(${S(WORK)}, ${S(fix.bigRel)}, 5)`, { awaitPromise: true })
+    } else {
+      // 서버가 시맨틱 토큰을 안 낸다(pyright) — **두 앱 모두** 같은 이유로 없다.
+      // 여기서 "없음"을 명시적으로 남긴다(빈 칸이 측정 실패로 읽히지 않게).
+      out.noSemanticReason = '서버에 semanticTokensProvider가 없다(pyright — Pylance 전용 기능)'
+      out.semanticTokensNull = await cdp.eval(
+        `window.__lsp.api().semanticTokens(${S(WORK)}, ${S(fix.bigRel)}).then((t) => t == null).catch(() => 'err')`,
+        { awaitPromise: true }
+      )
+      // 이 언어에도 "파일을 여는 순간"은 있다 — 캐시 경로가 조용히 null을 돌려주는지만 본다
+      out.cached = await cdp.eval(`window.__lsp.cachedTokens(${S(WORK)}, ${S(fix.bigRel)}, 3)`, { awaitPromise: true })
     }
-    out.paint = paint
-
-    // ── ③ 시맨틱 토큰 왕복 비용(서버가 이미 이 문서를 아는 상태) ────────────
-    // ②와 다른 눈금이다: ②는 "열고 나서 처음 색이 오기까지", ③은 "이미 아는 문서를
-    // 다시 물었을 때의 왕복". 둘을 같은 칸에 적으면 무엇이 좋아졌는지 못 읽는다.
-    out.liveTokens = await cdp.eval(`window.__lsp.liveTokens(${S(WORK)}, ${S(fix.bigRel)}, 90000)`, {
-      awaitPromise: true, timeoutMs: 100000
-    })
-
-    // ── ④ 캐시 경로 비용(첫 호출 + p50) ─────────────────────────────────────
-    out.cached = await cdp.eval(`window.__lsp.cachedTokens(${S(WORK)}, ${S(fix.bigRel)}, 5)`, { awaitPromise: true })
 
     // 프레임 샘플러는 **여기서** 멈춘다 — "서버 기동 + 첫 색칠"이 끝나는 순간까지가
     // 사용자가 앱을 쓰면서 인덱싱을 기다리는 구간이다. ready까지만 재면 창이 0.5초라
@@ -487,7 +523,9 @@ async function runOnce(kind, { fix, exe, fresh, phase, extraEnv }) {
       const defRows = await cdp.eval(`window.__lsp.sample('def', ${S(WORK)}, ${S(fix.bigRel)}, ${S(fix.defAt)})`, {
         awaitPromise: true, timeoutMs: 180000
       })
-      const crossFile = defRows.filter((r) => r.kind === 'cross-file' && r.ok && /lib\.ts$/i.test(r.meta || ''))
+      // 크로스 파일 적중의 목적지 이름은 **픽스처가 댄다**(ts=lib.ts · py=lib.py · cs=Lib.cs)
+      const crossRe = new RegExp(`${fix.crossName.replace('.', '\\.')}$`, 'i')
+      const crossFile = defRows.filter((r) => r.kind === 'cross-file' && r.ok && crossRe.test(r.meta || ''))
       out.definition = { ...stat(defRows), crossFileHits: crossFile.length, rows: defRows }
 
       // ── ⑥ 자동완성 첫 후보 ──────────────────────────────────────────────────
@@ -501,15 +539,33 @@ async function runOnce(kind, { fix, exe, fresh, phase, extraEnv }) {
 
       // ── ⑦ 파일 변경 → 토큰 재정확화 ────────────────────────────────────────
       // 디스크에서 새 export 심볼을 심고, 토큰이 **그 줄을** 담을 때까지 잰다.
+      // 시맨틱 토큰이 없는 언어에서는 같은 사건을 **호버로** 잰다 — "디스크가 바뀐 뒤
+      // 새 심볼을 서버가 알기까지"라는 눈금 자체는 언어와 무관하게 존재한다.
       const abs = path.join(WORK, fix.bigRel)
       const before = fs.readFileSync(abs, 'utf8')
       const edited = fix.edit(before, 1)
-      const newLine = edited.split('\n').findIndex((l) => l.includes(fix.editedMarker(1)))
+      const marker = fix.editedMarker(1)
+      const newLine = edited.split('\n').findIndex((l) => l.includes(marker))
+      // 새 심볼 '가운데'를 찍는다 — 경계에 찍으면 서버가 옆 토큰을 집는다(픽스처와 같은 규약)
+      const newChar = (edited.split('\n')[newLine] ?? '').indexOf(marker) + Math.floor((marker.length - 1) / 2)
       fs.writeFileSync(abs, edited)
-      out.retokenize = await cdp.eval(`window.__lsp.tokensCover(${S(WORK)}, ${S(fix.bigRel)}, ${newLine}, 60000)`, {
-        awaitPromise: true, timeoutMs: 70000
-      })
+      out.retokenize = SEM
+        ? await cdp.eval(`window.__lsp.tokensCover(${S(WORK)}, ${S(fix.bigRel)}, ${newLine}, 60000)`, {
+            awaitPromise: true, timeoutMs: 70000
+          })
+        : await cdp.eval(
+            `window.__lsp.hoverCovers(${S(WORK)}, ${S(fix.bigRel)}, ${newLine}, ${newChar}, ${S(marker)}, 60000)`,
+            { awaitPromise: true, timeoutMs: 70000 }
+          )
       out.retokenize.line = newLine
+      out.retokenize.via = SEM ? 'semanticTokens' : 'hover'
+      // ★ 교차 확인(R3) — `tokensCover`는 "그 **줄 번호**에 토큰이 있나"만 본다. 새 심볼이
+      //   원래 토큰이 있던 줄(C# 픽스처의 앵커 주석 자리)에 앉으면 **바뀌기 전 토큰으로도
+      //   통과한다**(위양성). 호버는 이름을 직접 확인하므로 그 구멍이 없다. 두 값을 같이 남긴다.
+      out.retokenizeHover = await cdp.eval(
+        `window.__lsp.hoverCovers(${S(WORK)}, ${S(fix.bigRel)}, ${newLine}, ${newChar}, ${S(marker)}, 60000)`,
+        { awaitPromise: true, timeoutMs: 70000 }
+      )
       fs.writeFileSync(abs, before) // 되돌린다 — 다음(warm) 실행이 같은 파일을 봐야 캐시가 맞다
 
       // ── ⑦-b 대조군: 아무 일도 없을 때의 프레임 ────────────────────────────
@@ -539,7 +595,8 @@ async function runOnce(kind, { fix, exe, fresh, phase, extraEnv }) {
 
 // ── 뷰어 실증 — 호버 카드/정의 이동/완성이 **화면에** 뜨는가 ──────────────────
 async function viewerProof(cdp, kind, fix) {
-  const shotDir = path.join(REPO, 'bench', 'shots', `lsp-${kind}`)
+  // 언어를 폴더 이름에 넣는다 — 안 넣으면 py 주행이 ts 스크린샷을 조용히 덮는다(R3에서 밟음)
+  const shotDir = path.join(REPO, 'bench', 'shots', `lsp-${kind}-${fix.lang}`)
   fs.mkdirSync(shotDir, { recursive: true })
   const shot = async (id) => {
     const r = await cdp.send('Page.captureScreenshot', { format: 'png' }).catch(() => null)
@@ -560,35 +617,67 @@ async function viewerProof(cdp, kind, fix) {
     }
   }
 
+  // 픽스처가 대는 네 값 — R2까지 이 자리에 TS 식별자가 박혀 있었다(§lspfix.mjs 머리 주석)
+  const OPEN = fix.openName
+  const SYM = fix.symbol
+  const CROSS = fix.crossName
+  const SEM = fix.semantic !== false
+
   await check('viewer-open', async () => {
-    await ctx.openFile('big.ts')
+    await ctx.openFile(OPEN)
     const lines = await ctx.count('.fv-body .cm-line')
     if (lines < 5) throw new Error(`본문 줄이 ${lines}개뿐`)
     return { lines }
   })
 
-  // 시맨틱 색: 서버 토큰이 칠해지면 .cm-line 안에 sem-* 클래스가 생긴다
-  await check('viewer-semantic-paint', async () => {
+  // 시맨틱 색: 서버 토큰이 칠해지면 .cm-line 안에 sem-* 클래스가 생긴다.
+  // 서버가 토큰을 안 내는 언어(pyright)에서는 **문법 색(highlight.js)으로 떨어지는 것이
+  // 정답**이다 — "색이 있다"를 그쪽 기준으로 확인한다(두 앱 모두 같은 폴백을 탄다).
+  await check(SEM ? 'viewer-semantic-paint' : 'viewer-syntax-paint', async () => {
+    const sel = SEM ? '.fv-body [class*="sem-"]' : '.fv-body .cm-line .hljs-keyword, .fv-body .cm-line [class*="hljs-"]'
     const t0 = Date.now()
     for (;;) {
-      const n = await cdp.eval(`document.querySelectorAll('.fv-body [class*="sem-"]').length`).catch(() => 0)
-      if (n > 20) return { semSpans: n, waitMs: Date.now() - t0 }
-      if (Date.now() - t0 > 60000) throw new Error(`60s 안에 시맨틱 스팬이 안 뜸 (n=${n})`)
+      const n = await cdp.eval(`document.querySelectorAll(${JSON.stringify(sel)}).length`).catch(() => 0)
+      if (n > 20) return { spans: n, waitMs: Date.now() - t0, kind: SEM ? 'semantic' : 'syntax(highlight.js)' }
+      if (Date.now() - t0 > 60000) throw new Error(`60s 안에 색 스팬이 안 뜸 (n=${n}, sel=${sel})`)
       await sleep(400)
     }
   })
   await shot('01-semantic')
 
-  // 호버 카드 — 첫 makeConfig 토큰 위로 진짜 마우스를 올린다
+  // 화면에서 식별자의 픽셀 위치를 찾는다 — **텍스트 노드 Range로**.
+  // R2까지는 `span.textContent === '심볼'`이었는데, 그건 **서버 토큰으로 칠해진 언어에서만**
+  // 성립한다: 시맨틱 색이 없으면(pyright) highlight.js가 키워드·문자열만 span으로 감싸고
+  // 식별자는 맨 텍스트로 남아 span이 아예 없다. Range는 그 차이를 안 탄다.
+  const rectOf = (sym) => `(() => {
+    const W = ${JSON.stringify(sym)}
+    for (const ln of document.querySelectorAll('.fv-body .cm-line')) {
+      const w = document.createTreeWalker(ln, NodeFilter.SHOW_TEXT)
+      let n
+      while ((n = w.nextNode())) {
+        const t = n.textContent || ''
+        let i = -1
+        for (;;) {
+          i = t.indexOf(W, i + 1)
+          if (i < 0) break
+          const pre = i > 0 ? t[i - 1] : ' '
+          const post = i + W.length < t.length ? t[i + W.length] : ' '
+          if (/[A-Za-z0-9_$]/.test(pre) || /[A-Za-z0-9_$]/.test(post)) continue // 부분 일치
+          const r = document.createRange()
+          r.setStart(n, i); r.setEnd(n, i + W.length)
+          const b = r.getBoundingClientRect()
+          if (b.width < 2 || b.bottom < 4 || b.top > innerHeight - 4) continue   // 화면 밖
+          return { x: Math.round(b.left + b.width / 2), y: Math.round(b.top + b.height / 2), text: W }
+        }
+      }
+    }
+    return null
+  })()`
+
+  // 호버 카드 — 첫 심볼 토큰 위로 진짜 마우스를 올린다
   await check('viewer-hover-card', async () => {
-    const at = await cdp.eval(`(() => {
-      const els = [...document.querySelectorAll('.fv-body .cm-line span')]
-      const e = els.find((s) => s.textContent === 'makeConfig')
-      if (!e) return null
-      const b = e.getBoundingClientRect()
-      return { x: Math.round(b.left + b.width / 2), y: Math.round(b.top + b.height / 2), text: e.textContent }
-    })()`)
-    if (!at) throw new Error('makeConfig 토큰을 화면에서 못 찾음')
+    const at = await cdp.eval(rectOf(SYM))
+    if (!at) throw new Error(`${SYM} 토큰을 화면에서 못 찾음`)
     await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: at.x - 6, y: at.y, button: 'none', buttons: 0 })
     await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: at.x, y: at.y, button: 'none', buttons: 0 })
     const t0 = Date.now()
@@ -604,16 +693,10 @@ async function viewerProof(cdp, kind, fix) {
   })
   await shot('02-hover')
 
-  // 정의 이동 — Ctrl+클릭으로 lib.ts로 넘어가는가
+  // 정의 이동 — Ctrl+클릭으로 크로스 파일 목적지로 넘어가는가
   await check('viewer-goto-definition', async () => {
-    const at = await cdp.eval(`(() => {
-      const els = [...document.querySelectorAll('.fv-body .cm-line span')]
-      const e = els.find((s) => s.textContent === 'makeConfig')
-      if (!e) return null
-      const b = e.getBoundingClientRect()
-      return { x: Math.round(b.left + b.width / 2), y: Math.round(b.top + b.height / 2) }
-    })()`)
-    if (!at) throw new Error('makeConfig 토큰 없음')
+    const at = await cdp.eval(rectOf(SYM))
+    if (!at) throw new Error(`${SYM} 토큰 없음`)
     const before = await cdp.eval(`(document.querySelector('.fv-name')?.innerText ?? '')`)
     for (const type of ['mouseMoved', 'mousePressed', 'mouseReleased']) {
       await cdp.send('Input.dispatchMouseEvent', {
@@ -624,18 +707,18 @@ async function viewerProof(cdp, kind, fix) {
     const t0 = Date.now()
     for (;;) {
       const title = await cdp.eval(`(document.querySelector('.fv-name')?.innerText ?? '')`)
-      if (/lib\.ts/.test(title)) return { waitMs: Date.now() - t0, from: before, title }
-      if (Date.now() - t0 > 15000) throw new Error(`15s 안에 lib.ts로 안 넘어감 (before=${JSON.stringify(before)}, now=${JSON.stringify(title)})`)
+      if (title.includes(CROSS)) return { waitMs: Date.now() - t0, from: before, title }
+      if (Date.now() - t0 > 15000) throw new Error(`15s 안에 ${CROSS}로 안 넘어감 (before=${JSON.stringify(before)}, now=${JSON.stringify(title)})`)
       await sleep(250)
     }
   })
   await shot('03-definition')
 
-  // 자동완성 팝업 — 편집 모드(Ctrl+E)로 바꾸고 `registry.`를 친다
+  // 자동완성 팝업 — 편집 모드(Ctrl+E)로 바꾸고 픽스처가 댄 한 줄을 친다
   await check('viewer-completion-popup', async () => {
     await ctx.esc(1)
     await sleep(300)
-    await ctx.openFile('big.ts')
+    await ctx.openFile(OPEN)
     await sleep(600)
     await cdp.eval(`(() => { const c = document.querySelector('.fv-body .cm-content'); if (c) c.focus(); return true })()`)
     await ctx.key('e', { ctrl: true }) // read → edit
@@ -651,7 +734,7 @@ async function viewerProof(cdp, kind, fix) {
     await cdp.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', ...endKey })
     await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', ...endKey })
     await sleep(200)
-    await cdp.send('Input.insertText', { text: '\nregistry.' })
+    await cdp.send('Input.insertText', { text: fix.typeText })
     const t0 = Date.now()
     for (;;) {
       const opts = await cdp.eval(`(() => {
@@ -678,7 +761,7 @@ async function idleReclaimProbe(kind, fix, exe) {
     }
   }
   const version = '3.0.0-beta.1'
-  const home = makeHome(kind, version, false)
+  const home = makeHome(kind, version, false, fix)
   const { child, cdp, profile, heal } = await boot(kind, home, exe, fix, {
     CCG_LSP_IDLE_TTL_MS: '6000',
     CCG_LSP_SWEEP_MS: '1000'
@@ -695,8 +778,15 @@ async function idleReclaimProbe(kind, fix, exe) {
     // TTL(6s) + sweep(1s) 여유 — 12초 조용히 둔다
     await sleep(12000)
     const after = serverProcs(child.pid).filter((p) => p.lsp)
-    // 회수 뒤 다시 요청 → 되살아나는가 + 얼마나 걸리는가
-    const back = await cdp.eval(`window.__lsp.liveTokens(${S(WORK)}, ${S(fix.bigRel)}, 60000)`, { awaitPromise: true, timeoutMs: 70000 })
+    // 회수 뒤 다시 요청 → 되살아나는가 + 얼마나 걸리는가.
+    // 시맨틱 토큰이 없는 언어(pyright)에서는 **호버가 돌아오기까지**로 같은 사건을 잰다.
+    const back =
+      fix.semantic !== false
+        ? await cdp.eval(`window.__lsp.liveTokens(${S(WORK)}, ${S(fix.bigRel)}, 60000)`, { awaitPromise: true, timeoutMs: 70000 })
+        : await cdp.eval(
+            `window.__lsp.hoverCovers(${S(WORK)}, ${S(fix.bigRel)}, ${S(fix.hoverAt[0].line)}, ${S(fix.hoverAt[0].character)}, ${S(fix.symbol)}, 60000)`,
+            { awaitPromise: true, timeoutMs: 70000 }
+          )
     const revived = serverProcs(child.pid).filter((p) => p.lsp)
     return {
       supported: true,
@@ -781,9 +871,10 @@ if (results.length) {
   // 모든 '첫 …' 수치는 **문서 시작(navigationStart) 기준**이라 두 앱에서 같은 사건에 붙는다.
   const row = (r) => ({
     앱: `${r.kind} ${r.version}`,
+    언어: r.lang,
     'prewarm ready ms': r.cold.prewarmMs ?? '—',
-    '첫 색칠(캐시미스) ms': r.cold.paint?.liveAtMs ?? '—',
-    '첫 색칠(캐시적중) ms': r.warm.paint?.cacheAtMs ?? '—',
+    '첫 색칠(캐시미스) ms': r.cold.semantic === false ? 'n/a(토큰없음)' : (r.cold.paint?.liveAtMs ?? '—'),
+    '첫 색칠(캐시적중) ms': r.warm.semantic === false ? 'n/a' : (r.warm.paint?.cacheAtMs ?? '—'),
     '캐시적중': r.warm.paint?.cacheHit ?? '—',
     '토큰 왕복 ms': r.cold.liveTokens?.ms ?? '—',
     '캐시호출 첫/p50': `${r.warm.cached?.ms ?? '—'}/${r.warm.cached?.p50 ?? '—'}`,
@@ -791,6 +882,7 @@ if (results.length) {
     'def p50/p95': `${r.cold.definition?.p50 ?? '—'}/${r.cold.definition?.p95 ?? '—'}`,
     'compl p50/p95': `${r.cold.completion?.p50 ?? '—'}/${r.cold.completion?.p95 ?? '—'}`,
     '재정확화 ms': r.cold.retokenize?.ms ?? '—',
+    '재정확화(호버) ms': r.cold.retokenizeHover?.ms ?? '—',
     'fps 워밍/유휴': `${r.cold.fps?.fps ?? '—'}/${r.cold.fpsIdle?.fps ?? '—'}`,
     '긴프레임': r.cold.fps?.longFrames ?? '—',
     '뷰어 실증': r.cold.viewer ? `${r.cold.viewer.pass}/${r.cold.viewer.total}` : '—',
