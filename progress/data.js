@@ -1,6 +1,6 @@
 window.PROGRESS = {
-  phase: 'R15 — M6 R2(삭제 페일세이프·스킴 비동기·CORS) / R13·R14 확인 크리틱 (병렬 2) → 이후 리드가 조용한 세션에서 Priv 게이트 단독 재측정',
-  note: 'R14 착지 — 배선 R4: 유휴 귀속 완료(Rust 전체 13.6MB Priv·어떤 Rust 스위치도 ±1MB 못 움직임 → 표적은 렌더러+WebView2, 동시 주행 노이즈 ±11MB가 게이트 거리 1.2MB의 9배 — 조용한 재측정 필요), 큐 채널 완성(op 6종·첨부/picker·begin_run 에코·재시작 영속), 재개 단일 소유(resumeOwner=engine, 이중 전송 재생 잠금), 엔진 118 green / 렌더러 R3: 이미지 스킴 전환(뷰어 3화면 개통·pixdiff 0.06%), 스크롤 앵커(3케이스), useLimitResume 상호배제 소비(own.auto-fired spawns 1), poc-dial 43검사 / M6 크리틱: 조건부 확인 — 치명 2 신규(S1: 휴지통 불가 볼륨에서 조용한 영구 삭제·2.6.2는 페일세이프 / S2: 이미지 한 장이 UI 21초 정지) → R15 수정 중',
+  phase: 'R16 — 한도 자동 이어서 안전장치 복원(F1 오탐 차단벽·F2 리셋 epoch/재검증) + 렌더러 구독자 구멍(앵커 드리프트·침묵 verdict·user-echo) 병렬 2',
+  note: 'R15 착지 — M6 R2: S1~S9 전부 수정(IFileOperation+RECYCLEONDELETE 싱크로 2.6.2와 같은 페일세이프·휴지통 +1 저울 신설 / 비동기 스킴으로 UI 정지 0 / CORS 403 / 잠긴 파일·35MB blob·discard(".") 거절 / 전각·가나 정렬 보정), ccg-fs 73 green / R13·R14 확인: 불일치 0 — 단 신규 6건: ★F1×F2 치명 조합(한도 판정 오탐 3종 + arm_hold가 리셋 epoch 무시·재검증 없음 → 30분 4회 헛 재개 실측, 컨텍스트 초과가 영원히 6.5분마다 재전송 가능 — 2.6.2의 문구 차단벽·2단 판정·발화 재검증이 이식에서 빠짐), F3 앵커 정착 후 365px 드리프트, F4 채팅 폴더 소실=영원한 침묵(verdict 구독자 0), F5 user-echo 구독자 0 → R16 수정 중',
   updatedAt: '2026-08-23 04:20',
   metrics: [
     { name: '★ 멀티 4패널 유휴 WS', unit: 'MB', base: 712.8, new: 421.3, target: '≤356 = WebView2 빈 문서 바닥값(351.5) + 4.5MB — 앱 몫이 47.3이라 구조적 불가, 재협상 대상 (NetSvc2 채택 후 크리틱 실측)', pass: false },
