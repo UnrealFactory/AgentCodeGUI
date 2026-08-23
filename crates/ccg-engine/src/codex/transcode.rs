@@ -64,6 +64,22 @@ struct Bg {
     process_id: String,
     command: String,
     file: String,
+    /// 사용자가 칩의 **중지**를 눌렀다. 실측(2.6.2 `engine.ts:870-873`): 우리가 죽인
+    /// 프로세스는 `exit -1` + `status:'failed'`로 돌아온다 — 그걸 그대로 흘리면
+    /// 사용자가 스스로 멈춘 셸이 **빨간 실패**로 뜬다. 그래서 주체를 기억한다.
+    stopped: bool,
+}
+
+/// 살아 있는 서브에이전트 카드 하나(= codex 서브에이전트 스레드 하나).
+#[derive(Debug, Clone)]
+struct Agent {
+    /// 부모 대화의 `Task` 도구 행 id.
+    tool_id: String,
+    /// 행을 **다시 열 때** 그대로 쓰는 `tool_use.input`(이름·설명이 여기 산다).
+    input: Value,
+    /// 이미 `tool_result`로 닫혔는가. 닫는 경로가 셋(턴 완료 · `subAgentActivity{clos*}` ·
+    /// `collabAgentToolCall.agentsStates`)이라 두 번 닫지 않게 표식이 필요하다.
+    done: bool,
 }
 
 /// 도구 행 하나(= codex item 하나).
@@ -111,8 +127,8 @@ pub struct Transcoder {
     bg: BTreeMap<String, Bg>,
     bg_by_process: BTreeMap<String, String>,
     last_bg_poll: Millis,
-    /// 살아 있는 서브에이전트 스레드 id → 그 카드의 도구 id.
-    agents: BTreeMap<String, String>,
+    /// 살아 있는 서브에이전트 스레드 id → 그 카드.
+    agents: BTreeMap<String, Agent>,
     /// 임시 폴더(백그라운드 테일 파일의 뿌리) — 드라이버가 채운다.
     pub tmp_dir: String,
 }
@@ -300,11 +316,29 @@ impl Transcoder {
                         let pid = s(req, "task_id").unwrap_or_default();
                         if let Some(t) = self.thread_id.clone() {
                             if !pid.is_empty() {
+                                // ★ **중지 주체를 기억한다.** 우리가 죽인 프로세스는 곧바로
+                                //   `item/completed{exitCode:-1}`로 돌아오는데(실측 ~100ms),
+                                //   그대로 흘리면 사용자가 스스로 멈춘 셸이 `failed / exit -1`로
+                                //   뜬다(2.6.2 `engine.ts:1414-1415`).
+                                let item = self.bg_by_process.get(&pid).cloned();
+                                let mut marked = false;
+                                if let Some(b) = item.and_then(|i| self.bg.get_mut(&i)) {
+                                    if b.stopped {
+                                        return out; // 이미 중지 요청을 보냈다 — 두 번 안 보낸다.
+                                    }
+                                    b.stopped = true;
+                                    marked = true;
+                                }
                                 out.push(self.req(
                                     "thread/backgroundTerminals/terminate",
                                     json!({ "threadId": t, "processId": pid }),
                                     Pending::Fire,
                                 ));
+                                // 칩은 즉시 목록에서 빠진다(2.6.2 `emitBgTasks`가 stopped를
+                                // 걸러 내는 것과 같은 시점). 정착 통지는 item/completed가 낸다.
+                                if marked {
+                                    out.extend(self.bg_replace());
+                                }
                             }
                         }
                     }
@@ -367,6 +401,16 @@ impl Transcoder {
     }
 
     fn turn_start(&mut self, text: &str) -> Egress {
+        // ★ 앞 턴 마감. 2.6.2는 `finishRun`이 `activeTurnId`를 `endedTurnIds`로 옮기고
+        //   비우는데(engine.ts:1341-1344), 3.0은 턴을 **상태기계**가 마감하는 길이 있다
+        //   (무음 턴 T8→T10→T11). 그때 옮김기는 아무 통지도 못 받으므로 `turn_id`가
+        //   옛 값으로 남고 ① 다음 턴의 `turn/interrupt`가 **옛 turnId**를 겨눠 서버가
+        //   `-32600 no active turn`으로 거절하며(Esc가 하드 kill로 떨어진다) ② 새 턴의
+        //   `turn/start` 응답이 `is_none()` 가드에 걸려 영영 안 앉는다.
+        //   새 프롬프트를 보내는 이 지점이 "앞 턴은 끝났다"가 참인 유일한 자리다.
+        if let Some(prev) = self.turn_id.take() {
+            self.remember_ended(prev);
+        }
         let params = json!({
             "threadId": self.thread_id.clone().unwrap_or_default(),
             // `text_elements`는 실측 스키마의 필수 자리(engine.ts:1654).
@@ -536,16 +580,27 @@ impl Transcoder {
         out
     }
 
+    /// 턴 하나를 **마감 목록**에 올린다(최근 8개 — 2.6.2 `engine.ts:1341-1343`과 같은 상한).
+    ///
+    /// 마감 목록에 오른 턴의 늦은 통지(`error`·`turn/completed`)는 전부 버린다. 그 통지들이
+    /// 오는 창은 **다음 턴 언저리**라서, 안 버리면 남의 턴이 그 사연으로 정착한다.
+    fn remember_ended(&mut self, id: String) {
+        if id.is_empty() {
+            return;
+        }
+        self.ended_turns.insert(id);
+        while self.ended_turns.len() > 8 {
+            let first = self.ended_turns.iter().next().cloned().unwrap_or_default();
+            self.ended_turns.remove(&first);
+        }
+    }
+
     /// 실패 한 건 → 턴을 정착시키는 `result`. **침묵 no-op 금지**(D7): 어떤 실패도
     /// 화면에 문장으로 나가야 한다.
     fn fail_result(&mut self, message: &str, now: Millis) -> Value {
         if let Some(t) = self.turn_id.take() {
             // 뒤따라 올 `turn/completed{failed}`는 같은 사연의 **두 번째 통지**다.
-            self.ended_turns.insert(t);
-            while self.ended_turns.len() > 8 {
-                let first = self.ended_turns.iter().next().cloned().unwrap_or_default();
-                self.ended_turns.remove(&first);
-            }
+            self.remember_ended(t);
         }
         json!({
             "type": "result", "subtype": "error_during_execution", "is_error": true,
@@ -639,9 +694,11 @@ impl Transcoder {
         // (한 프로세스에 여러 스레드가 산다 — engine.ts:480-486).
         if let Some(tid) = params.get("threadId").and_then(Value::as_str) {
             if self.thread_id.as_deref().is_some_and(|m| m != tid) {
-                return match self.agents.get(tid).cloned() {
-                    Some(parent) => self.on_agent_notification(&parent, method, &params, now),
-                    None => vec![],
+                let tid = tid.to_string();
+                return if self.agents.contains_key(&tid) {
+                    self.on_agent_notification(&tid, method, &params, now)
+                } else {
+                    vec![]
                 };
             }
         }
@@ -725,6 +782,22 @@ impl Transcoder {
             }
             "turn/completed" => self.on_turn_completed(&params["turn"], now),
             "error" => {
+                // ★ turnId 게이트 3종(2.6.2 `engine.ts:606-609`) — 순서까지 그대로다.
+                //   ① 마감한 턴의 늦은 error → 결과 카드가 두 장 그려진다.
+                //   ② 시작 창(턴 채택 전)의 error → **새 실행이 이전 턴의 오류로 즉사한다.**
+                //   ③ 남의 턴의 error → 지금 도는 턴이 남의 사연으로 정착한다.
+                //   turnId가 없는 error(비정형)만 종전처럼 도착 순서로 흐른다 —
+                //   `turn/start` 자체의 실패는 통지가 아니라 RPC 오류로 오기 때문이다.
+                if let Some(et) = s(&params, "turnId").filter(|t| !t.is_empty()) {
+                    if self.ended_turns.contains(&et) {
+                        return vec![];
+                    }
+                    match self.turn_id.as_deref() {
+                        None => return vec![],
+                        Some(cur) if cur != et => return vec![],
+                        _ => {}
+                    }
+                }
                 let err = &params["error"];
                 let message = s(err, "message").unwrap_or_else(|| "Codex 실행 오류".into());
                 if params.get("willRetry").and_then(Value::as_bool) == Some(true) {
@@ -799,11 +872,23 @@ impl Transcoder {
     }
 
     fn on_turn_completed(&mut self, turn: &Value, now: Millis) -> Vec<Egress> {
-        // 이미 마감한 턴의 늦은 통지 — 결과 카드를 두 장 그리지 않는다(필드 주석 참고).
-        if let Some(id) = turn.get("id").and_then(Value::as_str) {
+        // `error` 게이트와 **대칭**인 셋(2.6.2 `engine.ts:592-599`).
+        //  ① 이미 마감한 턴의 늦은 통지 — 결과 카드를 두 장 그리지 않는다(중복 completed 포함).
+        //  ② 시작 창에 도착한 id 달린 completed는 전부 잔재다 — 실측 와이어 순서가
+        //     `turn/start` 응답 → `turn/started` → … → `completed` 라서 우리 턴의 completed는
+        //     채택보다 먼저 올 수 없다.
+        //  ③ 남의 턴의 completed — 1턴의 늦은 `interrupted`가 2턴을 `aborted_by_user`로 정착시킨다.
+        // id 없는 프레임(비정형)만 종전처럼 도착 순서로 정착시킨다.
+        if let Some(id) = turn.get("id").and_then(Value::as_str).filter(|i| !i.is_empty()) {
             if self.ended_turns.contains(id) {
                 return vec![];
             }
+            match self.turn_id.as_deref() {
+                None => return vec![],
+                Some(cur) if cur != id => return vec![],
+                _ => {}
+            }
+            self.remember_ended(id.to_string());
         }
         let status = turn.get("status").and_then(Value::as_str).unwrap_or("completed");
         let failed = status == "failed";
@@ -819,7 +904,9 @@ impl Transcoder {
         let d_out = self.usage_total.out_tok.saturating_sub(self.usage_base.out_tok);
         self.usage_base = self.usage_total.clone();
         let mut model_usage = Map::new();
-        if d_in + d_out > 0 {
+        // 체크드 덧셈 — 서버가 말도 안 되는 숫자를 주면 디버그 빌드가 여기서 패닉한다
+        // (`panic="abort"` 릴리스라면 앱이 통째로 죽는 자리다).
+        if d_in.saturating_add(d_out) > 0 {
             model_usage.insert(
                 self.plan.model.clone(),
                 json!({
@@ -928,12 +1015,40 @@ impl Transcoder {
                 // 백그라운드로 넘어갔던 명령의 진짜 종말 — 칩은 REPLACE가 거둔다.
                 if let Some(bg) = self.bg.remove(&id) {
                     self.bg_by_process.remove(&bg.process_id);
-                    let mut out = self.bg_replace();
-                    out.push(Egress::Frame(json!({ "type": "system", "subtype": "task_notification",
+                    let output = s(item, "aggregatedOutput").unwrap_or_default();
+                    let mut out = vec![];
+                    // ★ **자연 종료면 도구 행을 되살린다**(2.6.2 `engine.ts:851-866`).
+                    //   완료 아이템이 전체 출력을 들고 오므로, '백그라운드로 전환'으로 일찍
+                    //   닫힌 행에 최종 출력·성패를 정착시켜 로그를 클릭해 볼 수 있게 한다.
+                    //   중지는 제외 — 그 사연은 칩이 표기하고 행은 전환 표시를 유지한다.
+                    if !bg.stopped && !output.is_empty() {
+                        let tail: String = {
+                            let n = output.chars().count();
+                            output.chars().skip(n.saturating_sub(8000)).collect()
+                        };
+                        out.push(Egress::Frame(tool_result(
+                            &id,
+                            exit.is_some_and(|e| e != 0),
+                            &tail,
+                        )));
+                    }
+                    out.extend(self.bg_replace());
+                    let mut note = json!({ "type": "system", "subtype": "task_notification",
                         "task_id": bg.process_id,
-                        "status": if exit == Some(0) { "completed" } else { "failed" },
-                        "summary": format!("exit {}", exit.map(|e| e.to_string()).unwrap_or_else(|| "?".into())),
-                        "output_file": bg.file })));
+                        "status": if bg.stopped { "stopped" }
+                                  else if exit == Some(0) { "completed" } else { "failed" },
+                        "output_file": bg.file });
+                    if bg.stopped {
+                        // 사유 없음 — 우리가 죽여서 난 `exit -1`을 사용자에게 보여 주지 않는다.
+                        // 대신 주체를 싣는다(`frames.rs`가 `by_user`로 읽어 정착 사유를 가른다).
+                        note["stopped_by_user"] = json!(true);
+                    } else {
+                        note["summary"] = json!(format!(
+                            "exit {}",
+                            exit.map(|e| e.to_string()).unwrap_or_else(|| "?".into())
+                        ));
+                    }
+                    out.push(Egress::Frame(note));
                     return out;
                 }
                 let output = s(item, "aggregatedOutput").filter(|o| !o.is_empty()).unwrap_or(acc);
@@ -990,15 +1105,17 @@ impl Transcoder {
         }
         let Some(aid) = receivers.first().cloned() else { return vec![] };
         let prompt = s(item, "prompt").unwrap_or_default();
-        self.agents.insert(aid, id.to_string());
+        let input = json!({ "subagent_type": "Agent", "description": one_line(&prompt, 200),
+                            "prompt": prompt });
+        self.agents.insert(
+            aid,
+            Agent { tool_id: id.to_string(), input: input.clone(), done: false },
+        );
         self.items.insert(
             id.to_string(),
             Item { name: "Task".into(), out: String::new() },
         );
-        vec![Egress::Frame(json!({ "type": "assistant", "message": { "content": [
-            { "type": "tool_use", "id": id, "name": "Task",
-              "input": { "subagent_type": "Agent", "description": one_line(&prompt, 200),
-                         "prompt": prompt } } ] }}))]
+        vec![Egress::Frame(agent_card(id, &input))]
     }
 
     fn on_collab_completed(&mut self, id: &str, item: &Value) -> Vec<Egress> {
@@ -1014,9 +1131,12 @@ impl Transcoder {
             if !ended {
                 continue;
             }
-            if let Some(parent) = self.agents.remove(&aid) {
-                out.push(Egress::Frame(tool_result(&parent, st.contains("error"), &st)));
-                self.items.remove(&parent);
+            if let Some(a) = self.agents.remove(&aid) {
+                // 닫는 경로가 셋이라 두 번 닫지 않는다(턴 완료가 먼저 닫았을 수 있다).
+                if !a.done {
+                    out.push(Egress::Frame(tool_result(&a.tool_id, st.contains("error"), &st)));
+                }
+                self.items.remove(&a.tool_id);
             }
         }
         // spawnAgent 자체의 완료는 "접수 완료"일 뿐 — 카드는 살아 있다(engine.ts:974-976).
@@ -1039,14 +1159,16 @@ impl Transcoder {
             let name = s(item, "agentPath")
                 .and_then(|p| p.split('/').filter(|s| !s.is_empty()).next_back().map(str::to_string))
                 .unwrap_or_else(|| "Agent".into());
-            self.agents.insert(aid, tool_id.clone());
+            let input = json!({ "subagent_type": name, "description": "서브에이전트" });
+            self.agents.insert(
+                aid,
+                Agent { tool_id: tool_id.clone(), input: input.clone(), done: false },
+            );
             self.items.insert(
                 tool_id.clone(),
                 Item { name: "Task".into(), out: String::new() },
             );
-            return vec![Egress::Frame(json!({ "type": "assistant", "message": { "content": [
-                { "type": "tool_use", "id": tool_id, "name": "Task",
-                  "input": { "subagent_type": name, "description": "서브에이전트" } } ] }}))];
+            return vec![Egress::Frame(agent_card(&tool_id, &input))];
         }
         let closing = ["clos", "end", "stop", "shutdown", "interrupt"]
             .iter()
@@ -1055,9 +1177,12 @@ impl Transcoder {
             return vec![];
         }
         match self.agents.remove(&aid) {
-            Some(tool_id) => {
-                self.items.remove(&tool_id);
-                vec![Egress::Frame(tool_result(&tool_id, false, "완료"))]
+            Some(a) => {
+                self.items.remove(&a.tool_id);
+                if a.done {
+                    return vec![]; // 턴 완료가 이미 닫았다 — 카드를 두 번 정착시키지 않는다.
+                }
+                vec![Egress::Frame(tool_result(&a.tool_id, false, "완료"))]
             }
             None => vec![],
         }
@@ -1065,19 +1190,57 @@ impl Transcoder {
 
     /// 서브에이전트 스레드에서 온 알림 → **사이드체인 프레임**(부모 카드에 귀속).
     /// 메인 말풍선·게이지·모델 배너를 절대 건드리지 않는다(wire.rs의 조기 분리 규약).
+    ///
+    /// 2.6.2 `onAgentThreadNotification`(`engine.ts:740-828`)이 다루는 것은 **넷**이다 —
+    /// `turn/started`·`item/started`·`item/completed`·`turn/completed`. 턴 계열 둘은
+    /// 카드 **자체**의 상태라 사이드체인 봉투에 싸지 않는다(싸면 자기 자신의 자식이 된다).
     fn on_agent_notification(
         &mut self,
-        parent: &str,
+        aid: &str,
         method: &str,
         params: &Value,
         now: Millis,
     ) -> Vec<Egress> {
+        let Some(agent) = self.agents.get(aid).cloned() else { return vec![] };
+        let parent = agent.tool_id.as_str();
         let side = |v: Value| {
             let mut f = v;
             f["parent_tool_use_id"] = json!(parent);
             Egress::Frame(f)
         };
         match method {
+            // sendInput 등으로 서브에이전트 턴이 다시 돌면 카드도 '실행 중'으로 되돌린다
+            // (2.6.2 `engine.ts:741-750`). 같은 `tool_use`를 다시 실으면 셸이 카드를
+            // upsert 한다 — 닫혔던 행이 되살아나고, 안 닫혔으면 아무것도 안 바뀐다.
+            "turn/started" => {
+                if let Some(a) = self.agents.get_mut(aid) {
+                    a.done = false;
+                }
+                self.items
+                    .entry(agent.tool_id.clone())
+                    .or_insert_with(|| Item { name: "Task".into(), out: String::new() });
+                vec![Egress::Frame(agent_card(&agent.tool_id, &agent.input))]
+            }
+            // ★ **주 종결 경로** — "턴 완료가 곧 작업 완료"(2.6.2 `engine.ts:806-823`).
+            //   이게 없으면 남은 종결 경로 둘(`subAgentActivity{clos*}` ·
+            //   `collabAgentToolCall.agentsStates`)이 안 올 때 Task 행이 원장에 **영구
+            //   running**으로 남아 스피너가 안 멈추고 턴 정착이 늘어진다.
+            "turn/completed" => {
+                if agent.done {
+                    return vec![];
+                }
+                if let Some(a) = self.agents.get_mut(aid) {
+                    a.done = true;
+                }
+                self.items.remove(&agent.tool_id);
+                let failed = params["turn"].get("status").and_then(Value::as_str)
+                    == Some("failed");
+                vec![Egress::Frame(tool_result(
+                    &agent.tool_id,
+                    failed,
+                    if failed { "실패" } else { "완료" },
+                ))]
+            }
             "item/started" => {
                 let inner = self.on_item_started(&params["item"]);
                 inner
@@ -1140,7 +1303,12 @@ impl Transcoder {
             }
             self.bg.insert(
                 item_id.clone(),
-                Bg { process_id: pid.clone(), command: s(tk, "command").unwrap_or_default(), file },
+                Bg {
+                    process_id: pid.clone(),
+                    command: s(tk, "command").unwrap_or_default(),
+                    file,
+                    stopped: false,
+                },
             );
             self.bg_by_process.insert(pid, item_id.clone());
             // 도구 행은 여기서 닫는다 — 스피너가 턴 끝까지 도는 것을 막는다(engine.ts:1043-1052).
@@ -1149,7 +1317,15 @@ impl Transcoder {
             }
         }
         // 목록에서 사라진 것 = 서버가 거둔 것. REPLACE가 알아서 정착시킨다.
-        let gone: Vec<String> = self.bg.keys().filter(|k| !seen.contains(k)).cloned().collect();
+        // 단 **중지 요청을 보낸 것은 남긴다** — terminate 직후 목록에서 먼저 빠지고
+        // `item/completed{exit -1}`가 조금 뒤에 오는데, 여기서 지우면 그 완료가 bg 분기를
+        // 못 타 사용자가 멈춘 셸이 다시 `failed`로 뜬다(2.6.2에는 이 쓸기 자체가 없다).
+        let gone: Vec<String> = self
+            .bg
+            .iter()
+            .filter(|(k, b)| !seen.contains(k) && !b.stopped)
+            .map(|(k, _)| k.clone())
+            .collect();
         for k in gone {
             if let Some(b) = self.bg.remove(&k) {
                 self.bg_by_process.remove(&b.process_id);
@@ -1168,6 +1344,8 @@ impl Transcoder {
         let tasks: Vec<Value> = self
             .bg
             .values()
+            // 중지 요청을 보낸 셸은 즉시 칩에서 뺀다(2.6.2 `emitBgTasks`의 `!t.stopped`).
+            .filter(|b| !b.stopped)
             .map(|b| {
                 json!({
                     "task_id": b.process_id,
@@ -1180,6 +1358,12 @@ impl Transcoder {
         vec![Egress::Frame(json!({ "type": "system", "subtype": "background_tasks_changed",
                                    "tasks": tasks }))]
     }
+}
+
+/// 서브에이전트 카드를 여는(또는 되살리는) `assistant{tool_use Task}` 한 장.
+fn agent_card(tool_id: &str, input: &Value) -> Value {
+    json!({ "type": "assistant", "message": { "content": [
+        { "type": "tool_use", "id": tool_id, "name": "Task", "input": input } ] }})
 }
 
 /// `user{tool_result}` 한 장 — 도구 행을 닫는 유일한 모양(F11).
@@ -1326,6 +1510,12 @@ mod tests {
     #[test]
     fn an_interrupted_turn_carries_the_aborted_marker() {
         let mut t = Transcoder::new(plan());
+        // 턴을 먼저 **채택**해 둔다 — id 달린 `turn/completed`는 채택된 턴의 것만 정착시킨다
+        // (시작 창의 잔재를 걸러 내는 게이트 ②·③ · `engine.ts:596-598`).
+        t.on_notification(
+            &json!({ "method": "turn/started", "params": { "turn": { "id": "t1" } } }),
+            0,
+        );
         let f = frames(t.on_notification(
             &json!({ "method": "turn/completed", "params": { "turn": { "id": "t1", "status": "interrupted" } } }),
             500,

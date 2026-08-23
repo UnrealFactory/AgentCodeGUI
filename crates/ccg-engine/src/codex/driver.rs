@@ -333,6 +333,47 @@ mod tests {
         assert_eq!(args[1], "\"\"C:\\a b\\codex.cmd\" app-server\"");
     }
 
+    /// ★R2 — **인용 회귀를 실제로 잠근다.**
+    ///
+    /// 위 단언(`get_args()`)은 동어반복이다: `arg()`와 `raw_arg()`는 **논리 인자가 같고**
+    /// 차이는 `CreateProcess`에 넘길 커맨드라인을 만들 때만 난다. 크리틱이 뮤테이션으로
+    /// 증명했다 — `raw_arg`를 `arg`로 되돌려도 그 테스트는 초록이다. 그래서 여기서는
+    /// **공백 있는 경로에 shim을 만들어 실제로 띄우고**, 같은 문자열을 `arg()`로 넘긴
+    /// 대조군이 못 뜨는 것까지 함께 본다(결함이 실재한다는 증거를 테스트가 들고 있게).
+    #[cfg(windows)]
+    #[test]
+    fn a_cmd_shim_in_a_path_with_spaces_actually_launches() {
+        use std::os::windows::process::CommandExt;
+        let dir = std::env::temp_dir().join(format!("ccg rawarg {}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let shim = dir.join("codex.cmd");
+        std::fs::write(&shim, "@echo off\r\necho SHIM-OK %1\r\n").unwrap();
+
+        // ① 제품이 만드는 커맨드 — 바깥 따옴표 한 겹(`cmd /C ""C:\a b\codex.cmd" app-server"`).
+        let mut c = command_for(&shim);
+        c.creation_flags(0x0800_0000); // CREATE_NO_WINDOW — 콘솔 깜빡임 방지
+        let a = c.output().expect("spawn");
+        let a_out = String::from_utf8_lossy(&a.stdout).to_string()
+            + &String::from_utf8_lossy(&a.stderr);
+
+        // ② 뮤테이션 대조 — `arg()`는 MSVC 규칙으로 `\"`를 넣는데 cmd.exe는 그걸 모른다.
+        let s = shim.to_string_lossy().to_string();
+        let mut c2 = Command::new("cmd");
+        c2.arg("/C").arg(format!("\"\"{s}\" app-server\""));
+        c2.creation_flags(0x0800_0000);
+        let b = c2.output().expect("spawn");
+        let b_out = String::from_utf8_lossy(&b.stdout).to_string()
+            + &String::from_utf8_lossy(&b.stderr);
+
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(a_out.contains("SHIM-OK"), "제품 경로가 shim을 못 띄웠다: {a_out}");
+        assert!(a_out.contains("app-server"), "인자가 안 실렸다: {a_out}");
+        assert!(
+            !b_out.contains("SHIM-OK"),
+            "`arg()`로도 떴다 = 이 테스트가 인용 회귀를 못 잡는다: {b_out}"
+        );
+    }
+
     #[cfg(windows)]
     #[test]
     fn a_bare_name_goes_through_the_shell_too() {

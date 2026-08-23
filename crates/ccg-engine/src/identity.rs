@@ -186,6 +186,14 @@ impl RunIdentity {
     pub fn engine(&self) -> &EngineAxis {
         &self.engine
     }
+    /// 엔진 축의 **종류만**. 세션 신원(resume 키)이 어느 엔진의 것인지 가르는 데 쓴다 —
+    /// Claude의 `session_id`는 codex의 `threadId`가 아니고 그 반대도 아니다.
+    pub fn engine_kind(&self) -> EngineKind {
+        match &self.engine {
+            EngineAxis::Claude { .. } => EngineKind::Claude,
+            EngineAxis::Codex { .. } => EngineKind::Codex,
+        }
+    }
     pub fn billing(&self) -> &BillingAxis {
         &self.billing
     }

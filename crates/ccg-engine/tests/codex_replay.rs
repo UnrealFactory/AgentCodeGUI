@@ -23,9 +23,43 @@ use std::collections::BTreeSet;
 
 thread_local! {
     static COVER: RefCell<BTreeSet<&'static str>> = RefCell::new(BTreeSet::new());
+    /// 재생이 **실제로 낸** 프레임의 모양(`type` · `type/subtype`).
+    static SHAPES: RefCell<BTreeSet<String>> = RefCell::new(BTreeSet::new());
+    /// 재생이 실제로 낸 `assistant{tool_use}`의 이름.
+    static TOOLS: RefCell<BTreeSet<String>> = RefCell::new(BTreeSet::new());
+    /// 재생이 실제로 stdin으로 보낸 JSON-RPC method.
+    static METHODS: RefCell<BTreeSet<String>> = RefCell::new(BTreeSet::new());
+    /// `parent_tool_use_id`가 붙은 프레임을 한 번이라도 냈는가.
+    static SIDECHAIN: RefCell<bool> = const { RefCell::new(false) };
 }
 fn cover(k: &'static str) {
     COVER.with(|c| c.borrow_mut().insert(k));
+}
+
+/// 산출 하나를 장부에 적는다 — **게이트가 `wire` 열 밖도 볼 수 있게 하는 재료**.
+/// 표의 `to` 열이 "무엇이 된다"고 적은 것을 재생이 실제로 냈는지 대조하는 데 쓴다
+/// (크리틱 §5: 게이트가 `wire` 문자열만 세는 동안 `to`·`src` 열이 세 번 낡았다).
+fn record_frame(f: &Value) {
+    let Some(ty) = f["type"].as_str().filter(|t| !t.is_empty()) else { return };
+    SHAPES.with(|s| {
+        let mut s = s.borrow_mut();
+        s.insert(ty.to_string());
+        if let Some(sub) = f["subtype"].as_str() {
+            s.insert(format!("{ty}/{sub}"));
+        }
+    });
+    if f.get("parent_tool_use_id").map(|x| !x.is_null()).unwrap_or(false) {
+        SIDECHAIN.with(|c| *c.borrow_mut() = true);
+    }
+    if let Some(blocks) = f["message"]["content"].as_array() {
+        for b in blocks {
+            if b["type"] == "tool_use" {
+                if let Some(n) = b["name"].as_str() {
+                    TOOLS.with(|t| t.borrow_mut().insert(n.to_string()));
+                }
+            }
+        }
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -44,8 +78,16 @@ impl Rig {
     fn take(&mut self, e: Vec<Egress>) {
         for x in e {
             match x {
-                Egress::Frame(f) => self.frames.push(f),
-                Egress::Rpc(r) => self.rpcs.push(r),
+                Egress::Frame(f) => {
+                    record_frame(&f);
+                    self.frames.push(f);
+                }
+                Egress::Rpc(r) => {
+                    if let Some(m) = r["method"].as_str() {
+                        METHODS.with(|s| s.borrow_mut().insert(m.to_string()));
+                    }
+                    self.rpcs.push(r);
+                }
                 Egress::Tail { file, text } => self.tails.push((file, text)),
             }
         }
@@ -524,8 +566,14 @@ fn background_terminals_become_a_shell_chip_and_stop_terminates() {
     cover("thread/backgroundTerminals/terminate");
     let te = r.sent("thread/backgroundTerminals/terminate").expect("terminate").clone();
     assert_eq!(te["params"]["processId"], "p42");
+    // 칩은 중지를 누른 그 순간 목록에서 빠진다(2.6.2 `emitBgTasks`의 `!t.stopped`).
+    let gone = r.frames_of("system").into_iter().find(|f| f["subtype"] == "background_tasks_changed").unwrap();
+    assert_eq!(gone["tasks"].as_array().unwrap().len(), 0);
 
-    // 프로세스의 진짜 종말 → REPLACE(빈 목록) + 정착 통지
+    // 프로세스의 진짜 종말 → REPLACE(빈 목록) + 정착 통지.
+    // ★R2 — 우리가 죽인 프로세스는 `exit -1` + failed로 돌아온다(실측). 그대로 흘리면
+    //   사용자가 스스로 멈춘 셸이 **빨간 실패**로 뜬다 — 주체를 기억해 `stopped`로 읽는다
+    //   (2.6.2 `engine.ts:870-876`). 사유(`summary`)도 싣지 않는다.
     r.clear();
     r.rpc(json!({ "method": "item/completed", "params": { "threadId": "th-1",
         "item": { "id": "i9", "type": "commandExecution", "exitCode": -1 } } }));
@@ -533,7 +581,37 @@ fn background_terminals_become_a_shell_chip_and_stop_terminates() {
     assert_eq!(replace["tasks"].as_array().unwrap().len(), 0);
     let note = r.frames_of("system").into_iter().find(|f| f["subtype"] == "task_notification").unwrap();
     assert_eq!(note["task_id"], "p42");
-    assert_eq!(note["status"], "failed");
+    assert_eq!(note["status"], "stopped", "사용자가 멈춘 셸은 실패가 아니다");
+    assert_eq!(note["stopped_by_user"], true);
+    assert!(note.get("summary").is_none(), "`exit -1`은 우리가 만든 사연이라 안 보여 준다");
+}
+
+/// ★R2 — 백그라운드 명령의 **자연 종료**는 도구 행을 되살린다(2.6.2 `engine.ts:851-866`).
+/// 완료 아이템이 전체 출력을 들고 오므로, '백그라운드로 전환'으로 일찍 닫힌 행에
+/// 최종 출력·성패를 정착시켜야 로그를 클릭해 볼 수 있다.
+#[test]
+fn a_finished_background_command_revives_its_tool_row() {
+    let mut r = started();
+    r.rpc(json!({ "method": "item/started", "params": { "threadId": "th-1",
+        "item": { "id": "i9", "type": "commandExecution", "command": "cargo build" } } }));
+    r.tick(6_000);
+    let id = r.sent("thread/backgroundTerminals/list").expect("list")["id"].clone();
+    r.rpc(json!({ "jsonrpc": "2.0", "id": id, "result": { "data": [
+        { "itemId": "i9", "processId": "p43", "command": "cargo build" }] } }));
+    r.clear();
+    r.rpc(json!({ "method": "item/completed", "params": { "threadId": "th-1",
+        "item": { "id": "i9", "type": "commandExecution", "exitCode": 0,
+                  "aggregatedOutput": "BUILD-LOG", "durationMs": 900 } } }));
+    let revived = r
+        .frames_of("user")
+        .into_iter()
+        .find(|f| f["message"]["content"][0]["tool_use_id"] == "i9")
+        .expect("★ 최종 출력이 어느 프레임에도 안 실린다");
+    assert_eq!(revived["message"]["content"][0]["content"], "BUILD-LOG");
+    assert_eq!(revived["message"]["content"][0]["is_error"], false);
+    let note = r.frames_of("system").into_iter().find(|f| f["subtype"] == "task_notification").unwrap();
+    assert_eq!(note["status"], "completed");
+    assert_eq!(note["summary"], "exit 0");
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -680,6 +758,150 @@ fn spawn_spec_for_codex_carries_a_plan_not_claude_argv() {
     assert!(cspec.argv.contains(&"--output-format".to_string()));
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ⑨ 엔진 전환 — 세션 신원은 엔진 축에 매인다 (★R2 · 크리틱 §4.1)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// 스폰 인자만 받아 적는 드라이버. 프로세스도 파이프도 없다 —
+/// 재는 것은 "T17 뒤에 나가는 `SpawnSpec`에 **누구의** resume이 실렸나" 하나다.
+#[derive(Default)]
+struct SpecSpy {
+    specs: Vec<ccg_engine::driver::SpawnSpec>,
+}
+impl ccg_engine::driver::CliDriver for SpecSpy {
+    fn spawn(&mut self, spec: &ccg_engine::driver::SpawnSpec) -> std::io::Result<()> {
+        self.specs.push(spec.clone());
+        Ok(())
+    }
+    fn send(&mut self, _line: Value) {}
+    fn close_input(&mut self) {}
+    fn kill(&mut self) {}
+    fn process_alive(&self) -> bool {
+        true
+    }
+    fn poll_frames(&mut self, _now: ccg_engine::clock::Millis) -> Vec<Value> {
+        vec![]
+    }
+    fn spawn_count(&self) -> usize {
+        self.specs.len()
+    }
+}
+
+fn switch_rig(kind: EngineKind, model: &str) -> ccg_engine::runtime::ChatRuntime<SpecSpy> {
+    let mut raw = raw_codex(model, None);
+    raw.engine.kind = kind;
+    raw.mode = ModeId::Normal;
+    let mut d = codex_defaults();
+    d.default_account = Some("a@x".into());
+    d.cwd_probe = CwdProbe::AssumeExists;
+    ccg_engine::runtime::ChatRuntime::new(
+        "c-switch",
+        raw,
+        d,
+        std::sync::Arc::new(ccg_engine::clock::SystemClock::default()),
+        SpecSpy::default(),
+    )
+    .expect("정규화")
+    // 스트림을 살려 둬야 다음 전송이 **T17 재스폰**을 탄다(콜드 스타트가 아니라).
+    .with_close_policy(ccg_engine::state::StreamClosePolicy::KeepOpen)
+}
+
+fn switch_engine(rt: &mut ccg_engine::runtime::ChatRuntime<SpecSpy>, kind: EngineKind, model: &str) {
+    rt.dispatch(ccg_engine::runtime::Cmd::IdentitySet {
+        patch: RawIdentityPatch {
+            engine: EnginePatch {
+                kind: Some(kind),
+                model: Some(model.into()),
+                ..Default::default()
+            },
+            ..Default::default()
+        },
+        policy: ApplyPolicy::Now,
+        op: PendingOp::Merge,
+    });
+}
+
+/// ★치명(크리틱 §4.1) — Claude로 한 턴 돌린 채팅에서 picker를 Codex로 바꾸면
+/// 드라이버는 갈아타는데 **세션 신원이 안 갈렸다**: Claude의 `session_id`가 그대로
+/// `thread/resume{threadId}`로 나가 실 codex가 모르는 스레드라며 거절했고,
+/// **전환 후 첫 턴이 오류 카드로 죽었다.**
+#[test]
+fn switching_the_engine_starts_a_new_thread_instead_of_resuming_the_other_engines_session() {
+    let mut rt = switch_rig(EngineKind::Claude, "opus");
+    rt.dispatch(ccg_engine::runtime::Cmd::Send { text: "첫 턴".into() });
+    assert!(rt.driver_ref().specs[0].codex.is_none(), "첫 스폰은 claude.exe");
+    // claude.exe가 세션 id를 줬다 → 이어붙이기 키로 저장된다.
+    rt.on_frame(&json!({ "type": "system", "subtype": "init",
+                         "session_id": "CL-1", "model": "claude-opus-4" }));
+    rt.on_frame(&json!({ "type": "result", "subtype": "success", "is_error": false,
+                         "result": "ok", "session_id": "CL-1" }));
+    assert_eq!(rt.session_id().as_deref(), Some("CL-1"));
+
+    // picker → Codex. T17이 돌고 그 다음 스폰부터 반대쪽 드라이버가 뜬다.
+    switch_engine(&mut rt, EngineKind::Codex, "gpt-5.6-terra");
+    rt.dispatch(ccg_engine::runtime::Cmd::Send { text: "전환 후 첫 턴".into() });
+    assert_eq!(rt.spawns, 2, "T17 재스폰");
+    let spec = rt.driver_ref().specs[1].clone();
+    let plan = spec.codex.clone().expect("두 번째 스폰은 codex app-server");
+    assert_eq!(spec.resume, None, "★ Claude의 session_id가 codex로 새면 안 된다");
+    assert_eq!(plan.resume, None, "★ CodexPlan.resume = Claude session_id → thread/resume 유출");
+    assert_eq!(rt.session_id(), None, "세션 신원도 함께 갈린다");
+
+    // 와이어로 내려가서 확인한다 — `thread/resume`이 아니라 `thread/start`가 나가야
+    // 전환 후 첫 턴이 산다.
+    let mut r = Rig::new(plan);
+    r.out(initialize_request("init-1", None));
+    r.rpc(json!({ "jsonrpc": "2.0", "id": 1, "result": {} }));
+    r.out(user_message("전환 후 첫 턴"));
+    assert!(r.sent("thread/resume").is_none(), "★ 남의 엔진 세션으로 resume을 걸었다");
+    let start = r.sent("thread/start").expect("새 스레드를 연다");
+    assert!(start["params"].get("threadId").is_none());
+    // 그리고 그 첫 턴이 실제로 **끝까지 산다**(스레드 → 턴 → 정착).
+    r.rpc(json!({ "jsonrpc": "2.0", "id": 2, "result": { "thread": { "id": "th-new" } } }));
+    r.rpc(json!({ "jsonrpc": "2.0", "id": 3, "result": { "turn": { "id": "tu-1" } } }));
+    r.rpc(json!({ "method": "turn/completed", "params": { "threadId": "th-new",
+        "turn": { "id": "tu-1", "status": "completed" } } }));
+    let res = r.frames_of("result");
+    assert_eq!(res.len(), 1, "전환 후 첫 턴이 결과 카드 한 장으로 정착한다");
+    assert_eq!(res[0]["is_error"], false, "★ 전환 후 첫 턴이 오류로 죽었다");
+}
+
+/// 반대 방향도 같다 — `driver.rs:103`은 `resume`을 조건 없이 `--resume={r}`로 민다.
+#[test]
+fn switching_back_to_claude_does_not_pass_the_codex_thread_id_to_the_cli() {
+    let mut rt = switch_rig(EngineKind::Codex, "gpt-5.6-terra");
+    rt.dispatch(ccg_engine::runtime::Cmd::Send { text: "첫 턴".into() });
+    assert!(rt.driver_ref().specs[0].codex.is_some());
+    // codex의 threadId가 곧 우리 session_id다(옮김기가 system/init으로 올린다).
+    rt.on_frame(&json!({ "type": "system", "subtype": "init",
+                         "session_id": "th-1", "model": "gpt-5.6-terra" }));
+    rt.on_frame(&json!({ "type": "result", "subtype": "success", "is_error": false,
+                         "result": "ok", "session_id": "th-1" }));
+    assert_eq!(rt.session_id().as_deref(), Some("th-1"));
+
+    switch_engine(&mut rt, EngineKind::Claude, "opus");
+    rt.dispatch(ccg_engine::runtime::Cmd::Send { text: "전환 후 첫 턴".into() });
+    let spec = rt.driver_ref().specs[1].clone();
+    assert!(spec.codex.is_none(), "두 번째 스폰은 claude.exe");
+    assert_eq!(spec.resume, None);
+    let resumes: Vec<&String> = spec.argv.iter().filter(|a| a.starts_with("--resume")).collect();
+    assert!(resumes.is_empty(), "★ claude.exe에 codex threadId를 줬다: {resumes:?}");
+}
+
+/// 엔진이 **안 갈리면** 세션은 그대로 이어져야 한다(위 두 개가 과잉 차단이 아님을 잠근다).
+#[test]
+fn changing_only_the_model_keeps_the_session_id() {
+    let mut rt = switch_rig(EngineKind::Claude, "opus");
+    rt.dispatch(ccg_engine::runtime::Cmd::Send { text: "첫 턴".into() });
+    rt.on_frame(&json!({ "type": "system", "subtype": "init",
+                         "session_id": "CL-1", "model": "claude-opus-4" }));
+    rt.on_frame(&json!({ "type": "result", "subtype": "success", "is_error": false,
+                         "result": "ok", "session_id": "CL-1" }));
+    switch_engine(&mut rt, EngineKind::Claude, "haiku");
+    rt.dispatch(ccg_engine::runtime::Cmd::Send { text: "두 번째".into() });
+    assert_eq!(rt.driver_ref().specs[1].resume.as_deref(), Some("CL-1"));
+}
+
 #[test]
 fn build_plan_is_a_pure_function_of_the_identity() {
     let d = codex_defaults();
@@ -721,4 +943,104 @@ fn frame_map_is_fully_replayed() {
         .collect();
     assert!(unknown.is_empty(), "재생은 있는데 표에 없는 행: {unknown:?}");
     println!("[m4] 옮김표 {}행 전부 재생됨", FRAME_MAP.len());
+}
+
+/// ★R2 — **`to` 열도 검사한다.**
+///
+/// R1의 게이트는 `wire` 문자열 키만 셌다. 재생이 `cover("…")`를 손으로 부르는 장부일 뿐이라
+/// `to`·`src` 열은 아무도 안 봤고, 그 사이 세 행이 실코드와 어긋났다(크리틱 §5:
+/// `Edit` vs `codex_file_change` · `<tool>` vs `mcp__…` · 빠진 분기들).
+/// 여기서는 표가 "이런 프레임이 된다"고 적은 것을 **재생이 실제로 낸 산출**과 대조한다.
+#[test]
+fn frame_map_claims_match_what_the_replay_actually_produced() {
+    frame_map_is_fully_replayed(); // 같은 스레드에서 모든 시나리오를 한 번 밟아 장부를 채운다
+    let shapes = SHAPES.with(|s| s.borrow().clone());
+    let tools = TOOLS.with(|s| s.borrow().clone());
+    let methods = METHODS.with(|s| s.borrow().clone());
+    let sidechain = SIDECHAIN.with(|s| *s.borrow());
+
+    // ① `to`가 이름 댄 프레임 모양이 실제로 나왔는가.
+    const SHAPE_CLAIMS: &[(&str, &str)] = &[
+        ("system/init", "system/init"),
+        ("system/notification", "system/notification"),
+        ("system/ccg_codex", "system/ccg_codex"),
+        ("system/background_tasks_changed", "system/background_tasks_changed"),
+        ("user{tool_result", "user"),
+        ("result{", "result"),
+        ("control_request{", "control_request"),
+        ("control_response{", "control_response"),
+        ("stream_event{", "stream_event"),
+        ("assistant{text", "assistant"),
+    ];
+    for row in FRAME_MAP {
+        for (needle, shape) in SHAPE_CLAIMS {
+            if row.to.contains(needle) {
+                assert!(
+                    shapes.contains(*shape),
+                    "표의 `{}` 행이 `{}`를 낸다고 적었는데 재생 산출에 없다",
+                    row.wire,
+                    shape
+                );
+            }
+        }
+        // ② `assistant{tool_use X}`의 X가 실제로 나온 도구 이름인가.
+        //    (`…`로 끝나면 접두 일치 — `mcp__{server}__{tool}` 같은 생성 이름 자리)
+        if let Some(rest) = row.to.split("assistant{tool_use ").nth(1) {
+            let name = rest.split('}').next().unwrap_or("").trim();
+            let hit = match name.strip_suffix('…') {
+                Some(prefix) => tools.iter().any(|t| t.starts_with(prefix)),
+                None => tools.contains(name),
+            };
+            assert!(hit, "표의 `{}` 행이 도구 `{name}`을 연다고 적었는데 재생이 낸 이름은 {tools:?}", row.wire);
+        }
+        // ③ 사이드체인이라고 적은 행은 실제로 `parent_tool_use_id`를 붙였는가.
+        if row.to.contains("parent_tool_use_id") {
+            assert!(sidechain, "표의 `{}` 행이 사이드체인이라 적었는데 붙은 프레임이 없다", row.wire);
+        }
+        // ④ `C→S` 행의 `wire`가 순수 method 이름이면 그 RPC가 실제로 나갔는가.
+        let bare = !row.wire.contains(['{', '(', ' ']);
+        if row.dir == "C→S" && bare {
+            assert!(
+                methods.contains(row.wire),
+                "표의 `{}` 행이 `C→S`인데 그 method가 stdin으로 나간 적이 없다",
+                row.wire
+            );
+        }
+    }
+    println!("[m4] `to` 열 대조 — 모양 {} · 도구 {tools:?} · method {}", shapes.len(), methods.len());
+}
+
+/// ★R2 — **`src` 열도 검사한다.** 근거로 적은 줄 범위가 2.6.2 파일에 실재하는가.
+/// (2.6.2 소스가 트리에서 사라지면 조용히 건너뛴다 — 근거가 없어진 것이지 코드가 틀린 게 아니다.)
+#[test]
+fn frame_map_source_line_ranges_exist_in_the_262_engine() {
+    let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("src/main/codex/engine.ts");
+    let Ok(text) = std::fs::read_to_string(&p) else {
+        println!("[m4] 2.6.2 engine.ts가 없어 건너뜀 — {}", p.display());
+        return;
+    };
+    let lines = text.lines().count();
+    let mut checked = 0usize;
+    for row in FRAME_MAP {
+        for chunk in row.src.split("engine.ts:").skip(1) {
+            let span: String = chunk
+                .chars()
+                .take_while(|c| c.is_ascii_digit() || *c == '-')
+                .collect();
+            let mut it = span.split('-').filter(|x| !x.is_empty());
+            let (Some(a), Some(b)) = (it.next(), it.next()) else { continue };
+            let (a, b) = (a.parse::<usize>().unwrap(), b.parse::<usize>().unwrap());
+            assert!(a >= 1 && a <= b, "표 `{}`의 줄 범위가 거꾸로다: {a}-{b}", row.wire);
+            assert!(
+                b <= lines,
+                "표 `{}`가 engine.ts:{a}-{b}를 근거로 드는데 파일은 {lines}줄뿐이다",
+                row.wire
+            );
+            checked += 1;
+        }
+    }
+    println!("[m4] `src` 열 {checked}개 줄 범위가 engine.ts({lines}줄) 안에 있다");
 }

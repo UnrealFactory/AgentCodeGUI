@@ -277,3 +277,197 @@ Codex를 띄운다"가 구조적으로 불가능해진다. 기본값은 빈 값�
   결과 프레임이 나른다. `Status::Error`는 스트림이 깨진 경우 전용이다(`runtime.rs:1461`).
 - **`usage.input_tokens`**: Codex 결과 프레임에서 이 자리는 **컨텍스트 게이지 전용**이다
   (`wire.rs`가 input+cache로 ctx를 만든다). 실 토큰 회계의 진실은 `modelUsage`다.
+
+---
+
+# §R2 — 크리틱(`docs/critic/m4-r1.md`) 응답
+
+크리틱은 **수치는 전부 확인**했고(불일치 0건) 이식의 구멍 **13/23**을 뚫었다. R2는 그
+13개를 닫는 라운드다. **자기 채점을 하지 않으려고**, 판정은 크리틱이 만든 재현 도구를
+그대로 돌린 결과로만 적는다.
+
+## R2.0 게이트 — 크리틱 도구를 그대로 돌린 결과
+
+| 게이트 | R1(크리틱 실측) | R2 |
+|---|---|---|
+| `critic-m4-transcode.rs`(공격 23) | **10 pass / 13 fail** | **23 / 0** |
+| `critic-m4-rawarg.rs`(실 스폰 A/B) | pass(제품 테스트는 뮤테이션 생존) | pass **+ 제품 테스트로 이관**(R2.5) |
+| `critic-m4-attack.mjs --only=switch` | `codexTurnArrived:false` · `session:"CL-1"` | **전부 green** · `session:"th-sw"` |
+| `critic-m4-attack.mjs`(4국면 전체) | findings 2 | findings 2 — **같은 둘, 성격이 다르다**(R2.6) |
+| `critic-m4-notice.mjs`(Claude 이중 팬아웃) | `{events:2, dom:2}` | **`{events:1, dom:1}`** |
+| `cargo test -p ccg-engine --offline` | 167 green · 경고 0 | **174 green / 0 red · 경고 0** |
+| `cargo test -p agentcodegui --offline` | 25 green | **27 green / 0 red** |
+| `poc-codex --only=app` | 9/9 · findings 0 | **9/9 · findings 0** |
+| `poc-live-chat --only=events` | PASS · 결함 0 | **PASS · 결함 0** |
+
+재현(내가 돌린 그대로):
+
+```bash
+# ★ custom-protocol 없이 cargo로 빌드하면 릴리즈 exe가 devUrl(localhost:5273)을 로드한다.
+cargo build --release -p agentcodegui --features custom-protocol
+cp docs/critic/tools/critic-m4-transcode.rs crates/ccg-engine/tests/critic_m4.rs
+cargo test -p ccg-engine --offline --test critic_m4 -- --test-threads=1    # 23/23
+node docs/critic/tools/critic-m4-attack.mjs --exe=<exe>
+node docs/critic/tools/critic-m4-notice.mjs <exe>
+node scripts/poc-codex.mjs     --only=app     --tag=m4r2 --exe=<exe>
+node scripts/poc-live-chat.mjs --only=events  --tag=m4r2 --exe=<exe>
+```
+
+산출: `docs/critic/m4-r2-attack.json` · `docs/critic/m4-r1-codex-m4r2.json` ·
+`docs/critic/m3-r4-live-m4r2.json`. **기준 파일은 하나도 안 덮었다** —
+`m4-r1-attack.json`은 도구가 그 경로에 쓰므로 주행마다 `git checkout`으로 되돌렸다.
+
+## R2.1 치명 — 엔진 전환 시 세션 신원 (크리틱 §4.1)
+
+크리틱의 진단이 정확했다. `t1_spawn`이 `self.thread.session_id`(엔진 축과 무관한 **한 칸**)를
+그대로 resume으로 넘겼다. 고친 자리는 **두 곳**이고, 이유가 다르다.
+
+**① `ThreadLink`에 발급 엔진을 적는다**(`runtime.rs`).
+
+```rust
+pub struct ThreadLink {
+    pub session_id: Option<String>,
+    pub engine: Option<EngineKind>,   // R2 — 그 session_id를 **발급한** 엔진
+    …
+}
+```
+
+`Frame::SystemInit`에서 세션을 채택할 때 **스폰 정체성의 엔진**을 함께 적고(지금 picker가
+이미 넘어가 있을 수 있으므로 `stream.spawn_identity`가 진실이다), `t1_spawn`이 스폰 직전에
+가른다. 크리틱이 제안한 자리(`t17_respawn`)만 고치지 않은 이유는 **T17을 안 타는 전환 경로가
+있기 때문**이다 — 스트림이 이미 닫힌(비상주 · T22 뒤) 채팅에서 picker만 바꿔 보내면
+`ReuseDecision::ColdStart`라 `t17_respawn`이 아예 안 돈다. 그 경로에서도 같은 유출이 난다.
+
+**② `t17_respawn`에서도 한 번 더 자른다** — `identity.contains(&IdentityField::EngineKind)`.
+정체성 진단이 이미 "engine.kind가 바뀌었다"고 말한 자리라 근거가 가장 강하고,
+`thread.engine`이 비어 있는 경우(셸이 저장된 `sessionId`를 막 꽂아 준 직후)에도 끊긴다.
+
+**실증 — 재생(순수) + 가짜 app-server(실 창) 둘 다.**
+
+`codex_replay.rs`에 셋을 넣었다(스폰 인자만 받아 적는 `SpecSpy` 드라이버 + 진짜 `ChatRuntime`):
+
+- `switching_the_engine_starts_a_new_thread_instead_of_resuming_the_other_engines_session`
+  — Claude 1턴(`session_id=CL-1`) → picker Codex → **`spec.resume == None` · `CodexPlan.resume == None`**,
+  그 계획으로 옮김기를 돌리면 `thread/resume`이 아니라 **`thread/start`** 가 나가고
+  전환 후 첫 턴이 `result{is_error:false}` **한 장**으로 정착한다.
+- `switching_back_to_claude_does_not_pass_the_codex_thread_id_to_the_cli`
+  — 역방향. `claude.exe` argv에 `--resume=` 이 **하나도 없다**(`driver.rs:103`이 조건 없이 밀던 자리).
+- `changing_only_the_model_keeps_the_session_id` — **과잉 차단이 아님**을 잠근다(모델만 바꾸면 `CL-1`이 그대로 이어진다).
+
+실 창(크리틱 하네스 `--only=switch`, 가짜 CLI + 가짜 app-server):
+
+```
+R1  afterCodex : engine=codex spawns=2 session=CL-1   codexTurnArrived=false
+    codex stdin: {"method":"thread/resume","params":{…,"threadId":"CL-1"}}   ← Claude 세션 id
+
+R2  afterCodex : engine=codex spawns=2 session=th-sw  codexTurnArrived=true
+    codex stdin: initialize → thread/start → turn/start{threadId:"th-sw"} → backgroundTerminals/list
+    dom        : {claude:true, codex:true}      ← 앞 턴도 살아 있다
+    afterBack  : engine=claude spawns=3          ← 되돌리기도 산다
+```
+
+## R2.2 치명 — `error` 통지의 turnId 게이트 3종 (크리틱 §4.2)
+
+`transcode.rs`의 `error` 분기 맨 앞에 2.6.2 `engine.ts:606-609`를 **순서까지 그대로** 옮겼다:
+① 마감한 턴(`ended_turns`) ② 시작 창(`turn_id`가 아직 없다) ③ 남의 턴. `turnId`가 없는
+비정형 error만 종전처럼 도착 순서로 흐른다(`turn/start` 자체의 실패는 통지가 아니라 RPC 오류다).
+
+`turn/completed`에도 **대칭인 셋**을 넣고(`engine.ts:592-599`), 정착할 때 `ended_turns`에
+**쓴다**(R1은 읽기만 했다). 크리틱 시나리오 a2·a3·a4·a5·a6·g1·g2가 전부 초록이 됐다.
+
+## R2.3 stale `turn_id` (크리틱 §4.3 · g3)
+
+무음 턴(T8→T10→T11)은 **상태기계가** 마감하므로 옮김기에는 아무 통지도 안 온다 → `turn_id`가
+옛 값으로 남아 ① 다음 턴의 Esc가 옛 턴을 겨눠 서버가 `-32600`으로 거절하고(소프트 중단이
+6초 뒤 **T15 하드 kill**로 떨어진다) ② 새 턴의 `turn/start` 응답이 `is_none()` 가드에 걸려
+영영 안 앉았다.
+
+고친 자리는 `turn_start()` **한 곳**이다 — 새 프롬프트를 보내는 그 지점이 "앞 턴은 끝났다"가
+참인 유일한 자리다. 앞 턴을 `ended_turns`로 옮기고 `turn_id`를 비운다(2.6.2 `finishRun`이
+`activeTurnId`를 `endedTurnIds`로 옮기는 자리와 같은 뜻). 그래서 R2.2의 게이트도
+무음 턴 뒤에 정확히 동작한다.
+
+## R2.4 백그라운드 셸 · 서브에이전트 (크리틱 §4.4 · §4.5)
+
+| | R1 | R2 |
+|---|---|---|
+| h1 사용자가 중지한 셸 | `failed / "exit -1"` | `Bg.stopped` 기억 → **`status:"stopped"` · 사유 없음 · `stopped_by_user:true`**. 칩은 중지를 누른 순간 목록에서 빠진다(2.6.2 `emitBgTasks`의 `!t.stopped`) |
+| h2 자연 종료의 최종 출력 | 어느 프레임에도 안 실림 | 도구 행을 **되살린다** — `tool_result(id, exit≠0, aggregatedOutput 꼬리 8000자)`(2.6.2 `engine.ts:851-866`). 중지는 제외(사연은 칩이 표기) |
+| i1 서브에이전트 `turn/completed` | 프레임 0(영구 running) | **주 종결 경로** 이식 — `tool_result`로 Task 행을 닫는다 |
+| i2 서브에이전트 `turn/started` | 프레임 0 | 카드 재개(같은 `tool_use`를 다시 실어 셸이 upsert) |
+
+셋 다 부수 규약이 있다.
+
+- `reconcile_bg`의 "목록에서 사라진 것 쓸기"가 **중지 요청을 보낸 항목은 남긴다** —
+  terminate 직후 목록에서 먼저 빠지고 `item/completed{exit -1}`가 조금 뒤에 오는데,
+  여기서 지우면 그 완료가 bg 분기를 못 타 다시 `failed`로 뜬다(2.6.2에는 이 쓸기가 아예 없다).
+- 서브에이전트는 닫는 경로가 셋(턴 완료 · `subAgentActivity{clos*}` · `collabAgentToolCall.agentsStates`)
+  이라 `Agent.done` 표식으로 **두 번 닫지 않는다**.
+- 턴 계열 둘은 카드 **자체**의 상태라 사이드체인 봉투(`parent_tool_use_id`)에 싸지 않는다 —
+  싸면 그 카드가 자기 자신의 자식이 된다.
+
+곁가지 하나(같은 자리라 함께 고쳤다): `bg-tasks` REPLACE의 `outputFile`이 Claude의 유도 규칙
+(`%TEMP%\claude\…\tasks\<id>.output`)만 썼다. Codex의 테일은 `%TEMP%\ccg-codex-term-<pid>.log`라
+칩의 '로그 열기'가 **없는 파일**을 가리켰다(정착 통지 `bg-task-end`만 제 경로였다).
+프레임이 실제 경로를 실어 오면 그것이 이긴다 — Claude CLI의 REPLACE에는 그 자리가 없어
+(`protocol-claude-cli.md:955-969`) 회귀 위험이 0이고, 테스트로 양쪽을 잠갔다.
+
+## R2.5 `raw_arg` 뮤테이션 잠금 · 옮김표 · 위생 (크리틱 §3 · §5 · §4.7)
+
+**`raw_arg`(크리틱 §3의 ★).** 기존 단언은 `Command::get_args()`를 봤는데 `arg()`와 `raw_arg()`는
+**논리 인자가 같다** — 동어반복이라 회귀가 조용히 통과했다. 크리틱의 실 스폰 A/B를 제품
+테스트로 이관했다(`codex::driver::tests::a_cmd_shim_in_a_path_with_spaces_actually_launches`):
+공백 있는 임시 폴더에 `codex.cmd`를 만들어 **실제로 띄우고**, 같은 문자열을 `arg()`로 넘긴
+대조군이 못 뜨는 것까지 함께 본다. 되돌림 검증: `raw_arg`→`arg` 뮤테이션에 옛 테스트는
+초록인 채 **새 테스트만 붉어진다**(`제품 경로가 shim을 못 띄웠다: 네트워크 경로를 찾지 못했습니다`).
+
+**옮김표 5행 정정.** `item/started{fileChange}` → `codex_file_change`(표만 옛것이었다) ·
+`item/started{mcpToolCall}` → `mcp__…` · `error{willRetry:false}` → 게이트 3종 명시(`src`도 602-628로) ·
+`(서브에이전트 스레드의 알림)` → 4종 명시 · `item/completed{commandExecution}` → bg 분기 명시.
+
+**게이트가 `wire` 키 밖도 센다.** 크리틱의 지적대로 R1 게이트는 `cover("…")` 장부일 뿐이라
+`to`·`src` 열을 아무도 안 봤다. 둘을 더했다:
+
+- `frame_map_claims_match_what_the_replay_actually_produced` — 재생이 **실제로 낸** 프레임을
+  `Rig::take`에서 장부에 적고(모양 `type`/`type/subtype` · `tool_use` 이름 · 나간 RPC method ·
+  사이드체인 여부), 표의 `to`가 이름 댄 것과 대조한다. `assistant{tool_use X}`의 X는 실제로
+  나온 도구 이름이어야 하고(`…`로 끝나면 접두 일치), `C→S` 행의 순수 method 이름은 실제로
+  stdin에 나간 적이 있어야 한다. **되돌림 검증**: `to`를 `Edit`으로 되돌리면
+  *"표의 `item/started{fileChange}` 행이 도구 `Edit`을 연다고 적었는데 재생이 낸 이름은 {…}"* 로 붉어진다.
+- `frame_map_source_line_ranges_exist_in_the_262_engine` — `src`의 `engine.ts:a-b`가 실파일
+  줄 수 안에 있고 `a ≤ b`인지 본다(2.6.2 소스가 트리에서 사라지면 조용히 건너뛴다).
+
+**위생.** `d_in + d_out` → `saturating_add`(크리틱 §4.7 — c2가 디버그에서 패닉했다).
+
+## R2.6 셸 — `system/notification` 이중 팬아웃 (크리틱 §4.6 · 목록 #11)
+
+`wire.rs`가 raw 프레임을 `notice`로 옮기고, **같은 프레임**이 상태기계에서 `F18 → Event::Notice`가
+되어 `hub.rs`가 또 팬아웃했다. 남길 한 곳으로 **상태기계 경로**를 골랐다 — `state.rs`의 프레임
+규약표(F18)가 그 경로를 선언하고 커버리지 게이트가 그것을 세며, 텍스트 추출 규칙도
+`frames.rs:246-250`이 같다(`text` → `message`). `wire.rs`의 분기는 **빈 arm으로 남겨** 뒤 arm으로
+흘러가지 않게 했고, 이유를 그 자리에 적었다.
+
+| | R1 | R2 |
+|---|---|---|
+| Claude 통지 1장(`critic-m4-notice.mjs`) | events 2 · DOM 2 | **events 1 · DOM 1** |
+| Codex 실패 경로(`--only=failui`) | notification 프레임 10 → notice 20 → DOM `Reconnecting` **18줄** | 10 → **10** → **9줄** |
+
+크리틱 하네스의 `failui.noise`(≤2)는 아직 붉다. **그 9줄은 이중 팬아웃이 아니라 서버가
+실제로 보낸 9개의 재시도 통지**다(wss 2..5 + https 1..5, 각 텍스트가 다르다). 2.6.2도
+`engine.ts:612-619`에서 프레임마다 한 줄을 낸다 — 지금은 **1:1 파리티**이고, 더 줄이려면
+"같은 사연의 재시도 스톰을 한 줄로 접는" 새 정책이 필요하다. 그건 이 라운드의 임무
+("한 곳만")를 넘고 2.6.2와도 달라지므로 **리드 판단으로 남긴다**.
+`newver.noCrash`(exits=1)는 크리틱 본인이 R1에서 *"하네스의 exits=1 판정은 정상 수명 — 결함 아님"*
+으로 적은 자리다(정상 종료 뒤 `Idle`).
+
+## R2.7 남은 것
+
+| # | 무엇 | 등급 | 왜 안 했나 / 다음 한 줄 |
+|---|---|---|---|
+| 1 | **앱을 껐다 켠 뒤의 엔진 전환** | 중간 | `ThreadLink.engine`은 런타임 값이다. 앱이 꺼져 있는 동안 picker를 바꾸면 셸이 저장된 `sessionId`를 꽂을 때(`hub.rs:489-493`) 그것이 **누구 것인지 아무도 모른다** — 채팅 파일이 `sessionEngine`을 함께 기억해야 완결된다(스토어 경계) |
+| 2 | 재시도 스톰 안내 접기 | 중간 | R2.6 — 2.6.2와 달라지는 새 정책. 리드 판단 |
+| 3 | 수용량 초과 모델 전환 카드 | 기능 누락 | R1 §7 #3 그대로(폴백 축에 얹는 판단이 리드 몫) |
+| 4 | `model/list` → picker 모델 목록 | 기능 누락 | R1 §7 #4 그대로 |
+| 5 | 백그라운드 테일 파일 정리 | 위생 | R1 §7 #5 그대로 |
+| 6 | 실계정 라이브 턴 | 미검증 | R1 §7 #1 그대로. R2.4의 서브에이전트·bg 사연은 여전히 **재생 근거**다 |
+| 7 | `ipc/mod.rs`의 `codex-engine:*` 상수 · install 블로킹 | 위생·성능 | 그 파일이 이번에도 경계 밖 |

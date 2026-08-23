@@ -867,12 +867,17 @@ impl Wire {
                     "tools": f.get("tools").cloned().unwrap_or(json!([])),
                 }));
             }
-            "system" if sub == "notification" || sub == "informational" => {
-                let text = s(f, "text").or_else(|| s(f, "message")).unwrap_or_default();
-                if !text.is_empty() {
-                    out.push(json!({ "type": "notice", "runId": run, "text": text }));
-                }
-            }
+            // `system/notification`·`informational`은 **여기서 옮기지 않는다.**
+            //
+            // 같은 프레임이 상태기계에도 올라가 `F18 → Event::Notice`가 되고, `hub.rs`가
+            // 그것을 다시 `notice`로 팬아웃한다. 여기서 한 번 더 옮기면 화면에 **정확히
+            // 두 배**로 찍힌다 — Claude는 이 프레임을 거의 안 보내 여태 안 보였고, Codex는
+            // 재시도마다 보내서 크리틱이 9회 → 18줄로 잡았다(m4-r1 §4.6).
+            //
+            // 남는 한 곳을 상태기계 쪽으로 고른 이유: `state.rs`의 프레임 규약표(F18)가
+            // 그 경로를 **선언**하고 있고 커버리지 게이트가 그것을 센다. 텍스트 추출도
+            // `frames.rs:246-250`이 여기와 같은 규칙(`text` → `message`)으로 한다.
+            "system" if sub == "notification" || sub == "informational" => {}
             // ── Codex 합성 프레임(M4) ────────────────────────────────────────
             //
             // Codex에는 Claude 프레임에 **대응물이 없는 값**이 셋 있다. 억지로 Claude
@@ -961,7 +966,13 @@ impl Wire {
                         shells.push(json!({
                             "id": id, "kind": kind,
                             "description": t.get("description").and_then(Value::as_str).unwrap_or(""),
-                            "outputFile": bg_output_file(&self.cwd, &self.session_id, id),
+                            // 프레임이 **실제 경로**를 실어 오면 그것이 이긴다. Claude CLI의
+                            // REPLACE에는 이 자리가 없어(`protocol-claude-cli.md:955-969` —
+                            // task_id·task_type·description뿐) 종전대로 규칙으로 유도하지만,
+                            // Codex의 테일은 `%TEMP%\ccg-codex-term-<pid>.log`라 유도 규칙이
+                            // 가리키는 곳에 파일이 아예 없다(칩의 로그 열기가 빈손이 된다).
+                            "outputFile": s(t, "output_file")
+                                .or_else(|| bg_output_file(&self.cwd, &self.session_id, id)),
                         }));
                     } else {
                         self.live_bg_agents.insert(id.to_string());
@@ -1424,6 +1435,38 @@ mod tests {
         assert_eq!(c[0]["status"], "completed");
         assert_eq!(c[0]["summary"], "끝");
         assert_eq!(c[0]["atTurnEnd"], false);
+    }
+
+    /// ★R2 — Codex의 셸 칩은 테일 파일이 `%TEMP%\ccg-codex-term-<pid>.log`다.
+    /// Claude의 유도 규칙(`%TEMP%\claude\…\tasks\<id>.output`)을 그대로 쓰면 **없는 파일**을
+    /// 가리켜 칩의 '로그 열기'가 빈손이 된다. 프레임이 실제 경로를 실어 오면 그것이 이긴다.
+    #[test]
+    fn a_task_that_carries_its_own_output_file_wins_over_the_derived_path() {
+        let mut w = wire();
+        w.translate(&json!({ "type": "system", "subtype": "init", "session_id": "S1", "cwd": "C:\\w" }));
+        let a = w.translate(&json!({
+            "type": "system", "subtype": "background_tasks_changed",
+            "tasks": [{ "task_id": "p9", "task_type": "unified_exec_shell", "description": "npm run dev",
+                        "output_file": "C:\\Temp\\ccg-codex-term-p9.log" }]
+        }));
+        assert_eq!(a[0]["tasks"][0]["outputFile"], "C:\\Temp\\ccg-codex-term-p9.log");
+        // Claude의 REPLACE에는 그 자리가 없다(protocol-claude-cli.md:955-969) → 유도 규칙 그대로.
+        let b = w.translate(&json!({
+            "type": "system", "subtype": "background_tasks_changed",
+            "tasks": [{ "task_id": "t1", "task_type": "local_bash", "description": "빌드" }]
+        }));
+        assert!(b[0]["tasks"][0]["outputFile"].as_str().unwrap().ends_with("t1.output"));
+    }
+
+    /// ★R2 — `system/notification`은 **여기서 옮기지 않는다**(상태기계의 F18 한 곳만).
+    /// 두 경로가 살아 있으면 화면에 정확히 두 배로 찍힌다(크리틱 m4-r1 §4.6: 9회 → 18줄).
+    #[test]
+    fn a_notification_frame_is_not_translated_here() {
+        let mut w = wire();
+        let a = w.translate(&json!({ "type": "system", "subtype": "notification", "text": "재시도 중" }));
+        assert!(a.is_empty(), "셸이 또 옮기면 안내가 두 배로 나간다: {a:?}");
+        let b = w.translate(&json!({ "type": "system", "subtype": "informational", "message": "안내" }));
+        assert!(b.is_empty());
     }
 
     #[test]

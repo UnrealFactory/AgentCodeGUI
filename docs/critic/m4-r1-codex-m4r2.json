@@ -1,0 +1,106 @@
+{
+  "at": "2026-08-23T08:09:51.444Z",
+  "exe": "C:/Users/User/AppData/Local/Temp/ccg-m4r2-bin/agentcodegui.exe",
+  "steps": {
+    "app": {
+      "home": "C:\\Code\\AgentCodeGUI\\.poc-home-codex-app-m4r2",
+      "ready": true,
+      "turnDone": true,
+      "debug": {
+        "chatId": "c-cx",
+        "state": "Idle",
+        "queued": 0,
+        "spawns": 1,
+        "exits": 1,
+        "session": "th-poc",
+        "pid": 18364,
+        "engine": "codex",
+        "identityEngine": "codex",
+        "autoResume": true,
+        "nowMs": 1577,
+        "hold": null,
+        "queue": []
+      },
+      "events": {
+        "status": 3,
+        "session": 1,
+        "thinking": 1,
+        "thinking-clear": 1,
+        "assistant-stream": 1,
+        "todos": 1,
+        "tool-start": 2,
+        "terminal": 3,
+        "tool-end": 2,
+        "file-change": 1,
+        "context": 1,
+        "assistant-done": 1,
+        "result": 1
+      },
+      "byType": {
+        "session": [
+          {
+            "sessionId": "th-poc",
+            "model": "gpt-5.6-terra"
+          }
+        ],
+        "todos": [
+          [
+            "M4-TODO-A:running",
+            "M4-TODO-B:pending"
+          ]
+        ],
+        "fileChange": [
+          {
+            "path": "cx-made.txt",
+            "add": 2,
+            "tag": "new",
+            "whole": true
+          }
+        ],
+        "terminal": [
+          "echo M4-TERM-OUT",
+          "M4-TERM-OUT",
+          "✓ 완료"
+        ],
+        "context": [
+          540
+        ],
+        "result": [
+          {
+            "isError": false,
+            "durationMs": 1234,
+            "ctx": 540,
+            "win": 272000,
+            "usage": [
+              {
+                "model": "gpt-5.6-terra",
+                "inTok": 400,
+                "outTok": 40,
+                "cacheRead": 100,
+                "cacheWrite": 0
+              }
+            ]
+          }
+        ]
+      },
+      "dom": {
+        "reply": true,
+        "term": true,
+        "chips": [
+          "할 일=0/2",
+          "서브에이전트=0/0",
+          "백그라운드 셸=0/0",
+          "변경된 파일=1",
+          "컨텍스트=0%"
+        ]
+      },
+      "fileMade": false,
+      "log": "de\\\\AgentCodeGUI\\\\.poc-home-codex-app-m4r2\\\\backup-2.6.2-1787472591854\",\"counts\":{\"chats\":1,\"maSessions\":0,\"maPanels\":0,\"sessionChats\":0,\"talkAbsorbed\":0,\"carried\":0,\"keptV3\":0,\"keptV3Boards\":0,\"total\":1,\"messages\":0,\"boards\":1},\"idMap\":{\"c-cx\":\"c-cx\"},\"order\":[\"c-cx\"],\"activeChatId\":\"c-cx\",\"boardOrder\":[\"default\"],\"activeBoardId\":\"default\",\"activeSessionId\":\"\",\"btw\":{\"rewritten\":0,\"dropped\":0},\"holdMoved\":0,\"sourceIndexOrders\":{\"chats\":[\"c-cx\"],\"multiAgent\":[],\"sessionChats\":[]},\"warnings\":[]}\n",
+      "afterRestart": {
+        "count": 4,
+        "hasReply": true
+      }
+    }
+  },
+  "findings": []
+}

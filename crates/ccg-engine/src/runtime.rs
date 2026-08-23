@@ -140,6 +140,11 @@ pub enum ReuseDecision {
 #[derive(Debug, Clone, Default)]
 pub struct ThreadLink {
     pub session_id: Option<String>,
+    /// **그 `session_id`를 발급한 엔진.** 세션 신원은 엔진 축에 매여 있다 —
+    /// Claude의 `session_id`를 codex `thread/resume`의 `threadId`로 넘기면 서버가
+    /// 모르는 스레드라 거절하고(반대 방향은 `claude.exe --resume=<codex threadId>`)
+    /// **전환 후 첫 턴이 오류 카드로 죽는다.** 스폰 직전에 이 값으로 가른다.
+    pub engine: Option<crate::identity::EngineKind>,
     pub cwd_at_bind: Option<String>,
     pub forked_from: Option<String>,
     pub fork_consumed: bool,
@@ -1263,6 +1268,19 @@ impl<D: CliDriver> ChatRuntime<D> {
         let now = self.sync_now();
         let sid = StreamId(self.next_stream);
         self.next_stream += 1;
+        // ★R2 — **세션 신원은 엔진 축에 매인다.** 엔진이 갈렸으면 스레드도 갈린다:
+        //   Claude의 `session_id`를 codex에 주면 `thread/resume{threadId}`가 모르는
+        //   스레드를 가리켜 RPC 오류로 거절당하고, 반대로 codex의 `threadId`를 주면
+        //   `claude.exe --resume=<그것>`이 뜬다. 둘 다 **전환 후 첫 턴이 죽는다.**
+        //   T17(전환 재스폰)이 이 자리를 지나가지만, 스트림이 이미 닫힌 채 picker만
+        //   바뀐 경우(콜드 스타트)에는 T17이 안 도므로 판정을 여기 한 곳에 둔다.
+        let engine_now = m.identity.engine_kind();
+        if self.thread.engine.is_some_and(|k| k != engine_now) {
+            self.thread.session_id = None;
+            self.thread.forked_from = None;
+            self.thread.want_fresh = false;
+            self.thread.engine = None;
+        }
         // /btw 포크 = `--resume=<id> --fork-session`(resume이 있을 때만 fork가 유효하다).
         let fork = m.thread == ThreadIntent::Fresh
             && self.thread.want_fresh
@@ -1429,6 +1447,16 @@ impl<D: CliDriver> ChatRuntime<D> {
         self.suspend_drain = true;
         self.close_and_finish(cause);
         self.suspend_drain = false;
+        // ★R2 — 엔진이 갈렸으면 **세션 신원도 갈린다**(`ThreadLink::engine` 참고).
+        //   `thread.engine`이 비어 있는 경우(셸이 저장된 sessionId를 꽂아 준 직후)에도
+        //   확실히 끊기도록, 진단이 이미 "engine.kind가 바뀌었다"고 말한 이 자리에서
+        //   한 번 더 자른다. 정체성 진단이 곧 근거다.
+        if identity.contains(&IdentityField::EngineKind) {
+            self.thread.session_id = None;
+            self.thread.forked_from = None;
+            self.thread.want_fresh = false;
+            self.thread.engine = None;
+        }
         self.t1_spawn(m);
     }
 
@@ -1894,6 +1922,14 @@ impl<D: CliDriver> ChatRuntime<D> {
                     self.fire("F1");
                 } else {
                     self.thread.session_id = Some(session_id);
+                    // 이 세션을 발급한 엔진을 함께 적는다 — 스폰 시점의 정체성이 진실이다
+                    // (지금 picker가 이미 다른 엔진으로 넘어가 있을 수 있다).
+                    self.thread.engine = Some(
+                        self.stream
+                            .as_ref()
+                            .map(|s| s.spawn_identity.engine_kind())
+                            .unwrap_or_else(|| self.identity.engine_kind()),
+                    );
                     self.thread.cwd_at_bind = Some(self.identity.cwd().as_str().to_string());
                 }
                 self.maybe_t2();

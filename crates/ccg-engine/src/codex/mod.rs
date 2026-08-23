@@ -230,11 +230,13 @@ pub static FRAME_MAP: &[FrameMap] = &[
     FrameMap { wire: "item/completed{reasoning}", dir: "S→C", to: "(생각 버퍼 리셋 — 프레임 없음)", src: "engine.ts:839-842" },
     // ── 도구 ────────────────────────────────────────────────────────────────
     FrameMap { wire: "item/started{commandExecution}", dir: "S→C", to: "assistant{tool_use Bash}", src: "engine.ts:644-646" },
-    FrameMap { wire: "item/started{fileChange}", dir: "S→C", to: "assistant{tool_use Edit}", src: "engine.ts:647-651" },
-    FrameMap { wire: "item/started{mcpToolCall}", dir: "S→C", to: "assistant{tool_use <tool>}", src: "engine.ts:652-654" },
+    // 이름이 `Edit`이면 셸의 diff 조립기가 Claude 도구 입력을 기대해 빈 diff를 만든다 —
+    // 전용 이름을 쓴다(`transcode.rs`의 주석 · `wire.rs::tool_label`이 같은 'edit'로 그린다).
+    FrameMap { wire: "item/started{fileChange}", dir: "S→C", to: "assistant{tool_use codex_file_change}", src: "engine.ts:647-651" },
+    FrameMap { wire: "item/started{mcpToolCall}", dir: "S→C", to: "assistant{tool_use mcp__…}", src: "engine.ts:652-654" },
     FrameMap { wire: "item/started{webSearch}", dir: "S→C", to: "assistant{tool_use WebSearch}", src: "engine.ts:655-659" },
     FrameMap { wire: "item/commandExecution/outputDelta", dir: "S→C", to: "(출력 누적 — tool_result에 실린다)", src: "engine.ts:520-532" },
-    FrameMap { wire: "item/completed{commandExecution}", dir: "S→C", to: "user{tool_result + exit}", src: "engine.ts:843-896" },
+    FrameMap { wire: "item/completed{commandExecution}", dir: "S→C", to: "user{tool_result + exit} · 백그라운드면 stopped 사유 + 최종 출력 되살림", src: "engine.ts:843-896" },
     FrameMap { wire: "item/completed{fileChange}", dir: "S→C", to: "user{tool_result} + system/ccg_codex{file_change}", src: "engine.ts:897-955" },
     FrameMap { wire: "item/completed{mcpToolCall|webSearch}", dir: "S→C", to: "user{tool_result}", src: "engine.ts:956-973" },
     // ── 승인 · 질문 ──────────────────────────────────────────────────────────
@@ -251,14 +253,17 @@ pub static FRAME_MAP: &[FrameMap] = &[
     FrameMap { wire: "turn/plan/updated", dir: "S→C", to: "system/ccg_codex{todos}", src: "engine.ts:533-542" },
     FrameMap { wire: "thread/tokenUsage/updated", dir: "S→C", to: "system/ccg_codex{context} + 턴 델타 회계", src: "engine.ts:543-574 · 1096-1107" },
     FrameMap { wire: "error{willRetry:true}", dir: "S→C", to: "system/notification", src: "engine.ts:612-619" },
-    FrameMap { wire: "error{willRetry:false}", dir: "S→C", to: "result{is_error}", src: "engine.ts:620-627" },
+    // 게이트 3종(마감한 턴 · 시작 창 · 남의 턴)을 통과한 것만 정착시킨다. 수용량 초과는
+    // 여기서 안 죽이고 안내 한 줄만 낸다 — 같은 사연의 `turn/completed{failed}`가 정착시킨다.
+    FrameMap { wire: "error{willRetry:false}", dir: "S→C", to: "turnId 게이트 3종 통과분만 result{is_error}", src: "engine.ts:602-628" },
     // ── 백그라운드 터미널(unified exec) ──────────────────────────────────────
     FrameMap { wire: "thread/backgroundTerminals/list", dir: "C→S", to: "system/background_tasks_changed(REPLACE)", src: "engine.ts:1016-1064" },
     FrameMap { wire: "thread/backgroundTerminals/terminate", dir: "C→S", to: "(control_request{stop_task}의 번역)", src: "engine.ts:1410-1421" },
     // ── 서브에이전트(collab) ─────────────────────────────────────────────────
     FrameMap { wire: "item/*{subAgentActivity}", dir: "S→C", to: "assistant{tool_use Task} / 사이드체인 종료", src: "engine.ts:692-735" },
     FrameMap { wire: "item/*{collabAgentToolCall}", dir: "S→C", to: "assistant{tool_use Task} / user{tool_result}", src: "engine.ts:665-690 · 976-1003" },
-    FrameMap { wire: "(서브에이전트 스레드의 알림)", dir: "S→C", to: "parent_tool_use_id 붙은 사이드체인 프레임", src: "engine.ts:740-828" },
+    // 4종이다 — 턴 계열 둘은 카드 **자체**의 상태라 사이드체인 봉투에 안 싼다.
+    FrameMap { wire: "(서브에이전트 스레드의 알림)", dir: "S→C", to: "item/* 는 parent_tool_use_id 사이드체인 · turn/started·completed 는 카드 재개·정착", src: "engine.ts:740-828" },
     // ── 0.149.0 실측 추가분 ─────────────────────────────────────────────────
     // 2.6.2(0.144.x)에는 없던 통지들. `scripts/poc-codex.mjs --only=handshake`가 실
     // 바이너리에서 **자격증명 없이** 받아 적은 것이다(그 산출이 docs/critic/m4-r1-codex.json).
