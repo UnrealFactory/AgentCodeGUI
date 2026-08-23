@@ -15,12 +15,26 @@ import { Sidebar, type ChatSummary, type SidebarSection } from './components/Sid
 import { pushRecentDir, seedRecentDirs } from './lib/recentDirs'
 import { FoldSlotHold, MultiWorkspace, PanelDial, useMultiSessions, type MultiExplorerInfo, type PanelSummary } from './components/MultiAgent'
 // ★ 3.0 M-UX — WindowApi에 없는 통합 채널들(§6.1·§6.2). 계약면(src/shared)은 안 건드린다.
-import { setActiveChat, onChatEvent, onChatRunState, onChatStatus, respondDialog, runChat } from './api/unified'
+import {
+  closeChatWindow,
+  focusChatWindow,
+  listChatWindows,
+  onChatEvent,
+  onChatRunState,
+  onChatStatus,
+  onChatWindows,
+  respondDialog,
+  resumeHold,
+  runChat,
+  setActiveChat,
+  type WindowSlot
+} from './api/unified'
 import { noteSettled } from './lib/settled'
 import { NewChatModal } from './components/NewChatModal'
 import { getPref, setPref, delPref } from './lib/prefs'
 import { t, useLang } from './lib/i18n'
 import { sanitizeHold } from './lib/limitResume'
+import { canPressResume, engineHoldOf, engineOwnsResume } from './lib/resumeOwner'
 import { useLimitResume } from './lib/useLimitResume'
 import {
   SIDEBAR_AUTOHIDE,
@@ -291,6 +305,11 @@ function MainApp({ user }: { user: AppUser }) {
     window.api.sessionWindows.list().then(setSessionWins).catch(() => {})
     return window.api.sessionWindows.onChanged(setSessionWins)
   }, [])
+  // 전 채팅 경량 상태(`chat:status`) · 창 자리 목록(`chat:windows`) — 구독은 아래 effect.
+  // **선언만 여기로 올린다**: 한도 재개 훅(useLimitResume, §R3 7)이 `chatStatus`를 읽는데
+  // 그 호출이 구독 effect보다 위에 있어 TDZ에 걸린다.
+  const [chatStatus, setChatStatus] = useState<Record<string, ChatStatusLite>>({})
+  const [winSlots, setWinSlots] = useState<WindowSlot[]>([])
   // 새 채팅 선택 모달 (일반/멀티 → 패널 수) — Ctrl+N·사이드바 새 채팅이 연다
   const [newChatOpen, setNewChatOpen] = useState(false)
   // 파일 탐색기 — 2.0: 왼쪽 칼럼을 채팅 사이드바와 '전환'해 쓴다 (헤더 돋보기 옆 버튼).
@@ -572,7 +591,11 @@ function MainApp({ user }: { user: AppUser }) {
     holdKey: activeChatId,
     send: (p) => void runPrompt(p, { keepDraft: true }),
     canSend: (h) => !chats.find((c) => c.id === h.key)?.unloaded,
-    readyDep: chats
+    readyDep: chats,
+    // ★ R3 — 재개 주체는 하나다(m-logic P6). `chat:status`가 「엔진이 관장한다」고
+    // 말하면(배선 R4의 `resumeOwner`, 없으면 대기표의 존재) 렌더러 기계는 장전·타이머·
+    // 소진을 전부 멈추고 화면은 엔진의 표를 그린다 — 안 그러면 리셋 시각에 두 번 나간다.
+    managed: engineOwnsResume(chatStatus[activeChatId])
   })
 
   // 재시작 복원 — 한도를 기다리다 앱을 껐다 켜는 흐름이 흔해 대기표를 ui-prefs에
@@ -912,38 +935,65 @@ function MainApp({ user }: { user: AppUser }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // ── ★ R2 — 전 채팅 경량 상태 (`chat:status`) + **F12 따라잡기** ──────────────
+  // ── ★ R2/R3 — 전 채팅 경량 상태 (`chat:status`) + **F12 따라잡기** ────────────
   //
   // 이 채널이 없으면 "지금 화면에 없는 대화가 승인 카드를 띄운 채 멈춰 있다"를 목록이
   // 말할 방법이 없다(§2.2-5). 함정은 **첫 REPLACE가 구독자보다 이르다**는 것이다 —
   // `engine::boot()`이 창 생성 전에 쏘고 이후 전이가 없으면 다시 안 온다(배선 R2 F12).
-  // 그래서 구독 **직후 1회** `chats:get`의 `statuses`로 따라잡되, 그 사이에 이미 도착한
-  // 브로드캐스트는 절대 덮지 않는다(따라잡기는 비어 있는 키만 채운다).
-  const [chatStatus, setChatStatus] = useState<Record<string, ChatStatusLite>>({})
+  //
+  // ★ R3 — 따라잡기를 **리스너가 붙은 뒤로** 옮겼다(`onChatStatus`의 `onReady`).
+  // R2는 구독과 동시에 쏘았는데 `listen()`은 비동기 등록이라, 그 사이에 나간 REPLACE는
+  //   ① 리스너가 아직 없어서 못 받고 ② 따라잡기 응답이 그보다 **먼저** 오면 그 값도 낡다
+  // → 두 겹을 다 통과하는 창이 남아 있었다. 등록 후에 물으면 그 창이 닫힌다:
+  //   등록 전에 나간 것은 따라잡기가 줍고, 등록 후에 나간 것은 리스너가 받는다.
+  //
+  // 병합은 "비어 있는 키만"이 아니라 **`updatedAt` 비교**다 — 따라잡기 응답이 늦게 와도
+  // 그 사이 도착한 더 새 REPLACE를 되돌리지 않는다(R2는 존재 여부만 봐서, 첫 REPLACE가
+  // **일부 채팅만** 실은 경우 나머지를 낡은 값으로 채울 수 있었다).
   useEffect(() => {
+    const catchUp = (): void => {
+      void window.api
+        .getChats()
+        .then((raw) => {
+          const statuses = (raw as { statuses?: Record<string, ChatStatusLite> } | null)?.statuses
+          if (!statuses) return
+          setChatStatus((cur) => {
+            const merged = { ...cur }
+            let changed = false
+            for (const [id, v] of Object.entries(statuses)) {
+              if (!v) continue
+              const have = merged[id]
+              if (have && (have.updatedAt ?? 0) >= (v.updatedAt ?? 0)) continue
+              merged[id] = v
+              changed = true
+            }
+            return changed ? merged : cur
+          })
+        })
+        .catch(() => {})
+    }
     const off = onChatStatus((rows) => {
       const next: Record<string, ChatStatusLite> = {}
       for (const r of rows) if (r?.chatId) next[r.chatId] = r
       setChatStatus(next)
-    })
-    void window.api
-      .getChats()
-      .then((raw) => {
-        const statuses = (raw as { statuses?: Record<string, ChatStatusLite> } | null)?.statuses
-        if (!statuses) return
-        setChatStatus((cur) => {
-          const merged = { ...cur }
-          let changed = false
-          for (const [id, v] of Object.entries(statuses))
-            if (!merged[id] && v) {
-              merged[id] = v
-              changed = true
-            }
-          return changed ? merged : cur
-        })
-      })
-      .catch(() => {})
+    }, catchUp)
     return off
+  }, [])
+
+  // ── ★ R3 — 창 자리 목록 (`chat:windows`) ────────────────────────────────────
+  //
+  // 셸은 창을 열고 닫을 때마다 이 REPLACE를 낸다(배선 R3 §R3.4). 같은 사실을 옛 이름
+  // (`session-wins:changed`)으로도 내지만 그쪽 페이로드에는 **창 라벨·포커스**가 없고,
+  // "영속됐지만 창이 없는 추가 채팅"까지 섞여 있어 *지금 창이 떠 있는가*를 못 말한다.
+  // 사이드바 「창」 칩의 진실은 이쪽이다. 따라잡기는 `win:chat-list`(요청/응답).
+  useEffect(() => {
+    const catchUp = (): void => {
+      void listChatWindows().then((slots) => {
+        // 그 사이에 REPLACE가 왔으면 그것이 더 새 사실이다 — 빈 목록으로만 덮는다
+        setWinSlots((cur) => (cur.length ? cur : slots))
+      })
+    }
+    return onChatWindows(setWinSlots, catchUp)
   }, [])
 
   // ── ★ R2 — 정착 사유 (`chat:run-state.settled[]`) ───────────────────────────
@@ -1739,11 +1789,32 @@ function MainApp({ user }: { user: AppUser }) {
   })
   // 추가 채팅 — id는 영속 채팅 id. 클릭=창 포커스(닫힌 채팅이면 창을 다시 만들어 복원),
   // X=대화 삭제(열린 창이 있으면 그 창도 닫힘). 목록은 창을 닫아도/재시작해도 남는다.
+  //
+  // ★ R3 — 포커스/되만들기는 **`win:chat-focus`** 로 간다(배선 R3 §R3.4 S6이 실증한 자리).
+  // 옛 `session-wins:focus`와 같은 일을 하지만 3.0 계약면의 이름이고, 응답이 곧 창 자리
+  // 목록이라 브로드캐스트를 기다리지 않고 칩을 갱신할 수 있다. **닫기는 갈랐다**:
+  //   `session-wins:close` = 대화 **삭제**(옛 계약) — 사이드바 X가 그대로 쓴다
+  //   `win:chat-close`     = **창만** 닫기 — 통합 모델의 "자리는 뷰"(대화는 남는다)
+  // 한 함수로 합치면 둘 중 하나가 반드시 대화를 잃는다.
   const onFocusSessionWin = useEvent((id: string) => {
-    window.api.sessionWindows.focus(id).catch(() => {})
+    void focusChatWindow(id).then((slots) => {
+      if (slots.length) {
+        setWinSlots(slots)
+        return
+      }
+      // 창 자리 채널이 없는 셸(미구현 안전값) — 옛 이름으로 되돌아간다.
+      // 목록에서 대화를 아예 못 여는 것보다, 채널 하나를 양보하는 편이 낫다.
+      window.api.sessionWindows.focus(id).catch(() => {})
+    })
   })
   const onCloseSessionWin = useEvent((id: string) => {
     window.api.sessionWindows.close(id).catch(() => {})
+  })
+  /** ★ R3 — 창만 닫는다(대화 유지). 사이드바 「창」 칩의 ✕가 부르는 자리. */
+  const onCloseWindowOnly = useEvent((id: string) => {
+    void closeChatWindow(id).then((okd) => {
+      if (okd) setWinSlots((cur) => cur.filter((w) => w.chatId !== id))
+    })
   })
   const onRenameSessionWin = useEvent((id: string, name: string) => {
     window.api.sessionWindows.rename(id, name).catch(() => {})
@@ -1751,6 +1822,8 @@ function MainApp({ user }: { user: AppUser }) {
   const onCloseAllSessionWins = useEvent(() => {
     sessionWins.forEach((w) => window.api.sessionWindows.close(w.id).catch(() => {}))
   })
+  // 지금 **OS 창이 떠 있는** 채팅 id들 — 「창」 칩의 유일한 진실(`chat:windows`).
+  const openWinIds = useMemo(() => new Set(winSlots.map((w) => w.chatId)), [winSlots])
   const extraSummaries = useMemo<ChatSummary[]>(
     () =>
       sessionWins.map((w) => ({
@@ -1760,9 +1833,14 @@ function MainApp({ user }: { user: AppUser }) {
         updatedAt: w.updatedAt,
         // ★ 3.0 M-UX — 추가 채팅은 더 이상 독립 섹션이 아니다. 「채팅」 목록 안에서
         // **창 자리 칩**으로 구분된다(§3.3: 추가 채팅 창 = 자리를 창으로 뺀 것).
-        slot: { text: t('창', 'win'), kind: 'win' as const }
+        //
+        // ★ R3 — 칩은 **창이 실제로 떠 있을 때만** 단다(`chat:windows`). R2까지는
+        // 영속된 추가 채팅 전부에 「창」을 달아서, 창을 닫아도 목록은 계속 "창에 있어요"
+        // 라고 말했다 — 보드 자리에서 R2가 고친 `stale-live`(§2-⑤)와 같은 거짓말이다.
+        // 칩이 없는 항목은 "창이 닫힌 대화"이고, 클릭하면 그 창을 **되만든다**.
+        slot: openWinIds.has(w.id) ? { text: t('창', 'win'), kind: 'win' as const } : undefined
       })),
-    [sessionWins, lang]
+    [sessionWins, openWinIds, lang]
   )
   // ── ★ 3.0 M-UX — 활성 보드의 자리들을 「채팅」 목록 항목으로 ────────────────────
   // 항목 키는 panelId(`${sessionId}::${slot}`) — 별칭 계층이 chatId로 번역하는 그 키다.
@@ -1795,21 +1873,33 @@ function MainApp({ user }: { user: AppUser }) {
     [panelInfos, mode, lang]
   )
   // 「채팅」 = 보드 자리 ∪ 창 ∪ 일반 채팅. 한 목록 안에서 자리 칩만 다르다(§8-①(a)).
+  //
+  // ★ R3 — 두 사실이 더 붙는다: **창이 떠 있는가**(`chat:windows` → 우클릭 「창 닫기」)와
+  // **엔진이 든 대기표가 ready인가**(`chat:status.hold.ready` → 「이어가기」 알약).
+  // 둘 다 화면 밖 대화에 대한 사실이라 목록 말고는 말할 자리가 없다.
   const unifiedChats = useMemo<ChatSummary[]>(
     () => [
       ...boardSummaries,
-      ...extraSummaries,
+      ...extraSummaries.map((c) => ({ ...c, winOpen: openWinIds.has(c.id), resumeReady: canPressResume(chatStatus[c.id]) })),
       ...chatSummaries.map((c) => ({
         ...c,
-        // 일반 채팅이 IDE 크롬(1 모드)을 차지하고 있으면 그게 1번 자리다
-        slot: mode === 'single' && c.id === activeChatId ? { text: '1', kind: 'live' as const } : undefined,
+        // 창이 떠 있으면 그게 이 대화가 「지금 있는 자리」다(추가 채팅이 아니어도 —
+        // `chat:windows`가 진실이지 어느 목록에서 왔는지가 진실이 아니다).
+        // 아니면 IDE 크롬(1 모드)을 차지하고 있을 때 1번 자리.
+        slot: openWinIds.has(c.id)
+          ? { text: t('창', 'win'), kind: 'win' as const }
+          : mode === 'single' && c.id === activeChatId
+            ? { text: '1', kind: 'live' as const }
+            : undefined,
         running: c.id === activeChatId ? busy || wfAlive : bgIds.includes(c.id),
         // ★ R2 — 지울 수 없으면 **왜인지**를 목록이 들고 다닌다(침묵 no-op 금지, P7)
-        lock: deleteLockOf(c.id) || undefined
+        lock: deleteLockOf(c.id) || undefined,
+        winOpen: openWinIds.has(c.id),
+        resumeReady: canPressResume(chatStatus[c.id])
       }))
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [boardSummaries, extraSummaries, chatSummaries, mode, activeChatId, busy, wfAlive, bgIds, lang]
+    [boardSummaries, extraSummaries, chatSummaries, mode, activeChatId, busy, wfAlive, bgIds, openWinIds, chatStatus, lang]
   )
   // 접힌 자리 수 — 사이드바 안내 줄("이 배치의 N개 자리가 접혔어요")
   const foldedCount = useMemo(() => panelInfos.filter((p) => !p.empty && p.pos == null && !p.popped).length, [panelInfos])
@@ -1822,7 +1912,9 @@ function MainApp({ user }: { user: AppUser }) {
       multi.raiseSlot(panel.slot)
       return
     }
-    if (sessionWins.some((w) => w.id === id)) {
+    // 창이 떠 있는 대화는 그 창을 앞으로 — 본창에 같은 대화를 두 벌 그리지 않는다.
+    // (추가 채팅은 창이 닫혀 있어도 이 경로다: `win:chat-focus`가 창을 **되만든다**.)
+    if (openWinIds.has(id) || sessionWins.some((w) => w.id === id)) {
       onFocusSessionWin(id)
       return
     }
@@ -1848,6 +1940,16 @@ function MainApp({ user }: { user: AppUser }) {
       return
     }
     onDeleteChat(id)
+  })
+  // ★ R3 — 「창 닫기」(대화 유지) · 「이어가기」(ready 대기표 소진). 둘 다 보드 자리에는
+  // 없는 개념이라(자리는 창이 아니고, 대기표는 채팅 단위다) 채팅 id에만 적용한다.
+  const onCloseWindowUnified = useEvent((id: string) => {
+    if (panelInfos.some((p) => p.panelId === id)) return
+    onCloseWindowOnly(id)
+  })
+  const onResumeUnified = useEvent((id: string) => {
+    if (panelInfos.some((p) => p.panelId === id)) return
+    void resumeHold(id)
   })
   // 이 채팅에서 띄운 /btw 질문 창들 — 하단 btw 알약 도크가 그린다 (다른 채팅 것은 안 보임)
   const btwWins = useMemo(() => sessionWins.filter((w) => w.btwOf === activeChatId), [sessionWins, activeChatId])
@@ -1888,7 +1990,10 @@ function MainApp({ user }: { user: AppUser }) {
         onDeleteAll: onDeleteAllUnified,
         deleteAllCount: chatSummaries.length + extraSummaries.length,
         // ★ R2 — 도는 대화가 하나라도 있으면 「전체 삭제」는 이유를 말하며 잠긴다
-        deleteAllLock: deleteAllLock() || undefined
+        deleteAllLock: deleteAllLock() || undefined,
+        // ★ R3 — 창만 닫기(`win:chat-close`) · ready 대기표 이어가기(`op:'resume'`)
+        onCloseWindow: onCloseWindowUnified,
+        onResume: onResumeUnified
       },
       {
         key: 'multi' as const,
@@ -2071,6 +2176,9 @@ function MainApp({ user }: { user: AppUser }) {
             hold={limitResume.hold?.key === activeChatId ? limitResume.hold : null}
             enabled={autoResume}
             onCancel={() => limitResume.setHold(null)}
+            // ★ R3 — 엔진이 든 대기표가 있으면 그것이 진실이다(렌더러 기계는 managed로 멈춰 있다)
+            managed={engineHoldOf(chatStatus[activeChatId])}
+            onResume={() => void resumeHold(activeChatId)}
           />
           <Composer
             value={input}

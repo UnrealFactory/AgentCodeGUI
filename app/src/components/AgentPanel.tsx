@@ -17,6 +17,7 @@ import { FileBadge } from './fileType'
 import { Markdown } from './Markdown'
 import { MouseGestureLayer, scrollGestures } from './mouseGesture'
 import { t } from '../lib/i18n'
+import { settleText, useSettledReason } from '../lib/settled'
 
 // 미완료 할 일의 원형 마커 (PoC pop-todo의 circle glyph — 전용 아이콘이 없어 인라인)
 function TodoCircle() {
@@ -112,12 +113,27 @@ function fmtSaDur(ms: number): string {
 // 팝오버 한 줄 — PoC .prow: 상태 아이콘(✓/스피너/점) + 이름/역할. 상세는 클릭해 여는
 // 카드에 있으므로 행은 조용하게 유지한다.
 export function SubAgent({ a, onOpen }: { a: SubAgentInfo; onOpen: (a: SubAgentInfo) => void }) {
+  // ★ 3.0 M-UX R3 — 원장이 사유와 함께 정착시킨 서브에이전트인가(`chat:run-state.settled[]`).
+  // 서브에이전트의 원장 id는 `Task` 도구의 tool_use id 그대로라(`wire.rs`의 `agent.id`)
+  // `settled[]`의 키와 같은 문자열이다. 실행 중이던 것이 정착했다면 그건 "완료"가 아니라
+  // **정리**다 — 색·문구가 그 차이를 말해야 한다(m-logic §5.2).
+  const why = useSaSettled(a)
   // PoC 행 서브: '역할 · 42초' — 완료돼 소요가 잡히면 뒤에 붙인다
-  const sub = [a.role, a.durationMs != null ? fmtSaDur(a.durationMs) : ''].filter(Boolean).join(' · ')
+  const sub = why
+    ? `${why.label} — ${why.sub}`
+    : [a.role, a.durationMs != null ? fmtSaDur(a.durationMs) : ''].filter(Boolean).join(' · ')
   return (
-    <button className={'wb-prow act' + (a.status === 'done' ? ' done' : '')} onClick={() => onOpen(a)}>
+    <button className={'wb-prow act' + (a.status === 'done' && !why ? ' done' : '')} onClick={() => onOpen(a)}>
       <span className="ic">
-        {a.status === 'running' ? <span className="spin" /> : a.status === 'done' ? <IconCheck size={12} /> : <span className="dot" />}
+        {why ? (
+          <IconClose size={12} />
+        ) : a.status === 'running' ? (
+          <span className="spin" />
+        ) : a.status === 'done' ? (
+          <IconCheck size={12} />
+        ) : (
+          <span className="dot" />
+        )}
       </span>
       <span className="grow">
         {a.name}
@@ -127,8 +143,30 @@ export function SubAgent({ a, onOpen }: { a: SubAgentInfo; onOpen: (a: SubAgentI
   )
 }
 
+/**
+ * ★ R3 — 이 서브에이전트가 **정리**됐나. `completed`로 끝난 정상 종료에는 값이 없다
+ * (그때는 평소의 「완료」 어휘를 그대로 쓴다 — settleText가 null을 준다).
+ *
+ * 셸이 스트림을 닫을 때 `wire::settle_all_background()`가 살아 있던 서브에이전트를
+ * `status:'done'` + activity "턴 종료로 정리됨"으로 접어 보낸다. 그 화면만 보면 **완료와
+ * 구분이 안 된다** — 초록 ✓에 「완료」다. 원장의 사유가 그 둘을 가른다.
+ */
+function useSaSettled(a: SubAgentInfo | null): { label: string; sub: string } | null {
+  const reason = useSettledReason(a?.id)
+  if (!a || !reason) return null
+  return settleText(reason)
+}
+
 // 상태 배지 — PoC .stbadge: 완료=초록, 실행 중=중립+스피너, 대기=중립
-function saBadge(status: SubAgentStatus): ReactNode {
+// ★ R3 — 원장 사유가 있으면 그것이 배지다("정리됨"), 부제는 title로.
+function saBadge(status: SubAgentStatus, why: { label: string; sub: string } | null): ReactNode {
+  if (why)
+    return (
+      <span className="dc-badge n" title={`${why.label} — ${why.sub}`}>
+        <span className="d" />
+        {why.label}
+      </span>
+    )
   if (status === 'done')
     return (
       <span className="dc-badge">
@@ -149,6 +187,7 @@ function saBadge(status: SubAgentStatus): ReactNode {
 export function SubAgentModal({ agent, onClose }: { agent: SubAgentInfo | null; onClose: () => void }) {
   // 마우스 제스처(U/D 스크롤·DR 닫기)의 대상 카드 엘리먼트
   const [cardEl, setCardEl] = useState<HTMLDivElement | null>(null)
+  const why = useSaSettled(agent) // ★ R3 — 정리됨(사유) 어휘. 없으면 평소의 완료/실행 중
   useEffect(() => {
     if (!agent) return
     const onKey = (e: KeyboardEvent): void => {
@@ -172,7 +211,7 @@ export function SubAgentModal({ agent, onClose }: { agent: SubAgentInfo | null; 
               {agent.role ? ` · ${agent.role}` : ''}
             </div>
           </div>
-          {saBadge(agent.status)}
+          {saBadge(agent.status, why)}
           <button className="dc-close" onClick={onClose} aria-label={t('닫기', 'Close')}>
             <IconClose size={16} />
           </button>

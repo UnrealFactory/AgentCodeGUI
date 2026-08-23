@@ -27,6 +27,19 @@ export interface LimitResumeSurface {
   send: (prompt: string) => void // 풀렸을 때 전송 (초안을 지우지 않는 경로여야 한다)
   canSend?: (hold: LimitHold) => boolean // 화면별 추가 가드 (본채팅: 스냅샷 로드 완료)
   readyDep?: unknown // canSend가 보는 외부 상태 — ready 소진 effect의 재평가 트리거
+  /**
+   * ★ 3.0 M-UX R3 — **엔진(Rust)이 이 채팅의 대기표를 들고 있다.**
+   *
+   * 배선 R3가 부팅 재장전(`reload_state`/`ReloadHold`/`auto_resume`)을 넣으면서 한
+   * 채팅에 재개 주체가 **둘**이 될 수 있게 됐다(R2 §R2.9가 미리 적어 둔 접점):
+   * 렌더러의 이 훅과 엔진의 `check_hold`. 둘 다 살아 있으면 리셋 시각에 **전송이 두 번**
+   * 나간다. 진실 하나를 고른다 — `chat:status.hold`가 실려 오면(= 엔진이 그 채팅의
+   * 대기표를 재장전했다) **렌더러는 손을 뗀다**: 장전도, 타이머도, 소진도 하지 않는다.
+   * 표시와 「이어가기」 버튼은 그 신호를 그대로 그린다(LimitHoldBar `managed`).
+   *
+   * 신호가 없으면(옛 셸·통합 스토어 꺼짐) 값은 false이고 동작은 2.6.2와 글자 그대로 같다.
+   */
+  managed?: boolean
 }
 
 export interface LimitResumeHandle {
@@ -56,6 +69,8 @@ export function useLimitResume(o: LimitResumeSurface): LimitResumeHandle {
     prevStatusRef.current = o.state.status
     if (o.state.status !== 'error' || (prev !== 'analyzing' && prev !== 'working')) return
     if (o.apiMode || o.state.interrupted) return
+    // ★ R3 — 엔진이 이 채팅의 대기표를 들고 있으면 렌더러는 장전하지 않는다(재개 주체 하나)
+    if (o.managed) return
     const msgs = o.state.messages
     const last = msgs[msgs.length - 1]
     if (!last || last.kind !== 'msg' || !last.error) return
@@ -120,7 +135,7 @@ export function useLimitResume(o: LimitResumeSurface): LimitResumeHandle {
   // 소진 effect가 조건이 맞을 때 수행한다.
   const fire = async (armedAt: number): Promise<void> => {
     const cur = holdRef.current
-    if (!cur || cur.at !== armedAt || !oRef.current.enabled) return
+    if (!cur || cur.at !== armedAt || !oRef.current.enabled || oRef.current.managed) return
     const nowSec = Math.floor(Date.now() / 1000)
     try {
       let still: number | null = null
@@ -147,24 +162,33 @@ export function useLimitResume(o: LimitResumeSurface): LimitResumeHandle {
   // 대기표 타이머 — 리셋 시각(+90s 여유)에 발화, 시각 미상이면 10분 간격 프로브.
   // 대기표 갱신(정제·재장전)이나 토글 해제가 이전 타이머를 걷는다.
   useEffect(() => {
-    if (!hold || hold.ready || !o.enabled) return
+    if (!hold || hold.ready || !o.enabled || o.managed) return
     const id = window.setTimeout(() => void fire(hold.at), resumeDelayMs(hold.resetsAt, Date.now()))
     return () => window.clearTimeout(id)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hold, o.enabled])
+  }, [hold, o.enabled, o.managed])
 
   // ready 소진 — 소유 키가 일치하고(본채팅: 그 채팅으로 돌아옴) idle이고 화면별 가드를
   // 통과할 때 전송. 세션이 있으면 '이어서'(resume이 문맥 보유), 없으면 원문 재전송.
   useEffect(() => {
     const cur = hold
-    if (!cur?.ready || !o.enabled || o.busy) return
+    if (!cur?.ready || !o.enabled || o.busy || o.managed) return
     if (cur.key !== o.holdKey) return
     if (o.canSend && !o.canSend(cur)) return
     setHold(null)
     const prompt = o.state.session ? contPrompt() : cur.lastPrompt
     if (prompt) o.send(prompt)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hold, o.enabled, o.busy, o.holdKey, o.readyDep])
+  }, [hold, o.enabled, o.busy, o.holdKey, o.managed, o.readyDep])
+
+  // ★ R3 — 엔진이 대기표를 들고 있다는 신호가 **나중에** 왔다(렌더러가 먼저 장전한 뒤
+  // 재시작 재장전이 도착하는 순서). 그러면 같은 사실을 두 벌 들고 있는 것이므로 렌더러
+  // 사본을 접는다 — 안 그러면 배너가 두 벌이고, `managed`가 꺼지는 순간 낡은 표가 발화한다.
+  useEffect(() => {
+    if (!o.managed) return
+    if (holdRef.current && holdRef.current.key === o.holdKey) setHold(null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [o.managed, o.holdKey])
 
   // 카운트다운 틱은 여기 없다 — 표시 갱신은 LimitHoldBar(Chat.tsx)가 자기 30초 틱으로
   // 스스로 재렌더한다 (멀티 패널은 memo라 호스트 재렌더가 배너까지 닿지 않는다)

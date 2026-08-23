@@ -1527,6 +1527,16 @@ input,textarea{ font-family:inherit; }
   color:var(--text-4); transition:background .12s, color .12s;
 }
 .lh-x:hover{ background:var(--red-soft); color:var(--red); }
+/* ★ 3.0 M-UX R3 — 엔진이 든 `ready` 대기표의 「이어가기」. ✕(대기 취소)와 같은 자리에
+   서지만 파괴가 아니라 진행이라 알약 형태다 (chat:queue-mutate {op:'resume'}) */
+.lh-go{
+  flex:0 0 auto; height:22px; padding:0 10px; border-radius:7px; font-size:11px; font-weight:650;
+  color:var(--text-1); background:rgba(255,255,255,.10); border:1px solid rgba(255,255,255,.14);
+  transition:background .12s, border-color .12s;
+}
+.lh-go:hover{ background:rgba(255,255,255,.17); border-color:rgba(255,255,255,.24); }
+/* ready면 앰버가 아니라 중립 — "막혀 있음"이 아니라 "누르면 간다"는 상태다 */
+.limit-hold.ready{ color:var(--text-3); }
 /* 예약 상태의 컴포저(.scheduling)는 별도 장식 없음 — 옛 액센트 링은 2.0 무채색에선
    흰 광륜으로 보여 걷어냈다. 글래스 카드와 플레이스홀더가 이미 문맥을 말한다. */
 
@@ -4224,6 +4234,14 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
   border:1px solid rgba(217,192,99,.32); background:var(--yellow-soft);
   border-radius:3px; padding:0 3px; line-height:13px;
 }
+/* ★ 3.0 M-UX R3 — 「이어가기」. 엔진이 `ready`로 켜 두고 멈춘 대기표(스펙 ⑤ 후반부)를
+   목록에서 바로 소진한다. 배지가 아니라 **버튼**이라 눌리는 표면임을 대비로 말한다 */
+.sb-item .sb-resume{
+  flex:0 0 auto; font-size:9.5px; font-weight:650; color:var(--text-2);
+  border:1px solid rgba(255,255,255,.16); background:rgba(255,255,255,.08);
+  border-radius:4px; padding:0 5px; line-height:14px; transition:background .12s, color .12s;
+}
+.sb-item .sb-resume:hover{ background:rgba(255,255,255,.16); color:var(--text-1); }
 
 /* 접힘 안내 줄 — 사이드바 「채팅」 위의 한 줄 (목업 .foldhint) */
 .sb-foldhint{

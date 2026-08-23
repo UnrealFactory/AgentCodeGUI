@@ -27,9 +27,20 @@ export function imageName(p: string): string {
   return p.split(/[\\/]/).pop() || p
 }
 
-/** a renderable src for a local image path, served by the main process over ccg-img:// */
+/**
+ * a renderable src for a local image path, served by the shell over the `ccg-img` scheme.
+ *
+ * ★ 3.0 M-UX R3 — **리터럴 `ccg-img://`가 아니다.** WebView2는 비표준 스킴을 못 받아서
+ * wry가 커스텀 스킴을 `http://<scheme>.localhost/…`로 바꿔 필터를 건다
+ * (`wry webview2/mod.rs` `attach_custom_protocol_handler` → `work_around_uri_prefix`).
+ * 2.6.2가 쓰던 `ccg-img://local/?p=…`는 그 필터에 **안 걸리고** 그냥 로드 실패한다
+ * → `<img onError>` → 뷰어가 "이미지를 표시할 수 없어요"(M6 보고 §5-A: 뷰어 이미지·
+ * SVG 미리보기가 3.0에서만 못 뜨던 한 뿌리). 이 문자열은 Tauri
+ * `convertFileSrc(p, 'ccg-img')`가 만드는 것과 같고, 셸(`ccg_fs::serve::path_from_uri`)은
+ * 두 모양(`?p=` · `/<encoded>`)을 다 받으므로 어느 쪽으로 와도 같은 바이트를 낸다.
+ */
 export function imageSrc(p: string): string {
-  return 'ccg-img://local/?p=' + encodeURIComponent(p)
+  return 'http://ccg-img.localhost/' + encodeURIComponent(p)
 }
 
 // pathless File (pasted/browser-dragged)의 저장 확장자 추정 — 이름 → MIME 순

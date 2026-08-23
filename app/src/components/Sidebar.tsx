@@ -36,6 +36,13 @@ export interface ChatSummary {
   /** ★ 3.0 M-UX R2 — 삭제가 막히는 **이유**. 있으면 우클릭 「삭제」가 잠기고(툴팁=이 문장),
    *  Delete 키로 들어와도 카드가 이 문장을 말한다. 침묵 no-op은 M-LOGIC P7 위반이다. */
   lock?: string
+  /** ★ 3.0 M-UX R3 — 이 대화의 **OS 창이 지금 떠 있다**(`chat:windows`). 우클릭 메뉴에
+   *  「창 닫기」가 생긴다 — `win:chat-close`는 **창만** 닫고 대화는 목록에 남는다
+   *  (`session-wins:close`=삭제와 정반대라 메뉴 항목도 따로 둔다, 배선 R3 §R3.4). */
+  winOpen?: boolean
+  /** ★ 3.0 M-UX R3 — 한도 대기표가 **`ready`** 다(엔진이 들고 있다). 목록에서 눌러
+   *  바로 이어갈 수 있다(`chat:queue-mutate {op:'resume'}` — 스펙 ⑤ 후반부). */
+  resumeReady?: boolean
 }
 
 // ★ 3.0 M-UX — 섹션이 셋(일반/멀티/추가)에서 **둘**(채팅/배치)로 접혔다.
@@ -57,6 +64,10 @@ export interface SidebarSection {
   onRename?: (id: string, name: string) => void
   onDelete?: (id: string) => void
   onDeleteAll?: () => void
+  /** ★ R3 — 「창 닫기」(`win:chat-close`). 창이 떠 있는 항목(winOpen)에만 메뉴에 뜬다. */
+  onCloseWindow?: (id: string) => void
+  /** ★ R3 — 「이어가기」(`chat:queue-mutate {op:'resume'}`). resumeReady 항목의 알약. */
+  onResume?: (id: string) => void
   /** ★ 3.0 M-UX — 목록 위 한 줄 안내(접힘 상태 등). 목업 chat-unify-collapse의 .foldhint */
   hint?: string
   /** 빈 목록 문구 — 섹션마다 세는 것이 다르다(「배치」는 채팅이 아니라 배치가 없는 것) */
@@ -430,6 +441,23 @@ export const Sidebar = memo(function Sidebar({
                             {c.slot.text}
                           </span>
                         )}
+                        {/* ★ R3 — `ready` 대기표를 **눌러서** 이어간다(스펙 ⑤ 후반부).
+                            엔진은 화면 밖 채팅의 대기표를 `ready`로만 켜고 멈춰 있다
+                            (`auto_resume=false`) — 여기가 그 대기표의 유일한 출구다.
+                            항목 클릭(전환)으로 새지 않게 전파를 끊는다. */}
+                        {!isRenaming && c.resumeReady && s.onResume && (
+                          <button
+                            className="sb-resume has-tip"
+                            data-tip={t('한도가 풀렸어요 — 눌러서 이어가기', 'Limit lifted — click to continue')}
+                            aria-label={t('이어가기', 'Continue')}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              s.onResume?.(c.id)
+                            }}
+                          >
+                            {t('이어가기', 'Continue')}
+                          </button>
+                        )}
                         {!isRenaming && c.running && !c.ask && <span className="runbadge">{t('실행', 'run')}</span>}
                         {!isRenaming && <span className="when">{relTime(c.updatedAt)}</span>}
                       </div>
@@ -467,6 +495,21 @@ export const Sidebar = memo(function Sidebar({
                 }}
               >
                 <IconPencil size={15} /> {t('이름 변경', 'Rename')}
+              </button>
+            )}
+            {/* ★ R3 — 「창 닫기」는 삭제가 **아니다**. `win:chat-close`가 창만 닫고 대화는
+                목록에 남는다("자리는 뷰, 대화는 접힐 뿐 사라지지 않는다"). 옛
+                `session-wins:close`(=삭제)와 의미가 정반대라 항목을 따로 둔다 — 합치면
+                둘 중 하나가 반드시 대화를 잃는다(배선 R3 §R3.4). */}
+            {menuChat.winOpen && menuSection.onCloseWindow && (
+              <button
+                className="ctx-item"
+                onClick={() => {
+                  setMenu(null)
+                  menuSection.onCloseWindow?.(menu.id)
+                }}
+              >
+                <IconX2 size={15} /> {t('창 닫기 — 대화는 남아요', 'Close window — the chat stays')}
               </button>
             )}
             <div className="ctx-sep" />

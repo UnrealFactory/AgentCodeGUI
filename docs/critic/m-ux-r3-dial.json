@@ -1,0 +1,378 @@
+{
+  "at": "2026-08-23T02:07:01.583Z",
+  "exe": "C:\\Code\\AgentCodeGUI\\target\\release\\agentcodegui.exe",
+  "steps": {
+    "dial": {
+      "checks": {
+        "before": {
+          "visible": [
+            "벤치 패널 1",
+            "벤치 패널 2",
+            "벤치 패널 3",
+            "벤치 패널 4",
+            "벤치 패널 5",
+            "벤치 패널 6"
+          ],
+          "sidebar": [
+            "벤치 패널 1",
+            "벤치 패널 2",
+            "벤치 패널 3",
+            "벤치 패널 4",
+            "벤치 패널 5",
+            "벤치 패널 6",
+            "벤치 긴 스레드"
+          ]
+        },
+        "chipsAt6": 6,
+        "foldBadge": "5",
+        "at1": {
+          "sidebar": [
+            "벤치 패널 1",
+            "벤치 패널 2",
+            "벤치 패널 3",
+            "벤치 패널 4",
+            "벤치 패널 5",
+            "벤치 패널 6",
+            "벤치 긴 스레드"
+          ],
+          "foldedChips": 5
+        },
+        "foldRows": 5,
+        "after": [
+          "벤치 패널 1",
+          "벤치 패널 2",
+          "벤치 패널 3",
+          "벤치 패널 4",
+          "벤치 패널 5",
+          "벤치 패널 6"
+        ],
+        "promote": {
+          "focused": "벤치 패널 3",
+          "shown": "벤치 패널 3"
+        },
+        "after2": {
+          "got": [
+            "벤치 패널 3",
+            "벤치 패널 1",
+            "벤치 패널 2",
+            "벤치 패널 4",
+            "벤치 패널 5",
+            "벤치 패널 6"
+          ],
+          "expect": [
+            "벤치 패널 3",
+            "벤치 패널 1",
+            "벤치 패널 2",
+            "벤치 패널 4",
+            "벤치 패널 5",
+            "벤치 패널 6"
+          ]
+        },
+        "restart": {
+          "sidebar": [
+            "벤치 패널 1",
+            "벤치 패널 2",
+            "벤치 패널 3",
+            "벤치 패널 4",
+            "벤치 패널 5",
+            "벤치 패널 6",
+            "벤치 긴 스레드"
+          ]
+        },
+        "restartCount": 6
+      }
+    },
+    "active": {
+      "checks": {
+        "seeded": 3,
+        "active": {
+          "before": "fix-long-thread",
+          "after": "poc-a",
+          "target": "POC 채팅 A"
+        }
+      }
+    },
+    "raise": {
+      "checks": {
+        "beforeA": {
+          "top": 3148,
+          "h": 6962,
+          "ch": 832,
+          "w": 341,
+          "zoom": 0.8,
+          "msgs": 20,
+          "i": 13,
+          "off": -163,
+          "text": "패널 2 · 구간 4 검토 결과 세대 비교 경로는 정상이다. 소비자 폴링 1곳을"
+        },
+        "pushed": {
+          "pushed": "ok/ok",
+          "visMid": [
+            "벤치 패널 4",
+            "벤치 패널 1",
+            "벤치 패널 2"
+          ]
+        },
+        "anchors": {
+          "fix-multi-session::2": {
+            "id": "p2a14",
+            "off": -162.796875,
+            "at": 1787450836111
+          }
+        },
+        "afterA": {
+          "top": 3148,
+          "h": 6687,
+          "ch": 832,
+          "w": 341,
+          "zoom": 0.8,
+          "msgs": 20,
+          "i": 14,
+          "off": -16,
+          "text": "Read src/mod4/cache.ts 412줄 Bash npm test --"
+        },
+        "landA": {
+          "saved": [
+            "fix-multi-session::2",
+            {
+              "id": "p2a14",
+              "off": -162.796875,
+              "at": 1787450836111
+            }
+          ],
+          "landed": {
+            "id": "p2a14",
+            "want": -162.796875,
+            "got": -162.296875,
+            "top": 2272.5,
+            "at": 1787450837405
+          }
+        },
+        "deltaA": {
+          "dTop": 0,
+          "beforeTop": 3148,
+          "afterTop": 3148,
+          "sameW": true,
+          "sameCh": true
+        },
+        "beforeB": {
+          "top": 3090,
+          "h": 6687,
+          "ch": 320,
+          "w": 341,
+          "zoom": 0.8,
+          "msgs": 20,
+          "i": 14,
+          "off": 30,
+          "text": "Read src/mod4/cache.ts 412줄 Bash npm test --",
+          "title": "벤치 패널 1"
+        },
+        "afterB": {
+          "top": 2510,
+          "h": 5335,
+          "ch": 752,
+          "w": 1078,
+          "zoom": 1,
+          "msgs": 20,
+          "i": 14,
+          "off": 30,
+          "text": "Read src/mod4/cache.ts 412줄 Bash npm test --"
+        },
+        "deltaB": {
+          "dTop": 580,
+          "dOff": 0,
+          "geom": {
+            "before": {
+              "h": 6687,
+              "ch": 320,
+              "w": 341,
+              "zoom": 0.8
+            },
+            "after": {
+              "h": 5335,
+              "ch": 752,
+              "w": 1078,
+              "zoom": 1
+            }
+          }
+        },
+        "landB": {
+          "id": "p0tg15",
+          "want": 30.046875,
+          "got": 30,
+          "top": 1851,
+          "at": 1787450844761
+        },
+        "afterC": {
+          "top": 3924,
+          "h": 4676,
+          "ch": 752,
+          "w": 1078,
+          "zoom": 1,
+          "msgs": 20,
+          "i": 25,
+          "off": -270,
+          "text": "패널 3 · 구간 8 검토 결과 세대 비교 경로는 정상이다. 소비자 폴링 2곳을"
+        }
+      }
+    },
+    "own": {
+      "checks": {
+        "status": {
+          "c-hide": {
+            "resumeOwner": "engine",
+            "autoResume": true,
+            "hold": {
+              "resetAt": 1787450856.5446503,
+              "ready": false
+            }
+          },
+          "c-see": {
+            "resumeOwner": "engine",
+            "autoResume": true,
+            "hold": {
+              "resetAt": 1787450856.542125,
+              "ready": false
+            }
+          }
+        },
+        "bar": {
+          "sub": "약 1분 뒤 자동으로 이어서 계속해요",
+          "x": 0,
+          "go": 0
+        },
+        "pill": [
+          "POC 화면 밖 채팅"
+        ],
+        "afterHold": [
+          {
+            "id": "c-hide",
+            "spawns": 0,
+            "hold": {
+              "resetsAt": 0,
+              "ready": true,
+              "dueAt": 90000
+            },
+            "auto": false,
+            "queued": 1
+          },
+          {
+            "id": "c-see",
+            "spawns": 1,
+            "hold": null,
+            "auto": true,
+            "queued": 1
+          }
+        ],
+        "afterPress": [
+          {
+            "id": "c-hide",
+            "spawns": 1,
+            "hold": null,
+            "auto": true
+          },
+          {
+            "id": "c-see",
+            "spawns": 1,
+            "hold": null,
+            "auto": true
+          }
+        ],
+        "winChip": [
+          "창"
+        ],
+        "slots": [
+          {
+            "label": "session-1",
+            "chatId": "sc-1787450950005-1",
+            "title": "",
+            "focused": true
+          }
+        ],
+        "closeOnly": {
+          "before": [
+            "새 채팅",
+            "POC 보이는 채팅",
+            "POC 화면 밖 채팅"
+          ],
+          "after": [
+            "새 채팅",
+            "POC 보이는 채팅",
+            "POC 화면 밖 채팅"
+          ],
+          "chipGone": true
+        },
+        "recreate": {
+          "slots": [
+            {
+              "label": "session-2",
+              "chatId": "sc-1787450950005-1",
+              "title": "",
+              "focused": true
+            }
+          ],
+          "chipBack": true
+        }
+      },
+      "engine": "0.3.240"
+    },
+    "bg": {
+      "checks": {
+        "busyBeforeSwitch": true,
+        "switchedWhileBusy": true,
+        "sideClean": true,
+        "tailKept": true,
+        "aiMsgs": [
+          "BGDONE"
+        ],
+        "chatEv": {
+          "n": 8,
+          "ids": [
+            "c-run"
+          ]
+        }
+      },
+      "engine": "0.3.240"
+    },
+    "queue": {
+      "checks": {
+        "queued": [
+          "QOWNER-ALPHA",
+          "QOWNER-BETA"
+        ],
+        "sideQueued": 0,
+        "restoredQueue": {
+          "queued": [
+            "QOWNER-ALPHA",
+            "QOWNER-BETA"
+          ],
+          "backQ": [
+            "QOWNER-ALPHA",
+            "QOWNER-BETA"
+          ],
+          "firedAway": []
+        },
+        "sideMsgs": [],
+        "home": {
+          "users": [
+            "Count from 1 to 300, one number per line",
+            "QOWNER-ALPHA",
+            "QOWNER-BETA"
+          ],
+          "left": 0,
+          "i1": 1,
+          "i2": 2
+        },
+        "aiMsgs": 3
+      },
+      "engine": "0.3.240"
+    }
+  },
+  "findings": [],
+  "fixture": {
+    "panels": 6,
+    "itemsPerPanel": 6,
+    "totalItems": 36
+  },
+  "pass": true
+}

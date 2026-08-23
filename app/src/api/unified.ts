@@ -19,19 +19,35 @@ const CHAT_RUN = 'chat:run'
 const CHAT_RUN_STATE = 'chat:run-state'
 const CHAT_STATUS = 'chat:status'
 const CHAT_RESPOND_DIALOG = 'chat:respond-dialog'
+const CHAT_QUEUE_MUTATE = 'chat:queue-mutate'
+const CHAT_WINDOWS = 'chat:windows'
+const WIN_CHAT_CLOSE = 'win:chat-close'
+const WIN_CHAT_FOCUS = 'win:chat-focus'
+const WIN_CHAT_LIST = 'win:chat-list'
 
 let lastActive = ''
 
-/** 이 창의 구독 하나 — `listen()`이 비동기라 등록 전 해지도 안전하게 접는다. */
-function sub<T>(channel: string, cb: (payload: T) => void): () => void {
+/**
+ * 이 창의 구독 하나 — `listen()`이 비동기라 등록 전 해지도 안전하게 접는다.
+ *
+ * `onReady`는 **네이티브 리스너가 실제로 붙은 뒤** 한 번 불린다. 스냅샷 따라잡기를
+ * 그 안에서 해야 레이스가 사라진다(§R3 3): 등록 전에 나간 REPLACE는 따라잡기가 줍고,
+ * 등록 후에 나간 REPLACE는 리스너가 받는다 — 두 구간 사이에 틈이 없다. 구독과 동시에
+ * 따라잡기를 쏘면 그 사이에 나간 REPLACE를 **둘 다 놓친다**.
+ */
+function sub<T>(channel: string, cb: (payload: T) => void, onReady?: () => void): () => void {
   let dead = false
   let off: (() => void) | undefined
   void listen<T>(channel, (e) => cb(e.payload))
     .then((f) => {
-      if (dead) f()
-      else off = f
+      if (dead) return f()
+      off = f
+      onReady?.()
     })
-    .catch(() => {})
+    .catch(() => {
+      // 등록 자체가 실패해도 따라잡기는 돌려야 한다 — 한 장이라도 그리는 편이 낫다
+      if (!dead) onReady?.()
+    })
   return () => {
     dead = true
     off?.()
@@ -110,12 +126,84 @@ export function onChatRunState(cb: (p: RunStateWire) => void): () => void {
 /**
  * 전 채팅 경량 상태 REPLACE(§4.3). **F12 주의**: `engine::boot()`의 첫 방출은 창이
  * 생기기 전에 나가고 전이가 없으면 다시 안 온다 — 구독만 하면 첫 그림이 빈다.
- * 구독자는 반드시 `chats:get`의 `statuses`로 한 번 따라잡아야 한다(App이 그렇게 한다).
+ *
+ * ★ R3 — 따라잡기는 `onReady`(리스너가 붙은 뒤)에서 한다. R2는 구독과 **동시에**
+ * `chats:get`을 쏘았는데, `listen()` 등록이 끝나기 전에 도착한 REPLACE는 리스너도
+ * 못 받고 따라잡기 응답보다 늦게 오면 따라잡기도 못 준다 — 그 창이 레이스였다.
  */
-export function onChatStatus(cb: (rows: ChatStatusLite[]) => void): () => void {
-  return sub<unknown>(CHAT_STATUS, (rows) => {
-    if (Array.isArray(rows)) cb(rows as ChatStatusLite[])
-  })
+export function onChatStatus(cb: (rows: ChatStatusLite[]) => void, onReady?: () => void): () => void {
+  return sub<unknown>(
+    CHAT_STATUS,
+    (rows) => {
+      if (Array.isArray(rows)) cb(rows as ChatStatusLite[])
+    },
+    onReady
+  )
+}
+
+/**
+ * ★ R3 — `chat:queue-mutate {op:'resume'}`. **`ready` 대기표를 사용자가 눌러 소진한다**
+ * (스펙 ⑤ 후반부 · 배선 R3 §R3.3 B4에서 실증된 자리). 화면 밖 채팅은 엔진이 `ready`만
+ * 켜고 멈춰 있으므로(`auto_resume=false`), 이 채널이 그 대기표의 **유일한 출구**다.
+ * 누른 것 자체가 "이 채팅은 이제 보고 있다"이므로 엔진은 자동 재개도 함께 켠다.
+ *
+ * 되돌리는 값: 엔진이 실제로 소진했으면 true(거부 verdict면 false).
+ */
+export async function resumeHold(chatId: string): Promise<boolean> {
+  if (!chatId) return false
+  try {
+    const v = (await invoke('ipc_call', {
+      channel: CHAT_QUEUE_MUTATE,
+      payload: [{ chatId, op: 'resume' }]
+    })) as { kind?: string; __unimplemented?: boolean } | null
+    if (!v || v.__unimplemented) return false
+    return v.kind === 'accepted'
+  } catch {
+    return false
+  }
+}
+
+/**
+ * ★ R3 — 창 자리 목록 REPLACE(`chat:windows`)와 4채널(`win:chat-*`).
+ *
+ * 2.6.2의 `session-wins:*`와 **공존**하지만 의미가 하나 정반대다(배선 R3 §R3.4):
+ *   `session-wins:close` = 대화 **삭제** · `win:chat-close` = **창만** 닫기.
+ * 통합 모델("자리는 뷰, 대화는 접힐 뿐 사라지지 않는다")의 닫기는 뒤쪽이다.
+ */
+export interface WindowSlot {
+  label: string
+  chatId: string
+  title: string
+  focused: boolean
+}
+function asSlots(v: unknown): WindowSlot[] {
+  return Array.isArray(v)
+    ? (v.filter((x) => x && typeof (x as WindowSlot).chatId === 'string') as WindowSlot[])
+    : []
+}
+export function onChatWindows(cb: (slots: WindowSlot[]) => void, onReady?: () => void): () => void {
+  return sub<unknown>(CHAT_WINDOWS, (v) => cb(asSlots(v)), onReady)
+}
+async function winChat(channel: string, payload: unknown[]): Promise<unknown> {
+  try {
+    return await invoke('ipc_call', { channel, payload })
+  } catch {
+    return null
+  }
+}
+/** 열려 있는 창 자리 전부(요청/응답 — 구독 레이스의 따라잡기용). */
+export async function listChatWindows(): Promise<WindowSlot[]> {
+  return asSlots(await winChat(WIN_CHAT_LIST, []))
+}
+/** 그 대화의 창을 앞으로 — **창이 없으면 되만든다**(닫힌 자리 클릭의 착지점). */
+export async function focusChatWindow(chatId: string): Promise<WindowSlot[]> {
+  if (!chatId) return []
+  return asSlots(await winChat(WIN_CHAT_FOCUS, [{ chatId }]))
+}
+/** 창만 닫는다 — 대화는 목록에 남는다(삭제가 아니다). */
+export async function closeChatWindow(chatId: string): Promise<boolean> {
+  if (!chatId) return false
+  return (await winChat(WIN_CHAT_CLOSE, [{ chatId }])) === true
 }
 
 /**

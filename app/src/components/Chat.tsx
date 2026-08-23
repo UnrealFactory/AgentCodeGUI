@@ -28,6 +28,8 @@ import type {
 import { t, useLang } from '../lib/i18n'
 import { sameCwd, type ThreadItem } from '../store/session'
 import { resumeDelayMs, type LimitHold } from '../lib/limitResume'
+import { noteLanding, putAnchor, takeAnchor } from '../lib/threadAnchor'
+import type { EngineHold } from '../lib/resumeOwner'
 import { settleText, useSettledReason } from '../lib/settled'
 import { getPref, setPref } from '../lib/prefs'
 import { loadRecentDirs, loadFavDirs, toggleFavDir, removeRecentDir } from '../lib/recentDirs'
@@ -1972,6 +1974,17 @@ export function useThreadFollow(scrollEl: HTMLElement | null, busy: boolean) {
   const pin = useCallback(() => {
     stickRef.current = true
   }, [])
+  // ★ 3.0 M-UX R3 — 따라가기만 푼다(위치는 안 건드린다). 앵커 복원이 쓴다: 마운트
+  // 직후의 래치는 true라, 풀지 않으면 `snapIfStuck`과 스트리밍 rAF가 복원한 위치를
+  // 곧바로 바닥으로 도로 끌어내린다. `scrollTop()`(맨 위로)과 달리 이동이 없다.
+  const unpin = useCallback(() => {
+    stickRef.current = false
+    lastWheelUpRef.current = performance.now() // 바닥 근처 복원이 즉시 재고정되지 않게
+  }, [])
+  // 래치가 켜져 있나 — 「바닥을 따라가는 중」의 **유일한 진실**. 앵커 훅의 바닥 모드가
+  // 사용자 의사를 이 값으로 읽는다: scrollTop 비교로는 못 읽는다(브라우저 scroll
+  // anchoring이 위쪽 내용 크기 변화를 스스로 보정하며 scrollTop을 움직인다 — 실측 147px).
+  const isStuck = useCallback(() => stickRef.current, [])
   // 채팅 전환/열기 — 항상 바닥부터 (호출측의 메시지 로드 effect보다 먼저 실행되게 배치)
   const reset = useCallback(() => {
     stickRef.current = true
@@ -1992,7 +2005,7 @@ export function useThreadFollow(scrollEl: HTMLElement | null, busy: boolean) {
     lastWheelUpRef.current = performance.now()
     scrollEl?.scrollTo({ top: 0, behavior: 'smooth' })
   }, [scrollEl])
-  return { showJump, pin, reset, snapIfStuck, jumpBottom, scrollTop }
+  return { showJump, pin, unpin, isStuck, reset, snapIfStuck, jumpBottom, scrollTop }
 }
 
 // ── 스레드 꼬리 윈도잉 ────────────────────────────────────────────
@@ -2085,8 +2098,192 @@ export function useThreadWindow(scrollEl: HTMLElement | null, total: number, res
   const reveal = useCallback((): void => {
     if (startRef.current > 0) shiftTo(0)
   }, [shiftTo])
+  // ★ 3.0 M-UX R3 — 앵커 복원용. 그 인덱스가 **렌더 범위 안에 들어오게** 넓힌다.
+  // 보정(compRef) 없이 넓히는 이유: 호출측이 곧바로 절대 위치를 잡으므로 보정이 겹치면
+  // 두 번 움직인다. 앵커 위로 STEP만큼 여유를 남긴다 — 앵커가 첫 항목이 되면 맨 위
+  // 센티널이 곧장 교차해 다음 프레임에 또 넓어지고, 그 연쇄가 복원과 경합한다.
+  const ensureIndex = useCallback((i: number): void => {
+    if (i < 0 || i >= startRef.current) return
+    compRef.current = null
+    setStart(Math.max(0, i - THREAD_STEP))
+  }, [])
 
-  return { start, sentinelRef: setSentEl, showAll, reveal }
+  return { start, sentinelRef: setSentEl, showAll, reveal, ensureIndex }
+}
+
+// ── 읽던 자리 앵커 — 접힘 ↔ 되올림에서 「읽던 문단」을 지킨다 ────────────────
+//
+// 계약(ux-chat-unify §2.5)은 *"스크롤은 창 로컬 휘발, 이관하지 않는다"* 이지만, 같은 창
+// 안의 접힘/되올림은 **이관이 아니라 복귀**다. R2가 안 고친 이유(§R2.7)는 "픽셀 오프셋을
+// 그대로 꽂으면 다른 지점에 착지한다"였고, 그 진단은 옳다 — 그래서 픽셀이 아니라
+// **메시지 id**로 잡는다(lib/threadAnchor.ts의 주석이 근거 수치를 든다).
+//
+// 좌표계 함정 하나: 패널 스크롤러에 CSS `zoom`이 걸려 있다(.8 ↔ 1). `getBoundingClientRect`
+// 는 zoom이 적용된 **시각 px**를, `scrollTop`은 스크롤러 **로컬 px**를 쓴다. 둘을 그냥
+// 더하면 zoom 배율만큼 어긋난다. 여기서는 변환 계수를 가정하지 않고 **직전 패스의 실측**
+// (움직인 로컬 px ↔ 움직인 시각 px)으로 자기 교정한다 — 첫 패스만 `rect.height/clientHeight`
+// 를 추정값으로 쓴다.
+//
+// 함정 둘 — **마운트 직후의 높이는 거짓말이다.** `.thread > .msg`에 `content-visibility:auto`
+// + `contain-intrinsic-size:auto 120px`가 걸려 있어(styles.css), 아직 한 번도 그려지지
+// 않은 메시지는 120px짜리 자리표시자로 계산된다. 실측: **같은 패널·같은 폭**인데
+// `scrollHeight` 6962 → 6687(275px)로 뒤늦게 줄었다. 한 프레임에 앵커를 맞춰 놓고 손을
+// 떼면 그 275px이 앵커를 화면 밖으로 밀어낸다(1차 실행에서 실제로 밟았다). 그래서 착지는
+// 한 번이 아니라 **정착 창(SETTLE_MS) 동안 유지**다 — 사용자가 손대는 순간 즉시 물러난다.
+const ANCHOR_TOL_PX = 2 // 이 안쪽이면 제자리
+const SETTLE_MS = 4000 // 마운트 후 "아직 자리를 잡는 중"으로 보는 창(위 함정 둘)
+
+/** `.thread` 자식 중 이 메시지 인덱스가 그리는 엘리먼트. 첫 자식이 센티널일 수 있다. */
+function threadChildAt(threadEl: Element, start: number, idx: number): HTMLElement | null {
+  const sent = start > 0 ? 1 : 0
+  const el = threadEl.children[sent + (idx - start)]
+  return el instanceof HTMLElement ? el : null
+}
+
+export function useThreadAnchor(o: {
+  /** 자리 정체성(`chan(sessionId, slot)`). 빈 문자열이면 비활성 */
+  anchorKey: string
+  scrollEl: HTMLElement | null
+  messages: { id: string }[]
+  start: number
+  ensureIndex: (i: number) => void
+  unpin: () => void
+  /** 팔로우 래치가 켜져 있나 — 바닥 모드의 유일한 사용자 의사 신호 */
+  isStuck: () => boolean
+}): void {
+  const ref = useRef(o)
+  ref.current = o
+  // id=null → **바닥 모드**(앵커 없음 = 접을 때 바닥이었다 · 첫 마운트). 팔로우 래치가
+  // 마운트에서 한 번 바닥으로 놓지만, 위 함정 둘 때문에 그 뒤 높이가 자라 바닥에서
+  // 밀려난다(실측 147px). 정착 창 동안 바닥에 붙여 두는 것이 래치의 뜻 그대로다.
+  const pend = useRef<{ id: string | null; off: number; factor: number; set: number; until: number } | null>(null)
+
+  const threadOf = (sc: HTMLElement): Element | null => sc.querySelector(':scope > .thread')
+  const stop = useCallback((): void => {
+    pend.current = null
+  }, [])
+
+  const tick = useCallback((): void => {
+    const p = pend.current
+    const { scrollEl: sc, messages, start, anchorKey } = ref.current
+    if (!p || !sc || !sc.isConnected) return stop()
+    if (performance.now() > p.until) return stop()
+    const th = threadOf(sc)
+    if (!th) return // 아직 스레드가 없다(빈 자리) — 다음 신호를 기다린다
+    const max = Math.max(0, sc.scrollHeight - sc.clientHeight)
+    if (p.id === null) {
+      // 바닥 모드 — 손을 떼는 신호는 두 가지이고, **`scrollTop`이 같은지**는 그중에 없다.
+      //  ① 팔로우 래치가 풀렸다(휠 업·스크롤바 드래그) = 사용자가 위를 읽겠다고 했다.
+      //  ② scrollTop이 **줄었다** = 문서 위쪽으로 갔다 = 역시 사용자다.
+      // 반대로 scrollTop이 **늘어난** 것은 브라우저 scroll anchoring이 위쪽 내용의
+      // 실측 높이 반영을 보정한 것이다(실측 147px). 그걸 사용자 이동으로 오독하면
+      // 바닥 유지가 첫 리플로에서 끊긴다 — 1차 실행에서 정확히 그랬다.
+      if (!ref.current.isStuck() || (p.set >= 0 && sc.scrollTop < p.set - ANCHOR_TOL_PX)) return stop()
+      if (Math.abs(sc.scrollTop - max) > ANCHOR_TOL_PX) sc.scrollTop = max
+      p.set = sc.scrollTop
+      return
+    }
+    // 앵커 모드 — 여기서는 scrollTop이 움직였다는 것이 곧 사용자의 이동이다(래치는
+    // 이미 풀었고, anchoring 보정은 앵커를 제자리에 두므로 다음 패스가 no-op이다)
+    if (p.set >= 0 && Math.abs(sc.scrollTop - p.set) > ANCHOR_TOL_PX) return stop()
+    const idx = messages.findIndex((m) => m.id === p.id)
+    if (idx < 0) return stop() // 그 메시지가 사라졌다(/clear·다른 대화) — 앵커를 버린다
+    if (idx < start) return ref.current.ensureIndex(idx) // 윈도 밖 — 넓히고 다음 커밋에 다시
+    const el = threadChildAt(th, start, idx)
+    if (!el) return stop()
+    ref.current.unpin()
+    const base = sc.getBoundingClientRect().top
+    const cur = el.getBoundingClientRect().top - base
+    const err = cur - p.off
+    let got = cur
+    if (Math.abs(err) > ANCHOR_TOL_PX) {
+      const guess = sc.getBoundingClientRect().height / Math.max(1, sc.clientHeight)
+      const f = p.factor > 0.05 ? p.factor : guess > 0.05 ? guess : 1
+      const before = sc.scrollTop
+      sc.scrollTop = Math.max(0, Math.min(max, before + err / f))
+      const moved = sc.scrollTop - before
+      if (Math.abs(moved) > 0.5) {
+        // 실측 계수 갱신 — zoom 규약을 몰라도 다음 패스가 정확해진다
+        got = el.getBoundingClientRect().top - base
+        const shifted = cur - got
+        if (Math.abs(shifted) > 0.5) p.factor = shifted / moved
+      }
+    }
+    p.set = sc.scrollTop
+    noteLanding(anchorKey, { id: p.id, want: p.off, got, top: sc.scrollTop, at: Date.now() })
+  }, [stop])
+
+  // ── 복원 — 스크롤러가 붙는 순간(=이 자리에 다시 그려졌다) ─────────────────
+  //
+  // **passive effect**여야 한다: `useThreadFollow`의 마운트 effect가 `scrollTop`을
+  // 바닥으로 놓는데(래치 초기값 true), layout effect로 먼저 잡으면 그 뒤에 덮인다.
+  // 호출 순서상 이 훅이 뒤라 여기 effect가 나중에 돈다 — 그래서 이쪽이 최종값이다.
+  //
+  // 유지는 **rAF 루프가 아니라 ResizeObserver**다. 정착이 언제 끝나는지는 시간이 아니라
+  // 사건이고(내용 높이가 더 안 바뀌면 끝이다), 매 프레임 도는 루프는 패널 6개가 한꺼번에
+  // 마운트되는 부팅에서 그대로 비용이 된다. 유휴 비용 0 · 자라는 동안만 깨어난다.
+  const doneRef = useRef<HTMLElement | null>(null)
+  useEffect(() => {
+    const sc = o.scrollEl
+    if (!sc || doneRef.current === sc) return
+    doneRef.current = sc
+    const a = o.anchorKey ? takeAnchor(o.anchorKey) : null
+    pend.current = { id: a?.id ?? null, off: a?.off ?? 0, factor: 0, set: -1, until: performance.now() + SETTLE_MS }
+    const th = threadOf(sc)
+    const ro = th && typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => tick()) : null
+    ro?.observe(th as Element)
+    // 사용자의 스크롤 한 번이면 끝 — tick이 스스로 쓴 값은 p.set와 같아 걸리지 않는다.
+    // (바닥 모드는 래치가 의사를 말하므로 여기서 끊지 않는다 — 위 tick의 주석 참고)
+    const onScroll = (): void => {
+      const p = pend.current
+      if (p?.id && p.set >= 0 && Math.abs(sc.scrollTop - p.set) > ANCHOR_TOL_PX) stop()
+    }
+    sc.addEventListener('scroll', onScroll, { passive: true })
+    tick()
+    const raf = requestAnimationFrame(() => tick()) // 첫 페인트 뒤 한 번 더(마크다운 첫 리플로)
+    return () => {
+      cancelAnimationFrame(raf)
+      ro?.disconnect()
+      sc.removeEventListener('scroll', onScroll)
+      stop()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [o.scrollEl, o.anchorKey])
+
+  // 윈도가 넓어진 커밋마다 이어서 시도 — `ensureIndex`가 만든 재렌더의 착지점.
+  // (ResizeObserver도 대개 같이 울리지만, 넓힌 내용이 앵커 위쪽이면 높이가 안 바뀔 수 있다.)
+  useLayoutEffect(() => {
+    if (pend.current) tick()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [o.start])
+
+  // ── 저장 — 이 자리가 화면에서 빠지는 순간(접힘·다이얼 축소·팝아웃) ──────────
+  // layout effect의 cleanup이라 DOM이 아직 문서에 붙어 있다(passive cleanup은 이미
+  // 떼어진 뒤라 rect가 전부 0이 된다 — 그러면 앵커가 쓰레기값으로 저장된다).
+  useLayoutEffect(() => {
+    return () => {
+      const { scrollEl: sc, messages, start, anchorKey } = ref.current
+      const th = sc && threadOf(sc)
+      if (!anchorKey || !sc || !th || !sc.isConnected) return
+      // 바닥에 붙어 있었으면 앵커를 안 남긴다 — 되올릴 때도 바닥이 옳다(팔로우 래치의 뜻)
+      if (sc.scrollHeight - sc.scrollTop - sc.clientHeight <= FOLLOW_BOTTOM_EPSILON) {
+        putAnchor(anchorKey, null)
+        return
+      }
+      const sent = start > 0 ? 1 : 0
+      const base = sc.getBoundingClientRect().top
+      for (let k = sent; k < th.children.length; k++) {
+        const el = th.children[k]
+        if (!(el instanceof HTMLElement)) continue
+        const r = el.getBoundingClientRect()
+        if (r.bottom - base <= 0) continue // 완전히 위로 지나간 항목
+        const m = messages[start + (k - sent)]
+        if (m) putAnchor(anchorKey, { id: m.id, off: r.top - base, at: Date.now() })
+        return
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 }
 
 // 표시 문자열이라 상수가 아니라 함수 — 모듈 스코프 t()는 import 시점 언어로 박제된다
@@ -2747,15 +2944,65 @@ function fmtEta(ms: number): string {
 // 막힌 대화와 재개 예정(카운트다운)을 보여준다. 토글 자체는 과금 picker(구독 →
 // '한도 소진 시 자동 이어서')에 있고, 카운트다운 갱신은 useLimitResume의 30초 틱이
 // 호스트를 재렌더해서 온다. 래퍼가 컴포저와 같은 폭 규칙(28px 사이드+880px 중앙)을 따른다.
-export function LimitHoldBar({ hold, enabled, onCancel }: { hold: LimitHold | null; enabled: boolean; onCancel: () => void }) {
+export function LimitHoldBar({
+  hold,
+  enabled,
+  onCancel,
+  managed,
+  onResume
+}: {
+  hold: LimitHold | null
+  enabled: boolean
+  onCancel: () => void
+  /** ★ R3 — **엔진이 든 대기표**(`chat:status` — 배선 R4의 `resumeOwner`/`autoResume`).
+   *  있으면 이쪽이 진실이고 렌더러 기계는 손을 뗀 상태다(useLimitResume `managed`).
+   *  재개 주체가 둘이면 전송이 두 번 나간다 — 화면도 한 벌만 그린다. */
+  managed?: EngineHold | null
+  /** ★ R3 — `chat:queue-mutate {op:'resume'}`. `ready`인데 안 나간 대기표의 유일한 출구. */
+  onResume?: () => void
+}) {
   // 카운트다운 재렌더 틱(30초) — 배너가 스스로 갱신한다. 호스트 재렌더에 기대면
   // memo 미니어처(멀티 PanelView) 안에서 숫자가 멎는다.
   const [, setTick] = useState(0)
+  const ticking = managed ? !managed.ready : !!hold && !hold.ready
   useEffect(() => {
-    if (!hold || hold.ready) return
+    if (!ticking) return
     const id = window.setInterval(() => setTick((v) => v + 1), 30_000)
     return () => window.clearInterval(id)
-  }, [hold])
+  }, [ticking])
+  // ── 엔진이 든 대기표 ────────────────────────────────────────────────────────
+  // `ready`인데 아직 안 나갔다 = 그 채팅의 자동 재개가 꺼져 있다(스펙 ⑤: 보이는 자리만
+  // 자동 — 엔진이 켜져 있었으면 이미 소진했다). 그래서 **그때만** 버튼을 준다 — 누를 게
+  // 없는데 버튼을 두면 침묵 no-op이다(M-LOGIC P7). ✕가 없는 이유도 같다: 엔진의 대기표를
+  // 취소하는 채널이 아직 없다(§R3 남은 것).
+  if (managed) {
+    const eta = managed.resetAt != null ? fmtEta(Math.max(0, managed.resetAt * 1000 - Date.now())) : ''
+    const press = managed.ready && managed.auto !== true
+    return (
+      <div className="limit-hold-wrap">
+        <div className={'limit-hold' + (managed.ready ? ' ready' : '')}>
+          <IconAlert size={13} />
+          <span className="lh-title">{t('사용 한도에 도달했어요', 'Usage limit reached')}</span>
+          <span className="lh-sub">
+            {managed.ready
+              ? press
+                ? t('한도가 풀렸어요 — 눌러서 이어가기', 'Limit lifted — click to continue')
+                : t('한도가 풀렸어요 — 곧 이어서 계속해요', 'Limit lifted — continuing shortly')
+              : eta
+                ? managed.auto === false
+                  ? t(`약 ${eta} 뒤 여기서 이어갈 수 있어요`, `You can continue here in ~${eta}`)
+                  : t(`약 ${eta} 뒤 자동으로 이어서 계속해요`, `Auto-continues in ~${eta}`)
+                : t('한도가 풀리기를 기다리는 중이에요 — 대기표는 엔진이 들고 있어요', 'Waiting for the limit to lift — the engine holds the ticket')}
+          </span>
+          {press && onResume && (
+            <button className="lh-go" onClick={onResume}>
+              {t('이어가기', 'Continue')}
+            </button>
+          )}
+        </div>
+      </div>
+    )
+  }
   if (!hold) return null
   return (
     <div className="limit-hold-wrap">
@@ -2895,7 +3142,15 @@ type WorkTab = 'todo' | 'sub' | 'sh' | 'file' | 'ctx'
 // 셸의 상태 문구 — stopped는 사유까지: 사용자가 누른 중지 / Claude(모델)가 끊음 /
 // 턴이 끝나며 CLI가 같이 정리함은 다른 사건이다 (sleep이 완료된 걸로 오해하기 쉬운 지점).
 // 인자 이름은 tk — i18n의 t()를 가리지 않게 (원래 t였다)
-function bgStatusLabel(tk: BgTask): string {
+//
+// ★ 3.0 M-UX R3 — 원장이 **사유와 함께** 정착시킨 셸이면 그 어휘가 이긴다(m-logic §5.2).
+// 셸의 원장 id는 SDK `task_id` 그대로라(`runtime.rs` `LiveItem::new(t.task_id …)`)
+// `settled[]`의 키와 같은 문자열이다. 왜 이 쪽이 더 정확한가:
+//   · `running`인데 정착 = 통지가 **영영 안 온다**(CLI가 밖에서 죽었다) → 스피너가 영원히 돈다
+//   · `stopped`의 옛 문구는 "Claude가 중지"로 뭉뚱그렸다 — 워치독·엔진 종료·앱 종료는 다른 사건이다
+// `completed`/`failed`는 통지가 실제로 온 것이라 원문을 유지한다.
+function bgStatusLabel(tk: BgTask, why: { label: string; sub: string } | null): string {
+  if (why && tk.status !== 'completed' && tk.status !== 'failed') return `${why.label} — ${why.sub}`
   switch (tk.status) {
     case 'running':
       return t('실행 중', 'Running')
@@ -2908,6 +3163,13 @@ function bgStatusLabel(tk: BgTask): string {
       if (tk.teardown) return t('턴 종료로 정리됨', 'Cleaned up when the turn ended')
       return t('중지됨 — Claude가 중지', 'Stopped — by Claude')
   }
+}
+/** 이 셸이 원장에서 사유와 함께 정착했나 — 정착 어휘를 쓸 때만 값이 있다(위 규칙과 같은 게이트). */
+function useBgSettled(tk: BgTask | null): { label: string; sub: string } | null {
+  const reason = useSettledReason(tk?.id)
+  if (!tk || !reason) return null
+  if (tk.status === 'completed' || tk.status === 'failed') return null
+  return settleText(reason)
 }
 
 // 색은 서브에이전트와 같은 문법 — 실행 중 스피너, 완료 초록 ✓, 중지/실패 빨간 ✕.
@@ -2927,9 +3189,12 @@ export function hasRunningBash(messages: ThreadItem[]): boolean {
 // 끝에 중지 알약. 행을 누르면 출력(라이브 테일 포함) 카드가 열린다.
 // prop 이름은 t 그대로, 안에서는 tk로 받는다 — i18n의 t()를 가리지 않게
 function BgTaskRow({ t: tk, onOpen, onStop }: { t: BgTask; onOpen: (id: string) => void; onStop?: (id: string) => void }) {
-  const running = tk.status === 'running'
+  // ★ R3 — 원장이 정착시켰으면 실행 중이 아니다: 스피너를 걷고 중지 버튼도 뗀다
+  // (누를 대상이 이미 없다 — 침묵 no-op 금지, M-LOGIC P7)
+  const why = useBgSettled(tk)
+  const running = tk.status === 'running' && !why
   // 완료=흐림+초록 ✓ · 실패/직접 중지=빨간 ✕ · 턴 정리는 중립 회색 ✕ (사고 아님)
-  const rowCls = tk.status === 'completed' ? ' done' : tk.status === 'failed' || (tk.status === 'stopped' && !tk.teardown) ? ' err' : ''
+  const rowCls = tk.status === 'completed' ? ' done' : tk.status === 'failed' || (tk.status === 'stopped' && !tk.teardown && !why) ? ' err' : ''
   return (
     <div className={'wb-prow act' + rowCls} onClick={() => onOpen(tk.id)}>
       <span className="ic">
@@ -2938,7 +3203,7 @@ function BgTaskRow({ t: tk, onOpen, onStop }: { t: BgTask; onOpen: (id: string) 
       <span className="grow">
         {tk.description || tk.id}
         <span className="sub">
-          {bgStatusLabel(tk)}
+          {bgStatusLabel(tk, why)}
           {/* 요약이 설명과 같은 문장으로 오는 경우(중지 통지)가 있어 중복이면 생략 */}
           {tk.status !== 'running' && tk.summary && tk.summary !== tk.description ? ` — ${tk.summary}` : ''}
         </span>
@@ -2961,7 +3226,15 @@ function BgTaskRow({ t: tk, onOpen, onStop }: { t: BgTask; onOpen: (id: string) 
 // 셸 카드 상태 배지 — PoC .stbadge: 실행 중=중립+스피너, 완료=초록, 실패/중지=빨강,
 // 턴 종료 정리는 중립(사고가 아니라 수명 종료)
 // 인자 이름은 tk — i18n의 t()를 가리지 않게 (원래 t였다)
-function bgBadge(tk: BgTask): ReactNode {
+function bgBadge(tk: BgTask, why: { label: string; sub: string } | null): ReactNode {
+  // ★ R3 — 원장 사유가 있으면 그 어휘가 배지다("정리됨"), 부제는 title로 (배지 칸이 좁다)
+  if (why)
+    return (
+      <span className="dc-badge n" title={`${why.label} — ${why.sub}`}>
+        <span className="d" />
+        {why.label}
+      </span>
+    )
   if (tk.status === 'running')
     return (
       <span className="dc-badge n">
@@ -3009,7 +3282,10 @@ function BgTaskModal({ t: tk, onStop, onClose }: { t: BgTask | null; onStop?: (i
   // 마우스 제스처(U/D 스크롤·DR 닫기)의 대상 카드 엘리먼트
   const [cardEl, setCardEl] = useState<HTMLDivElement | null>(null)
   const file = tk?.outputFile
-  const running = tk?.status === 'running'
+  // ★ R3 — 원장이 정착시켰으면 더는 실행 중이 아니다: 테일 폴링도, 「중지」 버튼도 멈춘다
+  // (CLI가 죽은 뒤 1.2초마다 없는 파일을 다시 읽던 자리)
+  const why = useBgSettled(tk)
+  const running = tk?.status === 'running' && !why
   useEffect(() => {
     if (!tk) return
     const onKey = (e: KeyboardEvent): void => {
@@ -3071,10 +3347,10 @@ function BgTaskModal({ t: tk, onStop, onClose }: { t: BgTask | null; onStop?: (i
           <div className="dc-tt">
             <span className="dc-title mono">{tk.description || tk.id}</span>
             <div className="dc-sub">
-              {t('백그라운드 셸', 'Background shell')} · {bgStatusLabel(tk)}
+              {t('백그라운드 셸', 'Background shell')} · {bgStatusLabel(tk, why)}
             </div>
           </div>
-          {bgBadge(tk)}
+          {bgBadge(tk, why)}
           {running && onStop && (
             <button className="dc-stop" onClick={() => onStop(tk.id)}>
               {t('중지', 'Stop')}

@@ -27,6 +27,7 @@ import {
   ChatFind,
   FolderPop,
   slashCommandsWithBtw,
+  useThreadAnchor,
   useThreadFollow,
   useThreadWindow,
   hasRunningBash,
@@ -287,6 +288,9 @@ function subFor(channel: string) {
 // 미니어처다. 패널 고유의 것은 헤더(번호·제목·폴더 칩·상태)와 패널 스코프 카드뿐.
 interface PanelViewProps {
   slot: number
+  /** ★ 3.0 M-UX R3 — 읽던 자리 앵커의 키(`chan(sessionId, slot)`). 자리 정체성이지
+   *  화면 위치가 아니다 — 6분할의 3번 칸에서 접혀 n1의 1번 칸으로 되올라와도 같은 키다. */
+  anchorKey: string
   num: number // 자리 번호(1‥N) — 그리드 위치 기준. 드래그로 옮기면 바뀐다
   /** ★ 3.0 M-UX — n1(IDE 크롬)에서 이 패널의 헤더가 TopBar를 겸한다: 다이얼·접힘 배지·
    *  탐색기 토글·창 컨트롤이 헤더 오른쪽에 얹힌다. 2‥6에서는 undefined(.ma-head가 그린다). */
@@ -343,6 +347,7 @@ interface PanelViewProps {
 
 export const PanelView = memo(function PanelView({
   slot,
+  anchorKey,
   num,
   topbar,
   meta,
@@ -492,6 +497,20 @@ export const PanelView = memo(function PanelView({
     follow.snapIfStuck()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.messages, state.thinkingText])
+  // ★ 3.0 M-UX R3 — 읽던 자리 앵커. 접히면(=이 패널이 언마운트되면) 뷰포트 맨 위
+  // **메시지 id**를 자리 키에 적어 두고, 되올라오면 그 메시지를 같은 오프셋에 놓는다.
+  // 크리틱 §2-⑧ `raise.scroll`의 정공법 — 픽셀 복원은 6분할↔n1에서 다른 문단에 착지한다.
+  // **호출 순서가 계약이다**: `useThreadFollow`보다 뒤여야 그 마운트 스냅(바닥 고정)을
+  // 이 훅의 effect가 뒤에서 바로잡는다.
+  useThreadAnchor({
+    anchorKey,
+    scrollEl: threadEl,
+    messages: state.messages,
+    start: twin.start,
+    ensureIndex: twin.ensureIndex,
+    unpin: follow.unpin,
+    isStuck: follow.isStuck
+  })
 
   // 작업 인디케이터는 '답변 본문 스트리밍 중'에만 숨긴다 — 사고·도구·침묵 구간엔 계속 띄운다
   const showWorking = !state.streaming && !state.pendingQuestion && !state.pendingCommand
@@ -2044,6 +2063,9 @@ function ActiveSession({
       <PanelView
         key={slot}
         slot={slot}
+        // ★ R3 — 읽던 자리 앵커의 키. 「크게 보기」는 같은 대화가 다른 껍데기로 옮겨
+        // 가는 것이라 키를 갈라 둔다(그리드 자리의 앵커를 카드가 소비하면 안 된다).
+        anchorKey={chan(sessionId, slot) + (expanded ? '::exp' : '')}
         num={visibleSlots.indexOf(slot) + 1}
         // ★ n1(IDE 크롬)에서는 이 패널의 헤더가 곧 TopBar다 — 다이얼·접힘 배지·탐색기
         // 토글·창 컨트롤이 여기 얹힌다(줄을 하나 더 쌓지 않는다, §2.1)

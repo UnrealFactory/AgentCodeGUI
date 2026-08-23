@@ -15,6 +15,8 @@
  *   node scripts/poc-dial.mjs --only=dial    # 1↔6↔1 왕복만
  *   node scripts/poc-dial.mjs --only=active  # chats:set-active 즉시성만
  *   node scripts/poc-dial.mjs --only=queue   # ★ R2 예약 큐 소유권 (실 CLI 3턴)
+ *   node scripts/poc-dial.mjs --only=raise   # ★ R3 읽던 자리 앵커 복원 (엔진 0턴)
+ *   node scripts/poc-dial.mjs --only=own     # ★ R3 재개 소유권 + 창 자리 UI (실 CLI 1턴)
  *   node scripts/poc-dial.mjs --keep         # 홈 보존(사후 조사용)
  *
  * ── 안전 규칙 (사용자 실앱이 떠 있다) ───────────────────────────────────────
@@ -36,7 +38,10 @@ const only = (args.find((a) => a.startsWith('--only=')) ?? '').split('=')[1] || 
 const KEEP = args.includes('--keep')
 const EXE = path.join(REPO, 'target', 'release', 'agentcodegui.exe')
 const HOME = path.join(REPO, '.poc-home-dial')
-const OUT = path.join(REPO, 'docs', 'critic', 'm-ux-r1-dial.json')
+// ★ R3 — 산출 경로를 갈랐다(`m-ux-r1-dial.json` → `m-ux-r3-dial.json`). R1·R2 보고서가
+// 앞 파일의 수치를 인용하는데 이 하네스가 매 주행마다 덮으면 그 근거가 사라진다
+// (배선 R3/R4가 `m3-r{3,4}-live.json`으로 가른 것과 같은 규약).
+const OUT = path.join(REPO, 'docs', 'critic', 'm-ux-r3-dial.json')
 const APP_VERSION = '3.0.0-beta.1'
 const PORT = 9351
 
@@ -601,6 +606,427 @@ async function stepQueue() {
   }
 }
 
+// ── 5. ★ R3 — 읽던 자리 앵커 (`raise.scroll`의 정공법) ────────────────────────
+//
+// 크리틱 §2-⑧이 물은 것: **접었다 되올리면 읽던 위치가 돌아오는가.** R2는 "픽셀
+// 오프셋을 그대로 꽂으면 다른 지점에 착지한다"는 이유로 안 고쳤다(§R2.7) — 진단은
+// 옳다. 되올림은 대개 **크기가 다른 자리**로 가기 때문이다(6분할 3번 칸 → n1 전폭:
+// 같은 대화의 scrollHeight가 6962 → 4676, 스크롤러 zoom도 .8 → 1).
+//
+// 그래서 이 단계는 **두 축**으로 잰다. 둘을 안 가르면 실패도 성공도 해석이 안 된다:
+//
+//   A. 자리 크기가 **같은** 되올림(n3 안에서 3번 칸 → 1번 칸, `grid-template-columns:
+//      repeat(3, 1fr)`라 셀이 동일) — 여기서는 **픽셀까지** 같아야 한다.
+//   B. 자리 크기가 **다른** 되올림(6분할 → n1, 크리틱과 같은 축) — 여기서 같아야 하는
+//      것은 픽셀이 아니라 **읽던 문단**이다. 같은 메시지가 뷰포트 같은 오프셋에 있으면
+//      계약을 지킨 것이고, 그때 scrollTop은 반드시 다른 수가 된다(그 수도 함께 남긴다).
+//   C. 바닥에서 접었으면 되올림도 **바닥**(팔로우 래치의 뜻 — 앵커를 남기지 않는다).
+const RAISE_HELPERS = `(() => {
+  window.__panelTop = (n = 0) => {
+    const p = document.querySelectorAll('.ma-grid > .ma-panel')[n]
+    const sc = p && p.querySelector('.ma-p-thread')
+    const th = sc && sc.querySelector(':scope > .thread')
+    if (!sc || !th) return null
+    const base = sc.getBoundingClientRect().top
+    const kids = [...th.children]
+    const geo = {
+      top: Math.round(sc.scrollTop), h: Math.round(sc.scrollHeight), ch: Math.round(sc.clientHeight),
+      w: Math.round(sc.getBoundingClientRect().width),
+      zoom: +(sc.getBoundingClientRect().height / Math.max(1, sc.clientHeight)).toFixed(3),
+      msgs: th.querySelectorAll('.msg').length
+    }
+    for (let i = 0; i < kids.length; i++) {
+      const r = kids[i].getBoundingClientRect()
+      if (r.bottom - base > 0)
+        return { ...geo, i, off: Math.round(r.top - base), text: (kids[i].innerText || '').replace(/\\s+/g, ' ').trim().slice(0, 44) }
+    }
+    return { ...geo, i: -1, off: 0, text: '' }
+  }
+  window.__panelScroll = (n, frac) => {
+    const p = document.querySelectorAll('.ma-grid > .ma-panel')[n]
+    const sc = p && p.querySelector('.ma-p-thread')
+    if (!sc) return false
+    sc.scrollTop = Math.round((sc.scrollHeight - sc.clientHeight) * frac)
+    sc.dispatchEvent(new Event('scroll', { bubbles: true }))
+    return true
+  }
+  // 배지 클릭 → 팝오버는 **다음 커밋**에 뜬다(React state) — 같은 틱에서 행을 찾으면 없다
+  window.__foldOpen = () => { const b = document.querySelector('.ma-fold-badge'); if (!b) return 'no-badge'; b.click(); return 'ok' }
+  window.__foldPick = (needle) => {
+    const row = [...document.querySelectorAll('.ma-fold-row')].find((e) => (e.textContent || '').includes(needle))
+    if (!row) return 'no-row:' + document.querySelectorAll('.ma-fold-row').length
+    row.click()
+    return 'ok'
+  }
+  window.__anchors = () => (window.__ccgAnchors ? window.__ccgAnchors() : null)
+  window.__landings = () => (window.__ccgLandings ? window.__ccgLandings() : null)
+  return true
+})()`
+
+/** 접힘 배지 팝오버에서 그 대화를 1번 자리로 — 여는 것과 고르는 것은 다른 커밋이다. */
+async function raiseFolded(cdp, needle) {
+  const opened = await cdp.eval(`__foldOpen()`)
+  await sleep(350)
+  const picked = await cdp.eval(`__foldPick(${JSON.stringify(needle)})`)
+  return `${opened}/${picked}`
+}
+
+async function stepRaise() {
+  console.log('\n[raise] 접었다 되올리면 **읽던 문단**이 돌아오는가 (메시지 id 앵커)')
+  const s = (rep.steps.raise = { checks: {} })
+  const home = path.join(REPO, '.poc-home-dial-raise')
+  await rmHome(home)
+  // itemsPerPanel 30 — 스크롤이 실제로 생겨야 "읽던 위치"라는 축이 존재한다
+  makeMultiFixture(home, APP_VERSION, { panels: 6, itemsPerPanel: 30 })
+  const app = await bootAt(home, PORT + 3)
+  try {
+    await app.cdp.eval(`(() => { window.__c = (sel, n = 0) => { const e = document.querySelectorAll(sel)[n]; if (!e) return false; e.click(); return true }
+      window.__mdown = (sel, n = 0) => { const e = document.querySelectorAll(sel)[n]; if (!e) return false
+        e.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 })); return true }
+      return true })()`)
+    await app.cdp.eval(RAISE_HELPERS)
+    if (!(await waitFor(app.cdp, `__n('.ma-grid > .ma-panel') === 6`))) {
+      fail('raise.boot', '6자리 그리드로 부팅하지 못했다')
+      return
+    }
+    await sleep(2500) // 마크다운·하이라이트 리플로가 멎을 때까지 (여기서 재면 높이가 흔들린다)
+
+    // ── A. 자리 크기가 **같은** 되올림 (n3의 3번 칸 → 1번 칸) ────────────────
+    await app.cdp.eval(`__c('.ma-count-btn[data-count="3"]')`)
+    if (!(await waitFor(app.cdp, `__n('.ma-grid.n3 > .ma-panel') === 3`))) {
+      fail('raise.n3', '다이얼 3이 3자리 그리드를 만들지 못했다')
+      return
+    }
+    await sleep(900)
+    await app.cdp.eval(`__panelScroll(2, 0.42)`)
+    await sleep(1800)
+    const beforeA = await app.cdp.eval(`__panelTop(2)`)
+    s.checks.beforeA = beforeA
+    if (!beforeA || beforeA.top < 100) {
+      fail('raise.n3-scroll', '3번 칸을 중간까지 못 올렸다(스레드가 짧다?)', { beforeA })
+      return
+    }
+    // 3번 칸(벤치 패널 3)을 접힘으로 밀어낸다 — 접힌 자리 하나를 1번으로 올리면 된다
+    await app.cdp.eval(`__mdown('.ma-grid > .ma-panel', 0)`)
+    await sleep(150)
+    const pushed = await raiseFolded(app.cdp, '벤치 패널 4')
+    await sleep(900)
+    const visMid = await app.cdp.eval(`__txts('.ma-grid > .ma-panel .ma-p-title')`)
+    s.checks.pushed = { pushed, visMid }
+    if (visMid.includes('벤치 패널 3')) {
+      fail('raise.n3-push', '되올림이 3번 칸을 접힘으로 밀어내지 않았다', s.checks.pushed)
+      return
+    }
+    // 앵커가 실제로 **적혔는가** — 저장이 안 됐는데 복원만 보면 원인을 못 가른다
+    s.checks.anchors = await app.cdp.eval(`__anchors()`)
+    const anchored = Object.values(s.checks.anchors ?? {}).length > 0
+    if (!anchored) fail('raise.anchor-saved', '접힌 자리의 앵커가 저장되지 않았다', s.checks.anchors)
+    else ok('raise.anchor-saved', s.checks.anchors)
+    // 되올린다 → 1번 칸(같은 크기)
+    await raiseFolded(app.cdp, '벤치 패널 3')
+    await waitFor(app.cdp, `(__txts('.ma-grid > .ma-panel .ma-p-title')[0] || '') === '벤치 패널 3'`)
+    await sleep(2600)
+    const afterA = await app.cdp.eval(`__panelTop(0)`)
+    s.checks.afterA = afterA
+    if (!afterA) {
+      fail('raise.n3-measure', '되올린 자리를 못 쟀다')
+      return
+    }
+    // 계약의 저울은 **앵커 메시지의 상단 오프셋**이다(화면 위 "맨 위 문단"이 아니다).
+    // 왜: `.thread > .msg`의 content-visibility 때문에 **같은 메시지의 높이가 마운트마다
+    // 다르다** — 앵커가 계약대로 −163px에 놓였는데도 그 메시지가 163→147로 줄면 "맨 위
+    // 문단"은 다음 항목이 된다(1차 실행에서 이걸 실패로 찍었다). 착지 기록으로 잰다.
+    const landA = await app.cdp.eval(`__landings()`)
+    const savedA = Object.entries(s.checks.anchors ?? {})[0]
+    const lA = savedA ? (landA ?? {})[savedA[0]] : null
+    s.checks.landA = { saved: savedA, landed: lA }
+    if (!lA || lA.id !== savedA?.[1]?.id)
+      fail('raise.anchor-land', '되올린 자리가 저장해 둔 그 메시지로 착지하지 않았다', s.checks.landA)
+    else if (Math.abs(lA.got - lA.want) > 2)
+      fail('raise.anchor-land', '앵커 메시지가 저장 때와 다른 높이에 놓였다', s.checks.landA)
+    else ok('raise.anchor-land', { id: lA.id, want: Math.round(lA.want), got: Math.round(lA.got) })
+    // 같은 크기 자리이므로 **scrollTop 픽셀까지** 같아야 한다(크리틱과 같은 40px 허용치)
+    const dTop = Math.abs(afterA.top - beforeA.top)
+    s.checks.deltaA = { dTop, beforeTop: beforeA.top, afterTop: afterA.top, sameW: afterA.w === beforeA.w, sameCh: afterA.ch === beforeA.ch }
+    if (dTop >= 40)
+      fail('raise.same-pixel', '자리 크기가 같은데 스크롤 위치가 안 돌아왔다', { before: beforeA, after: afterA, dTop })
+    else ok('raise.same-pixel', s.checks.deltaA)
+
+    // ── B. 자리 크기가 **다른** 되올림 (6분할 → n1, 크리틱과 같은 축) ──────────
+    await app.cdp.eval(`__c('.ma-count-btn[data-count="6"]')`)
+    await waitFor(app.cdp, `__n('.ma-grid.n6 > .ma-panel') === 6`)
+    await sleep(1500)
+    await app.cdp.eval(`__panelScroll(2, 0.42)`)
+    await sleep(1800)
+    const beforeB = await app.cdp.eval(`__panelTop(2)`)
+    const titleB = (await app.cdp.eval(`__txts('.ma-grid > .ma-panel .ma-p-title')`))[2]
+    s.checks.beforeB = { ...beforeB, title: titleB }
+    // 3번 칸이 아닌 자리를 포커스한 뒤 1로 접는다 → 3번 칸이 접힘 집합으로 간다
+    await app.cdp.eval(`__mdown('.ma-grid > .ma-panel', 0)`)
+    await sleep(150)
+    await app.cdp.eval(`__c('.ma-count-btn[data-count="1"]')`)
+    await waitFor(app.cdp, `__n('.ma-grid.n1 > .ma-panel') === 1`)
+    await sleep(800)
+    await raiseFolded(app.cdp, titleB)
+    await waitFor(app.cdp, `(__txts('.ma-grid > .ma-panel .ma-p-title')[0] || '') === ${JSON.stringify(titleB)}`)
+    await sleep(2600)
+    const afterB = await app.cdp.eval(`__panelTop(0)`)
+    s.checks.afterB = afterB
+    if (!afterB || !beforeB) {
+      fail('raise.n1-measure', '6→n1 되올림을 못 쟀다', { beforeB, afterB })
+    } else {
+      // 계약은 **문단**이다. 픽셀은 자리 크기가 달라 반드시 달라진다 — 그 수도 남긴다.
+      s.checks.deltaB = {
+        dTop: Math.abs(afterB.top - beforeB.top),
+        dOff: Math.abs(afterB.off - beforeB.off),
+        geom: { before: { h: beforeB.h, ch: beforeB.ch, w: beforeB.w, zoom: beforeB.zoom }, after: { h: afterB.h, ch: afterB.ch, w: afterB.w, zoom: afterB.zoom } }
+      }
+      const landB = await app.cdp.eval(`__landings()`)
+      const lB = Object.values(landB ?? {}).sort((x, y) => y.at - x.at)[0]
+      s.checks.landB = lB
+      if (!lB || Math.abs(lB.got - lB.want) > 2)
+        fail('raise.anchor-land-n1', '6→n1 되올림에서 앵커 메시지가 제 높이에 안 놓였다', { landB, deltaB: s.checks.deltaB })
+      else ok('raise.anchor-land-n1', { id: lB.id, want: Math.round(lB.want), got: Math.round(lB.got), delta: s.checks.deltaB })
+      if (afterB.msgs < beforeB.msgs)
+        fail('raise.thread-n1', '되올린 자리의 메시지 수가 줄었다 — 대화 손실', { before: beforeB.msgs, after: afterB.msgs })
+      else ok('raise.thread-n1', { msgs: afterB.msgs })
+    }
+
+    // ── C. 바닥에서 접었으면 되올림도 바닥 (앵커를 남기지 않는 계약) ───────────
+    await app.cdp.eval(`__c('.ma-count-btn[data-count="6"]')`)
+    await waitFor(app.cdp, `__n('.ma-grid.n6 > .ma-panel') === 6`)
+    await sleep(1200)
+    await app.cdp.eval(`__panelScroll(2, 1)`)
+    await sleep(1800)
+    await app.cdp.eval(`__panelScroll(2, 1)`)
+    await sleep(600)
+    const titleC = (await app.cdp.eval(`__txts('.ma-grid > .ma-panel .ma-p-title')`))[2]
+    await app.cdp.eval(`__mdown('.ma-grid > .ma-panel', 0)`)
+    await sleep(150)
+    await app.cdp.eval(`__c('.ma-count-btn[data-count="1"]')`)
+    await waitFor(app.cdp, `__n('.ma-grid.n1 > .ma-panel') === 1`)
+    await sleep(700)
+    await raiseFolded(app.cdp, titleC)
+    await waitFor(app.cdp, `(__txts('.ma-grid > .ma-panel .ma-p-title')[0] || '') === ${JSON.stringify(titleC)}`)
+    await sleep(2600)
+    const afterC = await app.cdp.eval(`__panelTop(0)`)
+    s.checks.afterC = afterC
+    const atBottom = afterC ? afterC.h - afterC.top - afterC.ch <= 60 : false
+    if (!atBottom) fail('raise.bottom-stays-bottom', '바닥에서 접었는데 되올림이 바닥이 아니다', afterC)
+    else ok('raise.bottom-stays-bottom', { top: afterC.top, h: afterC.h, ch: afterC.ch })
+  } finally {
+    app.cdp.close()
+    killTree(app.child.pid)
+    await sleep(1200)
+    if (!KEEP) await rmHome(home)
+  }
+}
+
+// ── 6. ★ R3 — 재개의 주인 · 창 자리 UI ────────────────────────────────────────
+//
+// 두 가지를 한 홈에서 잰다. 둘 다 "셸은 이미 내는데 읽는 화면이 없다"였던 자리다
+// (배선 R3 §R3.8의 렌더러 몫 R7·R8, M-UX R2 §R2.9의 이중 전송 접점).
+//
+//  ① **재개의 주인** — 엔진이 대기표를 들고 있으면(`chat:status`의 `resumeOwner:"engine"`)
+//     렌더러 기계는 손을 떼고, 배너는 **엔진의 표**를 그린다. 화면에서 그걸 가르는 표식이
+//     ✕(대기 취소)다: 렌더러 소유 배너에만 있다(엔진 대기표는 취소 채널이 없다).
+//     그리고 자동이 꺼진(화면 밖) 채팅은 `ready`가 켜져도 안 나가고, 목록의 「이어가기」
+//     알약이 유일한 출구다(`chat:queue-mutate {op:'resume'}`).
+//  ② **창 자리** — 「창」 칩의 진실은 `chat:windows`다. 창을 닫으면 칩만 사라지고 대화는
+//     목록에 남아야 하며(`win:chat-close`는 삭제가 아니다), 그 항목을 다시 누르면
+//     `win:chat-focus`가 창을 **되만든다**.
+//
+// 한도는 **합성**이다(실제로 한도에 걸릴 수 없다) — chats-v3의 `hold`를 직접 심는다.
+// 실 CLI는 1턴만 돈다(자동 발사가 실제로 엔진에 닿았다는 증거).
+const OWN_PROMPT = 'Reply with exactly: OWNRESUME'
+
+function seedOwnHome() {
+  const home = path.join(REPO, '.poc-home-dial-own')
+  const work = path.join(home, 'work')
+  const realHome = path.join(os.homedir(), '.agentcodegui')
+  fs.rmSync(home, { recursive: true, force: true })
+  fs.mkdirSync(work, { recursive: true })
+  const write = (p, v) => {
+    fs.mkdirSync(path.dirname(p), { recursive: true })
+    fs.writeFileSync(p, JSON.stringify(v))
+  }
+  const ver = JSON.parse(fs.readFileSync(path.join(realHome, 'config.json'), 'utf8')).activeVersion
+  write(path.join(home, 'config.json'), { activeVersion: ver })
+  spawnSync('cmd', ['/c', 'mklink', '/J', path.join(home, 'engines'), path.join(realHome, 'engines')], { encoding: 'utf8' })
+  const accounts = JSON.parse(fs.readFileSync(path.join(realHome, 'accounts.json'), 'utf8'))
+  const prefix = accounts.defaultEmail.replace('@', '_').replace('+', '-')
+  const srcDir = fs.readdirSync(path.join(realHome, 'accounts')).find((n) => n === prefix || n.startsWith(prefix + '-'))
+  if (!srcDir) throw new Error(`기본 계정 폴더 없음: ${prefix}`)
+  for (const f of ['.credentials.json', '.claude.json']) {
+    const s = path.join(realHome, 'accounts', srcDir, f)
+    if (fs.existsSync(s)) {
+      fs.mkdirSync(path.join(home, 'accounts', srcDir), { recursive: true })
+      fs.copyFileSync(s, path.join(home, 'accounts', srcDir, f))
+    }
+  }
+  write(path.join(home, 'accounts.json'), accounts)
+  // resetsAt은 **이미 지난** unix 초 — due_at(=resetsAt+90s)도 지났으므로 재검증 바닥값
+  // (부팅 후 90초)만 지나면 발화한다. 그 90초가 이 단계에서 가장 오래 걸리는 구간이다.
+  const past = Math.floor(Date.now() / 1000) - 600
+  const chat = (id, title) => ({
+    id,
+    title,
+    origin: 'chat',
+    custom: true,
+    cwd: work,
+    manualCwd: work,
+    refDirs: [],
+    identity: {
+      engine: { kind: 'claude', model: 'haiku', effort: 'minimal' },
+      billing: { kind: 'subscription', account: accounts.defaultEmail, dropEnvKey: false },
+      cwd: work,
+      addDirs: [],
+      mode: 'bypass',
+      tools: {}
+    },
+    picker: { model: 'haiku', effort: 'minimal', mode: 'bypass' },
+    queue: [OWN_PROMPT],
+    hold: { key: id, resetsAt: past, ready: false },
+    snapshot: { messages: [{ kind: 'msg', id: id + 'm0', role: 'user', text: title + ' 원본', animate: false, time: '오후 3:00' }] },
+    updatedAt: Date.now()
+  })
+  write(path.join(home, 'chats-v3', 'index.json'), {
+    version: 1,
+    order: ['c-see', 'c-hide'],
+    activeChatId: 'c-see',
+    chats: [{ id: 'c-see' }, { id: 'c-hide' }]
+  })
+  write(path.join(home, 'chats-v3', 'c-see.json'), chat('c-see', 'POC 보이는 채팅'))
+  write(path.join(home, 'chats-v3', 'c-hide.json'), chat('c-hide', 'POC 화면 밖 채팅'))
+  write(path.join(home, 'chats-v3', 'status.json'), { version: 1, statuses: {} })
+  write(path.join(home, 'chats-v3', '.migrated'), { at: Date.now() }) // 옛 폴더 재흡수 금지
+  // 자동 이어서 토글은 **켜 둔다** — 렌더러가 주인이었다면 스스로 쏠 조건이다.
+  write(path.join(home, 'ui-prefs.json'), { 'ui.lang': 'ko', 'workspace.mode': 'single', 'limitResume.on': true, 'whatsnew.seenVersion': APP_VERSION })
+  write(path.join(home, 'profile.json'), { nickname: 'poc' })
+  return { home, ver }
+}
+
+async function stepOwn() {
+  console.log('\n[own] 재개의 주인은 하나다 + 창 자리 칩은 chat:windows를 읽는다')
+  const s = (rep.steps.own = { checks: {} })
+  let seed
+  try {
+    seed = seedOwnHome()
+  } catch (e) {
+    fail('own.seed', `격리 홈을 못 만들었다: ${String(e.message ?? e)}`)
+    return
+  }
+  s.engine = seed.ver
+  const app = await bootAt(seed.home, PORT + 4)
+  const ipc = async (channel, payload) =>
+    await app.cdp.eval(
+      `window.__TAURI_INTERNALS__.invoke('ipc_call', { channel: ${JSON.stringify(channel)}, payload: ${JSON.stringify(payload)} })`,
+      { awaitPromise: true }
+    )
+  const dbg = async () => await ipc('engine:debug', [])
+  try {
+    if (!(await waitFor(app.cdp, `__txts('.sb-item .t .tx').filter((x)=>x.startsWith('POC')).length === 2`))) {
+      fail('own.boot', '두 채팅이 목록에 안 떴다', { titles: await app.cdp.eval(`__txts('.sb-item .t .tx')`) })
+      return
+    }
+    // ── ① 와이어에 관장 표시가 실렸는가(렌더러가 읽는 그 필드) ────────────────
+    const st = await ipc('chats:get', [])
+    s.checks.status = Object.fromEntries(
+      Object.entries((st?.statuses ?? {})).map(([k, v]) => [k, { resumeOwner: v.resumeOwner, autoResume: v.autoResume, hold: v.hold }])
+    )
+    const see = s.checks.status['c-see']
+    if (see?.resumeOwner !== 'engine')
+      fail('own.signal', '`chat:status`에 재개 관장 표시(resumeOwner)가 없다 — 렌더러 게이트가 설 근거가 없다', s.checks.status)
+    else ok('own.signal', s.checks.status)
+
+    // ── ② 배너가 **엔진의 표**를 그린다 — 렌더러 소유 배너에만 있는 ✕가 없어야 한다 ──
+    await waitFor(app.cdp, `__n('.limit-hold') === 1`)
+    s.checks.bar = await app.cdp.eval(
+      `(() => { const b = document.querySelector('.limit-hold'); if (!b) return null
+         return { sub: (b.querySelector('.lh-sub')||{}).textContent || '', x: b.querySelectorAll('.lh-x').length, go: b.querySelectorAll('.lh-go').length } })()`
+    )
+    if (!s.checks.bar) fail('own.bar', '대기표 배너가 안 떴다')
+    else if (s.checks.bar.x !== 0)
+      fail('own.bar-managed', '엔진이 관장하는데 렌더러 소유 배너(✕ 취소)가 떴다 — 재개 주체가 둘이다', s.checks.bar)
+    else ok('own.bar-managed', s.checks.bar)
+
+    // ── ③ 화면 밖 채팅: ready가 켜져도 **안 나가고**, 목록에 「이어가기」가 뜬다 ──
+    //    발화 바닥값(부팅 후 90초)을 기다린다 — 그 전에는 ready 자체가 안 켜진다.
+    const readyPill = await waitFor(app.cdp, `__n('.sb-item .sb-resume') >= 1`, { tries: 160, gap: 1000 })
+    s.checks.pill = await app.cdp.eval(
+      `[...document.querySelectorAll('.sb-item')].filter((e) => e.querySelector('.sb-resume')).map((e) => (e.querySelector('.t .tx')||{}).textContent || '')`
+    )
+    const d1 = await dbg()
+    s.checks.afterHold = (d1?.chats ?? []).map((c) => ({ id: c.chatId, spawns: c.spawns, hold: c.hold, auto: c.autoResume, queued: c.queued }))
+    if (!readyPill) fail('own.ready-pill', 'ready 대기표를 눌러 이어갈 자리가 목록에 안 생겼다', s.checks.afterHold)
+    else if (!s.checks.pill.some((t) => t.includes('화면 밖'))) fail('own.ready-pill', '「이어가기」가 엉뚱한 항목에 붙었다', s.checks)
+    else ok('own.ready-pill', s.checks.pill)
+    const hide1 = s.checks.afterHold.find((c) => c.id === 'c-hide')
+    if (hide1 && hide1.spawns > 0) fail('own.offscreen-silent', '화면 밖 채팅이 혼자 발사했다(스펙 ⑤ 위반)', hide1)
+    else ok('own.offscreen-silent', hide1)
+    // 보이는 채팅은 **엔진이** 자동으로 쐈다 — 렌더러가 아니라(렌더러는 managed로 멈춰 있다)
+    const see1 = s.checks.afterHold.find((c) => c.id === 'c-see')
+    if (!see1 || see1.spawns < 1) fail('own.auto-fired', '보이는 채팅의 예약이 안 나갔다', s.checks.afterHold)
+    else if (see1.spawns > 1) fail('own.auto-fired', `보이는 채팅이 ${see1.spawns}번 나갔다 — 재개 주체가 둘이다`, s.checks.afterHold)
+    else ok('own.auto-fired', { spawns: see1.spawns })
+
+    // ── ④ 「이어가기」를 누르면 그때 나간다 ──────────────────────────────────
+    await app.cdp.eval(
+      `(() => { const e = [...document.querySelectorAll('.sb-item')].find((x) => (x.textContent||'').includes('화면 밖'))
+         const b = e && e.querySelector('.sb-resume'); if (!b) return false; b.click(); return true })()`
+    )
+    await sleep(2500)
+    const d2 = await dbg()
+    s.checks.afterPress = (d2?.chats ?? []).map((c) => ({ id: c.chatId, spawns: c.spawns, hold: c.hold, auto: c.autoResume }))
+    const hide2 = s.checks.afterPress.find((c) => c.id === 'c-hide')
+    if (!hide2 || hide2.spawns < 1) fail('own.press-resume', '「이어가기」를 눌렀는데 안 나갔다 — 침묵 no-op', s.checks.afterPress)
+    else if (hide2.hold) fail('own.press-resume', '눌렀는데 대기표가 그대로 남았다', hide2)
+    else ok('own.press-resume', hide2)
+
+    // ── ⑤ 창 자리 — 「창」 칩은 chat:windows를 읽는다 ─────────────────────────
+    await app.cdp.eval(`window.api.openSessionWindow()`, { awaitPromise: true }).catch(() => {})
+    const chipUp = await waitFor(app.cdp, `__n('.sb-item .slotchip.win') === 1`, { tries: 120 })
+    const slots = await ipc('win:chat-list', [])
+    const winChatId = (slots ?? [])[0]?.chatId ?? ''
+    // **이름을 준다** = 그 추가 채팅이 디스크에 영속된다. 이름 없는 빈 대화는 창을 닫으면
+    // 목록에서도 사라지는 게 정상이라(2.6.2 파리티) 「창만 닫기」의 저울이 못 된다.
+    // 이름을 준다 = 그 추가 채팅이 목록에 **자기 이름으로** 남는다. 실패해도(빈 대화라
+    // 아직 디스크에 없을 수 있다) 무해하다 — 아래 판정은 이름이 아니라 **항목 수**를 본다.
+    if (winChatId) await ipc('session-wins:rename', [winChatId, 'POC 창 대화'])
+    await sleep(1200)
+    s.checks.winChip = await app.cdp.eval(`__txts('.sb-item .slotchip.win')`)
+    s.checks.slots = slots
+    if (!chipUp) fail('own.win-chip', '창을 열었는데 목록에 「창」 칩이 안 붙었다', { chip: s.checks.winChip, slots })
+    else ok('own.win-chip', { chip: s.checks.winChip, slots: (slots ?? []).map((w) => w.chatId) })
+    // 창만 닫기 — 칩은 사라지고 **대화는 목록에 남는다**(삭제가 아니다)
+    const before = await app.cdp.eval(`__txts('.sb-item .t .tx')`)
+    await ipc('win:chat-close', [{ chatId: winChatId }])
+    const chipGone = await waitFor(app.cdp, `__n('.sb-item .slotchip.win') === 0`, { tries: 120 })
+    await sleep(600)
+    const after = await app.cdp.eval(`__txts('.sb-item .t .tx')`)
+    s.checks.closeOnly = { before, after, chipGone }
+    if (!chipGone) fail('own.win-close-chip', '창을 닫았는데 「창」 칩이 남았다 — 목록이 거짓말을 한다', s.checks.closeOnly)
+    else if (after.length !== before.length) fail('own.win-close-keeps-chat', '창만 닫았는데 대화가 목록에서 사라졌다 — win:chat-close는 삭제가 아니다', s.checks.closeOnly)
+    else ok('own.win-close-only', { chats: after.length, kept: after })
+    // 되만들기 — 그 항목을 누르면 창이 다시 뜬다(win:chat-focus)
+    await app.cdp.eval(
+      `(() => { const e = [...document.querySelectorAll('.sb-item')].find((x) => !(x.textContent||'').includes('POC '))
+         if (!e) return false; e.click(); return true })()`
+    )
+    const chipBack = await waitFor(app.cdp, `__n('.sb-item .slotchip.win') === 1`, { tries: 120 })
+    s.checks.recreate = { slots: await ipc('win:chat-list', []), chipBack }
+    if (!chipBack) fail('own.win-recreate', '닫힌 창 항목을 눌러도 창이 되만들어지지 않는다', s.checks.recreate)
+    else ok('own.win-recreate', { slots: (s.checks.recreate.slots ?? []).map((w) => w.chatId) })
+  } catch (e) {
+    fail('own', String(e?.message ?? e))
+  } finally {
+    app.cdp.close()
+    killTree(app.child.pid)
+    await sleep(1200)
+    if (!KEEP) await rmHome(seed.home)
+  }
+}
+
 // ── main ─────────────────────────────────────────────────────────────────────
 ;(async () => {
   if (!fs.existsSync(EXE)) {
@@ -615,6 +1041,8 @@ async function stepQueue() {
   const want = (id) => only === 'all' || only.split(',').includes(id)
   if (want('dial')) await stepDial()
   if (want('active')) await stepActive()
+  if (want('raise')) await stepRaise()
+  if (want('own')) await stepOwn()
   if (want('bg')) await stepBg()
   if (want('queue')) await stepQueue()
 
