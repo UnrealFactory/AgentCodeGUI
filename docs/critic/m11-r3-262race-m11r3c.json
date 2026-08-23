@@ -1,0 +1,18 @@
+{
+  "tool": "critic-m11r3-262race",
+  "rounds": 150,
+  "isolatedHome": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-m11r3c-262-26960\\.agentcodegui",
+  "realHomeTouched": false,
+  "electronExit": 0,
+  "bgExit": 0,
+  "the262": {
+    "rounds": 150,
+    "removed": 150,
+    "resurrected": 2,
+    "homedir": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-m11r3c-262-26960",
+    "store": [
+      "mine@x"
+    ]
+  },
+  "bg": "[BGW] rounds=450 ok=450 clobbered=2 store=Some(\"bg-449\") folder=Some(\"bg-449\")"
+}
