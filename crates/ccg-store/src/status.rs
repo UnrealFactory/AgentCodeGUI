@@ -77,6 +77,14 @@ pub fn empty_lite(chat_id: &str) -> Value {
         "hold": Value::Null,
         "queued": 0,
         "unread": 0,          // ★ 3.0.0에서는 항상 0 (필드 예약)
+        // ★R4 — **재개의 주인이 누구인가**(m-logic P6 "행위자 하나").
+        // `autoResume`은 이 채팅의 한도 해제를 Rust가 스스로 쏠지(스펙 ⑤ 보이는 자리),
+        // `resumeOwner`는 *누가 관장하는가*다. 값이 `"engine"`인 동안 렌더러의
+        // `useLimitResume`은 **자기 발화를 꺼야 한다** — 안 그러면 한 번의 해제에 두 턴이
+        // 나간다(M-UX R2.9의 재현 축). 셸은 그 축을 Rust 쪽에서도 막지만(§7.3 나팔 억제),
+        // 렌더러가 아예 안 쏘는 것이 규약이다.
+        "autoResume": true,
+        "resumeOwner": "engine",
         "updatedAt": 0,
     })
 }
@@ -158,7 +166,7 @@ pub fn read_chat_lite(id: &str) -> Option<ChatLite> {
 /// 쪽은 여기다. 항목은 2.6.2 문자열 배열이거나 `{text}` 객체 배열이다(두 판 다 있다).
 /// 재장전에 필요한 것은 본문뿐이고, 정체성 스냅샷은 **다시 잡는다**(m-logic §5.8 —
 /// "복원이 아니라 재장전": 그 사이 폴더·계정이 바뀌었을 수 있다).
-pub fn read_chat_queue(id: &str) -> Vec<String> {
+pub fn read_chat_queue(id: &str) -> Vec<QueuedText> {
     let Ok(raw) = std::fs::read_to_string(super::chats_v3::chat_file(id)) else { return vec![] };
     let Ok(v) = serde_json::from_str::<Value>(&raw) else { return vec![] };
     v.get("queue")
@@ -166,17 +174,37 @@ pub fn read_chat_queue(id: &str) -> Vec<String> {
         .map(|a| {
             a.iter()
                 .filter_map(|q| match q {
-                    Value::String(s) => Some(s.clone()),
-                    _ => q
-                        .get("text")
-                        .or_else(|| q.get("prompt"))
-                        .and_then(Value::as_str)
-                        .map(str::to_string),
+                    Value::String(s) => Some(QueuedText { text: s.clone(), images: vec![] }),
+                    _ => {
+                        let text = q
+                            .get("text")
+                            .or_else(|| q.get("prompt"))
+                            .and_then(Value::as_str)
+                            .unwrap_or("")
+                            .to_string();
+                        // ★R4 — 첨부도 되살린다. R3까지는 본문만 읽어, 재시작 한 번에
+                        // 예약의 이미지가 사라졌다(M-UX R2.1 #3의 재시작 판).
+                        let images: Vec<String> = q
+                            .get("images")
+                            .or_else(|| q.get("attachments"))
+                            .and_then(Value::as_array)
+                            .map(|v| v.iter().filter_map(Value::as_str).map(str::to_string).collect())
+                            .unwrap_or_default();
+                        Some(QueuedText { text, images })
+                    }
                 })
-                .filter(|s| !s.trim().is_empty())
+                .filter(|q| !q.text.trim().is_empty() || !q.images.is_empty())
                 .collect()
         })
         .unwrap_or_default()
+}
+
+/// 디스크에 남은 예약 한 줄. 정체성 스냅샷은 **다시 잡는다**(재장전 규약)이므로
+/// 여기 없다 — 되살릴 값은 본문과 첨부뿐이다.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct QueuedText {
+    pub text: String,
+    pub images: Vec<String>,
 }
 
 /// **재장전 후보**(M-UX §4.3 / m-logic §5.8 부팅 경로 1단계) —
@@ -353,8 +381,31 @@ mod tests {
             "chats-v3/c9.json",
             &json!({ "id": "c9", "queue": ["문자열 항목", { "text": "객체 항목" }, { "text": "  " }] }).to_string(),
         );
-        assert_eq!(read_chat_queue("c9"), vec!["문자열 항목", "객체 항목"]);
+        let rows = read_chat_queue("c9");
+        assert_eq!(
+            rows.iter().map(|q| q.text.as_str()).collect::<Vec<_>>(),
+            vec!["문자열 항목", "객체 항목"]
+        );
         assert!(read_chat_queue("없는채팅").is_empty());
+    }
+
+    #[test]
+    fn queue_attachments_survive_a_restart() {
+        // ★R4 — 본문만 읽던 R3에서는 재시작 한 번에 예약의 이미지가 사라졌다.
+        let h = crate::testkit::temp_home("status-queue-img");
+        h.write(
+            "chats-v3/c10.json",
+            &json!({ "id": "c10", "queue": [
+                { "text": "이 그림 봐줘", "images": ["C:\\shot\\a.png"] },
+                { "text": "", "images": ["C:\\shot\\b.png"] }
+            ] })
+            .to_string(),
+        );
+        let rows = read_chat_queue("c10");
+        assert_eq!(rows.len(), 2, "본문이 비어도 첨부만 있으면 예약이다");
+        assert_eq!(rows[0].images, vec!["C:\\shot\\a.png".to_string()]);
+        assert_eq!(rows[1].text, "");
+        let _ = h;
     }
 
     #[test]

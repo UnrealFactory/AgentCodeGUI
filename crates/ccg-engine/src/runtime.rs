@@ -26,7 +26,8 @@ use crate::live::{
     ProbeSource, SettleReason, StreamGuard, SHELL_TURN_GRACE,
 };
 use crate::queue::{
-    drain_plan, LimitHold, OnDrift, QueueOrigin, QueueUndo, QueuedMessage, ThreadIntent,
+    drain_plan, LimitHold, OnDrift, QueueInput, QueueOp, QueueOrigin, QueueUndo, QueuedMessage,
+    ThreadIntent,
 };
 use crate::state::{command_cell, Cell as TCell, ResidentWhy, StateTag, StreamClosePolicy};
 use serde_json::{json, Value};
@@ -62,7 +63,9 @@ pub const STREAM_STALL_BACKSTOP: Millis = 90 * SEC;
 #[derive(Debug, Clone)]
 pub enum Cmd {
     Send { text: String },
-    Enqueue { text: String },
+    /// 예약(★R4 — 본문뿐이던 것이 `{text, images, picker}`가 됐다).
+    /// 상태에 따라 *지금 보낼지 세울지*가 갈리므로 명령표의 `enqueue` 행을 탄다.
+    Enqueue(QueueInput),
     Interrupt,
     StopAll,
     QueueRestore { token: String },
@@ -71,7 +74,9 @@ pub enum Cmd {
     BgBackground,
     IdentitySet { patch: RawIdentityPatch, policy: ApplyPolicy, op: PendingOp },
     IdentityRevert { to: u32 },
-    QueueMutate,
+    /// 큐 자체를 만지는 op(취소·재정렬·비움). R3까지는 인자 없는 **무동작**이었다
+    /// (M-UX R2.1 표 #2: `execute`의 `_ => verdict`).
+    QueueMutate(QueueOp),
     HoldCancel,
     Clear,
     SwitchChat,
@@ -87,7 +92,7 @@ impl Cmd {
     pub fn name(&self) -> &'static str {
         match self {
             Cmd::Send { .. } => "send",
-            Cmd::Enqueue { .. } => "enqueue",
+            Cmd::Enqueue(_) => "enqueue",
             Cmd::Interrupt => "interrupt",
             Cmd::StopAll => "stop_all",
             Cmd::QueueRestore { .. } => "queue.restore",
@@ -106,7 +111,7 @@ impl Cmd {
                 }
             }
             Cmd::IdentityRevert { .. } => "identity_revert",
-            Cmd::QueueMutate => "queue.mutate",
+            Cmd::QueueMutate(_) => "queue.mutate",
             Cmd::HoldCancel => "hold.cancel",
             Cmd::Clear => "clear",
             Cmd::SwitchChat => "switch_chat",
@@ -270,6 +275,22 @@ pub struct ChatRuntime<D: CliDriver> {
     /// 기본은 `true`다 — 라이브 경로(사용자가 지금 보고 있는 채팅에서 한도에 걸림)는
     /// 2.6.2와 같아야 하고, 재생 시나리오 전부가 그 동작을 잠그고 있다.
     auto_resume: bool,
+    /// **방금 스트림으로 나간 사용자 발화**(★R4 — 1회 소비).
+    ///
+    /// 엔진이 스스로 연 턴(예약 드레인 T16/T17/T27 · 한도 재개)에는 렌더러가 만든
+    /// 말풍선이 없다 — 답만 도착한다(M-UX R2.1 표 #4). 셸이 그 자리에 사용자 에코를
+    /// 그리려면 *원문*(첨부 노트가 접히기 **전** 값)과 첨부 목록이 필요하다.
+    last_echo: Option<SentEcho>,
+}
+
+/// 셸이 사용자 에코를 그리는 데 필요한 최소값.
+#[derive(Debug, Clone)]
+pub struct SentEcho {
+    pub run_id: RunId,
+    /// 사용자가 실제로 친 문장(첨부 노트 **없음**).
+    pub text: String,
+    pub images: Vec<String>,
+    pub origin: QueueOrigin,
 }
 
 /// 부팅 재장전이 실어 오는 한도 대기표(§5.8 2단계). 저장된 값은 이 둘뿐이고
@@ -334,6 +355,7 @@ impl<D: CliDriver> ChatRuntime<D> {
             sent_user_texts: vec![],
             staged_payloads: Default::default(),
             auto_resume: true,
+            last_echo: None,
         };
         rt.emit(Event::Identity {
             origin: RevisionOrigin::Default,
@@ -415,8 +437,21 @@ impl<D: CliDriver> ChatRuntime<D> {
     pub fn queue_texts(&self) -> Vec<String> {
         self.queue.iter().map(|m| m.text.clone()).collect()
     }
+    /// 큐 전문 — 셸이 `chat:queue` REPLACE에 **첨부·정체성 스냅샷까지** 실을 때 쓴다(★R4).
+    /// `queue_texts`만 있던 R3에서는 렌더러가 그 목록으로 자기 예약을 대체할 수 없었다.
+    pub fn queue_items(&self) -> impl Iterator<Item = &QueuedMessage> {
+        self.queue.iter()
+    }
     pub fn hold(&self) -> Option<&LimitHold> {
         self.hold.as_ref()
+    }
+    /// 지금 턴의 `RunId`(스트림·턴이 없으면 `None`).
+    pub fn run_id(&self) -> Option<RunId> {
+        self.stream.as_ref().and_then(|s| s.turn.as_ref().map(|t| t.run_id))
+    }
+    /// 방금 나간 사용자 발화를 **가져가며 비운다**(★R4 — 셸의 에코 1회 소비).
+    pub fn take_echo(&mut self) -> Option<SentEcho> {
+        self.last_echo.take()
     }
     pub fn auto_resume(&self) -> bool {
         self.auto_resume
@@ -434,13 +469,13 @@ impl<D: CliDriver> ChatRuntime<D> {
     /// **드레인하지 않는다.** 앱을 켜는 것은 "보내라"가 아니다 — 예약분은 큐에 그대로
     /// 서 있고, 나가는 계기는 ① 사용자의 다음 전송 ② 한도 해제(§7.3)뿐이다.
     /// (2.6.2도 재시작 직후 예약을 스스로 쏘지 않았다.)
-    pub fn reload_state(&mut self, queued: Vec<String>, hold: Option<ReloadHold>) {
+    pub fn reload_state(&mut self, queued: Vec<QueueInput>, hold: Option<ReloadHold>) {
         let now = self.sync_now();
-        for text in queued {
-            if text.is_empty() {
+        for q in queued {
+            if q.text.is_empty() && q.images.is_empty() {
                 continue;
             }
-            let m = self.make_queue_item(text, QueueOrigin::User, now);
+            let m = self.make_queue_item(q, QueueOrigin::User, now);
             self.queue.push_back(m);
         }
         if let Some(h) = hold {
@@ -451,6 +486,9 @@ impl<D: CliDriver> ChatRuntime<D> {
                 verified_at: None,
                 ready: h.ready,
                 armed_from_run: RunId(0),
+                // 재장전된 예약은 표와 **같은 순간**에 선다 — `>` 비교라 "표 뒤에 온
+                // 사용자 메시지"로 오인되지 않는다(그래야 §7.3의 재개 항목이 그대로 산다).
+                armed_at: now,
             });
         }
         self.broadcast_plan();
@@ -466,14 +504,47 @@ impl<D: CliDriver> ChatRuntime<D> {
         if !ready {
             return Verdict::Rejected("hold_not_ready");
         }
-        let now = self.sync_now();
-        let mut m = self.make_queue_item("이어서 진행해 주세요".into(), QueueOrigin::LimitResume, now);
-        m.on_drift = OnDrift::UseCurrent;
-        self.queue.push_front(m);
-        self.hold = None;
-        self.broadcast_plan();
+        self.consume_hold();
         self.drain_if_possible();
         Verdict::Accepted
+    }
+
+    /// 대기표 소진 — §7.3의 "`ready`가 되면 큐 head에 `origin:'limit_resume'` 항목을 삽입".
+    ///
+    /// **예외 하나(★R4 — 재개 단일 소유)**: 표가 걸린 **뒤에** 접수된 사용자 메시지가
+    /// 큐에 있으면 나팔을 넣지 않는다. 그 메시지가 이 채팅의 재개이기 때문이다.
+    ///
+    /// 왜 필요한가: 얼려 둔 렌더러에는 아직 `useLimitResume`이 살아 있고, 그것이 Rust보다
+    /// 먼저 발화하면 재개 프롬프트가 `chat:run`으로 들어와 **게이트에 주차**된다. 그 뒤
+    /// Rust가 표를 소진하며 나팔을 앞에 끼우면 *한 번의 해제에 두 턴*이 나간다
+    /// (M-UX R2.9가 적어 둔 재현 축: 한도 사망 → 재시작 → 리셋 도달 → 전송 1회인가 2회인가).
+    /// 표가 걸리기 **전에** 쌓인 예약(재생 #4의 "2"·"3")은 재개가 아니므로 규약 그대로다.
+    fn consume_hold(&mut self) {
+        let now = self.sync_now();
+        let armed_at = self.hold.as_ref().map(|h| h.armed_at).unwrap_or(0);
+        // 표가 걸린 뒤에 들어온 사용자 메시지 = 렌더러(또는 사용자)가 이미 건 재개.
+        let already = self
+            .queue
+            .iter()
+            .any(|m| m.origin == QueueOrigin::User && m.created_at > armed_at);
+        self.hold = None;
+        if already {
+            // 침묵 금지(D7) — 나팔을 삼킨 이유를 한 줄 남긴다.
+            self.emit(Event::Notice(
+                "사용 한도가 풀렸어요 — 대기 중에 걸어 둔 메시지로 이어서 보냅니다.".into(),
+            ));
+            self.broadcast_plan();
+            return;
+        }
+        // 재개 항목의 정체성 = **지금 값**(§7.3), onDrift=use_current.
+        let mut m = self.make_queue_item(
+            QueueInput::text("이어서 진행해 주세요"),
+            QueueOrigin::LimitResume,
+            now,
+        );
+        m.on_drift = OnDrift::UseCurrent;
+        self.queue.push_front(m);
+        self.broadcast_plan();
     }
 
     /// 드레인 게이트 — 대기표가 **열려 있는가**.
@@ -661,22 +732,8 @@ impl<D: CliDriver> ChatRuntime<D> {
     fn execute(&mut self, cmd: Cmd, verdict: Verdict) -> Verdict {
         let now = self.now();
         match cmd {
-            Cmd::Send { text } | Cmd::Enqueue { text } => match verdict {
-                Verdict::Accepted => {
-                    let m = self.make_queue_item(text, QueueOrigin::User, now);
-                    self.queue.push_back(m);
-                    self.broadcast_queue();
-                    self.drain_if_possible();
-                    Verdict::Accepted
-                }
-                Verdict::Queued => {
-                    let m = self.make_queue_item(text, QueueOrigin::User, now);
-                    self.queue.push_back(m);
-                    self.broadcast_queue();
-                    Verdict::Queued
-                }
-                v => v,
-            },
+            Cmd::Send { text } => self.accept_user_message(QueueInput::text(text), verdict, now),
+            Cmd::Enqueue(input) => self.accept_user_message(input, verdict, now),
             Cmd::Interrupt => {
                 if verdict != Verdict::Accepted {
                     return verdict;
@@ -770,25 +827,102 @@ impl<D: CliDriver> ChatRuntime<D> {
             }
             Cmd::Compact => {
                 if verdict == Verdict::Accepted {
-                    let m = self.make_queue_item("/compact".into(), QueueOrigin::User, now);
+                    let m = self.make_queue_item(QueueInput::text("/compact"), QueueOrigin::User, now);
                     self.queue.push_back(m);
                     self.drain_if_possible();
                 }
                 verdict
             }
+            // ★R4 — R3까지 이 명령은 **접수만 하고 아무것도 안 했다**(M-UX R2.1 #2).
+            //   드레인은 **어느 op도 돌리지 않는다**: 큐를 만졌다는 이유로 head가
+            //   그 자리에서 나가면 §7.4가 죽인 그 사고(되돌리기가 곧 전송)와 같은 모양이다.
+            Cmd::QueueMutate(op) => {
+                if verdict != Verdict::Accepted {
+                    return verdict;
+                }
+                match op {
+                    QueueOp::Remove { id } => {
+                        let before = self.queue.len();
+                        self.queue.retain(|m| m.id != id);
+                        if self.queue.len() == before {
+                            return Verdict::Rejected("no_item");
+                        }
+                        self.broadcast_plan();
+                        Verdict::Accepted
+                    }
+                    QueueOp::Reorder { ids } => {
+                        if ids.is_empty() {
+                            return Verdict::Noop;
+                        }
+                        let mut rest: Vec<QueuedMessage> = self.queue.drain(..).collect();
+                        let mut out: Vec<QueuedMessage> = Vec::with_capacity(rest.len());
+                        for want in &ids {
+                            if let Some(i) = rest.iter().position(|m| &m.id == want) {
+                                out.push(rest.remove(i));
+                            }
+                        }
+                        // 목록에 없던 항목은 **원래 순서대로 뒤에** 남는다 — 낡은 목록으로
+                        // 재정렬해도 예약이 증발하지 않는다.
+                        out.extend(rest);
+                        self.queue = out.into();
+                        self.broadcast_plan();
+                        Verdict::Accepted
+                    }
+                    QueueOp::Clear => {
+                        if self.queue.is_empty() && self.hold.is_none() {
+                            return Verdict::Noop;
+                        }
+                        self.clear_queue_with_undo();
+                        Verdict::Accepted
+                    }
+                    QueueOp::Noop => Verdict::Noop,
+                }
+            }
             _ => verdict,
         }
     }
 
-    fn make_queue_item(&mut self, text: String, origin: QueueOrigin, now: Millis) -> QueuedMessage {
+    /// `send`·`enqueue`의 공통 착지 — 큐에 세우고, 판정이 `Accepted`면 드레인까지 본다.
+    fn accept_user_message(&mut self, input: QueueInput, verdict: Verdict, now: Millis) -> Verdict {
+        match verdict {
+            Verdict::Accepted => {
+                let m = self.make_queue_item(input, QueueOrigin::User, now);
+                self.queue.push_back(m);
+                self.broadcast_queue();
+                self.drain_if_possible();
+                Verdict::Accepted
+            }
+            Verdict::Queued => {
+                let m = self.make_queue_item(input, QueueOrigin::User, now);
+                self.queue.push_back(m);
+                self.broadcast_queue();
+                Verdict::Queued
+            }
+            v => v,
+        }
+    }
+
+    fn make_queue_item(&mut self, input: QueueInput, origin: QueueOrigin, now: Millis) -> QueuedMessage {
         let id = format!("q{}", self.next_qid);
         self.next_qid += 1;
+        let QueueInput { text, images, picker } = input;
+        // 예약 시점의 picker → **이 항목만의** 정체성 스냅샷. 채팅의 정체성은 안 건드린다
+        // (그건 `Cmd::IdentitySet`의 몫이다 — 저자를 늘리지 않는다).
+        // 정규화가 실패하면(폴더 없음·계정 없음) 조용히 지금 값으로 떨어진다: 예약 하나가
+        // 정체성 오류로 사라지는 것보다 "보던 대로"에서 한 축 어긋나는 편이 낫다.
+        let (identity, identity_rev) = match picker.filter(|p| !p.is_empty()) {
+            Some(p) => match RunIdentity::normalize(self.identity_raw.patched(&p), &self.defaults) {
+                Ok(id) => (id, self.revision),
+                Err(_) => (self.identity.clone(), self.revision),
+            },
+            None => (self.identity.clone(), self.revision),
+        };
         QueuedMessage {
             id,
             text,
-            attachments: vec![],
-            identity: self.identity.clone(),
-            identity_rev: self.revision,
+            attachments: images,
+            identity,
+            identity_rev,
             thread: if self.thread.want_fresh {
                 ThreadIntent::Fresh
             } else {
@@ -1088,7 +1222,10 @@ impl<D: CliDriver> ChatRuntime<D> {
             config_dir,
             self.defaults.api_key.as_deref(),
         );
-        let _ = self.driver.spawn(&spec);
+        // ★R4(§R3.8-M) — **IO 오류를 삼키지 않는다.** R3까지 이 줄은 `let _ =` 였고,
+        //   `claude.exe`가 없거나 실행 권한이 없으면 아무 말 없이 `Starting`으로 들어가
+        //   **T3(20초)** 까지 침묵했다. 오류는 그 자리에서 이미 확정된 사실이다.
+        let spawn_err = self.driver.spawn(&spec).err();
         self.spawns += 1;
         self.emit(Event::Spawn {
             stream: sid,
@@ -1136,8 +1273,23 @@ impl<D: CliDriver> ChatRuntime<D> {
         // 관측 모델 기준선은 **스트림마다** 새로 잡는다(§6.2 미러는 프로세스 종속이다).
         self.observed_model = None;
         self.set_state("T1", StateTag::Starting, None);
+        if let Some(e) = spawn_err {
+            // 셀은 T3와 **같다**(`Starting → Terminating{SpawnFailed}`) — 계기만 다르다:
+            // 20초 무응답이 아니라 커널이 방금 거절했다. `Event::Exit{SpawnFailed}`가
+            // 셸의 `stream_closed`로 이어져 오류 말풍선 · 스피너 정착 · 컴포저 해제까지
+            // 간다(그 배선은 R3 §R3.1의 `error` 항목).
+            self.emit(Event::Notice(format!(
+                "엔진을 시작하지 못했어요 — {} ({e})",
+                self.cli_path.display()
+            )));
+            self.set_state("T3", StateTag::Terminating, None);
+            self.close_and_finish(CloseCause::SpawnFailed);
+            return;
+        }
         self.driver.send(initialize_request("init-1", None));
-        self.send_user(&m.text.clone());
+        let prompt = compose_prompt(&m);
+        self.note_echo(run_id, &m);
+        self.send_user(&prompt);
     }
 
     /// T16 — 같은 stdin에 주입. **새 `run_id`**(§3.5 발급 4지점 중 하나).
@@ -1150,8 +1302,20 @@ impl<D: CliDriver> ChatRuntime<D> {
             // 사용자가 **직접** 다음 턴을 시작했다 → 재주입 금지 표식 해제(T12 가드).
             s.interrupt_marker = false;
         }
-        self.send_user(&m.text.clone());
+        let prompt = compose_prompt(&m);
+        self.note_echo(run_id, &m);
+        self.send_user(&prompt);
         self.set_state("T16", StateTag::Streaming, None);
+    }
+
+    /// 사용자 에코 한 건을 적어 둔다 — 셸이 [`Self::take_echo`]로 가져간다.
+    fn note_echo(&mut self, run_id: RunId, m: &QueuedMessage) {
+        self.last_echo = Some(SentEcho {
+            run_id,
+            text: m.text.clone(),
+            images: m.attachments.clone(),
+            origin: m.origin,
+        });
     }
 
     /// T17/T18 — 재사용 불가. **사유는 배타가 아니다**(둘 다 실릴 수 있다 — §3.3 `—` 규약 행).
@@ -2226,6 +2390,7 @@ impl<D: CliDriver> ChatRuntime<D> {
             verified_at: None,
             ready: false,
             armed_from_run: run,
+            armed_at: now,
         });
         self.emit(Event::Notice("사용 한도에 걸려 대기합니다".into()));
     }
@@ -2548,12 +2713,8 @@ impl<D: CliDriver> ChatRuntime<D> {
             self.broadcast_plan();
             return;
         }
-        // 재개 항목의 정체성 = **지금 값**(§7.3), onDrift=use_current.
-        let mut m = self.make_queue_item("이어서 진행해 주세요".into(), QueueOrigin::LimitResume, now);
-        m.on_drift = OnDrift::UseCurrent;
-        self.queue.push_front(m);
-        self.broadcast_plan();
-        self.hold = None;
+        // 소진 — 나팔("이어서 진행해 주세요")을 넣을지는 `consume_hold`가 가른다(★R4).
+        self.consume_hold();
         self.drain_if_possible();
     }
 
@@ -2578,6 +2739,33 @@ impl<D: CliDriver> ChatRuntime<D> {
         self.driver.kill();
         self.set_state("T24", StateTag::Terminating, None);
         self.finish_termination(CloseCause::AppQuit);
+    }
+}
+
+/// 큐 항목 → **stdin으로 나갈 본문**. 첨부가 있으면 2.6.2 `promptWithNotes`와 같은
+/// 노트 블록을 뒤에 붙인다(`App.tsx:146-159`).
+///
+/// 왜 여기인가: 첨부는 큐 항목에 **데이터로** 살아 있어야 하고(취소·재정렬·재장전이
+/// 그 값을 만진다), CLI에는 경로 목록이 본문에 접혀 나가야 한다. 두 요구를 한 값으로
+/// 만족시키려면 접는 자리가 드레인이어야 한다.
+///
+/// 첨부가 없으면 **원문 그대로**다 — 옛 경로(`chat:run`은 렌더러가 이미 접어 보낸다)의
+/// 바이트가 한 글자도 안 바뀐다.
+fn compose_prompt(m: &QueuedMessage) -> String {
+    if m.attachments.is_empty() {
+        return m.text.clone();
+    }
+    let list = m
+        .attachments
+        .iter()
+        .map(|p| format!("- {p}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let note = format!("[첨부 파일 — Read 도구로 확인하세요]\n{list}");
+    if m.text.is_empty() {
+        note
+    } else {
+        format!("{}\n\n{}", m.text, note)
     }
 }
 
@@ -2965,5 +3153,345 @@ mod reload_tests {
         r.reload_state(vec!["예약1".into()], None);
         assert_eq!(r.resume_now(), Verdict::Rejected("hold_not_ready"));
         assert_eq!(r.driver_ref().spawns, 0, "누른 것이 예약분을 대신 쏘면 안 된다");
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ★R4 — 큐 이관(§6.1 `chat:queue-mutate` op 3종 · 첨부 · picker 스냅샷)과
+//        **재개 단일 소유**(m-logic P6 / M-UX R2.9의 재현 축), 그리고 스폰 IO 오류.
+//
+// 여기서 잠그는 것 넷:
+//  ① `enqueue`가 `{text, images, picker}`를 잃지 않는다 — 드레인이 그 값으로 나간다.
+//  ② `remove`/`reorder`는 **드레인을 깨우지 않는다**(§7.4: 큐를 만진 것이 곧 전송이면 위험하다).
+//  ③ 한 번의 한도 해제에 재개 발화는 **정확히 1회**다 — 대기 중 걸린 메시지가 있으면
+//     기계의 나팔("이어서 진행해 주세요")을 넣지 않는다.
+//  ④ `claude.exe`가 없으면 **그 자리에서** SpawnFailed로 정착한다(20초 침묵 금지).
+// ─────────────────────────────────────────────────────────────────────────────
+#[cfg(test)]
+mod r4_queue_and_resume_tests {
+    use super::*;
+    use crate::clock::VirtualClock;
+    use crate::driver::SpawnSpec;
+    use crate::identity::*;
+    use std::collections::BTreeSet;
+
+    #[derive(Default)]
+    struct Cli {
+        alive: bool,
+        spawns: usize,
+        fail: bool,
+    }
+    impl CliDriver for Cli {
+        fn spawn(&mut self, _spec: &SpawnSpec) -> std::io::Result<()> {
+            self.spawns += 1;
+            if self.fail {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    "그런 파일이 없습니다",
+                ));
+            }
+            self.alive = true;
+            Ok(())
+        }
+        fn send(&mut self, _line: Value) {}
+        fn close_input(&mut self) {}
+        fn kill(&mut self) {
+            self.alive = false;
+        }
+        fn process_alive(&self) -> bool {
+            self.alive
+        }
+        fn poll_frames(&mut self, _now: Millis) -> Vec<Value> {
+            vec![]
+        }
+    }
+
+    fn rt(clock: Arc<VirtualClock>) -> ChatRuntime<Cli> {
+        let raw = RawIdentity {
+            engine: RawEngine {
+                kind: EngineKind::Claude,
+                model: "haiku".into(),
+                effort: EffortId::Minimal,
+                codex_account: None,
+            },
+            billing: RawBilling {
+                kind: BillingKind::Subscription,
+                account: Some("a@x".into()),
+                drop_env_key: Some(false),
+            },
+            cwd: r"C:\ccg-fixture\work".into(),
+            add_dirs: vec![],
+            mode: ModeId::Normal,
+            system_prompt: None,
+            output_style: None,
+            tools: RawTools::default(),
+        };
+        let defaults = IdentityDefaults {
+            known_accounts: BTreeSet::from(["a@x".to_string()]),
+            ..Default::default()
+        };
+        ChatRuntime::new("c-1", raw, defaults, clock, Cli::default()).expect("정규화")
+    }
+
+    fn qin(text: &str) -> QueueInput {
+        QueueInput::text(text)
+    }
+
+    // ── ① 첨부·picker가 살아남는다 ────────────────────────────────────────
+    #[test]
+    fn an_enqueued_message_keeps_its_images_and_picker() {
+        let clock = VirtualClock::new();
+        let mut r = rt(clock.clone());
+        // 턴 하나를 띄워 두 번째 예약이 **주차**되게 한다(Idle이면 곧장 나간다).
+        r.dispatch(Cmd::Send { text: "첫 턴".into() });
+        assert_eq!(r.state(), StateTag::Starting);
+
+        let mut pick = RawIdentityPatch::default();
+        pick.engine.model = Some("opus".into());
+        pick.mode = Some(ModeId::Plan);
+        let v = r.dispatch(Cmd::Enqueue(QueueInput {
+            text: "이 그림 봐줘".into(),
+            images: vec![r"C:\shot\a.png".into(), r"C:\shot\b.png".into()],
+            picker: Some(pick),
+        }));
+        assert_eq!(v, Verdict::Queued);
+
+        let item = r.queue_items().next().expect("예약 1건");
+        assert_eq!(item.attachments.len(), 2, "첨부가 통째로 사라지던 자리다");
+        assert_eq!(item.identity.model(), "opus", "예약 시점 picker로 나간다");
+        assert_eq!(item.identity.mode(), ModeId::Plan);
+        // 채팅 자체의 정체성은 **안 바뀐다** — 예약이 설정을 몰래 갈지 않는다.
+        assert_eq!(r.identity().model(), "haiku");
+        assert_eq!(r.identity().mode(), ModeId::Normal);
+    }
+
+    #[test]
+    fn attachments_are_folded_into_the_prompt_when_it_drains() {
+        let clock = VirtualClock::new();
+        let mut r = rt(clock.clone());
+        r.dispatch(Cmd::Enqueue(QueueInput {
+            text: "이 그림 봐줘".into(),
+            images: vec![r"C:\shot\a.png".into()],
+            picker: None,
+        }));
+        // Idle에서의 enqueue는 곧장 나간다(명령표 `enqueue`/Idle = Accept T27).
+        let sent = r.sent_user_texts().join("\n");
+        assert!(sent.starts_with("이 그림 봐줘"), "원문이 앞에 온다: {sent}");
+        assert!(sent.contains(r"- C:\shot\a.png"), "첨부 노트가 붙는다: {sent}");
+        assert!(sent.contains("[첨부 파일"), "2.6.2 promptWithNotes 파리티: {sent}");
+    }
+
+    #[test]
+    fn a_plain_send_is_byte_identical_to_before() {
+        // 첨부가 없으면 본문은 한 글자도 안 바뀐다(옛 경로 무영향).
+        let clock = VirtualClock::new();
+        let mut r = rt(clock.clone());
+        r.dispatch(Cmd::Send { text: "그냥 문장".into() });
+        assert_eq!(r.sent_user_texts(), vec!["그냥 문장".to_string()]);
+    }
+
+    // ── ② remove / reorder / clear ────────────────────────────────────────
+    fn parked(r: &mut ChatRuntime<Cli>, texts: &[&str]) {
+        r.dispatch(Cmd::Send { text: "첫 턴".into() });
+        for t in texts {
+            assert_eq!(r.dispatch(Cmd::Enqueue(qin(t))), Verdict::Queued);
+        }
+    }
+
+    #[test]
+    fn remove_takes_exactly_one_item_and_never_drains() {
+        let clock = VirtualClock::new();
+        let mut r = rt(clock.clone());
+        parked(&mut r, &["A", "B", "C"]);
+        let ids: Vec<String> = r.queue_items().map(|m| m.id.clone()).collect();
+        let before = r.driver_ref().spawns;
+        assert_eq!(
+            r.dispatch(Cmd::QueueMutate(QueueOp::Remove { id: ids[1].clone() })),
+            Verdict::Accepted
+        );
+        assert_eq!(r.queue_texts(), vec!["A".to_string(), "C".to_string()]);
+        assert_eq!(
+            r.driver_ref().spawns,
+            before,
+            "큐를 만진 것이 곧 전송이면 안 된다(§7.4)"
+        );
+        // 없는 id는 **조용히 성공하지 않는다**(D7 — 침묵 no-op 금지).
+        assert_eq!(
+            r.dispatch(Cmd::QueueMutate(QueueOp::Remove { id: "q-없음".into() })),
+            Verdict::Rejected("no_item")
+        );
+    }
+
+    #[test]
+    fn reorder_keeps_the_items_the_renderer_did_not_mention() {
+        let clock = VirtualClock::new();
+        let mut r = rt(clock.clone());
+        parked(&mut r, &["A", "B", "C"]);
+        let ids: Vec<String> = r.queue_items().map(|m| m.id.clone()).collect();
+        // 낡은 목록(C·A만 안다)으로 재정렬 — B가 사라지면 안 된다.
+        assert_eq!(
+            r.dispatch(Cmd::QueueMutate(QueueOp::Reorder {
+                ids: vec![ids[2].clone(), ids[0].clone()]
+            })),
+            Verdict::Accepted
+        );
+        assert_eq!(
+            r.queue_texts(),
+            vec!["C".to_string(), "A".to_string(), "B".to_string()]
+        );
+        assert_eq!(r.driver_ref().spawns, 1, "재정렬이 전송을 깨우지 않는다");
+    }
+
+    #[test]
+    fn clear_leaves_an_undo_token_and_restore_puts_them_back() {
+        let clock = VirtualClock::new();
+        let mut r = rt(clock.clone());
+        parked(&mut r, &["A", "B"]);
+        let _ = r.drain_events();
+        assert_eq!(
+            r.dispatch(Cmd::QueueMutate(QueueOp::Clear)),
+            Verdict::Accepted
+        );
+        assert_eq!(r.queue_len(), 0);
+        let token = r
+            .drain_events()
+            .into_iter()
+            .find_map(|e| match e {
+                Event::QueueCleared { undo_token, .. } => Some(undo_token),
+                _ => None,
+            })
+            .expect("되돌리기 토큰");
+        assert_eq!(r.dispatch(Cmd::QueueRestore { token }), Verdict::Accepted);
+        assert_eq!(r.queue_texts(), vec!["A".to_string(), "B".to_string()]);
+        // 빈 큐를 또 비우는 것은 무동작이다(사유가 있는 무동작 — 침묵이 아니다).
+        r.dispatch(Cmd::QueueMutate(QueueOp::Clear));
+        assert_eq!(r.dispatch(Cmd::QueueMutate(QueueOp::Clear)), Verdict::Noop);
+    }
+
+    // ── ③ 재개 단일 소유 ──────────────────────────────────────────────────
+    /// 재현 축(M-UX R2.9): 한도 사망 → 재시작 → 리셋 도달 → **전송이 한 번인가 두 번인가**.
+    /// 얼려 둔 렌더러의 `useLimitResume`이 Rust보다 먼저 쏘면 그 프롬프트가 게이트에
+    /// 주차된다. 그 뒤 Rust가 나팔을 앞에 끼우면 한 번의 해제에 두 턴이 나갔다.
+    #[test]
+    fn a_message_parked_during_the_hold_is_the_resume_no_second_turn() {
+        let clock = VirtualClock::new();
+        clock.advance_to(10 * SEC);
+        let mut r = rt(clock.clone());
+        r.reload_state(
+            vec![],
+            Some(ReloadHold {
+                in_ms: Some(60 * SEC),
+                ready: false,
+            }),
+        );
+        // 렌더러(또는 사용자)가 대기 중에 재개 프롬프트를 보낸다 → 게이트가 주차한다.
+        clock.advance_by(5 * SEC);
+        assert_eq!(
+            r.dispatch(Cmd::Send {
+                text: "사용 한도가 초기화됐어. 직전에 하던 작업을 이어서 계속해줘.".into()
+            }),
+            Verdict::Accepted
+        );
+        assert_eq!(r.driver_ref().spawns, 0, "대기표가 게이트를 닫고 있다");
+        assert_eq!(r.queue_len(), 1);
+
+        clock.advance_to(10 * SEC + 60 * SEC + 91 * SEC);
+        r.tick();
+        assert!(r.hold().is_none());
+        assert_eq!(
+            r.sent_user_texts(),
+            vec!["사용 한도가 초기화됐어. 직전에 하던 작업을 이어서 계속해줘.".to_string()],
+            "★ 재개 발화는 정확히 1회 — 기계의 나팔이 앞에 끼지 않는다"
+        );
+        assert_eq!(r.queue_len(), 0);
+        assert_eq!(r.driver_ref().spawns, 1);
+    }
+
+    #[test]
+    fn resume_now_with_a_parked_message_sends_that_message_once() {
+        let clock = VirtualClock::new();
+        clock.advance_to(10 * SEC);
+        let mut r = rt(clock.clone());
+        r.set_auto_resume(false);
+        r.reload_state(
+            vec![],
+            Some(ReloadHold {
+                in_ms: Some(60 * SEC),
+                ready: false,
+            }),
+        );
+        clock.advance_by(5 * SEC);
+        r.dispatch(Cmd::Send {
+            text: "내가 건 재개".into(),
+        });
+        clock.advance_to(10 * SEC + 60 * SEC + 91 * SEC);
+        r.tick();
+        assert!(
+            r.hold().is_some_and(|h| h.ready),
+            "화면 밖 채팅은 ready만 켠다"
+        );
+        assert_eq!(r.resume_now(), Verdict::Accepted);
+        assert_eq!(r.sent_user_texts(), vec!["내가 건 재개".to_string()]);
+        assert_eq!(r.driver_ref().spawns, 1);
+    }
+
+    #[test]
+    fn a_queue_that_predates_the_hold_still_gets_the_nudge() {
+        // §7.3의 규약은 그대로다 — 표가 걸리기 **전에** 쌓인 예약은 재개가 아니다
+        // (재생 #4가 잠근 동작. `>` 비교가 그 경계다).
+        let clock = VirtualClock::new();
+        clock.advance_to(10 * SEC);
+        let mut r = rt(clock.clone());
+        r.reload_state(
+            vec![qin("표보다 먼저 선 예약")],
+            Some(ReloadHold {
+                in_ms: Some(60 * SEC),
+                ready: false,
+            }),
+        );
+        clock.advance_to(10 * SEC + 60 * SEC + 91 * SEC);
+        r.tick();
+        assert_eq!(
+            r.sent_user_texts().first().map(String::as_str),
+            Some("이어서 진행해 주세요"),
+            "재장전된 예약은 '대기 중에 건 재개'가 아니다: {:?}",
+            r.sent_user_texts()
+        );
+    }
+
+    // ── ④ 스폰 IO 오류 ────────────────────────────────────────────────────
+    #[test]
+    fn a_missing_cli_settles_at_once_not_after_twenty_seconds() {
+        let clock = VirtualClock::new();
+        let mut r = rt(clock.clone());
+        r.driver().fail = true;
+        let _ = r.drain_events();
+        r.dispatch(Cmd::Send {
+            text: "안녕".into(),
+        });
+        // R3까지는 여기서 `Starting`이었고 T3(20초)까지 아무 말도 없었다.
+        assert_eq!(r.state(), StateTag::Idle, "그 자리에서 정착한다");
+        let evs = r.drain_events();
+        assert!(
+            evs.iter()
+                .any(|e| matches!(e, Event::Exit { cause: CloseCause::SpawnFailed, .. })),
+            "SpawnFailed로 닫힌다: {evs:?}"
+        );
+        assert!(
+            evs.iter()
+                .any(|e| matches!(e, Event::Notice(t) if t.contains("엔진을 시작하지 못했어요"))),
+            "사유 한 줄이 화면으로 나간다: {evs:?}"
+        );
+        assert!(
+            r.sent_user_texts().is_empty(),
+            "못 뜬 프로세스에 프롬프트를 적어 두지 않는다"
+        );
+        // 다음 전송이 막히지 않는다(래치가 남으면 채팅이 굳는다).
+        r.driver().fail = false;
+        r.dispatch(Cmd::Send {
+            text: "다시".into(),
+        });
+        assert_eq!(r.state(), StateTag::Starting);
+        assert_eq!(r.sent_user_texts(), vec!["다시".to_string()]);
     }
 }

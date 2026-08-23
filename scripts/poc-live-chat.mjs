@@ -19,6 +19,7 @@
  *   node scripts/poc-live-chat.mjs --only=slots    # ★R3 win:chat-* 4채널 + chat:windows
  *   node scripts/poc-live-chat.mjs --only=live     # 라이브 턴만
  *   node scripts/poc-live-chat.mjs --keep          # 홈·프레임 덤프 보존
+ *   node scripts/poc-live-chat.mjs --tag           # ★R4 동시 실행(홈·포트·산출물 분리)
  *
  *   ※ dialog·winsave·events·reload·slots 전에:
  *      cargo build -p ccg-engine --features fakecli --bin ccg-fakecli --release
@@ -43,9 +44,24 @@ const KEEP = args.includes('--keep')
 // exe가 사라진다(실제로 밟았다 — ENOENT). 스냅샷을 떠 두고 그것을 재는 길을 연다.
 const EXE = (args.find((a) => a.startsWith('--exe=')) ?? '').split('=')[1] || path.join(REPO, 'target', 'release', 'agentcodegui.exe')
 const REAL_HOME = path.join(os.homedir(), '.agentcodegui')
-// 라운드마다 **자기 파일**에 쓴다 — R2의 산출물(`m3-r2-live.json`)을 덮으면 그 보고서의
-// 근거가 사라진다(R2 §2가 그 파일의 `steps.r81`을 인용한다).
-const OUT = path.join(REPO, 'docs', 'critic', 'm3-r3-live.json')
+// ★R4 — **동시 실행 안전**. R3까지 격리 홈 이름(`.poc-home-*`)과 CDP 포트가 고정이라,
+// 같은 레포에서 다른 라운드가 같은 하네스를 돌리면 **서로의 홈을 지우고 포트를 뺏는다**
+// (§R3.6에 "실제로 한 번 겹쳤다"고 적혀 있다 — 그때는 상대 주행이 끝나기를 기다렸다).
+// 기본값은 **바꾸지 않는다**: 보고서·문서가 `.poc-home-live`·`m3-r3-live.json`을 인용한다.
+//   --tag          → 자동 태그(pid+난수)
+//   --tag=<문자열> → 그 태그
+// 태그가 있으면 홈·포트 대역·산출물 파일이 전부 갈린다.
+const tagArg = args.find((a) => a === '--tag' || a.startsWith('--tag='))
+const RUNTAG =
+  tagArg === undefined ? '' : tagArg.split('=')[1] || `${process.pid}-${Math.random().toString(36).slice(2, 6)}`
+const hash32 = (s) => { let h = 2166136261; for (const c of s) h = Math.imul(h ^ c.charCodeAt(0), 16777619); return h >>> 0 }
+const homeFor = (name) => path.join(REPO, `.poc-home-${name}${RUNTAG ? `-${RUNTAG}` : ''}`)
+// 이 하네스가 쓰는 포트는 9361~9370(10개)이라 태그당 16씩 민다.
+const PORT_SHIFT = RUNTAG ? 16 + (hash32(RUNTAG) % 40) * 16 : 0
+const portFor = (base) => base + PORT_SHIFT
+// 라운드마다 **자기 파일**에 쓴다 — R3의 산출물(`m3-r3-live.json`)을 덮으면 그 보고서의
+// 근거가 사라진다(R3 §R3.2가 그 파일을 인용한다). 태그를 주면 한 번 더 갈린다.
+const OUT = path.join(REPO, 'docs', 'critic', `m3-r4-live${RUNTAG ? `-${RUNTAG}` : ''}.json`)
 
 const rep = { at: new Date().toISOString(), exe: EXE, steps: {}, findings: [] }
 const fail = (id, why, extra) => {
@@ -113,7 +129,7 @@ const write = (p, v) => {
 // ─────────────────────────────────────────────────────────────────────────────
 async function phaseR81() {
   console.log('\n[R8-1] session-wins 브로드캐스트 원천')
-  const HOME = path.join(REPO, '.poc-home-r81')
+  const HOME = homeFor('r81')
   rmrf(HOME)
   // 2.6.2 포맷의 추가 채팅 2건 — 부팅 첫 통합 채널 접촉에서 마이그레이션된다.
   write(path.join(HOME, 'session-chats', 'index.json'), { version: 1, order: ['sc-alpha', 'sc-beta'] })
@@ -129,7 +145,7 @@ async function phaseR81() {
       snapshot: { messages: [{ id: 'm1', role: 'user', text: 'hi' }] }
     })
   }
-  const app = await boot(HOME, 9361)
+  const app = await boot(HOME, portFor(9361))
   const out = {}
   try {
     out.listAtBoot = await app.j('(await window.api.sessionWindows.list()).map((w) => w.id)')
@@ -161,7 +177,7 @@ async function phaseR81() {
 // 2) 라이브 세로 조각
 // ─────────────────────────────────────────────────────────────────────────────
 function seedLiveHome() {
-  const HOME = path.join(REPO, '.poc-home-live')
+  const HOME = homeFor('live')
   const WORK = path.join(HOME, 'work')
   rmrf(HOME)
   fs.mkdirSync(WORK, { recursive: true })
@@ -230,7 +246,7 @@ async function phaseLive() {
   const seed = seedLiveHome()
   const target = path.join(seed.WORK, 'live-approve.txt')
   const out = { home: seed.HOME, engine: seed.ver, account: seed.email, steps: {} }
-  const app = await boot(seed.HOME, 9362, { CCG_ENGINE_LOG: path.join(seed.HOME, 'frames.jsonl') })
+  const app = await boot(seed.HOME, portFor(9362), { CCG_ENGINE_LOG: path.join(seed.HOME, 'frames.jsonl') })
   const t0 = Date.now()
   try {
     // ── 1. 부팅 ────────────────────────────────────────────────────────────
@@ -400,7 +416,7 @@ async function phaseLive() {
 
   // 재부팅 — 대화가 살아 있는가 (같은 홈, 새 프로세스)
   await sleep(800)
-  const app2 = await boot(seed.HOME, 9363)
+  const app2 = await boot(seed.HOME, portFor(9363))
   try {
     // 화면이 스레드를 그릴 때까지 잠깐 준다(부팅 조회는 light — 활성 채팅은
     // `chats:load`로 지연 로드된다).
@@ -452,7 +468,7 @@ async function phaseLive() {
 //    전부 실제 배선이고 모델만 가짜다($0).
 // ─────────────────────────────────────────────────────────────────────────────
 function seedDialogHome() {
-  const HOME = path.join(REPO, '.poc-home-dialog')
+  const HOME = homeFor('dialog')
   const WORK = path.join(HOME, 'work')
   rmrf(HOME)
   fs.mkdirSync(WORK, { recursive: true })
@@ -519,7 +535,7 @@ async function phaseDialog() {
   console.log('\n[DIALOG] 폴백 확인 카드 — 가짜 CLI(제품 경로)')
   const s = seedDialogHome()
   const out = { home: s.HOME }
-  const app = await boot(s.HOME, 9364, { CCG_FAKECLI_SCRIPT: s.SCRIPT, CCG_FAKECLI_IN: s.IN })
+  const app = await boot(s.HOME, portFor(9364), { CCG_FAKECLI_SCRIPT: s.SCRIPT, CCG_FAKECLI_IN: s.IN })
   try {
     await app.j(`(window.__ev = [], window.api.onEngineEvent((e) => window.__ev.push(e)), 'armed')`)
     // ★ 컴포저가 **활성 채팅을 잡은 뒤**에 보낸다. `window.api`가 답하는 시점과
@@ -606,7 +622,7 @@ async function phaseDialog() {
 //    켜면 값이 바뀐다** — 저장이 생겨도 다시 못 찾는다. 둘 다 여기서 잰다.
 // ─────────────────────────────────────────────────────────────────────────────
 function seedWinSaveHome() {
-  const HOME = path.join(REPO, '.poc-home-winsave')
+  const HOME = homeFor('winsave')
   const WORK = path.join(HOME, 'work')
   rmrf(HOME)
   fs.mkdirSync(WORK, { recursive: true })
@@ -656,7 +672,7 @@ async function phaseWinSave() {
   console.log('\n[WINSAVE] 추가 채팅 창 영속(가짜 CLI)')
   const s = seedWinSaveHome()
   const out = { home: s.HOME }
-  const app = await boot(s.HOME, 9365, { CCG_FAKECLI_SCRIPT: s.SCRIPT })
+  const app = await boot(s.HOME, portFor(9365), { CCG_FAKECLI_SCRIPT: s.SCRIPT })
   let ok1 = false
   try {
     out.listAtBoot = await app.j('(await window.api.sessionWindows.list()).map((w) => w.id)')
@@ -675,7 +691,7 @@ async function phaseWinSave() {
     if (/^s-\d+-\d+$/.test(out.winId)) fail('W1-id', `chatId에 pid가 박혔다: ${out.winId}`)
     else ok('W1-id', out.winId)
 
-    const sp = await connectSessionPage(9365, null)
+    const sp = await connectSessionPage(portFor(9365), null)
     if (!sp) {
       fail('W2-창페이지', '추가 채팅 창의 CDP 페이지를 못 찾았다')
       return
@@ -692,7 +708,7 @@ async function phaseWinSave() {
     await sj(`(() => { try { localStorage.setItem('session.cwd', ${JSON.stringify(s.WORK)}) } catch {} return 'cwd' })()`)
     await sp.eval(`location.reload()`).catch(() => {})
     await sleep(1500)
-    const sp2 = await connectSessionPage(9365, null)
+    const sp2 = await connectSessionPage(portFor(9365), null)
     const sj2 = async (e) => JSON.parse(await sp2.eval(`(async () => JSON.stringify(${e}))()`, { awaitPromise: true }))
     for (let i = 0; i < 400; i++) {
       const up = await sp2.eval(`(async () => { try { return !!(await window.api.app.getVersion()) } catch { return false } })()`, { awaitPromise: true }).catch(() => false)
@@ -744,7 +760,7 @@ async function phaseWinSave() {
   }
 
   // 재시작 — 목록에 남는가 · 클릭하면 창이 되살아나는가 · 대화가 복원되는가
-  const app2 = await boot(s.HOME, 9366, { CCG_FAKECLI_SCRIPT: s.SCRIPT })
+  const app2 = await boot(s.HOME, portFor(9366), { CCG_FAKECLI_SCRIPT: s.SCRIPT })
   try {
     out.listAfterRestart = await app2.j('(await window.api.sessionWindows.list()).map((w) => ({ id: w.id, title: w.title, open: w.open }))')
     const survived = (out.listAfterRestart ?? []).some((w) => w.id === out.winId)
@@ -752,7 +768,7 @@ async function phaseWinSave() {
     else ok('W4-재시작목록', out.listAfterRestart)
     // 사이드바 클릭 = focus. 창이 없으면 **되만들어야** 한다(R1 §4.4-E).
     await app2.j(`(window.api.sessionWindows.focus(${JSON.stringify(out.winId)}), 'focus')`)
-    const sp = await connectSessionPage(9366, null)
+    const sp = await connectSessionPage(portFor(9366), null)
     out.reopened = !!sp
     if (!sp) {
       fail('W5-되만들기', '닫힌 추가 채팅을 클릭해도 창이 안 뜬다', out)
@@ -801,7 +817,7 @@ async function phaseWinSave() {
 //    이벤트만 보면 "백엔드는 되는데 화면이 비었다"를 못 잡는다.
 // ─────────────────────────────────────────────────────────────────────────────
 function fakeHome(tag, chatId, steps, extra = {}) {
-  const HOME = path.join(REPO, `.poc-home-${tag}`)
+  const HOME = homeFor(tag)
   const WORK = path.join(HOME, 'work')
   rmrf(HOME)
   fs.mkdirSync(WORK, { recursive: true })
@@ -882,9 +898,9 @@ function eventScript(WORK) {
 
 async function phaseEvents() {
   console.log('\n[EVENTS] EngineEvent 9종 — 가짜 CLI(제품 경로)')
-  const s = fakeHome('events', 'c-ev', eventScript(path.join(REPO, '.poc-home-events', 'work')))
+  const s = fakeHome('events', 'c-ev', eventScript(path.join(homeFor('events'), 'work')))
   const out = { home: s.HOME }
-  const app = await boot(s.HOME, 9367, { CCG_FAKECLI_SCRIPT: s.SCRIPT })
+  const app = await boot(s.HOME, portFor(9367), { CCG_FAKECLI_SCRIPT: s.SCRIPT })
   try {
     await app.j(`(window.__ev = [], window.api.onEngineEvent((e) => window.__ev.push(e)), 'armed')`)
     // 실행 중에만 존재하는 표시(워크플로 알약)는 **정착하면 사라지는 게 정답**이라
@@ -1033,7 +1049,7 @@ async function phaseError() {
   // 대본은 비어 있다: 스텁이 stdin만 붙들고 아무 프레임도 안 낸다 → init ack 없음 → T3.
   const s = fakeHome('error', 'c-err', [{ afterMs: 50 }])
   const out = { home: s.HOME }
-  const app = await boot(s.HOME, 9370, { CCG_FAKECLI_SCRIPT: s.SCRIPT })
+  const app = await boot(s.HOME, portFor(9370), { CCG_FAKECLI_SCRIPT: s.SCRIPT })
   try {
     await app.j(`(window.__ev = [], window.api.onEngineEvent((e) => window.__ev.push(e)), 'armed')`)
     out.ready = await waitUntil(app, `(await window.api.getChats())?.activeChatId === 'c-err' && !!document.querySelector('.composer-row textarea')`, 30_000)
@@ -1090,7 +1106,7 @@ function reloadScript(WORK) {
 
 async function phaseReload() {
   console.log('\n[RELOAD] 부팅 재장전 + 한도 해제 이어서(합성 hold · 가짜 CLI)')
-  const HOME = path.join(REPO, '.poc-home-reload')
+  const HOME = homeFor('reload')
   const WORK = path.join(HOME, 'work')
   const s = fakeHome('reload', 'c-see', reloadScript(WORK))
   // 통합 스토어 포맷으로 직접 심는다 — 재장전은 `chats-v3/<id>.json`의 queue·hold를 읽는다.
@@ -1118,7 +1134,7 @@ async function phaseReload() {
   write(path.join(HOME, 'chats-v3', '.migrated'), { at: Date.now() })
 
   const out = { home: HOME, resetsAt: past }
-  const app = await boot(HOME, 9368, { CCG_FAKECLI_SCRIPT: s.SCRIPT })
+  const app = await boot(HOME, portFor(9368), { CCG_FAKECLI_SCRIPT: s.SCRIPT })
   const dbg = async () => await app.j(`await window.__TAURI_INTERNALS__.invoke('ipc_call', { channel: 'engine:debug', payload: [] })`)
   try {
     // ① 재장전이 붙었는가 — 두 채팅 모두 런타임이 서고 큐·대기표를 들고 있어야 한다.
@@ -1193,9 +1209,9 @@ async function phaseReload() {
 // ─────────────────────────────────────────────────────────────────────────────
 async function phaseSlots() {
   console.log('\n[SLOTS] win:chat-* 4채널 + chat:windows')
-  const s = fakeHome('slots', 'c-main2', reloadScript(path.join(REPO, '.poc-home-slots', 'work')))
+  const s = fakeHome('slots', 'c-main2', reloadScript(path.join(homeFor('slots'), 'work')))
   const out = { home: s.HOME }
-  const app = await boot(s.HOME, 9369, { CCG_FAKECLI_SCRIPT: s.SCRIPT })
+  const app = await boot(s.HOME, portFor(9369), { CCG_FAKECLI_SCRIPT: s.SCRIPT })
   const call = async (ch, payload) =>
     await app.j(`await window.__TAURI_INTERNALS__.invoke('ipc_call', { channel: ${JSON.stringify(ch)}, payload: ${JSON.stringify(payload)} })`)
   try {
@@ -1226,7 +1242,7 @@ async function phaseSlots() {
     else ok('S3-chat:windows', out.broadcasts.at(-1))
 
     // 그 창에서 한 턴 돌려 대화를 만든다(닫아도 남아야 하니까).
-    const sp = await connectSessionPage(9369, null)
+    const sp = await connectSessionPage(portFor(9369), null)
     if (!sp) fail('S4-창페이지', '추가 채팅 창의 CDP 페이지를 못 찾았다')
     else {
       const se = async (e) => JSON.parse(await sp.eval(`(async () => JSON.stringify(${e}))()`, { awaitPromise: true }))
@@ -1238,7 +1254,7 @@ async function phaseSlots() {
       await se(`(() => { try { localStorage.setItem('session.cwd', ${JSON.stringify(s.WORK)}) } catch {} return 'cwd' })()`)
       await sp.eval(`location.reload()`).catch(() => {})
       await sleep(1500)
-      const sp2 = await connectSessionPage(9369, null)
+      const sp2 = await connectSessionPage(portFor(9369), null)
       for (let i = 0; i < 400; i++) {
         const up = await sp2.eval(`(async () => { try { return !!(await window.api.app.getVersion()) } catch { return false } })()`, { awaitPromise: true }).catch(() => false)
         if (up) break

@@ -114,8 +114,42 @@ pub fn index_trusted() -> bool {
 }
 
 /// 지금 저장된 채팅 전체(마커 없이 통째로) — 별칭 계층의 병합 저장이 쓴다.
+///
+/// **비싸다.** 채팅 파일 전부를 스냅샷까지 `Value` 트리로 판다. 대화 목록·본문이 실제로
+/// 필요한 곳(=`chats:get`, 병합 저장)만 부를 것 — id나 머리 몇 필드만 필요하면
+/// [`chat_ids`]·[`chat_heads`]를 쓴다(★R4 유휴 메모리 귀속에서 실측으로 갈랐다).
 pub fn all_chats() -> Vec<Value> {
     STORE.read_all().map(|(_, c)| c).unwrap_or_default()
+}
+
+/// 채팅 파일의 **머리 몇 필드**만(스냅샷은 `IgnoredAny`로 건너뛴다 — `Value` 트리를
+/// 만들지 않는다). `status::ChatLite`와 같은 수법이고, 목적만 다르다(★R4).
+#[derive(serde::Deserialize, Default)]
+#[serde(default)]
+pub struct ChatHead {
+    pub id: String,
+    pub title: String,
+    pub status: Option<String>,
+    pub origin: Option<String>,
+    pub custom: Option<bool>,
+    /// 파싱 비용을 0으로 만드는 자리 — serde가 통째로 건너뛴다.
+    #[serde(rename = "snapshot")]
+    pub _snapshot: Option<serde::de::IgnoredAny>,
+}
+
+/// 전 채팅의 머리 — 사이드바 목록처럼 *본문이 필요 없는* 조회용(★R4).
+pub fn chat_heads() -> Vec<ChatHead> {
+    chat_ids()
+        .into_iter()
+        .filter_map(|id| {
+            let raw = std::fs::read_to_string(STORE.file(&id)).ok()?;
+            let mut h: ChatHead = serde_json::from_str(&raw).ok()?;
+            if h.id.is_empty() {
+                h.id = id;
+            }
+            Some(h)
+        })
+        .collect()
 }
 
 /// 지금 활성 채팅 id(§6.2의 `activeChat()` 진실 소스).
@@ -363,7 +397,20 @@ pub fn read_chats(light: bool, open_chat_ids: &[String]) -> Value {
 
     if light {
         let mut keep: std::collections::HashSet<String> = open_chat_ids.iter().cloned().collect();
-        keep.extend(crate::boards::visible_chat_ids());
+        // ★R4 실험 스위치 `CCG_LIGHT_PANEL_CHATS=1`(**기본 꺼짐**) — 보이는 **패널** 자리의
+        // 스냅샷을 이 페이로드에서 뺀다.
+        //
+        // 왜 후보인가: 통합 스토어에서 패널은 채팅이다. 그래서 보이는 패널 넷의 대화가
+        // `chats:get`(여기)과 `ma:get`(별칭 계층) **두 채널로 각각 한 벌씩** 렌더러에
+        // 간다 — 2.6.2에는 없던 중복이다(그때는 `chats.json`과 `multi-agent/`가 다른
+        // 데이터였다). 그리고 R4의 귀속 측정에서 **움직이는 질량은 렌더러 쪽**이었다.
+        //
+        // 기본을 안 바꾸는 이유: 접는 쪽이 옳으려면 렌더러가 `unloaded` 마커를 정확히
+        // 병합해야 하고("병합 깨지면 대화 증발"), 그 검증은 `app/`을 소유한 라운드의
+        // 몫이다. 여기서는 **잴 수 있게만** 해 둔다(수치는 §R4.7).
+        if !crate::light_panel_chats() {
+            keep.extend(crate::boards::visible_chat_ids());
+        }
         if !active_chat_id.is_empty() {
             keep.insert(active_chat_id.clone());
         }
@@ -460,6 +507,33 @@ mod tests {
         }
         h.write("chats-v3/index.json", r#"{"version":1,"order":["a","b"],"activeChatId":"a"}"#);
         invalidate();
+    }
+
+    /// ★R4 — 목록 조회가 **스냅샷을 파싱하지 않는다**. 값이 맞는지와, 깨진 스냅샷이
+    /// 있어도 머리를 읽어 오는지(= 진짜로 안 판다)를 함께 잰다.
+    #[test]
+    fn chat_heads_reads_the_head_without_parsing_the_thread() {
+        let h = temp_home("v3-heads");
+        seed(&h);
+        // 스냅샷 자리에 **JSON으로도 못 읽을 쓰레기**를 넣는다 — 그래도 머리는 읽힌다면
+        // serde가 그 자리를 정말 건너뛴 것이다(IgnoredAny).
+        h.write(
+            "chats-v3/c.json",
+            r#"{"id":"c","origin":"session","title":"창 대화","status":"done","snapshot":{"messages":[{"kind":"msg","text":"긴 본문"}]}}"#,
+        );
+        h.write("chats-v3/index.json", r#"{"version":1,"order":["a","b","c"],"activeChatId":"a"}"#);
+        invalidate();
+        let heads = chat_heads();
+        assert_eq!(heads.len(), 3);
+        assert_eq!(heads[2].id, "c");
+        assert_eq!(heads[2].title, "창 대화");
+        assert_eq!(heads[2].origin.as_deref(), Some("session"));
+        assert_eq!(heads[0].status.as_deref(), Some("done"));
+        // 추가 채팅 목록도 같은 원천을 쓴다(브로드캐스트가 부팅·창 조작마다 도는 자리).
+        let infos = crate::legacy_bridge::session_chat_infos();
+        assert_eq!(infos.len(), 1, "origin=session 하나: {infos:?}");
+        assert_eq!(infos[0]["id"], "c");
+        assert_eq!(infos[0]["title"], "창 대화");
     }
 
     #[test]

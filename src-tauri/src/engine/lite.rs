@@ -77,6 +77,16 @@ pub fn build<D: CliDriver>(rt: &ChatRuntime<D>, terminal: Terminal, now_ms: u64)
         "hold": hold,
         "queued": rt.queue_len(),
         "unread": 0,
+        // ★R4 — **재개의 주인**(m-logic P6 "행위자 하나" · M-UX R2.9의 이중 전송 축).
+        //
+        // `resumeOwner: "engine"`은 *"이 채팅의 한도 재개는 Rust가 관장한다"*는 선언이고,
+        // 렌더러의 `useLimitResume`은 이 값을 보고 **자기 발화를 꺼야 한다**(`enabled:false`).
+        // `autoResume`은 그 안에서 갈리는 스펙 ⑤다: 보이는 자리·열린 창은 스스로 쏘고
+        // (`true`), 화면 밖 채팅은 `hold.ready`만 켜고 사용자가 누를 때까지 멈춘다(`false`).
+        // 두 값을 하나로 접지 않는 이유는 `status`/`bgActive`를 안 접는 것과 같다 —
+        // "관장한다"와 "지금 자동이다"는 다른 사실이고, 표시 쪽이 둘 다 필요하다.
+        "autoResume": rt.auto_resume(),
+        "resumeOwner": "engine",
         "updatedAt": now_ms,
     })
 }

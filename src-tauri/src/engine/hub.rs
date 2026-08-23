@@ -44,6 +44,7 @@ use ccg_engine::driver::{ClaudeDriver, CliDriver};
 use ccg_engine::event::{Event, RevisionOrigin, TerminalStatus, Verdict};
 use ccg_engine::identity::{ApplyPolicy, PendingOp, RawIdentityPatch, RunIdentity};
 use ccg_engine::live::{AskKind, CloseCause};
+use ccg_engine::queue::QueueOp;
 use ccg_engine::runtime::{ChatRuntime, Cmd};
 use ccg_engine::state::StateTag;
 use serde_json::{json, Map, Value};
@@ -88,7 +89,10 @@ pub enum Op {
         corr: Option<String>,
     },
     IdentityRevert(u32),
-    /// 큐 조작 — `{op:'remove'|'clear'|'restore', id?|token?}`.
+    /// **예약 넣기**(★R4) — `chat:queue-mutate {op:'enqueue', text, images, picker}`.
+    /// 상태에 따라 *지금 보낼지 세울지*가 갈리므로 명령표의 `enqueue` 행을 탄다.
+    Enqueue(ccg_engine::queue::QueueInput),
+    /// 큐 조작 — `{op:'remove'|'reorder'|'clear'|'restore', id?|ids?|token?}`.
     QueueMutate(Value),
     ForceSettle(String),
     /// 백그라운드 작업 중지 — 상태기계에 `stop_task`를 보내고, **와이어에 `byUser` 표식**을
@@ -97,7 +101,7 @@ pub enum Op {
     /// **부팅 재장전**(§5.8 2단계). 큐·한도 대기표를 런타임에 세운다. `auto`는 스펙 ⑤ —
     /// 보이는 자리 + 열린 창만 자동 발사, 나머지는 `ready`만 켜고 사용자를 기다린다.
     Reload {
-        queued: Vec<String>,
+        queued: Vec<ccg_engine::queue::QueueInput>,
         hold: Option<ccg_engine::runtime::ReloadHold>,
         auto: bool,
     },
@@ -162,6 +166,19 @@ struct Slot {
     terminal: lite::Terminal,
     last_lite: Value,
     run_seq: u64,
+    /// 이 슬롯의 와이어 런에 **묶인 엔진 `RunId`**(★R4).
+    ///
+    /// 엔진은 자기 판단으로 턴을 시작한다 — 예약 드레인(T16/T17/T27)과 한도 재개가 그렇다.
+    /// R3까지 `wire.begin_run()`은 `Op::Run`(= 렌더러의 전송)에서만 불렸으므로, 그 턴들은
+    /// **새 runId도 `analyzing` 상태도 사용자 말풍선도 없이** 답만 도착했다
+    /// (M-UX R2.1 표 #4). 여기 값과 다른 RunId가 오면 "엔진이 스스로 시작했다"이다.
+    engine_run: Option<u64>,
+    /// `Op::Run`이 열어 둔 와이어 런 중 **아직 엔진 RunId와 짝이 안 지어진** 개수.
+    ///
+    /// bool이면 안 된다: 턴이 도는 중에 전송을 두 번 하면 둘 다 큐에 서고 나중에 차례로
+    /// 드레인되는데, 그때 두 번째 드레인이 "엔진이 스스로 시작했다"로 읽혀 **사용자
+    /// 말풍선이 두 벌** 그려진다(렌더러가 이미 자기 `begin`으로 그렸다).
+    expect_runs: u32,
     /// 아직 `chat:run-state`에 실리지 않은 정착 목록. `Event::Settled`는 항목마다
     /// 따로 오고 `Event::RunState`는 그 뒤에 온다 — 계약면(§5.6)의 `settled[]`를
     /// 채우려면 사이에 모아 둬야 한다. R1은 이 배열이 **항상 비어 있었다**.
@@ -260,6 +277,8 @@ impl Hub {
                     terminal: lite::Terminal::None,
                     last_lite: Value::Null,
                     run_seq: 0,
+                    engine_run: None,
+                    expect_runs: 0,
                     pending_settled: vec![],
                 },
             );
@@ -339,7 +358,9 @@ impl Hub {
                                 "queue": s.rt.queue_texts() })
                     })
                     .collect();
-                answer(json!({ "chats": rows, "cli": self.cli.to_string_lossy() }));
+                // `flags`는 "이 주행이 정말 그 팔이었나"의 유일한 증거다(★R4).
+                answer(json!({ "chats": rows, "cli": self.cli.to_string_lossy(),
+                               "flags": crate::flags::active() }));
                 return;
             }
             Op::Dispose => {
@@ -387,6 +408,9 @@ impl Hub {
                 slot.run_seq += 1;
                 let run_id = format!("r{}-{}", std::process::id(), slot.run_seq);
                 let first = slot.wire.begin_run(&run_id);
+                // 뒤따르는 엔진 RunId 하나는 이 런의 것이다 — 그걸 "엔진이 스스로 시작한
+                // 턴"으로 오인하면 사용자 말풍선이 두 번 그려진다.
+                slot.expect_runs = slot.expect_runs.saturating_add(1);
                 slot.terminal = lite::Terminal::None;
                 let prompt = req.get("prompt").and_then(Value::as_str).unwrap_or("").to_string();
                 // 판정 방출은 **런타임 하나**가 한다(`Event::Verdict` → `on_engine_event`).
@@ -491,13 +515,30 @@ impl Hub {
                 }
                 answer(w);
             }
+            Op::Enqueue(input) => {
+                let v = slot.rt.dispatch(Cmd::Enqueue(input));
+                answer(verdict_wire("enqueue", &v));
+            }
             Op::QueueMutate(spec) => {
-                // 되돌리기(`restore`)만 전용 명령이 있다 — 나머지는 큐 변형 1건으로 접수한다.
+                // 되돌리기(`restore`)만 전용 명령이 있다 — 나머지는 op을 값으로 실어 보낸다.
+                // R3까지는 **어느 op이든 무동작**이었다(M-UX R2.1 표 #2).
                 let v = match spec.get("op").and_then(Value::as_str) {
                     Some("restore") => slot.rt.dispatch(Cmd::QueueRestore {
                         token: spec.get("token").and_then(Value::as_str).unwrap_or("").to_string(),
                     }),
-                    _ => slot.rt.dispatch(Cmd::QueueMutate),
+                    Some("remove") => slot.rt.dispatch(Cmd::QueueMutate(QueueOp::Remove {
+                        id: spec.get("id").and_then(Value::as_str).unwrap_or("").to_string(),
+                    })),
+                    Some("reorder") => slot.rt.dispatch(Cmd::QueueMutate(QueueOp::Reorder {
+                        ids: spec
+                            .get("ids")
+                            .and_then(Value::as_array)
+                            .map(|a| a.iter().filter_map(Value::as_str).map(str::to_string).collect())
+                            .unwrap_or_default(),
+                    })),
+                    Some("clear") => slot.rt.dispatch(Cmd::QueueMutate(QueueOp::Clear)),
+                    // 모르는 op — 접수만 하고 `Noop`을 돌려준다(렌더러가 앞서 나가도 안 죽는다).
+                    _ => slot.rt.dispatch(Cmd::QueueMutate(QueueOp::Noop)),
                 };
                 answer(verdict_wire("queue.mutate", &v));
             }
@@ -554,7 +595,12 @@ impl Hub {
             for e in evs_state {
                 self.on_engine_event(&chat, e);
             }
-            // ③ ChatStatusLite — 바뀐 것만.
+            // ③ 엔진이 **스스로** 연 턴(예약 드레인 · 한도 재개)에 와이어 런을 열어 준다(★R4).
+            //    ①·② 뒤에 두는 이유: `t1_spawn`은 `set_state("T1")`을 **보내기 전에** 하므로
+            //    RunState 시점에는 아직 프롬프트가 안 나갔다. 여기가 두 경로(T1·T16)에서
+            //    모두 "이미 보냈다"가 참인 유일한 지점이다.
+            self.sync_engine_run(&chat);
+            // ④ ChatStatusLite — 바뀐 것만.
             self.refresh_lite(&chat);
         }
     }
@@ -659,11 +705,21 @@ impl Hub {
                     ccg_store::chats_v3::set_owned(chat, "identity", raw);
                 }
             }
+            // ★R4 — `chat:queue`는 이제 **첨부·정체성 스냅샷까지** 싣는다. R3의
+            // `items: Vec<String>`(본문뿐)로는 렌더러가 자기 예약 목록을 이걸로 대체할 수
+            // 없었다(M-UX R2.1 표 #3). `queue`(본문 배열)는 그대로 두고 `items`를 더한다 —
+            // 얼려 둔 화면이 읽는 모양을 깨지 않으면서 새 화면이 쓸 값을 준다.
             Event::Queue { items, .. } => {
+                let rows = self
+                    .slots
+                    .get(chat)
+                    .map(|s| queue_rows(&s.rt))
+                    .unwrap_or_else(|| Value::Array(vec![]));
                 self.emit_all(
                     crate::ipc::ch::CHAT_QUEUE,
-                    json!({ "chatId": chat, "queue": items }),
+                    json!({ "chatId": chat, "queue": items, "items": rows }),
                 );
+                self.persist_queue(chat);
             }
             Event::Verdict { cmd, verdict } => {
                 self.emit_all(
@@ -724,6 +780,87 @@ impl Hub {
         }
     }
 
+    /// **엔진이 스스로 연 턴**을 화면에 붙인다(★R4 — M-UX R2.1 표 #4).
+    ///
+    /// R3까지 `wire.begin_run()`은 `Op::Run`에서만 불렸다. 그래서 예약 드레인(T16/T17/T27)과
+    /// 한도 재개로 시작된 턴은 **새 runId도 `analyzing`도 사용자 말풍선도 없이** 답만
+    /// 도착했다. 결과가 둘이다:
+    ///  ① 렌더러의 `busy`가 안 올라간다 → 얼려 둔 `useLimitResume`이 자기 대기표를
+    ///     자동 해제하지 못하고 **같은 해제에 두 번째 재개를 쏜다**(재개 이중 소유).
+    ///  ② "내가 보낸 적 없는 답"이 스레드에 뜬다.
+    ///
+    /// 그래서 여기서 와이어 런을 열고 에코를 낸다. `Op::Run`이 연 런은 `expect_run`으로
+    /// 가려낸다 — 안 그러면 사용자가 보낸 턴의 말풍선이 두 벌 그려진다.
+    fn sync_engine_run(&mut self, chat: &str) {
+        let (first, echo) = {
+            let Some(slot) = self.slots.get_mut(chat) else { return };
+            let Some(cur) = slot.rt.run_id().map(|r| r.0) else { return };
+            if slot.engine_run == Some(cur) {
+                return;
+            }
+            slot.engine_run = Some(cur);
+            let echo = slot.rt.take_echo();
+            if slot.expect_runs > 0 {
+                // 렌더러가 연 런이다 — 말풍선은 이미 그 화면이 그렸다.
+                slot.expect_runs -= 1;
+                return;
+            }
+            slot.run_seq += 1;
+            let run_id = format!("r{}-{}", std::process::id(), slot.run_seq);
+            let first = slot.wire.begin_run(&run_id);
+            slot.terminal = lite::Terminal::None;
+            (first, echo)
+        };
+        self.fanout(chat, first);
+        if let Some(e) = echo {
+            let run = self.slots.get(chat).map(|s| s.wire.run_id.clone()).unwrap_or_default();
+            // 계약면에 없던 이벤트다(2.6.2 `EngineEvent`에는 사용자 에코가 없다 —
+            // 렌더러가 자기 `begin` 리듀서로 말풍선을 만들었다). 얼려 둔 화면의
+            // 리듀서는 모르는 `type`을 `default:`로 흘리므로 무해하고, 3.0 화면은
+            // 이 값으로 예약이 나간 자리를 그린다.
+            self.fanout(
+                chat,
+                json!({ "type": "user-echo", "runId": run, "text": e.text,
+                        "images": e.images, "origin": e.origin.wire() }),
+            );
+        }
+    }
+
+    /// 큐·대기표를 **채팅 파일의 Rust 소유 필드**로 내린다(★R4).
+    ///
+    /// R3은 `reload_pending`으로 *읽기*만 배선했다 — 쓰는 쪽이 없어서 2.6.2가 마이그레이션
+    /// 때 남긴 값만 되살아났고, **3.0에서 건 예약은 재시작에 증발**했다. `identity`가
+    /// 이미 그렇게 내려가고 있으므로(§4.1 규약 2) 같은 문을 쓴다.
+    ///
+    /// `set_owned`는 디바운스 없이 그 자리에서 파일 하나를 쓴다. 큐가 바뀌는 순간은
+    /// 사용자 조작·드레인뿐이라 유휴에는 한 번도 안 돈다.
+    fn persist_queue(&self, chat: &str) {
+        let Some(slot) = self.slots.get(chat) else { return };
+        ccg_store::chats_v3::set_owned(chat, "queue", queue_rows(&slot.rt));
+    }
+
+    /// 대기표를 디스크로 — `resetsAt`은 **epoch 초**다(런타임 시계는 단조 ms).
+    /// 두 축을 섞으면 다음 부팅의 재장전이 1970년으로 읽어 **부팅이 곧 전송**이 된다
+    /// (`engine::remaining_ms`가 반대 방향으로 하는 변환의 짝).
+    fn persist_hold(&self, chat: &str) {
+        let Some(slot) = self.slots.get(chat) else { return };
+        let v = match slot.rt.hold() {
+            Some(h) => {
+                let now_ms = slot.rt.now();
+                let epoch_now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs_f64())
+                    .unwrap_or(0.0);
+                let resets_at = h
+                    .resets_at
+                    .map(|r| epoch_now + (r as f64 - now_ms as f64) / 1000.0);
+                json!({ "resetsAt": resets_at, "ready": h.ready })
+            }
+            None => Value::Null,
+        };
+        ccg_store::chats_v3::set_owned(chat, "hold", v);
+    }
+
     fn refresh_lite(&mut self, chat: &str) {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -748,8 +885,13 @@ impl Hub {
         if let Some(o) = next.as_object_mut() {
             o.insert("updatedAt".into(), json!(now));
         }
+        // 대기표가 달라졌으면 채팅 파일에도 내린다 — 재시작 재장전의 **원천**이다(★R4).
+        let hold_changed = slot.last_lite.get("hold") != next.get("hold");
         slot.last_lite = next.clone();
         ccg_store::status::set(chat, next);
+        if hold_changed {
+            self.persist_hold(chat);
+        }
         let all = super::status_array();
         self.emit_all(crate::ipc::ch::CHAT_STATUS, all);
     }
@@ -855,6 +997,37 @@ fn verdict_wire(cmd: &str, v: &Verdict) -> Value {
         Verdict::Applied => ("applied", None),
     };
     json!({ "cmd": cmd, "kind": kind, "reason": reason })
+}
+
+/// 큐 전문 → `chat:queue.items` / 채팅 파일의 `queue`(★R4).
+///
+/// **한 함수가 두 곳을 먹인다**: 화면이 그리는 목록과 디스크에 남는 목록이 갈리면
+/// 재시작 뒤 "화면에 있던 예약이 사라진다/없던 게 생긴다"가 된다. `read_chat_queue`가
+/// 읽는 키(`text`·`images`)를 그대로 쓴다.
+fn queue_rows<D: CliDriver>(rt: &ChatRuntime<D>) -> Value {
+    Value::Array(
+        rt.queue_items()
+            .map(|m| {
+                json!({
+                    "id": m.id,
+                    "text": m.text,
+                    "images": m.attachments,
+                    "origin": m.origin.wire(),
+                    "createdAt": m.created_at,
+                    "identityRev": m.identity_rev,
+                    // 예약 시점 picker의 **결과값**. 렌더러는 이걸로 "이 예약은 opus/plan로
+                    // 나간다"를 그린다(요청 조립은 여전히 엔진이 한다).
+                    "picker": {
+                        "model": m.identity.model(),
+                        "effort": serde_json::to_value(m.identity.effort()).unwrap_or(Value::Null),
+                        "mode": serde_json::to_value(m.identity.mode()).unwrap_or(Value::Null),
+                        "cwd": m.identity.cwd().as_str(),
+                        "account": m.identity.account(),
+                    },
+                })
+            })
+            .collect(),
+    )
 }
 
 fn identity_state<D: CliDriver>(rt: &ChatRuntime<D>) -> Value {

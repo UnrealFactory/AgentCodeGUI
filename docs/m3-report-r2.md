@@ -1136,3 +1136,433 @@ node docs/critic/tools/critic-wiring-live.mjs --only=E,F
 node bench/multi.mjs tauri --repeats=3
 #   ※ bench/results/multi-tauri-3.0.0-default.json 은 추적 대상 — 확인 후 git checkout
 ```
+
+---
+
+# §R4 — 주 게이트 귀속 · 큐 이관 · 재개 단일 소유
+
+**범위**: `crates/ccg-engine`(큐 입력·재개 소유·스폰 오류) · `crates/ccg-store`(얕은 스캔 ·
+큐 첨부 · 귀속 스위치) · `src-tauri/src/`(`flags.rs` 신설 · 엔진 글루 · 와이어 · 창) ·
+`scripts/poc-live-chat.mjs` · `bench/`(귀속 하네스 · 결과)
+**출발점**: §R3.9 남은 것 2·3·4 + M-UX §R2.8-1(큐 이관 3건) · §R2.9(재개 이중 전송 축)
+**규약**: 이 절도 §0~§7과 같다 — **사실만**, 자기 채점 없음. 판정은 크리틱 몫이다.
+
+**측정 바이너리** — 어느 주행이 어느 판인지 정확히 적는다:
+
+| sha256 앞 16 | 무엇을 쟀나 |
+|---|---|
+| `c60a7fbc58205988` | 귀속 1차(`attrib-…-r4a.json`). **역할 분해가 깨진 판** — 아래 R4.1 주의 |
+| `136ed45699bac0fb` | 귀속 2차 = **본 표**(`attrib-…-r4b.json`) |
+| `559fb4db60e97f9e` **(최종)** | 주 게이트 5회 · `poc-live-chat` 8단계 · 크리틱 A~F · 별칭 S1~S4 · `lightpanels` 팔 |
+
+> 최종판과 `136ed456`의 차이는 **기본이 꺼진 실험 스위치 하나**(`CCG_LIGHT_PANEL_CHATS`)뿐이다
+> — 값을 안 주면 실행 경로가 한 글자도 다르지 않다.
+
+**빌드에 관한 사실 하나**: 최종 빌드는 `npm run tauri:build`가 아니라
+`cargo build --release --features custom-protocol`이다. 주행 도중 **`node_modules`가 통째로
+비어**(다른 라운드의 재설치) `tauri` CLI가 사라졌다. 프런트엔드는 그 직전 vite 산출물
+(`app/dist`)을 그대로 쓴다 — 이 라운드는 `app/`을 안 건드리므로 같은 값이고, 덕분에
+**모든 측정이 같은 렌더러 번들**을 탄다.
+
+**안전**: 이름 기반 kill 0회. 죽인 것은 내가 spawn한 PID 트리(`killTree`)와 크리틱
+하네스가 `engine:debug`로 알아낸 내 격리 홈의 자식 CLI뿐. 종료 후 프로세스 점검에서
+남은 것은 사용자 실앱(`%LOCALAPPDATA%\Programs\AgentCodeGUI\`)뿐이고
+`ccg-r4-snap.exe`·`claude.exe` 잔존 0. 실홈은 읽기/복사만(engines=정션, 자격증명=복사).
+크리틱 소유 산출물(`wiring-r1-attacks.json`·`wiring-r1-alias.json`)과 벤치 기준
+(`bench/results/multi-tauri-3.0.0-default.json`)은 주행 뒤 `git checkout`으로 원복하고,
+내 수치는 `multi-tauri-3.0.0-r4.json`으로 따로 남겼다.
+
+---
+
+## R4.0 한 장 요약
+
+| 항목 | R3 | R4 |
+|---|---|---|
+| 유휴 Priv 귀속 | **불가**(팔을 가를 수단 없음) | **스위치 7개 + 인터리브 A/B**(§R4.1·R4.2) |
+| Rust 프로세스 몫(같은 픽스처·타이밍) | 미측정 | **32.6 WS / 13.6 Priv**(12회 중앙값) · R2 크리틱 실측 `36.1/17.0`보다 **−3.5 / −3.4** |
+| 주 게이트 5회 중앙값 | 440.5 / 254.7 (4회) | **439.5 / 254.2** · 회차 Priv `255.1·250.6·255.1·236.4·254.2` |
+| `chat:queue-mutate` op | `restore`뿐(나머지 무동작) | **`enqueue`/`remove`/`reorder`/`clear`/`restore`/`resume` 6종**(§R4.3) |
+| `QueuedMessage` | 텍스트뿐 | **첨부(images) + picker 스냅샷**(§R4.3) |
+| 엔진 드레인의 화면 | runId·`analyzing`·말풍선 **없음** | `wire.begin_run` + **`user-echo`**(§R4.3) |
+| 재개 주체 | Rust · 렌더러 **둘** | **Rust 하나** — 나팔 억제 + `resumeOwner` 신호(§R4.4) |
+| `driver.spawn` IO 오류 | 삼킴(20초 침묵) | **즉시 `SpawnFailed` 정착 + 사유**(§R4.5) |
+| `result.tokenUsage`·`contextWindow`·`tool-end.links` | `null`/없음 | **배선**(§R4.6) |
+| 3.0 코어 32채널 | 31 | **32**(`chat:flush-req` — §R4.6) |
+| 크레이트 테스트 | 108 / 60 / 14 | **118 green(+2 ignored) / 62 / 19** (+ ccg-auth 67 · ccg-fs 61) |
+| 세로 조각 | PASS | **PASS · 결함 0**(8단계, 최종 바이너리) |
+| 크리틱 공격 | A~F green | **A~F green**(E는 1차에 붙었다) · 별칭 S1~S4 green |
+
+---
+
+## R4.1 귀속 — 팔을 가를 스위치를 판다
+
+R3이 델타를 귀속하지 못한 이유는 측정법이 아니라 **대상**이었다(§R3.7): 같은 바이너리에
+네 라운드의 변경이 들어 있는데 팔을 가를 수단이 없었다. R2가 자기 델타를 주장할 때 쓴
+방법(같은 바이너리 인터리브 A/B)이 성립한 것은 `CCG_UNIFIED_STORE`라는 스위치가 있었기
+때문이다. 그래서 서브시스템마다 스위치를 하나씩 판다 — `src-tauri/src/flags.rs`.
+
+| 스위치 | 끄는 것 |
+|---|---|
+| `CCG_NO_ENGINE_GLUE` | `engine::boot`/`dispatch`/`shutdown` **전체**(허브 스레드 · 상태 장전 · 재장전 · 와이어) |
+| `CCG_NO_ENGINE_HUB` | 허브 **스레드**만 |
+| `CCG_NO_STATUS_BOOT` | `status::load_boot` + 부팅 재장전 + 첫 `chat:status` |
+| `CCG_NO_FS` | `ccg-img` 서빙 + `fs:*`/`git:*` 채널(M6가 링크한 `ccg-fs`의 상주 몫) |
+| `CCG_NO_STATUS_TICK` | 마운트 따라잡기 `chat:status`·`chat:windows` 재송신 |
+| `CCG_DEEP_BOOT_SCAN` | **R3 동작으로 되돌린다**(부팅 경로의 깊은 파싱 — R4.2 ③) |
+| `CCG_LIGHT_PANEL_CHATS` | (실험 · 기본 꺼짐) `chats:get`에서 보이는 패널 스냅샷도 뺀다 |
+
+규칙 셋: ① 기본값은 전부 **제품 동작**이다 ② 판정은 `unified_store_enabled()`와 같다
+(빈 값·`0`·`false`만 "안 켬" — 오타로 조용히 갈리지 않게) ③ 프로세스당 **한 번만** 읽는다.
+`bench/lib.mjs armName()`에도 전부 등록했다 — 안 하면 두 팔이 한 결과 파일에 써서 두 번째가
+첫 팔을 지운다(R2.5가 닫았던 결함).
+
+하네스는 `bench/attrib.mjs`(신설). R11 크리틱의 `critic-wiring-mem.mjs`를 계승한다 —
+같은 픽스처(`makeMultiFixture` 4패널)·같은 타이밍(마운트 후 4s+20s)·**팔을 쌍 단위로 번갈아**·
+역할별 분해. 두 가지를 더 넣었다: ⑴ 쌍마다 순서를 뒤집어 "첫 회차가 콜드 프로필을
+뒤집어쓴다"는 편향이 한쪽 팔에 고이지 않게 ⑵ `engine:debug`가 **켜진 스위치 목록을 되읽어**
+산출물에 남긴다("이 주행이 정말 그 팔이었나"의 유일한 증거).
+
+> **1차 주행에서 밟은 함정**: 역할 분해를 `/agentcodegui/i` **이름**으로 갈랐더니
+> (크리틱 하네스 그대로), `--exe=`로 스냅샷(`ccg-r4-snap.exe`)을 재는 순간 Rust 몫이
+> **통째로 0**으로 나왔다(`attrib-…-r4a.json` 전 행이 `rust 0/0`). **루트 pid**로 갈라 고쳤다.
+> r4a는 그래서 총합만 유효하고, 본 표는 r4b다.
+
+---
+
+## R4.2 귀속 표 — 무엇이 유휴 메모리를 쓰는가
+
+`node bench/attrib.mjs --arm=deepboot,noglue,nofs --pairs=4`
+(`bench/results/attrib-tauri-3.0.0-r4b.json` · exe `136ed456` · 24회 부팅)
+
+### 팔별 Δ (기본 − 팔, 쌍별 Δ의 중앙값 · MB)
+
+| 팔 | total WS | total Priv | **Rust WS** | **Rust Priv** | 렌더러 WS | 렌더러 Priv |
+|---|---|---|---|---|---|---|
+| `noglue`(엔진 글루 **전체** 끔) | +1.1 | −1.8 | **−0.7** | **−0.6** | −0.2 | −0.6 |
+| `nofs`(파일·Git 도메인 끔) | +3.0 | +3.1 | −0.2 | −0.1 | +4.5 | +3.4 |
+| `deepboot`(R3 깊은 파싱으로 되돌림) | +1.7 | +2.4 | −0.3 | −0.05 | +2.4 | +2.6 |
+
+쌍별 total Priv: `noglue [−7.3, −2.6, +4.4, −0.9]` · `nofs [+0.5, −2.8, +11.0, +5.6]` ·
+`deepboot [+10.4, +1.0, −5.9, +3.8]`.
+
+### 절대값 — 어디에 무엇이 있나 (기본 팔 12회 중앙값)
+
+| 역할 | WS | Priv |
+|---|---|---|
+| **Rust**(`agentcodegui.exe` 루트) | **32.6** | **13.6** |
+| 렌더러(`--type=renderer`) | 189.8 | 136.6 |
+| 그 밖(WebView2 browser · gpu · utility · crashpad) | 216.6 | 104.8 |
+| 합 | 439.3 | 254.9 |
+
+### 읽는 법 (사실만)
+
+1. **어떤 Rust 스위치도 총합을 잡음 밖으로 움직이지 못한다.** 가장 큰 팔(`noglue` — 허브
+   스레드·상태 장전·재장전·와이어를 통째로 끈다)이 Rust 프로세스를 **0.6MB** 움직인다.
+   Rust 프로세스 전체가 **13.6MB Priv**이므로, 게이트를 1.2MB 넘긴 것을 Rust 안에서 되찾으려면
+   상주분의 **9%**를 잘라야 한다.
+2. **Rust는 R2보다 낮다.** R11 크리틱이 **같은 픽스처·같은 타이밍**으로 잰 R2 시점 값은
+   `agentcodegui.exe` **36.1 WS / 17.0 Priv**였다(`docs/critic/wiring-r1.md` §4.1).
+   지금은 **32.6 / 13.6** — **−3.5 WS / −3.4 Priv**. 즉 R2→R4에서 늘어난 몫은 Rust에 없다.
+3. **`deepboot`는 방향만 맞고 크기는 잡음에 묻힌다.** R4는 부팅 경로의 **중복 깊은 파싱**을
+   걷었다(`engine::all_chat_ids`가 `all_chats()`로 채팅 전문을 파던 것 → `chat_ids()`,
+   `session_chat_infos()`가 `broadcast_sessions`마다 같은 짓을 하던 것 → `chat_heads()` 얕은
+   스캔). Rust Δ는 **−0.05MB**다 — *피크*를 정하는 것은 여전히 `chats:get`의 정당한 파싱이고,
+   중복분은 그 피크 아래에 있었다. **줄인 것은 일이지 상주 페이지가 아니다.**
+4. **움직이는 질량은 렌더러 + WebView2다.** 같은 팔 안에서 렌더러 Priv가 119.5~141.8로 흔들린다.
+5. **이 기계의 바닥이 90분 사이에 22MB 움직였다.** 같은 하네스·같은 픽스처의 기본 팔:
+   09:44~09:48 `234.4 / 252.5 / 236.6`, 10:05~10:24 `250.3~256.7`, 11시대 `246.6~254.1`,
+   주 게이트 4회차 `236.4`. **같은 바이너리에서 234~257이 나온다.** 이 레포에서 라운드 셋이
+   동시에 빌드·주행 중이고(주행 중에 `node_modules`가 비는 것을 실제로 봤다), 그것이
+   WebView2/GPU의 커밋에 그대로 얹힌다.
+
+### 실험 팔 하나 — `lightpanels`(채택 안 함)
+
+통합 스토어에서 **패널은 채팅**이다. 그래서 보이는 패널 넷의 대화가 `chats:get`과 `ma:get`
+**두 채널로 한 벌씩** 렌더러에 간다 — 2.6.2에 없던 중복이다. 렌더러 쪽이 유일하게 움직이는
+질량이므로 후보로 두고 쟀다(`--arm=lightpanels --pairs=3`, exe `559fb4db`):
+
+```
+쌍별 total Priv Δ(기본 − 켬): [+13.3, −7.8, −2.0]   중앙값 −2.0
+렌더러 Priv Δ 중앙값 −1.9    Rust Priv Δ 중앙값 +0.7
+```
+
+**이득이 없다.** 스위치는 **기본 꺼짐으로 남긴다** — 없애면 다음 라운드가 같은 후보를 다시
+쫓는다. (렌더러가 `unloaded` 마커를 병합하는 계약은 이미 있고 별칭 하네스 S1이 그걸 잰다.
+그래도 켜는 판단은 `app/`을 소유한 라운드의 몫이다 — "병합 깨지면 대화 증발"이 이 축의 위험이다.)
+
+### 정직하게 남는 것
+
+**주 게이트의 절대값을 게이트 아래로 되돌리지 못했다**(§R4.8: 5회 중앙값 Priv **254.2**).
+이 라운드가 가진 근거로 말할 수 있는 것은 셋이다 — ① Rust 몫은 13.6MB이고 R2보다 3.4MB
+낮다 ② 어떤 Rust 스위치도 총합을 ±1MB 밖으로 못 움직인다 ③ 같은 바이너리의 회차 분산이
+±11MB다. **원인이 Rust 밖에 있다는 증거는 있고, 그 밖을 고칠 권한은 이 라운드에 없다**
+(`app/` 금지). 다음 라운드를 위한 표적은 §R4.10-1에 적었다.
+
+---
+
+## R4.3 큐 Rust 이관 3건 (M-UX §R2.8-1)
+
+렌더러 R2가 큐 소유권을 대화로 옮기면서 **Rust로는 못 옮기는 이유 셋**을 표로 남겼다
+(§R2.1). 셋 다 닫는다.
+
+| # | R3까지 | R4 |
+|---|---|---|
+| 1 | `chat:queue-mutate`에 **넣는 op이 없다**(`restore`뿐) | `enqueue`/`remove`/`reorder`/`clear`/`restore`/`resume` **6종** |
+| 2 | `Cmd::QueueMutate`가 런타임에서 **무동작**(`_ => verdict`) | `Cmd::QueueMutate(QueueOp)` — op을 값으로 싣고 실제로 만진다 |
+| 3 | 큐 항목이 **텍스트뿐**(`Vec<String>`) | `QueueInput{text, images, picker}` → `QueuedMessage.attachments` + **항목별 정체성 스냅샷** |
+| 4 | 엔진 드레인이 `wire.begin_run`도 사용자 에코도 안 낸다 | `Slot::engine_run` 추적 → **엔진이 연 턴**에 런을 열고 `user-echo`를 낸다 |
+
+### 규약으로 굳힌 것
+
+- **`enqueue`는 명령표를 탄다.** `Cmd::Enqueue`는 `enqueue` 행이라 Idle에서는 곧장 나가고
+  (Accept `T27`) 그 밖에서는 주차된다(Queue). `queue.mutate` 행(전 상태 Accept)에 얹으면
+  "빈 채팅에 예약을 걸었는데 안 나간다"가 된다.
+- **큐를 만지는 op은 드레인을 깨우지 않는다.** `remove`·`reorder`·`clear` 어느 것도
+  `drain_if_possible()`을 부르지 않는다 — §7.4가 `queue.restore`에 못박은 것과 같은 이유다
+  ("되돌리기가 곧 전송이면 위험하다").
+- **없는 id 삭제는 `Rejected("no_item")`이다**(D7 침묵 no-op 금지). 낡은 목록으로 재정렬해도
+  목록에 없던 항목은 **뒤에 원래 순서대로 남는다** — 예약이 증발하지 않는다.
+- **picker는 그 항목만의 스냅샷이다.** 채팅의 정체성은 안 바뀐다(그건 `chat:identity-set`의
+  몫 — 저자를 늘리지 않는다). 정규화가 실패하면 조용히 지금 값으로 떨어진다.
+- **첨부는 데이터로 살고, 드레인에서 본문에 접힌다**(`compose_prompt` — 2.6.2
+  `promptWithNotes` 파리티). 첨부가 없으면 본문은 **한 글자도 안 바뀐다**(옛 경로 무영향).
+- **`chat:queue`는 `queue`(본문 배열)를 그대로 두고 `items`를 더한다** — 얼려 둔 화면이
+  읽는 모양을 안 깨면서 새 화면이 쓸 값(첨부·picker·`origin`·`createdAt`)을 준다.
+- **큐·대기표를 채팅 파일에 내린다**(`chats_v3::set_owned`). R3은 부팅 재장전으로 *읽기*만
+  배선했다 — 쓰는 쪽이 없어 **3.0에서 건 예약은 재시작에 증발**했다. 화면이 그리는 목록과
+  디스크에 남는 목록은 `queue_rows()` **한 함수**가 먹인다.
+
+### `user-echo` — 계약면에 없던 이벤트 하나
+
+2.6.2 `EngineEvent`에는 사용자 에코가 없다(렌더러가 자기 `begin` 리듀서로 말풍선을 만든다).
+엔진이 스스로 연 턴에는 그 리듀서가 안 돈다. 그래서 `{type:'user-echo', runId, text, images,
+origin}`을 낸다 — 얼려 둔 리듀서는 모르는 `type`을 `default:`로 흘리므로 무해하고
+(`session.ts:1060`), 3.0 화면은 이 값으로 예약이 나간 자리를 그린다.
+
+`Op::Run`이 연 런과 엔진이 연 런은 `expect_runs` **카운터**로 가른다. bool이면 턴 중에
+두 번 보낸 경우 두 번째 드레인이 "엔진이 시작했다"로 읽혀 말풍선이 두 벌 그려진다.
+
+### 오프라인 회귀 (`mod r4_queue_and_resume_tests` 외)
+
+`an_enqueued_message_keeps_its_images_and_picker` ·
+`attachments_are_folded_into_the_prompt_when_it_drains` ·
+`a_plain_send_is_byte_identical_to_before` ·
+`remove_takes_exactly_one_item_and_never_drains` ·
+`reorder_keeps_the_items_the_renderer_did_not_mention` ·
+`clear_leaves_an_undo_token_and_restore_puts_them_back` ·
+`queue_attachments_survive_a_restart`(ccg-store) ·
+`chat_heads_reads_the_head_without_parsing_the_thread`(ccg-store)
+
+---
+
+## R4.4 재개 단일 소유 — 한 번의 해제에 한 턴
+
+M-UX §R2.9가 축을 적어 뒀다: *한도로 죽은 턴 → 앱 재시작 → 리셋 시각 도달 → **전송이 한
+번인가 두 번인가.*** 행위자가 둘이다 — Rust의 `check_hold`와 얼려 둔 렌더러의
+`useLimitResume`. m-logic P6("행위자 하나")대로 **Rust가 소유**한다.
+
+### 잠근 방법 셋 (하나로는 안 닫힌다)
+
+**① 대기 중에 걸린 메시지가 있으면 기계의 나팔을 넣지 않는다.**
+렌더러가 Rust보다 먼저 발화하면 그 프롬프트가 `chat:run`으로 들어와 **게이트에 주차된다**
+(hold가 열려 있지 않으므로). 그 뒤 Rust가 `"이어서 진행해 주세요"`를 큐 head에 끼우면
+**한 번의 해제에 두 턴**이 나간다. `LimitHold.armed_at`을 새로 들고,
+`created_at > armed_at`인 사용자 항목이 있으면 나팔을 생략한다(+ 사유 한 줄 — D7).
+
+경계가 `>`인 것이 규약이다: 표가 걸리기 **전에** 쌓인 예약(재생 #4의 `"2"`·`"3"`)과
+재장전으로 표와 **같은 순간**에 선 예약은 재개가 아니다 → §7.3의 나팔이 그대로 산다.
+재생 #4(`s04_queue_plus_limit_hold_resume`)의 단언
+`["1", "이어서 진행해 주세요", "2", "3"]`이 **한 글자도 안 바뀌었다**.
+
+**② 엔진이 연 턴이 화면을 busy로 만든다**(§R4.3의 `begin_run`). 얼려 둔
+`useLimitResume`은 **busy 상승 에지에서 자기 대기표를 스스로 해제한다**
+(`useLimitResume.ts` "이 대화에서 새 실행이 시작되면 대기표 해제"). R3까지 엔진 드레인은
+`status analyzing`을 안 냈으므로 그 에지가 없었고, 렌더러는 자기 표를 든 채로 남았다.
+이제 Rust가 먼저 쏘면 렌더러가 **스스로 취소한다** — 얼려 둔 코드의 자기 논리로.
+
+**③ 관장 표시를 준다.** `ChatStatusLite`에 `resumeOwner: "engine"`과 `autoResume`을 싣는다.
+전자는 *"이 채팅의 한도 재개는 Rust가 관장한다"*(렌더러는 `enabled:false`로 자기 훅을 끄면
+된다), 후자는 그 안에서 갈리는 스펙 ⑤(보이는 자리는 자동, 화면 밖은 `ready`만).
+둘을 하나로 접지 않는 이유는 `status`/`bgActive`를 안 접는 것과 같다.
+
+### 재생 시나리오로 잠갔다
+
+| 테스트 | 잠그는 것 |
+|---|---|
+| `a_message_parked_during_the_hold_is_the_resume_no_second_turn` | 대기 중 렌더러 프롬프트 주차 → 해제 → **`sent_user_texts` 1건**(그 프롬프트) · spawns 1 |
+| `resume_now_with_a_parked_message_sends_that_message_once` | 화면 밖 채팅에서 사용자가 눌러 이어갈 때도 1건 |
+| `a_queue_that_predates_the_hold_still_gets_the_nudge` | §7.3 규약 불변(경계가 `>`인 이유) |
+| `s04_queue_plus_limit_hold_resume`(기존 재생 #4) | 순서 보존 + 이중 전송 없음 — 값 무변경 |
+
+라이브로도 본다: `poc-live-chat --only=reload`의 B1~B4가 최종 바이너리에서 전 항목 초록
+(재장전 → 아무것도 안 나감 → 해제 → 1회 발사 → 화면 밖은 `ready`만 → 눌러서 발사).
+
+---
+
+## R4.5 `driver.spawn()` IO 오류 (§R3.8-M 닫음)
+
+`let _ = self.driver.spawn(&spec);` — `claude.exe`가 없거나 실행 권한이 없으면 아무 말 없이
+`Starting`으로 들어가 **T3(20초)** 까지 침묵했다. 오류는 그 자리에서 이미 확정된 사실이다.
+
+셀은 T3와 **같다**(`Starting → Terminating{SpawnFailed}`) — 계기만 다르다(20초 무응답이
+아니라 커널이 방금 거절했다). `Event::Exit{SpawnFailed}`가 셸의 `wire.stream_closed`로
+이어져 오류 말풍선 · 스피너 정착 · 컴포저 해제까지 간다(R3 §R3.1의 `error` 항목이 이미
+그 배선이다). 사유 문장에 **CLI 경로와 OS 오류**를 함께 싣는다.
+
+회귀: `a_missing_cli_settles_at_once_not_after_twenty_seconds` — 즉시 `Idle` · `SpawnFailed` ·
+사유 통지 · **못 뜬 프로세스에 프롬프트를 적어 두지 않는다**(불변식 7) ·
+다음 전송이 막히지 않는다(래치 잔존 금지).
+
+---
+
+## R4.6 남은 칸 셋 + 32/32
+
+| 항목 | 무엇을 했나 |
+|---|---|
+| `result.contextWindow` | `modelUsage`의 **최대 창**(2.6.2 `windowFromModelUsage`). 모르면 `null` — 지어내지 않는다 |
+| `result.tokenUsage` | `modelUsage` → 표시명별 합산(2.6.2 `tokenUseFromResult`). 없으면 합산 `usage`를 현재 모델 하나로 폴백 |
+| `tool-end.links` | `WebSearch` 결과의 `Links: […]` 블록 파싱 + `"url"` 폴백(2.6.2 `extractWebLinks`). 최대 20 · 중복 url 제거 · 요약 문구 `"N개 결과"` |
+| `chat:flush-req` | `win:chat-close`가 창을 닫기 **전에** 그 창에만 보낸다(§6.1의 마지막 한 칸 → **32/32**) |
+
+**같이 고친 것 하나**: `model_display`가 `'-'`로 통째로 쪼개서
+`claude-opus-5-1[1m]`의 부번호를 `"1[1m]"`로 읽고 **`Opus 5`** 로 떨어뜨렸다. 2.6.2의
+정규식(`…(?:-(\d{1,2}))?\b`)과 같은 판정으로 고쳤다 — 안 고치면 `[1m]` 컨텍스트 변형이
+**다른 모델로 보여** `tokenUsage`가 두 줄로 갈린다. 새 테스트가 그걸 잰다.
+
+**`chat:flush-req`의 정직한 크기**: 얼려 둔 렌더러에는 이 채널의 구독자가 없다(자기
+디바운스로 저장한다). 그래서 오늘의 효과는 0이고, 채널이 **있다**는 것이 계약이다 —
+디바운스가 안 내려간 마지막 편집은 지금도 창과 함께 사라진다.
+
+---
+
+## R4.7 하네스 — 동시 실행 안전(§R3.6이 남긴 것)
+
+R3은 *"하네스 홈 이름이 고정이라 다른 라운드가 같은 하네스를 동시에 돌리면 서로의 격리 홈을
+지운다(실제로 한 번 겹쳤다). 고치지 않았다 — 이름이 문서에 인용돼 있어 추적성이 끊긴다"*
+라고 적었다. **기본값을 유지한 채로** 연다:
+
+```
+node scripts/poc-live-chat.mjs            # `.poc-home-live` · 포트 9361~9370 (변화 없음)
+node scripts/poc-live-chat.mjs --tag      # `.poc-home-live-<pid>-<난수>` · 포트 +16N · 산출물도 분리
+node scripts/poc-live-chat.mjs --tag=r4   # 그 태그
+```
+
+포트는 태그 해시로 16씩 민 대역을 쓴다(이 하네스가 쓰는 포트가 10개라 겹치지 않는다).
+산출물도 R3의 근거 파일을 덮지 않게 갈랐다: **`docs/critic/m3-r4-live.json`**.
+
+`bench/multi.mjs`에도 `--exe=`를 열었다 — 주행 도중 다른 라운드가 exe를 지우면 5회가 통째로
+깨진다(이번 라운드에는 `node_modules`까지 비는 것을 봤다).
+
+---
+
+## R4.8 게이트 주행 결과 (최종 바이너리 `559fb4db`)
+
+| 게이트 | 결과 |
+|---|---|
+| `cargo test -p ccg-engine --offline` | **118 green** / 2 ignored (R3의 108 + R4 10) |
+| `cargo test -p ccg-store --offline` | **62 green** (R3의 60 + 2) |
+| `cargo test`(`src-tauri`) | **19 green** (R3의 14 + `flags` 1 + `wire` 4) |
+| `cargo test -p ccg-auth` / `-p ccg-fs` | 67 green / 61 green (무변경 확인) |
+| `node scripts/poc-live-chat.mjs` | **PASS · 결함 0** — 8단계 전부 (`docs/critic/m3-r4-live.json`) |
+| `critic-wiring-live.mjs --only=A,B,C,D` | A · B · C · D **green**(파일 `verdict`의 `FAIL 3건`은 R2 §R2.1이 적어 둔 하네스 한계 — `--only`가 이전 주행 findings를 필터하지 않는다) |
+| `critic-wiring-live.mjs --only=E,F` | **E · F green**(1차 주행에 둘 다 붙었다) |
+| `critic-wiring-alias.mjs` | **S1~S4 green · 결함 0** (얕은 스캔으로 바꾼 `session_chat_infos`·`unloaded` 병합이 여기서 걸린다) |
+| `node bench/multi.mjs tauri --repeats=5` | 아래 |
+
+### 주 게이트 — 5회 (`bench/results/multi-tauri-3.0.0-r4.json`)
+
+| 지표 | 회차별 | 중앙값 | R3(3회 세트) | R2(5쌍) |
+|---|---|---|---|---|
+| idleGrid WS MB | 439.5 · 437.0 · 440.5 · **421.0** · 439.9 | **439.5** | 440.5 | 430.7 |
+| idleGrid Priv MB | 255.1 · 250.6 · 255.1 · **236.4** · 254.2 | **254.2** | 254.7 | 246.4 |
+| idleGrid procs | 5 (5/5) | **5** | 5 | 5 |
+| idleWithWindows WS / Priv | 482.1/259.5 · 476.9/252.6 · 479.9/255.4 · 469.5/246.9 · 476.9/253.4 | **476.9 / 253.4** | 479.9 | 475.2 |
+| wsMB/window | 21.3 · 19.9 · 19.7 · 24.3 · 18.5 | **19.9** | 19.6 | 22.3 |
+| procsAdded | 0 (5/5) | **0** | 0 | 0 |
+| scrollInPanel avgFps / p95 / worstDrop% | 57.7 · 59.1 · 56.6 · 59.4 · 58.7 | **58.7 / 19.5 / 0** (드랍 0 **5/5**) | 58.7 / 20.6 / 0 | 58.9 / 19.6 / 0.3 |
+| scrollAllPanels avgFps / p95 / worstDrop% | 59.1 · 59.1 · 59.8 · 59.7 · 59.0 | **59.1 / 17.1 / 0** (드랍 0 **5/5**) | 59.4 / 18.3 / 0 | 59.0 / 18.5 / 0 |
+
+**읽는 법(사실만)**
+
+- **스크롤 회귀는 없다** — 두 팔 모두 5/5 회차 드랍 0.
+- **유휴 Priv 5회 중앙값 254.2 — 게이트(≤253) 위다.** R3의 254.7과 같은 자리이고, 회차
+  분산(236.4~255.1, 폭 18.7MB)이 게이트와 중앙값의 거리(1.2MB)보다 **15배** 크다.
+- 이 라운드는 그 분산의 출처를 §R4.2에서 잰다: Rust는 13.6MB Priv이고 어떤 스위치도 총합을
+  ±1MB 밖으로 못 움직인다. 같은 바이너리·같은 픽스처가 90분 사이에 234~257을 낸다.
+- **회복은 못 했다.** 이 표는 그 사실을 그대로 싣는다.
+
+---
+
+## R4.9 알려진 구멍 — 갱신 (§R3.8 대체)
+
+| # | 구멍 | 결과의 등급 | 상태 |
+|---|---|---|---|
+| A · B · D~I | (R2·R3에서 닫힘) | | 닫힘 |
+| C | `allow_always`가 1회 허용과 같게 동작 | 조용한 축소 | 열림 |
+| **J** | `result.tokenUsage` · `contextWindow` | 빈 칸 | **닫힘(R4.6)** |
+| **K** | `tool-end.links` | 빈 칸 | **닫힘(R4.6)** |
+| **L** | `chat:flush-req` 미배선 | 없음 | **닫힘(R4.6)** — **32/32** |
+| **M** | `driver.spawn()` IO 오류 삼킴 | 20초 침묵 | **닫힘(R4.5)** |
+| **N** | 큐가 렌더러·엔진 두 목록 | **`chat:status.queued`가 화면과 다른 값** | **채널은 닫힘(R4.3)** · 렌더러 전환은 열림 |
+| **O** | 재개 주체 둘 | **한 해제에 두 턴** | **닫힘(R4.4)** — 렌더러가 훅을 끄면 신호도 맞는다 |
+| **P** | 유휴 Priv 게이트 초과 | 게이트 초과(성능) | **열림** — 귀속은 됐고(R4.2) 표적은 Rust 밖이다 |
+
+### 렌더러 몫 (이번 라운드 `app/` 금지 — 목록만)
+
+R3의 R6~R8 그대로 + 둘 추가:
+
+| # | 무엇 | 왜 렌더러인가 |
+|---|---|---|
+| R9 | **`chat:queue-mutate`로 예약을 옮기기** | 셸은 op 6종 + `chat:queue.items`(첨부·picker)를 다 낸다. 소비 지점이 `queue` state 하나라 교체는 한 곳이다(M-UX §R2.8-1) |
+| R10 | **`useLimitResume`을 `resumeOwner === 'engine'`이면 끄기** | 셸이 그 값을 싣는다. Rust 쪽에서 이중 전송은 이미 막았지만(§R4.4 ①②), **아예 안 쏘는 것**이 규약이다 |
+
+---
+
+## R4.10 남은 것 (다음 라운드 후보) — §R3.9 대체
+
+1. **유휴 Priv의 표적은 Rust 밖이다**(§R4.2). 다음 라운드가 볼 곳 순서: ⑴ 렌더러가 부팅
+   페이로드로 받아 **들고 있는 것**(패널 중복은 아니다 — `lightpanels`가 −2.0으로 반박했다)
+   ⑵ WebView2 스위치(`webview_args.rs`의 기각 목록은 *"이 이름으로는 무효"*지 무효가 아니다)
+   ⑶ **조용한 기계에서의 재측정** — 이 레포에서 라운드 셋이 동시에 도는 동안은 ±11MB가 바닥이다.
+2. **렌더러 몫 R6~R10**(위 표) — 셸은 다 냈고 읽는 쪽이 없다. 특히 R9가 끝나야
+   `chat:status.queued`와 화면의 예약 수가 같아진다.
+3. `allow_always`의 `updatedPermissions`(C) · Codex(app-server) 엔진 · `btw:open` 포크.
+4. **워치독 ⑥ 능동 프로브의 라이브 관측**(O17) — R2·R3에서 그대로 남았다.
+5. **재장전 대기표의 90초 지연**(§R3.3) — 그대로 남았다.
+6. `chat:flush-req`의 **구독자** — 채널은 섰고 읽는 화면이 없다(§R4.6).
+
+---
+
+## R4.11 재현
+
+```bash
+cargo test -p ccg-engine --offline          # 118 green / 2 ignored
+cargo test -p ccg-store  --offline          #  62 green
+(cd src-tauri && cargo test --offline)      #  19 green
+
+rm -f target/release/agentcodegui.exe && npm run tauri:build
+#   ※ node_modules가 비어 tauri CLI가 없으면(다른 라운드의 재설치 중):
+#      cargo build --release --features custom-protocol -p agentcodegui
+cargo build -p ccg-engine --features fakecli --bin ccg-fakecli --release
+
+# 주행 중 exe가 사라지는 것을 막는다(§R4.7)
+cp target/release/agentcodegui.exe "$TEMP/ccg-r4-snap.exe"
+
+node scripts/poc-live-chat.mjs --exe="$TEMP/ccg-r4-snap.exe"    # 8단계 (게이트)
+#   결과: docs/critic/m3-r4-live.json
+node scripts/poc-live-chat.mjs --only=reload --tag              # 재개 소유 (동시 실행 안전)
+
+node docs/critic/tools/critic-wiring-live.mjs --only=A,B,C,D --exe="$TEMP/ccg-r4-snap.exe"
+node docs/critic/tools/critic-wiring-live.mjs --only=E,F       --exe="$TEMP/ccg-r4-snap.exe"
+node docs/critic/tools/critic-wiring-alias.mjs
+#   ※ 크리틱 소유 산출물(wiring-r1-{attacks,alias}.json)은 실행 뒤 git checkout
+
+# 귀속 A/B — 팔마다 자기 파일에 쓴다(armName 등록 완료)
+node bench/attrib.mjs --arm=deepboot,noglue,nofs --pairs=4 --tag=r4b --exe="$TEMP/ccg-r4-snap.exe"
+node bench/attrib.mjs --arm=lightpanels --pairs=3 --tag=r4c --exe="$TEMP/ccg-r4-snap.exe"
+
+# 주 게이트
+node bench/multi.mjs tauri --repeats=5 --exe="$TEMP/ccg-r4-snap.exe"
+#   ※ bench/results/multi-tauri-3.0.0-default.json 은 추적 대상 — 확인 후 git checkout
+#     (이 라운드 수치는 multi-tauri-3.0.0-r4.json 으로 따로 남겼다)
+```

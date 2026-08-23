@@ -217,18 +217,38 @@ pub fn chats_save(data: &Value) {
 /// 열린 창만 돌려주는 바람에 마이그레이션된 대화가 **화면에서 사라져 보였다**(크리틱 D7).
 /// 여기서 파일 진실을 얹어 도달성을 되살린다 — 창 소유는 여전히 셸(win.rs)이다.
 pub fn session_chat_infos() -> Vec<Value> {
-    crate::chats_v3::all_chats()
+    // ★R4 — **얕은 스캔**으로 바꿨다. 이 함수는 `broadcast_sessions()`가 부르고,
+    // 그건 부팅 1회 + 창을 열거나 닫을 때마다 돈다. R3까지는 그때마다 `all_chats()`가
+    // 채팅 전문(스냅샷 포함)을 `Value` 트리로 팠다 — **네 필드를 읽으려고** 그랬다.
+    if crate::deep_boot_scan() {
+        // 귀속 팔 — R3 경로 그대로(짝지은 A/B의 대조군).
+        return crate::chats_v3::all_chats()
+            .into_iter()
+            .filter(|c| origin_of(c) == ORIGIN_SESSION)
+            .filter_map(|c| {
+                let id = c.get("id").and_then(Value::as_str)?.to_string();
+                Some(json!({
+                    "id": id,
+                    "title": c.get("title").and_then(Value::as_str).unwrap_or(""),
+                    "status": c.get("status").and_then(Value::as_str).unwrap_or("idle"),
+                    "open": false,
+                    "shown": true,
+                }))
+            })
+            .collect();
+    }
+    crate::chats_v3::chat_heads()
         .into_iter()
-        .filter(|c| origin_of(c) == ORIGIN_SESSION)
-        .filter_map(|c| {
-            let id = c.get("id").and_then(Value::as_str)?.to_string();
-            Some(json!({
-                "id": id,
-                "title": c.get("title").and_then(Value::as_str).unwrap_or(""),
-                "status": c.get("status").and_then(Value::as_str).unwrap_or("idle"),
+        // 판정은 `origin_of`와 **같다** — 없으면 `unknown`이고, 그건 세션이 아니다.
+        .filter(|h| h.origin.as_deref().unwrap_or(ORIGIN_UNKNOWN) == ORIGIN_SESSION)
+        .map(|h| {
+            json!({
+                "id": h.id,
+                "title": h.title,
+                "status": h.status.unwrap_or_else(|| "idle".into()),
                 "open": false,
                 "shown": true,
-            }))
+            })
         })
         .collect()
 }

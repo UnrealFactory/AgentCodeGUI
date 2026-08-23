@@ -552,7 +552,7 @@ impl Sim {
         self.rt.dispatch(Cmd::Send { text: text.into() })
     }
     pub fn enqueue(&mut self, text: &str) -> ccg_engine::event::Verdict {
-        self.rt.dispatch(Cmd::Enqueue { text: text.into() })
+        self.rt.dispatch(Cmd::Enqueue(text.into()))
     }
     pub fn cmd(&mut self, c: Cmd) -> ccg_engine::event::Verdict {
         self.rt.dispatch(c)

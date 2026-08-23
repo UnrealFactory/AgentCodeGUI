@@ -22,16 +22,18 @@
 //! | `ma:*` `{panelId}` | 그 자리의 채팅 | [`panel_id_to_chat`] |
 //! | `session:*` | 그 창의 채팅 | [`chat_for_window`] |
 //!
-//! ## **배선하지 않은** 것 (조용히 빠뜨리지 않는다 — R3 갱신)
+//! ## **배선하지 않은** 것 (조용히 빠뜨리지 않는다 — ★R4 갱신)
 //!
 //! - `btw:open`(포크 질문 창) · `talk:*`(은퇴) · Codex 엔진(app-server)
 //! - `chat:answer`의 답을 **선택지 요약 문장**으로 되먹이는 것까지는 했지만,
 //!   `allow_always`의 `updatedPermissions`는 아직 안 싣는다(허용은 1회로 동작).
-//! - `chat:flush-req` — 렌더러가 창 닫기 전에 자체 저장을 한다(31 / 32채널).
-//! - `result.tokenUsage` · `contextWindow` · `tool-end.links`(→ `wire.rs` 파일 끝 목록).
 //!
 //! R3에서 닫힌 것: **부팅 재장전**([`reload_pending`]) · `EngineEvent` 9종(`wire.rs`) ·
 //! 창 자리 4채널 + `chat:windows`(`ipc/windows.rs`).
+//! **R4에서 닫힌 것**: `chat:flush-req`(**32 / 32채널** — `ipc/windows.rs::flush_req`) ·
+//! `result.tokenUsage`·`contextWindow`·`tool-end.links`(`wire.rs`) ·
+//! `chat:queue-mutate`의 `enqueue`/`remove`/`reorder`(큐 Rust 이관) ·
+//! **재개 단일 소유**(`ChatStatusLite.resumeOwner` + 엔진 드레인의 `begin_run`).
 
 mod diff;
 mod hub;
@@ -54,11 +56,24 @@ pub use hub::shutdown;
 /// 장전 순서가 규약이다(§5.8): **파일 로드 → 부팅 강제 → 브로드캐스트**. 강제 없이
 /// 그리면 지난 세션의 `busy`·`ask`가 그대로 살아나 유령 알약이 뜬다.
 pub fn boot(app: &AppHandle) {
+    // ★R4 귀속 팔 — 스위치는 `flags.rs` 헤더의 표에 있다. 기본값은 전부 켬이라
+    // 아무 env도 없으면 이 함수의 동작은 R3과 한 글자도 다르지 않다.
+    if crate::flags::no_engine_glue() {
+        return;
+    }
     let ids = all_chat_ids();
-    ccg_store::status::load_boot(&ids);
-    hub::start(app.clone());
-    reload_pending(&ids);
-    let _ = app.emit(ch::CHAT_STATUS, status_array());
+    if !crate::flags::no_status_boot() {
+        ccg_store::status::load_boot(&ids);
+    }
+    if !crate::flags::no_engine_hub() {
+        hub::start(app.clone());
+        if !crate::flags::no_status_boot() {
+            reload_pending(&ids);
+        }
+    }
+    if !crate::flags::no_status_boot() {
+        let _ = app.emit(ch::CHAT_STATUS, status_array());
+    }
 }
 
 /// **부팅 재장전**(m-logic §5.8 부팅 경로 2단계 · ux-chat-unify §4.3).
@@ -87,7 +102,17 @@ fn reload_pending(ids: &[String]) {
     }
     for id in cands {
         let Some(lite) = ccg_store::status::read_chat_lite(&id) else { continue };
-        let queued: Vec<String> = ccg_store::status::read_chat_queue(&id);
+        // ★R4 — 본문뿐이던 것이 첨부까지 되살아난다(`QueueInput`).
+        let queued: Vec<ccg_engine::queue::QueueInput> = ccg_store::status::read_chat_queue(&id)
+            .into_iter()
+            .map(|q| ccg_engine::queue::QueueInput {
+                text: q.text,
+                images: q.images,
+                // 정체성 스냅샷은 **다시 잡는다**(m-logic §5.8 "복원이 아니라 재장전" —
+                // 그 사이 폴더·계정이 바뀌었을 수 있다).
+                picker: None,
+            })
+            .collect();
         let hold = lite.hold.map(|h| ccg_engine::runtime::ReloadHold {
             // 저장은 초 단위 epoch(2.6.2 `useLimitResume`의 `resetsAt` — `limitResume.ts:13`)
             // 이고 런타임 시계는 프로세스 기동 기준 단조 밀리초다 — **남은 시간**으로 옮긴다.
@@ -132,10 +157,16 @@ pub fn status_array() -> Value {
 
 fn all_chat_ids() -> Vec<String> {
     if ccg_store::unified_store_enabled() {
-        ccg_store::chats_v3::all_chats()
-            .iter()
-            .filter_map(|c| c.get("id").and_then(Value::as_str).map(str::to_string))
-            .collect()
+        // ★R4 — id만 필요한데 R3은 `all_chats()`로 **채팅 전문을 전부 파싱**했다.
+        // 부팅 경로의 순수 낭비였고, 그 트리가 남긴 페이지가 유휴 상주에 얹혔다.
+        // (`CCG_DEEP_BOOT_SCAN=1`은 그 R3 경로로 되돌리는 귀속 팔이다.)
+        if ccg_store::deep_boot_scan() {
+            return ccg_store::chats_v3::all_chats()
+                .iter()
+                .filter_map(|c| c.get("id").and_then(Value::as_str).map(str::to_string))
+                .collect();
+        }
+        ccg_store::chats_v3::chat_ids()
     } else {
         ccg_store::chats::read_chats(true)
             .get("chats")
@@ -363,6 +394,13 @@ fn core_dispatch(channel: &str, p: &Value) -> Option<Value> {
         ch::CHAT_QUEUE_MUTATE if arg(p, 0).get("op").and_then(Value::as_str) == Some("resume") => {
             hub::call(&chat(), hub::Op::ResumeNow)
         }
+        // ★R4 — 큐 이관. R3까지 이 채널에는 **넣는 op이 없었고**(`restore`뿐) 나머지는
+        // 무동작 `Cmd::QueueMutate` 하나로 접수만 됐다(M-UX R2.1 표 #1·#2).
+        // 이제 `enqueue`/`remove`/`reorder`/`clear`/`restore`/`resume` 여섯이 산다.
+        ch::CHAT_QUEUE_MUTATE if arg(p, 0).get("op").and_then(Value::as_str) == Some("enqueue") => {
+            let a = arg(p, 0);
+            hub::call(&chat(), hub::Op::Enqueue(queue_input(a)))
+        }
         ch::CHAT_QUEUE_MUTATE => hub::call(&chat(), hub::Op::QueueMutate(arg(p, 0).clone())),
         ch::CHAT_FORCE_SETTLE => {
             let a = arg(p, 0);
@@ -373,6 +411,26 @@ fn core_dispatch(channel: &str, p: &Value) -> Option<Value> {
         ch::ENGINE_DEBUG => hub::call("", hub::Op::Debug),
         _ => return None,
     })
+}
+
+/// `chat:queue-mutate {op:'enqueue'}`의 본문 → 엔진 큐 입력(★R4).
+///
+/// `picker`는 **`RunRequest`와 같은 모양**을 받는다(`{model, effort, mode, cwd, …}`) —
+/// 렌더러의 예약이 실어 오던 그 값이고, `chat:run`이 이미 같은 함수로 패치를 만든다
+/// (`ident::patch_from_run_request`). 두 경로가 다른 문법을 쓰면 "컴포저로 보낼 때와
+/// 예약으로 보낼 때 모델이 다르다"가 된다.
+fn queue_input(a: &Value) -> ccg_engine::queue::QueueInput {
+    let picker = a.get("picker").filter(|v| v.is_object());
+    let patch = picker.map(ident::patch_from_run_request);
+    ccg_engine::queue::QueueInput {
+        text: a.get("text").and_then(Value::as_str).unwrap_or("").to_string(),
+        images: a
+            .get("images")
+            .and_then(Value::as_array)
+            .map(|v| v.iter().filter_map(Value::as_str).map(str::to_string).collect())
+            .unwrap_or_default(),
+        picker: patch.filter(|p| !p.is_empty()),
+    }
 }
 
 /// 승인 카드 응답. `allow_always`는 지금 라운드에서 **1회 허용**과 같게 동작한다

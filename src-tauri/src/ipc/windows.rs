@@ -18,6 +18,18 @@ pub const WIN_CHAT_CLOSE: &str = "win:chat-close";
 pub const WIN_CHAT_FOCUS: &str = "win:chat-focus";
 pub const WIN_CHAT_LIST: &str = "win:chat-list";
 pub const CHAT_WINDOWS: &str = "chat:windows";
+/// main → 렌더러: **창 닫기 전 마지막 저장 요청**(`protocol.ts:1199` `chatFlushReq`).
+pub const CHAT_FLUSH_REQ: &str = "chat:flush-req";
+
+/// 그 채팅을 보고 있는 창에 "지금 저장해"라고 알린다(★R4 — 32채널의 마지막 한 칸).
+///
+/// **그 창에만** 보낸다. 브로드캐스트하면 메인 창까지 자기 대화를 flush하고, 그 순간
+/// 활성 채팅이 다른 것이면 남의 자리에 저장이 떨어진다(R2.3이 `session-wins:persist`에서
+/// 같은 이유로 폴백을 금지했다). 창이 없으면 아무 일도 없다 — 저장할 화면이 없다.
+pub fn flush_req(app: &AppHandle, chat: &str) {
+    let Some(label) = crate::win::session_label_for_chat(chat) else { return };
+    let _ = app.emit_to(label.as_str(), CHAT_FLUSH_REQ, json!({ "chatId": chat }));
+}
 
 /// 저장/복원의 주소. 1순위는 **부른 창**, 2순위는 페이로드의 명시 `id`(단 그것이
 /// 이미 영속된 추가 채팅일 때만 — 아무 채팅이나 이 채널로 덮어쓰지 못한다).
@@ -166,6 +178,11 @@ pub fn dispatch(app: &AppHandle, window: &WebviewWindow, channel: &str, p: &Valu
             //   짧은 지연 재송신을 한 번 더 붙인다 — REPLACE라 두 번 받아도 무해하다.
             //   (완전한 해법은 렌더러가 구독 직후 스냅샷을 한 번 당겨 가는 것이다.
             //    `app/`은 이번 라운드 경계 밖이라 그쪽은 열어 둔다.)
+            // ★R4 귀속 팔(`CCG_NO_STATUS_TICK`) — 이 REPLACE를 렌더러가 받아 들고 있는
+            //   몫을 가른다. 기본값에서는 R3과 같다.
+            if crate::flags::no_status_tick() {
+                return Some(Value::Null);
+            }
             let payload = crate::engine::status_array();
             let _ = app.emit_to(window.label(), ch::CHAT_STATUS, payload);
             let handle = app.clone();

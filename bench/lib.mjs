@@ -277,6 +277,21 @@ export function armName(env = process.env) {
   //   (크리틱 배선 R1 §4.4). 판정은 `ccg_store::unified_store_enabled()`와 같은 규약 —
   //   **"0/false만 끔"**이라 오타(`=yes`)는 켬으로 읽히고 팔 이름도 그렇게 나온다.
   if (env.CCG_UNIFIED_STORE === '0' || env.CCG_UNIFIED_STORE === 'false') parts.push('legacystore')
+  // ★R4 — **서브시스템 무력화 팔**(src-tauri/src/flags.rs). 이게 없으면 귀속 A/B의
+  //   두 팔이 같은 결과 파일에 써서 두 번째가 첫 팔을 지운다(R2.5가 닫았던 결함).
+  //   판정 규약은 셸과 같다 — `''`/`0`/`false`만 "안 껐다".
+  for (const [k, name] of [
+    ['CCG_NO_ENGINE_GLUE', 'noglue'],
+    ['CCG_NO_ENGINE_HUB', 'nohub'],
+    ['CCG_NO_STATUS_BOOT', 'nostatus'],
+    ['CCG_NO_FS', 'nofs'],
+    ['CCG_NO_STATUS_TICK', 'notick'],
+    ['CCG_DEEP_BOOT_SCAN', 'deepboot'],
+    ['CCG_LIGHT_PANEL_CHATS', 'lightpanels']
+  ]) {
+    const v = env[k]
+    if (v !== undefined && v !== '' && v !== '0' && v !== 'false') parts.push(name)
+  }
   return parts.length ? parts.join('+') : 'default'
 }
 

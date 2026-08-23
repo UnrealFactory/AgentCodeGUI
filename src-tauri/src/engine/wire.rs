@@ -87,6 +87,9 @@ pub struct Wire {
     user_bg_stops: BTreeSet<String>,
     /// `result`를 본 뒤인가 — 이후의 `stopped`는 사용자 중지가 아니라 CLI 정리다.
     turn_ended: bool,
+    /// `system/init`이 보고한 실행 모델(원시 id). `modelUsage`가 없는 판에서
+    /// `result.tokenUsage`의 모델 이름 폴백이다(2.6.2 `curModelDisplay || req.model`).
+    cur_model: String,
 }
 
 /// 폴백 확인 카드 1건 — 답을 `{behavior:…}`로 되옮기는 데 필요한 최소값.
@@ -117,22 +120,176 @@ fn one_line(v: &str, max: usize) -> String {
     }
 }
 
+/// **실제 컨텍스트 창 크기**(`result.contextWindow`) — 모델별 usage의 최대값.
+///
+/// 서브에이전트가 작은 창의 모델로 돌면 항목이 여러 개다. 메인 대화는 가장 큰 창에서
+/// 도므로 max를 쓴다(2.6.2 `windowFromModelUsage` — `engine.ts:98-106`). 없으면 `null`
+/// 이고 렌더러가 모델 기본 창으로 폴백한다.
+fn context_window(mu: Option<&Value>) -> Value {
+    let Some(Value::Object(m)) = mu else { return Value::Null };
+    let max = m
+        .values()
+        .filter_map(|e| e.get("contextWindow").and_then(Value::as_u64))
+        .max()
+        .unwrap_or(0);
+    if max > 0 {
+        json!(max)
+    } else {
+        Value::Null
+    }
+}
+
+/// **실행 1건의 모델별 실측 토큰**(`result.tokenUsage`) — 2.6.2 `tokenUseFromResult`
+/// (`engine.ts:112-144`) 이식.
+///
+/// 표시명이 같아지는 id(`[1m]` 컨텍스트 변형)는 하나로 합치고, 전부 0인 항목은 안 낸다.
+/// `modelUsage`가 없거나 전부 0인 옛 CLI 판은 합산 `usage`를 현재 모델 하나로 폴백한다.
+fn token_usage(mu: Option<&Value>, usage: &Value, fallback_model: &str) -> Value {
+    fn push(out: &mut Vec<(String, [u64; 4])>, model: String, t: [u64; 4]) {
+        if t.iter().sum::<u64>() == 0 {
+            return;
+        }
+        match out.iter_mut().find(|(m, _)| *m == model) {
+            Some((_, acc)) => {
+                for i in 0..4 {
+                    acc[i] += t[i];
+                }
+            }
+            None => out.push((model, t)),
+        }
+    }
+    let mut out: Vec<(String, [u64; 4])> = vec![];
+    if let Some(Value::Object(m)) = mu {
+        for (id, u) in m {
+            let g = |k: &str| u.get(k).and_then(Value::as_u64).unwrap_or(0);
+            push(
+                &mut out,
+                model_display(id),
+                [
+                    g("inputTokens"),
+                    g("outputTokens"),
+                    g("cacheReadInputTokens"),
+                    g("cacheCreationInputTokens"),
+                ],
+            );
+        }
+    }
+    if out.is_empty() {
+        let g = |k: &str| usage.get(k).and_then(Value::as_u64).unwrap_or(0);
+        let name = match model_display(fallback_model) {
+            // `system/init`을 못 본 판(합성 result 등) — 2.6.2와 같은 자리표시자.
+            s if s.is_empty() => "다른 모델".to_string(),
+            s => s,
+        };
+        push(
+            &mut out,
+            name,
+            [
+                g("input_tokens"),
+                g("output_tokens"),
+                g("cache_read_input_tokens"),
+                g("cache_creation_input_tokens"),
+            ],
+        );
+    }
+    Value::Array(
+        out.into_iter()
+            .map(|(model, t)| {
+                json!({ "model": model, "inTok": t[0], "outTok": t[1], "cacheRead": t[2], "cacheWrite": t[3] })
+            })
+            .collect(),
+    )
+}
+
+/// **웹 행의 링크**(`tool-end.links`) — 2.6.2 `extractWebLinks`(`engine.ts:2429-2457`) 이식.
+///
+/// `WebSearch`의 결과 본문에는 `Links: [{"title":…,"url":…}, …]` 블록이 온다. 잘리거나
+/// 변형된 블록은 `"url": "https://…"` 폴백이 줍는다. 최대 20개 · 중복 url 제거.
+fn extract_web_links(text: &str) -> Vec<Value> {
+    fn push(out: &mut Vec<Value>, seen: &mut BTreeSet<String>, title: &str, url: &str) {
+        if out.len() >= 20 || !(url.starts_with("http://") || url.starts_with("https://")) {
+            return;
+        }
+        if !seen.insert(url.to_string()) {
+            return;
+        }
+        let t = title.trim();
+        out.push(json!({ "title": if t.is_empty() { url } else { t }, "url": url }));
+    }
+    let mut out: Vec<Value> = vec![];
+    let mut seen: BTreeSet<String> = BTreeSet::new();
+    // `Links:` 뒤의 JSON 배열 — 한 줄 안에서만 찾는다(2.6.2의 `[^\n]*`와 같은 범위).
+    for line in text.lines() {
+        let Some(at) = line.find("Links:") else { continue };
+        let rest = line[at + "Links:".len()..].trim_start();
+        if !rest.starts_with('[') {
+            continue;
+        }
+        let end = match rest.rfind(']') {
+            Some(e) => e + 1,
+            None => continue,
+        };
+        if let Ok(Value::Array(arr)) = serde_json::from_str::<Value>(&rest[..end]) {
+            for it in arr {
+                let url = it.get("url").and_then(Value::as_str).unwrap_or("");
+                let title = it.get("title").and_then(Value::as_str).unwrap_or("");
+                push(&mut out, &mut seen, title, url);
+            }
+        }
+    }
+    if out.is_empty() {
+        // 폴백 — 본문 어디든 `"url": "https://…"`.
+        let mut rest = text;
+        while let Some(i) = rest.find("\"url\"") {
+            rest = &rest[i + 5..];
+            let Some(c) = rest.find(':') else { break };
+            let after = rest[c + 1..].trim_start();
+            if !after.starts_with('"') {
+                continue;
+            }
+            let body = &after[1..];
+            let Some(q) = body.find('"') else { break };
+            push(&mut out, &mut seen, "", &body[..q]);
+        }
+    }
+    out
+}
+
 /// 모델 원시 id → 표시명(`claude-opus-5-1` → `Opus 5.1`). 워크플로 에이전트 칩과
 /// 서브에이전트 카드가 같은 문자열을 쓴다.
+/// ★R4 — 2.6.2의 정규식(`/claude-(fable|opus|sonnet|haiku)-(\d+)(?:-(\d{1,2}))?\b/i`,
+/// `engine.ts:2238`)과 **같은 판정**으로 고쳤다. R3 판은 `'-'`로 통째로 쪼개서
+/// `claude-opus-5-1[1m]`의 부번호를 `"1[1m]"`으로 읽고 `Opus 5`로 떨어뜨렸다 —
+/// `[1m]` 컨텍스트 변형이 **다른 모델로 보여** `result.tokenUsage`가 두 줄로 갈리고
+/// 모델 전환 감지도 오탐한다(메모리 「사이드체인 모델 프레임」의 핑퐁과 같은 얼굴).
 fn model_display(id: &str) -> String {
     let lower = id.to_ascii_lowercase();
-    let Some(rest) = lower.strip_prefix("claude-") else {
+    let Some(at) = lower.find("claude-") else {
         return id.to_string();
     };
-    let mut it = rest.split('-');
-    let fam = it.next().unwrap_or("");
-    if !matches!(fam, "fable" | "opus" | "sonnet" | "haiku") {
+    let rest = &lower[at + "claude-".len()..];
+    let Some(fam) = ["fable", "opus", "sonnet", "haiku"].into_iter().find(|f| rest.starts_with(f)) else {
+        return id.to_string();
+    };
+    let Some(after) = rest[fam.len()..].strip_prefix('-') else {
+        return id.to_string();
+    };
+    let major: String = after.chars().take_while(char::is_ascii_digit).collect();
+    if major.is_empty() {
         return id.to_string();
     }
-    let Some(major) = it.next().filter(|m| m.chars().all(|c| c.is_ascii_digit()) && !m.is_empty()) else {
-        return id.to_string();
-    };
-    let minor = it.next().filter(|m| m.len() <= 2 && !m.is_empty() && m.chars().all(|c| c.is_ascii_digit()));
+    // 선택적 `-<1~2자리>` + **낱말 경계**(정규식의 `\b`).
+    let minor = after[major.len()..].strip_prefix('-').and_then(|t| {
+        let d: String = t.chars().take(2).take_while(char::is_ascii_digit).collect();
+        if d.is_empty() {
+            return None;
+        }
+        match t[d.len()..].chars().next() {
+            None => Some(d),
+            Some(c) if !c.is_ascii_alphanumeric() && c != '_' => Some(d),
+            _ => None,
+        }
+    });
     let mut fam_disp = fam.to_string();
     fam_disp[..1].make_ascii_uppercase();
     match minor {
@@ -248,6 +405,11 @@ impl Wire {
     /// 사용자가 중지 버튼으로 끊은 백그라운드 작업 — 정착 통지의 `byUser` 표식.
     pub fn note_user_bg_stop(&mut self, id: &str) {
         self.user_bg_stops.insert(id.to_string());
+    }
+
+    /// `modelUsage`가 없는 판의 폴백 모델 표시명(2.6.2 `curModelDisplay || req.model`).
+    fn model_display_now(&self) -> String {
+        self.cur_model.clone()
     }
 
     /// 이 `request_id`가 **다이얼로그를 질문 카드로 그린 것**인가 — 응답 번역에 쓴다.
@@ -626,9 +788,21 @@ impl Wire {
                 json!(if p.file["tag"] == "new" { format!("새 파일 +{a}") } else { format!("+{a} −{d}") }),
             );
         } else if !tail.is_empty() {
-            let one = tail.replace(['\r', '\n'], " ");
-            let short: String = one.chars().take(160).collect();
-            e.insert("result".into(), json!(short));
+            // ★R4(§R3.8-K) — 웹 검색이 찾은 페이지 목록. 실려야 그 행이 펼쳐진다.
+            let links = if row.as_ref().is_some_and(|r| r.name == "WebSearch") && !is_err {
+                extract_web_links(&tail)
+            } else {
+                vec![]
+            };
+            if links.is_empty() {
+                let one = tail.replace(['\r', '\n'], " ");
+                let short: String = one.chars().take(160).collect();
+                e.insert("result".into(), json!(short));
+            } else {
+                // 2.6.2와 같은 요약 문구 — 링크가 있으면 본문 꼬리 대신 개수를 쓴다.
+                e.insert("result".into(), json!(format!("{}개 결과", links.len())));
+                e.insert("links".into(), Value::Array(links));
+            }
             if row.as_ref().is_some_and(|r| r.verb == "Bash") {
                 e.insert("output".into(), json!(tail));
             }
@@ -664,6 +838,8 @@ impl Wire {
                     .is_some_and(|v| !v.is_empty() && v != "none");
                 self.cwd = s(f, "cwd").unwrap_or_default();
                 self.session_id = s(f, "session_id").unwrap_or_default();
+                // `modelUsage`가 없는 CLI 판에서 `result.tokenUsage`의 모델 이름이 되는 값.
+                self.cur_model = s(f, "model").unwrap_or_default();
                 out.push(json!({
                     "type": "session",
                     "runId": run,
@@ -1100,6 +1276,11 @@ impl Wire {
                     t + usage["cache_read_input_tokens"].as_u64().unwrap_or(0)
                         + usage["cache_creation_input_tokens"].as_u64().unwrap_or(0)
                 });
+                // ★R4(§R3.8-J) — `modelUsage`를 읽는다. R3까지 이 둘은 `null`이라
+                // 컨텍스트 팝오버의 '토큰 사용량' 표가 비고 게이지의 분모가 모델 기본
+                // 창으로 폴백했다. 2.6.2 `windowFromModelUsage`/`tokenUseFromResult`
+                // (`engine.ts:97-144`)를 그대로 옮긴다.
+                let mu = f.get("modelUsage");
                 out.push(json!({
                     "type": "result", "runId": run,
                     "isError": is_error,
@@ -1108,8 +1289,9 @@ impl Wire {
                     "durationMs": f.get("duration_ms").and_then(Value::as_u64),
                     "numTurns": f.get("num_turns").and_then(Value::as_u64),
                     "contextTokens": ctx,
-                    "contextWindow": Value::Null,
+                    "contextWindow": context_window(mu),
                     "viaApi": self.via_api,
+                    "tokenUsage": token_usage(mu, usage, &self.model_display_now()),
                 }));
                 self.cur_msg = None;
                 self.saw_result = true;
@@ -1120,14 +1302,16 @@ impl Wire {
     }
 }
 
-// ── 미배선 (R3 이후 남은 것) ─────────────────────────────────────────────────
-// `result.tokenUsage` / `result.contextWindow` — 둘 다 `null`로 나간다.
-//   결과: 컨텍스트 팝오버의 '토큰 사용량' 표가 비고, 게이지는 모델 기본 창으로 폴백한다.
-//   ("틀린 값"이 아니라 "그 칸만 비어 있다".)
-// `tool-end.links`(WebSearch가 찾은 페이지 목록) — 웹 행이 펼쳐지지 않는다.
-// Codex(app-server) 엔진 · `btw:open` 포크 · `allow_always`의 `updatedPermissions`.
+// ── 미배선 (R4 이후 남은 것) ─────────────────────────────────────────────────
+// R3의 셋(`result.tokenUsage` · `result.contextWindow` · `tool-end.links`)은 **R4에서
+// 닫았다** — 각각 `token_usage()` · `context_window()` · `extract_web_links()`.
 //
-// ★ 등급을 함께 적는 것이 규약이다(크리틱 배선 R1 §6). 위 넷은 전부
+// 남은 것:
+// - Codex(app-server) 엔진 · `btw:open` 포크 · `allow_always`의 `updatedPermissions`.
+// - `tool-end.target`(완료 때 확정되는 대상 — Codex webSearch 전용) — Claude 경로에는
+//   해당 프레임이 없다.
+//
+// ★ 등급을 함께 적는 것이 규약이다(크리틱 배선 R1 §6). 위는 전부
 //   **"그 UI만 비어 있다"**다 — 정지·증발 등급은 R2에서 셋 다 닫혔다.
 
 #[cfg(test)]
@@ -1305,5 +1489,93 @@ mod tests {
             "errors": ["ede_diagnostic", "aborted_tools"]
         }));
         assert_eq!(evs[0]["text"], "ede_diagnostic; aborted_tools");
+    }
+    // ── ★R4 — R3이 `null`로 내보내던 세 칸 ────────────────────────────────
+    #[test]
+    fn the_result_carries_the_real_context_window_and_per_model_tokens() {
+        let mut w = wire();
+        w.translate(&json!({ "type": "system", "subtype": "init", "session_id": "S1",
+                             "cwd": "C:\\w", "model": "claude-opus-5-1" }));
+        let evs = w.translate(&json!({
+            "type": "result", "subtype": "success", "is_error": false, "result": "끝",
+            "usage": { "input_tokens": 10, "output_tokens": 20 },
+            "modelUsage": {
+                // 같은 표시명으로 접히는 두 id([1m] 변형) — 하나로 합쳐야 한다.
+                "claude-opus-5-1":      { "contextWindow": 200000, "inputTokens": 5,
+                                          "outputTokens": 7, "cacheReadInputTokens": 11,
+                                          "cacheCreationInputTokens": 3 },
+                "claude-opus-5-1[1m]":  { "contextWindow": 1000000, "inputTokens": 1,
+                                          "outputTokens": 2 },
+                // 전부 0인 항목은 안 낸다(서브에이전트가 안 돈 판).
+                "claude-haiku-4":       { "contextWindow": 200000 }
+            }
+        }));
+        let r = &evs[0];
+        assert_eq!(r["contextWindow"], 1_000_000, "여러 모델이면 **가장 큰 창**이 메인이다");
+        let tu = r["tokenUsage"].as_array().expect("tokenUsage 배열");
+        assert_eq!(tu.len(), 1, "표시명이 같은 id는 하나로 접힌다: {tu:?}");
+        assert_eq!(tu[0]["model"], "Opus 5.1");
+        assert_eq!(tu[0]["inTok"], 6);
+        assert_eq!(tu[0]["outTok"], 9);
+        assert_eq!(tu[0]["cacheRead"], 11);
+        assert_eq!(tu[0]["cacheWrite"], 3);
+    }
+
+    #[test]
+    fn without_model_usage_the_summed_usage_falls_back_to_the_current_model() {
+        let mut w = wire();
+        w.translate(&json!({ "type": "system", "subtype": "init", "session_id": "S1",
+                             "cwd": "C:\\w", "model": "claude-haiku-4-5" }));
+        let evs = w.translate(&json!({
+            "type": "result", "subtype": "success", "is_error": false, "result": "끝",
+            "usage": { "input_tokens": 3, "output_tokens": 4, "cache_read_input_tokens": 5 }
+        }));
+        assert_eq!(evs[0]["contextWindow"], Value::Null, "모르면 null — 지어내지 않는다");
+        let tu = evs[0]["tokenUsage"].as_array().unwrap();
+        assert_eq!(tu.len(), 1);
+        assert_eq!(tu[0]["model"], "Haiku 4.5");
+        assert_eq!(tu[0]["inTok"], 3);
+        assert_eq!(tu[0]["cacheRead"], 5);
+    }
+
+    #[test]
+    fn a_web_search_row_carries_its_links() {
+        let mut w = wire();
+        w.translate(&json!({ "type": "system", "subtype": "init", "session_id": "S1", "cwd": "C:\\w" }));
+        w.translate(&json!({ "type": "assistant", "message": { "content": [
+            { "type": "tool_use", "id": "t1", "name": "WebSearch", "input": { "query": "rust queue" } }] } }));
+        let body = "Web search results for query: rust queue\n\nLinks: [{\"title\":\"VecDeque\",\"url\":\"https://doc.rust-lang.org/vd\"},{\"title\":\"\",\"url\":\"https://example.com/x\"}]\n\n요약…";
+        let evs = w.translate(&json!({ "type": "user", "message": { "content": [
+            { "type": "tool_result", "tool_use_id": "t1", "content": body }] } }));
+        let end = evs.iter().find(|e| e["type"] == "tool-end").expect("tool-end");
+        let links = end["links"].as_array().expect("links");
+        assert_eq!(links.len(), 2);
+        assert_eq!(links[0]["title"], "VecDeque");
+        assert_eq!(links[1]["title"], "https://example.com/x", "제목이 없으면 url을 쓴다");
+        assert_eq!(end["result"], "2개 결과");
+    }
+
+    #[test]
+    fn a_broken_links_block_still_yields_urls_and_other_tools_get_none() {
+        let mut w = wire();
+        w.translate(&json!({ "type": "system", "subtype": "init", "session_id": "S1", "cwd": "C:\\w" }));
+        w.translate(&json!({ "type": "assistant", "message": { "content": [
+            { "type": "tool_use", "id": "t1", "name": "WebSearch", "input": { "query": "q" } }] } }));
+        // 잘린 블록 — 폴백이 url만 줍는다.
+        let evs = w.translate(&json!({ "type": "user", "message": { "content": [
+            { "type": "tool_result", "tool_use_id": "t1",
+              "content": "Links: [{\"title\":\"a\",\"url\":\"https://a.test/1\" , {\"url\": \"https://b.test/2\"}" }] } }));
+        let end = evs.iter().find(|e| e["type"] == "tool-end").unwrap();
+        let links = end["links"].as_array().expect("폴백이 줍는다");
+        assert_eq!(links.len(), 2);
+        assert_eq!(links[0]["url"], "https://a.test/1");
+
+        // Read 행에는 링크를 달지 않는다(웹 행만 펼쳐진다).
+        w.translate(&json!({ "type": "assistant", "message": { "content": [
+            { "type": "tool_use", "id": "t2", "name": "Read", "input": { "file_path": "C:\\w\\a.txt" } }] } }));
+        let evs = w.translate(&json!({ "type": "user", "message": { "content": [
+            { "type": "tool_result", "tool_use_id": "t2", "content": "https://not-a-link-row.test/x" }] } }));
+        let end = evs.iter().find(|e| e["type"] == "tool-end").unwrap();
+        assert!(end.get("links").is_none(), "웹 도구가 아니면 링크 없음: {end}");
     }
 }

@@ -32,7 +32,11 @@ const kind = process.argv[2] ?? 'electron'
 const live = process.argv.includes('--live')
 const panels = Number((process.argv.find((a) => a.startsWith('--panels=')) ?? '--panels=4').split('=')[1])
 const repeats = Number((process.argv.find((a) => a.startsWith('--repeats=')) ?? '--repeats=1').split('=')[1])
-const profile = kind === 'tauri' ? tauriProfile({}) : electronProfile({})
+// ★R4 — `--exe=`로 **고정된 바이너리**를 잰다. 같은 레포에서 다른 라운드가 주행 중에
+// `rm -f target/release/agentcodegui.exe && npm run tauri:build`을 돌리면 exe가 사라진다
+// (R3 §R3.6에서 두 번 밟았고, 이번 라운드에선 `node_modules`가 통째로 비는 것도 봤다).
+const exeArg = (process.argv.find((a) => a.startsWith('--exe=')) ?? '').split('=').slice(1).join('=')
+const profile = kind === 'tauri' ? tauriProfile(exeArg ? { exe: exeArg } : {}) : electronProfile({})
 const appVersion = kind === 'tauri' ? '3.0.0-beta.1' : '2.6.2'
 const home = profile.env.CCG_HOME
 const arm = armName({ ...process.env, ...profile.env })

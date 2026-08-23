@@ -3,6 +3,8 @@
 
 mod crash;
 mod engine;
+/// 서브시스템 무력화 스위치 — 유휴 메모리 귀속용 A/B 팔 가르개(★R4, `flags.rs` 헤더).
+mod flags;
 mod ipc;
 mod webview_args;
 mod win;
@@ -58,6 +60,15 @@ fn main() {
         //   렌더러 한 줄만 바뀌면 붙는다 — 자세한 건 docs/m6-report-r1.md §미구현.
         .register_uri_scheme_protocol("ccg-img", |_ctx, request| {
             use tauri::http::{header, Response, StatusCode};
+            // ★R4 — 귀속 팔(`CCG_NO_FS`). 스킴 자체는 남기고 **서빙만** 끊는다:
+            // 등록을 조건부로 하면 wry가 만드는 스킴 핸들러 테이블이 팔마다 달라져
+            // 비교 대상이 흔들린다(재는 것은 `ccg-fs`가 상주로 쓰는 몫이다).
+            if crate::flags::no_fs() {
+                return Response::builder()
+                    .status(StatusCode::NOT_FOUND)
+                    .body(Vec::new())
+                    .unwrap_or_else(|_| Response::new(Vec::new()));
+            }
             match ccg_fs::serve::image_response(&request.uri().to_string()) {
                 Some((mime, bytes)) => Response::builder()
                     .status(StatusCode::OK)

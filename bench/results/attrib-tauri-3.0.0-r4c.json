@@ -1,0 +1,255 @@
+{
+  "at": "2026-08-23T01:23:52.421Z",
+  "exe": {
+    "exe": "C:\\Users\\User\\AppData\\Local\\Temp/ccg-r4-snap.exe",
+    "exeMtime": "2026-08-23T01:12:56.508Z",
+    "exeSize": 4826112,
+    "exeSha256": "559fb4db60e97f9e",
+    "gitHead": "1bfe946",
+    "gitDirty": true
+  },
+  "env": {
+    "ramGB": 63.8,
+    "cpu": "13th Gen Intel(R) Core(TM) i7-13700KF",
+    "os": "Microsoft Windows 11 Home 26200"
+  },
+  "pairs": 3,
+  "table": [
+    {
+      "arm": "lightpanels",
+      "pairs": 3,
+      "totalWs": {
+        "perPair": [
+          25.5,
+          2.9,
+          -2
+        ],
+        "median": 2.9
+      },
+      "totalPriv": {
+        "perPair": [
+          13.3,
+          -7.8,
+          -2
+        ],
+        "median": -2
+      },
+      "rustWs": {
+        "perPair": [
+          0.6,
+          1,
+          0.4
+        ],
+        "median": 0.6
+      },
+      "rustPriv": {
+        "perPair": [
+          0.7,
+          1.5,
+          -0.1
+        ],
+        "median": 0.7
+      },
+      "rendWs": {
+        "perPair": [
+          12.4,
+          -8.1,
+          -2
+        ],
+        "median": -2
+      },
+      "rendPriv": {
+        "perPair": [
+          11.7,
+          -8.8,
+          -1.9
+        ],
+        "median": -1.9
+      },
+      "heap": {
+        "perPair": [
+          0.9,
+          0.5,
+          0.2
+        ],
+        "median": 0.5
+      }
+    }
+  ],
+  "runs": [
+    {
+      "arm": "lightpanels",
+      "pair": 1,
+      "base": {
+        "arm": "base",
+        "panels": 4,
+        "totalWsMB": 448.8,
+        "totalPrivMB": 250.7,
+        "procs": 5,
+        "bucket": {
+          "browser": {
+            "ws": 33,
+            "priv": 14,
+            "n": 1
+          },
+          "renderer": {
+            "ws": 185.4,
+            "priv": 131.2,
+            "n": 1
+          },
+          "other": {
+            "ws": 230.2,
+            "priv": 105.5,
+            "n": 3
+          }
+        },
+        "heapUsedMB": 12.2,
+        "flags": []
+      },
+      "off": {
+        "arm": "lightpanels",
+        "panels": 4,
+        "totalWsMB": 423.3,
+        "totalPrivMB": 237.4,
+        "procs": 5,
+        "bucket": {
+          "browser": {
+            "ws": 32.4,
+            "priv": 13.3,
+            "n": 1
+          },
+          "renderer": {
+            "ws": 173,
+            "priv": 119.5,
+            "n": 1
+          },
+          "other": {
+            "ws": 217.9,
+            "priv": 104.7,
+            "n": 3
+          }
+        },
+        "heapUsedMB": 11.3,
+        "flags": [
+          "CCG_LIGHT_PANEL_CHATS"
+        ]
+      }
+    },
+    {
+      "arm": "lightpanels",
+      "pair": 2,
+      "base": {
+        "arm": "base",
+        "panels": 4,
+        "totalWsMB": 442.5,
+        "totalPrivMB": 246.6,
+        "procs": 5,
+        "bucket": {
+          "browser": {
+            "ws": 33.2,
+            "priv": 14.6,
+            "n": 1
+          },
+          "renderer": {
+            "ws": 181.9,
+            "priv": 127.4,
+            "n": 1
+          },
+          "other": {
+            "ws": 227.5,
+            "priv": 104.5,
+            "n": 3
+          }
+        },
+        "heapUsedMB": 12.5,
+        "flags": []
+      },
+      "off": {
+        "arm": "lightpanels",
+        "panels": 4,
+        "totalWsMB": 439.6,
+        "totalPrivMB": 254.4,
+        "procs": 5,
+        "bucket": {
+          "browser": {
+            "ws": 32.2,
+            "priv": 13.1,
+            "n": 1
+          },
+          "renderer": {
+            "ws": 190,
+            "priv": 136.2,
+            "n": 1
+          },
+          "other": {
+            "ws": 217.5,
+            "priv": 105.1,
+            "n": 3
+          }
+        },
+        "heapUsedMB": 12,
+        "flags": [
+          "CCG_LIGHT_PANEL_CHATS"
+        ]
+      }
+    },
+    {
+      "arm": "lightpanels",
+      "pair": 3,
+      "base": {
+        "arm": "base",
+        "panels": 4,
+        "totalWsMB": 437.5,
+        "totalPrivMB": 254.1,
+        "procs": 5,
+        "bucket": {
+          "browser": {
+            "ws": 32.5,
+            "priv": 13.4,
+            "n": 1
+          },
+          "renderer": {
+            "ws": 188.8,
+            "priv": 135.1,
+            "n": 1
+          },
+          "other": {
+            "ws": 216.1,
+            "priv": 105.8,
+            "n": 3
+          }
+        },
+        "heapUsedMB": 12.3,
+        "flags": []
+      },
+      "off": {
+        "arm": "lightpanels",
+        "panels": 4,
+        "totalWsMB": 439.5,
+        "totalPrivMB": 256.1,
+        "procs": 5,
+        "bucket": {
+          "browser": {
+            "ws": 32.1,
+            "priv": 13.5,
+            "n": 1
+          },
+          "renderer": {
+            "ws": 190.8,
+            "priv": 137,
+            "n": 1
+          },
+          "other": {
+            "ws": 216.5,
+            "priv": 105.7,
+            "n": 3
+          }
+        },
+        "heapUsedMB": 12.1,
+        "flags": [
+          "CCG_LIGHT_PANEL_CHATS"
+        ]
+      }
+    }
+  ]
+}

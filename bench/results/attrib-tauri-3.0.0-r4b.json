@@ -1,0 +1,910 @@
+{
+  "at": "2026-08-23T01:08:32.371Z",
+  "exe": {
+    "exe": "C:\\Users\\User\\AppData\\Local\\Temp/ccg-r4-snap.exe",
+    "exeMtime": "2026-08-23T00:57:36.882Z",
+    "exeSize": 4855808,
+    "exeSha256": "136ed45699bac0fb",
+    "gitHead": "1bfe946",
+    "gitDirty": true
+  },
+  "env": {
+    "ramGB": 63.8,
+    "cpu": "13th Gen Intel(R) Core(TM) i7-13700KF",
+    "os": "Microsoft Windows 11 Home 26200"
+  },
+  "pairs": 4,
+  "table": [
+    {
+      "arm": "deepboot",
+      "pairs": 4,
+      "totalWs": {
+        "perPair": [
+          10.8,
+          1,
+          -4.4,
+          2.3
+        ],
+        "median": 1.65
+      },
+      "totalPriv": {
+        "perPair": [
+          10.4,
+          1,
+          -5.9,
+          3.8
+        ],
+        "median": 2.4
+      },
+      "rustWs": {
+        "perPair": [
+          -0.2,
+          -0.6,
+          -0.3,
+          0.4
+        ],
+        "median": -0.25
+      },
+      "rustPriv": {
+        "perPair": [
+          0,
+          -0.2,
+          -0.1,
+          0.4
+        ],
+        "median": -0.05
+      },
+      "rendWs": {
+        "perPair": [
+          10.5,
+          0.7,
+          -4.4,
+          4.1
+        ],
+        "median": 2.4
+      },
+      "rendPriv": {
+        "perPair": [
+          11,
+          1,
+          -6.2,
+          4.1
+        ],
+        "median": 2.55
+      },
+      "heap": {
+        "perPair": [
+          -0.9,
+          0,
+          0.5,
+          0.1
+        ],
+        "median": 0.05
+      }
+    },
+    {
+      "arm": "noglue",
+      "pairs": 4,
+      "totalWs": {
+        "perPair": [
+          2.2,
+          9.7,
+          -6.8,
+          -0.1
+        ],
+        "median": 1.05
+      },
+      "totalPriv": {
+        "perPair": [
+          -7.3,
+          -2.6,
+          4.4,
+          -0.9
+        ],
+        "median": -1.75
+      },
+      "rustWs": {
+        "perPair": [
+          -0.2,
+          -1,
+          -0.4,
+          -1.2
+        ],
+        "median": -0.7
+      },
+      "rustPriv": {
+        "perPair": [
+          0.1,
+          -0.8,
+          -0.4,
+          -1
+        ],
+        "median": -0.6
+      },
+      "rendWs": {
+        "perPair": [
+          -7.9,
+          -1.2,
+          4.4,
+          0.8
+        ],
+        "median": -0.2
+      },
+      "rendPriv": {
+        "perPair": [
+          -7.4,
+          -1.9,
+          5,
+          0.7
+        ],
+        "median": -0.6
+      },
+      "heap": {
+        "perPair": [
+          0.3,
+          0.6,
+          -0.1,
+          0.2
+        ],
+        "median": 0.25
+      }
+    },
+    {
+      "arm": "nofs",
+      "pairs": 4,
+      "totalWs": {
+        "perPair": [
+          3.3,
+          -1.7,
+          11.9,
+          2.6
+        ],
+        "median": 2.95
+      },
+      "totalPriv": {
+        "perPair": [
+          0.5,
+          -2.8,
+          11,
+          5.6
+        ],
+        "median": 3.05
+      },
+      "rustWs": {
+        "perPair": [
+          -0.4,
+          0,
+          -0.9,
+          0.1
+        ],
+        "median": -0.2
+      },
+      "rustPriv": {
+        "perPair": [
+          -0.2,
+          0,
+          -0.9,
+          0.1
+        ],
+        "median": -0.1
+      },
+      "rendWs": {
+        "perPair": [
+          4.4,
+          -0.7,
+          12.2,
+          4.6
+        ],
+        "median": 4.5
+      },
+      "rendPriv": {
+        "perPair": [
+          1.1,
+          -1.3,
+          12.2,
+          5.7
+        ],
+        "median": 3.4
+      },
+      "heap": {
+        "perPair": [
+          -0.3,
+          0,
+          -0.5,
+          -0.4
+        ],
+        "median": -0.35
+      }
+    }
+  ],
+  "runs": [
+    {
+      "arm": "deepboot",
+      "pair": 1,
+      "base": {
+        "arm": "base",
+        "panels": 4,
+        "totalWsMB": 434.3,
+        "totalPrivMB": 250.5,
+        "procs": 5,
+        "bucket": {
+          "browser": {
+            "ws": 32.5,
+            "priv": 13.6,
+            "n": 1
+          },
+          "renderer": {
+            "ws": 185.5,
+            "priv": 132.1,
+            "n": 1
+          },
+          "other": {
+            "ws": 216.3,
+            "priv": 104.9,
+            "n": 3
+          }
+        },
+        "heapUsedMB": 12.2,
+        "flags": []
+      },
+      "off": {
+        "arm": "deepboot",
+        "panels": 4,
+        "totalWsMB": 423.5,
+        "totalPrivMB": 240.1,
+        "procs": 5,
+        "bucket": {
+          "browser": {
+            "ws": 32.7,
+            "priv": 13.6,
+            "n": 1
+          },
+          "renderer": {
+            "ws": 175,
+            "priv": 121.1,
+            "n": 1
+          },
+          "other": {
+            "ws": 215.8,
+            "priv": 105.5,
+            "n": 3
+          }
+        },
+        "heapUsedMB": 13.1,
+        "flags": [
+          "CCG_DEEP_BOOT_SCAN"
+        ]
+      }
+    },
+    {
+      "arm": "deepboot",
+      "pair": 2,
+      "base": {
+        "arm": "base",
+        "panels": 4,
+        "totalWsMB": 440.9,
+        "totalPrivMB": 255.6,
+        "procs": 5,
+        "bucket": {
+          "browser": {
+            "ws": 32.9,
+            "priv": 14,
+            "n": 1
+          },
+          "renderer": {
+            "ws": 190.4,
+            "priv": 136.9,
+            "n": 1
+          },
+          "other": {
+            "ws": 217.5,
+            "priv": 104.8,
+            "n": 3
+          }
+        },
+        "heapUsedMB": 12.1,
+        "flags": []
+      },
+      "off": {
+        "arm": "deepboot",
+        "panels": 4,
+        "totalWsMB": 439.9,
+        "totalPrivMB": 254.6,
+        "procs": 5,
+        "bucket": {
+          "browser": {
+            "ws": 33.5,
+            "priv": 14.2,
+            "n": 1
+          },
+          "renderer": {
+            "ws": 189.7,
+            "priv": 135.9,
+            "n": 1
+          },
+          "other": {
+            "ws": 216.7,
+            "priv": 104.5,
+            "n": 3
+          }
+        },
+        "heapUsedMB": 12.1,
+        "flags": [
+          "CCG_DEEP_BOOT_SCAN"
+        ]
+      }
+    },
+    {
+      "arm": "deepboot",
+      "pair": 3,
+      "base": {
+        "arm": "base",
+        "panels": 4,
+        "totalWsMB": 438.4,
+        "totalPrivMB": 254.4,
+        "procs": 5,
+        "bucket": {
+          "browser": {
+            "ws": 32.4,
+            "priv": 13.4,
+            "n": 1
+          },
+          "renderer": {
+            "ws": 189.6,
+            "priv": 135.6,
+            "n": 1
+          },
+          "other": {
+            "ws": 216.4,
+            "priv": 105.5,
+            "n": 3
+          }
+        },
+        "heapUsedMB": 12.5,
+        "flags": []
+      },
+      "off": {
+        "arm": "deepboot",
+        "panels": 4,
+        "totalWsMB": 442.8,
+        "totalPrivMB": 260.3,
+        "procs": 5,
+        "bucket": {
+          "browser": {
+            "ws": 32.7,
+            "priv": 13.5,
+            "n": 1
+          },
+          "renderer": {
+            "ws": 194,
+            "priv": 141.8,
+            "n": 1
+          },
+          "other": {
+            "ws": 216.1,
+            "priv": 105,
+            "n": 3
+          }
+        },
+        "heapUsedMB": 12,
+        "flags": [
+          "CCG_DEEP_BOOT_SCAN"
+        ]
+      }
+    },
+    {
+      "arm": "deepboot",
+      "pair": 4,
+      "base": {
+        "arm": "base",
+        "panels": 4,
+        "totalWsMB": 438.9,
+        "totalPrivMB": 254.8,
+        "procs": 5,
+        "bucket": {
+          "browser": {
+            "ws": 33,
+            "priv": 14,
+            "n": 1
+          },
+          "renderer": {
+            "ws": 189.9,
+            "priv": 136.2,
+            "n": 1
+          },
+          "other": {
+            "ws": 215.9,
+            "priv": 104.6,
+            "n": 3
+          }
+        },
+        "heapUsedMB": 12.1,
+        "flags": []
+      },
+      "off": {
+        "arm": "deepboot",
+        "panels": 4,
+        "totalWsMB": 436.6,
+        "totalPrivMB": 251,
+        "procs": 5,
+        "bucket": {
+          "browser": {
+            "ws": 32.6,
+            "priv": 13.6,
+            "n": 1
+          },
+          "renderer": {
+            "ws": 185.8,
+            "priv": 132.1,
+            "n": 1
+          },
+          "other": {
+            "ws": 218.2,
+            "priv": 105.3,
+            "n": 3
+          }
+        },
+        "heapUsedMB": 12,
+        "flags": [
+          "CCG_DEEP_BOOT_SCAN"
+        ]
+      }
+    },
+    {
+      "arm": "noglue",
+      "pair": 1,
+      "base": {
+        "arm": "base",
+        "panels": 4,
+        "totalWsMB": 444.4,
+        "totalPrivMB": 250.3,
+        "procs": 5,
+        "bucket": {
+          "browser": {
+            "ws": 32.6,
+            "priv": 13.6,
+            "n": 1
+          },
+          "renderer": {
+            "ws": 184.6,
+            "priv": 131.9,
+            "n": 1
+          },
+          "other": {
+            "ws": 227.3,
+            "priv": 104.8,
+            "n": 3
+          }
+        },
+        "heapUsedMB": 12.8,
+        "flags": []
+      },
+      "off": {
+        "arm": "noglue",
+        "panels": 4,
+        "totalWsMB": 442.2,
+        "totalPrivMB": 257.6,
+        "procs": 5,
+        "bucket": {
+          "browser": {
+            "ws": 32.8,
+            "priv": 13.5,
+            "n": 1
+          },
+          "renderer": {
+            "ws": 192.5,
+            "priv": 139.3,
+            "n": 1
+          },
+          "other": {
+            "ws": 217,
+            "priv": 104.8,
+            "n": 3
+          }
+        },
+        "heapUsedMB": 12.5,
+        "flags": null
+      }
+    },
+    {
+      "arm": "noglue",
+      "pair": 2,
+      "base": {
+        "arm": "base",
+        "panels": 4,
+        "totalWsMB": 448.1,
+        "totalPrivMB": 251.8,
+        "procs": 5,
+        "bucket": {
+          "browser": {
+            "ws": 32.1,
+            "priv": 13.2,
+            "n": 1
+          },
+          "renderer": {
+            "ws": 187.5,
+            "priv": 133.6,
+            "n": 1
+          },
+          "other": {
+            "ws": 228.7,
+            "priv": 105.1,
+            "n": 3
+          }
+        },
+        "heapUsedMB": 12.7,
+        "flags": []
+      },
+      "off": {
+        "arm": "noglue",
+        "panels": 4,
+        "totalWsMB": 438.4,
+        "totalPrivMB": 254.4,
+        "procs": 5,
+        "bucket": {
+          "browser": {
+            "ws": 33.1,
+            "priv": 14,
+            "n": 1
+          },
+          "renderer": {
+            "ws": 188.7,
+            "priv": 135.5,
+            "n": 1
+          },
+          "other": {
+            "ws": 216.6,
+            "priv": 104.9,
+            "n": 3
+          }
+        },
+        "heapUsedMB": 12.1,
+        "flags": null
+      }
+    },
+    {
+      "arm": "noglue",
+      "pair": 3,
+      "base": {
+        "arm": "base",
+        "panels": 4,
+        "totalWsMB": 439.4,
+        "totalPrivMB": 254.9,
+        "procs": 5,
+        "bucket": {
+          "browser": {
+            "ws": 32.5,
+            "priv": 13.4,
+            "n": 1
+          },
+          "renderer": {
+            "ws": 190.1,
+            "priv": 137,
+            "n": 1
+          },
+          "other": {
+            "ws": 216.8,
+            "priv": 104.5,
+            "n": 3
+          }
+        },
+        "heapUsedMB": 12,
+        "flags": []
+      },
+      "off": {
+        "arm": "noglue",
+        "panels": 4,
+        "totalWsMB": 446.2,
+        "totalPrivMB": 250.5,
+        "procs": 5,
+        "bucket": {
+          "browser": {
+            "ws": 32.9,
+            "priv": 13.8,
+            "n": 1
+          },
+          "renderer": {
+            "ws": 185.7,
+            "priv": 132,
+            "n": 1
+          },
+          "other": {
+            "ws": 227.7,
+            "priv": 104.8,
+            "n": 3
+          }
+        },
+        "heapUsedMB": 12.1,
+        "flags": null
+      }
+    },
+    {
+      "arm": "noglue",
+      "pair": 4,
+      "base": {
+        "arm": "base",
+        "panels": 4,
+        "totalWsMB": 451.4,
+        "totalPrivMB": 255.6,
+        "procs": 5,
+        "bucket": {
+          "browser": {
+            "ws": 32,
+            "priv": 13.2,
+            "n": 1
+          },
+          "renderer": {
+            "ws": 191.3,
+            "priv": 137.3,
+            "n": 1
+          },
+          "other": {
+            "ws": 228.2,
+            "priv": 105.1,
+            "n": 3
+          }
+        },
+        "heapUsedMB": 12.3,
+        "flags": []
+      },
+      "off": {
+        "arm": "noglue",
+        "panels": 4,
+        "totalWsMB": 451.5,
+        "totalPrivMB": 256.5,
+        "procs": 5,
+        "bucket": {
+          "browser": {
+            "ws": 33.2,
+            "priv": 14.2,
+            "n": 1
+          },
+          "renderer": {
+            "ws": 190.5,
+            "priv": 136.6,
+            "n": 1
+          },
+          "other": {
+            "ws": 227.7,
+            "priv": 105.8,
+            "n": 3
+          }
+        },
+        "heapUsedMB": 12.1,
+        "flags": null
+      }
+    },
+    {
+      "arm": "nofs",
+      "pair": 1,
+      "base": {
+        "arm": "base",
+        "panels": 4,
+        "totalWsMB": 437.2,
+        "totalPrivMB": 250.3,
+        "procs": 5,
+        "bucket": {
+          "browser": {
+            "ws": 32.8,
+            "priv": 13.8,
+            "n": 1
+          },
+          "renderer": {
+            "ws": 188,
+            "priv": 131.9,
+            "n": 1
+          },
+          "other": {
+            "ws": 216.4,
+            "priv": 104.6,
+            "n": 3
+          }
+        },
+        "heapUsedMB": 12.1,
+        "flags": []
+      },
+      "off": {
+        "arm": "nofs",
+        "panels": 4,
+        "totalWsMB": 433.9,
+        "totalPrivMB": 249.8,
+        "procs": 5,
+        "bucket": {
+          "browser": {
+            "ws": 33.2,
+            "priv": 14,
+            "n": 1
+          },
+          "renderer": {
+            "ws": 183.6,
+            "priv": 130.8,
+            "n": 1
+          },
+          "other": {
+            "ws": 217,
+            "priv": 105,
+            "n": 3
+          }
+        },
+        "heapUsedMB": 12.4,
+        "flags": [
+          "CCG_NO_FS"
+        ]
+      }
+    },
+    {
+      "arm": "nofs",
+      "pair": 2,
+      "base": {
+        "arm": "base",
+        "panels": 4,
+        "totalWsMB": 439.2,
+        "totalPrivMB": 256.1,
+        "procs": 5,
+        "bucket": {
+          "browser": {
+            "ws": 32.8,
+            "priv": 13.9,
+            "n": 1
+          },
+          "renderer": {
+            "ws": 190.6,
+            "priv": 137.6,
+            "n": 1
+          },
+          "other": {
+            "ws": 215.8,
+            "priv": 104.6,
+            "n": 3
+          }
+        },
+        "heapUsedMB": 12.1,
+        "flags": []
+      },
+      "off": {
+        "arm": "nofs",
+        "panels": 4,
+        "totalWsMB": 440.9,
+        "totalPrivMB": 258.9,
+        "procs": 5,
+        "bucket": {
+          "browser": {
+            "ws": 32.8,
+            "priv": 13.9,
+            "n": 1
+          },
+          "renderer": {
+            "ws": 191.3,
+            "priv": 138.9,
+            "n": 1
+          },
+          "other": {
+            "ws": 216.7,
+            "priv": 106.1,
+            "n": 3
+          }
+        },
+        "heapUsedMB": 12.1,
+        "flags": [
+          "CCG_NO_FS"
+        ]
+      }
+    },
+    {
+      "arm": "nofs",
+      "pair": 3,
+      "base": {
+        "arm": "base",
+        "panels": 4,
+        "totalWsMB": 440.2,
+        "totalPrivMB": 255.9,
+        "procs": 5,
+        "bucket": {
+          "browser": {
+            "ws": 32.1,
+            "priv": 13.1,
+            "n": 1
+          },
+          "renderer": {
+            "ws": 191.1,
+            "priv": 137.9,
+            "n": 1
+          },
+          "other": {
+            "ws": 217,
+            "priv": 105,
+            "n": 3
+          }
+        },
+        "heapUsedMB": 12.1,
+        "flags": []
+      },
+      "off": {
+        "arm": "nofs",
+        "panels": 4,
+        "totalWsMB": 428.3,
+        "totalPrivMB": 244.9,
+        "procs": 5,
+        "bucket": {
+          "browser": {
+            "ws": 33,
+            "priv": 14,
+            "n": 1
+          },
+          "renderer": {
+            "ws": 178.9,
+            "priv": 125.7,
+            "n": 1
+          },
+          "other": {
+            "ws": 216.3,
+            "priv": 105.2,
+            "n": 3
+          }
+        },
+        "heapUsedMB": 12.6,
+        "flags": [
+          "CCG_NO_FS"
+        ]
+      }
+    },
+    {
+      "arm": "nofs",
+      "pair": 4,
+      "base": {
+        "arm": "base",
+        "panels": 4,
+        "totalWsMB": 438.7,
+        "totalPrivMB": 256.7,
+        "procs": 5,
+        "bucket": {
+          "browser": {
+            "ws": 32.8,
+            "priv": 13.7,
+            "n": 1
+          },
+          "renderer": {
+            "ws": 189.6,
+            "priv": 137.1,
+            "n": 1
+          },
+          "other": {
+            "ws": 216.3,
+            "priv": 106,
+            "n": 3
+          }
+        },
+        "heapUsedMB": 12,
+        "flags": []
+      },
+      "off": {
+        "arm": "nofs",
+        "panels": 4,
+        "totalWsMB": 436.1,
+        "totalPrivMB": 251.1,
+        "procs": 5,
+        "bucket": {
+          "browser": {
+            "ws": 32.7,
+            "priv": 13.6,
+            "n": 1
+          },
+          "renderer": {
+            "ws": 185,
+            "priv": 131.4,
+            "n": 1
+          },
+          "other": {
+            "ws": 218.4,
+            "priv": 106.2,
+            "n": 3
+          }
+        },
+        "heapUsedMB": 12.4,
+        "flags": [
+          "CCG_NO_FS"
+        ]
+      }
+    }
+  ]
+}

@@ -451,6 +451,10 @@ pub fn window_slots(app: &AppHandle) -> Value {
 /// 모델의 *"자리는 뷰, 대화는 접힐 뿐 사라지지 않는다"*이다. 한 함수로 합치면
 /// 둘 중 하나가 반드시 대화를 잃는다.
 pub fn chat_window_close(app: &AppHandle, chat: &str) -> bool {
+    // ★R4 — 32/32. 창을 닫기 **전에** 그 창에 마지막 저장을 요청한다(§6.1 `chat:flush-req`).
+    // 지금은 렌더러가 자기 디바운스로 저장하므로 없어도 대개 살아남지만, "대개"는
+    // 계약이 아니다 — 디바운스가 안 내려간 마지막 편집이 창과 함께 사라진다.
+    crate::ipc::windows::flush_req(app, chat);
     let label = {
         let mut list = SESSIONS.lock().unwrap();
         let label = list.iter().find(|s| s.id == chat).map(|s| s.label.clone());

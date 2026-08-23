@@ -42,6 +42,33 @@ pub fn unified_store_enabled() -> bool {
     !matches!(std::env::var("CCG_UNIFIED_STORE").as_deref(), Ok("0") | Ok("false"))
 }
 
+/// ★R4 귀속 팔 — 부팅 경로를 **R3의 깊은 파싱으로 되돌린다**(`CCG_DEEP_BOOT_SCAN=1`).
+///
+/// R3의 부팅은 id·제목 네 필드가 필요할 때도 `all_chats()`를 불러 **채팅 전문(스냅샷
+/// 포함)을 전부 `Value` 트리로 팠다**. R4는 그 두 자리를 얕은 스캔으로 바꿨는데
+/// (`chats_v3::chat_ids` / `chat_heads`), *바꿨다*는 주장에는 짝지은 측정이 필요하다.
+/// 이 스위치가 그 짝을 만든다 — 켜면 R3 코드 경로를 그대로 돈다.
+///
+/// 판정 규약은 위와 같다(빈 값·`0`·`false`는 끔). 기본은 **꺼짐 = R4 동작**이다.
+pub fn deep_boot_scan() -> bool {
+    !matches!(
+        std::env::var("CCG_DEEP_BOOT_SCAN").as_deref(),
+        Err(_) | Ok("") | Ok("0") | Ok("false")
+    )
+}
+
+/// ★R4 실험 스위치 — `chats:get`의 라이트 페이로드에서 **보이는 패널 자리의 스냅샷도** 뺀다.
+///
+/// **기본 꺼짐.** 켜면 그 대화는 `unloaded` 마커로 나가고, 화면의 내용물은 `ma:get`이
+/// 대는 한 벌만 남는다(통합 스토어에서 패널 = 채팅이라 지금은 두 채널로 두 벌 간다).
+/// 켜도 되는지는 렌더러의 마커 병합이 판정한다 — `chats_v3::read_chats` 주석 참고.
+pub fn light_panel_chats() -> bool {
+    !matches!(
+        std::env::var("CCG_LIGHT_PANEL_CHATS").as_deref(),
+        Err(_) | Ok("") | Ok("0") | Ok("false")
+    )
+}
+
 use std::io;
 use std::path::{Path, PathBuf};
 

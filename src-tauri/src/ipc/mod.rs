@@ -229,6 +229,10 @@ pub async fn ipc_call(app: AppHandle, window: WebviewWindow, channel: String, pa
     // 그 시간 동안 다른 창의 IPC(창 컨트롤·스토어 저장)가 통째로 굶는다.
     // `spawn_blocking`은 전용 풀(기본 512)로 빼므로 굶기지 않는다.
     if fs::owns(&channel) || git::owns(&channel) {
+        // ★R4 귀속 팔 — 파일·Git 도메인을 통째로 미구현으로 떨어뜨린다(심이 안전값).
+        if crate::flags::no_fs() {
+            return unimplemented();
+        }
         let ch = channel.clone();
         return tauri::async_runtime::spawn_blocking(move || {
             fs::dispatch(&ch, &payload)
@@ -252,8 +256,11 @@ fn dispatch(app: &AppHandle, window: &WebviewWindow, channel: &str, p: &Value) -
     }
     // 실행(엔진) 채널. 스토어 별칭보다 **뒤**에 둔다 — `chats:*`·`ma:get` 같은 조회는
     // 엔진과 무관하고, 엔진 채널(`chat:run`·`claude:*`)과 이름이 겹치지도 않는다.
-    if let Some(v) = crate::engine::dispatch(app, window, channel, p) {
-        return v;
+    // (★R4 귀속 팔 `CCG_NO_ENGINE_GLUE`: 엔진 글루를 통째로 빼고 재는 대조군)
+    if !crate::flags::no_engine_glue() {
+        if let Some(v) = crate::engine::dispatch(app, window, channel, p) {
+            return v;
+        }
     }
     if let Some(v) = app_meta::dispatch(channel, p) {
         return v;
