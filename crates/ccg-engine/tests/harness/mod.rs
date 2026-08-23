@@ -449,6 +449,11 @@ pub fn defaults() -> IdentityDefaults {
         api_key: Some("sk-fixture".into()),
         env_api_key_present: false,
         env_key_answer: None,
+        // ★M4/O4 — Codex 계정 축. 재생 시나리오는 전부 Claude라 값이 쓰이지 않지만,
+        // 픽스처에 계정을 하나 둬야 Codex 정체성이 "미지정 → 기본"으로 접히는 것을
+        // 같은 하네스에서 잴 수 있다(`tests/codex_replay.rs`).
+        default_codex_account: Some("cx@x".into()),
+        known_codex_accounts: BTreeSet::from(["cx@x".to_string()]),
         cwd_probe: CwdProbe::AssumeExists,
     }
 }

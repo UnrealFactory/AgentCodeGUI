@@ -15,6 +15,12 @@ name = "ccg-fakecli"
 path = "src/bin/ccg_fakecli.rs"
 required-features = ["fakecli"]
 
+# 가짜 `codex app-server`(M4). 같은 규약 — 기본 빌드에는 없다.
+[[bin]]
+name = "ccg-fakecodex"
+path = "src/bin/ccg_fakecodex.rs"
+required-features = ["fakecli"]
+
 [dependencies]
 serde = { workspace = true }
 serde_json = { workspace = true }

@@ -34,6 +34,11 @@ pub struct SpawnSpec {
     pub env_set: Vec<(String, String)>,
     pub env_remove: Vec<String>,
     pub resume: Option<String>,
+    /// **Codex 실행 계획**(M4). `Some`이면 이 스폰은 `codex app-server`다 —
+    /// argv에 담을 수 없는 값(승인 정책·샌드박스·thread config·developerInstructions)이
+    /// 있어서 구조체로 싣는다. Claude 경로에서는 항상 `None`이고, 이 필드가 붙기 전과
+    /// 바이트 하나 다르지 않다.
+    pub codex: Option<crate::codex::CodexPlan>,
 }
 
 /// 스폰 인자 조립. **정체성만으로 결정된다** — 이 함수가 "스폰 시점에만 정해지는 값"의 정의다.
@@ -48,6 +53,12 @@ pub fn build_spawn_spec(
     config_dir: Option<PathBuf>,
     api_key: Option<&str>,
 ) -> SpawnSpec {
+    // ★M4 — Codex는 **같은 상태기계 위의 다른 프로세스**다. argv 문법이 겹치는 부분이
+    // 하나도 없으므로(플래그가 아니라 JSON-RPC로 설정한다) 여기서 갈라 나간다.
+    // Claude 경로는 이 줄 아래로 한 글자도 안 바뀐다.
+    if matches!(id.engine(), EngineAxis::Codex { .. }) {
+        return build_codex_spawn_spec(id, resume);
+    }
     let mut argv: Vec<String> = vec![
         "--output-format".into(),
         "stream-json".into(),
@@ -153,6 +164,23 @@ pub fn build_spawn_spec(
         env_set,
         env_remove,
         resume: resume.map(|s| s.to_string()),
+        codex: None,
+    }
+}
+
+/// Codex 스폰 인자. **바이너리 경로는 여기서 정하지 않는다** — 엔진마다 실행본이 다르고
+/// (`codex-engines/<v>/…/codex.cmd`), 그 경로를 아는 것은 앱 홈을 읽는 셸이다.
+/// `CodexDriver`가 자기 것을 쓰고 `cli`는 무시한다(같은 이유로 `argv`도 표시용이다).
+fn build_codex_spawn_spec(id: &RunIdentity, resume: Option<&str>) -> SpawnSpec {
+    SpawnSpec {
+        cli: PathBuf::from("codex"),
+        argv: vec!["app-server".into()],
+        cwd: PathBuf::from(id.cwd().as_str()),
+        // MSBuild 좀비 차단은 엔진과 무관한 앱 규약이라 여기도 그대로 간다.
+        env_set: vec![("MSBUILDDISABLENODEREUSE".to_string(), "1".to_string())],
+        env_remove: vec!["NODE_OPTIONS".to_string(), "DEBUG".to_string()],
+        resume: resume.map(|s| s.to_string()),
+        codex: Some(crate::codex::build_plan(id, resume)),
     }
 }
 
@@ -447,7 +475,11 @@ impl CliDriver for ClaudeDriver {
 
 /// 바이트 루프. **`lines()`로 읽지 않는다** — `initialize` 응답이 13.5KB라 read 경계를 넘고,
 /// 줄 조립을 프레임워크에 맡기면 부분 라인이 조용히 유실되거나 파싱 에러로 죽는다.
-fn read_frames<R: std::io::Read>(
+///
+/// (M4) `codex app-server`의 JSONL도 **정확히 같은 문제**를 갖는다(`initialize` 응답이
+/// 크고 `item/completed`의 diff가 더 크다) — 그래서 Codex 드라이버가 이 루프를 그대로
+/// 재사용한다. 프레이밍 버그를 두 벌 만들지 않는 것이 이 `pub(crate)`의 이유다.
+pub(crate) fn read_frames<R: std::io::Read>(
     mut stdout: R,
     tx: std::sync::mpsc::Sender<Value>,
     stats: Arc<Mutex<FrameStats>>,
@@ -741,6 +773,7 @@ mod tests {
             env_set: vec![],
             env_remove: vec![],
             resume: None,
+            codex: None,
         };
         d.spawn(&spec).expect("cmd.exe 스폰");
         assert!(d.process_alive(), "EOF 전에는 Dead라고 말하지 않는다");
@@ -780,6 +813,7 @@ mod tests {
             env_set: vec![],
             env_remove: vec![],
             resume: None,
+            codex: None,
         };
         d.spawn(&spec("exit 0")).unwrap();
         for _ in 0..200 {

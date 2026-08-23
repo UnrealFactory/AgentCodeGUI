@@ -26,7 +26,10 @@ struct ToolRow {
     name: String,
     started_ms: u64,
     /// `Write`/`Edit`/`MultiEdit`가 **성공하면** 그때 `file-change`로 나갈 값.
-    pending: Option<PendingChange>,
+    ///
+    /// ★M4 — `Vec`인 이유: Codex의 `fileChange` 아이템 하나가 **파일 여러 개**를
+    /// 바꾼다(`changes[]`). Claude 경로는 언제나 0..1개라 동작이 같다.
+    pending: Vec<PendingChange>,
 }
 
 /// 할 일 한 줄(`TaskCreate`/`TaskUpdate` 누적본). 삽입 순서가 표시 순서라 `Vec`다.
@@ -349,6 +352,10 @@ fn tool_label(name: &str) -> (String, &'static str) {
         "Grep" | "Glob" => ("Search".into(), "search"),
         "WebSearch" | "WebFetch" => ("Web".into(), "web"),
         "Task" | "Agent" => ("Task".into(), "task"),
+        // ★M4 — Codex의 `fileChange`. 표시는 편집 행과 같지만 **이름이 달라야** 한다:
+        // `Edit`이면 위의 `build_pending`이 Claude 도구 입력을 기대해 빈 diff를 만든다.
+        // 실제 변경 본문은 합성 프레임(`ccg_codex{file_change}`)이 실어 온다.
+        "codex_file_change" => ("Edit".into(), "edit"),
         "TodoWrite" => ("Todo".into(), "other"),
         n if n.starts_with("mcp__") => (n.to_string(), "mcp"),
         n => (n.to_string(), "other"),
@@ -581,7 +588,7 @@ impl Wire {
                 .to_string();
             self.tools.insert(
                 id.clone(),
-                ToolRow { verb: "Task".into(), name: name.clone(), started_ms: now_ms(), pending: None },
+                ToolRow { verb: "Task".into(), name: name.clone(), started_ms: now_ms(), pending: vec![] },
             );
             self.subagents.insert(id.clone());
             let role = one_line(&desc, 40);
@@ -665,7 +672,7 @@ impl Wire {
         // ── 보통 도구 행 ────────────────────────────────────────────────────
         let (verb, kind) = tool_label(&name);
         let target = tool_target(&input);
-        let mut row = ToolRow { verb: verb.clone(), name: name.clone(), started_ms: now_ms(), pending: None };
+        let mut row = ToolRow { verb: verb.clone(), name: name.clone(), started_ms: now_ms(), pending: vec![] };
         let mut tool = Map::new();
         tool.insert("id".into(), json!(id));
         tool.insert("verb".into(), json!(verb));
@@ -686,7 +693,7 @@ impl Wire {
             }
         } else if matches!(name.as_str(), "Write" | "Edit" | "MultiEdit") {
             // 디프는 **성공한 뒤에** 낸다 — 거부·실패한 편집이 유령 diff를 남기지 않게.
-            row.pending = diff::build_pending(&mut self.baselines, &name, &input, &self.cwd);
+            row.pending = diff::build_pending(&mut self.baselines, &name, &input, &self.cwd).into_iter().collect();
         }
         self.tools.insert(id, row);
         out
@@ -742,8 +749,8 @@ impl Wire {
         let dur = row.as_ref().map(|r| now_ms().saturating_sub(r.started_ms));
 
         // ── 파일 변경 — 편집이 **실제로 성공한 뒤**에만 ───────────────────────
-        if let Some(p) = row.as_ref().and_then(|r| r.pending.as_ref()) {
-            if !is_err {
+        if !is_err {
+            for p in row.iter().flat_map(|r| r.pending.iter()) {
                 out.push(json!({
                     "type": "file-change", "runId": run,
                     "file": p.file, "diff": p.diff, "whole": p.whole
@@ -781,11 +788,22 @@ impl Wire {
         e.insert("id".into(), json!(id));
         e.insert("status".into(), json!(if is_err { "error" } else { "done" }));
         // 편집 행의 요약은 +N −N이다(누적이 아니라 이 도구 한 번의 값 — `file.add/del`).
-        if let Some(p) = row.as_ref().and_then(|r| r.pending.as_ref()).filter(|_| !is_err) {
-            let (a, d) = (p.file["add"].as_u64().unwrap_or(0), p.file["del"].as_u64().unwrap_or(0));
+        let changed: Vec<&PendingChange> =
+            if is_err { vec![] } else { row.iter().flat_map(|r| r.pending.iter()).collect() };
+        if !changed.is_empty() {
+            // 편집 행의 요약은 +N −N이다(누적이 아니라 이 도구 한 번의 값 — `file.add/del`).
+            // 파일이 여럿이면(Codex `fileChange`) 합계 + 파일 수.
+            let (a, d): (u64, u64) = changed.iter().fold((0, 0), |(a, d), p| {
+                (a + p.file["add"].as_u64().unwrap_or(0), d + p.file["del"].as_u64().unwrap_or(0))
+            });
+            let one_new = changed.len() == 1 && changed[0].file["tag"] == "new";
             e.insert(
                 "result".into(),
-                json!(if p.file["tag"] == "new" { format!("새 파일 +{a}") } else { format!("+{a} −{d}") }),
+                json!(match (one_new, changed.len()) {
+                    (true, _) => format!("새 파일 +{a}"),
+                    (_, 1) => format!("+{a} −{d}"),
+                    (_, n) => format!("파일 {n}개 +{a} −{d}"),
+                }),
             );
         } else if !tail.is_empty() {
             // ★R4(§R3.8-K) — 웹 검색이 찾은 페이지 목록. 실려야 그 행이 펼쳐진다.
@@ -853,6 +871,58 @@ impl Wire {
                 let text = s(f, "text").or_else(|| s(f, "message")).unwrap_or_default();
                 if !text.is_empty() {
                     out.push(json!({ "type": "notice", "runId": run, "text": text }));
+                }
+            }
+            // ── Codex 합성 프레임(M4) ────────────────────────────────────────
+            //
+            // Codex에는 Claude 프레임에 **대응물이 없는 값**이 셋 있다. 억지로 Claude
+            // 모양에 끼우면 그 프레임이 상태기계의 회계(모델 전환 감지·턴 활동 판정)까지
+            // 건드리므로, 표시 전용 값은 전용 통로로 온다(상태기계에는 미지 subtype =
+            // F21로 조용히 버려진다). 이름공간은 `ccg-engine/src/codex/mod.rs::SYNTH`.
+            "system" if sub == "ccg_codex" => {
+                match f.get("kind").and_then(Value::as_str).unwrap_or("") {
+                    // `turn/plan/updated` — Claude의 TodoWrite 자리.
+                    "todos" => out.push(json!({ "type": "todos", "runId": run,
+                                                "todos": f.get("todos").cloned().unwrap_or(json!([])) })),
+                    // `thread/tokenUsage/updated` — Claude의 assistant.usage 자리.
+                    "context" => {
+                        if let Some(t) = f.get("tokens").and_then(Value::as_u64) {
+                            out.push(json!({ "type": "context", "runId": run, "contextTokens": t }));
+                        }
+                    }
+                    // `item/completed{fileChange}` — 와이어의 unified diff를 **여기서**
+                    // 디스크와 대조해 누적 전체 diff로 승격한다(2.6.2와 같은 정책).
+                    // 이벤트 자체는 뒤따르는 `tool_result`가 낸다 — 거부·실패한 편집이
+                    // 유령 diff를 남기지 않는다는 규약이 Claude 경로와 같아진다.
+                    "file_change" => {
+                        let item = s(f, "itemId").unwrap_or_default();
+                        let cwd = s(f, "cwd").unwrap_or_else(|| self.cwd.clone());
+                        let empty = vec![];
+                        let changes = f.get("changes").and_then(Value::as_array).unwrap_or(&empty);
+                        let mut made = vec![];
+                        for c in changes {
+                            let kind = c["kind"]["type"].as_str().unwrap_or("update");
+                            let path = c.get("path").and_then(Value::as_str).unwrap_or("");
+                            let diff_text = c.get("diff").and_then(Value::as_str).unwrap_or("");
+                            if let Some(p) =
+                                diff::codex_pending(&mut self.baselines, &cwd, path, kind, diff_text)
+                            {
+                                made.push(p);
+                            }
+                        }
+                        match self.tools.get_mut(&item) {
+                            Some(row) => row.pending = made,
+                            // 행이 없으면(started를 못 본 판) 그 자리에서 바로 낸다 —
+                            // 변경 파일 칩이 비는 것보다 낫다.
+                            None => {
+                                for p in made {
+                                    out.push(json!({ "type": "file-change", "runId": run,
+                                                     "file": p.file, "diff": p.diff, "whole": p.whole }));
+                                }
+                            }
+                        }
+                    }
+                    _ => {}
                 }
             }
             "system" if sub == "compact_boundary" => {
@@ -1577,5 +1647,138 @@ mod tests {
             { "type": "tool_result", "tool_use_id": "t2", "content": "https://not-a-link-row.test/x" }] } }));
         let end = evs.iter().find(|e| e["type"] == "tool-end").unwrap();
         assert!(end.get("links").is_none(), "웹 도구가 아니면 링크 없음: {end}");
+    }
+
+    // ── Codex(M4) — 옮김기가 낸 프레임이 2.6.2 EngineEvent가 되는가 ─────────────
+    //
+    // 입력 JSON은 손으로 쓴 것이 아니라 `ccg-engine`의 옮김기가 실제로 내는 모양이다
+    // (`crates/ccg-engine/tests/codex_replay.rs`가 같은 값을 단언한다). 여기서 재는 것은
+    // **그 프레임이 화면 이벤트가 되는가**뿐이다.
+
+    #[test]
+    fn codex_frames_become_the_same_engine_events_as_claude() {
+        let mut w = wire();
+        // system/init — threadId가 session_id 자리에 온다
+        let evs = w.translate(&json!({ "type": "system", "subtype": "init", "session_id": "th-1",
+                                       "model": "gpt-5.6-terra", "cwd": "C:\\w", "tools": [],
+                                       "apiKeySource": "none" }));
+        assert_eq!(evs[0]["type"], "session");
+        assert_eq!(evs[0]["sessionId"], "th-1");
+        assert_eq!(evs[0]["model"], "gpt-5.6-terra");
+
+        // reasoning → thinking, agentMessage 델타 → 생각 줄 정리 + 스트리밍
+        let evs = w.translate(&json!({ "type": "stream_event", "event": { "type": "content_block_delta",
+            "delta": { "type": "thinking_delta", "thinking": "무엇부터 할지 고르는 중" } } }));
+        assert_eq!(types(&evs), vec!["thinking"]);
+        w.translate(&json!({ "type": "stream_event", "event": {
+            "type": "content_block_start", "content_block": { "type": "text" } } }));
+        let evs = w.translate(&json!({ "type": "stream_event", "event": { "type": "content_block_delta",
+            "delta": { "type": "text_delta", "text": "안녕" } } }));
+        assert_eq!(types(&evs), vec!["thinking-clear", "status", "assistant-stream"]);
+        let evs = w.translate(&json!({ "type": "assistant", "message": { "content": [
+            { "type": "text", "text": "안녕하세요" }] } }));
+        assert_eq!(evs[0]["type"], "assistant-done");
+        assert_eq!(evs[0]["text"], "안녕하세요");
+
+        // commandExecution → Bash 행 + 터미널 줄
+        let evs = w.translate(&json!({ "type": "assistant", "message": { "content": [
+            { "type": "tool_use", "id": "i1", "name": "Bash", "input": { "command": "cargo test" } }] } }));
+        assert_eq!(types(&evs), vec!["tool-start", "terminal"]);
+        assert_eq!(evs[0]["tool"]["kind"], "bash");
+        let evs = w.translate(&json!({ "type": "user", "message": { "content": [
+            { "type": "tool_result", "tool_use_id": "i1", "is_error": false, "content": "55 passed" }] } }));
+        assert!(types(&evs).contains(&"tool-end".to_string()));
+
+        // turn/plan/updated → 할 일 패널
+        let evs = w.translate(&json!({ "type": "system", "subtype": "ccg_codex", "kind": "todos",
+            "todos": [{ "id": "cxtodo-0", "label": "고치기", "status": "running" }] }));
+        assert_eq!(evs[0]["type"], "todos");
+        assert_eq!(evs[0]["todos"][0]["status"], "running");
+
+        // tokenUsage → 컨텍스트 게이지
+        let evs = w.translate(&json!({ "type": "system", "subtype": "ccg_codex", "kind": "context",
+                                       "tokens": 540, "window": 272000 }));
+        assert_eq!(evs[0]["type"], "context");
+        assert_eq!(evs[0]["contextTokens"], 540);
+
+        // result — modelUsage가 토큰 표를, usage.input_tokens가 게이지를 먹인다
+        let evs = w.translate(&json!({ "type": "result", "subtype": "success", "is_error": false,
+            "result": "", "duration_ms": 4242, "num_turns": 1,
+            "usage": { "input_tokens": 540, "output_tokens": 0,
+                       "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0 },
+            "modelUsage": { "gpt-5.6-terra": { "inputTokens": 400, "outputTokens": 40,
+                            "cacheReadInputTokens": 100, "cacheCreationInputTokens": 0,
+                            "contextWindow": 272000 } } }));
+        let r = &evs[0];
+        assert_eq!(r["type"], "result");
+        assert_eq!(r["contextTokens"], 540);
+        assert_eq!(r["contextWindow"], 272000);
+        assert_eq!(r["tokenUsage"][0]["model"], "gpt-5.6-terra", "codex 모델 id는 그대로 표시된다");
+        assert_eq!(r["tokenUsage"][0]["inTok"], 400);
+        assert_eq!(r["tokenUsage"][0]["cacheRead"], 100);
+    }
+
+    #[test]
+    fn a_codex_file_change_becomes_a_whole_file_diff_against_the_run_baseline() {
+        let dir = std::env::temp_dir().join(format!("ccg-m4-wire-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let file = dir.join("a.txt");
+        // Codex는 **적용을 마친 뒤** 훙크를 보낸다 — 디스크가 '적용 후'다.
+        std::fs::write(&file, "one\nTWO\nthree\n").unwrap();
+
+        let mut w = wire();
+        w.translate(&json!({ "type": "system", "subtype": "init", "session_id": "th-1",
+                             "cwd": dir.to_string_lossy(), "tools": [] }));
+        w.translate(&json!({ "type": "assistant", "message": { "content": [
+            { "type": "tool_use", "id": "i2", "name": "codex_file_change",
+              "input": { "file_path": "a.txt" } }] } }));
+        let evs = w.translate(&json!({ "type": "system", "subtype": "ccg_codex", "kind": "file_change",
+            "itemId": "i2", "cwd": dir.to_string_lossy(),
+            "changes": [{ "path": "a.txt", "kind": { "type": "update" },
+                          "diff": "@@ -1,3 +1,3 @@\n one\n-two\n+TWO\n three\n" }] }));
+        assert!(evs.is_empty(), "변경은 tool_result가 성공을 확인한 뒤에 나간다");
+
+        let evs = w.translate(&json!({ "type": "user", "message": { "content": [
+            { "type": "tool_result", "tool_use_id": "i2", "is_error": false, "content": "" }] } }));
+        let fc = evs.iter().find(|e| e["type"] == "file-change").expect("file-change");
+        assert_eq!(fc["file"]["path"], "a.txt");
+        assert_eq!(fc["whole"], true, "훙크 조각이 아니라 파일 한 장");
+        assert_eq!(fc["file"]["add"], 1);
+        assert_eq!(fc["file"]["del"], 1);
+        // 역적용으로 복원한 기준선("two")이 좌변이다 — 전체가 변경으로 칠해지지 않는다.
+        let lines = fc["diff"]["lines"].as_array().unwrap();
+        assert_eq!(lines.len(), 4, "ctx 2 + del 1 + add 1: {lines:?}");
+        let end = evs.iter().find(|e| e["type"] == "tool-end").unwrap();
+        assert_eq!(end["result"], "+1 −1");
+
+        // 같은 런에서 같은 파일을 또 고치면 **런 기준선 대비 누적**이다.
+        std::fs::write(&file, "one\nTWO\nTHREE\n").unwrap();
+        w.translate(&json!({ "type": "assistant", "message": { "content": [
+            { "type": "tool_use", "id": "i3", "name": "codex_file_change",
+              "input": { "file_path": "a.txt" } }] } }));
+        w.translate(&json!({ "type": "system", "subtype": "ccg_codex", "kind": "file_change",
+            "itemId": "i3", "cwd": dir.to_string_lossy(),
+            "changes": [{ "path": "a.txt", "kind": { "type": "update" },
+                          "diff": "@@ -3 +3 @@\n-three\n+THREE\n" }] }));
+        let evs = w.translate(&json!({ "type": "user", "message": { "content": [
+            { "type": "tool_result", "tool_use_id": "i3", "is_error": false, "content": "" }] } }));
+        let fc = evs.iter().find(|e| e["type"] == "file-change").unwrap();
+        assert_eq!(fc["file"]["add"], 2, "두 번째 편집도 런 원본 대비(+2 −2)");
+        assert_eq!(fc["file"]["del"], 2);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_declined_codex_edit_leaves_no_ghost_diff() {
+        let mut w = wire();
+        w.translate(&json!({ "type": "assistant", "message": { "content": [
+            { "type": "tool_use", "id": "i9", "name": "codex_file_change",
+              "input": { "file_path": "x.txt" } }] } }));
+        // 거절된 변경은 옮김기가 애초에 합성 프레임을 안 낸다 — 행만 오류로 닫힌다.
+        let evs = w.translate(&json!({ "type": "user", "message": { "content": [
+            { "type": "tool_result", "tool_use_id": "i9", "is_error": true, "content": "적용 안 됨" }] } }));
+        assert!(!types(&evs).contains(&"file-change".to_string()));
+        let end = evs.iter().find(|e| e["type"] == "tool-end").unwrap();
+        assert_eq!(end["status"], "error");
     }
 }

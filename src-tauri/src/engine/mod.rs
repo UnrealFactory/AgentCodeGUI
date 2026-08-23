@@ -35,6 +35,8 @@
 //! `chat:queue-mutate`의 `enqueue`/`remove`/`reorder`(큐 Rust 이관) ·
 //! **재개 단일 소유**(`ChatStatusLite.resumeOwner` + 엔진 드레인의 `begin_run`).
 
+mod any;
+mod codex_versions;
 mod diff;
 mod hub;
 mod ident;
@@ -257,6 +259,10 @@ pub fn dispatch(_app: &AppHandle, window: &WebviewWindow, channel: &str, p: &Val
     if let Some(v) = core_dispatch(channel, p) {
         return Some(v);
     }
+    // Codex CLI 버전 관리(M4) — `codex-engine:state`만 M1(ipc/app_meta)이 답한다.
+    if let Some(v) = codex_versions::dispatch(_app, channel, p) {
+        return Some(v);
+    }
     // 과도기 별칭 — 옛 채널은 주소를 안 싣는다. 번역 함수 셋이 주소를 만든다.
     let (chat, req_at): (String, usize) = match channel {
         ch::CLAUDE_RUN | ch::CLAUDE_CANCEL | ch::CLAUDE_INTERRUPT | ch::CLAUDE_PERMISSION_RESPOND
@@ -354,6 +360,8 @@ fn core_dispatch(channel: &str, p: &Value) -> Option<Value> {
                         json!({ "behavior": "cancelled" })
                     }),
                     answer_text: None,
+                    always: false,
+                    answers: None,
                 },
             )
         }
@@ -433,12 +441,14 @@ fn queue_input(a: &Value) -> ccg_engine::queue::QueueInput {
     }
 }
 
-/// 승인 카드 응답. `allow_always`는 지금 라운드에서 **1회 허용**과 같게 동작한다
-/// (`updatedPermissions` 미배선 — 세션 규칙 추가는 다음 라운드).
+/// 승인 카드 응답. `allow_always`는 **Claude 경로에서만** 1회 허용과 같게 동작한다
+/// (`updatedPermissions` 미배선). Codex는 `acceptForSession`이라는 대응물이 있어
+/// 허브가 `ccgAlways`로 갈라 준다(M4).
 fn respond_permission(chat: &str, res: &Value) {
     let request_id = res.get("requestId").and_then(Value::as_str).unwrap_or("").to_string();
     let behavior = res.get("behavior").and_then(Value::as_str).unwrap_or("deny");
     let accept = behavior != "deny";
+    let always = behavior == "allow_always";
     let payload = if accept {
         json!({ "behavior": "allow" })
     } else {
@@ -453,6 +463,8 @@ fn respond_permission(chat: &str, res: &Value) {
             accept,
             payload: Some(payload),
             answer_text: None,
+            always,
+            answers: None,
         },
     );
 }
@@ -463,23 +475,20 @@ fn respond_permission(chat: &str, res: &Value) {
 fn respond_question(chat: &str, res: &Value) {
     let request_id = res.get("requestId").and_then(Value::as_str).unwrap_or("").to_string();
     let answers = res.get("answers");
-    let picked: Vec<String> = answers
-        .and_then(Value::as_array)
-        .map(|rows| {
-            rows.iter()
-                .map(|r| {
-                    r.as_array()
-                        .map(|opts| {
-                            opts.iter()
-                                .filter_map(Value::as_str)
-                                .collect::<Vec<_>>()
-                                .join(", ")
-                        })
-                        .unwrap_or_default()
-                })
-                .filter(|s| !s.is_empty())
-                .collect()
-        })
+    // ★M4 — 구조 그대로의 답(질문 × 선택). Codex는 `{qid:{answers}}`를 요구하므로
+    // 문장으로 접기 **전** 값이 필요하다(접고 나면 되돌릴 수 없다).
+    let rows: Option<Vec<Vec<String>>> = answers.and_then(Value::as_array).map(|rows| {
+        rows.iter()
+            .map(|r| {
+                r.as_array()
+                    .map(|o| o.iter().filter_map(Value::as_str).map(str::to_string).collect())
+                    .unwrap_or_default()
+            })
+            .collect()
+    });
+    let picked: Vec<String> = rows
+        .as_ref()
+        .map(|rows| rows.iter().map(|o| o.join(", ")).filter(|s| !s.is_empty()).collect())
         .unwrap_or_default();
     let message = if picked.is_empty() {
         "사용자가 건너뛰었습니다. 합리적인 기본값으로 계속 진행하세요.".to_string()
@@ -496,6 +505,8 @@ fn respond_question(chat: &str, res: &Value) {
             payload: Some(json!({ "behavior": "deny", "message": message })),
             // 고른 라벨 원문 — 허브가 **폴백 확인 카드**의 수락/취소를 이걸로 가른다.
             answer_text: (!picked.is_empty()).then(|| picked.join(" / ")),
+            always: false,
+            answers: rows.filter(|r| !r.is_empty()),
         },
     );
 }

@@ -1,0 +1,233 @@
+{
+  "at": "2026-08-23T06:06:43.327Z",
+  "exe": "C:\\Code\\AgentCodeGUI\\target\\release\\agentcodegui.exe",
+  "steps": {
+    "handshake": {
+      "bin": "C:\\Users\\User\\.agentcodegui\\codex-engines\\0.149.0\\node_modules\\@openai\\codex-win32-x64\\vendor\\x86_64-pc-windows-msvc\\bin\\codex.exe",
+      "version": "0.149.0",
+      "codexHome": "C:\\Code\\AgentCodeGUI\\.poc-home-codex-rpc",
+      "realCodexUntouched": true,
+      "native": true,
+      "initializeMs": 233,
+      "initialize": {
+        "ok": true,
+        "result": {
+          "userAgent": "agentcodegui/0.149.0 (Windows 10.0.26200; x86_64) xterm-256color (agentcodegui; 3.0.0)",
+          "codexHome": "C:\\Code\\AgentCodeGUI\\.poc-home-codex-rpc",
+          "platformFamily": "windows",
+          "platformOs": "windows"
+        }
+      },
+      "threadStart": {
+        "ok": true,
+        "threadId": "01a02d3a-7f6e-7413-aab1-a769865a6837"
+      },
+      "dryRun": {
+        "thread/backgroundTerminals/list": {
+          "verdict": "ok",
+          "error": null,
+          "resultKeys": [
+            "data",
+            "nextCursor"
+          ]
+        },
+        "turn/start": {
+          "verdict": "ok",
+          "error": null,
+          "resultKeys": [
+            "turn"
+          ]
+        },
+        "turn/interrupt": {
+          "verdict": "error",
+          "error": {
+            "code": -32600,
+            "message": "no active turn to interrupt"
+          },
+          "resultKeys": null
+        },
+        "model/list": {
+          "verdict": "ok",
+          "error": null,
+          "resultKeys": [
+            "data",
+            "nextCursor"
+          ]
+        }
+      },
+      "unauthenticatedTurn": [
+        {
+          "method": "item/completed",
+          "params": "{\"item\":{\"type\":\"userMessage\",\"id\":\"01a02d3a-8210-7022-86b5-f061062b09a1\",\"clientId\":null,\"content\":[{\"type\":\"text\",\"text\":\"ping\",\"text_elements\":[]}]},\"threadId\":\"01a02d3a-7f6e-7413-aab1-a769865a6837\",\"turnId\":\"01a02d3a-7f9d-75e0-b1f9-36f78f054832\",\"completedAtMs\":1787465204240}"
+        },
+        {
+          "method": "error",
+          "params": "{\"error\":{\"message\":\"Reconnecting... 2/5\",\"codexErrorInfo\":{\"responseStreamDisconnected\":{\"httpStatusCode\":401}},\"additionalDetails\":\"unexpected status 401 Unauthorized: Missing bearer or basic authentication in header, url: wss://api.openai.com/v1/responses, cf-ray: a2f7eee45816ea96-ICN\"},\"willRetry\":true,\"threadId\":\""
+        },
+        {
+          "method": "error",
+          "params": "{\"error\":{\"message\":\"Reconnecting... 3/5\",\"codexErrorInfo\":{\"responseStreamDisconnected\":{\"httpStatusCode\":401}},\"additionalDetails\":\"unexpected status 401 Unauthorized: Missing bearer or basic authentication in header, url: wss://api.openai.com/v1/responses, cf-ray: a2f7eeea1d03d2f8-ICN\"},\"willRetry\":true,\"threadId\":\""
+        },
+        {
+          "method": "error",
+          "params": "{\"error\":{\"message\":\"Reconnecting... 4/5\",\"codexErrorInfo\":{\"responseStreamDisconnected\":{\"httpStatusCode\":401}},\"additionalDetails\":\"unexpected status 401 Unauthorized: Missing bearer or basic authentication in header, url: wss://api.openai.com/v1/responses, cf-ray: a2f7eef2ba89aa4a-ICN\"},\"willRetry\":true,\"threadId\":\""
+        },
+        {
+          "method": "error",
+          "params": "{\"error\":{\"message\":\"Reconnecting... 5/5\",\"codexErrorInfo\":{\"responseStreamDisconnected\":{\"httpStatusCode\":401}},\"additionalDetails\":\"unexpected status 401 Unauthorized: Missing bearer or basic authentication in header, url: wss://api.openai.com/v1/responses, cf-ray: a2f7ef005829e9fb-ICN\"},\"willRetry\":true,\"threadId\":\""
+        },
+        {
+          "method": "warning",
+          "params": "{\"threadId\":\"01a02d3a-7f6e-7413-aab1-a769865a6837\",\"message\":\"Falling back from WebSockets to HTTPS transport. unexpected status 401 Unauthorized: Missing bearer or basic authentication in header, url: wss://api.openai.com/v1/responses, cf-ray: a2f7ef16bd75eaa1-ICN\"}"
+        },
+        {
+          "method": "error",
+          "params": "{\"error\":{\"message\":\"Reconnecting... 1/5\",\"codexErrorInfo\":{\"responseStreamDisconnected\":{\"httpStatusCode\":401}},\"additionalDetails\":\"unexpected status 401 Unauthorized: Missing bearer or basic authentication in header, url: https://api.openai.com/v1/responses, cf-ray: a2f7ef1a6be7326d-ICN, request id: req_a28ff4a04bb0"
+        },
+        {
+          "method": "error",
+          "params": "{\"error\":{\"message\":\"Reconnecting... 2/5\",\"codexErrorInfo\":{\"responseStreamDisconnected\":{\"httpStatusCode\":401}},\"additionalDetails\":\"unexpected status 401 Unauthorized: Missing bearer or basic authentication in header, url: https://api.openai.com/v1/responses, cf-ray: a2f7ef1cf9a4c8ef-ICN, request id: req_1e1af607e51b"
+        },
+        {
+          "method": "error",
+          "params": "{\"error\":{\"message\":\"Reconnecting... 3/5\",\"codexErrorInfo\":{\"responseStreamDisconnected\":{\"httpStatusCode\":401}},\"additionalDetails\":\"unexpected status 401 Unauthorized: Missing bearer or basic authentication in header, url: https://api.openai.com/v1/responses, cf-ray: a2f7ef211c26a2b5-ICN, request id: req_6015342931cf"
+        },
+        {
+          "method": "error",
+          "params": "{\"error\":{\"message\":\"Reconnecting... 4/5\",\"codexErrorInfo\":{\"responseStreamDisconnected\":{\"httpStatusCode\":401}},\"additionalDetails\":\"unexpected status 401 Unauthorized: Missing bearer or basic authentication in header, url: https://api.openai.com/v1/responses, cf-ray: a2f7ef277cdda7db-ICN, request id: req_1ca86304ee04"
+        },
+        {
+          "method": "error",
+          "params": "{\"error\":{\"message\":\"Reconnecting... 5/5\",\"codexErrorInfo\":{\"responseStreamDisconnected\":{\"httpStatusCode\":401}},\"additionalDetails\":\"unexpected status 401 Unauthorized: Missing bearer or basic authentication in header, url: https://api.openai.com/v1/responses, cf-ray: a2f7ef31fb52ea8e-ICN, request id: req_57ac6e013cd5"
+        },
+        {
+          "method": "thread/status/changed",
+          "params": "{\"threadId\":\"01a02d3a-7f6e-7413-aab1-a769865a6837\",\"status\":{\"type\":\"systemError\"}}"
+        },
+        {
+          "method": "error",
+          "params": "{\"error\":{\"message\":\"unexpected status 401 Unauthorized: Missing bearer or basic authentication in header, url: https://api.openai.com/v1/responses, cf-ray: a2f7ef461d7ad1d9-ICN, request id: req_1542790422d14979a65a6d9356ffbecd\",\"codexErrorInfo\":\"other\",\"additionalDetails\":null},\"willRetry\":false,\"threadId\":\"01a02d3a-7"
+        },
+        {
+          "method": "turn/completed",
+          "params": "{\"threadId\":\"01a02d3a-7f6e-7413-aab1-a769865a6837\",\"turn\":{\"id\":\"01a02d3a-7f9d-75e0-b1f9-36f78f054832\",\"items\":[],\"itemsView\":\"notLoaded\",\"status\":\"failed\",\"error\":{\"message\":\"unexpected status 401 Unauthorized: Missing bearer or basic authentication in header, url: https://api.openai.com/v1/responses, cf-ray: a2f7ef46"
+        }
+      ],
+      "framesSeen": 27,
+      "notifications": [
+        "remoteControl/status/changed",
+        "thread/started",
+        "warning",
+        "thread/settings/updated",
+        "thread/status/changed",
+        "turn/started",
+        "item/started",
+        "item/completed",
+        "error",
+        "turn/completed"
+      ],
+      "serverRequests": [],
+      "stderrTail": ":50.083283Z\u001b[0m \u001b[31mERROR\u001b[0m \u001b[2mcodex_api::endpoint::responses_websocket\u001b[0m\u001b[2m:\u001b[0m failed to connect to websocket: HTTP error: 401 Unauthorized, url: wss://api.openai.com/v1/responses\n\u001b[2m2026-08-23T06:06:53.699039Z\u001b[0m \u001b[31mERROR\u001b[0m \u001b[2mcodex_api::endpoint::responses_websocket\u001b[0m\u001b[2m:\u001b[0m failed to connect to websocket: HTTP error: 401 Unauthorized, url: wss://api.openai.com/v1/responses\n"
+    },
+    "app": {
+      "home": "C:\\Code\\AgentCodeGUI\\.poc-home-codex-app",
+      "ready": true,
+      "turnDone": true,
+      "debug": {
+        "chatId": "c-cx",
+        "state": "Idle",
+        "queued": 0,
+        "spawns": 1,
+        "exits": 1,
+        "session": "th-poc",
+        "pid": 524,
+        "engine": "codex",
+        "identityEngine": "codex",
+        "autoResume": true,
+        "nowMs": 1694,
+        "hold": null,
+        "queue": []
+      },
+      "events": {
+        "status": 3,
+        "session": 1,
+        "thinking": 1,
+        "thinking-clear": 1,
+        "assistant-stream": 1,
+        "todos": 1,
+        "tool-start": 2,
+        "terminal": 3,
+        "tool-end": 2,
+        "file-change": 1,
+        "context": 1,
+        "assistant-done": 1,
+        "result": 1
+      },
+      "byType": {
+        "session": [
+          {
+            "sessionId": "th-poc",
+            "model": "gpt-5.6-terra"
+          }
+        ],
+        "todos": [
+          [
+            "M4-TODO-A:running",
+            "M4-TODO-B:pending"
+          ]
+        ],
+        "fileChange": [
+          {
+            "path": "cx-made.txt",
+            "add": 2,
+            "tag": "new",
+            "whole": true
+          }
+        ],
+        "terminal": [
+          "echo M4-TERM-OUT",
+          "M4-TERM-OUT",
+          "✓ 완료"
+        ],
+        "context": [
+          540
+        ],
+        "result": [
+          {
+            "isError": false,
+            "durationMs": 1234,
+            "ctx": 540,
+            "win": 272000,
+            "usage": [
+              {
+                "model": "gpt-5.6-terra",
+                "inTok": 400,
+                "outTok": 40,
+                "cacheRead": 100,
+                "cacheWrite": 0
+              }
+            ]
+          }
+        ]
+      },
+      "dom": {
+        "reply": true,
+        "term": true,
+        "chips": [
+          "할 일=0/2",
+          "서브에이전트=0/0",
+          "백그라운드 셸=0/0",
+          "변경된 파일=1",
+          "컨텍스트=0%"
+        ]
+      },
+      "fileMade": false,
+      "log": ":\\\\Code\\\\AgentCodeGUI\\\\.poc-home-codex-app\\\\backup-2.6.2-1787465222747\",\"counts\":{\"chats\":1,\"maSessions\":0,\"maPanels\":0,\"sessionChats\":0,\"talkAbsorbed\":0,\"carried\":0,\"keptV3\":0,\"keptV3Boards\":0,\"total\":1,\"messages\":0,\"boards\":1},\"idMap\":{\"c-cx\":\"c-cx\"},\"order\":[\"c-cx\"],\"activeChatId\":\"c-cx\",\"boardOrder\":[\"default\"],\"activeBoardId\":\"default\",\"activeSessionId\":\"\",\"btw\":{\"rewritten\":0,\"dropped\":0},\"holdMoved\":0,\"sourceIndexOrders\":{\"chats\":[\"c-cx\"],\"multiAgent\":[],\"sessionChats\":[]},\"warnings\":[]}\n",
+      "afterRestart": {
+        "count": 4,
+        "hasReply": true
+      }
+    }
+  },
+  "findings": []
+}

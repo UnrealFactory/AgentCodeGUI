@@ -217,6 +217,19 @@ impl RunIdentity {
             BillingAxis::ApiKey { .. } => None,
         }
     }
+    /// 채팅별 추가 지시(§2.3에서 trim + 빈 문자열 = 없음으로 정규화된 값).
+    /// Codex는 이 값을 `developerInstructions`로 싣는다(Claude는 `initialize`의 append).
+    pub fn system_prompt(&self) -> Option<&str> {
+        self.system_prompt.as_deref()
+    }
+    /// **O4** — Codex 실행이 소비할 OpenAI 계정. Claude 정체성이면 항상 `None`이다
+    /// (평평한 필드가 아니라 축 안에 있어서 타입이 그것을 보장한다 — ★R2).
+    pub fn codex_account(&self) -> Option<&str> {
+        match &self.engine {
+            EngineAxis::Codex { account, .. } => account.as_deref(),
+            EngineAxis::Claude { .. } => None,
+        }
+    }
 
     /// 16바이트 hex. 정준 직렬화 기반이라 프로세스 간·릴리즈 간에 같다(canon.rs).
     pub fn hash(&self) -> String {
@@ -355,11 +368,35 @@ impl RunIdentity {
                 model: raw.engine.model.clone(),
                 effort: raw.engine.effort,
             },
-            EngineKind::Codex => EngineAxis::Codex {
-                model: raw.engine.model.clone(),
-                effort: raw.engine.effort,
-                account: raw.engine.codex_account.clone(),
-            },
+            // ★O4 — Codex 축의 계정도 **구독 계정과 같은 규칙**으로 접는다(M4에서 닫음):
+            //  ① 미지정이면 기본 계정으로 해석한다(2.6.2 `req.codexAccount ??
+            //     codexDefaultAccountEmail()` — `codex/engine.ts:1589`)
+            //  ② 앱이 아는 계정 목록이 있으면 그 안에 있어야 한다. 없으면
+            //     `AccountUnavailable` — 로그아웃된 계정으로 스폰해 **격리 CODEX_HOME이
+            //     빈 폴더로 물질화되는 것**(= 미로그인 상태로 뜬 뒤 첫 턴에서 죽는 것)을
+            //     정규화 단계에서 막는다.
+            //  ③ 목록이 비어 있으면 검사하지 않는다(재생 하네스 기본값 — 구독 축과 동일).
+            // 계정이 하나도 없으면 `None`으로 남는다: 그 판정(=로그인 안내)은 스폰
+            // 시점의 셸이 한다. 정체성 자체는 "계정 미지정"이라는 정직한 값을 유지한다.
+            EngineKind::Codex => {
+                let account = raw
+                    .engine
+                    .codex_account
+                    .clone()
+                    .or_else(|| defaults.default_codex_account.clone());
+                if let Some(a) = &account {
+                    if !defaults.known_codex_accounts.is_empty()
+                        && !defaults.known_codex_accounts.contains(a)
+                    {
+                        return Err(IdentityError::AccountUnavailable(a.clone()));
+                    }
+                }
+                EngineAxis::Codex {
+                    model: raw.engine.model.clone(),
+                    effort: raw.engine.effort,
+                    account,
+                }
+            }
         };
 
         let system_prompt = raw
@@ -908,6 +945,11 @@ pub struct IdentityDefaults {
     pub default_account: Option<AccountEmail>,
     /// 로그인된 계정 집합. 비어 있으면 검사하지 않는다(재생 기본값).
     pub known_accounts: BTreeSet<AccountEmail>,
+    /// ★O4 — `codex-accounts.json.defaultEmail`. Anthropic 계정과 **다른 스토어**라
+    /// 필드를 나눈다(같은 필드를 쓰면 "클로드 계정으로 Codex를 띄운다"가 된다).
+    pub default_codex_account: Option<AccountEmail>,
+    /// 등록된 OpenAI 계정 집합. 비어 있으면 검사하지 않는다.
+    pub known_codex_accounts: BTreeSet<AccountEmail>,
     /// safeStorage에 저장된 API 키 **원문**(지문 계산에만 쓰고 밖으로 안 나간다).
     pub api_key: Option<String>,
     /// 전역 `ANTHROPIC_API_KEY` 존재 여부.
@@ -923,6 +965,8 @@ impl Default for IdentityDefaults {
             default_cwd: "C:\\ccg-fixture\\desktop".into(),
             default_account: None,
             known_accounts: BTreeSet::new(),
+            default_codex_account: None,
+            known_codex_accounts: BTreeSet::new(),
             api_key: None,
             env_api_key_present: false,
             env_key_answer: None,

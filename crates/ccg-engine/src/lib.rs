@@ -15,6 +15,8 @@
 
 pub mod canon;
 pub mod clock;
+/// Codex(app-server) 엔진 — 같은 상태기계 위에 얹은 두 번째 드라이버(M4).
+pub mod codex;
 pub mod driver;
 pub mod event;
 pub mod frames;
@@ -28,6 +30,7 @@ pub mod runtime;
 pub mod state;
 
 pub use clock::{Clock, Millis, SystemClock, VirtualClock};
+pub use codex::{CodexDriver, CodexPlan};
 pub use identity::{
     ApplyPolicy, BillingAxis, BillingKind, CwdProbe, EffortId, EngineAxis, EngineKind,
     FallbackArm, FallbackVia, IdentityAxis, IdentityDefaults, IdentityError, IdentityField,

@@ -107,6 +107,9 @@ fn identity(cwd: &str) -> (RawIdentity, IdentityDefaults) {
         api_key: None,
         env_api_key_present: false,
         env_key_answer: None,
+        // 라이브 스모크는 Claude 계정만 쓴다(Codex 실계정은 0건 — M5 실측).
+        default_codex_account: None,
+        known_codex_accounts: BTreeSet::new(),
         cwd_probe: CwdProbe::Fs,
     };
     (raw, defaults)

@@ -1,0 +1,213 @@
+{
+  "at": "2026-08-23T06:06:07.258Z",
+  "exe": "C:\\Code\\AgentCodeGUI\\target\\release\\agentcodegui.exe",
+  "steps": {
+    "events": {
+      "home": "C:\\Code\\AgentCodeGUI\\.poc-home-events-m4",
+      "ready": true,
+      "turnDone": true,
+      "events": {
+        "status": 3,
+        "session": 1,
+        "thinking": 1,
+        "thinking-clear": 1,
+        "assistant-stream": 1,
+        "todos": 1,
+        "tool-start": 2,
+        "file-change": 1,
+        "tool-end": 2,
+        "terminal": 3,
+        "subagent": 4,
+        "bg-tasks": 2,
+        "workflow": 2,
+        "bg-task-end": 2,
+        "assistant-done": 1,
+        "context": 1,
+        "result": 1
+      },
+      "byType": {
+        "todos": [
+          [
+            {
+              "id": "1",
+              "label": "파일 만들기",
+              "status": "running"
+            },
+            {
+              "id": "2",
+              "label": "명령 실행",
+              "status": "pending"
+            }
+          ]
+        ],
+        "fileChange": [
+          {
+            "path": "r3-made.txt",
+            "add": 2,
+            "tag": "new",
+            "whole": true,
+            "lines": 3
+          }
+        ],
+        "terminal": [
+          {
+            "type": "cmd",
+            "text": "echo R3-TERM-OUT"
+          },
+          {
+            "type": "out",
+            "text": "R3-TERM-OUT"
+          },
+          {
+            "type": "ok",
+            "text": "✓ 완료"
+          }
+        ],
+        "subagent": [
+          {
+            "id": "tu_task",
+            "status": "running",
+            "name": "Explore",
+            "activity": "R3-SUBAGENT-ROLE"
+          },
+          {
+            "id": "tu_task",
+            "status": "running",
+            "name": "",
+            "activity": "",
+            "model": "Opus 5"
+          },
+          {
+            "id": "tu_task",
+            "status": "running",
+            "name": "",
+            "activity": "R3-SIDECHAIN-NARRATION"
+          },
+          {
+            "id": "tu_task",
+            "status": "done",
+            "name": "",
+            "activity": "R3-SUBAGENT-RESULT"
+          }
+        ],
+        "bgTasks": [
+          [
+            "bg-1"
+          ],
+          []
+        ],
+        "bgTaskEnd": [
+          {
+            "id": "bg-1",
+            "status": "completed",
+            "summary": "R3-BG-DONE",
+            "atTurnEnd": false
+          },
+          {
+            "id": "wf-1",
+            "status": "completed",
+            "summary": "R3-WF-DONE",
+            "atTurnEnd": false
+          }
+        ],
+        "workflow": [
+          {
+            "id": "wf-1",
+            "status": "running",
+            "summary": "R3-WORKFLOW",
+            "agents": [
+              "Opus 5.1/start"
+            ],
+            "phases": 1,
+            "tokens": 1234
+          },
+          {
+            "id": "wf-1",
+            "status": "completed",
+            "summary": "R3-WORKFLOW",
+            "agents": [
+              "Opus 5.1/start"
+            ],
+            "phases": 1,
+            "tokens": 1234
+          }
+        ],
+        "thinkingClear": 1,
+        "context": [
+          20
+        ],
+        "modelFallback": 0
+      },
+      "chips": [
+        {
+          "label": "할 일",
+          "value": "0/2",
+          "detail": "0% 완료"
+        },
+        {
+          "label": "서브에이전트",
+          "value": "1/1",
+          "detail": "모두 완료"
+        },
+        {
+          "label": "백그라운드 셸",
+          "value": "1/1",
+          "detail": "모두 종료"
+        },
+        {
+          "label": "변경된 파일",
+          "value": "1",
+          "detail": "+2 −0"
+        },
+        {
+          "label": "컨텍스트",
+          "value": "0%",
+          "detail": "20 / 200K 토큰"
+        }
+      ],
+      "pops": {
+        "todo": "할 일\n0/2 · 0% 완료\n파일 만들기\n진행 중\n명령 실행",
+        "sub": "서브에이전트\n1/1\nExplore\nR3-SUBAGENT-ROLE · 1초",
+        "sh": "백그라운드 셸\n1/1\nR3-BG-SHELL\n완료 — R3-BG-DONE",
+        "file": "변경된 파일\n1\nr3-made.txt\n+2\n−0\nNEW"
+      },
+      "seen": {
+        "wfDock": true,
+        "wfText": "워크플로\nR3-PHASE · 0/1"
+      },
+      "dom": {
+        "termOut": true,
+        "reply": true,
+        "wfDockGone": true
+      },
+      "fileOnDisk": false
+    },
+    "error": {
+      "home": "C:\\Code\\AgentCodeGUI\\.poc-home-error-m4",
+      "ready": true,
+      "arrived": true,
+      "events": [
+        "status/analyzing#r10204-1",
+        "notice/#r10204-1",
+        "status/error#r10204-1",
+        "error/#r10204-1",
+        "result/#r10204-1"
+      ],
+      "error": {
+        "type": "error",
+        "runId": "r10204-1",
+        "message": "엔진을 시작하지 못했어요."
+      },
+      "dom": {
+        "errorLabels": 1,
+        "hasReason": true,
+        "hasT3Notice": true,
+        "composerFree": true,
+        "working": false,
+        "thread": "응답이 없을 질문\n\n엔진이 20초 안에 응답하지 않았어요\n오후 3:06\n오류\n오후 3:06\n엔진을 시작하지 못했어요."
+      }
+    }
+  },
+  "findings": [],
+  "verdict": "PASS"
+}

@@ -243,6 +243,13 @@ fn apply_edit(text: &str, old: &str, new: &str, all: bool) -> String {
 }
 
 /// 작업 폴더 기준 상대 경로(표시용). 밖이면 원래 경로 그대로 — 슬래시로 통일한다.
+///
+/// ★M4 — **대소문자를 무시하고 한 번 더 본다.** `strip_prefix`는 바이트 비교라
+/// `C:\Code\x` 아래의 파일을 `c:\code\x`로 물으면 못 찾는다. Codex 경로에서 그 일이
+/// 실제로 난다: 정체성의 `cwd`는 `CanonPath`가 소문자로 접은 값인데(재스폰 판정을
+/// 위해 그렇게 정한 것 — `identity.rs:106`) 와이어의 파일 경로는 원래 대소문자다.
+/// 그러면 변경 파일 칩에 **절대경로가 통째로** 뜬다(실측: `poc-codex --only=app`).
+/// Windows 파일시스템이 대소문자를 구분하지 않으므로 이 완화는 Claude 경로에도 안전하다.
 pub fn to_rel(cwd: &str, p: &str) -> String {
     if p.is_empty() {
         return String::new();
@@ -254,6 +261,12 @@ pub fn to_rel(cwd: &str, p: &str) -> String {
             if !r.is_empty() {
                 return r;
             }
+        }
+        let slash = |s: &str| s.replace('\\', "/");
+        let (pl, cl) = (slash(&p.to_lowercase()), slash(&cwd.to_lowercase()));
+        let cl = cl.trim_end_matches('/');
+        if pl.len() > cl.len() + 1 && pl.starts_with(cl) && pl.as_bytes()[cl.len()] == b'/' {
+            return slash(p)[cl.len() + 1..].to_string();
         }
     }
     p.replace('\\', "/")
@@ -385,6 +398,237 @@ pub fn build_pending(
     }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Codex(app-server)의 `fileChange` — M4
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// Claude는 **도구 입력**(file_path + 새 내용)을 주고 우리가 적용 전 디스크를 읽어 diff를
+// 만든다. Codex는 반대다: **이미 적용한 뒤** unified diff 훙크를 준다. 그래서 기준선을
+// 얻는 방법이 다르다 — 훙크를 디스크(=적용 후)에 **역적용**해 적용 전 원문을 복원한다.
+// 그 뒤는 같다(런 기준선 ↔ 디스크 전체 diff · whole=true).
+//
+// 원본: 2.6.2 `src/main/codex/unidiff.ts` + `codex/engine.ts:1487-1521`(cumulativeUpdateDiff).
+
+/// unified diff 텍스트 → 훙크 조각 그대로의 라인(역적용 실패 시 폴백 전용).
+/// 줄번호가 파일 기준이 아니므로 `whole=false`로 나가고, 렌더러는 그 모양의 변경
+/// 마킹을 통째로 접는다(`unidiff.ts:8-26`).
+pub fn parse_unified(diff_text: &str) -> LineDiff {
+    let mut lines = vec![];
+    let (mut add, mut del) = (0usize, 0usize);
+    for raw in norm_eol(diff_text).split('\n') {
+        if raw.starts_with("@@") {
+            lines.push(json!({ "t": "hunk", "text": raw }));
+        } else if raw.starts_with("+++") || raw.starts_with("---") {
+            continue;
+        } else if let Some(t) = raw.strip_prefix('+') {
+            add += 1;
+            lines.push(json!({ "t": "add", "text": t }));
+        } else if let Some(t) = raw.strip_prefix('-') {
+            del += 1;
+            lines.push(json!({ "t": "del", "text": t }));
+        } else {
+            lines.push(json!({ "t": "ctx", "text": raw.strip_prefix(' ').unwrap_or(raw) }));
+        }
+    }
+    LineDiff { lines, add, del }
+}
+
+/// unified diff를 '적용 후' 텍스트에 **역적용**해 '적용 전' 원문을 복원한다(전부 LF).
+/// 훙크의 새쪽(ctx·add) 줄이 실제 텍스트와 하나라도 어긋나면 `None` — 어긋난 복원으로
+/// 전체 diff를 오염시키느니 포기한다(`unidiff.ts:32-68`의 규약 그대로).
+pub fn reverse_apply_unified(new_text: &str, diff_text: &str) -> Option<String> {
+    let nl = norm_eol(new_text);
+    let had_nl = nl.ends_with('\n');
+    let body = if had_nl { &nl[..nl.len() - 1] } else { &nl[..] };
+    let cur: Vec<&str> = if body.is_empty() { vec![] } else { body.split('\n').collect() };
+    let d = norm_eol(diff_text);
+    let mut lines: Vec<&str> = d.split('\n').collect();
+    while lines.last() == Some(&"") {
+        lines.pop(); // diff 말단 개행 잔여물 — ctx로 오인 금지
+    }
+    let mut out: Vec<String> = vec![];
+    let mut pos = 0usize; // 소비한 새쪽(적용 후) 줄 수
+    let mut in_hunk = false;
+    for line in lines {
+        if let Some((start, _cnt)) = parse_hunk_header(line) {
+            if start < pos || start > cur.len() {
+                return None;
+            }
+            while pos < start {
+                out.push(cur[pos].to_string());
+                pos += 1;
+            }
+            in_hunk = true;
+            continue;
+        }
+        if !in_hunk || line.starts_with('\\') {
+            continue; // 프리앰블 · "\ No newline at end of file"
+        }
+        if let Some(t) = line.strip_prefix('-') {
+            out.push(t.to_string());
+            continue;
+        }
+        let plus = line.starts_with('+');
+        let t = if plus || line.starts_with(' ') { &line[1..] } else { line };
+        if pos >= cur.len() || cur[pos] != t {
+            return None; // 새쪽 줄이 디스크와 다르면 신뢰 불가
+        }
+        if !plus {
+            out.push(t.to_string());
+        }
+        pos += 1;
+    }
+    if !in_hunk {
+        return None;
+    }
+    while pos < cur.len() {
+        out.push(cur[pos].to_string());
+        pos += 1;
+    }
+    let joined = out.join("\n");
+    Some(if had_nl && !out.is_empty() { joined + "\n" } else { joined })
+}
+
+/// `@@ -a,b +c,d @@` → (새쪽 시작 인덱스 0-based, 새쪽 줄 수).
+/// 새쪽 개수가 0인 훙크(순수 삭제)는 관례상 "그 줄 **뒤**"를 가리킨다.
+fn parse_hunk_header(line: &str) -> Option<(usize, usize)> {
+    let rest = line.strip_prefix("@@ -")?;
+    let plus = rest.find(" +")?;
+    let after = &rest[plus + 2..];
+    let end = after.find(" @@")?;
+    let mut it = after[..end].splitn(2, ',');
+    let start: usize = it.next()?.parse().ok()?;
+    let cnt: usize = match it.next() {
+        Some(c) => c.parse().ok()?,
+        None => 1,
+    };
+    Some((start.saturating_sub(if cnt == 0 { 0 } else { 1 }), cnt)
+        )
+}
+
+/// Codex `fileChange` 항목 하나 → 보류 변경.
+///
+/// - `add`/`delete`: `diff` 필드에 **파일 원문**이 그대로 온다(접두사 없음 — 실측).
+///   전 줄을 추가/삭제로 취급하고, 런 첫 접촉이면 그것이 기준선이 된다.
+/// - `update`: 훙크 조각. 역적용으로 기준선을 복원하고 **디스크와 전체 diff**를 만든다.
+pub fn codex_pending(
+    base: &mut Baselines,
+    cwd: &str,
+    path_in: &str,
+    kind: &str,
+    diff_text: &str,
+) -> Option<PendingChange> {
+    if path_in.is_empty() {
+        return None;
+    }
+    let abs = if Path::new(path_in).is_absolute() {
+        PathBuf::from(path_in)
+    } else {
+        Path::new(cwd).join(path_in)
+    };
+    let rel = to_rel(cwd, path_in);
+    let huge = |base: &mut Baselines, tag: &'static str| {
+        base.0.remove(&abs);
+        Some(PendingChange {
+            file: json!({ "path": rel, "add": 0, "del": 0, "tag": tag }),
+            diff: json!({ "path": rel, "tag": tag, "add": 0, "del": 0, "lines": [
+                { "t": "hunk", "text": "@@ 파일이 너무 커서 변경 미리보기를 생략했어요 @@" }] }),
+            whole: true,
+            abs: abs.clone(),
+            is_new: false,
+        })
+    };
+
+    if kind == "add" || kind == "delete" {
+        let body = norm_eol(diff_text);
+        let body = body.strip_suffix('\n').unwrap_or(&body);
+        let rows: Vec<&str> = if body.is_empty() { vec![] } else { body.split('\n').collect() };
+        let t = if kind == "add" { "add" } else { "del" };
+        let lines: Vec<Value> = rows.iter().map(|l| json!({ "t": t, "text": l })).collect();
+        let (add, del) = if kind == "add" { (rows.len(), 0) } else { (0, rows.len()) };
+        let tag = if kind == "add" { "new" } else { "edit" };
+        // 런 첫 접촉의 원상태: add=없던 파일(None) · delete=삭제 직전 원문.
+        base.0
+            .entry(abs.clone())
+            .or_insert_with(|| if kind == "add" { None } else { Some(norm_eol(diff_text)) });
+        return Some(PendingChange {
+            file: json!({ "path": rel, "add": add, "del": del, "tag": tag }),
+            diff: json!({ "path": rel, "tag": tag, "add": add, "del": del, "lines": lines }),
+            whole: true,
+            abs,
+            is_new: kind == "add",
+        });
+    }
+
+    // update — stat 먼저(어차피 접을 크기면 통읽기 자체를 생략한다).
+    if stat_size(&abs) >= HUGE_BYTES_CERTAIN {
+        return huge(base, "edit");
+    }
+    let Some(cur) = read_disk(&abs).map(|s| norm_eol(&s)) else {
+        let d = parse_unified(diff_text);
+        return Some(PendingChange {
+            file: json!({ "path": rel, "add": d.add, "del": d.del, "tag": "edit" }),
+            diff: json!({ "path": rel, "tag": "edit", "add": d.add, "del": d.del, "lines": d.lines }),
+            whole: false,
+            abs,
+            is_new: false,
+        });
+    };
+    if cur.chars().count() > HUGE_CHARS {
+        return huge(base, "edit");
+    }
+    let mut fell_back = false;
+    if !base.0.contains_key(&abs) {
+        match reverse_apply_unified(&cur, diff_text) {
+            Some(pre) => {
+                base.0.insert(abs.clone(), Some(pre));
+            }
+            None => {
+                // 복원 실패 — 기준선을 '지금'으로 두고 이번 변경만 훙크 조각으로 흘린다.
+                base.0.insert(abs.clone(), Some(cur.clone()));
+                fell_back = true;
+            }
+        }
+    }
+    if fell_back {
+        let d = parse_unified(diff_text);
+        return Some(PendingChange {
+            file: json!({ "path": rel, "add": d.add, "del": d.del, "tag": "edit" }),
+            diff: json!({ "path": rel, "tag": "edit", "add": d.add, "del": d.del, "lines": d.lines }),
+            whole: false,
+            abs,
+            is_new: false,
+        });
+    }
+    let baseline = base.0.get(&abs).cloned().flatten();
+    match baseline {
+        // 이 런에서 add로 태어난 파일의 후속 수정 — 전체가 '새 파일' 한 장.
+        None => {
+            let d = new_file_diff(&cur);
+            Some(PendingChange {
+                file: json!({ "path": rel, "add": d.add, "del": 0, "tag": "new" }),
+                diff: json!({ "path": rel, "tag": "new", "add": d.add, "del": 0, "lines": d.lines }),
+                whole: true,
+                abs,
+                is_new: false,
+            })
+        }
+        Some(b) => {
+            if b.chars().count() > HUGE_CHARS {
+                return huge(base, "edit");
+            }
+            let d = compute_line_diff(&b, &cur);
+            Some(PendingChange {
+                file: json!({ "path": rel, "add": d.add, "del": d.del, "tag": "edit" }),
+                diff: json!({ "path": rel, "tag": "edit", "add": d.add, "del": d.del, "lines": d.lines }),
+                whole: true,
+                abs,
+                is_new: false,
+            })
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -435,6 +679,17 @@ mod tests {
         assert_eq!(pc.file["add"], 2);
         assert!(pc.is_new);
         assert_eq!(pc.diff["path"], "brand-new.txt", "표시는 작업 폴더 상대 경로다");
+    }
+
+    #[test]
+    fn a_lowercased_cwd_still_relativises_the_path() {
+        // Codex 정체성의 cwd는 소문자로 접혀 있다(CanonPath) — 그래도 상대화돼야 한다.
+        assert_eq!(to_rel("c:\\code\\proj", "C:\\Code\\Proj\\src\\a.rs"), "src/a.rs");
+        assert_eq!(to_rel("C:\\Code\\Proj", "C:\\Code\\Proj\\src\\a.rs"), "src/a.rs");
+        // 밖의 경로는 그대로(슬래시만 통일).
+        assert_eq!(to_rel("c:\\code\\proj", "C:\\other\\a.rs"), "C:/other/a.rs");
+        // 접두가 겹치는 **다른** 폴더를 잘라내면 안 된다.
+        assert_eq!(to_rel("c:\\code\\proj", "C:\\Code\\Proj2\\a.rs"), "C:/Code/Proj2/a.rs");
     }
 
     #[test]

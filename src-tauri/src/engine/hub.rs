@@ -80,6 +80,13 @@ pub enum Op {
         /// 질문 카드에서 사용자가 **고른 라벨**(원문). 폴백 확인 다이얼로그를 질문
         /// 카드로 그렸을 때 수락/취소를 가르는 유일한 근거다(§4.4b).
         answer_text: Option<String>,
+        /// ★M4 — `allow_always`였나. Claude 경로에서는 지금 1회 허용과 같게 동작하고
+        /// (`updatedPermissions` 미배선), **Codex는 `acceptForSession`으로 갈린다**.
+        always: bool,
+        /// ★M4 — 질문 카드의 답을 **구조 그대로**(질문별 선택 라벨). Claude는 이걸
+        /// 문장으로 접어 `deny.message`에 실어 되먹이지만(§4.4a 트릭), Codex의
+        /// `item/tool/requestUserInput`은 `{qid: {answers}}`를 요구한다.
+        answers: Option<Vec<Vec<String>>>,
     },
     IdentityGet,
     IdentitySet {
@@ -250,7 +257,16 @@ impl Hub {
                 .ok()
                 .filter(|s| !s.is_empty())
                 .map(std::path::PathBuf::from);
-            let (tap_drv, tapped) = super::tap::TapDriver::new(ClaudeDriver::new(self.job.clone(), dump));
+            // ★M4 — 드라이버 둘을 품고 **스폰 인자가 고른다**(`any.rs`). 채팅의 엔진은
+            // 정체성 리프라 살아 있는 채팅에서 바뀔 수 있다(picker에서 Codex로 → T17).
+            let codex = ccg_engine::codex::CodexDriver::new(
+                super::codex_versions::codex_bin(),
+                self.job.clone(),
+                dump.clone(),
+            )
+            .with_home_resolver(super::codex_versions::resolver());
+            let any = super::any::AnyDriver::new(ClaudeDriver::new(self.job.clone(), dump), codex);
+            let (tap_drv, tapped) = super::tap::TapDriver::new(any);
             let rt = match ChatRuntime::new(
                 chat.to_string(),
                 raw,
@@ -422,6 +438,12 @@ impl Hub {
                                 "queued": s.rt.queue_len(), "spawns": s.rt.spawns,
                                 "exits": s.rt.exits, "session": s.rt.session_id(),
                                 "pid": s.rt.driver_ref().pid(),
+                                // ★M4 — 이 채팅이 **어느 엔진으로 떴나**(하네스의 판정 근거).
+                                "engine": s.rt.driver_ref().engine(),
+                                "identityEngine": match s.rt.identity().engine() {
+                                    ccg_engine::identity::EngineAxis::Codex { .. } => "codex",
+                                    _ => "claude",
+                                },
                                 // 부팅 재장전·스펙 ⑤가 실제로 걸렸는지 하네스가 읽는다.
                                 "autoResume": s.rt.auto_resume(),
                                 "nowMs": s.rt.now(),
@@ -505,7 +527,31 @@ impl Hub {
                 accept,
                 payload,
                 answer_text,
+                always,
+                answers,
             } => {
+                // ★M4 — Codex 채팅이면 응답 본문에 **Codex 전용 자리 둘**을 얹는다.
+                // Claude 채팅에는 절대 붙이지 않는다(그 본문은 `claude.exe`의
+                // `canUseTool` 응답으로 그대로 나간다 — 모르는 키를 실어 보낼 이유가 없다).
+                // 읽는 쪽은 `ccg-engine/src/codex/transcode.rs::answer_ask` 하나뿐이다.
+                let is_codex = matches!(
+                    slot.rt.identity().engine(),
+                    ccg_engine::identity::EngineAxis::Codex { .. }
+                );
+                let payload = match (is_codex, payload) {
+                    (true, Some(mut p)) => {
+                        if let Some(o) = p.as_object_mut() {
+                            if always {
+                                o.insert("ccgAlways".into(), json!(true));
+                            }
+                            if let Some(a) = &answers {
+                                o.insert("ccgAnswers".into(), json!(a));
+                            }
+                        }
+                        Some(p)
+                    }
+                    (_, p) => p,
+                };
                 // ★ 폴백 확인 다이얼로그는 2.6.2 렌더러에 카드가 없어 **질문 카드**로
                 //   그렸다(wire.rs). 그러면 답이 질문 채널로 돌아온다 — 원장은 그것을
                 //   `Dialog`로 알고 있으므로 종류가 어긋나 `wrong_card_kind`로 튕긴다.

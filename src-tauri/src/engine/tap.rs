@@ -15,21 +15,24 @@
 //! 소유는 허브 스레드 하나다. 그래서 `Rc<RefCell<..>>`로 충분하다 — 이 값이 스레드를
 //! 넘는 경로 자체가 없다(`ChatRuntime`도 `Rc`를 들고 있어 `!Send`다).
 
+use super::any::AnyDriver;
 use ccg_engine::clock::Millis;
-use ccg_engine::driver::{ClaudeDriver, CliDriver, SpawnSpec};
+use ccg_engine::driver::{CliDriver, SpawnSpec};
 use ccg_engine::live::LiveItem;
 use serde_json::Value;
 use std::cell::RefCell;
 use std::rc::Rc;
 
 pub struct TapDriver {
-    inner: ClaudeDriver,
+    /// ★M4 — 감싸는 대상이 `ClaudeDriver`에서 [`AnyDriver`]가 됐다(엔진을 스폰 인자가
+    /// 고른다). 탭의 계약은 그대로다: **지나가는 프레임을 한 벌 더 뜬다**.
+    inner: AnyDriver,
     /// 이번 tick에 도착한 프레임(허브가 매 tick 비운다).
     tapped: Rc<RefCell<Vec<Value>>>,
 }
 
 impl TapDriver {
-    pub fn new(inner: ClaudeDriver) -> (TapDriver, Rc<RefCell<Vec<Value>>>) {
+    pub fn new(inner: AnyDriver) -> (TapDriver, Rc<RefCell<Vec<Value>>>) {
         let tapped = Rc::new(RefCell::new(Vec::new()));
         (
             TapDriver {
@@ -44,6 +47,13 @@ impl TapDriver {
     }
     pub fn drain_stderr(&mut self) -> Vec<String> {
         self.inner.drain_stderr()
+    }
+    /// 지금 어느 엔진으로 떠 있나(진단 — `engine:debug`).
+    pub fn engine(&self) -> &'static str {
+        match self.inner.active() {
+            super::any::Which::Claude => "claude",
+            super::any::Which::Codex => "codex",
+        }
     }
 }
 

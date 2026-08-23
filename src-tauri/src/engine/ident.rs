@@ -45,10 +45,30 @@ pub fn defaults() -> IdentityDefaults {
         .as_deref()
         .and_then(ccg_store::api_config::env_key_choice)
         .map(|c| c == "sub");
+    // ★M4/O4 — Codex 계정 축(`codex-accounts.json`). Anthropic과 **다른 스토어**다.
+    let cx = ccg_store::read_home_json("codex-accounts.json").unwrap_or(Value::Null);
+    let known_codex: BTreeSet<String> = cx
+        .get("accounts")
+        .and_then(Value::as_array)
+        .map(|a| {
+            a.iter()
+                .filter_map(|x| x.get("email").and_then(Value::as_str))
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default();
+    let default_codex = cx
+        .get("defaultEmail")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .filter(|e| known_codex.contains(e))
+        .or_else(|| known_codex.iter().next().cloned());
     IdentityDefaults {
         default_cwd: desktop(),
         default_account,
         known_accounts: known,
+        default_codex_account: default_codex,
+        known_codex_accounts: known_codex,
         // 저장된 API 키 **원문** — 지문 계산과 스폰 env 주입에만 쓰이고 계약면에 안 오른다.
         api_key: ccg_store::api_config::api_key(),
         env_api_key_present: env_key.is_some(),
@@ -131,9 +151,16 @@ pub fn patch_from_run_request(req: &Value) -> RawIdentityPatch {
     let codex = req.get("engine").and_then(Value::as_str) == Some("codex");
     if codex {
         p.engine.kind = Some(EngineKind::Codex);
-        if let Some(m) = req.get("codexModel").and_then(Value::as_str) {
-            p.engine.model = Some(m.to_string());
-        }
+        // ★M4 — 엔진 전환 패치는 **모델을 반드시 함께** 줘야 한다(§4.2 — 모델 id 공간이
+        // 갈린다. 안 주면 `runtime.rs:1035`가 `engine_switch_needs_model`로 튕긴다).
+        // 2.6.2도 같은 자리에서 같은 폴백을 썼다(`codex/engine.ts:1564`).
+        p.engine.model = Some(
+            req.get("codexModel")
+                .and_then(Value::as_str)
+                .filter(|m| !m.is_empty())
+                .unwrap_or("gpt-5.6-terra")
+                .to_string(),
+        );
         p.engine.codex_account = Some(req.get("codexAccount").and_then(Value::as_str).map(str::to_string));
     } else if let Some(m) = req.get("model").and_then(Value::as_str) {
         p.engine.kind = Some(EngineKind::Claude);

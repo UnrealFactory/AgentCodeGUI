@@ -15,6 +15,9 @@ fn defaults() -> IdentityDefaults {
         api_key: Some("sk-ant-fixture-key".into()),
         env_api_key_present: false,
         env_key_answer: None,
+        // 골든은 Claude 정체성만 잰다 — Codex 축은 비워 둔다(검사 없음 = 종전 동작).
+        default_codex_account: None,
+        known_codex_accounts: BTreeSet::new(),
         cwd_probe: CwdProbe::AssumeExists,
     }
 }
