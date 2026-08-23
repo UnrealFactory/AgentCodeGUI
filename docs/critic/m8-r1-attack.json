@@ -1,0 +1,1745 @@
+{
+  "at": "2026-08-23T07:09:26.984Z",
+  "what": "M8 R1 크리틱 공격 하네스 — docs/critic/tools/critic-m8-attack.mjs",
+  "pin": "51a954f (착수 HEAD · M8 면은 2db7c36과 빈 diff)",
+  "exe": "%TEMP%/ccg-m8c-tgt/release/agentcodegui.exe (5,557,760 B)",
+  "monitors": [
+    {
+      "name": "DISPLAY2",
+      "bounds": "0,0 2560x1440",
+      "work": "0,0 2560x1392",
+      "primary": true
+    },
+    {
+      "name": "DISPLAY1",
+      "bounds": "2560,0 2560x1440",
+      "work": "2560,0 2560x1392",
+      "primary": false
+    }
+  ],
+  "steps": {
+    "a1-mid": {
+      "verdict": "FAIL(재현 3/3)",
+      "runs": [
+        {
+          "closeWhen": "mid",
+          "panelId": "24c302f3-438e-4b65-87d4-09786a24ca62::0",
+          "popTextAtClose": [
+            "MARK-ONE",
+            "MARK-TWO"
+          ],
+          "flushAtClose": [
+            {
+              "panelId": "24c302f3-438e-4b65-87d4-09786a24ca62::0",
+              "messages": 2
+            }
+          ],
+          "gridBeforeClose": [],
+          "closedGone": true,
+          "closeMs": 136,
+          "gridAfterClose": [
+            "MARK-ONE"
+          ],
+          "gridFinal": [
+            "MARK-ONE",
+            "MARK-THREE"
+          ],
+          "gridMsgCount": 3,
+          "diskMarks": []
+        },
+        {
+          "closeWhen": "mid",
+          "panelId": "8c8a751e-46b3-4f99-8084-0c6bc7acefc1::0",
+          "popTextAtClose": [
+            "MARK-ONE",
+            "MARK-TWO"
+          ],
+          "flushAtClose": [
+            {
+              "panelId": "8c8a751e-46b3-4f99-8084-0c6bc7acefc1::0",
+              "messages": 2
+            }
+          ],
+          "gridBeforeClose": [],
+          "closedGone": true,
+          "closeMs": 137,
+          "gridAfterClose": [
+            "MARK-ONE"
+          ],
+          "gridFinal": [
+            "MARK-ONE",
+            "MARK-THREE"
+          ],
+          "gridMsgCount": 3,
+          "diskMarks": [
+            "MARK-ONE",
+            "MARK-THREE"
+          ]
+        }
+      ]
+    },
+    "a1-end": {
+      "verdict": "FAIL(재현 2/2)",
+      "runs": [
+        {
+          "closeWhen": "end",
+          "panelId": "85180081-4fa3-4b88-85e8-04d21ddb6855::0",
+          "popTextAtClose": [
+            "MARK-ONE",
+            "MARK-TWO",
+            "MARK-THREE"
+          ],
+          "flushAtClose": [
+            {
+              "panelId": "85180081-4fa3-4b88-85e8-04d21ddb6855::0",
+              "messages": 3
+            }
+          ],
+          "gridBeforeClose": [],
+          "closedGone": true,
+          "closeMs": 124,
+          "gridAfterClose": [
+            "MARK-ONE",
+            "MARK-TWO"
+          ],
+          "gridFinal": [
+            "MARK-ONE",
+            "MARK-TWO"
+          ],
+          "gridMsgCount": 3,
+          "diskMarks": []
+        },
+        {
+          "closeWhen": "end",
+          "panelId": "a4d9c75f-296b-4bb0-81e9-43f2825e4cc6::0",
+          "popTextAtClose": [
+            "MARK-ONE",
+            "MARK-TWO",
+            "MARK-THREE"
+          ],
+          "flushAtClose": [
+            {
+              "panelId": "a4d9c75f-296b-4bb0-81e9-43f2825e4cc6::0",
+              "messages": 3
+            }
+          ],
+          "gridBeforeClose": [],
+          "closedGone": true,
+          "closeMs": 137,
+          "gridAfterClose": [
+            "MARK-ONE",
+            "MARK-TWO"
+          ],
+          "gridFinal": [
+            "MARK-ONE",
+            "MARK-TWO"
+          ],
+          "gridMsgCount": 3,
+          "diskMarks": []
+        }
+      ],
+      "diskInspect": {
+        "note": "--keep 회차의 격리 홈 직접 열람",
+        "file": "chats-v3/ma-a4d9c75f-296b-4bb0-81e9-43f2825e4cc6-0.json",
+        "marks": [
+          "MARK-ONE",
+          "MARK-TWO"
+        ],
+        "messages": [
+          {
+            "role": "user",
+            "text": "되감기 시험"
+          },
+          {
+            "role": "assistant",
+            "text": "MARK-ONE 첫 조각"
+          },
+          {
+            "role": "assistant",
+            "text": "MARK-TWO 둘째 조각"
+          }
+        ]
+      }
+    },
+    "a2": {
+      "verdict": "FAIL(재현 2/2 · 포커스를 비팝아웃 자리에 둔 회차)",
+      "final": {
+        "count0": 4,
+        "ghostBefore": true,
+        "focusedBefore": [
+          "0:F",
+          "1:-",
+          "2:-",
+          "3:-"
+        ],
+        "dialClicked": "ok",
+        "gridPanels": 1,
+        "ghostAfter": false,
+        "popStillOpen": true,
+        "surface": {
+          "popout": {
+            "windows": [
+              {
+                "label": "panel-1",
+                "panelId": "254a4c0f-83d3-4911-8829-6b01a256f20c::1"
+              }
+            ],
+            "flushes": [
+              {
+                "panelId": "254a4c0f-83d3-4911-8829-6b01a256f20c::1",
+                "messages": 0
+              }
+            ],
+            "leftovers": []
+          },
+          "notify": {
+            "enabled": true,
+            "count": 0,
+            "items": [],
+            "window": false,
+            "loaded": false
+          },
+          "tray": {
+            "tray": true,
+            "hideOnClose": true,
+            "menuWindow": false,
+            "quitting": false
+          },
+          "windows": [
+            "main",
+            "panel-1"
+          ]
+        },
+        "osWindows": [
+          {
+            "visible": true,
+            "size": "1116x829",
+            "title": "�г� ? AgentCodeGUI"
+          },
+          {
+            "visible": true,
+            "size": "1336x889",
+            "title": "AgentCodeGUI3"
+          },
+          {
+            "visible": false,
+            "size": "1920x1023",
+            "title": ""
+          }
+        ],
+        "surfaceAfterClose": {
+          "popout": {
+            "windows": [],
+            "flushes": [],
+            "leftovers": []
+          },
+          "notify": {
+            "enabled": true,
+            "count": 0,
+            "items": [],
+            "window": false,
+            "loaded": false
+          },
+          "tray": {
+            "tray": true,
+            "hideOnClose": true,
+            "menuWindow": false,
+            "quitting": false
+          },
+          "windows": [
+            "main"
+          ]
+        },
+        "leftoversAfterClose": [],
+        "restoredTitle": [
+          "새 작업",
+          "축소 대상",
+          "새 작업",
+          "새 작업"
+        ],
+        "restoredGhost": false
+      },
+      "earlier": {
+        "note": "포커스가 팝아웃 자리에 있으면 applyCount가 그 자리를 1번으로 승격시켜 접히지 않는다 — 그 회차는 통과로 찍힌다",
+        "run": {
+          "count0": 4,
+          "ghostBefore": true,
+          "dialClicked": "ok",
+          "gridPanels": 1,
+          "ghostAfter": true,
+          "popStillOpen": true,
+          "surface": {
+            "popout": {
+              "windows": [
+                {
+                  "label": "panel-1",
+                  "panelId": "102f1617-ec48-49c2-a2f5-bdfdfa9d8910::1"
+                }
+              ],
+              "flushes": [
+                {
+                  "panelId": "102f1617-ec48-49c2-a2f5-bdfdfa9d8910::1",
+                  "messages": 0
+                }
+              ],
+              "leftovers": []
+            },
+            "notify": {
+              "enabled": true,
+              "count": 0,
+              "items": [],
+              "window": false,
+              "loaded": false
+            },
+            "tray": {
+              "tray": true,
+              "hideOnClose": true,
+              "menuWindow": false,
+              "quitting": false
+            },
+            "windows": [
+              "panel-1",
+              "main"
+            ]
+          },
+          "osWindows": [
+            {
+              "visible": true,
+              "size": "1116x829",
+              "title": "�г� ? AgentCodeGUI"
+            },
+            {
+              "visible": true,
+              "size": "1336x889",
+              "title": "AgentCodeGUI3"
+            },
+            {
+              "visible": false,
+              "size": "1920x1023",
+              "title": ""
+            }
+          ],
+          "surfaceAfterClose": {
+            "popout": {
+              "windows": [],
+              "flushes": [],
+              "leftovers": []
+            },
+            "notify": {
+              "enabled": true,
+              "count": 0,
+              "items": [],
+              "window": false,
+              "loaded": false
+            },
+            "tray": {
+              "tray": true,
+              "hideOnClose": true,
+              "menuWindow": false,
+              "quitting": false
+            },
+            "windows": [
+              "main"
+            ]
+          },
+          "leftoversAfterClose": [],
+          "restoredTitle": [
+            "축소 대상",
+            "새 작업",
+            "새 작업",
+            "새 작업"
+          ],
+          "restoredGhost": false
+        }
+      }
+    },
+    "a3": {
+      "verdict": "PASS",
+      "run": {
+        "procs0": 5,
+        "mapanelPages": 2,
+        "surface": {
+          "popout": {
+            "windows": [
+              {
+                "label": "panel-1",
+                "panelId": "943fd705-1f13-4af3-bb23-97b9b8d331e1::0"
+              },
+              {
+                "label": "panel-2",
+                "panelId": "943fd705-1f13-4af3-bb23-97b9b8d331e1::1"
+              }
+            ],
+            "flushes": [
+              {
+                "panelId": "943fd705-1f13-4af3-bb23-97b9b8d331e1::0",
+                "messages": 0
+              },
+              {
+                "panelId": "943fd705-1f13-4af3-bb23-97b9b8d331e1::1",
+                "messages": 0
+              }
+            ],
+            "leftovers": []
+          },
+          "notify": {
+            "enabled": true,
+            "count": 0,
+            "items": [],
+            "window": false,
+            "loaded": false
+          },
+          "tray": {
+            "tray": true,
+            "hideOnClose": true,
+            "menuWindow": false,
+            "quitting": false
+          },
+          "windows": [
+            "session-1",
+            "main",
+            "panel-1",
+            "panel-2"
+          ]
+        },
+        "windows": [
+          "session-1",
+          "main",
+          "panel-1",
+          "panel-2"
+        ],
+        "popouts": [
+          {
+            "label": "panel-1",
+            "panelId": "943fd705-1f13-4af3-bb23-97b9b8d331e1::0"
+          },
+          {
+            "label": "panel-2",
+            "panelId": "943fd705-1f13-4af3-bb23-97b9b8d331e1::1"
+          }
+        ],
+        "procs1": 5,
+        "pages": [
+          "index.html#session",
+          "index.html#mapanel",
+          "index.html#mapanel",
+          ""
+        ],
+        "osWindows": [
+          {
+            "size": "576x729",
+            "title": "�߰� ä�� ? AgentCodeGUI"
+          },
+          {
+            "size": "1116x829",
+            "title": "�г� ? AgentCodeGUI"
+          },
+          {
+            "size": "1116x829",
+            "title": "�г� ? AgentCodeGUI"
+          },
+          {
+            "size": "1336x889",
+            "title": "AgentCodeGUI3"
+          }
+        ],
+        "afterOneClose": {
+          "popout": {
+            "windows": [
+              {
+                "label": "panel-2",
+                "panelId": "943fd705-1f13-4af3-bb23-97b9b8d331e1::1"
+              }
+            ],
+            "flushes": [
+              {
+                "panelId": "943fd705-1f13-4af3-bb23-97b9b8d331e1::1",
+                "messages": 0
+              }
+            ],
+            "leftovers": []
+          },
+          "notify": {
+            "enabled": true,
+            "count": 0,
+            "items": [],
+            "window": false,
+            "loaded": false
+          },
+          "tray": {
+            "tray": true,
+            "hideOnClose": true,
+            "menuWindow": false,
+            "quitting": false
+          },
+          "windows": [
+            "panel-2",
+            "main",
+            "session-1"
+          ]
+        },
+        "mapanelAfter": 1
+      }
+    },
+    "a4": {
+      "verdict": "PASS(자리 판정은 하네스 단일-모니터 가정 오류 — §3.5)",
+      "run": {
+        "burstShowMs": 126,
+        "rows": 10,
+        "dbg": {
+          "popout": {
+            "windows": [],
+            "flushes": [],
+            "leftovers": []
+          },
+          "notify": {
+            "enabled": true,
+            "count": 10,
+            "items": [
+              {
+                "key": "single:c-0",
+                "owner": "main"
+              },
+              {
+                "key": "single:c-1",
+                "owner": "main"
+              },
+              {
+                "key": "single:c-2",
+                "owner": "main"
+              },
+              {
+                "key": "single:c-3",
+                "owner": "main"
+              },
+              {
+                "key": "single:c-4",
+                "owner": "main"
+              },
+              {
+                "key": "single:c-5",
+                "owner": "main"
+              },
+              {
+                "key": "single:c-6",
+                "owner": "main"
+              },
+              {
+                "key": "single:c-7",
+                "owner": "main"
+              },
+              {
+                "key": "single:c-8",
+                "owner": "main"
+              },
+              {
+                "key": "single:c-9",
+                "owner": "main"
+              }
+            ],
+            "window": true,
+            "loaded": true
+          },
+          "tray": {
+            "tray": true,
+            "hideOnClose": true,
+            "menuWindow": false,
+            "quitting": false
+          },
+          "windows": [
+            "toast",
+            "main"
+          ]
+        },
+        "bounds": {
+          "w": 360,
+          "h": 410,
+          "x": 4752,
+          "y": 967,
+          "availW": 2560,
+          "availH": 1392
+        },
+        "onScreen": false,
+        "goneOnFocus": true,
+        "dbgAfterFocus": {
+          "popout": {
+            "windows": [],
+            "flushes": [],
+            "leftovers": []
+          },
+          "notify": {
+            "enabled": true,
+            "count": 0,
+            "items": [],
+            "window": false,
+            "loaded": false
+          },
+          "tray": {
+            "tray": true,
+            "hideOnClose": true,
+            "menuWindow": false,
+            "quitting": false
+          },
+          "windows": [
+            "main"
+          ]
+        },
+        "racePre": true,
+        "raceBack": true,
+        "raceDbg": {
+          "popout": {
+            "windows": [],
+            "flushes": [],
+            "leftovers": []
+          },
+          "notify": {
+            "enabled": true,
+            "count": 5,
+            "items": [
+              {
+                "key": "single:r-1",
+                "owner": "main"
+              },
+              {
+                "key": "single:r-0",
+                "owner": "main"
+              },
+              {
+                "key": "single:r-30",
+                "owner": "main"
+              },
+              {
+                "key": "single:r-80",
+                "owner": "main"
+              },
+              {
+                "key": "single:r-150",
+                "owner": "main"
+              }
+            ],
+            "window": true,
+            "loaded": true
+          },
+          "tray": {
+            "tray": true,
+            "hideOnClose": true,
+            "menuWindow": false,
+            "quitting": false
+          },
+          "windows": [
+            "toast",
+            "main"
+          ]
+        },
+        "raceVisible": 5
+      }
+    },
+    "a5": {
+      "verdict": "PASS(트레이 메뉴 빈 카드 1회 관측 — 36회 반복 미재현)",
+      "run": {
+        "visibleAfterX": 0,
+        "aliveAfterX": true,
+        "toastWhileHidden": true,
+        "visibleAfterClick": [
+          {
+            "size": "1336x889",
+            "title": "AgentCodeGUI3"
+          }
+        ],
+        "restored": true,
+        "secondExit": {
+          "code": 0,
+          "ms": 109
+        },
+        "raised": true,
+        "raisedMs": 388,
+        "hiddenBeforeQuit": 0,
+        "menuWhileHidden": true,
+        "menuItems": [],
+        "quitFromHidden": true
+      }
+    },
+    "a6": {
+      "verdict": "PASS",
+      "run": {
+        "before": {
+          "popout": {
+            "windows": [
+              {
+                "label": "panel-1",
+                "panelId": "f166967b-0e82-4ca1-b7d4-7f7eca6b539a::0"
+              }
+            ],
+            "flushes": [
+              {
+                "panelId": "f166967b-0e82-4ca1-b7d4-7f7eca6b539a::0",
+                "messages": 4
+              }
+            ],
+            "leftovers": []
+          },
+          "notify": {
+            "enabled": true,
+            "count": 1,
+            "items": [
+              {
+                "key": "multi:f166967b-0e82-4ca1-b7d4-7f7eca6b539a:0",
+                "owner": "panel-1"
+              }
+            ],
+            "window": true,
+            "loaded": true
+          },
+          "tray": {
+            "tray": true,
+            "hideOnClose": true,
+            "menuWindow": false,
+            "quitting": false
+          },
+          "windows": [
+            "main",
+            "toast",
+            "panel-1"
+          ]
+        },
+        "pages": [
+          "",
+          "index.html#mapanel"
+        ],
+        "mapanelPages": 1,
+        "log": [
+          "process-failed",
+          "recover-begin",
+          "process-failed",
+          "reloaded",
+          "reloaded",
+          "reloaded",
+          "page-load",
+          "page-load",
+          "mounted",
+          "recover-done"
+        ],
+        "mainUrl": "http://tauri.localhost/",
+        "after": {
+          "popout": {
+            "windows": [
+              {
+                "label": "panel-1",
+                "panelId": "f166967b-0e82-4ca1-b7d4-7f7eca6b539a::0"
+              }
+            ],
+            "flushes": [
+              {
+                "panelId": "f166967b-0e82-4ca1-b7d4-7f7eca6b539a::0",
+                "messages": 4
+              }
+            ],
+            "leftovers": []
+          },
+          "notify": {
+            "enabled": true,
+            "count": 0,
+            "items": [],
+            "window": false,
+            "loaded": false
+          },
+          "tray": {
+            "tray": true,
+            "hideOnClose": true,
+            "menuWindow": false,
+            "quitting": false
+          },
+          "windows": [
+            "panel-1",
+            "main"
+          ]
+        },
+        "ghost": true,
+        "gridMarks": [],
+        "boardAfter": {
+          "version": 1,
+          "boards": [
+            {
+              "id": "default",
+              "title": "",
+              "custom": false,
+              "count": 1,
+              "chrome": "ide",
+              "order": [
+                0,
+                1,
+                2,
+                3,
+                4,
+                5
+              ],
+              "slots": [
+                "c-main",
+                null,
+                null,
+                null,
+                null,
+                null
+              ]
+            },
+            {
+              "id": "f166967b-0e82-4ca1-b7d4-7f7eca6b539a",
+              "title": "",
+              "custom": false,
+              "count": 4,
+              "chrome": "grid",
+              "order": [
+                0,
+                1,
+                2,
+                3,
+                4,
+                5
+              ],
+              "slots": [
+                "ma-f166967b-0e82-4ca1-b7d4-7f7eca6b539a-0",
+                null,
+                null,
+                null,
+                null,
+                null
+              ],
+              "updatedAt": 1787468229254
+            }
+          ],
+          "activeBoardId": "f166967b-0e82-4ca1-b7d4-7f7eca6b539a"
+        },
+        "statesForActive": {
+          "open": [
+            "f166967b-0e82-4ca1-b7d4-7f7eca6b539a::0"
+          ],
+          "leftovers": []
+        },
+        "composerLive": true,
+        "cells": [
+          {
+            "slot": "0",
+            "cls": "ma-panel ma-ghost pop",
+            "marks": [],
+            "composer": false
+          },
+          {
+            "slot": "1",
+            "cls": "ma-panel",
+            "marks": [],
+            "composer": true
+          },
+          {
+            "slot": "2",
+            "cls": "ma-panel",
+            "marks": [],
+            "composer": true
+          },
+          {
+            "slot": "3",
+            "cls": "ma-panel",
+            "marks": [],
+            "composer": true
+          }
+        ],
+        "popBack": true,
+        "popMounted": true,
+        "popMarks": [
+          "MARK-ONE",
+          "MARK-TWO",
+          "MARK-THREE"
+        ]
+      },
+      "falsePositive": {
+        "note": "초기 3회차는 크리틱 하네스가 메인 창을 findTarget('index.html')로 골라 팝아웃 페이지에 붙은 탓. 메인 창 URL은 http://tauri.localhost/ 로 index.html이 없다. 빌더 phaseDefense D3도 같은 자리",
+        "runs": [
+          {
+            "before": {
+              "popout": {
+                "windows": [
+                  {
+                    "label": "panel-1",
+                    "panelId": "744201b5-34fd-4e6a-8936-2d1370a7788c::0"
+                  }
+                ],
+                "flushes": [
+                  {
+                    "panelId": "744201b5-34fd-4e6a-8936-2d1370a7788c::0",
+                    "messages": 4
+                  }
+                ],
+                "leftovers": []
+              },
+              "notify": {
+                "enabled": true,
+                "count": 0,
+                "items": [],
+                "window": false,
+                "loaded": false
+              },
+              "tray": {
+                "tray": true,
+                "hideOnClose": true,
+                "menuWindow": false,
+                "quitting": false
+              },
+              "windows": [
+                "panel-1",
+                "main"
+              ]
+            },
+            "pages": [
+              "index.html#mapanel",
+              ""
+            ],
+            "mapanelPages": 1,
+            "log": [
+              "process-failed",
+              "process-failed",
+              "recover-begin",
+              "reloaded",
+              "reloaded",
+              "page-load",
+              "mounted",
+              "page-load",
+              "recover-done"
+            ],
+            "after": {
+              "popout": {
+                "windows": [
+                  {
+                    "label": "panel-1",
+                    "panelId": "744201b5-34fd-4e6a-8936-2d1370a7788c::0"
+                  }
+                ],
+                "flushes": [
+                  {
+                    "panelId": "744201b5-34fd-4e6a-8936-2d1370a7788c::0",
+                    "messages": 4
+                  }
+                ],
+                "leftovers": []
+              },
+              "notify": {
+                "enabled": true,
+                "count": 0,
+                "items": [],
+                "window": false,
+                "loaded": false
+              },
+              "tray": {
+                "tray": true,
+                "hideOnClose": true,
+                "menuWindow": false,
+                "quitting": false
+              },
+              "windows": [
+                "panel-1",
+                "main"
+              ]
+            },
+            "ghost": false,
+            "gridMarks": [
+              "MARK-ONE",
+              "MARK-TWO",
+              "MARK-THREE"
+            ],
+            "popBack": true,
+            "popMounted": true,
+            "popMarks": [
+              "MARK-ONE",
+              "MARK-TWO",
+              "MARK-THREE"
+            ]
+          },
+          {
+            "before": {
+              "popout": {
+                "windows": [
+                  {
+                    "label": "panel-1",
+                    "panelId": "2bb89d4e-261e-4173-8395-54d48b7107fc::0"
+                  }
+                ],
+                "flushes": [
+                  {
+                    "panelId": "2bb89d4e-261e-4173-8395-54d48b7107fc::0",
+                    "messages": 4
+                  }
+                ],
+                "leftovers": []
+              },
+              "notify": {
+                "enabled": true,
+                "count": 1,
+                "items": [
+                  {
+                    "key": "multi:2bb89d4e-261e-4173-8395-54d48b7107fc:0",
+                    "owner": "panel-1"
+                  }
+                ],
+                "window": true,
+                "loaded": true
+              },
+              "tray": {
+                "tray": true,
+                "hideOnClose": true,
+                "menuWindow": false,
+                "quitting": false
+              },
+              "windows": [
+                "panel-1",
+                "main",
+                "toast"
+              ]
+            },
+            "pages": [
+              "index.html#mapanel",
+              ""
+            ],
+            "mapanelPages": 1,
+            "log": [
+              "process-failed",
+              "recover-begin",
+              "reloaded",
+              "reloaded",
+              "reloaded",
+              "process-failed",
+              "page-load",
+              "mounted",
+              "page-load",
+              "recover-done"
+            ],
+            "after": {
+              "popout": {
+                "windows": [
+                  {
+                    "label": "panel-1",
+                    "panelId": "2bb89d4e-261e-4173-8395-54d48b7107fc::0"
+                  }
+                ],
+                "flushes": [
+                  {
+                    "panelId": "2bb89d4e-261e-4173-8395-54d48b7107fc::0",
+                    "messages": 4
+                  }
+                ],
+                "leftovers": []
+              },
+              "notify": {
+                "enabled": true,
+                "count": 0,
+                "items": [],
+                "window": false,
+                "loaded": false
+              },
+              "tray": {
+                "tray": true,
+                "hideOnClose": true,
+                "menuWindow": false,
+                "quitting": false
+              },
+              "windows": [
+                "panel-1",
+                "main"
+              ]
+            },
+            "ghost": false,
+            "gridMarks": [
+              "MARK-ONE",
+              "MARK-TWO",
+              "MARK-THREE"
+            ],
+            "boardAfter": {
+              "version": 1,
+              "boards": [
+                {
+                  "id": "default",
+                  "title": "",
+                  "custom": false,
+                  "count": 1,
+                  "chrome": "ide",
+                  "order": [
+                    0,
+                    1,
+                    2,
+                    3,
+                    4,
+                    5
+                  ],
+                  "slots": [
+                    "c-main",
+                    null,
+                    null,
+                    null,
+                    null,
+                    null
+                  ]
+                },
+                {
+                  "id": "2bb89d4e-261e-4173-8395-54d48b7107fc",
+                  "title": "",
+                  "custom": false,
+                  "count": 4,
+                  "chrome": "grid",
+                  "order": [
+                    0,
+                    1,
+                    2,
+                    3,
+                    4,
+                    5
+                  ],
+                  "slots": [
+                    "ma-2bb89d4e-261e-4173-8395-54d48b7107fc-0",
+                    null,
+                    null,
+                    null,
+                    null,
+                    null
+                  ],
+                  "updatedAt": 1787467556186
+                }
+              ],
+              "activeBoardId": "2bb89d4e-261e-4173-8395-54d48b7107fc"
+            },
+            "statesForActive": {
+              "open": [
+                "2bb89d4e-261e-4173-8395-54d48b7107fc::0"
+              ],
+              "leftovers": []
+            },
+            "composerLive": false,
+            "popBack": true,
+            "popMounted": true,
+            "popMarks": [
+              "MARK-ONE",
+              "MARK-TWO",
+              "MARK-THREE"
+            ]
+          },
+          {
+            "before": {
+              "popout": {
+                "windows": [
+                  {
+                    "label": "panel-1",
+                    "panelId": "d0a0fb0b-fdb6-45f9-996d-e4b9a7101105::0"
+                  }
+                ],
+                "flushes": [
+                  {
+                    "panelId": "d0a0fb0b-fdb6-45f9-996d-e4b9a7101105::0",
+                    "messages": 4
+                  }
+                ],
+                "leftovers": []
+              },
+              "notify": {
+                "enabled": true,
+                "count": 1,
+                "items": [
+                  {
+                    "key": "multi:d0a0fb0b-fdb6-45f9-996d-e4b9a7101105:0",
+                    "owner": "panel-1"
+                  }
+                ],
+                "window": true,
+                "loaded": true
+              },
+              "tray": {
+                "tray": true,
+                "hideOnClose": true,
+                "menuWindow": false,
+                "quitting": false
+              },
+              "windows": [
+                "main",
+                "toast",
+                "panel-1"
+              ]
+            },
+            "pages": [
+              "index.html#mapanel",
+              ""
+            ],
+            "mapanelPages": 1,
+            "log": [
+              "process-failed",
+              "recover-begin",
+              "reloaded",
+              "reloaded",
+              "reloaded",
+              "process-failed",
+              "page-load",
+              "page-load",
+              "mounted",
+              "recover-done"
+            ],
+            "mainUrl": null,
+            "popBack": true,
+            "popMounted": true,
+            "popMarks": [
+              "MARK-ONE",
+              "MARK-TWO",
+              "MARK-THREE"
+            ]
+          }
+        ]
+      }
+    },
+    "a7": {
+      "verdict": "FAIL",
+      "run": {
+        "rendererLang": null,
+        "rendererEnglish": true,
+        "items": [
+          "AgentCodeGUI 열기",
+          "완전히 종료"
+        ]
+      }
+    },
+    "a8": {
+      "verdict": "PASS",
+      "run": {
+        "mainBoot": {
+          "ok": true,
+          "reason": "",
+          "probe": "cheap",
+          "windows": 0,
+          "backdrops": [],
+          "reasserts": 0,
+          "drifts": 0,
+          "lastDrift": -1,
+          "assertFails": 0,
+          "emits": 0,
+          "advancedEffects": null,
+          "regTransparency": true,
+          "remoteSession": false
+        },
+        "pop1Boot": {
+          "ok": true,
+          "reason": "",
+          "probe": "full",
+          "windows": 1,
+          "backdrops": [
+            3
+          ],
+          "reasserts": 10,
+          "drifts": 0,
+          "lastDrift": -1,
+          "assertFails": 0,
+          "emits": 10,
+          "advancedEffects": true,
+          "regTransparency": true,
+          "remoteSession": false
+        },
+        "mapanelPages": 2,
+        "pop2Boot": {
+          "ok": true,
+          "reason": "",
+          "probe": "full",
+          "windows": 2,
+          "backdrops": [
+            3,
+            3
+          ],
+          "reasserts": 15,
+          "drifts": 0,
+          "lastDrift": -1,
+          "assertFails": 0,
+          "emits": 15,
+          "advancedEffects": true,
+          "regTransparency": true,
+          "remoteSession": false
+        }
+      }
+    },
+    "a9": {
+      "verdict": "PASS(36/36)",
+      "runs": [
+        {
+          "rounds": [
+            {
+              "i": 0,
+              "hidden": false,
+              "window": true,
+              "rows": 2,
+              "rowMs": 138,
+              "openMs": 296,
+              "size": {
+                "w": 218,
+                "h": 87
+              }
+            },
+            {
+              "i": 1,
+              "hidden": false,
+              "window": true,
+              "rows": 2,
+              "rowMs": 153,
+              "openMs": 525,
+              "size": {
+                "w": 218,
+                "h": 87
+              }
+            },
+            {
+              "i": 2,
+              "hidden": false,
+              "window": true,
+              "rows": 2,
+              "rowMs": 200,
+              "openMs": 356,
+              "size": {
+                "w": 218,
+                "h": 87
+              }
+            },
+            {
+              "i": 3,
+              "hidden": false,
+              "window": true,
+              "rows": 2,
+              "rowMs": 123,
+              "openMs": 283,
+              "size": {
+                "w": 218,
+                "h": 87
+              }
+            },
+            {
+              "i": 4,
+              "hidden": false,
+              "window": true,
+              "rows": 2,
+              "rowMs": 123,
+              "openMs": 279,
+              "size": {
+                "w": 218,
+                "h": 87
+              }
+            },
+            {
+              "i": 5,
+              "hidden": false,
+              "window": true,
+              "rows": 2,
+              "rowMs": 137,
+              "openMs": 296,
+              "size": {
+                "w": 218,
+                "h": 87
+              }
+            },
+            {
+              "i": 6,
+              "hidden": true,
+              "window": true,
+              "rows": 2,
+              "rowMs": 137,
+              "openMs": 309,
+              "size": {
+                "w": 218,
+                "h": 87
+              }
+            },
+            {
+              "i": 7,
+              "hidden": true,
+              "window": true,
+              "rows": 2,
+              "rowMs": 151,
+              "openMs": 307,
+              "size": {
+                "w": 218,
+                "h": 87
+              }
+            },
+            {
+              "i": 8,
+              "hidden": true,
+              "window": true,
+              "rows": 2,
+              "rowMs": 126,
+              "openMs": 300,
+              "size": {
+                "w": 218,
+                "h": 87
+              }
+            },
+            {
+              "i": 9,
+              "hidden": true,
+              "window": true,
+              "rows": 2,
+              "rowMs": 202,
+              "openMs": 360,
+              "size": {
+                "w": 218,
+                "h": 87
+              }
+            },
+            {
+              "i": 10,
+              "hidden": true,
+              "window": true,
+              "rows": 2,
+              "rowMs": 123,
+              "openMs": 298,
+              "size": {
+                "w": 218,
+                "h": 87
+              }
+            },
+            {
+              "i": 11,
+              "hidden": true,
+              "window": true,
+              "rows": 2,
+              "rowMs": 140,
+              "openMs": 297,
+              "size": {
+                "w": 218,
+                "h": 87
+              }
+            }
+          ],
+          "empty": 0,
+          "noWindow": 0,
+          "maxRowMs": 202
+        },
+        {
+          "rounds": [
+            {
+              "i": 0,
+              "hidden": false,
+              "window": true,
+              "rows": 2,
+              "rowMs": 139,
+              "openMs": 392,
+              "size": {
+                "w": 218,
+                "h": 92
+              }
+            },
+            {
+              "i": 1,
+              "hidden": false,
+              "window": true,
+              "rows": 2,
+              "rowMs": 139,
+              "openMs": 310,
+              "size": {
+                "w": 218,
+                "h": 92
+              }
+            },
+            {
+              "i": 2,
+              "hidden": false,
+              "window": true,
+              "rows": 2,
+              "rowMs": 123,
+              "openMs": 362,
+              "size": {
+                "w": 218,
+                "h": 87
+              }
+            },
+            {
+              "i": 3,
+              "hidden": false,
+              "window": true,
+              "rows": 2,
+              "rowMs": 125,
+              "openMs": 299,
+              "size": {
+                "w": 218,
+                "h": 87
+              }
+            },
+            {
+              "i": 4,
+              "hidden": false,
+              "window": true,
+              "rows": 2,
+              "rowMs": 137,
+              "openMs": 373,
+              "size": {
+                "w": 218,
+                "h": 87
+              }
+            },
+            {
+              "i": 5,
+              "hidden": false,
+              "window": true,
+              "rows": 2,
+              "rowMs": 138,
+              "openMs": 344,
+              "size": {
+                "w": 218,
+                "h": 87
+              }
+            },
+            {
+              "i": 6,
+              "hidden": false,
+              "window": true,
+              "rows": 2,
+              "rowMs": 146,
+              "openMs": 404,
+              "size": {
+                "w": 218,
+                "h": 87
+              }
+            },
+            {
+              "i": 7,
+              "hidden": false,
+              "window": true,
+              "rows": 2,
+              "rowMs": 138,
+              "openMs": 326,
+              "size": {
+                "w": 218,
+                "h": 87
+              }
+            },
+            {
+              "i": 8,
+              "hidden": false,
+              "window": true,
+              "rows": 2,
+              "rowMs": 153,
+              "openMs": 405,
+              "size": {
+                "w": 218,
+                "h": 87
+              }
+            },
+            {
+              "i": 9,
+              "hidden": false,
+              "window": true,
+              "rows": 2,
+              "rowMs": 153,
+              "openMs": 342,
+              "size": {
+                "w": 218,
+                "h": 87
+              }
+            },
+            {
+              "i": 10,
+              "hidden": false,
+              "window": true,
+              "rows": 2,
+              "rowMs": 185,
+              "openMs": 433,
+              "size": {
+                "w": 218,
+                "h": 87
+              }
+            },
+            {
+              "i": 11,
+              "hidden": false,
+              "window": true,
+              "rows": 2,
+              "rowMs": 137,
+              "openMs": 333,
+              "size": {
+                "w": 218,
+                "h": 87
+              }
+            },
+            {
+              "i": 12,
+              "hidden": true,
+              "window": true,
+              "rows": 2,
+              "rowMs": 152,
+              "openMs": 467,
+              "size": {
+                "w": 218,
+                "h": 87
+              }
+            },
+            {
+              "i": 13,
+              "hidden": true,
+              "window": true,
+              "rows": 2,
+              "rowMs": 153,
+              "openMs": 343,
+              "size": {
+                "w": 218,
+                "h": 87
+              }
+            },
+            {
+              "i": 14,
+              "hidden": true,
+              "window": true,
+              "rows": 2,
+              "rowMs": 168,
+              "openMs": 443,
+              "size": null
+            },
+            {
+              "i": 15,
+              "hidden": true,
+              "window": true,
+              "rows": 2,
+              "rowMs": 185,
+              "openMs": 390,
+              "size": {
+                "w": 218,
+                "h": 87
+              }
+            },
+            {
+              "i": 16,
+              "hidden": true,
+              "window": true,
+              "rows": 2,
+              "rowMs": 139,
+              "openMs": 390,
+              "size": {
+                "w": 218,
+                "h": 87
+              }
+            },
+            {
+              "i": 17,
+              "hidden": true,
+              "window": true,
+              "rows": 2,
+              "rowMs": 133,
+              "openMs": 322,
+              "size": {
+                "w": 218,
+                "h": 92
+              }
+            },
+            {
+              "i": 18,
+              "hidden": true,
+              "window": true,
+              "rows": 2,
+              "rowMs": 139,
+              "openMs": 424,
+              "size": {
+                "w": 218,
+                "h": 87
+              }
+            },
+            {
+              "i": 19,
+              "hidden": true,
+              "window": true,
+              "rows": 2,
+              "rowMs": 138,
+              "openMs": 328,
+              "size": {
+                "w": 218,
+                "h": 87
+              }
+            },
+            {
+              "i": 20,
+              "hidden": true,
+              "window": true,
+              "rows": 2,
+              "rowMs": 189,
+              "openMs": 439,
+              "size": {
+                "w": 218,
+                "h": 87
+              }
+            },
+            {
+              "i": 21,
+              "hidden": true,
+              "window": true,
+              "rows": 2,
+              "rowMs": 153,
+              "openMs": 374,
+              "size": {
+                "w": 218,
+                "h": 87
+              }
+            },
+            {
+              "i": 22,
+              "hidden": true,
+              "window": true,
+              "rows": 2,
+              "rowMs": 186,
+              "openMs": 454,
+              "size": {
+                "w": 218,
+                "h": 87
+              }
+            },
+            {
+              "i": 23,
+              "hidden": true,
+              "window": true,
+              "rows": 2,
+              "rowMs": 126,
+              "openMs": 313,
+              "size": {
+                "w": 218,
+                "h": 87
+              }
+            }
+          ],
+          "empty": 0,
+          "noWindow": 0,
+          "maxRowMs": 189
+        }
+      ]
+    }
+  },
+  "findings": [
+    {
+      "id": "S1",
+      "sev": "치명",
+      "what": "팝아웃 창을 닫으면 그리드·디스크가 낡은 복귀분으로 되감긴다",
+      "evidence": "a1-mid/a1-end"
+    },
+    {
+      "id": "S2",
+      "sev": "중",
+      "what": "다이얼 축소로 자리를 접으면 그 자리의 팝아웃 OS 창이 고아가 된다(reconcileChatRefs 미등록)",
+      "evidence": "a2"
+    },
+    {
+      "id": "S3",
+      "sev": "중",
+      "what": "완전히 종료 뒤 트레이 아이콘이 알림 영역에 남는다(static OnceLock<TrayIcon> → Drop 미실행)",
+      "evidence": "코드 대조 + tray-icon 0.24.1 문서"
+    },
+    {
+      "id": "S4",
+      "sev": "소",
+      "what": "tray.rs가 ui-prefs 키를 \"lang\"으로 읽어 트레이 메뉴가 영어로 안 바뀐다(다른 곳은 전부 \"ui.lang\")",
+      "evidence": "a7"
+    },
+    {
+      "id": "S5",
+      "sev": "관측",
+      "what": "트레이 메뉴가 항목 0개로 뜬 회차 1건(36회 반복 미재현) — traymenu:show 재송신 예산이 토스트의 절반",
+      "evidence": "a5 / a9"
+    },
+    {
+      "id": "S6",
+      "sev": "소",
+      "what": "traymenu:resize에 2.6.2의 발신자 검증이 없다",
+      "evidence": "코드 대조 (src/main/index.ts:853)"
+    }
+  ]
+}
