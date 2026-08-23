@@ -1,0 +1,2518 @@
+{
+ "pin": {
+  "commit": "48d4622",
+  "worktree": "%TEMP%/ccg-m6-wt",
+  "target": "%TEMP%/ccg-m6-tgt",
+  "exeBytes": 4712448
+ },
+ "rust_attack_1": {
+  "bigdir_list": {
+   "entries": 50000,
+   "ms": 45,
+   "first": "f000000_한글0.txt"
+  },
+  "junction_cycle": {
+   "junction_made": true,
+   "mention_files": 1,
+   "mention_ms": 0,
+   "sample": [
+    "a/real.txt"
+   ],
+   "list_a": [
+    "loop",
+    "real.txt"
+   ],
+   "hide_empty_rows": 1,
+   "hide_empty_ms": 0
+  },
+  "no_permission": {
+   "denied_applied": true,
+   "parent_rows": [
+    "sub"
+   ],
+   "inner_rows": 0,
+   "read_err": "파일을 열 수 없어요",
+   "write_ok": false,
+   "write_err": "액세스가 거부되었습니다. (os error 5)"
+  },
+  "unicode_and_longpath": {
+   "created": [
+    [
+     "한글 파일.txt",
+     true
+    ],
+    [
+     "😀emoji✨.txt",
+     true
+    ],
+    [
+     "ＦＵＬＬ幅.txt",
+     true
+    ],
+    [
+     "café.txt",
+     true
+    ],
+    [
+     "a b  c.txt",
+     true
+    ]
+   ],
+   "rows": [
+    "😀emoji✨.txt",
+    "한글 파일.txt",
+    "a b  c.txt",
+    "café.txt",
+    "ＦＵＬＬ幅.txt"
+   ],
+   "read_ok": true,
+   "rename_emoji_ok": true,
+   "rename_err": null,
+   "mention": [
+    "a b  c.txt",
+    "café.txt",
+    "한글 파일.txt",
+    "🎉바뀜.txt",
+    "ＦＵＬＬ幅.txt"
+   ],
+   "deep_mkdir_ok": true,
+   "path_len": 345,
+   "long_write_ok": true,
+   "long_read_ok": true,
+   "long_read_err": null,
+   "long_listdir_rows": 1,
+   "long_trash_ok": true,
+   "long_trash_err": null,
+   "long_file_still_there": false
+  },
+  "race_rename_read": {
+   "renames": 400,
+   "reads_ok": 212,
+   "short_reads": 0,
+   "errors": {
+    "파일을 열 수 없어요": 188
+   }
+  },
+  "git_empty_repo": {
+   "status_repo": true,
+   "branch": "main",
+   "detached": false,
+   "files": 0,
+   "log_commits": 0,
+   "branches": 0,
+   "commit_ok": true,
+   "commit_err": null,
+   "subject_on_disk": "첫 커밋 한글 제목 🎉",
+   "body_on_disk": "본문\n둘째 줄"
+  },
+  "git_detached": {
+   "branch": "HEAD 분리됨",
+   "detached": true,
+   "ahead": 0,
+   "behind": 0,
+   "log": 1,
+   "unpushed": 0
+  },
+  "git_submodule": {
+   "add_ok": true,
+   "add_err": "warning: in the working copy of '.gitmodules', LF will be replaced by CRLF the next time Git touches it",
+   "super_files": [
+    "M:mod"
+   ],
+   "repos": [
+    ""
+   ],
+   "inner_root_is_mod": true,
+   "diff_on_submodule_err": "내용을 읽을 수 없어요",
+   "diff_present": false
+  },
+  "git_index_lock": {
+   "status_ok": true,
+   "status_files": 2,
+   "status_ms": 98,
+   "commit_ok": false,
+   "commit_err": "Unable to create 'C:/Users/User/AppData/Local/Temp/ccg-m6-atk/locked/.git/index.lock': File exists.",
+   "discard_ok": false,
+   "discard_err": "Unable to create 'C:/Users/User/AppData/Local/Temp/ccg-m6-atk/locked/.git/index.lock': File exists.",
+   "file_after_discard": "2\n"
+  },
+  "discard_radius": {
+   "before_files": [
+    "A:added.txt",
+    "A:newdir/",
+    "M:other.txt",
+    "M:tracked.txt",
+    "A:untracked.txt"
+   ],
+   "d1_tracked_ok": true,
+   "worktree_after": "orig\r\n",
+   "index_tracked_after": "orig\n",
+   "index_other_untouched": "other-staged\n",
+   "d2_untracked_ok": true,
+   "untracked_gone": true,
+   "d3_added_ok": true,
+   "added_file_gone": true,
+   "added_still_in_index": false,
+   "d4_dir_ok": true,
+   "newdir_gone": true,
+   "d5_dotdot_ok": false,
+   "d5_err": "잘못된 경로",
+   "d6_abs_ok": false,
+   "d6_err": "잘못된 경로",
+   "outside_file_alive": true,
+   "after_files": [
+    "M:other.txt"
+   ]
+  },
+  "discard_root_self": {
+   "ok": true,
+   "err": null,
+   "repo_still_there": false
+  },
+  "trash_normal_volume": {
+   "ok": true,
+   "gone": true,
+   "recycle_before": 161,
+   "recycle_after": 162
+  },
+  "ccg_img": {
+   "png": {
+    "served": true,
+    "mime": "image/png",
+    "len": 8
+   },
+   "json": {
+    "served": false
+   },
+   "json_named_png": {
+    "served": true,
+    "mime": "image/png",
+    "len": 23
+   },
+   "svg_with_script": {
+    "served": true,
+    "mime": "image/svg+xml",
+    "len": 78
+   },
+   "traversal_dotdot": {
+    "served": false
+   },
+   "real_home_accounts_json": {
+    "served": false
+   },
+   "ads_stream": {
+    "served": true,
+    "mime": "image/png",
+    "len": 10
+   },
+   "ads_written": true,
+   "dir": {
+    "served": false
+   },
+   "under_64mb": {
+    "served": true,
+    "mime": "image/png",
+    "len": 66060288
+   },
+   "under_64mb_ms": 35,
+   "over_64mb": {
+    "served": false
+   }
+  },
+  "git_stdout_cap": {
+   "blob_bytes": 35700000,
+   "ms": 129,
+   "err": null,
+   "diff_tag": "new",
+   "diff_add": 1,
+   "diff_del": 0,
+   "alive_status_files": 1,
+   "alive_small_diff": true
+  },
+  "diff_caps": {
+   "scattered_8000": {
+    "ms": 141,
+    "err": null,
+    "add": 500,
+    "del": 500,
+    "lines": 8500,
+    "tag": "edit"
+   },
+   "full_rewrite": {
+    "ms": 126,
+    "err": null,
+    "add": 8000,
+    "del": 8000,
+    "lines": 16000,
+    "tag": "edit"
+   },
+   "over_1_5mb": {
+    "ms": 126,
+    "err": "파일이 너무 커요 — diff 표시는 1.5MB까지만",
+    "add": null,
+    "del": null,
+    "lines": null,
+    "tag": null
+   },
+   "binary": {
+    "ms": 138,
+    "err": "바이너리 파일 — diff를 표시할 수 없어요",
+    "add": null,
+    "del": null,
+    "lines": null,
+    "tag": null
+   },
+   "alive_rows_after": 5
+  },
+  "real_repo_walk": {
+   "C:/Code/AgentCodeGUI": {
+    "list_dir_rows": 56,
+    "list_dir_ms": 0,
+    "mention_files": 1479,
+    "mention_ms": 4
+   },
+   "C:/Code/AgentCodeGUI/node_modules": {
+    "list_dir_rows": 416,
+    "list_dir_ms": 0,
+    "mention_files": 6000,
+    "mention_ms": 62
+   }
+  },
+  "cleanup": {
+   "base_gone": true
+  }
+ },
+ "rust_attack_2": {
+  "trash_semantics_rust": {
+   "subst": {
+    "op_ok": true,
+    "op_err": null,
+    "file_gone": true,
+    "recycle_before": 162,
+    "recycle_after": 162,
+    "went_to_recycle_bin": false
+   },
+   "normal_c": {
+    "op_ok": true,
+    "file_gone": true,
+    "recycle_before": 162,
+    "recycle_after": 163,
+    "went_to_recycle_bin": true
+   }
+  },
+  "ccg_img_unc_blackhole": {
+   "blackhole_ip_ms": 21048,
+   "served": false,
+   "bad_name_ms": 1265,
+   "served2": false
+  },
+  "discard_on_locked_file": {
+   "raw_checkout_ok": false,
+   "raw_checkout_err": "error: unable to unlink old 'locked.txt': Invalid argument",
+   "discard_ok": false,
+   "discard_err": "파일을 휴지통으로 보내지 못했어요",
+   "file_still_exists": true,
+   "still_in_index": false,
+   "status_after": [
+    "D:locked.txt",
+    "A:locked.txt"
+   ]
+  },
+  "bigblob_diff_truth": {
+   "shrunk_err": null,
+   "shrunk_tag": "new",
+   "shrunk_add": 1,
+   "shrunk_del": 0,
+   "deleted_err": "내용을 읽을 수 없어요",
+   "deleted_tag": null,
+   "deleted_add": null,
+   "deleted_del": null,
+   "deleted_head_content": false
+  },
+  "junction_as_folder": {
+   "rows": [
+    {
+     "name": "target",
+     "dir": true
+    },
+    {
+     "name": "link",
+     "dir": false
+    }
+   ],
+   "expand_link_rows": [
+    "in.txt"
+   ],
+   "mention": []
+  },
+  "cleanup2": {
+   "gone": true
+  }
+ },
+ "rust_attack_3": {
+  "recycle_policy": {
+   "volumes": [
+    "{229d6859-ddf7-4ff7-91d3-96365d874b29} max=97433MB nuke=0",
+    "{4a4f15f4-5a15-4a1a-8b23-b4a7f9b19360} max=49703MB nuke=0"
+   ]
+  },
+  "longpath_trash_rust": {
+   "path_len": 346,
+   "wrote": true,
+   "ok": true,
+   "err": null,
+   "still": false,
+   "recycle_before": 163,
+   "recycle_after": 164,
+   "went_to_recycle_bin": true
+  },
+  "dir_trash_rust": {
+   "ok": true,
+   "gone": true,
+   "recycle_before": 164,
+   "recycle_after": 165
+  },
+  "cleanup3": {
+   "gone": true
+  }
+ },
+ "diff_claims": {
+  "two_far_edits": {
+   "add": 2,
+   "del": 2,
+   "lines": 20002,
+   "ms": 3
+  },
+  "huge_one_edit": {
+   "add": 1,
+   "del": 1,
+   "lines": 300001,
+   "ms": 37
+  },
+  "full_rewrite": {
+   "add": 8000,
+   "del": 8000,
+   "lines": 16000,
+   "ms": 16
+  },
+  "budget_half": {
+   "add": 99999,
+   "del": 99999,
+   "lines": 199999,
+   "ms": 18
+  }
+ },
+ "electron_262_probe": {
+  "trash_semantics_262": {
+   "subst": {
+    "op_ok": false,
+    "op_err": "Failed to perform delete operation",
+    "file_gone": false,
+    "recycle_before": 165,
+    "recycle_after": 165,
+    "went_to_recycle_bin": false
+   },
+   "normal_c": {
+    "op_ok": true,
+    "file_gone": true,
+    "recycle_before": 165,
+    "recycle_after": 166,
+    "went_to_recycle_bin": true
+   }
+  },
+  "junction_262": {
+   "rows": [
+    {
+     "name": "link",
+     "dir": false,
+     "file": false,
+     "link": true
+    },
+    {
+     "name": "target",
+     "dir": true,
+     "file": false,
+     "link": false
+    }
+   ]
+  },
+  "longpath_trash_262": {
+   "mkOk": true,
+   "len": 345,
+   "wrote": true,
+   "ok": true,
+   "err": null,
+   "still": false,
+   "recycle_before": 166,
+   "recycle_after": 167,
+   "went_to_recycle_bin": true
+  },
+  "dir_trash_262": {
+   "ok": true,
+   "gone": true,
+   "recycle_before": 167,
+   "recycle_after": 168
+  }
+ },
+ "live_ab_1": [
+  {
+   "app": "electron",
+   "bigBlobDiff": {
+    "error": null,
+    "tag": "new",
+    "add": 1,
+    "del": 0,
+    "lines": 2
+   },
+   "imgFetch": {
+    "origin": "file://",
+    "fetchThrew": "TypeError: Failed to fetch",
+    "imgTag": false
+   },
+   "imgNonImage": {
+    "json": {
+     "threw": "TypeError: Failed to fetch"
+    },
+    "jsonNamedPng": {
+     "threw": "TypeError: Failed to fetch"
+    }
+   },
+   "hangBefore": "True|7|False",
+   "hangDuring": "True|6|False",
+   "hangDuring2": "True|6|False",
+   "starvation": {
+    "latencies": [
+     7,
+     16,
+     1,
+     14,
+     1,
+     1,
+     1,
+     1
+    ],
+    "max": 16,
+    "slowStillPending": true
+   },
+   "createFail": {
+    "dupFile": {
+     "ok": false,
+     "error": "같은 이름이 이미 있어요"
+    },
+    "dupDir": {
+     "ok": false,
+     "error": "같은 이름이 이미 있어요"
+    },
+    "badDrive": {
+     "ok": false,
+     "error": "ENOENT: no such file or directory, open 'Z:\\nope\\nope.txt'"
+    },
+    "badName": {
+     "ok": false,
+     "error": "올바른 이름이 아니에요"
+    }
+   },
+   "topLevelWindows": "AgentCodeGUI",
+   "gitRows": [
+    "M:huge.txt",
+    "A:newdir/(u)",
+    "A:secret.json.png(u)"
+   ],
+   "commitKo": {
+    "ok": false,
+    "error": "On branch main"
+   },
+   "commitOnDisk": {
+    "subject": "base",
+    "body": ""
+   },
+   "reveal": {
+    "before": "",
+    "after": "file:///C:/Users/User/AppData/Local/Temp/ccg-m6c-work",
+    "opened": true
+   }
+  },
+  {
+   "app": "tauri",
+   "bigBlobDiff": {
+    "error": null,
+    "tag": "new",
+    "add": 1,
+    "del": 0,
+    "lines": 2
+   },
+   "imgFetch": {
+    "origin": "http://tauri.localhost",
+    "status": 200,
+    "bytes": 16,
+    "acao": null,
+    "imgTag": false
+   },
+   "imgNonImage": {
+    "json": {
+     "threw": "TypeError: Failed to fetch"
+    },
+    "jsonNamedPng": {
+     "s": 200,
+     "t": "{\"token\":\"CRITIC-SECRET-42\"}"
+    }
+   },
+   "hangBefore": "True|6|False",
+   "hangDuring": "False|2016|False",
+   "hangDuring2": "False|2013|True",
+   "starvation": {
+    "latencies": [
+     1676,
+     2,
+     1,
+     1,
+     2,
+     2,
+     2,
+     1
+    ],
+    "max": 1676,
+    "slowStillPending": true
+   },
+   "createFail": {
+    "dupFile": {
+     "ok": false,
+     "error": "같은 이름이 이미 있어요"
+    },
+    "dupDir": {
+     "ok": false,
+     "error": "같은 이름이 이미 있어요"
+    },
+    "badDrive": {
+     "ok": false,
+     "error": "지정된 경로를 찾을 수 없습니다. (os error 3)"
+    },
+    "badName": {
+     "ok": false,
+     "error": "올바른 이름이 아니에요"
+    }
+   },
+   "topLevelWindows": "AgentCodeGUI3",
+   "gitRows": [
+    "M:huge.txt",
+    "A:newdir/(u)",
+    "A:secret.json.png(u)"
+   ],
+   "commitKo": {
+    "ok": false,
+    "error": "On branch main"
+   },
+   "commitOnDisk": {
+    "subject": "base",
+    "body": ""
+   },
+   "reveal": {
+    "before": "",
+    "after": "file:///C:/Users/User/AppData/Local/Temp/ccg-m6c-work",
+    "opened": true
+   }
+  }
+ ],
+ "live_ab_2": [
+  {
+   "app": "electron",
+   "baseline": {
+    "latencies": [
+     0,
+     1,
+     1,
+     1,
+     1,
+     2,
+     13,
+     1
+    ],
+    "max": 13
+   },
+   "duringFetch": {
+    "latencies": [
+     6,
+     9,
+     2,
+     1,
+     1,
+     28,
+     3,
+     1
+    ],
+    "max": 28,
+    "stillPending": true
+   },
+   "bigTree": {
+    "files": 6000,
+    "walkMs": 17,
+    "dirRows": 300,
+    "dirMs": 2,
+    "duringWalk": [
+     0,
+     0,
+     0,
+     0,
+     0
+    ]
+   },
+   "commitKo": {
+    "ok": true
+   },
+   "onDisk": {
+    "subject": "한글 커밋 제목 🎉 — 대시",
+    "body": "본문 첫 줄\n본문 둘째 줄",
+    "files": [
+     "normal.txt",
+     "\"\\355\\225\\234\\352\\270\\200 \\355\\214\\214\\354\\235\\274.txt\""
+    ]
+   },
+   "commitNothing": {
+    "ok": false,
+    "error": "On branch main"
+   }
+  },
+  {
+   "app": "tauri",
+   "baseline": {
+    "latencies": [
+     1,
+     1,
+     1,
+     2,
+     1,
+     1,
+     1,
+     2
+    ],
+    "max": 2
+   },
+   "duringFetch": {
+    "latencies": [
+     2,
+     2,
+     1,
+     2,
+     2,
+     2,
+     1,
+     2
+    ],
+    "max": 2,
+    "stillPending": true
+   },
+   "bigTree": {
+    "files": 6000,
+    "walkMs": 8,
+    "dirRows": 300,
+    "dirMs": 1,
+    "duringWalk": [
+     0,
+     0,
+     0,
+     0,
+     0
+    ]
+   },
+   "commitKo": {
+    "ok": true
+   },
+   "onDisk": {
+    "subject": "한글 커밋 제목 🎉 — 대시",
+    "body": "본문 첫 줄\n본문 둘째 줄",
+    "files": [
+     "normal.txt",
+     "\"\\355\\225\\234\\352\\270\\200 \\355\\214\\214\\354\\235\\274.txt\""
+    ]
+   },
+   "commitNothing": {
+    "ok": false,
+    "error": "On branch main"
+   }
+  }
+ ],
+ "collate": {
+  "results": [
+   {
+    "label": "realish-30 (빌더 주장 자리)",
+    "sets": 600,
+    "mismatch": 23,
+    "pct": 3.8,
+    "examples": [
+     {
+      "input": [
+       "README.md",
+       "app",
+       "APP",
+       "crates",
+       "App.tsx",
+       "작업기록",
+       "설계노트.md"
+      ],
+      "rust": [
+       "설계노트.md",
+       "작업기록",
+       "APP",
+       "app",
+       "App.tsx",
+       "crates",
+       "README.md"
+      ],
+      "node": [
+       "설계노트.md",
+       "작업기록",
+       "app",
+       "APP",
+       "App.tsx",
+       "crates",
+       "README.md"
+      ]
+     },
+     {
+      "input": [
+       "index.ts",
+       "bench",
+       "Bench",
+       "package.json",
+       "App.tsx",
+       "scripts",
+       "node_modules",
+       "10-tenth",
+       "작업기록"
+      ],
+      "rust": [
+       "10-tenth",
+       "작업기록",
+       "App.tsx",
+       "Bench",
+       "bench",
+       "index.ts",
+       "node_modules",
+       "package.json",
+       "scripts"
+      ],
+      "node": [
+       "10-tenth",
+       "작업기록",
+       "App.tsx",
+       "bench",
+       "Bench",
+       "index.ts",
+       "node_modules",
+       "package.json",
+       "scripts"
+      ]
+     },
+     {
+      "input": [
+       "Cargo.toml",
+       "café.txt",
+       "progress",
+       "app",
+       "APP",
+       "main.rs",
+       "src"
+      ],
+      "rust": [
+       "APP",
+       "app",
+       "café.txt",
+       "Cargo.toml",
+       "main.rs",
+       "progress",
+       "src"
+      ],
+      "node": [
+       "app",
+       "APP",
+       "café.txt",
+       "Cargo.toml",
+       "main.rs",
+       "progress",
+       "src"
+      ]
+     },
+     {
+      "input": [
+       "bench",
+       "10-tenth",
+       "package.json",
+       "APP",
+       "Cargo.toml",
+       "App.tsx",
+       "Bench"
+      ],
+      "rust": [
+       "10-tenth",
+       "APP",
+       "App.tsx",
+       "Bench",
+       "bench",
+       "Cargo.toml",
+       "package.json"
+      ],
+      "node": [
+       "10-tenth",
+       "APP",
+       "App.tsx",
+       "bench",
+       "Bench",
+       "Cargo.toml",
+       "package.json"
+      ]
+     },
+     {
+      "input": [
+       "문서",
+       "작업기록",
+       "app",
+       "한글폴더",
+       "APP",
+       "package.json",
+       "가나다"
+      ],
+      "rust": [
+       "가나다",
+       "문서",
+       "작업기록",
+       "한글폴더",
+       "APP",
+       "app",
+       "package.json"
+      ],
+      "node": [
+       "가나다",
+       "문서",
+       "작업기록",
+       "한글폴더",
+       "app",
+       "APP",
+       "package.json"
+      ]
+     },
+     {
+      "input": [
+       "bench",
+       "Bench",
+       "가나다",
+       "café.txt",
+       "node_modules"
+      ],
+      "rust": [
+       "가나다",
+       "Bench",
+       "bench",
+       "café.txt",
+       "node_modules"
+      ],
+      "node": [
+       "가나다",
+       "bench",
+       "Bench",
+       "café.txt",
+       "node_modules"
+      ]
+     }
+    ]
+   },
+   {
+    "label": "real-machine-names",
+    "sets": 600,
+    "mismatch": 1,
+    "pct": 0.2,
+    "examples": [
+     {
+      "input": [
+       "m1-report.md",
+       ".omnisharp",
+       "app",
+       ".bench-home-gpu-tauri",
+       "App"
+      ],
+      "rust": [
+       ".bench-home-gpu-tauri",
+       ".omnisharp",
+       "App",
+       "app",
+       "m1-report.md"
+      ],
+      "node": [
+       ".bench-home-gpu-tauri",
+       ".omnisharp",
+       "app",
+       "App",
+       "m1-report.md"
+      ]
+     }
+    ]
+   },
+   {
+    "label": "hard-but-real (한글·이모지·전각·부호)",
+    "sets": 600,
+    "mismatch": 192,
+    "pct": 32,
+    "examples": [
+     {
+      "input": [
+       "🎉릴리즈노트.md",
+       "3주차 회의록.md",
+       "ＦＵＬＬ幅.txt",
+       "설계-v2.md",
+       "(초안) 기획.md",
+       "a b  c.txt",
+       "Ångström.csv",
+       "ひらがな.txt",
+       "힣.txt",
+       "ÖNORM.pdf"
+      ],
+      "rust": [
+       "(초안) 기획.md",
+       "🎉릴리즈노트.md",
+       "3주차 회의록.md",
+       "설계-v2.md",
+       "힣.txt",
+       "a b  c.txt",
+       "Ångström.csv",
+       "ÖNORM.pdf",
+       "ひらがな.txt",
+       "ＦＵＬＬ幅.txt"
+      ],
+      "node": [
+       "(초안) 기획.md",
+       "🎉릴리즈노트.md",
+       "3주차 회의록.md",
+       "설계-v2.md",
+       "힣.txt",
+       "a b  c.txt",
+       "Ångström.csv",
+       "ＦＵＬＬ幅.txt",
+       "ÖNORM.pdf",
+       "ひらがな.txt"
+      ]
+     },
+     {
+      "input": [
+       "ひらがな.txt",
+       "설계-v2.md",
+       "カタカナ.txt",
+       "가.txt",
+       "ÖNORM.pdf",
+       "漢字문서.md",
+       "🎉릴리즈노트.md",
+       "3주차 회의록.md",
+       ".env.local"
+      ],
+      "rust": [
+       ".env.local",
+       "🎉릴리즈노트.md",
+       "3주차 회의록.md",
+       "가.txt",
+       "설계-v2.md",
+       "漢字문서.md",
+       "ÖNORM.pdf",
+       "ひらがな.txt",
+       "カタカナ.txt"
+      ],
+      "node": [
+       ".env.local",
+       "🎉릴리즈노트.md",
+       "3주차 회의록.md",
+       "가.txt",
+       "설계-v2.md",
+       "漢字문서.md",
+       "ÖNORM.pdf",
+       "カタカナ.txt",
+       "ひらがな.txt"
+      ]
+     },
+     {
+      "input": [
+       "Ω-omega.txt",
+       "ＦＵＬＬ幅.txt",
+       "ㄱ.txt",
+       "æther.txt",
+       "설계.v2.md",
+       "ひらがな.txt",
+       "Ж-zhe.txt"
+      ],
+      "rust": [
+       "ㄱ.txt",
+       "설계.v2.md",
+       "æther.txt",
+       "Ω-omega.txt",
+       "Ж-zhe.txt",
+       "ひらがな.txt",
+       "ＦＵＬＬ幅.txt"
+      ],
+      "node": [
+       "ㄱ.txt",
+       "설계.v2.md",
+       "æther.txt",
+       "ＦＵＬＬ幅.txt",
+       "Ω-omega.txt",
+       "Ж-zhe.txt",
+       "ひらがな.txt"
+      ]
+     },
+     {
+      "input": [
+       "~임시.txt",
+       "힣.txt",
+       "カタカナ.txt",
+       "ＦＵＬＬ幅.txt",
+       "changelog.md",
+       "3주차 회의록.md",
+       "CHANGELOG.md",
+       "설계_v2.md"
+      ],
+      "rust": [
+       "~임시.txt",
+       "3주차 회의록.md",
+       "설계_v2.md",
+       "힣.txt",
+       "CHANGELOG.md",
+       "changelog.md",
+       "カタカナ.txt",
+       "ＦＵＬＬ幅.txt"
+      ],
+      "node": [
+       "~임시.txt",
+       "3주차 회의록.md",
+       "설계_v2.md",
+       "힣.txt",
+       "changelog.md",
+       "CHANGELOG.md",
+       "ＦＵＬＬ幅.txt",
+       "カタカナ.txt"
+      ]
+     },
+     {
+      "input": [
+       "Ångström.csv",
+       "🎉릴리즈노트.md",
+       "한글 파일.txt",
+       "😀emoji.txt",
+       "中文档案.txt"
+      ],
+      "rust": [
+       "🎉릴리즈노트.md",
+       "😀emoji.txt",
+       "한글 파일.txt",
+       "中文档案.txt",
+       "Ångström.csv"
+      ],
+      "node": [
+       "🎉릴리즈노트.md",
+       "😀emoji.txt",
+       "中文档案.txt",
+       "한글 파일.txt",
+       "Ångström.csv"
+      ]
+     },
+     {
+      "input": [
+       "naïve.js",
+       "ÖNORM.pdf",
+       "_private.env",
+       "~임시.txt",
+       "changelog.md",
+       "漢字문서.md",
+       "힣.txt",
+       "Ж-zhe.txt",
+       "Ångström.csv"
+      ],
+      "rust": [
+       "_private.env",
+       "~임시.txt",
+       "힣.txt",
+       "漢字문서.md",
+       "Ångström.csv",
+       "changelog.md",
+       "naïve.js",
+       "ÖNORM.pdf",
+       "Ж-zhe.txt"
+      ],
+      "node": [
+       "_private.env",
+       "~임시.txt",
+       "漢字문서.md",
+       "힣.txt",
+       "Ångström.csv",
+       "changelog.md",
+       "naïve.js",
+       "ÖNORM.pdf",
+       "Ж-zhe.txt"
+      ]
+     }
+    ]
+   },
+   {
+    "label": "random-soup",
+    "sets": 400,
+    "mismatch": 90,
+    "pct": 22.5,
+    "examples": [
+     {
+      "input": [
+       ")Êフ퀳큿",
+       "똋쀬",
+       "툟浍",
+       "뷅",
+       "摠팃;"
+      ],
+      "rust": [
+       ")Êフ퀳큿",
+       "똋쀬",
+       "뷅",
+       "툟浍",
+       "摠팃;"
+      ],
+      "node": [
+       ")Êフ퀳큿",
+       "똋쀬",
+       "뷅",
+       "摠팃;",
+       "툟浍"
+      ]
+     },
+     {
+      "input": [
+       "摠팃;",
+       "Ç硥",
+       "#과폠ヰ",
+       "뷅",
+       "膊ñほ",
+       ")Êフ퀳큿"
+      ],
+      "rust": [
+       ")Êフ퀳큿",
+       "#과폠ヰ",
+       "뷅",
+       "摠팃;",
+       "膊ñほ",
+       "Ç硥"
+      ],
+      "node": [
+       ")Êフ퀳큿",
+       "#과폠ヰ",
+       "膊ñほ",
+       "뷅",
+       "摠팃;",
+       "Ç硥"
+      ]
+     },
+     {
+      "input": [
+       "츚ヨ",
+       "y낅",
+       "õれe村",
+       "膊ñほ",
+       "똋쀬",
+       "涵gj챐领"
+      ],
+      "rust": [
+       "똋쀬",
+       "츚ヨ",
+       "涵gj챐领",
+       "膊ñほ",
+       "õれe村",
+       "y낅"
+      ],
+      "node": [
+       "똋쀬",
+       "膊ñほ",
+       "츚ヨ",
+       "涵gj챐领",
+       "õれe村",
+       "y낅"
+      ]
+     },
+     {
+      "input": [
+       "툟浍",
+       "#과폠ヰ",
+       "Â쩑퉏ÈÅ",
+       "ボÓ",
+       "츚ヨ",
+       "뷅",
+       "摠팃;",
+       "膊ñほ",
+       ")Êフ퀳큿"
+      ],
+      "rust": [
+       ")Êフ퀳큿",
+       "#과폠ヰ",
+       "뷅",
+       "츚ヨ",
+       "툟浍",
+       "摠팃;",
+       "膊ñほ",
+       "Â쩑퉏ÈÅ",
+       "ボÓ"
+      ],
+      "node": [
+       ")Êフ퀳큿",
+       "#과폠ヰ",
+       "膊ñほ",
+       "뷅",
+       "摠팃;",
+       "츚ヨ",
+       "툟浍",
+       "Â쩑퉏ÈÅ",
+       "ボÓ"
+      ]
+     },
+     {
+      "input": [
+       "膊ñほ",
+       "뷅",
+       "NÌE\\乜"
+      ],
+      "rust": [
+       "뷅",
+       "膊ñほ",
+       "NÌE\\乜"
+      ],
+      "node": [
+       "膊ñほ",
+       "뷅",
+       "NÌE\\乜"
+      ]
+     },
+     {
+      "input": [
+       "츚ヨ",
+       "ヺs镴あ栭",
+       "똋쀬",
+       "x",
+       "涵gj챐领",
+       "Ç硥",
+       "Â쩑퉏ÈÅ",
+       "摠팃;"
+      ],
+      "rust": [
+       "똋쀬",
+       "츚ヨ",
+       "摠팃;",
+       "涵gj챐领",
+       "Â쩑퉏ÈÅ",
+       "Ç硥",
+       "x",
+       "ヺs镴あ栭"
+      ],
+      "node": [
+       "똋쀬",
+       "摠팃;",
+       "츚ヨ",
+       "涵gj챐领",
+       "Â쩑퉏ÈÅ",
+       "Ç硥",
+       "x",
+       "ヺs镴あ栭"
+      ]
+     }
+    ]
+   }
+  ],
+  "whole": {
+   "realish": {
+    "identical": false,
+    "firstDiffIndex": 11,
+    "rustAround": [
+     "한글폴더",
+     "APP",
+     "app",
+     "App.tsx",
+     "Bench"
+    ],
+    "nodeAround": [
+     "한글폴더",
+     "app",
+     "APP",
+     "App.tsx",
+     "bench"
+    ]
+   },
+   "hard": {
+    "identical": false,
+    "firstDiffIndex": 15,
+    "rustAround": [
+     "설계.v2.md",
+     "한글 파일.txt",
+     "힣.txt",
+     "中文档案.txt",
+     "漢字문서.md"
+    ],
+    "nodeAround": [
+     "설계.v2.md",
+     "中文档案.txt",
+     "한글 파일.txt",
+     "漢字문서.md",
+     "힣.txt"
+    ]
+   },
+   "machine": {
+    "identical": false,
+    "firstDiffIndex": 66,
+    "rustAround": [
+     "api",
+     "App",
+     "app",
+     "App.tsx",
+     "AppData"
+    ],
+    "nodeAround": [
+     "api",
+     "app",
+     "App",
+     "App.tsx",
+     "AppData"
+    ]
+   }
+  }
+ },
+ "m6_detached": {
+  "electron": {
+   "app": "electron",
+   "version": "2.6.2",
+   "at": "2026-08-23T00:14:11.473Z",
+   "work": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-m6-repo",
+   "checks": [
+    {
+     "id": "explorer-tree",
+     "ok": true,
+     "ms": 378,
+     "detail": {
+      "rows": 28,
+      "first": [
+       ".github",
+       "app",
+       "bench",
+       "crates",
+       "docs",
+       "progress",
+       "scripts",
+       "src"
+      ]
+     }
+    },
+    {
+     "id": "explorer-git-strip",
+     "ok": true,
+     "ms": 1,
+     "detail": {
+      "branch": "HEAD 분리됨",
+      "pills": [
+       "●65"
+      ]
+     }
+    },
+    {
+     "id": "viewer-code-read",
+     "ok": true,
+     "ms": 1651,
+     "detail": {
+      "cmLines": 36,
+      "head": [
+       "{",
+       "\"name\": \"agent-code-gui\",",
+       "\"version\": \"2.6.2\","
+      ]
+     }
+    },
+    {
+     "id": "viewer-markdown",
+     "ok": true,
+     "ms": 1300,
+     "detail": {
+      "chars": 6543
+     }
+    },
+    {
+     "id": "git-changes",
+     "ok": true,
+     "ms": 751,
+     "detail": {
+      "rows": 0,
+      "sample": [
+       "Git",
+       "HEAD 분리됨",
+       "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-m6-repo",
+       "갱신하기",
+       "당겨오기",
+       "올리기",
+       "보기",
+       "변경",
+       "65",
+       "히스토리",
+       "브랜치",
+       "새 브랜치…"
+      ]
+     }
+    },
+    {
+     "id": "git-history",
+     "ok": true,
+     "ms": 276,
+     "detail": {
+      "commits": 100
+     }
+    },
+    {
+     "id": "git-commit-detail",
+     "ok": true,
+     "ms": 133,
+     "detail": {
+      "chars": 3699,
+      "head": "M6 R1 — 탐색기·코드 뷰어·Git을 껍데기에서 꺼냈다 (fs/git 채널 24개 + ccg-fs 크레이"
+     }
+    },
+    {
+     "id": "big-diff-thousands",
+     "ok": true,
+     "ms": 111,
+     "detail": {
+      "add": 500,
+      "del": 500,
+      "lines": 8500,
+      "ms": 111
+     }
+    },
+    {
+     "id": "big-diff-cap-folds",
+     "ok": true,
+     "ms": 83,
+     "detail": {
+      "error": "파일이 너무 커요 — diff 표시는 1.5MB까지만"
+     }
+    },
+    {
+     "id": "alive-after-big-diff",
+     "ok": true,
+     "ms": 1,
+     "detail": {
+      "treeRows": 28
+     }
+    },
+    {
+     "id": "channel-surface",
+     "ok": false,
+     "ms": 136,
+     "error": "branches 실패: {\"listDir\":30,\"dirsFirst\":true,\"listFiles\":787,\"readChars\":3606,\"readErr\":null,\"repo\":true,\"branch\":\"HEAD 분리됨\",\"changed\":65,\"hasRemote\":true,\"repos\":1,\"branches\":0,\"logCommits\":5,\"logMore\":true}"
+    },
+    {
+     "id": "file-ops-write-path",
+     "ok": true,
+     "ms": 393,
+     "detail": {
+      "made": true,
+      "wrote": true,
+      "back": "hello\nworld\n",
+      "renamed": true,
+      "dupRefused": true,
+      "moved": true,
+      "escapeRefused": true,
+      "gone": true,
+      "swept": true
+     }
+    },
+    {
+     "id": "local-image-scheme",
+     "ok": true,
+     "ms": 11,
+     "detail": {
+      "ok": true,
+      "w": 1472,
+      "h": 991
+     }
+    },
+    {
+     "id": "lsp-status-m7-boundary",
+     "ok": true,
+     "ms": 1,
+     "detail": {
+      "status": "ready",
+      "note": "2.6.2 기준"
+     }
+    }
+   ],
+   "summary": {
+    "total": 14,
+    "ok": 13,
+    "failed": 1
+   }
+  },
+  "tauri": {
+   "app": "tauri",
+   "version": "3.0.0-beta.1",
+   "at": "2026-08-23T00:14:21.963Z",
+   "work": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-m6-repo",
+   "checks": [
+    {
+     "id": "explorer-tree",
+     "ok": true,
+     "ms": 375,
+     "detail": {
+      "rows": 28,
+      "first": [
+       ".github",
+       "app",
+       "bench",
+       "crates",
+       "docs",
+       "progress",
+       "scripts",
+       "src"
+      ]
+     }
+    },
+    {
+     "id": "explorer-git-strip",
+     "ok": true,
+     "ms": 2,
+     "detail": {
+      "branch": "HEAD 분리됨",
+      "pills": [
+       "●65"
+      ]
+     }
+    },
+    {
+     "id": "viewer-code-read",
+     "ok": true,
+     "ms": 1659,
+     "detail": {
+      "cmLines": 36,
+      "head": [
+       "{",
+       "\"name\": \"agent-code-gui\",",
+       "\"version\": \"2.6.2\","
+      ]
+     }
+    },
+    {
+     "id": "viewer-markdown",
+     "ok": true,
+     "ms": 1299,
+     "detail": {
+      "chars": 6543
+     }
+    },
+    {
+     "id": "git-changes",
+     "ok": true,
+     "ms": 752,
+     "detail": {
+      "rows": 0,
+      "sample": [
+       "Git",
+       "HEAD 분리됨",
+       "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-m6-repo",
+       "갱신하기",
+       "당겨오기",
+       "올리기",
+       "보기",
+       "변경",
+       "65",
+       "히스토리",
+       "브랜치",
+       "새 브랜치…"
+      ]
+     }
+    },
+    {
+     "id": "git-history",
+     "ok": true,
+     "ms": 130,
+     "detail": {
+      "commits": 100
+     }
+    },
+    {
+     "id": "git-commit-detail",
+     "ok": true,
+     "ms": 136,
+     "detail": {
+      "chars": 3699,
+      "head": "M6 R1 — 탐색기·코드 뷰어·Git을 껍데기에서 꺼냈다 (fs/git 채널 24개 + ccg-fs 크레이"
+     }
+    },
+    {
+     "id": "big-diff-thousands",
+     "ok": true,
+     "ms": 68,
+     "detail": {
+      "add": 500,
+      "del": 500,
+      "lines": 8500,
+      "ms": 68
+     }
+    },
+    {
+     "id": "big-diff-cap-folds",
+     "ok": true,
+     "ms": 48,
+     "detail": {
+      "error": "파일이 너무 커요 — diff 표시는 1.5MB까지만"
+     }
+    },
+    {
+     "id": "alive-after-big-diff",
+     "ok": true,
+     "ms": 0,
+     "detail": {
+      "treeRows": 28
+     }
+    },
+    {
+     "id": "channel-surface",
+     "ok": false,
+     "ms": 95,
+     "error": "branches 실패: {\"listDir\":30,\"dirsFirst\":true,\"listFiles\":787,\"readChars\":3606,\"readErr\":null,\"repo\":true,\"branch\":\"HEAD 분리됨\",\"changed\":65,\"hasRemote\":true,\"repos\":1,\"branches\":0,\"logCommits\":5,\"logMore\":true}"
+    },
+    {
+     "id": "file-ops-write-path",
+     "ok": true,
+     "ms": 118,
+     "detail": {
+      "made": true,
+      "wrote": true,
+      "back": "hello\nworld\n",
+      "renamed": true,
+      "dupRefused": true,
+      "moved": true,
+      "escapeRefused": true,
+      "gone": true,
+      "swept": true
+     }
+    },
+    {
+     "id": "channel-audit",
+     "ok": true,
+     "ms": 504,
+     "detail": {
+      "probed": 22,
+      "ok": 20,
+      "unimplemented": [
+       "fs:html-preview-url=unimplemented",
+       "git:ai-message=unimplemented"
+      ]
+     }
+    },
+    {
+     "id": "local-image-scheme",
+     "ok": true,
+     "ms": 3,
+     "detail": {
+      "ok": true,
+      "w": 1472,
+      "h": 991
+     }
+    },
+    {
+     "id": "lsp-status-m7-boundary",
+     "ok": true,
+     "ms": 1,
+     "detail": {
+      "status": "unsupported",
+      "note": "M7까지 의도된 미지원"
+     }
+    }
+   ],
+   "summary": {
+    "total": 15,
+    "ok": 14,
+    "failed": 1
+   }
+  }
+ },
+ "m6_branch": {
+  "electron": {
+   "app": "electron",
+   "version": "2.6.2",
+   "at": "2026-08-23T00:15:37.133Z",
+   "work": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-m6-repo",
+   "checks": [
+    {
+     "id": "explorer-tree",
+     "ok": true,
+     "ms": 375,
+     "detail": {
+      "rows": 28,
+      "first": [
+       ".github",
+       "app",
+       "bench",
+       "crates",
+       "docs",
+       "progress",
+       "scripts",
+       "src"
+      ]
+     }
+    },
+    {
+     "id": "explorer-git-strip",
+     "ok": true,
+     "ms": 1,
+     "detail": {
+      "branch": "feature/3.0.0-beta",
+      "pills": [
+       "●65",
+       "↑1"
+      ]
+     }
+    },
+    {
+     "id": "viewer-code-read",
+     "ok": true,
+     "ms": 1668,
+     "detail": {
+      "cmLines": 36,
+      "head": [
+       "{",
+       "\"name\": \"agent-code-gui\",",
+       "\"version\": \"2.6.2\","
+      ]
+     }
+    },
+    {
+     "id": "viewer-markdown",
+     "ok": true,
+     "ms": 1292,
+     "detail": {
+      "chars": 6543
+     }
+    },
+    {
+     "id": "git-changes",
+     "ok": true,
+     "ms": 750,
+     "detail": {
+      "rows": 0,
+      "sample": [
+       "Git",
+       "feature/3.0.0-beta",
+       "↑1",
+       "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-m6-repo",
+       "갱신하기",
+       "당겨오기",
+       "올리기 ↑1",
+       "보기",
+       "변경",
+       "65",
+       "히스토리",
+       "브랜치"
+      ]
+     }
+    },
+    {
+     "id": "git-history",
+     "ok": true,
+     "ms": 164,
+     "detail": {
+      "commits": 100
+     }
+    },
+    {
+     "id": "git-commit-detail",
+     "ok": true,
+     "ms": 140,
+     "detail": {
+      "chars": 241,
+      "head": "진행 페이지 — R13 착지(큐 소유권·이벤트 9종·M6 개통·확인 0불일치) + R14 착수(Priv 게이"
+     }
+    },
+    {
+     "id": "big-diff-thousands",
+     "ok": true,
+     "ms": 77,
+     "detail": {
+      "add": 500,
+      "del": 500,
+      "lines": 8500,
+      "ms": 77
+     }
+    },
+    {
+     "id": "big-diff-cap-folds",
+     "ok": true,
+     "ms": 54,
+     "detail": {
+      "error": "파일이 너무 커요 — diff 표시는 1.5MB까지만"
+     }
+    },
+    {
+     "id": "alive-after-big-diff",
+     "ok": true,
+     "ms": 1,
+     "detail": {
+      "treeRows": 28
+     }
+    },
+    {
+     "id": "channel-surface",
+     "ok": true,
+     "ms": 82,
+     "detail": {
+      "listDir": 30,
+      "dirsFirst": true,
+      "listFiles": 790,
+      "readChars": 3606,
+      "readErr": null,
+      "repo": true,
+      "branch": "feature/3.0.0-beta",
+      "changed": 65,
+      "hasRemote": true,
+      "repos": 1,
+      "branches": 1,
+      "logCommits": 5,
+      "logMore": true
+     }
+    },
+    {
+     "id": "file-ops-write-path",
+     "ok": true,
+     "ms": 221,
+     "detail": {
+      "made": true,
+      "wrote": true,
+      "back": "hello\nworld\n",
+      "renamed": true,
+      "dupRefused": true,
+      "moved": true,
+      "escapeRefused": true,
+      "gone": true,
+      "swept": true
+     }
+    },
+    {
+     "id": "local-image-scheme",
+     "ok": true,
+     "ms": 11,
+     "detail": {
+      "ok": true,
+      "w": 1472,
+      "h": 991
+     }
+    },
+    {
+     "id": "lsp-status-m7-boundary",
+     "ok": true,
+     "ms": 1,
+     "detail": {
+      "status": "ready",
+      "note": "2.6.2 기준"
+     }
+    }
+   ],
+   "summary": {
+    "total": 14,
+    "ok": 14,
+    "failed": 0
+   }
+  },
+  "tauri": {
+   "app": "tauri",
+   "version": "3.0.0-beta.1",
+   "at": "2026-08-23T00:15:47.377Z",
+   "work": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-m6-repo",
+   "checks": [
+    {
+     "id": "explorer-tree",
+     "ok": true,
+     "ms": 377,
+     "detail": {
+      "rows": 28,
+      "first": [
+       ".github",
+       "app",
+       "bench",
+       "crates",
+       "docs",
+       "progress",
+       "scripts",
+       "src"
+      ]
+     }
+    },
+    {
+     "id": "explorer-git-strip",
+     "ok": true,
+     "ms": 1,
+     "detail": {
+      "branch": "feature/3.0.0-beta",
+      "pills": [
+       "●65",
+       "↑1"
+      ]
+     }
+    },
+    {
+     "id": "viewer-code-read",
+     "ok": true,
+     "ms": 1663,
+     "detail": {
+      "cmLines": 36,
+      "head": [
+       "{",
+       "\"name\": \"agent-code-gui\",",
+       "\"version\": \"2.6.2\","
+      ]
+     }
+    },
+    {
+     "id": "viewer-markdown",
+     "ok": true,
+     "ms": 1302,
+     "detail": {
+      "chars": 6543
+     }
+    },
+    {
+     "id": "git-changes",
+     "ok": true,
+     "ms": 744,
+     "detail": {
+      "rows": 0,
+      "sample": [
+       "Git",
+       "feature/3.0.0-beta",
+       "↑1",
+       "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-m6-repo",
+       "갱신하기",
+       "당겨오기",
+       "올리기 ↑1",
+       "보기",
+       "변경",
+       "65",
+       "히스토리",
+       "브랜치"
+      ]
+     }
+    },
+    {
+     "id": "git-history",
+     "ok": true,
+     "ms": 128,
+     "detail": {
+      "commits": 100
+     }
+    },
+    {
+     "id": "git-commit-detail",
+     "ok": true,
+     "ms": 128,
+     "detail": {
+      "chars": 241,
+      "head": "진행 페이지 — R13 착지(큐 소유권·이벤트 9종·M6 개통·확인 0불일치) + R14 착수(Priv 게이"
+     }
+    },
+    {
+     "id": "big-diff-thousands",
+     "ok": true,
+     "ms": 70,
+     "detail": {
+      "add": 500,
+      "del": 500,
+      "lines": 8500,
+      "ms": 70
+     }
+    },
+    {
+     "id": "big-diff-cap-folds",
+     "ok": true,
+     "ms": 66,
+     "detail": {
+      "error": "파일이 너무 커요 — diff 표시는 1.5MB까지만"
+     }
+    },
+    {
+     "id": "alive-after-big-diff",
+     "ok": true,
+     "ms": 1,
+     "detail": {
+      "treeRows": 28
+     }
+    },
+    {
+     "id": "channel-surface",
+     "ok": true,
+     "ms": 96,
+     "detail": {
+      "listDir": 30,
+      "dirsFirst": true,
+      "listFiles": 790,
+      "readChars": 3606,
+      "readErr": null,
+      "repo": true,
+      "branch": "feature/3.0.0-beta",
+      "changed": 65,
+      "hasRemote": true,
+      "repos": 1,
+      "branches": 1,
+      "logCommits": 5,
+      "logMore": true
+     }
+    },
+    {
+     "id": "file-ops-write-path",
+     "ok": true,
+     "ms": 107,
+     "detail": {
+      "made": true,
+      "wrote": true,
+      "back": "hello\nworld\n",
+      "renamed": true,
+      "dupRefused": true,
+      "moved": true,
+      "escapeRefused": true,
+      "gone": true,
+      "swept": true
+     }
+    },
+    {
+     "id": "channel-audit",
+     "ok": true,
+     "ms": 508,
+     "detail": {
+      "probed": 22,
+      "ok": 20,
+      "unimplemented": [
+       "fs:html-preview-url=unimplemented",
+       "git:ai-message=unimplemented"
+      ]
+     }
+    },
+    {
+     "id": "local-image-scheme",
+     "ok": true,
+     "ms": 3,
+     "detail": {
+      "ok": true,
+      "w": 1472,
+      "h": 991
+     }
+    },
+    {
+     "id": "lsp-status-m7-boundary",
+     "ok": true,
+     "ms": 1,
+     "detail": {
+      "status": "unsupported",
+      "note": "M7까지 의도된 미지원"
+     }
+    }
+   ],
+   "summary": {
+    "total": 15,
+    "ok": 15,
+    "failed": 0
+   }
+  }
+ },
+ "ab_electron": [
+  {
+   "id": "explorer-tree",
+   "ok": true,
+   "error": null
+  },
+  {
+   "id": "explorer-settings-foot",
+   "ok": true,
+   "error": null
+  },
+  {
+   "id": "explorer-git-strip",
+   "ok": true,
+   "error": null
+  },
+  {
+   "id": "explorer-search",
+   "ok": true,
+   "error": null
+  },
+  {
+   "id": "explorer-search-empty",
+   "ok": true,
+   "error": null
+  },
+  {
+   "id": "explorer-hidden-on",
+   "ok": true,
+   "error": null
+  },
+  {
+   "id": "explorer-ctx-menu",
+   "ok": true,
+   "error": null
+  },
+  {
+   "id": "explorer-fileop",
+   "ok": true,
+   "error": null
+  },
+  {
+   "id": "explorer-notice",
+   "ok": true,
+   "error": null
+  },
+  {
+   "id": "explorer-fileop-delete",
+   "ok": true,
+   "error": null
+  },
+  {
+   "id": "explorer-blank",
+   "ok": true,
+   "error": null
+  },
+  {
+   "id": "changed-files-modal",
+   "ok": true,
+   "error": null
+  },
+  {
+   "id": "viewer-code-read",
+   "ok": true,
+   "error": null
+  },
+  {
+   "id": "viewer-diff-on",
+   "ok": true,
+   "error": null
+  },
+  {
+   "id": "viewer-code-edit",
+   "ok": true,
+   "error": null
+  },
+  {
+   "id": "viewer-cm-find",
+   "ok": true,
+   "error": null
+  },
+  {
+   "id": "viewer-code-dirty",
+   "ok": true,
+   "error": null
+  },
+  {
+   "id": "viewer-close-confirm",
+   "ok": true,
+   "error": null
+  },
+  {
+   "id": "viewer-code-saved",
+   "ok": true,
+   "error": null
+  },
+  {
+   "id": "viewer-save-error",
+   "ok": true,
+   "error": null
+  },
+  {
+   "id": "viewer-markdown-preview",
+   "ok": true,
+   "error": null
+  },
+  {
+   "id": "viewer-markdown-source",
+   "ok": true,
+   "error": null
+  },
+  {
+   "id": "viewer-find",
+   "ok": true,
+   "error": null
+  },
+  {
+   "id": "viewer-image",
+   "ok": true,
+   "error": null
+  },
+  {
+   "id": "viewer-html-preview",
+   "ok": true,
+   "error": null
+  },
+  {
+   "id": "viewer-html-code",
+   "ok": true,
+   "error": null
+  },
+  {
+   "id": "viewer-svg-preview",
+   "ok": true,
+   "error": null
+  },
+  {
+   "id": "viewer-svg-source",
+   "ok": true,
+   "error": null
+  },
+  {
+   "id": "viewer-empty",
+   "ok": true,
+   "error": null
+  },
+  {
+   "id": "viewer-truncated",
+   "ok": true,
+   "error": null
+  },
+  {
+   "id": "viewer-loading",
+   "ok": false,
+   "error": "cdp timeout: Page.captureScreenshot"
+  },
+  {
+   "id": "viewer-selection-ask-bar",
+   "ok": false,
+   "error": "cdp timeout: Runtime.evaluate"
+  },
+  {
+   "id": "viewer-ask-panel",
+   "ok": true,
+   "error": null
+  },
+  {
+   "id": "viewer-header-ctx-menu",
+   "ok": true,
+   "error": null
+  },
+  {
+   "id": "viewer-maximized",
+   "ok": true,
+   "error": null
+  },
+  {
+   "id": "viewer-git-snapshot",
+   "ok": true,
+   "error": null
+  },
+  {
+   "id": "git-changes",
+   "ok": true,
+   "error": null
+  },
+  {
+   "id": "git-history",
+   "ok": true,
+   "error": null
+  },
+  {
+   "id": "git-commit-detail",
+   "ok": true,
+   "error": null
+  },
+  {
+   "id": "git-new-branch",
+   "ok": true,
+   "error": null
+  }
+ ],
+ "ab_tauri": [
+  {
+   "id": "explorer-tree",
+   "ok": true,
+   "error": null
+  },
+  {
+   "id": "explorer-settings-foot",
+   "ok": true,
+   "error": null
+  },
+  {
+   "id": "explorer-git-strip",
+   "ok": true,
+   "error": null
+  },
+  {
+   "id": "explorer-search",
+   "ok": true,
+   "error": null
+  },
+  {
+   "id": "explorer-search-empty",
+   "ok": true,
+   "error": null
+  },
+  {
+   "id": "explorer-hidden-on",
+   "ok": true,
+   "error": null
+  },
+  {
+   "id": "explorer-ctx-menu",
+   "ok": true,
+   "error": null
+  },
+  {
+   "id": "explorer-fileop",
+   "ok": true,
+   "error": null
+  },
+  {
+   "id": "explorer-notice",
+   "ok": true,
+   "error": null
+  },
+  {
+   "id": "explorer-fileop-delete",
+   "ok": true,
+   "error": null
+  },
+  {
+   "id": "explorer-blank",
+   "ok": true,
+   "error": null
+  },
+  {
+   "id": "changed-files-modal",
+   "ok": true,
+   "error": null
+  },
+  {
+   "id": "viewer-code-read",
+   "ok": true,
+   "error": null
+  },
+  {
+   "id": "viewer-diff-on",
+   "ok": true,
+   "error": null
+  },
+  {
+   "id": "viewer-code-edit",
+   "ok": true,
+   "error": null
+  },
+  {
+   "id": "viewer-cm-find",
+   "ok": true,
+   "error": null
+  },
+  {
+   "id": "viewer-code-dirty",
+   "ok": true,
+   "error": null
+  },
+  {
+   "id": "viewer-close-confirm",
+   "ok": true,
+   "error": null
+  },
+  {
+   "id": "viewer-code-saved",
+   "ok": true,
+   "error": null
+  },
+  {
+   "id": "viewer-save-error",
+   "ok": true,
+   "error": null
+  },
+  {
+   "id": "viewer-markdown-preview",
+   "ok": true,
+   "error": null
+  },
+  {
+   "id": "viewer-markdown-source",
+   "ok": true,
+   "error": null
+  },
+  {
+   "id": "viewer-find",
+   "ok": true,
+   "error": null
+  },
+  {
+   "id": "viewer-image",
+   "ok": false,
+   "error": "waitFor timeout: .fv-body .fv-imgview .fv-imgel (1)"
+  },
+  {
+   "id": "viewer-html-preview",
+   "ok": false,
+   "error": "waitFor timeout: .fv-body iframe.fv-htmlframe (1)"
+  },
+  {
+   "id": "viewer-html-code",
+   "ok": true,
+   "error": null
+  },
+  {
+   "id": "viewer-svg-preview",
+   "ok": false,
+   "error": "waitFor timeout: .fv-body .fv-imgview (1)"
+  },
+  {
+   "id": "viewer-svg-source",
+   "ok": true,
+   "error": null
+  },
+  {
+   "id": "viewer-empty",
+   "ok": true,
+   "error": null
+  },
+  {
+   "id": "viewer-truncated",
+   "ok": true,
+   "error": null
+  },
+  {
+   "id": "viewer-loading",
+   "ok": true,
+   "error": null
+  },
+  {
+   "id": "viewer-selection-ask-bar",
+   "ok": true,
+   "error": null
+  },
+  {
+   "id": "viewer-ask-panel",
+   "ok": true,
+   "error": null
+  },
+  {
+   "id": "viewer-header-ctx-menu",
+   "ok": true,
+   "error": null
+  },
+  {
+   "id": "viewer-maximized",
+   "ok": true,
+   "error": null
+  },
+  {
+   "id": "viewer-git-snapshot",
+   "ok": true,
+   "error": null
+  },
+  {
+   "id": "git-changes",
+   "ok": true,
+   "error": null
+  },
+  {
+   "id": "git-history",
+   "ok": true,
+   "error": null
+  },
+  {
+   "id": "git-commit-detail",
+   "ok": true,
+   "error": null
+  },
+  {
+   "id": "git-new-branch",
+   "ok": true,
+   "error": null
+  }
+ ]
+}
