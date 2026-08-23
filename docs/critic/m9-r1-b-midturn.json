@@ -1,0 +1,122 @@
+{
+ "at": "2026-08-23T13:56:10.280Z",
+ "exe": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-m9c-wt\\target\\release\\agentcodegui.exe",
+ "steps": {
+  "boot": {
+   "panels": 2,
+   "win": {
+    "w": 1320,
+    "h": 880
+   }
+  },
+  "A3": {
+   "midChip": {
+    "text": "1 · 1",
+    "tip": "MCP 1개 연결 · 스킬 1개 · 클릭해 자세히",
+    "redCount": false,
+    "w": 71
+   },
+   "endChip": {
+    "text": "0/1 · 1",
+    "tip": "MCP 0개 연결 · 1개 실패 · 스킬 1개 · 클릭해 자세히",
+    "redCount": true,
+    "w": 83
+   },
+   "evs": [
+    "srv-live:connected",
+    "srv-live:failed"
+   ]
+  },
+  "A4": {
+   "late": [
+    [
+     "(EMPTY) 이 폴더에 붙은 MCP 서버가 없어요"
+    ],
+    [
+     "/late-a | 늦게 온 설명 | 프로젝트"
+    ]
+   ],
+   "push": [
+    [
+     "(EMPTY) 이 폴더에 붙은 MCP 서버가 없어요"
+    ],
+    [
+     "/push-b | 설명 없음"
+    ]
+   ],
+   "evs": 5
+  },
+  "A5": {
+   "identitySet": {
+    "cmd": "identity_set",
+    "kind": "applied",
+    "reason": null,
+    "identity": {
+     "engine": {
+      "kind": "claude",
+      "model": "opus",
+      "effort": "xhigh"
+     },
+     "billing": {
+      "kind": "subscription",
+      "account": "fake@example.com",
+      "dropEnvKey": false
+     },
+     "cwd": "c:\\users\\user\\desktop",
+     "addDirs": [],
+     "mode": "auto",
+     "systemPrompt": null,
+     "outputStyle": null,
+     "tools": {
+      "skillOverrides": {
+       "skill-off": "disabled"
+      },
+      "deniedMcp": [
+       "srv-off"
+      ]
+     }
+    },
+    "revision": 1,
+    "changed": true
+   },
+   "c0": {
+    "text": "1 · 1",
+    "tip": "MCP 1개 연결 · 스킬 1개 · 클릭해 자세히",
+    "redCount": false,
+    "w": 71
+   },
+   "c1": {
+    "text": "1 · 1",
+    "tip": "MCP 1개 연결 · 스킬 1개 · 클릭해 자세히",
+    "redCount": false,
+    "w": 71
+   },
+   "p0": [
+    [
+     "srv-on | 연결됨 · echo | 도구 1"
+    ],
+    [
+     "/s-keep | 남는 스킬 | 프로젝트"
+    ]
+   ],
+   "p1": [
+    [
+     "srv-on | 연결됨 · echo | 도구 1"
+    ],
+    [
+     "/s-keep | 남는 스킬 | 프로젝트"
+    ]
+   ]
+  }
+ },
+ "findings": [
+  {
+   "id": "A4-push",
+   "why": "commands_changed 푸시가 화면까지 안 온다"
+  },
+  {
+   "id": "A5-offrow",
+   "why": "denied 패널에 off 행이 안 붙었다(실물 경로 미개통)"
+  }
+ ]
+}

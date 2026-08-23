@@ -1,0 +1,97 @@
+{
+ "engine": "0.3.241",
+ "gotInit": true,
+ "stderr": "",
+ "mcpServers": [
+  {
+   "name": "my.co tools",
+   "status": "connected"
+  },
+  {
+   "name": "srv__dbl",
+   "status": "connected"
+  },
+  {
+   "name": "한글서버",
+   "status": "connected"
+  },
+  {
+   "name": "emoji🚀srv",
+   "status": "connected"
+  },
+  {
+   "name": "UPPER-Case",
+   "status": "connected"
+  }
+ ],
+ "prefixes": [
+  "mcp________echo",
+  "mcp________ping",
+  "mcp__emoji__srv__echo",
+  "mcp__emoji__srv__ping",
+  "mcp__my_co_tools__echo",
+  "mcp__my_co_tools__ping",
+  "mcp__srv__dbl__echo",
+  "mcp__srv__dbl__ping",
+  "mcp__UPPER-Case__echo",
+  "mcp__UPPER-Case__ping"
+ ],
+ "rows": [
+  {
+   "name": "my.co tools",
+   "why": "점 + 공백 (wire.rs 단위 테스트가 가정한 바로 그 이름)",
+   "status": "connected",
+   "expectPrefix": "mcp__my_co_tools__",
+   "matched": [
+    "mcp__my_co_tools__echo",
+    "mcp__my_co_tools__ping"
+   ],
+   "ok": true
+  },
+  {
+   "name": "srv__dbl",
+   "why": "이름에 `__` — 접두사를 뒤에서 가르는 규칙의 근거",
+   "status": "connected",
+   "expectPrefix": "mcp__srv__dbl__",
+   "matched": [
+    "mcp__srv__dbl__echo",
+    "mcp__srv__dbl__ping"
+   ],
+   "ok": true
+  },
+  {
+   "name": "한글서버",
+   "why": "BMP 비ASCII (Rust chars == JS UTF-16 단위)",
+   "status": "connected",
+   "expectPrefix": "mcp________",
+   "matched": [
+    "mcp________echo",
+    "mcp________ping"
+   ],
+   "ok": true
+  },
+  {
+   "name": "emoji🚀srv",
+   "why": "비BMP — Rust `chars()` 1자 vs JS 정규식 2단위",
+   "status": "connected",
+   "expectPrefix": "mcp__emoji_srv__",
+   "matched": [],
+   "ok": false
+  },
+  {
+   "name": "UPPER-Case",
+   "why": "대문자 보존 여부",
+   "status": "connected",
+   "expectPrefix": "mcp__UPPER-Case__",
+   "matched": [
+    "mcp__UPPER-Case__echo",
+    "mcp__UPPER-Case__ping"
+   ],
+   "ok": true
+  }
+ ],
+ "unmatched": [
+  "mcp__emoji__srv__echo",
+  "mcp__emoji__srv__ping"
+ ]
+}

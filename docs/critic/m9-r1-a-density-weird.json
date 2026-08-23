@@ -1,0 +1,178 @@
+{
+ "at": "2026-08-23T13:54:45.715Z",
+ "exe": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-m9c-wt\\target\\release\\agentcodegui.exe",
+ "steps": {
+  "boot": {
+   "panels": 2,
+   "win": {
+    "w": 1320,
+    "h": 880
+   }
+  },
+  "A1": {
+   "chip": {
+    "text": "7/10 · 50",
+    "tip": "MCP 7개 연결 · 2개 실패 · 스킬 50개 · 클릭해 자세히",
+    "redCount": true,
+    "w": 95
+   },
+   "pop": {
+    "head": "도구 환경 | wA",
+    "geo": {
+     "w": 300,
+     "h": 340,
+     "scrollH": 3180,
+     "clientH": 338,
+     "rows": 60,
+     "rowH": 41,
+     "overflowX": 0,
+     "belowViewport": 0,
+     "visibleRows": 6
+    },
+    "secHeads": [
+     "MCP 서버 10/10",
+     "스킬 50/50"
+    ],
+    "longest": 130,
+    "sample": [
+     "srv-1 | 연결됨 · echo, ping, search | 도구 3",
+     "srv-2 | 연결됨 · echo, ping, search | 도구 3",
+     "srv-3 | 연결됨 · echo, ping, search | 도구 3",
+     "srv-4 | 연결됨 · echo, ping, search | 도구 3",
+     "srv-5 | 연결됨 · echo, ping, search | 도구 3",
+     "srv-6 | 연결됨 · echo, ping, search | 도구 3",
+     "srv-7 | 연결됨 · echo, ping, search | 도구 3",
+     "srv-dead | 연결 실패 · echo, ping, search | 도구 3",
+     "srv-auth | 인증 필요 · echo, ping, search | 도구 3",
+     "srv-wait | 연결 중 · echo, ping, search | 도구 3"
+    ]
+   }
+  },
+  "A2": {
+   "chip": {
+    "text": "4 · 5",
+    "tip": "MCP 4개 연결 · 스킬 5개 · 클릭해 자세히",
+    "redCount": false,
+    "w": 71
+   },
+   "rows": [
+    {
+     "head": "MCP 서버 5",
+     "rows": [
+      "my.co tools | 연결됨 · search | 도구 1",
+      "srv__dbl | 연결됨 · ping | 도구 1",
+      "Ω 유니코드 🚀 | 연결됨",
+      "srv-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx | 연결됨 · t1 | 도구 1",
+      "no-status-here | unknown"
+     ]
+    },
+    {
+     "head": "스킬 5",
+     "rows": [
+      "/dup-name | 중복 이름 스킬 | 프로젝트",
+      "/dup-name | 중복 이름 스킬 | 프로젝트",
+      "/myplug:skill | 플러그인 스킬 | 플러그인",
+      "/ 공백 | 설명 없음",
+      "/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx | 긴 이름 | 개인"
+     ]
+    },
+    {
+     "head": "플러그인 1",
+     "rows": [
+      "myplug | 1.2.3"
+     ]
+    }
+   ],
+   "geo": {
+    "w": 300,
+    "h": 340,
+    "scrollH": 623,
+    "clientH": 327,
+    "rows": 11,
+    "rowH": 41,
+    "overflowX": 0,
+    "belowViewport": 0,
+    "visibleRows": 5
+   },
+   "event": {
+    "cwd": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-m9c-wt\\.critic-home-m9\\wA",
+    "mcp": [
+     {
+      "name": "my.co tools",
+      "status": "connected",
+      "tools": [
+       "search"
+      ]
+     },
+     {
+      "name": "srv__dbl",
+      "status": "connected",
+      "tools": [
+       "ping"
+      ]
+     },
+     {
+      "name": "Ω 유니코드 🚀",
+      "status": "connected",
+      "tools": []
+     },
+     {
+      "name": "srv-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "status": "connected",
+      "tools": [
+       "t1"
+      ]
+     },
+     {
+      "name": "no-status-here",
+      "status": "unknown",
+      "tools": []
+     }
+    ],
+    "skills": [
+     {
+      "name": "dup-name",
+      "description": "중복 이름 스킬",
+      "scope": "project"
+     },
+     {
+      "name": "dup-name",
+      "description": "중복 이름 스킬",
+      "scope": "project"
+     },
+     {
+      "name": "myplug:skill",
+      "description": "플러그인 스킬",
+      "scope": "plugin"
+     },
+     {
+      "name": "  공백 ",
+      "description": "",
+      "scope": null
+     },
+     {
+      "name": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "description": "긴 이름",
+      "scope": "user"
+     }
+    ],
+    "plugins": [
+     {
+      "name": "myplug",
+      "version": "1.2.3"
+     }
+    ]
+   }
+  }
+ },
+ "findings": [
+  {
+   "id": "A1-tip-pending",
+   "why": "pending 서버가 툴팁에서 사라진다: \"MCP 7개 연결 · 2개 실패 · 스킬 50개 · 클릭해 자세히\""
+  },
+  {
+   "id": "A2-uni",
+   "why": "유니코드 서버 이름 되맞춤 실패: \"Ω 유니코드 🚀 | 연결됨\""
+  }
+ ]
+}

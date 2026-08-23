@@ -1,0 +1,98 @@
+{
+ "at": "2026-08-23T14:01:30.622Z",
+ "exe": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-m9c-wt\\target\\release\\agentcodegui.exe",
+ "steps": {
+  "boot": {
+   "panels": 2,
+   "win": {
+    "w": 1320,
+    "h": 880
+   }
+  },
+  "A1": {
+   "chip": {
+    "text": "7/10 · 50",
+    "tip": "MCP 7개 연결 · 2개 실패 · 스킬 50개 · 클릭해 자세히",
+    "redCount": true,
+    "w": 95
+   },
+   "pop": {
+    "head": "도구 환경 | wA",
+    "geo": {
+     "w": 300,
+     "h": 340,
+     "scrollH": 3180,
+     "clientH": 338,
+     "rows": 60,
+     "rowH": 41,
+     "overflowX": 0,
+     "belowViewport": 0,
+     "visibleRows": 6
+    },
+    "secHeads": [
+     "MCP 서버 10/10",
+     "스킬 50/50"
+    ],
+    "longest": 130,
+    "sample": [
+     "srv-1 | 연결됨 · echo, ping, search | 도구 3",
+     "srv-2 | 연결됨 · echo, ping, search | 도구 3",
+     "srv-3 | 연결됨 · echo, ping, search | 도구 3",
+     "srv-4 | 연결됨 · echo, ping, search | 도구 3",
+     "srv-5 | 연결됨 · echo, ping, search | 도구 3",
+     "srv-6 | 연결됨 · echo, ping, search | 도구 3",
+     "srv-7 | 연결됨 · echo, ping, search | 도구 3",
+     "srv-dead | 연결 실패 · echo, ping, search | 도구 3",
+     "srv-auth | 인증 필요 · echo, ping, search | 도구 3",
+     "srv-wait | 연결 중 · echo, ping, search | 도구 3"
+    ]
+   }
+  },
+  "A8": {
+   "withChip": {
+    "titleW": 121,
+    "full": 269,
+    "clipped": true,
+    "panelW": 402
+   },
+   "noChip": {
+    "titleW": 161,
+    "full": 269,
+    "clipped": true,
+    "panelW": 402
+   },
+   "lost": 40,
+   "title": "리팩터링 대형 작업 — 엔진 전환 · 계정 스위치 · 한도 이어서"
+  },
+  "A6": {
+   "targets": [
+    "http://tauri.localhost/index.html#mapanel",
+    "http://tauri.localhost/"
+   ],
+   "chipBeforeTurn": null,
+   "chipAfterTurn": {
+    "text": "1 · 1",
+    "tip": "MCP 1개 연결 · 스킬 1개 · 클릭해 자세히"
+   },
+   "pop": {
+    "text": "도구 환경 | wA | MCP 서버 1 | srv-pop | 연결됨 · echo | 도구 1 | 스킬 1 | /sp | 팝아웃 스킬 | 프로젝트 | 이 대화가 실행될 때 CLI가 보고한 목록이에요 · 프로젝트: <폴더>/.mcp.json · .claude/skills",
+    "rect": {
+     "x": 654,
+     "y": 69,
+     "w": 300,
+     "h": 217
+    },
+    "win": {
+     "w": 1100,
+     "h": 820
+    }
+   }
+  }
+ },
+ "findings": [
+  {
+   "id": "A1-tip-pending",
+   "why": "pending 서버가 툴팁에서 사라진다: \"MCP 7개 연결 · 2개 실패 · 스킬 50개 · 클릭해 자세히\""
+  }
+ ]
+}

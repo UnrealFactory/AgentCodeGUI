@@ -1,0 +1,43 @@
+{
+ "at": "2026-08-23T13:59:21.899Z",
+ "exe": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-m9c-wt\\target\\release\\agentcodegui.exe",
+ "steps": {
+  "boot": {
+   "panels": 2,
+   "win": {
+    "w": 1320,
+    "h": 880
+   }
+  },
+  "A4": {
+   "late": [
+    [
+     "(EMPTY) 이 폴더에 붙은 MCP 서버가 없어요"
+    ],
+    [
+     "/late-a | 늦게 온 설명 | 프로젝트"
+    ]
+   ],
+   "push": [
+    [
+     "(EMPTY) 이 폴더에 붙은 MCP 서버가 없어요"
+    ],
+    [
+     "/push-b | 설명 없음"
+    ]
+   ],
+   "evs": 5,
+   "wire": {
+    "frames": 13,
+    "inits": 3,
+    "commandsChanged": 1
+   }
+  }
+ },
+ "findings": [
+  {
+   "id": "A4-push",
+   "why": "commands_changed 푸시가 화면까지 안 온다"
+  }
+ ]
+}

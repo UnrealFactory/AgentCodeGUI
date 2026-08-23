@@ -1,0 +1,234 @@
+{
+ "at": "2026-08-23T13:59:46.306Z",
+ "exe": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-m9c-wt\\target\\release\\agentcodegui.exe",
+ "steps": {
+  "boot": {
+   "panels": 2,
+   "win": {
+    "w": 1320,
+    "h": 880
+   }
+  },
+  "A1": {
+   "chip": {
+    "text": "7/10 · 50",
+    "tip": "MCP 7개 연결 · 2개 실패 · 스킬 50개 · 클릭해 자세히",
+    "redCount": true,
+    "w": 95
+   },
+   "pop": {
+    "head": "도구 환경 | wA",
+    "geo": {
+     "w": 300,
+     "h": 340,
+     "scrollH": 3180,
+     "clientH": 338,
+     "rows": 60,
+     "rowH": 41,
+     "overflowX": 0,
+     "belowViewport": 0,
+     "visibleRows": 6
+    },
+    "secHeads": [
+     "MCP 서버 10/10",
+     "스킬 50/50"
+    ],
+    "longest": 130,
+    "sample": [
+     "srv-1 | 연결됨 · echo, ping, search | 도구 3",
+     "srv-2 | 연결됨 · echo, ping, search | 도구 3",
+     "srv-3 | 연결됨 · echo, ping, search | 도구 3",
+     "srv-4 | 연결됨 · echo, ping, search | 도구 3",
+     "srv-5 | 연결됨 · echo, ping, search | 도구 3",
+     "srv-6 | 연결됨 · echo, ping, search | 도구 3",
+     "srv-7 | 연결됨 · echo, ping, search | 도구 3",
+     "srv-dead | 연결 실패 · echo, ping, search | 도구 3",
+     "srv-auth | 인증 필요 · echo, ping, search | 도구 3",
+     "srv-wait | 연결 중 · echo, ping, search | 도구 3"
+    ]
+   }
+  },
+  "A7_slot": 0,
+  "A7_1100": {
+   "head": {
+    "panelW": 532,
+    "headW": 530,
+    "headScrollW": 530,
+    "overflow": false,
+    "title": {
+     "x": 46,
+     "w": 16,
+     "text": "A",
+     "clipped": false,
+     "outside": false
+    },
+    "folder": {
+     "x": 398,
+     "w": 12,
+     "text": "wA",
+     "clipped": false,
+     "outside": false
+    },
+    "status": {
+     "x": 440,
+     "w": 33,
+     "text": "완료",
+     "clipped": false,
+     "outside": false
+    },
+    "chip": {
+     "x": 272,
+     "w": 95,
+     "text": "7/10 · 50",
+     "clipped": false,
+     "outside": false
+    }
+   },
+   "popGeo": {
+    "w": 300,
+    "h": 340,
+    "scrollH": 3180,
+    "clientH": 338,
+    "rows": 60,
+    "rowH": 41,
+    "overflowX": 0,
+    "belowViewport": 0,
+    "visibleRows": 6
+   }
+  },
+  "A7_900": {
+   "head": {
+    "panelW": 432,
+    "headW": 430,
+    "headScrollW": 430,
+    "overflow": false,
+    "title": {
+     "x": 46,
+     "w": 16,
+     "text": "A",
+     "clipped": false,
+     "outside": false
+    },
+    "folder": {
+     "x": 298,
+     "w": 12,
+     "text": "wA",
+     "clipped": false,
+     "outside": false
+    },
+    "status": {
+     "x": 340,
+     "w": 33,
+     "text": "완료",
+     "clipped": false,
+     "outside": false
+    },
+    "chip": {
+     "x": 172,
+     "w": 95,
+     "text": "7/10 · 50",
+     "clipped": false,
+     "outside": false
+    }
+   },
+   "popGeo": {
+    "w": 300,
+    "h": 340,
+    "scrollH": 3180,
+    "clientH": 338,
+    "rows": 60,
+    "rowH": 41,
+    "overflowX": 0,
+    "belowViewport": 0,
+    "visibleRows": 6
+   }
+  },
+  "A7_840": {
+   "head": {
+    "panelW": 402,
+    "headW": 400,
+    "headScrollW": 400,
+    "overflow": false,
+    "title": {
+     "x": 46,
+     "w": 16,
+     "text": "A",
+     "clipped": false,
+     "outside": false
+    },
+    "folder": {
+     "x": 268,
+     "w": 12,
+     "text": "wA",
+     "clipped": false,
+     "outside": false
+    },
+    "status": {
+     "x": 310,
+     "w": 33,
+     "text": "완료",
+     "clipped": false,
+     "outside": false
+    },
+    "chip": {
+     "x": 142,
+     "w": 95,
+     "text": "7/10 · 50",
+     "clipped": false,
+     "outside": false
+    }
+   },
+   "popGeo": {
+    "w": 300,
+    "h": 340,
+    "scrollH": 3180,
+    "clientH": 338,
+    "rows": 60,
+    "rowH": 41,
+    "overflowX": 0,
+    "belowViewport": 0,
+    "visibleRows": 6
+   }
+  },
+  "A7_wide": {
+   "panelW": 642,
+   "headW": 640,
+   "headScrollW": 640,
+   "overflow": false,
+   "title": {
+    "x": 46,
+    "w": 16,
+    "text": "A",
+    "clipped": false,
+    "outside": false
+   },
+   "folder": {
+    "x": 508,
+    "w": 12,
+    "text": "wA",
+    "clipped": false,
+    "outside": false
+   },
+   "status": {
+    "x": 550,
+    "w": 33,
+    "text": "완료",
+    "clipped": false,
+    "outside": false
+   },
+   "chip": {
+    "x": 382,
+    "w": 95,
+    "text": "7/10 · 50",
+    "clipped": false,
+    "outside": false
+   }
+  }
+ },
+ "findings": [
+  {
+   "id": "A1-tip-pending",
+   "why": "pending 서버가 툴팁에서 사라진다: \"MCP 7개 연결 · 2개 실패 · 스킬 50개 · 클릭해 자세히\""
+  }
+ ]
+}

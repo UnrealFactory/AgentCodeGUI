@@ -1,0 +1,59 @@
+{
+ "at": "2026-08-23T14:09:00.206Z",
+ "exe": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-m9c-wt\\target\\release\\agentcodegui.exe",
+ "steps": {
+  "boot": {
+   "panels": 2,
+   "win": {
+    "w": 1320,
+    "h": 880
+   }
+  },
+  "A10": {
+   "openBoth": {
+    "afterTool": 0
+   },
+   "both": "clicked-folder",
+   "shot": {
+    "count": 2,
+    "pops": [
+     {
+      "head": "도구 환경 wA",
+      "x": 353,
+      "w": 300,
+      "y": 95,
+      "h": 217
+     },
+     {
+      "head": "작업 폴더",
+      "x": 353,
+      "w": 300,
+      "y": 95,
+      "h": 214
+     }
+    ],
+    "overlap": 64200
+   }
+  }
+ },
+ "findings": [
+  {
+   "0": {
+    "head": "도구 환경 wA",
+    "x": 353,
+    "w": 300,
+    "y": 95,
+    "h": 217
+   },
+   "1": {
+    "head": "작업 폴더",
+    "x": 353,
+    "w": 300,
+    "y": 95,
+    "h": 214
+   },
+   "id": "A10-two-pops",
+   "why": "도구 환경 팝오버가 열린 채 폴더 칩을 누르면 팝오버가 2장 동시에 뜬다(보고서 §2.2의 반대) · 겹침 64200px²"
+  }
+ ]
+}
