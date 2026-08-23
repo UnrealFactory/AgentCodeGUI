@@ -1,6 +1,6 @@
 window.PROGRESS = {
-  phase: 'R17 — M7 LSP R1(하네스→기준 박제→TS 개통) / M4 Codex R1 / M8 창 표면(팝아웃·토스트·트레이) / R16 확인 (병렬 4)',
-  note: 'R16 착지 — 엔진: F1 코퍼스 18종 불일치 0(차단벽 6분기 원문 이식·한국어 차단어 4), F2 헛 재개 30분 4회→0(리셋 꼬리 파싱+epoch 환승(s×1000 버그 동반 수정)+재검증 훅+MAX_AUTO_ATTEMPTS 2+지수 백오프 — 시각 미상도 5시간 2회 후 auto_paused), reject_spawn 팬아웃, 엔진 130 green / 렌더러: 앵커 의사 신호(정착 후 err 0×4 — A케이스의 거짓 초록까지 발견·저울 교체), verdict 구독(40초 침묵→+3초 사유+경로, 셸/렌더러 화자 중복 접기), user-echo 말풍선, IdentityBand(폴백 배너+되돌리기 rev2 실증), poc-dial 47검사. 남은 큰 것: M7 LSP·M4 Codex·M8 창 표면·M-UI 실적용·ccg-page·saveAttachmentData·신기능 M9~11',
+  phase: 'R18 — M7·M4·M8 크리틱 3 + M-UI 알림 실적용(목업→실렌더러) 병렬 4',
+  note: 'R17 착지 — M7: bench/lsp.mjs 하네스+2.6.2 기준 박제+TS 끝까지 개통(토큰 10,925 동일·호버/정의/완성 대등·ready만 3.0이 290ms 늦음=첫 ipc_call 워밍업 귀속·캐시 바이트 호환·잡 안전망 실증), ServerSpec에 언어명 0회(Roslyn 함정 전부 스펙 필드화), ccg-lsp 24 green / M4: Codex를 runtime.rs 0줄 변경으로 얹음(FRAME_MAP 44행 전수 재생 강제·실 바이너리 핸드셰이크 233ms·미로그인 실패 경로 14프레임 채집이 이식 결함 3건 적발), 엔진 167 green / M8: 팝아웃(뷰 이동·157ms·미러 6건·재스폰 0)·토스트(NOACTIVATE·포커스 억제)·트레이(X=숨김·두 번째 실행 369ms 전면), 프로세스 5 불변 / R16 확인: 불일치 0(40,000줄 차등 퍼즈까지) — 신규 N1: rate_limit_event 실물 열거 확인. R18: 세 조각 크리틱 + M-UI 실적용',
   updatedAt: '2026-08-23 04:20',
   metrics: [
     { name: '★ 멀티 4패널 유휴 WS', unit: 'MB', base: 712.8, new: 421.3, target: '≤356 = WebView2 빈 문서 바닥값(351.5) + 4.5MB — 앱 몫이 47.3이라 구조적 불가, 재협상 대상 (NetSvc2 채택 후 크리틱 실측)', pass: false },
