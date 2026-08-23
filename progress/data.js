@@ -1,5 +1,5 @@
 window.PROGRESS = {
-  phase: 'R20 재개 — 직전 라운드가 세션 한도로 4갈래 중도 사망(부분 작업은 컴파일 통과 상태로 회수) → M-UI·확인 병렬 + M9→M11 순차 재개',
+  phase: 'R21 — M9·M11 크리틱 / 잔여 청소(되돌리기 알약) / ★M10 세션 간 협업 착수(설계+2채팅 왕복 PoC) 병렬 4',
   note: 'R19 착지 — M7 R2: 죽은 서버 30초 복귀(45초 ready 거짓말 소멸)·편집 버퍼 6/6·rpc가 스펙 값으로 configuration 응답(pyright는 값만으로 섬)·프리웜을 main() 첫 줄로 당겨 ready 역전(−49ms, 단 캐시 적중 첫 색칠 116→280 회귀를 정직 기록 — 절충은 리드 판단 대기) / M4 R2: 전환 세션 신원 두 곳 수정(재생+실창 session=th-sw)·게이트 3종 이식(공격 도구 13fail→23/0)·이중 팬아웃 제거(notice 2→1) / M8 R2: 팝아웃 소실 두 겹 방어(복귀분≥라이브만 적용+닫기 전 flush-req — 스트리밍 중 닫기도 소실 0 디스크 확인)·X=숨김 첫 회 안내 카드 / M-UI 크리틱: 1440px 7승 0패·밀도 −13.2% 재현·무변경 37화면 회귀 0, 420px에서 3패(오류 +39%)+하네스 파손 1(진입점 오지정) → R20 수정. 신기능 M11(한도 자동 계정 전환)·M9(MCP/Skill 뷰) 착수',
   updatedAt: '2026-08-23 04:20',
   metrics: [
@@ -34,9 +34,9 @@ window.PROGRESS = {
     { name: 'M-LOGIC 채팅/실행 상태 정리', scope: 'RunIdentity 단일 값 · 명시적 상태기계 · 설정 변경=명령 · 예약 큐 정체성 스냅샷 · busy 침묵 no-op 제거 · 고아 정착 규약 (사용자 지적: 계정 변경·폴백·특수 상황에서 꼬임)', state: 'build', round: 1, critic: '설계 문서 → M3 빌더가 이 설계로 구현 → 재생 하네스 8조합으로 판정' },
     { name: 'M-UX 채팅 통합', scope: '일반+멀티 → 「채팅」 하나, 개수 다이얼 1~6 (1=기존 레이아웃) · 3스토어/3 IPC 세트 통합 · 무손실 마이그레이션', state: 'build', round: 1, critic: '설계 → 마이그레이션 PoC(손실 0 검증) → 크리틱이 161화면 대조로 기능 누락 사냥' },
     { name: 'M-UI 디자인 리뉴얼', scope: '알림/배너 계열 재설계 · 유리 회색 급변 수정 · 디자인 토큰·모던화 (사용자 요청)', state: 'build', round: 1, critic: '유리 원인 규명 → 디자인 시스템 스펙+목업 → 크리틱이 목업을 눈으로 열어 2.6.2와 대조' },
-    { name: 'M9 신기능: MCP/Skill 뷰', scope: '와이어 실측(init.mcp_servers/skills — denied는 행째 사라짐 확인) → 패널별 칩+팝오버. 한도 사망에서 회수·재개 중', state: 'build', round: 1 },
-    { name: 'M10 신기능: 세션 간 협업', scope: '클로드 세션 4개 상호 대화 (stash 설계 부활)', state: 'wait' },
-    { name: 'M11 신기능: 한도 자동 전환', scope: '소진 시 초기화 임박순 노는 계정 자동 전환(기본 꺼짐) — AccountSwitched 배너+되돌리기·오염가드 preflight. 한도 사망에서 회수·재개 중', state: 'build', round: 1 },
+    { name: 'M9 신기능: MCP/Skill 뷰', scope: '착지 — 와이어 실측 3원천(init·initialize.commands·commands_changed)·패널별 칩+팝오버·2패널 상이 목록 실증(단언 39)·인수 결함 5 폐쇄. 크리틱 진행 중', state: 'build', round: 1 },
+    { name: 'M10 신기능: 세션 간 협업', scope: '착수 — stash 설계 참고(적용 금지)·안전 규약이 핵심(가시성·옵트인·홉 상한·루프 감지·긴급 정지)·R1=설계+2채팅 왕복 PoC', state: 'build', round: 1 },
+    { name: 'M11 신기능: 한도 자동 전환', scope: '착지 — 임박순 선택·오염 스킵·연속 소진 A→B→C·되돌리기 리비전, 재생 10+단위 9(인수 결함 4 폐쇄: 무한루프·핑퐁·낡은 스냅샷·거짓 대기 문장), 워크스페이스 462 green. 크리틱 진행 중', state: 'build', round: 1 },
     { name: 'M12 패키징+최종 A/B', scope: 'NSIS 대체 설치본·전 화면 대조·최종 인증', state: 'wait' }
   ],
   log: [
