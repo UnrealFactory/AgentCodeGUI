@@ -133,11 +133,12 @@ pub mod ch {
     pub const FS_MOVE: &str = "fs:move";
     pub const SHELL_OPEN_PATH: &str = "shell:open-path";
     pub const SHELL_REVEAL_PATH: &str = "shell:reveal-path";
-    /// ccg-page 스킴(뷰어 HTML 미리보기)은 **아직 없다** — 미구현으로 두면 심이 ''를
-    /// 돌려주고 렌더러는 스피너에 머문다(Ctrl+D 코드 보기로 빠져나갈 수 있다).
-    /// 상수만 두는 이유: 다음 라운드가 여기 한 줄을 붙이면 되게(M6 리포트 §미구현).
-    #[allow(dead_code)]
+    /// 뷰어 HTML 미리보기 — 서빙 루트를 등록하고 `http://ccg-page.localhost/…` URL을
+    /// 발급한다(M6 R3. 스킴 등록은 `main.rs`, 판정은 `ccg_fs::serve`).
     pub const FS_HTML_PREVIEW_URL: &str = "fs:html-preview-url";
+    /// 붙여넣기·브라우저 드래그 첨부(경로 없는 바이트) → 앱 홈 아래 임시 파일 경로.
+    /// 이게 없으면 컴포저 첨부 트레이·라이트박스가 통째로 안 뜬다(M-UX §R3.9-1).
+    pub const ATTACHMENT_SAVE_DATA: &str = "attachment:save-data";
 
     // ── LSP 코드 인텔리전스 (M7 — ipc/lsp.rs) ────────────────────────────────
     pub const LSP_STATUS: &str = "lsp:status";

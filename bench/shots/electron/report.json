@@ -1,7 +1,7 @@
 {
   "app": "electron-2.6.2",
   "kind": "electron",
-  "at": "2026-08-23T06:02:24.921Z",
+  "at": "2026-08-23T22:26:16.497Z",
   "viewport": {
     "width": 1440,
     "height": 900
@@ -16,6 +16,33 @@
       "ms": 60074,
       "error": "boot 화면을 잡지 못함",
       "resetError": "waitFor timeout: .chat .thread, .chat-scroll (1)"
+    },
+    {
+      "id": "composer-attachments",
+      "label": "첨부 트레이(이미지 썸네일)",
+      "area": "2. 본채팅",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 767,
+      "found": 1
+    },
+    {
+      "id": "image-lightbox",
+      "label": "이미지 라이트박스",
+      "area": "2. 본채팅",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 1029,
+      "found": 1
+    },
+    {
+      "id": "image-lightbox-strip",
+      "label": "라이트박스 — 여러 장(썸네일 스트립)",
+      "area": "2. 본채팅",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 1423,
+      "found": 1
     },
     {
       "id": "bash-log-modal",
@@ -239,7 +266,7 @@
       "area": "5. 뷰어",
       "surface": "main-window",
       "ok": true,
-      "ms": 2479,
+      "ms": 3183,
       "found": 1
     },
     {
@@ -248,7 +275,16 @@
       "area": "5. 뷰어",
       "surface": "main-window",
       "ok": true,
-      "ms": 3378,
+      "ms": 3327,
+      "found": 1
+    },
+    {
+      "id": "viewer-html-code",
+      "label": "HTML 코드 보기(Ctrl+D)",
+      "area": "5. 뷰어",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 2622,
       "found": 1
     },
     {
@@ -257,7 +293,16 @@
       "area": "5. 뷰어",
       "surface": "main-window",
       "ok": true,
-      "ms": 2434,
+      "ms": 2433,
+      "found": 1
+    },
+    {
+      "id": "viewer-svg-source",
+      "label": "SVG 마크업 소스",
+      "area": "5. 뷰어",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 2566,
       "found": 1
     },
     {
@@ -433,13 +478,13 @@
     }
   ],
   "windowSized": false,
-  "mergedFrom": "2026-08-22T23:17:45.789Z",
+  "mergedFrom": "2026-08-23T06:02:24.921Z",
   "summary": {
     "defined": 156,
-    "attempted": 47,
-    "ok": 39,
+    "attempted": 52,
+    "ok": 44,
     "failed": 8,
     "skipped": 0,
-    "successRatePct": 83
+    "successRatePct": 84.6
   }
 }

@@ -157,7 +157,9 @@ function makeHome(kind, version) {
  *  돌리므로(os error 5 회피 관례), 그 순간에 스폰하면 ENOENT로 실행이 통째로 죽는다.
  *  복사본을 잡아두면 하네스가 남의 빌드에 안 흔들린다. */
 async function snapshotExe() {
-  const src = path.join(REPO, 'target', 'release', 'agentcodegui.exe')
+  // CCG_EXE=… — 공용 exe가 옆 에이전트의 앱에 잠겨 새 빌드를 못 넣을 때(EBUSY)
+  // 격리 CARGO_TARGET_DIR의 exe를 바로 지목한다.
+  const src = process.env.CCG_EXE || path.join(REPO, 'target', 'release', 'agentcodegui.exe')
   const dir = path.join(os.tmpdir(), 'ccg-m6-exe')
   fs.mkdirSync(dir, { recursive: true })
   const dst = path.join(dir, 'agentcodegui.exe')
@@ -465,6 +467,7 @@ async function run(kind) {
           'git:switch-branch': [{ cwd, name: 'no-such-branch-m6' }],
           'git:create-branch': [{ cwd, name: '' }], // 빈 이름 → 거절(브랜치 안 만듦)
           'fs:html-preview-url': [{ cwd, relPath: 'app/toast.html' }],
+          'attachment:save-data': [{ b64: 'aGk=', ext: 'txt' }], // R3에서 열린 채널
           'git:ai-message': [{ cwd, files: [] }]
         }
         const asked = Object.entries(probes).filter(([, a]) => a !== null)
@@ -482,8 +485,9 @@ async function run(kind) {
           { awaitPromise: true, timeoutMs: 60000 }
         )
         const missing = Object.entries(r).filter(([, v]) => v !== 'ok').map(([k, v]) => `${k}=${v}`)
-        // 이번 라운드가 의도적으로 남긴 둘만 미구현이어야 한다
-        const expected = ['fs:html-preview-url=unimplemented', 'git:ai-message=unimplemented']
+        // R3에서 `fs:html-preview-url`(ccg-page)과 `attachment:save-data`가 열렸다.
+        // 남은 미구현은 **엔진 1턴이 필요한** `git:ai-message` 하나뿐이다(R1 §5-B).
+        const expected = ['git:ai-message=unimplemented']
         if (missing.sort().join(',') !== expected.sort().join(','))
           throw new Error(`미구현 목록이 예상과 다르다: ${JSON.stringify(missing)}`)
         return { probed: asked.length, ok: asked.length - missing.length, unimplemented: missing }
@@ -520,9 +524,11 @@ async function run(kind) {
         `window.api.lsp.status(${JSON.stringify(WORK)}, 'app/src/App.tsx')`,
         { awaitPromise: true }
       )
-      const want = kind === 'tauri' ? 'unsupported' : 'ready'
-      if (s !== want) throw new Error(`lsp.status=${s} (기대 ${want})`)
-      return { status: s, note: kind === 'tauri' ? 'M7까지 의도된 미지원' : '2.6.2 기준' }
+      // R1의 기대값은 `unsupported`였다 — 그때 3.0에는 언어 서버가 없었다(M7 경계).
+      // **M7 R2~R4가 붙은 뒤로는 `ready`가 정답이다.** 기대값을 그대로 두면 M6 하네스가
+      // 「M7이 성공했다」를 회귀로 읽는다. 두 값 다 아는 값이고, 어느 쪽인지 기록한다.
+      if (s !== 'ready') throw new Error(`lsp.status=${s} (기대 ready — M7 착지 후)`)
+      return { status: s, note: kind === 'tauri' ? 'M7 착지 후(R1 기대값 unsupported는 폐기)' : '2.6.2 기준' }
     })
   } finally {
     try { cdp?.close() } catch { /* closed */ }

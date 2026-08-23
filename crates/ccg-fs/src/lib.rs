@@ -28,6 +28,7 @@
 //! 즉 통지는 **폴 기반(요청 시점 최신)** 이고, 이 크레이트의 모든 조회는 캐시 없이
 //! 매번 디스크를 읽는다(캐시가 있으면 위 세 경로가 낡은 값을 보게 된다).
 
+pub mod attach;
 pub mod collate;
 pub mod diff;
 pub mod dir;

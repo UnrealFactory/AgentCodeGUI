@@ -33,8 +33,12 @@ const WITH_ENGINE = argv.includes('--engine')
 const NO_BOOT = argv.includes('--no-boot')
 const KEEP = argv.includes('--keep') // 캡처 후 앱을 띄워 둔다 (수동 확인용)
 const MERGE = argv.includes('--merge') // 이전 report.json에 덮어쓰지 않고 병합 (--only 재시도용)
+// 공용 target/release/agentcodegui.exe가 **옆 에이전트가 띄워 둔 앱에 잠겨** 있으면
+// 새 빌드를 그 자리에 못 넣는다(EBUSY). 그때 격리 CARGO_TARGET_DIR의 exe를 바로 지목한다.
+const exeArg = argv.find((a) => a.startsWith('--exe='))
+const EXE = exeArg ? exeArg.slice(6) : undefined
 
-const profile = kind === 'tauri' ? tauriProfile({ port: 9346 }) : electronProfile({ port: 9345 })
+const profile = kind === 'tauri' ? tauriProfile({ port: 9346, exe: EXE }) : electronProfile({ port: 9345 })
 const APP_VERSION = kind === 'tauri' ? '3.0.0-beta.1' : '2.6.2'
 const HOME = path.join(os.tmpdir(), `ccg-screens-${kind}`)
 const OUT = path.join(REPO, 'bench', 'shots', kind)

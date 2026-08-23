@@ -108,6 +108,22 @@ function callVoid(channel: string, args: unknown[] = []): Promise<void> {
   return call<void>(channel, args, undefined as void)
 }
 
+/**
+ * 첨부 바이트 → base64. `ipc_call`의 payload는 **JSON**이라 `ArrayBuffer`가 구조적
+ * 복제로 건너가지 않는다(preload의 `ipcRenderer.invoke`와 다른 자리다). 숫자 배열로
+ * 보내면 바이트당 `255,` 네 글자라 3MB 스크린샷 하나가 20MB JSON이 된다 — base64는
+ * 1.37배다.
+ *
+ * 청크로 도는 이유: `String.fromCharCode(...arr)`는 인자를 스택에 펼쳐 큰 이미지에서
+ * `RangeError: Maximum call stack size exceeded`로 죽는다. 32k는 그 한계보다 한참 아래다.
+ */
+function toBase64(buf: ArrayBuffer): string {
+  const a = new Uint8Array(buf)
+  let s = ''
+  for (let i = 0; i < a.length; i += 0x8000) s += String.fromCharCode(...a.subarray(i, i + 0x8000))
+  return btoa(s)
+}
+
 // ── 이벤트 허브 (preload와 같은 문법) ─────────────────────────────────────────
 // 채널당 네이티브 리스너 하나, 구독자는 평범한 Set. 멀티 워크스페이스 혼자
 // ma:event에 12번 붙는 구조라 여기서 접어주지 않으면 리스너가 계속 증식한다.
@@ -189,10 +205,10 @@ const api: WindowApi = {
   dirExists: (dir: string) => call(IPC.dirExists, [dir], false),
   pickAttachments: () => call<string[]>(IPC.pickAttachments, [], []),
   // 유일한 예외: "경로 없음"을 뜻하는 안전한 문자열이 없다. 호출부(lib/images.ts)가
-  // try/catch로 감싸 첨부를 건너뛰게 되어 있어, 미구현은 조용한 skip이 정답이다.
+  // try/catch로 감싸 첨부를 건너뛰게 되어 있어, 실패는 조용한 skip이 정답이다.
   saveAttachmentData: async (bytes: ArrayBuffer, ext: string) => {
-    const p = await call<string>(IPC.saveAttachmentData, [{ bytes: Array.from(new Uint8Array(bytes)), ext }], '')
-    if (!p) throw new Error('saveAttachmentData: unimplemented')
+    const p = await call<string>(IPC.saveAttachmentData, [{ b64: toBase64(bytes), ext }], '')
+    if (!p) throw new Error('saveAttachmentData: 저장 실패')
     return p
   },
   // Electron webUtils.getPathForFile의 대응물. Tauri는 OS 드래그 경로를 네이티브

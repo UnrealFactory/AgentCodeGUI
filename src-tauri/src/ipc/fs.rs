@@ -27,6 +27,8 @@ pub fn owns(channel: &str) -> bool {
             | ch::FS_MOVE
             | ch::SHELL_OPEN_PATH
             | ch::SHELL_REVEAL_PATH
+            | ch::FS_HTML_PREVIEW_URL
+            | ch::ATTACHMENT_SAVE_DATA
     )
 }
 
@@ -96,6 +98,28 @@ pub fn dispatch(channel: &str, p: &Value) -> Option<Value> {
         ch::FS_MOVE => {
             let a = arg(p, 0);
             to_value(ccg_fs::file::move_path(s(a, "cwd"), s(a, "srcRel"), s(a, "destRel")), failed())
+        }
+        // 뷰어 HTML 미리보기 — 서빙 루트 등록 + URL 발급(M6 R3).
+        // 반환은 문자열 하나: 실패해도 `''`라 심의 안전값과 같은 모양이다.
+        ch::FS_HTML_PREVIEW_URL => {
+            let a = arg(p, 0);
+            json!(ccg_fs::serve::register_html_preview(s(a, "cwd"), s(a, "relPath")))
+        }
+        // 붙여넣기·브라우저 드래그 첨부(경로 없는 바이트) → 임시 파일 경로.
+        // 와이어는 base64 문자열(`b64`)이다 — 심이 `Array.from(new Uint8Array(…))`로
+        // 보내던 **숫자 배열**은 3MB 스크린샷 하나가 JSON 20MB가 되는 자리라
+        // (바이트당 `255,` 4글자) base64로 바꿨다. 옛 모양도 계속 받는다.
+        ch::ATTACHMENT_SAVE_DATA => {
+            let a = arg(p, 0);
+            let bytes = match a.get("b64").and_then(Value::as_str) {
+                Some(b) => ccg_fs::attach::decode_b64(b),
+                None => a
+                    .get("bytes")
+                    .and_then(Value::as_array)
+                    .map(|xs| xs.iter().filter_map(Value::as_u64).map(|n| n as u8).collect())
+                    .unwrap_or_default(),
+            };
+            json!(ccg_fs::attach::save_attachment_data(&bytes, s(a, "ext")))
         }
         // 셸 연동 — 반환값 없는 no-op 계약(심의 callVoid)
         ch::SHELL_OPEN_PATH => {

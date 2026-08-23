@@ -1,0 +1,202 @@
+{
+  "kind": "electron",
+  "version": "2.6.2",
+  "at": "2026-08-23T22:24:36.000Z",
+  "bin": {
+    "exe": "electron 2.6.2 (out/)"
+  },
+  "work": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-m6r3-work",
+  "home": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-m6r3-home-electron",
+  "previewUrl": "ccg-page://local/C%3A/Users/User/AppData/Local/Temp/ccg-m6r3-work/m6r3-page.html",
+  "saved": {
+    "path": "C:\\Users\\User\\.agentcodegui\\attachments\\paste-85b16528-ce87-42f8-a7da-795740c9bc4f.png",
+    "bytes": 70,
+    "underIsolatedHome": false
+  },
+  "sweptRealHome": 3,
+  "passed": 15,
+  "total": 15,
+  "checks": [
+    {
+      "id": "html-preview-url",
+      "ok": true,
+      "ms": 0,
+      "detail": {
+        "url": "ccg-page://local/C%3A/Users/User/AppData/Local/Temp/ccg-m6r3-work/m6r3-page.html"
+      }
+    },
+    {
+      "id": "page-bytes-and-bridge",
+      "ok": true,
+      "ms": 27,
+      "detail": {
+        "status": 200,
+        "type": "text/html; charset=utf-8",
+        "lastMod": "Sun, 23 Aug 2026 22:24:23 GMT",
+        "len": 2859,
+        "doc": true,
+        "bridge": true
+      }
+    },
+    {
+      "id": "page-head-probe",
+      "ok": true,
+      "ms": 1,
+      "detail": {
+        "status": 200,
+        "lastMod": "Sun, 23 Aug 2026 22:24:23 GMT"
+      }
+    },
+    {
+      "id": "page-sibling-resources",
+      "ok": true,
+      "ms": 4,
+      "detail": {
+        "cssStatus": 200,
+        "cssType": "text/css; charset=utf-8",
+        "cssBody": true,
+        "img": 1
+      }
+    },
+    {
+      "id": "page-root-escape-404",
+      "ok": true,
+      "ms": 2,
+      "detail": {
+        "escape": 404,
+        "absolute": 404,
+        "escUrl": "ccg-page://local/C%3A/Users/User/AppData/Local/Temp/ccg-m6r3-work/../ccg-m6r3-outside/secret.txt",
+        "absUrl": "ccg-page://local/C%3A/Users/User/AppData/Local/Temp/Windows/win.ini"
+      }
+    },
+    {
+      "id": "viewer-html-preview-mounts",
+      "ok": true,
+      "ms": 3841,
+      "detail": {
+        "src": "ccg-page://local/C%3A/Users/User/AppData/Local/Temp/ccg-m6r3-work/m6r3-page.html",
+        "rect": {
+          "w": 1206,
+          "h": 688
+        },
+        "scriptRan": true,
+        "css": "rgb(14, 165, 233)",
+        "imgWidth": 1,
+        "reports": [
+          {
+            "img": 1
+          },
+          {
+            "script": 1,
+            "css": "rgb(14, 165, 233)",
+            "h": "M6 R3 · ccg-page"
+          },
+          {
+            "imgFetch": "blocked",
+            "why": "TypeError: Failed to fetch"
+          },
+          {
+            "fetch": "ok",
+            "v": "m6r3"
+          }
+        ]
+      }
+    },
+    {
+      "id": "page-inner-fetch-cors",
+      "ok": true,
+      "ms": 1,
+      "detail": {
+        "fetch": "ok",
+        "v": "m6r3"
+      }
+    },
+    {
+      "id": "r2-regression-ccg-img-blocked-from-sandbox",
+      "ok": true,
+      "ms": 1,
+      "detail": {
+        "imgFetch": "blocked",
+        "why": "TypeError: Failed to fetch"
+      }
+    },
+    {
+      "id": "bridge-ctrl-d-toggles-code",
+      "ok": true,
+      "ms": 366,
+      "detail": {
+        "codeViewOn": true,
+        "iframeGone": true
+      }
+    },
+    {
+      "id": "head-poll-reloads-on-disk-change",
+      "ok": true,
+      "ms": 3238,
+      "detail": {
+        "remounted": true,
+        "waitedMs": 1400,
+        "newHeading": "M6 R3 · 다시 읽음",
+        "frameNavigated": 0
+      }
+    },
+    {
+      "id": "bridge-escape-closes-viewer",
+      "ok": true,
+      "ms": 353,
+      "detail": {
+        "viewerClosed": true
+      }
+    },
+    {
+      "id": "attachment-save-data",
+      "ok": true,
+      "ms": 3,
+      "detail": {
+        "path": "C:\\Users\\User\\.agentcodegui\\attachments\\paste-85b16528-ce87-42f8-a7da-795740c9bc4f.png",
+        "bytes": 70,
+        "underIsolatedHome": false
+      }
+    },
+    {
+      "id": "composer-attachments",
+      "ok": true,
+      "ms": 92,
+      "detail": {
+        "thumbs": 2,
+        "imgs": [
+          {
+            "w": 1,
+            "complete": true
+          },
+          {
+            "w": 1,
+            "complete": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "image-lightbox",
+      "ok": true,
+      "ms": 142,
+      "detail": {
+        "strip": 1,
+        "shown": {
+          "w": 1,
+          "h": 1,
+          "src": "ccg-img://local/?p=C%3A%5CUsers%5CUser%5"
+        }
+      }
+    },
+    {
+      "id": "alive-at-the-end",
+      "ok": true,
+      "ms": 1,
+      "detail": {
+        "treeRows": 4,
+        "title": "AgentCodeGUI"
+      }
+    }
+  ]
+}

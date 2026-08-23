@@ -1,13 +1,13 @@
 {
   "app": "tauri",
   "version": "3.0.0-beta.1",
-  "at": "2026-08-23T03:01:55.606Z",
+  "at": "2026-08-23T22:29:48.425Z",
   "work": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-m6-repo",
   "checks": [
     {
       "id": "explorer-tree",
       "ok": true,
-      "ms": 380,
+      "ms": 377,
       "detail": {
         "rows": 28,
         "first": [
@@ -37,7 +37,7 @@
     {
       "id": "viewer-code-read",
       "ok": true,
-      "ms": 1672,
+      "ms": 1665,
       "detail": {
         "cmLines": 36,
         "head": [
@@ -50,7 +50,7 @@
     {
       "id": "viewer-markdown",
       "ok": true,
-      "ms": 1299,
+      "ms": 1287,
       "detail": {
         "chars": 6543
       }
@@ -58,7 +58,7 @@
     {
       "id": "git-changes",
       "ok": true,
-      "ms": 750,
+      "ms": 741,
       "detail": {
         "rows": 0,
         "sample": [
@@ -80,7 +80,7 @@
     {
       "id": "git-history",
       "ok": true,
-      "ms": 159,
+      "ms": 189,
       "detail": {
         "commits": 100
       }
@@ -88,27 +88,27 @@
     {
       "id": "git-commit-detail",
       "ok": true,
-      "ms": 129,
+      "ms": 220,
       "detail": {
-        "chars": 245,
-        "head": "진행 페이지 — R14 착지(귀속 완료: 표적은 렌더러+WebView2 / 큐·재개 단일화 / M6 치명 2"
+        "chars": 227,
+        "head": "진행 페이지 — R25 착지(M10 난스 제거·8/8 방어·M7 4언어 완료) + R26 종반 착수"
       }
     },
     {
       "id": "big-diff-thousands",
       "ok": true,
-      "ms": 66,
+      "ms": 74,
       "detail": {
         "add": 500,
         "del": 500,
         "lines": 8500,
-        "ms": 66
+        "ms": 74
       }
     },
     {
       "id": "big-diff-cap-folds",
       "ok": true,
-      "ms": 43,
+      "ms": 53,
       "detail": {
         "error": "파일이 너무 커요 — diff 표시는 1.5MB까지만"
       }
@@ -116,7 +116,7 @@
     {
       "id": "alive-after-big-diff",
       "ok": true,
-      "ms": 1,
+      "ms": 0,
       "detail": {
         "treeRows": 28
       }
@@ -124,11 +124,11 @@
     {
       "id": "channel-surface",
       "ok": true,
-      "ms": 95,
+      "ms": 114,
       "detail": {
         "listDir": 30,
         "dirsFirst": true,
-        "listFiles": 813,
+        "listFiles": 1121,
         "readChars": 3606,
         "readErr": null,
         "repo": true,
@@ -144,7 +144,7 @@
     {
       "id": "file-ops-write-path",
       "ok": true,
-      "ms": 104,
+      "ms": 114,
       "detail": {
         "made": true,
         "wrote": true,
@@ -160,10 +160,10 @@
     {
       "id": "delete-goes-to-recycle-bin",
       "ok": true,
-      "ms": 1145,
+      "ms": 1212,
       "detail": {
-        "before": 114,
-        "after": 115,
+        "before": 118,
+        "after": 119,
         "delta": 1,
         "foundInBin": true,
         "cleaned": true
@@ -172,12 +172,11 @@
     {
       "id": "channel-audit",
       "ok": true,
-      "ms": 419,
+      "ms": 572,
       "detail": {
-        "probed": 22,
-        "ok": 20,
+        "probed": 23,
+        "ok": 22,
         "unimplemented": [
-          "fs:html-preview-url=unimplemented",
           "git:ai-message=unimplemented"
         ]
       }
@@ -185,7 +184,7 @@
     {
       "id": "local-image-scheme",
       "ok": true,
-      "ms": 3,
+      "ms": 8,
       "detail": {
         "ok": true,
         "w": 1472,
@@ -195,10 +194,10 @@
     {
       "id": "lsp-status-m7-boundary",
       "ok": true,
-      "ms": 1,
+      "ms": 2,
       "detail": {
-        "status": "unsupported",
-        "note": "M7까지 의도된 미지원"
+        "status": "ready",
+        "note": "M7 착지 후(R1 기대값 unsupported는 폐기)"
       }
     }
   ],

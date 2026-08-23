@@ -1,0 +1,216 @@
+{
+  "kind": "tauri",
+  "version": "3.0.0-beta.1",
+  "at": "2026-08-23T22:24:48.894Z",
+  "bin": {
+    "exe": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-m6r3-exe\\agentcodegui.exe",
+    "exeMtime": "2026-08-23T22:17:18.627Z",
+    "exeSize": 6157312,
+    "exeSha256": "d1d51656d4d25359",
+    "gitHead": "0a6e3ab",
+    "gitDirty": true
+  },
+  "work": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-m6r3-work",
+  "home": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-m6r3-home-tauri",
+  "previewUrl": "http://ccg-page.localhost/C%3A/Users/User/AppData/Local/Temp/ccg-m6r3-work/m6r3-page.html",
+  "saved": {
+    "path": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-m6r3-home-tauri\\attachments\\paste-fd6e320799d189c5bf46ac6da579f3c6.png",
+    "bytes": 70,
+    "underIsolatedHome": true
+  },
+  "sweptRealHome": 0,
+  "passed": 16,
+  "total": 16,
+  "checks": [
+    {
+      "id": "html-preview-url",
+      "ok": true,
+      "ms": 2,
+      "detail": {
+        "url": "http://ccg-page.localhost/C%3A/Users/User/AppData/Local/Temp/ccg-m6r3-work/m6r3-page.html"
+      }
+    },
+    {
+      "id": "page-bytes-and-bridge",
+      "ok": true,
+      "ms": 19,
+      "detail": {
+        "status": 200,
+        "type": "text/html; charset=utf-8",
+        "lastMod": "Sun, 23 Aug 2026 22:24:36 GMT",
+        "len": 2865,
+        "doc": true,
+        "bridge": true
+      }
+    },
+    {
+      "id": "page-head-probe",
+      "ok": true,
+      "ms": 2,
+      "detail": {
+        "status": 200,
+        "lastMod": "Sun, 23 Aug 2026 22:24:36 GMT"
+      }
+    },
+    {
+      "id": "page-sibling-resources",
+      "ok": true,
+      "ms": 3,
+      "detail": {
+        "cssStatus": 200,
+        "cssType": "text/css; charset=utf-8",
+        "cssBody": true,
+        "img": 1
+      }
+    },
+    {
+      "id": "page-root-escape-404",
+      "ok": true,
+      "ms": 2,
+      "detail": {
+        "escape": 404,
+        "absolute": 404,
+        "escUrl": "http://ccg-page.localhost/C%3A/Users/User/AppData/Local/Temp/ccg-m6r3-work/../ccg-m6r3-outside/secret.txt",
+        "absUrl": "http://ccg-page.localhost/C%3A/Users/User/AppData/Local/Temp/Windows/win.ini"
+      }
+    },
+    {
+      "id": "viewer-html-preview-mounts",
+      "ok": true,
+      "ms": 3849,
+      "detail": {
+        "src": "http://ccg-page.localhost/C%3A/Users/User/AppData/Local/Temp/ccg-m6r3-work/m6r3-page.html",
+        "rect": {
+          "w": 1206,
+          "h": 688
+        },
+        "scriptRan": true,
+        "css": "rgb(14, 165, 233)",
+        "imgWidth": 1,
+        "reports": [
+          {
+            "img": 1
+          },
+          {
+            "script": 1,
+            "css": "rgb(14, 165, 233)",
+            "h": "M6 R3 · ccg-page"
+          },
+          {
+            "fetch": "blocked",
+            "why": "TypeError: Failed to fetch"
+          },
+          {
+            "imgFetch": "blocked",
+            "why": "TypeError: Failed to fetch"
+          }
+        ]
+      }
+    },
+    {
+      "id": "page-inner-fetch-cors",
+      "ok": true,
+      "ms": 0,
+      "detail": {
+        "fetch": "blocked",
+        "why": "TypeError: Failed to fetch"
+      }
+    },
+    {
+      "id": "r2-regression-ccg-img-blocked-from-sandbox",
+      "ok": true,
+      "ms": 1,
+      "detail": {
+        "imgFetch": "blocked",
+        "why": "TypeError: Failed to fetch"
+      }
+    },
+    {
+      "id": "bridge-ctrl-d-toggles-code",
+      "ok": true,
+      "ms": 352,
+      "detail": {
+        "codeViewOn": true,
+        "iframeGone": true
+      }
+    },
+    {
+      "id": "head-poll-reloads-on-disk-change",
+      "ok": true,
+      "ms": 3247,
+      "detail": {
+        "remounted": true,
+        "waitedMs": 1400,
+        "newHeading": "M6 R3 · 다시 읽음",
+        "frameNavigated": 0
+      }
+    },
+    {
+      "id": "bridge-escape-closes-viewer",
+      "ok": true,
+      "ms": 350,
+      "detail": {
+        "viewerClosed": true
+      }
+    },
+    {
+      "id": "attachment-save-data",
+      "ok": true,
+      "ms": 4,
+      "detail": {
+        "path": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-m6r3-home-tauri\\attachments\\paste-fd6e320799d189c5bf46ac6da579f3c6.png",
+        "bytes": 70,
+        "underIsolatedHome": true
+      }
+    },
+    {
+      "id": "composer-attachments",
+      "ok": true,
+      "ms": 91,
+      "detail": {
+        "thumbs": 2,
+        "imgs": [
+          {
+            "w": 1,
+            "complete": true
+          },
+          {
+            "w": 1,
+            "complete": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "image-lightbox",
+      "ok": true,
+      "ms": 130,
+      "detail": {
+        "strip": 1,
+        "shown": {
+          "w": 1,
+          "h": 1,
+          "src": "http://ccg-img.localhost/C%3A%5CUsers%5C"
+        }
+      }
+    },
+    {
+      "id": "channel-audit-r3",
+      "ok": true,
+      "ms": 4,
+      "detail": {
+        "fs:html-preview-url": "ok",
+        "attachment:save-data": "ok"
+      }
+    },
+    {
+      "id": "alive-at-the-end",
+      "ok": true,
+      "ms": 1,
+      "detail": {
+        "treeRows": 4,
+        "title": "AgentCodeGUI"
+      }
+    }
+  ]
+}

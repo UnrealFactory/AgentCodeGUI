@@ -119,6 +119,53 @@ fn img_response(uri: &str, origin: Option<&str>) -> tauri::http::Response<Vec<u8
     b.body(bytes).unwrap_or_else(|_| Response::new(Vec::new()))
 }
 
+/// HTML 미리보기 문서 + 그 상대경로 리소스(`ccg-page`). 워커 스레드에서만 불린다.
+///
+/// `ccg-img`와 다른 두 가지:
+///  1. **경로 화이트리스트** — 뷰어가 `fs:html-preview-url`로 등록한 루트 밖은 404다
+///     (판정은 `ccg_fs::serve::page_response`, `canonicalize` 뒤의 실물 경로로).
+///  2. **HEAD** — 뷰어의 변경 감시가 1.5초마다 이 경로를 때린다(`Last-Modified` 지문만
+///     본다). 본문을 안 읽으므로 큰 문서도 부담이 없다.
+fn page_response(uri: &str, method: &tauri::http::Method, origin: Option<&str>) -> tauri::http::Response<Vec<u8>> {
+    use tauri::http::{header, Method, Response, StatusCode};
+    // 실패 응답에도 **허용 오리진에는** ACAO를 붙인다. 안 붙이면 뷰어의 HEAD 폴링이
+    // "404"가 아니라 CORS 오류(TypeError)를 받아 「파일이 사라졌다」와 「스킴이
+    // 고장났다」가 같은 모양이 된다. 허용 밖 오리진에는 그대로 아무것도 안 준다.
+    let cors = origin.filter(|o| ccg_fs::serve::cors_allows(o)).map(str::to_string);
+    let empty = |code: StatusCode| {
+        let mut b = Response::builder().status(code);
+        if let Some(o) = cors.as_deref() {
+            b = b.header(header::ACCESS_CONTROL_ALLOW_ORIGIN, o).header(header::VARY, "Origin");
+        }
+        b.body(Vec::new()).unwrap_or_else(|_| Response::new(Vec::new()))
+    };
+    if crate::flags::no_fs() {
+        return empty(StatusCode::NOT_FOUND);
+    }
+    // ── CORS는 `ccg-img`와 **같은 문법**으로 앱 오리진에만 (M6 R2 §S3) ────────
+    // 2.6.2는 여기에 `ACAO: *`를 달았다. 그 청중은 **미리보기 문서 자신**이다 —
+    // sandbox iframe이라 오리진이 `null`이고, 그 문서는 우리가 렌더하는 **남의
+    // 스크립트**다. 열어 두면 그 스크립트가 등록된 루트(=프로젝트 폴더) 아래 아무
+    // 파일이나 `fetch`로 읽어 밖으로 보낼 수 있다. 그림·스타일·스크립트·비디오 로드는
+    // 전부 no-cors라 헤더가 필요 없으므로 **보이는 렌더는 그대로**고, 잃는 것은
+    // 문서 안의 `fetch()/XHR`과 CORS 모드 서브리소스(로컬 @font-face)뿐이다.
+    // 앱 오리진은 남긴다 — 뷰어의 HEAD 폴링이 그 길로 온다.
+    if origin.is_some() && cors.is_none() {
+        return empty(StatusCode::FORBIDDEN);
+    }
+    let head_only = method == Method::HEAD;
+    let Some(doc) = ccg_fs::serve::page_response(uri, head_only) else { return empty(StatusCode::NOT_FOUND) };
+    let mut b = Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, doc.mime)
+        .header(header::CACHE_CONTROL, "no-cache")
+        .header(header::LAST_MODIFIED, doc.last_modified);
+    if let Some(o) = cors.as_deref() {
+        b = b.header(header::ACCESS_CONTROL_ALLOW_ORIGIN, o).header(header::VARY, "Origin");
+    }
+    b.body(doc.bytes).unwrap_or_else(|_| Response::new(Vec::new()))
+}
+
 fn main() {
     // 락은 프로세스 수명 동안 살아 있어야 한다(드랍되면 핸들이 닫혀 잠금이 풀린다)
     let Some(_lock) = acquire_home_lock() else {
@@ -157,6 +204,29 @@ fn main() {
                 .and_then(|v| v.to_str().ok())
                 .map(str::to_string);
             img_serve(move || responder.respond(img_response(&uri, origin.as_deref())));
+        })
+        // ── HTML 미리보기 스킴(M6 R3) ────────────────────────────────────────
+        // 뷰어가 .html을 열면 기본이 **렌더된 페이지**다(Ctrl+D로 코드 보기). 문서와 그
+        // 상대경로 리소스를 이 스킴이 디스크에서 서빙하고, sandbox iframe(opaque origin)이
+        // 페이지 스크립트를 앱에서 격리한다. 2.6.2 `protocol.handle('ccg-page')` 이식.
+        //
+        // 워커 풀은 `ccg-img`와 **공유한다** — 2.6.2도 두 핸들러가 같은 libuv 스레드풀에서
+        // 돌았다(`fs.promises`). 느린 경로 하나가 큐를 막는 성질까지 같은 자리에 둔다.
+        //
+        // CSP는 손댈 게 없다: 2.6.2는 앱 CSP를 `onHeadersReceived`로 **주입**했기 때문에
+        // `ccg-page:` 응답만 골라 빼고(문서라서 `script-src 'self'`가 인라인 스크립트를
+        // 죽인다) `frame-src`·`connect-src`에 스킴을 더해야 했다. 3.0은 앱 CSP 자체가
+        // 없다(`tauri.conf.json` `security.csp: null`) — 주입 경로가 없으니 그 함정도 없다.
+        // 격리는 sandbox iframe이 맡는다(2.6.2와 같은 규약).
+        .register_asynchronous_uri_scheme_protocol("ccg-page", |_ctx, request, responder| {
+            let uri = request.uri().to_string();
+            let method = request.method().clone();
+            let origin = request
+                .headers()
+                .get(tauri::http::header::ORIGIN)
+                .and_then(|v| v.to_str().ok())
+                .map(str::to_string);
+            img_serve(move || responder.respond(page_response(&uri, &method, origin.as_deref())));
         })
         .invoke_handler(tauri::generate_handler![ipc::ipc_call])
         .setup(|app| {

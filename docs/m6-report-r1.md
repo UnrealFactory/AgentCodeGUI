@@ -553,3 +553,267 @@ cargo run --release -p ccg-fs --example critic_attack2          # S1·S4·S5
 node bench/critic-m6-live.mjs both                              # S2 정지 · S3 CORS
 node docs/critic/tools/critic-m6-collate2.mjs <critic_collate.exe>  # S7
 ```
+
+---
+
+# §R3 — 남은 두 구멍을 막는다: `ccg-page`(HTML 미리보기) · 첨부 저장
+
+R1이 "과제 범위 밖"으로 둔 것 하나(`ccg-page`, §5-A)와, M-UX R3이 처음 시도하며 드러낸 것
+하나(`saveAttachmentData` 미배선, M-UX §R3.9-1)를 닫는다. 둘 다 **셸에만** 구멍이 있었다 —
+렌더러(`app/src/components/FileModal.tsx` `HtmlPreview` · `app/src/lib/images.ts`
+`filesToAttachmentPaths`)는 이미 2.6.2에서 이식돼 있었고, 부를 채널이 없어서 멈춰 있었다.
+
+## R3.0 한 장 표
+
+| # | 과제 | 이번 |
+|---|---|---|
+| 1 | `ccg-page` 스킴 | `main.rs` 비동기 등록 + `ccg_fs::serve::{register_html_preview, page_response}` · 입력 브리지 이식 · HEAD 폴링 · 루트 화이트리스트 (§R3.1) |
+| 2 | `saveAttachmentData` | `crates/ccg-fs/src/attach.rs` 신설 + `attachment:save-data` 채널 · 와이어를 base64로 (§R3.2) |
+| 3 | M6 R2 회귀 | 삭제 페일세이프 · 비동기 스킴 · CORS · 정렬 **전부 그대로** (§R3.3) |
+| 게이트 | | `bench/ab.mjs` 8화면 **두 앱 다 ok** · `bench/m6r3.mjs` A/B **15/15 · 16/16** · `bench/m6.mjs tauri` **16/16** · `cargo test -p ccg-fs` **79 green** · typecheck 3종 초록 |
+
+## R3.1 `ccg-page` — 문서만이 아니라 그 이웃까지
+
+R1 §5-A의 계획을 그대로 따랐고, 계획에 없던 것 세 가지를 실측으로 더했다.
+
+### URL 모양이 `ccg-img`와 다르다 (이게 핵심이다)
+
+`ccg-img`는 경로 전체를 `encodeURIComponent` 한 **한 세그먼트**다. `ccg-page`에 그걸 쓰면
+문서는 뜨지만 `./style.css`가 `http://ccg-page.localhost/style.css`로 해석돼 **서브리소스가
+전멸한다**. 2.6.2가 세그먼트별로 인코딩한 이유가 그것이고, 그대로 옮겼다:
+
+```
+2.6.2  ccg-page://local/C%3A/Code/proj/index.html
+3.0    http://ccg-page.localhost/C%3A/Code/proj/index.html      ← 호스트만 wry 규약
+```
+
+실측(`bench/m6r3.mjs` `page-sibling-resources` · `viewer-html-preview-mounts`):
+문서가 참조한 `./assets/style.css`가 먹었고(`getComputedStyle(h).color === rgb(14, 165, 233)`),
+`./assets/logo.png`가 `naturalWidth 1`로 떴다 — **두 앱 같은 값**.
+
+### 루트 화이트리스트를 `canonicalize` **뒤**에 건다
+
+2.6.2는 `path.normalize` + 소문자 접두 비교였다. 그건 어휘 비교라 **정션/심볼릭 링크로
+루트 밖을 볼 수 있다**. 3.0은 요청 경로를 `std::fs::canonicalize` 한 실물 경로로 판정한다
+(루트도 등록 시점에 정규화해 같은 좌표계에 둔다). `..` 접기는 그 부산물로 공짜다.
+
+| 요청 | 3.0 | 2.6.2 |
+|---|---|---|
+| 문서 자신 · 같은 루트 아래 `assets/*` | 200 | 200 |
+| `…/proj/../ccg-m6r3-outside/secret.txt` | **404** | **404** |
+| `http://ccg-page.localhost/C%3A/Windows/win.ini` | **404** | **404** |
+| 폴더 · 없는 파일 | 404 | 404 |
+
+**`?p=`는 안 받는다.** `ccg-img`는 2.6.2 호환으로 `?p=<abs>` 모양을 계속 받는데(거긴
+화이트리스트가 없어 노출이 같다), 미리보기 문서는 `./data.json?p=…` 같은 쿼리를 마음대로
+만들 수 있다 — 그 규칙이 살아 있으면 쿼리가 **화이트리스트를 우회하는 통로**가 된다.
+`page_path_from_uri`는 쿼리·프래그먼트를 통째로 버린다(테스트
+`page_scheme_serves_only_inside_the_registered_root`의 `hijack` 케이스).
+
+**루트 수 상한 8(LRU)** 도 더했다. 2.6.2의 `pageRoots`는 무한 누적이라 앱을 하루 켜 두고
+프로젝트를 여럿 오가면 예전 프로젝트 폴더가 계속 열려 있다.
+
+### 입력 브리지 — 한 글자도 안 바꾸고 옮겼다
+
+`PAGE_KEY_BRIDGE`(2.6.2 `index.ts:152-193`)를 `serve.rs`에 사본으로 두고, **`text/html`
+응답에만** 이어붙인다. sandbox iframe이 포커스를 가지면 부모가 키를 못 받는 문제 그대로.
+
+실증(`bridge-ctrl-d-toggles-code` · `bridge-escape-closes-viewer`): iframe **안을 진짜 마우스로
+클릭해 포커스를 넘긴 뒤**
+
+- `Ctrl+D` → 코드 보기로 전환(`.vtool button[aria-label="코드 보기"].on`, iframe 소멸) — 두 앱 ok
+- `Esc` → 뷰어가 닫힘 — 두 앱 ok
+
+이게 통과했다는 건 (1) 문서가 실제로 로드됐고 (2) 그 안에서 스크립트가 돌았고 (3) 셸이
+브리지를 덧붙였고 (4) `postMessage`가 부모에 닿았다는 뜻이다 — 네 가지가 한 검사에 있다.
+
+### HEAD 폴링 재로드
+
+`Last-Modified`는 std에 날짜 포맷이 없어 직접 만들었다(RFC 1123 · Hinnant `civil_from_days`).
+JS `Date#toUTCString()`과 문자열이 같아야 해서 그걸 테스트로 박았다
+(`http_date_matches_js_to_utc_string`).
+
+실증(`head-poll-reloads-on-disk-change`): 미리보기가 떠 있는 동안 디스크의 문서를 고치면
+**1.4초 만에** iframe이 새로 뜨고, 새 문서가 **새 제목**을 보고한다(`M6 R3 · 다시 읽음`).
+두 앱 같은 값. (재마운트만 보면 "옛 내용을 다시 그렸다"를 못 잡는다 — 그래서 내용까지 본다.)
+
+### CSP 함정은 3.0에 **없다**
+
+2.6.2는 앱 CSP를 `onHeadersReceived`로 **주입**했기 때문에 세 가지를 해야 했다:
+`ccg-page:` 응답만 골라 CSP를 빼고(문서라서 `script-src 'self'`가 인라인 스크립트를 죽인다),
+`frame-src`에 스킴을 더하고, `connect-src`에 또 더한다(HEAD 폴링).
+3.0은 `tauri.conf.json`의 `security.csp: null` — **주입 경로 자체가 없다**. srcdoc 상속 함정도
+해당 없다(`src=`로 로드한다). 격리는 2.6.2와 같은 sandbox iframe(`allow-scripts allow-forms
+allow-modals`, `allow-same-origin` 없음 = opaque origin)이 맡는다.
+
+### 의도한 발산 하나 — 문서 **안**의 `fetch()`
+
+| | 2.6.2 | 3.0 |
+|---|---|---|
+| 문서 안 `fetch('./assets/data.json')` | **ok** | **blocked** (`TypeError: Failed to fetch`) |
+| `<img>` · `<link rel=stylesheet>` · `<script src>` · `<video>` | ok | ok |
+
+2.6.2는 응답에 `ACAO: *`를 달았다. 그 헤더의 청중은 **미리보기 문서 자신**이다 —
+sandbox라 오리진이 `null`이고, 그 문서는 우리가 렌더하는 **남의 스크립트**다. 열어 두면
+등록된 루트(=프로젝트 폴더) 아래 아무 파일이나 읽어 밖으로 보낼 수 있다. M6 R2 §S3이
+`ccg-img`에서 `*`를 회수한 것과 **같은 판단**을 여기에도 적용했다: 허용은 앱 오리진뿐이고,
+뷰어의 HEAD 폴링이 그 길로 온다.
+
+값으로 잃는 것은 정확히 둘이다 — 문서 안의 `fetch()/XHR`, 그리고 CORS 모드 서브리소스
+(로컬 `@font-face`). 그림·스타일·스크립트·비디오는 전부 no-cors라 `Origin` 헤더를 안 보내고,
+그래서 **보이는 렌더는 두 앱이 같다**(위 표 아랫줄 + 픽셀 대조 §R3.4).
+되돌리려면 `main.rs page_response`의 `cors` 한 줄에 `null`을 더하면 된다 — 그 선택은
+"미리보기 문서에 프로젝트 읽기 권한을 준다"와 같은 말이라 여기 적어만 둔다.
+
+실패 응답(404·403)에도 **허용 오리진에는** ACAO를 붙인다. 안 붙이면 뷰어의 HEAD 폴링이
+404가 아니라 CORS 오류를 받아 「파일이 사라졌다」와 「스킴이 고장났다」가 같은 모양이 된다.
+
+## R3.2 `saveAttachmentData` — 붙여넣기·브라우저 드래그가 3.0에서 처음 저장된다
+
+새 모듈 `crates/ccg-fs/src/attach.rs`. 2.6.2 `index.ts:1366`의 의미론 그대로:
+확장자 정규화 → 허용 목록(`ATTACH_IMAGE_EXTS` + `ATTACH_TEXT_EXTS`) 밖이면 `.png` →
+`<앱 홈>/attachments/paste-<유일값>.<ext>`.
+
+세 가지가 2.6.2와 다르다(전부 의도):
+
+1. **와이어가 base64다.** 심의 `payload`는 JSON이라 `ArrayBuffer`가 구조적 복제로 안 건너간다
+   (preload의 `ipcRenderer.invoke`와 다른 자리다). R1의 심은 `Array.from(new Uint8Array(…))`
+   였는데 그건 바이트당 `255,` 네 글자 — 3MB 스크린샷 하나가 **20MB JSON**이다. base64는
+   1.37배다. 셸은 옛 모양(`bytes` 숫자 배열)도 계속 받는다.
+   (`toBase64`는 32k 청크로 돈다 — `String.fromCharCode(...arr)`는 큰 이미지에서 스택이 터진다.)
+2. **저장 위치가 `ccg_store::app_home()`이다.** 2.6.2는 `os.homedir()/.agentcodegui`를 직접
+   써서 `CCG_HOME`을 **안 탄다** — 벤치·dev 격리 홈으로 돌려도 사용자 실홈에 파일을 흘린다
+   (이번 A/B에서 실측: 2.6.2 팔이 실홈에 3개를 남겼고, 하네스가 되치웠다).
+   3.0은 격리 홈 안에 떨어진다: `…\ccg-m6r3-home-tauri\attachments\paste-….png`.
+3. **상한 64MB** + `create_new`(덮어쓰기 없음) + 이름 충돌 시 재추첨.
+
+`randomUUID()` 자리는 std에 난수가 없어 `RandomState`(OS 시드)·나노초·PID·프로세스 카운터를
+섞은 32자리 hex다. 200회 연속 저장에 이름 충돌 0(테스트).
+
+실증:
+
+| 검사 | 2.6.2 | 3.0 |
+|---|---|---|
+| `attachment-save-data` (바이트 → 경로 → 디스크 70B PNG 왕복) | ok | ok |
+| `composer-attachments` (경로 없는 File 2장 드롭 → 썸네일 2 · 둘 다 `naturalWidth 1`) | ok | ok |
+| `image-lightbox` (썸네일 클릭 → 라이트박스 + 스트립) | ok | ok |
+| `bench/ab.mjs`의 `composer-attachments`·`image-lightbox`·`image-lightbox-strip` | ok | **ok(신규 도달)** |
+
+## R3.3 M6 R2 회귀 — 네 자리 전부 그대로
+
+| R2가 세운 것 | 도구 | 이번 값 |
+|---|---|---|
+| **S1 삭제 페일세이프**(휴지통에 진짜 들어가나) | `critic-m6-attack2.rs` `trash_semantics_rust` · `bench/m6.mjs delete-goes-to-recycle-bin` | `went_to_recycle_bin true` · 항목 +1 · `$I` 메타에 그 경로 · 뒷정리 ok |
+| **S2 비동기 스킴**(도달 불가 UNC 이미지 중에도 창이 사나) | `critic-m6-live.mjs` D·E | `SendMessageTimeout` **6·6·7ms** · `IsHungAppWindow False`(전·중·후) · 굶김 시험 최대 지연 **2ms** |
+| **S3 CORS 회수**(앱 오리진만) | `critic-m6-live.mjs` B·C + **신설** `bench/m6r3.mjs r2-regression-…` | 앱 오리진 fetch 200/16B · 비이미지 404 · **sandbox iframe(오리진 null)에서 `ccg-img` fetch = blocked(두 앱 다)** |
+| **S7 정렬** | `critic-m6-collate.mjs` | `crates/ccg-fs/src/collate.rs` **무변경**(diff 0줄) · 실파일명 30개×600세트 재현값 그대로(잔여는 대소문자 동률 순서 — R2 §R2.7이 적어 둔 클래스) |
+| diff 캡 3종 | `critic-m6-attack.rs` `diff_caps` · `critic-m6-diff.rs` | `scattered_8000 +500/−500` · `full_rewrite` 폴백 · `over_1_5mb`·`binary` 문구 동일 · `two_far_edits +2/−2` · `huge_one_edit +1/−1` |
+| `ccg-img` 서빙 표 | `critic-m6-attack.rs` `ccg_img` | png ok · json 404 · traversal 404 · **실홈 `accounts.json` 404** · 64MB 경계 ok/404 · 폴더 404 |
+
+**S3에 눈금을 하나 더했다.** R2는 CORS를 "앱 오리진만"으로 좁히면서 그 근거를
+*"sandbox iframe·SVG 문서처럼 IPC가 없는 컨텍스트"* 라고 적었는데, 그때는 **그 컨텍스트가
+실제로 없었다**(ccg-page가 없었으니까). 이번 라운드가 그걸 만들었으므로, 미리보기 문서
+안에서 `ccg-img`를 `fetch` 해 보는 검사를 넣었다 — 두 앱 다 `blocked`.
+
+`bench/m6.mjs`의 기대값 둘을 고쳤다(둘 다 **다른 라운드가 성공해서** 낡은 것이다):
+`channel-audit`의 미구현 기대 목록에서 `fs:html-preview-url`이 빠지고(이번 라운드), 남은
+미구현은 엔진 1턴이 필요한 `git:ai-message` 하나뿐이다. `lsp-status-m7-boundary`의 기대값은
+`unsupported` → `ready`(M7 R2~R4 착지). 안 고치면 M6 하네스가 M7의 성공을 회귀로 읽는다.
+
+## R3.4 게이트
+
+```
+bench/ab.mjs (--merge · 두 앱 같은 8화면)
+                         2.6.2      3.0.0-beta.1
+viewer-html-preview      ok         ok    ← R1·M-UX R3에서 3.0만 실패하던 자리
+viewer-html-code         ok         ok
+composer-attachments     ok         ok    ← M-UX R3에서 3.0만 실패
+image-lightbox           ok         ok    ← 위와 같음
+image-lightbox-strip     ok         ok    ← 위와 같음
+viewer-image             ok         ok
+viewer-svg-preview       ok         ok
+viewer-svg-source        ok         ok
+3.0 요약: 정의 156 · 시도 57 · 성공 57 · 실패 0 · skip 1
+```
+
+픽셀 대조(`critic-pixdiff.mjs --thr=24`, 1440×900 = 1,296,000px):
+
+```
+viewer-html-preview   over 1,142 (0.088%)   bbox x73-1213 y5-252
+viewer-html-code        802 (0.062%)        viewer-image  753
+viewer-svg-preview      852                 viewer-svg-source 807
+image-lightbox        2,618                 image-lightbox-strip 3,294
+composer-attachments 61,666                 ← 첨부 트레이가 아니라 **사이드바·패널 스트립** 차이
+```
+
+앞 여섯은 전부 모달 헤더 줄(y5~82)의 서브픽셀 AA 차이다(Chromium ↔ WebView2).
+`composer-attachments`만 큰데, 캡처를 나란히 보면 다른 것은 사이드바 섹션 라벨(2.6.2
+「일반 채팅/멀티 채팅/추가 채팅」 ↔ 3.0 「채팅/배치」)·상단 패널 번호 스트립·읽음 배지·스레드
+스크롤 위치다 — **전부 M-UI/M-UX 소유**고, 첨부 트레이 자체(썸네일 상자 위치·크기)는 같다.
+
+나머지 게이트:
+
+```
+node bench/m6r3.mjs both        electron 15/15 · tauri 16/16 (검사 이름별 A/B 동수)
+node bench/m6.mjs tauri         16/16  (R1 검사 전부 + 휴지통 저울 + 채널 감사)
+cargo test -p ccg-fs            79 green  (R2 73 + 이번 6)
+npm run typecheck:node/web/app  전부 초록
+```
+
+## R3.5 이 라운드가 만진 파일
+
+| 경로 | 무엇 |
+|---|---|
+| `crates/ccg-fs/src/serve.rs` | `PAGE_MIME`·`PAGE_KEY_BRIDGE`·`register_html_preview`·`page_response`·`page_url`·`page_path_from_uri`·`lexical_normalize`·`http_date`/`civil_from_days` + 테스트 2 |
+| `crates/ccg-fs/src/attach.rs` | **신설** — `save_attachment_data`·`safe_ext`·`decode_b64`·`unique_stem` + 테스트 4 |
+| `crates/ccg-fs/src/lib.rs` | `pub mod attach;` |
+| `src-tauri/src/main.rs` | `ccg-page` 비동기 스킴 등록(워커 풀 공유) + `page_response`(HEAD·CORS·실패 응답 ACAO) |
+| `src-tauri/src/ipc/mod.rs` | `FS_HTML_PREVIEW_URL`에서 `#[allow(dead_code)]` 제거 · `ATTACHMENT_SAVE_DATA` 신설 |
+| `src-tauri/src/ipc/fs.rs` | 두 채널 `owns()`+`dispatch()`(base64/숫자배열 둘 다 수용) |
+| `app/src/api/shim.ts` | `saveAttachmentData` 와이어 → `b64` + 청크 `toBase64` |
+| `bench/m6r3.mjs` | **신설** — 이 라운드의 A/B 하네스(16검사) + 2.6.2가 실홈에 흘린 첨부 되치우기 |
+| `bench/m6.mjs` | 낡은 기대값 2개 갱신 · `CCG_EXE` 지원 |
+| `bench/ab.mjs` | `--exe=`(공용 exe가 옆 에이전트에게 잠겼을 때) |
+
+## R3.6 남은 것
+
+1. **`git:ai-message`** — R1 §5-B 그대로. 엔진 1턴이 필요해 실행 계통 소유다. 이제
+   `fs`/`git`/`shell` 채널 중 **유일한** 미구현이다(`channel-audit` probed 23 / ok 22).
+2. **`dialog:pick-attachments`** — 셸에 핸들러가 없다(심이 `[]`). 컴포저의 `+` 버튼으로 여는
+   네이티브 파일 선택이 3.0에서 아무것도 안 고른다. 이번 두 화면(드롭·붙여넣기)과는 다른
+   경로라 게이트에 안 잡혔다. `tauri_plugin_dialog`의 `pick_files` + 확장자 필터면 끝난다.
+3. **미리보기 문서 안의 `fetch()`** — §R3.1의 의도한 발산. 되돌릴지 말지는 정책 판단이라
+   열어 둔다.
+4. **`ccg-page`에 Range 요청이 없다** — 2.6.2도 없다. 미리보기 안의 `<video>`가 큰 파일이면
+   통째로 메모리에 올라온다(64MB 캡에서 잘린다). 실사용에서 밟은 적은 없다.
+5. **정렬 잔여 클래스** — R2 §R2.7 그대로(대소문자 동률·한자↔한글·2글자 확장 접기).
+   이번 라운드는 `collate.rs`를 안 건드렸다.
+
+## R3.7 재현 방법
+
+```bash
+# 공용 exe가 옆 에이전트에게 잠겨 있으면 격리 target + --exe/CCG_EXE
+CARGO_TARGET_DIR=%TEMP%/ccg-m6r3-tgt cargo build --release -p agentcodegui --features custom-protocol
+CARGO_TARGET_DIR=%TEMP%/ccg-m6r3-tgt cargo test -p ccg-fs                       # 79 green
+npm run app:build && npm run typecheck:node && npm run typecheck:web && npm run typecheck:app
+
+CCG_EXE=%TEMP%/ccg-m6r3-tgt/release/agentcodegui.exe node bench/m6r3.mjs both   # 15/15 · 16/16
+CCG_EXE=%TEMP%/ccg-m6r3-tgt/release/agentcodegui.exe node bench/m6.mjs tauri    # 16/16
+node bench/ab.mjs tauri    --exe=%TEMP%/ccg-m6r3-tgt/release/agentcodegui.exe \
+  --only=viewer-html-preview,viewer-html-code,composer-attachments,image-lightbox,image-lightbox-strip,viewer-image,viewer-svg-preview,viewer-svg-source --merge --no-boot
+node bench/ab.mjs electron --only=<같은 목록> --merge --no-boot
+
+# 회귀(크리틱 도구 — examples/·bench/로 복사해 돌리고 레포에는 안 남긴다)
+cp docs/critic/tools/critic-m6-{attack,attack2,collate,diff}.rs crates/ccg-fs/examples/
+CARGO_TARGET_DIR=%TEMP%/ccg-m6r3-tgt cargo run -q -p ccg-fs --example critic_attack   # ccg_img·diff_caps
+CARGO_TARGET_DIR=%TEMP%/ccg-m6r3-tgt cargo run -q -p ccg-fs --example critic_attack2  # 휴지통·UNC
+cp docs/critic/tools/critic-m6-live.mjs bench/.m6r3-critic-live.mjs
+node bench/.m6r3-critic-live.mjs tauri                                          # S2 정지 · S3 CORS
+```
+
+**안전**: 이름 기반 kill 0회(죽인 것은 하네스가 spawn한 PID 트리뿐). 사용자 실앱
+(`%LOCALAPPDATA%\Programs\AgentCodeGUI\`)은 손대지 않았다. 실홈은 읽기/복사만 —
+다만 **2.6.2 기준선 팔이 실홈 `~/.agentcodegui/attachments`에 파일을 만든다**(2.6.2가
+`CCG_HOME`을 안 타서다). 주행 전후 목록을 견줘 **우리가 넣은 바이트와 똑같은 새 파일만**
+지운다(`bench/m6r3.mjs`의 `sweepAttachments`, 실측 3개 회수). 크리틱 하네스가 사용자
+휴지통에 넣은 시험 항목 6건도 `$I` 메타로 되찾아 지웠다.
