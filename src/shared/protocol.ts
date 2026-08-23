@@ -485,6 +485,12 @@ export type EngineEvent =
   // `revertTo`는 **전환 직전 리비전**이다. `chat:identity-revert`에 그대로 넘기면
   // 계정이 돌아온다(히스토리 삭제가 아니라 새 리비전 — m-logic §6.3). 같은 tick에
   // `chat:identity{origin:'auto_account_switch', changed:['billing.account']}`도 나간다.
+  // ★ M10 — `talk`이 붙어 오면 이 notice는 **대화 연결**(세션 간 소통)의 발신 기록이다.
+  // M11의 `switch`와 같은 이유로 선택 필드다: 스레드에 줄 하나 남기는 안내이고, 그
+  // 문법은 notice가 이미 갖고 있다.
+  //
+  // **거절도 반드시 온다**(`result`가 delivered/queued가 아닌 값). 조용히 안 나가면
+  // 사용자는 두 세션이 왜 안 붙는지 알 수 없고, 모델은 같은 줄을 다음 턴에 또 쓴다.
   | {
       type: 'notice'
       runId: string
@@ -496,6 +502,7 @@ export type EngineEvent =
         soonestReset: number | null // 옮겨간 계정이 다음에 초기화되는 unix 초(모르면 null)
         revertTo: number
       }
+      talk?: TalkSent
     }
   | { type: 'error'; runId: string; message: string }
   // ★ M9 — 이 채팅이 **실제로 들고 있는 도구 환경**(MCP 서버 · 스킬). REPLACE 의미:
@@ -1263,7 +1270,14 @@ export const IPC = {
   chatVerdict: 'chat:verdict', // 거부/큐잉 사유
   chatStatus: 'chat:status', // ★ 전 채팅 경량 상태 REPLACE (§4.3)
   chatWindows: 'chat:windows', // 창 자리 목록 REPLACE
-  chatFlushReq: 'chat:flush-req' // 창 닫기 전 마지막 저장 요청
+  chatFlushReq: 'chat:flush-req', // 창 닫기 전 마지막 저장 요청
+  // ── 대화 연결 (4) — M10. **`talk:*`가 아니다**: 그 이름은 1.x의 은퇴한 "채팅 모드"
+  //    블롭(`talkGet`/`talkSave`, 위쪽)이 이미 쓰고 있어 재사용하면 옛 렌더러의
+  //    호출이 새 라우터로 떨어진다.
+  crosstalkConfig: 'crosstalk:config', // 설정 조회 (기본값 = 꺼짐)
+  crosstalkSet: 'crosstalk:set', // 부분 갱신 {enabled?, board?, on?, maxHops?, …}
+  crosstalkStop: 'crosstalk:stop', // ★ 긴급 정지 — 도는 연쇄 폐기 + enabled=false
+  crosstalkState: 'crosstalk:state' // main → 렌더러: 설정 전문 REPLACE
 } as const
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -1419,6 +1433,58 @@ export interface Board {
   order: number[] // 자리 순열(길이 6). 앞 count개가 보이는 자리
   slots: (string | null)[] // 길이 6. 인덱스=슬롯 정체성, 값=chatId
   updatedAt?: number
+}
+
+/* ── M10 대화 연결(세션 간 소통) ───────────────────────────────────────────
+ * 근거 문서: docs/design/m10-talk.md.
+ *
+ * 도달 범위는 **보드 하나**다: 같은 보드의 보이는 자리들끼리만 말을 걸 수 있고,
+ * 그 보드의 옵트인이 켜져 있어야 한다. 주소는 자리 번호(사용자가 화면에서 보는 그
+ * 번호)이고, 발신 문법은 어시스턴트 답변 마지막의 한 줄 `@talk[자리] 본문`이다.
+ *
+ * 이 기능은 2.6.2에서 만들었다가 **사용자 요청으로 롤백된 적이 있다**("자동으로
+ * 대화하는 게 위험하다"). 그래서 타입에도 상한이 드러난다 — `hop`/`maxHops`는
+ * 장식이 아니라 UI가 "지금 몇 번째 왕복인가"를 그려야 하는 값이다. */
+export type TalkResult =
+  | 'delivered' // 상대가 유휴 — 그 자리에서 턴이 시작된다
+  | 'queued' // 상대가 작업 중 — 그 턴이 끝나면 나간다
+  | 'rejected' // 상대 런타임이 지금 받을 수 없다(폴더·계정 문제)
+  | 'off' // 대화 연결이 꺼져 있다 (기본값)
+  | 'no_board' // 대화 연결이 켜진 보드에 이 대화가 없다
+  | 'no_chain' // 사람이 시작한 턴이 아니다 — 자율 발신은 출발점이 될 수 없다
+  | 'no_target' // 그런 자리 없음
+  | 'ambiguous' // 같은 제목의 자리가 여럿 — 자리 번호로 다시
+  | 'self' // 자기 자신
+  | 'hop_cap' // 세션 간 전달 상한
+  | 'msg_cap' // 이 연쇄의 총 메시지 상한
+  | 'fanout_cap' // 한 턴의 수신자 수 상한
+  | 'rate_limited' // 같은 상대에게 너무 잦은 발신
+  | 'duplicate' // 같은 내용 반복
+  | 'stopped' // 긴급 정지
+
+/** `EngineEvent{type:'notice'}.talk` — 발신자 스레드에 남는 한 줄의 구조 본문. */
+export interface TalkSent {
+  dir: 'out'
+  from: string // 발신 chatId
+  to: string | null // 수신 chatId (대상 확정 실패면 null)
+  target?: string // 모델이 적은 원문 대상(`2` · 제목 · `*`)
+  toSlot?: number // 수신자의 자리 번호(1-based)
+  toName?: string
+  body: string | null
+  result: TalkResult
+  hop?: number // 이 메시지가 몇 번째 전달인가 (사람의 지시 = 0)
+  maxHops?: number
+  chainId?: string // 같은 사람 지시에서 뻗어 나온 메시지들의 묶음
+}
+
+/** `crosstalk:config` / `crosstalk:set` / `crosstalk:state`의 본문. 파일: `talk-config.json`. */
+export interface TalkConfig {
+  version: 1
+  enabled: boolean // ★ 기본 false. 긴급 정지가 이 값을 false로 되돌린다
+  boards: Record<string, true> // 옵트인한 보드만 키가 있다(끄면 키가 사라진다)
+  maxHops: number // 기본 4
+  maxMsgs: number // 기본 12 — 한 연쇄가 태울 수 있는 총 메시지
+  maxFanout: number // 기본 3 — 한 턴이 동시에 깨우는 세션 수
 }
 
 /** 마커 채팅도 항상 갖는 경량 상태 — 스냅샷이 아니다(§4.3).

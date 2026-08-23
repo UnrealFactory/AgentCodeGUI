@@ -42,6 +42,8 @@ mod diff;
 mod hub;
 mod ident;
 mod lite;
+/// ★M10 — 대화 연결(세션 간 소통) 라우터. 허브가 소유하고, 턴 정착에서만 돈다.
+mod talk;
 mod tap;
 mod wire;
 
@@ -114,6 +116,10 @@ fn reload_pending(ids: &[String]) {
                 // 정체성 스냅샷은 **다시 잡는다**(m-logic §5.8 "복원이 아니라 재장전" —
                 // 그 사이 폴더·계정이 바뀌었을 수 있다).
                 picker: None,
+                // ★M10 — 디스크에서 되살린 예약은 **사람 것으로 되돌린다**. 재시작을
+                // 건너뛴 세션 간 메시지가 "AI가 넣은 줄"의 신분을 유지하면, 그 채팅의
+                // 다음 사람 턴 판정(헛 재개 상한·한도 재개)이 낡은 표식에 걸린다.
+                origin: None,
             })
             .collect();
         let hold = lite.hold.map(|h| ccg_engine::runtime::ReloadHold {
@@ -416,6 +422,13 @@ fn core_dispatch(channel: &str, p: &Value) -> Option<Value> {
             let id = a.get("liveItemId").and_then(Value::as_str).unwrap_or("").to_string();
             hub::call(&chat(), hub::Op::ForceSettle(id))
         }
+        // ★M10 — 대화 연결. **`talk:*`가 아니라 `crosstalk:*`**인 이유는 1.x의 은퇴한
+        // "채팅 모드"가 그 이름을 이미 쓰고 있기 때문이다(`ipc::ch::TALK_GET`).
+        // 조회는 스토어만 보면 되지만(허브 왕복 불필요), 쓰기는 허브를 지난다 —
+        // 끄는 순간 **도는 연쇄를 버리는 것**까지가 한 동작이라서다.
+        ch::CROSSTALK_CONFIG => ccg_store::talk::config(),
+        ch::CROSSTALK_SET => hub::call("", hub::Op::TalkConfig(arg(p, 0).clone())),
+        ch::CROSSTALK_STOP => hub::call("", hub::Op::TalkStop),
         // 진단 — 하네스(scripts/poc-live-chat.mjs)가 런타임 회계를 읽는다.
         ch::ENGINE_DEBUG => hub::call("", hub::Op::Debug),
         _ => return None,
@@ -439,6 +452,9 @@ fn queue_input(a: &Value) -> ccg_engine::queue::QueueInput {
             .map(|v| v.iter().filter_map(Value::as_str).map(str::to_string).collect())
             .unwrap_or_default(),
         picker: patch.filter(|p| !p.is_empty()),
+        // ★M10 — 이 문은 **렌더러의 예약**이다(사람). 세션 간 주입은 채널을 타지 않고
+        // 허브 안에서 `talk::Router::queue_input`으로 만들어진다.
+        origin: None,
     }
 }
 

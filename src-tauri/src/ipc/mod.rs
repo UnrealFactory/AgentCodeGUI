@@ -214,6 +214,15 @@ pub mod ch {
     /// 셸 내부 진단 — 계약면(protocol.ts)에 없다. 하네스가 런타임 회계를 읽는다.
     pub const ENGINE_DEBUG: &str = "engine:debug";
 
+    // ── M10 대화 연결(세션 간 소통) ─────────────────────────────────────────
+    // **`talk:*`를 쓰지 않는다**: 위 `TALK_GET`/`TALK_SAVE`가 1.x의 은퇴한 "채팅 모드"
+    // 블롭이고, 그 이름을 재사용하면 옛 렌더러의 호출이 새 라우터로 떨어진다.
+    pub const CROSSTALK_CONFIG: &str = "crosstalk:config";
+    pub const CROSSTALK_SET: &str = "crosstalk:set";
+    pub const CROSSTALK_STOP: &str = "crosstalk:stop";
+    /// 브로드캐스트 — 설정이 바뀌었다(긴급 정지 포함). 페이로드 = 설정 전문.
+    pub const CROSSTALK_STATE: &str = "crosstalk:state";
+
     // ── 과도기 별칭: 2.6.2 실행 표면(§6.2) ───────────────────────────────────
     pub const CLAUDE_RUN: &str = "claude:run";
     pub const CLAUDE_CANCEL: &str = "claude:cancel";

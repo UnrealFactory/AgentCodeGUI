@@ -1127,20 +1127,24 @@ impl<D: CliDriver> ChatRuntime<D> {
 
     /// `send`·`enqueue`의 공통 착지 — 큐에 세우고, 판정이 `Accepted`면 드레인까지 본다.
     fn accept_user_message(&mut self, input: QueueInput, verdict: Verdict, now: Millis) -> Verdict {
+        // ★M10 — 넣은 자가 사람이 아닐 수 있다(대화 연결: 다른 채팅의 세션).
+        let origin = input.origin.unwrap_or(QueueOrigin::User);
         // 사용자가 직접 말을 걸었다 = 엔진의 헛 재개 연쇄는 여기서 끊긴다(★R5).
-        if matches!(verdict, Verdict::Accepted | Verdict::Queued) {
+        // **사람만** 끊는다: AI가 보낸 줄이 사람의 개입을 사칭하면 헛 재개 상한이
+        // 세션 사이의 왕복만으로 무한정 초기화된다.
+        if matches!(verdict, Verdict::Accepted | Verdict::Queued) && origin == QueueOrigin::User {
             self.auto_resume_streak = 0;
         }
         match verdict {
             Verdict::Accepted => {
-                let m = self.make_queue_item(input, QueueOrigin::User, now);
+                let m = self.make_queue_item(input, origin, now);
                 self.queue.push_back(m);
                 self.broadcast_queue();
                 self.drain_if_possible();
                 Verdict::Accepted
             }
             Verdict::Queued => {
-                let m = self.make_queue_item(input, QueueOrigin::User, now);
+                let m = self.make_queue_item(input, origin, now);
                 self.queue.push_back(m);
                 self.broadcast_queue();
                 Verdict::Queued
@@ -1152,7 +1156,9 @@ impl<D: CliDriver> ChatRuntime<D> {
     fn make_queue_item(&mut self, input: QueueInput, origin: QueueOrigin, now: Millis) -> QueuedMessage {
         let id = format!("q{}", self.next_qid);
         self.next_qid += 1;
-        let QueueInput { text, images, picker } = input;
+        let QueueInput {
+            text, images, picker, ..
+        } = input;
         // 예약 시점의 picker → **이 항목만의** 정체성 스냅샷. 채팅의 정체성은 안 건드린다
         // (그건 `Cmd::IdentitySet`의 몫이다 — 저자를 늘리지 않는다).
         // 정규화가 실패하면(폴더 없음·계정 없음) 조용히 지금 값으로 떨어진다: 예약 하나가
@@ -3669,6 +3675,7 @@ mod r4_queue_and_resume_tests {
             text: "이 그림 봐줘".into(),
             images: vec![r"C:\shot\a.png".into(), r"C:\shot\b.png".into()],
             picker: Some(pick),
+            origin: None,
         }));
         assert_eq!(v, Verdict::Queued);
 
@@ -3689,6 +3696,7 @@ mod r4_queue_and_resume_tests {
             text: "이 그림 봐줘".into(),
             images: vec![r"C:\shot\a.png".into()],
             picker: None,
+            origin: None,
         }));
         // Idle에서의 enqueue는 곧장 나간다(명령표 `enqueue`/Idle = Accept T27).
         let sent = r.sent_user_texts().join("\n");

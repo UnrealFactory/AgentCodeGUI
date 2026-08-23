@@ -38,7 +38,7 @@
 //! 이 파일 어디에도 승인 카드를 자동으로 닫는 타이머가 없어야 한다 — 있으면 사용자가
 //! 자리를 비운 사이 도구가 저절로 실행되거나 거부된다.
 
-use super::{ident, lite, wire::Wire};
+use super::{ident, lite, talk, wire::Wire};
 use ccg_engine::clock::SystemClock;
 use ccg_engine::driver::{ClaudeDriver, CliDriver};
 use ccg_engine::event::{Event, RevisionOrigin, TerminalStatus, Verdict};
@@ -114,6 +114,11 @@ pub enum Op {
     },
     /// 사용자가 "이어서"를 눌렀다 — `ready`인 대기표를 지금 소진한다.
     ResumeNow,
+    /// ★M10 — 대화 연결 설정 갱신(`crosstalk:set`). 주소가 없다(`chat=""`).
+    /// 라우터가 허브 스레드에 살기 때문에 스토어 쓰기와 **연쇄 버리기**가 한 자리에서 난다.
+    TalkConfig(Value),
+    /// ★M10 — 긴급 정지(`crosstalk:stop`). 도는 연쇄를 전부 버리고 기능을 끈다.
+    TalkStop,
     Dispose,
     /// 진단 — 런타임 수·상태(하네스가 읽는다).
     /// (전 채팅 상태 스냅샷은 허브를 거치지 않는다 — `chats:get`이 `status.json`에서
@@ -213,6 +218,10 @@ struct Hub {
     /// 런타임 없이 거절한 전송의 런 id 일련번호(★R5 — [`Hub::reject_spawn`]).
     /// 슬롯의 `run_seq`와 축이 다르다: 그쪽은 슬롯이 있을 때만 센다.
     reject_seq: u64,
+    /// ★M10 — **대화 연결 라우터**. 허브가 소유하는 이유는 하나다: 발신자의 턴이
+    /// 정착하는 순간 **수신자의 런타임**을 만져야 하는데, 두 채팅을 동시에 볼 수 있는
+    /// 자리가 여기뿐이다(런타임은 `!Send`라 다른 스레드에서 못 만진다).
+    talk: talk::Router,
     /// ★M11 — 한도 소진 시 갈아탈 계정을 고르는 훅(설정 옵션, 기본 꺼짐).
     /// **모든 슬롯이 같은 인스턴스를 공유한다**: 후보 판정의 "지금 태우고 있는 계정"은
     /// 채팅 하나가 아니라 앱 전체의 사실이고, usage 스냅샷·HTTP 예산도 앱당 하나다.
@@ -469,6 +478,10 @@ impl Hub {
                 let plan = self.switcher.last_plan();
                 answer(json!({ "chats": rows, "cli": self.cli.to_string_lossy(),
                                "flags": crate::flags::active(),
+                               // ★M10 — 라우터의 회계·거절 로그. 세션 간 메시지는 조용히
+                               // 안 나가는 경우가 많고(상한·옵트인·중복), 그 사유를 읽을
+                               // 자리가 없으면 하네스도 사용자도 원인을 못 짚는다.
+                               "talk": self.talk.debug(),
                                "accountSwitch": {
                                    "on": self.switcher.enabled(),
                                    "busy": self.burning_accounts(),
@@ -484,10 +497,30 @@ impl Hub {
                     s.rt.dispatch(Cmd::Dispose);
                     s.rt.app_quit();
                 }
+                self.talk.forget(&chat);
                 answer(json!(true));
                 return;
             }
+            // ★M10 — 주소 없는 두 잡. 런타임을 만들지 않는다(`ensure` 앞에서 끝낸다).
+            Op::TalkConfig(patch) => {
+                let cfg = self.talk.configure(&patch);
+                self.emit_all(crate::ipc::ch::CROSSTALK_STATE, cfg.clone());
+                answer(cfg);
+                return;
+            }
+            Op::TalkStop => {
+                let cfg = self.talk.stop();
+                self.emit_all(crate::ipc::ch::CROSSTALK_STATE, cfg.clone());
+                answer(cfg);
+                return;
+            }
             _ => {}
+        }
+
+        // ★M10 — **사람이 시작한 턴**만 대화 연결의 연쇄를 연다. 기계가 여는 턴
+        // (예약 드레인·한도 재개)은 앞선 사람 턴의 홉 예산을 물려받을 뿐이다.
+        if matches!(op, Op::Run(_) | Op::Enqueue(_)) {
+            self.talk.note_human(&chat);
         }
 
         let Some(slot) = self.ensure(&chat) else {
@@ -700,7 +733,7 @@ impl Hub {
                 let v = slot.rt.resume_now();
                 answer(verdict_wire("hold.resume", &v));
             }
-            Op::Debug | Op::Dispose => unreachable!("위에서 처리"),
+            Op::Debug | Op::Dispose | Op::TalkConfig(_) | Op::TalkStop => unreachable!("위에서 처리"),
         }
     }
 
@@ -766,6 +799,9 @@ impl Hub {
             let _ = frames;
             // ① 내용(2.6.2 EngineEvent) — 렌더러가 그리는 것.
             for ev in events {
+                // ★M10 — 라우터가 **이번 턴의 마지막 어시스턴트 텍스트**를 여기서 줍는다.
+                // ②(`Event::Status`)보다 앞이라, 정착 시점에는 이미 텍스트가 서 있다.
+                self.talk.observe(&chat, &ev);
                 self.fanout(&chat, ev);
             }
             // ② 상태·판정(3.0 브로드캐스트) + 2.6.2가 아는 몇 가지로의 번역.
@@ -923,6 +959,12 @@ impl Hub {
                     };
                 }
                 self.fanout(chat, json!({ "type": "status", "runId": run, "status": s }));
+                // ★M10 — **턴 정착 훅**. 완주한 턴만 세션 간 발신의 출발점이다:
+                // 중단(`Aborted`)·오류(`Error`)로 끝난 턴의 반쪽짜리 텍스트로 남의
+                // 세션을 깨우지 않는다.
+                if status == TerminalStatus::Done {
+                    self.talk_settle(chat, &run);
+                }
             }
             Event::Notice(text) => {
                 let run = self.slots.get(chat).map(|s| s.wire.run_id.clone()).unwrap_or_default();
@@ -1032,6 +1074,33 @@ impl Hub {
                 json!({ "type": "user-echo", "runId": run, "text": e.text,
                         "images": e.images, "origin": e.origin.wire() }),
             );
+        }
+    }
+
+    /// ★M10 — **대화 연결의 착지점**. 발신자의 턴이 완주한 자리에서만 불린다.
+    ///
+    /// 하는 일은 셋뿐이다: ① 라우터에게 계획을 받고 ② 통과한 것만 **수신자의 큐**에
+    /// 넣고 ③ 결과를 **발신자 스레드에** 문장으로 앉힌다. 주입 경로가 큐인 것이 규약이다
+    /// (m-logic §7) — 여기서 직접 `Cmd::Send`를 쓰면 상대의 상태·정체성·한도 대기표를
+    /// 전부 우회하는 두 번째 전송 경로가 생긴다.
+    ///
+    /// **거절도 반드시 말한다**(D7). 조용히 안 나가면 사용자는 두 세션이 왜 안 붙는지
+    /// 알 길이 없고, 모델은 같은 줄을 다음 턴에 또 쓴다.
+    fn talk_settle(&mut self, chat: &str, run: &str) {
+        for act in self.talk.settle(chat, run) {
+            match act {
+                talk::Action::Refused(notice) => self.fanout(chat, notice),
+                talk::Action::Send(plan) => {
+                    let input = talk::Router::queue_input(&plan);
+                    let v = match self.ensure(&plan.to) {
+                        Some(s) => s.rt.dispatch(Cmd::Enqueue(input)),
+                        // `ensure`가 실패했다 = 수신자의 폴더·계정이 깨졌다. 그쪽 화면에는
+                        // `reject_spawn`이 이미 사유를 앉혔고, 여기서는 발신자에게 알린다.
+                        None => Verdict::Rejected("target_unavailable"),
+                    };
+                    self.fanout(chat, talk::sent_notice(run, &plan, &v));
+                }
+            }
         }
     }
 
@@ -1304,6 +1373,9 @@ pub fn start(app: AppHandle) {
                 cli: cli_path(),
                 route: RouteCache::default(),
                 reject_seq: 0,
+                // ★M10 — 라우터는 상태가 전부 인메모리다(연쇄·홉·레이트). 설정만
+                // 디스크에 있고, 기본값이 꺼짐이라 켜지 않으면 이 필드는 빈 맵으로 잔다.
+                talk: talk::Router::default(),
                 // ★M11 — 워커 스레드 하나를 여기서 띄운다(앱당 1개). 설정이 꺼져 있으면
                 // 그 스레드는 영원히 `recv()`에서 잠들어 있다 = 비용 0.
                 switcher: super::acct_switch::Switcher::start(),
