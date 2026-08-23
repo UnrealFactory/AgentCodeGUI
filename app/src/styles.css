@@ -932,7 +932,11 @@ input,textarea{ font-family:inherit; }
    색은 text-3이 아니라 **text-2**다: 11px 모노에 text-3(0.40)이면 합성 후 대비비
    3.83으로 AA(4.5) 미달인데, 이 수치야말로 이 제안이 새로 얹은 정보다 —
    밀도 논증의 전리품이 가장 안 읽히는 글자면 논증이 자기를 깎는다(6.4로 승급). */
-.ntf-rule .ntf-num{ flex:0 0 auto; font-family:var(--font-mono); font-size:var(--ntf-meta);
+/* ★ R2 — 수치는 **줄어들 수 있다**(flex:0 1 auto + min-width:0). R1은 셋 다 0 0 auto라
+   420px에서 선이 컨테이너를 61px 뚫고 나갔다(크리틱 F2). 라벨·시각은 그대로 두고 수치만
+   접히게 하면, 좁을 때 수치가 두 줄이 될 뿐 **아무 사실도 잘리지 않는다**(말줄임 금지). */
+.ntf-rule .ntf-num{ flex:0 1 auto; min-width:0; overflow-wrap:anywhere;
+  font-family:var(--font-mono); font-size:var(--ntf-meta);
   font-weight:500; color:var(--text-2); font-variant-numeric:tabular-nums; }
 .ntf-rule .ntf-hair{ flex:1; height:1px; min-width:16px; background:var(--ntf-edge); }
 /* 시각도 text-4 → **text-3**. text-4(0.26)는 2.29로 3:1조차 미달이다. rule의 시각은
@@ -1423,10 +1427,17 @@ input,textarea{ font-family:inherit; }
   padding:var(--ntf-pad-y) var(--ntf-pad-x);
   background:var(--ntf-face); border:1px solid var(--ntf-edge); border-radius:var(--ntf-radius);
   animation:rise .16s var(--ntf-ease) both;
+  /* 폭을 재는 자는 **창이 아니라 이 판 자신**이다 — 같은 앱 안에서 본채팅은 883px,
+     멀티 패널은 364px이라 미디어 쿼리로는 둘을 가를 수 없다(R1이 420px에서 진 이유).
+     inline-size 컨테인먼트는 크기·레이아웃·스타일만 가둔다 — paint는 안 가두므로
+     그림자·툴팁은 그대로 밖으로 나간다. 자손만 질의 대상이다(자기 자신은 못 바꾼다). */
+  container-type: inline-size;
 }
 .ntf-band .ntf-g{ flex:0 0 auto; width:var(--ntf-ic); height:var(--ntf-ic); display:grid; place-items:center;
   color:var(--ntf-fg); margin-top:1px; font-size:12px; }
-.ntf-band .ntf-bd{ flex:1; min-width:0; }
+/* flow-root = 본문 블록이 **자기 안의 띄운 트레이를 담는다**. 안 담으면 알약이 판 밖으로
+   삐져나와 band 높이가 47.0 → 44.8로 흔들린다(트레이가 높이를 정하는 자리라서). */
+.ntf-band .ntf-bd{ flex:1; min-width:0; display:flow-root; }
 .ntf-band .ntf-tx{ font-size:var(--ntf-body); line-height:var(--ntf-lh); color:var(--text-2); word-break:keep-all; }
 /* 강조는 색이 아니라 **무게**로 먼저 한다 — 색은 심각도 몫이라 문장 안에서 또 쓰면
    위계가 겹친다. `.ntf-kw`(색)는 "무엇이 **무엇으로** 바뀌었다"의 **도착값 하나**에만. */
@@ -1440,11 +1451,17 @@ input,textarea{ font-family:inherit; }
    등급에 있으면 안 된다. 8줄 넘으면 접고 [전체 보기](뷰가 max-height로 자른다). */
 .ntf-band .ntf-raw{ margin-top:4px; font-family:var(--font-mono); font-size:11.5px; line-height:1.55;
   color:var(--text-2); white-space:pre-wrap; word-break:break-word;
-  padding:7px 9px; border-radius:8px; background:var(--inset); }
+  padding:7px 9px; border-radius:8px; background:var(--inset); clear:both;
+  /* clear: 위 줄에 띄운 트레이 아래로 내려온다 — 원문 면이 알약 밑을 파고들지 않게 */ }
 .ntf-band .ntf-raw.clip{ max-height:calc(11.5px * 1.55 * 8 + 14px); overflow:hidden; }
 /* 오른쪽 트레이 — 행동 알약과 시각이 **같은 줄**에 산다(밀도 규약 ①: 줄을 안 늘린다).
-   좁은 폭(멀티 패널 420px)에서는 flex-wrap으로 트레이가 아래로 접힌다. */
+   (컴포저 위 IdentityBand처럼 트레이가 band 직계인 자리는 여전히 flex 항목이다.) */
 .ntf-band .ntf-tray{ flex:0 0 auto; display:flex; align-items:center; gap:8px; margin-top:1px; }
+/* ★ R2 — 스레드 band의 트레이는 **문장 블록 안에서 오른쪽으로 띄운다**(문서 순서상 문장
+   앞). 넓은 폭에서는 flex 칸이던 때와 좌표가 같다(오른쪽 끝·위 1px). 대신 좁아지면
+   문장이 첫 줄만 트레이를 피하고 **둘째 줄부터 판 전폭을 쓴다** — flex 칸은 모든 줄에서
+   같은 폭을 뺏겼다(R1이 전환 배너에서 3줄이 된 이유). */
+.ntf-band .ntf-tx > .ntf-tray{ float:right; margin-left:var(--ntf-gap); margin-top:1px; }
 .ntf-band .ntf-tm{ font-size:var(--ntf-meta); color:var(--text-3); font-variant-numeric:tabular-nums; }
 .ntf-act{
   display:inline-flex; align-items:center; gap:5px; height:22px; padding:0 9px; border-radius:7px;
@@ -1457,8 +1474,12 @@ input,textarea{ font-family:inherit; }
    버튼만 [되돌림 ✓]로 정착(비활성)한다. */
 .ntf-act.done{ border-color:var(--line); color:var(--text-4); cursor:default; }
 .ntf-act.done:hover{ background:transparent; border-color:var(--line); }
-.ntf-act.ghost{ border-color:transparent; color:var(--text-3); }
-.ntf-act.ghost:hover{ border-color:var(--line-2); color:var(--text-2); }
+/* ★ R2 (크리틱 F6) — 유령 알약([복사]·[전체 보기])도 **새로 만든 상호작용 라벨**이다.
+   text-3(11.5px/700)은 danger 면 위에서 3.72:1로 AA 미달이었다. 이 체계가 스스로 세운
+   규칙("2.6.2에서 물려받지 않은 새 자리는 파리티 논거가 없으므로 올린다")이 여기에도
+   적용돼야 한다 → text-2(≈7.4). 호버는 --ntf-fg로 한 단 더 올라간다. */
+.ntf-act.ghost{ border-color:transparent; color:var(--text-2); }
+.ntf-act.ghost:hover{ border-color:var(--line-2); color:var(--ntf-fg); }
 
 /* ── 형태 3 · card — **무엇이 만들어졌나** (M-UI §2.2) ──────────────────────────
    face(면)는 옵션이다. 규칙: **상태가 변하는 카드에만 면을 준다** —
@@ -1469,6 +1490,7 @@ input,textarea{ font-family:inherit; }
   display:flex; gap:12px; align-items:flex-start; padding:12px 14px;
   background:var(--surface); border:1px solid var(--line-2); border-radius:var(--ntf-radius);
   box-shadow:var(--shadow-sm); animation:rise .16s var(--ntf-ease) both;
+  container-type: inline-size; /* band와 같은 이유 — 자기 폭으로 압축 변형을 켠다 */
 }
 .ntf-card.ntf-bare{ background:none; border-color:transparent; box-shadow:none; padding:0 2px; }
 .ntf-card .ntf-tile{
@@ -1506,6 +1528,58 @@ input,textarea{ font-family:inherit; }
 .ntf-card .ntf-qa .ntf-a{ display:flex; align-items:center; gap:7px; margin-top:4px; padding-left:22px;
   font-size:14.5px; font-weight:600; color:var(--text); }
 .ntf-card .ntf-qa .ntf-a svg{ color:var(--green); flex:0 0 auto; }
+
+/* ── ★ R2 · 좁은 컨테이너 압축 변형 (멀티 패널·팝아웃 폭) ──────────────────────
+ *
+ * R1은 1440px 본채팅(판 883px)에서 7종 전부 이겼지만, 같은 문법을 420px 패널(판 364px)에
+ * 넣으면 오류 +57.3px · 전환 +18.8 · 문답 +13으로 3패였다(크리틱 `mui-apply-r1.md` §2.3).
+ * 원인은 셋 다 **폭을 나눠 쓰는 방식**이었다 — 트레이가 모든 줄에서 같은 폭을 뺏고,
+ * 원문 면이 산문처럼 재줄바꿈되고, 문답이 마커·시각까지 얹은 채 한 줄을 더 썼다.
+ *
+ * 규약: **정보를 지우지 않는다. 배치만 바꾼다.** 글자 크기도 안 줄인다(R1의 이득
+ * 일부가 글자 축소였다는 지적을 여기서 반복하지 않는다). 아래 넷은 전부 재배치다.
+ *   ① 트레이 — 모든 줄에서 폭을 뺏던 flex 칸 → 첫 줄만 비켜 가는 띄움(위 `.ntf-tx > .ntf-tray`)
+ *   ② 글리프 칸 — 본문 블록이 칸을 되찾고(음수 여백) 첫 줄만 자리를 비운다(::before 띄움 자리)
+ *   ③ 오류 원문 — 소프트 랩 폭발(3줄 → 8줄) 대신 **줄 구조 보존 + 가로 스크롤**
+ *   ④ 문답 — 답이 물음의 마지막 줄에 이어 붙는다(줄 하나가 통째로 준다)
+ *
+ * 경계값은 **판의 내용 상자 폭**이다(container-type:inline-size가 재는 값 — 테두리·패딩
+ * 30px을 뺀 값이라 판 폭 −30, 스레드 폭 −86). 520 ⇔ 스레드 ~606px.
+ * 실측: 1440 본채팅 = 판 내용 883(넓은 쪽) · 2분할 ≈ 570(좁은 쪽) · 3분할·크리틱 자
+ * 420 = 334(좁은 쪽). 문답만 경계가 다르다 — 아래 두 번째 블록의 사유를 볼 것. */
+@container (max-width: 520px){
+  /* ② 글리프가 차지하던 25px을 본문이 되찾고, 첫 줄만 그만큼 비운다.
+        (컨테이너 질의는 자손만 바꿀 수 있어 band 자신의 display는 못 건드린다 —
+         그래서 flex 칸을 없애는 대신 **음수 여백 + 띄움 자리**로 같은 결과를 낸다.) */
+  .ntf-band .ntf-bd{ margin-left:calc(-1 * (var(--ntf-ic) + var(--ntf-gap))); }
+  .ntf-band .ntf-tx::before{ content:''; float:left; width:calc(var(--ntf-ic) + var(--ntf-gap)); height:16px; }
+  /* ① 트레이의 띄움 높이를 줄 높이 아래로 눌러(음수 아래 여백) **둘째 줄부터 전폭**.
+        알약 자체는 22px 그대로다 — 눌러야 하는 것을 좁다고 작게 만들지 않는다. */
+  .ntf-band .ntf-tx > .ntf-tray{ margin-bottom:-4px; }
+  /* 좁은 칼럼에서는 어절 단위(keep-all)가 오히려 줄을 하나 더 만든다. 본문(.content)이
+     이미 쓰는 규칙으로 내려간다 — 문장은 그대로고 끊기는 자리만 바뀐다. */
+  .ntf-band .ntf-tx{ word-break:normal; overflow-wrap:anywhere; }
+  /* ③ 원문 면: 좁아지면 **줄 구조가 먼저다**. 산문처럼 접히면 3줄짜리 스택이 8줄이 되고
+        (실측 156.5px) 경로가 읽히지 않는다 — 이 면이 존재하는 이유가 사라진다.
+        가로 스크롤은 잘라내는 게 아니라 **접어 두는 것**이고, [복사]가 전문을 보증한다. */
+  /* 스크롤바는 앱 공용(`*::-webkit-scrollbar` 11px · 호버에 뜨는 엄지)을 그대로 쓴다.
+     `scrollbar-width:thin`을 주면 크로미움 표준 막대로 갈아타 이 앱에서 혼자 다른
+     막대가 된다(1px 더 낮은 대신 밝은 회색 — 안 바꾼다). */
+  .ntf-band .ntf-raw{ white-space:pre; overflow-x:auto; overscroll-behavior-x:contain; }
+}
+/* ④ 문답만 경계가 낮다(430). band의 문장은 길어서 판이 조금만 좁아져도 접히지만,
+      문답 한 줄은 짧아서 **진짜 패널 폭에서만** 접힌다(실측: 카드 내용 366px 아래에서
+      물음이 두 줄이 된다). 넓은 데서 미리 붙여 버리면 답이 제 줄을 갖는 위계만 잃는다.
+      붙일 때도 답은 14.5px 굵기·초록 체크 그대로다 — 줄어드는 건 줄 수뿐이다.
+      (묶음 폭에 13px을 못박는 것은 조이기가 아니라 교정이다 — 안 박으면 아무도 안 쓰는
+       상속 16px이 줄 상자를 20px로 키운다.) */
+@container (max-width: 430px){
+  .ntf-card.ntf-bare .ntf-qa > div{ font-size:var(--ntf-body); }
+  .ntf-card.ntf-bare .ntf-qa .ntf-q{ display:inline; }
+  .ntf-card.ntf-bare .ntf-qa .ntf-qm{ margin-right:8px; }
+  .ntf-card.ntf-bare .ntf-qa .ntf-a{ display:inline-flex; margin-top:0; padding-left:0; margin-left:8px; }
+}
+
 .composer textarea{
   flex:1; min-width:0; width:100%; background:none; border:none; outline:none; resize:none;
   color:var(--text); font-size:13px; line-height:1.55; max-height:160px; padding:3px 0;

@@ -25,7 +25,7 @@ import type {
   WorkflowState,
   SessionWindowInfo
 } from '@shared/protocol'
-import { t, useLang } from '../lib/i18n'
+import { isEn, t, useLang } from '../lib/i18n'
 import { sameCwd, type ThreadItem } from '../store/session'
 import { resumeDelayMs, type LimitHold } from '../lib/limitResume'
 import { noteLanding, putAnchor, takeAnchor } from '../lib/threadAnchor'
@@ -945,15 +945,20 @@ export const MessageView = memo(function MessageView({
       <div className={'ntf-band ' + tone(neutral ? 'neutral' : 'notice')}>
         <span className="ntf-g">{neutral ? <IconInfo size={13} /> : <IconAlert size={13} />}</span>
         <div className="ntf-bd">
-          <div className="ntf-tx">{renderNoticeText(item.text)}</div>
-        </div>
-        <div className="ntf-tray">
-          {item.action === 'billing-off' && onNotify && (
-            <button className="ntf-act" onClick={() => onNotify({ kind: 'billing-off' })}>
-              {t('과금 끄기', 'Turn API billing off')}
-            </button>
-          )}
-          <span className="ntf-tm">{item.time}</span>
+          {/* ★ R2 — 트레이가 문장 **안**에 산다(문서 순서상 문장 앞). 넓은 폭에서는
+              오른쪽으로 띄워 예전 flex 칸과 같은 좌표에 서고, 좁아지면 첫 줄만 비켜 가
+              둘째 줄부터 문장이 판 전폭을 쓴다 — styles.css `@container` §R2 ①. */}
+          <div className="ntf-tx">
+            <div className="ntf-tray">
+              {item.action === 'billing-off' && onNotify && (
+                <button className="ntf-act" onClick={() => onNotify({ kind: 'billing-off' })}>
+                  {t('과금 끄기', 'Turn API billing off')}
+                </button>
+              )}
+              <span className="ntf-tm">{item.time}</span>
+            </div>
+            {renderNoticeText(item.text)}
+          </div>
         </div>
       </div>
     )
@@ -1041,7 +1046,9 @@ function CmdResultCard({ item }: { item: Extract<ThreadItem, { kind: 'cmdresult'
  * 갈리는 낱말을 하나씩 박는다: 동의하셨어요 / 묻지 않고 / 사유는 오지 않았고.
  *
  * `cause`도 `revertTo`도 없으면(옛 스냅샷·다른 엔진) 엔진이 준 완성 문장을 그대로 쓰고
- * 버튼을 뺀다 — **지어내지 않는다.**
+ * 버튼을 뺀다 — **지어내지 않는다.** (R1은 이 약속을 코드가 안 지켰다 — 모르는 `cause`가
+ * `refusal_frame`과 같은 가지로 떨어져 "정책상 거부"를 단정했다. R2에서 가지를 넷으로
+ * 갈랐다: dialog · model_delta · refusal_frame · **모름**. 크리틱 F4.)
  */
 function FallbackBand({ item, onNotify }: { item: Extract<ThreadItem, { kind: 'fallback' }>; onNotify?: (a: NotifyAction) => void }) {
   const label = (raw: string): string => {
@@ -1053,41 +1060,58 @@ function FallbackBand({ item, onNotify }: { item: Extract<ThreadItem, { kind: 'f
   const to = label(item.to)
   const b = (s: string): ReactNode => <span className="ntf-b">{s}</span>
   const kw = (s: string): ReactNode => <span className="ntf-kw">{s}</span>
-  const tail = t(' — 이후 대화도 같은 모델로 갑니다.', ' — later turns use the same model too.')
+  /* ★ R2 (크리틱 F5) — 조각 `t(ko,en)`을 **한국어 어순으로 이어 붙이면 영어가 무너진다.**
+     특히 `model_delta`는 영어가 정반대를 말했다("answered with Fable 5 instead of Opus 5" —
+     실제로 답한 쪽은 to다). 어순이 다른 두 언어를 한 배열로 엮을 수 없으므로 문장을
+     통째로 갈라 쓴다(i18n 규약이 명시한 "JSX가 필요하면 isEn() 삼항으로"). */
+  const en = isEn()
+  const tailKo = ' — 이후 대화도 같은 모델로 갑니다.'
+  const tailEn = ' Later turns use the same model too.'
+  /* ★ R2 (크리틱 F4) — `cause`가 모르는 값이면 **사유를 지어내지 않는다.** R1은 `else`가
+     `refusal_frame`과 `null`을 함께 받아 모르는 경로에까지 "정책상 거부"를 단정했다.
+     지금은 아는 셋만 문장을 만들고, 나머지는 엔진이 준 문장(없으면 사유 없는 전환 사실)이다. */
   let line: ReactNode = item.text
   if (from && to) {
     if (item.cause === 'dialog')
-      line = (
+      line = en ? (
         <>
-          {b(from)}
-          {t('가 거부한 요청이라 ', ' refused this request, and you ')}
-          {kw(to)}
-          {t('로 바꾸는 데 ', ' — switching to it was ')}
-          {b(t('동의하셨어요', 'something you agreed to'))}
-          {tail}
+          {b(from)} refused this request, and you {b('agreed')} to switch to {kw(to)}.{tailEn}
+        </>
+      ) : (
+        <>
+          {b(from)}가 거부한 요청이라 {kw(to)}로 바꾸는 데 {b('동의하셨어요')}
+          {tailKo}
         </>
       )
     else if (item.cause === 'model_delta')
-      line = (
+      line = en ? (
         <>
-          {t('엔진이 ', 'The engine answered with ')}
-          {b(from)}
-          {t(' 대신 ', ' instead of ')}
-          {kw(to)}
-          {t('으로 답했어요 — ', ' — ')}
-          {b(t('사유는 오지 않았고', 'no reason frame arrived'))}
-          {t(', 전환만 대화에 반영했습니다.', '; only the switch was recorded.')}
+          The engine answered with {kw(to)} instead of {b(from)} — {b('no reason frame arrived')}; only the switch was recorded.
+        </>
+      ) : (
+        <>
+          엔진이 {b(from)} 대신 {kw(to)}으로 답했어요 — {b('사유는 오지 않았고')}, 전환만 대화에 반영했습니다.
         </>
       )
-    else
-      line = (
+    else if (item.cause === 'refusal_frame')
+      line = en ? (
         <>
-          {b(from)}
-          {t('가 정책상 거부해 엔진이 ', ' refused on policy, so the engine switched to ')}
-          {item.cause === 'refusal_frame' ? b(t('묻지 않고 ', 'without asking ')) : null}
-          {kw(to)}
-          {t('로 전환했어요', '')}
-          {tail}
+          {b(from)} refused on policy, so the engine switched to {kw(to)} {b('without asking')}.{tailEn}
+        </>
+      ) : (
+        <>
+          {b(from)}가 정책상 거부해 엔진이 {b('묻지 않고')} {kw(to)}로 전환했어요{tailKo}
+        </>
+      )
+    else if (!item.text)
+      // 모르는 사유 + 엔진 문장도 없음 → 일어난 사실만 적는다(사유 절 없음)
+      line = en ? (
+        <>
+          The engine switched from {b(from)} to {kw(to)}.
+        </>
+      ) : (
+        <>
+          엔진이 {b(from)}에서 {kw(to)}로 전환했어요
         </>
       )
   }
@@ -1097,24 +1121,29 @@ function FallbackBand({ item, onNotify }: { item: Extract<ThreadItem, { kind: 'f
         <IconAlert size={13} />
       </span>
       <div className="ntf-bd">
-        <div className="ntf-tx">{line}</div>
-      </div>
-      <div className="ntf-tray">
-        {/* 되돌린 뒤에도 배너는 남는다 — §6.3이 revert를 '새 리비전'으로 정의하므로
-            히스토리를 지우면 거짓말이다. 버튼만 [되돌림 ✓]로 정착(비활성)한다. */}
-        {item.reverted ? (
-          <button className="ntf-act done" disabled>
-            {t('되돌림 ✓', 'Reverted ✓')}
-          </button>
-        ) : (
-          item.revertTo != null &&
-          onNotify && (
-            <button className="ntf-act" onClick={() => onNotify({ kind: 'revert', revertTo: item.revertTo as number })}>
-              {t('되돌리기', 'Undo')}
-            </button>
-          )
-        )}
-        <span className="ntf-tm">{item.time}</span>
+        {/* ★ R2 — 트레이는 문장 블록 안(문장 앞)에 산다: 넓으면 오른쪽 띄움으로 예전
+            자리 그대로, 좁으면 첫 줄만 비켜 간다. R1은 flex 칸이라 세 줄 내내 폭을
+            뺏겨 420px에서 86.4px(2.6.2는 67.6)였다 — 지금은 65.6px에 2줄이다. */}
+        <div className="ntf-tx">
+          <div className="ntf-tray">
+            {/* 되돌린 뒤에도 배너는 남는다 — §6.3이 revert를 '새 리비전'으로 정의하므로
+                히스토리를 지우면 거짓말이다. 버튼만 [되돌림 ✓]로 정착(비활성)한다. */}
+            {item.reverted ? (
+              <button className="ntf-act done" disabled>
+                {t('되돌림 ✓', 'Reverted ✓')}
+              </button>
+            ) : (
+              item.revertTo != null &&
+              onNotify && (
+                <button className="ntf-act" onClick={() => onNotify({ kind: 'revert', revertTo: item.revertTo as number })}>
+                  {t('되돌리기', 'Undo')}
+                </button>
+              )
+            )}
+            <span className="ntf-tm">{item.time}</span>
+          </div>
+          {line}
+        </div>
       </div>
     </div>
   )
@@ -1147,7 +1176,27 @@ function ErrorBand({ item }: { item: Extract<ThreadItem, { kind: 'msg' }> }) {
         <IconX2 size={13} />
       </span>
       <div className="ntf-bd">
+        {/* ★ R2 — 트레이가 요약 줄 안으로 들어왔다(문장 앞). 원문 면은 `clear:both`로
+            그 아래에 서므로 넓은 폭 좌표는 그대로고, 좁은 폭에서는 면이 판 전폭을
+            받는다(가로로 접히는 양이 164px → 36px로 준다). */}
         <div className="ntf-tx">
+          <div className="ntf-tray">
+            <button
+              className="ntf-act ghost"
+              onClick={() => {
+                void navigator.clipboard?.writeText(body).then(
+                  () => {
+                    setCopied(true)
+                    setTimeout(() => setCopied(false), 1400)
+                  },
+                  () => {}
+                )
+              }}
+            >
+              {copied ? t('복사됨', 'Copied') : t('복사', 'Copy')}
+            </button>
+            <span className="ntf-tm">{item.time}</span>
+          </div>
           <span className="ntf-b">{head}</span>
         </div>
         {raw && <div className={'ntf-raw' + (lines > 8 && !full ? ' clip' : '')}>{raw}</div>}
@@ -1157,23 +1206,6 @@ function ErrorBand({ item }: { item: Extract<ThreadItem, { kind: 'msg' }> }) {
             {full ? t('접기', 'Collapse') : t(`전체 보기 (${lines}줄)`, `Show all (${lines} lines)`)}
           </button>
         )}
-      </div>
-      <div className="ntf-tray">
-        <button
-          className="ntf-act ghost"
-          onClick={() => {
-            void navigator.clipboard?.writeText(body).then(
-              () => {
-                setCopied(true)
-                setTimeout(() => setCopied(false), 1400)
-              },
-              () => {}
-            )
-          }}
-        >
-          {copied ? t('복사됨', 'Copied') : t('복사', 'Copy')}
-        </button>
-        <span className="ntf-tm">{item.time}</span>
       </div>
     </div>
   )

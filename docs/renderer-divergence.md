@@ -290,8 +290,38 @@ CDN 왕복을 기다렸다. 자세한 실측은 `docs/m1-report-r3.md` §4.2.
 `model-fallback.via`·`.revertTo`(`src-tauri/src/engine/hub.rs:885`)는 계약면 타입에
 없어서 리듀서에서 **좁은 캐스트로 읽기만** 한다(없으면 문장만 쓰고 버튼을 뺀다).
 
-**게이트 계약 1건 변경:** `scripts/poc-live-chat.mjs`의 `E9-error`는 오류 표면을
-낱말 '오류'의 개수로 셌다. M-UI가 그 제목 줄을 없앴으므로(§5-3 — 색조가 이미 말한다)
-그대로 두면 문법이 바뀌었다는 이유만으로 게이트가 빨개진다. 판정을
-`max(낱말 수, danger band 수)`로 바꿔 **두 렌더러 모두에서** "없다/두 번 말한다"를
-똑같이 잡게 했다(검사를 약하게 만든 게 아니라 렌더러 중립으로 만든 것).
+**게이트 계약 변경 2건** (R1이 1건만 적었다 — 크리틱 F10):
+
+1. `scripts/poc-live-chat.mjs`의 `E9-error`는 오류 표면을 낱말 '오류'의 개수로 셌다.
+   M-UI가 그 제목 줄을 없앴으므로(§5-3 — 색조가 이미 말한다) 그대로 두면 문법이 바뀌었다는
+   이유만으로 게이트가 빨개진다. 판정을 `max(낱말 수, danger band 수)`로 바꿔 **두 렌더러
+   모두에서** "없다/두 번 말한다"를 똑같이 잡게 했다(약하게 만든 게 아니라 렌더러 중립).
+2. `scripts/poc-auto-compact.mjs`의 리듀서 검사(5·8·9). R1은 단정만 3.0 문법
+   (`boundary`)으로 갈고 **번들 진입점은 `src/renderer`(2.6.2) 그대로**여서 커밋 직후
+   `5 FAILED`가 됐다(값은 옳고 대상이 틀렸다 — 크리틱 F1). **R2에서 하네스를 두 렌더러
+   양쪽으로 돌린다**: `app/src`는 `boundary`+`label`/`num`, `src/renderer`는 예전 그대로
+   `cmdresult`+`title`/`stats`. 이 장부가 "`src/renderer`는 무수정"이라고 적은 이상
+   2.6.2 쪽 기대값도 초록이어야 하고, 지금 22검사 `all ok`다.
+
+### 6.2.1 M-UI R2 — 같은 문법을 **좁은 컨테이너**에서도 (커밋 이 라운드)
+
+R1은 1440px 본채팅(판 883px)에서 7종 전부 이겼지만 420px 멀티 패널 폭(판 364px)에서
+오류 +57.3px · 전환 +18.8 · 문답 +13으로 3패였고, 압축 경계 선은 컨테이너를 61px 뚫었다
+(크리틱 `docs/critic/mui-apply-r1.md` §2.3 · F2). R2는 **정보를 지우지 않고 배치만** 바꾼다.
+
+- `styles.css` — `.ntf-band`·`.ntf-card`에 `container-type:inline-size`, 그리고
+  `@container (max-width:520px)`(band 계열) · `(max-width:430px)`(문답)의 압축 변형.
+  **폭을 재는 자는 창이 아니라 판 자신이다** — 같은 창 안에서 본채팅은 883, 패널은 364라
+  미디어 쿼리로는 못 가른다. 경계값은 컨테이너의 **내용 상자** 폭이다(판 폭 −30).
+- `styles.css` — 스레드 band의 트레이는 flex 칸이 아니라 **문장 블록 안의 오른쪽 띄움**
+  (`.ntf-tx > .ntf-tray{float:right}` · `.ntf-bd{display:flow-root}`로 담는다).
+  넓은 폭 좌표·높이는 그대로고(실측 47.0 동일), 좁아지면 둘째 줄부터 전폭을 쓴다.
+- `styles.css` — `.ntf-rule .ntf-num`이 `flex:0 1 auto; min-width:0`으로 **줄어들 수 있다**
+  (R1은 셋 다 `0 0 auto`라 선이 61px 넘쳤다). 말줄임은 쓰지 않는다 — 접힐 뿐이다.
+- `styles.css` — `.ntf-act.ghost`(=`[복사]`·`[전체 보기]`) 색 `text-3`→`text-2`(AA · F6).
+- `components/Chat.tsx` — 안내·전환·오류 band의 트레이를 `.ntf-tx` **안**(문장 앞)으로
+  옮겼다(위 띄움의 전제). `FallbackBand`의 문장을 `isEn()`으로 갈라 영어 어순을 바로잡고
+  (F5 — `model_delta`는 영어가 정반대를 말했다), 모르는 `cause`에 "정책상 거부"를 단정하던
+  가지를 잘랐다(F4).
+- **컴포저 위 `IdentityBand`는 안 건드렸다** — 트레이가 band 직계라 예전 flex 칸 그대로다
+  (띄움 규칙은 `.ntf-tx > .ntf-tray`로 좁혀 두었다).
