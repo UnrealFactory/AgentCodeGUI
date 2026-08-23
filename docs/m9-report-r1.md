@@ -339,3 +339,221 @@ npx tsc --noEmit -p app/tsconfig.json   # 0
 `--app`은 `target/release/agentcodegui.exe`를 쓴다. **`npm run tauri:build`로 만든
 바이너리여야 한다** — `cargo build --release`만 돌린 exe는 프런트를 `devUrl`
 (`localhost:5273`)에서 찾아 빈 창이 뜬다(이 라운드에서 한 번 밟았다).
+
+> R2에서 이 절의 숫자 셋이 바뀌었다(§R2.5). 최신 재현 명령은 §R2.6이다.
+
+---
+---
+
+# M9 R2 — 칩이 마운트를 넘어 산다
+
+라운드 R21 · 2026-08-24 · 브랜치 `feature/3.0.0-beta` · 대상 크리틱 `docs/critic/m9-r1.md`
+
+크리틱은 「빌더 숫자는 전부 재현됐고, 칩은 「크게 보기」 한 번에 사라진다」로 닫았다.
+와이어 28/28·단위 24/24·실물 2패널 숫자는 한 줄도 안 틀렸는데, **행복 경로 밖에서 네 개가
+깨졌다.** 이 라운드는 그 넷을 닫는다. 자기 채점은 안 한다 — 판정은 크리틱 자신의 도구
+(`critic-m9-attack.mjs`·`critic-m9-norm.mjs`)를 **무수정으로 다시 돌려** 나온 값이다
+(`critic-m9-norm.mjs`는 한 줄 예외 — §R2.4).
+
+## R2.0 한 문단
+
+칩의 값이 **스폰당 푸시 한 장**뿐이라 껍데기가 갈리면 증발하던 것을, 셸에 **질의 채널**
+(`chat:tooling-get`)을 내서 마운트마다 한 번 묻게 했다 — 「크게 보기」·「원래 크기로」·
+팝아웃 첫 진입·그리드 복귀 **전부 턴 0회로** 칩이 그대로 선다(실물 실측 §R2.2). 같은
+자리에 두 팝오버가 포개 뜨던 것은 캡처 단계 + 래퍼 containment로 닫았고(양방향), 서버
+이름의 비BMP 문자가 도구를 조용히 삼키던 것은 `mcp_norm`을 **UTF-16 단위**로 고쳐 닫았다
+(실 CLI 0.3.241 실측 — 이제 빌더 하네스도 그 판을 직접 잰다). 칩·툴팁이 `connected`/
+`failed` 밖의 상태를 안 세던 것은 **분모가 맞게** 다시 셌다(`pending`·`needs-auth`·
+`disabled`·미상까지). 크리틱의 정정 다섯도 반영했다(§R2.5). 남은 것은 하나다 —
+`result` **뒤**에 오는 `commands_changed`(크리틱이 「패(기지)」로 표시한 그 항목, §R2.3).
+
+## R2.1 크리틱 도구 재실행 — 4패 → 1패(그 1패는 「기지」)
+
+| 도구 | R1 | R2 |
+|---|---|---|
+| `critic-m9-attack.mjs`(A1~A10 전량) | 지적 **4종**(A1-tip-pending · A2-uni · A9-expand/restore · A10-two-pops) + A4-push | 지적 **A4-push 1건**뿐 |
+| `critic-m9-norm.mjs`(실 CLI 5종) | `emoji🚀srv` **불일치** | **5/5 일치 · `unmatched: []`** |
+| `poc-mcpskill.mjs`(와이어) | 28 OK | **30/30**(비BMP 접두사 단언 2건 추가) |
+| `poc-mcpskill.mjs --app`(실물 2패널) | 13 OK | **21/21**(칩 수명 5건 · 팝오버 배타 3건 추가) |
+| `cargo test -p agentcodegui wire::` | 24 | **25**(UTF-16 접두사 표 1건 추가) |
+
+산출: `docs/critic/m9-r2-attack-all.json` · `docs/critic/m9-r2-norm.json`
+(크리틱의 기준 파일 `m9-r1-*.json`은 **하나도 안 덮었다**).
+
+### 넷이 어떻게 닫혔나
+
+**① 칩 수명 (A9·A6) — 질의 채널.** R1의 데이터 경로는 푸시 한 방향뿐이었다:
+`system/init` → `Wire::tooling_event()` → `ma:event` → `McpSkillView`의 `useState`.
+그런데 「크게 보기」는 같은 대화를 오버레이 카드로 **옮겨 다시 마운트**하고(그리드
+자리는 `.ma-ghost`가 된다), 팝아웃은 아예 다른 창이다. 새 컴포넌트에는 아무것도 안 온다.
+값은 셸의 `Wire::env`에 그대로 있었으므로 **같은 함수를 조회로도 열었다**:
+
+```
+chat:tooling-get {panelId|chatId}
+  → engine/mod.rs::core_dispatch  (panelId → chatId 번역: 멀티 칩은 자기 chatId를 모른다)
+  → hub::Op::ToolingGet           (★`ensure` 앞 — 조회가 런타임을 만들지 않는다)
+  → Wire::tooling()               (푸시와 **같은** 생성 함수)
+```
+
+`McpSkillView`는 마운트/`panelId` 변경마다 한 번 묻고, 왕복 중에 푸시가 먼저 닿으면
+그쪽을 남긴다(`setSnap((cur) => cur ?? tl)`). **재시작 미복원 원칙은 그대로다** —
+스냅샷은 여전히 셸 메모리에만 있고 디스크에 절이지 않는다. 앱을 껐다 켜면 `null`이고,
+칩은 서지 않는다("지난주에 붙어 있던 MCP 서버"를 되살리지 않는다는 §2.1의 결정).
+
+**② 팝오버 배타 (A10).** R1 §2.2는 *"서로의 칩 클릭이 상대에겐 바깥 클릭이다"* 라고
+적었지만 실측은 반대였다 — 폴더 칩의 래퍼도 `.hfold`(`onMouseDown={stopPropagation}`)라
+그 클릭이 `window`까지 오지 않는다. 양쪽을 다 막았다:
+
+* 도구 팝오버의 바깥닫힘을 **캡처 단계**(`addEventListener(..., true)`)로 옮기고, 안쪽
+  판정은 전파가 아니라 **래퍼 `ref`의 `contains`** 로 한다 → 남이 전파를 끊어도 울린다.
+* 도구 칩이 **열릴 때** 호스트에 알린다(`onOpen` → `setFolderPop(false)`) → 반대 방향.
+
+**③ `mcp_norm`을 UTF-16 단위로 (A2-uni · norm 5종).** CLI는 JS라 정규식이 **UTF-16 코드
+단위**를 돈다 — 서로게이트 쌍은 `_` **두 개**가 된다. Rust `chars()`는 하나였다. 대가는
+조용한 소멸이었다: 그 행은 「연결됨」인데 도구 이름도 `도구 N` 배지도 없다. `len_utf16()`
+만큼 `_`를 넣어 두 규칙을 맞췄다. 더해서 **접두사 조각도 한 번 정규화해서** 키를 만든다
+(멱등이라 실 CLI 출력에는 아무 일도 안 일어나고, 정규화를 안 거친 접두사가 오는 판에서만
+양쪽이 같은 자리에 떨어진다 — 크리틱 A2가 흘린 `mcp__Ω_유니코드_🚀__hello`가 그 판이다).
+
+빌더 하네스도 이제 이 규칙을 **직접 잰다**: B 픽스처에 `ccg-emoji🚀b`를 물렸고, 실 CLI
+0.3.241이 돌려준 접두사는 `mcp__ccg-emoji__b__`였다(`_` 두 개). 실물 2패널 주행에서도
+그 행이 `ccg-emoji🚀b · 연결됨 · echo, ping · 도구 2`로 뜬다 — 와이어부터 화면까지 한 줄.
+
+**④ 상태 집계 (A1-tip-pending).** 칩 본문은 `bad > 0`일 때만 분모를 드러냈고 툴팁은
+`live`·`bad`·`off` 셋만 읽었다. 그래서 서버 10대(연결7·실패1·인증필요1·연결중1)가
+「MCP 7개 연결 · 2개 실패」— **합이 9**였고, `needs-auth`가 「실패」로 합산됐다.
+
+```
+             R1                                     R2
+A1 칩  7/10 · 50                             7/10 · 50
+A1 툴팁 MCP 7개 연결 · 2개 실패 · 스킬 50개    MCP 7개 연결 · 1개 실패 · 1개 인증 필요
+                                              · 1개 연결 중 · 스킬 50개
+A2 칩  4 · 5   (status 없는 5번째가 증발)      4/5 · 5
+A2 툴팁 MCP 4개 연결 · 스킬 5개                MCP 4개 연결 · 1개 상태 미상 · 스킬 5개
+```
+
+규칙은 셋이다. (a) 분모는 **다 안 붙었으면 항상** 드러낸다(`live !== total`). (b) 상태는
+`connected`/`failed`/`needs-auth`/`pending`/`disabled`/**나머지 전부(`상태 미상`)** 로
+갈라 세어 **합이 분모와 같다**. (c) 칩이 빨개지는 조건은 「사용자가 손대야 붙는 것」
+(`failed + needs-auth`)이고, 그래도 툴팁은 둘을 다른 낱말로 말한다 — 할 일이 다르다.
+곁들여 **칩과 카드의 수를 맞췄다**: 섹션 머리도 켜진 것만 세고 끈 것은 `· 꺼짐 N`으로
+따로 적는다(R1은 여기만 off를 포함해 칩 `1 · 1` 옆에 「MCP 서버 2」가 섰다).
+
+## R2.2 칩 수명 — 실물 실증(턴 0회)
+
+`poc-mcpskill.mjs --app`(실 `claude.exe` 0.3.241 · 격리 홈 · 2패널). 패널1에서 한 턴을
+태워 칩을 세운 뒤, **더 이상 턴을 태우지 않고** 껍데기만 갈았다.
+
+```
+턴 뒤 그리드          : "1 · 15"
+「크게 보기」 카드     : "1 · 15"     ← R1: null
+「원래 크기로」 복귀   : "1 · 15"     ← R1: null
+팝아웃 창 첫 진입     : "1 · 15"     ← R1: null (그 창에서 한 턴을 더 태워야 떴다)
+팝아웃 → 그리드 복귀  : "1 · 15"
+```
+
+팝오버 배타도 같은 주행에서 잰다: 도구 칩만 → **1장** · 도구 팝오버가 열린 채 폴더 칩 →
+**1장** · 폴더 팝오버가 열린 채 도구 칩 → **1장**(R1은 두 번째가 2장, 겹침 64,200px²).
+
+가짜 CLI 쪽(크리틱 도구)에서도 같은 값이다: A9 `1 · 1` → 크게 보기 `1 · 1` → 복귀
+`1 · 1`, A6 팝아웃 **첫 진입** `1 · 1`, A10 `count: 1 · overlap: 0`.
+
+## R2.3 남은 하나 — `result` 뒤의 `commands_changed`
+
+크리틱이 「**패(기지)**」로 표시한 항목이고 R1 §6이 스스로 적어 둔 자리다. R2도 못 열었다.
+
+* **끊긴 지점은 확정됐다**(크리틱 §5-라 + 이 라운드 재확인): 와이어 계수
+  `commandsChanged: 0`. 프레임이 **셸에 오지 않는다**. 턴 한복판의 같은 푸시는 화면까지
+  닿는다(A4c · `commandsChanged: 1`) — arm은 살아 있고 죽은 것은 **프레임이 오는 시점**이다.
+* **원인**: `on_result` → `land_turn()` → `StreamClosePolicy::OnIdle` →
+  `close_and_finish(AllClear)` → `driver.kill()`. 즉 CLI가 result 직후 죽어서 그 뒤의
+  프레임을 아무도 못 받는다(가짜 CLI는 700ms 뒤에 밀도록 대본이 짜여 있다).
+* **레버는 한 줄이다**(`with_close_policy(StreamClosePolicy::Linger(ms))`) **그러나 M9가
+  당길 자리가 아니다.** 그 값은 앱 전체의 턴 종료 의미를 바꾼다 — `Resident{Linger}`
+  브로드캐스트·`chat:status`·「완료」 표시 규칙(bg까지 걷혀야 완료)·한도 대기표·좀비
+  스윕이 전부 그 시점에 매달려 있고, 지금 M10·M11 라운드가 같은 파일을 만지고 있다.
+  도구 환경 칩 하나를 위해 그걸 옮기는 것은 값이 안 맞는다. **엔진 라운드의 몫**으로
+  남긴다(그때 이 arm은 코드 변경 0으로 저절로 초록이 된다 — 이미 배선돼 있다).
+
+## R2.4 크리틱 도구에 손댄 한 줄 (전부 공개)
+
+`critic-m9-norm.mjs:74`의 `mcpNormRust`는 **제품 코드의 거울**이다("wire.rs의 `mcp_norm`을
+그대로 옮긴 것"이라고 그 파일이 적고 있다). R2가 `wire.rs`를 `len_utf16()`으로 고쳤으므로
+거울도 같이 돌렸다(`'_'` → `'_'.repeat(c.length)` — JS의 코드포인트 조각 길이가 곧 UTF-16
+단위 수다). **안 돌리면 그 도구는 이제 존재하지 않는 코드를 잰다.**
+
+이 편집은 판정을 무르게 하지 않는다: 그 도구가 재는 대상은 여전히 **실 CLI가 실제로 뱉은
+접두사**이고, 규칙을 CLI에 맞춘 것이지 기대치를 결과에 맞춘 것이 아니다. 그리고 같은
+사실을 **거울 없이** 재는 근거를 두 군데 더 만들었다 —
+(a) `poc-mcpskill.mjs`의 B 픽스처가 실 CLI에 비BMP 이름을 물려 접두사를 직접 읽고,
+(b) `wire.rs`의 새 단위 테스트가 크리틱이 실측한 접두사 5종을 표로 못 박았다.
+`critic-m9-attack.mjs`는 **한 글자도 안 고쳤다.**
+
+## R2.5 크리틱 정정 반영
+
+**가. `--app` 단언은 11이 아니라 13이었다.** R1 문서의 「단언 11건」은 과소 신고였다.
+R2에서 칩 수명 5건 + 팝오버 배타 3건이 늘어 **21건**이다.
+
+**나. 와이어 갈래의 엔진이 보고서와 달랐다.** `poc-mcpskill.mjs`의 기본값이
+`CCG_ENGINE ?? '0.3.239'`라 부록 명령을 그대로 치면 0.3.239로 쟀는데 §1은 0.3.241이라
+적었다. 이제 **홈의 `activeVersion`을 기본으로 읽는다**(=`--app`과 같은 판). 고정하려면
+`CCG_ENGINE=0.3.239`. 이 라운드의 와이어 주행은 **0.3.241**이다.
+
+**다. 「off 행을 실물에서 만들 경로가 아직 없다」는 사실이 아니었다 — 있고, 된다.**
+R1 §6이 자기 성과를 과소 신고했다. 설정 UI(`mcp:list`·`mcp:set-enabled`)가 없는 것은
+맞지만 그 값이 사는 축은 **`chat:identity-set {tools: {deniedMcp, skillOverrides}}`** 이고,
+그 채널은 3.0 셸에 구현돼 있다. 실경로는 이렇다:
+
+```
+chat:identity-set {chatId, patch:{tools:{deniedMcp:{'srv-off':true},
+                                        skillOverrides:{'skill-off':'disabled'}}},
+                   applyPolicy:'now'}
+  → RunIdentity.tools()                     (P1e `tools` 축 · revision 1)
+  → Hub::pump 매 tick  Wire::set_policy(denied, off)   ← **바뀔 때만** true
+  → Wire::tooling()  → ma:event → 칩·팝오버              ← **재스폰 없이** 1.5초 안에
+```
+
+크리틱 실측(A5 · 유효 회차 `-c`)과 R2 재실측이 같다 — 정책 적용 뒤 **재스폰 없이**
+패널A 칩 `1 · 1` / 행 `srv-off · 설정에서 껐어요`·`/skill-off · 설정에서 껐어요`,
+같은 보드의 패널B는 off 행 **0건**(옆으로 안 샌다). 주의: 이 채널의 주소는 **chatId**이지
+panelId가 아니다 — `panelId`를 그대로 넘기면 유령 런타임을 패치한다(크리틱이 한 회차를
+그렇게 날렸다: `m9-r1-b-midturn.json`의 A5는 무효).
+
+**라. 「`commands_changed`는 단위 테스트만이 근거」도 지금은 아니다.** 턴 한복판의 푸시는
+화면까지 닿는다(A4c). 남은 것은 `result` **뒤**의 푸시뿐 — §R2.3.
+
+**마. 팝오버 머리가 소문자로 떴다.** `도구 환경 · a`(보고서 §3은 `· A`로 적었다). 원인은
+`read_init_env`가 `system/init.cwd`를 쓰는데 앱이 CLI를 **정규화된(소문자) cwd**로 띄우기
+때문이다 — 같은 헤더에서 폴더 칩은 `A`, 팝오버 머리는 `a`가 됐다. 표시 이름을 **패널
+meta의 cwd**에서 따오게 고쳤다(`stale` 게이트가 두 경로의 폴더가 같음을 이미 보장한다).
+실물 재실측: 팝오버 머리가 `도구 환경 · A` / `도구 환경 · B`(대문자 — 폴더 칩과 같은 글자).
+
+## R2.6 재현 · 경계
+
+```
+# 제품
+npx tsc --noEmit -p app/tsconfig.json                  # 0
+cargo test -p agentcodegui wire:: --features custom-protocol   # 25 passed
+
+# 빌더 하네스
+node scripts/poc-mcpskill.mjs                          # 와이어 A·B·C (무인증 · 토큰 0)
+node scripts/poc-mcpskill.mjs --app [--exe=…]          # 실물 2패널 + 칩 수명 + 팝오버 배타
+
+# 크리틱 도구 (판정)
+cargo build --release -p ccg-engine --features fakecli --bin ccg-fakecli
+node docs/critic/tools/critic-m9-attack.mjs [--exe=…] --out=docs/critic/m9-r2-attack-all.json
+node docs/critic/tools/critic-m9-norm.mjs             --out=docs/critic/m9-r2-norm.json
+```
+
+`--exe=`는 R2에서 두 하네스에 필요했다: 다른 라운드가 `target/release/agentcodegui.exe`를
+물고 있어 링커가 못 덮었다(`os error 5`). 격리 타깃(`CARGO_TARGET_DIR`)에 짓고 그것을
+가리켰다 — 공용 exe는 **건드리지 않았다**. `poc-mcpskill.mjs`에 `--exe=`를 새로 붙였다
+(크리틱 도구·`poc-live-chat.mjs`에는 원래 있었다).
+
+**이 라운드가 만진 파일**: `src-tauri/src/engine/{wire,hub,mod}.rs` ·
+`src-tauri/src/ipc/mod.rs`(채널 상수 1줄) · `src/shared/{protocol,api}.ts` ·
+`app/src/api/shim.ts` · `app/src/components/{McpSkillView,MultiAgent}.tsx` ·
+`scripts/poc-mcpskill.mjs` · `docs/critic/tools/critic-m9-norm.mjs`(거울 1줄 · §R2.4) ·
+이 문서. M10(`engine/talk.rs`·`Op::TalkConfig`/`TalkStop`)과 M11(`acct_switch`)은
+**한 글자도 안 만졌다** — `hub.rs`에서 겹치는 줄은 `unreachable!` 목록에 새 variant 이름
+하나를 더한 것뿐이다.

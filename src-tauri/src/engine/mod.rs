@@ -422,6 +422,22 @@ fn core_dispatch(channel: &str, p: &Value) -> Option<Value> {
             let id = a.get("liveItemId").and_then(Value::as_str).unwrap_or("").to_string();
             hub::call(&chat(), hub::Op::ForceSettle(id))
         }
+        // ★M9 R2 — 도구 환경 재조회. 이 채널만 **주소가 둘**이다: 본채팅·추가 채팅은
+        // `chatId`를 알지만, 멀티 패널의 칩이 아는 것은 보드 자리 키(`panelId`)뿐이다
+        // (`ma:event` 봉투와 같은 주소). 채널을 둘로 늘리는 대신 여기서 번역한다.
+        // 슬롯이 없거나 아직 `system/init`을 못 본 채팅은 `null` — "없음"이 아니라
+        // "아직 모름"이고, 화면은 그때 칩을 아예 안 세운다.
+        ch::CHAT_TOOLING_GET => {
+            let a = arg(p, 0);
+            let id = match a.get("chatId").and_then(Value::as_str).filter(|s| !s.is_empty()) {
+                Some(c) => Some(c.to_string()),
+                None => a.get("panelId").and_then(Value::as_str).and_then(panel_id_to_chat),
+            };
+            match id {
+                Some(c) => hub::call(&c, hub::Op::ToolingGet),
+                None => Value::Null,
+            }
+        }
         // ★M10 — 대화 연결. **`talk:*`가 아니라 `crosstalk:*`**인 이유는 1.x의 은퇴한
         // "채팅 모드"가 그 이름을 이미 쓰고 있기 때문이다(`ipc::ch::TALK_GET`).
         // 조회는 스토어만 보면 되지만(허브 왕복 불필요), 쓰기는 허브를 지난다 —

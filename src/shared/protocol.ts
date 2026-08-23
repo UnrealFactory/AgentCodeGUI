@@ -1250,6 +1250,13 @@ export const IPC = {
   chatIdentityRevert: 'chat:identity-revert',
   chatQueueMutate: 'chat:queue-mutate',
   chatForceSettle: 'chat:force-settle',
+  // ★M9 R2 — 도구 환경(MCP·스킬) **재조회**. 푸시(EngineEvent{type:'tooling'})와 같은
+  // 값을 같은 함수가 만든다. 주소는 `{chatId}` 또는 `{panelId}`(멀티 패널의 칩은 자기
+  // chatId를 모르고 보드 자리 키만 안다). 답은 `ChatTooling | null` — null은 "MCP 없음"이
+  // 아니라 **"아직 모름"**(런타임 없음 · system/init 전)이고, 화면은 그때 칩을 안 세운다.
+  // 셸의 메모리에만 있는 값이라 앱 재시작 뒤에는 항상 null이다(지난주 목록을 되살리지
+  // 않는다는 M9의 원칙 — 스냅샷을 디스크에 절이지 않는 이유 그 자체).
+  chatToolingGet: 'chat:tooling-get',
   // ── 스토어 (4) — M2 구현. chats:get/save/load는 2.6.2와 **같은 이름**이라
   //    플래그가 켜지면 별칭 어댑터가 앞에서 가로챈다(§6.2).
   chatsSetActive: 'chats:set-active', // ★ 즉시 — 저장 디바운스와 무관(§6.2 U3)

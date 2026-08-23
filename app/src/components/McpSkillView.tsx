@@ -11,13 +11,20 @@
  * 디스크를 다시 스캔하지 않는다: 연결 실패도, 승인 안 된 `.mcp.json`도, 플러그인이
  * 들고 온 스킬도 파일만 봐서는 모른다.
  *
+ * ★R2 — 그 푸시는 **스폰당 한 장**이다. R1은 그것을 컴포넌트 state에만 담아서, 껍데기가
+ * 갈리는 순간(「크게 보기」=오버레이 카드로 이동 · 팝아웃=다른 창 · 복귀=그리드 재마운트)
+ * 칩이 통째로 증발했다 — 사용자는 "지금 이 대화에 뭐가 붙어 있나"를 다시 보려고 턴을 한
+ * 번 더 태워야 했다(크리틱 A9·A6). 값은 셸의 옮김기에 그대로 살아 있었고, 없던 것은
+ * **다시 물을 창구**였다. 이제 마운트마다 한 번 묻는다(`multi.toolingGet`).
+ * 재시작 뒤에 안 되살아나는 원칙은 그대로다 — 스냅샷은 여전히 셸 **메모리**에만 있다.
+ *
  * 문법은 전부 기존 것이다 — 새 CSS를 한 줄도 안 만든다:
  *   칩   = `.ma-p-folder` (패널 헤더 모노 필, 작업 폴더 칩과 같은 면)
  *   래퍼 = `.hfold`      (팝오버 기준점 + 안쪽 클릭의 바깥닫힘 차단)
  *   카드 = `.wb-pop.hpop.r` (아래로 열리는 WorkBar 유리 팝오버)
  *   섹션 = `.hsec` · 행 = `.wb-prow`(+`.done`/`.err`) · 빈 상태 = `.ag-none`
  * ============================================================ */
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { ChatTooling, EngineEvent, McpLive, SkillLive } from '@shared/protocol'
 import { IconAlert, IconBook, IconCheck, IconChevDown, IconEyeOff, IconPlug, IconServer } from './icons'
 import { t, useLang } from '../lib/i18n'
@@ -124,33 +131,68 @@ function SkillRow({ s }: { s: SkillLive }) {
  * 패널 헤더의 도구 환경 칩. `panelId`는 `ma:event` 봉투의 주소 — 이 컴포넌트가 **스스로**
  * 구독한다(패널 세션 상태를 거치지 않는다: 도구 환경은 대화 내용이 아니라 실행 환경이고,
  * 스냅샷에 절이면 재시작 뒤 낡은 목록이 되살아난다).
+ *
+ * `onOpen`은 **팝오버 배타**의 절반이다 — 호스트가 자기 폴더 팝오버를 접는다(아래 참조).
  */
-export function McpSkillView({ panelId, cwd }: { panelId: string; cwd: string }) {
+export function McpSkillView({
+  panelId,
+  cwd,
+  onOpen
+}: {
+  panelId: string
+  cwd: string
+  onOpen?: () => void
+}) {
   useLang()
   const [snap, setSnap] = useState<ChatTooling | null>(null)
   const [open, setOpen] = useState(false)
+  const wrapRef = useRef<HTMLSpanElement | null>(null)
 
   useEffect(() => {
-    setSnap(null) // 자리가 바뀌면 남의 목록이다 — 다음 턴의 init이 채운다
-    return (
+    let alive = true
+    setSnap(null) // 자리가 바뀌면 남의 목록이다
+    // ★R2 ① **지금 값을 셸에 묻는다.** 이 한 줄이 칩의 수명이다 — 푸시는 스폰당 한 장뿐이라
+    // 재마운트(「크게 보기」·팝아웃 첫 진입·그리드 복귀)에는 아무것도 안 온다. 답이 `null`
+    // 이면 아직 모르는 것이므로(런타임 없음 · `system/init` 전 · 앱 재시작 직후) 그대로 둔다.
+    void window.api.multi
+      ?.toolingGet?.(panelId)
+      .then((tl) => {
+        // 물어보는 사이에 푸시가 먼저 닿았으면 그쪽이 최신이다(왕복은 수 ms지만 0은 아니다).
+        if (alive && tl) setSnap((cur) => cur ?? tl)
+      })
+      .catch(() => {})
+    // ② 이후는 푸시가 잇는다(턴마다 · 정책 변경 · 세션 중간 커맨드 갱신).
+    const off =
       window.api.multi?.onEvent?.(panelId, (e: EngineEvent) => {
         if (e.type === 'tooling') setSnap(e.tooling)
       }) ?? (() => {})
-    )
+    return () => {
+      alive = false
+      off()
+    }
   }, [panelId])
 
   // 팝오버는 Esc / 바깥 클릭으로 닫는다 (네이티브 다이얼로그 금지 — 카드 패턴 유지).
-  // 안쪽 클릭은 호스트가 감싼 `.hfold`가 mousedown 전파를 막는다(FolderPop과 같은 규약).
+  //
+  // ★R2 — **캡처 단계**로 듣고 내 래퍼 안이면 무시한다. R1은 버블 단계 `window` mousedown
+  // 하나였고 "안쪽 클릭은 `.hfold`의 stopPropagation이 막는다"에 기대고 있었는데, 그 전제가
+  // 옆 칩에서 반대로 물렸다: 폴더 칩의 래퍼도 `.hfold`(=stopPropagation)라 그 클릭이
+  // `window`까지 **안 온다**. 그래서 도구 팝오버가 안 닫힌 채 폴더 팝오버가 그 위에 정확히
+  // 포개져 떴다(크리틱 A10 — 겹침 64,200px²). 캡처는 타깃보다 **먼저** 돌므로 남이 끊어도
+  // 울리고, 내 안쪽 클릭은 래퍼 containment로 직접 가른다(전파에 안 기댄다).
   useEffect(() => {
     if (!open) return
-    const close = (): void => setOpen(false)
+    const onDown = (e: MouseEvent): void => {
+      if (wrapRef.current?.contains(e.target as Node)) return
+      setOpen(false)
+    }
     const onKey = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') setOpen(false)
     }
-    window.addEventListener('mousedown', close)
+    window.addEventListener('mousedown', onDown, true)
     document.addEventListener('keydown', onKey)
     return () => {
-      window.removeEventListener('mousedown', close)
+      window.removeEventListener('mousedown', onDown, true)
       document.removeEventListener('keydown', onKey)
     }
   }, [open])
@@ -162,29 +204,61 @@ export function McpSkillView({ panelId, cwd }: { panelId: string; cwd: string })
   // 첫 턴 전에는 아무것도 모른다. 빈 칩을 세우지 않는다("없음"과 "아직 모름"은 다르다).
   if (!tl) return null
 
-  const bad = tl.mcp.filter((m) => m.status === 'failed' || m.status === 'needs-auth').length
-  const live = tl.mcp.filter((m) => m.status === 'connected').length
-  const offN = tl.mcp.filter((m) => m.status === 'off').length
+  // ★R2 — **상태를 전부 센다.** R1은 `connected`/`failed`/`off` 셋만 읽어서, 서버 10대
+  // (연결7·실패1·인증필요1·연결중1)를 「MCP 7개 연결 · 2개 실패」로 적었다 — 합이 9다
+  // (크리틱 A1). 사라진 한 대는 `pending`이었고, `needs-auth`는 「실패」로 합산됐다.
+  // 사용자가 할 일이 다르다: 하나는 로그인, 하나는 설정 고치기, 하나는 그냥 기다리기.
+  // status는 열린 집합이라 **나머지 전부**를 `unknown`으로 모아 분모를 정확히 유지한다.
+  const n = (p: (s: string) => boolean): number => tl.mcp.filter((m) => p(m.status)).length
+  const live = n((s) => s === 'connected')
+  const failed = n((s) => s === 'failed')
+  const auth = n((s) => s === 'needs-auth')
+  const pending = n((s) => s === 'pending')
+  const cliOff = n((s) => s === 'disabled')
+  const offN = n((s) => s === 'off') // 셸이 되붙인 행(설정에서 끔)
+  // 분모 = CLI가 아는 서버(끈 것 제외). 나머지는 전부 `unknown`으로 떨어져 합이 맞는다.
+  const total = tl.mcp.length - offN
+  const unknown = total - live - failed - auth - pending - cliOff
+  // 색으로 먼저 읽혀야 하는 것 = 사용자가 손대야 붙는 것(실패·인증 필요).
+  const bad = failed + auth
   const skillsOn = tl.skills.filter((s) => !s.off)
-  // 칩 본문 — 모노 필에 들어가는 최소 정보. 실패가 있으면 `n/전체`로 분모를 드러낸다
-  // (실패는 숫자 하나로 가려지면 안 되는 사실이다).
-  const count = bad > 0 ? `${live}/${tl.mcp.length - offN}` : `${live}`
+  const skillsOff = tl.skills.length - skillsOn.length
+  // 칩 본문 — 모노 필에 들어가는 최소 정보. **다 안 붙었으면** `n/전체`로 분모를 드러낸다
+  // (R1은 실패가 있을 때만 드러내서, 연결 중 1대만 남은 판이 「4」로 보였다).
+  const count = live === total ? `${live}` : `${live}/${total}`
   const tip = [
     tl.mcp.length === 0
       ? t('MCP 서버 없음', 'No MCP servers')
-      : t(`MCP ${live}개 연결${bad ? ` · ${bad}개 실패` : ''}${offN ? ` · ${offN}개 꺼짐` : ''}`,
-          `${live} MCP connected${bad ? ` · ${bad} failed` : ''}${offN ? ` · ${offN} off` : ''}`),
-    t(`스킬 ${skillsOn.length}개`, `${skillsOn.length} skills`),
+      : t(
+          `MCP ${live}개 연결${failed ? ` · ${failed}개 실패` : ''}${auth ? ` · ${auth}개 인증 필요` : ''}` +
+            `${pending ? ` · ${pending}개 연결 중` : ''}${cliOff ? ` · ${cliOff}개 CLI가 껐음` : ''}` +
+            `${unknown > 0 ? ` · ${unknown}개 상태 미상` : ''}${offN ? ` · ${offN}개 꺼짐` : ''}`,
+          `${live} MCP connected${failed ? ` · ${failed} failed` : ''}${auth ? ` · ${auth} need auth` : ''}` +
+            `${pending ? ` · ${pending} connecting` : ''}${cliOff ? ` · ${cliOff} disabled by the CLI` : ''}` +
+            `${unknown > 0 ? ` · ${unknown} unknown` : ''}${offN ? ` · ${offN} off` : ''}`
+        ),
+    // 「끈 스킬」이라고 적는다 — 앞의 MCP 문장에도 「N개 꺼짐」이 올 수 있어서, 같은
+    // 낱말을 `·`로 잇기만 하면 그 수가 서버 것인지 스킬 것인지 안 갈린다.
+    t(`스킬 ${skillsOn.length}개${skillsOff ? ` · 끈 스킬 ${skillsOff}개` : ''}`,
+      `${skillsOn.length} skills${skillsOff ? ` · ${skillsOff} skills off` : ''}`),
     t('클릭해 자세히', 'Click for details')
   ].join(' · ')
 
   return (
-    <span className="hfold" onMouseDown={(e) => e.stopPropagation()}>
+    <span className="hfold" ref={wrapRef} onMouseDown={(e) => e.stopPropagation()}>
       <button
         className={'ma-p-folder' + (open ? ' on' : ' has-tip tip-wrap')}
         data-tip={tip}
         aria-label={tip}
-        onClick={() => setOpen((o) => !o)}
+        onClick={() =>
+          setOpen((o) => {
+            // ★R2 배타의 나머지 절반 — 내가 열릴 때 호스트가 자기 폴더 팝오버를 접는다.
+            // 반대 방향(내가 열린 채 폴더 칩)은 위 캡처 리스너가 닫는다. 두 방향을 다
+            // 막아야 "동시에 안 열린다"가 참이 된다(R1 §2.2는 참이 아니었다).
+            if (!o) onOpen?.()
+            return !o
+          })
+        }
       >
         <IconPlug size={11} />
         {/* 실패는 색으로 먼저 읽혀야 한다 — 팝오버를 열기 전에 알아야 하는 유일한 값
@@ -198,12 +272,20 @@ export function McpSkillView({ panelId, cwd }: { panelId: string; cwd: string })
         <div className="wb-pop hpop r">
           <div className="wb-pop-h">
             <span className="t">{t('도구 환경', 'Tool environment')}</span>
-            <span className="c">{baseOf(tl.cwd)}</span>
+            {/* ★R2 정정(크리틱 §5-마) — 표시 이름은 **패널 meta의 cwd**에서 딴다.
+                `tl.cwd`는 `system/init`이 되돌려 준 값이고, 앱은 CLI를 정규화된(소문자)
+                cwd로 띄우므로 CLI가 소문자를 돌려준다 — 같은 헤더에서 폴더 칩은
+                `AgentCodeGUI`, 이 머리는 `agentcodegui`가 됐다. 위 `stale` 게이트가
+                두 경로의 폴더가 같음을 이미 보장하므로 골라 쓰기만 하면 된다. */}
+            <span className="c">{baseOf(cwd || tl.cwd)}</span>
           </div>
 
+          {/* ★R2 — 섹션 머리는 **칩과 같은 수**를 센다. R1은 여기만 off를 포함해서
+              칩 `1 · 1` 옆에 「MCP 서버 2」가 섰다(크리틱 §3.3 끝). 끈 것은 따로 적는다. */}
           <div className="hsec">
             {t('MCP 서버', 'MCP servers')}
-            {tl.mcp.length > 0 ? ` ${tl.mcp.length}` : ''}
+            {total > 0 ? ` ${total}` : ''}
+            {offN > 0 ? t(` · 꺼짐 ${offN}`, ` · ${offN} off`) : ''}
           </div>
           {tl.mcp.length ? (
             <div className="wb-pop-list">
@@ -218,12 +300,15 @@ export function McpSkillView({ panelId, cwd }: { panelId: string; cwd: string })
           )}
 
           <div className="hsec">
-            {t('스킬', 'Skills')} {tl.skills.length}
+            {t('스킬', 'Skills')} {skillsOn.length}
+            {skillsOff > 0 ? t(` · 꺼짐 ${skillsOff}`, ` · ${skillsOff} off`) : ''}
           </div>
           {tl.skills.length ? (
             <div className="wb-pop-list">
-              {tl.skills.map((s) => (
-                <SkillRow key={s.name} s={s} />
+              {/* 키에 자리를 섞는다 — 같은 이름이 두 번 오는 판이 있다(플러그인/프로젝트
+                  중복). 이름만 키로 쓰면 React가 같은 행으로 접어 하나가 사라진다. */}
+              {tl.skills.map((s, i) => (
+                <SkillRow key={`${s.name}#${i}`} s={s} />
               ))}
             </div>
           ) : (

@@ -11,6 +11,7 @@ import type {
   PanelPopClosed,
   PanelPopStates,
   EngineEvent,
+  ChatTooling,
   WindowState,
   UsageInfo,
   ApiConfigStatus,
@@ -419,6 +420,15 @@ export interface WindowApi {
     loadSession(id: string): Promise<unknown>
     /** subscribe to one panel's streaming engine events (returns an unsubscribe fn) */
     onEvent(panelId: string, cb: (event: EngineEvent) => void): () => void
+    /**
+     * ★M9 R2 — 이 패널의 **도구 환경을 다시 묻는다**(마운트 시 1회).
+     *
+     * 푸시(`onEvent` → `{type:'tooling'}`)는 스폰당 한 장뿐이라, 껍데기가 갈리면
+     * (「크게 보기」·팝아웃·그리드 복귀) 새 컴포넌트는 아무것도 못 받는다. 셸의 옮김기에는
+     * 그 값이 그대로 있으므로 여기서 한 번 물어 채운다. `null` = 아직 모름(런타임 없음 ·
+     * `system/init` 전 · 재시작 직후) — 「MCP 없음」과 다른 말이라 화면은 칩을 안 세운다.
+     */
+    toolingGet(panelId: string): Promise<ChatTooling | null>
     /** 패널 팝아웃 창 열기 — 이미 열려 있으면 그 창을 앞으로 (메인 창에서 호출) */
     openPanelWindow(state: PanelPopState): Promise<void>
     /** 팝아웃 창 → 자기 부트 페이로드(연 순간의 패널 상태) 조회 */

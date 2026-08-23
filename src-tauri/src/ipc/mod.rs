@@ -213,6 +213,9 @@ pub mod ch {
     pub const CHAT_IDENTITY_REVERT: &str = "chat:identity-revert";
     pub const CHAT_QUEUE_MUTATE: &str = "chat:queue-mutate";
     pub const CHAT_FORCE_SETTLE: &str = "chat:force-settle";
+    /// ★M9 R2 — 이 채팅의 도구 환경(MCP·스킬) **재조회**. 주소는 `chatId` 또는 `panelId`
+    /// (멀티 패널의 칩은 자기 chatId를 모른다 — 보드 자리 키만 안다).
+    pub const CHAT_TOOLING_GET: &str = "chat:tooling-get";
     // 브로드캐스트(main → 렌더러)
     pub const CHAT_EVENT: &str = "chat:event";
     pub const CHAT_IDENTITY: &str = "chat:identity";

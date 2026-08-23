@@ -70,8 +70,20 @@ const res = await new Promise((resolve) => {
   setTimeout(fin, 60_000)
 })
 
-/** wire.rs의 `mcp_norm`을 그대로 옮긴 것 — Rust는 **유니코드 스칼라** 단위로 돈다. */
-const mcpNormRust = (name) => [...name].map((c) => (/[A-Za-z0-9_-]/.test(c) ? c : '_')).join('')
+/**
+ * `wire.rs`의 `mcp_norm`을 그대로 옮긴 것 — **이 줄은 제품 코드의 거울이다.**
+ *
+ * R1 판(`? c : '_'`)은 Rust `chars()`(유니코드 **스칼라**)를 옮긴 것이었고, 이 하네스는
+ * 그 규칙이 실 CLI와 갈리는 자리를 정확히 하나 찾아냈다(`emoji🚀srv`: 실 CLI
+ * `mcp__emoji__srv__` vs 기대 `mcp__emoji_srv__`). M9 R2가 그 지적을 받아 `wire.rs`를
+ * `len_utf16()`만큼 `_`로 고쳤으므로, 거울도 같이 돌린다 — 안 돌리면 이 도구는 **이제
+ * 존재하지 않는 코드**를 재게 된다. JS에서 `[...name]`은 코드 포인트를 주고 그 조각의
+ * `.length`가 곧 UTF-16 단위 수라, `'_'.repeat(c.length)`가 Rust `c.len_utf16()`과 같다.
+ *
+ * (거울을 고쳐도 이 도구가 재는 대상은 그대로다: **실 CLI가 실제로 뱉은 접두사**와
+ *  규칙의 일치 여부. 규칙을 CLI에 맞춰 바꾼 것이지, 판정을 무르게 한 것이 아니다.)
+ */
+const mcpNormRust = (name) => [...name].map((c) => (/[A-Za-z0-9_-]/.test(c) ? c : '_'.repeat(c.length))).join('')
 const prefixes = (res.init?.tools ?? []).filter((t) => t.startsWith('mcp__'))
 const rows = Object.keys(NAMES).map((name) => {
   const expect = mcpNormRust(name)

@@ -24,6 +24,7 @@ import type {
   AuthStatus,
   BgTaskRequest,
   BtwOpenRequest,
+  ChatTooling,
   EngineCleanupResult,
   EngineEvent,
   EngineUpdateStatus,
@@ -391,6 +392,13 @@ const api: WindowApi = {
     getState: () => call<unknown>(IPC.maGet, [], null),
     saveState: (data: unknown) => callVoid(IPC.maSave, [data]),
     loadSession: (id: string) => call<unknown>(IPC.maLoadSession, [id], null),
+    // ★M9 R2 — 도구 환경 재조회(마운트 1회). 셸은 이벤트 봉투째(`{type:'tooling',
+    // runId, tooling}`) 돌려주므로 여기서 알맹이만 꺼내 준다 — 구독자가 받는 값과 같은
+    // 모양(`ChatTooling`)이어야 호출부가 두 경로를 한 setState로 받는다.
+    toolingGet: async (panelId: string) => {
+      const r = await call<{ tooling?: ChatTooling } | null>(IPC.chatToolingGet, [{ panelId }], null)
+      return r?.tooling ?? null
+    },
     // 패널 전부가 한 채널을 공유한다 — panelId가 맞는 이벤트만 그 구독자에게
     onEvent: (panelId: string, cb: (e: EngineEvent) => void) =>
       subscribe(IPC.maEvent, (p: MultiEngineEvent) => {

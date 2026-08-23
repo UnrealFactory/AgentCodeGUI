@@ -34,8 +34,20 @@ import readline from 'node:readline'
 
 const LIVE = process.argv.includes('--live')
 const APP = process.argv.includes('--app')
-const ENGINE = process.env.CCG_ENGINE ?? '0.3.239'
 const HOME = path.join(os.homedir(), '.agentcodegui')
+// ★R2 정정(크리틱 §5-나): R1은 이 기본값을 `'0.3.239'`로 못 박아 두고 보고서에는
+// 「엔진 0.3.241」이라고 적었다 — 부록의 재현 명령을 그대로 치면 다른 판을 재게 된다
+// (`--app`만 앱의 `activeVersion`을 쓰므로 두 갈래의 엔진도 갈렸다). 이제 와이어 갈래도
+// **앱이 실제로 쓰는 판**을 기본으로 삼는다. 고정하려면 `CCG_ENGINE=0.3.239`.
+const ENGINE =
+  process.env.CCG_ENGINE ??
+  (() => {
+    try {
+      return JSON.parse(fs.readFileSync(path.join(HOME, 'config.json'), 'utf8')).activeVersion
+    } catch {
+      return '0.3.239'
+    }
+  })()
 const CLI = path.join(
   HOME,
   'engines',
@@ -122,6 +134,11 @@ const node = process.execPath
 const stub = path.join(OUT, 'mcp-stub.mjs')
 fs.mkdirSync(OUT, { recursive: true })
 
+/** 비BMP(서로게이트 쌍)가 든 MCP 서버 이름 — `mcp_norm`의 UTF-16 규칙을 실 CLI에 묻는다. */
+const MCP_EMOJI = 'ccg-emoji🚀b'
+/** `wire.rs::mcp_norm`을 옮긴 것 — 비 `[A-Za-z0-9_-]`는 **UTF-16 단위 수만큼** `_`. */
+const mcpNorm = (name) => [...name].map((c) => (/[A-Za-z0-9_-]/.test(c) ? c : '_'.repeat(c.length))).join('')
+
 const FIX = {
   A: () =>
     fixture(
@@ -136,7 +153,12 @@ const FIX = {
       'B',
       [
         { name: 'ccg-probe-b', cfg: { command: node, args: [stub, 'ccg-probe-b'] } },
-        { name: 'ccg-broken-b', cfg: { command: node, args: [path.join(OUT, 'does-not-exist.mjs')] } }
+        { name: 'ccg-broken-b', cfg: { command: node, args: [path.join(OUT, 'does-not-exist.mjs')] } },
+        // ★R2 — **비BMP 이름**. R1의 서버 이름(`ccg-probe-a/b`)에는 정규화할 문자가 하나도
+        // 없어서 `mcp_norm` 규칙 자체에 실측 근거가 없었다(크리틱 §3.2). CLI(JS)의 정규식은
+        // **UTF-16 코드 단위**를 돌아 서로게이트 쌍을 `_` 두 개로 바꾼다 — 셸이 스칼라 단위로
+        // 세면 접두사가 어긋나 그 서버의 도구가 조용히 사라진다(행은 「연결됨」인데 도구 0).
+        { name: MCP_EMOJI, cfg: { command: node, args: [stub, MCP_EMOJI] } }
       ],
       [
         { name: 'beta-probe', desc: 'B 픽스처 전용 스킬 — A에는 없다' },
@@ -286,7 +308,11 @@ const ok = (cond, msg) => {
 // "둘 다 잘 나온다"로 보이는 종류의 결함이다).
 if (APP) {
   const { connectMainPage, killTree, sleep, REPO } = await import('../bench/lib.mjs')
-  const EXE = path.join(REPO, 'target', 'release', 'agentcodegui.exe')
+  // 기본은 공용 `target/release`. 다른 라운드가 그 exe를 물고 있으면 링커가 못 덮으므로
+  // 격리 타깃에 지은 바이너리를 `--exe=…`로 가리킬 수 있다(R2에서 실제로 밟았다).
+  const EXE =
+    (process.argv.find((a) => a.startsWith('--exe=')) ?? '').split('=').slice(1).join('=') ||
+    path.join(REPO, 'target', 'release', 'agentcodegui.exe')
   const CCG_HOME = path.join(REPO, '.poc-home-mcpskill')
   const PORT = 9391
   const dirA = FIX.A()
@@ -523,6 +549,106 @@ if (APP) {
                    initCwds: inits.map((m) => m.cwd) }
       console.log('  와이어 계수:', JSON.stringify(out.wire))
     }
+
+    // ══ R2 ① 칩의 수명 — 껍데기가 갈려도 사는가 ═══════════════════════════════
+    //
+    // R1은 값의 출처가 **스폰당 푸시 한 장**이었고 그것을 컴포넌트 state에만 담았다.
+    // 「크게 보기」는 같은 대화를 오버레이 카드로 옮겨 **다시 마운트**하고, 팝아웃은
+    // 아예 다른 창이다 — 새 컴포넌트에는 아무것도 안 온다. 셸(`Wire::env`)에는 값이
+    // 그대로 있으니, 물어볼 창구(`chat:tooling-get`)만 있으면 산다. 여기서 그 왕복을
+    // **실물로** 판정한다: 턴을 더 태우지 않고 칩이 돌아와야 한다.
+    console.log('\n===== R2 칩 수명 =====')
+    const CHIP0 = `[...document.querySelectorAll('.ma-panel[data-slot="0"] .ma-p-head button.ma-p-folder')]
+      .find((b) => /MCP/.test(b.getAttribute('aria-label') || '')) ?? null`
+    const chipTextIn = (scope) => `(() => { const b = [...document.querySelectorAll(${JSON.stringify(scope)} + ' button.ma-p-folder')]
+      .find((x) => /MCP/.test(x.getAttribute('aria-label') || '')); return b ? b.innerText.replace(/\\s+/g, ' ').trim() : null })()`
+    const clickAria = (re) => `(() => { const b = [...document.querySelectorAll('button')]
+      .find((x) => ${re}.test(x.getAttribute('aria-label') || '')); if (!b) return 'no-btn'; b.click(); return 'clicked' })()`
+
+    const lifeBefore = await j(`(() => { const b = ${CHIP0}; return b ? b.innerText.replace(/\\s+/g, ' ').trim() : null })()`)
+    // ── 크게 보기 (그리드 자리는 유령이 되고 실물은 오버레이 카드로 옮겨 간다)
+    await j(`(() => { const b = [...document.querySelectorAll('.ma-panel[data-slot="0"] button')]
+      .find((x) => /크게 보기|Expand/.test(x.getAttribute('aria-label') || '')); if (!b) return 'no-btn'; b.click(); return 'clicked' })()`)
+    await until(`!!document.querySelector('.ma-expand-card')`, 10_000)
+    await sleep(1200)
+    const lifeExpanded = await j(chipTextIn('.ma-expand-card'))
+    // ── 원래 크기로 (그리드 재마운트)
+    await j(clickAria('/원래 크기로|Restore size/'))
+    await sleep(1200)
+    const lifeRestored = await j(`(() => { const b = ${CHIP0}; return b ? b.innerText.replace(/\\s+/g, ' ').trim() : null })()`)
+    out.chipLifetime = { before: lifeBefore, expanded: lifeExpanded, restored: lifeRestored }
+    console.log('  칩 —', JSON.stringify(out.chipLifetime))
+    ok(!!lifeBefore, `턴 뒤 그리드 칩이 있다 — 실제 ${JSON.stringify(lifeBefore)}`)
+    ok(lifeExpanded === lifeBefore, `「크게 보기」에서도 같은 칩 — 기대 ${JSON.stringify(lifeBefore)} · 실제 ${JSON.stringify(lifeExpanded)}`)
+    ok(lifeRestored === lifeBefore, `「원래 크기로」 복귀 뒤에도 같은 칩 — 실제 ${JSON.stringify(lifeRestored)}`)
+
+    // ══ R2 ② 팝오버 배타 — 두 칩은 같은 자리에 뜬다 ═══════════════════════════
+    // R1 보고서 §2.2는 "서로의 칩 클릭이 상대에겐 바깥 클릭이라 동시에 안 열린다"고
+    // 적었지만, 폴더 칩의 래퍼도 `.hfold`(=mousedown stopPropagation)라 그 클릭이
+    // `window`까지 오지 않았다 — 두 팝오버가 정확히 포개져 떴다.
+    const pops = async () => await j(`document.querySelectorAll('.ma-panel[data-slot="0"] .wb-pop').length`)
+    await j(`(() => { const b = ${CHIP0}; if (!b) return 'no-chip'; b.click(); return 'clicked' })()`)
+    await sleep(250)
+    const popsAfterTool = await pops()
+    await j(`(() => {
+      const chips = [...document.querySelectorAll('.ma-panel[data-slot="0"] .ma-p-head button.ma-p-folder')]
+      const folder = chips.find((b) => !/MCP/.test(b.getAttribute('aria-label') || ''))
+      if (!folder) return 'no-folder'
+      folder.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }))
+      folder.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }))
+      folder.click()
+      return 'clicked'
+    })()`)
+    await sleep(300)
+    const popsAfterFolder = await pops()
+    // 반대 방향 — 폴더 팝오버가 열린 채 도구 칩
+    await j(`(() => { const b = ${CHIP0}; if (b) b.click(); return 'x' })()`)
+    await sleep(300)
+    const popsAfterToolAgain = await pops()
+    await j(`(document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })), 'closed')`)
+    await sleep(200)
+    out.popExclusive = { afterTool: popsAfterTool, afterFolder: popsAfterFolder, afterToolAgain: popsAfterToolAgain }
+    console.log('  팝오버 수 —', JSON.stringify(out.popExclusive))
+    ok(popsAfterTool === 1, `도구 칩만 눌렀을 때 팝오버 1장 — 실제 ${popsAfterTool}`)
+    ok(popsAfterFolder === 1, `도구 팝오버가 열린 채 폴더 칩 → 여전히 1장 — 실제 ${popsAfterFolder}`)
+    ok(popsAfterToolAgain === 1, `폴더 팝오버가 열린 채 도구 칩 → 여전히 1장 — 실제 ${popsAfterToolAgain}`)
+
+    // ══ R2 ③ 팝아웃 창 — 첫 진입에 칩이 서는가 ════════════════════════════════
+    // R1은 그 창에서 한 턴을 더 태워야 칩이 떴다(구독만 있고 조회가 없었다).
+    // 이 판정은 **턴을 안 태운다** — 창이 뜨자마자 물어봐서 채워야 통과다.
+    const { cdpTargets, Cdp } = await import('../bench/lib.mjs')
+    await j(`(() => { const b = [...document.querySelectorAll('.ma-panel[data-slot="0"] button')]
+      .find((x) => /별도 창으로|own window/.test(x.getAttribute('aria-label') || '')); if (!b) return 'no-btn'; b.click(); return 'clicked' })()`)
+    await sleep(2600)
+    const winTarget = (await cdpTargets(PORT).catch(() => [])).filter((tg) => tg.type === 'page').find((tg) => /mapanel/.test(tg.url))
+    if (!winTarget) {
+      ok(false, '팝아웃 창 타깃을 못 찾음')
+    } else {
+      const wc = await Cdp.connect(winTarget.webSocketDebuggerUrl, { timeoutMs: 8000 })
+      const wj = async (expr) => JSON.parse(await wc.eval(`(async () => JSON.stringify((${expr}) ?? null))()`, { awaitPromise: true }))
+      // 조회 왕복 + 렌더 한 프레임을 기다린다(턴은 안 태운다)
+      for (let i = 0; i < 40; i++) {
+        const seen = await wj(`!![...document.querySelectorAll('.ma-p-head button.ma-p-folder')].find((x) => /MCP/.test(x.getAttribute('aria-label') || ''))`).catch(() => false)
+        if (seen) break
+        await sleep(150)
+      }
+      const popChip = await wj(`(() => { const b = [...document.querySelectorAll('.ma-p-head button.ma-p-folder')]
+        .find((x) => /MCP/.test(x.getAttribute('aria-label') || '')); return b ? b.innerText.replace(/\\s+/g, ' ').trim() : null })()`)
+      out.popoutChipFirstEntry = popChip
+      console.log('  팝아웃 첫 진입 칩 —', JSON.stringify(popChip))
+      ok(popChip === lifeBefore, `팝아웃 첫 진입(턴 0회)에 같은 칩 — 기대 ${JSON.stringify(lifeBefore)} · 실제 ${JSON.stringify(popChip)}`)
+      try { wc.close() } catch { /* 이미 닫힘 */ }
+      // 그리드로 되돌린다 — 복귀도 재마운트다(칩이 또 한 번 살아나야 한다)
+      await j(`(() => { const b = [...document.querySelectorAll('.ma-panel[data-slot="0"] button, .ma-panel[data-slot="0"]')]
+        .find((x) => /창에서 보는 중|되돌|본창/.test((x.getAttribute('aria-label') || '') + (x.getAttribute('data-tip') || '')));
+        if (b) { b.click(); return 'clicked' } return 'no-btn' })()`).catch(() => null)
+      await j(`(await window.api.multi.panelClose('m9-two::0'), 'closed')`).catch(() => null)
+      await sleep(2600)
+      const backChip = await j(`(() => { const b = ${CHIP0}; return b ? b.innerText.replace(/\\s+/g, ' ').trim() : null })()`)
+      out.chipAfterFoldBack = backChip
+      console.log('  팝아웃 복귀 뒤 그리드 칩 —', JSON.stringify(backChip))
+      ok(backChip === lifeBefore, `팝아웃 복귀(턴 0회) 뒤에도 같은 칩 — 실제 ${JSON.stringify(backChip)}`)
+    }
   } catch (e) {
     ok(false, `앱 주행 실패: ${e.message}`)
     out.error = String(e.stack || e)
@@ -654,6 +780,19 @@ if (A?.init && B?.init) {
   ok(
     pref.includes('mcp__ccg-probe-b__echo') && pref.includes('mcp__ccg-probe-b__ping'),
     `init.tools에 mcp__<서버>__<도구> — 실제: ${JSON.stringify(pref)}`
+  )
+  // ── ④-b ★R2: 접두사 정규화가 **UTF-16 코드 단위**인가 (비BMP 서버 이름) ──────
+  // R1의 서버 이름에는 정규화할 문자가 없어 이 규칙에 실측 근거가 없었다. 서로게이트
+  // 쌍(🚀) 하나가 `_` 한 개가 되는지 두 개가 되는지에 따라 셸의 되맞춤이 통째로
+  // 어긋난다(어긋나면 그 서버 행은 「연결됨」인데 도구가 0개로 보인다).
+  const emojiRow = (B.init.mcp_servers ?? []).find((s) => s.name === MCP_EMOJI)
+  ok(!!emojiRow, `비BMP 이름 서버가 init.mcp_servers에 온다 — 실제: ${JSON.stringify(bn)}`)
+  const want = `mcp__${mcpNorm(MCP_EMOJI)}__`
+  const got = pref.filter((t) => !t.startsWith('mcp__ccg-probe-b__') && !t.startsWith('mcp__ccg-broken-b__'))
+  console.log(`  비BMP 접두사      : 기대 ${want} · 실제 ${JSON.stringify(got)}`)
+  ok(
+    got.length > 0 && got.every((t) => t.startsWith(want)),
+    `서로게이트 쌍은 '_' **두 개**다(UTF-16 단위) — 기대 접두사 ${want} · 실제 ${JSON.stringify(got)}`
   )
 }
 

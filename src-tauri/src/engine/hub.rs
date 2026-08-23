@@ -119,6 +119,16 @@ pub enum Op {
     TalkConfig(Value),
     /// ★M10 — 긴급 정지(`crosstalk:stop`). 도는 연쇄를 전부 버리고 기능을 끈다.
     TalkStop,
+    /// ★M9 R2 — **이 채팅의 도구 환경을 다시 묻는다**(`chat:tooling-get`).
+    ///
+    /// R1의 값 출처는 스폰당 푸시 한 장뿐이었고 렌더러는 그것을 컴포넌트 state에만
+    /// 담았다. 껍데기가 갈리면(「크게 보기」·팝아웃·그리드 복귀) 칩이 증발하는데,
+    /// 셸의 `Wire::env`에는 값이 그대로 살아 있었다 — 없던 것은 **다시 물을 창구**다.
+    ///
+    /// 조회는 **런타임을 만들지 않는다**(`ensure` 앞에서 끝낸다). 슬롯이 없거나
+    /// 아직 `system/init`을 못 봤으면 `Null`이다 — "없음"이 아니라 "아직 모름"이고,
+    /// 화면은 그 둘을 다르게 그린다(빈 칩을 세우지 않는다).
+    ToolingGet,
     Dispose,
     /// 진단 — 런타임 수·상태(하네스가 읽는다).
     /// (전 채팅 상태 스냅샷은 허브를 거치지 않는다 — `chats:get`이 `status.json`에서
@@ -492,6 +502,17 @@ impl Hub {
                                } }));
                 return;
             }
+            // ★M9 R2 — 도구 환경 재조회. `ensure` **앞**이라 런타임을 안 만든다:
+            // 아직 한 번도 안 돈 패널이 마운트만으로 CLI를 띄우면 안 된다.
+            Op::ToolingGet => {
+                answer(
+                    self.slots
+                        .get(&chat)
+                        .and_then(|s| s.wire.tooling())
+                        .unwrap_or(Value::Null),
+                );
+                return;
+            }
             Op::Dispose => {
                 if let Some(mut s) = self.slots.remove(&chat) {
                     s.rt.dispatch(Cmd::Dispose);
@@ -733,7 +754,9 @@ impl Hub {
                 let v = slot.rt.resume_now();
                 answer(verdict_wire("hold.resume", &v));
             }
-            Op::Debug | Op::Dispose | Op::TalkConfig(_) | Op::TalkStop => unreachable!("위에서 처리"),
+            Op::Debug | Op::Dispose | Op::ToolingGet | Op::TalkConfig(_) | Op::TalkStop => {
+                unreachable!("위에서 처리")
+            }
         }
     }
 

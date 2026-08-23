@@ -150,10 +150,36 @@ struct ToolEnv {
 /// MCP 도구 접두사의 서버 이름 정규화 — CLI가 `mcp__<정규화된 이름>__<도구>`를 만들 때
 /// 쓰는 규칙(`sdk.d.ts` `mcp_call`: "non-[a-zA-Z0-9_-] becomes _"). 설정된 이름과
 /// 접두사를 되맞추려면 이쪽에서 같은 변환을 해야 한다.
+///
+/// ★R2 정정(크리틱 실측 `critic-m9-norm.mjs` — 실 CLI 0.3.241에 5종을 물린 판):
+/// R1은 `chars()`(유니코드 **스칼라**) 하나를 `_` 하나로 바꿨다. 그런데 CLI는 JS라
+/// 정규식이 **UTF-16 코드 단위**를 돈다 — 서로게이트 쌍(비BMP)은 `_` **두 개**가 된다.
+///
+/// ```text
+/// 설정 이름        실 CLI 접두사          R1 기대            판정
+/// my.co tools     mcp__my_co_tools__     같음               일치
+/// srv__dbl        mcp__srv__dbl__        같음               일치
+/// 한글서버         mcp________           같음               일치 (BMP는 1자 = 1단위)
+/// UPPER-Case      mcp__UPPER-Case__      같음               일치 (대문자 보존)
+/// emoji🚀srv      mcp__emoji__srv__      mcp__emoji_srv__   ★불일치
+/// ```
+///
+/// 불일치의 대가는 조용한 소멸이다: 그 서버 행은 「연결됨」인데 도구 이름도 `도구 N`
+/// 배지도 없다(되맞춤 키가 어긋나 도구가 어느 행에도 안 붙는다). `len_utf16()`만큼
+/// `_`를 넣으면 두 규칙이 같아진다.
 fn mcp_norm(name: &str) -> String {
-    name.chars()
-        .map(|c| if c.is_ascii_alphanumeric() || c == '_' || c == '-' { c } else { '_' })
-        .collect()
+    let mut out = String::with_capacity(name.len());
+    for c in name.chars() {
+        if c.is_ascii_alphanumeric() || c == '_' || c == '-' {
+            out.push(c);
+        } else {
+            // 서로게이트 쌍 1자 = `_` 2개(JS 정규식이 코드 단위를 돌기 때문).
+            for _ in 0..c.len_utf16() {
+                out.push('_');
+            }
+        }
+    }
+    out
 }
 
 /// 커맨드 설명 꼬리의 스코프 표식을 갈라낸다 — `"… (project)"` → `("…", Some("project"))`.
@@ -549,7 +575,12 @@ impl Wire {
             // **뒤에서** 가른다 — 도구 이름에는 `__`가 없다고 보는 쪽이 오탐이 적다.
             let Some(rest) = t.strip_prefix("mcp__") else { continue };
             let Some((server, tool)) = rest.rsplit_once("__") else { continue };
-            env.mcp_tools.entry(server.to_string()).or_default().push(tool.to_string());
+            // ★R2 — 접두사 조각도 [`mcp_norm`]에 한 번 통과시켜 키를 만든다. 이미 정규화된
+            // 조각에는 **아무 일도 안 일어나고**(멱등: `_`·영숫자·`-`는 그대로), 정규화를
+            // 안 거친 접두사가 오는 판에서만 양쪽이 같은 자리에 떨어진다. 그 판은 있다 —
+            // 크리틱 A2는 `mcp__Ω_유니코드_🚀__hello`(공백만 `_`로 바꾼 조각)를 흘렸고,
+            // R1은 원문 키로 담아 `mcp_norm("Ω 유니코드 🚀")`와 어긋나 도구를 잃었다.
+            env.mcp_tools.entry(mcp_norm(server)).or_default().push(tool.to_string());
         }
         env.plugins = arr("plugins")
             .iter()
@@ -577,6 +608,14 @@ impl Wire {
     }
 
     /// 스냅샷을 다시 내야 할 때 호출부가 쓰는 공개 창구(`set_policy`가 true를 준 뒤).
+    ///
+    /// ★R2 — **질의 채널의 답도 여기서 나온다**(`chat:tooling-get` → `Hub::Op::ToolingGet`).
+    /// R1은 값의 출처가 스폰당 푸시 한 장뿐이었고, 렌더러는 그것을 컴포넌트 state에만
+    /// 담았다. 그래서 껍데기가 갈리면(「크게 보기」=오버레이 카드로 이동 · 팝아웃=다른 창
+    /// · 복귀=그리드 재마운트) 칩이 증발했다 — **셸에는 `env`가 그대로 있는데 다시 물을
+    /// 창구가 없었다**(크리틱 A9·A6). 같은 함수를 조회로도 열어 두면 재마운트가 한 번
+    /// 물어보고 끝난다. 스냅샷은 여전히 **메모리에만** 있으므로(디스크 절임 없음)
+    /// 재시작 뒤에는 아무것도 안 돌아온다 — R1이 세운 그 원칙은 그대로다.
     pub fn tooling(&self) -> Option<Value> {
         self.tooling_event()
     }
@@ -2185,6 +2224,34 @@ mod tests {
         let tl = &evs.iter().find(|e| e["type"] == "tooling").unwrap()["tooling"];
         assert_eq!(tl["mcp"][0]["name"], "my.co tools", "표시는 설정된 이름 그대로");
         assert_eq!(tl["mcp"][0]["tools"], json!(["search"]), "도구는 정규화 이름으로 되맞춘다");
+    }
+
+    /// ★R2 — 크리틱이 실 CLI(0.3.241)에서 읽어 온 접두사 5종을 그대로 못 박는다.
+    /// R1의 `chars()` 규칙은 비BMP에서 갈라졌다(`emoji🚀srv` → 실 CLI `mcp__emoji__srv__`
+    /// vs R1 기대 `mcp__emoji_srv__`). 이 표가 깨지면 그 서버의 도구가 조용히 사라진다.
+    #[test]
+    fn mcp_prefix_counts_utf16_units_like_the_cli_does() {
+        let cases = [
+            ("my.co tools", "mcp__my_co_tools__search", "search"),
+            ("srv__dbl", "mcp__srv__dbl__ping", "ping"),
+            ("한글서버", "mcp________echo", "echo"), // BMP 4자 = `_` 4개
+            ("UPPER-Case", "mcp__UPPER-Case__go", "go"),
+            ("emoji🚀srv", "mcp__emoji__srv__fire", "fire"), // 서로게이트 쌍 = `_` 2개
+        ];
+        for (name, tool_id, tool) in cases {
+            let mut w = wire();
+            let evs = w.translate(&json!({ "type": "system", "subtype": "init", "session_id": "S", "cwd": "C:\\w",
+                "tools": [tool_id], "mcp_servers": [{ "name": name, "status": "connected" }], "skills": [] }));
+            let tl = &evs.iter().find(|e| e["type"] == "tooling").unwrap()["tooling"];
+            assert_eq!(tl["mcp"][0]["tools"], json!([tool]), "{name} ← {tool_id}");
+        }
+        // 정규화를 **안 거친** 접두사가 와도 같은 행에 붙는다(양쪽 정규화 · 멱등).
+        let mut w = wire();
+        let evs = w.translate(&json!({ "type": "system", "subtype": "init", "session_id": "S", "cwd": "C:\\w",
+            "tools": ["mcp__Ω_유니코드_🚀__hello"],
+            "mcp_servers": [{ "name": "Ω 유니코드 🚀", "status": "connected" }], "skills": [] }));
+        let tl = &evs.iter().find(|e| e["type"] == "tooling").unwrap()["tooling"];
+        assert_eq!(tl["mcp"][0]["tools"], json!(["hello"]), "원문 접두사도 되맞춘다");
     }
 
     #[test]

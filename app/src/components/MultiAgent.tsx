@@ -608,8 +608,11 @@ export const PanelView = memo(function PanelView({
         <span className="ma-spacer" />
         {/* ★M9 — 도구 환경 칩(MCP·스킬). 폴더 칩 **왼쪽**에 두는 이유: 목록이 폴더에서
             오므로 읽는 순서가 「무엇이 붙어 있나 ← 어느 폴더인가」여야 인과가 맞다.
-            첫 `system/init` 전에는 스스로 아무것도 안 그린다(빈 칩을 세우지 않는다). */}
-        <McpSkillView panelId={panelId} cwd={cwd} />
+            첫 `system/init` 전에는 스스로 아무것도 안 그린다(빈 칩을 세우지 않는다).
+            ★R2 `onOpen` — 팝오버 배타. 도구 칩이 열릴 때 폴더 팝오버를 접는다(반대
+            방향은 칩 쪽 캡처 리스너가 닫는다). 두 팝오버는 같은 자리(`.ma-p-head` 오른쪽
+            끝)에 뜨므로, 하나라도 안 닫히면 정확히 포개져 뒤엣것이 통째로 가려진다. */}
+        <McpSkillView panelId={panelId} cwd={cwd} onOpen={() => setFolderPop(false)} />
         {/* 작업 폴더 칩 — 본채팅 헤더와 같은 FolderPop(공유 최근 폴더 + 찾아보기)이 열린다.
             .hfold 래퍼가 팝오버 기준점 + 안쪽 클릭의 바깥닫힘 전파 차단을 겸한다 */}
         <span className="hfold" onMouseDown={(e) => e.stopPropagation()}>
