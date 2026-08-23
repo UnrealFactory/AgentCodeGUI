@@ -1577,6 +1577,14 @@ node bench/multi.mjs tauri --repeats=5 --exe="$TEMP/ccg-r4-snap.exe"
 **출발점**: `docs/critic/r14-confirm.md` §5 — F1(치명) · F2(치명) · F4의 엔진 몫.
 **규약**: §0~§R4와 같다 — **사실만**, 자기 채점 없음. 판정은 크리틱 몫이다.
 
+**측정 바이너리**: sha256 앞 16 `7576a83c03388790`(= 커밋 `cd3a545`). 이 절의 실앱 수치
+(`poc-live-chat --tag=r16b` · `.r14-cwdgone.mjs`)는 전부 이 판이다 — 표시용 접힘 하나를
+더한 뒤 **다시 빌드해 다시 쟀다**(그 전 판 `--tag=r16`도 같은 결과였다).
+**공용 `target/`을 안 썼다**: 같은 레포에서 렌더러 라운드가 돌고 있어 격리 워크트리
+(`%TEMP%/ccg-r16-wt` · `node_modules` 정션)에서만 빌드·주행했다. 메인 레포의
+`target/`·`bench/results/`·`docs/critic/*.json`은 **한 바이트도 안 건드렸다**.
+이름 기반 kill 0회(하네스의 `killTree`만), 사용자 실앱 6 PID 불변, 실홈은 미접근.
+
 크리틱의 문장 하나가 이 절의 전부다:
 
 > *"재개의 주인을 하나로 한 그 하나가 **2.6.2보다 관대한 판정자**이고, **리셋 시각을 안 읽고
@@ -1884,6 +1892,11 @@ CARGO_TARGET_DIR="$TEMP/ccg-r16-tgt" npm run tauri:build
 CARGO_TARGET_DIR="$TEMP/ccg-r16-tgt" cargo build -p ccg-engine --features fakecli \
     --bin ccg-fakecli --release
 cp "$TEMP/ccg-r16-tgt/release/"{agentcodegui,ccg-fakecli}.exe target/release/
-node scripts/poc-live-chat.mjs --tag=r16                        # 8단계 (게이트)
-node docs/critic/tools/.r14-cwdgone.mjs                         # F4 — errMsgs가 비면 실패
+node scripts/poc-live-chat.mjs --tag=r16b                       # 8단계 (게이트) — PASS · 결함 0
+node docs/critic/tools/.r14-cwdgone.mjs                         # F4 — bodyTail에 사유 · stopBtn 0
 ```
+
+주행 산출물은 워크트리 안에 남겼다(`%TEMP%/ccg-r16-wt/docs/critic/`:
+`m3-r4-live-r16.json` · `m3-r4-live-r16b.json` · `r14-cwdgone.json`).
+`.r14-cwdgone.mjs`는 크리틱 워크트리(`%TEMP%/ccg-r14-wt`)에서 그대로 복사한 사본이고,
+**메인 레포에는 커밋하지 않았다**(`docs/critic/tools/`는 이 라운드 경계 밖).
