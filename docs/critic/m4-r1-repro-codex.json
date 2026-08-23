@@ -1,0 +1,134 @@
+{
+  "at": "2026-08-23T06:34:40.224Z",
+  "exe": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-m4c-wt\\target\\release\\agentcodegui.exe",
+  "steps": {
+    "handshake": {
+      "bin": "C:\\Users\\User\\.agentcodegui\\codex-engines\\0.149.0\\node_modules\\@openai\\codex-win32-x64\\vendor\\x86_64-pc-windows-msvc\\bin\\codex.exe",
+      "version": "0.149.0",
+      "codexHome": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-m4c-wt\\.poc-home-codex-rpc-m4c",
+      "realCodexUntouched": true,
+      "native": true,
+      "initializeMs": 218,
+      "initialize": {
+        "ok": true,
+        "result": {
+          "userAgent": "agentcodegui/0.149.0 (Windows 10.0.26200; x86_64) xterm-256color (agentcodegui; 3.0.0)",
+          "codexHome": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-m4c-wt\\.poc-home-codex-rpc-m4c",
+          "platformFamily": "windows",
+          "platformOs": "windows"
+        }
+      },
+      "threadStart": {
+        "ok": true,
+        "threadId": "01a02d54-15c7-7461-a9af-3761a8bfc827"
+      },
+      "dryRun": {
+        "thread/backgroundTerminals/list": {
+          "verdict": "ok",
+          "error": null,
+          "resultKeys": [
+            "data",
+            "nextCursor"
+          ]
+        },
+        "turn/start": {
+          "verdict": "ok",
+          "error": null,
+          "resultKeys": [
+            "turn"
+          ]
+        },
+        "turn/interrupt": {
+          "verdict": "error",
+          "error": {
+            "code": -32600,
+            "message": "no active turn to interrupt"
+          },
+          "resultKeys": null
+        },
+        "model/list": {
+          "verdict": "ok",
+          "error": null,
+          "resultKeys": [
+            "data",
+            "nextCursor"
+          ]
+        }
+      },
+      "unauthenticatedTurn": [
+        {
+          "method": "item/completed",
+          "params": "{\"item\":{\"type\":\"userMessage\",\"id\":\"01a02d54-1858-7140-aad4-a3763c6831ec\",\"clientId\":null,\"content\":[{\"type\":\"text\",\"text\":\"ping\",\"text_elements\":[]}]},\"threadId\":\"01a02d54-15c7-7461-a9af-3761a8bfc827\",\"turnId\":\"01a02d54-15f4-7090-a262-6c751027d9b4\",\"completedAtMs\":1787466881112}"
+        },
+        {
+          "method": "error",
+          "params": "{\"error\":{\"message\":\"Reconnecting... 2/5\",\"codexErrorInfo\":{\"responseStreamDisconnected\":{\"httpStatusCode\":401}},\"additionalDetails\":\"unexpected status 401 Unauthorized: Missing bearer or basic authentication in header, url: wss://api.openai.com/v1/responses, cf-ray: a2f817d4ac96df70-ICN\"},\"willRetry\":true,\"threadId\":\""
+        },
+        {
+          "method": "error",
+          "params": "{\"error\":{\"message\":\"Reconnecting... 3/5\",\"codexErrorInfo\":{\"responseStreamDisconnected\":{\"httpStatusCode\":401}},\"additionalDetails\":\"unexpected status 401 Unauthorized: Missing bearer or basic authentication in header, url: wss://api.openai.com/v1/responses, cf-ray: a2f817da593faa4f-ICN\"},\"willRetry\":true,\"threadId\":\""
+        },
+        {
+          "method": "error",
+          "params": "{\"error\":{\"message\":\"Reconnecting... 4/5\",\"codexErrorInfo\":{\"responseStreamDisconnected\":{\"httpStatusCode\":401}},\"additionalDetails\":\"unexpected status 401 Unauthorized: Missing bearer or basic authentication in header, url: wss://api.openai.com/v1/responses, cf-ray: a2f817e2ca88f804-ICN\"},\"willRetry\":true,\"threadId\":\""
+        },
+        {
+          "method": "error",
+          "params": "{\"error\":{\"message\":\"Reconnecting... 5/5\",\"codexErrorInfo\":{\"responseStreamDisconnected\":{\"httpStatusCode\":401}},\"additionalDetails\":\"unexpected status 401 Unauthorized: Missing bearer or basic authentication in header, url: wss://api.openai.com/v1/responses, cf-ray: a2f817f0bbd9ea8b-ICN\"},\"willRetry\":true,\"threadId\":\""
+        },
+        {
+          "method": "warning",
+          "params": "{\"threadId\":\"01a02d54-15c7-7461-a9af-3761a8bfc827\",\"message\":\"Falling back from WebSockets to HTTPS transport. unexpected status 401 Unauthorized: Missing bearer or basic authentication in header, url: wss://api.openai.com/v1/responses, cf-ray: a2f818075bcf924b-ICN\"}"
+        },
+        {
+          "method": "error",
+          "params": "{\"error\":{\"message\":\"Reconnecting... 1/5\",\"codexErrorInfo\":{\"responseStreamDisconnected\":{\"httpStatusCode\":401}},\"additionalDetails\":\"unexpected status 401 Unauthorized: Missing bearer or basic authentication in header, url: https://api.openai.com/v1/responses, cf-ray: a2f8180acfa5ea8b-ICN, request id: req_ae1194a8b035"
+        },
+        {
+          "method": "error",
+          "params": "{\"error\":{\"message\":\"Reconnecting... 2/5\",\"codexErrorInfo\":{\"responseStreamDisconnected\":{\"httpStatusCode\":401}},\"additionalDetails\":\"unexpected status 401 Unauthorized: Missing bearer or basic authentication in header, url: https://api.openai.com/v1/responses, cf-ray: a2f8180dc8eeea12-ICN, request id: req_0ac5369ebd4e"
+        },
+        {
+          "method": "error",
+          "params": "{\"error\":{\"message\":\"Reconnecting... 3/5\",\"codexErrorInfo\":{\"responseStreamDisconnected\":{\"httpStatusCode\":401}},\"additionalDetails\":\"unexpected status 401 Unauthorized: Missing bearer or basic authentication in header, url: https://api.openai.com/v1/responses, cf-ray: a2f818118b4030b6-ICN, request id: req_b597e68b4a9c"
+        },
+        {
+          "method": "error",
+          "params": "{\"error\":{\"message\":\"Reconnecting... 4/5\",\"codexErrorInfo\":{\"responseStreamDisconnected\":{\"httpStatusCode\":401}},\"additionalDetails\":\"unexpected status 401 Unauthorized: Missing bearer or basic authentication in header, url: https://api.openai.com/v1/responses, cf-ray: a2f818186a4a60ec-ICN, request id: req_438103ea2cc8"
+        },
+        {
+          "method": "error",
+          "params": "{\"error\":{\"message\":\"Reconnecting... 5/5\",\"codexErrorInfo\":{\"responseStreamDisconnected\":{\"httpStatusCode\":401}},\"additionalDetails\":\"unexpected status 401 Unauthorized: Missing bearer or basic authentication in header, url: https://api.openai.com/v1/responses, cf-ray: a2f81824ade3f1b6-ICN, request id: req_0b6467632115"
+        },
+        {
+          "method": "thread/status/changed",
+          "params": "{\"threadId\":\"01a02d54-15c7-7461-a9af-3761a8bfc827\",\"status\":{\"type\":\"systemError\"}}"
+        },
+        {
+          "method": "error",
+          "params": "{\"error\":{\"message\":\"unexpected status 401 Unauthorized: Missing bearer or basic authentication in header, url: https://api.openai.com/v1/responses, cf-ray: a2f81839c8f4ea24-ICN, request id: req_05505911db934372aff1aa21c88523d3\",\"codexErrorInfo\":\"other\",\"additionalDetails\":null},\"willRetry\":false,\"threadId\":\"01a02d54-1"
+        },
+        {
+          "method": "turn/completed",
+          "params": "{\"threadId\":\"01a02d54-15c7-7461-a9af-3761a8bfc827\",\"turn\":{\"id\":\"01a02d54-15f4-7090-a262-6c751027d9b4\",\"items\":[],\"itemsView\":\"notLoaded\",\"status\":\"failed\",\"error\":{\"message\":\"unexpected status 401 Unauthorized: Missing bearer or basic authentication in header, url: https://api.openai.com/v1/responses, cf-ray: a2f81839"
+        }
+      ],
+      "framesSeen": 27,
+      "notifications": [
+        "remoteControl/status/changed",
+        "warning",
+        "thread/started",
+        "thread/settings/updated",
+        "thread/status/changed",
+        "turn/started",
+        "item/started",
+        "item/completed",
+        "error",
+        "turn/completed"
+      ],
+      "serverRequests": [],
+      "stderrTail": ":46.887982Z\u001b[0m \u001b[31mERROR\u001b[0m \u001b[2mcodex_api::endpoint::responses_websocket\u001b[0m\u001b[2m:\u001b[0m failed to connect to websocket: HTTP error: 401 Unauthorized, url: wss://api.openai.com/v1/responses\n\u001b[2m2026-08-23T06:34:50.540226Z\u001b[0m \u001b[31mERROR\u001b[0m \u001b[2mcodex_api::endpoint::responses_websocket\u001b[0m\u001b[2m:\u001b[0m failed to connect to websocket: HTTP error: 401 Unauthorized, url: wss://api.openai.com/v1/responses\n"
+    }
+  },
+  "findings": []
+}
