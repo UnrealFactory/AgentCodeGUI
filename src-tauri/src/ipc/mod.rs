@@ -42,6 +42,9 @@ use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter, Manager, WebviewWindow};
 
 pub use system::close_orphan_dialogs;
+/// 부팅 프리웜 — 셸이 창을 만든 직후 **한 줄**로 부른다(M7 R2 §3.2: 방아쇠를 렌더러
+/// 번들보다 앞으로 당겨 `ready` 격차의 41ms를 없앤다). 판정 로직은 전부 `lsp.rs`에 있다.
+pub use lsp::boot_prewarm;
 
 /// 채널 이름 — protocol.ts가 원본, 여기는 미러다(문자열이 어긋나면 그 채널만 조용히
 /// 미구현으로 떨어진다 → 심의 1회 경고로 드러난다).

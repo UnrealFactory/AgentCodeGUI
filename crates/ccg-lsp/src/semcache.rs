@@ -80,12 +80,17 @@ fn normalize(p: &str) -> String {
     format!("{prefix}\\{}", out.join("\\"))
 }
 
+/// 파일 키 — `sha1("v<전역세대>\0<serverId[세대]>\0<abs소문자>\0" + 내용)`.
+///
+/// **스펙 세대(`cache_version`)가 1이면 2.6.2와 바이트가 같다.** 2보다 크면 serverId 자리에
+/// 세대를 붙여(`ts` → `ts2`) 그 서버의 옛 캐시만 통째로 버린다 — 전역 `CACHE_VERSION`을
+/// 올리면 **모든** 언어의 캐시와 2.6.2 호환이 함께 깨지기 때문이다.
+///
+/// R1은 이 인자를 `debug_assert_eq!`로만 봤다 — 릴리스에선 조용히 무시, 디버그에선 패닉.
+/// 즉 "세대 레버"라고 적어 둔 필드가 실제로는 **아무것도 안 하는 함정**이었다(크리틱 C-7).
 fn key_for(cache_version: u32, server_id: &str, abs: &str, content: &str) -> String {
-    let head = format!("v{CACHE_VERSION}\0{server_id}\0{}\0", abs.to_lowercase());
-    // 스펙별 세대는 serverId 뒤에 붙이지 않는다 — 2.6.2와 키가 어긋나면 캐시 공유가 깨진다.
-    // 스펙 세대를 올리고 싶으면 spec.cache_version을 CACHE_VERSION과 함께 쓰는 별도 접두를
-    // 붙이는 대신 serverId를 바꾸는 게 맞다(예: "ts2"). 지금은 두 값이 모두 1이라 동치.
-    debug_assert_eq!(cache_version, CACHE_VERSION);
+    let id = if cache_version <= 1 { server_id.to_string() } else { format!("{server_id}{cache_version}") };
+    let head = format!("v{CACHE_VERSION}\0{id}\0{}\0", abs.to_lowercase());
     sha1_hex(&[head.as_bytes(), content.as_bytes()])
 }
 
@@ -207,5 +212,17 @@ mod tests {
     fn key_matches_262_formula() {
         let expect = crate::sha1::sha1_hex(&[b"v1\0ts\0c:\\x.ts\0", b"hello"]);
         assert_eq!(key_for(1, "ts", "C:\\X.ts", "hello"), expect);
+    }
+
+    /// 스펙 세대를 올리면 **그 서버의** 캐시만 미스가 된다(2.6.2 호환은 세대 1에서 유지).
+    /// R1은 이 인자가 릴리스에서 무시되고 디버그에서 패닉했다(크리틱 C-7).
+    #[test]
+    fn spec_cache_version_is_a_real_generation_lever() {
+        let v1 = key_for(1, "ts", "C:\\x.ts", "hello");
+        let v2 = key_for(2, "ts", "C:\\x.ts", "hello");
+        assert_ne!(v1, v2, "세대를 올려도 키가 같으면 옛 캐시를 못 버린다");
+        // 다른 서버의 캐시는 안 건드린다
+        assert_eq!(key_for(1, "py", "C:\\x.py", "hello"), key_for(1, "py", "C:\\x.py", "hello"));
+        assert_ne!(key_for(2, "ts", "C:\\x.ts", "hello"), key_for(2, "py", "C:\\x.ts", "hello"));
     }
 }

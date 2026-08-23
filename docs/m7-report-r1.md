@@ -315,3 +315,274 @@ editedMarker}` 뿐이고 하네스는 그 모양만 안다. 언어를 늘려도 
 - `uri_roundtrip` / `uri_roundtrip_non_ascii` — 한글 경로에서 정의 이동이 죽지 않는지.
 - `hover_markdown_flattens_all_shapes` · `map_item_flattens_documentation_shapes` —
   서버마다 다른 응답 모양을 계약면 하나로 접는 자리.
+
+---
+
+# §R2 — 크리틱(`docs/critic/m7-r1.md`) 대응
+
+크리틱이 낸 제품 결함 7건(치명 2 · 중 4 · 소 1)을 전부 고치고, **크리틱이 만든 도구로**
+다시 쟀다. 자기 채점을 하지 않기 위해 판정 도구는 한 글자도 안 고쳤다 —
+`docs/critic/tools/m7-*.mjs` · `critic-m7-drive` · 가짜 서버 `m7-fakelsp.mjs` 그대로다.
+산출은 `docs/critic/m7-r2-*.json`(크리틱의 `m7-r1-*.json`은 손대지 않았다) ·
+`bench/results/lsp-*-r2.json`(기준 파일 `lsp-*-{2.6.2,3.0.0}.json` 무접촉).
+
+**측정 조건**: 같은 기기(i7-13700KF · Win11 26200), **빌더 4명 동시 주행 중**.
+크리틱 세션보다 부하가 커서 절대값이 그때보다 크다 — 그래서 R1 판정 대상 exe
+(`51a954f` 빌드)를 **같은 세션에서 나란히** 돌려 팔끼리만 비교한다.
+빌드는 전부 개인 타깃(`%TEMP%/ccg-m7r2-tgt`)이고 공용 `target/release`는 안 건드렸다
+(`bench/lsp.mjs`에 `--exe`를 새로 뚫은 이유).
+
+## R2-1. C-1 [치명] 서버가 죽으면 영영 안 살아나고 `status`는 `ready`라 말한다 — 고쳤다
+
+기전은 크리틱이 짚은 그대로였다: `Rpc`가 EOF로 dispose돼도 `Server.state.status`는
+`Ready`로 남아 ① 좀비 스윕(`raw_status()==Error`)에 안 걸리고 ② 매 폴링의 `touch()`가
+유휴 TTL을 되감았다.
+
+세 자리를 고쳤다.
+
+| 자리 | 무엇을 |
+|---|---|
+| `server.rs::raw_status()`·`status()` | `Ready`인데 `rpc.is_dead()`면 **`Error`**. 2.6.2 child `exit` 훅(manager.ts:2632)이 하던 일을 파이프 상태로 대신한다. `wait_ready()`도 죽은 서버에 1.5초를 안 버린다 |
+| `manager.rs::start()` | 죽음을 **처음 관측한 시각**을 `died_at_ms`에 찍는다(스윕이 60초 뒤에 와도 복귀가 그만큼 밀리지 않게). 쿨다운 안에는 죽은 그대로 보고 → `status`가 정직하게 `error` |
+| `manager.rs::start()` | **`touch()`를 안 한다.** 상태 폴링이 유휴 타이머를 400ms마다 되감으면 파일을 열어 둔 것만으로 TTL이 영원히 안 찬다. 이제 TTL은 **실제 쿼리**(호버·정의·토큰·완성)만 미룬다 |
+
+**실증** — `m7-kill.mjs --watch 45000`, 같은 세션 3팔:
+
+| | electron 2.6.2 | tauri R1(크리틱) | **tauri R2** |
+|---|---|---|---|
+| kill 뒤 관측된 `lsp:status` | `error`→`starting`→`ready` | **`ready` 하나뿐(45s)** | **`error`→`starting`→`ready`** |
+| `lsp:project-status` | `idle`→`ready` | `ready` 하나뿐 | **`idle`→`ready`** |
+| 시맨틱 토큰 회복 | **30.9s**(이번 세션 실측) | 회복 없음 | **30.9s** |
+| 호버 회복 | 예 | 아니오 | **예** |
+| 서버 재기동 | 33.3s(새 PID) | 없음 | **33.3s**(새 PID) |
+
+(R2를 세 번 돌린 값: 토큰 30.5 / 30.6 / **30.9**s · 재기동 32.8 / 32.7 / **33.3**s.
+커밋된 `m7-r2-kill-tauri.json`은 마지막 주행이다.)
+
+크레이트 계층(가짜 서버가 ready 뒤 자살)도 같다 — R1은 40초 내내 `status="ready"` ·
+토큰 0 · 재시작 0이었고, R2는 `{error, starting, ready}` · **30.0초에 토큰 복귀** ·
+`procStarts 2`다(`m7-r2-drive.json` `scenarios.death`).
+
+> 복귀가 30초인 것은 2.6.2 `RESPAWN_COOLDOWN`(30초)을 그대로 지켰기 때문이다.
+> 망가진 설치가 스폰 루프를 도는 것보다 30초 쿨다운이 낫다는 2.6.2의 판단을 안 뒤집었다.
+
+## R2-2. C-2 [치명] 편집 버퍼를 디스패처가 버려 저장 전 호버·정의가 오답 — 고쳤다
+
+`ipc/lsp.rs`가 `text`를 크레이트로 넘기고(`hover_at`·`definition_at`),
+`server.rs`가 2.6.2 manager.ts:1994와 같은 한 줄 분기를 한다 —
+`text`가 있으면 `sync_buffer`, 없으면 `open_doc`.
+
+**실증** — `m7-buffer.mjs`(디스크 앞에 빈 줄 7개 + 7줄 밀린 좌표):
+
+| | electron 2.6.2(크리틱) | tauri R1(크리틱) | **tauri R2** |
+|---|---:|---:|---:|
+| 버퍼 호버 적중 | 6 / 6 | **1 / 6** | **6 / 6** |
+| 버퍼 정의 → `lib.ts` | 6 / 6 | **2 / 6** | **6 / 6** |
+| 대조군(디스크 좌표) | 6 / 6 | 6 / 6 | **6 / 6** |
+
+크리틱이 덧붙인 부수 효과(완성이 버퍼를 밀어 넣은 뒤 호버가 디스크로 되엎는 왕복)도
+같이 없앴다: `status` 폴링과 `warm`이 부르는 데우기를 **`warm_doc`**(이미 열려 있으면
+아무것도 안 함)으로 바꿨다. 디스크 재동기화가 진짜로 필요한 자리(`semantic_tokens`·
+`files_changed`)는 그대로 `open_doc`이라 재정확화 눈금은 안 바뀐다(두 주행 110·164ms — 아래 표).
+
+## R2-3. C-3/C-4 [중] cwd 표기로 서버 두 벌 · 프리웜↔첫 status 경쟁 스폰 — 고쳤다
+
+- **키 정규화**: `manager::canon_root()` — `std::fs::canonicalize`(구분자·후행 슬래시에
+  더해 8.3 단축명·심볼릭 링크·디스크상 대소문자까지 접는다) 뒤에 키를 만든다. 없는
+  폴더에서만 문법적 정규화로 떨어진다. `status`가 400ms마다 부르는 경로라 성공한 결과는
+  폴더당 한 번만 syscall하도록 메모한다. `project_state()`의 접두 비교도 같은 함수를 탄다.
+- **단일 비행 스폰**: 레지스트리 항목에 `spawning` 플래그를 두고 **자리를 먼저 잠근 뒤**
+  스폰을 백그라운드 스레드로 보낸다. 같은 키의 두 번째 진입은 `Starting`을 받고 끝난다.
+  R1의 "둘 다 띄우고 진 쪽을 `taskkill`" 경로는 사라졌다.
+
+**실증** — `m7-cwdform.mjs`(가짜 서버로 기동 수를 센다) · `m7-drive-all.mjs`의 `spawnRace`:
+
+| 시험 | R1(크리틱) | **R2** |
+|---|---|---|
+| `C:\…\ccg-lsp-repo` (정규형) | 뜬 1 · 산 1 | **1 · 1** |
+| `C:/…/ccg-lsp-repo` (슬래시) | 뜬 **2** · 산 **2** | **1 · 1** |
+| `C:\…\ccg-lsp-repo\` (후행) | 뜬 **2** · 산 **2** | **1 · 1** |
+| 프리웜+status 경쟁(5주행) | `2,2,2,2,2` | **`1,1,1,1,1`** |
+| 잡 시험의 `serverPidsSeen` | 2개(1개는 이미 죽음) | **1개** |
+
+R2에서는 방아쇠가 **셋**(셸 부팅 프리웜 · 렌더러 프리웜 · 렌더러 첫 status)인데도
+실앱 기동 수가 1이다(`m7-r2-cwdform-*.json`).
+
+## R2-4. C-5 [중·게이트] `rpc.rs` 재설계 — 언어가 늘어도 이 파일이 다시 안 열리게
+
+```rust
+// spec.rs — 스펙에 자리가 생겼다
+pub configuration: fn(&Path, &str /*section*/) -> Option<Value>,
+// rpc.rs — arity는 규약이 지키고, 값은 스펙이 준다
+fn answer_server_request(method: &str, params: &Value, config: &ConfigFn) -> Value
+//   "workspace/configuration" => items.iter().map(|i| config(section_of(i)).unwrap_or(Null)).collect()
+```
+
+`Rpc::start`가 `ConfigFn`(= `Box<dyn Fn(&str) -> Option<Value>>`)을 하나 더 받고,
+`Server::spawn`이 `move |section| (spec.configuration)(&root, section)`으로 채운다.
+`rpc.rs`에는 여전히 언어 이름이 한 번도 안 나온다.
+
+- 가짜 서버가 items 2개로 물었을 때: **`clientAnswered.result = [null, null]` ·
+  `lspContractOk: true`**(R1은 `[]` · `false`). 2.6.2 `items.map(() => null)`과 같은 답이다.
+- 단위 테스트 4개를 그 자리에 붙였다(`configuration_answer_has_one_element_per_item` ·
+  `configuration_values_come_from_the_spec_hook` — 후자는 스펙 훅이 준 값이 실제로 실리고
+  **모르는 섹션만 null이 되며 길이는 유지**되는지를 본다).
+
+### pyright 스펙이 정말 값만으로 서는가 (크리틱 §5.1 재시험)
+
+`spec.rs` 헤더에 pyright 항목을 리터럴로 적어 뒀다. 크리틱이 "값으로 담을 수 없다"고
+한 네 축의 지금 상태:
+
+| 크리틱이 지적한 축 | R2 |
+|---|---|
+| `workspace/configuration`(인터프리터·venv) | **`configuration` 필드로 해결.** `rpc.rs` 무수정 |
+| `workspace/didChangeConfiguration` 푸시 | **아직 없다.** 설정 UI가 생기는 라운드의 일이다(스펙 필드 하나 + `server.rs` 한 줄) |
+| `Provision::Download` + `Launch::Node` 조합 | **아직 없다.** `launch.rs`(게이트 밖) — pyright는 `Bundled`라 해당 없음 |
+| 프리웜 언어 감지 하드코딩 | **여전히 `lib.rs`.** py/cs/cpp는 미리 적혀 있어 공짜, 다섯 번째 언어는 `lib.rs`를 연다 |
+
+즉 **pyright는 이제 `SPECS` 한 항목 + `py_configuration` 함수 하나로 선다**(엔진 3파일
+무수정). 크리틱의 반증은 유효했고, 그 한 칸을 메웠다.
+
+## R2-5. C-6/C-7 [중·소] 재프라임 5규약 · `watch_exts` · `files_changed` · `cache_version`
+
+**재프라임** — 2.6.2 `primeFullSemantics`(manager.ts:2958)의 규약 다섯을 전부 옮겼다.
+R1은 조용 간격 하나였다.
+
+| # | 규약 | R2의 자리 |
+|---|---|---|
+| ① | `didOpen` 뒤 **최소 1.5초**(2.6.2 실측: 갭 0ms=실패) | `PRIME_MIN_OPEN_GAP_MS` + `last_open_ms`(didOpen 통지 시각) |
+| ② | 조용 간격 · **자는 동안 또 바뀌면 다시 기다린다** | 남은 시간을 다시 계산하는 대기 루프 |
+| ③ | 프라임 **도중** 변화가 오면 확정하지 않는다 | `dirty_gen`을 왕복 직전에 들고 가 돌아와서 대조 |
+| ④ | 히트 0 쿼리 | `query: "zz__semantic_prime__"`(R1은 `""` = 전 심볼 덤프) |
+| ⑤ | 동시 요청은 한 번만 프라임 | `running` 플래그 + condvar(2.6.2의 프라미스 공유) |
+
+타임아웃도 2.6.2와 같은 180초로 맞췄다. TS 스펙은 `Reprime::None`이라 지금은 무해하지만,
+C#을 붙일 때 `server.rs`를 다시 열지 않는 게 이 작업의 값어치다.
+
+**`watch_exts` 소비 + `files_changed` 실체** — R1의 `files_changed()`는 브로드캐스트
+페이로드 조립뿐이었다. 2.6.2 `notifyWatchedFiles`(manager.ts:2337)가 하던 네 가지를
+`Server::files_changed`로 옮기고, `manager::notify_files_changed`가 팬아웃한다:
+
+1. `workspace/didChangeWatchedFiles` 통지(`declare_watched_files`와 무관하게 항상 —
+   2.6.2의 "pyright류를 위한 최선 노력")
+2. **열린 문서의 디스크 재동기화** — 없으면 "낡은 열린 사본"으로 컴파일이 확정된다
+3. 삭제된 문서 `didClose`(유령 문서가 컴파일에 남지 않게)
+4. 재프라임 예약(`mark_prime_dirty`)
+
+거르는 기준이 `spec.watches_ext()` = `exts` ∪ **`watch_exts`** 다 — C#의
+`csproj/sln/slnx/props/targets`가 여기로 들어온다(2.6.2가 `CS_EXTRA`로 하드코딩하던 자리).
+브로드캐스트 `exts`도 "그 확장자를 무는 스펙의 뷰어 확장자 전부"로 넓혔다.
+**서버가 하나도 없으면 `None`**(2.6.2와 같은 규약 — 갱신할 토큰이 없다).
+쏘는 자리(`fs:write-file`)는 여전히 이 라운드의 경계 밖이라 **호출부는 아직 없다.**
+
+**`cache_version`** — R1은 인자를 `debug_assert_eq!`로만 봐서 릴리스에선 무시·디버그에선
+패닉이었다("세대 레버"라고 문서에 적어 둔 필드가 아무것도 안 했다). 이제 세대가 2 이상이면
+serverId 자리에 붙여(`ts` → `ts2`) **그 서버의 캐시만** 버린다. 세대 1은 2.6.2와 바이트
+동일이라 호환이 유지된다 — `m7-cachekey262.cjs`로 재확인:
+
+```
+2.6.2 식이 가리키는 자리 : ccg-lsp-repo-90f3e3d7e327e563 / 24 / 24a24ae4ef7a7dca815938b9aa96346e38e1000d.json
+3.0 R2가 쓴 자리         : (동일)   → MATCH: true · 2.6.2 검증기로 읽기 ok · 토큰 10,925
+```
+
+## R2-6. `ready` 격차 — 크리틱 §3.3 제안 두 개를 적용하고 다시 쟀다
+
+**(a) 방아쇠를 렌더러 밖으로.** 셸이 마지막으로 쓴 프로젝트의 cwd(활성 채팅의 `manualCwd`)를
+읽어 부팅 때 한 번 프리웜한다(`ipc/lsp.rs::boot_prewarm`, `main.rs` 한 줄).
+**크리틱 제안은 창 생성 직후였는데, 그 자리로는 41ms밖에 안 당겨졌다** — 실측으로
+`win::create_main`까지가 이미 수백 ms였다. 그래서 `main()` 첫 줄(단일 인스턴스 락 직후)로
+더 당겼다. 앱 spawn → 언어 서버 프로세스 `start`까지(가짜 서버의 wall 로그):
+
+| | R1 | R2(창 생성 뒤) | **R2(main 첫 줄)** |
+|---|---|---|---|
+| ms | 703 / 818 / 790 | 647 / 819 / 730 | **320 / 76 / 57 / 57** |
+
+**(b) 첫 status가 프로세스 생성을 안 물게.** `status`는 `manager::start()`를 타고,
+자리를 잠근 뒤 스폰을 스레드로 넘기고 즉시 `starting`을 돌려준다(C-4도 이걸로 같이 사라진다).
+
+**`m7-ready.mjs` n=7 · p50 · 같은 세션 3팔** (`docs/critic/m7-r2-ready.json`):
+
+| p50 (n=7) | electron 2.6.2 | tauri R1(`51a954f`) | R2(창 생성 뒤) | **tauri R2(최종)** |
+|---|---:|---:|---:|---:|
+| `window.api.lsp` 등장 | 90.8 | 117.6 | 112.5 | 133.6 |
+| 첫 `lsp:status` 왕복 | 10.1 | 61.4 | 51.2 | 55.3 |
+| 첫 status → `ready` | 126 | 522 | 509 | **55** |
+| **`ready`** | **238.2** | **625.0** | 606.3 | **188.9** |
+| 첫 status가 돌려준 값 | `starting` 7/7 | `starting` 7/7 | `starting` 7/7 | **`ready` 7/7** |
+
+**격차가 뒤집혔다**: 같은 세션에서 R1은 2.6.2보다 +386.8ms, R2는 **−49.3ms**(2.6.2보다 빠르다).
+첫 status가 7/7 `ready`인 것이 핵심이다 — 렌더러가 처음 물을 때 서버는 이미 다 섰다.
+(중간판 열은 "창 생성 뒤 프리웜"으로는 왜 부족했는지를 남긴 것이다 — 606.3ms.)
+
+정직하게 남는 것 둘:
+
+- **첫 status 왕복이 아직 57ms**(2.6.2는 10ms). 이건 LSP가 아니라 크리틱 §3.1이 밝힌
+  "문서 시작부터 ~230ms 창"의 비용이고, `m7-ipcwarm.mjs`를 다시 돌려도 그대로다
+  (A팔 first 5.4ms · restMax 151.6ms — 그 창에 걸린 호출이 누구든 문다).
+  **선워밍은 여전히 처방이 아니다**(§3.1이 기각했다) — 셸 부팅 프리웜은 *더미 호출*이
+  아니라 *진짜 방아쇠를 앞당긴 것*이라 성질이 다르다.
+- `window.api` 등장이 아직 +27ms(preload 대 번들). 서버가 그전에 이미 준비되므로
+  `ready`에는 더 이상 영향이 없다.
+
+## R2-7. 비교표 재주행 (`bench/lsp.mjs both --out -r2`)
+
+두 번 돌렸다(run1은 중간판 exe, **run2가 커밋된 코드**). 표는 run2를 적고 run1을 괄호에 남긴다 —
+동시 주행 4명의 노이즈가 커서 한 주행만 적으면 그 흔들림이 감춰진다.
+
+| 눈금 | electron 2.6.2 | tauri 3.0.0 **R2** | 판정 |
+|---|---:|---:|---|
+| prewarm → `status:ready` | 225 (200) | **169** (164) | **뒤집혔다**(R1은 +217~290ms 뒤졌다) |
+| 첫 색칠 · 캐시 미적중 | 872 (1,257) | **673** (559) | 3.0이 앞선다(서버가 이미 서 있다) |
+| 첫 색칠 · 캐시 적중 | 116 (96) | 280 (198) | 3.0 +164ms — **아래 주석** |
+| 토큰 왕복 | 41 (44) | 38 (31) | 대등 |
+| 캐시 호출 첫/p50 | 4.7 / 4.7 | 15.3 / 8 | 첫 호출은 §3.1 창 |
+| 호버 p50/p95 | 2.3 / 3.7 | 2.7 / 3.5 | 대등 |
+| 정의 p50/p95 | 1.4 / 2.5 | 2.5 / 4 | 대등(~1ms 뒤) |
+| 완성 p50/p95 | 8.1 / 34 | 16.8 / 63.5 | 3.0이 뒤진다(run1은 12.4/38.1 — 주행 편차가 크다) |
+| 재정확화 | 114 (104) | 164 (110) | run1 대등 · run2 +50ms(폴링 한 틱) |
+| fps 워밍/유휴 · 긴 프레임 | 56.7 / 60 · 3 | 58.5 / 60 · 2 | 둘 다 60fps |
+| 시맨틱 토큰 수 | **10,925** | **10,925** | 동일 |
+| 호버·정의 적중 | 48/48 · 34/34 | 48/48 · 34/34 | 동일 |
+| 뷰어 실화면 | **5/5** | **5/5** | 동일 |
+| 유휴 회수 | 주입 불가 | 회수 + 재기동 **639ms** (590) | ✔ |
+
+> **캐시 적중 첫 색칠이 R1(155~175ms)보다 나빠졌다(198 → 280ms).** 원인을 숨기지 않는다:
+> 부팅 프리웜이 앱 기동과 **같은 구간에서** node+tsserver를 띄우므로 그 순간 렌더러의
+> 첫 IPC가 CPU/디스크를 나눠 쓴다. 즉 "라이브가 서는 시각(ready 169ms · 캐시미스 첫 색칠
+> 673ms)"을 크게 당기는 대신 "캐시만 읽는 첫 색칠"에서 수십~백 ms를 낸 거래다.
+> 되돌릴 레버는 한 줄(프리웜을 창 생성 뒤로)이지만, 되돌리면 ready가 600ms대로 돌아간다
+> (§R2-6의 중간판 열). **어느 쪽이 사용자 체감인지는 리드가 고를 문제**라 두 수치를 함께 남긴다.
+
+## R2-8. 크리틱 도구 전량 재주행 결과
+
+| 도구 | 결과 |
+|---|---|
+| `m7-drive-all.mjs`(가짜 서버 8종) | `dupopen` didOpen/URI **1** · 생존 · `storm(sync2)` range 없는 didChange **0** / 총 7,884B · `storm(sync1)` 120건 전부 range 없음(규약대로) · `config` **lspContractOk true** · `death` **error→starting→ready · 30.0s 회복** · `cache` **패닉 0** · `manydocs` didOpen 400 / didClose **368**(=400−32) · 축출 뒤 재개통 ok · `spawnRace` **1,1,1,1,1** |
+| `m7-kill.mjs`(tauri·electron) | 위 R2-1 표 |
+| `m7-buffer.mjs` | 6/6 · 6/6 · 6/6 |
+| `m7-cwdform.mjs`(back/fwd/trail) | 전부 기동 1 · 생존 1 |
+| `m7-ready.mjs`(n=7 × 3팔) | 위 R2-6 표 |
+| `m7-lifetime.mjs` | 유휴 회수 1→0 · 재기동 **37ms** · 잡 안전망 leaked **0** · `serverPidsSeen` **1개** |
+| `m7-cachekey262.cjs` | 버킷·키·본문 2.6.2와 동일(MATCH true · 토큰 10,925) |
+| `m7-bigapp.mjs`(3,000 .ts + nm 15,000) | 600파일 연속 열기 **600/600 토큰** · 파일당 **13.97ms** · 그 구간 fps **60.0 / 긴 프레임 0** · 유휴 대조 60.0 · 서버 프로세스 2 → 2(누수 0) |
+| `m7-ipcwarm.mjs` | §3.1 재현(첫 창의 비용은 그 창에 걸린 호출이 문다) — 처방 없음 |
+| `cargo test -p ccg-lsp` | **32 통과**(R1 24 + 8: 설정 응답 arity·스펙 위임·키 정규화·캐시 세대 레버 등) |
+
+## R2-9. R2에서도 안 고친 것 (다음 라운드)
+
+1. **`lsp:files-changed`를 쏘는 자리가 없다.** 크레이트 쪽은 이제 실체가 있지만
+   (`files_changed`가 통지·재동기화·didClose·재프라임을 한다), 호출부는 `fs:write-file`
+   경로이고 그 파일은 이 라운드의 경계 밖이다. 호출은 한 줄이다:
+   `if let Some(v) = ccg_lsp::files_changed(&paths) { app.emit(ch::LSP_FILES_CHANGED, v) }`.
+2. **`workspace/didChangeConfiguration` 푸시**와 **`Provision::Download`+`Launch::Node`**
+   조합은 여전히 없다(§R2-4 표).
+3. **프리웜 언어 감지**가 `lib.rs`에 하드코딩(ts/py/cs/cpp). 다섯 번째 언어는 그 파일을 연다.
+4. **첫 IPC 창 ~230ms**(크리틱 §3.1)는 LSP 밖의 문제로 남는다 — 캐시 적중 첫 색칠의
+   +102ms가 그 창 안에 있다.
+5. **캐시 파일 쓰기가 비원자**(`fs::write`)고 손상 파일을 스스로 안 지운다(크리틱 C-10의
+   하드닝 여지). 심각도가 낮아 이번에도 안 건드렸다 — `ccg_store::write_atomic`으로
+   바꾸는 것이 다음 자리다.
+6. 유휴 TTL이 이제 **실제 쿼리에만** 미뤄진다. 뷰어를 열어 둔 채 10분간 아무것도 안
+   물으면 회수되고, 다음 호버가 재기동 비용(실측 590~639ms)을 문다. 2.6.2는 상태 폴링이
+   TTL을 되감아 그런 회수가 없었다 — **의도한 차이**이고(그 되감기가 C-1의 기전이었다)
+   프리웜+디스크 캐시가 복귀를 싸게 만든다는 전제 위에 있다.

@@ -1,0 +1,359 @@
+{
+  "at": "2026-08-23T08:27:15.041Z",
+  "tool": "docs/critic/tools/m7-ready.mjs",
+  "n": 7,
+  "note": "같은 세션·같은 기기에서 연달아 잰 n=7 중앙값(빌더 4명 동시 주행 중). 크리틱 R1 세션보다 부하가 커서 절대값이 그때보다 크다 — 팔끼리만 비교한다. 중간판은 boot_prewarm을 setup()(창 생성 뒤)에서 부른 것, 최종은 main() 첫 줄로 당긴 것.",
+  "p50": {
+    "electron-2.6.2": {
+      "n": 7,
+      "apiAt": 90.8,
+      "firstStatusRoundTripMs": 10.1,
+      "firstStatusToReadyMs": 126,
+      "readyAt": 238.2,
+      "firstStatusValues": [
+        "starting"
+      ]
+    },
+    "tauri-3.0.0-r1(51a954f)": {
+      "n": 7,
+      "apiAt": 117.6,
+      "firstStatusRoundTripMs": 61.4,
+      "firstStatusToReadyMs": 522,
+      "readyAt": 625,
+      "firstStatusValues": [
+        "starting"
+      ]
+    },
+    "tauri-3.0.0-r2-prewarm-in-setup(중간판)": {
+      "n": 7,
+      "apiAt": 112.5,
+      "firstStatusRoundTripMs": 51.2,
+      "firstStatusToReadyMs": 509,
+      "readyAt": 606.3,
+      "firstStatusValues": [
+        "starting"
+      ]
+    },
+    "tauri-3.0.0-r2(최종)": {
+      "n": 7,
+      "apiAt": 133.6,
+      "firstStatusRoundTripMs": 55.3,
+      "firstStatusToReadyMs": 55,
+      "readyAt": 188.9,
+      "firstStatusValues": [
+        "ready"
+      ]
+    }
+  },
+  "runs": {
+    "electron-2.6.2": [
+      {
+        "apiAt": 97.4,
+        "st0Ms": 10.1,
+        "st0": "starting",
+        "afterFirstStatusMs": 125,
+        "readyAt": 222.5,
+        "states": [
+          "starting",
+          "ready"
+        ]
+      },
+      {
+        "apiAt": 80.6,
+        "st0Ms": 10.2,
+        "st0": "starting",
+        "afterFirstStatusMs": 325,
+        "readyAt": 405.3,
+        "states": [
+          "starting",
+          "ready"
+        ]
+      },
+      {
+        "apiAt": 112.2,
+        "st0Ms": 10,
+        "st0": "starting",
+        "afterFirstStatusMs": 126,
+        "readyAt": 238.2,
+        "states": [
+          "starting",
+          "ready"
+        ]
+      },
+      {
+        "apiAt": 82.3,
+        "st0Ms": 9.6,
+        "st0": "starting",
+        "afterFirstStatusMs": 124,
+        "readyAt": 206.7,
+        "states": [
+          "starting",
+          "ready"
+        ]
+      },
+      {
+        "apiAt": 132.8,
+        "st0Ms": 9.9,
+        "st0": "starting",
+        "afterFirstStatusMs": 126,
+        "readyAt": 258.8,
+        "states": [
+          "starting",
+          "ready"
+        ]
+      },
+      {
+        "apiAt": 90.8,
+        "st0Ms": 10.2,
+        "st0": "starting",
+        "afterFirstStatusMs": 372,
+        "readyAt": 462.4,
+        "states": [
+          "starting",
+          "ready"
+        ]
+      },
+      {
+        "apiAt": 82.1,
+        "st0Ms": 10.4,
+        "st0": "starting",
+        "afterFirstStatusMs": 127,
+        "readyAt": 209.1,
+        "states": [
+          "starting",
+          "ready"
+        ]
+      }
+    ],
+    "tauri-3.0.0-r1(51a954f)": [
+      {
+        "apiAt": 96.1,
+        "st0Ms": 49.5,
+        "st0": "starting",
+        "afterFirstStatusMs": 417,
+        "readyAt": 513.2,
+        "states": [
+          "starting",
+          "ready"
+        ]
+      },
+      {
+        "apiAt": 117.6,
+        "st0Ms": 62.6,
+        "st0": "starting",
+        "afterFirstStatusMs": 577,
+        "readyAt": 694.1,
+        "states": [
+          "starting",
+          "ready"
+        ]
+      },
+      {
+        "apiAt": 124.4,
+        "st0Ms": 53,
+        "st0": "starting",
+        "afterFirstStatusMs": 678,
+        "readyAt": 802.2,
+        "states": [
+          "starting",
+          "ready"
+        ]
+      },
+      {
+        "apiAt": 121.9,
+        "st0Ms": 56.6,
+        "st0": "starting",
+        "afterFirstStatusMs": 495,
+        "readyAt": 617,
+        "states": [
+          "starting",
+          "ready"
+        ]
+      },
+      {
+        "apiAt": 111.2,
+        "st0Ms": 71.1,
+        "st0": "starting",
+        "afterFirstStatusMs": 635,
+        "readyAt": 745.7,
+        "states": [
+          "starting",
+          "ready"
+        ]
+      },
+      {
+        "apiAt": 102.9,
+        "st0Ms": 61.4,
+        "st0": "starting",
+        "afterFirstStatusMs": 522,
+        "readyAt": 625,
+        "states": [
+          "starting",
+          "ready"
+        ]
+      },
+      {
+        "apiAt": 122.1,
+        "st0Ms": 77,
+        "st0": "starting",
+        "afterFirstStatusMs": 489,
+        "readyAt": 610.6,
+        "states": [
+          "starting",
+          "ready"
+        ]
+      }
+    ],
+    "tauri-3.0.0-r2-prewarm-in-setup(중간판)": [
+      {
+        "apiAt": 107.7,
+        "st0Ms": 51,
+        "st0": "starting",
+        "afterFirstStatusMs": 457,
+        "readyAt": 564.4,
+        "states": [
+          "starting",
+          "ready"
+        ]
+      },
+      {
+        "apiAt": 119.8,
+        "st0Ms": 62.9,
+        "st0": "starting",
+        "afterFirstStatusMs": 538,
+        "readyAt": 657.3,
+        "states": [
+          "starting",
+          "ready"
+        ]
+      },
+      {
+        "apiAt": 107.6,
+        "st0Ms": 50.6,
+        "st0": "starting",
+        "afterFirstStatusMs": 511,
+        "readyAt": 618.8,
+        "states": [
+          "starting",
+          "ready"
+        ]
+      },
+      {
+        "apiAt": 97.1,
+        "st0Ms": 51.2,
+        "st0": "starting",
+        "afterFirstStatusMs": 509,
+        "readyAt": 606.3,
+        "states": [
+          "starting",
+          "ready"
+        ]
+      },
+      {
+        "apiAt": 271.7,
+        "st0Ms": 65,
+        "st0": "starting",
+        "afterFirstStatusMs": 555,
+        "readyAt": 827.1,
+        "states": [
+          "starting",
+          "ready"
+        ]
+      },
+      {
+        "apiAt": 128.6,
+        "st0Ms": 51.3,
+        "st0": "starting",
+        "afterFirstStatusMs": 420,
+        "readyAt": 548.9,
+        "states": [
+          "starting",
+          "ready"
+        ]
+      },
+      {
+        "apiAt": 112.5,
+        "st0Ms": 44.4,
+        "st0": "starting",
+        "afterFirstStatusMs": 350,
+        "readyAt": 462,
+        "states": [
+          "starting",
+          "ready"
+        ]
+      }
+    ],
+    "tauri-3.0.0-r2(최종)": [
+      {
+        "apiAt": 133.6,
+        "st0Ms": 55.3,
+        "st0": "ready",
+        "afterFirstStatusMs": 55,
+        "readyAt": 188.9,
+        "states": [
+          "ready"
+        ]
+      },
+      {
+        "apiAt": 116.5,
+        "st0Ms": 51.6,
+        "st0": "ready",
+        "afterFirstStatusMs": 52,
+        "readyAt": 168.1,
+        "states": [
+          "ready"
+        ]
+      },
+      {
+        "apiAt": 128.3,
+        "st0Ms": 60.3,
+        "st0": "ready",
+        "afterFirstStatusMs": 60,
+        "readyAt": 188.6,
+        "states": [
+          "ready"
+        ]
+      },
+      {
+        "apiAt": 158.5,
+        "st0Ms": 57.2,
+        "st0": "ready",
+        "afterFirstStatusMs": 57,
+        "readyAt": 215.7,
+        "states": [
+          "ready"
+        ]
+      },
+      {
+        "apiAt": 163.5,
+        "st0Ms": 68.5,
+        "st0": "ready",
+        "afterFirstStatusMs": 69,
+        "readyAt": 232,
+        "states": [
+          "ready"
+        ]
+      },
+      {
+        "apiAt": 183.7,
+        "st0Ms": 52,
+        "st0": "ready",
+        "afterFirstStatusMs": 52,
+        "readyAt": 235.7,
+        "states": [
+          "ready"
+        ]
+      },
+      {
+        "apiAt": 106,
+        "st0Ms": 50.4,
+        "st0": "ready",
+        "afterFirstStatusMs": 50,
+        "readyAt": 156.4,
+        "states": [
+          "ready"
+        ]
+      }
+    ]
+  }
+}

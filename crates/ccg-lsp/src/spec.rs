@@ -13,7 +13,8 @@
 //! | Roslyn: `didChangeWatchedFiles`를 선언하면 서버 폴백 워처가 꺼진다 | [`ServerSpec::declare_watched_files`] |
 //! | Roslyn: range 없는 `didChange`에 프로세스째 죽는다 | 엔진이 **서버가 선언한 `syncKind`를 항상 존중**(불변식) |
 //! | Roslyn: `didOpen` 중복에 프로세스째 죽는다 | 엔진 불변식 — 문서 맵 잠금을 stat/read 내내 쥔다([`crate::server`]) |
-//! | Roslyn: 프라임은 스냅샷 → 변화 뒤 재프라임, 3초 조용 간격 | [`Reprime::WorkspaceSymbol { quiet_gap_ms }`] |
+//! | Roslyn: 프라임은 스냅샷 → 변화 뒤 재프라임, 3초 조용 간격 | [`Reprime::WorkspaceSymbol { quiet_gap_ms }`] — 규약 다섯 개는 엔진이 지킨다([`crate::server`]) |
+//! | pyright/Roslyn: 인터프리터·옵션을 `workspace/configuration`으로 물어 온다 | [`ServerSpec::configuration`] — `rpc.rs`는 arity만 지키고 값은 여기서 온다(R2 · 크리틱 C-5) |
 //! | C#: 루트는 그 csproj를 **참조하는** sln | [`RootRule::ReferencingSolution`] |
 //! | clangd/UE: compile DB·인덱스는 앱 홈 | [`Launch::Exe { extra_args }`] — 스펙이 앱 홈 경로를 만들어 넘긴다 |
 //! | 무거운 서버는 유휴 회수를 길게 | [`ServerSpec::idle_ttl_ms`] |
@@ -114,6 +115,14 @@ pub struct ServerSpec {
     /// `initialize`의 `initializationOptions` — 루트를 받아 만든다(없으면 `None`).
     pub init_options: fn(&Path) -> Option<Value>,
 
+    /// 서버가 `workspace/configuration`으로 물어오는 **섹션의 값**(루트 기준).
+    /// `None`이면 그 항목에 `null`이 간다 — 2.6.2 `items.map(() => null)`과 같은 답이다.
+    ///
+    /// 이 필드가 있는 이유(크리틱 C-5): pyright는 인터프리터·venv를(`python`,
+    /// `python.analysis`), Roslyn은 옵션 묶음을 **이 경로로만** 받는다. 값을 스펙에 두지
+    /// 않으면 언어를 붙일 때마다 `rpc.rs`가 열린다(= 이 설계의 실패 조건).
+    pub configuration: fn(&Path, &str) -> Option<Value>,
+
     /// `initialize`에 실을 워크스페이스 폴더들(`(uri, name)`). `None`이면 루트 하나.
     /// 다중 루트를 돌려주면 `rootUri`는 null로 보낸다(LSP 다중 루트 규약).
     pub workspace_folders: fn(&Path) -> Option<Vec<(String, String)>>,
@@ -152,6 +161,14 @@ impl ServerSpec {
         let e = ext.to_ascii_lowercase();
         self.exts.iter().find(|(k, _)| *k == e).map(|(_, v)| *v)
     }
+
+    /// 이 확장자의 변화를 이 서버에 흘려야 하는가 — 뷰어가 여는 확장자(`exts`)에
+    /// **더해** 프로젝트 파일(`watch_exts`: C#의 `csproj`/`sln`/`props`…)까지 센다.
+    /// (2.6.2 `notifyWatchedFiles`의 `def.exts || CS_EXTRA` 자리 — 그쪽은 C# 하드코딩이었다)
+    pub fn watches_ext(&self, ext: &str) -> bool {
+        let e = ext.to_ascii_lowercase();
+        self.exts.iter().any(|(k, _)| *k == e) || self.watch_exts.iter().any(|k| *k == e)
+    }
 }
 
 // ── 기본 훅(스펙이 아무것도 안 할 때) ────────────────────────────────────────
@@ -160,6 +177,10 @@ fn no_init_options(_root: &Path) -> Option<Value> {
     None
 }
 fn no_workspace_folders(_root: &Path) -> Option<Vec<(String, String)>> {
+    None
+}
+/// 서버가 설정을 물어와도 줄 게 없다(tsserver-ls) — 항목마다 `null`이 간다.
+fn no_configuration(_root: &Path, _section: &str) -> Option<Value> {
     None
 }
 #[allow(dead_code)] // R2(clangd)에서 쓴다
@@ -192,6 +213,35 @@ fn ts_init_options(_root: &Path) -> Option<Value> {
 /// R1이 끝까지 미는 것은 `ts` 하나다. R2에서 붙을 항목은 이 배열에 이런 모양으로 들어간다
 /// (필드가 이미 다 있다는 게 이 라운드의 검증 대상이다):
 ///
+/// **pyright — 크리틱 §5.1의 종이 시험을 그대로 값으로 옮긴 것.** R1에서 이 스펙이
+/// 성립하지 못한 이유는 `workspace/configuration`뿐이었고(C-5), 그 축이 `configuration`
+/// 필드로 들어와 이제 **정말 값만 다르다**:
+///
+/// ```ignore
+/// fn py_configuration(root: &Path, section: &str) -> Option<Value> {
+///     match section {
+///         // 인터프리터·venv는 이 경로로만 들어간다(initializationOptions로는 안 먹는다)
+///         "python" => Some(json!({ "pythonPath": venv_python(root)?, "venvPath": root.to_string_lossy() })),
+///         "python.analysis" => Some(json!({ "typeCheckingMode": "basic", "diagnosticMode": "openFilesOnly" })),
+///         _ => None,
+///     }
+/// }
+/// ServerSpec {
+///     id: "py", label: "Pyright", langs: "Python", exts_display: ".py .pyi",
+///     kind: Provision::Bundled, requires: None,
+///     exts: &[("py", "python"), ("pyi", "python")],
+///     launch: Launch::Node { module: &["pyright", "langserver.index.js"], args: &["--stdio"] },
+///     root: RootRule::ProjectCwd,
+///     init_options: no_init_options,
+///     configuration: py_configuration,          // ← C-5가 요구한 그 자리(rpc.rs 무수정)
+///     workspace_folders: no_workspace_folders,
+///     after_initialized: None, awaits_project_init: false,
+///     declare_watched_files: false, reprime: Reprime::None,
+///     watch_exts: &["py", "pyi"],
+///     idle_ttl_ms: 10 * 60_000, cache_version: 1,
+/// }
+/// ```
+///
 /// ```ignore
 /// ServerSpec {
 ///     id: "cs", label: "C#", kind: Provision::Download,
@@ -203,7 +253,10 @@ fn ts_init_options(_root: &Path) -> Option<Value> {
 ///                                           solution_exts: &["sln", "slnx"], ttl_ms: 30_000 },
 ///     after_initialized: Some(roslyn_open_solution),
 ///     awaits_project_init: true,
+///     configuration: roslyn_configuration,                // ← 옵션 묶음(csharp|*)을 이 경로로 문다
 ///     declare_watched_files: false,                       // ← 선언하면 폴백 워처가 꺼진다
+///     // 조용 간격만 값이다. 나머지 네 규약(didOpen 뒤 1.5초·재대기 루프·프라임 중
+///     // 무효화·히트 0 쿼리·단일 비행)은 엔진이 스펙과 무관하게 지킨다(server.rs).
 ///     reprime: Reprime::WorkspaceSymbol { quiet_gap_ms: 3_000 },
 ///     watch_exts: &["cs", "csx", "csproj", "sln", "slnx", "props", "targets"],
 ///     idle_ttl_ms: 30 * 60_000,
@@ -233,6 +286,9 @@ pub static SPECS: &[ServerSpec] = &[ServerSpec {
     },
     root: RootRule::ProjectCwd,
     init_options: ts_init_options,
+    // tsserver-ls도 `workspace/configuration`을 물어 온다 — 줄 값이 없을 뿐이다.
+    // (엔진은 그래도 items 수만큼 null을 돌려준다 — rpc.rs 참고)
+    configuration: no_configuration,
     workspace_folders: no_workspace_folders,
     after_initialized: None,
     awaits_project_init: false,

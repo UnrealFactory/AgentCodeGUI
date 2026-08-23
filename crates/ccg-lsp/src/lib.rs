@@ -43,7 +43,8 @@ fn resolve(cwd: &str, rel: &str) -> Option<PathBuf> {
 }
 
 /// `.`/`..`를 접는다(존재하지 않는 경로도 처리해야 해서 canonicalize를 못 쓴다).
-fn normalize(p: &Path) -> PathBuf {
+/// 서버 레지스트리 키는 이보다 강한 [`manager::canon_root`]를 쓴다(C-3).
+pub(crate) fn normalize(p: &Path) -> PathBuf {
     let mut out = PathBuf::new();
     for c in p.components() {
         match c {
@@ -78,6 +79,10 @@ fn ready_server(cwd: &str, rel: &str) -> Option<(Arc<Server>, PathBuf)> {
 // ── lsp:status ───────────────────────────────────────────────────────────────
 /// 파일 하나의 코드 인텔리전스 상태 — **그리고 지연 기동의 방아쇠**.
 /// 렌더러는 `starting`/`installing` 동안 400ms로 폴링하고 `ready`에서 기능을 켠다.
+///
+/// 이 경로는 **아무것도 기다리지 않는다**: 스폰은 백그라운드로 걸고 곧바로 `starting`을
+/// 돌려준다(크리틱 §3.2 — R1은 첫 status가 `CreateProcess`를 물어 +38ms였다).
+/// 유휴 타이머도 여기서 되감지 않는다(C-1 ②).
 pub fn status(cwd: &str, rel: &str) -> &'static str {
     let Some((spec, abs, root)) = spec_and_root(cwd, rel) else {
         return "unsupported";
@@ -91,16 +96,19 @@ pub fn status(cwd: &str, rel: &str) -> &'static str {
     if spec.kind == Provision::External && server::launchable(spec, &root).is_err() {
         return "unsupported";
     }
-    match manager::ensure(spec, &root) {
-        Err(_) => "error",
-        Ok(s) => {
+    match manager::start(spec, &root) {
+        manager::Slot::Failed(_) => "error",
+        manager::Slot::Starting => "starting",
+        manager::Slot::Live(s) => {
             // 상태를 물은 김에 문서를 데운다 — 뷰어가 곧 토큰을 물어볼 그 문서다.
             // `awaits_project_init` 서버는 프로젝트 로드 전에 열면 misc 워크스페이스에
             // 묶여 심볼이 안 풀리므로, 게이트가 내려간 뒤에만 연다(2.6.2와 같은 규약).
+            // `warm_doc`인 이유: 편집 중이면 라이브 버퍼가 서버의 진실이고, 폴링이
+            // 그걸 디스크 내용으로 되엎으면 안 된다(C-2 후단).
             if s.raw_status() == Status::Ready && s.status() == Status::Ready {
                 let s2 = s.clone();
                 std::thread::spawn(move || {
-                    let _ = s2.open_doc(&abs);
+                    let _ = s2.warm_doc(&abs);
                 });
             }
             match s.status() {
@@ -127,16 +135,32 @@ pub fn project_status(cwd: &str) -> Value {
 }
 
 // ── lsp:hover ────────────────────────────────────────────────────────────────
+/// 디스크 기준 호버(편집 버퍼 없음).
 pub fn hover(cwd: &str, rel: &str, line: u32, character: u32) -> Option<Value> {
+    hover_at(cwd, rel, line, character, None)
+}
+
+/// 호버 — `text`는 **저장 안 된 편집 버퍼**다(계약면 `lsp.hover(cwd, rel, pos, text?)`의
+/// 네 번째 인자). 편집 모드(Ctrl+E)의 `CmEditor.tsx:471`이 실제로 이걸 넘긴다.
+///
+/// R1은 디스패처가 이 인자를 버려서, 저장 전 편집 중 호버가 **디스크 좌표**를 읽고
+/// 자신 있는 오답을 냈다(크리틱 C-2: 버퍼 적중 1/6). 2.6.2 manager.ts:1994와 같은 분기다.
+pub fn hover_at(cwd: &str, rel: &str, line: u32, character: u32, text: Option<&str>) -> Option<Value> {
     let (s, abs) = ready_server(cwd, rel)?;
-    let md = s.hover(&abs, line, character)?;
+    let md = s.hover(&abs, line, character, text)?;
     Some(json!({ "contents": md }))
 }
 
 // ── lsp:definition ───────────────────────────────────────────────────────────
+/// 디스크 기준 정의 이동(편집 버퍼 없음).
 pub fn definition(cwd: &str, rel: &str, line: u32, character: u32) -> Vec<Value> {
+    definition_at(cwd, rel, line, character, None)
+}
+
+/// 정의 이동 — `text`는 저장 안 된 편집 버퍼(C-2, `hover_at`과 같은 규약).
+pub fn definition_at(cwd: &str, rel: &str, line: u32, character: u32, text: Option<&str>) -> Vec<Value> {
     let Some((s, abs)) = ready_server(cwd, rel) else { return Vec::new() };
-    s.definition(&abs, line, character)
+    s.definition(&abs, line, character, text)
         .into_iter()
         .map(|(p, l, c)| json!({ "path": p.to_string_lossy(), "line": l, "character": c }))
         .collect()
@@ -247,6 +271,7 @@ fn map_item(it: &Value, i: usize) -> Option<Value> {
 pub fn resolve_completion(cwd: &str, rel: &str, gen: i64, ri: usize) -> Option<Value> {
     let (spec, _abs, root) = spec_and_root(cwd, rel)?;
     let s = manager::ensure(spec, &root).ok()?;
+    s.touch();
     let r = s.resolve_completion(gen, ri)?;
     let doc = match r.get("documentation") {
         Some(Value::String(s)) => Some(s.clone()),
@@ -282,10 +307,9 @@ pub fn prewarm(cwd: &str) {
     if server::launchable(spec, &root).is_err() {
         return;
     }
-    let r = root.clone();
-    std::thread::spawn(move || {
-        let _ = manager::ensure(spec, &r);
-    });
+    // `start`는 스폰을 백그라운드로 걸고 곧바로 돌아온다 — 여기서 스레드를 또 만들 이유가
+    // 없고, 첫 `status`와 겹쳐도 자리가 하나라 **프로세스는 한 벌만** 뜬다(C-4).
+    let _ = manager::start(spec, &root);
 }
 
 /// 이 폴더의 주력 언어를 값싼 파일 신호로 추정(2.6.2 `detectProjectServer`의 이식).
@@ -320,7 +344,9 @@ pub fn warm(cwd: &str, rel: &str) {
     std::thread::spawn(move || {
         if let Ok(s) = manager::ensure(spec, &root) {
             if s.wait_ready(Duration::from_secs(30)) {
-                let _ = s.open_doc(&abs);
+                s.touch();
+                // 이미 열려 있으면 그대로 둔다(편집 버퍼를 디스크로 되엎지 않게)
+                let _ = s.warm_doc(&abs);
             }
         }
     });
@@ -355,22 +381,47 @@ pub fn servers() -> Vec<Value> {
 }
 
 // ── 파일 변화 통지 ───────────────────────────────────────────────────────────
-/// 앱을 거친 쓰기(뷰어 저장·에이전트 편집·탐색기 작업)를 서버들에 흘린다.
-/// 반환 = 렌더러에 브로드캐스트할 `{paths, exts}`(관심 있는 변화가 없으면 `None`).
+/// 앱을 거친 쓰기(뷰어 저장·에이전트 편집·탐색기 작업)를 **서버들에 흘리고**, 그 다음에
+/// 렌더러를 깨운다. 반환 = 브로드캐스트할 `{paths, exts}`(통지된 게 없으면 `None`).
+///
+/// R1은 이 함수가 **브로드캐스트 페이로드 조립뿐**이었다(크리틱 C-7). 2.6.2
+/// `notifyWatchedFiles`(manager.ts:2337)는 같은 자리에서 네 가지를 한다 —
+/// ① `workspace/didChangeWatchedFiles` 통지 ② **열린 문서의 디스크 재동기화**
+/// ③ 삭제 문서 `didClose` ④ 재프라임 예약. 그 넷은 [`server::Server::files_changed`]에 있고
+/// 여기서는 팬아웃([`manager::notify_files_changed`])과 페이로드만 맡는다.
+///
+/// 변화의 종류(created/changed/deleted)는 호출부가 안 주므로 **존재 여부로 가른다** —
+/// 없으면 삭제, 있으면 변경(LSP `FileChangeType` 3/2). created(1)와 changed(2)를 가르는
+/// 서버는 우리가 아는 범위에 없다.
 pub fn files_changed(paths: &[String]) -> Option<Value> {
-    let mut exts: Vec<String> = Vec::new();
-    for p in paths {
-        if let Some(e) = Path::new(p).extension().and_then(|s| s.to_str()) {
-            let e = e.to_ascii_lowercase();
-            if spec::spec_for_ext(&e).is_some() && !exts.contains(&e) {
-                exts.push(e);
-            }
-        }
-    }
+    let abs: Vec<PathBuf> = paths.iter().map(|p| normalize(Path::new(p))).collect();
+    // ①~④ — 관심 있는 서버들에 실제로 흘린다
+    let notified = manager::notify_files_changed(&abs);
+    let exts = broadcast_exts(&notified);
     if exts.is_empty() {
         return None;
     }
-    Some(json!({ "paths": paths, "exts": exts }))
+    let out: Vec<String> = notified.iter().map(|p| p.to_string_lossy().to_string()).collect();
+    Some(json!({ "paths": out, "exts": exts }))
+}
+
+/// 통지된 경로들 → **다시 물어야 할 뷰어의 확장자**.
+/// 프로젝트 파일(csproj/sln…)만 바뀐 경우에도 그 스펙이 맡는 소스 확장자를 실어야 .cs
+/// 뷰어가 다시 칠한다 — 2.6.2가 `CS_EXTRA`로 하드코딩하던 자리를 스펙이 판단한다.
+fn broadcast_exts(notified: &[PathBuf]) -> Vec<String> {
+    let mut exts: Vec<String> = Vec::new();
+    for p in notified {
+        let Some(e) = p.extension().and_then(|s| s.to_str()) else { continue };
+        let e = e.to_ascii_lowercase();
+        for s in spec::SPECS.iter().filter(|s| s.watches_ext(&e)) {
+            for (k, _) in s.exts {
+                if !exts.iter().any(|x| x == k) {
+                    exts.push((*k).to_string());
+                }
+            }
+        }
+    }
+    exts
 }
 
 /// 앱 종료 — 언어 서버를 전부 접는다.
@@ -418,11 +469,21 @@ mod tests {
         assert!(map_item(&json!({ "kind": 3 }), 0).is_none());
     }
 
+    /// 2.6.2와 같은 규약: **서버가 하나도 없으면 뷰어를 깨우지 않는다**
+    /// ("갱신할 토큰도 없다" — manager.ts:2395). 이 테스트에는 뜬 서버가 없다.
     #[test]
-    fn files_changed_only_reports_known_languages() {
+    fn files_changed_is_silent_without_a_live_server() {
         assert!(files_changed(&["C:\\a\\x.md".into()]).is_none());
-        let v = files_changed(&["C:\\a\\x.ts".into(), "C:\\a\\y.md".into()]).unwrap();
-        assert_eq!(v["exts"], json!(["ts"]));
+        assert!(files_changed(&["C:\\a\\x.ts".into()]).is_none());
+    }
+
+    #[test]
+    fn broadcast_exts_maps_known_languages_only() {
+        assert!(broadcast_exts(&[PathBuf::from("C:\\a\\y.md")]).is_empty());
+        let v = broadcast_exts(&[PathBuf::from("C:\\a\\x.ts"), PathBuf::from("C:\\a\\y.md")]);
+        // ts 스펙이 맡는 뷰어 확장자 전부 — .ts가 바뀌면 열린 .tsx도 다시 물어야 한다
+        assert!(v.contains(&"ts".to_string()) && v.contains(&"tsx".to_string()), "{v:?}");
+        assert!(!v.contains(&"md".to_string()));
     }
 
     #[test]

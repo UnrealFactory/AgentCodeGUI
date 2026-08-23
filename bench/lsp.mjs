@@ -5,6 +5,7 @@
 //   node bench/lsp.mjs both                둘 다
 //     --lang ts            픽스처 언어(기본 ts) — bench/lspfix.mjs의 FIXTURES 키
 //     --out <suffix>       결과 파일 접미사 (lsp-<kind>-<ver><suffix>.json)
+//     --exe <path>         3.0 실행 파일(기본 target/release/agentcodegui.exe)
 //     --blocks 420         big.ts 블록 수
 //     --keep               앱/작업폴더 남김
 //     --no-viewer          뷰어 CDP 실증 생략(수치만)
@@ -52,6 +53,8 @@ const flag = (name, dflt) => {
 }
 const LANG = flag('lang', 'ts')
 const OUT_SUFFIX = flag('out', '')
+/// 3.0 실행 파일 경로(기본 `target/release/agentcodegui.exe`) — `--exe`로 갈아끼운다.
+const EXE_ARG = flag('exe', '')
 const BLOCKS = Number(flag('blocks', '420'))
 const KEEP = argv.includes('--keep')
 const NO_VIEWER = argv.includes('--no-viewer')
@@ -357,8 +360,10 @@ $out | ConvertTo-Json -Compress -Depth 3`
 }
 
 // ── exe 스냅샷 (다른 빌더의 재빌드에 안 흔들리게) ─────────────────────────────
+// `--exe <경로>`를 주면 그 파일을 스냅샷한다 — 4명이 동시에 커밋하는 라운드에서
+// **공용 `target/release`를 안 건드리고** 자기 타깃 폴더로 빌드해 재기 위한 문이다.
 async function snapshotExe() {
-  const src = path.join(REPO, 'target', 'release', 'agentcodegui.exe')
+  const src = EXE_ARG ? path.resolve(EXE_ARG) : path.join(REPO, 'target', 'release', 'agentcodegui.exe')
   const dir = path.join(os.tmpdir(), 'ccg-lsp-exe')
   fs.mkdirSync(dir, { recursive: true })
   const dst = path.join(dir, 'agentcodegui.exe')
@@ -367,7 +372,7 @@ async function snapshotExe() {
       fs.copyFileSync(src, dst)
       return dst
     } catch {
-      if (i === 0) console.log('[lsp] target/release/agentcodegui.exe 없음 — 재빌드 대기')
+      if (i === 0) console.log(`[lsp] ${src} 없음 — 재빌드 대기`)
       await sleep(5000)
     }
   }

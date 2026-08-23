@@ -29,6 +29,17 @@ const MAX_OPEN_DOCS: usize = 32;
 /// (2.6.2는 600초 — Roslyn이 솔루션을 다 읽고서야 initialize에 답하기 때문. 같은 값)
 const INIT_TIMEOUT: Duration = Duration::from_secs(600);
 
+// ── 재프라임 규약 상수 (2.6.2 `primeFullSemantics` — manager.ts:2958) ────────────
+/// **didOpen 뒤 최소 이만큼** 지나야 프라임한다. 2.6.2 주석의 실측: *갭 0ms=실패,
+/// 1.5s=성공.* 문서 열림이 워크스페이스에 반영되기 전에 프라임하면 그 스냅샷이
+/// "소스 제너레이터 멤버가 빠진 컴파일"로 확정된다.
+const PRIME_MIN_OPEN_GAP_MS: u64 = 1_500;
+/// 히트 0짜리 쿼리 — 어떤 쿼리든 전 인덱스 빌드를 유발하므로 **페이로드만 아낀다**.
+/// (`""`를 보내면 전 워크스페이스 심볼 덤프가 돌아온다)
+const PRIME_QUERY: &str = "zz__semantic_prime__";
+/// 프라임 왕복 상한(2.6.2와 같은 180초 — 대형 솔루션의 첫 전 컴파일).
+const PRIME_TIMEOUT: Duration = Duration::from_secs(180);
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Status {
     Starting,
@@ -78,6 +89,19 @@ struct ComplCache {
     items: Vec<Value>,
 }
 
+/// 전 솔루션 시맨틱 프라임의 상태 — 2.6.2 `wsSymPrime` 프라미스가 담던 것을 값으로 편다.
+#[derive(Default)]
+struct Prime {
+    /// 유효한 프라임이 끝났다(변화가 오면 false로 되돌아간다).
+    done: bool,
+    /// 지금 누가 프라임을 돌고 있다 — **동시 요청은 한 번만 프라임한다**(규약 ⑤).
+    running: bool,
+    /// 변화 세대. 프라임 왕복 도중 올라가면 그 프라임은 낡은 것이다(규약 ③).
+    dirty_gen: u64,
+    /// 마지막으로 관측된 프로젝트 변화 시각(ms) — 조용 간격의 기준점(규약 ②).
+    dirty_at_ms: u64,
+}
+
 pub struct Server {
     pub spec: &'static ServerSpec,
     pub root: PathBuf,
@@ -88,10 +112,10 @@ pub struct Server {
     ready_cv: Condvar,
     docs: Mutex<Docs>,
     last_used_ms: AtomicU64,
-    /// 마지막으로 관측된 프로젝트 변화 시각(ms) — 재프라임의 조용 간격 기준.
-    prime_dirty_ms: AtomicU64,
-    /// 프라임을 이미 마쳤는가(변화가 오면 false로 되돌린다).
-    primed: Mutex<bool>,
+    /// 마지막 `didOpen` 시각 — 프라임의 최소 오픈 갭(규약 ①) 기준점.
+    last_open_ms: AtomicU64,
+    prime: Mutex<Prime>,
+    prime_cv: Condvar,
     compl: Mutex<ComplCache>,
     stderr_tail: Arc<Mutex<String>>,
 }
@@ -171,6 +195,8 @@ impl Server {
         // 통지 훅은 서버가 만들어지기 전에 필요하다 — 약한 참조로 뒤에 채운다.
         let hook_slot: Arc<Mutex<Option<std::sync::Weak<Server>>>> = Arc::new(Mutex::new(None));
         let hook_for_rpc = hook_slot.clone();
+        // 설정 응답의 **값**은 스펙에서 온다 — 엔진도 rpc도 언어를 모른다(크리틱 C-5).
+        let cfg_root = root.to_path_buf();
         let rpc = Rpc::start(
             stdin,
             stdout,
@@ -180,6 +206,7 @@ impl Server {
                     s.on_notify(method, params);
                 }
             }),
+            Box::new(move |section| (spec.configuration)(&cfg_root, section)),
         );
 
         let stderr_tail = Arc::new(Mutex::new(String::new()));
@@ -217,8 +244,9 @@ impl Server {
             ready_cv: Condvar::new(),
             docs: Mutex::new(Docs::default()),
             last_used_ms: AtomicU64::new(now_ms()),
-            prime_dirty_ms: AtomicU64::new(0),
-            primed: Mutex::new(false),
+            last_open_ms: AtomicU64::new(0),
+            prime: Mutex::new(Prime::default()),
+            prime_cv: Condvar::new(),
             compl: Mutex::new(ComplCache::default()),
             stderr_tail,
         });
@@ -382,15 +410,40 @@ impl Server {
 
     /// 렌더러가 보는 상태. `awaits_project_init` 서버는 인덱스가 끝나기 전까지 `starting`.
     pub fn status(&self) -> Status {
-        let st = self.state.lock().unwrap();
-        if st.status == Status::Ready && st.project_init_pending {
-            Status::Starting
+        let (st, pending) = {
+            let s = self.state.lock().unwrap();
+            (s.status, s.project_init_pending)
+        };
+        if st == Status::Ready {
+            if self.is_dead() {
+                return Status::Error;
+            }
+            if pending {
+                return Status::Starting;
+            }
+        }
+        st
+    }
+
+    /// 프로젝트 로드 게이트를 뺀 **원시** 상태 — 수명 판정(스윕·쿨다운)이 쓴다.
+    ///
+    /// ★ 크리틱 C-1: stdout EOF/파이프 에러로 rpc가 dispose된 서버는 **살아 있는 척하면
+    /// 안 된다.** R1에는 `Ready → Error`로 가는 경로가 `initialize` 실패밖에 없어서,
+    /// 밖에서 죽인 tsserver가 45초 내내 `ready`를 보고했고 좀비 스윕에도 안 걸렸다
+    /// (2.6.2는 child `exit` 훅에서 `status='error' + diedAt`을 찍어 30초 뒤 재스폰한다 —
+    /// manager.ts:2632). 여기서 rpc의 사망을 상태에 반영하면 그 두 경로가 함께 산다.
+    pub fn raw_status(&self) -> Status {
+        let st = self.state.lock().unwrap().status;
+        if st == Status::Ready && self.is_dead() {
+            Status::Error
         } else {
-            st.status
+            st
         }
     }
-    pub fn raw_status(&self) -> Status {
-        self.state.lock().unwrap().status
+
+    /// 자식과의 파이프가 끊겼는가(= 프로세스가 죽었거나 우리가 접었다).
+    pub fn is_dead(&self) -> bool {
+        self.rpc.is_dead()
     }
     pub fn progress_pct(&self) -> Option<f64> {
         self.state.lock().unwrap().progress_pct
@@ -399,13 +452,16 @@ impl Server {
         self.state.lock().unwrap().err.clone()
     }
 
-    /// `Ready`가 될 때까지 기다린다(에러면 즉시 false).
+    /// `Ready`가 될 때까지 기다린다(에러/사망이면 즉시 false).
     pub fn wait_ready(&self, timeout: Duration) -> bool {
+        if self.is_dead() {
+            return false; // 죽은 서버를 상대로 1.5초를 버리지 않는다(C-1)
+        }
         let deadline = std::time::Instant::now() + timeout;
         let mut st = self.state.lock().unwrap();
         loop {
             match st.status {
-                Status::Ready => return true,
+                Status::Ready => return !self.is_dead(),
                 Status::Error => return false,
                 Status::Starting => {}
             }
@@ -455,6 +511,17 @@ impl Server {
         }
         let text = std::fs::read_to_string(abs).map_err(|e| e.to_string())?;
         self.sync_locked(&uri, abs, text, mtime_ms, size)
+    }
+
+    /// 데우기 전용 — **이미 열려 있으면 아무것도 안 한다.**
+    /// `status` 폴링이 부르는 자리라, `open_doc`을 쓰면 저장 안 된 편집 버퍼를 디스크
+    /// 내용으로 400ms마다 되엎는다(크리틱 C-2 후단의 "왕복으로 뒤집힌다").
+    pub fn warm_doc(&self, abs: &Path) -> Result<String, String> {
+        let uri = path_to_uri(abs);
+        if self.docs.lock().unwrap().map.contains_key(&uri) {
+            return Ok(uri);
+        }
+        self.open_doc(abs)
     }
 
     /// 라이브 편집 버퍼를 밀어 넣는다(완성 — 저장 안 된 내용과 부분 단어를 서버가 봐야 한다).
@@ -507,6 +574,8 @@ impl Server {
             self.rpc.notify("textDocument/didClose", json!({ "textDocument": { "uri": old } }));
         }
         if notify_open {
+            // 프라임의 최소 오픈 갭(규약 ①)은 **이 시각**부터 잰다
+            self.last_open_ms.store(now_ms(), Ordering::Relaxed);
             let lang = abs
                 .extension()
                 .and_then(|s| s.to_str())
@@ -537,30 +606,126 @@ impl Server {
         self.docs.lock().unwrap().map.get(uri).map(|d| d.text.clone())
     }
 
+    /// 프로젝트 입력이 바뀌었다 — 다음 요청이 **재프라임**하게 만든다.
+    /// 세대를 올려 "프라임 도중에 온 변화"를 왕복 뒤에 알아볼 수 있게 한다(규약 ③).
     pub fn mark_prime_dirty(&self) {
-        self.prime_dirty_ms.store(now_ms(), Ordering::Relaxed);
-        *self.primed.lock().unwrap() = false;
+        let mut p = self.prime.lock().unwrap();
+        p.dirty_gen = p.dirty_gen.wrapping_add(1);
+        p.dirty_at_ms = now_ms();
+        p.done = false;
     }
 
-    /// 전 솔루션 시맨틱 프라임 — 스펙이 요구할 때만, 그리고 **조용 간격을 채운 뒤에만**.
+    /// 전 솔루션 시맨틱 프라임 — 스펙이 요구할 때만.
+    ///
+    /// 2.6.2 `primeFullSemantics`(manager.ts:2958)의 규약 **다섯 개**를 전부 지킨다.
+    /// R1은 이 중 조용 간격 하나만 있었다(크리틱 C-6):
+    ///
+    /// | # | 규약 | 여기 |
+    /// |---|---|---|
+    /// | ① | `didOpen` 뒤 **최소 1.5초**(실측: 갭 0ms=실패) | `PRIME_MIN_OPEN_GAP_MS` |
+    /// | ② | 마지막 변화로부터 조용 간격 · **기다리는 동안 또 바뀌면 다시 기다린다** | 아래 대기 루프 |
+    /// | ③ | 프라임 **도중** 변화가 오면 확정하지 않는다(다음 요청이 재프라임) | `dirty_gen` 대조 |
+    /// | ④ | 히트 0짜리 쿼리로 페이로드만 아낀다 | `PRIME_QUERY` |
+    /// | ⑤ | 동시 요청은 **한 번**만 프라임(2.6.2의 프라미스 공유) | `running` + condvar |
     fn prime_if_needed(&self) {
         let Reprime::WorkspaceSymbol { quiet_gap_ms } = self.spec.reprime else { return };
+        // ⑤ 이미 끝났으면 그냥 통과, 누가 돌고 있으면 그 끝을 기다린다(스탬피드 방지).
         {
-            if *self.primed.lock().unwrap() {
+            let mut p = self.prime.lock().unwrap();
+            loop {
+                if p.done {
+                    return;
+                }
+                if !p.running {
+                    break;
+                }
+                let (g, t) = self.prime_cv.wait_timeout(p, PRIME_TIMEOUT).unwrap();
+                p = g;
+                if t.timed_out() {
+                    return; // 앞선 프라임이 아직 안 끝났다 — 이 요청은 그냥 진행한다
+                }
+            }
+            p.running = true;
+        }
+        // ①② 최소 오픈 갭과 조용 간격을 **둘 다** 채운다. 자는 동안 또 바뀌면 남은
+        //     시간이 다시 늘어나 한 번 더 잔다(에이전트의 연속 편집을 한 프라임으로 합침).
+        loop {
+            let now = now_ms();
+            let open_left = PRIME_MIN_OPEN_GAP_MS
+                .saturating_sub(now.saturating_sub(self.last_open_ms.load(Ordering::Relaxed)));
+            let dirty_at = self.prime.lock().unwrap().dirty_at_ms;
+            let quiet_left =
+                if dirty_at > 0 { quiet_gap_ms.saturating_sub(now.saturating_sub(dirty_at)) } else { 0 };
+            let wait = open_left.max(quiet_left);
+            if wait == 0 {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(wait));
+        }
+        // ③ 왕복 **직전**의 세대를 들고 간다 — 돌아왔을 때 달라졌으면 낡은 프라임이다.
+        let gen_before = self.prime.lock().unwrap().dirty_gen;
+        let ok = self.rpc.request("workspace/symbol", json!({ "query": PRIME_QUERY }), PRIME_TIMEOUT).is_ok();
+        {
+            let mut p = self.prime.lock().unwrap();
+            p.running = false;
+            p.done = ok && p.dirty_gen == gen_before;
+        }
+        self.prime_cv.notify_all();
+    }
+
+    /// 프라임이 유효한 상태인가(테스트·진단).
+    #[allow(dead_code)]
+    pub fn primed(&self) -> bool {
+        self.prime.lock().unwrap().done
+    }
+
+    // ── 외부 파일 변화(앱을 거친 쓰기) ───────────────────────────────────────
+    /// 2.6.2 `notifyWatchedFiles`(manager.ts:2337)가 **한 서버에** 하던 네 가지를 그대로:
+    /// ① 재프라임 예약 ② 열린 문서의 디스크 재동기화 ③ 삭제 문서 `didClose`
+    /// ④ `workspace/didChangeWatchedFiles` 통지.
+    ///
+    /// ②가 없으면 "낡은 열린 사본"으로 컴파일이 확정돼, 그 파일의 새 타입을 참조하는
+    /// 다른 문서가 재프라임·재폴링을 다 해도 영영 무색으로 남는다(2.6.2 실측 주석).
+    pub fn files_changed(&self, paths: &[PathBuf]) {
+        if paths.is_empty() {
+            return;
+        }
+        // ① 재프라임 예약 — 조용 간격의 기준점이 여기서 갱신된다
+        if matches!(self.spec.reprime, Reprime::WorkspaceSymbol { .. }) {
+            self.mark_prime_dirty();
+        }
+        // ②③ 열린 문서만 손댄다. `docs` 잠금은 목록을 뜨는 동안만 쥔다 —
+        //     open_doc/close_doc이 그 잠금을 다시 잡기 때문이다.
+        let open: Vec<String> = self.docs.lock().unwrap().order.clone();
+        let mut changes: Vec<Value> = Vec::with_capacity(paths.len());
+        for p in paths {
+            let uri = path_to_uri(p);
+            let exists = p.exists();
+            changes.push(json!({ "uri": uri, "type": if exists { 2 } else { 3 } }));
+            // URI 대조는 대소문자 무시 — 통지 경로와 열람 경로의 케이싱이 다를 수 있다
+            let lower = uri.to_ascii_lowercase();
+            let Some(known) = open.iter().find(|u| u.to_ascii_lowercase() == lower) else { continue };
+            if exists {
+                let _ = self.open_doc(p); // mtime/size가 바뀌었으면 didChange가 나간다
+            } else {
+                self.close_doc(known); // 유령 문서가 컴파일에 남지 않게
+            }
+        }
+        // ④ 통지는 `declare_watched_files`와 무관하게 **항상** 보낸다 — 2.6.2와 같은
+        //   "pyright류를 위한 최선 노력"(선언은 서버의 폴백 워처를 끄는 스위치일 뿐이다).
+        self.rpc.notify("workspace/didChangeWatchedFiles", json!({ "changes": changes }));
+    }
+
+    /// 열린 문서 하나를 닫는다(삭제·축출). 서버 문서 맵과 우리 맵을 함께 지운다.
+    fn close_doc(&self, uri: &str) {
+        {
+            let mut docs = self.docs.lock().unwrap();
+            if docs.map.remove(uri).is_none() {
                 return;
             }
+            docs.order.retain(|u| u != uri);
         }
-        // 마지막 변화로부터 조용 간격을 보장 — 그 전 프라임은 "새 파일이 빠진 컴파일"을
-        // 완료로 확정하는 헛프라임이다(2.6.2 실측).
-        let dirty = self.prime_dirty_ms.load(Ordering::Relaxed);
-        if dirty > 0 {
-            let waited = now_ms().saturating_sub(dirty);
-            if waited < quiet_gap_ms {
-                std::thread::sleep(Duration::from_millis(quiet_gap_ms - waited));
-            }
-        }
-        let _ = self.rpc.request("workspace/symbol", json!({ "query": "" }), Duration::from_secs(60));
-        *self.primed.lock().unwrap() = true;
+        self.rpc.notify("textDocument/didClose", json!({ "textDocument": { "uri": uri } }));
     }
 
     // ── 기능 ────────────────────────────────────────────────────────────────
@@ -596,8 +761,17 @@ impl Server {
         Some(SemanticTokens { data: absolutize(&raw), types, mods })
     }
 
-    pub fn hover(&self, abs: &Path, line: u32, character: u32) -> Option<String> {
-        let uri = self.open_doc(abs).ok()?;
+    /// 문서를 서버와 맞춘다 — **저장 안 된 편집 버퍼(`text`)가 있으면 그것이 진실**이다.
+    /// (2.6.2 manager.ts:1994 `text != null ? syncBuffer(...) : openDoc(...)`와 같은 한 줄 분기)
+    fn sync_for_query(&self, abs: &Path, text: Option<&str>) -> Result<String, String> {
+        match text {
+            Some(t) => self.sync_buffer(abs, t.to_string()),
+            None => self.open_doc(abs),
+        }
+    }
+
+    pub fn hover(&self, abs: &Path, line: u32, character: u32, text: Option<&str>) -> Option<String> {
+        let uri = self.sync_for_query(abs, text).ok()?;
         let r = self
             .rpc
             .request(
@@ -610,8 +784,8 @@ impl Server {
         (!md.trim().is_empty()).then_some(md)
     }
 
-    pub fn definition(&self, abs: &Path, line: u32, character: u32) -> Vec<(PathBuf, u32, u32)> {
-        let Ok(uri) = self.open_doc(abs) else { return Vec::new() };
+    pub fn definition(&self, abs: &Path, line: u32, character: u32, text: Option<&str>) -> Vec<(PathBuf, u32, u32)> {
+        let Ok(uri) = self.sync_for_query(abs, text) else { return Vec::new() };
         let Ok(r) = self.rpc.request(
             "textDocument/definition",
             json!({ "textDocument": { "uri": uri }, "position": { "line": line, "character": character } }),

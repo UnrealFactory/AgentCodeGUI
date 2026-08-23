@@ -31,6 +31,18 @@ pub struct Rpc {
     stdin: Mutex<Option<ChildStdin>>,
     next_id: AtomicI64,
     shared: Arc<Shared>,
+    /// 서버가 `workspace/configuration`으로 물어오는 **섹션의 값**. 스펙이 준다
+    /// ([`crate::spec::ServerSpec::configuration`]) — 이 파일은 규약(arity)만 지킨다.
+    config: ConfigFn,
+}
+
+/// `(section) -> 값` — `None`이면 그 항목에 `null`을 돌려준다(2.6.2 `items.map(() => null)`).
+/// 언어별 설정(pyright의 `python.pythonPath`·Roslyn의 옵션 묶음)은 **전부 여기로** 들어온다.
+pub type ConfigFn = Box<dyn Fn(&str) -> Option<Value> + Send + Sync>;
+
+/// 아무 설정도 안 주는 서버(tsserver-ls) — 스펙이 `no_configuration`일 때 쓰는 기본값.
+pub fn null_config() -> ConfigFn {
+    Box::new(|_| None)
 }
 
 /// 서버가 보내오는 통지를 관찰하는 훅(`$/progress`·`projectInitializationComplete`).
@@ -39,7 +51,8 @@ pub type NotifyHook = Box<dyn Fn(&str, &Value) + Send + Sync>;
 
 impl Rpc {
     /// 자식의 stdio를 물고 읽기 스레드를 띄운다.
-    pub fn start(stdin: ChildStdin, stdout: ChildStdout, on_notify: NotifyHook) -> Arc<Rpc> {
+    /// `config`는 서버가 물어올 설정의 값 원천 — 스펙에서 온다(언어 특례가 여기 안 산다).
+    pub fn start(stdin: ChildStdin, stdout: ChildStdout, on_notify: NotifyHook, config: ConfigFn) -> Arc<Rpc> {
         let shared = Arc::new(Shared {
             pending: Mutex::new(HashMap::new()),
             cv: Condvar::new(),
@@ -49,6 +62,7 @@ impl Rpc {
             stdin: Mutex::new(Some(stdin)),
             next_id: AtomicI64::new(1),
             shared: shared.clone(),
+            config,
         });
         let reader_rpc = Arc::downgrade(&rpc);
         std::thread::Builder::new()
@@ -142,11 +156,33 @@ impl Rpc {
 }
 
 /// 서버→클라이언트 **요청**에 답한다. 답하지 않으면 서버 큐가 멈출 수 있다.
-fn answer_server_request(method: &str) -> Value {
+///
+/// **여기에 언어 이름이 나오면 설계 실패다.** 이 함수가 아는 것은 LSP 규약뿐이고,
+/// 값은 전부 `config`(= 스펙의 [`crate::spec::ServerSpec::configuration`])에서 온다.
+/// pyright를 붙일 때 이 파일이 다시 열리지 않는 이유가 이 갈래다.
+///
+/// `workspace/configuration`의 규약: 응답은 **`items` 수와 같은 길이의 배열**이다
+/// (2.6.2 `manager.ts:2478` `items.map(() => null)`). 빈 배열을 돌려주면 항목과 값을
+/// 인덱스로 짝짓는 서버(pyright·Roslyn)가 그 자리에서 예외를 던지거나 설정을 통째로 버린다.
+fn answer_server_request(method: &str, params: &Value, config: &ConfigFn) -> Value {
     match method {
-        // tsserver-ls가 실제로 보내는 것들
-        "workspace/configuration" => json!([]), // items 수만큼 null이 정석이지만 빈 배열도 수용된다
+        "workspace/configuration" => {
+            let Some(items) = params.get("items").and_then(Value::as_array) else {
+                // items가 없는 요청은 규약 위반 — 그래도 배열은 돌려준다(서버 큐가 멈추지 않게)
+                return json!([]);
+            };
+            Value::Array(
+                items
+                    .iter()
+                    .map(|i| {
+                        let section = i.get("section").and_then(Value::as_str).unwrap_or("");
+                        config(section).unwrap_or(Value::Null)
+                    })
+                    .collect(),
+            )
+        }
         "workspace/applyEdit" => json!({ "applied": false }),
+        // 진행률 토큰 생성 수락 — 이후 $/progress(백그라운드 인덱싱 %)가 흘러온다
         "window/workDoneProgress/create" => Value::Null,
         _ => Value::Null,
     }
@@ -206,7 +242,9 @@ fn dispatch(msg: &Value, shared: &Arc<Shared>, rpc: &std::sync::Weak<Rpc>, on_no
     if let (Some(m), Some(id)) = (method, id) {
         // 서버 → 클라이언트 요청
         if let Some(rpc) = rpc.upgrade() {
-            let _ = rpc.write(&json!({ "jsonrpc": "2.0", "id": id, "result": answer_server_request(m) }));
+            let params = msg.get("params").unwrap_or(&Value::Null);
+            let result = answer_server_request(m, params, &rpc.config);
+            let _ = rpc.write(&json!({ "jsonrpc": "2.0", "id": id, "result": result }));
         }
         return;
     }
@@ -237,11 +275,54 @@ fn find(hay: &[u8], needle: &[u8]) -> Option<usize> {
 
 #[cfg(test)]
 mod tests {
-    use super::find;
+    use super::*;
 
     #[test]
     fn finds_frame_separator() {
         assert_eq!(find(b"Content-Length: 5\r\n\r\nhello", b"\r\n\r\n"), Some(17));
         assert_eq!(find(b"nope", b"\r\n\r\n"), None);
+    }
+
+    /// **LSP 규약** — `workspace/configuration` 응답은 `items` 수만큼의 원소여야 한다.
+    /// R1은 `[]`를 돌려줬고(크리틱 C-5), 그건 pyright/Roslyn이 인덱스로 짝짓는 순간 깨진다.
+    #[test]
+    fn configuration_answer_has_one_element_per_item() {
+        let params = json!({ "items": [{ "section": "python" }, { "section": "python.analysis" }] });
+        let r = answer_server_request("workspace/configuration", &params, &null_config());
+        assert_eq!(r.as_array().map(Vec::len), Some(2), "{r}");
+        assert!(r[0].is_null() && r[1].is_null(), "설정이 없으면 항목마다 null (2.6.2 items.map(() => null))");
+    }
+
+    /// 값은 **스펙**이 준다 — 이 파일에 언어 이름이 없어도 pyright의 인터프리터가 실린다.
+    #[test]
+    fn configuration_values_come_from_the_spec_hook() {
+        let cfg: ConfigFn = Box::new(|section| match section {
+            "python" => Some(json!({ "pythonPath": "C:\\venv\\Scripts\\python.exe" })),
+            _ => None,
+        });
+        let params = json!({ "items": [{ "section": "python" }, { "section": "python.analysis" }] });
+        let r = answer_server_request("workspace/configuration", &params, &cfg);
+        assert_eq!(r[0]["pythonPath"], "C:\\venv\\Scripts\\python.exe");
+        assert!(r[1].is_null(), "스펙이 모르는 섹션은 null — 배열 길이는 그대로 2");
+    }
+
+    #[test]
+    fn configuration_without_items_still_answers_an_array() {
+        let r = answer_server_request("workspace/configuration", &json!({}), &null_config());
+        assert_eq!(r, json!([]));
+    }
+
+    #[test]
+    fn other_server_requests_keep_their_262_answers() {
+        assert_eq!(
+            answer_server_request("workspace/applyEdit", &Value::Null, &null_config()),
+            json!({ "applied": false })
+        );
+        assert_eq!(
+            answer_server_request("window/workDoneProgress/create", &Value::Null, &null_config()),
+            Value::Null
+        );
+        // 모르는 요청도 **반드시 답한다** — 안 답하면 서버 큐가 멈춘다
+        assert_eq!(answer_server_request("client/registerCapability", &Value::Null, &null_config()), Value::Null);
     }
 }
