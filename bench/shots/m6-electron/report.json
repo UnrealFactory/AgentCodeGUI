@@ -1,13 +1,13 @@
 {
   "app": "electron",
   "version": "2.6.2",
-  "at": "2026-08-22T23:32:39.342Z",
+  "at": "2026-08-23T03:01:44.401Z",
   "work": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-m6-repo",
   "checks": [
     {
       "id": "explorer-tree",
       "ok": true,
-      "ms": 375,
+      "ms": 374,
       "detail": {
         "rows": 28,
         "first": [
@@ -25,7 +25,7 @@
     {
       "id": "explorer-git-strip",
       "ok": true,
-      "ms": 2,
+      "ms": 1,
       "detail": {
         "branch": "feature/3.0.0-beta",
         "pills": [
@@ -37,7 +37,7 @@
     {
       "id": "viewer-code-read",
       "ok": true,
-      "ms": 1652,
+      "ms": 1662,
       "detail": {
         "cmLines": 36,
         "head": [
@@ -50,7 +50,7 @@
     {
       "id": "viewer-markdown",
       "ok": true,
-      "ms": 1285,
+      "ms": 1298,
       "detail": {
         "chars": 6543
       }
@@ -58,7 +58,7 @@
     {
       "id": "git-changes",
       "ok": true,
-      "ms": 769,
+      "ms": 783,
       "detail": {
         "rows": 0,
         "sample": [
@@ -80,7 +80,7 @@
     {
       "id": "git-history",
       "ok": true,
-      "ms": 140,
+      "ms": 131,
       "detail": {
         "commits": 100
       }
@@ -88,27 +88,27 @@
     {
       "id": "git-commit-detail",
       "ok": true,
-      "ms": 137,
+      "ms": 140,
       "detail": {
-        "chars": 2343,
-        "head": "R12 확인 크리틱 — 배선 R2·M5 R2 둘 다 확인(불일치 0), 남은 위험 6건"
+        "chars": 245,
+        "head": "진행 페이지 — R14 착지(귀속 완료: 표적은 렌더러+WebView2 / 큐·재개 단일화 / M6 치명 2"
       }
     },
     {
       "id": "big-diff-thousands",
       "ok": true,
-      "ms": 116,
+      "ms": 77,
       "detail": {
         "add": 500,
         "del": 500,
         "lines": 8500,
-        "ms": 116
+        "ms": 77
       }
     },
     {
       "id": "big-diff-cap-folds",
       "ok": true,
-      "ms": 58,
+      "ms": 80,
       "detail": {
         "error": "파일이 너무 커요 — diff 표시는 1.5MB까지만"
       }
@@ -116,7 +116,7 @@
     {
       "id": "alive-after-big-diff",
       "ok": true,
-      "ms": 1,
+      "ms": 0,
       "detail": {
         "treeRows": 28
       }
@@ -124,11 +124,11 @@
     {
       "id": "channel-surface",
       "ok": true,
-      "ms": 85,
+      "ms": 87,
       "detail": {
         "listDir": 30,
         "dirsFirst": true,
-        "listFiles": 773,
+        "listFiles": 813,
         "readChars": 3606,
         "readErr": null,
         "repo": true,
@@ -144,7 +144,7 @@
     {
       "id": "file-ops-write-path",
       "ok": true,
-      "ms": 240,
+      "ms": 243,
       "detail": {
         "made": true,
         "wrote": true,
@@ -158,9 +158,21 @@
       }
     },
     {
+      "id": "delete-goes-to-recycle-bin",
+      "ok": true,
+      "ms": 1163,
+      "detail": {
+        "before": 112,
+        "after": 113,
+        "delta": 1,
+        "foundInBin": true,
+        "cleaned": true
+      }
+    },
+    {
       "id": "local-image-scheme",
       "ok": true,
-      "ms": 11,
+      "ms": 9,
       "detail": {
         "ok": true,
         "w": 1472,
@@ -170,7 +182,7 @@
     {
       "id": "lsp-status-m7-boundary",
       "ok": true,
-      "ms": 1,
+      "ms": 0,
       "detail": {
         "status": "ready",
         "note": "2.6.2 기준"
@@ -178,8 +190,8 @@
     }
   ],
   "summary": {
-    "total": 14,
-    "ok": 14,
+    "total": 15,
+    "ok": 15,
     "failed": 0
   }
 }

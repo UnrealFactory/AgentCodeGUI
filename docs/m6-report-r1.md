@@ -276,3 +276,273 @@ git이 이미 있다. 파싱은 로케일·인용에 안 흔들리는 기계 출
 | `src-tauri/src/main.rs` | `ccg-img` 스킴 등록 |
 | `bench/m6.mjs` | 격리 홈 + 레포 클론 A/B 하네스(14~15 검사) |
 | `bench/shots/m6-{tauri,electron}/` | 캡처 + `report.json` |
+
+---
+
+# §R2 — 크리틱 판정에 대한 답 (`docs/critic/m6-r1.md`)
+
+크리틱 판정은 **조건부 확인**이었다: 이식의 본체는 재현됐고 수치는 전부 맞았지만,
+**파괴 경로 한 곳에서 2.6.2와 의미가 갈렸고 그 방향이 사용자 데이터 소실**이었다.
+이 라운드는 그 자리를 포함해 크리틱이 매긴 S1~S9 + §7 관찰 중 고칠 수 있는 것을 전부 밟았다.
+아래 수치는 **전부 이 라운드에서 다시 잰 실측**이고, 재현 도구는 크리틱이 남긴
+`docs/critic/tools/critic-m6-*`를 **그대로** 썼다(고친 사람이 저울까지 새로 만들지 않는다).
+
+## R2.0 한 줄 표
+
+| # | 크리틱 지적 | 상태 | 증거 |
+|---|---|---|---|
+| **S1** 치명 | 휴지통 없는 볼륨에서 조용히 영구 삭제 + `ok:true` | **고침** | subst `X:` → `ok=false`·**파일 생존**·휴지통 176→176 (2.6.2와 같은 답) |
+| **S2** 치명 | 동기 스킴 핸들러가 UI를 21초 얼림 | **고침** | UNC 블랙홀 요청 중 `IsHungAppWindow` 0회 · `SendMessageTimeout` **6ms 유지** |
+| **S3** 높음 | `ccg-img`에 `ACAO: *` (JS가 임의 이미지 바이트를 읽음) | **고침** | sandbox iframe(오리진 `null`) → `TypeError: Failed to fetch` + 서버가 403 |
+| **S4** 높음 | 잠긴 파일 되돌리기 = 인덱스만 지우고 유령 두 행 | **고침** | `still_in_index:true` · `status_after:["M:locked.txt"]` (R1: `["D:","A:"]`) |
+| **S5** 중간 | 32MB 캡을 "새 파일 +1 −0"으로 그림 | **고침** | 35MB blob → `"파일이 너무 커요 — diff 표시는 1.5MB까지만"` |
+| **S6** 중간 | `discard(".")`가 저장소 폴더 통째로 | **고침** | `discard_root_self: ok=false · repo_still_there=true` |
+| **S7** 중간 | 정렬 잔여 클래스 2개(전각 라틴·가나 상호) | **고침** | 클래스 대조 **0/3 · 0/2**, "hard" 풀 세트 불일치 192→**98** |
+| **S8** 낮음 | `(os error N)`·`On branch main`이 사용자 문구로 샘 | **고침** | `"지정된 경로를 찾을 수 없습니다."` · `"바뀐 내용이 없어요"` |
+| **S9** 낮음 | `git:status`가 2.6.2보다 1.5~2배 느림 | **고침** | 12회 중앙값 **tauri 46ms / electron 47ms** (R1: 61·80·132 vs 44·66) |
+| §6 격차 | 파괴 경로에 화면 증거 0 — "휴지통 +1" 저울이 없음 | **추가** | `bench/m6.mjs` 새 검사 `delete-goes-to-recycle-bin`(A/B 둘 다 `delta:1`) |
+| §7 R-3 | stderr 256KB 초과 시 EPIPE/교착 | **고침** | 캡을 넘어도 파이프를 끝까지 **비운다**(보관만 256KB) |
+| §7 R-4 | `%s`에 `\x1f`가 들어가면 칸이 밀림 | **고침** | 제목에 US를 심은 커밋으로 테스트(제목·본문·작성자 전부 무손상) |
+| §7 R-1·R-2·R-5·R-6 | 고정 픽스처 · CDP 캐스케이드 · 정션 · 볼륨 종류 | **안 고침** | R2.8 여백에 이유를 적었다 |
+
+게이트: `cargo test -p ccg-fs` **73 passed / 0 failed**(R1 61 → +12) ·
+`cargo clippy -p ccg-fs --all-targets` ccg-fs 경고 0 · `cargo clippy -p agentcodegui` 경고 0 ·
+`bench/m6.mjs both` **electron 15/15 · tauri 16/16**(값 전 항목 동수).
+
+## R2.1 S1 — 삭제 페일세이프: `IFileOperation` + `FOFX_RECYCLEONDELETE` + 진행 싱크
+
+`FOF_ALLOWUNDO`는 "**가능하면** 휴지통"이다. 휴지통이 없는 볼륨에서는 그냥 지우고 `rc=0`을
+돌려준다. Electron `shell.trashItem`이 같은 자리에서 실패하는 이유는 플래그가 아니라
+**진행 싱크**다 — `platform_util_win.cc`의 `DeleteFileProgressSink::PreDeleteItem`이
+`TSF_DELETE_RECYCLE_IF_POSSIBLE`이 안 켜져 있으면 `E_ABORT`를 돌려 작업을 끊는다.
+`crates/ccg-fs/src/file.rs`의 `trash`를 그 구조로 갈아 끼웠다(`RecycleOnlySink`).
+
+`subst X:`(휴지통 없는 볼륨)에서 **두 앱을 같은 조건으로** 재측정:
+
+```
+                           op_ok   file_gone   휴지통 항목
+3.0 R1 (SHFileOperationW)  true    true        162 → 162   ← 영구 삭제 + 성공 보고
+3.0 R2 (IFileOperation)    FALSE   FALSE       176 → 176   ← 거부, 파일 생존
+2.6.2  (shell.trashItem)   false   false       110 → 110   ← 같은 답
+대조군 C:                  세 경우 모두 true · 휴지통 +1     ← 여기선 원래도 같았다
+```
+
+잃지 않은 것도 못으로 박았다(휴지통 API를 바꾸면 깨지기 쉬운 자리):
+
+```
+긴 경로 346자   ok=true · 휴지통 +1   (2.6.2 345자도 +1)
+폴더 통째      ok=true · 휴지통 +1   (미추적 폴더 되돌리기의 반경)
+없는 경로      ok=false             (성공으로 위장하지 않는다)
+네이티브 창    0개                  (FOF_NO_UI — 인라인 오류 규약 유지)
+```
+
+## R2.2 §6 격차 — `bench/m6.mjs`에 "휴지통 +1" 저울을 넣었다
+
+크리틱이 지목한 대로, R1의 `file-ops-write-path`는 `deletePath`를 부르고 **없어졌는지만**
+봤다. 삭제의 계약은 "없어졌다"가 아니라 "휴지통에 들어갔다"다. 새 검사
+`delete-goes-to-recycle-bin`은 두 저울을 같이 본다 — ① 휴지통 **항목 수 +1**,
+② `$Recycle.Bin`의 `$I` 메타에서 **바로 그 파일**을 찾는다. A/B 결과:
+
+```
+electron 2.6.2   {"before":112,"after":113,"delta":1,"foundInBin":true,"cleaned":true}
+tauri    3.0     {"before":114,"after":115,"delta":1,"foundInBin":true,"cleaned":true}
+```
+
+②는 뒷정리도 겸한다(`cleaned:true`) — 하네스가 사용자 휴지통에 시험 잔해를 남기지 않는다.
+같은 규약을 크레이트 테스트에도 넣었다(`SHQueryRecycleBin` 항목 수 + `$I` 되지우기):
+`delete_lands_in_the_recycle_bin_not_the_void` ·
+`a_path_past_max_path_still_reaches_the_recycle_bin` ·
+`deleting_a_folder_takes_the_whole_subtree_to_the_bin`.
+
+## R2.3 S2 — 스킴 핸들러를 비동기로
+
+`register_uri_scheme_protocol` → `register_asynchronous_uri_scheme_protocol`.
+핸들러는 URI만 받아 **워커 풀**에 넘기고 즉시 돌아온다(`main.rs` `img_serve`).
+워커 4개는 2.6.2의 `fs.promises.readFile`이 돌던 **libuv 기본 스레드풀과 같은 폭**이다 —
+느린 경로 하나가 큐를 막는 성질까지 같은 자리에 둔다(요청마다 스레드를 만들면 악의적
+페이지가 스레드를 무한히 만든다).
+
+크리틱과 같은 도구(`critic-m6-live.mjs`: 도달 불가 UNC `\\10.255.255.1\share\a.png` 한 장을
+`<img>`로 걸고 `SendMessageTimeout(WM_NULL, 2s)` + `IsHungAppWindow`):
+
+```
+                 요청 전            요청 중(1.2s)        요청 중(2.4s)
+3.0 R1          True|6ms|False     FALSE|2016ms|False   FALSE|2013ms|TRUE
+3.0 R2          True|6ms|False     True|6ms|False       True|6ms|False    ← 정지 0
+2.6.2           True|7ms|False     True|6ms|False       True|6ms|False
+```
+
+이 회귀는 R1 시점엔 "아직 안 터진다"였는데, 그 사이 M-UX R3이 `imageSrc()`를
+`http://ccg-img.localhost/…`로 붙여 **지금은 실제로 닿는 경로**가 됐다. 크리틱이 예고한
+그대로다.
+
+> 남는 성질(2.6.2와 같음): 크레이트 직접 호출 `serve::image_response`는 여전히 21초 걸린다
+> (도달 불가 UNC의 `std::fs::metadata`가 그렇다). 바뀐 것은 **그 21초를 누가 기다리느냐**다 —
+> UI 스레드가 아니라 워커 하나다.
+
+## R2.4 S3 — CORS 회수: `*` → 앱 오리진 하나
+
+`ACAO: *`를 지우고 `ccg_fs::serve::cors_allows`(테스트 있음)가 허락한 오리진만 되돌려준다.
+표에 있는 것은 `http(s)://tauri.localhost`뿐이고, vite dev 서버(`localhost:5273`)는
+**디버그 빌드에서만**이다. 그리고 브라우저의 CORS 강제에 기대지 않는다 — `Origin`이 붙은
+요청(=스크립트가 부른 fetch/XHR)이 표 밖이면 **바이트를 아예 안 내보낸다(403)**.
+`<img>`·CSS 배경 같은 no-cors 로드는 `Origin`을 안 보내므로 그림 그리기는 영향이 없다.
+
+실측(살아 있는 앱, 같은 `secret.json.png`):
+
+```
+                                    R1        R2
+앱 오리진 fetch(tauri.localhost)     200 읽힘   200 읽힘   ← 의도(이 오리진은 fs:read-file도 쓴다)
+sandbox iframe fetch(오리진 null)    200 읽힘   TypeError: Failed to fetch   ← 닫혔다
+```
+
+`null` 오리진이 바로 크리틱이 말한 "청중"이다(sandbox iframe · SVG 문서 · 앞으로 올
+`ccg-page` 미리보기 — Tauri IPC가 없어 `fs:read-file`을 못 부르는 컨텍스트).
+서빙 판정표 자체(확장자 화이트리스트 · 64MB 캡 · 경로 제한 없음)는 2.6.2 그대로 두었다 —
+크리틱이 "탈출은 오해다"라고 확인한 부분이다.
+
+## R2.5 S4·S6 — 되돌리기의 반경
+
+`git::discard`에 가드 세 겹을 넣었다.
+
+1. **뿌리·`.git` 거절.** `abs_of`는 `resolve_lexical(root, ".") == root`를 통과시켜서
+   R1의 `discard(cwd, ".", untracked=true)`가 저장소를 통째로 휴지통에 넣었다.
+   → `discard_root_self: {"ok":false,"err":"잘못된 경로","repo_still_there":true}`
+   (R1: `ok:true` · `repo_still_there:false`). `.git` 아래도 같은 문구로 막는다.
+2. **checkout 실패를 "새 파일"로 읽지 않는다.** R1은 `git checkout HEAD -- rel`이 실패하면
+   무조건 "HEAD에 없던 파일"로 보고 `rm --cached` → 휴지통으로 갔다. 실패 이유는 그것만이
+   아니다(잠김·권한). 이제 `git cat-file -e HEAD:rel`로 **git에 직접 물어** HEAD에 있으면
+   아무것도 지우지 않고 진짜 사유를 돌려준다.
+3. **인덱스는 파일이 실제로 휴지통에 들어간 뒤에만 만진다.** 순서를 뒤집었다.
+
+잠긴 추적 파일에 되돌리기(크리틱 `critic-m6-attack2.rs` 그대로):
+
+```
+R1  discard_ok=false "파일을 휴지통으로 보내지 못했어요"
+    still_in_index=FALSE   status_after=["D:locked.txt","A:locked.txt"]   ← 유령 두 행
+R2  discard_ok=false "unable to unlink old 'locked.txt': Invalid argument"
+    still_in_index=TRUE    status_after=["M:locked.txt"]                  ← 아무것도 안 바뀌었다
+```
+
+문구가 바뀐 것도 의도다 — 휴지통은 시도조차 안 했으므로 "휴지통으로 보내지 못했어요"는
+거짓말이었다. 새로 add된 파일이 잠긴 경우도 같은 규약이다(테스트
+`discard_on_a_locked_new_file_keeps_the_index_intact`).
+
+**정상 반경은 그대로다**(크리틱이 "전부 옳았다"고 적은 목록을 회귀로 다시 확인):
+
+```
+추적 파일 되돌리기  워크트리 "orig" · 인덱스도 "orig"       ✅
+다른 파일 스테이징  "other-staged" 그대로                   ✅
+새로 add된 파일     인덱스에서 빠지고 파일은 휴지통           ✅
+미추적 폴더         하위까지 통째로 휴지통(2.6.2와 같음)      ✅
+../ · 절대경로      "잘못된 경로" · 바깥 파일 생존            ✅
+index.lock          실패하고 아무것도 안 지움                 ✅
+```
+
+> 미추적 **폴더 한 행 = 서브트리 통째**는 2.6.2와 같은 의미라 그대로 뒀다(`shell.trashItem(dir)`).
+> 확인 카드 문구는 렌더러(`app/`) 소관이라 이 라운드 경계 밖이다 — R2.8에 남긴다.
+
+## R2.6 S5 — 32MB 캡이 "새 파일"로 둔갑하지 않는다
+
+`show_at`이 `Option<String>`이라 **"HEAD에 없다"와 "못 읽었다"가 같은 값**이었다.
+`Blob { Text · Absent · TooBig · Unreadable }`로 갈랐다. 성공 경로는 한 글자도 안 바뀐다 —
+`git show`가 성공하면 그대로 `Text`고, 갈래는 **실패했을 때만** 판정한다
+(`exec`의 새 `over` 플래그 → `TooBig`, 아니면 `cat-file -e`로 존재 여부).
+
+35MB blob이 HEAD에 있고 사용자가 파일을 한 줄로 줄인 상태:
+
+```
+R1  { error: null, tag: "new", add: 1, del: 0, lines: 2 }        ← 70만 줄 손실이 "초록 한 줄"
+R2  { error: "파일이 너무 커요 — diff 표시는 1.5MB까지만" }         ← 되돌리기 옆에 사유가 뜬다
+파일을 아예 지운 경우도 같은 사유(R1은 "내용을 읽을 수 없어요" + head_content 없음)
+```
+
+같은 갈래를 `commit_file_diff`에도 적용했다. 32MB 캡 자체는 그대로다 — 리포트 §3의
+"반쪽 출력을 파싱해 거짓말하지 않는다"가 이제 `file_diff`까지 사실이다.
+
+## R2.7 S7 — 정렬 잔여 클래스 둘
+
+`weight()` 앞단에 폭·가나 접기를 넣었다(`fold_width_and_kana`). ICU가 **폭과 가나 종류를
+3차 가중치로만** 보기 때문이다.
+
+- 전각 ASCII `U+FF01..U+FF5E` → ASCII(`-0xFEE0`), `U+3000` → 공백
+- 가타카나 `U+30A1..U+30F6` → 히라가나(`-0x60`), 반복 기호 `U+30FD..FE`도 같이
+
+크리틱의 교차검증기를 **그대로** 다시 돌린 결과:
+
+```
+클래스별 쌍 대조 (critic-m6-collate2.mjs)
+  전각 라틴   R1 2/3 mismatch  →  R2 **0/3**
+  가나 상호   R1 1/2 mismatch  →  R2 **0/2**
+  한자↔한글   R1 1/3           →  R2 1/3   (남김 — 아래)
+  나머지 9클래스 전부 0
+
+세트 단위 (critic-m6-collate.mjs, 같은 시드)
+  실제 머신 이름 600세트   1 (0.2%)  → 1 (0.2%)   그 1건은 문서화된 `App`/`app` tie-break
+  realish-30  600세트     23 (3.8%) → 23 (3.8%)  전부 같은 대소문자 tie-break
+  hard-but-real 600세트   192 (32%) → **98 (16.3%)**
+  random-soup  400세트    90        → 90         (세트 판정이 이진이라 한자 클래스가 가린다)
+```
+
+전체 목록 한 방 정렬에서 `ＦＵＬＬ幅.txt`는 이제 **ICU와 같은 자리(24번)**에 앉는다
+(R1은 목록 끝으로 다섯 칸 밀렸다). `カタカナ.txt`도 `ひらがな.txt` 앞으로 왔다.
+
+남긴 것 두 클래스, 이유를 정확히 적는다:
+
+- **한자↔한글** — ICU의 `ko` 데이터는 한자를 **한국어 독음**으로 정렬한다(`字`는 "자" 자리,
+  `漢`은 "한" 자리). R1 리포트가 "부수-획순"이라 적은 건 틀렸다. 맞추려면 한자 5천여 자의
+  독음 표를 바이너리에 넣어야 하고(릴리즈는 `opt-level="s"`), 지금의 계층 근사
+  (한글 전체 → 한자 전체)는 실사용 이름에서 대체로 같은 답을 낸다.
+- **2글자 확장(`æ→ae`·`ß→ss`)** — 한 글자 근사로 남긴다. 전체 목록에서
+  `æther.txt`/`Ångström.csv`의 앞뒤 하나가 어긋난다(이웃까지는 맞다).
+
+## R2.8 남은 것 · 안 한 것 (정직한 여백)
+
+- **확인 카드 문구/스코프**(미추적 폴더 되돌리기가 서브트리 통째라는 걸 사용자에게 알리는 일)는
+  `app/`이라 이번 경계 밖이다. 채널 쪽 방어(뿌리·`.git` 거절)만 넣었다.
+- **§7 R-1 고정 픽스처** — `bench/m6.mjs`는 여전히 살아 있는 실 레포를 클론한다.
+  이번 실행의 `listFiles 813` · `커밋 상세 245자`도 그 시점 HEAD 값이라 **회귀 기준선이
+  아니다**(A/B 동수만 의미가 있다). 픽스처 레포를 박는 건 하네스 설계 변경이라 다음 라운드로.
+- **§7 R-2 CDP 캐스케이드**(`ab.mjs`의 `viewer-loading` 뒤) — 하네스 성질이고 두 앱 공통.
+- **§7 R-5 정션이 `dir:false`** — 2.6.2부터의 동작이라 손대면 A/B가 깨진다.
+- **§7 R-6 볼륨 종류** — `subst`만 실측했다. 네트워크·이동식·`NukeOnDelete=1`은 문서상
+  같은 클래스고, 이제는 **셸이 판단**한다(우리가 플래그로 흉내내지 않는다) — 그 셋에서도
+  `TSF_DELETE_RECYCLE_IF_POSSIBLE`이 안 켜지면 같은 자리에서 멈춘다.
+- **`serve::image_response`의 21초** 자체는 그대로다(R2.3 각주).
+- **2.6.2와 남은 의미 차이 1건**: 앱 오리진의 `fetch`가 `ccg-img` 바이트를 읽을 수 있다
+  (2.6.2는 `file://` 오리진이라 못 읽었다). 그 오리진은 `fs:read-file`로 이미 임의 경로를
+  읽으므로 새 권한이 아니고, `<img>`만 쓰는 지금은 실질 차이가 0이다. 완전한 동수를 원하면
+  `cors_allows`를 빈 표로 만들면 된다(한 줄).
+- **오류 문구 2건이 2.6.2와 다르다(의도)**: 없는 드라이브 쓰기는 3.0이
+  `"지정된 경로를 찾을 수 없습니다."`(2.6.2 `ENOENT: … open 'Z:\nope\nope.txt'`),
+  바뀐 게 없는데 커밋은 3.0이 `"바뀐 내용이 없어요"`(2.6.2 `"On branch main"`).
+  둘 다 크리틱이 §S8에서 "사용자 문구에 있을 물건이 아니다"라고 적은 자리다.
+
+## R2.9 이 라운드가 만진 파일
+
+| 경로 | 무엇 |
+|---|---|
+| `crates/ccg-fs/src/file.rs` | `trash` → `IFileOperation`+`FOFX_RECYCLEONDELETE`+`RecycleOnlySink` · `io_msg`의 `(os error N)` 제거 · 휴지통 저울 테스트 4 |
+| `crates/ccg-fs/src/git.rs` | `discard` 가드 3겹 · `show_at`→`Blob` 4갈래 · `status` 두 git 동시 실행 · stderr 완전 배출 · `log`/`commit_detail` 칸 밀림 차단 · "바뀐 내용이 없어요" · 테스트 5 |
+| `crates/ccg-fs/src/serve.rs` | `cors_allows` 판정표 + 테스트 |
+| `crates/ccg-fs/src/collate.rs` | `fold_width_and_kana`(전각·가나) + 테스트 2 |
+| `crates/ccg-fs/Cargo.toml` | `Win32_System_Com` · `windows-core`(`#[implement]`가 절대 경로를 쓴다) |
+| `src-tauri/src/main.rs` | 비동기 스킴 등록 + `img_serve` 워커 풀 4 + `img_response`(CORS 판정·403) |
+| `bench/m6.mjs` | `delete-goes-to-recycle-bin` 검사 + 휴지통 저울/뒷정리 헬퍼 |
+
+## R2.10 재현 방법
+
+```bash
+CARGO_TARGET_DIR=%TEMP%/m6r2 cargo test -p ccg-fs               # 73 green
+CARGO_TARGET_DIR=%TEMP%/m6r2 cargo clippy -p ccg-fs --all-targets
+cargo build --release --features custom-protocol -p agentcodegui
+node bench/m6.mjs both                                          # 15/15 · 16/16
+
+# 크리틱 도구 (examples/·bench/로 복사해 돌린다 — 레포에는 안 남긴다)
+cp docs/critic/tools/critic-m6-attack*.rs crates/ccg-fs/examples/
+cp docs/critic/tools/critic-m6-{live,live2,collate,collate2}.mjs bench/
+subst X: %TEMP%\m6r2-subst        # 휴지통 없는 볼륨. 끝나면 subst X: /D
+cargo run --release -p ccg-fs --example critic_attack2          # S1·S4·S5
+node bench/critic-m6-live.mjs both                              # S2 정지 · S3 CORS
+node docs/critic/tools/critic-m6-collate2.mjs <critic_collate.exe>  # S7
+```

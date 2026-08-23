@@ -30,6 +30,63 @@ const WORK = path.join(os.tmpdir(), 'ccg-m6-repo')
 const git = (cwd, args) =>
   execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
 
+// ── 휴지통 저울 ───────────────────────────────────────────────────────────────
+//
+// 크리틱 R1 §6이 지목한 **빠진 눈금**: R1의 `file-ops-write-path`는 deletePath를
+// 부르고 "없어졌나"만 봤다. 그런데 삭제의 계약은 "없어졌다"가 아니라
+// **"휴지통에 들어갔다"**다 — 그 눈금이 없어서 휴지통 없는 볼륨에서 조용히 영구
+// 삭제하는 회귀(§S1)가 A/B를 통과했다. 여기서 두 저울을 같이 본다:
+//   ① 휴지통 **항목 수 +1**(Shell.Application NameSpace(10))
+//   ② 그 항목이 **바로 그 파일**인지 (`$Recycle.Bin`의 `$I` 메타에 원본 경로가 있다)
+// ②는 뒷정리도 겸한다 — 시험 잔해를 사용자 휴지통에 남기지 않는다.
+const ps = (cmd) => {
+  try {
+    return execFileSync('powershell', ['-NoProfile', '-NonInteractive', '-Command', cmd], {
+      encoding: 'utf8',
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'ignore']
+    }).trim()
+  } catch {
+    return ''
+  }
+}
+const recycleCount = () => {
+  const n = Number(ps('@((New-Object -ComObject Shell.Application).NameSpace(10).Items()).Count'))
+  return Number.isFinite(n) ? n : -1
+}
+/** 휴지통에서 이 절대 경로로 삭제된 항목의 `$R…` 실제 경로 (없으면 null) */
+function recycleEntryFor(absPath) {
+  const drive = absPath.slice(0, absPath.indexOf(':') + 1) || 'C:'
+  const bin = path.join(drive + '\\', '$Recycle.Bin')
+  const want = absPath.toLowerCase()
+  let sids = []
+  try { sids = fs.readdirSync(bin) } catch { return null }
+  for (const sid of sids) {
+    let names = []
+    try { names = fs.readdirSync(path.join(bin, sid)) } catch { continue }
+    for (const n of names) {
+      if (!n.startsWith('$I')) continue
+      let buf
+      try { buf = fs.readFileSync(path.join(bin, sid, n)) } catch { continue }
+      if (buf.length < 30) continue
+      // $I 포맷 v2: 헤더8 · 원본크기8 · 삭제시각8 · 경로길이4 · UTF-16LE 경로
+      const s = buf.subarray(28).toString('utf16le').split('\0')[0]
+      if (s.toLowerCase() === want) return path.join(bin, sid, '$R' + n.slice(2))
+    }
+  }
+  return null
+}
+/** 시험이 넣은 항목을 사용자 휴지통에서 되지운다(최선 노력) */
+function recyclePurge(absPath) {
+  const r = recycleEntryFor(absPath)
+  if (!r) return false
+  const base = path.basename(r)
+  if (!r.includes('$Recycle.Bin') || !base.startsWith('$R')) return false
+  try { fs.rmSync(r, { recursive: true, force: true }) } catch { /* 잠김 */ }
+  try { fs.rmSync(path.join(path.dirname(r), '$I' + base.slice(2)), { force: true }) } catch { /* 잠김 */ }
+  return true
+}
+
 // ── 작업 폴더(클론) 준비 ───────────────────────────────────────────────────────
 function makeWorkRepo() {
   fs.rmSync(WORK, { recursive: true, force: true })
@@ -349,6 +406,30 @@ async function run(kind) {
       if (r.back !== 'hello\nworld\n') throw new Error(`읽기 왕복 불일치: ${JSON.stringify(r.back)}`)
       if (fs.existsSync(path.join(WORK, 'm6-moved.txt'))) throw new Error('삭제됐어야 할 파일이 남아 있다')
       return r
+    })
+
+    // ── 11b. 삭제의 **행선지** — 파일이 휴지통에 들어가나 (크리틱 R1 §S1·§6) ──
+    //     "없어졌다"만 재던 눈금에 하나를 더한다. 2.6.2(shell.trashItem)와 3.0이
+    //     같은 답을 내야 한다: 항목 수 +1 · 그 항목이 바로 그 파일.
+    await check('delete-goes-to-recycle-bin', async () => {
+      const name = `m6-trash-${kind}-${Date.now()}.txt`
+      const abs = path.join(WORK, name)
+      fs.writeFileSync(abs, '휴지통으로 가야 한다\n')
+      const before = recycleCount()
+      const r = await cdp.eval(
+        `window.api.deletePath(${JSON.stringify(WORK)}, ${JSON.stringify(name)})`,
+        { awaitPromise: true, timeoutMs: 30000 }
+      )
+      await sleep(800)
+      const after = recycleCount()
+      const entry = recycleEntryFor(abs)
+      const cleaned = recyclePurge(abs) // 사용자 휴지통에 시험 잔해를 남기지 않는다
+      if (!r?.ok) throw new Error(`삭제가 실패했다: ${JSON.stringify(r)}`)
+      if (fs.existsSync(abs)) throw new Error('파일이 그대로 있다')
+      if (before < 0 || after < 0) throw new Error('휴지통 항목 수를 못 셌다(PowerShell)')
+      if (after <= before) throw new Error(`휴지통 항목이 안 늘었다 = 영구 삭제 (${before} → ${after})`)
+      if (!entry) throw new Error(`휴지통에 그 파일이 없다: ${abs}`)
+      return { before, after, delta: after - before, foundInBin: true, cleaned }
     })
 
     // ── 12a. 채널 면 감사 — fs/shell/git 상수를 **하나씩** 때려 미구현을 센다.

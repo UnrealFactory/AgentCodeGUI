@@ -36,6 +36,89 @@ fn acquire_home_lock() -> Option<std::fs::File> {
     }
 }
 
+// ── ccg-img 서빙 ────────────────────────────────────────────────────────────
+
+/// 이미지 서빙 워커 수. 2.6.2의 `fs.promises.readFile`이 돌던 **libuv 기본
+/// 스레드풀과 같은 폭**이다 — 느린 경로 하나가 큐를 막는 성질까지 같은 자리에 둔다.
+/// (`spawn` 1개/요청으로 하면 악의적 페이지가 스레드를 무한히 만든다)
+const IMG_WORKERS: usize = 4;
+
+type ImgJob = Box<dyn FnOnce() + Send + 'static>;
+
+/// 서빙 작업을 워커 풀에 넘긴다 — **UI 스레드에서 디스크를 만지지 않는다**(§S2).
+fn img_serve(job: impl FnOnce() + Send + 'static) {
+    use std::sync::{mpsc, Arc, Mutex, OnceLock};
+    static POOL: OnceLock<Mutex<mpsc::Sender<ImgJob>>> = OnceLock::new();
+    let tx = POOL.get_or_init(|| {
+        let (tx, rx) = mpsc::channel::<ImgJob>();
+        let rx = Arc::new(Mutex::new(rx));
+        for i in 0..IMG_WORKERS {
+            let rx = rx.clone();
+            let _ = std::thread::Builder::new().name(format!("ccg-img-{i}")).spawn(move || loop {
+                // 락은 recv가 끝나면 바로 놓는다 — 일하는 동안은 다른 워커가 받는다
+                let job = {
+                    let g = rx.lock().unwrap_or_else(|e| e.into_inner());
+                    g.recv()
+                };
+                match job {
+                    Ok(j) => j(),
+                    Err(_) => break, // 발신자 소멸 = 종료
+                }
+            });
+        }
+        Mutex::new(tx)
+    });
+    let job: ImgJob = Box::new(job);
+    let sent = {
+        let g = tx.lock().unwrap_or_else(|e| e.into_inner());
+        g.send(job)
+    };
+    // 풀이 통째로 죽은 경우(정상 경로에는 없다) — 요청을 영영 매달아 두느니
+    // 여기서 처리한다. 느려질지언정 뷰어가 스피너로 굳지는 않는다.
+    if let Err(std::sync::mpsc::SendError(job)) = sent {
+        job();
+    }
+}
+
+/// URI 하나 → HTTP 응답. 워커 스레드에서만 불린다.
+fn img_response(uri: &str, origin: Option<&str>) -> tauri::http::Response<Vec<u8>> {
+    use tauri::http::{header, Response, StatusCode};
+    let not_found = || {
+        Response::builder()
+            .status(StatusCode::NOT_FOUND)
+            .body(Vec::new())
+            .unwrap_or_else(|_| Response::new(Vec::new()))
+    };
+    // ★R4 — 귀속 팔(`CCG_NO_FS`). 스킴 자체는 남기고 **서빙만** 끊는다:
+    // 등록을 조건부로 하면 wry가 만드는 스킴 핸들러 테이블이 팔마다 달라져
+    // 비교 대상이 흔들린다(재는 것은 `ccg-fs`가 상주로 쓰는 몫이다).
+    if crate::flags::no_fs() {
+        return not_found();
+    }
+    // ── CORS는 **앱 오리진에만** 연다 (§S3) ──────────────────────────────────
+    // `Origin`이 붙었다 = 스크립트가 부른 요청(fetch/XHR)이다. `<img>`·CSS 배경 같은
+    // no-cors 로드는 이 헤더를 안 보내므로 그림 그리기는 아무 영향이 없다.
+    // 허용 목록 밖이면 **바이트를 아예 안 내보낸다** — 브라우저의 CORS 강제에 기대지
+    // 않는 이유는, 그 강제가 WebView2 버전마다 다르면 조용히 구멍이 열리기 때문이다
+    // (실측으로는 지금 WebView2도 막는다: sandbox iframe → TypeError: Failed to fetch).
+    let allowed = origin.map(|o| (o, ccg_fs::serve::cors_allows(o)));
+    if let Some((_, false)) = allowed {
+        return Response::builder()
+            .status(StatusCode::FORBIDDEN)
+            .body(Vec::new())
+            .unwrap_or_else(|_| Response::new(Vec::new()));
+    }
+    let Some((mime, bytes)) = ccg_fs::serve::image_response(uri) else { return not_found() };
+    let mut b = Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, mime)
+        .header(header::CACHE_CONTROL, "no-cache");
+    if let Some((o, true)) = allowed {
+        b = b.header(header::ACCESS_CONTROL_ALLOW_ORIGIN, o).header(header::VARY, "Origin");
+    }
+    b.body(bytes).unwrap_or_else(|_| Response::new(Vec::new()))
+}
+
 fn main() {
     // 락은 프로세스 수명 동안 살아 있어야 한다(드랍되면 핸들이 닫혀 잠금이 풀린다)
     let Some(_lock) = acquire_home_lock() else {
@@ -52,37 +135,21 @@ fn main() {
         // 이미지/SVG 보기가 2.6.2부터 이 전용 스킴으로 바이트를 받아 간다.
         // 서빙 판정은 전부 `ccg_fs::serve`에 있다(2.6.2 IMG_EXTS 표 그대로 + 64MB 캡).
         //
-        // ★ 아직 렌더러가 이 URL을 만들지 못한다: `app/src/lib/images.ts imageSrc()`가
-        //   `ccg-img://local/?p=…`를 돌려주는데, **WebView2는 비표준 스킴을 못 받는다**.
-        //   wry는 그래서 커스텀 스킴을 `http://<scheme>.localhost/…`로 바꿔 거는데
-        //   (wry-0.55 webview2/mod.rs `work_around_uri_prefix`), 렌더러가 만든 리터럴
-        //   `ccg-img://`는 그 필터에 안 걸린다. 셸 쪽(여기)은 두 모양을 다 받게 해 뒀으니
-        //   렌더러 한 줄만 바뀌면 붙는다 — 자세한 건 docs/m6-report-r1.md §미구현.
-        .register_uri_scheme_protocol("ccg-img", |_ctx, request| {
-            use tauri::http::{header, Response, StatusCode};
-            // ★R4 — 귀속 팔(`CCG_NO_FS`). 스킴 자체는 남기고 **서빙만** 끊는다:
-            // 등록을 조건부로 하면 wry가 만드는 스킴 핸들러 테이블이 팔마다 달라져
-            // 비교 대상이 흔들린다(재는 것은 `ccg-fs`가 상주로 쓰는 몫이다).
-            if crate::flags::no_fs() {
-                return Response::builder()
-                    .status(StatusCode::NOT_FOUND)
-                    .body(Vec::new())
-                    .unwrap_or_else(|_| Response::new(Vec::new()));
-            }
-            match ccg_fs::serve::image_response(&request.uri().to_string()) {
-                Some((mime, bytes)) => Response::builder()
-                    .status(StatusCode::OK)
-                    .header(header::CONTENT_TYPE, mime)
-                    .header(header::CACHE_CONTROL, "no-cache")
-                    // sandbox iframe·CORS 요청도 같은 답을 받게 (2.6.2 ccg-page와 같은 관례)
-                    .header(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
-                    .body(bytes)
-                    .unwrap_or_else(|_| Response::new(Vec::new())),
-                None => Response::builder()
-                    .status(StatusCode::NOT_FOUND)
-                    .body(Vec::new())
-                    .unwrap_or_else(|_| Response::new(Vec::new())),
-            }
+        // ★ **비동기** 등록이다(R2). 동기 `register_uri_scheme_protocol`은 핸들러를
+        //   UI 스레드에서 돌리는데, 안에서 `std::fs::metadata` → `std::fs::read`를 그냥
+        //   돈다. 도달 불가 UNC 경로 한 장(`\\10.255.255.1\share\a.png`)이면 그 호출이
+        //   **21초** 걸리고 그동안 창이 통째로 "응답 없음"이 된다(크리틱 R1 §S2 실측:
+        //   IsHungAppWindow=True). 2.6.2는 `protocol.handle(async … fs.promises)`라
+        //   libuv 스레드풀에서 돌아 메인 프로세스를 안 잡는다. 아래 워커 풀이 그 자리다.
+        .register_asynchronous_uri_scheme_protocol("ccg-img", |_ctx, request, responder| {
+            let uri = request.uri().to_string();
+            // CORS 판정에 쓸 요청 오리진(없으면 `<img>` 같은 no-CORS 로드 — 헤더 불필요)
+            let origin = request
+                .headers()
+                .get(tauri::http::header::ORIGIN)
+                .and_then(|v| v.to_str().ok())
+                .map(str::to_string);
+            img_serve(move || responder.respond(img_response(&uri, origin.as_deref())));
         })
         .invoke_handler(tauri::generate_handler![ipc::ipc_call])
         .setup(|app| {

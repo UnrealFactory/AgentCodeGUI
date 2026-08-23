@@ -150,6 +150,16 @@ struct Out {
     ok: bool,
     stdout: String,
     stderr: String,
+    /// stdout이 `MAX_OUTPUT`을 넘어 자식을 죽였다. `ok:false`의 **이유**를 가르는 신호다 —
+    /// 이게 없으면 "HEAD에 그 파일이 없다"와 구분이 안 돼 35MB blob이 "새 파일 +1 −0"으로
+    /// 그려진다(크리틱 R1 §S5).
+    over: bool,
+}
+
+impl Out {
+    fn failed() -> Out {
+        Out { ok: false, stdout: String::new(), stderr: String::new(), over: false }
+    }
 }
 
 /// `git -C <root> <args>`. 콘솔 창을 띄우지 않고, stdout은 `MAX_OUTPUT`에서 끊고
@@ -168,15 +178,29 @@ fn exec(root: &Path, args: &[&str]) -> Out {
     }
     let Ok(mut child) = cmd.spawn() else {
         // git 미설치 — 2.6.2에서도 `ok:false`로 떨어져 "저장소 아님"이 된다
-        return Out { ok: false, stdout: String::new(), stderr: String::new() };
+        return Out::failed();
     };
     // stderr는 별도 스레드로 — 두 파이프를 한 스레드에서 순서대로 읽으면 상대가 가득
     // 차서 서로 막힌다(고전적 파이프 교착).
+    // ★ 캡을 넘어도 **읽기는 계속한다**(버리기만). `take(256KB)`로 멈추면 파이프가
+    //   차서 git이 write에서 막히거나(교착) 스레드 종료 시 EPIPE로 죽는다 —
+    //   대량 warning을 뱉는 git이 오면 예측 못 할 상태가 되는 자리였다(크리틱 §7 R-3).
     let err_pipe = child.stderr.take();
     let err_thread = std::thread::spawn(move || {
-        let mut buf = Vec::new();
-        if let Some(p) = err_pipe {
-            let _ = p.take(MAX_STDERR as u64).read_to_end(&mut buf);
+        let mut buf: Vec<u8> = Vec::new();
+        if let Some(mut p) = err_pipe {
+            let mut chunk = [0u8; 8192];
+            loop {
+                match p.read(&mut chunk) {
+                    Ok(0) | Err(_) => break,
+                    Ok(n) => {
+                        if buf.len() < MAX_STDERR {
+                            let room = (MAX_STDERR - buf.len()).min(n);
+                            buf.extend_from_slice(&chunk[..room]);
+                        }
+                    }
+                }
+            }
         }
         buf
     });
@@ -197,6 +221,7 @@ fn exec(root: &Path, args: &[&str]) -> Out {
         ok,
         stdout: String::from_utf8_lossy(&out_buf).into_owned(),
         stderr: String::from_utf8_lossy(&stderr).into_owned(),
+        over,
     }
 }
 
@@ -333,11 +358,17 @@ fn walk_repos(
 
 pub fn status(cwd: &str) -> GitStatus {
     let Some(root) = repo_root(cwd) else { return not_repo() };
+    // 두 git을 **동시에** 띄운다. 스트립이 매 턴 폴링하는 자리라 왕복 하나가 그대로
+    // 체감이 된다 — 2.6.2는 `Promise.all([status, remote])`였는데(git.ts:161) R1이
+    // 순차로 옮기며 1.5~2배 느려졌다(크리틱 §S9: 3.0 61·80·132ms vs 2.6.2 44·66ms).
+    let root2 = root.clone();
+    let remote_job = std::thread::spawn(move || exec(&root2, &["remote"]));
     let st = exec(&root, &["status", "--porcelain=v2", "--branch", "-z"]);
+    // 실패로 빠질 때도 자식을 거둬야 한다(join 없이 나가면 git.exe가 고아로 남는다)
+    let remotes = remote_job.join().unwrap_or_else(|_| Out::failed());
     if !st.ok {
         return not_repo();
     }
-    let remotes = exec(&root, &["remote"]);
     let mut out = GitStatus {
         repo: true,
         root: root.to_string_lossy().to_string(),
@@ -459,7 +490,9 @@ pub fn log(cwd: &str, limit: usize, skip: usize) -> GitLogResult {
         .iter()
         .take(limit)
         .map(|line| {
-            let f: Vec<&str> = line.split(FS).collect();
+            // `%s`가 **마지막 칸**이라 splitn으로 나머지를 통째로 준다 — 제목에 `\x1f`가
+            // 섞여도 앞 칸들이 밀리지 않는다(크리틱 §7 R-4).
+            let f: Vec<&str> = line.splitn(7, FS).collect();
             let g = |i: usize| f.get(i).copied().unwrap_or("");
             GitCommit {
                 hash: g(0).to_string(),
@@ -487,14 +520,63 @@ fn looks_binary(s: &str) -> bool {
     s.contains('\0')
 }
 
-fn show_at(root: &Path, rev: &str, rel: &str) -> Option<String> {
+/// 어떤 리비전의 파일 내용 — **"없다"와 "못 읽었다"를 가른다.**
+///
+/// R1은 둘 다 `None`이었다. 그래서 35MB blob이 32MB stdout 캡에 걸려 실패하면
+/// `file_diff`가 그걸 "HEAD에 없는 새 파일"로 읽어 **70만 줄을 잃은 파일을
+/// "새 파일 +1 −0" 초록 한 줄로** 그렸다(크리틱 R1 §S5 — 그 카드 옆에 되돌리기가 있다).
+enum Blob {
+    /// 그 리비전에 있고, 내용을 다 읽었다.
+    Text(String),
+    /// 그 리비전에 없다(새 파일 / 삭제 이전).
+    Absent,
+    /// 있는데 32MB stdout 캡을 넘었다 — 내용을 안 본다.
+    TooBig,
+    /// 있는데 못 읽었다(git 실패). 조용히 "새 파일"로 둔갑시키지 않는다.
+    Unreadable,
+}
+
+impl Blob {
+    fn text(&self) -> Option<&str> {
+        match self {
+            Blob::Text(s) => Some(s.as_str()),
+            _ => None,
+        }
+    }
+    /// 이 blob 때문에 diff를 접어야 하면 그 사유 문구.
+    fn fold_reason(&self) -> Option<String> {
+        match self {
+            Blob::TooBig => Some(crate::t(
+                "파일이 너무 커요 — diff 표시는 1.5MB까지만",
+                "File is too large — diffs are shown up to 1.5MB",
+            )),
+            Blob::Unreadable => Some(crate::t("내용을 읽을 수 없어요", "Could not read the contents")),
+            _ => None,
+        }
+    }
+}
+
+fn show_at(root: &Path, rev: &str, rel: &str) -> Blob {
     let spec = format!("{rev}:{rel}");
     // `--` 뒤로 밀 수 없는 형태(rev:path)라, rev/rel이 옵션처럼 보이지 않게 미리 막는다.
     if rel.starts_with('-') {
-        return None;
+        return Blob::Absent;
     }
     let r = exec(root, &["show", spec.as_str()]);
-    if r.ok { Some(r.stdout) } else { None }
+    if r.ok {
+        return Blob::Text(r.stdout);
+    }
+    // 성공 경로는 위에서 끝났다 — 아래는 **실패의 이유를 가르는** 자리뿐이라
+    // 기존 성공 동작(트리·서브모듈 포함)은 한 글자도 안 바뀐다.
+    if r.over {
+        return Blob::TooBig;
+    }
+    // `cat-file -e`는 객체 존재만 본다(blob을 안 읽으므로 거대 파일에도 싸다).
+    if exec(root, &["cat-file", "-e", spec.as_str()]).ok {
+        Blob::Unreadable
+    } else {
+        Blob::Absent
+    }
 }
 
 fn build_file_diff(rel: &str, base: Option<&str>, cur: Option<&str>) -> GitFileDiffResult {
@@ -545,18 +627,22 @@ pub fn file_diff(cwd: &str, rel: &str) -> GitFileDiffResult {
         };
     };
     let base = show_at(&root, "HEAD", rel);
+    // HEAD blob이 캡에 걸렸거나 못 읽혔다 — **"새 파일"로 둔갑시키지 않는다**(§S5).
+    if let Some(why) = base.fold_reason() {
+        return GitFileDiffResult { error: Some(why), ..Default::default() };
+    }
     // 삭제된 파일이면 None. 디스크 읽기는 뷰어와 같은 손실 UTF-8 규칙.
     let cur: Option<String> = std::fs::read(&abs).ok().map(|b| String::from_utf8_lossy(&b).into_owned());
-    if cur.is_none() && base.is_none() {
+    if cur.is_none() && base.text().is_none() {
         return GitFileDiffResult {
             error: Some(crate::t("내용을 읽을 수 없어요", "Could not read the contents")),
             ..Default::default()
         };
     }
-    let mut d = build_file_diff(rel, base.as_deref(), Some(cur.as_deref().unwrap_or("")));
+    let mut d = build_file_diff(rel, base.text(), Some(cur.as_deref().unwrap_or("")));
     // 디스크에서 지워진 파일 — 뷰어가 읽을 게 없으니 HEAD 스냅샷을 같이 준다
     if cur.is_none() {
-        if let Some(b) = base {
+        if let Blob::Text(b) = base {
             if !looks_binary(&b) && b.len() <= MAX_DIFF_BYTES {
                 d.head_content = Some(b);
             }
@@ -575,14 +661,18 @@ pub fn commit_detail(cwd: &str, hash: &str) -> Option<GitCommitDetail> {
     if !valid_hash(hash) {
         return None;
     }
-    let fmt = format!("--pretty=format:%H{FS}%h{FS}%an{FS}%at{FS}%s{FS}%b");
+    // 제목(`%s`)을 **마지막 칸**에 두고 본문(`%b`)은 따로 받는다. 한 줄에 둘 다 담으면
+    // 제목에 섞인 `\x1f` 하나가 본문 칸을 밀어 버린다(크리틱 §7 R-4). git 왕복 한 번은
+    // 카드 클릭 한 번짜리 비용이라 정확도와 바꿀 값이 아니다.
+    let fmt = format!("--pretty=format:%H{FS}%h{FS}%an{FS}%at{FS}%s");
     let meta = exec(&root, &["log", "-1", fmt.as_str(), hash]);
     if !meta.ok {
         return None;
     }
+    let body = exec(&root, &["log", "-1", "--pretty=format:%b", hash]);
     // -z: 상태와 경로가 NUL로 번갈아 온다 (R/C는 status·old·new 3연속)
     let names = exec(&root, &["show", "--name-status", "--format=", "-z", hash]);
-    let f: Vec<&str> = meta.stdout.split(FS).collect();
+    let f: Vec<&str> = meta.stdout.splitn(5, FS).collect();
     let g = |i: usize| f.get(i).copied().unwrap_or("");
     let mut files: Vec<GitCommitFile> = Vec::new();
     if names.ok {
@@ -629,7 +719,7 @@ pub fn commit_detail(cwd: &str, hash: &str) -> Option<GitCommitDetail> {
         author: g(2).to_string(),
         time: g(3).parse().unwrap_or(0),
         subject: g(4).to_string(),
-        body: g(5).trim().to_string(),
+        body: if body.ok { body.stdout.trim().to_string() } else { String::new() },
         files,
     })
 }
@@ -643,8 +733,15 @@ pub fn commit_file_diff(cwd: &str, hash: &str, rel: &str) -> GitFileDiffResult {
     }
     let base = show_at(&root, &format!("{hash}^"), rel);
     let cur = show_at(&root, hash, rel);
-    let mut d = build_file_diff(rel, base.as_deref(), Some(cur.as_deref().unwrap_or("")));
-    d.content = Some(cur.unwrap_or_default());
+    // 어느 쪽이든 캡/읽기 실패면 사유를 그대로 준다 — "새 파일"·"빈 파일"로 안 꾸민다.
+    if let Some(why) = base.fold_reason().or_else(|| cur.fold_reason()) {
+        return GitFileDiffResult { error: Some(why), ..Default::default() };
+    }
+    let mut d = build_file_diff(rel, base.text(), Some(cur.text().unwrap_or("")));
+    d.content = Some(match cur {
+        Blob::Text(s) => s,
+        _ => String::new(),
+    });
     d
 }
 
@@ -688,6 +785,16 @@ pub fn commit(cwd: &str, files: &[String], subject: &str, body: &str) -> GitResu
             "Git identity is not set — run git config --global user.name / user.email in a terminal",
         ));
     }
+    // "바뀐 게 없다"는 git이 stdout에 쓰고 첫 줄이 `On branch main`이라, 폴백이 그
+    // **브랜치 이름을 오류 문구로** 띄웠다(크리틱 §S8 실측). 사유를 사람 말로 돌려준다.
+    if low.contains("nothing to commit")
+        || low.contains("nothing added to commit")
+        || low.contains("no changes added to commit")
+        || low.contains("커밋할 사항 없음")
+        || low.contains("추가하지 않은 변경 사항")
+    {
+        return GitResult::err(crate::t("바뀐 내용이 없어요", "There is nothing to commit"));
+    }
     GitResult::err(err_line(&r.stderr, &r.stdout))
 }
 
@@ -729,17 +836,48 @@ pub fn fetch(cwd: &str) -> GitResult {
 }
 
 /// 파일 하나 되돌리기 — 추적 파일은 HEAD로, 새(미추적) 파일은 휴지통으로(복구 가능).
+/// 한 행 되돌리기. **파괴 반경이 가장 넓은 채널**이라 가드가 세 겹이다:
+///
+/// 1. **저장소 뿌리(`.`·``)는 거절** — `abs_of`는 `resolve_lexical(root, ".") == root`를
+///    통과시키므로 R1에서는 `discard(cwd, ".", untracked=true)`가 저장소 폴더를 통째로
+///    휴지통에 넣었다(크리틱 §S6 실측 `repo_still_there:false`). 렌더러는 `f.path`만
+///    보내서 제품에서는 도달 불가지만, 채널은 렌더러만 부르는 게 아니다.
+/// 2. **`.git`은 거절** — 메타데이터를 지우면 저장소가 죽는다. 되돌리기의 뜻이 아니다.
+/// 3. **인덱스는 파일이 실제로 휴지통에 들어간 뒤에만 만진다** — R1은 순서가 반대라
+///    잠긴 파일에서 `rm --cached`만 성공하고 휴지통이 실패해 **파일은 그대로인데
+///    인덱스에서만 사라진** 유령 두 행(`D:` + `A:`)을 남겼다(§S4).
+///
+/// 그리고 checkout 실패를 무조건 "HEAD에 없던 새 파일"로 읽지 않는다 — HEAD에 **있는데**
+/// 잠겨서 실패한 파일까지 휴지통으로 보내던 자리다(§S4의 진짜 뿌리).
 pub fn discard(cwd: &str, rel: &str, untracked: bool) -> GitResult {
     let Some(root) = repo_root(cwd) else { return GitResult::err(e_not_repo()) };
     let Some(abs) = abs_of(&root, rel) else {
         return GitResult::err(crate::t("잘못된 경로", "Invalid path"));
     };
+    let bad_path = || crate::t("잘못된 경로", "Invalid path");
+    if abs == root {
+        // 저장소 폴더 자체 — 되돌리기가 아니라 저장소 삭제다.
+        return GitResult::err(bad_path());
+    }
+    // 루트 **아래**의 조각만 본다 — 저장소 경로 자체에 `.git`이 들어 있는 배치
+    // (워크트리·서브모듈)에서 멀쩡한 되돌리기가 막히면 안 된다.
+    if abs
+        .strip_prefix(&root)
+        .map(|r| r.components().any(|c| c.as_os_str().eq_ignore_ascii_case(".git")))
+        .unwrap_or(true)
+    {
+        return GitResult::err(bad_path());
+    }
     let trash_fail =
         || crate::t("파일을 휴지통으로 보내지 못했어요", "Could not move the file to the recycle bin");
+    let to_trash = || match crate::file::delete_path("", abs.to_string_lossy().as_ref()) {
+        r if r.ok => None,
+        r => Some(r.error.unwrap_or_else(trash_fail)),
+    };
     if untracked {
-        return match crate::file::delete_path("", abs.to_string_lossy().as_ref()) {
-            r if r.ok => GitResult::ok(),
-            _ => GitResult::err(trash_fail()),
+        return match to_trash() {
+            None => GitResult::ok(),
+            Some(e) => GitResult::err(e),
         };
     }
     // index에 올라가 있어도(A 포함) 한 번에 HEAD 상태로 — 스테이징·워크트리 모두 복원
@@ -747,15 +885,17 @@ pub fn discard(cwd: &str, rel: &str, untracked: bool) -> GitResult {
     if r.ok {
         return GitResult::ok();
     }
-    // HEAD에 없던(새로 add된) 파일 — 스테이징 해제 후 휴지통
-    let rm = exec(&root, &["rm", "--cached", "-f", "--ignore-unmatch", "--", rel]);
-    if rm.ok {
-        return match crate::file::delete_path("", abs.to_string_lossy().as_ref()) {
-            x if x.ok => GitResult::ok(),
-            _ => GitResult::err(trash_fail()),
-        };
+    // checkout이 실패했다. **왜인지**를 git에 직접 묻는다 — "HEAD에 없다"가 아니면
+    // (잠김·권한 등) 아무것도 지우지 않고 사유를 그대로 돌려준다.
+    if matches!(show_at(&root, "HEAD", rel), Blob::Absent) {
+        // HEAD에 없던(새로 add된) 파일 — **휴지통 먼저**, 성공했을 때만 스테이징 해제.
+        if let Some(e) = to_trash() {
+            return GitResult::err(e); // 인덱스는 안 건드렸다 = 유령 행 없음
+        }
+        let rm = exec(&root, &["rm", "--cached", "-f", "--ignore-unmatch", "--", rel]);
+        return if rm.ok { GitResult::ok() } else { GitResult::err(err_line(&rm.stderr, &rm.stdout)) };
     }
-    GitResult::err(err_line(&r.stderr, ""))
+    GitResult::err(err_line(&r.stderr, &r.stdout))
 }
 
 pub fn branches(cwd: &str) -> Vec<GitBranch> {
@@ -1192,6 +1332,120 @@ mod tests {
         assert!(discard(r.cwd(), "a.txt", false).ok);
         assert_eq!(std::fs::read_to_string(r.0.join("a.txt")).unwrap(), "orig\n");
         assert!(status(r.cwd()).files.is_empty());
+    }
+
+    /// 커밋할 게 없을 때 — git stdout 첫 줄(`On branch main`)이 오류 문구로 새면 안 된다
+    /// (크리틱 R1 §S8). 그리고 제목에 `\x1f`가 들어가도 칸이 밀리지 않아야 한다(§7 R-4).
+    #[test]
+    fn a_no_op_commit_says_so_and_a_us_in_the_subject_does_not_shift_fields() {
+        let r = repo!("commit-noop");
+        r.write("a.txt", "a\n");
+        r.git(&["add", "."]);
+        // 제목에 unit separator를 심은 커밋 — log/commit-detail 파싱의 함정
+        r.git(&["commit", "-qm", "제목\u{1f}함정", "-m", "본문 첫 줄\n본문 둘째 줄"]);
+        let res = commit(r.cwd(), &["a.txt".to_string()], "다시 커밋", "");
+        assert!(!res.ok);
+        let e = res.error.unwrap_or_default();
+        assert!(!e.to_lowercase().starts_with("on branch"), "브랜치 이름이 오류로 샜다: {e}");
+        assert!(e.contains("바뀐 내용이 없어요") || e.contains("nothing to commit"), "{e}");
+
+        let head = log(r.cwd(), 5, 0).commits.into_iter().next().expect("커밋 하나");
+        assert_eq!(head.subject, "제목\u{1f}함정", "제목이 구분자에서 잘렸다");
+        assert!(!head.hash.is_empty() && head.time > 0, "앞 칸이 밀렸다");
+        let d = commit_detail(r.cwd(), &head.hash).expect("상세");
+        assert_eq!(d.subject, "제목\u{1f}함정");
+        assert_eq!(d.body, "본문 첫 줄\n본문 둘째 줄", "본문 칸이 밀렸다");
+        assert_eq!(d.author, "T");
+    }
+
+    /// 되돌리기의 반경 — **저장소 뿌리와 `.git`은 못 건드린다**(크리틱 R1 §S6).
+    /// R1은 `discard(cwd, ".", untracked=true)`로 저장소 폴더 전체를 휴지통에 넣었다.
+    #[test]
+    fn discard_refuses_the_repo_root_and_the_git_dir() {
+        let r = repo!("discard-root");
+        r.write("a.txt", "orig\n");
+        r.git(&["add", "."]);
+        r.git(&["commit", "-qm", "init"]);
+        for (rel, untracked) in [(".", true), (".", false), ("", true), (".git", true), (".git/config", false)] {
+            let res = discard(r.cwd(), rel, untracked);
+            assert!(!res.ok, "{rel:?}(untracked={untracked})를 통과시켰다");
+            assert!(r.0.join(".git").is_dir(), "{rel:?}에서 저장소가 사라졌다");
+            assert!(r.0.join("a.txt").is_file(), "{rel:?}에서 파일이 사라졌다");
+        }
+    }
+
+    /// 잠긴 **추적** 파일 되돌리기 — checkout이 실패한다고 "HEAD에 없던 새 파일"로 보고
+    /// 휴지통에 보내면 안 된다. 인덱스도 그대로여야 한다(R1은 `rm --cached`만 성공해
+    /// `D:`+`A:` 유령 두 행을 남겼다 — 크리틱 §S4).
+    #[cfg(windows)]
+    #[test]
+    fn discard_on_a_locked_tracked_file_changes_nothing() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let r = repo!("discard-locked");
+        r.write("locked.txt", "HEAD 내용\n");
+        r.git(&["add", "."]);
+        r.git(&["commit", "-qm", "init"]);
+        r.write("locked.txt", "사용자가 고친 내용\n");
+        // 다른 프로세스가 배타적으로 연 상태(빌드 락·엑셀·에디터)
+        let guard = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .share_mode(0)
+            .open(r.0.join("locked.txt"))
+            .expect("배타 열기 실패");
+        let res = discard(r.cwd(), "locked.txt", false);
+        assert!(!res.ok, "잠긴 파일을 되돌렸다고 보고했다");
+        assert!(r.0.join("locked.txt").is_file(), "파일이 사라졌다");
+        assert!(r.git(&["show", ":locked.txt"]).ok, "인덱스에서 빠졌다 = 유령 행");
+        let rows: Vec<String> =
+            status(r.cwd()).files.iter().map(|f| format!("{}:{}", f.status, f.path)).collect();
+        assert_eq!(rows, ["M:locked.txt"], "상태가 두 행으로 갈라졌다: {rows:?}");
+        drop(guard);
+    }
+
+    /// 새로 add된 파일이 잠겨 있으면 — 휴지통이 먼저다. 못 넣으면 인덱스도 그대로.
+    #[cfg(windows)]
+    #[test]
+    fn discard_on_a_locked_new_file_keeps_the_index_intact() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let r = repo!("discard-locked-new");
+        r.write("base.txt", "b\n");
+        r.git(&["add", "."]);
+        r.git(&["commit", "-qm", "init"]);
+        r.write("fresh.txt", "새 파일\n");
+        r.git(&["add", "fresh.txt"]);
+        let guard = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .share_mode(0)
+            .open(r.0.join("fresh.txt"))
+            .expect("배타 열기 실패");
+        let res = discard(r.cwd(), "fresh.txt", false);
+        assert!(!res.ok);
+        assert!(r.0.join("fresh.txt").is_file());
+        assert!(r.git(&["show", ":fresh.txt"]).ok, "휴지통이 실패했는데 인덱스만 비웠다");
+        drop(guard);
+    }
+
+    /// 32MB stdout 캡에 걸린 HEAD blob은 **"새 파일 +1 −0"이 아니다**(크리틱 §S5).
+    /// R1은 70만 줄을 잃은 파일을 "멀쩡한 초록 한 줄"로 그렸고, 그 카드 옆에 되돌리기가 있다.
+    #[test]
+    fn an_oversize_head_blob_folds_instead_of_claiming_a_new_file() {
+        let r = repo!("bigblob");
+        // MAX_OUTPUT(32MB)을 확실히 넘기되 압축이 잘 되는 본문(커밋을 싸게)
+        let big = "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEFxx\n".repeat(700_000);
+        r.write("huge.txt", &big);
+        r.git(&["add", "."]);
+        r.git(&["commit", "-qm", "big"]);
+        // ① 사용자가 파일을 한 줄로 줄였다
+        r.write("huge.txt", "남은 한 줄\n");
+        let d = file_diff(r.cwd(), "huge.txt");
+        assert!(d.diff.is_none(), "캡에 걸린 blob을 diff로 그렸다: {:?}", d.diff.map(|x| x.tag));
+        assert!(d.error.is_some_and(|e| e.contains("너무 커") || e.contains("too large")), "사유가 없다");
+        // ② 파일을 지웠다 — 여기서도 "새 파일"이 아니라 사유가 나와야 한다
+        std::fs::remove_file(r.0.join("huge.txt")).unwrap();
+        let d2 = file_diff(r.cwd(), "huge.txt");
+        assert!(d2.diff.is_none() && d2.error.is_some());
     }
 
     #[test]

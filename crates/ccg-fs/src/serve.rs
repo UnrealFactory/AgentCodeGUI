@@ -84,6 +84,31 @@ fn percent_decode(s: &str) -> String {
     String::from_utf8_lossy(&out).into_owned()
 }
 
+/// 이 오리진의 **JS가 바이트를 읽어도** 되나(CORS `Access-Control-Allow-Origin`).
+///
+/// ── 왜 `*`가 아닌가 (크리틱 R1 §S3) ────────────────────────────────────────
+/// R1은 `ACAO: *`를 붙였다. `<img>`는 CORS를 안 타므로 **그 헤더는 그림 그리는 데
+/// 필요가 없고**(실측: 렌더러의 전 사용처가 `<img src>` 하나다), 대신 청중을 바꾼다 —
+/// sandbox iframe·SVG 문서·앞으로 올 `ccg-page` 미리보기처럼 **Tauri IPC가 없어
+/// `fs:read-file`을 못 부르는 컨텍스트**가 디스크의 아무 `*.png`/`*.svg`를 `fetch`로
+/// 읽게 된다(그 셋의 오리진은 `null`이라 이 표를 통과하지 못한다).
+/// 2.6.2의 `ccg-img` 응답에는 이 헤더가 아예 없었다 — 거기서 `fetch`는 CORS로 막힌다.
+///
+/// 남기는 최소치는 **앱 자신의 오리진**뿐이다. 거기서는 이미 `fs:read-file`로 임의
+/// 경로를 읽을 수 있으므로 새 권한이 아니고, 나중에 렌더러가 `fetch`로 이미지를
+/// 받아야 할 때(캔버스 합성 등) 조용히 깨지지 않는다.
+pub fn cors_allows(origin: &str) -> bool {
+    // wry는 Windows에서 앱 문서를 `http://tauri.localhost`로 서빙한다(WebView2가
+    // 비표준 스킴을 못 받아서). https 변종은 다른 플랫폼/설정 대비.
+    if matches!(origin, "http://tauri.localhost" | "https://tauri.localhost") {
+        return true;
+    }
+    // vite dev 서버(tauri.conf.json devUrl) — **디버그 빌드에서만**.
+    // 릴리즈 exe는 번들 프론트엔드를 tauri.localhost로 서빙하므로 이 줄이 필요 없다.
+    cfg!(debug_assertions)
+        && matches!(origin, "http://localhost:5273" | "http://127.0.0.1:5273")
+}
+
 /// 서빙 결과 — `Some((mime, bytes))`면 200, `None`이면 404.
 pub fn image_response(uri: &str) -> Option<(&'static str, Vec<u8>)> {
     let p = path_from_uri(uri)?;
@@ -138,6 +163,27 @@ mod tests {
         assert!(image_response(&uri(&d)).is_none(), "폴더는 404");
         assert!(image_response(&uri(&d.join("missing.png"))).is_none(), "없는 파일은 404");
         let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// `ACAO: *`는 회수됐다 — 앱 오리진만 통과한다(크리틱 §S3).
+    /// sandbox iframe·SVG 문서의 오리진은 `null`이고, 그건 이 표에 없다.
+    #[test]
+    fn only_the_app_origin_may_read_the_bytes_with_js() {
+        assert!(cors_allows("http://tauri.localhost"));
+        assert!(cors_allows("https://tauri.localhost"));
+        for deny in [
+            "null",                      // sandbox iframe · SVG 문서 · data: 문서
+            "http://ccg-img.localhost",  // 스킴 자신
+            "https://evil.example",
+            "file://",
+            "http://tauri.localhost.evil.example", // 접두 매칭 함정
+            "http://localhost:3000",
+            "",
+        ] {
+            assert!(!cors_allows(deny), "{deny}를 통과시켰다");
+        }
+        // dev 서버는 디버그 빌드에서만 (릴리즈는 tauri.localhost로 서빙된다)
+        assert_eq!(cors_allows("http://localhost:5273"), cfg!(debug_assertions));
     }
 
     #[test]

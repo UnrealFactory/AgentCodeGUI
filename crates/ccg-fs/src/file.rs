@@ -119,8 +119,17 @@ pub fn write_file(cwd: &str, rel: &str, content: &str) -> OpResult {
     }
 }
 
+/// OS 오류 → 사용자 문구. `std::io::Error`의 Display는 뒤에 `(os error 5)`를 달아 주는데
+/// 그건 개발자용 꼬리표지 사용자 문구가 아니다(크리틱 R1 §S8). 앞부분(로컬라이즈된
+/// Windows 메시지 — "액세스가 거부되었습니다.")만 남기고 꼬리표를 뗀다. 메시지가 비면
+/// 호출자가 준 우리말 폴백으로 간다.
 fn io_msg(e: &std::io::Error, fallback: String) -> String {
     let s = e.to_string();
+    let s = match s.rfind(" (os error ") {
+        Some(i) if s.ends_with(')') => s[..i].to_string(),
+        _ => s,
+    };
+    let s = s.trim().to_string();
     if s.is_empty() { fallback } else { s }
 }
 
@@ -267,31 +276,218 @@ fn shell_reveal(abs: &Path) {
         .spawn();
 }
 
-/// Windows 휴지통 — `SHFileOperationW` + `FOF_ALLOWUNDO`. UI·확인창은 전부 끈다
-/// (앱이 이미 자기 확인 카드를 띄웠고, 네이티브 대화상자는 창을 물어버린다).
+/// Windows 휴지통 — **Electron `shell.trashItem`과 같은 보장**.
+///
+/// ── 왜 `SHFileOperationW + FOF_ALLOWUNDO`가 아닌가 (크리틱 R1 §S1, 치명) ──────
+/// `FOF_ALLOWUNDO`는 "**가능하면** 휴지통"이다. 휴지통이 없는 볼륨(subst·네트워크
+/// 드라이브·UNC·이동식 매체·`NukeOnDelete=1` 정책·할당량 초과 파일)에서는 그냥
+/// **영구 삭제**하고 `rc=0`(성공)을 돌려준다. `FOF_WANTNUKEWARNING`도 없으니 Windows가
+/// 평소 띄우는 "휴지통에 넣기엔 너무 큽니다" 경고조차 안 뜬다. 실측(subst `X:`):
+/// 3.0은 `ok=true`·파일 증발·휴지통 항목 그대로, 2.6.2는 `ok=false`·**파일 생존**.
+/// 탐색기 우클릭 삭제와 Git 카드의 "되돌리기(미추적)"가 둘 다 여기로 온다 —
+/// 클릭 한 번에 사용자 데이터가 조용히 사라지는 자리였다.
+///
+/// ── 지금의 보장 ─────────────────────────────────────────────────────────────
+/// `IFileOperation` + `FOFX_RECYCLEONDELETE` + **진행 싱크**. 셸은 항목마다
+/// `PreDeleteItem(dwFlags)`을 부르는데, 그 항목을 휴지통에 넣을 수 있을 때만
+/// `TSF_DELETE_RECYCLE_IF_POSSIBLE`이 켜진다. 안 켜져 있으면 `E_ABORT`를 돌려
+/// **삭제 자체를 중단**시킨다 — Electron `platform_util_win.cc`의
+/// `DeleteFileProgressSink`와 같은 수(플래그만으로는 부족한 이유가 그것이다).
+/// 결과: 못 넣으면 `ok=false` + 파일 생존 = 2.6.2와 같은 답.
+///
+/// UI·확인창은 끈다(`FOF_NO_UI`) — 앱이 이미 자기 확인 카드를 띄웠고 네이티브
+/// 대화상자는 창을 물어버린다. `FOFX_SHOWELEVATIONPROMPT`만 남기는 것도 2.6.2와 같다
+/// (UAC 보호 파일에서만 뜨고, 그때는 승격 없이는 어차피 못 지운다).
 #[cfg(windows)]
 fn trash(abs: &Path) -> Result<(), String> {
-    use windows::core::PCWSTR;
-    use windows::Win32::UI::Shell::{
-        SHFileOperationW, FOF_ALLOWUNDO, FOF_NOCONFIRMATION, FOF_NOERRORUI, FOF_SILENT, FO_DELETE,
-        SHFILEOPSTRUCTW,
-    };
-    // pFrom은 **이중 NUL 종료** 목록이다(목록 하나 = 경로 + NUL + NUL)
-    let mut from: Vec<u16> = wide(abs);
-    from.push(0);
-    let flags = (FOF_ALLOWUNDO.0 | FOF_NOCONFIRMATION.0 | FOF_SILENT.0 | FOF_NOERRORUI.0) as u16;
-    let mut op = SHFILEOPSTRUCTW {
-        wFunc: FO_DELETE,
-        pFrom: PCWSTR(from.as_ptr()),
-        fFlags: flags,
-        ..Default::default()
-    };
-    let rc = unsafe { SHFileOperationW(&mut op) };
-    if rc == 0 && !op.fAnyOperationsAborted.as_bool() {
-        Ok(())
-    } else {
-        Err(crate::t("파일을 휴지통으로 보내지 못했어요", "Could not move the file to the recycle bin"))
+    match recycle(abs) {
+        Ok(()) => Ok(()),
+        Err(_) => {
+            Err(crate::t("파일을 휴지통으로 보내지 못했어요", "Could not move the file to the recycle bin"))
+        }
     }
+}
+
+/// "휴지통에 못 넣으면 지우지 말라" — `IFileOperation`이 항목마다 물어보는 자리.
+/// 셸이 `TSF_DELETE_RECYCLE_IF_POSSIBLE` 없이 오면(=영구 삭제하겠다는 뜻) 중단시킨다.
+#[cfg(windows)]
+#[windows::core::implement(windows::Win32::UI::Shell::IFileOperationProgressSink)]
+struct RecycleOnlySink(std::sync::Arc<std::sync::atomic::AtomicBool>);
+
+#[cfg(windows)]
+#[allow(non_snake_case)]
+impl windows::Win32::UI::Shell::IFileOperationProgressSink_Impl for RecycleOnlySink_Impl {
+    fn PreDeleteItem(
+        &self,
+        dwflags: u32,
+        _item: windows::core::Ref<'_, windows::Win32::UI::Shell::IShellItem>,
+    ) -> windows::core::Result<()> {
+        use windows::Win32::UI::Shell::TSF_DELETE_RECYCLE_IF_POSSIBLE;
+        if dwflags & (TSF_DELETE_RECYCLE_IF_POSSIBLE.0 as u32) == 0 {
+            self.0.store(true, std::sync::atomic::Ordering::SeqCst);
+            return Err(windows::core::Error::from(windows::Win32::Foundation::E_ABORT));
+        }
+        Ok(())
+    }
+
+    // 나머지 통지는 쓰지 않는다 — 전부 성공으로 흘려보낸다(하나라도 실패로 돌리면
+    // 셸이 작업을 접는다).
+    fn StartOperations(&self) -> windows::core::Result<()> {
+        Ok(())
+    }
+    fn FinishOperations(&self, _hr: windows::core::HRESULT) -> windows::core::Result<()> {
+        Ok(())
+    }
+    fn PreRenameItem(
+        &self,
+        _f: u32,
+        _i: windows::core::Ref<'_, windows::Win32::UI::Shell::IShellItem>,
+        _n: &windows::core::PCWSTR,
+    ) -> windows::core::Result<()> {
+        Ok(())
+    }
+    fn PostRenameItem(
+        &self,
+        _f: u32,
+        _i: windows::core::Ref<'_, windows::Win32::UI::Shell::IShellItem>,
+        _n: &windows::core::PCWSTR,
+        _hr: windows::core::HRESULT,
+        _new: windows::core::Ref<'_, windows::Win32::UI::Shell::IShellItem>,
+    ) -> windows::core::Result<()> {
+        Ok(())
+    }
+    fn PreMoveItem(
+        &self,
+        _f: u32,
+        _i: windows::core::Ref<'_, windows::Win32::UI::Shell::IShellItem>,
+        _d: windows::core::Ref<'_, windows::Win32::UI::Shell::IShellItem>,
+        _n: &windows::core::PCWSTR,
+    ) -> windows::core::Result<()> {
+        Ok(())
+    }
+    fn PostMoveItem(
+        &self,
+        _f: u32,
+        _i: windows::core::Ref<'_, windows::Win32::UI::Shell::IShellItem>,
+        _d: windows::core::Ref<'_, windows::Win32::UI::Shell::IShellItem>,
+        _n: &windows::core::PCWSTR,
+        _hr: windows::core::HRESULT,
+        _new: windows::core::Ref<'_, windows::Win32::UI::Shell::IShellItem>,
+    ) -> windows::core::Result<()> {
+        Ok(())
+    }
+    fn PreCopyItem(
+        &self,
+        _f: u32,
+        _i: windows::core::Ref<'_, windows::Win32::UI::Shell::IShellItem>,
+        _d: windows::core::Ref<'_, windows::Win32::UI::Shell::IShellItem>,
+        _n: &windows::core::PCWSTR,
+    ) -> windows::core::Result<()> {
+        Ok(())
+    }
+    fn PostCopyItem(
+        &self,
+        _f: u32,
+        _i: windows::core::Ref<'_, windows::Win32::UI::Shell::IShellItem>,
+        _d: windows::core::Ref<'_, windows::Win32::UI::Shell::IShellItem>,
+        _n: &windows::core::PCWSTR,
+        _hr: windows::core::HRESULT,
+        _new: windows::core::Ref<'_, windows::Win32::UI::Shell::IShellItem>,
+    ) -> windows::core::Result<()> {
+        Ok(())
+    }
+    fn PostDeleteItem(
+        &self,
+        _f: u32,
+        _i: windows::core::Ref<'_, windows::Win32::UI::Shell::IShellItem>,
+        _hr: windows::core::HRESULT,
+        _new: windows::core::Ref<'_, windows::Win32::UI::Shell::IShellItem>,
+    ) -> windows::core::Result<()> {
+        Ok(())
+    }
+    fn PreNewItem(
+        &self,
+        _f: u32,
+        _d: windows::core::Ref<'_, windows::Win32::UI::Shell::IShellItem>,
+        _n: &windows::core::PCWSTR,
+    ) -> windows::core::Result<()> {
+        Ok(())
+    }
+    fn PostNewItem(
+        &self,
+        _f: u32,
+        _d: windows::core::Ref<'_, windows::Win32::UI::Shell::IShellItem>,
+        _n: &windows::core::PCWSTR,
+        _t: &windows::core::PCWSTR,
+        _attrs: u32,
+        _hr: windows::core::HRESULT,
+        _new: windows::core::Ref<'_, windows::Win32::UI::Shell::IShellItem>,
+    ) -> windows::core::Result<()> {
+        Ok(())
+    }
+    fn UpdateProgress(&self, _total: u32, _so_far: u32) -> windows::core::Result<()> {
+        Ok(())
+    }
+    fn ResetTimer(&self) -> windows::core::Result<()> {
+        Ok(())
+    }
+    fn PauseTimer(&self) -> windows::core::Result<()> {
+        Ok(())
+    }
+    fn ResumeTimer(&self) -> windows::core::Result<()> {
+        Ok(())
+    }
+}
+
+#[cfg(windows)]
+fn recycle(abs: &Path) -> windows::core::Result<()> {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+    use windows::core::PCWSTR;
+    use windows::Win32::Foundation::E_ABORT;
+    use windows::Win32::System::Com::{
+        CoCreateInstance, CoInitializeEx, CoUninitialize, CLSCTX_ALL, COINIT_APARTMENTTHREADED,
+    };
+    use windows::Win32::UI::Shell::{
+        FileOperation, IFileOperation, IFileOperationProgressSink, IShellItem,
+        SHCreateItemFromParsingName, FOFX_EARLYFAILURE, FOFX_RECYCLEONDELETE,
+        FOFX_SHOWELEVATIONPROMPT, FOF_ALLOWUNDO, FOF_NOERRORUI, FOF_NO_UI, FOF_SILENT,
+    };
+
+    // 이 함수는 IPC 블로킹 풀 스레드에서도 불린다 — 그 스레드의 COM은 초기화돼 있지
+    // 않다. S_OK/S_FALSE면 우리가 연 것이니 우리가 닫고, RPC_E_CHANGED_MODE(이미 MTA)면
+    // 그대로 쓴다(닫으면 남의 참조를 깬다).
+    let hr = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) };
+    let owned = hr.is_ok();
+    let r = (|| -> windows::core::Result<()> {
+        let op: IFileOperation = unsafe { CoCreateInstance(&FileOperation, None, CLSCTX_ALL) }?;
+        let flags = FOF_NO_UI
+            | FOF_ALLOWUNDO
+            | FOF_NOERRORUI
+            | FOF_SILENT
+            | FOFX_EARLYFAILURE
+            | FOFX_SHOWELEVATIONPROMPT
+            | FOFX_RECYCLEONDELETE;
+        unsafe { op.SetOperationFlags(flags) }?;
+
+        let w = wide(abs);
+        let item: IShellItem = unsafe { SHCreateItemFromParsingName(PCWSTR(w.as_ptr()), None) }?;
+        let aborted = Arc::new(AtomicBool::new(false));
+        let sink: IFileOperationProgressSink = RecycleOnlySink(aborted.clone()).into();
+        unsafe { op.DeleteItem(&item, &sink) }?;
+        unsafe { op.PerformOperations() }?;
+        // 싱크가 중단시킨 경우 PerformOperations가 성공을 돌려줄 수 있다 — 두 신호를
+        // 모두 본다(Electron도 GetAnyOperationsAborted를 따로 확인한다).
+        let any = unsafe { op.GetAnyOperationsAborted() }?;
+        if any.as_bool() || aborted.load(Ordering::SeqCst) {
+            return Err(windows::core::Error::from(E_ABORT));
+        }
+        Ok(())
+    })();
+    if owned {
+        unsafe { CoUninitialize() };
+    }
+    r
 }
 
 #[cfg(not(windows))]
@@ -315,6 +511,150 @@ mod tests {
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(&d).unwrap();
         d
+    }
+
+    // ── 휴지통 저울 ─────────────────────────────────────────────────────────
+    // "지웠다"가 아니라 **"휴지통에 들어갔다"**를 재는 자리. 크리틱 R1 §S1이 지적한
+    // 그 눈금이 없어서 영구 삭제 회귀가 통과됐다. 문구·로케일에 안 흔들리게
+    // `SHQueryRecycleBin`의 항목 수를 쓴다.
+
+    /// 그 경로가 속한 볼륨의 휴지통 항목 수. 질의를 못 하면 -1(단정 생략 신호).
+    #[cfg(windows)]
+    fn recycle_items(vol_root: &str) -> i64 {
+        use windows::core::PCWSTR;
+        use windows::Win32::UI::Shell::{SHQueryRecycleBinW, SHQUERYRBINFO};
+        let w: Vec<u16> = vol_root.encode_utf16().chain(std::iter::once(0)).collect();
+        let mut info = SHQUERYRBINFO {
+            cbSize: std::mem::size_of::<SHQUERYRBINFO>() as u32,
+            ..Default::default()
+        };
+        match unsafe { SHQueryRecycleBinW(PCWSTR(w.as_ptr()), &mut info) } {
+            Ok(()) => info.i64NumItems,
+            Err(_) => -1,
+        }
+    }
+
+    /// `C:\` 같은 볼륨 루트.
+    #[cfg(windows)]
+    fn vol_root_of(p: &Path) -> String {
+        let s = p.to_string_lossy().to_string();
+        match s.find(':') {
+            Some(i) => format!("{}:\\", &s[..i]),
+            None => "C:\\".to_string(),
+        }
+    }
+
+    /// 시험이 넣은 항목을 사용자 휴지통에서 **되지운다**(`$I` 메타의 원본 경로로 찾는다).
+    /// 최선 노력 — 실패해도 시험은 통과시킨다(0바이트 파일 하나가 남을 뿐).
+    #[cfg(windows)]
+    fn purge_from_recycle_bin(orig: &Path) -> bool {
+        let bin = PathBuf::from(vol_root_of(orig)).join("$Recycle.Bin");
+        let Ok(sids) = std::fs::read_dir(&bin) else { return false };
+        let want = orig.to_string_lossy().to_lowercase();
+        for sid in sids.flatten() {
+            let Ok(items) = std::fs::read_dir(sid.path()) else { continue };
+            for it in items.flatten() {
+                let name = it.file_name().to_string_lossy().to_string();
+                if !name.starts_with("$I") {
+                    continue;
+                }
+                let Ok(buf) = std::fs::read(it.path()) else { continue };
+                if buf.len() < 30 {
+                    continue;
+                }
+                // $I 포맷 v2: 헤더 8 · 크기 8 · 삭제 시각 8 · 경로 길이 4 · UTF-16LE 경로
+                let u: Vec<u16> = buf[28..]
+                    .chunks_exact(2)
+                    .map(|c| u16::from_le_bytes([c[0], c[1]]))
+                    .take_while(|c| *c != 0)
+                    .collect();
+                if String::from_utf16_lossy(&u).to_lowercase() != want {
+                    continue;
+                }
+                let r = sid.path().join(format!("$R{}", &name[2..]));
+                let _ = std::fs::remove_file(&r);
+                let _ = std::fs::remove_dir_all(&r);
+                let _ = std::fs::remove_file(it.path());
+                return true;
+            }
+        }
+        false
+    }
+
+    /// 삭제는 **휴지통으로** 가야 한다. `FOF_ALLOWUNDO`만 걸던 R1은 휴지통이 없는
+    /// 볼륨에서 조용히 영구 삭제하고 `ok:true`를 돌려줬다(크리틱 §S1).
+    #[cfg(windows)]
+    #[test]
+    fn delete_lands_in_the_recycle_bin_not_the_void() {
+        let d = tmp("trash");
+        let p = d.join("휴지통-가야-한다.txt");
+        std::fs::write(&p, "recycle me\n").unwrap();
+        let before = recycle_items(&vol_root_of(&p));
+        let r = delete_path("", p.to_str().unwrap());
+        assert!(r.ok, "삭제 실패: {:?}", r.error);
+        assert!(!p.exists(), "파일이 안 없어졌다");
+        let after = recycle_items(&vol_root_of(&p));
+        if before >= 0 && after >= 0 {
+            assert!(after > before, "휴지통 항목이 안 늘었다 = 영구 삭제 ({before} → {after})");
+        }
+        purge_from_recycle_bin(&p); // 시험 잔해를 사용자 휴지통에 남기지 않는다
+    }
+
+    /// MAX_PATH(260)를 넘는 경로도 휴지통까지 가야 한다 — R1의 SHFileOperationW가
+    /// 통과시키던 자리라, IFileOperation으로 갈아타며 잃으면 회귀다(346자 실측).
+    #[cfg(windows)]
+    #[test]
+    fn a_path_past_max_path_still_reaches_the_recycle_bin() {
+        let d = tmp("trash-long");
+        let mut deep = d.clone();
+        while deep.to_string_lossy().len() < 300 {
+            deep = deep.join("긴경로세그먼트-0123456789");
+        }
+        if std::fs::create_dir_all(&deep).is_err() {
+            return; // 긴 경로가 아예 안 만들어지는 환경 — 이 시험의 관심사가 아니다
+        }
+        let p = deep.join("deep.txt");
+        assert!(p.to_string_lossy().len() > 260, "경로가 260자를 안 넘는다");
+        if std::fs::write(&p, "deep\n").is_err() {
+            return;
+        }
+        let before = recycle_items(&vol_root_of(&p));
+        let r = delete_path("", p.to_str().unwrap());
+        assert!(r.ok, "긴 경로 삭제 실패: {:?}", r.error);
+        assert!(!p.exists());
+        let after = recycle_items(&vol_root_of(&p));
+        if before >= 0 && after >= 0 {
+            assert!(after > before, "긴 경로가 휴지통을 안 거쳤다 ({before} → {after})");
+        }
+        purge_from_recycle_bin(&p);
+    }
+
+    /// 폴더도 통째로 휴지통(탐색기 우클릭 삭제 · 미추적 폴더 되돌리기의 반경).
+    #[cfg(windows)]
+    #[test]
+    fn deleting_a_folder_takes_the_whole_subtree_to_the_bin() {
+        let d = tmp("trash-dir");
+        let sub = d.join("무거운폴더");
+        std::fs::create_dir_all(sub.join("nested")).unwrap();
+        std::fs::write(sub.join("a.txt"), "a").unwrap();
+        std::fs::write(sub.join("nested").join("b.txt"), "b").unwrap();
+        let before = recycle_items(&vol_root_of(&sub));
+        let r = delete_path(d.to_str().unwrap(), "무거운폴더");
+        assert!(r.ok, "폴더 삭제 실패: {:?}", r.error);
+        assert!(!sub.exists());
+        let after = recycle_items(&vol_root_of(&sub));
+        if before >= 0 && after >= 0 {
+            assert!(after > before, "폴더가 휴지통을 안 거쳤다 ({before} → {after})");
+        }
+        purge_from_recycle_bin(&sub);
+    }
+
+    /// 없는 경로는 지울 게 없다 — 성공으로 위장하지 않는다.
+    #[test]
+    fn deleting_a_missing_path_fails_instead_of_pretending() {
+        let d = tmp("trash-miss");
+        let r = delete_path(d.to_str().unwrap(), "nope.txt");
+        assert!(!r.ok && r.error.is_some());
     }
 
     #[test]
