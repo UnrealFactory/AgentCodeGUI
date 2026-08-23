@@ -50,9 +50,12 @@ import {
   IconMouse,
   IconContrast,
   IconGlobe,
+  IconMessage,
   type IconProps
 } from './icons'
 import { getLang, isEn, setLang, t, type UiLang } from '../lib/i18n'
+// ★M10 R2 — 대화 연결(크로스톡)의 설정 창구. 채널 문자열은 이 모듈 하나가 안다.
+import { STOP_HOTKEY, readTalkBoards, setTalkBoard, setTalkConfig, stopTalk, useTalkConfig } from '../lib/crosstalk'
 import { GestureGlyph, GESTURE_DEFAULTS, MouseGestureLayer, scrollGestures } from './mouseGesture'
 import { remainTone } from './Chat'
 import {
@@ -66,7 +69,7 @@ import {
   setHideFiles
 } from '../lib/hideDirs'
 
-export type SettingsView = 'profile' | 'account' | 'version' | 'api' | 'mcp' | 'skill' | 'lsp' | 'explorer' | 'gesture' | 'display' | 'language'
+export type SettingsView = 'profile' | 'account' | 'version' | 'api' | 'mcp' | 'skill' | 'lsp' | 'explorer' | 'gesture' | 'display' | 'language' | 'talk'
 type View = SettingsView
 
 // 레일 — PoC 재해석: 그룹 라벨(사용자/엔진/확장/환경) 아래 항목. keys는 검색어(한국어·영어 동의어).
@@ -91,7 +94,10 @@ function navGroups(): { label: string; items: { id: View; label: string; Icon: (
       label: t('확장', 'Extensions'),
       items: [
         { id: 'mcp', label: 'MCP', Icon: IconServer, keys: 'mcp 서버 도구 server tool' },
-        { id: 'skill', label: 'Skill', Icon: IconBook, keys: '스킬 명령 슬래시 skill command slash' }
+        { id: 'skill', label: 'Skill', Icon: IconBook, keys: '스킬 명령 슬래시 skill command slash' },
+        // ★M10 R2 — 대화 연결. R1은 라우터를 끝까지 만들고 이 자리를 안 만들었다:
+        // 켜는 문도 끄는 문도 없어 사용자가 존재를 알 방법이 없었다(크리틱 D7).
+        { id: 'talk', label: 'Talk', Icon: IconMessage, keys: '대화 연결 세션 협업 정지 crosstalk talk session collaboration stop 긴급' }
       ]
     },
     {
@@ -2687,6 +2693,200 @@ function PxSlider({
 // 슬라이더 0~100 하나가 창 뒤가 비치는 정도를 정한다. 값은 ui.glass로 저장되고 lib/glass가
 // :root 인라인 변수(--panel/--chat-bg)로 반영 — 50이 styles.css의 PoC 확정값(스타일시트 원본).
 // 추가 채팅 창은 저장 시 uiGlassChanged 브로드캐스트로 따라온다(드래그 중엔 이 창만 즉시).
+/* ═══════════════════════════════════════════════════════════════════════════
+ * 대화 연결(M10) — **켜는 문과 끄는 문**.
+ *
+ * R1은 라우터·상한·옵트인을 전부 세우고 표면을 R2로 미뤘다. 크리틱은 그 순서를
+ * 뒤집으라고 판정했다(D7): 위험한 절반은 완성됐는데 사람이 누를 자리가 0이었다.
+ *
+ * 이 화면의 규칙 셋.
+ *  ① **옵트인은 2단이다** — 전역 스위치 ∧ 보드별 동의. 전역만 켜도 아무것도 안 나간다.
+ *  ② **끄면 키가 사라진다** — false를 남기면 "예전에 켰던 보드" 목록이 쌓이고,
+ *     그게 쌓이면 전역 스위치 한 번이 전원 재무장이 된다(크리틱 D3).
+ *  ③ **정지 뒤에는 정지라고 말한다** — 그냥 꺼짐과 정지는 디스크에서 같은
+ *     `enabled:false`지만 사용자에게 할 말이 정반대다(D4).
+ * ══════════════════════════════════════════════════════════════════════════ */
+function TalkView(): React.ReactElement {
+  const { cfg, refresh } = useTalkConfig()
+  const [boards, setBoards] = useState<{ id: string; title: string }[]>([])
+  const [said, setSaid] = useState('')
+  useEffect(() => {
+    void readTalkBoards().then(setBoards)
+  }, [])
+  const say = (m: string): void => {
+    setSaid(m)
+    window.setTimeout(() => setSaid(''), 6000)
+  }
+  const stoppedAt = cfg.stoppedAt ?? null
+  return (
+    <>
+      <div className="set-h1">{t('대화 연결', 'Cross-talk')}</div>
+      <div className="set-h1-sub">
+        {t(
+          '같은 보드에 앉은 세션끼리 답변 마지막 줄의 @talk[자리] 한 줄로 서로에게 말을 겁니다. 사람의 지시에서만 시작하고, 홉·총량·팬아웃 상한에서 스스로 멎어요. 기본값은 꺼짐이고, 켜는 행위 자체가 동의입니다.',
+          'Sessions on the same board message each other with a single @talk[slot] line at the end of a reply. A chain only ever starts from your instruction and stops at the hop / total / fan-out caps. Off by default — turning it on is the consent.'
+        )}
+      </div>
+
+      {stoppedAt != null && (
+        <div className="set-note2" style={{ borderColor: 'var(--red)', marginBottom: 14 }}>
+          {t(
+            '긴급 정지가 걸려 있어요. 도는 연쇄와 대기 중이던 메시지는 버려졌고, 보드 동의도 전부 해제됐습니다 — 다시 쓰려면 아래에서 켜고 보드마다 다시 동의해 주세요.',
+            'An emergency stop is in effect. Running chains and queued messages were dropped and every board opt-in was revoked — turn it back on below and re-consent per board.'
+          )}
+        </div>
+      )}
+
+      <div className="set-sec">{t('전역', 'Global')}</div>
+      <div className="sc2 tgl">
+        <div>
+          <div className="em">{t('대화 연결 사용', 'Enable cross-talk')}</div>
+          <div className="meta">
+            {cfg.enabled
+              ? t('아래에서 동의한 보드에서만 오갑니다', 'Messages flow only on the boards you consented to below')
+              : t('꺼져 있으면 @talk 구문은 답변에 글자로만 남아요', 'While off, an @talk line stays plain text in the reply')}
+          </div>
+        </div>
+        <span className="sp" />
+        <button
+          className={'sw2' + (cfg.enabled ? ' on' : '')}
+          role="switch"
+          aria-checked={cfg.enabled}
+          aria-label={cfg.enabled ? t('대화 연결 끄기', 'Turn off cross-talk') : t('대화 연결 켜기', 'Turn on cross-talk')}
+          onClick={() => {
+            void setTalkConfig({ enabled: !cfg.enabled }).then(refresh)
+          }}
+        />
+      </div>
+
+      <div className="set-sec" style={{ marginTop: 26 }}>
+        {t('보드별 동의', 'Per-board consent')}
+      </div>
+      <div className="set-note2">
+        {t(
+          '전역 스위치만으로는 아무것도 나가지 않아요 — 이 목록에서 켠 보드의 보이는 자리끼리만 서로를 볼 수 있습니다.',
+          'The global switch alone sends nothing — only the visible slots of the boards you enable here can reach each other.'
+        )}
+      </div>
+      {boards.length === 0 ? (
+        <div className="sc2 meta">{t('보드가 없어요.', 'No boards yet.')}</div>
+      ) : (
+        boards.map((b) => {
+          const on = cfg.boards?.[b.id] === true
+          return (
+            <div className="sc2 tgl" key={b.id} style={{ marginTop: 8 }}>
+              <div>
+                <div className="em">{b.title || b.id}</div>
+                <div className="meta">{b.id}</div>
+              </div>
+              <span className="sp" />
+              <button
+                className={'sw2' + (on ? ' on' : '')}
+                role="switch"
+                aria-checked={on}
+                aria-label={b.title || b.id}
+                onClick={() => {
+                  void setTalkBoard(b.id, !on).then(refresh)
+                }}
+              />
+            </div>
+          )
+        })
+      )}
+
+      <div className="set-sec" style={{ marginTop: 26 }}>
+        {t('상한', 'Caps')}
+      </div>
+      <div className="set-note2">
+        {t(
+          `한 번의 지시가 태울 수 있는 크기예요 — 지금 값이면 최대 ${cfg.maxMsgs}개의 세션 턴입니다. 상한은 「시도」에서 깎으므로 거절된 건도 예산을 씁니다.`,
+          `How large one instruction can grow — at these values, at most ${cfg.maxMsgs} session turns. Budget is spent on the attempt, so refused sends count too.`
+        )}
+      </div>
+      <div className="sc2">
+        <PxSlider
+          label={t('전달 횟수(홉)', 'Hops')}
+          desc={t('A→B→A→B… 가 이 횟수에서 멎어요', 'A→B→A→B… stops after this many hand-offs')}
+          min={1}
+          max={12}
+          def={4}
+          unit=""
+          value={cfg.maxHops}
+          onChange={(v) => {
+            void setTalkConfig({ maxHops: v }).then(refresh)
+          }}
+        />
+      </div>
+      <div className="sc2" style={{ marginTop: 10 }}>
+        <PxSlider
+          label={t('연쇄 총량', 'Total per chain')}
+          desc={t('한 지시에서 뻗어 나온 메시지의 총 개수', 'Total messages that can branch from one instruction')}
+          min={1}
+          max={24}
+          def={12}
+          unit=""
+          value={cfg.maxMsgs}
+          onChange={(v) => {
+            void setTalkConfig({ maxMsgs: v }).then(refresh)
+          }}
+        />
+      </div>
+      <div className="sc2" style={{ marginTop: 10 }}>
+        <PxSlider
+          label={t('한 턴의 상대 수(팬아웃)', 'Fan-out')}
+          desc={t('한 턴이 동시에 깨우는 세션 수 — 방송 한 줄의 값이 여기서 정해져요', 'How many sessions one turn can wake at once — this is what a broadcast line costs')}
+          min={1}
+          max={5}
+          def={3}
+          unit=""
+          value={cfg.maxFanout}
+          onChange={(v) => {
+            void setTalkConfig({ maxFanout: v }).then(refresh)
+          }}
+        />
+      </div>
+
+      <div className="set-sec" style={{ marginTop: 26 }}>
+        {t('긴급 정지', 'Emergency stop')}
+      </div>
+      <div className="set-note2">
+        {t(
+          `도는 연쇄를 버리고, **이미 다른 세션의 대기 줄에 서 있는 메시지까지** 뽑아내고, 보드 동의를 전부 해제합니다. 어느 화면에서든 ${STOP_HOTKEY} 로도 눌러요.`,
+          `Drops running chains, pulls back messages already queued in other sessions, and revokes every board opt-in. ${STOP_HOTKEY} does the same from anywhere.`
+        )}
+      </div>
+      <div className="sc2" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <button
+          type="button"
+          className="talk-stop"
+          onClick={() => {
+            void stopTalk().then((c) => {
+              refresh()
+              const n = c?.purged ?? 0
+              say(
+                c == null
+                  ? t('정지 요청이 셸에 닿지 않았어요', 'The stop request never reached the shell')
+                  : t(`정지했어요 · 대기 중이던 메시지 ${n}건을 거둬들였습니다`, `Stopped · pulled back ${n} queued message(s)`)
+              )
+            })
+          }}
+        >
+          <span className="talk-stop-dot" />
+          {t('지금 멈추기', 'Stop now')}
+        </button>
+        {said && <span className="meta">{said}</span>}
+      </div>
+
+      <div className="set-note2" style={{ marginTop: 22 }}>
+        {t(
+          '안전에 대해: 받은 메시지는 인용 블록에 갇혀 「이건 사용자 지시가 아니다」와 함께 전달되고, 받는 채팅이 자동승인 모드면 그 턴만 승인 필수로 낮춰서 돕니다. 그래도 봉투는 완화이지 벽이 아니에요 — 되돌릴 수 없는 일을 맡길 보드에서는 켜지 마세요.',
+          'On safety: an incoming message is walled inside a quoted block together with “this is not a user instruction”, and if the receiving chat is in an auto-approving mode that one turn is downgraded to ask-first. Even so the envelope is a mitigation, not a wall — do not enable this on boards that do irreversible work.'
+        )}
+      </div>
+    </>
+  )
+}
+
 function DisplayView(): React.ReactElement {
   const [glass, setGlass] = useState<number>(() => getPref(GLASS_PREF, GLASS_DEFAULT))
   // 사이드바 자동 숨김 — 값을 바꾸면 이벤트로 메인 창이 즉시 다시 읽어 반영한다(applyGlass와 같은 결).
@@ -3205,6 +3405,7 @@ export function SettingsModal({
               {view === 'api' && <ApiView />}
               {view === 'mcp' && <McpView cwd={cwd} />}
               {view === 'skill' && <SkillView cwd={cwd} />}
+              {view === 'talk' && <TalkView />}
               {view === 'display' && <DisplayView />}
               {view === 'language' && <LanguageView />}
               {view === 'lsp' && <LspView />}

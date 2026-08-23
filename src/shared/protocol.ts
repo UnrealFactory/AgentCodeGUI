@@ -1469,19 +1469,28 @@ export type TalkResult =
   | 'duplicate' // 같은 내용 반복
   | 'stopped' // 긴급 정지
 
-/** `EngineEvent{type:'notice'}.talk` — 발신자 스레드에 남는 한 줄의 구조 본문. */
+/** `EngineEvent{type:'notice'}.talk` — 발신자 스레드에 남는 한 줄의 구조 본문.
+ *
+ *  ★M10 R2 — `to`/`target`/`body`는 R1에서 **모든 거절에 null**이었다(계약 드리프트).
+ *  대상이 이미 확정된 거절(`hop_cap`·`rate_limited`…)은 이제 상대를 싣고, `target`에는
+ *  해석된 제목이 아니라 **모델이 적은 원문**이 들어간다(아래 주석 그대로). */
 export interface TalkSent {
   dir: 'out'
   from: string // 발신 chatId
   to: string | null // 수신 chatId (대상 확정 실패면 null)
   target?: string // 모델이 적은 원문 대상(`2` · 제목 · `*`)
-  toSlot?: number // 수신자의 자리 번호(1-based)
-  toName?: string
+  toSlot?: number | null // 수신자의 자리 번호(1-based)
+  toName?: string | null
   body: string | null
   result: TalkResult
   hop?: number // 이 메시지가 몇 번째 전달인가 (사람의 지시 = 0)
   maxHops?: number
   chainId?: string // 같은 사람 지시에서 뻗어 나온 메시지들의 묶음
+  /** ★R2 C1 — 본문에 사용자·시스템 사칭 문구가 있어 봉투에 경고를 붙였다. */
+  spoof?: boolean
+  /** ★R2 C1 — 이 배달에 걸린 2차 벽. 지금은 `'mode_downgraded'` 하나(수신 채팅이
+   *  자동승인 모드라 그 턴만 승인 필수로 강등). */
+  guard?: string | null
 }
 
 /** `crosstalk:config` / `crosstalk:set` / `crosstalk:state`의 본문. 파일: `talk-config.json`. */
@@ -1489,10 +1498,23 @@ export interface TalkConfig {
   version: 1
   enabled: boolean // ★ 기본 false. 긴급 정지가 이 값을 false로 되돌린다
   boards: Record<string, true> // 옵트인한 보드만 키가 있다(끄면 키가 사라진다)
-  maxHops: number // 기본 4
-  maxMsgs: number // 기본 12 — 한 연쇄가 태울 수 있는 총 메시지
-  maxFanout: number // 기본 3 — 한 턴이 동시에 깨우는 세션 수
+  maxHops: number // 기본 4 · 실효 최대 12
+  maxMsgs: number // 기본 12 — 한 연쇄가 태울 수 있는 총 메시지 · 실효 최대 24
+  maxFanout: number // 기본 3 — 한 턴이 동시에 깨우는 세션 수 · 실효 최대 5
+  /** ★R2 D4 — **긴급 정지가 남긴 표식**(epoch 초). 디스크에서 정지와 그냥 꺼짐은 둘 다
+   *  `enabled:false`지만 사용자에게 할 말이 정반대다. 다시 켜면 null로 지워진다. */
+  stoppedAt?: number | null
+  /** `crosstalk:stop`의 응답에만 실린다 — **큐에서 실제로 뽑아낸 봉투 수**(R2 C3). */
+  purged?: number
 }
+
+/** 긴급 정지 상수 — 렌더러가 이 값으로 채널을 부른다(자유 문자열 금지). */
+export const CROSSTALK = {
+  config: 'crosstalk:config',
+  set: 'crosstalk:set',
+  stop: 'crosstalk:stop',
+  state: 'crosstalk:state'
+} as const
 
 /** 마커 채팅도 항상 갖는 경량 상태 — 스냅샷이 아니다(§4.3).
  *  파일은 `chats-v3/status.json` **하나**이고 쓰기 주인은 **Rust**다(렌더러는 읽기만). */

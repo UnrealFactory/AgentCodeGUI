@@ -295,6 +295,36 @@ input,textarea{ font-family:inherit; }
 }
 .atp-lbl span{ font-weight:400; font-size:10.5px; color:var(--text-3); }
 
+/* ---- ★M10 R2 — 대화 연결 긴급 정지 알약 -------------------------------------
+   기능이 **켜져 있을 때만** 뜬다(기본값은 꺼짐). 자리는 창 오른쪽 아래 — 어느 화면
+   (단일·멀티·뷰어)에 있어도 같은 자리에 있고, 모달(z-70)보다 위(z-95)라 설정을 열어
+   둔 채로도 누를 수 있다. 「긴급 정지」가 모달 뒤에 가리면 그건 긴급 정지가 아니다. */
+.talk-stop-wrap{
+  position:fixed; right:16px; bottom:16px; z-index:95;
+  display:flex; flex-direction:column; align-items:flex-end; gap:6px;
+  animation:fade .14s ease both;
+}
+.talk-stop{
+  display:inline-flex; align-items:center; gap:7px;
+  height:30px; padding:0 12px; border-radius:999px;
+  font-size:11.5px; font-weight:700; letter-spacing:.1px;
+  color:#fff; background:color-mix(in oklab, var(--red) 82%, #000 18%);
+  border:1px solid color-mix(in oklab, var(--red) 55%, #fff 12%);
+  box-shadow:var(--shadow-sm); cursor:pointer;
+}
+.talk-stop:hover{ background:var(--red); }
+.talk-stop:disabled{ opacity:.55; cursor:default; }
+.talk-stop-dot{
+  width:7px; height:7px; border-radius:50%; background:#fff;
+  animation:talkpulse 1.6s ease-in-out infinite;
+}
+@keyframes talkpulse{ 0%,100%{ opacity:1 } 50%{ opacity:.35 } }
+.talk-stop-said{
+  max-width:340px; padding:6px 10px; border-radius:8px;
+  font-size:11px; color:var(--text-2);
+  background:var(--surface-2); border:1px solid var(--line-2); box-shadow:var(--shadow-sm);
+}
+
 /* ---- sidebar — 재질이 은은히 비치는 면 (배경 없음 = body의 --panel 틴트) ---- */
 .sidebar{
   width:var(--lcol-w, 242px); flex:0 0 auto;

@@ -174,7 +174,7 @@ pub fn read_chat_queue(id: &str) -> Vec<QueuedText> {
         .map(|a| {
             a.iter()
                 .filter_map(|q| match q {
-                    Value::String(s) => Some(QueuedText { text: s.clone(), images: vec![] }),
+                    Value::String(s) => Some(QueuedText { text: s.clone(), images: vec![], origin: None }),
                     _ => {
                         let text = q
                             .get("text")
@@ -190,7 +190,8 @@ pub fn read_chat_queue(id: &str) -> Vec<QueuedText> {
                             .and_then(Value::as_array)
                             .map(|v| v.iter().filter_map(Value::as_str).map(str::to_string).collect())
                             .unwrap_or_default();
-                        Some(QueuedText { text, images })
+                        let origin = q.get("origin").and_then(Value::as_str).map(str::to_string);
+                        Some(QueuedText { text, images, origin })
                     }
                 })
                 .filter(|q| !q.text.trim().is_empty() || !q.images.is_empty())
@@ -205,6 +206,10 @@ pub fn read_chat_queue(id: &str) -> Vec<QueuedText> {
 pub struct QueuedText {
     pub text: String,
     pub images: Vec<String>,
+    /// ★M10 R2 C4 — **이 예약을 넣은 자**(`chat:queue`의 `origin` 그대로: `user` ·
+    /// `talk` · `limit_resume` …). R1은 이 값을 안 읽었고, 재장전이 전부 사람 것으로
+    /// 되돌려 세션 간 메시지가 **사람의 이름표를 달고** 되살아났다(크리틱 A7).
+    pub origin: Option<String>,
 }
 
 /// **재장전 후보**(M-UX §4.3 / m-logic §5.8 부팅 경로 1단계) —

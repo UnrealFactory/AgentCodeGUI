@@ -631,34 +631,65 @@ pub fn migrate(backup: bool) -> Value {
 
     // D3는 보드에도 그대로 적용된다 — 재마이그레이션이 3.0에서 바꾼 **자리 배치**를
     // 2.6.2 시점으로 되감으면 안 된다(패널이 다른 채팅을 가리키면 대화가 남의 자리로 간다).
+    //
+    // ★M10 R2 §5 — 크리틱이 두 상태를 갈라 실측해서 이 블록의 구조적 결함을 잡았다.
+    //
+    //   S1  마커 없는 홈 + 3.0 `boards/b-mine.json`  → **덮였다**(파일 소멸, 경고조차 없음)
+    //   S2  마커 있는 홈 + `boards/index.json`만 소실 → **안 살아남았다**(`kept_v3_board` 반증)
+    //
+    // S2가 진짜 발견이다. `is_migrated()`는 `migratedAt` ∧ `boards/index.json`을 보므로
+    // **재마이그레이션이 도는 유일한 조건이 그 인덱스의 부재**인데, 3.0 보드를 넘기는
+    // 목록을 만드는 원천이 바로 그 없는 인덱스였다 — carry-forward가 필요한 유일한
+    // 상황에서 carry-forward의 입력이 없다. 그래서 원천을 **디렉터리 스캔**으로 바꾼다.
+    //
+    // S1은 마커를 안 본다. 마커가 없다는 것은 "이 홈은 아직 2.6.2다"라는 뜻이지
+    // "`boards/`의 파일은 쓰레기다"라는 뜻이 아니고, 커밋이 디렉터리 통째 스왑이라
+    // 목록에 없는 파일은 백업 없이 사라진다. 사용자가 3.0에서 만든 보드는 **어느 상태
+    // 에서든** 데려온다. 다만 같은 id가 소스에도 있으면(예: `default`) 소스가 이긴다 —
+    // 방금 마이그레이션한 새 채팅이 자리에 앉아야 하기 때문이다. 그 경우에만
+    // `clobbered_v3_board`를 남긴다(그리고 `.old-*` 한 세대가 실제 복구 경로다).
     let boards_dir = home.join(crate::boards::DIR);
+    let v3_board_ids = scan_board_ids(&boards_dir);
     let mut kept_boards = 0usize;
     for bd in &all_boards {
         let id = s(bd, "id");
-        if already_migrated
-            && boards_dir.join(format!("{id}.json")).is_file()
-            && std::fs::copy(boards_dir.join(format!("{id}.json")), staged_boards.join(format!("{id}.json"))).is_ok()
-        {
-            kept_boards += 1;
-            warnings.push(json!({ "kind": "kept_v3_board", "id": id }));
-            continue;
+        if v3_board_ids.contains(&id) {
+            if already_migrated
+                && std::fs::copy(boards_dir.join(format!("{id}.json")), staged_boards.join(format!("{id}.json"))).is_ok()
+            {
+                kept_boards += 1;
+                warnings.push(json!({ "kind": "kept_v3_board", "id": id }));
+                continue;
+            }
+            if !already_migrated {
+                // 소스가 이긴다 — 그러나 **말은 한다**. R1은 여기서 경고조차 없었다.
+                warnings.push(json!({ "kind": "clobbered_v3_board", "id": id, "recoverAt": format!("{}.old-{now}", crate::boards::DIR) }));
+            }
         }
         let _ = std::fs::write(staged_boards.join(format!("{id}.json")), serde_json::to_string(bd).unwrap_or_default());
     }
-    // 3.0에서 만든 보드(소스에 없는 id)도 그대로 옮긴다
+    // 3.0에서 만든 보드(소스에 없는 id)도 그대로 옮긴다 — 목록의 원천은 **파일**이다.
     let mut board_order = board_order;
     let prev_boards_index = crate::read_home_json(&format!("{}/index.json", crate::boards::DIR));
-    if already_migrated {
-        if let Some(prev) = prev_boards_index.as_ref() {
-            let pe = vec![];
-            for id in prev.get("order").and_then(Value::as_array).unwrap_or(&pe) {
-                let Some(id) = id.as_str() else { continue };
-                if board_order.iter().any(|b| b == id) {
-                    continue;
-                }
-                if std::fs::copy(boards_dir.join(format!("{id}.json")), staged_boards.join(format!("{id}.json"))).is_ok() {
-                    board_order.push(id.to_string());
-                }
+    {
+        // 인덱스가 있으면 그 순서를 먼저 쓰고(사용자가 정한 순서), 인덱스에 없는 파일은
+        // 이름순으로 뒤에 붙인다. 인덱스는 **순서의 힌트**일 뿐 목록의 원천이 아니다.
+        let pe = vec![];
+        let hinted: Vec<String> = prev_boards_index
+            .as_ref()
+            .and_then(|p| p.get("order").and_then(Value::as_array))
+            .unwrap_or(&pe)
+            .iter()
+            .filter_map(|v| v.as_str().map(str::to_string))
+            .collect();
+        let rest = v3_board_ids.iter().filter(|id| !hinted.contains(id)).cloned().collect::<Vec<_>>();
+        for id in hinted.into_iter().chain(rest) {
+            if board_order.iter().any(|b| *b == id) || !v3_board_ids.contains(&id) {
+                continue;
+            }
+            if std::fs::copy(boards_dir.join(format!("{id}.json")), staged_boards.join(format!("{id}.json"))).is_ok() {
+                board_order.push(id.to_string());
+                warnings.push(json!({ "kind": "carried_v3_board", "id": id }));
             }
         }
     }
@@ -801,7 +832,15 @@ fn copy_dir(src: &Path, dst: &Path) -> std::io::Result<()> {
 /// 스테이징 디렉터리를 제자리로 — 있으면 옛 것을 옆으로 밀고 rename, 성공하면 삭제.
 /// (중간에 죽어도 `.old-<stamp>`가 남아 손으로 복구할 수 있고, 옛 3디렉터리는 무사하다)
 fn commit_dir(tmp: &Path, dst: &Path, now: u128) -> bool {
-    let old = dst.with_file_name(format!("{}.old-{now}", dst.file_name().unwrap_or_default().to_string_lossy()));
+    let name = dst.file_name().unwrap_or_default().to_string_lossy().to_string();
+    let old = dst.with_file_name(format!("{name}.old-{now}"));
+    // ★M10 R2 §5-2 — **지난 세대를 먼저 치우고, 이번 세대는 남긴다.**
+    //
+    // R1은 성공 직후 `.old-*`를 즉시 지웠다. 커밋이 디렉터리 통째 스왑이라 스테이징
+    // 목록에 없던 파일은 백업 없이 사라졌고, 크리틱의 S1·S2가 정확히 그 모양이었다
+    // (사용자가 3.0에서 만든 보드 전부 소실 + 자리 배치 되감김). 한 세대만 남기면
+    // 두 상태 다 손으로 복구할 수 있고, 무한히 쌓이지도 않는다.
+    prune_old_generations(dst, &name);
     if dst.exists() && std::fs::rename(dst, &old).is_err() {
         return false;
     }
@@ -810,8 +849,44 @@ fn commit_dir(tmp: &Path, dst: &Path, now: u128) -> bool {
         let _ = std::fs::rename(&old, dst);
         return false;
     }
-    let _ = std::fs::remove_dir_all(&old);
     true
+}
+
+/// `<name>.old-*` 형제들을 지운다(이번 커밋이 만들 세대는 아직 없다 = 정확히 1세대 유지).
+fn prune_old_generations(dst: &Path, name: &str) {
+    let Some(parent) = dst.parent() else { return };
+    let prefix = format!("{name}.old-");
+    let Ok(it) = std::fs::read_dir(parent) else { return };
+    for e in it.flatten() {
+        let n = e.file_name().to_string_lossy().to_string();
+        if n.starts_with(&prefix) {
+            let _ = std::fs::remove_dir_all(e.path());
+        }
+    }
+}
+
+/// `boards/`에 **실제로 있는 보드 파일**의 id 목록(정렬).
+///
+/// 인덱스를 안 읽는 것이 요점이다 — 재마이그레이션이 도는 유일한 조건이 그 인덱스의
+/// 부재이므로(§5), 인덱스를 신뢰하면 필요한 순간에 목록이 비어 있다.
+fn scan_board_ids(dir: &Path) -> Vec<String> {
+    let mut v: Vec<String> = std::fs::read_dir(dir)
+        .map(|it| {
+            it.flatten()
+                .filter_map(|e| {
+                    let n = e.file_name().to_string_lossy().to_string();
+                    if !n.ends_with(".json") || n == "index.json" || !e.path().is_file() {
+                        return None;
+                    }
+                    // 파일이 실제로 보드인가(id가 있는 객체) — 쓰레기를 자리 목록에 못 올린다.
+                    let v = read_json(&e.path())?;
+                    v.get("id").and_then(Value::as_str).is_some().then(|| n.trim_end_matches(".json").to_string())
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    v.sort();
+    v
 }
 
 #[cfg(test)]
@@ -1010,5 +1085,117 @@ mod tests {
         crate::chats_v3::invalidate();
         let st = crate::chats_v3::boot_statuses();
         assert_eq!(st["w-1"]["status"], "done", "status.json이 없으면 얼린 done이 풀린다");
+    }
+
+    // ── ★M10 R2 §5 — boards/ 덮어쓰기 두 상태 ───────────────────────────────
+
+    /// 사용자가 3.0에서 `board:save`로 만든 그 모양.
+    fn plant_board(h: &crate::testkit::Home, id: &str, title: &str, with_index: bool) {
+        if with_index {
+            h.write(&format!("{}/index.json", crate::boards::DIR), &json!({ "version": 1, "order": [id], "activeBoardId": id }).to_string());
+        }
+        h.write(
+            &format!("{}/{id}.json", crate::boards::DIR),
+            &json!({ "id": id, "title": title, "custom": true, "count": 2, "chrome": "grid",
+                     "order": [0,1,2,3,4,5], "slots": ["c-1", "c-2", null, null, null, null], "updatedAt": 7 })
+                .to_string(),
+        );
+        crate::boards::invalidate();
+    }
+
+    fn board_ids(h: &crate::testkit::Home) -> Vec<String> {
+        h.read_json(&format!("{}/index.json", crate::boards::DIR))
+            .and_then(|v| v["order"].as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_string)).collect()))
+            .unwrap_or_default()
+    }
+
+    /// **S1** — 마커 없는 홈(=아직 2.6.2)인데 3.0 `boards/`가 있다. R1은 통째로 덮었고
+    /// 경고조차 없었다(크리틱 §5). 마커가 없다는 것은 "이 홈은 아직 2.6.2다"라는 뜻이지
+    /// "boards/의 파일은 쓰레기다"라는 뜻이 아니다.
+    #[test]
+    fn a_3_0_board_survives_a_first_migration_of_an_unmarked_home() {
+        let h = temp_home("mig-board-s1");
+        seed_262(&h);
+        plant_board(&h, "b-mine", "내가 만든 보드", true);
+        let r = migrate(false);
+        assert_eq!(r["ok"], true);
+        assert!(h.path("boards/b-mine.json").is_file(), "3.0 보드 파일이 사라졌다");
+        assert!(board_ids(&h).contains(&"b-mine".to_string()), "자리 목록에서 사라졌다: {:?}", board_ids(&h));
+        assert_eq!(h.read_json("boards/b-mine.json").unwrap()["title"], "내가 만든 보드");
+        assert!(warn_kinds(&r).contains(&"carried_v3_board".to_string()));
+        // 소스가 만드는 `default`는 여전히 새로 선다 — 방금 옮긴 채팅이 자리에 앉아야 한다.
+        assert!(h.path("boards/default.json").is_file());
+    }
+
+    /// **S1-충돌** — 3.0 보드의 id가 소스에도 있으면(예: `default`) 소스가 이긴다.
+    /// 그때는 **말은 한다**: R1은 여기서 경고조차 없어 사용자가 소실을 알 길이 없었다.
+    #[test]
+    fn a_clobbered_v3_board_is_named_and_recoverable() {
+        let h = temp_home("mig-board-clobber");
+        seed_262(&h);
+        plant_board(&h, "default", "내 기본 보드", true);
+        let r = migrate(false);
+        assert_eq!(r["ok"], true);
+        let kinds = warn_kinds(&r);
+        assert!(kinds.contains(&"clobbered_v3_board".to_string()), "덮으면서 아무 말도 안 했다: {kinds:?}");
+        // 그리고 **한 세대가 남는다** — 손으로 되살릴 수 있다.
+        let olds: Vec<String> = std::fs::read_dir(&h.dir)
+            .unwrap()
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().to_string())
+            .filter(|n| n.starts_with("boards.old-"))
+            .collect();
+        assert_eq!(olds.len(), 1, "백업 세대가 {olds:?}");
+        let back: Value =
+            serde_json::from_str(&std::fs::read_to_string(h.dir.join(&olds[0]).join("default.json")).unwrap()).unwrap();
+        assert_eq!(back["title"], "내 기본 보드", "백업에 원본이 없다");
+    }
+
+    /// **S2** — 이미 마이그레이션된 홈에서 `boards/index.json`만 사라진 찢긴 커밋.
+    ///
+    /// 이게 진짜 발견이었다: `is_migrated()`가 그 인덱스를 보므로 **재마이그레이션이 도는
+    /// 유일한 조건이 인덱스의 부재**인데, 3.0 보드를 넘기는 목록의 원천이 바로 그 없는
+    /// 인덱스였다. carry-forward가 필요한 유일한 상황에서 입력이 없다.
+    #[test]
+    fn a_torn_boards_index_does_not_take_the_3_0_boards_with_it() {
+        let h = temp_home("mig-board-s2");
+        seed_262(&h);
+        assert_eq!(migrate(false)["ok"], true);
+        // 3.0에서 보드를 하나 만들었다(인덱스에도 올렸다).
+        plant_board(&h, "b-mine", "내가 만든 보드", false);
+        let mut idx = h.read_json("boards/index.json").unwrap();
+        idx["order"].as_array_mut().unwrap().push(json!("b-mine"));
+        h.write("boards/index.json", &idx.to_string());
+        crate::boards::invalidate();
+        assert!(is_migrated(), "전제: 이 홈은 이미 마이그레이션됐다");
+
+        // 찢긴 커밋 — 인덱스만 사라진다(파일은 남는다).
+        std::fs::remove_file(h.path("boards/index.json")).unwrap();
+        crate::boards::invalidate();
+        assert!(!is_migrated(), "전제: 인덱스가 없으면 재마이그레이션이 돈다");
+
+        let r = migrate(false);
+        assert_eq!(r["ok"], true);
+        assert!(h.path("boards/b-mine.json").is_file(), "3.0에서 만든 보드가 소실됐다");
+        assert!(board_ids(&h).contains(&"b-mine".to_string()), "자리 목록: {:?}", board_ids(&h));
+        assert_eq!(h.read_json("boards/b-mine.json").unwrap()["slots"][0], "c-1", "자리 배치가 되감겼다");
+    }
+
+    /// 백업은 **한 세대**다 — 무한히 쌓이면 홈이 부푼다.
+    #[test]
+    fn old_generations_never_pile_up() {
+        let h = temp_home("mig-board-gen");
+        seed_262(&h);
+        for _ in 0..3 {
+            assert_eq!(migrate(false)["ok"], true);
+        }
+        for dir in ["chats-v3", "boards"] {
+            let n = std::fs::read_dir(&h.dir)
+                .unwrap()
+                .flatten()
+                .filter(|e| e.file_name().to_string_lossy().starts_with(&format!("{dir}.old-")))
+                .count();
+            assert_eq!(n, 1, "{dir}의 백업 세대가 {n}개");
+        }
     }
 }

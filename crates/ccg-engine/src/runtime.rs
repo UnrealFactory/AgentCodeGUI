@@ -569,7 +569,12 @@ impl<D: CliDriver> ChatRuntime<D> {
             if q.text.is_empty() && q.images.is_empty() {
                 continue;
             }
-            let m = self.make_queue_item(q, QueueOrigin::User, now);
+            // ★M10 R2 C4 — **신분은 재시작으로 바뀌지 않는다.** 여기가 `User` 고정이던
+            // 탓에, 디스크에 `talk`으로 앉아 있던 세션 간 예약이 부팅 한 번에 사람 것으로
+            // 되살아나 그 값이 다시 굳었다(크리틱 A7). 셸이 원본을 안 실으면(옛 파일 ·
+            // 2.6.2 문자열 배열) 여전히 `User`다 — 그쪽은 실제로 사람의 예약이다.
+            let origin = q.origin.unwrap_or(QueueOrigin::User);
+            let m = self.make_queue_item(q, origin, now);
             self.queue.push_back(m);
         }
         if let Some(h) = hold {

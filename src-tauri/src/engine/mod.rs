@@ -116,10 +116,18 @@ fn reload_pending(ids: &[String]) {
                 // 정체성 스냅샷은 **다시 잡는다**(m-logic §5.8 "복원이 아니라 재장전" —
                 // 그 사이 폴더·계정이 바뀌었을 수 있다).
                 picker: None,
-                // ★M10 — 디스크에서 되살린 예약은 **사람 것으로 되돌린다**. 재시작을
-                // 건너뛴 세션 간 메시지가 "AI가 넣은 줄"의 신분을 유지하면, 그 채팅의
-                // 다음 사람 턴 판정(헛 재개 상한·한도 재개)이 낡은 표식에 걸린다.
-                origin: None,
+                // ★M10 R2 C4 — 되살린 예약은 **신분을 그대로 안고 온다.**
+                //
+                // R1은 여기서 `origin: None`으로 되돌렸다(주석은 "낡은 표식을 들고 다니지
+                // 않게"). 그런데 `None` = `User`이므로, §3.7이 막겠다던 결과가 **그대로**
+                // 생겼다: 헛 재개 연쇄 카운터가 리셋되고 한도 대기표가 "사용자가 이미
+                // 다시 보냈다"로 판정한다. 규약을 지키려고 규약을 깬 자리였고, 크리틱은
+                // 디스크에 `origin:"user"`가 다시 굳는 것까지 확인했다(A7).
+                //
+                // 신분은 **표식이 아니라 사실**이다 — 그 줄을 넣은 자는 재시작으로 바뀌지
+                // 않는다. 모르는 낱말은 `None`(사람)으로 떨어진다: 옛 파일과 2.6.2 문자열
+                // 배열이 그 경로이고, 둘 다 실제로 사람의 예약이다.
+                origin: origin_of(q.origin.as_deref()),
             })
             .collect();
         let hold = lite.hold.map(|h| ccg_engine::runtime::ReloadHold {
@@ -139,6 +147,19 @@ fn reload_pending(ids: &[String]) {
                 auto: auto.contains(&id),
             },
         );
+    }
+}
+
+/// 디스크의 `origin` 낱말 → 큐 원본(★M10 R2 C4). `chat:queue`가 쓰는 그 어휘다
+/// (`QueueOrigin::wire()`의 역함수). 모르는 값은 `None` = 사람.
+fn origin_of(w: Option<&str>) -> Option<ccg_engine::queue::QueueOrigin> {
+    use ccg_engine::queue::QueueOrigin as O;
+    match w? {
+        "talk" => Some(O::Talk),
+        "limit_resume" => Some(O::LimitResume),
+        "viewer_ask" => Some(O::ViewerAsk),
+        "notif_replay" => Some(O::NotifReplay),
+        _ => None,
     }
 }
 
