@@ -427,8 +427,12 @@ export interface WindowApi {
      * (「크게 보기」·팝아웃·그리드 복귀) 새 컴포넌트는 아무것도 못 받는다. 셸의 옮김기에는
      * 그 값이 그대로 있으므로 여기서 한 번 물어 채운다. `null` = 아직 모름(런타임 없음 ·
      * `system/init` 전 · 재시작 직후) — 「MCP 없음」과 다른 말이라 화면은 칩을 안 세운다.
+     *
+     * **선택 메서드인 이유**: 이 계약면은 3.0 심(`app/src/api/shim.ts`)과 2.6.2
+     * preload(`src/preload`, 동결)가 함께 만족해야 한다. 3.0에만 있는 채널을 필수로
+     * 선언하면 동결 트리의 `typecheck:node`가 깨진다(`TS2741`). 호출부는 `?.()`로 부른다.
      */
-    toolingGet(panelId: string): Promise<ChatTooling | null>
+    toolingGet?(panelId: string): Promise<ChatTooling | null>
     /** 패널 팝아웃 창 열기 — 이미 열려 있으면 그 창을 앞으로 (메인 창에서 호출) */
     openPanelWindow(state: PanelPopState): Promise<void>
     /** 팝아웃 창 → 자기 부트 페이로드(연 순간의 패널 상태) 조회 */

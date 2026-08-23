@@ -4,7 +4,7 @@ import type {
   AgentQuestion,
   BgTask,
   ChangedFile,
-  EngineEvent,
+  EngineEventV3,
   EngineId,
   FileDiff,
   SubAgentInfo,
@@ -144,7 +144,7 @@ export interface SessionState {
 
 type Action =
   | { type: 'begin'; text: string; time: string; command: string | null; images?: string[] }
-  | { type: 'engine'; event: EngineEvent }
+  | { type: 'engine'; event: EngineEventV3 }
   | { type: 'clear-permission' }
   | { type: 'clear-question' }
   // 질문에 답을 보냄 — pendingQuestion을 닫으며 문답 흔적(qa)을 스레드에 남긴다
@@ -1330,7 +1330,7 @@ export function reducer(state: SessionState, action: Action): SessionState {
  * 이벤트를 받는 표면 전부(본채팅·추가 채팅·멀티 패널·팝아웃·배경 수집기)가 이 함수를
  * 지나야 한다 — 한 곳이라도 `{type:'engine'}`을 직접 만들면 그 화면만 말풍선이 없다.
  */
-export function engineAction(event: EngineEvent): Action {
+export function engineAction(event: EngineEventV3): Action {
   const e = event as unknown as { type?: string; text?: unknown; images?: unknown }
   if (e?.type === 'user-echo' && typeof e.text === 'string')
     return {
@@ -1346,7 +1346,7 @@ export function engineAction(event: EngineEvent): Action {
 // 멀티 패널) pass their own channel's onEvent so each isolated conversation drives
 // through the exact same reducer.
 export function useAgentSession(
-  subscribe?: (cb: (event: EngineEvent) => void) => () => void
+  subscribe?: (cb: (event: EngineEventV3) => void) => () => void
 ) {
   const [state, dispatch] = useReducer(reducer, initialSessionState)
   const [elapsed, setElapsed] = useState(0)

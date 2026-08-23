@@ -25,7 +25,7 @@
  *   섹션 = `.hsec` · 행 = `.wb-prow`(+`.done`/`.err`) · 빈 상태 = `.ag-none`
  * ============================================================ */
 import { useEffect, useRef, useState } from 'react'
-import type { ChatTooling, EngineEvent, McpLive, SkillLive } from '@shared/protocol'
+import type { ChatTooling, EngineEventV3, McpLive, SkillLive } from '@shared/protocol'
 import { IconAlert, IconBook, IconCheck, IconChevDown, IconEyeOff, IconPlug, IconServer } from './icons'
 import { t, useLang } from '../lib/i18n'
 
@@ -163,7 +163,7 @@ export function McpSkillView({
       .catch(() => {})
     // ② 이후는 푸시가 잇는다(턴마다 · 정책 변경 · 세션 중간 커맨드 갱신).
     const off =
-      window.api.multi?.onEvent?.(panelId, (e: EngineEvent) => {
+      window.api.multi?.onEvent?.(panelId, (e: EngineEventV3) => {
         if (e.type === 'tooling') setSnap(e.tooling)
       }) ?? (() => {})
     return () => {

@@ -505,6 +505,20 @@ export type EngineEvent =
       talk?: TalkSent
     }
   | { type: 'error'; runId: string; message: string }
+
+/**
+ * ★M9 R2 확인 크리틱(F1) — **3.0 전용 엔진 이벤트까지 포함한 합집합.**
+ *
+ * `EngineEvent`는 2.6.2 렌더러(`src/renderer`, 동결)의 리듀서가 `never` 가드로 전수
+ * 소진하는 유니온이다. 3.0이 새 종류를 그 유니온에 직접 더하면 **동결 트리의 타입체크가
+ * 깨진다**(실제로 두 라운드 동안 `typecheck:web`이 빨간 채로 흘렀다 — `TS2345`).
+ * 2.6.2 메인은 이 이벤트를 애초에 낼 수 없으므로 동결 렌더러가 몰라도 되는 것이 맞다.
+ *
+ * 규약: **와이어에 새 엔진 이벤트를 더할 때는 여기에 더한다.** `EngineEvent`는 2.6.2와의
+ * 계약면으로 얼려 두고, 3.0 렌더러(`app/src`)와 셸이 이 이름을 쓴다.
+ */
+export type EngineEventV3 =
+  | EngineEvent
   // ★ M9 — 이 채팅이 **실제로 들고 있는 도구 환경**(MCP 서버 · 스킬). REPLACE 의미:
   // 받은 쪽은 자기 스냅샷을 통째로 갈아끼운다. 턴마다(system/init) 오고, 세션 중간에
   // 커맨드 목록이 바뀌면(system/commands_changed) 한 번 더 온다.
