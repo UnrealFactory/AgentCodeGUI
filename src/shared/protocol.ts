@@ -474,7 +474,29 @@ export type EngineEvent =
   // (informational: 한도 경고, 훅 피드백 등). 스레드에 notice 줄로 그대로 표시한다.
   // once가 있으면 '이 대화에서 그 key당 한 번만' 표시하는 안내(예: API 과금)로 취급하고,
   // 방금 보낸 사용자 메시지 바로 위에 끼워 넣는다.
-  | { type: 'notice'; runId: string; text: string; once?: string }
+  // ★ M11 — `switch`가 붙어 오면 이 notice는 **한도 소진 자동 계정 전환** 배너다
+  // (설정 '한도 소진 시 계정 자동 전환'이 켜져 있을 때만 온다. 기본 꺼짐).
+  //
+  // 왜 새 EngineEvent 종류가 아닌가: 이건 스레드에 줄 하나를 남기는 안내이고 그 문법은
+  // notice가 이미 갖고 있다. 종류를 늘리면 리듀서의 소진 가드가 렌더러 타입체크를
+  // 멈추고(M9 R1이 밟은 함정), 그 대가로 얻는 게 없다 — 되돌릴 재료는 선택 필드로
+  // 실으면 그만이고, 안 읽는 화면은 지금처럼 문장만 그린다.
+  //
+  // `revertTo`는 **전환 직전 리비전**이다. `chat:identity-revert`에 그대로 넘기면
+  // 계정이 돌아온다(히스토리 삭제가 아니라 새 리비전 — m-logic §6.3). 같은 tick에
+  // `chat:identity{origin:'auto_account_switch', changed:['billing.account']}`도 나간다.
+  | {
+      type: 'notice'
+      runId: string
+      text: string
+      once?: string
+      switch?: {
+        from: string // 소진된 계정
+        to: string // 갈아탄 계정
+        soonestReset: number | null // 옮겨간 계정이 다음에 초기화되는 unix 초(모르면 null)
+        revertTo: number
+      }
+    }
   | { type: 'error'; runId: string; message: string }
   // ★ M9 — 이 채팅이 **실제로 들고 있는 도구 환경**(MCP 서버 · 스킬). REPLACE 의미:
   // 받은 쪽은 자기 스냅샷을 통째로 갈아끼운다. 턴마다(system/init) 오고, 세션 중간에

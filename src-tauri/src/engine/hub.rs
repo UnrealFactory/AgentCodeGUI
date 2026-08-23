@@ -213,6 +213,10 @@ struct Hub {
     /// 런타임 없이 거절한 전송의 런 id 일련번호(★R5 — [`Hub::reject_spawn`]).
     /// 슬롯의 `run_seq`와 축이 다르다: 그쪽은 슬롯이 있을 때만 센다.
     reject_seq: u64,
+    /// ★M11 — 한도 소진 시 갈아탈 계정을 고르는 훅(설정 옵션, 기본 꺼짐).
+    /// **모든 슬롯이 같은 인스턴스를 공유한다**: 후보 판정의 "지금 태우고 있는 계정"은
+    /// 채팅 하나가 아니라 앱 전체의 사실이고, usage 스냅샷·HTTP 예산도 앱당 하나다.
+    switcher: Arc<super::acct_switch::Switcher>,
 }
 
 #[derive(Default)]
@@ -282,7 +286,12 @@ impl Hub {
                     return None;
                 }
             };
-            let rt = rt.with_cli_path(self.cli.clone()).with_home(ccg_store::app_home());
+            let rt = rt
+                .with_cli_path(self.cli.clone())
+                .with_home(ccg_store::app_home())
+                // ★M11 — 한도 소진 시 노는 계정으로 갈아타기. 훅은 앱 전체가 하나를
+                // 공유하고, 설정이 꺼져 있으면 언제나 `None`을 내 옛 경로(대기표)가 된다.
+                .with_account_switcher(self.switcher.clone());
             self.slots.insert(
                 chat.to_string(),
                 Slot {
@@ -452,8 +461,22 @@ impl Hub {
                     })
                     .collect();
                 // `flags`는 "이 주행이 정말 그 팔이었나"의 유일한 증거다(★R4).
+                //
+                // ★M11 `accountSwitch` — **왜 안 바뀌었나**의 답. 침묵 금지(D7)는 사용자
+                // 문구만의 규약이 아니다: 하네스와 크리틱이 "토글은 켰는데 왜 그대로냐"를
+                // 물을 자리가 없으면 이 기능은 검증 불가능해진다. `skipped`는 계정마다
+                // 탈락 사유 낱말(`contaminated`·`no_headroom`·`usage_unknown`…)이다.
+                let plan = self.switcher.last_plan();
                 answer(json!({ "chats": rows, "cli": self.cli.to_string_lossy(),
-                               "flags": crate::flags::active() }));
+                               "flags": crate::flags::active(),
+                               "accountSwitch": {
+                                   "on": self.switcher.enabled(),
+                                   "busy": self.burning_accounts(),
+                                   "picked": plan.picked,
+                                   "skipped": plan.skipped.iter()
+                                       .map(|(e, w)| json!({ "email": e, "why": w }))
+                                       .collect::<Vec<_>>(),
+                               } }));
                 return;
             }
             Op::Dispose => {
@@ -681,10 +704,28 @@ impl Hub {
         }
     }
 
+    /// ★M11 — **지금 CLI가 살아 있는 채팅들의 계정.** = "놀고 있지 않은 계정".
+    ///
+    /// `Idle`이 아니라는 것은 그 채팅에 프로세스가 붙어 있다는 뜻이고(스트리밍 중이든
+    /// 상주 중이든), 그 채팅의 다음 턴은 그 계정을 태운다. 거기로 옮기면 두 대화가 한
+    /// 5시간 창을 나눠 쓰다 **둘 다** 막힌다 — 자동 전환이 만들면 안 되는 상태다.
+    fn burning_accounts(&self) -> std::collections::BTreeSet<String> {
+        self.slots
+            .values()
+            .filter(|s| s.rt.state() != StateTag::Idle)
+            .filter_map(|s| s.rt.identity().account().map(str::to_string))
+            .collect()
+    }
+
     /// 한 바퀴: 모든 런타임 tick → 프레임 번역 → 엔진 이벤트 → 상태 lite.
     fn pump(&mut self) {
         // 라우팅 캐시의 수명은 이 한 바퀴다(무효화 규약 1) — 최대 20ms 낡는다.
         self.route.clear();
+        // ★M11 — **지금 태우고 있는 계정**을 전환 훅에 알린다. 노는 계정만 후보가 되는
+        //   근거이고, 허브만이 이걸 안다(모든 슬롯을 소유하는 유일한 자리). tick 전에
+        //   갱신해야 이 바퀴의 `check_hold`가 최신 값으로 판정한다.
+        //   비용은 슬롯 수만큼의 문자열 clone이고, 슬롯은 열려 있는 대화의 수다.
+        self.switcher.set_busy(self.burning_accounts());
         let chats: Vec<String> = self.slots.keys().cloned().collect();
         for chat in chats {
             let (frames, events, evs_state) = {
@@ -905,6 +946,38 @@ impl Hub {
                     }),
                 );
             }
+            // ★M11 — **한도 소진 → 다른 계정으로 자동 전환** 배너.
+            //
+            // 채널을 늘리지 않는다: 문장은 이미 스레드에 줄을 붙이는 `notice`로 나가고
+            // (구독자가 있는 유일한 자리다 — D7의 "구독자 없는 채널에만 말하기" 금지),
+            // 되돌릴 재료는 **같은 봉투에 구조로** 실린다(`switch{}`). `notice`의 선택
+            // 필드라 렌더러의 소진 가드를 건드리지 않고, 되돌리기 알약을 그리는 라운드가
+            // 오면 그 필드만 읽으면 된다. 리비전 자체는 `chat:identity`가 이미 냈다
+            // (`origin:"auto_account_switch"` · `changed:["billing.account"]`).
+            Event::AccountSwitched {
+                from,
+                to,
+                soonest_reset,
+                revert_to,
+            } => {
+                let run = self.slots.get(chat).map(|s| s.wire.run_id.clone()).unwrap_or_default();
+                // "언제 초기화되는지"는 **이 계정을 고른 이유**다(곧 버려질 잔량부터
+                // 태운다). 모르면 그 절을 통째로 뺀다 — 지어내지 않는다(모델 폴백
+                // 배너가 사유를 지어내지 않는 것과 같은 규약).
+                let tail = soonest_reset.and_then(reset_phrase).unwrap_or_default();
+                self.fanout(
+                    chat,
+                    json!({
+                        "type": "notice", "runId": run,
+                        "text": format!("사용 한도에 걸려 {to} 계정으로 바꿔 이어갑니다{tail}"),
+                        "switch": {
+                            "from": from, "to": to,
+                            "soonestReset": soonest_reset,
+                            "revertTo": revert_to,
+                        },
+                    }),
+                );
+            }
             Event::RespawnNotice { text, .. } => {
                 let run = self.slots.get(chat).map(|s| s.wire.run_id.clone()).unwrap_or_default();
                 self.fanout(chat, json!({ "type": "notice", "runId": run, "text": text }));
@@ -1089,6 +1162,24 @@ fn to_snake(camel: &str) -> String {
     out
 }
 
+/// ★M11 — 리셋 시각(unix 초) → 배너 꼬리. **상대 시간**이라 타임존이 필요 없다
+/// (`chrono`를 들이지 않는 이유이자, "몇 시에"보다 "얼마 뒤에"가 이 문장에서 더 쓸모
+/// 있는 이유다 — 사용자가 알고 싶은 건 *언제까지 이 계정을 쓰나*다).
+/// 이미 지난 값·미래가 아닌 값은 `None` = 문장에서 그 절이 통째로 빠진다.
+fn reset_phrase(resets_at: u64) -> Option<String> {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()?
+        .as_secs();
+    let left = resets_at.checked_sub(now).filter(|s| *s > 0)?;
+    let mins = left / 60;
+    Some(if mins < 60 {
+        format!(" — 이 계정은 약 {}분 뒤 초기화돼요.", mins.max(1))
+    } else {
+        format!(" — 이 계정은 약 {}시간 뒤 초기화돼요.", mins / 60)
+    })
+}
+
 fn origin_wire(o: &RevisionOrigin) -> String {
     match o {
         RevisionOrigin::Default => "default".into(),
@@ -1097,6 +1188,9 @@ fn origin_wire(o: &RevisionOrigin) -> String {
         RevisionOrigin::DeferredApply => "deferred_apply".into(),
         RevisionOrigin::Revert(_) => "revert".into(),
         RevisionOrigin::Restore => "restore".into(),
+        // ★M11이 event.rs에 추가한 변종. 와이어 문자열은 그쪽 주석이 선언한 값 그대로다
+        // (빌드가 멈춰 있어 여기서 채웠다 — 의미의 주인은 M11이다).
+        RevisionOrigin::AutoAccountSwitch => "auto_account_switch".into(),
     }
 }
 
@@ -1210,6 +1304,9 @@ pub fn start(app: AppHandle) {
                 cli: cli_path(),
                 route: RouteCache::default(),
                 reject_seq: 0,
+                // ★M11 — 워커 스레드 하나를 여기서 띄운다(앱당 1개). 설정이 꺼져 있으면
+                // 그 스레드는 영원히 `recv()`에서 잠들어 있다 = 비용 0.
+                switcher: super::acct_switch::Switcher::start(),
             };
             loop {
                 let wait = hub.wait();

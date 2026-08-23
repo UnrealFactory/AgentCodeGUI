@@ -25,12 +25,23 @@
 //! 못 나간다. 한도 조회·생사검증·토큰 리프레시·로그아웃(해지)은 전부 *조립*까지만 한다
 //! (`usage`·`verify` 모듈의 [`HttpRequest`]/[`CommandSpec`]). 실호출은 배선 라운드의 몫이고,
 //! 그 덕에 여기 테스트는 사용자 실계정을 건드릴 수 없다.
+//!
+//! **★M11 정정** — 실호출이 왔다. 다만 위 성질은 그대로 지킨다: 실행기는 `net` **피처
+//! 안에만** 있고(`src/net.rs`) 기본 빌드·`cargo test -p ccg-auth`에는 컴파일조차 되지
+//! 않는다. 켜는 곳은 `src-tauri` 하나이고, 켜도 `CCG_NO_NET=1`이 전 호출을 즉시 막는다.
+//! 파괴적 경로(`claude auth logout` = 서버 토큰 해지)는 **여전히 조립까지만** 한다.
 
 pub mod claude;
 pub mod codex;
 /// JS 강제변환·`Date.parse` 미러 — 2.6.2 파서가 기대고 있는 의미론(M5 R2).
 pub mod js;
 pub mod junction;
+/// ★M11 — 실 HTTP 실행기. **`net` 피처에서만** 존재한다(아래 헤더의 "네트워크도 이
+/// 크레이트에 없다"는 여전히 기본 빌드의 사실이다).
+#[cfg(feature = "net")]
+pub mod net;
+/// ★M11 — 한도 소진 시 갈아탈 계정 고르기(순수 판정 · 네트워크 없음).
+pub mod switch;
 pub mod usage;
 pub mod verify;
 

@@ -1,0 +1,729 @@
+{
+  "at": "2026-08-23T13:31:01.555Z",
+  "exe": "C:\\Code\\AgentCodeGUI\\.m11-snap.exe",
+  "steps": {
+    "r81": {
+      "listAtBoot": [
+        "sc-alpha",
+        "sc-beta"
+      ],
+      "changedPayloads": [
+        [
+          "sc-1787491861978-1",
+          "sc-alpha",
+          "sc-beta"
+        ]
+      ],
+      "listAfterOpen": [
+        "sc-1787491861978-1",
+        "sc-alpha",
+        "sc-beta"
+      ],
+      "persistedLostInBroadcast": [],
+      "verdict": "FIXED"
+    },
+    "dialog": {
+      "home": "C:\\Code\\AgentCodeGUI\\.poc-home-dialog-m11r1",
+      "ready": true,
+      "card": {
+        "head": "폴백 확인",
+        "opts": [
+          "sonnet로 계속",
+          "중단"
+        ],
+        "text": "폴백 확인모델 폴백fable 이(가) 응답을 거부했어요(policy). sonnet 로 이어서 시도할까요?sonnet로 계속거부된 답변을 지우고 다시 시도합니다중단이 턴을 여기서 멈춥니다"
+      },
+      "state": "AwaitingUser",
+      "result": {
+        "isError": false,
+        "text": "FALLBACK-OK"
+      },
+      "stdin": [
+        {
+          "type": "control_request",
+          "request_id": "init-1",
+          "request": {
+            "subtype": "initialize",
+            "forwardSubagentText": true,
+            "supportedDialogKinds": [
+              "refusal_fallback_prompt"
+            ]
+          }
+        },
+        {
+          "type": "user",
+          "session_id": "",
+          "parent_tool_use_id": null,
+          "message": {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "거부를 유발하는 질문"
+              }
+            ]
+          }
+        },
+        {
+          "type": "control_response",
+          "response": {
+            "subtype": "success",
+            "request_id": "dlg-1",
+            "response": {
+              "behavior": "completed",
+              "result": "retry_fallback",
+              "toolUseID": "toolu_fake_1"
+            }
+          }
+        }
+      ],
+      "answer": {
+        "behavior": "completed",
+        "result": "retry_fallback",
+        "toolUseID": "toolu_fake_1"
+      },
+      "after": {
+        "cardGone": true,
+        "fallbackBanner": [
+          "fable 이(가) 응답을 거부해 sonnet 로 전환했어요"
+        ],
+        "types": {
+          "status": 2,
+          "session": 1,
+          "tooling": 1,
+          "question-request": 1,
+          "model-fallback": 1,
+          "assistant-done": 1,
+          "context": 1,
+          "result": 1
+        },
+        "domHasReply": false
+      },
+      "identityAfter": {
+        "chatId": "c-dlg",
+        "identity": {
+          "engine": {
+            "kind": "claude",
+            "model": "sonnet",
+            "effort": "minimal"
+          },
+          "billing": {
+            "kind": "subscription",
+            "account": "fake@example.com",
+            "dropEnvKey": false
+          },
+          "cwd": "c:\\code\\agentcodegui\\.poc-home-dialog-m11r1\\work",
+          "addDirs": [],
+          "mode": "normal",
+          "systemPrompt": null,
+          "outputStyle": null,
+          "tools": {
+            "skillOverrides": {},
+            "deniedMcp": []
+          }
+        },
+        "raw": {
+          "engine": {
+            "kind": "claude",
+            "model": "sonnet",
+            "effort": "minimal",
+            "codexAccount": null
+          },
+          "billing": {
+            "kind": "subscription",
+            "account": "fake@example.com",
+            "dropEnvKey": false
+          },
+          "cwd": "c:\\code\\agentcodegui\\.poc-home-dialog-m11r1\\work",
+          "addDirs": [],
+          "mode": "normal",
+          "systemPrompt": null,
+          "outputStyle": null,
+          "tools": {
+            "skillOverrides": {},
+            "deniedMcp": []
+          }
+        },
+        "pending": null,
+        "revision": 1,
+        "unresolved": null,
+        "state": "idle",
+        "queued": 0
+      }
+    },
+    "winsave": {
+      "home": "C:\\Code\\AgentCodeGUI\\.poc-home-winsave-m11r1",
+      "listAtBoot": [],
+      "listAfterOpen": [
+        "sc-1787491865452-1"
+      ],
+      "winId": "sc-1787491865452-1",
+      "sent": "sent",
+      "replyInWindow": true,
+      "recordAfterTurn": {
+        "origin": "session",
+        "msgs": 2,
+        "title": "창에서 보낸 질문",
+        "cwd": "C:\\Code\\AgentCodeGUI\\.poc-home-winsave-m11r1\\work"
+      },
+      "mainAfter": 1,
+      "listAfterRestart": [
+        {
+          "id": "sc-1787491865452-1",
+          "title": "창에서 보낸 질문",
+          "open": false
+        }
+      ],
+      "reopened": true,
+      "restoredInWindow": true,
+      "listWhileOpen": [
+        {
+          "id": "sc-1787491865452-1",
+          "open": true
+        }
+      ]
+    },
+    "events": {
+      "home": "C:\\Code\\AgentCodeGUI\\.poc-home-events-m11r1",
+      "ready": true,
+      "turnDone": true,
+      "events": {
+        "status": 3,
+        "session": 1,
+        "tooling": 1,
+        "thinking": 1,
+        "thinking-clear": 1,
+        "assistant-stream": 1,
+        "todos": 1,
+        "tool-start": 2,
+        "file-change": 1,
+        "tool-end": 2,
+        "terminal": 3,
+        "subagent": 4,
+        "bg-tasks": 2,
+        "workflow": 2,
+        "bg-task-end": 2,
+        "assistant-done": 1,
+        "context": 1,
+        "result": 1
+      },
+      "byType": {
+        "todos": [
+          [
+            {
+              "id": "1",
+              "label": "파일 만들기",
+              "status": "running"
+            },
+            {
+              "id": "2",
+              "label": "명령 실행",
+              "status": "pending"
+            }
+          ]
+        ],
+        "fileChange": [
+          {
+            "path": "r3-made.txt",
+            "add": 2,
+            "tag": "new",
+            "whole": true,
+            "lines": 3
+          }
+        ],
+        "terminal": [
+          {
+            "type": "cmd",
+            "text": "echo R3-TERM-OUT"
+          },
+          {
+            "type": "out",
+            "text": "R3-TERM-OUT"
+          },
+          {
+            "type": "ok",
+            "text": "✓ 완료"
+          }
+        ],
+        "subagent": [
+          {
+            "id": "tu_task",
+            "status": "running",
+            "name": "Explore",
+            "activity": "R3-SUBAGENT-ROLE"
+          },
+          {
+            "id": "tu_task",
+            "status": "running",
+            "name": "",
+            "activity": "",
+            "model": "Opus 5"
+          },
+          {
+            "id": "tu_task",
+            "status": "running",
+            "name": "",
+            "activity": "R3-SIDECHAIN-NARRATION"
+          },
+          {
+            "id": "tu_task",
+            "status": "done",
+            "name": "",
+            "activity": "R3-SUBAGENT-RESULT"
+          }
+        ],
+        "bgTasks": [
+          [
+            "bg-1"
+          ],
+          []
+        ],
+        "bgTaskEnd": [
+          {
+            "id": "bg-1",
+            "status": "completed",
+            "summary": "R3-BG-DONE",
+            "atTurnEnd": false
+          },
+          {
+            "id": "wf-1",
+            "status": "completed",
+            "summary": "R3-WF-DONE",
+            "atTurnEnd": false
+          }
+        ],
+        "workflow": [
+          {
+            "id": "wf-1",
+            "status": "running",
+            "summary": "R3-WORKFLOW",
+            "agents": [
+              "Opus 5.1/start"
+            ],
+            "phases": 1,
+            "tokens": 1234
+          },
+          {
+            "id": "wf-1",
+            "status": "completed",
+            "summary": "R3-WORKFLOW",
+            "agents": [
+              "Opus 5.1/start"
+            ],
+            "phases": 1,
+            "tokens": 1234
+          }
+        ],
+        "thinkingClear": 1,
+        "context": [
+          20
+        ],
+        "modelFallback": 0
+      },
+      "chips": [
+        {
+          "label": "할 일",
+          "value": "0/2",
+          "detail": "0% 완료"
+        },
+        {
+          "label": "서브에이전트",
+          "value": "1/1",
+          "detail": "모두 완료"
+        },
+        {
+          "label": "백그라운드 셸",
+          "value": "1/1",
+          "detail": "모두 종료"
+        },
+        {
+          "label": "변경된 파일",
+          "value": "1",
+          "detail": "+2 −0"
+        },
+        {
+          "label": "컨텍스트",
+          "value": "0%",
+          "detail": "20 / 200K 토큰"
+        }
+      ],
+      "pops": {
+        "todo": "할 일\n0/2 · 0% 완료\n파일 만들기\n진행 중\n명령 실행",
+        "sub": "서브에이전트\n1/1\nExplore\nR3-SUBAGENT-ROLE · 1초",
+        "sh": "백그라운드 셸\n1/1\nR3-BG-SHELL\n완료 — R3-BG-DONE",
+        "file": "변경된 파일\n1\nr3-made.txt\n+2\n−0\nNEW"
+      },
+      "seen": {
+        "wfDock": true,
+        "wfText": "워크플로\nR3-PHASE · 0/1"
+      },
+      "dom": {
+        "termOut": true,
+        "reply": true,
+        "wfDockGone": true
+      },
+      "fileOnDisk": false
+    },
+    "error": {
+      "home": "C:\\Code\\AgentCodeGUI\\.poc-home-error-m11r1",
+      "ready": true,
+      "arrived": true,
+      "events": [
+        "status/analyzing#r30568-1",
+        "notice/#r30568-1",
+        "status/error#r30568-1",
+        "error/#r30568-1",
+        "result/#r30568-1"
+      ],
+      "error": {
+        "type": "error",
+        "runId": "r30568-1",
+        "message": "엔진을 시작하지 못했어요."
+      },
+      "dom": {
+        "errorLabels": 0,
+        "errorSurfaces": 1,
+        "hasReason": true,
+        "hasT3Notice": true,
+        "composerFree": true,
+        "working": false,
+        "thread": "응답이 없을 질문\n\n오후 10:31\n엔진이 20초 안에 응답하지 않았어요\n복사\n오후 10:31\n엔진을 시작하지 못했어요."
+      }
+    },
+    "reload": {
+      "home": "C:\\Code\\AgentCodeGUI\\.poc-home-reload-m11r1",
+      "resetsAt": 1787491299,
+      "afterBoot": [
+        {
+          "id": "c-see",
+          "queued": 1,
+          "hold": {
+            "resetsAt": 0,
+            "ready": false,
+            "dueAt": 90000
+          },
+          "auto": true,
+          "spawns": 0,
+          "queue": [
+            "예약 하나"
+          ],
+          "now": 264,
+          "state": "Idle"
+        },
+        {
+          "id": "c-hide",
+          "queued": 1,
+          "hold": {
+            "resetsAt": 0,
+            "ready": false,
+            "dueAt": 90000
+          },
+          "auto": false,
+          "spawns": 0,
+          "queue": [
+            "예약 둘"
+          ],
+          "now": 262,
+          "state": "Idle"
+        }
+      ],
+      "afterHold": [
+        {
+          "id": "c-see",
+          "queued": 0,
+          "hold": null,
+          "auto": true,
+          "spawns": 1,
+          "now": 91370,
+          "state": "Streaming"
+        },
+        {
+          "id": "c-hide",
+          "queued": 1,
+          "hold": {
+            "resetsAt": 0,
+            "ready": true,
+            "dueAt": 90000
+          },
+          "auto": false,
+          "spawns": 0,
+          "now": 91369,
+          "state": "Idle"
+        }
+      ],
+      "domReply": true,
+      "resumeVerdict": {
+        "cmd": "hold.resume",
+        "kind": "accepted",
+        "reason": null
+      },
+      "afterPress": [
+        {
+          "id": "c-see",
+          "spawns": 1,
+          "hold": null,
+          "auto": true
+        },
+        {
+          "id": "c-hide",
+          "spawns": 1,
+          "hold": null,
+          "auto": true
+        }
+      ],
+      "statusJson": {
+        "c-hide": {
+          "chatId": "c-hide",
+          "status": "working",
+          "busy": true,
+          "bgActive": false,
+          "ask": "none",
+          "hold": null,
+          "queued": 0,
+          "unread": 0,
+          "autoResume": true,
+          "resumeOwner": "engine",
+          "updatedAt": 1787491991365
+        },
+        "c-see": {
+          "chatId": "c-see",
+          "status": "working",
+          "busy": true,
+          "bgActive": false,
+          "ask": "none",
+          "hold": null,
+          "queued": 0,
+          "unread": 0,
+          "autoResume": true,
+          "resumeOwner": "engine",
+          "updatedAt": 1787491990090
+        }
+      }
+    },
+    "slots": {
+      "home": "C:\\Code\\AgentCodeGUI\\.poc-home-slots-m11r1",
+      "subscribed": true,
+      "listEmpty": [],
+      "opened": [
+        {
+          "label": "session-1",
+          "chatId": "sc-1787491994291-1",
+          "title": "",
+          "focused": true
+        }
+      ],
+      "chatId": "sc-1787491994291-1",
+      "broadcasts": [
+        [
+          "sc-1787491994291-1"
+        ],
+        [
+          "sc-1787491994291-1"
+        ],
+        [
+          "sc-1787491994291-1"
+        ]
+      ],
+      "turnInWindow": true,
+      "closed": true,
+      "listAfterClose": [],
+      "recordAfterClose": {
+        "msgs": 2,
+        "title": "자리 채널 검증"
+      },
+      "focused": [
+        {
+          "label": "session-2",
+          "chatId": "sc-1787491994291-1",
+          "title": "",
+          "focused": true
+        }
+      ],
+      "listAfterFocus": [
+        {
+          "label": "session-2",
+          "chatId": "sc-1787491994291-1",
+          "title": "자리 채널 검증",
+          "focused": true
+        }
+      ],
+      "reopened": [
+        {
+          "label": "session-2",
+          "chatId": "sc-1787491994291-1",
+          "title": "자리 채널 검증",
+          "focused": true
+        }
+      ]
+    },
+    "live": {
+      "home": "C:\\Code\\AgentCodeGUI\\.poc-home-live-m11r1",
+      "engine": "0.3.241",
+      "account": "lmg56634@gmail.com",
+      "steps": {
+        "boot": {
+          "apiUp": true,
+          "chats": [
+            "c-live"
+          ],
+          "active": "c-live",
+          "composer": true,
+          "migrated": true,
+          "ms": 38
+        },
+        "open": {
+          "active": "c-live",
+          "cwdShown": "work",
+          "title": "AgentCodeGUI"
+        },
+        "send": {
+          "via": "composer",
+          "result": "sent"
+        },
+        "stream": {
+          "deltas": 1,
+          "types": [
+            "status",
+            "session",
+            "tooling",
+            "assistant-stream"
+          ],
+          "userEchoed": true,
+          "domChars": 1458
+        },
+        "card": {
+          "head": "Claude의 승인 요청",
+          "tool": "Write",
+          "summary": "Write c:\\code\\agentcodegui\\.poc-home-live-m11r1\\work\\live-approve.txt",
+          "opts": [
+            "허용",
+            "항상 허용",
+            "거부"
+          ]
+        },
+        "cardStillThereAfter3s": true,
+        "done": {
+          "result": {
+            "isError": false,
+            "text": "DONE",
+            "costUsd": 0.0194359,
+            "viaApi": false
+          },
+          "statuses": [
+            "analyzing",
+            "working",
+            "done"
+          ],
+          "replyInDom": true,
+          "fileOnDisk": true,
+          "turnMs": 7088,
+          "fileBody": "OK"
+        },
+        "finalDom": {
+          "chars": 1594,
+          "hasDone": true,
+          "hasPrompt": true,
+          "cardGone": true,
+          "events": {
+            "status": 3,
+            "session": 1,
+            "tooling": 1,
+            "assistant-stream": 3,
+            "assistant-done": 2,
+            "context": 3,
+            "thinking": 1,
+            "tool-start": 1,
+            "permission-request": 1,
+            "file-change": 1,
+            "tool-end": 1,
+            "result": 1
+          },
+          "streamedText": "I'll create the file with the specified content.DONE",
+          "assistantDone": [
+            "I'll create the file with the specified content.",
+            "DONE"
+          ]
+        },
+        "engineDebug": {
+          "chats": [
+            {
+              "chatId": "c-live",
+              "state": "Idle",
+              "queued": 0,
+              "spawns": 1,
+              "exits": 1,
+              "session": "19d45655-4303-490c-9414-8e28accf97e5",
+              "pid": 21184,
+              "engine": "claude",
+              "identityEngine": "claude",
+              "autoResume": true,
+              "nowMs": 7042,
+              "hold": null,
+              "queue": []
+            }
+          ],
+          "cli": "C:\\Code\\AgentCodeGUI\\.poc-home-live-m11r1\\engines\\0.3.241\\node_modules/@anthropic-ai/claude-agent-sdk-win32-x64/claude.exe",
+          "flags": [],
+          "accountSwitch": {
+            "on": false,
+            "busy": [],
+            "picked": null,
+            "skipped": []
+          }
+        },
+        "savedOnDisk": {
+          "msgs": 5,
+          "sessionId": "19d45655-4303-490c-9414-8e28accf97e5",
+          "identityCwd": "c:\\code\\agentcodegui\\.poc-home-live-m11r1\\work",
+          "identityModel": "haiku"
+        },
+        "statusJson": {
+          "chatId": "c-live",
+          "status": "done",
+          "busy": false,
+          "bgActive": false,
+          "ask": "none",
+          "hold": null,
+          "queued": 0,
+          "unread": 0,
+          "autoResume": true,
+          "resumeOwner": "engine",
+          "updatedAt": 1787492010362
+        },
+        "afterRestart": {
+          "lightMsgs": 5,
+          "loadedMsgs": 5,
+          "sessionId": "19d45655-4303-490c-9414-8e28accf97e5",
+          "texts": [
+            "Use the Write tool to create live-approv",
+            "I'll create the file with the specified ",
+            "",
+            "DONE",
+            ""
+          ],
+          "domHasPrompt": true,
+          "domHasDone": true
+        }
+      },
+      "appLog": [
+        "[store] chats-v3 마이그레이션: {\"ok\":true,\"migratedAt\":1787492003205.0,\"elapsedMs\":3.0,\"backupDir\":\"C:\\\\Code\\\\AgentCodeGUI\\\\.poc-home-live-m11r1\\\\backup-2.6.2-1787492003205\",\"counts\":{\"chats\":1,\"maSessions\":0,\"maPanels\":0,\"sessionChats\":0,\"talkAbsorbed\":0,\"carried\":0,\"keptV3\":0,\"keptV3Boards\":0,\"total\":1,\"messages\":0,\"boards\":1},\"idMap\":{\"c-live\":\"c-live\"},\"order\":[\"c-live\"],\"activeChatId\":\"c-live\",\"boardOrder\":[\"default\"],\"activeBoardId\":\"default\",\"activeSessionId\":\"\",\"btw\":{\"rewritten\":0,\"dropped\":0},\"holdMoved\":0,\"sourceIndexOrders\":{\"chats\":[\"c-live\"],\"multiAgent\":[],\"sessionChats\":[]},\"warnings\":[]}"
+      ],
+      "frames": {
+        "total": 41,
+        "kinds": {
+          "control_response": 1,
+          "system/init": 1,
+          "system/status": 2,
+          "stream_event": 30,
+          "assistant": 3,
+          "control_request": 1,
+          "rate_limit_event": 1,
+          "user": 1,
+          "result/success": 1
+        }
+      }
+    }
+  },
+  "findings": [],
+  "verdict": "PASS"
+}

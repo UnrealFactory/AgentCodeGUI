@@ -327,6 +327,55 @@ function sortAccounts<T>(list: T[], sort: AcctSort, keys: (a: T) => AcctSortKeys
     .map((x) => x.a)
 }
 
+// ── ★M11 한도 소진 시 계정 자동 전환 (설정 옵션 · 기본 꺼짐) ────────────────────
+//
+// 이 자리에 두는 이유: 값이 사는 곳이 여기다. 바로 위 정렬 버튼에 이미
+// 「초기화 임박순」이 있고, 그게 이 기능의 판정식과 **같은 규칙**이다 — 곧 리셋될 창의
+// 잔량은 버려질 잔량이라 먼저 태우는 쪽이 총량에서 이득이다. 토글을 한도 화면이 아니라
+// 계정 목록 바로 위에 두면 "무엇들 사이에서 고르는가"가 문장 없이 보인다.
+//
+// **전달은 `ui-prefs.json`으로** 한다(IPC 채널을 늘리지 않는다 — §6.1 32채널).
+// 셸의 `engine/acct_switch.rs`가 같은 키를 3초 TTL로 읽고, 꺼져 있으면 후보 탐색
+// 워커를 깨우지도 않는다 = 꺼짐이면 계정 조회 HTTP 0건.
+//
+// 계정이 2개 미만이면 **행 자체를 안 그린다**: 갈아탈 데가 없는데 스위치를 보여 주면
+// 켜 놓고 "왜 안 되지"를 묻게 된다(계정 picker가 구독+계정≥2일 때만 뜨는 것과 같은 규약).
+const AUTO_SWITCH_KEY = 'limitSwitch.on'
+function AutoAccountSwitchRow({ count }: { count: number }): React.ReactElement | null {
+  const [on, setOn] = useState<boolean>(() => getPref<boolean>(AUTO_SWITCH_KEY, false))
+  if (count < 2) return null
+  return (
+    <div className="sc2 tgl" style={{ marginBottom: 14 }}>
+      <div>
+        <div className="em">{t('한도 소진 시 계정 자동 전환', 'Switch accounts when the limit runs out')}</div>
+        <div className="meta">
+          {on
+            ? t(
+                '한도에 걸리면 기다리지 않고 노는 계정으로 갈아타 이어가요 — 초기화가 임박한 계정부터 씁니다(곧 사라질 잔량이니까요). 지금 다른 대화가 쓰고 있는 계정과 여유가 거의 없는 계정은 건너뛰고, 갈아탈 곳이 없으면 평소처럼 기다려요.',
+                'On hitting the limit this chat moves to an idle account instead of waiting — soonest-to-reset first, since that headroom is about to be thrown away. Accounts another chat is burning, and accounts with almost nothing left, are skipped; with no candidate it waits as before.'
+              )
+            : t(
+                '한도에 걸리면 풀릴 때까지 기다려요(지금 동작). 켜면 노는 계정으로 갈아타 바로 이어갑니다.',
+                'The chat waits for the limit to lift (current behavior). Turn this on to move to an idle account and keep going.'
+              )}
+        </div>
+      </div>
+      <span className="sp" />
+      <button
+        className={'sw2' + (on ? ' on' : '')}
+        role="switch"
+        aria-checked={on}
+        aria-label={on ? t('자동 전환 끄기', 'Turn off auto-switch') : t('자동 전환 켜기', 'Turn on auto-switch')}
+        onClick={() => {
+          const next = !on
+          setOn(next)
+          setPref(AUTO_SWITCH_KEY, next)
+        }}
+      />
+    </div>
+  )
+}
+
 // ── Account (구독 로그인 Anthropic·OpenAI — 앱 등록 계정만, 전환 개념 없음) ───────
 // 로그인/로그아웃 전부 격리 CONFIG_DIR(main/auth.ts) — 전역 ~/.claude 불가침.
 // PoC 문법: 계정 카드(아바타·이메일·기본 배지·플랜) + 잔여 한도 미니 게이지 + 점선 추가 행.
@@ -508,6 +557,8 @@ function AccountView(): React.ReactElement {
           </button>
         ))}
       </div>
+
+      <AutoAccountSwitchRow count={(accounts?.length ?? 0) + (cxAccounts?.length ?? 0)} />
 
       <div className="set-sec">Anthropic</div>
       {accounts == null ? (

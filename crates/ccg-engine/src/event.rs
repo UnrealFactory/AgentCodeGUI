@@ -43,6 +43,10 @@ pub enum RevisionOrigin {
     DeferredApply,
     Revert(u32),
     Restore,
+    /// ★M11 — 한도 소진에 걸려 엔진이 **계정을 갈았다**(설정 옵션이 켜져 있을 때만).
+    /// `EngineFallback`과 같은 등급의 "내가 고른 값이 아닌 값"이라 화면은 되돌리기를
+    /// 붙여야 한다 — 와이어 문자열은 `auto_account_switch`.
+    AutoAccountSwitch,
 }
 
 /// 워치독이 리스를 재장전한 근거. **불변식 11**(프로세스 생존은 근거가 될 수 없다)이 이걸 읽는다.
@@ -120,6 +124,20 @@ pub enum Event {
         from_model: String,
         to_model: String,
         via: FallbackVia,
+        revert_to: u32,
+    },
+    /// ★M11 — **한도 소진 → 다른 계정으로 자동 전환** 배너. 모델 폴백과 같은 문법이고
+    /// (전환당 정확히 1개 · `revert_to`로 되돌리기) 축만 `billing.account`다.
+    ///
+    /// `Identity{origin: AutoAccountSwitch}`가 같은 tick에 함께 나간다 — 그쪽은 리비전·
+    /// 리프 목록(기계 판독), 이쪽은 사용자가 읽는 사실(어느 계정에서 어느 계정으로,
+    /// 그 계정이 언제 초기화되나)이다. 둘을 하나로 합치지 않는 이유는 폴백과 같다:
+    /// 리비전 이벤트는 **모든** 정체성 변경에 나가고 배너는 자동 전환에만 나간다.
+    AccountSwitched {
+        from: String,
+        to: String,
+        /// 옮겨간 계정이 다음에 초기화되는 시각(unix 초) — 모르면 `None`.
+        soonest_reset: Option<u64>,
         revert_to: u32,
     },
     Verdict {

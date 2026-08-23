@@ -18,17 +18,49 @@
 //!
 //! 받은 stdin 줄은 전부 `CCG_FAKECLI_IN`(있으면)에 그대로 덧붙인다 — 하네스가
 //! "우리가 무엇을 돌려보냈나"를 바이트로 확인한다.
+//!
+//! ## ★M11 — **계정마다 다른 대본**
+//!
+//! 자동 계정 전환은 "A로는 막히고 B로는 된다"가 재현돼야 검증된다. 그런데 스텁은
+//! 스폰마다 새 프로세스라 대본 하나로는 두 답을 낼 수 없다. 그래서 형제 파일을 본다:
+//!
+//! ```text
+//!   CCG_FAKECLI_SCRIPT = …/fake.jsonl
+//!   CLAUDE_CONFIG_DIR  = …/accounts/a_ccg.test     →  …/fake.a_ccg.test.jsonl 이 있으면 그것
+//!                                                     없으면 …/fake.jsonl (지금까지의 동작)
+//! ```
+//!
+//! 기존 하네스는 형제 파일을 안 만드니 **한 글자도 안 바뀐다.**
 
 use std::io::{BufRead, Write};
 use std::sync::mpsc::{channel, Receiver, RecvTimeoutError};
 use std::time::Duration;
+
+/// ★M11 — `…/fake.jsonl` + `CLAUDE_CONFIG_DIR` 꼬리 → `…/fake.<slug>.jsonl`(있으면).
+/// 없으면 원래 경로 그대로다(기존 하네스 무영향).
+fn per_account_script(script: &str) -> String {
+    let Ok(dir) = std::env::var("CLAUDE_CONFIG_DIR") else { return script.to_string() };
+    let slug = dir.trim_end_matches(['\\', '/']).rsplit(['\\', '/']).next().unwrap_or_default();
+    if slug.is_empty() {
+        return script.to_string();
+    }
+    let per = match script.rsplit_once('.') {
+        Some((stem, ext)) => format!("{stem}.{slug}.{ext}"),
+        None => format!("{script}.{slug}"),
+    };
+    if std::path::Path::new(&per).exists() {
+        per
+    } else {
+        script.to_string()
+    }
+}
 
 fn main() {
     let script = std::env::var("CCG_FAKECLI_SCRIPT").unwrap_or_default();
     let inlog = std::env::var("CCG_FAKECLI_IN").ok();
     let rx = spawn_stdin_reader(inlog);
 
-    let text = std::fs::read_to_string(&script).unwrap_or_default();
+    let text = std::fs::read_to_string(per_account_script(&script)).unwrap_or_default();
     let mut seen: Vec<String> = vec![];
     let out = std::io::stdout();
     for line in text.lines() {

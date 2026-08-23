@@ -30,9 +30,14 @@ ccg-store = { path = "../crates/ccg-store" }
 # 3.0 엔진 코어(RunIdentity · 60전이 상태기계 · claude.exe 드라이버). 셸은 이 크레이트를
 # **글루 모듈(src/engine/)에서만** 만진다 — 창·크래시·스토어 코드는 엔진을 모른다.
 ccg-engine = { path = "../crates/ccg-engine" }
-# 계정 도메인(M5) — Codex 엔진의 격리 `CODEX_HOME` 물질화(auth.json + 공유 정션)에만 쓴다.
-# 셸은 `engine/codex_versions.rs` 한 곳에서만 만진다(M4).
-ccg-auth = { path = "../crates/ccg-auth" }
+# 계정 도메인(M5) — Codex 엔진의 격리 `CODEX_HOME` 물질화(auth.json + 공유 정션),
+# 그리고 ★M11의 자동 계정 전환(`engine/acct_switch.rs`).
+#
+# `net` 피처를 켜는 곳은 **여기 하나뿐**이다(ccg-auth/Cargo.toml의 규약). 그 크레이트의
+# 테스트는 이 피처 없이 돌아 사용자 실계정에 **구조적으로** 닿을 수 없다 — 그 성질을
+# 지키는 유일한 방법이 "켜는 곳을 셸로 한정"이다. 켜도 `CCG_NO_NET=1`이면 전 호출이
+# 즉시 거절되고(하네스·재생 주행), 파괴적 경로(로그아웃=토큰 해지)는 여전히 조립까지만 한다.
+ccg-auth = { path = "../crates/ccg-auth", features = ["net"] }
 # 파일·Git 도메인(M6) — 탐색기 트리·뷰어 읽기/쓰기·시스템 git 래퍼·Myers 라인 diff.
 # 셸은 `ipc/fs.rs`·`ipc/git.rs`에서만 만진다(창·엔진 코드는 이 크레이트를 모른다).
 ccg-fs = { path = "../crates/ccg-fs" }

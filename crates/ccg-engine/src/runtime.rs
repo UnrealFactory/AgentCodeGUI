@@ -33,7 +33,7 @@ use crate::queue::{
 use crate::state::{command_cell, Cell as TCell, ResidentWhy, StateTag, StreamClosePolicy};
 use serde_json::{json, Value};
 use std::cell::{Cell, RefCell};
-use std::collections::VecDeque;
+use std::collections::{BTreeSet, VecDeque};
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -294,7 +294,21 @@ pub struct ChatRuntime<D: CliDriver> {
     /// ★R5 — 발화 직전 신선 usage 재검증 훅([`crate::limit::LimitProbe`]).
     /// 기본은 `NoProbe`(=미배선)라 기존 동작과 같고, 셸이 붙이면 2.6.2 `fire()`가 된다.
     limit_probe: Arc<dyn crate::limit::LimitProbe>,
+    /// ★M11 — 한도 소진 시 **노는 계정으로 갈아타기** 훅. 기본은 `NoSwitch`(항상 `None`)라
+    /// 이 기능이 없던 판과 동작이 같다. 설정이 꺼져 있으면 셸이 붙인 훅도 `None`을 낸다.
+    switcher: Arc<dyn crate::limit::AccountSwitcher>,
+    /// ★M11 — **이 한도 에피소드에서 이미 거쳐 온 계정.** A→B→A 핑퐁을 막는 유일한
+    /// 장치다(B가 곧바로 또 막히면 A는 아직 안 풀렸을 확률이 높다). 한도 없이 착지한
+    /// 턴이 `auto_resume_streak`과 함께 비운다 — 에피소드가 끝났다는 같은 신호다.
+    switch_tried: BTreeSet<String>,
+    /// ★M11 — **아직 말하지 않은 대기 문장이 있다.** 훅이 "조회 중"이라 답을 미룬 상태고,
+    /// [`Self::check_hold`]가 판명 직후(또는 [`HOLD_NOTICE_GRACE`] 뒤) 대신 말한다.
+    hold_notice_due: bool,
 }
+
+/// ★M11 — 대기 문장을 미뤄 둘 수 있는 최대 시간. 훅이 이 안에 답을 못 내면 그냥 말한다
+/// (침묵보다 늦은 말이 낫다 — D7).
+const HOLD_NOTICE_GRACE: Millis = 5_000;
 
 /// 셸이 사용자 에코를 그리는 데 필요한 최소값.
 #[derive(Debug, Clone)]
@@ -311,6 +325,14 @@ struct NoProbe;
 impl crate::limit::LimitProbe for NoProbe {
     fn blocked_until(&self, _a: &BillingAxis, _now_epoch_ms: u64) -> LimitVerdict {
         LimitVerdict::Unknown
+    }
+}
+
+/// ★M11 — 전환 훅이 없을 때의 기본. **언제나 후보 없음** = 이 기능이 없던 판 그대로.
+struct NoSwitch;
+impl crate::limit::AccountSwitcher for NoSwitch {
+    fn pick(&self, _r: &crate::limit::SwitchRequest) -> Option<crate::limit::SwitchPick> {
+        None
     }
 }
 
@@ -379,6 +401,9 @@ impl<D: CliDriver> ChatRuntime<D> {
             last_echo: None,
             auto_resume_streak: 0,
             limit_probe: Arc::new(NoProbe),
+            switcher: Arc::new(NoSwitch),
+            switch_tried: BTreeSet::new(),
+            hold_notice_due: false,
         };
         rt.emit(Event::Identity {
             origin: RevisionOrigin::Default,
@@ -402,6 +427,18 @@ impl<D: CliDriver> ChatRuntime<D> {
     pub fn with_limit_probe(mut self, p: Arc<dyn crate::limit::LimitProbe>) -> Self {
         self.limit_probe = p;
         self
+    }
+    /// ★M11 — **한도 소진 시 노는 계정으로 갈아타기** 훅([`crate::limit::AccountSwitcher`]).
+    ///
+    /// 안 꽂으면 후보가 늘 없어서 옛 경로(대기표)만 남는다. 설정이 꺼져 있을 때 셸이
+    /// 붙인 훅이 내는 값도 마찬가지 `None`이다 — **꺼짐 = 무동작**이 두 층에서 참이다.
+    pub fn with_account_switcher(mut self, s: Arc<dyn crate::limit::AccountSwitcher>) -> Self {
+        self.switcher = s;
+        self
+    }
+    /// 이 한도 에피소드에서 거쳐 온 계정(진단·하네스 판독용).
+    pub fn switch_tried(&self) -> &BTreeSet<String> {
+        &self.switch_tried
     }
     /// unix **초** → **런타임 시계 ms**.
     ///
@@ -599,7 +636,15 @@ impl<D: CliDriver> ChatRuntime<D> {
             self.broadcast_plan();
             return;
         }
-        // 재개 항목의 정체성 = **지금 값**(§7.3), onDrift=use_current.
+        self.push_resume_nudge(now);
+        self.broadcast_plan();
+    }
+
+    /// 큐 head에 **재개 나팔**을 끼운다. 정체성은 **지금 값**(§7.3), `onDrift=use_current`.
+    ///
+    /// [`Self::consume_hold`]와 [`Self::try_auto_switch`]가 같은 자리를 쓴다 — 표가 풀려
+    /// 이어가든 계정을 갈아 이어가든, *죽은 턴을 다시 밀어 주는 문장*은 하나여야 한다.
+    fn push_resume_nudge(&mut self, now: Millis) {
         let mut m = self.make_queue_item(
             QueueInput::text("이어서 진행해 주세요"),
             QueueOrigin::LimitResume,
@@ -607,7 +652,138 @@ impl<D: CliDriver> ChatRuntime<D> {
         );
         m.on_drift = OnDrift::UseCurrent;
         self.queue.push_front(m);
+    }
+
+    /// ★M11 — **한도 소진 → 노는 계정으로 갈아타고 이어가기.** 갈아탔으면 `true`.
+    ///
+    /// 부르는 자리는 둘이고 둘 다 대기표가 살아 있을 때다:
+    ///  ① [`Self::arm_hold`] — 표를 건 그 순간(셸의 한도 스냅샷이 이미 따뜻하면 즉시 전환)
+    ///  ② [`Self::check_hold`] — 매 tick(첫 시도가 "조회 아직"이었으면 몇 초 뒤 성사된다)
+    ///
+    /// **거절하는 자리들**(전부 의도된 문이다):
+    ///
+    /// | 조건 | 왜 |
+    /// |---|---|
+    /// | 훅 미배선 · 설정 꺼짐 | 기본값. 기능이 없던 판과 같아야 한다 |
+    /// | `!auto_resume` | 스펙 ⑤ — 화면 밖 채팅이 **조용히 다른 계정을 태우기 시작**하면 안 된다. 사용자가 [이어가기]를 누르면 `auto_resume`가 켜지고 그다음 소진에서 전환이 열린다 |
+    /// | `auto_paused` | 이미 자동을 멈춘 표다. 자동 전환도 자동이다 |
+    /// | `billing != Subscription` | API 키 실행에는 갈아탈 계정이 없다 |
+    /// | 정규화 실패 | 그 계정이 로그아웃됐다 → 다음 후보는 다음 tick에(이번 계정은 `tried`에 넣는다) |
+    ///
+    /// 성사되면 **대기표를 먼저 걷고** 리비전을 올린다. 순서가 계약이다:
+    /// [`Self::apply_identity`]의 §7.3 무효화("계정을 바꿔서 대기표를 취소했어요")가
+    /// 먼저 돌면 사용자는 *취소했다*는 문장만 읽고 왜 계정이 바뀌었는지는 못 읽는다.
+    fn try_auto_switch(&mut self) -> bool {
+        let Some(hold) = self.hold.as_ref() else { return false };
+        if hold.auto_paused || !self.auto_resume {
+            return false;
+        }
+        let armed_at = hold.armed_at;
+        let old_axis = self.identity.billing().clone();
+        let BillingAxis::Subscription { account: cur, .. } = old_axis.clone() else {
+            return false;
+        };
+        let pick = {
+            let req = crate::limit::SwitchRequest {
+                chat_id: self.chat_id.as_str(),
+                current: self.identity.billing(),
+                model: self.identity.model(),
+                tried: &self.switch_tried,
+                now_epoch_ms: self.clock.now_epoch_ms(),
+            };
+            self.switcher.pick(&req)
+        };
+        let Some(pick) = pick else { return false };
+        if pick.account == cur {
+            return false;
+        }
+        // 이번 에피소드에서 다시 고르지 않도록 **먼저** 적는다 — 정규화가 실패해도
+        // 같은 계정을 매 tick 되묻지 않는다(로그아웃된 계정으로 무한 재시도 금지).
+        self.switch_tried.insert(cur.clone());
+        self.switch_tried.insert(pick.account.clone());
+        let mut patch = RawIdentityPatch::default();
+        patch.billing.account = Some(pick.account.clone());
+        let next = match RunIdentity::normalize(self.identity_raw.patched(&patch), &self.defaults) {
+            Ok(v) => v,
+            Err(e) => {
+                self.emit(Event::IdentityRejected { reason: e.reason() });
+                return false;
+            }
+        };
+        if next == self.identity {
+            return false;
+        }
+        let changed = self.identity.diff(&next);
+        // ① 표를 걷는다(§7.3의 일반 무효화 문장이 이 전환을 가리지 않게).
+        self.hold = None;
+        // 계정이 바뀌었으니 옛 계정에서 센 헛발질은 이 계정과 무관하다.
+        self.auto_resume_streak = 0;
+        let revert_to = self.revision;
+        // ② 리비전 — origin이 곧 "내가 고른 값이 아니다"라는 표식이다.
+        self.apply_identity(next, RevisionOrigin::AutoAccountSwitch, changed, vec![], vec![]);
+        // ③ 배너(사용자가 읽는 사실) + 되돌리기 지점.
+        self.emit(Event::AccountSwitched {
+            from: cur,
+            to: pick.account.clone(),
+            soonest_reset: pick.soonest_reset,
+            revert_to,
+        });
+        // ④ **큐에 주차된 항목을 새 계정으로 옮긴다.**
+        //
+        // 큐 항목은 접수 시점의 정체성 스냅샷을 들고 다니고(`make_queue_item`),
+        // 드레인은 그 스냅샷으로 스폰한다(`reuse_decision(&m.identity, …)`). 사용자가
+        // 직접 계정을 바꿨을 때는 그게 옳다 — 그 메시지에 그 계정을 고른 건 사용자다.
+        // 그러나 여기서 우리가 떠나는 계정은 **방금 한도로 막힌 계정**이다. 주차된 말을
+        // 그 스냅샷 그대로 보내면 스폰 한 번을 버리고 같은 한도 에러를 다시 받는다
+        // (실측: 재생 ⑦이 `spawns=["a_x","a_x"]` — 갈아탄 뒤에도 옛 계정으로 나갔다).
+        //
+        // 옮기는 대상은 **소진된 축에 못 박힌 항목만**이다. 사용자가 어떤 예약에 다른
+        // 계정을 손수 골라 뒀다면 그건 이 한도와 무관한 선택이라 건드리지 않는다.
+        // (`OnDrift`는 선언만 있고 읽는 자리가 없다 — 그 배선은 이 라운드의 몫이 아니라
+        //  여기서 축 비교로 같은 뜻을 낸다.)
+        let rev = self.revision;
+        let defaults = &self.defaults;
+        let mut repinned = 0usize;
+        for m in self.queue.iter_mut() {
+            if *m.identity.billing() != old_axis {
+                continue;
+            }
+            if let Ok(v) = RunIdentity::normalize(m.identity.to_raw().patched(&patch), defaults) {
+                m.identity = v;
+                m.identity_rev = rev;
+                repinned += 1;
+            }
+        }
+        if repinned > 0 {
+            self.broadcast_queue();
+        }
+        // ⑤ 죽은 턴을 다시 민다 — 표 소진과 **같은 규약**(대기 중 사용자 메시지가
+        //    있으면 그것이 이 채팅의 재개다. 나팔을 더하면 한 번에 두 턴이 나간다).
+        //
+        // ★R1 크리틱(자기 재생) — 여기서 **드레인하지 않는다.** `consume_hold`가 나팔만
+        // 넣고 발사는 호출자(tick)에게 맡기는 것과 **같은 규약**이고, 그 규약을 깨면 이
+        // 함수가 `arm_hold` → `on_result` 한복판에서 불릴 때 재앙이 된다:
+        //
+        //  · 그 순간 죽은 턴의 CLI는 **아직 살아 있다**(EOF도 land_turn도 아직이다).
+        //    거기서 드레인하면 나팔이 **옛 계정 프로세스로** 나가 같은 한도 에러를 또
+        //    받는다 → 표가 다시 서고(사용자 눈엔 "갈아탔는데 또 대기"), 그 두 번째
+        //    `on_result`가 또 전환을 시도한다.
+        //  · 되돌아온 `on_result`는 이어서 "한도 없이 착지했다"(hold == None)로 읽고
+        //    **에피소드 집합을 지운다** → A→B→C→A 무한 루프.
+        //
+        // 실측: R1 부분 작업 그대로는 재생 ①이 `hold=Some`으로 떨어지고 ④가 영영 안 끝났다.
+        // 지금은 나팔을 큐 head에 두고 나가면 `land_turn` → `after_ledger_change`(또는
+        // 다음 tick의 `check_hold`)가 **정체성 드리프트를 본 뒤** 새 계정으로 스폰한다.
+        let now = self.sync_now();
+        let already = self
+            .queue
+            .iter()
+            .any(|m| m.origin == QueueOrigin::User && m.created_at > armed_at);
+        if !already {
+            self.push_resume_nudge(now);
+        }
         self.broadcast_plan();
+        true
     }
 
     /// 드레인 게이트 — 대기표가 **열려 있는가**.
@@ -2441,18 +2617,32 @@ impl<D: CliDriver> ChatRuntime<D> {
         //
         // ★R5 — 분류가 **리셋 시각까지** 돌려준다(2.6.2 `classifyLimitError`는 늘 그랬다.
         // 이식이 `hit` 반쪽만 옮겨서 꼬리 `…|1755150000`이 버려지고 있었다 — R14 F2).
+        // 이 턴이 한도에 막혔나. 아래 에피소드 정리가 읽는 **직접 신호**다.
+        let mut limited = false;
         if is_error {
             if let Some(t) = &error_text {
                 let found = classify_limit_error(t);
                 if found.hit {
+                    limited = true;
                     let at = found.resets_at.map(|s| self.epoch_secs_to_runtime(s));
                     self.arm_hold(at);
                 }
             }
         }
         // 한도 없이 착지한 턴 = 이 에피소드는 끝났다. 헛 재개 카운터를 되돌린다.
-        if self.hold.is_none() {
+        // ★M11 — 거쳐 온 계정 목록도 같이 비운다. 같은 신호("이제 안 막힌다")이고,
+        // 안 비우면 다음 소진 때 후보가 부당하게 줄어든다(하루 뒤의 한도인데도
+        // 아침에 거쳐 간 계정이 영영 제외된다).
+        //
+        // ★R1 크리틱(자기 재생) — 게이트가 `hold.is_none()` **하나뿐이면 M11이 그걸
+        // 뒤집는다**: 바로 위 `arm_hold`가 표를 걸고 그 안에서 전환이 성사되면 표는 다시
+        // `None`이 되어 돌아온다. 그러면 이 줄이 "한도 없이 착지했다"로 오독하고 **방금
+        // 거쳐 온 계정을 지운다** → 다음 소진에서 A로 되돌아가는 핑퐁(재생 ④는 그걸로
+        // 영원히 안 끝났다). `limited`는 표의 생사와 무관한 사실이라 뒤집히지 않는다.
+        // (전환이 없던 판에서는 `limited`가 참이면 표가 항상 서 있으므로 동작이 같다.)
+        if !limited && self.hold.is_none() {
             self.auto_resume_streak = 0;
+            self.switch_tried.clear();
         }
         if self.state() == StateTag::Interrupting || aborted {
             self.fire("T14");
@@ -2520,7 +2710,31 @@ impl<D: CliDriver> ChatRuntime<D> {
             armed_from_run: run,
             armed_at: now,
         });
-        // 침묵 금지(D7) — 언제 다시 볼지를 문장에 담는다. "모른다"도 값이다.
+        // ★M11 — 표를 걸자마자 **노는 계정**을 묻는다. 있으면 대기 없이 갈아타고,
+        // 없으면(설정 꺼짐 · 후보 없음 · 오염) 아래 문장 그대로 대기표 경로다.
+        // 훅이 미배선이면 이 줄은 즉시 false다 = 기존 동작.
+        if self.try_auto_switch() {
+            return;
+        }
+        // ★M11 — 훅이 "아직 모른다"면 대기 문장을 **한 tick 미룬다**.
+        //
+        // 실물 주행(R1)에서 두 줄이 연달아 떴다:
+        //   「사용 한도에 걸려 대기합니다 — 풀리는 시각에 맞춰 이어서 보낼게요.」
+        //   「사용 한도에 걸려 soon@… 계정으로 바꿔 이어갑니다 …」
+        // 앞 줄은 **0.3초 만에 거짓이 됐다.** 셸의 한도 스냅샷이 차가워서 첫 물음이
+        // "조회 중"이었을 뿐인데, 그 사이를 대기 선언으로 메운 것이다.
+        // 미루면 [`Self::check_hold`]가 판명 직후(또는 [`HOLD_NOTICE_GRACE`] 뒤) 말한다 —
+        // 침묵 no-op(D7)이 아니라 **말할 사실이 정해질 때까지의 유예**다.
+        if self.switcher.pending() {
+            self.hold_notice_due = true;
+            return;
+        }
+        self.emit_hold_notice(resets_at);
+    }
+
+    /// 대기표 문장 — 침묵 금지(D7). 언제 다시 볼지를 담는다("모른다"도 값이다).
+    fn emit_hold_notice(&mut self, resets_at: Option<Millis>) {
+        self.hold_notice_due = false;
         self.emit(Event::Notice(if resets_at.is_some() {
             "사용 한도에 걸려 대기합니다 — 풀리는 시각에 맞춰 이어서 보낼게요.".into()
         } else {
@@ -2810,6 +3024,34 @@ impl<D: CliDriver> ChatRuntime<D> {
     }
 
     fn check_hold(&mut self, now: Millis) {
+        // ★M11 — 표가 살아 있는 동안 매 tick 후보를 되묻는다.
+        //
+        // 왜 `arm_hold` 한 번으로 안 끝나나: 후보 판정에는 계정별 한도가 필요한데 그
+        // 조회는 **네트워크**다. 허브 스레드(모든 채팅의 tick을 도는 그 스레드)에서
+        // 동기 조회를 하면 다른 채팅의 스트리밍이 그만큼 멈춘다 — 그래서 셸의 훅은
+        // 스냅샷만 읽고 즉시 답하며, 없으면 워커에게 갱신을 시키고 `None`을 낸다.
+        // 그 갱신이 몇 초 뒤 도착하면 **여기서** 성사된다(사용자 체감: 한도 문구가
+        // 뜨고 몇 초 뒤 다른 계정으로 이어짐).
+        //
+        // 훅이 미배선/설정 꺼짐이면 즉시 false라 이 줄의 비용은 함수 호출 하나다.
+        //
+        // 드레인은 **여기서** 한다(`try_auto_switch` 안이 아니라) — 아래 `consume_hold` 뒤의
+        // 드레인과 같은 자리다. tick의 끝은 재진입이 없는 안전한 발사대다.
+        if self.hold.is_some() && self.try_auto_switch() {
+            self.hold_notice_due = false; // 갈아탔다 = 미뤄 둔 대기 문장은 말할 사실이 아니다
+            self.drain_if_possible();
+            return;
+        }
+        // 미뤄 둔 대기 문장(위 `arm_hold`) — **판명됐거나 유예가 끝나면** 말한다.
+        // 유예 상한이 있는 이유: 훅이 영영 `pending`으로 굳으면(워커 사망) 그 채팅은
+        // 아무 말도 못 듣는다 = D7 위반. 늦게라도 말하는 쪽이 항상 낫다.
+        if self.hold_notice_due {
+            let armed = self.hold.as_ref().map(|h| h.armed_at).unwrap_or(now);
+            if !self.switcher.pending() || now.saturating_sub(armed) >= HOLD_NOTICE_GRACE {
+                let at = self.hold.as_ref().and_then(|h| h.resets_at);
+                self.emit_hold_notice(at);
+            }
+        }
         let due = self
             .hold
             .as_ref()

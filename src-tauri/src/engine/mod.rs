@@ -35,6 +35,7 @@
 //! `chat:queue-mutate`의 `enqueue`/`remove`/`reorder`(큐 Rust 이관) ·
 //! **재개 단일 소유**(`ChatStatusLite.resumeOwner` + 엔진 드레인의 `begin_run`).
 
+mod acct_switch;
 mod any;
 mod codex_versions;
 mod diff;

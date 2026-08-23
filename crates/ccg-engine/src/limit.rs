@@ -224,6 +224,56 @@ pub trait LimitProbe: Send + Sync {
     fn blocked_until(&self, account: &BillingAxis, now_epoch_ms: u64) -> LimitVerdict;
 }
 
+// ── ★M11 자동 계정 전환 훅 ──────────────────────────────────────────────────
+
+/// **한도 소진 시 노는 계정으로 갈아타기**(3.0.0 신기능 3 — 설정 옵션, 기본 꺼짐).
+///
+/// 훅으로 두는 이유는 [`LimitProbe`]와 같다: 후보 판정에는 계정 스토어(복호화)·
+/// `usage-cache.json`·오염가드·네트워크가 필요한데 **엔진에는 그 어느 것도 없다**.
+/// 판정식 자체는 `ccg-auth::switch::plan`(순수 함수)에 있고, 셸이 재료를 모아 그
+/// 함수를 부른 결과를 이 훅으로 돌려준다. 그래서 재생 하네스는 대본으로 이 훅을
+/// 흉내 내 **전 조합**(후보 있음/없음/오염 스킵/연속 소진/설정 꺼짐)을 돌릴 수 있다.
+///
+/// 안 꽂으면 언제나 `None`이고, 그때 동작은 이 기능이 없던 판과 **한 글자도 다르지 않다**
+/// (대기표 → 재검증 → 이어서). 설정이 꺼져 있을 때 셸이 내는 값도 `None`이다.
+pub trait AccountSwitcher: Send + Sync {
+    fn pick(&self, req: &SwitchRequest) -> Option<SwitchPick>;
+
+    /// **아직 모른다**(= 셸이 조회를 걸었고 곧 답이 온다)인가.
+    ///
+    /// [`Self::pick`]의 `None`에는 두 뜻이 섞여 있다: *"갈 데가 없다"* 와 *"아직 안
+    /// 물어봤다"*. 화면에서는 그 둘이 다른 문장이다 — 전자는 "풀릴 때까지 기다립니다"이고
+    /// 후자에 그 문장을 쓰면 **1초 뒤 계정을 갈아타면서 방금 한 말을 뒤집는다**(R1 실물
+    /// 주행에서 실제로 두 줄이 연달아 떴다). 그래서 대기 문장을 한 tick 미룰지 여부만
+    /// 이 값으로 가른다. 기본 `false` = 미배선 훅은 옛 동작 그대로.
+    fn pending(&self) -> bool {
+        false
+    }
+}
+
+/// 훅에 넘기는 질문. **엔진이 아는 것만** 담는다 — 계정 목록·한도·오염은 셸의 몫이다.
+#[derive(Debug, Clone, Copy)]
+pub struct SwitchRequest<'a> {
+    pub chat_id: &'a str,
+    /// 지금 이 채팅의 과금 축. 구독이 아니면 셸은 `None`을 돌려줘야 한다
+    /// (API 키 실행에는 갈아탈 "계정"이 없다).
+    pub current: &'a BillingAxis,
+    /// 지금 정체성의 모델 — Fable 창을 소비하는지 가르는 재료.
+    pub model: &'a str,
+    /// 이 한도 에피소드에서 **이미 거쳐 온** 계정(A→B→A 핑퐁 금지).
+    pub tried: &'a std::collections::BTreeSet<String>,
+    pub now_epoch_ms: u64,
+}
+
+/// 훅의 답 — "이 계정으로 갈아타라".
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SwitchPick {
+    pub account: crate::identity::AccountEmail,
+    /// 그 계정에서 **가장 먼저 초기화될 창**(unix 초). 배너 문장의 재료이자
+    /// "왜 이 계정인가"의 근거다. 모르면 `None`.
+    pub soonest_reset: Option<u64>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
