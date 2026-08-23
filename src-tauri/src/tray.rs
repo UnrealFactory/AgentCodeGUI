@@ -7,7 +7,7 @@
 //! 트레이에 남아 하던 일을 계속 돈다. 아이콘 클릭(또는 메뉴 '열기')이 창을 되살리고,
 //! 진짜 종료는 메뉴 '완전히 종료'뿐이다.
 //!
-//! ## 세 조각
+//! ## 네 조각
 //! 1. **아이콘** — `TrayIconBuilder`. PNG를 `include_bytes!`로 **exe에 박는다**:
 //!    3.0은 `bundle.active=false`(설치본 없음)라 `resources/icon.ico` 같은 런타임 경로가
 //!    없고, 레포 상대 경로는 벤치가 exe를 복사해 돌리는 순간 깨진다.
@@ -16,6 +16,29 @@
 //!    만들면 네이티브 `Menu`로 떨어진다 — 투박해도 기능은 지킨다.
 //! 3. **X 정책** — `win.rs`의 메인 창 `CloseRequested`가 `hide_on_close()`를 묻는다.
 //!    트레이가 없으면(생성 실패) **종전대로 진짜 닫기**다 — 숨긴 창을 되찾을 길이 없으니까.
+//! 4. **첫 숨김 안내**(★R2) — 아래.
+//!
+//! ## 첫 숨김 안내 카드 (`note_first_hide` · 크리틱 M8 §4)
+//!
+//! R1에는 "X가 종료가 아니게 된 것"을 알리는 수단이 **하나도 없었다**. 크리틱이 잰
+//! 실제 경험은 이렇다: X → 창이 사라짐 → 안내 없음 → 작업 표시줄에도 없음 → Win11
+//! 기본값이라 알림 영역 아이콘도 셰브런 뒤 → "껐구나". 그런데 프로세스는 살아서
+//! 진행 중 턴·워크플로·셸을 계속 돌린다. 그래서 무게가 「중」이 아니라 **「상」**이다.
+//!
+//! 2.6.2는 `tray.displayBalloon`이었다(`index.ts:941-951`). Tauri/tray-icon 0.24에는
+//! 대응 API가 없다(`NIF_INFO` 코드가 없고 필요한 hwnd/uID가 비공개 필드다 — 크리틱 §4.2-C).
+//! 그래서 **이미 있는 카드 창을 재활용한다**: 트레이 메뉴와 같은 `tray.html`
+//! (셸이 준 행을 그리는 게 전부인 페이지)을 **별도 라벨**로 하나 더 띄우고,
+//! 토스트와 같은 `WS_EX_NOACTIVATE`로 포커스를 안 뺏게 한다.
+//!
+//! - 왜 토스트 창(`toast.html`)이 아닌가: 크리틱 권장안은 그쪽이지만, 그 페이지는
+//!   `kindLabel()`이 **채팅 알림 4종의 문구를 하드코딩**한다(`app/src/toast.ts:11-16`).
+//!   시스템 안내를 넣으려면 `NotifyKind`에 `info`를 더해야 하는데 이번 라운드는
+//!   `app/` 경계 밖이다(M-UI가 그 파일들을 읽는 중). `tray.html`은 문구가 **전부 셸에서
+//!   온다** — 같은 값(불투명 카드·항상 위·클릭 라우팅)을 한 글자도 안 고치고 얻는다.
+//! - 수명: 클릭 · 본창 복귀(`show_main`) · 트레이 메뉴 열기(`show_menu`) 중 먼저 오는 것.
+//!   "사용자가 창을 되찾는 순간 스스로 사라진다"가 정확히 맞는 수명이다.
+//! - 한 번만: `ui-prefs`의 `tray.noticeShown`. 안내는 처음 한 번이면 족하다.
 //!
 //! ## 단일 인스턴스 두 번째 실행 (M1 §7-3 이월)
 //! 같은 앱 홈으로 두 번째 프로세스가 뜨면 `main.rs`의 홈 잠금이 실패한다. R1까지는
@@ -42,12 +65,30 @@ pub const TRAYMENU_ACTION: &str = "traymenu:action";
 
 pub const MENU_WIN: &str = "traymenu";
 const MENU_W: f64 = 218.0;
+/// 첫 숨김 안내 카드. 메뉴와 **같은 페이지·다른 라벨**이다(모듈 헤더 4).
+pub const NOTICE_WIN: &str = "traynotice";
+const NOTICE_W: f64 = 336.0;
+/// 안내를 한 번만 띄우기 위한 ui-prefs 키.
+const NOTICE_PREF: &str = "tray.noticeShown";
+/// 안내 카드가 아무 조작 없이 화면에 남는 시간(2.6.2 풍선의 자동 소멸 자리).
+const NOTICE_LIFE_MS: u64 = 15_000;
 
 /// 아이콘 원본. `bundle.active=false`라 런타임 경로가 없다 — exe에 박는다.
 const ICON_PNG: &[u8] = include_bytes!("../../build/icon.png");
+/// tauri 레지스트리 안의 아이콘 id — `release_icon`이 그 사본을 되찾을 주소다.
+const TRAY_ID: &str = "ccg-tray";
 
-/// 트레이 핸들. **떨어뜨리면 아이콘이 사라진다**(TrayIcon은 Drop에서 알림 영역에서 뺀다).
-static TRAY: OnceLock<TrayIcon> = OnceLock::new();
+/// 트레이 핸들.
+///
+/// **`OnceLock`이면 안 된다.** `TrayIcon`은 refcount다(tray-icon 0.24 `lib.rs:340-347`:
+/// *"This type is reference-counted and the icon is removed when the last instance is
+/// dropped"*) — 알림 영역에서 빼는 `NIM_DELETE`는 **Drop에서만** 나간다. 그런데 Rust는
+/// `static`을 절대 drop하지 않고, tauri의 `cleanup_before_exit()`가 비우는 것은
+/// `manager.tray.icons`(자기 사본)뿐이다. 그래서 R1은 '완전히 종료' 뒤에도 **죽은
+/// 아이콘이 알림 영역에 남았다**(사용자가 그 위를 지나가야 사라진다). 2.6.2는 이 자리를
+/// 알고 `index.ts:2174 tray?.destroy()`로 고쳐 뒀다 — 3.0이 되돌린 것이다(크리틱 M8 §3.3).
+/// 종료 직전에 꺼낼 수 있게 `Mutex<Option<_>>`으로 든다(`release_icon`).
+static TRAY: Mutex<Option<TrayIcon>> = Mutex::new(None);
 /// 진짜 종료 중 — 이때의 X는 숨기기가 아니다(2.6.2 `appQuitting`).
 static QUITTING: AtomicBool = AtomicBool::new(false);
 /// 커스텀 카드를 못 만들어 네이티브 메뉴로 내려갔다 — 그 뒤로는 우클릭에 카드를 다시
@@ -61,6 +102,8 @@ static ANCHOR: Mutex<(f64, f64)> = Mutex::new((0.0, 0.0));
 /// 쏜다.** 그걸 그대로 blur로 받으면 창이 태어나자마자 자기를 부순다 — 조용히, 오류도
 /// 없이(R1에서 트레이 메뉴가 "안 뜬다"의 정체가 이것이었다).
 static MENU_SHOWN: AtomicBool = AtomicBool::new(false);
+/// 카드 창(메뉴·안내)의 "있나 → 만든다"를 한 줄로 세우는 자물쇠 — `show_menu` 주석.
+static SHOW_LOCK: Mutex<()> = Mutex::new(());
 
 pub fn is_quitting() -> bool {
     QUITTING.load(Ordering::SeqCst)
@@ -68,7 +111,25 @@ pub fn is_quitting() -> bool {
 
 /// 트레이가 실제로 살아 있나 — X 정책의 전제.
 pub fn present() -> bool {
-    TRAY.get().is_some()
+    TRAY.lock().unwrap_or_else(|e| e.into_inner()).is_some()
+}
+
+/// **종료 직전에 아이콘을 놓아 준다** — 이걸 안 하면 죽은 아이콘이 알림 영역에 남는다.
+///
+/// 참조가 **둘**이라 둘 다 놓아야 Drop이 돈다(실측으로 확인했다 — 우리 static만 비웠을
+/// 때는 `present()`가 false로 떨어져도 tray-icon의 히든 창 `tray_icon_app`이 그대로
+/// 살아 있었다 = `NIM_DELETE`가 안 나갔다):
+///   ① 우리 `TRAY` static — R1은 `OnceLock`이라 애초에 뺄 방법이 없었다.
+///   ② tauri가 `manager.tray.icons`에 쥔 사본 — `remove_tray_by_id`로 뺀다.
+///      (tauri는 `cleanup_before_exit()`에서 이 맵을 비우지만 그건 `RunEvent::Exit`
+///       시점이고, 우리 static이 살아 있는 한 그때도 마지막 참조가 아니다.)
+///
+/// **메인 스레드에서 부르는 게 원칙**이다: `TrayIcon::drop`이 `NIM_DELETE` 다음에
+/// `DestroyWindow(자기 히든 창)`를 부르는데 그 호출은 창을 만든 스레드에서만 성공한다.
+/// `RunEvent::ExitRequested` 핸들러가 그 스레드다. 두 번 불러도 무해하다(둘 다 take).
+pub fn release_icon(app: &AppHandle) {
+    drop(TRAY.lock().unwrap_or_else(|e| e.into_inner()).take());
+    drop(app.remove_tray_by_id(TRAY_ID));
 }
 
 /// X(·Alt+F4)를 트레이로 숨기기로 바꿀까. 설정 `tray.closeToTray`(기본 on)를 존중한다.
@@ -82,6 +143,8 @@ pub fn hide_on_close() -> bool {
 
 /// 메인 창을 앞으로 — 트레이 클릭·메뉴 '열기'·두 번째 인스턴스가 전부 여기로 온다.
 pub fn show_main(app: &AppHandle) {
+    // 창을 되찾았다 = 첫 숨김 안내의 할 일이 끝났다(모듈 헤더 4의 수명).
+    dismiss_notice(app);
     let Some(w) = app.get_webview_window(MAIN) else { return };
     let _ = w.unminimize();
     let _ = w.show();
@@ -90,13 +153,18 @@ pub fn show_main(app: &AppHandle) {
 
 fn quit(app: &AppHandle) {
     QUITTING.store(true, Ordering::SeqCst);
+    // 아이콘을 **여기서 놓지 않는다.** `menu_action`은 `ipc_call`(async 커맨드)에서
+    // 오므로 tokio 워커 스레드다. `TrayIcon::drop`은 `Shell_NotifyIcon(NIM_DELETE)`에
+    // 이어 `DestroyWindow(자기 히든 창)`를 부르는데, 그 호출은 **창을 만든 스레드에서만**
+    // 성공한다(tray-icon 0.24 `platform_impl/windows/mod.rs:305-318`). 놓는 자리는
+    // `app.exit(0)`이 태우는 `RunEvent::ExitRequested` — 거기가 이벤트 루프 스레드다.
     app.exit(0);
 }
 
 // ── 아이콘 ──────────────────────────────────────────────────────────────────
 
 pub fn init(app: &AppHandle) {
-    if TRAY.get().is_some() {
+    if present() {
         return;
     }
     // `CCG_NO_TRAY=1` — 트레이 없는 팔(그때 X는 2.6.2의 "트레이 실패" 경로 = 진짜 닫기).
@@ -111,7 +179,7 @@ pub fn init(app: &AppHandle) {
         }
     };
     let handle = app.clone();
-    let built = TrayIconBuilder::with_id("ccg-tray")
+    let built = TrayIconBuilder::with_id(TRAY_ID)
         .icon(icon)
         .tooltip("AgentCodeGUI")
         // 좌클릭에 네이티브 메뉴를 자동으로 띄우지 않는다 — 커스텀 카드와 겹친다.
@@ -137,7 +205,7 @@ pub fn init(app: &AppHandle) {
         .build(app);
     match built {
         Ok(t) => {
-            let _ = TRAY.set(t);
+            *TRAY.lock().unwrap_or_else(|e| e.into_inner()) = Some(t);
             // 네이티브 폴백 메뉴의 클릭 수신자 — 폴백이 안 걸리면 한 번도 안 불린다.
             app.on_menu_event(|app, ev| match ev.id().as_ref() {
                 "ccg-tray-open" => show_main(app),
@@ -152,10 +220,21 @@ pub fn init(app: &AppHandle) {
 
 // ── 우클릭 메뉴 (커스텀 팝업 창) ────────────────────────────────────────────
 
+/// UI 언어가 영어인가 — 원본은 **ui-prefs의 `"ui.lang"`** 한 키다.
+///
+/// R1은 `"lang"`을 읽었다. 그 키는 3.0의 어디에도 없다(렌더러 `app/src/lib/i18n.ts:17`
+/// `LANG_PREF = 'ui.lang'` · `ipc/stores.rs:94`·`:109` · `crates/ccg-fs/src/lib.rs:60`,
+/// 2.6.2 `src/main/lang.ts` 헤더도 *"값은 ui-prefs('ui.lang')가 원본"*). 그래서 UI를
+/// en으로 둬도 **트레이 메뉴만 영원히 한국어**였다(크리틱 M8 §3.4 실측). 한 글자짜리
+/// 결함이라 한 함수로 묶어 둔다 — 다음에 라벨이 늘어도 키가 두 벌이 되지 않게.
+fn en_ui() -> bool {
+    ccg_store::prefs::read_ui_prefs().get("ui.lang").and_then(Value::as_str) == Some("en")
+}
+
 fn items() -> Value {
     // 라벨은 **표시 시점**에 만든다. Rust 쪽에 i18n이 없으므로 저장된 UI 언어를 읽어
-    // 두 벌 중 하나를 고른다(렌더러 `lib/i18n.ts`와 같은 키: ui-prefs `lang`).
-    let en = ccg_store::prefs::read_ui_prefs().get("lang").and_then(Value::as_str) == Some("en");
+    // 두 벌 중 하나를 고른다(렌더러 `lib/i18n.ts`와 같은 키).
+    let en = en_ui();
     json!([
         { "id": "open", "label": if en { "Open AgentCodeGUI" } else { "AgentCodeGUI 열기" } },
         { "id": "quit", "label": if en { "Quit completely" } else { "완전히 종료" } },
@@ -165,6 +244,13 @@ fn items() -> Value {
 /// 트레이 아이콘 우클릭 — 떠 있으면 토글 닫기(네이티브 메뉴의 재우클릭과 같은 감각).
 /// `x`/`y`는 **물리** 좌표(TrayIconEvent.position)다.
 pub fn show_menu(app: &AppHandle, x: f64, y: f64) {
+    // "떠 있나 → 없으면 만든다"를 한 줄로 세운다 — 쪼개지면 같은 라벨로 창이 둘 만들어져
+    // 하나가 고아가 된다(notify.rs `PUSH_LOCK` 주석의 실측 사고와 같은 종류).
+    // 이 함수는 트레이 우클릭(메인 스레드)과 진단 채널(tokio 워커) 양쪽에서 온다.
+    let _serial = SHOW_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    // 안내 카드와 메뉴가 **동시에 뜨지 않게** 한다. 같은 페이지를 쓰므로 겹치면
+    // 화면에 같은 카드가 둘이고, 사용자가 트레이 메뉴에 도달한 순간 안내의 할 일도 끝난다.
+    dismiss_notice(app);
     if NATIVE_FALLBACK.load(Ordering::SeqCst) {
         return; // OS가 붙은 네이티브 메뉴를 알아서 띄운다
     }
@@ -204,16 +290,14 @@ pub fn show_menu(app: &AppHandle, x: f64, y: f64) {
             // 토스트와 같은 이유의 재송신 — 심의 `subscribe`는 Tauri `listen()`(비동기
             // 등록)이라 `load` 직후엔 아직 안 붙어 있을 수 있다(notify.rs 실측 참조).
             // 항목 목록은 REPLACE라 두 번 받아도 무해하다.
-            let a = w.app_handle().clone();
-            std::thread::spawn(move || {
-                for ms in [180u64, 500] {
-                    std::thread::sleep(std::time::Duration::from_millis(ms));
-                    if a.get_webview_window(MENU_WIN).is_none() {
-                        return;
-                    }
-                    let _ = a.emit_to(MENU_WIN, TRAYMENU_SHOW, items());
-                }
-            });
+            //
+            // ★R2 — **예산을 토스트와 맞춘다**(180/500 두 번 → 180/500/1200 세 번 +
+            //   마지막 시도 폴백). 크리틱 M8 §3.6이 남긴 관측: 36회 실측에서 행이 실제로
+            //   뜬 시각이 123~202ms였다 = `page-load` 직후의 첫 emit은 **대개 놓치고**
+            //   180ms 재송신이 살리고 있다. 여유가 500ms까지 두 번뿐인 구조는 부하가
+            //   걸리면 얇고(그 회차에 항목 0개가 한 번 관측됐다), 트레이 메뉴는
+            //   '완전히 종료'의 **유일한 경로**라 빈 카드의 대가가 토스트보다 크다.
+            spawn_menu_resend(w.app_handle().clone());
         }
     });
 
@@ -291,12 +375,163 @@ pub fn destroy_menu(app: &AppHandle) {
     }
 }
 
+/// 항목 REPLACE 재송신 — **토스트와 같은 예산**(`notify.rs:288-302`).
+///
+/// 세 번(180/500/1200ms) 다시 쏘고, 마지막 시도까지도 창이 안 보이면 기본 높이로
+/// 앉힌다. 뒤쪽 폴백이 없으면 페이지가 `traymenu:resize`를 못 보낸 회차에
+/// **보이지 않는 창이 앱에 남는다** — 사용자에게는 "우클릭했는데 아무 일도 없다"이고,
+/// 그게 곧 '완전히 종료'로 가는 유일한 문이 막힌 상태다.
+fn spawn_menu_resend(a: AppHandle) {
+    std::thread::spawn(move || {
+        for ms in [180u64, 500, 1200] {
+            std::thread::sleep(std::time::Duration::from_millis(ms));
+            let Some(w) = a.get_webview_window(MENU_WIN) else { return };
+            let _ = a.emit_to(MENU_WIN, TRAYMENU_SHOW, items());
+            if ms == 1200 && !w.is_visible().unwrap_or(false) {
+                let a2 = a.clone();
+                let _ = a.run_on_main_thread(move || menu_resize(&a2, 92.0));
+            }
+        }
+    });
+}
+
+// ── 첫 숨김 안내 카드 (모듈 헤더 4 · 크리틱 M8 §4) ──────────────────────────
+
+/// 안내 문구. 트레이 메뉴와 **같은 페이지**를 쓰므로 행 두 개가 곧 카드다.
+/// 첫 행이 안내이자 복원 버튼이고(클릭 = 창 복원), 둘째 행이 "완전히 종료는 여기"다.
+fn notice_items() -> Value {
+    let en = en_ui();
+    json!([
+        {
+            "id": "open",
+            "label": if en {
+                "AgentCodeGUI is still running in the tray — click to reopen"
+            } else {
+                "앱이 트레이에서 계속 실행돼요 — 눌러서 다시 열기"
+            }
+        },
+        {
+            "id": "quit",
+            "label": if en { "Quit completely" } else { "완전히 종료" },
+        },
+    ])
+}
+
+/// **처음 트레이로 숨을 때 한 번만** — "X는 종료가 아니다"를 알리는 유일한 자리.
+/// `win.rs`의 `CloseRequested`가 `hide()` 직후에 부른다.
+pub fn note_first_hide(app: &AppHandle) {
+    let mut p = ccg_store::prefs::read_ui_prefs();
+    if p.get(NOTICE_PREF).and_then(Value::as_bool) == Some(true) {
+        return;
+    }
+    // 표식을 **먼저** 남긴다. 카드 생성이 실패해도 매번 다시 시도하지 않게(안내가 안 뜬
+    // 것보다, 뜰 때마다 실패해 로그만 쌓이는 쪽이 나쁘다).
+    if let Some(o) = p.as_object_mut() {
+        o.insert(NOTICE_PREF.into(), json!(true));
+    }
+    let _ = ccg_store::prefs::write_ui_prefs(&p);
+    show_notice(app);
+}
+
+fn show_notice(app: &AppHandle) {
+    if app.get_webview_window(NOTICE_WIN).is_some() {
+        return;
+    }
+    let b = shared_env(
+        WebviewWindowBuilder::new(app, NOTICE_WIN, WebviewUrl::App("tray.html".into())),
+        NOTICE_WIN,
+    )
+    .title("안내 — AgentCodeGUI")
+    .inner_size(NOTICE_W, 96.0)
+    .visible(false)
+    .decorations(false)
+    .resizable(false)
+    .minimizable(false)
+    .maximizable(false)
+    .skip_taskbar(true)
+    .always_on_top(true)
+    .focused(false)
+    .background_color(tauri::utils::config::Color(0x15, 0x15, 0x15, 0xff))
+    .on_page_load(|w, payload| {
+        if payload.event() == PageLoadEvent::Finished {
+            let _ = w.emit_to(NOTICE_WIN, TRAYMENU_SHOW, notice_items());
+            let a = w.app_handle().clone();
+            std::thread::spawn(move || {
+                for ms in [180u64, 500, 1200] {
+                    std::thread::sleep(std::time::Duration::from_millis(ms));
+                    let Some(w) = a.get_webview_window(NOTICE_WIN) else { return };
+                    let _ = a.emit_to(NOTICE_WIN, TRAYMENU_SHOW, notice_items());
+                    if ms == 1200 && !w.is_visible().unwrap_or(false) {
+                        let a2 = a.clone();
+                        let _ = a.run_on_main_thread(move || notice_resize(&a2, 96.0));
+                    }
+                }
+            });
+        }
+    });
+    match b.build() {
+        // 안내 카드는 **포커스를 안 뺏는다**(토스트와 같은 `WS_EX_NOACTIVATE`).
+        // 방금 창을 닫은 사용자에게서 입력 포커스를 도로 가져가는 것은 안내가 아니라 방해다.
+        // 그래서 메뉴 창과 달리 blur=닫기 규칙도 걸지 않는다 — 애초에 포커스가 안 온다.
+        Ok(w) => super::notify::no_activate(&w),
+        Err(e) => {
+            eprintln!("[tray] 첫 숨김 안내 카드 생성 실패: {e}");
+            return;
+        }
+    }
+    // 풍선의 수명 — 2.6.2 `displayBalloon`도 OS가 몇 초 뒤 걷었다. 카드에는 ✕이 없고
+    // (tray.html은 행만 그린다) 포커스가 없어 Esc도 못 받으므로, 아무것도 안 눌린 회차에
+    // **항상 위 카드가 화면에 영영 남지 않게** 여기서 걷는다. 클릭·본창 복귀·메뉴 열기가
+    // 그보다 먼저 오면 그쪽이 걷는다.
+    let a = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(NOTICE_LIFE_MS));
+        let a2 = a.clone();
+        let _ = a.run_on_main_thread(move || dismiss_notice(&a2));
+    });
+}
+
+/// 안내 카드의 높이 보고 — 트레이가 있는 쪽, 즉 작업 영역 **우하단**에 앉힌다
+/// (토스트와 같은 자리 계산: `notify::work_area`).
+pub fn notice_resize(app: &AppHandle, height: f64) {
+    let Some(w) = app.get_webview_window(NOTICE_WIN) else { return };
+    let scale = w.scale_factor().unwrap_or(1.0);
+    let (wx, wy, ww, wh) = super::notify::work_area(app, scale);
+    let h = height.round().max(40.0).min(wh - 32.0);
+    let _ = w.set_size(tauri::LogicalSize::new(NOTICE_W, h));
+    let _ = w.set_position(tauri::LogicalPosition::new(
+        wx + ww - NOTICE_W - 16.0,
+        wy + wh - h - 16.0,
+    ));
+    if !w.is_visible().unwrap_or(false) {
+        // NOACTIVATE라 show()가 활성화를 가져가지 않는다.
+        let _ = w.show();
+    }
+}
+
+/// 안내 카드의 클릭(`''` = Esc). 카드를 걷고 그 뜻대로 한다.
+pub fn notice_action(app: &AppHandle, id: &str) {
+    dismiss_notice(app);
+    match id {
+        "open" => show_main(app), // show_main도 dismiss를 부르지만 destroy는 멱등이다
+        "quit" => quit(app),
+        _ => {}
+    }
+}
+
+pub fn dismiss_notice(app: &AppHandle) {
+    if let Some(w) = app.get_webview_window(NOTICE_WIN) {
+        let _ = w.destroy();
+    }
+}
+
 /// 커스텀 카드를 못 만들었을 때의 네이티브 폴백. 한 번 붙으면 OS가 우클릭에 알아서
 /// 띄우므로 이후 카드 시도를 막는다(`NATIVE_FALLBACK`).
 fn native_menu(app: &AppHandle) {
     use tauri::menu::{IsMenuItem, MenuBuilder, MenuItemBuilder};
-    let Some(t) = TRAY.get() else { return };
-    let en = ccg_store::prefs::read_ui_prefs().get("lang").and_then(Value::as_str) == Some("en");
+    let guard = TRAY.lock().unwrap_or_else(|e| e.into_inner());
+    let Some(t) = guard.as_ref() else { return };
+    let en = en_ui();
     let Ok(open) = MenuItemBuilder::with_id("ccg-tray-open", if en { "Open AgentCodeGUI" } else { "AgentCodeGUI 열기" }).build(app)
     else {
         return;
@@ -409,5 +644,9 @@ pub fn debug_state(app: &AppHandle) -> Value {
         "hideOnClose": hide_on_close(),
         "menuWindow": app.get_webview_window(MENU_WIN).is_some(),
         "quitting": is_quitting(),
+        // ★R2 — 첫 숨김 안내: 지금 카드가 떠 있나 / 이 홈에서 이미 보여 줬나.
+        "noticeWindow": app.get_webview_window(NOTICE_WIN).is_some(),
+        "noticeShown": ccg_store::prefs::read_ui_prefs().get(NOTICE_PREF).and_then(Value::as_bool) == Some(true),
+        "closeToTray": ccg_store::prefs::read_ui_prefs().get("tray.closeToTray").and_then(Value::as_bool) != Some(false),
     })
 }

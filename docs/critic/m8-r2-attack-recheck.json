@@ -1,0 +1,893 @@
+{
+  "at": "2026-08-23T08:55:30.193Z",
+  "exe": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-m8r2b-wt\\target\\release\\agentcodegui.exe",
+  "steps": {
+    "a1-mid": {
+      "closeWhen": "mid",
+      "panelId": "933df779-94d6-4219-9809-85e8679565c1::0",
+      "popTextAtClose": [
+        "MARK-ONE",
+        "MARK-TWO"
+      ],
+      "flushAtClose": [
+        {
+          "panelId": "933df779-94d6-4219-9809-85e8679565c1::0",
+          "messages": 2
+        }
+      ],
+      "gridBeforeClose": [],
+      "closedGone": true,
+      "closeMs": 261,
+      "gridAfterClose": [
+        "MARK-ONE",
+        "MARK-TWO"
+      ],
+      "gridFinal": [
+        "MARK-ONE",
+        "MARK-TWO",
+        "MARK-THREE"
+      ],
+      "gridMsgCount": 4,
+      "diskMarks": [
+        "MARK-ONE",
+        "MARK-TWO",
+        "MARK-THREE"
+      ]
+    },
+    "a1-end": {
+      "closeWhen": "end",
+      "panelId": "09d7aeb2-d158-40eb-ad05-c7aaaa3e4274::0",
+      "popTextAtClose": [
+        "MARK-ONE",
+        "MARK-TWO",
+        "MARK-THREE"
+      ],
+      "flushAtClose": [
+        {
+          "panelId": "09d7aeb2-d158-40eb-ad05-c7aaaa3e4274::0",
+          "messages": 3
+        }
+      ],
+      "gridBeforeClose": [],
+      "closedGone": true,
+      "closeMs": 248,
+      "gridAfterClose": [
+        "MARK-ONE",
+        "MARK-TWO",
+        "MARK-THREE"
+      ],
+      "gridFinal": [
+        "MARK-ONE",
+        "MARK-TWO",
+        "MARK-THREE"
+      ],
+      "gridMsgCount": 4,
+      "diskMarks": [
+        "MARK-ONE",
+        "MARK-TWO",
+        "MARK-THREE"
+      ]
+    },
+    "a2": {
+      "count0": 4,
+      "ghostBefore": true,
+      "focusedBefore": [
+        "0:F",
+        "1:-",
+        "2:-",
+        "3:-"
+      ],
+      "dialClicked": "ok",
+      "gridPanels": 1,
+      "ghostAfter": false,
+      "popStillOpen": false,
+      "surface": {
+        "popout": {
+          "windows": [],
+          "flushes": [],
+          "leftovers": [],
+          "flushReqs": 1
+        },
+        "notify": {
+          "enabled": true,
+          "count": 0,
+          "items": [],
+          "window": false,
+          "loaded": false
+        },
+        "tray": {
+          "tray": true,
+          "hideOnClose": true,
+          "menuWindow": false,
+          "quitting": false,
+          "noticeWindow": false,
+          "noticeShown": false,
+          "closeToTray": true
+        },
+        "windows": [
+          "main"
+        ],
+        "mainFocused": false
+      },
+      "osWindows": [
+        {
+          "visible": true,
+          "size": "1336x889",
+          "title": "AgentCodeGUI3"
+        },
+        {
+          "visible": false,
+          "size": "1920x1023",
+          "title": ""
+        }
+      ],
+      "surfaceAfterClose": {
+        "popout": {
+          "windows": [],
+          "flushes": [],
+          "leftovers": [],
+          "flushReqs": 1
+        },
+        "notify": {
+          "enabled": true,
+          "count": 0,
+          "items": [],
+          "window": false,
+          "loaded": false
+        },
+        "tray": {
+          "tray": true,
+          "hideOnClose": true,
+          "menuWindow": false,
+          "quitting": false,
+          "noticeWindow": false,
+          "noticeShown": false,
+          "closeToTray": true
+        },
+        "windows": [
+          "main"
+        ],
+        "mainFocused": false
+      },
+      "leftoversAfterClose": [],
+      "restoredTitle": [
+        "새 작업",
+        "축소 대상",
+        "새 작업",
+        "새 작업"
+      ],
+      "restoredGhost": false
+    },
+    "a3": {
+      "procs0": 5,
+      "mapanelPages": 2,
+      "surface": {
+        "popout": {
+          "windows": [
+            {
+              "label": "panel-1",
+              "panelId": "1eb29cb0-dd8f-45ed-930e-32042432e1af::0"
+            },
+            {
+              "label": "panel-2",
+              "panelId": "1eb29cb0-dd8f-45ed-930e-32042432e1af::1"
+            }
+          ],
+          "flushes": [
+            {
+              "panelId": "1eb29cb0-dd8f-45ed-930e-32042432e1af::1",
+              "messages": 0
+            },
+            {
+              "panelId": "1eb29cb0-dd8f-45ed-930e-32042432e1af::0",
+              "messages": 0
+            }
+          ],
+          "leftovers": [],
+          "flushReqs": 0
+        },
+        "notify": {
+          "enabled": true,
+          "count": 0,
+          "items": [],
+          "window": false,
+          "loaded": false
+        },
+        "tray": {
+          "tray": true,
+          "hideOnClose": true,
+          "menuWindow": false,
+          "quitting": false,
+          "noticeWindow": false,
+          "noticeShown": false,
+          "closeToTray": true
+        },
+        "windows": [
+          "session-1",
+          "panel-2",
+          "main",
+          "panel-1"
+        ],
+        "mainFocused": false
+      },
+      "windows": [
+        "session-1",
+        "panel-2",
+        "main",
+        "panel-1"
+      ],
+      "popouts": [
+        {
+          "label": "panel-1",
+          "panelId": "1eb29cb0-dd8f-45ed-930e-32042432e1af::0"
+        },
+        {
+          "label": "panel-2",
+          "panelId": "1eb29cb0-dd8f-45ed-930e-32042432e1af::1"
+        }
+      ],
+      "procs1": 5,
+      "pages": [
+        "index.html#session",
+        "index.html#mapanel",
+        "index.html#mapanel",
+        ""
+      ],
+      "osWindows": [
+        {
+          "size": "576x729",
+          "title": "�߰� ä�� ? AgentCodeGUI"
+        },
+        {
+          "size": "1116x829",
+          "title": "�г� ? AgentCodeGUI"
+        },
+        {
+          "size": "1116x829",
+          "title": "�г� ? AgentCodeGUI"
+        },
+        {
+          "size": "1336x889",
+          "title": "AgentCodeGUI3"
+        }
+      ],
+      "afterOneClose": {
+        "popout": {
+          "windows": [
+            {
+              "label": "panel-2",
+              "panelId": "1eb29cb0-dd8f-45ed-930e-32042432e1af::1"
+            }
+          ],
+          "flushes": [
+            {
+              "panelId": "1eb29cb0-dd8f-45ed-930e-32042432e1af::1",
+              "messages": 0
+            }
+          ],
+          "leftovers": [],
+          "flushReqs": 1
+        },
+        "notify": {
+          "enabled": true,
+          "count": 0,
+          "items": [],
+          "window": false,
+          "loaded": false
+        },
+        "tray": {
+          "tray": true,
+          "hideOnClose": true,
+          "menuWindow": false,
+          "quitting": false,
+          "noticeWindow": false,
+          "noticeShown": false,
+          "closeToTray": true
+        },
+        "windows": [
+          "main",
+          "session-1",
+          "panel-2"
+        ],
+        "mainFocused": false
+      },
+      "mapanelAfter": 1
+    },
+    "a4": {
+      "burstShowMs": 126,
+      "rows": 10,
+      "dbg": {
+        "popout": {
+          "windows": [],
+          "flushes": [],
+          "leftovers": [],
+          "flushReqs": 0
+        },
+        "notify": {
+          "enabled": true,
+          "count": 10,
+          "items": [
+            {
+              "key": "single:c-0",
+              "owner": "main"
+            },
+            {
+              "key": "single:c-2",
+              "owner": "main"
+            },
+            {
+              "key": "single:c-1",
+              "owner": "main"
+            },
+            {
+              "key": "single:c-3",
+              "owner": "main"
+            },
+            {
+              "key": "single:c-4",
+              "owner": "main"
+            },
+            {
+              "key": "single:c-5",
+              "owner": "main"
+            },
+            {
+              "key": "single:c-9",
+              "owner": "main"
+            },
+            {
+              "key": "single:c-6",
+              "owner": "main"
+            },
+            {
+              "key": "single:c-8",
+              "owner": "main"
+            },
+            {
+              "key": "single:c-7",
+              "owner": "main"
+            }
+          ],
+          "window": true,
+          "loaded": true
+        },
+        "tray": {
+          "tray": true,
+          "hideOnClose": true,
+          "menuWindow": false,
+          "quitting": false,
+          "noticeWindow": false,
+          "noticeShown": false,
+          "closeToTray": true
+        },
+        "windows": [
+          "main",
+          "toast"
+        ],
+        "mainFocused": false
+      },
+      "bounds": {
+        "w": 360,
+        "h": 410,
+        "x": 2192,
+        "y": 967,
+        "availW": 2560,
+        "availH": 1392
+      },
+      "onScreen": true,
+      "goneOnFocus": true,
+      "dbgAfterFocus": {
+        "popout": {
+          "windows": [],
+          "flushes": [],
+          "leftovers": [],
+          "flushReqs": 0
+        },
+        "notify": {
+          "enabled": true,
+          "count": 0,
+          "items": [],
+          "window": false,
+          "loaded": false
+        },
+        "tray": {
+          "tray": true,
+          "hideOnClose": true,
+          "menuWindow": false,
+          "quitting": false,
+          "noticeWindow": false,
+          "noticeShown": false,
+          "closeToTray": true
+        },
+        "windows": [
+          "main"
+        ],
+        "mainFocused": false
+      },
+      "racePre": true,
+      "raceBack": true,
+      "raceDbg": {
+        "popout": {
+          "windows": [],
+          "flushes": [],
+          "leftovers": [],
+          "flushReqs": 0
+        },
+        "notify": {
+          "enabled": true,
+          "count": 5,
+          "items": [
+            {
+              "key": "single:r-1",
+              "owner": "main"
+            },
+            {
+              "key": "single:r-0",
+              "owner": "main"
+            },
+            {
+              "key": "single:r-30",
+              "owner": "main"
+            },
+            {
+              "key": "single:r-80",
+              "owner": "main"
+            },
+            {
+              "key": "single:r-150",
+              "owner": "main"
+            }
+          ],
+          "window": true,
+          "loaded": true
+        },
+        "tray": {
+          "tray": true,
+          "hideOnClose": true,
+          "menuWindow": false,
+          "quitting": false,
+          "noticeWindow": false,
+          "noticeShown": false,
+          "closeToTray": true
+        },
+        "windows": [
+          "main",
+          "toast"
+        ],
+        "mainFocused": false
+      },
+      "raceVisible": 5
+    },
+    "a5": {
+      "visibleAfterX": 1,
+      "aliveAfterX": true,
+      "toastWhileHidden": true,
+      "visibleAfterClick": [
+        {
+          "size": "352x96",
+          "title": "�ȳ� ? AgentCodeGUI"
+        },
+        {
+          "size": "1336x889",
+          "title": "AgentCodeGUI3"
+        }
+      ],
+      "restored": true,
+      "secondExit": {
+        "code": 0,
+        "ms": 109
+      },
+      "raised": true,
+      "raisedMs": 372,
+      "hiddenBeforeQuit": 0,
+      "menuWhileHidden": true,
+      "menuItems": [],
+      "quitFromHidden": true
+    },
+    "a6": {
+      "before": {
+        "popout": {
+          "windows": [
+            {
+              "label": "panel-1",
+              "panelId": "0730fdbc-d17b-467c-9b14-e6d0b254d846::0"
+            }
+          ],
+          "flushes": [
+            {
+              "panelId": "0730fdbc-d17b-467c-9b14-e6d0b254d846::0",
+              "messages": 4
+            }
+          ],
+          "leftovers": [],
+          "flushReqs": 0
+        },
+        "notify": {
+          "enabled": true,
+          "count": 0,
+          "items": [],
+          "window": false,
+          "loaded": false
+        },
+        "tray": {
+          "tray": true,
+          "hideOnClose": true,
+          "menuWindow": false,
+          "quitting": false,
+          "noticeWindow": false,
+          "noticeShown": false,
+          "closeToTray": true
+        },
+        "windows": [
+          "panel-1",
+          "main"
+        ],
+        "mainFocused": false
+      },
+      "pages": [
+        "index.html#mapanel",
+        ""
+      ],
+      "mapanelPages": 1,
+      "log": [
+        "process-failed",
+        "recover-begin",
+        "process-failed",
+        "reloaded",
+        "reloaded",
+        "page-load",
+        "mounted",
+        "page-load",
+        "recover-done"
+      ],
+      "mainUrl": "http://tauri.localhost/",
+      "after": {
+        "popout": {
+          "windows": [
+            {
+              "label": "panel-1",
+              "panelId": "0730fdbc-d17b-467c-9b14-e6d0b254d846::0"
+            }
+          ],
+          "flushes": [
+            {
+              "panelId": "0730fdbc-d17b-467c-9b14-e6d0b254d846::0",
+              "messages": 4
+            }
+          ],
+          "leftovers": [],
+          "flushReqs": 0
+        },
+        "notify": {
+          "enabled": true,
+          "count": 0,
+          "items": [],
+          "window": false,
+          "loaded": false
+        },
+        "tray": {
+          "tray": true,
+          "hideOnClose": true,
+          "menuWindow": false,
+          "quitting": false,
+          "noticeWindow": false,
+          "noticeShown": false,
+          "closeToTray": true
+        },
+        "windows": [
+          "main",
+          "panel-1"
+        ],
+        "mainFocused": false
+      },
+      "ghost": true,
+      "gridMarks": [],
+      "boardAfter": {
+        "version": 1,
+        "boards": [
+          {
+            "id": "default",
+            "title": "",
+            "custom": false,
+            "count": 1,
+            "chrome": "ide",
+            "order": [
+              0,
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "slots": [
+              "c-main",
+              null,
+              null,
+              null,
+              null,
+              null
+            ]
+          },
+          {
+            "id": "0730fdbc-d17b-467c-9b14-e6d0b254d846",
+            "title": "",
+            "custom": false,
+            "count": 4,
+            "chrome": "grid",
+            "order": [
+              0,
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "slots": [
+              "ma-0730fdbc-d17b-467c-9b14-e6d0b254d846-0",
+              null,
+              null,
+              null,
+              null,
+              null
+            ],
+            "updatedAt": 1787475413423
+          }
+        ],
+        "activeBoardId": "0730fdbc-d17b-467c-9b14-e6d0b254d846"
+      },
+      "statesForActive": {
+        "open": [
+          "0730fdbc-d17b-467c-9b14-e6d0b254d846::0"
+        ],
+        "leftovers": []
+      },
+      "composerLive": true,
+      "cells": [
+        {
+          "slot": "0",
+          "cls": "ma-panel ma-ghost pop",
+          "marks": [],
+          "composer": false
+        },
+        {
+          "slot": "1",
+          "cls": "ma-panel",
+          "marks": [],
+          "composer": true
+        },
+        {
+          "slot": "2",
+          "cls": "ma-panel",
+          "marks": [],
+          "composer": true
+        },
+        {
+          "slot": "3",
+          "cls": "ma-panel",
+          "marks": [],
+          "composer": true
+        }
+      ],
+      "popBack": true,
+      "popMounted": true,
+      "popMarks": [
+        "MARK-ONE",
+        "MARK-TWO",
+        "MARK-THREE"
+      ]
+    },
+    "a7": {
+      "rendererLang": null,
+      "rendererEnglish": true,
+      "items": [
+        "Open AgentCodeGUI",
+        "Quit completely"
+      ]
+    },
+    "a8": {
+      "mainBoot": {
+        "ok": true,
+        "reason": "",
+        "probe": "cheap",
+        "windows": 0,
+        "backdrops": [],
+        "reasserts": 0,
+        "drifts": 0,
+        "lastDrift": -1,
+        "assertFails": 0,
+        "emits": 0,
+        "advancedEffects": null,
+        "regTransparency": true,
+        "remoteSession": false
+      },
+      "pop1Boot": {
+        "ok": true,
+        "reason": "",
+        "probe": "full",
+        "windows": 1,
+        "backdrops": [
+          3
+        ],
+        "reasserts": 8,
+        "drifts": 0,
+        "lastDrift": -1,
+        "assertFails": 0,
+        "emits": 11,
+        "advancedEffects": true,
+        "regTransparency": true,
+        "remoteSession": false
+      },
+      "mapanelPages": 2,
+      "pop2Boot": {
+        "ok": true,
+        "reason": "",
+        "probe": "full",
+        "windows": 2,
+        "backdrops": [
+          3,
+          3
+        ],
+        "reasserts": 13,
+        "drifts": 0,
+        "lastDrift": -1,
+        "assertFails": 0,
+        "emits": 16,
+        "advancedEffects": true,
+        "regTransparency": true,
+        "remoteSession": false
+      }
+    },
+    "a9": {
+      "rounds": [
+        {
+          "i": 0,
+          "hidden": false,
+          "window": true,
+          "rows": 2,
+          "rowMs": 125,
+          "openMs": 284,
+          "size": {
+            "w": 218,
+            "h": 92
+          }
+        },
+        {
+          "i": 1,
+          "hidden": false,
+          "window": true,
+          "rows": 2,
+          "rowMs": 140,
+          "openMs": 286,
+          "size": {
+            "w": 218,
+            "h": 87
+          }
+        },
+        {
+          "i": 2,
+          "hidden": false,
+          "window": true,
+          "rows": 2,
+          "rowMs": 124,
+          "openMs": 282,
+          "size": {
+            "w": 218,
+            "h": 87
+          }
+        },
+        {
+          "i": 3,
+          "hidden": false,
+          "window": true,
+          "rows": 2,
+          "rowMs": 124,
+          "openMs": 282,
+          "size": {
+            "w": 218,
+            "h": 87
+          }
+        },
+        {
+          "i": 4,
+          "hidden": false,
+          "window": true,
+          "rows": 2,
+          "rowMs": 138,
+          "openMs": 296,
+          "size": {
+            "w": 218,
+            "h": 87
+          }
+        },
+        {
+          "i": 5,
+          "hidden": false,
+          "window": true,
+          "rows": 2,
+          "rowMs": 127,
+          "openMs": 283,
+          "size": {
+            "w": 218,
+            "h": 87
+          }
+        },
+        {
+          "i": 6,
+          "hidden": true,
+          "window": true,
+          "rows": 2,
+          "rowMs": 124,
+          "openMs": 344,
+          "size": {
+            "w": 218,
+            "h": 87
+          }
+        },
+        {
+          "i": 7,
+          "hidden": true,
+          "window": true,
+          "rows": 2,
+          "rowMs": 139,
+          "openMs": 312,
+          "size": {
+            "w": 218,
+            "h": 87
+          }
+        },
+        {
+          "i": 8,
+          "hidden": true,
+          "window": true,
+          "rows": 2,
+          "rowMs": 153,
+          "openMs": 356,
+          "size": {
+            "w": 218,
+            "h": 87
+          }
+        },
+        {
+          "i": 9,
+          "hidden": true,
+          "window": true,
+          "rows": 2,
+          "rowMs": 138,
+          "openMs": 311,
+          "size": {
+            "w": 218,
+            "h": 87
+          }
+        },
+        {
+          "i": 10,
+          "hidden": true,
+          "window": true,
+          "rows": 2,
+          "rowMs": 140,
+          "openMs": 285,
+          "size": {
+            "w": 218,
+            "h": 87
+          }
+        },
+        {
+          "i": 11,
+          "hidden": true,
+          "window": true,
+          "rows": 2,
+          "rowMs": 125,
+          "openMs": 283,
+          "size": {
+            "w": 218,
+            "h": 87
+          }
+        }
+      ],
+      "empty": 0,
+      "noWindow": 0,
+      "maxRowMs": 153
+    }
+  },
+  "findings": []
+}

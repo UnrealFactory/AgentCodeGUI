@@ -29,6 +29,7 @@
 
 use serde_json::{json, Value};
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::Mutex;
 use tauri::{webview::PageLoadEvent, AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder, WindowEvent};
@@ -56,6 +57,11 @@ static FLUSHES: Mutex<Option<HashMap<String, Value>>> = Mutex::new(None);
 static LEFTOVERS: Mutex<Option<HashMap<String, Value>>> = Mutex::new(None);
 /// 크래시 재생성 대기분 — 창을 전부 부수기 직전에 담아 둔 부트 페이로드들.
 static PENDING_RECREATE: Mutex<Vec<Value>> = Mutex::new(Vec::new());
+/// **닫기 전 마지막 저장 유예를 이미 준 창**(라벨). `CloseRequested`를 한 번만 가로챈다 —
+/// 안 그러면 유예 뒤 재시도한 `close()`가 또 가로채여 창이 영영 안 닫힌다.
+static CLOSING: Mutex<Option<HashSet<String>>> = Mutex::new(None);
+/// 지금까지 나간 "닫기 전 마지막 저장" 요청 수 — 하네스가 규약이 실제로 도는지 읽는다.
+static FLUSH_REQS: AtomicI64 = AtomicI64::new(0);
 
 fn with_map<T>(m: &Mutex<Option<HashMap<String, Value>>>, f: impl FnOnce(&mut HashMap<String, Value>) -> T) -> T {
     let mut g = m.lock().unwrap_or_else(|e| e.into_inner());
@@ -195,15 +201,88 @@ pub fn open(app: &AppHandle, state: &Value) -> Result<String, String> {
         }
         // 이 창이 포커스를 되찾으면 그 창 몫의 알림은 무의미하다 — 토스트 자동 소멸.
         WindowEvent::Focused(true) => super::notify::clear_for_window(&handle, &l),
+        // ★R2 — **닫기 전 마지막 저장 요청**(`chat:flush-req`와 같은 규약, ipc/windows.rs:22).
+        WindowEvent::CloseRequested { api, .. } => {
+            if flush_before_close(&handle, &l) {
+                api.prevent_close();
+            }
+        }
         WindowEvent::Destroyed => on_destroyed(&handle, &l, &pid),
         _ => {}
     });
     Ok(label)
 }
 
+/// 닫기 유예 시간 — 렌더러가 마지막 상태를 `ma:panel-persist`로 올려 보낼 창.
+/// 추가 채팅 창의 `chat:flush-req`와 같은 규약이고, 값은 그쪽 왕복 실측과 같은 자릿수다.
+const FLUSH_GRACE_MS: u64 = 140;
+
+/// **닫기 전에 한 번, 마지막 저장을 청한다.** `true`면 지금은 닫지 말라는 뜻이다.
+///
+/// ## 왜 필요한가
+/// 창의 페르시스트는 600ms 디바운스다(`PanelWindow.tsx:140`). 그 안에 창이 닫히면
+/// 마지막 초안·메타·스레드가 복귀분에 없다. 그리드가 라이브 구독으로 스레드는
+/// 지키지만(`applyPanelFlush`의 길이 가드), **초안·이미지·예약 큐는 창이 유일한
+/// 소유자**라 그대로 증발한다 — "창에 타이핑하다 닫으면 사라지는 글자"다.
+///
+/// ## 왜 이 모양인가
+/// `ipc/windows.rs:22`의 `chat:flush-req`(★R4)가 추가 채팅 창에 이미 세워 둔 규약이다.
+/// 팝아웃에는 그게 안 걸려 있었다(크리틱 M8 §3.1 후단). 대칭을 맞추되 **새 실패 모드를
+/// 만들지 않는다**: 유예는 라벨당 한 번뿐이고(`CLOSING`), 응답을 기다리지 않으며
+/// (`FLUSH_GRACE_MS` 고정 타이머), 그 뒤에는 `destroy()`로 **무조건** 닫는다.
+/// 창이 응답을 못 해도 닫히지 않는 경로는 없다.
+///
+/// 렌더러 쪽 수신자는 이미 있다 — `PanelWindow.tsx:146-150`이 `beforeunload`에
+/// 같은 페르시스트를 걸어 두었으므로, 여기서 그 이벤트를 **직접 쏴 주면** 그 핸들러가
+/// 돈다. 새 채널·새 렌더러 코드가 필요 없다(이번 라운드는 `app/` 경계 밖이다).
+fn flush_before_close(app: &AppHandle, label: &str) -> bool {
+    // 종료·크래시 복구 중에는 가로채지 않는다 — 앱이 못 죽는 실패 모드가 그쪽이 더 나쁘다.
+    if crate::crash::is_recovering() || super::tray::is_quitting() {
+        return false;
+    }
+    let first = {
+        let mut g = CLOSING.lock().unwrap_or_else(|e| e.into_inner());
+        g.get_or_insert_with(HashSet::new).insert(label.to_string())
+    };
+    if !first {
+        return false; // 이미 유예를 줬다 — 이번엔 진짜 닫는다
+    }
+    if let Some(w) = app.get_webview_window(label) {
+        FLUSH_REQS.fetch_add(1, Ordering::Relaxed);
+        // 계약면의 같은 사실을 채널로도 알린다(로그·미래의 렌더러 수신자용).
+        let _ = app.emit_to(label, crate::ipc::windows::CHAT_FLUSH_REQ, json!({ "panelId": panel_for_label(label) }));
+        // 그리고 **지금 있는 수신자**를 실제로 깨운다: PanelWindow의 beforeunload 플러시.
+        let _ = w.eval("window.dispatchEvent(new Event('beforeunload'))");
+    }
+    let a = app.clone();
+    let l = label.to_string();
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(FLUSH_GRACE_MS));
+        let a2 = a.clone();
+        let l2 = l.clone();
+        let _ = a.run_on_main_thread(move || {
+            match a2.get_webview_window(&l2) {
+                Some(w) => {
+                    let _ = w.destroy();
+                }
+                // 그 사이 사라졌다 — `Destroyed`가 이미 정리했다.
+                None => forget_closing(&l2),
+            }
+        });
+    });
+    true
+}
+
+fn forget_closing(label: &str) {
+    if let Some(s) = CLOSING.lock().unwrap_or_else(|e| e.into_inner()).as_mut() {
+        s.remove(label);
+    }
+}
+
 /// 창이 죽었다 — 레지스트리 정리 + **그리드 복귀 통지**(fold-back).
 fn on_destroyed(app: &AppHandle, label: &str, panel_id: &str) {
     forget(label);
+    forget_closing(label);
     super::notify::clear_for_window(app, label);
     let flush = with_map(&FLUSHES, |m| m.remove(panel_id));
 
@@ -355,5 +434,7 @@ pub fn debug_state() -> Value {
         "windows": panels,
         "flushes": flushes,
         "leftovers": with_map(&LEFTOVERS, |m| m.keys().cloned().collect::<Vec<String>>()),
+        // ★R2 — 닫기 전 마지막 저장 요청이 실제로 나갔는가(`flush_before_close`).
+        "flushReqs": FLUSH_REQS.load(Ordering::Relaxed),
     })
 }

@@ -220,15 +220,32 @@ pub fn dispatch(app: &AppHandle, window: &WebviewWindow, channel: &str, p: &Valu
             Value::Null
         }
 
-        // ── 트레이 우클릭 메뉴 창 (M8 — win::tray) ──────────────────────────
+        // ── 트레이 우클릭 메뉴 창 + 첫 숨김 안내 카드 (M8 — win::tray) ──────
+        //
+        // 두 창은 **같은 페이지**(`tray.html`)를 다른 라벨로 쓴다. 그래서 두 채널 모두
+        // 발신 창 라벨로 갈라야 한다 — 라벨을 안 보면 안내 카드의 높이 보고가 메뉴 창을
+        // 움직이고, 메뉴의 클릭이 안내 카드를 겨눈다.
         crate::win::tray::TRAYMENU_RESIZE => {
-            crate::win::tray::menu_resize(app, arg(p, 0).as_f64().unwrap_or(0.0));
+            // ★R2 — **2.6.2에 있던 발신자 가드 복원**(`index.ts:853`
+            // `e.sender !== win.webContents`). R1에는 이 검사가 없어 아무 렌더러 창이나
+            // `traymenu:resize`를 불러 메뉴 창을 낡은 앵커 자리에 강제로 띄우고 포커스를
+            // 뺏을 수 있었다(그 순간 `MENU_SHOWN=true`가 서서 blur 소멸 규칙이 조기
+            // 발효된다). 크리틱 M8 §5.3 — `traymenu:action`에는 있고 여기만 빠져 있었다.
+            let h = arg(p, 0).as_f64().unwrap_or(0.0);
+            match window.label() {
+                l if l == crate::win::tray::MENU_WIN => crate::win::tray::menu_resize(app, h),
+                l if l == crate::win::tray::NOTICE_WIN => crate::win::tray::notice_resize(app, h),
+                _ => {}
+            }
             Value::Null
         }
         crate::win::tray::TRAYMENU_ACTION => {
-            // 메뉴 창이 보낸 것만 받는다(다른 창이 이 채널로 앱을 끄지 못하게).
-            if window.label() == crate::win::tray::MENU_WIN {
-                crate::win::tray::menu_action(app, arg(p, 0).as_str().unwrap_or(""));
+            // 메뉴 창(또는 안내 카드)이 보낸 것만 받는다 — 다른 창이 이 채널로 앱을 끄지 못하게.
+            let id = arg(p, 0).as_str().unwrap_or("");
+            match window.label() {
+                l if l == crate::win::tray::MENU_WIN => crate::win::tray::menu_action(app, id),
+                l if l == crate::win::tray::NOTICE_WIN => crate::win::tray::notice_action(app, id),
+                _ => {}
             }
             Value::Null
         }
@@ -238,6 +255,20 @@ pub fn dispatch(app: &AppHandle, window: &WebviewWindow, channel: &str, p: &Valu
         // `["traymenu-open"]`은 **트레이 우클릭의 대역**이다. 알림 영역 우클릭은 셸
         // (Explorer)의 OS 이벤트라 CDP로 합성할 수 없어(A/B `tray-menu`가 두 앱 모두
         // skip인 이유) 하네스가 진입 함수를 직접 부른다 — 그 뒤 경로는 실제와 같다.
+        // 종료 경로가 실제로 아이콘을 **놓는지**를 프로세스가 살아 있는 동안 재기 위한 대역.
+        // 부르는 함수는 `main.rs`의 `RunEvent::ExitRequested`가 부르는 바로 그 함수이고,
+        // **메인 스레드로 넘긴다** — `TrayIcon::drop`의 `DestroyWindow`는 창을 만든
+        // 스레드에서만 성공하는데 `ipc_call`은 async 커맨드(= tokio 워커)라서다.
+        // 관측면: `present()`가 false로 떨어지고, tray-icon이 만든 히든 창
+        // (클래스 `tray_icon_app`)이 OS 창 목록에서 사라진다 = Drop이 돌았다 = NIM_DELETE.
+        WIN_SURFACE_DEBUG if arg(p, 0).as_str() == Some("tray-release") => {
+            let before = crate::win::tray::present();
+            // 큐에 넣고 바로 돌아온다(async 커맨드에서 블로킹하면 남의 IPC가 굶는다).
+            // 결과는 하네스가 `win:surface-debug`의 `tray.tray`로 폴링한다.
+            let a = app.clone();
+            let _ = app.run_on_main_thread(move || crate::win::tray::release_icon(&a));
+            json!({ "before": before })
+        }
         WIN_SURFACE_DEBUG if arg(p, 0).as_str() == Some("traymenu-open") => {
             let (x, y) = app
                 .cursor_position()
@@ -251,6 +282,14 @@ pub fn dispatch(app: &AppHandle, window: &WebviewWindow, channel: &str, p: &Valu
             "notify": crate::win::notify::debug_state(app),
             "tray": crate::win::tray::debug_state(app),
             "windows": app.webview_windows().keys().cloned().collect::<Vec<String>>(),
+            // ★R2 — 토스트 표시 판정이 쓰는 **바로 그 술어**(`notify::event`의 `is_focused()`).
+            // 하네스가 `document.hasFocus()`로 대신 재면 둘이 어긋난다(실측: 페이지는
+            // true인데 셸은 false — 웹뷰 내부 포커스와 `GetForegroundWindow`는 다른 값이다).
+            // 억제 검사는 제품이 보는 값을 그대로 봐야 한다.
+            "mainFocused": app
+                .get_webview_window(crate::win::MAIN)
+                .and_then(|w| w.is_focused().ok())
+                .unwrap_or(false),
         }),
 
         // ── 창 컨트롤 ───────────────────────────────────────────────────────

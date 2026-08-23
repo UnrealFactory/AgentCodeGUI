@@ -171,7 +171,7 @@ fn main() {
         // 창 수가 잠깐 0이 된다. 기본 동작은 그때 앱을 끝내는 것이라, 복구가 창을 만들기
         // 전에 프로세스가 사라진다 — 유령 창 대신 "앱이 조용히 없어지는" 실패가 된다.
         // 복구 중일 때만 종료를 막는다(그 외에는 기본 동작 그대로).
-        .run(|_app, event| {
+        .run(|app, event| {
             if let tauri::RunEvent::ExitRequested { api, .. } = &event {
                 if crash::is_recovering() {
                     api.prevent_exit();
@@ -180,6 +180,13 @@ fn main() {
                     // 정상 종료다. 여기서부터 브라우저 프로세스가 죽는 건 크래시가 아니다 —
                     // 감시자가 오인하면 **닫아도 다시 뜨는 앱**이 된다.
                     crash::begin_shutdown();
+                    // ★M8-R2 — **트레이 아이콘을 놓아 준다.** TrayIcon은 refcount라
+                    // `NIM_DELETE`가 Drop에서만 나가는데 static은 절대 drop되지 않는다
+                    // (tray.rs `TRAY` 주석 · 크리틱 M8 §3.3). 안 놓으면 죽은 아이콘이
+                    // 알림 영역에 남아 호버해야 사라진다 — 2.6.2 `index.ts:2174
+                    // tray?.destroy()`가 고쳐 둔 자리다. **이 핸들러가 이벤트 루프
+                    // 스레드**라 `Rc`를 놓기에도 여기가 맞다.
+                    win::tray::release_icon(app);
                     // ★D15 — 상태 flush. `chat:status`의 디스크 쓰기는 500ms 디바운스라
                     // (m-logic §5.8 규약 4) 마지막 전이가 안 내려간 채로 프로세스가 끝날 수
                     // 있다. 그러면 다음 부팅의 재장전 후보(hold·큐)가 **한 세대 낡는다**.

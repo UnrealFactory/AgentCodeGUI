@@ -391,3 +391,265 @@ node scripts/poc-winsurface.mjs --exe=…         # 고정 바이너리(같은 �
 > 상태로 **빌드가 3회 막혔다**(`ccg_lsp` 미링크 · `IdentityDefaults` 필드 불일치).
 > 그때마다 기다렸다 다시 빌드했고, 측정은 내 코드가 들어간 스냅샷 exe
 > (`target/release/agentcodegui-m8.exe`)로 고정해서 돌렸다.
+
+---
+
+# §R2 — 크리틱 판정 대응 (2026-08-23)
+
+크리틱 `docs/critic/m8-r1.md`의 판정은 **조건부 확인**이었다: 세 표면은 서고 32/32 재현되지만,
+행복 경로 바로 옆에 **완료된 답변이 조용히·영구히 사라지는 자리**가 하나 있고(S1),
+X가 종료가 아니게 됐는데 **알릴 수단도 끌 수단도 없다**(S2 → 무게 「상」).
+자기 채점은 하지 않는다. 아래 수치는 전부 **크리틱의 도구**(`docs/critic/tools/critic-m8-attack.mjs`)와
+**보강한 내 하네스**(`scripts/poc-winsurface.mjs`)의 출력이다.
+
+측정: 격리 워크트리 + 격리 `CARGO_TARGET_DIR`, `npm run tauri:build`.
+작업 중 HEAD가 `39e119d` → **`a6fcdba`**(M4 R2 · M-UI 크리틱 · M7 R2 착지)로 움직였다.
+`git diff 39e119d..a6fcdba -- src-tauri/src/{win,popout,notify,tray}.rs ipc/windows.rs main.rs
+app/src/components/{MultiAgent,PanelWindow}.tsx app/src/{toast,tray}.ts` = **`main.rs` 6줄뿐**
+(M7의 `ipc::boot_prewarm()` 호출) — M8 면은 그 사이 안 바뀌었다. 그래도 **최종 수치는 전부
+`a6fcdba` + 내 diff로 다시 빌드해 다시 쟀다**(`%TEMP%\ccg-m8r2b-wt`).
+실 레포의 기준 산출물은 **한 개도 안 건드렸다**(R2 결과는 `m8-r2-*.json`).
+
+## R2-0. 결과 한 장
+
+| 항목 | R1 | R2 |
+|---|---|---|
+| **S1** 팝아웃 닫기 = 답변 소실 | 4/4 소실(디스크 확인) | **소실 0** — 화면·디스크 모두 마커 3/3 보존 |
+| **S2/X** X=숨김 안내 | 없음 | 첫 숨김 안내 카드(클릭=복원 · 포커스 안 뺏음 · ko/en) |
+| **S2** 다이얼 축소 시 팝아웃 고아 | `popStillOpen=true, ghostAfter=false` | `popStillOpen=false` — 관문이 창을 접는다 |
+| **S3** 종료 뒤 트레이 아이콘 잔존 | `OnceLock` = drop 불가 | `tray_icon_app` 히든 창 **1 → 0** 실측(= `NIM_DELETE` 발송) |
+| **S4** 트레이만 한국어 | `"lang"` 오독 | `ui.lang=en` → `["Open AgentCodeGUI","Quit completely"]` |
+| **S5** `traymenu:resize` 발신자 무검증 | 없음 | 본창이 불러도 메뉴 자리 불변(bounds 동일) |
+| **S6** 메뉴 재송신 예산 얇음 | 180/500 두 번 | 180/500/1200 + 마지막 폴백(토스트와 동일) |
+| **증거 결함** T6·T4·D3·D1 | 4건 | 4건 전부 눈금 교체 |
+| 게이트 `poc-winsurface` | 32/32 | **전 항목 통과 · findings 0**(소실 0 검사 신설 포함) |
+| 게이트 크리틱 공격 A1~A9 | 미충족 6건 | **"공격 전부 방어" · findings 0** (`a6fcdba` 최종 회차) |
+| 게이트 `poc-live-chat` | PASS | **PASS 6/6 · 결함 0** |
+
+산출물: `docs/critic/m8-r2-winsurface.json`(findings 0) · `docs/critic/m8-r2-attack-recheck.json` ·
+`docs/critic/m8-r2-live-gate.json`.
+
+## R2-1. S1 — 팝아웃을 닫아도 답변이 안 사라진다 (치명 · 디스크까지 확인)
+
+두 겹으로 막았다. **한 겹만으로는 규약이 반쪽**이기 때문이다.
+
+**① 복귀분이 라이브를 덮지 못한다** (`app/src/components/MultiAgent.tsx` `applyPanelFlush`).
+그리드는 팝아웃이 떠 있는 동안에도 같은 `panelId`의 `ma:event`를 계속 리듀스하는데
+(`hub.rs`의 `app.emit` = 전 창 브로드캐스트), 창의 페르시스트는 600ms 디바운스다.
+즉 **복귀분의 스레드는 항상 같거나 더 낡았다.** 스냅샷 길이가 라이브보다 짧으면 적용하지
+않는다 — 창이 나르는 진짜 값(초안·이미지·큐·메타)은 그대로 적용하고, **스레드는 라이브가 이긴다.**
+
+**② 닫기 전 마지막 저장 요청** (`src-tauri/src/popout.rs` `flush_before_close`).
+`ipc/windows.rs:22`의 `chat:flush-req`(★R4)가 추가 채팅 창에 세워 둔 규약을 팝아웃에도 건다:
+`CloseRequested` → `prevent_close()` → 그 창에 저장 요청 → **140ms 뒤 무조건 `destroy()`**.
+수신자는 이미 있다 — `PanelWindow.tsx:146-150`의 `beforeunload` 플러시를 셸이 직접 깨운다
+(`app/`은 이번 라운드 경계 밖이라 새 채널·새 렌더러 코드를 만들지 않았다).
+**새 실패 모드는 안 만든다**: 유예는 라벨당 한 번(`CLOSING`), 응답을 기다리지 않는 고정 타이머,
+종료·크래시 복구 중에는 가로채지 않는다.
+
+실측(크리틱 도구 `--only=a1-mid,a1-end`, 대본이 한 턴을 세 조각으로 뱉는다):
+
+| 회차 | 닫은 시점 | R1 최종 그리드 | R1 디스크 | **R2 최종 그리드** | **R2 디스크** |
+|---|---|---|---|---|---|
+| a1-end | `MARK-THREE`+`result` 직후 | `ONE · TWO` | `["MARK-ONE","MARK-TWO"]` | **ONE · TWO · THREE** | **ONE · TWO · THREE** |
+| a1-mid | `MARK-TWO` 도착 직후(<600ms) | `ONE · THREE`(가운데 구멍) | `["MARK-ONE","MARK-THREE"]` | **ONE · TWO · THREE** | **ONE · TWO · THREE** |
+
+내 하네스에도 같은 검사를 **신설**했다(`--only=loss`, 마커는 `LOSS-*`). 홈 전체(`chats-v3/`·
+`chats/`·`boards/`)를 훑어 디스크를 본다.
+
+```
+L-end-소실0    { grid: [LOSS-ONE, LOSS-TWO, LOSS-THREE], disk: [LOSS-ONE, LOSS-TWO, LOSS-THREE] }
+L-end-flushReq { flushReqs: 1, closeMs: 158 }
+L-mid-소실0    { grid: [LOSS-ONE, LOSS-TWO, LOSS-THREE], disk: [LOSS-ONE, LOSS-TWO, LOSS-THREE] }
+L-mid-flushReq { flushReqs: 1, closeMs: 158 }
+```
+
+`closeMs 158`이 유예의 대가다. 창이 응답을 못 해도 그 타이머가 만료되면 닫힌다 —
+"응답 못 하면 안 닫힌다"는 새 실패 모드는 코드에 없다.
+
+> **관측 하나(내 책임 밖, 그러나 남긴다).** a1-end를 R2에서 6회 돌려 5회 통과, 1회
+> `MARK-ONE` 누락. 그 회차의 기록은 `popTextAtClose: ["MARK-TWO","MARK-THREE"]`
+> — **팝아웃 창 자신이 닫히기 전부터 MARK-ONE을 안 갖고 있었다**(그리고 그 값이 디스크로 갔다).
+> 즉 되감기(fold-back) 경로가 아니라 **턴 첫 조각이 렌더러 스레드에 안 들어간** 회차다
+> (`gridMsgCount: 4`로 메시지 노드 수는 맞다 = 텍스트가 빈 말풍선). 부하가 걸린 회차였다
+> (`closeMs 1029` vs 평시 158). M8 표면이 아니라 이벤트 팬아웃/구독 쪽이라 여기서 고치지 않고
+> 사실만 적는다 — 재현 조건: 세 조각 대본 + 동시 빌드 부하.
+
+## R2-2. X = 숨김 안내 (무게 「상」)
+
+`win.rs`의 `CloseRequested`가 `hide()` 직후 `tray::note_first_hide()`를 부른다.
+**처음 한 번만**(ui-prefs `tray.noticeShown`), 작업 영역 우하단에 카드가 뜬다.
+
+```
+R6-안내           { card: { size: "352x96", title: "안내 — AgentCodeGUI" }, shown: true }
+R6-문구           ["앱이 트레이에서 계속 실행돼요 — 눌러서 다시 열기", "완전히 종료"]
+R6-포커스탈취없음  { w: 336, h: 87, x: 4776, y: 1290, availLeft: 2560 }   ← hasFocus() = false
+R6-복원           첫 행 클릭 → 본창(1336×889) 복귀
+R6-소멸           창이 돌아오는 순간 카드가 스스로 사라진다
+R6-일회성         두 번째 X에는 안 뜬다
+G2-안내언어        ui.lang=en → ["AgentCodeGUI is still running in the tray — click to reopen", "Quit completely"]
+```
+
+**크리틱 권장안(A: 토스트 창 재활용)과 다른 페이지를 쓴 이유.** 권장안의 값
+(불투명 카드 · 항상 위 · 포커스 안 뺏음 · 클릭=복원 · 창을 되찾으면 스스로 소멸)은 **그대로**
+가져왔지만, 렌더링은 `toast.html`이 아니라 `tray.html`로 했다. `toast.html`의
+`kindLabel()`은 **채팅 알림 4종의 문구를 하드코딩**한다(`app/src/toast.ts:11-16`) —
+시스템 안내를 넣으려면 `NotifyKind`에 `info`를 더해야 하고(크리틱도 "이 한 줄만 `app/`
+경계를 넘는다"고 적었다), 이번 라운드는 `app/`이 **M-UI 크리틱의 읽기 대상**이라
+`MultiAgent.tsx`의 팝아웃 접점 말고는 손대지 말라는 지시를 받았다. `tray.html`은 문구가
+**전부 셸에서 온다**(셸이 준 행 목록을 그리는 것이 전부인 페이지) — `app/` 한 글자 없이 같은 값을 얻는다.
+부수 효과로 **2.6.2 풍선보다 낫다**: 풍선은 눌러도 아무 일이 없지만 이 카드는 첫 행이 복원,
+둘째 행이 '완전히 종료'다 — 크리틱 §4.1의 *"완전히 종료에 도달하는 정상 경로가 겉보기엔 0개"*를
+카드 한 장이 닫는다.
+
+수명은 넷 중 먼저 오는 것: 행 클릭 · 본창 복귀(`show_main`) · 트레이 메뉴 열기(`show_menu`) ·
+15초(2.6.2 풍선의 자동 소멸 자리 — 카드에 ✕이 없고 포커스가 없어 Esc도 못 받으므로
+아무것도 안 눌린 회차에 **항상 위 카드가 영영 남지 않게** 한다).
+
+`R2-숨김` 판정도 바꿨다. 이제 첫 X에 카드가 하나 뜨므로 "가시 창 0"이 아니라
+**"가시 본창 0"**이 규약이다 — `{ alive: true, mainVisible: 0, otherVisible: 1 }`.
+
+**설정 토글은 목록만 한다**(R2-7 #1): `tray.closeToTray`의 Settings 스위치는 `app/` 작업이라
+이번 경계 밖이다. 대신 진단면에 값을 실어 뒀다(`win:surface-debug.tray.closeToTray`).
+
+## R2-3. S2 — 다이얼을 줄여도 팝아웃 창이 고아가 안 된다
+
+`reconcileChatRefs`(고아 UI 정리 관문)에 **팝아웃 OS 창**을 등록했다. 자리가 접히면 그 자리의
+창도 닫는다 — 닫힘 → `ma:panel-closed` → 복귀분은 접힌 자리로 정상 적용되고(`slotOfPanelId`는
+접힘을 안 본다), 그 닫기도 R2-1의 저장 요청을 타므로 **데이터는 잃지 않는다.**
+
+```
+A2-자리정리 { popStillOpen: false, ghostAfter: false }        (R1: true / false = 고아)
+A2-닫은뒤   { leftovers: [], windows: ["main"] }
+A2-되올림   titles ["새 작업","축소 대상","새 작업","새 작업"]    ← 되올리면 그 자리가 그대로 돌아온다
+```
+
+## R2-4. S3 — 종료 전에 트레이 아이콘을 실제로 놓는다
+
+`static TRAY: OnceLock<TrayIcon>` → `Mutex<Option<TrayIcon>>`. 그런데 **그것만으로는 안 된다** —
+실측으로 확인했다: 우리 static만 비웠을 때 `present()`는 false로 떨어졌지만
+`tray_icon_app` 히든 창은 **그대로 살아 있었다**(= `NIM_DELETE` 미발송). 참조가 둘이기 때문이다.
+`release_icon(app)`은 둘 다 놓는다 — 우리 static + `app.remove_tray_by_id("ccg-tray")`
+(tauri가 `manager.tray.icons`에 쥔 사본).
+
+부르는 자리는 `main.rs`의 `RunEvent::ExitRequested`(정상 종료 갈래) **하나**다.
+`quit()`에서 부르지 않는 이유: `menu_action`은 `ipc_call`(async 커맨드) = tokio 워커이고,
+`TrayIcon::drop`은 `Shell_NotifyIcon(NIM_DELETE)` **다음에 `DestroyWindow(자기 히든 창)`**를
+부르는데 그 호출은 창을 만든 스레드에서만 성공한다(tray-icon 0.24 `windows/mod.rs:305-318`).
+`ExitRequested` 핸들러가 그 스레드다.
+
+관측면(프로세스가 죽은 뒤에는 알림 영역을 볼 수 없으므로, **살아 있는 동안** 종료가 부르는
+바로 그 함수를 진단 채널 `win:surface-debug ["tray-release"]`로 태운다):
+
+```
+R7-아이콘해제 { trayIconWindows: "1 → 0", before: true }
+```
+
+클래스 `tray_icon_app` 창이 사라졌다 = `Drop`이 `DestroyWindow`까지 돌았다 = 그 바로 앞줄인
+`NIM_DELETE`가 나갔다. 열거만 하는 관측이다(explorer 메모리 접근·클릭 합성 없음).
+
+## R2-5. S4 · S5 · S6
+
+- **S4 — `ui.lang`**: `tray.rs`가 읽던 `"lang"`은 3.0 어디에도 없는 키였다. `en_ui()` 한 함수로
+  묶어 `"ui.lang"`을 읽는다(라벨이 늘어도 키가 두 벌이 되지 않게). `A7-언어`·`G1-메뉴언어`
+  둘 다 `["Open AgentCodeGUI","Quit completely"]`.
+- **S5 — 발신자 검증**: `traymenu:resize`에 2.6.2 `index.ts:853`의 가드를 복원했다. 두 카드 창이
+  같은 페이지를 쓰므로 **라벨로 갈라** 각자에게 보낸다(`MENU_WIN` → `menu_resize`,
+  `NOTICE_WIN` → `notice_resize`, 그 외 무시). 회귀 감시로 `traymenu:action`도 함께 잰다.
+  `R4-발신자가드`: 본창이 `resize(640)`을 불러도 메뉴 bounds `218×87 @(4323,1217)` 불변.
+  `R4-액션가드`: 본창의 `action('quit')`으로 앱이 안 죽는다.
+- **S6 — 재송신 예산**: 트레이 메뉴 `traymenu:show`를 토스트와 같은 예산으로 맞췄다
+  (180/500 → **180/500/1200 + 마지막 시도 폴백**). 폴백이 없으면 페이지가 높이를 못 보낸 회차에
+  **보이지 않는 창**이 남는다 = '완전히 종료'로 가는 유일한 문이 막힌 상태다.
+  `A9-메뉴 { rounds: 12, maxRowMs: 187 }` — 빈 카드 0회.
+
+## R2-6. 증거 결함 4건 + 크리틱 하네스가 새로 잡아낸 것
+
+크리틱 §6이 지적한 넷을 `poc-winsurface`에서 **눈금째** 교체했다.
+
+| # | R1이 잰 것 | R2가 재는 것 |
+|---|---|---|
+| T6 | 바로 앞 T5의 클릭이 목록을 이미 비운 뒤라 **포커스 소멸 경로가 한 번도 안 돌았다** | 클릭 뒤 **새 알림 2건을 다시 넣고**, 클릭 없이 본창만 복원해서 잰다 → `T6-포커스소멸 { before: 2, pending: 0 }` (클릭 소멸은 `T5-클릭소멸`로 분리) |
+| T4 | `screenX`(가상 좌표) vs `availWidth`(모니터 폭) → 보조 모니터에서 항상 실패 | `screen.availLeft/availTop`으로 **모니터 로컬 좌표** 환산 → `x:4752 availLeft:2560 → local.x:2192`, `2192+360 ≤ 2560` ✓ |
+| D3 | `findTarget('index.html')`이 **팝아웃**을 집었다(메인 URL엔 `.html`이 없다) | `mainTarget()` = URL에 `.html`이 없는 페이지 |
+| D1 | 부팅 스냅샷 `windows:1`은 `glass::arm`보다 **앞**에서 찍혀 아무것도 증명 못 한다 | 팝아웃을 **둘** 열고 두 번째 창의 스냅샷을 본다 → `D1b-유리arm { pop1: 1, pop2: 2, backdrops: [3,3] }` |
+
+하나 더 갈았다(크리틱 목록 밖, 같은 종류의 결함이라 남긴다): **`T1-포커스억제`가
+`document.hasFocus()`로 판정했다.** 제품이 쓰는 술어는 셸의 `w.is_focused()`
+(= `GetForegroundWindow`)인데 둘이 어긋나는 회차가 실제로 있었다(페이지 true / 셸 false →
+토스트가 정상적으로 떴는데 검사만 "억제 실패"). 진단면에 `win:surface-debug.mainFocused`를
+열고 **제품이 보는 값**을 폴링하도록 바꿨다. 덤으로, 최소화 창 복원이 CDP
+`Page.bringToFront`만으로는 회차에 따라 안 먹어 `Focused(true)` 에지가 안 나는 문제도
+`restoreMain`(우리 hwnd에만 `ShowWindow(SW_RESTORE)` + `SetForegroundWindow`)으로 없앴다.
+
+**크리틱 하네스가 새로 잡아낸 것 — `notify::ensure` 경합(고쳤다).**
+크리틱 §3.5는 *"`push()→ensure()` 경합은 코드상 존재하지만 4가지 지연으로 밀어도 재현되지
+않았다 — 결함으로 세지 않는다"*고 적었다. **R2 회차에 실제로 터졌다.** `notify:event`는
+async 커맨드라 10건이 **동시에** 들어오고, `ensure()`의 "창이 있나?"와 `build()` 사이가 벌어져
+같은 라벨로 창이 둘 만들어진다. tauri 레지스트리에는 나중 것만 남고 먼저 것은 **아무도 모르는
+고아 창**이 된다 — 항상 위 · 빈 카드 · `notify:show`를 영영 못 받고 · 목록이 비어도 안 부서진다.
+
+```
+(고치기 전) A4-행수 ✗ 10건인데 행이 0개   ·  A4-포커스소멸 ✗    ← 셸 회계는 count:10 window:true loaded:true
+            bounds { w:360, h:120, x:268, y:261 }               ← 기본 크기·기본 자리 = resize를 한 번도 안 받은 창
+(고친 뒤)   A4-행수 ✓ { rows: 10 }        ·  A4-포커스소멸 ✓ { pending: 0 }    3/3 재현
+```
+
+`push()` 전체를 한 자물쇠 아래로 넣었다(`notify.rs PUSH_LOCK`). 같은 종류의 경합이 카드 창
+쪽에도 있어 `show_menu`에도 걸었다(`tray.rs SHOW_LOCK`). 회귀 감시는 내 하네스 `T7`이다 —
+폭주 10건에 **문서가 하나인가**(`T7-창하나`)까지 센다.
+
+**주의 — 크리틱 A4-자리는 커서 위치에 따라 흔들린다(제품이 아니라 눈금이).**
+최종 회차는 "공격 전부 방어"(findings 0)로 끝났지만, 중간 회차에서 `A4-자리`가 두 번 ✗로
+찍혔다. 크리틱이 자기 리포트 §6-3에 *"내 하네스도 같은 실수를 했고 §3.5에서 정정"*이라고
+적어 둔 바로 그 자리인데 **코드에는 정정이 안 들어갔다**. 같은 창을 두 눈금으로 잰 값이다:
+
+```
+커서가 보조 모니터(DISPLAY1, x=2560~)에 있는 회차
+  크리틱 A4 : { w:360, h:410, x:4752, y:967, availW:2560, availH:1392 }      → ✗ (x + w − availW = 2552)
+  내   T7  : { w:360, h:410, x:4752, y:967, availW:2560, availH:1392,
+               availLeft:2560 } → local { x:2192, y:967 }                    → ✓ (2192 + 360 = 2552 ≤ 2560)
+커서가 주 모니터에 있는 회차
+  크리틱 A4 : { x:2192, availLeft:0 }                                        → ✓  (최종 회차가 이것)
+```
+
+**같은 픽셀**이다. `screenX`는 가상 데스크톱 좌표, `availWidth`는 그 모니터의 폭이라
+보조 모니터에서는 항상 어긋난다. 제품의 자리 계산은 두 모니터 모두에서 맞고, 내 `T4`·`T7`은
+`availLeft/availTop`으로 환산해 **커서가 어디 있든** 같은 답을 낸다.
+
+## R2-7. 남은 것
+
+| # | 무엇 | 무게 | 사정 |
+|---|---|---|---|
+| 1 | **설정 › 트레이 스위치**(`tray.closeToTray`) UI | 중 | 안내와 옵트아웃은 한 쌍이라는 크리틱 §4.2 지적이 맞다. `app/`이 이번 경계 밖(M-UI 크리틱 진행 중)이라 **목록화만** 한다. 값은 지금도 `ui-prefs.json`으로 먹고 진단면에도 실린다 |
+| 2 | **`crash::teardown_and_exit`의 아이콘 해제** | 낮음 | 그 경로는 `std::process::exit(0)`이라 `ExitRequested`를 안 탄다 → 아이콘이 남는다. `crash.rs`가 이번 경계 밖이라 한 줄을 못 넣었다(크래시 포기 경로 전용) |
+| 3 | **`win:surface-debug` 채널 잠금** | 낮음 | 크리틱 §5.3 — 계약면 밖 진단 채널인데 게이트가 없다. `["tray-release"]`가 하나 늘었다(하네스 전용). `CCG_*`나 디버그 빌드로 잠그는 게 맞다 |
+| 4 | **`toast.html`의 시스템 안내 문법** | 낮음 | `NotifyKind`에 `info`가 생기면 안내를 토스트로 합칠 수 있다(카드 두 종류가 하나로). `app/` 라운드의 재료 |
+| 5 | **턴 첫 조각이 렌더러에 안 들어간 회차** | 중 | R2-1 말미의 관측(6회 중 1회). M8 표면이 아니라 이벤트 팬아웃/구독 쪽 |
+| 6 | **`notify::ensure`의 "파기 대기 중" 갈래** | 낮음 | `PUSH_LOCK`이 막은 것은 **동시 생성**이다. 크리틱이 원래 지목한 *"파기가 이벤트 루프로 넘어간 사이 `ensure`가 '있다'고 조기 반환"*은 여전히 코드상 가능하다(R1·R2 모두 미재현) |
+| 7 | 다중 모니터 **DPI 혼합** | 낮음 | R1 §10 #9 그대로. 배율이 다른 두 모니터를 오갈 때의 오차는 안 쟀다(이번 기계는 두 모니터 DPI 동일) |
+
+## R2-8. 경계 준수
+
+만진 파일: `src-tauri/src/{tray,notify,popout,win}.rs` · `src-tauri/src/ipc/windows.rs` ·
+`src-tauri/src/main.rs`(2줄: `|_app|`→`|app|`, `release_icon(app)`) ·
+`app/src/components/MultiAgent.tsx`(**팝아웃 접점 2곳만** — `applyPanelFlush` 길이 가드,
+`reconcileChatRefs` 팝아웃 등록) · `scripts/poc-winsurface.mjs` · `docs/m8-report-r1.md`(이 절) ·
+`docs/critic/m8-r2-*.json`(신규 3개).
+
+- `crates/` · `engine/` · `crash.rs` · `ipc/mod.rs` · **다른 `app/` 파일** 수정 0.
+- 크리틱의 기준 산출물(`docs/critic/m8-r1.md` · `m8-r1-winsurface.json` · `m8-r1-attack.json` ·
+  `tools/critic-m8-attack.mjs`) **미변경** — 모든 실행은 격리 워크트리에서 했고, 결과는
+  `m8-r2-*.json`으로 따로 떨어뜨렸다.
+- 안전: 이름 기반 kill 0회(죽인 것은 `killTree(child.pid)`뿐) · `CCG_HOME` 전부 격리 ·
+  실홈 무접촉 · OS 입력(`ShowWindow`/`SetForegroundWindow`)은 **우리가 띄운 hwnd에만**
+  (하네스 `restoreMain`이 제목으로 우리 본창을 찾아 건다) · 알림 영역은 **EnumWindows 열거만**.
+- `npm ci`를 돌리지 않았다. `node_modules`는 실 레포 것을 정션으로 걸어 썼다.
+- 메모리는 재지 않았다(동시 주행 노이즈 — R1과 같은 규약).
+
+> 이 라운드에도 M7(LSP)·M4(Codex)가 같은 워크스페이스를 편집 중이라 실 워킹 트리가 한 번
+> 컴파일 불가 상태였다(`ccg-lsp`의 `hover`/`definition` 시그니처 과도기 — `lib.rs`가 아직
+> 3인자였다). 그래서 **모든 빌드·측정을 격리 워크트리**에서 했다. 착수 핀(`39e119d`)
+> 워크트리에서는 M7이 새로 만든 `ipc::boot_prewarm()` 호출만 빌드용으로 걷어 냈고
+> (내 경계 밖 줄 — 실 레포 파일은 손대지 않았다), 그쪽이 착지한 뒤에는 **`a6fcdba` 워크트리에서
+> 그 줄까지 포함해 그대로 빌드**해 세 게이트를 다시 돌렸다. 위 수치는 전부 후자다.

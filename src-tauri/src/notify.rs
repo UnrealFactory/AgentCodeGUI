@@ -25,9 +25,17 @@
 //!
 //! ## 크래시 방어 (계약의 **예외**이고, 그 이유)
 //! `crash::arm`을 걸지 **않는다**. 토스트는 있으면 좋고 없으면 그만인 오버레이라
-//! 복구 정책이 "다시 세운다"가 아니라 "치운다"이고, `note_page_load`를 여기서 부르면
-//! **토스트 로드가 메인 창 복구 검증을 통과시켜 버린다**(2순위 신호 오염). 대신
-//! `win::reset_shown()`이 복구 시작 시 이 창을 파기 대상에 넣는다.
+//! 복구 정책이 "다시 세운다"가 아니라 "치운다"이다. 대신 `win::reset_shown()`이
+//! 복구 시작 시 이 창을 파기 대상에 넣는다.
+//!
+//! `note_page_load`도 여기서 부르지 않는다. **R1은 그 이유를 "토스트 로드가 메인 창의
+//! 복구 검증을 통과시킨다"고 적었는데 그 경로는 성립하지 않는다**(크리틱 M8 §5.2):
+//! `wait_recovered()`는 `MOUNTED_AT != 0`이면 마운트 하트비트만 보고, 마운트는
+//! `splash.js`가 쏘며 그 스크립트는 `create_main`에만 주입되므로 이 빌드의 검증은
+//! **언제나 mount 기준**이다. 진짜 오염 경로는 다른 쪽이다 — `is_duplicate()`가
+//! `ALIVE_AT <= last`로 "같은 사건의 중복이냐"를 가르는데(`crash.rs:383-388`), 토스트
+//! 로드가 `ALIVE_AT`을 올리면 **중복 이벤트가 새 크래시로 승격돼 복구가 두 번 돈다.**
+//! 결정(안 부른다)은 그대로이고 사유만 사실로 고쳐 적는다.
 
 use serde_json::{json, Value};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -59,6 +67,17 @@ struct Entry {
 /// 삽입 순서 = 오래된 것부터. 표시는 뒤집어서 최신이 앞(2.6.2 `entriesNewestFirst`).
 static PENDING: Mutex<Vec<Entry>> = Mutex::new(Vec::new());
 static LOADED: AtomicBool = AtomicBool::new(false);
+/// **`push()` 전체를 한 줄로 세운다**(★R2 — 크리틱 §3.5가 "코드상 존재한다"고만 적고
+/// 재현은 못 한 자리다. R2 회차에 실제로 터졌다).
+///
+/// `notify:event`는 `ipc_call`(async 커맨드)로 오므로 **tokio 워커 여러 개에서 동시에**
+/// 들어온다. 한 번에 10건을 던지면 `ensure()`의 "창이 있나?" 검사와 `build()` 사이가
+/// 벌어져 **두 스레드가 같은 라벨로 창을 두 개 만든다** — tauri 레지스트리에는 나중 것만
+/// 남고 먼저 것은 **아무도 모르는 고아 창**이 된다(항상 위·빈 카드·`notify:show`를 영영
+/// 못 받음·목록이 비어도 안 부서짐). 실측: `count=10 window=true loaded=true`인데 화면의
+/// 카드는 0행이고, 목록을 비운 뒤에도 `toast.html` 문서가 남았다.
+/// 검사와 생성을 한 임계 구역에 넣어 없앤다(경합 없는 정상 경로에서는 마이크로초짜리다).
+static PUSH_LOCK: Mutex<()> = Mutex::new(());
 
 fn enabled() -> bool {
     // 설정 › 알림 토글(`notify.toast`, 기본 on). 매번 읽는다 — 캐시하면 설정 변경이
@@ -151,7 +170,8 @@ pub fn resize(app: &AppHandle, height: f64) {
 }
 
 /// 커서가 있는 모니터의 작업 영역(논리 좌표). 못 찾으면 주 모니터.
-fn work_area(app: &AppHandle, scale: f64) -> (f64, f64, f64, f64) {
+/// (트레이 안내 카드도 같은 규칙으로 앉는다 — `tray::notice_resize`)
+pub fn work_area(app: &AppHandle, scale: f64) -> (f64, f64, f64, f64) {
     let m = app
         .cursor_position()
         .ok()
@@ -240,7 +260,12 @@ fn entries_newest_first() -> Vec<Value> {
 }
 
 /// 표시 목록을 페이지로 밀어넣는다(REPLACE). 비면 창을 부순다.
+///
+/// 전 구간이 `PUSH_LOCK` 아래다 — "창이 있나 → 없으면 만든다"가 쪼개지면 창이 둘이 된다
+/// (그 상수 주석). 재진입은 없다: `ensure()`가 다는 `on_page_load` 콜백은 나중에
+/// **다른 스레드**에서 오고, `destroy()`는 push를 부르지 않는다.
 fn push(app: &AppHandle) {
+    let _serial = PUSH_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     if PENDING.lock().unwrap_or_else(|e| e.into_inner()).is_empty() {
         destroy(app);
         return;
@@ -336,8 +361,9 @@ pub fn drop_toast() {
 
 /// **포커스를 못 받는 창으로 만든다** — Electron `focusable:false`의 실체.
 /// 실패해도 치명이 아니다(그 경우 토스트가 뜰 때 활성화를 가져간다 — 기능은 산다).
+/// 트레이 안내 카드(`tray::note_first_hide`)도 같은 성질이 필요해 함께 쓴다.
 #[cfg(windows)]
-fn no_activate(win: &tauri::WebviewWindow) {
+pub fn no_activate(win: &tauri::WebviewWindow) {
     use windows::Win32::Foundation::HWND;
     use windows::Win32::UI::WindowsAndMessaging::{
         GetWindowLongPtrW, SetWindowLongPtrW, GWL_EXSTYLE, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
@@ -356,7 +382,7 @@ fn no_activate(win: &tauri::WebviewWindow) {
 }
 
 #[cfg(not(windows))]
-fn no_activate(_win: &tauri::WebviewWindow) {}
+pub fn no_activate(_win: &tauri::WebviewWindow) {}
 
 /// 진단 — 하네스가 읽는 회계(항목 수·키·소유 창·창 존재).
 pub fn debug_state(app: &AppHandle) -> Value {

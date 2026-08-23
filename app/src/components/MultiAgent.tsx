@@ -1187,6 +1187,18 @@ function ActiveSession({
     // 고아가 될 대상이 없어 여기서 손댈 것이 없다. 스펙 표의 lightboxSource는
     // chatId를 들고 다니는 통합 모델(2단계)에서 생긴다.
     setOpenFile((f) => (f && !seen.has(f.slot) ? { ...f, slot: fallback, rebound: true } : f))
+    // ★M8-R2 — **팝아웃 OS 창도 자리에 묶인 표면이다.** 자리가 접히면 그리드에 그 창을
+    //   가리킬 표식(유령 셀)이 사라져 창만 화면에 남는다 = 사용자가 제보한 그 고아 UI
+    //   (크리틱 M8 §3.2 실측: gridPanels 1 · ghostAfter false · popStillOpen true).
+    //   이 관문이 "보이는 자리 집합을 바꾸는 모든 전이"의 유일한 문이므로 여기 등록한다.
+    //   자리를 접으면 창도 접는다 — 닫힘 → `ma:panel-closed` → 복귀분은 접힌 자리로
+    //   정상 적용되고(slotOfPanelId는 접힘을 안 본다), 셸이 닫기 전에 마지막 저장까지
+    //   청하므로(popout.rs `flush_before_close`) **데이터는 잃지 않는다.**
+    //   `popped`는 아래(팝아웃 블록)에서 선언되지만 useEvent라 호출 시점 클로저가 최신이다.
+    for (const key of Object.keys(popped)) {
+      const s = Number(key)
+      if (!seen.has(s)) window.api.multi?.panelClose?.(chan(sessionId, s)).catch(() => {})
+    }
   })
   // 보이는 자리 집합을 바꾸는 유일한 문 — 소비자: ① 다이얼 ② 접힘 팝오버 「↥ 1번 자리로」
   // ③ 사이드바에서 접힌 대화 선택. 여섯 번째가 생겨도 규칙은 안 샌다(열거가 아니라 관문).
@@ -1554,7 +1566,19 @@ function ActiveSession({
       images: Array.isArray(f.images) ? f.images.filter((x): x is string => typeof x === 'string') : [],
       queue: Array.isArray(f.queue) ? (f.queue as ScheduledMsg[]).filter((q) => q && typeof q.text === 'string') : []
     })
-    if (f.snapshot) sessions[slot].load(sanitizeSnapshot(f.snapshot as SessionState))
+    // ★M8-R2 — **복귀분이 라이브를 덮지 못하게 한다**(크리틱 M8 §3.1: 4/4 재현, 디스크 확인).
+    //
+    // 그리드는 팝아웃이 떠 있는 동안에도 같은 panelId의 `ma:event`를 계속 리듀스한다
+    // (위 1034-1040 구독 + `hub.rs`의 `app.emit`은 전 창 브로드캐스트). 반면 창의
+    // 페르시스트는 600ms 디바운스다(PanelWindow.tsx:140). 즉 **복귀분의 스레드는 항상
+    // 그리드와 같거나 더 낡았다.** 그걸 `load`로 전체 교체하면, 디바운스가 못 내려간
+    // 마지막 답변이 화면과 chats-v3에서 함께 사라진다:
+    //   · 턴 종료 직후 닫기 → 다 읽은 마지막 답변이 **영구 손실**(뒤에 올 이벤트가 없다)
+    //   · 스트리밍 중 닫기 → 되감긴 뒤 라이브가 이어 붙어 **스레드 한가운데가 뚫린다**
+    // 창이 나르는 진짜 값은 초안·큐·메타다(위 patchMeta). 스레드는 라이브가 이긴다.
+    const live = sessions[slot].state.messages.length
+    const incoming = ((f.snapshot as SessionState | undefined)?.messages ?? []).length
+    if (f.snapshot && incoming >= live) sessions[slot].load(sanitizeSnapshot(f.snapshot as SessionState))
   })
   const onPanelWindowClosed = useEvent((p: PanelPopClosed) => {
     const slot = slotOfPanelId(p.panelId)

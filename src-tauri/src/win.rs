@@ -307,6 +307,12 @@ pub fn create_main(app: &AppHandle) -> tauri::Result<WebviewWindow> {
                 if let Some(w) = handle.get_webview_window(MAIN) {
                     let _ = w.hide();
                 }
+                // ★R2 — **처음 숨는 순간이 유일한 안내 자리다**(tray.rs 헤더 4).
+                // R1에는 X가 종료가 아니게 된 것을 알리는 수단이 하나도 없었고, Win11은
+                // 트레이 아이콘을 기본으로 셰브런 뒤에 숨긴다 — 사용자는 "껐구나" 하는데
+                // 프로세스는 살아서 턴·워크플로·셸을 계속 돈다(크리틱 M8 §4: 무게 「상」).
+                // 두 번째부터는 안 뜬다(ui-prefs `tray.noticeShown`).
+                tray::note_first_hide(&handle);
             }
         }
         _ => {}
