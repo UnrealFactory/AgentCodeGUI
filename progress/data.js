@@ -1,6 +1,6 @@
 window.PROGRESS = {
-  phase: 'R16 — 한도 자동 이어서 안전장치 복원(F1 오탐 차단벽·F2 리셋 epoch/재검증) + 렌더러 구독자 구멍(앵커 드리프트·침묵 verdict·user-echo) 병렬 2',
-  note: 'R15 착지 — M6 R2: S1~S9 전부 수정(IFileOperation+RECYCLEONDELETE 싱크로 2.6.2와 같은 페일세이프·휴지통 +1 저울 신설 / 비동기 스킴으로 UI 정지 0 / CORS 403 / 잠긴 파일·35MB blob·discard(".") 거절 / 전각·가나 정렬 보정), ccg-fs 73 green / R13·R14 확인: 불일치 0 — 단 신규 6건: ★F1×F2 치명 조합(한도 판정 오탐 3종 + arm_hold가 리셋 epoch 무시·재검증 없음 → 30분 4회 헛 재개 실측, 컨텍스트 초과가 영원히 6.5분마다 재전송 가능 — 2.6.2의 문구 차단벽·2단 판정·발화 재검증이 이식에서 빠짐), F3 앵커 정착 후 365px 드리프트, F4 채팅 폴더 소실=영원한 침묵(verdict 구독자 0), F5 user-echo 구독자 0 → R16 수정 중',
+  phase: 'R16 착지 — 리드가 조용한 세션에서 주 게이트(Priv ≤253) 단독 재측정 중 → 다음: M7 LSP·M4 Codex·M8 창 표면·M-UI 실적용',
+  note: 'R16 착지 — 엔진: F1 코퍼스 18종 불일치 0(차단벽 6분기 원문 이식·한국어 차단어 4), F2 헛 재개 30분 4회→0(리셋 꼬리 파싱+epoch 환승(s×1000 버그 동반 수정)+재검증 훅+MAX_AUTO_ATTEMPTS 2+지수 백오프 — 시각 미상도 5시간 2회 후 auto_paused), reject_spawn 팬아웃, 엔진 130 green / 렌더러: 앵커 의사 신호(정착 후 err 0×4 — A케이스의 거짓 초록까지 발견·저울 교체), verdict 구독(40초 침묵→+3초 사유+경로, 셸/렌더러 화자 중복 접기), user-echo 말풍선, IdentityBand(폴백 배너+되돌리기 rev2 실증), poc-dial 47검사. 남은 큰 것: M7 LSP·M4 Codex·M8 창 표면·M-UI 실적용·ccg-page·saveAttachmentData·신기능 M9~11',
   updatedAt: '2026-08-23 04:20',
   metrics: [
     { name: '★ 멀티 4패널 유휴 WS', unit: 'MB', base: 712.8, new: 421.3, target: '≤356 = WebView2 빈 문서 바닥값(351.5) + 4.5MB — 앱 몫이 47.3이라 구조적 불가, 재협상 대상 (NetSvc2 채택 후 크리틱 실측)', pass: false },
