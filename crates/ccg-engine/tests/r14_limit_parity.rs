@@ -41,13 +41,29 @@ const MISSES: &[&str] = &[
 #[test]
 fn parity_with_262_classify_limit_error() {
     let mut bad = vec![];
+    // 판정표 — `-- --nocapture`로 18줄이 그대로 나온다(보고서가 인용하는 그 표).
+    println!("{:<6} {:<6} {:<12} 문구", "기대", "실측", "리셋꼬리");
     for s in HITS {
-        if !is_limit_error(s) {
+        let got = classify_limit_error(s);
+        println!(
+            "{:<6} {:<6} {:<12} {s:?}",
+            "hit",
+            if got.hit { "hit" } else { "MISS" },
+            got.resets_at.map(|v| v.to_string()).unwrap_or_else(|| "-".into())
+        );
+        if !got.hit {
             bad.push(format!("FALSE-NEGATIVE {s:?}"));
         }
     }
     for s in MISSES {
-        if is_limit_error(s) {
+        let got = classify_limit_error(s);
+        println!(
+            "{:<6} {:<6} {:<12} {s:?}",
+            "miss",
+            if got.hit { "HIT" } else { "miss" },
+            got.resets_at.map(|v| v.to_string()).unwrap_or_else(|| "-".into())
+        );
+        if got.hit {
             bad.push(format!("FALSE-POSITIVE {s:?}"));
         }
     }

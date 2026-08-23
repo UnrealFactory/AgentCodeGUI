@@ -1566,3 +1566,318 @@ node bench/multi.mjs tauri --repeats=5 --exe="$TEMP/ccg-r4-snap.exe"
 #   ※ bench/results/multi-tauri-3.0.0-default.json 은 추적 대상 — 확인 후 git checkout
 #     (이 라운드 수치는 multi-tauri-3.0.0-r4.json 으로 따로 남겼다)
 ```
+
+---
+---
+
+# §R5 — 한도 판정·대기표를 2.6.2 규약으로 되돌린다 (R14 확인 크리틱 F1·F2·F4)
+
+**범위**: `crates/ccg-engine/`(판정 · 시계 · 대기표 · 재검증 훅) · `src-tauri/src/engine/`
+(`lite.rs` 단위 · `hub.rs` 거부 통보). **`app/` 금지**(같은 시각 렌더러 라운드가 돌고 있다).
+**출발점**: `docs/critic/r14-confirm.md` §5 — F1(치명) · F2(치명) · F4의 엔진 몫.
+**규약**: §0~§R4와 같다 — **사실만**, 자기 채점 없음. 판정은 크리틱 몫이다.
+
+크리틱의 문장 하나가 이 절의 전부다:
+
+> *"재개의 주인을 하나로 한 그 하나가 **2.6.2보다 관대한 판정자**이고, **리셋 시각을 안 읽고
+> 신선 usage 재검증도 안 한다.** … 더 엄격한 렌더러 기계는 이번 라운드가 껐다."*
+
+렌더러 R3 ⑦이 `managed`로 `useLimitResume`을 장전·타이머·재검증·소진까지 전부 끈 것은
+옳다(재개 주체가 둘이면 한 번의 해제에 두 턴이 나간다). 문제는 **남은 하나가 옮겨야 할 것을
+반쪽만 옮겼다**는 것이다.
+
+---
+
+## R5.0 한 장 요약
+
+| 항목 | R4 | R5 |
+|---|---|---|
+| 한도 문구 판정 | `limit && (reached\|exceed\|reset)` + `rate limit` + 맨 `한도` | **2.6.2 `classifyLimitError` 6분기 전부**(`limit.rs`) |
+| 2.6.2 코퍼스 18종 | **오탐 3** | **18/18 일치 · 불일치 0** |
+| 에러 문구의 리셋 꼬리(`…\|1755150000`) | 버림(호출부가 늘 `None`) | **읽는다** — `classify_limit_error`가 hit과 함께 돌려준다 |
+| 시각 미상 | `now + 5분`으로 **덮어씀** | 미상 그대로 + 2.6.2 `PROBE_MS`(10분) · 지수 백오프(×2 · 상한 60분) |
+| 리셋 시각의 축 | unix 초를 런타임 ms에 그대로 앉힘 | `Clock::now_epoch_ms()` + 환승역 하나(`epoch_secs_to_runtime`) |
+| 발화 전 재검증 | **없음** | `LimitProbe` 훅(2.6.2 `fire()`) — 아직 막혔으면 **재장전만**(CLI 안 띄움) |
+| 헛 재개 상한 | 없음 (5시간 창에 ~46회) | `MAX_AUTO_ATTEMPTS = 2` → 넘기면 `auto_paused`, 사용자 손으로 |
+| `chat:status.hold.resetAt` | 런타임 ms(배너의 "약 N 뒤"가 늘 0) | **unix 초** — 렌더러·디스크와 같은 축 |
+| 스폰 불가 사유 | `chat:verdict`(구독자 0) | + `status{analyzing}`→`error`→`status{error}` + `chat:status` 행 |
+| `ccg-engine` 테스트 | 118 (+2 ignored) | **130 (+2 ignored)** · `ccg-store` 62 · `src-tauri` **20** |
+
+---
+
+## R5.1 F1 — 이식이 차단벽을 안 옮겼다
+
+`frames.rs`의 옛 판은 주석에 *"2.6.2 `classifyLimitError`의 Rust 이식"* 이라고 적혀 있었지만
+원본과 네 군데가 달랐다.
+
+| | 2.6.2 원본(`src/renderer/src/lib/limitResume.ts:38`) | R4 판(`frames.rs:319`) |
+|---|---|---|
+| 오탐 차단벽 | `if (/context\|token\|output\|length/i) return miss` | **없음** |
+| 일시 과부하 | 일부러 **안 잡는다**(주석에 명시) | `t.contains("rate limit")` **추가** |
+| 한국어 | 없음 | 맨 `한도` 부분일치 |
+| 리셋 꼬리 | `parseEpoch(s)`를 hit과 함께 돌려준다 | 반환이 `bool` — **버린다** |
+
+원본이 그 차단벽 옆에 적어 둔 판단이 이식의 계약이다:
+
+> *"오탐으로 남의 에러를 조용히 재전송하는 쪽이 놓침(사용자가 직접 재전송)보다 훨씬 나쁘다."*
+
+`crates/ccg-engine/src/limit.rs`를 신설해 6분기를 **순서 그대로** 옮겼다(순서가 계약이다 —
+①`usage limit` 확정 hit → ②차단벽 확정 miss → ③~⑤ 배너형·`your …limit`·꼬리형).
+이 판에는 `regex` 크레이트가 없어 `parse_epoch`·`banner_limit_reached`·`your_limit`·
+`limit_reached_with_tail`을 손으로 풀었고, 각 함수 doc에 원본 정규식을 그대로 적어 뒀다.
+
+**한국어는 지웠다가 좁혀 되살렸다.** 맨 `한도`는 `컨텍스트 한도`·`출력 토큰 한도`를 삼킨다 —
+차단벽의 한국어 짝(`컨텍스트·토큰·출력·길이`)을 통과한 뒤 **`사용 한도`(= `usage limit`의
+직역)만** 받는다. `rate limit`은 원본을 따라 뺐다(1순위 근거인 `rate_limit_event` 프레임
+경로는 그대로다 — 문구 분류와 다른 문이다).
+
+### 판정표 — 2.6.2 자기 코퍼스 18종 (`scripts/poc-limit-resume.mjs` A절)
+
+```
+기대   실측   리셋꼬리      문구
+hit    hit    1755150000   "Claude AI usage limit reached|1755150000"
+hit    hit    -            "Claude AI usage limit reached"
+hit    hit    -            "You've reached your usage limit."
+hit    hit    -            "You've hit your usage limit. Upgrade to continue."
+hit    hit    -            "5-hour limit reached ∙ resets 3pm"
+hit    hit    -            "Weekly limit reached · resets Aug 20"
+hit    hit    -            "five-hour limit reached, resets 15:00"
+hit    hit    1799999999   "Session limit reached|1799999999"
+hit    hit    -            "you have reached your weekly limit"
+miss   miss   -            "Invalid API key · Please run /login"
+miss   miss   -            "Command failed with exit code 1"
+miss   miss   -            "context limit reached: conversation too long"   <- R4 오탐 ①
+miss   miss   -            "output token limit exceeded"                    <- R4 오탐 ②
+miss   miss   -            "prompt is too long: maximum context length exceeded"
+miss   miss   -            "API Error: 529 overloaded_error"
+miss   miss   -            "rate limited; retry shortly"                    <- R4 오탐 ③
+miss   miss   -            "오류: 실행 중 프로세스가 종료되었습니다"
+miss   miss   -            ""
+HITS 9 / MISSES 9 / 불일치 0
+```
+
+> 이 표는 크리틱이 워크트리에 두고 간 `tests/r14_limit_parity.rs`가 찍는다.
+> **붉은 채로 들여왔다**(`FALSE-POSITIVE` 3건) — 그게 이 파일을 옮겨 온 이유다.
+> 리셋 꼬리 열은 이 라운드가 더한 것이다(`the_reset_tail_comes_back_with_the_hit`).
+
+---
+
+## R5.2 F2 — 대기표가 시각을 안 읽고 재검증도 안 했다
+
+크리틱 실측: `hold.resets_at = 장전 + 5분`, `due_at = +90s`, **30분에 4회**(5시간 창이면 ~46회)
+헛 재개. 원인은 하나가 아니라 넷이었고, 넷을 다 막아야 0이 된다.
+
+### ① 문구의 리셋 꼬리를 읽는다
+
+`on_result`가 `classify_limit_error(t)`의 `resets_at`을 `arm_hold`에 넘긴다.
+R4까지 이 자리는 언제나 `arm_hold(None)`이었다.
+
+### ② 시각의 **축**이 달랐다 — 환승역을 하나 판다
+
+리셋 시각은 바깥 세계의 값이라 **벽시계 unix 초**다(에러 꼬리 `1755150000`,
+`rate_limit_event.resetsAt` 실측 `1787377200`). 런타임 타이머는 `clock.rs` 첫 줄대로
+**`Instant` 기준 단조 ms**다. 두 축을 섞으면 대기표가 1970년(부팅이 곧 전송) 또는
+2026년(영원히 안 풀림)에 앉는다.
+
+- `Clock` 트레이트에 `now_epoch_ms()`를 더했다(기본 구현 = `SystemTime`, `VirtualClock`은
+  `set_epoch_base`로 쥔다 — 재생이 "지금이 2025년인 판"을 결정적으로 돌 수 있다).
+- 환승은 `ChatRuntime::epoch_secs_to_runtime` **한 곳**이다. 이미 지난 시각은 `now`로 접고,
+  너무 먼 시각은 `MAX_WAIT`(7일)로 깎는다(사용자 시계가 어긋나면 표가 몇 년 뒤에 앉는다).
+- **같은 버그가 1순위 경로에도 있었다**: `Frame::RateLimit`의 `arm_hold(resets_at.map(|s| s*1000))`.
+  실기라면 대기표가 2026년에 앉는다. 그 프레임이 미관측(O14)이라 아무도 안 밟았을 뿐이다.
+
+### ③ 미상은 미상으로 — 5분 덮어쓰기를 멈춘다
+
+`arm_hold`가 `Some(resets_at.unwrap_or(now + 5*MIN))`으로 채우던 것을 그대로 `resets_at`으로
+둔다. 대기 간격은 `LimitHold::due_at()`이 2.6.2 `resumeDelayMs`로 정한다:
+
+```text
+시각 앎  -> max(resets_at + 90s, armed_at + 15s)      // RESET_GRACE_MS · Math.max(15_000, …)
+시각 미상 -> armed_at + PROBE(10분) × 2^attempts       // PROBE_MS + R5 지수 백오프(상한 60분)
+```
+
+백오프가 2.6.2에 없는 이유는 **그쪽 프로브의 비용이 usage 조회 1회**였기 때문이다.
+여기서는 같은 자리가 **CLI 턴 1회**를 태운다 — 값이 같아도 뜻이 다르다.
+
+부산물: 화면의 거짓말도 이 자리에서 걷힌다. R4는 5시간 한도에도 배너가
+*"약 5분 뒤 자동으로 이어서 계속해요"* 라고 적었다. 이제 시각을 알면 그 시각을, 모르면
+`resetAt: null`을 내고 렌더러는 이미 그 경우의 문장을 갖고 있다
+(*"한도가 풀리기를 기다리는 중이에요 — 대기표는 엔진이 들고 있어요"*).
+
+### ④ 발화 재검증 훅 — 2.6.2 `fire()`의 자리
+
+m-logic §7.3이 *"`resets_at + 90s`에 **신선 usage 재검증**, 아직 막혔으면 재장전"* 이라고
+적어 둔 그 절반이 코드에 없었다. `limit::LimitProbe`를 시그니처로 세우고 `check_hold`가
+**발화 직전에** 묻는다.
+
+```rust
+pub trait LimitProbe: Send + Sync {
+    fn blocked_until(&self, account: &BillingAxis, now_epoch_ms: u64) -> LimitVerdict;
+}
+pub enum LimitVerdict { Blocked { resets_at: Option<u64> }, Clear, Unknown }
+```
+
+`Blocked`면 그 시각으로 **재장전만** 하고 CLI를 안 띄운다 — 재장전과 헛 재개의 차이가
+이것이다. `Unknown`(조회 실패)은 2.6.2 `catch`와 같이 *"풀린 것으로 두고 진행"* 한다.
+
+**아직 안 배선됐다**: `ccg-auth`는 `usage::usage_request`(요청 빌더) ·
+`usage::parse_usage_info`(2.6.2 파리티 파서)까지 있고 **HTTP 실행기가 없다**
+(워크스페이스에 `reqwest`/`ureq` 없음). 그래서 기본 훅은 `Unknown`만 돌려주고,
+그동안의 안전장치가 ⑤다. 셸이 `with_limit_probe`로 꽂는 순간 2.6.2 `fire()`가 된다.
+
+### ⑤ 눈감고 쏘는 재개의 상한 — 로컬 판정으로 스팸을 먼저 죽인다
+
+재개 턴이 **같은 한도 에러로 또 죽으면 그것이 곧 "아직 안 풀렸다"는 신선한 증거**다.
+`ChatRuntime.auto_resume_streak`가 그 연쇄를 세고(사용자 발화 · 사용자가 누른 이어가기 ·
+한도 없이 착지한 턴이 0으로 되돌린다), 새 대기표가 `attempts`로 물려받는다.
+`attempts >= MAX_AUTO_ATTEMPTS`(2)면 `auto_paused = true`:
+
+- `ready`는 켠다 -> 사이드바가 "이어갈 수 있음"을 그리고 배너가 「이어가기」 버튼을 준다.
+- `hold_gate_open()`은 닫는다 -> 이 채팅의 **예약분도 혼자 안 나간다**.
+- 출구는 `resume_now()` 하나 — 스펙 ⑤(화면 밖 채팅)와 착지점이 같고 이유만 다르다.
+
+### 재현 -> 0회
+
+```
+[들여올 때] 30분 동안 spawns 1 → 5 · 보낸 사용자 텍스트 5건:
+            ["첫 턴","이어서 진행해 주세요","이어서 진행해 주세요","이어서 진행해 주세요","이어서 진행해 주세요"]
+[지금]      30분 동안 spawns 1 → 1 · 보낸 사용자 텍스트 1건: ["첫 턴"]
+            hold.resets_at = Some(19000000) · due_at = Some(19090000) · now = 1030000
+            (가상 t=1000s의 벽시계를 "리셋 5시간 전"에 놓았다 → 리셋의 런타임 좌표 19000000ms)
+```
+
+시각 미상 갈래도 같은 파일이 잠근다: **5시간에 2회**(= 상한) 뒤 `ready:true auto_paused:true`,
+그 뒤로 다시 5시간을 밀어도 **0회**. 옛 판은 같은 창에서 ~46회였다.
+
+---
+
+## R5.3 F1 × F2 — 조합이 최악이었던 이유
+
+컨텍스트 초과는 **리셋으로 풀리지 않는다.** 옛 판은 그것을 한도로 오인해 장전하고,
+5분마다 「이어서 진행해 주세요」를 보내고, 같은 에러를 받아 또 장전했다 — 끝이 없다.
+`a_context_overflow_error_never_arms_a_hold`가 오탐 3종 각각에 대해 **장전 자체가 없고**
+30분 재전송 0회임을 잠근다. 문이 둘 다 닫혔다(F1: 장전 안 함 · F2: 장전돼도 상한).
+
+---
+
+## R5.4 F4의 엔진 몫 — 구독자 없는 채널에만 말하지 않는다
+
+`hub::ensure()`가 `ChatRuntime::new`에 실패하면(`CwdMissing`·`AccountUnavailable`) 사유가
+`chat:verdict`로만 나갔고 **그 채널 구독자는 0**이다(크리틱 §4.3-M2). 런타임이 없으니
+T3(20초 침묵 감시)도 없다. 크리틱 실측(폴더를 없는 경로로 바꾸고 40초):
+
+```
+ +3s  hasProbe true · stopBtn 1 · "징검다리 놓는 중 ·3초"   · errMsgs []
++25s  … "안개를 걷어내는 중 ·25초"                          · errMsgs []   <- T3(20s) 지났다
++40s  … "퍼즐 맞추는 중 ·40초"                              · errMsgs []
+```
+
+`Hub::reject_spawn`을 만들어 **구독자가 있는 채널**에 앉힌다. 순서가 계약이다 — 렌더러
+리듀서는 `begin` 직후 `curRunId = 'pending'`이라 `analyzing`이 런을 채택하기 전에는
+`error`·`status`를 늦은 잔재로 버린다(`session.ts:553`).
+
+| # | 이벤트 | 화면에서 하는 일 |
+|---|---|---|
+| ① | `status{analyzing}` | 이 런을 현재 실행으로 채택(아래 둘이 통과할 문) |
+| ② | `error{message}` | 오류 말풍선 — 사유를 읽을 수 있는 문장으로 |
+| ③ | `status{error}` | 턴 종결(컴포저·중지 버튼·나레이션 해제) |
+
+추가로 `chat:status`에 종결 요약행(`status:"error"` · `busy:false`)을 앉히고,
+`chat:verdict`에는 `message`를 더했다(구독자가 붙는 날의 기계 판독용 — 기존 키는 그대로).
+
+### 실측 — 크리틱 도구 그대로(`docs/critic/tools/.r14-cwdgone.mjs`, 격리 워크트리 · $0 · CLI 0회)
+
+```
+[크리틱]  +3s  spinner ? · stopBtn 1 · "징검다리 놓는 중 ·3초"  · 오류/안내 0건
+         +40s  stopBtn 1 · "퍼즐 맞추는 중 ·40초"              · 오류/안내 0건
+
+[지금]    +3s  spinner 0 · stopBtn 0 · composerDisabled false
+              bodyTail  "… CWDGONE-PROBE / 오류 / 오후 12:47 /
+                         작업 폴더를 찾을 수 없어요 — …\this-folder-does-not-exist.
+                         고친 뒤 다시 보내면 이어집니다."
+         +10s / +25s / +40s  동일(늘어나는 나레이션 없음)
+```
+
+**정직하게 하나**: 이 도구의 `errMsgs`는 여전히 `[]`다. 셀렉터가
+`.msg.error, .msg .error, .notice`인데 이 렌더러의 오류 말풍선은
+`.error-row / .error-head / .error-text`다(`Chat.tsx:905-915`) — **도구가 못 보는 것이지
+없는 것이 아니다**. 같은 도구가 내는 독립 증거가 셋이다: `bodyTail`에 사유 문장,
+`spinner 0`(크리틱은 나레이션이 계속 돌았다), `stopBtn 0`(크리틱은 네 표본 전부 1).
+다음 라운드가 이 도구를 다시 쓸 거면 셀렉터에 `.error-text`를 더하는 편이 싸다.
+
+**남는 반쪽은 렌더러다**: 크리틱이 권한 ⑵ *"`answer(Value::Null)` 대신 거부 verdict를
+호출 반환값으로 돌려주고 렌더러가 `begin`을 되감는다"* 는 지금 구조에서 엔진 혼자 못 닫는다 —
+`runChat`이 `typeof v === 'string' ? v : ''`로 접기 때문에 무엇을 돌려줘도 같은 값이다
+(`app/src/api/unified.ts:109`). 이 라운드는 `app/` 금지라 ①~③으로 침묵만 죽였다.
+
+---
+
+## R5.5 회귀 잠금
+
+크리틱 하네스를 **그대로 들여왔다**(`%TEMP%/ccg-r14-wt/…` -> `crates/ccg-engine/tests/`).
+
+| 파일 · 테스트 | 들여올 때 | 지금 |
+|---|---|---|
+| `r14_limit_parity::parity_with_262_classify_limit_error` | 붉음(오탐 3) | green · 18/18 |
+| `r14_limit_loop::a_still_blocked_resume_…` | 붉음("30분에 4회") | green · 0회 |
+| `r14_limit_loop::the_engine_ignores_the_reset_epoch_…` | green(=결함의 근거) | **방향을 뒤집었다** -> `the_engine_reads_the_reset_epoch_…` |
+
+> ①은 *"꼬리를 안 쓴다"* 가 통과 조건인 단언이라 고치면 깨져야 맞다. 크리틱 자신이
+> *"이 단언이 깨지면 발견은 무효다"* 라고 적어 둔 자리고, 그래서 지우지 않고 뒤집었다.
+
+이 라운드가 더한 잠금:
+
+- `the_reset_tail_comes_back_with_the_hit` — 꼬리 파싱 6케이스(10자리 정확 · miss면 시각도 없음)
+- `the_three_false_positives_stay_dead` — 오탐 3종 + 한국어 짝 3종
+- `a_hold_without_a_reset_time_stops_blind_firing_at_the_cap` — 5시간 2회 -> 그 뒤 영원히 0
+- `the_user_can_still_press_resume_after_the_cap` — 멈춘 표의 출구는 사용자
+- `a_context_overflow_error_never_arms_a_hold` — F1×F2 조합
+- `the_probe_rearms_instead_of_firing_while_still_blocked` — 훅 계약(재장전은 전송이 아니다)
+- `limit.rs` 유닛 3 · `lite.rs` 유닛 1(`resetAt`은 unix 초)
+
+**옮긴 것 하나**: 재생 #4(`s04_queue_plus_limit_hold_resume`)의 발화 시각이 390s -> 600s다.
+그 시나리오의 문구(`"Claude usage limit reached · resets at 5pm"`)에는 읽을 꼬리가 없어
+**시각 미상**이고, 옛 6.5분은 곧 F2의 뿌리였던 5분 덮어쓰기다. 시나리오가 잠그는 성질
+(예약 큐 + 자동 이어서의 순서 · 이중 전송 없음 · spawn 3)은 한 글자도 안 바뀌었다.
+
+---
+
+## R5.6 남은 것
+
+1. **`LimitProbe`의 실제 조회**(가장 큰 조각) — `ccg-auth`에 HTTP 실행기가 없다.
+   붙는 순간 ⑤의 로컬 상한은 안전망으로 물러나고 2.6.2 `fire()`가 1선이 된다.
+   Codex 판(`codexBlockedResetsAt`)도 같은 훅으로 접힌다.
+2. **`blockedResetsAt` 자체는 아직 Rust에 없다** — 2.6.2의 "소진 창 중 가장 늦은 시각 ·
+   Fable 창은 Fable 실행만 게이트" 규칙. 훅을 구현하는 쪽이 함께 옮겨야 한다.
+3. **F4의 렌더러 반쪽**(§R5.4 끝) — `chat:verdict` 구독 또는 `runChat` 반환 계약.
+4. **`auto_paused`가 계약면에 없다** — `ChatStatusLite.hold`는 `{resetAt, ready}` 두 키뿐이라
+   화면은 "왜 멈췄는지"를 안내 한 줄로만 안다. 키를 더하려면 `ccg-store`의
+   `truth_from_chat_file`과 짝을 맞춰야 한다(이 라운드 경계 밖).
+5. **부팅 재장전의 `attempts`는 0에서 시작한다** — 디스크에 헛발질 횟수가 없다.
+   앱을 껐다 켜면 상한이 리셋된다(껐다 켠 것은 사용자의 행위라 그렇게 뒀다. 기록해 둔다).
+6. `MAX_WAIT`(7일) 절단은 **정책이지 계약이 아니다** — 주간 창보다 먼 리셋을 서버가 말하면
+   7일 뒤에 한 번 깨어난다(그때 재검증이 다시 판정한다).
+
+---
+
+## R5.7 재현
+
+```bash
+cargo test -p ccg-engine                                        # 130 green / 2 ignored
+cargo test -p ccg-store                                         #  62 green
+(cd src-tauri && cargo test)                                    #  20 green
+
+# 크리틱 하네스 둘 — 판정표와 재생 수치가 그대로 찍힌다
+cargo test -p ccg-engine --test r14_limit_parity -- --nocapture  # 18종 판정표
+cargo test -p ccg-engine --test r14_limit_loop   -- --nocapture --test-threads=1
+
+# 세로 조각 + F4 실물 (격리 워크트리에서 — 같은 레포에 렌더러 라운드가 돌고 있다)
+git worktree add --detach "$TEMP/ccg-r16-wt" HEAD
+cd "$TEMP/ccg-r16-wt" && cmd /c "mklink /J node_modules C:\Code\AgentCodeGUI\node_modules"
+CARGO_TARGET_DIR="$TEMP/ccg-r16-tgt" npm run tauri:build
+CARGO_TARGET_DIR="$TEMP/ccg-r16-tgt" cargo build -p ccg-engine --features fakecli \
+    --bin ccg-fakecli --release
+cp "$TEMP/ccg-r16-tgt/release/"{agentcodegui,ccg-fakecli}.exe target/release/
+node scripts/poc-live-chat.mjs --tag=r16                        # 8단계 (게이트)
+node docs/critic/tools/.r14-cwdgone.mjs                         # F4 — errMsgs가 비면 실패
+```
