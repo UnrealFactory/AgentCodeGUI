@@ -1,0 +1,69 @@
+{
+  "kind": "electron",
+  "version": "2.6.2",
+  "rel": "lspbench/big.ts",
+  "shift": 7,
+  "at": "2026-08-23T06:49:43.757Z",
+  "rows": [
+    {
+      "word": "makeConfig",
+      "diskLine": 1,
+      "bufLine": 8,
+      "ch": 28,
+      "bufHover": "```typescript (alias) function makeConfig(id: number, name: string, mo",
+      "bufDef": "lib.ts:13",
+      "diskHover": "```typescript (alias) function makeConfig(id: number, name: string, mo"
+    },
+    {
+      "word": "makeConfig",
+      "diskLine": 8,
+      "bufLine": 15,
+      "ch": 24,
+      "bufHover": "```typescript (alias) makeConfig(id: number, name: string, mode?: Benc",
+      "bufDef": "lib.ts:13",
+      "diskHover": "```typescript (alias) makeConfig(id: number, name: string, mode?: Benc"
+    },
+    {
+      "word": "makeConfig",
+      "diskLine": 16,
+      "bufLine": 23,
+      "ch": 24,
+      "bufHover": "```typescript (alias) makeConfig(id: number, name: string, mode?: Benc",
+      "bufDef": "lib.ts:13",
+      "diskHover": "```typescript (alias) makeConfig(id: number, name: string, mode?: Benc"
+    },
+    {
+      "word": "makeConfig",
+      "diskLine": 24,
+      "bufLine": 31,
+      "ch": 24,
+      "bufHover": "```typescript (alias) makeConfig(id: number, name: string, mode?: Benc",
+      "bufDef": "lib.ts:13",
+      "diskHover": "```typescript (alias) makeConfig(id: number, name: string, mode?: Benc"
+    },
+    {
+      "word": "summarize",
+      "diskLine": 1,
+      "bufLine": 8,
+      "ch": 40,
+      "bufHover": "```typescript (alias) function summarize(reg: BenchRegistry, ids: numb",
+      "bufDef": "lib.ts:38",
+      "diskHover": "```typescript (alias) function summarize(reg: BenchRegistry, ids: numb"
+    },
+    {
+      "word": "summarize",
+      "diskLine": 12,
+      "bufLine": 19,
+      "ch": 13,
+      "bufHover": "```typescript (alias) summarize(reg: BenchRegistry, ids: number[]): nu",
+      "bufDef": "lib.ts:38",
+      "diskHover": "```typescript (alias) summarize(reg: BenchRegistry, ids: number[]): nu"
+    }
+  ],
+  "verdict": {
+    "n": 6,
+    "bufferHoverHits": 6,
+    "bufferDefToLib": 6,
+    "diskControlHits": 6
+  }
+}

@@ -1,0 +1,69 @@
+{
+  "kind": "tauri",
+  "version": "3.0.0-beta.1",
+  "rel": "lspbench/big.ts",
+  "shift": 7,
+  "at": "2026-08-23T06:49:52.265Z",
+  "rows": [
+    {
+      "word": "makeConfig",
+      "diskLine": 1,
+      "bufLine": 8,
+      "ch": 28,
+      "bufHover": "```typescript (alias) makeConfig(id: number, name: string, mode?: Benc",
+      "bufDef": "lib.ts:13",
+      "diskHover": "```typescript (alias) function makeConfig(id: number, name: string, mo"
+    },
+    {
+      "word": "makeConfig",
+      "diskLine": 8,
+      "bufLine": 15,
+      "ch": 24,
+      "bufHover": "```typescript function step0001(input: BenchConfig): number ```",
+      "bufDef": "big.ts:15",
+      "diskHover": "```typescript (alias) makeConfig(id: number, name: string, mode?: Benc"
+    },
+    {
+      "word": "makeConfig",
+      "diskLine": 16,
+      "bufLine": 23,
+      "ch": 24,
+      "bufHover": "```typescript function step0002(input: BenchConfig): number ```",
+      "bufDef": "big.ts:23",
+      "diskHover": "```typescript (alias) makeConfig(id: number, name: string, mode?: Benc"
+    },
+    {
+      "word": "makeConfig",
+      "diskLine": 24,
+      "bufLine": 31,
+      "ch": 24,
+      "bufHover": "```typescript function step0003(input: BenchConfig): number ```",
+      "bufDef": "big.ts:31",
+      "diskHover": "```typescript (alias) makeConfig(id: number, name: string, mode?: Benc"
+    },
+    {
+      "word": "summarize",
+      "diskLine": 1,
+      "bufLine": 8,
+      "ch": 40,
+      "bufHover": "```typescript (property) BenchConfig.name: string ```",
+      "bufDef": "lib.ts:5",
+      "diskHover": "```typescript (alias) function summarize(reg: BenchRegistry, ids: numb"
+    },
+    {
+      "word": "summarize",
+      "diskLine": 12,
+      "bufLine": 19,
+      "ch": 13,
+      "bufHover": "```typescript const score: number ```",
+      "bufDef": "big.ts:19",
+      "diskHover": "```typescript (alias) summarize(reg: BenchRegistry, ids: number[]): nu"
+    }
+  ],
+  "verdict": {
+    "n": 6,
+    "bufferHoverHits": 1,
+    "bufferDefToLib": 2,
+    "diskControlHits": 6
+  }
+}

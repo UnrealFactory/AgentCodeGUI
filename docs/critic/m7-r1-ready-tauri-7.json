@@ -1,0 +1,121 @@
+{
+  "kind": "tauri",
+  "version": "3.0.0-beta.1",
+  "port": 9427,
+  "pid": 32436,
+  "at": "2026-08-23T06:36:46.822Z",
+  "fresh": true,
+  "probe": {
+    "installedAt": 75,
+    "url": "http://tauri.localhost/",
+    "apiAt": 122.6,
+    "st0SentAt": 122.6,
+    "st0RespAt": 174,
+    "st0": "starting",
+    "readyAt": 448.1,
+    "states": [
+      "starting",
+      "ready"
+    ],
+    "lag": [
+      {
+        "at": 123,
+        "lagMs": 27.8
+      },
+      {
+        "at": 174,
+        "lagMs": 31.1
+      },
+      {
+        "at": 211,
+        "lagMs": 17.5
+      },
+      {
+        "at": 232,
+        "lagMs": 0.3
+      },
+      {
+        "at": 253,
+        "lagMs": 1.3
+      },
+      {
+        "at": 274,
+        "lagMs": 0.5
+      },
+      {
+        "at": 295,
+        "lagMs": 1.1
+      },
+      {
+        "at": 315,
+        "lagMs": 0.5
+      },
+      {
+        "at": 385,
+        "lagMs": 49.5
+      },
+      {
+        "at": 406,
+        "lagMs": 1
+      },
+      {
+        "at": 426,
+        "lagMs": 0.6
+      },
+      {
+        "at": 447,
+        "lagMs": 0.5
+      },
+      {
+        "at": 468,
+        "lagMs": 1
+      },
+      {
+        "at": 489,
+        "lagMs": 1.3
+      },
+      {
+        "at": 510,
+        "lagMs": 0.4
+      },
+      {
+        "at": 530,
+        "lagMs": 0.2
+      },
+      {
+        "at": 550,
+        "lagMs": 0.4
+      }
+    ],
+    "polls": [
+      {
+        "sent": 123,
+        "ms": 51.4,
+        "st": "starting"
+      },
+      {
+        "sent": 277,
+        "ms": 170.9,
+        "st": "ready"
+      }
+    ]
+  },
+  "derived": {
+    "installedAt": 75,
+    "url": "http://tauri.localhost/",
+    "apiAt": 122.6,
+    "st0SentAt": 122.6,
+    "st0Ms": 51.4,
+    "st0": "starting",
+    "readyAt": 448.1,
+    "readyAfterFirstStatusMs": 326,
+    "polls": 2,
+    "pollMsFirst5": [
+      51.4,
+      170.9
+    ],
+    "lagMax2s": 49.5,
+    "lagOver50Before2s": 0,
+    "lagSpikes": []
+  }
+}

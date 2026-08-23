@@ -1,0 +1,226 @@
+{
+  "order": "BAN",
+  "exe": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-m7c-tgt\\release\\agentcodegui.exe",
+  "pid": 17212,
+  "at": "2026-08-23T06:33:54.895Z",
+  "probe": {
+    "t0": 54.89999997615814,
+    "rows": [
+      {
+        "arm": "B",
+        "i": 0,
+        "ch": "lsp:cached-tokens",
+        "ms": 68.4,
+        "at": 68.4,
+        "ok": true
+      },
+      {
+        "arm": "B",
+        "i": 1,
+        "ch": "lsp:cached-tokens",
+        "ms": 148.6,
+        "at": 217,
+        "ok": true
+      },
+      {
+        "arm": "B",
+        "i": 2,
+        "ch": "lsp:cached-tokens",
+        "ms": 30.2,
+        "at": 247.2,
+        "ok": true
+      },
+      {
+        "arm": "B",
+        "i": 3,
+        "ch": "lsp:cached-tokens",
+        "ms": 2,
+        "at": 249.2,
+        "ok": true
+      },
+      {
+        "arm": "B",
+        "i": 4,
+        "ch": "lsp:cached-tokens",
+        "ms": 1.3,
+        "at": 250.5,
+        "ok": true
+      },
+      {
+        "arm": "B",
+        "i": 5,
+        "ch": "lsp:cached-tokens",
+        "ms": 0.8,
+        "at": 251.3,
+        "ok": true
+      },
+      {
+        "arm": "B",
+        "i": 6,
+        "ch": "lsp:cached-tokens",
+        "ms": 0.7,
+        "at": 252,
+        "ok": true
+      },
+      {
+        "arm": "B",
+        "i": 7,
+        "ch": "lsp:cached-tokens",
+        "ms": 0.9,
+        "at": 252.9,
+        "ok": true
+      },
+      {
+        "arm": "A",
+        "i": 0,
+        "ch": "app:get-version",
+        "ms": 0.6,
+        "at": 253.5,
+        "ok": true
+      },
+      {
+        "arm": "A",
+        "i": 1,
+        "ch": "app:get-version",
+        "ms": 0.7,
+        "at": 254.2,
+        "ok": true
+      },
+      {
+        "arm": "A",
+        "i": 2,
+        "ch": "app:get-version",
+        "ms": 0.7,
+        "at": 254.9,
+        "ok": true
+      },
+      {
+        "arm": "A",
+        "i": 3,
+        "ch": "app:get-version",
+        "ms": 0.7,
+        "at": 255.6,
+        "ok": true
+      },
+      {
+        "arm": "A",
+        "i": 4,
+        "ch": "app:get-version",
+        "ms": 0.6,
+        "at": 256.2,
+        "ok": true
+      },
+      {
+        "arm": "A",
+        "i": 5,
+        "ch": "app:get-version",
+        "ms": 0.8,
+        "at": 257,
+        "ok": true
+      },
+      {
+        "arm": "A",
+        "i": 6,
+        "ch": "app:get-version",
+        "ms": 0.9,
+        "at": 257.9,
+        "ok": true
+      },
+      {
+        "arm": "A",
+        "i": 7,
+        "ch": "app:get-version",
+        "ms": 0.7,
+        "at": 258.6,
+        "ok": true
+      },
+      {
+        "arm": "N",
+        "i": 0,
+        "ch": "zzz:critic-none",
+        "ms": 0.6,
+        "at": 259.2,
+        "ok": true
+      },
+      {
+        "arm": "N",
+        "i": 1,
+        "ch": "zzz:critic-none",
+        "ms": 0.6,
+        "at": 259.8,
+        "ok": true
+      },
+      {
+        "arm": "N",
+        "i": 2,
+        "ch": "zzz:critic-none",
+        "ms": 0.8,
+        "at": 260.6,
+        "ok": true
+      },
+      {
+        "arm": "N",
+        "i": 3,
+        "ch": "zzz:critic-none",
+        "ms": 1.2,
+        "at": 261.8,
+        "ok": true
+      },
+      {
+        "arm": "N",
+        "i": 4,
+        "ch": "zzz:critic-none",
+        "ms": 0.9,
+        "at": 262.7,
+        "ok": true
+      },
+      {
+        "arm": "N",
+        "i": 5,
+        "ch": "zzz:critic-none",
+        "ms": 0.6,
+        "at": 263.3,
+        "ok": true
+      },
+      {
+        "arm": "N",
+        "i": 6,
+        "ch": "zzz:critic-none",
+        "ms": 0.6,
+        "at": 263.9,
+        "ok": true
+      },
+      {
+        "arm": "N",
+        "i": 7,
+        "ch": "zzz:critic-none",
+        "ms": 2.3,
+        "at": 266.2,
+        "ok": true
+      }
+    ],
+    "done": true,
+    "err": null,
+    "invokeAvailAt": 0
+  },
+  "summary": {
+    "B": {
+      "first": 68.4,
+      "restMed": 1.3,
+      "restMax": 148.6,
+      "n": 8
+    },
+    "A": {
+      "first": 0.6,
+      "restMed": 0.7,
+      "restMax": 0.9,
+      "n": 8
+    },
+    "N": {
+      "first": 0.6,
+      "restMed": 0.8,
+      "restMax": 2.3,
+      "n": 8
+    }
+  }
+}

@@ -1,0 +1,181 @@
+{
+  "kind": "tauri",
+  "version": "3.0.0-beta.1",
+  "dir": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-m7c-big",
+  "hero": "src/m019/u02999.ts",
+  "files": 600,
+  "at": "2026-08-23T06:53:25.560Z",
+  "env": {
+    "ramGB": 63.8,
+    "cpu": "13th Gen Intel(R) Core(TM) i7-13700KF",
+    "os": "Microsoft Windows 11 Home 26200"
+  },
+  "ready": {
+    "ms": 19,
+    "st": "ready"
+  },
+  "firstPaint": {
+    "ms": 2024,
+    "n": 40
+  },
+  "fpsWarm": {
+    "frames": 123,
+    "spanMs": 2035,
+    "fps": 60,
+    "medGapMs": 16.7,
+    "p95GapMs": 16.8,
+    "maxGapMs": 16.8,
+    "longFrames": 0
+  },
+  "procsAfterWarm": [
+    {
+      "pid": 25848,
+      "name": "node.exe"
+    },
+    {
+      "pid": 10104,
+      "name": "node.exe"
+    }
+  ],
+  "sweepMs": 7651,
+  "fpsSweep": {
+    "frames": 460,
+    "spanMs": 7656,
+    "fps": 60,
+    "medGapMs": 16.7,
+    "p95GapMs": 16.8,
+    "maxGapMs": 16.8,
+    "longFrames": 0
+  },
+  "sweep": {
+    "n": 600,
+    "statuses": [
+      "ready"
+    ],
+    "withTokens": 600,
+    "cachedHits": 0,
+    "statusP50": 1,
+    "statusP95": 1.6,
+    "statusMax": 4.6,
+    "cacheP50": 10.2,
+    "cacheP95": 13.1,
+    "cacheMax": 64.9,
+    "semP50": 2.2,
+    "semP95": 3.4,
+    "semMax": 15.7,
+    "perFileMsAvg": 12.75
+  },
+  "rowsHead": [
+    {
+      "rel": "src/core.ts",
+      "st": "ready",
+      "statusMs": 1.3,
+      "cacheMs": 1.3,
+      "semMs": 5,
+      "n": 48,
+      "cached": false
+    },
+    {
+      "rel": "src/m000/u00004.ts",
+      "st": "ready",
+      "statusMs": 0.8,
+      "cacheMs": 1.4,
+      "semMs": 4,
+      "n": 40,
+      "cached": false
+    },
+    {
+      "rel": "src/m000/u00009.ts",
+      "st": "ready",
+      "statusMs": 1.4,
+      "cacheMs": 1.5,
+      "semMs": 2.8,
+      "n": 40,
+      "cached": false
+    },
+    {
+      "rel": "src/m000/u00014.ts",
+      "st": "ready",
+      "statusMs": 0.8,
+      "cacheMs": 0.9,
+      "semMs": 2.8,
+      "n": 40,
+      "cached": false
+    },
+    {
+      "rel": "src/m000/u00019.ts",
+      "st": "ready",
+      "statusMs": 0.8,
+      "cacheMs": 0.9,
+      "semMs": 3.2,
+      "n": 40,
+      "cached": false
+    }
+  ],
+  "rowsTail": [
+    {
+      "rel": "src/m019/u02974.ts",
+      "st": "ready",
+      "statusMs": 1.2,
+      "cacheMs": 9.2,
+      "semMs": 1.9,
+      "n": 40,
+      "cached": false
+    },
+    {
+      "rel": "src/m019/u02979.ts",
+      "st": "ready",
+      "statusMs": 0.9,
+      "cacheMs": 10.4,
+      "semMs": 1.8,
+      "n": 40,
+      "cached": false
+    },
+    {
+      "rel": "src/m019/u02984.ts",
+      "st": "ready",
+      "statusMs": 1.1,
+      "cacheMs": 9.9,
+      "semMs": 1.8,
+      "n": 40,
+      "cached": false
+    },
+    {
+      "rel": "src/m019/u02989.ts",
+      "st": "ready",
+      "statusMs": 0.8,
+      "cacheMs": 10.5,
+      "semMs": 1.9,
+      "n": 40,
+      "cached": false
+    },
+    {
+      "rel": "src/m019/u02994.ts",
+      "st": "ready",
+      "statusMs": 0.8,
+      "cacheMs": 10,
+      "semMs": 1.7,
+      "n": 40,
+      "cached": false
+    }
+  ],
+  "procsAfterSweep": [
+    {
+      "pid": 25848,
+      "name": "node.exe"
+    },
+    {
+      "pid": 10104,
+      "name": "node.exe"
+    }
+  ],
+  "fpsIdle": {
+    "frames": 181,
+    "spanMs": 3002,
+    "fps": 60,
+    "medGapMs": 16.7,
+    "p95GapMs": 16.8,
+    "maxGapMs": 16.8,
+    "longFrames": 0
+  }
+}

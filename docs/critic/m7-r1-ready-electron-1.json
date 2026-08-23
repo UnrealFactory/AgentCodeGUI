@@ -1,0 +1,85 @@
+{
+  "kind": "electron",
+  "version": "2.6.2",
+  "port": 9391,
+  "pid": 31176,
+  "at": "2026-08-23T06:36:02.926Z",
+  "fresh": true,
+  "probe": {
+    "installedAt": 81.7,
+    "url": "file:///C:/Users/User/AppData/Local/Temp/ccg-m7c-wt/out/renderer/index.html",
+    "apiAt": 81.8,
+    "st0SentAt": 81.8,
+    "st0RespAt": 93,
+    "st0": "starting",
+    "readyAt": 207.8,
+    "states": [
+      "starting",
+      "ready"
+    ],
+    "lag": [
+      {
+        "at": 102,
+        "lagMs": 0.4
+      },
+      {
+        "at": 123,
+        "lagMs": 0.9
+      },
+      {
+        "at": 144,
+        "lagMs": 0.5
+      },
+      {
+        "at": 165,
+        "lagMs": 1.6
+      },
+      {
+        "at": 187,
+        "lagMs": 2
+      },
+      {
+        "at": 207,
+        "lagMs": 0.2
+      },
+      {
+        "at": 228,
+        "lagMs": 0.5
+      },
+      {
+        "at": 249,
+        "lagMs": 0.6
+      }
+    ],
+    "polls": [
+      {
+        "sent": 82,
+        "ms": 11.2,
+        "st": "starting"
+      },
+      {
+        "sent": 208,
+        "ms": 0.3,
+        "st": "ready"
+      }
+    ]
+  },
+  "derived": {
+    "installedAt": 81.7,
+    "url": "file:///C:/Users/User/AppData/Local/Temp/ccg-m7c-wt/out/renderer/index.html",
+    "apiAt": 81.8,
+    "st0SentAt": 81.8,
+    "st0Ms": 11.2,
+    "st0": "starting",
+    "readyAt": 207.8,
+    "readyAfterFirstStatusMs": 126,
+    "polls": 2,
+    "pollMsFirst5": [
+      11.2,
+      0.3
+    ],
+    "lagMax2s": 2,
+    "lagOver50Before2s": 0,
+    "lagSpikes": []
+  }
+}

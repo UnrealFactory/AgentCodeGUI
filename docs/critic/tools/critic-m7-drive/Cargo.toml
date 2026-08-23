@@ -1,0 +1,11 @@
+[package]
+name = "m7drive"
+version = "0.0.0"
+edition = "2021"
+
+[dependencies]
+ccg-lsp = { path = "../../../../crates/ccg-lsp" }
+ccg-store = { path = "../../../../crates/ccg-store" }
+serde_json = { version = "1", features = ["preserve_order"] }
+
+[workspace]

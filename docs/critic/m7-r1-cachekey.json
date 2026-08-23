@@ -1,0 +1,17 @@
+{
+  "bucket262": "ccg-lsp-repo-90f3e3d7e327e563",
+  "key262": "24a24ae4ef7a7dca815938b9aa96346e38e1000d",
+  "expectPath": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-m7c-home-cache\\lsp\\semcache\\ccg-lsp-repo-90f3e3d7e327e563\\24\\24a24ae4ef7a7dca815938b9aa96346e38e1000d.json",
+  "crateWrote": [
+    "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-m7c-home-cache\\lsp\\semcache\\ccg-lsp-repo-90f3e3d7e327e563\\24\\24a24ae4ef7a7dca815938b9aa96346e38e1000d.json"
+  ],
+  "rootMarkers": [
+    "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-m7c-home-cache\\lsp\\semcache\\ccg-lsp-repo-90f3e3d7e327e563\\.root"
+  ],
+  "MATCH": true,
+  "readableAs262": {
+    "ok": true,
+    "tokens": 3,
+    "types": 23
+  }
+}

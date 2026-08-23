@@ -1,0 +1,521 @@
+{
+  "kind": "electron",
+  "version": "2.6.2",
+  "pid": 29624,
+  "at": "2026-08-23T06:40:14.982Z",
+  "work": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo",
+  "rel": "lspbench/big.ts",
+  "ready": {
+    "ms": 1,
+    "st": "ready"
+  },
+  "tokensBefore": 10925,
+  "before": {
+    "at": 1289,
+    "st": "ready",
+    "stMs": 0,
+    "tokens": 10925,
+    "tkMs": 28,
+    "tkErr": null,
+    "tkNull": false,
+    "hover": true,
+    "hvMs": 28,
+    "proj": "ready",
+    "projMs": 15
+  },
+  "procsBefore": [
+    {
+      "pid": 6636,
+      "name": "electron.exe",
+      "lsp": false
+    },
+    {
+      "pid": 29476,
+      "name": "electron.exe",
+      "lsp": false
+    },
+    {
+      "pid": 14500,
+      "name": "electron.exe",
+      "lsp": false
+    },
+    {
+      "pid": 28896,
+      "name": "electron.exe",
+      "lsp": false
+    },
+    {
+      "pid": 22476,
+      "name": "electron.exe",
+      "lsp": true
+    },
+    {
+      "pid": 1964,
+      "name": "electron.exe",
+      "lsp": true
+    }
+  ],
+  "victims": [
+    {
+      "pid": 22476,
+      "name": "electron.exe"
+    },
+    {
+      "pid": 1964,
+      "name": "electron.exe"
+    }
+  ],
+  "killedPids": [
+    22476,
+    1964
+  ],
+  "samples": [
+    {
+      "at": 1859,
+      "st": "error",
+      "stMs": 0,
+      "tokens": 0,
+      "tkMs": 1,
+      "tkErr": null,
+      "tkNull": false,
+      "hover": false,
+      "hvMs": 1,
+      "proj": "idle",
+      "projMs": 15,
+      "sinceKillMs": 176
+    },
+    {
+      "at": 3681,
+      "st": "error",
+      "stMs": 0,
+      "tokens": 0,
+      "tkMs": 0,
+      "tkErr": null,
+      "tkNull": false,
+      "hover": false,
+      "hvMs": 1,
+      "proj": "idle",
+      "projMs": 15,
+      "sinceKillMs": 1998
+    },
+    {
+      "at": 5207,
+      "st": "error",
+      "stMs": 0,
+      "tokens": 0,
+      "tkMs": 0,
+      "tkErr": null,
+      "tkNull": false,
+      "hover": false,
+      "hvMs": 1,
+      "proj": "idle",
+      "projMs": 14,
+      "sinceKillMs": 3525
+    },
+    {
+      "at": 6735,
+      "st": "error",
+      "stMs": 0,
+      "tokens": 0,
+      "tkMs": 0,
+      "tkErr": null,
+      "tkNull": false,
+      "hover": false,
+      "hvMs": 1,
+      "proj": "idle",
+      "projMs": 15,
+      "sinceKillMs": 5054
+    },
+    {
+      "at": 8268,
+      "st": "error",
+      "stMs": 0,
+      "tokens": 0,
+      "tkMs": 0,
+      "tkErr": null,
+      "tkNull": false,
+      "hover": false,
+      "hvMs": 1,
+      "proj": "idle",
+      "projMs": 15,
+      "sinceKillMs": 6586
+    },
+    {
+      "at": 10127,
+      "st": "error",
+      "stMs": 0,
+      "tokens": 0,
+      "tkMs": 0,
+      "tkErr": null,
+      "tkNull": false,
+      "hover": false,
+      "hvMs": 1,
+      "proj": "idle",
+      "projMs": 14,
+      "sinceKillMs": 8446
+    },
+    {
+      "at": 11647,
+      "st": "error",
+      "stMs": 0,
+      "tokens": 0,
+      "tkMs": 0,
+      "tkErr": null,
+      "tkNull": false,
+      "hover": false,
+      "hvMs": 1,
+      "proj": "idle",
+      "projMs": 14,
+      "sinceKillMs": 9966
+    },
+    {
+      "at": 13169,
+      "st": "error",
+      "stMs": 0,
+      "tokens": 0,
+      "tkMs": 0,
+      "tkErr": null,
+      "tkNull": false,
+      "hover": false,
+      "hvMs": 1,
+      "proj": "idle",
+      "projMs": 15,
+      "sinceKillMs": 11487
+    },
+    {
+      "at": 14690,
+      "st": "error",
+      "stMs": 0,
+      "tokens": 0,
+      "tkMs": 0,
+      "tkErr": null,
+      "tkNull": false,
+      "hover": false,
+      "hvMs": 1,
+      "proj": "idle",
+      "projMs": 14,
+      "sinceKillMs": 13009
+    },
+    {
+      "at": 16483,
+      "st": "error",
+      "stMs": 0,
+      "tokens": 0,
+      "tkMs": 0,
+      "tkErr": null,
+      "tkNull": false,
+      "hover": false,
+      "hvMs": 2,
+      "proj": "idle",
+      "projMs": 14,
+      "sinceKillMs": 14801
+    },
+    {
+      "at": 18015,
+      "st": "error",
+      "stMs": 0,
+      "tokens": 0,
+      "tkMs": 0,
+      "tkErr": null,
+      "tkNull": false,
+      "hover": false,
+      "hvMs": 9,
+      "proj": "idle",
+      "projMs": 14,
+      "sinceKillMs": 16327
+    },
+    {
+      "at": 19536,
+      "st": "error",
+      "stMs": 0,
+      "tokens": 0,
+      "tkMs": 0,
+      "tkErr": null,
+      "tkNull": false,
+      "hover": false,
+      "hvMs": 1,
+      "proj": "idle",
+      "projMs": 15,
+      "sinceKillMs": 17854
+    },
+    {
+      "at": 21062,
+      "st": "error",
+      "stMs": 0,
+      "tokens": 0,
+      "tkMs": 0,
+      "tkErr": null,
+      "tkNull": false,
+      "hover": false,
+      "hvMs": 1,
+      "proj": "idle",
+      "projMs": 14,
+      "sinceKillMs": 19380
+    },
+    {
+      "at": 22913,
+      "st": "error",
+      "stMs": 0,
+      "tokens": 0,
+      "tkMs": 0,
+      "tkErr": null,
+      "tkNull": false,
+      "hover": false,
+      "hvMs": 1,
+      "proj": "idle",
+      "projMs": 14,
+      "sinceKillMs": 21232
+    },
+    {
+      "at": 24445,
+      "st": "error",
+      "stMs": 1,
+      "tokens": 0,
+      "tkMs": 0,
+      "tkErr": null,
+      "tkNull": false,
+      "hover": false,
+      "hvMs": 1,
+      "proj": "idle",
+      "projMs": 14,
+      "sinceKillMs": 22763
+    },
+    {
+      "at": 25967,
+      "st": "error",
+      "stMs": 0,
+      "tokens": 0,
+      "tkMs": 0,
+      "tkErr": null,
+      "tkNull": false,
+      "hover": false,
+      "hvMs": 1,
+      "proj": "idle",
+      "projMs": 14,
+      "sinceKillMs": 24286
+    },
+    {
+      "at": 27486,
+      "st": "error",
+      "stMs": 0,
+      "tokens": 0,
+      "tkMs": 0,
+      "tkErr": null,
+      "tkNull": false,
+      "hover": false,
+      "hvMs": 1,
+      "proj": "idle",
+      "projMs": 14,
+      "sinceKillMs": 25804
+    },
+    {
+      "at": 29275,
+      "st": "error",
+      "stMs": 0,
+      "tokens": 0,
+      "tkMs": 0,
+      "tkErr": null,
+      "tkNull": false,
+      "hover": false,
+      "hvMs": 1,
+      "proj": "idle",
+      "projMs": 14,
+      "sinceKillMs": 27594
+    },
+    {
+      "at": 30803,
+      "st": "error",
+      "stMs": 0,
+      "tokens": 0,
+      "tkMs": 5,
+      "tkErr": null,
+      "tkNull": false,
+      "hover": false,
+      "hvMs": 1,
+      "proj": "idle",
+      "projMs": 18,
+      "sinceKillMs": 29114
+    },
+    {
+      "at": 33028,
+      "st": "starting",
+      "stMs": 10,
+      "tokens": 10925,
+      "tkMs": 681,
+      "tkErr": null,
+      "tkNull": false,
+      "hover": true,
+      "hvMs": 8,
+      "proj": "ready",
+      "projMs": 16,
+      "sinceKillMs": 30649
+    },
+    {
+      "at": 34583,
+      "st": "ready",
+      "stMs": 0,
+      "tokens": 10925,
+      "tkMs": 30,
+      "tkErr": null,
+      "tkNull": false,
+      "hover": true,
+      "hvMs": 2,
+      "proj": "ready",
+      "projMs": 14,
+      "sinceKillMs": 32871
+    },
+    {
+      "at": 36454,
+      "st": "ready",
+      "stMs": 0,
+      "tokens": 10925,
+      "tkMs": 26,
+      "tkErr": null,
+      "tkNull": false,
+      "hover": true,
+      "hvMs": 2,
+      "proj": "ready",
+      "projMs": 16,
+      "sinceKillMs": 34744
+    },
+    {
+      "at": 38011,
+      "st": "ready",
+      "stMs": 0,
+      "tokens": 10925,
+      "tkMs": 27,
+      "tkErr": null,
+      "tkNull": false,
+      "hover": true,
+      "hvMs": 2,
+      "proj": "ready",
+      "projMs": 15,
+      "sinceKillMs": 36301
+    },
+    {
+      "at": 39555,
+      "st": "ready",
+      "stMs": 0,
+      "tokens": 10925,
+      "tkMs": 24,
+      "tkErr": null,
+      "tkNull": false,
+      "hover": true,
+      "hvMs": 2,
+      "proj": "ready",
+      "projMs": 15,
+      "sinceKillMs": 37848
+    },
+    {
+      "at": 41101,
+      "st": "ready",
+      "stMs": 0,
+      "tokens": 10925,
+      "tkMs": 23,
+      "tkErr": null,
+      "tkNull": false,
+      "hover": true,
+      "hvMs": 2,
+      "proj": "ready",
+      "projMs": 15,
+      "sinceKillMs": 39395
+    },
+    {
+      "at": 43006,
+      "st": "ready",
+      "stMs": 0,
+      "tokens": 10925,
+      "tkMs": 24,
+      "tkErr": null,
+      "tkNull": false,
+      "hover": true,
+      "hvMs": 2,
+      "proj": "ready",
+      "projMs": 14,
+      "sinceKillMs": 41301
+    },
+    {
+      "at": 44546,
+      "st": "ready",
+      "stMs": 0,
+      "tokens": 10925,
+      "tkMs": 23,
+      "tkErr": null,
+      "tkNull": false,
+      "hover": true,
+      "hvMs": 2,
+      "proj": "ready",
+      "projMs": 14,
+      "sinceKillMs": 42842
+    },
+    {
+      "at": 46087,
+      "st": "ready",
+      "stMs": 0,
+      "tokens": 10925,
+      "tkMs": 23,
+      "tkErr": null,
+      "tkNull": false,
+      "hover": true,
+      "hvMs": 2,
+      "proj": "ready",
+      "projMs": 14,
+      "sinceKillMs": 44382
+    }
+  ],
+  "procSnaps": [
+    {
+      "sinceKillMs": 176,
+      "lsp": []
+    },
+    {
+      "sinceKillMs": 6586,
+      "lsp": []
+    },
+    {
+      "sinceKillMs": 13009,
+      "lsp": []
+    },
+    {
+      "sinceKillMs": 19380,
+      "lsp": []
+    },
+    {
+      "sinceKillMs": 25804,
+      "lsp": []
+    },
+    {
+      "sinceKillMs": 32871,
+      "lsp": [
+        20644,
+        7964
+      ]
+    },
+    {
+      "sinceKillMs": 39395,
+      "lsp": [
+        20644,
+        7964
+      ]
+    }
+  ],
+  "verdict": {
+    "statusesAfterKill": [
+      "error",
+      "starting",
+      "ready"
+    ],
+    "projectStatesAfterKill": [
+      "idle",
+      "ready"
+    ],
+    "tokensRecovered": true,
+    "tokensRecoveredAtMs": 30649,
+    "hoverRecovered": true,
+    "respawned": true,
+    "respawnAtMs": 32871,
+    "maxStatusCallMs": 10,
+    "maxTokenCallMs": 681,
+    "maxHoverCallMs": 9
+  }
+}

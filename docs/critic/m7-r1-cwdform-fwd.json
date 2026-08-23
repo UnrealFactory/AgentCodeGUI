@@ -1,0 +1,18 @@
+{
+  "form": "fwd",
+  "cwd": "C:/Users/User/AppData/Local/Temp/ccg-lsp-repo",
+  "rel": "lspbench/big.ts",
+  "at": "2026-08-23T07:08:55.395Z",
+  "status": "ready",
+  "tokens": 3,
+  "serverStarts": 2,
+  "serverPids": [
+    36568,
+    36256
+  ],
+  "exitsWithin4s": 0,
+  "survivedToShutdown": 2,
+  "roots": [
+    "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo"
+  ]
+}

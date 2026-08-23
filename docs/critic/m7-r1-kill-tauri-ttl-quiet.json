@@ -1,0 +1,278 @@
+{
+  "kind": "tauri",
+  "version": "3.0.0-beta.1",
+  "pid": 34636,
+  "at": "2026-08-23T06:42:25.508Z",
+  "work": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo",
+  "rel": "lspbench/big.ts",
+  "ready": {
+    "ms": 1,
+    "st": "ready"
+  },
+  "tokensBefore": 10925,
+  "before": {
+    "at": 1061,
+    "st": "ready",
+    "stMs": 1,
+    "tokens": 10925,
+    "tkMs": 66,
+    "tkErr": null,
+    "tkNull": false,
+    "hover": true,
+    "hvMs": 8,
+    "proj": "ready",
+    "projMs": 1
+  },
+  "procsBefore": [
+    {
+      "pid": 12816,
+      "name": "msedgewebview2.exe",
+      "lsp": false
+    },
+    {
+      "pid": 25260,
+      "name": "msedgewebview2.exe",
+      "lsp": false
+    },
+    {
+      "pid": 7056,
+      "name": "msedgewebview2.exe",
+      "lsp": false
+    },
+    {
+      "pid": 33216,
+      "name": "msedgewebview2.exe",
+      "lsp": false
+    },
+    {
+      "pid": 7988,
+      "name": "node.exe",
+      "lsp": true
+    },
+    {
+      "pid": 17280,
+      "name": "conhost.exe",
+      "lsp": false
+    },
+    {
+      "pid": 28784,
+      "name": "node.exe",
+      "lsp": true
+    }
+  ],
+  "victims": [
+    {
+      "pid": 7988,
+      "name": "node.exe"
+    },
+    {
+      "pid": 28784,
+      "name": "node.exe"
+    }
+  ],
+  "killedPids": [
+    7988,
+    28784
+  ],
+  "inject": {
+    "ttl": "4000",
+    "sweep": "800",
+    "quietMs": 12000
+  },
+  "samples": [
+    {
+      "at": 14251,
+      "st": "starting",
+      "stMs": 7,
+      "tokens": 10925,
+      "tkMs": 604,
+      "tkErr": null,
+      "tkNull": false,
+      "hover": true,
+      "hvMs": 13,
+      "proj": "ready",
+      "projMs": 2,
+      "sinceKillMs": 12239
+    },
+    {
+      "at": 16110,
+      "st": "ready",
+      "stMs": 4,
+      "tokens": 10925,
+      "tkMs": 60,
+      "tkErr": null,
+      "tkNull": false,
+      "hover": true,
+      "hvMs": 4,
+      "proj": "ready",
+      "projMs": 2,
+      "sinceKillMs": 14655
+    },
+    {
+      "at": 17686,
+      "st": "ready",
+      "stMs": 3,
+      "tokens": 10925,
+      "tkMs": 61,
+      "tkErr": null,
+      "tkNull": false,
+      "hover": true,
+      "hvMs": 3,
+      "proj": "ready",
+      "projMs": 1,
+      "sinceKillMs": 16232
+    },
+    {
+      "at": 19267,
+      "st": "ready",
+      "stMs": 3,
+      "tokens": 10925,
+      "tkMs": 55,
+      "tkErr": null,
+      "tkNull": false,
+      "hover": true,
+      "hvMs": 4,
+      "proj": "ready",
+      "projMs": 2,
+      "sinceKillMs": 17816
+    },
+    {
+      "at": 20806,
+      "st": "ready",
+      "stMs": 2,
+      "tokens": 10925,
+      "tkMs": 31,
+      "tkErr": null,
+      "tkNull": false,
+      "hover": true,
+      "hvMs": 2,
+      "proj": "ready",
+      "projMs": 1,
+      "sinceKillMs": 19384
+    },
+    {
+      "at": 22747,
+      "st": "ready",
+      "stMs": 1,
+      "tokens": 10925,
+      "tkMs": 34,
+      "tkErr": null,
+      "tkNull": false,
+      "hover": true,
+      "hvMs": 3,
+      "proj": "ready",
+      "projMs": 1,
+      "sinceKillMs": 21322
+    },
+    {
+      "at": 24337,
+      "st": "ready",
+      "stMs": 3,
+      "tokens": 10925,
+      "tkMs": 64,
+      "tkErr": null,
+      "tkNull": false,
+      "hover": true,
+      "hvMs": 4,
+      "proj": "ready",
+      "projMs": 2,
+      "sinceKillMs": 22877
+    },
+    {
+      "at": 25881,
+      "st": "ready",
+      "stMs": 1,
+      "tokens": 10925,
+      "tkMs": 31,
+      "tkErr": null,
+      "tkNull": false,
+      "hover": true,
+      "hvMs": 2,
+      "proj": "ready",
+      "projMs": 1,
+      "sinceKillMs": 24461
+    },
+    {
+      "at": 27423,
+      "st": "ready",
+      "stMs": 1,
+      "tokens": 10925,
+      "tkMs": 29,
+      "tkErr": null,
+      "tkNull": false,
+      "hover": true,
+      "hvMs": 3,
+      "proj": "ready",
+      "projMs": 1,
+      "sinceKillMs": 26004
+    },
+    {
+      "at": 29332,
+      "st": "ready",
+      "stMs": 2,
+      "tokens": 10925,
+      "tkMs": 29,
+      "tkErr": null,
+      "tkNull": false,
+      "hover": true,
+      "hvMs": 2,
+      "proj": "ready",
+      "projMs": 1,
+      "sinceKillMs": 27913
+    },
+    {
+      "at": 30910,
+      "st": "ready",
+      "stMs": 11,
+      "tokens": 10925,
+      "tkMs": 51,
+      "tkErr": null,
+      "tkNull": false,
+      "hover": true,
+      "hvMs": 6,
+      "proj": "ready",
+      "projMs": 2,
+      "sinceKillMs": 29456
+    }
+  ],
+  "procSnaps": [
+    {
+      "sinceKillMs": 12239,
+      "lsp": [
+        29096,
+        30528
+      ]
+    },
+    {
+      "sinceKillMs": 19384,
+      "lsp": [
+        29096,
+        30528
+      ]
+    },
+    {
+      "sinceKillMs": 26004,
+      "lsp": [
+        29096,
+        30528
+      ]
+    }
+  ],
+  "verdict": {
+    "statusesAfterKill": [
+      "starting",
+      "ready"
+    ],
+    "projectStatesAfterKill": [
+      "ready"
+    ],
+    "tokensRecovered": true,
+    "tokensRecoveredAtMs": 12239,
+    "hoverRecovered": true,
+    "respawned": true,
+    "respawnAtMs": 12239,
+    "maxStatusCallMs": 11,
+    "maxTokenCallMs": 604,
+    "maxHoverCallMs": 13
+  }
+}

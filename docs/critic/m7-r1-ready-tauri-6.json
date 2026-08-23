@@ -1,0 +1,107 @@
+{
+  "kind": "tauri",
+  "version": "3.0.0-beta.1",
+  "port": 9426,
+  "pid": 16104,
+  "at": "2026-08-23T06:36:42.212Z",
+  "fresh": true,
+  "probe": {
+    "installedAt": 79.7,
+    "url": "http://tauri.localhost/",
+    "apiAt": 124,
+    "st0SentAt": 124,
+    "st0RespAt": 172.6,
+    "st0": "starting",
+    "readyAt": 474.9,
+    "states": [
+      "starting",
+      "ready"
+    ],
+    "lag": [
+      {
+        "at": 124,
+        "lagMs": 24.5
+      },
+      {
+        "at": 172,
+        "lagMs": 28.2
+      },
+      {
+        "at": 216,
+        "lagMs": 23.7
+      },
+      {
+        "at": 237,
+        "lagMs": 0.8
+      },
+      {
+        "at": 259,
+        "lagMs": 1.8
+      },
+      {
+        "at": 280,
+        "lagMs": 0.7
+      },
+      {
+        "at": 302,
+        "lagMs": 2
+      },
+      {
+        "at": 323,
+        "lagMs": 1.1
+      },
+      {
+        "at": 344,
+        "lagMs": 1.2
+      },
+      {
+        "at": 423,
+        "lagMs": 59
+      },
+      {
+        "at": 445,
+        "lagMs": 1.8
+      },
+      {
+        "at": 466,
+        "lagMs": 0.9
+      },
+      {
+        "at": 486,
+        "lagMs": 0.8
+      }
+    ],
+    "polls": [
+      {
+        "sent": 124,
+        "ms": 48.6,
+        "st": "starting"
+      },
+      {
+        "sent": 280,
+        "ms": 195.4,
+        "st": "ready"
+      }
+    ]
+  },
+  "derived": {
+    "installedAt": 79.7,
+    "url": "http://tauri.localhost/",
+    "apiAt": 124,
+    "st0SentAt": 124,
+    "st0Ms": 48.6,
+    "st0": "starting",
+    "readyAt": 474.9,
+    "readyAfterFirstStatusMs": 351,
+    "polls": 2,
+    "pollMsFirst5": [
+      48.6,
+      195.4
+    ],
+    "lagMax2s": 59,
+    "lagOver50Before2s": 1,
+    "lagSpikes": [
+      "423ms:+59"
+    ]
+  }
+}
