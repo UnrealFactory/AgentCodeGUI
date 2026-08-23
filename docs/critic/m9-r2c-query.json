@@ -1,0 +1,356 @@
+{
+ "at": "2026-08-23T16:17:20.687Z",
+ "exe": "C:/Users/User/AppData/Local/Temp/ccg-m9c2-tgt/release/agentcodegui.exe",
+ "steps": {
+  "boot": {
+   "panels": 3,
+   "pid": 26836
+  },
+  "Q1": {
+   "base": {
+    "proc": {
+     "total": 4,
+     "cli": 0
+    },
+    "hub": {
+     "slots": 0,
+     "spawns": 0,
+     "ids": [],
+     "pids": []
+    }
+   },
+   "coldNulls": 15,
+   "coldTotal": 15,
+   "ghostChatNulls": 5,
+   "ghostBoardNulls": 5,
+   "weird": {
+    "empty": null,
+    "emptyPanel": null,
+    "noSep": null,
+    "hugeSlot": null,
+    "negSlot": null,
+    "slotOutOfRange": null
+   },
+   "afterCold": {
+    "proc": {
+     "total": 4,
+     "cli": 0
+    },
+    "hub": {
+     "slots": 0,
+     "spawns": 0,
+     "ids": [],
+     "pids": []
+    }
+   },
+   "turn": {
+    "afterTurn": {
+     "proc": {
+      "total": 4,
+      "cli": 0
+     },
+     "hub": {
+      "slots": 1,
+      "spawns": 1,
+      "ids": [
+       "ma-m9q-0"
+      ],
+      "pids": [
+       32660
+      ]
+     }
+    },
+    "afterWarm": {
+     "proc": {
+      "total": 4,
+      "cli": 0
+     },
+     "hub": {
+      "slots": 1,
+      "spawns": 1,
+      "ids": [
+       "ma-m9q-0"
+      ],
+      "pids": [
+       32660
+      ]
+     }
+    },
+    "warmNonNull": 20,
+    "sample": {
+     "type": "tooling",
+     "runId": "r26836-1",
+     "tooling": {
+      "cwd": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-m9c2-wt\\.critic-home-m9q\\wA",
+      "mcp": [
+       {
+        "name": "srv-a",
+        "status": "connected",
+        "tools": [
+         "echo"
+        ]
+       }
+      ],
+      "skills": [
+       {
+        "name": "s-a1",
+        "description": "a 스킬",
+        "scope": "project"
+       }
+      ],
+      "plugins": []
+     }
+    },
+    "srv": "srv-a"
+   }
+  },
+  "Q2": {
+   "gridChips": [
+    "1 · 1",
+    "1 · 2",
+    "1 · 3"
+   ],
+   "direct": [
+    {
+     "panelId": "m9q::0",
+     "srv": [
+      "srv-a"
+     ],
+     "cwd": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-m9c2-wt\\.critic-home-m9q\\wA",
+     "skills": 1
+    },
+    {
+     "panelId": "m9q::1",
+     "srv": [
+      "srv-b"
+     ],
+     "cwd": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-m9c2-wt\\.critic-home-m9q\\wB",
+     "skills": 2
+    },
+    {
+     "panelId": "m9q::2",
+     "srv": [
+      "srv-c"
+     ],
+     "cwd": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-m9c2-wt\\.critic-home-m9q\\wC",
+     "skills": 3
+    }
+   ],
+   "expand": {
+    "expandedChip": "1 · 2",
+    "afterRestore": [
+     "1 · 1",
+     "1 · 2",
+     "1 · 3"
+    ]
+   },
+   "popout": {
+    "popChip": "1 · 3",
+    "popPanelId": null,
+    "url": "http://tauri.localhost/index.html#mapanel"
+   },
+   "dial": {
+    "d1": "clicked",
+    "oneChip": "1 · 2",
+    "visibleAfter1": [
+     "1"
+    ],
+    "d3": "clicked",
+    "backChips": [
+     "1 · 1",
+     "1 · 2",
+     "1 · 3"
+    ],
+    "visibleAfter3": [
+     "1",
+     "0",
+     "2"
+    ]
+   }
+  },
+  "Q3": {
+   "before": {
+    "proc": {
+     "total": 4,
+     "cli": 0
+    },
+    "hub": {
+     "slots": 3,
+     "spawns": 4,
+     "ids": [
+      "ma-m9q-0",
+      "ma-m9q-1",
+      "ma-m9q-2"
+     ],
+     "pids": [
+      34588,
+      20264,
+      1784
+     ]
+    }
+   },
+   "seq": {},
+   "par": {},
+   "busy": {},
+   "remount": {
+    "missing": 0,
+    "first": [
+     "1 · 1",
+     "1 · 1"
+    ],
+    "last": [
+     "1 · 1",
+     "1 · 1"
+    ]
+   },
+   "after": {
+    "proc": {
+     "total": 4,
+     "cli": 0
+    },
+    "hub": {
+     "slots": 3,
+     "spawns": 5,
+     "ids": [
+      "ma-m9q-0",
+      "ma-m9q-1",
+      "ma-m9q-2"
+     ],
+     "pids": [
+      35680,
+      20264,
+      1784
+     ]
+    }
+   },
+   "alive": {
+    "panels": 3,
+    "api": "object"
+   }
+  },
+  "Q4_0": {
+   "marks": [
+    "1 · 1",
+    "1 · 1",
+    "1 · 1",
+    "1 · 1",
+    "1 · 1",
+    "1 · 1",
+    "1 · 1",
+    "1 · 1",
+    "1 · 1",
+    "1 · 1",
+    "1 · 1",
+    "1 · 1",
+    "1 · 1",
+    "1 · 1",
+    "1 · 1",
+    "1 · 4",
+    "1 · 4",
+    "1 · 4",
+    "1 · 4",
+    "1 · 4",
+    "1 · 4",
+    "1 · 4",
+    "1 · 4",
+    "1 · 4",
+    "1 · 4",
+    "1 · 4",
+    "1 · 4",
+    "1 · 4"
+   ],
+   "settled": "1 · 4",
+   "shellSrv": "srv-new",
+   "shellSkills": 4
+  },
+  "Q4_1": {
+   "marks": [
+    "1 · 4",
+    "1 · 1",
+    "1 · 1",
+    "1 · 1",
+    "1 · 1",
+    "1 · 1",
+    "1 · 1",
+    "1 · 1",
+    "1 · 1",
+    "1 · 1",
+    "1 · 1",
+    "1 · 1",
+    "1 · 1",
+    "1 · 1",
+    "1 · 1",
+    "1 · 4",
+    "1 · 4",
+    "1 · 4",
+    "1 · 4",
+    "1 · 4",
+    "1 · 4",
+    "1 · 4",
+    "1 · 4",
+    "1 · 4",
+    "1 · 4",
+    "1 · 4",
+    "1 · 4",
+    "1 · 4",
+    "1 · 4",
+    "1 · 4"
+   ],
+   "settled": "1 · 4",
+   "shellSrv": "srv-new",
+   "shellSkills": 4
+  },
+  "Q4_2": {
+   "marks": [
+    "1 · 4",
+    "1 · 1",
+    "1 · 1",
+    "1 · 1",
+    "1 · 1",
+    "1 · 1",
+    "1 · 1",
+    "1 · 1",
+    "1 · 1",
+    "1 · 1",
+    "1 · 1",
+    "1 · 1",
+    "1 · 1",
+    "1 · 1",
+    "1 · 1",
+    "1 · 4",
+    "1 · 4",
+    "1 · 4",
+    "1 · 4",
+    "1 · 4",
+    "1 · 4",
+    "1 · 4",
+    "1 · 4",
+    "1 · 4",
+    "1 · 4",
+    "1 · 4",
+    "1 · 4",
+    "1 · 4"
+   ],
+   "settled": "1 · 4",
+   "shellSrv": "srv-new",
+   "shellSkills": 4
+  },
+  "Q4": {
+   "rounds": [
+    {
+     "settled": "1 · 4",
+     "shell": "srv-new"
+    },
+    {
+     "settled": "1 · 4",
+     "shell": "srv-new"
+    },
+    {
+     "settled": "1 · 4",
+     "shell": "srv-new"
+    }
+   ]
+  }
+ },
+ "findings": []
+}

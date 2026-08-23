@@ -1,0 +1,17 @@
+{
+ "at": "2026-08-23T16:28:15.882Z",
+ "exe": "C:/Users/User/AppData/Local/Temp/ccg-m9c2-tgt/release/agentcodegui.exe",
+ "steps": {
+  "boot": {
+   "panels": 3,
+   "pid": 18056
+  },
+  "Q5": {
+   "desc": "",
+   "scope": null,
+   "wireCommandsChanged": 0,
+   "spawns": 2
+  }
+ },
+ "findings": []
+}

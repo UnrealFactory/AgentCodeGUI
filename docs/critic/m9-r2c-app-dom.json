@@ -1,0 +1,119 @@
+{
+ "home": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-m9c2-wt\\.poc-home-mcpskill",
+ "engine": "0.3.241",
+ "account": "lmg56634@gmail.com",
+ "dirA": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-mcpskill\\A",
+ "dirB": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-mcpskill\\B",
+ "panelCwds": [
+  "A",
+  "B"
+ ],
+ "chips": [
+  {
+   "text": "1 · 15",
+   "tip": "MCP 1개 연결 · 스킬 15개 · 클릭해 자세히"
+  },
+  {
+   "text": "2/3 · 16",
+   "tip": "MCP 2개 연결 · 1개 실패 · 스킬 16개 · 클릭해 자세히"
+  }
+ ],
+ "pops": [
+  {
+   "head": "도구 환경 · A",
+   "secs": [
+    {
+     "head": "MCP 서버 1",
+     "rows": [
+      "ccg-probe-a · 연결됨 · echo, ping · 도구 2"
+     ]
+    },
+    {
+     "head": "스킬 15",
+     "rows": [
+      "/alpha-probe · A 픽스처 전용 스킬 — B에는 없다 · 프로젝트",
+      "/deep-research · Deep research harness — fan-out web searches, fetch sources, adversarially verify claims, synthesize a cited r…",
+      "/dataviz · Use this skill whenever you are about to create ANY chart, graph, plot, dashboard, or data visualization, in A…",
+      "/update-config · Use this skill to configure the Claude Code harness via settings.json. Automated behaviors (\"from now on when…",
+      "/verify · Verify that a code change actually does what it's supposed to by exercising it end-to-end and observing behavi…",
+      "/debug · Enable debug logging for this session and help diagnose issues",
+      "/code-review · Review the current diff, or a PR number/branch/path target, for correctness bugs and reuse/simplification/effi…",
+      "/simplify · Review the changed code for reuse, simplification, efficiency, and altitude cleanups, then apply the fixes. Qu…",
+      "/batch · Research and plan a large-scale change, then execute it in parallel across 5–30 isolated worktree agents that…",
+      "/fewer-permission-prompts · Scan your transcripts for common read-only Bash and MCP tool calls, then add a prioritized allowlist to projec…",
+      "/doctor · Health-check the user's Claude Code setup and fix issues: diagnose installation health — what the `claude doct…",
+      "/loop · Run a prompt or slash command on a recurring interval (e.g. /loop 5m /foo, defaults to 10m)",
+      "/claude-api · Reference for the Claude API / Anthropic SDK — model ids, pricing, params, streaming, tool use, MCP, agents, c…",
+      "/run · Launch and drive this project's app to see a change working. Use when asked to run, start, or screenshot the a…",
+      "/run-skill-generator · Author or improve the run-<unit> skill — a per-project skill that tells agents how to build, launch, and drive…"
+     ]
+    }
+   ],
+   "foot": "이 대화가 실행될 때 CLI가 보고한 목록이에요 · 프로젝트: <폴더>/.mcp.json · .claude/skills"
+  },
+  {
+   "head": "도구 환경 · B",
+   "secs": [
+    {
+     "head": "MCP 서버 3",
+     "rows": [
+      "ccg-probe-b · 연결됨 · echo, ping · 도구 2",
+      "ccg-broken-b · 연결 실패",
+      "ccg-emoji🚀b · 연결됨 · echo, ping · 도구 2"
+     ]
+    },
+    {
+     "head": "스킬 16",
+     "rows": [
+      "/beta-probe · B 픽스처 전용 스킬 — A에는 없다 · 프로젝트",
+      "/beta-second · B에만 있는 두 번째 스킬 · 프로젝트",
+      "/deep-research · Deep research harness — fan-out web searches, fetch sources, adversarially verify claims, synthesize a cited r…",
+      "/dataviz · Use this skill whenever you are about to create ANY chart, graph, plot, dashboard, or data visualization, in A…",
+      "/update-config · Use this skill to configure the Claude Code harness via settings.json. Automated behaviors (\"from now on when…",
+      "/verify · Verify that a code change actually does what it's supposed to by exercising it end-to-end and observing behavi…",
+      "/debug · Enable debug logging for this session and help diagnose issues",
+      "/code-review · Review the current diff, or a PR number/branch/path target, for correctness bugs and reuse/simplification/effi…",
+      "/simplify · Review the changed code for reuse, simplification, efficiency, and altitude cleanups, then apply the fixes. Qu…",
+      "/batch · Research and plan a large-scale change, then execute it in parallel across 5–30 isolated worktree agents that…",
+      "/fewer-permission-prompts · Scan your transcripts for common read-only Bash and MCP tool calls, then add a prioritized allowlist to projec…",
+      "/doctor · Health-check the user's Claude Code setup and fix issues: diagnose installation health — what the `claude doct…",
+      "/loop · Run a prompt or slash command on a recurring interval (e.g. /loop 5m /foo, defaults to 10m)",
+      "/claude-api · Reference for the Claude API / Anthropic SDK — model ids, pricing, params, streaming, tool use, MCP, agents, c…",
+      "/run · Launch and drive this project's app to see a change working. Use when asked to run, start, or screenshot the a…",
+      "/run-skill-generator · Author or improve the run-<unit> skill — a per-project skill that tells agents how to build, launch, and drive…"
+     ]
+    }
+   ],
+   "foot": "이 대화가 실행될 때 CLI가 보고한 목록이에요 · 프로젝트: <폴더>/.mcp.json · .claude/skills"
+  }
+ ],
+ "longestSkillRow": 139,
+ "toolingAfterTurn1": 1,
+ "toolingAfterTurn2": 2,
+ "toolingCwds": [
+  "c:\\users\\user\\appdata\\local\\temp\\ccg-mcpskill\\a",
+  "c:\\users\\user\\appdata\\local\\temp\\ccg-mcpskill\\a"
+ ],
+ "wire": {
+  "frames": 37,
+  "inits": 3,
+  "commandsChanged": 0,
+  "initCwds": [
+   "c:\\users\\user\\appdata\\local\\temp\\ccg-mcpskill\\a",
+   "c:\\users\\user\\appdata\\local\\temp\\ccg-mcpskill\\b",
+   "c:\\users\\user\\appdata\\local\\temp\\ccg-mcpskill\\a"
+  ]
+ },
+ "chipLifetime": {
+  "before": "1 · 15",
+  "expanded": "1 · 15",
+  "restored": "1 · 15"
+ },
+ "popExclusive": {
+  "afterTool": 1,
+  "afterFolder": 1,
+  "afterToolAgain": 1
+ },
+ "popoutChipFirstEntry": "1 · 15",
+ "chipAfterFoldBack": "1 · 15"
+}

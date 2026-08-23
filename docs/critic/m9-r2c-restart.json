@@ -1,0 +1,62 @@
+{
+ "at": "2026-08-23T16:21:27.622Z",
+ "exe": "C:/Users/User/AppData/Local/Temp/ccg-m9c2-tgt/release/agentcodegui.exe",
+ "steps": {
+  "run1": {
+   "chip": "1 · 1",
+   "tl": {
+    "type": "tooling",
+    "runId": "r36464-1",
+    "tooling": {
+     "cwd": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-m9c2-wt\\.critic-home-m9r\\wA",
+     "mcp": [
+      {
+       "name": "srv-restart",
+       "status": "connected",
+       "tools": [
+        "echo"
+       ]
+      }
+     ],
+     "skills": [
+      {
+       "name": "s-r",
+       "description": "재시작",
+       "scope": "project"
+      }
+     ],
+     "plugins": []
+    }
+   }
+  },
+  "run2": {
+   "chip": null,
+   "tl": null,
+   "dbg": {
+    "chats": [],
+    "cli": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-m9c2-wt\\.critic-home-m9r\\engines\\fake\\node_modules/@anthropic-ai/claude-agent-sdk-win32-x64/claude.exe",
+    "flags": [],
+    "talk": {
+     "config": {
+      "version": 1,
+      "enabled": false,
+      "boards": {},
+      "maxHops": 4,
+      "maxMsgs": 12,
+      "maxFanout": 3
+     },
+     "chains": [],
+     "pos": [],
+     "log": []
+    },
+    "accountSwitch": {
+     "on": false,
+     "busy": [],
+     "picked": null,
+     "skipped": []
+    }
+   }
+  }
+ },
+ "findings": []
+}

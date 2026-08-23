@@ -1,0 +1,164 @@
+{
+ "at": "2026-08-23T16:19:29.689Z",
+ "exe": "C:/Users/User/AppData/Local/Temp/ccg-m9c2-tgt/release/agentcodegui.exe",
+ "steps": {
+  "boot": {
+   "panels": 3,
+   "pid": 23488
+  },
+  "Q2": {
+   "gridChips": [
+    "1 · 1",
+    "1 · 2",
+    "1 · 3"
+   ],
+   "direct": [
+    {
+     "panelId": "m9q::0",
+     "srv": [
+      "srv-a"
+     ],
+     "cwd": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-m9c2-wt\\.critic-home-m9q\\wA",
+     "skills": 1
+    },
+    {
+     "panelId": "m9q::1",
+     "srv": [
+      "srv-b"
+     ],
+     "cwd": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-m9c2-wt\\.critic-home-m9q\\wB",
+     "skills": 2
+    },
+    {
+     "panelId": "m9q::2",
+     "srv": [
+      "srv-c"
+     ],
+     "cwd": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-m9c2-wt\\.critic-home-m9q\\wC",
+     "skills": 3
+    }
+   ],
+   "byChat": [
+    {
+     "chatId": "ma-m9q-1",
+     "srv": "srv-b",
+     "cwd": "c:\\users\\user\\appdata\\local\\temp\\ccg-m9c2-wt\\.critic-home-m9q\\wb"
+    },
+    {
+     "chatId": "ma-m9q-0",
+     "srv": "srv-a",
+     "cwd": "c:\\users\\user\\appdata\\local\\temp\\ccg-m9c2-wt\\.critic-home-m9q\\wa"
+    },
+    {
+     "chatId": "ma-m9q-2",
+     "srv": "srv-c",
+     "cwd": "c:\\users\\user\\appdata\\local\\temp\\ccg-m9c2-wt\\.critic-home-m9q\\wc"
+    }
+   ],
+   "expand": {
+    "expandedChip": "1 · 2",
+    "afterRestore": [
+     "1 · 1",
+     "1 · 2",
+     "1 · 3"
+    ]
+   },
+   "popout": {
+    "popChip": "1 · 3",
+    "popPanelId": null,
+    "url": "http://tauri.localhost/index.html#mapanel"
+   },
+   "dial": {
+    "d1": "clicked",
+    "oneChip": "1 · 2",
+    "visibleAfter1": [
+     "1"
+    ],
+    "d3": "clicked",
+    "backChips": [
+     "1 · 1",
+     "1 · 2",
+     "1 · 3"
+    ],
+    "visibleAfter3": [
+     "1",
+     "0",
+     "2"
+    ]
+   }
+  },
+  "Q3": {
+   "before": {
+    "proc": {
+     "total": 4,
+     "cli": 0
+    },
+    "hub": {
+     "slots": 3,
+     "spawns": 4,
+     "ids": [
+      "ma-m9q-1",
+      "ma-m9q-0",
+      "ma-m9q-2"
+     ],
+     "pids": [
+      16064,
+      19460,
+      18000
+     ]
+    }
+   },
+   "seq": {
+    "ms": 70,
+    "nulls": 0
+   },
+   "par": {
+    "ms": 17,
+    "nulls": 0,
+    "maxGapMs": 16,
+    "ticks": 1
+   },
+   "busy": {
+    "ms": 19,
+    "nulls": 0,
+    "maxOneMs": 15
+   },
+   "remount": {
+    "missing": 0,
+    "first": [
+     "1 · 1",
+     "1 · 1"
+    ],
+    "last": [
+     "1 · 1",
+     "1 · 1"
+    ]
+   },
+   "after": {
+    "proc": {
+     "total": 4,
+     "cli": 0
+    },
+    "hub": {
+     "slots": 3,
+     "spawns": 5,
+     "ids": [
+      "ma-m9q-1",
+      "ma-m9q-0",
+      "ma-m9q-2"
+     ],
+     "pids": [
+      16064,
+      3516,
+      18000
+     ]
+    }
+   },
+   "alive": {
+    "panels": 3,
+    "api": "object"
+   }
+  }
+ },
+ "findings": []
+}

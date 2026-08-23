@@ -1,0 +1,550 @@
+{
+ "at": "2026-08-23T16:08:48.685Z",
+ "exe": "C:/Users/User/AppData/Local/Temp/ccg-m9c2-tgt/release/agentcodegui.exe",
+ "steps": {
+  "boot": {
+   "panels": 2,
+   "win": {
+    "w": 1320,
+    "h": 880
+   }
+  },
+  "A1": {
+   "chip": {
+    "text": "7/10 · 50",
+    "tip": "MCP 7개 연결 · 1개 실패 · 1개 인증 필요 · 1개 연결 중 · 스킬 50개 · 클릭해 자세히",
+    "redCount": true,
+    "w": 95
+   },
+   "pop": {
+    "head": "도구 환경 | wA",
+    "geo": {
+     "w": 300,
+     "h": 340,
+     "scrollH": 3180,
+     "clientH": 338,
+     "rows": 60,
+     "rowH": 41,
+     "overflowX": 0,
+     "belowViewport": 0,
+     "visibleRows": 6
+    },
+    "secHeads": [
+     "MCP 서버 10/10",
+     "스킬 50/50"
+    ],
+    "longest": 130,
+    "sample": [
+     "srv-1 | 연결됨 · echo, ping, search | 도구 3",
+     "srv-2 | 연결됨 · echo, ping, search | 도구 3",
+     "srv-3 | 연결됨 · echo, ping, search | 도구 3",
+     "srv-4 | 연결됨 · echo, ping, search | 도구 3",
+     "srv-5 | 연결됨 · echo, ping, search | 도구 3",
+     "srv-6 | 연결됨 · echo, ping, search | 도구 3",
+     "srv-7 | 연결됨 · echo, ping, search | 도구 3",
+     "srv-dead | 연결 실패 · echo, ping, search | 도구 3",
+     "srv-auth | 인증 필요 · echo, ping, search | 도구 3",
+     "srv-wait | 연결 중 · echo, ping, search | 도구 3"
+    ]
+   }
+  },
+  "A2": {
+   "chip": {
+    "text": "4/5 · 5",
+    "tip": "MCP 4개 연결 · 1개 상태 미상 · 스킬 5개 · 클릭해 자세히",
+    "redCount": false,
+    "w": 83
+   },
+   "rows": [
+    {
+     "head": "MCP 서버 5",
+     "rows": [
+      "my.co tools | 연결됨 · search | 도구 1",
+      "srv__dbl | 연결됨 · ping | 도구 1",
+      "Ω 유니코드 🚀 | 연결됨 · hello | 도구 1",
+      "srv-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx | 연결됨 · t1 | 도구 1",
+      "no-status-here | unknown"
+     ]
+    },
+    {
+     "head": "스킬 5",
+     "rows": [
+      "/dup-name | 중복 이름 스킬 | 프로젝트",
+      "/dup-name | 중복 이름 스킬 | 프로젝트",
+      "/myplug:skill | 플러그인 스킬 | 플러그인",
+      "/ 공백 | 설명 없음",
+      "/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx | 긴 이름 | 개인"
+     ]
+    },
+    {
+     "head": "플러그인 1",
+     "rows": [
+      "myplug | 1.2.3"
+     ]
+    }
+   ],
+   "geo": {
+    "w": 300,
+    "h": 340,
+    "scrollH": 623,
+    "clientH": 327,
+    "rows": 11,
+    "rowH": 41,
+    "overflowX": 0,
+    "belowViewport": 0,
+    "visibleRows": 5
+   },
+   "event": {
+    "cwd": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-m9c2-wt\\.critic-home-m9\\wA",
+    "mcp": [
+     {
+      "name": "my.co tools",
+      "status": "connected",
+      "tools": [
+       "search"
+      ]
+     },
+     {
+      "name": "srv__dbl",
+      "status": "connected",
+      "tools": [
+       "ping"
+      ]
+     },
+     {
+      "name": "Ω 유니코드 🚀",
+      "status": "connected",
+      "tools": [
+       "hello"
+      ]
+     },
+     {
+      "name": "srv-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "status": "connected",
+      "tools": [
+       "t1"
+      ]
+     },
+     {
+      "name": "no-status-here",
+      "status": "unknown",
+      "tools": []
+     }
+    ],
+    "skills": [
+     {
+      "name": "dup-name",
+      "description": "중복 이름 스킬",
+      "scope": "project"
+     },
+     {
+      "name": "dup-name",
+      "description": "중복 이름 스킬",
+      "scope": "project"
+     },
+     {
+      "name": "myplug:skill",
+      "description": "플러그인 스킬",
+      "scope": "plugin"
+     },
+     {
+      "name": "  공백 ",
+      "description": "",
+      "scope": null
+     },
+     {
+      "name": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "description": "긴 이름",
+      "scope": "user"
+     }
+    ],
+    "plugins": [
+     {
+      "name": "myplug",
+      "version": "1.2.3"
+     }
+    ]
+   }
+  },
+  "A3": {
+   "midChip": {
+    "text": "1 · 1",
+    "tip": "MCP 1개 연결 · 스킬 1개 · 클릭해 자세히",
+    "redCount": false,
+    "w": 71
+   },
+   "endChip": {
+    "text": "0/1 · 1",
+    "tip": "MCP 0개 연결 · 1개 실패 · 스킬 1개 · 클릭해 자세히",
+    "redCount": true,
+    "w": 83
+   },
+   "evs": [
+    "my.co tools:connected,srv__dbl:connected,Ω 유니코드 🚀:connected,srv-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx:connected,no-status-here:unknown",
+    "my.co tools:connected,srv__dbl:connected,Ω 유니코드 🚀:connected,srv-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx:connected,no-status-here:unknown",
+    "srv-live:connected",
+    "srv-live:failed"
+   ]
+  },
+  "A4": {
+   "late": [
+    [
+     "(EMPTY) 이 폴더에 붙은 MCP 서버가 없어요"
+    ],
+    [
+     "/late-a | 늦게 온 설명 | 프로젝트"
+    ]
+   ],
+   "push": [
+    [
+     "(EMPTY) 이 폴더에 붙은 MCP 서버가 없어요"
+    ],
+    [
+     "/push-b | 설명 없음"
+    ]
+   ],
+   "evs": 11,
+   "wire": {
+    "frames": 27,
+    "inits": 7,
+    "commandsChanged": 1
+   }
+  },
+  "A5": {
+   "chats": [
+    {
+     "id": "ma-m9-crit-1",
+     "cwd": "c:\\users\\user\\appdata\\local\\temp\\ccg-m9c2-wt\\.critic-home-m9\\wb"
+    },
+    {
+     "id": "ma-m9-crit-0",
+     "cwd": "c:\\users\\user\\appdata\\local\\temp\\ccg-m9c2-wt\\.critic-home-m9\\wa"
+    }
+   ],
+   "chat0": "ma-m9-crit-0",
+   "chat1": "ma-m9-crit-1",
+   "identitySet": {
+    "kind": "applied",
+    "tools": {
+     "skillOverrides": {
+      "skill-off": "disabled"
+     },
+     "deniedMcp": [
+      "srv-off"
+     ]
+    },
+    "revision": 1
+   },
+   "afterPolicyNoRespawn": {
+    "chip": {
+     "text": "1 · 1",
+     "tip": "MCP 1개 연결 · 1개 꺼짐 · 스킬 1개 · 끈 스킬 1개 · 클릭해 자세히",
+     "redCount": false,
+     "w": 71
+    },
+    "rows": [
+     [
+      "srv-on | 연결됨 · echo | 도구 1",
+      "srv-off | 설정에서 껐어요"
+     ],
+     [
+      "/s-keep | 남는 스킬 | 프로젝트",
+      "/skill-off | 설정에서 껐어요"
+     ]
+    ]
+   },
+   "c0": {
+    "text": "1 · 1",
+    "tip": "MCP 1개 연결 · 1개 꺼짐 · 스킬 1개 · 끈 스킬 1개 · 클릭해 자세히",
+    "redCount": false,
+    "w": 71
+   },
+   "c1": {
+    "text": "1 · 1",
+    "tip": "MCP 1개 연결 · 스킬 1개 · 클릭해 자세히",
+    "redCount": false,
+    "w": 71
+   },
+   "p0": [
+    [
+     "srv-on | 연결됨 · echo | 도구 1",
+     "srv-off | 설정에서 껐어요"
+    ],
+    [
+     "/s-keep | 남는 스킬 | 프로젝트",
+     "/skill-off | 설정에서 껐어요"
+    ]
+   ],
+   "p1": [
+    [
+     "srv-on | 연결됨 · echo | 도구 1"
+    ],
+    [
+     "/s-keep | 남는 스킬 | 프로젝트"
+    ]
+   ]
+  },
+  "A10": {
+   "openBoth": {
+    "afterTool": 0
+   },
+   "both": "clicked-folder",
+   "shot": {
+    "count": 1,
+    "pops": [
+     {
+      "head": "작업 폴더",
+      "x": 353,
+      "w": 300,
+      "y": 95,
+      "h": 214
+     }
+    ],
+    "overlap": 0
+   }
+  },
+  "A9": {
+   "before": {
+    "text": "1 · 1",
+    "tip": "MCP 1개 연결 · 1개 꺼짐 · 스킬 1개 · 끈 스킬 1개 · 클릭해 자세히",
+    "redCount": false,
+    "w": 71
+   },
+   "expandedChip": {
+    "text": "1 · 1"
+   },
+   "afterRestore": {
+    "text": "1 · 1",
+    "tip": "MCP 1개 연결 · 1개 꺼짐 · 스킬 1개 · 끈 스킬 1개 · 클릭해 자세히",
+    "redCount": false,
+    "w": 71
+   },
+   "dialLabels": []
+  },
+  "A8": {
+   "withChip": {
+    "titleW": 129,
+    "full": 269,
+    "clipped": true,
+    "panelW": 402
+   },
+   "noChip": {
+    "titleW": 161,
+    "full": 269,
+    "clipped": true,
+    "panelW": 402
+   },
+   "lost": 32,
+   "title": "리팩터링 대형 작업 — 엔진 전환 · 계정 스위치 · 한도 이어서"
+  },
+  "A6": {
+   "targets": [
+    "http://tauri.localhost/index.html#mapanel",
+    "http://tauri.localhost/"
+   ],
+   "chipBeforeTurn": {
+    "text": "1 · 1",
+    "tip": "MCP 1개 연결 · 1개 꺼짐 · 스킬 1개 · 끈 스킬 1개 · 클릭해 자세히"
+   },
+   "chipAfterTurn": {
+    "text": "1 · 1",
+    "tip": "MCP 1개 연결 · 1개 꺼짐 · 스킬 1개 · 끈 스킬 1개 · 클릭해 자세히"
+   },
+   "pop": {
+    "text": "도구 환경 | wA | MCP 서버 1 · 꺼짐 1 | srv-pop | 연결됨 · echo | 도구 1 | srv-off | 설정에서 껐어요 | 스킬 1 · 꺼짐 1 | /sp | 팝아웃 스킬 | 프로젝트 | /skill-off | 설정에서 껐어요 | 이 대화가 실행될 때 CLI가 보고한 목록이에요 · 프로젝트: <폴더>/.mcp.json · .claude/skills",
+    "rect": {
+     "x": 654,
+     "y": 69,
+     "w": 300,
+     "h": 304
+    },
+    "win": {
+     "w": 1100,
+     "h": 820
+    }
+   }
+  },
+  "A7_slot": 1,
+  "A7_1100": {
+   "head": {
+    "panelW": 532,
+    "headW": 530,
+    "headScrollW": 530,
+    "overflow": false,
+    "title": {
+     "x": 590,
+     "w": 15,
+     "text": "B",
+     "clipped": false,
+     "outside": false
+    },
+    "folder": {
+     "x": 942,
+     "w": 12,
+     "text": "wB",
+     "clipped": false,
+     "outside": false
+    },
+    "status": {
+     "x": 984,
+     "w": 33,
+     "text": "완료",
+     "clipped": false,
+     "outside": false
+    },
+    "chip": {
+     "x": 840,
+     "w": 71,
+     "text": "1 · 1",
+     "clipped": false,
+     "outside": false
+    }
+   },
+   "popGeo": {
+    "w": 300,
+    "h": 217,
+    "scrollH": 215,
+    "clientH": 215,
+    "rows": 2,
+    "rowH": 41,
+    "overflowX": 0,
+    "belowViewport": 0,
+    "visibleRows": 2
+   }
+  },
+  "A7_900": {
+   "head": {
+    "panelW": 432,
+    "headW": 430,
+    "headScrollW": 430,
+    "overflow": false,
+    "title": {
+     "x": 490,
+     "w": 15,
+     "text": "B",
+     "clipped": false,
+     "outside": false
+    },
+    "folder": {
+     "x": 742,
+     "w": 12,
+     "text": "wB",
+     "clipped": false,
+     "outside": false
+    },
+    "status": {
+     "x": 784,
+     "w": 33,
+     "text": "완료",
+     "clipped": false,
+     "outside": false
+    },
+    "chip": {
+     "x": 640,
+     "w": 71,
+     "text": "1 · 1",
+     "clipped": false,
+     "outside": false
+    }
+   },
+   "popGeo": {
+    "w": 300,
+    "h": 217,
+    "scrollH": 215,
+    "clientH": 215,
+    "rows": 2,
+    "rowH": 41,
+    "overflowX": 0,
+    "belowViewport": 0,
+    "visibleRows": 2
+   }
+  },
+  "A7_840": {
+   "head": {
+    "panelW": 402,
+    "headW": 400,
+    "headScrollW": 400,
+    "overflow": false,
+    "title": {
+     "x": 460,
+     "w": 15,
+     "text": "B",
+     "clipped": false,
+     "outside": false
+    },
+    "folder": {
+     "x": 682,
+     "w": 12,
+     "text": "wB",
+     "clipped": false,
+     "outside": false
+    },
+    "status": {
+     "x": 724,
+     "w": 33,
+     "text": "완료",
+     "clipped": false,
+     "outside": false
+    },
+    "chip": {
+     "x": 580,
+     "w": 71,
+     "text": "1 · 1",
+     "clipped": false,
+     "outside": false
+    }
+   },
+   "popGeo": {
+    "w": 300,
+    "h": 217,
+    "scrollH": 215,
+    "clientH": 215,
+    "rows": 2,
+    "rowH": 41,
+    "overflowX": 0,
+    "belowViewport": 0,
+    "visibleRows": 2
+   }
+  },
+  "A7_wide": {
+   "panelW": 642,
+   "headW": 640,
+   "headScrollW": 640,
+   "overflow": false,
+   "title": {
+    "x": 700,
+    "w": 15,
+    "text": "B",
+    "clipped": false,
+    "outside": false
+   },
+   "folder": {
+    "x": 1162,
+    "w": 12,
+    "text": "wB",
+    "clipped": false,
+    "outside": false
+   },
+   "status": {
+    "x": 1204,
+    "w": 33,
+    "text": "완료",
+    "clipped": false,
+    "outside": false
+   },
+   "chip": {
+    "x": 1060,
+    "w": 71,
+    "text": "1 · 1",
+    "clipped": false,
+    "outside": false
+   }
+  }
+ },
+ "findings": [
+  {
+   "id": "A4-push",
+   "why": "commands_changed 푸시가 화면까지 안 온다"
+  }
+ ]
+}
