@@ -1,0 +1,66 @@
+{
+  "at": "2026-08-23T21:25:41.401Z",
+  "exe": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-m7r4-target\\release\\agentcodegui.exe",
+  "checks": [
+    {
+      "id": "files-changed",
+      "ok": true,
+      "detail": {
+        "wrote": {
+          "ok": true
+        },
+        "events": [
+          {
+            "paths": [
+              "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-r4wire-work\\lspbench_cpp\\big.cpp"
+            ],
+            "exts": [
+              "c",
+              "h",
+              "cpp",
+              "cc",
+              "cxx",
+              "hpp",
+              "hxx",
+              "hh",
+              "inl"
+            ]
+          }
+        ],
+        "broadcastMs": 124,
+        "serverKnowsNewSymbol": true,
+        "hoverHead": "### function `benchEdit7` --- → `int` Parameters: - `const BenchConfig & cfg` --"
+      }
+    },
+    {
+      "id": "install-progress",
+      "ok": true,
+      "detail": {
+        "statusBefore": "need-install",
+        "statusAfter": "starting",
+        "result": {
+          "ok": true
+        },
+        "elapsedMs": 1542,
+        "events": 7,
+        "firstLines": [
+          "null% 내려받을 주소를 찾는 중…",
+          "0% 내려받는 중…",
+          "0% 내려받는 중… 0.0MB / 26.9MB"
+        ],
+        "lastEvent": {
+          "server": "cpp",
+          "label": "C/C++",
+          "percent": 100,
+          "line": "준비 완료",
+          "done": true,
+          "ok": true
+        },
+        "monotonic": true,
+        "sawMidProgress": true,
+        "binary": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-r4wire-home\\lsp\\cpp\\clangd_22.1.6\\bin\\clangd.exe",
+        "binaryBytes": 50005504
+      }
+    }
+  ]
+}

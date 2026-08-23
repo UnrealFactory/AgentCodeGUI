@@ -1,0 +1,63 @@
+{
+  "kind": "tauri",
+  "rel": "lspbench_cpp/big.cpp",
+  "n": 5,
+  "apiAtP50": 104.6,
+  "st0SentP50": 104.6,
+  "st0RoundTripP50": 59,
+  "readyP50": 368.5,
+  "firstStatus": [
+    "starting",
+    "starting",
+    "starting",
+    "starting",
+    "starting"
+  ],
+  "rows": [
+    {
+      "i": 1,
+      "apiAt": 102,
+      "st0SentAt": 102,
+      "st0Ms": 49,
+      "st0": "starting",
+      "readyAt": 368.5,
+      "states": "starting>ready"
+    },
+    {
+      "i": 2,
+      "apiAt": 109.7,
+      "st0SentAt": 109.7,
+      "st0Ms": 59,
+      "st0": "starting",
+      "readyAt": 381.5,
+      "states": "starting>ready"
+    },
+    {
+      "i": 3,
+      "apiAt": 99.8,
+      "st0SentAt": 99.8,
+      "st0Ms": 59,
+      "st0": "starting",
+      "readyAt": 337.1,
+      "states": "starting>ready"
+    },
+    {
+      "i": 4,
+      "apiAt": 198.1,
+      "st0SentAt": 198.1,
+      "st0Ms": 60,
+      "st0": "starting",
+      "readyAt": 470.3,
+      "states": "starting>ready"
+    },
+    {
+      "i": 5,
+      "apiAt": 104.6,
+      "st0SentAt": 104.6,
+      "st0Ms": 60,
+      "st0": "starting",
+      "readyAt": 352.4,
+      "states": "starting>ready"
+    }
+  ]
+}

@@ -1,0 +1,123 @@
+{
+  "kind": "tauri",
+  "version": "3.0.0-beta.1",
+  "port": 9394,
+  "pid": 32812,
+  "at": "2026-08-23T20:52:36.239Z",
+  "fresh": false,
+  "probe": {
+    "installedAt": 41.2,
+    "url": "http://tauri.localhost/",
+    "apiAt": 109.7,
+    "st0SentAt": 109.7,
+    "st0RespAt": 169.2,
+    "st0": "starting",
+    "readyAt": 381.5,
+    "states": [
+      "starting",
+      "ready"
+    ],
+    "lag": [
+      {
+        "at": 73,
+        "lagMs": 11.3
+      },
+      {
+        "at": 110,
+        "lagMs": 17.5
+      },
+      {
+        "at": 169,
+        "lagMs": 38.6
+      },
+      {
+        "at": 189,
+        "lagMs": 0.7
+      },
+      {
+        "at": 209,
+        "lagMs": 0.1
+      },
+      {
+        "at": 231,
+        "lagMs": 1.5
+      },
+      {
+        "at": 251,
+        "lagMs": 0.1
+      },
+      {
+        "at": 272,
+        "lagMs": 1
+      },
+      {
+        "at": 294,
+        "lagMs": 1.7
+      },
+      {
+        "at": 365,
+        "lagMs": 51
+      },
+      {
+        "at": 385,
+        "lagMs": 0.1
+      },
+      {
+        "at": 406,
+        "lagMs": 0.9
+      },
+      {
+        "at": 426,
+        "lagMs": 0.5
+      },
+      {
+        "at": 447,
+        "lagMs": 0.2
+      },
+      {
+        "at": 468,
+        "lagMs": 1.5
+      },
+      {
+        "at": 488,
+        "lagMs": 0.2
+      },
+      {
+        "at": 508,
+        "lagMs": 0.1
+      }
+    ],
+    "polls": [
+      {
+        "sent": 110,
+        "ms": 59.5,
+        "st": "starting"
+      },
+      {
+        "sent": 272,
+        "ms": 109.3,
+        "st": "ready"
+      }
+    ]
+  },
+  "derived": {
+    "installedAt": 41.2,
+    "url": "http://tauri.localhost/",
+    "apiAt": 109.7,
+    "st0SentAt": 109.7,
+    "st0Ms": 59.5,
+    "st0": "starting",
+    "readyAt": 381.5,
+    "readyAfterFirstStatusMs": 272,
+    "polls": 2,
+    "pollMsFirst5": [
+      59.5,
+      109.3
+    ],
+    "lagMax2s": 51,
+    "lagOver50Before2s": 1,
+    "lagSpikes": [
+      "365ms:+51"
+    ]
+  }
+}

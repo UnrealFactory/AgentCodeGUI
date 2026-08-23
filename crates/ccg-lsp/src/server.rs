@@ -1254,8 +1254,8 @@ mod tests {
         let dir = std::env::temp_dir().join("ccg-lsp-memberpair");
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
-        // 세 언어의 프로젝트 파일을 한 폴더에 다 깔아 둔다 — 스펙이 자기 것만 집어야 한다
-        for n in ["tsconfig.json", "pyproject.toml", "A.csproj"] {
+        // 네 언어의 프로젝트 파일을 한 폴더에 다 깔아 둔다 — 스펙이 자기 것만 집어야 한다
+        for n in ["tsconfig.json", "pyproject.toml", "A.csproj", "compile_commands.json"] {
             std::fs::write(dir.join(n), "x").unwrap();
         }
         for s in crate::spec::SPECS {
@@ -1267,9 +1267,11 @@ mod tests {
                 s.id
             );
         }
-        // cs만 자기 프로젝트 파일을 집는다
+        // 각자 자기 것만 집는다 — 섞이면 남의 파일 변화로 재통지가 돈다
         let cs = crate::spec::spec_by_id("cs").unwrap();
         assert_eq!((cs.membership_files)(&dir), vec![dir.join("A.csproj")]);
+        let cpp = crate::spec::spec_by_id("cpp").unwrap();
+        assert_eq!((cpp.membership_files)(&dir), vec![dir.join("compile_commands.json")]);
     }
 
     #[test]

@@ -1,0 +1,1145 @@
+{
+  "harness": "bench/lsp.mjs",
+  "at": "2026-08-23T20:43:17.715Z",
+  "kind": "tauri",
+  "version": "3.0.0",
+  "lang": "cpp",
+  "fixture": {
+    "work": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo",
+    "bigRel": "lspbench_cpp/big.cpp",
+    "libRel": "lspbench_cpp/lib.h",
+    "lines": 3368,
+    "bytes": 123837,
+    "hoverSamples": 48,
+    "defSamples": 36
+  },
+  "env": {
+    "ramGB": 63.8,
+    "cpu": "13th Gen Intel(R) Core(TM) i7-13700KF",
+    "os": "Microsoft Windows 11 Home 26200"
+  },
+  "arm": "default",
+  "bin": {
+    "exe": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-exe\\agentcodegui.exe",
+    "exeMtime": "2026-08-23T20:42:09.083Z",
+    "exeSize": 6102016,
+    "exeSha256": "6be6330a3173d308",
+    "gitHead": "13f1904",
+    "gitDirty": true
+  },
+  "armEnv": {
+    "CCG_HOME": "C:\\Code\\AgentCodeGUI\\.bench-home-tauri",
+    "CCG_CDP_PORT": "9372"
+  },
+  "note": "메모리는 재지 않는다(동시 주행 노이즈 — 리드가 procs의 PID로 따로 잰다).",
+  "cold": {
+    "phase": "cold",
+    "home": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-home-tauri",
+    "pid": 8476,
+    "semantic": true,
+    "mounted": true,
+    "probeSurvived": true,
+    "ready": {
+      "installedAt": 53,
+      "watchStart": 53,
+      "readyAt": 470,
+      "states": [
+        "starting",
+        "ready"
+      ],
+      "statusErr": null
+    },
+    "prewarmMs": 470,
+    "prewarmFromProbeMs": 417,
+    "paint": {
+      "cacheAtMs": 151,
+      "cacheHit": false,
+      "cacheN": 0,
+      "liveAtMs": 544,
+      "liveN": 13025,
+      "tries": 0,
+      "liveAfterReadyMs": 74
+    },
+    "liveTokens": {
+      "ms": 16,
+      "n": 13025,
+      "types": 25,
+      "tries": 0
+    },
+    "cached": {
+      "ms": 13.6,
+      "p50": 6.3,
+      "min": 5.9,
+      "n": 13025,
+      "hit": true,
+      "rows": [
+        {
+          "ms": 13.6,
+          "n": 13025,
+          "hit": true
+        },
+        {
+          "ms": 6.3,
+          "n": 13025,
+          "hit": true
+        },
+        {
+          "ms": 6.3,
+          "n": 13025,
+          "hit": true
+        },
+        {
+          "ms": 5.9,
+          "n": 13025,
+          "hit": true
+        },
+        {
+          "ms": 6.1,
+          "n": 13025,
+          "hit": true
+        }
+      ]
+    },
+    "fps": {
+      "frames": 122,
+      "spanMs": 2072,
+      "fps": 58.4,
+      "medGapMs": 16.7,
+      "p95GapMs": 16.8,
+      "maxGapMs": 50.1,
+      "longFrames": 2,
+      "window": "문서 시작 → 첫 색칠+토큰 왕복+캐시 표본 (최소 2s)"
+    },
+    "hover": {
+      "n": 48,
+      "hits": 48,
+      "hitRate": 100,
+      "p50": 2.5,
+      "p95": 3.2,
+      "max": 3.7,
+      "p50All": 2.5,
+      "rows": [
+        {
+          "ms": 2.8,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "makeConfig",
+          "meta": "### function `makeConfig`\n\nprovided by `\"lib.h\"`\n\n---\n→ `Ben"
+        },
+        {
+          "ms": 2.6,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "makeConfig",
+          "meta": "### function `makeConfig`\n\nprovided by `\"lib.h\"`\n\n---\n→ `Ben"
+        },
+        {
+          "ms": 2.9,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "makeConfig",
+          "meta": "### function `makeConfig`\n\nprovided by `\"lib.h\"`\n\n---\n→ `Ben"
+        },
+        {
+          "ms": 2.8,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "makeConfig",
+          "meta": "### function `makeConfig`\n\nprovided by `\"lib.h\"`\n\n---\n→ `Ben"
+        },
+        {
+          "ms": 2.6,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "makeConfig",
+          "meta": "### function `makeConfig`\n\nprovided by `\"lib.h\"`\n\n---\n→ `Ben"
+        },
+        {
+          "ms": 2.8,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "makeConfig",
+          "meta": "### function `makeConfig`\n\nprovided by `\"lib.h\"`\n\n---\n→ `Ben"
+        },
+        {
+          "ms": 2.5,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "makeConfig",
+          "meta": "### function `makeConfig`\n\nprovided by `\"lib.h\"`\n\n---\n→ `Ben"
+        },
+        {
+          "ms": 3.7,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "makeConfig",
+          "meta": "### function `makeConfig`\n\nprovided by `\"lib.h\"`\n\n---\n→ `Ben"
+        },
+        {
+          "ms": 2.6,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "makeConfig",
+          "meta": "### function `makeConfig`\n\nprovided by `\"lib.h\"`\n\n---\n→ `Ben"
+        },
+        {
+          "ms": 3.3,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "makeConfig",
+          "meta": "### function `makeConfig`\n\nprovided by `\"lib.h\"`\n\n---\n→ `Ben"
+        },
+        {
+          "ms": 2.8,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "makeConfig",
+          "meta": "### function `makeConfig`\n\nprovided by `\"lib.h\"`\n\n---\n→ `Ben"
+        },
+        {
+          "ms": 2.5,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "makeConfig",
+          "meta": "### function `makeConfig`\n\nprovided by `\"lib.h\"`\n\n---\n→ `Ben"
+        },
+        {
+          "ms": 2.5,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "makeConfig",
+          "meta": "### function `makeConfig`\n\nprovided by `\"lib.h\"`\n\n---\n→ `Ben"
+        },
+        {
+          "ms": 2.9,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "makeConfig",
+          "meta": "### function `makeConfig`\n\nprovided by `\"lib.h\"`\n\n---\n→ `Ben"
+        },
+        {
+          "ms": 2.5,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "summarize",
+          "meta": "### function `summarize`\n\nprovided by `\"lib.h\"`\n\n---\n→ `int`"
+        },
+        {
+          "ms": 2.5,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "summarize",
+          "meta": "### function `summarize`\n\nprovided by `\"lib.h\"`\n\n---\n→ `int`"
+        },
+        {
+          "ms": 3.1,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "summarize",
+          "meta": "### function `summarize`\n\nprovided by `\"lib.h\"`\n\n---\n→ `int`"
+        },
+        {
+          "ms": 2.4,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "summarize",
+          "meta": "### function `summarize`\n\nprovided by `\"lib.h\"`\n\n---\n→ `int`"
+        },
+        {
+          "ms": 2.5,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "summarize",
+          "meta": "### function `summarize`\n\nprovided by `\"lib.h\"`\n\n---\n→ `int`"
+        },
+        {
+          "ms": 2.9,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "summarize",
+          "meta": "### function `summarize`\n\nprovided by `\"lib.h\"`\n\n---\n→ `int`"
+        },
+        {
+          "ms": 2.7,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "summarize",
+          "meta": "### function `summarize`\n\nprovided by `\"lib.h\"`\n\n---\n→ `int`"
+        },
+        {
+          "ms": 2.9,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "summarize",
+          "meta": "### function `summarize`\n\nprovided by `\"lib.h\"`\n\n---\n→ `int`"
+        },
+        {
+          "ms": 2.4,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "summarize",
+          "meta": "### function `summarize`\n\nprovided by `\"lib.h\"`\n\n---\n→ `int`"
+        },
+        {
+          "ms": 2.8,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "summarize",
+          "meta": "### function `summarize`\n\nprovided by `\"lib.h\"`\n\n---\n→ `int`"
+        },
+        {
+          "ms": 2.6,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "summarize",
+          "meta": "### function `summarize`\n\nprovided by `\"lib.h\"`\n\n---\n→ `int`"
+        },
+        {
+          "ms": 2.5,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "summarize",
+          "meta": "### function `summarize`\n\nprovided by `\"lib.h\"`\n\n---\n→ `int`"
+        },
+        {
+          "ms": 2.9,
+          "ok": true,
+          "kind": "module-var",
+          "word": "registry",
+          "meta": "### variable `registry`\n\n---\nType: `BenchRegistry`\n\n---\n```c"
+        },
+        {
+          "ms": 2.4,
+          "ok": true,
+          "kind": "module-var",
+          "word": "registry",
+          "meta": "### variable `registry`\n\n---\nType: `BenchRegistry`\n\n---\n```c"
+        },
+        {
+          "ms": 2.5,
+          "ok": true,
+          "kind": "module-var",
+          "word": "registry",
+          "meta": "### variable `registry`\n\n---\nType: `BenchRegistry`\n\n---\n```c"
+        },
+        {
+          "ms": 2.5,
+          "ok": true,
+          "kind": "module-var",
+          "word": "registry",
+          "meta": "### variable `registry`\n\n---\nType: `BenchRegistry`\n\nPassed b"
+        },
+        {
+          "ms": 2.5,
+          "ok": true,
+          "kind": "module-var",
+          "word": "registry",
+          "meta": "### variable `registry`\n\n---\nType: `BenchRegistry`\n\n---\n```c"
+        },
+        {
+          "ms": 2.4,
+          "ok": true,
+          "kind": "module-var",
+          "word": "registry",
+          "meta": "### variable `registry`\n\n---\nType: `BenchRegistry`\n\n---\n```c"
+        },
+        {
+          "ms": 2.5,
+          "ok": true,
+          "kind": "module-var",
+          "word": "registry",
+          "meta": "### variable `registry`\n\n---\nType: `BenchRegistry`\n\nPassed b"
+        },
+        {
+          "ms": 2.4,
+          "ok": true,
+          "kind": "module-var",
+          "word": "registry",
+          "meta": "### variable `registry`\n\n---\nType: `BenchRegistry`\n\n---\n```c"
+        },
+        {
+          "ms": 2.2,
+          "ok": true,
+          "kind": "module-var",
+          "word": "registry",
+          "meta": "### variable `registry`\n\n---\nType: `BenchRegistry`\n\n---\n```c"
+        },
+        {
+          "ms": 2.4,
+          "ok": true,
+          "kind": "module-var",
+          "word": "registry",
+          "meta": "### variable `registry`\n\n---\nType: `BenchRegistry`\n\nPassed b"
+        },
+        {
+          "ms": 3.2,
+          "ok": true,
+          "kind": "local",
+          "word": "local0000",
+          "meta": "### variable `local0000`\n\n---\nType: `BenchConfig`\n\n---\n```cp"
+        },
+        {
+          "ms": 2.4,
+          "ok": true,
+          "kind": "local",
+          "word": "local0000",
+          "meta": "### variable `local0000`\n\n---\nType: `BenchConfig`\n\nPassed by"
+        },
+        {
+          "ms": 2.6,
+          "ok": true,
+          "kind": "local",
+          "word": "local0000",
+          "meta": "### variable `local0000`\n\n---\nType: `BenchConfig`\n\n---\n```cp"
+        },
+        {
+          "ms": 2.5,
+          "ok": true,
+          "kind": "local",
+          "word": "local0000",
+          "meta": "### variable `local0000`\n\n---\nType: `BenchConfig`\n\n---\n```cp"
+        },
+        {
+          "ms": 2.6,
+          "ok": true,
+          "kind": "local",
+          "word": "local0001",
+          "meta": "### variable `local0001`\n\n---\nType: `BenchConfig`\n\n---\n```cp"
+        },
+        {
+          "ms": 2.5,
+          "ok": true,
+          "kind": "local",
+          "word": "local0001",
+          "meta": "### variable `local0001`\n\n---\nType: `BenchConfig`\n\nPassed by"
+        },
+        {
+          "ms": 2.5,
+          "ok": true,
+          "kind": "local",
+          "word": "local0001",
+          "meta": "### variable `local0001`\n\n---\nType: `BenchConfig`\n\n---\n```cp"
+        },
+        {
+          "ms": 2.5,
+          "ok": true,
+          "kind": "local",
+          "word": "local0001",
+          "meta": "### variable `local0001`\n\n---\nType: `BenchConfig`\n\n---\n```cp"
+        },
+        {
+          "ms": 2.5,
+          "ok": true,
+          "kind": "local",
+          "word": "local0002",
+          "meta": "### variable `local0002`\n\n---\nType: `BenchConfig`\n\n---\n```cp"
+        },
+        {
+          "ms": 2.4,
+          "ok": true,
+          "kind": "local",
+          "word": "local0002",
+          "meta": "### variable `local0002`\n\n---\nType: `BenchConfig`\n\nPassed by"
+        },
+        {
+          "ms": 2.7,
+          "ok": true,
+          "kind": "local",
+          "word": "local0002",
+          "meta": "### variable `local0002`\n\n---\nType: `BenchConfig`\n\n---\n```cp"
+        },
+        {
+          "ms": 2.5,
+          "ok": true,
+          "kind": "local",
+          "word": "local0002",
+          "meta": "### variable `local0002`\n\n---\nType: `BenchConfig`\n\n---\n```cp"
+        }
+      ]
+    },
+    "definition": {
+      "n": 36,
+      "hits": 36,
+      "hitRate": 100,
+      "p50": 1.7,
+      "p95": 2.1,
+      "max": 2.2,
+      "p50All": 1.7,
+      "crossFileHits": 26,
+      "rows": [
+        {
+          "ms": 2.1,
+          "ok": true,
+          "kind": "cross-file",
+          "word": "makeConfig",
+          "meta": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench_cpp\\lib.h"
+        },
+        {
+          "ms": 1.8,
+          "ok": true,
+          "kind": "cross-file",
+          "word": "makeConfig",
+          "meta": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench_cpp\\lib.h"
+        },
+        {
+          "ms": 1.8,
+          "ok": true,
+          "kind": "cross-file",
+          "word": "makeConfig",
+          "meta": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench_cpp\\lib.h"
+        },
+        {
+          "ms": 1.7,
+          "ok": true,
+          "kind": "cross-file",
+          "word": "makeConfig",
+          "meta": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench_cpp\\lib.h"
+        },
+        {
+          "ms": 1.8,
+          "ok": true,
+          "kind": "cross-file",
+          "word": "makeConfig",
+          "meta": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench_cpp\\lib.h"
+        },
+        {
+          "ms": 1.6,
+          "ok": true,
+          "kind": "cross-file",
+          "word": "makeConfig",
+          "meta": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench_cpp\\lib.h"
+        },
+        {
+          "ms": 1.7,
+          "ok": true,
+          "kind": "cross-file",
+          "word": "makeConfig",
+          "meta": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench_cpp\\lib.h"
+        },
+        {
+          "ms": 1.7,
+          "ok": true,
+          "kind": "cross-file",
+          "word": "makeConfig",
+          "meta": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench_cpp\\lib.h"
+        },
+        {
+          "ms": 2.2,
+          "ok": true,
+          "kind": "cross-file",
+          "word": "makeConfig",
+          "meta": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench_cpp\\lib.h"
+        },
+        {
+          "ms": 1.9,
+          "ok": true,
+          "kind": "cross-file",
+          "word": "makeConfig",
+          "meta": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench_cpp\\lib.h"
+        },
+        {
+          "ms": 1.6,
+          "ok": true,
+          "kind": "cross-file",
+          "word": "makeConfig",
+          "meta": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench_cpp\\lib.h"
+        },
+        {
+          "ms": 1.6,
+          "ok": true,
+          "kind": "cross-file",
+          "word": "makeConfig",
+          "meta": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench_cpp\\lib.h"
+        },
+        {
+          "ms": 1.7,
+          "ok": true,
+          "kind": "cross-file",
+          "word": "summarize",
+          "meta": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench_cpp\\lib.h"
+        },
+        {
+          "ms": 2,
+          "ok": true,
+          "kind": "cross-file",
+          "word": "summarize",
+          "meta": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench_cpp\\lib.h"
+        },
+        {
+          "ms": 1.6,
+          "ok": true,
+          "kind": "cross-file",
+          "word": "summarize",
+          "meta": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench_cpp\\lib.h"
+        },
+        {
+          "ms": 1.8,
+          "ok": true,
+          "kind": "cross-file",
+          "word": "summarize",
+          "meta": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench_cpp\\lib.h"
+        },
+        {
+          "ms": 1.6,
+          "ok": true,
+          "kind": "cross-file",
+          "word": "summarize",
+          "meta": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench_cpp\\lib.h"
+        },
+        {
+          "ms": 1.6,
+          "ok": true,
+          "kind": "cross-file",
+          "word": "summarize",
+          "meta": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench_cpp\\lib.h"
+        },
+        {
+          "ms": 1.7,
+          "ok": true,
+          "kind": "cross-file",
+          "word": "summarize",
+          "meta": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench_cpp\\lib.h"
+        },
+        {
+          "ms": 1.7,
+          "ok": true,
+          "kind": "cross-file",
+          "word": "summarize",
+          "meta": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench_cpp\\lib.h"
+        },
+        {
+          "ms": 1.7,
+          "ok": true,
+          "kind": "cross-file",
+          "word": "summarize",
+          "meta": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench_cpp\\lib.h"
+        },
+        {
+          "ms": 1.7,
+          "ok": true,
+          "kind": "cross-file",
+          "word": "summarize",
+          "meta": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench_cpp\\lib.h"
+        },
+        {
+          "ms": 1.7,
+          "ok": true,
+          "kind": "cross-file",
+          "word": "BenchConfig",
+          "meta": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench_cpp\\lib.h"
+        },
+        {
+          "ms": 1.7,
+          "ok": true,
+          "kind": "cross-file",
+          "word": "BenchConfig",
+          "meta": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench_cpp\\lib.h"
+        },
+        {
+          "ms": 1.7,
+          "ok": true,
+          "kind": "cross-file",
+          "word": "BenchConfig",
+          "meta": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench_cpp\\lib.h"
+        },
+        {
+          "ms": 2,
+          "ok": true,
+          "kind": "cross-file",
+          "word": "BenchConfig",
+          "meta": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench_cpp\\lib.h"
+        },
+        {
+          "ms": 1.6,
+          "ok": true,
+          "kind": "same-file",
+          "word": "local0000",
+          "meta": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench_cpp\\big.cpp"
+        },
+        {
+          "ms": 1.7,
+          "ok": true,
+          "kind": "same-file",
+          "word": "local0000",
+          "meta": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench_cpp\\big.cpp"
+        },
+        {
+          "ms": 1.7,
+          "ok": true,
+          "kind": "same-file",
+          "word": "local0000",
+          "meta": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench_cpp\\big.cpp"
+        },
+        {
+          "ms": 1.6,
+          "ok": true,
+          "kind": "same-file",
+          "word": "local0000",
+          "meta": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench_cpp\\big.cpp"
+        },
+        {
+          "ms": 1.6,
+          "ok": true,
+          "kind": "same-file",
+          "word": "local0001",
+          "meta": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench_cpp\\big.cpp"
+        },
+        {
+          "ms": 1.8,
+          "ok": true,
+          "kind": "same-file",
+          "word": "local0001",
+          "meta": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench_cpp\\big.cpp"
+        },
+        {
+          "ms": 1.7,
+          "ok": true,
+          "kind": "same-file",
+          "word": "local0001",
+          "meta": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench_cpp\\big.cpp"
+        },
+        {
+          "ms": 1.7,
+          "ok": true,
+          "kind": "same-file",
+          "word": "local0001",
+          "meta": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench_cpp\\big.cpp"
+        },
+        {
+          "ms": 1.8,
+          "ok": true,
+          "kind": "same-file",
+          "word": "local0002",
+          "meta": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench_cpp\\big.cpp"
+        },
+        {
+          "ms": 1.7,
+          "ok": true,
+          "kind": "same-file",
+          "word": "local0002",
+          "meta": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench_cpp\\big.cpp"
+        }
+      ]
+    },
+    "completion": {
+      "n": 10,
+      "hits": 10,
+      "hitRate": 100,
+      "p50": 22.2,
+      "p95": 22.9,
+      "max": 22.9,
+      "p50All": 22.2,
+      "items": 4,
+      "rows": [
+        {
+          "ms": 22.2,
+          "items": 4,
+          "ok": true,
+          "sample": [
+            " add(const BenchConfig &cfg)",
+            " size() const",
+            " tagsOf(int id) const",
+            " lookup(int id) const"
+          ]
+        },
+        {
+          "ms": 22.4,
+          "items": 4,
+          "ok": true,
+          "sample": [
+            " add(const BenchConfig &cfg)",
+            " size() const",
+            " tagsOf(int id) const",
+            " lookup(int id) const"
+          ]
+        },
+        {
+          "ms": 21.8,
+          "items": 4,
+          "ok": true,
+          "sample": [
+            " add(const BenchConfig &cfg)",
+            " size() const",
+            " tagsOf(int id) const",
+            " lookup(int id) const"
+          ]
+        },
+        {
+          "ms": 22.6,
+          "items": 4,
+          "ok": true,
+          "sample": [
+            " add(const BenchConfig &cfg)",
+            " size() const",
+            " tagsOf(int id) const",
+            " lookup(int id) const"
+          ]
+        },
+        {
+          "ms": 22.9,
+          "items": 4,
+          "ok": true,
+          "sample": [
+            " add(const BenchConfig &cfg)",
+            " size() const",
+            " tagsOf(int id) const",
+            " lookup(int id) const"
+          ]
+        },
+        {
+          "ms": 21.4,
+          "items": 4,
+          "ok": true,
+          "sample": [
+            " add(const BenchConfig &cfg)",
+            " size() const",
+            " tagsOf(int id) const",
+            " lookup(int id) const"
+          ]
+        },
+        {
+          "ms": 21.3,
+          "items": 4,
+          "ok": true,
+          "sample": [
+            " add(const BenchConfig &cfg)",
+            " size() const",
+            " tagsOf(int id) const",
+            " lookup(int id) const"
+          ]
+        },
+        {
+          "ms": 21.6,
+          "items": 4,
+          "ok": true,
+          "sample": [
+            " add(const BenchConfig &cfg)",
+            " size() const",
+            " tagsOf(int id) const",
+            " lookup(int id) const"
+          ]
+        },
+        {
+          "ms": 21.4,
+          "items": 4,
+          "ok": true,
+          "sample": [
+            " add(const BenchConfig &cfg)",
+            " size() const",
+            " tagsOf(int id) const",
+            " lookup(int id) const"
+          ]
+        },
+        {
+          "ms": 22.5,
+          "items": 4,
+          "ok": true,
+          "sample": [
+            " add(const BenchConfig &cfg)",
+            " size() const",
+            " tagsOf(int id) const",
+            " lookup(int id) const"
+          ]
+        }
+      ]
+    },
+    "retokenize": {
+      "ms": 150,
+      "tries": 0,
+      "line": 3366,
+      "via": "semanticTokens"
+    },
+    "retokenizeHover": {
+      "ms": 3,
+      "tries": 0
+    },
+    "fpsIdle": {
+      "frames": 181,
+      "spanMs": 3002,
+      "fps": 60,
+      "medGapMs": 16.7,
+      "p95GapMs": 16.8,
+      "maxGapMs": 16.8,
+      "longFrames": 0,
+      "window": "idle 3s (대조군)"
+    },
+    "cleanliness": {
+      "projectCacheDir": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench_cpp\\.cache",
+      "projectPolluted": false,
+      "projectFiles": 0,
+      "appHomeDbDir": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-home-tauri\\lsp\\cpp-db",
+      "appHomeFiles": 4,
+      "appHomeHasDb": true
+    },
+    "procs": [
+      {
+        "pid": 8476,
+        "name": "agentcodegui.exe",
+        "lsp": null
+      },
+      {
+        "pid": 33228,
+        "name": "node.exe",
+        "lsp": "ts-ls"
+      },
+      {
+        "pid": 12768,
+        "name": "conhost.exe",
+        "lsp": null
+      },
+      {
+        "pid": 31032,
+        "name": "msedgewebview2.exe",
+        "lsp": null
+      },
+      {
+        "pid": 34304,
+        "name": "msedgewebview2.exe",
+        "lsp": null
+      },
+      {
+        "pid": 3976,
+        "name": "node.exe",
+        "lsp": "tsserver"
+      },
+      {
+        "pid": 9944,
+        "name": "msedgewebview2.exe",
+        "lsp": null
+      },
+      {
+        "pid": 33944,
+        "name": "msedgewebview2.exe",
+        "lsp": null
+      },
+      {
+        "pid": 35676,
+        "name": "clangd.exe",
+        "lsp": "clangd"
+      },
+      {
+        "pid": 28844,
+        "name": "conhost.exe",
+        "lsp": null
+      }
+    ],
+    "viewer": {
+      "checks": [
+        {
+          "id": "viewer-open",
+          "ok": true,
+          "ms": 2069,
+          "detail": {
+            "lines": 36
+          }
+        },
+        {
+          "id": "viewer-semantic-paint",
+          "ok": true,
+          "ms": 1,
+          "detail": {
+            "spans": 121,
+            "waitMs": 1,
+            "kind": "semantic"
+          }
+        },
+        {
+          "id": "viewer-hover-card",
+          "ok": true,
+          "ms": 413,
+          "detail": {
+            "waitMs": 405,
+            "card": "FUNCTION NAME makeConfig MODIFIERS inline PARAMS int id const char * name BenchMode mode = DEFAULT_MODE RETURN BenchConf"
+          }
+        },
+        {
+          "id": "viewer-goto-definition",
+          "ok": true,
+          "ms": 268,
+          "detail": {
+            "waitMs": 254,
+            "from": "big.cpp",
+            "title": "lib.h"
+          }
+        },
+        {
+          "id": "viewer-completion-popup",
+          "ok": true,
+          "ms": 3638,
+          "detail": {
+            "waitMs": 255,
+            "options": 4,
+            "first": [
+              "add\n(const BenchConfig &",
+              "size\n() const",
+              "tagsOf\n(int id) const",
+              "lookup\n(int id) const"
+            ]
+          }
+        }
+      ],
+      "shots": "C:\\Code\\AgentCodeGUI\\bench\\shots\\lsp-tauri-cpp",
+      "pass": 5,
+      "total": 5
+    }
+  },
+  "warm": {
+    "phase": "warm",
+    "home": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-home-tauri",
+    "pid": 35228,
+    "semantic": true,
+    "mounted": true,
+    "probeSurvived": true,
+    "ready": {
+      "installedAt": 46,
+      "watchStart": 46,
+      "readyAt": 588,
+      "states": [
+        "starting",
+        "ready"
+      ],
+      "statusErr": null
+    },
+    "prewarmMs": 588,
+    "prewarmFromProbeMs": 542,
+    "paint": {
+      "cacheAtMs": 172,
+      "cacheHit": true,
+      "cacheN": 13025,
+      "liveAtMs": 645,
+      "liveN": 13025,
+      "tries": 0,
+      "liveAfterReadyMs": 57
+    },
+    "liveTokens": {
+      "ms": 16,
+      "n": 13025,
+      "types": 25,
+      "tries": 0
+    },
+    "cached": {
+      "ms": 13.4,
+      "p50": 6.1,
+      "min": 5.8,
+      "n": 13025,
+      "hit": true,
+      "rows": [
+        {
+          "ms": 13.4,
+          "n": 13025,
+          "hit": true
+        },
+        {
+          "ms": 6,
+          "n": 13025,
+          "hit": true
+        },
+        {
+          "ms": 5.8,
+          "n": 13025,
+          "hit": true
+        },
+        {
+          "ms": 6.4,
+          "n": 13025,
+          "hit": true
+        },
+        {
+          "ms": 6.1,
+          "n": 13025,
+          "hit": true
+        }
+      ]
+    },
+    "fps": {
+      "frames": 123,
+      "spanMs": 2102,
+      "fps": 58,
+      "medGapMs": 16.7,
+      "p95GapMs": 16.8,
+      "maxGapMs": 50.1,
+      "longFrames": 3,
+      "window": "문서 시작 → 첫 색칠+토큰 왕복+캐시 표본 (최소 2s)"
+    },
+    "procs": [
+      {
+        "pid": 35228,
+        "name": "agentcodegui.exe",
+        "lsp": null
+      },
+      {
+        "pid": 33156,
+        "name": "msedgewebview2.exe",
+        "lsp": null
+      },
+      {
+        "pid": 28464,
+        "name": "node.exe",
+        "lsp": "ts-ls"
+      },
+      {
+        "pid": 15916,
+        "name": "conhost.exe",
+        "lsp": null
+      },
+      {
+        "pid": 34764,
+        "name": "msedgewebview2.exe",
+        "lsp": null
+      },
+      {
+        "pid": 14896,
+        "name": "node.exe",
+        "lsp": "tsserver"
+      },
+      {
+        "pid": 1956,
+        "name": "msedgewebview2.exe",
+        "lsp": null
+      },
+      {
+        "pid": 2684,
+        "name": "msedgewebview2.exe",
+        "lsp": null
+      },
+      {
+        "pid": 1976,
+        "name": "clangd.exe",
+        "lsp": "clangd"
+      },
+      {
+        "pid": 25400,
+        "name": "conhost.exe",
+        "lsp": null
+      }
+    ]
+  },
+  "idle": {
+    "supported": true,
+    "ttlMs": 6000,
+    "beforeIdle": [
+      {
+        "pid": 9788,
+        "kind": "ts-ls"
+      },
+      {
+        "pid": 18004,
+        "kind": "tsserver"
+      },
+      {
+        "pid": 33992,
+        "kind": "clangd"
+      }
+    ],
+    "afterIdle": [],
+    "reclaimed": true,
+    "respawnMs": 142,
+    "afterRespawn": [
+      {
+        "pid": 34172,
+        "kind": "clangd"
+      }
+    ],
+    "respawnedNewPid": true
+  }
+}

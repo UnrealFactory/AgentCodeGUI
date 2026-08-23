@@ -127,6 +127,7 @@ fn key_of(spec: &ServerSpec, root: &Path) -> String {
 /// 유휴 회수는 **실제 쿼리**(호버·정의·토큰·완성)가 있을 때만 미뤄져야 한다.
 pub fn start(spec: &'static ServerSpec, root: &Path) -> Slot {
     let key = key_of(spec, root);
+    prepare_once(spec, root, &key);
     // 자리에서 밀려나는 죽은 서버 — 잠금을 놓은 뒤에 접는다(taskkill은 수십 ms).
     let stale: Option<Arc<Server>>;
     {
@@ -177,6 +178,59 @@ pub fn start(spec: &'static ServerSpec, root: &Path) -> Slot {
     }
     spawn_in_background(spec, root.to_path_buf(), key);
     Slot::Starting
+}
+
+/// 스펙의 **준비 훅**([`ServerSpec::prepare_root`]) — 루트당 한 번, 백그라운드로.
+///
+/// 왜 엔진이 이걸 알아야 하는가(R4, C++가 판 자리): 서버에 넘길 인자를 만들려면 먼저
+/// 파일을 만들어야 하는 언어가 있다(clangd의 `compile_commands.json` — UE에서는
+/// UnrealBuildTool이 수 초~수 분 걸려 만든다). 스폰 경로에서 동기로 하면 첫 호버가 그만큼
+/// 멈추고, 비동기로 하면 그 사이에 뜬 서버는 **틀린 인자로 떠 있다**. 그래서 준비가 끝나
+/// 훅이 `true`를 돌려주면 그 자리를 통째로 비운다 — 다음 요청이 새 인자로 재스폰한다.
+///
+/// 여기에도 언어 이름은 없다. 2.6.2는 같은 일을 `if (def.id === 'cpp') this.maybeUeDb(cwd)`
+/// + `restart('cpp', cwd)`로 했다(manager.ts:1342·1526).
+fn prepare_once(spec: &'static ServerSpec, root: &Path, key: &str) {
+    let Some(prepare) = spec.prepare_root else { return };
+    {
+        static DONE: OnceLock<Mutex<std::collections::HashSet<String>>> = OnceLock::new();
+        let done = DONE.get_or_init(|| Mutex::new(std::collections::HashSet::new()));
+        // `status`가 400ms마다 여기를 지난다 — 두 번째부터는 이 삽입 실패로 즉시 돌아간다
+        if !done.lock().unwrap().insert(key.to_string()) {
+            return;
+        }
+    }
+    let (root, key) = (root.to_path_buf(), key.to_string());
+    std::thread::Builder::new()
+        .name("ccg-lsp-prepare".into())
+        .spawn(move || {
+            if prepare(&root) {
+                drop_slot(&key, "서버 입력이 준비됨 — 새 인자로 재스폰");
+            }
+        })
+        .ok();
+}
+
+/// 자리를 통째로 비운다 — 다음 요청이 **재스폰 쿨다운 없이** 새로 띄운다.
+/// (죽은 서버로 두면 30초 쿨다운을 문다. 2.6.2 `restart`가 맵에서 먼저 지운 이유와 같다.)
+///
+/// ★ **날고 있는 스폰을 먼저 기다린다.** 준비 훅은 첫 `status`와 거의 동시에 끝나는데,
+/// 그때 자리를 그냥 비우면 착지하는 스폰([`spawn_in_background`])이 `entry().or_insert()`로
+/// 자리를 **다시 만들어** 낡은 인자의 프로세스를 꽂는다 — 그러면 유휴 TTL(30분)까지 틀린
+/// 서버가 산다. 착지를 기다렸다가 비우면 그 창이 닫힌다.
+fn drop_slot(key: &str, why: &'static str) {
+    let (m, cv) = reg();
+    let mut r = m.lock().unwrap();
+    let deadline = Instant::now() + SPAWN_WAIT;
+    while r.map.get(key).map(|e| e.spawning).unwrap_or(false) && Instant::now() < deadline {
+        let (g, _t) = cv.wait_timeout(r, Duration::from_millis(100)).unwrap();
+        r = g;
+    }
+    let old = r.map.remove(key).and_then(|e| e.server);
+    drop(r);
+    if let Some(s) = old {
+        s.shutdown(why);
+    }
 }
 
 /// 잠금 밖에서 프로세스를 만들고, 끝나면 자리에 꽂고 기다리는 쪽을 깨운다.

@@ -1,0 +1,63 @@
+{
+  "kind": "electron",
+  "rel": "lspbench_cpp/big.cpp",
+  "n": 5,
+  "apiAtP50": 81.2,
+  "st0SentP50": 81.2,
+  "st0RoundTripP50": 42,
+  "readyP50": 330.7,
+  "firstStatus": [
+    "starting",
+    "starting",
+    "starting",
+    "starting",
+    "starting"
+  ],
+  "rows": [
+    {
+      "i": 1,
+      "apiAt": 111.6,
+      "st0SentAt": 111.6,
+      "st0Ms": 43,
+      "st0": "starting",
+      "readyAt": 273.2,
+      "states": "starting>ready"
+    },
+    {
+      "i": 2,
+      "apiAt": 80.9,
+      "st0SentAt": 80.9,
+      "st0Ms": 43,
+      "st0": "starting",
+      "readyAt": 356.2,
+      "states": "starting>ready"
+    },
+    {
+      "i": 3,
+      "apiAt": 107.5,
+      "st0SentAt": 107.5,
+      "st0Ms": 42,
+      "st0": "starting",
+      "readyAt": 347.6,
+      "states": "starting>ready"
+    },
+    {
+      "i": 4,
+      "apiAt": 81.2,
+      "st0SentAt": 81.2,
+      "st0Ms": 41,
+      "st0": "starting",
+      "readyAt": 330.7,
+      "states": "starting>ready"
+    },
+    {
+      "i": 5,
+      "apiAt": 77.4,
+      "st0SentAt": 77.4,
+      "st0Ms": 42,
+      "st0": "starting",
+      "readyAt": 260.6,
+      "states": "starting>ready"
+    }
+  ]
+}

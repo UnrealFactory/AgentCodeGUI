@@ -916,3 +916,257 @@ GNU tar는 드라이브 콜론에 질식한다) · 삭제 전 그 폴더에서 �
 
 즉 **C++의 게이트는 하나로 좁혀진다**: `SPECS` 한 항목 + `install.rs` 한 항목 + 픽스처 하나로
 끝나는가. 끝나면 R3의 확장점 설계가 값을 한 것이고, `server.rs`가 또 열리면 아니다.
+
+---
+
+# §R4 — C/C++(clangd) 개통, 그리고 R3이 남긴 잔여의 마감
+
+R3은 C++의 게이트를 이렇게 못 박았다: *"`SPECS` 한 항목 + `install.rs` 한 항목 + 픽스처
+하나로 끝나는가. 끝나면 R3의 확장점 설계가 값을 한 것이고, `server.rs`가 또 열리면 아니다."*
+
+**결과를 먼저 적는다: `server.rs`는 안 열렸고(코드 0줄), `rpc.rs`도 안 열렸다(0줄).
+그런데 `SPECS` 한 항목으로도 안 섰다 — `manager.rs`가 코드 34줄 열렸다.**
+그 34줄이 무엇이고 왜 값으로 표현할 수 없었는지가 이 라운드의 본론이다.
+
+- 크레이트: `crates/ccg-lsp/`(`spec.rs`·`manager.rs`·`lib.rs`·`install.rs`·`semcache.rs`·**신규 `cppdb.rs`**)
+- 셸: `src-tauri/src/ipc/lsp.rs`(+`ipc/mod.rs` 4줄 훅) · 계약면: `src/shared/protocol.ts`(선택 필드 1개)
+- 하네스: `bench/lsp.mjs` · 픽스처: `bench/lspfix.mjs` · 배선 실증: **신규 `bench/lspwire.mjs`**
+  (`lsp:files-changed`·`lsp:install-progress`) · cpp `ready` p50: **신규 `bench/lspready.mjs`**
+  (판정 도구 `m7-ready.mjs`를 무접촉으로 감싼다 — 그 도구에는 내려받는 서버를 격리 홈에
+  이어 주는 훅이 없어 cpp가 영영 `need-install`이었다)
+- 결과: `bench/results/lsp-{electron-2.6.2,tauri-3.0.0}-r4{ts,py,cs,cpp}.json`
+  (기준 파일 `lsp-*-{2.6.2,3.0.0}.json`·R2 `-r2`·R3 `-r3*` 전부 무접촉)
+- 크리틱 도구 재주행: `docs/critic/m7-r4-*.json`(크리틱의 `m7-r1/r2/r3-*`는 무접촉)
+- 측정 조건: i7-13700KF · Win11 26200 · **빌더 여럿이 동시 주행 중**. 3.0 exe는 개인
+  워크트리(`%TEMP%/ccg-m7r4-wt`)에서 개인 타깃으로 구웠고 공용 `target/release`는 안 건드렸다.
+
+## R4-1. 확장점 검증 — 엔진 3파일 diff 줄 수 (이 라운드의 본론)
+
+| 엔진 파일 | 추가 줄 | 그중 코드 | 무엇 때문에 |
+|---|---:|---:|---|
+| `crates/ccg-lsp/src/rpc.rs` | **0** | **0** | — |
+| `crates/ccg-lsp/src/server.rs` | 5 | **0** | 기존 테스트에 cpp 단언 두 줄(+주석 2) |
+| `crates/ccg-lsp/src/manager.rs` | 54 | **34** | 새 확장점 하나의 호출부 — `prepare_once` 14 · `drop_slot` 14 · 호출 1 · 나머지 5 |
+
+**R3이 만든 75줄(멤버십 재통지)은 다시 안 열렸다.** cpp는 그 확장점을 값으로만 채운다 —
+`membership_files = compile_commands.json` · `reload_project = cpp_reload_db`. R3이 스스로
+걸었던 그 판정에서 R3의 설계는 이겼다.
+
+**그런데 새 확장점이 하나 더 필요했다:** `ServerSpec::prepare_root`.
+값(`extra_args`)으로 표현할 수 없는 것이 남아 있었고, 한 줄로 줄이면 이렇다 —
+
+> **인자를 만들려면 먼저 파일을 만들어야 하고, 그 파일이 생기면 이미 뜬 프로세스는
+> 틀린 인자로 떠 있다.**
+
+clangd는 `compile_commands.json`이 **있어야** 앱 홈을 가리키는 `--compile-commands-dir`를
+받을 수 있는데, UE 프로젝트에서 그 파일은 UnrealBuildTool이 수 초~수 분에 걸쳐 만들어야
+존재한다. 스폰 경로에서 동기로 만들 수는 없고(첫 호버가 그만큼 멈춘다), 비동기로 만들면
+그 사이에 뜬 clangd는 DB를 모른 채로 떠 있다. R3의 `reload_project`(재통지)로도 안 된다 —
+여기서 필요한 것은 재통지가 아니라 **다른 인자로의 재기동**이기 때문이다.
+
+`manager.rs`의 34줄은 그 훅의 호출부다: ① 루트당 한 번 백그라운드로 부르고 ② `true`면
+그 자리를 **쿨다운 없이** 비운다. 거기에 언어 이름은 한 번도 안 나온다. 2.6.2는 같은 일을
+매니저 본문의 `if (def.id === 'cpp') this.maybeUeDb(cwd)` + `restart('cpp', cwd)`로 했다
+(manager.ts:1342·1526 — `cpp` 하드코딩).
+
+**다음 라운드의 판정 기준**: 다섯 번째 언어가 `prepare_root`를 안 쓰면 이 34줄은 안 열린다.
+쓰는데도 또 열리면 이 훅의 모양이 틀린 것이다.
+
+경계 밖 diff(참고): `spec.rs` +238/−8(cpp 항목 + 훅 4개 + 필드 2개 + 테스트 4개) ·
+**신규 `cppdb.rs` 618줄**(2.6.2 `ue.ts` 275줄의 이식 + 일반 C++ 미러 + 테스트 6개) ·
+`lib.rs` +92/−26 · `install.rs` +116/−3 · `semcache.rs` +61/−3 ·
+`ipc/lsp.rs` +95/−6 · `ipc/mod.rs` +7/−1 · `protocol.ts` +4(선택 필드 1개).
+
+## R4-2. 4언어 수치표 — 2.6.2 대비 (한 세션·같은 눈금)
+
+`bench/lsp.mjs both --lang <lang>` 콜드/웜 각 1주행. 모든 "첫 …"은 문서 시작 기준.
+**ts·py·cs도 이 라운드에 다시 돌렸다** — R4가 공용 경로(토큰 캐시 쓰기·프리웜 루트 해석)를
+건드렸으므로 R3 숫자를 그대로 옮기면 거짓말이 된다.
+
+| 눈금 | ts 2.6.2 | ts 3.0 | py 2.6.2 | py 3.0 | cs 2.6.2 | cs 3.0 | **cpp 2.6.2** | **cpp 3.0** |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| prewarm → `status:ready` ms | 229 | **178** | 356 | 481 | 1,930 | **1,875** | 257 | 470 |
+| 첫 색칠 · 캐시 미적중 ms | 828 | **550** | n/a | n/a | 4,748 | **4,680** | 381 | 544 |
+| 첫 색칠 · 캐시 적중 ms | 99 | 164 | n/a | n/a | 148 | 209 | 161 | 172 |
+| 토큰 왕복 ms | 33 | 31 | n/a | n/a | 202 | 212 | 13 | 16 |
+| 캐시 호출 첫 / p50 ms | 4.2 / 4.3 | 11.0 / 5.4 | 1.9 / 1.4 | 2.9 / 2.0 | 11.2 / 10.9 | 32.2 / 12.5 | 5.2 / 5.0 | 13.4 / 6.1 |
+| 호버 p50 / p95 ms | 2.0 / 3.5 | 2.6 / 3.6 | 1.5 / 1.9 | 2.0 / 2.7 | 4.3 / 10.3 | **3.2 / 6.4** | 2.3 / 2.9 | 2.5 / 3.2 |
+| 정의 p50 / p95 ms | 1.2 / 2.4 | 2.3 / 3.3 | 0.9 / 2.5 | 2.0 / 2.6 | 3.4 / 13.6 | **2.4 / 13.3** | 1.0 / 1.2 | 1.7 / 2.1 |
+| 완성 p50 / p95 ms | 8.1 / 34.2 | 11.6 / 36.7 | 1.8 / 127.1 | 4.1 / 127.3 | 9.8 / 150.6 | 10.2 / **136.5** | 19.3 / 21.7 | 22.2 / 22.9 |
+| 재정확화(토큰) ms | 111 | 111 | 32 | 31 | 363 | 451 | 157 | **150** |
+| 재정확화(호버·교차확인) ms | 2 | 3 | 1 | 2 | 33 | 79 | 2 | 3 |
+| fps 워밍 / 유휴 · 긴 프레임 | 56.2 / 59.6 · 3 | **58.1 / 60 · 3** | 56.2 / 59.6 · 3 | **59 / 60 · 1** | 58.6 / 60 · 3 | **59.4 / 60 · 2** | 57.3 / 60 · 4 | **58.4 / 60 · 2** |
+| 뷰어 실증 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | **5/5** | **5/5** |
+| 유휴 회수 | 주입 불가 | 회수 + 632ms | 주입 불가 | 회수 + 640ms | 주입 불가 | 회수 + 3,188ms | 주입 불가 | **회수 + 142ms** |
+| **프로젝트 오염** | — | — | — | — | — | — | **있음(3개)** | **없음(0개)** |
+
+**정확성 — 네 언어 전부 두 앱의 결과가 같다:**
+
+| | ts (2.6.2 / 3.0) | py | cs | cpp |
+|---|---|---|---|---|
+| 시맨틱 토큰 수 | 10,925 / 10,925 | 없음 / 없음(서버가 안 냄) | 34,057 / 34,057 | **13,025 / 13,025** |
+| 호버 적중 | 48/48 / 48/48 | 48/48 / 48/48 | 48/48 / 48/48 | **48/48 / 48/48** |
+| 정의 적중(그중 크로스 파일) | 34/34(24) 양쪽 | 34/34(24) 양쪽 | 36/36(26) 양쪽 | **36/36(26) 양쪽** |
+| 완성 후보 수 | 4 / 4 | 29 / 29 | 8 / 8 | **4 / 4** |
+
+읽는 법(그리고 정직한 단서):
+
+- **요청 계열은 네 언어 모두 대등**하다. C#에서는 3.0이 앞선다(호버 p50 3.2 대 4.3).
+- **cpp의 `ready` 470 대 257은 이 표에서 가장 나쁜 칸이고, 그 대부분은 눈금의 흔들림이다.**
+  같은 세션에서 `m7-ready.mjs`를 **n=5 p50**으로 돌리면 **3.0 368.5ms 대 2.6.2 330.7ms**로
+  격차가 38ms로 줄어든다(R4-7). 단발 `prewarmMs`는 R3이 적은 대로 한 자리 유효숫자로 읽어야
+  한다. 남는 38ms의 자리도 같은 도구가 짚어 준다: 첫 `status` 왕복이 **59ms 대 42ms**
+  (3.0은 그 호출에서 설치 판정 + 인자 조립을 함께 한다) · `window.api`가 생기는 시각이
+  **104.6ms 대 81.2ms**(3.0은 번들 실행 뒤, 2.6.2는 preload — R1부터 알던 구조 차이).
+- **cs의 재정확화(호버) 79ms 대 33ms**는 R3(33 대 37)보다 벌어졌다. 이 주행에서만 보이고
+  원인을 못 짚었다 — R4에서 안 고친 것으로 아래에 남긴다.
+- **cpp의 유휴 재기동 142ms**가 네 언어 중 가장 싸다. 인덱스가 앱 홈 디스크에 남아 있어
+  재기동이 "인덱스를 다시 읽는" 일로 끝나기 때문이다(Roslyn은 솔루션을 다시 읽어 3.2초).
+
+## R4-3. 뷰어 실증 — cpp도 실화면에서 5/5
+
+| 검사 | cpp 2.6.2 | cpp 3.0 |
+|---|---|---|
+| `viewer-open` | ok (36줄) | ok (36줄) |
+| 색칠 | ok — 시맨틱 스팬 121 | ok — 시맨틱 스팬 121 |
+| `viewer-hover-card` | ok | ok 412ms · `FUNCTION NAME makeConfig MODIFIERS inline PARAMS int id const char * name BenchMode mode = DEFAULT_MODE RETURN BenchConf…` |
+| `viewer-goto-definition` | ok | ok 264ms · big.cpp → **lib.h** |
+| `viewer-completion-popup` | ok | ok · 4후보 `add(const BenchConfig &)` `size() const` `tagsOf(int id) const` `lookup(int id) const` |
+| **합계** | **5/5** | **5/5** |
+
+이 세션에서는 **2.6.2 팔도 네 언어 전부 5/5**로 나왔다. R3-3이 "2.6.2의 합성 마우스 입력이
+이 환경에서 안 먹는 하네스 아티팩트"라고 적었던 그 두 칸(호버 카드·Ctrl+클릭)이 이번엔
+전부 통과했다 — **간헐적**이라는 뜻이고, R3의 "제품 결함이 아니다"라는 판정을 뒷받침한다.
+(같은 cpp를 세 번 돌리는 동안 2.6.2가 3/5로 떨어진 회차가 한 번 있었다.)
+
+## R4-4. 프로젝트 오염 — 표에 새로 생긴 칸(3.0만 통과한다)
+
+clangd는 **compile DB 폴더 옆에** 디스크 인덱스(`.cache/clangd`)를 쌓는다. 즉 DB를 어디에
+두느냐가 곧 "사용자 폴더가 더러워지는가"다. 2.6.2는 이 규약을 **UE 프로젝트에만** 적용했고
+(`ue-db`), 그 밖의 C/C++은 손대지 않아 인덱스가 소스 트리에 쌓였다. 3.0은 둘 다 앱 홈으로
+보낸다 — UE는 2.6.2와 **같은 자리·같은 해시**(`lsp/ue-db/<이름>-<sha1[..8]>`), 그 밖은
+원본 CDB를 `lsp/cpp-db/<이름>-<해시>`로 미러한다(CDB의 경로가 전부 절대라 사본이 그대로
+유효하다 — 그래서 clangd가 앱 홈의 사본을 읽어도 소스를 찾는다).
+
+같은 픽스처·같은 clangd·같은 주행에서:
+
+| | 2.6.2 | 3.0 |
+|---|---|---|
+| 프로젝트 폴더(`lspbench_cpp/.cache`) | **파일 3개** | **0개(폴더 자체가 없다)** |
+| 앱 홈(`lsp/cpp-db/lspbench_cpp-<해시>`) | 0개 | **4개**(`compile_commands.json` + `.cache/clangd` 인덱스) |
+
+크레이트 계층에서도 같은 결과를 따로 확인했다(`ccg-lspprobe` 단독 주행 뒤 프로젝트 폴더에는
+`big.cpp`·`lib.h`·`compile_commands.json`만 남는다).
+
+**하네스가 처음엔 이 칸에서 거짓말을 했다**(정직하게 적는다): 두 팔이 작업 폴더를 공유하므로,
+먼저 도는 2.6.2가 남긴 `.cache`를 뒤에 도는 3.0이 그대로 뒤집어썼다(3.0도 "있음(3개)").
+팔마다 콜드 앞에서 소스 트리의 흔적을 지우는 `resetTrace`를 픽스처에 넣어 고쳤다.
+
+**2.6.2의 UE 특례를 하드코딩 없이 옮겼다는 증거**: `db_folder_name`이 실홈에 실제로 있는
+폴더 이름과 바이트가 같다 — `C:\Code\ElmwoodOnline` → `ElmwoodOnline-683b8183`,
+`C:\Code\UE6Study` → `UE6Study-de63668c`(단위 테스트로 못 박았다). 즉 사용자가 2.6.2로
+이미 만들어 둔 UE compile DB를 3.0이 **그대로 쓴다**(Roslyn 159MB 재사용과 같은 규약).
+
+## R4-5. R3이 남긴 잔여(§R3-9) — 일곱 항목 마감표
+
+| # | R3이 남긴 것 | R4 | 증거 |
+|---|---|---|---|
+| ① | `lsp:files-changed`를 **쏘는 자리가 없다** | **닫음** | `ipc/lsp.rs::after_fs_change` + `ipc/mod.rs` 4줄 훅. 실증: 앱에서 `fs:write-file` → **140ms 만에** 전 창 브로드캐스트(`paths` 1 · `exts` 9) → 서버가 새 심볼을 앎(호버가 `benchEdit7`을 말한다) |
+| ② | 설치 **진행률 스트리밍 없음** · **실제 다운로드 미검증** | **둘 다 닫음** | 격리 홈에서 clangd를 **진짜로 내려받았다**: `need-install` → 이벤트 7건(`0% → … 26.9MB` → `100% 준비 완료`) → 단조 증가 · 중간값 관측 · exe 실재 → `starting` |
+| ③ | `workspace/didChangeConfiguration` 푸시 없음 | **안 함** | 설정 UI가 생기는 라운드의 일(아래 R4-8) |
+| ④ | 프리웜 언어 감지가 `lib.rs` 하드코딩 · 프리웜이 `root_for`를 안 거침 | **둘 다 닫음** | 표를 `ServerSpec::detect_markers`로 옮겼다(테스트 `detect_markers_pick_the_project_language`) · 프리웜이 얕은 스캔으로 표본 파일을 찾아 `root_for`를 거친다(`first_source_file` — 예산 600항목·3단·`node_modules` 제외) |
+| ⑤ | `ServerSpec::requires`가 하드코딩 한국어 | **크레이트 쪽만 닫음** | `requires: (ko, en)` + 계약면에 `requiresEn?: string`(선택·추가). **렌더러 배선은 안 했다** — `Settings.tsx`는 이 라운드의 경계 밖이다 |
+| ⑥ | 캐시 쓰기가 비원자 · 손상 파일을 안 지움 | **닫음** | 임시 파일 → rename(임시 이름에 pid) · 읽다 깨지면 그 자리에서 삭제. **크리틱 도구가 스스로 확인해 준다**: `m7-drive-all`의 `cache.corruptFileStillThere`가 R3 `true` → R4 **`false`**(도구는 한 글자도 안 고쳤다) |
+| ⑦ | 2.6.2 팔의 합성 마우스 입력이 안 먹음 | **원인 규명 못 함(간헐)** | 이 세션에서는 네 언어 8주행 전부 5/5. 같은 cpp를 세 번 돌리는 동안 한 회차만 3/5 — 재현 조건을 못 잡았다 |
+
+덧붙여 R3 본문이 "이미 있다"고 적었던 것들을 실물로 다시 확인했다(회귀 없음):
+`files_changed`의 네 갈래(재프라임 예약 · 열린 문서 디스크 재동기화 · 삭제 문서 `didClose` ·
+`workspace/didChangeWatchedFiles`)는 R2/R3에 들어간 그대로고, R4가 붙인 것은 **그것을 부르는
+자리**뿐이다. `watch_exts`는 cpp가 자기 확장자 9개를 실어 브로드캐스트에 반영된다
+(위 ① 증거의 `exts` 9개가 그 값이다). `cache_version`은 cpp까지 포함해 스펙별 세대 레버로
+살아 있고, 세대 1에서 **2.6.2와 바이트 호환**이다 — `m7-cachekey262.cjs`(2.6.2 식을 직접
+계산하는 판정 도구)가 cpp에서도 `MATCH true`(버킷·키·본문 일치, 13,025토큰 · 25타입).
+
+## R4-6. R4가 벤치로 찾아 고친 실측 버그 둘
+
+### (a) 헛재기동 — 방금 뜬 clangd를 곧바로 접었다
+
+첫 설계는 준비 훅이 "DB의 mtime이 준비 전후로 달라졌는가"로 재기동을 판정했다. 그런데
+일반 C++ 프로젝트에서는 준비(=원본 CDB 미러)가 **밀리초**에 끝나므로 첫 스폰과 경주가
+붙어 **항상** "달라졌다"가 나왔다 — 인자 없이 뜬 clangd가 곧바로 접히고 다시 떴다.
+
+고친 방법: 기준을 시간이 아니라 **인자를 만든 쪽이 본 값**으로 바꿨다. 싼 준비(미러)는
+인자를 만드는 자리(`db_file`)가 직접 하고, 준비 훅은 "지금 서버가 물고 간 DB와 다른가"만
+본다. 어느 쪽이 먼저 돌든 답이 같다(단위 테스트
+`prepare_does_not_ask_for_a_restart_that_is_not_needed`). UE 경로는 그대로다 — UBT가 분
+단위로 만들어 낸 DB는 반드시 "다르다"가 되어 재기동이 걸린다(= 2.6.2 `maybeUeDb → restart`).
+
+같은 자리에서 **레이스 하나도 닫았다**: 자리를 그냥 비우면 착지하는 스폰이
+`entry().or_insert()`로 자리를 **다시 만들어** 낡은 인자의 프로세스를 꽂는다(그러면 유휴
+TTL 30분까지 틀린 서버가 산다). `drop_slot`은 날고 있는 스폰의 착지를 먼저 기다린다.
+
+### (b) `%TEMP%`에 49,370개 — `.uproject` 조상 워크가 폴링마다 그걸 읽었다
+
+cpp의 첫 `ready`가 2.6.2의 257ms 대 **578ms**로 벌어졌다. 원인은 `ue_root`(=`.uproject`
+조상 찾기)가 **`lsp:status` 400ms 폴링 경로에 있으면서 부모 폴더를 통째로 읽는다**는 것.
+이 기계의 `%TEMP%`에는 항목이 **49,370개** 있고 벤치 작업 폴더가 그 아래라, 폴링 한 번마다
+그 목록을 두 번씩 읽었다. 2.6.2는 같은 이유로 `ueDirMemo`를 갖고 있었는데 이식에서 빠졌다.
+
+| | 메모 전 | 메모 후 |
+|---|---:|---:|
+| cpp `ready`(하네스 단발) | 578 ms | **470 ms** |
+| cpp `ready`(`m7-ready` n=5 p50) | — | **368.5 ms**(2.6.2 330.7) |
+
+폴더별 메모(상한 512)를 넣어 닫았다. 정직한 한계: 2.6.2와 같게 **무효화가 없다** — 앱이
+도는 동안 `.uproject`를 새로 만들면 다음 실행까지 못 본다.
+
+## R4-7. 크리틱 도구 전량 재주행 (판정 도구는 한 글자도 안 고쳤다)
+
+산출은 `docs/critic/m7-r4-*.json`(크리틱의 `m7-r1/r2/r3-*` 무접촉). `m7-lifetime.mjs`는
+`--out`이 없고 크리틱 워크트리의 `m7-r1-lifetime.json`을 덮으므로, **돌리기 전에 그 파일을
+백업하고 끝나고 되돌렸다**(표준 출력만 `m7-r4-lifetime.json`으로 받았다).
+
+| 도구 | R4 결과 | R3 대비 |
+|---|---|---|
+| `m7-drive-all.mjs`(가짜 서버 8종) | `dupopen` didOpen/URI **1** · 생존 · `storm(sync2)` range 없는 didChange **0**/총 7,884B · 버전 단조 · `storm(sync1)` 120건 전부 range 없음 · `config` **lspContractOk true** · `death` **error→starting→ready · 32.0s 회복 · procStarts 2** · `cache` **패닉 0/8** + **`corruptFileStillThere` false** · `manydocs` didOpen 400 / didClose **368** · `spawnRace` **1,1,1,1,1** | 동일 — 단 `cache`의 손상 파일 칸이 **true → false**(§R3-9 ⑥) |
+| `m7-kill.mjs`(tauri) | `error→starting→ready` · project `idle→ready` · 토큰 **30.6s** 회복 · 호버 회복 · 재기동 **32.7s**(새 PID) | 동일(R3 30.7/32.8s) |
+| `m7-buffer.mjs`(tauri) | 버퍼 호버 **6/6** · 버퍼 정의→lib.ts **6/6** · 디스크 대조군 **6/6** | 동일 |
+| `m7-cwdform.mjs` back/fwd/trail | 전부 **ready · 기동 1** | 동일 |
+| `m7-ready.mjs`(**cpp** · n=5 p50) | tauri **ready 368.5ms** · 첫 status 왕복 59ms · electron **330.7ms** · 왕복 42ms | 신규(cpp) |
+| `m7-lifetime.mjs` | 유휴 회수 1→0 · 재기동 **36ms** · 잡 안전망 leaked **0** · `serverPidsSeen` 1개 | 동일 |
+| `m7-bigapp.mjs`(3,000 .ts · 600파일) | **600/600 토큰** · 파일당 **3.25ms**(R3 9.86) · fps **60 · 긴 프레임 0** · 서버 누수 0 | 개선(디스크 캐시 온도 차이가 섞인 값이라 "회귀 없음"으로만 읽는다) |
+| `m7-cachekey262.cjs`(**cpp**) | **MATCH true** — 버킷·키·본문이 2.6.2 식과 동일(13,025 토큰 · 25 타입) | cpp로 확장 |
+| `cargo test -p ccg-lsp` | **59 통과**(R3 46 + 13) | — |
+
+새로 붙은 단위 테스트 13개 중 값어치 있는 것:
+`db_folder_name_matches_262_ue_db`(2.6.2가 만든 UE DB를 못 찾으면 UBT를 처음부터 다시 돈다) ·
+`prepare_does_not_ask_for_a_restart_that_is_not_needed`(R4-6a) ·
+`mirror_copies_once_and_only_when_newer`(매번 쓰면 멤버십 폴러가 자기 복사에 반응해 무한 재통지) ·
+`cpp_points_clangd_outside_the_project_folder` · `cpp_root_is_the_nearest_compile_root` ·
+`four_languages_claim_their_extensions`(확장자 중복 주장 금지 + `cache_version` 하한) ·
+`detect_markers_pick_the_project_language` · `every_download_spec_has_a_source`(R3에서 cpp가
+"설치 버튼은 있는데 눌러도 «알 수 없는 서버»"였던 상태를 다시 못 만들게) ·
+`write_is_atomic_and_a_corrupt_entry_heals_itself` · `first_source_file_finds_a_sample_within_budget`.
+
+## R4-8. R4에서도 안 고친 것 / 다음 라운드
+
+1. **`requires`의 렌더러 배선.** 크레이트는 `{ko,en}`을 싣지만 `Settings.tsx`가 아직
+   `requires`(한국어)만 읽는다. 그 파일은 이 라운드의 경계 밖이다 — 한 줄이다.
+2. **`workspace/didChangeConfiguration` 푸시**는 여전히 없다(§R3-9 ③ 그대로).
+   지금은 `initialize` 시점의 pull만 있다.
+3. **에이전트 편집은 아직 `files_changed`를 안 탄다.** R4가 배선한 자리는 `ipc_call`의
+   파일 채널(`fs:write-file`·`create`·`delete`·`rename`·`move`)이다. 2.6.2는 여기에 더해
+   claude/codex 엔진의 도구 편집에서도 불렀다(`engine.ts:2119`·`codex/engine.ts:951`).
+   그 파일들은 다른 빌더가 이 라운드에 만지고 있어 손대지 않았다.
+4. **UE compile DB 생성은 코드만 이식했고 실물로 안 돌렸다.** 실홈에 UE 프로젝트가 있지만
+   (`C:\Code\ElmwoodOnline` 등) 사용자 폴더·엔진 툴체인을 건드리는 경로라 이번 라운드에서는
+   읽기만 했다 — 폴더 이름 규칙이 실홈의 실제 폴더와 일치한다는 것까지만 못 박았다.
+   UBT 호출·엔진 탐색(레지스트리→런처 목록→추측)·컴파일러 폴백 세 갈래는 **다음 크리틱이
+   실물로 확인할 칸**이다.
+5. **`cs`의 재정확화(호버)가 이 주행에서 79ms 대 33ms**로 벌어졌다(R3은 33 대 37로 대등했다).
+   한 주행뿐이라 원인을 못 짚었다.
+6. **`ue_root` 메모에 무효화가 없다**(R4-6b) — `installed_bin` 메모와 같은 계열의 한계인데,
+   그쪽은 매번 `exists()`로 되짚는 반면 이쪽은 안 되짚는다.
+7. **cpp 픽스처는 표준 라이브러리를 안 쓴다.** 그게 측정의 정직함(툴체인이 아니라 서버를
+   잰다)을 위해 고른 값이지만, `<vector>`가 섞인 실물 프로젝트의 콜드 파싱 비용은 이 표에
+   없다. UE 실프로젝트 측정과 함께 다음 라운드로.

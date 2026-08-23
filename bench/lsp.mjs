@@ -3,7 +3,7 @@
 //   node bench/lsp.mjs electron            2.6.2 기준 (out/ 빌드 + node_modules/electron)
 //   node bench/lsp.mjs tauri               3.0.0 (target/release/agentcodegui.exe)
 //   node bench/lsp.mjs both                둘 다
-//     --lang ts|py|cs      픽스처 언어(기본 ts) — bench/lspfix.mjs의 FIXTURES 키
+//     --lang ts|py|cs|cpp  픽스처 언어(기본 ts) — bench/lspfix.mjs의 FIXTURES 키
 //     --out <suffix>       결과 파일 접미사 (lsp-<kind>-<ver><suffix>.json)
 //     --exe <path>         3.0 실행 파일(기본 target/release/agentcodegui.exe)
 //     --blocks 420         big.ts 블록 수
@@ -441,6 +441,10 @@ async function waitMount(cdp, profile, budget = 90000) {
 // ── 실행 1회분 ────────────────────────────────────────────────────────────────
 async function runOnce(kind, { fix, exe, fresh, phase, extraEnv }) {
   const version = kind === 'tauri' ? '3.0.0-beta.1' : '2.6.2'
+  // 팔마다 콜드 앞에서 소스 트리의 서버 흔적을 지운다 — 홈은 `fresh`가 지우지만 **작업
+  // 폴더는 두 팔이 공유**하므로, 안 지우면 뒤에 도는 팔이 앞 팔의 흔적을 물려받는다
+  // (콜드가 콜드가 아니게 되고, '프로젝트 오염' 칸도 남의 것을 센다).
+  if (fresh && fix.resetTrace) fix.resetTrace()
   const home = makeHome(kind, version, fresh, fix)
   const { child, cdp, profile, heal } = await boot(kind, home, exe, fix, extraEnv)
   const S = (v) => JSON.stringify(v)
@@ -576,6 +580,12 @@ async function runOnce(kind, { fix, exe, fresh, phase, extraEnv }) {
       await sleep(3000)
       out.fpsIdle = await cdp.eval(`window.__lsp.fpsStop()`)
       out.fpsIdle.window = 'idle 3s (대조군)'
+
+      // ── ⑦-c 청결 — 서버가 **사용자 폴더에** 남긴 흔적 (R4) ────────────────
+      // clangd는 compile DB 폴더 옆에 디스크 인덱스(`.cache/clangd`)를 쌓는다. 그 폴더가
+      // 어디냐가 곧 "프로젝트가 더러워지는가"이고, 그건 수치가 아니라 **양자택일**이라
+      // 표에 따로 싣는다. 픽스처가 이 훅을 안 대는 언어에서는 칸 자체가 없다.
+      if (fix.cleanliness) out.cleanliness = fix.cleanliness(home)
 
       // ── ⑧ 서버 프로세스 목록 (메모리는 안 잰다) ────────────────────────────
       out.procs = serverProcs(child.pid)
@@ -886,6 +896,11 @@ if (results.length) {
     'fps 워밍/유휴': `${r.cold.fps?.fps ?? '—'}/${r.cold.fpsIdle?.fps ?? '—'}`,
     '긴프레임': r.cold.fps?.longFrames ?? '—',
     '뷰어 실증': r.cold.viewer ? `${r.cold.viewer.pass}/${r.cold.viewer.total}` : '—',
+    '프로젝트 오염': r.cold.cleanliness
+      ? r.cold.cleanliness.projectPolluted
+        ? `있음(${r.cold.cleanliness.projectFiles}개)`
+        : '없음'
+      : '—',
     '유휴회수': r.idle?.reclaimed === true ? `회수+재기동 ${r.idle.respawnMs}ms` : r.idle?.supported === false ? '주입불가' : '—'
   })
   console.log('\n[lsp] ── 비교표 ─────────────────────────────────────────────')

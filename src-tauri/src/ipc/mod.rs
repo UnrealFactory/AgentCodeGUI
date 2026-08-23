@@ -287,8 +287,12 @@ pub async fn ipc_call(app: AppHandle, window: WebviewWindow, channel: String, pa
         if crate::flags::no_fs() && !lsp::owns(&channel) {
             return unimplemented();
         }
+        // ★M7 R4 — 앱을 거친 파일 변화를 언어 서버에 흘리는 자리(2.6.2 `notifyWatchedFiles`).
+        // 경로만 미리 뽑고(인자 읽기뿐), 통지는 결과가 난 뒤에 한다. 파일을 안 바꾸는
+        // 채널이면 빈 목록이라 공짜다. 로직은 전부 `ipc/lsp.rs`에 있다.
+        let changed = lsp::changed_paths(&channel, &payload);
         let ch = channel.clone();
-        return tauri::async_runtime::spawn_blocking(move || {
+        let out = tauri::async_runtime::spawn_blocking(move || {
             fs::dispatch(&ch, &payload)
                 .or_else(|| git::dispatch(&ch, &payload))
                 .or_else(|| lsp::dispatch(&ch, &payload))
@@ -298,6 +302,8 @@ pub async fn ipc_call(app: AppHandle, window: WebviewWindow, channel: String, pa
         // 블로킹 작업이 panic으로 죽어도(=버그) 렌더러에는 안전값이 가야 한다.
         // `panic = "abort"` 프로파일에선 여기까지 못 오지만, 계약은 계약이다.
         .unwrap_or_else(|_| unimplemented());
+        lsp::after_fs_change(&app, changed, &out);
+        return out;
     }
     dispatch(&app, &window, &channel, &payload)
 }

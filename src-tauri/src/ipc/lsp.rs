@@ -14,6 +14,68 @@
 
 use super::{arg, ch};
 use serde_json::{json, Value};
+use tauri::{AppHandle, Emitter};
+
+// ── 앱을 거친 파일 변화 → 언어 서버 통지 + 열린 뷰어 깨우기 ──────────────────
+/// 셸의 핸들 — 브로드캐스트(`lsp:files-changed`·`lsp:install-progress`)에 필요하다.
+/// `ipc_call`이 첫 파일/Git/LSP 호출에서 채운다(창을 만들기 전에는 브로드캐스트할 곳도 없다).
+static APP: std::sync::OnceLock<AppHandle> = std::sync::OnceLock::new();
+
+/// 이 채널이 **파일을 바꾸는가** — 바꾼다면 바뀐 절대 경로들(아니면 빈 목록).
+/// 호출은 블로킹 작업 **앞**에서 하고(인자를 읽는 것뿐이라 마이크로초), 통지는 뒤에서 한다.
+pub fn changed_paths(channel: &str, p: &Value) -> Vec<String> {
+    let a = arg(p, 0);
+    let abs = |rel: &str| -> Option<String> {
+        let (cwd, rel) = (s(a, "cwd"), rel);
+        if cwd.is_empty() || rel.is_empty() {
+            return None;
+        }
+        Some(std::path::Path::new(cwd).join(rel).to_string_lossy().to_string())
+    };
+    match channel {
+        ch::FS_WRITE_FILE | ch::FS_DELETE | ch::FS_CREATE => abs(s(a, "relPath")).into_iter().collect(),
+        // 이름 바꾸기는 **둘 다** 통지한다 — 옛 경로는 삭제(didClose), 새 경로는 생성이다
+        ch::FS_RENAME => {
+            let old = s(a, "relPath");
+            let name = s(a, "newName");
+            let new_rel = std::path::Path::new(old)
+                .parent()
+                .map(|d| d.join(name).to_string_lossy().to_string())
+                .unwrap_or_else(|| name.to_string());
+            [abs(old), abs(&new_rel)].into_iter().flatten().collect()
+        }
+        ch::FS_MOVE => [abs(s(a, "srcRel")), abs(s(a, "destRel"))].into_iter().flatten().collect(),
+        _ => Vec::new(),
+    }
+}
+
+/// 블로킹 작업이 끝난 뒤 — 바뀐 파일을 **서버들에 흘리고** 모든 창의 뷰어를 깨운다.
+///
+/// §R3-9 ①이 남긴 자리다. 크레이트 쪽(`files_changed`)은 R2부터 실체가 있었고 R3에서
+/// 멤버십 재통지까지 붙었는데 **부르는 곳이 없었다** — 그래서 서버는 회복돼도 이미 칠해진
+/// 토큰이 그 문서를 다시 열 때까지 낡은 채로 남았다. 2.6.2는 `notifyWatchedFiles` →
+/// `onFilesChanged` → 전 창 `webContents.send`였고(index.ts:1761), 여기가 그 거울이다.
+///
+/// **전용 스레드에서 돈다**: 안에서 하는 일이 서버 왕복(디스크 재동기화·`didClose`·재프라임
+/// 예약)이라 async 워커에서 돌면 그동안 다른 창의 IPC가 굶는다.
+pub fn after_fs_change(app: &AppHandle, paths: Vec<String>, result: &Value) {
+    let _ = APP.set(app.clone());
+    // 실패한 쓰기(권한 거부·이름 충돌)는 통지하지 않는다 — 디스크가 안 바뀌었는데 서버에
+    // 재동기화를 시키면 헛일이고, 열린 뷰어도 괜히 깨운다(2.6.2도 성공 뒤에만 흘린다).
+    if paths.is_empty() || result.get("ok").and_then(Value::as_bool) == Some(false) {
+        return;
+    }
+    let app = app.clone();
+    std::thread::Builder::new()
+        .name("ccg-lsp-changed".into())
+        .spawn(move || {
+            // 서버가 하나도 없으면 `None` — 갱신할 토큰도 없으니 창을 깨우지 않는다(2.6.2 규약)
+            if let Some(v) = ccg_lsp::files_changed(&paths) {
+                let _ = app.emit(ch::LSP_FILES_CHANGED, v);
+            }
+        })
+        .ok();
+}
 
 // ── 부팅 프리웜 ──────────────────────────────────────────────────────────────
 /// 지연 스폰의 방아쇠를 **렌더러 번들보다 앞으로** 당긴다.
@@ -83,6 +145,33 @@ fn active_chat_cwd(dir: &std::path::Path) -> Option<String> {
 const LSP_INSTALL: &str = "lsp:install";
 const LSP_INSTALL_SERVER: &str = "lsp:install-server";
 const LSP_UNINSTALL_SERVER: &str = "lsp:uninstall-server";
+const LSP_INSTALL_PROGRESS: &str = "lsp:install-progress";
+
+/// 내려받는 동안 진행률을 흘린다(계약면 `LspInstallProgress`) — §R3-9 ②.
+///
+/// R3은 "크레이트가 창(AppHandle)을 몰라서 못 쏜다"였다. 이제 [`APP`]에 핸들이 있으므로
+/// 크레이트의 콜백을 그대로 이벤트로 옮긴다. 크레이트는 여전히 창을 모른다 —
+/// 아는 것은 `(퍼센트, 한 줄)`뿐이고, 그걸 채널에 태우는 것은 셸의 몫이다.
+fn install_streaming(id: &str) -> Value {
+    let label = ccg_lsp::server_label(id);
+    let send = |percent: Option<f64>, line: &str, done: bool, ok: bool, error: Option<&str>| {
+        let Some(app) = APP.get() else { return };
+        let mut p = json!({ "server": id, "label": label, "percent": percent, "line": line });
+        if done {
+            p["done"] = json!(true);
+            p["ok"] = json!(ok);
+            if let Some(e) = error {
+                p["error"] = json!(e);
+            }
+        }
+        let _ = app.emit(LSP_INSTALL_PROGRESS, p);
+    };
+    let r = ccg_lsp::install_server_with(id, &|percent, line| send(percent, line, false, false, None));
+    let ok = r.get("ok").and_then(Value::as_bool).unwrap_or(false);
+    let err = r.get("error").and_then(Value::as_str);
+    send(if ok { Some(100.0) } else { None }, if ok { "준비 완료" } else { "실패" }, true, ok, err);
+    r
+}
 
 pub fn owns(channel: &str) -> bool {
     // 내려받기는 수백 MB짜리 네트워크 왕복이다 — **반드시** 블로킹 풀로 빠져야 한다
@@ -184,14 +273,16 @@ pub fn dispatch(channel: &str, p: &Value) -> Option<Value> {
 
         ch::LSP_SERVERS => json!(ccg_lsp::servers()),
 
-        // ── 내려받는 서버(C#) 설치·삭제 ─────────────────────────────────────
-        // 심의 계약면은 `{ ok, error? }`다(`app/src/api/shim.ts`의 `failed()` 기본값).
-        // **진행률(`lsp:install-progress`)은 아직 안 흘린다** — 크레이트가 창을 몰라서다.
-        // 설정 카드는 "준비 중…"에서 완료/실패로 한 번에 넘어간다(§R3 잔여).
-        LSP_INSTALL_SERVER => ccg_lsp::install_server(a.as_str().unwrap_or_default()),
+        // ── 내려받는 서버(C#·C++) 설치·삭제 ─────────────────────────────────
+        // 심의 계약면은 `{ ok, error? }`다(`app/src/api/shim.ts`의 `failed()` 기본값)이고,
+        // 그 위로 `lsp:install-progress`가 흐른다(R4에 붙었다 — §R3-9 ②).
+        LSP_INSTALL_SERVER => install_streaming(a.as_str().unwrap_or_default()),
         LSP_UNINSTALL_SERVER => ccg_lsp::uninstall_server(a.as_str().unwrap_or_default()),
         // 뷰어의 "설치할까요?" — 파일 경로로 어느 서버인지 정한다
-        LSP_INSTALL => ccg_lsp::install_for_file(s(a, "cwd"), s(a, "relPath")),
+        LSP_INSTALL => match ccg_lsp::server_id_for_file(s(a, "cwd"), s(a, "relPath")) {
+            Some(id) => install_streaming(&id),
+            None => json!({ "ok": false, "error": "이 파일 형식을 맡는 서버가 없어요" }),
+        },
 
         // Verse는 3.0 범위에서 제외(사용자 결정) — 렌더러가 부르긴 하므로 **안전값**을
         // 명시적으로 돌려준다(미구현 경고를 띄우지 않는다: 없는 게 정상이다).

@@ -190,6 +190,10 @@ export interface LspServerInfo {
   // downloaded (download) or configured (external) · installing = download in progress
   state: 'bundled' | 'none' | 'installing' | 'installed'
   requires?: string // external prerequisite note, e.g. '.NET SDK(dotnet) 필요'
+  // 3.0 additive (M7 R4): the same note in English. The note is produced by the Rust
+  // crate, which can't reach the renderer's t() — so it ships both and the settings
+  // card picks by UI language. Older shells omit it; `requires` stays the fallback.
+  requiresEn?: string
   path?: string // external: the configured source path (vsix/exe) — for display
 }
 /** Streamed progress while downloading a language server. */

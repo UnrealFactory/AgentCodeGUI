@@ -85,6 +85,69 @@ fn fetch_text(url: &str) -> Result<String, String> {
     )
 }
 
+/// 진행률 콜백 — `(0~100 또는 None, 사람이 읽는 한 줄)`. 계약면 `LspInstallProgress`의 원천.
+pub type Progress<'a> = &'a (dyn Fn(Option<f64>, &str) + Sync);
+
+fn noop_progress(_pct: Option<f64>, _line: &str) {}
+
+/// 리다이렉트 끝의 `Content-Length` — 없으면 `None`(진행률이 불확정이 된다).
+fn content_length(url: &str) -> Option<u64> {
+    let curl = system32("curl.exe")?;
+    let out = run(
+        &curl.to_string_lossy(),
+        &["-sSLI".into(), "-A".into(), "AgentCodeGUI".into(), url.into()],
+    )
+    .ok()?;
+    // 헤더가 리다이렉트 수만큼 이어져 온다 — **마지막** 것이 실제 본문 길이다
+    out.lines().rev().find_map(|l| {
+        let (k, v) = l.split_once(':')?;
+        if !k.trim().eq_ignore_ascii_case("content-length") {
+            return None;
+        }
+        v.trim().parse::<u64>().ok().filter(|n| *n > 0)
+    })
+}
+
+/// 내려받기 + **진행률**. 2.6.2는 `fetch`의 스트림에서 바이트를 셌는데(§R3-8이 못 옮긴 것),
+/// 여기는 의존성 없이 curl을 자식으로 띄우고 **목적지 파일 크기를 폴링**한다 —
+/// 같은 눈금(받은 바이트/전체)이고 파서가 없어 curl 출력 포맷에 안 물린다.
+fn fetch_file_progress(url: &str, dest: &Path, on: Progress) -> Result<(), String> {
+    let d = dest.to_string_lossy().to_string();
+    let Some(curl) = system32("curl.exe") else { return fetch_file(url, dest) };
+    let total = content_length(url);
+    on(Some(0.0), "내려받는 중…");
+    let mut child = hidden(Command::new(curl.to_string_lossy().to_string()))
+        .args(["-sSL", "-A", "AgentCodeGUI", "-o", &d, url])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("curl 실행 실패: {e}"))?;
+    loop {
+        match child.try_wait() {
+            Ok(Some(st)) => {
+                if !st.success() {
+                    return Err(format!("내려받기 실패 (curl {:?})", st.code()));
+                }
+                on(Some(100.0), "내려받기 완료");
+                return Ok(());
+            }
+            Ok(None) => {}
+            Err(e) => return Err(format!("curl 상태 확인 실패: {e}")),
+        }
+        let got = std::fs::metadata(dest).map(|m| m.len()).unwrap_or(0);
+        let mb = got as f64 / (1024.0 * 1024.0);
+        match total {
+            Some(t) => on(
+                Some(((got as f64 / t as f64) * 100.0).clamp(0.0, 99.0)),
+                &format!("내려받는 중… {mb:.1}MB / {:.1}MB", t as f64 / (1024.0 * 1024.0)),
+            ),
+            None => on(None, &format!("내려받는 중… {mb:.1}MB")),
+        }
+        std::thread::sleep(std::time::Duration::from_millis(300));
+    }
+}
+
 fn fetch_file(url: &str, dest: &Path) -> Result<(), String> {
     let d = dest.to_string_lossy().to_string();
     if let Some(curl) = system32("curl.exe") {
@@ -155,6 +218,8 @@ fn download_for(id: &str) -> Option<Download> {
     match id {
         // Roslyn LSP — nuget flat-container의 최신 버전(오름차순 목록의 마지막)
         "cs" => Some(Download { url: roslyn_url, bin: "Microsoft.CodeAnalysis.LanguageServer.exe" }),
+        // clangd — GitHub 릴리스의 `clangd-windows-<버전>.zip`(자산 이름에 버전이 박혀 있다)
+        "cpp" => Some(Download { url: clangd_url, bin: "clangd.exe" }),
         _ => None,
     }
 }
@@ -172,8 +237,35 @@ fn roslyn_url() -> Result<String, String> {
     Ok(format!("https://api.nuget.org/v3-flatcontainer/{PKG}/{v}/{PKG}.{v}.nupkg"))
 }
 
+/// clangd의 자산 이름에는 버전이 박혀 있다(`clangd-windows-19.1.2.zip`) — API로 묻는다.
+/// zip은 `clangd_<버전>/bin/clangd.exe`로 풀린다(재귀 탐색이 그걸 찾는다).
+fn clangd_url() -> Result<String, String> {
+    let body = fetch_text("https://api.github.com/repos/clangd/clangd/releases/latest")?;
+    let j: Value = serde_json::from_str(&body).map_err(|e| format!("GitHub 응답 파싱 실패: {e}"))?;
+    let name_ok = |n: &str| {
+        n.starts_with("clangd-windows-")
+            && n.ends_with(".zip")
+            && n["clangd-windows-".len()..n.len() - 4].chars().all(|c| c.is_ascii_digit() || c == '.')
+    };
+    j.get("assets")
+        .and_then(Value::as_array)
+        .and_then(|a| {
+            a.iter()
+                .find(|x| x.get("name").and_then(Value::as_str).map(name_ok).unwrap_or(false))
+                .and_then(|x| x.get("browser_download_url"))
+                .and_then(Value::as_str)
+        })
+        .map(str::to_string)
+        .ok_or_else(|| "clangd Windows 빌드를 찾을 수 없어요".to_string())
+}
+
 /// 설치 — 성공하면 `Ok(())`. 이미 있으면 그대로 성공이다(2.6.2와 같은 멱등성).
 pub fn install(id: &str) -> Result<(), String> {
+    install_with(id, &noop_progress)
+}
+
+/// 진행률을 흘리며 설치한다 — `ipc/lsp.rs`가 그 콜백을 `lsp:install-progress`로 쏜다(§R3-9 ②).
+pub fn install_with(id: &str, on: Progress) -> Result<(), String> {
     let Some(spec) = download_for(id) else { return Err(format!("알 수 없는 서버: {id}")) };
     if crate::launch::installed_bin(id, spec.bin).is_some() {
         return Ok(());
@@ -184,18 +276,20 @@ pub fn install(id: &str) -> Result<(), String> {
             return Ok(()); // 이미 받는 중 — 두 번 받지 않는다
         }
     }
-    let r = do_install(id, &spec);
+    let r = do_install(id, &spec, on);
     inflight().lock().unwrap().remove(id);
     r
 }
 
-fn do_install(id: &str, spec: &Download) -> Result<(), String> {
+fn do_install(id: &str, spec: &Download, on: Progress) -> Result<(), String> {
     let dir = lsp_dir().join(id);
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).map_err(|e| format!("설치 폴더를 못 만들었어요: {e}"))?;
+    on(None, "내려받을 주소를 찾는 중…");
     let url = (spec.url)()?;
     let zip = dir.join("_download.zip");
-    fetch_file(&url, &zip)?;
+    fetch_file_progress(&url, &zip, on)?;
+    on(None, "압축을 푸는 중…");
     extract(&zip, &dir)?;
     let _ = std::fs::remove_file(&zip);
     if crate::launch::installed_bin(id, spec.bin).is_none() {
@@ -229,9 +323,28 @@ mod tests {
     #[test]
     fn only_known_servers_can_be_installed() {
         assert!(download_for("cs").is_some());
+        assert!(download_for("cpp").is_some(), "R4에서 clangd가 붙었다");
         assert!(download_for("ts").is_none(), "번들 서버는 내려받는 대상이 아니다");
+        assert!(download_for("py").is_none());
         assert!(install("nope").is_err());
         assert!(uninstall("nope").is_err());
+    }
+
+    /// `Provision::Download`인 스펙은 **전부** 내려받기 표에 있어야 한다 —
+    /// 없으면 설정 화면에 "설치" 버튼이 뜨는데 눌러도 "알 수 없는 서버"로 끝난다
+    /// (R3까지 cpp가 정확히 그 상태였다).
+    #[test]
+    fn every_download_spec_has_a_source() {
+        for s in crate::spec::SPECS {
+            if s.kind == crate::spec::Provision::Download {
+                let d = download_for(s.id);
+                assert!(d.is_some(), "{}: 내려받을 주소가 없다", s.id);
+                // 설치 뒤 찾을 실행 파일 이름이 스펙의 것과 같아야 한다(아니면 영원히 need-install)
+                if let crate::spec::Launch::Exe { bin, .. } = s.launch {
+                    assert_eq!(d.unwrap().bin, bin, "{}: 스펙과 설치가 다른 exe를 본다", s.id);
+                }
+            }
+        }
     }
 
     /// 네트워크를 타지 않고도 지켜야 하는 것 — 진행 표시의 근거가 실제로 켜지고 꺼지는가.

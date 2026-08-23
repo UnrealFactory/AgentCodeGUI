@@ -1,0 +1,25 @@
+{
+  "at": "2026-08-23T21:05:39.830Z",
+  "work": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo",
+  "idleReclaim": {
+    "ttlMs": 4000,
+    "before": 1,
+    "after": 0,
+    "reclaimed": true,
+    "respawnMs": 36,
+    "respawnOk": true,
+    "liveAfter": 1
+  },
+  "jobSafety": {
+    "probePid": 32716,
+    "serverPidsSeen": [
+      28208
+    ],
+    "aliveBeforeKill": [
+      28208
+    ],
+    "method": "Stop-Process -Force (트리 종료 아님)",
+    "aliveAfter4s": [],
+    "leaked": 0
+  }
+}

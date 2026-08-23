@@ -17,11 +17,15 @@
 //! | pyright/Roslyn: 인터프리터·옵션을 `workspace/configuration`으로 물어 온다 | [`ServerSpec::configuration`] — `rpc.rs`는 arity만 지키고 값은 여기서 온다(R2 · 크리틱 C-5) |
 //! | C#: 루트는 그 csproj를 **참조하는** sln | [`RootRule::ReferencingSolution`] |
 //! | clangd/UE: compile DB·인덱스는 앱 홈 | [`Launch::Exe { extra_args }`] — 스펙이 앱 홈 경로를 만들어 넘긴다 |
+//! | clangd/UE: 그 compile DB를 **만들어야** 한다(UBT) · 만들어지면 재기동 | [`ServerSpec::prepare_root`] (R4) |
+//! | 프리웜의 주력 언어 감지 | [`ServerSpec::detect_markers`] (R4 — R3까지 `lib.rs` 하드코딩) |
 //! | 무거운 서버는 유휴 회수를 길게 | [`ServerSpec::idle_ttl_ms`] |
 //! | 토큰 캐시 포맷이 바뀌면 옛 캐시를 버려야 | [`ServerSpec::cache_version`] |
 //!
 //! **검증 기준**(다음 라운드): C#·C++를 붙이는 diff가 이 파일의 `SPECS` 배열에 항목을
 //! 하나씩 더하는 것으로 끝나야 한다. 엔진 파일이 열리면 그 설계는 실패한 것이다.
+//! (R4 실측: C++는 `SPECS` 한 항목으로 **안 섰다** — 확장점이 하나 더 필요했다.
+//! 무엇이 왜 필요했는지는 [`ServerSpec::prepare_root`]의 주석과 `docs/m7-report-r1.md` §R4.)
 
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
@@ -108,11 +112,24 @@ pub struct ServerSpec {
     /// 설정 목록의 ".ts .tsx .js …"
     pub exts_display: &'static str,
     pub kind: Provision,
-    /// 외부 전제(설정에 표시) — 예: ".NET SDK 10+ 필요"
-    pub requires: Option<&'static str>,
+    /// 외부 전제(설정에 표시) — `(한국어, English)`.
+    ///
+    /// R3까지 한국어 한 줄이었고, 그게 크리틱이 짚은 §R3-9 ⑤였다: Rust 문자열이라
+    /// 렌더러의 `t()`를 못 타 **영어 UI에서도 한국어가 나왔다**. 계약면에 두 벌을 실어
+    /// (`requires`/`requiresEn`) 표시 쪽이 고르게 한다.
+    pub requires: Option<(&'static str, &'static str)>,
 
     /// 확장자(점 없이, 소문자) → LSP `languageId`.
     pub exts: &'static [(&'static str, &'static str)],
+
+    /// 프리웜의 **주력 언어 감지** — 이 폴더 바로 아래에 이 중 하나가 있으면 이 서버가
+    /// 그 프로젝트의 주력이다. 이름 그대로(`package.json`) 또는 `*.확장자`(`*.sln`).
+    /// 빈 배열 = 프리웜 대상 아님(파일을 열면 그때 지연 스폰된다).
+    ///
+    /// R3까지 이 표는 `lib.rs::detect_project_spec`에 하드코딩돼 있었고(§R3-9 ④),
+    /// "네 언어는 공짜지만 다섯 번째는 그 파일을 연다"가 남은 빚이었다. 우선순위는
+    /// [`SPECS`]의 **순서**다 — 위에 있는 스펙이 먼저 주장한다.
+    pub detect_markers: &'static [&'static str],
 
     pub launch: Launch,
     pub root: RootRule,
@@ -131,6 +148,21 @@ pub struct ServerSpec {
     /// `initialize`에 실을 워크스페이스 폴더들(`(uri, name)`). `None`이면 루트 하나.
     /// 다중 루트를 돌려주면 `rootUri`는 null로 보낸다(LSP 다중 루트 규약).
     pub workspace_folders: fn(&Path) -> Option<Vec<(String, String)>>,
+
+    /// **서버가 읽을 입력을 준비한다** — 스폰 전후로 오래 걸리는 준비 작업이 있는 서버.
+    /// 엔진은 루트당 **한 번**, **백그라운드 스레드에서** 부른다(분 단위여도 된다).
+    /// `true`를 돌려주면 "입력이 새로 생겼다" → 엔진이 그 루트의 서버를 **쿨다운 없이**
+    /// 접는다(다음 요청이 새 인자로 재스폰한다).
+    ///
+    /// 왜 값(`extra_args`)만으로 안 되는가 — R4가 clangd에서 배운 것:
+    /// clangd는 `compile_commands.json`이 **있어야** 앱 홈을 가리키는 인자를 받을 수 있는데,
+    /// UE 프로젝트에서 그 파일은 우리가 UnrealBuildTool로 **만들어야** 존재한다(수 초~수 분).
+    /// 스폰 경로에서 동기로 만들 수는 없고(첫 호버가 몇 분 멈춘다), 만들고 나면 이미 뜬
+    /// clangd는 "DB 없음"으로 떠 있으므로 접어야 한다. 즉 **값이 아니라 행동**이다 —
+    /// R3의 `membership_files`/`reload_project`(재통지)로도 안 되는데, 여기서 필요한 것은
+    /// 재통지가 아니라 **다른 인자로의 재기동**이기 때문이다. 2.6.2는 같은 일을 매니저
+    /// 본문의 `maybeUeDb(cwd)` + `restart('cpp', cwd)`(`def.id === 'cpp'` 하드코딩)로 했다.
+    pub prepare_root: Option<fn(&Path) -> bool>,
 
     /// `initialized` 직후 서버에 "무엇을 열지" 알려야 하는가(Roslyn `solution/open`).
     /// `Some(f)`이고 `f`가 `false`를 돌려주면 = 열 것이 없다 → 프로젝트 로드 게이트를 즉시 내린다.
@@ -367,6 +399,48 @@ const CS_PROJECT_EXT: &str = "csproj";
 /// `.slnx`(신형 XML)를 먼저 본다 — 둘 다 있으면 신형이 진실이다(2.6.2와 같은 우선순위).
 const CS_SOLUTION_EXTS: &[&str] = &["slnx", "sln"];
 
+// ── C/C++ / clangd ───────────────────────────────────────────────────────────
+/// clangd가 서는 폴더의 표식 — 이게 있는 폴더가 그 파일의 **컴파일 루트**다.
+/// (없으면 [`RootRule::NearestMarker`]가 cwd로 떨어진다 = 2.6.2와 같은 동작)
+const CPP_MARKERS: &[&str] = &["compile_commands.json", "CMakeLists.txt", ".clangd", "compile_flags.txt"];
+
+/// **compile DB가 준비된 뒤에만** 인자를 붙인다 — 없는 폴더를 가리키면 clangd가 소스
+/// 트리에서 CDB를 찾는 폴백까지 잃는다(그리고 그때 `.cache/clangd`가 소스 옆에 쌓인다).
+/// 준비는 [`ServerSpec::prepare_root`](`cpp_prepare`)가 하고, 여기서는 결과만 읽는다.
+fn cpp_extra_args(root: &Path) -> Vec<String> {
+    match crate::cppdb::db_file(root) {
+        // 이 한 줄이 "사용자 폴더에 흔적을 안 남긴다"의 전부다 — clangd의 디스크 인덱스는
+        // **CDB 폴더 기준**으로 쌓이므로, CDB를 앱 홈에 두면 인덱스도 따라온다.
+        Some(f) => vec![format!("--compile-commands-dir={}", f.parent().unwrap_or(root).to_string_lossy())],
+        None => Vec::new(),
+    }
+}
+
+/// UE면 UBT로 만들고, 아니면 프로젝트의 CDB를 앱 홈으로 미러한다. 새로 생겼으면 `true`.
+fn cpp_prepare(root: &Path) -> bool {
+    crate::cppdb::prepare(root)
+}
+
+/// 멤버십 파일 = 이 루트가 읽는 **원본 CDB**(UE는 우리가 만든 것, 아니면 프로젝트 안의 것).
+/// 재생성되면 폴러가 잡아 [`cpp_reload_db`]가 clangd에 알린다.
+fn cpp_membership_files(root: &Path) -> Vec<PathBuf> {
+    crate::cppdb::source_cdb(root).into_iter().collect()
+}
+
+/// CDB가 갈렸다 — 앱 홈 사본을 맞추고 clangd에 그 파일의 변화를 알린다.
+/// **재시작이 아니라 통지인 이유**: clangd는 CDB 경로를 인자로 이미 알고 있어서, 파일이
+/// 갈린 것만 알면 그 자리에서 다시 읽고 열린 문서를 재파싱한다(재기동 = 인덱스 재구축).
+/// 인자 자체가 바뀌어야 하는 경우(= DB가 **처음** 생긴 경우)는 `prepare_root`가 맡는다.
+fn cpp_reload_db(rpc: &crate::rpc::Rpc, root: &Path) -> bool {
+    crate::cppdb::prepare(root);
+    let Some(db) = crate::cppdb::db_file(root) else { return false };
+    rpc.notify(
+        "workspace/didChangeWatchedFiles",
+        json!({ "changes": [{ "uri": crate::server::path_to_uri(&db), "type": 2 }] }),
+    );
+    true
+}
+
 // ── 루트 탐색 공용 ───────────────────────────────────────────────────────────
 /// `root_for`가 고른 솔루션을 `after_initialized`(인자가 root뿐)에 전달하는 스태시.
 /// 2.6.2 `csSolutionByRoot`와 같은 자리 — 언어 이름이 아니라 **루트**로 키를 잡는다.
@@ -558,6 +632,17 @@ fn referencing_solution_root(
 /// `watchCsProjects`, 합계 ~150줄)로 했고 거기엔 `csproj`·`sln`이 하드코딩돼 있었다.
 /// 여기 75줄에는 **언어 이름이 한 번도 안 나온다** — C++(R4)가 `compile_commands.json`을
 /// 멤버십 파일로 대면 이 줄은 다시 안 열린다. 그게 검증 대상이다.
+///
+/// **R4 판정: 그 75줄은 다시 안 열렸다(약속대로). 대신 새 확장점이 하나 더 필요했다.**
+///
+/// | 언어 | `SPECS` | 스펙 훅 함수 | `server.rs` | `manager.rs` | `rpc.rs` |
+/// |---|---|---|---|---|---|
+/// | **cpp** (clangd) | 1항목 | `cpp_extra_args`·`cpp_prepare`·`cpp_membership_files`·`cpp_reload_db` | **0** | **+21** | **0** |
+///
+/// `manager.rs`의 21줄은 [`ServerSpec::prepare_root`]의 호출부다(루트당 1회 백그라운드 실행
+/// + 그 자리 접기). 거기에도 언어 이름은 없다. 왜 값으로 표현할 수 없었는지는 그 필드의
+/// 주석에 적었다 — 한 줄로 줄이면 **"인자를 만들려면 먼저 파일을 만들어야 하고, 그 파일이
+/// 생기면 이미 뜬 프로세스는 틀린 인자로 떠 있다"** 이다.
 pub static SPECS: &[ServerSpec] = &[
 ServerSpec {
     id: "ts",
@@ -576,12 +661,14 @@ ServerSpec {
         ("cjs", "javascript"),
         ("jsx", "javascriptreact"),
     ],
+    detect_markers: &["package.json", "tsconfig.json", "jsconfig.json"],
     launch: Launch::Node {
         module: &["typescript-language-server", "lib", "cli.mjs"],
         args: &["--stdio"],
     },
     root: RootRule::ProjectCwd,
     init_options: ts_init_options,
+    prepare_root: None,
     // tsserver-ls는 `workspace/configuration`을 **묻지 않는다**(R3 실측 — 능력을 선언해도
     // 안 묻는다). 줄 값도 없다.
     configuration: no_configuration,
@@ -607,9 +694,11 @@ ServerSpec {
     kind: Provision::Bundled,
     requires: None,
     exts: &[("py", "python"), ("pyw", "python"), ("pyi", "python")],
+    detect_markers: &["pyproject.toml", "requirements.txt", "setup.py"],
     launch: Launch::Node { module: &["pyright", "langserver.index.js"], args: &["--stdio"] },
     root: RootRule::ProjectCwd,
     init_options: no_init_options,
+    prepare_root: None,
     // 인터프리터·venv는 **이 경로로만** 들어간다(R3 실측: initializationOptions로는 안 먹는다).
     configuration: py_configuration,
     workspace_folders: no_workspace_folders,
@@ -631,8 +720,9 @@ ServerSpec {
     langs: "C#",
     exts_display: ".cs .csx",
     kind: Provision::Download,
-    requires: Some(".NET SDK 10+ 필요"),
+    requires: Some((".NET SDK 10+ 필요", ".NET SDK 10+ required")),
     exts: &[("cs", "csharp"), ("csx", "csharp")],
+    detect_markers: &["*.sln", "*.slnx", "*.csproj"],
     launch: Launch::Exe {
         bin: "Microsoft.CodeAnalysis.LanguageServer.exe",
         args: &["--stdio", "--logLevel=Information"],
@@ -646,6 +736,7 @@ ServerSpec {
         ttl_ms: 30_000,
     },
     init_options: no_init_options,
+    prepare_root: None,
     // Roslyn은 **능력 선언과 무관하게** `workspace/configuration`을 보낸다(R3 실측: razor·
     // html 섹션 4개). 줄 값은 없다 — null이면 서버 기본값이고, 그게 2.6.2와 같은 답이다.
     configuration: no_configuration,
@@ -665,7 +756,77 @@ ServerSpec {
     // 솔루션 인덱싱이 비싼 서버 — 회수를 길게(2.6.2 IDLE_TTL_HEAVY).
     idle_ttl_ms: 30 * 60_000,
     cache_version: 1,
+},
+// ── C/C++ (clangd) — R3이 만든 확장점의 두 번째 사용자 ────────────────────────
+ServerSpec {
+    id: "cpp",
+    label: "C/C++",
+    langs: "C · C++",
+    exts_display: ".c .h .cpp .cc .cxx .hpp .hxx .hh .inl",
+    kind: Provision::Download,
+    // clangd는 자기 완결 바이너리다(런타임 전제 없음). UE compile DB 생성에는
+    // UnrealBuildTool이 필요하지만 **없어도 색·호버는 뜬다**(플래그 없는 폴백) — 그래서
+    // 여기 적으면 거짓말이 된다.
+    requires: None,
+    // `.h`의 기본은 C++ — 세상에 그쪽이 압도적으로 많고, clangd는 어차피 컴파일 플래그와
+    // 내용으로 다시 판단한다(2.6.2와 같은 표 + `.inl`).
+    exts: &[
+        ("c", "c"),
+        ("h", "cpp"),
+        ("cpp", "cpp"),
+        ("cc", "cpp"),
+        ("cxx", "cpp"),
+        ("hpp", "cpp"),
+        ("hxx", "cpp"),
+        ("hh", "cpp"),
+        ("inl", "cpp"),
+    ],
+    detect_markers: &["CMakeLists.txt", "compile_commands.json", "*.uproject"],
+    launch: Launch::Exe {
+        bin: "clangd.exe",
+        // `--background-index`가 크로스 파일 정의 이동의 전제다(안 켜면 열어 본 파일만 안다).
+        // 인덱스가 어디에 쌓이는지는 `--compile-commands-dir`가 정한다 → `cpp_extra_args`.
+        args: &["--background-index", "--header-insertion=never"],
+        extra_args: cpp_extra_args,
+    },
+    // 컴파일 루트는 CDB/CMake가 있는 폴더다(없으면 cwd — 2.6.2와 같은 자리).
+    root: RootRule::NearestMarker { markers: CPP_MARKERS },
+    init_options: no_init_options,
+    // ★ R4가 새로 판 확장점. 값(`extra_args`)은 "DB가 있으면 이 인자"까지만 말할 수 있고,
+    //   "그 DB를 지금 만들어라"는 못 말한다 — 그게 이 필드다.
+    prepare_root: Some(cpp_prepare),
+    configuration: no_configuration,
+    workspace_folders: no_workspace_folders,
+    after_initialized: None,
+    // clangd의 `initialize`는 즉시 답한다 — 인덱싱은 그 뒤에 `$/progress`로 흐른다.
+    // `starting`으로 잡아 두면 배지가 영영 안 내려간다(진행률은 project_state가 그린다).
+    awaits_project_init: false,
+    // 우리가 알려 줄 수 있는 변화(앱을 거친 쓰기)는 문서 동기화로 반영되고, 외부 변화는
+    // clangd가 스스로 본다. Roslyn과 같은 이유로 켤 값이 없다.
+    declare_watched_files: false,
+    // clangd에는 "전 프로젝트 프라임"이라는 개념이 없다 — 백그라운드 인덱스가 그 일을 한다.
+    reprime: Reprime::None,
+    membership_files: cpp_membership_files,
+    reload_project: Some(cpp_reload_db),
+    watch_exts: &["c", "h", "cpp", "cc", "cxx", "hpp", "hxx", "hh", "inl"],
+    // 인덱스 재구축이 비싼 서버 — 회수를 길게(2.6.2 IDLE_TTL_HEAVY, cs와 같은 값).
+    idle_ttl_ms: 30 * 60_000,
+    cache_version: 1,
 }];
+
+/// 이 폴더의 **주력 언어** — 프리웜이 부른다(2.6.2 `detectProjectServer`).
+/// 판정 재료는 폴더 바로 아래의 파일 이름 목록뿐이고, 표는 각 스펙의
+/// [`ServerSpec::detect_markers`]에 있다. 우선순위 = [`SPECS`] 순서.
+///
+/// R3까지 이 표가 `lib.rs`에 하드코딩돼 있어 "다섯 번째 언어는 그 파일을 연다"였다(§R3-9 ④).
+pub fn detect_project_spec(names: &[String]) -> Option<&'static ServerSpec> {
+    SPECS.iter().find(|s| {
+        s.detect_markers.iter().any(|m| match m.strip_prefix('*') {
+            Some(suffix) => names.iter().any(|n| n.ends_with(suffix)),
+            None => names.iter().any(|n| n == m),
+        })
+    })
+}
 
 /// 확장자를 맡는 스펙(없으면 `None`).
 pub fn spec_for_ext(ext: &str) -> Option<&'static ServerSpec> {
@@ -721,15 +882,84 @@ mod tests {
         std::fs::write(p, body).unwrap();
     }
 
-    /// R3의 게이트 — 세 언어가 자기 확장자를 정확히 문다.
+    /// R4의 게이트 — **네 언어**가 자기 확장자를 정확히 문다(겹치는 확장자가 없다).
     #[test]
-    fn three_languages_claim_their_extensions() {
-        for (e, id) in [("ts", "ts"), ("TSX", "ts"), ("py", "py"), ("PYI", "py"), ("cs", "cs"), ("csx", "cs")] {
+    fn four_languages_claim_their_extensions() {
+        for (e, id) in [
+            ("ts", "ts"),
+            ("TSX", "ts"),
+            ("py", "py"),
+            ("PYI", "py"),
+            ("cs", "cs"),
+            ("csx", "cs"),
+            ("cpp", "cpp"),
+            ("H", "cpp"),
+            ("c", "cpp"),
+            ("inl", "cpp"),
+        ] {
             assert_eq!(spec_for_ext(e).map(|s| s.id), Some(id), "{e}");
         }
-        for e in ["md", "verse", "cpp"] {
-            assert!(spec_for_ext(e).is_none(), "{e} — R3 범위 밖이어야 한다");
+        for e in ["md", "verse", "rs"] {
+            assert!(spec_for_ext(e).is_none(), "{e} — 3.0 범위 밖이어야 한다");
         }
+        // 두 스펙이 같은 확장자를 주장하면 `spec_for_ext`가 조용히 앞엣것만 쓴다
+        let mut seen: HashSet<&str> = HashSet::new();
+        for s in SPECS {
+            for (e, _) in s.exts {
+                assert!(seen.insert(e), "{e}를 두 스펙이 주장한다");
+            }
+            assert!(s.cache_version >= 1, "{}: cache_version은 1부터다", s.id);
+        }
+    }
+
+    /// 프리웜 감지 표가 **스펙 안에** 있다(§R3-9 ④) — 네 언어가 자기 표식을 문다.
+    #[test]
+    fn detect_markers_pick_the_project_language() {
+        let names = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        for (files, id) in [
+            (vec!["package.json", "readme.md"], Some("ts")),
+            (vec!["pyproject.toml"], Some("py")),
+            (vec!["bench.slnx"], Some("cs")),
+            (vec!["mygame.uproject", "source"], Some("cpp")),
+            (vec!["cmakelists.txt"], None), // 대소문자 그대로 비교한다(호출부가 소문자로 준다)
+            (vec!["CMakeLists.txt"], Some("cpp")),
+            (vec!["readme.md"], None),
+        ] {
+            assert_eq!(detect_project_spec(&names(&files)).map(|s| s.id), id, "{files:?}");
+        }
+        // 우선순위 = SPECS 순서. TS 프로젝트 안에 CMakeLists가 있어도 주력은 TS다.
+        assert_eq!(
+            detect_project_spec(&names(&["CMakeLists.txt", "package.json"])).map(|s| s.id),
+            Some("ts")
+        );
+    }
+
+    /// clangd 인자는 **DB가 준비된 뒤에만** 붙는다 — 없는 폴더를 가리키면 clangd가
+    /// 소스 트리 폴백까지 잃는다(그러면 `.cache/clangd`가 사용자 폴더에 쌓인다).
+    /// 그리고 그 DB 자리는 **프로젝트 밖**이어야 한다(인덱스가 CDB 폴더 옆에 쌓이므로).
+    ///
+    /// (실제 파일을 안 만든다 — 단위 테스트가 사용자 앱 홈에 쓰면 안 된다.
+    ///  "DB가 있으면 인자가 붙는가"는 벤치가 실물 clangd로 확인한다.)
+    #[test]
+    fn cpp_points_clangd_outside_the_project_folder() {
+        let w = scratch("cppargs");
+        assert!(cpp_extra_args(&w).is_empty(), "DB가 없는데 인자가 붙었다");
+        let dir = crate::cppdb::db_dir(&w);
+        assert!(!dir.starts_with(&w), "compile DB가 프로젝트 안이면 인덱스도 거기 쌓인다: {dir:?}");
+        assert!(dir.to_string_lossy().contains("cpp-db"), "{dir:?}");
+    }
+
+    /// C++ 루트는 **CDB/CMake가 있는 폴더** — 없으면 cwd(2.6.2와 같은 자리).
+    #[test]
+    fn cpp_root_is_the_nearest_compile_root() {
+        let w = scratch("cpproot");
+        put(&w.join("sub/proj/CMakeLists.txt"), "");
+        put(&w.join("sub/proj/src/a.cpp"), "int main(){}");
+        let spec = spec_by_id("cpp").unwrap();
+        assert_eq!(root_for(spec, &w.join("sub/proj/src/a.cpp"), &w), w.join("sub/proj"));
+        // 표식이 하나도 없으면 cwd로 떨어진다
+        put(&w.join("loose/b.cpp"), "int main(){}");
+        assert_eq!(root_for(spec, &w.join("loose/b.cpp"), &w), w);
     }
 
     /// 프로젝트 파일(csproj)은 **뷰어 확장자가 아니지만** 변화는 흘려야 한다.

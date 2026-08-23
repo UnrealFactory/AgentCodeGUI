@@ -1,0 +1,17 @@
+{
+  "bucket262": "ccg-lsp-repo-90f3e3d7e327e563",
+  "key262": "667216f5a5c35a8800d93cd9e33d2ac3455c6aa0",
+  "expectPath": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-cppsmoke-home2\\lsp\\semcache\\ccg-lsp-repo-90f3e3d7e327e563\\66\\667216f5a5c35a8800d93cd9e33d2ac3455c6aa0.json",
+  "crateWrote": [
+    "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-cppsmoke-home2\\lsp\\semcache\\ccg-lsp-repo-90f3e3d7e327e563\\66\\667216f5a5c35a8800d93cd9e33d2ac3455c6aa0.json"
+  ],
+  "rootMarkers": [
+    "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-cppsmoke-home2\\lsp\\semcache\\ccg-lsp-repo-90f3e3d7e327e563\\.root"
+  ],
+  "MATCH": true,
+  "readableAs262": {
+    "ok": true,
+    "tokens": 13025,
+    "types": 25
+  }
+}

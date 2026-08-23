@@ -10,6 +10,7 @@
 //! 실패는 전부 안전값(`unsupported`·`null`·빈 목록)으로 떨어진다 — **어떤 화면도
 //! 크래시하지 않는다**가 3.0의 계약이다.
 
+pub mod cppdb;
 pub mod install;
 pub mod jobkill;
 pub mod launch;
@@ -129,10 +130,21 @@ fn installing(id: &str) -> bool {
 // ── lsp:install-server · lsp:uninstall-server ────────────────────────────────
 /// 설치/삭제 — 계약면(`{ ok, error? }`) 모양으로 돌려준다. **블로킹**이다(수백 MB 내려받기).
 pub fn install_server(id: &str) -> Value {
-    match install::install(id) {
+    install_server_with(id, &|_pct, _line| {})
+}
+
+/// 진행률을 흘리며 설치한다 — 셸(`ipc/lsp.rs`)이 콜백을 `lsp:install-progress`로 쏜다.
+/// (§R3-9 ② — R3은 "완료/실패로 한 번에 넘어간다"였다.)
+pub fn install_server_with(id: &str, on: install::Progress) -> Value {
+    match install::install_with(id, on) {
         Ok(()) => json!({ "ok": true }),
         Err(e) => json!({ "ok": false, "error": e }),
     }
+}
+
+/// 설정 목록에 보일 이름(진행 카드의 `label`) — 모르는 id면 그대로 돌려준다.
+pub fn server_label(id: &str) -> String {
+    spec::spec_by_id(id).map(|s| s.label.to_string()).unwrap_or_else(|| id.to_string())
 }
 
 pub fn uninstall_server(id: &str) -> Value {
@@ -144,11 +156,15 @@ pub fn uninstall_server(id: &str) -> Value {
 
 /// 뷰어의 "이 언어 서버를 설치할까요?" 버튼 — 파일 경로로 어느 서버인지 정한다.
 pub fn install_for_file(cwd: &str, rel: &str) -> Value {
-    let Some(abs) = resolve(cwd, rel) else { return json!({ "ok": false, "error": "경로를 알 수 없어요" }) };
-    let Some(spec) = spec::spec_for_path(&abs) else {
+    let Some(id) = server_id_for_file(cwd, rel) else {
         return json!({ "ok": false, "error": "이 파일 형식을 맡는 서버가 없어요" });
     };
-    install_server(spec.id)
+    install_server(&id)
+}
+
+/// 이 파일을 맡는 서버 id(없으면 `None`) — 셸이 진행률을 그 id로 쏘려고 먼저 묻는다.
+pub fn server_id_for_file(cwd: &str, rel: &str) -> Option<String> {
+    Some(spec::spec_for_path(&resolve(cwd, rel)?)?.id.to_string())
 }
 
 // ── lsp:project-status ───────────────────────────────────────────────────────
@@ -326,10 +342,19 @@ pub fn prewarm(cwd: &str) {
     if cwd.is_empty() {
         return;
     }
-    let root = normalize(Path::new(cwd));
+    let cwd_path = normalize(Path::new(cwd));
     // 원본 폴더가 사라진 프로젝트의 캐시를 회수(디스크 I/O — 백그라운드로)
     std::thread::spawn(semcache::gc_dead_buckets);
-    let Some(spec) = detect_project_spec(&root) else { return };
+    let Some(spec) = detect_project_spec(&cwd_path) else { return };
+    // ★ §R3-9 ④ — 프리웜도 **`root_for`를 거친다.** R3까지는 cwd에 그냥 띄웠고, 솔루션이
+    //   하위 폴더에 있는 C# 프로젝트(그리고 CMake 하위 프로젝트)에서는 프리웜이 cwd에 한 벌,
+    //   실제 파일 열기가 진짜 루트에 또 한 벌을 띄웠다(2.6.2도 같은 구조 — 유휴 회수가
+    //   걷지만 30분간 한 벌이 논다). 루트 규칙에 먹일 "이 프로젝트의 파일 하나"는
+    //   얕은 스캔으로 찾는다(없으면 cwd 그대로 — 그게 R3까지의 동작이다).
+    let root = match first_source_file(&cwd_path, spec) {
+        Some(f) => manager::root_of(spec, &f, &cwd_path),
+        None => cwd_path,
+    };
     if server::launchable(spec, &root).is_err() {
         return;
     }
@@ -338,27 +363,50 @@ pub fn prewarm(cwd: &str) {
     let _ = manager::start(spec, &root);
 }
 
-/// 이 폴더의 주력 언어를 값싼 파일 신호로 추정(2.6.2 `detectProjectServer`의 이식).
+/// 이 폴더의 주력 언어를 값싼 파일 신호로 추정. 표는 각 스펙의
+/// [`spec::ServerSpec::detect_markers`]에 있다(R3까지 이 파일에 하드코딩 — §R3-9 ④).
 /// 못 찾으면 `None` — 프리웜을 안 할 뿐, 파일을 열면 그때 지연 스폰된다.
 fn detect_project_spec(root: &Path) -> Option<&'static ServerSpec> {
     let names: Vec<String> = std::fs::read_dir(root)
         .ok()?
         .flatten()
-        .filter_map(|e| e.file_name().to_str().map(str::to_ascii_lowercase))
+        .filter_map(|e| e.file_name().to_str().map(str::to_string))
         .collect();
-    let has = |n: &str| names.iter().any(|x| x == n);
-    let has_ext = |e: &str| names.iter().any(|x| x.ends_with(e));
-    if has("package.json") || has("tsconfig.json") || has("jsconfig.json") {
-        return spec::spec_by_id("ts");
-    }
-    if has("pyproject.toml") || has("requirements.txt") || has("setup.py") {
-        return spec::spec_by_id("py");
-    }
-    if has_ext(".sln") || has_ext(".slnx") || has_ext(".csproj") {
-        return spec::spec_by_id("cs");
-    }
-    if has("cmakelists.txt") || has("compile_commands.json") || has_ext(".uproject") {
-        return spec::spec_by_id("cpp");
+    spec::detect_project_spec(&names)
+}
+
+/// 이 스펙이 맡는 소스 파일 하나 — **루트 규칙에 먹일 표본**이다(프리웜 전용).
+/// 넓이 우선으로 3단까지, 항목 예산 안에서만 본다. 못 찾으면 `None`.
+/// 예산을 두는 이유: 부팅 경로라 거대 모노레포에서 트리를 걷다 멈추면 안 된다.
+fn first_source_file(root: &Path, spec: &ServerSpec) -> Option<PathBuf> {
+    const SKIP: &[&str] =
+        &["node_modules", ".git", "target", "bin", "obj", "intermediate", "binaries", "saved", "build", ".venv"];
+    let mut budget = 600usize;
+    let mut level = vec![root.to_path_buf()];
+    for _ in 0..3 {
+        let mut next: Vec<PathBuf> = Vec::new();
+        for dir in level {
+            let Ok(rd) = std::fs::read_dir(&dir) else { continue };
+            for e in rd.flatten() {
+                if budget == 0 {
+                    return None;
+                }
+                budget -= 1;
+                let p = e.path();
+                let name = e.file_name().to_string_lossy().to_ascii_lowercase();
+                if e.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                    if !name.starts_with('.') && !SKIP.contains(&name.as_str()) {
+                        next.push(p);
+                    }
+                } else if p.extension().and_then(|s| s.to_str()).and_then(|x| spec.language_id(x)).is_some() {
+                    return Some(p);
+                }
+            }
+        }
+        if next.is_empty() {
+            return None;
+        }
+        level = next;
     }
     None
 }
@@ -398,8 +446,11 @@ pub fn servers() -> Vec<Value> {
                 "kind": match s.kind { Provision::Bundled => "bundled", Provision::Download => "download", Provision::External => "external" },
                 "state": state
             });
-            if let Some(r) = s.requires {
-                o["requires"] = json!(r);
+            // 계약면은 `requires?: string`(2.6.2) + `requiresEn?: string`(3.0 추가, 선택).
+            // 옛 렌더러는 `requires`만 읽고, 3.0 설정 화면이 UI 언어에 따라 고른다(§R3-9 ⑤).
+            if let Some((ko, en)) = s.requires {
+                o["requires"] = json!(ko);
+                o["requiresEn"] = json!(en);
             }
             o
         })
@@ -487,10 +538,25 @@ mod tests {
         for e in ["ts", "TSX", "mjs", "cjs", "jsx"] {
             assert_eq!(spec::spec_for_ext(e).map(|s| s.id), Some("ts"), "{e}");
         }
-        // R3에서 py·cs가 붙었다(확장자 소유는 spec.rs 테스트가 언어별로 본다).
-        for e in ["md", "verse", "cpp"] {
-            assert!(spec::spec_for_ext(e).is_none(), "{e} — R3 범위 밖이어야 한다");
+        // R3에서 py·cs, R4에서 cpp가 붙었다(확장자 소유는 spec.rs 테스트가 언어별로 본다).
+        for e in ["md", "verse", "rs"] {
+            assert!(spec::spec_for_ext(e).is_none(), "{e} — 3.0 범위 밖이어야 한다");
         }
+    }
+
+    /// 프리웜이 루트 규칙에 먹일 표본 파일을 찾는다(§R3-9 ④). 못 찾아도 죽지 않는다.
+    #[test]
+    fn first_source_file_finds_a_sample_within_budget() {
+        let w = std::env::temp_dir().join("ccg-lsp-firstsrc");
+        let _ = std::fs::remove_dir_all(&w);
+        std::fs::create_dir_all(w.join("src/App")).unwrap();
+        std::fs::create_dir_all(w.join("node_modules/x")).unwrap();
+        std::fs::write(w.join("node_modules/x/nope.cs"), "").unwrap();
+        std::fs::write(w.join("src/App/Big.cs"), "class X {}").unwrap();
+        let cs = spec::spec_by_id("cs").unwrap();
+        assert_eq!(first_source_file(&w, cs), Some(w.join("src/App/Big.cs")), "node_modules를 걸러야 한다");
+        let py = spec::spec_by_id("py").unwrap();
+        assert_eq!(first_source_file(&w, py), None);
     }
 
     #[test]
