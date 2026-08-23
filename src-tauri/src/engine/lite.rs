@@ -84,6 +84,13 @@ pub fn build<D: CliDriver>(rt: &ChatRuntime<D>, terminal: Terminal, now_ms: u64)
                            "ready": h.ready }),
         None => Value::Null,
     };
+    // ★R5 — **자동 재발화 상한을 넘겨 멈춘 표**(`LimitHold::auto_paused`)는 화면에서
+    // "화면 밖이라 안 쏘는 표"와 같은 얼굴이어야 한다. 둘 다 *ready인데 엔진이 안 쏜다*이고,
+    // 출구도 `resume_now` 하나로 같다. `resumeOwner.ts`의 `canPressResume`이
+    // `ready && auto !== true`라, 여기서 접어 주지 않으면 배너가
+    // "곧 이어서 계속해요"라고 적고 버튼을 안 준다 — 아무 일도 안 일어나는데.
+    // (진짜 게이트는 `hold_gate_open()`의 `auto_paused`다. 이 값은 표시용 접힘이다.)
+    let auto_resume = rt.auto_resume() && !rt.hold().is_some_and(|h| h.auto_paused);
     json!({
         "chatId": rt.chat_id,
         "status": status,
@@ -101,7 +108,7 @@ pub fn build<D: CliDriver>(rt: &ChatRuntime<D>, terminal: Terminal, now_ms: u64)
         // (`true`), 화면 밖 채팅은 `hold.ready`만 켜고 사용자가 누를 때까지 멈춘다(`false`).
         // 두 값을 하나로 접지 않는 이유는 `status`/`bgActive`를 안 접는 것과 같다 —
         // "관장한다"와 "지금 자동이다"는 다른 사실이고, 표시 쪽이 둘 다 필요하다.
-        "autoResume": rt.auto_resume(),
+        "autoResume": auto_resume,
         "resumeOwner": "engine",
         "updatedAt": now_ms,
     })

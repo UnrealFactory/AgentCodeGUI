@@ -1736,6 +1736,12 @@ pub enum LimitVerdict { Blocked { resets_at: Option<u64> }, Clear, Unknown }
 - `hold_gate_open()`은 닫는다 -> 이 채팅의 **예약분도 혼자 안 나간다**.
 - 출구는 `resume_now()` 하나 — 스펙 ⑤(화면 밖 채팅)와 착지점이 같고 이유만 다르다.
 
+착지점이 같으니 **화면에서도 같은 얼굴**이어야 한다. `resumeOwner.ts`의 `canPressResume`이
+`ready && auto !== true`라, `lite.rs`가 `autoResume`을 `rt.auto_resume() && !auto_paused`로
+접어 준다. 접지 않으면 배너가 *"곧 이어서 계속해요"* 라고 적고 버튼을 안 주는데
+**아무 일도 안 일어난다** — 침묵 no-op(D7)의 표시판이다. 진짜 게이트는 여전히
+`hold_gate_open()`의 `auto_paused`이고, 이 값은 표시용 접힘이다.
+
 ### 재현 -> 0회
 
 ```
