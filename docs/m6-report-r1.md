@@ -376,6 +376,13 @@ tauri    3.0     {"before":114,"after":115,"delta":1,"foundInBin":true,"cleaned"
 `http://ccg-img.localhost/…`로 붙여 **지금은 실제로 닿는 경로**가 됐다. 크리틱이 예고한
 그대로다.
 
+곁가지 확인: 크리틱 §2.3이 "2.6.2만 OK"로 센 3화면 중 **둘이 3.0에서도 통과**한다
+(`node bench/ab.mjs tauri --only=viewer-image,viewer-svg-preview,viewer-html-preview`
+→ `viewer-image` OK 3197ms · `viewer-svg-preview` OK 2445ms · `viewer-html-preview` 실패).
+남은 하나는 `ccg-page`(=`fs:html-preview-url` 미구현)라 이번 경계 밖이다. 화면 셋은
+M-UX 소관이라 **기준 파일 `bench/shots/tauri/report.json`은 `git checkout`으로 되돌렸다**
+— 위 수치는 콘솔 출력이다.
+
 > 남는 성질(2.6.2와 같음): 크레이트 직접 호출 `serve::image_response`는 여전히 21초 걸린다
 > (도달 불가 UNC의 `std::fs::metadata`가 그렇다). 바뀐 것은 **그 21초를 누가 기다리느냐**다 —
 > UI 스레드가 아니라 워커 하나다.
