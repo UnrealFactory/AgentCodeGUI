@@ -14,12 +14,13 @@ use crate::driver::{
 use crate::event::{
     Event, EventSink, EvidenceSource, RevisionOrigin, SettledWire, TerminalStatus, Verdict,
 };
-use crate::frames::{ask_kind_of, classify_task_type, is_limit_error, Frame};
+use crate::frames::{ask_kind_of, classify_task_type, Frame};
 use crate::identity::{
-    resolve_fallback_conflicts, ApplyPolicy, FallbackArm, FallbackVia, IdentityDefaults,
-    IdentityError, IdentityField, IdentityRejectReason, PendingOp, RawIdentity, RawIdentityPatch,
-    RunIdentity, Staged,
+    resolve_fallback_conflicts, ApplyPolicy, BillingAxis, FallbackArm, FallbackVia,
+    IdentityDefaults, IdentityError, IdentityField, IdentityRejectReason, PendingOp, RawIdentity,
+    RawIdentityPatch, RunIdentity, Staged,
 };
+use crate::limit::{classify_limit_error, LimitVerdict, MAX_AUTO_ATTEMPTS};
 use crate::ids::{ChatId, FrameSeq, LiveId, RunId, StreamId};
 use crate::live::{
     AskInfo, AskKind, CloseCause, Confidence, Gating, LiveItem, LiveKind, LiveLedger, Liveness,
@@ -281,6 +282,13 @@ pub struct ChatRuntime<D: CliDriver> {
     /// 말풍선이 없다 — 답만 도착한다(M-UX R2.1 표 #4). 셸이 그 자리에 사용자 에코를
     /// 그리려면 *원문*(첨부 노트가 접히기 **전** 값)과 첨부 목록이 필요하다.
     last_echo: Option<SentEcho>,
+    /// ★R5 — **연속으로 헛돈 자동 재개** 수. 재개 턴이 또 한도 에러로 죽으면 다음 대기표가
+    /// 이 값을 `attempts`로 물려받아 백오프·상한을 적용한다. 사용자 발화·사용자가 누른
+    /// 이어가기·한도 없이 착지한 턴이 0으로 되돌린다.
+    auto_resume_streak: u32,
+    /// ★R5 — 발화 직전 신선 usage 재검증 훅([`crate::limit::LimitProbe`]).
+    /// 기본은 `NoProbe`(=미배선)라 기존 동작과 같고, 셸이 붙이면 2.6.2 `fire()`가 된다.
+    limit_probe: Arc<dyn crate::limit::LimitProbe>,
 }
 
 /// 셸이 사용자 에코를 그리는 데 필요한 최소값.
@@ -291,6 +299,14 @@ pub struct SentEcho {
     pub text: String,
     pub images: Vec<String>,
     pub origin: QueueOrigin,
+}
+
+/// 재검증 훅이 없을 때의 기본 — 언제나 `Unknown`(=2.6.2 `fire()`의 `catch` 가지).
+struct NoProbe;
+impl crate::limit::LimitProbe for NoProbe {
+    fn blocked_until(&self, _a: &BillingAxis, _now_epoch_ms: u64) -> LimitVerdict {
+        LimitVerdict::Unknown
+    }
 }
 
 /// 부팅 재장전이 실어 오는 한도 대기표(§5.8 2단계). 저장된 값은 이 둘뿐이고
@@ -356,6 +372,8 @@ impl<D: CliDriver> ChatRuntime<D> {
             staged_payloads: Default::default(),
             auto_resume: true,
             last_echo: None,
+            auto_resume_streak: 0,
+            limit_probe: Arc::new(NoProbe),
         };
         rt.emit(Event::Identity {
             origin: RevisionOrigin::Default,
@@ -371,6 +389,30 @@ impl<D: CliDriver> ChatRuntime<D> {
     pub fn with_cli_path(mut self, p: std::path::PathBuf) -> Self {
         self.cli_path = p;
         self
+    }
+    /// ★R5 — 발화 직전 **신선 usage 재검증** 훅을 꽂는다(2.6.2 `useLimitResume.fire()`).
+    ///
+    /// 안 꽂으면 `Unknown`만 돌려주는 기본 훅이 서고, 그때의 안전장치는 로컬 상한
+    /// ([`crate::limit::MAX_AUTO_ATTEMPTS`])과 지수 백오프다.
+    pub fn with_limit_probe(mut self, p: Arc<dyn crate::limit::LimitProbe>) -> Self {
+        self.limit_probe = p;
+        self
+    }
+    /// unix **초** → **런타임 시계 ms**.
+    ///
+    /// 한도 리셋 시각은 바깥 세계의 값이라 벽시계 축이고(에러 문구 꼬리 ·
+    /// `rate_limit_event.resetsAt`), 타이머는 단조 축이다. 섞으면 대기표가 1970년
+    /// (부팅이 곧 전송) 또는 2026년(영원히 안 풀림)에 앉는다 — 이 함수 하나가 그 환승역이다.
+    /// 이미 지난 시각은 `now`로 접고, 너무 먼 시각은 [`crate::limit::MAX_WAIT`]로 깎는다
+    /// (사용자 시계가 어긋나 있으면 표가 몇 년 뒤에 앉는다).
+    fn epoch_secs_to_runtime(&self, epoch_secs: u64) -> Millis {
+        let now = self.now();
+        let wall = self.clock.now_epoch_ms();
+        let left = epoch_secs
+            .saturating_mul(1000)
+            .saturating_sub(wall)
+            .min(crate::limit::MAX_WAIT);
+        now + left
     }
     pub fn with_close_policy(mut self, p: StreamClosePolicy) -> Self {
         self.close_policy = p;
@@ -481,10 +523,15 @@ impl<D: CliDriver> ChatRuntime<D> {
         if let Some(h) = hold {
             self.hold = Some(LimitHold {
                 account: self.identity.billing().clone(),
-                // 저장된 값이 없으면 5분 뒤 재검증 — `arm_hold`의 2순위 규약과 같다.
-                resets_at: Some(now + h.in_ms.unwrap_or(5 * MIN)),
+                // ★R5 — 저장된 값이 없으면 **미상 그대로** 둔다(옛 판은 `now + 5분`으로
+                // 채워 부팅 6.5분 뒤 헛 재개를 한 번 태웠다). 미상 대기는 `due_at`이
+                // 2.6.2 `PROBE_MS`(10분)로 잡는다.
+                resets_at: h.in_ms.map(|d| now + d),
                 verified_at: None,
                 ready: h.ready,
+                auto_paused: false,
+                // 재장전은 새 에피소드다 — 지난 판의 헛발질 횟수는 디스크에 없다.
+                attempts: 0,
                 armed_from_run: RunId(0),
                 // 재장전된 예약은 표와 **같은 순간**에 선다 — `>` 비교라 "표 뒤에 온
                 // 사용자 메시지"로 오인되지 않는다(그래야 §7.3의 재개 항목이 그대로 산다).
@@ -504,7 +551,8 @@ impl<D: CliDriver> ChatRuntime<D> {
         if !ready {
             return Verdict::Rejected("hold_not_ready");
         }
-        self.consume_hold();
+        // 사용자가 눌렀다 = 이 재개는 엔진의 헛발질 계산에 들어가지 않는다(★R5).
+        self.consume_hold(false);
         self.drain_if_possible();
         Verdict::Accepted
     }
@@ -519,7 +567,11 @@ impl<D: CliDriver> ChatRuntime<D> {
     /// Rust가 표를 소진하며 나팔을 앞에 끼우면 *한 번의 해제에 두 턴*이 나간다
     /// (M-UX R2.9가 적어 둔 재현 축: 한도 사망 → 재시작 → 리셋 도달 → 전송 1회인가 2회인가).
     /// 표가 걸리기 **전에** 쌓인 예약(재생 #4의 "2"·"3")은 재개가 아니므로 규약 그대로다.
-    fn consume_hold(&mut self) {
+    ///
+    /// `auto` = 엔진 스스로 발사한 것인가(`check_hold`)인가, 사용자가 누른 것인가
+    /// (`resume_now`)인가. 헛 재개 상한([`crate::limit::MAX_AUTO_ATTEMPTS`])이 세는 것은
+    /// **앞쪽뿐**이다 — 사용자가 누른 이어가기는 몇 번이든 사용자의 판단이다(★R5).
+    fn consume_hold(&mut self, auto: bool) {
         let now = self.sync_now();
         let armed_at = self.hold.as_ref().map(|h| h.armed_at).unwrap_or(0);
         // 표가 걸린 뒤에 들어온 사용자 메시지 = 렌더러(또는 사용자)가 이미 건 재개.
@@ -528,6 +580,12 @@ impl<D: CliDriver> ChatRuntime<D> {
             .iter()
             .any(|m| m.origin == QueueOrigin::User && m.created_at > armed_at);
         self.hold = None;
+        // 사람 손이 닿은 재개(누름 · 대기 중 걸어 둔 메시지)는 카운터를 되돌린다.
+        self.auto_resume_streak = if auto && !already {
+            self.auto_resume_streak.saturating_add(1)
+        } else {
+            0
+        };
         if already {
             // 침묵 금지(D7) — 나팔을 삼킨 이유를 한 줄 남긴다.
             self.emit(Event::Notice(
@@ -551,8 +609,12 @@ impl<D: CliDriver> ChatRuntime<D> {
     ///
     /// `ready`만으로는 부족하다: 스펙 ⑤의 "나머지 = 눌러야 발사"는 *ready인데도 안 나가는*
     /// 상태를 요구한다. 자동이 켜져 있으면(기본) 옛 조건과 글자 그대로 같다.
+    /// (★R5 `auto_paused`도 게이트를 닫는다 — 자동 상한을 넘긴 표는 `ready`지만
+    /// 사용자가 누르기 전까지 이 채팅의 예약분도 혼자 나가면 안 된다.)
     fn hold_gate_open(&self) -> bool {
-        self.hold.as_ref().is_none_or(|h| h.ready && self.auto_resume)
+        self.hold
+            .as_ref()
+            .is_none_or(|h| h.ready && self.auto_resume && !h.auto_paused)
     }
     pub fn pending_preview(&self) -> Option<&RunIdentity> {
         self.pending.as_ref().map(|s| &s.preview)
@@ -884,6 +946,10 @@ impl<D: CliDriver> ChatRuntime<D> {
 
     /// `send`·`enqueue`의 공통 착지 — 큐에 세우고, 판정이 `Accepted`면 드레인까지 본다.
     fn accept_user_message(&mut self, input: QueueInput, verdict: Verdict, now: Millis) -> Verdict {
+        // 사용자가 직접 말을 걸었다 = 엔진의 헛 재개 연쇄는 여기서 끊긴다(★R5).
+        if matches!(verdict, Verdict::Accepted | Verdict::Queued) {
+            self.auto_resume_streak = 0;
+        }
         match verdict {
             Verdict::Accepted => {
                 let m = self.make_queue_item(input, QueueOrigin::User, now);
@@ -2036,7 +2102,12 @@ impl<D: CliDriver> ChatRuntime<D> {
             }
             Frame::RateLimit { blocked, resets_at } => {
                 if blocked {
-                    self.arm_hold(resets_at.map(|s| s * 1000));
+                    // ★R5 — `resetsAt`은 **unix 초**다(`protocol-claude-cli.md:1059`의
+                    // 실측값 `1787377200`). R4의 `s * 1000`은 그것을 **런타임 시계 ms**로
+                    // 그대로 앉혔다 — 실기(단조 시계는 앱 기동 뒤 몇 초)에서는 대기표가
+                    // 2026년에 앉아 **영원히 안 풀린다**. 1순위 근거가 미관측(O14)이라
+                    // 아무도 밟지 않았을 뿐이다.
+                    self.arm_hold(resets_at.map(|s| self.epoch_secs_to_runtime(s)));
                 } else {
                     // F19 — allowed는 정보일 뿐이다. **hold 장전이 아니다.**
                     self.fire("F19");
@@ -2331,12 +2402,21 @@ impl<D: CliDriver> ChatRuntime<D> {
             .as_deref()
             .is_some_and(|r| r.starts_with("aborted"));
         // T30 — 한도 문구 분류(2순위 근거. 1순위 프레임은 아직 미관측 · O14)
+        //
+        // ★R5 — 분류가 **리셋 시각까지** 돌려준다(2.6.2 `classifyLimitError`는 늘 그랬다.
+        // 이식이 `hit` 반쪽만 옮겨서 꼬리 `…|1755150000`이 버려지고 있었다 — R14 F2).
         if is_error {
             if let Some(t) = &error_text {
-                if is_limit_error(t) {
-                    self.arm_hold(None);
+                let found = classify_limit_error(t);
+                if found.hit {
+                    let at = found.resets_at.map(|s| self.epoch_secs_to_runtime(s));
+                    self.arm_hold(at);
                 }
             }
+        }
+        // 한도 없이 착지한 턴 = 이 에피소드는 끝났다. 헛 재개 카운터를 되돌린다.
+        if self.hold.is_none() {
+            self.auto_resume_streak = 0;
         }
         if self.state() == StateTag::Interrupting || aborted {
             self.fire("T14");
@@ -2374,6 +2454,15 @@ impl<D: CliDriver> ChatRuntime<D> {
         }
     }
 
+    /// T30 — 한도 대기표 장전. `resets_at`은 **런타임 시계 ms**(모르면 `None`).
+    ///
+    /// ★R5(R14 확인 크리틱 F2) — R4까지 이 함수는 `None`을 받으면 `now + 5분`으로
+    /// **덮어썼다**. 결과가 셋이었다:
+    ///  ① 에러 문구의 리셋 꼬리(`…|1755150000`)를 아무도 읽지 않았고(호출부가 늘 `None`),
+    ///  ② 화면이 5시간 한도에도 "약 5분 뒤 자동으로 이어서 계속해요"라고 적었고,
+    ///  ③ 6.5분마다(=5분 + 90초 재검증) 헛 재개가 돌았다 — 30분에 4회, 5시간 창이면 ~46회.
+    /// 이제 미상은 미상으로 두고, 대기 간격은 [`LimitHold::due_at`]이 2.6.2 규약
+    /// (`PROBE_MS` 10분 + 지수 백오프)으로 정한다.
     fn arm_hold(&mut self, resets_at: Option<Millis>) {
         self.fire("T30");
         let run = self
@@ -2382,17 +2471,25 @@ impl<D: CliDriver> ChatRuntime<D> {
             .and_then(|s| s.turn.as_ref().map(|t| t.run_id))
             .unwrap_or(RunId(0));
         let now = self.now();
+        // 방금 죽은 턴이 **엔진이 스스로 연 재개**였다면 그 시도는 헛방이었다 —
+        // 그 사실을 표에 물려 다음 대기를 늘리고(백오프) 상한을 센다.
+        let attempts = self.auto_resume_streak;
         self.hold = Some(LimitHold {
             account: self.identity.billing().clone(),
-            // reset 시각을 모를 때(2순위 근거 = 문구 분류)는 **5분 뒤 재검증**한다.
-            // 2.6.2 `useLimitResume`도 신선 usage를 주기적으로 다시 물어 판정했다.
-            resets_at: Some(resets_at.unwrap_or(now + 5 * MIN)),
+            resets_at,
             verified_at: None,
             ready: false,
+            auto_paused: false,
+            attempts,
             armed_from_run: run,
             armed_at: now,
         });
-        self.emit(Event::Notice("사용 한도에 걸려 대기합니다".into()));
+        // 침묵 금지(D7) — 언제 다시 볼지를 문장에 담는다. "모른다"도 값이다.
+        self.emit(Event::Notice(if resets_at.is_some() {
+            "사용 한도에 걸려 대기합니다 — 풀리는 시각에 맞춰 이어서 보낼게요.".into()
+        } else {
+            "사용 한도에 걸려 대기합니다 — 언제 풀리는지 알 수 없어 잠시 뒤 다시 확인할게요.".into()
+        }));
     }
 
     // ── tick: 타이머 + 워치독 (§5.4-c) ───────────────────────────────────────
@@ -2698,9 +2795,50 @@ impl<D: CliDriver> ChatRuntime<D> {
             self.drain_if_possible();
             return;
         }
+        // ★R5 — **발화 재검증**(2.6.2 `useLimitResume.fire()` · m-logic §7.3 "정제/발화").
+        //
+        //   *"장전 시점 판단을 믿지 않고 신선 usage로 재검증한다. 아직 막혀 있으면 그
+        //     해제 시각으로 재장전, 풀렸으면 ready 표시만."*
+        //
+        //   재장전은 **CLI를 안 띄운다** — 이것이 헛 재개와 다른 점이다. 그래서 훅이
+        //   붙어 있는 한 몇 번을 다시 걸어도 사용자 눈에는 대기표 하나뿐이다.
+        let account = self.hold.as_ref().map(|h| h.account.clone());
+        if let Some(acct) = account {
+            let verdict = self.limit_probe.blocked_until(&acct, self.clock.now_epoch_ms());
+            if let LimitVerdict::Blocked { resets_at } = verdict {
+                let at = resets_at.map(|s| self.epoch_secs_to_runtime(s));
+                if let Some(h) = &mut self.hold {
+                    h.resets_at = at;
+                    h.armed_at = now;
+                    h.verified_at = Some(now);
+                }
+                self.emit(Event::Notice(
+                    "확인해 보니 아직 한도가 안 풀렸어요 — 다시 기다립니다.".into(),
+                ));
+                self.broadcast_plan();
+                return;
+            }
+        }
         if let Some(h) = &mut self.hold {
             h.ready = true;
             h.verified_at = Some(now);
+        }
+        // ★R5 — **눈감고 쏘는 재개의 상한**(R14 확인 크리틱 F2). 재검증 훅이 없거나
+        //   조회에 실패한 판에서, 재개 턴이 같은 한도 에러로 또 죽었다면 그것이 곧
+        //   "아직 안 풀렸다"는 신선한 증거다. 상한을 넘기면 자동을 멈추고 `ready`만 켠 채
+        //   사용자에게 넘긴다 — 아래 스펙 ⑤와 착지점이 같고 이유만 다르다.
+        //   (F1과 겹칠 때가 최악이었다: 리셋으로 풀리지 않는 컨텍스트 초과 에러 하나가
+        //    영원히 6.5분마다 재전송됐다. 그 문은 F1 쪽에서도 닫혔고 여기서도 닫는다.)
+        let over = self.hold.as_ref().is_some_and(|h| h.attempts >= MAX_AUTO_ATTEMPTS);
+        if over {
+            if let Some(h) = &mut self.hold {
+                h.auto_paused = true;
+            }
+            self.emit(Event::Notice(
+                "자동으로 이어서 보낸 turn이 계속 한도에 막혀서 자동 재개를 멈췄어요 — 준비되면 눌러서 이어가세요.".into(),
+            ));
+            self.broadcast_plan();
+            return;
         }
         // ★ 스펙 ⑤ — 자동 발사가 꺼진 채팅(화면 밖 · 닫힌 창)은 **여기서 멈춘다**.
         //   대기표는 `ready=true`로 남아 사이드바가 "이어갈 수 있음"을 그리고,
@@ -2714,7 +2852,7 @@ impl<D: CliDriver> ChatRuntime<D> {
             return;
         }
         // 소진 — 나팔("이어서 진행해 주세요")을 넣을지는 `consume_hold`가 가른다(★R4).
-        self.consume_hold();
+        self.consume_hold(true);
         self.drain_if_possible();
     }
 

@@ -21,6 +21,7 @@ pub mod frames;
 pub mod identity;
 pub mod ids;
 pub mod job;
+pub mod limit;
 pub mod live;
 pub mod queue;
 pub mod runtime;
@@ -34,6 +35,7 @@ pub use identity::{
     RawIdentityPatch, RawTools, RunIdentity, SkillOverride, Staged,
 };
 pub use ids::{ChatId, FrameSeq, LiveId, RunId, StreamId};
+pub use limit::{classify_limit_error, is_limit_error, LimitHit, LimitProbe, LimitVerdict};
 pub use live::{Gating, LiveItem, LiveKind, LiveLedger, Liveness, ProbeSource, SettleReason};
 pub use runtime::ChatRuntime;
 pub use state::{ResidentWhy, StateTag, StreamClosePolicy};

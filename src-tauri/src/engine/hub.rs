@@ -203,6 +203,9 @@ struct Hub {
     ///     **다른 스레드**에서 스토어를 갈아도, 그 뒤 첫 이벤트는 새 값을 읽는다.
     ///  3. 값 자체는 스토어가 진실이다. 여기 없으면 항상 스토어에 묻는다.
     route: RouteCache,
+    /// 런타임 없이 거절한 전송의 런 id 일련번호(★R5 — [`Hub::reject_spawn`]).
+    /// 슬롯의 `run_seq`와 축이 다르다: 그쪽은 슬롯이 있을 때만 센다.
+    reject_seq: u64,
 }
 
 #[derive(Default)]
@@ -259,11 +262,7 @@ impl Hub {
                 Err(e) => {
                     // 정규화 실패(폴더 없음·계정 없음)는 **거부 사유**로 화면에 낸다.
                     // 런타임을 못 만들었으므로 채팅은 여전히 정체성 미해결 상태다.
-                    self.emit_all(
-                        crate::ipc::ch::CHAT_VERDICT,
-                        json!({ "chatId": chat, "verdict": { "kind": "rejected",
-                                "reason": format!("{e:?}"), "cmd": "ensure" } }),
-                    );
+                    self.reject_spawn(chat, &e);
                     return None;
                 }
             };
@@ -284,6 +283,78 @@ impl Hub {
             );
         }
         self.slots.get_mut(chat)
+    }
+
+    /// **스폰 불가 사유를 구독자가 있는 채널에 앉힌다**(★R5 — R14 확인 크리틱 F4 / M2).
+    ///
+    /// 무엇이 문제였나: `ChatRuntime::new`가 실패하면(`CwdMissing`·`AccountUnavailable`)
+    /// 사유가 `chat:verdict`로만 나갔는데 **그 채널의 구독자는 0**이다(§4.3-M2). 런타임이
+    /// 없으니 T3(20초 침묵 감시)도 없다. 크리틱이 채팅 폴더를 없는 경로로 바꾸고 한 줄
+    /// 보낸 뒤 40초를 지켜본 결과가 이랬다:
+    ///
+    /// ```text
+    ///  +3s  "징검다리 놓는 중 ·3초"   · errMsgs []     +25s  "안개를 걷어내는 중 ·25초" · errMsgs []
+    /// +10s  "징검다리 놓는 중 ·10초"  · errMsgs []     +40s  "퍼즐 맞추는 중 ·40초"    · errMsgs []
+    /// ```
+    ///
+    /// 사용자 말풍선은 그려졌고, 나레이션은 돌고, 중지 버튼은 살아 있고, **오류·안내 0건** —
+    /// m-logic P8("영구 정지 + 침묵") 그 자체이고 3.0이 죽이겠다고 선언한 증상이다.
+    /// 침묵 no-op 금지(D7)는 *"구독자 없는 채널에만 말하는 것"* 도 금지한다.
+    ///
+    /// 그래서 셋을 함께 낸다. 순서가 계약이다 —
+    /// 렌더러의 세션 리듀서는 `begin` 직후 `curRunId = 'pending'`이라 **`analyzing`이 런을
+    /// 채택하기 전에는 `error`/`status`를 전부 늦은 잔재로 버린다**(`session.ts:553`).
+    ///
+    /// | # | 이벤트 | 화면에서 하는 일 |
+    /// |---|---|---|
+    /// | ① | `status{analyzing}` | 이 런을 현재 실행으로 채택시킨다(아래 둘이 통과할 문) |
+    /// | ② | `error{message}` | 오류 말풍선 — 사유를 **읽을 수 있는 문장**으로 |
+    /// | ③ | `status{error}` | 턴 종결(컴포저·중지 버튼·나레이션 해제) |
+    ///
+    /// `chat:verdict`도 그대로 낸다 — 구독자가 붙는 날의 기계 판독용이고, 지금 지우면
+    /// 계약면이 한 번 더 흔들린다.
+    fn reject_spawn(&mut self, chat: &str, e: &ccg_engine::IdentityError) {
+        use ccg_engine::IdentityError as E;
+        let why = match e {
+            E::CwdMissing(p) => format!("작업 폴더를 찾을 수 없어요 — {p}"),
+            E::AccountUnavailable(a) => {
+                format!("실행 계정을 쓸 수 없어요 — {a} (로그아웃됐거나 계정 목록에서 사라졌습니다)")
+            }
+            E::ApiKeyMissing => "API 키가 없어요 — 설정에서 키를 넣어 주세요".into(),
+            E::EngineSwitchNeedsModel => "엔진을 바꾸려면 모델을 함께 골라야 해요".into(),
+        };
+        self.emit_all(
+            crate::ipc::ch::CHAT_VERDICT,
+            json!({ "chatId": chat, "verdict": { "kind": "rejected",
+                    "reason": format!("{e:?}"), "cmd": "ensure", "message": why } }),
+        );
+        // 런타임이 없어 `wire`도 없다 — 런 id는 여기서 발급한다(짝이 없는 1회용).
+        self.reject_seq += 1;
+        let run = format!("x{}-{}", std::process::id(), self.reject_seq);
+        let chat = chat.to_string();
+        self.fanout(&chat, json!({ "type": "status", "runId": run, "status": "analyzing" }));
+        self.fanout(
+            &chat,
+            json!({ "type": "error", "runId": run,
+                    "message": format!("{why}. 고친 뒤 다시 보내면 이어집니다.") }),
+        );
+        self.fanout(&chat, json!({ "type": "status", "runId": run, "status": "error" }));
+        // 사이드바·다른 창이 읽는 요약면에도 앉힌다(`chat:status`). 런타임이 없으니
+        // `lite::build`를 못 쓴다 — 스토어의 빈 lite에 종결 상태만 얹는다.
+        let mut row = ccg_store::status::empty_lite(&chat);
+        if let Some(o) = row.as_object_mut() {
+            o.insert("status".into(), json!("error"));
+            o.insert("busy".into(), json!(false));
+            o.insert(
+                "updatedAt".into(),
+                json!(std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_millis() as u64)
+                    .unwrap_or(0)),
+            );
+        }
+        ccg_store::status::set(&chat, row);
+        self.emit_all(crate::ipc::ch::CHAT_STATUS, super::status_array());
     }
 
     fn emit_all(&self, channel: &str, payload: Value) {
@@ -1073,6 +1144,7 @@ pub fn start(app: AppHandle) {
                 job,
                 cli: cli_path(),
                 route: RouteCache::default(),
+                reject_seq: 0,
             };
             loop {
                 let wait = hub.wait();

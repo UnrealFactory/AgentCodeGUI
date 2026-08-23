@@ -11,6 +11,20 @@ pub type Millis = u64;
 
 pub trait Clock: Send + Sync {
     fn now_ms(&self) -> Millis;
+
+    /// 벽시계 unix **밀리초**.
+    ///
+    /// 타이머는 단조 시계만 봐야 하지만(위 주석), **한도 리셋 시각**은 바깥 세계의 값이라
+    /// 어쩔 수 없이 벽시계 축이다: 에러 문구 꼬리(`…|1755150000`)도 `rate_limit_event`의
+    /// `resetsAt`(`1787377200`)도 unix 초다. 두 축을 섞으면 대기표가 1970년(=부팅이 곧
+    /// 전송)이나 2026년(=영원히 안 풀림)에 앉는다 — 그래서 변환에 쓸 앵커를 **여기 하나만**
+    /// 둔다(`ChatRuntime::epoch_secs_to_runtime`). 재생은 [`VirtualClock`]이 이 값도 쥔다.
+    fn now_epoch_ms(&self) -> u64 {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0)
+    }
 }
 
 pub struct SystemClock {
@@ -35,11 +49,19 @@ impl Clock for SystemClock {
 #[derive(Default)]
 pub struct VirtualClock {
     now: AtomicU64,
+    /// 가상 t=0이 가리키는 **unix 밀리초**. 기본 0 — 재생은 1970년에 산다. 한도 리셋
+    /// 시각을 실전 값(`|1755150000`)으로 먹이는 시나리오가 "몇 십 년 뒤"를 결정적으로
+    /// 재현하려면 이 값이 0이어야 한다(벽시계를 읽으면 오늘 날짜에 따라 답이 바뀐다).
+    epoch_base: AtomicU64,
 }
 
 impl VirtualClock {
     pub fn new() -> Arc<VirtualClock> {
         Arc::new(VirtualClock::default())
+    }
+    /// 가상 t=0의 unix 밀리초를 놓는다 — "지금이 2026년인 판"을 재생할 때만 쓴다.
+    pub fn set_epoch_base(&self, unix_ms: u64) {
+        self.epoch_base.store(unix_ms, Ordering::SeqCst);
     }
     pub fn advance_to(&self, ms: Millis) {
         let cur = self.now.load(Ordering::SeqCst);
@@ -54,6 +76,11 @@ impl VirtualClock {
 impl Clock for VirtualClock {
     fn now_ms(&self) -> Millis {
         self.now.load(Ordering::SeqCst)
+    }
+    fn now_epoch_ms(&self) -> u64 {
+        self.epoch_base
+            .load(Ordering::SeqCst)
+            .saturating_add(self.now.load(Ordering::SeqCst))
     }
 }
 

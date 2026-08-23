@@ -31,6 +31,16 @@ pub enum Terminal {
     Aborted,
 }
 
+/// 런타임 시계 ms(단조) → **unix 초**. `hub::persist_hold`가 디스크로 내릴 때 하는 것과
+/// 같은 환승이고, 짝인 되돌리기는 `engine::remaining_ms`다. 시각 미상(`None`)은 그대로
+/// `null`로 나간다 — 렌더러가 "언제 풀리는지 모른다" 문장을 따로 갖고 있다.
+fn runtime_ms_to_epoch_secs(rt_now: u64, wall_now_ms: u64, at: Option<u64>) -> Value {
+    match at {
+        Some(r) => json!((wall_now_ms as f64 + (r as f64 - rt_now as f64)) / 1000.0),
+        None => Value::Null,
+    }
+}
+
 pub fn build<D: CliDriver>(rt: &ChatRuntime<D>, terminal: Terminal, now_ms: u64) -> Value {
     let state = rt.state();
     let ledger = rt.ledger();
@@ -64,8 +74,14 @@ pub fn build<D: CliDriver>(rt: &ChatRuntime<D>, terminal: Terminal, now_ms: u64)
     // 키 이름은 `ccg_store::status::truth_from_chat_file`와 **같아야** 한다 —
     // 그쪽이 `<chatId>.json`에서 만드는 파생 요약과 모양이 갈리면 규약 3("어긋나면
     // 채팅 파일이 이긴다")이 매번 발동해 화면이 깜빡인다.
+    //
+    // ★R5 — `resetAt`은 **unix 초**다. 렌더러가 `managed.resetAt * 1000 - Date.now()`로
+    // 남은 시간을 만들고(`Chat.tsx` `LimitHoldBar`), 디스크 짝(`hub::persist_hold`)도
+    // 같은 축이다. R4까지 여기만 **런타임 시계 ms**(앱 기동 뒤 경과)를 그대로 실어
+    // 배너의 "약 N 뒤"가 늘 0이었다 — F2가 적은 "화면도 거짓말한다"의 나머지 반쪽이다.
     let hold = match rt.hold() {
-        Some(h) => json!({ "resetAt": h.resets_at, "ready": h.ready }),
+        Some(h) => json!({ "resetAt": runtime_ms_to_epoch_secs(rt.now(), now_ms, h.resets_at),
+                           "ready": h.ready }),
         None => Value::Null,
     };
     json!({
@@ -89,4 +105,26 @@ pub fn build<D: CliDriver>(rt: &ChatRuntime<D>, terminal: Terminal, now_ms: u64)
         "resumeOwner": "engine",
         "updatedAt": now_ms,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// ★R5 — `resetAt`은 렌더러가 `× 1000 - Date.now()`로 쓰는 **unix 초**여야 한다.
+    /// 런타임 시계 ms를 그대로 실으면 배너의 남은 시간이 늘 0이 된다(R14 F2 후반부).
+    #[test]
+    fn reset_at_leaves_as_unix_seconds() {
+        // 앱이 뜬 지 12초(런타임 ms), 벽시계는 1_755_000_000.000초.
+        let rt_now = 12_000;
+        let wall = 1_755_000_000_000;
+        // 대기표는 런타임 기준 5시간 뒤 → 벽시계로 1_755_018_000초
+        let v = runtime_ms_to_epoch_secs(rt_now, wall, Some(rt_now + 5 * 3600 * 1000));
+        assert_eq!(v.as_f64(), Some(1_755_018_000.0));
+        // 시각 미상은 null 그대로 — 렌더러가 "언제 풀리는지 모른다" 문장을 갖고 있다.
+        assert!(runtime_ms_to_epoch_secs(rt_now, wall, None).is_null());
+        // 이미 지난 시각도 과거로 정직하게 나간다(0으로 접지 않는다).
+        let past = runtime_ms_to_epoch_secs(rt_now, wall, Some(2_000));
+        assert_eq!(past.as_f64(), Some(1_754_999_990.0));
+    }
 }

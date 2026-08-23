@@ -114,9 +114,23 @@ pub struct QueuedMessage {
 pub struct LimitHold {
     /// 대기표도 정체성 축으로 식별 — 계정을 바꾸면 이 표는 무효다.
     pub account: BillingAxis,
+    /// 해제 예정 시각 — **런타임 시계 ms**(벽시계 unix 초가 아니다.
+    /// `ChatRuntime::epoch_secs_to_runtime`이 옮긴 값이다).
+    ///
+    /// ★R5 — `None`은 이제 **"시각 미상"** 그대로다. R4까지는 장전이 `None`을 받으면
+    /// `now + 5분`으로 **덮어썼고**(그래서 5시간 한도에도 화면이 "약 5분 뒤"라고 적었다),
+    /// 6.5분마다 헛 재개가 돌았다(R14 확인 크리틱 F2 — 30분에 4회).
     pub resets_at: Option<Millis>,
     pub verified_at: Option<Millis>,
     pub ready: bool,
+    /// ★R5 — **자동 재발화 상한 소진**. `ready`는 켜되(사이드바가 "이어갈 수 있음"을
+    /// 그린다) 엔진은 스스로 쏘지 않는다. 출구는 사용자의 `resume_now` 하나다.
+    /// 스펙 ⑤(화면 밖 채팅)와 착지점이 같고, 이유만 다르다.
+    pub auto_paused: bool,
+    /// ★R5 — 이 한도 에피소드에서 엔진이 **이미 태운 자동 재개 턴** 수.
+    /// 0 = 사용자(또는 일반 드레인)의 턴이 죽어서 처음 걸린 표.
+    /// 시각 미상 대기의 지수 백오프 지수이자 [`crate::limit::MAX_AUTO_ATTEMPTS`]의 기준.
+    pub attempts: u32,
     pub armed_from_run: RunId,
     /// 이 표를 **건 시각**(★R4 — 재개 단일 소유).
     ///
@@ -128,9 +142,20 @@ pub struct LimitHold {
 }
 
 impl LimitHold {
-    /// `resets_at + 90s`에 신선 usage 재검증(2.6.2 `useLimitResume` 규약 계승).
+    /// 신선 usage 재검증 시각 — 2.6.2 `resumeDelayMs`(`limitResume.ts:90`)의 이식.
+    ///
+    /// ```text
+    /// 시각 앎  → max(resets_at + 90s, armed_at + 15s)   // RESET_GRACE_MS · Math.max(15_000, …)
+    /// 시각 미상 → armed_at + PROBE(10분) × 2^attempts    // PROBE_MS + ★R5 지수 백오프
+    /// ```
+    ///
+    /// 백오프가 2.6.2에 없는 이유는 그쪽 프로브가 **usage 조회 1회**였기 때문이다.
+    /// 여기서는 같은 자리가 **CLI 턴 1회**를 태운다([`crate::limit::PROBE`] 주석).
     pub fn due_at(&self) -> Option<Millis> {
-        self.resets_at.map(|r| r + 90 * crate::clock::SEC)
+        Some(match self.resets_at {
+            Some(r) => (r + crate::limit::GRACE).max(self.armed_at + crate::limit::MIN_DELAY),
+            None => self.armed_at + crate::limit::unknown_wait(self.attempts),
+        })
     }
 }
 

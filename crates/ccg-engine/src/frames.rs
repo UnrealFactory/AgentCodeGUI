@@ -316,10 +316,11 @@ pub fn ask_kind_of(subtype: &str, tool_name: Option<&str>) -> Option<AskKind> {
 
 /// 2.6.2 `classifyLimitError`(`limitResume.ts:38`)의 Rust 이식 — 한도 장전 **2순위 근거**.
 /// 1순위(`rate_limit_event{status:"blocked"}`)는 아직 **아무도 관측한 적이 없다**(O14).
-pub fn is_limit_error(text: &str) -> bool {
-    let t = text.to_lowercase();
-    (t.contains("limit") && (t.contains("reached") || t.contains("exceed") || t.contains("reset")))
-        || t.contains("usage limit")
-        || t.contains("rate limit")
-        || t.contains("한도")
-}
+///
+/// ★R5 — 본체는 [`crate::limit`]로 옮겼다. 여기 있던 판이 2.6.2보다 관대해
+/// 2.6.2 자기 코퍼스 18종에서 **오탐 3건**을 냈다(R14 확인 크리틱 F1: `context limit
+/// reached…` · `output token limit exceeded` · `rate limited; retry shortly`). 원인은
+/// 원본의 오탐 차단벽(`/context|token|output|length/`)이 이식에서 빠지고 원본이 일부러
+/// 뺀 `rate limit`이 더해진 것 — 원본과 나란히 놓고 세는 자리가 없어서 안 보였다.
+/// 이 두 줄은 호출부 호환을 위한 얼굴이고, 판정과 그 근거는 전부 `limit.rs`에 있다.
+pub use crate::limit::{classify_limit_error, is_limit_error};
