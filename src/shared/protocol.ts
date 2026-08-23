@@ -712,6 +712,15 @@ export interface AccountInfo {
   email: string
   subscriptionType?: string
   isDefault: boolean // 새 채팅·계정 미지정 채팅이 쓰는 기본 계정인가
+  /**
+   * ★M11 R3(F2) — 이 계정의 토큰 교환이 실패해 **재로그인이 필요해 보인다**.
+   *
+   * 3.0 전용 · 선택 필드다(2.6.2 main은 안 싣는다 = `undefined`라 화면이 그대로다).
+   * 값의 출처는 `~/.agentcodegui/account-health.json`(`ccg-auth::health`)이고, 자동 전환
+   * 워커가 `TokenLost`/401·403을 만난 순간 적는다. 재로그인하면 크리덴셜 지문이 달라져
+   * 표식이 스스로 무효가 된다 — 화면도 같은 판정을 쓰므로 따로 지울 것이 없다.
+   */
+  needsLogin?: boolean
 }
 
 /** 등록된 OpenAI(Codex) 계정 1건 — Anthropic과 동일한 문법(앱 등록 계정만, 기본 계정). */

@@ -759,6 +759,9 @@ impl<D: CliDriver> ChatRuntime<D> {
         // ★M11 R2(C2) — **집었다고 장부에 적는다.** 같은 tick의 다음 채팅은 이 줄을 보고
         // 다른 계정을 고른다(정규화가 실패한 판에는 적지 않는다 — 안 집은 것이다).
         self.switch_ledger.take(self.chat_id.as_str(), &pick.account, now_epoch);
+        // ★M11 R3(F8) — 셸의 예약 장부도 **여기서만** 선다. `pick` 안에서 걸면 엔진이
+        // 거절한 후보까지 예약돼 남의 후보를 30초 가린다(확인 크리틱 F8).
+        self.switcher.confirm(self.chat_id.as_str(), &pick.account);
         // ① 표를 걷는다(§7.3의 일반 무효화 문장이 이 전환을 가리지 않게).
         self.hold = None;
         // 계정이 바뀌었으니 옛 계정에서 센 헛발질은 이 계정과 무관하다.

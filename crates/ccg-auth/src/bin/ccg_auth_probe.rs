@@ -77,7 +77,7 @@ fn seed(emails: &[String], dup: bool) -> Value {
         rows.push(json!({ "email": email, "tokenOwner": owner, "dup": dup && i == 0 }));
     }
     let default = emails[0].clone();
-    ccg_auth::claude::write_store_file(&accounts, Some(&default));
+    ccg_auth::claude::write_store_file(&accounts, Some(&default)).expect("스토어 저장");
     json!({ "seeded": rows, "default": default, "total": ccg_auth::claude::list_accounts().len(),
             "preflight": emails.iter().map(|e| json!({
                 "email": e,
@@ -128,7 +128,7 @@ fn roundtrip() -> Value {
         let p = home.join(ccg_auth::claude::STORE_FILE);
         let before = std::fs::read_to_string(&p).ok();
         let f = ccg_auth::claude::read_store_file();
-        ccg_auth::claude::write_store_file(&f.accounts, f.default_email.as_deref());
+        ccg_auth::claude::write_store_file(&f.accounts, f.default_email.as_deref()).expect("스토어 저장");
         let after = std::fs::read_to_string(&p).ok();
         out.insert(
             "accounts.json".into(),

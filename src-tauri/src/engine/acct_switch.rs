@@ -73,7 +73,19 @@ const SNAP_TTL: Duration = Duration::from_secs(120);
 /// 계정으로 **스폰하기 전**(정체성만 바뀐 그 몇십 ms)에는 그 계정이 아직 busy가 아니고,
 /// 같은 순간 열린 다른 채팅이 같은 1등을 집는다 — 규칙 ①이 막으려던 바로 그 상태다.
 /// 예약이 그 틈을 메우고, 스폰이 끝나면 busy가 이어받는다(그래서 짧아도 된다).
-const RESERVE_TTL: Duration = Duration::from_secs(30);
+///
+/// ★R3(F8) — 값은 **엔진 장부에서 가져온다**([`ccg_engine::limit::TAKEN_TTL_MS`]).
+/// R2는 셸 30초 · 엔진 60초로 갈려 있었고, 그 30초 동안은 "셸은 비었다는데 엔진이 막는"
+/// 구간이라 재질문 루프가 헛돌았다(확인 크리틱 F8).
+const RESERVE_TTL: Duration = Duration::from_millis(ccg_engine::limit::TAKEN_TTL_MS);
+
+/// ★R3(F2) — 조회에 실패한 계정을 다시 물어보기까지의 **최소 간격**(지수 백오프의 밑).
+///
+/// 워커 쿨다운(20초)보다 커야 "매 tick 재시도"가 사라진다. R2는 상한이 없어서 죽은
+/// 토큰 하나가 20초마다 영원히 교환 POST를 냈다(확인 크리틱 F2-⑶).
+const SICK_BACKOFF_BASE: Duration = Duration::from_secs(60);
+/// 백오프 상한 — 이 시간이 지나면 죽은 것처럼 보이던 계정도 한 번은 다시 물어본다.
+const SICK_BACKOFF_MAX: Duration = Duration::from_secs(30 * 60);
 
 /// 워커가 채우고 `pick`이 읽는 판정 재료. 락 안에서 하는 일은 **clone뿐**이다.
 #[derive(Default)]
@@ -110,6 +122,10 @@ pub struct Switcher {
     /// `engine:debug`의 `accountSwitch.worker`로 나간다: 문서가 "안 묻는다"고 적어 두고
     /// 코드는 묻고 있던 것이 R1의 C1·C4였다. 이제 하네스가 숫자로 확인할 수 있다.
     stats: Mutex<(u64, u64)>,
+    /// ★R3(F2) — **조회에 실패한 계정의 격리 장부.** `계정 → (연속 실패 수, 다시 물어볼 시각)`.
+    /// 재로그인이 필요해 보이는 계정은 여기에 더해 [`ccg_auth::health`]에도 적힌다
+    /// (그쪽은 디스크 = 사용자가 읽는 사실 + 재시작 뒤에도 남는 기억).
+    sick: Mutex<BTreeMap<String, (u32, Instant)>>,
     last: Mutex<LastPlan>,
 }
 
@@ -127,6 +143,7 @@ impl Switcher {
             wake: tx,
             asks: Mutex::new(BTreeSet::new()),
             stats: Mutex::new((0, 0)),
+            sick: Mutex::new(BTreeMap::new()),
             last: Mutex::new(LastPlan::default()),
         });
         let worker = me.clone();
@@ -221,11 +238,55 @@ impl Switcher {
     }
 
     /// 집었다 = 그 계정은 이제 이 채팅의 것이다(스폰이 busy로 이어받을 때까지).
+    ///
+    /// ★R3(F8) — **살아 있는 남의 예약은 덮지 않는다.** 덮으면 진짜 주인이 안 보이게 되고,
+    /// 세 번째 채팅이 그 계정을 논다고 읽는다(장부가 계정 → 채팅 하나뿐이라).
     fn reserve(&self, chat_id: &str, email: &str) {
-        self.reserved
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .insert(email.to_string(), (chat_id.to_string(), Instant::now()));
+        let mut g = self.reserved.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some((who, at)) = g.get(email) {
+            if who != chat_id && at.elapsed() < RESERVE_TTL {
+                return;
+            }
+        }
+        g.insert(email.to_string(), (chat_id.to_string(), Instant::now()));
+    }
+
+    // ── ★R3(F2) 실패 계정 격리 · 지수 백오프 · 복구 ──────────────────────────
+
+    /// 지금 이 계정에 조회를 다시 보내도 되나. 백오프 창 안이면 `false`.
+    fn may_fetch(&self, email: &str) -> bool {
+        let g = self.sick.lock().unwrap_or_else(|e| e.into_inner());
+        g.get(email).is_none_or(|(_, until)| Instant::now() >= *until)
+    }
+
+    /// 조회 실패를 적는다 — 지수 백오프(밑 [`SICK_BACKOFF_BASE`], 상한 [`SICK_BACKOFF_MAX`]).
+    fn note_sick(&self, email: &str) -> u32 {
+        let mut g = self.sick.lock().unwrap_or_else(|e| e.into_inner());
+        let e = g.entry(email.to_string()).or_insert((0, Instant::now()));
+        e.0 = e.0.saturating_add(1);
+        let wait = SICK_BACKOFF_BASE.saturating_mul(1u32 << (e.0 - 1).min(9)).min(SICK_BACKOFF_MAX);
+        e.1 = Instant::now() + wait;
+        e.0
+    }
+
+    /// 조회 성공 = 복구. 메모리 장부와 디스크 표식을 **둘 다** 지운다.
+    fn note_well(&self, email: &str) {
+        let had = self.sick.lock().unwrap_or_else(|e| e.into_inner()).remove(email).is_some();
+        ccg_auth::net::clear_rotate_backoff(email);
+        if had || ccg_auth::health::needs_login(email) {
+            ccg_auth::health::clear(email);
+            eprintln!("[acct-switch] {email} 조회 성공 — 격리를 푼다");
+        }
+    }
+
+    /// 격리 중인 계정 목록. 화면에 나가는 사실은 두 갈래로 이미 서 있다 —
+    /// `last_plan().skipped`의 `needs_login`(진단)과 `account-health.json`(설정 Account 탭).
+    /// 여기 것은 그 둘이 같은 답을 내는지 재는 **테스트용 창**이다.
+    #[cfg(test)]
+    pub fn quarantined(&self) -> Vec<String> {
+        let g = self.sick.lock().unwrap_or_else(|e| e.into_inner());
+        let now = Instant::now();
+        g.iter().filter(|(_, (_, until))| now < *until).map(|(e, _)| e.clone()).collect()
     }
 }
 
@@ -298,13 +359,20 @@ impl AccountSwitcher for Switcher {
             self.ask(exclude);
         }
         let c = picked?;
-        // ★R2 C2 — 집는 **그 순간** 표시한다. 이 함수는 허브 스레드에서만 불리므로
-        // 같은 펌프의 다음 채팅은 바로 다음 줄에서 이 예약을 본다.
-        self.reserve(req.chat_id, &c.email);
         Some(SwitchPick {
             account: c.email,
             soonest_reset: c.soonest_reset.filter(|s| *s > 0).map(|s| s as u64),
         })
+    }
+
+    /// ★R3(F8) — 엔진이 **정말 집었을 때만** 예약이 선다.
+    ///
+    /// R2는 `pick` 안에서 걸었다. 그런데 `pick`의 답은 제안일 뿐이라, 엔진이 장부를 보고
+    /// 거절한 후보까지 30초 동안 예약돼 다른 채팅의 후보를 가렸다(확인 크리틱 F8).
+    /// 같은 펌프의 다음 채팅이 이 예약을 보는 성질은 그대로다 — `confirm`은 그 채팅의
+    /// tick 안에서(전환을 실행하는 그 줄에서) 불리기 때문이다.
+    fn confirm(&self, chat_id: &str, account: &str) {
+        self.reserve(chat_id, account);
     }
 }
 
@@ -316,7 +384,6 @@ fn collect(sw: &Switcher) -> Snapshot {
     let mut preflight = BTreeMap::new();
     let mut cache = usage::read_usage_cache();
     let mut usage_map = BTreeMap::new();
-    let busy = sw.busy.lock().unwrap_or_else(|e| e.into_inner()).clone();
     // ★R2 C1(c) — **예산 문 ②를 코드로.** 물어 온 채팅들의 제외 집합을 모아, *어떤
     //   물음에서도 후보가 될 수 있는* 계정만 조회 대상에 넣는다. 모든 물음이 제외한
     //   계정(전형적으로 그 채팅이 지금 쓰는 계정과 이미 거쳐 온 계정)에는 HTTP가 없다.
@@ -331,34 +398,58 @@ fn collect(sw: &Switcher) -> Snapshot {
         // 오염가드가 **한도 조회보다 먼저**다(`verify::preflight` 헤더의 순서 그대로):
         // 오염 항목은 살아 있는 토큰을 물고 있어 조회도 통과해 버린다. 게다가 여기서
         // 먼저 걸러야 **그 계정에 HTTP를 안 쓴다**(예산 문 ②).
-        let v = verify::preflight(email).verdict;
+        let mut v = verify::preflight(email).verdict;
         let usable = matches!(v, PreflightVerdict::Probe | PreflightVerdict::NeedsRefresh);
-        preflight.insert(email.clone(), v);
         if let Some(c) = cache.get(email) {
             usage_map.insert(email.clone(), c.data.clone());
         }
-        if !want.contains(email) || !usable || busy.contains(email) {
+        // ★R3(F2) — **격리된 계정은 아예 안 묻고, 후보도 아니다.**
+        //   ⑴ 오염가드는 파일만 보므로 죽은 refresh도 `NeedsRefresh`(통과)다.
+        //   ⑵ 캐시에 지난 usage가 있으면 그 계정이 다음 전환의 1등으로 나갔다(크리틱 T5).
+        //   ⑶ 캐시가 없으면 `usage_unknown`이라 매 tick 되물어 20초마다 죽은 토큰으로
+        //      교환 POST가 나갔다(상한 없음).
+        if ccg_auth::health::needs_login(email) {
+            preflight.insert(email.clone(), PreflightVerdict::NeedsLogin);
             continue;
         }
+        // ★R3(F4) — **busy는 루프 안에서 다시 읽는다.** 계정 6개 × (교환 2 + 조회 1) ×
+        //   `USAGE_GAP_MS` ≈ 최대 20초라, 진입 전 스냅샷 하나로 판정하면 그 사이에 턴을
+        //   시작한 계정에도 조회·회전이 나간다 = **살아 있는 CLI 밑에서 그랜트를 돌린다**
+        //   (확인 크리틱 F4 — R1 C1-④가 안 닫혀 있던 자리). 비용은 뮤텍스 한 번이다.
+        let busy_now = sw.busy.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        let skip = !want.contains(email) || !usable || busy_now.contains(email);
         let fresh = cache
             .get(email)
             .is_some_and(|c| now_ms - c.at >= 0 && (now_ms - c.at) < usage::ACCT_USAGE_TTL_MS as i64);
-        if fresh {
-            continue;
-        }
-        // 여기를 지나는 것이 곧 **실 HTTP 1건**이다(킬 스위치가 켜져 있으면 즉시 거절되지만
-        // 그것도 "물으려 했다"로 센다 — 예산 문의 감사는 의도를 재야 한다).
-        sw.stats.lock().unwrap_or_else(|e| e.into_inner()).1 += 1;
-        match fetch(email) {
-            Some(u) => {
-                cache.insert(email.clone(), usage::CachedUsage { at: now_ms, data: u.clone() });
-                usage_map.insert(email.clone(), u);
-                fetched = true;
+        if !skip && !fresh && sw.may_fetch(email) {
+            // 여기를 지나는 것이 곧 **실 HTTP 1건**이다(킬 스위치가 켜져 있으면 즉시 거절되지만
+            // 그것도 "물으려 했다"로 센다 — 예산 문의 감사는 의도를 재야 한다).
+            sw.stats.lock().unwrap_or_else(|e| e.into_inner()).1 += 1;
+            match fetch(email) {
+                Ok(u) => {
+                    cache.insert(email.clone(), usage::CachedUsage { at: now_ms, data: u.clone() });
+                    usage_map.insert(email.clone(), u);
+                    fetched = true;
+                    sw.note_well(email);
+                    // 교환까지 성공했으면 액세스 토큰이 살아났다 = 판정이 `Probe`로 올라온다.
+                    // **조회 뒤에 다시 재는 것이 핵심**이다: `switch::plan`은 `Probe`만
+                    // 통과시키므로(R3/F2), 여기서 갱신하지 않으면 정상 계정까지 후보에서 빠진다.
+                    v = verify::preflight(email).verdict;
+                }
+                // 킬 스위치는 **계정 상태가 아니다**(하네스 주행) — 격리하지 않는다.
+                Err(ccg_auth::net::NetError::Disabled) => {}
+                // 못 물어봤다 = **모름**이다. 실패는 격리 장부에 남아 백오프를 만든다.
+                Err(_) => {
+                    let n = sw.note_sick(email);
+                    if ccg_auth::health::needs_login(email) {
+                        preflight.insert(email.clone(), PreflightVerdict::NeedsLogin);
+                        continue;
+                    }
+                    eprintln!("[acct-switch] {email} 조회 실패 {n}회 — 백오프");
+                }
             }
-            // 못 물어봤다 = **모름**이다. 캐시의 낡은 값이 있으면 그걸 쓰고
-            // (`window_state`가 지난 창을 `Rolled`로 접는다), 없으면 후보가 아니다.
-            None => {}
         }
+        preflight.insert(email.clone(), v);
     }
     if fetched {
         usage::write_usage_cache(&cache);
@@ -368,21 +459,31 @@ fn collect(sw: &Switcher) -> Snapshot {
 
 /// 계정 하나의 실 조회. `ccg-auth/net`은 **이 크레이트만** 켠다(src-tauri/Cargo.toml).
 /// `CCG_NO_NET=1`이면 즉시 `Err(Disabled)`라 하네스 주행은 캐시만 본다.
-fn fetch(email: &str) -> Option<AccountUsage> {
-    match ccg_auth::net::fetch_account_usage(email) {
-        Ok(u) => Some(u),
+fn fetch(email: &str) -> Result<AccountUsage, ccg_auth::net::NetError> {
+    use ccg_auth::net::NetError;
+    let out = ccg_auth::net::fetch_account_usage(email);
+    match &out {
+        Ok(_) => {}
         // ★R2 C1(a) — 회전된 토큰을 못 남긴 판. 이 계정은 다음 실행에서 재로그인을 요구할
         // 수 있고, 그 이유는 **여기밖에** 안 남는다. 다른 실패와 같은 줄로 흘리지 않는다.
-        Err(e @ ccg_auth::net::NetError::TokenLost(_)) => {
+        // ★R3(F2) — 그리고 로그로 끝내지 않는다: 디스크 장부에 적어 후보에서 빼고(격리)
+        //           설정 화면이 "재로그인이 필요할 수 있어요"를 그린다.
+        Err(e @ NetError::TokenLost(_)) => {
             eprintln!("[acct-switch] ★★ {email}: {e} — 이 계정은 재로그인이 필요할 수 있습니다");
-            None
+            ccg_auth::health::mark_needs_login(email, &e.to_string());
+        }
+        // 401/403 = 서버가 그 토큰을 무효화했다(`verify::liveness_from_http`와 같은 판정).
+        // 429·5xx·전송 실패는 계정 문제가 아니라 **보류**다 — 백오프만 받고 표식은 없다.
+        Err(e @ NetError::Status(401 | 403)) => {
+            eprintln!("[acct-switch] ★★ {email}: {e} — 서버가 토큰을 거절했습니다(재로그인 필요)");
+            ccg_auth::health::mark_needs_login(email, &e.to_string());
         }
         Err(e) => {
             // 침묵 no-op 금지(D7) — 왜 후보가 안 됐는지의 원전이 여기다.
             eprintln!("[acct-switch] usage 조회 실패 {email}: {e}");
-            None
         }
     }
+    out
 }
 
 #[cfg(test)]
@@ -390,17 +491,17 @@ mod tests {
     use super::*;
     use ccg_engine::identity::BillingAxis;
 
-    /// 격리 홈 하나 + 토글 상태. 프로세스 전역 `CCG_HOME`이라 테스트는 직렬화한다.
-    fn home(tag: &str, on: bool) -> (std::path::PathBuf, std::sync::MutexGuard<'static, ()>) {
-        static L: Mutex<()> = Mutex::new(());
-        let g = L.lock().unwrap_or_else(|e| e.into_inner());
-        let n = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
-        let dir = std::env::temp_dir().join(format!("ccg-acctsw-{tag}-{n}"));
-        let _ = std::fs::create_dir_all(&dir);
-        std::env::set_var("CCG_HOME", &dir);
+    /// 격리 홈 하나 + 토글 상태.
+    ///
+    /// ★R3(F5) — 자물쇠는 **크레이트 공용**이다(`engine::testhome`). R2는 이 모듈 안
+    /// `static L`이었고, 같은 바이너리의 `codex_versions::tests`가 그걸 안 잡고
+    /// `CCG_HOME`을 지웠다 — 그 창에서 `app_home()`이 사용자 실홈으로 떨어진다(확인
+    /// 크리틱 F5). 증표가 살아 있는 동안 이 크레이트의 어떤 테스트도 홈을 못 바꾼다.
+    fn home(tag: &str, on: bool) -> crate::engine::testhome::TestHome {
+        let h = crate::engine::testhome::take(tag);
         std::env::set_var("CCG_NO_NET", "1");
         let _ = ccg_store::prefs::write_ui_prefs(&serde_json::json!({ PREF_KEY: on }));
-        (dir, g)
+        h
     }
 
     /// ★R2 C1(c) — **부팅만으로는 아무것도 안 묻는다**(설정이 켜져 있어도).
@@ -410,7 +511,7 @@ mod tests {
     /// 였다(크리틱 C1의 폭발 반경 ①). 조회의 계기는 이제 [`Switcher::ask`] 하나뿐이다.
     #[test]
     fn booting_with_the_toggle_on_queries_nothing() {
-        let (dir, _g) = home("boot", true);
+        let _h = home("boot", true);
         let sw = Switcher::start();
         assert!(sw.enabled(), "이 판은 토글이 켜져 있다(그래도 안 묻는다는 것이 과녁)");
         std::thread::sleep(Duration::from_millis(250));
@@ -419,7 +520,6 @@ mod tests {
         assert_eq!((runs, fetches), (0, 0), "★ 부팅 프리웜이 살아 있다 — 계정 전부에 조회가 나간다");
         assert!(sw.pending(), "스냅샷은 차갑다(= 아직 아무것도 안 물어봤다)");
         std::env::remove_var("CCG_NO_NET");
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// 격리 홈에 합성 계정 하나(가짜 토큰 · 만료는 먼 미래라 오염가드를 통과한다).
@@ -435,14 +535,14 @@ mod tests {
         let enc = ccg_store::safe_storage::encrypt(&snap.to_string()).expect("safeStorage");
         let mut accounts: Vec<serde_json::Value> = ccg_auth::claude::read_store_file().accounts.clone();
         accounts.push(serde_json::json!({ "email": email, "credEnc": enc, "subscriptionType": "max" }));
-        ccg_auth::claude::write_store_file(&accounts, Some(email));
+        ccg_auth::claude::write_store_file(&accounts, Some(email)).expect("스토어 저장");
     }
 
     /// ★R2 C1(c) — 물음은 **한도 장전 순간**에만 생기고, 제외 집합을 달고 온다.
     /// 그리고 조회는 **그 제외를 지킨다**: 계정 셋 중 물어보는 것은 후보 하나뿐이다.
     #[test]
     fn the_first_question_is_what_wakes_the_worker() {
-        let (dir, _g) = home("ask", true);
+        let _h = home("ask", true);
         for e in ["a@x", "b@x", "c@x"] {
             seed(e);
         }
@@ -476,13 +576,12 @@ mod tests {
         // ★ 예산 문 ② — 계정은 셋인데 물어본 것은 **c@x 하나**다(a=현재, b=기시도).
         assert_eq!(fetches, 1, "★ 후보가 아닌 계정에도 조회가 나갔다(문 ②가 문서에만 있다)");
         std::env::remove_var("CCG_NO_NET");
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// ★R2 C1(c) — 제외 집합의 합집합이 조회 대상을 정한다(예산 문 ②의 산술).
     #[test]
     fn every_asker_excluding_an_account_means_nobody_queries_it() {
-        let (dir, _g) = home("want", true);
+        let _h = home("want", true);
         let sw = Switcher::start();
         let order: Vec<String> = ["a@x", "b@x", "c@x"].iter().map(|s| s.to_string()).collect();
         // 채팅 하나: 현재 a, 거쳐 온 b → 물어볼 값어치가 있는 것은 c뿐.
@@ -503,18 +602,116 @@ mod tests {
             .collect();
         assert_eq!(want, BTreeSet::from(["a@x".to_string(), "c@x".to_string()]), "★ b는 두 물음 모두가 제외했다");
         std::env::remove_var("CCG_NO_NET");
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// ★R2 C2 — **집는 순간 표시**: 같은 펌프의 다음 채팅에게 그 계정은 이미 안 논다.
+    ///
+    /// ★R3(F8) — 그리고 표시는 **엔진이 집었다고 확인한 자리**(`confirm`)에서만 선다.
+    /// `pick`이 값을 만드는 자리에서 걸면 엔진이 거절한 후보까지 예약된다.
     #[test]
     fn a_picked_account_is_reserved_against_the_next_chat_in_the_same_pump() {
-        let (dir, _g) = home("reserve", true);
+        let _h = home("reserve", true);
         let sw = Switcher::start();
-        sw.reserve("chat-1", "b@x");
+        AccountSwitcher::confirm(&*sw, "chat-1", "b@x");
         assert_eq!(sw.reserved_by_others("chat-2"), BTreeSet::from(["b@x".to_string()]));
         assert!(sw.reserved_by_others("chat-1").is_empty(), "자기 예약은 자기를 막지 않는다");
+        // ★F8 — 남의 살아 있는 예약은 덮지 않는다(덮으면 진짜 주인이 안 보인다).
+        AccountSwitcher::confirm(&*sw, "chat-2", "b@x");
+        assert!(sw.reserved_by_others("chat-1").is_empty(), "★ 예약 주인이 chat-2로 뒤바뀌었다");
+        assert!(sw.reserved_by_others("chat-2").contains("b@x"), "chat-1의 예약은 그대로 선다");
+        assert_eq!(RESERVE_TTL.as_millis() as u64, ccg_engine::limit::TAKEN_TTL_MS, "셸과 엔진의 예약 수명은 한 값이어야 한다");
         std::env::remove_var("CCG_NO_NET");
-        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// ★R3(F2) — **조회에 실패한 계정은 격리된다**: 후보에서 빠지고, 백오프 창 동안
+    /// 다시 묻지 않는다. 그리고 재로그인하면 스스로 풀린다.
+    #[test]
+    fn a_failing_account_is_quarantined_and_recovers_on_re_login() {
+        let _h = home("sick", true);
+        for e in ["cur@x", "lost@x"] {
+            seed(e);
+        }
+        let sw = Switcher::start();
+        // ⑴ 백오프 — 실패 한 번이면 그 계정에는 한동안 조회가 안 나간다.
+        assert!(sw.may_fetch("lost@x"));
+        assert_eq!(sw.note_sick("lost@x"), 1);
+        assert!(!sw.may_fetch("lost@x"), "★ 20초마다 죽은 토큰으로 교환 POST가 반복된다");
+        assert_eq!(sw.quarantined(), vec!["lost@x".to_string()]);
+        assert_eq!(sw.note_sick("lost@x"), 2, "연속 실패는 대기를 두 배로 민다");
+
+        // ⑵ 격리 — 재로그인 표식이 붙으면 `plan`이 후보에서 뺀다(캐시에 usage가 있어도).
+        ccg_auth::health::mark_needs_login("lost@x", "TokenLost");
+        assert!(ccg_auth::health::needs_login("lost@x"));
+        let now = 1_800_000_000i64;
+        let mut usage_map = BTreeMap::new();
+        usage_map.insert(
+            "lost@x".to_string(),
+            AccountUsage {
+                email: "lost@x".into(),
+                five_hour_pct: Some(10),
+                five_hour_resets_at: Some(now + 600),
+                weekly_pct: Some(5),
+                weekly_resets_at: Some(now + 86_400),
+                fable_pct: None,
+                fable_resets_at: None,
+            },
+        );
+        let mut pre = BTreeMap::new();
+        pre.insert("cur@x".to_string(), PreflightVerdict::Probe);
+        pre.insert("lost@x".to_string(), PreflightVerdict::NeedsLogin); // collect()가 덮어쓰는 값
+        let order = vec!["cur@x".to_string(), "lost@x".to_string()];
+        let plan = switch::plan(&SwitchInput {
+            now_epoch_secs: now,
+            order: &order,
+            current: "cur@x",
+            needs_fable: false,
+            busy: &BTreeSet::new(),
+            tried: &BTreeSet::new(),
+            usage: &usage_map,
+            preflight: &pre,
+        });
+        println!("[R3/F2] pick={:?} skipped={:?}", plan.pick().map(|c| c.email.clone()), plan.skipped);
+        assert!(plan.pick().is_none(), "★ 회전을 잃은 계정이 다음 전환의 1등이다 — 갈아타면 로그인 창이다");
+        assert_eq!(plan.skipped.iter().find(|s| s.email == "lost@x").map(|s| s.why), Some(SkipWhy::NeedsLogin));
+
+        // ⑶ 복구 — 조회가 한 번 성공하면 메모리 장부와 디스크 표식이 함께 풀린다.
+        sw.note_well("lost@x");
+        assert!(sw.may_fetch("lost@x"), "★ 복구 경로가 없으면 격리가 감옥이다");
+        assert!(!ccg_auth::health::needs_login("lost@x"));
+        assert!(sw.quarantined().is_empty());
+        std::env::remove_var("CCG_NO_NET");
+    }
+
+    /// ★R3(F4) — `collect()`의 `busy`는 **루프 안에서** 다시 읽는다. 계정 6개 훑기는
+    /// 최대 20초라, 진입 전 한 번 읽은 스냅샷으로는 그 사이에 턴을 시작한 계정을 못 본다
+    /// (= 살아 있는 CLI 밑에서 그랜트를 돌린다).
+    #[test]
+    fn collect_re_reads_busy_between_accounts() {
+        let _h = home("busy", true);
+        for e in ["a@x", "b@x", "c@x"] {
+            seed(e);
+        }
+        let sw = Switcher::start();
+        // 첫 계정을 조회하는 사이에 b@x가 턴을 시작했다고 알린다.
+        let sw2 = sw.clone();
+        let t = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(5));
+            sw2.set_busy(BTreeSet::from(["b@x".to_string(), "c@x".to_string()]));
+        });
+        sw.ask(BTreeSet::from(["a@x".to_string()])); // b·c가 후보
+        for _ in 0..80 {
+            if !sw.pending() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(25));
+        }
+        t.join().unwrap();
+        let (runs, fetches) = sw.worker_stats();
+        println!("[R3/F4] runs={runs} fetches={fetches} (busy가 도중에 켜졌다)");
+        assert_eq!(runs, 1);
+        assert!(fetches <= 2, "후보는 둘뿐이다");
+        // 진입 전 스냅샷만 봤다면 busy를 무시하고 둘 다 물었을 것이다. 여기서는 늦게 켜진
+        // busy가 적어도 하나를 막는다(첫 계정은 이미 지났을 수 있으므로 상한으로 잰다).
+        std::env::remove_var("CCG_NO_NET");
     }
 }

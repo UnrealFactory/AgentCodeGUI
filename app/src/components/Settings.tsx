@@ -594,8 +594,20 @@ function AccountView(): React.ReactElement {
                 <div className="em">
                   <span className="emt">{a.email}</span>
                   {a.isDefault && <span className="set-badge">{t('기본', 'Default')}</span>}
+                  {/* ★M11 R3(F2) — 토큰 교환이 실패한 계정. R2까지 이 사실은 stderr 한 줄로만
+                      남았고, 사용자는 갈아탄 자리에서 로그인 창을 보고서야 알았다. 자동 전환은
+                      이미 이 계정을 후보에서 뺐다(격리) — 그 판정을 여기서도 말한다.
+                      다시 로그인하면 크리덴셜 지문이 달라져 표식이 스스로 사라진다. */}
+                  {a.needsLogin && <span className="set-badge warn">{t('재로그인 필요할 수 있어요', 'May need sign-in')}</span>}
                 </div>
-                <div className="meta">{planLabel(a.subscriptionType)}</div>
+                <div className="meta">
+                  {a.needsLogin
+                    ? t(
+                        '토큰 갱신이 실패해 자동 전환 후보에서 잠시 빠졌어요. 삭제하고 다시 로그인하면 풀립니다.',
+                        "Token refresh failed, so this account is held out of auto-switch for now. Sign in again to clear it."
+                      )
+                    : planLabel(a.subscriptionType)}
+                </div>
               </div>
               <AccountLimits u={usage[a.email]} />
               <div className="acts">

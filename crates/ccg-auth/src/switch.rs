@@ -84,6 +84,9 @@ pub enum SkipWhy {
     AlreadyTried,
     /// 한도 조회 결과가 아직 없다 — 증거 없이는 안 옮긴다(다음 틱에 다시 본다).
     UsageUnknown,
+    /// ★R3(F2) — **지금 살아 있다는 증거가 없다.** 액세스 토큰이 만료 상태다
+    /// (`NeedsRefresh`). 자세한 이유는 [`preflight_skip`] 주석에.
+    Unverified,
     /// 이 계정도 막혀 있다.
     Exhausted,
     /// 남았지만 [`MIN_HEADROOM_PCT`] 미만이다.
@@ -105,6 +108,7 @@ impl SkipWhy {
             SkipWhy::Busy => "busy",
             SkipWhy::AlreadyTried => "already_tried",
             SkipWhy::UsageUnknown => "usage_unknown",
+            SkipWhy::Unverified => "unverified",
             SkipWhy::Exhausted => "exhausted",
             SkipWhy::NoHeadroom => "no_headroom",
             SkipWhy::Contaminated => "contaminated",
@@ -155,11 +159,31 @@ impl SwitchPlan {
     }
 }
 
-/// 오염가드 판정 → 탈락 사유. `Probe`/`NeedsRefresh`는 통과다
-/// (`NeedsRefresh` = 액세스 토큰만 만료 · 리프레시 재료가 있다 → 스폰하면 CLI가 갱신한다).
+/// 오염가드 판정 → 탈락 사유. **통과는 [`PreflightVerdict::Probe`] 하나뿐**이다.
+///
+/// ## ★R3(F2) — 왜 `NeedsRefresh`가 더 이상 통과가 아닌가
+///
+/// R2까지는 통과였다("액세스 토큰만 만료 · 리프레시 재료가 있다 → 스폰하면 CLI가 갱신한다").
+/// 그 문장의 구멍은 **리프레시 토큰이 살아 있는지 파일로는 알 수 없다**는 것이다. 회전이
+/// 실패해 죽은 refresh만 남은 계정도 `NeedsRefresh`이고(확인 크리틱 T2·T5 실측), 캐시에
+/// 지난 usage가 남아 있으면 그 계정이 **다음 전환의 1등**으로 나갔다 — 갈아탄 자리에서
+/// 사용자가 보는 것은 로그인 창이다.
+///
+/// 이제 후보의 조건은 *"지금 살아 있다는 증거"* 다:
+///
+/// | 판정 | 뜻 | 후보? |
+/// |---|---|---|
+/// | `Probe` | 만료 전 액세스 토큰이 있다 = 방금 조회에 성공했거나 아직 유효하다 | **예** |
+/// | `NeedsRefresh` | 액세스 토큰이 만료 상태다. 옆에 있는 usage 값은 **지난 창의 잔재**이고 refresh의 생사는 미증명 | 아니오([`SkipWhy::Unverified`]) |
+///
+/// 이 규칙이 기능을 죽이지 않는 이유: 셸의 워커는 후보 계정에 **조회를 먼저 보내고**,
+/// 교환이 성공하면 그 계정은 `Probe`로 올라온다(`engine/acct_switch.rs::collect` —
+/// 조회 뒤 preflight를 다시 잰다). 즉 "오래 논 계정"은 여전히 정상 후보이고, 걸러지는
+/// 것은 **조회가 실패한 계정**뿐이다.
 fn preflight_skip(v: Option<&PreflightVerdict>) -> Option<SkipWhy> {
     match v {
-        Some(PreflightVerdict::Probe) | Some(PreflightVerdict::NeedsRefresh) => None,
+        Some(PreflightVerdict::Probe) => None,
+        Some(PreflightVerdict::NeedsRefresh) => Some(SkipWhy::Unverified),
         Some(PreflightVerdict::Contaminated(_)) => Some(SkipWhy::Contaminated),
         Some(PreflightVerdict::NeedsLogin) => Some(SkipWhy::NeedsLogin),
         Some(PreflightVerdict::Failed(_)) => Some(SkipWhy::Broken),
@@ -415,6 +439,27 @@ mod tests {
         f.usage.insert("d@x".into(), u("d@x", (Some(20), Some(r)), (Some(0), None)));
         let p = f.plan("a@x");
         assert_eq!(p.ranked.iter().map(|c| c.email.as_str()).collect::<Vec<_>>(), ["c@x", "d@x", "b@x"]);
+    }
+
+    /// ★R3(F2) — **회전을 잃은 계정이 1등으로 나오면 안 된다.**
+    ///
+    /// 확인 크리틱 T5의 재현: 죽은 refresh만 남은 계정은 파일로는 `NeedsRefresh`와
+    /// 구별되지 않고, 캐시에 지난 usage가 남아 있으면 임박 순서로 1등이 됐다.
+    /// 이제 통과는 `Probe`(= 지금 살아 있다는 증거) 하나뿐이다.
+    #[test]
+    fn an_account_whose_token_is_not_proven_live_is_never_the_pick() {
+        let mut f = Fx::new(&["cur@x", "lost@x", "ok@x"]);
+        f.usage.insert("lost@x".into(), u("lost@x", (Some(10), Some(NOW + 600)), (Some(5), Some(NOW + 86_400))));
+        f.usage.insert("ok@x".into(), u("ok@x", (Some(10), Some(NOW + 7200)), (Some(5), Some(NOW + 86_400))));
+        // 조회에 실패한 계정 = 액세스 토큰이 만료 상태 그대로다.
+        f.preflight.insert("lost@x".into(), PreflightVerdict::NeedsRefresh);
+        let p = f.plan("cur@x");
+        assert_eq!(f.why(&p, "lost@x"), Some(SkipWhy::Unverified));
+        assert_eq!(p.pick().map(|c| c.email.as_str()), Some("ok@x"), "임박 순서로는 lost가 1등이지만 증거가 없다");
+        assert_eq!(SkipWhy::Unverified.wire(), "unverified");
+        // 조회에 성공하면(= 교환까지 끝나 토큰이 살아났다) 그 계정은 다시 후보다.
+        f.preflight.insert("lost@x".into(), PreflightVerdict::Probe);
+        assert_eq!(f.plan("cur@x").pick().map(|c| c.email.as_str()), Some("lost@x"), "★ 살아난 계정까지 막으면 기능이 죽는다");
     }
 
     /// 계정이 하나뿐이면 후보가 없다 — 기존 대기표 경로 그대로다.

@@ -25,7 +25,7 @@ fn real_accounts_v3_round_trips_byte_for_byte() {
     assert!(!f.accounts.is_empty(), "계정이 0개로 읽히면 사용자는 재로그인 화면을 본다");
     assert!(f.default_email.is_some(), "기본 계정이 사라지면 미지정 채팅이 실행되지 않는다");
 
-    claude::write_store_file(&f.accounts, f.default_email.as_deref());
+    claude::write_store_file(&f.accounts, f.default_email.as_deref()).expect("스토어 저장");
     let after = h.read("accounts.json").unwrap();
     assert_eq!(after, before, "왕복이 바이트 동일하지 않으면 2.6.2로 되돌릴 수 없다");
 }
@@ -45,7 +45,7 @@ fn real_v2_backup_promotes_to_v3_without_touching_the_records() {
     let n = f.accounts.len();
     assert!(n > 0);
 
-    claude::write_store_file(&f.accounts, f.default_email.as_deref());
+    claude::write_store_file(&f.accounts, f.default_email.as_deref()).expect("스토어 저장");
     let out = h.read("accounts.json").unwrap();
     assert!(out.starts_with("{\n  \"version\": 3,\n  \"defaultEmail\": "), "v3 승격 + 기본 계정 채움: {}", &out[..60.min(out.len())]);
     // 계정 배열은 원본과 **같은 바이트**로 남아야 한다(암호화 블롭 재작성 없음)

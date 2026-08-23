@@ -24,6 +24,8 @@ pub mod status;
 // ── 그 외 도메인 ────────────────────────────────────────────────────────────
 pub mod api_config;
 pub mod api_usage;
+/// ★M11 R3(F1) — 앱 홈 파일의 크로스-프로세스 잠금(`accounts.json` 임계 구역).
+pub mod flock;
 pub mod safe_storage;
 
 /// 통합 스토어 — **기본 켜짐**. 끄는 탈출구는 `CCG_UNIFIED_STORE=0`.

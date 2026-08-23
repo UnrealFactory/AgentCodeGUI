@@ -210,7 +210,7 @@ mod tests {
         let f = claude::read_store_file();
         let mut accounts = f.accounts.clone();
         accounts.push(json!({ "email": email, "credEnc": enc }));
-        claude::write_store_file(&accounts, f.default_email.as_deref());
+        claude::write_store_file(&accounts, f.default_email.as_deref()).expect("스토어 저장");
     }
 
     #[test]
@@ -338,7 +338,7 @@ mod tests {
         let _h = temp_home("preflight-nologin");
         let snap = json!({ "creds": json!({ "claudeAiOauth": { "accessToken": "t", "expiresAt": 1000.0 } }).to_string(), "account": { "emailAddress": "a@x.com" } });
         let enc = ccg_store::safe_storage::encrypt(&snap.to_string()).unwrap();
-        claude::write_store_file(&[json!({ "email": "a@x.com", "credEnc": enc })], None);
+        claude::write_store_file(&[json!({ "email": "a@x.com", "credEnc": enc })], None).expect("스토어 저장");
         assert_eq!(preflight("a@x.com").verdict, PreflightVerdict::NeedsLogin);
     }
 
@@ -402,7 +402,7 @@ mod tests {
     fn unregistered_and_undecryptable_are_told_apart() {
         let _h = temp_home("preflight-fail");
         assert_eq!(preflight("nobody@x.com").verdict, PreflightVerdict::Failed(AuthError::NotRegistered("nobody@x.com".into())));
-        claude::write_store_file(&[json!({ "email": "a@x.com", "credEnc": "bm90LWEtcmVhbC1ibG9i" })], None);
+        claude::write_store_file(&[json!({ "email": "a@x.com", "credEnc": "bm90LWEtcmVhbC1ibG9i" })], None).expect("스토어 저장");
         assert_eq!(preflight("a@x.com").verdict, PreflightVerdict::Failed(AuthError::Undecryptable("a@x.com".into())));
     }
 }

@@ -90,19 +90,66 @@ pub fn read_store_file() -> StoreFile {
         return StoreFile { version: STORE_VERSION, ..Default::default() };
     }
     let version = raw as u64;
-    StoreFile {
+    let f = StoreFile {
         version,
         default_email: m.get("defaultEmail").and_then(Value::as_str).map(str::to_string),
         accounts: match m.get("accounts") {
             Some(Value::Array(a)) => a.clone(),
             _ => Vec::new(),
         },
-    }
+    };
+    // ★R3(F1)② — 이 읽기를 3-way 병합의 **기준점**으로 남긴다(아래 `merge3` 참고).
+    record_base(&f);
+    f
+}
+
+// ── ★M11 R3(F1) — accounts.json 임계 구역 ───────────────────────────────────
+//
+// R2까지 이 파일의 갱신은 **잠금 없는 통짜 read-modify-write**였고, 실패는 `let _`로
+// 삼켜졌다. M11 R2가 배경 스레드(자동 전환 워커)에서 그 쓰기를 처음 만들면서 같은 홈을
+// 쓰는 2.6.2 실앱과 겹치기 시작했다 — R2 확인 크리틱 실측 120판에 백업 클로버 1~6건,
+// **로그아웃한 계정이 credEnc째 되살아난 것 11건**.
+//
+// 세 겹으로 닫는다.
+//
+// | 겹 | 무엇 | 막는 것 |
+// |---|---|---|
+// | ① 잠금 | [`ccg_store::flock`] — read와 write가 **같은 증표 아래** 있다 | 잠금을 아는 프로세스끼리(3.0 두 벌 · 워커 vs 허브 · 하네스 자식) |
+// | ② 병합 | 쓰기 직전 디스크를 다시 읽어 **더 신선한 `credEnc`는 살린다** | 잠금을 모르는 프로세스(오늘의 2.6.2)가 낸 회전 결과 |
+// | ③ 좁히기 | 배경 쓰기([`persist_refreshed`])는 **자기 계정 항목만** 고친다(목록·순서·기본 계정 불가침) | "로그아웃이 취소된다" — 목록은 폴더에 사본이 없어 잃으면 끝이다 |
+
+/// 이 파일을 고치는 동안 잡는 증표. **read-modify-write 전체**를 감싸야 의미가 있다.
+pub fn store_lock() -> ccg_store::flock::Lock {
+    ccg_store::flock::take(STORE_FILE)
 }
 
 /// 저장 — **항상 v3로 쓴다**(2.6.2 `writeStoreFile`과 같다. v2를 읽어 쓰면 승격된다).
 /// 기본 계정이 목록에 없으면 첫 계정으로 물러난다 — "기본 없음" 상태를 만들지 않는다.
-pub fn write_store_file(accounts: &[Value], default_email: Option<&str>) {
+///
+/// ★R3(F1) — **호출자의 스냅샷은 낡았을 수 있다**고 가정한다(`read_store_file()` 뒤에
+/// 잠금 없이 부르는 것이 이 함수의 전형적인 사용법이고, 2.6.2도 같은 모양이다). 그래서
+/// 잠금 안에서 디스크를 다시 읽어 **같은 이메일의 더 신선한 `credEnc`는 디스크 쪽을
+/// 남긴다**(폴더 vs 백업을 고르는 [`freshest_creds`]와 같은 판정식). 멤버십·순서·기본
+/// 계정은 호출자의 뜻 그대로다 — 로그아웃이 병합에 되살아나면 안 된다.
+///
+/// ★R3 — **실패를 돌려준다.** R2까지는 `let _`이라 디스크가 꽉 찼거나 잠긴 판에서도
+/// `Ok`로 나갔다(C1이 닫으려던 그 침묵의 마지막 잔재 — 확인 크리틱 §5).
+pub fn write_store_file(accounts: &[Value], default_email: Option<&str>) -> Result<(), AuthError> {
+    // 기준점을 **먼저** 뺀다 — 아래 `read_store_file()`이 기준점을 덮어쓰기 때문이다.
+    let base = take_base();
+    let _g = store_lock();
+    let disk = read_store_file();
+    let (merged, def) = merge3(base.as_ref(), accounts, default_email, &disk);
+    let r = write_store_locked(&merged, def.as_deref());
+    if r.is_ok() {
+        // 방금 쓴 것이 다음 쓰기의 기준점이다(같은 스레드가 연달아 저장하는 경로).
+        set_base(&merged, def.as_deref());
+    }
+    r
+}
+
+/// 잠금을 **이미 잡은** 호출자용 — 병합 없이 그대로 쓴다(스냅샷을 증표 안에서 떴다는 뜻).
+fn write_store_locked(accounts: &[Value], default_email: Option<&str>) -> Result<(), AuthError> {
     let def: Option<String> = match default_email {
         Some(d) if accounts.iter().any(|a| email_of(a) == Some(d)) => Some(d.to_string()),
         _ => accounts.first().and_then(email_of).map(str::to_string),
@@ -114,7 +161,137 @@ pub fn write_store_file(accounts: &[Value], default_email: Option<&str>) {
         root.insert("defaultEmail".into(), json!(d));
     }
     root.insert("accounts".into(), Value::Array(accounts.to_vec()));
-    let _ = ccg_store::write_home_file(STORE_FILE, &crate::to_json_2space(&Value::Object(root)));
+    ccg_store::write_home_file(STORE_FILE, &crate::to_json_2space(&Value::Object(root)))
+        .map_err(|e| AuthError::Io(format!("{STORE_FILE}: {e}")))
+}
+
+// ── ★R3(F1)② 3-way 병합 ────────────────────────────────────────────────────
+//
+// 통짜 쓰기의 진짜 문제는 "덮어쓴다"가 아니라 **호출자의 의도와 사고를 구별할 수 없다**는
+// 것이다. `read_store_file()` → 고친다 → `write_store_file()`은 이 크레이트와 2.6.2가
+// 공통으로 쓰는 모양이고, 그 읽기와 쓰기 사이에 남이 파일을 바꾸면 우리는 그 변경을
+// **의도적으로 되돌린 것처럼** 쓴다(로그아웃 취소 · 회전 결과 클로버).
+//
+// 그래서 그 읽기를 **기준점(base)** 으로 기억한다. 그러면 쓰기 시점에 3-way 병합이 된다:
+//
+// | base | 호출자 | 디스크 | 판정 |
+// |---|---|---|---|
+// | X | X | Y | 호출자는 안 건드렸다 → **디스크(Y)** |
+// | X | Z | Y | 호출자가 고쳤다 → **호출자(Z)** |
+// | 없음 | 있음 | 없음 | 호출자가 **추가**했다 → 남긴다 |
+// | 있음 | 없음 | 있음 | 호출자가 **지웠다**(로그아웃) → 지운다 |
+// | 있음 | 있음 | 없음 | 남이 지웠다 → **지운다**(이게 "로그아웃 취소"를 막는 줄이다) |
+// | 없음 | 없음 | 있음 | 남이 추가했다(다른 창의 로그인) → **남긴다** |
+//
+// 기준점이 없으면(읽지 않고 쓰는 호출자 — 시드·마이그레이션) 병합하지 않는다.
+// 3-way의 base 없이 하는 병합은 추측이고, 추측으로 계정 목록을 고칠 자리가 아니다.
+
+type Base = (std::path::PathBuf, Vec<Value>, Option<String>);
+
+thread_local! {
+    static BASE: std::cell::RefCell<Option<Base>> = const { std::cell::RefCell::new(None) };
+}
+
+fn record_base(f: &StoreFile) {
+    BASE.with(|b| *b.borrow_mut() = Some((store_path(), f.accounts.clone(), f.default_email.clone())));
+}
+
+fn set_base(accounts: &[Value], default_email: Option<&str>) {
+    BASE.with(|b| *b.borrow_mut() = Some((store_path(), accounts.to_vec(), default_email.map(str::to_string))));
+}
+
+/// 기준점을 **꺼내 쓴다**(한 번 쓰면 소비). 홈이 그사이 바뀌었으면(테스트의 `CCG_HOME`
+/// 교체) 남의 홈에서 뜬 기준점이므로 버린다.
+fn take_base() -> Option<Base> {
+    BASE.with(|b| b.borrow_mut().take()).filter(|(p, _, _)| *p == store_path())
+}
+
+fn find<'a>(list: &'a [Value], email: &str) -> Option<&'a Value> {
+    list.iter().find(|a| email_of(a) == Some(email))
+}
+
+fn merge3(base: Option<&Base>, mine: &[Value], my_default: Option<&str>, disk: &StoreFile) -> (Vec<Value>, Option<String>) {
+    let Some((_, base_accounts, base_default)) = base else {
+        return (mine.to_vec(), my_default.map(str::to_string));
+    };
+    // ★ 안전문 — **디스크가 텅 비어 보이는데 우리는 계정을 아는 판**에서는 병합하지 않는다.
+    //
+    // [`read_store_file`]은 "파일이 없다"와 "파일이 깨져서 못 읽는다"(버전 필드 이상 ·
+    // JSON 손상)를 똑같이 **빈 스토어**로 준다. 그 값을 3-way의 한쪽으로 믿으면 위 표의
+    // "남이 지웠다" 규칙이 **전 계정 삭제**로 발동한다 — 병합이 사용자의 계정을 지우는
+    // 유일한 경로라 여기서 막는다. 이 판에서는 우리가 든 목록이 곧 복구본이다.
+    if disk.accounts.is_empty() && !base_accounts.is_empty() {
+        eprintln!("[auth] {STORE_FILE}이 비어 보인다(손상 의심) — 병합을 건너뛰고 우리 목록으로 복구한다");
+        return (mine.to_vec(), my_default.map(str::to_string));
+    }
+    let mut out: Vec<Value> = Vec::with_capacity(mine.len().max(disk.accounts.len()));
+    for a in mine {
+        let Some(email) = email_of(a) else {
+            out.push(a.clone());
+            continue;
+        };
+        let b = find(base_accounts, email);
+        let d = find(&disk.accounts, email);
+        match (b, d) {
+            // 남이 지웠다(로그아웃). 우리 스냅샷이 낡았을 뿐이라 되살리면 안 된다.
+            (Some(_), None) => continue,
+            // 우리가 안 건드렸으면 디스크가 이긴다(그쪽이 더 나중 값이다).
+            (Some(bv), Some(dv)) if bv == a => out.push(dv.clone()),
+            _ => out.push(a.clone()),
+        }
+    }
+    // 우리가 본 적 없는 계정 = 다른 창/앱에서 방금 로그인했다. 지울 이유가 없다.
+    for d in &disk.accounts {
+        let Some(email) = email_of(d) else { continue };
+        if find(base_accounts, email).is_none() && find(mine, email).is_none() {
+            out.push(d.clone());
+        }
+    }
+    // 기본 계정도 같은 규칙 — 우리가 안 바꿨으면 디스크 것.
+    let def = if my_default.map(str::to_string) == *base_default {
+        disk.default_email.clone()
+    } else {
+        my_default.map(str::to_string)
+    };
+    (out, def)
+}
+
+/// ★R3(F1)③ — **계정 하나의 레코드만** 고친다. 목록·순서·기본 계정은 디스크 것이 이긴다.
+///
+/// 배경 쓰기(자동 전환 워커의 토큰 회전)가 쓰는 유일한 문이다. 잠금 안에서 디스크를 다시
+/// 읽으므로 호출자의 낡은 스냅샷이 **다른 창에서 방금 한 로그아웃을 되돌릴 수 없다**.
+/// 그 계정이 이미 없으면 [`AuthError::NotRegistered`] — 조용히 되살리지 않는다.
+pub fn update_account_record<T>(email: &str, f: impl FnOnce(&mut Map<String, Value>) -> T) -> Result<T, AuthError> {
+    let _g = store_lock();
+    let cur = read_store_file();
+    let Some(i) = cur.accounts.iter().position(|a| email_of(a) == Some(email)) else {
+        return Err(AuthError::NotRegistered(email.to_string()));
+    };
+    let mut accounts = cur.accounts.clone();
+    let mut m = accounts[i].as_object().cloned().unwrap_or_default();
+    let out = f(&mut m);
+    accounts[i] = Value::Object(m);
+    // 내용이 같으면 저장을 건너뛴다(2.6.2와 같은 의미론) — 안 바뀐 저장은 mtime만 흔들고
+    // 남의 원자 저장과 경쟁할 이유가 없다.
+    if accounts != cur.accounts {
+        write_store_locked(&accounts, cur.default_email.as_deref())?;
+        set_base(&accounts, cur.default_email.as_deref());
+    }
+    Ok(out)
+}
+
+/// 잠금 안에서 스토어 전체를 고친다(목록이 바뀌는 사용자 조작 — 로그인·로그아웃·정렬).
+/// 클로저는 **증표 안에서 뜬** 스냅샷을 받으므로 병합이 필요 없다.
+pub fn update_store<T>(f: impl FnOnce(&mut StoreFile) -> T) -> Result<T, AuthError> {
+    let _g = store_lock();
+    let mut cur = read_store_file();
+    let before = (cur.accounts.clone(), cur.default_email.clone(), cur.version);
+    let out = f(&mut cur);
+    if (&cur.accounts, &cur.default_email) != (&before.0, &before.1) || before.2 != STORE_VERSION {
+        write_store_locked(&cur.accounts, cur.default_email.as_deref())?;
+        set_base(&cur.accounts, cur.default_email.as_deref());
+    }
+    Ok(out)
 }
 
 // ── safeStorage 래핑 (ccg-store가 단일 소스) ────────────────────────────────
@@ -229,18 +406,17 @@ pub fn list_accounts() -> Vec<AccountInfo> {
 }
 
 pub fn set_default_account(email: &str) -> Vec<AccountInfo> {
-    let f = read_store_file();
-    if f.accounts.iter().any(|a| email_of(a) == Some(email)) {
-        write_store_file(&f.accounts, Some(email));
-    }
+    let _ = update_store(|f| {
+        if f.accounts.iter().any(|a| email_of(a) == Some(email)) {
+            f.default_email = Some(email.to_string());
+        }
+    });
     list_accounts()
 }
 
 /// 목록에서 제거 + 물질화된 폴더 정리. (서버 토큰 해지는 CLI 경로 — `verify::logout_command`)
 pub fn remove_account(email: &str) -> Vec<AccountInfo> {
-    let f = read_store_file();
-    let kept: Vec<Value> = f.accounts.iter().filter(|a| email_of(a) != Some(email)).cloned().collect();
-    write_store_file(&kept, f.default_email.as_deref());
+    let _ = update_store(|f| f.accounts.retain(|a| email_of(a) != Some(email)));
     delete_account_dir(email);
     list_accounts()
 }
@@ -257,22 +433,22 @@ pub fn remove_account(email: &str) -> Vec<AccountInfo> {
 /// 레코드를 **두 벌로 복제해** 저장한다(`new Map` + `emails.map`). 여기서는 한 번만 놓는다 —
 /// 복제는 없던 계정을 만드는 쪽이라 유실 금지 원칙과 방향이 반대다.
 pub fn reorder_accounts(emails: &[String]) -> Vec<AccountInfo> {
-    let f = read_store_file();
-    let mut order: Vec<usize> = Vec::with_capacity(f.accounts.len());
-    for e in emails {
-        // 2.6.2의 `new Map(accounts.map(a => [a.email, a]))` — 같은 이메일이 둘이면 **마지막**이 이긴다
-        let Some(i) = f.accounts.iter().rposition(|a| email_of(a) == Some(e.as_str())) else { continue };
-        if !order.contains(&i) {
-            order.push(i);
+    let _ = update_store(|f| {
+        let mut order: Vec<usize> = Vec::with_capacity(f.accounts.len());
+        for e in emails {
+            // 2.6.2의 `new Map(accounts.map(a => [a.email, a]))` — 같은 이메일이 둘이면 **마지막**이 이긴다
+            let Some(i) = f.accounts.iter().rposition(|a| email_of(a) == Some(e.as_str())) else { continue };
+            if !order.contains(&i) {
+                order.push(i);
+            }
         }
-    }
-    for i in 0..f.accounts.len() {
-        if !order.contains(&i) {
-            order.push(i);
+        for i in 0..f.accounts.len() {
+            if !order.contains(&i) {
+                order.push(i);
+            }
         }
-    }
-    let next: Vec<Value> = order.into_iter().map(|i| f.accounts[i].clone()).collect();
-    write_store_file(&next, f.default_email.as_deref());
+        f.accounts = order.into_iter().map(|i| f.accounts[i].clone()).collect();
+    });
     list_accounts()
 }
 
@@ -361,37 +537,26 @@ pub fn account_run_dir(email: &str) -> Result<PathBuf, AuthError> {
 /// 가드 둘: 내용이 같으면 스킵, **신선도가 전진하지 않으면 스킵**(401 껍데기 방어).
 /// 갱신했으면 true.
 pub fn sync_account_tokens(email: &str) -> bool {
-    let f = read_store_file();
-    let Some(target) = f.accounts.iter().find(|a| email_of(a) == Some(email)) else { return false };
     let Some(dir_creds) = read_file_or_null(&account_dir(email).join(".credentials.json")) else { return false };
-    let Some(enc) = cred_enc_of(target) else { return false };
-    let Some(raw) = dec_creds(enc) else { return false };
-    let snap = Snapshot::parse(&raw);
-    if snap.raw.is_empty() {
-        return false; // JS: JSON.parse 실패면 return
-    }
-    if Some(dir_creds.as_str()) == snap.creds() {
-        return false; // 변화 없음
-    }
-    if creds_expires_at(Some(&dir_creds)) <= creds_expires_at(snap.creds()) {
-        return false; // 껍데기/후퇴 토큰 가드
-    }
-    let Some(cred_enc) = enc_creds(&snap.with_creds(&dir_creds)) else { return false };
-    let next: Vec<Value> = f
-        .accounts
-        .iter()
-        .map(|a| {
-            if email_of(a) == Some(email) {
-                let mut m = a.as_object().cloned().unwrap_or_default();
-                m.insert("credEnc".into(), json!(cred_enc)); // 자리 보존 치환
-                Value::Object(m)
-            } else {
-                a.clone()
-            }
-        })
-        .collect();
-    write_store_file(&next, f.default_email.as_deref());
-    true
+    // ★R3(F1) — 판정과 쓰기를 **같은 증표 안에서**. 밖에서 읽고 안에서 쓰면 그 사이에
+    //   다른 프로세스가 넣은 회전 결과를 우리가 덮는다(확인 크리틱 §5의 그 모양).
+    update_account_record(email, |m| {
+        let Some(raw) = m.get("credEnc").and_then(Value::as_str).and_then(dec_creds) else { return false };
+        let snap = Snapshot::parse(&raw);
+        if snap.raw.is_empty() {
+            return false; // JS: JSON.parse 실패면 return
+        }
+        if Some(dir_creds.as_str()) == snap.creds() {
+            return false; // 변화 없음
+        }
+        if creds_expires_at(Some(&dir_creds)) <= creds_expires_at(snap.creds()) {
+            return false; // 껍데기/후퇴 토큰 가드
+        }
+        let Some(cred_enc) = enc_creds(&snap.with_creds(&dir_creds)) else { return false };
+        m.insert("credEnc".into(), json!(cred_enc)); // 자리 보존 치환
+        true
+    })
+    .unwrap_or(false)
 }
 
 /// 계정 폴더 삭제 — **공유 정션을 먼저 끊는다.** 원본이 세션 기록 전체라 이중 방어다.
@@ -476,41 +641,100 @@ pub fn apply_refresh(base_creds: &str, access_token: &str, refresh_token: Option
     Some(Value::Object(parsed).to_string())
 }
 
+/// ★R3(F7) — 되쓰기 **두 반쪽의 결과**. R2는 둘을 순차로 묶어 하나의 `Result`로 접었고,
+/// 그래서 "폴더에는 멀쩡히 앉았는데 판정은 재로그인"이라는 오경보가 났다(확인 크리틱 T2).
+///
+/// 살아 있는 토큰의 거처는 **폴더**고 `credEnc`는 폴더 재생성용 백업이다(모듈 헤더 규약 2).
+/// 그래서 한쪽만 남아도 회전 결과를 잃은 것이 아니다 — [`freshest_creds`]가 신선한 쪽을 고른다.
+#[derive(Debug)]
+pub struct PersistReport {
+    /// 계정 폴더 `.credentials.json`(= CLI가 실제로 읽는 파일).
+    pub folder: Result<(), AuthError>,
+    /// 스토어의 `credEnc` 백업.
+    pub backup: Result<(), AuthError>,
+    /// 그 계정이 스토어에서 **사라졌다**(다른 창·다른 앱에서 로그아웃). 재로그인 안내가
+    /// 아니라 "사용자가 지웠다"가 맞는 상태다.
+    pub unregistered: bool,
+}
+
+impl PersistReport {
+    /// 회전 결과가 **디스크 어딘가에는** 남았나.
+    pub fn landed(&self) -> bool {
+        self.folder.is_ok() || self.backup.is_ok()
+    }
+    pub fn both(&self) -> bool {
+        self.folder.is_ok() && self.backup.is_ok()
+    }
+    /// 실패한 반쪽들의 사유(로그용).
+    pub fn why(&self) -> String {
+        let mut v = vec![];
+        if let Err(e) = &self.folder {
+            v.push(format!("폴더={e}"));
+        }
+        if let Err(e) = &self.backup {
+            v.push(format!("백업={e}"));
+        }
+        v.join(" / ")
+    }
+}
+
+/// ★R3(F3) — **회전된 refresh 토큰만** 접어 넣는다(액세스 토큰이 없는 200 응답).
+///
+/// 서버가 200을 준 순간 옛 refresh는 죽었다. 응답에 `access_token`이 없어도(필드명이
+/// 바뀌었거나 부분 응답이거나) 새 refresh는 **반드시** 적어야 한다 — 안 적으면 그 계정의
+/// 출구는 재로그인뿐이다. `expiresAt`은 건드리지 않는다: 액세스 토큰은 여전히 만료
+/// 상태이고, 그 사실을 숨기면 다음 호출이 죽은 토큰으로 조회를 나간다.
+pub fn apply_rotated_refresh(base_creds: &str, refresh_token: &str) -> Option<String> {
+    let mut parsed = match serde_json::from_str::<Value>(base_creds) {
+        Ok(Value::Object(m)) => m,
+        _ => return None,
+    };
+    let mut oauth = match parsed.get("claudeAiOauth") {
+        Some(Value::Object(m)) => m.clone(),
+        _ => Map::new(),
+    };
+    oauth.insert("refreshToken".into(), json!(refresh_token));
+    parsed.insert("claudeAiOauth".into(), Value::Object(oauth));
+    Some(Value::Object(parsed).to_string())
+}
+
 /// 리프레시 결과를 **폴더와 백업 둘 다**에 즉시 되쓴다 — 어느 쪽에도 죽은 토큰을 남기지
 /// 않는다(회전된 refresh 토큰 유실 = 재로그인).
+///
+/// ★R3 — 두 반쪽을 **독립으로** 시도한다. 앞이 실패했다고 뒤를 건너뛰면 살아남을 수 있던
+/// 사본 하나를 스스로 버리는 것이다.
+pub fn persist_refreshed_report(email: &str, next_creds: &str) -> PersistReport {
+    let folder = (|| -> Result<(), AuthError> {
+        let dir = account_dir(email);
+        std::fs::create_dir_all(&dir).map_err(|e| AuthError::Io(e.to_string()))?;
+        crate::write_file_atomic(&dir.join(".credentials.json"), next_creds)
+    })();
+    // ★R3(F1)③ — 백업은 **자기 항목만** 고친다(잠금 안에서 디스크를 다시 읽는다).
+    let backup = update_account_record(email, |m| {
+        let Some(raw) = m.get("credEnc").and_then(Value::as_str).and_then(dec_creds) else {
+            return Err(AuthError::Undecryptable(email.to_string()));
+        };
+        let snap = Snapshot::parse(&raw);
+        if snap.raw.is_empty() {
+            return Err(AuthError::CorruptSnapshot(email.to_string()));
+        }
+        let Some(cred_enc) = enc_creds(&snap.with_creds(next_creds)) else {
+            return Err(AuthError::Undecryptable(email.to_string()));
+        };
+        m.insert("credEnc".into(), json!(cred_enc));
+        Ok(())
+    });
+    let unregistered = matches!(backup, Err(AuthError::NotRegistered(_)));
+    PersistReport { folder, backup: backup.and_then(|r| r), unregistered }
+}
+
+/// 두 반쪽이 **모두** 성공해야 `Ok`(R2까지의 계약 그대로 — 기존 호출자용).
 pub fn persist_refreshed(email: &str, next_creds: &str) -> Result<(), AuthError> {
-    let dir = account_dir(email);
-    std::fs::create_dir_all(&dir).map_err(|e| AuthError::Io(e.to_string()))?;
-    crate::write_file_atomic(&dir.join(".credentials.json"), next_creds)?;
-    let f = read_store_file();
-    let Some(target) = f.accounts.iter().find(|a| email_of(a) == Some(email)) else {
-        return Err(AuthError::NotRegistered(email.to_string()));
-    };
-    let Some(raw) = cred_enc_of(target).and_then(dec_creds) else {
-        return Err(AuthError::Undecryptable(email.to_string()));
-    };
-    let snap = Snapshot::parse(&raw);
-    if snap.raw.is_empty() {
-        return Err(AuthError::CorruptSnapshot(email.to_string()));
+    let r = persist_refreshed_report(email, next_creds);
+    match (r.folder, r.backup) {
+        (Ok(()), Ok(())) => Ok(()),
+        (Err(e), _) | (_, Err(e)) => Err(e),
     }
-    let Some(cred_enc) = enc_creds(&snap.with_creds(next_creds)) else {
-        return Err(AuthError::Undecryptable(email.to_string()));
-    };
-    let next: Vec<Value> = f
-        .accounts
-        .iter()
-        .map(|a| {
-            if email_of(a) == Some(email) {
-                let mut m = a.as_object().cloned().unwrap_or_default();
-                m.insert("credEnc".into(), json!(cred_enc));
-                Value::Object(m)
-            } else {
-                a.clone()
-            }
-        })
-        .collect();
-    write_store_file(&next, f.default_email.as_deref());
-    Ok(())
 }
 
 // ── 편입(로그인 완료·마이그레이션 공용) ────────────────────────────────────
@@ -550,17 +774,18 @@ pub fn import_account_from_dir(
     }
     let cred_enc = enc_creds(&Value::Object(snap).to_string()).ok_or_else(|| AuthError::Undecryptable(email.to_string()))?;
 
-    let f = read_store_file();
-    let mut accounts: Vec<Value> = f.accounts.iter().filter(|a| email_of(a) != Some(email)).cloned().collect();
     let mut rec = Map::new();
     rec.insert("email".into(), json!(email));
     if let Some(s) = subscription_type {
         rec.insert("subscriptionType".into(), json!(s));
     }
     rec.insert("credEnc".into(), json!(cred_enc));
-    accounts.push(Value::Object(rec));
-    // 첫 계정이면 write_store_file의 폴백이 기본 계정으로 세운다
-    write_store_file(&accounts, f.default_email.as_deref());
+    // ★R3(F1) — 목록이 바뀌는 조작이라 잠금 안에서 읽고 쓴다. 첫 계정이면
+    // `write_store_locked`의 폴백이 기본 계정으로 세운다.
+    update_store(|f| {
+        f.accounts.retain(|a| email_of(a) != Some(email));
+        f.accounts.push(Value::Object(rec));
+    })?;
     let _ = account_run_dir(email); // 실패해도 다음 실행 때 다시 시도된다
     Ok(())
 }
@@ -689,17 +914,17 @@ mod tests {
         let f = read_store_file();
         let mut accounts = f.accounts.clone();
         accounts.push(json!({ "email": email, "subscriptionType": sub, "credEnc": enc }));
-        write_store_file(&accounts, f.default_email.as_deref());
+        write_store_file(&accounts, f.default_email.as_deref()).expect("스토어 저장");
     }
 
     #[test]
     fn store_write_shape_matches_2_6_2() {
         let h = temp_home("store-shape");
-        write_store_file(&[], None);
+        write_store_file(&[], None).expect("스토어 저장");
         // JSON.stringify({version:3, defaultEmail:undefined, accounts:[]}, null, 2)
         assert_eq!(h.read("accounts.json").unwrap(), "{\n  \"version\": 3,\n  \"accounts\": []\n}");
         let a = json!({ "email": "a@b.c", "subscriptionType": "max", "credEnc": "XX" });
-        write_store_file(&[a], Some("nope@x.com"));
+        write_store_file(&[a], Some("nope@x.com")).expect("스토어 저장");
         let txt = h.read("accounts.json").unwrap();
         assert!(txt.contains("\"defaultEmail\": \"a@b.c\""), "기본 계정이 무효면 첫 계정으로 물러난다: {txt}");
     }
@@ -714,7 +939,7 @@ mod tests {
         let f = read_store_file();
         assert_eq!(f.version, 2);
         assert_eq!(f.accounts.len(), 1, "v2도 읽어야 마이그레이션 전에 계정이 사라져 보이지 않는다");
-        write_store_file(&f.accounts, f.default_email.as_deref());
+        write_store_file(&f.accounts, f.default_email.as_deref()).expect("스토어 저장");
         let after = read_store_file();
         assert_eq!(after.version, 3);
         assert_eq!(after.default_email.as_deref(), Some("a@b.c"), "v3 승격이 기본 계정을 채운다");
@@ -738,8 +963,72 @@ mod tests {
         );
         let before = h.read("accounts.json").unwrap();
         let f = read_store_file();
-        write_store_file(&f.accounts, f.default_email.as_deref());
+        write_store_file(&f.accounts, f.default_email.as_deref()).expect("스토어 저장");
         assert_eq!(h.read("accounts.json").unwrap(), before, "모르는 키·키 순서가 그대로 남아야 2.6.2로 되돌릴 수 있다");
+    }
+
+    /// ★R3(F1) — **잠금 없는 read-modify-write가 남의 갱신을 되돌리지 않는다.**
+    ///
+    /// 확인 크리틱 §5의 두 증상을 한 판에 재현한다: ① 남이 회전시킨 `credEnc`를 우리가
+    /// 옛 값으로 덮는가(클로버) ② 남이 로그아웃한 계정을 우리가 되살리는가.
+    /// "남"은 잠금을 잡는 다른 프로세스일 수도, 안 잡는 2.6.2일 수도 있다 — 여기서는
+    /// **디스크를 직접 갈아** 잠금과 무관하게 판정한다.
+    #[test]
+    fn a_stale_snapshot_neither_clobbers_nor_resurrects() {
+        let h = temp_home("merge3");
+        seed("a@x.com", "max", "ta", 9e12);
+        seed("gone@x.com", "max", "tg", 9e12);
+        // 우리 스냅샷(기준점) — 여기까지가 이 스레드가 아는 세상이다.
+        let mine = read_store_file();
+        assert_eq!(mine.accounts.len(), 2);
+
+        // 그사이 **다른 프로세스**가: a의 토큰을 회전시키고 · gone을 로그아웃하고 · new를 로그인했다.
+        let disk = {
+            let mut v = mine.accounts.clone();
+            v.retain(|x| email_of(x) != Some("gone@x.com"));
+            for x in v.iter_mut() {
+                if email_of(x) == Some("a@x.com") {
+                    x.as_object_mut().unwrap().insert("credEnc".into(), json!("ROTATED-BY-THEM"));
+                }
+            }
+            v.push(json!({ "email": "new@x.com", "credEnc": "THEIRS" }));
+            v
+        };
+        h.write(
+            "accounts.json",
+            &crate::to_json_2space(&json!({ "version": 3, "defaultEmail": "a@x.com", "accounts": disk })),
+        );
+
+        // 우리는 낡은 스냅샷으로 "b를 추가"만 한다(a·gone은 안 건드렸다).
+        let mut next = mine.accounts.clone();
+        next.push(json!({ "email": "b@x.com", "credEnc": "MINE" }));
+        write_store_file(&next, mine.default_email.as_deref()).expect("스토어 저장");
+
+        let after = read_store_file();
+        let emails: Vec<&str> = after.accounts.iter().filter_map(email_of).collect();
+        println!("[R3/F1] 병합 결과 = {emails:?}");
+        assert!(!emails.contains(&"gone@x.com"), "★ 로그아웃한 계정이 되살아났다");
+        assert!(emails.contains(&"b@x.com"), "우리 추가는 살아야 한다");
+        assert!(emails.contains(&"new@x.com"), "★ 남이 방금 로그인한 계정을 우리가 지웠다");
+        assert_eq!(
+            after.accounts.iter().find(|x| email_of(x) == Some("a@x.com")).and_then(cred_enc_of),
+            Some("ROTATED-BY-THEM"),
+            "★ 남의 회전 결과를 우리 옛 값으로 덮었다(백업에 죽은 토큰만 남는다)"
+        );
+
+        // 반대로 **우리가 고친 값**은 디스크가 이기지 않는다(의도는 존중한다).
+        let base = read_store_file();
+        let mut ours = base.accounts.clone();
+        for x in ours.iter_mut() {
+            if email_of(x) == Some("a@x.com") {
+                x.as_object_mut().unwrap().insert("credEnc".into(), json!("ROTATED-BY-US"));
+            }
+        }
+        write_store_file(&ours, base.default_email.as_deref()).expect("스토어 저장");
+        assert_eq!(
+            read_store_file().accounts.iter().find(|x| email_of(x) == Some("a@x.com")).and_then(cred_enc_of),
+            Some("ROTATED-BY-US")
+        );
     }
 
     #[test]
@@ -796,7 +1085,7 @@ mod tests {
         h.write("accounts.json", &format!("{{\"version\": 2.0, \"accounts\": [{rec}]}}"));
         let f = read_store_file();
         assert_eq!(f.version, 2);
-        write_store_file(&f.accounts, f.default_email.as_deref());
+        write_store_file(&f.accounts, f.default_email.as_deref()).expect("스토어 저장");
         assert_eq!(read_store_file().version, 3);
     }
 
@@ -919,7 +1208,7 @@ mod tests {
         let f = read_store_file();
         let mut accounts = f.accounts.clone();
         accounts.push(json!({ "email": "b@x.com", "credEnc": enc_creds(&snap.to_string()).unwrap() }));
-        write_store_file(&accounts, f.default_email.as_deref());
+        write_store_file(&accounts, f.default_email.as_deref()).expect("스토어 저장");
 
         let d = diagnose();
         assert_eq!(d[0].collides_with.as_deref(), Some("b@x.com"));
@@ -990,11 +1279,11 @@ mod tests {
         let h = temp_home("errors");
         assert_eq!(account_run_dir("nobody@x.com"), Err(AuthError::NotRegistered("nobody@x.com".into())));
         // 다른 머신에서 복사된 홈 — credEnc가 안 풀린다
-        write_store_file(&[json!({ "email": "a@x.com", "credEnc": "bm90LWEtcmVhbC1ibG9i" })], None);
+        write_store_file(&[json!({ "email": "a@x.com", "credEnc": "bm90LWEtcmVhbC1ibG9i" })], None).expect("스토어 저장");
         assert!(matches!(account_run_dir("a@x.com"), Err(AuthError::Undecryptable(_))));
         // 풀렸는데 알맹이가 비었다
         let enc = enc_creds(&json!({ "creds": "", "account": null }).to_string()).unwrap();
-        write_store_file(&[json!({ "email": "a@x.com", "credEnc": enc })], None);
+        write_store_file(&[json!({ "email": "a@x.com", "credEnc": enc })], None).expect("스토어 저장");
         assert!(matches!(account_run_dir("a@x.com"), Err(AuthError::CorruptSnapshot(_))));
         drop(h);
     }

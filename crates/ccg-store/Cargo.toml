@@ -32,4 +32,8 @@ windows = { version = "0.61", features = [
   # 부하 픽스처의 피크 메모리 실측(마이그레이션 리포트 §5.3-7)
   "Win32_System_ProcessStatus",
   "Win32_System_Threading",
+  # ★M11 R3(F1) — accounts.json 임계 구역(LockFileEx/UnlockFileEx + OVERLAPPED).
+  # 새 패키지가 아니라 이미 쓰는 크레이트의 기능 하나 추가다(src/flock.rs).
+  "Win32_Storage_FileSystem",
+  "Win32_System_IO",
 ] }

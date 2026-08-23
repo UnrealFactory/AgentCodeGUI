@@ -45,6 +45,9 @@ mod lite;
 /// ★M10 — 대화 연결(세션 간 소통) 라우터. 허브가 소유하고, 턴 정착에서만 돈다.
 mod talk;
 mod tap;
+/// ★M11 R3(F5) — `CCG_HOME`을 만지는 **모든** 테스트가 나눠 잡는 자물쇠.
+#[cfg(test)]
+pub(crate) mod testhome;
 mod wire;
 
 use super::ipc::{arg, ch};

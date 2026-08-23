@@ -145,16 +145,17 @@ mod tests {
     use super::*;
 
     /// 실홈으로 새지 않는다 — 계정이 하나도 없어도 `CODEX_HOME`은 **앱 홈 안**이다.
+    ///
+    /// ★R3(F5) — `CCG_HOME`은 프로세스 전역이라 **공용 자물쇠**로 잡는다. R2까지 이
+    /// 테스트는 자기 혼자 `set_var`/`remove_var`를 했고, 그 `remove_var` 창에서
+    /// `acct_switch::tests`의 `app_home()`이 **사용자 실홈**으로 떨어졌다(확인 크리틱 F5 —
+    /// 헤드라인 자물쇠가 1/15로 red). 증표를 놓으면 홈은 스스로 되돌아간다.
     #[test]
     fn an_unresolvable_account_never_falls_back_to_the_real_codex_home() {
-        let tmp = std::env::temp_dir().join(format!("ccg-m4-home-{}", std::process::id()));
-        let _ = std::fs::create_dir_all(&tmp);
-        std::env::set_var("CCG_HOME", &tmp);
+        let home = crate::engine::testhome::take("m4-codexhome");
         let h = home_for(&CodexPlan { account: Some("ghost@openai.com".into()), ..Default::default() })
             .expect("항상 값이 있다");
-        assert!(h.starts_with(&tmp), "앱 홈 밖으로 나갔다: {}", h.display());
+        assert!(h.starts_with(&home.dir), "앱 홈 밖으로 나갔다: {}", h.display());
         assert!(!h.to_string_lossy().contains(".codex\\"), "사용자 실홈 금지");
-        std::env::remove_var("CCG_HOME");
-        let _ = std::fs::remove_dir_all(&tmp);
     }
 }

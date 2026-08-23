@@ -82,5 +82,9 @@ pub fn temp_home(tag: &str) -> Home {
     let dir = std::env::temp_dir().join(format!("ccg-auth-{tag}-{n}"));
     let _ = std::fs::create_dir_all(&dir);
     std::env::set_var("CCG_HOME", &dir);
+    // ★R3 — 프로세스 전역 장부는 홈을 갈아끼울 때 반드시 비운다. 계정 이메일이
+    // 테스트끼리 겹치므로(a@x·b@x…) 남겨 두면 앞 테스트의 백오프가 뒤 테스트를 물들인다.
+    #[cfg(feature = "net")]
+    crate::net::forget_backoff();
     Home { dir, _guard: guard }
 }

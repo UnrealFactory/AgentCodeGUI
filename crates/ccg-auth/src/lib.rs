@@ -33,6 +33,8 @@
 
 pub mod claude;
 pub mod codex;
+/// ★M11 R3(F2) — 계정 건강 장부(재로그인 필요 표식 + 복구 판정). 네트워크 없음.
+pub mod health;
 /// JS 강제변환·`Date.parse` 미러 — 2.6.2 파서가 기대고 있는 의미론(M5 R2).
 pub mod js;
 pub mod junction;

@@ -114,6 +114,10 @@ fn list_claude_accounts() -> Value {
         .and_then(Value::as_str)
         .filter(|d| emails.contains(d))
         .or_else(|| emails.first().copied());
+    // ★M11 R3(F2) — 재로그인 대기 표식(`account-health.json`). 자동 전환 워커가 토큰
+    // 교환 실패를 만난 순간 적고, 재로그인하면 지문이 달라져 스스로 무효가 된다.
+    // 이 목록이 그 사실이 사용자에게 닿는 **유일한 경로**다(R2까지는 stderr 한 줄뿐이었다).
+    let sick = ccg_auth::health::needs_login_emails();
     let out: Vec<Value> = accounts
         .iter()
         .filter_map(|a| {
@@ -124,6 +128,9 @@ fn list_claude_accounts() -> Value {
                 o.insert("subscriptionType".into(), json!(sub));
             }
             o.insert("isDefault".into(), json!(Some(email) == default_email));
+            if sick.iter().any(|e| e == email) {
+                o.insert("needsLogin".into(), json!(true));
+            }
             Some(Value::Object(o))
         })
         .collect();
