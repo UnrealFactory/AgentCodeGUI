@@ -518,6 +518,11 @@ fn reload_all(app: &AppHandle) {
 fn recreate_windows(app: &AppHandle) {
     let sessions = crate::win::session_count();
     *PENDING_SESSIONS.lock().unwrap() = sessions;
+    // ★M8 — 팝아웃 창도 같은 방어 대상이다. 창을 부수기 **전에** 각 창의 최신 상태
+    // (마지막 페르시스트 ?? 부트)를 떠 둔다 — 안 그러면 브라우저 사망 한 번에 팝아웃의
+    // 초안·스레드가 통째로 사라진다(그리드로 접히지도 않는다: 메인 창도 같이 죽으므로
+    // `ma:panel-closed`를 받을 이가 없다).
+    let popouts = crate::win::popout::snapshot_for_recreate();
     let a = app.clone();
     let _ = app.run_on_main_thread(move || {
         for (label, w) in a.webview_windows() {
@@ -540,6 +545,12 @@ fn recreate_windows(app: &AppHandle) {
         }
         if want > 0 {
             log("recreated-sessions", serde_json::json!({ "n": want }));
+        }
+        // 팝아웃 창 되세우기 — 떠 둔 상태로 다시 만든다(그리드의 유령 표시와도 맞는다:
+        // 새 메인 창의 마운트가 `ma:panel-states`로 열린 창 목록을 다시 조회한다).
+        if popouts > 0 {
+            let n = crate::win::popout::recreate_pending(&a);
+            log("recreated-popouts", serde_json::json!({ "want": popouts, "got": n }));
         }
     });
 }

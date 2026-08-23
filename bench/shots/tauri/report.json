@@ -1,7 +1,7 @@
 {
   "app": "tauri-3.0.0",
   "kind": "tauri",
-  "at": "2026-08-22T23:33:57.242Z",
+  "at": "2026-08-23T06:01:39.729Z",
   "viewport": {
     "width": 1440,
     "height": 900
@@ -437,16 +437,52 @@
       "ok": true,
       "ms": 803,
       "found": 1
+    },
+    {
+      "id": "multi-panel-ghost-popped",
+      "label": "멀티 — 팝아웃 중 그리드 유령",
+      "area": "8. 멀티",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 1801,
+      "found": 1
+    },
+    {
+      "id": "panel-window",
+      "label": "멀티 패널 팝아웃 창",
+      "area": "9. 독립 창",
+      "surface": "panel-window",
+      "ok": true,
+      "ms": 3774,
+      "found": 1
+    },
+    {
+      "id": "toast-single",
+      "label": "알림 토스트 — 단건 상세 카드",
+      "area": "10. 알림",
+      "surface": "toast",
+      "ok": true,
+      "ms": 4319,
+      "found": 1
+    },
+    {
+      "id": "toast-aggregate",
+      "label": "알림 토스트 — 집계 행",
+      "area": "10. 알림",
+      "surface": "toast",
+      "ok": true,
+      "ms": 5569,
+      "found": 1
     }
   ],
   "windowSized": true,
-  "mergedFrom": "2026-08-22T23:15:28.716Z",
+  "mergedFrom": "2026-08-22T23:33:57.242Z",
   "summary": {
     "defined": 156,
-    "attempted": 47,
-    "ok": 44,
+    "attempted": 51,
+    "ok": 48,
     "failed": 3,
     "skipped": 1,
-    "successRatePct": 93.6
+    "successRatePct": 94.1
   }
 }

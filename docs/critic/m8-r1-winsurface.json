@@ -1,0 +1,474 @@
+{
+  "at": "2026-08-23T06:06:31.668Z",
+  "exe": "C:/Code/AgentCodeGUI/target/release/agentcodegui-m8.exe",
+  "steps": {
+    "popout": {
+      "home": "C:\\Code\\AgentCodeGUI\\.poc-home-winsurface-popout",
+      "panelIds": [
+        "0",
+        "1",
+        "2",
+        "3"
+      ],
+      "renamed": "editing",
+      "named": "named",
+      "titleShown": true,
+      "boardReady": true,
+      "board": {
+        "version": 1,
+        "boards": [
+          {
+            "id": "default",
+            "title": "",
+            "custom": false,
+            "count": 1,
+            "chrome": "ide",
+            "order": [
+              0,
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "slots": [
+              "c-main",
+              null,
+              null,
+              null,
+              null,
+              null
+            ]
+          },
+          {
+            "id": "22a27cba-6175-40ff-b160-b653bae075b2",
+            "title": "",
+            "custom": false,
+            "count": 4,
+            "chrome": "grid",
+            "order": [
+              0,
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "slots": [
+              "ma-22a27cba-6175-40ff-b160-b653bae075b2-0",
+              null,
+              null,
+              null,
+              null,
+              null
+            ]
+          }
+        ],
+        "activeBoardId": "22a27cba-6175-40ff-b160-b653bae075b2"
+      },
+      "engineBefore": {
+        "chats": [],
+        "cli": "C:\\Code\\AgentCodeGUI\\.poc-home-winsurface-popout\\engines\\fake\\node_modules/@anthropic-ai/claude-agent-sdk-win32-x64/claude.exe",
+        "flags": []
+      },
+      "draftSet": "set",
+      "clicked": true,
+      "openMs": 157,
+      "popMounted": true,
+      "ghost": true,
+      "draftInPopout": "팝아웃으로 넘어갈 초안",
+      "draftInGrid": "",
+      "panelId": "22a27cba-6175-40ff-b160-b653bae075b2::0",
+      "sent": "sent",
+      "popGotText": true,
+      "mirror": [
+        "status",
+        "session",
+        "assistant-done",
+        "context",
+        "result",
+        "status"
+      ],
+      "engineAfter": {
+        "chats": [
+          {
+            "chatId": "ma-22a27cba-6175-40ff-b160-b653bae075b2-0",
+            "state": "Idle",
+            "queued": 0,
+            "spawns": 1,
+            "exits": 1,
+            "session": "POP-1",
+            "pid": 16756,
+            "engine": "claude",
+            "identityEngine": "claude",
+            "autoResume": true,
+            "nowMs": 765,
+            "hold": null,
+            "queue": []
+          }
+        ],
+        "cli": "C:\\Code\\AgentCodeGUI\\.poc-home-winsurface-popout\\engines\\fake\\node_modules/@anthropic-ai/claude-agent-sdk-win32-x64/claude.exe",
+        "flags": []
+      },
+      "chatId": "ma-22a27cba-6175-40ff-b160-b653bae075b2-0",
+      "spawns": {
+        "before": 0,
+        "after": 1,
+        "session": "POP-1",
+        "chats": 1
+      },
+      "flushReady": true,
+      "flushWaitMs": 124,
+      "flushBeforeClose": [
+        {
+          "panelId": "22a27cba-6175-40ff-b160-b653bae075b2::0",
+          "messages": 2
+        }
+      ],
+      "closedGone": true,
+      "ghostGone": true,
+      "foldBackThread": true,
+      "surface": {
+        "popout": {
+          "windows": [],
+          "flushes": [],
+          "leftovers": []
+        },
+        "notify": {
+          "enabled": true,
+          "count": 0,
+          "items": [],
+          "window": false,
+          "loaded": false
+        },
+        "tray": {
+          "tray": true,
+          "hideOnClose": true,
+          "menuWindow": false,
+          "quitting": false
+        },
+        "windows": [
+          "main"
+        ]
+      }
+    },
+    "toast": {
+      "home": "C:\\Code\\AgentCodeGUI\\.poc-home-winsurface-toast",
+      "whileFocused": false,
+      "dbgFocused": {
+        "popout": {
+          "windows": [],
+          "flushes": [],
+          "leftovers": []
+        },
+        "notify": {
+          "enabled": true,
+          "count": 0,
+          "items": [],
+          "window": false,
+          "loaded": false
+        },
+        "tray": {
+          "tray": true,
+          "hideOnClose": true,
+          "menuWindow": false,
+          "quitting": false
+        },
+        "windows": [
+          "main"
+        ]
+      },
+      "showMs": 160,
+      "singleCard": true,
+      "cardText": "AGENTCODEGUI ✕ 답변 도착벤치 채팅 첫 번째 턴이 끝났어요.",
+      "bounds": {
+        "w": 360,
+        "h": 91,
+        "x": 164,
+        "y": 157
+      },
+      "toastHasFocus": false,
+      "aggregate": true,
+      "rows": 2,
+      "placed": {
+        "w": 360,
+        "h": 138,
+        "x": 2192,
+        "y": 1239,
+        "availW": 2560,
+        "availH": 1392,
+        "dpr": 1
+      },
+      "bottomRight": true,
+      "clickKey": "single:c-two",
+      "jump": {
+        "surface": "single",
+        "id": "c-two"
+      },
+      "mainVisibleAfterClick": true,
+      "gone": true,
+      "dbgAfter": {
+        "popout": {
+          "windows": [],
+          "flushes": [],
+          "leftovers": []
+        },
+        "notify": {
+          "enabled": true,
+          "count": 0,
+          "items": [],
+          "window": false,
+          "loaded": false
+        },
+        "tray": {
+          "tray": true,
+          "hideOnClose": true,
+          "menuWindow": false,
+          "quitting": false
+        },
+        "windows": [
+          "main"
+        ]
+      }
+    },
+    "tray": {
+      "home": "C:\\Code\\AgentCodeGUI\\.poc-home-winsurface-tray",
+      "dbg0": {
+        "popout": {
+          "windows": [],
+          "flushes": [],
+          "leftovers": []
+        },
+        "notify": {
+          "enabled": true,
+          "count": 0,
+          "items": [],
+          "window": false,
+          "loaded": false
+        },
+        "tray": {
+          "tray": true,
+          "hideOnClose": true,
+          "menuWindow": false,
+          "quitting": false
+        },
+        "windows": [
+          "main"
+        ]
+      },
+      "winsBefore": [
+        {
+          "hwnd": "39782538",
+          "visible": true,
+          "size": "1336x889",
+          "title": "AgentCodeGUI3"
+        },
+        {
+          "hwnd": "66521574",
+          "visible": false,
+          "size": "1920x1023",
+          "title": ""
+        }
+      ],
+      "winsAfterX": [
+        {
+          "hwnd": "39782538",
+          "visible": false,
+          "size": "1336x889",
+          "title": "AgentCodeGUI3"
+        },
+        {
+          "hwnd": "66521574",
+          "visible": false,
+          "size": "1920x1023",
+          "title": ""
+        }
+      ],
+      "aliveAfterX": true,
+      "visibleAfterX": 0,
+      "secondExit": {
+        "code": 0,
+        "ms": 113
+      },
+      "winsAfterSecond": [
+        {
+          "hwnd": "39782538",
+          "visible": true,
+          "size": "1336x889",
+          "title": "AgentCodeGUI3"
+        },
+        {
+          "hwnd": "66521574",
+          "visible": false,
+          "size": "1920x1023",
+          "title": ""
+        }
+      ],
+      "raisedMs": 369,
+      "raised": true,
+      "menuWindow": true,
+      "menuRows": true,
+      "menuText": [
+        "AgentCodeGUI 열기",
+        "완전히 종료"
+      ],
+      "menuBounds": {
+        "w": 218,
+        "h": 87,
+        "x": 1947,
+        "y": 805
+      },
+      "menuClosed": true,
+      "quitWorks": true
+    },
+    "cost": {
+      "home": "C:\\Code\\AgentCodeGUI\\.poc-home-winsurface-cost",
+      "stages": [
+        {
+          "label": "메인 창만",
+          "procs": 5,
+          "roles": [
+            "browser",
+            "browser",
+            "crashpad-handler",
+            "renderer",
+            "utility:"
+          ],
+          "pages": 1,
+          "urls": [
+            ""
+          ]
+        },
+        {
+          "label": "+ 팝아웃 창",
+          "procs": 5,
+          "roles": [
+            "browser",
+            "browser",
+            "crashpad-handler",
+            "renderer",
+            "utility:"
+          ],
+          "pages": 2,
+          "urls": [
+            "index.html#mapanel",
+            ""
+          ]
+        },
+        {
+          "label": "+ 토스트 창",
+          "procs": 5,
+          "roles": [
+            "browser",
+            "browser",
+            "crashpad-handler",
+            "renderer",
+            "utility:"
+          ],
+          "pages": 3,
+          "urls": [
+            "toast.html",
+            "index.html#mapanel",
+            ""
+          ]
+        },
+        {
+          "label": "+ 트레이 메뉴 창",
+          "procs": 5,
+          "roles": [
+            "browser",
+            "browser",
+            "crashpad-handler",
+            "renderer",
+            "utility:"
+          ],
+          "pages": 3,
+          "urls": [
+            "toast.html",
+            "index.html#mapanel",
+            ""
+          ]
+        }
+      ],
+      "delta": {
+        "popout": 0,
+        "toast": 0,
+        "traymenu": 0
+      },
+      "pagesFinal": [
+        "toast.html",
+        "index.html#mapanel",
+        ""
+      ]
+    },
+    "defense": {
+      "home": "C:\\Code\\AgentCodeGUI\\.poc-home-winsurface-defense",
+      "glassWindowsBefore": 0,
+      "popoutGlassBoot": {
+        "ok": true,
+        "windows": 1,
+        "backdrops": [
+          3
+        ]
+      },
+      "windowsNow": [
+        "main",
+        "panel-1"
+      ],
+      "backdrops": [
+        {
+          "hwnd": "62981536",
+          "visible": "1",
+          "size": "1116x829",
+          "title": "�г� ? AgentCodeGUI",
+          "backdrop": 3,
+          "hr": 0
+        },
+        {
+          "hwnd": "64555900",
+          "visible": "1",
+          "size": "1336x889",
+          "title": "AgentCodeGUI3",
+          "backdrop": 3,
+          "hr": 0
+        },
+        {
+          "hwnd": "91227814",
+          "visible": "0",
+          "size": "1920x1023",
+          "title": "",
+          "backdrop": 0,
+          "hr": 0
+        }
+      ],
+      "appWindowBackdrops": [
+        {
+          "title": "�г� ? AgentCodeGUI",
+          "backdrop": 3
+        },
+        {
+          "title": "AgentCodeGUI3",
+          "backdrop": 3
+        }
+      ],
+      "afterCrashTargets": [
+        "index.html#mapanel",
+        ""
+      ],
+      "mainRemounted": true,
+      "popoutBack": true,
+      "crashLog": [
+        "process-failed",
+        "process-failed",
+        "recover-begin",
+        "reloaded",
+        "reloaded",
+        "page-load",
+        "page-load",
+        "mounted",
+        "recover-done"
+      ]
+    }
+  },
+  "findings": []
+}

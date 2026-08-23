@@ -1,0 +1,136 @@
+{
+  "at": "2026-08-23T06:03:56.935Z",
+  "exe": "C:/Code/AgentCodeGUI/target/release/agentcodegui-m8.exe",
+  "steps": {
+    "dialog": {
+      "home": "C:\\Code\\AgentCodeGUI\\.poc-home-dialog-m8-dialog",
+      "ready": true,
+      "card": {
+        "head": "폴백 확인",
+        "opts": [
+          "sonnet로 계속",
+          "중단"
+        ],
+        "text": "폴백 확인모델 폴백fable 이(가) 응답을 거부했어요(policy). sonnet 로 이어서 시도할까요?sonnet로 계속거부된 답변을 지우고 다시 시도합니다중단이 턴을 여기서 멈춥니다"
+      },
+      "state": "AwaitingUser",
+      "result": {
+        "isError": false,
+        "text": "FALLBACK-OK"
+      },
+      "stdin": [
+        {
+          "type": "control_request",
+          "request_id": "init-1",
+          "request": {
+            "subtype": "initialize",
+            "forwardSubagentText": true,
+            "supportedDialogKinds": [
+              "refusal_fallback_prompt"
+            ]
+          }
+        },
+        {
+          "type": "user",
+          "session_id": "",
+          "parent_tool_use_id": null,
+          "message": {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "거부를 유발하는 질문"
+              }
+            ]
+          }
+        },
+        {
+          "type": "control_response",
+          "response": {
+            "subtype": "success",
+            "request_id": "dlg-1",
+            "response": {
+              "behavior": "completed",
+              "result": "retry_fallback",
+              "toolUseID": "toolu_fake_1"
+            }
+          }
+        }
+      ],
+      "answer": {
+        "behavior": "completed",
+        "result": "retry_fallback",
+        "toolUseID": "toolu_fake_1"
+      },
+      "after": {
+        "cardGone": true,
+        "fallbackBanner": [
+          "fable 이(가) 응답을 거부해 sonnet 로 전환했어요"
+        ],
+        "types": {
+          "status": 2,
+          "session": 1,
+          "question-request": 1,
+          "model-fallback": 1,
+          "assistant-done": 1,
+          "context": 1,
+          "result": 1
+        },
+        "domHasReply": false
+      },
+      "identityAfter": {
+        "chatId": "c-dlg",
+        "identity": {
+          "engine": {
+            "kind": "claude",
+            "model": "sonnet",
+            "effort": "minimal"
+          },
+          "billing": {
+            "kind": "subscription",
+            "account": "fake@example.com",
+            "dropEnvKey": false
+          },
+          "cwd": "c:\\code\\agentcodegui\\.poc-home-dialog-m8-dialog\\work",
+          "addDirs": [],
+          "mode": "normal",
+          "systemPrompt": null,
+          "outputStyle": null,
+          "tools": {
+            "skillOverrides": {},
+            "deniedMcp": []
+          }
+        },
+        "raw": {
+          "engine": {
+            "kind": "claude",
+            "model": "sonnet",
+            "effort": "minimal",
+            "codexAccount": null
+          },
+          "billing": {
+            "kind": "subscription",
+            "account": "fake@example.com",
+            "dropEnvKey": false
+          },
+          "cwd": "c:\\code\\agentcodegui\\.poc-home-dialog-m8-dialog\\work",
+          "addDirs": [],
+          "mode": "normal",
+          "systemPrompt": null,
+          "outputStyle": null,
+          "tools": {
+            "skillOverrides": {},
+            "deniedMcp": []
+          }
+        },
+        "pending": null,
+        "revision": 1,
+        "unresolved": null,
+        "state": "idle",
+        "queued": 0
+      }
+    }
+  },
+  "findings": [],
+  "verdict": "PASS"
+}

@@ -1,0 +1,62 @@
+{
+  "at": "2026-08-23T06:06:07.910Z",
+  "exe": "C:/Code/AgentCodeGUI/target/release/agentcodegui-m8.exe",
+  "steps": {
+    "slots": {
+      "home": "C:\\Code\\AgentCodeGUI\\.poc-home-slots-m8-slots",
+      "subscribed": true,
+      "listEmpty": [],
+      "opened": [
+        {
+          "label": "session-1",
+          "chatId": "sc-1787465168604-1",
+          "title": "",
+          "focused": true
+        }
+      ],
+      "chatId": "sc-1787465168604-1",
+      "broadcasts": [
+        [],
+        [
+          "sc-1787465168604-1"
+        ],
+        [
+          "sc-1787465168604-1"
+        ]
+      ],
+      "turnInWindow": true,
+      "closed": true,
+      "listAfterClose": [],
+      "recordAfterClose": {
+        "msgs": 2,
+        "title": "자리 채널 검증"
+      },
+      "focused": [
+        {
+          "label": "session-2",
+          "chatId": "sc-1787465168604-1",
+          "title": "",
+          "focused": false
+        }
+      ],
+      "listAfterFocus": [
+        {
+          "label": "session-2",
+          "chatId": "sc-1787465168604-1",
+          "title": "자리 채널 검증",
+          "focused": true
+        }
+      ],
+      "reopened": [
+        {
+          "label": "session-2",
+          "chatId": "sc-1787465168604-1",
+          "title": "자리 채널 검증",
+          "focused": true
+        }
+      ]
+    }
+  },
+  "findings": [],
+  "verdict": "PASS"
+}

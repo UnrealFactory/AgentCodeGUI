@@ -122,9 +122,10 @@ fn img_response(uri: &str, origin: Option<&str>) -> tauri::http::Response<Vec<u8
 fn main() {
     // 락은 프로세스 수명 동안 살아 있어야 한다(드랍되면 핸들이 닫혀 잠금이 풀린다)
     let Some(_lock) = acquire_home_lock() else {
-        // 같은 앱 홈으로 이미 떠 있다 — 조용히 물러난다.
-        // (2.6.2는 이 자리에서 기존 창을 앞으로 가져온다. 3.0은 창 라우팅이 서는
-        //  M2에서 같은 동작을 붙인다 — docs/m1-report.md 갭 목록.)
+        // 같은 앱 홈으로 이미 떠 있다 — **물러나기 전에 그쪽 창을 앞으로 올린다**
+        // (M1 §7-3 이월). 트레이에 숨어 있을 때 exe를 다시 실행하면 R1까지는 아무 일도
+        // 안 일어났다. 등록 윈도우 메시지 브로드캐스트라 격리 홈끼리는 안 섞인다.
+        win::tray::raise_existing();
         return;
     };
 

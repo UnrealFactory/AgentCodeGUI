@@ -10,7 +10,7 @@
 
 use super::{arg, ch};
 use serde_json::{json, Value};
-use tauri::{AppHandle, Emitter, WebviewWindow};
+use tauri::{AppHandle, Emitter, Manager, WebviewWindow};
 
 /// 창 자리 4채널 + 목록 브로드캐스트 (protocol.ts `IPC.winChat*` · `IPC.chatWindows`).
 pub const WIN_CHAT_OPEN: &str = "win:chat-open";
@@ -20,6 +20,19 @@ pub const WIN_CHAT_LIST: &str = "win:chat-list";
 pub const CHAT_WINDOWS: &str = "chat:windows";
 /// main → 렌더러: **창 닫기 전 마지막 저장 요청**(`protocol.ts:1199` `chatFlushReq`).
 pub const CHAT_FLUSH_REQ: &str = "chat:flush-req";
+
+/// ── M8 창 표면 3종 ────────────────────────────────────────────────────────
+/// 멀티 패널 팝아웃 창 7채널 (`protocol.ts:968-974` + 이벤트 `:1134`).
+/// 구현은 `win::popout`. 상수를 여기 두는 이유는 위 블록과 같다(유일한 소비자).
+pub const MA_PANEL_OPEN: &str = "ma:panel-open";
+pub const MA_PANEL_HYDRATE: &str = "ma:panel-hydrate";
+pub const MA_PANEL_PERSIST: &str = "ma:panel-persist";
+pub const MA_PANEL_FOCUS: &str = "ma:panel-focus";
+pub const MA_PANEL_CLOSE: &str = "ma:panel-close";
+pub const MA_PANEL_STATES: &str = "ma:panel-states";
+pub const MA_PANEL_LEFTOVER_CLEAR: &str = "ma:panel-leftover-clear";
+/// 셸 내부 진단 — 계약면에 없다. `scripts/poc-winsurface.mjs`가 창 회계를 읽는다.
+pub const WIN_SURFACE_DEBUG: &str = "win:surface-debug";
 
 /// 그 채팅을 보고 있는 창에 "지금 저장해"라고 알린다(★R4 — 32채널의 마지막 한 칸).
 ///
@@ -148,6 +161,97 @@ pub fn dispatch(app: &AppHandle, window: &WebviewWindow, channel: &str, p: &Valu
             crate::win::window_slots(app)
         }
         WIN_CHAT_LIST => crate::win::window_slots(app),
+
+        // ── 멀티 패널 팝아웃 창 (M8 — win::popout) ──────────────────────────
+        //
+        // 소유권 규약이 2.6.2와 다르다. 저쪽은 엔진이 `panelId`에 매달려 있어 팝아웃이
+        // **사본 이전**이었지만, 3.0은 `panel_id_to_chat()`이 보드에서 chatId를 읽어
+        // 실행이 **채팅에 붙는다** — 창은 그 채팅을 보는 자리일 뿐이라 여닫아도 엔진이
+        // 재스폰되지 않는다. 여기서 나르는 것은 렌더러 로컬 상태(초안·큐·메타·스냅샷)뿐.
+        MA_PANEL_OPEN => {
+            match crate::win::popout::open(app, arg(p, 0)) {
+                Ok(label) => json!(label),
+                Err(e) => {
+                    eprintln!("[win] 팝아웃 창 열기 실패: {e}");
+                    Value::Null
+                }
+            }
+        }
+        // 주소는 **부른 창**이다(페이로드의 panelId를 믿으면 남의 패널을 덮는다).
+        MA_PANEL_HYDRATE => crate::win::popout::hydrate(window.label()),
+        MA_PANEL_PERSIST => json!(crate::win::popout::persist(window.label(), arg(p, 0))),
+        MA_PANEL_FOCUS => {
+            if let Some(id) = arg(p, 0).as_str() {
+                crate::win::popout::focus(app, id);
+            }
+            Value::Null
+        }
+        MA_PANEL_CLOSE => {
+            if let Some(id) = arg(p, 0).as_str() {
+                crate::win::popout::close(app, id);
+            }
+            Value::Null
+        }
+        MA_PANEL_STATES => crate::win::popout::states(arg(p, 0).as_str().unwrap_or("")),
+        MA_PANEL_LEFTOVER_CLEAR => {
+            if let Some(id) = arg(p, 0).as_str() {
+                crate::win::popout::clear_leftover(id);
+            }
+            Value::Null
+        }
+
+        // ── 알림 토스트 창 (M8 — win::notify) ───────────────────────────────
+        crate::win::notify::NOTIFY_EVENT => {
+            crate::win::notify::event(app, window, arg(p, 0));
+            Value::Null
+        }
+        crate::win::notify::NOTIFY_OPEN => {
+            if let Some(key) = arg(p, 0).as_str() {
+                crate::win::notify::open(app, key);
+            }
+            Value::Null
+        }
+        crate::win::notify::NOTIFY_CLOSE => {
+            crate::win::notify::close_all(app);
+            Value::Null
+        }
+        crate::win::notify::NOTIFY_RESIZE => {
+            crate::win::notify::resize(app, arg(p, 0).as_f64().unwrap_or(0.0));
+            Value::Null
+        }
+
+        // ── 트레이 우클릭 메뉴 창 (M8 — win::tray) ──────────────────────────
+        crate::win::tray::TRAYMENU_RESIZE => {
+            crate::win::tray::menu_resize(app, arg(p, 0).as_f64().unwrap_or(0.0));
+            Value::Null
+        }
+        crate::win::tray::TRAYMENU_ACTION => {
+            // 메뉴 창이 보낸 것만 받는다(다른 창이 이 채널로 앱을 끄지 못하게).
+            if window.label() == crate::win::tray::MENU_WIN {
+                crate::win::tray::menu_action(app, arg(p, 0).as_str().unwrap_or(""));
+            }
+            Value::Null
+        }
+
+        // 셸 내부 진단 — 창 표면 회계 한 덩어리(하네스 전용).
+        //
+        // `["traymenu-open"]`은 **트레이 우클릭의 대역**이다. 알림 영역 우클릭은 셸
+        // (Explorer)의 OS 이벤트라 CDP로 합성할 수 없어(A/B `tray-menu`가 두 앱 모두
+        // skip인 이유) 하네스가 진입 함수를 직접 부른다 — 그 뒤 경로는 실제와 같다.
+        WIN_SURFACE_DEBUG if arg(p, 0).as_str() == Some("traymenu-open") => {
+            let (x, y) = app
+                .cursor_position()
+                .map(|c| (c.x, c.y))
+                .unwrap_or((400.0, 900.0));
+            crate::win::tray::show_menu(app, x, y);
+            json!({ "menuAt": [x, y] })
+        }
+        WIN_SURFACE_DEBUG => json!({
+            "popout": crate::win::popout::debug_state(),
+            "notify": crate::win::notify::debug_state(app),
+            "tray": crate::win::tray::debug_state(app),
+            "windows": app.webview_windows().keys().cloned().collect::<Vec<String>>(),
+        }),
 
         // ── 창 컨트롤 ───────────────────────────────────────────────────────
         ch::WIN_MINIMIZE => {

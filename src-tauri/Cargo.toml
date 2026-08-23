@@ -20,7 +20,9 @@ custom-protocol = ["tauri/custom-protocol"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["devtools"] }
+# tray-icon = 시스템 트레이(M8 — src/tray.rs). image-png = 트레이 아이콘을 exe에 박아
+# 디코드하기 위해(bundle.active=false라 런타임 리소스 경로가 없다).
+tauri = { version = "2", features = ["devtools", "tray-icon", "image-png"] }
 tauri-plugin-dialog = "2"
 serde = { workspace = true }
 serde_json = { workspace = true }

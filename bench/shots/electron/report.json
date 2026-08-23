@@ -1,7 +1,7 @@
 {
   "app": "electron-2.6.2",
   "kind": "electron",
-  "at": "2026-08-22T23:17:45.789Z",
+  "at": "2026-08-23T06:02:24.921Z",
   "viewport": {
     "width": 1440,
     "height": 900
@@ -378,6 +378,24 @@
       "error": "waitFor timeout: .lcol .explorer .fxtree (1)"
     },
     {
+      "id": "multi-panel-ghost-popped",
+      "label": "멀티 — 팝아웃 중 그리드 유령",
+      "area": "8. 멀티",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 1764,
+      "found": 1
+    },
+    {
+      "id": "panel-window",
+      "label": "멀티 패널 팝아웃 창",
+      "area": "9. 독립 창",
+      "surface": "panel-window",
+      "ok": true,
+      "ms": 3796,
+      "found": 1
+    },
+    {
       "id": "multi-panel-btw-dock",
       "label": "멀티 — 패널 btw 알약 도크",
       "area": "8. 멀티",
@@ -394,16 +412,34 @@
       "ok": false,
       "ms": 21821,
       "error": "waitForNewWindow timeout: #session"
+    },
+    {
+      "id": "toast-single",
+      "label": "알림 토스트 — 단건 상세 카드",
+      "area": "10. 알림",
+      "surface": "toast",
+      "ok": false,
+      "ms": 14300,
+      "error": "toast 창 미생성 — diag={\"focus\":false,\"vis\":\"visible\"} wins=[\"index.html\"]"
+    },
+    {
+      "id": "toast-aggregate",
+      "label": "알림 토스트 — 집계 행",
+      "area": "10. 알림",
+      "surface": "toast",
+      "ok": false,
+      "ms": 15694,
+      "error": "waitForWindow timeout: toast.html"
     }
   ],
   "windowSized": false,
-  "mergedFrom": "2026-08-22T05:14:26.293Z",
+  "mergedFrom": "2026-08-22T23:17:45.789Z",
   "summary": {
     "defined": 156,
-    "attempted": 43,
-    "ok": 37,
-    "failed": 6,
+    "attempted": 47,
+    "ok": 39,
+    "failed": 8,
     "skipped": 0,
-    "successRatePct": 86
+    "successRatePct": 83
   }
 }

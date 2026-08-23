@@ -1,0 +1,118 @@
+{
+  "at": "2026-08-23T06:04:33.708Z",
+  "exe": "C:/Code/AgentCodeGUI/target/release/agentcodegui-m8.exe",
+  "steps": {
+    "reload": {
+      "home": "C:\\Code\\AgentCodeGUI\\.poc-home-reload-m8-reload",
+      "resetsAt": 1787464473,
+      "afterBoot": [
+        {
+          "id": "c-see",
+          "queued": 1,
+          "hold": {
+            "resetsAt": 0,
+            "ready": false,
+            "dueAt": 90000
+          },
+          "auto": true,
+          "spawns": 0,
+          "queue": [
+            "예약 하나"
+          ],
+          "now": 158,
+          "state": "Idle"
+        },
+        {
+          "id": "c-hide",
+          "queued": 1,
+          "hold": {
+            "resetsAt": 0,
+            "ready": false,
+            "dueAt": 90000
+          },
+          "auto": false,
+          "spawns": 0,
+          "queue": [
+            "예약 둘"
+          ],
+          "now": 156,
+          "state": "Idle"
+        }
+      ],
+      "afterHold": [
+        {
+          "id": "c-see",
+          "queued": 0,
+          "hold": null,
+          "auto": true,
+          "spawns": 1,
+          "now": 91348,
+          "state": "Streaming"
+        },
+        {
+          "id": "c-hide",
+          "queued": 1,
+          "hold": {
+            "resetsAt": 0,
+            "ready": true,
+            "dueAt": 90000
+          },
+          "auto": false,
+          "spawns": 0,
+          "now": 91346,
+          "state": "Idle"
+        }
+      ],
+      "domReply": true,
+      "resumeVerdict": {
+        "cmd": "hold.resume",
+        "kind": "accepted",
+        "reason": null
+      },
+      "afterPress": [
+        {
+          "id": "c-see",
+          "spawns": 1,
+          "hold": null,
+          "auto": true
+        },
+        {
+          "id": "c-hide",
+          "spawns": 1,
+          "hold": null,
+          "auto": true
+        }
+      ],
+      "statusJson": {
+        "c-hide": {
+          "chatId": "c-hide",
+          "status": "working",
+          "busy": true,
+          "bgActive": false,
+          "ask": "none",
+          "hold": null,
+          "queued": 0,
+          "unread": 0,
+          "autoResume": true,
+          "resumeOwner": "engine",
+          "updatedAt": 1787465165603
+        },
+        "c-see": {
+          "chatId": "c-see",
+          "status": "working",
+          "busy": true,
+          "bgActive": false,
+          "ask": "none",
+          "hold": null,
+          "queued": 0,
+          "unread": 0,
+          "autoResume": true,
+          "resumeOwner": "engine",
+          "updatedAt": 1787465164268
+        }
+      }
+    }
+  },
+  "findings": [],
+  "verdict": "PASS"
+}

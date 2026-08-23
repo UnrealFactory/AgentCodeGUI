@@ -1,0 +1,40 @@
+{
+  "at": "2026-08-23T06:03:58.977Z",
+  "exe": "C:/Code/AgentCodeGUI/target/release/agentcodegui-m8.exe",
+  "steps": {
+    "winsave": {
+      "home": "C:\\Code\\AgentCodeGUI\\.poc-home-winsave-m8-winsave",
+      "listAtBoot": [],
+      "listAfterOpen": [
+        "sc-1787465039472-1"
+      ],
+      "winId": "sc-1787465039472-1",
+      "sent": "sent",
+      "replyInWindow": true,
+      "recordAfterTurn": {
+        "origin": "session",
+        "msgs": 2,
+        "title": "창에서 보낸 질문",
+        "cwd": "C:\\Code\\AgentCodeGUI\\.poc-home-winsave-m8-winsave\\work"
+      },
+      "mainAfter": 1,
+      "listAfterRestart": [
+        {
+          "id": "sc-1787465039472-1",
+          "title": "창에서 보낸 질문",
+          "open": false
+        }
+      ],
+      "reopened": true,
+      "restoredInWindow": true,
+      "listWhileOpen": [
+        {
+          "id": "sc-1787465039472-1",
+          "open": true
+        }
+      ]
+    }
+  },
+  "findings": [],
+  "verdict": "PASS"
+}

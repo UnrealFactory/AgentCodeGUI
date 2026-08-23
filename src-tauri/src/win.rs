@@ -31,6 +31,19 @@ use tauri::{
 #[path = "glass.rs"]
 pub mod glass;
 
+// M8 창 표면 3종. glass.rs와 같은 이유로 여기에 매단다(main.rs는 다른 라운드가 소유).
+// 셋 다 **창을 만드는 유일한 경로가 `shared_env`**라는 규약 아래 있다 — 그래서
+// win.rs의 자식 모듈이고, 그래서 이 파일 밖에서는 창 생성 헬퍼가 안 보인다.
+/// 멀티 패널 팝아웃 창(`#mapanel`) — `ma:panel-*`.
+#[path = "popout.rs"]
+pub mod popout;
+/// 포커스 밖 알림 토스트 창(`toast.html`) — `notify:*`.
+#[path = "notify.rs"]
+pub mod notify;
+/// 시스템 트레이 + 우클릭 메뉴 창(`tray.html`) — `traymenu:*`.
+#[path = "tray.rs"]
+pub mod tray;
+
 pub const MAIN: &str = "main";
 
 /// 셸이 주입하는 부팅 스플래시. 왜 별도 창이 아닌지는 splash.js 헤더에.
@@ -261,6 +274,13 @@ pub fn create_main(app: &AppHandle) -> tauri::Result<WebviewWindow> {
         SCALE_MILLI.store((s * 1000.0).round() as i64, Ordering::Relaxed);
     }
 
+    // 시스템 트레이 — X = 트레이로 숨기기의 전제. 창이 선 뒤에 올린다(아이콘 클릭이
+    // 곧 `show_main`이므로 되살릴 창이 이미 있어야 한다). 두 번째 호출은 no-op이라
+    // 크래시 재생성 경로에서 아이콘이 겹치지 않는다.
+    tray::init(app);
+    // 같은 앱 홈으로 두 번째 인스턴스가 뜨면 "창을 앞으로" 신호를 이 창이 받는다(M1 §7-3).
+    tray::arm_raise_listener(app, &win);
+
     let handle = app.clone();
     win.on_window_event(move |e| match e {
         WindowEvent::Resized(_) | WindowEvent::Moved(_) => {
@@ -274,7 +294,21 @@ pub fn create_main(app: &AppHandle) -> tauri::Result<WebviewWindow> {
             }
             schedule_save(&handle);
         }
-        WindowEvent::CloseRequested { .. } => save_now(&handle),
+        // 메인 창이 포커스를 되찾았다 — 그 창 몫의 알림 토스트는 무의미하다.
+        WindowEvent::Focused(true) => notify::clear_for_window(&handle, MAIN),
+        // X(·Alt+F4) = **종료가 아니라 트레이로 숨기기**. 창만 숨기고 앱(진행 중 턴·
+        // 워크플로·셸·추가 채팅)은 그대로 산다. 진짜 종료는 트레이 메뉴 '완전히 종료'.
+        // 트레이 생성이 실패했거나 설정이 꺼져 있으면 종전대로 진짜 닫기 —
+        // 숨긴 창을 되찾을 길이 없는데 숨기면 그게 유령이다.
+        WindowEvent::CloseRequested { api, .. } => {
+            save_now(&handle);
+            if tray::hide_on_close() {
+                api.prevent_close();
+                if let Some(w) = handle.get_webview_window(MAIN) {
+                    let _ = w.hide();
+                }
+            }
+        }
         _ => {}
     });
 
@@ -383,8 +417,11 @@ pub fn open_session_window_for(app: &AppHandle, chat: Option<&str>) -> tauri::Re
                 }
             }
         }
+        // 이 창이 포커스를 되찾으면 그 창 몫의 알림 토스트는 무의미하다(notify.rs 수명 규약).
+        WindowEvent::Focused(true) => notify::clear_for_window(&handle, &l),
         WindowEvent::Destroyed => {
             SESSIONS.lock().unwrap().retain(|s| s.label != l);
+            notify::clear_for_window(&handle, &l);
             broadcast_sessions(&handle);
         }
         _ => {}
@@ -592,6 +629,11 @@ pub fn reset_shown() {
     // 핸들에 DWM 호출을 계속 던진다(IsWindow가 걸러 주지만, 재생성 창이 붙기 전까지
     // "감시 중인 창 0"으로 스레드가 스스로 끝나는 경로와 겹쳐 헷갈린다).
     glass::clear();
+    // ★M8 — 새 창 종류도 같은 규약을 탄다. 팝아웃은 **레지스트리만** 비운다(복귀분은
+    // 재생성의 재료라 남긴다). 토스트/트레이 메뉴는 오버레이라 다시 세우지 않고 치운다 —
+    // 부서진 창의 라벨이 남으면 `notify::push`가 없는 창에 emit_to를 계속 던진다.
+    popout::clear_windows();
+    notify::drop_toast();
 }
 
 pub fn clear_sessions() {

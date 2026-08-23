@@ -1,0 +1,28 @@
+{
+  "at": "2026-08-23T06:03:55.481Z",
+  "exe": "C:/Code/AgentCodeGUI/target/release/agentcodegui-m8.exe",
+  "steps": {
+    "r81": {
+      "listAtBoot": [
+        "sc-alpha",
+        "sc-beta"
+      ],
+      "changedPayloads": [
+        [
+          "sc-1787465035962-1",
+          "sc-alpha",
+          "sc-beta"
+        ]
+      ],
+      "listAfterOpen": [
+        "sc-1787465035962-1",
+        "sc-alpha",
+        "sc-beta"
+      ],
+      "persistedLostInBroadcast": [],
+      "verdict": "FIXED"
+    }
+  },
+  "findings": [],
+  "verdict": "PASS"
+}
