@@ -208,7 +208,9 @@ const RENDERERS = [
     name: '3.0 app/src',
     five: (m) => [
       ['5 auto → boundary(compact) 경계 선', m?.kind === 'boundary' && m?.glyph === 'compact', m],
-      ['5 라벨 = 여기까지 요약됨', m?.label === '여기까지 요약됨', m?.label],
+      // ★ 잔여 (M-UI 크리틱 F7) — 라벨이 '왜'를 되찾았다. 카드(93.8px)를 선(15px)으로
+      // 줄이며 사유 절을 통째로 떨궜던 것을 낱말 하나로 되돌린 값이다(같은 한 줄 = 높이 불변).
+      ['5 라벨 = 컨텍스트가 차서 여기까지 요약됨', m?.label === '컨텍스트가 차서 여기까지 요약됨', m?.label],
       ['5 수치 = 150K → 12K · 컨텍스트 75% → 6%', m?.num === '150K → 12K · 컨텍스트 75% → 6%', m?.num]
     ],
     eight: (m) => ['8 window 미상 → 토큰 전/후만', m?.kind === 'boundary' && m?.num === '150K → 12K', m?.num],

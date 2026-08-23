@@ -215,15 +215,20 @@ OS(schannel)를 쓰면 루트 인증서 번들이 통째로 빠진다. 이 라�
 
 ## 6. 아직 없는 것
 
-1. **되돌리기 알약이 화면에 없다.** 재료는 전부 와이어에 실려 있고
-   (`notice.switch.revertTo` + `chat:identity{origin:"auto_account_switch"}`) 되돌리기
-   경로도 실증했지만, 그 버튼을 그리는 곳은 `app/src/components/Chat.tsx`의 `FallbackBand` /
-   `IdentityBand`이고 **이번 라운드의 경계 밖**이다(동시에 다른 라운드가 편집 중이었다).
-   지금 사용자가 보는 것은 문장 한 줄이다. 붙일 자리는 둘 중 하나:
-   - `App.tsx:2108`의 `show` 판정에 `origin === 'auto_account_switch'`를 더하고
-     `IdentityBand`에 문장 가지를 하나 추가(되돌리기 알약이 그대로 붙는다), 또는
-   - `session.ts`에 `notice.switch`를 읽는 스레드 항목을 더해 `FallbackBand`와 같은
-     문법으로 그린다.
+1. ~~**되돌리기 알약이 화면에 없다.**~~ → **닫음 (잔여 청소 라운드 · `docs/sweep-r1.md`).**
+   여기 적어 둔 **두 자리를 다 붙였다**(폴백 전환이 이미 쓰는 것과 같은 쌍이라, 한쪽만
+   붙이면 중복 금지 규약이 성립하지 않는다):
+   - **스레드** — `session.ts`의 `case 'notice'`가 `switch.revertTo`를 읽어 그 줄에
+     `action:'revert'`를 세운다. 새 `ThreadItem` 종류를 파지 않았다(리듀서 소진 가드·
+     4개 표면의 MessageView를 안 흔든다 — protocol.ts §notice가 적은 그대로다).
+     `Chat.tsx`의 notice band가 폴백 band와 **같은 알약·같은 정착**을 그린다.
+   - **상태줄** — `App.tsx`의 `show` 판정에 `origin === 'auto_account_switch'`를 더하고
+     `IdentityBand`에 제목·문장 가지를 하나 추가. 중복은 폴백과 **같은 판정**으로 막는다
+     (`identBandNotice`: 스레드에 `revertTo === revision-1`인 band가 있으면 상태줄은 비운다).
+   - 되먹임까지 같이 닫았다(M-UI 크리틱 F3): 되돌리면 알약이 `[되돌림 ✓]`로 정착한다.
+   - 알약이 그려지는 조건도 코드로 못 박았다 — `MessageView`의 `canRevert`를 **주는
+     표면에서만** 그린다. 본채팅만 준다(멀티 패널·추가 채팅 창은 통합 스토어 `chatId`
+     배선이 없다). 그전에는 `onNotify`만 있으면 그려서 **패널에 죽은 버튼**이 있었다.
 2. **Codex 계정은 대상이 아니다.** 판정식·훅은 Claude 구독 축(`BillingAxis::Subscription`)만
    본다. Codex는 한도 조회가 `app-server` 스폰이라 워커의 비용 모델이 다르다.
 3. **`OnDrift`는 여전히 선언만 있다.** 큐 항목 재조준을 축 비교로 대신했다(§2-③).

@@ -42,8 +42,16 @@ use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter, Manager, WebviewWindow};
 
 pub use system::close_orphan_dialogs;
-/// 부팅 프리웜 — 셸이 창을 만든 직후 **한 줄**로 부른다(M7 R2 §3.2: 방아쇠를 렌더러
-/// 번들보다 앞으로 당겨 `ready` 격차의 41ms를 없앤다). 판정 로직은 전부 `lsp.rs`에 있다.
+/// 부팅 프리웜 — 셸이 `main()` **첫 줄**(단일 인스턴스 관문 직후 · `tauri::Builder`보다
+/// **앞** = `main.rs:136`)에서 한 줄로 부른다. 창은 아직 없다.
+///
+/// (정정: R1까지 여기 "창을 만든 직후"라고 적혀 있었다 — 크리틱 §3.2의 *제안* 자리를
+/// 그대로 옮겨 적은 오기다. `lsp.rs`의 주석이 맞고 이쪽이 틀렸었다. R19 확인 크리틱
+/// §6-1이 잡았고, 같은 크리틱의 프리웜 A/B(§2.2)가 **이 자리가 `ready`의 전부**임을
+/// 보였다 — `win:mounted` 뒤로 밀면 ready가 ~180ms → 481~557ms로 3배 나빠진다.)
+///
+/// M7 R2 §3.2: 방아쇠를 렌더러 번들보다 앞으로 당겨 `ready` 격차의 41ms를 없앤다.
+/// 판정 로직은 전부 `lsp.rs`에 있다.
 pub use lsp::boot_prewarm;
 
 /// 채널 이름 — protocol.ts가 원본, 여기는 미러다(문자열이 어긋나면 그 채널만 조용히

@@ -851,7 +851,8 @@ export const MessageView = memo(function MessageView({
   running,
   onOpenFile,
   onOpenImage,
-  onNotify
+  onNotify,
+  canRevert
 }: {
   item: ThreadItem
   live?: boolean // this is the latest assistant message (smooth-reveal it)
@@ -859,6 +860,12 @@ export const MessageView = memo(function MessageView({
   onOpenFile?: (path: string) => void // open a file referenced by a tool-log row
   onOpenImage?: (images: string[], index: number) => void // open the image viewer at an index
   onNotify?: (a: NotifyAction) => void // 알림 band의 행동 알약 (없으면 알약을 안 그린다)
+  // ★ 잔여 — `revert`는 `onNotify`가 있다고 되는 게 아니다. 멀티 패널·추가 채팅 창은
+  // 통합 스토어 `chatId` 배선이 없어 `billing-off`만 처리하는 `onNotify`를 준다 —
+  // 그런데 `onNotify &&`로만 걸러 온 탓에 그 표면에서 **되돌리기 알약이 그려지고
+  // 눌러도 아무 일이 안 났다**(위 §알약 규약이 "제일 나쁘다"고 적은 그것). 능력을
+  // 콜백 유무가 아니라 **이 한 줄로 선언**한다: 안 주면 알약 자체가 없다.
+  canRevert?: boolean
 }) {
   useLang() // 언어 전환 재렌더 구독 (memo 컴포넌트라 루트 재렌더가 여기까지 오지 않는다)
   if (item.kind === 'toolgroup') return <ToolGroup item={item} onOpenFile={onOpenFile} />
@@ -936,7 +943,7 @@ export const MessageView = memo(function MessageView({
     )
   }
   // ★ M-UI §5-1 — 모델 자동 전환. 형태 = band · notice · action=revert.
-  if (item.kind === 'fallback') return <FallbackBand item={item} onNotify={onNotify} />
+  if (item.kind === 'fallback') return <FallbackBand item={item} onNotify={onNotify} canRevert={canRevert} />
   if (item.kind === 'notice') {
     // 형태 = band. 색조는 **심각도만** 칠한다 — 그냥 사실(엔진 재시작 등)은 neutral,
     // 알아야 할 변화(과금 등)는 notice. 텍스트의 `백틱`은 색으로 가리킨다.
@@ -955,6 +962,23 @@ export const MessageView = memo(function MessageView({
                   {t('과금 끄기', 'Turn API billing off')}
                 </button>
               )}
+              {/* ★M11 — 한도 소진 자동 계정 전환(`notice{switch}`)의 되돌리기. 폴백 배너와
+                  **같은 알약·같은 정착**이다(band는 형태가 하나여야 문법이 성립한다).
+                  되돌린 뒤에도 배너는 남는다 — 되돌리기는 새 리비전이지 기록 삭제가 아니다. */}
+              {item.action === 'revert' &&
+                (item.reverted ? (
+                  <button className="ntf-act done" disabled>
+                    {t('되돌림 ✓', 'Reverted ✓')}
+                  </button>
+                ) : (
+                  item.revertTo != null &&
+                  canRevert &&
+                  onNotify && (
+                    <button className="ntf-act" onClick={() => onNotify({ kind: 'revert', revertTo: item.revertTo as number })}>
+                      {t('계정 되돌리기', 'Undo switch')}
+                    </button>
+                  )
+                ))}
               <span className="ntf-tm">{item.time}</span>
             </div>
             {renderNoticeText(item.text)}
@@ -1050,7 +1074,15 @@ function CmdResultCard({ item }: { item: Extract<ThreadItem, { kind: 'cmdresult'
  * `refusal_frame`과 같은 가지로 떨어져 "정책상 거부"를 단정했다. R2에서 가지를 넷으로
  * 갈랐다: dialog · model_delta · refusal_frame · **모름**. 크리틱 F4.)
  */
-function FallbackBand({ item, onNotify }: { item: Extract<ThreadItem, { kind: 'fallback' }>; onNotify?: (a: NotifyAction) => void }) {
+function FallbackBand({
+  item,
+  onNotify,
+  canRevert
+}: {
+  item: Extract<ThreadItem, { kind: 'fallback' }>
+  onNotify?: (a: NotifyAction) => void
+  canRevert?: boolean
+}) {
   const label = (raw: string): string => {
     if (!raw) return ''
     const shown = pickerModelOf(raw) ?? raw
@@ -1134,6 +1166,7 @@ function FallbackBand({ item, onNotify }: { item: Extract<ThreadItem, { kind: 'f
               </button>
             ) : (
               item.revertTo != null &&
+              canRevert &&
               onNotify && (
                 <button className="ntf-act" onClick={() => onNotify({ kind: 'revert', revertTo: item.revertTo as number })}>
                   {t('되돌리기', 'Undo')}
@@ -3346,6 +3379,8 @@ export interface IdentityNotice {
   origin: string
   /** 전환 뒤 모델(원본 id) */
   model: string
+  /** ★M11 — 전환 뒤 **계정**(구독 축). 모르면 빈 문자열 = 문장에서 이름 절이 빠진다. */
+  account: string
   /** 폴백에 밀려 버려진 패치 리프(§4.2-b 규약 2) — 있으면 문장이 한 줄 더 붙는다 */
   keptByFallback: string[]
   driftedFields: string[]
@@ -3376,21 +3411,37 @@ export function IdentityBand({ notice, onRevert, onDismiss }: { notice: Identity
   const name = modelOpts().find((m) => m.id === shown)?.v ?? notice.model
   const kept = notice.keptByFallback.map(leafLabel).join(', ')
   const drifted = notice.driftedFields.map(leafLabel).join(', ')
+  // ★M11 — 한도 소진 자동 계정 전환. 계정 이름을 모르면 그 절을 통째로 뺀다(지어내지
+  // 않는다 — 폴백 배너·엔진 배너와 같은 규약). '왜 이 계정인가'(초기화 임박 꼬리)는
+  // 스레드의 `notice{switch}` band가 말한다 — 여기 상태줄은 사실과 되돌리기만 든다.
+  const acct = notice.account
   const line =
-    notice.origin === 'engine_fallback'
-      ? t(
-          `엔진이 이 대화의 모델을 ${name}(으)로 바꿨어요 — 이후 대화도 같은 모델로 갑니다.`,
-          `The engine switched this chat to ${name} — later turns use the same model.`
-        )
-      : kept
-        ? t(`${kept}은(는) 자동 전환값을 유지했어요 — 내가 고른 값이 아니에요.`, `${kept} kept the auto-switched value — not the one you picked.`)
-        : t(`예약한 설정이 착지하면서 ${drifted}이(가) 달라졌어요.`, `${drifted} changed while the scheduled setting landed.`)
+    notice.origin === 'auto_account_switch'
+      ? acct
+        ? t(
+            `사용 한도에 걸려 이 대화의 계정을 ${acct}(으)로 바꿔 이어갑니다.`,
+            `Usage limit hit — this chat switched to ${acct} and kept going.`
+          )
+        : t('사용 한도에 걸려 이 대화의 계정을 자동으로 바꿔 이어갑니다.', 'Usage limit hit — this chat switched accounts automatically and kept going.')
+      : notice.origin === 'engine_fallback'
+        ? t(
+            `엔진이 이 대화의 모델을 ${name}(으)로 바꿨어요 — 이후 대화도 같은 모델로 갑니다.`,
+            `The engine switched this chat to ${name} — later turns use the same model.`
+          )
+        : kept
+          ? t(`${kept}은(는) 자동 전환값을 유지했어요 — 내가 고른 값이 아니에요.`, `${kept} kept the auto-switched value — not the one you picked.`)
+          : t(`예약한 설정이 착지하면서 ${drifted}이(가) 달라졌어요.`, `${drifted} changed while the scheduled setting landed.`)
   // ★ M-UI — 목업 `ui-notify-1-fallback.html` B안의 문법(band · notice · action=revert)
   // 그대로다. 알림 7종과 **같은 문법**을 쓰는 게 요점이라 `.limit-hold`(상태줄 알약)에서
   // `.ntf-band`로 갈아탄다. 자리(컴포저 위)는 그대로 — 이 줄은 스레드 기록이 아니라
   // **지금 사실**을 말하는 상태줄이고, 스레드 쪽 사실은 `fallback` 항목이 이미 말한다.
   // 행동 알약과 시각이 같은 줄에 산다 = 줄이 늘지 않는다(밀도 규약 ①).
-  const title = notice.origin === 'engine_fallback' ? t('모델이 자동 전환됐어요', 'Model switched automatically') : t('설정이 달라졌어요', 'A setting drifted')
+  const title =
+    notice.origin === 'auto_account_switch'
+      ? t('계정이 자동 전환됐어요', 'Account switched automatically')
+      : notice.origin === 'engine_fallback'
+        ? t('모델이 자동 전환됐어요', 'Model switched automatically')
+        : t('설정이 달라졌어요', 'A setting drifted')
   return (
     <div className="limit-hold-wrap">
       <div className={'ntf-band ' + tone('notice')}>

@@ -706,6 +706,8 @@ export const PanelView = memo(function PanelView({
                   // ★ M-UI — 알림 band의 행동 알약. 패널엔 통합 스토어의 chatId 배선이
                   // 아직 없어 `revert`는 못 준다 → 그 알약은 **아예 안 그려진다**
                   // (누르면 아무 일 없는 버튼을 그리는 게 제일 나쁘다). 과금은 패널 소유다.
+                  // ★ 잔여 — 그 "안 그려진다"를 코드가 안 지키고 있었다(`onNotify`만 있으면
+                  // 그렸다 = 죽은 버튼). 이제 `canRevert`를 **안 주는 것**이 그 선언이다.
                   onNotify={(a) => {
                     if (a.kind === 'billing-off') onApiMode(slot, false, meta.picker.engine)
                   }}
@@ -1585,9 +1587,24 @@ function ActiveSession({
     //   · 턴 종료 직후 닫기 → 다 읽은 마지막 답변이 **영구 손실**(뒤에 올 이벤트가 없다)
     //   · 스트리밍 중 닫기 → 되감긴 뒤 라이브가 이어 붙어 **스레드 한가운데가 뚫린다**
     // 창이 나르는 진짜 값은 초안·큐·메타다(위 patchMeta). 스레드는 라이브가 이긴다.
-    const live = sessions[slot].state.messages.length
-    const incoming = ((f.snapshot as SessionState | undefined)?.messages ?? []).length
-    if (f.snapshot && incoming >= live) sessions[slot].load(sanitizeSnapshot(f.snapshot as SessionState))
+    //
+    // ★ 잔여 (r19-confirm §6-4) — 그 판정을 **길이**로 하면 "짧아지는 편집"을 영구히 버린다.
+    // 되돌리기·메시지 삭제처럼 스레드가 **줄어드는** 조작을 창에서 하면 복귀분이 통째로
+    // 무시된다(`incoming >= live`가 거짓). 크리틱은 "지금은 패널에 revert 알약이 안 그려져
+    // 도달 경로가 없다"고 낮게 봤지만, 그 전제는 알약 하나 배선되는 순간 사라진다.
+    // 길이가 아니라 **세대**(`seq` — 리듀서가 모든 변화마다 +1 하는 단조 카운터)를 본다:
+    //   · 라이브가 앞선다(디바운스 600ms 동안 그리드가 더 먹었다) → seq가 크다 → 거절 ✔
+    //     (M8-R2가 막은 그 사고 — 마지막 답변이 화면·디스크에서 사라지던 것)
+    //   · 창에서만 일어난 변화(전송·중단·되돌리기)  → seq가 크다 → 채택 ✔ (길이와 무관)
+    //   · 스레드가 상한(capThread)에 닿아 **둘 다 길이가 안 늘 때**도 세대는 갈린다 ✔
+    // 세대를 모르는 옛 복귀분(숫자 seq 없음)만 예전 길이 규칙으로 떨어뜨린다.
+    if (!f.snapshot) return
+    const snap = f.snapshot as SessionState
+    const accept =
+      typeof snap.seq === 'number'
+        ? snap.seq >= sessions[slot].state.seq
+        : (snap.messages ?? []).length >= sessions[slot].state.messages.length
+    if (accept) sessions[slot].load(sanitizeSnapshot(snap))
   })
   const onPanelWindowClosed = useEvent((p: PanelPopClosed) => {
     const slot = slotOfPanelId(p.panelId)

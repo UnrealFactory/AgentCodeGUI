@@ -207,7 +207,15 @@ export function onChatVerdict(cb: (chatId: string, verdict: VerdictWire) => void
  */
 export interface IdentityWire {
   chatId?: string
-  identity?: { engine?: { kind?: string; model?: string; effort?: string; account?: string | null }; cwd?: string } | null
+  // ★M11 — `billing`은 셸이 늘 싣던 축인데(`BillingAxis` 태그드 유니온 그대로:
+  // `{kind:'subscription', account}` · `{kind:'api_key', keyFp}`) 이 타입이 안 적어
+  // 읽을 수가 없었다. 계정 자동 전환 배너가 **어느 계정으로 갔는지**를 지어내지 않고
+  // 말하려면 여기가 원천이다 — `engine.account`는 Codex 축이라 Claude 구독엔 없다.
+  identity?: {
+    engine?: { kind?: string; model?: string; effort?: string; account?: string | null }
+    billing?: { kind?: string; account?: string | null } | null
+    cwd?: string
+  } | null
   revision?: number
   origin?: string
   changed?: string[]

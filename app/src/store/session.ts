@@ -39,7 +39,11 @@ export type ThreadItem =
   // silent: '이번 턴이 응답 없이 끝났어요' 무음 턴 안내 표식 — 같은 실행이 이어서 내용을
   // 내면(밀린 통지 소화 턴 뒤 진짜 턴) 오탐이었던 것이므로 stripSilentTail이 걷어낸다
   // tone/action — M-UI §5-2. 색조는 **심각도만** 칠한다(출처가 아니라). 없으면 notice(노랑).
-  | { kind: 'notice'; id: string; text: string; time: string; silent?: boolean; tone?: NotifyTone; action?: NotifyAct }
+  // ★M11 — `notice{switch}`(한도 소진 자동 계정 전환)가 오면 이 줄이 **되돌릴 재료**까지 든다:
+  // `action:'revert'` + `revertTo`(전환 직전 리비전). 폴백 배너와 **같은 문법**이다(band ·
+  // notice · action=revert) — 형태를 늘리지 않고 알약만 얹는다. 종류를 새로 파지 않는 이유는
+  // protocol.ts §notice가 적은 그대로다(리듀서 소진 가드·4개 표면의 MessageView를 안 흔든다).
+  | { kind: 'notice'; id: string; text: string; time: string; silent?: boolean; tone?: NotifyTone; action?: NotifyAct; revertTo?: number; reverted?: boolean }
   // ★ M-UI — 모델 자동 전환 배너(band · notice · action=revert). 2.6.2는 이걸 kind:'notice'로
   // 흘려 API 과금 안내와 같은 무게가 됐다(session.ts:821 · 병리 P3). 이제 M-LOGIC §6.2의
   // 재료를 그대로 든다: 주어(from)·목적어(to)·사유(cause)·되돌릴 지점(revertTo).
@@ -73,7 +77,7 @@ export type ThreadItem =
 /** 알림 색조 — 심각도만 칠한다(M-UI §2.1). 형태는 색이 정하지 않는다. */
 export type NotifyTone = 'neutral' | 'notice' | 'danger' | 'positive'
 /** band가 트레이에 놓는 행동. `band`만 행동을 가질 수 있다(M-UI §2.3 행동 규칙). */
-export type NotifyAct = 'billing-off'
+export type NotifyAct = 'billing-off' | 'revert'
 
 export interface SessionState {
   status: AgentStatus
@@ -156,6 +160,12 @@ type Action =
   // ★ R4 — `chat:verdict`의 착지점. 거부는 **전송이 없던 일이 됐다**는 뜻이라 말풍선
   // 하나로 끝나지 않는다: begin이 올려 둔 busy를 되감아야 침묵 정지가 사라진다(D7).
   | { type: 'verdict'; text: string; blocked: boolean; time: string }
+  // ★ 잔여 — [되돌리기]의 **되먹임**(M-UI 크리틱 F3). 뷰는 이미 `reverted`가 서면
+  // `[되돌림 ✓]`로 정착하는데(Chat.tsx FallbackBand) **세우는 쪽이 없었다** — 누르면
+  // 계정/모델은 돌아오는데 알약은 계속 '되돌리기'라 두 번 세 번 눌렸다.
+  // 되돌리기는 리비전 삭제가 아니라 **새 리비전**이므로(m-logic §6.3) 배너는 남고
+  // 알약만 정착한다. 대상은 그 지점을 가리키던 배너 전부(폴백 band · M11 계정 전환 notice).
+  | { type: 'reverted'; revertTo: number }
   | { type: 'load'; state: SessionState }
 
 const THINKING_ID = 'thinking'
@@ -660,6 +670,26 @@ export function reducer(state: SessionState, action: Action): SessionState {
     }
   }
 
+  // ★ 잔여 — 되돌리기가 **성공했다**는 되먹임(M-UI 크리틱 F3). 호출자는 셸이 true를
+  // 준 뒤에만 이걸 친다(거절은 verdict가 사유를 그린다). 히스토리는 안 건드린다 —
+  // 되돌리기는 새 리비전이라 배너는 사실로 남고 알약만 `[되돌림 ✓]`로 정착한다.
+  if (action.type === 'reverted') {
+    let hit = false
+    const messages = state.messages.map((m) => {
+      if (m.kind === 'fallback' && !m.reverted && m.revertTo === action.revertTo) {
+        hit = true
+        return { ...m, reverted: true }
+      }
+      if (m.kind === 'notice' && !m.reverted && m.action === 'revert' && m.revertTo === action.revertTo) {
+        hit = true
+        return { ...m, reverted: true }
+      }
+      return m
+    })
+    // 못 찾으면 상태를 갈지 않는다 — 헛 렌더 하나가 스레드 꼬리 윈도잉을 흔든다
+    return hit ? { ...state, seq: state.seq + 1, messages } : state
+  }
+
   if (action.type === 'interrupt-turn') {
     // 취소 = 중단 — 이번 턴의 흔적(보낸 말풍선 + 반쯤 온 답 + 도구 로그)은 그대로 두고
     // '중단함' 마커만 붙인다(세션에 실제로 남는 내용과 화면을 일치시키는 게 핵심).
@@ -1026,7 +1056,14 @@ export function reducer(state: SessionState, action: Action): SessionState {
 
     case 'notice': {
       const seq = state.seq + 1
-      const item = { kind: 'notice' as const, id: `n${seq}`, text: e.text, time: nowTime(), ...noticeTone(e.text, e.once) }
+      // ★M11 — `switch`가 붙어 오면 이건 **한도 소진 자동 계정 전환** 배너다. 문장은
+      // 엔진이 완성해 보낸 그대로 쓰고(어느 계정으로 · 왜 그 계정인가 = 초기화 임박 꼬리),
+      // 여기서 더하는 건 **되돌릴 재료** 하나다: `action:'revert'` + `revertTo`.
+      // 지어내지 않는다 — `revertTo`가 없거나 음수면 알약 없이 문장만 남는다(폴백 배너 규약).
+      const sw = e.switch
+      const revert: { action: NotifyAct; revertTo: number; tone: NotifyTone } | null =
+        sw && typeof sw.revertTo === 'number' && sw.revertTo >= 0 ? { action: 'revert', revertTo: sw.revertTo, tone: 'notice' } : null
+      const item = { kind: 'notice' as const, id: `n${seq}`, text: e.text, time: nowTime(), ...noticeTone(e.text, e.once), ...(revert ?? {}) }
       // once 안내(예: API 과금)는 이 대화에서 그 key당 딱 한 번만, 방금 보낸 사용자 메시지
       // 바로 위에 끼워 넣는다 — 'API로 과금 중'을 자기 메시지 바로 위에서 한 번 알아채게.
       if (e.once) {
@@ -1089,6 +1126,11 @@ export function reducer(state: SessionState, action: Action): SessionState {
       // 자동 압축은 "명령이 하나 끝났다"가 아니라 **"이 지점 위로는 원문이 없다"** 는
       // 경계다 — 긴 대화에서 여러 번 일어나므로 84px 카드가 반복해 스레드를 끊었다.
       // 수동 `/compact`는 명령 카드가 그대로 맡는다(자동과 수동이 다른 형태를 갖는다).
+      //
+      // ★ 잔여 (M-UI 크리틱 F7) — 라벨이 **'왜'를 버렸다.** R1이 93.8px 카드를 15px 선으로
+      // 줄이며 카드 제목("컨텍스트가 가득 차 대화를 자동으로 요약했어요")의 사유 절을 통째로
+      // 떨궈, 사용자는 "누가 시켰나"를 못 읽었다(수동 /compact와 구별이 안 된다). 낱말 하나를
+      // 되돌린다 — 같은 한 줄이라 **높이는 안 변한다**(수치 절은 그대로 오른쪽에 붙는다).
       return {
         ...state,
         seq,
@@ -1098,7 +1140,7 @@ export function reducer(state: SessionState, action: Action): SessionState {
             kind: 'boundary',
             id: `ac${seq}`,
             glyph: 'compact',
-            label: t('여기까지 요약됨', 'Summarized up to here'),
+            label: t('컨텍스트가 차서 여기까지 요약됨', 'Context filled — summarized up to here'),
             num,
             time: nowTime()
           }
@@ -1351,6 +1393,8 @@ export function useAgentSession(
   const interruptTurn = (): void => dispatch({ type: 'interrupt-turn' })
   // ★ R4 — `chat:verdict`의 착지점. blocked면 되감기까지 리듀서가 한다(위 주석).
   const noteVerdict = (text: string, blocked: boolean): void => dispatch({ type: 'verdict', text, blocked, time: nowTime() })
+  // ★ 잔여 (M-UI 크리틱 F3) — 되돌리기 성공의 되먹임. 셸이 true를 준 뒤에만 친다.
+  const noteReverted = (revertTo: number): void => dispatch({ type: 'reverted', revertTo })
 
-  return { state, elapsed, busy, begin, clearPermission, clearQuestion, answerQuestion, load, interruptTurn, noteVerdict }
+  return { state, elapsed, busy, begin, clearPermission, clearQuestion, answerQuestion, load, interruptTurn, noteVerdict, noteReverted }
 }

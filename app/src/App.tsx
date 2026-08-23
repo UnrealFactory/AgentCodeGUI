@@ -216,7 +216,7 @@ interface PersistedChats {
 
 function MainApp({ user }: { user: AppUser }) {
   const lang = useLang() // 언어 전환 시 아래 useMemo(사이드바 섹션 라벨 등)가 새 언어로 재계산되게
-  const { state, elapsed, busy, begin, clearPermission, clearQuestion, answerQuestion, load, interruptTurn, noteVerdict } = useAgentSession()
+  const { state, elapsed, busy, begin, clearPermission, clearQuestion, answerQuestion, load, interruptTurn, noteVerdict, noteReverted } = useAgentSession()
   // 워크플로 상주 중(턴은 끝나 busy=false) — 전송·채팅 전환이 워크플로를 죽이지 않게 잠근다
   const wfAlive = state.workflows.some((w) => w.status === 'running')
   // 턴을 막고 있는 포그라운드 Bash가 있을 때만 셸 팝오버에 "건너뛰기"(Ctrl+B) 버튼을 노출
@@ -1738,10 +1738,16 @@ function MainApp({ user }: { user: AppUser }) {
   // 이제 스레드의 `fallback` band가 되돌리기까지 들고 있으므로(그쪽은 엔진이 준 진짜
   // `revertTo`를 쓴다 — 여기 상태줄은 `revision-1`로 **추정**한다), 같은 사건이면 상태줄은
   // 비운다. 같은 사건 판정: 배너의 revertTo == 이 리비전의 직전(§6.2 — revert_to는 적용 전 값).
+  // ★M11 — 계정 자동 전환도 같은 쌍이다(`chat:identity(auto_account_switch)` +
+  // `notice{switch}`가 `try_auto_switch` 한 문 안에서 나간다 — runtime.rs ②③).
+  // 그래서 판정도 같다: 스레드에 그 지점을 가리키는 band가 있으면 상태줄은 비운다.
   const identBandNotice = (() => {
     const n = identNotices[activeChatId] ?? null
-    if (!n || n.origin !== 'engine_fallback') return n
-    return state.messages.some((m) => m.kind === 'fallback' && m.revertTo === n.revision - 1) ? null : n
+    if (!n) return n
+    if (n.origin === 'engine_fallback') return state.messages.some((m) => m.kind === 'fallback' && m.revertTo === n.revision - 1) ? null : n
+    if (n.origin === 'auto_account_switch')
+      return state.messages.some((m) => m.kind === 'notice' && m.action === 'revert' && m.revertTo === n.revision - 1) ? null : n
+    return n
   })()
   // 작업 인디케이터(마스코트+문구+경과 초)는 '답변 본문 스트리밍 중'에만 숨긴다(그때는
   // 흐르는 답변 글자가 곧 피드백). 사고·도구·침묵 구간엔 계속 띄워 AI가 도는 걸 보여준다.
@@ -2107,7 +2113,14 @@ function MainApp({ user }: { user: AppUser }) {
       const origin = p.origin ?? ''
       const kept = (p.keptByFallback ?? []).filter((s) => typeof s === 'string')
       const drifted = (p.driftedFields ?? []).filter((s) => typeof s === 'string')
-      const show = origin === 'engine_fallback' || (origin === 'deferred_apply' && (kept.length > 0 || drifted.length > 0))
+      // ★M11 — 한도 소진 자동 계정 전환도 **내가 고르지 않은 변화**다(m11 §6-1). 스레드
+      // 쪽은 `notice{switch}` band가 되돌리기까지 들지만, 그 줄이 없는 자리(스크롤 위로
+      // 밀렸거나 옛 스냅샷)에서는 이 상태줄이 유일한 표면이다. 중복은 아래 identBandNotice가
+      // 판정한다 — 폴백과 **같은 규약**(같은 사건이면 스레드 band가 이긴다).
+      const show =
+        origin === 'engine_fallback' ||
+        origin === 'auto_account_switch' ||
+        (origin === 'deferred_apply' && (kept.length > 0 || drifted.length > 0))
       setIdentNotices((cur) => {
         if (!show) {
           // 사용자가 직접 바꿨거나 되돌렸다 = 이 배너가 말하던 사실이 더는 최신이 아니다
@@ -2123,6 +2136,9 @@ function MainApp({ user }: { user: AppUser }) {
             revision: typeof p.revision === 'number' ? p.revision : 0,
             origin,
             model: p.identity?.engine?.model ?? '',
+            // ★M11 — 구독 축의 계정. api_key 축이면 `account`가 없으므로 빈 문자열이 되고,
+            // 배너는 이름 절 없이 사실만 말한다(지어내지 않는다).
+            account: p.identity?.billing?.account ?? '',
             keptByFallback: kept,
             driftedFields: drifted
           }
@@ -2143,14 +2159,24 @@ function MainApp({ user }: { user: AppUser }) {
   // 없으면 엔진이 `no_revision`으로 거절하고, 그 사유는 위 verdict 구독자가 그린다.
   const onRevertIdent = useEvent((n: IdentityNotice) => {
     void revertIdentity(n.chatId, n.revision - 1).then((ok) => {
-      if (ok) dismissIdent(n.chatId)
+      if (!ok) return
+      dismissIdent(n.chatId)
+      // 스레드에 같은 지점을 가리키는 band가 있으면 그쪽 알약도 정착시킨다 — 상태줄만
+      // 사라지고 스레드 알약이 계속 '되돌리기'면 두 번째 클릭이 `no_revision`을 받는다
+      if (n.chatId === activeChatIdRef.current) noteReverted(n.revision - 1)
     })
   })
   // ★ M-UI — 스레드 알림 band의 행동 알약. 형태가 행동을 가질 수 있는 건 band뿐이고
   // (rule=사실의 기록 · card=끝난 산출물), 그 행동이 **호스트 상태를 건드리는 것**만
   // 여기로 온다(복사·펼치기는 뷰 안에서 끝난다).
   const onNotifyAction = useEvent((a: NotifyAction) => {
-    if (a.kind === 'revert') void revertIdentity(activeChatId, a.revertTo)
+    // ★ 잔여 (M-UI 크리틱 F3) — 눌렀다는 **되먹임**이 없었다. 셸이 true를 주면 그 band를
+    // `[되돌림 ✓]`로 정착시킨다(뷰는 이미 그 가지를 갖고 있었고, 세우는 쪽이 없었다).
+    // 거절(false)이면 아무것도 안 세운다 — 사유는 `chat:verdict` 구독자가 그린다.
+    if (a.kind === 'revert')
+      void revertIdentity(activeChatId, a.revertTo).then((ok) => {
+        if (ok) noteReverted(a.revertTo)
+      })
     // "하단 `과금` 토글에서 바꿀 수 있어요"라는 심부름 문장 대신 그 토글을 바로 누른다
     else if (a.kind === 'billing-off') onApiModeChange(false, picker.engine)
   })
@@ -2271,6 +2297,9 @@ function MainApp({ user }: { user: AppUser }) {
                     onOpenFile={onOpenToolFile}
                     onOpenImage={openViewer}
                     onNotify={onNotifyAction}
+                    // 본채팅만 `chatId`(=activeChatId)를 안다 = 되돌리기를 실제로 보낼 수
+                    // 있는 유일한 표면이다. 멀티 패널·추가 채팅 창은 이 줄을 안 준다.
+                    canRevert
                   />
                 ))}
                 {busy && showWorking && <WorkingIndicator elapsed={elapsed} />}

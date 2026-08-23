@@ -1,0 +1,145 @@
+{
+  "harness": "bench/lsp.mjs",
+  "at": "2026-08-23T14:21:43.139Z",
+  "kind": "tauri",
+  "version": "3.0.0",
+  "lang": "ts",
+  "fixture": {
+    "work": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo",
+    "bigRel": "lspbench/big.ts",
+    "libRel": "lspbench/lib.ts",
+    "lines": 329,
+    "bytes": 12313,
+    "hoverSamples": 48,
+    "defSamples": 34
+  },
+  "env": {
+    "ramGB": 63.8,
+    "cpu": "13th Gen Intel(R) Core(TM) i7-13700KF",
+    "os": "Microsoft Windows 11 Home 26200"
+  },
+  "arm": "default",
+  "bin": {
+    "exe": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-exe\\agentcodegui.exe",
+    "exeMtime": "2026-08-23T14:08:09.115Z",
+    "exeSize": 6273024,
+    "exeSha256": "21eb7efb34819192",
+    "gitHead": "ac7694b",
+    "gitDirty": true
+  },
+  "armEnv": {
+    "CCG_HOME": "C:\\Code\\AgentCodeGUI\\.bench-home-tauri",
+    "CCG_CDP_PORT": "9372"
+  },
+  "note": "메모리는 재지 않는다(동시 주행 노이즈 — 리드가 procs의 PID로 따로 잰다).",
+  "cold": {
+    "phase": "cold",
+    "home": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-home-tauri",
+    "pid": 26864,
+    "mounted": false,
+    "probeSurvived": true,
+    "ready": {
+      "installedAt": 3717,
+      "watchStart": 3717,
+      "readyAt": null,
+      "states": [],
+      "statusErr": null
+    },
+    "prewarmMs": null,
+    "prewarmFromProbeMs": null,
+    "fps": {
+      "frames": 15967,
+      "spanMs": 266318,
+      "fps": 60,
+      "medGapMs": 16.7,
+      "p95GapMs": 16.8,
+      "maxGapMs": 19.4,
+      "longFrames": 0
+    },
+    "error": "status가 180000ms 안에 ready가 안 됨 (관측된 상태: [])",
+    "procs": [
+      {
+        "pid": 26864,
+        "name": "agentcodegui.exe",
+        "lsp": null
+      },
+      {
+        "pid": 36048,
+        "name": "msedgewebview2.exe",
+        "lsp": null
+      },
+      {
+        "pid": 4952,
+        "name": "msedgewebview2.exe",
+        "lsp": null
+      },
+      {
+        "pid": 29204,
+        "name": "msedgewebview2.exe",
+        "lsp": null
+      },
+      {
+        "pid": 32916,
+        "name": "msedgewebview2.exe",
+        "lsp": null
+      }
+    ]
+  },
+  "warm": {
+    "phase": "warm",
+    "home": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-home-tauri",
+    "pid": 8948,
+    "mounted": false,
+    "probeSurvived": true,
+    "ready": {
+      "installedAt": 2410,
+      "watchStart": 2410,
+      "readyAt": null,
+      "states": [],
+      "statusErr": null
+    },
+    "prewarmMs": null,
+    "prewarmFromProbeMs": null,
+    "fps": {
+      "frames": 16046,
+      "spanMs": 267734,
+      "fps": 59.9,
+      "medGapMs": 16.7,
+      "p95GapMs": 16.8,
+      "maxGapMs": 66.7,
+      "longFrames": 4
+    },
+    "error": "status가 180000ms 안에 ready가 안 됨 (관측된 상태: [])",
+    "procs": [
+      {
+        "pid": 8948,
+        "name": "agentcodegui.exe",
+        "lsp": null
+      },
+      {
+        "pid": 20532,
+        "name": "msedgewebview2.exe",
+        "lsp": null
+      },
+      {
+        "pid": 3788,
+        "name": "msedgewebview2.exe",
+        "lsp": null
+      },
+      {
+        "pid": 7304,
+        "name": "msedgewebview2.exe",
+        "lsp": null
+      },
+      {
+        "pid": 14668,
+        "name": "msedgewebview2.exe",
+        "lsp": null
+      }
+    ]
+  },
+  "idle": {
+    "supported": true,
+    "error": "ready 안 됨"
+  }
+}

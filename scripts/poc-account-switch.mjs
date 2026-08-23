@@ -32,6 +32,7 @@
  *   node scripts/poc-account-switch.mjs --only=dirty   # 오염 스킵
  *   node scripts/poc-account-switch.mjs --only=chain   # 연속 소진 A→B→C
  *   node scripts/poc-account-switch.mjs --keep         # 격리 홈 보존
+ *   node scripts/poc-account-switch.mjs --out=-sweep   # 산출물 접미사(기준 파일 보호)
  * ========================================================================== */
 import fs from 'node:fs'
 import path from 'node:path'
@@ -44,7 +45,11 @@ const KEEP = args.includes('--keep')
 const EXE = (args.find((a) => a.startsWith('--exe=')) ?? '').split('=')[1] || path.join(REPO, 'target', 'release', 'agentcodegui.exe')
 const STUB = path.join(REPO, 'target', 'release', 'ccg-fakecli.exe')
 const PROBE = path.join(REPO, 'target', 'debug', 'ccg-auth-probe.exe')
-const OUT = path.join(REPO, 'docs', 'critic', 'm11-r1-switch.json')
+// ★ 잔여 — `--out=<접미사>`. R1 보고서가 `m11-r1-switch.json`을 근거로 인용하므로
+// 재주행이 그 파일을 말없이 덮으면 그 근거가 사라진다(poc-live-chat `--tag`·bench
+// `--out`과 같은 규약). 기본값은 안 바꾼다.
+const OUT_SUFFIX = (args.find((a) => a.startsWith('--out=')) ?? '').split('=')[1] || ''
+const OUT = path.join(REPO, 'docs', 'critic', `m11-r1-switch${OUT_SUFFIX}.json`)
 
 const rep = { at: new Date().toISOString(), exe: EXE, scenarios: {}, findings: [] }
 const fail = (id, why, extra) => {
@@ -316,17 +321,55 @@ async function scPick() {
     if (s.spawns !== 2) fail('PICK-재스폰', `새 계정으로 다시 떠야 한다(spawns=${s.spawns})`)
     else ok('PICK-재스폰', s.spawns)
 
-    // ── 되돌리기 — 배너가 실어 온 `revertTo`를 그대로 넘긴다 ──────────────
+    // ── 되돌리기 — **화면의 알약을 실제로 누른다** ────────────────────────
+    //
+    // R1은 여기서 `chat:identity-revert`를 손으로 invoke 했다(와이어는 옳다는 증명).
+    // 그런데 그 사이 화면에는 알약이 없어서 "사용자가 되돌릴 수 있다"는 주장은
+    // 하네스 안에서만 참이었다(m11 §6-1). 잔여 청소 라운드가 알약을 붙였으니
+    // **DOM에서 찾아 클릭**한다 — 이게 사용자 경로다. 배너의 `revertTo`는 여전히
+    // 그 알약이 가리키는 지점과 같아야 하므로 함께 단언한다.
     const revertTo = s.banners[0]?.revertTo
     out.revertTo = revertTo
     if (typeof revertTo !== 'number') return fail('PICK-되돌리기', '배너에 revertTo가 없다', s.banners)
-    out.revertResult = await app.j(`await window.__TAURI_INTERNALS__.invoke('ipc_call', { channel: 'chat:identity-revert', payload: [{ chatId: 'c-m11', revision: ${revertTo} }] })`)
-    await sleep(900)
+
+    const pill = await app.j(`(() => {
+      const bands = [...document.querySelectorAll('.thread .ntf-band')]
+      const band = bands.find((b) => /계정으로 바꿔 이어갑니다/.test(b.innerText))
+      if (!band) return { found: false, why: 'switch band 없음', bands: bands.length }
+      const btns = [...band.querySelectorAll('button.ntf-act')]
+      return { found: btns.length > 0, labels: btns.map((b) => b.innerText.trim()), disabled: btns.map((b) => b.disabled) }
+    })()`)
+    out.pill = pill
+    if (!pill.found) fail('PICK-알약', '전환 배너에 되돌리기 알약이 없다', pill)
+    else ok('PICK-알약', pill.labels)
+
+    out.pillClick = await app.j(`(() => {
+      const band = [...document.querySelectorAll('.thread .ntf-band')].find((b) => /계정으로 바꿔 이어갑니다/.test(b.innerText))
+      const btn = band && [...band.querySelectorAll('button.ntf-act')].find((b) => !b.disabled)
+      if (!btn) return 'no-pill'
+      btn.click()
+      return 'clicked'
+    })()`)
+    if (out.pillClick !== 'clicked') fail('PICK-알약클릭', '알약을 못 눌렀다', out.pillClick)
+    await sleep(1200)
     const back = await snap(app)
     out.afterRevert = back
-    if (back.account !== 'a@ccg.test') fail('PICK-되돌리기', `되돌렸는데 계정이 ${back.account}다`, { revertTo, res: out.revertResult })
+    if (back.account !== 'a@ccg.test') fail('PICK-되돌리기', `알약을 눌렀는데 계정이 ${back.account}다`, { revertTo, click: out.pillClick })
     else if (back.revision <= s.revision) fail('PICK-되돌리기', '되돌리기는 **새 리비전**이어야 한다(히스토리 삭제 아님)', { before: s.revision, after: back.revision })
-    else ok('PICK-되돌리기', { to: back.account, revision: `${s.revision}→${back.revision}` })
+    else ok('PICK-되돌리기(알약)', { to: back.account, revision: `${s.revision}→${back.revision}` })
+
+    // 되먹임 — 되돌린 뒤 알약은 `[되돌림 ✓]`로 **정착**해야 한다(비활성). 안 그러면
+    // 두 번째 클릭이 `no_revision`을 받고, 사용자는 눌린 건지조차 모른다(M-UI F3).
+    out.settled = await app.j(`(() => {
+      const band = [...document.querySelectorAll('.thread .ntf-band')].find((b) => /계정으로 바꿔 이어갑니다/.test(b.innerText))
+      if (!band) return { band: false }
+      const btns = [...band.querySelectorAll('button.ntf-act')]
+      return { band: true, labels: btns.map((b) => b.innerText.trim()), disabled: btns.map((b) => b.disabled) }
+    })()`)
+    if (!out.settled.band) fail('PICK-정착', '되돌린 뒤 배너가 사라졌다 — 되돌리기는 기록 삭제가 아니다', out.settled)
+    else if (!out.settled.labels.some((l) => /되돌림/.test(l))) fail('PICK-정착', '알약이 [되돌림 ✓]로 정착하지 않았다', out.settled)
+    else if (!out.settled.disabled.every(Boolean)) fail('PICK-정착', '정착한 알약이 아직 눌린다', out.settled)
+    else ok('PICK-정착', out.settled.labels)
   })
 }
 

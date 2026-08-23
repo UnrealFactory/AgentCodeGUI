@@ -39,7 +39,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
 import { execFileSync, spawn } from 'node:child_process'
-import { electronProfile, tauriProfile, connectMainPage, killTree, sleep, median, envInfo, REPO } from './lib.mjs'
+import { electronProfile, tauriProfile, connectMainPage, killTree, sleep, median, envInfo, provenance, REPO } from './lib.mjs'
 import { makeFixtureHome, FIX_ID } from './fixture.mjs'
 import { HELPERS_JS, makeCtx } from './screens.mjs'
 import { FIXTURES } from './lspfix.mjs'
@@ -760,6 +760,13 @@ for (const kind of KINDS) {
       hoverSamples: fix.hoverAt.length, defSamples: fix.defAt.length
     },
     env: envInfo(),
+    // ★ 잔여 (r19-confirm §6-2) — **결과 파일 하나만 보고 어느 팔·어느 바이너리였는지
+    // 알 수 있어야 한다.** `bench/lib.mjs`는 `arm`(CCG_* 조합의 슬러그) · `bin`(exe 경로·
+    // mtime·크기·sha256·gitHead·gitDirty) · `armEnv`(모든 CCG_*)를 남기는 헬퍼를 갖고 있고
+    // boot·coldstart·crash·gpuprobe·multi는 전부 부르는데 **여기만 안 불렀다.** 그래서
+    // R19 확인 크리틱은 프리웜 A/B를 돌려 놓고 `--out` 접미사와 ready 델타로 팔을 갈라야
+    // 했다(추측이 섞이는 자리다). 프로필은 `boot()`이 쓰는 것과 같은 인자로 만든다.
+    ...provenance(kind === 'tauri' ? tauriProfile({ port: 9372, exe: EXE }) : electronProfile({ port: 9371 })),
     note: '메모리는 재지 않는다(동시 주행 노이즈 — 리드가 procs의 PID로 따로 잰다).',
     ...r
   }
