@@ -694,11 +694,33 @@ impl Blob {
 /// **항상 0바이트**로 나타난다(글롭이 실제로 맞는 경로가 있어도 그렇다 — 실측:
 /// `git show 'HEAD:app/posts/*/page.tsx'`는 둘 다 커밋된 뒤에도 0바이트). 값을 치르는
 /// 경우는 「리비전에 진짜로 있는 빈 파일」뿐이고 그때 스폰이 하나 는다.
+///
+/// [R28b GIT R5 확인 크리틱 — 「묻지 않았다」를 「없다」로 답하던 자리]
+/// 여기에는 `if rel.starts_with('-') { return Blob::Absent; }` 한 줄이 있었다. 옵션 주입을
+/// 막는다는 뜻이었지만 **막으려던 위험이 애초에 없다**: git에 나가는 인자는 `rel`이 아니라
+/// `spec = format!("{rev}:{rel}")`이고, `rev`는 이 크레이트 안에서 `"HEAD"` ·
+/// [`valid_hash`]를 통과한 16진 해시 · `"{hash}^"` 셋뿐이라 **`spec`이 `-`로 시작할 방법이
+/// 없다.** raw git도 `rev:-path`를 아무 문제 없이 받는다(실측 git 2.53.0.windows.1:
+/// `git show 'HEAD:-notes.txt'` exit 0 · 내용 그대로, `cat-file -e` exit 0).
+///
+/// 대가는 **이름이 `-`로 시작하는 최상위 폴더 하나가 그 아래 전부를 오염**시키는 것이었다
+/// (`-old/` · `-archive/` · `-notes.txt`): `file_diff`가 추적 파일을 `tag="new"`(전체 초록)로
+/// 그려 `bulk_file_diffs`와 **같은 파일에 서로 다른 답**을 냈고, `commit_file_diff`는 내용
+/// 있는 파일을 `content=""`로 줬으며, 무엇보다 `discard`가 `Absent`를 「HEAD에 없던 새
+/// 파일」로 읽어 `.git/index.lock`이 있는 판에서 **「실패했다」고 말하면서 HEAD에 있는
+/// 파일을 휴지통에 넣었다**(§S4 재발). 그래서 지웠다 — 그물은
+/// `a_dash_leading_path_is_asked_about_instead_of_declared_missing`과
+/// `discarding_a_dash_leading_path_keeps_the_file_when_checkout_is_locked_out`.
+///
+/// 남은 한 줄은 **`rel`이 아니라 `spec`**을 본다. 진짜 불변식이 거기 있기 때문이다. 지금
+/// 호출부로는 절대 안 걸리고(위 세 rev), 혹시 나중에 `rev`가 바깥에서 오게 되면 git을
+/// 옵션처럼 보이는 인자로 부르는 대신 [`Blob::Unreadable`]로 **모른다고 답한다** — 「모르면
+/// 없다고 하지 않는다」가 [`Blob`]이 넷인 이유고, `Unreadable`은 `discard`의 휴지통 갈래를
+/// 열지 않는다.
 fn show_at(root: &Path, rev: &str, rel: &str) -> Blob {
     let spec = format!("{rev}:{rel}");
-    // `--` 뒤로 밀 수 없는 형태(rev:path)라, rev/rel이 옵션처럼 보이지 않게 미리 막는다.
-    if rel.starts_with('-') {
-        return Blob::Absent;
+    if spec.starts_with('-') {
+        return Blob::Unreadable;
     }
     // `cat-file -e`는 객체 존재만 본다(blob을 안 읽으므로 거대 파일에도 싸다).
     let exists = || exec(root, &["cat-file", "-e", spec.as_str()]).ok;
@@ -2236,6 +2258,152 @@ mod tests {
         std::fs::remove_file(r.0.join("app/[id]/빈.tsx")).unwrap();
         let d = file_diff(r.cwd(), "app/[id]/빈.tsx");
         assert!(d.error.is_none() && d.diff.is_some(), "{:?}", d.error);
+    }
+
+    /// ★ **일곱 번째 얼굴 — 「묻지 않았다」를 「없다」로 답하던 자리**(R28b GIT R5 확인 크리틱).
+    ///
+    /// [`show_at`]은 `rel`이 `-`로 시작하면 git에 **묻지도 않고** [`Blob::Absent`]를 돌렸다.
+    /// 그래서 이름이 `-`로 시작하는 **최상위 폴더 하나가 그 아래 전부를 오염**시켰다
+    /// (`-old/` · `-archive/` · `-notes.txt`):
+    ///
+    /// ```text
+    /// file_diff        -notes.txt   tag="new"  ← 추적 중인데 전체 초록 새 파일
+    /// bulk_file_diffs  -notes.txt   tag="edit" ← 같은 파일에 두 답이 있었다
+    /// commit_file_diff -notes.txt   content="" ← 그 커밋에 내용이 있는데 빈 파일
+    /// ```
+    ///
+    /// 이 테스트가 세우는 그물은 **세 답이 서로 같은지**다. 하나만 봐서는, 우회가
+    /// 다시 들어와도 「전부 new」로 자기들끼리 아귀가 맞아 통과해 버린다.
+    #[test]
+    fn a_dash_leading_path_is_asked_about_instead_of_declared_missing() {
+        let r = repo!("dash-path");
+        // 최상위 `-` 파일 · 최상위 `-` 폴더 안쪽 · 대조군(평범한 이름)
+        let dash: [&str; 3] = ["-notes.txt", "-old/노트.txt", "-archive/a/b.txt"];
+        for rel in dash {
+            r.write(rel, "원본\n둘째 줄\n");
+        }
+        r.write("보통/노트.txt", "원본\n둘째 줄\n");
+        r.git(&["add", "-A"]);
+        r.git(&["commit", "-qm", "init"]);
+        let first = log(r.cwd(), 1, 0).commits[0].hash.clone();
+        // 픽스처가 실제로 추적됐는지부터 — 여기가 무너지면 아래 단언은 전부 공허하다
+        let tracked = r.git(&["ls-files", "-z"]).stdout;
+        for rel in dash {
+            assert!(tracked.split('\0').any(|p| p == rel), "{rel}이 추적되지 않았다: {tracked:?}");
+        }
+        // 이 환경의 raw git이 `rev:-path`를 정말 받는지 기록 — 가드가 막으려던 위험이
+        // 애초에 없다는 근거다(git 2.53.0.windows.1: show·cat-file 둘 다 exit 0).
+        let raw = r.git(&["show", "HEAD:-notes.txt"]);
+        assert!(raw.ok && raw.stdout.contains("원본"), "raw git이 `HEAD:-notes.txt`를 거부한다");
+
+        for rel in dash {
+            r.write(rel, "원본\n고친 줄\n");
+        }
+        r.write("보통/노트.txt", "원본\n고친 줄\n");
+
+        // ① UI가 실제로 이 행에 닿는가 — status가 `-` 경로를 그대로 준다
+        let rows: Vec<String> = status(r.cwd()).files.into_iter().map(|f| f.path).collect();
+        for rel in dash {
+            assert!(rows.iter().any(|p| p == rel), "status에 {rel} 행이 없다: {rows:?}");
+        }
+
+        // ② file_diff = bulk_file_diffs — 같은 파일에 두 답이 있으면 안 된다
+        let picked: Vec<String> = dash.iter().chain(["보통/노트.txt"].iter()).map(|s| s.to_string()).collect();
+        let bulk = bulk_file_diffs(r.cwd(), &picked);
+        for (i, rel) in picked.iter().enumerate() {
+            let one = file_diff(r.cwd(), rel);
+            let od = one.diff.as_ref().unwrap_or_else(|| panic!("{rel}: diff 없음 {:?}", one.error));
+            assert_eq!(od.tag, "edit", "{rel}: 추적 중인 파일을 「새 파일」로 그렸다");
+            assert_eq!((od.add, od.del), (1, 1), "{rel}: 증감이 틀렸다");
+            let bd = bulk[i].diff.as_ref().unwrap_or_else(|| panic!("{rel}: bulk diff 없음"));
+            assert_eq!(
+                (bd.tag, bd.add, bd.del),
+                (od.tag, od.add, od.del),
+                "{rel}: 대량 경로와 파일당 경로의 답이 갈렸다"
+            );
+        }
+
+        // ②' 되묻기 비용 — `-` 경로가 평범한 경로보다 git을 더 부르면 안 된다(가드는 스폰을
+        //     아끼려던 장치가 아니었다. 이 줄이 「돌려막다 느려졌다」를 잡는다)
+        let spawns = |rel: &str| {
+            let b = spawn_count();
+            let _ = file_diff(r.cwd(), rel);
+            spawn_count() - b
+        };
+        let (dash_n, plain_n) = (spawns("-notes.txt"), spawns("보통/노트.txt"));
+        eprintln!("[측정] file_diff 스폰 — `-` 경로 {dash_n}회 · 평범한 경로 {plain_n}회");
+        assert_eq!(dash_n, plain_n, "`-` 경로만 git을 더 부른다");
+
+        // ③ commit_file_diff가 그 커밋의 내용을 그대로 준다(빈 파일로 안 꾸민다)
+        for rel in dash {
+            let c = commit_file_diff(r.cwd(), &first, rel);
+            assert_eq!(c.content.as_deref(), Some("원본\n둘째 줄\n"), "{rel}: 커밋 시점 내용이 비었다");
+            assert_eq!(c.diff.as_ref().map(|d| (d.tag, d.add)), Some(("new", 2)), "{rel}: 도입 커밋 tag/add");
+        }
+
+        // ④ 지워진 `-` 파일은 HEAD 스냅샷을 들려 보낸다(되돌리기 전에 뭘 잃는지 보여주는 자리)
+        std::fs::remove_file(r.0.join("-old/노트.txt")).unwrap();
+        let gone = file_diff(r.cwd(), "-old/노트.txt");
+        assert_eq!(gone.head_content.as_deref(), Some("원본\n둘째 줄\n"), "{:?}", gone.error);
+
+        // ⑤ 과잉 교정 금지 — HEAD에 **진짜로 없는** `-` 경로는 여전히 Absent다.
+        //    이게 뒤집히면 `discard`의 「새 파일」 갈래가 안 열려 되돌리기가 영구히 실패한다.
+        r.write("-새 파일.txt", "미추적\n");
+        assert!(
+            matches!(show_at(&r.0, "HEAD", "-새 파일.txt"), Blob::Absent),
+            "HEAD에 없는 `-` 경로를 「있다」로 읽었다"
+        );
+        assert_eq!(file_diff(r.cwd(), "-새 파일.txt").diff.map(|d| d.tag), Some("new"));
+
+        // ⑥ 남은 `spec` 가드가 **진짜 불변식**을 본다는 근거: 이 크레이트가 쓰는 rev 세 모양
+        //    어느 것도 `-`로 시작할 수 없어, `-`로 시작하는 rel이 spec을 오염시키지 못한다.
+        assert!(!valid_hash("-eadbeef"), "valid_hash가 `-`로 시작하는 rev를 통과시킨다");
+        for rev in ["HEAD".to_string(), first.clone(), format!("{first}^")] {
+            assert!(!format!("{rev}:-notes.txt").starts_with('-'), "spec이 `-`로 시작한다: {rev}");
+        }
+    }
+
+    /// ★ **같은 구멍의 파괴적인 쪽** — 「묻지 않았다」가 `discard`에 오면 **데이터가 사라진다**.
+    ///
+    /// `discard`는 checkout이 실패했을 때 [`Blob::Absent`]를 「HEAD에 없던 새 파일」로 읽고
+    /// 휴지통에 넣는다. `.git/index.lock`이 있는 판(= 다른 git 프로세스가 도는 흔한 상황)에서
+    /// checkout만 실패시키면, `-` 경로는 **「실패했다」는 문구를 받으면서 파일이 사라졌다**.
+    /// 바로 옆 평범한 경로는 같은 클릭에 파일이 남는다 — 사용자에게는 무작위로 보인다.
+    ///
+    /// 잠금은 `.git/index.lock` 파일 하나로 만든다(프로세스를 안 띄운다). 단언 뒤에 반드시
+    /// 지운다 — 남기면 `Drop`의 청소와 뒤 테스트가 같이 이상해진다.
+    #[test]
+    fn discarding_a_dash_leading_path_keeps_the_file_when_checkout_is_locked_out() {
+        let r = repo!("dash-discard-locked");
+        r.write("-old/노트.txt", "원본\n");
+        r.write("보통/노트.txt", "원본\n");
+        r.git(&["add", "-A"]);
+        r.git(&["commit", "-qm", "init"]);
+        r.write("-old/노트.txt", "원본\n고친 줄\n");
+        r.write("보통/노트.txt", "원본\n고친 줄\n");
+
+        let lock = r.0.join(".git/index.lock");
+        std::fs::write(&lock, b"").unwrap();
+        // 대조군 먼저 — 계약은 「아무것도 안 지우고 사유를 그대로 준다」
+        let plain = discard(r.cwd(), "보통/노트.txt", false);
+        let dash = discard(r.cwd(), "-old/노트.txt", false);
+        let _ = std::fs::remove_file(&lock);
+
+        assert!(!plain.ok && !dash.ok, "잠긴 판에서 되돌리기가 성공했다 — 픽스처가 무너졌다");
+        assert!(r.0.join("보통/노트.txt").is_file(), "대조군이 사라졌다 — 픽스처가 무너졌다");
+        assert!(
+            r.0.join("-old/노트.txt").is_file(),
+            "「실패했다」고 말해 놓고 HEAD에 있는 `-` 파일을 휴지통에 넣었다"
+        );
+        assert!(r.0.join("-old/노트.txt").metadata().unwrap().len() > 0);
+
+        // 잠금이 풀리면 둘 다 평범하게 되돌아간다(이 테스트가 되돌리기를 죽이지 않았다는 대조)
+        for rel in ["-old/노트.txt", "보통/노트.txt"] {
+            let res = discard(r.cwd(), rel, false);
+            assert!(res.ok, "{rel}: {:?}", res.error);
+            let got = std::fs::read_to_string(r.0.join(rel)).unwrap().replace("\r\n", "\n");
+            assert_eq!(got, "원본\n", "{rel}: 되돌아가지 않았다");
+        }
     }
 
     /// 대량 diff의 argv 갈래도 **같은 접두**를 단다. 답은 정확한 경로 키로 되찾아 오므로
