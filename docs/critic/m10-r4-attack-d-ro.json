@@ -1,0 +1,145 @@
+{
+  "at": "2026-08-24T03:21:00.157Z",
+  "exe": "C:/Code/AgentCodeGUI/target-m10r4/release/agentcodegui.exe",
+  "attacks": {
+    "D1": {
+      "home": "C:\\Code\\AgentCodeGUI\\.crit-home-m10r2-d1",
+      "identityBefore": {
+        "engine": {
+          "kind": "claude",
+          "model": "haiku",
+          "effort": "minimal",
+          "codexAccount": null
+        },
+        "billing": {
+          "kind": "subscription",
+          "account": "b@fake.test",
+          "dropEnvKey": false
+        },
+        "cwd": "C:\\Code\\AgentCodeGUI\\.crit-home-m10r2-d1\\work",
+        "addDirs": [],
+        "mode": "bypass",
+        "systemPrompt": null,
+        "outputStyle": null,
+        "tools": {
+          "skillOverrides": {},
+          "deniedMcp": []
+        }
+      },
+      "sent": {
+        "text": "대화 연결 — 2번 자리 「구현」에 메시지를 보냈어요 · 홉 1/4 — 그 세션이 작업 중이라 턴이 끝나면 전달됩니다 · 이 턴만 읽기 전용(계획 모드)으로 낮췄어요.",
+        "dir": "out",
+        "from": "c-a",
+        "to": "c-b",
+        "toSlot": 2,
+        "toName": "구현",
+        "body": "모드 강등 확인용 본문.",
+        "result": "queued",
+        "hop": 1,
+        "maxHops": 4,
+        "chainId": "tk-2",
+        "spoof": false,
+        "guard": "read_only",
+        "turnMode": "plan"
+      },
+      "queueRows": [
+        {
+          "origin": "talk",
+          "mode": "plan",
+          "model": "haiku"
+        }
+      ],
+      "talkRowMode": "plan",
+      "guard": "read_only",
+      "identityAfter": {
+        "engine": {
+          "kind": "claude",
+          "model": "haiku",
+          "effort": "minimal",
+          "codexAccount": null
+        },
+        "billing": {
+          "kind": "subscription",
+          "account": "b@fake.test",
+          "dropEnvKey": false
+        },
+        "cwd": "c:\\code\\agentcodegui\\.crit-home-m10r2-d1\\work",
+        "addDirs": [],
+        "mode": "bypass",
+        "systemPrompt": null,
+        "outputStyle": null,
+        "tools": {
+          "skillOverrides": {},
+          "deniedMcp": []
+        }
+      }
+    },
+    "D2": {
+      "home": "C:\\Code\\AgentCodeGUI\\.crit-home-m10r2-d2",
+      "sent": {
+        "text": "대화 연결 — 2번 자리 「구현」에 메시지를 보냈어요 · 홉 1/4 — 지금 그 세션의 턴이 시작됩니다 · 이 턴만 읽기 전용(계획 모드)으로 낮췄어요.",
+        "dir": "out",
+        "from": "c-a",
+        "to": "c-b",
+        "toSlot": 2,
+        "toName": "구현",
+        "body": "즉시 배달 강등 확인.",
+        "result": "delivered",
+        "hop": 1,
+        "maxHops": 4,
+        "chainId": "tk-1",
+        "spoof": false,
+        "guard": "read_only",
+        "turnMode": "plan"
+      },
+      "guard": "read_only",
+      "identityAfterTalk": {
+        "engine": {
+          "kind": "claude",
+          "model": "haiku",
+          "effort": "minimal",
+          "codexAccount": null
+        },
+        "billing": {
+          "kind": "subscription",
+          "account": "b@fake.test",
+          "dropEnvKey": false
+        },
+        "cwd": "c:\\code\\agentcodegui\\.crit-home-m10r2-d2\\work",
+        "addDirs": [],
+        "mode": "bypass",
+        "systemPrompt": null,
+        "outputStyle": null,
+        "tools": {
+          "skillOverrides": {},
+          "deniedMcp": []
+        }
+      },
+      "identityAfterHuman": {
+        "engine": {
+          "kind": "claude",
+          "model": "haiku",
+          "effort": "minimal",
+          "codexAccount": null
+        },
+        "billing": {
+          "kind": "subscription",
+          "account": "b@fake.test",
+          "dropEnvKey": false
+        },
+        "cwd": "c:\\code\\agentcodegui\\.crit-home-m10r2-d2\\work",
+        "addDirs": [],
+        "mode": "bypass",
+        "systemPrompt": null,
+        "outputStyle": null,
+        "tools": {
+          "skillOverrides": {},
+          "deniedMcp": []
+        }
+      }
+    }
+  },
+  "broken": [],
+  "ms": 10684,
+  "verdict": "HELD"
+}

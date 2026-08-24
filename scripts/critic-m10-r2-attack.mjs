@@ -28,6 +28,21 @@
  *   node scripts/critic-m10-r2-attack.mjs --only=D1,D5
  *   node scripts/critic-m10-r2-attack.mjs --only=N1,N2 --out=docs/critic/x.json
  *
+ * ── ★M10 R4 — **어휘 갱신**(기대값만 바꿨다 · 공격면은 그대로) ──────────────
+ *
+ * R3이 봉투 턴의 하한을 `plan`(`injectPolicy:'readonly'`)으로 낮추면서, R2 어휘를
+ * 하드코딩한 D1·D2가 「강등 안 됨」으로 붉게 나왔다. R3 확인 크리틱은 그 셋(D1·D2와
+ * `critic-m10-attack`의 A1)을 **빌더가 옳다**고 판정하고 — 전부 *더 좁아진* 쪽으로
+ * 어긋났다 — 「기대값을 R3 어휘로 갱신하되 갱신 사실을 머리말에 남기라」고 권고했다
+ * (m10-r3.md §4). 그래서 D1·D2는 이제 `--policy=` 스위치로 **두 어휘를 다 잰다**:
+ *
+ *   --policy=ask       (기본) R2/R3 `ask` 어휘 — 큐 항목 `normal` · guard `mode_downgraded`
+ *   --policy=readonly  R3 기본값 어휘   — 큐 항목 `plan`   · guard `read_only`
+ *
+ * 기본을 `ask`로 둔 이유: 이 하네스가 재려던 것은 「강등이 걸리나 · 정체성이 오염되나」
+ * 이지 「어느 모드로 내려가나」가 아니고, `ask`가 그 둘을 **가장 좁게** 재는 설정이다
+ * (`plan`은 강등의 상위집합이라 오염 축을 덜 조인다).
+ *
  * ── 안전 규칙 (사용자 실앱이 떠 있다) ───────────────────────────────────────
  *  · 이름 기반 kill 금지 — 죽이는 것은 이 스크립트가 spawn한 PID 트리뿐이다.
  *  · 실홈은 읽기/복사만. 엔진은 정션, 자격증명은 복사.
@@ -49,6 +64,9 @@ const OUT =
   (args.find((a) => a.startsWith('--out=')) ?? '').split('=')[1] || path.join(REPO, 'docs', 'critic', 'm10-r2-attack-new.json')
 const REAL_HOME = path.join(os.homedir(), '.agentcodegui')
 const PORT0 = 10400
+/** ★R4 — D1·D2가 잴 봉투 턴 하한. 그 정책이 기대하는 **어휘 한 벌**을 함께 들고 다닌다. */
+const POLICY = (args.find((a) => a.startsWith('--policy=')) ?? '').split('=')[1] === 'readonly' ? 'readonly' : 'ask'
+const EXPECT = POLICY === 'readonly' ? { mode: 'plan', guard: 'read_only' } : { mode: 'normal', guard: 'mode_downgraded' }
 
 const rep = { at: new Date().toISOString(), exe: EXE, attacks: {}, broken: [] }
 const broke = (id, why, extra) => {
@@ -215,8 +233,8 @@ async function installBoard(app, titles, count) {
 //      ③ 발신자 notice에 guard='mode_downgraded'가 실리나
 // ═══════════════════════════════════════════════════════════════════════════
 async function D1() {
-  console.log('\n[D1] 모드 강등 — bypass 수신 채팅의 큐 항목만 normal로 내려가나')
-  const s = seedFakeHome('d1', 2, { enabled: true, boards: { 'b-1': true }, maxHops: 4 }, ['normal', 'bypass'])
+  console.log(`\n[D1] 모드 강등 — bypass 수신 채팅의 큐 항목만 ${EXPECT.mode}로 내려가나 (policy=${POLICY})`)
+  const s = seedFakeHome('d1', 2, { enabled: true, boards: { 'b-1': true }, maxHops: 4, injectPolicy: POLICY }, ['normal', 'bypass'])
   setScript(s, 'a', '확인.\n@talk[2] 모드 강등 확인용 본문.')
   setScript(s, 'b', '느리게 처리합니다.', { holdMs: 20_000 })
   const app = await boot(s.HOME, PORT0 + 1, { CCG_FAKECLI_SCRIPT: s.SCRIPT })
@@ -243,15 +261,15 @@ async function D1() {
       out.guard = sent.guard ?? null
       out.identityAfter = readJson(path.join(s.HOME, 'chats-v3', `${B}.json`))?.identity ?? null
       if (!talkRow) broke('D1', '큐에 origin=talk 항목이 없다', { rows: out.queueRows })
-      else if (talkRow.picker?.mode !== 'normal')
-        broke('D1', `자동승인(bypass) 채팅의 봉투가 강등 안 됐다 — 큐 항목 mode=${talkRow.picker?.mode}`, out.queueRows)
-      else if (out.guard !== 'mode_downgraded') broke('D1', `강등했는데 발신자에게 안 알렸다 — guard=${out.guard}`, { sent })
+      else if (talkRow.picker?.mode !== EXPECT.mode)
+        broke('D1', `자동승인(bypass) 채팅의 봉투가 ${EXPECT.mode}로 안 내려갔다 — 큐 항목 mode=${talkRow.picker?.mode}`, out.queueRows)
+      else if (out.guard !== EXPECT.guard) broke('D1', `강등했는데 발신자에게 안 알렸다 — guard=${out.guard}(기대 ${EXPECT.guard})`, { sent })
       else if (out.identityAfter?.mode !== 'bypass')
         broke('D1', `강등이 채팅 정체성을 오염시켰다 — 디스크 mode=${out.identityAfter?.mode}`, {
           before: out.identityBefore?.mode,
           after: out.identityAfter?.mode
         })
-      else held('D1', { queuedMode: 'normal', guard: out.guard, chatIdentity: out.identityAfter?.mode })
+      else held('D1', { policy: POLICY, queuedMode: EXPECT.mode, guard: out.guard, chatIdentity: out.identityAfter?.mode })
     }
   } catch (e) {
     broke('D1', `주행 실패: ${e?.message ?? e}`)
@@ -268,8 +286,8 @@ async function D1() {
 //      큐를 지나지 않는 것처럼 보이는 경로(Accepted)에서도 스냅샷이 걸리는가.
 // ═══════════════════════════════════════════════════════════════════════════
 async function D2() {
-  console.log('\n[D2] 유휴 수신자 즉시 배달 — 강등이 걸리고, 다음 사람 턴은 원래 모드인가')
-  const s = seedFakeHome('d2', 2, { enabled: true, boards: { 'b-1': true }, maxHops: 4 }, ['normal', 'bypass'])
+  console.log(`\n[D2] 유휴 수신자 즉시 배달 — 강등이 걸리고, 다음 사람 턴은 원래 모드인가 (policy=${POLICY})`)
+  const s = seedFakeHome('d2', 2, { enabled: true, boards: { 'b-1': true }, maxHops: 4, injectPolicy: POLICY }, ['normal', 'bypass'])
   setScript(s, 'a', '확인.\n@talk[2] 즉시 배달 강등 확인.')
   setScript(s, 'b', '받았습니다.')
   const app = await boot(s.HOME, PORT0 + 2, { CCG_FAKECLI_SCRIPT: s.SCRIPT })
@@ -288,12 +306,12 @@ async function D2() {
     await app.call('chat:run', [{ chatId: B, prompt: '사람의 다음 턴.' }])
     await sleep(2500)
     out.identityAfterHuman = readJson(path.join(s.HOME, 'chats-v3', `${B}.json`))?.identity ?? null
-    if (out.guard !== 'mode_downgraded') broke('D2', `유휴 수신자에게는 강등이 안 걸렸다 — guard=${out.guard}`, { sent })
+    if (out.guard !== EXPECT.guard) broke('D2', `유휴 수신자에게는 강등이 안 걸렸다 — guard=${out.guard}(기대 ${EXPECT.guard})`, { sent })
     else if (out.identityAfterTalk?.mode !== 'bypass')
       broke('D2', `봉투 한 건이 채팅 정체성을 바꿨다 — mode=${out.identityAfterTalk?.mode}`, out.identityAfterTalk)
     else if (out.identityAfterHuman?.mode !== 'bypass')
       broke('D2', `봉투 뒤 사람 턴의 모드가 달라졌다 — mode=${out.identityAfterHuman?.mode}`, out.identityAfterHuman)
-    else held('D2', { guard: out.guard, identity: out.identityAfterHuman?.mode })
+    else held('D2', { policy: POLICY, guard: out.guard, identity: out.identityAfterHuman?.mode })
   } catch (e) {
     broke('D2', `주행 실패: ${e?.message ?? e}`)
   } finally {

@@ -53,7 +53,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::mpsc::{channel, Sender};
 use std::sync::{Arc, Mutex, OnceLock};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter};
 
 /// IPC가 허브 응답을 기다리는 상한. 넘으면 안전값을 돌려준다(§ 락 규율 3).
@@ -243,6 +243,23 @@ struct Hub {
     /// **모든 슬롯이 같은 인스턴스를 공유한다**: 후보 판정의 "지금 태우고 있는 계정"은
     /// 채팅 하나가 아니라 앱 전체의 사실이고, usage 스냅샷·HTTP 예산도 앱당 하나다.
     switcher: Arc<super::acct_switch::Switcher>,
+    /// ★M10 R4 D2 — 긴급 정지가 **중단을 보낸 뒤** 결과를 다시 재려고 세워 둔 표.
+    /// 중단은 요청이고, 요청을 보낸 것은 결과가 아니다([`Hub::verify_stop`]).
+    stop_watch: Option<StopWatch>,
+}
+
+/// 정지 뒤 **다시 재기까지** 기다리는 시간. 소프트 중단은 CLI가 안 받으면 6초쯤 뒤에
+/// 스트림이 접히므로(§8 표), 그보다 조금 뒤에서 재야 「진짜 못 멈춘 것」만 남는다.
+const STOP_VERIFY: Duration = Duration::from_secs(8);
+
+/// 중단을 보낸 채팅들 + 그때의 숫자. [`Hub::verify_stop`]이 소비한다.
+struct StopWatch {
+    due: Instant,
+    /// `Cmd::Interrupt`가 **접수된** 채팅들. 이 중 아직 도는 것이 진짜 `unstoppable`이다.
+    chats: Vec<String>,
+    purged: usize,
+    /// 애초에 중단을 못 보낸 수(이미 `Interrupting`/`Terminating`).
+    refused: usize,
 }
 
 #[derive(Default)]
@@ -560,17 +577,31 @@ impl Hub {
             // `purged:0` · 그 턴은 끝까지 돌아 `DONE-AFTER-STOP`을 냈다). 이제 셋을
             // 세어 돌려준다: 큐에서 뽑은 수 · **중단을 보낸 도는 봉투 턴 수** ·
             // 못 세운 수. 알약은 이 숫자로만 말한다(못 멈춘 것을 안 멈췄다고 말한다).
+            // ★R4 D2 — **`unstoppable`을 실제 결과로 센다.**
+            //
+            // R3은 `dispatch(Interrupt) != Accepted`만 「못 세움」으로 셌다. 그 갈래는
+            // 좁은 레이스뿐이고(이미 `Interrupting`/`Terminating`), **정말 위험한 갈래는
+            // `interrupted`로 세어졌다**: 소프트 중단은 요청이라 CLI가 안 받으면 6초 뒤에야
+            // 스트림이 접힌다. 그 6초가 알약에서는 「도는 턴 1개 **중단**」이었다.
+            // 이제 보낸 순간에는 「보냈다」고만 말하고, 몇 초 뒤 **다시 재서** 진짜 결과를
+            // 같은 채널로 한 번 더 싣는다(`stop_watch` → [`Hub::pump`]).
             Op::TalkStop => {
                 let cfg = self.talk.stop();
                 let purged = self.purge_talk_queues();
-                let (interrupted, unstoppable) = self.interrupt_talk_turns();
+                let (hit, unstoppable) = self.interrupt_talk_turns();
                 self.emit_all(crate::ipc::ch::CROSSTALK_STATE, cfg.clone());
                 let mut out = cfg;
                 if let Some(o) = out.as_object_mut() {
                     o.insert("purged".into(), json!(purged));
-                    o.insert("interrupted".into(), json!(interrupted));
+                    o.insert("interrupted".into(), json!(hit.len()));
                     o.insert("unstoppable".into(), json!(unstoppable));
                 }
+                self.stop_watch = (!hit.is_empty() || unstoppable > 0).then(|| StopWatch {
+                    due: Instant::now() + STOP_VERIFY,
+                    chats: hit,
+                    purged,
+                    refused: unstoppable,
+                });
                 answer(out);
                 return;
             }
@@ -579,8 +610,20 @@ impl Hub {
 
         // ★M10 — **사람이 시작한 턴**만 대화 연결의 연쇄를 연다. 기계가 여는 턴
         // (예약 드레인·한도 재개)은 앞선 사람 턴의 홉 예산을 물려받을 뿐이다.
-        if matches!(op, Op::Run(_) | Op::Enqueue(_)) {
-            self.talk.note_human(&chat);
+        //
+        // ★M10 R4 C2 — 그리고 **사람이 무엇을 썼는지**를 함께 넘긴다. 회신 전용 잠금을
+        // 푸는 유일한 열쇠가 「사용자가 자기 프롬프트에 직접 쓴 `@talk[…]` 한 줄」이기
+        // 때문이다(R3은 사람의 *아무* 한 마디로 풀렸고, 봉투가 그걸 시킬 수 있었다).
+        match &op {
+            Op::Run(req) => {
+                let prompt = req.get("prompt").and_then(Value::as_str).unwrap_or("").to_string();
+                self.talk.note_human(&chat, &prompt);
+            }
+            Op::Enqueue(input) => {
+                let text = input.text.clone();
+                self.talk.note_human(&chat, &text);
+            }
+            _ => {}
         }
 
         let Some(slot) = self.ensure(&chat) else {
@@ -816,6 +859,12 @@ impl Hub {
     fn pump(&mut self) {
         // 라우팅 캐시의 수명은 이 한 바퀴다(무효화 규약 1) — 최대 20ms 낡는다.
         self.route.clear();
+        // ★M10 R4 D2 — 정지가 「보냈다」고 말한 뒤 **실제로 멎었는지** 다시 잰다.
+        // 이 자리인 이유: 봉투 턴이 살아 있으면 `wait()`가 `TICK_ACTIVE`라 지연이 없고,
+        // 다 멎었으면 `TICK_IDLE`(250ms)이라 판정이 그만큼만 늦는다.
+        if self.stop_watch.is_some() {
+            self.verify_stop();
+        }
         // ★M11 — **지금 태우고 있는 계정**을 전환 훅에 알린다. 노는 계정만 후보가 되는
         //   근거이고, 허브만이 이걸 안다(모든 슬롯을 소유하는 유일한 자리). tick 전에
         //   갱신해야 이 바퀴의 `check_hold`가 최신 값으로 판정한다.
@@ -1295,9 +1344,11 @@ impl Hub {
     ///
     /// 사람의 턴은 건드리지 않는다. 정지의 대상은 "앱이 넣은 턴"이지 "사용자가 시킨 일"이
     /// 아니다 — 그래서 `talk_run`(봉투가 실제로 CLI에 들어간 슬롯)만 고른다.
-    fn interrupt_talk_turns(&mut self) -> (usize, usize) {
+    /// ★R4 D2 — 반환이 `(중단을 **보낸** 채팅들, 애초에 못 보낸 수)`로 바뀌었다.
+    /// 「보냈다」는 결과가 아니다 — 결과는 [`Hub::verify_stop`]이 몇 초 뒤에 잰다.
+    fn interrupt_talk_turns(&mut self) -> (Vec<String>, usize) {
         let chats: Vec<String> = self.slots.keys().cloned().collect();
-        let (mut hit, mut miss) = (0usize, 0usize);
+        let (mut hit, mut miss) = (vec![], 0usize);
         for id in chats {
             let Some(s) = self.slots.get_mut(&id) else { continue };
             if !s.talk_run || !s.rt.busy() {
@@ -1307,12 +1358,49 @@ impl Hub {
             // `control_request{interrupt}`를 보내고, CLI가 안 받으면 6초 뒤 스트림을 접는다.
             if s.rt.dispatch(Cmd::Interrupt) == Verdict::Accepted {
                 s.talk_run = false;
-                hit += 1;
+                hit.push(id);
             } else {
                 miss += 1;
             }
         }
         (hit, miss)
+    }
+
+    /// ★R4 D2 — 정지의 **실제 결과**를 잰다(중단을 보낸 지 [`STOP_VERIFY`] 뒤).
+    ///
+    /// 여기까지 와서도 도는 턴이 「진짜 못 멈춘 것」이다. 두 곳에 말한다:
+    /// ① 그 채팅 스레드에 한 줄(사람이 지금 보고 있는 자리) ② `crosstalk:state`에
+    /// 다시 실어 알약이 단정형을 정정하게 한다(`stopVerdict`).
+    fn verify_stop(&mut self) {
+        let Some(w) = self.stop_watch.take() else { return };
+        if Instant::now() < w.due {
+            self.stop_watch = Some(w);
+            return;
+        }
+        let still: Vec<String> = w
+            .chats
+            .iter()
+            .filter(|c| self.slots.get(*c).is_some_and(|s| s.rt.busy()))
+            .cloned()
+            .collect();
+        for c in &still {
+            self.fanout(
+                c,
+                json!({
+                    "type": "notice", "runId": "",
+                    "text": "대화 연결 — 긴급 정지가 이 턴에 중단을 보냈지만 CLI가 받지 않아 아직 돌고 있어요. 곧 스트림을 접지만, 그 사이에 한 일은 남습니다.",
+                }),
+            );
+        }
+        let mut v = ccg_store::talk::config();
+        if let Some(o) = v.as_object_mut() {
+            o.insert("purged".into(), json!(w.purged));
+            // **멎은 것만** `interrupted`다. 나머지는 전부 못 세운 것으로 센다.
+            o.insert("interrupted".into(), json!(w.chats.len() - still.len()));
+            o.insert("unstoppable".into(), json!(w.refused + still.len()));
+            o.insert("stopVerdict".into(), json!(true));
+        }
+        self.emit_all(crate::ipc::ch::CROSSTALK_STATE, v);
     }
 
     /// 큐·대기표를 **채팅 파일의 Rust 소유 필드**로 내린다(★R4).
@@ -1591,6 +1679,7 @@ pub fn start(app: AppHandle) {
                 // ★M11 — 워커 스레드 하나를 여기서 띄운다(앱당 1개). 설정이 꺼져 있으면
                 // 그 스레드는 영원히 `recv()`에서 잠들어 있다 = 비용 0.
                 switcher: super::acct_switch::Switcher::start(),
+                stop_watch: None,
             };
             loop {
                 let wait = hub.wait();

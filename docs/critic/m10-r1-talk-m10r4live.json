@@ -1,0 +1,44 @@
+{
+  "at": "2026-08-24T04:03:11.783Z",
+  "exe": "C:/Code/AgentCodeGUI/target-m10r4/release/agentcodegui.exe",
+  "steps": {
+    "live": {
+      "home": "C:\\Code\\AgentCodeGUI\\.poc-home-talk-live-m10r4live",
+      "engine": "0.3.241",
+      "account": "lmg56634@gmail.com",
+      "steps": {
+        "config": {
+          "version": 1,
+          "enabled": true,
+          "boards": {
+            "b-1": true
+          },
+          "maxHops": 2,
+          "maxMsgs": 6,
+          "maxFanout": 2,
+          "stoppedAt": null,
+          "injectPolicy": "readonly",
+          "noticeAckAt": null
+        },
+        "hop1": null
+      },
+      "chats": {
+        "A": "c-a",
+        "B": "c-b"
+      }
+    }
+  },
+  "findings": [
+    {
+      "id": "L1-A→B",
+      "why": "A의 발신이 안 나갔다: (구문 없음)",
+      "hop1": null,
+      "aText": [
+        "You've hit your weekly limit · resets Aug 26, 11pm (Asia/Seoul)"
+      ]
+    }
+  ],
+  "ms": 241953,
+  "skipped": [],
+  "verdict": "FAIL"
+}

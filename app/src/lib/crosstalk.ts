@@ -58,7 +58,10 @@ function asConfig(v: unknown): TalkConfig | null {
     noticeAckAt: typeof o.noticeAckAt === 'number' ? o.noticeAckAt : null,
     purged: typeof o.purged === 'number' ? o.purged : undefined,
     interrupted: typeof o.interrupted === 'number' ? o.interrupted : undefined,
-    unstoppable: typeof o.unstoppable === 'number' ? o.unstoppable : undefined
+    unstoppable: typeof o.unstoppable === 'number' ? o.unstoppable : undefined,
+    // ★R4 D2 — 「보냈다」와 「멎었다」를 가르는 표식. 이 값이 참인 payload에서만
+    // `interrupted`가 실제로 멎은 수다(정지 응답의 그 필드는 *보낸* 수다).
+    stopVerdict: o.stopVerdict === true ? true : undefined
   }
 }
 
@@ -79,9 +82,13 @@ export const setTalkBoard = (board: string, on: boolean): Promise<TalkConfig | n
  * 긴급 정지 — 도는 연쇄 + **이미 큐에 선 봉투**를 버리고, **이미 CLI에 들어가 도는
  * 봉투 턴**에 중단을 보내고, 보드 옵트인을 전부 걷는다.
  *
- * 응답의 숫자 셋이 「무엇이 실제로 멎었나」다: `purged`(큐에서 뽑음) ·
- * `interrupted`(도는 턴에 중단 보냄) · `unstoppable`(못 세움). 화면은 이 셋으로만
- * 말한다 — R2는 `purged`만 보고 「정지했어요」라고 했고, 그때 도는 턴은 끝까지 갔다.
+ * 응답의 숫자 셋이 「무엇이 멎었나」다: `purged`(큐에서 뽑음) · `interrupted`(도는 턴에
+ * 중단을 **보냄**) · `unstoppable`(보내지도 못함). 화면은 이 셋으로만 말한다 — R2는
+ * `purged`만 보고 「정지했어요」라고 했고, 그때 도는 턴은 끝까지 갔다.
+ *
+ * ★R4 D2 — **이 응답은 아직 결과가 아니다.** 소프트 중단은 요청이고, CLI가 안 받으면
+ * 몇 초 뒤에야 스트림이 접힌다. 셸이 8초 뒤 다시 재서 `crosstalk:state`에 같은 숫자를
+ * `stopVerdict:true`와 함께 한 번 더 싣는다 — 그때의 값이 잰 값이다.
  */
 export const stopTalk = (): Promise<TalkConfig | null> => call(STOP, [])
 

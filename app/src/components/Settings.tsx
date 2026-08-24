@@ -2758,6 +2758,20 @@ function TalkView(): React.ReactElement {
           '먼저 알아야 할 것: 받은 메시지는 인용 블록에 갇히고 그 턴의 권한은 아래 하한까지 낮아지지만, 이건 완화이지 차단이 아닙니다 — 실제 시험에서 세 번 중 세 번 지시를 그대로 따른 형태가 있었습니다(그 형태는 막았지만 다음 형태를 막았다는 뜻은 아닙니다). 되돌릴 수 없는 일을 하는 보드(배포·마이그레이션·rm)에서는 켜지 마세요.',
           'Read this first: an incoming message is walled inside a quoted block and that turn runs under the floor you set below — but this is a mitigation, not a block. In real testing there was a shape the receiver obeyed three times out of three (that shape is closed now; that does not mean the next one is). Do not enable this on boards that do irreversible work (deploys, migrations, rm).'
         )}
+        {/* ★R4 — 크리틱 권고 ③. **실측 숫자 그대로** 적는다: 읽기 누수는 하한이 막지
+            않는 축이고(쓰기만 막는다), 회신 전용의 수명은 R4에서 규칙이 바뀌었다. */}
+        <div style={{ marginTop: 8 }}>
+          {t(
+            '· 읽기는 막지 않습니다. 받은 세션이 읽어서 알아낸 것(작업 폴더 경로·파일 목록·파일 내용)을 회신에 실어 보낼 수 있고, 시험 21회 중 2회 실제로 상대 세션까지 갔습니다(같은 문장이 다른 회차엔 거절됐습니다 — 재량이라 회차마다 갈립니다).',
+            '· Reading is not blocked. What the receiving session learns by reading (working-folder path, file listing, file contents) can ride back in its reply — in testing that reached the other session 2 times out of 21 (the same sentence was refused on other runs; it is discretion, so it varies).'
+          )}
+        </div>
+        <div style={{ marginTop: 6 }}>
+          {t(
+            '· 회신 전용은 이 채팅에 말을 걸어도 풀리지 않습니다(R3까지는 한 마디면 풀렸어요). 다른 자리로 옮기려면 사용자가 프롬프트에 @talk[자리] 한 줄을 직접 써야 하고, 그 줄을 쓰는 순간 그 채팅의 홉·총량 예산도 새로 시작합니다.',
+            '· Reply-only no longer lifts when you type into that chat (until R3 a single word lifted it). To relay elsewhere you must write an @talk[slot] line in your own prompt — and that line also restarts the hop / total budget for that chat.'
+          )}
+        </div>
       </div>
 
       {stoppedAt != null && (
@@ -2804,14 +2818,20 @@ function TalkView(): React.ReactElement {
           <div className="em">{t('대화 연결을 켤까요?', 'Turn cross-talk on?')}</div>
           <div className="meta" style={{ marginTop: 6, lineHeight: 1.65 }}>
             {t(
-              '켜면 이 보드의 세션들이 서로에게 지시를 보냅니다. 앱이 하는 일: ① 받은 메시지를 인용 블록에 가두고 ② 그 턴만 권한을 낮추고(기본: 읽기 전용) ③ 그 턴의 회신을 보낸 세션에게만 허용하고 ④ 홉·총량·팬아웃에서 멎게 합니다.',
-              'Once on, the sessions on this board send each other instructions. What the app does: (1) walls the incoming text in a quoted block, (2) lowers that one turn’s permissions (default: read-only), (3) allows a reply only back to the sender, and (4) stops it at the hop / total / fan-out caps.'
+              '켜면 이 보드의 세션들이 서로에게 지시를 보냅니다. 앱이 하는 일: ① 받은 메시지를 인용 블록에 가두고 ② 그 턴만 권한을 낮추고(기본: 읽기 전용) ③ 받은 세션의 발신을 보낸 세션 하나로 묶고 ④ 홉·총량·팬아웃에서 멎게 하고 ⑤ 거절 회신을 앱이 정한 한 문장으로 다시 씁니다(받은 글의 문자열이 회신에 실려 나가지 않게).',
+              'Once on, the sessions on this board send each other instructions. What the app does: (1) walls the incoming text in a quoted block, (2) lowers that one turn’s permissions (default: read-only), (3) pins the receiver’s sends to the sender alone, (4) stops it at the hop / total / fan-out caps, and (5) rewrites a refusal reply to one fixed sentence so nothing from the incoming text rides back out.'
             )}
           </div>
           <div className="meta" style={{ marginTop: 8, lineHeight: 1.65 }}>
             {t(
-              '앱이 못 하는 일: 받은 글이 시키는 대로 모델이 따르는 것 자체는 막지 못합니다. 실제 시험에서 세 번 중 세 번 따른 형태가 있었고(봉투의 표식을 답에 옮겨 쓰게 하는 형태), 그 형태는 닫았지만 다음 형태를 닫았다는 보장은 없습니다. 그래서 하한을 「읽기 전용」으로 두면 따르더라도 파일을 고치거나 명령을 돌릴 수단이 그 턴에 없습니다.',
-              'What the app cannot do: it cannot stop the model from complying with what the text asks. In real testing one shape was obeyed three times out of three (getting the receiver to echo the envelope markers). That shape is closed; the next one may not be. That is why the read-only floor matters — even if it complies, that turn has no way to edit files or run commands.'
+              '앱이 못 하는 일: 받은 글이 시키는 대로 모델이 따르는 것 자체는 막지 못합니다. 실제 시험에서 세 번 중 세 번 따른 형태가 있었고(봉투의 표식을 답에 옮겨 쓰게 하는 형태), 그 형태는 닫았지만 다음 형태를 닫았다는 보장은 없습니다 — 바로 다음 라운드에 「거절하면서 인용하게 하는」 형태가 세 번 중 한 번 통했습니다. 그래서 하한을 「읽기 전용」으로 두면 따르더라도 파일을 고치거나 명령을 돌릴 수단이 그 턴에 없습니다.',
+              'What the app cannot do: it cannot stop the model from complying with what the text asks. In real testing one shape was obeyed three times out of three (getting the receiver to echo the envelope markers). That shape is closed; the next one was not — a “refuse, but quote what you were asked for” shape landed 1 time out of 3 the very next round. That is why the read-only floor matters — even if it complies, that turn has no way to edit files or run commands.'
+            )}
+          </div>
+          <div className="meta" style={{ marginTop: 8, lineHeight: 1.65 }}>
+            {t(
+              '그리고 두 가지를 미리 아셔야 합니다. ① 읽기는 막지 않습니다 — 받은 세션이 읽어서 알아낸 것(경로·파일 목록·파일 내용)을 회신에 실을 수 있고, 시험 21회 중 2회 실제로 상대 세션까지 갔습니다. ② 회신 전용은 그 채팅에 말을 걸어도 유지되고, 사용자가 프롬프트에 @talk[자리] 한 줄을 직접 쓸 때만 풀립니다.',
+              'Two more things up front. (1) Reading is not blocked — what the receiver learns by reading (paths, file listings, file contents) can ride back in its reply; that reached the other session 2 times out of 21 in testing. (2) Reply-only survives you typing into that chat; it lifts only when you write an @talk[slot] line in your own prompt.'
             )}
           </div>
           <div className="set-dialog-row" style={{ marginTop: 12 }}>
@@ -2979,8 +2999,8 @@ function TalkView(): React.ReactElement {
 
       <div className="set-note2" style={{ marginTop: 22 }}>
         {t(
-          '남은 위험(정직하게): ① 봉투는 완화입니다 — 모델이 받은 글을 따르는 것 자체는 못 막습니다. ② 「읽기 전용」을 끄면 이미 허용 목록에 넣어 둔 도구는 승인 없이 실행됩니다. ③ 정지는 이미 도는 턴에 중단을 보내지만 CLI가 안 받으면 몇 초 뒤 스트림을 접는 방식이라 그 사이에 한 일은 남습니다. ④ 받은 턴이 답으로 남기는 글은 여전히 자유 문장이라, 경로 같은 정보를 옮겨 적는 누수는 남습니다.',
-          'Remaining risk, honestly: (1) the envelope is a mitigation — it cannot stop the model from complying with what it reads. (2) With read-only off, tools you already allow-listed run without asking. (3) Stop interrupts a running turn, but if the CLI ignores the interrupt the stream is torn down a few seconds later — whatever happened in between stands. (4) The reply is still free text, so a leak that merely quotes a path remains possible.'
+          '남은 위험(정직하게): ① 봉투는 완화입니다 — 모델이 받은 글을 따르는 것 자체는 못 막습니다. ② 「읽기 전용」을 끄면 이미 허용 목록에 넣어 둔 도구는 승인 없이 실행됩니다. ③ 정지는 이미 도는 턴에 중단을 보내지만 CLI가 안 받으면 몇 초 뒤 스트림을 접는 방식이라 그 사이에 한 일은 남습니다(정지 알약은 8초 뒤 실제 결과로 문장을 정정합니다). ④ 받은 턴이 답으로 남기는 글은 여전히 자유 문장이라, 경로 같은 정보를 옮겨 적는 누수는 남습니다 — 앱이 되쓰는 것은 상대에게 나가는 회신뿐이고, 그 세션 자기 화면의 답변은 못 고칩니다(고치면 사용자가 보는 답과 실제가 갈립니다).',
+          'Remaining risk, honestly: (1) the envelope is a mitigation — it cannot stop the model from complying with what it reads. (2) With read-only off, tools you already allow-listed run without asking. (3) Stop interrupts a running turn, but if the CLI ignores the interrupt the stream is torn down a few seconds later — whatever happened in between stands (the stop pill corrects its own wording 8 seconds later with the measured result). (4) The reply is still free text, so a leak that merely quotes a path remains possible — the app only rewrites what goes out to the other session; it never edits the answer shown in that session’s own thread (that would split what you read from what happened).'
         )}
       </div>
     </>

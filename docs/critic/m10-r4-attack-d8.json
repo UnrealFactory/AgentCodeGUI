@@ -1,0 +1,96 @@
+{
+  "at": "2026-08-24T03:20:47.058Z",
+  "exe": "C:/Code/AgentCodeGUI/target-m10r4/release/agentcodegui.exe",
+  "attacks": {
+    "D8": {
+      "home": "C:\\Code\\AgentCodeGUI\\.crit-home-m10r2-d8",
+      "before": {
+        "chains": [
+          {
+            "id": "tk-1",
+            "msgs": 1
+          }
+        ],
+        "pos": [
+          {
+            "chat": "c-b",
+            "chain": "tk-1",
+            "hop": 1,
+            "lock": {
+              "back": "c-a",
+              "chain": "tk-1",
+              "live": true
+            }
+          },
+          {
+            "chat": "c-a",
+            "chain": "tk-1",
+            "hop": 0,
+            "lock": null
+          }
+        ],
+        "restored": 0
+      },
+      "stateFile": {
+        "version": 1,
+        "seq": 1,
+        "chains": [
+          {
+            "id": "tk-1",
+            "msgs": 1
+          }
+        ],
+        "pos": [
+          {
+            "chat": "c-b",
+            "chain": "tk-1",
+            "hop": 1,
+            "from": "c-a",
+            "lockChain": "tk-1",
+            "recv": "STATE 본문입니다."
+          },
+          {
+            "chat": "c-a",
+            "chain": "tk-1",
+            "hop": 0,
+            "from": null,
+            "lockChain": null,
+            "recv": null
+          }
+        ],
+        "pending": [],
+        "savedAt": 1787541647.9255445
+      },
+      "after": {
+        "chains": [
+          {
+            "id": "tk-1",
+            "msgs": 1
+          }
+        ],
+        "pos": [
+          {
+            "chat": "c-b",
+            "chain": "tk-1",
+            "hop": 1,
+            "lock": {
+              "back": "c-a",
+              "chain": "tk-1",
+              "live": true
+            }
+          },
+          {
+            "chat": "c-a",
+            "chain": "tk-1",
+            "hop": 0,
+            "lock": null
+          }
+        ],
+        "restored": 1
+      }
+    }
+  },
+  "broken": [],
+  "ms": 8011,
+  "verdict": "HELD"
+}

@@ -197,6 +197,14 @@ async function installBoard(app, titles, count) {
 // ═══════════════════════════════════════════════════════════════════════════
 // A1 — 3자 루프 A→B→C→A. 홉이 **쌍**이 아니라 **연쇄**로 세지는가.
 //      maxHops:2면 A→B(1) · B→C(2) · C→A는 벽이어야 한다.
+//
+// ★M10 R4 — **기대 어휘 갱신**(공격면은 그대로). R3이 회신 전용(`reply_only`)을 넣으면서
+// 이 루프는 홉 상한보다 **한 홉 먼저** 멎는다: B는 봉투를 받아 도는 자리라 3번으로 못
+// 보내고 A에게만 회신할 수 있다. R3 확인 크리틱이 이 불일치를 「빌더가 옳다 — 더 좁아진
+// 쪽으로 어긋났다」로 판정하고 「`reply_only`도 정답」 갈래를 넣으라고 권고했다
+// (m10-r3.md §4). 홉 상한 **자체**는 `poc-talk --only=wall`의 W6이 결정적으로 잰다.
+// 그래서 이 테스트가 지금 재는 것은 하나다: **삼각 루프가 어디서든 멎는가**(A에 되돌아오지
+// 않는가). 멎게 한 벽의 이름은 `hop_cap`이든 `reply_only`든 둘 다 정답이다.
 // ═══════════════════════════════════════════════════════════════════════════
 async function A1() {
   console.log('\n[A1] 3자 루프 — A→B→C→A (maxHops 2)')
@@ -219,12 +227,14 @@ async function A1() {
     out.notices = { A: await talkNotices(app, A), B: await talkNotices(app, B), C: await talkNotices(app, C) }
     const sends = log.filter((l) => l.what === 'send')
     const caps = log.filter((l) => l.what === 'hop_cap')
-    out.tally = { sends: sends.length, hopCaps: caps.length }
-    if (sends.length !== 2 || caps.length < 1) {
-      broke('A1', `삼각 루프가 홉 상한(2)에서 안 멎었다 — send=${sends.length}, hop_cap=${caps.length}`, { log })
+    // ★R4 — 「멎게 한 벽」의 이름은 둘 다 정답이다(위 머리말).
+    const walls = log.filter((l) => l.what === 'hop_cap' || l.what === 'reply_only')
+    out.tally = { sends: sends.length, hopCaps: caps.length, walls: walls.length, wallKinds: [...new Set(walls.map((l) => l.what))] }
+    if (sends.length > 2 || walls.length < 1) {
+      broke('A1', `삼각 루프가 상한 전에 안 멎었다 — send=${sends.length}, 벽=${JSON.stringify(out.tally.wallKinds)}`, { log })
     } else if (out.echoes.A !== 0) {
-      broke('A1', 'C→A가 막혔다는데 A에 수신 말풍선이 생겼다', out.echoes)
-    } else held('A1', { sends: sends.length, hopCaps: caps.length, echoes: out.echoes })
+      broke('A1', '루프가 막혔다는데 A에 수신 말풍선이 생겼다', out.echoes)
+    } else held('A1', { sends: sends.length, walls: out.tally.wallKinds, echoes: out.echoes })
   } catch (e) {
     broke('A1', `주행 실패: ${e?.message ?? e}`)
   } finally {

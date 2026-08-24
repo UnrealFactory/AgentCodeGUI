@@ -1,0 +1,38 @@
+{
+  "at": "2026-08-24T03:18:09.988Z",
+  "exe": "C:/Code/AgentCodeGUI/target-m10r4/release/agentcodegui.exe",
+  "steps": {
+    "stop": {
+      "home": "C:\\Code\\AgentCodeGUI\\.poc-home-talk-policy-stop-m10r4stop",
+      "stop": {
+        "version": 1,
+        "enabled": false,
+        "boards": {},
+        "maxHops": 4,
+        "maxMsgs": 12,
+        "maxFanout": 3,
+        "stoppedAt": 1787541492.8037355,
+        "injectPolicy": "readonly",
+        "noticeAckAt": null,
+        "purged": 0,
+        "interrupted": 1,
+        "unstoppable": 0
+      },
+      "sent": {
+        "purged": 0,
+        "interrupted": 1,
+        "unstoppable": 0
+      },
+      "verdict": {
+        "interrupted": 1,
+        "unstoppable": 0,
+        "purged": 0
+      },
+      "bNotices": []
+    }
+  },
+  "findings": [],
+  "ms": 11931,
+  "skipped": [],
+  "verdict": "PASS"
+}
