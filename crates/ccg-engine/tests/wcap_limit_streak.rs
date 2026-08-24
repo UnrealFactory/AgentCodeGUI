@@ -15,11 +15,20 @@
 //! | ② | 꼬리 없는 문구 + 그 턴이 일을 했다 | 안 접힌다(그 축은 ②가 든다) |
 //! | ③ | 꼬리 없는 문구 + 빈손 = 진짜 헛발질 | **RCAP 그대로** 상한에서 접힌다 |
 //! | ④ | 토큰 한 줄 + **같은 벽**(지난 epoch 되돌림) | 접힌다 — 시계가 일한 흔적을 이긴다 |
+//! | ⑤ | **화면에 아무것도 안 남기는 프레임 한 장**(R2) | 접힌다 — 그건 「일했다」가 아니다 |
+//! | ⑥ | 화면에 글자·도구가 남는 프레임(R2) | 안 접힌다 — 좁히다가 여기까지 자르면 안 된다 |
 //!
 //! ④가 이 라운드가 스스로 판 함정이다. 구분자를 OR로 두면 그 판에서 계수가 영영 0이 되고,
 //! `due_at`이 `max(resets_at + 90s, armed_at + 15s)`라 **15초마다** 재발사가 돈다 =
 //! RCAP이 막은 무한 주기의 부활. 그래서 시각을 둘 다 아는 판은 시계가 판정하고, 한쪽이라도
 //! 미상인 판만 일한 흔적이 판정한다(`runtime.rs::arm_hold`의 `cleared`).
+//!
+//! ⑤⑥이 **R2에서 새로 박은 못**이다(WCAP 확인 크리틱 R1 §3.2). R1의 ②는 엔진에서
+//! `saw_turn_activity`를 읽었고 그 값은 `Frame::StreamEvent` 맨 끝줄에서 **조건 없이**
+//! 섰다 — `ping` 한 장이면 「일했다」가 됐다. 렌더러 짝(`turnDidWork`)은 화면에 **남은**
+//! 어시스턴트 텍스트·**비어 있지 않은** 도구 그룹만 세므로 같은 12시간 대본에 **엔진 71발 /
+//! 렌더러 2발**이 나왔다. 문턱을 좁혀 양쪽을 한 벌로 만든 것이 R2이고, 이 두 못이 그
+//! 71 대 2를 잠근다(⑤ = 크리틱 P4 표의 네 줄, ⑥ = 반대 방향의 과잉 절단 방지).
 use ccg_engine::clock::{Clock, Millis, VirtualClock, HOUR, MIN, SEC};
 use ccg_engine::driver::{CliDriver, SpawnSpec};
 use ccg_engine::identity::*;
@@ -46,31 +55,39 @@ struct WcapCli {
     banner: bool,
     /// result 에러 **앞에** 어시스턴트 출력을 흘린다 = 그 턴은 일을 했다.
     work: bool,
-    /// 이번 스폰에서 이미 한도 에러를 냈다. 런타임은 한 턴에 stdin 줄을 여러 번 밀 수
-    /// 있어서(초안에서 실제로 꼬리가 턴당 2시간씩 뛰었다) **스폰 하나에 한 번**으로 못 박는다.
-    fired_this_spawn: bool,
+    /// ★R2 — result 에러 앞에 흘리는 **임의의 프레임들**. 구분자 ②의 *문턱*을 재는
+    /// 손잡이다(`work`는 「확실히 일했다」쪽 한 점만 짚는다).
+    pre: Vec<Value>,
 }
 
 impl CliDriver for WcapCli {
     fn spawn(&mut self, _spec: &SpawnSpec) -> std::io::Result<()> {
         self.spawns += 1;
         self.alive = true;
-        self.fired_this_spawn = false;
         self.pending
             .push(json!({"type":"system","subtype":"init","session_id":"S1","model":"haiku"}));
         Ok(())
     }
-    fn send(&mut self, _line: Value) {
-        if self.fired_this_spawn {
+    fn send(&mut self, line: Value) {
+        // **사용자 프롬프트 줄에만 반응한다.** 런타임은 한 턴에 stdin 줄을 여러 번 밀고
+        // (`initialize`·`control_response`·프로브), 그것까지 세면 꼬리가 턴당 두 배로 뛴다.
+        //
+        // ★R2 — R1은 이 자리를 "스폰 하나에 한 번"으로 막았는데, 그러면 **프로세스를
+        // 재사용하는 재개**(도구가 돌던 채로 상주가 된 스트림)에 영영 답을 안 준다.
+        // 실제로 ⑥의 「도구 호출」 판이 그 자리에서 blind=0 · state=Streaming으로 굳었다.
+        // 줄의 종류로 가르면 두 요구가 같이 산다.
+        if line["type"] != "user" {
             return;
         }
-        self.fired_this_spawn = true;
         if self.work {
             // 메인 경로 어시스턴트 텍스트 = `mark_activity()` → `saw_turn_activity`.
             self.pending.push(json!({"type":"assistant","parent_tool_use_id":null,
                 "message":{"role":"assistant","model":"haiku",
                            "content":[{"type":"text","text":"리팩터링을 끝냈어"}]},
                 "session_id":"S1","uuid":"U-w"}));
+        }
+        for f in &self.pre {
+            self.pending.push(f.clone());
         }
         let text = if self.banner {
             "5-hour limit reached ∙ resets 3pm".to_string()
@@ -247,4 +264,98 @@ fn a_worked_turn_cannot_override_the_clock_when_both_walls_are_known() {
     let before = r.driver_ref().spawns;
     pump(&mut r, &clock, 1_000 * SEC + 12 * HOUR);
     assert_eq!(r.driver_ref().spawns, before, "★ 멈춘 뒤에는 영원히 0회");
+}
+
+/// 시각 미상 축(=codex 대기표의 기본 축)에서 12시간을 돌린다. 계수가 0으로 남으면
+/// `unknown_wait(0)` = 10분이라 **71발**이 나가고, 상한이 살아 있으면 2발에서 멎는다.
+fn twelve_hours_unknown_wall(pre: Vec<Value>) -> (usize, u32, bool, bool) {
+    let cli = WcapCli { banner: true, pre, ..Default::default() };
+    let (r, _clock, blind) = run(cli, 1_000 * SEC + 12 * HOUR);
+    let h = r.hold().expect("표는 서 있다");
+    (blind, h.attempts, h.ready, h.auto_paused)
+}
+
+/// ⑤ ★R28d WCAP **R2** — **화면에 아무것도 안 남기는 프레임 한 장은 「일했다」가 아니다.**
+///
+/// WCAP 확인 크리틱 R1 §3.2의 P4 표 그대로다. R1의 ②는 `saw_turn_activity`를 읽었고 그
+/// 값은 `Frame::StreamEvent` 맨 끝줄에서 조건 없이 섰다 — `match`의 `_ => {}`로 빠진
+/// 프레임도 그 줄에 닿는다. 그래서 아래 네 줄이 전부 **12시간에 71발 · attempts 0 ·
+/// 안 접힘**이었다. 같은 판의 렌더러는 `[사용자, 오류]` 두 말풍선뿐이라 2발에서 접힌다
+/// (`thinking`은 result가 오면 스토어가 걷는다). 71 대 2 = 파리티가 깨진 자리이자,
+/// codex 축에서 RCAP의 「자동은 최대 2발」이 통째로 사라지던 자리다.
+#[test]
+fn a_frame_that_leaves_nothing_on_screen_does_not_clear_the_streak() {
+    let delta = |d: Value| json!({"type":"stream_event","event":{"type":"content_block_delta","delta":d}});
+    let cases: Vec<(&str, Vec<Value>)> = vec![
+        ("프레임 없음", vec![]),
+        ("message_start", vec![json!({"type":"stream_event","event":{"type":"message_start"}})]),
+        ("thinking_delta", vec![delta(json!({"type":"thinking_delta","thinking":"어디부터 볼까"}))]),
+        ("ping", vec![json!({"type":"stream_event","event":{"type":"ping"}})]),
+        // 문턱의 나머지 반쪽 — **빈** 글자·**빈** 블록은 렌더러에서 `.trim()`에 걸린다.
+        ("content_block_start", vec![json!({"type":"stream_event","event":{"type":"content_block_start","content_block":{"type":"text"}}})]),
+        ("빈 text_delta", vec![delta(json!({"type":"text_delta","text":"   "}))]),
+        ("빈 assistant 텍스트", vec![json!({"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":""}]}})]),
+    ];
+    for (label, pre) in cases {
+        let (blind, attempts, ready, paused) = twelve_hours_unknown_wall(pre);
+        println!("[WCAP⑤ {label}] 12시간 {blind}회 · attempts {attempts} · ready {ready} · auto_paused {paused}");
+        assert_eq!(
+            blind as u32, MAX_AUTO_ATTEMPTS,
+            "★★ 「{label}」 한 장이 상한을 지웠다 — 12시간에 {blind}회"
+        );
+        assert!(ready && paused, "★ 「{label}」: 자동을 접고 사용자에게 넘겨야 한다");
+        assert_eq!(attempts, MAX_AUTO_ATTEMPTS, "「{label}」: 계수가 표에 실려 있다");
+    }
+}
+
+/// ⑥ ★R28d WCAP **R2** — **반대 방향의 못.** 좁히다가 여기까지 자르면 파리티가 거꾸로
+/// 깨지고(렌더러는 「일했다」인데 엔진만 접는다) 밤샘 주행이 다시 창 두 개에서 잘린다.
+/// 렌더러 `turnDidWork`가 참이 되는 세 모양을 그대로 짚는다: 스트리밍 텍스트가 남은 턴 ·
+/// 완성 어시스턴트 텍스트 · 도구 호출(= 비어 있지 않은 도구 그룹).
+#[test]
+fn output_that_stays_on_screen_still_clears_the_streak() {
+    let cases: Vec<(&str, Vec<Value>)> = vec![
+        (
+            "text_delta(스트리밍)",
+            vec![json!({"type":"stream_event","event":{"type":"content_block_delta",
+                "delta":{"type":"text_delta","text":"리팩터링을 시작할게"}}})],
+        ),
+        (
+            "assistant 텍스트",
+            vec![json!({"type":"assistant","message":{"role":"assistant","model":"haiku",
+                "content":[{"type":"text","text":"끝냈어"}]}})],
+        ),
+        // 도구 축은 **쌍으로** 온다. 결과 없이 죽은 `tool_use`만 흘리면 그 스트림은
+        // 도구가 도는 채로 상주가 되어(실측: `state=Resident` · 재스폰 0) 애초에 한도
+        // 재발사 경로에 들어가지 않는다 — 그래서 쌍이 이 축의 정직한 대본이다.
+        (
+            "도구 호출+결과",
+            vec![
+                json!({"type":"assistant","message":{"role":"assistant","model":"haiku",
+                    "content":[{"type":"tool_use","id":"toolu-1","name":"Read","input":{}}]}}),
+                json!({"type":"user","message":{"role":"user",
+                    "content":[{"type":"tool_result","tool_use_id":"toolu-1","content":"ok"}]}}),
+            ],
+        ),
+        (
+            "도구 결과만",
+            vec![json!({"type":"user","message":{"role":"user",
+                "content":[{"type":"tool_result","tool_use_id":"toolu-9","content":"ok"}]}})],
+        ),
+    ];
+    for (label, pre) in cases {
+        let cli = WcapCli { banner: true, pre, ..Default::default() };
+        let (r, _clock, blind) = run(cli, 1_000 * SEC + 65 * MIN);
+        let h = r.hold().expect("표는 서 있다");
+        println!(
+            "[WCAP⑥ {label}] 65분 {blind}회 · attempts {} · auto_paused {}",
+            h.attempts, h.auto_paused
+        );
+        assert!(
+            blind as u32 > MAX_AUTO_ATTEMPTS,
+            "★ 「{label}」이 상한에 걸렸다 — {blind}회에서 멎었다"
+        );
+        assert_eq!(h.attempts, 0, "★ 「{label}」: 일한 턴은 계수를 올리지 않는다");
+        assert!(!h.auto_paused, "★ 「{label}」: 자동이 접혔다");
+    }
 }

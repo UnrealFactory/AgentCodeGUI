@@ -404,12 +404,17 @@ async function rearm(h, text, opts = {}) {
   h.host.render()
   await flush()
   h.o.busy = false
-  const did = opts.work
-    ? [
-        { kind: 'msg', role: 'assistant', text: '리팩터링을 끝냈어' },
-        { kind: 'toolgroup', tools: [{ id: 'tool-1', name: 'Edit' }] }
-      ]
-    : []
+  // ★R2 — `think`는 **화면에 안 남는 산출**의 대역이다(엔진의 `thinking_delta` 짝).
+  // 스토어가 착지마다 걷어내는 말풍선이라 실물 스레드엔 없지만, 여기서는 일부러 남겨
+  // 「그래도 안 세는가」를 잰다 — 엔진이 12시간에 71발을 내던 바로 그 구멍이다.
+  const did = opts.think
+    ? [{ id: 'thinking', kind: 'msg', role: 'assistant', text: '어디부터 볼까…' }]
+    : opts.work
+      ? [
+          { kind: 'msg', role: 'assistant', text: '리팩터링을 끝냈어' },
+          { kind: 'toolgroup', tools: [{ id: 'tool-1', name: 'Edit' }] }
+        ]
+      : []
   h.o.state = {
     ...h.o.state,
     status: 'error',
@@ -755,6 +760,16 @@ eq('오류 말풍선 자체는 출력이 아니다(세면 모든 턴이 「일�
 eq('직전 턴의 출력은 이 턴의 것이 아니다 — 사용자 말풍선이 경계', lib3.turnDidWork([{ kind: 'msg', role: 'assistant', text: '어제 한 일' }, J_USER, J_ERR]), false)
 eq('빈 스레드', lib3.turnDidWork([]), false)
 eq('널 스레드', lib3.turnDidWork(null), false)
+// ★R2 — **파리티 문턱의 못**(WCAP 확인 크리틱 R1 §3.2). 엔진이 갈라진 자리가 정확히
+// 여기다: 프레임 축의 `saw_turn_activity`는 `ping`·`message_start`·`thinking_delta`
+// 한 장에도 서서 같은 12시간 대본에 71발(렌더러는 2발)을 냈다. 엔진을 이 문턱으로
+// 좁혔으므로(`crates/ccg-engine/src/runtime.rs::Turn::saw_turn_output`), 이 절의 다음
+// 네 줄이 그 71 대 2의 렌더러 쪽 잠금이다 — 여기가 넓어지면 엔진도 같이 넓어져야 한다.
+const J_THINK = { id: 'thinking', kind: 'msg', role: 'assistant', text: '어디부터 볼까…' }
+eq('★★ 추론 말풍선은 출력이 아니다(엔진 thinking_delta 71발의 짝)', lib3.turnDidWork([J_USER, J_THINK, J_ERR]), false)
+eq('★ 추론뿐인 턴 — 오류조차 없어도 거짓', lib3.turnDidWork([J_USER, J_THINK]), false)
+eq('★ 추론을 건너뛰어도 그 아래 진짜 출력은 본다', lib3.turnDidWork([J_USER, { kind: 'msg', role: 'assistant', text: '고쳤어' }, J_THINK]), true)
+eq('★ 추론은 사용자 경계도 못 가린다', lib3.turnDidWork([{ kind: 'msg', role: 'assistant', text: '어제 한 일' }, J_USER, J_THINK, J_ERR]), false)
 
 const J_WORKED = [J_USER, { kind: 'msg', role: 'assistant', text: 'ok' }, J_ERR]
 eq('계수가 0이면 볼 것도 없다', lib3.carriedAttempts(0, NOW, NOW, [J_USER, J_ERR], NOW), 0)
@@ -775,7 +790,7 @@ usageAnswer = G_FREE
 
 /** «쏜다 → 그 턴이 착지한다»를 n번 돈다. 멎는 자리는 **접힌 표**(autoPaused) 하나다.
  *  `work`와 `tailOf`가 구분자 둘의 손잡이다 — 둘 다 끄면 그게 곧 헛발질(대조군)이다. */
-async function nightRun(props, n, tailOf, work) {
+async function nightRun(props, n, tailOf, work, opts = {}) {
   sent.length = 0
   const h = mountArmed(props, tailOf(0))
   const seen = []
@@ -783,7 +798,7 @@ async function nightRun(props, n, tailOf, work) {
     if (!h.hold || h.hold.autoPaused) break
     await tick(h) // 리셋 도달 → 재검증 → ready → 소진 effect가 쏜다
     if (h.hold) break // 안 쐈다 = 자동이 접혔다
-    await rearm(h, tailOf(i), { work })
+    await rearm(h, tailOf(i), { work, ...opts })
     seen.push(h.hold?.attempts ?? 0)
   }
   return { h, sent: sent.length, seen }
@@ -811,6 +826,12 @@ const onlyWork = await nightRun(CX_PROPS, 4, () => CX_BANNER, true) // 꼬리가
 eq('★ ② 일한 흔적만으로도 안 잘린다(codex 배너형 — 읽을 꼬리가 없다)', { sent: onlyWork.sent, seen: onlyWork.seen }, { sent: 4, seen: [0, 0, 0, 0] })
 const cxDud = await nightRun(CX_PROPS, 4, () => CX_BANNER, false)
 eq('★ codex 축의 헛발질도 여전히 2발', { sent: cxDud.sent, seen: cxDud.seen }, { sent: 2, seen: [1, 2] })
+// ★R2 — **엔진 71발의 렌더러 짝**(WCAP 확인 크리틱 R1 §3.2). 같은 대본(codex 배너형 ·
+// 시각 미상 · 매번 같은 벽)에서 턴이 흘리는 것이 추론뿐일 때, 엔진 R1은 12시간에 71발을
+// 냈고 렌더러는 2발이었다. 이제 두 축이 같은 2발이다 — 이 줄이 렌더러 쪽 잠금이다.
+const cxThink = await nightRun(CX_PROPS, 8, () => CX_BANNER, false, { think: true })
+eq('★★ 추론만 흘리고 죽는 턴도 2발에서 접힌다(엔진 71발의 짝)', { sent: cxThink.sent, seen: cxThink.seen }, { sent: 2, seen: [1, 2] })
+ok('★ 그 표는 접혀 있다', cxThink.h.hold?.ready === true && cxThink.h.hold?.autoPaused === true, JSON.stringify(cxThink.h.hold))
 cxAnswer = []
 
 // ③ 섞인 판 — 일한 재개 하나가 상한을 **영영** 무디게 만들지 않는다(계수가 다시 선다).

@@ -262,6 +262,13 @@ export function canPressContinue(hold: LimitHold | null | undefined): boolean {
  *                        없는 축에서 ①은 영영 침묵하므로, 그 축을 ②가 든다.
  *
  * 상한·버튼·계승 구조는 RCAP 그대로다. 리셋 조건만 더한다.
+ *
+ * ★R2 — ②의 **문턱**이 두 축에서 달랐다(WCAP 확인 크리틱 R1 §3.2). 엔진은 프레임 축이라
+ * `ping`·`message_start`·`thinking_delta` 한 장이면 「일했다」로 읽었고, 시각 미상 축에서는
+ * ②가 유일 판정자라 그 한 장이 상한을 통째로 지웠다 — 같은 12시간 대본에 **엔진 71발 /
+ * 렌더러 2발**. 엔진 쪽을 이 파일의 문턱(= 화면에 **남는** 것만)으로 좁혀 한 벌로 맞췄다.
+ * 그러니 아래 `turnDidWork`는 이제 **두 축의 정의 그 자체**다 — 여기를 넓히면 엔진도 같이
+ * 넓어져야 하고, 안 그러면 71 대 2가 되돌아온다.
  */
 
 /** ① 창이 진짜로 넘어갔는가 — 직전에 쏜 표의 리셋 시각 대 이번 한도 문구의 리셋 시각.
@@ -282,12 +289,17 @@ export function windowRolled(firedResetsAt: number | null, nextResetsAt: number 
 /** `turnDidWork`가 읽는 최소 모양 — 스레드 항목(`store/session.ts` `ThreadItem`)의
  *  구조적 부분집합이다. 판정을 순수하게 두려고 스토어 타입을 끌어오지 않는다. */
 export interface TurnItem {
+  id?: string
   kind: string
   role?: string
   text?: string
   error?: boolean
   tools?: readonly unknown[]
 }
+
+/** 추론 말풍선의 고정 id(`store/session.ts`의 `THINKING_ID`). 스토어가 착지마다 걷어내므로
+ *  이 자리에 **원래는 없다** — 그래도 이름으로 한 번 더 막는다. 아래 주석 참고. */
+const THINKING_ID = 'thinking'
 
 /** ② 방금 착지한 턴이 **일을 했는가** — 마지막 사용자 말풍선 **뒤에** 어시스턴트 출력이나
  *  도구 호출이 하나라도 있으면 참.
@@ -298,13 +310,18 @@ export interface TurnItem {
  *
  *  **오류 말풍선은 세지 않는다**: 한도 에러 자체가 어시스턴트 메시지로 들어오므로
  *  (`store/session.ts`의 `rerr…`) 그걸 세면 모든 턴이 「일했다」가 된다. 도구 그룹도
- *  **빈 그룹은 안 센다**(그룹은 도구가 오기 전에 먼저 열린다). `thinking`은 result가
- *  도착할 때 스토어가 걷어내므로 이 자리에 애초에 없다(엔진의 thinking_delta 활동과
- *  다른 점 — 렌더러가 볼 수 있는 증거만 쓴다). */
+ *  **빈 그룹은 안 센다**(그룹은 도구가 오기 전에 먼저 열린다).
+ *
+ *  **추론 말풍선도 안 센다.** 스토어가 착지마다 `THINKING_ID`를 걷어내므로 이 자리에
+ *  원래는 없지만, 그 사실은 *다른 파일의 습관*이지 이 함수의 규칙이 아니었다 —
+ *  ★R28d WCAP R2에서 엔진이 정확히 그 틈으로 갈라졌다(`thinking_delta` 한 장에
+ *  「일했다」 → 12시간 71발). 이름으로 한 번 더 막아, 두 축이 **글자 그대로 같은 규칙**
+ *  하나를 들게 한다: 비어 있지 않은 어시스턴트 텍스트 · 비어 있지 않은 도구 그룹. */
 export function turnDidWork(items: readonly TurnItem[] | null | undefined): boolean {
   const list = items ?? []
   for (let i = list.length - 1; i >= 0; i--) {
     const m = list[i]
+    if (m.id === THINKING_ID) continue
     if (m.kind === 'msg' && m.role === 'user') return false
     if (m.kind === 'toolgroup' && (m.tools?.length ?? 0) > 0) return true
     if (m.kind === 'msg' && m.role === 'assistant' && !m.error && (m.text ?? '').trim()) return true

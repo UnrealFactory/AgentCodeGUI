@@ -155,7 +155,20 @@ pub struct ThreadLink {
 struct Turn {
     run_id: RunId,
     turn_ended: bool,
+    /// **메인 경로 프레임을 하나라도 봤나.** 문턱이 아주 낮다 — `ping` 한 장이면 선다.
+    /// 무음 result 보류(T8)와 미니턴 오판 복구(T9)가 쓰는 값이고, 그 자리에서는 낮은
+    /// 문턱이 옳다("CLI가 살아서 뭔가 보내는 중"이 판정 대상이다).
     saw_turn_activity: bool,
+    /// ★R28d WCAP R2 — **화면에 남는 산출을 냈나**(`saw_turn_activity`보다 좁다).
+    ///
+    /// 한도 재발사 상한의 구분자 ②([`ChatRuntime::arm_hold`])만 이 값을 본다. 위의
+    /// 넓은 문턱을 그대로 썼더니 `ping`·`message_start`·`thinking_delta` **한 장**이면
+    /// 「일했다」가 되어, 시각 미상 축(= codex 대기표의 기본 축)에서 RCAP의 「자동은
+    /// 최대 2발」이 통째로 사라졌다 — WCAP 확인 크리틱 R1 §3.2 실측: 같은 12시간 대본에
+    /// **엔진 71발 / 렌더러 2발**. 렌더러 짝(`app/src/lib/limitResume.ts::turnDidWork`)은
+    /// 화면에 **남은** 어시스턴트 텍스트와 **비어 있지 않은** 도구 그룹만 세므로 이쪽도
+    /// 같은 문턱으로 좁힌다: 비어 있지 않은 어시스턴트 텍스트 · 도구 호출 · 도구 결과.
+    saw_turn_output: bool,
     held_until: Option<Millis>,
     rearms: u32,
     #[allow(dead_code)]
@@ -177,6 +190,7 @@ impl Turn {
             run_id,
             turn_ended: false,
             saw_turn_activity: false,
+            saw_turn_output: false,
             held_until: None,
             rearms: 0,
             turn_start_seq: seq,
@@ -2214,6 +2228,15 @@ impl<D: CliDriver> ChatRuntime<D> {
                     _ => {}
                 }
                 self.mark_activity();
+                // ★R28d WCAP R2 — 좁은 문턱은 **글자가 남는 델타**만 센다(`Turn::saw_turn_output`).
+                // `thinking_delta`는 렌더러에서 result가 오면 스토어가 걷어내고
+                // (`store/session.ts`의 `THINKING_ID` 필터), `ping`·`message_start`·
+                // `content_block_start`는 애초에 말풍선을 안 만든다. 빈 문자열 델타도 안 센다 —
+                // 렌더러 `turnDidWork`의 `.trim()` 짝이다.
+                // (`mark_activity`가 먼저다: 상주 정리턴 재개(T19b)가 거기서 턴을 새로 연다.)
+                if delta_kind.as_deref() == Some("text_delta") && nonblank(&v["event"]["delta"]["text"]) {
+                    self.mark_output();
+                }
             }
             Frame::Assistant {
                 sidechain,
@@ -2248,6 +2271,13 @@ impl<D: CliDriver> ChatRuntime<D> {
                 }
                 if has_text || !tool_uses.is_empty() {
                     self.mark_activity();
+                    // ★R28d WCAP R2 — 좁은 문턱. 도구 호출은 렌더러에서 **비어 있지 않은**
+                    // 도구 그룹이 되므로 그대로 세고, 텍스트는 **내용이 있을 때만** 센다
+                    // (`has_text`는 빈 `{"type":"text","text":""}` 블록에도 참이다 —
+                    // codex 트랜스코더의 `agentMessage` 완료 프레임이 그 모양이 될 수 있다).
+                    if !tool_uses.is_empty() || nonblank_assistant_text(v) {
+                        self.mark_output();
+                    }
                 }
                 for (id, name) in tool_uses {
                     self.ledger_insert(id, LiveKind::RunningTool, name);
@@ -2279,6 +2309,9 @@ impl<D: CliDriver> ChatRuntime<D> {
                         self.settle_emit(&it, SettleReason::Completed);
                     }
                     self.mark_activity();
+                    // ★R28d WCAP R2 — 도구 결과도 좁은 문턱을 넘는다(렌더러에서 그 그룹은
+                    // 이미 비어 있지 않다 — `tool_use`가 같은 턴 앞에서 행을 열었다).
+                    self.mark_output();
                 }
                 if !task_notifications.is_empty() {
                     // F12 + T19: 상주 중이면 CLI 자발 기상 턴이다(새 run_id).
@@ -2518,6 +2551,17 @@ impl<D: CliDriver> ChatRuntime<D> {
         if held || self.state() == StateTag::HeldResult {
             // T9 — 보류 취소, 미니턴 오판 복구
             self.set_state("T9", StateTag::Streaming, None);
+        }
+    }
+
+    /// ★R28d WCAP R2 — 좁은 문턱의 흔적([`Turn::saw_turn_output`]). **늘
+    /// [`Self::mark_activity`] 뒤에** 부른다: 상주 정리턴 재개(T19b)가 거기서 턴을
+    /// 새로 열기 때문에, 먼저 부르면 방금 열린 턴이 아니라 없는 턴에 적게 된다.
+    fn mark_output(&mut self) {
+        if let Some(s) = &mut self.stream {
+            if let Some(t) = &mut s.turn {
+                t.saw_turn_output = true;
+            }
         }
     }
 
@@ -2804,7 +2848,17 @@ impl<D: CliDriver> ChatRuntime<D> {
         //     (`tests/wcap_limit_streak.rs` ④의 유래). 렌더러 짝은 epoch 축이라 첫 다리가
         //     그대로 살아 있고, 두 다리를 다 두어 **같은 규칙 한 벌**로 맞춘다.
         //  ② **그 턴이 일을 했다** — 어시스턴트 출력·도구 호출·도구 결과를 하나라도 봤다
-        //     (`saw_turn_activity`). 한도로 문전박대당한 턴에는 result 에러 하나뿐이다.
+        //     (`saw_turn_output`). 한도로 문전박대당한 턴에는 result 에러 하나뿐이다.
+        //
+        // ★R28d WCAP **R2** — ②가 읽는 값이 `saw_turn_activity`에서 `saw_turn_output`으로
+        // 좁아졌다(WCAP 확인 크리틱 R1 §3.2). 앞의 것은 `Frame::StreamEvent`의 맨 끝줄에서
+        // **조건 없이** 서므로 `ping` 한 장이면 「일했다」가 됐고, 시각 미상 축에서는 ②가
+        // 유일 판정자라 그 한 장이 RCAP의 「자동은 최대 2발」을 통째로 지웠다. 같은 12시간
+        // 대본 실측: `ping`/`message_start`/`thinking_delta` 한 장 → **엔진 71발**, 그런데
+        // 같은 판의 **렌더러는 2발**(그 셋은 화면에 아무것도 안 남긴다 — `thinking`은
+        // result가 오면 스토어가 걷는다). 파리티가 깨진 자리이자 회귀의 자리였다.
+        // 이제 양쪽 문턱이 같다: **비어 있지 않은 어시스턴트 텍스트 · 도구 호출 · 도구 결과.**
+        // (넓은 `saw_turn_activity`는 자기 자리인 T8/T9에 그대로 남는다.)
         //
         // **OR가 아니라 우선순위다.** 시각을 둘 다 아는 판에서 ①의 답은 이미 완전하다
         // (진짜로 넘어갔다면 새 창의 리셋은 반드시 더 뒤다). 거기서 ②로 뒤집으면, 토큰
@@ -2820,7 +2874,7 @@ impl<D: CliDriver> ChatRuntime<D> {
             .stream
             .as_ref()
             .and_then(|s| s.turn.as_ref())
-            .is_some_and(|t| t.saw_turn_activity);
+            .is_some_and(|t| t.saw_turn_output);
         let cleared = match (resets_at, self.auto_resume_at) {
             (Some(next), Some(prev)) => next > prev && next > now,
             _ => worked,
@@ -3422,6 +3476,22 @@ fn compose_prompt(m: &QueuedMessage) -> String {
     } else {
         format!("{}\n\n{}", m.text, note)
     }
+}
+
+/// ★R28d WCAP R2 — 문자열 값이 **공백만은 아닌가.** 렌더러 `turnDidWork`의
+/// `(m.text ?? '').trim()` 짝이다. 문자열이 아니면(없음·null) 거짓.
+fn nonblank(v: &Value) -> bool {
+    v.as_str().is_some_and(|t| !t.trim().is_empty())
+}
+
+/// ★R28d WCAP R2 — `assistant` 프레임이 **화면에 남을 글자**를 실어 왔나.
+///
+/// `Frame::Assistant::has_text`는 `{"type":"text"}` 블록의 **존재**만 보므로 빈 문자열
+/// 블록에도 참이다. 좁은 문턱은 렌더러와 같이 내용까지 본다.
+fn nonblank_assistant_text(v: &Value) -> bool {
+    v["message"]["content"]
+        .as_array()
+        .is_some_and(|bs| bs.iter().any(|b| b["type"] == "text" && nonblank(&b["text"])))
 }
 
 /// 와이어 모델 id → picker 별칭. `claude-opus-5[1m]` → `opus`.
