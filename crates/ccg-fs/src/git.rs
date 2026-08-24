@@ -10,9 +10,9 @@
 //!   - log/branch: `\x1f`(unit separator) 필드 구분 — 커밋 메시지에 나올 수 없는 글자
 //!   - name-status: `-z` (R/C는 status·old·new 3연속 토큰)
 
-use crate::diff::{compute_line_diff, new_file_diff, FileDiff};
+use crate::diff::{compute_line_diff, new_file_diff, DiffLine, FileDiff};
 use serde::Serialize;
-use std::io::Read;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
 // ── 상한(크래시 규율) ───────────────────────────────────────────────────────
@@ -162,12 +162,43 @@ impl Out {
     }
 }
 
-/// `git -C <root> <args>`. 콘솔 창을 띄우지 않고, stdout은 `MAX_OUTPUT`에서 끊고
-/// 자식을 죽인다(끊긴 실행은 `ok:false` — 반쪽 출력을 파싱해 거짓말하지 않는다).
+thread_local! {
+    /// 이 **스레드**가 띄운 `git` 자식 수 — 측정용 계수기.
+    ///
+    /// 릴리스에도 남기는 이유: 「파일 하나당 스폰 하나」 같은 회귀는 결과가 맞아서 테스트로는
+    /// 안 잡히고 **느려지기만** 한다(사용자가 "커밋이 느리다"고 말한 그 자리다).
+    /// 스레드별인 이유: 병렬로 도는 테스트끼리 계수가 섞이면 숫자가 증거가 못 된다.
+    /// `status()`처럼 자식을 **별도 스레드에서** 띄우는 자리는 그 스레드 쪽에 잡힌다.
+    static SPAWNS: std::cell::Cell<u64> = std::cell::Cell::new(0);
+}
+
+/// 지금까지 이 스레드가 띄운 `git` 자식 수. 두 시점의 차가 「그 호출이 몇 번 띄웠나」다.
+pub fn spawn_count() -> u64 {
+    SPAWNS.with(|c| c.get())
+}
+
+/// `git -C <root> <args>` — stdin은 닫아 둔다(2.6.2 `execFile`과 같은 자리).
 fn exec(root: &Path, args: &[&str]) -> Out {
+    exec_in(root, args, None)
+}
+
+/// stdin으로 바이트를 밀어 넣는 변형 — **경로 목록과 커밋 메시지를 argv 밖으로 빼는 길**.
+///
+/// Windows `CreateProcess`의 명령줄 한계는 32,767자다. 고른 파일을 전부 argv로 넘기면
+/// (2.6.2 `git add -A -- …files`, 3.0 R1도 같음) 수백 개·긴 경로에서 **스폰 자체가 실패**한다 —
+/// 사용자가 "파일이 많으면 커밋이 안 된다"고 보고한 그 사고다. `--pathspec-from-file=-`과
+/// `commit -F -`는 그 목록을 파이프로 받는다(길이 무제한).
+fn exec_stdin(root: &Path, args: &[&str], input: &[u8]) -> Out {
+    exec_in(root, args, Some(input))
+}
+
+/// 콘솔 창을 띄우지 않고, stdout은 `MAX_OUTPUT`에서 끊고 자식을 죽인다
+/// (끊긴 실행은 `ok:false` — 반쪽 출력을 파싱해 거짓말하지 않는다).
+fn exec_in(root: &Path, args: &[&str], input: Option<&[u8]>) -> Out {
     use std::process::{Command, Stdio};
     let mut cmd = Command::new("git");
-    cmd.arg("-C").arg(root).args(args).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
+    let stdin_mode = if input.is_some() { Stdio::piped() } else { Stdio::null() };
+    cmd.arg("-C").arg(root).args(args).stdin(stdin_mode).stdout(Stdio::piped()).stderr(Stdio::piped());
     // 전역 pager·색은 기계 출력에 섞이면 안 된다(사용자 config가 켜 뒀을 수 있다)
     cmd.env("GIT_PAGER", "cat").env("GIT_TERMINAL_PROMPT", "0");
     #[cfg(windows)]
@@ -180,6 +211,20 @@ fn exec(root: &Path, args: &[&str]) -> Out {
         // git 미설치 — 2.6.2에서도 `ok:false`로 떨어져 "저장소 아님"이 된다
         return Out::failed();
     };
+    SPAWNS.with(|c| c.set(c.get() + 1));
+    // stdin도 **별도 스레드**다. 여기서 다 써 넣고 읽으러 가면, 목록이 파이프 버퍼(64KB)보다
+    // 클 때 git이 stdout·stderr를 못 비워 서로 막힌다 — 파일 2,000개 경로가 정확히 그 언저리다.
+    // 쓰기 실패(EPIPE)는 무시한다: git이 인자 오류로 먼저 죽으면 그 사유는 stderr에 있다.
+    let stdin_pipe = child.stdin.take();
+    let in_thread = input.map(|b| {
+        let buf = b.to_vec();
+        std::thread::spawn(move || {
+            if let Some(mut p) = stdin_pipe {
+                let _ = p.write_all(&buf);
+                let _ = p.flush();
+            } // drop = 파이프 닫힘 = git이 보는 EOF
+        })
+    });
     // stderr는 별도 스레드로 — 두 파이프를 한 스레드에서 순서대로 읽으면 상대가 가득
     // 차서 서로 막힌다(고전적 파이프 교착).
     // ★ 캡을 넘어도 **읽기는 계속한다**(버리기만). `take(256KB)`로 멈추면 파이프가
@@ -216,6 +261,9 @@ fn exec(root: &Path, args: &[&str]) -> Out {
     }
     let status = child.wait();
     let stderr = err_thread.join().unwrap_or_default();
+    if let Some(h) = in_thread {
+        let _ = h.join();
+    }
     let ok = !over && status.map(|s| s.success()).unwrap_or(false);
     Out {
         ok,
@@ -358,6 +406,12 @@ fn walk_repos(
 
 pub fn status(cwd: &str) -> GitStatus {
     let Some(root) = repo_root(cwd) else { return not_repo() };
+    status_at(&root)
+}
+
+/// 루트를 **이미 아는** 호출자용 — `rev-parse` 왕복 하나를 아낀다(`push`가 그렇다).
+fn status_at(root: &Path) -> GitStatus {
+    let root = root.to_path_buf();
     // 두 git을 **동시에** 띄운다. 스트립이 매 턴 폴링하는 자리라 왕복 하나가 그대로
     // 체감이 된다 — 2.6.2는 `Promise.all([status, remote])`였는데(git.ts:161) R1이
     // 순차로 옮기며 1.5~2배 느려졌다(크리틱 §S9: 3.0 61·80·132ms vs 2.6.2 44·66ms).
@@ -651,6 +705,257 @@ pub fn file_diff(cwd: &str, rel: &str) -> GitFileDiffResult {
     d
 }
 
+// ── 여러 파일 diff를 한 번에 (AI 커밋 메시지 전용) ──────────────────────────
+//
+// 2.6.2는 AI 커밋 메시지를 만들 때 파일마다 `gitFileDiff`를 직렬로 불렀다 —
+// **파일 N개 = git 스폰 2N회**(`rev-parse` + `show`). 300개를 고르면 600번 프로세스를
+// 띄운다. 3.0 R1도 그대로 옮겼고, 여기서 끊는다.
+//
+// [실측한 제약] `git diff`에는 `--pathspec-from-file`이 **없다**(git 2.53.0.windows.1:
+// usage 오류로 죽는다 — add·reset·commit에만 있다). 그래서 경로를 stdin으로 못 준다.
+// 대신 두 갈래 다 **스폰 한 번**으로 끝낸다:
+//   · argv에 담기는 규모(≤24K자) → `git diff … HEAD -- <경로들>` (딱 고른 파일만)
+//   · 그보다 크면(= 사용자가 말한 "파일이 너무 많을 때") → **경로 없이 전 트리** diff 한 번을
+//     받아 고른 파일만 추린다. argv는 절대 안 넘친다.
+
+/// argv에 pathspec을 담아도 안전한 총 길이 — Windows 32,767에서 넉넉히 물러선 자리.
+const ARGV_PATHSPEC_BUDGET: usize = 24_000;
+/// 대량 diff에서 **본문으로 들고 있을** 총 바이트 상한. 넘으면 줄은 버리고 개수만 센다
+/// (호출부의 예산은 12만 자라 프롬프트에 닿는 글자는 이 상한에 영향받지 않는다).
+const BULK_TEXT_BUDGET: usize = 4 * 1024 * 1024;
+
+#[derive(Default)]
+struct Patch {
+    add: usize,
+    del: usize,
+    lines: Vec<DiffLine>,
+    binary: bool,
+    new_file: bool,
+}
+
+/// `diff --git a/<p> b/<p>`에서 경로 하나를 뽑는다. 공백이 든 경로 때문에 좌우를 못 가르는
+/// 자리라 **양쪽이 같은 경로**라는 사실(`--no-renames`)로 가운데를 찾는다.
+/// C 인용(`"a/…"` — 제어문자 경로)은 포기하고 None을 준다: 호출부가 그 파일만 옛길로 돌린다.
+fn split_git_header(rest: &str) -> Option<String> {
+    if rest.starts_with('"') || !rest.starts_with("a/") {
+        return None;
+    }
+    let len = rest.len();
+    if len < 5 || (len - 5) % 2 != 0 {
+        return None;
+    }
+    let p = (len - 5) / 2;
+    let left = rest.get(2..2 + p)?;
+    if rest.get(2 + p..5 + p)? != " b/" {
+        return None;
+    }
+    if left != rest.get(5 + p..)? {
+        return None;
+    }
+    Some(left.to_string())
+}
+
+/// `--- a/<p>` · `+++ b/<p>`의 경로. 경로에 공백이 있으면 git이 **뒤에 탭 하나**를 붙여
+/// 구분해 준다(실측) — 그 탭만 걷어내면 이름이 그대로 나온다.
+fn strip_ab(v: &str) -> Option<String> {
+    if v.starts_with('"') {
+        return None; // 인용 경로 — 파일 단위 폴백
+    }
+    let v = v.strip_prefix("a/").or_else(|| v.strip_prefix("b/"))?;
+    Some(v.strip_suffix('\t').unwrap_or(v).to_string())
+}
+
+/// `git diff -U0` 출력 → 파일별 변경 줄. 두 번째 값은 **경로를 못 읽은 덩이가 있었나**로,
+/// 참이면 호출부가 "diff에 없다 = 안 바뀌었다"라고 단정하지 않는다(조용한 거짓말 방지).
+fn parse_bulk_patch(out: &str) -> (std::collections::HashMap<String, Patch>, bool) {
+    let mut map: std::collections::HashMap<String, Patch> = std::collections::HashMap::new();
+    let mut unparsed = false;
+    let mut cur = Patch::default();
+    let mut cur_path: Option<String> = None;
+    let mut have = false;
+    let mut in_hunk = false;
+    let mut stored = 0usize;
+    for line in out.lines() {
+        if let Some(rest) = line.strip_prefix("diff --git ") {
+            if have {
+                match cur_path.take() {
+                    Some(p) => {
+                        map.insert(p, std::mem::take(&mut cur));
+                    }
+                    None => unparsed = true,
+                }
+            }
+            cur = Patch::default();
+            cur_path = split_git_header(rest);
+            have = true;
+            in_hunk = false;
+            continue;
+        }
+        if !have {
+            continue;
+        }
+        if line.starts_with("@@ ") {
+            in_hunk = true;
+            continue;
+        }
+        if !in_hunk {
+            // 파일 머리 — 여기서만 `---`/`+++`가 헤더다(본문에도 같은 글자가 나온다)
+            if let Some(v) = line.strip_prefix("--- ") {
+                if v == "/dev/null" {
+                    cur.new_file = true;
+                } else if let Some(p) = strip_ab(v) {
+                    cur_path = Some(p);
+                }
+            } else if let Some(v) = line.strip_prefix("+++ ") {
+                if v != "/dev/null" {
+                    if let Some(p) = strip_ab(v) {
+                        cur_path = Some(p);
+                    }
+                }
+            } else if line.starts_with("Binary files ") || line.starts_with("Binary file ") {
+                cur.binary = true;
+            }
+            continue;
+        }
+        // 훅 안 — `-U0`라 ctx는 없고 `+`/`-`뿐이다(`\ No newline…`은 버린다)
+        let (t, text) = match line.as_bytes().first() {
+            Some(b'+') => ("add", &line[1..]),
+            Some(b'-') => ("del", &line[1..]),
+            _ => continue,
+        };
+        if t == "add" {
+            cur.add += 1;
+        } else {
+            cur.del += 1;
+        }
+        if stored + text.len() <= BULK_TEXT_BUDGET {
+            stored += text.len();
+            cur.lines.push(DiffLine { t, text: text.strip_suffix('\r').unwrap_or(text).to_string() });
+        }
+    }
+    if have {
+        match cur_path {
+            Some(p) => {
+                map.insert(p, cur);
+            }
+            None => unparsed = true,
+        }
+    }
+    (map, unparsed)
+}
+
+fn untracked_set(root: &Path) -> std::collections::HashSet<String> {
+    // `-z`면 인용이 아예 없다(NUL 구분) — 한글·공백 경로가 그대로 온다.
+    let r = exec(root, &["ls-files", "-z", "--others", "--exclude-standard"]);
+    if !r.ok {
+        return std::collections::HashSet::new();
+    }
+    r.stdout.split('\0').filter(|s| !s.is_empty()).map(str::to_string).collect()
+}
+
+fn patch_to_result(rel: &str, p: Patch) -> GitFileDiffResult {
+    if p.binary {
+        return GitFileDiffResult {
+            error: Some(crate::t("바이너리 파일 — diff를 표시할 수 없어요", "Binary file — cannot show a diff")),
+            ..Default::default()
+        };
+    }
+    GitFileDiffResult {
+        diff: Some(FileDiff {
+            path: rel.to_string(),
+            tag: if p.new_file { "new" } else { "edit" },
+            add: p.add,
+            del: p.del,
+            lines: p.lines,
+        }),
+        ..Default::default()
+    }
+}
+
+/// 고른 파일들의 워킹트리 diff를 **git 스폰 1~2회**로 모은다(AI 커밋 메시지용).
+///
+/// 반환은 `files`와 **같은 순서·같은 길이**다. `file_diff`와 다른 점 하나:
+/// 담기는 줄이 **변경 줄뿐**이라(ctx 없음) 뷰어 계약("전체 파일")에는 못 쓴다.
+/// 그 대신 프롬프트에 들어가는 것과 정확히 같은 것만 만들고, 1.5MB 초과라는 이유로
+/// 본문을 통째로 접지 않는다(한 줄 고친 2MB 파일도 그 한 줄이 그대로 나온다).
+///
+/// 못 믿을 자리를 만나면 그 파일만 `file_diff`로 되돌아간다:
+/// unborn HEAD·32MB 초과·git 실패(전부) · 인용 경로·디스크에 없는 경로(그 파일만).
+pub fn bulk_file_diffs(cwd: &str, files: &[String]) -> Vec<GitFileDiffResult> {
+    if files.is_empty() {
+        return Vec::new();
+    }
+    let Some(root) = repo_root(cwd) else {
+        return files
+            .iter()
+            .map(|_| GitFileDiffResult { error: Some(e_not_repo()), ..Default::default() })
+            .collect();
+    };
+    let root_s = root.to_string_lossy().to_string();
+    let mut args: Vec<&str> = vec![
+        // 한글 경로를 `\355\225\234`로 escape하지 않게 — 그러면 경로가 안 맞는다(실측)
+        "-c",
+        "core.quotePath=false",
+        "diff",
+        "--no-color",
+        "--no-ext-diff",
+        "--no-renames",
+        "-U0",
+        "HEAD",
+    ];
+    let total: usize = files.iter().map(|f| f.len() + 1).sum();
+    if total <= ARGV_PATHSPEC_BUDGET && files.iter().all(|f| !f.is_empty()) {
+        args.push("--");
+        args.extend(files.iter().map(String::as_str));
+    }
+    let r = exec(&root, &args);
+    if !r.ok {
+        // 커밋이 하나도 없는 저장소(unborn HEAD)·32MB 초과·git 실패 — 옛길로 내려앉는다.
+        return files.iter().map(|f| file_diff(&root_s, f)).collect();
+    }
+    let (mut map, unparsed) = parse_bulk_patch(&r.stdout);
+    let mut untracked: Option<std::collections::HashSet<String>> = None;
+    let mut seen: std::collections::HashSet<&str> = std::collections::HashSet::new();
+    let mut out: Vec<GitFileDiffResult> = Vec::with_capacity(files.len());
+    for rel in files {
+        // 같은 경로가 두 번 오면(중복 선택) 두 번째는 옛길로 — 지도에서 이미 꺼냈다.
+        if !seen.insert(rel.as_str()) {
+            out.push(file_diff(&root_s, rel));
+            continue;
+        }
+        if let Some(p) = map.remove(rel.as_str()) {
+            out.push(patch_to_result(rel, p));
+            continue;
+        }
+        // diff에 없다 = 미추적(새 파일)이거나 · 안 바뀌었거나 · 없는 경로다.
+        let set = untracked.get_or_insert_with(|| untracked_set(&root));
+        if set.contains(rel.as_str()) {
+            let text = abs_of(&root, rel)
+                .and_then(|abs| std::fs::read(&abs).ok())
+                .map(|b| String::from_utf8_lossy(&b).into_owned());
+            out.push(match text {
+                Some(t) => build_file_diff(rel, None, Some(&t)),
+                None => GitFileDiffResult {
+                    error: Some(crate::t("내용을 읽을 수 없어요", "Could not read the contents")),
+                    ..Default::default()
+                },
+            });
+            continue;
+        }
+        let on_disk = abs_of(&root, rel).map(|p| p.exists()).unwrap_or(false);
+        if on_disk && !unparsed {
+            // 추적 중인데 diff가 없다 = 안 바뀌었다. 변경 줄 0이 정확한 답이다.
+            out.push(GitFileDiffResult {
+                diff: Some(FileDiff { path: rel.clone(), tag: "edit", add: 0, del: 0, lines: Vec::new() }),
+                ..Default::default()
+            });
+        } else {
+            out.push(file_diff(&root_s, rel));
+        }
+    }
+    out
+}
+
 fn valid_hash(hash: &str) -> bool {
     (4..=40).contains(&hash.len()) && hash.chars().all(|c| c.is_ascii_hexdigit())
 }
@@ -747,36 +1052,55 @@ pub fn commit_file_diff(cwd: &str, hash: &str, rel: &str) -> GitFileDiffResult {
 
 // ── 쓰기 동작 — 전부 {ok, error} 한 모양 ────────────────────────────────────
 
+/// 경로 목록 → `--pathspec-file-nul`이 읽는 바이트(NUL 구분). 경로에 NUL은 들어갈 수
+/// 없으므로 개행·공백·한글이 섞여도 구분이 안 흔들린다.
+fn nul_pathspec(paths: &[&str]) -> Vec<u8> {
+    let mut b: Vec<u8> = Vec::with_capacity(paths.iter().map(|p| p.len() + 1).sum());
+    for p in paths {
+        b.extend_from_slice(p.as_bytes());
+        b.push(0);
+    }
+    b
+}
+
 /// 고른 파일만 커밋 — add(그 경로만) 후 commit. 스테이징 용어는 UI에 없다.
+///
+/// **경로도 메시지도 argv로 안 나간다.** 2.6.2(`src/main/git.ts` `gitCommit`)와 3.0 R1은
+/// 고른 파일 전부를 명령줄 인자로 넘겼고, Windows `CreateProcess`의 32,767자 한계에
+/// 걸리면 **스폰 자체가 실패**했다(사용자 보고: "파일 개수가 너무 많으면 안 된다").
+/// 이제 add·reset은 `--pathspec-from-file=- --pathspec-file-nul`로, 메시지는 `commit -F -`로
+/// stdin을 탄다 — 파일 수·경로 길이·본문 길이 어느 것도 한계가 없다.
 pub fn commit(cwd: &str, files: &[String], subject: &str, body: &str) -> GitResult {
     let Some(root) = repo_root(cwd) else { return GitResult::err(e_not_repo()) };
-    if files.is_empty() {
+    // ★ 빈 경로는 버린다. 그리고 **하나도 안 남으면 여기서 끝낸다** — 빈 목록을 stdin으로
+    //   주면 git은 "경로 제한 없음"으로 읽어 `add -A`가 **저장소 전체**를 스테이징한다
+    //   (실측: 고르지 않은 파일까지 `A`로 올라왔고, 롤백 reset도 전부를 내렸다).
+    //   argv 시절엔 `git add -A -- ""`가 pathspec 오류로 죽어 우연히 막혀 있던 자리다.
+    let picked: Vec<&str> = files.iter().map(String::as_str).filter(|s| !s.is_empty()).collect();
+    if picked.is_empty() {
         return GitResult::err(crate::t("커밋할 파일이 없어요", "No files to commit"));
     }
     if subject.trim().is_empty() {
         return GitResult::err(crate::t("커밋 메시지를 입력해 주세요", "Enter a commit message"));
     }
-    let mut add_args: Vec<&str> = vec!["add", "-A", "--"];
-    add_args.extend(files.iter().map(String::as_str));
-    let add = exec(&root, &add_args);
+    let spec = nul_pathspec(&picked);
+    let add_args = ["add", "-A", "--pathspec-from-file=-", "--pathspec-file-nul"];
+    let add = exec_stdin(&root, &add_args, &spec);
     if !add.ok {
         return GitResult::err(err_line(&add.stderr, &add.stdout));
     }
     let subj = subject.trim();
     let bod = body.trim();
-    let mut args: Vec<&str> = vec!["commit", "-m", subj];
-    if !bod.is_empty() {
-        args.push("-m");
-        args.push(bod);
-    }
-    let r = exec(&root, &args);
+    // `-m subj -m bod`가 만들던 것과 같은 본문(제목·빈 줄·본문). `-F -`도 `-m`과 같은
+    // 정리 규칙(cleanup=whitespace)을 탄다 — `#`로 시작하는 줄이 잘리지 않는다.
+    let msg = if bod.is_empty() { format!("{subj}\n") } else { format!("{subj}\n\n{bod}\n") };
+    let r = exec_stdin(&root, &["commit", "-F", "-"], msg.as_bytes());
     if r.ok {
         return GitResult::ok();
     }
     // 커밋이 거부되면(훅·identity 미설정 등) 방금 올린 스테이징을 되돌려 상태를 원래대로
-    let mut reset_args: Vec<&str> = vec!["reset", "--"];
-    reset_args.extend(files.iter().map(String::as_str));
-    let _ = exec(&root, &reset_args);
+    let reset_args = ["reset", "--pathspec-from-file=-", "--pathspec-file-nul"];
+    let _ = exec_stdin(&root, &reset_args, &spec);
     let e = format!("{}{}", r.stderr, r.stdout);
     let low = e.to_lowercase();
     if low.contains("user.name") || low.contains("user.email") {
@@ -800,7 +1124,7 @@ pub fn commit(cwd: &str, files: &[String], subject: &str, body: &str) -> GitResu
 
 pub fn push(cwd: &str) -> GitResult {
     let Some(root) = repo_root(cwd) else { return GitResult::err(e_not_repo()) };
-    let st = status(root.to_string_lossy().as_ref());
+    let st = status_at(&root);
     if !st.has_remote {
         return GitResult::err(crate::t(
             "원격 저장소(remote)가 없어요 — git remote add origin <url> 후 다시",
@@ -1302,6 +1626,236 @@ mod tests {
         assert!(!commit(r.cwd(), &[], "s", "").ok);
         assert!(!commit(r.cwd(), &["a.txt".to_string()], "   ", "").ok);
         assert_eq!(status(r.cwd()).files[0].untracked, Some(true), "index가 안 더러워졌다");
+    }
+
+    /// ★ 사용자 보고 「파일 개수가 너무 많으면 커밋이 안 된다」 — 2,000개.
+    ///
+    /// 같은 목록을 **옛 방식(argv)으로도** 한 번 띄워 본다. Windows 명령줄 한계(32,767자)에
+    /// 걸려 실패하는 그 호출이, stdin 방식에서는 스폰 **한 번**으로 통과한다는 것이
+    /// 이 라운드가 고친 것의 전부다.
+    #[test]
+    fn a_two_thousand_file_commit_goes_through_stdin_in_one_spawn() {
+        let r = repo!("commit-2000");
+        r.write("seed.txt", "s\n");
+        r.git(&["add", "."]);
+        r.git(&["commit", "-qm", "init"]);
+        // 긴 경로 + 한글 + 공백 — 인자 합계가 32K를 확실히 넘게(그게 사고의 조건이다)
+        let files: Vec<String> = (0..2000)
+            .map(|i| format!("깊은 폴더/nested-{:02}/커밋 대상 파일-{:04}-long-name.txt", i % 40, i))
+            .collect();
+        for f in &files {
+            r.write(f, "한 줄\n");
+        }
+        r.write("고르지 않은 파일.txt", "남아야 한다\n");
+        let argv_len: usize = files.iter().map(|f| f.len() + 1).sum();
+        assert!(argv_len > 32_767, "인자 합계 {argv_len} — 한계를 안 넘으면 재현이 아니다");
+
+        // ① 옛길(argv)로 같은 add를 시도 — 이게 사용자가 밟은 실패다
+        let mut old_args: Vec<&str> = vec!["add", "-A", "--"];
+        old_args.extend(files.iter().map(String::as_str));
+        let old = exec(&r.0, &old_args);
+        assert!(!old.ok, "argv {argv_len}자가 통과했다 — 재현 조건이 무너졌다");
+
+        // ② 새길(stdin) — 커밋 성공 + git 스폰은 손에 꼽는 수
+        let t0 = std::time::Instant::now();
+        let before = spawn_count();
+        let res = commit(r.cwd(), &files, "대량 커밋", "본문 한 줄");
+        let spawns = spawn_count() - before;
+        let ms = t0.elapsed().as_millis();
+        assert!(res.ok, "{:?}", res.error);
+        assert_eq!(spawns, 3, "repo_root + add + commit = 3");
+        eprintln!("[측정] 2,000파일 커밋: {ms}ms · git 스폰 {spawns}회 · argv였다면 {argv_len}자");
+
+        let st = status(r.cwd());
+        let left: Vec<&str> = st.files.iter().map(|f| f.path.as_str()).collect();
+        assert_eq!(left, ["고르지 않은 파일.txt"], "고르지 않은 파일까지 커밋됐다: {}", left.len());
+        assert_eq!(log(r.cwd(), 1, 0).commits[0].subject, "대량 커밋");
+    }
+
+    /// ★ stdin으로 바꾸면서 **새로 생긴 폭탄**: `--pathspec-from-file`에 빈 목록을 주면
+    /// git은 "경로 제한 없음"으로 읽어 `add -A`가 **저장소 전체**를 스테이징한다(실측).
+    /// argv 시절엔 `git add -A -- ""`가 pathspec 오류로 죽어 우연히 막혀 있던 자리다.
+    #[test]
+    fn an_empty_path_list_never_reaches_git() {
+        let r = repo!("commit-emptyspec");
+        r.write("a.txt", "a\n");
+        r.write("b.txt", "b\n");
+        for files in [vec![], vec![String::new()], vec![String::new(), String::new()]] {
+            let res = commit(r.cwd(), &files, "제목", "");
+            assert!(!res.ok, "빈 목록이 git까지 갔다");
+            let st = status(r.cwd());
+            assert_eq!(st.files.len(), 2, "인덱스가 더러워졌다");
+            assert!(st.files.iter().all(|f| f.untracked == Some(true)), "저장소 전체가 스테이징됐다");
+        }
+    }
+
+    /// 커밋 메시지는 `commit -F -`(stdin)로 간다 — 긴 본문·개행·`#`·한글이 그대로 살아야 하고,
+    /// `-m subj -m body`가 만들던 「제목·빈 줄·본문」 모양도 그대로여야 한다.
+    #[test]
+    fn a_long_multiline_body_survives_the_stdin_message() {
+        let r = repo!("commit-body");
+        r.write("a.txt", "a\n");
+        let body: String = (0..400).map(|i| format!("본문 {i}번째 줄 — 길게 늘여 stdin 경로를 태운다\n")).collect();
+        let body = format!("{body}# 주석처럼 보이는 줄은 살아야 한다\n\n마지막 줄");
+        let res = commit(r.cwd(), &["a.txt".to_string()], "  제목 한 줄  ", &format!("  {body}  "));
+        assert!(res.ok, "{:?}", res.error);
+        let d = commit_detail(r.cwd(), &log(r.cwd(), 1, 0).commits[0].hash).expect("상세");
+        assert_eq!(d.subject, "제목 한 줄");
+        assert!(d.body.starts_with("본문 0번째 줄"), "본문 앞이 잘렸다: {}", &d.body[..40.min(d.body.len())]);
+        assert!(d.body.contains("# 주석처럼 보이는 줄은 살아야 한다"), "`#` 줄이 사라졌다");
+        assert!(d.body.ends_with("마지막 줄"), "본문 끝이 잘렸다");
+    }
+
+    /// 훅이 커밋을 거부하면 **스테이징이 통째로 되돌아가야** 한다 — 그 롤백도 경로를
+    /// argv로 넘기던 자리라 대량에서 같이 죽었다(고치기 전엔 커밋 실패 + 인덱스 오염).
+    #[test]
+    fn a_hook_rejection_rolls_back_hundreds_of_staged_paths() {
+        let r = repo!("commit-hook");
+        r.write("seed.txt", "s\n");
+        r.git(&["add", "."]);
+        r.git(&["commit", "-qm", "init"]);
+        std::fs::write(r.0.join(".git/hooks/pre-commit"), "#!/bin/sh\nexit 1\n").unwrap();
+        let files: Vec<String> = (0..600).map(|i| format!("훅 거부/파일-{i:04}-그럭저럭 긴 이름.txt")).collect();
+        for f in &files {
+            r.write(f, "x\n");
+        }
+        let res = commit(r.cwd(), &files, "거부될 커밋", "");
+        assert!(!res.ok, "pre-commit 훅이 안 먹었다(환경에 sh가 없으면 이 테스트는 무의미)");
+        // 되돌아갔나는 **인덱스에 직접** 묻는다. `status`는 미추적 폴더를 한 줄로 접어
+        // 보고하므로(기존 테스트 주석과 같은 함정) 행 수로는 판정이 안 된다.
+        let staged = r.git(&["diff", "--cached", "--name-only"]);
+        assert!(staged.ok, "인덱스를 못 읽었다");
+        assert_eq!(staged.stdout.lines().count(), 0, "스테이징이 {}개 남았다", staged.stdout.lines().count());
+        assert!(status(r.cwd()).files.iter().all(|f| f.untracked == Some(true)), "되돌리기가 반쪽이다");
+        assert_eq!(log(r.cwd(), 1, 0).commits[0].subject, "init", "거부됐는데 커밋이 생겼다");
+    }
+
+    /// AI 커밋 메시지의 diff 수집 — **파일이 몇 개든 스폰 1~2회**, 그리고 답은
+    /// 파일당 호출(`file_diff`)과 같아야 한다. 수정·새 파일·삭제·안 바뀜·한글/공백 경로를
+    /// 한 판에 섞어 두 길을 마주 세운다.
+    #[test]
+    fn bulk_diffs_answer_the_same_as_one_call_per_file_in_two_spawns() {
+        let r = repo!("bulkdiff");
+        r.write("mod.txt", "one\ntwo\nthree\n");
+        r.write("gone.txt", "사라질 내용\n");
+        r.write("한글 이름.txt", "가\n나\n");
+        r.write("same.txt", "안 바뀐다\n");
+        r.git(&["add", "."]);
+        r.git(&["commit", "-qm", "init"]);
+        r.write("mod.txt", "one\nTWO\nthree\n");
+        r.write("한글 이름.txt", "가\n다\n");
+        std::fs::remove_file(r.0.join("gone.txt")).unwrap();
+        r.write("새 파일.txt", "새 줄 1\n새 줄 2\n");
+
+        let files: Vec<String> = ["mod.txt", "gone.txt", "한글 이름.txt", "same.txt", "새 파일.txt"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        let before = spawn_count();
+        let bulk = bulk_file_diffs(r.cwd(), &files);
+        let spawns = spawn_count() - before;
+        assert_eq!(bulk.len(), files.len());
+        assert!(spawns <= 3, "파일 {}개에 스폰 {spawns}회 — 한 번에 받는 게 아니다", files.len());
+
+        for (i, rel) in files.iter().enumerate() {
+            let one = file_diff(r.cwd(), rel);
+            let (b, o) = (&bulk[i], &one);
+            assert_eq!(b.error.is_some(), o.error.is_some(), "{rel}: 오류 유무가 다르다");
+            let (bd, od) = (b.diff.as_ref().expect(rel), o.diff.as_ref().expect(rel));
+            assert_eq!((bd.add, bd.del), (od.add, od.del), "{rel}: 증감이 다르다");
+            let changed = |d: &FileDiff| -> Vec<String> {
+                d.lines.iter().filter(|l| l.t != "ctx" && l.t != "hunk").map(|l| format!("{}{}", l.t, l.text)).collect()
+            };
+            assert_eq!(changed(bd), changed(od), "{rel}: 변경 줄이 다르다");
+        }
+        // 안 바뀐 파일은 "변경 줄 0" — 헤더만 나가고 프롬프트가 거짓말하지 않는다
+        let same = bulk[3].diff.as_ref().unwrap();
+        assert_eq!((same.add, same.del, same.lines.len()), (0, 0, 0));
+        // 새 파일은 전체 추가
+        assert_eq!(bulk[4].diff.as_ref().unwrap().tag, "new");
+    }
+
+    /// 인자에 못 담는 규모(사용자 사고의 조건)에서도 **스폰은 그대로 한 번**이고 답이 같다 —
+    /// 경로를 빼고 전 트리를 받아 고른 것만 추리는 갈래.
+    #[test]
+    fn bulk_diffs_stay_one_spawn_when_the_paths_no_longer_fit_in_argv() {
+        let r = repo!("bulkdiff-wide");
+        let files: Vec<String> = (0..900)
+            .map(|i| format!("넓은 폴더/nested-{:02}/변경 파일-{:04}-long-name.txt", i % 30, i))
+            .collect();
+        for f in &files {
+            r.write(f, "before\n");
+        }
+        r.git(&["add", "."]);
+        r.git(&["commit", "-qm", "init"]);
+        for f in &files {
+            r.write(f, "before\nafter\n");
+        }
+        let argv_len: usize = files.iter().map(|f| f.len() + 1).sum();
+        assert!(argv_len > ARGV_PATHSPEC_BUDGET, "인자 합계 {argv_len} — 전 트리 갈래를 안 탄다");
+        let t0 = std::time::Instant::now();
+        let before = spawn_count();
+        let bulk = bulk_file_diffs(r.cwd(), &files);
+        let spawns = spawn_count() - before;
+        eprintln!("[측정] {}파일 bulk diff: {}ms · git 스폰 {spawns}회", files.len(), t0.elapsed().as_millis());
+        assert_eq!(spawns, 2, "repo_root + diff = 2");
+        assert_eq!(bulk.len(), files.len());
+        assert!(bulk.iter().all(|d| d.diff.as_ref().is_some_and(|x| (x.add, x.del) == (1, 0))), "전 트리 갈래의 답이 틀렸다");
+    }
+
+    /// 옛길이 실제로 얼마였나 — **기본 제외**(파일당 스폰 2회라 분 단위로 걸린다).
+    /// 재현: `cargo test -p ccg-fs --lib -- --ignored --nocapture the_old_per_file_path`
+    #[test]
+    #[ignore = "느리다 — 이 라운드의 근거 수치(옛길 vs 새길)를 다시 잴 때만"]
+    fn the_old_per_file_path_costs_two_spawns_per_file() {
+        let r = repo!("bulkdiff-oldcost");
+        let files: Vec<String> = (0..900)
+            .map(|i| format!("넓은 폴더/nested-{:02}/변경 파일-{:04}-long-name.txt", i % 30, i))
+            .collect();
+        for f in &files {
+            r.write(f, "before\n");
+        }
+        r.git(&["add", "."]);
+        r.git(&["commit", "-qm", "init"]);
+        for f in &files {
+            r.write(f, "before\nafter\n");
+        }
+        let t0 = std::time::Instant::now();
+        let s0 = spawn_count();
+        let old: Vec<GitFileDiffResult> = files.iter().map(|f| file_diff(r.cwd(), f)).collect();
+        let (old_ms, old_spawns) = (t0.elapsed().as_millis(), spawn_count() - s0);
+        let t1 = std::time::Instant::now();
+        let s1 = spawn_count();
+        let new = bulk_file_diffs(r.cwd(), &files);
+        let (new_ms, new_spawns) = (t1.elapsed().as_millis(), spawn_count() - s1);
+        eprintln!("[측정] {}파일 — 옛길 {old_ms}ms/{old_spawns}스폰 · 새길 {new_ms}ms/{new_spawns}스폰", files.len());
+        for i in 0..files.len() {
+            let (a, b) = (old[i].diff.as_ref().unwrap(), new[i].diff.as_ref().unwrap());
+            assert_eq!((a.add, a.del), (b.add, b.del), "{}: 답이 갈렸다", files[i]);
+        }
+        assert_eq!(old_spawns, files.len() as u64 * 2, "옛길은 파일당 2회였다");
+        assert!(new_spawns <= 3);
+    }
+
+    /// 커밋이 하나도 없는 저장소(unborn HEAD)에서는 `git diff HEAD`가 죽는다 —
+    /// **그때 답을 잃지 않고** 파일당 호출로 내려앉는지. 바이너리도 사유가 그대로 나온다.
+    #[test]
+    fn bulk_diffs_fall_back_on_an_unborn_head_and_keep_binary_reasons() {
+        let r = repo!("bulkdiff-unborn");
+        r.write("첫 파일.txt", "a\nb\n");
+        let files = vec!["첫 파일.txt".to_string()];
+        let bulk = bulk_file_diffs(r.cwd(), &files);
+        let d = bulk[0].diff.as_ref().expect("unborn에서 diff를 잃었다");
+        assert_eq!((d.tag, d.add), ("new", 2));
+
+        r.git(&["add", "."]);
+        r.git(&["commit", "-qm", "init"]);
+        r.write("bin.dat", "head\u{0}tail");
+        r.git(&["add", "."]);
+        r.git(&["commit", "-qm", "bin"]);
+        r.write("bin.dat", "head\u{0}TAIL");
+        let b = bulk_file_diffs(r.cwd(), &["bin.dat".to_string()]);
+        assert!(b[0].diff.is_none() && b[0].error.is_some(), "바이너리를 diff로 그렸다");
     }
 
     #[test]
