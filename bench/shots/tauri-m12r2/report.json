@@ -1,19 +1,258 @@
 {
   "app": "tauri-3.0.0",
   "kind": "tauri",
-  "at": "2026-08-24T08:21:51.122Z",
+  "at": "2026-08-24T12:43:30.366Z",
   "viewport": {
     "width": 1440,
     "height": 900
   },
   "screens": [
     {
+      "id": "autohide-preview",
+      "label": "사이드바 감지 폭 미리보기 띠",
+      "area": "2. 본채팅",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 4073,
+      "found": 1,
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "id": "sidebar-autohide-edge",
+      "label": "사이드바 자동 숨김 — 접힘/가장자리 띠",
+      "area": "2. 본채팅",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 4835,
+      "found": 1,
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "id": "settings-profile",
+      "label": "설정 — Profile",
+      "area": "7. 설정",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 1801,
+      "found": 1,
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "id": "settings-account",
+      "label": "설정 — Account",
+      "area": "7. 설정",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 1827,
+      "found": 6,
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "id": "settings-engine",
+      "label": "설정 — Engine",
+      "area": "7. 설정",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 1816,
+      "found": 2,
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "id": "settings-engine-confirm",
+      "label": "Engine — 이전 버전 정리 확인",
+      "area": "7. 설정",
+      "surface": "main-window",
+      "ok": false,
+      "ms": 1315,
+      "error": "clickText: no .set-inner button containing 정리",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "id": "settings-api",
+      "label": "설정 — API",
+      "area": "7. 설정",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 1729,
+      "found": 2,
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "id": "settings-mcp",
+      "label": "설정 — MCP",
+      "area": "7. 설정",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 1713,
+      "found": 3,
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "id": "settings-skill",
+      "label": "설정 — Skill",
+      "area": "7. 설정",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 1727,
+      "found": 3,
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "id": "settings-display",
+      "label": "설정 — Display",
+      "area": "7. 설정",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 1732,
+      "found": 3,
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "id": "settings-language",
+      "label": "설정 — Language",
+      "area": "7. 설정",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 1722,
+      "found": 1,
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "id": "settings-code-lsp",
+      "label": "설정 — Code(언어 서버)",
+      "area": "7. 설정",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 1731,
+      "found": 4,
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "id": "settings-code-expanded",
+      "label": "Code — 행 펼침",
+      "area": "7. 설정",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 1849,
+      "found": 1,
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "id": "settings-explorer",
+      "label": "설정 — Explorer",
+      "area": "7. 설정",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 1745,
+      "found": 1,
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "id": "settings-gestures",
+      "label": "설정 — Gestures",
+      "area": "7. 설정",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 1724,
+      "found": 2,
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "id": "settings-rail-search",
+      "label": "설정 — 레일 검색 필터",
+      "area": "7. 설정",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 2651,
+      "found": 1,
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "id": "error-boundary",
+      "label": "에러 안전망 카드",
+      "area": "1. 부팅",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 12658,
+      "found": 1,
+      "viewport": [
+        1440,
+        900
+      ],
+      "dirtyAfterReset": [
+        ".eb-card"
+      ],
+      "reloadedAfter": true
+    },
+    {
+      "id": "boot-splash-native",
+      "label": "네이티브 시작 스플래시",
+      "area": "1. 부팅",
+      "surface": "panel-window",
+      "ok": true,
+      "ms": 1800,
+      "via": "in-window-overlay",
+      "found": 1,
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
       "id": "limit-hold-bar",
       "label": "한도 자동 이어서 대기표 바",
       "area": "2. 본채팅",
       "surface": "main-window",
       "ok": true,
-      "ms": 313,
+      "ms": 304,
       "found": 1,
       "viewport": [
         1320,
@@ -24,10 +263,10 @@
   "windowSized": true,
   "summary": {
     "defined": 156,
-    "attempted": 1,
-    "ok": 1,
-    "failed": 0,
+    "attempted": 19,
+    "ok": 18,
+    "failed": 1,
     "skipped": 0,
-    "successRatePct": 100
+    "successRatePct": 94.7
   }
 }

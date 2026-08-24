@@ -351,6 +351,9 @@ async function mainPass() {
       const t0 = Date.now()
       const row = { id: s.id, label: s.label, area: s.area, surface: s.surface, ok: false, ms: 0 }
       let sub = null
+      // 캡처를 실제로 한 창 — 독립 창 화면이면 그쪽이다. viewport를 **그 창에서** 읽으려고
+      // 루프 스코프에 둔다(M12 R2가 부팅 패스에만 남긴 기록을 본 패스로 끌어올린다).
+      let shotCdp = cdp
       ctx._shotFound = null
       try {
         await cdp.eval(HELPERS_JS)
@@ -361,7 +364,7 @@ async function mainPass() {
           row.found = ctx._shotFound
           row.capturedInReach = true
         } else {
-          const shotCdp = s.win ? (sub = await wh.attachWindow(s.win, 15000)) : cdp
+          if (s.win) shotCdp = sub = await wh.attachWindow(s.win, 15000)
           if (s.win) await sleep(600)
           row.found = await assertOn(shotCdp, s.assert, s.assertMin ?? 1, 9000)
           await sleep(s.settle ?? 400)
@@ -371,6 +374,10 @@ async function mainPass() {
       } catch (e) {
         row.error = String(e.message ?? e).slice(0, 300)
       }
+      // ★ 캔버스 크기는 **모든 행**에 남긴다. M12 R2는 이 줄을 부팅 패스(bootPass)에만
+      //   넣어서, 그 라운드가 실측으로 밝힌 「두 앱 캔버스 어긋남」을 본 패스 18행에서는
+      //   다시 눈으로 찾아야 했다. reset 전에 읽는다 — reset이 창을 닫을 수 있다.
+      row.viewport = await shotCdp.eval(`[innerWidth, innerHeight]`).catch(() => null)
       ctx.sub = sub
       try { if (s.reset) await s.reset(cdp, ctx) } catch (e) { row.resetError = String(e.message ?? e).slice(0, 200) }
       if (sub) { try { sub.close() } catch { /* 닫힘 */ } ctx.sub = null }
@@ -411,11 +418,16 @@ async function bootPass(variantKey) {
     // 판정과 촬영은 **같은 순간**이다(selfShot 규약). 스플래시는 한 프레임짜리라
     // assert → sleep → shoot로 나누면 "있었는데 못 찍었다"가 된다.
     if (v.early) {
+      // 캔버스 크기는 **찍은 그 창에서, 찍은 직후** 읽는다. 2.6.2의 스플래시는 기동과
+      // 동시에 닫히는 별도 창이라 몇 백 ms만 늦어도 eval이 죽어 `viewport:null`이 된다(실측).
       const shotWhen = async (c, s, ms, interval = 12) => {
         const t1 = Date.now()
         for (;;) {
           const n = await c.eval(`document.querySelectorAll(${JSON.stringify(s.assert)}).length`).catch(() => 0)
-          if (n >= (s.assertMin ?? 1)) { await shoot(c, s.id); return n }
+          if (n >= (s.assertMin ?? 1)) {
+            await shoot(c, s.id)
+            return { n, vp: await c.eval(`[innerWidth, innerHeight]`).catch(() => null) }
+          }
           if (Date.now() - t1 > ms) throw new Error(`스플래시 셀렉터 미포착: ${s.assert}`)
           await sleep(interval)
         }
@@ -433,7 +445,9 @@ async function bootPass(variantKey) {
             await prepPage(c, { bg: false })
             for (const s of screens) {
               const row = { id: s.id, label: s.label, area: s.area, surface: s.surface, ok: false, ms: Date.now() - t0, via: 'separate-window' }
-              try { row.found = await shotWhen(c, s, 3000); row.ok = true }
+              // 스플래시는 두 앱의 캔버스가 **일부러** 다르다(2.6.2 별도 창 vs 3.0 창 안
+              // 오버레이). M12 R2가 손으로 적어 둔 그 사실을 행에 남긴다.
+              try { const got = await shotWhen(c, s, 3000); row.found = got.n; row.viewport = got.vp; row.ok = true }
               catch (e) { row.error = String(e.message ?? e).slice(0, 300) }
               rec(row)
               console.log(`${row.ok ? 'OK ' : 'FAIL'} ${s.id} (boot:${variantKey}/별도창)${row.error ? ' — ' + row.error : ''}`)
@@ -465,7 +479,9 @@ async function bootPass(variantKey) {
           try {
             await c.send('Emulation.setCPUThrottlingRate', { rate: fb.throttle }).catch(() => {})
             await c.send('Page.reload', { ignoreCache: false })
-            row.found = await shotWhen(c, s, fb.ms ?? 25000)
+            const got = await shotWhen(c, s, fb.ms ?? 25000)
+            row.found = got.n
+            row.viewport = got.vp
             row.ok = true
           } catch (e) { row.error = String(e.message ?? e).slice(0, 300) }
           await c.send('Emulation.setCPUThrottlingRate', { rate: 1 }).catch(() => {})
@@ -561,19 +577,17 @@ try { fs.writeFileSync(scratch.sample, SCRATCH_SNAPSHOT) } catch { /* 무시 */ 
 // --merge: --only로 실패 화면만 고쳐 다시 돌릴 때, 이번에 안 돈 화면의 기록을 지우지
 // 않는다(png는 어차피 이전 실행 것이 남아 있다). 병합 없이 --only를 쓰면 report.json이
 // 그 몇 줄로 줄어들어 "전체 성공률"이 거짓말이 된다.
-if (MERGE) {
-  const prevFile = path.join(OUT, 'report.json')
-  if (fs.existsSync(prevFile)) {
-    try {
-      const prev = JSON.parse(fs.readFileSync(prevFile, 'utf8'))
-      const now = new Map(report.screens.map((r) => [r.id, r]))
-      const order = new Map(SCREENS.map((s, i) => [s.id, i]))
-      const merged = [...(prev.screens ?? []).filter((r) => !now.has(r.id)), ...report.screens]
-      merged.sort((a, b) => (order.get(a.id) ?? 999) - (order.get(b.id) ?? 999))
-      report.screens = merged
-      report.mergedFrom = prev.at
-    } catch { /* 이전 리포트가 깨졌으면 이번 것만 남긴다 */ }
-  }
+let prev = null
+try { prev = JSON.parse(fs.readFileSync(path.join(OUT, 'report.json'), 'utf8')) } catch { /* 없거나 깨짐 */ }
+if (MERGE && prev) {
+  try {
+    const now = new Map(report.screens.map((r) => [r.id, r]))
+    const order = new Map(SCREENS.map((s, i) => [s.id, i]))
+    const merged = [...(prev.screens ?? []).filter((r) => !now.has(r.id)), ...report.screens]
+    merged.sort((a, b) => (order.get(a.id) ?? 999) - (order.get(b.id) ?? 999))
+    report.screens = merged
+    report.mergedFrom = prev.at
+  } catch { /* 이전 리포트가 깨졌으면 이번 것만 남긴다 */ }
 }
 
 const defined = SCREENS.filter((s) => !s.internal).length
@@ -588,6 +602,16 @@ report.summary = {
   failed: attempted.length - okRows.length,
   skipped: skipped.length,
   successRatePct: rate
+}
+// ── 리포트가 조용히 줄어드는 것을 막는 경고 둘 (stderr) ─────────────────────────
+//  ① --only로 고른 개수와 집계 행 수가 어긋남 = 도달 못 한 화면이 통째로 빠졌다는 뜻.
+//  ② --merge 없이 **더 짧은** 리포트로 덮어쓰기 — M12 R2의 19행 증거가 단건 재주행에
+//     덮여 1행으로 남은 그 사고다. ①만으로는 안 잡힌다(1개 요청·1행이면 숫자는 맞다).
+if (ONLY && attempted.length + skipped.length !== ONLY.size) {
+  console.error(`[ab] 경고 — --only ${ONLY.size}개인데 리포트는 ${attempted.length + skipped.length}행(시도 ${attempted.length}·skip ${skipped.length})`)
+}
+if (!MERGE && (prev?.screens?.length ?? 0) > report.screens.length) {
+  console.error(`[ab] 경고 — 이전 리포트 ${prev.screens.length}행을 ${report.screens.length}행으로 덮어쓴다. 단건 재주행이면 --merge를 붙여라`)
 }
 fs.writeFileSync(path.join(OUT, 'report.json'), JSON.stringify(report, null, 2))
 
