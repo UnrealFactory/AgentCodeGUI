@@ -208,3 +208,19 @@ agentcodegui` + `ccg-fakecli`(`--features fakecli`) + `ccg-auth-probe`(`--featur
 | `docs/critic/acct-live-ag2r1.json` | 고친 exe 전 시나리오 주행(30항목 통과) |
 | `docs/critic/acct-live-ag2r1ctrl.json` | 대조군(수정 전 빌드 · 3건 FAIL) |
 | `docs/parity-fix-ag2-r1.md` | 이 문서 |
+| `crates/ccg-store/src/bin/ccg_migrate.rs` | 부기 ⑴ — `#[must_use]` 세 줄(아래) |
+
+## 7. 부기 — `#[must_use]` 관문이 세 줄에서 새고 있었다
+
+확인 크리틱 R3의 사소·부기 첫 줄. `crates/ccg-store/src/bin/ccg_migrate.rs`의 85·98·109행이
+`write_chats`·`chats_save`·`ma_save`의 반환을 그냥 버려
+`cargo build -p ccg-store --features cli --bin ccg-migrate`가 **경고 3건**을 냈다(기본 피처로는
+그 바이너리를 안 지어 `cargo test -p ccg-store`에는 안 보인다). 동작 피해는 없지만 —
+CLI에는 거둘 런타임도 들을 창도 없다 — 「구조적으로 막는다」가 그 세 줄에서 사실이 아니었다.
+
+`let _ =`로 덮지 않고 **말하게** 했다: `{ "ok": true, "removed": [...] }`. CLI 판에서
+그 계약의 이행은 *무엇을 지웠는지 밝히는 것*이고, 하네스도 그 값을 볼 수 있게 된다
+(추가 키라 기존 소비자 `poc-chat-unify-migrate.mjs`는 영향 없다 — 그쪽은 반환을 안 읽는다).
+
+실측: 재빌드 **경고 0건** · 스모크 `save-chats`(빈 목록 저장) → `{"ok":true,"removed":["z1"]}` ·
+`cargo test -p ccg-store` **85/0** 그대로.

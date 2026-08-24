@@ -82,9 +82,14 @@ fn main() {
             let Some(p) = args.get(1) else { fail("페이로드 파일 인자가 없다") };
             let Ok(raw) = std::fs::read_to_string(p) else { fail("페이로드 파일을 못 읽었다") };
             let Ok(v) = serde_json::from_str::<Value>(&raw) else { fail("페이로드가 JSON이 아니다") };
-            ccg_store::chats_v3::write_chats(&v);
+            // ★R28c AG2 — `#[must_use]`(「지운 채팅은 런타임 회수 + `chat:status`를 지나야
+            // 한다」)의 CLI 판 답: 여기엔 거둘 런타임도 들을 창도 없으니 **말하는 것**이
+            // 그 계약의 이행이다. R3까지는 셋 다 반환을 버려 이 바이너리만 경고 3건을 냈고
+            // (기본 피처로는 안 지어서 `cargo test -p ccg-store`에 안 보였다), 그 세 줄에서
+            // 「구조적으로 막는다」가 사실이 아니었다(확인 크리틱 R3 부기).
+            let removed = ccg_store::chats_v3::write_chats(&v);
             ccg_store::status::flush();
-            out(json!({ "ok": true }))
+            out(json!({ "ok": true, "removed": removed }))
         }
         // ── 과도기 별칭 다리(§5.3-3 왕복 검사) ─────────────────────────────
         "alias-chats-get" => {
@@ -95,8 +100,8 @@ fn main() {
             let Some(p) = args.get(1) else { fail("페이로드 파일 인자가 없다") };
             let Ok(raw) = std::fs::read_to_string(p) else { fail("페이로드 파일을 못 읽었다") };
             let Ok(v) = serde_json::from_str::<Value>(&raw) else { fail("페이로드가 JSON이 아니다") };
-            ccg_store::legacy_bridge::chats_save(&v);
-            out(json!({ "ok": true }))
+            let removed = ccg_store::legacy_bridge::chats_save(&v);
+            out(json!({ "ok": true, "removed": removed }))
         }
         "alias-ma-get" => {
             let light = args.iter().any(|a| a == "--light");
@@ -106,8 +111,8 @@ fn main() {
             let Some(p) = args.get(1) else { fail("페이로드 파일 인자가 없다") };
             let Ok(raw) = std::fs::read_to_string(p) else { fail("페이로드 파일을 못 읽었다") };
             let Ok(v) = serde_json::from_str::<Value>(&raw) else { fail("페이로드가 JSON이 아니다") };
-            ccg_store::legacy_bridge::ma_save(&v);
-            out(json!({ "ok": true }))
+            let removed = ccg_store::legacy_bridge::ma_save(&v);
+            out(json!({ "ok": true, "removed": removed }))
         }
         "set-active" => {
             let Some(id) = args.get(1) else { fail("chatId 인자가 없다") };
