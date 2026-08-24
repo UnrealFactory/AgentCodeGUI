@@ -29,6 +29,9 @@ mod fs;
 mod git;
 /// 코드 인텔리전스(M7). fs·git과 같은 이유로 블로킹 — 전부 언어 서버 자식 프로세스 왕복이다.
 mod lsp;
+/// 최종 파리티 감사 R1이 남긴 미구현 채널 묶음(한도·btw·첨부·MCP/스킬·잡채널).
+/// fs·git·lsp와 같은 이유로 **블로킹 스레드**에서 돈다 — 그 모듈 헤더 참고.
+mod parity;
 mod stores;
 mod system;
 /// `pub`인 이유: 창 브로드캐스트(`win.rs broadcast_sessions`)가 이 모듈의 병합 함수를
@@ -272,6 +275,23 @@ pub(crate) fn unimplemented() -> Value {
 
 #[tauri::command]
 pub async fn ipc_call(app: AppHandle, window: WebviewWindow, channel: String, payload: Value) -> Value {
+    // ★최종 파리티 R1 — 한도·btw·첨부·MCP/스킬·잡채널(ipc/parity). 아래 파일·Git 팔과
+    // **같은 이유로** 전용 블로킹 풀에서 돈다: HTTP 왕복(게이트 1.2초·429면 최대 30초)·
+    // 디스크 스캔·사용자가 닫을 때까지 열려 있는 네이티브 대화상자.
+    //
+    // 그 팔보다 **앞**에 두는 이유 둘: (1) `parity::owns`는 명시 목록이라 저쪽과 겹칠 수
+    // 없고, (2) 앞에 두면 파일·Git 귀속 팔(`CCG_NO_FS`)이 이 채널들까지 싸잡아 미구현으로
+    // 떨어뜨리는 일이 없다 — 그 대조군이 재는 것은 파일·Git 비용이지 한도 조회가 아니다.
+    if parity::owns(&channel) {
+        let a = app.clone();
+        let w = window.clone();
+        let ch = channel.clone();
+        return tauri::async_runtime::spawn_blocking(move || parity::dispatch(&a, &w, &ch, &payload))
+            .await
+            // 블로킹 작업이 panic으로 죽어도(=버그) 렌더러에는 안전값이 가야 한다.
+            .unwrap_or_else(|_| unimplemented());
+    }
+
     // ── 파일·Git만 블로킹 스레드로 (M6) ──────────────────────────────────────
     // 나머지 채널은 메모리 스토어를 만지는 마이크로초짜리라 그대로 async 워커에서
     // 돌아도 된다. 이 둘은 다르다: 디렉터리 걷기·1.5MB 파일 읽기는 수십 ms고,
