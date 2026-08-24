@@ -500,6 +500,8 @@ function PanelHost({ boot }: { boot: PanelPopState }): React.ReactElement {
           limitHold={limitResume.hold}
           autoResume={autoResume}
           onCancelHold={() => limitResume.setHold(null)}
+          // ★R28c RCAP — 팝아웃 창도 자기 대기표를 굴린다(소유권 이전 규약) — 출구도 같이 온다
+          onResumeHold={() => limitResume.resumeNow()}
           onAutoResume={onAutoResumeChange}
           onPickFolder={() => void pickFolder()}
           onSelectFolder={(_s, p) => requestFolder(p)}

@@ -56,12 +56,33 @@ export interface LimitResumeHandle {
   // 큐 드레인 가드가 같은 커밋에서 동기적으로 읽는 미러 (state 반영은 다음 렌더라 늦다)
   holdRef: MutableRefObject<LimitHold | null>
   setHold: (h: LimitHold | null) => void // 취소(✕)·재시작 복원(본채팅) 공용
+  /** ★R28c RCAP — 사용자가 누른 「이어가기」(`LimitHoldBar`의 비-`managed` 갈래).
+   *  엔진 `ChatRuntime::resume_now`의 짝이다: 표를 걷고 그 자리에서 보내되,
+   *  **재발사 계수를 0으로 되돌린다** — 사람이 누른 재개는 몇 번이든 사람의 판단이고
+   *  자동 상한이 세는 대상이 아니다(엔진 `consume_hold(auto=false)`와 같은 규약). */
+  resumeNow: () => void
 }
 
 export function useLimitResume(o: LimitResumeSurface): LimitResumeHandle {
   const [hold, holdState] = useState<LimitHold | null>(null)
   const holdRef = useRef<LimitHold | null>(null)
+
+  // ★R28c RCAP — **눈감고 쏜 재개의 연속 횟수.** 엔진 `ChatRuntime::auto_resume_streak`의
+  // 짝이고, 표에 실려 가는 값이 `LimitHold.attempts`다.
+  //
+  // 왜 ref인가: 대기표는 **발사와 함께 걷힌다**(소진 effect가 `setHold(null)` 후 보낸다).
+  // 그 턴이 같은 한도로 또 죽어 새 표가 설 때, 물려줄 값을 들고 있는 자리가 표 바깥에
+  // 하나 필요하다. R28b에는 그 자리가 없어서 새 표가 늘 백지로 섰고, 상한이 한 대기표
+  // 안에서만 살아 5시간에 27회를 쐈다(RVERD 확인 크리틱 R1 §3.1).
+  const firesRef = useRef(0)
+
   const setHold = (h: LimitHold | null): void => {
+    // ★R28c RCAP — **표가 사라지면 재발사 연쇄도 사라진다.** ✕(대기 취소)·/clear·폴더
+    // 변경·다른 계정으로 갈아탐·사용자의 직접 전송이 전부 이 문 하나를 지나고, 전부
+    // "사람 손이 닿았다"는 뜻이다(엔진 `enqueue`의 `origin == User → streak = 0` 짝).
+    // 예외는 **자동 발사** 하나뿐이고, 그 두 자리(소진 effect · `resumeNow`)는 이 줄
+    // **뒤에** 계수를 자기 값으로 다시 놓는다 — 순서가 계약이다.
+    if (!h) firesRef.current = 0
     holdRef.current = h
     holdState(h)
   }
@@ -76,15 +97,24 @@ export function useLimitResume(o: LimitResumeSurface): LimitResumeHandle {
   useEffect(() => {
     const prev = prevStatusRef.current
     prevStatusRef.current = o.state.status
-    if (o.state.status !== 'error' || (prev !== 'analyzing' && prev !== 'working')) return
+    // ★R28c RCAP — 판정을 두 단으로 나눈다. 앞단은 "방금 돌던 턴이 **착지했나**"이고,
+    // 그 착지가 한도가 **아니면** 재발사 연쇄를 끊는다(엔진 `runtime.rs`의
+    // `!limited && hold.is_none() → auto_resume_streak = 0`과 같은 자리). 안 끊으면
+    // 어제 쌓인 계수 2가 오늘 처음 서는 대기표를 태어나자마자 「자동 멈춤」으로 만든다.
+    const ran = prev === 'analyzing' || prev === 'working'
+    const landed = o.state.status !== 'analyzing' && o.state.status !== 'working'
+    if (!ran || !landed) return
+    const msgs = o.state.messages
+    const last = msgs[msgs.length - 1]
+    const found =
+      o.state.status === 'error' && last && last.kind === 'msg' && last.error ? classifyLimitError(last.text) : null
+    if (!found?.hit) {
+      firesRef.current = 0
+      return
+    }
     if (o.apiMode || o.state.interrupted) return
     // ★ R3 — 엔진이 이 채팅의 대기표를 들고 있으면 렌더러는 장전하지 않는다(재개 주체 하나)
     if (o.managed) return
-    const msgs = o.state.messages
-    const last = msgs[msgs.length - 1]
-    if (!last || last.kind !== 'msg' || !last.error) return
-    const found = classifyLimitError(last.text)
-    if (!found.hit) return
     // 재전송 폴백 — 세션이 만들어지기 전에 죽은 첫 턴은 '이어서'로 재개할 세션이 없다
     let lastPrompt = ''
     for (let i = msgs.length - 1; i >= 0; i--) {
@@ -101,7 +131,12 @@ export function useLimitResume(o: LimitResumeSurface): LimitResumeHandle {
       resetsAt: found.resetsAt,
       fable: o.fable,
       lastPrompt,
-      at: Date.now()
+      at: Date.now(),
+      // ★R28c RCAP — **이전 표의 재발사 계수를 물려받는다**(엔진 `arm_hold`가
+      // `auto_resume_streak`를 표에 싣는 것과 같다). 이 한 줄이 없으면 상한은 한
+      // 대기표 안에서만 살아 있고, 쏜 턴이 또 죽을 때마다 백지 표가 다시 서서 주기가
+      // 영원히 돈다. 0은 안 싣는다 — 영속 형태를 R28b와 같게 두려는 것이다.
+      ...(firesRef.current > 0 ? { attempts: firesRef.current } : {})
     }
     setHold(next) // ref가 즉시 갱신돼 큐 드레인 가드가 이번 커밋에서 본다
     // 리셋 시각 정제 — 신선 usage 조회로 "막고 있는 창"의 해제 시각을 얻는다 (문구
@@ -135,6 +170,9 @@ export function useLimitResume(o: LimitResumeSurface): LimitResumeHandle {
     const was = prevBusyRef.current
     prevBusyRef.current = o.busy
     if (!o.busy || was) return
+    // ★R28c RCAP — 대기표가 **아직 서 있는데** 새 실행이 떴다 = 사람이 직접 보냈다
+    // (자동 재발사는 표를 먼저 걷고 쏘므로 이 자리에 오지 않는다). 계수는 `setHold(null)`이
+    // 끊는다 — 위 그 문에 규칙 하나로 모여 있다.
     if (holdRef.current && holdRef.current.key === o.holdKey) setHold(null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [o.busy])
@@ -171,7 +209,9 @@ export function useLimitResume(o: LimitResumeSurface): LimitResumeHandle {
     const v = resumeVerdict(cur, still, unavailable, nowSec)
     // 타이머 effect가 새 시각(또는 재확인 간격)으로 다시 건다
     if (v.kind === 'hold') setHold({ ...cur, resetsAt: v.resetsAt, probes: v.probes, at: Date.now() })
-    else setHold({ ...cur, ready: true })
+    // ★R28c RCAP — `paused`면 `ready`는 켜되 소진 effect는 쏘지 않는다(엔진 `auto_paused`).
+    //   타이머 effect도 `ready`에서 멎으므로 이 표는 **아무것도 태우지 않고** 버튼만 기다린다.
+    else setHold({ ...cur, ready: true, ...(v.paused ? { autoPaused: true } : {}) })
   }
 
   // 대기표 타이머 — 리셋 시각(+90s 여유)에 발화, 시각 미상이면 10분 간격 프로브,
@@ -188,12 +228,18 @@ export function useLimitResume(o: LimitResumeSurface): LimitResumeHandle {
   // 통과할 때 전송. 세션이 있으면 '이어서'(resume이 문맥 보유), 없으면 원문 재전송.
   useEffect(() => {
     const cur = hold
-    if (!cur?.ready || !o.enabled || o.busy || o.managed) return
+    // ★R28c RCAP — `autoPaused`는 **여기서** 막는다. 표는 `ready`(사용자가 누를 수 있다)
+    //   지만 자동 발사는 접힌 상태다 — 엔진이 `auto_paused`로 예약분까지 잠그는 것과 같은
+    //   착지이고, 이 줄이 5시간에 27회 쏘던 주기의 마지막 문이다.
+    if (!cur?.ready || cur.autoPaused || !o.enabled || o.busy || o.managed) return
     if (cur.key !== o.holdKey) return
     if (o.canSend && !o.canSend(cur)) return
     setHold(null)
     const prompt = o.state.session ? contPrompt() : cur.lastPrompt
-    if (prompt) o.send(prompt)
+    if (!prompt) return
+    // 눈감고 쏘는 재개 한 발 — 표는 방금 걷혔으니 계수는 ref가 나른다(다음 장전이 물려받는다).
+    firesRef.current = (cur.attempts ?? 0) + 1
+    o.send(prompt)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hold, o.enabled, o.busy, o.holdKey, o.managed, o.readyDep])
 
@@ -206,8 +252,22 @@ export function useLimitResume(o: LimitResumeSurface): LimitResumeHandle {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [o.managed, o.holdKey])
 
+  // ★R28c RCAP — 사용자가 누르는 출구. 자동이 접힌 표(`autoPaused`)의 **유일한** 발사구다.
+  //
+  // 계수를 0으로 되돌리는 것이 요점이다: 안 되돌리면 이 발사가 또 한도로 죽었을 때 새 표가
+  // `attempts:3`으로 서서 **누르자마자 다시 자동 멈춤**이 되고, 버튼은 한 번 쓰고 버리는
+  // 것이 된다. 엔진도 같은 이유로 사람이 누른 재개는 세지 않는다(`consume_hold(auto=false)`).
+  const resumeNow = (): void => {
+    const cur = holdRef.current
+    const oc = oRef.current
+    if (!cur || oc.busy || oc.managed) return
+    setHold(null) // 계수는 여기서 0이 된다(위 `setHold`) — 누른 재개는 세지 않는다
+    const prompt = oc.state.session ? contPrompt() : cur.lastPrompt
+    if (prompt) oc.send(prompt)
+  }
+
   // 카운트다운 틱은 여기 없다 — 표시 갱신은 LimitHoldBar(Chat.tsx)가 자기 30초 틱으로
   // 스스로 재렌더한다 (멀티 패널은 memo라 호스트 재렌더가 배너까지 닿지 않는다)
 
-  return { hold, holdRef, setHold }
+  return { hold, holdRef, setHold, resumeNow }
 }

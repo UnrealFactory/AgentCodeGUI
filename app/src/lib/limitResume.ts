@@ -25,8 +25,23 @@ export interface LimitHold {
   at: number // 장전 시각(ms) — 늦은 비동기 갱신 대조 + 복원 시 24시간 만료 판정
   ready?: boolean // 한도가 풀림 — 그 채팅이 활성·로드되면 이어서 보낸다 (영속 안 함)
   // ★3.0 — **조회 실패로 재검증을 못 한 횟수**(연속). 값을 얻은 재검증은 0으로 되돌린다.
-  // 재확인 간격(recheckDelayMs)과 눈감고 쏘는 재개의 상한(MAX_AUTO_ATTEMPTS)이 이걸 센다.
+  // 재확인 간격(recheckDelayMs)과 눈감고 쏘는 재개의 재확인 상한(MAX_RECHECKS)이 이걸 센다.
   probes?: number
+  /** ★R28c RCAP — **눈감고 쏜 재개의 횟수**(연속). 엔진 `LimitHold::attempts`
+   *  (`runtime.rs`의 `auto_resume_streak`)의 짝이다.
+   *
+   *  `probes`와 **세는 대상이 다르다**: probes 한 칸은 *재확인*(usage 조회 1회)이고
+   *  이것 한 칸은 *재발사*(CLI 턴 1회)다. 그래서 상한도 따로다(MAX_RECHECKS / MAX_AUTO_ATTEMPTS).
+   *
+   *  값을 **표에 얹는 이유**: 재개 턴이 같은 한도 에러로 또 죽으면 그 대기표는 걷히고
+   *  새 표가 선다. R28b까지 새 표는 늘 `probes:0`인 백지였고, 그래서 상한이 한 대기표
+   *  안에서만 살아 있었다 — 주기가 영원히 돌아 5시간 창 하나에 **27회**를 쐈다
+   *  (RVERD 확인 크리틱 R1 §3.1 실측). 계수를 물려받아야 그 주기가 끊긴다. */
+  attempts?: number
+  /** ★R28c RCAP — **자동 재발사를 접었다**(엔진 `LimitHold::auto_paused`의 짝).
+   *  표는 `ready`지만 소진 effect는 쏘지 않고, 배너의 「이어가기」가 유일한 출구다.
+   *  영속하지 않는다 — 복원 뒤 재검증이 `attempts`로 다시 판정한다(`ready`와 같은 규약). */
+  autoPaused?: boolean
 }
 
 // unix 초 꼬리 파싱 — 클로드 API의 한도 에러 원문 형식("Claude AI usage limit reached|1755150000")
@@ -128,13 +143,28 @@ export function codexUsageUnavailable(windows: { usedPct: number }[] | null | un
   return !windows || windows.length === 0
 }
 
-/** **눈감고 쏘는 재개**의 상한 — `crates/ccg-engine/src/limit.rs`의 `MAX_AUTO_ATTEMPTS`와
- *  같은 값·같은 뜻이다. 조회가 계속 실패해도 문구가 알려 준 리셋 시각이 이미 지났다면
- *  이 횟수의 재확인 뒤에는 한 번 쏴 본다(그 자리가 2.6.2의 동작이다).
+/** **재확인**의 상한. 조회가 계속 실패해도 이 횟수를 넘기면 한 번 쏴 본다(2.6.2 동작).
+ *
+ *  ★R28c RCAP — R28b까지 이 상수의 이름은 `MAX_AUTO_ATTEMPTS`였다. 엔진
+ *  (`crates/ccg-engine/src/limit.rs`)과 이름도 값도 같은데 **세는 대상만 달랐다**:
+ *  엔진의 그것은 *재발사*(CLI 턴 1회)를 세고 이것은 *재확인*(usage 조회 1회)을 센다.
+ *  값이 같아 더 헷갈렸다(RVERD 확인 크리틱 R1 §3.1). 세는 것의 이름으로 바꾸고,
+ *  엔진과 같은 뜻의 상한은 아래 `MAX_AUTO_ATTEMPTS`가 새로 든다.
  *
  *  ★R28b RVERD — **시각 미상 표도 이 상한을 받는다**(아래 `resumeVerdict` 참고).
  *  R1까지 여기 적혀 있던 "근거가 하나도 없으면 영영 안 쏜다"는 규칙은, 조회가 죽어 있는
  *  판에서 그 대기표를 **출구 없는 방**에 가뒀다. */
+export const MAX_RECHECKS = 2
+
+/** ★R28c RCAP — **눈감고 쏘는 재개(재발사)의 상한.** `crates/ccg-engine/src/limit.rs`의
+ *  `MAX_AUTO_ATTEMPTS`와 같은 값·같은 뜻이다: 자동으로 이어서 보낸 턴이 이 횟수만큼
+ *  같은 한도 에러로 죽으면 **그것이 곧 "아직 안 풀렸다"는 신선한 증거**이므로 자동을
+ *  접고 사용자에게 넘긴다(`ready` + `autoPaused` → 배너의 「이어가기」).
+ *
+ *  왜 필요한가(RVERD 확인 크리틱 R1 §3.1 실측): R28b는 상한을 **한 대기표 안에만** 뒀다.
+ *  쏜 턴이 또 죽으면 새 대기표가 백지(`probes:0`)로 다시 서기 때문에 주기가 영원히 돌아,
+ *  채널이 죽어 있는 판에서 5시간 창 하나에 **27회**를 눈감고 쐈다(11·22·32…290분).
+ *  계수를 표에 물려(`LimitHold.attempts`) 대기표 사이를 건너게 해야 그 주기가 끊긴다. */
 export const MAX_AUTO_ATTEMPTS = 2
 /** 조회 실패 뒤 첫 재확인 간격. 배로 늘어 `PROBE_MS`에서 멎는다(네트워크 순간 단절이
  *  5시간 대기를 10분 더 늘리지 않게 짧게 시작한다). */
@@ -146,7 +176,10 @@ export function recheckDelayMs(probes: number): number {
 
 /** 2단 재검증의 착지 — 이 세 갈래가 전부다. */
 export type ResumeVerdict =
-  | { kind: 'ready' } // 풀렸다(또는 상한을 넘긴 마지막 시도) — 소진 effect가 보낸다
+  // 풀렸다(또는 상한을 넘긴 마지막 시도) — 소진 effect가 보낸다.
+  // ★R28c RCAP — `paused`면 **보내지 않는다**: 표는 `ready`로 두되 배너의 「이어가기」가
+  // 유일한 출구다(엔진 `auto_paused`의 짝). 켜지는 자리는 아래 `resumeVerdict` ③.
+  | { kind: 'ready'; paused?: true }
   | { kind: 'hold'; resetsAt: number | null; probes: number } // 유지 — 타이머를 다시 건다
 
 /** 재검증 결과 → 착지. `still`은 blockedResetsAt/codexBlockedResetsAt의 값(막는 창의
@@ -172,10 +205,31 @@ export function resumeVerdict(hold: LimitHold, still: number | null, unavailable
     const probes = (hold.probes ?? 0) + 1
     const known = hold.resetsAt != null
     const past = known && hold.resetsAt! <= nowSec
-    if (probes <= MAX_AUTO_ATTEMPTS || (known && !past)) return { kind: 'hold', resetsAt: hold.resetsAt, probes }
+    if (probes <= MAX_RECHECKS || (known && !past)) return { kind: 'hold', resetsAt: hold.resetsAt, probes }
   }
   // ③ 풀렸다(또는 상한을 넘긴 눈감은 마지막 시도).
+  //
+  // ★R28c RCAP — **그 "마지막 시도"에도 상한이 있다.** 자동으로 이어서 보낸 턴이 이미
+  // `MAX_AUTO_ATTEMPTS`번 같은 한도 에러로 죽었다면, 그것이 이 자리에서 얻을 수 있는
+  // 가장 신선한 증거다(조회보다 신선하다 — 실제로 CLI를 태워 본 결과다). 그래서 표는
+  // `ready`로 켜되 **자동 발사는 접고** 사용자의 손에 넘긴다. 엔진이 같은 자리에서 하는
+  // 것과 글자 그대로 같다(`runtime.rs`: `attempts >= MAX_AUTO_ATTEMPTS` → `auto_paused`).
+  //
+  // 조회가 "풀렸다"고 말해도 접는 이유: 그 말은 이미 두 번 틀렸다(두 번의 재발사가 같은
+  // 한도로 죽었다). 세 번째를 자동으로 태우는 대신 버튼 하나를 준다 — 사용자가 누른
+  // 이어가기는 계수를 0으로 되돌리므로(`useLimitResume`) 막다른 방이 되지 않는다.
+  if ((hold.attempts ?? 0) >= MAX_AUTO_ATTEMPTS) return { kind: 'ready', paused: true }
   return { kind: 'ready' }
+}
+
+/** ★R28c RCAP — **렌더러가 든 대기표를 눌러서 이어갈 수 있는가**(배너의 「이어가기」).
+ *
+ *  엔진 축의 짝은 `resumeOwner.ts`의 `canPressResume`이고 규칙도 같다: `ready`인데
+ *  **아무도 안 쏘는** 표에만 버튼을 준다. 렌더러에서 그 조건은 `autoPaused` 하나다 —
+ *  그 밖의 `ready`는 소진 effect가 같은 커밋에서 삼켜 전송으로 바꾸므로, 버튼을 두면
+ *  누를 게 없는 버튼(침묵 no-op · M-LOGIC P7)이 된다. */
+export function canPressContinue(hold: LimitHold | null | undefined): boolean {
+  return !!hold?.ready && !!hold.autoPaused
 }
 
 /** 대기표 하나의 다음 발화까지 남은 시간(ms) — **타이머와 상태줄이 같은 함수를 본다.**
@@ -205,6 +259,10 @@ export function sanitizeHold(v: unknown, nowMs: number): LimitHold | null {
     at: h.at,
     // 조회 실패 계수는 살려서 복원한다 — 앱을 껐다 켜는 것으로 상한이 초기화되면
     // "부팅할 때마다 눈감고 한 번 쏘는" 자리가 생긴다. 음수·NaN·거대값은 버린다.
-    ...(typeof h.probes === 'number' && h.probes >= 1 ? { probes: Math.min(Math.floor(h.probes), 99) } : {})
+    ...(typeof h.probes === 'number' && h.probes >= 1 ? { probes: Math.min(Math.floor(h.probes), 99) } : {}),
+    // ★R28c RCAP — **재발사 계수도 같은 이유로 살린다.** 이쪽은 한 칸이 CLI 턴 1회라
+    // 더 비싸다: 재시작으로 0이 되면 "껐다 켤 때마다 두 번 더 쏘는" 자리가 된다.
+    // `autoPaused`는 복원하지 않는다 — `ready`와 같이 재검증이 이 값으로 다시 판정한다.
+    ...(typeof h.attempts === 'number' && h.attempts >= 1 ? { attempts: Math.min(Math.floor(h.attempts), 99) } : {})
   }
 }

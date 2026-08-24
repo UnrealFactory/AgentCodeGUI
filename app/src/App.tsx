@@ -2416,6 +2416,9 @@ function MainApp({ user }: { user: AppUser }) {
             // ★ R3 — 엔진이 든 대기표가 있으면 그것이 진실이다(렌더러 기계는 managed로 멈춰 있다)
             managed={engineHoldOf(chatStatus[activeChatId])}
             onResume={() => void resumeHold(activeChatId)}
+            // ★R28c RCAP — 렌더러가 든 표(옛 셸·통합 스토어 꺼짐)의 이어가기. 위 `onResume`과
+            //   상대가 다르다 — 저쪽은 엔진에게 묻고 이쪽은 훅이 직접 쏜다.
+            onContinue={limitResume.resumeNow}
           />
           <Composer
             value={input}

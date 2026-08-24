@@ -324,6 +324,7 @@ interface PanelViewProps {
   limitHold: LimitHold | null // 이 패널의 한도 대기표 — 컴포저 위 상태줄
   autoResume: boolean // 한도 자동 이어서(전역) — 과금 picker 체크 + 상태줄 문구
   onCancelHold: (slot: number) => void // 상태줄 ✕ — 대기 취소
+  onResumeHold: (slot: number) => void // ★R28c RCAP — 상태줄 「이어가기」(자동을 접은 표의 출구)
   onAutoResume: (on: boolean) => void // 과금 picker의 '한도 소진 시 자동 이어서' 체크
   onPickFolder: (slot: number) => void // 찾아보기 — OS 폴더 선택
   onSelectFolder: (slot: number, path: string) => void // 작업 폴더 팝오버 목록에서 선택
@@ -380,6 +381,7 @@ export const PanelView = memo(function PanelView({
   limitHold,
   autoResume,
   onCancelHold,
+  onResumeHold,
   onAutoResume,
   onPickFolder,
   onSelectFolder,
@@ -786,7 +788,7 @@ export const PanelView = memo(function PanelView({
         onRefreshUsage={refreshUsage}
       />
       {/* 한도 자동 이어서 상태줄 — 이 패널 대기표의 재개 예정 (본채팅과 같은 공용 바) */}
-      <LimitHoldBar hold={limitHold} enabled={autoResume} onCancel={() => onCancelHold(slot)} />
+      <LimitHoldBar hold={limitHold} enabled={autoResume} onCancel={() => onCancelHold(slot)} onContinue={() => onResumeHold(slot)} />
       <Composer
         value={meta.input}
         onChange={(t) => onInput(slot, t)}
@@ -2013,6 +2015,8 @@ function ActiveSession({
   const lr5 = useLimitResume(lrOptsFor(5, s5))
   const lrs = [lr0, lr1, lr2, lr3, lr4, lr5]
   const onCancelHold = useEvent((slot: number) => lrs[slot].setHold(null))
+  // ★R28c RCAP — 「이어가기」. 자동 재발사를 접은 표(`autoPaused`)의 유일한 출구다.
+  const onResumeHold = useEvent((slot: number) => lrs[slot].resumeNow())
 
   // drain each panel's queue one message at a time on its busy→idle transition. The
   // `was` guard (only act when that slot was busy and now isn't) prevents a double-send:
@@ -2160,6 +2164,7 @@ function ActiveSession({
         limitHold={lrs[slot].hold}
         autoResume={autoResume}
         onCancelHold={onCancelHold}
+        onResumeHold={onResumeHold}
         onAutoResume={onAutoResumeChange}
         onPickFolder={onPickFolder}
         onSelectFolder={onSelectFolder}

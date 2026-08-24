@@ -27,6 +27,7 @@
  * 실행: node scripts/poc-limit-resume.mjs   (esbuild로 lib를 번들 후 인메모리 구동)
  */
 import esbuild from 'esbuild'
+import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -209,6 +210,27 @@ eq('상한 초과여도 리셋이 아직 미래면 안 쏜다', lib3.resumeVerdi
 eq('시각을 아는 표는 상한과 무관하게 그 시각까지 기다린다(엔진 `known && !past`)', lib3.resumeVerdict(H({ resetsAt: NOW + 5, probes: 99 }), null, true, NOW), { kind: 'hold', resetsAt: NOW + 5, probes: 100 })
 eq('물어봤고 막는 창이 없다 → 풀렸다', lib3.resumeVerdict(H(), null, false, NOW), { kind: 'ready' })
 
+// ★R28c RCAP — **재발사 상한**(RVERD 확인 크리틱 R1 §3.1). R28b의 상한은 `probes`(재확인)만
+// 셌고 그건 **한 대기표 안에서만** 산다. 쏜 턴이 또 죽어 새 표가 서면 백지라 주기가 영원히
+// 돌았다(5시간 27회). `attempts`(재발사)는 표를 건너 물려받고, 넘기면 `ready + paused`다 —
+// 엔진 `runtime.rs`의 `attempts >= MAX_AUTO_ATTEMPTS → auto_paused`와 같은 착지.
+eq('재발사 계수 1(상한 안) → 눈감은 발사는 아직 허용', lib3.resumeVerdict(H({ resetsAt: null, probes: 2, attempts: 1 }), null, true, NOW), { kind: 'ready' })
+eq('★★ 재발사 계수 2(상한) → ready지만 자동은 접힌다', lib3.resumeVerdict(H({ resetsAt: null, probes: 2, attempts: 2 }), null, true, NOW), { kind: 'ready', paused: true })
+eq('★★ 조회가 "풀렸다"고 해도 상한을 넘긴 표는 접는다', lib3.resumeVerdict(H({ attempts: 2 }), null, false, NOW), { kind: 'ready', paused: true })
+eq('아직 막혔다는 신선한 증거가 먼저다(상한과 무관)', lib3.resumeVerdict(H({ attempts: 9 }), NOW + 3600, false, NOW), { kind: 'hold', resetsAt: NOW + 3600, probes: 0 })
+eq('재발사 상한은 엔진과 같은 값', lib3.MAX_AUTO_ATTEMPTS, 2)
+eq('재확인 상한은 이름이 바뀌었을 뿐 값은 그대로', lib3.MAX_RECHECKS, 2)
+eq('attempts 복원(위생) — 재시작이 상한을 지우면 껐다 켤 때마다 두 발이다', lib3.sanitizeHold({ ...H({ attempts: 2 }), at: NOW_MS - 1000 }, NOW_MS)?.attempts, 2)
+eq('attempts 오염(음수)은 버린다', lib3.sanitizeHold({ ...H({ attempts: -3 }), at: NOW_MS - 1000 }, NOW_MS)?.attempts, undefined)
+eq('autoPaused는 영속하지 않는다(ready와 같은 규약)', lib3.sanitizeHold({ ...H({ attempts: 2, autoPaused: true }), at: NOW_MS - 1000 }, NOW_MS)?.autoPaused, undefined)
+
+// 배너의 버튼 조건 — `LimitHoldBar`의 비-`managed` 갈래가 **이 함수**를 본다(Chat.tsx).
+// 엔진 축의 `canPressResume`과 같은 규칙: 아무도 안 쏘는 `ready`에만 버튼을 준다.
+eq('★ 접힌 표에는 버튼', lib3.canPressContinue(H({ ready: true, autoPaused: true })), true)
+eq('그냥 ready는 소진 effect가 삼킨다 — 버튼 없음(침묵 no-op 금지)', lib3.canPressContinue(H({ ready: true })), false)
+eq('대기 중인 표에는 버튼 없음', lib3.canPressContinue(H({ probes: 1 })), false)
+eq('표가 없으면 버튼 없음', lib3.canPressContinue(null), false)
+
 eq('재확인 간격 1회차 = 15초', lib3.recheckDelayMs(1), 15_000)
 eq('재확인 간격 2회차 = 30초', lib3.recheckDelayMs(2), 30_000)
 eq('재확인 간격은 프로브(10분)에서 멎는다', lib3.recheckDelayMs(20), 10 * 60_000)
@@ -343,7 +365,7 @@ const flush = () => new Promise((r) => setTimeout(r, 0))
 
 /** 대기표 하나를 장전한 훅 호스트를 만든다. props는 화면이 실제로 넘기는 모양 그대로.
  *  `text`를 주면 그 문구로 죽은 턴을 만든다(codex 한도 문구에는 `…|epoch` 꼬리가 없다). */
-function mountArmed(props, text) {
+function mountArmed(props, text, mod = hookMod) {
   timers.length = 0 // 앞 시나리오의 호스트가 걸어 둔 타이머와 섞이지 않게(가짜 시계 초기화)
   const errText = text ?? 'Claude AI usage limit reached|' + (NOW - 100)
   const state = {
@@ -357,14 +379,34 @@ function mountArmed(props, text) {
   }
   const o = { state, busy: false, enabled: true, apiMode: false, engine: 'claude', fable: false, send: (p) => sent.push(p), ...props }
   let handle = null
-  const host = hookMod.__mount(() => {
-    handle = hookMod.useLimitResume(o)
+  // `mod`는 훅과 훅 런타임(stub)을 **같은 번들에서** 꺼내야 한다 — 스텁의 `cur`가 모듈
+  // 스코프라 두 번들을 섞으면 훅이 남의 셀 배열을 읽는다(I절의 대조군이 그 자리다).
+  const host = mod.__mount(() => {
+    handle = mod.useLimitResume(o)
     return null
   })
   // 장전 조건: 방금 돌던 턴(working)이 error로 끝났다 = status 상승 에지
   o.state = { ...state, status: 'error' }
   host.render()
-  return { host, o, get hold() { return handle.hold } }
+  return { host, o, get hold() { return handle.hold }, get api() { return handle } }
+}
+
+/** 쏜 재개 턴이 **같은 한도 에러로 또 죽는다** — 앱이 실제로 밟는 경로(busy 상승 →
+ *  status:error → 재장전). I절의 주행이 이 한 걸음을 반복한다. */
+async function rearm(h, text) {
+  const errText = text ?? 'Claude AI usage limit reached|' + (NOW - 100)
+  h.o.busy = true
+  h.o.state = { ...h.o.state, status: 'working' }
+  h.host.render()
+  await flush()
+  h.o.busy = false
+  h.o.state = {
+    ...h.o.state,
+    status: 'error',
+    messages: [...h.o.state.messages, { kind: 'msg', role: 'user', text: '이어서' }, { kind: 'msg', role: 'assistant', text: errText, error: true }]
+  }
+  h.host.render()
+  await flush()
 }
 
 /** 걸려 있는 타이머 하나를 지금 터뜨린다(가짜 시계) — fire()가 끝날 때까지 기다린다. */
@@ -524,6 +566,135 @@ sent.length = 0
 usageAnswer = G_FREE
 const hm = mountArmed({ holdKey: 'chat-1', account: 'a@b.c', managed: true })
 eq('managed면 장전 자체를 안 한다', { hold: hm.hold, timers: timers.length, sent: sent.length }, { hold: null, timers: 0, sent: 0 })
+
+// ── I. ★R28c RCAP — **재발사 상한**: 5시간 창 하나에 몇 발인가 ────────────────
+//
+// RVERD 확인 크리틱 R1 §3.1의 최대 격차: R28b가 낸 출구는 버튼이 아니라 **발사**였고
+// 그 발사에 상한이 없었다. 상한은 `probes`(재확인)뿐이었는데 그건 **한 대기표 안에서만**
+// 산다 — 쏜 턴이 같은 한도로 또 죽으면 새 표가 백지(`probes:0`)로 서서 주기가 영원히 돈다.
+// 크리틱 실측: 채널이 계속 빈 배열인 판에서 **5시간에 27회**(11·22·32…290분).
+//
+// 여기서는 그 주행을 하네스로 옮긴다. 판은 크리틱과 같다 — 시각 미상 대기표(codex 한도
+// 문구엔 `…|epoch` 꼬리가 없다) + 조회가 계속 실패 + 쏜 턴이 같은 한도로 또 죽는다.
+// 한 대기표의 벽시계는 `PROBE_MS 600s + 15s + 30s = 645s`다.
+console.log('\nI. 재발사 상한 — 5시간 주행(크리틱 R1 §3.1 재현)')
+tag = 'RCAP'
+
+const FIVE_H = 5 * 3600_000
+const I_PROPS = { holdKey: 'slot-0', account: 'a@b.c' }
+
+/** 대기표가 서고 → 쏘고 → 그 턴이 또 죽고를 5시간(가짜 시계)까지 반복한다.
+ *  멎는 자리는 둘 중 하나: 자동이 접힌 표(`autoPaused`)이거나, 5시간을 다 쓴 것. */
+async function blindRun(mod, text) {
+  sent.length = 0
+  const h = mountArmed(I_PROPS, text, mod)
+  let clock = 0
+  const fired = []
+  let guard = 0
+  while (clock < FIVE_H && guard++ < 900) {
+    if (h.hold && !h.hold.ready) {
+      const ms = await tick(h)
+      if (ms == null) break
+      clock += ms
+      continue
+    }
+    if (!h.hold) {
+      fired.push(clock) // 방금 쐈다 — 그 턴이 같은 한도로 또 죽는다
+      await rearm(h, text)
+      continue
+    }
+    break // `ready`인 채 멎었다 = 자동을 접었다(사용자의 버튼 차례)
+  }
+  return { h, clock, fired }
+}
+
+usageAnswer = FAIL_VALUE // 조회가 계속 죽어 있는 판(크리틱이 27회를 잰 그 판)
+const now = await blindRun(hookMod, CX_BANNER)
+eq('★★ 5시간 눈감은 재발사 = 상한(2)에서 멎는다', { fires: now.fired.length, sent: sent.length }, { fires: 2, sent: 2 })
+eq('★ 발사 시각은 645초 · 1290초(대기표당 600+15+30)', now.fired, [645_000, 1_290_000])
+eq(
+  '★★ 세 번째 표는 ready지만 자동은 접혔다(엔진 auto_paused 짝)',
+  { ready: !!now.h.hold?.ready, paused: !!now.h.hold?.autoPaused, attempts: now.h.hold?.attempts },
+  { ready: true, paused: true, attempts: 2 }
+)
+eq('★ 접힌 표는 아무것도 안 태운다 — 타이머 0', timers.length, 0)
+for (let i = 0; i < 5; i++) await tick(now.h)
+eq('★ 더 돌려도 발사 0(주기가 끊겼다)', sent.length, 2)
+ok('★ 멎은 시각은 32분대 — 5시간을 다 쓰지 않는다', now.clock < 40 * 60_000, `${Math.round(now.clock / 60_000)}분`)
+
+// 대조군 — **R28b 판을 그대로 꺼내** 같은 대본을 먹인다. 27이 나와야 이 절의 주장이 선다.
+const PRE_REF = '63bf667' // R28b RVERD R1 = 크리틱이 27회를 실측한 판
+const preDir = path.join(tmp, 'pre-r28b')
+let preMod = null
+try {
+  fs.mkdirSync(preDir, { recursive: true })
+  for (const f of ['limitResume.ts', 'useLimitResume.ts']) {
+    const src = execFileSync('git', ['show', `${PRE_REF}:app/src/lib/${f}`], { cwd: root, maxBuffer: 1 << 24 }).toString('utf8')
+    // 훅이 값으로 쓰는 유일한 이웃은 `t()`다. A/B 축이 아니므로 **레포의 현재 사본**을
+    // 절대 경로로 가리킨다(i18n은 다시 './prefs'를 부른다 — 복사하면 그 이웃이 끊긴다).
+    fs.writeFileSync(path.join(preDir, f), src.replace(/from '\.\/i18n'/g, `from ${imp(path.join(root, 'app/src/lib/i18n.ts'))}`))
+  }
+  const preEntry = path.join(tmp, 'pre-entry.mjs')
+  fs.writeFileSync(preEntry, `export { useLimitResume } from ${imp(path.join(preDir, 'useLimitResume.ts'))}\nexport { __mount } from ${imp(stubPath)}\n`)
+  preMod = await bundle(preEntry, 'pre-hook.mjs', { alias: { react: stubPath } })
+} catch (e) {
+  console.log(`   (대조군 ${PRE_REF} 판을 못 꺼냈다 — 건너뛴다: ${String(e.message).split('\n')[0]})`)
+}
+if (preMod) {
+  const pre = await blindRun(preMod, CX_BANNER)
+  eq(`★★ 대조군(${PRE_REF}) — 같은 5시간에 27회`, pre.fired.length, 27)
+  ok('대조군의 간격도 645초 정각', pre.fired[0] === 645_000 && pre.fired[26] === 27 * 645_000, JSON.stringify(pre.fired.slice(0, 3)))
+  ok('대조군의 마지막 표는 살아 있다(끝이 없다)', !!pre.h.hold && !pre.h.hold.autoPaused, JSON.stringify(pre.h.hold))
+  console.log(
+    `   A/B — 5시간 눈감은 재발사: R28b(${PRE_REF}) ${pre.fired.length}회 · 마지막 ${Math.round(pre.fired[pre.fired.length - 1] / 60_000)}분` +
+      `  →  HEAD ${now.fired.length}회 · ${Math.round(now.clock / 60_000)}분에 자동 정지`
+  )
+}
+
+// ② 사용자가 누르는 출구 — 접힌 표의 **유일한** 발사구이고, 누른 재개는 세지 않는다.
+console.log('   ② 「이어가기」(resumeNow) — 누른 재개는 상한이 세지 않는다')
+usageAnswer = FAIL_VALUE
+const hp = await blindRun(hookMod, CX_BANNER)
+ok('접힌 표가 서 있다', hp.h.hold?.ready === true && hp.h.hold?.autoPaused === true, JSON.stringify(hp.h.hold))
+hp.h.api.resumeNow()
+hp.h.host.render()
+await flush()
+eq('★★ 누르면 그 자리에서 보낸다(표 소진)', { hold: hp.h.hold, sent: sent.length }, { hold: null, sent: 3 })
+ok('보낸 문구는 이어서(세션 있음)', /이어서|continue/i.test(sent[2] ?? ''), sent[2])
+await rearm(hp.h, CX_BANNER)
+eq('★★ 누른 재개 뒤의 새 표는 백지 — 버튼이 한 번 쓰고 버리는 것이 되지 않는다', hp.h.hold?.attempts, undefined)
+
+// ③ 계수가 0으로 돌아가는 나머지 두 자리(엔진 `!limited` · `origin == User`의 짝).
+console.log('   ③ 계수 리셋 — 한도가 아닌 착지 / 사용자가 직접 보냄')
+sent.length = 0
+const hb = mountArmed(I_PROPS, CX_BANNER)
+for (let i = 0; i < 3; i++) await tick(hb)
+eq('첫 표는 한 발 쏜다', { hold: hb.hold, sent: sent.length }, { hold: null, sent: 1 })
+await rearm(hb, 'Command failed with exit code 1') // 이번엔 한도가 아닌 이유로 죽었다
+eq('한도가 아닌 착지에는 표가 안 선다', hb.hold, null)
+await rearm(hb, CX_BANNER)
+eq('★ 한도가 아닌 착지가 연쇄를 끊는다 — 다음 표는 백지', hb.hold?.attempts, undefined)
+
+sent.length = 0
+const hu = mountArmed(I_PROPS, CX_BANNER)
+for (let i = 0; i < 3; i++) await tick(hu)
+await rearm(hu, CX_BANNER)
+eq('두 번째 표는 계수 1을 물려받는다', hu.hold?.attempts, 1)
+// 표가 **선 채로** busy가 올라갔다 = 사용자가 직접 보냈다(자동 재발사는 표를 먼저 걷는다)
+await rearm(hu, CX_BANNER)
+eq('★ 사용자가 직접 보내면 표가 걷히고 계수도 0 — 다음 표는 백지', hu.hold?.attempts, undefined)
+
+// ✕(대기 취소)도 같은 문(`setHold(null)`)을 지난다 — 취소한 표의 계수가 다음 표에 남으면
+// 사용자는 ✕를 누른 것만으로 다음 한도에서 「자동 멈춤」을 만나게 된다.
+sent.length = 0
+const hx = mountArmed(I_PROPS, CX_BANNER)
+for (let i = 0; i < 3; i++) await tick(hx)
+await rearm(hx, CX_BANNER)
+eq('취소 전 표는 계수 1', hx.hold?.attempts, 1)
+hx.api.setHold(null) // 사용자가 ✕
+hx.host.render()
+await rearm(hx, CX_BANNER)
+eq('★ ✕로 취소한 뒤의 새 표도 백지', hx.hold?.attempts, undefined)
 
 fs.rmSync(tmp, { recursive: true, force: true })
 console.log(`\n${fail === 0 ? 'PASS' : 'FAIL'} — ${pass} 통과, ${fail} 실패`)

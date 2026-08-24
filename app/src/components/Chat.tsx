@@ -29,7 +29,7 @@ import { isEn, t, useLang } from '../lib/i18n'
 // ★R28 ACCT §1·§3 — 계정 목록·한도·「사용 중」 역인덱스의 단일 스토어.
 import { ensureAccounts, ensureCodexAccounts, inUseLabel, primeUsageFromDisk, refreshCodexUsage, refreshUsage, useAccounts } from '../lib/accounts'
 import { sameCwd, type ThreadItem } from '../store/session'
-import { holdDelayMs, type LimitHold } from '../lib/limitResume'
+import { canPressContinue, holdDelayMs, type LimitHold } from '../lib/limitResume'
 import { noteLanding, putAnchor, takeAnchor } from '../lib/threadAnchor'
 import type { EngineHold } from '../lib/resumeOwner'
 import { settleText, useSettledReason } from '../lib/settled'
@@ -3285,7 +3285,8 @@ export function LimitHoldBar({
   enabled,
   onCancel,
   managed,
-  onResume
+  onResume,
+  onContinue
 }: {
   hold: LimitHold | null
   enabled: boolean
@@ -3296,6 +3297,10 @@ export function LimitHoldBar({
   managed?: EngineHold | null
   /** ★ R3 — `chat:queue-mutate {op:'resume'}`. `ready`인데 안 나간 대기표의 유일한 출구. */
   onResume?: () => void
+  /** ★R28c RCAP — **렌더러가 든 대기표**의 이어가기(`useLimitResume` `resumeNow`).
+   *  `onResume`과 자리는 같고 상대가 다르다 — 저쪽은 엔진에게 묻고 이쪽은 훅이 직접 쏜다.
+   *  둘을 한 프롭으로 합치면 본채팅에서 렌더러 표를 엔진에게 물어보는 오배선이 된다. */
+  onContinue?: () => void
 }) {
   // 카운트다운 재렌더 틱(30초) — 배너가 스스로 갱신한다. 호스트 재렌더에 기대면
   // memo 미니어처(멀티 PanelView) 안에서 숫자가 멎는다.
@@ -3340,14 +3345,24 @@ export function LimitHoldBar({
     )
   }
   if (!hold) return null
+  // ★R28c RCAP — **자동을 접은 표**(`autoPaused`)는 `ready`지만 아무도 안 쏜다. R28b까지
+  // 이 갈래의 버튼은 ✕ 하나뿐이어서, 그런 표가 생기면 사용자가 누를 출구가 없었다
+  // (RVERD 확인 크리틱 R1 §3.2). `managed` 갈래와 같은 문법·같은 클래스로 버튼을 준다.
+  const press = canPressContinue(hold) && !!onContinue
   return (
     <div className="limit-hold-wrap">
-      <div className="limit-hold">
+      {/* `.ready`는 `managed` 갈래가 「눌러서 이어가기」에 쓰는 그 문법이다 — 접힌 표에만
+          붙인다(그냥 `ready`는 곧 전송으로 바뀌는 찰나라 기존 모양을 안 건드린다) */}
+      <div className={'limit-hold' + (hold.autoPaused ? ' ready' : '')}>
         <IconAlert size={13} />
         <span className="lh-title">{t('사용 한도에 도달했어요', 'Usage limit reached')}</span>
         <span className="lh-sub">
           {hold.ready
-            ? t('한도가 풀렸어요 — 이어서 계속해요', 'Limit lifted — continuing')
+            ? hold.autoPaused
+              ? // 엔진이 같은 착지에서 쓰는 공지와 같은 문장이다(runtime.rs `attempts >=
+                // MAX_AUTO_ATTEMPTS`) — 한 앱 안에서 같은 사실은 같은 말로.
+                t('자동으로 이어서 보낸 turn이 계속 한도에 막혔어요 — 눌러서 이어가기', 'Auto-resume kept hitting the limit — click to continue')
+              : t('한도가 풀렸어요 — 이어서 계속해요', 'Limit lifted — continuing')
             : enabled
               ? hold.resetsAt
                 ? // ★3.0 — 타이머와 **같은 함수**를 본다(`holdDelayMs`). 조회 실패로 재장전된
@@ -3363,6 +3378,11 @@ export function LimitHoldBar({
                   "Turn on 'Auto-continue after limit resets' in the billing menu to resume automatically"
                 )}
         </span>
+        {press && (
+          <button className="lh-go" onClick={onContinue}>
+            {t('이어가기', 'Continue')}
+          </button>
+        )}
         <button
           className="lh-x has-tip"
           // 꺼짐 상태엔 취소할 '대기'가 없다 — 그때의 ✕는 대기표 폐기 + 안내 닫기

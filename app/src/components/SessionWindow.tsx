@@ -838,7 +838,7 @@ export function SessionWindow(): React.ReactElement {
           onRefreshUsage={onRefreshUsage}
         />
         {/* 한도 자동 이어서 상태줄 — 이 창 대화의 대기표 (본채팅과 같은 공용 바) */}
-        <LimitHoldBar hold={limitResume.hold} enabled={autoResume} onCancel={() => limitResume.setHold(null)} />
+        <LimitHoldBar hold={limitResume.hold} enabled={autoResume} onCancel={() => limitResume.setHold(null)} onContinue={limitResume.resumeNow} />
         <Composer
           value={input}
           onChange={setInput}
