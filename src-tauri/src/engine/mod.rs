@@ -45,6 +45,9 @@ pub mod codex_versions;
 mod diff;
 mod hub;
 mod ident;
+/// ★R28 T3T4 R3 — 한도 재검증 훅(`LimitProbe`)의 셸 배선. 「못 물어봤다」와
+/// 「막는 창이 없다」를 가르는 자리이고, 본채팅의 자동 재개가 그 판정 위에 선다.
+mod limit_probe;
 mod lite;
 /// ★M10 — 대화 연결(세션 간 소통) 라우터. 허브가 소유하고, 턴 정착에서만 돈다.
 mod talk;

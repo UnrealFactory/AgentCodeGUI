@@ -156,6 +156,19 @@ pub struct LimitHold {
     /// 0 = 사용자(또는 일반 드레인)의 턴이 죽어서 처음 걸린 표.
     /// 시각 미상 대기의 지수 백오프 지수이자 [`crate::limit::MAX_AUTO_ATTEMPTS`]의 기준.
     pub attempts: u32,
+    /// ★T3T4 R3 — **판정 근거를 못 얻은 재검증**의 연속 횟수(이식본 `LimitHold.probes`).
+    ///
+    /// [`attempts`](Self::attempts)와 세는 것이 다르다: 저쪽은 *태운 CLI 턴*이고 이쪽은
+    /// *실패한 usage 조회*다. 그래서 간격도 다르다([`crate::limit::recheck_wait`] —
+    /// 15초부터 배로, [`crate::limit::PROBE`]에서 멎는다). 값을 얻은 재검증이 0으로 되돌린다.
+    pub probes: u32,
+    /// 마지막 재검증 **시도** 시각 — `probes`가 세는 재확인 간격의 기준점.
+    ///
+    /// `armed_at`을 안 쓰는 이유: 그 값은 [`crate::runtime::ChatRuntime`]이 "표 뒤에 들어온
+    /// 사용자 메시지인가"를 가르는 데도 쓴다(재개 단일 소유). 재확인마다 그걸 밀면
+    /// 대기 중에 사용자가 걸어 둔 메시지가 **표보다 먼저 온 것**으로 읽혀 나팔이 하나 더
+    /// 끼워진다 = 한 번의 해제에 두 턴.
+    pub probed_at: Option<Millis>,
     pub armed_from_run: RunId,
     /// ★M11 R2(C3) — **아직 말하지 않은 대기 문장이 있다.**
     ///
@@ -183,13 +196,22 @@ impl LimitHold {
     /// 신선 usage 재검증 시각 — 2.6.2 `resumeDelayMs`(`limitResume.ts:90`)의 이식.
     ///
     /// ```text
+    /// 조회 실패 → probed_at + recheck_wait(probes)      // ★T3T4 R3 — 15초부터 배로, 10분 상한
     /// 시각 앎  → max(resets_at + 90s, armed_at + 15s)   // RESET_GRACE_MS · Math.max(15_000, …)
     /// 시각 미상 → armed_at + PROBE(10분) × 2^attempts    // PROBE_MS + ★R5 지수 백오프
     /// ```
     ///
     /// 백오프가 2.6.2에 없는 이유는 그쪽 프로브가 **usage 조회 1회**였기 때문이다.
     /// 여기서는 같은 자리가 **CLI 턴 1회**를 태운다([`crate::limit::PROBE`] 주석).
+    ///
+    /// 첫 줄이 맨 위인 이유(이식본 `holdDelayMs`와 같은 순서): 조회에 실패해 유지된 표는
+    /// 리셋 시각이 **이미 지나 있다**. 그 시각으로 다음 재검증을 잡으면 `due`가 매 tick
+    /// 참이라 초당 수십 번 조회를 때린다.
     pub fn due_at(&self) -> Option<Millis> {
+        if self.probes > 0 {
+            let base = self.probed_at.unwrap_or(self.armed_at);
+            return Some(base + crate::limit::recheck_wait(self.probes));
+        }
         Some(match self.resets_at {
             Some(r) => (r + crate::limit::GRACE).max(self.armed_at + crate::limit::MIN_DELAY),
             None => self.armed_at + crate::limit::unknown_wait(self.attempts),

@@ -243,6 +243,11 @@ struct Hub {
     /// **모든 슬롯이 같은 인스턴스를 공유한다**: 후보 판정의 "지금 태우고 있는 계정"은
     /// 채팅 하나가 아니라 앱 전체의 사실이고, usage 스냅샷·HTTP 예산도 앱당 하나다.
     switcher: Arc<super::acct_switch::Switcher>,
+    /// ★T3T4 R3 — **발화 직전 한도 재검증** 훅(`ccg_engine::limit::LimitProbe`).
+    /// `switcher`와 같은 이유로 모든 슬롯이 한 인스턴스를 공유한다: usage 스냅샷과
+    /// HTTP 예산은 채팅이 아니라 앱당 하나이고, 조회 루프가 두 벌이면 그 둘이
+    /// 서로의 캐시를 무시하며 같은 계정의 토큰을 번갈아 회전시킨다.
+    probe: Arc<super::limit_probe::Probe>,
     /// ★M10 R4 D2 — 긴급 정지가 **중단을 보낸 뒤** 결과를 다시 재려고 세워 둔 표.
     /// 중단은 요청이고, 요청을 보낸 것은 결과가 아니다([`Hub::verify_stop`]).
     stop_watch: Option<StopWatch>,
@@ -332,7 +337,13 @@ impl Hub {
                 .with_home(ccg_store::app_home())
                 // ★M11 — 한도 소진 시 노는 계정으로 갈아타기. 훅은 앱 전체가 하나를
                 // 공유하고, 설정이 꺼져 있으면 언제나 `None`을 내 옛 경로(대기표)가 된다.
-                .with_account_switcher(self.switcher.clone());
+                .with_account_switcher(self.switcher.clone())
+                // ★T3T4 R3 — **발화 직전 재검증.** 이 줄이 없으면 `check_hold`는
+                // `NoProbe`(=「풀린 것으로 두고 진행」)로 돌고, 조회가 죽어 있는 동안
+                // 자동 재개가 눈감고 CLI를 태운다(R28 확인 크리틱 R2의 최대 격차).
+                // 렌더러 훅은 본채팅에서 `resumeOwner:"engine"`으로 꺼져 있으므로,
+                // 그 표면의 안전장치는 **여기 하나뿐**이다.
+                .with_limit_probe(self.probe.clone());
             self.slots.insert(
                 chat.to_string(),
                 Slot {
@@ -498,7 +509,14 @@ impl Hub {
                                 // 부팅 재장전·스펙 ⑤가 실제로 걸렸는지 하네스가 읽는다.
                                 "autoResume": s.rt.auto_resume(),
                                 "nowMs": s.rt.now(),
-                                "hold": s.rt.hold().map(|h| json!({ "resetsAt": h.resets_at, "ready": h.ready, "dueAt": h.due_at() })),
+                                // ★T3T4 R3 — `probes`·`autoPaused`는 **「왜 안 쐈나」의 답**이다.
+                                // 계약면(`ChatStatusLite.hold`)에는 일부러 안 싣는다: 그쪽 모양은
+                                // `ccg_store::status::truth_from_chat_file`과 한 글자도 안 갈려야
+                                // 하고(규약 3 — 어긋나면 채팅 파일이 이겨 화면이 깜빡인다),
+                                // 이 값들은 화면이 아니라 하네스·크리틱이 읽는 진단이다.
+                                "hold": s.rt.hold().map(|h| json!({ "resetsAt": h.resets_at, "ready": h.ready,
+                                                                    "dueAt": h.due_at(), "probes": h.probes,
+                                                                    "attempts": h.attempts, "autoPaused": h.auto_paused })),
                                 "queue": s.rt.queue_texts() })
                     })
                     .collect();
@@ -513,7 +531,13 @@ impl Hub {
                 // R1의 치명(부팅마다 전 계정 조회 → 토큰 회전)은 문서에만 문이 있고
                 // 코드에는 없어서 생겼다. 이제 하네스가 0인지 확인할 수 있다.
                 let (runs, fetches) = self.switcher.worker_stats();
+                // ★T3T4 R3 — 재검증 훅의 회계. `asks`가 0이면 훅이 안 걸린 것이고,
+                // `unavailable`이 오르는데 `blocked`/`clear`가 0이면 조회가 죽은 판이다.
+                let pr = self.probe.stats();
                 answer(json!({ "chats": rows, "cli": self.cli.to_string_lossy(),
+                               "limitProbe": { "asks": pr.asks, "fetches": pr.fetches,
+                                               "blocked": pr.blocked, "clear": pr.clear,
+                                               "unavailable": pr.unavailable },
                                "flags": crate::flags::active(),
                                // ★M10 — 라우터의 회계·거절 로그. 세션 간 메시지는 조용히
                                // 안 나가는 경우가 많고(상한·옵트인·중복), 그 사유를 읽을
@@ -1677,6 +1701,9 @@ pub fn start(app: AppHandle) {
                 // ★M11 — 워커 스레드 하나를 여기서 띄운다(앱당 1개). 설정이 꺼져 있으면
                 // 그 스레드는 영원히 `recv()`에서 잠들어 있다 = 비용 0.
                 switcher: super::acct_switch::Switcher::start(),
+                // ★T3T4 R3 — 한도 재검증 훅. 같은 모양(워커 1개 + 스냅샷)이고 같은 이유다:
+                // 허브 스레드에서 HTTP를 기다리면 다른 대화의 스트리밍이 통째로 멈춘다.
+                probe: super::limit_probe::Probe::start(),
                 stop_watch: None,
             };
             loop {

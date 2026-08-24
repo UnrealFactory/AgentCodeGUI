@@ -24,7 +24,11 @@
  *  · 이름 기반 kill 금지 — 죽이는 것은 spawn한 PID 트리뿐.
  *  · 앱 홈·CDP 포트는 T3T4 갈래 전용(다른 갈래와 안 겹친다).
  *
- *   node scripts/poc-limit-blind.mjs [--exe=…] [--keep]
+ *   node scripts/poc-limit-blind.mjs [--exe=…] [--keep] [--out=…]
+ *
+ * ★확인 크리틱 R2 위생 — `--out=`이 없어서 기본 출력이 **커밋된 기준 파일**이었다.
+ * 주행 한 번이 기준을 갈아 치우고(크리틱이 `git checkout`으로 되돌렸다) 그 다음 주행은
+ * 갈린 기준과 비교된다. 이제 시험 주행은 `--out=%TEMP%/…`로 뺄 수 있다.
  * ========================================================================== */
 import fs from 'node:fs'
 import os from 'node:os'
@@ -38,9 +42,9 @@ const args = process.argv.slice(2)
 const KEEP = args.includes('--keep')
 const HOME = path.join(REPO, '.poc-home-blind-t3t4')
 const PORT = 9423
-const OUT = path.join(REPO, 'docs', 'critic', 'limit-blind-t3t4-r1.json')
-const EXE =
-  (args.find((a) => a.startsWith('--exe=')) ?? '').split('=')[1] || path.join(REPO, 'target-t3t4', 'release', 'agentcodegui.exe')
+const argOf = (k, d) => (args.find((a) => a.startsWith(`--${k}=`)) ?? '').split('=')[1] || d
+const OUT = argOf('out', path.join(REPO, 'docs', 'critic', 'limit-blind-t3t4-r1.json'))
+const EXE = argOf('exe', path.join(REPO, 'target-t3t4', 'release', 'agentcodegui.exe'))
 const EMAIL = 'blind-seed@t3t4.test'
 
 const rep = { at: new Date().toISOString(), exe: EXE, email: EMAIL, steps: {}, findings: [] }

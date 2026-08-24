@@ -277,3 +277,106 @@ fn the_probe_rearms_instead_of_firing_while_still_blocked() {
     pump(&mut r, &clock, 1_030 * SEC + 40 * MIN);
     assert_eq!(r.driver_ref().spawns, spawns0 + 1, "★ 풀린 뒤 정확히 한 번");
 }
+
+// ── ★T3T4 R3 — 「못 물어봤다 ≠ 풀렸다」(R28 확인 크리틱 R2의 최대 격차) ────────
+
+/// 언제나 "물어봤는데 못 얻었다"고 답하는 훅 = 셸의 `CCG_NO_NET` 판.
+struct BlindProbe {
+    asked: AtomicUsize,
+}
+impl LimitProbe for BlindProbe {
+    fn blocked_until(&self, _a: &BillingAxis, _now: u64) -> LimitVerdict {
+        self.asked.fetch_add(1, Ordering::SeqCst);
+        LimitVerdict::Unavailable
+    }
+}
+
+/// **크리틱의 통과 조건 그 자체**: 리셋 시각이 지난 대기표 + 조회 불가 = **전송 0**.
+///
+/// R2까지 이 판은 `LimitVerdict::Unknown`("풀린 것으로 두고 진행")으로 접혀 리셋 시각
+/// 90초 뒤에 곧바로 CLI를 태웠다. 렌더러는 같은 사고를 이미 고쳤지만
+/// (`limitResume.ts` `resumeVerdict`), 본채팅은 `resumeOwner:"engine"`이라 그 수정의
+/// 바깥에 있었다 — 여기가 그 바깥을 안으로 들이는 자리다.
+#[test]
+fn a_probe_that_cannot_ask_never_fires_and_hands_the_turn_to_the_user() {
+    let clock = clock_at(5 * 3600);
+    let probe = Arc::new(BlindProbe { asked: AtomicUsize::new(0) });
+    let mut r = rt(clock.clone(), "Claude AI usage limit reached|1755150000").with_limit_probe(probe.clone());
+    r.dispatch(Cmd::Send { text: "첫 턴".into() });
+    pump(&mut r, &clock, 1_030 * SEC);
+    let spawns0 = r.driver_ref().spawns;
+    assert!(r.hold().is_some_and(|h| h.probes == 0), "장전 직후는 「안 물어본」 표다");
+
+    // ① 리셋 시각을 90초 지나도(=옛 판이 쐈던 그 순간) 아무것도 안 나간다.
+    pump(&mut r, &clock, 1_030 * SEC + 5 * HOUR + 5 * MIN);
+    let h = r.hold().expect("★ 표가 사라졌다 = 소진했다 = 전송했다");
+    println!("[T3T4] 리셋 +5분 · probes={} ready={} spawns={}", h.probes, h.ready, r.driver_ref().spawns);
+    assert_eq!(r.driver_ref().spawns, spawns0, "★★ 조회 불가인데 전송했다");
+    assert!(!h.ready, "못 물어봤는데 「풀렸다」로 켰다");
+    assert!(h.probes >= 2, "재확인이 안 돌았다: probes={}", h.probes);
+    assert!(probe.asked.load(Ordering::SeqCst) >= 2, "훅을 다시 안 물었다");
+
+    // ② 재확인 간격은 15초부터 배로 — 매 tick 조회를 때리지 않는다(465초에 6회가 상한).
+    let asked = probe.asked.load(Ordering::SeqCst);
+    assert!(asked <= 6, "5분 동안 {asked}번 물었다 = tick마다 조회한다");
+
+    // ③ 계속 실패하면 **자동을 접고 사용자에게 넘긴다**(눈감고 쏘지 않는다).
+    pump(&mut r, &clock, 1_030 * SEC + 5 * HOUR + 15 * MIN);
+    let h = r.hold().expect("표는 남아 있어야 한다 — 버튼의 근거다");
+    println!("[T3T4] 리셋 +15분 · probes={} ready={} auto_paused={}", h.probes, h.ready, h.auto_paused);
+    assert_eq!(r.driver_ref().spawns, spawns0, "★★ 손을 들면서 한 발 쐈다");
+    assert!(h.ready && h.auto_paused, "「눌러서 이어가기」 착지가 아니다");
+
+    // ④ 사용자가 누르면 그때 정확히 한 번 나간다(출구가 막히면 그건 침묵이다).
+    assert_eq!(r.resume_now(), ccg_engine::event::Verdict::Accepted);
+    pump(&mut r, &clock, clock.now_ms() + 30 * SEC);
+    assert_eq!(r.driver_ref().spawns, spawns0 + 1, "누른 만큼 정확히 한 번");
+}
+
+/// 조회가 **돌아오면** 그 답이 이긴다 — 실패는 유예지 영구 정지가 아니다.
+#[test]
+fn a_recovered_probe_resumes_on_the_first_answer_it_gets() {
+    /// 앞 두 번은 조회 실패, 그 뒤로는 "풀렸다".
+    struct FlakyProbe {
+        asked: AtomicUsize,
+    }
+    impl LimitProbe for FlakyProbe {
+        fn blocked_until(&self, _a: &BillingAxis, _now: u64) -> LimitVerdict {
+            if self.asked.fetch_add(1, Ordering::SeqCst) < 2 {
+                LimitVerdict::Unavailable
+            } else {
+                LimitVerdict::Clear
+            }
+        }
+    }
+    let clock = clock_at(5 * 3600);
+    let probe = Arc::new(FlakyProbe { asked: AtomicUsize::new(0) });
+    let mut r = rt(clock.clone(), "Claude AI usage limit reached|1755150000").with_limit_probe(probe.clone());
+    r.dispatch(Cmd::Send { text: "첫 턴".into() });
+    pump(&mut r, &clock, 1_030 * SEC);
+    let spawns0 = r.driver_ref().spawns;
+
+    // 리셋 직후 두 번은 못 물어봐서 유지, 세 번째(=45초 뒤)에 풀렸다고 답한다.
+    pump(&mut r, &clock, 1_030 * SEC + 5 * HOUR + 2 * MIN);
+    println!("[T3T4] 회복 · asked={} spawns={}", probe.asked.load(Ordering::SeqCst), r.driver_ref().spawns);
+    // 이 픽스처의 CLI는 뜨는 족족 또 한도 에러를 내므로 재개 턴도 죽고 표가 다시 선다 —
+    // 재는 것은 "쐈는가"이지 "몇 개 살아남았는가"가 아니다.
+    assert!(r.driver_ref().spawns > spawns0, "★ 답이 오면 그 회차에 나간다");
+    assert!(probe.asked.load(Ordering::SeqCst) >= 3, "실패 두 번 뒤 세 번째를 안 물었다");
+}
+
+/// 훅 **미배선**(`Unknown`)은 옛 계약 그대로다 — 재생 97개 시나리오가 서 있는 자리라
+/// 이 라운드가 그 바닥을 흔들면 안 된다.
+#[test]
+fn an_unwired_probe_keeps_the_old_contract() {
+    let clock = clock_at(5 * 3600);
+    let mut r = rt(clock.clone(), "Claude AI usage limit reached|1755150000");
+    r.dispatch(Cmd::Send { text: "첫 턴".into() });
+    pump(&mut r, &clock, 1_030 * SEC);
+    let spawns0 = r.driver_ref().spawns;
+    pump(&mut r, &clock, 1_030 * SEC + 5 * HOUR + 5 * MIN);
+    assert!(r.driver_ref().spawns > spawns0, "미배선 판은 리셋 시각에 그대로 쏜다");
+    assert!(r.hold().is_some_and(|h| h.probes == 0), "미배선인데 재확인 계수가 올랐다");
+    // 그리고 상한은 여전히 `attempts` 쪽이 지킨다(재생 시나리오가 서 있는 그 문).
+    assert!(r.hold().is_some_and(|h| h.attempts <= MAX_AUTO_ATTEMPTS));
+}

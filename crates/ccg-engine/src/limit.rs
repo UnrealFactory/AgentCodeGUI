@@ -44,6 +44,33 @@ pub const MAX_AUTO_ATTEMPTS: u32 = 2;
 /// 시각 미상 대기의 지수 백오프 상한.
 pub const BACKOFF_CAP: Millis = 60 * MIN;
 
+/// ★T3T4 R3 — **조회에 실패했을 때의 첫 재확인 간격.**
+/// 이식본 `app/src/lib/limitResume.ts`의 `RECHECK_MS`와 같은 값이다. 짧게 시작하는
+/// 이유도 같다: 네트워크 순간 단절 하나가 5시간 대기를 10분 더 늘리면 안 된다.
+pub const RECHECK: Millis = 15 * SEC;
+
+/// 조회 실패가 이어질 때의 재확인 간격 — [`RECHECK`]에서 배로 늘어 [`PROBE`]에서 멎는다.
+/// 렌더러 짝: `recheckDelayMs(probes)`(`Math.min(RECHECK_MS * 2 ** (probes-1), PROBE_MS)`).
+///
+/// [`unknown_wait`]과 축이 다르다는 것이 요점이다 — 그쪽 한 칸은 **CLI 턴 1회**를 태우고
+/// 이쪽 한 칸은 **usage 조회 1회**다. 그래서 훨씬 촘촘해도 된다.
+pub fn recheck_wait(probes: u32) -> Millis {
+    RECHECK
+        .saturating_mul(1u64 << probes.saturating_sub(1).min(16))
+        .min(PROBE)
+}
+
+/// ★T3T4 R3 — **조회가 계속 실패할 때 자동을 접고 사용자에게 넘기기까지의 재확인 횟수.**
+///
+/// 이식본([`MAX_AUTO_ATTEMPTS`] = 2)보다 큰 이유는 착지가 다르기 때문이다. 렌더러는
+/// 상한을 넘기면 *눈감고 한 번 쏘고* 그 대가를 사용자가 오류 말풍선으로 치른다. 엔진은
+/// 대신 `ready`를 켜고 [`crate::runtime::ChatRuntime::resume_now`] 버튼을 준다 —
+/// **아무것도 안 태우므로 더 오래 기다려도 손해가 없고**, 30초짜리 네트워크 끊김 하나가
+/// 「한도 자동 이어서」를 꺼 버리는 일도 없다.
+///
+/// 6회면 15+30+60+120+240 = **465초(≈7.8분)** 를 조용히 다시 물어본 뒤에 손을 든다.
+pub const MAX_BLIND_PROBES: u32 = 6;
+
 /// 파싱된 리셋 시각을 믿어 주는 최대 거리. 사용자의 시계가 어긋나 있거나 문구가 오염되면
 /// 대기표가 몇 년 뒤에 앉아 **영원히 안 풀리는 표**가 된다 — 주간 창(7일)까지만 믿는다.
 pub const MAX_WAIT: Millis = 7 * 24 * HOUR;
@@ -206,9 +233,19 @@ pub enum LimitVerdict {
     Blocked { resets_at: Option<u64> },
     /// 풀렸다 — 발화해도 된다.
     Clear,
-    /// 조회 실패 · 훅 미배선. 2.6.2 `fire()`의 `catch`와 같이 **풀린 것으로 두고 진행**하되,
-    /// 그 관대함의 대가는 [`MAX_AUTO_ATTEMPTS`]가 치른다.
+    /// **훅이 아예 없다**(미배선). 판정이라는 것이 존재하지 않으므로 옛 계약 그대로
+    /// **풀린 것으로 두고 진행**하고, 그 관대함의 대가는 [`MAX_AUTO_ATTEMPTS`]가 치른다.
+    ///
+    /// ★T3T4 R3 — *조회에 실패한 것*은 이제 이 값이 아니라 [`Self::Unavailable`]이다.
+    /// 두 사실을 한 낱말에 담아 두는 동안, 셸이 훅을 꽂는 순간 "물어봤는데 못 얻었다"가
+    /// "물어볼 필요가 없다"와 같은 뜻이 돼 **눈감고 쏘는 재개**가 됐다.
     Unknown,
+    /// ★T3T4 R3 — **물어봤는데 못 얻었다**(조회 실패 · 토큰 없음 · 킬 스위치 · 스냅샷 차가움).
+    ///
+    /// 「막는 창이 없다」와 **정반대의 값**이다: 판정 근거가 0이라는 뜻이므로 대기표를
+    /// 유지하고 [`recheck_wait`] 뒤에 다시 묻는다(이식본 `resumeVerdict`의 가운데 갈래).
+    /// [`MAX_BLIND_PROBES`]를 넘도록 계속 실패하면 자동을 접고 사용자에게 넘긴다.
+    Unavailable,
 }
 
 /// **발화 직전 신선 usage 재검증** — 2.6.2 `useLimitResume.fire()`의 훅 자리.
@@ -223,6 +260,17 @@ pub enum LimitVerdict {
 /// [`MAX_AUTO_ATTEMPTS`]·[`unknown_wait`]이 스팸을 막는다.
 pub trait LimitProbe: Send + Sync {
     fn blocked_until(&self, account: &BillingAxis, now_epoch_ms: u64) -> LimitVerdict;
+
+    /// **모델까지 아는 판정** — Fable 주간 창은 Fable 실행만 게이트한다
+    /// (이식본 `blockedResetsAt(u, modelIsFable, …)`의 두 번째 인자).
+    ///
+    /// 기본 구현은 모델을 버리고 [`Self::blocked_until`]로 접는다 — 대본 훅(재생 하네스)은
+    /// 모델과 무관하게 답을 정해 두므로 한 글자도 안 바뀐다. 진짜 조회를 하는 셸 훅만
+    /// 이걸 덮어써서 창 셋 중 어디까지가 이 실행의 게이트인지 가른다.
+    fn blocked_until_for(&self, account: &BillingAxis, model: &str, now_epoch_ms: u64) -> LimitVerdict {
+        let _ = model;
+        self.blocked_until(account, now_epoch_ms)
+    }
 }
 
 // ── ★M11 자동 계정 전환 훅 ──────────────────────────────────────────────────
@@ -362,6 +410,29 @@ mod tests {
         assert_eq!(parse_epoch("x|175515000"), None);
         assert_eq!(parse_epoch("1755150000"), None);
         assert_eq!(parse_epoch("x|1000000000"), None);
+    }
+
+    /// ★T3T4 R3 — 재확인 간격은 이식본 `recheckDelayMs`와 **한 칸도 안 갈려야** 한다
+    /// (두 자리가 갈리면 같은 사고를 두 번 고치게 된다).
+    #[test]
+    fn recheck_wait_matches_the_renderer_ladder() {
+        // Math.min(15_000 * 2 ** max(0, probes-1), 600_000)
+        for (probes, want) in [
+            (0u32, 15 * SEC), // 렌더러의 `max(0, -1)` = 0승
+            (1, 15 * SEC),
+            (2, 30 * SEC),
+            (3, 60 * SEC),
+            (4, 120 * SEC),
+            (5, 240 * SEC),
+            (6, 480 * SEC),
+            (7, PROBE), // 960초는 상한(10분)에서 멎는다
+            (99, PROBE),
+        ] {
+            assert_eq!(recheck_wait(probes), want, "probes={probes}");
+        }
+        // 손 들기까지의 총 대기 = 15+30+60+120+240 = 465초(문서에 적힌 그 숫자다).
+        let total: Millis = (1..MAX_BLIND_PROBES).map(recheck_wait).sum();
+        assert_eq!(total, 465 * SEC);
     }
 
     #[test]

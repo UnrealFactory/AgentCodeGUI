@@ -589,6 +589,8 @@ impl<D: CliDriver> ChatRuntime<D> {
                 auto_paused: false,
                 // 재장전은 새 에피소드다 — 지난 판의 헛발질 횟수는 디스크에 없다.
                 attempts: 0,
+                probes: 0,
+                probed_at: None,
                 armed_from_run: RunId(0),
                 // 재장전된 예약은 표와 **같은 순간**에 선다 — `>` 비교라 "표 뒤에 온
                 // 사용자 메시지"로 오인되지 않는다(그래야 §7.3의 재개 항목이 그대로 산다).
@@ -2774,6 +2776,9 @@ impl<D: CliDriver> ChatRuntime<D> {
             ready: false,
             auto_paused: false,
             attempts,
+            // 새 표는 아직 아무것도 못 물어본 표가 아니라 **안 물어본** 표다(0).
+            probes: 0,
+            probed_at: None,
             armed_from_run: run,
             armed_at: now,
             notice_due: false,
@@ -3163,21 +3168,93 @@ impl<D: CliDriver> ChatRuntime<D> {
         //
         //   재장전은 **CLI를 안 띄운다** — 이것이 헛 재개와 다른 점이다. 그래서 훅이
         //   붙어 있는 한 몇 번을 다시 걸어도 사용자 눈에는 대기표 하나뿐이다.
+        //
+        //   ★T3T4 R3 — 착지는 **넷**이다(이식본 `resumeVerdict`의 셋 + 훅 미배선).
+        //   순서가 곧 계약이다: 막혔다는 신선한 증거가 먼저고, 그다음이 "못 물어봤다"이며,
+        //   풀렸다는 맨 마지막이다.
         let account = self.hold.as_ref().map(|h| h.account.clone());
         if let Some(acct) = account {
-            let verdict = self.limit_probe.blocked_until(&acct, self.clock.now_epoch_ms());
-            if let LimitVerdict::Blocked { resets_at } = verdict {
-                let at = resets_at.map(|s| self.epoch_secs_to_runtime(s));
-                if let Some(h) = &mut self.hold {
-                    h.resets_at = at;
-                    h.armed_at = now;
-                    h.verified_at = Some(now);
+            let verdict = {
+                let model = self.identity.model();
+                self.limit_probe
+                    .blocked_until_for(&acct, model, self.clock.now_epoch_ms())
+            };
+            match verdict {
+                // ① 아직 막혀 있다 — 그 시각으로 재장전하고 실패 계수는 지운다.
+                LimitVerdict::Blocked { resets_at } => {
+                    let at = resets_at.map(|s| self.epoch_secs_to_runtime(s));
+                    if let Some(h) = &mut self.hold {
+                        h.resets_at = at;
+                        h.armed_at = now;
+                        h.verified_at = Some(now);
+                        h.probes = 0;
+                        h.probed_at = None;
+                    }
+                    self.emit(Event::Notice(
+                        "확인해 보니 아직 한도가 안 풀렸어요 — 다시 기다립니다.".into(),
+                    ));
+                    self.broadcast_plan();
+                    return;
                 }
-                self.emit(Event::Notice(
-                    "확인해 보니 아직 한도가 안 풀렸어요 — 다시 기다립니다.".into(),
-                ));
-                self.broadcast_plan();
-                return;
+                // ② **못 물어봤다 ≠ 풀렸다**(최종 파리티 R28 확인 크리틱 R2의 최대 격차).
+                //
+                //   R2까지 이 자리는 `Unknown` 하나였고 그 뜻은 "풀린 것으로 두고 진행"
+                //   이었다. 셸이 훅을 꽂는 순간 그 관대함은 **조회가 죽어 있는 동안
+                //   눈감고 쏘는 재전송기**가 된다 — 렌더러에서 이미 한 번 고친 그 사고이고
+                //   (`limitResume.ts` `resumeVerdict`), 본채팅은 `resumeOwner:"engine"`이라
+                //   그 수정의 바깥에 있었다.
+                LimitVerdict::Unavailable => {
+                    let probes = self.hold.as_ref().map_or(0, |h| h.probes) + 1;
+                    // 문구가 알려 준 리셋 시각이 **정말 지났나**. 시각을 모르면(`None`)
+                    // 근거가 하나도 없다는 뜻이라 손을 들지 않는다 — 계속 다시 묻는다.
+                    let past = self
+                        .hold
+                        .as_ref()
+                        .and_then(|h| h.resets_at)
+                        .is_some_and(|r| now >= r);
+                    if let Some(h) = &mut self.hold {
+                        h.probes = probes;
+                        h.probed_at = Some(now);
+                    }
+                    if probes < crate::limit::MAX_BLIND_PROBES || !past {
+                        // 침묵 금지(D7) — 다만 재확인마다 말하면 그게 스팸이다. 한 번만.
+                        //
+                        // **두 번째**부터 말하는 이유: 셸의 훅은 스냅샷이 차가우면 워커를
+                        // 깨우고 그 회차는 「못 물어봤다」로 답한다(허브 스레드를 막지 않으려고).
+                        // 정상 판에서도 첫 회차가 그 모양이라, 1에서 말하면 잘 돌아가는
+                        // 재개마다 「조회 실패」라고 거짓말을 하게 된다.
+                        if probes == 2 {
+                            self.emit(Event::Notice(
+                                "한도가 풀렸는지 확인하지 못했어요(조회 실패) — 보내지 않고 잠시 뒤 다시 확인합니다.".into(),
+                            ));
+                        }
+                        self.broadcast_plan();
+                        return;
+                    }
+                    // ②' 계속 실패했고 리셋 시각도 지났다 — **자동을 접고 사용자에게 넘긴다.**
+                    //
+                    //   이식본은 이 자리에서 *눈감고 한 번 쏜다*. 엔진이 그러지 않는 이유는
+                    //   출구가 하나 더 있기 때문이다: `ready`를 켜면 배너가 「눌러서
+                    //   이어가기」를 준다(`resumeOwner.ts` `canPressResume`). 아무것도 안
+                    //   태우고 침묵도 아닌 착지이고, `auto_paused`가 예약분까지 잠근다.
+                    if let Some(h) = &mut self.hold {
+                        h.ready = true;
+                        h.auto_paused = true;
+                        h.verified_at = Some(now);
+                    }
+                    self.emit(Event::Notice(format!(
+                        "한도가 풀렸는지 {probes}번 확인했는데 조회가 계속 실패해서 자동으로 보내지 않았어요 — 준비되면 눌러서 이어가세요."
+                    )));
+                    self.broadcast_plan();
+                    return;
+                }
+                // ③ 풀렸다 / 훅 미배선(옛 계약 그대로 진행).
+                LimitVerdict::Clear | LimitVerdict::Unknown => {
+                    if let Some(h) = &mut self.hold {
+                        h.probes = 0;
+                        h.probed_at = None;
+                    }
+                }
             }
         }
         if let Some(h) = &mut self.hold {

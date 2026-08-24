@@ -131,6 +131,22 @@ fn stale(email: &str) -> Option<Value> {
     g.get(email).map(|e| e.data.clone())
 }
 
+/// ★T3T4 R3 — **논블로킹 엿보기.** 허브 스레드(모든 채팅의 tick을 도는 그 스레드)의 문이다.
+///
+/// [`usage_get`]을 그 스레드에서 부르면 안 되는 이유는 셋이고 전부 *초 단위*다:
+/// 토큰이 만료됐으면 리프레시 **교환 POST**, 전역 게이트에서 최대 1.2초, 429면 최대 30초.
+/// 그동안 다른 대화의 스트리밍이 통째로 멈춘다. 그래서 여기서는 **메모리 캐시만** 본다 —
+/// 값이 없으면 `None`이고, 채우는 일은 워커(`engine::limit_probe`)가 한다.
+///
+/// **토큰 동치를 안 보는 이유**: 토큰을 얻는 것 자체가 네트워크일 수 있다. 캐시 키가
+/// 이메일이라 값의 주인은 어차피 같은 계정이고, 이 값의 쓰임은 "그 계정의 창이 아직
+/// 100%인가" 하나다. 자격이 갈렸을 때의 정확성은 `ttl`이 대신 지킨다.
+pub fn peek_usage(email: &str, ttl_ms: u64) -> Option<Value> {
+    let g = cache().lock().unwrap_or_else(|e| e.into_inner());
+    let e = g.get(email)?;
+    (now_ms().saturating_sub(e.at) < ttl_ms).then(|| e.data.clone())
+}
+
 /// `usage:get(fresh?, account?)` → `UsageInfo`.
 ///
 /// 2.6.2 `getUsage`(`index.ts:1025-1037`)와 같은 순서:

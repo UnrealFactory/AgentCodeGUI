@@ -38,7 +38,10 @@ mod codex;
 mod dialog;
 pub mod misc;
 mod tooling;
-mod usage;
+/// ★T3T4 R3 — `pub`인 이유는 하나다: 엔진의 한도 재검증 훅(`engine::limit_probe`)이
+/// **여기와 같은 캐시**를 봐야 하기 때문이다. 조회 루프가 두 벌이 되면 그 둘이 각자
+/// 만료를 세면서 오래 논 계정의 리프레시 토큰을 번갈아 회전시킨다(M11 R2 C1의 사고).
+pub mod usage;
 
 /// 채널 이름 — `protocol.ts`가 원본, 여기는 미러다(문자열이 어긋나면 그 채널만 조용히
 /// 미구현으로 떨어진다 → 심의 1회 경고로 드러난다). `ipc/mod.rs`의 `ch`가 아니라 여기
