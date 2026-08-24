@@ -20,6 +20,7 @@ import { listen } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { IPC } from '@shared/protocol'
 import type {
+  AccountsUsageOpts,
   AgentStatus,
   ApiConfigStatus,
   AuthStatus,
@@ -258,7 +259,9 @@ const api: WindowApi = {
     setDefaultAccount: (email: string) => call(IPC.authSetDefaultAccount, [email], []),
     removeAccount: (email: string) => call(IPC.authRemoveAccount, [email], []),
     reorderAccounts: (emails: string[]) => call(IPC.authReorderAccounts, [emails], []),
-    accountsUsage: () => call(IPC.authAccountsUsage, [], [])
+    // ★R28 ACCT §1 — 인자 0개가 2.6.2 규약이고 3.0은 선택 옵션 하나를 더 받는다.
+    // 안 넘기면 `undefined`가 실려 셸이 `Value::Null`로 읽는다(= R1과 같은 동작).
+    accountsUsage: (opts?: AccountsUsageOpts) => call(IPC.authAccountsUsage, [opts], [])
   },
   codexAuth: {
     listAccounts: () => call(IPC.codexListAccounts, [], []),

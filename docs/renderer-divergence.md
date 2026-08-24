@@ -439,3 +439,69 @@ R1은 1440px 본채팅(판 883px)에서 7종 전부 이겼지만 420px 멀티 �
 **뷰어는 안 갈렸다.** 뷰어 계약(전체 파일·ctx 포함)은 `file_diff` 그대로이고,
 `bulk_file_diffs`는 AI 프롬프트 전용이다. unborn HEAD·32MB 초과·인용 경로(제어문자)는
 그 파일만 옛길(`file_diff`)로 내려앉아 답을 잃지 않는다.
+
+### 6.5 「기본 계정」 개념 제거 — 기본 = 정렬 맨 위 (후속 ACCT R1 · 사용자 요청)
+
+사용자 요청(`docs/r28-followup.md` §4): *"계정의 「기본」 개념을 삭제하고, 항상 정렬 기준
+맨 위 계정이 선택되게. 괜히 복잡하다."*
+
+**2.6.2와의 의도적 분기다.** 파리티 재감사가 「기본으로」 버튼 부재를 회귀로 잡지 않게
+여기 적는다.
+
+| 조각 | 2.6.2 | 3.0 |
+|---|---|---|
+| 기본 계정의 진실 | `accounts.json`의 `defaultEmail` **필드**(상태) | **목록 0번**(파생값) |
+| 설정 ▸ Account 버튼 | 「기본으로」(`auth:set-default-account`) | **「맨 위로」**(순서를 바꾼다) |
+| 배지 | 「기본」 | 「기본 · 맨 위」 — 인덱스 0의 파생 표시 |
+| `AccountInfo.isDefault` | `defaultEmail === email` | `index === 0` (`ipc/system.rs`·`claude::list_accounts`) |
+| `auth:set-default-account` | 필드를 쓴다 | **「맨 위로 이동」과 동치**(채널은 남는다 — 동결 2.6.2 렌더러가 아직 부른다) |
+| `codex-auth:set-default-account` | 필드를 쓴다 | 3.0 화면은 **안 부른다**(`reorderAccounts`로 같은 결과를 저장한다) |
+
+**마이그레이션**(`claude::migrate_default_to_top` · `codex::migrate_default_to_top`):
+기존 `defaultEmail`이 3번째를 가리키고 있었으면 그 계정을 **맨 위로 옮긴 뒤** 우리는 그
+필드를 안 읽는다. 옮기지 않고 무시만 하면 그 사용자의 새 채팅이 **말없이 1번째 계정으로
+갈아탄다**(프롬프트 캐시가 식고 남의 한도를 태운다). 프로세스당 한 번, 옮길 게 있을 때만
+쓴다. **파일에서 필드가 사라지지는 않는다** — `render_store`가 `None`을 받으면 맨 위
+계정으로 다시 채우기 때문이고, 그래서 같은 홈을 2.6.2로 열어도 기본 계정이 그대로다
+(값이 언제나 「맨 위」와 같아질 뿐이다).
+
+**함정 하나**(테스트가 지킨다 — `moving_to_the_top_and_reordering_survive_a_restart`):
+정렬·「맨 위로」가 옛 `defaultEmail`을 그대로 들고 저장하면, **다음 부팅의 마이그레이션이
+사용자의 정렬을 되돌린다.** 그래서 순서를 바꾸는 세 경로(`reorder_accounts`·
+`move_account_to_top`·codex 짝)는 전부 `default_email = None`으로 쓴다.
+
+**파급 전수**(「기본」을 읽던 자리 전부 파생값으로):
+`ipc/system.rs`(두 목록의 `isDefault`) · `engine/ident.rs`(실행 정체성의 기본 계정 · Codex 축 포함) ·
+`ccg_auth::claude/codex::default_account_email`(→ `usage:get`·`git:ai-message`·`codex_limit`·
+`codex_versions`가 이걸 부른다) · 렌더러의 `accounts.find(a => a.isDefault)`(Chat picker · GitModal).
+
+### 6.6 계정 「사용 중」 표시 + 「현재」 강조 + 전환 되돌리기 (후속 ACCT R1 · 신기능)
+
+2.6.2에 대응물이 없다(추가 기능이라 회귀가 아니다). 근거: `docs/r28-followup.md` §3·§3-b.
+
+| 조각 | 무엇 |
+|---|---|
+| `ChatStatusLite.account` | ★새 필드 — 이 채팅이 물고 있는 구독 계정. **키가 있으면 살아 있는 런타임**이다(`status.json`에서 재구성한 행에는 없다) |
+| `ChatStatusLite.panelId` | ★새 필드 — 그 채팅이 앉은 보드 자리(`${boardId}::${slot}`). 「2번 자리」 문구가 여기서 나온다(panelId↔chatId는 보드 스토어만 안다) |
+| `app/src/lib/accounts.ts` | 역인덱스 + 자리 이름표. 판정 소스는 위 REPLACE **하나**다 — 창이 여럿이라 렌더러가 모은 표로는 자기 창밖을 못 본다 |
+| picker `.pp-row.cur`·`.pp-now` | §3-b 「현재」(파랑 계열) |
+| picker `.pp-warn` | §3 「사용 중 · 2번 자리」(주황 계열). **선택은 막지 않는다** |
+| `.acct-undo` | §3-b 「A → B 전환됨 · 되돌리기」(12초) |
+
+**알려진 한계**: 역인덱스를 먹이는 `chat:status` 구독은 메인 창에만 있다
+(`App.tsx`). 추가 채팅 창(`SessionWindow`)은 자기 chatId를 렌더러에서 모르기도 해서,
+그 창의 picker에는 「사용 중」 칩이 **안 뜬다**(거짓 칩 대신 침묵을 고른다).
+
+### 6.7 `auth:accounts-usage`가 선택 옵션을 받는다 (후속 ACCT R1 · §1)
+
+2.6.2는 인자 0개다. 3.0은 **선택 옵션 하나**를 더 받고, 안 넘기면 한 글자도 다르지 않다.
+
+| 옵션 | 무엇 | 왜 |
+|---|---|---|
+| `cachedOnly` | HTTP 0회 · 디스크 캐시만 | 첫 페인트가 조회를 안 기다리게(계정 3개 실측 **6.19ms**) |
+| `priority` | 그 계정을 먼저 조회 | 사용자가 지금 보는 숫자가 먼저 갱신되게. **응답 순서(=등록 순서)는 안 바뀐다** — 바뀌면 §4에서 기본이 널뛴다 |
+| `warm` | 로컬 토큰이 살아 있는 계정만 | 워밍이 **리프레시 토큰을 회전시키지 않게**(M11 R2 C1이 부팅 프리웜을 들어낸 그 이유) |
+
+행에도 표식이 붙는다(`AccountUsage.stale`·`unavailable`) — §6.3의 `UsageInfo`와 같은 규약이고,
+설정 화면이 「조회 실패 · 다시 시도」와 「그 플랜엔 그 한도가 없다」를 나눠 말하는 근거다.
+연속 실패 계정은 3분간 조회를 건너뛴다(직렬 큐를 죽은 계정 하나가 막지 않게).

@@ -129,12 +129,10 @@ pub(super) fn list_claude_accounts() -> Value {
         .iter()
         .filter_map(|a| a.get("email").and_then(Value::as_str))
         .collect();
-    // 기본 계정: defaultEmail이 목록에 있으면 그것, 아니면 첫 계정("기본 없음"은 안 만든다)
-    let default_email = f
-        .get("defaultEmail")
-        .and_then(Value::as_str)
-        .filter(|d| emails.contains(d))
-        .or_else(|| emails.first().copied());
+    // ★R28 ACCT §4 — 기본 계정 = **맨 위**(파생값). `defaultEmail`은 안 읽는다.
+    // 이 목록이 렌더러의 `AccountInfo.isDefault`를 통째로 정하므로, 여기가 파생값으로
+    // 바뀌는 순간 새 채팅·오버라이드·picker가 전부 「맨 위」를 따른다(파급 전수 ①).
+    let default_email = emails.first().copied();
     // ★M11 R3(F2) — 재로그인 대기 표식(`account-health.json`). 자동 전환 워커가 토큰
     // 교환 실패를 만난 순간 적고, 재로그인하면 지문이 달라져 스스로 무효가 된다.
     // 이 목록이 그 사실이 사용자에게 닿는 **유일한 경로**다(R2까지는 stderr 한 줄뿐이었다).
@@ -169,11 +167,8 @@ fn list_codex_accounts() -> Value {
         .iter()
         .filter_map(|a| a.get("email").and_then(Value::as_str))
         .collect();
-    let default_email = f
-        .get("defaultEmail")
-        .and_then(Value::as_str)
-        .filter(|d| emails.contains(d))
-        .or_else(|| emails.first().copied());
+    // ★R28 ACCT §4 — Codex 축도 「맨 위 = 기본」.
+    let default_email = emails.first().copied();
     let out: Vec<Value> = accounts
         .iter()
         .filter_map(|a| {

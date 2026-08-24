@@ -39,6 +39,8 @@ import { TalkStopPill } from './components/TalkStop'
 import { NewChatModal } from './components/NewChatModal'
 import { getPref, setPref, delPref } from './lib/prefs'
 import { t, useLang } from './lib/i18n'
+// ★R28 ACCT §1·§3 — 계정 한도 선행 워밍 + 「계정 → 살아 있는 자리」 역인덱스의 재료 공급.
+import { MAIN_SLOT_NAME, primeUsageFromDisk, putChatStatuses, putSlotNames, warmUsage, WINDOW_SLOT_NAME } from './lib/accounts'
 import { sanitizeHold } from './lib/limitResume'
 import { canPressResume, engineHoldOf, engineOwnsResume } from './lib/resumeOwner'
 import { useLimitResume } from './lib/useLimitResume'
@@ -310,6 +312,35 @@ function MainApp({ user }: { user: AppUser }) {
   useEffect(() => {
     window.api.sessionWindows.list().then(setSessionWins).catch(() => {})
     return window.api.sessionWindows.onChanged(setSessionWins)
+  }, [])
+  // ★R28 ACCT §3 — 추가 채팅 창의 자리 이름표. 「사용 중 · 추가 창」의 그 「추가 창」이다.
+  // 셸이 주는 것은 chatId뿐이라(계정은 `chat:status`가 싣는다) 여기서 이름만 붙인다.
+  useEffect(() => {
+    putSlotNames('wins', Object.fromEntries(sessionWins.map((w) => [w.id, w.title?.trim() || WINDOW_SLOT_NAME()])))
+  }, [sessionWins, lang])
+  // 본채팅 목록의 이름표 — 제목이 있으면 제목(사용자가 아는 이름), 없으면 「본채팅」.
+  useEffect(() => {
+    putSlotNames('chats', Object.fromEntries(chats.map((c) => [c.id, c.title?.trim() || MAIN_SLOT_NAME()])))
+  }, [chats, lang])
+  // ★R28 ACCT §1 — **선행 워밍.** 시작 직후와 창 포커스에서 백그라운드로 미리 조회해,
+  // Account 탭·계정 picker를 열 때는 이미 따뜻한 캐시를 치게 한다. 두 안전장치가 붙는다:
+  //   ① 90초 쿨다운(포커스가 잦아도 다시 안 묻는다)
+  //   ② `warm:true` — **로컬 토큰이 살아 있는 계정만** 묻는다. 오래 논 계정의 리프레시
+  //      토큰 회전은 되돌릴 수 없는 부작용이라, 앱을 켠 것만으로 그 일이 나면 안 된다
+  //      (M11 R2 C1이 부팅 프리웜을 들어낸 바로 그 이유).
+  // 우선 조회 대상은 **지금 이 채팅의 계정**이다. ref로 읽는 이유: 워밍은 나중에(포커스
+  // 회복 때) 돌고, 그때의 계정이어야 한다(클로저에 박힌 첫 렌더 값이면 늘 같은 계정이다).
+  const warmAcctRef = useRef<string | undefined>(undefined)
+  warmAcctRef.current = picker.account
+  useEffect(() => {
+    void primeUsageFromDisk()
+    const warm = (): void => warmUsage(warmAcctRef.current)
+    const id = setTimeout(warm, 1_500) // 부팅 경로(엔진·LSP 프리웜)와 겹치지 않게 조금 뒤
+    window.addEventListener('focus', warm)
+    return () => {
+      clearTimeout(id)
+      window.removeEventListener('focus', warm)
+    }
   }, [])
   // 전 채팅 경량 상태(`chat:status`) · 창 자리 목록(`chat:windows`) — 구독은 아래 effect.
   // **선언만 여기로 올린다**: 한도 재개 훅(useLimitResume, §R3 7)이 `chatStatus`를 읽는데
@@ -989,6 +1020,9 @@ function MainApp({ user }: { user: AppUser }) {
       const next: Record<string, ChatStatusLite> = {}
       for (const r of rows) if (r?.chatId) next[r.chatId] = r
       setChatStatus(next)
+      // ★R28 ACCT §3 — 같은 REPLACE가 「계정 → 살아 있는 자리」 역인덱스의 재료다.
+      // 판정 소스가 하나여야 picker·설정 목록·다른 창이 같은 답을 낸다.
+      putChatStatuses(rows)
     }, catchUp)
     return off
   }, [])
@@ -2411,6 +2445,7 @@ function MainApp({ user }: { user: AppUser }) {
             mentionBase={mentionBase}
             commands={composerCommands}
             inputRef={composerRef}
+            chatId={activeChatId}
           />
         </div>
 

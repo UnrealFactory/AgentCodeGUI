@@ -91,9 +91,34 @@ pub fn build<D: CliDriver>(rt: &ChatRuntime<D>, terminal: Terminal, now_ms: u64)
     // "곧 이어서 계속해요"라고 적고 버튼을 안 준다 — 아무 일도 안 일어나는데.
     // (진짜 게이트는 `hold_gate_open()`의 `auto_paused`다. 이 값은 표시용 접힘이다.)
     let auto_resume = rt.auto_resume() && !rt.hold().is_some_and(|h| h.auto_paused);
+    // ★R28 ACCT §3 — **이 채팅이 지금 물고 있는 구독 계정.**
+    //
+    // picker·설정 목록의 「사용 중 · N번 자리」 칩이 서는 유일한 근거다. 값을 렌더러가
+    // 만들지 않는 이유는 창이 여럿이기 때문이다: 본채팅·멀티 자리·추가 창·팝아웃이 각자
+    // 다른 JS 힙이라, 렌더러가 모은 표는 **자기 창의 자리만** 안다. 이 REPLACE는 모든
+    // 창에 같은 배열로 나가므로 어느 화면에서 열어도 같은 답이 나온다.
+    //
+    // **키가 있으면 살아 있는 런타임이다.** `status.json`에서 재구성한 행
+    // (`ccg_store::status::truth_from_chat_file`)에는 이 키가 없다 — 그게 곧
+    // 「busy 턴 중이거나 상주 CLI 생존」의 구조 신호다(내용으로 추측하지 않는다).
+    // API 키 축은 구독 계정이 없으므로 키를 안 싣는다(그 실행은 남의 한도를 안 태운다).
+    let account = match rt.identity().billing() {
+        ccg_engine::identity::BillingAxis::Subscription { account, .. } => {
+            // 빈 문자열은 「계정 미상」이지 계정이 아니다 — 그걸 실으면 목록에 없는
+            // 계정 하나가 모든 자리를 물고 있는 것처럼 보인다.
+            Some(account.to_string()).filter(|s| !s.is_empty())
+        }
+        ccg_engine::identity::BillingAxis::ApiKey { .. } => None,
+    };
     json!({
         "chatId": rt.chat_id,
         "status": status,
+        "account": account,
+        // ★R28 ACCT §3 — 이 채팅이 앉은 **보드 자리**(`${boardId}::${slot}`). 「사용 중 ·
+        // 2번 자리」의 그 번호가 여기서 나온다. 렌더러가 panelId ↔ chatId를 못 잇기
+        // 때문이다(그 대응의 진실은 보드 스토어이고 셸만 안다 — `panel_id_for_chat`).
+        // 자리에 안 앉은 채팅(본채팅·추가 창)은 `null`이고, 그쪽 이름표는 렌더러가 안다.
+        "panelId": super::panel_id_for_chat(&rt.chat_id),
         "busy": rt.busy(),
         "bgActive": bg_active,
         "ask": ask,

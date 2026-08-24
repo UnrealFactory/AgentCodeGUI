@@ -102,7 +102,9 @@ pub fn dispatch(app: &AppHandle, window: &WebviewWindow, channel: &str, p: &Valu
             let account = super::arg(p, 1).as_str();
             usage::usage_get(fresh, account)
         }
-        ch::AUTH_ACCOUNTS_USAGE => usage::accounts_usage(),
+        // ★R28 ACCT §1 — 인자 0개가 2.6.2 규약이고, 3.0은 **선택 옵션 하나**를 더 받는다
+        // (`{cachedOnly?, priority?, warm?}`). 없으면 R1과 한 글자도 다르지 않다.
+        ch::AUTH_ACCOUNTS_USAGE => usage::accounts_usage(super::arg(p, 0)),
 
         ch::PICK_ATTACHMENTS => dialog::pick_attachments(app),
 

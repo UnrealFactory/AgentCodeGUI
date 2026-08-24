@@ -24,8 +24,16 @@ fn desktop() -> String {
 /// 앱 홈의 사실 묶음. **읽기만** 한다.
 pub fn defaults() -> IdentityDefaults {
     let accounts = ccg_store::read_home_json("accounts.json").unwrap_or(Value::Null);
+    // ★R28 ACCT §4 — 기본 계정은 **목록 맨 위**(파생값)다. `defaultEmail`은 더 이상 읽지
+    // 않는다: 그 필드를 읽는 자리가 하나라도 남으면 「설정에서 맨 위로 올렸는데 새 채팅은
+    // 여전히 옛 계정으로 뜬다」가 된다(파급 전수의 그 자리).
+    // 순서 목록은 `known`(BTreeSet)이 아니라 **원문 배열**에서 뜬다 — Set은 정렬돼 있어
+    // "맨 위"를 알 수 없다.
     let default_account = accounts
-        .get("defaultEmail")
+        .get("accounts")
+        .and_then(Value::as_array)
+        .and_then(|a| a.first())
+        .and_then(|x| x.get("email"))
         .and_then(Value::as_str)
         .map(str::to_string);
     let known: BTreeSet<String> = accounts
@@ -57,12 +65,15 @@ pub fn defaults() -> IdentityDefaults {
                 .collect()
         })
         .unwrap_or_default();
+    // ★R28 ACCT §4 — Codex 축도 같은 규약(맨 위 = 기본).
     let default_codex = cx
-        .get("defaultEmail")
+        .get("accounts")
+        .and_then(Value::as_array)
+        .and_then(|a| a.first())
+        .and_then(|x| x.get("email"))
         .and_then(Value::as_str)
         .map(str::to_string)
-        .filter(|e| known_codex.contains(e))
-        .or_else(|| known_codex.iter().next().cloned());
+        .filter(|e| known_codex.contains(e));
     IdentityDefaults {
         default_cwd: desktop(),
         default_account,

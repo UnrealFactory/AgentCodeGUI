@@ -216,22 +216,51 @@ pub struct CodexAccountInfo {
     pub is_default: bool,
 }
 
-pub fn default_account_email() -> Option<String> {
+// ── ★R28 ACCT §4 — 기본 계정은 **맨 위**다(Anthropic 쪽과 같은 규약) ──────────
+// 설계·근거는 `claude.rs`의 같은 절에 있다. 여기도 `defaultEmail`을 **안 읽고**,
+// 남아 있으면 한 번 맨 위로 옮긴 뒤 파생값에 맡긴다.
+
+static DEFAULT_MIGRATED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// 옛 `defaultEmail` 계정을 맨 위로. 이미 맨 위면 아무것도 안 쓴다.
+pub fn migrate_default_to_top() -> bool {
     let f = read_store_file();
-    if let Some(d) = &f.default_email {
-        if f.accounts.iter().any(|a| email_of(a) == Some(d.as_str())) {
-            return Some(d.clone());
-        }
+    let Some(d) = f.default_email.as_deref() else { return false };
+    let Some(i) = f.accounts.iter().position(|a| email_of(a) == Some(d)) else { return false };
+    if i == 0 {
+        return false;
     }
-    f.accounts.first().and_then(email_of).map(str::to_string)
+    let mut next = f.accounts.clone();
+    let rec = next.remove(i);
+    next.insert(0, rec);
+    // `write_store_file(_, None)`은 `defaultEmail`을 **맨 위 계정으로 다시 채운다** —
+    // 2.6.2가 같은 홈을 읽어도 기본 계정이 사라지지 않게(claude.rs와 같은 이유).
+    write_store_file(&next, None);
+    true
 }
 
+fn ensure_default_migrated() {
+    use std::sync::atomic::Ordering;
+    if DEFAULT_MIGRATED.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    migrate_default_to_top();
+}
+
+/// 미지정 채팅이 쓸 Codex 계정 — **목록 맨 위**(파생값).
+pub fn default_account_email() -> Option<String> {
+    ensure_default_migrated();
+    read_store_file().accounts.first().and_then(email_of).map(str::to_string)
+}
+
+/// `is_default`는 **인덱스 0**(파생값).
 pub fn list_accounts() -> Vec<CodexAccountInfo> {
-    let def = default_account_email();
+    ensure_default_migrated();
     read_store_file()
         .accounts
         .iter()
-        .filter_map(|a| {
+        .enumerate()
+        .filter_map(|(i, a)| {
             let email = email_of(a)?.to_string();
             // 스토어 plan 우선, 없으면 신선한 auth.json의 id_token에서 폴백
             let plan = plan_of(a).map(str::to_string).or_else(|| {
@@ -244,15 +273,27 @@ pub fn list_accounts() -> Vec<CodexAccountInfo> {
                 };
                 parse_auth(best.as_deref()).and_then(|i| i.plan)
             });
-            Some(CodexAccountInfo { is_default: Some(&email) == def.as_ref(), plan, email })
+            Some(CodexAccountInfo { is_default: i == 0, plan, email })
         })
         .collect()
 }
 
+/// 「맨 위로 이동」 — 옛 `codex-auth:set-default-account`와 **동치**(§4).
 pub fn set_default_account(email: &str) -> Vec<CodexAccountInfo> {
+    move_account_to_top(email)
+}
+
+/// 계정 하나를 맨 위로(레코드째 옮긴다 — `authEnc`가 딸린 원본이라 재조립 금지).
+pub fn move_account_to_top(email: &str) -> Vec<CodexAccountInfo> {
+    ensure_default_migrated();
     let f = read_store_file();
-    if f.accounts.iter().any(|a| email_of(a) == Some(email)) {
-        write_store_file(&f.accounts, Some(email));
+    if let Some(i) = f.accounts.iter().rposition(|a| email_of(a) == Some(email)) {
+        if i > 0 {
+            let mut next = f.accounts.clone();
+            let rec = next.remove(i);
+            next.insert(0, rec);
+            write_store_file(&next, None);
+        }
     }
     list_accounts()
 }
@@ -274,7 +315,9 @@ pub fn reorder_accounts(emails: &[String]) -> Vec<CodexAccountInfo> {
         }
     }
     let next: Vec<Value> = order.into_iter().map(|i| f.accounts[i].clone()).collect();
-    write_store_file(&next, f.default_email.as_deref());
+    // ★R28 ACCT §4 — `None` = 「맨 위가 기본」. 옛 값을 들고 있으면 다음 부팅의
+    //   마이그레이션이 사용자의 정렬을 되돌린다(claude.rs와 같은 함정).
+    write_store_file(&next, None);
     list_accounts()
 }
 
@@ -282,7 +325,7 @@ pub fn reorder_accounts(emails: &[String]) -> Vec<CodexAccountInfo> {
 pub fn remove_account(email: &str) -> Vec<CodexAccountInfo> {
     let f = read_store_file();
     let kept: Vec<Value> = f.accounts.iter().filter(|a| email_of(a) != Some(email)).cloned().collect();
-    write_store_file(&kept, f.default_email.as_deref());
+    write_store_file(&kept, None); // 기본은 파생 — 맨 위가 이어받는다(§4)
     delete_account_dir(email);
     list_accounts()
 }

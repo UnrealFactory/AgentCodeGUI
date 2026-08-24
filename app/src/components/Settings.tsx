@@ -7,12 +7,25 @@ import type {
   McpServerInfo,
   LspServerInfo,
   ApiConfigStatus,
-  AccountInfo,
   AccountUsage,
-  CodexAccountInfo,
   CodexAccountUsage
 } from '@shared/protocol'
 import { FileBadge } from './fileType'
+// ★R28 ACCT §1·§3·§4 — 계정 목록·한도의 단일 스토어 + 「사용 중」 역인덱스.
+import {
+  ensureAccounts,
+  ensureCodexAccounts,
+  inUseLabel,
+  invalidateAccounts,
+  primeUsageFromDisk,
+  putAccounts,
+  putCodexAccounts,
+  refreshCodexUsage,
+  refreshUsage,
+  updateAccounts,
+  updateCodexAccounts,
+  useAccounts
+} from '../lib/accounts'
 import { getPref, setPref } from '../lib/prefs'
 import { applyGlass, GLASS_DEFAULT, GLASS_PREF } from '../lib/glass'
 import {
@@ -392,35 +405,53 @@ function AutoAccountSwitchRow({ count }: { count: number }): React.ReactElement 
 // 로그인/로그아웃 전부 격리 CONFIG_DIR(main/auth.ts) — 전역 ~/.claude 불가침.
 // PoC 문법: 계정 카드(아바타·이메일·기본 배지·플랜) + 잔여 한도 미니 게이지 + 점선 추가 행.
 function AccountView(): React.ReactElement {
-  const [accounts, setAccounts] = useState<AccountInfo[] | null>(null)
   // 'login' | 'codex-login' | <email>(삭제 중) | 'codex'(OpenAI 삭제 중) | null
   const [busy, setBusy] = useState<string | null>(null)
   const [loginUrl, setLoginUrl] = useState<string | null>(null)
   const [note, setNote] = useState<string | null>(null)
-  // 계정별 한도 사용률(5시간·주간·Fable) — 목록과 별도로 나중에 도착해 채워진다(네트워크 조회)
-  const [usage, setUsage] = useState<Record<string, AccountUsage>>({})
-  // Codex(OpenAI) 등록 계정 — Anthropic과 동일한 문법. null = 아직 조회 전
-  const [cxAccounts, setCxAccounts] = useState<CodexAccountInfo[] | null>(null)
-  // Codex 계정별 한도(rateLimits) — 목록과 별도로 나중에 도착(계정마다 app-server 1회 스폰)
-  const [cxUsage, setCxUsage] = useState<Record<string, CodexAccountUsage>>({})
 
+  // ★R28 ACCT §1 — 목록·한도의 주인은 **단일 스토어**다(`lib/accounts.ts`).
+  //
+  // R1까지 이 화면은 자기 `useState` 넷을 들고 탭을 열 때마다 `accountsUsage()`를 새로
+  // 쐈다. 그런데 채팅 계정 picker도 자기 모듈 캐시로 같은 조회를 쐈다 — 두 표면을 같은
+  // 순간에 열면 **HTTP가 두 벌**이었고, 그 규약은 1200ms 직렬이라 계정 수만큼 곱해졌다.
+  // 이제 조회는 한 벌이고, 첫 그림은 디스크에 보존된 마지막 값이다(HTTP 0회).
+  const acct = useAccounts()
+  const accounts = acct.accounts
+  const usage = acct.usage
+  const cxAccounts = acct.cxAccounts
+  const cxUsage = acct.cxUsage
+
+  // 목록이 바뀐 뒤(로그인·삭제·순서 저장 실패) — 목록은 강제로 다시 뜨고, 한도도
+  // 새 목록 기준으로 다시 묻는다(계정이 늘거나 줄었으니 TTL을 넘는 게 맞다).
   const reload = (): void => {
-    window.api.auth.listAccounts().then(setAccounts).catch(() => setAccounts([]))
-    window.api.auth
-      .accountsUsage()
-      .then((us) => setUsage(Object.fromEntries(us.map((u) => [u.email, u]))))
-      .catch(() => {})
-    window.api.codexAuth.listAccounts().then(setCxAccounts).catch(() => setCxAccounts([]))
-    window.api.codexAuth
-      .accountsUsage()
-      .then((us) => setCxUsage(Object.fromEntries(us.map((u) => [u.email, u]))))
-      .catch(() => {})
+    invalidateAccounts()
+    void ensureAccounts(true).then((list) => {
+      if (list.length) void refreshUsage({ priority: list[0]?.email, force: true })
+    })
+    void ensureCodexAccounts(true).then((list) => {
+      if (list.length) void refreshCodexUsage()
+    })
   }
-  // 한도 조회는 탭을 열 때 1회(reload) — 주기 폴링 없음. usage API 예산이 빡빡해서(429)
-  // 호출을 아끼고, 실패해도 main의 마지막 성공값/디스크 캐시가 게이지를 지켜준다.
+  // 탭을 열면 ① 디스크 캐시로 **즉시** 그리고 ② 뒤에서 갱신한다(stale-while-revalidate).
+  // 주기 폴링은 없다 — usage API 예산이 빡빡해서(429) 호출을 아낀다. 우선 조회 대상은
+  // 맨 위(=기본) 계정이다: 사용자가 제일 먼저 보는 숫자가 제일 먼저 갱신되게.
   // 429 백오프 재시도가 큐 안에서 끝나면 그 시점에 화면이 갱신된다(늦게 도착해도 반영).
-  useEffect(() => reload(), [])
+  useEffect(() => {
+    void primeUsageFromDisk()
+    void ensureAccounts().then((list) => {
+      if (list.length) void refreshUsage({ priority: list[0]?.email })
+    })
+    void ensureCodexAccounts().then((list) => {
+      if (list.length) void refreshCodexUsage()
+    })
+  }, [])
   useEffect(() => window.api.auth.onLoginUrl(setLoginUrl), [])
+  // 스토어에 앉히는 두 문 — 배열을 그대로 놓거나(`put`), 최신 값을 재료로 갱신하거나
+  // (`update`, 드래그 재정렬이 쓰는 함수형 갱신). 이름을 옛 setState와 같게 두면
+  // 아래 코드가 통째로 그대로 산다.
+  const setAccounts = putAccounts
+  const setCxAccounts = putCodexAccounts
 
   const addAccount = async (): Promise<void> => {
     setBusy('login')
@@ -448,19 +479,26 @@ function AccountView(): React.ReactElement {
     setBusy(null)
     reload()
   }
-  // 기본 계정 지정 — 새 채팅·계정 미지정 채팅이 이 계정으로 실행된다.
-  // 배지가 즉시 옮겨가도록 낙관 갱신 후 서버 결과로 확정한다.
-  const doSetDefault = async (email: string): Promise<void> => {
+  // ★R28 ACCT §4 — 「기본으로」가 **「맨 위로」**가 됐다.
+  //
+  // 사용자 요청: *"계정의 「기본」 개념을 삭제하고, 항상 정렬 기준 맨 위 계정이 선택되게.
+  // 괜히 복잡하다."* 그래서 기본은 저장된 상태가 아니라 **이 목록의 0번**이고, 이 버튼은
+  // 순서를 바꾸는 일만 한다(셸에서도 `auth:set-default-account` = 「맨 위로 이동」).
+  // 낙관 갱신도 배지 이동이 아니라 **배열 이동**이다 — 그래야 화면과 판정이 같은 규칙을 쓴다.
+  const doMoveTop = async (email: string): Promise<void> => {
     setNote(null)
-    setAccounts((prev) => prev?.map((a) => ({ ...a, isDefault: a.email === email })) ?? prev)
+    updateAccounts((prev) => {
+      const i = prev?.findIndex((a) => a.email === email) ?? -1
+      return prev && i > 0 ? arrMove(prev, i, 0) : prev
+    })
     try {
       setAccounts(await window.api.auth.setDefaultAccount(email))
     } catch {
-      setNote(t('기본 계정을 바꾸지 못했어요 — 앱을 재시작한 뒤 다시 시도해 주세요', 'Could not change the default account — restart the app and try again'))
+      setNote(t('순서를 바꾸지 못했어요 — 앱을 재시작한 뒤 다시 시도해 주세요', 'Could not change the order — restart the app and try again'))
       reload()
     }
   }
-  // OpenAI(Codex) — Anthropic과 같은 동작 3종 (추가/삭제/기본 지정)
+  // OpenAI(Codex) — Anthropic과 같은 동작 3종 (추가/삭제/맨 위로)
   const doCodexLogin = async (): Promise<void> => {
     setBusy('codex-login')
     setLoginUrl(null)
@@ -483,13 +521,22 @@ function AccountView(): React.ReactElement {
     }
     setBusy(null)
   }
-  const doCodexSetDefault = async (email: string): Promise<void> => {
+  // ★R28 ACCT §4 — Codex 축의 「맨 위로」. 셸에 이 채널의 핸들러가 없으므로(심의 안전값)
+  // **재정렬 채널로 보낸다** — 결과는 같고(맨 위 = 기본), 실제로 저장된다.
+  const doCodexMoveTop = async (email: string): Promise<void> => {
     setNote(null)
-    setCxAccounts((prev) => prev?.map((a) => ({ ...a, isDefault: a.email === email })) ?? prev)
+    let order: string[] = []
+    updateCodexAccounts((prev) => {
+      const i = prev?.findIndex((a) => a.email === email) ?? -1
+      const next = prev && i > 0 ? arrMove(prev, i, 0) : prev
+      order = next?.map((a) => a.email) ?? []
+      return next
+    })
+    if (!order.length) return
     try {
-      setCxAccounts(await window.api.codexAuth.setDefaultAccount(email))
+      setCxAccounts(await window.api.codexAuth.reorderAccounts(order))
     } catch {
-      setNote(t('기본 계정을 바꾸지 못했어요 — 앱을 재시작한 뒤 다시 시도해 주세요', 'Could not change the default account — restart the app and try again'))
+      setNote(t('순서를 바꾸지 못했어요 — 앱을 재시작한 뒤 다시 시도해 주세요', 'Could not change the order — restart the app and try again'))
       reload()
     }
   }
@@ -501,18 +548,18 @@ function AccountView(): React.ReactElement {
   // drop의 함수형 setState는 저장 시점에 "마지막 move까지 반영된" 배열을 읽기 위한 것.
   const antDrag = useHoldReorder(
     accounts?.length ?? 0,
-    (from, to) => setAccounts((prev) => (prev ? arrMove(prev, from, to) : prev)),
+    (from, to) => updateAccounts((prev) => (prev ? arrMove(prev, from, to) : prev)),
     () =>
-      setAccounts((prev) => {
+      updateAccounts((prev) => {
         if (prev) void window.api.auth.reorderAccounts(prev.map((a) => a.email)).then(setAccounts).catch(() => reload())
         return prev
       })
   )
   const cxDrag = useHoldReorder(
     cxAccounts?.length ?? 0,
-    (from, to) => setCxAccounts((prev) => (prev ? arrMove(prev, from, to) : prev)),
+    (from, to) => updateCodexAccounts((prev) => (prev ? arrMove(prev, from, to) : prev)),
     () =>
-      setCxAccounts((prev) => {
+      updateCodexAccounts((prev) => {
         if (prev) void window.api.codexAuth.reorderAccounts(prev.map((a) => a.email)).then(setCxAccounts).catch(() => reload())
         return prev
       })
@@ -523,14 +570,14 @@ function AccountView(): React.ReactElement {
   // (안정 정렬이 같은 배열을 내면) 저장을 건너뛴다. 함수형 setState라 드래그 직후의
   // 마지막 배열을 그대로 재료로 쓴다.
   const applySort = (sort: AcctSort): void => {
-    setAccounts((prev) => {
+    updateAccounts((prev) => {
       if (!prev || prev.length < 2) return prev
       const next = sortAccounts(prev, sort, (a) => antSortKeys(usage[a.email]))
       if (next.every((a, i) => a === prev[i])) return prev
       void window.api.auth.reorderAccounts(next.map((a) => a.email)).then(setAccounts).catch(() => reload())
       return next
     })
-    setCxAccounts((prev) => {
+    updateCodexAccounts((prev) => {
       if (!prev || prev.length < 2) return prev
       const next = sortAccounts(prev, sort, (a) => cxSortKeys(cxUsage[a.email]))
       if (next.every((a, i) => a === prev[i])) return prev
@@ -543,19 +590,22 @@ function AccountView(): React.ReactElement {
     <>
       <div className="set-h1">Account</div>
       <div className="set-h1-sub">
+        {/* ★R28 ACCT §4 — 「기본」이라는 별도 상태가 사라졌다. 안 고른 채팅이 쓰는 계정은
+            **이 목록의 맨 위**다. 설명도 그 규칙 하나만 말한다(옛 문구는 「기본」 배지·버튼을
+            가리켰는데 그 둘이 이제 없다). */}
         {isEn() ? (
           <>
             Subscription sign-in — managed per engine. Runs only use accounts registered here — each chat can pick
-            its own account, and chats without one run on the <strong>default</strong> account. Press and hold a
-            card to drag it into a different order; the sort buttons reorder and <strong>save</strong> that order
-            (the chat account picker follows it).
+            its own account, and chats without one run on the <strong>account at the top of this list</strong>.
+            Press and hold a card to drag it into a different order; the sort buttons reorder and{' '}
+            <strong>save</strong> that order (the chat account picker follows it).
           </>
         ) : (
           <>
             구독 계정 로그인 — 엔진별로 따로 관리돼요. 실행에는 여기 등록된 계정만 쓰여요 — 채팅마다 계정을 따로
-            고를 수 있고, 안 고른 채팅은 <strong>기본</strong> 계정으로 실행돼요. 계정 카드는 꾹 눌러 끌어 순서를
-            바꾸고, 정렬 버튼은 그 기준으로 순서를 <strong>저장</strong>까지 해요(채팅 계정 picker도 이 순서를
-            따라요).
+            고를 수 있고, 안 고른 채팅은 <strong>이 목록 맨 위</strong> 계정으로 실행돼요. 계정 카드는 꾹 눌러 끌어
+            순서를 바꾸고, 정렬 버튼은 그 기준으로 순서를 <strong>저장</strong>까지 해요(채팅 계정 picker도 이
+            순서를 따라요).
           </>
         )}
       </div>
@@ -594,7 +644,12 @@ function AccountView(): React.ReactElement {
               <div className="who">
                 <div className="em">
                   <span className="emt">{a.email}</span>
-                  {a.isDefault && <span className="set-badge">{t('기본', 'Default')}</span>}
+                  {/* ★R28 ACCT §4 — 배지는 **인덱스 0의 파생 표시**다(저장된 상태가 아니다).
+                      셸도 같은 규칙으로 `isDefault`를 싣는다 — 진실이 두 곳이 되지 않게 그 값을 쓴다. */}
+                  {a.isDefault && <span className="set-badge">{t('기본 · 맨 위', 'Default · top')}</span>}
+                  {/* ★R28 ACCT §3 — 다른 자리가 이 계정으로 **지금 돌고 있다**(주황).
+                      선택을 막지 않는다 — 사용자가 알고 쓰는 건 존중하고, 모르고 겹치는 것만 막는다. */}
+                  {inUseLabel(a.email) && <span className="set-badge warn">{inUseLabel(a.email)}</span>}
                   {/* ★M11 R3(F2) — 토큰 교환이 실패한 계정. R2까지 이 사실은 stderr 한 줄로만
                       남았고, 사용자는 갈아탄 자리에서 로그인 창을 보고서야 알았다. 자동 전환은
                       이미 이 계정을 후보에서 뺐다(격리) — 그 판정을 여기서도 말한다.
@@ -613,11 +668,17 @@ function AccountView(): React.ReactElement {
                     : planLabel(a.subscriptionType)}
                 </div>
               </div>
-              <AccountLimits u={usage[a.email]} />
+              <AccountLimits
+                u={usage[a.email]}
+                loading={acct.loading}
+                // 수동 재시도는 TTL을 넘는다 — 사용자가 「다시 시도」를 눌렀는데 캐시가
+                // 나오면 그 버튼은 아무 일도 안 하는 버튼이다.
+                onRetry={() => void refreshUsage({ priority: a.email, force: true })}
+              />
               <div className="acts">
                 {!a.isDefault && (
-                  <button className="set-chipbtn" disabled={busy != null} onClick={() => void doSetDefault(a.email)}>
-                    {t('기본으로', 'Make default')}
+                  <button className="set-chipbtn" disabled={busy != null} onClick={() => void doMoveTop(a.email)}>
+                    {t('맨 위로', 'Move to top')}
                   </button>
                 )}
                 <button className="set-chipbtn danger" disabled={busy != null} onClick={() => void doDelete(a.email)}>
@@ -670,7 +731,8 @@ function AccountView(): React.ReactElement {
               <div className="who">
                 <div className="em">
                   <span className="emt">{a.email}</span>
-                  {a.isDefault && <span className="set-badge">{t('기본', 'Default')}</span>}
+                  {/* ★R28 ACCT §4 — Anthropic과 같은 규칙(맨 위 = 기본, 파생값) */}
+                  {a.isDefault && <span className="set-badge">{t('기본 · 맨 위', 'Default · top')}</span>}
                 </div>
                 {/* 플랜은 rateLimits의 planType이 최신(구독 변경 즉시 반영) — 도착 전엔 id_token 값 */}
                 <div className="meta">{chatgptPlan(cxUsage[a.email]?.planType ?? a.plan)}</div>
@@ -678,8 +740,8 @@ function AccountView(): React.ReactElement {
               <CodexLimits u={cxUsage[a.email]} />
               <div className="acts">
                 {!a.isDefault && (
-                  <button className="set-chipbtn" disabled={busy != null} onClick={() => void doCodexSetDefault(a.email)}>
-                    {t('기본으로', 'Make default')}
+                  <button className="set-chipbtn" disabled={busy != null} onClick={() => void doCodexMoveTop(a.email)}>
+                    {t('맨 위로', 'Move to top')}
                   </button>
                 )}
                 <button className="set-chipbtn danger" disabled={busy != null} onClick={() => void doCodexDelete(a.email)}>
@@ -819,18 +881,60 @@ function CodexLimits({ u }: { u?: CodexAccountUsage }): React.ReactElement | nul
 // 계정 카드의 잔여 한도 미니 게이지 — 앱 전체 관례(잔여 % = 100 − 사용률). 조회 못 한
 // 항목은 조용히 빠진다(저장 토큰 만료 등 — 실행하면 CLI가 리프레시한다).
 // 행 순서는 컨텍스트 팝오버와 동일: 5시간 → Fable → 주간.
-function AccountLimits({ u }: { u?: AccountUsage }): React.ReactElement | null {
-  if (!u) return null
+/**
+ * 계정 한 줄의 한도 게이지.
+ *
+ * ★R28 ACCT §1 — **실패를 「데이터 없음」으로 뭉개지 않는다.**
+ *
+ * R1까지 이 컴포넌트는 값이 없으면 `null`을 돌려줬다. 그래서 429 한 번, 네트워크 한 번에
+ * 그 자리가 그냥 **빈 칸**이 됐고, 사용자에게는 "안 된다"와 "그 계정엔 그런 한도가 없다"가
+ * 구별되지 않았다(사용자 보고의 그 증상). 이제 셋을 나눠 말한다:
+ *
+ *  - 조회 중(`loading`이고 값이 없다) → 스피너
+ *  - 물어보지 못했다(`unavailable`) → 「조회 실패 · 다시 시도」
+ *  - 낡은 값(`stale`) → 숫자는 그대로 그리고 표식만 얹는다(값이 있으면 그게 마지막 실측이다)
+ */
+function AccountLimits({
+  u,
+  loading,
+  onRetry
+}: {
+  u?: AccountUsage
+  loading?: boolean
+  onRetry?: () => void
+}): React.ReactElement | null {
   const rows: { label: string; left: number; resetsAt?: number | null }[] = []
-  if (u.fiveHourPct != null) rows.push({ label: t('5시간', '5h'), left: 100 - u.fiveHourPct, resetsAt: u.fiveHourResetsAt })
-  if (u.fablePct != null) rows.push({ label: 'Fable', left: 100 - u.fablePct, resetsAt: u.fableResetsAt })
-  if (u.weeklyPct != null) rows.push({ label: t('주간', 'Weekly'), left: 100 - u.weeklyPct, resetsAt: u.weeklyResetsAt })
-  if (!rows.length) return null
+  if (u?.fiveHourPct != null) rows.push({ label: t('5시간', '5h'), left: 100 - u.fiveHourPct, resetsAt: u.fiveHourResetsAt })
+  if (u?.fablePct != null) rows.push({ label: 'Fable', left: 100 - u.fablePct, resetsAt: u.fableResetsAt })
+  if (u?.weeklyPct != null) rows.push({ label: t('주간', 'Weekly'), left: 100 - u.weeklyPct, resetsAt: u.weeklyResetsAt })
+  if (!rows.length) {
+    if (loading) {
+      return (
+        <div className="limits lim-state">
+          <span className="set-spin" /> {t('한도 조회 중…', 'Checking limits…')}
+        </div>
+      )
+    }
+    if (!u || u.unavailable) {
+      return (
+        <div className="limits lim-state">
+          <span className="lim-fail">{t('한도를 못 불러왔어요', 'Couldn’t load limits')}</span>
+          {onRetry && (
+            <button className="set-chipbtn" onClick={onRetry}>
+              {t('다시 시도', 'Retry')}
+            </button>
+          )}
+        </div>
+      )
+    }
+    return null // 값은 왔는데 창이 하나도 없다 = 그 플랜엔 표시할 한도가 없다
+  }
   return (
     <div className="limits">
       {rows.map((r) => (
         <LimRow key={r.label} label={r.label} left={r.left} resetsAt={r.resetsAt} />
       ))}
+      {u?.stale && <div className="lim-stale">{t('마지막으로 확인한 값', 'Last known value')}</div>}
     </div>
   )
 }

@@ -18,6 +18,7 @@ import type {
   AuthStatus,
   AccountInfo,
   AccountUsage,
+  AccountsUsageOpts,
   CodexAccountInfo,
   CodexAccountUsage,
   ApiUsageRecord,
@@ -102,26 +103,27 @@ export interface WindowApi {
     cancelLogin(): Promise<void>
     /** 로그인 OAuth URL 수신 (브라우저가 안 열릴 때 폴백 링크용) */
     onLoginUrl(cb: (url: string) => void): () => void
-    /** 등록 계정 목록 — 기본 계정은 isDefault:true */
+    /** 등록 계정 목록 — **맨 위 계정**이 isDefault:true (★R28 ACCT §4: 기본은 파생값) */
     listAccounts(): Promise<AccountInfo[]>
-    /** 새 채팅·미지정 채팅이 쓸 기본 계정 지정 → 갱신된 목록 */
+    /** ★R28 ACCT §4 — 「맨 위로 이동」과 **동치**. 이름은 2.6.2 채널 호환으로만 남았다 */
     setDefaultAccount(email: string): Promise<AccountInfo[]>
     /** 등록 목록에서 계정 제거(토큰 해지 없이 — 해지는 logout) → 갱신된 목록 */
     removeAccount(email: string): Promise<AccountInfo[]>
     /** 계정 표시 순서 변경(설정 꾹-드래그) — 채팅 계정 picker에도 같은 순서 → 갱신된 목록 */
     reorderAccounts(emails: string[]): Promise<AccountInfo[]>
-    /** 등록 계정별 한도 사용률(5시간·주간·Fable) — 각 계정 토큰으로 일괄 조회 */
-    accountsUsage(): Promise<AccountUsage[]>
+    /** 등록 계정별 한도 사용률(5시간·주간·Fable) — 각 계정 토큰으로 일괄 조회.
+     *  ★R28 ACCT §1 — `opts`로 캐시 우선(cachedOnly)·우선 조회(priority)·워밍(warm). */
+    accountsUsage(opts?: AccountsUsageOpts): Promise<AccountUsage[]>
   }
   /** Codex(OpenAI) 계정 — Anthropic과 동일: 앱 등록 계정만, 전역 ~/.codex 불가침 (설정 → Account). */
   codexAuth: {
-    /** 등록 계정 목록 — 기본 계정은 isDefault:true */
+    /** 등록 계정 목록 — **맨 위 계정**이 isDefault:true (★R28 ACCT §4: 기본은 파생값) */
     listAccounts(): Promise<CodexAccountInfo[]>
     /** 계정 추가 — 격리 CODEX_HOME 브라우저 OAuth. 완료 시 등록 + 갱신된 목록 */
     login(): Promise<CodexAccountInfo[]>
     /** 계정 삭제 — 그 계정 auth 제거 + 등록 삭제 → 갱신된 목록 */
     logout(email: string): Promise<CodexAccountInfo[]>
-    /** 새 채팅·미지정 채팅이 쓸 기본 계정 지정 → 갱신된 목록 */
+    /** ★R28 ACCT §4 — 「맨 위로 이동」과 동치(3.0 화면은 reorderAccounts를 쓴다) */
     setDefaultAccount(email: string): Promise<CodexAccountInfo[]>
     cancelLogin(): Promise<void>
     /** 계정 표시 순서 변경(설정 꾹-드래그) → 갱신된 목록 */

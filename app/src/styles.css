@@ -1350,6 +1350,27 @@ input,textarea{ font-family:inherit; }
 .composer .cw{ position:relative; display:flex; flex:0 0 auto; }
 .composer .send{ flex:0 0 28px; margin-bottom:0; }
 
+/* ★R28 ACCT §3-b — 계정 전환 되돌리기 줄. **팝오버가 아니라 칩에** 붙는다: 실수를
+   알아채는 건 보통 팝오버를 닫은 뒤라, 팝오버 안에 두면 사라진 뒤에 필요해진다.
+   계정 전환은 프롬프트 캐시가 식는 비용이 커서 실수의 대가가 크다 — 그래서 복구 동선. */
+.acct-undo{
+  position:absolute; bottom:calc(100% + 10px); right:0; z-index:46;
+  display:flex; align-items:center; gap:8px; white-space:nowrap;
+  padding:7px 7px 7px 11px; border-radius:11px; font-size:11px; color:var(--text-2);
+  background:rgba(28,28,28,.86); border:1px solid rgba(255,255,255,.10);
+  backdrop-filter:blur(32px) saturate(1.25); -webkit-backdrop-filter:blur(32px) saturate(1.25);
+  box-shadow:0 18px 44px -18px rgba(0,0,0,.75), inset 0 1px 0 rgba(255,255,255,.05);
+  animation:rise .16s cubic-bezier(.2,.8,.2,1);
+}
+.acct-undo .au-txt{ color:var(--text-3); }
+.acct-undo .au-go{
+  font-size:10.5px; font-weight:650; padding:3px 9px; border-radius:99px;
+  color:var(--blue); background:rgba(127,167,216,.16); transition:background .12s;
+}
+.acct-undo .au-go:hover{ background:rgba(127,167,216,.26); }
+.acct-undo .au-x{ display:grid; place-items:center; width:18px; height:18px; border-radius:6px; color:var(--text-4); }
+.acct-undo .au-x:hover{ background:var(--hover); color:var(--text-2); }
+
 /* ── 통합 picker 팝오버 (PoC .pop) — 칩 위로 열리는 유리 카드 ── */
 .picker-pop{
   position:absolute; bottom:calc(100% + 10px); right:0; width:292px;
@@ -1380,6 +1401,23 @@ input,textarea{ font-family:inherit; }
 .pp-sub .warn{ color:var(--amber); }
 .pp-sub .crit{ color:var(--red); }
 .pp-check{ margin-left:auto; color:var(--text-2); flex:0 0 auto; display:grid; place-items:center; }
+/* ★R28 ACCT §3-b — **현재 이 채팅의 계정**. 선택 표시(체크)만으로는 목록에서 눈에 안
+   띄어, 실수로 다른 계정을 누르면 원래 무엇이었는지 못 찾았다(사용자 보고). 파랑 계열
+   왼쪽 선 + 「현재」 라벨로 한 층 올린다 — §3의 「사용 중」(주황)과 **다른 시각층**이라
+   한 줄에 둘이 같이 서도 안 헷갈린다. */
+.pp-row.cur{ color:var(--text); background:var(--blue-soft); box-shadow:inset 2px 0 0 var(--blue); }
+.pp-row.cur:hover{ background:var(--blue-soft); filter:brightness(1.12); }
+.pp-now{
+  margin-left:6px; font-size:9px; font-weight:700; letter-spacing:.03em; vertical-align:1px;
+  color:var(--blue); background:rgba(127,167,216,.16); padding:2px 6px; border-radius:99px;
+}
+/* ★R28 ACCT §3 — 「사용 중 · 2번 자리」. **경고 톤일 뿐 선택을 막지 않는다** —
+   사용자가 알고 고르는 건 존중하고, 모르고 겹치는 것만 막는다. */
+.pp-warn{
+  flex:0 0 auto; margin-left:auto; font-size:9.5px; font-weight:600; white-space:nowrap;
+  color:var(--amber); background:rgba(217,160,91,.14); padding:2.5px 7px; border-radius:99px;
+}
+.pp-row .pp-warn + .pp-check{ margin-left:6px; }
 /* 과금 헤더 오른쪽의 '자동 이어서' 미니 필 — 켜짐=액센트 필(멀티 패널 수 탭 문법).
    행(라벨+스위치)로 그리면 라디오 행 사이의 이물이라는 실측 피드백으로 헤더 승격 */
 .pp-h4.row{ display:flex; align-items:center; gap:8px; margin-right:2px; }
@@ -3225,6 +3263,11 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
 .ava2{ width:40px; height:40px; border-radius:99px; display:grid; place-items:center; font-size:14px; font-weight:700; color:#fff; flex:0 0 auto; box-shadow:0 5px 14px -5px rgba(0,0,0,.5); }
 /* 초기화 시각 열(.lr)·"n% 남음" 값 칸만큼 넓힌 폭 — 게이지 블록이 왼쪽으로 밀리고 바 폭은 그대로 */
 .limits{ display:flex; flex-direction:column; gap:6px; width:290px; flex:0 0 auto; }
+/* ★R28 ACCT §1 — 조회 중·실패는 **빈 칸이 아니라 상태**다. R1까지 값이 없으면 자리가
+   통째로 사라져, 429 한 번과 "그 플랜엔 그런 한도가 없다"가 구분되지 않았다. */
+.limits.lim-state{ flex-direction:row; align-items:center; gap:8px; font-size:10.5px; color:var(--text-4); }
+.limits.lim-state .lim-fail{ color:var(--amber); }
+.lim-stale{ font-size:9.5px; color:var(--text-5, var(--text-4)); opacity:.8; }
 .lim{ display:flex; align-items:center; gap:8px; }
 .lim .ll{ font-size:9.5px; color:var(--text-4); width:28px; text-align:right; flex:0 0 auto; }
 .lim .lv{ font-size:9.5px; color:var(--text-3); width:56px; flex:0 0 auto; font-variant-numeric:tabular-nums; white-space:nowrap; }

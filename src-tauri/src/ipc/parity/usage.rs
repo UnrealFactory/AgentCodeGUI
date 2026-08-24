@@ -227,64 +227,152 @@ pub fn usage_get(fresh: bool, account: Option<&str>) -> Value {
     data
 }
 
-/// `auth:accounts-usage()` → `AccountUsage[]`.
+// ── ★R28 ACCT §1 — 「Account를 눌렀는데 한도가 안 뜨거나 엄청 느리다」 ──────────
+//
+// 사용자 보고의 원인은 구조였다: 규약이 **1200ms 직렬 × 계정 수 + 실 HTTP**라 계정이
+// N개면 첫 표시까지 수 초를 그냥 기다리고, 429·네트워크 실패면 「안 됨」으로 보인다.
+// 규약(레이트 안전)은 2.6.2 대조라 못 바꾼다 — 바꿀 수 있는 것은 **UI가 그걸 기다리는
+// 것**이다. 그래서 이 파일에 문 셋이 생겼다:
+//
+// | 옵션 | 무엇 | 누가 쓰나 |
+// |---|---|---|
+// | `cachedOnly` | HTTP를 **한 번도** 안 쏘고 디스크 캐시만 그린다(<수 ms) | 첫 페인트(stale-while-revalidate의 앞쪽) |
+// | `priority` | 그 계정을 **맨 먼저** 조회한다 | 사용자가 지금 보는 계정(활성/이 채팅의 계정) |
+// | `warm` | 로컬 액세스 토큰이 **살아 있는** 계정만 조회 | 시작·포커스 선행 워밍 |
+//
+// `warm`이 따로 있는 이유는 M11 R2 C1이다: 부팅 프리웜을 들어낸 것은 **오래 논 계정의
+// 리프레시 토큰 회전이 되돌릴 수 없는 부작용**이기 때문이었다. 워밍은 회전을 유발하지
+// 않는 계정만 건드린다 — 그러면 "앱을 켠 것만으로 토큰이 회전한다"가 코드에서 불가능해진다.
+// (사용자가 Account 탭을 직접 열면 `warm:false`라 그때는 옛 규약 그대로 교환까지 간다.)
+
+/// 연속 실패 계정의 **격리**(§1 「죽은 계정 격리」).
+///
+/// 직렬 큐라 죽은 계정 하나가 5초(전송 타임아웃)를 먹으면 그 뒤 계정 전부가 그만큼
+/// 늦는다. 실패가 쌓이면 그 계정은 조회를 **건너뛰고** 캐시로 갈음한다 —
+/// 목록에서 사라지지도, 큐를 막지도 않는다. 성공하면 즉시 풀린다.
+const DEAD_AFTER_FAILS: u32 = 2;
+const DEAD_BACKOFF_MS: u64 = 3 * 60 * 1000;
+
+struct Dead {
+    fails: u32,
+    until: u64,
+}
+
+fn dead_book() -> &'static Mutex<HashMap<String, Dead>> {
+    static D: std::sync::OnceLock<Mutex<HashMap<String, Dead>>> = std::sync::OnceLock::new();
+    D.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// 지금 이 계정을 건너뛰나.
+fn is_dead(email: &str) -> bool {
+    let g = dead_book().lock().unwrap_or_else(|e| e.into_inner());
+    g.get(email).is_some_and(|d| d.fails >= DEAD_AFTER_FAILS && now_ms() < d.until)
+}
+
+fn note_fail(email: &str) {
+    let mut g = dead_book().lock().unwrap_or_else(|e| e.into_inner());
+    let d = g.entry(email.to_string()).or_insert(Dead { fails: 0, until: 0 });
+    d.fails = d.fails.saturating_add(1);
+    // 지수는 안 쓴다 — 이 격리는 벌이 아니라 **큐를 안 막기 위한 우회**다.
+    d.until = now_ms() + DEAD_BACKOFF_MS;
+}
+
+fn note_ok(email: &str) {
+    dead_book().lock().unwrap_or_else(|e| e.into_inner()).remove(email);
+}
+
+/// 테스트·하네스용 — 격리 장부를 비운다.
+#[cfg(test)]
+fn forget_dead() {
+    dead_book().lock().unwrap_or_else(|e| e.into_inner()).clear();
+}
+
+/// `auth:accounts-usage(opts?)` → `AccountUsage[]`.
 ///
 /// 2.6.2 `accountsUsage`(`auth.ts:598-612`)와 같다: 등록 **순서 그대로**, 계정마다
 /// 디스크 캐시(2분) 적중이면 그대로, 아니면 조회 후 캐시 적재. 조회가 실패하면 낡은
 /// 캐시를, 그것도 없으면 전부 `null`인 빈 행(계정은 목록에서 사라지지 않는다 —
 /// 설정 화면의 행이 통째로 없어지는 쪽이 더 나쁘다).
 ///
+/// **응답 순서는 언제나 등록 순서다** — `priority`는 *조회* 순서만 바꾼다. 순서를
+/// 흔들면 설정 화면의 목록이 조회할 때마다 재배열된다(= 정렬이 곧 기본인 §4에서는
+/// 기본 계정이 널뛴다).
+///
 /// **디스크 캐시를 쓰는 이유**: `engine/acct_switch.rs`의 자동 전환기가 같은
 /// `usage-cache.json`을 읽고 쓴다. 여기서 메모리 캐시를 따로 두면 조회 루프가 두 벌이
 /// 되고, 그 둘이 각자 만료를 세면서 **오래 논 계정의 리프레시 토큰을 서로 번갈아
 /// 회전시킨다**(M11 R2 C1이 부팅 프리웜을 들어낸 바로 그 사고).
-pub fn accounts_usage() -> Value {
+pub fn accounts_usage(opts: &Value) -> Value {
+    let cached_only = opts.get("cachedOnly").and_then(Value::as_bool).unwrap_or(false);
+    let warm = opts.get("warm").and_then(Value::as_bool).unwrap_or(false);
+    let priority = opts.get("priority").and_then(Value::as_str).unwrap_or("").trim().to_string();
+
     let accounts = ccg_auth::claude::list_accounts();
     if accounts.is_empty() {
         return json!([]);
     }
     let mut disk = ccg_auth::usage::read_usage_cache();
     let now = now_ms() as i64;
-    let mut out: Vec<Value> = Vec::with_capacity(accounts.len());
+    let emails: Vec<String> = accounts.into_iter().map(|a| a.email).collect();
+    // 조회 순서만 바꾼다(응답은 등록 순서로 되돌린다).
+    let mut order: Vec<usize> = (0..emails.len()).collect();
+    if let Some(p) = emails.iter().position(|e| *e == priority) {
+        order.retain(|i| *i != p);
+        order.insert(0, p);
+    }
+    let mut rows: Vec<Option<Value>> = vec![None; emails.len()];
     let mut dirty = false;
 
-    for a in accounts {
-        let email = a.email;
+    for i in order {
+        let email = emails[i].clone();
         let hit = disk
             .get(&email)
             .filter(|c| (now - c.at) >= 0 && ((now - c.at) as u64) < ccg_auth::usage::ACCT_USAGE_TTL_MS)
             .map(|c| c.data.clone());
         if let Some(d) = hit {
-            out.push(serde_json::to_value(&d).unwrap_or_else(|_| json!({ "email": email })));
+            rows[i] = Some(serde_json::to_value(&d).unwrap_or_else(|_| json!({ "email": email })));
+            continue;
+        }
+        // ① 첫 페인트 · ② 격리된 계정 · ③ 워밍인데 토큰이 만료됐다(= 회전이 필요하다).
+        //    셋 다 **조회하지 않고** 캐시로 갈음한다. ③이 M11 R2 C1의 그 문이다.
+        let skip = cached_only || is_dead(&email) || (warm && ccg_auth::claude::account_access_token(&email).is_none());
+        if skip {
+            rows[i] = Some(fallback_row(&disk, &email));
             continue;
         }
         // 조회 — 429는 `fetch_account_usage`가 Retry-After만큼 자고 **1회만** 재시도한다.
         match ccg_auth::net::fetch_account_usage(&email) {
             Ok(d) => {
-                out.push(serde_json::to_value(&d).unwrap_or_else(|_| json!({ "email": email })));
+                note_ok(&email);
+                rows[i] = Some(serde_json::to_value(&d).unwrap_or_else(|_| json!({ "email": email })));
                 disk.insert(email, ccg_auth::usage::CachedUsage { at: now, data: d });
                 dirty = true;
             }
             Err(_) => {
-                // 실패는 낡은 캐시로 갈음한다(타임스탬프는 그대로 — 다음에 또 시도한다).
-                // 표식은 `usage:get`과 같은 규약이다: 값이 있으면 `stale`, 없으면
-                // `unavailable`. 여섯 필드가 전부 `null`인 행이 "한도 0"으로 읽히면
-                // 「한도 적게 남은순」 정렬이 죽은 계정을 맨 위에 올린다.
-                let hit = disk.get(&email).map(|c| c.data.clone());
-                let stale_row = hit.is_some();
-                let fallback = hit.unwrap_or_else(|| ccg_auth::usage::AccountUsage::empty(&email));
-                let mut row = serde_json::to_value(&fallback).unwrap_or_else(|_| json!({ "email": email }));
-                if row.is_object() {
-                    row[if stale_row { "stale" } else { "unavailable" }] = json!(true);
-                }
-                out.push(row);
+                note_fail(&email);
+                rows[i] = Some(fallback_row(&disk, &email));
             }
         }
     }
     if dirty {
         ccg_auth::usage::write_usage_cache(&disk);
     }
-    Value::Array(out)
+    Value::Array(rows.into_iter().map(|r| r.unwrap_or(Value::Null)).collect())
+}
+
+/// 조회를 못 했거나 안 한 계정의 행 — 낡은 캐시로 갈음한다(타임스탬프는 그대로.
+/// 다음에 또 시도한다). 표식은 `usage:get`과 같은 규약이다: 값이 있으면 `stale`,
+/// 없으면 `unavailable`. 여섯 필드가 전부 `null`인 행이 "한도 0"으로 읽히면
+/// 「한도 적게 남은순」 정렬이 죽은 계정을 맨 위에 올린다.
+fn fallback_row(disk: &std::collections::BTreeMap<String, ccg_auth::usage::CachedUsage>, email: &str) -> Value {
+    let hit = disk.get(email).map(|c| c.data.clone());
+    let stale_row = hit.is_some();
+    let fallback = hit.unwrap_or_else(|| ccg_auth::usage::AccountUsage::empty(email));
+    let mut row = serde_json::to_value(&fallback).unwrap_or_else(|_| json!({ "email": email }));
+    if row.is_object() {
+        row[if stale_row { "stale" } else { "unavailable" }] = json!(true);
+    }
+    row
 }
 
 #[cfg(test)]
@@ -324,7 +412,7 @@ mod tests {
     #[test]
     fn accounts_usage_without_accounts_never_touches_the_network() {
         let _h = ccg_store::testhome::take("parity-usage-empty");
-        assert_eq!(accounts_usage(), json!([]));
+        assert_eq!(accounts_usage(&Value::Null), json!([]));
     }
 
     /// 계정이 없으면 `usage:get`도 조회 없이 안전값이다(심의 `NO_USAGE`와 같은 모양) —
@@ -376,7 +464,7 @@ mod tests {
         assert!(v.get("stale").is_none(), "캐시가 없는데 stale이면 거짓말이다");
 
         // ④ 계정별 목록도 같은 규약 — 행은 남되 「못 물어봤다」가 실린다.
-        let rows = accounts_usage();
+        let rows = accounts_usage(&Value::Null);
         println!("[실패1] auth:accounts-usage = {rows}");
         let row = &rows.as_array().expect("배열")[0];
         assert_eq!(row["email"], json!(email), "계정 행이 목록에서 사라지면 안 된다");
@@ -420,7 +508,7 @@ mod tests {
 
         // ① 신선(1분 전) — 조회 없이 캐시 적중. 표식이 붙으면 안 된다(방금 물어본 값과 같다).
         seed(now - 60_000);
-        let hit = accounts_usage();
+        let hit = accounts_usage(&Value::Null);
         let row = &hit.as_array().expect("배열")[0];
         println!("[TTL] 1분 전 캐시 = {row}");
         assert_eq!(row["weeklyPct"], json!(93), "★ 2분 안인데 캐시를 안 썼다(= 매번 조회한다)");
@@ -428,7 +516,7 @@ mod tests {
 
         // ② 만료(3분 전) — 조회가 나가고, `CCG_NO_NET`이라 실패해 낡은 값으로 떨어진다.
         seed(now - 3 * 60_000);
-        let miss = accounts_usage();
+        let miss = accounts_usage(&Value::Null);
         let row = &miss.as_array().expect("배열")[0];
         println!("[TTL] 3분 전 캐시 = {row}");
         assert_eq!(row["weeklyPct"], json!(93), "낡아도 마지막 값은 지킨다(게이지가 빈 칸이 되지 않게)");
@@ -437,7 +525,7 @@ mod tests {
 
         // ③ 캐시가 아예 없으면 unavailable(퍼센트는 null) — 정렬이 죽은 계정을 맨 위에 못 올린다.
         ccg_auth::usage::write_usage_cache(&std::collections::BTreeMap::new());
-        let bare = accounts_usage();
+        let bare = accounts_usage(&Value::Null);
         let row = &bare.as_array().expect("배열")[0];
         println!("[TTL] 캐시 없음 = {row}");
         assert_eq!(row["unavailable"], json!(true));
@@ -458,5 +546,125 @@ mod tests {
         assert!(v.get("unavailable").is_none(), "값이 있는데 '못 물어봤다'로 읽히면 재개가 영영 안 난다");
         // 배열·널 같은 비객체에는 아무것도 안 붙인다(패닉 금지).
         assert_eq!(mark_stale(Value::Null), Value::Null);
+    }
+
+    // ── ★R28 ACCT §1 — 캐시 우선 · 우선순위 · 워밍 · 죽은 계정 격리 ────────────
+
+    /// 계정 3개 + 만료된 디스크 캐시를 심는다(전부 3분 전 = TTL 밖).
+    fn seed_three(h: &ccg_store::testhome::TestHome, live_token_for: &[&str]) -> Vec<String> {
+        let emails: Vec<String> = ["one@acct.test", "two@acct.test", "three@acct.test"].iter().map(|s| s.to_string()).collect();
+        let accounts: Vec<Value> = emails.iter().map(|e| json!({ "email": e })).collect();
+        let store = json!({ "version": 3, "accounts": accounts });
+        std::fs::write(h.dir.join("accounts.json"), store.to_string()).expect("스토어 시드");
+        let old = now_ms() as i64 - 3 * 60_000;
+        let mut m = std::collections::BTreeMap::new();
+        for (i, e) in emails.iter().enumerate() {
+            m.insert(
+                e.clone(),
+                ccg_auth::usage::CachedUsage {
+                    at: old,
+                    data: ccg_auth::usage::AccountUsage { weekly_pct: Some(10 * i as i64), ..ccg_auth::usage::AccountUsage::empty(e) },
+                },
+            );
+        }
+        ccg_auth::usage::write_usage_cache(&m);
+        // 만료가 먼 가짜 액세스 토큰 = `account_access_token`이 네트워크 없이 산다.
+        let far = now_ms() as f64 + 3_600_000.0;
+        for e in live_token_for {
+            let dir = h.dir.join("accounts").join(ccg_auth::account_slug(e));
+            std::fs::create_dir_all(&dir).expect("계정 폴더");
+            let creds = json!({ "claudeAiOauth": { "accessToken": format!("A-{e}"), "expiresAt": far, "scopes": ["user:inference"] } });
+            std::fs::write(dir.join(".credentials.json"), creds.to_string()).expect("크리덴셜 시드");
+        }
+        emails
+    }
+
+    /// ★ **첫 페인트는 HTTP를 안 기다린다.** `cachedOnly`는 만료된 캐시라도 즉시 그린다.
+    ///
+    /// 규약이 1200ms 직렬 × 계정 수라, 이 문이 없으면 계정 3개에서 Account 탭의 첫 표시가
+    /// 수 초다(사용자 보고의 그 증상). 판별식은 **시간**이다 — 조회가 나갔으면 게이트에서
+    /// 최소 1.2초를 잔다.
+    #[test]
+    fn cached_only_paints_from_disk_without_ever_touching_the_network() {
+        let h = ccg_store::testhome::take("parity-usage-cachedonly");
+        forget_dead();
+        let emails = seed_three(&h, &[]);
+        let t0 = std::time::Instant::now();
+        let rows = accounts_usage(&json!({ "cachedOnly": true }));
+        let dt = t0.elapsed();
+        let rows = rows.as_array().expect("배열").clone();
+        println!("[§1] cachedOnly {dt:?} = {}", Value::Array(rows.clone()));
+        assert_eq!(rows.len(), 3);
+        assert!(dt < std::time::Duration::from_millis(500), "★ 첫 페인트가 조회를 기다렸다: {dt:?}");
+        // 등록 순서 그대로 + 낡은 값이라는 표식.
+        for (i, e) in emails.iter().enumerate() {
+            assert_eq!(rows[i]["email"], json!(e), "응답 순서는 등록 순서다");
+            assert_eq!(rows[i]["weeklyPct"], json!(10 * i as i64), "마지막으로 안 값을 즉시 그린다");
+            assert_eq!(rows[i]["stale"], json!(true), "낡은 값에는 표식이 붙는다");
+        }
+        drop(h);
+    }
+
+    /// `priority`는 **조회 순서**만 바꾼다 — 응답 순서를 흔들면 설정 목록이 재배열되고,
+    /// 「정렬 맨 위가 곧 기본」(§4)인 3.0에서는 그게 **기본 계정이 널뛰는** 사고다.
+    #[test]
+    fn priority_reorders_the_fetches_but_never_the_rows() {
+        let h = ccg_store::testhome::take("parity-usage-priority");
+        forget_dead();
+        std::env::set_var("CCG_NO_NET", "1");
+        let emails = seed_three(&h, &[]);
+        let rows = accounts_usage(&json!({ "priority": emails[2] }));
+        let rows = rows.as_array().expect("배열").clone();
+        println!("[§1] priority = {}", Value::Array(rows.clone()));
+        let got: Vec<&str> = rows.iter().map(|r| r["email"].as_str().unwrap_or("")).collect();
+        assert_eq!(got, emails.iter().map(String::as_str).collect::<Vec<_>>(), "★ 행 순서가 흔들렸다");
+        // 없는 이메일을 우선순위로 줘도 죽지 않는다.
+        assert_eq!(accounts_usage(&json!({ "priority": "nobody@x" })).as_array().map(Vec::len), Some(3));
+        std::env::remove_var("CCG_NO_NET");
+        drop(h);
+    }
+
+    /// ★ **워밍은 토큰을 회전시키지 않는다**(M11 R2 C1이 부팅 프리웜을 들어낸 그 이유).
+    ///
+    /// 로컬 액세스 토큰이 살아 있는 계정만 조회 대상이고, 만료된 계정은 **건드리지 않는다**
+    /// = 리프레시 교환 POST가 나갈 방법이 없다. 판별식은 `CCG_NO_NET`이다: 조회를 시도한
+    /// 계정만 실패로 격리 장부에 오른다.
+    #[test]
+    fn warming_skips_accounts_whose_token_would_have_to_be_rotated() {
+        let h = ccg_store::testhome::take("parity-usage-warm");
+        forget_dead();
+        std::env::set_var("CCG_NO_NET", "1");
+        let emails = seed_three(&h, &["two@acct.test"]);
+        assert!(ccg_auth::claude::account_access_token(&emails[1]).is_some(), "전제: 2번만 토큰이 산다");
+        assert!(ccg_auth::claude::account_access_token(&emails[0]).is_none());
+        let rows = accounts_usage(&json!({ "warm": true }));
+        println!("[§1] warm = {rows}");
+        assert_eq!(rows.as_array().map(Vec::len), Some(3), "행은 그대로 셋");
+        let dead: Vec<String> = {
+            let g = dead_book().lock().unwrap();
+            g.keys().cloned().collect()
+        };
+        println!("[§1] 워밍이 실제로 물어본 계정 = {dead:?}");
+        assert_eq!(dead, vec![emails[1].clone()], "★ 토큰이 만료된 계정에 조회를 걸면 회전이 난다");
+        std::env::remove_var("CCG_NO_NET");
+        forget_dead();
+        drop(h);
+    }
+
+    /// 연속 실패 계정은 **큐를 막지 않는다** — 격리 창 안에서는 조회를 건너뛰고 캐시로
+    /// 갈음한다. 성공(여기서는 장부 청소)하면 즉시 풀린다.
+    #[test]
+    fn a_repeatedly_failing_account_is_skipped_instead_of_stalling_the_queue() {
+        let _h = ccg_store::testhome::take("parity-usage-dead");
+        forget_dead();
+        let e = "dead@acct.test";
+        assert!(!is_dead(e), "처음부터 격리면 안 된다");
+        note_fail(e);
+        assert!(!is_dead(e), "한 번 실패로 격리하면 잠깐의 네트워크 끊김에 계정이 사라진다");
+        note_fail(e);
+        assert!(is_dead(e), "★ 연속 실패인데 매번 5초를 태운다");
+        note_ok(e);
+        assert!(!is_dead(e), "성공하면 즉시 풀린다");
+        forget_dead();
     }
 }

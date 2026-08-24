@@ -819,6 +819,10 @@ export const PanelView = memo(function PanelView({
         mentionBase={cwd}
         commands={slashCommandsWithBtw()}
         inputRef={composerRef}
+        // ★R28 ACCT §3 — 이 자리의 식별자. 계정 picker가 「사용 중」 역인덱스에서 자기
+        // 자리를 뺄 때 쓴다(자기 자리는 경고가 아니라 「현재」다). 패널은 자기 chatId를
+        // 모르고 자리 키만 아는데, 셸이 `chat:status`에 같은 키를 실어 준다.
+        chatId={panelId}
       />
 
       {/* 패널 스코프 카드 — .ma-panel(position:relative) 안에서 그 패널만 덮으므로

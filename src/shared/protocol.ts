@@ -715,7 +715,11 @@ export interface AuthStatus {
 export interface AccountInfo {
   email: string
   subscriptionType?: string
-  isDefault: boolean // 새 채팅·계정 미지정 채팅이 쓰는 기본 계정인가
+  /** 새 채팅·계정 미지정 채팅이 쓰는 계정인가.
+   *  ★R28 ACCT §4 — 3.0에서 이것은 **저장된 상태가 아니라 파생값**이다: 목록의 **맨 위**
+   *  (=설정 ▸ Account의 사용자 정렬 순서 0번)가 언제나 참이다. 2.6.2와의 의도적 분기이고
+   *  `docs/renderer-divergence.md` §6에 기록돼 있다. */
+  isDefault: boolean
   /**
    * ★M11 R3(F2) — 이 계정의 토큰 교환이 실패해 **재로그인이 필요해 보인다**.
    *
@@ -731,7 +735,8 @@ export interface AccountInfo {
 export interface CodexAccountInfo {
   email: string
   plan: string | null // 'plus' · 'pro' · 'free' 등 (id_token의 chatgpt_plan_type)
-  isDefault: boolean // 새 채팅·계정 미지정 채팅이 쓰는 기본 계정인가
+  /** ★R28 ACCT §4 — Anthropic과 같은 규약: **목록 맨 위**가 곧 기본(파생값). */
+  isDefault: boolean
 }
 
 /**
@@ -760,6 +765,26 @@ export interface AccountUsage {
   fiveHourResetsAt?: number | null
   weeklyResetsAt?: number | null
   fableResetsAt?: number | null
+  /** ★R28 ACCT — 3.0 전용 표식(2.6.2 main은 안 싣는다 = `undefined`).
+   *  `stale`  : 값은 있지만 **방금 물어본 값이 아니다**(캐시로 갈음).
+   *  `unavailable`: 물어보지 못했고 갈음할 값도 없다 — 「한도 0」과 구분된다. */
+  stale?: boolean
+  unavailable?: boolean
+}
+
+/**
+ * ★R28 ACCT §1 — `auth:accounts-usage(opts?)`의 선택 옵션. **없으면 2.6.2와 동일**하다.
+ *
+ * 규약(1200ms 직렬·TTL 2분·429 백오프)은 그대로 두고, **UI가 그걸 기다리지 않게** 하는
+ * 세 개의 문이다. 자세한 근거는 `src-tauri/src/ipc/parity/usage.rs`의 §1 절.
+ */
+export interface AccountsUsageOpts {
+  /** HTTP를 한 번도 안 쏘고 디스크 캐시만 그린다 — 첫 페인트(stale-while-revalidate). */
+  cachedOnly?: boolean
+  /** 이 계정을 **맨 먼저** 조회한다. 응답 순서(=등록 순서)는 바뀌지 않는다. */
+  priority?: string
+  /** 선행 워밍 — 로컬 액세스 토큰이 살아 있는 계정만 조회한다(토큰 회전 유발 금지). */
+  warm?: boolean
 }
 
 /** 어떤 화면의 엔진이 실행했는지 — 사용 통계의 분류 축. */
@@ -1589,6 +1614,17 @@ export const CROSSTALK = {
 export interface ChatStatusLite {
   chatId: string
   status: AgentStatus
+  /** ★R28 ACCT §3 — 이 채팅이 **지금 물고 있는 구독 계정**(3.0 전용 · 선택 필드).
+   *
+   *  키가 있으면 **살아 있는 런타임**이라는 뜻이다: `status.json`에서 재구성한 행에는
+   *  이 키가 없다. 계정 picker·설정 ▸ Account의 「사용 중 · N번 자리」 칩이 이 값 하나로
+   *  선다 — 창이 여럿이라(본채팅·멀티·추가 창·팝아웃) 렌더러가 모은 표로는 자기 창밖을
+   *  못 보기 때문이다. API 키 실행은 구독 한도를 안 태우므로 값이 없다. */
+  account?: string | null
+  /** ★R28 ACCT §3 — 이 채팅이 앉은 보드 자리(`${boardId}::${slot}`) · 3.0 전용 선택 필드.
+   *  자리에 안 앉은 채팅(본채팅·추가 창)은 없음. panelId ↔ chatId의 대응은 보드 스토어가
+   *  진실이라 렌더러가 못 잇는다 — 「2번 자리」 문구가 이 값에서 나온다. */
+  panelId?: string | null
   busy: boolean // 원시 상태(전송 게이트)
   bgActive: boolean // 라이브 원장이 비었나 → 완료 링 판정(effectiveStatus 단일 소스)
   ask: 'none' | 'permission' | 'question' | 'dialog'

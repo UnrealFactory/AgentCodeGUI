@@ -26,6 +26,8 @@ import type {
   SessionWindowInfo
 } from '@shared/protocol'
 import { isEn, t, useLang } from '../lib/i18n'
+// ★R28 ACCT §1·§3 — 계정 목록·한도·「사용 중」 역인덱스의 단일 스토어.
+import { ensureAccounts, ensureCodexAccounts, inUseLabel, primeUsageFromDisk, refreshCodexUsage, refreshUsage, useAccounts } from '../lib/accounts'
 import { sameCwd, type ThreadItem } from '../store/session'
 import { holdDelayMs, type LimitHold } from '../lib/limitResume'
 import { noteLanding, putAnchor, takeAnchor } from '../lib/threadAnchor'
@@ -2745,35 +2747,11 @@ export function BtwWelcome({ carried, onPick }: { carried: boolean; onPick: (tex
   )
 }
 
-// ── 계정 목록 캐시 (계정 picker 공용) ─────────────────────────
-// listAccounts는 메인이 CLI 프로세스를 하나 띄워 상태를 묻는다(auth status) — picker
-// 마운트마다 부르면 무겁다. 모듈 캐시 + TTL로 화면의 여러 picker(컴포저·패널들)가
-// 한 번의 조회를 나눠 쓴다. 계정 목록은 설정에서만 바뀌니 1분이면 충분히 신선하다.
-let acctCache: { at: number; list: AccountInfo[] } | null = null
-let acctInflight: Promise<AccountInfo[]> | null = null
-const ACCT_TTL = 60_000
-
-// 계정별 한도 사용률(5시간·주간·Fable) — 설정 → Account와 같은 조회를 나눠 쓴다.
-// 계정마다 네트워크 요청이 나가므로 계정 목록과 같은 방식의 모듈 캐시 + TTL.
-let usageCache: { at: number; map: Record<string, AccountUsage> } | null = null
-let usageInflight: Promise<Record<string, AccountUsage>> | null = null
-function fetchAccountsUsage(): Promise<Record<string, AccountUsage>> {
-  if (usageCache && Date.now() - usageCache.at < ACCT_TTL) return Promise.resolve(usageCache.map)
-  if (usageInflight) return usageInflight
-  usageInflight = window.api.auth
-    .accountsUsage()
-    .then((us: AccountUsage[]) => {
-      const map = Object.fromEntries(us.map((u) => [u.email, u]))
-      usageCache = { at: Date.now(), map }
-      usageInflight = null
-      return map
-    })
-    .catch(() => {
-      usageInflight = null
-      return usageCache?.map ?? {}
-    })
-  return usageInflight
-}
+// ── 계정 목록·한도 (★R28 ACCT §1 — 단일 스토어 `lib/accounts.ts`) ─────────────
+// R1까지 이 자리에는 모듈 캐시 넷이 있었고 설정 ▸ Account에는 **또 다른** 넷이 있었다.
+// 두 표면을 같은 순간에 열면 같은 조회가 두 번 나갔다(실 HTTP · 계정 수 × 2). 이제
+// 조회의 주인은 `lib/accounts.ts` 하나이고, 여기 남은 것은 그 문으로 가는 통로뿐이다.
+// (`useCodexUsage` 같은 기존 호출자가 프로미스를 그대로 쓰므로 이름은 유지한다.)
 
 // 잔량 톤 — 남은 한도 40% 이하 주황(warn), 10% 이하 빨강(crit). 설정 Account 게이지·
 // 컨텍스트 팝오버·계정 드롭다운이 같은 경계를 쓴다. ''는 평상시 — 클래스 없이 그린다.
@@ -2821,68 +2799,11 @@ function acctUsageLine(u?: AccountUsage): ReactNode {
   if (!parts.length) return null
   return usageLineNode(parts)
 }
-function fetchAccounts(): Promise<AccountInfo[]> {
-  if (acctCache && Date.now() - acctCache.at < ACCT_TTL) return Promise.resolve(acctCache.list)
-  if (acctInflight) return acctInflight
-  acctInflight = window.api.auth
-    .listAccounts()
-    .then((list: AccountInfo[]) => {
-      acctCache = { at: Date.now(), list }
-      acctInflight = null
-      return list
-    })
-    .catch(() => {
-      acctInflight = null
-      return acctCache?.list ?? []
-    })
-  return acctInflight
-}
-
-// Codex(OpenAI) 계정 목록 — Anthropic과 같은 모듈 캐시 문법 (설정에서만 바뀌니 1분 TTL)
-let cxAcctCache: { at: number; list: CodexAccountInfo[] } | null = null
-let cxAcctInflight: Promise<CodexAccountInfo[]> | null = null
-function fetchCodexAccounts(): Promise<CodexAccountInfo[]> {
-  if (cxAcctCache && Date.now() - cxAcctCache.at < ACCT_TTL) return Promise.resolve(cxAcctCache.list)
-  if (cxAcctInflight) return cxAcctInflight
-  cxAcctInflight = window.api.codexAuth
-    .listAccounts()
-    .then((list: CodexAccountInfo[]) => {
-      cxAcctCache = { at: Date.now(), list }
-      cxAcctInflight = null
-      return list
-    })
-    .catch(() => {
-      cxAcctInflight = null
-      return cxAcctCache?.list ?? []
-    })
-  return cxAcctInflight
-}
 // ChatGPT 플랜 표기 — 'plus' → 'ChatGPT Plus'
 function chatgptPlanLabel(plan: string | null): string {
   return 'ChatGPT' + (plan ? ' ' + plan.charAt(0).toUpperCase() + plan.slice(1) : '')
 }
 
-// Codex(OpenAI) 계정별 잔여 한도 — Anthropic accountsUsage와 같은 모듈 캐시 문법.
-// 계정마다 app-server를 한 번 띄워 조회하므로(무겁다) TTL을 나눠 쓴다.
-let cxUsageCache: { at: number; map: Record<string, CodexAccountUsage> } | null = null
-let cxUsageInflight: Promise<Record<string, CodexAccountUsage>> | null = null
-function fetchCodexUsage(): Promise<Record<string, CodexAccountUsage>> {
-  if (cxUsageCache && Date.now() - cxUsageCache.at < ACCT_TTL) return Promise.resolve(cxUsageCache.map)
-  if (cxUsageInflight) return cxUsageInflight
-  cxUsageInflight = window.api.codexAuth
-    .accountsUsage()
-    .then((us: CodexAccountUsage[]) => {
-      const map = Object.fromEntries(us.map((u) => [u.email, u]))
-      cxUsageCache = { at: Date.now(), map }
-      cxUsageInflight = null
-      return map
-    })
-    .catch(() => {
-      cxUsageInflight = null
-      return cxUsageCache?.map ?? {}
-    })
-  return cxUsageInflight
-}
 // Codex 계정 옵션의 잔여 한도 줄 — Anthropic acctUsageLine과 같은 관례(잔여 % = 100 − 사용률)
 function cxUsageLine(u?: CodexAccountUsage): ReactNode {
   if (!u || !u.windows.length) return null
@@ -2904,8 +2825,9 @@ function useCodexUsage(engine: EngineId | undefined, codexAccount: string | unde
   useEffect(() => {
     if (engine !== 'codex' || !active) return
     let on = true
-    Promise.all([fetchCodexAccounts(), fetchCodexUsage()]).then(([accts, map]) => {
+    Promise.all([ensureCodexAccounts(), refreshCodexUsage()]).then(([accts, map]) => {
       if (!on) return
+      // ★R28 ACCT §4 — 기본은 파생값(맨 위)이라 `isDefault`도 인덱스 0에서 나온다.
       const email = codexAccount ?? accts.find((a) => a.isDefault)?.email ?? accts[0]?.email
       setU(email ? (map[email] ?? null) : null)
     })
@@ -2946,13 +2868,40 @@ function EffortSlide({ effort, onChange }: { effort: EffortId; onChange: (e: Eff
   )
 }
 
-function PPRow({ sel, main, sub, onClick }: { sel: boolean; main: string; sub?: ReactNode; onClick: () => void }) {
+/**
+ * picker 한 줄.
+ *
+ * ★R28 ACCT §3-b — `now`(현재)와 §3의 `warn`(사용 중)은 **다른 시각층**이다.
+ * 선택은 파랑 계열(`.cur` — 체크 + 강조 + 「현재」 라벨), 사용 중은 주황 계열
+ * (`.pp-warn`). 사용자 요청 그대로다: *"3번의 「다른 자리 사용 중」 칩과는 다른
+ * 시각층으로 헷갈리지 않게."* 두 표식이 한 줄에 같이 설 수 있어(내가 쓰는 계정을
+ * 다른 자리도 쓰는 판) 자리를 나눠 둔다 — 라벨은 왼쪽 끝, 칩은 오른쪽.
+ */
+function PPRow({
+  sel,
+  main,
+  sub,
+  onClick,
+  cur,
+  warn
+}: {
+  sel: boolean
+  main: string
+  sub?: ReactNode
+  onClick: () => void
+  /** 이 줄이 **지금 이 채팅이 물고 있는** 계정인가(§3-b). */
+  cur?: boolean
+  /** 「사용 중 · 2번 자리」 — 없으면 칩을 안 그린다(§3). */
+  warn?: string | null
+}) {
   return (
-    <button className={'pp-row' + (sel ? ' sel' : '')} onClick={onClick}>
+    <button className={'pp-row' + (sel ? ' sel' : '') + (cur ? ' cur' : '')} onClick={onClick}>
       <span className="pp-grow">
         {main}
+        {cur && <span className="pp-now">{t('현재', 'Current')}</span>}
         {sub && <span className="pp-sub">{sub}</span>}
       </span>
+      {warn && <span className="pp-warn">{warn}</span>}
       {sel && (
         <span className="pp-check">
           <IconCheck size={12} stroke={2.4} />
@@ -2971,10 +2920,14 @@ export function PickerChip({
   engineLocked = false,
   onApiModeChange,
   autoResume = false,
-  onAutoResumeChange
+  onAutoResumeChange,
+  chatId
 }: {
   picker: PickerState
   setPicker: (p: PickerState) => void
+  /** ★R28 ACCT §3 — 이 picker가 붙은 채팅. 「사용 중」 역인덱스에서 **자기 자리**를
+   *  빼는 데만 쓴다(이미 그 계정을 쓰는 자리에서 열면 「이 채팅」이지 경고가 아니다). */
+  chatId?: string
   apiMode?: boolean
   apiReady?: boolean // Anthropic API 키 존재 여부
   apiReadyCodex?: boolean // OpenAI API 키 존재 여부 — Codex 엔진의 과금 섹션이 쓴다
@@ -3014,38 +2967,68 @@ export function PickerChip({
   const effortOpt = effortOpts().find((e) => e.id === picker.effort) ?? effortOpts()[2]
   const modeOpt = modeOpts().find((m) => m.id === picker.mode) ?? modeFallback()
 
-  // 계정 목록 — 마운트 시 한 번(캐시) + 팝오버를 열 때 갱신 (구독 실행에만 의미)
-  const [accounts, setAccounts] = useState<AccountInfo[]>(() => acctCache?.list ?? [])
-  const [aUsage, setAUsage] = useState<Record<string, AccountUsage>>(() => usageCache?.map ?? {})
-  const [cxAccounts, setCxAccounts] = useState<CodexAccountInfo[]>(() => cxAcctCache?.list ?? [])
-  const [cxUsage, setCxUsage] = useState<Record<string, CodexAccountUsage>>(() => cxUsageCache?.map ?? {})
+  // ★R28 ACCT §1 — 계정 목록·한도는 **단일 스토어**에서 온다(`lib/accounts.ts`).
+  // 첫 그림은 디스크에 보존된 마지막 값이고(HTTP 0회), 갱신은 뒤에서 돈다. 설정 탭이
+  // 같은 순간 열려 있어도 조회는 한 벌이다(인플라이트 합류).
+  const acct = useAccounts()
+  const accounts = acct.accounts ?? []
+  const aUsage = acct.usage
+  const cxAccounts = acct.cxAccounts ?? []
+  const cxUsage = acct.cxUsage
+  // 목록은 상시(칩 라벨이 유효 계정을 말한다), 한도는 팝오버를 열 때만 갱신.
+  // 우선 조회 대상은 **이 채팅이 물고 있는 계정**이다 — 사용자가 제일 먼저 보는 숫자.
+  const priority = picker.account
   useEffect(() => {
-    let on = true
     if (engine === 'claude') {
-      fetchAccounts().then((l) => {
-        if (on) setAccounts(l)
-      })
-      if (open)
-        fetchAccountsUsage().then((m) => {
-          if (on) setAUsage(m)
-        })
+      void ensureAccounts()
+      if (open) {
+        void primeUsageFromDisk()
+        void refreshUsage({ priority })
+      }
     } else {
-      fetchCodexAccounts().then((l) => {
-        if (on) setCxAccounts(l)
-      })
-      if (open)
-        fetchCodexUsage().then((m) => {
-          if (on) setCxUsage(m)
-        })
+      void ensureCodexAccounts()
+      if (open) void refreshCodexUsage()
     }
-    return () => {
-      on = false
-    }
-  }, [open, engine])
+  }, [open, engine, priority])
+  // ★R28 ACCT §4 — 기본 계정 = **목록 맨 위**(파생값). 셸이 그 규칙으로 `isDefault`를
+  // 싣는다(`ipc/system.rs`) — 여기서 다시 계산하지 않는다(진실이 두 곳이 되지 않게).
   const defaultEmail = accounts.find((a) => a.isDefault)?.email
   const effective = picker.account ?? defaultEmail
   const cxDefaultEmail = cxAccounts.find((a) => a.isDefault)?.email
   const cxEffective = picker.codexAccount ?? cxDefaultEmail
+
+  // ── ★§3-b 실수 전환 복구 ──────────────────────────────────────────────────
+  //
+  // 계정 전환은 프롬프트 캐시가 식는 비용이 커서 **실수의 대가가 크다**. 그런데 지금까지
+  // 화면 어디에도 "방금 무엇에서 무엇으로 갔는지"가 없어, 잘못 누르면 원래 계정이
+  // 뭐였는지 모른 채 그대로 이어 갔다(사용자 보고). 그래서 전환 직후 되돌릴 줄 하나.
+  //
+  // `pickerRef` — 되돌리기는 **나중에** 눌린다. 그때의 최신 picker 위에 계정만 되돌려야
+  // 그 사이에 바꾼 모델·모드가 함께 되감기지 않는다(클로저에 박힌 옛 값을 쓰면 그렇게 된다).
+  const pickerRef = useRef(picker)
+  pickerRef.current = picker
+  const [undo, setUndo] = useState<{ from?: string; to?: string; prev?: string; key: 'account' | 'codexAccount' } | null>(null)
+  useEffect(() => {
+    if (!undo) return
+    const id = setTimeout(() => setUndo(null), 12_000)
+    return () => clearTimeout(id)
+  }, [undo])
+  const shortOf = (e?: string): string => (e ? e.split('@')[0] : t('기본', 'default'))
+  /** 계정 전환 한 번 — 값을 바꾸고 되돌릴 줄을 세운다. */
+  const switchAccount = (key: 'account' | 'codexAccount', next: string | undefined, fromEmail?: string, toEmail?: string): void => {
+    const prev = pickerRef.current[key]
+    setPicker({ ...pickerRef.current, [key]: next })
+    if (fromEmail === toEmail) return // 같은 계정을 다시 고른 것 — 되돌릴 게 없다
+    setUndo({ from: fromEmail, to: toEmail, prev, key })
+  }
+  const doUndo = (): void => {
+    if (!undo) return
+    setPicker({ ...pickerRef.current, [undo.key]: undo.prev })
+    setUndo(null)
+  }
+
+  /** ★§3 — 이 계정을 **다른 자리**가 물고 있나(주황 칩 문구). 자기 자리는 빠진다. */
+  const inUse = (email: string): string | null => inUseLabel(email, chatId)
 
   // 주간 한도를 다 쓴(잔여 0%) 계정 — 기본은 숨김(골라도 실행이 거부될 뿐이었다).
   // '한도 풀리면 자동 이어서'가 생기면서 소진 계정을 일부러 골라 리셋을 기다리는 흐름이
@@ -3205,8 +3188,12 @@ export function PickerChip({
                       ? t(`${a.subscriptionType} 구독`, `${a.subscriptionType} subscription`)
                       : t('등록된 계정', 'Signed-in account'))
                   }
+                  // ★§3-b — 지금 이 채팅이 물고 있는 계정(강조 + 「현재」)
+                  cur={a.email === effective}
+                  // ★§3 — 다른 자리가 쓰는 중(주황). **선택은 막지 않는다**(사용자가 알고 고르는 건 존중)
+                  warn={inUse(a.email)}
                   // 기본 계정을 고르면 바인딩을 푼다(기본을 따라감) — 다른 계정은 이 채팅에 고정
-                  onClick={() => setPicker({ ...picker, account: a.isDefault ? undefined : a.email })}
+                  onClick={() => switchAccount('account', a.isDefault ? undefined : a.email, effective, a.email)}
                 />
               ))}
               {/* 숨긴 소진 계정 펼치기 — ToolGroup '이전 도구 N개 펼치기'와 같은 접기 행.
@@ -3236,7 +3223,8 @@ export function PickerChip({
                     cxUsageLine(cxUsage[a.email]) ||
                     t(chatgptPlanLabel(a.plan) + ' 구독', chatgptPlanLabel(a.plan) + ' subscription')
                   }
-                  onClick={() => setPicker({ ...picker, codexAccount: a.isDefault ? undefined : a.email })}
+                  cur={a.email === cxEffective}
+                  onClick={() => switchAccount('codexAccount', a.isDefault ? undefined : a.email, cxEffective, a.email)}
                 />
               ))}
               {cxExhaustedCount > 0 && (
@@ -3249,6 +3237,21 @@ export function PickerChip({
               )}
             </>
           )}
+        </div>
+      )}
+      {/* ★§3-b — 「A → B 전환됨 · 되돌리기」. 팝오버가 닫혀도 남는다(실수를 알아채는 건
+          보통 닫은 뒤다). 12초 뒤 스스로 사라지고, ✕로 즉시 닫을 수 있다. */}
+      {undo && (
+        <div className="acct-undo" role="status">
+          <span className="au-txt">
+            {t(`${shortOf(undo.from)} → ${shortOf(undo.to)} 전환됨`, `Switched ${shortOf(undo.from)} → ${shortOf(undo.to)}`)}
+          </span>
+          <button className="au-go" onClick={doUndo}>
+            {t('되돌리기', 'Undo')}
+          </button>
+          <button className="au-x" aria-label={t('닫기', 'Dismiss')} onClick={() => setUndo(null)}>
+            <IconX2 size={11} />
+          </button>
         </div>
       )}
     </span>
@@ -5094,7 +5097,8 @@ export function Composer({
   cwd,
   mentionBase,
   commands = slashCommands(),
-  inputRef
+  inputRef,
+  chatId
 }: {
   value: string
   onChange: (v: string) => void
@@ -5123,6 +5127,8 @@ export function Composer({
   mentionBase?: string // @ 멘션이 파일을 뜨우는 기준 폴더(탐색기가 보는 폴더). 없으면 cwd
   commands?: SlashCmd[] // "/" 팔레트의 내장 명령 목록 (기본: slashCommands() 전체)
   inputRef?: React.RefObject<HTMLTextAreaElement | null>
+  // ★R28 ACCT §3 — 계정 picker가 「사용 중」 역인덱스에서 자기 자리를 뺄 때 쓴다.
+  chatId?: string
 }) {
   const [focus, setFocus] = useState(false)
   // true while an image is being dragged over the composer → shows the drop hint overlay.
@@ -5691,6 +5697,7 @@ export function Composer({
             <PickerChip
               picker={picker}
               setPicker={setPicker}
+              chatId={chatId}
               apiMode={apiMode}
               apiReady={apiReady}
               apiReadyCodex={apiReadyCodex}

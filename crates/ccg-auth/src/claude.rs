@@ -720,27 +720,79 @@ pub struct AccountInfo {
     pub is_default: bool,
 }
 
-/// 미지정 채팅이 쓸 계정 — `defaultEmail`, 무효/부재면 첫 계정, 0개면 None.
-pub fn default_account_email() -> Option<String> {
-    let f = read_store_quiet();
-    if let Some(d) = &f.default_email {
-        if f.accounts.iter().any(|a| email_of(a) == Some(d.as_str())) {
-            return Some(d.clone());
+// ── ★R28 ACCT §4 — 「기본 계정」은 상태가 아니라 **파생값**이다 ────────────────
+//
+// 사용자 요청(`docs/r28-followup.md` §4): *"계정의 「기본」 개념을 삭제하고, 항상 정렬
+// 기준 맨 위 계정이 선택되게. 괜히 복잡하다."*
+//
+// 그래서 기본 = **목록 맨 위**다. `defaultEmail` 필드는 더 이상 읽지 않고, 남아 있으면
+// 한 번 **맨 위로 옮긴 뒤 지운다**([`ensure_default_migrated`]) — 그 순간부터 사용자가
+// 보던 기본 계정과 파생값이 같은 계정을 가리킨다. 2.6.2와의 **의도적 분기**이고
+// `docs/renderer-divergence.md` §6에 기록돼 있다(파리티 재감사가 회귀로 잡지 않게).
+//
+// 왜 필드를 그냥 무시하지 않고 옮기나: 무시만 하면 `defaultEmail`이 3번째 계정을
+// 가리키던 사용자의 새 채팅이 **말없이 1번째 계정으로 갈아탄다**(프롬프트 캐시가 식는
+// 비용 + 남의 한도를 태우는 사고). 옮기면 파생값이 옛 기본과 같아져 동작이 보존된다.
+
+/// 마이그레이션은 **프로세스당 한 번**만 시도한다(스토어를 쓰는 경로라 매 조회마다
+/// 돌면 안 된다). 실패해도 다시 시도하지 않는다 — 그 판에서는 `defaultEmail`이 남고
+/// 파생값이 이기지만, 목록 자체는 멀쩡하다.
+static DEFAULT_MIGRATED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// 옛 `defaultEmail`이 가리키던 계정을 **맨 위로 옮긴다**. 이미 맨 위면(=마이그레이션
+/// 이 끝난 상태) 아무것도 쓰지 않는다 — 매 부팅 CAS 쓰기가 생기지 않는다.
+///
+/// **필드 자체는 파일에서 사라지지 않는다.** [`render_store`]가 `None`을 받으면 목록
+/// 맨 위로 다시 채우기 때문이다(2.6.2가 같은 홈을 읽었을 때 기본 계정이 없다고 보면
+/// 안 되므로 그 자리는 그대로 둔다). 달라진 것은 **우리가 그 값을 안 읽는다**는 것과,
+/// 그래서 파일의 `defaultEmail`이 이제 언제나 「맨 위 계정」과 같아진다는 것이다.
+///
+/// 돌려주는 값은 "무언가 옮겼나"다 — 테스트·하네스가 왕복을 잰다.
+pub fn migrate_default_to_top() -> bool {
+    update_store(|f| {
+        let Some(d) = f.default_email.take() else { return false };
+        let Some(i) = f.accounts.iter().position(|a| email_of(a) == Some(d.as_str())) else { return false };
+        if i == 0 {
+            return false;
         }
+        let rec = f.accounts.remove(i);
+        f.accounts.insert(0, rec);
+        true
+    })
+    .unwrap_or(false)
+}
+
+fn ensure_default_migrated() {
+    use std::sync::atomic::Ordering;
+    if DEFAULT_MIGRATED.swap(true, Ordering::SeqCst) {
+        return;
     }
-    f.accounts.first().and_then(email_of).map(str::to_string)
+    // 읽기만으로 판별해 **옮길 게 없으면 쓰기 경로에 들어가지도 않는다**(대부분의 부팅).
+    let f = read_store_quiet();
+    let top = f.accounts.first().and_then(email_of);
+    if f.default_email.as_deref().is_some_and(|d| Some(d) != top) {
+        migrate_default_to_top();
+    }
+}
+
+/// 미지정 채팅이 쓸 계정 — **목록 맨 위**(파생값), 0개면 None.
+pub fn default_account_email() -> Option<String> {
+    ensure_default_migrated();
+    read_store_quiet().accounts.first().and_then(email_of).map(str::to_string)
 }
 
 /// 등록 계정 목록 — 스토어만 본다(CLI 스폰 없음).
+/// `is_default`는 **인덱스 0**이다(파생값 — 저장된 상태가 아니다).
 pub fn list_accounts() -> Vec<AccountInfo> {
-    let def = default_account_email();
+    ensure_default_migrated();
     read_store_quiet()
         .accounts
         .iter()
-        .filter_map(|a| {
+        .enumerate()
+        .filter_map(|(i, a)| {
             let email = email_of(a)?.to_string();
             Some(AccountInfo {
-                is_default: Some(&email) == def.as_ref(),
+                is_default: i == 0,
                 subscription_type: subscription_of(a).map(str::to_string),
                 email,
             })
@@ -748,11 +800,28 @@ pub fn list_accounts() -> Vec<AccountInfo> {
         .collect()
 }
 
+/// 「맨 위로 이동」 — 옛 `auth:set-default-account`와 **동치**로 정리된 자리(§4).
+/// 이름을 남겨 둔 이유는 채널 하나가 아직 이 함수를 부르기 때문이다(`ipc/accounts.rs`).
+/// 목록에 없는 이메일이면 아무것도 안 한다(2.6.2와 같은 조용한 무시).
 pub fn set_default_account(email: &str) -> Vec<AccountInfo> {
+    move_account_to_top(email)
+}
+
+/// 계정 하나를 목록 맨 위로. **레코드를 통째로 옮긴다**(이메일로 새로 만들지 않는다 —
+/// `credEnc` 백업이 딸린 원본이라 재조립하면 토큰을 잃는다. `reorder_accounts` 참고).
+pub fn move_account_to_top(email: &str) -> Vec<AccountInfo> {
+    ensure_default_migrated();
     let _ = update_store(|f| {
-        if f.accounts.iter().any(|a| email_of(a) == Some(email)) {
-            f.default_email = Some(email.to_string());
+        // 같은 이메일 레코드가 둘이면 **마지막**이 이긴다(reorder_accounts와 같은 규칙).
+        let Some(i) = f.accounts.iter().rposition(|a| email_of(a) == Some(email)) else { return };
+        if i == 0 {
+            return;
         }
+        let rec = f.accounts.remove(i);
+        f.accounts.insert(0, rec);
+        // ★ 순서를 바꾸면 옛 `defaultEmail`은 놓는다 — 안 놓으면 파일에 남은 그 값이
+        //   **다음 부팅의 마이그레이션에서 사용자의 정렬을 되돌린다**(§4의 함정).
+        f.default_email = None;
     });
     list_accounts()
 }
@@ -794,6 +863,9 @@ pub fn reorder_accounts(emails: &[String]) -> Vec<AccountInfo> {
             }
         }
         f.accounts = order.into_iter().map(|i| f.accounts[i].clone()).collect();
+        // ★R28 ACCT §4 — 순서가 곧 기본이다. 옛 `defaultEmail`을 들고 있으면 다음 부팅의
+        //   마이그레이션이 그 계정을 다시 맨 위로 올려 **사용자의 정렬을 되돌린다**.
+        f.default_email = None;
     });
     list_accounts()
 }
@@ -1266,6 +1338,77 @@ mod tests {
         let mut accounts = f.accounts.clone();
         accounts.push(json!({ "email": email, "subscriptionType": sub, "credEnc": enc }));
         write_store_file(&accounts, f.default_email.as_deref()).expect("스토어 저장");
+    }
+
+    // ── ★R28 ACCT §4 — 「기본 계정」 파생값 ────────────────────────────────────
+
+    /// 「기본」은 **맨 위**다 — 저장된 `defaultEmail`이 3번째를 가리켜도 파생값은 1번째.
+    /// (마이그레이션이 그 둘을 같은 계정으로 만들어 주는 것은 다음 테스트가 잰다.)
+    #[test]
+    fn the_default_account_is_the_top_of_the_list_not_a_stored_flag() {
+        let h = temp_home("acct-default-derived");
+        let rec = |e: &str| json!({ "email": e, "subscriptionType": "max", "credEnc": "XX" });
+        h.write(
+            "accounts.json",
+            &json!({ "version": 3, "defaultEmail": "c@x", "accounts": [rec("a@x"), rec("b@x"), rec("c@x")] }).to_string(),
+        );
+        let list = list_accounts();
+        println!("[§4] 목록 = {:?}", list.iter().map(|a| (&a.email, a.is_default)).collect::<Vec<_>>());
+        // ★ 마이그레이션이 먼저 돌았을 수도 있고(첫 호출) 아닐 수도 있다(다른 테스트가
+        //   프로세스 플래그를 이미 태움). 어느 쪽이든 **파생값의 규칙은 하나**다.
+        assert!(list[0].is_default, "맨 위가 기본이 아니다");
+        assert!(list[1..].iter().all(|a| !a.is_default), "기본은 하나뿐이어야 한다: {list:?}");
+        assert_eq!(default_account_email().as_deref(), Some(list[0].email.as_str()));
+        drop(h);
+    }
+
+    /// **마이그레이션 왕복** — 옛 `defaultEmail`이 맨 위로 올라오고, 그 뒤로는 no-op다.
+    /// 이게 없으면 3번째를 기본으로 쓰던 사용자의 새 채팅이 말없이 1번째로 갈아탄다
+    /// (프롬프트 캐시가 식고 남의 한도를 태운다 — §4가 옮기고 나서 폐기하는 이유).
+    #[test]
+    fn the_old_default_migrates_to_the_top_exactly_once() {
+        let h = temp_home("acct-default-migrate");
+        let rec = |e: &str| json!({ "email": e, "credEnc": "XX" });
+        h.write(
+            "accounts.json",
+            &json!({ "version": 3, "defaultEmail": "c@x", "accounts": [rec("a@x"), rec("b@x"), rec("c@x")] }).to_string(),
+        );
+        assert!(migrate_default_to_top(), "옮길 것이 있었는데 안 옮겼다");
+        let order: Vec<String> = read_store_quiet().accounts.iter().filter_map(email_of).map(str::to_string).collect();
+        println!("[§4] 마이그레이션 후 순서 = {order:?} / 파일 = {}", h.read("accounts.json").unwrap());
+        assert_eq!(order, ["c@x", "a@x", "b@x"], "★ 옛 기본이 맨 위로 오지 않으면 기본이 말없이 바뀐다");
+        assert!(!migrate_default_to_top(), "두 번째 호출은 아무것도 안 해야 한다(부팅마다 쓰기 금지)");
+        // 파일의 `defaultEmail`은 사라지지 않고 **맨 위와 같아진다**(2.6.2 승계용).
+        assert_eq!(read_store_quiet().default_email.as_deref(), Some("c@x"));
+        drop(h);
+    }
+
+    /// 「맨 위로」(= 옛 `set-default-account`)와 **정렬**이 서로를 되돌리지 않는가.
+    /// 옛 `defaultEmail`을 그대로 들고 있으면 다음 부팅의 마이그레이션이 사용자의 정렬을
+    /// 되감는다 — 그 함정을 여기서 잰다.
+    #[test]
+    fn moving_to_the_top_and_reordering_survive_a_restart() {
+        let h = temp_home("acct-default-reorder");
+        let rec = |e: &str| json!({ "email": e, "credEnc": "XX" });
+        h.write(
+            "accounts.json",
+            &json!({ "version": 3, "defaultEmail": "a@x", "accounts": [rec("a@x"), rec("b@x"), rec("c@x")] }).to_string(),
+        );
+        // ① 「맨 위로」 = 기본 지정과 동치
+        let list = set_default_account("b@x");
+        assert_eq!(list[0].email, "b@x");
+        assert!(list[0].is_default);
+        // ② 재부팅(= 마이그레이션 재실행)에도 순서가 그대로여야 한다
+        assert!(!migrate_default_to_top(), "★ 옛 defaultEmail이 남아 정렬을 되돌렸다");
+        assert_eq!(default_account_email().as_deref(), Some("b@x"));
+        // ③ 드래그 정렬도 같은 성질
+        reorder_accounts(&["c@x".into(), "a@x".into(), "b@x".into()]);
+        assert!(!migrate_default_to_top(), "★ 정렬 뒤에도 되돌림이 없어야 한다");
+        let order: Vec<String> = list_accounts().into_iter().map(|a| a.email).collect();
+        println!("[§4] 정렬 후 = {order:?}");
+        assert_eq!(order, ["c@x", "a@x", "b@x"]);
+        assert_eq!(default_account_email().as_deref(), Some("c@x"), "맨 위가 곧 기본");
+        drop(h);
     }
 
     #[test]

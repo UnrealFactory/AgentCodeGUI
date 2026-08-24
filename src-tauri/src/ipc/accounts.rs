@@ -63,7 +63,11 @@ pub fn dispatch(app: &AppHandle, channel: &str, p: &Value) -> Option<Value> {
             let email = arg(p, 0).as_str().unwrap_or("").to_string();
             logout(&email)
         }
-        // 기본 계정 지정 — 목록에 없는 이메일이면 도메인이 조용히 무시한다(2.6.2와 같다).
+        // ★R28 ACCT §4 — 「기본 계정」 개념이 사라졌다. 이 채널은 이제 **「맨 위로 이동」과
+        // 동치**다(`claude::set_default_account` = `move_account_to_top`). 채널을 없애지
+        // 않는 이유: 2.6.2 렌더러(동결)가 아직 이 이름을 부르고, 그쪽에서 「기본으로」를
+        // 누르면 3.0에서도 같은 결과(그 계정이 맨 위 = 기본)가 나와야 한다.
+        // 목록에 없는 이메일이면 도메인이 조용히 무시한다(2.6.2와 같다).
         ch::AUTH_SET_DEFAULT_ACCOUNT => {
             claude::set_default_account(arg(p, 0).as_str().unwrap_or(""));
             super::system::list_claude_accounts()
