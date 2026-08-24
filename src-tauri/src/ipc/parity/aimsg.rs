@@ -265,7 +265,10 @@ pub fn ai_message(a: &Value) -> Value {
     if files.is_empty() {
         return err(t(en_on, "커밋에 담긴 파일이 없어요", "No files in this commit"));
     }
-    if !crate::engine::versions::claude_bin_exists() {
+    // ★R28d EXTN — 이 문장이 사실인지 셸과 같은 규칙으로 묻는다(`claude_exe`). R28c까지는
+    // PATH 폴백이면 무조건 통과라 판정이 없었고, 그 반대로 기울면(= `claude.exe`를 PATH에서
+    // 못 찾으면) **전역 설치 사용자 전원**이 이 문구에 막힌다.
+    if crate::engine::versions::claude_exe().is_none() {
         return err(t(
             en_on,
             "설치된 엔진이 없어요 — 설정 → Engine에서 먼저 설치해 주세요",
@@ -354,7 +357,8 @@ fn run_once(
     effort: &str,
     prompt: &str,
 ) -> Result<String, RunErr> {
-    let bin = crate::engine::versions::claude_bin();
+    // 게이트가 통과시켰으면 **그 게이트가 찾은 실물**로 띄운다(못 찾았으면 옛 인자 그대로).
+    let bin = crate::engine::versions::claude_spawn_bin();
     let mut argv: Vec<String> = vec![
         "--output-format".into(),
         "stream-json".into(),

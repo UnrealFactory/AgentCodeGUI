@@ -126,10 +126,12 @@ fn still_current(gen: u64) -> bool {
 /// 같은 인증 페이지가 두 장 뜬다 — 뽑은 URL은 `auth:login-url`로 렌더러에 보내 "안 열렸을
 /// 때 눌러 보는 링크"로만 쓴다(2.6.2와 같은 규약).
 fn login(app: &AppHandle, use_console: bool) -> Value {
-    let bin = crate::engine::versions::claude_bin();
-    if !crate::engine::versions::claude_bin_exists() {
+    // ★R28d EXTN — 「실행 파일을 못 찾았어요」가 **사실**인지 셸과 같은 규칙으로 묻는다.
+    // R28c까지는 PATH 폴백이면 무조건 통과였고(= 판정을 안 했다), 그 뒤 스폰이 실패해야
+    // 사유가 나왔다. 통과하면 **해석된 실물 경로**로 띄운다(OS가 같은 훑기를 또 하지 않게).
+    let Some(bin) = crate::engine::versions::claude_exe() else {
         return status_wire(false, &AuthStatus::default(), Some(NO_BIN));
-    }
+    };
     let gen = LOGIN_GEN.fetch_add(1, AtomicOrd::SeqCst) + 1;
     cancel_login(); // 이전 시도가 있으면 정리(2.6.2와 같은 첫 줄)
 
@@ -273,16 +275,22 @@ fn status_wire(ok: bool, s: &AuthStatus, error: Option<&str>) -> Value {
 /// 계정 하나를 **버린다**: 서버 토큰 해지 → 스토어 제거 → 계정 폴더 삭제.
 ///
 /// 해지가 실패해도(네트워크·이미 만료) 로컬은 지운다 — 목록에 거짓 항목을 남기지 않는
-/// 것이 2.6.2의 규약이다. 반대로 **해지를 건너뛰는 경우는 하나뿐**이다: 계정 폴더를
-/// 물질화조차 못 했을 때(스냅샷 손상). 그때는 보낼 토큰 자체가 없다.
+/// 것이 2.6.2의 규약이다. 반대로 **해지를 건너뛰는 경우는 둘뿐**이다: 계정 폴더를
+/// 물질화조차 못 했을 때(스냅샷 손상), 그리고 **띄울 CLI가 이 컴퓨터에 없을 때**. 앞은
+/// 보낼 토큰이 없고, 뒤는 보낼 창구가 없다.
+///
+/// ★R28d EXTN — 그 두 번째 문이 이 라운드의 뇌관이었다. 「CLI가 있나」의 판정이 거짓으로
+/// 기울면 여기서는 UI 문구가 아니라 **토큰 해지가 조용히 생략**되고, 사용자는 로그아웃이
+/// 끝난 화면을 보는데 서버에는 살아 있는 토큰이 남는다(CPATH 확인 크리틱 R1 §4.3). 그래서
+/// `claude.exe`라는 철자를 PATH에서 진짜로 찾을 수 있는지부터 고치고
+/// ([`ccg_engine::codex::versions::resolve_bin`]) 이 자리를 바꿨다.
 ///
 /// `CCG_NO_NET`이 켜져 있으면 해지를 **생략한다**. 하네스가 이 문을 지나가도 사용자
 /// 실계정의 토큰이 서버에서 죽지 않게 하는 안전핀이다(`ccg_auth::net::disabled`와 같은 키).
 fn logout(email: &str) -> Value {
     if !email.is_empty() && !no_net() {
         if let Ok(dir) = IsolatedConfigDir::for_claude_account(email) {
-            let bin = crate::engine::versions::claude_bin();
-            if crate::engine::versions::claude_bin_exists() {
+            if let Some(bin) = crate::engine::versions::claude_exe() {
                 let _ = run(&verify::logout_command(&bin.to_string_lossy(), &dir));
             }
         }
