@@ -713,10 +713,18 @@ pub fn file_diff(cwd: &str, rel: &str) -> GitFileDiffResult {
 //
 // [실측한 제약] `git diff`에는 `--pathspec-from-file`이 **없다**(git 2.53.0.windows.1:
 // usage 오류로 죽는다 — add·reset·commit에만 있다). 그래서 경로를 stdin으로 못 준다.
-// 대신 두 갈래 다 **스폰 한 번**으로 끝낸다:
+// 대신 1차는 **스폰 한 번**으로 끝낸다:
 //   · argv에 담기는 규모(≤24K자) → `git diff … HEAD -- <경로들>` (딱 고른 파일만)
 //   · 그보다 크면(= 사용자가 말한 "파일이 너무 많을 때") → **경로 없이 전 트리** diff 한 번을
 //     받아 고른 파일만 추린다. argv는 절대 안 넘친다.
+//
+// [R1 확인 크리틱이 판 구멍 — 1차가 실패하는 두 자리] 답은 맞았지만 **속도가 옛날로**
+// 돌아갔다. 배치 전체가 파일당 호출로 내려앉아서다:
+//   · 커밋이 하나도 없는 저장소(unborn HEAD) 300파일 = 902스폰·31.3초
+//   · 전 트리 diff가 32MB 캡을 넘음(600파일·45.2MB) = 1,202스폰·32.4초
+// 그래서 1차 실패에 **두 단을 넣었다**: unborn은 git을 더 안 부르고 디스크에서 답하고
+// (옛 쪽이 통째로 비어 있다는 뜻이므로), 캡 초과는 목록을 **반으로 갈라** 다시 부른다
+// (600파일·45MB → 300+300 = 22.5MB씩 → 스폰 4회). 파일당 호출은 마지막 그물이다.
 
 /// argv에 pathspec을 담아도 안전한 총 길이 — Windows 32,767에서 넉넉히 물러선 자리.
 const ARGV_PATHSPEC_BUDGET: usize = 24_000;
@@ -844,6 +852,95 @@ fn parse_bulk_patch(out: &str) -> (std::collections::HashMap<String, Patch>, boo
     (map, unparsed)
 }
 
+/// `git diff` 한 판. 캡 초과(`over`)와 그냥 실패를 **가른다** — 캡 초과는 목록을 갈라
+/// 다시 부르면 되지만, 실패(HEAD 없음 등)는 갈라도 똑같이 실패하기 때문이다.
+enum DiffOut {
+    Ok(std::collections::HashMap<String, Patch>, bool),
+    /// stdout이 32MB를 넘어 잘렸다 — 목록을 반으로 갈라 다시 부를 자리.
+    Over,
+    Failed,
+}
+
+fn diff_once(root: &Path, paths: Option<&[String]>) -> DiffOut {
+    let mut args: Vec<&str> = vec![
+        // 한글 경로를 `\355\225\234`로 escape하지 않게 — 그러면 경로가 안 맞는다(실측)
+        "-c",
+        "core.quotePath=false",
+        "diff",
+        "--no-color",
+        "--no-ext-diff",
+        "--no-renames",
+        "-U0",
+        "HEAD",
+    ];
+    if let Some(ps) = paths {
+        args.push("--");
+        args.extend(ps.iter().map(String::as_str));
+    }
+    let r = exec(root, &args);
+    if r.ok {
+        let (m, u) = parse_bulk_patch(&r.stdout);
+        DiffOut::Ok(m, u)
+    } else if r.over {
+        DiffOut::Over
+    } else {
+        DiffOut::Failed
+    }
+}
+
+/// 경로를 담아 부르되, argv 예산이나 32MB 캡에 걸리면 목록을 **반으로 갈라** 다시 부른다.
+/// 스폰 수는 파일 수가 아니라 `log`로 는다(600파일·45MB = 2회). false면 호출부가 옛길로.
+fn diff_into(
+    root: &Path,
+    files: &[String],
+    map: &mut std::collections::HashMap<String, Patch>,
+    unparsed: &mut bool,
+) -> bool {
+    if files.is_empty() {
+        return true;
+    }
+    let total: usize = files.iter().map(|f| f.len() + 1).sum();
+    if total <= ARGV_PATHSPEC_BUDGET && files.iter().all(|f| !f.is_empty()) {
+        match diff_once(root, Some(files)) {
+            DiffOut::Ok(m, u) => {
+                for (k, v) in m {
+                    map.entry(k).or_insert(v);
+                }
+                *unparsed |= u;
+                return true;
+            }
+            // 파일 **하나**가 혼자 32MB를 넘겼다 — 더 못 가른다. 옛길이 사유를 낸다.
+            DiffOut::Over if files.len() == 1 => return false,
+            DiffOut::Over => {}
+            DiffOut::Failed => return false,
+        }
+    }
+    let mid = files.len() / 2;
+    if mid == 0 {
+        return false;
+    }
+    diff_into(root, &files[..mid], map, unparsed) && diff_into(root, &files[mid..], map, unparsed)
+}
+
+/// HEAD가 없는 저장소(첫 커밋 전)의 답 — **옛 쪽이 통째로 비어 있다**는 뜻이라
+/// git을 부를 것이 없다. `file_diff`가 `show HEAD:<rel>` 실패 → `cat-file -e` 실패로
+/// 도달하는 것과 **같은 결론**을 스폰 0회로 낸다(파일당 2스폰을 아낀다).
+fn unborn_file_diff(root: &Path, rel: &str) -> GitFileDiffResult {
+    let Some(abs) = abs_of(root, rel) else {
+        return GitFileDiffResult {
+            error: Some(crate::t("잘못된 경로", "Invalid path")),
+            ..Default::default()
+        };
+    };
+    match std::fs::read(&abs).ok().map(|b| String::from_utf8_lossy(&b).into_owned()) {
+        Some(t) => build_file_diff(rel, None, Some(&t)),
+        None => GitFileDiffResult {
+            error: Some(crate::t("내용을 읽을 수 없어요", "Could not read the contents")),
+            ..Default::default()
+        },
+    }
+}
+
 fn untracked_set(root: &Path) -> std::collections::HashSet<String> {
     // `-z`면 인용이 아예 없다(NUL 구분) — 한글·공백 경로가 그대로 온다.
     let r = exec(root, &["ls-files", "-z", "--others", "--exclude-standard"]);
@@ -879,8 +976,9 @@ fn patch_to_result(rel: &str, p: Patch) -> GitFileDiffResult {
 /// 그 대신 프롬프트에 들어가는 것과 정확히 같은 것만 만들고, 1.5MB 초과라는 이유로
 /// 본문을 통째로 접지 않는다(한 줄 고친 2MB 파일도 그 한 줄이 그대로 나온다).
 ///
-/// 못 믿을 자리를 만나면 그 파일만 `file_diff`로 되돌아간다:
-/// unborn HEAD·32MB 초과·git 실패(전부) · 인용 경로·디스크에 없는 경로(그 파일만).
+/// 못 믿을 자리를 만나면 되돌아가는데, **되돌아가는 단위가 다르다**:
+/// · 배치 전체 — git 실패(unborn·캡 초과를 갈라도 안 되는 자리).
+/// · 그 파일만 — C 인용 경로·중복 경로·디스크에 없는 경로.
 pub fn bulk_file_diffs(cwd: &str, files: &[String]) -> Vec<GitFileDiffResult> {
     if files.is_empty() {
         return Vec::new();
@@ -892,28 +990,27 @@ pub fn bulk_file_diffs(cwd: &str, files: &[String]) -> Vec<GitFileDiffResult> {
             .collect();
     };
     let root_s = root.to_string_lossy().to_string();
-    let mut args: Vec<&str> = vec![
-        // 한글 경로를 `\355\225\234`로 escape하지 않게 — 그러면 경로가 안 맞는다(실측)
-        "-c",
-        "core.quotePath=false",
-        "diff",
-        "--no-color",
-        "--no-ext-diff",
-        "--no-renames",
-        "-U0",
-        "HEAD",
-    ];
     let total: usize = files.iter().map(|f| f.len() + 1).sum();
-    if total <= ARGV_PATHSPEC_BUDGET && files.iter().all(|f| !f.is_empty()) {
-        args.push("--");
-        args.extend(files.iter().map(String::as_str));
-    }
-    let r = exec(&root, &args);
-    if !r.ok {
-        // 커밋이 하나도 없는 저장소(unborn HEAD)·32MB 초과·git 실패 — 옛길로 내려앉는다.
-        return files.iter().map(|f| file_diff(&root_s, f)).collect();
-    }
-    let (mut map, unparsed) = parse_bulk_patch(&r.stdout);
+    let fits_argv = total <= ARGV_PATHSPEC_BUDGET && files.iter().all(|f| !f.is_empty());
+    // 1차 — 스폰 한 번. 담기면 고른 것만, 아니면 경로 없이 전 트리.
+    let (mut map, unparsed) = match diff_once(&root, if fits_argv { Some(files) } else { None }) {
+        DiffOut::Ok(m, u) => (m, u),
+        other => {
+            // HEAD가 없다(첫 커밋 전) — 갈라도 계속 실패한다. 디스크에서 바로 답한다.
+            if matches!(other, DiffOut::Failed)
+                && !exec(&root, &["rev-parse", "--verify", "--quiet", "HEAD"]).ok
+            {
+                return files.iter().map(|f| unborn_file_diff(&root, f)).collect();
+            }
+            // 캡 초과(전 트리가 45MB더라) — 목록을 갈라 다시. 그래도 안 되면 옛길.
+            let mut m = std::collections::HashMap::new();
+            let mut u = false;
+            if !diff_into(&root, files, &mut m, &mut u) {
+                return files.iter().map(|f| file_diff(&root_s, f)).collect();
+            }
+            (m, u)
+        }
+    };
     let mut untracked: Option<std::collections::HashSet<String>> = None;
     let mut seen: std::collections::HashSet<&str> = std::collections::HashSet::new();
     let mut out: Vec<GitFileDiffResult> = Vec::with_capacity(files.len());
@@ -942,7 +1039,12 @@ pub fn bulk_file_diffs(cwd: &str, files: &[String]) -> Vec<GitFileDiffResult> {
             });
             continue;
         }
-        let on_disk = abs_of(&root, rel).map(|p| p.exists()).unwrap_or(false);
+        // ★ `is_file()`이다 — `exists()`가 아니다. status는 미추적 **폴더**를 한 줄로 접어
+        //   `새 폴더/`로 준다(그 행이 그대로 여기 온다). 폴더는 `ls-files --others`에도
+        //   `git diff`에도 절대 안 실리므로 `exists()`로 보면 "추적 중인데 diff가 없다"로
+        //   읽혀 **`+0 −0`("안 바뀌었다")이라는 거짓말**이 나갔다(R1 확인 크리틱 실측).
+        //   옛길(`file_diff`)은 그 자리에서 "내용을 읽을 수 없어요"를 낸다 — 거기로 보낸다.
+        let on_disk = abs_of(&root, rel).map(|p| p.is_file()).unwrap_or(false);
         if on_disk && !unparsed {
             // 추적 중인데 diff가 없다 = 안 바뀌었다. 변경 줄 0이 정확한 답이다.
             out.push(GitFileDiffResult {
@@ -1844,6 +1946,125 @@ mod tests {
         }
         assert_eq!(old_spawns, files.len() as u64 * 2, "옛길은 파일당 2회였다");
         assert!(new_spawns <= 3);
+    }
+
+    /// ★ R1 확인 크리틱 구멍 ② — status가 한 줄로 접는 **미추적 폴더** 행(`새 폴더/`).
+    ///
+    /// 폴더는 `git diff`에도 `ls-files --others`(파일만 준다)에도 안 실린다. 그래서
+    /// 「diff에 없다 + 디스크에 있다 = 안 바뀌었다」로 읽혀 **`+0 −0`**이 나갔다 —
+    /// AI에게 "이 폴더는 안 바뀌었다"고 단언하는 거짓말이다. 옛길과 같은 답이어야 한다.
+    #[test]
+    fn an_untracked_folder_row_never_claims_it_is_unchanged() {
+        let r = repo!("bulkdiff-folder");
+        r.write("base.txt", "b\n");
+        r.git(&["add", "."]);
+        r.git(&["commit", "-qm", "init"]);
+        // status가 실제로 폴더 한 줄로 접는지부터 — 픽스처가 아니라 git의 행동이 근거다
+        r.write("새 폴더/안쪽 1.txt", "가\n");
+        r.write("새 폴더/안쪽 2.txt", "나\n");
+        // 앱이 실제로 읽는 그 명령(`status --porcelain=v2 -z`)에서 폴더 한 줄이 나오는지
+        let st = r.git(&["status", "--porcelain=v2", "--branch", "-z"]);
+        assert!(
+            st.stdout.split('\0').any(|t| t == "? 새 폴더/"),
+            "git이 폴더로 안 접었다: {:?}",
+            st.stdout
+        );
+        let rows = status(r.cwd());
+        assert!(rows.files.iter().any(|f| f.path == "새 폴더/"), "status에 폴더 행이 없다");
+
+        let rel = "새 폴더/".to_string();
+        let bulk = bulk_file_diffs(r.cwd(), std::slice::from_ref(&rel));
+        let old = file_diff(r.cwd(), &rel);
+        assert!(old.diff.is_none() && old.error.is_some(), "옛길 전제가 깨졌다");
+        assert!(
+            bulk[0].diff.is_none(),
+            "폴더 행을 diff로 그렸다: {:?}",
+            bulk[0].diff.as_ref().map(|d| (d.tag, d.add, d.del))
+        );
+        assert_eq!(bulk[0].error, old.error, "옛길과 사유가 갈렸다");
+
+        // 옆 파일들은 그대로 답이 나온다 — 폴더 한 줄이 배치를 오염시키지 않는다
+        let mixed = vec!["새 폴더/".to_string(), "새 폴더/안쪽 1.txt".to_string(), "base.txt".to_string()];
+        let m = bulk_file_diffs(r.cwd(), &mixed);
+        assert!(m[0].error.is_some());
+        assert_eq!(m[1].diff.as_ref().map(|d| (d.tag, d.add)), Some(("new", 1)));
+        assert_eq!(m[2].diff.as_ref().map(|d| (d.add, d.del)), Some((0, 0)));
+    }
+
+    /// ★ R1 확인 크리틱 구멍 ①a — 첫 커밋 전(unborn HEAD)에서 **속도가 옛날로** 돌아갔다.
+    /// 실측 300파일 = 902스폰·31.3초(파일당 3회). 답은 그대로 두고 스폰만 끊는다.
+    #[test]
+    fn an_unborn_head_answers_without_a_spawn_per_file() {
+        let r = repo!("bulkdiff-unborn-cost");
+        // 크리틱이 옛 코드로 잰 그 판과 같은 규모(300파일 = 902스폰·31.3초)
+        let files: Vec<String> = (0..300).map(|i| format!("첫 폴더/새 파일-{i:03}.txt")).collect();
+        for (i, f) in files.iter().enumerate() {
+            r.write(f, &format!("가\n나 {i}\n"));
+        }
+        let t0 = std::time::Instant::now();
+        let before = spawn_count();
+        let bulk = bulk_file_diffs(r.cwd(), &files);
+        let spawns = spawn_count() - before;
+        eprintln!("[측정] unborn {}파일: {}ms · git 스폰 {spawns}회", files.len(), t0.elapsed().as_millis());
+        // repo_root + diff(실패) + rev-parse = 3. 파일 수와 **무관**해야 한다.
+        assert!(spawns <= 3, "unborn에서 파일 {}개에 스폰 {spawns}회", files.len());
+        // 답 대조는 표본으로 — 옛길이 파일당 3스폰이라 300개 전부 돌리면 이 테스트 하나가
+        // 20초를 먹는다(그 느림이 바로 여기서 고친 것이다). 10개 간격으로 30표본.
+        for (i, f) in files.iter().enumerate().filter(|(i, _)| i % 10 == 0) {
+            let one = file_diff(r.cwd(), f);
+            let (b, o) = (bulk[i].diff.as_ref().expect(f), one.diff.as_ref().expect(f));
+            assert_eq!((b.tag, b.add, b.del), (o.tag, o.add, o.del), "{f}: 답이 갈렸다");
+            assert_eq!(b.lines.len(), o.lines.len(), "{f}: 줄 수가 갈렸다");
+        }
+        // 표본 밖도 답이 있고 자기 자리에 있다(행 밀림 방지)
+        assert!(bulk.iter().enumerate().all(|(i, d)| d.diff.as_ref().is_some_and(|x| x.path == files[i] && x.tag == "new" && x.add == 2)));
+        // 없는 경로·폴더도 옛길과 같은 사유 — unborn 갈래가 답을 헐겁게 만들지 않는다
+        let odd = vec!["없는 파일.txt".to_string(), "첫 폴더/".to_string()];
+        let b2 = bulk_file_diffs(r.cwd(), &odd);
+        for (i, f) in odd.iter().enumerate() {
+            assert_eq!(b2[i].error, file_diff(r.cwd(), f).error, "{f}: 사유가 갈렸다");
+        }
+    }
+
+    /// ★ R1 확인 크리틱 구멍 ①b — 전 트리 diff가 32MB 캡을 넘으면 **배치 전체**가
+    /// 파일당 호출로 내려앉았다(실측 600파일·45.2MB = 1,202스폰·32.4초).
+    /// 이제 목록을 반으로 갈라 다시 부른다 — 스폰은 파일 수가 아니라 log로 는다.
+    ///
+    /// 느리다(30MB대를 쓰고 커밋한다) — 기본 제외. 재현:
+    /// `cargo test -p ccg-fs --lib -- --ignored --nocapture an_oversize_whole_tree`
+    #[test]
+    #[ignore = "느리다 — 32MB 캡을 실제로 넘겨야 한다"]
+    fn an_oversize_whole_tree_splits_instead_of_going_per_file() {
+        let r = repo!("bulkdiff-oversize");
+        // 파일당 90KB × 400 = 36MB. `-U0` 전면 교체라 diff는 그 두 배(72MB) → 캡 초과.
+        let body_a = "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF\n".repeat(1_900);
+        let body_b = "FEDCBA9876543210FEDCBA9876543210FEDCBA9876543210\n".repeat(1_900);
+        let files: Vec<String> = (0..400).map(|i| format!("큰 폴더/덩치-{i:03}.txt")).collect();
+        for f in &files {
+            r.write(f, &body_a);
+        }
+        r.git(&["add", "."]);
+        r.git(&["commit", "-qm", "init"]);
+        for f in &files {
+            r.write(f, &body_b);
+        }
+        // 전제: 경로는 argv에 담기지만(전 트리 갈래) 출력이 캡을 넘는다
+        let argv_len: usize = files.iter().map(|f| f.len() + 1).sum();
+        assert!(argv_len <= ARGV_PATHSPEC_BUDGET, "인자 합계 {argv_len} — 전제가 다르다");
+        let probe = exec(&r.0, &["diff", "--no-color", "-U0", "HEAD"]);
+        assert!(probe.over, "32MB를 안 넘겼다 — 이 테스트가 재는 자리가 아니다");
+
+        let t0 = std::time::Instant::now();
+        let before = spawn_count();
+        let bulk = bulk_file_diffs(r.cwd(), &files);
+        let spawns = spawn_count() - before;
+        eprintln!("[측정] {}파일 캡 초과: {}ms · git 스폰 {spawns}회", files.len(), t0.elapsed().as_millis());
+        assert!(spawns < 20, "{}파일에 스폰 {spawns}회 — 또 파일당으로 내려앉았다", files.len());
+        assert_eq!(bulk.len(), files.len());
+        for (i, f) in files.iter().enumerate() {
+            let d = bulk[i].diff.as_ref().unwrap_or_else(|| panic!("{f}: 답을 잃었다"));
+            assert_eq!((d.path.as_str(), d.add, d.del), (f.as_str(), 1_900, 1_900), "{f}: 답이 틀렸다");
+        }
     }
 
     /// 커밋이 하나도 없는 저장소(unborn HEAD)에서는 `git diff HEAD`가 죽는다 —

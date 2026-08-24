@@ -224,10 +224,13 @@ pub fn ai_message(a: &Value) -> Value {
         Err(e) => return err(format!("{e}")),
     };
 
-    // diff 수집 — 파일이 몇 개든 **git 스폰 1~2회**다(`bulk_file_diffs`).
+    // diff 수집 — 파일 수와 **무관하게** git 스폰 2회가 보통이다(`bulk_file_diffs`).
     // 2.6.2는 파일마다 `gitFileDiff`를 직렬로 불러 **파일 N개 = 스폰 2N회**였고
-    // (300개면 600번 프로세스), R1이 그 모양을 그대로 옮겼다. 예산을 넘겨도 파일이
-    // 사라지진 않는 규약은 그대로다: 본문만 접고 헤더(+N −M)는 남긴다.
+    // (300개면 600번 프로세스), R1이 그 모양을 그대로 옮겼다.
+    // 「1~2회」라고 단정하지 않는 이유: 32MB 캡을 넘으면 목록을 갈라 다시 부르므로
+    // 몇 회 더 붙는다(400파일·72MB 실측 9회). 파일당 N회로 돌아가는 자리는
+    // `bulk_file_diffs` 주석에 적힌 마지막 그물뿐이다.
+    // 예산을 넘겨도 파일이 사라지진 않는 규약은 그대로다: 본문만 접고 헤더(+N −M)는 남긴다.
     let mut diff_text = String::new();
     let collected = ccg_fs::git::bulk_file_diffs(&root, &files);
     for (rel, d) in files.iter().zip(collected.iter()) {
