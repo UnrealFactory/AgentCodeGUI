@@ -723,8 +723,10 @@ pub fn file_diff(cwd: &str, rel: &str) -> GitFileDiffResult {
 //   · 커밋이 하나도 없는 저장소(unborn HEAD) 300파일 = 902스폰·31.3초
 //   · 전 트리 diff가 32MB 캡을 넘음(600파일·45.2MB) = 1,202스폰·32.4초
 // 그래서 1차 실패에 **두 단을 넣었다**: unborn은 git을 더 안 부르고 디스크에서 답하고
-// (옛 쪽이 통째로 비어 있다는 뜻이므로), 캡 초과는 목록을 **반으로 갈라** 다시 부른다
-// (600파일·45MB → 300+300 = 22.5MB씩 → 스폰 4회). 파일당 호출은 마지막 그물이다.
+// (옛 쪽이 통째로 비어 있다는 뜻이므로), 캡 초과는 목록을 **반으로 갈라** 다시 부른다.
+// 파일당 호출은 마지막 그물이다. 새 실측:
+//   · unborn 300파일          3스폰 ·   107ms
+//   · 캡 초과 400파일·72MB     9스폰 · 1,743ms   (`an_oversize_whole_tree_…` 테스트)
 
 /// argv에 pathspec을 담아도 안전한 총 길이 — Windows 32,767에서 넉넉히 물러선 자리.
 const ARGV_PATHSPEC_BUDGET: usize = 24_000;
@@ -889,7 +891,8 @@ fn diff_once(root: &Path, paths: Option<&[String]>) -> DiffOut {
 }
 
 /// 경로를 담아 부르되, argv 예산이나 32MB 캡에 걸리면 목록을 **반으로 갈라** 다시 부른다.
-/// 스폰 수는 파일 수가 아니라 `log`로 는다(600파일·45MB = 2회). false면 호출부가 옛길로.
+/// 스폰 수는 파일 수가 아니라 `log`로 는다(실측 400파일·72MB = 8회 + 1차 1회).
+/// false면 호출부가 그 배치를 옛길로 돌린다.
 fn diff_into(
     root: &Path,
     files: &[String],
