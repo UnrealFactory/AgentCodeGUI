@@ -519,7 +519,7 @@ R1은 1440px 본채팅(판 883px)에서 7종 전부 이겼지만 420px 멀티 �
 | 자리 | 무엇 |
 |---|---|
 | `engine/lite.rs` | 생존 판정 — *busy 턴 중 **이거나** 상주 CLI 생존*(§3의 정의 그대로). 슬롯만 있는 채팅·밖에서 죽은 CLI는 계정을 안 싣는다 |
-| `ccg_store::status` | `account`·`panelId`는 **디스크에 안 쓰고**(`flush`), **부팅 장전에서 걷어낸다**(`load_boot` — R1이 이미 써 둔 파일의 답) |
+| `ccg_store::status` | `account`·`panelId`는 **디스크에 안 쓰고**(`flush`), **부팅 첫 장전에서만 걷어낸다**(`load_boot` — R1이 이미 써 둔 파일의 답). ★R28c AG2: 그 뒤의 `load_boot`(=`chats:get`)은 **조회**라 살아 있는 메모리가 이긴다 — 읽기 한 번이 살아 있는 런타임의 계정·승인 대기를 지우던 자리(G2) |
 | ~~`hub::Op::Dispose`~~ | ~~런타임을 거두면 마지막 lite에서 계정을 뗀다(`status::clear_runtime`)~~ → **★R3 정정 아래** |
 
 **★R3 정정 — 「사용 중」을 걷는 자리는 `Op::Dispose`가 아니었다(확인 크리틱 R2 G1).**

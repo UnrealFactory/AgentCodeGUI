@@ -10,6 +10,9 @@
 //!     요약이고, 어긋나면 **`<chatId>.json`이 이긴다**.
 //!  4. **부팅 강제**: `busy=false`·`ask='none'`·`bgActive=false`(유령 알약 방지 —
 //!     `sessionChats.ts:28` 파리티). `queued`·`hold`는 **강제하지 않는다**(재장전 대상).
+//!     ★강제는 **읽는 쪽**이다(R28c AG2 R2). 파일에는 마지막 사실이 남는다 — 턴 도중에
+//!     죽은 채팅의 `working`도 그대로다. 그 값을 파일에 `idle`로 굳히면, 규약 3·5가
+//!     *파일을 진실로 쓰는* 자리에서 사실이 통째로 사라진다(§5.2 "상태 맵 동일" 위반).
 //!  5. **유일 진실이 아니다.** 없거나 깨졌으면 `chats-v3/*.json` 전수 **얕은 스캔**으로
 //!     재구성한다(`snapshot`은 파싱하지 않는다 — serde의 IgnoredAny가 통째로 건너뛴다).
 //!  6. **장전은 부팅에 한 번**(★R28c AG2 — 확인 크리틱 R3 G2). 규약 4의 강제도, 디스크
@@ -156,15 +159,28 @@ pub fn load_boot(chat_ids: &[String]) -> BTreeMap<String, Value> {
     if !claim_boot() {
         return read_live(chat_ids);
     }
+    boot_load(chat_ids)
+}
+
+/// 첫 장전 — 디스크가 메모리를 **채운다**(덮지는 않는다).
+///
+/// ★R28c AG2 R2(확인 크리틱 R1 지적 3) — R1은 여기서 `st.map = out.clone()`으로 **통째로
+/// 덮었다**. [`claim_boot`]은 자물쇠를 놓고 나오므로 「표식을 세운 뒤 ~ 디스크를 다 읽기
+/// 전」 사이에 허브가 앉힌 `set()`이 있으면 그 행이 사라진다 — 조회 쪽([`read_live`])에서는
+/// 이미 막아 둔 창을 자기 가지에는 안 닫아 뒀다. 오늘의 부팅 순서에서는 도달 불가지만
+/// (`load_boot`은 `hub::start` 앞), `CCG_NO_STATUS_BOOT=1`에서는 첫 `chats:get`이 이 가지를
+/// 타므로 이론상 열린다. 둘의 규칙을 같게 둔다: **메모리가 이긴다.**
+fn boot_load(chat_ids: &[String]) -> BTreeMap<String, Value> {
+    // 디스크 읽기는 자물쇠 **밖에서** 한다(부팅에도 허브 틱을 멈춰 세우지 않는다).
     let stored = read_stored();
+    let fresh: Vec<(String, Value)> =
+        chat_ids.iter().map(|id| (id.clone(), row_from_disk(id, &stored))).collect();
+    let (m, _) = state();
+    let mut st = m.lock().unwrap_or_else(|e| e.into_inner());
     let mut out: BTreeMap<String, Value> = BTreeMap::new();
-    for id in chat_ids {
-        out.insert(id.clone(), row_from_disk(id, &stored));
-    }
-    {
-        let (m, _) = state();
-        let mut st = m.lock().unwrap_or_else(|e| e.into_inner());
-        st.map = out.clone();
+    for (id, row) in fresh {
+        let row = st.map.entry(id.clone()).or_insert(row).clone();
+        out.insert(id, row);
     }
     out
 }
@@ -459,23 +475,31 @@ pub fn forget_one(chat_id: &str) -> bool {
 /// 지금 즉시 디스크에 쓴다(앱 종료 flush · 마이그레이션 마무리).
 pub fn flush() {
     let (m, _) = state();
-    let text = {
+    let map = {
         let mut st = m.lock().unwrap_or_else(|e| e.into_inner());
         if !st.dirty {
             return;
         }
         st.dirty = false;
-        let mut statuses = Map::new();
-        for (k, v) in &st.map {
-            // ★R28 ACCT R2(F1) — 런타임 전용 키는 **파일로 내려가지 않는다.**
-            // 메모리 맵에는 남는다(브로드캐스트가 그 값을 싣는 것이 §3의 기능이다) —
-            // 갈리는 것은 *수명*이다: 프로세스와 함께 죽어야 하는 사실이다.
-            let mut row = v.clone();
-            strip_runtime_only(&mut row);
-            statuses.insert(k.clone(), row);
-        }
-        serde_json::to_string(&json!({ "version": 1, "statuses": Value::Object(statuses) })).unwrap_or_default()
+        st.map.clone()
     };
+    write_map(&map);
+}
+
+/// 맵 하나를 **지금** 파일에 쓴다(직렬화·원자 저장은 자물쇠 밖에서).
+///
+/// ★R28 ACCT R2(F1) — 런타임 전용 키는 **파일로 내려가지 않는다.** 메모리 맵에는 남는다
+/// (브로드캐스트가 그 값을 싣는 것이 §3의 기능이다) — 갈리는 것은 *수명*이다: 프로세스와
+/// 함께 죽어야 하는 사실이다.
+fn write_map(map: &BTreeMap<String, Value>) {
+    let mut statuses = Map::new();
+    for (k, v) in map {
+        let mut row = v.clone();
+        strip_runtime_only(&mut row);
+        statuses.insert(k.clone(), row);
+    }
+    let text = serde_json::to_string(&json!({ "version": 1, "statuses": Value::Object(statuses) }))
+        .unwrap_or_default();
     if text.is_empty() {
         return;
     }
@@ -523,27 +547,42 @@ pub fn forget() {
 
 /// 마이그레이션이 만든 초기 상태 맵을 통째로 심는다(그리고 즉시 쓴다).
 ///
-/// ★R28c AG2(G2) — 심을 때 **규약 4를 여기서 건다.** 마이그레이터는 2.6.2의 상태를
-/// *그대로* 옮기고(§5.2 "상태 맵 동일") 얼리기는 부팅 장전 몫이었는데, 순서가 그렇지 않다:
+/// **두 얼굴이다 — 파일은 사실, 메모리는 안전값**(규약 4의 「강제는 읽는 쪽」).
+///
+/// ★R28c AG2(G2) — 메모리에는 여기서 규약 4를 건다. 순서가 함정이기 때문이다:
 /// `engine::boot`의 `load_boot`은 마이그레이션 **전에** 돌고(그 판의 `chats-v3`는 아직
 /// 비어 있어 `load_boot(&[])`이다), 그 뒤 첫 `chats:get`은 이제 [`read_live`]라 메모리를
 /// 그대로 돌려준다. 그러니 여기서 안 걷으면 2.6.2가 크래시 때 얼려 둔 `working`이
-/// 업그레이드 첫 화면에 **유령 알약**으로 뜬다. 얼린 사실 자체는 `<chatId>.json`의
-/// `status`에 남아 있다(규약 5가 읽는 그 값 — `migrate_v3`의 「기록에도 남는다」 못).
+/// 업그레이드 첫 화면에 **유령 알약**으로 뜬다.
+///
+/// ★R28c AG2 R2(확인 크리틱 R1의 새 회귀) — 그런데 R1은 그 강제를 `flush()`로 **디스크까지**
+/// 굳혔다. `status.json`의 `working`이 `idle`로 지워져 `<chatId>.json`(=`"working"`)과
+/// 영구히 어긋났고, 하필 그것이 무손실 하네스가 재는 값이다
+/// (`poc-chat-unify-migrate.mjs`: BEFORE=`rec.snapshot.status` ↔ AFTER=`status.json`).
+/// 그 대상 인구는 **턴 도중에 죽은 채팅** — 규약 4가 존재하는 이유인 바로 그 집단이다.
+/// 그래서 파일에는 [`write_map`]으로 **마이그레이터가 준 값 그대로** 내려보낸다(§5.2
+/// "상태 맵 동일" · `migrate_v3::status_of`의 "파일은 사실, 메모리는 안전값"). 다음 장전이
+/// 그 파일을 읽을 때 [`row_from_disk`]가 다시 얼리므로 화면은 어느 쪽이든 안전값이다.
+///
+/// `dirty`를 내리는 것이 이 함수의 계약의 일부다 — 안 내리면 500ms 뒤 디바운스 쓰기(또는
+/// `ccg-migrate`의 마무리 [`flush`])가 **메모리의 안전값으로 방금 쓴 사실을 덮는다**.
 pub fn seed(map: BTreeMap<String, Value>) {
     let (m, _) = state();
     {
         let mut st = m.lock().unwrap_or_else(|e| e.into_inner());
         st.map = map
-            .into_iter()
-            .map(|(id, mut v)| {
-                force_boot_shape(&id, &mut v);
-                (id, v)
+            .iter()
+            .map(|(id, v)| {
+                let mut v = v.clone();
+                force_boot_shape(id, &mut v);
+                (id.clone(), v)
             })
             .collect();
-        st.dirty = true;
+        st.dirty = false;
+        // 심은 값이 이 홈의 진실이다 — 그 뒤의 `load_boot`은 장전이 아니라 조회다(규약 6).
+        st.loaded = true;
     }
-    flush();
+    write_map(&map);
 }
 
 #[cfg(test)]
@@ -810,6 +849,103 @@ mod tests {
         assert_eq!(got["m-1"]["ask"], json!("none"));
         assert_eq!(got["m-1"]["bgActive"], json!(false));
         assert_eq!(got["m-1"]["queued"], json!(2), "재장전 대상(queued·hold)은 안 건드린다");
+        let _ = h;
+    }
+
+    /// ★R28c AG2 R2 — 규약 4는 **화면을 얼린다. 파일의 사실은 안 지운다.**
+    ///
+    /// R1이 만든 회귀(확인 크리틱 R1 §6): `seed()`의 강제가 `flush()`로 디스크까지 굳어,
+    /// 2.6.2가 크래시로 얼려 둔 `working`이 `status.json`에서 `idle`로 **지워졌다**
+    /// (레코드 `<chatId>.json`은 `"working"` 그대로 — 사이드카와 영구히 어긋난다).
+    /// 하필 그 필드가 무손실 하네스가 비교하는 값이다(`poc-chat-unify-migrate.mjs`:
+    /// BEFORE=2.6.2 `rec.snapshot.status` ↔ AFTER=`status.json.statuses[id].status`).
+    #[test]
+    fn a_migration_freezes_the_screen_but_not_the_file() {
+        let h = crate::testkit::temp_home("status-seed-disk");
+        forget();
+        let _ = load_boot(&[]); // 마이그레이션 **전**의 `engine::boot`
+        seed(BTreeMap::from([
+            (
+                "c-run".to_string(),
+                json!({ "chatId": "c-run", "status": "working", "busy": false, "ask": "none",
+                        "bgActive": false, "queued": 2, "hold": Value::Null, "updatedAt": 5 }),
+            ),
+            (
+                "c-done".to_string(),
+                json!({ "chatId": "c-done", "status": "done", "busy": false, "ask": "none",
+                        "bgActive": false, "queued": 0, "hold": Value::Null, "updatedAt": 6 }),
+            ),
+        ]));
+
+        // ① 화면(=메모리)은 안전값 — 업그레이드 첫 화면에 유령 알약이 없다.
+        let snap = snapshot();
+        println!("[R2] seed 직후 메모리 = {snap}");
+        assert_eq!(snap["c-run"]["status"], json!("idle"), "★ 얼린 `working`이 첫 화면에 떴다");
+        assert_eq!(snap["c-run"]["queued"], json!(2), "재장전 대상은 안 건드린다");
+
+        // ② 파일은 사실 — §5.2 「상태 맵 동일」. 여기가 R1이 깨뜨린 자리다.
+        let disk: Value =
+            serde_json::from_str(&std::fs::read_to_string(path()).expect("status.json")).unwrap();
+        println!("[R2] seed 직후 디스크 = {}", disk["statuses"]);
+        assert_eq!(
+            disk["statuses"]["c-run"]["status"],
+            json!("working"),
+            "★ 디스크의 얼어붙은 사실이 지워졌다: {}",
+            disk["statuses"]
+        );
+        assert_eq!(disk["statuses"]["c-done"]["status"], json!("done"));
+
+        // ③ `ccg-migrate`의 마무리 `flush()`가 그 사실을 덮으면 안 된다(dirty는 내려가 있다).
+        flush();
+        let after: Value =
+            serde_json::from_str(&std::fs::read_to_string(path()).expect("status.json")).unwrap();
+        assert_eq!(
+            after["statuses"]["c-run"]["status"],
+            json!("working"),
+            "★ 마무리 flush가 안전값으로 사실을 덮었다: {}",
+            after["statuses"]
+        );
+
+        // ④ 그리고 다음 판의 장전은 그 파일을 다시 얼린다 — 어느 쪽이든 화면은 안전하다.
+        forget();
+        let boot = load_boot(&["c-run".to_string()]);
+        assert_eq!(boot["c-run"]["status"], json!("idle"), "다음 부팅이 돌던 턴을 되살렸다");
+        let _ = h;
+    }
+
+    /// ★R28c AG2 R2(확인 크리틱 R1 지적 3) — **첫 장전도** 그 사이 앉은 행을 안 덮는다.
+    ///
+    /// [`claim_boot`]은 표식만 세우고 자물쇠를 놓는다. R1은 그 뒤 디스크를 읽어
+    /// `st.map`을 **통째로** 덮었으므로, 그 창에 들어온 `set()`은 사라졌다(조회 쪽은 이미
+    /// 막아 둔 창을 자기 가지에는 안 닫아 뒀다). 여기서 부르는 [`boot_load`]는
+    /// `load_boot`의 첫 호출이 하는 일 그대로다 — 그 창의 순서를 손으로 세워 잰다.
+    #[test]
+    fn even_the_first_load_keeps_a_row_that_landed_while_it_read_the_disk() {
+        let h = crate::testkit::temp_home("status-boot-merge");
+        forget();
+        h.write(
+            "chats-v3/status.json",
+            &json!({ "version": 1, "statuses": {
+                "c-a": { "chatId": "c-a", "status": "working", "busy": true, "ask": "permission",
+                         "account": "ghost@ccg.test", "updatedAt": 1 },
+                "c-b": { "chatId": "c-b", "status": "done", "busy": false, "ask": "none", "updatedAt": 1 } } })
+            .to_string(),
+        );
+        // 표식은 섰고(claim_boot) 디스크는 아직 다 안 읽은 그 순간 — 허브가 행 하나를 앉힌다.
+        set(
+            "c-a",
+            json!({ "chatId": "c-a", "status": "working", "busy": true, "ask": "permission",
+                    "account": "one@ccg.test", "panelId": Value::Null, "updatedAt": 9 }),
+        );
+        let got = boot_load(&["c-a".to_string(), "c-b".to_string()]);
+        println!("[R2] 부팅 장전 = {got:?}");
+        assert_eq!(got["c-a"]["account"], json!("one@ccg.test"), "★ 장전이 살아 있는 계정을 덮었다");
+        assert_eq!(got["c-a"]["ask"], json!("permission"), "★ 장전이 승인 대기를 덮었다");
+        assert_eq!(got["c-a"]["busy"], json!(true), "★ 장전이 busy를 꺼 전송 게이트를 열었다");
+        // 메모리가 모르는 채팅은 그대로 디스크에서 짓는다(부팅 강제 + 유령 계정 청소).
+        assert_eq!(got["c-b"]["status"], json!("done"));
+        assert!(got["c-b"].get("account").is_none());
+        assert_eq!(snapshot()["c-a"]["account"], json!("one@ccg.test"), "다음 REPLACE도 그대로다");
         let _ = h;
     }
 

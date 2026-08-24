@@ -193,10 +193,10 @@ agentcodegui` + `ccg-fakecli`(`--features fakecli`) + `ccg-auth-probe`(`--featur
    바꾼 경우*인데, 그 화면의 예약 목록은 렌더러 자기 상태(`ScheduledMsg[]`)로 그리므로
    `statuses.queued`가 즉시 필요하지 않다. 재장전 후보 판정(`reload_candidates`)은 조회를
    안 쓰고 채팅 파일을 직접 읽으므로 영향이 없다.
-4. **`docs/renderer-divergence.md` §6.6/§6.7의 한 줄**(*"`load_boot`이 부팅 장전에서
-   걷어낸다"*)은 이제 **"첫 장전에서만"**이라는 한정이 붙는다. 그 파일은 이번 라운드에
-   다른 갈래가 미커밋으로 잡고 있어 **안 건드렸다**(공유 파일 규율) — 소유 갈래가
-   반영하면 된다.
+4. **`docs/renderer-divergence.md:522`의 한 줄**(*"`load_boot`이 부팅 장전에서 걷어낸다"*)은
+   이제 **"첫 장전에서만"**이라는 한정이 붙는다. R1에서는 그 파일을 다른 갈래가 미커밋으로
+   잡고 있어 안 건드렸는데(공유 파일 규율), 확인 크리틱 R1 시점에 **git에서 깨끗해졌다** →
+   **R2에서 그 줄만 고쳤다**(아래 §8.5).
 
 ## 6. 만진 파일
 
@@ -224,3 +224,169 @@ CLI에는 거둘 런타임도 들을 창도 없다 — 「구조적으로 막는
 
 실측: 재빌드 **경고 0건** · 스모크 `save-chats`(빈 목록 저장) → `{"ok":true,"removed":["z1"]}` ·
 `cargo test -p ccg-store` **85/0** 그대로.
+
+---
+
+# AG2 R2 — 「규약 4를 **파일에** 굳혔다」 (확인 크리틱 R1 · 새 회귀)
+
+- 대상: `docs/critic/r28c-ag2-critic-r1.md` **§6**(판정문 커밋 `cf490e2`) — 이 갈래가 R1에서
+  **새로 만든** 결함 한 건. 크리틱의 나머지 축(G2 조회·F1 재시작·G1 삭제·ask·부기)은 전부
+  「닫혔다」 판정이라 R2는 그 하나와, 「지금 고치라는 말은 아니다」로 남긴 작은 것 둘을 만진다.
+- 격리: `CARGO_TARGET_DIR=target-ag2`(내 갈래) · CDP **9781~9788** · `CCG_HOME`은
+  `%TEMP%\ccg-acct-live-ag2r2*` + `%TEMP%\ag2r2\*` · 전 주행 `CCG_NO_NET=1` + 합성 계정
+  → **실 HTTP 0건 · 실계정 토큰 회전 0회**. 이름 기반 kill **0회**(`killTree`만) — 사용자
+  실앱 5개(`24836`·`12924`·`26924`·`6644`·`23792`)는 주행 전후 **같은 PID**, 내 exe 고아
+  **0건**(`Win32_Process` 확인). 공용 `target/`·남의 `target-*`에는 **한 바이트도 안 지었다.**
+
+## 8. 무엇이 틀렸나 — 「부팅 강제」가 캐시가 아니라 **사실**을 지웠다
+
+R1의 ⑷는 `seed()`에 규약 4(`working|analyzing→idle` 등)를 걸었다. 옳은 절반이었다 —
+틀린 절반은 그 강제가 **`flush()`로 디스크까지 내려갔다**는 것이다:
+
+```
+migrate_v3: staged chats-v3/status.json ← 2.6.2 값 **그대로**("working")   ← §5.2
+            commit_dir(staged → chats-v3)
+            status::seed(statuses)  → force_boot_shape → dirty=true → flush()
+                                                   ↑ 방금 커밋한 파일을 "idle"로 덮는다
+```
+
+그래서 `chats-v3/status.json`은 `idle`, `chats-v3/<id>.json`은 `working` — **사이드카와
+레코드가 영구히 어긋난다.** 규약 3·5가 *파일을 진실로 쓰는* 설계인데, 그 파일에서 「턴
+도중에 죽었다」는 사실만 사라진 것이다. 그리고 `migrate_v3.rs:151`은 그 반대를 이미 문장으로
+적어 두고 있었다 — *"마이그레이터는 원본 값을 그대로 옮긴다(§5.2 '상태 맵 동일'). 얼리기는
+부팅 장전이 한다 — **파일은 사실, 메모리는 안전값**"*.
+
+화면 피해는 오늘 없다(모든 읽기 경로가 다시 `idle`로 얼린다). 깨진 것은 **문장과 게이트**다:
+프로젝트의 유일한 무손실 하네스 `poc-chat-unify-migrate.mjs`가 정확히 그 필드를 비교한다
+(BEFORE `rec.snapshot.status` **355행** ↔ AFTER `status.json.statuses[id].status` **519행** ·
+비교 목록 **601행**). 그 하네스를 R1이 **안 돌렸다** — 「공용 `target/debug` 경로가 박혀 있다」는
+이유였는데, 스크립트를 `%TEMP%`의 가짜 ROOT로 복사하고 거기 `target/debug/`에 내 exe를
+놓으면 **스크립트를 한 글자도 안 고치고** 돈다(R2는 그렇게 돌렸다).
+
+### 8.1 고친 것 — 파일은 사실, 메모리는 안전값
+
+| 자리 | 무엇 |
+|---|---|
+| `write_map(&map)` (새 함수) | 직렬화 + 런타임 전용 키 제거 + 원자 저장. `flush()`가 쓰던 몸통을 그대로 뗐다 |
+| `flush()` | `dirty`면 맵을 복제해 `write_map` — 동작 동일(직렬화가 자물쇠 밖으로 나온 것만 다르다) |
+| `seed(map)` | **디스크**에는 `write_map(&map)`으로 마이그레이터가 준 값 그대로, **메모리**에는 `force_boot_shape`를 건 사본 |
+| `seed()`의 `dirty=false` | 이 함수 계약의 일부다 — 안 내리면 500ms 디바운스 쓰기나 `ccg-migrate`의 마무리 `status::flush()`가 방금 쓴 사실을 **안전값으로 덮는다** |
+| `seed()`의 `loaded=true` | 심은 값이 그 홈의 진실이다(규약 6). `CCG_NO_STATUS_BOOT=1`에서 첫 `chats:get`이 「첫 장전」 자격을 가져가 심은 행을 디스크로 되돌리는 길을 막는다 |
+| 헤더 규약 4 | *"강제는 **읽는 쪽**이다. 파일에는 마지막 사실이 남는다"* 한 문장 추가 |
+
+다음 부팅에서 그 파일을 읽을 때 `row_from_disk`가 다시 얼리므로 **화면은 어느 쪽이든
+안전값**이다 — 이것이 이 수정이 유령 알약을 되살리지 않는 이유고, 단위 못 ④가 그 자리다.
+
+### 8.2 겸해 — 부팅 가지의 좁은 창을 닫았다(크리틱 지적 3)
+
+`claim_boot()`은 표식만 세우고 **자물쇠를 놓는다**. R1은 그 뒤 디스크를 읽고
+`st.map = out.clone()`으로 **통째로 덮었다** — 그 사이에 들어온 `set()`은 사라진다.
+조회 쪽(`read_live`)은 이미 `entry().or_insert()`로 막아 둔 창인데 자기 가지에는 안 닫혀
+있었다. 첫 장전을 `boot_load()`로 떼어 **같은 규칙**을 적용했다: 메모리가 이기고, 모르는
+채팅만 디스크가 채운다. (오늘 도달 불가 — `load_boot`은 `hub::start` 앞에서 돈다. 도달하는
+판은 `CCG_NO_STATUS_BOOT=1`뿐이다. 「닫혔다」고 적을 수 있게 실제로 닫았다.)
+
+### 8.3 회귀 못 — 단위 둘(A/B로 헛못이 아님을 확인)
+
+| 못 | 잠그는 것 |
+|---|---|
+| `a_migration_freezes_the_screen_but_not_the_file` | ① 메모리는 `idle`(유령 알약 없음) ② **디스크는 `working`**(§5.2) ③ 마무리 `flush()`가 그 사실을 안 덮는다 ④ 다음 부팅 장전은 다시 얼린다 |
+| `even_the_first_load_keeps_a_row_that_landed_while_it_read_the_disk` | 첫 장전(`boot_load`)이 그 사이 앉은 살아 있는 행(`account`·`ask`·`busy`)을 안 덮는다 · 모르는 채팅은 계속 짓는다 |
+
+**대조군(단위)** — 두 자리를 R1 동작으로 임시 되돌려(`seed`는 `dirty=true`+`flush()`,
+`boot_load`는 `st.map = out.clone()`) `cargo test -p ccg-store status::` → **정확히 그 둘만
+FAIL**(나머지 11 통과), 되돌린 뒤 87/0. FAIL 문구:
+`★ 디스크의 얼어붙은 사실이 지워졌다: {"c-run":{…"status":"idle"…}}` ·
+`★ 장전이 살아 있는 계정을 덮었다`.
+
+### 8.4 ★크리틱이 실패시킨 실측을 그대로 재현 — 실 바이너리 A/B
+
+손수 만든 2.6.2 홈(`chats/`에 넷: `c-run`=`snapshot.status:"working"` · `c-ana`=`"analyzing"` ·
+`c-done` · `c-idle`. 레코드 키 집합은 하네스의 `makeSyntheticHome`과 **동일**하게 맞춰 리프
+감사 잡음을 없앴다). 대조군은 **수정 직전 소스로 지은 `ccg-migrate`**를 `%TEMP%`에 떠 놓고
+(바이너리만 갈아 끼운 A/B), 홈은 매번 새로 만든다.
+
+```
+ccg-migrate migrate --no-backup           chats-v3/status.json     chats-v3/<id>.json
+──────────────────────────────────────────────────────────────────────────────────────
+대조군(수정 전)   c-run                    "idle"        ✗          "working"
+                  c-ana                    "idle"        ✗          "analyzing"
+HEAD(수정 후)     c-run                    "working"     ✓          "working"
+                  c-ana                    "analyzing"   ✓          "analyzing"
+                  c-done/c-idle            "done"/"idle" ✓          동일
+```
+
+같은 홈·같은 하네스(`%TEMP%` 사본, `--home`), 바이너리만 교체:
+
+```
+[대조군] 실패 3 — ✗ 항목 필드 status {"id":"c-run","before":"working","after":"idle"}
+                  ✗ 항목 필드 status {"id":"c-ana","before":"analyzing","after":"idle"}
+                  ✗ §5.3-6 스테이징 잔여물 ["boards.old-…","chats-v3.old-…"]
+[HEAD]   실패 1 — ✗ §5.3-6 스테이징 잔여물 ["boards.old-…","chats-v3.old-…"]   ← 선존(아래 §9)
+```
+
+**크리틱이 새로 띄운 그 한 줄이 사라졌다.** 남은 한 줄은 AG2와 무관한 선존 결함이다.
+
+### 8.5 문서 한 줄 (`docs/renderer-divergence.md:522`)
+
+R1이 「남이 미커밋으로 잡고 있다」며 미룬 줄. 지금은 git에서 깨끗해서 **내 hunk 하나만** 고쳤다:
+*"**부팅 첫 장전에서만** 걷어낸다 … 그 뒤의 `load_boot`(=`chats:get`)은 **조회**라 살아 있는
+메모리가 이긴다 — 읽기 한 번이 살아 있는 런타임의 계정·승인 대기를 지우던 자리(G2)"*.
+
+## 9. R2 검증 — 크레이트별로 따로 셈
+
+| 항목 | 실측 |
+|---|---|
+| `npm run typecheck`(node·web) + `typecheck:app` | **3종 초록**(커밋 직전 재확인) |
+| `cargo test -p ccg-store` | **87 / 0** (R1의 85 + 새 못 2) |
+| `cargo test --workspace` | **717 / 0** (크리틱 실측 715 + 내 못 2 · FAILED 0건) |
+| ↳ `agentcodegui` | 145 / 0 |
+| ↳ `ccg-auth`(워크스페이스 피처 통합 = `net` 포함) | 119 / 0 (94+1+6+14+2+1+1) |
+| ↳ `ccg-engine` | 207 / 0 (68 + 통합 12벌) |
+| ↳ `ccg-fs` 100 / 0 · `ccg-lsp` 59 / 0 · `ccg-store` 87 / 0 | |
+| **`poc-acct-live`(실 exe, 전 시나리오)** | **30항목 통과 · findings 0** — A 6 · B 3 · C 4 · D 3 · E 8 · **F 6**. `--exe=target-ag2/release/agentcodegui.exe --out=-ag2r2 --port=9781` |
+| ↳ F(조회 축) 전제 | `c-a` CLI가 **pid 26808로 살아 있는 채로** `chats:get` 1회 통과 → 다음 REPLACE `account:"one@ccg.test"` · 칩 `["사용 중 · 첫 채팅"]` |
+| ↳ A(재시작 축) | `status.json` `"account"` **0건** · 오염 홈 재기동 유령칩 **0건** |
+| **마이그레이션 하네스**(`%TEMP%` 사본 · 손수 만든 2.6.2 홈) | 대조군 실패 3 → **HEAD 실패 1**(선존만) |
+| ↳ 같은 하네스 `--synthetic`(부하 픽스처) | 채팅 **311** · 메시지 **15810** · 정체성 1차 불일치 **0** · **실패 1**(선존 스테이징 잔여물만) — 이 수정이 큰 홈에 새 손실을 안 냈다 |
+| `poc-acct-store` / `poc-store-fanout` / `poc-limit-resume` | **전부 통과 / 전부 통과 / 197 통과 0 실패** |
+
+리포트: `docs/critic/acct-live-ag2r2.json`(기준 파일 무훼손 — `--out=-ag2r2`로 갈랐다).
+
+## 10. R2가 안 한 것 · 남은 리스크
+
+1. **`ask` 축은 이번에 다시 안 쟀다.** 크리틱이 실 exe로 9/9를 재 준 축이고, 그 길
+   (`read_live`)은 R2에서 **한 줄도 안 바뀌었다**(`git diff`의 hunk가 `load_boot`
+   가지 → `flush`/`write_map` → `seed` → 새 못 넷뿐 — `read_live`·`claim_boot`·
+   `row_from_disk`·`force_boot_shape`·`set`은 무접촉). 단위 못
+   `a_read_never_wipes_a_live_account_or_a_pending_ask`는 그대로 초록이다.
+2. **`§5.3-6 스테이징 잔여물`은 선존이고 고치지 않았다 — 다음 라운드 후보다.**
+   하네스는 마이그레이션 뒤 홈에 `.tmp-*`·`.old-*`가 **하나도 없기**를 요구하는데
+   (`poc-chat-unify-migrate.mjs:1063·1069`), 구현은 M10 R2 §5-2에서 **일부러 한 세대를
+   남기게** 바뀌었다(`migrate_v3::commit_dir` → `prune_old_generations`가 *지난* 세대만
+   지운다). 그 결정의 근거가 주석에 있다: R1이 성공 직후 `.old-*`를 지워 사용자가 3.0에서
+   만든 보드가 백업 없이 사라졌다(크리틱 S1·S2). 즉 **하네스의 기대가 낡았다.** 내 A/B에서
+   대조군·HEAD 양쪽 다 같은 줄로 실패하고, AG2는 `migrate_v3.rs`를 한 줄도 안 만졌다.
+   경계 밖(`scripts/poc-chat-unify-migrate.mjs`는 이 갈래 경계가 아니다)이라 **남의 게이트를
+   조용히 완화하지 않았다** — 사실만 여기 적는다.
+3. **`poc-chat-unify-migrate.mjs`의 `EXE`는 여전히 공용 `target/debug` 고정이다**(30행).
+   병렬 갈래는 공용 `target/`에 못 지으므로, 돌리려면 R2가 한 것처럼 **가짜 ROOT**
+   (`<TEMP>/x/scripts/…` + `<TEMP>/x/target/debug/ccg-migrate.exe`)를 만들면 된다 —
+   스크립트 수정 0줄. `--exe=` 인자 하나가 이 우회를 없애지만 그 파일도 경계 밖이다.
+4. **조회가 더 이상 「목록에 없는 행」을 걷어내지 않는다**(R1 §5-2의 되풀이). 크리틱이
+   삭제 경로 넷을 감사해 구멍이 없음을 확인했다(`write_chats→retain` ·
+   `remove_chat→forget_one` · `ma_save→dispose_removed_chats→forget_one` ·
+   `Op::Dispose→clear_runtime`). 다만 **공짜였던 안전망은 사라졌다** — 앞으로 `clear_runtime`을
+   빠뜨리면 그 유령은 프로세스가 죽을 때까지 남는다. 새 삭제 경로를 낼 때의 체크 항목이다.
+5. **`ccg-auth` 테스트의 `unused Result` 경고 4건**은 옆 갈래 파일
+   (`crates/ccg-auth/tests/critic_m11r2_token.rs`)이고 내 손이 안 닿았다. 워크스페이스
+   테스트 로그에 그대로 있다.
+
+## 11. R2가 만진 파일
+
+| 파일 | 무엇 |
+|---|---|
+| `crates/ccg-store/src/status.rs` | `write_map` 분리 · `seed`(파일=사실/메모리=안전값, `dirty` 내림, `loaded` 세움) · `boot_load` 분리 + 병합 · 규약 4 한 문장 · 새 못 2 |
+| `docs/renderer-divergence.md` | 522행 한 줄에 「첫 장전에서만」 한정(내 hunk만) |
+| `docs/critic/acct-live-ag2r2.json` | 고친 exe 전 시나리오 주행(30항목 · findings 0) |
+| `docs/parity-fix-ag2-r1.md` | 이 문서(§8~§11 추가 · §5-4 갱신) |
