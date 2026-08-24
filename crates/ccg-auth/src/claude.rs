@@ -236,6 +236,50 @@ fn recover_store() -> Option<StoreFile> {
 const CAS_TRIES: usize = 16;
 /// 우리 `rename`이 묻은 이웃의 쓰기를 되살리는 연쇄의 상한(되살리기 자체도 또 묻힐 수 있다).
 const BURY_TRIES: usize = 4;
+/// ★R28d(CASX) — 갈아끼운 뒤 **옛 inode를 몇 번 더 보나**.
+///
+/// 첫 판독이 `expect`면 즉시 끝난다(= 묻은 쓰기 없음). 이웃의 `writeFileSync`는 **여는
+/// 순간** 파일을 0바이트로 자르므로(`CREATE_ALWAYS`), 우리가 갈아끼우기 전에 연 이웃이
+/// 있었다면 첫 판독이 반드시 `expect`와 다르다 — 그리고 갈아끼운 뒤엔 그 inode에 이름이
+/// 없어 새로 열 수도 없다. 그래서 이 상한은 **이미 흔들린 판**, 즉 이웃이 지금 쓰는 중인
+/// 판에서만 쓰인다: 그 통짜 쓰기가 끝나기를 기다리는 시간이다.
+///
+/// 옛 값 4×300µs(=1.2ms)는 짧았다. 실측한 이웃 통짜 쓰기는 0.3~16ms였고, 못 기다리면
+/// **로그아웃이 묻힌 줄도 모르고** 지나간다(그 판의 되살아남은 다음 이웃 쓰기까지 =
+/// 실측 85ms 지속). 40×500µs = 최대 19.5ms — 흔들린 판에서만 내는 값이라 평시 비용은 0이다.
+const BURY_WATCH: usize = 40;
+const BURY_WATCH_US: u64 = 500;
+/// ★R28d(CASX) — "지금은 모른다"(반쪽 · 사라짐)에서 **다시 읽는 횟수**. 옛 값 4×2ms는
+/// 실측한 사라짐 창(최대 ~12ms)보다 짧았다. 6×3ms = 최대 18ms 기다렸다가 복구로 간다.
+const READ_RETRIES: usize = 6;
+const READ_RETRY_MS: u64 = 3;
+
+// ── ★R28d(CASX) — CAS 경합 추적기 ───────────────────────────────────────────
+//
+// 이 경로의 사고는 **µs 창**에서 난다. "무엇이 무엇을 이겼나"를 사후에 파일로는 못 읽는다
+// (지는 쪽은 흔적을 안 남긴다). 그래서 `CCG_CAS_TRACE=1`일 때만 켜지는 한 줄 로그를 둔다 —
+// 껐을 때 비용은 `OnceLock<bool>` 한 번 읽기다.
+fn cas_trace_on() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| std::env::var("CCG_CAS_TRACE").is_ok_and(|v| v == "1"))
+}
+fn cas_us() -> u128 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_micros()).unwrap_or(0)
+}
+/// 본문에서 계정 이메일만 뽑아 한 줄로 — 추적 로그에 토큰을 흘리지 않는다.
+fn cas_emails(body: &str) -> String {
+    match parse_store(body) {
+        Some(f) => f.accounts.iter().filter_map(email_of).collect::<Vec<_>>().join(","),
+        None => format!("<불가:{}B>", body.len()),
+    }
+}
+macro_rules! cas_trace {
+    ($($a:tt)*) => {
+        if cas_trace_on() {
+            eprintln!("[cas][{}] {}", cas_us(), format_args!($($a)*));
+        }
+    };
+}
 
 /// 이 파일을 고치는 동안 잡는 증표. **read-modify-write 전체**를 감싸야 의미가 있다.
 pub fn store_lock() -> ccg_store::flock::Lock {
@@ -460,6 +504,30 @@ pub fn update_account_record<T>(email: &str, mut f: impl FnMut(&mut Map<String, 
 // 회전 경로와 다른 자리가 딱 하나 있다 — **멤버십이 늘어난다**. 파묻힌 쓰기 되살리기가
 // "이웃 목록에 없는 계정은 지운다"이므로, 그대로 두면 우리가 방금 만든 계정(로그인)이
 // 이웃의 옛 스냅샷에 없다는 이유로 지워진다. `added`가 그 자리를 막는다.
+/// ★R28d(CASX) — **「파일이 없다」를 곧이곧대로 믿지 않는다.**
+///
+/// 이 OS에서 "이름 바꿔 덮기"는 부하가 걸리면 목적지 이름을 **밀리초 단위로 지웠다 되돌린다**
+/// (실측: 옆 스레드의 `read_to_string`이 ENOENT를 4.6ms 동안 5번 연속. 옛 길·새 길 둘 다 —
+/// [`crate::replace`] 모듈 주석의 4판 A/B). 그 창에서 읽으면 [`StoreOrigin::Missing`]이고,
+/// `Missing`은 "첫 실행 = 계정 0개"라는 **사실**로 취급된다([`StoreOrigin::is_known`]).
+/// 그 위에서 편집이 돌면 계정 하나 추가하는 로그인이 **나머지를 전부 지운다** —
+/// 2.6.2가 같은 창에서 당한 사고를 우리가 그대로 재현하는 것이다(실측: 그 이웃이
+/// `{"accounts":[]}`를 쓴 판에서 `m11r4_store_cas`가 붉었다).
+///
+/// 그래서 "없다"에 **복구 재료가 있으면**(마지막 성공본이 계정을 알고 있으면) 그것은
+/// 사실이 아니라 창이라고 본다 — 다시 읽고, 그래도 없으면 복구한다. 진짜 첫 실행에는
+/// 복구본이 없으므로 이 문은 안 열린다(빈 스토어 → 첫 로그인 그대로).
+///
+/// [`merge3`]이 이미 같은 판단을 한다("`accounts.json`이 사라졌다 — 우리 목록으로 복구").
+/// 새 정책이 아니라 **같은 정책을 CAS 경로에도 세우는 것**이다.
+fn vanished_but_we_know_better(cur: &StoreFile) -> bool {
+    cur.origin == StoreOrigin::Missing
+        && read_file_or_null(&store_backup_path())
+            .as_deref()
+            .and_then(parse_store)
+            .is_some_and(|b| b.origin == StoreOrigin::Parsed && !b.accounts.is_empty())
+}
+
 fn cas_edit<T>(mut edit: impl FnMut(&mut StoreFile) -> Result<T, AuthError>) -> Result<T, AuthError> {
     let mut retries = 0usize;
     let mut torn = 0usize;
@@ -467,16 +535,17 @@ fn cas_edit<T>(mut edit: impl FnMut(&mut StoreFile) -> Result<T, AuthError>) -> 
         // ── ① 준비 ─────────────────────────────────────────────────────────
         let _g = store_lock();
         let (before, mut cur) = read_store_raw();
-        if !cur.origin.is_known() {
+        if !cur.origin.is_known() || vanished_but_we_know_better(&cur) {
             // 이웃이 통짜 쓰기를 하는 **도중**에 읽었을 수 있다(2.6.2의 writeFileSync는
             // 원자적이 아니다). "계정이 없다"가 아니라 "지금은 모른다"이므로 다시 읽는다.
             torn += 1;
-            if torn < 4 {
+            if torn < READ_RETRIES {
                 retries += 1;
-                std::thread::sleep(std::time::Duration::from_millis(2));
+                std::thread::sleep(std::time::Duration::from_millis(READ_RETRY_MS));
                 continue;
             }
-            // 네 번을 다시 읽어도 깨져 있다 = 지나가는 반쪽이 아니라 **정말 깨진 파일**이다.
+            // 여러 번 다시 읽어도 그대로다 = 지나가는 반쪽이 아니라 **정말 깨진(또는 정말
+            // 사라진) 파일**이다.
             let Some(rec) = recover_store() else {
                 return Err(AuthError::Io(format!(
                     "{STORE_FILE}: 파일이 손상됐고 복구본도 없다 — 계정 목록을 덮어쓰지 않는다"
@@ -515,8 +584,15 @@ fn cas_edit<T>(mut edit: impl FnMut(&mut StoreFile) -> Result<T, AuthError>) -> 
         // ── ② 갈아끼우기 + 파묻힌 쓰기 되살리기 ────────────────────────────
         let mut expect = before;
         let mut stale = false;
+        // 되살리기 사연 — **커밋 뒤에** 찍는다(아래 `Commit::Buried` 주석 참고).
+        let mut revived: Option<(usize, usize)> = None;
+        // ★R28d(CASX) — 목적지 핸들을 되살리기 연쇄 **안에서만** 물려준다. 바깥
+        // (CAS 재시도) 까지 들고 가면 잠금을 놓은 사이 남이 갈아끼운 옛 inode를 증인으로
+        // 삼게 된다 — 그건 증인이 아니라 유령이다.
+        let mut carry: Option<std::fs::File> = None;
+        cas_trace!("edit 준비 — 읽은목록=[{}] 쓸목록=[{}]", seen.iter().filter_map(email_of).collect::<Vec<_>>().join(","), cas_emails(&body));
         for _ in 0..BURY_TRIES {
-            match commit_locked(&body, expect.as_deref())? {
+            match commit_locked(&body, expect.as_deref(), &mut carry)? {
                 Commit::Stale => {
                     // 이웃이 그사이에 썼다. 우리 스냅샷은 이미 낡았다 — 여기서 쓰면 그
                     // 쓰기가 사라진다(= 로그아웃 취소). 클로저부터 다시 돈다.
@@ -527,6 +603,9 @@ fn cas_edit<T>(mut edit: impl FnMut(&mut StoreFile) -> Result<T, AuthError>) -> 
                 Commit::Clean => {
                     set_base(&accounts, def.as_deref());
                     keep_backup(&body);
+                    if let Some((was, now)) = revived {
+                        eprintln!("[auth] ★ {STORE_FILE}: 이웃의 로그아웃을 묻었다(계정 {was}개 → {now}개) — 그 자리에서 되살렸다");
+                    }
                     if retries > 0 {
                         eprintln!("[auth] {STORE_FILE} 저장 — 이웃과 {retries}번 부딪혀 다시 읽고 썼다(CAS)");
                     }
@@ -559,11 +638,11 @@ fn cas_edit<T>(mut edit: impl FnMut(&mut StoreFile) -> Result<T, AuthError>) -> 
                     if next.len() == accounts.len() {
                         break; // 그들이 지운 계정이 없다 = 되살릴 것도 없다
                     }
-                    eprintln!(
-                        "[auth] ★ {STORE_FILE}: 이웃의 로그아웃을 묻었다(계정 {}개 → {}개) — 즉시 되살린다",
-                        accounts.len(),
-                        next.len()
-                    );
+                    // ★R28d(CASX) — **되살리기 창 안에서는 한 줄도 안 찍는다.** 여기서
+                    //   찍던 한 줄이 실측으로 되살리기를 0.8~7.6ms 늦췄고, 그동안 로그아웃한
+                    //   계정이 `credEnc`째 파일에 앉아 있었다(이웃이 자기 쓰기 1ms 뒤에
+                    //   다시 읽으면 그걸 본다). 사연은 커밋한 **뒤에** 적는다(`revived`).
+                    revived = Some((accounts.len(), next.len()));
                     accounts = next;
                     expect = Some(body);
                     body = render_store(&accounts, def.as_deref());
@@ -571,9 +650,11 @@ fn cas_edit<T>(mut edit: impl FnMut(&mut StoreFile) -> Result<T, AuthError>) -> 
             }
         }
         if !stale {
-            // 되살리기를 BURY_TRIES번 하고도 못 끝냈다 = 이웃이 쉬지 않고 쓰는 판이다.
+            // 되살리기를 BURY_TRIES번 하고도 못 끝냈거나, 파낸 원문에 되살릴 것이 없었다.
             // 마지막 커밋은 이미 디스크에 있다(유실 아님) — 다음 회전이 이어 받는다.
-            eprintln!("[auth] {STORE_FILE}: 이웃과 계속 겹친다 — 이번 되살리기는 여기서 접는다");
+            if let Some((was, now)) = revived {
+                eprintln!("[auth] ★ {STORE_FILE}: 이웃의 로그아웃({was}개 → {now}개)을 되살리다 또 겹쳤다 — 여기서 접는다");
+            }
             keep_backup(&body);
             return Ok(out);
         }
@@ -594,30 +675,76 @@ enum Commit {
 /// CAS 한 번. **호출자가 [`store_lock`]을 쥐고 있어야 한다**(안에서 또 잡으면 교착이다).
 ///
 /// 잠금을 모르는 이웃에게 열려 있는 창은 여기 두 줄뿐이다 —
-/// **증인 읽기(실측 17µs) → `rename`(실측 184µs)**. R3의 8~14ms에서 40~70배 좁다.
+/// **증인 읽기(실측 17µs) → 갈아끼우기(실측 50~600µs)**. R3의 8~14ms에서 20~200배 좁다.
 /// 커밋 뒤 옛 inode를 한 번 더 읽어 그 창에 떨어진 쓰기가 있었는지 본다(그 읽기는 창 밖이다).
-fn commit_locked(body: &str, expect: Option<&str>) -> Result<Commit, AuthError> {
-    // 직렬화 + 임시 파일 쓰기(실측 179µs)는 창 **밖**이다 — rename만 창 안이다.
-    let staged = ccg_store::stage_home_file(STORE_FILE, body).map_err(|e| AuthError::Io(format!("{STORE_FILE}: {e}")))?;
-    let mut w = ccg_store::witness(&store_path());
-    let now = w.as_mut().and_then(ccg_store::Witness::read);
+///
+/// ★R28d(CASX) — 갈아끼우기는 [`crate::replace`]다(std `rename` 아님). 이유는 그 모듈
+/// 주석에 실측 로그와 함께 적었다: std의 `rename`은 부하가 걸리면 **지우고-옮기는 두
+/// 걸음**으로 떨어져 ① 읽는 이웃에게 ENOENT를 보이고 ② 쓰는 이웃을 *제3의 inode*로
+/// 보내 아래 증인 검사를 통째로 무력화했다.
+fn commit_locked(body: &str, expect: Option<&str>, carry: &mut Option<std::fs::File>) -> Result<Commit, AuthError> {
+    let dst = store_path();
+    // 임시 파일 쓰기(실측 140µs)는 창 **밖**이다 — 갈아끼우기만 창 안이다.
+    let staged = crate::replace::stage(&dst, body).map_err(|e| AuthError::Io(format!("{STORE_FILE}: {e}")))?;
+    // ★R28d(CASX) — 증인은 **앞 라운드가 넘겨준 핸들**을 먼저 쓴다. 갈아끼우기가
+    // 돌려준 핸들이 곧 지금의 목적지라, 되살리기 창에서 `open` 350µs(이 경로에서 가장
+    // 비싼 한 줄)를 통째로 안 낸다.
+    let mut w = match carry.take() {
+        Some(f) => Some(f),
+        None => crate::replace::witness(&dst),
+    };
+    let now = w.as_mut().and_then(crate::replace::read_witness);
     if now.as_deref() != expect {
-        return Ok(Commit::Stale); // 커밋 안 한 임시 파일은 `Staged`가 치운다
+        cas_trace!("증인 갈림 → Stale — 기대=[{}] 지금=[{}]", expect.map(cas_emails).unwrap_or("<없음>".into()), now.as_deref().map(cas_emails).unwrap_or("<없음>".into()));
+        return Ok(Commit::Stale); // 커밋 안 한 임시 파일은 `Pending`이 치운다
     }
-    staged.commit().map_err(|e| AuthError::Io(format!("{STORE_FILE}: {e}")))?;
-    let Some(w) = w.as_mut() else { return Ok(Commit::Clean) };
+    cas_trace!("갈아끼우기 시작 — 본문=[{}]", cas_emails(body));
+    *carry = staged.replace(&dst).map_err(|e| AuthError::Io(format!("{STORE_FILE}: {e}")))?;
+    cas_trace!("갈아끼우기 끝");
+    let Some(w) = w.as_mut() else {
+        cas_trace!("증인 없음 → Clean(무검사)");
+        return Ok(Commit::Clean);
+    };
     // 옛 inode를 다시 본다. 이웃이 쓰는 **도중**이면 반쪽이 읽히므로 잠깐 기다렸다 다시
     // 본다 — 그들은 자기 파일이 이미 갈렸다는 걸 모르고 끝까지 쓴다.
-    for k in 0..4 {
-        match w.read() {
-            Some(a) if Some(a.as_str()) == expect => return Ok(Commit::Clean),
-            Some(a) if parse_store(&a).is_some_and(|p| p.origin.is_known()) => return Ok(Commit::Buried(a)),
-            _ => {}
+    //
+    // ★R28d(CASX) — **"그대로"는 첫 판독에서만 믿는다.** 이웃의 `writeFileSync`는 여는
+    // 순간 파일을 0바이트로 자르므로(`CREATE_ALWAYS`), 우리 갈아끼우기 전에 연 이웃이
+    // 있었다면 첫 판독이 반드시 `expect`와 다르다. 갈아끼운 뒤에는 그 inode에 이름이
+    // 없어 새로 열 수도 없다. 그래서 첫 판독이 `expect`면 묻은 쓰기는 **없다**.
+    // 반대로 한 번이라도 흔들렸으면 이웃이 쓰는 중이므로 [`BURY_WATCH`]만큼 기다린다 —
+    // R28d 이전의 상한(4×300µs)은 부하 걸린 판의 통짜 쓰기를 놓쳤다.
+    for k in 0..BURY_WATCH {
+        match crate::replace::read_witness(w) {
+            Some(a) if Some(a.as_str()) == expect => {
+                cas_trace!("옛 inode 그대로(k={k}) → Clean");
+                // ★R28d — 묻은 것이 없으면 목적지 핸들을 **여기서 놓는다.** 물려주는
+                //   이유는 되살리기 창의 `open` 350µs 하나뿐이고, 되살릴 것이 없는 판에서
+                //   계속 들고 있으면 다음 갈아끼우기가 「열려 있는 목적지」를 덮는 느린
+                //   길로 간다(실측: 목적지를 연 채 갈아끼우면 이름이 사라져 보이는 창이
+                //   두 배 — `replace.rs` 모듈 주석의 4판 A/B).
+                *carry = None;
+                return Ok(Commit::Clean);
+            }
+            Some(a) if parse_store(&a).is_some_and(|p| p.origin.is_known()) => {
+                cas_trace!("옛 inode 갈림(k={k}) → Buried=[{}]", cas_emails(&a));
+                return Ok(Commit::Buried(a));
+            }
+            other => cas_trace!("옛 inode 판독 불가(k={k}) — {}", other.map(|s| format!("{}B", s.len())).unwrap_or("읽기실패".into())),
         }
-        if k < 3 {
-            std::thread::sleep(std::time::Duration::from_micros(300));
+        if k + 1 < BURY_WATCH {
+            std::thread::sleep(std::time::Duration::from_micros(BURY_WATCH_US));
         }
     }
+    // ★R28d — 여기까지 왔다 = 옛 inode가 흔들린 채(반쪽·0바이트) [`BURY_WATCH`]를 다
+    // 썼다. 이웃이 쓰다 만 것이고, 그 쓰기가 로그아웃이었다면 **지금 우리 파일이 그것을
+    // 취소한 상태**다. 되살릴 재료가 없어 여기서 할 수 있는 것은 없지만, 조용히 지나가면
+    // 안 된다 — 사용자 로그가 이 줄을 들고 있어야 다음 사람이 같은 자리를 다시 판다.
+    cas_trace!("옛 inode 끝내 판독 불가 → Clean(★이웃 쓰기를 놓쳤을 수 있다)");
+    eprintln!(
+        "[auth] ★ {STORE_FILE}: 이웃이 쓰던 중에 갈아끼웠는데 {}ms를 기다려도 그 원문을 못 읽었다 — 그 쓰기가 로그아웃이었다면 취소된 채로 남는다",
+        BURY_WATCH as u64 * BURY_WATCH_US / 1000
+    );
     Ok(Commit::Clean)
 }
 

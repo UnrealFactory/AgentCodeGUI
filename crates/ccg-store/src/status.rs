@@ -501,10 +501,11 @@ pub fn flush() {
     write_map_to(&map, dst);
 }
 
-/// 맵 하나를 **지금** 파일에 쓴다(직렬화·원자 저장은 자물쇠 밖에서).
-fn write_map(map: &BTreeMap<String, Value>) {
-    write_map_to(map, path());
-}
+// ★R28d(CASX) — `write_map(&map)`(목적지를 **자기가** 뜨는 편의 래퍼)은 없앴다.
+// 이 파일에 남은 쓰기 경로는 [`flush`]·[`seed`]·디바운스 스레드 셋뿐이고 **전부 목적지를
+// 자물쇠 안에서 뜬다**([`write_map_to`]에 넘긴다). 래퍼가 남아 있으면 다음 사람이
+// 그걸 집어 그 규약 밖으로 나간다 — R28c AG2 R3이 `flush()`에서 닫은 창이 `seed()`에서
+// 그대로 열려 있던 이유가 정확히 그것이다.
 
 /// ★R28 ACCT R2(F1) — 런타임 전용 키는 **파일로 내려가지 않는다.** 메모리 맵에는 남는다
 /// (브로드캐스트가 그 값을 싣는 것이 §3의 기능이다) — 갈리는 것은 *수명*이다: 프로세스와
@@ -583,9 +584,16 @@ pub fn forget() {
 ///
 /// `dirty`를 내리는 것이 이 함수의 계약의 일부다 — 안 내리면 500ms 뒤 디바운스 쓰기(또는
 /// `ccg-migrate`의 마무리 [`flush`])가 **메모리의 안전값으로 방금 쓴 사실을 덮는다**.
+///
+/// ★R28d(CASX) — **목적지도 자물쇠 안에서 뜬다**([`flush`]와 같은 이유). R28c AG2 R3이
+/// `flush()`에서 닫은 창의 쌍둥이가 여기 남아 있었다: 자물쇠를 놓고 `path()`를 뜨면,
+/// 그 사이에 홈이 걷힌 판(`testkit::Home`의 Drop)에서 이 쓰기가 **되돌아온 홈 =
+/// 사용자 실홈**을 향한다. 지금 이 함수를 부르는 자리(마이그레이션)는 부팅에 한 번뿐이라
+/// 잠재였지만, 같은 파일 안에 "자물쇠를 잡는 쓰기"와 "안 잡는 쓰기"가 섞여 있는 것 자체가
+/// 다음 사람이 밟을 지뢰다.
 pub fn seed(map: BTreeMap<String, Value>) {
     let (m, _) = state();
-    {
+    let dst = {
         let mut st = m.lock().unwrap_or_else(|e| e.into_inner());
         st.map = map
             .iter()
@@ -598,8 +606,9 @@ pub fn seed(map: BTreeMap<String, Value>) {
         st.dirty = false;
         // 심은 값이 이 홈의 진실이다 — 그 뒤의 `load_boot`은 장전이 아니라 조회다(규약 6).
         st.loaded = true;
-    }
-    write_map(&map);
+        path() // ★ 경로도 자물쇠 안에서 뜬다
+    };
+    write_map_to(&map, dst);
 }
 
 #[cfg(test)]

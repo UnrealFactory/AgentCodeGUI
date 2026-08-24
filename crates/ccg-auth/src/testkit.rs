@@ -1,20 +1,21 @@
-//! 테스트 전용 임시 홈. `ccg-store`의 testkit은 `#[cfg(test)]`라 크레이트 밖에서 못 쓴다 —
-//! 같은 규약(프로세스 전역 `CCG_HOME`이라 직렬화 필수)으로 최소한만 둔다.
+//! 테스트 전용 임시 홈 — **자물쇠는 [`ccg_store::testhome`] 것 하나뿐이다.**
+//!
+//! ★R28d(CASX) — R28c AG2 R3이 `ccg-store` 안의 자물쇠 둘을 하나로 합쳤는데, 이 파일이
+//! **세 번째 사본**을 들고 있었다. 사본이 곧 결함이라는 것은 그 라운드가 실측으로 못
+//! 박았다(자물쇠 둘 판에서 `cargo test -p ccg-store --lib`이 9/37 붉음 · 사용자 실홈에
+//! 테스트가 쓴 파일 17건/540주행). 이 크레이트의 홈 자물쇠도 같은 성질이라 같은 자리로
+//! 보낸다 — 규약은 [`ccg_store::testhome`] 모듈 주석이 단일 소스다.
 //!
 //! **실홈은 읽기/복사만 한다.** 실계정 파일을 여는 테스트도 원본 경로에는 절대 쓰지 않고,
 //! 임시 홈으로 복사한 사본에만 쓴다(`copy_real`).
 
 use std::path::PathBuf;
-use std::sync::{Mutex, MutexGuard, OnceLock};
-
-fn lock() -> &'static Mutex<()> {
-    static L: OnceLock<Mutex<()>> = OnceLock::new();
-    L.get_or_init(|| Mutex::new(()))
-}
 
 pub struct Home {
     pub dir: PathBuf,
-    _guard: MutexGuard<'static, ()>,
+    /// 증표를 놓으면 `CCG_HOME`이 **원래 값으로 되돌아가고** 폴더가 지워진다
+    /// (`remove_var`를 손으로 부르지 않는다 — 그게 실홈으로 떨어지는 창을 만들었다).
+    _guard: ccg_store::testhome::TestHome,
 }
 
 impl Home {
@@ -59,13 +60,6 @@ impl Home {
     }
 }
 
-impl Drop for Home {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.dir);
-        std::env::remove_var("CCG_HOME");
-    }
-}
-
 /// 사용자 실홈(`~/.agentcodegui`) — **읽기 전용 원본**. `CCG_HOME`에 좌우되지 않게
 /// 홈 디렉터리에서 직접 만든다(임시 홈이 걸린 상태에서 부르기 때문).
 pub fn real_home() -> Option<PathBuf> {
@@ -77,14 +71,41 @@ pub fn real_home() -> Option<PathBuf> {
 }
 
 pub fn temp_home(tag: &str) -> Home {
-    let guard = lock().lock().unwrap_or_else(|e| e.into_inner());
-    let n = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
-    let dir = std::env::temp_dir().join(format!("ccg-auth-{tag}-{n}"));
-    let _ = std::fs::create_dir_all(&dir);
-    std::env::set_var("CCG_HOME", &dir);
+    let guard = ccg_store::testhome::take(&format!("auth-{tag}"));
+    let dir = guard.dir.clone();
     // ★R3 — 프로세스 전역 장부는 홈을 갈아끼울 때 반드시 비운다. 계정 이메일이
     // 테스트끼리 겹치므로(a@x·b@x…) 남겨 두면 앞 테스트의 백오프가 뒤 테스트를 물들인다.
     #[cfg(feature = "net")]
     crate::net::forget_backoff();
     Home { dir, _guard: guard }
+}
+
+#[cfg(test)]
+mod tests {
+    /// ★R28d(CASX) — **이 크레이트의 홈 자물쇠도 하나다.** `ccg-store`의 같은 이름 못과
+    /// 같은 모양이다(그쪽 §자물쇠 하나 참고): 내 증표가 사는 동안 옆 스레드의
+    /// [`ccg_store::testhome::take`]가 지나갈 수 있으면 자물쇠가 둘이라는 뜻이다.
+    ///
+    /// 실패 방향이 한쪽뿐인 못이다 — 옆 스레드가 안 깨어나면 **초록 쪽으로만** 틀린다.
+    #[test]
+    fn the_home_lock_is_shared_with_ccg_store() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::Arc;
+
+        let mine = super::temp_home("one-lock");
+        let dir = mine.dir.clone();
+        let passed = Arc::new(AtomicBool::new(false));
+        let rival = {
+            let passed = Arc::clone(&passed);
+            std::thread::spawn(move || {
+                let _theirs = ccg_store::testhome::take("auth-one-lock-rival");
+                passed.store(true, Ordering::SeqCst);
+            })
+        };
+        std::thread::sleep(std::time::Duration::from_millis(150));
+        assert!(!passed.load(Ordering::SeqCst), "★ 자물쇠가 둘이다 — 남이 내 증표 위로 지나갔다");
+        assert_eq!(ccg_store::app_home(), dir, "★ 내 증표가 사는 동안 홈이 남의 것으로 바뀌었다");
+        drop(mine);
+        rival.join().expect("옆 스레드");
+    }
 }
