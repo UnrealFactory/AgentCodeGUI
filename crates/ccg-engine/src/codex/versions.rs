@@ -116,15 +116,24 @@ pub fn codex_bin(home: &Path) -> PathBuf {
 /// ## 해석 규칙은 **셸의 그것**이다
 ///
 /// 구분자가 있으면(`is_bare_name` 거짓) 그 경로 하나를 stat한다. 맨 이름이면 `PATH`를
-/// 앞에서부터 훑되 **디렉터리 하나에 `PATHEXT`를 다 대 보고** 다음 디렉터리로 간다 —
-/// `cmd.exe`가 하는 순서 그대로다. Windows에서 확장자 없는 파일을 후보에서 빼는 것도
-/// 규약이다: npm은 `codex`(sh 스크립트)와 `codex.cmd`를 같은 폴더에 깔고 `cmd /C codex`가
-/// 실행하는 것은 **후자**다.
+/// 앞에서부터 훑되 **디렉터리 하나에 후보 확장자를 다 대 보고** 다음 디렉터리로 간다 —
+/// `cmd.exe`가 하는 순서 그대로다. 후보는 `PATHEXT` + (**이름에 확장자가 이미 있으면**)
+/// 그 이름 그대로다([`scan_path`]에 실측). Windows에서 확장자 **없는** 이름에
+/// 확장자 없는 파일을 대 보지 않는 것도 규약이다: npm은 `codex`(sh 스크립트)와
+/// `codex.cmd`를 같은 폴더에 깔고 `cmd /C codex`가 실행하는 것은 **후자**다.
 ///
 /// ## 결과는 캐시한다 (맨 이름일 때만)
 ///
-/// 첫 소비자가 허브 스레드의 tick(활성이면 20ms)이라 PATH 훑기를 매번 할 수 없다.
-/// 반대로 **경로가 박힌 값은 캐시하지 않는다** — 방금 설치·활성화한 실행본을 다음 tick에
+/// ★R28d EXTN — 캐시의 근거를 사실로 고쳐 적는다. R28c는 여기에 *"첫 소비자가 허브
+/// 스레드의 tick(활성이면 20ms)"* 이라고 썼는데 **틀렸다**(R28c CPATH 확인 크리틱 R1 §5.2가
+/// 실측으로 반박했다): `can_ask`의 유일한 호출자는 `limit_probe::codex_verdict`이고 그것은
+/// `check_hold`가 `due`일 때, 즉 **재확인 사다리**(15초·30초…)에서만 닿는다 —
+/// `poc-limit-engine` E8「tick마다 조회하지 않는다 — asks:2」가 이미 그 사실을 잠그고 있다.
+/// 진짜 수혜자는 **설정 ▸ Account의 게이지 조회**(`accounts_usage()`)다: 계정 수만큼
+/// 연달아 물으므로 그 한 화면에서 PATH 훑기가 N번 된다(이 컴퓨터 실측: PATH 46칸 ×
+/// `PATHEXT` 11개 = 최악 506 stat · 6.9 ms).
+///
+/// 반대로 **경로가 박힌 값은 캐시하지 않는다** — 방금 설치·활성화한 실행본을 다음 조회에
 /// 알아봐야 하기 때문이다(허브가 런타임을 새로 만들 때마다 다시 고른다는 그 규약).
 pub fn resolve_bin(bin: &Path) -> Option<PathBuf> {
     if !is_bare_name(bin) {
@@ -149,8 +158,28 @@ pub fn is_bare_name(bin: &Path) -> bool {
 
 /// PATH 한 바퀴. `path_env`를 **인자로** 받는 이유는 테스트가 프로세스 환경을 만지지 않고
 /// 이 규칙을 그대로 밟을 수 있어야 해서다(`PATH`는 프로세스 전역이라 병렬 테스트에 독이다).
+///
+/// ## ★R28d EXTN — **이름에 확장자가 이미 붙어 있으면 그 이름 그대로가 첫 후보**다
+///
+/// R28c CPATH 확인 크리틱 R1 §4의 실측: [`path_exts`]가 `PATHEXT` 항목만 돌려주고
+/// 후보를 **붙이기만** 하니, `codex.exe`로 물으면 `codex.exe.COM`·`codex.exe.EXE`…만
+/// 뒤지고 정작 `codex.exe`는 한 번도 안 봤다. 크리틱이 승격 하네스 A팔의 철자 하나만
+/// (`codex` → `codex.exe`) 바꿔 수정본 exe에 물렸더니 이 라운드가 지운 사고가 그대로
+/// 되살아났다: `unknown:1 · fetches:0 · t=90초 발사 · 대기표 소멸`.
+///
+/// `cmd.exe`는 확장자가 붙은 이름을 **그 이름 그대로 먼저** 찾는다. 그러니 후보 목록의
+/// 맨 앞에 「빈 확장자」를 넣는다 — 단 **[`Path::extension`]이 있을 때만**이다.
+/// 확장자 없는 `codex`(npm이 같이 까는 sh 스크립트)까지 후보가 되면 R28c가 일부러 막은
+/// 것을 되돌린다(`cmd /C codex`가 실행하는 것은 `codex.cmd`다).
+///
+/// 이 자리가 클로드 축의 전제이기도 하다: 클로드의 PATH 폴백 철자는 **`claude.exe`**라
+/// (`src-tauri/src/engine/versions.rs`) 이 한 줄이 없으면 전역 PATH claude 사용자가
+/// 로그인·로그아웃(토큰 해지)·AI 커밋 메시지에서 통째로 막힌다.
 fn scan_path(name: &Path, path_env: &OsStr) -> Option<PathBuf> {
-    let exts = path_exts();
+    let mut exts = path_exts();
+    if cfg!(windows) && name.extension().is_some() {
+        exts.insert(0, OsString::new());
+    }
     for dir in std::env::split_paths(path_env) {
         if dir.as_os_str().is_empty() {
             continue;
@@ -169,6 +198,7 @@ fn scan_path(name: &Path, path_env: &OsStr) -> Option<PathBuf> {
 }
 
 /// 확장자 후보 — Windows는 `cmd`가 보는 그 변수(`PATHEXT`), 그 밖에서는 「없음」 하나.
+/// 「이름 그대로」 후보를 여기 넣지 않는 이유는 [`scan_path`]에 있다(이름을 봐야 정해진다).
 fn path_exts() -> Vec<OsString> {
     if !cfg!(windows) {
         return vec![OsString::new()];
@@ -312,6 +342,37 @@ mod tests {
         for p in [&dir, &other] {
             let _ = std::fs::remove_dir_all(p);
         }
+    }
+
+    /// ★R28d EXTN — **확장자가 이미 붙은 맨 이름**(`codex.exe` · `claude.exe`)을
+    /// 그 이름 그대로 찾는가. R28c CPATH 확인 크리틱 R1 §4가 판 구멍이다: 후보가
+    /// `codex.exe.COM`·`codex.exe.EXE`뿐이라 PATH 앞칸에 놓인 실물 `codex.exe`를 한 번도
+    /// 안 봤고, 크리틱이 승격 하네스 A팔의 철자만 바꿔 `hole:true`를 되살렸다.
+    ///
+    /// 클로드 축이 이 한 줄에 매달려 있다 — PATH 폴백 철자가 `claude.exe`다.
+    #[test]
+    fn a_name_that_already_has_an_extension_is_tried_as_is() {
+        let dir = tmp("extname");
+        let exe = if cfg!(windows) { "codex.exe" } else { "codex" };
+        std::fs::write(dir.join(exe), "x").unwrap();
+        let path_env = std::env::join_paths([dir.clone()]).unwrap();
+        assert_eq!(
+            scan_path(Path::new(exe), &path_env).as_deref().map(lower),
+            Some(lower(&dir.join(exe))),
+            "PATH에 있는 {exe}를 그 이름 그대로 못 찾았다"
+        );
+        // 같은 컴퓨터의 클로드 철자도(전역 설치 사용자의 `~/.local/bin/claude.exe`).
+        let claude = if cfg!(windows) { "claude.exe" } else { "claude" };
+        std::fs::write(dir.join(claude), "x").unwrap();
+        assert!(
+            scan_path(Path::new(claude), &path_env).is_some(),
+            "{claude}를 PATH에서 못 찾는다 = 로그인·로그아웃(토큰 해지)·커밋 메시지가 통째로 막힌다"
+        );
+        // 과잉 교정 금지 — 없는 이름은 여전히 못 찾는다(빈 확장자가 폴더를 집지도 않는다).
+        std::fs::create_dir_all(dir.join("codex-dir.exe")).unwrap();
+        assert_eq!(scan_path(Path::new("codex-nosuch.exe"), &path_env), None);
+        assert_eq!(scan_path(Path::new("codex-dir.exe"), &path_env), None, "폴더를 실행본으로 봤다");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// Windows에서 **확장자 없는 파일은 후보가 아니다** — npm이 같은 폴더에 까는
