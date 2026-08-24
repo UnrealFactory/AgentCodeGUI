@@ -3008,18 +3008,26 @@ export function PickerChip({
   const pickerRef = useRef(picker)
   pickerRef.current = picker
   const [undo, setUndo] = useState<{ from?: string; to?: string; prev?: string; key: 'account' | 'codexAccount' } | null>(null)
+  // 수명은 **보이기 시작한 때부터** 센다 — 팝오버를 열어 둔 채 12초가 지나면 줄이
+  // 한 번도 안 뜨고 사라진다(그러면 복구 동선이 없는 것과 같다).
   useEffect(() => {
-    if (!undo) return
+    if (!undo || open) return
     const id = setTimeout(() => setUndo(null), 12_000)
     return () => clearTimeout(id)
-  }, [undo])
+  }, [undo, open])
   const shortOf = (e?: string): string => (e ? e.split('@')[0] : t('기본', 'default'))
   /** 계정 전환 한 번 — 값을 바꾸고 되돌릴 줄을 세운다. */
   const switchAccount = (key: 'account' | 'codexAccount', next: string | undefined, fromEmail?: string, toEmail?: string): void => {
     const prev = pickerRef.current[key]
     setPicker({ ...pickerRef.current, [key]: next })
     if (fromEmail === toEmail) return // 같은 계정을 다시 고른 것 — 되돌릴 게 없다
-    setUndo({ from: fromEmail, to: toEmail, prev, key })
+    // 연속으로 눌렀으면(A→B→C) 되돌릴 곳은 B가 아니라 **원래 계정 A**다 — 사용자가
+    // 찾는 것은 "이 채팅이 원래 쓰던 계정"이지 직전 한 칸이 아니다. 스스로 A로 돌아온
+    // 경우엔 줄을 걷는다(「A → A 전환됨」은 거짓말이고 되돌릴 것도 없다).
+    setUndo((cur) => {
+      if (!cur || cur.key !== key) return { from: fromEmail, to: toEmail, prev, key }
+      return cur.from === toEmail ? null : { ...cur, to: toEmail }
+    })
   }
   const doUndo = (): void => {
     if (!undo) return
@@ -3239,9 +3247,10 @@ export function PickerChip({
           )}
         </div>
       )}
-      {/* ★§3-b — 「A → B 전환됨 · 되돌리기」. 팝오버가 닫혀도 남는다(실수를 알아채는 건
-          보통 닫은 뒤다). 12초 뒤 스스로 사라지고, ✕로 즉시 닫을 수 있다. */}
-      {undo && (
+      {/* ★§3-b — 「A → B 전환됨 · 되돌리기」. **팝오버가 닫힌 뒤에** 뜬다: 실수를
+          알아채는 건 보통 닫은 뒤이고, 열려 있는 동안은 「현재」 강조가 이미 같은 말을
+          한다(그리고 같은 자리에 그리면 팝오버 아래를 가린다). 12초 뒤 스스로 사라진다. */}
+      {undo && !open && (
         <div className="acct-undo" role="status">
           <span className="au-txt">
             {t(`${shortOf(undo.from)} → ${shortOf(undo.to)} 전환됨`, `Switched ${shortOf(undo.from)} → ${shortOf(undo.to)}`)}
