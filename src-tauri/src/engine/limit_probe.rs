@@ -195,7 +195,8 @@ impl Probe {
         let Some(email) = super::codex_limit::account_for(q.codex_account) else {
             return self.tally(LimitVerdict::Unknown);
         };
-        if super::codex_limit::instrument(&email).is_none() {
+        // 읽기만 하는 검사다(stat 1 + 작은 JSON 1) — 격리 홈 물질화는 워커의 몫이다.
+        if !super::codex_limit::can_ask(&email) {
             return self.tally(LimitVerdict::Unknown);
         }
         let now_sec = (q.now_epoch_ms / 1000) as i64;

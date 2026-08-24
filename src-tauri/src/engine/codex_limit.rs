@@ -52,16 +52,31 @@ pub fn peek(email: &str, ttl_ms: u64) -> Option<Value> {
     (at.elapsed() < Duration::from_millis(ttl_ms)).then(|| v.clone())
 }
 
-/// **물어볼 창구가 있는가.** 등록 계정의 격리 `CODEX_HOME` + 실행본 둘 다 있어야 한다.
+/// **물어볼 창구가 있는가** — 허브 스레드가 부르는 쪽. **읽기만 한다**(stat 1 + 작은 JSON 1).
+///
+/// [`instrument`]와 나눠 둔 이유가 이 함수의 전부다: 그쪽은 격리 `CODEX_HOME`을
+/// **물질화한다**(auth.json 쓰기 + 정션 만들기). 허브 스레드는 모든 채팅의 tick을 도는
+/// 자리라 거기서 쓰기를 하면 안 된다 — 그래서 판정에 필요한 사실("실행본이 있나 ·
+/// 등록된 계정인가")만 여기서 보고, 물질화는 워커([`fill`])가 한다.
+pub fn can_ask(email: &str) -> bool {
+    // 활성 설치본이 없으면 `codex_bin`은 맨 이름(`codex`)을 돌려준다 = 이 앱에는 실행본이
+    // 없다. 그 판에서는 codex 턴 자체가 못 뜨므로 한도를 물을 이유도 없다.
+    if !crate::engine::codex_versions::codex_bin().is_file() {
+        return false;
+    }
+    ccg_auth::codex::read_store_file()
+        .accounts
+        .iter()
+        .any(|a| ccg_auth::codex::email_of(a) == Some(email))
+}
+
+/// 조회에 쓸 격리 `CODEX_HOME`. **워커 전용**(물질화한다 — 위 [`can_ask`] 참고).
 ///
 /// 실홈(`~/.codex`)으로는 절대 안 떨어진다 — `account_run_dir`가 등록 계정에만 답한다
 /// (`codex_versions::home_for`의 `unregistered` 폴백을 **일부러 안 쓴다**: 빈 홈에 대고
 /// 물으면 "not logged in"이 오고 그건 「한도 정보 없음」과 구분이 안 된다).
 pub fn instrument(email: &str) -> Option<PathBuf> {
-    let bin = crate::engine::codex_versions::codex_bin();
-    // 활성 설치본이 없으면 `codex_bin`은 맨 이름(`codex`)을 돌려준다 = 이 앱에는 실행본이
-    // 없다. 그 판에서는 codex 턴 자체가 못 뜨므로 한도를 물을 이유도 없다.
-    if !bin.is_file() {
+    if !crate::engine::codex_versions::codex_bin().is_file() {
         return None;
     }
     ccg_auth::codex::account_run_dir(email).ok()
@@ -213,10 +228,16 @@ mod tests {
     }
 
     /// 등록되지 않은 계정에는 **창구가 없다** — 실홈으로 떨어지지도 않는다.
+    /// 그리고 허브 스레드가 보는 쪽은 **쓰기를 하지 않는다**(계정 폴더가 안 생긴다).
     #[test]
     fn an_unregistered_account_has_no_instrument_and_never_reaches_the_real_home() {
-        let _h = ccg_store::testhome::take("codex-limit-instr");
+        let h = ccg_store::testhome::take("codex-limit-instr");
+        assert!(!can_ask("ghost@openai.com"));
         assert!(instrument("ghost@openai.com").is_none());
+        assert!(
+            !h.dir.join("codex").join("accounts").exists(),
+            "★ 판정 한 번이 계정 폴더를 물질화했다 — 허브 스레드에서 도는 경로다"
+        );
     }
 
     /// `CCG_NO_NET`(하네스·재생)에서는 프로세스를 **한 번도 안 띄운다**.
