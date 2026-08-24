@@ -29,6 +29,7 @@ use super::{arg, ch};
 use serde_json::{json, Value};
 use std::io::Read;
 use std::process::{Child, Command, Stdio};
+use std::sync::atomic::{AtomicU64, Ordering as AtomicOrd};
 use std::sync::mpsc::{channel, RecvTimeoutError};
 use std::sync::Mutex;
 use std::time::Duration;
@@ -86,15 +87,31 @@ pub fn dispatch(app: &AppHandle, channel: &str, p: &Value) -> Option<Value> {
 
 // ── 로그인 ───────────────────────────────────────────────────────────────────
 
-/// 진행 중인 로그인 자식 **하나**. 2.6.2 `loginProc`와 같은 자리 —
+/// 진행 중인 로그인 자식 **하나** + 그 시도 번호. 2.6.2 `loginProc`와 같은 자리 —
 /// 취소(`auth:login-cancel`)와 5분 상한이 이 핸들로만 죽인다(이름 기반 kill 없음).
-static LOGIN: Mutex<Option<Child>> = Mutex::new(None);
+///
+/// ★R28 T1T2 R2 — 번호가 같이 앉은 이유는 확인 크리틱 §6.3이다. 2.6.2는 마무리에서
+/// **자기 자식인지 확인하고** 놓는다(`src/main/auth.ts:663  if (loginProc === child)`).
+/// R1은 확인 없이 `take()`했다 — 로그인 A가 도는 중에 B가 시작하면 B가 A를 죽이는데,
+/// A의 마무리가 B의 `*LOGIN = Some(...)` **뒤에** 도달하면 A가 **B의 핸들을 꺼내
+/// `wait()`** 한다. 그러면 `LOGIN`이 비어 「취소」가 아무것도 못 죽이고, A가 B의 임시
+/// 폴더를 읽고 지운다. (크리틱은 코드 근거만 남겼다 — 1.5초 간격 이중 로그인으로는
+/// A가 18ms에 착지해 창이 안 열렸다.)
+static LOGIN: Mutex<Option<(u64, Child)>> = Mutex::new(None);
+/// 로그인 시도 번호. **스폰 전에** 올린다 — 다음 시도가 우리를 죽이기 전에 번호가
+/// 올라가야 "내가 아직 최신인가"가 그 사이의 창에서도 참이다.
+static LOGIN_GEN: AtomicU64 = AtomicU64::new(0);
 
 fn cancel_login() {
-    if let Some(mut c) = LOGIN.lock().unwrap_or_else(|e| e.into_inner()).take() {
+    if let Some((_, mut c)) = LOGIN.lock().unwrap_or_else(|e| e.into_inner()).take() {
         let _ = c.kill();
         let _ = c.wait(); // 좀비를 남기지 않는다
     }
+}
+
+/// 이 시도가 아직 **가장 최근의 시도**인가 — 2.6.2 `loginProc === child`의 판정.
+fn still_current(gen: u64) -> bool {
+    LOGIN_GEN.load(AtomicOrd::SeqCst) == gen
 }
 
 /// `claude auth login` — 브라우저 OAuth. **로그인 전엔 이메일을 모르므로** 임시 폴더
@@ -109,6 +126,7 @@ fn login(app: &AppHandle, use_console: bool) -> Value {
     if !crate::engine::versions::claude_bin_exists() {
         return status_wire(false, &AuthStatus::default(), Some(NO_BIN));
     }
+    let gen = LOGIN_GEN.fetch_add(1, AtomicOrd::SeqCst) + 1;
     cancel_login(); // 이전 시도가 있으면 정리(2.6.2와 같은 첫 줄)
 
     let dir = IsolatedConfigDir::for_claude_login();
@@ -150,7 +168,7 @@ fn login(app: &AppHandle, use_console: bool) -> Value {
         });
     }
     drop(tx);
-    *LOGIN.lock().unwrap_or_else(|e| e.into_inner()) = Some(child);
+    *LOGIN.lock().unwrap_or_else(|e| e.into_inner()) = Some((gen, child));
 
     let deadline = std::time::Instant::now() + Duration::from_millis(spec.timeout_ms);
     let mut sent_url = false;
@@ -177,8 +195,22 @@ fn login(app: &AppHandle, use_console: bool) -> Value {
             Err(RecvTimeoutError::Disconnected) => break,
         }
     }
-    if let Some(mut c) = LOGIN.lock().unwrap_or_else(|e| e.into_inner()).take() {
-        let _ = c.wait();
+    // **자기 자식일 때만** 핸들을 놓는다(2.6.2 `if (loginProc === child)`).
+    {
+        let mut g = LOGIN.lock().unwrap_or_else(|e| e.into_inner());
+        let mine = g.as_ref().map(|(id, _)| *id) == Some(gen);
+        let taken = if mine { g.take() } else { None };
+        drop(g); // wait()는 잠금 밖에서 — 남의 자식을 기다리며 취소를 막지 않는다
+        if let Some((_, mut c)) = taken {
+            let _ = c.wait();
+        }
+    }
+    // 우리가 도는 사이에 **다른 로그인이 시작**됐다면 이 시도는 이미 무효다. 임시 폴더는
+    // 이제 그쪽 것이므로 읽지도 지우지도 않고 물러난다 — 안 그러면 A가 B의 자격증명을
+    // 자기 결과로 읽거나(엉뚱한 계정 편입) B가 쓰는 중에 폴더를 지운다.
+    // (취소로 핸들이 사라진 경우는 여기 해당하지 않는다 — 번호가 그대로다.)
+    if !still_current(gen) {
+        return status_wire(false, &AuthStatus::default(), Some("다른 로그인이 시작되어 이 시도는 취소됐어요."));
     }
 
     // 결과 판정은 종료 코드가 아니라 `auth status --json`이다 — 로그아웃 상태면 CLI가
@@ -351,5 +383,24 @@ mod tests {
         cancel_login();
         cancel_login();
         assert!(LOGIN.lock().unwrap().is_none());
+    }
+
+    /// ★확인 크리틱 §6.3 — 로그인 자식의 **소유권**. 겹친 로그인에서 A의 마무리가
+    /// B의 핸들을 꺼내 가면 「취소」가 아무것도 못 죽인다.
+    ///
+    /// 실프로세스 두 개로는 창이 18ms라 재현이 안 됐다(크리틱 실측). 그래서 **규칙**을
+    /// 잰다: 번호는 스폰 전에 올라가고, 마무리는 자기 번호일 때만 핸들을 놓는다.
+    #[test]
+    fn a_finishing_login_never_takes_the_next_ones_handle() {
+        let a = LOGIN_GEN.fetch_add(1, AtomicOrd::SeqCst) + 1; // 로그인 A 시작
+        assert!(still_current(a), "혼자면 최신이다");
+        // A가 마무리에 닿기 전에 로그인 B가 시작한다(번호 먼저 — 그 다음 kill·spawn).
+        let b = LOGIN_GEN.fetch_add(1, AtomicOrd::SeqCst) + 1;
+        assert!(!still_current(a), "★A는 더 이상 최신이 아니다 = 폴더도 핸들도 A 것이 아니다");
+        assert!(still_current(b));
+        // 그 창에서 A가 마무리해도 B의 자리는 그대로다(핸들을 꺼내는 조건이 번호다).
+        let mut g = LOGIN.lock().unwrap_or_else(|e| e.into_inner());
+        *g = None; // 자식 없이 번호만 확인하는 자리 — Child를 만들지 않는다
+        assert!(g.as_ref().map(|(id, _)| *id) != Some(a));
     }
 }
