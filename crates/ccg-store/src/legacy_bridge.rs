@@ -187,8 +187,12 @@ pub fn chats_get(light: bool, open: &[String]) -> Value {
     Value::Object(o)
 }
 
-pub fn chats_save(data: &Value) {
-    let Some(incoming) = data.get("chats").and_then(Value::as_array) else { return };
+/// ★R28b ACCT R3(G1) — 돌려주는 값은 **이번 저장이 목록에서 지운 채팅들**이다(코어가 센다).
+/// 본채팅 삭제는 이 경로 하나로 끝난다(`Op::Dispose`가 아예 안 나간다) — 그러니 셸이
+/// 여기서 받은 목록으로 런타임을 거두고 `chat:status`를 한 번 내보내야 유령이 안 남는다.
+#[must_use = "지운 채팅은 런타임 회수 + chat:status 브로드캐스트를 지나야 한다"]
+pub fn chats_save(data: &Value) -> Vec<String> {
+    let Some(incoming) = data.get("chats").and_then(Value::as_array) else { return vec![] };
     let g = Globals::read();
     let mut updates: Vec<Value> = Vec::new();
     let mut seen: Vec<String> = Vec::new();
@@ -226,7 +230,7 @@ pub fn chats_save(data: &Value) {
         .and_then(Value::as_str)
         .map(str::to_string)
         .unwrap_or_else(crate::chats_v3::active_chat_id);
-    crate::chats_v3::write_chats(&json!({ "version": 1, "chats": merged, "activeChatId": active }));
+    crate::chats_v3::write_chats(&json!({ "version": 1, "chats": merged, "activeChatId": active }))
 }
 
 /// 영속된 **추가 채팅**(`origin = session`)의 목록 — 계약면 `SessionWindowInfo` 모양.
@@ -558,8 +562,11 @@ fn panel_has_content(p: &Value) -> bool {
     !title.is_empty() || msgs > 0
 }
 
-pub fn ma_save(data: &Value) {
-    let Some(sessions) = data.get("sessions").and_then(Value::as_array) else { return };
+/// ★R28b ACCT R3(G1) — `chats_save`와 같은 계약: 이번 저장이 **prune한 패널 대화들**.
+/// 멀티 세션이나 자리를 지우면 그 대화도 사라지고, 그 계정의 「사용 중」 칩도 같이 걷혀야 한다.
+#[must_use = "지운 채팅은 런타임 회수 + chat:status 브로드캐스트를 지나야 한다"]
+pub fn ma_save(data: &Value) -> Vec<String> {
+    let Some(sessions) = data.get("sessions").and_then(Value::as_array) else { return vec![] };
     let g = Globals::read();
     let mut boards: Vec<Value> = Vec::new();
     let mut updates: Vec<Value> = Vec::new();
@@ -689,7 +696,7 @@ pub fn ma_save(data: &Value) {
         "version": 1,
         "chats": merged,
         "activeChatId": crate::chats_v3::active_chat_id(),
-    }));
+    }))
 }
 
 #[cfg(test)]

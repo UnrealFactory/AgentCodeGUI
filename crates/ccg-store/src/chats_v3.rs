@@ -231,9 +231,23 @@ fn merge_marker(id: &str, chat: &Value) -> Map<String, Value> {
 }
 
 /// 블롭 저장 — 팬아웃 + 두 되끼움. `statuses`는 페이로드에 **없다**(있어도 무시).
-pub fn write_chats(data: &Value) {
-    let Some(chats) = data.get("chats").and_then(Value::as_array) else { return };
+///
+/// ★R28b ACCT R3(G1) — 돌려주는 값은 **이번 저장이 목록에서 지운 채팅들**이다.
+/// 본채팅 삭제는 `Op::Dispose`를 안 거치고 이 경로(`chats:save` = 목록 REPLACE) 하나로
+/// 끝난다 — 그러니 "누가 사라졌나"를 아는 유일한 자리도 여기다. 셸이 이 목록으로
+/// 런타임을 거두고(좀비 CLI 방지) `chat:status`를 한 번 내보낸다.
+#[must_use = "지운 채팅은 런타임 회수 + chat:status 브로드캐스트를 지나야 한다"]
+pub fn write_chats(data: &Value) -> Vec<String> {
+    let Some(chats) = data.get("chats").and_then(Value::as_array) else { return vec![] };
     let prev = STORE.read_index();
+    // 삭제 판별의 기준선 — **저장 전** 목록. 상태 행이 아직 없는 채팅(턴을 한 번도 안 돈
+    // 대화)도 여기서만 잡힌다.
+    let prev_order: Vec<String> = prev
+        .as_ref()
+        .and_then(|p| p.get("order"))
+        .and_then(Value::as_array)
+        .map(|a| a.iter().filter_map(Value::as_str).map(str::to_string).collect())
+        .unwrap_or_default();
     let mut extra = Map::new();
     extra.insert("version".into(), version_or_1(data));
     // ★R2 D13 — `chats:set-active`가 한 번이라도 쓰인 스토어에서는 activeChatId의 저자가
@@ -269,8 +283,18 @@ pub fn write_chats(data: &Value) {
         Value::Object(out)
     });
     // 사라진 채팅의 상태도 걷어낸다
-    crate::status::retain(&order);
+    let dropped = crate::status::retain(&order);
     with_owned(|m| m.retain(|k, _| order.contains(k)));
+    // 사라진 것 = 「저장 전 목록에 있었는데 지금 없다」 ∪ 「상태 행이 걷혔다」.
+    // 둘을 합치는 이유: 앞은 상태 행이 없는 채팅을 잡고, 뒤는 인덱스가 깨져 기준선을
+    // 못 읽은 판을 잡는다. 어느 한쪽만 보면 그 판에서 유령이 남는다.
+    let mut gone: Vec<String> = prev_order.into_iter().filter(|id| !order.contains(id)).collect();
+    for id in dropped {
+        if !gone.contains(&id) {
+            gone.push(id);
+        }
+    }
+    gone
 }
 
 /// **레코드 하나만** 심는다 — 목록 REPLACE(`write_chats`)를 타지 않는 저장 경로.
@@ -335,7 +359,9 @@ pub fn remove_chat(id: &str) -> bool {
     }
     let _ = std::fs::remove_file(STORE.file(id));
     STORE.forget_one(id);
-    crate::status::forget_one(id);
+    // ★R28b ACCT R3(G1) — 여기서도 값이 사라진다. 알리는 것은 호출자(셸) 몫이고,
+    // 그 호출자는 `win::session_close` 하나다(추가 채팅 창 삭제).
+    let _ = crate::status::forget_one(id);
     with_owned(|m| {
         m.remove(id);
     });
@@ -551,7 +577,7 @@ mod tests {
             .iter()
             .map(|c| json!({ "id": c["id"], "origin": c["origin"], "title": c["title"], "unloaded": true, "snapshot": Value::Null }))
             .collect();
-        write_chats(&json!({ "version": 1, "activeChatId": "a", "chats": markers }));
+        let _ = write_chats(&json!({ "version": 1, "activeChatId": "a", "chats": markers }));
         assert_eq!(threads(&h), before, "마커 저장이 스냅샷을 지웠다 = 대화 증발");
     }
 
@@ -571,7 +597,7 @@ mod tests {
                 Value::Object(o)
             })
             .collect();
-        write_chats(&json!({ "version": 1, "activeChatId": "a", "chats": forged }));
+        let _ = write_chats(&json!({ "version": 1, "activeChatId": "a", "chats": forged }));
         let a = h.read_json("chats-v3/a.json").unwrap();
         assert_eq!(a["identity"]["engine"]["model"], "opus", "위조된 정체성이 채택됐다");
         assert!(a.get("queue").is_none() && a.get("hold").is_none(), "없는 것이 진실이다: {a}");
@@ -585,7 +611,7 @@ mod tests {
         assert_eq!(h.read_json("chats-v3/index.json").unwrap()["activeChatId"], "b");
         // 낡은 렌더러의 디바운스 저장이 옛 activeChatId를 싣고 도착한다
         let chats = read_chats(false, &[])["chats"].clone();
-        write_chats(&json!({ "version": 1, "activeChatId": "a", "chats": chats }));
+        let _ = write_chats(&json!({ "version": 1, "activeChatId": "a", "chats": chats }));
         let idx = h.read_json("chats-v3/index.json").unwrap();
         assert_eq!(idx["activeChatId"], "b", "낡은 저장이 set-active를 덮었다");
         assert_eq!(idx["activeGen"], 1);
@@ -597,7 +623,7 @@ mod tests {
         seed(&h);
         // 렌더러는 이 둘을 모른다 — 빠뜨리거나(status) 딴 값을 실어도(legacyAccount) 진다
         let chats = json!([{ "id": "a", "origin": "chat", "title": "채팅 0", "legacyAccount": "hijack@x.com", "snapshot": snap(3, "s-a") }]);
-        write_chats(&json!({ "version": 1, "activeChatId": "a", "chats": chats }));
+        let _ = write_chats(&json!({ "version": 1, "activeChatId": "a", "chats": chats }));
         let a = h.read_json("chats-v3/a.json").unwrap();
         assert_eq!(a["status"], "done", "얼린 status가 사라지면 추가 채팅의 done이 풀린다");
         assert_eq!(a["legacyAccount"], "me@example.com");
@@ -611,9 +637,56 @@ mod tests {
         invalidate();
         assert!(!index_trusted());
         assert!(!read_chats(true, &[]).is_null(), "조회가 전멸하면 안 된다");
-        write_chats(&json!({ "version": 1, "activeChatId": "new", "chats": [{ "id": "new", "origin": "chat", "snapshot": snap(1, "s-n") }] }));
+        let _ = write_chats(&json!({ "version": 1, "activeChatId": "new", "chats": [{ "id": "new", "origin": "chat", "snapshot": snap(1, "s-n") }] }));
         let files = h.files("chats-v3");
         assert!(files.contains(&"a.json".to_string()) && files.contains(&"b.json".to_string()), "유일 사본이 지워졌다: {files:?}");
+    }
+
+    /// ★R28b ACCT R3(G1) — **삭제 축**: 목록에서 사라진 채팅을 저장이 **이름으로 돌려준다.**
+    ///
+    /// 확인 크리틱 R2가 실 exe로 찍은 결함의 뿌리다. R2는 「사용 중」 칩을 걷는 문을
+    /// `Op::Dispose`에 달았는데, 본채팅 삭제는 그 문을 **아예 안 지난다**(목록 REPLACE
+    /// 저장 하나로 끝난다). 그래서 지운 대화가 `chat:status`에 계정과 함께 남아
+    /// picker 칩이 「사용 중 · 다른 자리」로 켜졌다(12초 무입력에 브로드캐스트 0건).
+    /// 여기서 잠그는 것은 **셸이 그 사실을 알 수 있는가**다 — 알아야 알린다.
+    #[test]
+    fn a_save_that_deletes_a_chat_says_which_one() {
+        let h = temp_home("v3-delete-axis");
+        seed(&h);
+        crate::status::forget();
+        // 두 채팅 다 턴을 돌아 계정을 물고 있다(= §3의 「사용 중」이 켜진 상태).
+        for id in ["a", "b"] {
+            crate::status::set(
+                id,
+                json!({ "chatId": id, "status": "done", "busy": false, "account": "one@ccg.test" }),
+            );
+        }
+        // 사이드바에서 `a`를 지운다 = `a`가 빠진 목록으로 저장 한 번.
+        let kept = json!([{ "id": "b", "origin": "chat", "title": "채팅 1", "snapshot": snap(4, "s-b") }]);
+        let gone = write_chats(&json!({ "version": 1, "activeChatId": "b", "chats": kept }));
+        println!("[G1] 저장이 지웠다고 말한 것 = {gone:?}");
+        assert_eq!(gone, vec!["a".to_string()], "★ 지운 채팅을 못 돌려주면 셸이 알릴 방법이 없다");
+        // 그리고 상태 행도 실제로 걷혔다(브로드캐스트가 실을 값 자체가 사라진다).
+        let snapshot = crate::status::snapshot();
+        assert!(snapshot.get("a").is_none(), "지운 채팅의 행이 남았다: {snapshot}");
+        assert_eq!(snapshot["b"]["account"], json!("one@ccg.test"), "남은 채팅은 계정을 계속 문다");
+        // 지운 것이 없는 평범한 저장은 **아무 말도 안 한다**(헛 브로드캐스트 금지).
+        let again = write_chats(&json!({ "version": 1, "activeChatId": "b", "chats": kept }));
+        assert!(again.is_empty(), "지운 게 없는데 지웠다고 말했다: {again:?}");
+    }
+
+    /// ★R28b ACCT R3(G1) — **턴을 한 번도 안 돈 채팅**도 삭제로 세어야 한다.
+    /// 상태 행이 없으니 `status::retain`은 조용하다 — 기준선은 **저장 전 index.order**다.
+    /// (그 채팅에도 상주 CLI가 붙어 있을 수 있다: 회수 대상이다.)
+    #[test]
+    fn deleting_a_chat_that_never_ran_still_counts() {
+        let h = temp_home("v3-delete-neverran");
+        seed(&h);
+        crate::status::forget();
+        let kept = json!([{ "id": "a", "origin": "chat", "title": "채팅 0", "snapshot": snap(3, "s-a") }]);
+        let gone = write_chats(&json!({ "version": 1, "activeChatId": "a", "chats": kept }));
+        println!("[G1] 상태 행 없는 삭제 = {gone:?}");
+        assert_eq!(gone, vec!["b".to_string()], "상태 행이 없다고 삭제를 놓치면 좀비 CLI가 남는다");
     }
 
     #[test]

@@ -755,8 +755,14 @@ pub fn session_close(app: &AppHandle, id: &str) {
     }
     if ccg_store::unified_store_enabled() && ccg_store::legacy_bridge::is_session_chat(id) {
         ccg_store::chats_v3::remove_chat(id);
-        // 그 채팅의 런타임도 거둔다(엔진이 살아 있으면 좀비 CLI가 남는다).
-        crate::engine::dispose_chat(id);
+        // 그 채팅의 런타임도 거둔다(엔진이 살아 있으면 좀비 CLI가 남는다) + `chat:status`.
+        //
+        // ★R28b ACCT R3(G1) — R2는 `dispose_chat`(cast)만 불렀고, 브로드캐스트를
+        // `Op::Dispose` 안의 `status::clear_runtime`에 매달았다. 그런데 바로 위
+        // `remove_chat`이 `status::forget_one`으로 행을 **먼저** 지우므로
+        // `clear_runtime`은 맵에 없는 키를 만나 `false`를 돌려주고, 그 브로드캐스트는
+        // 영원히 안 나갔다 — 지운 대화의 「사용 중」 칩이 세션 내내 남았다.
+        crate::engine::dispose_removed_chats(app, &[id.to_string()]);
     }
     broadcast_sessions(app);
 }

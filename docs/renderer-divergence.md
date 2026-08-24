@@ -520,7 +520,30 @@ R1은 1440px 본채팅(판 883px)에서 7종 전부 이겼지만 420px 멀티 �
 |---|---|
 | `engine/lite.rs` | 생존 판정 — *busy 턴 중 **이거나** 상주 CLI 생존*(§3의 정의 그대로). 슬롯만 있는 채팅·밖에서 죽은 CLI는 계정을 안 싣는다 |
 | `ccg_store::status` | `account`·`panelId`는 **디스크에 안 쓰고**(`flush`), **부팅 장전에서 걷어낸다**(`load_boot` — R1이 이미 써 둔 파일의 답) |
-| `hub::Op::Dispose` | 런타임을 거두면 마지막 lite에서 계정을 뗀다(`status::clear_runtime`) — 상태(`done`)는 남긴다 |
+| ~~`hub::Op::Dispose`~~ | ~~런타임을 거두면 마지막 lite에서 계정을 뗀다(`status::clear_runtime`)~~ → **★R3 정정 아래** |
+
+**★R3 정정 — 「사용 중」을 걷는 자리는 `Op::Dispose`가 아니었다(확인 크리틱 R2 G1).**
+R2가 위 표 셋째 줄에 세운 문은 **사용자가 닿는 어느 삭제 경로에서도 안 열렸다.** 실 exe
+실측: 같은 계정을 문 채팅 둘 중 하나를 지우면 디스크는 prune되는데(`index.json`·`status.json`
+둘 다 한 줄) `chat:status`는 지운 채팅을 계정과 함께 계속 싣고 picker 칩이 「사용 중 ·
+**다른 자리**」로 남았다 — 이름표까지 잃은 유령이고, 12초 무입력에 브로드캐스트 0건이었다.
+기제는 **순서**다: ① 본채팅 삭제는 `chats:save`(목록 REPLACE) → `chats_v3::write_chats` →
+`status::retain` 하나뿐이라 `Op::Dispose`가 아예 안 나갔고, ② 유일한 `dispose_chat` 호출자
+(`win::session_close`)마저 `remove_chat` 안의 `status::forget_one`이 **먼저** 돌아
+`clear_runtime`이 `false`를 돌려줬다(→ 거기 매단 `emit_all`이 영원히 침묵).
+
+R3은 문을 **값을 지우는 자리**로 옮긴다 — 「값의 주인이 브로드캐스트도 책임진다」:
+
+| 자리 | 무엇 |
+|---|---|
+| `status::retain` → `Vec<String>` · `status::forget_one` → `bool` | **지운 이름을 돌려준다**(`#[must_use]`). 지운 것이 없으면 빈 값 — 헛 브로드캐스트를 안 만든다 |
+| `chats_v3::write_chats` · `legacy_bridge::{chats_save, ma_save}` → `Vec<String>` | 이번 저장이 목록에서 **지운 채팅들**. 기준선은 *저장 전 `index.order`* ∪ *걷힌 상태 행* — 앞은 턴을 한 번도 안 돈 채팅을 잡고, 뒤는 인덱스가 깨진 판을 잡는다 |
+| `engine::dispose_removed_chats(app, &removed)` | ①`Op::Dispose` 던지기 → ②허브 FIFO **배리어**(`Op::Debug`의 답 = "전부 거뒀다") → ③늦은 전이가 되앉힌 행 청소 → ④`chat:status` REPLACE **한 번**. R2의 `dispose_chat`은 여기로 흡수했다(회수와 통지를 가를 수 있는 모양을 남기면 다음 호출자가 또 반쪽만 부른다) |
+
+겸해 닫힌 것: **본채팅 삭제 경로에 런타임 회수가 아예 없었다.** 상주 CLI가 붙어 있으면
+지운 대화의 프로세스가 그대로 남는다(§3 밖의 사실이라 크리틱은 결함으로 안 셌다).
+회귀 못은 **삭제 축**으로 새로 박았다 — `poc-acct-live` 시나리오 E(재시작 축인 A는 이
+결함을 100% 통과한다) + `ccg-store` 단위 못 3.
 
 **★R2 정정 2 — 본채팅은 「1번 자리」가 아니다.** 마이그레이션이 만드는 `default` 보드는
 `count:1`일 때 `chrome:"ide"`(= 본채팅 화면)이고 그 슬롯 0이 본채팅을 문다. R1은 라우팅용

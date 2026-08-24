@@ -16,6 +16,13 @@
  *  D. retry  (F5)    조회 실패 판에서 「다시 시도」가 `retry` 표식을 실어 보낸다
  *                    (셸의 격리 통과 자체는 밖에서 관측 불가 — 그쪽 못은
  *                     `ipc::parity::usage` 단위 테스트 `a_manual_retry_gets_past…`)
+ *  E. delete (G1)    ★**삭제 축** — 확인 크리틱 R2가 A를 100% 통과하며 찾아낸 자리.
+ *                    같은 계정을 문 채팅 둘에 턴을 한 번씩 → 하나를 사이드바에서 삭제
+ *                    (우클릭 → 삭제 → 확인) → **턴을 보내지 않고** picker를 연다.
+ *                    R2 실측: 디스크는 prune됐는데 `chat:status`가 지운 채팅을 계정과
+ *                    함께 계속 싣고 칩이 「사용 중 · 다른 자리」로 남았다(12초 무입력
+ *                    브로드캐스트 0건). A(재시작 축)는 이 결함을 못 잡는다 — 그래서
+ *                    못을 하나 더 박는다.
  *
  * 안전(이 하네스가 지키는 것):
  *  · `CCG_HOME`은 언제나 격리(`%TEMP%/ccg-acct-live*`) — 사용자 실앱 홈을 안 만진다.
@@ -85,8 +92,13 @@ const writeScript = (p, steps) => write(p, steps.map((s) => JSON.stringify(s)).j
 /**
  * 격리 홈 한 벌. `cacheAgeMs=null`이면 디스크 캐시를 안 심는다(=조회 실패 판).
  * `defaultEmail`을 주면 **2.6.2 승계 판**이 된다(§4 마이그레이션 대상).
+ * `chats`로 채팅을 여럿 심는다(삭제 축 E — 같은 계정을 문 자리가 둘이어야 성립한다).
  */
-function seedHome(name, emails, { cacheAgeMs = 30_000, account = 0, defaultEmail = null } = {}) {
+function seedHome(
+  name,
+  emails,
+  { cacheAgeMs = 30_000, account = 0, defaultEmail = null, chats = [{ id: 'c-a', title: '첫 채팅' }] } = {}
+) {
   const HOME = path.join(ROOT, name)
   const WORK = path.join(HOME, 'work')
   rmrf(HOME)
@@ -120,17 +132,23 @@ function seedHome(name, emails, { cacheAgeMs = 30_000, account = 0, defaultEmail
   }
   write(path.join(HOME, 'ui-prefs.json'), { 'ui.lang': 'ko' })
   write(path.join(HOME, 'profile.json'), { nickname: 'poc' })
-  write(path.join(HOME, 'chats', 'index.json'), { version: 1, order: ['c-a'], activeChatId: 'c-a' })
-  write(path.join(HOME, 'chats', 'c-a.json'), {
-    id: 'c-a',
-    title: '첫 채팅',
-    custom: true,
-    manualCwd: WORK,
-    picker: { model: 'haiku', effort: 'minimal', mode: 'normal', billing: 'subscription', ...(account == null ? {} : { account: emails[account] }) },
-    refDirs: [],
-    snapshot: { messages: [] },
-    updatedAt: Date.now()
+  write(path.join(HOME, 'chats', 'index.json'), {
+    version: 1,
+    order: chats.map((c) => c.id),
+    activeChatId: chats[0].id
   })
+  for (const c of chats) {
+    write(path.join(HOME, 'chats', `${c.id}.json`), {
+      id: c.id,
+      title: c.title,
+      custom: true,
+      manualCwd: WORK,
+      picker: { model: 'haiku', effort: 'minimal', mode: 'normal', billing: 'subscription', ...(account == null ? {} : { account: emails[account] }) },
+      refDirs: [],
+      snapshot: { messages: [] },
+      updatedAt: Date.now()
+    })
+  }
   const SCRIPT = path.join(HOME, 'fake.jsonl')
   writeScript(SCRIPT, script(WORK, 'RAN-default'))
   for (const e of emails) writeScript(path.join(HOME, `fake.${slug(e)}.jsonl`), script(WORK, `RAN-${slug(e)}`))
@@ -179,7 +197,10 @@ async function boot(seed, port) {
   await page.eval(`(() => { if (!window.__ipc) { ${PATCH} } return !!window.__ipc })()`).catch(() => {})
   // 패치노트 오버레이가 뜨면 클릭을 가린다 — 닫는다.
   await j(`(() => { const x = document.querySelector('.pn-x') || document.querySelector('.pn-go'); if (x) x.click(); return !!x })()`).catch(() => {})
-  return { child, page, j, log: () => log }
+  // 셸 채널 직통(진단용) — `engine:debug`로 살아 있는 런타임 슬롯을 센다.
+  const call = async (chn, payload) =>
+    await j(`await window.__TAURI_INTERNALS__.invoke('ipc_call', { channel: ${JSON.stringify(chn)}, payload: ${JSON.stringify(payload)} })`)
+  return { child, page, j, call, log: () => log }
 }
 
 async function waitUntil(app, expr, ms = 20_000) {
@@ -222,6 +243,41 @@ const openAccountTab = async (app) => {
 /** 계측이 살아 있나 — 없으면 지금 다시 심는다(측정 창은 이 순간부터다). */
 const ensureIpc = (app) => app.j(`(() => { if (!window.__ipc) { ${PATCH} } return (window.__ipc ?? []).length })()`)
 const badges = (app) => app.j(`[...document.querySelectorAll('.sc2.acct .set-badge')].map((n) => n.textContent)`)
+/** 사이드바에서 제목으로 채팅을 고른다(전환). */
+const pickChat = (app, title) =>
+  app.j(`(() => {
+    const it = [...document.querySelectorAll('.sb-item')].find((n) => (n.querySelector('.tx')?.textContent ?? '') === ${JSON.stringify(title)})
+    if (!it) return 'no-item'; it.click(); return 'clicked' })()`)
+/** 계정 picker를 열어 「사용 중」 칩 문구를 읽고 **도로 닫는다**. */
+const pickerWarns = async (app) => {
+  await app.j(`(() => { const b = document.querySelector('.model-chip'); if (b && !b.className.includes('on')) b.click(); return !!b })()`)
+  await sleep(700)
+  const warns = await app.j(`[...document.querySelectorAll('.pp-warn')].map((n) => n.textContent)`)
+  await app.j(`(() => { const b = document.querySelector('.model-chip.on'); if (b) b.click(); return 1 })()`)
+  await sleep(300)
+  return warns
+}
+/**
+ * 사이드바 우클릭 → 「삭제」 → 확인 카드의 파괴 버튼. **사용자가 닿는 그 경로 그대로** —
+ * 스토어 채널을 직접 부르면 렌더러 배선(디바운스 저장 → `chats:save`)을 건너뛴다.
+ */
+const deleteChatByTitle = async (app, title) => {
+  const opened = await app.j(`(() => {
+    const it = [...document.querySelectorAll('.sb-item')].find((n) => (n.querySelector('.tx')?.textContent ?? '') === ${JSON.stringify(title)})
+    if (!it) return 'no-item'
+    it.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 120, clientY: 200 }))
+    return 'ctx' })()`)
+  if (opened !== 'ctx') return opened
+  await sleep(500)
+  const hit = await app.j(`(() => {
+    const b = [...document.querySelectorAll('.ctx-menu .ctx-item.danger')].find((n) => !n.disabled)
+    if (!b) return 'no-delete-item'; b.click(); return 'menu' })()`)
+  if (hit !== 'menu') return hit
+  await sleep(500)
+  return await app.j(`(() => {
+    const b = document.querySelector('.sconfirm .scb button.danger')
+    if (!b) return 'no-confirm'; b.click(); return 'confirmed' })()`)
+}
 const chip = (app) => app.j(`document.querySelector('.model-chip')?.innerText ?? null`)
 const threadText = (app) => app.j(`document.querySelector('.thread')?.innerText ?? document.body.innerText`)
 
@@ -454,7 +510,85 @@ async function scRetry() {
   }
 }
 
-const plan = { inuse: scInUse, undo: scUndo, top: scTop, retry: scRetry }
+// ── E. G1 — 채팅을 지우면 「사용 중」도 같이 걷힌다(삭제 축) ──────────────────
+//
+// 확인 크리틱 R2의 재현식 그대로다. A(재시작 축)는 이 결함을 **100% 통과했다**:
+// 지운 채팅의 유령은 프로세스가 죽으면 사라지므로, 프로세스를 안 죽이는 축으로만 보인다.
+async function scDelete() {
+  console.log('\n[E] G1 — 같은 계정을 문 채팅 둘 → 하나 삭제 → **턴 없이** picker')
+  const seed = seedHome('del', ['one@ccg.test', 'two@ccg.test'], {
+    chats: [
+      { id: 'c-a', title: '첫 채팅' },
+      { id: 'c-b', title: '둘째 채팅' }
+    ]
+  })
+  const out = { want: seed.emails[0] }
+  const app = await boot(seed, PORT0 + 6)
+  try {
+    await armStatus(app)
+    await waitUntil(app, `!!document.querySelector('.composer-row textarea')`, 30_000)
+    await sleep(1200)
+    // ① 두 채팅 다 턴을 한 번씩 — 런타임 둘이 같은 계정을 문다.
+    await sendTurn(app, '안녕 A')
+    await sleep(3500)
+    out.picked = await pickChat(app, '둘째 채팅')
+    await sleep(1500)
+    await sendTurn(app, '안녕 B')
+    await sleep(3500)
+    out.before = await lastStatus(app)
+    out.warnBefore = await pickerWarns(app)
+    if (out.before.filter((r) => r.account === out.want).length !== 2)
+      fail('E-두 자리', '같은 계정을 문 자리가 둘이 아니다(전제 실패)', out.before)
+    else ok('E-두 자리', out.before)
+    if (!out.warnBefore.some((s) => /사용 중/.test(s)))
+      fail('E-칩(삭제 전)', '다른 자리가 같은 계정을 무는데 「사용 중」 칩이 없다', out.warnBefore)
+    else ok('E-칩(삭제 전)', out.warnBefore)
+
+    // ② 사이드바에서 「첫 채팅」 삭제 — 우클릭 → 삭제 → 확인.
+    out.emits0 = await app.j(`(window.__st ?? []).length`)
+    out.deleted = await deleteChatByTitle(app, '첫 채팅')
+    if (out.deleted !== 'confirmed') fail('E-삭제 조작', `삭제 UI를 못 눌렀다: ${out.deleted}`)
+    else ok('E-삭제 조작', out.deleted)
+
+    // ③ **턴을 보내지 않는다.** R2 실측: 12초 무입력에 브로드캐스트 0건이었다.
+    await sleep(4000)
+    out.after = await lastStatus(app)
+    out.emits1 = await app.j(`(window.__st ?? []).length`)
+    out.warnAfter = await pickerWarns(app)
+    out.diskOrder = fs.existsSync(path.join(seed.HOME, 'chats-v3', 'index.json'))
+      ? JSON.parse(fs.readFileSync(path.join(seed.HOME, 'chats-v3', 'index.json'), 'utf8')).order
+      : 'NO-FILE'
+    out.slots = ((await app.call('engine:debug', []).catch(() => null))?.chats ?? []).map((c) => c.chatId)
+
+    if (out.diskOrder !== 'NO-FILE' && out.diskOrder.includes('c-a'))
+      fail('E-디스크', '삭제 자체가 안 됐다(전제 실패)', out.diskOrder)
+    else ok('E-디스크', out.diskOrder)
+    if (out.emits1 <= out.emits0)
+      fail('E-브로드캐스트', `★ 지웠는데 chat:status가 한 번도 안 나갔다 (${out.emits0} → ${out.emits1})`, {
+        before: out.before,
+        after: out.after
+      })
+    else ok('E-브로드캐스트', { before: out.emits0, after: out.emits1 })
+    if (out.after.some((r) => r.chatId === 'c-a'))
+      fail('E-유령 행', '★ 지운 채팅이 chat:status에 계정과 함께 남았다', out.after)
+    else ok('E-유령 행', out.after)
+    if (out.warnAfter.some((s) => /사용 중/.test(s)))
+      fail('E-유령 칩', '★ 없는 대화가 이 계정을 쓰는 중이라고 말한다', out.warnAfter)
+    else ok('E-유령 칩', out.warnAfter)
+    // 겸사 — 지운 대화의 런타임(상주 CLI)도 거둬졌나. 본채팅 삭제 경로에는 회수가 없었다.
+    if (out.slots.includes('c-a')) fail('E-런타임 회수', '★ 지운 대화의 런타임이 살아 있다(좀비 CLI)', out.slots)
+    else ok('E-런타임 회수', out.slots)
+  } catch (e) {
+    console.error(e?.stack)
+    fail('E', String(e?.message ?? e))
+  } finally {
+    out.log = app.log().split('\n').filter(Boolean).slice(-8)
+    rep.sc.del = out
+    await stop(app)
+  }
+}
+
+const plan = { inuse: scInUse, undo: scUndo, top: scTop, retry: scRetry, del: scDelete }
 const chosen = only === 'all' ? Object.keys(plan) : only.split(',').filter((k) => plan[k])
 console.log(`exe: ${EXE}\n홈: ${ROOT}\n시나리오: ${chosen.join(', ')}`)
 for (const k of chosen) await plan[k]()

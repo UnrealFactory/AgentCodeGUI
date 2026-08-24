@@ -466,3 +466,161 @@ R1의 `poc-acct-live.mjs`는 계측(`window.__ipc`)을 `Runtime.evaluate` **한 
 - `scripts/poc-acct-store.mjs` — C4(합류의 경계)
 - `scripts/poc-acct-live.mjs` (신규) — 실 exe 회귀 못 4 시나리오
 - `docs/parity-fix-acct-r1.md` (이 절)
+
+---
+
+# R3 — 확인 크리틱 R2 수정 (G1 하나)
+
+판정문: `docs/critic/r28b-acct-critic-r2.md`(불합격 · 경계선).
+일곱 중 여섯(F1·F2·F3·F4·F5·N1·N2)은 크리틱이 실 exe로 재현해 **초록**으로 확인했다.
+남은 하나가 **G1**이고, 이 라운드는 그것만 고친다.
+
+## 0. 한 줄 요약
+
+R2가 틀린 방식은 R1과 달랐다: 문장을 코드로는 만들었는데 **그 코드가 놓인 자리가
+사용자의 삭제 경로가 아니었다.** 「사용 중」을 걷는 문을 `Op::Dispose`에 달았지만,
+본채팅 삭제는 그 문을 **아예 안 지나고**(목록 REPLACE 저장 하나로 끝난다), 유일하게
+지나는 경로마저 **행을 먼저 지운 뒤** 문을 두드려 `false`를 받았다. 문은 태어날 때부터
+닫혀 있었다. R3은 문을 **값을 지우는 자리**로 옮긴다.
+
+## 1. G1 — 채팅을 지워도 「사용 중」이 안 걷힌다
+
+**크리틱 실측**(실 exe · 2회 주행 2회 동일): 같은 계정(`one@`)을 문 채팅 둘 중 `c-a`를
+사이드바에서 지우면 —
+
+```
+디스크  chats-v3/index.json = {"order":["c-b"]}       ← 삭제·prune은 됐다
+디스크  chats-v3/status.json = c-b 한 줄
+ ★     chat:status = [{c-a, done, account:one@}, {c-b, …}]   ← 지운 채팅이 계정을 문다
+ ★     picker 칩   = "사용 중 · 다른 자리"                    ← 이름표까지 잃은 유령
++12초 무입력  브로드캐스트 7 → 7건 (0건)                       ← 스스로 안 낫는다
+```
+
+**기제**(코드로 확정):
+
+1. 본채팅 삭제는 `chats:save`(목록 REPLACE) → `legacy_bridge::chats_save` →
+   `chats_v3::write_chats` → `status::retain(&order)`뿐이다. **`Op::Dispose`가 안 나간다** —
+   `engine::dispose_chat`의 호출자는 `win.rs` `session_close`(추가 채팅 창 삭제) 하나였다.
+2. 그 유일한 호출자마저 `chats_v3::remove_chat(id)`를 **먼저** 부르고, 그 안의
+   `status::forget_one(id)`가 행을 지운다. 뒤이어 오는 `status::clear_runtime(&chat)`은
+   **맵에 없는 키**를 만나 `false`를 돌려주고, R2가 그 반환값에 매단
+   `emit_all(CHAT_STATUS, …)`이 영원히 안 나간다.
+
+실제로 값을 지우는 것은 `retain`/`forget_one`인데 **그 둘이 브로드캐스트를 안 했다.**
+렌더러의 `liveRows`는 REPLACE로만 갱신되므로(설계 그대로) 마지막 페이로드를 계속 든다.
+
+### 고친 것 — 「값의 주인이 브로드캐스트도 책임진다」
+
+| 자리 | 무엇 | 왜 |
+|---|---|---|
+| `ccg_store::status::retain` → `Vec<String>` | 지운 채팅 **이름들**을 돌려준다 | 지운 자만이 무엇이 사라졌는지 안다 |
+| `ccg_store::status::forget_one` → `bool` | 「실제로 지웠나」 | 지운 게 없으면 헛 브로드캐스트를 안 만든다 |
+| 둘 다 `#[must_use]` | 반환을 버리면 컴파일 경고 | 다음 호출자가 조용히 반쪽만 부르는 것을 막는다 |
+| `chats_v3::write_chats` → `Vec<String>` | 이번 저장이 목록에서 지운 채팅들 | 기준선 = *저장 전 `index.order`* ∪ *걷힌 상태 행* |
+| `legacy_bridge::{chats_save, ma_save}` → `Vec<String>` | 같은 값을 셸까지 올린다 | 멀티 세션/자리 삭제도 같은 결함을 갖고 있었다 |
+| `engine::dispose_removed_chats(app, &removed)` (신규) | ①`Op::Dispose` 던지기 → ②허브 FIFO **배리어** → ③늦은 전이 청소 → ④`chat:status` 한 번 | 아래 |
+| `ipc/unified.rs` `CHATS_SAVE`·`MA_SAVE` · `win.rs` `session_close` | 세 삭제 경로가 전부 그 함수를 지난다 | 경로가 셋인데 문이 하나였던 것이 R2의 실패다 |
+
+**기준선을 둘로 합친 이유**: `index.order` 차이만 보면 인덱스가 깨진 판(D2 — 못 읽으면
+아무것도 안 지운다)에서 놓치고, 걷힌 상태 행만 보면 **턴을 한 번도 안 돈 채팅**을 놓친다.
+후자는 상태 행이 없을 뿐 상주 CLI가 붙어 있을 수 있어 회수 대상이다.
+
+**배리어가 필요한 이유**: `Op::Dispose`는 cast(응답 없음)라, 던지자마자 브로드캐스트하면
+허브가 슬롯을 거두기 **전**의 값을 실을 수 있고, 거두는 사이 늦은 `status::set`이 행을
+되앉히면 유령이 그대로 돌아온다. 허브는 잡을 FIFO로 처리하므로 마지막 Dispose 뒤에
+답이 오는 잡(`Op::Debug`)을 하나 걸면 그 답이 곧 "전부 거뒀다"의 증표다. 허브가 없으면
+`send_job`이 실패해 **즉시** Null이 온다(3초를 기다리지 않는다).
+
+**겸사로 닫힌 것 — 본채팅 삭제 경로에 런타임 회수가 아예 없었다.** 상주 CLI가 붙어
+있으면 지운 대화의 프로세스가 남는다. 크리틱이 §3 밖의 사실이라 결함으로 안 셌지만
+같은 자리다 — 아래 대조군에서 실측으로 드러난다(`["c-a","c-b"]`).
+
+`dispose_chat(chat)` 한 줄짜리 함수는 **없앴다.** 호출자가 하나뿐이었고 그 하나가
+회수만 하고 통지는 안 해서 G1이 났다 — 갈라 부를 수 있는 모양을 남기면 다음 호출자가
+또 반쪽만 부른다.
+
+## 2. 회귀 못 — **삭제 축**을 새로 판다
+
+크리틱의 지적 그대로다: `poc-acct-live` A는 *재시작* 축만 밟아 이 결함을 **100% 통과한다**
+(프로세스를 죽이면 유령도 죽으므로, 프로세스를 안 죽이는 축으로만 보인다).
+
+- **실 exe**: `poc-acct-live.mjs` 시나리오 **E** — 같은 계정을 문 채팅 둘에 턴을 한 번씩 →
+  사이드바 **우클릭 → 삭제 → 확인**(사용자가 닿는 그 경로 그대로) → **턴을 안 보내고**
+  picker를 연다. 8항목(두 자리 전제 · 삭제 전 칩 · 삭제 조작 · 디스크 · 브로드캐스트 수 ·
+  유령 행 · 유령 칩 · 런타임 회수).
+- **단위**: `status::removing_a_row_reports_what_it_removed`(지운 이름/여부의 계약) ·
+  `chats_v3::a_save_that_deletes_a_chat_says_which_one`(삭제 축 + 헛 브로드캐스트 금지) ·
+  `chats_v3::deleting_a_chat_that_never_ran_still_counts`(상태 행 없는 삭제).
+
+### 대조군 — 못이 헛못이 아니다
+
+크리틱이 남긴 **수정 전 빌드**(`target-critacct2/release/agentcodegui.exe`, 커밋 `6891372`)에
+같은 시나리오 E를 그대로 겨눴다. 레포·`.git` 무접촉, 읽기만 했다.
+
+```
+수정 전(6891372)   X E-브로드캐스트  7 → 7 (0건)
+                   X E-유령 행      [{c-a, done, account:one@}, {c-b, …}]
+                   X E-유령 칩      ["사용 중 · 다른 자리"]
+                   X E-런타임 회수  ["c-a","c-b"]                ← 좀비 CLI까지 재현
+                   ❌ FAIL — 4건
+
+수정 후(R3)        o E-브로드캐스트  7 → 8
+                   o E-유령 행      [{c-b, done, account:one@}]
+                   o E-유령 칩      []
+                   o E-런타임 회수  ["c-b"]
+                   ✅ PASS — 8/8
+```
+
+크리틱이 손으로 쟀던 「7 → 7 · 사용 중 · 다른 자리」가 **글자 그대로 재현**됐다.
+
+## 3. 검증 — 크레이트별로 따로 셈
+
+| 무엇 | 결과 |
+|---|---|
+| `npm run typecheck`(node·web) + `typecheck:app` | **3종 초록** |
+| `cargo test -p ccg-store` | **82 통과 · 0 실패** (R2의 79 + 이번 못 3) |
+| `cargo test -p agentcodegui` | **143 통과 · 0 실패** (무회귀) |
+| `cargo test -p ccg-auth` (기본) | **102 통과 · 0 실패** (84+0+0+14+2+1+1) |
+| `cargo test -p ccg-auth --features net` | **119 통과 · 0 실패** (94+1+6+14+2+1+1) |
+| `cargo test --workspace` | **704 통과 · 0 실패** (테스트 바이너리 29개 합계) |
+| `node scripts/poc-acct-live.mjs`(**실 exe**) | **24 항목 전부 통과** — A 6 · B 3 · C 4 · D 3 · **E 8** |
+| `node scripts/poc-acct-store.mjs` | **`ok` 25줄 전부 통과** |
+| `node scripts/poc-limit-resume.mjs` | **164 통과 · 0 실패** (M11 훅 무회귀) |
+| `node scripts/poc-store-fanout.mjs` | **`ok:` 34줄 전부 통과** (크리틱의 인용 정정을 반영한 수) |
+| `node scripts/poc-account-switch.mjs` | **시나리오 6개 PASS** (M11 자동 전환 무회귀) |
+
+**격리**: `CARGO_TARGET_DIR=target-acctr3`(이 갈래 전용 · 남의 트리 무접촉) ·
+`CCG_HOME`은 전부 `%TEMP%/ccg-acct-live-r3*` · `CCG_NO_NET=1` + 합성 계정
+(`ccg-auth-probe seed`) → **실 HTTP 0건 · 실계정 토큰 열람 0회** · CDP **9560~9575**
+(크리틱 9541~9556 · 남의 갈래 9481~9499와 안 겹친다) · 종료는 자기가 spawn한 PID 트리만
+(`killTree`) — **이름 기반 kill 0회**(주행 전후로 사용자 실앱 `Programs\AgentCodeGUI` 5개
+프로세스 그대로 · 주행 뒤 내 exe 고아 0건) · 기준 결과 파일은 하나도 안 덮었다
+(새 파일 `docs/critic/acct-live-r3.json`·`acct-live-r3ctrl.json`·`m11-r1-switch-acctr3.json`).
+
+## 4. 남은 리스크
+
+- **`chats:save`가 삭제를 실을 때만** 허브 배리어(`Op::Debug`)를 기다린다. 허브가 다른 긴
+  잡을 물고 있으면 그 저장이 최대 3초(`REPLY_TIMEOUT`) 늦어진다. 평상시 저장은 이 길을
+  안 지나고(지운 것이 없으면 즉시 반환), 삭제는 사용자가 한 번 누르는 조작이라 골랐다.
+  대안(cast만 던지고 바로 브로드캐스트)은 G1을 좁은 레이스로 되살린다.
+- **2.6.2 스토어 경로**(`CCG_UNIFIED_STORE=0`)는 그대로다. 그쪽 `chats::write_chats`는
+  애초에 `status::retain`을 안 부르므로 이 축이 없다 — 기본값이 통합 스토어(켬)라
+  사용자가 닿는 경로가 아니고, 그 판에서 상태 행을 걷는 규약 자체가 미정이다.
+- **추가 채팅 창(`SessionWindow`)의 §3 칩 부재**는 R2의 한계 그대로다
+  (`renderer-divergence.md` §6.6). 이번 라운드가 건드린 자리가 아니다.
+- 크리틱이 「위험으로만 적는다」고 남긴 F2의 대가(`PROJECTED`를 합의값으로 넓히면 셸이
+  *되돌림*과 *낡은 사본*을 원리적으로 구분 못 한다)는 **그대로 남아 있다.** 재현식이
+  없어 이번에도 손대지 않았다.
+
+## 5. R3에서 만진 파일
+
+- `crates/ccg-store/src/status.rs` — `retain`/`forget_one`의 반환 계약 + 못 1
+- `crates/ccg-store/src/chats_v3.rs` — `write_chats`가 지운 채팅을 돌려준다 + 못 2
+- `crates/ccg-store/src/legacy_bridge.rs`(+`_tests.rs`) — `chats_save`·`ma_save` 전파
+- `src-tauri/src/engine/mod.rs` — `dispose_removed_chats`(회수 + 배리어 + 브로드캐스트),
+  `dispose_chat` 흡수
+- `src-tauri/src/ipc/unified.rs` — `chats:save`·`ma:save` 배선
+- `src-tauri/src/win.rs` — `session_close` 배선
+- `scripts/poc-acct-live.mjs` — 시나리오 **E**(삭제 축) + `seedHome`의 다중 채팅 · `call` 헬퍼
+- `docs/renderer-divergence.md` §6.6 — ★R3 정정(문이 `Op::Dispose`가 아니었다)
+- `docs/parity-fix-acct-r1.md` (이 절)

@@ -310,32 +310,49 @@ pub fn clear_runtime(chat_id: &str) -> bool {
 }
 
 /// 목록에서 사라진 채팅의 상태를 걷어낸다(채팅 삭제 · prune과 짝).
-pub fn retain(chat_ids: &[String]) {
+///
+/// ★R28b ACCT R3(G1) — **지운 것을 돌려준다.** 값을 실제로 지우는 자리는 여기고,
+/// `chat:status`는 REPLACE라서 여기서 아무 말도 안 하면 렌더러는 **마지막 페이로드를
+/// 그대로 들고 있는다**: 지운 채팅이 계정을 문 채로 남아 picker에 「사용 중 · 다른 자리」가
+/// 켜진다(확인 크리틱 R2 G1 실측 — 12초 무입력 브로드캐스트 0건, 다음 턴이 나야 걷혔다).
+/// R2는 그 브로드캐스트를 `Op::Dispose` → [`clear_runtime`]에 매달았는데, 두 삭제 경로
+/// 모두 **행을 먼저 지운 뒤** 그 문을 두드려 `false`를 받았다 — 태어날 때부터 닫힌 문이었다.
+/// 그러니 주인을 바꾼다: **값을 지운 자가 무엇을 지웠는지 말하고**, 호출자가 그때 알린다.
+#[must_use = "지운 채팅은 chat:status로 알려야 한다(안 그러면 picker에 유령 「사용 중」이 남는다)"]
+pub fn retain(chat_ids: &[String]) -> Vec<String> {
     let keep: std::collections::HashSet<&str> = chat_ids.iter().map(String::as_str).collect();
     let (m, cv) = state();
-    {
+    let removed: Vec<String> = {
         let mut st = m.lock().unwrap_or_else(|e| e.into_inner());
-        let before = st.map.len();
-        st.map.retain(|k, _| keep.contains(k.as_str()));
-        if st.map.len() != before {
+        let removed: Vec<String> =
+            st.map.keys().filter(|k| !keep.contains(k.as_str())).cloned().collect();
+        if !removed.is_empty() {
+            st.map.retain(|k, _| keep.contains(k.as_str()));
             st.dirty = true;
         }
-    }
+        removed
+    };
     cv.notify_all();
     ensure_writer();
+    removed
 }
 
 /// 채팅 **하나**의 상태만 걷어낸다(레코드 1건 삭제와 짝 — 목록 REPLACE가 아니다).
-pub fn forget_one(chat_id: &str) {
+/// 돌려주는 값은 [`retain`]과 같은 계약이다 — "실제로 지웠나".
+#[must_use = "지운 채팅은 chat:status로 알려야 한다(안 그러면 picker에 유령 「사용 중」이 남는다)"]
+pub fn forget_one(chat_id: &str) -> bool {
     let (m, cv) = state();
-    {
+    let removed = {
         let mut st = m.lock().unwrap_or_else(|e| e.into_inner());
-        if st.map.remove(chat_id).is_some() {
+        let removed = st.map.remove(chat_id).is_some();
+        if removed {
             st.dirty = true;
         }
-    }
+        removed
+    };
     cv.notify_all();
     ensure_writer();
+    removed
 }
 
 /// 지금 즉시 디스크에 쓴다(앱 종료 flush · 마이그레이션 마무리).
@@ -530,6 +547,32 @@ mod tests {
         assert_eq!(row["status"], json!("done"), "마지막 상태까지 지우면 사이드바 점이 꺼진다");
         assert!(!clear_runtime("c-b"), "두 번째는 바뀐 게 없다");
         assert!(!clear_runtime("없는채팅"), "모르는 채팅에 참을 돌려주면 헛 브로드캐스트가 난다");
+    }
+
+    /// ★R28b ACCT R3(G1) — **값을 지운 자가 무엇을 지웠는지 말한다.**
+    ///
+    /// R2는 「사용 중」을 걷는 문을 [`clear_runtime`]에 달았다. 그런데 두 삭제 경로 모두
+    /// 행을 **먼저** 지우고 그 문을 두드린다 — `clear_runtime`은 맵에 없는 키를 만나
+    /// `false`를 돌려주고, 거기 매단 브로드캐스트는 영원히 안 나갔다(확인 크리틱 R2 G1).
+    /// 그래서 여기 둘이 답한다: 지운 이름 / 지웠나. 호출자는 그때만 알리면 된다.
+    #[test]
+    fn removing_a_row_reports_what_it_removed() {
+        let _h = crate::testkit::temp_home("status-remove-reports");
+        forget();
+        for id in ["c-a", "c-b", "c-c"] {
+            set(id, json!({ "chatId": id, "status": "done", "account": "one@ccg.test" }));
+        }
+        // 목록 REPLACE — 둘이 사라진다.
+        let mut gone = retain(&["c-b".to_string()]);
+        gone.sort();
+        println!("[G1] retain이 지웠다고 말한 것 = {gone:?}");
+        assert_eq!(gone, vec!["c-a".to_string(), "c-c".to_string()]);
+        assert!(retain(&["c-b".to_string()]).is_empty(), "지운 게 없는데 지웠다고 말했다");
+        // 레코드 1건 삭제.
+        assert!(forget_one("c-b"), "★ 지웠는데 안 지웠다고 말하면 브로드캐스트가 안 나간다");
+        assert!(!forget_one("c-b"), "두 번째는 지울 게 없다");
+        assert!(!forget_one("없는채팅"), "모르는 채팅에 참을 돌려주면 헛 브로드캐스트가 난다");
+        assert_eq!(snapshot(), json!({}), "전부 걷혔어야 한다");
     }
 
     #[test]

@@ -577,6 +577,13 @@ impl Hub {
                 // R1은 슬롯만 지웠고, `status`의 마지막 행에 `account`가 그대로 남아
                 // 같은 세션 안에서도 「사용 중」 칩이 안 걷혔다(크리틱 F1 부수 사실).
                 // 상태(`done`·`error`)는 남긴다 — 사이드바 점 색의 근거다.
+                //
+                // ★R28b ACCT R3(G1) — **여기는 「삭제」의 문이 아니다.** R2는 그렇게 썼고
+                // 확인 크리틱 R2가 실 exe로 깼다: 삭제 경로는 행을 **먼저** 지우므로
+                // 아래 `clear_runtime`이 `false`를 돌려주고 이 emit이 영원히 안 나간다.
+                // 삭제의 통지는 `engine::dispose_removed_chats`가 진다. 여기 남은 몫은
+                // **대화는 살아 있는데 런타임만 거두는** 자리다 — `ma:dispose`(자리 접기)가
+                // 그렇고, 그때는 행이 남아 있으니 이 문이 실제로 열린다.
                 if ccg_store::status::clear_runtime(&chat) {
                     self.emit_all(crate::ipc::ch::CHAT_STATUS, super::status_array());
                 }

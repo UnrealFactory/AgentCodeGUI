@@ -1,0 +1,118 @@
+{
+  "at": "2026-08-24T16:19:23.336Z",
+  "exe": "C:\\Code\\AgentCodeGUI\\target-critacct2\\release\\agentcodegui.exe",
+  "sc": {
+    "del": {
+      "want": "one@ccg.test",
+      "picked": "clicked",
+      "before": [
+        {
+          "chatId": "c-a",
+          "status": "done",
+          "account": "one@ccg.test",
+          "panelId": null
+        },
+        {
+          "chatId": "c-b",
+          "status": "done",
+          "account": "one@ccg.test",
+          "panelId": null
+        }
+      ],
+      "warnBefore": [
+        "사용 중 · 첫 채팅"
+      ],
+      "emits0": 7,
+      "deleted": "confirmed",
+      "after": [
+        {
+          "chatId": "c-a",
+          "status": "done",
+          "account": "one@ccg.test",
+          "panelId": null
+        },
+        {
+          "chatId": "c-b",
+          "status": "done",
+          "account": "one@ccg.test",
+          "panelId": null
+        }
+      ],
+      "emits1": 7,
+      "warnAfter": [
+        "사용 중 · 다른 자리"
+      ],
+      "diskOrder": [
+        "c-b"
+      ],
+      "slots": [
+        "c-a",
+        "c-b"
+      ],
+      "log": [
+        "[store] chats-v3 마이그레이션: {\"ok\":true,\"migratedAt\":1787588363790.0,\"elapsedMs\":11.0,\"backupDir\":\"C:\\\\Users\\\\User\\\\AppData\\\\Local\\\\Temp\\\\ccg-acct-live-r3ctrl\\\\del\\\\backup-2.6.2-1787588363790\",\"counts\":{\"chats\":2,\"maSessions\":0,\"maPanels\":0,\"sessionChats\":0,\"talkAbsorbed\":0,\"carried\":0,\"keptV3\":0,\"keptV3Boards\":0,\"total\":2,\"messages\":0,\"boards\":1},\"idMap\":{\"c-b\":\"c-b\",\"c-a\":\"c-a\"},\"order\":[\"c-a\",\"c-b\"],\"activeChatId\":\"c-a\",\"boardOrder\":[\"default\"],\"activeBoardId\":\"default\",\"activeSessionId\":\"\",\"btw\":{\"rewritten\":0,\"dropped\":0},\"holdMoved\":0,\"sourceIndexOrders\":{\"chats\":[\"c-a\",\"c-b\"],\"multiAgent\":[],\"sessionChats\":[]},\"warnings\":[]}"
+      ]
+    }
+  },
+  "findings": [
+    {
+      "id": "E-브로드캐스트",
+      "why": "★ 지웠는데 chat:status가 한 번도 안 나갔다 (7 → 7)",
+      "before": [
+        {
+          "chatId": "c-a",
+          "status": "done",
+          "account": "one@ccg.test",
+          "panelId": null
+        },
+        {
+          "chatId": "c-b",
+          "status": "done",
+          "account": "one@ccg.test",
+          "panelId": null
+        }
+      ],
+      "after": [
+        {
+          "chatId": "c-a",
+          "status": "done",
+          "account": "one@ccg.test",
+          "panelId": null
+        },
+        {
+          "chatId": "c-b",
+          "status": "done",
+          "account": "one@ccg.test",
+          "panelId": null
+        }
+      ]
+    },
+    {
+      "0": {
+        "chatId": "c-a",
+        "status": "done",
+        "account": "one@ccg.test",
+        "panelId": null
+      },
+      "1": {
+        "chatId": "c-b",
+        "status": "done",
+        "account": "one@ccg.test",
+        "panelId": null
+      },
+      "id": "E-유령 행",
+      "why": "★ 지운 채팅이 chat:status에 계정과 함께 남았다"
+    },
+    {
+      "0": "사용 중 · 다른 자리",
+      "id": "E-유령 칩",
+      "why": "★ 없는 대화가 이 계정을 쓰는 중이라고 말한다"
+    },
+    {
+      "0": "c-a",
+      "1": "c-b",
+      "id": "E-런타임 회수",
+      "why": "★ 지운 대화의 런타임이 살아 있다(좀비 CLI)"
+    }
+  ]
+}

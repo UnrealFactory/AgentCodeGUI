@@ -328,9 +328,44 @@ pub fn session_chat_for_window(window: &WebviewWindow) -> Option<String> {
     crate::win::chat_for_label(window.label())
 }
 
-/// 채팅 하나의 런타임을 거둔다(대화 삭제 · 창 파기).
-pub fn dispose_chat(chat: &str) {
-    hub::cast(chat, hub::Op::Dispose);
+/// ★R28b ACCT R3(G1) — **지워진 대화들을 실제로 거두고, 그 사실을 한 번 알린다.**
+///
+/// (R2의 `dispose_chat(chat)` 한 줄짜리 함수는 여기로 흡수했다 — 호출자가 하나뿐이었고,
+///  그 하나가 **회수만 하고 알리지는 않아서** G1이 났다. 회수와 통지를 갈라 놓을 수 있는
+///  모양을 남겨 두면 다음 호출자가 또 반쪽만 부른다.)
+///
+/// 확인 크리틱 R2가 실 exe로 찍은 것: 같은 계정을 문 채팅 둘 중 하나를 지우면 디스크는
+/// prune되는데(`index.json`·`status.json` 둘 다 한 줄) `chat:status`는 **지운 채팅을
+/// 계정과 함께 계속 싣고** picker 칩이 「사용 중 · 다른 자리」로 남았다 — 12초 무입력에
+/// 브로드캐스트 0건, 다음 턴이 나야 걷혔다. R2는 그 브로드캐스트를 `Op::Dispose` →
+/// `status::clear_runtime`에 매달았지만 **두 삭제 경로 모두 행을 먼저 지운 뒤** 그 문을
+/// 두드려 `false`를 받았고(그리고 본채팅 삭제는 `Op::Dispose`를 아예 안 보냈다), 그 문은
+/// 태어날 때부터 닫혀 있었다.
+///
+/// 그래서 문을 옮겼다. 순서가 이 함수의 전부다:
+///
+/// 1. 지워진 id마다 `Op::Dispose`를 **던진다**(cast). 본채팅 삭제 경로에는 이 회수가
+///    아예 없었다 — 상주 CLI가 붙어 있으면 지운 대화의 프로세스가 그대로 남는다.
+/// 2. **배리어**: 허브는 잡을 FIFO로 처리하므로, 마지막 Dispose 뒤에 답이 오는 잡
+///    (`Op::Debug`)을 하나 걸어 두면 그 답이 곧 "전부 거뒀다"의 증표다. 허브가 없으면
+///    `send_job`이 실패해 **즉시** Null이 온다(3초를 기다리지 않는다).
+/// 3. 거두는 사이 늦은 전이가 행을 되앉혔을 수 있으니 한 번 더 지운다.
+/// 4. 그리고 **그제서야** `chat:status`(REPLACE)를 내보낸다.
+pub fn dispose_removed_chats(app: &AppHandle, removed: &[String]) {
+    if removed.is_empty() {
+        return;
+    }
+    for id in removed {
+        hub::cast(id, hub::Op::Dispose);
+    }
+    // 2 — FIFO 배리어. 값은 안 쓴다(허브가 죽었으면 Null이고, 그때는 거둘 런타임도 없다).
+    let _ = hub::call(removed[0].as_str(), hub::Op::Debug);
+    // 3 — 회수 도중의 늦은 `status::set`이 남긴 행까지 걷는다.
+    for id in removed {
+        let _ = ccg_store::status::forget_one(id);
+    }
+    // 4 — 값이 사라졌으니 REPLACE를 한 번 내보낸다. 이 한 줄이 G1의 답이다.
+    let _ = app.emit(ch::CHAT_STATUS, status_array());
 }
 
 // ── 채널 디스패치 ────────────────────────────────────────────────────────────

@@ -41,7 +41,7 @@ fn a_stale_renderer_copy_cannot_revert_the_runtime_identity() {
     });
     crate::chats_v3::set_owned(&victim, "identity", runtime.clone());
     // …그리고 디바운스가 끝난 낡은 사본이 도착한다
-    chats_save(&stale);
+    let _ = chats_save(&stale);
     let disk = h.read_json(&format!("chats-v3/{victim}.json")).unwrap();
     assert_eq!(disk["identity"], runtime, "낡은 렌더러 사본이 런타임 정체성을 되돌렸다(P3)");
 }
@@ -57,7 +57,7 @@ fn a_real_picker_edit_still_lands() {
             c["picker"]["model"] = json!("haiku");
         }
     }
-    chats_save(&blob);
+    let _ = chats_save(&blob);
     let disk = h.read_json(&format!("chats-v3/{victim}.json")).unwrap();
     assert_eq!(disk["identity"]["engine"]["model"], "haiku", "진짜 편집이 무시됐다");
 }
@@ -91,7 +91,7 @@ fn undoing_an_account_switch_reaches_the_identity_not_just_the_screen() {
                 c["picker"]["account"] = json!(account);
             }
         }
-        chats_save(&b);
+        let _ = chats_save(&b);
     };
     // ① 전환 — one → two. (지문이 다르니 R1에서도 통과하던 팔)
     save_with("two@ccg.test");
@@ -115,8 +115,8 @@ fn an_echoed_payload_leaves_the_identity_untouched() {
     let blob = chats_get(false, &[]);
     let victim = ids_of(&blob).into_iter().next().unwrap();
     let before = h.read_json(&format!("chats-v3/{victim}.json")).unwrap()["identity"].clone();
-    chats_save(&blob);
-    chats_save(&blob);
+    let _ = chats_save(&blob);
+    let _ = chats_save(&blob);
     assert_eq!(h.read_json(&format!("chats-v3/{victim}.json")).unwrap()["identity"], before);
 }
 
@@ -127,7 +127,7 @@ fn saving_the_main_chat_list_never_touches_panels_or_extra_chats() {
     let before = threads(&h);
     let blob = chats_get(false, &[]);
     assert!(ids_of(&blob).iter().all(|i| !i.starts_with("ma-")), "패널이 본채팅 목록에 샜다");
-    chats_save(&blob);
+    let _ = chats_save(&blob);
     assert_eq!(threads(&h), before, "남의 칸이 지워졌다");
 }
 
@@ -140,7 +140,7 @@ fn dropping_one_chat_from_the_payload_prunes_exactly_that_one() {
     let kept: Vec<Value> =
         blob["chats"].as_array().unwrap().iter().filter(|c| c["id"] != json!(drop.clone())).cloned().collect();
     blob["chats"] = json!(kept);
-    chats_save(&blob);
+    let _ = chats_save(&blob);
     let after = threads(&h);
     let lost: Vec<&String> = before.keys().filter(|k| !after.contains_key(*k)).collect();
     assert_eq!(lost, vec![&drop], "prune 범위가 틀렸다");
@@ -162,7 +162,7 @@ fn records_without_an_origin_are_invisible_and_undeletable() {
 
     let blob = chats_get(false, &[]);
     assert!(!ids_of(&blob).contains(&"rust-made".to_string()), "origin 없는 레코드가 본채팅 목록으로 샜다");
-    chats_save(&blob);
+    let _ = chats_save(&blob);
     assert!(h.path("chats-v3/rust-made.json").is_file(), "origin 없는 레코드가 낡은 저장 한 번에 삭제됐다");
 }
 
@@ -173,7 +173,7 @@ fn a_partial_ma_save_keeps_boards_it_was_never_handed() {
     let before = threads(&h);
     // 이 프로세스는 sess-B를 내준 적이 없다(다른 창·재시작) → 지울 근거가 없다
     let one = json!({ "version": 2, "activeSessionId": "sess-A", "sessions": [ma_session("sess-A", false)] });
-    ma_save(&one);
+    let _ = ma_save(&one);
     assert_eq!(threads(&h), before, "안 내준 보드의 패널 대화를 지웠다");
     let boards = crate::boards::read_boards();
     let ids: Vec<&str> = boards["boards"].as_array().unwrap().iter().filter_map(|b| b["id"].as_str()).collect();
@@ -186,7 +186,7 @@ fn deleting_a_session_the_renderer_actually_holds_still_works() {
     let full = ma_get(false); // ← 여기서 두 보드를 내준다 = 삭제 후보가 된다
     let kept: Vec<Value> =
         full["sessions"].as_array().unwrap().iter().filter(|s| s["id"] != json!("sess-B")).cloned().collect();
-    ma_save(&json!({ "version": 2, "activeSessionId": "sess-A", "sessions": kept }));
+    let _ = ma_save(&json!({ "version": 2, "activeSessionId": "sess-A", "sessions": kept }));
     let boards = crate::boards::read_boards();
     let ids: Vec<&str> = boards["boards"].as_array().unwrap().iter().filter_map(|b| b["id"].as_str()).collect();
     assert!(!ids.contains(&"sess-B"), "렌더러가 지운 세션이 안 지워졌다");
@@ -197,7 +197,7 @@ fn deleting_a_session_the_renderer_actually_holds_still_works() {
 fn a_marker_session_save_keeps_every_panel() {
     let h = migrated("bridge-mamarker");
     let before = threads(&h);
-    ma_save(&ma_get(true)); // light = 비활성 세션이 마커
+    let _ = ma_save(&ma_get(true)); // light = 비활성 세션이 마커
     assert_eq!(threads(&h), before, "마커 세션 저장이 패널 대화를 지웠다");
 }
 
@@ -206,8 +206,8 @@ fn the_alias_round_trip_is_idempotent() {
     let h = migrated("bridge-idem");
     let mut prev = String::new();
     for i in 0..3 {
-        chats_save(&chats_get(false, &[]));
-        ma_save(&ma_get(false));
+        let _ = chats_save(&chats_get(false, &[]));
+        let _ = ma_save(&ma_get(false));
         let now = crate::raw_identity::canon_bytes(&json!({
             "chats": crate::chats_v3::read_chats(false, &[]),
             "boards": crate::boards::read_boards(),
@@ -248,7 +248,7 @@ fn the_api_mode_account_survives_a_full_alias_round_trip() {
     let blob = chats_get(false, &[]);
     let c = blob["chats"].as_array().unwrap().iter().find(|c| c["id"] == json!("c-1")).unwrap().clone();
     assert_eq!(c["picker"]["account"], "u0@x.com");
-    chats_save(&blob);
+    let _ = chats_save(&blob);
     assert_eq!(h.read_json("chats-v3/c-1.json").unwrap()["legacyAccount"], "u0@x.com");
 }
 
@@ -351,6 +351,6 @@ fn a_brand_new_session_chat_lands_in_the_index() {
     assert!(ids.contains(&"sc-1700000000000-1".to_string()), "목록에 안 뜬다: {ids:?}");
     // 그 뒤의 본채팅 저장 한 번이 이 레코드를 지우면 안 된다(origin 칸막이).
     let blob = chats_get(false, &[]);
-    chats_save(&blob);
+    let _ = chats_save(&blob);
     assert!(h.read_json("chats-v3/sc-1700000000000-1.json").is_some(), "본채팅 저장이 추가 채팅을 prune했다");
 }

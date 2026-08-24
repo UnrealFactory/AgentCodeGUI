@@ -15,7 +15,7 @@ use super::{arg, ch};
 use serde_json::{json, Value};
 use tauri::AppHandle;
 
-pub fn dispatch(_app: &AppHandle, channel: &str, p: &Value) -> Option<Value> {
+pub fn dispatch(app: &AppHandle, channel: &str, p: &Value) -> Option<Value> {
     // 첫 통합 채널 접촉에서 1회 마이그레이션(이미 됐으면 no-op)
     if matches!(
         channel,
@@ -48,8 +48,13 @@ pub fn dispatch(_app: &AppHandle, channel: &str, p: &Value) -> Option<Value> {
             Some(id) => ccg_store::legacy_bridge::chats_load(id),
             None => Value::Null,
         },
+        // ★R28b ACCT R3(G1) — **삭제는 여기로만 온다.** 사이드바의 삭제는 목록 REPLACE
+        // 저장 한 번이고, `Op::Dispose`는 그 길에 없다. 그러니 지운 목록을 받아 런타임을
+        // 거두고(좀비 CLI) `chat:status`를 한 번 내보내는 자리도 여기다 — 안 그러면
+        // 지운 대화가 계정을 문 채 picker에 「사용 중 · 다른 자리」로 남는다.
         ch::CHATS_SAVE => {
-            ccg_store::legacy_bridge::chats_save(arg(p, 0));
+            let removed = ccg_store::legacy_bridge::chats_save(arg(p, 0));
+            crate::engine::dispose_removed_chats(app, &removed);
             Value::Null
         }
         // ★ 즉시 반영 — 저장 디바운스와 무관해야 "전환 직후 전송"이 남의 런타임에 안 붙는다
@@ -66,7 +71,8 @@ pub fn dispatch(_app: &AppHandle, channel: &str, p: &Value) -> Option<Value> {
         // ── 멀티 별칭 (board:* + chats:* 재조립) ───────────────────────────
         ch::MA_GET => ccg_store::legacy_bridge::ma_get(true),
         ch::MA_SAVE => {
-            ccg_store::legacy_bridge::ma_save(arg(p, 0));
+            let removed = ccg_store::legacy_bridge::ma_save(arg(p, 0));
+            crate::engine::dispose_removed_chats(app, &removed);
             Value::Null
         }
         ch::MA_LOAD_SESSION => match arg(p, 0).as_str() {
