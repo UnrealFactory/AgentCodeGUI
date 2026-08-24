@@ -306,7 +306,10 @@ export interface WindowApi {
   }
   /** Claude Code engine (SDK) version management. */
   engine: {
-    listAvailable(): Promise<{ latest: string | null; versions: EngineVersionEntry[] }>
+    /** `error`는 ★3.0이 얹은 필드 — 2.6.2는 예외를 던지고 렌더러가 catch했지만, 3.0 계약면은
+     *  값이라 실패 사유가 여기로 온다(`{latest:null, versions:[], error}`). 이 필드를 안 읽으면
+     *  npm(Node.js)이 없는 컴퓨터에서 화면이 **목록 0개 + 오류 0줄**이 된다(CRIT R1). */
+    listAvailable(): Promise<{ latest: string | null; versions: EngineVersionEntry[]; error?: string }>
     state(): Promise<EngineVersionState>
     install(version: string): Promise<{ ok: boolean; error?: string }>
     uninstall(version: string): Promise<void>
@@ -317,7 +320,8 @@ export interface WindowApi {
   }
   /** Codex CLI 버전 관리 — Claude Code와 동일한 문법 (state.bundled 자리는 전역 codex 버전 폴백). */
   codexEngine: {
-    listAvailable(): Promise<{ latest: string | null; versions: EngineVersionEntry[] }>
+    /** `error` — 위 `engine.listAvailable`과 같은 규약(CRIT R1). */
+    listAvailable(): Promise<{ latest: string | null; versions: EngineVersionEntry[]; error?: string }>
     state(): Promise<EngineVersionState>
     install(version: string): Promise<{ ok: boolean; error?: string }>
     uninstall(version: string): Promise<void>

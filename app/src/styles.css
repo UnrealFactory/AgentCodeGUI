@@ -3411,6 +3411,9 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
 .vpick-list{ max-height:288px; overflow-y:auto; padding:4px; }
 .vpick-msg{ display:flex; align-items:center; gap:8px; padding:16px 10px; font-size:12px; color:var(--text-4); }
 .vpick-msg.err{ color:var(--red); }
+/* ★CRIT R1 — 실패 사유 한 줄(제목 아래). 제목만 있으면 npm 없는 컴퓨터의 사용자는 원인을 못 짚는다. */
+.vpick-msg.err{ flex-direction:column; align-items:flex-start; gap:4px; }
+.vpick-why{ font-size:11.5px; line-height:1.5; color:var(--text-4); word-break:break-word; }
 .vpick-opt{ width:100%; display:flex; align-items:center; gap:7px; padding:9px 10px; border-radius:8px; text-align:left; transition:background .12s, box-shadow .12s; }
 .vpick-opt:hover{ background:var(--surface-2); box-shadow:var(--hover-ring); }
 .vpick-opt.on{ background:var(--accent-soft); }
@@ -3490,6 +3493,9 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
 .sd-title{ margin-top:14px; font-size:16px; font-weight:700; letter-spacing:-.01em; color:var(--text); }
 .sd-msg{ margin-top:8px; font-size:13px; line-height:1.6; color:var(--text-3); word-break:break-word; max-height:200px; overflow-y:auto; }
 .sd-msg b{ color:var(--text); font-weight:700; }
+/* ★CRIT R1 — 안내 카드가 싣는 **채널이 준 사유**(예: npm 실행 실패). 본문보다 한 단 낮게. */
+.sd-why{ margin-top:10px; padding:8px 10px; background:var(--surface-2); border-radius:8px;
+         font-family:var(--font-mono); font-size:11.5px; line-height:1.5; color:var(--text-4); word-break:break-word; }
 .sd-input{ width:100%; margin-top:15px; padding:11px 13px; background:var(--bg); border:1px solid var(--line-2); border-radius:10px; font-family:inherit; font-size:14px; color:var(--text); outline:none; transition:border-color .16s, box-shadow .16s; }
 .sd-input:focus{ border-color:var(--accent-line); box-shadow:0 0 0 3px var(--accent-soft); }
 .sd-input::placeholder{ color:var(--text-4); }

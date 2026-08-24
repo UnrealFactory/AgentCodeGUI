@@ -992,7 +992,16 @@ function EngineCard({
     setListError(null)
     api
       .listAvailable()
-      .then((r) => setAvailable(r.versions))
+      .then((r) => {
+        setAvailable(r.versions)
+        // ★CRIT R1 — **사유를 값으로 읽는다.** 3.0은 실패를 던지지 않고
+        // `{latest:null, versions:[], error}`로 내리는데(`ccg-engine/src/versions.rs:57`),
+        // 여기가 `r.versions`만 읽어 `listError`가 영영 `null`이었다. 그래서 npm(Node.js)이
+        // 없는 컴퓨터에서 **목록 0개 + 오류 문구 0줄**이 됐다(R28 T1T2 확인 크리틱 R2 §5.2
+        // 실측: 2.6.2는 같은 판에서 274개를 그린다). 값이 왔으면 사유는 안 띄운다 —
+        // 부분 실패(한쪽 채널만 죽음)에서 목록을 지우는 쪽이 더 나쁘다.
+        setListError(r.versions.length === 0 ? (r.error ?? null) : null)
+      })
       .catch((e: unknown) => setListError(String((e as Error)?.message ?? e)))
       .finally(() => setLoading(false))
   }
@@ -1231,7 +1240,12 @@ function EngineCard({
                         <span className="set-spin" /> {t('불러오는 중…', 'Loading…')}
                       </div>
                     ) : listError && rows.length === 0 ? (
-                      <div className="vpick-msg err">{t('목록을 불러오지 못했습니다', 'Could not load the list')}</div>
+                      // ★CRIT R1 — 제목 아래 **사유 한 줄**. 「목록을 불러오지 못했습니다」만
+                      // 있으면 npm이 없는 컴퓨터의 사용자는 무엇을 해야 할지 영영 모른다.
+                      <div className="vpick-msg err">
+                        <div>{t('목록을 불러오지 못했습니다', 'Could not load the list')}</div>
+                        <div className="vpick-why">{listError}</div>
+                      </div>
                     ) : (
                       rows.map((v) => {
                         const installed = state?.installed.includes(v.version) ?? false

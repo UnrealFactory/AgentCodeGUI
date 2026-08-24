@@ -3,7 +3,7 @@ import type { EngineUpdateStatus } from '@shared/protocol'
 import { t } from '../lib/i18n'
 import { IconAlert, IconCheck, IconClaude } from './icons'
 
-type Phase = 'hidden' | 'prompt' | 'installing' | 'done' | 'error'
+type Phase = 'hidden' | 'prompt' | 'blocked' | 'installing' | 'done' | 'error'
 
 /**
  * 부팅 업데이터가 **결론**을 낼 때까지 기다린다 — 결론은 둘 중 하나다:
@@ -47,8 +47,32 @@ export function EngineGate() {
   const [target, setTarget] = useState('') // latest version to install
   const [log, setLog] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [why, setWhy] = useState<string | null>(null) // ★CRIT R1 — 최신 버전을 못 알아낸 사유
   const logRef = useRef<HTMLDivElement>(null)
   const installingRef = useRef(false)
+
+  /**
+   * ③의 마지막 걸음 — "무엇을 깔아야 하는지"를 알아내 안내한다.
+   *
+   * ★CRIT R1 — **모르면 물러나던 자리**(`if (!latest) return`). R28 T1T2 확인 크리틱 R2 §5.1이
+   * 실측한 그 인구가 여기로 떨어진다: **네트워크는 있고 npm(Node.js)만 없는 컴퓨터.**
+   * 3.0은 조회까지 `npm view`라(`ccg-engine/src/versions.rs`) `latest`를 모르고, 그래서
+   * 45초 동안 카드가 **0장**이었다 — 같은 판에서 2.6.2는 4.3초에 사유가 적힌 카드를 띄운다.
+   * 엔진도 없고 최신 버전도 모른다는 것은 **아무것도 못 하는 상태**이고, 그 상태에서
+   * 침묵하는 것이 D7 위반이다. 사유는 채널이 값으로 내려 준다(`{latest, versions, error}`).
+   */
+  const probe = async (): Promise<void> => {
+    const avail = await window.api.engine.listAvailable()
+    const latest = avail.latest
+    if (latest) {
+      setTarget(latest)
+      setWhy(null)
+      setPhase('prompt')
+      return
+    }
+    setWhy(avail.error ?? null)
+    setPhase('blocked')
+  }
 
   // one-time check on mount
   useEffect(() => {
@@ -62,15 +86,10 @@ export function EngineGate() {
         // ② 엔진이 없다 — 부팅 업데이터가 그 일을 맡았는지 결론을 기다린다.
         const boot = await settleBootUpdater()
         if (!alive || boot?.active) return // 맡았다 → 진행은 EngineUpdateGate의 몫
-        // ③ 아무도 안 돈다. 이제 "무엇을 깔아야 하는지"를 알아내 안내한다.
-        const avail = await window.api.engine.listAvailable()
-        if (!alive) return
-        const latest = avail.latest
-        if (!latest) return // can't determine latest (offline) → stay hidden
-        setTarget(latest)
-        setPhase('prompt')
+        // ③ 아무도 안 돈다 → 안내(최신 버전을 알면 설치 제안, 모르면 사유).
+        if (alive) await probe()
       } catch {
-        /* offline / error → stay hidden, settings still lets them install */
+        /* 채널 자체가 죽었다 = 앱이 더 큰 문제다. 설정에서 다시 시도할 수 있다. */
       }
     })()
     return () => {
@@ -83,7 +102,9 @@ export function EngineGate() {
   useEffect(() => {
     return (
       window.api.engineUpdate?.onEvent?.((s) => {
-        if (s.active && !s.done) setPhase((p) => (p === 'prompt' ? 'hidden' : p))
+        // ★CRIT R1 — 「모른다」 카드도 같이 접는다: 업데이터가 뒤늦게 일을 맡았다면
+        // 그 진행 카드가 정답이고, 우리 안내는 그 순간부터 거짓말이다.
+        if (s.active && !s.done) setPhase((p) => (p === 'prompt' || p === 'blocked' ? 'hidden' : p))
       }) ?? undefined
     )
   }, [])
@@ -144,6 +165,41 @@ export function EngineGate() {
             </button>
             <button className="sd-go" onClick={doInstall}>
               {t('설치', 'Install')}
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // ★CRIT R1 — 엔진도 없고 최신 버전도 못 알아냈다. **가장 흔한 원인은 npm(Node.js) 부재**다
+  // (3.0은 조회까지 `npm view`를 쓴다). 사유를 그대로 보여 주고, 고친 뒤 다시 시도할 문을 준다.
+  if (phase === 'blocked') {
+    return (
+      <div className="set-dialog-overlay">
+        <div className="set-dialog" onMouseDown={(e) => e.stopPropagation()}>
+          <div className="sd-ic warn">
+            <IconAlert size={22} />
+          </div>
+          <div className="sd-title">{t('엔진을 설치할 수 없어요', 'Cannot install the engine')}</div>
+          <div className="sd-msg">
+            {t(
+              'Claude Code 엔진이 설치되지 않았는데, 설치할 버전 목록을 가져오지 못했습니다. 엔진 설치에는 npm(Node.js)이 필요해요 — Node.js를 설치한 뒤 다시 시도하세요.',
+              "The Claude Code engine isn't installed, and the available versions couldn't be fetched. Installing the engine needs npm (Node.js) — install Node.js and try again."
+            )}
+            {why && <div className="sd-why">{why}</div>}
+          </div>
+          <div className="sd-btns">
+            <button className="sd-cancel" onClick={() => setPhase('hidden')}>
+              {t('나중에', 'Later')}
+            </button>
+            <button
+              className="sd-go"
+              onClick={() => {
+                void probe().catch(() => {})
+              }}
+            >
+              {t('다시 시도', 'Retry')}
             </button>
           </div>
         </div>
