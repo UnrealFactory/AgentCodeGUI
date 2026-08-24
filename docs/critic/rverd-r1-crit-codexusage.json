@@ -1,0 +1,104 @@
+{
+  "at": "2026-08-24T15:10:39.044Z",
+  "exe": "C:/Code/AgentCodeGUI/target-rverd/release/agentcodegui.exe",
+  "steps": {
+    "raw": [
+      {
+        "email": "rverd-a@openai.test",
+        "planType": "pro",
+        "windows": [
+          {
+            "label": "5시간",
+            "usedPct": 100,
+            "resetsAt": 1787587839
+          },
+          {
+            "label": "주간",
+            "usedPct": 12,
+            "resetsAt": 1787674239
+          }
+        ]
+      },
+      {
+        "email": "rverd-b@openai.test",
+        "planType": "pro",
+        "windows": [
+          {
+            "label": "5시간",
+            "usedPct": 100,
+            "resetsAt": 1787587839
+          },
+          {
+            "label": "주간",
+            "usedPct": 12,
+            "resetsAt": 1787674239
+          }
+        ]
+      }
+    ],
+    "firstCallMs": 82,
+    "via": [
+      {
+        "email": "rverd-a@openai.test",
+        "planType": "pro",
+        "windows": [
+          {
+            "label": "5시간",
+            "usedPct": 100,
+            "resetsAt": 1787587839
+          },
+          {
+            "label": "주간",
+            "usedPct": 12,
+            "resetsAt": 1787674239
+          }
+        ]
+      },
+      {
+        "email": "rverd-b@openai.test",
+        "planType": "pro",
+        "windows": [
+          {
+            "label": "5시간",
+            "usedPct": 100,
+            "resetsAt": 1787587839
+          },
+          {
+            "label": "주간",
+            "usedPct": 12,
+            "resetsAt": 1787674239
+          }
+        ]
+      }
+    ],
+    "wire": "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"clientInfo\":{\"name\":\"agentcodegui\",\"title\":\"AgentCodeGUI\",\"version\":\"3.0.0\"},\"capabilities\":{\"experimentalApi\":true}}}\n{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"account/rateLimits/read\",\"params\":{}}\n{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"clientInfo\":{\"name\":\"agentcodegui\",\"title\":\"AgentCodeGUI\",\"version\":\"3.0.0\"},\"capabilities\":{\"experimentalApi\":true}}}\n{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"account/rateLimits/read\",\"params\":{}}\n",
+    "secondCall": {
+      "ms": 2,
+      "asks": 2,
+      "len": 2
+    },
+    "accounts": [
+      {
+        "email": "rverd-a@openai.test",
+        "plan": "pro",
+        "isDefault": true
+      },
+      {
+        "email": "rverd-b@openai.test",
+        "plan": "pro",
+        "isDefault": false
+      }
+    ],
+    "verdict": {
+      "unavailable": false,
+      "blockedUntil": 1787587839
+    },
+    "appLog": "[store] chats-v3 마이그레이션: {\"ok\":true,\"migratedAt\":1787584240060.0,\"elapsedMs\":2.0,\"backupDir\":\"C:\\\\Code\\\\AgentCodeGUI\\\\.poc-home-rverd\\\\backup-2.6.2-1787584240060\",\"counts\":{\"chats\":0,\"maSessions\":0,\"maPanels\":0,\"sessionChats\":0,\"talkAbsorbed\":0,\"carried\":0,\"keptV3\":0,\"keptV3Boards\":0,\"total\":0,\"messages\":0,\"boards\":1},\"idMap\":{},\"order\":[],\"activeChatId\":\"\",\"boardOrder\":[\"default\"],\"activeBoardId\":\"default\",\"activeSessionId\":\"\",\"btw\":{\"rewritten\":0,\"dropped\":0},\"holdMoved\":0,\"sourceIndexOrders\":{\"chats\":[],\"multiAgent\":[],\"sessionChats\":[]},\"warnings\":[]}\n"
+  },
+  "findings": [],
+  "seed": {
+    "resetsAt": 1787587839
+  },
+  "pass": 9,
+  "fail": 0
+}
