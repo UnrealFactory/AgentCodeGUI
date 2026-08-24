@@ -10,9 +10,12 @@
 // 산출: bench/shots/<app>/<id>.png + bench/shots/<app>/report.json
 //
 // [공정성 규약]
-//  - 창 크기와 배경을 두 앱에 똑같이 강제한다(Browser.setWindowBounds + 기본 배경 오버라이드).
-//    아크릴 블러는 CDP 캡처에 애초에 안 담기므로, 투명 대신 같은 불투명 배경을 깔아야
-//    "한쪽만 배경이 비침" 같은 가짜 차이가 안 생긴다.
+//  - 배경만 두 앱에 똑같이 강제한다(기본 배경 오버라이드). 아크릴 블러는 CDP 캡처에
+//    애초에 안 담기므로, 투명 대신 같은 불투명 배경을 깔아야 "한쪽만 배경이 비침" 같은
+//    가짜 차이가 안 생긴다.
+//  - 창 크기는 **강제하지 않는다**. `Browser.setWindowBounds`가 3.0에만 먹는 한쪽짜리
+//    레버라, 강제하면 두 앱 사진이 서로 다른 캔버스가 된다(settleWindowSize 주석).
+//    대신 앱이 자기 크기를 적용할 때까지 기다렸다 찍고, 끝에 반대편 리포트와 맞춰 본다.
 //  - reach/assert/reset은 screens.mjs 한 벌뿐 — 앱별 분기가 없다.
 //  - assert 실패는 치명이 아니라 기록이다. 러너는 다음 화면으로 간다.
 import fs from 'node:fs'
@@ -55,7 +58,7 @@ const profile = kind === 'tauri' ? tauriProfile({ port: PORT, exe: EXE }) : elec
 const APP_VERSION = kind === 'tauri' ? '3.0.0-beta.1' : '2.6.2'
 const HOME = path.join(os.tmpdir(), `ccg-screens-${kind}${TAG ? '-' + TAG : ''}`)
 const OUT = path.join(REPO, 'bench', 'shots', kind + (TAG ? '-' + TAG : ''))
-const VIEW = { width: 1440, height: 900 }
+const SIBLING_OUT = path.join(REPO, 'bench', 'shots', (kind === 'tauri' ? 'electron' : 'tauri') + (TAG ? '-' + TAG : ''))
 
 fs.mkdirSync(OUT, { recursive: true })
 
@@ -138,16 +141,36 @@ async function prepPage(cdp, { bg = true } = {}) {
   }
 }
 
-/** 두 앱의 창 크기를 같게 — 실패해도(도메인 미지원) 조용히 넘어간다. */
-async function fixWindowSize(cdp) {
-  try {
-    const { windowId } = await cdp.send('Browser.getWindowForTarget', {})
-    await cdp.send('Browser.setWindowBounds', { windowId, bounds: { windowState: 'normal' } })
-    await cdp.send('Browser.setWindowBounds', { windowId, bounds: { left: 40, top: 40, width: VIEW.width, height: VIEW.height } })
-    await sleep(700)
-    return true
-  } catch {
-    return false
+/**
+ * 캔버스를 **강제하지 않고**, 앱이 자기 창 크기를 적용할 때까지 기다렸다 그 값을 받는다.
+ *
+ * ★ 왜 강제를 버렸나 (M12 R2가 원인까지 파 놓고, R28b GIT R1 확인 크리틱이 그 대가를 잡았다)
+ *   `Browser.setWindowBounds`는 **Electron에서 안 먹는다**(CDP Browser 도메인 미지원 —
+ *   당시 리포트가 `windowSized: tauri true / electron false`로 스스로 적어 뒀다).
+ *   즉 그건 한쪽짜리 레버라, 강제하면 3.0만 1440×900으로 끌려가고 2.6.2는 자기 기본값
+ *   1320×880에 남는다. 그렇게 찍힌 19화면 A/B의 본 패스 17행은 **서로 다른 캔버스**의
+ *   사진 쌍이었고, 픽셀 비교의 전제가 깨진 채 파리티 근거로 쓰일 뻔했다.
+ *   두 앱은 같은 기본 창 크기를 쓴다(2.6.2 `src/main/index.ts` DEFAULT_STATE 1320×880 —
+ *   3.0이 그대로 승계). **기다리면 저절로 같아진다** — 그게 M12 R2가 적어 둔 처방이다.
+ *
+ * 배경 오버라이드(`prepPage`)는 그대로 둔다: 그건 두 앱에 **똑같이** 먹는다.
+ */
+async function settleWindowSize(cdp, { ms = 15000, stableFor = 3, interval = 250 } = {}) {
+  const t0 = Date.now()
+  let last = null
+  let streak = 0
+  for (;;) {
+    const vp = await cdp.eval(`[innerWidth, innerHeight]`).catch(() => null)
+    if (Array.isArray(vp) && vp[0] > 0) {
+      const key = vp.join('x')
+      streak = key === last ? streak + 1 : 1
+      last = key
+      if (streak >= stableFor) return { vp, ms: Date.now() - t0, settled: true }
+    }
+    if (Date.now() - t0 > ms) {
+      return { vp: last ? last.split('x').map(Number) : null, ms: Date.now() - t0, settled: false }
+    }
+    await sleep(interval)
   }
 }
 
@@ -230,9 +253,27 @@ function windowHelpers(port) {
 }
 
 // ── 캡처 한 판 ──────────────────────────────────────────────────────────────────
+/**
+ * 찍고, **사진 자신의 픽셀 크기**를 돌려준다(PNG IHDR).
+ * 리포트가 사진의 크기를 들고 있으면 「리포트와 사진이 다른 말을 한다」가 다음 감사에서
+ * 손검사 없이 잡힌다 — R28b GIT R1의 실패는 정확히 그 대조를 사람이 해야 했던 자리다.
+ */
 async function shoot(cdp, id) {
   const r = await cdp.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false })
-  fs.writeFileSync(path.join(OUT, `${id}.png`), Buffer.from(r.data, 'base64'))
+  const buf = Buffer.from(r.data, 'base64')
+  fs.writeFileSync(path.join(OUT, `${id}.png`), buf)
+  return buf.length > 24 ? [buf.readUInt32BE(16), buf.readUInt32BE(20)] : null
+}
+
+/** 못 찍은 화면의 옛 PNG를 치운다 — 실패 행 옆에 남은 사진은 거짓 증거다. */
+function dropStalePng(id, row) {
+  const p = path.join(OUT, `${id}.png`)
+  try {
+    if (fs.existsSync(p)) {
+      fs.rmSync(p)
+      row.stalePngRemoved = true
+    }
+  } catch { /* 잠겼으면 다음 판에서 */ }
 }
 
 async function assertOn(cdp, sel, min = 1, ms = 8000) {
@@ -272,7 +313,16 @@ async function forceClean(cdp, ctx) {
 }
 
 // ── 메인 패스 ───────────────────────────────────────────────────────────────────
-const report = { app: profile.name, kind, at: new Date().toISOString(), viewport: VIEW, screens: [] }
+// `canvas`는 **잰 값**이다(옛 `viewport: VIEW`는 강제하려던 값이라, 강제가 한쪽에만
+// 먹는 순간 리포트가 자기 사진과 다른 숫자를 적게 됐다 — R28b GIT R1이 그렇게 어긋났다).
+const report = {
+  app: profile.name,
+  kind,
+  at: new Date().toISOString(),
+  sizePolicy: 'app-own — 하네스가 창 크기를 강제하지 않는다(settleWindowSize)',
+  canvas: null,
+  screens: []
+}
 const rec = (o) => { report.screens.push(o); return o }
 
 function wanted(s) {
@@ -286,10 +336,13 @@ async function mainPass() {
   try {
     cdp = await connectMain(profile.port, 90000)
     await prepPage(cdp)
-    const sized = await fixWindowSize(cdp)
-    report.windowSized = sized
     if (!(await waitMounted(cdp, 90000))) throw new Error('renderer never mounted')
     await sleep(3500) // 스레드 하이드레이션·git 스트립·아바타 안정화
+    // 캔버스는 강제하지 않고 **앱이 자기 크기를 적용한 뒤** 읽는다(settleWindowSize 주석).
+    const settled = await settleWindowSize(cdp)
+    report.canvas = settled.vp
+    report.canvasSettled = settled.settled
+    console.log(`[ab] 캔버스 ${JSON.stringify(settled.vp)}${settled.settled ? '' : ' (안정화 못 함)'} — ${settled.ms}ms`)
 
     const wh = windowHelpers(profile.port)
     const ctx = makeCtx(cdp, {
@@ -329,7 +382,7 @@ async function mainPass() {
       for (;;) {
         const n = await cdp.eval(`document.querySelectorAll(${JSON.stringify(sel)}).length`).catch(() => 0)
         if (n > 0) {
-          await shoot(cdp, id)
+          ctx._shotPng = await shoot(cdp, id)
           ctx._shotFound = n
           return n
         }
@@ -355,6 +408,7 @@ async function mainPass() {
       // 루프 스코프에 둔다(M12 R2가 부팅 패스에만 남긴 기록을 본 패스로 끌어올린다).
       let shotCdp = cdp
       ctx._shotFound = null
+      ctx._shotPng = null
       try {
         await cdp.eval(HELPERS_JS)
         await s.reach(cdp, ctx)
@@ -362,13 +416,14 @@ async function mainPass() {
           // reach가 ctx.snapWhen으로 판정+촬영을 한꺼번에 끝낸 화면
           if (!ctx._shotFound) throw new Error('selfShot: reach가 캡처 시점을 보고하지 않음')
           row.found = ctx._shotFound
+          row.png = ctx._shotPng ?? null
           row.capturedInReach = true
         } else {
           if (s.win) shotCdp = sub = await wh.attachWindow(s.win, 15000)
           if (s.win) await sleep(600)
           row.found = await assertOn(shotCdp, s.assert, s.assertMin ?? 1, 9000)
           await sleep(s.settle ?? 400)
-          if (!s.internal) await shoot(shotCdp, s.id)
+          if (!s.internal) row.png = await shoot(shotCdp, s.id)
         }
         row.ok = true
       } catch (e) {
@@ -378,6 +433,9 @@ async function mainPass() {
       //   넣어서, 그 라운드가 실측으로 밝힌 「두 앱 캔버스 어긋남」을 본 패스 18행에서는
       //   다시 눈으로 찾아야 했다. reset 전에 읽는다 — reset이 창을 닫을 수 있다.
       row.viewport = await shotCdp.eval(`[innerWidth, innerHeight]`).catch(() => null)
+      // 실패한 행이 **옛 실행의 PNG**를 남겨 두면 그 사진이 이번 판의 증거처럼 읽힌다 —
+      // R28b GIT R1의 settings-engine-confirm 두 장이 정확히 그랬다(두 시간 전 실행분).
+      if (!row.ok && !s.internal) dropStalePng(s.id, row)
       ctx.sub = sub
       try { if (s.reset) await s.reset(cdp, ctx) } catch (e) { row.resetError = String(e.message ?? e).slice(0, 200) }
       if (sub) { try { sub.close() } catch { /* 닫힘 */ } ctx.sub = null }
@@ -425,8 +483,8 @@ async function bootPass(variantKey) {
         for (;;) {
           const n = await c.eval(`document.querySelectorAll(${JSON.stringify(s.assert)}).length`).catch(() => 0)
           if (n >= (s.assertMin ?? 1)) {
-            await shoot(c, s.id)
-            return { n, vp: await c.eval(`[innerWidth, innerHeight]`).catch(() => null) }
+            const png = await shoot(c, s.id)
+            return { n, png, vp: await c.eval(`[innerWidth, innerHeight]`).catch(() => null) }
           }
           if (Date.now() - t1 > ms) throw new Error(`스플래시 셀렉터 미포착: ${s.assert}`)
           await sleep(interval)
@@ -447,8 +505,9 @@ async function bootPass(variantKey) {
               const row = { id: s.id, label: s.label, area: s.area, surface: s.surface, ok: false, ms: Date.now() - t0, via: 'separate-window' }
               // 스플래시는 두 앱의 캔버스가 **일부러** 다르다(2.6.2 별도 창 vs 3.0 창 안
               // 오버레이). M12 R2가 손으로 적어 둔 그 사실을 행에 남긴다.
-              try { const got = await shotWhen(c, s, 3000); row.found = got.n; row.viewport = got.vp; row.ok = true }
+              try { const got = await shotWhen(c, s, 3000); row.found = got.n; row.viewport = got.vp; row.png = got.png; row.ok = true }
               catch (e) { row.error = String(e.message ?? e).slice(0, 300) }
+              if (!row.ok) dropStalePng(s.id, row)
               rec(row)
               console.log(`${row.ok ? 'OK ' : 'FAIL'} ${s.id} (boot:${variantKey}/별도창)${row.error ? ' — ' + row.error : ''}`)
             }
@@ -472,7 +531,8 @@ async function bootPass(variantKey) {
       const c = await connectMain(profile.port, 90000)
       try {
         await prepPage(c, { bg: false })
-        await fixWindowSize(c)
+        // 크기 강제 없음 — 스플래시는 한 프레임짜리라 settle을 못 기다린다. 그래서 더더욱
+        // 강제하면 안 된다(강제는 3.0에만 먹어 두 앱 캔버스를 갈라놓는다).
         for (const s of screens) {
           const row = { id: s.id, label: s.label, area: s.area, surface: s.surface, ok: false, ms: 0, via: 'in-window-overlay' }
           const st = Date.now()
@@ -482,9 +542,11 @@ async function bootPass(variantKey) {
             const got = await shotWhen(c, s, fb.ms ?? 25000)
             row.found = got.n
             row.viewport = got.vp
+            row.png = got.png
             row.ok = true
           } catch (e) { row.error = String(e.message ?? e).slice(0, 300) }
           await c.send('Emulation.setCPUThrottlingRate', { rate: 1 }).catch(() => {})
+          if (!row.ok) dropStalePng(s.id, row)
           row.ms = Date.now() - st
           rec(row)
           console.log(`${row.ok ? 'OK ' : 'FAIL'} ${s.id} (boot:${variantKey}/창안)${row.error ? ' — ' + row.error : ''}`)
@@ -496,19 +558,16 @@ async function bootPass(variantKey) {
     cdp = await connectMain(profile.port, 90000)
     await prepPage(cdp)
     if (v.throttle) await cdp.send('Emulation.setCPUThrottlingRate', { rate: v.throttle }).catch(() => {})
-    await fixWindowSize(cdp)
-    // ★ M12 R2 — 부팅 패스의 크기 함정(실측으로 원인까지 팠다).
-    //   · `Browser.setWindowBounds`는 **Electron에서 안 먹는다**(report.windowSized=false).
-    //     즉 `fixWindowSize`는 3.0에만 듣는 한쪽짜리 레버다.
-    //   · 두 앱의 캔버스가 실제로 같아지는 이유는 CDP가 아니라 **같은 기본 창 크기**다
-    //     (2.6.2 `src/main/index.ts:293` DEFAULT_STATE 1320×880 — 3.0이 그대로 승계).
-    //   · 그래서 캡처 전에 크기를 **다시 강제하면 안 된다**. 강제하면 3.0만 1440×900으로
-    //     끌려가 electron 1320×880과 어긋난다(실측: limit-hold-bar가 그렇게 어긋나 있었다).
-    //     맞는 처방은 「앱이 자기 상태를 적용할 때까지 기다렸다 찍는다」이다.
+    // ★ M12 R2가 원인까지 팠고, R28b GIT R1 확인 크리틱이 그 대가를 잡은 자리.
+    //   `Browser.setWindowBounds`는 3.0에만 먹는 한쪽짜리 레버라 **강제를 아예 뺐다**
+    //   (settleWindowSize 주석). 두 앱의 캔버스가 같아지는 이유는 CDP가 아니라 같은 기본
+    //   창 크기다(2.6.2 `src/main/index.ts:293` DEFAULT_STATE 1320×880 — 3.0이 승계).
     // 한 프레임짜리 화면(multi-hydrate·스플래시)은 마운트를 기다리면 놓치므로 **옵트인**이다.
     if (v.settleSize) {
       await waitMounted(cdp, 90000)
       await sleep(1200)
+      const settled = await settleWindowSize(cdp)
+      console.log(`[ab] boot:${variantKey} 캔버스 ${JSON.stringify(settled.vp)}${settled.settled ? '' : ' (안정화 못 함)'}`)
     }
     for (const s of screens) {
       const row = { id: s.id, label: s.label, area: s.area, surface: s.surface, ok: false, ms: 0 }
@@ -516,10 +575,11 @@ async function bootPass(variantKey) {
       try {
         row.found = await assertOn(cdp, s.assert, s.assertMin ?? 1, v.throttle ? 25000 : 40000)
         await sleep(250)
-        await shoot(cdp, s.id)
+        row.png = await shoot(cdp, s.id)
         row.ok = true
       } catch (e) { row.error = String(e.message ?? e).slice(0, 300) }
       row.viewport = await cdp.eval(`[innerWidth, innerHeight]`).catch(() => null)
+      if (!row.ok) dropStalePng(s.id, row)
       row.ms = Date.now() - st
       rec(row)
       console.log(`${row.ok ? 'OK ' : 'FAIL'} ${s.id} (boot:${variantKey})${row.error ? ' — ' + row.error : ''}`)
@@ -578,17 +638,22 @@ try { fs.writeFileSync(scratch.sample, SCRATCH_SNAPSHOT) } catch { /* 무시 */ 
 // 않는다(png는 어차피 이전 실행 것이 남아 있다). 병합 없이 --only를 쓰면 report.json이
 // 그 몇 줄로 줄어들어 "전체 성공률"이 거짓말이 된다.
 let prev = null
+// ①번 경고가 볼 것은 **이번 판이 실제로 돈 행 수**다(병합 뒤 총계가 아니다).
+// --merge를 붙이면 총계는 당연히 --only보다 많아지므로, 병합 전에 세어 둔다.
+const ranRows = report.screens.length
 try { prev = JSON.parse(fs.readFileSync(path.join(OUT, 'report.json'), 'utf8')) } catch { /* 없거나 깨짐 */ }
+const ORDER = new Map(SCREENS.map((s, i) => [s.id, i]))
 if (MERGE && prev) {
   try {
     const now = new Map(report.screens.map((r) => [r.id, r]))
-    const order = new Map(SCREENS.map((s, i) => [s.id, i]))
-    const merged = [...(prev.screens ?? []).filter((r) => !now.has(r.id)), ...report.screens]
-    merged.sort((a, b) => (order.get(a.id) ?? 999) - (order.get(b.id) ?? 999))
-    report.screens = merged
+    report.screens = [...(prev.screens ?? []).filter((r) => !now.has(r.id)), ...report.screens]
     report.mergedFrom = prev.at
   } catch { /* 이전 리포트가 깨졌으면 이번 것만 남긴다 */ }
 }
+// 행 순서는 **항상 screens.mjs 정의 순서**다. 예전엔 병합할 때만 정렬해서, 통짜 실행은
+// 실행 순서(본 패스 → 부팅)로 남고 병합본은 정의 순서로 남았다 — 두 앱 리포트를 나란히
+// 놓고 비교하는 것이 파리티 감사가 하는 일인데, 그때 행이 서로 밀려 있었다.
+report.screens.sort((a, b) => (ORDER.get(a.id) ?? 999) - (ORDER.get(b.id) ?? 999))
 
 const defined = SCREENS.filter((s) => !s.internal).length
 const skipped = report.screens.filter((r) => r.skipped)
@@ -607,12 +672,47 @@ report.summary = {
 //  ① --only로 고른 개수와 집계 행 수가 어긋남 = 도달 못 한 화면이 통째로 빠졌다는 뜻.
 //  ② --merge 없이 **더 짧은** 리포트로 덮어쓰기 — M12 R2의 19행 증거가 단건 재주행에
 //     덮여 1행으로 남은 그 사고다. ①만으로는 안 잡힌다(1개 요청·1행이면 숫자는 맞다).
-if (ONLY && attempted.length + skipped.length !== ONLY.size) {
-  console.error(`[ab] 경고 — --only ${ONLY.size}개인데 리포트는 ${attempted.length + skipped.length}행(시도 ${attempted.length}·skip ${skipped.length})`)
+if (ONLY && ranRows !== ONLY.size) {
+  console.error(`[ab] 경고 — --only ${ONLY.size}개인데 이번 판이 남긴 건 ${ranRows}행 — 도달 못 한 화면이 통째로 빠졌다`)
 }
 if (!MERGE && (prev?.screens?.length ?? 0) > report.screens.length) {
   console.error(`[ab] 경고 — 이전 리포트 ${prev.screens.length}행을 ${report.screens.length}행으로 덮어쓴다. 단건 재주행이면 --merge를 붙여라`)
 }
+
+// ── ③ 리포트가 **자기 사진과 다른 말**을 하는지 ─────────────────────────────────
+// row.viewport(잰 캔버스)와 row.png(PNG IHDR의 실제 픽셀)가 어긋나면, 그 행의 숫자로는
+// 사진을 설명할 수 없다. R28b GIT R1에서 이 대조는 사람이 해야 했고, 그래서 안 됐다.
+const pngOff = report.screens
+  .filter((r) => r.png && r.viewport && String(r.png) !== String(r.viewport))
+  .map((r) => `${r.id} vp${JSON.stringify(r.viewport)}≠png${JSON.stringify(r.png)}`)
+if (pngOff.length) {
+  report.pngViewportOff = pngOff
+  console.error(`[ab] 경고 — 리포트 숫자와 PNG 픽셀이 다른 행 ${pngOff.length}개: ${pngOff.slice(0, 3).join(' · ')}`)
+}
+
+// ── ④ 두 앱의 캔버스가 어긋난 채로 남는 것을 막는다 ─────────────────────────────
+//
+// A/B 사진 쌍은 **같은 캔버스**일 때만 픽셀 비교의 근거가 된다. R28b GIT R1은 3.0만
+// 1440×900으로 강제된 채 17행을 찍고도 그 사실을 모른 채 「두 앱 모두 1320×880」이라고
+// 적었다(리포트 자신은 반대를 적고 있었다). 이제 하네스가 반대편 리포트를 열어 화면별로
+// 맞춰 보고, 어긋나면 stderr로 말하고 `canvasMismatch`에 남긴다.
+// 스플래시는 구조가 **일부러** 다르다(2.6.2 별도 창 300×240 vs 3.0 창 안 오버레이) —
+// 그 행은 `via`가 이미 이유를 적고 있으므로 어긋남으로 세지 않는다.
+try {
+  const other = JSON.parse(fs.readFileSync(path.join(SIBLING_OUT, 'report.json'), 'utf8'))
+  const om = new Map((other.screens ?? []).filter((r) => r.viewport).map((r) => [r.id, r.viewport]))
+  const mismatch = report.screens
+    .filter((r) => r.viewport && om.has(r.id) && String(om.get(r.id)) !== String(r.viewport))
+    .filter((r) => !r.via) // via가 붙은 행 = 구조가 일부러 다른 자리(스플래시)
+    .map((r) => `${r.id} ${JSON.stringify(r.viewport)}≠${JSON.stringify(om.get(r.id))}`)
+  report.canvasComparedWith = { app: other.app, at: other.at, rows: om.size }
+  report.canvasMismatch = mismatch
+  if (mismatch.length) {
+    console.error(`[ab] 경고 — 두 앱 캔버스가 다른 화면 ${mismatch.length}개: ${mismatch.slice(0, 4).join(' · ')}${mismatch.length > 4 ? ' …' : ''}`)
+    console.error('[ab]        이 사진들은 픽셀 비교의 근거가 못 된다(캔버스가 다르면 레이아웃이 달라진다).')
+  }
+} catch { /* 반대편 리포트가 아직 없다 — 두 앱을 다 돌리면 채워진다 */ }
+
 fs.writeFileSync(path.join(OUT, 'report.json'), JSON.stringify(report, null, 2))
 
 console.log('\n──────────────── 요약 ────────────────')
