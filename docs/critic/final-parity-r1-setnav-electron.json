@@ -1,0 +1,79 @@
+{
+  "app": "electron-2.6.2",
+  "kind": "electron",
+  "at": "2026-08-24T03:34:29.427Z",
+  "rows": [
+    {
+      "id": "settings-display",
+      "ok": true,
+      "found": 3,
+      "ms": 1855
+    },
+    {
+      "id": "settings-language",
+      "ok": true,
+      "found": 1,
+      "ms": 2273
+    },
+    {
+      "id": "settings-code-lsp",
+      "ok": true,
+      "found": 5,
+      "ms": 2257
+    },
+    {
+      "id": "settings-code-expanded",
+      "ok": true,
+      "found": 1,
+      "ms": 2879
+    },
+    {
+      "id": "settings-explorer",
+      "ok": true,
+      "found": 1,
+      "ms": 2249
+    },
+    {
+      "id": "settings-gestures",
+      "ok": true,
+      "found": 2,
+      "ms": 2282
+    },
+    {
+      "id": "settings-talk",
+      "ok": false,
+      "error": "레일 항목 없음: Talk",
+      "optional": true,
+      "ms": 1294
+    },
+    {
+      "id": "autohide-preview",
+      "ok": true,
+      "found": 1,
+      "ms": 4844
+    },
+    {
+      "id": "sidebar-autohide-edge",
+      "ok": true,
+      "found": 1,
+      "ms": 6357
+    }
+  ],
+  "viewport": [
+    1320,
+    880
+  ],
+  "rail": [
+    "Profile",
+    "Account",
+    "Engine",
+    "API",
+    "MCP",
+    "Skill",
+    "Display",
+    "Language",
+    "Code",
+    "Explorer",
+    "Gestures"
+  ]
+}

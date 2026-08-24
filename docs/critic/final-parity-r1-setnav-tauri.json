@@ -1,0 +1,79 @@
+{
+  "app": "tauri-3.0.0",
+  "kind": "tauri",
+  "at": "2026-08-24T03:33:56.233Z",
+  "rows": [
+    {
+      "id": "settings-display",
+      "ok": true,
+      "found": 3,
+      "ms": 1864
+    },
+    {
+      "id": "settings-language",
+      "ok": true,
+      "found": 1,
+      "ms": 2274
+    },
+    {
+      "id": "settings-code-lsp",
+      "ok": true,
+      "found": 4,
+      "ms": 2291
+    },
+    {
+      "id": "settings-code-expanded",
+      "ok": true,
+      "found": 1,
+      "ms": 2889
+    },
+    {
+      "id": "settings-explorer",
+      "ok": true,
+      "found": 1,
+      "ms": 2287
+    },
+    {
+      "id": "settings-gestures",
+      "ok": true,
+      "found": 2,
+      "ms": 2279
+    },
+    {
+      "id": "settings-talk",
+      "ok": true,
+      "found": 5,
+      "ms": 2310
+    },
+    {
+      "id": "autohide-preview",
+      "ok": true,
+      "found": 1,
+      "ms": 4917
+    },
+    {
+      "id": "sidebar-autohide-edge",
+      "ok": true,
+      "found": 1,
+      "ms": 6332
+    }
+  ],
+  "viewport": [
+    1320,
+    880
+  ],
+  "rail": [
+    "Profile",
+    "Account",
+    "Engine",
+    "API",
+    "MCP",
+    "Skill",
+    "Talk",
+    "Display",
+    "Language",
+    "Code",
+    "Explorer",
+    "Gestures"
+  ]
+}

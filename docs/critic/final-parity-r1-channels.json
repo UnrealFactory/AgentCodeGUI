@@ -1,0 +1,191 @@
+{
+  "at": "2026-08-24T03:40:02.940Z",
+  "total": 216,
+  "implemented": 170,
+  "missing": [
+    {
+      "key": "talkRun",
+      "ch": "talk:run"
+    },
+    {
+      "key": "talkCancel",
+      "ch": "talk:cancel"
+    },
+    {
+      "key": "talkPermissionRespond",
+      "ch": "talk:permission-respond"
+    },
+    {
+      "key": "talkQuestionRespond",
+      "ch": "talk:question-respond"
+    },
+    {
+      "key": "talkBgTask",
+      "ch": "talk:bg-task"
+    },
+    {
+      "key": "btwOpen",
+      "ch": "btw:open"
+    },
+    {
+      "key": "pickAttachments",
+      "ch": "dialog:pick-attachments"
+    },
+    {
+      "key": "getUsage",
+      "ch": "usage:get"
+    },
+    {
+      "key": "authLogin",
+      "ch": "auth:login"
+    },
+    {
+      "key": "authLogout",
+      "ch": "auth:logout"
+    },
+    {
+      "key": "authLoginCancel",
+      "ch": "auth:login-cancel"
+    },
+    {
+      "key": "authLoginUrl",
+      "ch": "auth:login-url"
+    },
+    {
+      "key": "authSetDefaultAccount",
+      "ch": "auth:set-default-account"
+    },
+    {
+      "key": "authRemoveAccount",
+      "ch": "auth:remove-account"
+    },
+    {
+      "key": "authAccountsUsage",
+      "ch": "auth:accounts-usage"
+    },
+    {
+      "key": "authReorderAccounts",
+      "ch": "auth:reorder-accounts"
+    },
+    {
+      "key": "codexLogin",
+      "ch": "codex-auth:login"
+    },
+    {
+      "key": "codexLogout",
+      "ch": "codex-auth:logout"
+    },
+    {
+      "key": "codexSetDefaultAccount",
+      "ch": "codex-auth:set-default-account"
+    },
+    {
+      "key": "codexLoginCancel",
+      "ch": "codex-auth:login-cancel"
+    },
+    {
+      "key": "codexAccountsUsage",
+      "ch": "codex-auth:accounts-usage"
+    },
+    {
+      "key": "codexReorderAccounts",
+      "ch": "codex-auth:reorder-accounts"
+    },
+    {
+      "key": "openApiSettings",
+      "ch": "ui:open-api-settings"
+    },
+    {
+      "key": "apiSettingsRequested",
+      "ch": "ui:api-settings-requested"
+    },
+    {
+      "key": "skillList",
+      "ch": "skill:list"
+    },
+    {
+      "key": "skillSetEnabled",
+      "ch": "skill:set-enabled"
+    },
+    {
+      "key": "mcpList",
+      "ch": "mcp:list"
+    },
+    {
+      "key": "mcpSetEnabled",
+      "ch": "mcp:set-enabled"
+    },
+    {
+      "key": "closeShortcut",
+      "ch": "shortcut:close"
+    },
+    {
+      "key": "lspPickVerseServer",
+      "ch": "lsp:pick-verse-server"
+    },
+    {
+      "key": "lspSetVersePath",
+      "ch": "lsp:set-verse-path"
+    },
+    {
+      "key": "lspClearVersePath",
+      "ch": "lsp:clear-verse-path"
+    },
+    {
+      "key": "engineListAvailable",
+      "ch": "engine:list-available"
+    },
+    {
+      "key": "codexModels",
+      "ch": "codex:models"
+    },
+    {
+      "key": "engineInstall",
+      "ch": "engine:install"
+    },
+    {
+      "key": "engineUninstall",
+      "ch": "engine:uninstall"
+    },
+    {
+      "key": "engineSetActive",
+      "ch": "engine:set-active"
+    },
+    {
+      "key": "engineCleanup",
+      "ch": "engine:cleanup"
+    },
+    {
+      "key": "updateCheck",
+      "ch": "app:update-check"
+    },
+    {
+      "key": "updateInstall",
+      "ch": "app:update-install"
+    },
+    {
+      "key": "openDirectory",
+      "ch": "app:open-directory"
+    },
+    {
+      "key": "updateEvent",
+      "ch": "app:update-event"
+    },
+    {
+      "key": "talkEvent",
+      "ch": "talk:event"
+    },
+    {
+      "key": "sessionFlushRequest",
+      "ch": "session-wins:flush-request"
+    },
+    {
+      "key": "engineUpdateEvent",
+      "ch": "engine:update-event"
+    },
+    {
+      "key": "engineInstallProgress",
+      "ch": "engine:install-progress"
+    }
+  ]
+}

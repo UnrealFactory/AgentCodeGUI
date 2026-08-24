@@ -1,0 +1,163 @@
+{
+  "at": "2026-08-24T03:36:32.682Z",
+  "seed": 20260824,
+  "rows": [
+    {
+      "id": "chat-thread",
+      "pick": "A",
+      "A": "tauri",
+      "B": "electron",
+      "winner": "3.0",
+      "note": "사이드바 빈 섹션 3→2 + 헤더 1~6 다이얼, /init 카드 메타 1줄"
+    },
+    {
+      "id": "boot-loading",
+      "pick": "A",
+      "A": "tauri",
+      "B": "electron",
+      "winner": "3.0",
+      "note": "빈 상태에서 '채팅이 없어요'가 3줄→1줄, 다이얼 노출"
+    },
+    {
+      "id": "workbar-context-pop",
+      "pick": "B",
+      "A": "tauri",
+      "B": "electron",
+      "winner": "2.6.2",
+      "note": "A는 5시간/주간 한도가 '데이터 없음', Fable 행 자체가 없음. B는 %·초기화 시각·게이지"
+    },
+    {
+      "id": "cmd-result-card",
+      "pick": "B",
+      "A": "electron",
+      "B": "tauri",
+      "winner": "3.0",
+      "note": "명령 카드 메타 2줄→1줄, 문답 흔적에 ? 마커"
+    },
+    {
+      "id": "settings-account",
+      "pick": "B",
+      "A": "electron",
+      "B": "tauri",
+      "winner": "3.0",
+      "note": "'한도 소진 시 계정 자동 전환' 행이 추가(신기능). 대신 '계정 추가'가 접힘 아래로"
+    },
+    {
+      "id": "viewer-save-error",
+      "pick": "B",
+      "A": "electron",
+      "B": "tauri",
+      "winner": "3.0",
+      "note": "A=EPERM 원문(operation not permitted + 전체 경로) / B=한국어 액세스가 거부되었습니다"
+    },
+    {
+      "id": "composer-picker-pop",
+      "pick": "tie",
+      "A": "electron",
+      "B": "tauri",
+      "winner": "무",
+      "note": "팝오버 동일"
+    },
+    {
+      "id": "settings-mcp",
+      "pick": "tie",
+      "A": "electron",
+      "B": "tauri",
+      "winner": "무",
+      "note": "둘 다 0건 — 이 홈에선 화면만으로 변별 불가(apiprobe로 별도 실증)"
+    },
+    {
+      "id": "settings-display",
+      "pick": "tie",
+      "A": "tauri",
+      "B": "electron",
+      "winner": "무",
+      "note": "레일에 Talk 1항목 추가 외 동일"
+    },
+    {
+      "id": "settings-explorer",
+      "pick": "tie",
+      "A": "electron",
+      "B": "tauri",
+      "winner": "무",
+      "note": "픽셀 동일"
+    },
+    {
+      "id": "explorer-tree",
+      "pick": "tie",
+      "A": "tauri",
+      "B": "electron",
+      "winner": "무",
+      "note": "A는 캡처 시점에 git 스트립 미표시, B는 직전 화면의 btw 알약 잔존 — 양쪽 다 아티팩트"
+    },
+    {
+      "id": "explorer-git-strip",
+      "pick": "tie",
+      "A": "tauri",
+      "B": "electron",
+      "winner": "무",
+      "note": "스트립 동일(파일 수만 다름 — 트리 상태)"
+    },
+    {
+      "id": "new-chat-step2",
+      "pick": "tie",
+      "A": "electron",
+      "B": "tauri",
+      "winner": "무",
+      "note": "모달 동일(둘 다 2~6). 3.0 헤더 다이얼은 1~6인데 이 모달만 2~6 — 내부 불일치"
+    },
+    {
+      "id": "git-changes",
+      "pick": "tie",
+      "A": "electron",
+      "B": "tauri",
+      "winner": "무",
+      "note": "레이아웃 동일, 파일 수만 다름"
+    },
+    {
+      "id": "chat-zoom-badge",
+      "pick": "tie",
+      "A": "electron",
+      "B": "tauri",
+      "winner": "무",
+      "note": "배지 동일"
+    },
+    {
+      "id": "toast-single",
+      "pick": "tie",
+      "A": "electron",
+      "B": "tauri",
+      "winner": "무",
+      "note": "동일(줄바꿈 한 단어 차)"
+    },
+    {
+      "id": "toast-aggregate",
+      "pick": "tie",
+      "A": "tauri",
+      "B": "electron",
+      "winner": "무",
+      "note": "동일(행 간격 미세차)"
+    },
+    {
+      "id": "multi-panel-expanded",
+      "pick": "tie",
+      "A": "electron",
+      "B": "tauri",
+      "winner": "무",
+      "note": "동일"
+    },
+    {
+      "id": "panel-window",
+      "pick": "tie",
+      "A": "electron",
+      "B": "tauri",
+      "winner": "무",
+      "note": "동일"
+    }
+  ],
+  "tally": {
+    "win30": 5,
+    "tie": 13,
+    "win262": 1
+  }
+}
