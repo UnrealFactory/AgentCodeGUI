@@ -232,6 +232,32 @@ const armStatus = async (app) => {
 }
 const lastStatus = (app) =>
   app.j(`(window.__st?.at(-1) ?? []).map((r) => ({ chatId: r.chatId, status: r.status, account: r.account ?? null, panelId: r.panelId ?? null }))`)
+/** 지금까지 받은 `chat:status` 개수 — 「이 턴이 만든 REPLACE」를 가려내는 표식. */
+const stMark = (app) => app.j(`(window.__st?.length ?? 0)`)
+/**
+ * ★R28c AG2 R3 — 턴이 **실제로 도착할 때까지** 기다린다.
+ *
+ * R2까지는 `sendTurn` 뒤에 `sleep(3500)` 고정이었다. 실측: 부하가 걸린 판에서 A 축이
+ * 6주행 중 1번 붉었고(`{"status":"idle","account":null}` = 턴 **전** 값을 표집), 대조군
+ * (같은 하네스·수정 전 exe)도 같은 자리에서 초록이었다 — 못이 아니라 시계가 흔들린 것이다.
+ * 게이트가 부하에 따라 답이 갈리면 게이트가 아니다(`testhome.rs` 헤더와 같은 문장).
+ *
+ * 그래서 상한(`ms`)은 그대로 두되 그 안에서는 **사실이 도착하면 곧장** 나아간다:
+ * ① 이 턴이 만든 새 REPLACE가 왔고(`mark` 이후), ② 그 행에 계정이 실렸고,
+ * ③ 상태가 `working`/`analyzing`이 아니다(=턴이 끝났다). 상한을 넘으면 옛 판과 똑같이
+ * 그 시점 값으로 단정한다 — **기다림이 단정을 무르게 만들지는 않는다.**
+ */
+const waitTurn = async (app, chatId, mark = 0, ms = 25_000) => {
+  const got = await waitUntil(
+    app,
+    `(() => { const st = window.__st ?? []; if (st.length <= ${mark}) return false
+      const r = (st.at(-1) ?? []).find((x) => x.chatId === ${JSON.stringify(chatId)})
+      return !!r && !!r.account && r.status !== 'working' && r.status !== 'analyzing' })()`,
+    ms
+  )
+  await sleep(500) // 뒤따르는 REPLACE 한 번(칩 렌더)까지 재운다
+  return got
+}
 const sendTurn = (app, text) =>
   app.j(`(() => {
     const ta = document.querySelector('.composer-row textarea'); if (!ta) return 'no-composer'
@@ -296,8 +322,9 @@ async function scInUse() {
   try {
     await armStatus(app)
     await waitUntil(app, `!!document.querySelector('.composer-row textarea')`, 30_000)
+    const m0 = await stMark(app)
     await sendTurn(app, '안녕')
-    await sleep(3500)
+    out.turnArrived = await waitTurn(app, 'c-a', m0)
     out.liveStatus = await lastStatus(app)
     await openAccountTab(app)
     await sleep(800)
@@ -535,12 +562,14 @@ async function scDelete() {
     await waitUntil(app, `!!document.querySelector('.composer-row textarea')`, 30_000)
     await sleep(1200)
     // ① 두 채팅 다 턴을 한 번씩 — 런타임 둘이 같은 계정을 문다.
+    const mA = await stMark(app)
     await sendTurn(app, '안녕 A')
-    await sleep(3500)
+    await waitTurn(app, 'c-a', mA)
     out.picked = await pickChat(app, '둘째 채팅')
     await sleep(1500)
+    const mB = await stMark(app)
     await sendTurn(app, '안녕 B')
-    await sleep(3500)
+    await waitTurn(app, 'c-b', mB)
     out.before = await lastStatus(app)
     out.warnBefore = await pickerWarns(app)
     if (out.before.filter((r) => r.account === out.want).length !== 2)
@@ -616,12 +645,14 @@ async function scGet() {
     await waitUntil(app, `!!document.querySelector('.composer-row textarea')`, 30_000)
     await sleep(1200)
     // ① 두 채팅 다 턴을 한 번씩 — 런타임 둘이 같은 계정을 문다(E와 같은 전제).
+    const mA = await stMark(app)
     await sendTurn(app, '안녕 A')
-    await sleep(3500)
+    await waitTurn(app, 'c-a', mA)
     out.picked = await pickChat(app, '둘째 채팅')
     await sleep(1500)
+    const mB = await stMark(app)
     await sendTurn(app, '안녕 B')
-    await sleep(3500)
+    await waitTurn(app, 'c-b', mB)
     out.before = await lastStatus(app)
     out.warnBefore = await pickerWarns(app)
     if (out.before.filter((r) => r.account === out.want).length !== 2)
@@ -644,8 +675,9 @@ async function scGet() {
 
     // ③ **다음 REPLACE**를 낸다 — `c-a`는 안 건드린다(활성은 「둘째 채팅」이다).
     //    R3 실측: 여기서 `c-a`의 account가 null로 실려 칩이 조용히 사라졌다.
+    const mB2 = await stMark(app)
     await sendTurn(app, '한 번 더 B')
-    await sleep(4000)
+    await waitTurn(app, 'c-b', mB2)
     out.after = await lastStatus(app)
     out.warnAfter = await pickerWarns(app)
     out.slots = ((await app.call('engine:debug', []).catch(() => null))?.chats ?? []).map((c) => ({

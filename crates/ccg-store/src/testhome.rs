@@ -12,11 +12,20 @@
 //!   한 바이너리 안에서 병렬로 도니 서로의 홈을 갈아끼워 **직렬 실행에서는 14/14 초록인
 //!   테스트가 배치 실행에서 5개 붉게** 나왔다(리드 실측). 게이트가 실행 방식에 따라
 //!   답이 갈리면 게이트가 아니다.
+//! - ★R28c AG2 R3(확인 크리틱 R2 §5): `ccg-store` 자기 안에 **자물쇠가 둘**이었다 —
+//!   여기 [`lock`]과 `testkit`의 사본. 서로를 모르니 `take`가 홈을 갈아끼우는 창에
+//!   `testkit::temp_home`을 든 테스트가 *쓰기와 읽기 사이*로 들어가 남의 홈을 읽었다.
+//!   `cargo test -p ccg-store --lib`이 기본 병렬에서 **9/37 붉었고**(붉은 자리는 매번
+//!   달랐다: `migrate_v3` 재마이그레이션 2종·`talk::opting_a_board`), 여기 스왑 못
+//!   하나만 빼면 0/35 · `--test-threads=1`도 0/10이었다. **자물쇠 사본이 곧 결함이다.**
 //!
 //! ## 규약
 //!
 //! - 홈을 세우거나 지우는 테스트는 [`take`]로 증표를 받는다. 증표가 사는 동안 다른
 //!   테스트는 [`take`] 안에서 줄을 선다.
+//! - **크레이트 안에 자물쇠는 하나뿐이다.** 편의 헬퍼(`testkit::temp_home` 같은)는
+//!   자기 뮤텍스를 만들지 말고 [`take`] 위에 얹는다 — 사본을 하나 더 만드는 순간
+//!   위의 M11 R4·R28c AG2 R3가 그대로 돌아온다(`the_lock_is_one_lock…` 못이 지킨다).
 //! - 증표를 놓으면 홈은 **원래 값으로 되돌아간다**(없었으면 지운다). `remove_var`를
 //!   손으로 부르지 않는다 — 그게 실홈으로 떨어지는 창을 만든 원인이다.
 //! - 증표는 `Path`처럼 쓸 수 있다(`Deref`·`AsRef<Path>`·`AsRef<OsStr>`). 옛 헬퍼가
@@ -105,5 +114,36 @@ mod tests {
         for t in hands {
             t.join().unwrap();
         }
+    }
+
+    /// ★R28c AG2 R3 — **자물쇠가 하나라는 것**을 못으로 박는다(확인 크리틱 R2 §5).
+    ///
+    /// 위 스왑 못은 `take`끼리의 경합만 잰다. 실제로 게이트를 붉게 만든 것은 `take`와
+    /// **`testkit::temp_home`** 사이였고, 그 둘이 서로 다른 뮤텍스를 들고 있는 한 위
+    /// 못은 영원히 초록이다. 그러니 여기서 재는 것은 *"내 증표가 사는 동안 남이 홈을
+    /// 갈아끼울 수 있는가"*다 — 자물쇠가 둘이면 옆 스레드가 즉시 지나가고, 하나면 줄을 선다.
+    ///
+    /// 실패 방향이 한쪽뿐인 못이다: 옆 스레드가 안 깨어나면 **초록 쪽으로만** 틀린다.
+    #[test]
+    fn the_lock_is_one_lock_so_a_neighbour_cannot_swap_my_home() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::Arc;
+
+        let mine = crate::testkit::temp_home("one-lock");
+        let dir = mine.dir.clone();
+        let passed = Arc::new(AtomicBool::new(false));
+        let rival = {
+            let passed = Arc::clone(&passed);
+            std::thread::spawn(move || {
+                let _theirs = super::take("one-lock-rival");
+                passed.store(true, Ordering::SeqCst);
+            })
+        };
+        // 자물쇠가 둘이면 이 창에서 옆이 `set_var`를 끝낸다(그게 24%의 정체다).
+        std::thread::sleep(std::time::Duration::from_millis(150));
+        assert!(!passed.load(Ordering::SeqCst), "★ 자물쇠가 둘이다 — 남이 내 증표 위로 지나갔다");
+        assert_eq!(crate::app_home(), dir, "★ 내 증표가 사는 동안 홈이 남의 것으로 바뀌었다");
+        drop(mine);
+        rival.join().expect("옆 스레드");
     }
 }

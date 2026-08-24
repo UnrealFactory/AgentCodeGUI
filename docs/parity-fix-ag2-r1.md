@@ -390,3 +390,174 @@ R1이 「남이 미커밋으로 잡고 있다」며 미룬 줄. 지금은 git에
 | `docs/renderer-divergence.md` | 522행 한 줄에 「첫 장전에서만」 한정(내 hunk만) |
 | `docs/critic/acct-live-ag2r2.json` | 고친 exe 전 시나리오 주행(30항목 · findings 0) |
 | `docs/parity-fix-ag2-r1.md` | 이 문서(§8~§11 추가 · §5-4 갱신) |
+
+---
+
+# R3 — 게이트가 네 번에 한 번 빨갛던 이유는 **자물쇠가 둘**이었기 때문이다
+
+확인 크리틱 R2(`docs/critic/r28c-ag2-critic-r2.md`, 커밋 `25ab2f7`) 판정 **FAIL**.
+겨눈 회귀(G2 조회 축·F1 재시작 축·G1 삭제 축·ask 축·마이그레이션 무손실)는 크리틱이
+자기 손으로 지은 바이너리로 **전부 초록**임을 확인해 줬다. 붉은 것은 하나였다:
+이 갈래가 R2에서 새로 박은 못 두 개가 `cargo test -p ccg-store`를 **9/37(24%)** 붉게 만들었다.
+
+## 12. 최대 격차 — `CCG_HOME` 자물쇠 둘을 하나로 합친다
+
+### 12-1. 뿌리(선존) — 서로를 모르는 뮤텍스 두 개
+
+`CCG_HOME`은 **프로세스 전역**이다. 그런데 `ccg-store` 안에서 그 값을 지키는 자물쇠가 둘이었다.
+
+| 자물쇠 | 쓰는 자 |
+|---|---|
+| `crates/ccg-store/src/lib.rs:248` `testkit::lock()` | `testkit::temp_home` — 이 크레이트 테스트 **대부분** |
+| `crates/ccg-store/src/testhome.rs:29` `testhome::lock()` | `testhome::take` — `testhome::tests`의 스왑 못(그리고 남의 크레이트 전부) |
+
+서로를 모르니, 스왑 못이 8스레드로 `set_var`/`remove_var`를 돌리는 창에 `temp_home`을 든
+테스트가 **쓰기와 읽기 사이**로 들어가면 그 테스트는 **남의 홈을 읽는다**. 그래서 붉은
+자리가 매번 달랐고(`migrate_v3` 재마이그레이션 2종·`talk::opting_a_board`), 전부 이 갈래가
+안 만진 남의 테스트였다 — 다음 갈래는 자기가 안 쓴 코드에서 자기 탓을 찾게 된다.
+
+R2의 몫은 **창을 벌린 것**이다: `temp_home`을 잡는 못 둘(`a_migration_freezes_the_screen…`·
+`even_the_first_load_keeps_a_row…`)을 병렬 풀에 더 넣었다.
+
+### 12-2. 고친 것 — 자물쇠를 버리고 `testhome::take` 위에 얹는다
+
+`testkit::lock()`을 **지웠다**. `testkit::temp_home`은 이제 `testhome::take(tag)`가 주는
+증표(`TestHome`)를 그대로 들고 있는다. 부수 효과 둘이 따라온다.
+
+1. **홈 복원이 `remove_var`가 아니라 「원래 값으로」**가 된다. `testhome` 헤더가 M11 R3부터
+   적어 둔 규약이다 — `remove_var` 창이 곧 `app_home()`이 **사용자 실홈**으로 떨어지는 창이다.
+2. **캐시를 걷을 때도 비운다.** 세울 때만 비우던 `chats_v3`·`boards`·`legacy_bridge`·`status`
+   전역 캐시를 `Home::drop`에서도 비운다(`forget_all`). 캐시가 홈보다 오래 살면 그 뒤의
+   쓰기는 되돌아온 홈을 향한다.
+
+겸해 `status::flush()`가 **목적지를 자물쇠 안에서 뜨게** 했다. 디바운스 배경 스레드
+(`ensure_writer`)는 `set()` 500ms 뒤에 깨어나는데, 「dirty를 읽고 → 맵을 복사하고 → 파일을
+쓰기」 사이에 그 홈이 걷히면 그 쓰기는 실홈을 향한다. `forget()`이 같은 자물쇠를 잡으므로,
+경로를 자물쇠 안에서 뜨면 그 창이 닫힌다. (실측: 사용자 실홈 `~/.agentcodegui/chats-v3/`에는
+지금도 `status.json`이 **없다** — 이 사고는 아직 안 났다. 창만 닫았다.)
+
+### 12-3. 새 못 — 자물쇠가 하나임을 **결정적으로** 잰다
+
+`testhome::tests::the_lock_is_one_lock_so_a_neighbour_cannot_swap_my_home`.
+기존 스왑 못은 `take`끼리의 경합만 재서, 자물쇠가 둘인 동안 **영원히 초록**이었다.
+새 못은 `temp_home` 증표를 든 채 옆 스레드가 `take`로 홈을 갈아끼울 수 있는지 잰다.
+
+**이빨 확인(A/B)** — `git worktree add --detach %TEMP%\wt-ag2r3teeth 25ab2f7`에 이 못만 얹고
+(=`lib.rs`는 자물쇠 둘인 판) 격리 `CARGO_TARGET_DIR`로 지어 돌렸다:
+
+```
+thread '…the_lock_is_one_lock_so_a_neighbour_cannot_swap_my_home' panicked at testhome.rs:144:
+  ★ 자물쇠가 둘이다 — 남이 내 증표 위로 지나갔다
+→ 두 자물쇠 판에서 붉음 5 / 5   (고친 판 0 / 160)
+```
+
+실패 방향이 한쪽뿐인 못이다: 옆 스레드가 안 깨어나면 **초록 쪽으로만** 틀린다.
+
+### 12-4. 반복 계수 — 8/100 → **0/160**
+
+`cargo test -p ccg-store --lib --no-run`으로 지은 **같은 테스트 바이너리**를 `%TEMP%`에
+복사해 반복 실행했다(빌드 노이즈 없이 경합만 센다).
+
+| 판 | 붉은 주행 |
+|---|---|
+| 대조군 `25ab2f7`(자물쇠 둘) | **8 / 100 (8%)** |
+| **HEAD(자물쇠 하나)** | **0 / 100** |
+| HEAD, 마무리 정리 뒤 다시 | **0 / 60** |
+| HEAD, 직렬 `--test-threads=1` | **0 / 5** |
+
+대조군에서 붉었던 자리는 크리틱이 지목한 그 둘이다(`remigration_still_brings_in_a_chat_created_in_2_6_2_afterwards` 4회 ·
+`remigration_never_overwrites_a_record_that_3_0_kept_writing` 4회). 크리틱의 24%와 내 8%가
+다른 것은 기계 부하 차이다 — **결함의 존재와 소멸**은 양쪽에서 같다.
+
+## 13. 곁다리 1 — 「파일에는 마지막 사실이 남는다」에 한정을 붙였다
+
+크리틱 §6이 실 exe로 잰 사실: 그 문장은 **마이그레이션 프로세스 한정**이다. 앱 안에서는
+옆 채팅의 턴 한 번이 `dirty`를 세우고 디바운스 `flush()`가 **메모리 맵 전체**(=규약 4의
+안전값)를 쓰므로, 얼어붙은 `working`은 첫 턴에 `idle`로 덮인다.
+
+프로세스 안에서 그대로 재현해 못으로 박았다 —
+`status::tests::the_frozen_fact_outlives_the_migration_but_not_the_first_turn`:
+
+```
+① seed 직후 + 마무리 flush   status.json = {"c-run":"working"}   ← 마이그레이션 프로세스
+② set("c-live") + flush      status.json = {"c-live":"done","c-run":"idle"}  ← 앱의 첫 턴
+③ 다음 장전                   화면 = idle  (읽는 쪽이 다시 얼린다 — 화면 피해 0)
+```
+
+크리틱 말대로 **고치지 않았다**(영구히 참으로 만들려면 행마다 「아직 살지 않은 값」을 따로
+들어야 한다 — 비용이 이득보다 크고, 그 차이를 재는 자는 무손실 하네스 하나뿐이다).
+대신 규약 4 헤더에 한정을 명시하고, 못이 그 문장을 지킨다: 누군가 수명을 늘리면 **이 못이
+붉어져** 헤더도 같이 고치라고 말한다.
+
+## 14. 곁다리 2 — `poc-acct-live`의 A 축이 **시계** 때문에 붉었다
+
+내 첫 전체 주행에서 A 축이 2건 붉었다(`{"status":"idle","account":null}` = 턴 **전** 값).
+`sendTurn` 뒤가 `sleep(3500)` **고정**이었기 때문이다. A 축 단독으로 다시 재니
+내 판 3/3 초록 · 대조군(`target-critag2`, 수정 전 exe) 3/3 초록 — **못이 아니라 시계**다.
+
+이 라운드의 주제가 「실행 방식에 따라 답이 갈리면 게이트가 아니다」이므로 같이 고쳤다:
+`waitTurn(app, chatId, mark)` — ① 이 턴이 만든 새 REPLACE가 왔고 ② 그 행에 계정이 실렸고
+③ 상태가 `working`/`analyzing`이 아닐 때까지 기다린다(상한 25s). 상한을 넘으면 **옛 판과
+똑같이 그 시점 값으로 단정한다** — 기다림이 단정을 무르게 만들지 않는다.
+
+**이빨 확인** — 고친 하네스를 G2 수정 **전** exe(`target-critacct3` = `5e1dae7`)에 물렸다:
+
+```
+X F-조회 응답     c-a = {"status":"done","account":null}   ← 조회 한 번이 계정을 지웠다
+X F-다음 REPLACE  c-a = {"account":null}                    (c-b는 살아 있다)
+X F-칩(조회 후)   ["사용 중 · 첫 채팅"] → []
+o F-런타임 생존   [{"c-a",pid:7804,"Idle"},{"c-b",pid:13332,"Idle"}]  ← 살아 있는데 지웠다
+→ 3 FAIL. 리포트: docs/critic/acct-live-ag2r3ctl.json
+```
+
+## 15. R3 검증 — 크레이트별로 따로 셈
+
+| 항목 | 실측 |
+|---|---|
+| `cargo test -p agentcodegui` | **145 / 0** |
+| `cargo test -p ccg-auth`(net 없음) | **102 / 0**(워크스페이스 통합 시 lib 94 + 통합 25 = 119) |
+| `cargo test -p ccg-engine` | **207 / 0** |
+| `cargo test -p ccg-fs` | **100 / 0** |
+| `cargo test -p ccg-lsp` | **59 / 0** |
+| `cargo test -p ccg-store` | **89 / 0** (R2의 87 + 새 못 2) · **반복 0/160** |
+| `cargo test --workspace --no-fail-fast` | **719 / 0**(바이너리별 합산으로 검산) |
+| `npm run typecheck` + `typecheck:app` | **3종 초록** |
+| `poc-acct-live`(실 exe, 전 시나리오) | **30 / 30 · findings 0** — 2회 연속(`docs/critic/acct-live-ag2r3.json`) |
+| `poc-store-fanout` · `poc-acct-store` | 전부 통과 / 전부 통과 |
+| `poc-chat-unify-migrate`(가짜 ROOT, 스크립트 수정 0줄) | 픽스처 **실패 1** · 부하 픽스처 **실패 1** · 얼어붙은 홈 **실패 1**(전부 선존 `§5.3-6 잔여물`) |
+| 얼어붙은 홈 디스크 A/B | `status.json {c-run:"working", c-ana:"analyzing"}` = 레코드와 일치 · `account`/`panelId` 키 **0** |
+| `ccg-migrate` 빌드 경고 | **0** |
+
+`ccg-store` 게이트가 「불러 달라고 할 때마다 같은 답을 준다」는 것이 이 라운드의 산출물이다.
+
+## 16. R3가 안 한 것 · 남은 리스크
+
+1. **`ccg-auth`의 `m11r4_store_cas::a_lock_unaware_neighbour_cannot_undo_a_logout`은 그대로
+   둔다.** 크리틱이 1/5로 붉다고 적은 못이다. 내 판에서 **단독 10주행 0붉음**이라 재현을
+   못 했고, 그 바이너리 안에는 자물쇠가 하나뿐이라(`ccg_store::testhome::take` 단독)
+   이번 뿌리와 **다른 결함**이다 — 잠금 모르는 이웃 대 CAS의 실제 경합(제품 쪽)일 가능성이
+   높다. 경계 밖(`crates/ccg-auth/`)이라 손대지 않았다. 다음 갈래 후보.
+2. **`ccg-auth::testkit::lock()`은 세 번째 자물쇠로 남아 있다**(`crates/ccg-auth/src/testkit.rs:10`).
+   그 바이너리(`ccg-auth` lib 테스트)의 `src/`는 `testhome::take`를 안 쓰므로 **지금은**
+   자물쇠가 하나뿐이고 안전하다. 다만 누군가 `ccg-auth`의 `src/` 테스트에서
+   `ccg_store::testhome::take`를 부르는 순간 오늘의 24%가 그 크레이트에서 재현된다.
+   `testhome.rs` 헤더 규약에 그 문장을 박아 뒀다("크레이트 안에 자물쇠는 하나뿐이다").
+3. **「파일의 마지막 사실」 수명은 늘리지 않았다**(§13). 화면 피해 0 · 게이트 초록 ·
+   문서와 못이 사실대로 말한다.
+4. **`§5.3-6 스테이징 잔여물`은 여전히 선존 실패다.** R2 §10-2 그대로 — 하네스의 기대가
+   구현(일부러 한 세대를 남긴다)보다 낡았다. 남의 게이트를 조용히 완화하지 않았다.
+5. **`poc-acct-live`의 나머지 고정 `sleep`은 안 건드렸다.** 손댄 것은 `chat:status`를
+   표집하는 여섯 자리뿐이다. 스레드 텍스트를 읽는 자리(B·C)와 「턴을 **안** 보낸다」가
+   본질인 자리(E의 `sleep(4000)`)는 고정 대기가 곧 단정이라 그대로 뒀다.
+
+## 17. R3가 만진 파일
+
+| 파일 | 무엇 |
+|---|---|
+| `crates/ccg-store/src/lib.rs` | `testkit::lock()` 삭제 → `testhome::take` 위에 얹음 · `forget_all()`(세울 때·걷을 때) |
+| `crates/ccg-store/src/testhome.rs` | 헤더에 「크레이트 안에 자물쇠는 하나」 규약 + 실측 이력 · 새 못 1 |
+| `crates/ccg-store/src/status.rs` | `flush()`가 목적지를 자물쇠 안에서 뜬다(`write_map_to`) · 규약 4에 수명 한정 · 새 못 1 |
+| `scripts/poc-acct-live.mjs` | `waitTurn`/`stMark` — 턴 표집 여섯 자리의 고정 `sleep` 제거 |
+| `docs/critic/acct-live-ag2r3.json` | 고친 exe 전 시나리오(30/30 · findings 0) |
+| `docs/critic/acct-live-ag2r3ctl.json` | 고친 하네스의 이빨 확인(수정 전 exe에서 3 FAIL) |
+| `docs/parity-fix-ag2-r1.md` | 이 문서(§12~§17) |

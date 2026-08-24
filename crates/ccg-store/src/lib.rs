@@ -240,19 +240,25 @@ pub fn parse_json_source(raw: &str) -> Option<serde_json::Value> {
 
 /// 테스트 전용 — `CCG_HOME`을 임시 폴더로 돌리고 프로세스 전역 캐시를 비운다.
 /// (스토어 캐시가 `static`이라 홈을 갈아끼우면 반드시 무효화해야 한다)
+///
+/// ★R28c AG2 R3(확인 크리틱 R2 §5) — **자물쇠는 [`testhome`]의 것 하나다.**
+/// R2까지 이 모듈은 자기 뮤텍스를 따로 들고 있었다. `CCG_HOME`은 프로세스 전역인데
+/// 그 값을 지키는 자물쇠가 둘이면 **서로를 모른다**: `testhome::take`가 홈을 갈아끼우는
+/// 창에 `temp_home`을 든 테스트가 *쓰기와 읽기 사이*로 들어가면 남의 홈을 읽는다.
+/// 실측(확인 크리틱 R2): `cargo test -p ccg-store --lib`이 기본 병렬에서 **9/37 붉었고**
+/// (`migrate_v3` 재마이그레이션 2종·`talk::opting_a_board` — 매번 다른 자리),
+/// `testhome` 스왑 못 하나만 빼면 0/35, `--test-threads=1`도 0/10이었다.
+/// 그래서 자물쇠를 버리고 [`testhome::take`]에 얹는다 — 증표는 그쪽이 준다.
 #[cfg(test)]
 pub mod testkit {
     use std::path::PathBuf;
-    use std::sync::{Mutex, MutexGuard, OnceLock};
-
-    fn lock() -> &'static Mutex<()> {
-        static L: OnceLock<Mutex<()>> = OnceLock::new();
-        L.get_or_init(|| Mutex::new(()))
-    }
 
     pub struct Home {
         pub dir: PathBuf,
-        _guard: MutexGuard<'static, ()>,
+        /// 전역 `CCG_HOME` 증표. 이 값이 사는 동안 이 프로세스의 홈은 [`Home::dir`]이고,
+        /// 죽으면 **원래 값으로 되돌아간다**(`remove_var`가 아니다 — 그게 실홈으로
+        /// 떨어지는 창을 만든 원인이다. [`crate::testhome`] 헤더 참고).
+        _home: crate::testhome::TestHome,
     }
 
     impl Home {
@@ -280,9 +286,23 @@ pub mod testkit {
 
     impl Drop for Home {
         fn drop(&mut self) {
-            let _ = std::fs::remove_dir_all(&self.dir);
-            std::env::remove_var("CCG_HOME");
+            // 폴더 삭제·홈 복원은 `_home`의 Drop이 한다(이 함수가 먼저 돌고, 그다음 필드가
+            // 떨어진다 = 아래 무효화는 **아직 자물쇠를 든 채**다).
+            //
+            // ★R28c AG2 R3 — 캐시는 홈보다 오래 살면 안 된다. 홈이 사라진 뒤에도 `static`
+            // 캐시가 그 홈의 값을 들고 있으면, 그다음 쓰기는 **되돌아온 홈**(대개 사용자
+            // 실홈)을 향한다. 세울 때만 비우던 것을 걷을 때도 비운다.
+            forget_all();
         }
+    }
+
+    /// 프로세스 전역 스토어 캐시를 통째로 비운다(홈을 세울 때·걷을 때 공용).
+    fn forget_all() {
+        crate::chats_v3::invalidate();
+        crate::chats_v3::forget_owned();
+        crate::boards::invalidate();
+        crate::legacy_bridge::forget_projections();
+        crate::status::forget();
     }
 
     /// 스냅샷 한 벌 — 메시지 n개(대화 소실 판정의 최소 단위).
@@ -354,20 +374,11 @@ pub mod testkit {
     }
 
     pub fn temp_home(tag: &str) -> Home {
-        let guard = lock().lock().unwrap_or_else(|e| e.into_inner());
-        let n = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0);
-        let dir = std::env::temp_dir().join(format!("ccg-store-test-{tag}-{n}"));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).expect("임시 홈 생성");
-        std::env::set_var("CCG_HOME", &dir);
-        crate::chats_v3::invalidate();
-        crate::chats_v3::forget_owned();
-        crate::boards::invalidate();
-        crate::legacy_bridge::forget_projections();
-        crate::status::forget();
-        Home { dir, _guard: guard }
+        let home = crate::testhome::take(tag);
+        // `take`는 폴더 실패를 삼킨다 — 여기서는 크게 죽는다(홈이 없으면 그 뒤의 모든
+        // 픽스처 쓰기가 엉뚱한 자리를 향하고, 실패는 열 줄 뒤에 엉뚱한 모습으로 난다).
+        assert!(home.dir.is_dir(), "임시 홈 생성 실패: {}", home.dir.display());
+        forget_all();
+        Home { dir: home.dir.clone(), _home: home }
     }
 }

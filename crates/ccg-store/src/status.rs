@@ -10,9 +10,19 @@
 //!     요약이고, 어긋나면 **`<chatId>.json`이 이긴다**.
 //!  4. **부팅 강제**: `busy=false`·`ask='none'`·`bgActive=false`(유령 알약 방지 —
 //!     `sessionChats.ts:28` 파리티). `queued`·`hold`는 **강제하지 않는다**(재장전 대상).
-//!     ★강제는 **읽는 쪽**이다(R28c AG2 R2). 파일에는 마지막 사실이 남는다 — 턴 도중에
-//!     죽은 채팅의 `working`도 그대로다. 그 값을 파일에 `idle`로 굳히면, 규약 3·5가
-//!     *파일을 진실로 쓰는* 자리에서 사실이 통째로 사라진다(§5.2 "상태 맵 동일" 위반).
+//!     ★강제는 **읽는 쪽**이다(R28c AG2 R2). 마이그레이션이 파일에 내려보내는 값은
+//!     사실 그대로다 — 턴 도중에 죽은 채팅의 `working`도 그렇다. 그 값을 파일에 `idle`로
+//!     굳히면, 규약 3·5가 *파일을 진실로 쓰는* 자리에서 사실이 통째로 사라진다
+//!     (§5.2 "상태 맵 동일" 위반).
+//!
+//!     ★**그 사실의 수명은 「마이그레이션 프로세스」까지다**(R28c AG2 R3 — 확인 크리틱
+//!     R2 §6이 실 exe로 잰 값). `ccg-migrate`가 단독으로 도는 동안은 마무리 [`flush`]까지
+//!     참이지만, 앱 안에서는 **옆 채팅의 턴 한 번**이 `dirty`를 세우고 디바운스 [`flush`]가
+//!     *메모리 맵 전체*(=여기 강제가 걸린 안전값)를 쓴다 → 얼어붙은 `working`은 그 한 번에
+//!     `idle`로 덮인다. 화면 피해는 0이다(모든 읽기가 다시 얼린다) — 갈리는 것은 사이드카
+//!     `<chatId>.json`과의 일치뿐이고, 그 일치를 재는 자는 무손실 하네스 하나다.
+//!     영구히 참으로 만들려면 행마다 「아직 살지 않은 값」을 따로 들어야 한다(미채택 —
+//!     비용이 이득보다 크다). 못: `the_frozen_fact_outlives_the_migration_but_not_the_first_turn`.
 //!  5. **유일 진실이 아니다.** 없거나 깨졌으면 `chats-v3/*.json` 전수 **얕은 스캔**으로
 //!     재구성한다(`snapshot`은 파싱하지 않는다 — serde의 IgnoredAny가 통째로 건너뛴다).
 //!  6. **장전은 부팅에 한 번**(★R28c AG2 — 확인 크리틱 R3 G2). 규약 4의 강제도, 디스크
@@ -473,25 +483,33 @@ pub fn forget_one(chat_id: &str) -> bool {
 }
 
 /// 지금 즉시 디스크에 쓴다(앱 종료 flush · 마이그레이션 마무리).
+///
+/// ★R28c AG2 R3 — **목적지는 자물쇠 안에서 정한다.** 앱에서는 홈이 안 바뀌니 티가 안
+/// 나지만, 테스트에서는 이 함수를 500ms 뒤에 부르는 것이 [`ensure_writer`]의 배경
+/// 스레드다: 「dirty를 읽고 → 맵을 복사하고 → 파일을 쓰기」 사이에 그 홈이 걷히면
+/// (`testkit::Home`의 Drop) 그 쓰기는 **되돌아온 홈 = 사용자 실홈**을 향한다.
+/// [`forget`]이 같은 자물쇠를 잡으므로, 경로를 여기서 뜨면 그 창이 닫힌다.
 pub fn flush() {
     let (m, _) = state();
-    let map = {
-        let mut st = m.lock().unwrap_or_else(|e| e.into_inner());
-        if !st.dirty {
-            return;
-        }
-        st.dirty = false;
-        st.map.clone()
-    };
-    write_map(&map);
+    let mut st = m.lock().unwrap_or_else(|e| e.into_inner());
+    if !st.dirty {
+        return;
+    }
+    st.dirty = false;
+    let (map, dst) = (st.map.clone(), path()); // ★ 경로도 자물쇠 안에서 뜬다
+    drop(st);
+    write_map_to(&map, dst);
 }
 
 /// 맵 하나를 **지금** 파일에 쓴다(직렬화·원자 저장은 자물쇠 밖에서).
-///
+fn write_map(map: &BTreeMap<String, Value>) {
+    write_map_to(map, path());
+}
+
 /// ★R28 ACCT R2(F1) — 런타임 전용 키는 **파일로 내려가지 않는다.** 메모리 맵에는 남는다
 /// (브로드캐스트가 그 값을 싣는 것이 §3의 기능이다) — 갈리는 것은 *수명*이다: 프로세스와
 /// 함께 죽어야 하는 사실이다.
-fn write_map(map: &BTreeMap<String, Value>) {
+fn write_map_to(map: &BTreeMap<String, Value>, p: std::path::PathBuf) {
     let mut statuses = Map::new();
     for (k, v) in map {
         let mut row = v.clone();
@@ -503,7 +521,6 @@ fn write_map(map: &BTreeMap<String, Value>) {
     if text.is_empty() {
         return;
     }
-    let p = path();
     if let Some(dir) = p.parent() {
         let _ = std::fs::create_dir_all(dir);
     }
@@ -911,6 +928,54 @@ mod tests {
         let boot = load_boot(&["c-run".to_string()]);
         assert_eq!(boot["c-run"]["status"], json!("idle"), "다음 부팅이 돌던 턴을 되살렸다");
         let _ = h;
+    }
+
+    /// ★R28c AG2 R3(확인 크리틱 R2 §6) — 규약 4가 파일에 남기는 사실의 **수명**을 못 박는다.
+    ///
+    /// 위 못(`a_migration_freezes_the_screen_but_not_the_file`)이 재는 것은 `ccg-migrate`가
+    /// 단독으로 도는 창까지다. 크리틱이 실 exe로 잰 값은 그 뒤였다: 앱 안에서 **옆 채팅이
+    /// 턴을 한 번** 돌면 `dirty`가 서고, 디바운스 [`flush`]는 *메모리 맵 전체*를 쓴다 —
+    /// 그 맵의 `c-run`은 [`seed`]가 걸어 둔 안전값(`idle`)이라 파일의 `working`이 덮인다.
+    ///
+    /// 이 못은 그 사실을 **고정**한다(고치는 못이 아니다): 커밋 메시지·헤더가 「파일에는
+    /// 마지막 사실이 남는다」를 조건 없이 적으면 다음 갈래가 그 문장을 믿고 판단한다.
+    /// 언젠가 행마다 「아직 살지 않은 값」을 따로 들어 영구히 참으로 만들면, **이 못이
+    /// 붉어져** 헤더도 같이 고치라고 말해 줄 것이다.
+    #[test]
+    fn the_frozen_fact_outlives_the_migration_but_not_the_first_turn() {
+        let _h = crate::testkit::temp_home("status-seed-lifetime");
+        forget();
+        let _ = load_boot(&[]);
+        let row = |st: &str| {
+            json!({ "status": st, "busy": false, "ask": "none", "bgActive": false,
+                    "queued": 0, "hold": Value::Null, "updatedAt": 5 })
+        };
+        seed(BTreeMap::from([("c-run".to_string(), row("working"))]));
+        let disk = || -> Value {
+            serde_json::from_str::<Value>(&std::fs::read_to_string(path()).expect("status.json"))
+                .unwrap()["statuses"]
+                .clone()
+        };
+        // ① 마이그레이션 프로세스 안 — 마무리 flush까지 사실이다.
+        flush();
+        assert_eq!(disk()["c-run"]["status"], json!("working"), "{}", disk());
+
+        // ② 앱: 옆 채팅이 턴을 한 번 돈다. 그 한 번이 맵 전체를 쓴다.
+        set("c-live", row("done"));
+        flush();
+        let after = disk();
+        println!("[R3] 턴 1회 뒤 디스크 = {after}");
+        assert_eq!(after["c-live"]["status"], json!("done"));
+        assert_eq!(
+            after["c-run"]["status"],
+            json!("idle"),
+            "★ 수명이 늘었다 — 좋은 소식이면 헤더 규약 4의 「마이그레이션 프로세스까지」도 같이 고쳐라: {after}"
+        );
+
+        // ③ 그래도 화면은 안전하다 — 읽는 쪽이 다시 얼리니 피해가 화면에 없다는 근거.
+        forget();
+        let boot = load_boot(&["c-run".to_string()]);
+        assert_eq!(boot["c-run"]["status"], json!("idle"), "덮이든 아니든 화면은 안전값이다");
     }
 
     /// ★R28c AG2 R2(확인 크리틱 R1 지적 3) — **첫 장전도** 그 사이 앉은 행을 안 덮는다.
