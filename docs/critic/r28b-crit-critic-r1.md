@@ -1,3 +1,215 @@
+# R28b 「CRIT」 확인 크리틱 R1 — **2차 독립 패스**: 여섯 항목 전부 다시 초록. 그리고 새 훅에는 **전역 codex 사용자용 구멍**이 하나 남아 있다
+
+판정자: CRIT 확인 크리틱 2차 패스(새 컨텍스트) · 2026-08-25 · `feature/3.0.0-beta`
+판정: **합격(pass = true).** 체크리스트 **6항 전부 크리틱 실측 통과.**
+
+> 오케스트레이터가 같은 프롬프트로 이 라운드를 한 번 더 스폰했다. 1차 판정문(커밋 `399ea08`)이 이미 커밋돼
+> 있어서 **그것을 근거로 쓰지 않고** 처음부터 다시 빌드·측정했다. 1차 판정문은 지우지 않고 이 문서 아래에
+> 그대로 붙였다 — 같은 라운드의 독립 두 패스를 나란히 두는 편이 덮어써서 한쪽 실측을 잃는 것보다 낫다
+> (ACCT 2차 패스 `4e88653`이 세운 규약).
+
+대상: `d6fdcca`(엔진 축) · `25fd697`(npm 없는 판) · `4450e5f`(허브 스레드 쓰기 제거) · `9a14353`·`fbb6b9d`(보고서·문구)
+
+---
+
+## 0. 한 문단 결론
+
+**여섯 항목은 내 손으로 다시 재도 전부 초록이다.** Codex 채팅은 90초에 발사하고(`unknown=1 · blocked=0`,
+큐에 세워 둔 사용자 메시지까지 함께), 클로드 축은 그대로 0바이트를 지키다가 556초에 손을 들고(눌러서 313B),
+npm 없는 컴퓨터는 2.3초에 사유가 적힌 카드를 얻는다. npm 있는 판도 22/0으로 안 흔들렸다.
+
+**그런데 새로 판 공격 하나가 구멍을 냈다.** 이 라운드의 헤드라인은 *"Codex면 `account/rateLimits/read` 창을
+본다"* 인데, 그 문지기 `codex_limit::can_ask()`의 첫 줄이 `codex_bin().is_file()`이다. `codex_bin()`은
+**활성 설치본이 없을 때 전역 PATH 폴백(맨 이름 `codex`)을 돌려주도록 설계된 함수**다. 즉 codex를 전역으로
+깔아 쓰는 사용자는 — 이 판정을 돌린 **바로 이 컴퓨터가 그렇다**(`C:\Users\User\AppData\Roaming\npm\codex.cmd`) —
+계정이 등록돼 있고 턴도 도는데 한도 재검증만 `Unknown`(=판정 안 함=눈감고 발사)으로 떨어진다.
+A/B 실측으로 잠갔다(§3).
+
+1차 판정문이 최대 격차로 지목했던 **렌더러 쌍둥이**(`resumeVerdict`의 `!past` · `codex-auth:accounts-usage`
+미구현)는 이 주행 도중 다른 갈래가 닫았다(`63bf667` RVERD R1 — 내 exe는 그 커밋 **이전**이다). 그래서 이번
+판정의 최대 격차는 그 자리가 아니라 위의 것이다.
+
+---
+
+## 1. 무엇으로 쟀나 — 빌드와 정직한 한 줄
+
+```
+CARGO_TARGET_DIR=target-crit cargo build --release --features custom-protocol -p agentcodegui   → 1분 31초
+exe 6,437,888바이트 · md5 307605a274115cb3807889081f760378
+사본을 %TEMP%\ccg-critr1b\ 로 떼어 전 측정에 썼다(다른 갈래가 공용 target-crit을 갈아도 내 측정본은 안 바뀐다).
+```
+
+> ⚠ **정직하게 적는 두 줄.**
+> ① 내 exe는 **순수 HEAD가 아니다.** 빌드 시점(2026-08-24 23:37) 워킹트리에 다른 두 갈래의 미커밋 변경이
+> 있었다(ACCT: `engine/{hub,ident,lite,mod}.rs`·`ipc/parity/{aimsg,usage}.rs`·`ipc/system.rs`·`main.rs`·
+> `crates/ccg-{auth,store}` / GIT: `crates/ccg-fs/src/git.rs`). **CRIT 자신의 파일은 전부 tracked-clean이었다**
+> (`ccg-engine/src/{limit,runtime}.rs`·`engine/{limit_probe,codex_limit}.rs`·`EngineGate.tsx`·`Settings.tsx`·
+> `app/src/lib/limitResume.ts`). 빌더가 적은 6,431,744바이트와 크기가 다른 이유가 그 미커밋분이다.
+> ② 주행 중 워킹트리가 **움직였다.** 네 번째 갈래(RVERD)가 `limitResume.ts`·`codex_limit.rs`·`parity/mod.rs`를
+> 고쳤다가 커밋했다(`63bf667`·`008664d`). 내 exe와 내 수치는 **그 전** 상태의 것이고, 그래서 이 판정은
+> CRIT 라운드 자체를 잰다. RVERD가 무엇을 닫았고 무엇을 안 닫았는지는 §3.3에 적었다.
+
+기준 결과 파일 **0개 덮음** — 전 주행이 `--out=bench/scratch/critr1b-*`(gitignored)로 나갔다.
+실계정 0건 · 실 HTTP 0건(`CCG_NO_NET=1` 또는 가짜 npm) · 이름 기반 kill 0회(자기 PID 트리만).
+격리 홈 `.poc-home-{codex-crit,engine-t3t4,cr1b-nonpm-t,cr1b-nps-t,cr1b-codexpath,bootupd-cr1b}` — 주행 후 전부 삭제됨(잔여 0).
+CDP 포트 9425·9437·9461·9462·9463·9464.
+
+---
+
+## 2. 체크리스트 판정표 — 전부 이번 패스의 실측
+
+| # | 항목 | 판정 | 내가 낸 수치 |
+|---|---|---|---|
+| 1 | 회귀 레시피(codex 채팅 · 리셋 지난 표) 발사 | **통과** | `poc-limit-codex` **8/0** · t=**90초** `spawns=1 · stdin 502B` · `{asks:1, fetches:0, blocked:0, unavailable:0, unknown:1}` · 큐 드레인 |
+| 2 | 클로드 채팅 재검증(오판 소멸) 유지 | **통과** | `poc-limit-engine` **11/0**(`spawns=0 · stdin 0B` · `{asks:2, fetches:2, unavailable:2, unknown:0}`) · `--long` **14/0**(t=**556초** `ready+autoPaused · probes=6 · stdin 0B` → 눌러서 **313B**) |
+| 3 | `poc-limit-resume` 무회귀 | **통과** | **141 / 0** |
+| 4 | npm 없는 판 — 카드 + 사유 + 설정 목록 오류 줄 | **통과** | 카드 **2,306ms** · `.sd-why` 실물 · `[나중에·다시 시도]` · 설정 picker 「목록을 불러오지 못했습니다」 + `.vpick-why` |
+| 5 | npm 있는 판 무회귀(부팅·설치·자동 닫힘) | **통과** | 가짜 npm **22/0** · A3 done **2,645ms**(기준 2,620ms) · A9 카드 겹침 0 · A10 자동 닫힘 · C2 할 일 없으면 카드 0장 |
+| 6 | cargo 크레이트별 + typecheck 3종 | **통과** | ccg-engine **203/0**(기준 197 → **+6**) · agentcodegui **139/0** · ccg-store **79/0** · ccg-auth **100/0**(기본) · **116/0**(`--features net`) · typecheck 3종 초록 |
+
+### 2.1 ★ 회귀 레시피 (항목 1)
+
+```
+   t= 85s spawns=0 stdin=0B hold=yes resetsAt=0 blocked=0 unknown=0
+   t= 90s spawns=1 stdin=502B hold=no  resetsAt=-  blocked=0 unknown=1   ← 발사
+   C5 사용자 메시지가 큐에서 풀려 나갔다 — {"queue":[],"spawns":1,"hold":null}
+PASS — 8 통과, 0 실패
+```
+
+**하네스의 한계를 이번 패스도 확인했다(그리고 갈음했다).** 지시문의 레시피는 「클로드 주간 `pct:100`(해제
+미래)」를 요구하는데, 이 하네스는 `CCG_NO_NET=1`이라 그 값을 **라이브로 못 세운다** — `peek_usage`가 읽는
+메모리 캐시의 유일한 작성자가 `usage_get`의 HTTP 성공이고, `usage-cache.json`은 `accounts_usage` 전용이다.
+그래서 클로드 축은 언제나 `Unavailable`이다. 갈음은 둘:
+
+- `limit_probe::tests::a_codex_chat_is_never_judged_by_the_claude_weekly_window` — 캐시에 `weekly {pct:100,
+  resetsAt:+180,000초}`를 심고 **같은 계정**으로 Claude/Codex를 각각 묻는다 → 앞 `Blocked{+180,000}`,
+  뒤 `Unknown`, `blocked` 계수 불변. **내 cargo 주행에서 초록으로 돌았다**(`critr1b-cargo.log:411`).
+- 위 실측의 `fetches:0` — codex 판정은 워커를 **깨우지도 않았다** = 클로드 축의 캐시를 재료로 쓸 길 자체가 없다.
+
+### 2.2 클로드 축 무회귀 (항목 2)
+
+`unknown=0`이 핵심이다 — **클로드 채팅이 새 갈래로 새지 않았다.** 그리고 `--long`의 착지 시각 **556초**가
+T3T4 R3이 잰 556초와 같다 = §1.3의 `known && !past` 손질이 **시각을 아는 표의 사다리를 안 흔들었다.**
+
+### 2.4 npm 없는 컴퓨터 (항목 4) — 문구까지 그대로 옮긴다
+
+```
+title : 엔진을 설치할 수 없어요
+msg   : Claude Code 엔진이 설치되지 않았는데, 설치할 버전 목록을 가져오지 못했습니다.
+        엔진 설치에는 npm(Node.js)과 인터넷 연결이 필요해요 — 확인한 뒤 다시 시도하세요.
+sd-why: 레지스트리 응답을 읽지 못했어요(npm view 출력이 JSON이 아닙니다)
+btns  : [나중에] [다시 시도]        firstSdMs = 2,306ms · .eu-card = 0장(표본 109)
+설정 ▸ Engine : listAvailable = {latest:null, versions:[], error:…}
+                .vpick-msg 「목록을 불러오지 못했습니다」 + .vpick-why 사유 한 줄
+```
+
+`fbb6b9d`의 문구 정정(「npm(Node.js)**과 인터넷 연결**」)이 실물에 실려 있다 — 잠깐 오프라인인 컴퓨터에게
+없는 문제를 시키지 않는다. 2.6.2(Electron) 팔은 **일부러 안 돌렸다**(그쪽 부팅 정리가 `CCG_HOME`을 무시하고
+사용자 실홈의 `codex-engines`를 지운다 — 크리틱 R2 §9).
+
+### 2.5 npm 있는 판 (항목 5)
+
+가짜 npm 22/0. 이 라운드가 새로 세운 `blocked` 카드가 **부팅 업데이터와 안 겹친다**는 것이 A9로 잠겼고
+(`gateTitle=null`), 할 일이 없는 판에서는 카드가 한 장도 안 뜬다(C2). A3 2,645ms vs 기준 2,620ms = 잡음 안.
+
+---
+
+## 3. ★ 크리틱이 새로 판 공격 — 「전역 codex」 사용자에게는 이 라운드가 **없다**
+
+### 3.1 무엇을 의심했나
+
+`codex_limit::can_ask()`(`src-tauri/src/engine/codex_limit.rs:104`)의 첫 줄과 그 주석:
+
+```rust
+// 활성 설치본이 없으면 `codex_bin`은 맨 이름(`codex`)을 돌려준다 = 이 앱에는 실행본이
+// 없다. 그 판에서는 codex 턴 자체가 못 뜨므로 한도를 물을 이유도 없다.
+if !crate::engine::codex_versions::codex_bin().is_file() { return false; }
+```
+
+**뒷문장이 사실이 아니다.** `codex_bin()`은 폴백을 **의도적으로** 돌려준다 —
+`crates/ccg-engine/src/codex/versions.rs:81`의 주석이 *"폴백 순서: 네이티브 → `.bin` shim → 전역 `codex`(PATH)"* 이고,
+같은 파일의 테스트 이름이 `codex_bin_falls_back_to_path_when_nothing_is_installed`다. 그 값을 그대로 쓰는
+두 자리에는 `is_file()` 문이 **없다**:
+
+| 자리 | 무엇 | `is_file()` |
+|---|---|---|
+| `engine/hub.rs:313` | 턴을 띄우는 `CodexDriver` | **없다** |
+| `ipc/parity/codex.rs:71` | 계정 목록·로그인 상태 왕복 | **없다** |
+| `engine/codex_limit.rs:104·119` | 한도 재검증(`can_ask`·`instrument`) | **있다** |
+
+그리고 `codex::driver::command_for`는 맨 이름을 `cmd /C ""codex" app-server"`로 풀어 **PATH에서 찾는다**
+(`bare_name` 분기). 즉 턴은 돌고 한도만 안 묻는다는 가설이다.
+
+### 3.2 A/B로 잠갔다 — 갈리는 값은 `is_file()` 하나뿐
+
+하네스 `bench/scratch/critr1b-codexpath.mjs`. 두 팔의 씨앗은 **완전히 같다**: 클로드 계정 1 +
+**등록된 codex 계정 1**(`codex-accounts.json` — `email`은 평문 필드다) + Codex 채팅 + 리셋 2시간 전 대기표 +
+`CCG_NO_NET=1`. 다른 것은 `CCG_CODEX_BIN` 하나다.
+
+| 팔 | `CCG_CODEX_BIN` | 판정 계수 | 결과 |
+|---|---|---|---|
+| **A · 전역 PATH** | `codex` (= `codex_bin()`의 폴백값과 **같은 값**) | `{asks:1, fetches:0, unknown:1, unavailable:0, blocked:0}` | **t=90초 발사**(`spawns=1`) · 대기표 소멸 |
+| **B · 앱 설치본** | `<ccg-fakecodex.exe>`(실물 파일) | `{asks:2, fetches:1, unknown:0, unavailable:2, blocked:0}` | **미발사** · 대기표 유지 · 재확인 사다리 |
+
+`fetches:0`이 A팔의 핵심이다 — 워커를 깨우지도 않았다. **codex 창을 물어볼 시도조차 없었다.**
+그리고 이 판정을 돌린 컴퓨터에는 전역 codex가 실제로 있다(`where codex` →
+`C:\Users\User\AppData\Roaming\npm\codex.cmd`) — 가상의 인구가 아니다.
+
+`spawns`는 `driver.spawn()`의 **성공 여부와 무관하게** 오른다(`runtime.rs:1558`, 바로 위 줄이 `spawn_err`를
+따로 받는다). 그래서 A팔의 `spawns=1`이 뜻하는 것은 정확히 **"런타임이 보내기로 결정했다"** 이다 —
+한도가 아직 살아 있어도 그렇다.
+
+### 3.3 RVERD(`63bf667`)가 닫은 것과 안 닫은 것
+
+1차 판정문의 최대 격차(렌더러 `resumeVerdict`의 `!past` · `codex-auth:accounts-usage` 미구현)는 이 주행
+도중 닫혔다 — 지금 HEAD(`b369599`)의 `limitResume.ts:175`가 `(known && !past)`이고 `codex_limit.rs:164`에
+`accounts_usage()`가 생겼다. **그러나 이 §3의 구멍은 안 닫혔다**: 새 `accounts_usage()`도 `fill()` →
+`instrument()`를 지나고, `instrument()`의 첫 줄이 여전히 `codex_bin().is_file()`이다(`:119`). 그래서 전역
+codex 사용자에게는 이제 **설정 ▸ Account의 OpenAI 게이지까지** 같은 이유로 빈다 — 구멍이 좁아진 게 아니라 넓어졌다.
+
+### 3.4 다음 라운드에 넘기는 지시
+
+`is_file()`을 「실행본이 있나」의 대용으로 쓰지 마라. 판정은 **맨 이름이면 PATH에서 찾을 수 있는가**로
+갈라야 한다(`where`/`which` 한 번 또는 실제 spawn 성공). 최소 수정:
+
+1. `codex_limit::can_ask`·`instrument`의 `is_file()` 검사를 `codex_bin()`이 **맨 이름일 때 PATH 해석까지
+   보는** 헬퍼로 바꾼다(허브 스레드에서 도는 자리이므로 결과는 캐시해야 한다 — `can_ask`는 tick마다 불린다).
+2. 그 헬퍼는 `hub.rs:313`·`parity/codex.rs:71`과 **같은 판단**을 써야 한다. 세 자리가 서로 다른 기준으로
+   "실행본이 있다"를 판정하는 지금 상태가 이 구멍의 뿌리다.
+3. `codex_limit.rs:102-103`의 주석("그 판에서는 codex 턴 자체가 못 뜨므로")은 **지금 거짓이다.** 고치거나 지워라.
+4. 회귀 못: `bench/scratch/critr1b-codexpath.mjs`를 `scripts/`로 승격해 A팔이 `unavailable`(발사 아님)로
+   뒤집히는지 잰다. 지금 그 하네스는 `hole:true`를 돌려준다.
+
+---
+
+## 4. 곁다리 정정 하나 — 「ccg-auth 116」은 피처가 붙은 숫자다
+
+빌더 보고와 1차 판정문의 `ccg-auth 116`은 **기본 주행의 숫자가 아니다.** `cargo test -p ccg-auth`는
+**100**(82+0+0+14+2+1+1)이고, `tests/critic_m11r2_{tls,token}.rs`가 `#![cfg(feature = "net")]`라 기본에서는
+`running 0 tests`로 돈다. `--features net`을 붙이면 **116**(91+1+6+14+2+1+1)이다 — 그때도 실 HTTP는 0건이다
+(TLS 라이브 팔은 `CCG_CRITIC_LIVE_TLS` 미설정이면 즉시 빠진다 · 0.00초).
+회귀 판정에는 영향이 없다(양쪽 다 0 실패). 다만 **같은 이름의 숫자가 두 개**라는 사실은 적어 둔다.
+
+---
+
+## 5. 산출물
+
+| 무엇 | 어디 |
+|---|---|
+| poc-limit-codex | `bench/scratch/critr1b-limit-codex.json` |
+| poc-limit-engine · `--long` | `bench/scratch/critr1b-limit-engine{,-long}.json` |
+| npm 없는 판(부팅·설정) | `bench/scratch/critr1b-nonpm-{boot,settings}.json` |
+| npm 있는 판(가짜 npm) | `bench/scratch/critr1b-bootupd.json` |
+| ★ 전역 codex A/B | `bench/scratch/critr1b-codexpath.json` (+ 하네스 `.mjs`) |
+| cargo 로그 | `bench/scratch/critr1b-cargo{,-auth-net}.log` |
+
+(전부 gitignored — 기준 결과 파일은 한 개도 안 덮었다.)
+
+---
+---
+
+# ↓↓↓ 아래는 같은 라운드의 **1차 판정문**(커밋 `399ea08`) — 지우지 않고 그대로 둔다 ↓↓↓
+
 # R28b 「CRIT」 확인 크리틱 R1 — 두 격차는 실제로 닫혔다. 그리고 **같은 구멍의 쌍둥이**가 렌더러에 그대로 있다
 
 판정자: CRIT 확인 크리틱(새 컨텍스트) · 2026-08-24 · `feature/3.0.0-beta`
