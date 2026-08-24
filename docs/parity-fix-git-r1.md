@@ -1,11 +1,23 @@
 # 후속 GIT R1 — 커밋이 죽던 자리는 명령줄 32,767자, AI diff는 파일당 프로세스 두 개
 
-라운드: R28 후속 GIT R1 (+ **수정 라운드 1**) · 2026-08-24 · `feature/3.0.0-beta`
+라운드: R28 후속 GIT R1 (+ **수정 R1** · **수정 R2**) · 2026-08-24~25 · `feature/3.0.0-beta`
 근거 문서: `docs/r28-followup.md` §2(사용자 직접 요청) · M12 R2 확인 크리틱 G1~G3
 커밋: `d05f113`(§1·§2) · `e47a3ee`(§3) · `a209227`(문서) ·
-**수정 R1** — §2.5·§2.6(구멍 둘 + 새 거짓말) · §3.4(A/B 캔버스)
+**수정 R1** — §2.5·§2.6(구멍 둘 + 새 거짓말) · §3.4(A/B 캔버스) ·
+**수정 R2** — §1.5(고른 경로가 글롭이었다) · §1.6(4MB 예산 + 그물)
 
-> **수정 라운드 1이 고친 것** (R28b GIT R1 확인 크리틱 판정: 5개 중 4개 통과, 5번 실패)
+> **수정 R2가 고친 것** (R28b GIT 확인 크리틱 R3 판정: 숙제 5항목 전부 실측 통과 —
+> 그런데 `commit`이 자기 문서에 적은 계약 「고른 파일만 커밋」이 깨져 불합격.
+> 판정문 `docs/critic/r28b-git-critic-r3.md`)
+> - **§1.5** ★ 치명. 고른 경로가 그대로 pathspec(=글롭)으로 나가, `app/posts/[id]/page.tsx`
+>   2개만 골랐는데 이웃 `app/posts/i/page.tsx`까지 **3개**가 커밋됐다. `:(literal)` 접두
+>   하나로 add·롤백 reset·argv diff를 한꺼번에 고쳤고, 크리틱이 짚지 않은 **`discard`**
+>   (되돌리기)까지 같이 막았다 — 거기서는 이웃의 **저장 안 한 편집이 사라진다**.
+> - **§1.6** 확인 크리틱 R2가 잡은 4MB 예산 사고의 수정분(커밋도 기록도 안 돼 있던 것)을
+>   이 커밋에 같이 싣고, **테스트 0건이던** `BodyDropped`·두 예산에 그물 4개를 걸었다.
+> - 보고서 오기 둘 정정: PNG 「37장」→ **36장**(§6) · `Settings.tsx:1280` → **:1208/:1398**(§3.1).
+
+> **수정 R1이 고친 것** (R28b GIT R1 확인 크리틱 판정: 5개 중 4개 통과, 5번 실패)
 > - **§3.4** ★ 실패 항목. 이 문서가 「본 패스 18행 두 앱 모두 `[1320,880]`」이라고 적었는데
 >   같은 커밋의 `report.json`은 3.0 `[1440,900]` · 2.6.2 `[1320,880]`이었다. 문장이 아니라
 >   **원인**(하네스가 3.0에만 먹는 레버로 크기를 강제)을 고치고 19화면을 다시 찍었다.
@@ -83,6 +95,122 @@ pathspec 오류로 **죽어서** 우연히 막혀 있던 자리다. 그래서 �
 고르지 않은 파일                     그대로 남는다(status 1행)
 훅 거부(pre-commit exit 1) 600경로   커밋 없음 + 스테이징 0 (인덱스에 직접 확인)
 긴 본문 400줄 + `#` 줄 + 한글        제목/본문 왕복 무손실
+```
+
+### 1.5 고른 경로가 **글롭**이었다 — 이웃이 조용히 딸려 왔다 (수정 R2)
+
+> R28b GIT R3 확인 크리틱의 치명 판정. 「고른 파일만 커밋」은 이 함수가 자기 문서에 적은
+> 계약인데, 실측으로 깨졌다.
+
+경로를 그대로 pathspec으로 넘기면 git은 그것을 **패턴**으로 읽는다.
+
+```
+고른 것 2개   app/posts/[id]/page.tsx · app/posts/[...slug]/page.tsx
+커밋된 것 3개 + app/posts/i/page.tsx           ← `[id]`가 문자클래스라 한 글자 `i`에 맞았다
+              오류도, 경고도 없다
+```
+
+**창구는 좁지만 정확히 그 인구를 친다.** `*`·`?`는 Windows 파일명에 못 쓰므로 현실적인
+매직 문자는 `[ ]` 하나뿐인데, 그게 하필 **Next.js App Router의 표준 디렉터리 이름**이다
+(`[id]` · `[slug]` · `[...slug]`). 사용자의 두 번째 프로젝트가 Next.js다.
+
+R1은 이 줄을 **다시 쓰면서**(argv → stdin) pathspec 생성이 유일한 일인 새 헬퍼
+`nul_pathspec()`을 만들었는데 literal 매직을 안 붙였고, 새 테스트 9개도 이 자리를 안 지났다.
+2.6.2 `src/main/git.ts:358`도 같은 모양이라 **회귀는 아니다**(파리티 유지) — 그러나 이 라운드가
+손댄 줄이다.
+
+**고친 자리 — `:(literal)` 접두 하나(`LITERAL` 상수), 쓰는 곳은 넷.**
+
+| 자리 | 무엇이 위험했나 |
+|---|---|
+| `commit`의 add (`nul_pathspec`) | 고르지 않은 이웃이 **같이 커밋된다** |
+| 훅 거부 롤백 reset (같은 바이트) | **남의 스테이징**을 대신 걷는다 |
+| `discard`의 `checkout HEAD --` | ★ 고르지 않은 이웃의 **저장 안 한 편집이 사라진다** |
+| `discard`의 `rm --cached --ignore-unmatch` | 이웃이 **말없이** 인덱스에서 내려간다 |
+| 대량 diff의 argv 갈래(`diff_once`) | 답 오염은 없었지만(키가 정확) 이웃 diff를 공짜로 만들어 수집 예산을 갉는다 |
+
+`discard`는 크리틱이 지목하지 않은 자리인데, **이 갈래에서 가장 파괴적**이라 같이 고쳤다.
+raw git으로 못 박았다:
+
+```
+git checkout HEAD -- "app/posts/[id]/page.tsx"
+  → app/posts/i/page.tsx 의 저장 안 한 편집이 사라짐            (내용이 HEAD로 돌아감)
+git checkout HEAD -- ":(literal)app/posts/[id]/page.tsx"
+  → i/page.tsx 편집 그대로 · [id]/page.tsx만 되돌아감
+```
+
+**같이 옮긴 두 가지**
+
+- **argv 예산이 접두 10바이트를 센다**(`fits_argv`). 짧은 경로 수천 개면 그 10바이트가
+  경로보다 크다 — 「경로 길이만」으로 세면 예산 24,000을 지키고도 실제 명령줄이 32,767을
+  넘어, 이 라운드가 고친 그 스폰 실패로 되돌아간다. 테스트 `the_argv_budget_counts_the_magic_prefix`가
+  경로만 세면 예산 안(18,000)이고 접두까지 세면 밖(38,000)인 목록으로 그 자리를 잡는다.
+- **`err_line`이 접두를 걷는다.** `:(literal)`은 우리가 git에게 하는 말이지 사용자의 말이
+  아니다 — `pathspec ':(literal)없는 파일.txt' did not match…`가 그대로 새면 사용자는 자기가
+  안 친 글자를 오류에서 읽는다.
+
+**실측(재현 → 고침 → 그물이 무는지)**
+
+```
+raw git   printf 'app/posts/[id]/page.tsx\0' | git add -A --pathspec-from-file=- --pathspec-file-nul
+            → 3개 스테이징 ([id] · d · i)           ← `[id]` = 한 글자 `i` 또는 `d`
+          같은 줄에 `:(literal)`만 붙이면            → 1개
+접두를 달아도 세 행 모양 전부 정상   폴더 행(안쪽 2개 A) · 삭제 행(D) · 대괄호 행(A, 이웃 없음)
+  ↑ raw git이 아니라 **우리 `commit()`으로** 한 판에 섞어 다시 확인했다
+    (`the_literal_prefix_keeps_folder_rows_and_deletions_working` — 접두가 깨뜨릴 수
+     있었던 것이 정확히 이 둘이다: 폴더 행의 접두 매칭과, 디스크에 없는 삭제 행)
+
+새 테스트 4개를 접두를 지운 코드(`LITERAL = ""`)로 돌려 **전부 실패하는 것**까지 확인:
+  a_bracket_path_never_drags_its_neighbours_into_the_commit
+      고른 2개 → 추적 5개(seed + 고른 2 + 이웃 i·d)  ← 크리틱이 본 그 사고
+  discarding_a_bracket_path_leaves_its_neighbour_alone
+      이웃 내용 "원본\n이웃의 저장 안 한 편집\n" → "원본\n"
+  the_argv_diff_path_asks_only_for_the_bracket_file
+      diff 키 ["app/posts/i/page.tsx", "app/posts/[id]/page.tsx"] → 1개여야 한다
+  the_argv_budget_counts_the_magic_prefix
+      "접두를 안 세고 argv에 담았다"
+```
+
+### 1.6 4MB 수집 예산이 프롬프트의 95%를 말없이 지웠다 (수정 R2 — 확인 크리틱 R2)
+
+이 라운드에 **같이 실린** 앞선 수정분이다(코드는 있었는데 커밋도 기록도 안 돼 있었다).
+
+`BULK_TEXT_BUDGET`(4MB)는 **배치 전역** 카운터였다. `git diff`가 경로 순으로 뱉는 앞쪽 큰
+파일이 예산을 다 먹으면 **뒤 파일 전부가 헤더만** 나갔고, 아무 표시도 없었다.
+
+```
+재생성 큰 파일 5개(각 ~1MB) + 소스 10개  →  프롬프트 838자 (옛길 15,838자)
+총량 캡 120,000에는 닿지도 않은 채 소스 10개 본문 전부 증발 · 표시 0
+```
+
+옛 주석은 「호출부의 예산은 12만 자라 프롬프트에 닿는 글자는 이 상한에 영향받지 않는다」고
+단언했는데 거짓이었다. 지금은 **두 겹**이다.
+
+| 겹 | 값 | 하는 일 |
+|---|---|---|
+| `BULK_FILE_TEXT_BUDGET` | 64KB | 파일마다 먼저 잘라 **한 파일이 남의 몫을 못 먹게**(넘긴 몫은 배치 예산에 돌려준다) |
+| `BULK_TEXT_BUDGET` | 4MB | 그래도 바닥나면 **말하고** 버린다 |
+
+버릴 때는 `GitFileDiffResult::body_dropped`에 사유(`File`/`Batch`)를 실어 보내고,
+호출부(`aimsg.rs::build_diff_text`)가 그것을 문장으로 옮긴다 —
+`### <경로> (+N −M) — 본문 생략(<사유>): 규모만 참고`. 캡 셋(파일 24,000자·총량 120,000자·
+수집 예산)이 **전부 같은 모양**으로 착지한다. 64KB를 24,000자보다 넉넉히 위에 둔 이유:
+거기 걸린 파일은 파일당 호출(옛길)로 받아도 **반드시** 파일 캡에 걸리므로 두 길의 프롬프트
+문자열이 갈리지 않는다.
+
+**그런데 그 코드에 그물이 없었다.** `BodyDropped`·`body_dropped`·두 예산 상수를 **두 크레이트
+통틀어 만지는 테스트가 0건**이었다(R3 확인 크리틱 지적). 이미 한 번 조용히 새어 나간 자리다.
+
+```
+one_fat_file_folds_itself_and_says_so_while_the_next_file_keeps_its_body
+   큰 파일 65줄×1,000B → dropped=File · (add,del) 정확 · 뒤 작은 소스 본문 3줄 전부 생존
+the_batch_budget_folds_out_loud_and_the_counts_stay_exact
+   80행 × 60,000B = 4.8MB → 11행 dropped=Batch · 본문 보유 4,140,000B(≤ 4MB 예산)
+   80행 전부 (add,del) 정확 · **본문은 전부 있거나 전부 없다**(반쪽 0행)
+a_fat_file_carries_its_reason_out_through_the_public_api   (진짜 git)
+   body_dropped=File이 결과에 실림 · 헤더 (+100 −1) 정확 · 같은 배치 작은 소스 본문 생존
+a_body_dropped_by_the_collector_never_leaves_a_bare_header  (aimsg.rs)
+   File→「본문 생략(파일이 너무 큼)」 · Batch→「본문 생략(수집 예산)」 · 영어 판도 같은 자리
 ```
 
 ---
@@ -204,7 +332,8 @@ dev 빌드가 아님을 확인하고 돌렸다.
 
 **19/19가 아닌 이유는 앱이 아니라 환경이다.** `settings-engine-confirm`은 「이전 버전
 정리」 버튼을 누르는 화면인데 그 행은 `oldCount > 0`(설치된 엔진 2개 이상)일 때만 그려진다
-(`app/src/components/Settings.tsx:1280`). 픽스처는 실홈의 `engines`·`codex-engines`를
+(`app/src/components/Settings.tsx:1208` `oldCount` 정의 · `:1398` 렌더 게이트 —
+**수정 R2 정정**: R1이 적은 `:1280`은 오기였다). 픽스처는 실홈의 `engines`·`codex-engines`를
 **정션으로 읽기 전용 공유**하고, 지금 둘 다 버전이 하나뿐이다(`engines/0.3.241` ·
 `codex-engines/0.149.1` — codex 쪽 옛 버전이 오늘 19:05에 사라졌다).
 그래서 **두 앱이 같은 자리에서 같은 문구로** 실패한다 = 파리티 차이가 아니다.
@@ -303,21 +432,40 @@ viewport: null                            0행 (38행 전부)
 ## 4. 검증 요약
 
 ```
-cargo test -p ccg-fs        90개 중 88 통과 · 0 실패 · 2 ignored(느린 근거 측정)   (81 → 90)
+cargo test -p ccg-fs        98개 중 96 통과 · 0 실패 · 2 ignored(느린 근거 측정)  (88 → 96)
+cargo test -p agentcodegui  143 통과 · 0 실패            (수정 R2에서 처음 돌림 — 아래 단서)
 cargo check -p ccg-fs                                     경고 0
 npm run typecheck (node·web) · npm run typecheck:app     3종 초록 (exit 0)
 node --check bench/ab.mjs                                 통과
 A/B 19화면 × 2앱                                          각 19행 · 18/19 · 94.7%
                                                           두 앱 캔버스 동일(§3.4), canvasMismatch []
+                                                          PNG 18장 × 2앱(실패 행 하나는 못 찍는다)
 ```
 
 새 테스트 9개(7 실행 + 2 ignored): 2,000파일 커밋 · 빈 목록 차단 · 긴 본문 stdin ·
 훅 거부 롤백 600경로 · bulk vs 파일당 답 대조 · 전 트리 갈래 900파일 ·
 **미추적 폴더 행** · **unborn 300파일 스폰** · **32MB 초과 분할**(ignored).
 
-`cargo test -p agentcodegui`는 이 라운드에서도 **일부러 안 돌렸다** — 워킹트리에 다른 두
-갈래의 미커밋 Rust가 얹혀 있어 그 결과가 이 갈래의 증거가 못 된다(확인 크리틱도 같은
-이유로 뺐다). 이 라운드가 `src-tauri`에서 만진 것은 **주석 한 덩이뿐**이다.
+**수정 R2가 더한 테스트 9개** — ccg-fs 8: 대괄호 커밋+롤백 · **세 행 모양**(폴더 행·삭제 행·대괄호 행) ·
+대괄호 되돌리기 · argv diff 대괄호 · argv 예산이 접두를 셈 · 파일별 예산 · 배치 예산 ·
+예산 사유의 공개 API 왕복.
+agentcodegui 1: 접힌 본문이 문장이 되는지(`build_diff_text`).
+앞의 넷은 접두를 지운 코드(`LITERAL = ""`)로 돌려 **전부 실패하는 것**을 확인했다 —
+그물이 무는지 안 본 그물은 그물이 아니다.
+
+`cargo test -p agentcodegui`는 수정 R1까지 **일부러 안 돌렸다**(워킹트리에 다른 갈래의
+미커밋 Rust가 얹혀 있어 그 결과가 이 갈래의 증거가 못 된다). 수정 R2는 `aimsg.rs`에
+테스트를 더했으므로 돌렸고, **143 중 이 갈래 몫은 1개**다 — 나머지 증감은 옆 갈래의
+미커밋분이라 이 갈래의 증거로 쓰지 않는다(크리틱이 잰 139에서 는 것도 그 때문이다).
+
+재실측(수정 R2, 같은 테스트):
+
+```
+2,000파일 커밋   760ms · git 스폰 3회 (argv였다면 128,000자)
+900파일 bulk     204ms · git 스폰 2회
+unborn 300파일   281ms · git 스폰 3회
+배치 예산        80행 중 11행 접힘 · 본문 보유 4,140,000B (≤ 4MB)
+```
 
 ---
 
@@ -343,14 +491,19 @@ A/B 19화면 × 2앱                                          각 19행 · 18/19
 - `crates/ccg-fs/src/git.rs` — `exec_stdin`/`exec_in`·`spawn_count`·`commit` stdin화·
   `bulk_file_diffs`+파서·`status_at`·테스트 6.
   **수정 R1**: `diff_once`/`diff_into`(반 가르기)·`unborn_file_diff`·`is_file()` 정정·테스트 3.
+  **수정 R2**: `LITERAL`/`literal_spec`/`fits_argv` 신설 → `nul_pathspec`·`diff_once`·
+  `discard`(checkout·rm --cached)·`err_line`(접두 제거)·수집 예산 두 겹(`BodyDropped`)·테스트 8.
 - `src-tauri/src/ipc/parity/aimsg.rs` — diff 수집 3줄(**경계 밖**: 숙제가 지목한
   ai-message 경로가 이 파일로 옮겨져 있었다. 이 파일의 다른 hunk는 안 건드렸다).
   **수정 R1**: 주석만(「몇 개든 1~2회」가 조건부였다).
+  **수정 R2**: `build_diff_text` 분리(캡 셋이 전부 문장으로 착지) + 테스트 1.
 - `bench/ab.mjs` — G2 경고 2줄·G3 viewport·`shotWhen`이 캔버스를 같이 돌려준다.
   **수정 R1**: `fixWindowSize` 삭제 → `settleWindowSize`·`report.canvas`·반대편 캔버스 대조
   경고·실패 행 옛 PNG 정리·행 순서 항상 정렬·①번 경고의 `--merge` 오경보 제거.
 - `bench/shots/{tauri,electron}-m12r2/report.json` — 19행 재채움(G1).
-  **수정 R1**: 두 앱 통짜 재주행(캔버스 강제 없이) — PNG 37장도 같이 새로 찍혔다.
+  **수정 R1**: 두 앱 통짜 재주행(캔버스 강제 없이) — PNG **36장**(앱마다 18장)도 같이
+  새로 찍혔다. **수정 R2 정정**: R1이 적은 「37장」은 오기다. 못 찍는 행은 두 앱 모두
+  `settings-engine-confirm` 하나뿐이라 19행 − 1 = 18장 × 2앱이 맞다(디스크 실측 18·18).
 - `docs/renderer-divergence.md` — §6.4 추가(끝에 덧붙임, 남의 절 무접촉).
   **수정 R1**: §6.4의 「되돌아가는 단위」 표 정정.
 - `docs/parity-fix-git-r1.md` — 이 문서.
@@ -389,3 +542,11 @@ A/B 19화면 × 2앱                                          각 19행 · 18/19
    (`windowSized: tauri true · electron false`도 그대로다) — 숫자만 보면 사진과 반대로
    읽힌다. 다음에 그 세트를 통짜로 다시 찍으면 리포트가 사진과 같은 말을 하게 된다.
    토스트 두 장의 16px 차이는 이 라운드 밖의 실제 차이라 그대로 남긴다.
+6. **`:(literal)`은 이제 이 크레이트가 git에 넘기는 모든 경로의 규약이다**(수정 R2).
+   앞으로 pathspec을 새로 쓰는 자리는 예외 없이 `literal_spec()`을 지나야 한다 — 이번 사고가
+   난 이유가 정확히 「pathspec을 만드는 새 헬퍼를 만들면서 그 규약이 없었다」이기 때문이다.
+   `git status`가 주는 경로는 늘 루트 상대·슬래시라 접두가 안전하지만, 만약 앞으로 절대
+   경로를 넘기는 호출부가 생기면 pathspec 의미가 달라진다(그건 접두와 무관한 별개 계약이다).
+7. **2.6.2도 같은 글롭 구멍이 있다**(`src/main/git.ts:358`). 동결 구역이라 안 고쳤다 —
+   파리티는 「3.0이 더 정확한」 쪽으로 갈렸고, `docs/renderer-divergence.md`에 적을 만한
+   분기다. 3.0이 기준이 되는 시점에는 이 문단이 근거가 된다.

@@ -105,6 +105,73 @@ fn serialize_diff(rel: &str, d: &ccg_fs::diff::FileDiff) -> String {
     out
 }
 
+/// 고른 파일들 → 프롬프트의 `[diff]` 블록. **캡이 걸린 자리는 전부 문장으로 말한다.**
+///
+/// 캡은 셋이고, 셋 다 같은 모양(`### <경로> (+N −M) — 본문 생략(<사유>): 규모만 참고`)으로
+/// 착지한다:
+///
+/// | 캡 | 어디 | 사유 문구 |
+/// |---|---|---|
+/// | 파일 24,000자 | 여기([`AI_FILE_CAP`]) | 파일이 너무 큼 |
+/// | 총량 120,000자 | 여기([`AI_DIFF_CAP`]) | 총량 상한 |
+/// | 수집 예산 4MB/64KB | `ccg_fs::git`(`body_dropped`) | 파일이 너무 큼 · **수집 예산** |
+///
+/// 셋째 것이 R28b GIT R2 확인 크리틱이 잡은 자리다. 그때는 이 함수가 `body_dropped`를
+/// 안 봐서 **본문도 사유도 없는 맨 헤더**가 나갔고(프롬프트 838자 대 옛길 15,838자),
+/// 모델이 소스 변경을 한 줄도 못 본 채 커밋 메시지를 썼다. 헤더의 `(+40 −40)`은 정확했지만
+/// 그건 규모일 뿐이다 — **없는 것을 없다고 말하지 않는 것**이 이 함수의 계약이다.
+///
+/// [`ccg_fs::git::BodyDropped::File`]을 「파일이 너무 큼」으로 옮기는 이유: 그 예산(64KB)은
+/// [`AI_FILE_CAP`](24,000)보다 넉넉히 위라, 거기 걸린 파일은 파일당 호출(옛길)로 받아도
+/// **반드시** 파일 캡에 걸린다. 즉 두 길의 프롬프트 문자열이 갈리지 않는다.
+fn build_diff_text(en_on: bool, files: &[String], collected: &[ccg_fs::git::GitFileDiffResult]) -> String {
+    use ccg_fs::git::BodyDropped;
+    let mut diff_text = String::new();
+    for (rel, d) in files.iter().zip(collected.iter()) {
+        let head = match &d.diff {
+            Some(x) => format!("### {rel} (+{} −{})", x.add, x.del),
+            None => format!("### {rel}"),
+        };
+        let mut chunk = match &d.diff {
+            Some(x) => serialize_diff(rel, x),
+            None => format!(
+                "{head} {}",
+                if en_on {
+                    format!("(no diff body: {})", d.error.as_deref().unwrap_or("not displayable"))
+                } else {
+                    format!("(diff 본문 없음: {})", d.error.as_deref().unwrap_or("표시 불가"))
+                }
+            ),
+        };
+        if d.diff.is_some() {
+            // 수집 단계에서 이미 본문이 버려졌으면 `chunk`는 헤더뿐이라 아래 파일 캡이
+            // 못 잡는다 — 그 자리를 여기서 말한다.
+            if chunk.len() > AI_FILE_CAP || d.body_dropped == Some(BodyDropped::File) {
+                chunk = format!(
+                    "{head} {}",
+                    t(en_on, "— 본문 생략(파일이 너무 큼): 규모만 참고", "— body omitted (file too large): use the size only")
+                );
+            } else if d.body_dropped == Some(BodyDropped::Batch) {
+                chunk = format!(
+                    "{head} {}",
+                    t(en_on, "— 본문 생략(수집 예산): 규모만 참고", "— body omitted (collection budget): use the size only")
+                );
+            }
+        }
+        if diff_text.len() + chunk.len() > AI_DIFF_CAP {
+            chunk = format!(
+                "{head} {}",
+                t(en_on, "— 본문 생략(총량 상한): 규모만 참고", "— body omitted (total cap reached): use the size only")
+            );
+        }
+        if !diff_text.is_empty() {
+            diff_text.push_str("\n\n");
+        }
+        diff_text.push_str(&chunk);
+    }
+    diff_text
+}
+
 /// `<commit>…</commit>` 안만 취한다(닫는 마커가 잘려도 허용) + 코드펜스 줄 제거.
 ///
 /// 왜 마커인가(2.6.2 주석 그대로): *"아래와 같이 제안합니다…" 같은 서두를 모델이 붙여도
@@ -231,41 +298,9 @@ pub fn ai_message(a: &Value) -> Value {
     // 몇 회 더 붙는다(400파일·72MB 실측 9회). 파일당 N회로 돌아가는 자리는
     // `bulk_file_diffs` 주석에 적힌 마지막 그물뿐이다.
     // 예산을 넘겨도 파일이 사라지진 않는 규약은 그대로다: 본문만 접고 헤더(+N −M)는 남긴다.
-    let mut diff_text = String::new();
+    // **접었으면 접었다고 말한다** — 캡 셋 전부 [`build_diff_text`]가 문장으로 옮긴다.
     let collected = ccg_fs::git::bulk_file_diffs(&root, &files);
-    for (rel, d) in files.iter().zip(collected.iter()) {
-        let head = match &d.diff {
-            Some(x) => format!("### {rel} (+{} −{})", x.add, x.del),
-            None => format!("### {rel}"),
-        };
-        let mut chunk = match &d.diff {
-            Some(x) => serialize_diff(rel, x),
-            None => format!(
-                "{head} {}",
-                if en_on {
-                    format!("(no diff body: {})", d.error.as_deref().unwrap_or("not displayable"))
-                } else {
-                    format!("(diff 본문 없음: {})", d.error.as_deref().unwrap_or("표시 불가"))
-                }
-            ),
-        };
-        if d.diff.is_some() && chunk.len() > AI_FILE_CAP {
-            chunk = format!(
-                "{head} {}",
-                t(en_on, "— 본문 생략(파일이 너무 큼): 규모만 참고", "— body omitted (file too large): use the size only")
-            );
-        }
-        if diff_text.len() + chunk.len() > AI_DIFF_CAP {
-            chunk = format!(
-                "{head} {}",
-                t(en_on, "— 본문 생략(총량 상한): 규모만 참고", "— body omitted (total cap reached): use the size only")
-            );
-        }
-        if !diff_text.is_empty() {
-            diff_text.push_str("\n\n");
-        }
-        diff_text.push_str(&chunk);
-    }
+    let diff_text = build_diff_text(en_on, &files, &collected);
 
     let tone = ccg_fs::git::log(&root, TONE_N, 0)
         .commits
@@ -520,6 +555,47 @@ mod tests {
         let _h = ccg_store::testhome::take("aimsg-nofiles");
         let v = ai_message(&json!({ "cwd": std::env::current_dir().unwrap().to_string_lossy(), "files": [] }));
         assert_eq!(v["ok"], json!(false));
+    }
+
+    /// ★ R2 확인 크리틱이 잡은 자리의 회귀 그물 — 수집 단계에서 접힌 본문은 **문장이 되어야**
+    /// 한다. 그때는 이 함수가 `body_dropped`를 안 봐서 본문도 사유도 없는 **맨 헤더**가
+    /// 나갔고, 모델은 그것을 "이 파일 변경은 이게 전부"로 읽었다(프롬프트 838자 대 15,838자).
+    ///
+    /// 캡 셋이 각자 제 사유를 달고, **접히지 않은 파일 본문은 한 글자도 안 줄어야** 한다.
+    #[test]
+    fn a_body_dropped_by_the_collector_never_leaves_a_bare_header() {
+        use ccg_fs::git::{BodyDropped, GitFileDiffResult};
+        let head_only = |rel: &str, add: usize, del: usize, why: Option<BodyDropped>| GitFileDiffResult {
+            diff: Some(FileDiff { path: rel.into(), tag: "edit", add, del, lines: Vec::new() }),
+            body_dropped: why,
+            ..Default::default()
+        };
+        let files: Vec<String> =
+            ["생성물.lock", "배치/뒤 파일.txt", "src/작은 소스.rs"].iter().map(|s| s.to_string()).collect();
+        let collected = vec![
+            head_only("생성물.lock", 12_000, 12_000, Some(BodyDropped::File)),
+            head_only("배치/뒤 파일.txt", 250, 250, Some(BodyDropped::Batch)),
+            GitFileDiffResult {
+                diff: Some(FileDiff {
+                    path: "src/작은 소스.rs".into(),
+                    tag: "edit",
+                    add: 1,
+                    del: 0,
+                    lines: vec![DiffLine { t: "add", text: "fn b() {}".into() }],
+                }),
+                ..Default::default()
+            },
+        ];
+        let out = build_diff_text(false, &files, &collected);
+        assert!(out.contains("### 생성물.lock (+12000 −12000) — 본문 생략(파일이 너무 큼)"), "{out}");
+        assert!(out.contains("### 배치/뒤 파일.txt (+250 −250) — 본문 생략(수집 예산)"), "{out}");
+        // 접힌 행도 **규모는 정확히** 말한다 — 헤더의 숫자는 예산과 무관하다
+        assert!(!out.contains("(+0 −0)"), "접히면서 증감까지 잃었다: {out}");
+        // 같은 배치의 멀쩡한 파일은 본문 그대로(R2에서 증발했던 자리)
+        assert!(out.contains("### src/작은 소스.rs (+1 −0)\n+fn b() {}"), "{out}");
+        // 영어 판도 같은 자리에서 같은 말을 한다
+        let en = build_diff_text(true, &files, &collected);
+        assert!(en.contains("— body omitted (file too large)") && en.contains("— body omitted (collection budget)"), "{en}");
     }
 
     /// 프롬프트는 톤이 없어도 **마커 블록과 diff를 반드시** 싣는다.

@@ -81,12 +81,34 @@ pub struct GitLogResult {
     pub has_more: bool,
 }
 
+/// 대량 수집(`bulk_file_diffs`)이 **본문(변경 줄)을 버린 이유**. 버려도 `add`/`del`
+/// 숫자는 그대로 정확하다 — 버린 것은 줄 텍스트뿐이다.
+///
+/// 이 값이 있는 행을 호출부가 그냥 그리면 **본문도 사유도 없는 맨 헤더**가 나간다.
+/// R28b GIT R2 확인 크리틱이 실측한 사고가 정확히 그것이었다(프롬프트 838자 대 15,838자,
+/// 소스 10개 본문 전부 증발, 표시 0). 그래서 이유를 **값으로** 들려 보낸다.
+#[derive(Serialize, Debug, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum BodyDropped {
+    /// 이 파일 **하나**가 파일별 수집 예산([`BULK_FILE_TEXT_BUDGET`])을 넘겼다.
+    /// 그 예산은 호출부의 파일 캡보다 넉넉히 위라, 여기 걸린 파일은 **옛길에서도 반드시**
+    /// 파일 캡에 걸린다 — 프롬프트 문자열이 갈리지 않는다.
+    File,
+    /// 배치 전체 수집 예산([`BULK_TEXT_BUDGET`])이 바닥났다. 옛길이었다면 본문이
+    /// 나왔을 수도 있는 자리 — 호출부가 **그렇게 말해야** 한다.
+    Batch,
+}
+
 #[derive(Serialize, Debug, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct GitFileDiffResult {
     pub diff: Option<FileDiff>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+    /// 대량 수집이 본문을 버렸다 — `bulk_file_diffs`에서만 채운다(`file_diff`는 늘 None이라
+    /// 뷰어로 나가는 바이트는 한 글자도 안 바뀐다).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub body_dropped: Option<BodyDropped>,
     /// 워크트리에서 지워진 파일 — 디스크에 없어 뷰어가 읽을 게 없으니 HEAD 내용을
     /// 스냅샷으로 준다("되돌리기 전에 뭘 잃는지"를 보게).
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -274,12 +296,41 @@ fn exec_in(root: &Path, args: &[&str], input: Option<&[u8]>) -> Out {
 }
 
 /// git 에러는 stderr가 본문 — 렌더러 한 줄 표시용으로 다듬는다(`fatal:` 접두 제거).
+///
+/// [`LITERAL`] 매직도 여기서 걷는다. 그건 **우리가 git에게 하는 말**이지 사용자의 말이
+/// 아니다 — `pathspec ':(literal)없는 파일.txt' did not match…`처럼 그대로 새어 나가면
+/// 사용자는 자기가 안 친 글자를 오류에서 읽게 된다.
 fn err_line(stderr: &str, stdout: &str) -> String {
     let raw = if !stderr.is_empty() { stderr } else { stdout };
     let first = raw.lines().find(|l| !l.trim().is_empty()).unwrap_or("").trim();
     let low = first.to_lowercase();
     let s = if low.starts_with("fatal:") || low.starts_with("error:") { first[6..].trim() } else { first };
-    if s.is_empty() { crate::t("알 수 없는 오류", "Unknown error") } else { s.to_string() }
+    if s.is_empty() {
+        return crate::t("알 수 없는 오류", "Unknown error");
+    }
+    if s.contains(LITERAL) { s.replace(LITERAL, "") } else { s.to_string() }
+}
+
+/// git pathspec의 **글롭 해석을 끄는** 매직 접두. 우리가 git에 넘기는 경로는 예외 없이
+/// 이걸 달고 나간다(`commit`의 add·롤백 reset · 대량 diff의 argv 갈래 · `discard`).
+///
+/// [R28b GIT R3 확인 크리틱 실측] 접두가 없으면 git은 경로를 **패턴**으로 읽는다.
+/// `app/posts/[id]/page.tsx`와 `app/posts/[...slug]/page.tsx` **2개만** 골라 `commit()`을
+/// 불렀더니 커밋에는 `app/posts/i/page.tsx`가 딸려 들어가 **3개**가 됐다 — `[id]`가
+/// 문자클래스라 한 글자 `i`에 맞은 것이다. 오류도 경고도 없었다.
+///
+/// 창구가 좁아 보이지만 정확히 그 인구를 친다: Windows 파일명에 쓸 수 있는 유일한 매직
+/// 문자가 `[ ]`인데, 그게 하필 Next.js App Router의 **표준 디렉터리 이름**이다
+/// (`[id]` · `[slug]` · `[...slug]`).
+///
+/// 접두를 달아도 세 가지 행 모양이 전부 살아남는 것을 실측했다 — 폴더 행
+/// (`:(literal)새 폴더/` → 안쪽 2개 `A`) · 삭제 행(`D`) · 대괄호 행(`A`, 이웃 없음).
+/// `:(icase)` 같은 매직이 **파일 이름 안에** 들어 있는 경우까지 덤으로 막힌다.
+const LITERAL: &str = ":(literal)";
+
+/// 경로 하나 → 글롭이 아닌 pathspec.
+fn literal_spec(p: &str) -> String {
+    format!("{LITERAL}{p}")
 }
 
 /// 저장소 루트(toplevel) — git 미설치·저장소 아님이면 None.
@@ -730,9 +781,36 @@ pub fn file_diff(cwd: &str, rel: &str) -> GitFileDiffResult {
 
 /// argv에 pathspec을 담아도 안전한 총 길이 — Windows 32,767에서 넉넉히 물러선 자리.
 const ARGV_PATHSPEC_BUDGET: usize = 24_000;
-/// 대량 diff에서 **본문으로 들고 있을** 총 바이트 상한. 넘으면 줄은 버리고 개수만 센다
-/// (호출부의 예산은 12만 자라 프롬프트에 닿는 글자는 이 상한에 영향받지 않는다).
+
+/// 이 목록을 argv에 담아도 되나 — **[`LITERAL`] 접두까지 세어야** 한다.
+///
+/// 경로마다 10바이트가 더 붙는다. 짧은 경로 수천 개(`src/a.ts` 같은)면 그 10바이트가
+/// 경로 길이보다 크다 — 예산 24,000을 「경로 길이만」으로 지키고도 실제 명령줄은
+/// 32,767을 넘어, 이 라운드가 고친 바로 그 스폰 실패(os error 206)로 돌아간다.
+fn fits_argv(files: &[String]) -> bool {
+    let total: usize = files.iter().map(|f| f.len() + LITERAL.len() + 1).sum();
+    total <= ARGV_PATHSPEC_BUDGET && files.iter().all(|f| !f.is_empty())
+}
+/// 대량 diff에서 **배치 전체가** 본문으로 들고 있을 바이트 상한(메모리 그물).
+///
+/// [R28b GIT R2 확인 크리틱] 예전 주석은 「호출부의 예산은 12만 자라 프롬프트에 닿는
+/// 글자는 이 상한에 영향받지 않는다」고 단언했다. **거짓이었다.** 이 카운터가 배치
+/// 전역이라 `git diff`가 경로 순으로 뱉는 앞쪽 큰 파일이 예산을 다 먹으면 뒤 파일 전부가
+/// 본문 없이 헤더만 나갔고, **아무 표시도 없었다**. 실측: 재생성 큰 파일 5개(각 ~1MB) +
+/// 소스 10개 → 프롬프트 838자(옛길 15,838자), 총량 캡 12만에는 닿지도 않은 채
+/// 소스 10개 본문 전부 증발.
+///
+/// 지금은 두 겹이다: 파일마다 [`BULK_FILE_TEXT_BUDGET`]으로 먼저 잘라 **한 파일이 다른
+/// 파일의 몫을 못 먹게** 하고(넘긴 파일 몫은 되돌려준다), 그래도 이 상한이 바닥나면
+/// [`BodyDropped::Batch`]로 **말하고** 버린다.
 const BULK_TEXT_BUDGET: usize = 4 * 1024 * 1024;
+/// 파일 **하나**가 본문으로 들고 갈 바이트 상한.
+///
+/// 값의 근거: 이 함수의 유일한 소비자(`ipc/parity/aimsg.rs`)가 파일 하나를 24,000자로
+/// 자른다. 그보다 넉넉히 위(2.7배)에 두면 (a) 프롬프트에 실제로 닿는 본문은 한 글자도
+/// 안 줄고, (b) 여기 걸린 파일은 옛길에서도 **반드시** 파일 캡에 걸리므로 두 길의
+/// 프롬프트 문자열이 갈리지 않으며, (c) 배치 예산을 한 파일이 독식하지 못한다.
+const BULK_FILE_TEXT_BUDGET: usize = 64 * 1024;
 
 #[derive(Default)]
 struct Patch {
@@ -741,6 +819,8 @@ struct Patch {
     lines: Vec<DiffLine>,
     binary: bool,
     new_file: bool,
+    /// 본문을 버렸으면 그 이유 — 호출부가 「본문 생략」이라고 **말할** 근거.
+    dropped: Option<BodyDropped>,
 }
 
 /// `diff --git a/<p> b/<p>`에서 경로 하나를 뽑는다. 공백이 든 경로 때문에 좌우를 못 가르는
@@ -777,6 +857,9 @@ fn strip_ab(v: &str) -> Option<String> {
 
 /// `git diff -U0` 출력 → 파일별 변경 줄. 두 번째 값은 **경로를 못 읽은 덩이가 있었나**로,
 /// 참이면 호출부가 "diff에 없다 = 안 바뀌었다"라고 단정하지 않는다(조용한 거짓말 방지).
+///
+/// 예산은 두 겹이고 **둘 다 말한다**([`Patch::dropped`]) — 버린 본문을 조용히 없애지
+/// 않는 것이 이 파서의 계약이다. `add`/`del` 숫자는 예산과 무관하게 늘 정확하다.
 fn parse_bulk_patch(out: &str) -> (std::collections::HashMap<String, Patch>, bool) {
     let mut map: std::collections::HashMap<String, Patch> = std::collections::HashMap::new();
     let mut unparsed = false;
@@ -784,7 +867,10 @@ fn parse_bulk_patch(out: &str) -> (std::collections::HashMap<String, Patch>, boo
     let mut cur_path: Option<String> = None;
     let mut have = false;
     let mut in_hunk = false;
+    // 배치 전체가 지금까지 들고 있는 본문 바이트.
     let mut stored = 0usize;
+    // **이 파일**이 들고 있는 본문 바이트 — 파일 경계마다 0으로 돌아간다.
+    let mut file_stored = 0usize;
     for line in out.lines() {
         if let Some(rest) = line.strip_prefix("diff --git ") {
             if have {
@@ -792,13 +878,19 @@ fn parse_bulk_patch(out: &str) -> (std::collections::HashMap<String, Patch>, boo
                     Some(p) => {
                         map.insert(p, std::mem::take(&mut cur));
                     }
-                    None => unparsed = true,
+                    None => {
+                        // 경로를 못 읽은 덩이는 버려진다 — 그 몫도 배치 예산에 돌려준다
+                        // (남의 파일 본문을 대신 굶기지 않게).
+                        stored -= file_stored;
+                        unparsed = true;
+                    }
                 }
             }
             cur = Patch::default();
             cur_path = split_git_header(rest);
             have = true;
             in_hunk = false;
+            file_stored = 0;
             continue;
         }
         if !have {
@@ -838,10 +930,31 @@ fn parse_bulk_patch(out: &str) -> (std::collections::HashMap<String, Patch>, boo
         } else {
             cur.del += 1;
         }
-        if stored + text.len() <= BULK_TEXT_BUDGET {
-            stored += text.len();
-            cur.lines.push(DiffLine { t, text: text.strip_suffix('\r').unwrap_or(text).to_string() });
+        if cur.dropped.is_some() {
+            continue; // 이 파일은 이미 본문을 포기했다 — 숫자만 계속 센다
         }
+        if file_stored + text.len() > BULK_FILE_TEXT_BUDGET {
+            // 이 파일 하나가 자기 몫을 넘겼다. **전부** 버리고(반쪽 본문은 완전한 본문인
+            // 척한다 — 그게 더 나쁜 거짓말이다) 자기 몫을 배치 예산에 돌려준다.
+            cur.lines.clear();
+            cur.lines.shrink_to_fit();
+            stored -= file_stored;
+            file_stored = 0;
+            cur.dropped = Some(BodyDropped::File);
+            continue;
+        }
+        if stored + text.len() > BULK_TEXT_BUDGET {
+            // 배치 전체가 바닥났다 — 여기부터는 본문을 못 든다. **말하고** 버린다.
+            cur.lines.clear();
+            cur.lines.shrink_to_fit();
+            stored -= file_stored;
+            file_stored = 0;
+            cur.dropped = Some(BodyDropped::Batch);
+            continue;
+        }
+        stored += text.len();
+        file_stored += text.len();
+        cur.lines.push(DiffLine { t, text: text.strip_suffix('\r').unwrap_or(text).to_string() });
     }
     if have {
         match cur_path {
@@ -864,6 +977,11 @@ enum DiffOut {
 }
 
 fn diff_once(root: &Path, paths: Option<&[String]>) -> DiffOut {
+    // add·reset과 **같은 접두**를 단다. 여기서는 답이 정확한 경로 키로 되돌아와 오염이
+    // 없었지만(누출 0 실측), 접두가 없으면 고르지 않은 이웃의 diff를 공짜로 만들어
+    // 배치 수집 예산만 갉아먹는다. 무엇보다 pathspec을 만드는 자리가 두 규칙을 쓰면
+    // 다음 사람이 어느 쪽이 진짜인지 알 수 없다.
+    let specs: Vec<String> = paths.map(|ps| ps.iter().map(|p| literal_spec(p)).collect()).unwrap_or_default();
     let mut args: Vec<&str> = vec![
         // 한글 경로를 `\355\225\234`로 escape하지 않게 — 그러면 경로가 안 맞는다(실측)
         "-c",
@@ -875,9 +993,9 @@ fn diff_once(root: &Path, paths: Option<&[String]>) -> DiffOut {
         "-U0",
         "HEAD",
     ];
-    if let Some(ps) = paths {
+    if paths.is_some() {
         args.push("--");
-        args.extend(ps.iter().map(String::as_str));
+        args.extend(specs.iter().map(String::as_str));
     }
     let r = exec(root, &args);
     if r.ok {
@@ -902,8 +1020,7 @@ fn diff_into(
     if files.is_empty() {
         return true;
     }
-    let total: usize = files.iter().map(|f| f.len() + 1).sum();
-    if total <= ARGV_PATHSPEC_BUDGET && files.iter().all(|f| !f.is_empty()) {
+    if fits_argv(files) {
         match diff_once(root, Some(files)) {
             DiffOut::Ok(m, u) => {
                 for (k, v) in m {
@@ -912,7 +1029,11 @@ fn diff_into(
                 *unparsed |= u;
                 return true;
             }
-            // 파일 **하나**가 혼자 32MB를 넘겼다 — 더 못 가른다. 옛길이 사유를 낸다.
+            // 파일 **하나**가 혼자 32MB를 넘겼다 — 더 못 가른다. false를 돌리면 그 false가
+            // `&&`로 재귀 꼭대기까지 전파되어 **배치 전체**가 옛길(파일당 `file_diff`)로
+            // 간다. 「그 덩이만」이 아니다 — 실측 201파일에 39.2MB짜리 하나 = 421스폰
+            // (2.09/파일)·14.6초(R28b GIT R2 확인 크리틱). 마지막 그물이라 설계대로지만,
+            // 단위를 틀리게 적으면 다음 감사가 스폰 폭증을 회귀로 못 읽는다.
             DiffOut::Over if files.len() == 1 => return false,
             DiffOut::Over => {}
             DiffOut::Failed => return false,
@@ -968,6 +1089,9 @@ fn patch_to_result(rel: &str, p: Patch) -> GitFileDiffResult {
             del: p.del,
             lines: p.lines,
         }),
+        // 예산에 걸려 본문을 버렸으면 **그 사실을 들려 보낸다** — 호출부가 헤더만 그리고
+        // 입을 다물면 모델은 "이 파일은 이만큼 바뀌었고 내용은 이게 전부"라고 읽는다.
+        body_dropped: p.dropped,
         ..Default::default()
     }
 }
@@ -980,8 +1104,14 @@ fn patch_to_result(rel: &str, p: Patch) -> GitFileDiffResult {
 /// 본문을 통째로 접지 않는다(한 줄 고친 2MB 파일도 그 한 줄이 그대로 나온다).
 ///
 /// 못 믿을 자리를 만나면 되돌아가는데, **되돌아가는 단위가 다르다**:
-/// · 배치 전체 — git 실패(unborn·캡 초과를 갈라도 안 되는 자리).
+/// · 배치 전체 — git 실패(unborn·캡 초과를 갈라도 안 되는 자리). **파일 하나가 혼자
+///   32MB를 넘긴 경우도 여기다**(더 못 가르므로 `diff_into`가 false를 올린다).
 /// · 그 파일만 — C 인용 경로·중복 경로·디스크에 없는 경로.
+///
+/// 그리고 **되돌아가지 않고 본문만 버리는** 자리가 하나 더 있다: 수집 예산
+/// ([`BULK_FILE_TEXT_BUDGET`] 파일별 · [`BULK_TEXT_BUDGET`] 배치 전체). 그때는
+/// `add`/`del`은 정확히 남고 [`GitFileDiffResult::body_dropped`]에 이유가 실린다 —
+/// **호출부는 그 값을 반드시 문장으로 옮겨야 한다**(안 옮기면 맨 헤더가 나간다).
 pub fn bulk_file_diffs(cwd: &str, files: &[String]) -> Vec<GitFileDiffResult> {
     if files.is_empty() {
         return Vec::new();
@@ -993,10 +1123,8 @@ pub fn bulk_file_diffs(cwd: &str, files: &[String]) -> Vec<GitFileDiffResult> {
             .collect();
     };
     let root_s = root.to_string_lossy().to_string();
-    let total: usize = files.iter().map(|f| f.len() + 1).sum();
-    let fits_argv = total <= ARGV_PATHSPEC_BUDGET && files.iter().all(|f| !f.is_empty());
     // 1차 — 스폰 한 번. 담기면 고른 것만, 아니면 경로 없이 전 트리.
-    let (mut map, unparsed) = match diff_once(&root, if fits_argv { Some(files) } else { None }) {
+    let (mut map, unparsed) = match diff_once(&root, if fits_argv(files) { Some(files) } else { None }) {
         DiffOut::Ok(m, u) => (m, u),
         other => {
             // HEAD가 없다(첫 커밋 전) — 갈라도 계속 실패한다. 디스크에서 바로 답한다.
@@ -1159,9 +1287,14 @@ pub fn commit_file_diff(cwd: &str, hash: &str, rel: &str) -> GitFileDiffResult {
 
 /// 경로 목록 → `--pathspec-file-nul`이 읽는 바이트(NUL 구분). 경로에 NUL은 들어갈 수
 /// 없으므로 개행·공백·한글이 섞여도 구분이 안 흔들린다.
+///
+/// 경로마다 [`LITERAL`]을 단다 — **여기가 「고른 파일만」 계약이 서는 자리**다. 이 한 줄이
+/// `commit`의 add와 훅 거부 롤백 reset을 동시에 지킨다(둘이 같은 바이트를 쓴다).
+/// 안 달았을 때 무슨 일이 났는지는 [`LITERAL`] 문서에 실측으로 적어 두었다.
 fn nul_pathspec(paths: &[&str]) -> Vec<u8> {
-    let mut b: Vec<u8> = Vec::with_capacity(paths.iter().map(|p| p.len() + 1).sum());
+    let mut b: Vec<u8> = Vec::with_capacity(paths.iter().map(|p| p.len() + LITERAL.len() + 1).sum());
     for p in paths {
+        b.extend_from_slice(LITERAL.as_bytes());
         b.extend_from_slice(p.as_bytes());
         b.push(0);
     }
@@ -1175,6 +1308,10 @@ fn nul_pathspec(paths: &[&str]) -> Vec<u8> {
 /// 걸리면 **스폰 자체가 실패**했다(사용자 보고: "파일 개수가 너무 많으면 안 된다").
 /// 이제 add·reset은 `--pathspec-from-file=- --pathspec-file-nul`로, 메시지는 `commit -F -`로
 /// stdin을 탄다 — 파일 수·경로 길이·본문 길이 어느 것도 한계가 없다.
+///
+/// **「고른 파일만」은 문장이 아니라 [`LITERAL`] 접두가 지킨다.** 접두가 없으면 경로는
+/// 글롭이고, 대괄호가 든 이름 하나가 이웃 파일을 조용히 끌고 들어온다(R28b GIT R3 확인
+/// 크리틱 실측: 고른 것 2개 → 커밋된 것 3개).
 pub fn commit(cwd: &str, files: &[String], subject: &str, body: &str) -> GitResult {
     let Some(root) = repo_root(cwd) else { return GitResult::err(e_not_repo()) };
     // ★ 빈 경로는 버린다. 그리고 **하나도 안 남으면 여기서 끝낸다** — 빈 목록을 stdin으로
@@ -1309,8 +1446,12 @@ pub fn discard(cwd: &str, rel: &str, untracked: bool) -> GitResult {
             Some(e) => GitResult::err(e),
         };
     }
-    // index에 올라가 있어도(A 포함) 한 번에 HEAD 상태로 — 스테이징·워크트리 모두 복원
-    let r = exec(&root, &["checkout", "HEAD", "--", rel]);
+    // index에 올라가 있어도(A 포함) 한 번에 HEAD 상태로 — 스테이징·워크트리 모두 복원.
+    // ★ [`LITERAL`] 접두는 여기서 **가장 무겁다**. 접두 없이 `app/posts/[id]/page.tsx`를
+    //   되돌리면 `app/posts/i/page.tsx`까지 HEAD로 덮인다 — 커밋 쪽 사고는 "안 고른 게
+    //   같이 커밋됐다"지만 여기는 **안 고른 파일의 저장 안 한 편집이 사라진다**.
+    let spec = literal_spec(rel);
+    let r = exec(&root, &["checkout", "HEAD", "--", &spec]);
     if r.ok {
         return GitResult::ok();
     }
@@ -1321,7 +1462,8 @@ pub fn discard(cwd: &str, rel: &str, untracked: bool) -> GitResult {
         if let Some(e) = to_trash() {
             return GitResult::err(e); // 인덱스는 안 건드렸다 = 유령 행 없음
         }
-        let rm = exec(&root, &["rm", "--cached", "-f", "--ignore-unmatch", "--", rel]);
+        // `--ignore-unmatch`라 여기서 이웃이 딸려 들어가면 **말없이** 인덱스에서 내려간다.
+        let rm = exec(&root, &["rm", "--cached", "-f", "--ignore-unmatch", "--", &spec]);
         return if rm.ok { GitResult::ok() } else { GitResult::err(err_line(&rm.stderr, &rm.stdout)) };
     }
     GitResult::err(err_line(&r.stderr, &r.stdout))
@@ -1835,6 +1977,177 @@ mod tests {
         assert_eq!(log(r.cwd(), 1, 0).commits[0].subject, "init", "거부됐는데 커밋이 생겼다");
     }
 
+    /// ★ R3 확인 크리틱 치명 — 「고른 파일만 커밋」이 실측으로 깨졌다.
+    ///
+    /// 경로가 그대로 pathspec(=글롭)으로 나가서, `app/posts/[id]/page.tsx`와
+    /// `app/posts/[...slug]/page.tsx` **2개만** 골랐는데 커밋에는 `app/posts/i/page.tsx`까지
+    /// **3개**가 들어갔다(`[id]`가 문자클래스라 한 글자 `i`에 맞았다). 오류도 경고도 없었다.
+    /// Next.js App Router 프로젝트는 이 이름이 표준이라 **평범한 커밋마다** 밟는다.
+    ///
+    /// 세 자리를 한 판에서 본다: ① 접두 없는 pathspec이 진짜로 이웃을 끄는가(재현 조건),
+    /// ② 커밋이 고른 것만 담는가, ③ **롤백 reset이 남의 스테이징을 안 걷는가**.
+    #[test]
+    fn a_bracket_path_never_drags_its_neighbours_into_the_commit() {
+        let r = repo!("commit-bracket");
+        r.write("seed.txt", "s\n");
+        r.git(&["add", "."]);
+        r.git(&["commit", "-qm", "init"]);
+        let picked = ["app/posts/[id]/page.tsx", "app/posts/[...slug]/page.tsx"];
+        // `[id]`는 문자클래스 `i` 또는 `d` 한 글자 — 이웃 둘을 나란히 둔다
+        let neighbours = ["app/posts/i/page.tsx", "app/posts/d/page.tsx"];
+        for f in picked.iter().chain(neighbours.iter()) {
+            r.write(f, "x\n");
+        }
+
+        // ① 접두 없는 pathspec이 실제로 이웃을 끌고 오나 — 재현 조건부터 못 박는다
+        //    (2,000파일 테스트가 옛 argv를 직접 띄워 os error 206을 못 박는 것과 같은 자리)
+        let raw: Vec<u8> = picked.iter().flat_map(|p| p.bytes().chain([0u8])).collect();
+        let old = exec_stdin(&r.0, &["add", "-A", "--pathspec-from-file=-", "--pathspec-file-nul"], &raw);
+        assert!(old.ok, "옛 모양 add가 실패했다: {}", old.stderr);
+        let dragged: Vec<String> = {
+            let o = r.git(&["diff", "--cached", "--name-only"]);
+            o.stdout.lines().map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect::<Vec<_>>()
+        };
+        assert!(
+            dragged.len() > picked.len(),
+            "글롭이 안 먹었다 — 재현 조건이 무너졌다(이 git은 대괄호를 패턴으로 안 읽는다): {dragged:?}"
+        );
+        r.git(&["reset", "-q"]);
+
+        // ② 새길 — 고른 2개만 커밋된다
+        let files: Vec<String> = picked.iter().map(|s| s.to_string()).collect();
+        let res = commit(r.cwd(), &files, "대괄호 커밋", "");
+        assert!(res.ok, "{:?}", res.error);
+        let mut tracked: Vec<String> =
+            r.git(&["ls-files"]).stdout.lines().map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
+        tracked.sort();
+        assert_eq!(
+            tracked,
+            ["app/posts/[...slug]/page.tsx", "app/posts/[id]/page.tsx", "seed.txt"],
+            "고르지 않은 이웃이 커밋됐다"
+        );
+        for n in neighbours {
+            assert!(r.0.join(n).is_file(), "{n}이 사라졌다");
+        }
+
+        // ③ 롤백 reset도 같은 바이트를 쓴다 — 훅이 거부할 때 **남의 스테이징**을 안 걷나
+        std::fs::write(r.0.join(".git/hooks/pre-commit"), "#!/bin/sh\nexit 1\n").unwrap();
+        r.write("app/posts/[id]/page.tsx", "x\n고친 줄\n");
+        r.git(&["add", "--", "app/posts/i/page.tsx"]); // 남이 미리 올려 둔 이웃
+        let res = commit(r.cwd(), &files, "거부될 커밋", "");
+        assert!(!res.ok, "pre-commit 훅이 안 먹었다(sh가 없는 환경이면 이 단계는 무의미)");
+        let staged: Vec<String> = {
+            let o = r.git(&["diff", "--cached", "--name-only"]);
+            o.stdout.lines().map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect::<Vec<_>>()
+        };
+        assert_eq!(staged, ["app/posts/i/page.tsx"], "롤백이 남의 스테이징을 걷었거나 제 것을 남겼다");
+    }
+
+    /// 접두를 다는 쪽이 **깨뜨릴 수 있었던 것**을 지킨다 — status가 커밋 화면에 주는 행은
+    /// 파일만이 아니다. 미추적 **폴더** 한 줄(`새 폴더/` — 접두 매칭으로 안쪽을 다 담아야
+    /// 한다)과 **삭제된** 파일(디스크에 없다)도 같은 pathspec으로 나간다.
+    /// 세 모양을 한 커밋에 섞어, 접두가 그중 하나도 죽이지 않는지 본다.
+    #[test]
+    fn the_literal_prefix_keeps_folder_rows_and_deletions_working() {
+        let r = repo!("commit-shapes");
+        r.write("삭제될.txt", "지워진다\n");
+        r.write("남을.txt", "남는다\n");
+        r.git(&["add", "."]);
+        r.git(&["commit", "-qm", "init"]);
+        r.write("새 폴더/안쪽 1.txt", "가\n");
+        r.write("새 폴더/안쪽 2.txt", "나\n");
+        r.write("app/posts/[id]/page.tsx", "x\n");
+        r.write("app/posts/i/page.tsx", "이웃\n");
+        std::fs::remove_file(r.0.join("삭제될.txt")).unwrap();
+
+        // status가 실제로 폴더 한 줄로 접어 주는지부터 — 커밋 화면이 받는 행이 그것이다
+        let rows = status(r.cwd());
+        assert!(rows.files.iter().any(|f| f.path == "새 폴더/"), "폴더 행이 없다 — 픽스처가 무너졌다");
+
+        let files: Vec<String> =
+            ["새 폴더/", "삭제될.txt", "app/posts/[id]/page.tsx"].iter().map(|s| s.to_string()).collect();
+        let res = commit(r.cwd(), &files, "세 모양 한 판", "");
+        assert!(res.ok, "{:?}", res.error);
+        let d = commit_detail(r.cwd(), &log(r.cwd(), 1, 0).commits[0].hash).expect("상세");
+        let mut got: Vec<(&str, &str)> = d.files.iter().map(|f| (f.status, f.path.as_str())).collect();
+        got.sort_unstable();
+        assert_eq!(
+            got,
+            [
+                ("A", "app/posts/[id]/page.tsx"),
+                ("A", "새 폴더/안쪽 1.txt"),
+                ("A", "새 폴더/안쪽 2.txt"),
+                ("D", "삭제될.txt"),
+            ],
+            "접두가 행 모양 하나를 죽였거나 이웃을 끌었다"
+        );
+    }
+
+    /// ★ 같은 구멍의 **파괴적인 쌍둥이** — 되돌리기도 pathspec을 쓴다.
+    ///
+    /// 커밋 쪽 사고가 "안 고른 게 같이 커밋됐다"라면 여기는 **안 고른 파일의 저장 안 한
+    /// 편집이 사라진다**. 접두 없이 `checkout HEAD -- app/posts/[id]/page.tsx`를 부르면
+    /// `app/posts/i/page.tsx`까지 HEAD로 덮인다(raw git 실측).
+    #[test]
+    fn discarding_a_bracket_path_leaves_its_neighbour_alone() {
+        let r = repo!("discard-bracket");
+        r.write("app/posts/[id]/page.tsx", "원본\n");
+        r.write("app/posts/i/page.tsx", "원본\n");
+        r.git(&["add", "."]);
+        r.git(&["commit", "-qm", "init"]);
+        r.write("app/posts/[id]/page.tsx", "원본\n되돌릴 줄\n");
+        r.write("app/posts/i/page.tsx", "원본\n이웃의 저장 안 한 편집\n");
+
+        let res = discard(r.cwd(), "app/posts/[id]/page.tsx", false);
+        assert!(res.ok, "{:?}", res.error);
+        let read = |rel: &str| std::fs::read_to_string(r.0.join(rel)).unwrap().replace("\r\n", "\n");
+        assert_eq!(read("app/posts/[id]/page.tsx"), "원본\n", "고른 파일이 안 되돌아갔다");
+        assert_eq!(
+            read("app/posts/i/page.tsx"),
+            "원본\n이웃의 저장 안 한 편집\n",
+            "고르지 않은 이웃의 편집이 되돌리기에 쓸려 사라졌다"
+        );
+    }
+
+    /// 대량 diff의 argv 갈래도 **같은 접두**를 단다. 답은 정확한 경로 키로 되찾아 오므로
+    /// 프롬프트 오염은 없었지만(누출 0 실측), 접두가 없으면 고르지 않은 이웃의 diff를
+    /// 공짜로 만들어 배치 수집 예산만 갉아먹는다. `diff_once`에 직접 물어 확인한다.
+    #[test]
+    fn the_argv_diff_path_asks_only_for_the_bracket_file() {
+        let r = repo!("bulkdiff-bracket");
+        r.write("app/posts/[id]/page.tsx", "원본\n");
+        r.write("app/posts/i/page.tsx", "원본\n");
+        r.git(&["add", "."]);
+        r.git(&["commit", "-qm", "init"]);
+        r.write("app/posts/[id]/page.tsx", "원본\n고친 줄\n");
+        r.write("app/posts/i/page.tsx", "원본\n이웃의 변경\n");
+
+        let one = vec!["app/posts/[id]/page.tsx".to_string()];
+        assert!(fits_argv(&one), "이 판은 argv 갈래여야 의미가 있다");
+        let DiffOut::Ok(m, _) = diff_once(&r.0, Some(&one)) else { panic!("diff 실패") };
+        let keys: Vec<&str> = m.keys().map(String::as_str).collect();
+        assert_eq!(keys, ["app/posts/[id]/page.tsx"], "이웃 diff까지 받아 왔다");
+
+        // 공개 API의 답도 옛길과 같아야 한다
+        let bulk = bulk_file_diffs(r.cwd(), &one);
+        let old = file_diff(r.cwd(), &one[0]);
+        let n = |d: &GitFileDiffResult| d.diff.as_ref().map(|x| (x.add, x.del));
+        assert_eq!(n(&bulk[0]), n(&old), "대괄호 경로에서 두 길의 답이 갈렸다");
+        assert_eq!(n(&bulk[0]), Some((1, 0)));
+    }
+
+    /// argv 예산은 **접두 10바이트까지** 세야 한다. 짧은 경로 수천 개면 그 10바이트가
+    /// 경로보다 커서, 「경로 길이만」으로 세면 예산 24,000을 지키고도 실제 명령줄이
+    /// 32,767을 넘는다 — 이 라운드가 고친 그 스폰 실패로 되돌아가는 자리다.
+    #[test]
+    fn the_argv_budget_counts_the_magic_prefix() {
+        let files: Vec<String> = (0..2000).map(|i| format!("s/{i:04}.ts")).collect();
+        let bare: usize = files.iter().map(|f| f.len() + 1).sum();
+        assert!(bare <= ARGV_PATHSPEC_BUDGET, "경로만 세면 {bare}바이트 — 예산 안이다");
+        assert!(!fits_argv(&files), "접두를 안 세고 argv에 담았다");
+        assert!(fits_argv(&files[..500]), "멀쩡한 규모까지 stdin 갈래로 밀어냈다");
+    }
+
     /// AI 커밋 메시지의 diff 수집 — **파일이 몇 개든 스폰 1~2회**, 그리고 답은
     /// 파일당 호출(`file_diff`)과 같아야 한다. 수정·새 파일·삭제·안 바뀜·한글/공백 경로를
     /// 한 판에 섞어 두 길을 마주 세운다.
@@ -1915,6 +2228,109 @@ mod tests {
         for (i, d) in bulk.iter().enumerate() {
             assert_eq!(d.diff.as_ref().unwrap().path, files[i], "{i}번째 행이 밀렸다");
         }
+    }
+
+    /// 합성 `git diff -U0` 출력 — 수집 예산은 **파서에 직접** 물어야 한다.
+    /// 진짜 git으로 4MB짜리 판을 세우면 테스트 하나가 수십 초를 먹는데, 여기서 재는 것은
+    /// git의 행동이 아니라 우리 파서의 산수다. 한 줄은 `len`바이트(ASCII)라 바이트=글자다.
+    fn synth_patch(files: &[(&str, usize, usize)]) -> String {
+        let mut s = String::new();
+        for (p, lines, len) in files {
+            let body = "x".repeat(*len);
+            s.push_str(&format!("diff --git a/{p} b/{p}\n--- a/{p}\n+++ b/{p}\n@@ -1,{lines} +1,{lines} @@\n"));
+            for _ in 0..*lines {
+                s.push('-');
+                s.push_str(&body);
+                s.push('\n');
+                s.push('+');
+                s.push_str(&body);
+                s.push('\n');
+            }
+        }
+        s
+    }
+
+    /// 본문은 **전부 있거나 전부 없다** — 반쪽 본문은 완전한 본문인 척하는 거짓말이다.
+    fn body_is_whole_or_gone(p: &Patch, who: &str) {
+        let want = if p.dropped.is_some() { 0 } else { p.add + p.del };
+        assert_eq!(p.lines.len(), want, "{who}: 본문이 반쪽이다({}줄 / 변경 {}줄)", p.lines.len(), p.add + p.del);
+    }
+
+    /// ★ R2 확인 크리틱이 잡은 자리의 회귀 그물 ① — **파일별** 수집 예산.
+    ///
+    /// 큰 파일 하나가 배치 예산을 독식해 **뒤 파일 전부가 본문 없이** 나가던 사고를
+    /// 막는 겹이다. 큰 파일은 자기 몫만 먹고 [`BodyDropped::File`]로 **말한 뒤** 접히고,
+    /// 뒤에 오는 작은 파일은 본문이 살아야 한다. 그리고 `add`/`del`은 예산과 무관하게 정확하다.
+    #[test]
+    fn one_fat_file_folds_itself_and_says_so_while_the_next_file_keeps_its_body() {
+        let big_lines = BULK_FILE_TEXT_BUDGET / 1_000; // 한 줄 1,000바이트 × 2(±) = 예산 초과
+        let out = synth_patch(&[("생성물.lock", big_lines, 1_000), ("src/작은 소스.rs", 3, 40)]);
+        let (m, unparsed) = parse_bulk_patch(&out);
+        assert!(!unparsed);
+        let big = m.get("생성물.lock").expect("큰 파일 행");
+        assert_eq!(big.dropped, Some(BodyDropped::File), "예산에 걸리고도 말을 안 했다");
+        assert_eq!((big.add, big.del), (big_lines, big_lines), "본문을 버리면서 숫자까지 틀렸다");
+        body_is_whole_or_gone(big, "큰 파일");
+
+        let small = m.get("src/작은 소스.rs").expect("작은 파일 행");
+        assert_eq!(small.dropped, None, "큰 파일이 작은 파일의 몫까지 먹었다");
+        assert_eq!((small.add, small.del), (3, 3));
+        body_is_whole_or_gone(small, "작은 파일");
+        assert!(small.lines.iter().all(|l| l.text.len() == 40), "본문이 잘렸다");
+    }
+
+    /// ★ 회귀 그물 ② — **배치 전체** 수집 예산. 여기 걸린 행도 조용히 사라지지 않는다.
+    /// 예산을 넘긴 뒤에도 `add`/`del`은 정확하고, 앞쪽 파일 본문은 멀쩡하다.
+    #[test]
+    fn the_batch_budget_folds_out_loud_and_the_counts_stay_exact() {
+        // 파일마다 60,000바이트(파일별 예산 안) × 80개 = 4.8MB → 배치 예산(4MB) 초과
+        let per_file = 30usize;
+        let names: Vec<String> = (0..80).map(|i| format!("배치/파일-{i:02}.txt")).collect();
+        let rows: Vec<(&str, usize, usize)> = names.iter().map(|n| (n.as_str(), per_file, 1_000)).collect();
+        let (m, unparsed) = parse_bulk_patch(&synth_patch(&rows));
+        assert!(!unparsed);
+        assert_eq!(m.len(), names.len(), "행이 사라졌다");
+
+        let dropped = m.values().filter(|p| p.dropped == Some(BodyDropped::Batch)).count();
+        assert!(dropped > 0, "4.8MB를 담고도 배치 예산에 안 걸렸다 — 예산이 안 도는 것이다");
+        assert!(dropped < names.len(), "첫 파일부터 접혔다 — 예산이 너무 이르게 문다");
+        assert!(m.values().all(|p| p.dropped != Some(BodyDropped::File)), "파일별 예산 안인데 File로 접혔다");
+        for (n, p) in &m {
+            assert_eq!((p.add, p.del), (per_file, per_file), "{n}: 본문을 버리면서 숫자까지 틀렸다");
+            body_is_whole_or_gone(p, n);
+        }
+        let kept: usize = m.values().filter(|p| p.dropped.is_none()).map(|p| p.lines.iter().map(|l| l.text.len()).sum::<usize>()).sum();
+        assert!(kept <= BULK_TEXT_BUDGET, "예산 {BULK_TEXT_BUDGET}을 넘겨 {kept}바이트를 들고 있다");
+        eprintln!("[측정] 배치 예산: {}행 중 {dropped}행 접힘 · 본문 보유 {kept}바이트", m.len());
+    }
+
+    /// 예산의 사유가 **공개 API까지** 실려 나가나 — 파서 안에서만 맞아 봐야 호출부는
+    /// 여전히 맨 헤더를 그린다(그게 R2 확인 크리틱이 본 사고다). 진짜 git으로 한 판.
+    #[test]
+    fn a_fat_file_carries_its_reason_out_through_the_public_api() {
+        let r = repo!("bulkdiff-budget");
+        r.write("생성물.lock", "seed\n");
+        r.write("src/작은 소스.rs", "fn a() {}\n");
+        r.git(&["add", "."]);
+        r.git(&["commit", "-qm", "init"]);
+        // 한 줄 1,000자 × 100줄 = 100,000바이트 > 파일별 예산(65,536)
+        let fat: String = (0..100).map(|i| format!("{}{i}\n", "x".repeat(1_000))).collect();
+        r.write("생성물.lock", &fat);
+        r.write("src/작은 소스.rs", "fn a() {}\nfn b() {}\n");
+
+        let files = vec!["생성물.lock".to_string(), "src/작은 소스.rs".to_string()];
+        let bulk = bulk_file_diffs(r.cwd(), &files);
+        let big = &bulk[0];
+        assert_eq!(big.body_dropped, Some(BodyDropped::File), "사유가 결과에 안 실렸다");
+        let bd = big.diff.as_ref().expect("헤더는 남는다");
+        assert_eq!((bd.add, bd.del), (100, 1), "본문을 접으면서 증감이 틀렸다");
+        assert!(bd.lines.is_empty(), "접혔다면서 본문이 남았다");
+        // 같은 배치의 작은 소스는 본문이 그대로 — 이게 R2에서 증발했던 자리다
+        let small = &bulk[1];
+        assert_eq!(small.body_dropped, None);
+        let sd = small.diff.as_ref().expect("작은 파일");
+        assert_eq!((sd.add, sd.del), (1, 0));
+        assert_eq!(sd.lines.iter().filter(|l| l.t == "add").map(|l| l.text.as_str()).collect::<Vec<_>>(), ["fn b() {}"]);
     }
 
     /// 옛길이 실제로 얼마였나 — **기본 제외**(파일당 스폰 2회라 분 단위로 걸린다).
@@ -2291,5 +2707,10 @@ mod tests {
         assert_eq!(err_line("fatal: not a git repository\n", ""), "not a git repository");
         assert_eq!(err_line("", "error: pathspec\n"), "pathspec");
         assert!(!err_line("", "").is_empty());
+        // 우리가 붙인 pathspec 매직은 사용자의 말이 아니다 — 오류에서 걷어 낸다
+        assert_eq!(
+            err_line("fatal: pathspec ':(literal)없는 파일.txt' did not match any files\n", ""),
+            "pathspec '없는 파일.txt' did not match any files"
+        );
     }
 }
