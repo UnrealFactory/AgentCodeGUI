@@ -28,6 +28,143 @@ type LocalizedRelease = { ko: Release; en: Release }
 // 지난 1.x 노트들은 은퇴한 UpdateNotes와 함께 정리했다(이제 보여줄 경로가 없다).
 const MAX_VERSIONS = 5
 const RELEASES: Record<string, LocalizedRelease> = {
+  // ★ 3.0 — 이 덩이를 얹으면서 가장 오래된 `2.5.1`을 지웠다. MAX_VERSIONS=5라 남겨 둬도
+  //   카드에 안 나오고(noteVersions가 상위 5개만 자른다) 번들만 커진다.
+  //   키는 **풀버전**(`3.0.0`)이다. 지금 앱 버전은 `3.0.0-beta.1`이라 `RELEASES[v]`가 빗나가지만,
+  //   그때는 위 컴포넌트가 「현재 버전 노트가 없으면 최신 노트」로 떨어져 이 덩이를 연다.
+  //   정식 3.0.0이 나가면 키가 그대로 맞는다.
+  //   숫자는 전부 이 라운드까지의 **실측**이다(docs/m12-report-r1.md §3 · docs/critic/final-parity-r1.md §4.1
+  //   · bench/results/crash-recovery-r5-attacks.json). 반올림만 했고 지어낸 값은 없다.
+  '3.0.0': {
+    ko: {
+      eyebrow: 'REBUILT',
+      lead: '속은 전부 새로 지었습니다 — 화면은 그대로인데 설치 파일이 66배 작아지고, 창을 하나 더 여는 비용이 4분의 1이 됐어요. 화면이 죽어도 앱이 스스로 되살아납니다.',
+      notes: [
+        {
+          tag: '용량',
+          name: '설치 파일 157.5MB → 2.4MB',
+          desc: (
+            <>
+              앱이 <b>크롬 한 벌을 통째로 안고 다니던 구조</b>를 버리고, 윈도우에 이미 있는
+              웹 엔진(WebView2)을 씁니다. 설치 파일은 <b>157.5MB → 2.4MB(66배)</b>, 설치 폴더는{' '}
+              <b>633.7MB → 6.0MB(106배)</b>, 들어가는 파일 수는 <b>8,141개 → 2개</b>가 됐어요.
+              디스크에서 <b>627.7MB</b>가 그대로 사라집니다.
+            </>
+          )
+        },
+        {
+          tag: '메모리',
+          name: '창을 더 열어도 무겁지 않아요',
+          desc: (
+            <>
+              예전엔 추가 채팅·팝아웃 창을 하나 열 때마다 <b>110.7MB와 프로세스 하나</b>가
+              같이 붙었습니다. 이제 <b>25.1MB · 프로세스 0개</b>예요 — 모든 창이 엔진 하나를
+              나눠 씁니다. 4패널 멀티를 켜 두고 쉴 때 쓰는 메모리도 <b>505MB → 253MB</b>로
+              절반이 됐어요.
+            </>
+          )
+        },
+        {
+          tag: '안정성',
+          name: '화면이 죽어도 앱이 살아납니다',
+          desc: (
+            <>
+              웹 화면을 그리는 부분이 죽으면 예전엔 <b>빈 창</b>만 남아 앱을 껐다 켜야 했습니다.
+              이제 앱이 그 사고를 <b>스스로 감지해 화면만 다시 그립니다</b> — 실측{' '}
+              <b>0.45초</b> 만에 되돌아오고, 대화도 그대로예요. 창을 여러 개 띄워 둔 상태에서도
+              죽은 창 하나만 복구됩니다.
+            </>
+          )
+        },
+        {
+          tag: '속도',
+          name: '시작이 조금 더 빠릅니다',
+          desc: (
+            <>
+              아이콘을 누르고 <b>첫 창이 뜰 때까지 336ms → 290ms</b>, 실제로 <b>쓸 수 있게 될
+              때까지 422ms → 373ms</b>(설치본 실측). 시작 화면도 <b>작은 카드가 떴다가 큰 창으로
+              튀는</b> 대신 창 안에서 그대로 이어집니다.
+            </>
+          )
+        },
+        {
+          tag: '탐색기',
+          name: '폴더 우클릭으로 바로 열기',
+          desc: (
+            <>
+              탐색기에서 폴더를 우클릭하면 <b>&apos;AgentCodeGUI3으로 열기&apos;</b>가 뜹니다.
+              기존 2.6 버전을 지우지 않아도 되도록 <b>아이콘(teal 3 배지)·메뉴 글자·설치
+              폴더를 전부 따로</b> 뒀어요 — 둘을 나란히 두고 천천히 옮기셔도 됩니다.
+            </>
+          )
+        }
+      ]
+    },
+    en: {
+      eyebrow: 'REBUILT',
+      lead: 'Everything under the hood is new — the screens look the same, but the installer is 66× smaller and opening one more window costs a quarter of what it did. And if the view crashes, the app brings itself back.',
+      notes: [
+        {
+          tag: 'Size',
+          name: 'Installer: 157.5MB → 2.4MB',
+          desc: (
+            <>
+              The app no longer <b>carries an entire copy of Chrome</b>; it uses the web engine
+              Windows already ships (WebView2). The installer went <b>157.5MB → 2.4MB (66×)</b>,
+              the installed folder <b>633.7MB → 6.0MB (106×)</b>, and the file count{' '}
+              <b>8,141 → 2</b>. That is <b>627.7MB</b> given back to your disk.
+            </>
+          )
+        },
+        {
+          tag: 'Memory',
+          name: 'Extra windows are cheap now',
+          desc: (
+            <>
+              Every extra chat or pop-out window used to add <b>110.7MB and a whole process</b>.
+              Now it is <b>25.1MB and zero extra processes</b> — every window shares one engine.
+              Sitting idle with a 4-panel multi board also dropped from <b>505MB to 253MB</b>.
+            </>
+          )
+        },
+        {
+          tag: 'Stability',
+          name: 'The app recovers from a dead view',
+          desc: (
+            <>
+              When the part that draws the UI crashed, you used to be left with an{' '}
+              <b>empty window</b> and had to restart. The app now <b>detects that and redraws the
+              view by itself</b> — measured at <b>0.45s</b>, with your conversation intact. With
+              several windows open, only the one that died is recovered.
+            </>
+          )
+        },
+        {
+          tag: 'Speed',
+          name: 'Starts a little faster',
+          desc: (
+            <>
+              From click to <b>first window: 336ms → 290ms</b>, and to <b>actually usable:
+              422ms → 373ms</b> (measured on the installed build). The startup splash also stays
+              inside the window instead of <b>popping from a small card to a big window</b>.
+            </>
+          )
+        },
+        {
+          tag: 'Explorer',
+          name: 'Open a folder straight from right-click',
+          desc: (
+            <>
+              Right-click a folder in Explorer and you get <b>&quot;AgentCodeGUI3으로 열기&quot;</b>.
+              So you never have to uninstall 2.6 first, the <b>icon (teal 3 badge), menu label and
+              install folder are all separate</b> — keep both side by side and move over at your
+              own pace.
+            </>
+          )
+        }
+      ]
+    }
+  },
   '2.6.2': {
     ko: {
       eyebrow: 'IMPROVED',
@@ -394,49 +531,6 @@ const RELEASES: Record<string, LocalizedRelease> = {
               focused panel in the grid. The window also <b>focuses the input right when it
               opens</b>, like the expand card does, so you can keep typing the moment it pops
               out.
-            </>
-          )
-        }
-      ]
-    }
-  },
-  '2.5.1': {
-    ko: {
-      eyebrow: 'IMPROVED',
-      lead: '긴 대화에서 컨텍스트가 가득 차 자동으로 요약될 때, 이제 그 순간을 카드로 알려드립니다 — 게이지가 말없이 뚝 떨어지는 일이 없어요.',
-      notes: [
-        {
-          tag: '컨텍스트',
-          name: '자동 요약이 보이게 됐어요',
-          desc: (
-            <>
-              대화가 길어져 컨텍스트가 가득 차면 Claude가 <b>스스로 이전 대화를 요약</b>해
-              자리를 비우는데, 지금까지는 아무 표시 없이 게이지만 갑자기 떨어졌습니다. 이제
-              그 지점에 <b>/compact 계열 카드</b>가 떠서 자동 요약이 일어났음을 알려주고,{' '}
-              <b>컨텍스트 절약(전 → 후 %)과 회수한 토큰</b>도 실측으로 함께 보여줘요. 카드는
-              게이지가 떨어지는 바로 그 순간에 나타나 이유를 설명합니다 — 본채팅·멀티
-              패널·팝아웃·추가 채팅 어디서든요.
-            </>
-          )
-        }
-      ]
-    },
-    en: {
-      eyebrow: 'IMPROVED',
-      lead: 'When a long conversation fills the context and gets auto-summarized, a card now marks the moment — no more gauge silently plummeting.',
-      notes: [
-        {
-          tag: 'Context',
-          name: 'Auto-compaction is now visible',
-          desc: (
-            <>
-              When the context fills up, Claude <b>summarizes the earlier conversation on its
-              own</b> to make room — but until now the only sign was the gauge suddenly
-              dropping. A <b>/compact-style card</b> now appears right at that point, showing
-              that an auto-summary happened along with the <b>measured savings (before → after
-              %) and tokens reclaimed</b>. The card lands at the exact moment the gauge drops,
-              explaining it — in the main chat, multi panels, pop-outs, and extra chat windows
-              alike.
             </>
           )
         }
