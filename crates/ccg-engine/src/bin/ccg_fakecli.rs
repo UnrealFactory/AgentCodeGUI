@@ -58,6 +58,16 @@ fn per_account_script(script: &str) -> String {
 fn main() {
     let script = std::env::var("CCG_FAKECLI_SCRIPT").unwrap_or_default();
     let inlog = std::env::var("CCG_FAKECLI_IN").ok();
+    // ★T3T4 R3 — **받은 argv를 적는다**(옵트인). `git:ai-message`의 계약은 프롬프트가
+    // 아니라 플래그에 있다(`--max-turns 1`이 "1턴"의 전부다) — 그걸 하네스가 바이트로
+    // 확인할 자리가 없으면 "보냈다고 주장하는 코드"만 남는다. 이 변수를 안 주면
+    // 한 글자도 안 바뀐다(기존 하네스 무영향).
+    if let Ok(p) = std::env::var("CCG_FAKECLI_ARGV") {
+        if !p.is_empty() {
+            let argv: Vec<String> = std::env::args().skip(1).collect();
+            let _ = std::fs::write(&p, serde_json::to_string(&argv).unwrap_or_default());
+        }
+    }
     let rx = spawn_stdin_reader(inlog);
 
     let text = std::fs::read_to_string(per_account_script(&script)).unwrap_or_default();

@@ -33,6 +33,7 @@
 use serde_json::Value;
 use tauri::{AppHandle, WebviewWindow};
 
+mod aimsg;
 mod btw;
 mod codex;
 mod dialog;
@@ -64,6 +65,10 @@ pub mod ch {
     pub const SKILL_SET_ENABLED: &str = "skill:set-enabled";
     /// Codex picker의 모델 목록(`codex:models()` → `CodexModelInfo[]`).
     pub const CODEX_MODELS: &str = "codex:models";
+    /// ★M5 — AI 커밋 메시지(`git:ai-message({cwd,files,account?,model?,effort?})`).
+    /// `ipc/git.rs`가 아니라 여기 있는 이유: 저 모듈은 `ccg_fs::git`의 얇은 변환기이고
+    /// 이 채널만 **엔진 프로세스를 스폰**한다(최대 90초). 성격이 다르면 자리도 다르다.
+    pub const GIT_AI_MESSAGE: &str = "git:ai-message";
 }
 
 /// 이 묶음이 맡는 채널인가 — `ipc_call`이 **블로킹 팔로 보낼지** 가르는 유일한 판정.
@@ -82,6 +87,7 @@ pub fn owns(channel: &str) -> bool {
             | ch::SKILL_LIST
             | ch::SKILL_SET_ENABLED
             | ch::CODEX_MODELS
+            | ch::GIT_AI_MESSAGE
     ) || misc::owns(channel)
 }
 
@@ -116,6 +122,9 @@ pub fn dispatch(app: &AppHandle, window: &WebviewWindow, channel: &str, p: &Valu
         }
 
         ch::CODEX_MODELS => codex::models(),
+
+        // ★M5 — diff를 읽고 엔진을 1턴 돌린다(최대 90초 · 블로킹 팔).
+        ch::GIT_AI_MESSAGE => aimsg::ai_message(super::arg(p, 0)),
 
         _ => misc::dispatch(app, window, channel),
     }

@@ -45,8 +45,10 @@ const argOf = (k, d) => (args.find((a) => a.startsWith(`--${k}=`)) ?? '').split(
 const OUT = argOf('out', path.join(REPO, 'docs', 'critic', 'limit-engine-t3t4-r3.json'))
 const EXE = argOf('exe', path.join(REPO, 'target-t3t4', 'release', 'agentcodegui.exe'))
 const FAKECLI = argOf('fakecli', path.join(REPO, 'target-t3t4', 'release', 'ccg-fakecli.exe'))
-/** 관찰창(초). 크리틱은 92초를 봤다 — 그보다 길게 본다. */
-const WATCH_S = Number(argOf('watch', LONG ? 540 : 110))
+/** 관찰창(초). 크리틱은 92초를 봤다 — 그보다 길게 본다.
+ *  `--long`은 손 드는 순간까지 본다: 첫 재검증이 리셋+90초(=t≈90s)이고 그 뒤
+ *  15+30+60+120+240 = 465초라 t≈555s. 여유를 얹어 620초. */
+const WATCH_S = Number(argOf('watch', LONG ? 620 : 110))
 const EMAIL = 'engine-seed@t3t4.test'
 const CHAT = 'c-limit-engine'
 
@@ -193,6 +195,14 @@ const stdinBytes = () => {
     return 0
   }
 }
+/** 나갔다면 **무엇이** 나갔나 — 옛 판(`--exe=`로 지목한 대조군)의 대조 증거. */
+const stdinHead = () => {
+  try {
+    return fs.readFileSync(path.join(HOME, 'stdin.log'), 'utf8').slice(0, 600)
+  } catch {
+    return ''
+  }
+}
 
 async function main() {
   const seed = seedHome()
@@ -238,6 +248,7 @@ async function main() {
       if (s.spawns > 0 || s.stdin > 0) break // 이미 졌다 — 더 볼 것이 없다
     }
     rep.steps.samples = samples
+    rep.steps.stdinHead = stdinHead()
     const last = samples[samples.length - 1] ?? {}
 
     console.log('\n② 판정')
@@ -245,7 +256,12 @@ async function main() {
     check('E1′ ★★ 전송 0 — 가짜 CLI의 stdin이 비었다(바이트 물증)', worst.stdin === 0, `${worst.stdin}바이트가 나갔다`, { bytes: worst.stdin })
     check('E2 재개 나팔이 큐에 안 들어갔다', worst.queue === 0, `큐 ${worst.queue}건`, { queue: worst.queue })
     check('E3 대기표가 살아 있다(소진 = 전송이다)', !!last.hold, '표가 사라졌다', { hold: last.hold })
-    check('E4 「풀렸다」로 켜지지 않았다', last.hold?.ready === false, 'ready=true = 못 물어봤는데 풀렸다고 했다', { hold: last.hold })
+    // `ready`가 켜질 수 있는 자리는 **하나뿐**이다: 재확인을 다 쓰고 사용자에게 넘길 때
+    // (`autoPaused`). 그 표식 없이 켜졌다면 그게 「못 물어봤는데 풀렸다고 했다」이다.
+    const badReady = samples.filter((s) => s.hold?.ready === true && s.hold?.autoPaused !== true)
+    check('E4 「풀렸다」로 켜진 적이 없다(넘기는 순간 제외)', badReady.length === 0, JSON.stringify(badReady[0]?.hold), {
+      first: badReady[0] ?? null
+    })
 
     console.log('\n③ 재검증이 실제로 돌았나(안 도는 것과 구분)')
     check('E5 ★ 훅이 배선돼 있다(asks > 0)', (last.probe?.asks ?? 0) > 0, '엔진이 훅을 한 번도 안 물었다 = NoProbe 그대로다', { probe: last.probe })
