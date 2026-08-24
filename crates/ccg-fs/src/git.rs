@@ -311,8 +311,15 @@ fn err_line(stderr: &str, stdout: &str) -> String {
     if s.contains(LITERAL) { s.replace(LITERAL, "") } else { s.to_string() }
 }
 
-/// git pathspec의 **글롭 해석을 끄는** 매직 접두. 우리가 git에 넘기는 경로는 예외 없이
-/// 이걸 달고 나간다(`commit`의 add·롤백 reset · 대량 diff의 argv 갈래 · `discard`).
+/// git pathspec의 **글롭 해석을 끄는** 매직 접두. 우리가 git에 넘기는 경로 중
+/// **pathspec 자리**는 예외 없이 이걸 달고 나간다(`commit`의 add·롤백 reset ·
+/// 대량 diff의 argv 갈래 · `discard`의 checkout·`rm --cached` — 다섯 자리).
+///
+/// **접두로는 못 막는 자리가 하나 있다: `rev:path`**(`git show HEAD:<경로>`). 그건
+/// pathspec이 아니라 오브젝트 이름이라 `:(literal)`을 붙이면 진짜로 그런 이름을 찾는다.
+/// 그 자리의 글롭 방어는 [`show_at`]이 **exit code 해석 쪽에서** 따로 한다 — 왜 필요한지,
+/// 안 했을 때 무엇이 죽는지는 그 함수 문서에 실측으로 적어 두었다. 「모든 경로에 접두」는
+/// R28b GIT R4 크리틱이 실측으로 깬 문장이니 다시 쓰지 말 것.
 ///
 /// [R28b GIT R3 확인 크리틱 실측] 접두가 없으면 git은 경로를 **패턴**으로 읽는다.
 /// `app/posts/[id]/page.tsx`와 `app/posts/[...slug]/page.tsx` **2개만** 골라 `commit()`을
@@ -661,14 +668,47 @@ impl Blob {
     }
 }
 
+/// 어떤 리비전의 파일 내용. **`rev:path`는 [`LITERAL`] 접두를 못 다는 자리다** — 접두는
+/// pathspec 문법이고 이건 오브젝트 이름이라 `:(literal)`을 붙이면 그런 경로를 찾는다.
+/// 그래서 글롭 방어를 **exit code 해석 쪽에서** 한다.
+///
+/// [R28b GIT R4 확인 크리틱 실측 — git 2.53.0.windows.1]
+/// `git show <rev>:<path>`의 exit 0은 **존재 증명이 아니다.** path에 pathspec 매직
+/// (`*` · `?` · `[`)이 있고 그 경로가 리비전에 **없으면**, git은 인자를 글롭으로
+/// 재해석해 `exit 0` + **stdout 0바이트**를 준다:
+///
+/// ```text
+/// git show     'HEAD:app/posts/[id]/page.tsx'   → exit 0   · 0바이트   ← 거짓말
+/// git show     'HEAD:app/posts/plain/page.tsx'  → exit 128 "exists on disk, but not in 'HEAD'"
+/// git cat-file -e 'HEAD:app/posts/[id]/page.tsx' → exit 128            ← 같은 질문에 바르게 답한다
+/// ```
+///
+/// 그대로 두면 「없다」가 [`Blob::Text("")`](Blob::Text)로 뒤바뀌고, `discard`의
+/// 「HEAD에 없던 새 파일」 갈래가 안 열려 **스테이징(`A`)된 대괄호 경로의 되돌리기가
+/// 영구히 실패**한다(`app/posts/plain/page.tsx`는 같은 클릭에 잘 되므로 사용자에겐
+/// 무작위로 보인다). R1 크리틱이 `Blob`을 넷으로 쪼갠 이유 —「없다」와「못 읽었다」를
+/// 안 가르면 거짓말이 나간다 — 의 세 번째 얼굴이다.
+///
+/// 그래서 **stdout이 비었을 때만** `cat-file -e`로 되묻는다. 매직 문자 목록을 우리가
+/// 다시 세지 않는 이유: git의 글롭 판정 문자 집합은 우리 소관이 아니고, 이 재해석은
+/// **항상 0바이트**로 나타난다(글롭이 실제로 맞는 경로가 있어도 그렇다 — 실측:
+/// `git show 'HEAD:app/posts/*/page.tsx'`는 둘 다 커밋된 뒤에도 0바이트). 값을 치르는
+/// 경우는 「리비전에 진짜로 있는 빈 파일」뿐이고 그때 스폰이 하나 는다.
 fn show_at(root: &Path, rev: &str, rel: &str) -> Blob {
     let spec = format!("{rev}:{rel}");
     // `--` 뒤로 밀 수 없는 형태(rev:path)라, rev/rel이 옵션처럼 보이지 않게 미리 막는다.
     if rel.starts_with('-') {
         return Blob::Absent;
     }
+    // `cat-file -e`는 객체 존재만 본다(blob을 안 읽으므로 거대 파일에도 싸다).
+    let exists = || exec(root, &["cat-file", "-e", spec.as_str()]).ok;
     let r = exec(root, &["show", spec.as_str()]);
     if r.ok {
+        // 0바이트 성공은 「빈 파일이 있다」와 「글롭으로 재해석돼 아무것도 안 맞았다」가
+        // 겹치는 유일한 자리다. 여기서만 되묻는다 — 나머지는 스폰 수가 그대로다.
+        if r.stdout.is_empty() && !exists() {
+            return Blob::Absent;
+        }
         return Blob::Text(r.stdout);
     }
     // 성공 경로는 위에서 끝났다 — 아래는 **실패의 이유를 가르는** 자리뿐이라
@@ -676,8 +716,7 @@ fn show_at(root: &Path, rev: &str, rel: &str) -> Blob {
     if r.over {
         return Blob::TooBig;
     }
-    // `cat-file -e`는 객체 존재만 본다(blob을 안 읽으므로 거대 파일에도 싸다).
-    if exec(root, &["cat-file", "-e", spec.as_str()]).ok {
+    if exists() {
         Blob::Unreadable
     } else {
         Blob::Absent
@@ -1457,6 +1496,10 @@ pub fn discard(cwd: &str, rel: &str, untracked: bool) -> GitResult {
     }
     // checkout이 실패했다. **왜인지**를 git에 직접 묻는다 — "HEAD에 없다"가 아니면
     // (잠김·권한 등) 아무것도 지우지 않고 사유를 그대로 돌려준다.
+    // ★ 이 `rel`은 pathspec이 아니라 `HEAD:<rel>` 오브젝트 이름으로 나간다 — 위 `spec`과
+    //   달리 [`LITERAL`] 접두를 못 단다. `git show`의 exit 0을 그대로 믿으면 대괄호 경로가
+    //   `Blob::Text("")`로 와서 이 갈래가 안 열리고 **되돌리기가 영구히 실패**한다
+    //   (R28b GIT R4 크리틱 실측). 그 방어는 [`show_at`] 안에 있다.
     if matches!(show_at(&root, "HEAD", rel), Blob::Absent) {
         // HEAD에 없던(새로 add된) 파일 — **휴지통 먼저**, 성공했을 때만 스테이징 해제.
         if let Some(e) = to_trash() {
@@ -2107,6 +2150,92 @@ mod tests {
             "원본\n이웃의 저장 안 한 편집\n",
             "고르지 않은 이웃의 편집이 되돌리기에 쓸려 사라졌다"
         );
+    }
+
+    /// **접두로는 못 막는 여섯 번째 자리** — `rev:path`(R28b GIT R4 확인 크리틱).
+    ///
+    /// `git show 'HEAD:app/posts/[id]/page.tsx'`는 그 경로가 HEAD에 **없어도** exit 0 +
+    /// stdout 0바이트를 준다(인자를 글롭 pathspec으로 재해석한다). 그걸 그대로 믿으면
+    /// `show_at`이 `Absent` 대신 `Text("")`를 돌리고, `discard`의 「HEAD에 없던 새 파일」
+    /// 갈래가 안 열려 **스테이징(`A`)된 대괄호 경로의 되돌리기가 영구히 실패**한다 —
+    /// 바로 옆 `plain/`은 같은 클릭에 잘 되므로 사용자에게는 무작위 고장으로 보인다.
+    /// `status`가 그 행을 `status="A", untracked=None`으로 주고 `GitModal`이
+    /// `!!f.untracked`=false로 부르므로 UI 경로가 실제로 여기 닿는다.
+    #[test]
+    fn a_staged_bracket_path_is_discardable_even_when_git_show_says_exit_zero() {
+        let r = repo!("discard-staged-bracket");
+        r.write("seed.txt", "s\n");
+        r.git(&["add", "."]);
+        r.git(&["commit", "-qm", "init"]);
+        r.write("app/posts/[id]/page.tsx", "new\n");
+        r.write("app/posts/plain/page.tsx", "new\n");
+        r.git(&["add", "-A"]);
+
+        // 이 환경의 git이 실제로 뭐라 답하는지 기록만 해 둔다(git이 고쳐지면 우회가
+        // 공짜가 될 뿐 아래 단언은 그대로 통과한다 — 버전 업그레이드로 빨개지지 않는다).
+        let show = r.git(&["show", "HEAD:app/posts/[id]/page.tsx"]);
+        eprintln!("[note] git show HEAD:<대괄호> ok={} bytes={}", show.ok, show.stdout.len());
+        // 우리가 존재 오라클로 쓰는 쪽은 바르게 답해야 한다 — 이게 깨지면 우회가 무너진다.
+        assert!(
+            !r.git(&["cat-file", "-e", "HEAD:app/posts/[id]/page.tsx"]).ok,
+            "cat-file -e가 HEAD에 없는 대괄호 경로를 있다고 답한다 — 우회의 근거가 사라졌다"
+        );
+        assert!(
+            matches!(show_at(&r.0, "HEAD", "app/posts/[id]/page.tsx"), Blob::Absent),
+            "HEAD에 없는 대괄호 경로를 「빈 파일이 있다」로 읽었다"
+        );
+
+        // UI가 실제로 부르는 모양 — A 행은 untracked를 안 달고 나간다
+        let rows: Vec<(String, &str, bool)> = status(r.cwd())
+            .files
+            .into_iter()
+            .filter(|f| f.path.starts_with("app/"))
+            .map(|f| (f.path, f.status, f.untracked.unwrap_or(false)))
+            .collect();
+        assert_eq!(rows.len(), 2, "{rows:?}");
+        assert!(rows.iter().all(|(_, s, u)| *s == "A" && !*u), "{rows:?}");
+
+        // 인덱스 확인은 `git show :<경로>`로 하면 **안 된다** — 그 자리도 같은 글롭
+        // 재해석에 걸려 없는 행에 exit 0을 준다(이 테스트를 처음 썼을 때 실제로 걸렸다).
+        // `ls-files`는 pathspec 자리라 접두가 먹는다.
+        let indexed = |rel: &str| {
+            !r.git(&["ls-files", "-s", "--", &literal_spec(rel)]).stdout.trim().is_empty()
+        };
+        let res = discard(r.cwd(), "app/posts/[id]/page.tsx", false);
+        assert!(res.ok, "스테이징된 대괄호 새 파일 되돌리기가 실패했다: {:?}", res.error);
+        assert!(!r.0.join("app/posts/[id]/page.tsx").exists(), "파일이 그대로 남았다");
+        assert!(!indexed("app/posts/[id]/page.tsx"), "인덱스에 A 행이 남았다");
+        // 이웃은 같은 클릭에 한 글자도 안 움직여야 한다
+        assert!(r.0.join("app/posts/plain/page.tsx").is_file(), "이웃 파일이 딸려 사라졌다");
+        assert!(indexed("app/posts/plain/page.tsx"), "이웃이 인덱스에서 내려갔다");
+
+        // 평범한 경로도 여전히 된다(이 라운드가 아무것도 안 부쉈다는 대조군)
+        let res2 = discard(r.cwd(), "app/posts/plain/page.tsx", false);
+        assert!(res2.ok, "{:?}", res2.error);
+        assert!(!r.0.join("app/posts/plain/page.tsx").exists());
+    }
+
+    /// 되묻기가 **과잉 발동하면** 안 된다 — 리비전에 진짜로 있는 **빈 파일**은 여전히
+    /// `Text("")`다. `Absent`로 뒤집히면 두 군데가 상한다: `file_diff`가 「내용을 읽을 수
+    /// 없어요」로 떨어지고, 더 나쁘게는 `discard`가 그 파일을 **HEAD에 있는데도 휴지통으로**
+    /// 보낸다(크리틱 §S4가 고친 바로 그 사고). 대괄호 이름으로도 같은지 함께 본다.
+    #[test]
+    fn a_genuinely_empty_blob_still_reads_as_present() {
+        let r = repo!("empty-blob");
+        r.write("빈.txt", "");
+        r.write("app/[id]/빈.tsx", "");
+        r.git(&["add", "."]);
+        r.git(&["commit", "-qm", "empty"]);
+        for rel in ["빈.txt", "app/[id]/빈.tsx"] {
+            assert!(
+                matches!(show_at(&r.0, "HEAD", rel), Blob::Text(ref s) if s.is_empty()),
+                "HEAD에 있는 빈 파일 {rel}을 「없다」로 읽었다"
+            );
+        }
+        // 눈에 보이는 결과: 빈 파일을 지우면 diff가 나와야지 「읽을 수 없어요」가 아니다
+        std::fs::remove_file(r.0.join("app/[id]/빈.tsx")).unwrap();
+        let d = file_diff(r.cwd(), "app/[id]/빈.tsx");
+        assert!(d.error.is_none() && d.diff.is_some(), "{:?}", d.error);
     }
 
     /// 대량 diff의 argv 갈래도 **같은 접두**를 단다. 답은 정확한 경로 키로 되찾아 오므로
