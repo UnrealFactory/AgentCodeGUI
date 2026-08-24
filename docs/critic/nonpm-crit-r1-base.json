@@ -1,0 +1,31 @@
+{
+  "at": "2026-08-24T12:59:37.979Z",
+  "exe": "C:/Code/AgentCodeGUI/target-crit/base-agentcodegui.exe",
+  "note": "PATH에서 npm/node 제거 · 네트워크 유지 · 엔진 0개 · Electron(2.6.2) 팔은 실홈 오염 때문에 안 돈다",
+  "arms": {
+    "boot": {
+      "samples": 54,
+      "firstSdMs": null,
+      "sdTitle": null,
+      "sdMsg": null,
+      "sdWhy": null,
+      "sdBtns": null,
+      "firstEuMs": null,
+      "tailLog": ",\"counts\":{\"chats\":0,\"maSessions\":0,\"maPanels\":0,\"sessionChats\":0,\"talkAbsorbed\":0,\"carried\":0,\"keptV3\":0,\"keptV3Boards\":0,\"total\":0,\"messages\":0,\"boards\":1},\"idMap\":{},\"order\":[],\"activeChatId\":\"\",\"boardOrder\":[\"default\"],\"activeBoardId\":\"default\",\"activeSessionId\":\"\",\"btw\":{\"rewritten\":0,\"dropped\":0},\"holdMoved\":0,\"sourceIndexOrders\":{\"chats\":[],\"multiAgent\":[],\"sessionChats\":[]},\"warnings\":[]}\n"
+    },
+    "settings": {
+      "listAvailable": {
+        "latest": null,
+        "versions": [],
+        "error": "레지스트리 응답을 읽지 못했어요(npm view 출력이 JSON이 아닙니다)"
+      },
+      "engineMeta": "미설치 — 버전을 골라 설치하세요",
+      "picker": {
+        "opts": 0,
+        "msg": null,
+        "why": null,
+        "html": ""
+      }
+    }
+  }
+}
