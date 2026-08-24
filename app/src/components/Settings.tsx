@@ -598,14 +598,17 @@ function AccountView(): React.ReactElement {
                   {/* ★M11 R3(F2) — 토큰 교환이 실패한 계정. R2까지 이 사실은 stderr 한 줄로만
                       남았고, 사용자는 갈아탄 자리에서 로그인 창을 보고서야 알았다. 자동 전환은
                       이미 이 계정을 후보에서 뺐다(격리) — 그 판정을 여기서도 말한다.
-                      다시 로그인하면 크리덴셜 지문이 달라져 표식이 스스로 사라진다. */}
+                      ★R4(G2) — R3의 문구는 "삭제하고 다시 로그인하면 풀립니다"였는데, 401이
+                      난 그 순간 계정이 스토어에 없었으면(로그아웃 = 토큰 해지라 흔한 판)
+                      표식에 지문이 안 적혀 **어떤 재로그인으로도 안 풀렸다**. 이제 해제 경로가
+                      셋이고(조회 성공 · 재로그인 · 크리덴셜 복귀) 문구도 그 셋을 말한다. */}
                   {a.needsLogin && <span className="set-badge warn">{t('재로그인 필요할 수 있어요', 'May need sign-in')}</span>}
                 </div>
                 <div className="meta">
                   {a.needsLogin
                     ? t(
-                        '토큰 갱신이 실패해 자동 전환 후보에서 잠시 빠졌어요. 삭제하고 다시 로그인하면 풀립니다.',
-                        "Token refresh failed, so this account is held out of auto-switch for now. Sign in again to clear it."
+                        '토큰 갱신이 실패해 자동 전환 후보에서 잠시 빠졌어요. 한도 조회가 한 번 성공하거나 다시 로그인하면 자동으로 풀려요.',
+                        'Token refresh failed, so this account is held out of auto-switch for now. It clears itself once a usage check succeeds, or after you sign in again.'
                       )
                     : planLabel(a.subscriptionType)}
                 </div>

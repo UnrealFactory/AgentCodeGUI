@@ -87,6 +87,29 @@ const SICK_BACKOFF_BASE: Duration = Duration::from_secs(60);
 /// 백오프 상한 — 이 시간이 지나면 죽은 것처럼 보이던 계정도 한 번은 다시 물어본다.
 const SICK_BACKOFF_MAX: Duration = Duration::from_secs(30 * 60);
 
+// ── ★M11 R4(G6) — **429·5xx는 계정의 죄가 아니다** ──────────────────────────
+//
+// R3는 조회 실패를 한 가지로 셌다(`Err(_) → note_sick`). 그래서 usage API가 잠깐
+// 흔들리기만 해도 **살아 있는 계정**이 최대 30분 후보에서 빠졌다. 그 창이 실제로
+// 비어 보이는 이유는 셋이 겹치기 때문이다(R3 크리틱 §9):
+//
+// | # | 무엇 | 값 |
+// |---|---|---|
+// | ① | 판정은 조회 **전** 값 그대로 | 만료 토큰이면 `NeedsRefresh` → `Unverified` |
+// | ② | 새 usage가 없으니 캐시가 낡는다 | `ACCT_USAGE_TTL_MS` = **2분** |
+// | ③ | 격리 백오프가 재조회를 막는다 | 60초 → ×2 → 상한 **30분** |
+//
+// ②가 지나면 살아 있는 계정도 `usage_unknown`이라 후보가 아니다. 그리고 이 저장소가
+// 직접 적어 뒀듯이(`usage.rs` 헤더) 같은 IP의 병렬 2건 중 1건은 429로 온다 — 흔한 일에
+// 30분짜리 벌을 주는 셈이었다.
+//
+// 그래서 곡선을 둘로 가른다. **첫 대기를 캐시 TTL(2분)보다 짧게** 두는 것이 요점이다:
+// 한 번 흔들린 계정은 캐시가 낡기 전에 다시 물어볼 기회를 얻는다.
+/// 일시 실패(429·5xx·전송·본문 파싱)의 밑 — 워커 쿨다운 한 바퀴.
+const FLAKY_BACKOFF_BASE: Duration = Duration::from_secs(20);
+/// 일시 실패의 상한. 계속 흔들리면 결국 쉬어야 하지만 30분은 아니다.
+const FLAKY_BACKOFF_MAX: Duration = Duration::from_secs(5 * 60);
+
 /// 워커가 채우고 `pick`이 읽는 판정 재료. 락 안에서 하는 일은 **clone뿐**이다.
 #[derive(Default)]
 struct Snapshot {
@@ -126,6 +149,10 @@ pub struct Switcher {
     /// 재로그인이 필요해 보이는 계정은 여기에 더해 [`ccg_auth::health`]에도 적힌다
     /// (그쪽은 디스크 = 사용자가 읽는 사실 + 재시작 뒤에도 남는 기억).
     sick: Mutex<BTreeMap<String, (u32, Instant)>>,
+    /// ★R4(G6) — **일시 실패**(429·5xx·전송)의 별도 장부. 같은 모양이지만 곡선이 짧다
+    /// ([`FLAKY_BACKOFF_BASE`]). 계정 상태와 네트워크 상태를 한 장부에 섞으면
+    /// usage API가 한 번 흔들릴 때마다 살아 있는 계정이 30분씩 사라진다.
+    flaky: Mutex<BTreeMap<String, (u32, Instant)>>,
     last: Mutex<LastPlan>,
 }
 
@@ -144,6 +171,7 @@ impl Switcher {
             asks: Mutex::new(BTreeSet::new()),
             stats: Mutex::new((0, 0)),
             sick: Mutex::new(BTreeMap::new()),
+            flaky: Mutex::new(BTreeMap::new()),
             last: Mutex::new(LastPlan::default()),
         });
         let worker = me.clone();
@@ -253,25 +281,43 @@ impl Switcher {
 
     // ── ★R3(F2) 실패 계정 격리 · 지수 백오프 · 복구 ──────────────────────────
 
-    /// 지금 이 계정에 조회를 다시 보내도 되나. 백오프 창 안이면 `false`.
+    /// 지금 이 계정에 조회를 다시 보내도 되나. **두 장부 다** 창 밖이어야 한다.
     fn may_fetch(&self, email: &str) -> bool {
-        let g = self.sick.lock().unwrap_or_else(|e| e.into_inner());
-        g.get(email).is_none_or(|(_, until)| Instant::now() >= *until)
+        let now = Instant::now();
+        let open = |m: &Mutex<BTreeMap<String, (u32, Instant)>>| {
+            m.lock().unwrap_or_else(|e| e.into_inner()).get(email).is_none_or(|(_, until)| now >= *until)
+        };
+        open(&self.sick) && open(&self.flaky)
     }
 
-    /// 조회 실패를 적는다 — 지수 백오프(밑 [`SICK_BACKOFF_BASE`], 상한 [`SICK_BACKOFF_MAX`]).
-    fn note_sick(&self, email: &str) -> u32 {
-        let mut g = self.sick.lock().unwrap_or_else(|e| e.into_inner());
+    fn note_backoff(
+        m: &Mutex<BTreeMap<String, (u32, Instant)>>,
+        email: &str,
+        base: Duration,
+        max: Duration,
+    ) -> (u32, Duration) {
+        let mut g = m.lock().unwrap_or_else(|e| e.into_inner());
         let e = g.entry(email.to_string()).or_insert((0, Instant::now()));
         e.0 = e.0.saturating_add(1);
-        let wait = SICK_BACKOFF_BASE.saturating_mul(1u32 << (e.0 - 1).min(9)).min(SICK_BACKOFF_MAX);
+        let wait = base.saturating_mul(1u32 << (e.0 - 1).min(9)).min(max);
         e.1 = Instant::now() + wait;
-        e.0
+        (e.0, wait)
     }
 
-    /// 조회 성공 = 복구. 메모리 장부와 디스크 표식을 **둘 다** 지운다.
+    /// **계정 탓인** 실패를 적는다 — 지수 백오프(밑 [`SICK_BACKOFF_BASE`], 상한 [`SICK_BACKOFF_MAX`]).
+    fn note_sick(&self, email: &str) -> u32 {
+        Self::note_backoff(&self.sick, email, SICK_BACKOFF_BASE, SICK_BACKOFF_MAX).0
+    }
+
+    /// ★R4(G6) — **계정 탓이 아닌** 실패(429·5xx·전송·본문). 짧은 곡선으로 따로 센다.
+    fn note_flaky(&self, email: &str) -> (u32, Duration) {
+        Self::note_backoff(&self.flaky, email, FLAKY_BACKOFF_BASE, FLAKY_BACKOFF_MAX)
+    }
+
+    /// 조회 성공 = 복구. 메모리 장부 둘과 디스크 표식을 **전부** 지운다.
     fn note_well(&self, email: &str) {
         let had = self.sick.lock().unwrap_or_else(|e| e.into_inner()).remove(email).is_some();
+        self.flaky.lock().unwrap_or_else(|e| e.into_inner()).remove(email);
         ccg_auth::net::clear_rotate_backoff(email);
         if had || ccg_auth::health::needs_login(email) {
             ccg_auth::health::clear(email);
@@ -438,14 +484,24 @@ fn collect(sw: &Switcher) -> Snapshot {
                 }
                 // 킬 스위치는 **계정 상태가 아니다**(하네스 주행) — 격리하지 않는다.
                 Err(ccg_auth::net::NetError::Disabled) => {}
+                // ★R4(G6) — 교환 백오프에 막혀 **POST가 한 건도 안 나간** 착지다.
+                //   우리가 스스로 안 나간 것이지 계정이 답을 안 준 게 아니다. 이걸
+                //   실패로 세면 셸 백오프가 60초→2분→4분으로 **혼자** 배가된다.
+                Err(ccg_auth::net::NetError::RotateBackoff(_)) => {}
                 // 못 물어봤다 = **모름**이다. 실패는 격리 장부에 남아 백오프를 만든다.
-                Err(_) => {
-                    let n = sw.note_sick(email);
+                Err(e) => {
+                    if transient(&e) {
+                        // ★R4(G6) — 429·5xx·전송 실패는 계정의 죄가 아니다. 짧은 곡선.
+                        let (n, wait) = sw.note_flaky(email);
+                        eprintln!("[acct-switch] {email} 조회가 흔들렸다 {n}회({e}) — {wait:?} 뒤 다시");
+                    } else {
+                        let n = sw.note_sick(email);
+                        eprintln!("[acct-switch] {email} 조회 실패 {n}회 — 백오프");
+                    }
                     if ccg_auth::health::needs_login(email) {
                         preflight.insert(email.clone(), PreflightVerdict::NeedsLogin);
                         continue;
                     }
-                    eprintln!("[acct-switch] {email} 조회 실패 {n}회 — 백오프");
                 }
             }
         }
@@ -455,6 +511,22 @@ fn collect(sw: &Switcher) -> Snapshot {
         usage::write_usage_cache(&cache);
     }
     Snapshot { at: Some(Instant::now()), order, usage: usage_map, preflight }
+}
+
+/// ★R4(G6) — 이 실패는 **계정 탓인가, 네트워크 탓인가**.
+///
+/// 계정 탓(짧은 곡선을 쓰면 안 되는 것): 401·403(서버가 그 토큰을 거절했다) ·
+/// `NoToken`(쓸 토큰이 없다) · `TokenLost`(회전 결과를 못 남겼다).
+/// 나머지(429·5xx·타임아웃·TLS·본문 파싱)는 **다음 tick에 다시 물어볼 값어치**가 있다.
+fn transient(e: &ccg_auth::net::NetError) -> bool {
+    use ccg_auth::net::NetError;
+    match e {
+        NetError::Status(401 | 403) | NetError::NoToken | NetError::TokenLost(_) => false,
+        NetError::Status(s) => *s == 408 || *s == 429 || *s >= 500,
+        NetError::Transport(_) | NetError::BadBody => true,
+        // 위 두 갈래에서 이미 걸러진다(호출자가 먼저 처리한다).
+        NetError::Disabled | NetError::RotateBackoff(_) => true,
+    }
 }
 
 /// 계정 하나의 실 조회. `ccg-auth/net`은 **이 크레이트만** 켠다(src-tauri/Cargo.toml).

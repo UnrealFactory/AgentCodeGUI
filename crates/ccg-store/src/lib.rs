@@ -27,6 +27,11 @@ pub mod api_usage;
 /// ★M11 R3(F1) — 앱 홈 파일의 크로스-프로세스 잠금(`accounts.json` 임계 구역).
 pub mod flock;
 pub mod safe_storage;
+/// 테스트 지원 — `CCG_HOME`(프로세스 전역)을 만지는 모든 테스트의 공용 자물쇠.
+/// 릴리스에도 실리지만 함수 두 개짜리라 비용이 없고, 다른 크레이트의 **통합 테스트**가
+/// 써야 해서 `cfg(test)`로 가둘 수 없다(그 경계가 사본을 낳은 것이 F5였다).
+#[doc(hidden)]
+pub mod testhome;
 
 /// 통합 스토어 — **기본 켜짐**. 끄는 탈출구는 `CCG_UNIFIED_STORE=0`.
 ///
@@ -119,22 +124,101 @@ fn absolutize(p: &Path) -> PathBuf {
 /// 쓰고-바꾸기(write-then-rename). 쓰는 도중 죽어도 반쪽짜리 JSON이 남지 않는다.
 /// src/main/atomicWrite.ts와 같은 의미론 — 같은 볼륨의 rename은 Windows에서도 원자적이다.
 pub fn write_atomic(file: &Path, data: &str) -> io::Result<()> {
+    stage_atomic(file, data)?.commit()
+}
+
+/// ★M11 R4(G1) — 원자 저장을 **두 걸음**으로 쪼갠다.
+///
+/// `accounts.json`의 임계 구역을 좁히려면 "무거운 쓰기"와 "보이는 순간"을 갈라야 한다.
+/// [`stage_atomic`]은 임시 파일에 내용을 다 쓰고(느림 · 잠금 밖에서 해도 된다),
+/// [`Staged::commit`]은 rename 한 번뿐이다(빠름 · 이게 원자적으로 보이는 순간).
+///
+/// 임시 파일 이름에 **PID를 넣는다**: 옛 이름은 `<file>.tmp` 하나뿐이라 두 프로세스가
+/// 같은 파일을 원자 저장하면 서로의 임시 파일을 반쯤 덮었다(R3 크리틱 M1이 실측한
+/// "잠금 없이 두 프로세스가 원자 저장하면 백업 반쪽이 무너진다"의 정체).
+pub struct Staged {
+    tmp: PathBuf,
+    dst: PathBuf,
+    done: bool,
+}
+
+impl Staged {
+    /// 보이게 만든다 — rename 한 번(수백 µs). 실패하면 임시 파일은 `Drop`이 치운다.
+    pub fn commit(mut self) -> io::Result<()> {
+        // Windows의 rename은 대상이 있으면 실패한다(std는 ReplaceFile/MoveFileEx로 처리해
+        // 덮어쓰기를 지원한다 — 아래 한 줄이 곧 MoveFileEx + REPLACE_EXISTING이다).
+        std::fs::rename(&self.tmp, &self.dst)?;
+        self.done = true;
+        Ok(())
+    }
+}
+
+impl Drop for Staged {
+    fn drop(&mut self) {
+        if !self.done {
+            // 커밋 안 한 스테이징(CAS 재시도·에러 경로)이 홈에 눌러앉지 않게.
+            let _ = std::fs::remove_file(&self.tmp);
+        }
+    }
+}
+
+/// ★M11 R4(G1) — 갈아끼우기 **직전에 잡는 증인**.
+///
+/// [`Staged::commit`]은 `rename`이고 rename은 **디렉터리 항목만** 바꾼다. 그래서 이 핸들은
+/// 커밋한 뒤에도 계속 **옛 inode**를 본다. 커밋 전과 후에 한 번씩 읽어 값이 달라졌다면,
+/// 잠금을 모르는 이웃(2.6.2)이 `[우리 확인, 우리 rename]` 창에 그 파일을 통째로 썼고
+/// 우리 rename이 그 쓰기를 **묻은** 것이다 — 그 창은 µs 단위라 못 없애지만, 묻힌 내용을
+/// 여기서 파내면 그 자리에서 되살릴 수 있다(= 로그아웃 취소가 지속되지 않는다).
+///
+/// 공유 모드를 전부 연다: 우리 핸들 때문에 이웃의 쓰기가 실패하면(2.6.2의
+/// `writeStoreFile`은 `catch {}`로 삼킨다) 그건 그것대로 조용한 유실이다.
+pub struct Witness(std::fs::File);
+
+pub fn witness(file: &Path) -> Option<Witness> {
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        // FILE_SHARE_READ(1) | FILE_SHARE_WRITE(2) | FILE_SHARE_DELETE(4)
+        // — DELETE가 없으면 우리 rename 자체가 실패한다.
+        std::fs::OpenOptions::new().read(true).share_mode(1 | 2 | 4).open(file).ok().map(Witness)
+    }
+    #[cfg(not(windows))]
+    {
+        std::fs::File::open(file).ok().map(Witness)
+    }
+}
+
+impl Witness {
+    /// 이 inode의 지금 내용(파일 경로가 아니라 **inode**를 읽는다).
+    pub fn read(&mut self) -> Option<String> {
+        use std::io::{Read, Seek, SeekFrom};
+        self.0.seek(SeekFrom::Start(0)).ok()?;
+        let mut s = String::new();
+        self.0.read_to_string(&mut s).ok()?;
+        Some(s)
+    }
+}
+
+pub fn stage_atomic(file: &Path, data: &str) -> io::Result<Staged> {
     let tmp = {
         let mut s = file.as_os_str().to_os_string();
-        s.push(".tmp");
+        s.push(format!(".tmp-{}", std::process::id()));
         PathBuf::from(s)
     };
     std::fs::write(&tmp, data)?;
-    // Windows의 rename은 대상이 있으면 실패한다(std는 ReplaceFile/MoveFileEx로 처리해
-    // 덮어쓰기를 지원한다 — 아래 한 줄이 곧 MoveFileEx + REPLACE_EXISTING이다).
-    std::fs::rename(&tmp, file)
+    Ok(Staged { tmp, dst: file.to_path_buf(), done: false })
 }
 
 /// 앱 홈을 만들고(있으면 no-op) 그 안의 파일에 원자 저장한다.
 pub fn write_home_file(rel: &str, data: &str) -> io::Result<()> {
+    stage_home_file(rel, data)?.commit()
+}
+
+/// [`write_home_file`]의 앞 절반 — 임시 파일까지만 쓴다(커밋은 호출자가).
+pub fn stage_home_file(rel: &str, data: &str) -> io::Result<Staged> {
     let home = app_home();
     std::fs::create_dir_all(&home)?;
-    write_atomic(&home.join(rel), data)
+    stage_atomic(&home.join(rel), data)
 }
 
 /// 앱 홈의 JSON 파일을 읽어 파싱한다. 없거나 깨졌으면 None(2.6.2의 try/catch와 같다).

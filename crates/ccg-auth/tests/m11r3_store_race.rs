@@ -77,10 +77,9 @@ fn two_processes_rotating_the_same_store_lose_nothing() {
     if std::env::var(CHILD_ENV).is_ok() {
         return; // 자식 역할은 아래 전용 테스트가 맡는다
     }
-    let home = std::env::temp_dir().join(format!("ccg-m11r3-race-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&home);
-    std::fs::create_dir_all(&home).unwrap();
-    std::env::set_var("CCG_HOME", &home);
+    // ★M11 R4(리드) — 홈 자물쇠는 ccg-store 공용(testhome). 한 바이너리 안의 병렬
+    // 실행이 서로의 CCG_HOME을 갈아끼우던 자리다(critic_m11r3_attack.rs 주석 참고).
+    let home = ccg_store::testhome::take("r3race");
     std::env::set_var("CCG_NO_NET", "1");
     seed("mine@x", "m-init");
     seed("yours@x", "y-init");

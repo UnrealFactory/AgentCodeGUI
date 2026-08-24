@@ -16,6 +16,13 @@ use serde_json::{json, Map, Value};
 use std::path::{Path, PathBuf};
 
 pub const STORE_FILE: &str = "accounts.json";
+/// ★M11 R4(G3/C7) — **마지막으로 성공한 저장의 사본.** 본문이 깨져 읽히면 여기서 되살린다.
+///
+/// R3는 "손상 위에서 계정을 잃지 않는다"를 약속했는데 그 자물쇠는 `merge3` 안에만 있었다.
+/// 목록을 바꾸는 제품 경로([`update_store`])는 깨진 파일을 **빈 목록**으로 읽고 그 위에
+/// 로그인 하나를 얹어 나머지 계정을 지웠다(R3 크리틱 C7). 본문이 깨지면 복구할 재료가
+/// 있어야 그 약속이 성립한다 — 그 재료가 이 파일이다.
+pub const STORE_BACKUP_FILE: &str = "accounts.json.bak";
 /// v3 = defaultEmail 추가 + 전역 `~/.claude` 의존 제거. **계정 레코드 포맷은 v2와 같다.**
 pub const STORE_VERSION: u64 = 3;
 
@@ -52,8 +59,42 @@ pub fn account_dir(email: &str) -> PathBuf {
 fn store_path() -> PathBuf {
     crate::app_home().join(STORE_FILE)
 }
+fn store_backup_path() -> PathBuf {
+    crate::app_home().join(STORE_BACKUP_FILE)
+}
 
 // ── 스토어 파일 ─────────────────────────────────────────────────────────────
+
+/// ★M11 R4(G3) — 이 목록이 **어디서 왔나**. R3까지 [`read_store_file`]은 "파일이 없다"·
+/// "깨져서 못 읽는다"·"마지막 계정을 로그아웃해 정말 비었다"를 전부 **빈 스토어** 한 가지로
+/// 뭉갰다. 그 셋은 완전히 다른 사실이다:
+///
+/// | 출처 | 빈 목록의 뜻 | 병합·복구가 해야 할 일 |
+/// |---|---|---|
+/// | [`Missing`](StoreOrigin::Missing) | 첫 실행(또는 누가 파일을 지웠다) | 우리가 아는 목록이 있으면 되살린다 |
+/// | [`Parsed`](StoreOrigin::Parsed) | **사실이다** — 계정이 정말 0개다 | 그대로 존중한다(로그아웃 취소 금지) |
+/// | [`Unreadable`](StoreOrigin::Unreadable) | **모른다** — 반쪽 JSON·쓰레기 | 덮어쓰지 않는다 |
+/// | [`Recovered`](StoreOrigin::Recovered) | 본문이 깨져 [`STORE_BACKUP_FILE`]에서 읽었다 | 그 목록으로 본문을 되살린다 |
+/// | [`Foreign`](StoreOrigin::Foreign) | version이 v2/v3가 아니다(v1 이하 = 신원 없음) | 2.6.2와 같이 폐기 |
+///
+/// 이 구별이 없으면 안전문이 **정상적인 마지막 로그아웃**에도 발동해 지운 계정을
+/// `credEnc`째 되살린다(R3 크리틱 C3).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum StoreOrigin {
+    #[default]
+    Missing,
+    Parsed,
+    Unreadable,
+    Recovered,
+    Foreign,
+}
+
+impl StoreOrigin {
+    /// 이 목록을 **사실로 믿어도 되나**. `false`면 빈 목록은 "0개"가 아니라 "모름"이다.
+    pub fn is_known(self) -> bool {
+        matches!(self, StoreOrigin::Missing | StoreOrigin::Parsed | StoreOrigin::Recovered | StoreOrigin::Foreign)
+    }
+}
 
 /// `accounts.json` 한 장. 계정 레코드는 **원본 `Value` 그대로** 들고 다닌다 —
 /// 모르는 키가 있어도 되쓸 때 살아 나가야 2.6.2로 되돌릴 수 있다.
@@ -62,6 +103,8 @@ pub struct StoreFile {
     pub version: u64,
     pub default_email: Option<String>,
     pub accounts: Vec<Value>,
+    /// ★R4(G3) — 위 [`StoreOrigin`] 참고. 기본값은 `Missing`(= 아무것도 안 읽은 상태).
+    pub origin: StoreOrigin,
 }
 
 pub fn email_of(a: &Value) -> Option<&str> {
@@ -82,25 +125,76 @@ pub fn subscription_of(a: &Value) -> Option<&str> {
 /// 사라지는 실패 모드치고 대가가 너무 싸다(M5 R1 크리틱 §4-4). 문자열 `"3"`은 양쪽 다
 /// 폐기다(JS도 `'3' !== 3`).
 pub fn read_store_file() -> StoreFile {
-    let Some(m) = read_json_file(&store_path()) else {
-        return StoreFile { version: STORE_VERSION, ..Default::default() };
-    };
-    let raw = m.get("version").and_then(Value::as_f64).unwrap_or(0.0);
-    if raw != STORE_VERSION as f64 && raw != 2.0 {
-        return StoreFile { version: STORE_VERSION, ..Default::default() };
+    let f = read_store_raw().1;
+    // ★R3(F1)② — 이 읽기를 3-way 병합의 **기준점**으로 남긴다(아래 `merge3` 참고).
+    record_base(&f);
+    f
+}
+
+/// 기준점을 **안 남기는** 읽기. 조회만 하는 자리(목록 그리기·크리덴셜 꺼내기)는
+/// read-modify-write의 시작이 아니라서, 그런 읽기가 base를 갈아치우면 진짜
+/// read-modify-write의 병합이 엉뚱한 기준점을 쓴다.
+fn read_store_quiet() -> StoreFile {
+    read_store_raw().1
+}
+
+/// 이 이메일이 스토어에 있나(조회 전용).
+pub fn is_registered(email: &str) -> bool {
+    read_store_quiet().accounts.iter().any(|a| email_of(a) == Some(email))
+}
+
+/// 원문 한 벌 파싱. `None` = JSON 객체가 아니다(= 손상).
+fn parse_store(raw: &str) -> Option<StoreFile> {
+    let Ok(Value::Object(m)) = serde_json::from_str::<Value>(raw) else { return None };
+    let v = m.get("version").and_then(Value::as_f64).unwrap_or(0.0);
+    if v != STORE_VERSION as f64 && v != 2.0 {
+        return Some(StoreFile { version: STORE_VERSION, origin: StoreOrigin::Foreign, ..Default::default() });
     }
-    let version = raw as u64;
-    let f = StoreFile {
-        version,
+    Some(StoreFile {
+        version: v as u64,
         default_email: m.get("defaultEmail").and_then(Value::as_str).map(str::to_string),
         accounts: match m.get("accounts") {
             Some(Value::Array(a)) => a.clone(),
             _ => Vec::new(),
         },
+        origin: StoreOrigin::Parsed,
+    })
+}
+
+/// ★M11 R4(G1·G3) — 파일을 **한 번만** 읽어 `(원문, 해석)`을 같이 준다.
+///
+/// 원문이 따로 필요한 이유는 [`update_account_record`]의 CAS 때문이다: "내가 읽은 그
+/// 바이트가 아직 그대로인가"를 쓰기 직전에 다시 물어야 하는데, 그 증표로 mtime·크기는
+/// 못 쓴다 — Windows 시스템 시계 눈금이 ~15.6ms라 우리가 닫으려는 창(8~14ms)보다 굵다.
+/// 그래서 내용 자체를 증표로 쓴다(계정 6개 = 수십 KB라 비교는 µs다).
+///
+/// **읽기는 복구하지 않는다.** 깨진 파일은 `accounts: []` + [`StoreOrigin::Unreadable`]로
+/// 정직하게 준다(R3와 같은 값 + 출처 한 칸). 복구는 *쓰는 문*에서만 한다
+/// ([`recover_store`]) — 조회 한 번에 낡은 사본이 슬며시 현재 목록 행세를 하면 안 된다.
+fn read_store_raw() -> (Option<String>, StoreFile) {
+    let Ok(raw) = std::fs::read_to_string(store_path()) else {
+        return (None, StoreFile { version: STORE_VERSION, origin: StoreOrigin::Missing, ..Default::default() });
     };
-    // ★R3(F1)② — 이 읽기를 3-way 병합의 **기준점**으로 남긴다(아래 `merge3` 참고).
-    record_base(&f);
-    f
+    match parse_store(&raw) {
+        Some(f) => (Some(raw), f),
+        // 반쪽 JSON·쓰레기. 2.6.2의 `writeFileSync`는 원자적이지 않아 쓰는 도중에 죽으면
+        // 이 모양이 남는다(우리 쪽은 rename이라 안 남는다).
+        None => (Some(raw), StoreFile { version: STORE_VERSION, origin: StoreOrigin::Unreadable, ..Default::default() }),
+    }
+}
+
+/// ★M11 R4(G3/C7) — 본문이 깨졌을 때 **쓰기 직전에** 꺼내는 마지막 성공본.
+///
+/// R3는 깨진 파일을 빈 목록으로 읽고 그 위에 사용자의 로그인을 얹었다 = 나머지 계정이
+/// `credEnc`째 사라졌다(크리틱 C7). 여기서 되살릴 재료가 없으면 그 자리에서 쓰기를
+/// 포기하는 것이 맞다 — 모르는 위에 덮어쓰는 것이 유실의 정체다.
+fn recover_store() -> Option<StoreFile> {
+    let b = read_file_or_null(&store_backup_path()).as_deref().and_then(parse_store)?;
+    if b.origin != StoreOrigin::Parsed || b.accounts.is_empty() {
+        return None;
+    }
+    eprintln!("[auth] ★ {STORE_FILE}이 깨졌다 — 마지막 성공본({STORE_BACKUP_FILE}, 계정 {}개)으로 되살린다", b.accounts.len());
+    Some(StoreFile { origin: StoreOrigin::Recovered, ..b })
 }
 
 // ── ★M11 R3(F1) — accounts.json 임계 구역 ───────────────────────────────────
@@ -117,10 +211,44 @@ pub fn read_store_file() -> StoreFile {
 // | ① 잠금 | [`ccg_store::flock`] — read와 write가 **같은 증표 아래** 있다 | 잠금을 아는 프로세스끼리(3.0 두 벌 · 워커 vs 허브 · 하네스 자식) |
 // | ② 병합 | 쓰기 직전 디스크를 다시 읽어 **더 신선한 `credEnc`는 살린다** | 잠금을 모르는 프로세스(오늘의 2.6.2)가 낸 회전 결과 |
 // | ③ 좁히기 | 배경 쓰기([`persist_refreshed`])는 **자기 계정 항목만** 고친다(목록·순서·기본 계정 불가침) | "로그아웃이 취소된다" — 목록은 폴더에 사본이 없어 잃으면 끝이다 |
+//
+// ── ★M11 R4(G1) — 네 번째 겹: **CAS(compare-and-swap)** ─────────────────────
+//
+// R3의 실증은 자식도 `ccg-auth`를 써 잠금을 잡는 판이었다. 진짜 이웃인 2.6.2는
+// `fs.writeFileSync(STORE_PATH, JSON.stringify(...))` 한 줄이고(`auth.ts:124`) 잠금을
+// **모른다** — 겹 ①은 그 상대에게 아무 효력이 없다. 실 2.6.2 코드로 다시 재면
+// 로그아웃 취소가 남아 있었다(R3 확인 크리틱 §4: 2/150 · 이 라운드 재현 4/900).
+//
+// 2.6.2는 동결 트리라 잠금을 이식할 수 없다. 그래서 **우리 쪽에서만** 닫는다:
+//
+// | 무엇 | 어디서 |
+// |---|---|
+// | 읽기 + 클로저(safeStorage 복호·암호 = DPAPI 2회, 실측 8~14ms) | **잠금 밖** |
+// | 임시 파일에 통짜 직렬화 + 쓰기 | **잠금 밖** |
+// | "내가 읽은 바이트가 아직 그대로인가" 재확인 + `rename` | 잠금 안 (실측 **0.2~0.4ms**) |
+//
+// 갈렸으면 처음부터 다시 한다(상한 [`CAS_TRIES`]). 남는 창은 마지막 두 줄뿐이라
+// R3의 8~14ms에서 **30~50배** 좁아진다. 창이 0이 되지는 않는다 — 잠금을 모르는 상대와
+// 파일 하나를 나눠 쓰는 한 원리적으로 0은 없다. 줄이고, 재고, 적는다.
+
+/// CAS 재시도 상한. 상한을 두는 이유는 하나 — 이웃이 쉬지 않고 쓰는 판에서 이 함수가
+/// 영원히 안 돌아오면 그것대로 사용자의 저장이 사라진다(flock 규약 3과 같은 정신).
+const CAS_TRIES: usize = 16;
+/// 우리 `rename`이 묻은 이웃의 쓰기를 되살리는 연쇄의 상한(되살리기 자체도 또 묻힐 수 있다).
+const BURY_TRIES: usize = 4;
 
 /// 이 파일을 고치는 동안 잡는 증표. **read-modify-write 전체**를 감싸야 의미가 있다.
 pub fn store_lock() -> ccg_store::flock::Lock {
     ccg_store::flock::take(STORE_FILE)
+}
+
+/// 저장 성공 뒤 남기는 **마지막 성공본**(G3/C7의 복구 재료). 잠금 밖에서 부른다 —
+/// 이 파일이 잠깐 낡아도 손해는 없고(본문이 멀쩡하면 아무도 안 본다) 임계 구역을
+/// 늘리는 대가가 더 크다.
+fn keep_backup(body: &str) {
+    if let Err(e) = ccg_store::write_home_file(STORE_BACKUP_FILE, body) {
+        eprintln!("[auth] {STORE_BACKUP_FILE} 저장 실패: {e}");
+    }
 }
 
 /// 저장 — **항상 v3로 쓴다**(2.6.2 `writeStoreFile`과 같다. v2를 읽어 쓰면 승격된다).
@@ -148,8 +276,9 @@ pub fn write_store_file(accounts: &[Value], default_email: Option<&str>) -> Resu
     r
 }
 
-/// 잠금을 **이미 잡은** 호출자용 — 병합 없이 그대로 쓴다(스냅샷을 증표 안에서 떴다는 뜻).
-fn write_store_locked(accounts: &[Value], default_email: Option<&str>) -> Result<(), AuthError> {
+/// 파일에 나갈 바이트를 만든다(직렬화만 — 디스크는 안 만진다). CAS가 이 결과를
+/// **잠금 밖에서** 임시 파일에 앉히고, 잠금 안에서는 `rename`만 한다.
+fn render_store(accounts: &[Value], default_email: Option<&str>) -> String {
     let def: Option<String> = match default_email {
         Some(d) if accounts.iter().any(|a| email_of(a) == Some(d)) => Some(d.to_string()),
         _ => accounts.first().and_then(email_of).map(str::to_string),
@@ -161,8 +290,15 @@ fn write_store_locked(accounts: &[Value], default_email: Option<&str>) -> Result
         root.insert("defaultEmail".into(), json!(d));
     }
     root.insert("accounts".into(), Value::Array(accounts.to_vec()));
-    ccg_store::write_home_file(STORE_FILE, &crate::to_json_2space(&Value::Object(root)))
-        .map_err(|e| AuthError::Io(format!("{STORE_FILE}: {e}")))
+    crate::to_json_2space(&Value::Object(root))
+}
+
+/// 잠금을 **이미 잡은** 호출자용 — 병합 없이 그대로 쓴다(스냅샷을 증표 안에서 떴다는 뜻).
+fn write_store_locked(accounts: &[Value], default_email: Option<&str>) -> Result<(), AuthError> {
+    let body = render_store(accounts, default_email);
+    ccg_store::write_home_file(STORE_FILE, &body).map_err(|e| AuthError::Io(format!("{STORE_FILE}: {e}")))?;
+    keep_backup(&body);
+    Ok(())
 }
 
 // ── ★R3(F1)② 3-way 병합 ────────────────────────────────────────────────────
@@ -192,18 +328,39 @@ thread_local! {
     static BASE: std::cell::RefCell<Option<Base>> = const { std::cell::RefCell::new(None) };
 }
 
+// ── ★M11 R4(G4) — 기준점은 **스레드에 갇혀 있으면 안 된다** ─────────────────
+//
+// R3의 기준점은 `thread_local!` 하나였다. 그런데 이 앱이 실제로 쓰는 모양은 **허브가
+// 읽고 워커가 쓰는** 것이라, 읽은 스레드와 쓰는 스레드가 다르면 base가 없고 base가
+// 없으면 `merge3`은 첫 줄에서 `mine`을 그대로 돌려준다 = R2의 통짜 덮어쓰기다
+// (R3 크리틱 C2 실측: 대조군 false / 실험군 **true** = 로그아웃 취소).
+//
+// 고치는 값은 "가장 최근에 이 프로세스가 본 디스크 상태"다. 우선순위는 그대로
+// **내 스레드 것 먼저** — 같은 스레드에서 읽고 쓰는 판(설계가 상정한 모양)에서는
+// R3와 한 글자도 다르지 않게 굴러야 한다. 내 스레드에 없을 때만 프로세스 공용으로
+// 물러선다. 그 값은 *틀릴 수* 있지만(다른 스레드가 나보다 나중에 읽었을 수 있다)
+// **없는 것보다는 항상 낫다**: base가 없으면 병합 자체가 사라지기 때문이다.
+static SHARED_BASE: std::sync::Mutex<Option<Base>> = std::sync::Mutex::new(None);
+
+fn put_base(b: Base) {
+    BASE.with(|c| *c.borrow_mut() = Some(b.clone()));
+    *SHARED_BASE.lock().unwrap_or_else(|e| e.into_inner()) = Some(b);
+}
+
 fn record_base(f: &StoreFile) {
-    BASE.with(|b| *b.borrow_mut() = Some((store_path(), f.accounts.clone(), f.default_email.clone())));
+    put_base((store_path(), f.accounts.clone(), f.default_email.clone()));
 }
 
 fn set_base(accounts: &[Value], default_email: Option<&str>) {
-    BASE.with(|b| *b.borrow_mut() = Some((store_path(), accounts.to_vec(), default_email.map(str::to_string))));
+    put_base((store_path(), accounts.to_vec(), default_email.map(str::to_string)));
 }
 
 /// 기준점을 **꺼내 쓴다**(한 번 쓰면 소비). 홈이 그사이 바뀌었으면(테스트의 `CCG_HOME`
 /// 교체) 남의 홈에서 뜬 기준점이므로 버린다.
 fn take_base() -> Option<Base> {
-    BASE.with(|b| b.borrow_mut().take()).filter(|(p, _, _)| *p == store_path())
+    let mine = BASE.with(|b| b.borrow_mut().take());
+    let shared = || SHARED_BASE.lock().unwrap_or_else(|e| e.into_inner()).take();
+    mine.or_else(shared).filter(|(p, _, _)| *p == store_path())
 }
 
 fn find<'a>(list: &'a [Value], email: &str) -> Option<&'a Value> {
@@ -214,14 +371,23 @@ fn merge3(base: Option<&Base>, mine: &[Value], my_default: Option<&str>, disk: &
     let Some((_, base_accounts, base_default)) = base else {
         return (mine.to_vec(), my_default.map(str::to_string));
     };
-    // ★ 안전문 — **디스크가 텅 비어 보이는데 우리는 계정을 아는 판**에서는 병합하지 않는다.
+    // ★ 안전문 — **디스크를 못 읽었는데 우리는 계정을 아는 판**에서는 병합하지 않는다.
     //
-    // [`read_store_file`]은 "파일이 없다"와 "파일이 깨져서 못 읽는다"(버전 필드 이상 ·
-    // JSON 손상)를 똑같이 **빈 스토어**로 준다. 그 값을 3-way의 한쪽으로 믿으면 위 표의
-    // "남이 지웠다" 규칙이 **전 계정 삭제**로 발동한다 — 병합이 사용자의 계정을 지우는
-    // 유일한 경로라 여기서 막는다. 이 판에서는 우리가 든 목록이 곧 복구본이다.
-    if disk.accounts.is_empty() && !base_accounts.is_empty() {
-        eprintln!("[auth] {STORE_FILE}이 비어 보인다(손상 의심) — 병합을 건너뛰고 우리 목록으로 복구한다");
+    // 그 값을 3-way의 한쪽으로 믿으면 위 표의 "남이 지웠다" 규칙이 **전 계정 삭제**로
+    // 발동한다 — 병합이 사용자의 계정을 지우는 유일한 경로라 여기서 막는다. 이 판에서는
+    // 우리가 든 목록이 곧 복구본이다.
+    //
+    // ★R4(G3) — R3는 이 문을 `disk.accounts.is_empty()`로 열었고, 그래서 **마지막 계정을
+    // 로그아웃한 정상 상태**(멀쩡한 `{"version":3,"accounts":[]}`)에도 열렸다. 그건 복구가
+    // 아니라 로그아웃 전체 취소이고 지운 계정이 `credEnc`째 돌아온다(크리틱 C3). 이제
+    // 문의 조건은 "비었나"가 아니라 **"목록을 아나"**([`StoreOrigin::is_known`])다.
+    if !disk.origin.is_known() && !base_accounts.is_empty() {
+        eprintln!("[auth] {STORE_FILE}을 못 읽었다(손상) — 병합을 건너뛰고 우리 목록으로 복구한다");
+        return (mine.to_vec(), my_default.map(str::to_string));
+    }
+    // 파일이 통째로 없어진 판(정상 로그아웃은 빈 목록을 **쓴다** — 파일을 지우지 않는다).
+    if disk.origin == StoreOrigin::Missing && !base_accounts.is_empty() {
+        eprintln!("[auth] {STORE_FILE}이 사라졌다 — 병합을 건너뛰고 우리 목록으로 복구한다");
         return (mine.to_vec(), my_default.map(str::to_string));
     }
     let mut out: Vec<Value> = Vec::with_capacity(mine.len().max(disk.accounts.len()));
@@ -258,36 +424,179 @@ fn merge3(base: Option<&Base>, mine: &[Value], my_default: Option<&str>, disk: &
 
 /// ★R3(F1)③ — **계정 하나의 레코드만** 고친다. 목록·순서·기본 계정은 디스크 것이 이긴다.
 ///
-/// 배경 쓰기(자동 전환 워커의 토큰 회전)가 쓰는 유일한 문이다. 잠금 안에서 디스크를 다시
-/// 읽으므로 호출자의 낡은 스냅샷이 **다른 창에서 방금 한 로그아웃을 되돌릴 수 없다**.
+/// 배경 쓰기(자동 전환 워커의 토큰 회전)가 쓰는 유일한 문이다. 디스크를 다시 읽으므로
+/// 호출자의 낡은 스냅샷이 **다른 창에서 방금 한 로그아웃을 되돌릴 수 없다**.
 /// 그 계정이 이미 없으면 [`AuthError::NotRegistered`] — 조용히 되살리지 않는다.
-pub fn update_account_record<T>(email: &str, f: impl FnOnce(&mut Map<String, Value>) -> T) -> Result<T, AuthError> {
-    let _g = store_lock();
-    let cur = read_store_file();
-    let Some(i) = cur.accounts.iter().position(|a| email_of(a) == Some(email)) else {
-        return Err(AuthError::NotRegistered(email.to_string()));
-    };
-    let mut accounts = cur.accounts.clone();
-    let mut m = accounts[i].as_object().cloned().unwrap_or_default();
-    let out = f(&mut m);
-    accounts[i] = Value::Object(m);
-    // 내용이 같으면 저장을 건너뛴다(2.6.2와 같은 의미론) — 안 바뀐 저장은 mtime만 흔들고
-    // 남의 원자 저장과 경쟁할 이유가 없다.
-    if accounts != cur.accounts {
-        write_store_locked(&accounts, cur.default_email.as_deref())?;
-        set_base(&accounts, cur.default_email.as_deref());
+///
+/// ★R4(G1) — 잠금은 R3 그대로 **read-modify-write 전체**를 감싼다(잠금을 아는 이웃과는
+/// 그게 가장 싸다 — 재시도가 0이다). 달라진 것은 그 안이다: R3는 잠금 안에서 읽은 값을
+/// 그대로 믿고 8~14ms 뒤에 썼고(safeStorage 복호+암호 = DPAPI 2회), 잠금을 **모르는**
+/// 2.6.2의 통짜 쓰기가 그 창에 그대로 떨어졌다. 이제 쓰기 직전에 **"내가 읽은 바이트가
+/// 아직 그대로인가"를 다시 묻는다**(CAS). 갈렸으면 클로저부터 다시 돈다 — 그래서 클로저는
+/// `FnMut`이고 **여러 번 불릴 수 있다**(부작용을 두면 안 된다).
+pub fn update_account_record<T>(email: &str, mut f: impl FnMut(&mut Map<String, Value>) -> T) -> Result<T, AuthError> {
+    let mut retries = 0usize;
+    let mut torn = 0usize;
+    for _ in 0..CAS_TRIES {
+        // ── ① 준비 ─────────────────────────────────────────────────────────
+        let _g = store_lock();
+        let (before, mut cur) = read_store_raw();
+        if !cur.origin.is_known() {
+            // 이웃이 통짜 쓰기를 하는 **도중**에 읽었을 수 있다(2.6.2의 writeFileSync는
+            // 원자적이 아니다). "계정이 없다"가 아니라 "지금은 모른다"이므로 다시 읽는다.
+            torn += 1;
+            if torn < 4 {
+                retries += 1;
+                std::thread::sleep(std::time::Duration::from_millis(2));
+                continue;
+            }
+            // 네 번을 다시 읽어도 깨져 있다 = 지나가는 반쪽이 아니라 **정말 깨진 파일**이다.
+            let Some(rec) = recover_store() else {
+                return Err(AuthError::Io(format!("{STORE_FILE}: 파일이 손상됐고 복구본도 없다")));
+            };
+            cur = rec;
+        }
+        let Some(i) = cur.accounts.iter().position(|a| email_of(a) == Some(email)) else {
+            return Err(AuthError::NotRegistered(email.to_string()));
+        };
+        let mut accounts = cur.accounts.clone();
+        let mut m = accounts[i].as_object().cloned().unwrap_or_default();
+        let out = f(&mut m);
+        accounts[i] = Value::Object(m);
+        // 내용이 같으면 저장을 건너뛴다(2.6.2와 같은 의미론) — 안 바뀐 저장은 mtime만 흔들고
+        // 남의 원자 저장과 경쟁할 이유가 없다.
+        if accounts == cur.accounts {
+            return Ok(out);
+        }
+        let mine = accounts[i].clone();
+        let base_record = cur.accounts[i].clone();
+        let mut body = render_store(&accounts, cur.default_email.as_deref());
+
+        // ── ② 갈아끼우기 + 파묻힌 쓰기 되살리기 ────────────────────────────
+        let mut expect = before;
+        let mut def = cur.default_email.clone();
+        let mut stale = false;
+        for _ in 0..BURY_TRIES {
+            match commit_locked(&body, expect.as_deref())? {
+                Commit::Stale => {
+                    // 이웃이 그사이에 썼다. 우리 스냅샷은 이미 낡았다 — 여기서 쓰면 그
+                    // 쓰기가 사라진다(= 로그아웃 취소). 클로저부터 다시 돈다.
+                    retries += 1;
+                    stale = true;
+                    break;
+                }
+                Commit::Clean => {
+                    set_base(&accounts, def.as_deref());
+                    keep_backup(&body);
+                    if retries > 0 {
+                        eprintln!("[auth] {STORE_FILE} 저장 — 이웃과 {retries}번 부딪혀 다시 읽고 썼다(CAS)");
+                    }
+                    return Ok(out);
+                }
+                // ★R4(G1) — 우리 `rename`이 이웃의 통짜 쓰기를 **묻었다**(창이 µs로 줄었을
+                //   뿐 0은 아니다). 묻힌 원문을 파냈으니 **즉시** 되쓴다. 여기서 safeStorage를
+                //   다시 안 도는 것이 핵심이다 — 우리 레코드는 이미 손에 있어서 µs로 끝난다.
+                //
+                //   ★ 받는 것은 **지우기뿐이다.** 그들이 더한 계정은 안 받는다. 이유는 ABA다:
+                //   `로그인 → 로그아웃`처럼 파일이 **같은 바이트로 돌아오는** 판에서는 우리가
+                //   판 것이 이미 낡은 중간 상태일 수 있고, 그걸 되살리면 그게 곧 우리가
+                //   막으려던 사고다(실측: 이 규칙 없이 in-process 해머 150판에 13건).
+                //   비대칭은 의도적이다 — 잃은 로그인은 사용자가 다시 하면 보이지만,
+                //   되살아난 계정은 **살아 있는 토큰째** 조용히 돌아온다.
+                Commit::Buried(theirs) => {
+                    let Some(t) = parse_store(&theirs).filter(|t| t.origin.is_known()) else {
+                        eprintln!("[auth] ★ {STORE_FILE}: 이웃의 쓰기를 묻었는데 원문을 못 읽는다 — 우리 것으로 둔다");
+                        break;
+                    };
+                    let keep: std::collections::BTreeSet<&str> = t.accounts.iter().filter_map(email_of).collect();
+                    let next: Vec<Value> =
+                        accounts.iter().filter(|a| email_of(a).is_none_or(|e| keep.contains(e))).cloned().collect();
+                    if next.len() == accounts.len() {
+                        break; // 그들이 지운 계정이 없다 = 되살릴 것도 없다
+                    }
+                    eprintln!(
+                        "[auth] ★ {STORE_FILE}: 이웃의 로그아웃을 묻었다(계정 {}개 → {}개) — 즉시 되살린다",
+                        accounts.len(),
+                        next.len()
+                    );
+                    accounts = next;
+                    expect = Some(body);
+                    body = render_store(&accounts, def.as_deref());
+                }
+            }
+        }
+        if !stale {
+            // 되살리기를 BURY_TRIES번 하고도 못 끝냈다 = 이웃이 쉬지 않고 쓰는 판이다.
+            // 마지막 커밋은 이미 디스크에 있다(유실 아님) — 다음 회전이 이어 받는다.
+            eprintln!("[auth] {STORE_FILE}: 이웃과 계속 겹친다 — 이번 되살리기는 여기서 접는다");
+            keep_backup(&body);
+            return Ok(out);
+        }
     }
-    Ok(out)
+    Err(AuthError::Io(format!("{STORE_FILE}: 다른 프로세스와 {CAS_TRIES}번 부딪혀 저장을 접었다")))
+}
+
+/// [`commit_locked`]의 착지 세 갈래.
+enum Commit {
+    /// 커밋했고, 우리 `rename`이 묻은 쓰기는 없다.
+    Clean,
+    /// 커밋했는데 `[확인, rename]` 창에 이웃이 통짜로 썼다 — 파낸 그 원문.
+    Buried(String),
+    /// 확인에서 갈렸다 — **커밋 안 했다**.
+    Stale,
+}
+
+/// CAS 한 번. **호출자가 [`store_lock`]을 쥐고 있어야 한다**(안에서 또 잡으면 교착이다).
+///
+/// 잠금을 모르는 이웃에게 열려 있는 창은 여기 두 줄뿐이다 —
+/// **증인 읽기(실측 17µs) → `rename`(실측 184µs)**. R3의 8~14ms에서 40~70배 좁다.
+/// 커밋 뒤 옛 inode를 한 번 더 읽어 그 창에 떨어진 쓰기가 있었는지 본다(그 읽기는 창 밖이다).
+fn commit_locked(body: &str, expect: Option<&str>) -> Result<Commit, AuthError> {
+    // 직렬화 + 임시 파일 쓰기(실측 179µs)는 창 **밖**이다 — rename만 창 안이다.
+    let staged = ccg_store::stage_home_file(STORE_FILE, body).map_err(|e| AuthError::Io(format!("{STORE_FILE}: {e}")))?;
+    let mut w = ccg_store::witness(&store_path());
+    let now = w.as_mut().and_then(ccg_store::Witness::read);
+    if now.as_deref() != expect {
+        return Ok(Commit::Stale); // 커밋 안 한 임시 파일은 `Staged`가 치운다
+    }
+    staged.commit().map_err(|e| AuthError::Io(format!("{STORE_FILE}: {e}")))?;
+    let Some(w) = w.as_mut() else { return Ok(Commit::Clean) };
+    // 옛 inode를 다시 본다. 이웃이 쓰는 **도중**이면 반쪽이 읽히므로 잠깐 기다렸다 다시
+    // 본다 — 그들은 자기 파일이 이미 갈렸다는 걸 모르고 끝까지 쓴다.
+    for k in 0..4 {
+        match w.read() {
+            Some(a) if Some(a.as_str()) == expect => return Ok(Commit::Clean),
+            Some(a) if parse_store(&a).is_some_and(|p| p.origin.is_known()) => return Ok(Commit::Buried(a)),
+            _ => {}
+        }
+        if k < 3 {
+            std::thread::sleep(std::time::Duration::from_micros(300));
+        }
+    }
+    Ok(Commit::Clean)
 }
 
 /// 잠금 안에서 스토어 전체를 고친다(목록이 바뀌는 사용자 조작 — 로그인·로그아웃·정렬).
 /// 클로저는 **증표 안에서 뜬** 스냅샷을 받으므로 병합이 필요 없다.
+///
+/// ★R4(G3/C7) — 다만 "증표 안에서 떴다"가 "읽었다"를 뜻하지는 않는다. 파일이 깨져 있으면
+/// R3의 [`read_store_file`]은 **빈 목록**을 줬고, 그 위의 로그인 한 번이 나머지 계정을
+/// 전부 지웠다(크리틱 C7). 이제 목록을 모르는 판에서는 [`STORE_BACKUP_FILE`]로 복구하고,
+/// 그것마저 없으면 **쓰지 않고 실패로 착지한다** — 모르는 위에 덮어쓰는 것보다 낫다.
 pub fn update_store<T>(f: impl FnOnce(&mut StoreFile) -> T) -> Result<T, AuthError> {
     let _g = store_lock();
     let mut cur = read_store_file();
+    if !cur.origin.is_known() {
+        let Some(rec) = recover_store() else {
+            return Err(AuthError::Io(format!("{STORE_FILE}: 파일이 손상됐고 복구본도 없다 — 계정 목록을 덮어쓰지 않는다")));
+        };
+        cur = rec;
+    }
+    // 복구본으로 읽었으면 **무조건 쓴다** — 그게 깨진 본문을 고치는 유일한 순간이다.
+    let repair = cur.origin == StoreOrigin::Recovered;
     let before = (cur.accounts.clone(), cur.default_email.clone(), cur.version);
     let out = f(&mut cur);
-    if (&cur.accounts, &cur.default_email) != (&before.0, &before.1) || before.2 != STORE_VERSION {
+    if repair || (&cur.accounts, &cur.default_email) != (&before.0, &before.1) || before.2 != STORE_VERSION {
         write_store_locked(&cur.accounts, cur.default_email.as_deref())?;
         set_base(&cur.accounts, cur.default_email.as_deref());
     }
@@ -379,7 +688,7 @@ pub struct AccountInfo {
 
 /// 미지정 채팅이 쓸 계정 — `defaultEmail`, 무효/부재면 첫 계정, 0개면 None.
 pub fn default_account_email() -> Option<String> {
-    let f = read_store_file();
+    let f = read_store_quiet();
     if let Some(d) = &f.default_email {
         if f.accounts.iter().any(|a| email_of(a) == Some(d.as_str())) {
             return Some(d.clone());
@@ -391,7 +700,7 @@ pub fn default_account_email() -> Option<String> {
 /// 등록 계정 목록 — 스토어만 본다(CLI 스폰 없음).
 pub fn list_accounts() -> Vec<AccountInfo> {
     let def = default_account_email();
-    read_store_file()
+    read_store_quiet()
         .accounts
         .iter()
         .filter_map(|a| {
@@ -418,6 +727,9 @@ pub fn set_default_account(email: &str) -> Vec<AccountInfo> {
 pub fn remove_account(email: &str) -> Vec<AccountInfo> {
     let _ = update_store(|f| f.accounts.retain(|a| email_of(a) != Some(email)));
     delete_account_dir(email);
+    // ★R4(G2) — 로그아웃은 **그 계정에 대한 우리 기억을 버리는** 자리다. 건강 장부를
+    // 남겨 두면 같은 이메일로 다시 로그인했을 때 새 계정이 태어나자마자 격리된다.
+    crate::health::clear(email);
     list_accounts()
 }
 
@@ -484,7 +796,7 @@ pub fn link_shared_state(dir: &Path) {
 /// 등록 계정의 복호화된 스냅샷 — **파일을 쓰지 않는다**(판정 전용).
 /// 실패 이유를 그대로 구분해 준다: 미등록 / 복호 불가 / 알맹이 손상.
 pub fn snapshot_of(email: &str) -> Result<Snapshot, AuthError> {
-    let f = read_store_file();
+    let f = read_store_quiet();
     let target = f
         .accounts
         .iter()
@@ -590,7 +902,7 @@ pub fn account_access_token(email: &str) -> Option<String> {
 
 /// 폴더 vs 백업 중 신선한 크리덴셜 원문. 리프레시(refreshToken 꺼내기)의 재료이기도 하다.
 pub fn freshest_creds(email: &str) -> Option<String> {
-    let f = read_store_file();
+    let f = read_store_quiet();
     let target = f.accounts.iter().find(|a| email_of(a) == Some(email))?;
     let backup = cred_enc_of(target).and_then(dec_creds).map(|raw| Snapshot::parse(&raw)).and_then(|s| s.creds().map(str::to_string));
     let dir_creds = read_file_or_null(&account_dir(email).join(".credentials.json"));
@@ -786,6 +1098,9 @@ pub fn import_account_from_dir(
         f.accounts.retain(|a| email_of(a) != Some(email));
         f.accounts.push(Value::Object(rec));
     })?;
+    // ★R4(G2) — 로그인은 격리를 푸는 **가장 자연스러운 처방**이다. 지문 비교에 맡기지
+    // 않고 여기서 직접 지운다(지문을 못 뜬 표식은 비교로는 안 풀린다 — 크리틱 C6).
+    crate::health::clear(email);
     let _ = account_run_dir(email); // 실패해도 다음 실행 때 다시 시도된다
     Ok(())
 }
