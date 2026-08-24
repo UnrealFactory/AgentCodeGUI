@@ -573,6 +573,13 @@ impl Hub {
                     s.rt.app_quit();
                 }
                 self.talk.forget(&chat);
+                // ★R28 ACCT R2(F1-b) — 런타임을 거뒀으면 **마지막 lite에서 계정을 뗀다.**
+                // R1은 슬롯만 지웠고, `status`의 마지막 행에 `account`가 그대로 남아
+                // 같은 세션 안에서도 「사용 중」 칩이 안 걷혔다(크리틱 F1 부수 사실).
+                // 상태(`done`·`error`)는 남긴다 — 사이드바 점 색의 근거다.
+                if ccg_store::status::clear_runtime(&chat) {
+                    self.emit_all(crate::ipc::ch::CHAT_STATUS, super::status_array());
+                }
                 answer(json!(true));
                 return;
             }

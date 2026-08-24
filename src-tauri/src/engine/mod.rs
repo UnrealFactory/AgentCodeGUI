@@ -281,6 +281,36 @@ pub fn panel_id_for_chat(chat: &str) -> Option<String> {
     None
 }
 
+/// ★R28 ACCT R2(F4) — **표시용** 자리 id. 「사용 중 · 2번 자리」의 그 번호다.
+///
+/// `panel_id_for_chat`과 갈리는 자리는 하나: **`chrome:"ide"` 보드는 자리로 세지 않는다.**
+/// 그 보드는 멀티 그리드가 아니라 **본채팅 화면**이고(마이그레이션이 `count:1`일 때
+/// 그렇게 적는다 — `migrate_v3.rs`), 거기 앉은 채팅은 「1번 자리」가 아니라 「본채팅」이다.
+///
+/// R1은 라우팅용 함수를 그대로 썼다. 그래서 본채팅의 `panelId`가 `default::0`이 되고,
+/// 렌더러의 `slotsUsing`은 자리 번호를 이름표보다 먼저 고르므로 **본채팅도 「1번 자리」**로
+/// 나왔다 — 멀티 보드의 첫 자리와 문구가 같아져 *어디서 쓰는 중인지*를 못 가렸고,
+/// `MAIN_SLOT_NAME`(「본채팅」)은 실사용에서 도달 불가였다(확인 크리틱 R1 F4).
+///
+/// 라우팅(`ma:event` 봉투)은 **일부러 안 건드린다** — 그쪽은 "이 봉투를 누가 듣나"의
+/// 문제라 판정이 다르고, 본채팅 화면에는 그 봉투를 듣는 리스너가 없어 무해하다.
+pub fn panel_seat_for_chat(chat: &str) -> Option<String> {
+    let all = ccg_store::boards::read_boards();
+    for b in all.get("boards")?.as_array()? {
+        // `chrome`이 없는 옛 보드는 `grid`로 본다(= 지금까지의 동작 그대로).
+        if b.get("chrome").and_then(Value::as_str).unwrap_or("grid") == "ide" {
+            continue;
+        }
+        let id = b.get("id")?.as_str()?;
+        for (i, s) in b.get("slots")?.as_array()?.iter().enumerate() {
+            if s.as_str() == Some(chat) {
+                return Some(format!("{id}::{i}"));
+            }
+        }
+    }
+    None
+}
+
 /// 이 창(추가 채팅 창)이 보는 채팅. 메인 창이면 활성 채팅.
 pub fn chat_for_window(window: &WebviewWindow) -> String {
     if window.label() == crate::win::MAIN {
@@ -615,5 +645,61 @@ fn bg_task(chat: &str, req: &Value) {
         }
         Some("background") => hub::cast(chat, hub::Op::Cmd(Cmd::BgBackground)),
         _ => {}
+    }
+}
+
+#[cfg(test)]
+mod seat_tests {
+    use serde_json::json;
+
+    /// ★R28 ACCT R2(F4) — **본채팅은 「1번 자리」가 아니다.**
+    ///
+    /// 마이그레이션이 만드는 `default` 보드는 `count:1`일 때 `chrome:"ide"`(=본채팅 화면)로
+    /// 앉고, 그 슬롯 0이 본채팅을 물고 있다. R1은 라우팅용 `panel_id_for_chat`을 그대로
+    /// 표시에 써서 본채팅의 `panelId`가 `default::0`이었고, 렌더러가 자리 번호를 이름표보다
+    /// 먼저 고르는 탓에 칩이 **「사용 중 · 1번 자리」**였다 — 멀티 첫 자리와 구분이 안 됐다.
+    #[test]
+    fn the_ide_board_is_not_a_panel_seat() {
+        let h = crate::engine::testhome::take("seat-ide-board");
+        let w = |rel: &str, body: &str| {
+            let p = h.dir.join(rel);
+            std::fs::create_dir_all(p.parent().expect("부모")).expect("보드 폴더");
+            std::fs::write(p, body).expect("보드 픽스처");
+        };
+        // 마이그레이션 판 그대로: 본채팅 보드(ide) + 멀티 보드(grid).
+        w(
+            "boards/default.json",
+            &json!({ "id": "default", "count": 1, "chrome": "ide",
+                     "order": [0,1,2,3,4,5], "slots": ["c-main", null, null, null, null, null] })
+            .to_string(),
+        );
+        w(
+            "boards/b1.json",
+            &json!({ "id": "b1", "count": 2, "chrome": "grid",
+                     "order": [0,1,2,3,4,5], "slots": ["c-main", "c-p1", null, null, null, null] })
+            .to_string(),
+        );
+        w("boards/index.json", r#"{"version":1,"order":["default","b1"],"activeBoardId":"default"}"#);
+        ccg_store::boards::invalidate();
+
+        // 라우팅은 그대로다(봉투가 갈 곳은 여전히 그 보드의 자리다).
+        assert_eq!(super::panel_id_for_chat("c-main").as_deref(), Some("default::0"));
+        // 표시는 ide 보드를 건너뛰고 **진짜 멀티 자리**를 고른다.
+        let seat = super::panel_seat_for_chat("c-main");
+        println!("[F4] 본채팅의 표시용 자리 = {seat:?}");
+        assert_eq!(seat.as_deref(), Some("b1::0"), "★ ide 보드를 자리로 셌다");
+        assert_eq!(super::panel_seat_for_chat("c-p1").as_deref(), Some("b1::1"), "멀티 자리는 그대로다");
+        assert_eq!(super::panel_seat_for_chat("없는채팅"), None);
+
+        // 멀티 보드가 없으면 본채팅의 표시용 자리는 **없음**이다 = 렌더러가 「본채팅」을 쓴다.
+        std::fs::remove_file(h.dir.join("boards/b1.json")).expect("보드 삭제");
+        std::fs::write(
+            h.dir.join("boards/index.json"),
+            r#"{"version":1,"order":["default"],"activeBoardId":"default"}"#,
+        )
+        .expect("인덱스");
+        ccg_store::boards::invalidate();
+        assert_eq!(super::panel_seat_for_chat("c-main"), None, "★ 본채팅이 자리 번호를 달았다");
+        drop(h);
     }
 }

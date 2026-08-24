@@ -107,9 +107,22 @@ fn with_legacy(chat: Value, source: Source) -> Value {
 }
 
 /// 이 페이로드의 옛 필드를 **정체성의 저자로 인정할 것인가**(D1).
+///
+/// ★R28 ACCT R2(F2) — `PROJECTED`의 뜻을 한 칸 넓혔다: *"우리가 마지막으로 **내보낸** 값"*
+/// 이 아니라 *"셸과 렌더러가 마지막으로 **합의한** 값"*이다. 흡수도 합의이므로
+/// [`absorb_legacy`]가 채택한 지문을 여기 되적는다(호출부 참고).
+///
+/// 안 그러면 **되돌리기가 구조적으로 막힌다**: 전환(A→B)은 지문이 달라 통과하는데,
+/// `PROJECTED`는 여전히 A라서 되돌리기(B→A)가 "우리가 준 그대로"로 보여 에코가 된다.
+/// 화면은 A로 돌아오고 파일은 B로 남는다 — 재시작하면 실수한 계정으로 실제 실행된다
+/// (확인 크리틱 R1 F2 실측: `RAN-two_ccg.test`).
+///
+/// R2 가드(턴 중 폴백을 낡은 디바운스 저장이 되돌리는 P3 재발)는 그대로다: 폴백은
+/// **셸이** 정체성을 바꾸는 자리라 흡수를 거치지 않고, `PROJECTED`도 안 건드린다 →
+/// 뒤이어 도착하는 옛 사본은 여전히 지문이 같아 에코로 떨어진다.
 fn renderer_authored(id: &str, incoming: &str) -> bool {
     match with_projected(|m| m.get(id).cloned()) {
-        // 우리가 준 그대로 → 에코. 저자가 아니다.
+        // 우리가 준 그대로(또는 방금 흡수한 그대로) → 에코. 저자가 아니다.
         Some(prev) => prev != incoming,
         // 출처 불명 — 진실이 이미 있으면 렌더러 사본을 믿지 않는다.
         None => !crate::chats_v3::has_identity_truth(id),
@@ -122,7 +135,11 @@ fn absorb_legacy(chat: &Value, id: &str, source: Source, g: &Globals) -> Value {
     let mut o = chat.as_object().cloned().unwrap_or_default();
     let has_legacy = o.contains_key("picker") || o.contains_key("manualCwd") || o.contains_key("cwd");
     if has_legacy {
-        if renderer_authored(id, &legacy_fingerprint(&o)) {
+        let fp = legacy_fingerprint(&o);
+        if renderer_authored(id, &fp) {
+            // ★R28 ACCT R2(F2) — 채택한 지문을 **합의값으로 되적는다.** 이 한 줄이
+            // 「전환은 되는데 되돌리기는 안 되는」 비대칭을 없앤다(위 `renderer_authored` 참고).
+            with_projected(|m| m.insert(id.to_string(), fp));
             let raw = to_raw_identity(chat, source, g);
             // D5 — 유니온이 못 담는 원시 계정은 레코드 칸에 보존한다
             if raw.get("billing").and_then(|b| b.get("kind")).and_then(Value::as_str) == Some("api_key") {

@@ -239,7 +239,9 @@ pub fn migrate_default_to_top() -> bool {
     true
 }
 
-fn ensure_default_migrated() {
+/// ★R28 ACCT R2(F3) — Codex 축의 같은 문. 근거는 `claude.rs`의 같은 함수에 있다
+/// (부팅에서 한 번, 첫 목록 조회보다 먼저 — `ipc/system.rs`의 두 목록이 파일을 직접 읽는다).
+pub fn ensure_default_migrated() {
     use std::sync::atomic::Ordering;
     if DEFAULT_MIGRATED.swap(true, Ordering::SeqCst) {
         return;

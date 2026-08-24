@@ -23,6 +23,11 @@ fn desktop() -> String {
 
 /// 앱 홈의 사실 묶음. **읽기만** 한다.
 pub fn defaults() -> IdentityDefaults {
+    // ★R28 ACCT R2(F3) — 파생 기본(맨 위)을 읽기 **전에** 옛 `defaultEmail` 이관을 확정한다.
+    // 이 함수도 `accounts.json`을 직접 읽어 `ccg_auth`의 문을 안 지난다. 안 부르면
+    // 업그레이드 첫 세션의 **실행 정체성**이 옛 배열의 0번을 기본으로 쓴다(크리틱 F3).
+    ccg_auth::claude::ensure_default_migrated();
+    ccg_auth::codex::ensure_default_migrated();
     let accounts = ccg_store::read_home_json("accounts.json").unwrap_or(Value::Null);
     // ★R28 ACCT §4 — 기본 계정은 **목록 맨 위**(파생값)다. `defaultEmail`은 더 이상 읽지
     // 않는다: 그 필드를 읽는 자리가 하나라도 남으면 「설정에서 맨 위로 올렸는데 새 채팅은

@@ -293,8 +293,46 @@ pub fn read_usage_cache() -> std::collections::BTreeMap<String, CachedUsage> {
 }
 
 /// 2.6.2와 같이 **들여쓰기 없이** 쓴다(`JSON.stringify(Object.fromEntries(cache))`).
+///
+/// **통째 쓰기다.** 훑기가 시작될 때 뜬 스냅샷을 그대로 되박으므로, 그 사이 다른 조회기가
+/// 적어 둔 값은 지워진다. 조회 루프에서는 [`merge_usage_cache`]를 써라 — 여기는 "캐시를
+/// 통째로 이 모양으로 만든다"(초기화·테스트 시드)가 뜻인 자리 전용이다.
 pub fn write_usage_cache(cache: &std::collections::BTreeMap<String, CachedUsage>) {
     let Ok(text) = serde_json::to_string(cache) else { return };
+    let _ = ccg_store::write_home_file(USAGE_CACHE_FILE, &text);
+}
+
+/// ★R28 ACCT R2(N1) — **그 계정 줄만** 고쳐 쓴다(읽기-병합-쓰기, 프로세스 안에서 직렬).
+///
+/// 이 캐시에는 쓰는 주체가 여럿이다: `auth:accounts-usage` 훑기(창마다 한 벌씩 나올 수
+/// 있다 — `#session`·`#mapanel`은 다른 JS 힙이라 렌더러 합류가 창 밖을 못 덮는다)와
+/// M11 자동 전환 워커. R1은 셋 다 [`write_usage_cache`]로 **자기 스냅샷을 통째로** 썼고,
+/// 그래서 나중에 끝난 쪽이 상대의 신선한 값을 지웠다(확인 크리틱 R1 N1).
+///
+/// 여기서는 **지금 파일**을 다시 읽고 내 줄만 얹는다. 더 오래된 값으로 새 값을 덮지도
+/// 않는다(`at` 비교) — 훑기 하나가 20초까지 걸리는 판이라 "내가 나중에 썼다"가
+/// "내 값이 더 신선하다"는 뜻이 아니다.
+pub fn merge_usage_cache(updates: &[(String, CachedUsage)]) {
+    if updates.is_empty() {
+        return;
+    }
+    // 읽기-병합-쓰기 사이에 다른 스레드가 끼면 그 사이의 값이 사라진다. 원자 저장
+    // (`write_home_file`)은 *파일이 반쯤 쓰이는 것*만 막지 이 경합은 못 막는다.
+    static IO: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _io = IO.lock().unwrap_or_else(|e| e.into_inner());
+    let mut cur = read_usage_cache();
+    let mut changed = false;
+    for (email, entry) in updates {
+        if cur.get(email).is_some_and(|old| old.at > entry.at) {
+            continue;
+        }
+        cur.insert(email.clone(), entry.clone());
+        changed = true;
+    }
+    if !changed {
+        return;
+    }
+    let Ok(text) = serde_json::to_string(&cur) else { return };
     let _ = ccg_store::write_home_file(USAGE_CACHE_FILE, &text);
 }
 
@@ -524,6 +562,51 @@ mod tests {
         assert!(!raw.contains('\n'), "2.6.2는 들여쓰기 없이 쓴다: {raw}");
         assert!(raw.contains("\"fiveHourPct\":0"), "필드 이름이 2.6.2 캐시와 같아야 승계된다: {raw}");
         assert_eq!(read_usage_cache(), c);
+    }
+
+    /// ★R28 ACCT R2(N1) — **병합 쓰기는 남의 줄을 안 지운다.**
+    ///
+    /// 확인 크리틱 R1 N1: 창이 둘이면 조회 훑기도 두 벌이고, 나중에 끝난 쪽이 자기
+    /// **낡은 스냅샷**을 통째로 되박아 상대의 신선한 값을 지웠다. 재현은 그 순서 그대로다 —
+    /// 훑기 A가 파일을 뜬 **뒤에** 훑기 B가 다른 계정을 갱신하고, 그다음 A가 자기 것을 쓴다.
+    #[test]
+    fn merging_the_cache_keeps_the_other_sweeps_fresh_rows() {
+        let h = crate::testkit::temp_home("usage-cache-merge");
+        let row = |e: &str, at: i64, pct: i64| {
+            (e.to_string(), CachedUsage { at, data: AccountUsage { weekly_pct: Some(pct), ..AccountUsage::empty(e) } })
+        };
+        // 출발점 — 두 계정 다 낡았다.
+        let mut seed = std::collections::BTreeMap::new();
+        for (k, v) in [row("a@x", 100, 1), row("b@x", 100, 2)] {
+            seed.insert(k, v);
+        }
+        write_usage_cache(&seed);
+        // 훑기 A가 파일을 뜬다(= 낡은 스냅샷을 손에 들었다).
+        let snapshot_a = read_usage_cache();
+        // 그 사이 훑기 B(다른 창)가 b를 갱신했다.
+        merge_usage_cache(&[row("b@x", 900, 42)]);
+        // 이제 A가 a를 갱신한다 — R1은 여기서 `write_usage_cache(&snapshot_a + a)`였다.
+        let mut whole = snapshot_a.clone();
+        whole.insert("a@x".into(), row("a@x", 950, 7).1);
+        merge_usage_cache(&[row("a@x", 950, 7)]);
+        let after = read_usage_cache();
+        println!("[N1] 병합 뒤 = {after:?}");
+        assert_eq!(after["b@x"].data.weekly_pct, Some(42), "★ 낡은 스냅샷이 남의 신선한 값을 덮었다");
+        assert_eq!(after["a@x"].data.weekly_pct, Some(7), "내 값은 실려야 한다");
+        // 통째 쓰기였다면 어떻게 됐는지 — 같은 재료로 대조군을 만든다.
+        write_usage_cache(&whole);
+        assert_eq!(read_usage_cache()["b@x"].data.weekly_pct, Some(2), "대조군: 통째 쓰기는 실제로 지운다");
+
+        // 더 오래된 값으로 새 값을 덮지 않는다(훑기 하나가 20초까지 걸린다).
+        merge_usage_cache(&[row("a@x", 950, 7)]);
+        merge_usage_cache(&[row("a@x", 300, 99)]);
+        assert_eq!(read_usage_cache()["a@x"].data.weekly_pct, Some(7), "★ 오래된 값이 새 값을 덮었다");
+        // 같은 시각이면 나중 쓰기가 이긴다(재조회는 언제나 값을 앉힐 수 있어야 한다).
+        merge_usage_cache(&[row("a@x", 950, 55)]);
+        assert_eq!(read_usage_cache()["a@x"].data.weekly_pct, Some(55));
+        merge_usage_cache(&[]); // 빈 갱신은 파일을 안 건드린다
+        assert_eq!(read_usage_cache()["a@x"].data.weekly_pct, Some(55));
+        drop(h);
     }
 
     /// 실홈 `usage-cache.json`의 실제 항목이 그대로 역직렬화되는가(승계 경로).

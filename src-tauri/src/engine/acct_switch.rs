@@ -439,7 +439,10 @@ fn collect(sw: &Switcher) -> Snapshot {
     for excl in &asks {
         want.extend(order.iter().filter(|e| !excl.contains(*e)).cloned());
     }
-    let mut fetched = false;
+    // ★R28 ACCT R2(N1) — 이 훑기가 **실제로 받은 줄**만 모은다. 통째 쓰기(스냅샷 되박기)는
+    // 그 사이 `auth:accounts-usage` 훑기(창마다 한 벌씩 날 수 있다)가 적어 둔 신선한 값을
+    // 지웠다 — 같은 파일에 쓰는 주체가 여럿이다(확인 크리틱 R1 N1).
+    let mut fetched: Vec<(String, usage::CachedUsage)> = Vec::new();
     for email in &order {
         // 오염가드가 **한도 조회보다 먼저**다(`verify::preflight` 헤더의 순서 그대로):
         // 오염 항목은 살아 있는 토큰을 물고 있어 조회도 통과해 버린다. 게다가 여기서
@@ -473,9 +476,10 @@ fn collect(sw: &Switcher) -> Snapshot {
             sw.stats.lock().unwrap_or_else(|e| e.into_inner()).1 += 1;
             match fetch(email) {
                 Ok(u) => {
-                    cache.insert(email.clone(), usage::CachedUsage { at: now_ms, data: u.clone() });
+                    let entry = usage::CachedUsage { at: now_ms, data: u.clone() };
+                    cache.insert(email.clone(), entry.clone());
                     usage_map.insert(email.clone(), u);
-                    fetched = true;
+                    fetched.push((email.clone(), entry));
                     sw.note_well(email);
                     // 교환까지 성공했으면 액세스 토큰이 살아났다 = 판정이 `Probe`로 올라온다.
                     // **조회 뒤에 다시 재는 것이 핵심**이다: `switch::plan`은 `Probe`만
@@ -507,9 +511,8 @@ fn collect(sw: &Switcher) -> Snapshot {
         }
         preflight.insert(email.clone(), v);
     }
-    if fetched {
-        usage::write_usage_cache(&cache);
-    }
+    // ★R28 ACCT R2(N1) — 내가 받은 줄만 얹는다(남의 줄은 손대지 않는다).
+    usage::merge_usage_cache(&fetched);
     Snapshot { at: Some(Instant::now()), order, usage: usage_map, preflight }
 }
 
@@ -525,7 +528,9 @@ fn transient(e: &ccg_auth::net::NetError) -> bool {
         NetError::Status(s) => *s == 408 || *s == 429 || *s >= 500,
         NetError::Transport(_) | NetError::BadBody => true,
         // 위 두 갈래에서 이미 걸러진다(호출자가 먼저 처리한다).
-        NetError::Disabled | NetError::RotateBackoff(_) => true,
+        // ★R28 ACCT R2(N2) — `RotateForbidden`은 **우리가 스스로 안 나간** 착지다(워밍
+        // 구역). 이 워커는 그 구역 안에서 안 돌지만, 계정의 죄가 아니라는 판정은 같다.
+        NetError::Disabled | NetError::RotateBackoff(_) | NetError::RotateForbidden(_) => true,
     }
 }
 

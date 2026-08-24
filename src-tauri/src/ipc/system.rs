@@ -117,6 +117,12 @@ pub fn close_orphan_dialogs() -> usize {
 /// 통째로 갈아끼우므로(`Settings.tsx:457`), 모양을 두 곳에서 조립하면 한쪽만 `needsLogin`을
 /// 빠뜨리는 순간 "삭제하고 나니 재로그인 배지가 사라진다" 같은 유령이 태어난다.
 pub(super) fn list_claude_accounts() -> Value {
+    // ★R28 ACCT R2(F3) — 이 목록은 파일을 **직접** 읽는다(모양을 한 곳에서 만들기 위해).
+    // 그래서 `ccg_auth`의 마이그레이션을 안 지나고, R1에서는 옛 `defaultEmail` 순서를
+    // 그대로 돌려줬다 — 업그레이드 첫 세션의 화면·새 채팅이 통째로 옛 1번째 계정이었다.
+    // 부팅에서도 한 번 부르지만(`main.rs`), 여기가 **읽기 직전**이라 순서를 보장한다
+    // (프로세스당 1회 CAS라 두 번째부터는 아무 일도 안 한다).
+    ccg_auth::claude::ensure_default_migrated();
     let Some(f) = ccg_store::read_home_json("accounts.json") else { return json!([]) };
     // v3가 현재 포맷, v2도 계정 모양이 같아 읽는다(2.6.2 readStoreFile과 동일)
     let version = f.get("version").and_then(Value::as_u64).unwrap_or(0);
@@ -157,6 +163,8 @@ pub(super) fn list_claude_accounts() -> Value {
 }
 
 fn list_codex_accounts() -> Value {
+    // ★R28 ACCT R2(F3) — Anthropic 축과 같은 이유(위 참고).
+    ccg_auth::codex::ensure_default_migrated();
     let Some(f) = ccg_store::read_home_json("codex-accounts.json") else { return json!([]) };
     if f.get("version").and_then(Value::as_u64).unwrap_or(0) != 1 {
         return json!([]);

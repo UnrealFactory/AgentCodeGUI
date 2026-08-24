@@ -11,7 +11,11 @@
  *  D2. 갱신 TTL — 표면을 여닫아도 방금 받은 값이 있으면 조회가 안 나간다
  *  A.  인플라이트 중복 0 — 설정 탭과 채팅 picker가 같은 순간 열려도 조회는 한 벌
  *  B.  캐시 우선 첫 페인트 — `cachedOnly`가 실조회를 기다리지 않고 즉시 값을 앉힌다
- *  C.  우선 조회 + 수동 재시도 — `priority`가 실려 나가고 `force`가 TTL을 넘는다
+ *  C.  우선 조회 + 수동 재시도 — `priority`·`retry`가 실려 나가고 `force`가 TTL을 넘는다
+ *  C2. ★R2(F5 부수) — 재시도는 워밍·자동 갱신에 **합류하지 않는다**(그 답에는 사용자가
+ *      보려는 계정이 비어 있다). C3은 그 반대쪽 못: 재시도끼리는 합류한다(중복 0 무회귀).
+ *  C4. ★R2(N1) — 그 합류의 **경계**: 창이 둘이면(=모듈 인스턴스가 둘이면) 조회도 둘이다.
+ *      「HTTP 한 벌」의 근거는 렌더러가 아니라 셸의 계정별 레인이다(위 헤더 참고).
  *  E.  §3 역인덱스 — 「사용 중 · 2번 자리」·「2곳」·자기 자리는 「현재」라 빠진다
  *  F.  §3 살아 있음 판정 — `account` 키가 없는 행(status.json 재구성)은 자리로 안 센다
  *
@@ -127,8 +131,55 @@ calls.length = 0
 await S.refreshUsage({ priority: 'a2@x', force: true })
 ok(usageCalls().length === 1, '★ 「다시 시도」는 캐시가 아니라 조회여야 한다', `실측 ${usageCalls().length}회`)
 ok(usageCalls()[0]?.opts?.priority === 'a2@x', 'priority가 셸까지 실려 간다', JSON.stringify(usageCalls()[0]?.opts))
+// ★R2(F5) — 렌더러 TTL만 넘고 끝나면 셸의 3분 실패 격리에서 버튼이 무동작이다.
+ok(usageCalls()[0]?.opts?.retry === true, '★ 수동 재시도 표식이 셸까지 간다(격리를 넘는 유일한 근거)', JSON.stringify(usageCalls()[0]?.opts))
+
+console.log('\n── C2. 수동 재시도는 「약한 조회」에 합류하지 않는다 (R2 · F5 부수) ──')
+// 워밍은 **토큰이 만료된 계정을 건너뛰고**, 자동 갱신은 **격리된 계정을 건너뛴다** —
+// 사용자가 「다시 시도」로 보려는 것이 정확히 그 계정들이다. 그 조회에 합류해 놓고
+// 「다시 시도했다」고 말하면 버튼이 거짓말을 한다(확인 크리틱 R1 F5 부수).
+calls.length = 0
+liveDelayMs = 200
+S.invalidateAccounts() // 로그인·정렬 뒤와 같은 판 — 한도 TTL이 식는다
+const warming = S.refreshUsage({ priority: 'a0@x', warm: true }) // 도는 워밍(약한 조회)
+await new Promise((r) => setTimeout(r, 20))
+const clicked = S.refreshUsage({ priority: 'a1@x', force: true }) // 그 사이 사람이 누른 재시도
+await Promise.all([warming, clicked])
+const two2 = usageCalls()
+ok(two2.length === 2, '★ 워밍 결과를 재시도로 속이지 않는다(뒤이어 한 번 더 돈다)', `실측 ${two2.length}회`)
+ok(two2[0]?.opts?.warm === true && two2[1]?.opts?.warm !== true, '두 번째는 워밍이 아니다', JSON.stringify(two2.map((c) => c.opts)))
+ok(two2[1]?.opts?.retry === true, '두 번째에 재시도 표식이 붙는다', JSON.stringify(two2[1]?.opts))
+
+console.log('\n── C3. 재시도끼리는 그대로 합류한다 (§1 인플라이트 중복 0 무회귀) ──')
+calls.length = 0
+const both = await Promise.all([S.refreshUsage({ priority: 'a0@x', force: true }), S.refreshUsage({ priority: 'a1@x', force: true })])
+ok(usageCalls().length === 1, '★ 두 표면의 재시도가 두 벌로 나가면 안 된다', `실측 ${usageCalls().length}회`)
+ok(both[0] === both[1], '두 표면이 같은 값 한 벌을 받는다')
+liveDelayMs = 60
+
+console.log('\n── C4. 합류의 경계 = **이 창** (R2 · N1) ────────────────────────')
+// ★확인 크리틱 R1 N1 — 위 A·C3의 「중복 0」은 **한 JS 힙 안에서만** 참이다.
+// `#session`·`#mapanel`은 같은 번들의 다른 OS 창이라 이 모듈을 한 벌씩 들고, 그 창들도
+// picker를 그린다. 렌더러에는 창 밖을 세는 방법이 없다(모듈 상태를 공유할 길이 없다) —
+// 그래서 「HTTP 한 벌」의 근거는 셸의 계정별 레인이다
+// (`ipc/parity/usage.rs::two_windows_sweeping_at_once_ask_each_account_only_once` —
+//  레인을 빼고 재면 계정 3개 × 2창 = **6회**, 넣으면 3회).
+// 여기서는 그 경계를 못으로 박는다: **모듈을 한 벌 더 들면 조회도 한 벌 더 나간다.**
+calls.length = 0
+const S2 = await import(pathToFileURL(out).href + '?win=mapanel') // 다른 창 = 다른 모듈 인스턴스
+await Promise.all([S.refreshUsage({ force: true }), S2.refreshUsage({ force: true })])
+ok(
+  usageCalls().length === 2,
+  '★ 두 창은 렌더러에서 안 합쳐진다(합쳐진다고 적으면 셸 레인을 걷어내도 초록이다)',
+  `실측 ${usageCalls().length}회 — 셸 레인이 이 둘을 계정당 1건으로 접는다`
+)
 
 console.log('\n── E. §3 역인덱스 (계정 → 살아 있는 자리) ──────────────────────')
+// ★R2(F4) — 본채팅 행의 `panelId`가 `null`인 것은 **셸의 판정**이다(`panel_seat_for_chat`:
+// `chrome:"ide"` 보드 = 본채팅 화면이므로 자리로 안 센다). R1은 마이그레이션이 만든
+// `default` 보드 때문에 실제로는 `default::0`이 실려 왔고, 자리 번호가 이름표를 이겨
+// **본채팅도 「1번 자리」**였다(확인 크리틱 R1 F4 — 하네스 픽스처가 현실과 갈렸던 자리).
+// 렌더러 쪽에서는 못 가린다: 같은 `default` 보드가 멀티에서는 `chrome:"grid"`로 산다.
 S.putSlotNames('chats', { 'chat-main': '본채팅' })
 S.putSlotNames('wins', { 'chat-win': '추가 창' })
 S.putChatStatuses([

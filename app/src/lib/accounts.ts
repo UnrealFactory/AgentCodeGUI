@@ -101,6 +101,10 @@ let listFlight: Promise<AccountInfo[]> | null = null
 let cxListAt = 0
 let cxListFlight: Promise<CodexAccountInfo[]> | null = null
 let usageFlight: Promise<Record<string, AccountUsage>> | null = null
+/** 도는 조회가 **사람이 누른 재시도**인가 — 합류 판정의 유일한 축(F5 부수). */
+let usageFlightManual = false
+/** 도는 조회 뒤에 한 번 더 돌 **수동 재시도**(F5 부수 — 워밍 결과를 재시도로 속이지 않는다). */
+let usageQueued: Promise<Record<string, AccountUsage>> | null = null
 let cxUsageFlight: Promise<Record<string, CodexAccountUsage>> | null = null
 let lastWarmAt = 0
 
@@ -157,25 +161,38 @@ export interface UsageQuery {
   priority?: string
   /** 선행 워밍 — 토큰 회전이 필요한 계정은 건너뛴다. */
   warm?: boolean
-  /** TTL을 무시하고 지금 묻는다 — **수동 재시도 전용**. */
+  /**
+   * TTL을 무시하고 지금 묻는다 — **수동 재시도 전용**.
+   *
+   * ★R28 ACCT R2(F5) — 이 값은 셸까지 간다(`retry`). R1은 렌더러 TTL만 넘고 셸에는 안
+   * 실려, 연속 실패로 격리된 계정은 사용자가 눌러도 3분 동안 조회가 안 나갔다.
+   */
   force?: boolean
 }
 
 /**
  * 계정별 한도 갱신 — **인플라이트 하나**. 이미 도는 조회가 있으면 그것에 합류한다
- * (설정 탭과 picker를 같은 순간에 열어도 HTTP는 한 벌이다).
+ * (설정 탭과 picker를 같은 순간에 열어도 IPC는 한 벌이다).
  *
  * TTL이 앞에 있는 이유: 이 함수는 표면을 **열 때마다** 불린다(팝오버 토글 한 번이
  * 한 번이다). 그대로 흘리면 팝오버를 다섯 번 여닫는 것이 조회 다섯 번이고, usage API는
  * 분당 1~2건이 예산이다. 셸의 2분 디스크 TTL이 HTTP는 막아 주지만 IPC 왕복과 상태
  * 갈아끼우기는 남는다 — 그 몫을 여기서 자른다.
+ *
+ * ★R28 ACCT R2(N1) — **이 합류는 「이 창 안에서」만 참이다.** `#session`(추가 채팅
+ * 창)·`#mapanel`(팝아웃)은 같은 번들의 다른 OS 창 = **다른 JS 힙**이라 이 모듈을 한 벌씩
+ * 들고, 그 창들도 picker를 그린다. 창 밖까지 세는 합류는 렌더러에 있을 수가 없어서
+ * (모듈 상태를 공유할 방법이 없다) **셸이 진짜 관문이다**: `ipc/parity/usage.rs`의
+ * 계정별 레인 + 레인 안 디스크 재확인. 여기 합류는 IPC 왕복을 아끼는 앞단일 뿐이고,
+ * 「HTTP 한 벌」의 근거는 저쪽이다(확인 크리틱 R1 N1 — R1은 이 자리를 「중복 0」이라고만
+ * 적어 두 창이 겹치는 판을 못 봤다).
  */
-export function refreshUsage(q: UsageQuery = {}): Promise<Record<string, AccountUsage>> {
-  if (usageFlight) return usageFlight
-  if (!q.force && state.at && Date.now() - state.at < USAGE_TTL) return Promise.resolve(state.usage)
+function runUsage(q: UsageQuery): Promise<Record<string, AccountUsage>> {
   emit({ loading: true })
-  usageFlight = window.api.auth
-    .accountsUsage({ priority: q.priority, warm: q.warm })
+  usageFlightManual = !!q.force
+  const flight = window.api.auth
+    // `retry`는 셸의 실패 격리를 넘는 표식이다(F5) — 사람이 누른 조회에만 붙인다.
+    .accountsUsage({ priority: q.priority, warm: q.warm, retry: q.force })
     .then((rows) => {
       usageFlight = null
       const map = byEmail(rows)
@@ -187,7 +204,34 @@ export function refreshUsage(q: UsageQuery = {}): Promise<Record<string, Account
       emit({ loading: false })
       return state.usage
     })
-  return usageFlight
+  usageFlight = flight
+  return flight
+}
+
+export function refreshUsage(q: UsageQuery = {}): Promise<Record<string, AccountUsage>> {
+  if (usageFlight) {
+    // ★R28 ACCT R2(F5 부수) — **수동 재시도는 「약한 조회」에 합류하지 않는다.**
+    //
+    // 도는 것이 워밍이면 그 결과에는 「토큰이 만료돼 건너뛴 계정」이 비어 있고, 자동
+    // 갱신이면 「연속 실패로 격리된 계정」이 비어 있다 — 사용자가 「다시 시도」로 보려는
+    // 것이 정확히 그 계정들이다. 그 값을 받아 놓고 「다시 시도했다」고 하면 버튼이
+    // 거짓말을 한다. 대신 앞선 조회가 끝난 **뒤에** 한 번 더 돈다.
+    //
+    // 재시도끼리는 그대로 합류한다 — §1의 「인플라이트 중복 0」(설정 탭 + picker 동시)은
+    // 이 축에서 갈리지 않는다.
+    if (!q.force || usageFlightManual) return usageFlight
+    // 여러 번 눌러도 꼬리는 하나다.
+    if (!usageQueued) {
+      const again = (): Promise<Record<string, AccountUsage>> => {
+        usageQueued = null
+        return runUsage(q)
+      }
+      usageQueued = usageFlight.then(again, again)
+    }
+    return usageQueued
+  }
+  if (!q.force && state.at && Date.now() - state.at < USAGE_TTL) return Promise.resolve(state.usage)
+  return runUsage(q)
 }
 
 export function refreshCodexUsage(): Promise<Record<string, CodexAccountUsage>> {
@@ -238,10 +282,18 @@ export function warmUsage(priority?: string): void {
   })
 }
 
-/** 계정 목록이 바뀐 뒤(로그인·삭제·정렬) — 목록과 한도를 다시 뜬다. */
+/**
+ * 계정 목록이 바뀐 뒤(로그인·삭제·정렬) — 목록과 한도를 다시 뜬다.
+ *
+ * ★R28 ACCT R2 — **한도의 신선도까지 버린다.** 계정 하나가 늘거나 줄면 지금 들고 있는
+ * 한도 표는 그 계정에 대해 아무 말도 못 한다(새 계정은 값이 아예 없다). R1은 목록
+ * 캐시만 놓아, 로그인 직후 60초 동안 새 계정의 게이지가 빈 칸이었다.
+ * (`at`은 이 모듈의 TTL 축이고 화면은 안 읽는다 — 값을 지우는 것이 아니라 나이만 지운다.)
+ */
 export function invalidateAccounts(): void {
   listAt = 0
   cxListAt = 0
+  emit({ at: 0 })
 }
 
 /** 셸이 새 목록을 돌려준 자리(로그인·삭제·정렬)에서 스토어를 바로 맞춘다. */

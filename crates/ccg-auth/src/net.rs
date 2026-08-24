@@ -48,6 +48,12 @@ pub enum NetError {
     /// 죽은 refresh 토큰이면 그게 곧 **20초마다 무한 반복되는 교환 POST**다(F2-⑶).
     /// 이제 실패는 계정별 백오프로 남고, 그 창 안의 호출은 여기로 착지한다.
     RotateBackoff(String),
+    /// ★R28 ACCT R2(N2) — **회전 금지 구역**([`crate::rotation`]) 안이라 교환을 안 했다.
+    ///
+    /// 선행 워밍이 그 구역이다. 이 착지는 실패가 아니라 *"물어보긴 했는데 토큰을 돌릴
+    /// 수는 없어서 여기서 멈췄다"*이고, 호출부는 마지막 캐시로 갈음하면 된다 —
+    /// 사용자가 Account 탭을 직접 열면 그때는 구역 밖이라 옛 규약대로 교환까지 간다.
+    RotateForbidden(String),
 }
 
 impl std::fmt::Display for NetError {
@@ -60,6 +66,7 @@ impl std::fmt::Display for NetError {
             NetError::BadBody => write!(f, "response body was not JSON"),
             NetError::TokenLost(m) => write!(f, "rotated refresh token could not be saved: {m}"),
             NetError::RotateBackoff(m) => write!(f, "refresh exchange backing off: {m}"),
+            NetError::RotateForbidden(m) => write!(f, "refresh exchange forbidden here: {m}"),
         }
     }
 }
@@ -320,7 +327,26 @@ pub fn access_token(email: &str) -> Result<String, NetError> {
     if let Some(why) = backoff_hit(email) {
         return Err(NetError::RotateBackoff(why));
     }
+    // ★R28 ACCT R2(N2) — ③'' 회전 금지 구역(선행 워밍)이면 여기서 멈춘다.
+    if let Some(e) = rotation_gate(email) {
+        return Err(e);
+    }
     rotate(email)
+}
+
+/// ★R28 ACCT R2(N2) — 회전으로 가는 **두 문의 공통 관문**([`crate::rotation`]).
+///
+/// 문이 둘([`access_token`]·[`force_refresh`])이라 인자를 늘리는 방식은 하나를 빠뜨리는
+/// 순간 성질이 조용히 사라진다. 관문을 하나 두고 둘 다 여기를 지나게 한다 — 그러면
+/// *"워밍은 토큰을 회전시키지 않는다"*가 문장이 아니라 **코드의 성질**이 된다
+/// (확인 크리틱 R1 N2: R1의 문은 로컬 만료 시각만 봐서 401/403 경로가 열려 있었다).
+fn rotation_gate(email: &str) -> Option<NetError> {
+    if !crate::rotation::forbidden() {
+        return None;
+    }
+    // 침묵 no-op 금지 — "워밍인데 왜 값이 안 갱신됐나"의 유일한 원전이다.
+    eprintln!("[auth] {email}: 회전 금지 구역(선행 워밍)이라 토큰 교환을 하지 않는다 — 마지막 캐시로 갈음한다");
+    Some(NetError::RotateForbidden(email.to_string()))
 }
 
 /// 실제 교환 한 바퀴. **[`access_token`]의 레인 안에서만** 불린다.
@@ -489,6 +515,10 @@ pub fn force_refresh(email: &str, stale: &str) -> Result<String, NetError> {
     if let Some(why) = backoff_hit(email) {
         return Err(NetError::RotateBackoff(why));
     }
+    // ★R28 ACCT R2(N2) — 401/403에서 여기로 온다. 워밍이면 **여기가 끝이다**.
+    if let Some(e) = rotation_gate(email) {
+        return Err(e);
+    }
     rotate(email)
 }
 
@@ -498,7 +528,7 @@ pub fn force_refresh(email: &str, stale: &str) -> Result<String, NetError> {
 ///
 /// | # | 응답 | 하는 일 |
 /// |---|---|---|
-/// | ① | 401·403 | 강제 교환 후 **1회** 재시도(토큰이 그대로면 재시도할 이유가 없다) |
+/// | ① | 401·403 | 강제 교환 후 **1회** 재시도(토큰이 그대로면 재시도할 이유가 없다). ★R2(N2) — [`crate::rotation`] 금지 구역(선행 워밍) 안이면 **교환하지 않고** 그대로 실패로 착지한다 |
 /// | ② | 429 | `Retry-After`만큼 자고 **1회** 재시도(**원래 토큰으로** — 그쪽도 `hit(token)`이다) |
 /// | ③ | 그 밖의 비200 | 실패(호출부가 마지막 성공값으로 폴백) |
 ///
@@ -761,6 +791,52 @@ mod tests {
         println!("[C1] 뒤따라온 호출 = {got:?}");
         assert_eq!(got, Ok("A-rotated".into()), "★ 두 번째 교환이 나갔다면 여기는 Err(Disabled)다");
         std::env::remove_var("CCG_NO_NET");
+        drop(h);
+    }
+
+    /// ★R28 ACCT R2(N2) — **금지 구역 안에서는 회전이 시작조차 안 된다.**
+    ///
+    /// 판별식은 **에러의 종류**다. 킬 스위치가 켜져 있어도 구역 밖이면 교환은 *시도*돼
+    /// 전송에서 거절된다(`Disabled`) — 실제 서버라면 그 순간 POST가 나가고 성공하면
+    /// 옛 refresh 토큰이 죽는다. 구역 안이면 그 앞에서 멈추므로 `RotateForbidden`이다.
+    /// 두 착지가 갈리는 것이 곧 "워밍은 회전을 시작하지 않는다"의 증거다.
+    ///
+    /// (`cargo test -p ccg-auth --features net`에서만 돈다 — 기본 빌드에는 이 파일이
+    ///  컴파일조차 안 된다. 정책 자체의 못은 `rotation.rs`에 따로 있다.)
+    #[test]
+    fn a_no_rotate_scope_stops_the_exchange_before_it_starts() {
+        let h = temp_home("no-rotate");
+        std::env::set_var("CCG_NO_NET", "1");
+        forget_backoff();
+        // 만료된 액세스 토큰 + 살아 있는 refresh = **회전이 필요한** 계정.
+        let email = "warm@x";
+        seed(email, 1_000.0, Some("r-1"));
+        assert!(claude::account_access_token(email).is_none(), "전제: 로컬 토큰이 만료다");
+
+        // ① 구역 밖 — 교환을 *시도*한다(킬 스위치라 전송에서 거절된다).
+        let outside = access_token(email).err();
+        println!("[N2] 구역 밖 = {outside:?}");
+        assert_eq!(outside, Some(NetError::Disabled), "전제가 깨졌다 — 여기가 교환을 시도하는 자리다");
+
+        // ② 구역 안 — **전송까지 가지 않는다**.
+        forget_backoff();
+        let inside = crate::rotation::forbid(|| access_token(email)).err();
+        println!("[N2] 구역 안 = {inside:?}");
+        assert!(
+            matches!(inside, Some(NetError::RotateForbidden(_))),
+            "★ 워밍이 토큰 교환을 시작했다(성공하면 옛 refresh가 서버에서 죽는다): {inside:?}"
+        );
+        // 401/403에서 오는 두 번째 문도 같은 관문을 지난다.
+        forget_backoff();
+        let forced = crate::rotation::forbid(|| force_refresh(email, "A-old")).err();
+        println!("[N2] force_refresh(구역 안) = {forced:?}");
+        assert!(matches!(forced, Some(NetError::RotateForbidden(_))), "★ 401 경로가 관문을 안 지난다: {forced:?}");
+        // 구역을 나오면 원래대로다(금지가 새면 이후 모든 회전이 죽는다).
+        forget_backoff();
+        assert_eq!(access_token(email).err(), Some(NetError::Disabled), "★ 금지가 구역 밖으로 샜다");
+
+        std::env::remove_var("CCG_NO_NET");
+        forget_backoff();
         drop(h);
     }
 

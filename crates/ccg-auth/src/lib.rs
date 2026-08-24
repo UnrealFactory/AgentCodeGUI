@@ -42,6 +42,10 @@ pub mod junction;
 /// 크레이트에 없다"는 여전히 기본 빌드의 사실이다).
 #[cfg(feature = "net")]
 pub mod net;
+/// ★R28 ACCT R2(N2) — **토큰 회전 금지 구역**(스레드 로컬). `net` 밖에 있는 이유는
+/// 정책이라서다: 회전 자체는 `net`에만 있어도, "여기서는 회전하면 안 된다"는 판정은
+/// 기본 빌드에서도 테스트할 수 있어야 한다.
+pub mod rotation;
 /// ★M11 — 한도 소진 시 갈아탈 계정 고르기(순수 판정 · 네트워크 없음).
 pub mod switch;
 pub mod usage;

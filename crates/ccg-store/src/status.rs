@@ -27,6 +27,28 @@ const FILE: &str = "status.json";
 /// 디스크 쓰기 디바운스 — 규약 2.
 const DEBOUNCE: Duration = Duration::from_millis(500);
 
+/// ★R28 ACCT R2(F1) — **디스크에 실리면 안 되는 런타임 전용 키.**
+///
+/// `account`·`panelId`(§3의 「사용 중 · N번 자리」 칩)의 계약은 *"키가 있으면 살아 있는
+/// 런타임"*이다. 그런데 R1은 그 계약을 **주석에만** 뒀다: `set()`이 `lite::build`의 결과를
+/// 통째로 메모리 맵에 넣고 `flush()`가 그 맵을 그대로 썼기 때문에, 턴을 한 번이라도 돌린
+/// 채팅은 `status.json`에 계정이 남았고 **재기동한 판(런타임 0개)에서도 칩이 켜졌다**
+/// (확인 크리틱 R1 F1 — "늘 켜져 있는 경고는 없는 것보다 나쁘다").
+///
+/// 그래서 두 자리에서 **키째 지운다**: 쓸 때([`flush`])와 읽을 때([`load_boot`]).
+/// 쓰기만 막으면 R1이 이미 써 둔 파일이 남아 그 홈은 영원히 유령 칩을 문다 — 읽기 쪽
+/// 청소가 그 판의 답이고, 쓰기 쪽 청소가 재발 금지다.
+const RUNTIME_ONLY_KEYS: [&str; 2] = ["account", "panelId"];
+
+/// 런타임 전용 키를 걷어낸 사본(디스크 직렬화·부팅 장전 공용).
+fn strip_runtime_only(v: &mut Value) {
+    if let Some(o) = v.as_object_mut() {
+        for k in RUNTIME_ONLY_KEYS {
+            o.remove(k);
+        }
+    }
+}
+
 fn path() -> std::path::PathBuf {
     crate::app_home().join(super::chats_v3::DIR).join(FILE)
 }
@@ -112,6 +134,9 @@ pub fn load_boot(chat_ids: &[String]) -> BTreeMap<String, Value> {
             }
             e
         });
+        // ★R28 ACCT R2(F1) — **부팅에는 살아 있는 런타임이 없다.** R1이 써 둔 파일에
+        // `account`·`panelId`가 남아 있어도 여기서 걷어낸다(유령 「사용 중」 칩 방지).
+        strip_runtime_only(&mut lite);
         if let Some(o) = lite.as_object_mut() {
             o.insert("chatId".into(), json!(id));
             // 규약 4 — 부팅 강제(유령 알약 방지). queued·hold는 건드리지 않는다.
@@ -257,6 +282,33 @@ pub fn set(chat_id: &str, lite: Value) {
     ensure_writer();
 }
 
+/// ★R28 ACCT R2(F1-b) — **런타임이 거둬진 채팅**의 마지막 lite에서 계정·자리를 뗀다.
+///
+/// 마지막 상태(`done`·`error`…)는 남겨야 사이드바 점 색이 유지되고, 계정만 떨어져야
+/// 「사용 중」 칩이 걷힌다. `Op::Dispose`(대화 삭제·창 파기)와 상주 CLI 회수가 이 문을
+/// 지난다 — 슬롯만 지우면 마지막 lite가 그대로 남아 **같은 세션 안에서도 칩이 안 걷혔다**.
+///
+/// 돌려주는 값은 "실제로 뗐나"다 — 호출자가 그때만 브로드캐스트하면 된다.
+pub fn clear_runtime(chat_id: &str) -> bool {
+    let (m, cv) = state();
+    let changed = {
+        let mut st = m.lock().unwrap_or_else(|e| e.into_inner());
+        let Some(v) = st.map.get_mut(chat_id) else { return false };
+        let before = v.clone();
+        strip_runtime_only(v);
+        let changed = *v != before;
+        if changed {
+            st.dirty = true;
+        }
+        changed
+    };
+    if changed {
+        cv.notify_all();
+        ensure_writer();
+    }
+    changed
+}
+
 /// 목록에서 사라진 채팅의 상태를 걷어낸다(채팅 삭제 · prune과 짝).
 pub fn retain(chat_ids: &[String]) {
     let keep: std::collections::HashSet<&str> = chat_ids.iter().map(String::as_str).collect();
@@ -297,7 +349,12 @@ pub fn flush() {
         st.dirty = false;
         let mut statuses = Map::new();
         for (k, v) in &st.map {
-            statuses.insert(k.clone(), v.clone());
+            // ★R28 ACCT R2(F1) — 런타임 전용 키는 **파일로 내려가지 않는다.**
+            // 메모리 맵에는 남는다(브로드캐스트가 그 값을 싣는 것이 §3의 기능이다) —
+            // 갈리는 것은 *수명*이다: 프로세스와 함께 죽어야 하는 사실이다.
+            let mut row = v.clone();
+            strip_runtime_only(&mut row);
+            statuses.insert(k.clone(), row);
         }
         serde_json::to_string(&json!({ "version": 1, "statuses": Value::Object(statuses) })).unwrap_or_default()
     };
@@ -411,6 +468,68 @@ mod tests {
         assert_eq!(rows[0].images, vec!["C:\\shot\\a.png".to_string()]);
         assert_eq!(rows[1].text, "");
         let _ = h;
+    }
+
+    /// ★R28 ACCT R2(F1) — **「사용 중」은 디스크로 내려가지 않는다.**
+    ///
+    /// 확인 크리틱 R1 F1의 실측: 턴 1회 → 종료 → 재기동에서 `status.json`에 남은
+    /// `account`가 그대로 살아나 **런타임이 하나도 없는 판**에서 칩이 켜졌다.
+    /// 여기서 잠그는 것은 두 방향이다 — 쓸 때 빠지고, 읽을 때(옛 파일) 걷힌다.
+    #[test]
+    fn the_in_use_account_never_reaches_the_disk_and_never_comes_back() {
+        let h = crate::testkit::temp_home("status-runtime-keys");
+        forget();
+        // ① 살아 있는 런타임의 lite — 계정·자리가 실린다(브로드캐스트는 이 값을 쓴다).
+        set(
+            "c-a",
+            json!({ "chatId": "c-a", "status": "done", "busy": false, "bgActive": false,
+                    "account": "one@ccg.test", "panelId": "b1::1", "ask": "none",
+                    "hold": Value::Null, "queued": 0, "updatedAt": 7 }),
+        );
+        assert_eq!(snapshot()["c-a"]["account"], json!("one@ccg.test"), "메모리에는 남아야 §3이 산다");
+        flush();
+        let txt = std::fs::read_to_string(path()).expect("status.json");
+        println!("[F1] flush 결과 = {txt}");
+        assert!(!txt.contains("account"), "★ 계정이 디스크에 남았다: {txt}");
+        assert!(!txt.contains("panelId"), "★ 자리가 디스크에 남았다: {txt}");
+        assert!(txt.contains("\"status\":\"done\""), "종결 상태까지 지우면 안 된다");
+
+        // ② R1이 써 둔 파일(두 키가 들어 있다)을 부팅에서 장전 — 걷혀야 한다.
+        h.write(
+            "chats-v3/status.json",
+            &json!({ "version": 1, "statuses": { "c-a": {
+                "chatId": "c-a", "status": "done", "busy": false,
+                "account": "one@ccg.test", "panelId": "default::0" } } })
+            .to_string(),
+        );
+        forget();
+        let boot = load_boot(&["c-a".to_string()]);
+        let row = boot.get("c-a").expect("행");
+        println!("[F1] load_boot = {row}");
+        assert!(row.get("account").is_none(), "★ 재기동 판에 유령 계정이 살아났다: {row}");
+        assert!(row.get("panelId").is_none(), "★ 재기동 판에 유령 자리가 살아났다: {row}");
+        assert_eq!(row["status"], json!("done"), "얼려 둔 종결 상태는 그대로다");
+        let _ = h;
+    }
+
+    /// ★R28 ACCT R2(F1-b) — 런타임 회수는 **마지막 lite를 계정 없이 다시 앉힌다**.
+    /// 슬롯만 지우면 같은 세션 안에서도 칩이 안 걷힌다(크리틱 F1 부수 사실).
+    #[test]
+    fn clearing_a_runtime_drops_the_account_but_keeps_the_status() {
+        let _h = crate::testkit::temp_home("status-clear-runtime");
+        forget();
+        set(
+            "c-b",
+            json!({ "chatId": "c-b", "status": "done", "busy": false, "account": "two@ccg.test",
+                    "panelId": "b1::2", "unread": 0 }),
+        );
+        assert!(clear_runtime("c-b"), "뗄 것이 있었는데 false를 돌려줬다");
+        let row = snapshot()["c-b"].clone();
+        println!("[F1-b] clear_runtime = {row}");
+        assert!(row.get("account").is_none() && row.get("panelId").is_none(), "{row}");
+        assert_eq!(row["status"], json!("done"), "마지막 상태까지 지우면 사이드바 점이 꺼진다");
+        assert!(!clear_runtime("c-b"), "두 번째는 바뀐 게 없다");
+        assert!(!clear_runtime("없는채팅"), "모르는 채팅에 참을 돌려주면 헛 브로드캐스트가 난다");
     }
 
     #[test]

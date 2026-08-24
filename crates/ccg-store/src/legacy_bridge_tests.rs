@@ -62,6 +62,53 @@ fn a_real_picker_edit_still_lands() {
     assert_eq!(disk["identity"]["engine"]["model"], "haiku", "진짜 편집이 무시됐다");
 }
 
+/// ★R28 ACCT R2(F2) — **되돌리기가 정체성에 닿는다.**
+///
+/// 확인 크리틱 R1 F2의 실 exe 실측: 계정 전환(one→two) 뒤 「되돌리기」를 누르면 화면은
+/// one으로 돌아오는데 `chats-v3/<id>.json`의 `identity.billing.account`는 two로 남았고,
+/// 재시작하면 chip이 two이며 실제 턴도 two로 돌았다.
+///
+/// 기제는 에코 가드의 **구조적 비대칭**이었다: 되돌린 값 = 마지막 투영값이라 지문이
+/// 같아져 「에코」로 분류됐다. 전환은 통과하고 되돌리기만 막힌다.
+#[test]
+fn undoing_an_account_switch_reaches_the_identity_not_just_the_screen() {
+    let h = migrated("bridge-undo");
+    let blob = chats_get(false, &[]);
+    let victim = ids_of(&blob).into_iter().next().unwrap();
+    let account_of = |b: &Value| -> String {
+        b.get("chats")
+            .and_then(Value::as_array)
+            .and_then(|a| a.iter().find(|c| c["id"] == json!(victim.clone())))
+            .and_then(|c| c["picker"]["account"].as_str())
+            .unwrap_or("")
+            .to_string()
+    };
+    let origin = account_of(&blob);
+    let save_with = |account: &str| {
+        let mut b = blob.clone();
+        for c in b["chats"].as_array_mut().unwrap() {
+            if c["id"] == json!(victim.clone()) {
+                c["picker"]["account"] = json!(account);
+            }
+        }
+        chats_save(&b);
+    };
+    // ① 전환 — one → two. (지문이 다르니 R1에서도 통과하던 팔)
+    save_with("two@ccg.test");
+    let disk = h.read_json(&format!("chats-v3/{victim}.json")).unwrap();
+    assert_eq!(disk["identity"]["billing"]["account"], "two@ccg.test", "전환 자체가 안 실렸다");
+    // ② 되돌리기 — **사이에 `chats:get`을 끼우지 않는다**(크리틱이 실측한 그 순서다.
+    //    조회가 한 번 끼면 투영 지문이 갱신돼 R1에서도 우연히 먹었다).
+    save_with(&origin);
+    let disk = h.read_json(&format!("chats-v3/{victim}.json")).unwrap();
+    println!("[F2] 되돌린 뒤 디스크 identity = {}", disk["identity"]);
+    assert_eq!(
+        disk["identity"]["billing"]["account"],
+        json!(origin),
+        "★ 되돌리기가 화면만 되돌렸다 — 재시작하면 실수한 계정으로 실행된다"
+    );
+}
+
 #[test]
 fn an_echoed_payload_leaves_the_identity_untouched() {
     let h = migrated("bridge-echo");

@@ -239,6 +239,7 @@ pub fn usage_get(fresh: bool, account: Option<&str>) -> Value {
 // | `cachedOnly` | HTTP를 **한 번도** 안 쏘고 디스크 캐시만 그린다(<수 ms) | 첫 페인트(stale-while-revalidate의 앞쪽) |
 // | `priority` | 그 계정을 **맨 먼저** 조회한다 | 사용자가 지금 보는 계정(활성/이 채팅의 계정) |
 // | `warm` | 로컬 액세스 토큰이 **살아 있는** 계정만 조회 | 시작·포커스 선행 워밍 |
+// | `retry` | 실패 격리를 **넘는다**(사람이 눌렀다) | 「한도를 못 불러왔어요 · 다시 시도」 |
 //
 // `warm`이 따로 있는 이유는 M11 R2 C1이다: 부팅 프리웜을 들어낸 것은 **오래 논 계정의
 // 리프레시 토큰 회전이 되돌릴 수 없는 부작용**이기 때문이었다. 워밍은 회전을 유발하지
@@ -281,10 +282,105 @@ fn note_ok(email: &str) {
     dead_book().lock().unwrap_or_else(|e| e.into_inner()).remove(email);
 }
 
+/// ★R28 ACCT R2(F5) — **사람이 「다시 시도」를 눌렀다**는 사실은 격리를 넘는다.
+///
+/// 격리는 *"직렬 큐를 죽은 계정 하나가 막지 않게"* 하는 우회지 벌이 아니다. 그런데 R1은
+/// 그 사실을 셸에 실을 인자가 없어서(`refreshUsage`가 보낸 것은 `{priority, warm}`뿐),
+/// 연속 2회 실패한 계정은 사용자가 버튼을 눌러도 `fallback_row`로 곧장 떨어졌다 —
+/// **3분 동안 그 버튼은 아무 일도 안 했다**(확인 크리틱 R1 F5).
+///
+/// 자동 경로(워밍·주기 갱신)는 이 문을 안 지나므로 큐 보호는 그대로다.
+fn clear_dead(email: &str) {
+    dead_book().lock().unwrap_or_else(|e| e.into_inner()).remove(email);
+}
+
 /// 테스트·하네스용 — 격리 장부를 비운다.
 #[cfg(test)]
 fn forget_dead() {
     dead_book().lock().unwrap_or_else(|e| e.into_inner()).clear();
+}
+
+// ── ★R28 ACCT R2(N1) — **창이 둘이면 스토어도 둘이다** ───────────────────────
+//
+// §1의 「두 표면 인플라이트 중복 0」은 `app/src/lib/accounts.ts`의 합류로 세웠는데,
+// 그 성질은 **한 창 안에서만** 참이다: `#session`(추가 채팅 창)·`#mapanel`(팝아웃)은
+// 같은 번들의 다른 OS 창 = **다른 JS 힙**이라 스토어를 한 벌씩 들고, 그 창들도 계정
+// picker를 그린다. 두 창이 겹치면
+//
+//  ⑴ 같은 계정에 조회가 **두 벌** 나가고(코드 주석 자신이 「분당 1~2건 실측」이라 적은
+//     엔드포인트다 — 429의 지름길이다),
+//  ⑵ 나중에 끝난 훑기가 자기 **낡은 스냅샷**을 통째로 되박아 상대의 신선한 값을 지웠다.
+//
+// (확인 크리틱 R1 N1 — 양쪽 다 못 봤던 자리.) 합류의 진실을 **셸로 내린다**: 렌더러가
+// 몇 벌이든 조회는 이 관문 하나를 지난다.
+//
+// | 조각 | 무엇 |
+// |---|---|
+// | 계정별 레인 | 같은 계정을 도는 훑기가 있으면 **줄을 선다** |
+// | 레인 안 재확인 | 깨어나서 **디스크를 다시 본다** — 앞 주자가 적어 뒀으면 HTTP 0회 |
+// | 병합 쓰기 | 내 줄만 얹는다(`usage::merge_usage_cache`) — ⑵의 답 |
+
+fn sweep_lanes() -> &'static Mutex<HashMap<String, Arc<Mutex<()>>>> {
+    static L: std::sync::OnceLock<Mutex<HashMap<String, Arc<Mutex<()>>>>> = std::sync::OnceLock::new();
+    L.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// 이 계정의 조회 레인. `net`의 `lane(email)`과 **다른 축**이다 — 저쪽은 토큰 교환의
+/// 이중 회전을 막는 자리이고, 여기는 *조회 자체*의 중복을 막는다(교환이 필요 없는 계정도
+/// 두 창이 겹치면 두 번 나갔다).
+fn sweep_lane(email: &str) -> Arc<Mutex<()>> {
+    let mut g = sweep_lanes().lock().unwrap_or_else(|e| e.into_inner());
+    g.entry(email.to_string()).or_default().clone()
+}
+
+/// 레인에서 깨어난 뒤 **지금 파일**에 신선한 값이 있나(앞 주자가 방금 적었나).
+fn fresh_on_disk(email: &str, now: i64) -> Option<ccg_auth::usage::CachedUsage> {
+    ccg_auth::usage::read_usage_cache()
+        .remove(email)
+        .filter(|c| (now - c.at) >= 0 && ((now - c.at) as u64) < ccg_auth::usage::ACCT_USAGE_TTL_MS)
+}
+
+/// 조회 한 건의 **유일한 문**.
+///
+/// ★R28 ACCT R2(N2) — 워밍이면 [`ccg_auth::rotation`] 금지 구역 안에서 부른다. R1의
+/// 워밍 문(`account_access_token().is_none()`이면 건너뛴다)은 **로컬 만료 시각만** 본다:
+/// "시간상 살아 있는데 서버가 이미 죽인" 토큰은 그 문을 통과하고, 401/403 →
+/// `force_refresh` → `rotate`로 교환 POST가 나갔다. 성공하면 그 순간 옛 refresh 토큰이
+/// 서버에서 죽는다 — 앱을 켠 것 말고 사용자가 한 일이 없는데(확인 크리틱 R1 N2).
+fn fetch_one(email: &str, warm: bool) -> Result<ccg_auth::usage::AccountUsage, ccg_auth::net::NetError> {
+    // 하네스 조회기도 **구역 안에서** 돌아야 배선을 잴 수 있다(구역 밖에서 부르면
+    // 하네스가 보는 것은 언제나 "금지 아님"이라 이 문을 걷어내도 초록이다).
+    let go = || {
+        #[cfg(test)]
+        if let Some(f) = test_fetch() {
+            return f(email, warm);
+        }
+        ccg_auth::net::fetch_account_usage(email)
+    };
+    if warm {
+        ccg_auth::rotation::forbid(go)
+    } else {
+        go()
+    }
+}
+
+/// 하네스가 갈아끼우는 조회기(**테스트 전용**). 실 HTTP 없이 "두 창이 겹치면 몇 번
+/// 나가나"를 세려면 성공하는 조회가 있어야 한다 — `CCG_NO_NET`을 켜면 전부 실패해
+/// 캐시가 안 생기고, 그러면 합류를 걷어내도 초록이라 측정 자체가 죽는다.
+#[cfg(test)]
+type TestFetch = fn(&str, bool) -> Result<ccg_auth::usage::AccountUsage, ccg_auth::net::NetError>;
+#[cfg(test)]
+fn test_fetch_slot() -> &'static Mutex<Option<TestFetch>> {
+    static F: std::sync::OnceLock<Mutex<Option<TestFetch>>> = std::sync::OnceLock::new();
+    F.get_or_init(|| Mutex::new(None))
+}
+#[cfg(test)]
+fn test_fetch() -> Option<TestFetch> {
+    *test_fetch_slot().lock().unwrap_or_else(|e| e.into_inner())
+}
+#[cfg(test)]
+fn set_test_fetch(f: Option<TestFetch>) {
+    *test_fetch_slot().lock().unwrap_or_else(|e| e.into_inner()) = f;
 }
 
 /// `auth:accounts-usage(opts?)` → `AccountUsage[]`.
@@ -306,6 +402,9 @@ pub fn accounts_usage(opts: &Value) -> Value {
     let cached_only = opts.get("cachedOnly").and_then(Value::as_bool).unwrap_or(false);
     let warm = opts.get("warm").and_then(Value::as_bool).unwrap_or(false);
     let priority = opts.get("priority").and_then(Value::as_str).unwrap_or("").trim().to_string();
+    // ★R28 ACCT R2(F5) — 「다시 시도」 표식. 사람이 누른 조회만 격리를 넘는다.
+    // `cachedOnly`와 함께 오면 캐시 팔이 이긴다(HTTP 0회의 계약이 더 강하다).
+    let retry = !cached_only && opts.get("retry").and_then(Value::as_bool).unwrap_or(false);
 
     let accounts = ccg_auth::claude::list_accounts();
     if accounts.is_empty() {
@@ -321,41 +420,61 @@ pub fn accounts_usage(opts: &Value) -> Value {
         order.insert(0, p);
     }
     let mut rows: Vec<Option<Value>> = vec![None; emails.len()];
-    let mut dirty = false;
+    let row_of = |d: &ccg_auth::usage::AccountUsage, email: &str| {
+        serde_json::to_value(d).unwrap_or_else(|_| json!({ "email": email }))
+    };
 
     for i in order {
         let email = emails[i].clone();
+        // ★R28 ACCT R2(F5) — 수동 재시도는 **격리를 먼저 푼다**(2분 디스크 TTL은 그대로:
+        // 그 안이면 값이 달라질 일이 없고, 사용자가 보는 화면도 안 바뀐다).
+        if retry {
+            clear_dead(&email);
+        }
         let hit = disk
             .get(&email)
             .filter(|c| (now - c.at) >= 0 && ((now - c.at) as u64) < ccg_auth::usage::ACCT_USAGE_TTL_MS)
             .map(|c| c.data.clone());
         if let Some(d) = hit {
-            rows[i] = Some(serde_json::to_value(&d).unwrap_or_else(|_| json!({ "email": email })));
+            rows[i] = Some(row_of(&d, &email));
             continue;
         }
         // ① 첫 페인트 · ② 격리된 계정 · ③ 워밍인데 토큰이 만료됐다(= 회전이 필요하다).
-        //    셋 다 **조회하지 않고** 캐시로 갈음한다. ③이 M11 R2 C1의 그 문이다.
+        //    셋 다 **조회하지 않고** 캐시로 갈음한다. ③이 M11 R2 C1의 그 문이다
+        //    (그 문이 못 거르는 판 = 서버가 죽인 토큰은 R2에서 [`fetch_one`]이 막는다 — N2).
         let skip = cached_only || is_dead(&email) || (warm && ccg_auth::claude::account_access_token(&email).is_none());
         if skip {
             rows[i] = Some(fallback_row(&disk, &email));
             continue;
         }
+        // ★R2(N1) — 계정별 레인. 다른 창의 훑기가 이 계정을 도는 중이면 여기서 줄을 선다.
+        let lane = sweep_lane(&email);
+        let _held = lane.lock().unwrap_or_else(|e| e.into_inner());
+        // 줄 서 있는 사이 앞 주자가 적어 뒀을 수 있다 — **디스크를 다시 본다**(HTTP 0회).
+        // 이 한 문이 「두 창 = 조회 2벌」을 「두 창 = 조회 1벌」로 만든다.
+        if let Some(c) = fresh_on_disk(&email, now_ms() as i64) {
+            rows[i] = Some(row_of(&c.data, &email));
+            disk.insert(email, c);
+            continue;
+        }
         // 조회 — 429는 `fetch_account_usage`가 Retry-After만큼 자고 **1회만** 재시도한다.
-        match ccg_auth::net::fetch_account_usage(&email) {
+        match fetch_one(&email, warm) {
             Ok(d) => {
                 note_ok(&email);
-                rows[i] = Some(serde_json::to_value(&d).unwrap_or_else(|_| json!({ "email": email })));
-                disk.insert(email, ccg_auth::usage::CachedUsage { at: now, data: d });
-                dirty = true;
+                rows[i] = Some(row_of(&d, &email));
+                // 캐시의 나이는 **받은 시각**이다(훑기 하나가 계정 수 × 1.2초라, 시작 시각을
+                // 쓰면 방금 받은 값이 태어날 때부터 늙어 있다).
+                let entry = ccg_auth::usage::CachedUsage { at: now_ms() as i64, data: d };
+                // ★R2(N1) — **한 줄만 병합해서 즉시 쓴다.** 즉시여야 레인 뒤의 훑기가
+                // 그 값을 보고, 병합이라야 그 사이 남이 적은 값을 안 지운다.
+                ccg_auth::usage::merge_usage_cache(&[(email.clone(), entry.clone())]);
+                disk.insert(email, entry);
             }
             Err(_) => {
                 note_fail(&email);
                 rows[i] = Some(fallback_row(&disk, &email));
             }
         }
-    }
-    if dirty {
-        ccg_auth::usage::write_usage_cache(&disk);
     }
     Value::Array(rows.into_iter().map(|r| r.unwrap_or(Value::Null)).collect())
 }
@@ -647,6 +766,157 @@ mod tests {
         println!("[§1] 워밍이 실제로 물어본 계정 = {dead:?}");
         assert_eq!(dead, vec![emails[1].clone()], "★ 토큰이 만료된 계정에 조회를 걸면 회전이 난다");
         std::env::remove_var("CCG_NO_NET");
+        forget_dead();
+        drop(h);
+    }
+
+    /// ★R28 ACCT R2(F5) — **「다시 시도」는 격리를 넘는다.**
+    ///
+    /// R1은 격리된 계정이 3분 동안 버튼을 눌러도 조회를 안 냈다(크리틱 F5 — 코드 경로
+    /// 확정). 판별식은 격리 장부다: 재시도 조회가 실제로 나갔으면 그 계정이 **다시**
+    /// 실패로 장부에 오른다(`CCG_NO_NET`이라 나가면 반드시 실패한다).
+    /// 건너뛰었다면 장부는 비어 있는 그대로다.
+    #[test]
+    fn a_manual_retry_gets_past_the_isolation_window() {
+        let h = ccg_store::testhome::take("parity-usage-retry");
+        forget_dead();
+        std::env::set_var("CCG_NO_NET", "1");
+        let emails = seed_three(&h, &[]);
+        let target = emails[0].clone();
+        // 연속 2회 실패 = 격리(3분).
+        note_fail(&target);
+        note_fail(&target);
+        assert!(is_dead(&target), "전제: 격리 상태");
+
+        // ① 표식 없는 조회 — 건너뛴다. 장부는 그대로(다시 실패로 오르지 않는다).
+        let _ = accounts_usage(&json!({ "priority": target.clone() }));
+        let fails_plain = { dead_book().lock().unwrap().get(&target).map(|d| d.fails) };
+        println!("[F5] 표식 없는 조회 뒤 fails = {fails_plain:?}");
+        assert_eq!(fails_plain, Some(DEAD_AFTER_FAILS), "★ 격리인데 조회가 나갔다(큐 보호가 깨진다)");
+
+        // ② `retry:true` — 격리를 풀고 실제로 물어본다. `CCG_NO_NET`이라 실패하고
+        //    **처음부터** 다시 센다(fails = 1 = 아직 격리 아님).
+        let rows = accounts_usage(&json!({ "priority": target.clone(), "retry": true }));
+        let fails_retry = { dead_book().lock().unwrap().get(&target).map(|d| d.fails) };
+        println!("[F5] 재시도 뒤 fails = {fails_retry:?} · rows = {rows}");
+        assert_eq!(fails_retry, Some(1), "★ 「다시 시도」가 셸에서 무동작이다 — 조회가 안 나갔다");
+        assert!(!is_dead(&target), "사람이 누른 뒤에는 사다리를 처음부터 센다");
+        // 행은 여전히 셋이고 계정도 안 사라진다(실패는 실패라고 말할 뿐).
+        assert_eq!(rows.as_array().map(Vec::len), Some(3));
+
+        // ③ `cachedOnly`가 함께 오면 캐시 팔이 이긴다(HTTP 0회의 계약이 더 강하다).
+        note_fail(&target);
+        note_fail(&target);
+        let before = { dead_book().lock().unwrap().get(&target).map(|d| d.fails) };
+        let _ = accounts_usage(&json!({ "cachedOnly": true, "retry": true }));
+        let after = { dead_book().lock().unwrap().get(&target).map(|d| d.fails) };
+        assert_eq!(after, before, "★ cachedOnly인데 조회가 나갔다 — 첫 페인트의 계약이 깨진다");
+
+        std::env::remove_var("CCG_NO_NET");
+        forget_dead();
+        drop(h);
+    }
+
+    // ── ★R28 ACCT R2 — N1(창 밖 합류) · N2(워밍은 회전을 시작하지 않는다) ──────
+
+    /// 하네스 조회기의 관측 장부. `(이메일, 그 순간 회전이 금지였나)`.
+    static SPY: Mutex<Vec<(String, bool)>> = Mutex::new(Vec::new());
+
+    fn spy_fetch(email: &str, _warm: bool) -> Result<ccg_auth::usage::AccountUsage, ccg_auth::net::NetError> {
+        SPY.lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push((email.to_string(), ccg_auth::rotation::forbidden()));
+        // 두 훑기가 실제로 겹치도록 왕복을 흉내 낸다(즉답이면 경합이 안 난다).
+        std::thread::sleep(std::time::Duration::from_millis(120));
+        Ok(ccg_auth::usage::AccountUsage { weekly_pct: Some(77), ..ccg_auth::usage::AccountUsage::empty(email) })
+    }
+
+    fn spy_take() -> Vec<(String, bool)> {
+        SPY.lock().unwrap_or_else(|e| e.into_inner()).clone()
+    }
+
+    /// ★R28 ACCT R2(N1) — **두 창이 겹쳐도 조회는 계정당 한 벌.**
+    ///
+    /// §1의 「인플라이트 중복 0」은 렌더러 스토어로 세웠는데, 그 성질은 **한 창 안에서만**
+    /// 참이었다: `#session`·`#mapanel`은 다른 JS 힙이라 스토어를 한 벌씩 들고 각자 훑기를
+    /// 낸다(확인 크리틱 R1 N1). 분당 1~2건이 예산인 엔드포인트에 계정 수 × 2벌이다.
+    ///
+    /// 하네스 조회기를 쓰는 이유: `CCG_NO_NET`을 켜면 조회가 전부 **실패**해 캐시가 안 생기고,
+    /// 그러면 합류를 통째로 걷어내도 이 테스트가 초록이다(= 못이 아니게 된다).
+    #[test]
+    fn two_windows_sweeping_at_once_ask_each_account_only_once() {
+        let h = ccg_store::testhome::take("parity-usage-twowin");
+        forget_dead();
+        let emails = seed_three(&h, &[]);
+        SPY.lock().unwrap().clear();
+        set_test_fetch(Some(spy_fetch));
+
+        // 두 창이 같은 순간 Account 탭/picker를 연 판.
+        let a = std::thread::spawn(|| accounts_usage(&json!({})));
+        let b = std::thread::spawn(|| accounts_usage(&json!({})));
+        let (ra, rb) = (a.join().expect("훑기 A"), b.join().expect("훑기 B"));
+        set_test_fetch(None);
+
+        let hits = spy_take();
+        let asked: Vec<&str> = hits.iter().map(|(e, _)| e.as_str()).collect();
+        println!("[N1] 두 훑기가 실제로 물어본 횟수 = {} · {asked:?}", hits.len());
+        assert_eq!(hits.len(), emails.len(), "★ 창이 둘이면 조회가 두 벌 나갔다: {asked:?}");
+        for e in &emails {
+            assert_eq!(asked.iter().filter(|x| *x == e).count(), 1, "★ {e}를 두 번 물었다");
+        }
+        // 두 훑기 다 **신선한 값**을 받는다(합류한 쪽이 빈 칸이면 화면이 깜빡인다).
+        for (who, rows) in [("A", &ra), ("B", &rb)] {
+            let rows = rows.as_array().expect("배열");
+            assert_eq!(rows.len(), emails.len(), "{who}의 행 수");
+            for (i, e) in emails.iter().enumerate() {
+                assert_eq!(rows[i]["email"], json!(e), "{who}: 응답 순서는 등록 순서다");
+                assert_eq!(rows[i]["weeklyPct"], json!(77), "★ {who}가 합류하고 낡은 값을 받았다");
+                assert!(rows[i].get("stale").is_none(), "★ {who}가 「낡음」 표식을 달고 왔다");
+            }
+        }
+        // 디스크에도 세 줄이 다 신선하게 남는다(나중에 끝난 쪽이 안 덮었다).
+        let disk = ccg_auth::usage::read_usage_cache();
+        for e in &emails {
+            assert_eq!(disk.get(e).and_then(|c| c.data.weekly_pct), Some(77), "★ {e}의 신선한 값이 덮였다");
+        }
+        forget_dead();
+        drop(h);
+    }
+
+    /// ★R28 ACCT R2(N2) — **워밍의 조회는 회전 금지 구역 안에서 돈다.**
+    ///
+    /// R1 보고서의 「워밍이 토큰을 회전시키는 건 구조적으로 불가능」은 사실보다 셌다:
+    /// 워밍의 문은 **로컬 만료 시각만** 보므로, 서버가 이미 죽인 토큰은 그 문을 통과해
+    /// 401/403 → `force_refresh` → `rotate`로 갔다(확인 크리틱 R1 N2). 구역이 그 길을 막는다.
+    ///
+    /// 반대쪽 못도 함께 박는다: **사용자가 직접 연 조회는 구역 밖**이다. 거기까지 막으면
+    /// 만료된 계정의 게이지가 영영 안 낫는다(옛 규약은 그때 교환까지 간다).
+    #[test]
+    fn only_the_warm_sweep_fetches_inside_the_no_rotate_scope() {
+        let h = ccg_store::testhome::take("parity-usage-norotate");
+        forget_dead();
+        let emails = seed_three(&h, &["two@acct.test"]);
+        SPY.lock().unwrap().clear();
+        set_test_fetch(Some(spy_fetch));
+
+        // ① 워밍 — 토큰이 살아 있는 계정만 조회 대상이고, 그 조회는 구역 안이다.
+        let _ = accounts_usage(&json!({ "warm": true }));
+        let warm_hits = spy_take();
+        println!("[N2] 워밍 = {warm_hits:?}");
+        assert_eq!(warm_hits.len(), 1, "전제: 토큰이 산 계정 하나만 묻는다");
+        assert_eq!(warm_hits[0].0, emails[1]);
+        assert!(warm_hits[0].1, "★ 워밍이 회전 금지 구역 **밖에서** 조회했다 — 401이면 그대로 교환 POST다");
+
+        // ② 사용자가 연 조회 — 구역 밖. (①이 캐시를 신선하게 만들었으니 비우고 다시 잰다.)
+        SPY.lock().unwrap().clear();
+        ccg_auth::usage::write_usage_cache(&std::collections::BTreeMap::new());
+        let _ = accounts_usage(&json!({}));
+        let open_hits = spy_take();
+        set_test_fetch(None);
+        println!("[N2] 사용자 조회 = {open_hits:?}");
+        assert_eq!(open_hits.len(), emails.len(), "사용자가 열면 전 계정을 묻는다");
+        assert!(open_hits.iter().all(|(_, banned)| !*banned), "★ 사용자 조회까지 회전을 막으면 만료 계정이 영영 안 낫는다");
+        assert!(!ccg_auth::rotation::forbidden(), "★ 금지가 훑기 밖으로 샜다 — 이후 모든 회전이 죽는다");
         forget_dead();
         drop(h);
     }

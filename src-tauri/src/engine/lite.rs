@@ -41,6 +41,32 @@ fn runtime_ms_to_epoch_secs(rt_now: u64, wall_now_ms: u64, at: Option<u64>) -> V
     }
 }
 
+/// ★R28 ACCT R2(F1) — **이 런타임이 계정을 물고 있는가**(「사용 중」 칩의 생존 판정).
+///
+/// 뜻은 *"이 슬롯이 아직 시체가 아니다"*이다. 슬롯이 있다는 것 자체가 「살아 있는
+/// 세션」이고(대화가 열려 있고 다음 턴이 이 계정을 태운다), 예외는 하나다:
+///
+/// > **상주 상태인데 프로세스가 죽었다** — 밖에서 CLI가 살해되거나 크래시한 판.
+///
+/// 그 자리는 §3이 존재하는 이유가 무너지는 곳이다(아무것도 안 도는데 경고가 켜져 있다).
+/// 확인 크리틱 R1 F1이 「허브에 슬롯 회수가 없어 상주 CLI가 죽어도 칩이 남는다」로 적은
+/// 부수 사실이 이것이고, 같은 라운드의 (b) 지시가 *"상주 CLI가 죽은 슬롯도 같은 규약"*이다.
+///
+/// **턴이 끝나고 스트림을 정상적으로 닫은 `Idle`은 시체가 아니다.** 이 앱의 기본
+/// 종료 정책은 `OnIdle`이라 턴마다 프로세스가 사라진다 — 그것까지 "안 물고 있다"로
+/// 접으면 칩은 턴 중에만 깜빡이고 §3은 사실상 없는 기능이 된다.
+///
+/// (`process_alive`는 *Dead 관측*을 읽는 문이라 워치독의 `Alive` 사다리와 무관하다 —
+///  §5.4-b ⓪. 여기서는 표시값이므로 불변식 11의 대상이 아니다.)
+fn holds_account(state: StateTag, process_alive: bool) -> bool {
+    match state {
+        // 명령을 안 받는 종결 상태 — 다음 tick에 `Idle`로 나간다. 시체로 센다.
+        StateTag::Ended => false,
+        StateTag::Resident => process_alive,
+        _ => true,
+    }
+}
+
 pub fn build<D: CliDriver>(rt: &ChatRuntime<D>, terminal: Terminal, now_ms: u64) -> Value {
     let state = rt.state();
     let ledger = rt.ledger();
@@ -98,17 +124,24 @@ pub fn build<D: CliDriver>(rt: &ChatRuntime<D>, terminal: Terminal, now_ms: u64)
     // 다른 JS 힙이라, 렌더러가 모은 표는 **자기 창의 자리만** 안다. 이 REPLACE는 모든
     // 창에 같은 배열로 나가므로 어느 화면에서 열어도 같은 답이 나온다.
     //
-    // **키가 있으면 살아 있는 런타임이다.** `status.json`에서 재구성한 행
-    // (`ccg_store::status::truth_from_chat_file`)에는 이 키가 없다 — 그게 곧
-    // 「busy 턴 중이거나 상주 CLI 생존」의 구조 신호다(내용으로 추측하지 않는다).
+    // **키가 있으면 살아 있는 런타임이다.** 세 자리가 함께 그 문장을 참으로 만든다:
+    //  1. 여기 — 아래 `holding`(스펙의 *"busy 턴 중이거나 상주 CLI 생존"* 그대로).
+    //  2. `ccg_store::status` — 이 두 키를 **디스크에 안 쓰고, 부팅 장전에서 걷어낸다**
+    //     (R1은 그냥 영속돼, 턴을 한 번 돌린 채팅이 이후 모든 부팅에서 계정을 물었다 —
+    //     확인 크리틱 R1 F1).
+    //  3. `hub::Op::Dispose` — 슬롯을 거두면 마지막 lite에서 계정을 뗀다.
+    //
     // API 키 축은 구독 계정이 없으므로 키를 안 싣는다(그 실행은 남의 한도를 안 태운다).
+    //
+    // ★R2(F1) `holding` — 이 슬롯이 **아직 시체가 아닌가**([`holds_account`] 참고).
+    let holding = holds_account(state, rt.driver_ref().process_alive());
     let account = match rt.identity().billing() {
-        ccg_engine::identity::BillingAxis::Subscription { account, .. } => {
+        ccg_engine::identity::BillingAxis::Subscription { account, .. } if holding => {
             // 빈 문자열은 「계정 미상」이지 계정이 아니다 — 그걸 실으면 목록에 없는
             // 계정 하나가 모든 자리를 물고 있는 것처럼 보인다.
             Some(account.to_string()).filter(|s| !s.is_empty())
         }
-        ccg_engine::identity::BillingAxis::ApiKey { .. } => None,
+        _ => None,
     };
     json!({
         "chatId": rt.chat_id,
@@ -116,9 +149,14 @@ pub fn build<D: CliDriver>(rt: &ChatRuntime<D>, terminal: Terminal, now_ms: u64)
         "account": account,
         // ★R28 ACCT §3 — 이 채팅이 앉은 **보드 자리**(`${boardId}::${slot}`). 「사용 중 ·
         // 2번 자리」의 그 번호가 여기서 나온다. 렌더러가 panelId ↔ chatId를 못 잇기
-        // 때문이다(그 대응의 진실은 보드 스토어이고 셸만 안다 — `panel_id_for_chat`).
+        // 때문이다(그 대응의 진실은 보드 스토어이고 셸만 안다 — `panel_seat_for_chat`).
         // 자리에 안 앉은 채팅(본채팅·추가 창)은 `null`이고, 그쪽 이름표는 렌더러가 안다.
-        "panelId": super::panel_id_for_chat(&rt.chat_id),
+        //
+        // ★R2(F4) — 라우팅용 `panel_id_for_chat`이 아니라 **표시용** `panel_seat_for_chat`을
+        // 쓴다. 마이그레이션이 만든 `default` 보드(`chrome:"ide"` = 본채팅 화면)가 본채팅을
+        // 슬롯 0으로 물고 있어서, R1은 본채팅의 칩도 「사용 중 · 1번 자리」였다 —
+        // 멀티 1번 자리와 문구가 충돌하고 「본채팅」 이름표는 도달 불가였다(크리틱 F4).
+        "panelId": if holding { super::panel_seat_for_chat(&rt.chat_id) } else { None },
         "busy": rt.busy(),
         "bgActive": bg_active,
         "ask": ask,
@@ -158,5 +196,82 @@ mod tests {
         // 이미 지난 시각도 과거로 정직하게 나간다(0으로 접지 않는다).
         let past = runtime_ms_to_epoch_secs(rt_now, wall, Some(2_000));
         assert_eq!(past.as_f64(), Some(1_754_999_990.0));
+    }
+
+    /// 프로세스 생존만 조종하는 최소 드라이버 — `holding` 판정의 대조군.
+    struct Fake {
+        alive: bool,
+    }
+    impl CliDriver for Fake {
+        fn spawn(&mut self, _spec: &ccg_engine::driver::SpawnSpec) -> std::io::Result<()> {
+            Ok(())
+        }
+        fn send(&mut self, _line: Value) {}
+        fn close_input(&mut self) {}
+        fn kill(&mut self) {}
+        fn process_alive(&self) -> bool {
+            self.alive
+        }
+        fn poll_frames(&mut self, _now: ccg_engine::clock::Millis) -> Vec<Value> {
+            vec![]
+        }
+    }
+
+    fn runtime(alive: bool) -> ccg_engine::runtime::ChatRuntime<Fake> {
+        use ccg_engine::identity::*;
+        let raw = RawIdentity {
+            engine: RawEngine { kind: EngineKind::Claude, model: "opus".into(), effort: EffortId::Xhigh, codex_account: None },
+            billing: RawBilling {
+                kind: BillingKind::Subscription,
+                account: Some("one@ccg.test".into()),
+                drop_env_key: Some(false),
+            },
+            cwd: "C:\\Code".into(),
+            add_dirs: vec![],
+            mode: ModeId::Auto,
+            system_prompt: None,
+            output_style: None,
+            tools: RawTools::default(),
+        };
+        ChatRuntime::new(
+            "c-a",
+            raw,
+            IdentityDefaults::default(),
+            ccg_engine::clock::VirtualClock::new(),
+            Fake { alive },
+        )
+        .expect("픽스처 정체성")
+    }
+
+    /// ★R28 ACCT R2(F1) — **살아 있는 슬롯은 물고, 시체는 안 문다.**
+    ///
+    /// 확인 크리틱 R1 F1의 부수 사실: 「상주 CLI가 죽어도 `rt.identity()`는 살아 있어
+    /// 칩이 남는다」. 그 한 칸만 판다 — 턴을 마치고 스트림을 정상적으로 닫은 `Idle`은
+    /// 시체가 아니다(이 앱의 기본 정책이 `OnIdle`이라 턴마다 프로세스가 사라진다.
+    /// 그것까지 접으면 칩이 턴 중에만 깜빡이고 §3이 사라진다).
+    #[test]
+    fn only_a_dead_resident_stops_holding_the_account() {
+        use ccg_engine::state::StateTag as S;
+        // 상주인데 프로세스가 죽었다 = 밖에서 CLI가 살해된 판 → 유일한 시체.
+        assert!(!holds_account(S::Resident, false), "★ 죽은 상주 CLI가 계정을 물고 있다");
+        assert!(holds_account(S::Resident, true), "★ busy 아닌 상주-생존도 「사용 중」이다");
+        // 턴을 마친 Idle(프로세스 없음)은 살아 있는 세션이다 — 다음 턴이 이 계정을 태운다.
+        assert!(holds_account(S::Idle, false), "★ 턴 사이의 정상 Idle을 시체로 셌다");
+        for s in [S::Starting, S::Streaming, S::AwaitingUser, S::HeldResult, S::Interrupting, S::Terminating] {
+            assert!(holds_account(s, false), "{s:?}는 턴 중이다");
+        }
+        assert!(!holds_account(S::Ended, true), "Ended는 다음 tick에 사라진다");
+    }
+
+    /// 그 판정이 실제 lite에 실리는가 — 계정·자리가 **함께** 뜨고 함께 떨어진다.
+    #[test]
+    fn the_account_key_rides_the_lite_only_while_the_slot_holds_it() {
+        let rt = runtime(true);
+        let v = build(&rt, Terminal::Done, 1_000);
+        println!("[F1] 살아 있는 슬롯 = {v}");
+        assert_eq!(v["account"], json!("one@ccg.test"));
+        assert_eq!(v["status"], json!("done"), "종결 상태는 그대로다(사이드바 점 색)");
+        // 보드가 없는 픽스처라 자리는 없음 — 본채팅 이름표는 렌더러가 붙인다(F4).
+        assert!(v["panelId"].is_null());
     }
 }

@@ -168,8 +168,13 @@ Anthropic·Codex 두 축 모두 같은 경로(`switchAccount('account'|'codexAcc
 |---|---|
 | `cargo test -p ccg-auth` | **82 + 14 + 2 + 1 통과** (새 3건: 파생값·마이그레이션 왕복·정렬 무회귀) |
 | `cargo test -p agentcodegui --features custom-protocol` | **133 통과** (새 4건: cachedOnly·priority·warm·격리) |
-| `node scripts/poc-acct-store.mjs` | **16 항목 전부 통과** (신규 하네스) |
+| `node scripts/poc-acct-store.mjs` | ~~**16 항목 전부 통과**~~ (신규 하네스) |
 | `npm run typecheck` · `typecheck:app` | 3종 초록 |
+
+★ **이 표에 틀린 수가 둘 있다**(확인 크리틱 R1이 잡았다. 지우지 않고 남긴다 — 어떤 식으로
+틀렸는지가 다음 라운드의 재료다): `ccg-auth`는 `tests/t1_list_edit_race.rs` 1건이 빠져
+합계가 **100**이었고, `poc-acct-store.mjs`는 `ok` 줄이 16이 아니라 **18**이었다.
+`ccg-store` 크레이트(76)는 아예 안 셌다. R2의 검증표는 크레이트별로 따로 센다.
 
 **격리**: Rust 테스트는 전부 `ccg_store::testhome::take()` 증표 안. 실계정 토큰은
 한 번도 안 읽었고 실 HTTP는 0건이다(`CCG_NO_NET=1` + 합성 계정).
@@ -220,3 +225,244 @@ Anthropic·Codex 두 축 모두 같은 경로(`switchAccount('account'|'codexAcc
 **경계 밖**: `src-tauri/src/engine/lite.rs`·`ident.rs`(엔진 글루). §3의 판정 소스와
 §4의 파급 전수라 명세(`r28-followup.md` §3 「필요시 Rust 세션 상태 노출」·§4 「파급 확인」)가
 가리킨 자리다. 각각 hunk 하나씩이고 다른 갈래의 변경과 겹치지 않는다.
+
+---
+
+# R2 — 확인 크리틱 R1 수정 (2차 독립 패스 판정 반영)
+
+판정문: `docs/critic/r28b-acct-critic-r1.md`(1차 + 「2차 독립 패스」절).
+불합격 사유 다섯(F1·F2·F3·F4·F5) + 양쪽 판정이 못 본 둘(N1·N2).
+
+## 0. 한 줄 요약
+
+R1이 틀린 방식은 하나였다: **성질을 주석에 적고 코드로는 안 세웠다.**
+「키가 있으면 살아 있는 런타임」도, 「워밍은 회전을 유발할 수 없다」도, 「두 표면 중복
+0」도 문장이었지 불변식이 아니었다. R2는 그 문장 셋을 각각 **강제하는 자리**에 옮겨
+심고, 그 자리가 실제로 있는지를 **프로세스 경계 밖에서**(실 exe) 다시 쟀다.
+
+## 1. F1 — 「사용 중」이 재시작 뒤 영원히 켜져 있다
+
+**기제**: `status::set()`이 `lite::build`의 결과를 통째로 메모리 맵에 넣고 `flush()`가 그
+맵을 그대로 썼다 → `chats-v3/status.json`에 `account`·`panelId`가 영속되고, `load_boot`는
+`busy`·`ask`·`bgActive`·`status`·`unread`만 강제해 두 키를 **그대로 되살렸다**. 턴을 한 번이라도
+돌린 채팅은 이후 **모든 부팅**에서 그 계정을 「사용 중」으로 만들었다.
+
+**고친 자리 넷** — 크리틱 지시 (1)(2)(3) 그대로:
+
+| # | 자리 | 무엇 |
+|---|---|---|
+| ⑴ | `ccg_store::status::flush` | `RUNTIME_ONLY_KEYS`(=`account`·`panelId`)를 **디스크 직렬화에서 뺀다**(재발 금지). 메모리 맵에는 남는다 — §3 브로드캐스트가 그 값을 싣는 게 기능이다 |
+| ⑴' | `ccg_store::status::load_boot` | **읽을 때도 걷어낸다**. R1이 이미 써 둔 홈의 답이다(쓰기만 막으면 그 홈은 영원히 문다) |
+| ⑵ | `hub::Op::Dispose` → `status::clear_runtime` | 런타임을 거두면 **마지막 lite를 계정 없이 다시 앉힌다**. 상태(`done`)는 남긴다(사이드바 점 색) |
+| ⑵' | `engine/lite.rs::holds_account` | 생존 판정 = *busy 턴 중 **이거나** 상주 CLI 생존*. 밖에서 죽은 상주 CLI는 계정을 안 싣는다. 턴 사이의 정상 `Idle`은 시체가 아니다(기본 정책이 `OnIdle`이라 그것까지 접으면 칩이 턴 중에만 깜빡인다) |
+
+**⑶ 실 exe 회귀 못**(`scripts/poc-acct-live.mjs` A) — 크리틱이 요구한 그 순서:
+
+```
+살아 있는 런타임 = {"chatId":"c-a","status":"done","account":"one@ccg.test","panelId":null}
+설정 ▸ Account 배지 = ["기본 · 맨 위","사용 중 · 첫 채팅"]
+종료 뒤 status.json(209B) = "account" 0건
+★ 그 파일에 account·panelId를 도로 끼워 넣어 **R1이 써 둔 홈**을 만든 뒤 재기동:
+   재기동 status = [{"chatId":"c-a","status":"done","account":null,"panelId":null}]
+   재기동 배지   = ["기본 · 맨 위"]   ← 「사용 중」 0건 (오염된 입력 = true)
+```
+
+## 2. F2 — 되돌리기가 화면만 되돌린다
+
+**기제**(에코 가드의 구조적 비대칭): `legacy_bridge::renderer_authored`는 *"셸이 마지막으로
+**투영한** 지문과 다른가"*로 판정했다. 되돌리기가 복원하는 값은 정의상 마지막 투영값과
+같아서 **에코로 분류**됐다 — 전환(A→B)은 지문이 달라 통과하는데 되돌리기(B→A)만 막힌다.
+
+**고친 것**: `PROJECTED`의 뜻을 *"마지막으로 내보낸 값"* → *"마지막으로 **합의한** 값"*으로
+넓힌다. 흡수도 합의이므로 `absorb_legacy`가 채택한 지문을 되적는다(한 줄).
+셸이 저자인 턴 중 폴백은 흡수를 안 거쳐 `PROJECTED`를 안 건드리므로 R2 가드(P3 재발)는 그대로다.
+
+**★ 회귀 못의 모양** — 크리틱이 별표로 못 박은 조건을 그대로 지켰다: `chats:get`이 준
+**사본을 그대로 되보낸다**(`legacy_bridge_tests.rs`
+`undoing_an_account_switch_reaches_the_identity_not_just_the_screen`).
+손으로 만든 payload는 지문이 애초에 달라 에코 가드를 늘 통과하므로 **이 결함을 영원히 못 잡는다**.
+
+못이 진짜인지 이 패스에서 직접 확인했다(고친 줄만 잠시 끄고 재실행):
+
+```
+[F2] 되돌린 뒤 디스크 identity(수정 끔) = billing.account = "two@ccg.test"
+     assertion failed: ★ 되돌리기가 화면만 되돌렸다 — 재시작하면 실수한 계정으로 실행된다
+[F2] 수정 켬 → "u0@x.com"(원 계정)
+```
+
+실 exe(B 시나리오): 전환 → 되돌리기 → **턴 없이** 재시작 → `RAN-one_ccg.test`(원 계정).
+
+## 3. F3 — 마이그레이션이 첫 세션에 안 보인다 (크기 정정 반영)
+
+R1은 이관을 `ccg_auth`의 `list_accounts`/`default_account_email`이 지날 때만 돌렸는데, 화면
+목록(`ipc/system.rs`)과 실행 정체성(`engine/ident.rs::defaults`)은 `accounts.json`을 **직접**
+읽어 그 문을 안 지난다. R2는 셋을 함께 잠근다: `main()`이 창·IPC보다 **먼저**
+`ensure_default_migrated()`(양 축) + 두 목록·`defaults()`도 읽기 직전에 같은 문(프로세스당 1회 CAS).
+
+크리틱의 크기 정정(「첫 세션 내내」가 아니라 「부팅 후 최대 60초 창」)은 **판정으로 받는다** —
+자기 치유가 있어도 그 60초에 사용자가 새 채팅을 열면 남의 한도를 태우고 프롬프트 캐시가 식는다.
+
+실 exe(C 시나리오, `defaultEmail`=3번째): 스토어 순서·**그 세션의** 목록·새 채팅 칩·실제 실행
+넷 다 `three@ccg.test`.
+
+## 4. F4 — 본채팅이 「1번 자리」로 나온다
+
+마이그레이션이 만드는 `default` 보드는 `count:1`일 때 `chrome:"ide"`(=본채팅 화면)이고 그
+슬롯 0이 본채팅을 문다. R1은 **라우팅용** `panel_id_for_chat`을 표시에도 써서 본채팅의
+`panelId`가 `default::0`이었고, 렌더러가 자리 번호를 이름표보다 먼저 고르므로 칩이
+「사용 중 · 1번 자리」였다 — 멀티 첫 자리와 문구가 충돌하고 `MAIN_SLOT_NAME`은 도달 불가.
+
+**고친 것**: **표시용** `engine::panel_seat_for_chat`(`chrome:"ide"` 보드는 자리로 안 센다).
+라우팅(`ma:event` 봉투)은 **일부러 안 건드렸다** — 그쪽 질문은 "이 봉투를 누가 듣나"라 판정이 다르다.
+
+하네스가 R1에서 통과했던 이유도 적어 뒀다(`poc-acct-store.mjs` E절 주석): 본채팅 픽스처가
+`panelId: null`이었는데 **실 셸은 그런 행을 안 냈다**. 이제 실 exe가 그 값을 잰다(A: `panelId = null`).
+
+## 5. F5 — 격리 3분 동안 「다시 시도」가 무동작
+
+`skip = cached_only || is_dead(&email) || …`에 사람이 눌렀다는 사실을 실을 인자가 없었다
+(`refreshUsage`가 보낸 건 `{priority, warm}`뿐 — `force`는 렌더러 TTL만 넘었다).
+
+**고친 것**: `AccountsUsageOpts.retry` 신설 → 셸이 그 계정의 격리를 **먼저 푼다**.
+격리는 벌이 아니라 큐 보호용 우회이므로 사람이 기다리기로 한 조회까지 막을 이유가 없다.
+`cachedOnly`와 함께 오면 캐시 팔이 이긴다(HTTP 0회의 계약이 더 강하다).
+렌더러 짝: **수동 재시도는 워밍·자동 갱신에 합류하지 않는다**(그 답에는 사용자가 보려는
+계정이 비어 있다). 재시도끼리는 그대로 합류한다.
+
+```
+[F5] 표식 없는 조회 뒤 fails = Some(2)   ← 격리라 안 나갔다(큐 보호 유지)
+[F5] 재시도 뒤 fails = Some(1)           ← 실제로 나갔고 사다리를 처음부터 센다
+실 exe(D): 「다시 시도」 클릭 → 조회 3건 → 4건, 마지막 봉투 = {"priority":"one@ccg.test","retry":true}
+```
+
+## 6. N1 — 「두 표면 중복 0」은 한 창 안에서만 참이었다 (크리틱 신규 · 최대 격차)
+
+**기제**: `#session`(추가 채팅 창)·`#mapanel`(팝아웃)은 같은 번들의 **다른 OS 창 = 다른 JS
+힙**이라 `lib/accounts.ts`를 한 벌씩 들고, 그 창들도 picker를 그린다. 셸
+`accounts_usage`에는 인플라이트 합류가 없고 디스크 캐시를 루프 **앞에서 한 번**만 읽는다 →
+두 창이 겹치면 ⑴ 조회가 **계정 수 × 2벌**(분당 1~2건이 예산인 엔드포인트다),
+⑵ 나중에 끝난 쪽의 `write_usage_cache`가 자기 **낡은 스냅샷**으로 상대의 신선한 값을 덮는다.
+
+**고친 것 — 합류의 진실을 셸로 내린다.** 렌더러에는 창 밖을 세는 방법이 구조적으로 없다.
+
+| 자리 | 무엇 |
+|---|---|
+| `ipc/parity/usage.rs::sweep_lane` | 계정별 레인. 다른 창의 훑기가 그 계정을 도는 중이면 **줄을 선다**(`net`의 토큰 레인과 다른 축 — 저쪽은 이중 회전, 여기는 조회 중복) |
+| 같은 파일 `fresh_on_disk` | 레인에서 깨어나 **디스크를 다시 본다** → 앞 주자의 값이 신선하면 HTTP 0회 |
+| `ccg_auth::usage::merge_usage_cache` | 캐시가 **줄 단위 병합**이 됐다. 더 오래된 `at`이 새 값을 덮지 않는다. `write_usage_cache`(통째 쓰기)는 초기화·시드 전용으로 남는다 |
+| `engine/acct_switch.rs` | 같은 파일에 쓰는 **또 하나의 주체**(M11 자동 전환 워커)도 병합으로 바꿨다 — 이쪽만 두면 같은 사고가 남는다 |
+| `lib/accounts.ts` 주석 | 「중복 0」의 **경계**를 적었다: 이 합류는 IPC 왕복을 아끼는 앞단이고, HTTP 한 벌의 근거는 셸 레인이다 |
+
+**실측(레인을 잠시 끄고 잰 대조군)** — 계정 3개 × 두 창 동시 훑기:
+
+```
+레인 없음: 6회  ["one","one","two","two","three","three"]   ← 크리틱이 코드로 짚은 그 값
+레인 있음: 3회  (계정당 정확히 1회, 두 훑기 다 stale 표식 없는 신선한 값을 받는다)
+```
+(`ipc::parity::usage::tests::two_windows_sweeping_at_once_ask_each_account_only_once`
+ — 하네스 조회기를 쓰는 이유는 `CCG_NO_NET`을 켜면 조회가 전부 **실패**해 캐시가 안 생기고,
+ 그러면 합류를 통째로 걷어내도 초록이라 못이 못이 아니게 되기 때문이다.)
+
+덮어쓰기 쪽 못은 `ccg_auth::usage::tests::merging_the_cache_keeps_the_other_sweeps_fresh_rows`:
+같은 재료로 **통째 쓰기 대조군**을 만들어 "그건 실제로 지운다"까지 같은 테스트 안에 남겼다.
+
+렌더러 쪽에는 반대 방향의 못을 박았다(`poc-acct-store.mjs` C4): **모듈을 한 벌 더 들면 조회도
+한 벌 더 나간다**(실측 2회). 「창끼리도 합쳐진다」고 적으면 셸 레인을 걷어내도 초록이 된다.
+
+## 7. N2 — 「워밍은 회전을 유발할 수 없다」가 사실보다 셌다 (크리틱 신규)
+
+`warm`의 문은 **로컬 만료 시각만** 본다. *"시간상 살아 있는데 서버가 이미 죽인"* 토큰은 그
+문을 통과하고, `fetch_account_usage`가 401/403 → `force_refresh` → `rotate`로 간다. 성공하면
+그 순간 옛 refresh 토큰이 **서버에서 죽는다** — 사용자가 한 일은 앱을 켠 것뿐이다.
+
+**고친 것**: `ccg_auth::rotation` — **스레드 로컬 회전 금지 구역**. 회전으로 가는 문
+**둘 다**(`access_token`·`force_refresh`)가 같은 관문(`rotation_gate`)을 지나
+`NetError::RotateForbidden`으로 착지한다. 호출부마다 인자를 늘리는 방식은 하나를 빠뜨리는
+순간 성질이 조용히 사라져서, 구역으로 팠다. 워밍 조회만 그 구역 안에서 돈다
+(`ipc/parity/usage.rs::fetch_one`).
+
+스레드 로컬인 이유: 사용자가 Account 탭을 직접 열어 부른 조회는 **구역 밖**이라 옛 규약대로
+교환까지 간다. 거기까지 막으면 만료된 계정의 게이지가 영영 안 낫는다.
+
+```
+[N2] 구역 밖                = Some(Disabled)                   ← 교환을 *시도*했다(전송에서 거절)
+[N2] 구역 안                = Some(RotateForbidden("warm@x"))  ← 시작조차 안 한다
+[N2] force_refresh(구역 안) = Some(RotateForbidden("warm@x"))  ← 401 경로도 같은 관문
+[N2] 워밍 훑기   = [("two@acct.test", banned=true)]            ← 셸 배선
+[N2] 사용자 조회 = 세 계정 전부 banned=false
+```
+못 둘: `ccg_auth::net::tests::a_no_rotate_scope_stops_the_exchange_before_it_starts`
+(`--features net`) · `ipc::parity::usage::tests::only_the_warm_sweep_fetches_inside_the_no_rotate_scope`.
+정책 자체(중첩·패닉·스레드 로컬)의 못은 `ccg_auth::rotation::tests`에 따로 있다(기본 빌드).
+
+## 8. 검증 — 크레이트별로 따로 셈
+
+| 무엇 | 결과 |
+|---|---|
+| `npm run typecheck`(node·web) + `typecheck:app` | **3종 초록** |
+| `cargo test -p ccg-auth` (기본) | **102 통과 · 0 실패** (lib 84 + 0 + 0 + 14 + 2 + 1 + 1 + 0). 크리틱의 「100」이 이 라운드 전 값이고, 늘어난 둘이 `rotation`·`merge_usage_cache` |
+| `cargo test -p ccg-auth --features net` | **119 통과 · 0 실패** (lib 94 + 1 + 6 + 14 + 2 + 1 + 1). N2의 net 못이 여기 있다 — 기본 빌드에는 `net.rs`가 컴파일조차 안 된다 |
+| `cargo test -p ccg-store` | **79 통과 · 0 실패** (크리틱 기준 76 + F1 2건 + F2 1건) |
+| `cargo test -p agentcodegui` | **143 통과 · 0 실패** (크리틱 기준 133 + F4·F5·N1·N2 등. 이 라운드 중 다른 갈래가 착지해 그쪽 몫도 섞여 있다) |
+| `node scripts/poc-acct-store.mjs` | **25 항목 전부 통과**(`ok` 줄 카운트). R1 보고서의 「16」은 틀렸다 — 크리틱이 잡은 그대로다 |
+| `node scripts/poc-limit-resume.mjs` | **164 통과 · 0 실패** (M11 경로 무회귀) |
+| `node scripts/poc-store-fanout.mjs` | **10 항목 전부 통과** |
+| `node scripts/poc-acct-live.mjs`(**실 exe**) | **16 항목 전부 통과** — A(F1·F4) 6 · B(F2) 3 · C(F3) 4 · D(F5) 3 |
+
+**격리**: `CCG_HOME`은 전부 `%TEMP%/ccg-acct-live-r2` · `CCG_NO_NET=1` + 합성 계정
+(`ccg-auth-probe seed`) → **실 HTTP 0건 · 실계정 토큰 열람 0회** · 종료는 자기가 spawn한 PID
+트리만(`killTree`) — 이름 기반 kill 0회 · `CARGO_TARGET_DIR=target-acct`(이 갈래 전용) ·
+CDP 포트 9486~9491(다른 갈래와 겹치지 않게) · 기준 결과 파일은 하나도 안 덮었다
+(새 파일 `docs/critic/acct-live-r2.json`).
+
+### 하네스 자체의 결함도 하나 고쳤다
+
+R1의 `poc-acct-live.mjs`는 계측(`window.__ipc`)을 `Runtime.evaluate` **한 방**으로 심었다.
+부팅 직후엔 `true`인데 측정 시점엔 사라져 있었다 — 그 사이 문서가 한 번 갈린다.
+`Page.addScriptToEvaluateOnNewDocument` + 측정 직전 `ensureIpc()`로 고쳤고,
+`armStatus`도 `__TAURI_INTERNALS__`가 뜬 뒤에 구독하도록 바꿨다. (첫 주행에서 A·D
+시나리오가 **제품이 아니라 하네스 때문에** 죽었다 — 그걸 「실패」로 적었으면 오경보고,
+안 돌리고 「초록」이라 적었으면 두 번째 헛초록이었다.)
+
+## 9. 남은 리스크
+
+- **두 창 동시 조회를 실 exe로는 재현 못 했다.** 셸 레인의 실측은 프로세스 안 두 스레드다
+  (크리틱의 N1도 「코드 확정」이었다). 창을 실제로 둘 띄우는 하네스가 다음 라운드의 값이다.
+- **N2의 401 경로는 실 서버 없이 재현 불가**다. 여기서 잰 것은 *"교환을 시작하는가"*이고
+  (구역 밖 `Disabled` = 전송까지 갔다 / 구역 안 `RotateForbidden` = 그 앞에서 멈췄다),
+  401 응답 자체는 안 만들었다. 실 HTTP 0건 규율과 맞바꾼 자리다.
+- **추가 채팅 창(`SessionWindow`)의 §3 칩은 여전히 없다**(R1의 「알려진 한계」 그대로).
+  그 창은 자기 chatId를 렌더러에서 모른다 — 거짓 칩 대신 침묵을 고른 선택이고, 고치려면
+  창별 chatId 노출이 먼저다.
+- `RotateForbidden`은 `acct_switch::transient`에서 **일시 실패**로 센다. 그 워커는 구역 안에서
+  안 돌아 실제로는 도달 불가지만, 도달하면 다음 tick에 다시 묻는다(= 조용히 안 사라진다).
+- 조회 성공마다 `usage-cache.json`을 한 번씩 쓴다(훑기당 최대 계정 수). 원자 저장 + 수백 바이트라
+  1200ms 게이트 옆에서는 무시할 비용이지만, 통째 쓰기 1회에서 늘어난 것은 사실이다 —
+  즉시 쓰지 않으면 레인 뒤의 훑기가 그 값을 못 본다(그게 N1의 합류다).
+
+## 10. R2에서 만진 파일
+
+**Rust**
+- `crates/ccg-auth/src/rotation.rs` (신규) — N2 회전 금지 구역 + 정책 못
+- `crates/ccg-auth/src/net.rs` — `RotateForbidden` + `rotation_gate`(회전 문 둘 다) + N2 못
+- `crates/ccg-auth/src/usage.rs` — `merge_usage_cache` + N1 못
+- `crates/ccg-auth/src/{claude,codex}.rs` — `ensure_default_migrated` 공개(F3)
+- `crates/ccg-auth/src/lib.rs` — 모듈 등록
+- `crates/ccg-store/src/status.rs` — F1 `RUNTIME_ONLY_KEYS`·`clear_runtime` + 못 2
+- `crates/ccg-store/src/legacy_bridge.rs`(+`_tests.rs`) — F2 합의 지문 + 못 1
+- `src-tauri/src/ipc/parity/usage.rs` — F5 `retry` · N1 레인·병합 · N2 배선 + 못 3
+- `src-tauri/src/engine/acct_switch.rs` — N1 병합 쓰기 · `transient` 새 변형
+- `src-tauri/src/engine/lite.rs` — F1 `holds_account` · F4 표시용 자리 + 못 3
+- `src-tauri/src/engine/mod.rs` — F4 `panel_seat_for_chat` + 못 1
+- `src-tauri/src/engine/hub.rs` — F1 `Dispose`에서 계정 뗌
+- `src-tauri/src/engine/ident.rs` · `src-tauri/src/ipc/system.rs` · `src-tauri/src/main.rs` — F3
+
+**렌더러 / 계약면**
+- `app/src/lib/accounts.ts` — F5 재시도 합류 규칙 · N1 경계 주석
+- `src/shared/protocol.ts` — `retry` 옵션 · `account`/`panelId`의 뜻 갱신
+
+**문서 / 하네스**
+- `docs/renderer-divergence.md` — §6.5·§6.6·§6.7에 R2 정정 5건
+- `scripts/poc-acct-store.mjs` — C4(합류의 경계)
+- `scripts/poc-acct-live.mjs` (신규) — 실 exe 회귀 못 4 시나리오
+- `docs/parity-fix-acct-r1.md` (이 절)

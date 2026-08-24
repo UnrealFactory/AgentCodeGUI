@@ -762,7 +762,18 @@ pub fn migrate_default_to_top() -> bool {
     .unwrap_or(false)
 }
 
-fn ensure_default_migrated() {
+/// ★R28 ACCT R2(F3) — **부팅에서 한 번, 첫 목록 조회보다 먼저** 부르는 문.
+///
+/// R1은 이 함수가 사적이었고, 실제로 트리거하는 것은 `list_accounts`·`default_account_email`
+/// 뿐이었다. 그런데 화면이 읽는 목록은 `ipc/system.rs`가 `accounts.json`을 **직접** 읽어
+/// 만들고, 실행 정체성의 기본도 `engine/ident.rs::defaults()`가 직접 읽는다 — 둘 다 이
+/// 함수를 안 지난다. 결과: 2.6.2 승계 판(`defaultEmail`이 3번째)에서 **첫 세션 내내**
+/// 화면·새 채팅이 옛 순서의 1번째 계정을 썼다. §4가 막겠다던 바로 그 사고다
+/// (확인 크리틱 R1 F3 — 재시작해야 3번째가 됐다).
+///
+/// **프로세스당 한 번**이라 부팅에서 불러 두면 그 뒤 모든 경로가 마이그레이션된 순서를
+/// 본다. 여러 번 불러도 CAS 한 번 이상은 아무 일도 안 한다.
+pub fn ensure_default_migrated() {
     use std::sync::atomic::Ordering;
     if DEFAULT_MIGRATED.swap(true, Ordering::SeqCst) {
         return;
