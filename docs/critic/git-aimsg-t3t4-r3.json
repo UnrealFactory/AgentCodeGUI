@@ -1,0 +1,52 @@
+{
+  "at": "2026-08-24T11:32:48.977Z",
+  "exe": "C:\\Code\\AgentCodeGUI\\target-t3t4\\release\\agentcodegui.exe",
+  "steps": {
+    "flagProbe": {
+      "bin": "C:\\Users\\User\\.agentcodegui\\engines\\0.3.241\\node_modules\\@anthropic-ai\\claude-agent-sdk-win32-x64\\claude.exe",
+      "bogus": {
+        "accepted": false,
+        "out": "error: unknown option '--ccg-bogus-flag'\n"
+      },
+      "turns": {
+        "accepted": true,
+        "out": ""
+      }
+    },
+    "result": {
+      "ok": true,
+      "subject": "한도 재검증을 엔진에 배선한다",
+      "body": "조회 실패를 「풀림」으로 읽던 자리를 없앴다.\n대신 재확인 사다리를 붙였다."
+    },
+    "argv": [
+      "--output-format",
+      "stream-json",
+      "--verbose",
+      "--input-format",
+      "stream-json",
+      "--effort",
+      "low",
+      "--model",
+      "sonnet",
+      "--permission-mode",
+      "default",
+      "--max-turns",
+      "1"
+    ],
+    "stdinHead": "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"아래 diff로 git 커밋 메시지를 작성해줘.\\n\\n[이 저장소의 최근 커밋 제목들 — 이 톤과 형식을 그대로 따라줘]\\nM12 R1 — 설치본을 만든다\\nM11 R1 — 대기표를 세운다\\n\\n[출력 형식 — 아래 마커 블록 하나만 출력한다. 마커 밖에는 어떤 글자도 쓰지 마라 (인사·설명·코드펜스 금지)]\\n<commit>\\n제목 한 줄 (한국어, 72자 이내, 마침표 없이)\\n\\n(선택) 빈 줄 하나 뒤 본문 2~4줄 — 변경이 여러 갈래일 때만\\n</commit>\\n\\n[diff]\\n### a.txt (+2 −1)\\n-둘째 줄\\n+바뀐 둘째 줄\\n+셋째 줄 추가\"}]}}\n",
+    "failures": {
+      "noFiles": {
+        "ok": false,
+        "error": "커밋에 담긴 파일이 없어요"
+      },
+      "noRepo": {
+        "ok": false,
+        "error": "Git 저장소가 아니에요"
+      }
+    },
+    "appLog": "[store] chats-v3 마이그레이션: {\"ok\":true,\"migratedAt\":1787571170607.0,\"elapsedMs\":3.0,\"backupDir\":\"C:\\\\Code\\\\AgentCodeGUI\\\\.poc-home-aimsg-t3t4\\\\backup-2.6.2-1787571170607\",\"counts\":{\"chats\":0,\"maSessions\":0,\"maPanels\":0,\"sessionChats\":0,\"talkAbsorbed\":0,\"carried\":0,\"keptV3\":0,\"keptV3Boards\":0,\"total\":0,\"messages\":0,\"boards\":1},\"idMap\":{},\"order\":[],\"activeChatId\":\"\",\"boardOrder\":[\"default\"],\"activeBoardId\":\"default\",\"activeSessionId\":\"\",\"btw\":{\"rewritten\":0,\"dropped\":0},\"holdMoved\":0,\"sourceIndexOrders\":{\"chats\":[],\"multiAgent\":[],\"sessionChats\":[]},\"warnings\":[]}\n"
+  },
+  "findings": [],
+  "pass": 20,
+  "fail": 0
+}

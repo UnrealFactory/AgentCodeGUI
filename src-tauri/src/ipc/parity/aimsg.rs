@@ -385,7 +385,7 @@ fn run_once(
     while started.elapsed() < DEADLINE {
         match rx.recv_timeout(Duration::from_millis(250)) {
             Ok(line) => {
-                if let Some(v) = serde_json::from_str::<Value>(&line).ok() {
+                if let Ok(v) = serde_json::from_str::<Value>(&line) {
                     if let Some(got) = harvest(&v) {
                         text = got;
                     }

@@ -1,5 +1,5 @@
 {
-  "at": "2026-08-24T11:17:49.821Z",
+  "at": "2026-08-24T11:32:55.249Z",
   "exe": "C:\\Code\\AgentCodeGUI\\target-t3t4\\release\\agentcodegui.exe",
   "watchSec": 110,
   "long": false,
@@ -16,7 +16,7 @@
         "engine": "claude",
         "identityEngine": "claude",
         "autoResume": true,
-        "nowMs": 3359,
+        "nowMs": 3305,
         "hold": {
           "resetsAt": 0,
           "ready": false,
@@ -400,7 +400,7 @@
         "hold": {
           "resetsAt": 0,
           "ready": false,
-          "dueAt": 105097,
+          "dueAt": 105088,
           "probes": 1,
           "attempts": 0,
           "autoPaused": false
@@ -421,7 +421,7 @@
         "hold": {
           "resetsAt": 0,
           "ready": false,
-          "dueAt": 105097,
+          "dueAt": 105088,
           "probes": 1,
           "attempts": 0,
           "autoPaused": false
@@ -442,7 +442,7 @@
         "hold": {
           "resetsAt": 0,
           "ready": false,
-          "dueAt": 105097,
+          "dueAt": 105088,
           "probes": 1,
           "attempts": 0,
           "autoPaused": false
@@ -463,7 +463,7 @@
         "hold": {
           "resetsAt": 0,
           "ready": false,
-          "dueAt": 135131,
+          "dueAt": 135121,
           "probes": 2,
           "attempts": 0,
           "autoPaused": false
@@ -484,7 +484,7 @@
         "hold": {
           "resetsAt": 0,
           "ready": false,
-          "dueAt": 135131,
+          "dueAt": 135121,
           "probes": 2,
           "attempts": 0,
           "autoPaused": false
@@ -500,11 +500,11 @@
       }
     ],
     "stdinHead": "",
-    "appLog": "[store] chats-v3 마이그레이션: {\"ok\":true,\"migratedAt\":1787570270234.0,\"elapsedMs\":4.0,\"backupDir\":\"C:\\\\Code\\\\AgentCodeGUI\\\\.poc-home-engine-t3t4\\\\backup-2.6.2-1787570270234\",\"counts\":{\"chats\":0,\"maSessions\":0,\"maPanels\":0,\"sessionChats\":0,\"talkAbsorbed\":0,\"carried\":1,\"keptV3\":0,\"keptV3Boards\":0,\"total\":0,\"messages\":0,\"boards\":1},\"idMap\":{},\"order\":[],\"activeChatId\":\"\",\"boardOrder\":[\"default\"],\"activeBoardId\":\"default\",\"activeSessionId\":\"\",\"btw\":{\"rewritten\":0,\"dropped\":0},\"holdMoved\":0,\"sourceIndexOrders\":{\"chats\":[],\"multiAgent\":[],\"sessionChats\":[]},\"warnings\":[]}\n"
+    "appLog": "[store] chats-v3 마이그레이션: {\"ok\":true,\"migratedAt\":1787571175658.0,\"elapsedMs\":5.0,\"backupDir\":\"C:\\\\Code\\\\AgentCodeGUI\\\\.poc-home-engine-t3t4\\\\backup-2.6.2-1787571175658\",\"counts\":{\"chats\":0,\"maSessions\":0,\"maPanels\":0,\"sessionChats\":0,\"talkAbsorbed\":0,\"carried\":1,\"keptV3\":0,\"keptV3Boards\":0,\"total\":0,\"messages\":0,\"boards\":1},\"idMap\":{},\"order\":[],\"activeChatId\":\"\",\"boardOrder\":[\"default\"],\"activeBoardId\":\"default\",\"activeSessionId\":\"\",\"btw\":{\"rewritten\":0,\"dropped\":0},\"holdMoved\":0,\"sourceIndexOrders\":{\"chats\":[],\"multiAgent\":[],\"sessionChats\":[]},\"warnings\":[]}\n"
   },
   "findings": [],
   "seed": {
-    "resetsAt": 1787563069,
+    "resetsAt": 1787563975,
     "work": "C:\\Code\\AgentCodeGUI\\.poc-home-engine-t3t4\\work"
   },
   "pass": 11,
