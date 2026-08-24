@@ -1,0 +1,148 @@
+{
+  "at": "2026-08-24T03:40:12.619Z",
+  "findings": [],
+  "before": {
+    "homeTop": [
+      "accounts",
+      "accounts.json",
+      "accounts.json.bak-v2",
+      "api-config.json",
+      "api-usage.jsonl",
+      "attachments",
+      "chat-talk.json",
+      "chats",
+      "codex",
+      "codex-accounts.json",
+      "codex-config.json",
+      "codex-engines",
+      "config.json",
+      "engine-auto-update.json",
+      "engines",
+      "lsp",
+      "mcp.json",
+      "multi-agent",
+      "profile.json",
+      "session-chats",
+      "shared",
+      "ui-prefs.json",
+      "usage-cache.json",
+      "window-state.json"
+    ],
+    "homeKey": [
+      {
+        "n": "accounts.json",
+        "exists": true
+      },
+      {
+        "n": "ui-prefs.json",
+        "exists": true
+      },
+      {
+        "n": "chats",
+        "exists": true
+      },
+      {
+        "n": "multi-agent",
+        "exists": true
+      },
+      {
+        "n": "session-chats",
+        "exists": true
+      },
+      {
+        "n": "engines",
+        "exists": true
+      }
+    ],
+    "accountsBytes": 10324,
+    "instDir": [
+      "AgentCodeGUI3.exe",
+      "uninstall.exe"
+    ],
+    "shortcuts": {
+      "smApp": true,
+      "deskApp": true,
+      "sm262": true
+    },
+    "reg30": true,
+    "reg262": true,
+    "ctx262": true,
+    "install262": true,
+    "pids262": "6644,12924,23792,24836,26924"
+  },
+  "after": {
+    "homeTop": [
+      "accounts",
+      "accounts.json",
+      "accounts.json.bak-v2",
+      "api-config.json",
+      "api-usage.jsonl",
+      "attachments",
+      "chat-talk.json",
+      "chats",
+      "codex",
+      "codex-accounts.json",
+      "codex-config.json",
+      "codex-engines",
+      "config.json",
+      "engine-auto-update.json",
+      "engines",
+      "lsp",
+      "mcp.json",
+      "multi-agent",
+      "profile.json",
+      "session-chats",
+      "shared",
+      "ui-prefs.json",
+      "usage-cache.json",
+      "window-state.json"
+    ],
+    "homeKey": [
+      {
+        "n": "accounts.json",
+        "exists": true
+      },
+      {
+        "n": "ui-prefs.json",
+        "exists": true
+      },
+      {
+        "n": "chats",
+        "exists": true
+      },
+      {
+        "n": "multi-agent",
+        "exists": true
+      },
+      {
+        "n": "session-chats",
+        "exists": true
+      },
+      {
+        "n": "engines",
+        "exists": true
+      }
+    ],
+    "accountsBytes": 10324,
+    "instDir": null,
+    "shortcuts": {
+      "smApp": false,
+      "deskApp": false,
+      "sm262": true
+    },
+    "reg30": false,
+    "reg262": true,
+    "ctx262": true,
+    "install262": true,
+    "pids262": "6644,12924,23792,24836,26924"
+  },
+  "verdict": "PASS",
+  "reinstall": {
+    "exit": 0,
+    "instDir": [
+      "AgentCodeGUI3.exe",
+      "uninstall.exe"
+    ],
+    "pids262": "6644,12924,23792,24836,26924"
+  }
+}

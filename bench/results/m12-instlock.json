@@ -1,0 +1,29 @@
+{
+  "exe": "C:\\Users\\User\\AppData\\Local\\AgentCodeGUI3\\AgentCodeGUI3.exe",
+  "at": "2026-08-24T03:38:55.284Z",
+  "findings": [],
+  "before": {
+    "n262": 5,
+    "pids262": "6644,12924,23792,24836,26924",
+    "n30": 0
+  },
+  "afterA": {
+    "n30": 1,
+    "aAlive": true
+  },
+  "second": {
+    "exitCode": 0,
+    "ms": 1702,
+    "n30": 1,
+    "lockFile": true
+  },
+  "otherHome": {
+    "n30": 2,
+    "alive": true
+  },
+  "after": {
+    "n262": 5,
+    "pids262": "6644,12924,23792,24836,26924"
+  },
+  "verdict": "PASS"
+}

@@ -1,0 +1,249 @@
+{
+  "exe": "C:\\Users\\User\\AppData\\Local\\AgentCodeGUI3\\AgentCodeGUI3.exe",
+  "home": "C:\\Code\\AgentCodeGUI\\.bench-home-m12-shared",
+  "at": "2026-08-24T03:34:20.058Z",
+  "findings": [],
+  "version": "3.0.0-beta.1",
+  "accounts": [
+    {
+      "email": "lmg56634@gmail.com",
+      "hasToken": false
+    },
+    {
+      "email": "lmg56635@gmail.com",
+      "hasToken": false
+    },
+    {
+      "email": "lmg56630@gmail.com",
+      "hasToken": false
+    },
+    {
+      "email": "junelius@naver.com",
+      "hasToken": false
+    },
+    {
+      "email": "lmg56632@gmail.com",
+      "hasToken": false
+    },
+    {
+      "email": "lmg56631@gmail.com",
+      "hasToken": false
+    }
+  ],
+  "chatsRaw": {
+    "version": 1,
+    "chats": [
+      {
+        "id": "63f9811a-e4b1-4d70-b3e9-82da91613fde",
+        "origin": "chat",
+        "title": "",
+        "custom": false,
+        "locked": false,
+        "color": "",
+        "identity": {
+          "engine": {
+            "kind": "claude",
+            "model": "opus",
+            "effort": "max",
+            "codexAccount": null
+          },
+          "billing": {
+            "kind": "subscription",
+            "account": "junelius@naver.com",
+            "dropEnvKey": false
+          },
+          "cwd": "C:\\Users\\User\\AppData\\Local\\Programs\\AgentCodeGUI",
+          "addDirs": [],
+          "mode": "bypass",
+          "systemPrompt": null,
+          "outputStyle": "Concise",
+          "tools": {
+            "skillOverrides": {},
+            "deniedMcp": []
+          }
+        },
+        "draft": "",
+        "draftImages": [],
+        "updatedAt": 1785464641740,
+        "snapshot": {
+          "status": "idle",
+          "messages": [],
+          "todos": [],
+          "files": [],
+          "diffs": {},
+          "terminal": [],
+          "subagents": [],
+          "bgTasks": [],
+          "workflows": [],
+          "pendingPermission": null,
+          "pendingQuestion": null,
+          "session": null,
+          "result": null,
+          "pendingCommand": null,
+          "spentUsd": 0,
+          "tokenTotals": {},
+          "thinkingText": null,
+          "streaming": false,
+          "openGroupId": null,
+          "seq": 0,
+          "shownNotices": [],
+          "curRunId": null,
+          "interrupted": false
+        },
+        "status": "idle",
+        "manualCwd": "C:\\Users\\User\\AppData\\Local\\Programs\\AgentCodeGUI",
+        "refDirs": [],
+        "picker": {
+          "model": "opus",
+          "effort": "max",
+          "mode": "bypass",
+          "account": "junelius@naver.com"
+        }
+      }
+    ],
+    "activeChatId": "63f9811a-e4b1-4d70-b3e9-82da91613fde",
+    "activeGen": 1,
+    "statuses": {
+      "63f9811a-e4b1-4d70-b3e9-82da91613fde": {
+        "chatId": "63f9811a-e4b1-4d70-b3e9-82da91613fde",
+        "status": "idle",
+        "busy": false,
+        "bgActive": false,
+        "ask": "none",
+        "hold": null,
+        "queued": 0,
+        "unread": 0,
+        "autoResume": true,
+        "resumeOwner": "engine",
+        "updatedAt": 1785464641740
+      },
+      "ma-93fb41d4-239a-42df-89a9-4a6a9405b0e6-0": {
+        "chatId": "ma-93fb41d4-239a-42df-89a9-4a6a9405b0e6-0",
+        "status": "done",
+        "busy": false,
+        "bgActive": false,
+        "ask": "none",
+        "hold": null,
+        "queued": 0,
+        "unread": 0,
+        "autoResume": true,
+        "resumeOwner": "engine",
+        "updatedAt": 0
+      },
+      "ma-93fb41d4-239a-42df-89a9-4a6a9405b0e6-1": {
+        "chatId": "ma-93fb41d4-239a-42df-89a9-4a6a9405b0e6-1",
+        "status": "done",
+        "busy": false,
+        "bgActive": false,
+        "ask": "none",
+        "hold": null,
+        "queued": 0,
+        "unread": 0,
+        "autoResume": true,
+        "resumeOwner": "engine",
+        "updatedAt": 0
+      },
+      "ma-93fb41d4-239a-42df-89a9-4a6a9405b0e6-2": {
+        "chatId": "ma-93fb41d4-239a-42df-89a9-4a6a9405b0e6-2",
+        "status": "done",
+        "busy": false,
+        "bgActive": false,
+        "ask": "none",
+        "hold": null,
+        "queued": 0,
+        "unread": 0,
+        "autoResume": true,
+        "resumeOwner": "engine",
+        "updatedAt": 0
+      },
+      "ma-93fb41d4-239a-42df-89a9-4a6a9405b0e6-3": {
+        "chatId": "ma-93fb41d4-239a-42df-89a9-4a6a9405b0e6-3",
+        "status": "idle",
+        "busy": false,
+        "bgActive": false,
+        "ask": "none",
+        "hold": null,
+        "queued": 0,
+        "unread": 0,
+        "autoResume": true,
+        "resumeOwner": "engine",
+        "updatedAt": 0
+      }
+    }
+  },
+  "chatIds": [
+    "63f9811a-e4b1-4d70-b3e9-82da91613fde"
+  ],
+  "bodyText": "AgentCodeGUI\nConfig\nDocs\nPlugins\nUnrealNetCore\nConfig\nDocs\nManaged\nReloadable\nRuntime\nUnrealNetCore.Interop\nUnrealNetCore.Mathematics\nUnrealNetCore.Runtime\nUnrealNetCore.SceneGraph\nBench\nCollision\nNet\nProbe\nNetProbe.cs\nSceneProbe.cs\nReload\nScene\nUnrealNetCore.SceneGraph.csproj\nTools\nSource\nThirdParty\nREADME.md\nUnrealNetCore.uplugin\nReference\nScript\nSource\nCLAUDE.md\nElmwoodOnline.uproject\nL\nLiu\n1\n2\n3\n4\n5\n6\n1\nNetCore\nElmwoodOnline\n완료\nToolSearch\n{\"query\":\"select:mcp__agentmon__note,mcp__agentmon__status,mcp__agentmon__log_work,mcp__agentmon__update_work,mcp__agentmon__report_bug,mcp__agentmon__re",
+  "bodyLen": 94960,
+  "bodyHasError": false,
+  "migration": {
+    "ok": true,
+    "migratedAt": 1787542460417,
+    "elapsedMs": 38,
+    "backupDir": "C:\\Code\\AgentCodeGUI\\.bench-home-m12-shared\\backup-2.6.2-1787542460417",
+    "counts": {
+      "chats": 1,
+      "maSessions": 1,
+      "maPanels": 4,
+      "sessionChats": 0,
+      "talkAbsorbed": 0,
+      "carried": 0,
+      "keptV3": 0,
+      "keptV3Boards": 0,
+      "total": 5,
+      "messages": 646,
+      "boards": 2
+    },
+    "idMap": {
+      "93fb41d4-239a-42df-89a9-4a6a9405b0e6::3": "ma-93fb41d4-239a-42df-89a9-4a6a9405b0e6-3",
+      "93fb41d4-239a-42df-89a9-4a6a9405b0e6::2": "ma-93fb41d4-239a-42df-89a9-4a6a9405b0e6-2",
+      "93fb41d4-239a-42df-89a9-4a6a9405b0e6::0": "ma-93fb41d4-239a-42df-89a9-4a6a9405b0e6-0",
+      "93fb41d4-239a-42df-89a9-4a6a9405b0e6::1": "ma-93fb41d4-239a-42df-89a9-4a6a9405b0e6-1",
+      "63f9811a-e4b1-4d70-b3e9-82da91613fde": "63f9811a-e4b1-4d70-b3e9-82da91613fde"
+    },
+    "order": [
+      "63f9811a-e4b1-4d70-b3e9-82da91613fde",
+      "ma-93fb41d4-239a-42df-89a9-4a6a9405b0e6-0",
+      "ma-93fb41d4-239a-42df-89a9-4a6a9405b0e6-1",
+      "ma-93fb41d4-239a-42df-89a9-4a6a9405b0e6-2",
+      "ma-93fb41d4-239a-42df-89a9-4a6a9405b0e6-3"
+    ],
+    "activeChatId": "63f9811a-e4b1-4d70-b3e9-82da91613fde",
+    "boardOrder": [
+      "default",
+      "93fb41d4-239a-42df-89a9-4a6a9405b0e6"
+    ],
+    "activeBoardId": "93fb41d4-239a-42df-89a9-4a6a9405b0e6",
+    "activeSessionId": "93fb41d4-239a-42df-89a9-4a6a9405b0e6",
+    "btw": {
+      "rewritten": 0,
+      "dropped": 0
+    },
+    "holdMoved": 0,
+    "sourceIndexOrders": {
+      "chats": [
+        "63f9811a-e4b1-4d70-b3e9-82da91613fde"
+      ],
+      "multiAgent": [
+        "93fb41d4-239a-42df-89a9-4a6a9405b0e6"
+      ],
+      "sessionChats": []
+    },
+    "warnings": []
+  },
+  "expect": {
+    "emails": [
+      "lmg56634@gmail.com",
+      "lmg56635@gmail.com",
+      "lmg56630@gmail.com",
+      "junelius@naver.com",
+      "lmg56632@gmail.com",
+      "lmg56631@gmail.com"
+    ],
+    "chatIds": [
+      "63f9811a-e4b1-4d70-b3e9-82da91613fde"
+    ]
+  },
+  "verdict": "PASS"
+}

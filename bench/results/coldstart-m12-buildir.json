@@ -1,0 +1,88 @@
+{
+  "app": "tauri-3.0.0-beta.1-buildir",
+  "arm": "default",
+  "bin": {
+    "exe": "C:\\Code\\ccg-m12-target\\release\\AgentCodeGUI3.exe",
+    "exeMtime": "2026-08-24T02:59:41.150Z",
+    "exeSize": 6202880,
+    "exeSha256": "27d6aad4d2a69b53",
+    "gitHead": "076bf8c",
+    "gitDirty": true
+  },
+  "armEnv": {
+    "CCG_HOME": "C:\\Code\\AgentCodeGUI\\.bench-home-m12-buildir",
+    "CCG_CDP_PORT": "9434"
+  },
+  "runs": [
+    {
+      "winMs": 284,
+      "rootMs": 611,
+      "paintMs": 594,
+      "winW": 1336,
+      "winH": 889,
+      "winTitle": "AgentCodeGUI3"
+    },
+    {
+      "winMs": 266,
+      "rootMs": 364,
+      "paintMs": 323,
+      "winW": 1336,
+      "winH": 889,
+      "winTitle": "AgentCodeGUI3"
+    },
+    {
+      "winMs": 255,
+      "rootMs": 303,
+      "paintMs": 279,
+      "winW": 1336,
+      "winH": 889,
+      "winTitle": "AgentCodeGUI3"
+    },
+    {
+      "winMs": 287,
+      "rootMs": 398,
+      "paintMs": 307,
+      "winW": 1336,
+      "winH": 889,
+      "winTitle": "AgentCodeGUI3"
+    },
+    {
+      "winMs": 284,
+      "rootMs": 404,
+      "paintMs": 312,
+      "winW": 1336,
+      "winH": 889,
+      "winTitle": "AgentCodeGUI3"
+    },
+    {
+      "winMs": 270,
+      "rootMs": 316,
+      "paintMs": 285,
+      "winW": 1336,
+      "winH": 889,
+      "winTitle": "AgentCodeGUI3"
+    }
+  ],
+  "firstRun": {
+    "winMs": 284,
+    "rootMs": 611,
+    "paintMs": 594,
+    "winW": 1336,
+    "winH": 889,
+    "winTitle": "AgentCodeGUI3"
+  },
+  "medianWinMs": 270,
+  "medianRootMs": 364,
+  "medianPaintMs": 307,
+  "firstWindow": {
+    "w": 1336,
+    "h": 889,
+    "title": "AgentCodeGUI3"
+  },
+  "env": {
+    "ramGB": 63.8,
+    "cpu": "13th Gen Intel(R) Core(TM) i7-13700KF",
+    "os": "Microsoft Windows 11 Home 26200"
+  },
+  "at": "2026-08-24T03:31:20.592Z"
+}

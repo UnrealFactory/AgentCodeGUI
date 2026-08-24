@@ -1,0 +1,280 @@
+{
+  "at": "2026-08-24T03:43:56.871Z",
+  "method": {
+    "logicalBytes": "파일 길이의 합 (du -b)",
+    "allocBytes": "클러스터(4096B, assumed-4096) 올림의 합 — 탐색기 \"디스크 할당 크기\" 근사",
+    "links": "정션/심볼릭 링크는 따라가지 않고 개수만 셈",
+    "registry": "HKCU Uninstall EstimatedSize(KB) — 설치 프로그램이 써 넣은 값(측정값 아님)"
+  },
+  "cluster": {
+    "bytes": 4096,
+    "source": "assumed-4096"
+  },
+  "apps": {
+    "electron-2.6.2": {
+      "label": "AgentCodeGUI 2.6.2 (Electron · electron-builder NSIS)",
+      "installer": {
+        "path": "C:\\Code\\AgentCodeGUI\\dist\\AgentCodeGUI-Setup-2.6.2.exe",
+        "exists": true,
+        "bytes": 165119775,
+        "mtime": "2026-08-21T02:43:10.444Z"
+      },
+      "installDir": {
+        "path": "C:\\Users\\User\\AppData\\Local\\Programs\\AgentCodeGUI",
+        "exists": true,
+        "files": 8141,
+        "dirs": 1184,
+        "links": 0,
+        "logicalBytes": 664461448,
+        "allocBytes": 688041984,
+        "top": [
+          {
+            "name": "resources",
+            "kind": "dir",
+            "files": 8066,
+            "logicalBytes": 301469029
+          },
+          {
+            "name": "AgentCodeGUI.exe",
+            "kind": "file",
+            "logicalBytes": 223923712
+          },
+          {
+            "name": "locales",
+            "kind": "dir",
+            "files": 55,
+            "logicalBytes": 49471514
+          },
+          {
+            "name": "dxcompiler.dll",
+            "kind": "file",
+            "logicalBytes": 25669120
+          },
+          {
+            "name": "LICENSES.chromium.html",
+            "kind": "file",
+            "logicalBytes": 20367095
+          },
+          {
+            "name": "icudtl.dat",
+            "kind": "file",
+            "logicalBytes": 10876560
+          },
+          {
+            "name": "libGLESv2.dll",
+            "kind": "file",
+            "logicalBytes": 8003584
+          },
+          {
+            "name": "resources.pak",
+            "kind": "file",
+            "logicalBytes": 6876297
+          },
+          {
+            "name": "vk_swiftshader.dll",
+            "kind": "file",
+            "logicalBytes": 5526016
+          },
+          {
+            "name": "d3dcompiler_47.dll",
+            "kind": "file",
+            "logicalBytes": 4741488
+          },
+          {
+            "name": "ffmpeg.dll",
+            "kind": "file",
+            "logicalBytes": 3057152
+          },
+          {
+            "name": "dxil.dll",
+            "kind": "file",
+            "logicalBytes": 1509760
+          }
+        ]
+      },
+      "registry": {
+        "key": "f2fb66d4-fc28-5d68-b3f6-0c28b821972a",
+        "displayName": "AgentCodeGUI 2.6.2",
+        "displayVersion": "2.6.2",
+        "publisher": "AgentCodeGUI",
+        "installLocation": null,
+        "uninstallString": "\"C:\\Users\\User\\AppData\\Local\\Programs\\AgentCodeGUI\\Uninstall AgentCodeGUI.exe\" /currentuser",
+        "estimatedSizeKB": 648712
+      }
+    },
+    "tauri-3.0.0-beta.1": {
+      "label": "AgentCodeGUI3 3.0.0-beta.1 (Tauri · NSIS)",
+      "installer": {
+        "path": "C:\\Code\\ccg-m12-target\\release\\bundle\\nsis\\AgentCodeGUI3_3.0.0-beta.1_x64-setup.exe",
+        "exists": true,
+        "bytes": 2492395,
+        "mtime": "2026-08-24T03:43:49.233Z",
+        "candidates": [
+          {
+            "path": "C:\\Code\\ccg-m12-target\\release\\bundle\\nsis\\AgentCodeGUI3_3.0.0-beta.1_x64-setup.exe",
+            "kind": "nsis",
+            "bytes": 2492395
+          },
+          {
+            "path": "C:\\Code\\ccg-m12-target\\release\\bundle\\msi\\AgentCodeGUI3_3.0.0_x64_en-US.msi",
+            "kind": "msi",
+            "bytes": 3272704
+          }
+        ]
+      },
+      "installDir": {
+        "path": "C:\\Users\\User\\AppData\\Local\\AgentCodeGUI3",
+        "exists": true,
+        "files": 2,
+        "dirs": 0,
+        "links": 0,
+        "logicalBytes": 6285316,
+        "allocBytes": 6291456,
+        "top": [
+          {
+            "name": "AgentCodeGUI3.exe",
+            "kind": "file",
+            "logicalBytes": 6202880
+          },
+          {
+            "name": "uninstall.exe",
+            "kind": "file",
+            "logicalBytes": 82436
+          }
+        ]
+      },
+      "registry": {
+        "key": "AgentCodeGUI3",
+        "displayName": "AgentCodeGUI3",
+        "displayVersion": "3.0.0-beta.1",
+        "publisher": "AgentCodeGUI",
+        "installLocation": "\"C:\\Users\\User\\AppData\\Local\\AgentCodeGUI3\"",
+        "uninstallString": "\"C:\\Users\\User\\AppData\\Local\\AgentCodeGUI3\\uninstall.exe\"",
+        "estimatedSizeKB": 6137
+      }
+    }
+  },
+  "shared": {
+    "note": "두 앱이 공유하거나 OS가 소유하는 몫 — 어느 쪽 설치 크기에도 더하지 않는다.",
+    "appHome": {
+      "path": "C:\\Users\\User\\.agentcodegui",
+      "exists": true,
+      "files": 50196,
+      "dirs": 2893,
+      "links": 44,
+      "logicalBytes": 7887770513,
+      "allocBytes": 8009691136,
+      "top": [
+        {
+          "name": "shared",
+          "kind": "dir",
+          "files": 12493,
+          "logicalBytes": 5980716976
+        },
+        {
+          "name": "codex-engines",
+          "kind": "dir",
+          "files": 34,
+          "logicalBytes": 782243170
+        },
+        {
+          "name": "lsp",
+          "kind": "dir",
+          "files": 31225,
+          "logicalBytes": 618981048
+        },
+        {
+          "name": "engines",
+          "kind": "dir",
+          "files": 5649,
+          "logicalBytes": 366353282
+        },
+        {
+          "name": "codex",
+          "kind": "dir",
+          "files": 238,
+          "logicalBytes": 118371473
+        },
+        {
+          "name": "attachments",
+          "kind": "dir",
+          "files": 178,
+          "logicalBytes": 19026277
+        },
+        {
+          "name": "multi-agent",
+          "kind": "dir",
+          "files": 2,
+          "logicalBytes": 1824231
+        },
+        {
+          "name": "accounts",
+          "kind": "dir",
+          "files": 360,
+          "logicalBytes": 229300
+        },
+        {
+          "name": "accounts.json",
+          "kind": "file",
+          "logicalBytes": 10324
+        },
+        {
+          "name": "ui-prefs.json",
+          "kind": "file",
+          "logicalBytes": 8350
+        },
+        {
+          "name": "accounts.json.bak-v2",
+          "kind": "file",
+          "logicalBytes": 3576
+        },
+        {
+          "name": "usage-cache.json",
+          "kind": "file",
+          "logicalBytes": 1671
+        }
+      ]
+    },
+    "webview2Runtime": {
+      "version": "151.0.4129.101",
+      "installedVersions": [
+        "151.0.4129.86",
+        "151.0.4129.93",
+        "151.0.4129.101"
+      ],
+      "path": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.101",
+      "exists": true,
+      "files": 779,
+      "dirs": 43,
+      "links": 0,
+      "logicalBytes": 894445666,
+      "allocBytes": 896192512,
+      "top": []
+    }
+  },
+  "compare": {
+    "installerBytes": {
+      "electron": 165119775,
+      "tauri": 2492395,
+      "ratio": 0.0151
+    },
+    "installDirLogical": {
+      "electron": 664461448,
+      "tauri": 6285316,
+      "ratio": 0.0095,
+      "savedBytes": 658176132
+    },
+    "installDirAlloc": {
+      "electron": 688041984,
+      "tauri": 6291456,
+      "ratio": 0.0091
+    },
+    "tauriPlusRuntimeLogical": 900730982,
+    "tauriPlusRuntimeRatio": 1.3556
+  },
+  "env": {
+    "ramGB": 63.8,
+    "cpu": "13th Gen Intel(R) Core(TM) i7-13700KF",
+    "os": "Microsoft Windows 11 Home 26200"
+  }
+}
