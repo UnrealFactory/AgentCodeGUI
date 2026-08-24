@@ -19,12 +19,12 @@ import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
 import { spawn, spawnSync } from 'node:child_process'
-import { connectMainPage, killTree, sleep } from '../../../bench/lib.mjs'
+import { connectMainPage, killTree, sleep, resolveTauriExe } from '../../../bench/lib.mjs'
 import { REPO, cloneReal, readJSON, rmrf, seedLocalState, writeResult } from './critic-m2-lib.mjs'
 
 const EXE = fs.existsSync(path.join(os.tmpdir(), 'ccg-critic-m2-app.exe'))
   ? path.join(os.tmpdir(), 'ccg-critic-m2-app.exe')
-  : path.join(REPO, 'target', 'release', 'agentcodegui.exe')
+  : resolveTauriExe(null) // M12 R2 — mainBinaryName 변경으로 exe 이름이 둘이다(구·신 모두 탐색·최신 mtime 우선)
 
 async function boot(home, { flag, port }) {
   const child = spawn(EXE, [], {

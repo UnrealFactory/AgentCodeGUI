@@ -31,13 +31,14 @@ import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
 import { spawn, spawnSync } from 'node:child_process'
-import { connectMainPage, killTree, sleep, REPO } from '../bench/lib.mjs'
+import { connectMainPage, killTree, sleep, REPO, resolveTauriExe } from '../bench/lib.mjs'
 import { makeMultiFixture } from '../bench/fixture.mjs'
 
 const args = process.argv.slice(2)
 const only = (args.find((a) => a.startsWith('--only=')) ?? '').split('=')[1] || 'all'
 const KEEP = args.includes('--keep')
-const EXE = path.join(REPO, 'target', 'release', 'agentcodegui.exe')
+// M12 R2 — mainBinaryName 변경으로 exe 이름이 둘이다(구·신 모두 탐색·최신 mtime 우선)
+const EXE = resolveTauriExe()
 const HOME = path.join(REPO, '.poc-home-dial')
 // ★ R3 — 산출 경로를 갈랐다(`m-ux-r1-dial.json` → `m-ux-r3-dial.json`). R1·R2 보고서가
 // 앞 파일의 수치를 인용하는데 이 하네스가 매 주행마다 덮으면 그 근거가 사라진다

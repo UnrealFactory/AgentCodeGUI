@@ -29,12 +29,13 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { spawn, spawnSync, execFileSync } from 'node:child_process'
-import { cdpTargets, connectMainPage, killTree, sleep, Cdp, REPO } from '../../../bench/lib.mjs'
+import { cdpTargets, connectMainPage, killTree, sleep, Cdp, REPO, resolveTauriExe } from '../../../bench/lib.mjs'
 
 const args = process.argv.slice(2)
 const only = (args.find((a) => a.startsWith('--only=')) ?? '').split('=')[1] || 'all'
 const KEEP = args.includes('--keep')
-const EXE = (args.find((a) => a.startsWith('--exe=')) ?? '').split('=')[1] || path.join(REPO, 'target', 'release', 'agentcodegui.exe')
+// M12 R2 — mainBinaryName 변경으로 exe 이름이 둘이다(AgentCodeGUI3/agentcodegui — 둘 다 탐색, 최신 mtime 채택)
+const EXE = (args.find((a) => a.startsWith('--exe=')) ?? '').split('=')[1] || resolveTauriExe('')
 const OUT = path.join(REPO, 'docs', 'critic', 'm8-r1-attack.json')
 
 const rep = { at: new Date().toISOString(), exe: EXE, steps: {}, findings: [] }

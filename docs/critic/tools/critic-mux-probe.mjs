@@ -3,10 +3,11 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { spawn } from 'node:child_process'
-import { connectMainPage, killTree, sleep, REPO } from '../../../bench/lib.mjs'
+import { connectMainPage, killTree, sleep, REPO, resolveTauriExe } from '../../../bench/lib.mjs'
 import { makeMultiFixture } from '../../../bench/fixture.mjs'
 
-const EXE = path.join(REPO, 'target', 'release', 'agentcodegui.exe')
+// M12 R2 — mainBinaryName 변경으로 exe 이름이 둘이다(구·신 모두 탐색·최신 mtime 우선)
+const EXE = resolveTauriExe((process.argv.find((a) => a.startsWith('--exe=')) ?? '').split('=').slice(1).join('='))
 const HOME = path.join(REPO, '.critic-home-mux-probe')
 const N = Number((process.argv.find((a) => a.startsWith('--n=')) ?? '--n=6').split('=')[1])
 fs.rmSync(HOME, { recursive: true, force: true })

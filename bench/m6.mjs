@@ -17,7 +17,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
 import { execFileSync, spawn } from 'node:child_process'
-import { electronProfile, tauriProfile, connectMainPage, killTree, sleep, REPO } from './lib.mjs'
+import { electronProfile, tauriProfile, connectMainPage, killTree, sleep, REPO, resolveTauriExe } from './lib.mjs'
 import { makeFixtureHome, FIX_ID } from './fixture.mjs'
 import { HELPERS_JS, makeCtx } from './screens.mjs'
 
@@ -158,23 +158,28 @@ function makeHome(kind, version) {
  *  복사본을 잡아두면 하네스가 남의 빌드에 안 흔들린다. */
 async function snapshotExe() {
   // CCG_EXE=… — 공용 exe가 옆 에이전트의 앱에 잠겨 새 빌드를 못 넣을 때(EBUSY)
-  // 격리 CARGO_TARGET_DIR의 exe를 바로 지목한다.
-  const src = process.env.CCG_EXE || path.join(REPO, 'target', 'release', 'agentcodegui.exe')
+  // 격리 CARGO_TARGET_DIR의 exe를 바로 지목한다(resolveTauriExe가 읽는다).
   const dir = path.join(os.tmpdir(), 'ccg-m6-exe')
   fs.mkdirSync(dir, { recursive: true })
+  // 스냅샷 **사본**의 이름은 옛 이름 그대로 둔다 — 메모리 귀속 하네스들이
+  // /agentcodegui/i로 프로세스를 가른다(그 정규식은 새 이름도 문다).
   const dst = path.join(dir, 'agentcodegui.exe')
-  // 남의 재빌드 구간이면 파일이 잠깐 사라진다 — 나타날 때까지 기다렸다 한 번만 뜬다
+  // 남의 재빌드 구간이면 파일이 잠깐 사라진다 — 나타날 때까지 기다렸다 한 번만 뜬다.
+  // ★ M12 R2 — 이름이 둘이다(AgentCodeGUI3.exe / agentcodegui.exe). 대기 중에 **다른 쪽
+  //   이름**으로 나타날 수 있으니 루프 밖에서 한 번 고르지 않고 매 회 다시 찾는다.
+  let src = null
   for (let i = 0; i < 80; i++) {
+    src = resolveTauriExe(null, { quiet: i > 0 })
     try {
       fs.copyFileSync(src, dst)
       console.log(`[m6] exe 스냅샷 → ${dst} (${fs.statSync(dst).size}B)`)
       return dst
     } catch {
-      if (i === 0) console.log('[m6] target/release/agentcodegui.exe 없음 — 다른 빌더의 재빌드 대기')
+      if (i === 0) console.log(`[m6] ${src} 없음 — 다른 빌더의 재빌드 대기`)
       await sleep(5000)
     }
   }
-  throw new Error('exe 스냅샷 실패 — target/release/agentcodegui.exe가 끝내 안 나타남')
+  throw new Error(`exe 스냅샷 실패 — target/release의 AgentCodeGUI3.exe/agentcodegui.exe가 끝내 안 나타남 (마지막 후보 ${src})`)
 }
 let EXE = null
 

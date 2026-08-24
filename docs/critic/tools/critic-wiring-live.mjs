@@ -25,13 +25,14 @@ import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
 import { spawn, spawnSync, execFileSync } from 'node:child_process'
-import { connectMainPage, killTree, sleep, REPO } from '../../../bench/lib.mjs'
+import { connectMainPage, killTree, sleep, REPO, resolveTauriExe } from '../../../bench/lib.mjs'
 
 const argv = process.argv.slice(2)
 const only = (argv.find((a) => a.startsWith('--only=')) ?? '').split('=')[1]
 const pick = only ? new Set(only.split(',').map((s) => s.trim().toUpperCase())) : null
 const KEEP = argv.includes('--keep')
-const EXE = (argv.find((a) => a.startsWith('--exe=')) ?? '').split('=')[1] || path.join(REPO, 'target', 'release', 'agentcodegui.exe')
+// M12 R2 — mainBinaryName 변경으로 exe 이름이 둘이다(구·신 모두 탐색·최신 mtime 우선)
+const EXE = resolveTauriExe((argv.find((a) => a.startsWith('--exe=')) ?? '').split('=')[1])
 const REAL_HOME = path.join(os.homedir(), '.agentcodegui')
 const OUT = path.join(REPO, 'docs', 'critic', 'wiring-r1-attacks.json')
 

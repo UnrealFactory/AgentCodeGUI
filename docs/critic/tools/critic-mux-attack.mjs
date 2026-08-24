@@ -17,14 +17,15 @@ import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
 import { spawn, spawnSync } from 'node:child_process'
-import { connectMainPage, killTree, sleep, REPO } from '../../../bench/lib.mjs'
+import { connectMainPage, killTree, sleep, REPO, resolveTauriExe } from '../../../bench/lib.mjs'
 import { makeMultiFixture } from '../../../bench/fixture.mjs'
 
 const args = process.argv.slice(2)
 const ONLY = new Set(((args.find((a) => a.startsWith('--only=')) ?? '').split('=')[1] || 'all').split(',').filter(Boolean))
 const want = (id) => ONLY.has('all') || ONLY.has(id)
 const KEEP = args.includes('--keep')
-const EXE = path.join(REPO, 'target', 'release', 'agentcodegui.exe')
+// M12 R2 — mainBinaryName 변경으로 exe 이름이 둘이다(구·신 모두 탐색·최신 mtime 우선)
+const EXE = resolveTauriExe((process.argv.find((a) => a.startsWith('--exe=')) ?? '').split('=').slice(1).join('='))
 const OUT = path.join(REPO, 'docs', 'critic', 'm-ux-r1-attack.json')
 const APP_VERSION = '3.0.0-beta.1'
 

@@ -28,7 +28,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { spawn } from 'node:child_process'
-import { connectMainPage, procTreeMem, killTree, median, sleep, REPO, binInfo, envInfo } from './lib.mjs'
+import { connectMainPage, procTreeMem, killTree, median, sleep, REPO, binInfo, envInfo, resolveTauriExe } from './lib.mjs'
 import { makeMultiFixture } from './fixture.mjs'
 
 const argv = process.argv.slice(2)
@@ -36,7 +36,8 @@ const val = (k, d) => (argv.find((a) => a.startsWith(`--${k}=`)) ?? `--${k}=${d}
 const PAIRS = Number(val('pairs', 3))
 const ARMS = val('arm', 'noglue').split(',').filter(Boolean)
 const TAG = val('tag', `${process.pid}`)
-const EXE = val('exe', path.join(REPO, 'target', 'release', 'agentcodegui.exe'))
+// M12 R2 — mainBinaryName 변경으로 이름이 둘이다(구·신 모두 탐색, 최신 mtime 우선)
+const EXE = resolveTauriExe(val('exe', ''))
 const HOME = path.join(REPO, `.bench-home-attrib-${TAG}`)
 const PORT = Number(val('port', 9391))
 

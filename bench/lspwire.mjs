@@ -11,7 +11,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
 import { spawn } from 'node:child_process'
-import { tauriProfile, connectMainPage, killTree, sleep, REPO } from './lib.mjs'
+import { tauriProfile, connectMainPage, killTree, sleep, REPO, resolveTauriExe } from './lib.mjs'
 import { makeFixtureHome, FIX_ID } from './fixture.mjs'
 import { FIXTURES } from './lspfix.mjs'
 
@@ -20,7 +20,8 @@ const flag = (n, d) => {
   const i = argv.indexOf('--' + n)
   return i >= 0 && argv[i + 1] && !argv[i + 1].startsWith('--') ? argv[i + 1] : d
 }
-const EXE = flag('exe', path.join(REPO, 'target', 'release', 'agentcodegui.exe'))
+// M12 R2 — mainBinaryName 변경으로 이름이 둘이다(구·신 모두 탐색, 최신 mtime 우선)
+const EXE = resolveTauriExe(flag('exe', ''))
 const SKIP_INSTALL = argv.includes('--skip-install')
 const WORK = path.join(os.tmpdir(), 'ccg-r4wire-work')
 const HOME = path.join(os.tmpdir(), 'ccg-r4wire-home')

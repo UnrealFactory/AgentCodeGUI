@@ -6,6 +6,7 @@
 import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
+import { resolveTauriExe } from '../../bench/lib.mjs'
 
 const REPO = path.resolve(import.meta.dirname, '..', '..')
 const which = process.argv[2] ?? 'electron'
@@ -18,7 +19,8 @@ const profiles = {
     env: { CCG_HOME: path.join(REPO, '.bench-home'), NODE_ENV: 'production' }
   },
   tauri: {
-    cmd: path.join(REPO, 'target', 'release', 'agentcodegui.exe'),
+    // M12 R2 — mainBinaryName 변경으로 exe 이름이 둘이다(구·신 모두 탐색·최신 mtime 우선)
+    cmd: resolveTauriExe(null),
     args: [],
     env: { CCG_HOME: path.join(REPO, '.bench-home-tauri') }
   }

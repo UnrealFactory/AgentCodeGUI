@@ -16,6 +16,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
 import { execFileSync, spawn } from 'node:child_process'
+import { resolveTauriExe } from '../../../bench/lib.mjs'
 import { connectMainPage, killTree, sleep, electronProfile, tauriProfile } from '../../../bench/lib.mjs'
 import { makeFixtureHome, FIX_ID } from '../../../bench/fixture.mjs'
 
@@ -25,7 +26,9 @@ const flag = (n, d) => {
   return i >= 0 && argv[i + 1] && !argv[i + 1].startsWith('--') ? argv[i + 1] : d
 }
 const KIND = flag('kind', 'tauri')
-const EXE = flag('exe', path.join(os.tmpdir(), 'ccg-m7c-tgt', 'release', 'agentcodegui.exe'))
+// M12 R2 — mainBinaryName 변경으로 exe 이름이 둘이다(구·신 모두 탐색·최신 mtime 우선)
+// (격리 타깃 전용 — only:true라 공용 target/이 더 새것이어도 끌려가지 않는다)
+const EXE = resolveTauriExe(flag('exe', ''), { targetDir: path.join(os.tmpdir(), 'ccg-m7c-tgt'), only: true })
 const OUT = flag('out', '')
 const PORT = Number(flag('port', KIND === 'tauri' ? 9401 : 9402))
 const WORK = flag('work', path.join(os.tmpdir(), 'ccg-lsp-repo'))

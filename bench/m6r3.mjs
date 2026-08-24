@@ -21,7 +21,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
 import { spawn } from 'node:child_process'
-import { electronProfile, tauriProfile, connectMainPage, killTree, sleep, REPO, binInfo } from './lib.mjs'
+import { electronProfile, tauriProfile, connectMainPage, killTree, sleep, REPO, binInfo, resolveTauriExe } from './lib.mjs'
 import { makeFixtureHome, FIX_ID } from './fixture.mjs'
 import { HELPERS_JS, makeCtx } from './screens.mjs'
 
@@ -142,20 +142,22 @@ function sweepAttachments(before) {
 /** target/release의 exe를 내 폴더로 복사해 쓴다(옆 에이전트의 재빌드 대비 — m6.mjs와 같은 관례) */
 async function snapshotExe() {
   // CCG_EXE=… 로 격리 CARGO_TARGET_DIR의 exe를 바로 지목할 수 있다(공용 exe가 잠겼을 때)
-  const src = process.env.CCG_EXE || path.join(REPO, 'target', 'release', 'agentcodegui.exe')
+  // ★ M12 R2 — 이름이 둘이다(AgentCodeGUI3.exe / agentcodegui.exe). 대기 루프 안에서 매번 찾는다.
   const dir = path.join(os.tmpdir(), 'ccg-m6r3-exe')
   fs.mkdirSync(dir, { recursive: true })
-  const dst = path.join(dir, 'agentcodegui.exe')
+  const dst = path.join(dir, 'agentcodegui.exe') // 사본 이름은 옛 이름 유지(귀속 정규식 호환)
+  let src = null
   for (let i = 0; i < 80; i++) {
+    src = resolveTauriExe(null, { quiet: i > 0 })
     try {
       fs.copyFileSync(src, dst)
       return dst
     } catch {
-      if (i === 0) console.log('[m6r3] target/release/agentcodegui.exe 없음/잠김 — 대기')
+      if (i === 0) console.log(`[m6r3] ${src} 없음/잠김 — 대기`)
       await sleep(5000)
     }
   }
-  throw new Error('exe 스냅샷 실패')
+  throw new Error(`exe 스냅샷 실패 (마지막 후보 ${src})`)
 }
 let EXE = null
 

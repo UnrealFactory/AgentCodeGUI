@@ -22,14 +22,15 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { spawn, execFileSync } from 'node:child_process'
-import { connectMainPage, procTreeMem, killTree, median, sleep, REPO, tauriProfile } from '../../../bench/lib.mjs'
+import { connectMainPage, procTreeMem, killTree, median, sleep, REPO, tauriProfile, resolveTauriExe } from '../../../bench/lib.mjs'
 import { makeMultiFixture } from '../../../bench/fixture.mjs'
 
 const repeats = Number((process.argv.find((a) => a.startsWith('--repeats=')) ?? '--repeats=3').split('=')[1])
 const OUT = path.join(REPO, 'docs', 'critic', 'wiring-r1-mem.json')
 const HOME = path.join(REPO, '.critic-home-mem')
 const PORT = 9381
-const EXE = path.join(REPO, 'target', 'release', 'agentcodegui.exe')
+// M12 R2 — mainBinaryName 변경으로 exe 이름이 둘이다(구·신 모두 탐색·최신 mtime 우선)
+const EXE = resolveTauriExe((process.argv.find((a) => a.startsWith('--exe=')) ?? '').split('=').slice(1).join('='))
 
 function dirBytes(p) {
   let n = 0

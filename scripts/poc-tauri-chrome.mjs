@@ -22,10 +22,11 @@
 import { spawn, execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
-import { Cdp, connectMainPage, sleep, killTree, REPO } from '../bench/lib.mjs'
+import { Cdp, connectMainPage, sleep, killTree, REPO, resolveTauriExe } from '../bench/lib.mjs'
 
 const mode = (process.argv[2] || 'b').toLowerCase()
-const EXE = path.join(REPO, 'target', 'release', 'agentcodegui.exe')
+// M12 R2 — mainBinaryName 변경으로 exe 이름이 둘이다(구·신 모두 탐색·최신 mtime 우선)
+const EXE = resolveTauriExe()
 const DEBUG_EXE = path.join(REPO, 'target', 'debug', 'agentcodegui.exe')
 const HOME = path.join(REPO, '.poc-home-tauri')
 const PORT = 9336

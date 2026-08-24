@@ -395,10 +395,58 @@ export function electronProfile({ port = 9333, cdp = true } = {}) {
 // 문서상 모호해서, 환경변수를 쓰면 제품이 박아둔 메모리 레버가 조용히 날아간 채로
 // 측정될 수 있다. 대신 CCG_CDP_PORT를 셸의 조립기(src-tauri/src/webview_args.rs)에
 // 넘겨 **레버 + 포트**가 한 문자열로 가게 한다.
-export function tauriProfile({ port = 9334, exe, extraEnv = {}, cdp = true } = {}) {
+//
+// ── exe 이름 (M12 R2) ──────────────────────────────────────────────────────────
+// M12 R1이 `mainBinaryName: "AgentCodeGUI3"`을 켰다(그래야 설치기가 사용자의 2.6.2를
+// 이름으로 죽이지 않는다 — R1 §5.1). 대가로 `tauri build`가 산출물을 **rename** 해서
+// `target/release/agentcodegui.exe`가 사라진다. R1은 빌드 끝에 옛 이름으로 복사하는
+// `tauri:compat-exe`로 임시로 막았지만, 그건 6MB를 한 번 더 쓰면서 **어느 쪽이 최신인지
+// 모르게 만드는** 임시방편이었다. R2에서 걷어내고 여기서 정식으로 찾는다.
+//
+// 두 이름이 **둘 다 살아 있을 수 있다**:
+//   · `npm run tauri:build`          → AgentCodeGUI3.exe (tauri가 rename)
+//   · `cargo build --release …`      → agentcodegui.exe  (src-tauri/Cargo.toml의 crate 이름)
+// 인수인계 문서가 후자를 시키므로(--features custom-protocol 함정) 새 이름만 보면
+// **직전에 손으로 빌드한 exe를 놓친다.** 그래서 이름을 고르지 않고 **mtime이 가장 최신인
+// 후보**를 고른다 — "방금 빌드한 것"이 언제나 맞는 답이다. 고를 때 한 줄 알린다(stderr).
+export const TAURI_EXE_NAMES = ['AgentCodeGUI3.exe', 'agentcodegui.exe']
+
+// `only: true` — targetDir **하나만** 뒤진다. 격리 타깃에 일부러 지은 바이너리를 재는
+// 하네스(m7 계열의 귀속 측정)는 공용 target/이 더 새것이라는 이유로 그쪽으로 끌려가면
+// **다른 빌드를 재고도 통과**한다. 이번 라운드가 잡는 거짓 통과와 같은 종류라 막아 둔다.
+export function resolveTauriExe(explicit, { targetDir, quiet = false, only = false } = {}) {
+  if (explicit) return path.resolve(explicit)
+  if (process.env.CCG_EXE) return path.resolve(process.env.CCG_EXE)
+
+  const roots = []
+  const cands = only && targetDir ? [targetDir] : [targetDir, process.env.CARGO_TARGET_DIR, path.join(REPO, 'target')]
+  for (const r of cands) {
+    if (!r) continue
+    const abs = path.resolve(r)
+    if (!roots.includes(abs)) roots.push(abs)
+  }
+  const found = []
+  for (const root of roots) {
+    for (const n of TAURI_EXE_NAMES) {
+      const p = path.join(root, 'release', n)
+      try { found.push({ p, mtime: fs.statSync(p).mtimeMs }) } catch { /* 그 이름은 없다 */ }
+    }
+  }
+  // 하나도 없으면 **새 이름**으로 실패하게 둔다 — 오류 메시지가 옛 이름을 가리키면
+  // 읽는 사람이 엉뚱한 경로를 찾아 헤맨다.
+  if (!found.length) return path.join(roots[0] ?? path.join(REPO, 'target'), 'release', TAURI_EXE_NAMES[0])
+  found.sort((a, b) => b.mtime - a.mtime)
+  if (!quiet && found.length > 1) {
+    const age = (m) => `${Math.round((Date.now() - m) / 60000)}분 전`
+    console.error(`[exe] ${found[0].p} (${age(found[0].mtime)}) — 후보 ${found.length}개 중 최신`)
+  }
+  return found[0].p
+}
+
+export function tauriProfile({ port = 9334, exe, extraEnv = {}, cdp = true, targetDir } = {}) {
   return {
     name: 'tauri-3.0.0',
-    cmd: exe ?? path.join(REPO, 'target', 'release', 'agentcodegui.exe'),
+    cmd: resolveTauriExe(exe, { targetDir }),
     args: [],
     env: {
       CCG_HOME: BENCH_HOME + '-tauri',

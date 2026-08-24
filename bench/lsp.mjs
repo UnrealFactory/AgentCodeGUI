@@ -39,7 +39,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
 import { execFileSync, spawn } from 'node:child_process'
-import { electronProfile, tauriProfile, connectMainPage, killTree, sleep, median, envInfo, provenance, REPO } from './lib.mjs'
+import { electronProfile, tauriProfile, connectMainPage, killTree, sleep, median, envInfo, provenance, REPO, resolveTauriExe } from './lib.mjs'
 import { makeFixtureHome, FIX_ID } from './fixture.mjs'
 import { HELPERS_JS, makeCtx } from './screens.mjs'
 import { FIXTURES } from './lspfix.mjs'
@@ -385,11 +385,13 @@ $out | ConvertTo-Json -Compress -Depth 3`
 // `--exe <경로>`를 주면 그 파일을 스냅샷한다 — 4명이 동시에 커밋하는 라운드에서
 // **공용 `target/release`를 안 건드리고** 자기 타깃 폴더로 빌드해 재기 위한 문이다.
 async function snapshotExe() {
-  const src = EXE_ARG ? path.resolve(EXE_ARG) : path.join(REPO, 'target', 'release', 'agentcodegui.exe')
+  // M12 R2 — mainBinaryName 변경으로 이름이 둘이다(AgentCodeGUI3.exe / agentcodegui.exe).
   const dir = path.join(os.tmpdir(), 'ccg-lsp-exe')
   fs.mkdirSync(dir, { recursive: true })
-  const dst = path.join(dir, 'agentcodegui.exe')
+  const dst = path.join(dir, 'agentcodegui.exe') // 사본 이름은 옛 이름 유지(귀속 정규식 호환)
+  let src = null
   for (let i = 0; i < 80; i++) {
+    src = resolveTauriExe(EXE_ARG, { quiet: i > 0 })
     try {
       fs.copyFileSync(src, dst)
       return dst
@@ -398,7 +400,7 @@ async function snapshotExe() {
       await sleep(5000)
     }
   }
-  throw new Error('exe 스냅샷 실패')
+  throw new Error(`exe 스냅샷 실패 (마지막 후보 ${src})`)
 }
 
 // ── 앱 한 번 띄우고 CDP 붙이기 ────────────────────────────────────────────────

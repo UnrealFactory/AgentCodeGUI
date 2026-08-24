@@ -29,14 +29,13 @@ import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
 import { spawn, spawnSync } from 'node:child_process'
-import { connectMainPage, killTree, sleep, REPO } from '../bench/lib.mjs'
+import { connectMainPage, killTree, sleep, REPO, resolveTauriExe } from '../bench/lib.mjs'
 
 const args = process.argv.slice(2)
 const only = (args.find((a) => a.startsWith('--only=')) ?? '').split('=')[1] || 'all'
 const KEEP = args.includes('--keep')
-const EXE =
-  (args.find((a) => a.startsWith('--exe=')) ?? '').split('=')[1] ||
-  path.join(REPO, 'target', 'release', 'agentcodegui.exe')
+// M12 R2 — mainBinaryName 변경으로 exe 이름이 둘이다(구·신 모두 탐색·최신 mtime 우선)
+const EXE = resolveTauriExe((args.find((a) => a.startsWith('--exe=')) ?? '').split('=')[1])
 const REAL_HOME = path.join(os.homedir(), '.agentcodegui')
 const tagArg = args.find((a) => a === '--tag' || a.startsWith('--tag='))
 const RUNTAG = tagArg === undefined ? '' : tagArg.split('=')[1] || `${process.pid}-${Math.random().toString(36).slice(2, 6)}`

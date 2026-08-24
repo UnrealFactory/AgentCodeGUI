@@ -307,12 +307,11 @@ const ok = (cond, msg) => {
 // (`ma:event`의 panelId 봉투가 새면 두 패널이 같은 목록을 그린다 — 눈으로만 봐서는
 // "둘 다 잘 나온다"로 보이는 종류의 결함이다).
 if (APP) {
-  const { connectMainPage, killTree, sleep, REPO } = await import('../bench/lib.mjs')
+  const { connectMainPage, killTree, sleep, REPO, resolveTauriExe } = await import('../bench/lib.mjs')
   // 기본은 공용 `target/release`. 다른 라운드가 그 exe를 물고 있으면 링커가 못 덮으므로
   // 격리 타깃에 지은 바이너리를 `--exe=…`로 가리킬 수 있다(R2에서 실제로 밟았다).
-  const EXE =
-    (process.argv.find((a) => a.startsWith('--exe=')) ?? '').split('=').slice(1).join('=') ||
-    path.join(REPO, 'target', 'release', 'agentcodegui.exe')
+  // M12 R2 — mainBinaryName 변경으로 exe 이름이 둘이다(구·신 모두 탐색·최신 mtime 우선)
+  const EXE = resolveTauriExe((process.argv.find((a) => a.startsWith('--exe=')) ?? '').split('=').slice(1).join('='))
   const CCG_HOME = path.join(REPO, '.poc-home-mcpskill')
   const PORT = 9391
   const dirA = FIX.A()

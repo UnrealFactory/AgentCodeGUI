@@ -34,7 +34,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
 import { spawn, spawnSync } from 'node:child_process'
-import { cdpTargets, connectMainPage, killTree, sleep, Cdp, REPO } from '../bench/lib.mjs'
+import { cdpTargets, connectMainPage, killTree, sleep, Cdp, REPO, resolveTauriExe } from '../bench/lib.mjs'
 
 const args = process.argv.slice(2)
 const only = (args.find((a) => a.startsWith('--only=')) ?? '').split('=')[1] || 'all'
@@ -42,7 +42,8 @@ const KEEP = args.includes('--keep')
 // `--exe=…`로 **고정된 바이너리**를 잴 수 있다. 같은 레포에서 다른 라운드가 동시에
 // `rm -f target/release/agentcodegui.exe && npm run tauri:build`을 돌리면 주행 도중
 // exe가 사라진다(실제로 밟았다 — ENOENT). 스냅샷을 떠 두고 그것을 재는 길을 연다.
-const EXE = (args.find((a) => a.startsWith('--exe=')) ?? '').split('=')[1] || path.join(REPO, 'target', 'release', 'agentcodegui.exe')
+// M12 R2 — mainBinaryName 변경으로 exe 이름이 둘이다(구·신 모두 탐색·최신 mtime 우선)
+const EXE = resolveTauriExe((args.find((a) => a.startsWith('--exe=')) ?? '').split('=')[1])
 const REAL_HOME = path.join(os.homedir(), '.agentcodegui')
 // ★R4 — **동시 실행 안전**. R3까지 격리 홈 이름(`.poc-home-*`)과 CDP 포트가 고정이라,
 // 같은 레포에서 다른 라운드가 같은 하네스를 돌리면 **서로의 홈을 지우고 포트를 뺏는다**

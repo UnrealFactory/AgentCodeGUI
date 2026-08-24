@@ -14,10 +14,11 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { spawn } from 'node:child_process'
-import { connectMainPage, killTree, sleep, REPO } from '../../../bench/lib.mjs'
+import { connectMainPage, killTree, sleep, REPO, resolveTauriExe } from '../../../bench/lib.mjs'
 
 const exeArg = (process.argv.find((a) => a.startsWith('--exe=')) ?? '').split('=')[1]
-const EXE = exeArg || path.join(REPO, 'target', 'release', 'agentcodegui.exe')
+// M12 R2 — mainBinaryName 변경으로 exe 이름이 둘이다(구·신 모두 탐색·최신 mtime 우선)
+const EXE = resolveTauriExe(exeArg)
 const HOME = path.join(REPO, '.critic-home-alias')
 const PORT = 9385
 const OUT = path.join(REPO, 'docs', 'critic', 'wiring-r1-alias.json')
