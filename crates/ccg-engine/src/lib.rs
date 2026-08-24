@@ -28,6 +28,9 @@ pub mod live;
 pub mod queue;
 pub mod runtime;
 pub mod state;
+/// 엔진 CLI 버전 관리(목록·설치·제거·활성·정리)의 **두 엔진 공용** 알맹이.
+/// Claude는 최종 파리티 T2가, Codex는 M4가 이 문을 쓴다.
+pub mod versions;
 
 pub use clock::{Clock, Millis, SystemClock, VirtualClock};
 pub use codex::{CodexDriver, CodexPlan};

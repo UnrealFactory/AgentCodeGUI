@@ -48,6 +48,10 @@ mod tap;
 /// ★M11 R3(F5) — `CCG_HOME`을 만지는 **모든** 테스트가 나눠 잡는 자물쇠.
 #[cfg(test)]
 pub(crate) mod testhome;
+/// ★최종 파리티 T2 — Claude 엔진 CLI 버전 관리(`engine:*` 5채널) + 실행 파일 고르기.
+/// `pub`인 이유: 계정 팔(`ipc/accounts.rs`)이 `claude auth …`를 조립할 때 **같은
+/// 실행 파일**을 써야 한다(경로가 두 곳에 적히면 한쪽만 고쳐진다).
+pub mod versions;
 mod wire;
 
 use super::ipc::{arg, ch};
@@ -287,13 +291,26 @@ pub fn dispose_chat(chat: &str) {
 
 // ── 채널 디스패치 ────────────────────────────────────────────────────────────
 
+/// **무거운 관리 채널** — 두 엔진 CLI의 버전 관리(`engine:*`·`codex-engine:*`).
+///
+/// `dispatch`와 갈라 놓은 이유는 딱 하나, **어느 스레드에서 도는가**다. 여기 채널들은
+/// `npm view`(8초 상한)·`npm install`(수십 초) 자식 프로세스 왕복이라 tauri의 async
+/// 워커(코어 수만큼의 tokio 스레드)에서 돌면 그동안 다른 창의 IPC가 통째로 굶는다.
+/// `ipc_call`이 이 목록을 보고 **전용 블로킹 풀**로 보낸다 — 파일·Git·LSP 팔과 같은 규약.
+///
+/// `state` 두 채널은 여기 없다: 디스크 목록 한 번이라 싸고, M1이 `ipc/app_meta.rs`에서
+/// 이미 답한다.
+pub fn heavy_owns(channel: &str) -> bool {
+    versions::owns(channel) || codex_versions::owns(channel)
+}
+
+pub fn heavy_dispatch(app: &AppHandle, channel: &str, p: &Value) -> Option<Value> {
+    versions::dispatch(app, channel, p).or_else(|| codex_versions::dispatch(app, channel, p))
+}
+
 pub fn dispatch(_app: &AppHandle, window: &WebviewWindow, channel: &str, p: &Value) -> Option<Value> {
     // 3.0 코어(`chat:*`) — 주소가 인자 첫 자리에 온다.
     if let Some(v) = core_dispatch(channel, p) {
-        return Some(v);
-    }
-    // Codex CLI 버전 관리(M4) — `codex-engine:state`만 M1(ipc/app_meta)이 답한다.
-    if let Some(v) = codex_versions::dispatch(_app, channel, p) {
         return Some(v);
     }
     // 과도기 별칭 — 옛 채널은 주소를 안 싣는다. 번역 함수 셋이 주소를 만든다.

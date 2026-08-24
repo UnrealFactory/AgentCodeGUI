@@ -112,7 +112,11 @@ pub fn close_orphan_dialogs() -> usize {
 }
 
 // ── 계정 목록 (스토어 파일만 읽는다 — CLI 스폰·토큰 복호 없음) ───────────────
-fn list_claude_accounts() -> Value {
+/// `pub(super)`인 이유: 쓰기 채널(`ipc/accounts.rs` — 로그인·로그아웃·기본·순서)이
+/// **같은 함수로** 새 목록을 만들어 돌려줘야 한다. 렌더러는 그 반환값으로 화면 상태를
+/// 통째로 갈아끼우므로(`Settings.tsx:457`), 모양을 두 곳에서 조립하면 한쪽만 `needsLogin`을
+/// 빠뜨리는 순간 "삭제하고 나니 재로그인 배지가 사라진다" 같은 유령이 태어난다.
+pub(super) fn list_claude_accounts() -> Value {
     let Some(f) = ccg_store::read_home_json("accounts.json") else { return json!([]) };
     // v3가 현재 포맷, v2도 계정 모양이 같아 읽는다(2.6.2 readStoreFile과 동일)
     let version = f.get("version").and_then(Value::as_u64).unwrap_or(0);

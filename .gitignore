@@ -64,3 +64,8 @@ src-tauri/gen/
 
 scripts/poc-rs/target/
 .poc-home-chats/
+# ★R28 — 갈래별 격리 산출물. 공용 `target/`의 exe가 옆 갈래가 띄워 둔 앱에 잠기면
+# (EBUSY) 각자 `CARGO_TARGET_DIR=target-<갈래>`로 빌드하고 하네스에 `--exe=`로 지목한다.
+# 격리 홈도 하네스마다 하나씩 판다(`.poc-home-<갈래>`). 둘 다 수 GB / 수백 MB다.
+target-*/
+.poc-home-*/

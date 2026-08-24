@@ -20,6 +20,14 @@ name = "ccg-auth-probe"
 path = "src/bin/ccg_auth_probe.rs"
 required-features = ["cli"]
 
+# ★최종 파리티 T1 — 가짜 `claude` 실행 파일(로그인/상태/로그아웃 계약면만 흉내).
+# `auth:login` 배선은 자식 프로세스가 있어야 밟히는데 진짜 CLI를 부르면 브라우저가
+# 열리고 사용자 실계정이 걸린다. 기본 빌드에는 안 들어간다(probe와 같은 규약).
+[[bin]]
+name = "ccg-fake-claude"
+path = "src/bin/ccg_fake_claude.rs"
+required-features = ["cli"]
+
 [dependencies]
 serde = { workspace = true }
 serde_json = { workspace = true }

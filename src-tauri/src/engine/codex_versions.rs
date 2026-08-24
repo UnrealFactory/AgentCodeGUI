@@ -37,6 +37,16 @@ mod ch {
     pub const INSTALL_PROGRESS: &str = "codex-engine:install-progress";
 }
 
+/// 이 모듈이 답하는 채널인가 — `versions::owns`와 같은 이유(블로킹 풀 배정)다.
+///
+/// ★T2 정정 — M4는 여기서 npm이 끝날 때까지 **async 워커를 막았고**(아래 `INSTALL`의
+/// 그 경고), "블로킹 스레드로 넘기는 것은 `ipc/mod.rs`의 목록 한 줄이라 그쪽 소유"라며
+/// 남은 조각으로 넘겼다. Claude 쪽을 붙이면서 그 한 줄을 같이 놓는다 — 같은 npm 왕복이
+/// 엔진에 따라 굶기고 안 굶기는 것이 더 나쁜 비대칭이다.
+pub fn owns(channel: &str) -> bool {
+    matches!(channel, ch::LIST_AVAILABLE | ch::INSTALL | ch::UNINSTALL | ch::SET_ACTIVE | ch::CLEANUP)
+}
+
 pub fn dispatch(app: &AppHandle, channel: &str, p: &Value) -> Option<Value> {
     let home = ccg_store::app_home();
     Some(match channel {
@@ -56,10 +66,9 @@ pub fn dispatch(app: &AppHandle, channel: &str, p: &Value) -> Option<Value> {
             let emit = move |line: &str| {
                 let _ = app2.emit(ch::INSTALL_PROGRESS, json!({ "version": v2, "line": line }));
             };
-            // ⚠️ 여기서 npm이 끝날 때까지 **막는다**(수십 초). 렌더러 계약이
-            // `await install() → {ok}`라 비동기로 바꿀 수 없고(`Settings.tsx:968`),
-            // 블로킹 스레드로 넘기는 것은 `ipc/mod.rs`의 목록 한 줄이라 그쪽 소유다.
-            // 남은 조각으로 보고서에 적었다.
+            // 여기서 npm이 끝날 때까지 **막는다**(수십 초). 렌더러 계약이
+            // `await install() → {ok}`라 비동기로 바꿀 수 없다(`Settings.tsx:968`).
+            // ★T2 — 이제 그 막힘이 **전용 블로킹 풀**에서 일어난다(`owns` 참고).
             let r = versions::install(&home, &version, emit);
             let _ = app.emit(
                 ch::INSTALL_PROGRESS,

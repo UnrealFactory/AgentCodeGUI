@@ -1,0 +1,2827 @@
+{
+  "at": "2026-08-24T08:33:37.537Z",
+  "exe": "C:\\Code\\AgentCodeGUI\\target-t1t2\\release\\agentcodegui.exe",
+  "scenarios": {
+    "t1": {
+      "list0": [
+        {
+          "email": "a@t1t2.test",
+          "subscriptionType": "max",
+          "isDefault": true
+        },
+        {
+          "email": "b@t1t2.test",
+          "subscriptionType": "max",
+          "isDefault": false
+        },
+        {
+          "email": "c@t1t2.test",
+          "subscriptionType": "max",
+          "isDefault": false
+        }
+      ],
+      "setDefault": [
+        {
+          "email": "a@t1t2.test",
+          "subscriptionType": "max",
+          "isDefault": false
+        },
+        {
+          "email": "b@t1t2.test",
+          "subscriptionType": "max",
+          "isDefault": true
+        },
+        {
+          "email": "c@t1t2.test",
+          "subscriptionType": "max",
+          "isDefault": false
+        }
+      ],
+      "reorder": [
+        {
+          "email": "c@t1t2.test",
+          "subscriptionType": "max",
+          "isDefault": false
+        },
+        {
+          "email": "b@t1t2.test",
+          "subscriptionType": "max",
+          "isDefault": true
+        },
+        {
+          "email": "a@t1t2.test",
+          "subscriptionType": "max",
+          "isDefault": false
+        }
+      ],
+      "remove": [
+        {
+          "email": "b@t1t2.test",
+          "subscriptionType": "max",
+          "isDefault": true
+        },
+        {
+          "email": "a@t1t2.test",
+          "subscriptionType": "max",
+          "isDefault": false
+        }
+      ],
+      "logout": [
+        {
+          "email": "a@t1t2.test",
+          "subscriptionType": "max",
+          "isDefault": true
+        }
+      ],
+      "revokeSkipped": true,
+      "loginUrl": "https://claude.ai/oauth/authorize?code=FAKE-T1T2&email=fake@t1t2.test",
+      "loginUrlMs": 108,
+      "loginCancelled": {
+        "ok": false,
+        "loggedIn": false
+      },
+      "loginSuccess": {
+        "ok": true,
+        "loggedIn": true,
+        "email": "new@t1t2.test",
+        "authMethod": "claudeai",
+        "subscriptionType": "max"
+      },
+      "loginSuccessMs": 91,
+      "after": [
+        "a@t1t2.test",
+        "new@t1t2.test"
+      ],
+      "logoutRevoke": [
+        {
+          "email": "a@t1t2.test",
+          "subscriptionType": "max",
+          "isDefault": true
+        }
+      ],
+      "revokeConfigDir": "C:\\Code\\AgentCodeGUI\\.poc-home-t1t2\\accounts\\new_t1t2.test-d70b0l"
+    },
+    "t2": {
+      "state": {
+        "package": "@anthropic-ai/claude-agent-sdk",
+        "bundled": "unknown",
+        "active": null,
+        "installed": []
+      },
+      "avail": {
+        "latest": "0.3.241",
+        "versions": [
+          {
+            "version": "0.3.241",
+            "date": "2026-08-22T23:59:33.491Z",
+            "latest": true,
+            "preview": false
+          },
+          {
+            "version": "0.3.240",
+            "date": "2026-08-22T13:07:26.941Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.239",
+            "date": "2026-08-21T17:23:55.049Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.238",
+            "date": "2026-08-20T18:02:54.893Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.237",
+            "date": "2026-08-19T23:58:53.600Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.236",
+            "date": "2026-08-19T18:49:14.648Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.235",
+            "date": "2026-08-18T18:25:11.534Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.234",
+            "date": "2026-08-17T18:20:12.142Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.233",
+            "date": "2026-08-14T18:52:44.931Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.232",
+            "date": "2026-08-13T21:31:53.068Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.231",
+            "date": "2026-08-13T08:31:23.315Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.229",
+            "date": "2026-08-12T19:30:48.256Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.228",
+            "date": "2026-08-11T17:49:46.032Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.227",
+            "date": "2026-08-10T21:06:01.003Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.226",
+            "date": "2026-08-08T01:48:18.819Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.225",
+            "date": "2026-08-07T23:11:56.760Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.224",
+            "date": "2026-08-07T01:39:33.129Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.223",
+            "date": "2026-08-05T22:50:10.676Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.222",
+            "date": "2026-08-04T20:39:17.514Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.221",
+            "date": "2026-08-03T22:12:21.967Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.220",
+            "date": "2026-07-24T23:11:19.727Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.219",
+            "date": "2026-07-24T16:11:47.390Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.218",
+            "date": "2026-07-22T19:55:30.144Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.217",
+            "date": "2026-07-21T19:55:36.703Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.216",
+            "date": "2026-07-20T20:19:35.077Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.215",
+            "date": "2026-07-19T00:53:35.007Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.214",
+            "date": "2026-07-18T00:13:39.675Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.213",
+            "date": "2026-07-17T22:26:24.267Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.212",
+            "date": "2026-07-16T19:20:22.236Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.211",
+            "date": "2026-07-15T19:24:04.903Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.210",
+            "date": "2026-07-14T19:39:19.351Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.209",
+            "date": "2026-07-14T04:45:35.751Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.208",
+            "date": "2026-07-13T21:31:25.465Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.207",
+            "date": "2026-07-10T22:25:07.256Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.206",
+            "date": "2026-07-09T17:53:55.509Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.205",
+            "date": "2026-07-08T19:34:55.384Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.204",
+            "date": "2026-07-08T00:04:55.463Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.203",
+            "date": "2026-07-07T17:40:15.405Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.202",
+            "date": "2026-07-06T20:41:21.029Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.201",
+            "date": "2026-07-03T20:52:31.386Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.200",
+            "date": "2026-07-03T04:33:47.398Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.199",
+            "date": "2026-07-02T17:33:46.017Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.198",
+            "date": "2026-07-01T16:50:13.644Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.197",
+            "date": "2026-06-30T13:31:16.422Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.196",
+            "date": "2026-06-29T20:08:56.818Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.195",
+            "date": "2026-06-26T18:16:21.040Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.193",
+            "date": "2026-06-25T19:05:06.049Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.191",
+            "date": "2026-06-24T18:54:37.931Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.190",
+            "date": "2026-06-24T14:39:53.921Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.187",
+            "date": "2026-06-23T17:55:39.972Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.186",
+            "date": "2026-06-22T18:03:46.564Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.185",
+            "date": "2026-06-20T16:54:34.131Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.183",
+            "date": "2026-06-19T00:02:35.892Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.182",
+            "date": "2026-06-18T22:06:39.973Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.181",
+            "date": "2026-06-17T18:28:57.534Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.179",
+            "date": "2026-06-16T17:51:25.042Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.178",
+            "date": "2026-06-15T19:03:35.317Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.177",
+            "date": "2026-06-13T01:04:19.412Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.176",
+            "date": "2026-06-12T19:45:39.438Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.175",
+            "date": "2026-06-12T02:10:19.538Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.174",
+            "date": "2026-06-11T22:27:49.859Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.173",
+            "date": "2026-06-11T02:09:47.904Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.172",
+            "date": "2026-06-10T17:55:46.264Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.170",
+            "date": "2026-06-09T16:15:42.046Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.169",
+            "date": "2026-06-08T18:11:18.370Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.168",
+            "date": "2026-06-06T23:32:50.176Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.167",
+            "date": "2026-06-06T01:18:40.481Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.166",
+            "date": "2026-06-05T19:01:57.549Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.165",
+            "date": "2026-06-05T05:22:40.048Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.163",
+            "date": "2026-06-04T17:55:59.385Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.162",
+            "date": "2026-06-03T18:09:41.352Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.161",
+            "date": "2026-06-02T17:38:43.861Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.160",
+            "date": "2026-06-01T20:03:21.076Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.159",
+            "date": "2026-05-31T17:50:04.652Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.158",
+            "date": "2026-05-30T01:12:21.311Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.157",
+            "date": "2026-05-29T17:30:00.043Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.156",
+            "date": "2026-05-28T20:12:50.402Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.154",
+            "date": "2026-05-28T15:40:47.436Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.153",
+            "date": "2026-05-27T21:46:55.956Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.152",
+            "date": "2026-05-26T21:38:26.802Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.150",
+            "date": "2026-05-23T02:27:14.898Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.149",
+            "date": "2026-05-22T18:27:09.385Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.148",
+            "date": "2026-05-22T00:09:59.534Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.147",
+            "date": "2026-05-21T17:16:36.492Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.146",
+            "date": "2026-05-20T20:14:11.646Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.145",
+            "date": "2026-05-19T17:40:49.855Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.144",
+            "date": "2026-05-18T19:57:52.141Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.143",
+            "date": "2026-05-15T18:45:51.360Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.142",
+            "date": "2026-05-14T20:17:26.269Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.141",
+            "date": "2026-05-13T22:42:53.219Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.140",
+            "date": "2026-05-12T19:50:26.624Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.139",
+            "date": "2026-05-11T18:09:26.218Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.138",
+            "date": "2026-05-09T05:57:25.260Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.137",
+            "date": "2026-05-09T00:04:06.047Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.136",
+            "date": "2026-05-08T16:30:39.729Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.133",
+            "date": "2026-05-07T20:19:29.923Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.132",
+            "date": "2026-05-06T19:10:02.535Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.131",
+            "date": "2026-05-06T07:41:51.119Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.129",
+            "date": "2026-05-05T18:22:53.200Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.128",
+            "date": "2026-05-04T19:29:21.321Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.126",
+            "date": "2026-04-30T20:30:31.632Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.124",
+            "date": "2026-04-30T01:39:39.144Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.123",
+            "date": "2026-04-29T01:52:45.731Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.122",
+            "date": "2026-04-28T17:35:50.932Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.121",
+            "date": "2026-04-27T19:39:44.598Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.120",
+            "date": "2026-04-24T23:01:50.398Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.119",
+            "date": "2026-04-23T21:36:17.427Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.118",
+            "date": "2026-04-22T23:48:54.089Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.117",
+            "date": "2026-04-21T21:53:14.704Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.116",
+            "date": "2026-04-20T19:24:51.489Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.114",
+            "date": "2026-04-17T23:26:30.486Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.113",
+            "date": "2026-04-17T19:08:50.031Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.112",
+            "date": "2026-04-16T19:24:09.798Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.111",
+            "date": "2026-04-16T15:16:04.033Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.110",
+            "date": "2026-04-15T20:40:40.433Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.109",
+            "date": "2026-04-15T03:45:42.906Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.108",
+            "date": "2026-04-14T18:35:46.707Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.107",
+            "date": "2026-04-14T05:18:46.063Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.105",
+            "date": "2026-04-13T19:51:21.170Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.104",
+            "date": "2026-04-12T02:26:23.816Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.101",
+            "date": "2026-04-10T18:41:54.277Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.100",
+            "date": "2026-04-10T05:00:38.247Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.98",
+            "date": "2026-04-09T18:08:53.849Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.97",
+            "date": "2026-04-08T21:27:54.198Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.96",
+            "date": "2026-04-08T04:32:43.484Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.94",
+            "date": "2026-04-07T21:04:02.715Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.92",
+            "date": "2026-04-04T00:05:46.405Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.91",
+            "date": "2026-04-02T22:37:19.386Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.90",
+            "date": "2026-04-01T23:31:42.383Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.89",
+            "date": "2026-03-31T23:32:40.260Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.87",
+            "date": "2026-03-29T02:14:07.808Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.86",
+            "date": "2026-03-27T21:07:36.856Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.85",
+            "date": "2026-03-26T21:31:02.334Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.84",
+            "date": "2026-03-26T00:26:39.863Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.83",
+            "date": "2026-03-25T06:02:35.935Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.81",
+            "date": "2026-03-20T22:03:18.082Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.80",
+            "date": "2026-03-19T21:39:27.561Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.79",
+            "date": "2026-03-18T22:11:43.220Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.78",
+            "date": "2026-03-17T21:41:31.772Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.77",
+            "date": "2026-03-16T23:47:08.879Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.76",
+            "date": "2026-03-14T00:46:07.245Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.75",
+            "date": "2026-03-13T16:24:47.769Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.74",
+            "date": "2026-03-12T00:20:56.130Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.73",
+            "date": "2026-03-11T17:40:27.950Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.72",
+            "date": "2026-03-10T00:00:34.212Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.71",
+            "date": "2026-03-06T23:19:49.371Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.70",
+            "date": "2026-03-06T00:55:31.609Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.69",
+            "date": "2026-03-05T00:04:08.741Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.68",
+            "date": "2026-03-04T09:52:39.887Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.66",
+            "date": "2026-03-04T00:49:20.619Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.64",
+            "date": "2026-03-03T03:50:34.275Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.63",
+            "date": "2026-02-28T03:11:43.122Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.62",
+            "date": "2026-02-27T01:53:33.388Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.61",
+            "date": "2026-02-26T22:08:11.781Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.59",
+            "date": "2026-02-26T00:08:20.290Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.58",
+            "date": "2026-02-25T19:50:51.453Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.56",
+            "date": "2026-02-25T06:25:19.947Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.55",
+            "date": "2026-02-25T03:10:59.586Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.54",
+            "date": "2026-02-25T02:34:45.727Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.53",
+            "date": "2026-02-24T23:11:56.617Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.52",
+            "date": "2026-02-24T06:28:58.727Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.51",
+            "date": "2026-02-24T00:14:13.995Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.50",
+            "date": "2026-02-20T23:39:40.261Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.49",
+            "date": "2026-02-19T23:07:01.405Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.48",
+            "date": "2026-02-19T21:17:35.796Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.47",
+            "date": "2026-02-18T20:43:55.515Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.45",
+            "date": "2026-02-17T18:02:37.766Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.44",
+            "date": "2026-02-16T21:21:37.609Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.42",
+            "date": "2026-02-13T19:26:52.669Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.41",
+            "date": "2026-02-13T01:40:28.648Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.40",
+            "date": "2026-02-12T01:20:05.356Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.39",
+            "date": "2026-02-10T21:36:14.806Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.38",
+            "date": "2026-02-10T00:24:36.282Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.37",
+            "date": "2026-02-07T18:55:56.046Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.36",
+            "date": "2026-02-07T17:45:31.000Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.34",
+            "date": "2026-02-06T06:54:04.927Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.33",
+            "date": "2026-02-06T00:33:00.674Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.32",
+            "date": "2026-02-05T17:21:47.605Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.31",
+            "date": "2026-02-04T00:22:12.526Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.30",
+            "date": "2026-02-03T16:53:01.505Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.29",
+            "date": "2026-01-31T20:27:45.461Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.27",
+            "date": "2026-01-30T20:14:04.502Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.26",
+            "date": "2026-01-30T02:13:59.551Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.25",
+            "date": "2026-01-29T20:33:50.858Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.23",
+            "date": "2026-01-29T00:19:32.695Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.22",
+            "date": "2026-01-28T06:34:59.425Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.21",
+            "date": "2026-01-28T01:38:12.829Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.20",
+            "date": "2026-01-27T00:40:02.582Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.19",
+            "date": "2026-01-23T21:14:52.759Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.18",
+            "date": "2026-01-22T22:45:00.874Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.17",
+            "date": "2026-01-22T21:02:22.499Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.16",
+            "date": "2026-01-22T19:03:21.083Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.15",
+            "date": "2026-01-21T21:25:42.070Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.14",
+            "date": "2026-01-20T22:37:51.578Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.12",
+            "date": "2026-01-17T15:40:59.439Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.11",
+            "date": "2026-01-17T01:20:02.223Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.10",
+            "date": "2026-01-17T00:11:45.697Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.9",
+            "date": "2026-01-16T00:02:04.783Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.8",
+            "date": "2026-01-15T00:41:12.965Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.7",
+            "date": "2026-01-13T22:56:04.977Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.6",
+            "date": "2026-01-13T01:43:03.043Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.5",
+            "date": "2026-01-11T21:30:23.048Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.4",
+            "date": "2026-01-10T22:23:50.744Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.3",
+            "date": "2026-01-09T21:06:02.298Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.2",
+            "date": "2026-01-08T21:19:58.864Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.1",
+            "date": "2026-01-07T21:10:58.757Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.0",
+            "date": "2026-01-07T02:43:14.869Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.77",
+            "date": "2026-01-06T00:26:35.636Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.76",
+            "date": "2025-12-22T23:56:46.688Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.75",
+            "date": "2025-12-20T17:19:20.761Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.74",
+            "date": "2025-12-19T21:08:53.867Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.73",
+            "date": "2025-12-18T23:26:09.289Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.72",
+            "date": "2025-12-17T21:23:40.040Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.71",
+            "date": "2025-12-16T21:30:50.481Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.70",
+            "date": "2025-12-15T22:39:09.622Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.69",
+            "date": "2025-12-13T00:32:49.809Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.68",
+            "date": "2025-12-12T22:56:36.392Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.67",
+            "date": "2025-12-11T23:56:51.101Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.66",
+            "date": "2025-12-11T19:03:55.871Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.65",
+            "date": "2025-12-11T02:48:47.643Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.63",
+            "date": "2025-12-09T19:44:56.732Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.62",
+            "date": "2025-12-09T00:20:57.806Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.61",
+            "date": "2025-12-07T09:21:48.331Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.60",
+            "date": "2025-12-05T21:53:35.992Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.59",
+            "date": "2025-12-04T21:59:46.101Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.58",
+            "date": "2025-12-03T18:34:38.761Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.57",
+            "date": "2025-12-03T04:53:09.785Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.56",
+            "date": "2025-12-01T23:38:43.128Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.55",
+            "date": "2025-11-26T22:55:06.909Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.54",
+            "date": "2025-11-26T00:36:17.004Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.53",
+            "date": "2025-11-25T01:12:50.276Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.52",
+            "date": "2025-11-24T23:01:15.111Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.51",
+            "date": "2025-11-24T18:27:28.686Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.50",
+            "date": "2025-11-21T17:13:11.536Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.49",
+            "date": "2025-11-21T00:00:11.394Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.47",
+            "date": "2025-11-19T22:38:42.478Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.46",
+            "date": "2025-11-19T04:19:15.535Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.45",
+            "date": "2025-11-18T16:30:52.793Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.44",
+            "date": "2025-11-18T04:31:21.608Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.43",
+            "date": "2025-11-17T22:19:26.141Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.42",
+            "date": "2025-11-14T23:00:25.967Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.39",
+            "date": "2025-11-14T01:55:37.967Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.37",
+            "date": "2025-11-10T22:05:55.410Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.36",
+            "date": "2025-11-07T21:55:01.831Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.35",
+            "date": "2025-11-06T20:25:38.921Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.34",
+            "date": "2025-11-05T20:45:02.202Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.33",
+            "date": "2025-11-04T22:27:34.683Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.31",
+            "date": "2025-11-03T23:09:41.815Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.30",
+            "date": "2025-10-30T22:23:55.177Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.29",
+            "date": "2025-10-29T23:13:18.238Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.28",
+            "date": "2025-10-27T20:44:35.844Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.27",
+            "date": "2025-10-24T19:51:11.477Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.26",
+            "date": "2025-10-23T22:43:02.260Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.25",
+            "date": "2025-10-21T21:04:07.343Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.23",
+            "date": "2025-10-20T04:53:47.959Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.22",
+            "date": "2025-10-17T21:40:40.259Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.21",
+            "date": "2025-10-16T23:45:00.768Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.20",
+            "date": "2025-10-16T16:01:07.939Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.19",
+            "date": "2025-10-15T21:34:58.559Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.17",
+            "date": "2025-10-15T19:45:18.513Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.16",
+            "date": "2025-10-15T15:45:49.506Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.15",
+            "date": "2025-10-14T17:18:11.912Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.14",
+            "date": "2025-10-10T20:46:02.598Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.13",
+            "date": "2025-10-09T17:20:35.324Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.12",
+            "date": "2025-10-09T15:48:28.443Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.11",
+            "date": "2025-10-08T20:13:21.114Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.10",
+            "date": "2025-10-07T19:54:12.968Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.9",
+            "date": "2025-10-06T21:15:33.982Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.8",
+            "date": "2025-10-04T20:44:16.930Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.5",
+            "date": "2025-10-02T16:21:03.484Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.2",
+            "date": "2025-09-30T23:24:23.944Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.1",
+            "date": "2025-09-30T01:53:46.388Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.0",
+            "date": "2025-09-29T14:40:53.306Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.0.4",
+            "date": "2025-09-27T16:07:21.018Z",
+            "latest": false,
+            "preview": false
+          }
+        ]
+      },
+      "availMs": 535,
+      "gate": "Claude 엔진 설치",
+      "cleanup": {
+        "removed": [],
+        "kept": null,
+        "freedBytes": 0,
+        "activeSwitched": false
+      },
+      "warned": 0,
+      "codexAvail": {
+        "latest": "0.149.1",
+        "versions": [
+          {
+            "version": "0.149.1",
+            "date": "2026-08-24T00:32:45.066Z",
+            "latest": true,
+            "preview": false
+          },
+          {
+            "version": "0.149.0",
+            "date": "2026-08-20T21:09:05.284Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.148.0",
+            "date": "2026-08-18T22:30:14.842Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.147.0",
+            "date": "2026-08-07T01:47:21.081Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.146.1",
+            "date": "2026-08-05T16:00:31.441Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.146.0",
+            "date": "2026-07-29T01:45:57.696Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.145.0",
+            "date": "2026-07-21T18:24:11.494Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.144.6",
+            "date": "2026-07-18T13:54:50.572Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.144.5",
+            "date": "2026-07-16T02:57:51.857Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.144.4",
+            "date": "2026-07-14T05:10:51.485Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.144.3",
+            "date": "2026-07-13T06:15:20.670Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.144.2",
+            "date": "2026-07-13T04:42:46.190Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.144.1",
+            "date": "2026-07-09T23:05:40.041Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.144.0",
+            "date": "2026-07-09T16:50:26.998Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.143.0",
+            "date": "2026-07-08T01:34:38.318Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.142.5",
+            "date": "2026-07-01T01:18:19.998Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.142.4",
+            "date": "2026-06-29T05:07:05.914Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.142.3",
+            "date": "2026-06-26T21:32:08.704Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.142.2",
+            "date": "2026-06-25T07:34:58.281Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.142.1",
+            "date": "2026-06-25T00:38:54.309Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.142.0",
+            "date": "2026-06-22T22:22:41.166Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.141.0",
+            "date": "2026-06-18T04:45:39.921Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.140.0",
+            "date": "2026-06-15T21:09:21.790Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.139.0",
+            "date": "2026-06-09T20:17:25.855Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.138.0",
+            "date": "2026-06-08T23:03:39.681Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.137.0",
+            "date": "2026-06-04T01:41:31.275Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.136.0",
+            "date": "2026-06-01T18:53:55.315Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.135.0",
+            "date": "2026-05-28T19:08:37.797Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.134.0",
+            "date": "2026-05-26T19:33:51.389Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.133.0",
+            "date": "2026-05-21T17:13:06.253Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.132.0",
+            "date": "2026-05-20T02:39:00.388Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.131.0",
+            "date": "2026-05-18T18:08:19.710Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.130.0",
+            "date": "2026-05-08T23:12:58.744Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.129.0",
+            "date": "2026-05-07T17:05:37.553Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.128.0",
+            "date": "2026-04-30T16:43:46.064Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.125.0",
+            "date": "2026-04-24T18:01:41.002Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.124.0",
+            "date": "2026-04-23T18:30:45.892Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.123.0",
+            "date": "2026-04-23T01:27:03.972Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.122.0",
+            "date": "2026-04-20T18:39:33.583Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.121.0",
+            "date": "2026-04-15T20:46:45.517Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.120.0",
+            "date": "2026-04-11T02:54:37.375Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.119.0",
+            "date": "2026-04-10T22:45:06.804Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.118.0",
+            "date": "2026-03-31T17:03:18.490Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.117.0",
+            "date": "2026-03-26T22:28:43.427Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.116.0",
+            "date": "2026-03-19T17:52:17.991Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.115.0",
+            "date": "2026-03-16T19:38:16.363Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.114.0",
+            "date": "2026-03-11T00:29:28.692Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.113.0",
+            "date": "2026-03-10T05:25:37.995Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.112.0",
+            "date": "2026-03-08T20:44:58.047Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.111.0",
+            "date": "2026-03-05T19:13:00.697Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.110.0",
+            "date": "2026-03-05T02:23:39.861Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.107.0",
+            "date": "2026-03-02T18:00:55.212Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.106.0",
+            "date": "2026-02-26T23:12:45.073Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.105.0",
+            "date": "2026-02-25T17:22:34.496Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.104.0",
+            "date": "2026-02-18T07:13:25.235Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.103.0",
+            "date": "2026-02-17T23:03:50.048Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.102.0",
+            "date": "2026-02-17T20:03:25.029Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.101.0",
+            "date": "2026-02-12T20:06:40.829Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.100.0",
+            "date": "2026-02-12T18:30:51.007Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.99.0",
+            "date": "2026-02-11T20:43:52.809Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.98.0",
+            "date": "2026-02-05T17:01:54.850Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.97.0",
+            "date": "2026-02-05T05:12:14.841Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.96.0",
+            "date": "2026-02-04T18:24:44.133Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.95.0",
+            "date": "2026-02-04T04:55:36.663Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.94.0",
+            "date": "2026-02-02T18:28:42.990Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.93.0",
+            "date": "2026-01-31T07:00:56.838Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.92.0",
+            "date": "2026-01-27T11:51:59.692Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.91.0",
+            "date": "2026-01-25T17:34:45.939Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.90.0",
+            "date": "2026-01-25T16:38:42.443Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.89.0",
+            "date": "2026-01-22T21:36:53.306Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.88.0",
+            "date": "2026-01-21T19:20:16.986Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.87.0",
+            "date": "2026-01-16T15:39:11.925Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.86.0",
+            "date": "2026-01-16T01:20:07.494Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.85.0",
+            "date": "2026-01-15T18:39:58.034Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.84.0",
+            "date": "2026-01-15T01:30:11.748Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.81.0",
+            "date": "2026-01-14T18:13:47.226Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.80.0",
+            "date": "2026-01-09T19:49:15.685Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.79.0",
+            "date": "2026-01-07T00:57:10.229Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.78.0",
+            "date": "2026-01-06T18:48:48.432Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.77.0",
+            "date": "2025-12-21T05:38:00.898Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.76.0",
+            "date": "2025-12-19T18:57:04.942Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.75.0",
+            "date": "2025-12-18T19:30:12.182Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.74.0",
+            "date": "2025-12-18T18:09:58.412Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.73.0",
+            "date": "2025-12-15T22:39:48.665Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.72.0",
+            "date": "2025-12-13T01:23:34.549Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.71.0",
+            "date": "2025-12-11T18:37:41.366Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.69.0",
+            "date": "2025-12-10T22:29:44.283Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.66.0",
+            "date": "2025-12-09T03:39:00.384Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.65.0",
+            "date": "2025-12-04T18:24:25.977Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.64.0",
+            "date": "2025-12-02T22:16:06.099Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.63.0",
+            "date": "2025-11-21T18:26:14.262Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.61.0",
+            "date": "2025-11-20T16:16:05.560Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.60.1",
+            "date": "2025-11-19T19:47:02.754Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.59.0",
+            "date": "2025-11-19T18:10:27.340Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.58.0",
+            "date": "2025-11-13T18:05:12.275Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.57.0",
+            "date": "2025-11-09T22:31:15.715Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.56.0",
+            "date": "2025-11-07T18:10:48.128Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.55.0",
+            "date": "2025-11-04T20:27:05.636Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.54.0",
+            "date": "2025-11-04T18:54:42.951Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.53.0",
+            "date": "2025-10-31T01:22:31.469Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.52.0",
+            "date": "2025-10-30T18:33:39.078Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.50.0",
+            "date": "2025-10-25T21:38:37.218Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.49.0",
+            "date": "2025-10-24T18:59:44.727Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.48.0",
+            "date": "2025-10-23T23:48:47.928Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.47.0",
+            "date": "2025-10-17T17:08:38.384Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.46.0",
+            "date": "2025-10-09T02:07:32.493Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.45.0",
+            "date": "2025-10-06T19:22:40.426Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.44.0",
+            "date": "2025-10-03T17:02:31.672Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.42.0",
+            "date": "2025-09-26T18:43:27.605Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.41.0",
+            "date": "2025-09-24T17:11:35.121Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.40.0",
+            "date": "2025-09-23T16:29:27.101Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.39.0",
+            "date": "2025-09-18T21:49:35.913Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.38.0",
+            "date": "2025-09-17T18:18:41.935Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.36.0",
+            "date": "2025-09-15T17:19:07.695Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.34.0",
+            "date": "2025-09-10T21:28:22.098Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.33.0",
+            "date": "2025-09-10T19:54:57.118Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.32.0",
+            "date": "2025-09-10T17:28:53.325Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.31.0",
+            "date": "2025-09-08T21:57:25.444Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.30.0",
+            "date": "2025-09-05T22:22:41.692Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.29.0",
+            "date": "2025-09-03T19:55:21.887Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.28.0",
+            "date": "2025-09-02T22:25:53.947Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.27.0",
+            "date": "2025-08-29T06:15:57.142Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.26.0",
+            "date": "2025-08-29T04:10:09.103Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.25.0",
+            "date": "2025-08-27T08:46:14.052Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.24.0",
+            "date": "2025-08-26T17:44:37.233Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.23.0",
+            "date": "2025-08-20T06:07:34.871Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.22.0",
+            "date": "2025-08-15T21:13:31.180Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.21.0",
+            "date": "2025-08-12T04:48:04.322Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.20.0",
+            "date": "2025-08-09T00:59:13.243Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.19.0",
+            "date": "2025-08-08T01:43:23.960Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.16.0",
+            "date": "2025-08-07T18:02:32.338Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.14.0",
+            "date": "2025-08-06T16:39:25.134Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.13.0",
+            "date": "2025-08-05T21:20:33.048Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.12.0",
+            "date": "2025-08-05T01:47:42.801Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.11.0",
+            "date": "2025-08-02T01:00:17.641Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.10.0",
+            "date": "2025-07-24T22:17:14.742Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.9.0",
+            "date": "2025-07-23T01:04:48.930Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.8.0",
+            "date": "2025-07-19T00:40:30.027Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.7.0",
+            "date": "2025-07-14T17:17:21.290Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.6.0",
+            "date": "2025-07-13T00:05:08.833Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.5.0",
+            "date": "2025-07-10T22:06:55.542Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.4.0",
+            "date": "2025-07-09T16:01:20.633Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.3.0",
+            "date": "2025-07-08T06:47:11.484Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.2.0",
+            "date": "2025-07-08T00:07:10.559Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.2505291658",
+            "date": "2025-05-30T00:10:01.162Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.2505191453",
+            "date": "2025-05-19T22:12:33.472Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.2505172129",
+            "date": "2025-05-18T04:31:33.356Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.2505172116",
+            "date": "2025-05-18T04:20:43.772Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.2505171619",
+            "date": "2025-05-17T23:21:52.341Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.2505171600",
+            "date": "2025-05-17T23:05:42.247Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.2505171529",
+            "date": "2025-05-17T22:31:17.069Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.2505161800",
+            "date": "2025-05-17T01:12:04.495Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.2505161243",
+            "date": "2025-05-16T19:48:15.099Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.2505161202",
+            "date": "2025-05-16T19:06:18.324Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.2505161129",
+            "date": "2025-05-16T18:31:20.278Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.2505160811",
+            "date": "2025-05-16T15:19:08.640Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.2505141022",
+            "date": "2025-05-14T17:23:02.913Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.2505140839",
+            "date": "2025-05-14T15:42:05.405Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.2505111730",
+            "date": "2025-05-12T00:32:48.780Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.2505021246",
+            "date": "2025-05-02T19:48:20.925Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.2504301751",
+            "date": "2025-05-01T00:59:11.978Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.2504251709",
+            "date": "2025-04-26T00:13:40.736Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.2504221401",
+            "date": "2025-04-22T21:15:27.429Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.2504220136",
+            "date": "2025-04-22T08:46:16.881Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.2504211509",
+            "date": "2025-04-21T22:14:25.447Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.2504172351",
+            "date": "2025-04-18T06:51:43.992Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.2504172348",
+            "date": "2025-04-18T06:49:22.582Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.2504172304",
+            "date": "2025-04-18T06:33:26.124Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.2504161551",
+            "date": "2025-04-16T22:53:40.167Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.4161352",
+            "date": "2025-04-16T21:05:19.867Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.4161210",
+            "date": "2025-04-16T19:11:14.637Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.4161114",
+            "date": "2025-04-16T18:14:55.441Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.4161006",
+            "date": "2025-04-16T17:06:41.761Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.4161004",
+            "date": "2025-04-16T17:05:12.071Z",
+            "latest": false,
+            "preview": false
+          },
+          {
+            "version": "0.1.4160940",
+            "date": "2025-04-16T17:04:25.456Z",
+            "latest": false,
+            "preview": false
+          }
+        ]
+      }
+    }
+  },
+  "findings": []
+}

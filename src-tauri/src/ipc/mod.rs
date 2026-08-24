@@ -23,6 +23,9 @@
 //! 2.6.2 핸들러를 가려야 하기 때문이다(M-UX §6.2). 플래그가 꺼져 있으면 이 줄 자체가
 //! 실행되지 않으므로 **기본 경로의 동작은 한 글자도 바뀌지 않는다.**
 
+/// 계정 **쓰기**(최종 파리티 T1 — 로그인·로그아웃·기본·삭제·순서). 읽기는 `system`.
+/// 로그인이 사용자를 최대 5분 기다리므로 **블로킹 스레드**에서 돈다.
+mod accounts;
 mod app_meta;
 /// 파일·Git 도메인(M6). 다른 모듈과 달리 **블로킹 스레드**에서 돈다 — `ipc_call` 주석 참고.
 mod fs;
@@ -190,6 +193,18 @@ pub mod ch {
     // accounts (읽기 전용)
     pub const AUTH_LIST_ACCOUNTS: &str = "auth:list-accounts";
     pub const CODEX_LIST_ACCOUNTS: &str = "codex-auth:list-accounts";
+    // ── 계정 쓰기(최종 파리티 T1 · `ipc/accounts.rs`) ─────────────────────────
+    // 이 다섯이 비어 있는 동안 **새 사용자는 3.0에서 로그인할 방법이 없었다**
+    // (2.6.2 홈을 승계해야만 썼다). 설정 ▸ Account의 세 버튼도 전부 무반응이었다.
+    pub const AUTH_LOGIN: &str = "auth:login";
+    pub const AUTH_LOGIN_CANCEL: &str = "auth:login-cancel";
+    /// main → 렌더러: 로그인 OAuth URL. **브라우저는 CLI가 직접 연다** — 이건 안 열린
+    /// 환경에서 사용자가 눌러 보는 폴백 링크다(앱이 또 열면 인증 페이지가 두 장 뜬다).
+    pub const AUTH_LOGIN_URL: &str = "auth:login-url";
+    pub const AUTH_LOGOUT: &str = "auth:logout";
+    pub const AUTH_SET_DEFAULT_ACCOUNT: &str = "auth:set-default-account";
+    pub const AUTH_REMOVE_ACCOUNT: &str = "auth:remove-account";
+    pub const AUTH_REORDER_ACCOUNTS: &str = "auth:reorder-accounts";
 
     // ── 통합 스토어(chats-v3) — CCG_UNIFIED_STORE=1에서만 산다 (M-UX §6.1) ────
     /// 활성 채팅 전환. **즉시** 반영된다 — 저장 디바운스와 무관해야 "전환 직후 전송"이
@@ -290,6 +305,27 @@ pub async fn ipc_call(app: AppHandle, window: WebviewWindow, channel: String, pa
             .await
             // 블로킹 작업이 panic으로 죽어도(=버그) 렌더러에는 안전값이 가야 한다.
             .unwrap_or_else(|_| unimplemented());
+    }
+
+    // ★최종 파리티 T1·T2 — 계정 쓰기(`ipc/accounts.rs`)와 엔진 CLI 버전 관리
+    // (`engine/versions.rs`·`engine/codex_versions.rs`). 위 팔들과 **같은 이유**로 전용
+    // 블로킹 풀에서 돌지만 막히는 시간의 자릿수가 다르다:
+    //   auth:login   사용자가 브라우저에서 로그인을 끝낼 때까지 — **최대 5분**
+    //   engine:install  `npm install` 왕복 — 수십 초
+    //   engine:list-available  `npm view` — 8초 상한
+    // async 워커(코어 수만큼의 tokio 스레드)에서 이걸 자면 그동안 **모든 창의 IPC가
+    // 통째로 굶는다**(창 컨트롤·스토어 저장 포함). 두 `owns`는 명시 목록이라 위아래
+    // 어느 팔과도 겹치지 않는다.
+    if accounts::owns(&channel) || crate::engine::heavy_owns(&channel) {
+        let a = app.clone();
+        let ch = channel.clone();
+        return tauri::async_runtime::spawn_blocking(move || {
+            accounts::dispatch(&a, &ch, &payload)
+                .or_else(|| crate::engine::heavy_dispatch(&a, &ch, &payload))
+                .unwrap_or_else(unimplemented)
+        })
+        .await
+        .unwrap_or_else(|_| unimplemented());
     }
 
     // ── 파일·Git만 블로킹 스레드로 (M6) ──────────────────────────────────────

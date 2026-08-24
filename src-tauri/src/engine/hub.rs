@@ -276,21 +276,13 @@ impl RouteCache {
 }
 
 /// `claude.exe` 경로 — 앱 홈의 활성 엔진 버전(2.6.2 `config.json.activeVersion`).
+///
+/// ★최종 파리티 T2 — 판정을 `engine/versions.rs`로 옮겼다(**규칙은 그대로**: 적힌
+/// activeVersion + 실행 파일 존재 → 없으면 PATH). 계정 팔이 `claude auth login`을
+/// 조립할 때 같은 실행 파일을 써야 하는데, 그 경로가 두 곳에 적혀 있으면 한쪽만
+/// 고쳐지는 순간 "채팅은 도는데 로그인만 안 되는" 상태가 태어난다.
 fn cli_path() -> std::path::PathBuf {
-    let home = ccg_store::app_home();
-    let ver = ccg_store::read_home_json("config.json")
-        .and_then(|v| v.get("activeVersion").and_then(Value::as_str).map(str::to_string));
-    if let Some(v) = ver {
-        let p = home
-            .join("engines")
-            .join(&v)
-            .join("node_modules/@anthropic-ai/claude-agent-sdk-win32-x64/claude.exe");
-        if p.exists() {
-            return p;
-        }
-    }
-    // 설치된 엔진이 없으면 PATH에 맡긴다 — 스폰 실패는 T3가 사용자에게 보이는 문장으로 낸다.
-    std::path::PathBuf::from("claude.exe")
+    super::versions::claude_bin()
 }
 
 impl Hub {
@@ -298,6 +290,12 @@ impl Hub {
     /// 없으면 전역값으로 물질화한다(m-logic §2.4 규약 2).
     fn ensure(&mut self, chat: &str) -> Option<&mut Slot> {
         if !self.slots.contains_key(chat) {
+            // ★최종 파리티 T2 — **여기서 다시 고른다.** 부팅 때 한 번 고르고 마는 것이
+            // R28까지의 모양이었는데, 그러면 엔진 미설치 안내 카드(EngineGate)로 방금
+            // 설치·활성화한 사용자가 **앱을 껐다 켤 때까지** PATH 폴백(대개 없음)으로
+            // 돈다 = "설치했는데도 안 된다". 런타임을 새로 만들 때만 도는 자리라
+            // 값은 작은 JSON 한 번이다.
+            self.cli = cli_path();
             let raw = ident::raw_from_disk(chat).unwrap_or_else(|| ident::raw_default(""));
             let defaults = ident::defaults();
             let dump = std::env::var("CCG_ENGINE_LOG")
