@@ -43,7 +43,11 @@ mod any;
 pub mod boot_update;
 /// ★CRIT R1 — Codex 한도 창 조회(`account/rateLimits/read`). 재검증 훅이 **Codex 채팅을
 /// 클로드 한도로 판정하던** 회귀(T3T4 확인 크리틱 R3 §3)를 닫는 재료다.
-mod codex_limit;
+///
+/// ★R28b RVERD — `pub`인 이유는 `versions`·`codex_versions`와 같다: **렌더러 채널**
+/// (`codex-auth:accounts-usage` — `ipc/parity/mod.rs`)이 이 조회기·이 캐시를 그대로 써야
+/// 한다. 사본을 만들면 두 벌이 각자 만료를 세면서 app-server를 번갈아 태운다.
+pub mod codex_limit;
 pub mod codex_versions;
 mod diff;
 mod hub;

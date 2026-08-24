@@ -65,6 +65,14 @@ pub mod ch {
     pub const SKILL_SET_ENABLED: &str = "skill:set-enabled";
     /// Codex picker의 모델 목록(`codex:models()` → `CodexModelInfo[]`).
     pub const CODEX_MODELS: &str = "codex:models";
+    /// ★R28b RVERD — 등록 codex 계정별 한도(`codex-auth:accounts-usage()` →
+    /// `CodexAccountUsage[]`). 클로드 축의 [`AUTH_ACCOUNTS_USAGE`]와 **같은 자리**의 채널이고
+    /// 재료만 다르다(HTTP가 아니라 app-server `account/rateLimits/read`).
+    ///
+    /// 계정 **쓰기**(`ipc/accounts.rs`)도 아니고 목록 **읽기**(`ipc/system.rs`)도 아니라
+    /// 여기 있는 이유: 이 채널만 **프로세스를 태운다**(≈0.7초/계정). 성격이 위 한도 조회와
+    /// 같으므로 자리도 같다 — 저기 두면 창 컨트롤·스토어 저장이 그 시간 동안 굶는다.
+    pub const CODEX_ACCOUNTS_USAGE: &str = "codex-auth:accounts-usage";
     /// ★M5 — AI 커밋 메시지(`git:ai-message({cwd,files,account?,model?,effort?})`).
     /// `ipc/git.rs`가 아니라 여기 있는 이유: 저 모듈은 `ccg_fs::git`의 얇은 변환기이고
     /// 이 채널만 **엔진 프로세스를 스폰**한다(최대 90초). 성격이 다르면 자리도 다르다.
@@ -87,6 +95,7 @@ pub fn owns(channel: &str) -> bool {
             | ch::SKILL_LIST
             | ch::SKILL_SET_ENABLED
             | ch::CODEX_MODELS
+            | ch::CODEX_ACCOUNTS_USAGE
             | ch::GIT_AI_MESSAGE
     ) || misc::owns(channel)
 }
@@ -124,10 +133,28 @@ pub fn dispatch(app: &AppHandle, window: &WebviewWindow, channel: &str, p: &Valu
         }
 
         ch::CODEX_MODELS => codex::models(),
+        // ★R28b RVERD — 조회기는 **엔진 쪽에 이미 있다**(`engine::codex_limit`). 여기서
+        // 다시 만들지 않는 이유는 캐시가 한 벌이어야 하기 때문이다: 재검증 훅과 이 채널이
+        // 각자 조회하면 대기 중인 codex 채팅 하나가 app-server를 분당 몇 번씩 태운다.
+        ch::CODEX_ACCOUNTS_USAGE => crate::engine::codex_limit::accounts_usage(),
 
         // ★M5 — diff를 읽고 엔진을 1턴 돌린다(최대 90초 · 블로킹 팔).
         ch::GIT_AI_MESSAGE => aimsg::ai_message(super::arg(p, 0)),
 
         _ => misc::dispatch(app, window, channel),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    /// ★R28b RVERD — 채널 이름이 계약면(`protocol.ts`)과 한 글자라도 어긋나거나 `owns`에서
+    /// 빠지면 그 채널은 **조용히** `{__unimplemented:true}`로 떨어진다. 크리틱이 라이브로
+    /// 잡아낸 그 모양이고, 화면은 정상으로 뜨기 때문에 눈으로는 안 보인다.
+    #[test]
+    fn the_codex_usage_channel_is_claimed_by_the_blocking_arm() {
+        assert_eq!(super::ch::CODEX_ACCOUNTS_USAGE, "codex-auth:accounts-usage");
+        assert!(super::owns(super::ch::CODEX_ACCOUNTS_USAGE));
+        // 목록 **읽기**는 여전히 `ipc/system.rs` 것이다(프로세스를 안 태운다).
+        assert!(!super::owns("codex-auth:list-accounts"));
     }
 }

@@ -130,8 +130,11 @@ export function codexUsageUnavailable(windows: { usedPct: number }[] | null | un
 
 /** **눈감고 쏘는 재개**의 상한 — `crates/ccg-engine/src/limit.rs`의 `MAX_AUTO_ATTEMPTS`와
  *  같은 값·같은 뜻이다. 조회가 계속 실패해도 문구가 알려 준 리셋 시각이 이미 지났다면
- *  이 횟수의 재확인 뒤에는 한 번 쏴 본다(그 자리가 2.6.2의 동작이다). 근거가 정말
- *  하나도 없으면(시각 미상) 쏘지 않는다 — 그건 10분마다 다시 막히는 재전송기가 된다. */
+ *  이 횟수의 재확인 뒤에는 한 번 쏴 본다(그 자리가 2.6.2의 동작이다).
+ *
+ *  ★R28b RVERD — **시각 미상 표도 이 상한을 받는다**(아래 `resumeVerdict` 참고).
+ *  R1까지 여기 적혀 있던 "근거가 하나도 없으면 영영 안 쏜다"는 규칙은, 조회가 죽어 있는
+ *  판에서 그 대기표를 **출구 없는 방**에 가뒀다. */
 export const MAX_AUTO_ATTEMPTS = 2
 /** 조회 실패 뒤 첫 재확인 간격. 배로 늘어 `PROBE_MS`에서 멎는다(네트워크 순간 단절이
  *  5시간 대기를 10분 더 늘리지 않게 짧게 시작한다). */
@@ -153,10 +156,23 @@ export function resumeVerdict(hold: LimitHold, still: number | null, unavailable
   // ① 아직 막혀 있다는 신선한 증거 — 그 시각으로 재장전하고 실패 계수는 지운다.
   if (still != null) return { kind: 'hold', resetsAt: still, probes: 0 }
   // ② 못 물어봤다 — 유지하고 다시 묻는다(여기가 크리틱 실패1의 자리다).
+  //
+  // ★R28b RVERD — 사다리의 마지막 한 칸이 엔진과 달랐다(CRIT 확인 크리틱 R1 §4.1 실측:
+  // 시각 미상 표에 조회 실패를 20번 먹여도 `ready` 도달 0/20). 원인은 `!past` 한 조각이다:
+  // `past`는 **시각을 알 때만** 참이 될 수 있으므로 `resetsAt == null`인 표에서는 `!past`가
+  // 영원히 참이고, 그러면 상한(`probes <= MAX`)은 한 번도 판정에 닿지 못한다. 그 표는
+  // 재확인만 무한 반복하고 「이어가기」도 자동 재개도 오지 않는다 — codex 한도 문구에는
+  // `…|epoch` 꼬리가 없어서 멀티 패널·팝아웃의 codex 대기표가 정확히 그 상태였다.
+  //
+  // 엔진은 같은 구멍을 이미 닫았다(`runtime.rs:3240` — `probes < MAX_BLIND_PROBES ||
+  // (known && !past)`). 여기도 **같은 뜻**으로 맞춘다: 시각을 아는 표는 그 시각 전까지
+  // 얼마든지 기다리되(상한 무시), **시각을 모르는 표는 상한을 받는다.** 시각을 모르는 것은
+  // "기다릴 근거가 없다"는 뜻이지 "영원히 기다리라"가 아니다.
   if (unavailable) {
     const probes = (hold.probes ?? 0) + 1
-    const past = hold.resetsAt != null && hold.resetsAt <= nowSec
-    if (probes <= MAX_AUTO_ATTEMPTS || !past) return { kind: 'hold', resetsAt: hold.resetsAt, probes }
+    const known = hold.resetsAt != null
+    const past = known && hold.resetsAt! <= nowSec
+    if (probes <= MAX_AUTO_ATTEMPTS || (known && !past)) return { kind: 'hold', resetsAt: hold.resetsAt, probes }
   }
   // ③ 풀렸다(또는 상한을 넘긴 눈감은 마지막 시도).
   return { kind: 'ready' }

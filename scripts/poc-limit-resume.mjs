@@ -197,8 +197,16 @@ eq('막혔다는 신선한 증거 → 유지 + 실패 계수 리셋', lib3.resum
 eq('★ 못 물어봤다 → 유지(1회차)', lib3.resumeVerdict(H(), null, true, NOW), { kind: 'hold', resetsAt: NOW - 100, probes: 1 })
 eq('★ 못 물어봤다 → 유지(2회차)', lib3.resumeVerdict(H({ probes: 1 }), null, true, NOW), { kind: 'hold', resetsAt: NOW - 100, probes: 2 })
 eq('상한 초과 + 리셋 시각이 이미 지남 → 눈감고 한 번(2.6.2 동작)', lib3.resumeVerdict(H({ probes: 2 }), null, true, NOW), { kind: 'ready' })
-eq('상한 초과여도 시각 미상이면 절대 안 쏜다', lib3.resumeVerdict(H({ resetsAt: null, probes: 9 }), null, true, NOW), { kind: 'hold', resetsAt: null, probes: 10 })
+// ★R28b RVERD — CRIT 확인 크리틱 R1 §4.1의 실측(시각 미상 표는 조회 실패 20회에도 ready 0/20).
+// 엔진은 같은 구멍을 `probes < MAX_BLIND_PROBES || (known && !past)`로 닫았고(`runtime.rs:3240`),
+// 렌더러도 같은 뜻이 됐다: **시각을 모르는 표는 상한을 받는다.** 시각 미상은 "기다릴 근거가
+// 없다"이지 "영원히 기다리라"가 아니다 — 그 표에 출구가 없으면 「이어가기」도 자동 재개도 없다.
+eq('★ 시각 미상 — 상한 안(1회차)이면 유지', lib3.resumeVerdict(H({ resetsAt: null }), null, true, NOW), { kind: 'hold', resetsAt: null, probes: 1 })
+eq('★ 시각 미상 — 상한 안(2회차)이면 유지', lib3.resumeVerdict(H({ resetsAt: null, probes: 1 }), null, true, NOW), { kind: 'hold', resetsAt: null, probes: 2 })
+eq('★★ 시각 미상 — 상한을 넘기면 사용자에게 출구가 생긴다', lib3.resumeVerdict(H({ resetsAt: null, probes: 2 }), null, true, NOW), { kind: 'ready' })
+eq('★★ 시각 미상 — 20회차에도 갇히지 않는다(크리틱 20/20 hold의 자리)', lib3.resumeVerdict(H({ resetsAt: null, probes: 19 }), null, true, NOW), { kind: 'ready' })
 eq('상한 초과여도 리셋이 아직 미래면 안 쏜다', lib3.resumeVerdict(H({ resetsAt: NOW + 3600, probes: 9 }), null, true, NOW), { kind: 'hold', resetsAt: NOW + 3600, probes: 10 })
+eq('시각을 아는 표는 상한과 무관하게 그 시각까지 기다린다(엔진 `known && !past`)', lib3.resumeVerdict(H({ resetsAt: NOW + 5, probes: 99 }), null, true, NOW), { kind: 'hold', resetsAt: NOW + 5, probes: 100 })
 eq('물어봤고 막는 창이 없다 → 풀렸다', lib3.resumeVerdict(H(), null, false, NOW), { kind: 'ready' })
 
 eq('재확인 간격 1회차 = 15초', lib3.recheckDelayMs(1), 15_000)
@@ -292,6 +300,8 @@ let tid = 0
 const sent = []
 let usageAnswer = FAIL_VALUE
 let usageCalls = 0
+let cxAnswer = []
+let cxCalls = 0
 globalThis.window = {
   api: {
     getUsage: async () => {
@@ -299,7 +309,16 @@ globalThis.window = {
       if (usageAnswer === 'throw') throw new Error('boom')
       return usageAnswer
     },
-    codexAuth: { accountsUsage: async () => [] }
+    // ★R28b RVERD — codex 축의 재검증 재료. R1까지 이 자리는 **언제나 `[]`**였다
+    // (`codex-auth:accounts-usage`가 Rust에 없어 심이 빈 배열로 갈음 — 크리틱 §4.1 라이브
+    // 실측). 채널이 생겼으므로 하네스도 값을 돌려줄 수 있어야 한다.
+    codexAuth: {
+      accountsUsage: async () => {
+        cxCalls++
+        if (cxAnswer === 'throw') throw new Error('boom')
+        return cxAnswer
+      }
+    }
   },
   setTimeout: (fn, ms) => {
     const id = ++tid
@@ -322,10 +341,11 @@ const G_BLOCKED = { fiveHour: W(0, null), weekly: W(100, REAL + 3600), weeklyFab
 const G_FREE = { fiveHour: W(12, REAL + 3600), weekly: W(40, REAL + 86400), weeklyFable: null, extraCredit: null }
 const flush = () => new Promise((r) => setTimeout(r, 0))
 
-/** 대기표 하나를 장전한 훅 호스트를 만든다. props는 화면이 실제로 넘기는 모양 그대로. */
-function mountArmed(props) {
+/** 대기표 하나를 장전한 훅 호스트를 만든다. props는 화면이 실제로 넘기는 모양 그대로.
+ *  `text`를 주면 그 문구로 죽은 턴을 만든다(codex 한도 문구에는 `…|epoch` 꼬리가 없다). */
+function mountArmed(props, text) {
   timers.length = 0 // 앞 시나리오의 호스트가 걸어 둔 타이머와 섞이지 않게(가짜 시계 초기화)
-  const errText = 'Claude AI usage limit reached|' + (NOW - 100)
+  const errText = text ?? 'Claude AI usage limit reached|' + (NOW - 100)
   const state = {
     status: 'working',
     session: 'ses-1',
@@ -383,14 +403,24 @@ for (const [name, props] of SURFACES) {
   await tick(h)
   eq(`${name} 상한 초과 → 눈감고 한 번(그리고 대기표 소진)`, { hold: h.hold, sent: sent.length }, { hold: null, sent: 1 })
 
-  // ② 시각 미상(배너형 문구)이면 상한을 넘겨도 절대 안 쏜다 — 근거가 0이다.
+  // ② ★R28b RVERD — 시각 미상(배너형 문구·codex 한도 문구)의 표에도 **출구가 있다.**
+  //    R1까지 이 자리는 「상한을 넘겨도 절대 안 쏜다」였고, 그래서 조회가 죽어 있는 동안
+  //    그 대기표는 재확인만 무한 반복했다(크리틱 실측 20/20 hold). 상한 안(1·2회차)에서는
+  //    그대로 유지하고, 넘기면 사용자에게 넘긴다 — 엔진이 `runtime.rs:3240`에서 한 것과 같다.
   sent.length = 0
   h = mountArmed(props)
   h.host.render()
   // 문구 꼬리가 없는 판을 손으로 만든다(배너형 = resetsAt null)
   h.hold && (h.hold.resetsAt = null)
-  for (let i = 0; i < 5; i++) await tick(h)
-  eq(`${name} 시각 미상 + 조회 실패 5회 → 유지·전송 0`, { hold: !!h.hold, ready: !!h.hold?.ready, sent: sent.length }, { hold: true, ready: false, sent: 0 })
+  await tick(h)
+  eq(`${name} 시각 미상 1회차 → 유지(전송 0)`, { hold: !!h.hold, ready: !!h.hold?.ready, probes: h.hold?.probes, sent: sent.length }, { hold: true, ready: false, probes: 1, sent: 0 })
+  await tick(h)
+  eq(`${name} 시각 미상 2회차 → 여전히 유지`, { hold: !!h.hold, ready: !!h.hold?.ready, probes: h.hold?.probes, sent: sent.length }, { hold: true, ready: false, probes: 2, sent: 0 })
+  await tick(h)
+  eq(`${name} ★★ 시각 미상 3회차 → 출구(대기표 소진 · 전송 1)`, { hold: h.hold, sent: sent.length }, { hold: null, sent: 1 })
+  // 더 돌려도 두 번 쏘지 않는다(표가 없으면 타이머도 없다).
+  for (let i = 0; i < 3; i++) await tick(h)
+  eq(`${name} 출구 뒤 추가 전송 0`, sent.length, 1)
 
   // ③ R1의 무표식 실패값(옛 셸)도 같은 착지 — 표식에만 기대지 않는다.
   sent.length = 0
@@ -421,6 +451,72 @@ for (const [name, props] of SURFACES) {
   eq(`${name} 실값(풀림) → 이어서 전송 1회`, { hold: h.hold, sent: sent.length }, { hold: null, sent: 1 })
   ok(`${name} 전송 문구는 '이어서'(세션 있음)`, /이어서|continue/i.test(sent[0] ?? ''), sent[0])
 }
+
+// ── H. ★R28b RVERD — codex 축(멀티 패널의 그 표면) ──────────────────────────
+//
+// 이 절이 재는 것은 **두 수정이 만나는 자리**다:
+//   ① `codex-auth:accounts-usage`가 Rust에 생겨 재검증이 값을 얻는다(R1까진 언제나 `[]`).
+//   ② 값을 못 얻는 판(빈 배열)에서도 대기표에 출구가 있다.
+// codex 한도 문구에는 `…|epoch` 꼬리가 없다 = 대기표의 `resetsAt`이 null이다. 그 표가
+// 갇히던 자리가 정확히 크리틱 §4.1이고, 멀티 패널·팝아웃은 이 기계를 아직 쓴다.
+console.log('\nH. codex 축 — 채널이 값을 주는 판 / 못 주는 판')
+tag = 'codex'
+const CX_PROPS = { holdKey: '0', account: 'me@openai.com', engine: 'codex' }
+const CX_BANNER = "You've hit your usage limit. Try again later."
+const cxRow = (email, pct, at) => ({ email, planType: 'plus', windows: [{ label: '주간', usedPct: pct, resetsAt: at }] })
+
+// ① 채널이 빈 배열(= R1의 미구현 셸) — 「못 물어봤다」가 무한히 반복되던 자리.
+sent.length = 0
+cxAnswer = []
+cxCalls = 0
+let hc = mountArmed(CX_PROPS, CX_BANNER)
+eq('codex 대기표는 시각 미상이다(문구에 꼬리가 없다)', { hold: !!hc.hold, resetsAt: hc.hold ? hc.hold.resetsAt : 'no-hold' }, { hold: true, resetsAt: null })
+await tick(hc)
+await tick(hc)
+eq('★ 채널이 빈 배열이면 2회차까지 유지(전송 0)', { hold: !!hc.hold, probes: hc.hold?.probes, sent: sent.length }, { hold: true, probes: 2, sent: 0 })
+await tick(hc)
+eq('★★ 그래도 3회차엔 출구가 있다(크리틱 20/20 hold의 자리)', { hold: hc.hold, sent: sent.length }, { hold: null, sent: 1 })
+ok('빈 배열도 실제로 물어본 결과다', cxCalls >= 3, `cxCalls=${cxCalls}`)
+
+// ② 채널이 **소진된 창**을 준다 — 그 시각으로 재장전하고 안 쏜다(클로드 축 ⑤와 같은 규약).
+sent.length = 0
+cxAnswer = [cxRow('me@openai.com', 100, REAL + 3600)]
+hc = mountArmed(CX_PROPS, CX_BANNER)
+await flush()
+await flush()
+hc.host.render()
+eq('★ 장전 직후 정제 — 채널의 창 시각이 대기표에 앉는다', hc.hold?.resetsAt, REAL + 3600)
+await tick(hc)
+eq('★ 아직 막힘 → 그 시각으로 재장전 · 전송 0', { resetsAt: hc.hold?.resetsAt, probes: hc.hold?.probes, sent: sent.length }, { resetsAt: REAL + 3600, probes: 0, sent: 0 })
+
+// ③ 채널이 **여유 있는 창**을 준다 — 풀렸다 = 즉시 이어서.
+sent.length = 0
+cxAnswer = [cxRow('me@openai.com', 5, REAL + 3600)]
+hc = mountArmed(CX_PROPS, CX_BANNER)
+await tick(hc)
+eq('★ 창이 여유 → 이어서 전송 1회', { hold: hc.hold, sent: sent.length }, { hold: null, sent: 1 })
+
+// ④ 계정이 여럿이면 **자기 계정 행**을 고른다(남의 소진 창에 갇히지 않는다).
+sent.length = 0
+cxAnswer = [cxRow('other@openai.com', 100, REAL + 7200), cxRow('me@openai.com', 5, REAL + 3600)]
+hc = mountArmed(CX_PROPS, CX_BANNER)
+await tick(hc)
+eq('★ 남의 계정이 소진돼도 내 표는 풀린다', { hold: hc.hold, sent: sent.length }, { hold: null, sent: 1 })
+
+// ⑤ 계정 미지정(= codex 기본 계정)이면 첫 행 — 그 행이 막혀 있으면 유지한다.
+sent.length = 0
+cxAnswer = [cxRow('first@openai.com', 100, REAL + 7200)]
+hc = mountArmed({ ...CX_PROPS, account: undefined }, CX_BANNER)
+await tick(hc)
+eq('★ 계정 미지정이면 첫 행(기본 계정)으로 판정', { resetsAt: hc.hold?.resetsAt, sent: sent.length }, { resetsAt: REAL + 7200, sent: 0 })
+
+// ⑥ 채널이 던지는 판도 실패로 읽는다(유지 — 상한 전까지).
+sent.length = 0
+cxAnswer = 'throw'
+hc = mountArmed(CX_PROPS, CX_BANNER)
+await tick(hc)
+eq('채널이 던져도 유지', { hold: !!hc.hold, probes: hc.hold?.probes, sent: sent.length }, { hold: true, probes: 1, sent: 0 })
+cxAnswer = []
 
 // 본채팅은 엔진이 대기표를 들면 손을 뗀다(재개 주체 하나) — 그 성질이 살아 있나.
 tag = 'managed'
