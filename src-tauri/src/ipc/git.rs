@@ -7,6 +7,16 @@
 //! 미구현으로 남긴 것 하나: `git:ai-message`. diff를 읽어 엔진 CLI를 1턴 돌리는
 //! 동작이라 실행 계통(R3 소유)에 붙어야 한다. 지금은 `__unimplemented`로 떨어져
 //! 심이 `{ok:false}`로 갈음하고, 카드는 사용자가 직접 쓴 메시지로 그대로 커밋된다.
+//!
+//! **왜 아직도 안 붙였나 — T3T4 R2의 실측 근거.** 2.6.2는 SDK `query()`에
+//! `{ maxTurns: 1, allowedTools: [] }`를 줘서 "도구 없는 순수 1턴"을 만든다
+//! (`src/main/git.ts:586`). 그런데 그 둘은 **argv 플래그가 아니다**: 설치본
+//! `claude.exe 0.3.241`의 `--help`에 `turns`는 **0회** 등장하고(즉 `--max-turns`가
+//! 없다) 도구 허용 목록도 `--allowedTools`(있음)뿐이라 빈 목록을 뜻할 표현이 없다.
+//! SDK는 이 값들을 **stream-json 제어 요청**(`initialize`)으로 넘긴다 — 즉 파리티 있는
+//! 이식은 별도 스폰 경로가 아니라 **지금의 드라이버**(`ccg_engine::driver`)를 타야 한다.
+//! `-p`로 대충 흉내 내면 "도구 없는 1턴"이라는 계약이 조용히 깨진 채(모델이 Bash를
+//! 부르려 들거나 턴이 여러 번 도는) 커밋 카드에서만 드러난다. 그래서 남긴다.
 
 use super::{arg, ch};
 use serde_json::{json, Value};

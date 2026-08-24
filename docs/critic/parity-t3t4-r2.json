@@ -1,5 +1,5 @@
 {
-  "at": "2026-08-24T09:48:10.219Z",
+  "at": "2026-08-24T09:59:32.958Z",
   "exe": "C:\\Code\\AgentCodeGUI\\target-t3t4\\release\\agentcodegui.exe",
   "live": true,
   "steps": {
@@ -8,23 +8,23 @@
       "live": [
         {
           "email": "lmg56634@gmail.com",
-          "aliveMin": 80
+          "aliveMin": 68
         },
         {
           "email": "lmg56635@gmail.com",
-          "aliveMin": 469
+          "aliveMin": 458
         },
         {
           "email": "lmg56630@gmail.com",
-          "aliveMin": 37
+          "aliveMin": 26
         },
         {
           "email": "junelius@naver.com",
-          "aliveMin": 125
+          "aliveMin": 113
         },
         {
           "email": "lmg56631@gmail.com",
-          "aliveMin": 363
+          "aliveMin": 351
         }
       ],
       "scratch": "C:\\Code\\AgentCodeGUI\\.poc-scratch-t3t4"
@@ -57,7 +57,7 @@
           "pct": 0
         }
       },
-      "ms": 364,
+      "ms": 334,
       "liveWindows": [
         "fiveHour",
         "weekly",
@@ -98,7 +98,7 @@
         },
         {
           "email": "lmg56635@gmail.com",
-          "fiveHourPct": 30,
+          "fiveHourPct": 33,
           "weeklyPct": 50,
           "fablePct": 28,
           "fiveHourResetsAt": 1787575799,
@@ -107,7 +107,7 @@
         },
         {
           "email": "lmg56630@gmail.com",
-          "fiveHourPct": 3,
+          "fiveHourPct": 5,
           "weeklyPct": 9,
           "fablePct": 3,
           "fiveHourResetsAt": 1787581800,
@@ -119,18 +119,18 @@
           "fiveHourPct": 40,
           "weeklyPct": 100,
           "fablePct": 43,
-          "fiveHourResetsAt": 1787571599,
-          "weeklyResetsAt": 1787990399,
-          "fableResetsAt": 1787990399
+          "fiveHourResetsAt": 1787571600,
+          "weeklyResetsAt": 1787990400,
+          "fableResetsAt": 1787990400
         },
         {
           "email": "lmg56631@gmail.com",
-          "fiveHourPct": 20,
+          "fiveHourPct": 24,
           "weeklyPct": 37,
-          "fablePct": 35,
-          "fiveHourResetsAt": 1787579999,
-          "weeklyResetsAt": 1788058799,
-          "fableResetsAt": 1788058799
+          "fablePct": 36,
+          "fiveHourResetsAt": 1787580000,
+          "weeklyResetsAt": 1788058800,
+          "fableResetsAt": 1788058800
         }
       ],
       "sortKey": [
@@ -155,18 +155,18 @@
           "left": 63
         }
       ],
-      "msFirst": 364,
-      "msCached": 5
+      "msFirst": 334,
+      "msCached": 3
     },
     "t4": {
       "winsBefore": 0,
       "winsAfter": 1,
       "windows": [
-        "main",
-        "session-2"
+        "session-2",
+        "main"
       ],
       "listRow": {
-        "id": "sc-1787564897446-1",
+        "id": "sc-1787565579984-1",
         "title": "BTW - 원본 제목",
         "status": "done",
         "open": true,
@@ -185,7 +185,7 @@
                 "role": "user",
                 "text": "이 함수 왜 이렇게 짰어?",
                 "animate": false,
-                "time": "오후 6:48"
+                "time": "오후 6:59"
               },
               {
                 "kind": "msg",
@@ -194,13 +194,13 @@
                 "text": "Error: --resume requires a valid session ID or session title when used with --print. Usage: claude -p --resume <session-id|title>. Provided value \"ses-fork-1\" is not a UUID and does not match any session title.",
                 "animate": false,
                 "error": true,
-                "time": "오후 6:48"
+                "time": "오후 6:59"
               },
               {
                 "kind": "notice",
                 "id": "n3",
                 "text": "[stderr] Error: --resume requires a valid session ID or session title when used with --print. Usage: claude -p --resume <session-id|title>. Provided value \"ses-fork-1\" is not a UUID and does not match any session title.",
-                "time": "오후 6:48"
+                "time": "오후 6:59"
               }
             ],
             "todos": [],
@@ -228,8 +228,8 @@
             "openGroupId": null,
             "seq": 3,
             "shownNotices": [],
-            "curRunId": "r26656-1",
-            "turnAt": 1787564897680,
+            "curRunId": "r30552-1",
+            "turnAt": 1787565580181,
             "interrupted": false
           },
           "cwd": "C:\\Code\\AgentCodeGUI\\.poc-scratch-t3t4",
@@ -257,7 +257,7 @@
                 "role": "user",
                 "text": "이 함수 왜 이렇게 짰어?",
                 "animate": false,
-                "time": "오후 6:48"
+                "time": "오후 6:59"
               },
               {
                 "kind": "msg",
@@ -266,13 +266,13 @@
                 "text": "Error: --resume requires a valid session ID or session title when used with --print. Usage: claude -p --resume <session-id|title>. Provided value \"ses-fork-1\" is not a UUID and does not match any session title.",
                 "animate": false,
                 "error": true,
-                "time": "오후 6:48"
+                "time": "오후 6:59"
               },
               {
                 "kind": "notice",
                 "id": "n3",
                 "text": "[stderr] Error: --resume requires a valid session ID or session title when used with --print. Usage: claude -p --resume <session-id|title>. Provided value \"ses-fork-1\" is not a UUID and does not match any session title.",
-                "time": "오후 6:48"
+                "time": "오후 6:59"
               }
             ],
             "todos": [],
@@ -300,8 +300,8 @@
             "openGroupId": null,
             "seq": 3,
             "shownNotices": [],
-            "curRunId": "r26656-1",
-            "turnAt": 1787564897680,
+            "curRunId": "r30552-1",
+            "turnAt": 1787565580181,
             "interrupted": false
           },
           "cwd": "C:\\Code\\AgentCodeGUI\\.poc-scratch-t3t4",
@@ -323,7 +323,7 @@
       "resumeEcho": true,
       "autoSent": 1,
       "afterClose": {
-        "id": "sc-1787564897446-1",
+        "id": "sc-1787565579984-1",
         "title": "BTW - 원본 제목",
         "status": "done",
         "open": false,
@@ -478,7 +478,7 @@
           "isDefault": false
         }
       ],
-      "ms": 846,
+      "ms": 684,
       "codexAccounts": true
     },
     "h1": {
@@ -501,11 +501,11 @@
       }
     },
     "h5": {
-      "chatId": "sc-1787564916205-6",
+      "chatId": "sc-1787565597745-6",
       "stillOpen": false,
       "marker": true,
       "kept": {
-        "id": "sc-1787564916205-6",
+        "id": "sc-1787565597745-6",
         "title": "",
         "status": "idle",
         "open": false,
