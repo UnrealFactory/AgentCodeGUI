@@ -137,7 +137,9 @@ impl CodexDriver {
 pub fn command_for(bin: &PathBuf) -> Command {
     let s = bin.to_string_lossy().to_string();
     let low = s.to_ascii_lowercase();
-    let bare_name = !s.contains('\\') && !s.contains('/');
+    // ★R28c CPATH — 맨 이름 판정은 `versions::is_bare_name` **한 벌**이다. 여기 사본을
+    // 두면 "PATH에서 찾아 띄운다"와 "PATH에서 찾을 수 있나"가 서로 다른 규칙이 된다.
+    let bare_name = super::versions::is_bare_name(bin);
     let needs_shell = cfg!(windows) && (low.ends_with(".cmd") || low.ends_with(".bat") || bare_name);
     if !needs_shell {
         let mut c = Command::new(bin);

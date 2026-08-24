@@ -116,6 +116,34 @@ pub fn codex_bin() -> PathBuf {
     versions::codex_bin(&ccg_store::app_home())
 }
 
+/// ★R28c CPATH — **이 앱이 codex를 띄울 수 있는가**를 답하는 자리. 앱 전체에서 이것 하나다.
+///
+/// R28b까지 이 질문에 세 자리가 **서로 다른 기준**으로 답했고, 그것이 「전역 PATH codex
+/// 사용자에게는 한도 재검증이 한 번도 안 돈다」는 구멍의 뿌리였다(확인 크리틱 R1 §3):
+///
+/// | 자리 | 무엇 | R28b까지의 기준 | 지금 |
+/// |---|---|---|---|
+/// | [`spawn_bin`] → `hub.rs` | 턴을 띄우는 `CodexDriver` | 검사 없음(스폰이 실패하면 실패) | 이 함수 |
+/// | `ipc/parity/codex.rs` | 모델·계정 조회 왕복 | 검사 없음 | 이 함수 |
+/// | `engine/codex_limit.rs` | 한도 재검증(`can_ask`·`instrument`) | **`codex_bin().is_file()`** | 이 함수 |
+///
+/// 세 번째만 거짓이 되는 인구가 있었다 — `codex_bin()`의 마지막 폴백이 **맨 이름**이라
+/// 전역 설치(`npm i -g`) 판에서 `is_file()`이 언제나 거짓이었기 때문이다. 그래서 턴은 돌고
+/// 한도만 `Unknown`(= 눈감고 발사)이었고, 설정 ▸ Account의 OpenAI 게이지도 비었다.
+///
+/// 해석 규칙과 캐시 규약은 [`versions::resolve_bin`]에 있다(허브 tick이 부르는 자리다).
+pub fn codex_exe() -> Option<PathBuf> {
+    versions::resolve_bin(&codex_bin())
+}
+
+/// 스폰에 쓸 값 — 해석된 실물 경로가 1순위다(맨 이름을 넘기면 `cmd`가 같은 훑기를 한 번 더
+/// 한다). 못 찾으면 **옛 인자 그대로** 넘긴다: 그 판의 스폰 실패가 엔진 미설치 안내
+/// 카드(EngineGate)까지 가는 경로이고, 인자를 비우면 그 카드에 닿는 사유가 바뀐다.
+pub fn spawn_bin() -> PathBuf {
+    let bin = codex_bin();
+    versions::resolve_bin(&bin).unwrap_or(bin)
+}
+
 /// 계정 → 격리 `CODEX_HOME`(2.6.2 `codexAccountRunDir`/`codexApiKeyRunDir` 파리티).
 /// 물질화(auth.json 쓰기 + `sessions`·`skills`·`plugins`·`cache` 정션)는 `ccg-auth`가 한다.
 pub fn home_for(plan: &CodexPlan) -> Option<PathBuf> {

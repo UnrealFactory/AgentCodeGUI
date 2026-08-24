@@ -19,7 +19,10 @@
 //! (레지스트리를 `npm view`로 읽는 설계 결정은 [`crate::versions`] 헤더에 있다.)
 
 use crate::versions::{Spec, CODEX as SPEC};
+use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant};
 
 pub use crate::versions::{cmp_desc, parse_packument, Available, Cleanup, VersionEntry};
 
@@ -78,6 +81,11 @@ pub fn cleanup_old(home: &Path) -> Cleanup {
 /// 트리플 이름을 박아 두지 않고 **훑어서** 찾는다(새 트리플이 생겨도 산다).
 ///
 /// 폴백 순서: 네이티브 → `.bin` shim → 전역 `codex`(PATH).
+///
+/// ★R28c CPATH — **마지막 값은 파일 경로가 아니다.** 맨 이름 `codex`는 "PATH에서 찾아라"는
+/// 뜻이고, 그 판에서도 턴은 정상으로 뜬다. 그러니 이 함수의 값에 `is_file()`을 걸어
+/// 「실행본이 있나」를 판정하면 **전역 설치 사용자에게만 거짓**이 된다 — 그 판정이 필요하면
+/// [`resolve_bin`]을 써라(그 함수의 헤더에 실측이 있다).
 pub fn codex_bin(home: &Path) -> PathBuf {
     if let Some(v) = active_version(home) {
         let root = engines_dir(home).join(&v).join("node_modules").join("@openai");
@@ -91,6 +99,128 @@ pub fn codex_bin(home: &Path) -> PathBuf {
         }
     }
     PathBuf::from("codex")
+}
+
+/// **띄울 수 있는가** — [`codex_bin`]이 고른 값을 [`super::driver::command_for`]와 **같은
+/// 규칙으로** 해석한다. `Some(실물 경로)`면 그 값으로 프로세스가 뜬다, `None`이면 창구가 없다.
+///
+/// ## 왜 `is_file()`로는 안 되나 (★R28c CPATH — R28b CRIT 확인 크리틱 R1 §3의 실측)
+///
+/// [`codex_bin`]의 마지막 폴백은 **맨 이름 `codex`**다(= "PATH에서 찾아 써라"). 그래서
+/// `codex_bin().is_file()`은 codex를 전역(`npm i -g @openai/codex`)으로 깔아 쓰는 사용자에게
+/// **언제나 거짓**이다 — 그 판에서 턴은 멀쩡히 돌고(`command_for`가 `cmd /C`로 PATH를 뒤진다)
+/// 한도 재검증만 「물어볼 창구가 없다」로 떨어졌다(= 눈감고 발사). 크리틱이 A/B로 잠갔다:
+/// `CCG_CODEX_BIN=codex`면 `{unknown:1, unavailable:0}` · t=90초 **발사**, 실물 파일이면
+/// `{unknown:0, unavailable:2}` · 미발사. 갈린 값은 `is_file()` 하나뿐이었다.
+///
+/// ## 해석 규칙은 **셸의 그것**이다
+///
+/// 구분자가 있으면(`is_bare_name` 거짓) 그 경로 하나를 stat한다. 맨 이름이면 `PATH`를
+/// 앞에서부터 훑되 **디렉터리 하나에 `PATHEXT`를 다 대 보고** 다음 디렉터리로 간다 —
+/// `cmd.exe`가 하는 순서 그대로다. Windows에서 확장자 없는 파일을 후보에서 빼는 것도
+/// 규약이다: npm은 `codex`(sh 스크립트)와 `codex.cmd`를 같은 폴더에 깔고 `cmd /C codex`가
+/// 실행하는 것은 **후자**다.
+///
+/// ## 결과는 캐시한다 (맨 이름일 때만)
+///
+/// 첫 소비자가 허브 스레드의 tick(활성이면 20ms)이라 PATH 훑기를 매번 할 수 없다.
+/// 반대로 **경로가 박힌 값은 캐시하지 않는다** — 방금 설치·활성화한 실행본을 다음 tick에
+/// 알아봐야 하기 때문이다(허브가 런타임을 새로 만들 때마다 다시 고른다는 그 규약).
+pub fn resolve_bin(bin: &Path) -> Option<PathBuf> {
+    if !is_bare_name(bin) {
+        return bin.is_file().then(|| bin.to_path_buf());
+    }
+    let path_env = std::env::var_os("PATH").unwrap_or_default();
+    if let Some(hit) = cached(bin.as_os_str(), &path_env) {
+        return hit;
+    }
+    let hit = scan_path(bin, &path_env);
+    remember(bin.as_os_str().to_os_string(), path_env, hit.clone());
+    hit
+}
+
+/// 맨 이름인가 = "셸이 PATH에서 찾아야 하는가". [`super::driver::command_for`]의
+/// `needs_shell` 판정이 쓰는 것과 **같은 함수**여야 한다 — 규칙이 두 벌이 되면
+/// 「띄울 수 있다」와 「실제로 띄운다」가 서로 다른 값을 보게 된다(이 라운드의 뿌리).
+pub fn is_bare_name(bin: &Path) -> bool {
+    let s = bin.to_string_lossy();
+    !s.contains('\\') && !s.contains('/')
+}
+
+/// PATH 한 바퀴. `path_env`를 **인자로** 받는 이유는 테스트가 프로세스 환경을 만지지 않고
+/// 이 규칙을 그대로 밟을 수 있어야 해서다(`PATH`는 프로세스 전역이라 병렬 테스트에 독이다).
+fn scan_path(name: &Path, path_env: &OsStr) -> Option<PathBuf> {
+    let exts = path_exts();
+    for dir in std::env::split_paths(path_env) {
+        if dir.as_os_str().is_empty() {
+            continue;
+        }
+        let base = dir.join(name);
+        for ext in &exts {
+            let mut s = base.clone().into_os_string();
+            s.push(ext);
+            let cand = PathBuf::from(s);
+            if cand.is_file() {
+                return Some(cand);
+            }
+        }
+    }
+    None
+}
+
+/// 확장자 후보 — Windows는 `cmd`가 보는 그 변수(`PATHEXT`), 그 밖에서는 「없음」 하나.
+fn path_exts() -> Vec<OsString> {
+    if !cfg!(windows) {
+        return vec![OsString::new()];
+    }
+    let raw = std::env::var("PATHEXT").unwrap_or_default();
+    let v: Vec<OsString> = raw
+        .split(';')
+        .map(str::trim)
+        .filter(|s| s.starts_with('.'))
+        .map(OsString::from)
+        .collect();
+    if v.is_empty() {
+        return [".COM", ".EXE", ".BAT", ".CMD"].iter().map(OsString::from).collect();
+    }
+    v
+}
+
+/// 맨 이름 해석의 캐시 한 칸. `PATH`까지 키에 넣는다 — 환경이 바뀌면 **저절로 무효**가 되고,
+/// 테스트가 PATH를 갈아도 앞 테스트의 답이 새지 않는다.
+struct Resolved {
+    name: OsString,
+    path_env: OsString,
+    at: Instant,
+    hit: Option<PathBuf>,
+}
+
+/// 캐시가 낡을 수 있는 상한 = **방금 전역으로 깐 codex를 알아보는 데 걸리는 최대 시간**.
+/// 길게 잡으면 "깔았는데도 안 된다"가 되고(최종 파리티 T2가 고친 그 불만), 짧게 잡으면
+/// 허브 tick마다 PATH를 훑는다. 15초면 사람이 설치를 마치고 화면으로 돌아오는 시간 안이다.
+const RESOLVE_TTL: Duration = Duration::from_secs(15);
+
+fn resolve_cache() -> &'static Mutex<Vec<Resolved>> {
+    static C: OnceLock<Mutex<Vec<Resolved>>> = OnceLock::new();
+    C.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+/// 바깥 `Option` = 캐시가 답했는가, 안쪽 = 해석 결과(찾음/못 찾음 **둘 다** 캐시한다).
+fn cached(name: &OsStr, path_env: &OsStr) -> Option<Option<PathBuf>> {
+    let g = resolve_cache().lock().unwrap_or_else(|e| e.into_inner());
+    g.iter()
+        .find(|r| r.name == name && r.path_env == path_env && r.at.elapsed() < RESOLVE_TTL)
+        .map(|r| r.hit.clone())
+}
+
+fn remember(name: OsString, path_env: OsString, hit: Option<PathBuf>) {
+    let mut g = resolve_cache().lock().unwrap_or_else(|e| e.into_inner());
+    g.retain(|r| r.name != name || r.path_env != path_env);
+    // 실제로 쓰이는 조합은 한둘이다(이름 하나 × PATH 하나). 상한은 무한 성장만 막는다.
+    if g.len() >= 4 {
+        g.remove(0);
+    }
+    g.push(Resolved { name, path_env, at: Instant::now(), hit });
 }
 
 /// `@openai/codex-<plat>/vendor/<triple>/bin/codex[.exe]` 훑기.
@@ -119,6 +249,11 @@ fn native_exe(openai_dir: &Path) -> Option<PathBuf> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    /// 경로 비교용 — Windows는 대소문자를 안 가리고, `PATHEXT`가 대문자다(`.CMD`).
+    fn lower(p: &Path) -> String {
+        p.to_string_lossy().to_ascii_lowercase()
+    }
 
     fn tmp(name: &str) -> PathBuf {
         let p = std::env::temp_dir().join(format!("ccg-codex-ver-{name}-{}", std::process::id()));
@@ -151,7 +286,83 @@ mod tests {
     fn codex_bin_falls_back_to_path_when_nothing_is_installed() {
         let home = tmp("bin");
         assert_eq!(codex_bin(&home), PathBuf::from("codex"));
+        // ★R28c CPATH — 그 폴백값은 **파일이 아니다**. 이 한 줄이 이 라운드가 고친 구멍의
+        // 씨앗이다(`is_file()`로 「실행본 없음」을 판정하면 전역 설치 사용자만 거짓).
+        assert!(!codex_bin(&home).is_file());
+        assert!(is_bare_name(&codex_bin(&home)));
         let _ = std::fs::remove_dir_all(&home);
+    }
+
+    /// ★R28c CPATH — **맨 이름은 PATH에서 찾는다.** 프로세스 환경을 만지지 않고
+    /// (`PATH`는 전역이라 병렬 테스트에 독이다) 규칙만 그대로 밟는다.
+    #[test]
+    fn a_bare_name_resolves_through_path_the_way_the_shell_does() {
+        let dir = tmp("which");
+        let other = tmp("which-empty");
+        let ext = if cfg!(windows) { ".cmd" } else { "" };
+        std::fs::write(dir.join(format!("codex{ext}")), "@echo off").unwrap();
+        // PATH 앞칸은 비어 있고(빈 항목 · 없는 폴더), 답은 뒤칸에 있다.
+        let path_env = std::env::join_paths([PathBuf::new(), other.clone(), dir.clone()]).unwrap();
+        let hit = scan_path(Path::new("codex"), &path_env).expect("PATH에서 찾아야 한다");
+        // 붙는 확장자는 `PATHEXT`의 **글자 그대로**다(이 컴퓨터의 값은 `.CMD`) — 파일
+        // 이름과 대소문자가 달라도 같은 파일이다. 비교는 그래서 소문자로 한다.
+        assert_eq!(lower(&hit), lower(&dir.join(format!("codex{ext}"))));
+        // 없는 이름은 못 찾는다(= 「창구 없음」).
+        assert_eq!(scan_path(Path::new("codex-nosuch"), &path_env), None);
+        for p in [&dir, &other] {
+            let _ = std::fs::remove_dir_all(p);
+        }
+    }
+
+    /// Windows에서 **확장자 없는 파일은 후보가 아니다** — npm이 같은 폴더에 까는
+    /// `codex`(sh 스크립트)를 `cmd /C codex`가 실행하지 않기 때문이다.
+    #[cfg(windows)]
+    #[test]
+    fn on_windows_an_extensionless_file_is_not_a_command() {
+        let dir = tmp("noext");
+        std::fs::write(dir.join("codex"), "#!/bin/sh").unwrap();
+        let path_env = std::env::join_paths([dir.clone()]).unwrap();
+        assert_eq!(scan_path(Path::new("codex"), &path_env), None);
+        // `.cmd`가 생기면 그때 답이 된다.
+        std::fs::write(dir.join("codex.cmd"), "@echo off").unwrap();
+        assert_eq!(
+            scan_path(Path::new("codex"), &path_env).as_deref().map(lower),
+            Some(lower(&dir.join("codex.cmd")))
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 경로가 박힌 값은 stat 하나로 끝나고 **캐시하지 않는다**(방금 설치한 실행본을
+    /// 다음 tick에 알아봐야 한다). 반대로 맨 이름은 캐시가 답한다.
+    #[test]
+    fn a_path_shaped_value_is_answered_by_one_stat_and_is_never_cached() {
+        let dir = tmp("resolve");
+        let exe = dir.join("codex.exe");
+        assert_eq!(resolve_bin(&exe), None, "없는 파일 = 창구 없음");
+        std::fs::write(&exe, "x").unwrap();
+        assert_eq!(resolve_bin(&exe), Some(exe.clone()), "★ 설치 직후를 못 알아봤다");
+        std::fs::remove_file(&exe).unwrap();
+        assert_eq!(resolve_bin(&exe), None, "★ 지운 실행본을 캐시가 살려냈다");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 캐시는 **PATH까지 키**다 — 환경이 바뀌면 저절로 무효고, 두 번째 조회는 훑지 않는다.
+    #[test]
+    fn the_bare_name_cache_is_keyed_by_the_path_it_was_answered_with() {
+        let dir = tmp("cache");
+        let name = format!("ccg-codex-cache-{}", std::process::id());
+        let ext = if cfg!(windows) { ".cmd" } else { "" };
+        std::fs::write(dir.join(format!("{name}{ext}")), "@echo off").unwrap();
+        let empty = tmp("cache-empty");
+        let with = std::env::join_paths([dir.clone()]).unwrap();
+        let without = std::env::join_paths([empty.clone()]).unwrap();
+        remember(OsString::from(&name), with.clone(), Some(dir.join(format!("{name}{ext}"))));
+        assert_eq!(cached(OsStr::new(&name), &with), Some(Some(dir.join(format!("{name}{ext}")))));
+        // 다른 PATH로 물으면 캐시는 **답하지 않는다**(= 새로 훑는다).
+        assert_eq!(cached(OsStr::new(&name), &without), None);
+        for p in [&dir, &empty] {
+            let _ = std::fs::remove_dir_all(p);
+        }
     }
 
     #[test]

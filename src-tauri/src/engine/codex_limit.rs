@@ -40,6 +40,18 @@
 //! [`accounts_usage`]가 그 채널이다. **조회기를 새로 만들지 않는다** — 같은 캐시·같은
 //! 왕복을 쓴다. 두 벌이 되면 그 둘이 각자 만료를 세면서 app-server를 번갈아 태운다
 //! (클로드 축에서 이미 겪은 사고 — `ipc/parity/mod.rs` `pub mod usage` 주석).
+//!
+//! ## ★R28c CPATH — 위 표의 「실행본이 없다」를 **누가 판정하는가**
+//!
+//! R28b까지 이 파일이 그 판정을 혼자 했고([`can_ask`]·[`instrument`]의
+//! `codex_bin().is_file()`), 그 기준이 턴(`hub.rs`)·계정 조회(`ipc/parity/codex.rs`)와
+//! **달랐다**. `codex_bin()`의 마지막 폴백은 파일 경로가 아니라 **맨 이름 `codex`**(=
+//! "PATH에서 찾아라")라서, 전역 설치(`npm i -g @openai/codex`) 사용자에게만 이 파일의
+//! 답이 거짓이 됐다 — 턴은 돌고 한도만 `Unknown`(= 눈감고 발사), 게이지는 빈 창.
+//! 확인 크리틱 R1이 A/B로 잠갔다(`CCG_CODEX_BIN=codex` → t=90초 발사).
+//!
+//! 지금은 세 자리가 [`crate::engine::codex_versions::codex_exe`] 하나를 본다. 「실행본이
+//! 있나」를 여기서 **다시 정의하지 않는 것**이 이 라운드의 규약이다.
 
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -99,9 +111,14 @@ fn empty_row() -> Value {
 /// 자리라 거기서 쓰기를 하면 안 된다 — 그래서 판정에 필요한 사실("실행본이 있나 ·
 /// 등록된 계정인가")만 여기서 보고, 물질화는 워커([`fill`])가 한다.
 pub fn can_ask(email: &str) -> bool {
-    // 활성 설치본이 없으면 `codex_bin`은 맨 이름(`codex`)을 돌려준다 = 이 앱에는 실행본이
-    // 없다. 그 판에서는 codex 턴 자체가 못 뜨므로 한도를 물을 이유도 없다.
-    if !crate::engine::codex_versions::codex_bin().is_file() {
+    // ★R28c CPATH — **여기 있던 `codex_bin().is_file()`이 이 라운드의 구멍이었다.**
+    // 옛 주석은 "맨 이름이 돌아오면 이 앱에는 실행본이 없다 · 그 판에서는 codex 턴 자체가
+    // 못 뜬다"였는데 **둘 다 거짓**이다: 맨 이름은 「PATH에서 찾아라」는 뜻이고
+    // (`codex_versions::codex_bin`의 마지막 폴백), `command_for`가 `cmd /C`로 실제로 찾아
+    // 띄운다. 그래서 전역 설치(`npm i -g @openai/codex`) 사용자는 턴이 도는데 한도만
+    // 「창구 없음」 = `Unknown` = **눈감고 발사**였다(크리틱 A/B: t=90초 발사).
+    // 지금은 턴·계정 조회와 **같은 문**을 본다(`codex_exe`의 표).
+    if crate::engine::codex_versions::codex_exe().is_none() {
         return false;
     }
     ccg_auth::codex::read_store_file()
@@ -116,9 +133,9 @@ pub fn can_ask(email: &str) -> bool {
 /// (`codex_versions::home_for`의 `unregistered` 폴백을 **일부러 안 쓴다**: 빈 홈에 대고
 /// 물으면 "not logged in"이 오고 그건 「한도 정보 없음」과 구분이 안 된다).
 pub fn instrument(email: &str) -> Option<PathBuf> {
-    if !crate::engine::codex_versions::codex_bin().is_file() {
-        return None;
-    }
+    // ★R28c CPATH — [`can_ask`]와 **같은 문**이다(전역 PATH codex도 창구로 친다).
+    // 이 줄이 `is_file()`이던 동안에는 `accounts_usage()`까지 같은 이유로 빈 게이지를 냈다.
+    crate::engine::codex_versions::codex_exe()?;
     ccg_auth::codex::account_run_dir(email).ok()
 }
 
@@ -203,7 +220,8 @@ pub fn read_row(home: &Path) -> Option<Value> {
     if ccg_auth::net::disabled() {
         return None;
     }
-    let bin = crate::engine::codex_versions::codex_bin();
+    // ★R28c CPATH — 스폰 인자도 같은 해석을 지난다(`instrument`가 이미 `Some`을 봤다).
+    let bin = crate::engine::codex_versions::spawn_bin();
     let mut cmd = ccg_engine::codex::driver::command_for(&bin);
     cmd.env("CODEX_HOME", home);
     cmd.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null());
@@ -304,6 +322,36 @@ fn window_label(mins: f64) -> String {
 mod tests {
     use super::*;
 
+    /// ★R28c CPATH — 프로세스 전역 환경 한 칸을 잠깐 바꾸고 **반드시 되돌리는** 증표.
+    /// `CCG_HOME`에 [`ccg_store::testhome`]가 있는 것과 같은 이유다(그쪽이 자물쇠를 쥐므로
+    /// 이 증표는 **언제나 그 증표와 함께** 쓴다 — 혼자 쓰면 병렬 테스트가 서로의 환경을 본다).
+    struct EnvGuard {
+        key: &'static str,
+        prev: Option<std::ffi::OsString>,
+    }
+    impl EnvGuard {
+        fn set(key: &'static str, v: impl AsRef<std::ffi::OsStr>) -> EnvGuard {
+            let prev = std::env::var_os(key);
+            std::env::set_var(key, v);
+            EnvGuard { key, prev }
+        }
+    }
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            match self.prev.take() {
+                Some(v) => std::env::set_var(self.key, v),
+                None => std::env::remove_var(self.key),
+            }
+        }
+    }
+
+    /// 「이 컴퓨터에 codex가 깔려 있는가」에 답이 흔들리지 않게 **없는 실행본**을 못 박는다.
+    /// (★R28c CPATH 전에는 `is_file()`이 그 못이었다 — 전역 설치 판에서만 다르게 도는
+    /// 테스트는 게이트가 아니다.)
+    fn no_codex_here() -> EnvGuard {
+        EnvGuard::set("CCG_CODEX_BIN", std::env::temp_dir().join("ccg-no-such-codex.exe"))
+    }
+
     /// 와이어 → 행. 판정이 읽는 두 필드(`usedPct`·`resetsAt`)와 렌더러가 읽는 둘
     /// (`label`·`planType`)이 **한 번에** 나와야 한다.
     #[test]
@@ -360,6 +408,9 @@ mod tests {
     #[test]
     fn the_channel_answers_with_one_row_per_registered_account() {
         let h = ccg_store::testhome::take("codex-limit-rows");
+        // ★R28c CPATH — 「실행본이 없는 판」을 못 박는다. 이 못이 없으면 전역 PATH에
+        // codex가 있는 컴퓨터에서 이 테스트가 **진짜 app-server를 띄운다**(12초 마감 × 계정 수).
+        let _b = no_codex_here();
         assert_eq!(accounts_usage(), json!([]));
         ccg_auth::codex::write_store_file(
             &[json!({ "email": "a@openai.com", "plan": "plus" }), json!({ "email": "b@openai.com" })],
@@ -390,12 +441,68 @@ mod tests {
     #[test]
     fn an_unregistered_account_has_no_instrument_and_never_reaches_the_real_home() {
         let h = ccg_store::testhome::take("codex-limit-instr");
+        let _b = no_codex_here();
         assert!(!can_ask("ghost@openai.com"));
         assert!(instrument("ghost@openai.com").is_none());
         assert!(
             !h.dir.join("codex").join("accounts").exists(),
             "★ 판정 한 번이 계정 폴더를 물질화했다 — 허브 스레드에서 도는 경로다"
         );
+    }
+
+    /// ★R28c CPATH — **전역 PATH의 codex도 창구다.** R28b 확인 크리틱 R1 §3이 A/B로 잰
+    /// 그 판(`CCG_CODEX_BIN=codex` = `codex_bin()`의 폴백값)을 단위로 잠근다.
+    ///
+    /// 고치기 전에는 이 판에서 `can_ask`가 **거짓**이었고(=「물어볼 창구가 없다」=옛 계약),
+    /// 그래서 codex 채팅이 한도를 한 번도 안 묻고 t=90초에 발사했다. 같은 이유로
+    /// [`accounts_usage`]도 빈 창만 냈다(설정 ▸ Account의 OpenAI 게이지).
+    #[test]
+    fn a_codex_found_on_the_global_path_is_an_instrument_too() {
+        let h = ccg_store::testhome::take("codex-limit-path");
+        // PATH에 실물 하나(맨 이름으로만 닿는다) — 확장자는 셸이 보는 그것이다.
+        let dir = h.dir.join("fakepath");
+        std::fs::create_dir_all(&dir).unwrap();
+        let ext = if cfg!(windows) { ".cmd" } else { "" };
+        std::fs::write(dir.join(format!("codex{ext}")), "@echo off\n").unwrap();
+        let _p = EnvGuard::set("PATH", std::env::join_paths([dir]).unwrap());
+        let _b = EnvGuard::set("CCG_CODEX_BIN", "codex");
+
+        // 등록 계정 하나(복호 가능한 authEnc — 스토어가 직접 만든다).
+        let seed = h.dir.join("seed-auth");
+        std::fs::create_dir_all(&seed).unwrap();
+        let payload = json!({ "email": "p@openai.com",
+                              "https://api.openai.com/auth": { "chatgpt_plan_type": "plus" } })
+        .to_string();
+        let b64 = ccg_store::safe_storage::b64_encode(payload.as_bytes())
+            .replace('+', "-")
+            .replace('/', "_")
+            .replace('=', "");
+        std::fs::write(
+            seed.join("auth.json"),
+            json!({ "tokens": { "id_token": format!("h.{b64}.s"), "access_token": "at" } }).to_string(),
+        )
+        .unwrap();
+        assert_eq!(ccg_auth::codex::import_account_from_dir(&seed).as_deref(), Some("p@openai.com"));
+
+        // ★ 이 두 줄이 R28b까지 거짓이었다.
+        assert!(can_ask("p@openai.com"), "★ 전역 PATH codex를 창구로 안 봤다 = 눈감고 발사");
+        assert!(instrument("p@openai.com").is_some(), "★ 게이지가 물어볼 홈을 못 얻었다");
+        // 문 하나가 열렸다고 다 열리는 것은 아니다 — 등록되지 않은 계정은 여전히 아니다.
+        assert!(!can_ask("ghost@openai.com"));
+    }
+
+    /// 그 판의 **대조군**: PATH에도 없으면 창구가 없다(= 옛 계약 그대로 `Unknown`).
+    /// 이것이 초록이어야 위 테스트가 "전부 참으로 만들어 통과시킨 것"이 아니다.
+    #[test]
+    fn a_codex_that_is_nowhere_is_still_no_instrument() {
+        let h = ccg_store::testhome::take("codex-limit-nopath");
+        let empty = h.dir.join("emptypath");
+        std::fs::create_dir_all(&empty).unwrap();
+        let _p = EnvGuard::set("PATH", std::env::join_paths([empty]).unwrap());
+        let _b = EnvGuard::set("CCG_CODEX_BIN", "codex");
+        ccg_auth::codex::write_store_file(&[json!({ "email": "p@openai.com", "plan": "plus" })], None);
+        assert!(!can_ask("p@openai.com"));
+        assert!(instrument("p@openai.com").is_none());
     }
 
     /// `CCG_NO_NET`(하네스·재생)에서는 프로세스를 **한 번도 안 띄운다**.

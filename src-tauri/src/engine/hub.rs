@@ -309,8 +309,13 @@ impl Hub {
                 .map(std::path::PathBuf::from);
             // ★M4 — 드라이버 둘을 품고 **스폰 인자가 고른다**(`any.rs`). 채팅의 엔진은
             // 정체성 리프라 살아 있는 채팅에서 바뀔 수 있다(picker에서 Codex로 → T17).
+            //
+            // ★R28c CPATH — 값을 `spawn_bin()`에서 받는다. 한도 재검증(`codex_limit`)이
+            // 「띄울 수 있다」고 판정할 때 본 것과 **같은 해석**이어야 한다: R28b까지
+            // 이 줄은 맨 이름 `codex`를 그대로 넘겨 PATH에서 잘 떴는데, 한도 쪽만
+            // `is_file()`로 「실행본 없음」이라 판정하고 눈감고 발사했다.
             let codex = ccg_engine::codex::CodexDriver::new(
-                super::codex_versions::codex_bin(),
+                super::codex_versions::spawn_bin(),
                 self.job.clone(),
                 dump.clone(),
             )

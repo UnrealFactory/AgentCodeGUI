@@ -68,7 +68,12 @@ fn query() -> Value {
     if ccg_auth::net::disabled() {
         return json!([]);
     }
-    let bin = crate::engine::codex_versions::codex_bin();
+    // ★R28c CPATH — 「띄울 수 있는가」는 앱에 **한 자리**뿐이다(`codex_exe`의 표).
+    // 못 띄우는 판에서 굳이 `cmd /C`를 태워 12초 마감을 기다릴 이유가 없고, 무엇보다
+    // 한도 재검증·턴과 **같은 기준**이어야 한다(세 자리가 갈렸던 것이 이 라운드의 뿌리).
+    let Some(bin) = crate::engine::codex_versions::codex_exe() else {
+        return json!([]);
+    };
     // 계정 격리 홈 — 인자가 아니라 계정 스토어의 산물이다(`home_for`의 규약).
     let home = crate::engine::codex_versions::home_for(&Default::default());
 
