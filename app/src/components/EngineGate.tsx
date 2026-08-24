@@ -1,17 +1,46 @@
 import { useEffect, useRef, useState } from 'react'
+import type { EngineUpdateStatus } from '@shared/protocol'
 import { t } from '../lib/i18n'
 import { IconAlert, IconCheck, IconClaude } from './icons'
 
 type Phase = 'hidden' | 'prompt' | 'installing' | 'done' | 'error'
 
 /**
+ * 부팅 업데이터가 **결론**을 낼 때까지 기다린다 — 결론은 둘 중 하나다:
+ * `active`(일이 있어 지금 하고 있다) 또는 `done`(끝났고 이번 부팅엔 할 일이 없었다).
+ *
+ * 자동 업데이트가 꺼져 있으면 부팅 업데이터가 아예 안 돌므로 기다리지 않는다.
+ * 상한(20초)은 두 엔진의 레지스트리 조회 상한(각 8초)보다 넉넉히 크다 — 그 안에
+ * 답이 안 오면 "아무도 안 돈다"로 보고 우리가 안내한다(침묵보다 낫다).
+ */
+async function settleBootUpdater(): Promise<EngineUpdateStatus | null> {
+  const peek = async (): Promise<EngineUpdateStatus | null> =>
+    (await window.api.engineUpdate?.status?.().catch(() => null)) ?? null
+  let s = await peek()
+  if (s?.active) return s
+  const auto = await window.api.engineAutoUpdate().catch(() => true)
+  if (!auto) return s
+  for (let i = 0; i < 40 && !s?.active && !s?.done; i++) {
+    await new Promise((r) => setTimeout(r, 500))
+    s = await peek()
+  }
+  return s
+}
+
+/**
  * On launch: if the Claude engine isn't installed, pops a card prompting to install
  * the latest version — one click installs it into ~/.agentcodegui and activates it.
  *
- * 자동 업데이트(설정 → Engine, 기본 켬)가 켜져 있으면 이 게이트는 아예 안 뜬다 —
- * 설치도 업데이트도 부팅 게이트(EngineUpdateGate)가 물어보지 않고 진행하며 카드로
- * 보여준다. "새 엔진 버전" 업데이트 프롬프트는 그 구조로 대체돼 제거됐다(누르지
- * 않아도 20초 뒤 사일런트 업데이트가 어차피 덮어쓰던 거짓 선택지였다).
+ * ★R28 T1T2 R2 — 조기 반환의 조건이 「자동 업데이트가 **켜져 있다**」에서
+ * 「부팅 업데이터가 **실제로 돌고 있다**」로 좁혀졌다. 3.0에는 그 부팅 업데이터가
+ * 통째로 없었고(`engine:update-status`가 하드코딩 `{active:false}`), 기본값이 켬이라
+ * 이 게이트는 언제나 첫 줄에서 물러났다 — 엔진도 CLI도 없는 새 사용자가 25초를
+ * 기다려도 카드 한 장 못 보던 자리다(확인 크리틱 §4.2 실측). 이제 부팅 업데이터가
+ * 일을 맡았을 때만 비켜서고, 아무도 안 도는 판에서는 우리가 안내한다.
+ *
+ * 일을 맡은 판에서는 진행을 EngineUpdateGate가 카드로 보여준다. "새 엔진 버전"
+ * 업데이트 프롬프트는 그 구조로 대체돼 제거됐다(누르지 않아도 20초 뒤 사일런트
+ * 업데이트가 어차피 덮어쓰던 거짓 선택지였다).
  */
 export function EngineGate() {
   const [phase, setPhase] = useState<Phase>('hidden')
@@ -26,15 +55,20 @@ export function EngineGate() {
     let alive = true
     void (async () => {
       try {
-        // 자동 업데이트가 켜져 있으면 부팅 게이트의 몫 — 조회 실패는 켬(기본값)으로 간주
-        const auto = await window.api.engineAutoUpdate().catch(() => true)
-        if (!alive || auto) return
-        const [state, avail] = await Promise.all([window.api.engine.state(), window.api.engine.listAvailable()])
+        // ① 설치본부터 본다 — 디스크 한 번이라 싸다. 활성 엔진이 있으면 할 말이 없고,
+        //    그러면 **레지스트리 조회를 아예 안 한다**(부팅마다 npm 자식 하나가 준다).
+        const state = await window.api.engine.state()
+        if (!alive || state.active) return
+        // ② 엔진이 없다 — 부팅 업데이터가 그 일을 맡았는지 결론을 기다린다.
+        const boot = await settleBootUpdater()
+        if (!alive || boot?.active) return // 맡았다 → 진행은 EngineUpdateGate의 몫
+        // ③ 아무도 안 돈다. 이제 "무엇을 깔아야 하는지"를 알아내 안내한다.
+        const avail = await window.api.engine.listAvailable()
         if (!alive) return
         const latest = avail.latest
         if (!latest) return // can't determine latest (offline) → stay hidden
         setTarget(latest)
-        if (!state.active) setPhase('prompt')
+        setPhase('prompt')
       } catch {
         /* offline / error → stay hidden, settings still lets them install */
       }
@@ -42,6 +76,16 @@ export function EngineGate() {
     return () => {
       alive = false
     }
+  }, [])
+
+  // 부팅 업데이터가 **뒤늦게** 일을 시작하면(느린 레지스트리 조회) 우리가 물러난다 —
+  // 안 그러면 같은 화면에 안내 카드와 진행 카드가 겹쳐 뜬다.
+  useEffect(() => {
+    return (
+      window.api.engineUpdate?.onEvent?.((s) => {
+        if (s.active && !s.done) setPhase((p) => (p === 'prompt' ? 'hidden' : p))
+      }) ?? undefined
+    )
   }, [])
 
   // accumulate npm output while our own install runs

@@ -233,6 +233,10 @@ fn main() {
             win::create_main(app.handle())?;
             // 엔진 허브 — 창이 선 뒤에 띄운다(첫 브로드캐스트가 갈 곳이 있어야 한다).
             engine::boot(app.handle());
+            // ★R28 T1T2 R2 — 부팅 엔진 자동 업데이트(2.6.2 `index.ts:2046`). 자기 스레드에서
+            // 돌고, 할 일이 없으면 아무 카드도 안 뜬다. 이것이 없는 동안 3.0은 **엔진도
+            // CLI도 없는 새 컴퓨터에서 아무 말도 하지 않았다**(확인 크리틱 §4.2).
+            engine::boot_update::spawn(app.handle().clone());
             Ok(())
         })
         .build(tauri::generate_context!())

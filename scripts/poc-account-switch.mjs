@@ -165,6 +165,16 @@ function seedHome(name, accounts, opts = {}) {
   fs.mkdirSync(enginedir, { recursive: true })
   fs.copyFileSync(STUB, path.join(enginedir, 'claude.exe'))
   write(path.join(HOME, 'config.json'), { activeVersion: 'fake' })
+  // ★R28 T1T2 R2 — 이 홈이 **엔진 카드를 한 장도 안 띄우게** 두 줄을 더 심는다.
+  //   ① 자동 업데이트 끔: 부팅 엔진 업데이트(`engine/boot_update.rs`)가 이 격리 홈에
+  //      진짜 npm 설치를 시작하면 그 시간과 디스크가 이 하네스의 측정에 얹힌다.
+  //   ② 설치 판정 마커: `engine:state`는 `node_modules/<패키지>/package.json`까지 봐서
+  //      "진짜 설치본"을 가린다. 실행본만 있으면 active=null이라 EngineGate가 설치
+  //      안내(모달)를 띄우고, 그 오버레이가 설정 화면 클릭 위에 앉는다.
+  write(path.join(HOME, 'engine-auto-update.json'), { enabled: false })
+  const sdkdir = path.join(HOME, 'engines', 'fake', 'node_modules', '@anthropic-ai', 'claude-agent-sdk')
+  fs.mkdirSync(sdkdir, { recursive: true })
+  write(path.join(sdkdir, 'package.json'), { name: '@anthropic-ai/claude-agent-sdk', version: 'fake' })
 
   // ① 합성 계정 — `accounts.json`에 **복호 가능한** 스냅샷을 심는다(가짜 토큰).
   const emails = accounts.map((a) => a.email)

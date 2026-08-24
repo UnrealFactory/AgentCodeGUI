@@ -24,6 +24,7 @@
 //! | `CCG_NO_STATUS_BOOT` | `status::load_boot` + 재장전 + 첫 `chat:status` | 채팅 파일 전수 얕은 스캔 + 상태 맵이 상주로 남는 몫 |
 //! | `CCG_NO_FS` | `ccg-img` 스킴 등록 + `fs:*`/`git:*` 채널 | M6가 새로 링크한 `ccg-fs` 크레이트의 상주 몫 |
 //! | `CCG_NO_STATUS_TICK` | `chat:status`·`chat:windows` 재송신(마운트 따라잡기) | 렌더러가 그 REPLACE를 받아 들고 있는 몫(렌더러 힙 쪽 귀속) |
+//! | `CCG_NO_BOOT_ENGINE_UPDATE` | 부팅 엔진 자동 업데이트(`engine/boot_update.rs`) | 이 흐름은 **npm 왕복 + 수백 MB 설치**다. 격리 홈으로 앱을 띄우는 하네스가 전부 그걸 시작하면 측정이 그것부터 재게 된다 |
 //!
 //! `CCG_UNIFIED_STORE=0`(통합 스토어 끔)은 이미 있고 `bench/lib.mjs armName()`이 팔
 //! 이름에 반영한다. 위 스위치들도 같은 곳에 등록했다 — **팔마다 자기 결과 파일에 써야**
@@ -52,6 +53,7 @@ switch!(no_engine_hub, "CCG_NO_ENGINE_HUB");
 switch!(no_status_boot, "CCG_NO_STATUS_BOOT");
 switch!(no_fs, "CCG_NO_FS");
 switch!(no_status_tick, "CCG_NO_STATUS_TICK");
+switch!(no_boot_engine_update, "CCG_NO_BOOT_ENGINE_UPDATE");
 
 /// 지금 켜져 있는 무력화 스위치 목록 — 진단 채널(`engine:debug`)이 싣는다.
 /// 측정 산출물에 "이 주행이 정말 그 팔이었나"를 남기는 유일한 자리다.
@@ -63,6 +65,7 @@ pub fn active() -> Vec<&'static str> {
         (no_status_boot(), "CCG_NO_STATUS_BOOT"),
         (no_fs(), "CCG_NO_FS"),
         (no_status_tick(), "CCG_NO_STATUS_TICK"),
+        (no_boot_engine_update(), "CCG_NO_BOOT_ENGINE_UPDATE"),
         // 스토어가 직접 읽는 팔(부팅 경로를 R3의 깊은 파싱으로 되돌린다) — 목록에는
         // 같이 실어야 산출물만 보고 그 주행의 팔을 재구성할 수 있다.
         (ccg_store::deep_boot_scan(), "CCG_DEEP_BOOT_SCAN"),

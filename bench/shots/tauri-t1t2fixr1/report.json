@@ -1,0 +1,33 @@
+{
+  "app": "tauri-3.0.0",
+  "kind": "tauri",
+  "at": "2026-08-24T09:40:54.597Z",
+  "viewport": {
+    "width": 1440,
+    "height": 900
+  },
+  "screens": [
+    {
+      "id": "engine-gate-prompt",
+      "label": "엔진 미설치 안내 카드",
+      "area": "10. 알림",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 609,
+      "found": 1,
+      "viewport": [
+        1440,
+        900
+      ]
+    }
+  ],
+  "windowSized": true,
+  "summary": {
+    "defined": 156,
+    "attempted": 1,
+    "ok": 1,
+    "failed": 0,
+    "skipped": 0,
+    "successRatePct": 100
+  }
+}

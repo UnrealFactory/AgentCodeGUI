@@ -37,6 +37,10 @@
 
 mod acct_switch;
 mod any;
+/// ★R28 T1T2 R2 — 부팅 엔진 자동 업데이트(2.6.2 `runBootEngineUpdate`).
+/// `pub`인 이유: 셸(`main.rs`)이 흐름을 시작하고 `ipc/app_meta.rs`가 상태·플래그를
+/// 이 모듈 하나에서 읽어야 한다(사본이 늘면 두 답이 갈린다).
+pub mod boot_update;
 pub mod codex_versions;
 mod diff;
 mod hub;
