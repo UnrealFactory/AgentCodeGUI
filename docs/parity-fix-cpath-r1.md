@@ -162,6 +162,20 @@ cargo test -p agentcodegui  145 / 0   (내 +2 포함 — 145 = 이 시점 트리
 npm run typecheck(node·web) · typecheck:app   3종 초록
 ```
 
+### 2.4 옆 축 무회귀 — `poc-limit-codex` **8 / 0**
+
+CRIT R1의 헤드라인 레시피(등록 codex 계정이 **없는** 판)를 내 exe로 다시 쟀다. 이 라운드가
+`can_ask`의 문을 넓혔으니 「창구가 없다 → 발사」가 사라졌을까 봐 건 확인이다:
+
+```
+t= 90s spawns=1 stdin=502B hold=no  {asks:1, fetches:0, blocked:0, unavailable:0, unknown:1}
+C5 사용자 메시지가 큐에서 풀려 나갔다 — {"queue":[],"spawns":1,"hold":null}
+PASS — 8 통과, 0 실패     (→ bench/scratch/cpath-limit-codex.json)
+```
+
+**계정이 없으면 여전히 `unknown`이고 여전히 t=90초에 발사한다** — 문을 넓힌 것은
+「실행본이 있나」 하나뿐이고, 「등록 계정이 있나」는 그대로다.
+
 ---
 
 ## 3. 안전
