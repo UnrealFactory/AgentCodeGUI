@@ -415,11 +415,19 @@ async function rearm(h, text, opts = {}) {
           { kind: 'toolgroup', tools: [{ id: 'tool-1', name: 'Edit' }] }
         ]
       : []
+  // ★R3 — **도구가 턴 경계를 넘는 판**(WCAP 확인 크리틱 R2 §3.3의 P12). 스토어의 `tool-end`는
+  // 있는 도구를 **제자리에서 패치만** 하므로, 앞 턴에서 열린 도구의 결과가 이 턴에 뒤늦게
+  // 와도 그 도구 그룹은 재개 사용자 말풍선 **앞**에 그대로 있다. 그 배치가 이 줄이다 —
+  // 그러니 이 턴 구간(사용자 말풍선 뒤)은 오류 말풍선 하나뿐이고 `turnDidWork`는 거짓이다.
+  const stale = opts.crossTool
+    ? [{ kind: 'toolgroup', id: 'tg-prev', tools: [{ id: 'toolu-0', name: 'Read', status: 'ok' }] }]
+    : []
   h.o.state = {
     ...h.o.state,
     status: 'error',
     messages: [
       ...h.o.state.messages,
+      ...stale,
       { kind: 'msg', role: 'user', text: '이어서' },
       ...did,
       { kind: 'msg', role: 'assistant', text: errText, error: true }
@@ -770,6 +778,22 @@ eq('★★ 추론 말풍선은 출력이 아니다(엔진 thinking_delta 71발�
 eq('★ 추론뿐인 턴 — 오류조차 없어도 거짓', lib3.turnDidWork([J_USER, J_THINK]), false)
 eq('★ 추론을 건너뛰어도 그 아래 진짜 출력은 본다', lib3.turnDidWork([J_USER, { kind: 'msg', role: 'assistant', text: '고쳤어' }, J_THINK]), true)
 eq('★ 추론은 사용자 경계도 못 가린다', lib3.turnDidWork([{ kind: 'msg', role: 'assistant', text: '어제 한 일' }, J_USER, J_THINK, J_ERR]), false)
+// ★R3 정정(크리틱 R2 §4.3) — 위 네 줄의 픽스처 `{id:'thinking', kind:'msg'}`는 **스토어가
+// 결코 만들지 않는 모양**이다. 실물은 `{kind:'thinking'}`이고(`app/src/store/session.ts:36`)
+// `turnDidWork`는 `kind`가 `'msg'`/`'toolgroup'`인 것만 보므로 `THINKING_ID` 줄이 없어도
+// 거짓이다. 그러니 이 줄이 **실물 모양의** 못이고, 위 넷은 옛 모양 대비 방어선이다.
+const J_THINK_STORE = { id: 'thinking', kind: 'thinking', text: '어디부터 볼까…' }
+eq('★★ 스토어의 실제 추론 항목(kind:thinking)은 출력이 아니다', lib3.turnDidWork([J_USER, J_THINK_STORE, J_ERR]), false)
+eq('★ 실제 추론 항목도 사용자 경계를 못 가린다', lib3.turnDidWork([{ kind: 'msg', role: 'assistant', text: '어제 한 일' }, J_USER, J_THINK_STORE, J_ERR]), false)
+
+// ★R3 — **P12의 렌더러 쪽**(WCAP 확인 크리틱 R2 §3.3). 스토어의 `tool-end`는 있는 도구를
+// 제자리에서 패치만 하고 항목을 새로 붙이지 않으므로, 앞 턴에서 열린 도구의 결과가 재개 턴에
+// 뒤늦게 와도 그 그룹은 사용자 말풍선 **앞**에 남는다 = 이 턴의 산출이 아니다. 엔진이 이
+// 다리에서 갈라져 있었다(같은 12시간 대본에 엔진 71발 / 렌더러 2발) — 지금은 엔진도 이
+// 경계로 센다(`crates/ccg-engine/tests/wcap_limit_streak.rs` ⑦).
+const J_TG = { kind: 'toolgroup', id: 'tg1', tools: [{ id: 'toolu-0', name: 'Read' }] }
+eq('★★ 앞 턴에서 열린 도구 그룹은 이 턴의 산출이 아니다(엔진 71발의 짝)', lib3.turnDidWork([J_TG, J_USER, J_ERR]), false)
+eq('★ 같은 턴에서 열린 도구 그룹은 산출이다(과잉 절단 방지)', lib3.turnDidWork([J_USER, J_TG, J_ERR]), true)
 
 const J_WORKED = [J_USER, { kind: 'msg', role: 'assistant', text: 'ok' }, J_ERR]
 eq('계수가 0이면 볼 것도 없다', lib3.carriedAttempts(0, NOW, NOW, [J_USER, J_ERR], NOW), 0)
@@ -783,6 +807,9 @@ eq('이번 문구만 시각을 알아도 미상 판', lib3.carriedAttempts(2, nu
 eq('★★ 시각을 둘 다 아는 판에서는 일한 흔적이 시계를 못 뒤집는다', lib3.carriedAttempts(2, NOW, NOW, J_WORKED, NOW), 2)
 eq('★ 되레 앞선 벽(지난 epoch 되돌림)도 못 넘은 것', lib3.carriedAttempts(2, NOW, NOW - 10, J_WORKED, NOW), 2)
 eq('★ 지난 벽을 되돌려 줘도 일한 흔적이 시계를 못 뒤집는다', lib3.carriedAttempts(2, NOW - 7200, NOW - 60, J_WORKED, NOW), 2)
+// ★R3 — 같은 경계가 `carriedAttempts`에도 그대로 서야 한다(시각 미상 축 = ②가 유일 판정자).
+eq('★★ 앞 턴 도구 그룹은 계수를 못 지운다(codex 축)', lib3.carriedAttempts(2, null, null, [J_TG, J_USER, J_ERR], NOW), 2)
+eq('★ 이 턴이 연 도구 그룹은 계수를 지운다', lib3.carriedAttempts(2, null, null, [J_USER, J_TG, J_ERR], NOW), 0)
 
 // ② 밤샘 연속 주행 — 조회는 「풀렸다」고 답하고 재개는 실제로 일한다(크리틱의 그 판).
 console.log('   ② 밤샘 주행 — 창을 여섯 번 넘어도 안 잘린다')
@@ -832,6 +859,17 @@ eq('★ codex 축의 헛발질도 여전히 2발', { sent: cxDud.sent, seen: cxD
 const cxThink = await nightRun(CX_PROPS, 8, () => CX_BANNER, false, { think: true })
 eq('★★ 추론만 흘리고 죽는 턴도 2발에서 접힌다(엔진 71발의 짝)', { sent: cxThink.sent, seen: cxThink.seen }, { sent: 2, seen: [1, 2] })
 ok('★ 그 표는 접혀 있다', cxThink.h.hold?.ready === true && cxThink.h.hold?.autoPaused === true, JSON.stringify(cxThink.h.hold))
+// ★R3 — **엔진 못 ⑦의 렌더러 짝**(WCAP 확인 크리틱 R2 §3.3의 P12). 앞 턴에서 열린 도구의
+// 결과가 재개 턴에 뒤늦게 오는 판이다. 렌더러는 R2에서도 이미 2발이었고(그래서 엔진 71 대
+// 렌더러 2), 이 줄은 그 값이 **앞으로도** 2임을 못 박는다 — 엔진을 이 경계로 좁혔으니
+// 이쪽이 흔들리면 파리티가 반대로 깨진다.
+const cxCross = await nightRun(CX_PROPS, 8, () => CX_BANNER, false, { crossTool: true })
+eq('★★ 앞 턴 도구의 결과만 오는 턴도 2발에서 접힌다(엔진 ⑦의 짝)', { sent: cxCross.sent, seen: cxCross.seen }, { sent: 2, seen: [1, 2] })
+ok('★ 그 표는 접혀 있다', cxCross.h.hold?.ready === true && cxCross.h.hold?.autoPaused === true, JSON.stringify(cxCross.h.hold))
+// 반대 방향 — **이 턴 안에서** 도구가 돌면(work) 그건 일한 것이다. 그 그룹이 사용자 말풍선
+// 뒤에 서므로 계수가 안 오르고, 앞 턴 그룹이 스레드에 남아 있어도 답은 안 바뀐다.
+const cxCrossWork = await nightRun(CX_PROPS, 4, () => CX_BANNER, true, { crossTool: true })
+eq('★ 앞 턴 그룹이 남아 있어도 이 턴이 일했으면 안 접힌다', { sent: cxCrossWork.sent, seen: cxCrossWork.seen }, { sent: 4, seen: [0, 0, 0, 0] })
 cxAnswer = []
 
 // ③ 섞인 판 — 일한 재개 하나가 상한을 **영영** 무디게 만들지 않는다(계수가 다시 선다).

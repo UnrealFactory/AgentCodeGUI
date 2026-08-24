@@ -17,6 +17,7 @@
 //! | ④ | 토큰 한 줄 + **같은 벽**(지난 epoch 되돌림) | 접힌다 — 시계가 일한 흔적을 이긴다 |
 //! | ⑤ | **화면에 아무것도 안 남기는 프레임 한 장**(R2) | 접힌다 — 그건 「일했다」가 아니다 |
 //! | ⑥ | 화면에 글자·도구가 남는 프레임(R2) | 안 접힌다 — 좁히다가 여기까지 자르면 안 된다 |
+//! | ⑦ | **도구가 턴 경계를 넘는다**(R3) | 접힌다 — 그 도구 그룹은 렌더러에서 이 턴 것이 아니다 |
 //!
 //! ④가 이 라운드가 스스로 판 함정이다. 구분자를 OR로 두면 그 판에서 계수가 영영 0이 되고,
 //! `due_at`이 `max(resets_at + 90s, armed_at + 15s)`라 **15초마다** 재발사가 돈다 =
@@ -29,6 +30,18 @@
 //! 어시스턴트 텍스트·**비어 있지 않은** 도구 그룹만 세므로 같은 12시간 대본에 **엔진 71발 /
 //! 렌더러 2발**이 나왔다. 문턱을 좁혀 양쪽을 한 벌로 만든 것이 R2이고, 이 두 못이 그
 //! 71 대 2를 잠근다(⑤ = 크리틱 P4 표의 네 줄, ⑥ = 반대 방향의 과잉 절단 방지).
+//!
+//! ⑦이 **R3에서 새로 박은 못**이다(WCAP 확인 크리틱 R2 §3.3). R2는 「무엇을 산출로 세는가」만
+//! 맞추고 **「어느 턴의 것으로 세는가」**를 안 맞췄다: 엔진의 `saw_turn_output`은 *프레임이
+//! 도착한 엔진 턴*에 적히는데 렌더러의 `turnDidWork`는 *마지막 사용자 말풍선 뒤 구간*에서
+//! 읽는다. 앞 턴에서 열린 도구의 결과가 재개 턴에 뒤늦게 오면(상주 CLI에 재개를 **주입**하는
+//! 이 엔진에서는 실재하는 다리다) 두 축이 반대편에 서서 같은 71 대 2가 되살아났다.
+//!
+//! **계기 눈금도 R3에서 고쳤다.** R2까지 `run()`은 재발사를 `driver.spawns`(재스폰 수)로 셌다.
+//! 그런데 도구가 미정착이면 스트림이 `Resident`로 남아 재개가 **주입**으로 나가고
+//! (`drain_if_possible`이 `Idle` **또는 `Resident`**에서 돈다) 스폰은 한 번도 안 오른다 —
+//! 크리틱 R2 §4.1 실측: 재스폰 0인데 **CLI턴 72**. 그래서 이제 **stdin으로 나간 사용자 프롬프트
+//! 줄**(= CLI 턴 1회)을 센다. 재스폰 경로에서는 두 눈금이 같은 값이라 ①②③④⑤⑥의 숫자는 안 바뀐다.
 use ccg_engine::clock::{Clock, Millis, VirtualClock, HOUR, MIN, SEC};
 use ccg_engine::driver::{CliDriver, SpawnSpec};
 use ccg_engine::identity::*;
@@ -58,6 +71,10 @@ struct WcapCli {
     /// ★R2 — result 에러 앞에 흘리는 **임의의 프레임들**. 구분자 ②의 *문턱*을 재는
     /// 손잡이다(`work`는 「확실히 일했다」쪽 한 점만 짚는다).
     pre: Vec<Value>,
+    /// ★R3 — **도구가 턴 경계를 넘는다**(크리틱 R2 §3.3의 P12 대본). 첫 턴은 결과 없이
+    /// 죽는 `tool_use` 하나를 흘리고, 그 뒤의 **재개 턴들은 앞 턴 도구의 `tool_result`만**
+    /// 흘린다. `pre`로는 못 만든다 — `pre`는 턴마다 같은 프레임을 낸다.
+    cross_turn_tool: bool,
 }
 
 impl CliDriver for WcapCli {
@@ -88,6 +105,23 @@ impl CliDriver for WcapCli {
         }
         for f in &self.pre {
             self.pending.push(f.clone());
+        }
+        if self.cross_turn_tool {
+            if self.turns == 0 {
+                // 턴0 — 도구를 열어 놓은 채 한도로 죽는다(결과가 안 온다).
+                self.pending.push(json!({"type":"assistant","parent_tool_use_id":null,
+                    "message":{"role":"assistant","model":"haiku",
+                               "content":[{"type":"tool_use","id":"toolu-0","name":"Read","input":{}}]},
+                    "session_id":"S1","uuid":"U-t0"}));
+            } else {
+                // 재개 턴 — **앞 턴** 도구의 결과만. 렌더러에서 이 결과는 새 항목을 안
+                // 만들고(있는 도구를 제자리에서 패치만) 그 도구 그룹은 재개 사용자
+                // 말풍선 **앞**에 남는다 = `turnDidWork` 거짓.
+                self.pending.push(json!({"type":"user","parent_tool_use_id":null,
+                    "message":{"role":"user",
+                               "content":[{"type":"tool_result","tool_use_id":"toolu-0","content":"ok"}]},
+                    "session_id":"S1","uuid":"U-tn"}));
+            }
         }
         let text = if self.banner {
             "5-hour limit reached ∙ resets 3pm".to_string()
@@ -157,15 +191,20 @@ fn pump(r: &mut ChatRuntime<WcapCli>, clock: &Arc<VirtualClock>, until: Millis) 
 }
 
 /// 첫 사용자 턴을 태워 대기표를 세우고, 그 뒤의 자동 재발사 수를 센다.
+///
+/// ★R3 — 눈금은 **stdin으로 나간 사용자 프롬프트 줄**(`WcapCli::turns`)이다. R2까지 쓰던
+/// `driver.spawns`는 **재스폰만** 세므로, 도구가 미정착이라 스트림이 `Resident`로 남은 판에서는
+/// 재개가 71번 나가도 0을 돌려준다(크리틱 R2 §4.1: 재스폰 0 · CLI턴 72). 재스폰 경로에서는
+/// 두 눈금이 같은 값이라 기존 못들의 숫자는 안 바뀐다.
 fn run(cli: WcapCli, until: Millis) -> (ChatRuntime<WcapCli>, Arc<VirtualClock>, usize) {
     let clock = clock_at(5 * 3600);
     let mut r = rt(clock.clone(), cli);
     r.dispatch(Cmd::Send { text: "첫 턴".into() });
     pump(&mut r, &clock, 1_030 * SEC);
     assert!(r.hold().is_some(), "첫 턴이 한도로 죽어 표가 서야 한다");
-    let spawns0 = r.driver_ref().spawns;
+    let turns0 = r.driver_ref().turns;
     pump(&mut r, &clock, until);
-    let blind = r.driver_ref().spawns - spawns0;
+    let blind = (r.driver_ref().turns - turns0) as usize;
     (r, clock, blind)
 }
 
@@ -261,9 +300,9 @@ fn a_worked_turn_cannot_override_the_clock_when_both_walls_are_known() {
     assert!(h.ready && h.auto_paused, "★ 접힌 표(사용자의 버튼 차례)");
 
     // 그리고 접힌 뒤에는 몇 시간을 더 밀어도 0회다(RCAP의 그 성질 그대로).
-    let before = r.driver_ref().spawns;
+    let before = r.driver_ref().turns;
     pump(&mut r, &clock, 1_000 * SEC + 12 * HOUR);
-    assert_eq!(r.driver_ref().spawns, before, "★ 멈춘 뒤에는 영원히 0회");
+    assert_eq!(r.driver_ref().turns, before, "★ 멈춘 뒤에는 영원히 0회");
 }
 
 /// 시각 미상 축(=codex 대기표의 기본 축)에서 12시간을 돌린다. 계수가 0으로 남으면
@@ -295,6 +334,15 @@ fn a_frame_that_leaves_nothing_on_screen_does_not_clear_the_streak() {
         ("content_block_start", vec![json!({"type":"stream_event","event":{"type":"content_block_start","content_block":{"type":"text"}}})]),
         ("빈 text_delta", vec![delta(json!({"type":"text_delta","text":"   "}))]),
         ("빈 assistant 텍스트", vec![json!({"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":""}]}})]),
+        // ★R3 — **짝 없는 도구 결과.** R2는 이 줄을 ⑥(안 접힘)에 두었는데 그건 렌더러와
+        // 반대다: 원장에 없는 `tool_use_id`의 결과는 렌더러 `tool-end`에서 붙일 행을 못 찾고
+        // 스레드를 **그대로** 돌려준다(무동작) → `turnDidWork` 거짓 → 2발에서 접힌다.
+        // 크리틱 R2 §3.2 대조표의 유일한 불일치 줄이었다.
+        (
+            "짝 없는 도구 결과",
+            vec![json!({"type":"user","message":{"role":"user",
+                "content":[{"type":"tool_result","tool_use_id":"toolu-9","content":"ok"}]}})],
+        ),
     ];
     for (label, pre) in cases {
         let (blind, attempts, ready, paused) = twelve_hours_unknown_wall(pre);
@@ -325,11 +373,16 @@ fn output_that_stays_on_screen_still_clears_the_streak() {
             vec![json!({"type":"assistant","message":{"role":"assistant","model":"haiku",
                 "content":[{"type":"text","text":"끝냈어"}]}})],
         ),
-        // 도구 축은 **쌍으로** 온다. 결과 없이 죽은 `tool_use`만 흘리면 그 스트림은
-        // 도구가 도는 채로 상주가 되어(실측: `state=Resident` · 재스폰 0) 애초에 한도
-        // 재발사 경로에 들어가지 않는다 — 그래서 쌍이 이 축의 정직한 대본이다.
+        // 도구 축은 **쌍으로** 온다 — 그리고 그 쌍이 **같은 턴 안에** 있어야 렌더러의
+        // 도구 그룹이 이 턴 것이 된다(⑦이 그 반대편을 잠근다).
+        //
+        // ★R3 정정 — R2는 여기 「결과 없이 죽은 `tool_use`만 흘리면 그 스트림이 상주가 되어
+        // 애초에 한도 재발사 경로에 들어가지 않는다」고 적었는데 **틀렸다**. 안 들어가는 것은
+        // *재스폰*뿐이고, 상주 스트림은 프로세스를 재사용해 재개를 **주입**한다
+        // (`drain_if_possible`이 `Resident`에서도 돈다 — 크리틱 R2 §4.1 실측: 재스폰 0 ·
+        // CLI턴 72). 그 오독이 R2 계기 눈금(`spawns`)의 근거였고, 지금은 프롬프트 줄을 센다.
         (
-            "도구 호출+결과",
+            "같은 턴의 도구 호출+결과",
             vec![
                 json!({"type":"assistant","message":{"role":"assistant","model":"haiku",
                     "content":[{"type":"tool_use","id":"toolu-1","name":"Read","input":{}}]}}),
@@ -337,10 +390,13 @@ fn output_that_stays_on_screen_still_clears_the_streak() {
                     "content":[{"type":"tool_result","tool_use_id":"toolu-1","content":"ok"}]}}),
             ],
         ),
+        // 결과 없이 죽는 도구 호출 **단독**. 렌더러에서는 이 턴이 연 도구 그룹이 비어 있지
+        // 않으므로 「일했다」이고, 엔진도 `Frame::Assistant`에서 그렇게 읽어야 한다.
+        // (R2는 상주 판을 잴 눈금이 없어 이 줄을 못 세웠다 — R3의 프롬프트 계수가 세운다.)
         (
-            "도구 결과만",
-            vec![json!({"type":"user","message":{"role":"user",
-                "content":[{"type":"tool_result","tool_use_id":"toolu-9","content":"ok"}]}})],
+            "결과 없이 죽는 도구 호출",
+            vec![json!({"type":"assistant","message":{"role":"assistant","model":"haiku",
+                "content":[{"type":"tool_use","id":"toolu-2","name":"Read","input":{}}]}})],
         ),
     ];
     for (label, pre) in cases {
@@ -358,4 +414,42 @@ fn output_that_stays_on_screen_still_clears_the_streak() {
         assert_eq!(h.attempts, 0, "★ 「{label}」: 일한 턴은 계수를 올리지 않는다");
         assert!(!h.auto_paused, "★ 「{label}」: 자동이 접혔다");
     }
+}
+
+/// ⑦ ★R28d WCAP **R3** — **도구가 턴 경계를 넘으면 그 결과는 이 턴의 산출이 아니다.**
+///
+/// WCAP 확인 크리틱 R2 §3.3의 P12 대본 그대로다:
+///
+/// ```text
+/// 턴0  사용자 프롬프트 → assistant{tool_use "toolu-0"} → result 한도 에러  (결과 없이 죽는다)
+/// 턴n  재개 프롬프트   → user{tool_result "toolu-0"}   → result 한도 에러  (앞 턴 도구의 결과만)
+/// ```
+///
+/// R2 코드에서 이 판은 **12시간에 71발 · attempts 0 · 안 접힘**이었고, 같은 스트림이
+/// 렌더러 스토어에 만드는 스레드는 `turnDidWork = false`라 **2발에서 접힌다**. 렌더러가
+/// 거짓인 이유는 구조적이다 — `tool-end`는 **있는 도구를 제자리에서 패치만** 하고 항목을
+/// 새로 붙이지 않으므로(`app/src/store/session.ts`) 그 도구 그룹은 재개의 사용자 말풍선
+/// **앞**에 남고, 뒤에서부터 훑는 `turnDidWork`가 사용자 말풍선에서 멎는다.
+///
+/// 이 판은 상주 스트림이라 **재스폰이 0**이다. R2의 `spawns` 눈금으로는 71발이 0으로
+/// 보였다(크리틱 R2 §4.1) — 그래서 이 못은 `run()`의 프롬프트 계수와 짝으로만 산다.
+#[test]
+fn a_tool_result_that_crosses_the_turn_boundary_does_not_clear_the_streak() {
+    let cli = WcapCli {
+        banner: true, // 시각 미상 = ②가 유일 판정자인 축
+        cross_turn_tool: true,
+        ..Default::default()
+    };
+    let (r, _clock, blind) = run(cli, 1_000 * SEC + 12 * HOUR);
+    let h = r.hold().expect("표는 서 있다");
+    println!(
+        "[WCAP⑦] 앞 턴 도구의 결과 {blind}회 · attempts {} · ready {} · auto_paused {}",
+        h.attempts, h.ready, h.auto_paused
+    );
+    assert_eq!(
+        blind as u32, MAX_AUTO_ATTEMPTS,
+        "★★ 턴 경계를 넘은 도구 결과가 상한을 지웠다 — 12시간에 {blind}회(렌더러는 2발)"
+    );
+    assert!(h.ready && h.auto_paused, "★ 자동을 접고 사용자에게 넘겨야 한다");
+    assert_eq!(h.attempts, MAX_AUTO_ATTEMPTS, "계수가 표에 실려 있다");
 }
