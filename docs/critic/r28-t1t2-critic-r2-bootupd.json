@@ -1,0 +1,334 @@
+{
+  "at": "2026-08-24T10:11:49.823Z",
+  "exe": "C:\\Code\\AgentCodeGUI\\target-t1t2\\release\\agentcodegui.exe",
+  "checks": [
+    {
+      "id": "A0 자동 업데이트 기본값이 켬(=크리틱이 잰 그 판)",
+      "pass": true,
+      "detail": true
+    },
+    {
+      "id": "A1 ★ 엔진 없는 컴퓨터에서 안내 카드가 뜬다(.eu-card)",
+      "pass": true,
+      "detail": {
+        "euCard": true
+      }
+    },
+    {
+      "id": "A2 카드가 두 엔진을 줄로 보여준다",
+      "pass": true,
+      "detail": [
+        "Claude Code9.9.9 새로 설치",
+        "Codex CLI8.8.8 새로 설치",
+        "이전 버전 정리"
+      ]
+    },
+    {
+      "id": "A3 흐름이 끝까지 간다(done · cleanup done)",
+      "pass": true,
+      "detail": {
+        "done": true,
+        "cleanup": "done",
+        "ms": 2620
+      }
+    },
+    {
+      "id": "A4 두 엔진 모두 설치·활성화 성공",
+      "pass": true,
+      "detail": [
+        "claude null→9.9.9 done",
+        "codex null→8.8.8 done"
+      ]
+    },
+    {
+      "id": "A5 신규 설치는 from=null(카드가 「새로 설치」로 그린다)",
+      "pass": true,
+      "detail": [
+        null,
+        null
+      ]
+    },
+    {
+      "id": "A6 디스크 활성 표식",
+      "pass": true,
+      "detail": {
+        "claude": {
+          "activeVersion": "9.9.9"
+        },
+        "codex": {
+          "activeVersion": "8.8.8"
+        }
+      }
+    },
+    {
+      "id": "A7 engine:state가 방금 깐 것을 본다",
+      "pass": true,
+      "detail": {
+        "package": "@anthropic-ai/claude-agent-sdk",
+        "bundled": "unknown",
+        "active": "9.9.9",
+        "installed": [
+          "9.9.9"
+        ]
+      }
+    },
+    {
+      "id": "A8 npm 왕복 = view 2 + install 2",
+      "pass": true,
+      "detail": [
+        "view @anthropic-ai/claude-agent-sdk",
+        "view @openai/codex",
+        "install @anthropic-ai/claude-agent-sdk@9.9.9",
+        "install @openai/codex@8.8.8"
+      ]
+    },
+    {
+      "id": "A9 안내 카드 둘이 겹치지 않는다(EngineGate는 물러난다)",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "id": "A10 성공 카드는 스스로 닫힌다",
+      "pass": true,
+      "detail": false
+    },
+    {
+      "id": "B1 ★ 자동 업데이트가 켜져 있어도, 아무도 안 돌면 설치 안내가 뜬다",
+      "pass": true,
+      "detail": {
+        "title": "Claude 엔진 설치",
+        "autoUpdate": true,
+        "status": {
+          "active": false,
+          "items": [],
+          "cleanup": "pending",
+          "freedBytes": 0,
+          "done": false
+        },
+        "ms": 20440
+      }
+    },
+    {
+      "id": "B2 안내가 설치할 버전을 말한다",
+      "pass": true,
+      "detail": "Claude Code 엔진이 아직 설치되지 않았습니다. 최신 버전(9.9.9)을 설치하면 바로 사용할 수 있어요."
+    },
+    {
+      "id": "B3 진행 카드는 안 뜬다(도는 것이 없으므로)",
+      "pass": true,
+      "detail": false
+    },
+    {
+      "id": "C1 할 일이 없으면 active=false로 끝난다",
+      "pass": true,
+      "detail": {
+        "active": false,
+        "items": [],
+        "cleanup": "done",
+        "freedBytes": 0,
+        "done": true,
+        "ms": 1315
+      }
+    },
+    {
+      "id": "C2 카드가 한 장도 안 뜬다(할 말이 없다)",
+      "pass": true,
+      "detail": {
+        "euCard": false,
+        "gateTitle": null
+      }
+    },
+    {
+      "id": "C3 옛 버전은 정리됐다(최신 하나만 남는다)",
+      "pass": true,
+      "detail": {
+        "claude": [
+          "9.9.9"
+        ],
+        "codex": [
+          "8.8.8"
+        ]
+      }
+    },
+    {
+      "id": "C4 설치는 한 번도 안 돈다",
+      "pass": true,
+      "detail": [
+        "view @anthropic-ai/claude-agent-sdk",
+        "view @openai/codex"
+      ]
+    },
+    {
+      "id": "D1 실패해도 흐름은 끝까지 간다",
+      "pass": true,
+      "detail": {
+        "done": true,
+        "cleanup": "done"
+      }
+    },
+    {
+      "id": "D2 실패가 항목에 사유와 함께 남는다",
+      "pass": true,
+      "detail": [
+        "claude: 설치 실패 (npm 종료 코드 1)",
+        "codex: 설치 실패 (npm 종료 코드 1)"
+      ]
+    },
+    {
+      "id": "D3 실패 카드는 스스로 닫히지 않는다",
+      "pass": true,
+      "detail": {
+        "euCard": true,
+        "err": "설치 실패 (npm 종료 코드 1)"
+      }
+    },
+    {
+      "id": "D4 반쪽 폴더는 설치본으로 안 잡힌다",
+      "pass": true,
+      "detail": {
+        "package": "@anthropic-ai/claude-agent-sdk",
+        "bundled": "unknown",
+        "active": null,
+        "installed": []
+      }
+    }
+  ],
+  "scen": {
+    "fresh": {
+      "autoUpdate": true,
+      "euCard": true,
+      "cardMs": 1787566311746,
+      "rows": [
+        "Claude Code9.9.9 새로 설치",
+        "Codex CLI8.8.8 새로 설치",
+        "이전 버전 정리"
+      ],
+      "final": {
+        "active": true,
+        "items": [
+          {
+            "id": "claude",
+            "label": "Claude Code",
+            "from": null,
+            "to": "9.9.9",
+            "status": "done"
+          },
+          {
+            "id": "codex",
+            "label": "Codex CLI",
+            "from": null,
+            "to": "8.8.8",
+            "status": "done"
+          }
+        ],
+        "cleanup": "done",
+        "freedBytes": 0,
+        "done": true
+      },
+      "settleMs": 2620,
+      "cfg": {
+        "activeVersion": "9.9.9"
+      },
+      "codexCfg": {
+        "activeVersion": "8.8.8"
+      },
+      "state": {
+        "package": "@anthropic-ai/claude-agent-sdk",
+        "bundled": "unknown",
+        "active": "9.9.9",
+        "installed": [
+          "9.9.9"
+        ]
+      },
+      "npm": [
+        "view @anthropic-ai/claude-agent-sdk",
+        "view @openai/codex",
+        "install @anthropic-ai/claude-agent-sdk@9.9.9",
+        "install @openai/codex@8.8.8"
+      ],
+      "gateTitle": null,
+      "cardAfter": false
+    },
+    "nobody": {
+      "autoUpdate": true,
+      "status": {
+        "active": false,
+        "items": [],
+        "cleanup": "pending",
+        "freedBytes": 0,
+        "done": false
+      },
+      "gateTitle": "Claude 엔진 설치",
+      "ms": 20440,
+      "msg": "Claude Code 엔진이 아직 설치되지 않았습니다. 최신 버전(9.9.9)을 설치하면 바로 사용할 수 있어요.",
+      "euCard": false
+    },
+    "noWork": {
+      "final": {
+        "active": false,
+        "items": [],
+        "cleanup": "done",
+        "freedBytes": 0,
+        "done": true
+      },
+      "settleMs": 1315,
+      "euCard": false,
+      "gateTitle": null,
+      "state": {
+        "package": "@anthropic-ai/claude-agent-sdk",
+        "bundled": "unknown",
+        "active": "9.9.9",
+        "installed": [
+          "9.9.9"
+        ]
+      },
+      "codexState": {
+        "package": "@openai/codex",
+        "bundled": "unknown",
+        "active": "8.8.8",
+        "installed": [
+          "8.8.8"
+        ]
+      },
+      "npm": [
+        "view @anthropic-ai/claude-agent-sdk",
+        "view @openai/codex"
+      ]
+    },
+    "fail": {
+      "final": {
+        "active": true,
+        "items": [
+          {
+            "id": "claude",
+            "label": "Claude Code",
+            "from": null,
+            "to": "9.9.9",
+            "status": "error",
+            "error": "설치 실패 (npm 종료 코드 1)"
+          },
+          {
+            "id": "codex",
+            "label": "Codex CLI",
+            "from": null,
+            "to": "8.8.8",
+            "status": "error",
+            "error": "설치 실패 (npm 종료 코드 1)"
+          }
+        ],
+        "cleanup": "done",
+        "freedBytes": 0,
+        "done": true
+      },
+      "euCard": true,
+      "err": "설치 실패 (npm 종료 코드 1)",
+      "state": {
+        "package": "@anthropic-ai/claude-agent-sdk",
+        "bundled": "unknown",
+        "active": null,
+        "installed": []
+      }
+    }
+  },
+  "pass": true
+}

@@ -1,0 +1,66 @@
+{
+  "at": "2026-08-24T10:17:25.792Z",
+  "home": "poc-talk 모양(플랫폼 stub + config fake · 마커 없음 · auto-update 파일 없음)",
+  "npmCalls": [
+    [
+      "view",
+      "@anthropic-ai/claude-agent-sdk",
+      "--json"
+    ],
+    [
+      "view",
+      "@openai/codex",
+      "--json"
+    ],
+    [
+      "install",
+      "@anthropic-ai/claude-agent-sdk@9.9.9",
+      "--prefix",
+      "C:\\Code\\AgentCodeGUI\\.poc-home-cr2blast\\engines\\9.9.9",
+      "--no-audit",
+      "--no-fund",
+      "--loglevel=http"
+    ],
+    [
+      "install",
+      "@openai/codex@8.8.8",
+      "--prefix",
+      "C:\\Code\\AgentCodeGUI\\.poc-home-cr2blast\\codex-engines\\8.8.8",
+      "--no-audit",
+      "--no-fund",
+      "--loglevel=http"
+    ]
+  ],
+  "status": {
+    "active": true,
+    "items": [
+      {
+        "id": "claude",
+        "label": "Claude Code",
+        "from": null,
+        "to": "9.9.9",
+        "status": "error",
+        "error": "설치 실패 (npm 종료 코드 1)"
+      },
+      {
+        "id": "codex",
+        "label": "Codex CLI",
+        "from": null,
+        "to": "8.8.8",
+        "status": "error",
+        "error": "설치 실패 (npm 종료 코드 1)"
+      }
+    ],
+    "cleanup": "done",
+    "freedBytes": 0,
+    "done": true
+  },
+  "dom": {
+    "eu": true,
+    "rows": [
+      "Claude Code9.9.9 새로 설치",
+      "Codex CLI8.8.8 새로 설치",
+      "이전 버전 정리"
+    ]
+  }
+}
