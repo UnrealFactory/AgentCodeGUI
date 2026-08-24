@@ -28,11 +28,13 @@
  */
 import esbuild from 'esbuild'
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 const root = path.resolve(import.meta.dirname, '..')
-const tmp = path.join(root, '.poc-limit-tmp')
+// 스크래치는 **레포 밖**(%TEMP%)에 판다 — 주행이 중간에 죽어도 남의 git status를 더럽히지 않는다.
+const tmp = path.join(os.tmpdir(), 'ccg-limit-poc-t3t4')
 fs.rmSync(tmp, { recursive: true, force: true })
 fs.mkdirSync(tmp, { recursive: true })
 

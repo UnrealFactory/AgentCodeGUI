@@ -1,5 +1,5 @@
 {
-  "at": "2026-08-24T10:00:10.359Z",
+  "at": "2026-08-24T10:04:16.702Z",
   "exe": "C:\\Code\\AgentCodeGUI\\target-t3t4\\release\\agentcodegui.exe",
   "email": "blind-seed@t3t4.test",
   "steps": {
@@ -29,12 +29,12 @@
       "unavailable": true,
       "v1": {
         "kind": "hold",
-        "resetsAt": 1787565510,
+        "resetsAt": 1787565757,
         "probes": 1
       },
       "v2": {
         "kind": "hold",
-        "resetsAt": 1787565510,
+        "resetsAt": 1787565757,
         "probes": 2
       }
     },

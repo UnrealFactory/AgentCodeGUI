@@ -27,6 +27,7 @@
  *   node scripts/poc-limit-blind.mjs [--exe=…] [--keep]
  * ========================================================================== */
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { spawn, spawnSync } from 'node:child_process'
 import esbuild from 'esbuild'
@@ -121,7 +122,7 @@ async function boot() {
 async function main() {
   seedHome()
   // 판정 두 벌을 같은 번들에서 꺼낸다(옛 판정 `blockedResetsAt` · 새 판정 `resumeVerdict`).
-  const tmp = path.join(REPO, '.poc-blind-lib.mjs')
+  const tmp = path.join(os.tmpdir(), 'ccg-limit-blind-lib.mjs') // 레포 밖 스크래치
   await esbuild.build({
     entryPoints: [path.join(REPO, 'app/src/lib/limitResume.ts')],
     bundle: true,
