@@ -464,6 +464,11 @@ pub fn read_chats(light: bool, open_chat_ids: &[String]) -> Value {
         }
     }
 
+    // ★R28c AG2(G2) — 이 줄은 **읽기**다. 부팅 첫 호출에서만 디스크가 메모리를 채우고
+    // (규약 4의 부팅 강제도 그때 한 번), 그 뒤로는 살아 있는 메모리가 이긴다
+    // (`status::load_boot` 규약 6). R3까지는 조회마다 부팅 장전이 다시 돌아 **살아 있는
+    // 런타임의 `account`·`panelId`·`ask`를 조회 한 번이 지웠다** — 크래시 복구·
+    // ErrorBoundary 리셋으로 메인 창이 다시 마운트될 때마다 나는 사고였다.
     let statuses = crate::status::load_boot(&ids);
     let mut smap = Map::new();
     for (k, v) in statuses {

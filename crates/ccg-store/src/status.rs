@@ -12,6 +12,10 @@
 //!     `sessionChats.ts:28` 파리티). `queued`·`hold`는 **강제하지 않는다**(재장전 대상).
 //!  5. **유일 진실이 아니다.** 없거나 깨졌으면 `chats-v3/*.json` 전수 **얕은 스캔**으로
 //!     재구성한다(`snapshot`은 파싱하지 않는다 — serde의 IgnoredAny가 통째로 건너뛴다).
+//!  6. **장전은 부팅에 한 번**(★R28c AG2 — 확인 크리틱 R3 G2). 규약 4의 강제도, 디스크
+//!     값으로 메모리를 덮는 것도 **첫 장전에서만** 한다. 그 뒤의 `load_boot`(=`chats:get`)은
+//!     **조회**다: 살아 있는 메모리가 이기고, 메모리가 모르는 채팅만 디스크에서 짓는다.
+//!     읽기 채널 한 번이 살아 있는 런타임의 계정·승인 대기를 지우면 안 된다.
 //!
 //! `unread`는 **3.0.0에서 항상 0**이다(필드만 예약 — M-UX 열린 문제 ⑪). 마커 채팅에서
 //! 재계산이 불가능해 이 파일이 유일 진실이어야 하는데, 그러려면 "읽음" 리셋 채널이
@@ -78,15 +82,44 @@ pub struct HoldLite {
 struct State {
     map: BTreeMap<String, Value>,
     dirty: bool,
+    /// 이 홈에서 **부팅 장전을 이미 했는가**(규약 6). 두 번째부터의 [`load_boot`]은
+    /// 장전이 아니라 **조회**다 — 아래 [`claim_boot`]·[`read_live`] 참고.
+    loaded: bool,
 }
 
 fn state() -> &'static (Mutex<State>, Condvar) {
     static S: OnceLock<(Mutex<State>, Condvar)> = OnceLock::new();
-    S.get_or_init(|| (Mutex::new(State { map: BTreeMap::new(), dirty: false }), Condvar::new()))
+    S.get_or_init(|| {
+        (Mutex::new(State { map: BTreeMap::new(), dirty: false, loaded: false }), Condvar::new())
+    })
 }
 
-/// 이 프로세스에서 status를 한 번이라도 장전했는가(부팅 강제는 1회만).
-static LOADED: OnceLock<()> = OnceLock::new();
+/// ★R28c AG2(G2) — **이번 호출이 부팅 장전인가**(그리고 그 자리에서 표식을 세운다).
+///
+/// R2는 이 표식을 `static LOADED: OnceLock<()>`으로 세워 두고 **아무도 안 읽었다**
+/// (확인 크리틱 R3 G2: `grep LOADED` = 정의 1줄 + 대입 1줄이 전부). 그래서 조회
+/// (`chats:get` → `chats_v3::read_chats` → `load_boot`)마다 부팅 장전이 다시 돌아
+/// 디스크 스냅샷이 **살아 있는 메모리 맵을 통째로 덮었다** — 그 길의 `strip_runtime_only`가
+/// 살아 있는 런타임의 `account`·`panelId`를 걷어내 「사용 중」 칩이 조용히 꺼졌고
+/// (그 채팅의 CLI는 PID를 달고 살아 있었다), 같은 덮어쓰기가 `ask`도 `"none"`으로
+/// 되돌려 **타임아웃이 없는 승인 대기(AwaitingUser)**가 영영 안 돌아왔다.
+/// 걷힌 행은 스스로 못 돌아온다 — 허브는 lite가 *바뀔 때만* `set`을 부르는데
+/// 턴이 끝난 채팅의 lite는 다시 안 바뀐다(`hub.rs`의 `if same { return }`).
+///
+/// **표식을 `State`로 옮긴 이유**: 홈이 갈리면([`forget`]) 다음 장전은 *다시 부팅*이다.
+/// `OnceLock`은 그 되돌림을 표현할 수 없다(프로세스에 한 번뿐이라 테스트도 한 홈만 산다).
+///
+/// 동시에 둘이 들어오면 **하나만** 참을 받는다 — 나머지는 조회로 간다. 두 번 장전해도
+/// 결과는 같지만, 그 사이의 `set`을 덮을 수 있는 창을 굳이 열지 않는다.
+fn claim_boot() -> bool {
+    let (m, _) = state();
+    let mut st = m.lock().unwrap_or_else(|e| e.into_inner());
+    if st.loaded {
+        return false;
+    }
+    st.loaded = true;
+    true
+}
 
 /// 빈 `ChatStatusLite` — 채팅은 있는데 상태 기록이 없을 때의 값.
 pub fn empty_lite(chat_id: &str) -> Value {
@@ -111,59 +144,122 @@ pub fn empty_lite(chat_id: &str) -> Value {
     })
 }
 
-/// 부팅 장전 — 파일을 읽고 규약 4의 강제를 적용한 뒤, `<chatId>.json`의 진실로
-/// `hold`·`queued`를 되맞춘다(규약 3). 파일이 없거나 깨졌으면 얕은 스캔으로 재구성한다.
+/// 부팅 **장전**(첫 호출) / **조회**(그 뒤) — 두 얼굴이 한 문 뒤에 있다.
+///
+/// 장전: 파일을 읽고 규약 4의 강제를 적용한 뒤, `<chatId>.json`의 진실로 `hold`·`queued`를
+/// 되맞춘다(규약 3). 파일이 없거나 깨졌으면 얕은 스캔으로 재구성한다(규약 5).
+///
+/// ★R28c AG2(G2) — **조회(두 번째부터)는 메모리를 안 덮는다.** 이름은 `load_boot`으로
+/// 두지만(호출자 셋의 계약면), 두 번째부터 하는 일은 [`read_live`]다: 살아 있는 맵이
+/// 이기고, 메모리가 모르는 채팅만 디스크에서 짓는다. 왜 그래야 하는지는 [`claim_boot`].
 pub fn load_boot(chat_ids: &[String]) -> BTreeMap<String, Value> {
-    let raw = std::fs::read_to_string(path()).ok().and_then(|s| serde_json::from_str::<Value>(&s).ok());
-    let stored = raw
-        .as_ref()
-        .and_then(|v| v.get("statuses"))
-        .and_then(Value::as_object)
-        .cloned()
-        .unwrap_or_default();
-
+    if !claim_boot() {
+        return read_live(chat_ids);
+    }
+    let stored = read_stored();
     let mut out: BTreeMap<String, Value> = BTreeMap::new();
     for id in chat_ids {
-        // 규약 5 — status.json이 없거나 그 채팅을 모르면 `<chatId>.json`의 얕은 스캔으로
-        // **재구성**한다. R1은 `empty_lite`(=idle)로만 채워, 파일 하나가 사라지면 얼려 둔
-        // `done`이 전부 풀렸다(크리틱 E2).
-        let mut lite = stored.get(id).cloned().filter(Value::is_object).unwrap_or_else(|| {
-            let mut e = empty_lite(id);
-            if let (Some(o), Some(s)) = (e.as_object_mut(), read_chat_lite(id).and_then(|l| l.status)) {
-                o.insert("status".into(), json!(s));
-            }
-            e
-        });
-        // ★R28 ACCT R2(F1) — **부팅에는 살아 있는 런타임이 없다.** R1이 써 둔 파일에
-        // `account`·`panelId`가 남아 있어도 여기서 걷어낸다(유령 「사용 중」 칩 방지).
-        strip_runtime_only(&mut lite);
-        if let Some(o) = lite.as_object_mut() {
-            o.insert("chatId".into(), json!(id));
-            // 규약 4 — 부팅 강제(유령 알약 방지). queued·hold는 건드리지 않는다.
-            o.insert("busy".into(), json!(false));
-            o.insert("ask".into(), json!("none"));
-            o.insert("bgActive".into(), json!(false));
-            if o.get("status").and_then(Value::as_str) == Some("working")
-                || o.get("status").and_then(Value::as_str) == Some("analyzing")
-            {
-                // 실행 중 상태로 복원하지 않는다(`sessionChats.ts:28` 파리티)
-                o.insert("status".into(), json!("idle"));
-            }
-            o.insert("unread".into(), json!(0)); // ★ 3.0.0 고정
-        }
-        // 규약 3 — `<chatId>.json`이 이긴다
-        if let Some(lite_obj) = lite.as_object_mut() {
-            let (queued, hold) = truth_from_chat_file(id);
-            lite_obj.insert("queued".into(), json!(queued));
-            lite_obj.insert("hold".into(), hold);
-        }
-        out.insert(id.clone(), lite);
+        out.insert(id.clone(), row_from_disk(id, &stored));
     }
-    let _ = LOADED.set(());
     {
         let (m, _) = state();
         let mut st = m.lock().unwrap_or_else(|e| e.into_inner());
         st.map = out.clone();
+    }
+    out
+}
+
+/// `status.json`의 `statuses` 맵(없거나 깨졌으면 빈 맵 — 규약 5가 그 뒤를 받는다).
+fn read_stored() -> Map<String, Value> {
+    let Some(raw) =
+        std::fs::read_to_string(path()).ok().and_then(|s| serde_json::from_str::<Value>(&s).ok())
+    else {
+        return Map::new();
+    };
+    raw.get("statuses").and_then(Value::as_object).cloned().unwrap_or_default()
+}
+
+/// 디스크가 아는 채팅 하나의 lite — **런타임이 없는 값**이다(규약 3·4·5 + F1 청소).
+///
+/// 이 함수가 만드는 행에는 `account`·`panelId`가 절대 없다. 살아 있는 런타임의 사실은
+/// 메모리에만 있고([`set`]), 디스크는 *"이 채팅이 마지막에 어떤 상태였나"*만 안다.
+fn row_from_disk(id: &str, stored: &Map<String, Value>) -> Value {
+    // 규약 5 — status.json이 없거나 그 채팅을 모르면 `<chatId>.json`의 얕은 스캔으로
+    // **재구성**한다. R1은 `empty_lite`(=idle)로만 채워, 파일 하나가 사라지면 얼려 둔
+    // `done`이 전부 풀렸다(크리틱 E2).
+    let mut lite = stored.get(id).cloned().filter(Value::is_object).unwrap_or_else(|| {
+        let mut e = empty_lite(id);
+        if let (Some(o), Some(s)) = (e.as_object_mut(), read_chat_lite(id).and_then(|l| l.status)) {
+            o.insert("status".into(), json!(s));
+        }
+        e
+    });
+    // ★R28 ACCT R2(F1) — **디스크에는 살아 있는 런타임이 없다.** R1이 써 둔 파일에
+    // `account`·`panelId`가 남아 있어도 여기서 걷어낸다(유령 「사용 중」 칩 방지).
+    strip_runtime_only(&mut lite);
+    force_boot_shape(id, &mut lite);
+    // 규약 3 — `<chatId>.json`이 이긴다
+    if let Some(o) = lite.as_object_mut() {
+        let (queued, hold) = truth_from_chat_file(id);
+        o.insert("queued".into(), json!(queued));
+        o.insert("hold".into(), hold);
+    }
+    lite
+}
+
+/// 규약 4 — **부팅 강제**(유령 알약 방지). `queued`·`hold`는 건드리지 않는다(재장전 대상).
+fn force_boot_shape(id: &str, lite: &mut Value) {
+    let Some(o) = lite.as_object_mut() else { return };
+    o.insert("chatId".into(), json!(id));
+    o.insert("busy".into(), json!(false));
+    o.insert("ask".into(), json!("none"));
+    o.insert("bgActive".into(), json!(false));
+    if matches!(o.get("status").and_then(Value::as_str), Some("working") | Some("analyzing")) {
+        // 실행 중 상태로 복원하지 않는다(`sessionChats.ts:28` 파리티)
+        o.insert("status".into(), json!("idle"));
+    }
+    o.insert("unread".into(), json!(0)); // ★ 3.0.0 고정
+}
+
+/// ★R28c AG2(G2) — 부팅 뒤의 조회(`chats:get`) — **메모리가 이긴다.**
+///
+/// 이 프로세스가 아는 행은 그대로 돌려준다(`account`·`panelId`·`ask`·`busy` 전부 —
+/// 그 값들의 주인은 허브이지 디스크가 아니다). 메모리가 **모르는** 채팅만 디스크에서
+/// 짓는데, 그런 채팅은 정의상 이 프로세스에서 한 번도 안 돈 채팅이라 부팅 강제가 맞다.
+///
+/// 지은 행은 메모리에도 앉힌다 — `chat:status`는 REPLACE라서 [`snapshot`]에 없는 채팅은
+/// 다음 브로드캐스트에서 **통째로 사라진다**(장전이 맵을 통째로 채우던 시절의 부수 효과를
+/// 여기서 이어받는다). 다만 `dirty`는 안 세운다: **조회는 디스크를 안 건드린다.**
+fn read_live(chat_ids: &[String]) -> BTreeMap<String, Value> {
+    let (m, _) = state();
+    let (mut out, missing): (BTreeMap<String, Value>, Vec<String>) = {
+        let st = m.lock().unwrap_or_else(|e| e.into_inner());
+        let mut out = BTreeMap::new();
+        let mut missing = Vec::new();
+        for id in chat_ids {
+            match st.map.get(id) {
+                Some(v) => {
+                    out.insert(id.clone(), v.clone());
+                }
+                None => missing.push(id.clone()),
+            }
+        }
+        (out, missing)
+    };
+    if missing.is_empty() {
+        return out;
+    }
+    // 디스크 읽기는 자물쇠 **밖에서** 한다(허브 틱이 그 사이 멈추면 안 된다).
+    let stored = read_stored();
+    let fresh: Vec<(String, Value)> =
+        missing.into_iter().map(|id| { let row = row_from_disk(&id, &stored); (id, row) }).collect();
+    {
+        let mut st = m.lock().unwrap_or_else(|e| e.into_inner());
+        for (id, row) in fresh {
+            // 그 사이 허브가 앉힌 행이 있으면 **그쪽이 이긴다**(덮지 않는다 — 이게 G2다).
+            let row = st.map.entry(id.clone()).or_insert(row).clone();
+            out.insert(id, row);
+        }
     }
     out
 }
@@ -277,6 +373,11 @@ pub fn set(chat_id: &str, lite: Value) {
         let mut st = m.lock().unwrap_or_else(|e| e.into_inner());
         st.map.insert(chat_id.to_string(), lite);
         st.dirty = true;
+        // ★R28c AG2(G2) — **살아 있는 값이 한 줄이라도 앉으면 이 홈은 장전된 것으로 친다.**
+        // `CCG_NO_STATUS_BOOT=1`(R4 귀속 팔)에서는 부팅 장전이 아예 안 돈다 — 그 판에서
+        // 첫 `chats:get`이 「첫 호출 = 장전」 자격을 가져가면, 허브가 이미 앉힌 살아 있는
+        // 행들을 디스크 스냅샷이 덮는다(= 이 결함의 플래그 판).
+        st.loaded = true;
     }
     cv.notify_all();
     ensure_writer();
@@ -409,19 +510,37 @@ fn ensure_writer() {
 }
 
 /// 메모리 상태를 비운다 — **홈이 갈릴 때**(테스트·격리 홈 전환) 전용.
+///
+/// ★R28c AG2(G2) — 장전 표식도 같이 내린다: 홈이 갈렸으면 **다음 장전은 다시 부팅**이다
+/// (새 홈의 `status.json`에 옛 판이 써 둔 유령 계정이 있을 수 있다 — F1).
 pub fn forget() {
     let (m, _) = state();
     let mut st = m.lock().unwrap_or_else(|e| e.into_inner());
     st.map.clear();
     st.dirty = false;
+    st.loaded = false;
 }
 
 /// 마이그레이션이 만든 초기 상태 맵을 통째로 심는다(그리고 즉시 쓴다).
+///
+/// ★R28c AG2(G2) — 심을 때 **규약 4를 여기서 건다.** 마이그레이터는 2.6.2의 상태를
+/// *그대로* 옮기고(§5.2 "상태 맵 동일") 얼리기는 부팅 장전 몫이었는데, 순서가 그렇지 않다:
+/// `engine::boot`의 `load_boot`은 마이그레이션 **전에** 돌고(그 판의 `chats-v3`는 아직
+/// 비어 있어 `load_boot(&[])`이다), 그 뒤 첫 `chats:get`은 이제 [`read_live`]라 메모리를
+/// 그대로 돌려준다. 그러니 여기서 안 걷으면 2.6.2가 크래시 때 얼려 둔 `working`이
+/// 업그레이드 첫 화면에 **유령 알약**으로 뜬다. 얼린 사실 자체는 `<chatId>.json`의
+/// `status`에 남아 있다(규약 5가 읽는 그 값 — `migrate_v3`의 「기록에도 남는다」 못).
 pub fn seed(map: BTreeMap<String, Value>) {
     let (m, _) = state();
     {
         let mut st = m.lock().unwrap_or_else(|e| e.into_inner());
-        st.map = map;
+        st.map = map
+            .into_iter()
+            .map(|(id, mut v)| {
+                force_boot_shape(&id, &mut v);
+                (id, v)
+            })
+            .collect();
         st.dirty = true;
     }
     flush();
@@ -573,6 +692,125 @@ mod tests {
         assert!(!forget_one("c-b"), "두 번째는 지울 게 없다");
         assert!(!forget_one("없는채팅"), "모르는 채팅에 참을 돌려주면 헛 브로드캐스트가 난다");
         assert_eq!(snapshot(), json!({}), "전부 걷혔어야 한다");
+    }
+
+    /// ★R28c AG2(G2) — **조회 한 번이 살아 있는 「사용 중」을 지우면 안 된다.**
+    ///
+    /// 확인 크리틱 R3의 실 exe 재현: 같은 계정을 문 자리가 둘인 판에서 `chats:get`을
+    /// **한 번** 부르면(= `App.tsx`가 마운트마다 하는 그 한 줄) 셸의 상태 맵이 디스크
+    /// 스냅샷으로 갈리고, 다음 REPLACE에 `account:null`이 실려 칩이 조용히 사라졌다 —
+    /// 그때 그 채팅의 CLI는 PID를 달고 살아 있었다. 겸해 `ask`도 되돌아갔다: 승인 대기는
+    /// 계약상 타임아웃이 없어(AwaitingUser) lite가 다시 안 바뀌므로 **영영** 안 돌아온다.
+    ///
+    /// 못은 조회 축이다 — 재시작 축(F1)·삭제 축(G1)은 이 결함을 **100% 통과한다**.
+    #[test]
+    fn a_read_never_wipes_a_live_account_or_a_pending_ask() {
+        let h = crate::testkit::temp_home("status-query-axis");
+        forget();
+        // ① 지난 세션이 남긴 파일 → 부팅 장전(여기까지는 R2 그대로다).
+        h.write(
+            "chats-v3/status.json",
+            &json!({ "version": 1, "statuses": {
+                "c-a": { "chatId": "c-a", "status": "done", "busy": false, "ask": "none", "updatedAt": 3 },
+                "c-b": { "chatId": "c-b", "status": "done", "busy": false, "ask": "none", "updatedAt": 3 } } })
+            .to_string(),
+        );
+        let ids = vec!["c-a".to_string(), "c-b".to_string()];
+        let boot = load_boot(&ids);
+        assert!(boot["c-a"].get("account").is_none(), "부팅에는 살아 있는 런타임이 없다");
+
+        // ② 두 채팅이 턴을 돌아 같은 계정을 문다. `c-a`는 승인 대기에서 멈춰 있다.
+        set(
+            "c-a",
+            json!({ "chatId": "c-a", "status": "working", "busy": true, "bgActive": false,
+                    "ask": "permission", "account": "one@ccg.test", "panelId": Value::Null, "updatedAt": 9 }),
+        );
+        set(
+            "c-b",
+            json!({ "chatId": "c-b", "status": "done", "busy": false, "bgActive": false,
+                    "ask": "none", "account": "one@ccg.test", "panelId": "b1::1", "updatedAt": 9 }),
+        );
+
+        // ③ 조회 한 번 — 읽기 채널이다. 아무것도 안 바꿔야 한다.
+        let got = load_boot(&ids);
+        println!("[G2] chats:get 응답 = {:?}", got);
+        for id in ["c-a", "c-b"] {
+            assert_eq!(
+                got[id]["account"],
+                json!("one@ccg.test"),
+                "★ 조회가 살아 있는 계정을 지웠다({id}): {}",
+                got[id]
+            );
+        }
+        assert_eq!(got["c-b"]["panelId"], json!("b1::1"), "★ 조회가 자리 번호를 지웠다");
+        assert_eq!(got["c-a"]["ask"], json!("permission"), "★ 조회가 승인 대기를 「물어볼 게 없다」로 되돌렸다");
+        assert_eq!(got["c-a"]["status"], json!("working"), "★ 조회가 도는 턴을 idle로 내렸다");
+        assert_eq!(got["c-a"]["busy"], json!(true), "★ 조회가 busy를 꺼 전송 게이트를 열었다");
+
+        // ④ 그리고 **다음 REPLACE**(=snapshot)도 그대로여야 한다 — 화면에서 보인 자리가 여기다.
+        let snap = snapshot();
+        assert_eq!(snap["c-a"]["account"], json!("one@ccg.test"), "★ 다음 REPLACE가 계정 없는 행을 싣는다: {snap}");
+        assert_eq!(snap["c-a"]["ask"], json!("permission"), "★ 다음 REPLACE가 승인 대기를 지운다: {snap}");
+        let _ = h;
+    }
+
+    /// ★R28c AG2(G2) — 조회는 **메모리가 모르는 채팅**의 행은 계속 지어야 한다.
+    ///
+    /// 장전이 맵을 통째로 채우던 시절의 부수 효과다: `chat:status`는 REPLACE라서
+    /// [`snapshot`]에 없는 채팅은 다음 브로드캐스트에서 통째로 사라진다(사이드바 점이
+    /// 꺼진다). 그러니 조회는 *덮지 않되 채우기는* 해야 하고, 채울 때도 옛 파일의
+    /// 유령 계정은 안 싣는다(F1).
+    #[test]
+    fn a_read_still_builds_rows_for_chats_it_has_never_seen() {
+        let h = crate::testkit::temp_home("status-query-newcomer");
+        forget();
+        let boot = load_boot(&["c-a".to_string()]);
+        assert!(boot.contains_key("c-a"));
+        set("c-a", json!({ "chatId": "c-a", "status": "done", "account": "one@ccg.test" }));
+        // R1 판이 써 둔 파일 모양 — 유령 계정이 들어 있고, 얼린 상태는 `working`이다.
+        h.write(
+            "chats-v3/status.json",
+            &json!({ "version": 1, "statuses": { "c-new": {
+                "chatId": "c-new", "status": "working", "busy": true, "ask": "permission",
+                "account": "ghost@ccg.test", "panelId": "default::0", "updatedAt": 4 } } })
+            .to_string(),
+        );
+        let got = load_boot(&["c-a".to_string(), "c-new".to_string()]);
+        println!("[G2] 처음 보는 채팅 = {}", got["c-new"]);
+        assert_eq!(got["c-a"]["account"], json!("one@ccg.test"), "살아 있는 행은 그대로다");
+        assert!(got.contains_key("c-new"), "★ 처음 보는 채팅의 행을 안 지으면 REPLACE에서 사라진다");
+        assert!(got["c-new"].get("account").is_none(), "★ 디스크의 유령 계정이 조회로 들어왔다: {}", got["c-new"]);
+        assert_eq!(got["c-new"]["status"], json!("idle"), "돌던 턴으로 되살리면 안 된다");
+        assert_eq!(got["c-new"]["busy"], json!(false));
+        assert_eq!(got["c-new"]["ask"], json!("none"));
+        assert!(snapshot().get("c-new").is_some(), "★ 지은 행은 다음 REPLACE에도 실려야 한다");
+        let _ = h;
+    }
+
+    /// ★R28c AG2(G2) — 마이그레이션이 심는 값은 **안전값**이다.
+    ///
+    /// 순서가 함정이다: `engine::boot`의 `load_boot`은 마이그레이션 **전에** 돌고
+    /// (그 판의 `chats-v3`는 비어 있어 `load_boot(&[])`이다) 「첫 장전」 자격을 가져간다.
+    /// 그 뒤 첫 `chats:get`은 이제 조회라 메모리를 그대로 돌려주므로, 심는 자리에서
+    /// 규약 4를 안 걸면 2.6.2가 크래시 때 얼려 둔 `working`이 업그레이드 첫 화면에 뜬다.
+    #[test]
+    fn a_migration_seeds_safe_values_not_a_running_turn() {
+        let h = crate::testkit::temp_home("status-seed-safe");
+        forget();
+        let _ = load_boot(&[]); // = 마이그레이션 전의 `engine::boot`(채팅이 아직 없다)
+        seed(BTreeMap::from([(
+            "m-1".to_string(),
+            json!({ "chatId": "m-1", "status": "working", "busy": true, "ask": "permission",
+                    "bgActive": true, "queued": 2, "hold": Value::Null, "updatedAt": 5 }),
+        )]));
+        let got = load_boot(&["m-1".to_string()]);
+        println!("[G2] 마이그레이션 직후 첫 조회 = {}", got["m-1"]);
+        assert_eq!(got["m-1"]["status"], json!("idle"), "★ 얼린 `working`이 유령 알약으로 떴다");
+        assert_eq!(got["m-1"]["busy"], json!(false));
+        assert_eq!(got["m-1"]["ask"], json!("none"));
+        assert_eq!(got["m-1"]["bgActive"], json!(false));
+        assert_eq!(got["m-1"]["queued"], json!(2), "재장전 대상(queued·hold)은 안 건드린다");
+        let _ = h;
     }
 
     #[test]

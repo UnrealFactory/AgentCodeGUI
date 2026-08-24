@@ -23,6 +23,12 @@
  *                    함께 계속 싣고 칩이 「사용 중 · 다른 자리」로 남았다(12초 무입력
  *                    브로드캐스트 0건). A(재시작 축)는 이 결함을 못 잡는다 — 그래서
  *                    못을 하나 더 박는다.
+ *  F. get    (G2)    ★**조회 축** — 확인 크리틱 R3가 A·E를 **둘 다** 통과하며 찾아낸 자리.
+ *                    같은 계정을 문 채팅 둘에 턴을 한 번씩 → **`chats:get` 한 번**(읽기
+ *                    채널이다) → 다른 채팅에 턴을 하나 더(=다음 REPLACE). R3 실측:
+ *                    조회 한 번에 셸의 상태 맵이 디스크 스냅샷으로 갈리며 살아 있는
+ *                    런타임의 `account`가 지워졌고, 그때 그 채팅의 CLI는 PID를 달고
+ *                    살아 있었다. A는 프로세스를 죽여서·E는 지운 채팅만 봐서 못 본다.
  *
  * 안전(이 하네스가 지키는 것):
  *  · `CCG_HOME`은 언제나 격리(`%TEMP%/ccg-acct-live*`) — 사용자 실앱 홈을 안 만진다.
@@ -588,7 +594,94 @@ async function scDelete() {
   }
 }
 
-const plan = { inuse: scInUse, undo: scUndo, top: scTop, retry: scRetry, del: scDelete }
+// ── F. G2 — 조회 한 번이 살아 있는 「사용 중」을 지우면 안 된다(조회 축) ──────
+//
+// 확인 크리틱 R3의 재현식 그대로다. A(재시작 축)·E(삭제 축)는 이 결함을 **100% 통과한다**:
+// A는 프로세스를 죽여서(그러면 유령이 저절로 사라진다), E는 지운 채팅만 봐서 못 본다.
+// 여기서 누르는 것은 **읽기 채널 하나**다 — `chats:get`은 `App.tsx`가 마운트마다 부르고
+// (부팅 복원 · `chat:status` 따라잡기), 사용자가 닿는 자리는 크래시 복구·ErrorBoundary
+// 리셋처럼 **Rust는 살아 있는데 메인 창만 다시 마운트되는** 순간이다.
+async function scGet() {
+  console.log('\n[F] G2 — 같은 계정을 문 자리 둘 → `chats:get` 1회 → 다음 REPLACE → 칩 그대로')
+  const seed = seedHome('get', ['one@ccg.test', 'two@ccg.test'], {
+    chats: [
+      { id: 'c-a', title: '첫 채팅' },
+      { id: 'c-b', title: '둘째 채팅' }
+    ]
+  })
+  const out = { want: seed.emails[0] }
+  const app = await boot(seed, PORT0 + 7)
+  try {
+    await armStatus(app)
+    await waitUntil(app, `!!document.querySelector('.composer-row textarea')`, 30_000)
+    await sleep(1200)
+    // ① 두 채팅 다 턴을 한 번씩 — 런타임 둘이 같은 계정을 문다(E와 같은 전제).
+    await sendTurn(app, '안녕 A')
+    await sleep(3500)
+    out.picked = await pickChat(app, '둘째 채팅')
+    await sleep(1500)
+    await sendTurn(app, '안녕 B')
+    await sleep(3500)
+    out.before = await lastStatus(app)
+    out.warnBefore = await pickerWarns(app)
+    if (out.before.filter((r) => r.account === out.want).length !== 2)
+      fail('F-두 자리', '같은 계정을 문 자리가 둘이 아니다(전제 실패)', out.before)
+    else ok('F-두 자리', out.before)
+    if (!out.warnBefore.some((s) => /사용 중/.test(s)))
+      fail('F-칩(조회 전)', '다른 자리가 같은 계정을 무는데 「사용 중」 칩이 없다', out.warnBefore)
+    else ok('F-칩(조회 전)', out.warnBefore)
+
+    // ② **조회 한 번** — `App.tsx`의 따라잡기가 부르는 그 한 줄(`window.api.getChats()`).
+    //    응답 자체도 살아 있는 계정을 실어야 한다(셸 쪽 직통 못).
+    out.getStatuses = await app.j(`await (async () => {
+      const r = await window.api.getChats()
+      return Object.values(r?.statuses ?? {}).map((v) => ({ chatId: v.chatId, status: v.status, account: v.account ?? null, ask: v.ask }))
+    })()`)
+    const gotA = out.getStatuses.find((r) => r.chatId === 'c-a')
+    if (gotA?.account !== out.want)
+      fail('F-조회 응답', '★ `chats:get` 응답이 살아 있는 계정을 지웠다', { row: gotA, all: out.getStatuses })
+    else ok('F-조회 응답', gotA)
+
+    // ③ **다음 REPLACE**를 낸다 — `c-a`는 안 건드린다(활성은 「둘째 채팅」이다).
+    //    R3 실측: 여기서 `c-a`의 account가 null로 실려 칩이 조용히 사라졌다.
+    await sendTurn(app, '한 번 더 B')
+    await sleep(4000)
+    out.after = await lastStatus(app)
+    out.warnAfter = await pickerWarns(app)
+    out.slots = ((await app.call('engine:debug', []).catch(() => null))?.chats ?? []).map((c) => ({
+      chatId: c.chatId,
+      pid: c.pid,
+      state: c.state
+    }))
+    const rowA = out.after.find((r) => r.chatId === 'c-a')
+    // 전제 — `c-a`의 CLI는 아직 살아 있다(살아 있는데 지웠다는 물증).
+    if (!out.slots.some((s) => s.chatId === 'c-a' && s.pid))
+      fail('F-런타임 생존(전제)', '`c-a`의 런타임이 이미 거둬졌다 — 이 축이 성립 안 한다', out.slots)
+    else ok('F-런타임 생존(전제)', out.slots)
+    if (rowA?.account !== out.want)
+      fail('F-다음 REPLACE', '★ 조회 한 번이 살아 있는 계정을 지웠다(칩이 조용히 꺼진다)', {
+        row: rowA,
+        after: out.after,
+        slots: out.slots
+      })
+    else ok('F-다음 REPLACE', rowA)
+    if (!out.warnAfter.some((s) => /사용 중/.test(s)))
+      fail('F-칩(조회 후)', '★ 살아 있는 대화가 이 계정을 무는데 경고가 사라졌다', {
+        before: out.warnBefore,
+        after: out.warnAfter
+      })
+    else ok('F-칩(조회 후)', out.warnAfter)
+  } catch (e) {
+    console.error(e?.stack)
+    fail('F', String(e?.message ?? e))
+  } finally {
+    out.log = app.log().split('\n').filter(Boolean).slice(-8)
+    rep.sc.get = out
+    await stop(app)
+  }
+}
+
+const plan = { inuse: scInUse, undo: scUndo, top: scTop, retry: scRetry, del: scDelete, get: scGet }
 const chosen = only === 'all' ? Object.keys(plan) : only.split(',').filter((k) => plan[k])
 console.log(`exe: ${EXE}\n홈: ${ROOT}\n시나리오: ${chosen.join(', ')}`)
 for (const k of chosen) await plan[k]()
