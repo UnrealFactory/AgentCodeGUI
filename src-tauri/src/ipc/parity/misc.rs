@@ -86,6 +86,23 @@ pub fn dispatch(app: &AppHandle, window: &WebviewWindow, channel: &str) -> Value
 /// 3.0에 그 플러그인을 넣는 순간 **격리 홈으로 동시에 여러 벌 띄우는 하네스가 전부
 /// 죽는다**(지금 세 갈래가 그렇게 돈다). 설치기가 컨텍스트 메뉴를 등록하는 라운드에
 /// 함께 결정할 일이다(`app_meta.rs:11`의 원래 판단과 같다).
+///
+/// ## `-`로 시작하는 폴더도 **열린다** (★R28d EXTN 장부 정정 · 실측)
+///
+/// `docs/parity-fix-gdash-r1.md` §5(와 커밋 `a95173c` 메시지)가 *"이름이 `-`로 시작하는
+/// 폴더를 「AgentCodeGUI로 열기」로 열면 못 연다"* 고 적었다. **사실이 아니다.** 아래
+/// `starts_with('-')`가 보는 것은 argv 원소 **문자열 전체**고, 탐색기 컨텍스트 메뉴는
+/// `"%1"` = **절대 경로**를 준다(`C:\…`로 시작하니 판정이 false다).
+///
+/// 릴리스 exe 실측(`bench/scratch/extn-argv-dash.mjs` · 격리 홈 · CDP 9482):
+///
+/// ```text
+/// argv "…\ccg-extn-argv-…\-열어볼폴더" (절대) → getInitialDirectory() = 그 경로  ← 열린다
+/// argv "-열어볼폴더"                  (상대) → null                             ← 이때만 못 연다
+/// ```
+///
+/// 못 여는 것은 셸에서 `AgentCodeGUI3.exe -열어볼폴더`처럼 **상대 경로로 직접 부를 때**뿐이고
+/// 그건 「AgentCodeGUI로 열기」가 아니다. 이 줄은 정당하다 — 고칠 것은 문장이었다.
 pub fn initial_dir() -> Value {
     for a in std::env::args().skip(1) {
         if a.starts_with('-') {

@@ -717,6 +717,28 @@ impl Blob {
 /// 옵션처럼 보이는 인자로 부르는 대신 [`Blob::Unreadable`]로 **모른다고 답한다** — 「모르면
 /// 없다고 하지 않는다」가 [`Blob`]이 넷인 이유고, `Unreadable`은 `discard`의 휴지통 갈래를
 /// 열지 않는다.
+///
+/// [★R28d EXTN — 「파일이 아닌 것」을 파일 본문으로 읽던 자리]
+/// `git show <rev>:<dir>`는 **성공하면서 트리 목록을 stdout으로** 준다(실측 git
+/// 2.53.0.windows.1):
+///
+/// ```text
+/// git show HEAD:dir   → exit 0 · "tree HEAD:dir\n\nf.txt\n"
+/// git cat-file -t HEAD:dir → "tree"      ← 같은 질문에 바르게 답한다
+/// ```
+///
+/// 그 목록을 `Blob::Text`로 돌리면 `file_diff`가 **파일 목록을 파일 내용으로 착각해**
+/// `edit(add:0, del:N)`을 자신 있게 그린다. R28c GDASH 확인 크리틱 R1 §4의 실측:
+/// `file_diff(cwd, "-dir")`가 대조군에서는 「내용을 읽을 수 없어요」였는데(가드 덕에
+/// 우연히 정직했다) 그 가드를 걷은 뒤 `{"tag":"edit","add":0,"del":4}`가 됐다.
+/// R28c가 지운 병(**묻지 않고 자신 있게 답한다**)과 같은 집안이라 여기서 닫는다.
+///
+/// **되묻는 비용은 0이 되게** 했다. `cat-file -t`를 늘 부르면 `file_diff`의 스폰이 파일당
+/// 2 → 3으로 는다(뷰어 클릭마다 프로세스 하나 · 게이트
+/// `bulk_diffs_beat_per_file_calls_on_a_wide_repo`가 그 수를 잠그고 있다). 그래서 **트리
+/// 목록의 첫 줄 모양(`tree <spec>\n`)을 트리거로만** 쓰고, 판정은 언제나 `cat-file -t`에게
+/// 맡긴다 — 내용이 우연히 그 줄로 시작하는 진짜 파일은 스폰 하나를 더 치르고 **정확히**
+/// `Text`로 답한다(거짓 양성이 답을 바꾸지 못한다).
 fn show_at(root: &Path, rev: &str, rel: &str) -> Blob {
     let spec = format!("{rev}:{rel}");
     if spec.starts_with('-') {
@@ -731,6 +753,11 @@ fn show_at(root: &Path, rev: &str, rel: &str) -> Blob {
         if r.stdout.is_empty() && !exists() {
             return Blob::Absent;
         }
+        // ★ 파일이 아닌 것(트리·태그)을 본문으로 읽지 않는다. 트리거는 첫 줄 모양,
+        //   판정은 `cat-file -t`.
+        if r.stdout.starts_with(&format!("tree {spec}\n")) && !is_blob(root, &spec) {
+            return Blob::Unreadable;
+        }
         return Blob::Text(r.stdout);
     }
     // 성공 경로는 위에서 끝났다 — 아래는 **실패의 이유를 가르는** 자리뿐이라
@@ -743,6 +770,14 @@ fn show_at(root: &Path, rev: &str, rel: &str) -> Blob {
     } else {
         Blob::Absent
     }
+}
+
+/// 그 오브젝트가 **파일(blob)인가** — `git cat-file -t`에게 직접 묻는다. 실패(없는 객체 ·
+/// gitlink)도 「blob 아님」이지만, 이 함수를 부르는 자리는 `show`가 이미 성공한 뒤라
+/// 실패는 사실상 안 온다.
+fn is_blob(root: &Path, spec: &str) -> bool {
+    let r = exec(root, &["cat-file", "-t", spec]);
+    r.ok && r.stdout.trim() == "blob"
 }
 
 fn build_file_diff(rel: &str, base: Option<&str>, cur: Option<&str>) -> GitFileDiffResult {
@@ -2258,6 +2293,63 @@ mod tests {
         std::fs::remove_file(r.0.join("app/[id]/빈.tsx")).unwrap();
         let d = file_diff(r.cwd(), "app/[id]/빈.tsx");
         assert!(d.error.is_none() && d.diff.is_some(), "{:?}", d.error);
+    }
+
+    /// ★R28d EXTN — **파일이 아닌 것을 파일 본문으로 읽지 않는다**(R28c GDASH 확인 크리틱 §4).
+    ///
+    /// `git show HEAD:<dir>`는 **성공하면서** 트리 목록(`tree HEAD:dir\n\nf.txt\n`)을 준다.
+    /// R28c가 `-` 가드를 걷은 뒤 그 목록이 `Blob::Text`로 흘러 `file_diff(cwd,"-dir")`가
+    /// `edit(add:0, del:4)`를 **자신 있게** 그렸다 — 크리틱이 「이번 라운드가 넓힌 잠복
+    /// 사마귀」로 적은 자리다(평범한 `dir`도 같은 병을 앓고 있었다).
+    ///
+    /// 그물은 셋이다: ① 디렉터리는 「모른다」로 답한다 ② 그래도 `discard`의 휴지통 갈래는
+    /// **안 열린다**(`Absent`가 아니라 `Unreadable`이므로) ③ 진짜 파일의 스폰 수는 **안 는다**.
+    #[test]
+    fn a_directory_is_not_read_as_if_it_were_a_file() {
+        let r = repo!("tree-not-blob");
+        for rel in ["-dir/a.txt", "-dir/b.txt", "보통dir/a.txt", "보통dir/b.txt"] {
+            r.write(rel, "한 줄\n");
+        }
+        r.write("보통.txt", "원본\n둘째 줄\n");
+        r.git(&["add", "-A"]);
+        r.git(&["commit", "-qm", "init"]);
+
+        // ① 두 디렉터리 다 「내용을 읽을 수 없어요」 — `-`든 아니든 답이 같다(수렴).
+        for dir in ["-dir", "보통dir"] {
+            assert!(
+                matches!(show_at(&r.0, "HEAD", dir), Blob::Unreadable),
+                "{dir}: 트리 목록을 파일 본문으로 읽었다"
+            );
+            let d = file_diff(r.cwd(), dir);
+            assert!(d.diff.is_none(), "{dir}: 폴더에 diff를 그렸다 — {:?}", d.diff.map(|x| (x.tag, x.add, x.del)));
+            assert!(d.error.is_some(), "{dir}: 모르는데 사유가 없다");
+        }
+
+        // ② 「모른다」는 「없다」가 아니다 — `discard`의 「HEAD에 없던 새 파일」(=휴지통)
+        //    갈래는 `Absent`에만 열린다. 그 문이 닫혀 있는지 값으로 확인한다.
+        assert!(!matches!(show_at(&r.0, "HEAD", "-dir"), Blob::Absent), "폴더를 「없다」로 답했다");
+
+        // ③ 진짜 파일은 되묻지 않는다 — 트리거가 첫 줄 모양이라 스폰이 안 는다.
+        let spawns = |rel: &str| {
+            let b = spawn_count();
+            let _ = file_diff(r.cwd(), rel);
+            spawn_count() - b
+        };
+        r.write("보통.txt", "원본\n고친 줄\n");
+        let n = spawns("보통.txt");
+        eprintln!("[측정] file_diff 스폰 — 평범한 파일 {n}회(repo_root + show)");
+        assert_eq!(n, 2, "되묻기가 상시로 켜졌다 — 뷰어 클릭마다 프로세스가 하나 는다");
+
+        // ③' 그런데 판정은 언제나 `cat-file -t`가 한다 — 내용이 우연히 트리 첫 줄 모양인
+        //     **진짜 파일**은 스폰 하나를 더 치르고 정확히 `Text`로 답한다.
+        r.write("함정.txt", "tree HEAD:함정.txt\n\n가짜 목록\n");
+        r.git(&["add", "-A"]);
+        r.git(&["commit", "-qm", "trap"]);
+        match show_at(&r.0, "HEAD", "함정.txt") {
+            Blob::Text(s) => assert!(s.starts_with("tree HEAD:함정.txt"), "내용이 바뀌었다"),
+            other => panic!("진짜 파일을 폴더로 오판했다(사유: {:?})", other.fold_reason()),
+        }
+        assert_eq!(spawns("함정.txt"), 3, "거짓 양성의 대가는 스폰 하나 — 답은 안 바뀐다");
     }
 
     /// ★ **일곱 번째 얼굴 — 「묻지 않았다」를 「없다」로 답하던 자리**(R28b GIT R5 확인 크리틱).

@@ -232,5 +232,20 @@ npm run typecheck (node·web) exit 0 · npm run typecheck:app exit 0
   (`status`가 추적 디렉터리 행을 안 만들어 제품 도달 없음), 훅이 아무 말 없이 `exit 1`일 때
   「알 수 없는 오류」가 되는 것.
 - `src-tauri/src/ipc/parity/misc.rs:91`에도 `a.starts_with('-')`가 있다. 그쪽은 **argv 스위치를
-  건너뛰는** 자리(`initial_dir`)라 성격이 다르고 정당하다 — 다만 이름이 `-`로 시작하는 폴더를
-  「AgentCodeGUI로 열기」로 열면 못 연다. 경계 밖이라 안 고쳤고, 기록만 남긴다.
+  건너뛰는** 자리(`initial_dir`)라 성격이 다르고 정당하다.
+
+  > **[정정 — R28d EXTN · 2026-08-25]** 여기 원래 *"다만 이름이 `-`로 시작하는 폴더를
+  > 「AgentCodeGUI로 열기」로 열면 못 연다"* 고 적혀 있었다. **사실이 아니다.**
+  > `initial_dir()`가 보는 것은 argv 원소 **문자열 전체**고, 탐색기 컨텍스트 메뉴는
+  > `"%1"` = **절대 경로**를 준다(`C:\…`로 시작하니 `starts_with('-')`가 false다).
+  > 실측(R28c GDASH 확인 크리틱 R1 §3.1 · R28d가 자기 릴리스 exe로 재확인):
+  >
+  > ```text
+  > argv = "…\-열어볼폴더" (절대)   → getInitialDirectory() = 그 경로   ← 열린다
+  > argv = "-열어볼폴더"    (상대)   → null                              ← 이때만 못 연다
+  > ```
+  >
+  > 못 여는 것은 셸에서 `AgentCodeGUI3.exe -열어볼폴더`처럼 **상대 경로로 직접 부를 때**뿐이고
+  > 그건 「AgentCodeGUI로 열기」가 아니다. **코드는 정당하고 문장이 틀렸다.**
+  > (같은 문장이 커밋 `a95173c`의 메시지에도 있다. 커밋 메시지는 고칠 수 없으니
+  > 그 정정은 `docs/parity-fix-extn-r1.md` §장부에 남긴다.)
