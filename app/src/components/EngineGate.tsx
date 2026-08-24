@@ -183,9 +183,11 @@ export function EngineGate() {
           </div>
           <div className="sd-title">{t('엔진을 설치할 수 없어요', 'Cannot install the engine')}</div>
           <div className="sd-msg">
+            {/* 두 인구가 같은 자리로 떨어진다 — npm이 없는 컴퓨터와 잠깐 오프라인인 컴퓨터.
+                제목이 한쪽만 지목하면 다른 쪽에게는 거짓말이 된다. 어느 쪽인지는 아래 사유가 말한다. */}
             {t(
-              'Claude Code 엔진이 설치되지 않았는데, 설치할 버전 목록을 가져오지 못했습니다. 엔진 설치에는 npm(Node.js)이 필요해요 — Node.js를 설치한 뒤 다시 시도하세요.',
-              "The Claude Code engine isn't installed, and the available versions couldn't be fetched. Installing the engine needs npm (Node.js) — install Node.js and try again."
+              'Claude Code 엔진이 설치되지 않았는데, 설치할 버전 목록을 가져오지 못했습니다. 엔진 설치에는 npm(Node.js)과 인터넷 연결이 필요해요 — 확인한 뒤 다시 시도하세요.',
+              "The Claude Code engine isn't installed, and the installable versions couldn't be fetched. Installing the engine needs npm (Node.js) and an internet connection — check both and try again."
             )}
             {why && <div className="sd-why">{why}</div>}
           </div>

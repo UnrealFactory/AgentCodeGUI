@@ -1,13 +1,13 @@
 {
-  "at": "2026-08-24T13:16:22.517Z",
+  "at": "2026-08-24T13:21:47.807Z",
   "exe": "C:\\Code\\AgentCodeGUI\\target-crit\\release\\agentcodegui.exe",
   "note": "PATH에서 npm/node 제거 · 네트워크 유지 · 엔진 0개 · Electron(2.6.2) 팔은 실홈 오염 때문에 안 돈다",
   "arms": {
     "boot": {
-      "samples": 4,
-      "firstSdMs": 2861,
+      "samples": 3,
+      "firstSdMs": 2485,
       "sdTitle": "엔진을 설치할 수 없어요",
-      "sdMsg": "Claude Code 엔진이 설치되지 않았는데, 설치할 버전 목록을 가져오지 못했습니다. 엔진 설치에는 npm(Node.js)이 필요해요 — Node.js를 설치한 뒤 다시 시도하세요.레지스트리 응답을 읽지 못했어요(npm view 출력이 JSON이 아닙니다)",
+      "sdMsg": "Claude Code 엔진이 설치되지 않았는데, 설치할 버전 목록을 가져오지 못했습니다. 엔진 설치에는 npm(Node.js)과 인터넷 연결이 필요해요 — 확인한 뒤 다시 시도하세요.레지스트리 응답을 읽지 못했어요(npm view 출력이 JSON이 아닙니다)",
       "sdWhy": "레지스트리 응답을 읽지 못했어요(npm view 출력이 JSON이 아닙니다)",
       "sdBtns": [
         "나중에",
