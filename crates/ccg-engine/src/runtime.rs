@@ -290,7 +290,20 @@ pub struct ChatRuntime<D: CliDriver> {
     /// ★R5 — **연속으로 헛돈 자동 재개** 수. 재개 턴이 또 한도 에러로 죽으면 다음 대기표가
     /// 이 값을 `attempts`로 물려받아 백오프·상한을 적용한다. 사용자 발화·사용자가 누른
     /// 이어가기·한도 없이 착지한 턴이 0으로 되돌린다.
+    ///
+    /// ★R28d WCAP — 되돌리는 자리가 둘 더 있다([`Self::arm_hold`]): **창이 진짜로 넘어갔거나
+    /// 그 턴이 일을 했으면 헛돈 것이 아니다.** 그 둘이 없던 판에서는 5시간을 꽉 채워 일하고
+    /// 다음 창에서 막힌 재개까지 이 값을 올려, 밤샘 연속 주행이 창 두 개에서 잘렸다.
     auto_resume_streak: u32,
+    /// ★R28d WCAP — **직전에 자동 발사한 대기표의 리셋 시각**(런타임 ms · 모르면 `None`).
+    /// [`Self::arm_hold`]의 구분자 ①이 읽는 유일한 값이다: 새 한도 문구의 시각이 이보다
+    /// 뒤면 5시간 창이 진짜로 넘어갔다는 뜻이고, 그 사이의 재개는 헛발질이 아니다.
+    ///
+    /// [`Self::auto_resume_streak`]와 **짝으로만** 의미가 있다. 값을 넣는 자리는 계수를
+    /// 올리는 자리 하나뿐이라([`Self::consume_hold`]) `streak > 0`이면 이 값도 그 발사의
+    /// 것임이 보장된다 — 계수를 0으로 되돌리는 네 자리는 이 값을 안 지워도 무해하다
+    /// (계수가 0이면 아래 판정이 어차피 0을 낸다).
+    auto_resume_at: Option<Millis>,
     /// ★R5 — 발화 직전 신선 usage 재검증 훅([`crate::limit::LimitProbe`]).
     /// 기본은 `NoProbe`(=미배선)라 기존 동작과 같고, 셸이 붙이면 2.6.2 `fire()`가 된다.
     limit_probe: Arc<dyn crate::limit::LimitProbe>,
@@ -407,6 +420,7 @@ impl<D: CliDriver> ChatRuntime<D> {
             auto_resume: true,
             last_echo: None,
             auto_resume_streak: 0,
+            auto_resume_at: None,
             limit_probe: Arc::new(NoProbe),
             switcher: Arc::new(NoSwitch),
             switch_tried: BTreeSet::new(),
@@ -641,11 +655,16 @@ impl<D: CliDriver> ChatRuntime<D> {
             .queue
             .iter()
             .any(|m| m.origin == QueueOrigin::User && m.created_at > armed_at);
+        // ★R28d WCAP — 걷기 **전에** 이 표의 리셋 시각을 챙긴다. 다음 한도 문구의 시각과
+        // 견줄 상대가 바로 이 값이고(구분자 ①), 표는 이 줄 다음에 사라진다.
+        let fired_at = self.hold.as_ref().and_then(|h| h.resets_at);
         self.hold = None;
         // 사람 손이 닿은 재개(누름 · 대기 중 걸어 둔 메시지)는 카운터를 되돌린다.
         self.auto_resume_streak = if auto && !already {
+            self.auto_resume_at = fired_at;
             self.auto_resume_streak.saturating_add(1)
         } else {
+            self.auto_resume_at = None;
             0
         };
         if already {
@@ -2768,7 +2787,46 @@ impl<D: CliDriver> ChatRuntime<D> {
         let now = self.now();
         // 방금 죽은 턴이 **엔진이 스스로 연 재개**였다면 그 시도는 헛방이었다 —
         // 그 사실을 표에 물려 다음 대기를 늘리고(백오프) 상한을 센다.
-        let attempts = self.auto_resume_streak;
+        //
+        // ★R28d WCAP — **다만 "헛방"인지를 이제 실제로 본다**(RCAP 확인 크리틱 R1 §4.1).
+        // R28c까지는 한도로 죽은 착지마다 무조건 올랐다. 그 턴이 30초 만에 같은 벽에
+        // 부딪혔는지, 5시간을 꽉 채워 일하고 **다음 창에서** 막혔는지를 아무도 안 봤다 —
+        // 그래서 22시 한도 → 03시 재개(성공) → 08시 새 한도 → 13시 재개(성공) → 18시 새
+        // 한도에서 자동이 접혔다. 그 사용자가 읽는 「자동으로 이어서 보낸 턴이 계속 한도에
+        // 막혔어요」는 사실이 아니다. 값싼 구분자 둘을 받는다(렌더러
+        // `limitResume.ts::carriedAttempts`가 글자 그대로 같은 둘을 같은 순서로 본다):
+        //
+        //  ① **창이 넘어갔다** — 이번 문구의 리셋 시각이 직전에 쏜 표(`auto_resume_at`)보다
+        //     뒤이고, **아직 오지 않았다**(`> now`). 두 번째 다리가 이 축에서 하중을 다 진다:
+        //     `epoch_secs_to_runtime`이 **지난 epoch을 `now`로 접기** 때문에(`saturating_sub`)
+        //     같은 벽에 다시 부딪힌 표의 런타임 `resets_at`은 늘 "지금"이 되고, 그러면 첫
+        //     다리만으로는 언제나 「넘어갔다」가 된다. 실측(초안): 그 판이 6시간에 **39발**
+        //     (`tests/wcap_limit_streak.rs` ④의 유래). 렌더러 짝은 epoch 축이라 첫 다리가
+        //     그대로 살아 있고, 두 다리를 다 두어 **같은 규칙 한 벌**로 맞춘다.
+        //  ② **그 턴이 일을 했다** — 어시스턴트 출력·도구 호출·도구 결과를 하나라도 봤다
+        //     (`saw_turn_activity`). 한도로 문전박대당한 턴에는 result 에러 하나뿐이다.
+        //
+        // **OR가 아니라 우선순위다.** 시각을 둘 다 아는 판에서 ①의 답은 이미 완전하다
+        // (진짜로 넘어갔다면 새 창의 리셋은 반드시 더 뒤다). 거기서 ②로 뒤집으면, 토큰
+        // 한 줄을 내고 같은 벽에 다시 부딪히는 판(서버가 지난 epoch을 계속 되돌려 주는
+        // 판)에서 계수가 영영 0이 되고 **RCAP이 막은 무한 재발사가 15초 간격으로 돌아온다**
+        // (`due_at` = `max(resets_at + 90s, armed_at + 15s)`이고 그 시각은 이미 지났다).
+        // 그래서 시각을 아는 판은 시계가 판정하고, 한쪽이라도 미상인 판(codex 배너형처럼
+        // 읽을 꼬리가 없어 ①이 영영 침묵하는 축)만 일한 흔적이 판정한다.
+        //
+        // 계수는 표 안팎 두 벌이므로 되돌릴 때도 **둘 다** 놓는다. 밖(`auto_resume_streak`)만
+        // 남으면 다음 소진이 그 값에서 +1 해서 되돌린 것이 도로 살아난다.
+        let worked = self
+            .stream
+            .as_ref()
+            .and_then(|s| s.turn.as_ref())
+            .is_some_and(|t| t.saw_turn_activity);
+        let cleared = match (resets_at, self.auto_resume_at) {
+            (Some(next), Some(prev)) => next > prev && next > now,
+            _ => worked,
+        };
+        let attempts = if cleared { 0 } else { self.auto_resume_streak };
+        self.auto_resume_streak = attempts;
         self.hold = Some(LimitHold {
             account: self.identity.billing().clone(),
             resets_at,

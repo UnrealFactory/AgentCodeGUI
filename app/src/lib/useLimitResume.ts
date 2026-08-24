@@ -10,6 +10,7 @@ import { useEffect, useRef, useState, type MutableRefObject } from 'react'
 import { t } from './i18n'
 import type { SessionState } from '../store/session'
 import {
+  carriedAttempts,
   classifyLimitError,
   blockedResetsAt,
   codexBlockedResetsAt,
@@ -17,7 +18,8 @@ import {
   holdDelayMs,
   resumeVerdict,
   usageUnavailable,
-  type LimitHold
+  type LimitHold,
+  type TurnItem
 } from './limitResume'
 
 // 재개 프롬프트 — 세션(resume)이 대화 문맥을 다 알고 있는 경우의 '이어서'
@@ -75,6 +77,11 @@ export function useLimitResume(o: LimitResumeSurface): LimitResumeHandle {
   // 하나 필요하다. R28b에는 그 자리가 없어서 새 표가 늘 백지로 섰고, 상한이 한 대기표
   // 안에서만 살아 5시간에 27회를 쐈다(RVERD 확인 크리틱 R1 §3.1).
   const firesRef = useRef(0)
+  // ★R28d WCAP — **직전에 쏜 표의 리셋 시각.** 엔진 `ChatRuntime::auto_resume_at`의 짝이고,
+  // 구분자 ①(창이 진짜로 넘어갔나 — `windowRolled`)이 읽는 유일한 값이다. `firesRef`와
+  // 같은 이유로 표 바깥에 있다: 표는 발사와 함께 걷히는데, 비교할 상대는 그 걷힌 표다.
+  // 늘 `firesRef`와 **함께** 쓰인다 — 따로 놓이면 "계수는 2인데 비교할 시각은 어제 것"이 된다.
+  const fireResetsRef = useRef<number | null>(null)
 
   const setHold = (h: LimitHold | null): void => {
     // ★R28c RCAP — **표가 사라지면 재발사 연쇄도 사라진다.** ✕(대기 취소)·/clear·폴더
@@ -82,7 +89,10 @@ export function useLimitResume(o: LimitResumeSurface): LimitResumeHandle {
     // "사람 손이 닿았다"는 뜻이다(엔진 `enqueue`의 `origin == User → streak = 0` 짝).
     // 예외는 **자동 발사** 하나뿐이고, 그 두 자리(소진 effect · `resumeNow`)는 이 줄
     // **뒤에** 계수를 자기 값으로 다시 놓는다 — 순서가 계약이다.
-    if (!h) firesRef.current = 0
+    if (!h) {
+      firesRef.current = 0
+      fireResetsRef.current = null
+    }
     holdRef.current = h
     holdState(h)
   }
@@ -110,6 +120,7 @@ export function useLimitResume(o: LimitResumeSurface): LimitResumeHandle {
       o.state.status === 'error' && last && last.kind === 'msg' && last.error ? classifyLimitError(last.text) : null
     if (!found?.hit) {
       firesRef.current = 0
+      fireResetsRef.current = null
       return
     }
     if (o.apiMode || o.state.interrupted) return
@@ -124,6 +135,21 @@ export function useLimitResume(o: LimitResumeSurface): LimitResumeHandle {
         break
       }
     }
+    // ★R28d WCAP — **물려받을지 말지를 여기서 가른다.** RCAP의 계승은 "한도로 죽은
+    // 착지마다 +1"이라 5시간을 꽉 채워 일하고 다음 창에서 막힌 재개까지 헛발질로 셌다.
+    // 시각을 아는 판은 시계가(창이 넘어갔나), 모르는 판은 일한 흔적이 판정한다 —
+    // 엔진 `arm_hold`가 같은 자리에서 같은 둘을 같은 순서로 본다(`carriedAttempts` 주석).
+    // ref도 같이 놓는다: 다음 소진이 `(attempts ?? 0) + 1`로 다시 만들지만, 표가 취소·
+    // 재장전으로 갈리는 사이 둘이 어긋나 있으면 읽는 사람이 어느 쪽을 믿을지 모른다.
+    const nowSec = Math.floor(Date.now() / 1000)
+    const carried = carriedAttempts(
+      firesRef.current,
+      fireResetsRef.current,
+      found.resetsAt,
+      msgs as readonly TurnItem[],
+      nowSec
+    )
+    firesRef.current = carried
     const next: LimitHold = {
       key: o.holdKey,
       engine: o.engine,
@@ -136,7 +162,7 @@ export function useLimitResume(o: LimitResumeSurface): LimitResumeHandle {
       // `auto_resume_streak`를 표에 싣는 것과 같다). 이 한 줄이 없으면 상한은 한
       // 대기표 안에서만 살아 있고, 쏜 턴이 또 죽을 때마다 백지 표가 다시 서서 주기가
       // 영원히 돈다. 0은 안 싣는다 — 영속 형태를 R28b와 같게 두려는 것이다.
-      ...(firesRef.current > 0 ? { attempts: firesRef.current } : {})
+      ...(carried > 0 ? { attempts: carried } : {})
     }
     setHold(next) // ref가 즉시 갱신돼 큐 드레인 가드가 이번 커밋에서 본다
     // 리셋 시각 정제 — 신선 usage 조회로 "막고 있는 창"의 해제 시각을 얻는다 (문구
@@ -145,7 +171,6 @@ export function useLimitResume(o: LimitResumeSurface): LimitResumeHandle {
       if (at == null || holdRef.current?.at !== next.at) return
       setHold({ ...holdRef.current, resetsAt: at })
     }
-    const nowSec = Math.floor(Date.now() / 1000)
     if (next.engine === 'claude')
       window.api
         .getUsage(true, next.account)
@@ -239,6 +264,10 @@ export function useLimitResume(o: LimitResumeSurface): LimitResumeHandle {
     if (!prompt) return
     // 눈감고 쏘는 재개 한 발 — 표는 방금 걷혔으니 계수는 ref가 나른다(다음 장전이 물려받는다).
     firesRef.current = (cur.attempts ?? 0) + 1
+    // ★R28d WCAP — 함께 나르는 두 번째 값: **이 표가 걸려 있던 리셋 시각.** 다음 한도
+    // 문구의 시각이 이보다 뒤면 창이 진짜로 넘어간 것이다(구분자 ①). `setHold(null)`이
+    // 방금 둘 다 0/null로 놓았으므로 이 두 줄의 순서가 계약이다(위 `setHold` 주석).
+    fireResetsRef.current = cur.resetsAt
     o.send(prompt)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hold, o.enabled, o.busy, o.holdKey, o.managed, o.readyDep])

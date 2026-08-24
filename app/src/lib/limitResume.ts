@@ -36,7 +36,10 @@ export interface LimitHold {
    *  값을 **표에 얹는 이유**: 재개 턴이 같은 한도 에러로 또 죽으면 그 대기표는 걷히고
    *  새 표가 선다. R28b까지 새 표는 늘 `probes:0`인 백지였고, 그래서 상한이 한 대기표
    *  안에서만 살아 있었다 — 주기가 영원히 돌아 5시간 창 하나에 **27회**를 쐈다
-   *  (RVERD 확인 크리틱 R1 §3.1 실측). 계수를 물려받아야 그 주기가 끊긴다. */
+   *  (RVERD 확인 크리틱 R1 §3.1 실측). 계수를 물려받아야 그 주기가 끊긴다.
+   *
+   *  ★R28d WCAP — 다만 **일한 재개는 안 센다.** 물려받을지 말지는 아래
+   *  [`carriedAttempts`]가 가른다(창이 넘어갔나 · 그 턴이 일을 했나). */
   attempts?: number
   /** ★R28c RCAP — **자동 재발사를 접었다**(엔진 `LimitHold::auto_paused`의 짝).
    *  표는 `ready`지만 소진 effect는 쏘지 않고, 배너의 「이어가기」가 유일한 출구다.
@@ -230,6 +233,104 @@ export function resumeVerdict(hold: LimitHold, still: number | null, unavailable
  *  누를 게 없는 버튼(침묵 no-op · M-LOGIC P7)이 된다. */
 export function canPressContinue(hold: LimitHold | null | undefined): boolean {
   return !!hold?.ready && !!hold.autoPaused
+}
+
+/* ── ★R28d WCAP — 상한이 「헛발질」과 「제대로 일한 재개」를 가른다 ──────────────
+ *
+ * RCAP 확인 크리틱 R1 §4.1의 최대 격차: `attempts`는 **한도로 죽은 착지마다** 올랐고,
+ * 그 턴이 30초 만에 같은 벽에 부딪혔는지 5시간을 꽉 채워 일하고 다음 창에서 막혔는지를
+ * 아무도 안 봤다. 그래서 현실 시나리오(22시 한도 → 03시 재개 성공 → 08시 새 한도 → …)
+ * 에서 밤샘 연속 주행이 **창 두 개**에서 잘리고, 그때 배너가 하는 말(「자동으로 이어서
+ * 보낸 turn이 계속 한도에 막혔어요」)은 그 사용자에게 사실이 아니다 — 그 턴들은 막힌
+ * 게 아니라 일했다.
+ *
+ * 구분자 둘을 받는다(엔진 `runtime.rs::arm_hold`가 글자 그대로 같은 둘을 본다):
+ *  ① 새 한도 문구의 리셋 시각이 **직전에 쏜 표보다 뒤** = 창이 진짜로 넘어갔다.
+ *  ② 그 턴이 어시스턴트 출력이나 도구 호출을 **하나라도** 냈다 = 헛발질이 아니다.
+ *     한도로 문전박대당한 턴에는 오류 말풍선 하나뿐이다.
+ *
+ * **둘의 관계는 OR가 아니라 우선순위다** — 이 자리에서 스스로 판 함정 하나 때문이다.
+ * 시각을 양쪽 다 아는 판에서 ①이 「안 넘어갔다」고 말하는데 ②가 「일했다」로 뒤집으면,
+ * *토큰 한 줄을 내고 같은 벽에 다시 부딪히는* 판(서버가 이미 지난 epoch을 계속 되돌려
+ * 주는 판)에서 계수가 영원히 0이 되고 **RCAP이 막은 무한 재발사가 그대로 돌아온다**
+ * (엔진은 그 판에서 리셋+90초 = 15초 간격으로 계속 쏜다). 그리고 시각을 둘 다 아는
+ * 판에서 ①의 답은 이미 완전하다: 새 벽이 직전 벽보다 뒤가 **아니면** 그 재개는 그 벽을
+ * 못 넘은 것이고, 진짜로 넘었다면 새 창의 리셋은 반드시 더 뒤다. 그래서:
+ *
+ *   시각을 둘 다 안다  → **시계가 판정한다**(①). 일한 흔적은 안 본다.
+ *   한쪽이라도 미상    → **일한 흔적이 판정한다**(②). codex 배너형 문구처럼 읽을 꼬리가
+ *                        없는 축에서 ①은 영영 침묵하므로, 그 축을 ②가 든다.
+ *
+ * 상한·버튼·계승 구조는 RCAP 그대로다. 리셋 조건만 더한다.
+ */
+
+/** ① 창이 진짜로 넘어갔는가 — 직전에 쏜 표의 리셋 시각 대 이번 한도 문구의 리셋 시각.
+ *  둘 중 하나라도 미상이면 **모른다**이고, 모르는 것은 넘어간 증거가 아니다(false).
+ *
+ *  다리가 둘인 이유:
+ *   * `next > fired` — 크리틱이 준 그대로. 같은 벽에 다시 부딪히면 꼬리의 epoch이 그대로다.
+ *   * `next > nowSec` — **새 벽이 아직 오지 않았다.** 이미 지난 시각을 되돌려 주는 문구
+ *     (서버가 소진된 창의 옛 epoch을 계속 echo 하는 판)를 「넘어갔다」로 읽지 않게 하는
+ *     다리다. 엔진에서는 이쪽이 하중을 다 진다 — `epoch_secs_to_runtime`이 **지난 epoch을
+ *     `now`로 접기** 때문에(`saturating_sub`) 런타임 축에서는 첫 다리가 그 판에서도 늘
+ *     참이 된다. 실측: 이 다리가 없던 초안에서 「토큰 한 줄 + 같은 벽」 판이 6시간에
+ *     **39발**을 쐈다(`crates/ccg-engine/tests/wcap_limit_streak.rs` ④의 유래). */
+export function windowRolled(firedResetsAt: number | null, nextResetsAt: number | null, nowSec: number): boolean {
+  return firedResetsAt != null && nextResetsAt != null && nextResetsAt > firedResetsAt && nextResetsAt > nowSec
+}
+
+/** `turnDidWork`가 읽는 최소 모양 — 스레드 항목(`store/session.ts` `ThreadItem`)의
+ *  구조적 부분집합이다. 판정을 순수하게 두려고 스토어 타입을 끌어오지 않는다. */
+export interface TurnItem {
+  kind: string
+  role?: string
+  text?: string
+  error?: boolean
+  tools?: readonly unknown[]
+}
+
+/** ② 방금 착지한 턴이 **일을 했는가** — 마지막 사용자 말풍선 **뒤에** 어시스턴트 출력이나
+ *  도구 호출이 하나라도 있으면 참.
+ *
+ *  뒤에서부터 훑다가 사용자 말풍선을 만나면 거기가 이 턴의 시작이다(자동 재개도 사용자
+ *  말풍선을 하나 남긴다 — '사용 한도가 초기화됐어…'). 한도로 문전박대당한 턴은 그 뒤에
+ *  오류 말풍선 하나뿐이라 거짓이고, 5시간을 일한 턴은 참이다.
+ *
+ *  **오류 말풍선은 세지 않는다**: 한도 에러 자체가 어시스턴트 메시지로 들어오므로
+ *  (`store/session.ts`의 `rerr…`) 그걸 세면 모든 턴이 「일했다」가 된다. 도구 그룹도
+ *  **빈 그룹은 안 센다**(그룹은 도구가 오기 전에 먼저 열린다). `thinking`은 result가
+ *  도착할 때 스토어가 걷어내므로 이 자리에 애초에 없다(엔진의 thinking_delta 활동과
+ *  다른 점 — 렌더러가 볼 수 있는 증거만 쓴다). */
+export function turnDidWork(items: readonly TurnItem[] | null | undefined): boolean {
+  const list = items ?? []
+  for (let i = list.length - 1; i >= 0; i--) {
+    const m = list[i]
+    if (m.kind === 'msg' && m.role === 'user') return false
+    if (m.kind === 'toolgroup' && (m.tools?.length ?? 0) > 0) return true
+    if (m.kind === 'msg' && m.role === 'assistant' && !m.error && (m.text ?? '').trim()) return true
+  }
+  return false
+}
+
+/** 새로 서는 대기표가 물려받을 **재발사 계수.** 엔진 `arm_hold`의 같은 네 줄이다.
+ *
+ *  `streak`는 표 바깥에 있는 연속 계수(훅의 `firesRef` · 엔진의 `auto_resume_streak`),
+ *  `firedResetsAt`은 **직전에 쏜 표**의 리셋 시각(훅의 `fireResetsRef` · 엔진의
+ *  `auto_resume_at`)이다. 위 절의 우선순위대로 "그 재개가 벽을 넘었나"를 가르고,
+ *  넘었으면 0으로 되돌린다(= 헛발질 연쇄가 아니었다). */
+export function carriedAttempts(
+  streak: number,
+  firedResetsAt: number | null,
+  nextResetsAt: number | null,
+  items: readonly TurnItem[] | null | undefined,
+  nowSec: number
+): number {
+  if (!(streak > 0)) return 0
+  const cleared =
+    firedResetsAt != null && nextResetsAt != null
+      ? windowRolled(firedResetsAt, nextResetsAt, nowSec)
+      : turnDidWork(items)
+  return cleared ? 0 : streak
 }
 
 /** 대기표 하나의 다음 발화까지 남은 시간(ms) — **타이머와 상태줄이 같은 함수를 본다.**

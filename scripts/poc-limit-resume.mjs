@@ -392,18 +392,33 @@ function mountArmed(props, text, mod = hookMod) {
 }
 
 /** 쏜 재개 턴이 **같은 한도 에러로 또 죽는다** — 앱이 실제로 밟는 경로(busy 상승 →
- *  status:error → 재장전). I절의 주행이 이 한 걸음을 반복한다. */
-async function rearm(h, text) {
+ *  status:error → 재장전). I절의 주행이 이 한 걸음을 반복한다.
+ *
+ *  ★R28d WCAP — `work:true`면 그 턴이 **죽기 전에 일을 한** 스레드를 만든다(어시스턴트
+ *  답 + 도구 그룹). 앱에서 5시간을 꽉 채워 일하고 다음 창에서 막힌 재개가 정확히 이
+ *  모양이다 — 사용자 말풍선 뒤에 출력이 쌓이고 맨 끝에 한도 오류 말풍선이 붙는다. */
+async function rearm(h, text, opts = {}) {
   const errText = text ?? 'Claude AI usage limit reached|' + (NOW - 100)
   h.o.busy = true
   h.o.state = { ...h.o.state, status: 'working' }
   h.host.render()
   await flush()
   h.o.busy = false
+  const did = opts.work
+    ? [
+        { kind: 'msg', role: 'assistant', text: '리팩터링을 끝냈어' },
+        { kind: 'toolgroup', tools: [{ id: 'tool-1', name: 'Edit' }] }
+      ]
+    : []
   h.o.state = {
     ...h.o.state,
     status: 'error',
-    messages: [...h.o.state.messages, { kind: 'msg', role: 'user', text: '이어서' }, { kind: 'msg', role: 'assistant', text: errText, error: true }]
+    messages: [
+      ...h.o.state.messages,
+      { kind: 'msg', role: 'user', text: '이어서' },
+      ...did,
+      { kind: 'msg', role: 'assistant', text: errText, error: true }
+    ]
   }
   h.host.render()
   await flush()
@@ -695,6 +710,140 @@ hx.api.setHold(null) // 사용자가 ✕
 hx.host.render()
 await rearm(hx, CX_BANNER)
 eq('★ ✕로 취소한 뒤의 새 표도 백지', hx.hold?.attempts, undefined)
+
+// ── J. ★R28d WCAP — 상한이 「헛발질」과 「일한 재개」를 가른다 ────────────────
+//
+// RCAP 확인 크리틱 R1 §4.1의 최대 격차: `attempts`는 **한도로 죽은 착지마다** 올랐고,
+// 그 턴이 30초 만에 같은 벽에 부딪혔는지 5시간을 꽉 채워 일하고 다음 창에서 막혔는지를
+// 아무도 안 봤다(크리틱 실측: 조회가 매번 「풀렸다」고 답하는 판에서도
+// `attempts=1 → attempts=2 → PAUSED`). 현실 시나리오는 22시 한도 → 03시 재개(성공) →
+// 08시 새 한도 → … 인데, 그 밤샘 주행이 **창 두 개**에서 잘리고 배너는 「자동으로 이어서
+// 보낸 turn이 계속 한도에 막혔어요」라고 말한다 — 그 턴들은 막힌 게 아니라 일했다.
+//
+// 구분자 둘을 받는다(엔진 `crates/ccg-engine/src/runtime.rs::arm_hold`가 같은 둘을 같은
+// 순서로 본다): ① 새 문구의 리셋 시각이 직전에 쏜 표보다 **뒤**이고 **아직 오지 않았다** /
+// ② 그 턴이 어시스턴트 출력·도구 호출을 **하나라도** 냈다. **OR가 아니라 우선순위다** —
+// 시각을 둘 다 아는 판은 ①이 완전한 답을 주므로 시계가 판정하고, 한쪽이라도 미상인
+// 판(codex 배너형)만 ②가 든다. OR로 두면 「토큰 한 줄 내고 같은 벽에 다시 부딪히는」 판에서
+// 계수가 영영 0이 돼 RCAP이 막은 무한 재발사가 그대로 돌아온다(아래 ④가 그 자리를 잠근다 —
+// 엔진 초안 실측 6시간 39발, `crates/ccg-engine/tests/wcap_limit_streak.rs`).
+//
+// 상한·버튼·계승 구조는 RCAP 그대로 두고 리셋 조건만 더한 것이라, 이 절은 **양쪽을 같이
+// 잰다**: 일한 재개는 안 잘리는가, 그리고 헛발질은 여전히 2발인가.
+console.log('\nJ. 일한 재개는 상한이 세지 않는다(RCAP 확인 크리틱 R1 §4.1)')
+tag = 'WCAP'
+
+// ① 순수 판정 — 구분자 둘.
+console.log('   ① windowRolled / turnDidWork / carriedAttempts')
+eq('창이 넘어갔다(새 리셋이 더 뒤 · 아직 안 옴)', lib3.windowRolled(NOW - 3600, NOW + 5 * 3600, NOW), true)
+eq('같은 벽 — 꼬리의 epoch이 그대로면 안 넘어간 것', lib3.windowRolled(NOW, NOW, NOW), false)
+eq('되레 앞이면 안 넘어간 것(낡은 캐시)', lib3.windowRolled(NOW, NOW - 10, NOW), false)
+// ★ 두 번째 다리 — **이미 지난 시각**을 새 벽이라고 내미는 문구는 넘어간 증거가 아니다.
+//   엔진에서는 이 다리가 하중을 다 진다(`epoch_secs_to_runtime`이 지난 epoch을 `now`로 접는다).
+eq('★★ 더 뒤이긴 한데 이미 지난 시각 = 안 넘어간 것', lib3.windowRolled(NOW - 7200, NOW - 60, NOW), false)
+eq('직전 시각 미상 = 모른다(넘어간 증거 아님)', lib3.windowRolled(null, NOW + 3600, NOW), false)
+eq('이번 시각 미상 = 모른다(codex 배너형)', lib3.windowRolled(NOW, null, NOW), false)
+
+const J_USER = { kind: 'msg', role: 'user', text: '이어서' }
+const J_ERR = { kind: 'msg', role: 'assistant', text: 'Claude AI usage limit reached', error: true }
+eq('문전박대 턴 — 오류 말풍선 하나뿐이면 일한 게 아니다', lib3.turnDidWork([J_USER, J_ERR]), false)
+eq('★ 어시스턴트 출력이 있으면 일했다', lib3.turnDidWork([J_USER, { kind: 'msg', role: 'assistant', text: '고쳤어' }, J_ERR]), true)
+eq('★ 도구 호출이 있으면 일했다', lib3.turnDidWork([J_USER, { kind: 'toolgroup', tools: [{ id: 't1' }] }, J_ERR]), true)
+eq('빈 도구 그룹은 안 센다(그룹은 도구보다 먼저 열린다)', lib3.turnDidWork([J_USER, { kind: 'toolgroup', tools: [] }, J_ERR]), false)
+eq('공백뿐인 어시스턴트 텍스트도 안 센다', lib3.turnDidWork([J_USER, { kind: 'msg', role: 'assistant', text: '   ' }, J_ERR]), false)
+eq('오류 말풍선 자체는 출력이 아니다(세면 모든 턴이 「일했다」가 된다)', lib3.turnDidWork([J_USER, J_ERR, J_ERR]), false)
+eq('직전 턴의 출력은 이 턴의 것이 아니다 — 사용자 말풍선이 경계', lib3.turnDidWork([{ kind: 'msg', role: 'assistant', text: '어제 한 일' }, J_USER, J_ERR]), false)
+eq('빈 스레드', lib3.turnDidWork([]), false)
+eq('널 스레드', lib3.turnDidWork(null), false)
+
+const J_WORKED = [J_USER, { kind: 'msg', role: 'assistant', text: 'ok' }, J_ERR]
+eq('계수가 0이면 볼 것도 없다', lib3.carriedAttempts(0, NOW, NOW, [J_USER, J_ERR], NOW), 0)
+eq('헛발질이면 계수를 그대로 물려받는다(RCAP 불변)', lib3.carriedAttempts(2, NOW, NOW, [J_USER, J_ERR], NOW), 2)
+eq('★★ 창이 넘어갔으면 0', lib3.carriedAttempts(2, NOW - 3600, NOW + 5 * 3600, [J_USER, J_ERR], NOW), 0)
+eq('★★ 꼬리가 없어도 그 턴이 일했으면 0(codex 축)', lib3.carriedAttempts(2, null, null, [J_USER, { kind: 'toolgroup', tools: [{ id: 't' }] }, J_ERR], NOW), 0)
+eq('직전 표만 시각을 알아도 미상 판 — 일한 흔적이 판정한다', lib3.carriedAttempts(2, NOW, null, J_WORKED, NOW), 0)
+eq('이번 문구만 시각을 알아도 미상 판', lib3.carriedAttempts(2, null, NOW, J_WORKED, NOW), 0)
+// ★ 우선순위의 핵심 — 시각을 둘 다 아는데 벽이 그대로면, 그 턴이 무엇을 냈든 **못 넘은 것**이다.
+//   여기서 ②로 뒤집으면 「토큰 한 줄 + 같은 벽」 판이 무한 재발사로 되돌아간다.
+eq('★★ 시각을 둘 다 아는 판에서는 일한 흔적이 시계를 못 뒤집는다', lib3.carriedAttempts(2, NOW, NOW, J_WORKED, NOW), 2)
+eq('★ 되레 앞선 벽(지난 epoch 되돌림)도 못 넘은 것', lib3.carriedAttempts(2, NOW, NOW - 10, J_WORKED, NOW), 2)
+eq('★ 지난 벽을 되돌려 줘도 일한 흔적이 시계를 못 뒤집는다', lib3.carriedAttempts(2, NOW - 7200, NOW - 60, J_WORKED, NOW), 2)
+
+// ② 밤샘 연속 주행 — 조회는 「풀렸다」고 답하고 재개는 실제로 일한다(크리틱의 그 판).
+console.log('   ② 밤샘 주행 — 창을 여섯 번 넘어도 안 잘린다')
+usageAnswer = G_FREE
+
+/** «쏜다 → 그 턴이 착지한다»를 n번 돈다. 멎는 자리는 **접힌 표**(autoPaused) 하나다.
+ *  `work`와 `tailOf`가 구분자 둘의 손잡이다 — 둘 다 끄면 그게 곧 헛발질(대조군)이다. */
+async function nightRun(props, n, tailOf, work) {
+  sent.length = 0
+  const h = mountArmed(props, tailOf(0))
+  const seen = []
+  for (let i = 1; i <= n; i++) {
+    if (!h.hold || h.hold.autoPaused) break
+    await tick(h) // 리셋 도달 → 재검증 → ready → 소진 effect가 쏜다
+    if (h.hold) break // 안 쐈다 = 자동이 접혔다
+    await rearm(h, tailOf(i), { work })
+    seen.push(h.hold?.attempts ?? 0)
+  }
+  return { h, sent: sent.length, seen }
+}
+
+// 훅은 **진짜 시계**로 돈다(G절 주석) — 꼬리도 실시간 기준이어야 「아직 안 온 벽」이 된다.
+// 첫 표(i=0)만 지난 시각이고(그래야 타이머가 곧 발화한다) 그다음부터 5시간씩 미래로 간다.
+const J_TAIL = (i) => 'Claude AI usage limit reached|' + (REAL - 100 + i * 5 * 3600)
+const J_SAME = () => 'Claude AI usage limit reached|' + (REAL - 100)
+const night = await nightRun(I_PROPS, 6, J_TAIL, true)
+eq('★★ 여섯 창을 내리 이어간다 — 계수가 한 번도 안 오른다', { sent: night.sent, seen: night.seen }, { sent: 6, seen: [0, 0, 0, 0, 0, 0] })
+ok('★ 접힌 표가 없다(밤샘 주행이 안 잘린다)', !night.h.hold?.autoPaused, JSON.stringify(night.h.hold))
+
+// 대조군 — **같은 대본에서 구분자 둘만 뺀다**(같은 벽 · 빈 턴). 상한은 그대로 서야 한다.
+const dud = await nightRun(I_PROPS, 6, J_SAME, false)
+eq('★★ 헛발질은 여전히 2발에서 멎는다(상한이 무뎌지지 않았다)', { sent: dud.sent, seen: dud.seen }, { sent: 2, seen: [1, 2] })
+ok('★ 그 표는 접혀 있다(ready + autoPaused)', dud.h.hold?.ready === true && dud.h.hold?.autoPaused === true, JSON.stringify(dud.h.hold))
+console.log(`   A/B — 같은 6창 대본: 일한 재개 ${night.sent}발(계수 ${JSON.stringify(night.seen)})  vs  헛발질 ${dud.sent}발(계수 ${JSON.stringify(dud.seen)})`)
+
+// 구분자를 **하나씩만** 켜서 각각 혼자 작동하는지 본다(OR의 두 다리).
+const onlyRoll = await nightRun(I_PROPS, 4, J_TAIL, false) // 창만 넘어간다(턴은 빈손)
+eq('★ ① 창 이동만으로도 안 잘린다', { sent: onlyRoll.sent, seen: onlyRoll.seen }, { sent: 4, seen: [0, 0, 0, 0] })
+cxAnswer = [cxRow('me@openai.com', 5, REAL + 3600)] // codex 채널이 「풀렸다」고 답한다
+const onlyWork = await nightRun(CX_PROPS, 4, () => CX_BANNER, true) // 꼬리가 없다 = ①은 침묵
+eq('★ ② 일한 흔적만으로도 안 잘린다(codex 배너형 — 읽을 꼬리가 없다)', { sent: onlyWork.sent, seen: onlyWork.seen }, { sent: 4, seen: [0, 0, 0, 0] })
+const cxDud = await nightRun(CX_PROPS, 4, () => CX_BANNER, false)
+eq('★ codex 축의 헛발질도 여전히 2발', { sent: cxDud.sent, seen: cxDud.seen }, { sent: 2, seen: [1, 2] })
+cxAnswer = []
+
+// ③ 섞인 판 — 일한 재개 하나가 상한을 **영영** 무디게 만들지 않는다(계수가 다시 선다).
+//    축은 codex(꼬리 없음 = ②가 판정하는 판)다.
+console.log('   ③ 섞인 판 — 리셋 뒤에도 상한은 다시 선다')
+cxAnswer = [cxRow('me@openai.com', 5, REAL + 3600)]
+sent.length = 0
+const hmx = mountArmed(CX_PROPS, CX_BANNER)
+await tick(hmx)
+await rearm(hmx, CX_BANNER, { work: true }) // 그 턴은 일했다 → 계수 0
+eq('일한 재개 뒤의 표는 백지', hmx.hold?.attempts, undefined)
+await tick(hmx)
+await rearm(hmx, CX_BANNER) // 이번엔 빈손 → 1
+eq('★ 그다음 헛발질은 1에서 다시 센다(ref도 같이 되돌아갔다)', hmx.hold?.attempts, 1)
+await tick(hmx)
+await rearm(hmx, CX_BANNER)
+eq('그다음 헛발질은 2', hmx.hold?.attempts, 2)
+await tick(hmx)
+eq(
+  '★★ 상한은 여전히 선다 — 접힌 표 + 발사 3회에서 멎음',
+  { ready: !!hmx.hold?.ready, paused: !!hmx.hold?.autoPaused, sent: sent.length },
+  { ready: true, paused: true, sent: 3 }
+)
+cxAnswer = []
+
+// ④ ★ 우선순위의 회귀 잠금 — 「토큰 한 줄 + 같은 벽」이 상한을 무력화하지 않는다.
+//    구분자를 OR로 두면 이 판에서 계수가 영영 0이 되고, 리셋 시각이 이미 지나 있어
+//    타이머가 최소값(15초)으로 돌아 **RCAP 이전의 무한 재발사**가 그대로 돌아온다.
+console.log('   ④ 토큰 한 줄 + 같은 벽(지난 epoch 되돌림) — 상한이 무력화되지 않는다')
+usageAnswer = G_FREE
+const stale = await nightRun(I_PROPS, 8, J_SAME, true)
+eq('★★ 매 턴 출력을 내도 같은 벽이면 2발에서 멎는다', { sent: stale.sent, seen: stale.seen }, { sent: 2, seen: [1, 2] })
+ok('★ 그 표는 접혀 있다(사용자의 버튼 차례)', stale.h.hold?.ready === true && stale.h.hold?.autoPaused === true, JSON.stringify(stale.h.hold))
 
 fs.rmSync(tmp, { recursive: true, force: true })
 console.log(`\n${fail === 0 ? 'PASS' : 'FAIL'} — ${pass} 통과, ${fail} 실패`)
