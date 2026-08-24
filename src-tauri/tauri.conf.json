@@ -20,7 +20,7 @@
   "bundle": {
     "active": true,
     "targets": ["nsis"],
-    "icon": ["../build/icon.ico"],
+    "icon": ["../build/icon3.ico"],
     "publisher": "AgentCodeGUI",
     "homepage": "https://github.com/UnrealFactory/AgentCodeGUI",
     "copyright": "Copyright (c) 2026 AgentCodeGUI",
@@ -31,7 +31,7 @@
       "webviewInstallMode": { "type": "downloadBootstrapper", "silent": true },
       "nsis": {
         "installMode": "currentUser",
-        "installerIcon": "../build/icon.ico",
+        "installerIcon": "../build/icon3.ico",
         "headerImage": "../build/installerHeader.bmp",
         "sidebarImage": "../build/installerSidebar.bmp",
         "languages": ["Korean", "English"],

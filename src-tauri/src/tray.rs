@@ -73,8 +73,10 @@ const NOTICE_PREF: &str = "tray.noticeShown";
 /// 안내 카드가 아무 조작 없이 화면에 남는 시간(2.6.2 풍선의 자동 소멸 자리).
 const NOTICE_LIFE_MS: u64 = 15_000;
 
-/// 아이콘 원본. `bundle.active=false`라 런타임 경로가 없다 — exe에 박는다.
-const ICON_PNG: &[u8] = include_bytes!("../../build/icon.png");
+/// 아이콘 원본. 런타임 경로에 기대지 않고 exe에 박는다.
+/// ★ M12 R2 — `icon.png`(2.6.2 마크)가 아니라 **3.0 파생 마크**(`icon3.png`, teal 「3」 배지)다.
+/// 두 앱을 나란히 띄우면 알림 영역에 같은 그림 두 개가 뜬다(M12 R1 §5.3).
+const ICON_PNG: &[u8] = include_bytes!("../../build/icon3.png");
 /// tauri 레지스트리 안의 아이콘 id — `release_icon`이 그 사본을 되찾을 주소다.
 const TRAY_ID: &str = "ccg-tray";
 
@@ -181,7 +183,9 @@ pub fn init(app: &AppHandle) {
     let handle = app.clone();
     let built = TrayIconBuilder::with_id(TRAY_ID)
         .icon(icon)
-        .tooltip("AgentCodeGUI")
+        // ★ M12 R2 — 2.6.2의 툴팁도 "AgentCodeGUI"다. 같은 글자면 알림 영역에서 어느 쪽을
+        // 누르는지 알 수 없다(M12 R1 §5.3의 숙제). 제품명(mainBinaryName)과 같이 맞춘다.
+        .tooltip("AgentCodeGUI3")
         // 좌클릭에 네이티브 메뉴를 자동으로 띄우지 않는다 — 커스텀 카드와 겹친다.
         .show_menu_on_left_click(false)
         .on_tray_icon_event(move |_tray, event| match event {

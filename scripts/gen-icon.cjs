@@ -6,13 +6,27 @@
 // hairline ring and the near-white mascot robot glyph (IconMascot의 24-unit 패스 그대로).
 // Each size is rasterised at 4× and box-downsampled for smooth edges, then PNG-encoded
 // and packed into a multi-resolution .ico (PNG-compressed entries).
+//
+// ── 3.0 파생 마크 (`node scripts/gen-icon.cjs --v3` → build/icon3.{ico,png}) ──────
+// M12 R1 §7-6의 숙제: 2.6.2와 3.0을 나란히 깔면 **작업 표시줄에서 구분이 안 된다**
+// (두 앱이 같은 build/icon.ico를 쓴다). 그래서 마크를 새로 그리지 않고 **파생**한다 —
+// 같은 카드·같은 마스코트를 유지해 같은 앱 계열로 읽히게 하고, 오른쪽 아래에
+// 탈채도 팔레트의 teal(--teal #6fc3c3) 배지 + 어두운 「3」을 얹는다.
+// 16px에서는 글자가 아니라 **teal 점**으로 읽히는 것이 목적이다(무채색 2.6.2 아이콘
+// 옆에서 색 하나로 갈린다). 32px부터 숫자 3이 읽힌다.
+// ★ 플래그 없이 돌리면 2.6.2 산출물은 **바이트가 그대로다** — 2.6.2 electron-builder
+//   설정(package.json)이 build/icon.ico를 그대로 물고 있어 덮으면 안 된다.
 const fs = require('node:fs')
 const path = require('node:path')
 const zlib = require('node:zlib')
 
+const V3 = process.argv.includes('--v3')
+
 const BG = [0x19, 0x19, 0x19] // dark card (앱 창 표면)
 const FG = [0xe9, 0xe9, 0xe9] // near-white mascot (--accent)
 const RING = [0x4b, 0x4b, 0x4b] // hairline ring ≈ white 22% over the card
+const BADGE = [0x6f, 0xc3, 0xc3] // 3.0 배지 — styles.css의 --teal
+const BADGE_INK = [0x16, 0x16, 0x16] // 배지 위의 「3」 — --on-accent
 const SS = 4 // supersample factor
 
 // distance from point p to segment a–b
@@ -47,6 +61,17 @@ function quad(p0, p1, p2, n = 16) {
       u * u * p0[0] + 2 * u * t * p1[0] + t * t * p2[0],
       u * u * p0[1] + 2 * u * t * p1[1] + t * t * p2[1]
     ])
+  }
+  return pts
+}
+
+// sample a circular arc into a polyline (angles in degrees, y grows downward:
+// 180 = left · 270 = up · 0 = right · 90 = down)
+function arc(cx, cy, r, a0, a1, n = 28) {
+  const pts = []
+  for (let i = 0; i <= n; i++) {
+    const t = ((a0 + (a1 - a0) * (i / n)) * Math.PI) / 180
+    pts.push([cx + r * Math.cos(t), cy + r * Math.sin(t)])
   }
   return pts
 }
@@ -115,6 +140,22 @@ function render(S) {
     return Math.abs(sd)
   }
 
+  // ── 3.0 배지 ────────────────────────────────────────────────────────────────
+  // 카드의 오른쪽-아래 라운드 코너 안에 완전히 들어간다(실측: 코너 아크 중심 (186,186)·
+  // r 54 → 배지+모트 51 < 54라 실루엣을 바꾸지 않는다). 모트(카드색 링)가 마스코트를
+  // 잘라 배지가 위에 얹힌 것으로 읽힌다.
+  // 「3」은 원호 둘로 그린다. 16·24px에서는 획이 서브픽셀이라 teal이 탁해지기만 하므로
+  // **그리지 않는다** — 그 크기에서 필요한 정보는 「색이 다르다」 하나뿐이다.
+  const badgeCx = 186 * f
+  const badgeCy = 186 * f
+  const badgeR = 44 * f
+  const moat = 7 * f
+  const digitHw = 4.6 * f
+  const drawDigit = S >= 32
+  const digit = drawDigit
+    ? [arc(186 * f, 174.5 * f, 12.5 * f, 200, 450), arc(186 * f, 197.5 * f, 12.5 * f, 270, 520)]
+    : []
+
   const buf = Buffer.alloc(hi * hi * 4)
   for (let y = 0; y < hi; y++) {
     for (let x = 0; x < hi; x++) {
@@ -151,7 +192,14 @@ function render(S) {
           }
         }
         // 카드 표면 → 경계 헤어라인 링 → 글리프 순으로 얹는다
-        const col = glyph ? FG : -sd <= ringHw ? RING : BG
+        let col = glyph ? FG : -sd <= ringHw ? RING : BG
+        if (V3) {
+          const bd = Math.hypot(px - badgeCx, py - badgeCy)
+          if (bd <= badgeR + moat) {
+            if (bd > badgeR) col = BG // 모트 — 마스코트를 잘라 배지를 띄운다
+            else col = digit.some((s) => polyDist(px, py, s) <= digitHw) ? BADGE_INK : BADGE
+          }
+        }
         buf[i] = col[0]
         buf[i + 1] = col[1]
         buf[i + 2] = col[2]
@@ -255,7 +303,8 @@ const sizes = [16, 24, 32, 48, 64, 128, 256]
 const images = sizes.map((size) => ({ size, png: pngEncode(size, render(size)) }))
 
 const outDir = path.join(__dirname, '..', 'build')
+const stem = V3 ? 'icon3' : 'icon' // ★ 2.6.2의 build/icon.ico는 절대 덮지 않는다
 fs.mkdirSync(outDir, { recursive: true })
-fs.writeFileSync(path.join(outDir, 'icon.ico'), icoEncode(images))
-fs.writeFileSync(path.join(outDir, 'icon.png'), images[images.length - 1].png) // 256×256
-console.log('[gen-icon] wrote build/icon.ico (' + sizes.join(',') + ') + build/icon.png')
+fs.writeFileSync(path.join(outDir, `${stem}.ico`), icoEncode(images))
+fs.writeFileSync(path.join(outDir, `${stem}.png`), images[images.length - 1].png) // 256×256
+console.log(`[gen-icon] wrote build/${stem}.ico (` + sizes.join(',') + `) + build/${stem}.png`)
