@@ -435,6 +435,32 @@ fn merge3(base: Option<&Base>, mine: &[Value], my_default: Option<&str>, disk: &
 /// 아직 그대로인가"를 다시 묻는다**(CAS). 갈렸으면 클로저부터 다시 돈다 — 그래서 클로저는
 /// `FnMut`이고 **여러 번 불릴 수 있다**(부작용을 두면 안 된다).
 pub fn update_account_record<T>(email: &str, mut f: impl FnMut(&mut Map<String, Value>) -> T) -> Result<T, AuthError> {
+    cas_edit(|cur| {
+        let Some(i) = cur.accounts.iter().position(|a| email_of(a) == Some(email)) else {
+            return Err(AuthError::NotRegistered(email.to_string()));
+        };
+        let mut m = cur.accounts[i].as_object().cloned().unwrap_or_default();
+        let out = f(&mut m);
+        cur.accounts[i] = Value::Object(m);
+        Ok(out)
+    })
+}
+
+// ── ★T1 배선 — 목록을 바꾸는 조작도 같은 CAS를 탄다 ─────────────────────────
+//
+// R4까지 CAS는 [`update_account_record`](배경 토큰 회전) **한 문에만** 있었다. 목록을
+// 바꾸는 조작(로그인 편입·로그아웃·기본 계정·정렬)은 [`update_store`]로 갔고 그쪽은
+// 잠금 한 겹뿐이었다 — 잠금을 **모르는** 2.6.2에게 그 겹은 없는 것과 같다.
+//
+// R4까지 그게 견딜 만했던 이유는 하나다: **그 조작들을 부를 길이 3.0에 없었다**
+// (`auth:*` 쓰기 채널 IPC 핸들러 0개 — 최종 파리티 감사 T1). 그 다섯 채널을 붙이는
+// 순간 목록 편집이 사용자 손에 들어오고, 그러면 R4가 회전 경로에서 닫은 창이 **로그인·
+// 로그아웃 경로에서 그대로 열린다**. 그래서 두 문을 하나로 합쳐 같은 CAS를 태운다.
+//
+// 회전 경로와 다른 자리가 딱 하나 있다 — **멤버십이 늘어난다**. 파묻힌 쓰기 되살리기가
+// "이웃 목록에 없는 계정은 지운다"이므로, 그대로 두면 우리가 방금 만든 계정(로그인)이
+// 이웃의 옛 스냅샷에 없다는 이유로 지워진다. `added`가 그 자리를 막는다.
+fn cas_edit<T>(mut edit: impl FnMut(&mut StoreFile) -> Result<T, AuthError>) -> Result<T, AuthError> {
     let mut retries = 0usize;
     let mut torn = 0usize;
     for _ in 0..CAS_TRIES {
@@ -452,29 +478,42 @@ pub fn update_account_record<T>(email: &str, mut f: impl FnMut(&mut Map<String, 
             }
             // 네 번을 다시 읽어도 깨져 있다 = 지나가는 반쪽이 아니라 **정말 깨진 파일**이다.
             let Some(rec) = recover_store() else {
-                return Err(AuthError::Io(format!("{STORE_FILE}: 파일이 손상됐고 복구본도 없다")));
+                return Err(AuthError::Io(format!(
+                    "{STORE_FILE}: 파일이 손상됐고 복구본도 없다 — 계정 목록을 덮어쓰지 않는다"
+                )));
             };
             cur = rec;
+        } else {
+            // 이 읽기가 3-way 병합의 기준점이다(R3(F1)② — `read_store_file`과 같은 자리).
+            record_base(&cur);
         }
-        let Some(i) = cur.accounts.iter().position(|a| email_of(a) == Some(email)) else {
-            return Err(AuthError::NotRegistered(email.to_string()));
-        };
-        let mut accounts = cur.accounts.clone();
-        let mut m = accounts[i].as_object().cloned().unwrap_or_default();
-        let out = f(&mut m);
-        accounts[i] = Value::Object(m);
+        // 복구본으로 읽었으면 **무조건 쓴다** — 그게 깨진 본문을 고치는 유일한 순간이다.
+        let repair = cur.origin == StoreOrigin::Recovered;
+        let seen = cur.accounts.clone();
+        let seen_default = cur.default_email.clone();
+        let seen_version = cur.version;
+
+        let out = edit(&mut cur)?;
+
         // 내용이 같으면 저장을 건너뛴다(2.6.2와 같은 의미론) — 안 바뀐 저장은 mtime만 흔들고
         // 남의 원자 저장과 경쟁할 이유가 없다.
-        if accounts == cur.accounts {
+        if !repair && cur.accounts == seen && cur.default_email == seen_default && seen_version == STORE_VERSION {
             return Ok(out);
         }
-        let mine = accounts[i].clone();
-        let base_record = cur.accounts[i].clone();
-        let mut body = render_store(&accounts, cur.default_email.as_deref());
+        let mut accounts = std::mem::take(&mut cur.accounts);
+        let def = cur.default_email.clone();
+        // **이번 편집이 새로 더한** 계정 — 파묻힌 쓰기 되살리기가 이걸 지우면 안 된다.
+        // (이웃의 스냅샷은 우리 로그인보다 앞선 것이라 이 계정을 담고 있을 수가 없다.)
+        let added: std::collections::BTreeSet<String> = accounts
+            .iter()
+            .filter_map(email_of)
+            .filter(|e| !seen.iter().any(|a| email_of(a) == Some(*e)))
+            .map(str::to_string)
+            .collect();
+        let mut body = render_store(&accounts, def.as_deref());
 
         // ── ② 갈아끼우기 + 파묻힌 쓰기 되살리기 ────────────────────────────
         let mut expect = before;
-        let mut def = cur.default_email.clone();
         let mut stale = false;
         for _ in 0..BURY_TRIES {
             match commit_locked(&body, expect.as_deref())? {
@@ -509,8 +548,14 @@ pub fn update_account_record<T>(email: &str, mut f: impl FnMut(&mut Map<String, 
                         break;
                     };
                     let keep: std::collections::BTreeSet<&str> = t.accounts.iter().filter_map(email_of).collect();
-                    let next: Vec<Value> =
-                        accounts.iter().filter(|a| email_of(a).is_none_or(|e| keep.contains(e))).cloned().collect();
+                    // `added`(이번 편집이 만든 계정)는 예외다 — 이웃의 스냅샷은 우리
+                    // 로그인보다 앞선 것이라 담고 있을 수가 없고, 여기서 지우면 방금 끝난
+                    // 로그인이 조용히 증발한다.
+                    let next: Vec<Value> = accounts
+                        .iter()
+                        .filter(|a| email_of(a).is_none_or(|e| keep.contains(e) || added.contains(e)))
+                        .cloned()
+                        .collect();
                     if next.len() == accounts.len() {
                         break; // 그들이 지운 계정이 없다 = 되살릴 것도 없다
                     }
@@ -583,24 +628,13 @@ fn commit_locked(body: &str, expect: Option<&str>) -> Result<Commit, AuthError> 
 /// R3의 [`read_store_file`]은 **빈 목록**을 줬고, 그 위의 로그인 한 번이 나머지 계정을
 /// 전부 지웠다(크리틱 C7). 이제 목록을 모르는 판에서는 [`STORE_BACKUP_FILE`]로 복구하고,
 /// 그것마저 없으면 **쓰지 않고 실패로 착지한다** — 모르는 위에 덮어쓰는 것보다 낫다.
-pub fn update_store<T>(f: impl FnOnce(&mut StoreFile) -> T) -> Result<T, AuthError> {
-    let _g = store_lock();
-    let mut cur = read_store_file();
-    if !cur.origin.is_known() {
-        let Some(rec) = recover_store() else {
-            return Err(AuthError::Io(format!("{STORE_FILE}: 파일이 손상됐고 복구본도 없다 — 계정 목록을 덮어쓰지 않는다")));
-        };
-        cur = rec;
-    }
-    // 복구본으로 읽었으면 **무조건 쓴다** — 그게 깨진 본문을 고치는 유일한 순간이다.
-    let repair = cur.origin == StoreOrigin::Recovered;
-    let before = (cur.accounts.clone(), cur.default_email.clone(), cur.version);
-    let out = f(&mut cur);
-    if repair || (&cur.accounts, &cur.default_email) != (&before.0, &before.1) || before.2 != STORE_VERSION {
-        write_store_locked(&cur.accounts, cur.default_email.as_deref())?;
-        set_base(&cur.accounts, cur.default_email.as_deref());
-    }
-    Ok(out)
+/// ★T1 — 이제 [`cas_edit`]에 위임한다(R4까지는 잠금 한 겹 + 통짜 되쓰기였다).
+///
+/// 클로저가 **여러 번 불릴 수 있다**(CAS 재시도)는 것이 유일한 계약 변화다 — 그래서
+/// `FnOnce`가 아니라 `FnMut`이고, 부작용을 넣으면 안 된다. 재시도는 이웃이 우리 읽기와
+/// 쓰기 사이에 끼어들었을 때만 일어난다.
+pub fn update_store<T>(mut f: impl FnMut(&mut StoreFile) -> T) -> Result<T, AuthError> {
+    cas_edit(|cur| Ok(f(cur)))
 }
 
 // ── safeStorage 래핑 (ccg-store가 단일 소스) ────────────────────────────────
@@ -1096,7 +1130,9 @@ pub fn import_account_from_dir(
     // `write_store_locked`의 폴백이 기본 계정으로 세운다.
     update_store(|f| {
         f.accounts.retain(|a| email_of(a) != Some(email));
-        f.accounts.push(Value::Object(rec));
+        // `rec`를 **복제**해 넣는다 — CAS가 이 클로저를 다시 부를 수 있어서 통째로
+        // 옮기면 두 번째 시도에 빈 레코드가 들어간다(`update_store`의 `FnMut` 계약).
+        f.accounts.push(Value::Object(rec.clone()));
     })?;
     // ★R4(G2) — 로그인은 격리를 푸는 **가장 자연스러운 처방**이다. 지문 비교에 맡기지
     // 않고 여기서 직접 지운다(지문을 못 뜬 표식은 비교로는 안 풀린다 — 크리틱 C6).
