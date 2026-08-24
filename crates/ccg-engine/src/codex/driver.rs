@@ -131,7 +131,10 @@ impl CodexDriver {
 /// `cmd.exe`는 백슬래시 이스케이프를 모른다 — 그래서 경로가 통째로 깨진다(이 라운드에
 /// `poc-codex --only=handshake`가 실측으로 잡았다). 올바른 모양은 바깥 따옴표 한 겹이다:
 /// `cmd /C ""C:\a b\codex.cmd" app-server"`.
-fn command_for(bin: &PathBuf) -> Command {
+/// `pub`인 이유: 셸의 `codex:models`(파리티 R1 H4)가 턴을 만들지 않고 app-server에
+/// 두 줄만 묻는데, 그 스폰도 **이 인용 규칙을 그대로 타야** 한다. 규칙을 복사하면
+/// 위 실측(공백 있는 경로가 통째로 깨지는 사고)이 한쪽에서만 고쳐진 채로 남는다.
+pub fn command_for(bin: &PathBuf) -> Command {
     let s = bin.to_string_lossy().to_string();
     let low = s.to_ascii_lowercase();
     let bare_name = !s.contains('\\') && !s.contains('/');

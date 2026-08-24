@@ -37,7 +37,7 @@
 
 mod acct_switch;
 mod any;
-mod codex_versions;
+pub mod codex_versions;
 mod diff;
 mod hub;
 mod ident;

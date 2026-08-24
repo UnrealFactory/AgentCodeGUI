@@ -89,6 +89,14 @@ pub struct SessionRec {
     pub label: String,
     pub title: String,
     pub status: String,
+    /// `/btw` 질문 채팅이면 **원본 채팅 id**(파리티 R1 T4). 창을 만들 때 레코드에서 한 번
+    /// 읽어 든다 — 목록 브로드캐스트는 턴마다 도는데(`session_report`) 그때마다 채팅
+    /// 파일을 다시 파면 상태 보고 한 번이 디스크 왕복이 된다.
+    pub btw_of: Option<String>,
+    /// 마지막으로 관측한 최소화 상태. `shown`(=알약을 숨길지)의 원천이고, `Resized`가
+    /// 이 값과 달라졌을 때만 목록을 다시 쏘게 하는 **디바운스 키**이기도 하다 —
+    /// 드래그 리사이즈는 초당 수십 번 오는데 그때마다 REPLACE를 쏠 이유가 없다.
+    pub minimized: bool,
 }
 static SESSIONS: Mutex<Vec<SessionRec>> = Mutex::new(Vec::new());
 
@@ -105,6 +113,16 @@ fn mint_session_chat_id(n: i64) -> String {
         .map(|d| d.as_millis())
         .unwrap_or(0);
     format!("sc-{ms}-{n}")
+}
+
+/// 창보다 **먼저** 채팅 id가 필요한 경로용(파리티 R1 T4 `btw:open`).
+///
+/// `/btw`는 레코드를 먼저 심고(원본·시드·인라인 질문) 그 id로 창을 연다 — 창이 뜬 다음에
+/// 심으면 그 창의 `hydrate`가 시드보다 이를 수 있고, 그러면 첫 실행이 포크가 아니라
+/// **새 대화**로 나간다(원본 컨텍스트 상실 = 이 기능이 없는 것과 같다).
+/// 일련번호는 창 라벨과 같은 카운터를 쓴다 — 값 하나를 건너뛸 뿐이고 라벨은 여전히 유일하다.
+pub fn new_session_chat_id() -> String {
+    mint_session_chat_id(SESSION_SEQ.fetch_add(1, Ordering::Relaxed) + 1)
 }
 
 /// 창을 보여주는 일은 여러 경로(첫 페인트·페이지 로드 완료·안전망 타이머)에서 오므로
@@ -191,6 +209,10 @@ pub fn create_main(app: &AppHandle) -> tauri::Result<WebviewWindow> {
         .title("AgentCodeGUI3")
         .initialization_script(&boot_payload_script())
         .initialization_script(SPLASH_JS)
+        // ★파리티 R1 M1 — Ctrl+W 포획기(`ipc/parity/misc.rs`). 웹뷰 안의 키는 셸에 오지
+        // 않으므로 문서 쪽에 귀를 하나 심는다. 렌더러 이식본은 이 채널을 이미 구독하고
+        // 있고(`Chat.tsx:419`·`FileModal.tsx:2998`) **방출자만 없었다**.
+        .initialization_script(crate::ipc::parity::misc::CLOSE_SHORTCUT_JS)
         .inner_size(st.width as f64, st.height as f64)
         .min_inner_size(
             ccg_store::window_state::MIN_W as f64,
@@ -354,13 +376,22 @@ pub fn open_session_window_for(app: &AppHandle, chat: Option<&str>) -> tauri::Re
         .unwrap_or((120.0, 120.0));
     let off = ((n - 1) % 6) as f64 * 28.0;
 
+    // `/btw` 질문 창은 **작업 표시줄에서 구분되게** 제목만 다르다(2.6.2 `index.ts:551`).
+    // 껍데기·크기·저장 경로는 추가 채팅과 글자 하나까지 같다 — 다른 것은 이 한 줄과,
+    // 레코드에 심긴 시드(`btwOf`/`btwSeed`/`btwPrompt`)뿐이다.
+    let btw_of = chat
+        .and_then(ccg_store::chats_v3::stored_chat)
+        .and_then(|c| c.get("btwOf").and_then(Value::as_str).map(str::to_string))
+        .filter(|s| !s.is_empty());
     let win = shared_env(
         WebviewWindowBuilder::new(app, &label, WebviewUrl::App("index.html#session".into())),
         &label,
     )
-    .title("추가 채팅 — AgentCodeGUI")
+    .title(if btw_of.is_some() { "btw 질문 — AgentCodeGUI" } else { "추가 채팅 — AgentCodeGUI" })
     // 추가 채팅 창도 같은 번들·같은 loadPrefs 경로를 탄다 — 왕복을 똑같이 없앤다.
     .initialization_script(&boot_payload_script())
+    // 추가 채팅 창에도 뷰어(FileModal)가 뜬다 — Ctrl+W는 그 창에서도 살아야 한다.
+    .initialization_script(crate::ipc::parity::misc::CLOSE_SHORTCUT_JS)
     .inner_size(560.0, 720.0)
     .min_inner_size(360.0, 440.0)
     .position(mx + 80.0 + off, my + 80.0 + off)
@@ -410,6 +441,8 @@ pub fn open_session_window_for(app: &AppHandle, chat: Option<&str>) -> tauri::Re
         label: label.clone(),
         title: String::new(),
         status: "idle".into(),
+        btw_of,
+        minimized: false,
     });
 
     // 최대화 토글 통지는 창마다 자기 것만 받아야 한다(메인 창 타이틀바가 같이 뒤집히면 안 됨)
@@ -421,11 +454,41 @@ pub fn open_session_window_for(app: &AppHandle, chat: Option<&str>) -> tauri::Re
                 if let Ok(m) = w.is_maximized() {
                     let _ = handle.emit_to(l.as_str(), crate::ipc::ch::WIN_STATE, json!({ "maximized": m }));
                 }
+                // ★T4 — 최소화/복원은 tao에 전용 이벤트가 없다. Windows에서는 최소화가
+                // `Resized`로 온다(크기 0). btw 알약은 "창이 내려가 있을 때만" 뜨므로
+                // (`Chat.tsx:4885` `wins.filter(w => !w.shown)`) 이 전이를 놓치면 창을
+                // 최소화해 놓고 알약을 찾을 수 없다 = 그 창으로 돌아갈 길이 사라진다.
+                // **값이 바뀐 순간에만** 다시 쏜다 — 드래그 리사이즈는 초당 수십 번이다.
+                let now = w.is_minimized().unwrap_or(false);
+                let changed = {
+                    let mut list = SESSIONS.lock().unwrap();
+                    match list.iter_mut().find(|s| s.label == l) {
+                        Some(rec) if rec.minimized != now => {
+                            rec.minimized = now;
+                            true
+                        }
+                        _ => false,
+                    }
+                };
+                if changed {
+                    broadcast_sessions(&handle);
+                }
             }
         }
         // 이 창이 포커스를 되찾으면 그 창 몫의 알림 토스트는 무의미하다(notify.rs 수명 규약).
         WindowEvent::Focused(true) => notify::clear_for_window(&handle, &l),
+        // ★파리티 R1 H5 — **여기가 비어 있었다.** 추가 채팅 창에는 `Destroyed`만 있었고
+        // 닫기를 가로채는 자리가 없다 = 사용자가 X를 누르면 그 순간 문서가 죽는다.
+        // 렌더러의 저장은 600ms 디바운스라, 마지막 편집(초안·스크롤·방금 온 응답)이
+        // 창과 함께 사라질 수 있다. 팝아웃 창은 `popout.rs:255`가 합성 `beforeunload`로
+        // 덮었는데 이 창만 안 덮여 있었다.
+        WindowEvent::CloseRequested { api, .. } => {
+            if begin_close_flush(&handle, &l) {
+                api.prevent_close();
+            }
+        }
         WindowEvent::Destroyed => {
+            FLUSH_WAIT.lock().unwrap().retain(|x| x != &l);
             SESSIONS.lock().unwrap().retain(|s| s.label != l);
             notify::clear_for_window(&handle, &l);
             broadcast_sessions(&handle);
@@ -436,13 +499,89 @@ pub fn open_session_window_for(app: &AppHandle, chat: Option<&str>) -> tauri::Re
     Ok(label)
 }
 
+// ── 닫기 전 마지막 저장 악수 (★파리티 R1 H5) ────────────────────────────────
+//
+// 2.6.2 `flushAndDestroy`/`finishFlush`(`index.ts:499-514`)의 자리다. 순서는 같다:
+//   닫기 가로채기 → 그 창에 "지금 저장해" → 저장이 도착하면(또는 1.5초) 파기.
+// 다른 것은 **숨기지 않는다**는 점 하나다. 2.6.2는 창을 숨겨 백그라운드 턴을 계속
+// 돌렸지만, 3.0은 실행이 창이 아니라 **채팅에 붙어 있으므로**(`engine/hub`) 창을 없애도
+// 턴은 계속 돈다 — 숨은 창을 들고 있을 이유가 없다(창 하나가 곧 메모리 25.1MB다).
+//
+// 상태를 `SessionRec`이 아니라 **라벨 집합**으로 따로 두는 이유: `chat_window_close`는
+// 레지스트리에서 먼저 빼고 닫는 규약이라(과도 REPLACE 방지) 레코드에 매달면 그 경로에서
+// 표식이 함께 사라진다.
+static FLUSH_WAIT: Mutex<Vec<String>> = Mutex::new(Vec::new());
+/// 렌더러가 답하지 않아도 창은 닫혀야 한다 — 2.6.2와 같은 1.5초.
+const FLUSH_GRACE: Duration = Duration::from_millis(1500);
+
+/// 닫기를 한 번 붙잡을까? `true`면 호출자가 `prevent_close()`를 한다.
+///
+/// 두 번째 닫기(=안전망 타이머나 저장 도착이 부른 `destroy`)에는 `false`를 돌려준다 —
+/// 안 그러면 창이 영원히 안 닫힌다.
+fn begin_close_flush(app: &AppHandle, label: &str) -> bool {
+    let Some(chat) = chat_for_label(label) else {
+        return false; // 이미 레지스트리에서 빠진 창(닫기 경로가 스스로 부른 close)
+    };
+    {
+        let mut g = FLUSH_WAIT.lock().unwrap();
+        if g.iter().any(|x| x == label) {
+            return false;
+        }
+        g.push(label.to_string());
+    }
+    crate::ipc::windows::flush_req(app, &chat);
+    let h = app.clone();
+    let l = label.to_string();
+    std::thread::spawn(move || {
+        std::thread::sleep(FLUSH_GRACE);
+        finish_close_flush(&h, &l);
+    });
+    true
+}
+
+/// 저장이 도착했거나 유예가 끝났다 — 창을 진짜로 없앤다.
+///
+/// `close()`가 아니라 `destroy()`다: `close()`는 `CloseRequested`를 다시 내므로
+/// 위 가드가 없으면 무한 왕복이 된다(가드가 있어도 이벤트 한 번이 헛돈다).
+pub fn finish_close_flush(app: &AppHandle, label: &str) {
+    {
+        let mut g = FLUSH_WAIT.lock().unwrap();
+        let n = g.len();
+        g.retain(|x| x != label);
+        if g.len() == n {
+            return; // 기다리던 창이 아니다(평범한 저장)
+        }
+    }
+    if let Some(w) = app.get_webview_window(label) {
+        let _ = w.destroy();
+    }
+}
+
 /// 추가 채팅 목록(계약면 SessionWindowInfo[]). 대화 영속은 M2 — 지금은 **열린 창**만이
 /// 목록이다(닫으면 사라진다). 2.6.2는 닫아도 사이드바에 남고 클릭하면 창을 되만든다.
 pub fn session_list() -> Value {
     let list = SESSIONS.lock().unwrap();
     Value::Array(
         list.iter()
-            .map(|s| json!({ "id": s.id, "title": s.title, "status": s.status, "open": true, "shown": true }))
+            .map(|s| {
+                let mut o = serde_json::Map::new();
+                o.insert("id".into(), json!(s.id));
+                o.insert("title".into(), json!(s.title));
+                o.insert("status".into(), json!(s.status));
+                o.insert("open".into(), json!(true));
+                // `shown` = 창이 지금 눈에 보이는가. 2.6.2는 `isVisible() && !isMinimized()`
+                // 였는데(`index.ts:467`) 3.0의 추가 채팅 창은 **숨김 상주가 없다**(닫기 =
+                // 파기) → 남는 축은 최소화 하나다. btw 알약은 이 값이 거짓일 때만 뜬다.
+                o.insert("shown".into(), json!(!s.minimized));
+                // `/btw` 원본 채팅 id — 그 채팅 화면의 알약 도크가 이 값으로 자기 것만
+                // 골라 그린다(`App.tsx:1995` `w.btwOf === activeChatId`). 없으면 **키째
+                // 뺀다**: 계약면이 `btwOf?`(선택)이고, `null`이 실리면 일반 추가 채팅이
+                // "원본 없는 btw"로 보인다.
+                if let Some(b) = &s.btw_of {
+                    o.insert("btwOf".into(), json!(b));
+                }
+                Value::Object(o)
+            })
             .collect(),
     )
 }

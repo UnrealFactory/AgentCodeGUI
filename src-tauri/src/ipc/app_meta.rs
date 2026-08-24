@@ -7,8 +7,12 @@ pub fn dispatch(channel: &str, p: &Value) -> Option<Value> {
     Some(match channel {
         // ── app meta ────────────────────────────────────────────────────────
         ch::APP_GET_VERSION => json!(env!("CARGO_PKG_VERSION")),
-        // "AgentCodeGUI로 열기"(파일 탐색기 컨텍스트 메뉴)는 M12 설치기와 함께 온다
-        ch::APP_GET_INITIAL_DIR => Value::Null,
+        // "AgentCodeGUI로 열기"(파일 탐색기 컨텍스트 메뉴)의 **콜드 런치 반쪽**.
+        // 명령줄에 실려 온 폴더를 그대로 돌려준다(★파리티 R1 M2). 이미 떠 있는 앱에
+        // 폴더가 또 오는 경우(`app:open-directory`)는 단일 인스턴스 잠금이 있어야 하고,
+        // 그건 격리 홈 하네스 동시 주행을 죽이므로 설치기 라운드와 함께 간다 —
+        // 이유는 `ipc/parity/misc.rs initial_dir` 주석에.
+        ch::APP_GET_INITIAL_DIR => super::parity::misc::initial_dir(),
         // 앱 자동 업데이트(electron-updater 자리)는 아직 없다 — 정직하게 idle.
         // AppUpdateGate는 phase가 available/downloading/downloaded/error일 때만 뜬다.
         ch::UPDATE_GET_STATUS => json!({

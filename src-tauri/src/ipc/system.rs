@@ -29,16 +29,33 @@ pub fn dispatch(app: &AppHandle, channel: &str, p: &Value) -> Option<Value> {
 /// 고아 창 정리(아래 `close_orphan_dialogs`)를 위해 Win32 창 목록을 훑는다.
 static DIALOGS_OPEN: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
+/// 대화상자가 열려 있는 구간의 RAII 표식. 계수기를 **공유**해야 `close_orphan_dialogs`의
+/// 그물이 첨부 picker(`ipc/parity/dialog.rs`)까지 덮는다 — 계수기를 따로 두면 그쪽이
+/// 열려 있는 동안 렌더러가 죽었을 때 아래 정리가 0으로 조기 반환해 유령 창이 남는다.
+pub struct DialogGuard;
+
+impl DialogGuard {
+    pub fn new() -> DialogGuard {
+        DIALOGS_OPEN.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        DialogGuard
+    }
+}
+
+impl Drop for DialogGuard {
+    fn drop(&mut self) {
+        DIALOGS_OPEN.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
 fn pick_directory(app: &AppHandle) -> Value {
-    use std::sync::atomic::Ordering;
     use tauri_plugin_dialog::DialogExt;
     let (tx, rx) = std::sync::mpsc::channel();
-    DIALOGS_OPEN.fetch_add(1, Ordering::SeqCst);
+    let guard = DialogGuard::new();
     app.dialog().file().pick_folder(move |p| {
         let _ = tx.send(p);
     });
     let r = rx.recv();
-    DIALOGS_OPEN.fetch_sub(1, Ordering::SeqCst);
+    drop(guard);
     match r {
         Ok(Some(p)) => p
             .into_path()

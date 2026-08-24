@@ -132,6 +132,10 @@ pub struct ChatHead {
     pub status: Option<String>,
     pub origin: Option<String>,
     pub custom: Option<bool>,
+    /// `/btw` 질문 채팅이면 원본 채팅 id(파리티 R1 T4). 목록에 실려야 원본 화면의 알약
+    /// 도크가 자기 것을 골라낸다 — 문자열 한 칸이라 얕은 스캔의 취지를 해치지 않는다.
+    #[serde(rename = "btwOf")]
+    pub btw_of: Option<String>,
     /// 파싱 비용을 0으로 만드는 자리 — serde가 통째로 건너뛴다.
     #[serde(rename = "snapshot")]
     pub _snapshot: Option<serde::de::IgnoredAny>,

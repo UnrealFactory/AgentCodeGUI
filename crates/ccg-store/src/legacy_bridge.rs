@@ -227,13 +227,12 @@ pub fn session_chat_infos() -> Vec<Value> {
             .filter(|c| origin_of(c) == ORIGIN_SESSION)
             .filter_map(|c| {
                 let id = c.get("id").and_then(Value::as_str)?.to_string();
-                Some(json!({
-                    "id": id,
-                    "title": c.get("title").and_then(Value::as_str).unwrap_or(""),
-                    "status": c.get("status").and_then(Value::as_str).unwrap_or("idle"),
-                    "open": false,
-                    "shown": true,
-                }))
+                Some(closed_info(
+                    &id,
+                    c.get("title").and_then(Value::as_str).unwrap_or(""),
+                    c.get("status").and_then(Value::as_str).unwrap_or("idle"),
+                    c.get("btwOf").and_then(Value::as_str),
+                ))
             })
             .collect();
     }
@@ -242,15 +241,35 @@ pub fn session_chat_infos() -> Vec<Value> {
         // 판정은 `origin_of`와 **같다** — 없으면 `unknown`이고, 그건 세션이 아니다.
         .filter(|h| h.origin.as_deref().unwrap_or(ORIGIN_UNKNOWN) == ORIGIN_SESSION)
         .map(|h| {
-            json!({
-                "id": h.id,
-                "title": h.title,
-                "status": h.status.unwrap_or_else(|| "idle".into()),
-                "open": false,
-                "shown": true,
-            })
+            closed_info(
+                &h.id,
+                &h.title,
+                h.status.as_deref().unwrap_or("idle"),
+                h.btw_of.as_deref(),
+            )
         })
         .collect()
+}
+
+/// **창이 없는** 추가 채팅 한 줄(계약면 `SessionWindowInfo`).
+///
+/// ★파리티 R1 T4 — `shown`이 R1까지 `true` 고정이었다. `shown`의 뜻은 *"그 창이 지금
+/// 눈에 보인다"* 이고(2.6.2 `index.ts:467` `isVisible() && !isMinimized()`), 창이 아예
+/// 없는 줄에 그 값이 참일 수는 없다. 이 한 칸이 거짓말을 하면 **btw 알약이 영원히 안
+/// 뜬다** — 도크가 `!w.shown`으로 거르기 때문이다(`Chat.tsx:4885`). 즉 "창 X = 무조건
+/// 알약"이라는 2.6.2 규약이 통째로 죽는다(닫은 btw 창으로 돌아갈 길이 없어진다).
+fn closed_info(id: &str, title: &str, status: &str, btw_of: Option<&str>) -> Value {
+    let mut o = Map::new();
+    o.insert("id".into(), json!(id));
+    o.insert("title".into(), json!(title));
+    o.insert("status".into(), json!(status));
+    o.insert("open".into(), json!(false));
+    o.insert("shown".into(), json!(false));
+    // 선택 필드다 — 없으면 키째 뺀다(`null`이 실리면 일반 추가 채팅이 원본 없는 btw가 된다).
+    if let Some(b) = btw_of.filter(|s| !s.is_empty()) {
+        o.insert("btwOf".into(), json!(b));
+    }
+    Value::Object(o)
 }
 
 /// 이 id가 **영속된 추가 채팅**인가(`origin = session`). 창 밖에서 온 주소를
@@ -282,6 +301,23 @@ pub fn session_chat_hydrate(id: &str) -> Value {
     for k in ["draft", "draftImages", "btwTitle", "btwFork", "btwForkCwd"] {
         if let Some(v) = o.get(k) {
             out.insert(k.into(), v.clone());
+        }
+    }
+    // ★파리티 R1 T4 — **포크 시드를 펴는 자리가 없었다.**
+    //
+    // 계약면(`SessionHydrateData`)은 평평한 `btwFork`/`btwForkCwd`고, 레코드는 2.6.2와
+    // 같은 `btwSeed{fork,cwd}` 묶음이다(마이그레이션도 그 모양 그대로 옮긴다 —
+    // `migrate_v3.rs:225`). 2.6.2는 hydrate에서 그 둘을 **펴서** 내려줬는데
+    // (`index.ts:1206`) 3.0은 평평한 키를 *복사만* 했다. 그 키를 쓰는 작성자가 아무도
+    // 없으므로 값은 언제나 없었고, 창의 첫 실행은 `btwRunResume`에서 시드 없음으로
+    // 떨어져 **포크가 아니라 새 대화**로 나간다 = 원본 컨텍스트 상실.
+    // (복사 팔을 남겨 둔 이유: 평평한 키가 실려 있는 레코드가 있으면 그쪽을 존중한다.
+    //  아래 삽입은 `entry`가 아니라 덮어쓰기가 아닌 **부재 시에만**이다.)
+    if let Some(seed) = o.get("btwSeed").and_then(Value::as_object) {
+        if let Some(f) = seed.get("fork").and_then(Value::as_str).filter(|s| !s.is_empty()) {
+            out.entry("btwFork".to_string()).or_insert(json!(f));
+            out.entry("btwForkCwd".to_string())
+                .or_insert(seed.get("cwd").cloned().unwrap_or(json!("")));
         }
     }
     if o.get("btwOf").is_some() || o.get("btwSeed").is_some() {

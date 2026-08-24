@@ -20,6 +20,15 @@ pub const WIN_CHAT_LIST: &str = "win:chat-list";
 pub const CHAT_WINDOWS: &str = "chat:windows";
 /// main → 렌더러: **창 닫기 전 마지막 저장 요청**(`protocol.ts:1199` `chatFlushReq`).
 pub const CHAT_FLUSH_REQ: &str = "chat:flush-req";
+/// 같은 사실의 **2.6.2 이름**(`protocol.ts:1239` `sessionFlushRequest`).
+///
+/// ★파리티 R1 H5 — 3.0 셸은 `chat:flush-req`로 갈아탔는데 **이식 렌더러는 옛 채널만
+/// 듣는다**(`SessionWindow.tsx:351` → `shim.ts:391` `session.onFlushRequest`). 즉 이
+/// 채널의 방출자가 0이라 닫기 직전 flush가 실제로는 한 번도 도착한 적이 없다.
+/// 방향은 **셸이 둘 다 쏜다**로 고른다 — `win.rs broadcast_sessions`가
+/// `session-wins:changed` + `chat:windows`에 이미 세워 둔 규약과 같고(원천 하나,
+/// 이름 둘), 동결 대상은 아니지만 "이식본은 한 글자도 안 고친다"는 계약을 지킨다.
+pub const SESSION_FLUSH_REQUEST: &str = "session-wins:flush-request";
 
 /// ── M8 창 표면 3종 ────────────────────────────────────────────────────────
 /// 멀티 패널 팝아웃 창 7채널 (`protocol.ts:968-974` + 이벤트 `:1134`).
@@ -42,6 +51,11 @@ pub const WIN_SURFACE_DEBUG: &str = "win:surface-debug";
 pub fn flush_req(app: &AppHandle, chat: &str) {
     let Some(label) = crate::win::session_label_for_chat(chat) else { return };
     let _ = app.emit_to(label.as_str(), CHAT_FLUSH_REQ, json!({ "chatId": chat }));
+    // ★파리티 R1 H5 — **같은 사실을 2.6.2 이름으로도 쏜다.** 이식 렌더러가 듣는 채널은
+    // 이쪽 하나뿐이라(`SessionWindow.tsx:351`), 위 한 줄만으로는 요청이 아무 데도 안
+    // 닿는다(그 채널의 방출자가 0이었다 = 닫기 직전 저장이 한 번도 도착한 적이 없다).
+    // 페이로드가 `null`인 이유는 2.6.2 계약 그대로다(`sessionFlushRequest`는 인자 없음).
+    let _ = app.emit_to(label.as_str(), SESSION_FLUSH_REQUEST, Value::Null);
 }
 
 /// 저장/복원의 주소. 1순위는 **부른 창**, 2순위는 페이로드의 명시 `id`(단 그것이
@@ -95,10 +109,15 @@ pub fn dispatch(app: &AppHandle, window: &WebviewWindow, channel: &str, p: &Valu
         // (사이드바에서 이름·상태를 만지는 경로와 하네스가 그 형태다).
         ch::SESSION_PERSIST => {
             let payload = arg(p, 0);
-            match session_target(window, payload) {
+            let r = match session_target(window, payload) {
                 Some(id) => json!(ccg_store::legacy_bridge::session_chat_persist(&id, payload)),
                 None => json!(false),
-            }
+            };
+            // ★파리티 R1 H5 — 닫기를 붙잡아 둔 창이면 **저장이 도착한 지금**이 놓아줄
+            // 자리다. 유예(1.5초)를 끝까지 기다리면 창이 그만큼 유령으로 떠 있다.
+            // 기다리던 창이 아니면 no-op이다(평범한 디바운스 저장).
+            crate::win::finish_close_flush(app, window.label());
+            r
         }
         ch::SESSION_HYDRATE => match session_target(window, arg(p, 0)) {
             Some(id) => ccg_store::legacy_bridge::session_chat_hydrate(&id),

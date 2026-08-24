@@ -8,6 +8,11 @@
 //! | 감사 번호 | 채널 | 파일 |
 //! |---|---|---|
 //! | **T3** | `usage:get` · `auth:accounts-usage` | `usage.rs` |
+//! | **T4** | `btw:open` | `btw.rs` |
+//! | **H1** | `dialog:pick-attachments` | `dialog.rs` |
+//! | **H2** | `mcp:list`·`mcp:set-enabled`·`skill:list`·`skill:set-enabled` | `tooling.rs` |
+//! | **H4** | `codex:models` | `codex.rs` |
+//! | **M1·M3·M2** | `shortcut:close`·`ui:open-api-settings`·`app:get-initial-dir` | `misc.rs` |
 //!
 //! ## 왜 새 모듈인가 (병렬 규율)
 //!
@@ -28,6 +33,11 @@
 use serde_json::Value;
 use tauri::{AppHandle, WebviewWindow};
 
+mod btw;
+mod codex;
+mod dialog;
+pub mod misc;
+mod tooling;
 mod usage;
 
 /// 채널 이름 — `protocol.ts`가 원본, 여기는 미러다(문자열이 어긋나면 그 채널만 조용히
@@ -39,6 +49,18 @@ pub mod ch {
     pub const USAGE_GET: &str = "usage:get";
     /// 등록 계정별 한도(`auth:accounts-usage()` → `AccountUsage[]`).
     pub const AUTH_ACCOUNTS_USAGE: &str = "auth:accounts-usage";
+    /// `/btw` 포크 질문 창(`btw:open(BtwOpenRequest)` → void).
+    pub const BTW_OPEN: &str = "btw:open";
+    /// 첨부 파일 선택(`dialog:pick-attachments()` → `string[]`).
+    pub const PICK_ATTACHMENTS: &str = "dialog:pick-attachments";
+    /// MCP 서버 목록·토글(설정 ▸ MCP).
+    pub const MCP_LIST: &str = "mcp:list";
+    pub const MCP_SET_ENABLED: &str = "mcp:set-enabled";
+    /// 스킬 목록·토글(설정 ▸ Skill).
+    pub const SKILL_LIST: &str = "skill:list";
+    pub const SKILL_SET_ENABLED: &str = "skill:set-enabled";
+    /// Codex picker의 모델 목록(`codex:models()` → `CodexModelInfo[]`).
+    pub const CODEX_MODELS: &str = "codex:models";
 }
 
 /// 이 묶음이 맡는 채널인가 — `ipc_call`이 **블로킹 팔로 보낼지** 가르는 유일한 판정.
@@ -46,13 +68,25 @@ pub mod ch {
 /// 명시 목록이다. 접두사(`usage:` 같은)로 넓게 잡지 않는 이유: 다른 갈래가 같은 접두사로
 /// 채널을 하나 더 만드는 순간 그게 조용히 이쪽으로 빨려 들어와 미구현이 된다.
 pub fn owns(channel: &str) -> bool {
-    matches!(channel, ch::USAGE_GET | ch::AUTH_ACCOUNTS_USAGE)
+    matches!(
+        channel,
+        ch::USAGE_GET
+            | ch::AUTH_ACCOUNTS_USAGE
+            | ch::BTW_OPEN
+            | ch::PICK_ATTACHMENTS
+            | ch::MCP_LIST
+            | ch::MCP_SET_ENABLED
+            | ch::SKILL_LIST
+            | ch::SKILL_SET_ENABLED
+            | ch::CODEX_MODELS
+    ) || misc::owns(channel)
 }
 
 /// `owns`가 참인 채널만 여기 온다. `None`을 돌려주는 다른 모듈들과 달리 `Value`를
 /// 바로 주는 이유: 소유 판정이 이미 `owns`에서 끝났기 때문이다(두 번 셀 필요가 없다).
-pub fn dispatch(_app: &AppHandle, _window: &WebviewWindow, channel: &str, p: &Value) -> Value {
+pub fn dispatch(app: &AppHandle, window: &WebviewWindow, channel: &str, p: &Value) -> Value {
     match channel {
+        ch::BTW_OPEN => btw::open(app, window, super::arg(p, 0)),
         ch::USAGE_GET => {
             // 2.6.2 `getUsage(fresh, account)` — 인자 배열 그대로(심 규약 §2).
             let fresh = super::arg(p, 0).as_bool().unwrap_or(false);
@@ -60,6 +94,26 @@ pub fn dispatch(_app: &AppHandle, _window: &WebviewWindow, channel: &str, p: &Va
             usage::usage_get(fresh, account)
         }
         ch::AUTH_ACCOUNTS_USAGE => usage::accounts_usage(),
-        _ => super::unimplemented(),
+
+        ch::PICK_ATTACHMENTS => dialog::pick_attachments(app),
+
+        // MCP·스킬은 `cwd` 하나를 받는다(그 폴더에서 도는 실행이 무엇을 보는가).
+        ch::MCP_LIST => tooling::mcp_list(super::arg(p, 0).as_str().unwrap_or("")),
+        ch::SKILL_LIST => tooling::skill_list(super::arg(p, 0).as_str().unwrap_or("")),
+        // 토글 페이로드는 `{ name, enabled }` 한 덩어리다(`shim.ts:362`).
+        ch::MCP_SET_ENABLED | ch::SKILL_SET_ENABLED => {
+            let a = super::arg(p, 0);
+            let name = a.get("name").and_then(Value::as_str).unwrap_or("");
+            let enabled = a.get("enabled").and_then(Value::as_bool).unwrap_or(true);
+            if channel == ch::MCP_SET_ENABLED {
+                tooling::mcp_set_enabled(name, enabled)
+            } else {
+                tooling::skill_set_enabled(name, enabled)
+            }
+        }
+
+        ch::CODEX_MODELS => codex::models(),
+
+        _ => misc::dispatch(app, window, channel),
     }
 }

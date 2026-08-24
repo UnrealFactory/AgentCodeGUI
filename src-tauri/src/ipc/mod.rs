@@ -31,7 +31,7 @@ mod git;
 mod lsp;
 /// 최종 파리티 감사 R1이 남긴 미구현 채널 묶음(한도·btw·첨부·MCP/스킬·잡채널).
 /// fs·git·lsp와 같은 이유로 **블로킹 스레드**에서 돈다 — 그 모듈 헤더 참고.
-mod parity;
+pub mod parity;
 mod stores;
 mod system;
 /// `pub`인 이유: 창 브로드캐스트(`win.rs broadcast_sessions`)가 이 모듈의 병합 함수를
