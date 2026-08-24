@@ -115,6 +115,25 @@ window.__CCG_BOOT = { "ui-prefs:get": {...}, "profile:get": {...}, "app:get-vers
 `saveAttachmentData` 하나 — "경로 없음"을 뜻하는 안전한 문자열이 없어 reject하고,
 유일한 호출부가 try/catch로 감싸 첨부를 건너뛴다(위 3.2).
 
+### 3.5.1 **같은 사실의 두 채널 이름** — 셸이 둘 다 쏜다 (최종 파리티 R1 H5)
+
+3.0 계약면은 이식본이 모르는 채널을 몇 개 새로 세웠다. 그중 **하나가 이식본의 옛 이름을
+가려 버렸다**: 닫기 직전 마지막 저장 요청이 3.0에서는 `chat:flush-req`인데
+(`protocol.ts:1199`) 이식 렌더러는 `session-wins:flush-request`만 듣는다
+(`SessionWindow.tsx:351` → `shim.ts:391` `session.onFlushRequest`).
+그 채널의 **방출자가 0**이라 요청이 한 번도 도착한 적이 없었다.
+
+**방향은 「셸이 둘 다 쏜다」로 고른다.** 이식본을 옛 채널에서 떼어내는 쪽이 아니다 —
+이 장부의 전제("`src/renderer/src/**`는 무수정")를 지키려면 방출자 쪽이 움직여야 한다.
+그리고 이 규약은 새로 만든 게 아니다: `win.rs broadcast_sessions`가 이미 같은 목록을
+`session-wins:changed`(2.6.2 이름)와 `chat:windows`(3.0 이름)로 **둘 다** 쏜다.
+원천이 하나이므로 두 이름이 어긋날 수 없다.
+
+| 사실 | 2.6.2 이름 | 3.0 이름 | 쏘는 자리 |
+|---|---|---|---|
+| 추가 채팅 목록 | `session-wins:changed` | `chat:windows` | `win.rs broadcast_sessions` |
+| 닫기 전 마지막 저장 | `session-wins:flush-request` | `chat:flush-req` | `ipc/windows.rs flush_req` |
+
 ### 3.6 유리 폴백 — `styles.css`를 안 고치고 배경을 갈아 끼우기 (M-UI 추가)
 
 **왜 필요한가.** 사이드바에는 자체 배경이 없다 — `body`의 `--panel`(`rgba(21,21,21,.70)`)
@@ -204,6 +223,29 @@ R2는 규칙을 뒤집었다 — **살아 있음을 증명해야 투명**.
 |---|---|---|
 | `boot_payload_script()` (win.rs) | document-start | `window.__CCG_BOOT` (§3.4) |
 | `splash.js` (win.rs → include_str!) | document-start | 부팅 스플래시 오버레이 + **창 표시 신호** + **마운트 하트비트**. 2.6.2는 별도 300x240 BrowserWindow였다 — 3.0에서 같은 짓을 하면 웹뷰가 하나 더 생긴다(렌더러 프로세스 +1) |
+| `CLOSE_SHORTCUT_JS` (`ipc/parity/misc.rs`) | document-start (메인 + 추가 채팅 창) | **Ctrl+W 포획기** (§5.2) |
+
+### 5.2 Ctrl+W 포획기 `CLOSE_SHORTCUT_JS` (최종 파리티 R1 M1)
+
+2.6.2는 메인 프로세스의 `before-input-event`로 Ctrl/⌘+W를 **삼키고**(Electron 기본 메뉴의
+'창 닫기' 가속기라 그냥 두면 창이 닫힌다) 렌더러엔 `shortcut:close`로 알려 열린 코드
+뷰어만 닫게 했다(`src/main/index.ts:987`).
+
+Tauri에는 그 자리가 **없다** — 웹뷰 문서 안의 키 입력은 셸(tao의 `WindowEvent`)에 오지
+않는다. 그래서 같은 일을 문서 쪽에서 한다. 규약 넷:
+
+- **렌더러 번들이 아니다.** `splash.js`와 같은 지위의 셸 소유 주입 스크립트다.
+  이식본은 지금도 `onCloseShortcut`을 **구독만** 하고(`Chat.tsx:419`·`FileModal.tsx:2998`),
+  R1까지는 그 채널의 **방출자가 없었을 뿐**이다 — 이식본은 한 글자도 안 고쳤다.
+- 채널 이름이 **양방향으로 하나**다: 스크립트가 `ipc_call('shortcut:close')`로 올리고,
+  셸이 같은 이름의 이벤트로 되쏜다. 2.6.2도 이름이 하나다.
+- 되쏘는 대상은 **누른 창 하나**다. 브로드캐스트하면 다른 창에 열려 있던 뷰어가 남의 키
+  입력으로 닫힌다(2.6.2도 누른 창=메인에만 보냈다).
+- `capture:true` + `preventDefault()`. 캡처 단계인 이유는 렌더러의 다른 키 핸들러가 먼저
+  먹고 `stopPropagation` 하는 경우에도 봐야 하기 때문이고, `preventDefault`는 WebView2가
+  이 조합을 자체 처리하는 판에서의 보험이다. `Alt`가 눌린 조합은 제외한다(2.6.2 `!input.alt`).
+
+팝아웃 창에는 주입하지 않는다 — 2.6.2도 팝아웃에는 이 처리가 없었다.
 
 `splash.js`의 표시 신호 규약(R3에서 고침): 오버레이를 DOM에 넣고 **렌더 차단 스타일시트가
 전부 도착한 순간** 셸에 `win:first-paint`를 보낸다. R2는 rAF 두 번을 기다렸는데,

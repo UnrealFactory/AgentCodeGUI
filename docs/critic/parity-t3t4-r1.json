@@ -1,0 +1,568 @@
+{
+  "at": "2026-08-24T08:40:46.360Z",
+  "exe": "C:\\Code\\AgentCodeGUI\\target-t3t4\\release\\agentcodegui.exe",
+  "live": true,
+  "steps": {
+    "seed": {
+      "accounts": 6,
+      "live": [
+        {
+          "email": "lmg56634@gmail.com",
+          "aliveMin": 147
+        },
+        {
+          "email": "lmg56635@gmail.com",
+          "aliveMin": 62
+        },
+        {
+          "email": "lmg56630@gmail.com",
+          "aliveMin": 105
+        },
+        {
+          "email": "junelius@naver.com",
+          "aliveMin": 192
+        },
+        {
+          "email": "lmg56632@gmail.com",
+          "aliveMin": 62
+        },
+        {
+          "email": "lmg56631@gmail.com",
+          "aliveMin": 430
+        }
+      ],
+      "scratch": "C:\\Code\\AgentCodeGUI\\.poc-scratch-t3t4"
+    },
+    "m2": {
+      "argv": "C:\\Code\\AgentCodeGUI\\.poc-scratch-t3t4",
+      "got": "C:\\Code\\AgentCodeGUI\\.poc-scratch-t3t4"
+    },
+    "t3": {
+      "usage": {
+        "fiveHour": {
+          "pct": 0,
+          "resetsAt": null
+        },
+        "weekly": {
+          "pct": 100,
+          "resetsAt": 1787752799
+        },
+        "weeklyFable": {
+          "pct": 33,
+          "resetsAt": 1787752799
+        },
+        "extraCredit": {
+          "enabled": false,
+          "outOfCredits": false,
+          "currency": "USD",
+          "used": 0,
+          "cap": null,
+          "balance": null,
+          "pct": 0
+        }
+      },
+      "ms": 323,
+      "liveWindows": [
+        "fiveHour",
+        "weekly",
+        "weeklyFable",
+        "extraCredit"
+      ],
+      "blockedResetsAtInputs": [
+        {
+          "k": "fiveHour",
+          "pct": 0,
+          "resetsAt": null
+        },
+        {
+          "k": "weekly",
+          "pct": 100,
+          "resetsAt": 1787752799
+        },
+        {
+          "k": "weeklyFable",
+          "pct": 33,
+          "resetsAt": 1787752799
+        },
+        {
+          "k": "extraCredit",
+          "pct": 0
+        }
+      ],
+      "wouldBeBlocked": 1787752799,
+      "accounts": [
+        {
+          "email": "lmg56634@gmail.com",
+          "fiveHourPct": 0,
+          "weeklyPct": 100,
+          "fablePct": 33,
+          "fiveHourResetsAt": null,
+          "weeklyResetsAt": 1787752799,
+          "fableResetsAt": 1787752799
+        },
+        {
+          "email": "lmg56635@gmail.com",
+          "fiveHourPct": 16,
+          "weeklyPct": 48,
+          "fablePct": 28,
+          "fiveHourResetsAt": 1787575799,
+          "weeklyResetsAt": 1787857199,
+          "fableResetsAt": 1787857199
+        },
+        {
+          "email": "lmg56630@gmail.com",
+          "fiveHourPct": 38,
+          "weeklyPct": 6,
+          "fablePct": 3,
+          "fiveHourResetsAt": 1787563800,
+          "weeklyResetsAt": 1787954400,
+          "fableResetsAt": 1787954400
+        },
+        {
+          "email": "junelius@naver.com",
+          "fiveHourPct": 22,
+          "weeklyPct": 99,
+          "fablePct": 37,
+          "fiveHourResetsAt": 1787571600,
+          "weeklyResetsAt": 1787990400,
+          "fableResetsAt": 1787990400
+        },
+        {
+          "email": "lmg56632@gmail.com",
+          "fiveHourPct": 0,
+          "weeklyPct": 15,
+          "fablePct": 5,
+          "fiveHourResetsAt": null,
+          "weeklyResetsAt": 1788026399,
+          "fableResetsAt": 1788026399
+        },
+        {
+          "email": "lmg56631@gmail.com",
+          "fiveHourPct": 76,
+          "weeklyPct": 33,
+          "fablePct": 27,
+          "fiveHourResetsAt": 1787561999,
+          "weeklyResetsAt": 1788058799,
+          "fableResetsAt": 1788058799
+        }
+      ],
+      "sortKey": [
+        {
+          "email": "lmg56634@gmail.com",
+          "left": 0
+        },
+        {
+          "email": "lmg56635@gmail.com",
+          "left": 52
+        },
+        {
+          "email": "lmg56630@gmail.com",
+          "left": 62
+        },
+        {
+          "email": "junelius@naver.com",
+          "left": 1
+        },
+        {
+          "email": "lmg56632@gmail.com",
+          "left": 85
+        },
+        {
+          "email": "lmg56631@gmail.com",
+          "left": 24
+        }
+      ],
+      "msFirst": 323,
+      "msCached": 2
+    },
+    "t4": {
+      "winsBefore": 0,
+      "winsAfter": 1,
+      "windows": [
+        "session-2",
+        "main"
+      ],
+      "listRow": {
+        "id": "sc-1787560854518-1",
+        "title": "BTW - 원본 제목",
+        "status": "done",
+        "open": true,
+        "shown": true,
+        "btwOf": "chat-origin-1"
+      },
+      "sessionPages": 1,
+      "hydrate": {
+        "first": {
+          "snapshot": {
+            "status": "done",
+            "messages": [
+              {
+                "kind": "msg",
+                "id": "u1",
+                "role": "user",
+                "text": "이 함수 왜 이렇게 짰어?",
+                "animate": false,
+                "time": "오후 5:40"
+              },
+              {
+                "kind": "msg",
+                "id": "rerr2",
+                "role": "assistant",
+                "text": "Error: --resume requires a valid session ID or session title when used with --print. Usage: claude -p --resume <session-id|title>. Provided value \"ses-fork-1\" is not a UUID and does not match any session title.",
+                "animate": false,
+                "error": true,
+                "time": "오후 5:40"
+              },
+              {
+                "kind": "notice",
+                "id": "n3",
+                "text": "[stderr] Error: --resume requires a valid session ID or session title when used with --print. Usage: claude -p --resume <session-id|title>. Provided value \"ses-fork-1\" is not a UUID and does not match any session title.",
+                "time": "오후 5:40"
+              }
+            ],
+            "todos": [],
+            "files": [],
+            "diffs": {},
+            "terminal": [],
+            "subagents": [],
+            "bgTasks": [],
+            "workflows": [],
+            "pendingPermission": null,
+            "pendingQuestion": null,
+            "session": null,
+            "result": {
+              "costUsd": 0,
+              "durationMs": 0,
+              "numTurns": 0,
+              "contextTokens": 0,
+              "contextWindow": null
+            },
+            "pendingCommand": null,
+            "spentUsd": 0,
+            "tokenTotals": {},
+            "thinkingText": null,
+            "streaming": false,
+            "openGroupId": null,
+            "seq": 3,
+            "shownNotices": [],
+            "curRunId": "r21288-1",
+            "turnAt": 1787560854753,
+            "interrupted": false
+          },
+          "cwd": "C:\\Code\\AgentCodeGUI\\.poc-scratch-t3t4",
+          "refDirs": [
+            "C:\\Code\\AgentCodeGUI\\.poc-scratch-t3t4"
+          ],
+          "picker": {
+            "model": "sonnet",
+            "effort": "high",
+            "mode": "auto"
+          },
+          "draft": "",
+          "draftImages": [],
+          "btwFork": "ses-fork-1",
+          "btwForkCwd": "C:\\Code\\AgentCodeGUI\\.poc-scratch-t3t4",
+          "btw": true
+        },
+        "second": {
+          "snapshot": {
+            "status": "done",
+            "messages": [
+              {
+                "kind": "msg",
+                "id": "u1",
+                "role": "user",
+                "text": "이 함수 왜 이렇게 짰어?",
+                "animate": false,
+                "time": "오후 5:40"
+              },
+              {
+                "kind": "msg",
+                "id": "rerr2",
+                "role": "assistant",
+                "text": "Error: --resume requires a valid session ID or session title when used with --print. Usage: claude -p --resume <session-id|title>. Provided value \"ses-fork-1\" is not a UUID and does not match any session title.",
+                "animate": false,
+                "error": true,
+                "time": "오후 5:40"
+              },
+              {
+                "kind": "notice",
+                "id": "n3",
+                "text": "[stderr] Error: --resume requires a valid session ID or session title when used with --print. Usage: claude -p --resume <session-id|title>. Provided value \"ses-fork-1\" is not a UUID and does not match any session title.",
+                "time": "오후 5:40"
+              }
+            ],
+            "todos": [],
+            "files": [],
+            "diffs": {},
+            "terminal": [],
+            "subagents": [],
+            "bgTasks": [],
+            "workflows": [],
+            "pendingPermission": null,
+            "pendingQuestion": null,
+            "session": null,
+            "result": {
+              "costUsd": 0,
+              "durationMs": 0,
+              "numTurns": 0,
+              "contextTokens": 0,
+              "contextWindow": null
+            },
+            "pendingCommand": null,
+            "spentUsd": 0,
+            "tokenTotals": {},
+            "thinkingText": null,
+            "streaming": false,
+            "openGroupId": null,
+            "seq": 3,
+            "shownNotices": [],
+            "curRunId": "r21288-1",
+            "turnAt": 1787560854753,
+            "interrupted": false
+          },
+          "cwd": "C:\\Code\\AgentCodeGUI\\.poc-scratch-t3t4",
+          "refDirs": [
+            "C:\\Code\\AgentCodeGUI\\.poc-scratch-t3t4"
+          ],
+          "picker": {
+            "model": "sonnet",
+            "effort": "high",
+            "mode": "auto"
+          },
+          "draft": "",
+          "draftImages": [],
+          "btwFork": "ses-fork-1",
+          "btwForkCwd": "C:\\Code\\AgentCodeGUI\\.poc-scratch-t3t4",
+          "btw": true
+        }
+      },
+      "resumeEcho": true,
+      "autoSent": 1,
+      "afterClose": {
+        "id": "sc-1787560854518-1",
+        "title": "BTW - 원본 제목",
+        "status": "done",
+        "open": false,
+        "shown": false,
+        "btwOf": "chat-origin-1"
+      }
+    },
+    "h2": {
+      "mcpTotal": 1,
+      "skillTotal": 1,
+      "projMcp": [
+        {
+          "name": "bench-mcp",
+          "scope": "local",
+          "origin": "project",
+          "transport": "stdio",
+          "detail": "node stub.js",
+          "enabled": true
+        }
+      ],
+      "projSkill": [
+        {
+          "name": "bench-skill",
+          "description": "파리티 실측용 스킬",
+          "scope": "local",
+          "path": "C:\\Code\\AgentCodeGUI\\.poc-scratch-t3t4\\.claude\\skills\\bench-skill\\SKILL.md",
+          "enabled": true
+        }
+      ],
+      "toggled": {
+        "mcp": {
+          "name": "bench-mcp",
+          "scope": "local",
+          "origin": "project",
+          "transport": "stdio",
+          "detail": "node stub.js",
+          "enabled": false
+        },
+        "skill": {
+          "name": "bench-skill",
+          "description": "파리티 실측용 스킬",
+          "scope": "local",
+          "path": "C:\\Code\\AgentCodeGUI\\.poc-scratch-t3t4\\.claude\\skills\\bench-skill\\SKILL.md",
+          "enabled": false
+        },
+        "diskM": {
+          "disabled": [
+            "bench-mcp"
+          ]
+        },
+        "diskS": {
+          "disabled": [
+            "bench-skill"
+          ]
+        }
+      }
+    },
+    "m1": {
+      "received": 1
+    },
+    "m3": {
+      "received": 1
+    },
+    "h4": {
+      "models": [
+        {
+          "id": "gpt-5.6-sol",
+          "label": "GPT-5.6-Sol",
+          "desc": "Latest frontier agentic coding model.",
+          "efforts": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max",
+            "ultra"
+          ],
+          "defaultEffort": "low",
+          "isDefault": true
+        },
+        {
+          "id": "gpt-5.6-terra",
+          "label": "GPT-5.6-Terra",
+          "desc": "Balanced agentic coding model for everyday work.",
+          "efforts": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max",
+            "ultra"
+          ],
+          "defaultEffort": "medium",
+          "isDefault": false
+        },
+        {
+          "id": "gpt-5.6-luna",
+          "label": "GPT-5.6-Luna",
+          "desc": "Fast and affordable agentic coding model.",
+          "efforts": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ],
+          "defaultEffort": "medium",
+          "isDefault": false
+        },
+        {
+          "id": "gpt-5.5",
+          "label": "GPT-5.5",
+          "desc": "Frontier model for complex coding, research, and real-world work.",
+          "efforts": [
+            "low",
+            "medium",
+            "high",
+            "xhigh"
+          ],
+          "defaultEffort": "medium",
+          "isDefault": false
+        },
+        {
+          "id": "gpt-5.4",
+          "label": "GPT-5.4",
+          "desc": "Strong model for everyday coding.",
+          "efforts": [
+            "low",
+            "medium",
+            "high",
+            "xhigh"
+          ],
+          "defaultEffort": "medium",
+          "isDefault": false
+        },
+        {
+          "id": "gpt-5.4-mini",
+          "label": "GPT-5.4-Mini",
+          "desc": "Small, fast, and cost-efficient model for simpler coding tasks.",
+          "efforts": [
+            "low",
+            "medium",
+            "high",
+            "xhigh"
+          ],
+          "defaultEffort": "medium",
+          "isDefault": false
+        },
+        {
+          "id": "gpt-5.2",
+          "label": "GPT-5.2",
+          "desc": "Optimized for professional work and long-running agents.",
+          "efforts": [
+            "low",
+            "medium",
+            "high",
+            "xhigh"
+          ],
+          "defaultEffort": "medium",
+          "isDefault": false
+        }
+      ],
+      "ms": 239,
+      "codexAccounts": true
+    },
+    "h1": {
+      "본채팅(App.tsx)": {
+        "opened": true,
+        "closed": 1
+      },
+      "추가 채팅 창(SessionWindow.tsx)": {
+        "opened": true,
+        "closed": 1
+      },
+      "멀티 패널(MultiAgent.tsx)": {
+        "opened": true,
+        "closed": 1
+      },
+      "wired": {
+        "App.tsx": true,
+        "MultiAgent.tsx": true,
+        "SessionWindow.tsx": true
+      }
+    },
+    "h5": {
+      "chatId": "sc-1787560866725-4",
+      "stillOpen": false,
+      "flushed": {
+        "id": "sc-1787560866725-4",
+        "title": "FLUSH-OK",
+        "status": "idle",
+        "open": false,
+        "shown": false
+      },
+      "list": [
+        {
+          "id": "sc-1787560860827-3",
+          "title": "",
+          "status": "idle",
+          "open": true,
+          "shown": true
+        },
+        {
+          "id": "sc-1787560854518-1",
+          "title": "BTW - 원본 제목",
+          "status": "done",
+          "open": false,
+          "shown": false,
+          "btwOf": "chat-origin-1"
+        },
+        {
+          "id": "sc-1787560866725-4",
+          "title": "FLUSH-OK",
+          "status": "idle",
+          "open": false,
+          "shown": false
+        }
+      ],
+      "bothNamesInSource": true
+    }
+  },
+  "findings": [],
+  "pass": 37,
+  "fail": 0
+}
