@@ -36,7 +36,8 @@
         "sidebarImage": "../build/installerSidebar.bmp",
         "languages": ["Korean", "English"],
         "displayLanguageSelector": false,
-        "compression": "lzma"
+        "compression": "lzma",
+        "installerHooks": "./nsis/hooks.nsh"
       }
     }
   }
