@@ -38,10 +38,23 @@ const MERGE = argv.includes('--merge') // 이전 report.json에 덮어쓰지 않
 const exeArg = argv.find((a) => a.startsWith('--exe='))
 const EXE = exeArg ? exeArg.slice(6) : undefined
 
-const profile = kind === 'tauri' ? tauriProfile({ port: 9346, exe: EXE }) : electronProfile({ port: 9345 })
+// --tag=<name> — 산출을 `bench/shots/<kind>-<name>/`으로 돌린다.
+// 왜 필요한가: `bench/shots/<kind>/report.json`은 최종 파리티 R1의 **증거 파일**이다.
+// 하네스를 고친 뒤 몇 화면만 재주행하면서 그 리포트에 덮어쓰면 R1의 수치(성공률·실패
+// 목록)를 되짚을 수 없게 된다. 홈과 CDP 포트도 태그로 갈라 다른 갈래의 동시 실행과
+// 겹치지 않게 한다(같은 워크트리에서 3갈래가 동시에 돈다).
+// --port=<n> — 포트를 직접 지정(태그 해시가 남의 포트와 겹칠 때).
+const tagArg = argv.find((a) => a.startsWith('--tag='))
+const TAG = tagArg ? tagArg.slice(6).replace(/[^\w.-]/g, '') : ''
+const portArg = argv.find((a) => a.startsWith('--port='))
+const hashTag = (s) => [...s].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 400, 7)
+const basePort = kind === 'tauri' ? 9346 : 9345
+const PORT = portArg ? Number(portArg.slice(7)) : TAG ? 9500 + hashTag(TAG) * 2 + (kind === 'tauri' ? 1 : 0) : basePort
+
+const profile = kind === 'tauri' ? tauriProfile({ port: PORT, exe: EXE }) : electronProfile({ port: PORT })
 const APP_VERSION = kind === 'tauri' ? '3.0.0-beta.1' : '2.6.2'
-const HOME = path.join(os.tmpdir(), `ccg-screens-${kind}`)
-const OUT = path.join(REPO, 'bench', 'shots', kind)
+const HOME = path.join(os.tmpdir(), `ccg-screens-${kind}${TAG ? '-' + TAG : ''}`)
+const OUT = path.join(REPO, 'bench', 'shots', kind + (TAG ? '-' + TAG : ''))
 const VIEW = { width: 1440, height: 900 }
 
 fs.mkdirSync(OUT, { recursive: true })
@@ -389,9 +402,27 @@ async function bootPass(variantKey) {
   let cdp = null
   const t0 = Date.now()
   try {
-    // 스플래시는 기동과 동시에 사라지므로 data: 타깃을 최우선으로 훑는다
+    // ── 스플래시: 별도 창이 있으면 그걸, 없으면 창 안 오버레이를 잡는다 ──────────
+    //
+    // ★ R1 §5-5. 예전엔 `data:` 창만 노렸고, 3.0은 그 창을 없앤 구조 변경(웹뷰 +1 회피)
+    // 이라 **의도된 차이가 실패로 집계**됐다. 앱별 분기 대신 러너가 두 자리를 순서대로
+    // 본다 — 화면 정의(screens.mjs)는 여전히 한 벌이고, 셀렉터만 두 구현의 합집합이다.
+    //
+    // 판정과 촬영은 **같은 순간**이다(selfShot 규약). 스플래시는 한 프레임짜리라
+    // assert → sleep → shoot로 나누면 "있었는데 못 찍었다"가 된다.
     if (v.early) {
-      const deadline = Date.now() + 20000
+      const shotWhen = async (c, s, ms, interval = 12) => {
+        const t1 = Date.now()
+        for (;;) {
+          const n = await c.eval(`document.querySelectorAll(${JSON.stringify(s.assert)}).length`).catch(() => 0)
+          if (n >= (s.assertMin ?? 1)) { await shoot(c, s.id); return n }
+          if (Date.now() - t1 > ms) throw new Error(`스플래시 셀렉터 미포착: ${s.assert}`)
+          await sleep(interval)
+        }
+      }
+
+      // 1단 — 별도 창(2.6.2). 기동과 동시에 사라지므로 25ms 간격으로 훑는다.
+      const deadline = Date.now() + (v.earlyMs ?? 12000)
       let done = false
       while (Date.now() < deadline && !done) {
         try {
@@ -401,14 +432,11 @@ async function bootPass(variantKey) {
             const c = await Cdp.connect(t.webSocketDebuggerUrl)
             await prepPage(c, { bg: false })
             for (const s of screens) {
-              const row = { id: s.id, label: s.label, area: s.area, surface: s.surface, ok: false, ms: Date.now() - t0 }
-              try {
-                row.found = await assertOn(c, s.assert, s.assertMin ?? 1, 3000)
-                await shoot(c, s.id)
-                row.ok = true
-              } catch (e) { row.error = String(e.message ?? e).slice(0, 300) }
+              const row = { id: s.id, label: s.label, area: s.area, surface: s.surface, ok: false, ms: Date.now() - t0, via: 'separate-window' }
+              try { row.found = await shotWhen(c, s, 3000); row.ok = true }
+              catch (e) { row.error = String(e.message ?? e).slice(0, 300) }
               rec(row)
-              console.log(`${row.ok ? 'OK ' : 'FAIL'} ${s.id} (boot:${variantKey})${row.error ? ' — ' + row.error : ''}`)
+              console.log(`${row.ok ? 'OK ' : 'FAIL'} ${s.id} (boot:${variantKey}/별도창)${row.error ? ' — ' + row.error : ''}`)
             }
             c.close()
             done = true
@@ -416,7 +444,36 @@ async function bootPass(variantKey) {
         } catch { /* 아직 */ }
         await sleep(25)
       }
-      if (!done) for (const s of screens) { rec({ id: s.id, label: s.label, area: s.area, ok: false, error: 'data: 스플래시 타깃을 기동 20초 안에 잡지 못함' }); console.log(`FAIL ${s.id} (boot:${variantKey}) — 스플래시 타깃 미포착`) }
+      if (done) return
+
+      // 2단 — 창 안 오버레이(3.0). 리로드로 스플래시를 **다시 만든다**: 오버레이는
+      // initialization_script라 새 문서마다 다시 돈다. CPU를 조이지 않으면 React 마운트가
+      // 300ms대라 폴링 사이로 빠져나간다.
+      const fb = v.reloadFallback
+      if (!fb) {
+        for (const s of screens) { rec({ id: s.id, label: s.label, area: s.area, ok: false, error: `${v.early} 스플래시 타깃을 ${v.earlyMs ?? 12000}ms 안에 잡지 못함` }); console.log(`FAIL ${s.id} (boot:${variantKey}) — 스플래시 타깃 미포착`) }
+        return
+      }
+      console.log(`[ab] boot:${variantKey} — 별도 창 없음. 창 안 오버레이로 재시도(리로드 + CPU×${fb.throttle})`)
+      const c = await connectMain(profile.port, 90000)
+      try {
+        await prepPage(c, { bg: false })
+        await fixWindowSize(c)
+        for (const s of screens) {
+          const row = { id: s.id, label: s.label, area: s.area, surface: s.surface, ok: false, ms: 0, via: 'in-window-overlay' }
+          const st = Date.now()
+          try {
+            await c.send('Emulation.setCPUThrottlingRate', { rate: fb.throttle }).catch(() => {})
+            await c.send('Page.reload', { ignoreCache: false })
+            row.found = await shotWhen(c, s, fb.ms ?? 25000)
+            row.ok = true
+          } catch (e) { row.error = String(e.message ?? e).slice(0, 300) }
+          await c.send('Emulation.setCPUThrottlingRate', { rate: 1 }).catch(() => {})
+          row.ms = Date.now() - st
+          rec(row)
+          console.log(`${row.ok ? 'OK ' : 'FAIL'} ${s.id} (boot:${variantKey}/창안)${row.error ? ' — ' + row.error : ''}`)
+        }
+      } finally { try { c.close() } catch { /* 닫힘 */ } }
       return
     }
 
@@ -424,6 +481,19 @@ async function bootPass(variantKey) {
     await prepPage(cdp)
     if (v.throttle) await cdp.send('Emulation.setCPUThrottlingRate', { rate: v.throttle }).catch(() => {})
     await fixWindowSize(cdp)
+    // ★ M12 R2 — 부팅 패스의 크기 함정(실측으로 원인까지 팠다).
+    //   · `Browser.setWindowBounds`는 **Electron에서 안 먹는다**(report.windowSized=false).
+    //     즉 `fixWindowSize`는 3.0에만 듣는 한쪽짜리 레버다.
+    //   · 두 앱의 캔버스가 실제로 같아지는 이유는 CDP가 아니라 **같은 기본 창 크기**다
+    //     (2.6.2 `src/main/index.ts:293` DEFAULT_STATE 1320×880 — 3.0이 그대로 승계).
+    //   · 그래서 캡처 전에 크기를 **다시 강제하면 안 된다**. 강제하면 3.0만 1440×900으로
+    //     끌려가 electron 1320×880과 어긋난다(실측: limit-hold-bar가 그렇게 어긋나 있었다).
+    //     맞는 처방은 「앱이 자기 상태를 적용할 때까지 기다렸다 찍는다」이다.
+    // 한 프레임짜리 화면(multi-hydrate·스플래시)은 마운트를 기다리면 놓치므로 **옵트인**이다.
+    if (v.settleSize) {
+      await waitMounted(cdp, 90000)
+      await sleep(1200)
+    }
     for (const s of screens) {
       const row = { id: s.id, label: s.label, area: s.area, surface: s.surface, ok: false, ms: 0 }
       const st = Date.now()
@@ -433,6 +503,7 @@ async function bootPass(variantKey) {
         await shoot(cdp, s.id)
         row.ok = true
       } catch (e) { row.error = String(e.message ?? e).slice(0, 300) }
+      row.viewport = await cdp.eval(`[innerWidth, innerHeight]`).catch(() => null)
       row.ms = Date.now() - st
       rec(row)
       console.log(`${row.ok ? 'OK ' : 'FAIL'} ${s.id} (boot:${variantKey})${row.error ? ' — ' + row.error : ''}`)
@@ -527,4 +598,4 @@ if (attempted.length - okRows.length) {
   console.log('\n실패:')
   for (const r of attempted.filter((x) => !x.ok)) console.log(`  ${r.id} — ${r.error}`)
 }
-console.log(`\nsaved: bench/shots/${kind}/report.json`)
+console.log(`\nsaved: ${path.relative(REPO, path.join(OUT, 'report.json')).replace(/\\/g, '/')}`)

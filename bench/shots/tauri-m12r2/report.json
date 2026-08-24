@@ -1,0 +1,33 @@
+{
+  "app": "tauri-3.0.0",
+  "kind": "tauri",
+  "at": "2026-08-24T08:21:51.122Z",
+  "viewport": {
+    "width": 1440,
+    "height": 900
+  },
+  "screens": [
+    {
+      "id": "limit-hold-bar",
+      "label": "한도 자동 이어서 대기표 바",
+      "area": "2. 본채팅",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 313,
+      "found": 1,
+      "viewport": [
+        1320,
+        880
+      ]
+    }
+  ],
+  "windowSized": true,
+  "summary": {
+    "defined": 156,
+    "attempted": 1,
+    "ok": 1,
+    "failed": 0,
+    "skipped": 0,
+    "successRatePct": 100
+  }
+}

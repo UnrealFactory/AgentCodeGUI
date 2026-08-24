@@ -1,0 +1,33 @@
+{
+  "app": "electron-2.6.2",
+  "kind": "electron",
+  "at": "2026-08-24T08:22:02.358Z",
+  "viewport": {
+    "width": 1440,
+    "height": 900
+  },
+  "screens": [
+    {
+      "id": "limit-hold-bar",
+      "label": "한도 자동 이어서 대기표 바",
+      "area": "2. 본채팅",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 337,
+      "found": 1,
+      "viewport": [
+        1320,
+        880
+      ]
+    }
+  ],
+  "windowSized": false,
+  "summary": {
+    "defined": 156,
+    "attempted": 1,
+    "ok": 1,
+    "failed": 0,
+    "skipped": 0,
+    "successRatePct": 100
+  }
+}

@@ -28,15 +28,27 @@ export function makeFixtureHome(homeDir, appVersion) {
   )
 
   // 엔진: 실홈의 engines를 정션으로 공유(읽기 전용 사용 — 벤치에서 설치/정리 금지)
-  const engines = path.join(homeDir, 'engines')
-  const realEngines = path.join(os.homedir(), '.agentcodegui', 'engines')
-  if (!fs.existsSync(engines) && fs.existsSync(realEngines)) {
-    try {
-      execFileSync('cmd', ['/c', 'mklink', '/J', engines, realEngines], { stdio: 'ignore' })
-    } catch { /* 정션 실패 시 엔진 없는 홈 — 게이트 카드가 뜰 수 있음 */ }
+  //
+  // ★ 최종 파리티 R1 §5-4 — `codex-engines`도 같이 정션한다. 2.6.2의
+  // `src/main/codex/versions.ts:17`은 `APP_HOME`을 `os.homedir()`로 **하드코딩**해서
+  // `CCG_HOME`을 무시한다(그쪽 버그). 그래서 정션이 없으면 2.6.2만 실홈의 codex 엔진을
+  // 보고 「정리」 버튼을 그리고, 3.0(CCG_HOME 준수)은 빈 목록이라 안 그린다 —
+  // `settings-engine-confirm`이 **앱 차이가 아니라 픽스처 비대칭 때문에** 실패했다.
+  const realHome = path.join(os.homedir(), '.agentcodegui')
+  for (const name of ['engines', 'codex-engines']) {
+    const link = path.join(homeDir, name)
+    const real = path.join(realHome, name)
+    if (!fs.existsSync(link) && fs.existsSync(real)) {
+      try {
+        execFileSync('cmd', ['/c', 'mklink', '/J', link, real], { stdio: 'ignore' })
+      } catch { /* 정션 실패 시 엔진 없는 홈 — 게이트 카드가 뜰 수 있음 */ }
+    }
   }
-  const realCfg = path.join(os.homedir(), '.agentcodegui', 'config.json')
-  if (fs.existsSync(realCfg)) fs.copyFileSync(realCfg, path.join(homeDir, 'config.json'))
+  // 활성 버전 표시도 같이 맞춘다 — 목록만 같고 activeVersion이 다르면 배지가 어긋난다
+  for (const f of ['config.json', 'codex-config.json']) {
+    const src = path.join(realHome, f)
+    if (fs.existsSync(src)) fs.copyFileSync(src, path.join(homeDir, f))
+  }
 
   // 계정: accounts.json은 홈에 있지만 그 안의 토큰은 Chromium OSCrypt(userData의
   // 'Local State'에 DPAPI로 감싼 AES 키)로 암호화돼 있다. 격리 userData엔 그 키가 없어

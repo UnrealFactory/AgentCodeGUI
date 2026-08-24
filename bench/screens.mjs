@@ -23,6 +23,7 @@
 // 확인할 때까지 돌고, 러너는 화면 사이마다 오염 셀렉터를 검사해 남으면 강제 정리한다.
 import fs from 'node:fs'
 import path from 'node:path'
+import { FIX_ID } from './fixture.mjs'
 
 // ── 페이지 주입 헬퍼 (인벤토리의 __k/__c/__ctx/__type 문법 그대로) ────────────────
 export const HELPERS_JS = `(() => {
@@ -276,14 +277,47 @@ export function makeCtx(cdp, extra = {}) {
       if (!ok) throw new Error(`ctxTreeRow: ${text} 행 없음`)
       await sleep(250)
     },
-    /** 설정 모달 열기 + 레일 N번 탭 */
-    async openSettings(tab = 0) {
+    /**
+     * 설정 모달 열기 + 레일 탭을 **라벨**로 누른다.
+     *
+     * ★ 최종 파리티 R1 §5-1 — 예전엔 인덱스(`openSettings(6)`)였다. 3.0이 「확장」 그룹에
+     * Talk(M10) 하나를 더 넣은 것만으로 6번 이후가 전부 한 칸씩 밀려서
+     *   · 6화면이 **거짓 실패**(autohide-preview·sidebar-autohide-edge·settings-language·
+     *     settings-explorer·settings-gestures·settings-code-expanded)
+     *   · 2화면이 **거짓 통과**(settings-display·settings-code-lsp — 다른 탭인데 셀렉터가
+     *     우연히 맞았다. 그 결과 블라인드 비교에 서로 다른 화면이 짝지어졌다)
+     * 했다. 거짓 통과가 거짓 실패보다 나쁘다 — 아무도 눈치채지 못한다.
+     *
+     * 라벨은 두 앱이 같고 **i18n 대상도 아니다**(Settings.tsx `navGroups()`가 'Profile'·
+     * 'Account'·'Engine'·'API'·'MCP'·'Skill'·'Display'·'Language'·'Code'·'Explorer'·
+     * 'Gestures'를 리터럴로 박는다. 3.0만 'Talk'가 하나 더 있다). 탭이 늘어도 안 밀린다.
+     *
+     * 누른 뒤 **선택된 탭이 정말 그 라벨인지 확인**한다 — 눌렀는데 안 바뀌는 경우까지
+     * 잡아야 같은 종류의 거짓 통과가 다시 안 생긴다.
+     */
+    async openSettings(tab) {
+      if (typeof tab !== 'string' || !tab) {
+        throw new Error(`openSettings: 라벨 문자열이 필요하다(인덱스 금지 — R1 §5-1). 받은 값 ${JSON.stringify(tab)}`)
+      }
       if (!(await ctx.has('.set-modal'))) {
         await ctx.click('.sb-foot')
         await ctx.waitFor('.set-modal', 6000)
         await sleep(350)
       }
-      if (tab > 0) { await ctx.click('.set-ni', tab); await sleep(350) }
+      // 레일 검색어가 남아 있으면 라벨이 필터에 걸려 안 보인다(settings-rail-search 다음
+      // 화면이 통째로 죽는 경로) — 먼저 비운다.
+      await ev(`(() => { const i = document.querySelector('.set-search input'); return i && i.value ? __type('.set-search input', '') : true })()`).catch(() => {})
+      const railNow = async () =>
+        (await ev(`[...document.querySelectorAll('.set-nav .set-ni')].map((x) => (x.textContent || '').trim())`).catch(() => [])) || []
+      const hit = await ev(`(() => {
+        const b = [...document.querySelectorAll('.set-nav .set-ni')].find((x) => (x.textContent || '').trim() === ${S(tab)})
+        if (!b) return false
+        b.click(); return true
+      })()`).catch(() => false)
+      if (!hit) throw new Error(`openSettings: 레일에 '${tab}' 없음 — 실제 레일 [${(await railNow()).join(', ')}]`)
+      await sleep(350)
+      const on = await ev(`(() => { const b = document.querySelector('.set-nav .set-ni.on'); return b ? (b.textContent || '').trim() : '' })()`).catch(() => '')
+      if (on !== tab) throw new Error(`openSettings: '${tab}'을 눌렀는데 선택된 탭은 '${on || '(없음)'}'`)
     },
     /** 사이드바에서 채팅 고르기 (제목 매칭) */
     async selectChat(title) {
@@ -685,10 +719,19 @@ async function minimizeWindow(ctx, target) {
 export const SCREENS = [
   // ══ 1. 부팅 · 안전망 ══════════════════════════════════════════════════════════
   {
+    // ★ R1 §5-5 — 예전엔 `.card .spin`(2.6.2의 `data:` 스플래시 **창**)만 찾았다. 3.0은
+    // 그 창을 **없앴다**: 별도 BrowserWindow는 WebView2 렌더러 프로세스 +1이라 이번
+    // 라운드의 메모리 목표와 정면 충돌한다(`src-tauri/src/splash.js` 헤더). 대신 메인 창
+    // 안에 오버레이(`#__ccg_splash`)를 깔고 그게 처음 그려진 순간 창을 보여준다.
+    // 즉 이건 **회귀가 아니라 의도된 구조 변경**인데 하네스가 옛 자리만 봐서 실패로
+    // 집계됐다(사영표 §1의 「변화 없음」도 낡았다).
+    // 그래서 판정 셀렉터를 두 구현의 **합집합**으로 두고, 러너가 「별도 창이든 창 안이든
+    // 스플래시가 있는 페이지」를 찾게 한다. 한 프레임짜리 화면이라 selfShot(판정과 촬영이
+    // 같은 순간)이 필수다 — 폴링 사이에 사라지면 "있었는데 못 찍었다"가 된다.
     id: 'boot-splash-native', label: '네이티브 시작 스플래시', area: '1. 부팅', surface: 'panel-window',
-    needsEngine: false, needsAccount: false, boot: 'splash',
-    assert: '.card .spin',
-    note: '앱 스폰 직후 data: 타깃 — ab.mjs의 boot 페이즈가 기동과 동시에 폴링해 잡는다'
+    needsEngine: false, needsAccount: false, boot: 'splash', selfShot: true,
+    assert: '.card .spin, #__ccg_splash .sp',
+    note: '2.6.2 = 기동 직후 data: 창 / 3.0 = 메인 창 안 오버레이(#__ccg_splash) — ab.mjs boot 페이즈가 둘 다 노린다'
   },
   {
     id: 'boot-loading', label: '렌더러 로딩 화면', area: '1. 부팅', surface: 'main-window',
@@ -719,21 +762,13 @@ export const SCREENS = [
       await sleep(1200)
     }
   },
-  {
-    id: 'error-boundary', label: '에러 안전망 카드', area: '1. 부팅', surface: 'main-window',
-    needsEngine: false, needsAccount: false,
-    // 픽스처의 fix-boom 채팅 = 메시지 text가 객체 → 렌더 중 throw → ErrorBoundary
-    reach: async (cdp, ctx) => { await ctx.selectChat('벤치 예외 채팅'); await ctx.waitFor('.eb .eb-card .eb-title', 6000) },
-    assert: '.eb .eb-card .eb-title',
-    reset: async (cdp, ctx) => {
-      await cdp.send('Page.reload', {})
-      await ctx.waitFor('.win', 30000)
-      await sleep(1500)
-      // 활성 채팅이 예외 채팅으로 남으면 이후 전부 깨진다 — 긴 스레드로 되돌린다
-      await ctx.selectChat('벤치 긴 스레드').catch(() => {})
-      await sleep(600)
-    }
-  },
+  // ★ R1 §5-6 — `error-boundary`는 여기(1. 부팅)에 있었지만 **실행은 패스 맨 끝**이다.
+  //    배열 순서 = 실행 순서라 아래 «부록» 자리로 옮겼다. 이유는 R1 §1.4:
+  //    3.0은 `activeChatId`를 **즉시** 영속하므로(ipc/mod.rs:194) 예외 채팅이 활성인 채로
+  //    리로드되면 같은 카드로 되돌아와 부팅 루프에 갇힌다 — 사이드바도 창 크롬도 없어
+  //    **다른 채팅으로 갈 수단이 화면에 없다**. 이 화면 하나가 뒤따르는 화면 100개를
+  //    연쇄로 죽였고, 그대로 집계하면 "3.0이 화면 100개를 못 그린다"는 거짓 결론이 난다.
+  //    (§1.4가 고쳐지면 되돌려도 된다. 그 전까지는 맨 끝이 정직한 자리다.)
 
   // ══ 2. 본채팅 ═════════════════════════════════════════════════════════════════
   { id: 'chat-thread', label: '대화 스레드(코드 뷰)', area: '2. 본채팅', surface: 'main-window', needsEngine: false, needsAccount: false, reach: async () => {}, assert: '.chat.chat--code .thread' },
@@ -1043,7 +1078,7 @@ export const SCREENS = [
   {
     id: 'autohide-preview', label: '사이드바 감지 폭 미리보기 띠', area: '2. 본채팅', surface: 'main-window', needsEngine: false, needsAccount: false,
     reach: async (cdp, ctx) => {
-      await ctx.openSettings(6)
+      await ctx.openSettings('Display')
       await ctx.waitFor('.set-inner .set-sec', 5000)
       await setAutohide(ctx, true)
       await sleep(500)
@@ -1066,7 +1101,7 @@ export const SCREENS = [
   {
     id: 'sidebar-autohide-edge', label: '사이드바 자동 숨김 — 접힘/가장자리 띠', area: '2. 본채팅', surface: 'main-window', needsEngine: false, needsAccount: false,
     reach: async (cdp, ctx) => {
-      await ctx.openSettings(6)
+      await ctx.openSettings('Display')
       await setAutohide(ctx, true)
       await ctx.esc(2)
       await ctx.waitGone('.set-modal', 4000)
@@ -1075,7 +1110,7 @@ export const SCREENS = [
     assert: '.lcol.autohide',
     // 켜 둔 채로 넘어가면 이후 사이드바 화면이 전부 접힌 상태로 찍힌다 — 반드시 끈다
     reset: async (cdp, ctx) => {
-      await ctx.openSettings(6)
+      await ctx.openSettings('Display')
       await setAutohide(ctx, false)
       await ctx.esc(2)
       await ctx.waitGone('.set-modal', 4000)
@@ -1670,8 +1705,8 @@ export const SCREENS = [
   { id: 'git-error', label: 'Git 오류 칩', area: '6. Git', surface: 'main-window', needsEngine: false, needsAccount: false, skip: 'Pull/Push 등 원격 조작을 실제로 일으켜야 재현 — 벤치에서 원격 조작 금지' },
 
   // ══ 7. 설정 모달 ══════════════════════════════════════════════════════════════
-  { id: 'settings-profile', label: '설정 — Profile', area: '7. 설정', surface: 'main-window', needsEngine: false, needsAccount: false, reach: async (cdp, ctx) => { await ctx.openSettings(0); await ctx.waitFor('.set-modal .set-inner .sc2.hero2', 6000) }, assert: '.set-modal .set-inner .sc2.hero2', reset: settingsReset },
-  { id: 'settings-account', label: '설정 — Account', area: '7. 설정', surface: 'main-window', needsEngine: false, needsAccount: true, reach: async (cdp, ctx) => { await ctx.openSettings(1); await ctx.waitFor('.set-inner .sc2.acct', 8000) }, assert: '.set-inner .sc2.acct', reset: settingsReset },
+  { id: 'settings-profile', label: '설정 — Profile', area: '7. 설정', surface: 'main-window', needsEngine: false, needsAccount: false, reach: async (cdp, ctx) => { await ctx.openSettings('Profile'); await ctx.waitFor('.set-modal .set-inner .sc2.hero2', 6000) }, assert: '.set-modal .set-inner .sc2.hero2', reset: settingsReset },
+  { id: 'settings-account', label: '설정 — Account', area: '7. 설정', surface: 'main-window', needsEngine: false, needsAccount: true, reach: async (cdp, ctx) => { await ctx.openSettings('Account'); await ctx.waitFor('.set-inner .sc2.acct', 8000) }, assert: '.set-inner .sc2.acct', reset: settingsReset },
   {
     id: 'settings-account-logout-confirm', label: 'Account — 로그아웃 확인 카드', area: '7. 설정', surface: 'main-window',
     needsEngine: false, needsAccount: true,
@@ -1680,11 +1715,11 @@ export const SCREENS = [
     // 자동화로 밟을 수 있는 확인 카드가 존재하지 않으므로 도달 자체가 불가능하고, 눌러 보는 것도 금지.
     skip: '실측 결과 확인 카드가 없다 — 계정 카드의 삭제 버튼이 곧바로 실계정 토큰을 해지한다(Settings.tsx doDelete). 인벤토리 행 정정 필요'
   },
-  { id: 'settings-engine', label: '설정 — Engine', area: '7. 설정', surface: 'main-window', needsEngine: false, needsAccount: false, reach: async (cdp, ctx) => { await ctx.openSettings(2); await ctx.waitFor('.set-inner .sc2.row2.eng', 8000) }, assert: '.set-inner .sc2.row2.eng', reset: settingsReset },
+  { id: 'settings-engine', label: '설정 — Engine', area: '7. 설정', surface: 'main-window', needsEngine: false, needsAccount: false, reach: async (cdp, ctx) => { await ctx.openSettings('Engine'); await ctx.waitFor('.set-inner .sc2.row2.eng', 8000) }, assert: '.set-inner .sc2.row2.eng', reset: settingsReset },
   {
     id: 'settings-engine-confirm', label: 'Engine — 이전 버전 정리 확인', area: '7. 설정', surface: 'main-window', needsEngine: false, needsAccount: false,
     reach: async (cdp, ctx) => {
-      await ctx.openSettings(2)
+      await ctx.openSettings('Engine')
       await ctx.waitFor('.set-inner .sc2.row2.eng', 8000)
       await ctx.clickText('.set-inner button', '정리')
       await ctx.waitFor('.set-dialog-overlay .set-dialog .sd-btns', 6000)
@@ -1693,32 +1728,36 @@ export const SCREENS = [
     // 취소만 — 확인하면 실홈과 정션으로 공유하는 엔진 설치본이 지워진다
     reset: async (cdp, ctx) => { await ctx.esc(1); await ctx.waitGone('.set-dialog-overlay', 4000); await settingsReset(cdp, ctx) }
   },
-  { id: 'settings-api', label: '설정 — API', area: '7. 설정', surface: 'main-window', needsEngine: false, needsAccount: false, reach: async (cdp, ctx) => { await ctx.openSettings(3); await ctx.waitFor('.set-inner .sc2.api', 8000) }, assert: '.set-inner .sc2.api', reset: settingsReset },
-  { id: 'settings-mcp', label: '설정 — MCP', area: '7. 설정', surface: 'main-window', needsEngine: false, needsAccount: false, reach: async (cdp, ctx) => { await ctx.openSettings(4); await ctx.waitFor('.set-inner .set-tabs .set-tab', 8000) }, assert: '.set-inner .set-tabs .set-tab', reset: settingsReset },
-  { id: 'settings-skill', label: '설정 — Skill', area: '7. 설정', surface: 'main-window', needsEngine: false, needsAccount: false, reach: async (cdp, ctx) => { await ctx.openSettings(5); await ctx.waitFor('.set-inner .set-tabs .set-tab', 8000) }, assert: '.set-inner .set-tabs .set-tab', reset: settingsReset },
-  { id: 'settings-display', label: '설정 — Display', area: '7. 설정', surface: 'main-window', needsEngine: false, needsAccount: false, reach: async (cdp, ctx) => { await ctx.openSettings(6); await ctx.waitFor('.set-inner .set-sec', 8000) }, assert: '.set-inner .set-sec', reset: settingsReset },
-  { id: 'settings-language', label: '설정 — Language', area: '7. 설정', surface: 'main-window', needsEngine: false, needsAccount: false, reach: async (cdp, ctx) => { await ctx.openSettings(7); await ctx.waitFor('.set-inner .sc2.row2.pick.on', 8000) }, assert: '.set-inner .sc2.row2.pick.on', reset: settingsReset },
-  { id: 'settings-code-lsp', label: '설정 — Code(언어 서버)', area: '7. 설정', surface: 'main-window', needsEngine: false, needsAccount: false, reach: async (cdp, ctx) => { await ctx.openSettings(8); await ctx.waitFor('.set-inner .sc2.row2', 8000) }, assert: '.set-inner .sc2.row2', reset: settingsReset },
+  { id: 'settings-api', label: '설정 — API', area: '7. 설정', surface: 'main-window', needsEngine: false, needsAccount: false, reach: async (cdp, ctx) => { await ctx.openSettings('API'); await ctx.waitFor('.set-inner .sc2.api', 8000) }, assert: '.set-inner .sc2.api', reset: settingsReset },
+  { id: 'settings-mcp', label: '설정 — MCP', area: '7. 설정', surface: 'main-window', needsEngine: false, needsAccount: false, reach: async (cdp, ctx) => { await ctx.openSettings('MCP'); await ctx.waitFor('.set-inner .set-tabs .set-tab', 8000) }, assert: '.set-inner .set-tabs .set-tab', reset: settingsReset },
+  { id: 'settings-skill', label: '설정 — Skill', area: '7. 설정', surface: 'main-window', needsEngine: false, needsAccount: false, reach: async (cdp, ctx) => { await ctx.openSettings('Skill'); await ctx.waitFor('.set-inner .set-tabs .set-tab', 8000) }, assert: '.set-inner .set-tabs .set-tab', reset: settingsReset },
+  { id: 'settings-display', label: '설정 — Display', area: '7. 설정', surface: 'main-window', needsEngine: false, needsAccount: false, reach: async (cdp, ctx) => { await ctx.openSettings('Display'); await ctx.waitFor('.set-inner .set-sec', 8000) }, assert: '.set-inner .set-sec', reset: settingsReset },
+  { id: 'settings-language', label: '설정 — Language', area: '7. 설정', surface: 'main-window', needsEngine: false, needsAccount: false, reach: async (cdp, ctx) => { await ctx.openSettings('Language'); await ctx.waitFor('.set-inner .sc2.row2.pick.on', 8000) }, assert: '.set-inner .sc2.row2.pick.on', reset: settingsReset },
+  { id: 'settings-code-lsp', label: '설정 — Code(언어 서버)', area: '7. 설정', surface: 'main-window', needsEngine: false, needsAccount: false, reach: async (cdp, ctx) => { await ctx.openSettings('Code'); await ctx.waitFor('.set-inner .sc2.row2', 8000) }, assert: '.set-inner .sc2.row2', reset: settingsReset },
   {
     id: 'settings-code-expanded', label: 'Code — 행 펼침', area: '7. 설정', surface: 'main-window', needsEngine: false, needsAccount: false,
+    // ★ R1 §5-2 — 예전엔 `.sc2.row2`의 **4번 인덱스**를 눌렀다. 그건 2.6.2의 Verse 행이고
+    // 3.0은 Verse를 뺐으니 그 자리에 아무것도 없다(거짓 실패). 펼쳐지는 행에는 앱과 무관하게
+    // `disc` 클래스가 붙는다(Settings.tsx: `disc = isVerse || isCpp`) — 2.6.2 = Verse·C++ 2개,
+    // 3.0 = C++ 1개. 그래서 **첫 disc 행**을 누르면 두 앱이 같은 「펼친 행」을 연다.
+    // 판정도 개수 증가(before+1)가 아니라 `.disc.open`으로 바꾼다: 열림은 클래스가 말해 주는데
+    // 행 개수는 앱마다 다르고(4 vs 5) 펼침 내용이 새 `.row2`를 만드는지에 의존한다.
     reach: async (cdp, ctx) => {
-      await ctx.openSettings(8)
-      const before = await ctx.waitFor('.set-inner .sc2.row2', 8000)
-      await ctx.click('.set-inner .sc2.row2', 0)
-      await sleep(500)
-      const after = await ctx.count('.set-inner .sc2.row2')
-      if (after <= before) { await ctx.click('.set-inner .sc2.row2', 4); await sleep(500) }
-      await ctx.waitFor('.set-inner .sc2.row2', 6000, before + 1)
+      await ctx.openSettings('Code')
+      const discs = await ctx.waitFor('.set-inner .sc2.row2.disc', 8000)
+      if (!discs) throw new Error('settings-code-expanded: 펼칠 수 있는(.disc) 행이 없다')
+      await ctx.click('.set-inner .sc2.row2.disc', 0)
+      await ctx.waitFor('.set-inner .sc2.row2.disc.open', 6000)
     },
-    assert: '.set-inner .sc2.row2',
+    assert: '.set-inner .sc2.row2.disc.open',
     reset: settingsReset
   },
-  { id: 'settings-explorer', label: '설정 — Explorer', area: '7. 설정', surface: 'main-window', needsEngine: false, needsAccount: false, reach: async (cdp, ctx) => { await ctx.openSettings(9); await ctx.waitFor('.set-inner .sc2.tgl', 8000) }, assert: '.set-inner .sc2.tgl', reset: settingsReset },
-  { id: 'settings-gestures', label: '설정 — Gestures', area: '7. 설정', surface: 'main-window', needsEngine: false, needsAccount: false, reach: async (cdp, ctx) => { await ctx.openSettings(10); await ctx.waitFor('.set-inner .set-sec', 8000) }, assert: '.set-inner .set-sec', reset: settingsReset },
+  { id: 'settings-explorer', label: '설정 — Explorer', area: '7. 설정', surface: 'main-window', needsEngine: false, needsAccount: false, reach: async (cdp, ctx) => { await ctx.openSettings('Explorer'); await ctx.waitFor('.set-inner .sc2.tgl', 8000) }, assert: '.set-inner .sc2.tgl', reset: settingsReset },
+  { id: 'settings-gestures', label: '설정 — Gestures', area: '7. 설정', surface: 'main-window', needsEngine: false, needsAccount: false, reach: async (cdp, ctx) => { await ctx.openSettings('Gestures'); await ctx.waitFor('.set-inner .set-sec', 8000) }, assert: '.set-inner .set-sec', reset: settingsReset },
   {
     id: 'settings-rail-search', label: '설정 — 레일 검색 필터', area: '7. 설정', surface: 'main-window', needsEngine: false, needsAccount: false,
     reach: async (cdp, ctx) => {
-      await ctx.openSettings(0)
+      await ctx.openSettings('Profile')
       await ctx.type('.set-search input', '제스처')
       await sleep(400)
       const n = await ctx.count('.set-nav .set-ni')
@@ -1988,7 +2027,28 @@ export const SCREENS = [
   { id: 'engine-gate-install', label: '엔진 설치 로그 카드', area: '10. 알림', surface: 'main-window', needsEngine: false, needsAccount: false, skip: '게이트에서 설치를 누르면 실제로 엔진을 내려받는다(네트워크·수백 MB) — 벤치 금지' },
   { id: 'engine-update-gate', label: '엔진 자동 업데이트 카드', area: '10. 알림', surface: 'main-window', needsEngine: false, needsAccount: false, skip: 'engine-auto-update.enabled + 구버전 엔진 조합이 필요한데, engines는 실홈과 정션 공유라 버전을 조작하면 사용자 실사용 설치본이 바뀐다' },
   { id: 'app-update-gate', label: '앱 업데이트 바', area: '10. 알림', surface: 'main-window', needsEngine: false, needsAccount: false, skip: '업데이트 서버가 새 버전을 보고해야 뜬다 — 서버 응답을 벤치가 위조하려면 네트워크 가로채기가 필요' },
-  { id: 'update-splash', label: '업데이트 적용 스플래시', area: '10. 알림', surface: 'panel-window', needsEngine: false, needsAccount: false, skip: 'Electron 밖 프로세스(cmd /c powershell WPF 창)라 CDP 타깃이 없다 — 데스크톱 캡처로만 판정 가능' }
+  { id: 'update-splash', label: '업데이트 적용 스플래시', area: '10. 알림', surface: 'panel-window', needsEngine: false, needsAccount: false, skip: 'Electron 밖 프로세스(cmd /c powershell WPF 창)라 CDP 타깃이 없다 — 데스크톱 캡처로만 판정 가능' },
+
+  // ══ 부록 · 마지막에 도는 화면 ═══════════════════════════════════════════════════
+  // 여기 있는 것은 「실패하면 뒤가 전부 오염되는」 화면이다. area는 원래 자리를 유지한다
+  // (리포트 집계는 area로 묶으므로 표에서는 여전히 「1. 부팅」에 앉는다).
+  {
+    id: 'error-boundary', label: '에러 안전망 카드', area: '1. 부팅', surface: 'main-window',
+    needsEngine: false, needsAccount: false,
+    // 픽스처의 fix-boom 채팅 = 메시지 text가 객체 → 렌더 중 throw → ErrorBoundary
+    reach: async (cdp, ctx) => { await ctx.selectChat('벤치 예외 채팅'); await ctx.waitFor('.eb .eb-card .eb-title', 6000) },
+    assert: '.eb .eb-card .eb-title',
+    // reset은 **최선을 다하되 실패해도 된다** — 뒤에 오는 화면이 없다. 3.0에서는 여기서
+    // 부팅 루프에 갇히는 것이 정상 관측이고(R1 §1.4), 그걸 고치는 건 하네스 소관이 아니다.
+    reset: async (cdp, ctx) => {
+      await cdp.send('Page.reload', {})
+      await ctx.waitFor('.win', 30000).catch(() => {})
+      await sleep(1500)
+      // 활성 채팅이 예외 채팅으로 남으면 다음 패스가 깨진다 — 긴 스레드로 되돌린다
+      await ctx.selectChat('벤치 긴 스레드').catch(() => {})
+      await sleep(600)
+    }
+  }
 ]
 
 // ── 공용 reset 조각 ─────────────────────────────────────────────────────────────
@@ -2071,9 +2131,15 @@ async function exitMulti(ctx) {
 // ── 부팅 변형 (ab.mjs의 boot 페이즈가 홈을 이렇게 손보고 재기동한다) ─────────────
 export const BOOT_VARIANTS = {
   splash: {
-    label: '스플래시 — 기동 순간 data: 타깃 캡처',
+    label: '스플래시 — 별도 창(2.6.2) 또는 창 안 오버레이(3.0)',
     prepare: () => {},
-    early: 'data:' // 기동 직후 폴링해 잡을 타깃 URL 조각
+    // 1단: 기동 직후 폴링해 잡을 **별도 창** 타깃 URL 조각. 2.6.2가 여기서 잡힌다.
+    early: 'data:',
+    earlyMs: 12000,
+    // 2단: 1단이 빈손이면 = 스플래시가 별도 창이 아니다. 메인 창에 붙어 CPU를 조인 뒤
+    // 리로드한다 — 3.0의 오버레이는 initialization_script라 **재로드마다 다시 돈다**.
+    // 스로틀이 없으면 React 마운트가 300ms대라 오버레이가 폴링 사이로 빠져나간다.
+    reloadFallback: { throttle: 20, ms: 25000 }
   },
   'no-engines': {
     label: '엔진 없는 홈',
@@ -2094,16 +2160,29 @@ export const BOOT_VARIANTS = {
   },
   'limit-hold': {
     label: '한도 대기표를 심은 홈',
+    // 마운트 뒤 창 크기를 한 번 더 강제한다 — 앱이 window-state로 되잡기 때문(ab.mjs 참조).
+    // 이 화면은 상시 상태라 마운트를 기다려도 놓치지 않는다.
+    settleSize: true,
+    // ★ R1 §5-3 — 예전 픽스처는 `{key, resetAt, text, prompt, window}`였다. **어느 필드도
+    // 실제 스키마가 아니다**(limitResume.ts `sanitizeHold`). 특히 `at`이 없으면 첫 줄에서
+    // `null`로 버려져 바가 아예 안 뜬다 — 그래서 이 화면은 **두 앱 모두**, 어느 라운드에서도
+    // 캡처된 적이 없다(양쪽 실패라 "파리티"로 보여 아무도 안 팠다).
+    // 실제 스키마(app/src/lib/limitResume.ts:101, src/renderer/…:98 — 두 앱 동일):
+    //   key(=활성 채팅 id) · at(ms, 24h 안) · engine · account? · resetsAt(**초**) · fable · lastPrompt
     prepare: (home) => {
       const f = path.join(home, 'ui-prefs.json')
       const p = JSON.parse(fs.readFileSync(f, 'utf8'))
       p['limitResume.hold'] = {
-        key: 'fix-long-thread',
-        resetAt: Date.now() + 42 * 60 * 1000,
-        text: '5시간 한도에 걸렸어요',
-        prompt: '구간 12의 캐시 무효화 규칙을 이어서 정리해줘.',
-        window: '5h'
+        key: FIX_ID,
+        at: Date.now(),
+        engine: 'claude',
+        resetsAt: Math.floor(Date.now() / 1000) + 42 * 60, // 초 단위 epoch (resumeDelayMs가 ×1000 한다)
+        fable: false,
+        lastPrompt: '구간 12의 캐시 무효화 규칙을 이어서 정리해줘.'
       }
+      // `limitResume.on`은 **일부러 안 켠다**. 켜면 발화 재검증이 usage 조회를 타는데
+      // 3.0은 그 채널이 아직 비어 있어(파리티 R1 T3) 3.0만 「풀렸다」로 판정할 수 있다 —
+      // 픽스처가 앱별로 다른 화면을 만들면 A/B가 아니다. 꺼짐 상태의 문장은 두 앱이 같다.
       fs.writeFileSync(f, JSON.stringify(p))
     }
   }
