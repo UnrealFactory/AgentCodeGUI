@@ -65,6 +65,10 @@ const WATCH_S = Number(argOf('watch', 120))
 // 격리 홈은 **이름을 바꿀 수 있어야** 한다 — 세 갈래가 같은 워킹트리에서 동시에 돌 때
 // 같은 폴더를 파면 서로의 씨앗을 지운다(R28d EXTN에서 실제로 겹칠 뻔했다).
 const HOME = path.join(REPO, argOf('home', '.poc-home-cpath'))
+// 팔 고르기 — 대조군은 「고친 축」 하나만 돌리면 되고(11분 → 2분), 그동안 다른 팔의
+// 기준 값을 헛되이 다시 굽지 않는다. `--only=e` · `--only=a,c` · 기본 `all`.
+const ONLY = argOf('only', 'all')
+const want = (id) => ONLY === 'all' || ONLY.split(',').map((x) => x.trim().toLowerCase()).includes(id)
 const EMAIL = 'codexpath@cpath.test'
 const CODEX_EMAIL = 'openai-user@cpath.test'
 const CHAT = 'c-codexpath'
@@ -256,83 +260,103 @@ async function main() {
   console.log(`exe: ${EXE}`)
   console.log(`이 컴퓨터의 전역 codex: ${rep.machine.whereCodex.join(' · ') || '(없음 — 판정과 무관하다)'}\n`)
 
-  console.log('A. 전역 PATH 판 — CCG_CODEX_BIN=codex · PATH 앞에 실물 codex')
-  rep.arms.pathCodex = await arm('A/PATH', {
-    codexBin: 'codex',
-    pathEnv: (shim) => `${shim}${path.delimiter}${process.env.PATH ?? ''}`
-  })
-  await sleep(1500)
-  console.log('\nB. 앱 설치본 판 — CCG_CODEX_BIN=<실물 파일>')
-  rep.arms.appManaged = await arm('B/APP', { codexBin: FAKECODEX, pathEnv: pathWithoutCodex() })
-  await sleep(1500)
-  console.log('\nC. 아무 데도 없는 판 — CCG_CODEX_BIN=codex · PATH에서 codex를 걷어냈다')
-  rep.arms.nowhere = await arm('C/NONE', { codexBin: 'codex', pathEnv: pathWithoutCodex() })
-  await sleep(1500)
+  if (want('a')) {
+    console.log('A. 전역 PATH 판 — CCG_CODEX_BIN=codex · PATH 앞에 실물 codex')
+    rep.arms.pathCodex = await arm('A/PATH', {
+      codexBin: 'codex',
+      pathEnv: (shim) => `${shim}${path.delimiter}${process.env.PATH ?? ''}`
+    })
+    await sleep(1500)
+  }
+  if (want('b')) {
+    console.log('\nB. 앱 설치본 판 — CCG_CODEX_BIN=<실물 파일>')
+    rep.arms.appManaged = await arm('B/APP', { codexBin: FAKECODEX, pathEnv: pathWithoutCodex() })
+    await sleep(1500)
+  }
+  if (want('c')) {
+    console.log('\nC. 아무 데도 없는 판 — CCG_CODEX_BIN=codex · PATH에서 codex를 걷어냈다')
+    rep.arms.nowhere = await arm('C/NONE', { codexBin: 'codex', pathEnv: pathWithoutCodex() })
+    await sleep(1500)
+  }
   // ★R28d EXTN — A와 씨앗이 **글자 하나만** 다르다(`codex` → `codex.exe`). PATH 앞칸에
   // 놓이는 실물 파일 이름이 원래부터 `codex.exe`이므로 「PATH에서 찾을 수 있어야 정상」인 판이다.
-  console.log('\nE. 확장자 붙은 맨 이름 — CCG_CODEX_BIN=codex.exe · PATH는 A팔과 동일')
-  rep.arms.extName = await arm('E/EXT', {
-    codexBin: process.platform === 'win32' ? 'codex.exe' : 'codex',
-    pathEnv: (shim) => `${shim}${path.delimiter}${process.env.PATH ?? ''}`
-  })
+  if (want('e')) {
+    console.log('\nE. 확장자 붙은 맨 이름 — CCG_CODEX_BIN=codex.exe · PATH는 A팔과 동일')
+    rep.arms.extName = await arm('E/EXT', {
+      codexBin: process.platform === 'win32' ? 'codex.exe' : 'codex',
+      pathEnv: (shim) => `${shim}${path.delimiter}${process.env.PATH ?? ''}`
+    })
+  }
 
   // D. **이 컴퓨터의 진짜 전역 codex.** 우회로도 가짜도 없다 — 크리틱이 말한 그 인구를
   //    그대로 태운다. 고쳐진 판에서는 t≈90초의 재확인이 `unavailable`로 착지해 **발사하지
   //    않으므로** 사용자의 실 codex 프로세스는 뜨지 않는다(A팔이 그 사실을 먼저 잠근다).
-  if (rep.machine.whereCodex.length) {
+  if (want('d') && rep.machine.whereCodex.length) {
     console.log('\nD. 이 컴퓨터의 진짜 전역 codex — 우회로 없음 · PATH 그대로')
     rep.arms.realGlobal = await arm('D/REAL', { codexBin: null, pathEnv: process.env.PATH })
   } else {
-    console.log('\nD. 건너뜀 — 이 컴퓨터에는 전역 codex가 없다(A팔이 그 인구를 씨앗으로 재현한다)')
+    console.log(
+      want('d')
+        ? '\nD. 건너뜀 — 이 컴퓨터에는 전역 codex가 없다(A팔이 그 인구를 씨앗으로 재현한다)'
+        : `\nD. 건너뜀 — --only=${ONLY}가 안 골랐다`
+    )
     rep.arms.realGlobal = null
   }
 
   const a = rep.arms.pathCodex
   const b = rep.arms.appManaged
   const c = rep.arms.nowhere
-  console.log('\n판정 — 전역 PATH codex도 「물어볼 창구」인가')
-  check('A1 ★★ 전역 PATH 판이 발사하지 않았다', !a.fired, `t=${a.firedAt}초에 쐈다 = 한도를 안 묻고 발사했다`, {
-    firedAt: a.firedAt,
-    probe: a.finalProbe
-  })
-  check(
-    'A2 ★★ 「물어봤는데 못 얻었다」로 판정했다(unavailable)',
-    (a.finalProbe?.unavailable ?? 0) > 0 && (a.finalProbe?.unknown ?? 0) === 0,
-    `unknown=${a.finalProbe?.unknown} unavailable=${a.finalProbe?.unavailable} — unknown이면 창구가 없다고 본 것이다`,
-    { probe: a.finalProbe }
-  )
-  check('A3 ★ 대기표가 살아 있다', a.holdAlive, '표가 사라졌다 = 재검증 없이 풀렸다', { hold: a.holdAlive })
-  check('B1 앱 설치본 판은 그대로 안 쏜다', !b.fired, `t=${b.firedAt}초에 쐈다`, { probe: b.finalProbe })
-  check('B2 앱 설치본 판도 unavailable이다', (b.finalProbe?.unavailable ?? 0) > 0, JSON.stringify(b.finalProbe), {
-    probe: b.finalProbe
-  })
-  check(
-    'C1 ★ 창구가 진짜 없으면 옛 계약대로 발사한다',
-    c.fired && (c.finalProbe?.unknown ?? 0) > 0,
-    `fired=${c.fired} unknown=${c.finalProbe?.unknown} — 이 팔이 빨강이면 A의 초록은 가짜다(전부 unavailable)`,
-    { firedAt: c.firedAt, probe: c.finalProbe }
-  )
   const e = rep.arms.extName
   const d = rep.arms.realGlobal
+  console.log('\n판정 — 전역 PATH codex도 「물어볼 창구」인가')
+  if (a) {
+    check('A1 ★★ 전역 PATH 판이 발사하지 않았다', !a.fired, `t=${a.firedAt}초에 쐈다 = 한도를 안 묻고 발사했다`, {
+      firedAt: a.firedAt,
+      probe: a.finalProbe
+    })
+    check(
+      'A2 ★★ 「물어봤는데 못 얻었다」로 판정했다(unavailable)',
+      (a.finalProbe?.unavailable ?? 0) > 0 && (a.finalProbe?.unknown ?? 0) === 0,
+      `unknown=${a.finalProbe?.unknown} unavailable=${a.finalProbe?.unavailable} — unknown이면 창구가 없다고 본 것이다`,
+      { probe: a.finalProbe }
+    )
+    check('A3 ★ 대기표가 살아 있다', a.holdAlive, '표가 사라졌다 = 재검증 없이 풀렸다', { hold: a.holdAlive })
+  }
+  if (b) {
+    check('B1 앱 설치본 판은 그대로 안 쏜다', !b.fired, `t=${b.firedAt}초에 쐈다`, { probe: b.finalProbe })
+    check('B2 앱 설치본 판도 unavailable이다', (b.finalProbe?.unavailable ?? 0) > 0, JSON.stringify(b.finalProbe), {
+      probe: b.finalProbe
+    })
+  }
+  if (c) {
+    check(
+      'C1 ★ 창구가 진짜 없으면 옛 계약대로 발사한다',
+      c.fired && (c.finalProbe?.unknown ?? 0) > 0,
+      `fired=${c.fired} unknown=${c.finalProbe?.unknown} — 이 팔이 빨강이면 A의 초록은 가짜다(전부 unavailable)`,
+      { firedAt: c.firedAt, probe: c.finalProbe }
+    )
+  }
   check(
     'C2 클로드 창으로 「막혔다」 판정을 한 팔이 없다',
     [a, b, c, e, d].filter(Boolean).every((x) => (x.finalProbe?.blocked ?? 0) === 0),
     '엔진 축이 클로드 창을 봤다',
     { blocked: [a, b, c, e, d].map((x) => x?.finalProbe?.blocked ?? null) }
   )
-  // ★R28d EXTN — 철자 하나로 규칙이 갈리면 안 된다. 셋 다 A팔과 **같은 값**이어야 한다.
-  check('E1 ★★ 확장자 붙은 맨 이름도 창구다(발사하지 않았다)', !e.fired, `t=${e.firedAt}초에 쐈다`, {
-    firedAt: e.firedAt,
-    probe: e.finalProbe
-  })
-  check(
-    'E2 ★★ unavailable로 판정했다(unknown 0)',
-    (e.finalProbe?.unavailable ?? 0) > 0 && (e.finalProbe?.unknown ?? 0) === 0,
-    `unknown=${e.finalProbe?.unknown} unavailable=${e.finalProbe?.unavailable}` +
-      ' — `codex.exe`를 PATH에서 못 찾았다(= 클로드의 claude.exe도 못 찾는다)',
-    { probe: e.finalProbe }
-  )
-  check('E3 ★ 대기표가 살아 있다', e.holdAlive, '표가 사라졌다 = 재검증 없이 풀렸다', { hold: e.holdAlive })
+  // ★R28d EXTN — 철자 하나로 규칙이 갈리면 안 된다. E팔은 A팔과 **같은 값**이어야 한다.
+  if (e) {
+    check('E1 ★★ 확장자 붙은 맨 이름도 창구다(발사하지 않았다)', !e.fired, `t=${e.firedAt}초에 쐈다`, {
+      firedAt: e.firedAt,
+      probe: e.finalProbe
+    })
+    check(
+      'E2 ★★ unavailable로 판정했다(unknown 0)',
+      (e.finalProbe?.unavailable ?? 0) > 0 && (e.finalProbe?.unknown ?? 0) === 0,
+      `unknown=${e.finalProbe?.unknown} unavailable=${e.finalProbe?.unavailable}` +
+        ' — `codex.exe`를 PATH에서 못 찾았다(= 클로드의 claude.exe도 못 찾는다)',
+      { probe: e.finalProbe }
+    )
+    check('E3 ★ 대기표가 살아 있다', e.holdAlive, '표가 사라졌다 = 재검증 없이 풀렸다', { hold: e.holdAlive })
+  }
   if (d) {
     check(
       'D1 ★★ 이 컴퓨터의 **진짜** 전역 codex도 창구다',
@@ -346,20 +370,22 @@ async function main() {
     })
   }
 
+  const holed = (x) => !!x && (x.finalProbe?.unknown ?? 0) > 0 && x.fired
   rep.verdict = {
-    'A.fired': a.fired,
-    'A.unknown': a.finalProbe?.unknown ?? null,
-    'A.unavailable': a.finalProbe?.unavailable ?? null,
-    'B.fired': b.fired,
-    'C.fired': c.fired,
-    'C.unknown': c.finalProbe?.unknown ?? null,
-    'E.fired': e.fired,
-    'E.unknown': e.finalProbe?.unknown ?? null,
-    'E.unavailable': e.finalProbe?.unavailable ?? null,
+    only: ONLY,
+    'A.fired': a?.fired ?? null,
+    'A.unknown': a?.finalProbe?.unknown ?? null,
+    'A.unavailable': a?.finalProbe?.unavailable ?? null,
+    'B.fired': b?.fired ?? null,
+    'C.fired': c?.fired ?? null,
+    'C.unknown': c?.finalProbe?.unknown ?? null,
+    'E.fired': e?.fired ?? null,
+    'E.unknown': e?.finalProbe?.unknown ?? null,
+    'E.unavailable': e?.finalProbe?.unavailable ?? null,
     'D.unknown': d?.finalProbe?.unknown ?? null,
     'D.unavailable': d?.finalProbe?.unavailable ?? null,
     // 크리틱의 `hole:true`가 뒤집혔는가 — A(또는 E)가 unknown으로 발사하면 구멍이 살아 있다.
-    hole: ((a.finalProbe?.unknown ?? 0) > 0 && a.fired) || ((e.finalProbe?.unknown ?? 0) > 0 && e.fired)
+    hole: holed(a) || holed(e)
   }
   rep.pass = pass
   rep.fail = rep.findings.length
