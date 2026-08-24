@@ -1786,11 +1786,16 @@ mod tests {
         for f in &files {
             r.write(f, "before\n");
         }
+        // 고르지 **않은** 파일도 함께 바뀌어 있다 — 전 트리 diff에는 나오지만 답에는
+        // 없어야 하고, 남의 덩이가 끼어들어 행이 밀려서도 안 된다.
+        r.write("무관한 파일.txt", "before\n");
         r.git(&["add", "."]);
         r.git(&["commit", "-qm", "init"]);
         for f in &files {
             r.write(f, "before\nafter\n");
         }
+        r.write("무관한 파일.txt", "before\n남의 변경\n");
+        r.write("무관한 새 파일.txt", "미추적\n");
         let argv_len: usize = files.iter().map(|f| f.len() + 1).sum();
         assert!(argv_len > ARGV_PATHSPEC_BUDGET, "인자 합계 {argv_len} — 전 트리 갈래를 안 탄다");
         let t0 = std::time::Instant::now();
@@ -1799,8 +1804,12 @@ mod tests {
         let spawns = spawn_count() - before;
         eprintln!("[측정] {}파일 bulk diff: {}ms · git 스폰 {spawns}회", files.len(), t0.elapsed().as_millis());
         assert_eq!(spawns, 2, "repo_root + diff = 2");
-        assert_eq!(bulk.len(), files.len());
+        assert_eq!(bulk.len(), files.len(), "고르지 않은 파일이 답에 섞였다");
         assert!(bulk.iter().all(|d| d.diff.as_ref().is_some_and(|x| (x.add, x.del) == (1, 0))), "전 트리 갈래의 답이 틀렸다");
+        // 행이 밀리지 않았나 — 경로가 자기 자리에 그대로 있나
+        for (i, d) in bulk.iter().enumerate() {
+            assert_eq!(d.diff.as_ref().unwrap().path, files[i], "{i}번째 행이 밀렸다");
+        }
     }
 
     /// 옛길이 실제로 얼마였나 — **기본 제외**(파일당 스폰 2회라 분 단위로 걸린다).
