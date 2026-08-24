@@ -380,3 +380,110 @@ fn an_unwired_probe_keeps_the_old_contract() {
     // 그리고 상한은 여전히 `attempts` 쪽이 지킨다(재생 시나리오가 서 있는 그 문).
     assert!(r.hold().is_some_and(|h| h.attempts <= MAX_AUTO_ATTEMPTS));
 }
+
+// ── ★CRIT R1 — 엔진 축 + 시각 미상 표의 출구(T3T4 확인 크리틱 R3 §3·§3.4) ──────
+
+/// Codex 정체성의 런타임. 과금 축은 **여전히 클로드 계정**이다 — 회귀의 뿌리가 거기다
+/// (`arm_hold`가 `identity.billing()`을 표에 싣고, 그것만으로는 어느 서비스의 한도인지 모른다).
+fn rt_codex(clock: Arc<VirtualClock>, err: &str) -> ChatRuntime<LimitedCli> {
+    let raw = RawIdentity {
+        engine: RawEngine {
+            kind: EngineKind::Codex,
+            model: "gpt-5.6-codex".into(),
+            effort: EffortId::Medium,
+            codex_account: Some("cx@openai.com".into()),
+        },
+        billing: RawBilling {
+            kind: BillingKind::Subscription,
+            account: Some("a@x".into()),
+            drop_env_key: Some(false),
+        },
+        cwd: r"C:\ccg-fixture\work".into(),
+        add_dirs: vec![],
+        mode: ModeId::Normal,
+        system_prompt: None,
+        output_style: None,
+        tools: RawTools::default(),
+    };
+    let defaults = IdentityDefaults {
+        known_accounts: BTreeSet::from(["a@x".to_string()]),
+        ..Default::default()
+    };
+    let mut cli = LimitedCli::default();
+    cli.err_text = err.to_string();
+    ChatRuntime::new("c-codex", raw, defaults, clock, cli).expect("정규화")
+}
+
+/// 훅이 **무엇을 물어봤는지** 그대로 적어 두는 훅.
+struct AxisProbe {
+    seen: std::sync::Mutex<Vec<(EngineKind, Option<String>, String)>>,
+}
+impl LimitProbe for AxisProbe {
+    fn blocked_until(&self, _a: &BillingAxis, _now: u64) -> LimitVerdict {
+        // 축을 아는 메서드가 먼저 불려야 한다. 여기로 떨어졌다면 그것이 곧 회귀다.
+        self.seen.lock().unwrap().push((EngineKind::Claude, None, "<축 없음>".into()));
+        LimitVerdict::Unknown
+    }
+    fn probe(&self, q: &ccg_engine::limit::ProbeQuery<'_>) -> LimitVerdict {
+        self.seen
+            .lock()
+            .unwrap()
+            .push((q.engine, q.codex_account.map(str::to_string), q.model.to_string()));
+        LimitVerdict::Unknown
+    }
+}
+
+/// ★ **재검증은 「어느 엔진의 한도인가」를 훅에 넘긴다.**
+///
+/// R3까지 엔진은 표가 든 과금 축(=클로드 계정)과 모델만 넘겼다. 그래서 셸의 훅은 Codex
+/// 채팅을 **클로드 주간 창**으로 판정했고, 크리틱 실측에서 그 채팅이 50시간 잠겼다
+/// (사용자가 직접 보낸 메시지까지 큐에 주차 — 최대 7일).
+#[test]
+fn the_probe_is_told_which_engine_the_limit_belongs_to() {
+    let clock = clock_at(5 * 3600);
+    let probe = Arc::new(AxisProbe { seen: std::sync::Mutex::new(vec![]) });
+    let mut r = rt_codex(clock.clone(), "usage limit reached|1755150000").with_limit_probe(probe.clone());
+    r.dispatch(Cmd::Send { text: "첫 턴".into() });
+    pump(&mut r, &clock, 1_030 * SEC);
+    let spawns0 = r.driver_ref().spawns;
+
+    pump(&mut r, &clock, 1_030 * SEC + 5 * HOUR + 5 * MIN);
+    let seen = probe.seen.lock().unwrap().clone();
+    println!("[CRIT] 훅이 받은 질문 = {seen:?}");
+    assert!(!seen.is_empty(), "재검증이 아예 안 돌았다");
+    assert_eq!(seen[0].0, EngineKind::Codex, "★ Codex 채팅인데 훅에 그 사실이 안 갔다");
+    assert_eq!(seen[0].1.as_deref(), Some("cx@openai.com"), "★ 물어볼 codex 계정이 안 갔다");
+    assert_eq!(seen[0].2, "gpt-5.6-codex", "모델도 함께 간다(Fable 창 게이트의 재료)");
+    // `Unknown`(= 판정하지 않음)은 옛 계약 그대로 발사다 — Codex 채팅이 잠기지 않는다.
+    assert!(r.driver_ref().spawns > spawns0, "★ 판정할 수 없는 판에서 Codex 채팅이 잠겼다");
+}
+
+/// ★ **리셋 시각을 모르는 표에도 출구가 있다**(확인 크리틱 R3 §3.4).
+///
+/// R3의 조건은 `probes < MAX_BLIND_PROBES || !past`였고 `past`는 `resets_at`이 있을 때만
+/// 참이 될 수 있었다. 즉 꼬리(`…|epoch`) 없는 문구로 걸린 표는 **영원히** 재확인만 하고,
+/// 그동안 `hold_gate_open()`이 닫혀 있어 사용자가 직접 보낸 메시지도 큐에 선다.
+/// 「기다릴 근거를 모른다」는 「영원히 기다려라」가 아니다.
+#[test]
+fn a_ticket_with_no_known_reset_time_still_reaches_the_users_hand() {
+    let clock = clock_at(5 * 3600);
+    let probe = Arc::new(BlindProbe { asked: AtomicUsize::new(0) });
+    // 꼬리 없는 배너형 문구 — `resets_at`이 `None`인 표가 선다.
+    let mut r = rt(clock.clone(), "Weekly limit reached").with_limit_probe(probe.clone());
+    r.dispatch(Cmd::Send { text: "첫 턴".into() });
+    pump(&mut r, &clock, 1_030 * SEC);
+    let spawns0 = r.driver_ref().spawns;
+    assert!(r.hold().is_some_and(|h| h.resets_at.is_none()), "전제: 시각 미상 표");
+
+    // 첫 재확인은 10분 뒤(PROBE), 그 뒤로는 15·30·60·120·240초 사다리다.
+    pump(&mut r, &clock, 1_030 * SEC + 30 * MIN);
+    let h = r.hold().expect("표가 사라졌다 = 전송했다");
+    println!("[CRIT] 30분 · probes={} ready={} auto_paused={} spawns={}", h.probes, h.ready, h.auto_paused, r.driver_ref().spawns);
+    assert_eq!(r.driver_ref().spawns, spawns0, "★ 조회 불가인데 눈감고 쐈다");
+    assert!(h.ready && h.auto_paused, "★ 시각 미상 표가 영영 사용자에게 안 넘어온다(§3.4)");
+
+    // 그리고 그 손이 실제로 문을 연다 — 누르면 정확히 한 번 나간다.
+    assert_eq!(r.resume_now(), ccg_engine::event::Verdict::Accepted);
+    pump(&mut r, &clock, clock.now_ms() + 30 * SEC);
+    assert_eq!(r.driver_ref().spawns, spawns0 + 1, "누른 만큼 정확히 한 번");
+}

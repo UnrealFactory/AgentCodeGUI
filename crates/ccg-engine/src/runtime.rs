@@ -3172,12 +3172,23 @@ impl<D: CliDriver> ChatRuntime<D> {
         //   ★T3T4 R3 — 착지는 **넷**이다(이식본 `resumeVerdict`의 셋 + 훅 미배선).
         //   순서가 곧 계약이다: 막혔다는 신선한 증거가 먼저고, 그다음이 "못 물어봤다"이며,
         //   풀렸다는 맨 마지막이다.
+        //
+        //   ★CRIT R1 — 그리고 **어느 엔진의 한도인지**를 함께 넘긴다. R3까지는 표가 든
+        //   과금 축(=클로드 계정)만 넘어가서, Codex 채팅의 재검증이 **클로드 주간 창**을
+        //   보고 "아직 안 풀렸다"고 답했다(확인 크리틱 R3 §3 — 50시간 재장전 + 사용자
+        //   메시지 큐 주차). 축은 표가 아니라 **지금 정체성**에서 읽는다: 표는 장전 시각의
+        //   과금 축만 알고, 이 실행이 어느 서비스의 창을 태우는지는 정체성만 안다.
         let account = self.hold.as_ref().map(|h| h.account.clone());
         if let Some(acct) = account {
             let verdict = {
-                let model = self.identity.model();
-                self.limit_probe
-                    .blocked_until_for(&acct, model, self.clock.now_epoch_ms())
+                let q = crate::limit::ProbeQuery {
+                    billing: &acct,
+                    engine: self.identity.engine_kind(),
+                    codex_account: self.identity.codex_account(),
+                    model: self.identity.model(),
+                    now_epoch_ms: self.clock.now_epoch_ms(),
+                };
+                self.limit_probe.probe(&q)
             };
             match verdict {
                 // ① 아직 막혀 있다 — 그 시각으로 재장전하고 실패 계수는 지운다.
@@ -3205,8 +3216,18 @@ impl<D: CliDriver> ChatRuntime<D> {
                 //   그 수정의 바깥에 있었다.
                 LimitVerdict::Unavailable => {
                     let probes = self.hold.as_ref().map_or(0, |h| h.probes) + 1;
-                    // 문구가 알려 준 리셋 시각이 **정말 지났나**. 시각을 모르면(`None`)
-                    // 근거가 하나도 없다는 뜻이라 손을 들지 않는다 — 계속 다시 묻는다.
+                    // 문구가 알려 준 리셋 시각이 **정말 지났나**.
+                    //
+                    // ★CRIT R1 — R3까지 이 값이 거짓이면 **영영 손을 안 들었다**(확인 크리틱
+                    // R3 §3.4). `resets_at`이 `None`인 표(에러 문구에 `…|epoch` 꼬리가 없는
+                    // 판 — codex 한도 문구가 그렇다)는 `past`가 영원히 거짓이라 아래 착지에
+                    // 도달하지 못하고, 조회가 죽어 있으면 10분마다 조용히 다시 묻기만 한다.
+                    // 그동안 `hold_gate_open()`이 닫혀 있어 **사용자가 직접 보낸 메시지도
+                    // 큐에 선다** — ✕도 「이어가기」도 없는 상태가 무한히 이어진다.
+                    // 시각을 모르는 것은 "기다릴 근거가 없다"는 뜻이지 "영원히 기다리라"가
+                    // 아니다. [`crate::limit::MAX_BLIND_PROBES`]번 실패했으면 둘 다 사용자에게
+                    // 넘긴다(아래 착지는 아무것도 안 태우고, 버튼은 사용자의 선택이다).
+                    let known = self.hold.as_ref().is_some_and(|h| h.resets_at.is_some());
                     let past = self
                         .hold
                         .as_ref()
@@ -3216,7 +3237,7 @@ impl<D: CliDriver> ChatRuntime<D> {
                         h.probes = probes;
                         h.probed_at = Some(now);
                     }
-                    if probes < crate::limit::MAX_BLIND_PROBES || !past {
+                    if probes < crate::limit::MAX_BLIND_PROBES || (known && !past) {
                         // 침묵 금지(D7) — 다만 재확인마다 말하면 그게 스팸이다. 한 번만.
                         //
                         // **두 번째**부터 말하는 이유: 셸의 훅은 스냅샷이 차가우면 워커를

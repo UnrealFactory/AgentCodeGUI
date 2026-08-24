@@ -271,6 +271,44 @@ pub trait LimitProbe: Send + Sync {
         let _ = model;
         self.blocked_until(account, now_epoch_ms)
     }
+
+    /// ★CRIT R1 — **엔진 축까지 아는 판정.** 재검증이 「어느 서비스의 한도인가」를 묻는 자리다.
+    ///
+    /// ## 왜 인자가 하나 더 필요했나 (T3T4 확인 크리틱 R3 §3)
+    ///
+    /// [`Self::blocked_until_for`]가 받는 [`BillingAxis`]는 **클로드 구독 계정**이다.
+    /// Codex 채팅의 대기표도 같은 필드를 들고 있어서(`arm_hold`가 엔진을 안 가른다),
+    /// R3의 셸 훅은 Codex 채팅을 **클로드 주간 창**으로 판정했다 — 크리틱 실측: 클로드
+    /// 주간이 100%인 계정 때문에 Codex 채팅의 대기표가 50시간 뒤로 재장전되고 사용자가
+    /// 직접 보낸 메시지까지 큐에 주차됐다(`queued:1 · spawns:0`, 최대 7일).
+    ///
+    /// 렌더러 이식본은 이 축을 **원래부터** 갈랐다 — `useLimitResume.fire()`가
+    /// `cur.engine === 'claude'`면 `getUsage`, 아니면 `codexAuth.accountsUsage()`를 쓴다.
+    /// 이 메서드는 그 갈래를 엔진 훅에도 준다.
+    ///
+    /// **기본 구현은 축을 버리고 [`Self::blocked_until_for`]로 접는다.** 대본 훅(재생
+    /// 하네스)은 답을 시나리오로 정해 두므로 축이 무의미하고, 실제 조회를 하는 셸 훅만
+    /// 이걸 덮어쓴다. 축을 모르는 훅이 Codex를 클로드 창으로 보는 일이 다시 없게, 셸 훅의
+    /// 갈래는 `src-tauri/src/engine/limit_probe.rs`의 테스트가 잠근다.
+    fn probe(&self, q: &ProbeQuery<'_>) -> LimitVerdict {
+        self.blocked_until_for(q.billing, q.model, q.now_epoch_ms)
+    }
+}
+
+/// [`LimitProbe::probe`]에 넘기는 질문 — **엔진이 아는 것만**(셸이 계정 스토어·조회를 맡는다).
+#[derive(Debug, Clone, Copy)]
+pub struct ProbeQuery<'a> {
+    /// 대기표가 들고 있는 과금 축 = **클로드 구독 계정**(또는 API 키).
+    /// Codex 실행에서는 이 값이 한도의 주인이 **아니다** — 그래서 아래 둘이 함께 온다.
+    pub billing: &'a BillingAxis,
+    /// 이 실행이 어느 엔진의 한도를 쓰는가.
+    pub engine: crate::identity::EngineKind,
+    /// Codex 실행이 소비하는 OpenAI 계정([`crate::identity::RunIdentity::codex_account`]).
+    /// Claude 실행이면 언제나 `None`이고, Codex인데 `None`이면 「기본 계정」이라는 뜻이다.
+    pub codex_account: Option<&'a str>,
+    /// Fable 주간 창을 게이트로 볼지 가르는 재료(Claude 축에서만 쓰인다).
+    pub model: &'a str,
+    pub now_epoch_ms: u64,
 }
 
 // ── ★M11 자동 계정 전환 훅 ──────────────────────────────────────────────────

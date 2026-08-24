@@ -533,11 +533,13 @@ impl Hub {
                 let (runs, fetches) = self.switcher.worker_stats();
                 // ★T3T4 R3 — 재검증 훅의 회계. `asks`가 0이면 훅이 안 걸린 것이고,
                 // `unavailable`이 오르는데 `blocked`/`clear`가 0이면 조회가 죽은 판이다.
+                // ★CRIT R1 — `unknown`은 **판정하지 않았다**(물어볼 창구가 없는 Codex 실행).
+                // 이 값이 오르는데 `blocked`가 0이라는 것이 "클로드 창으로 안 봤다"의 물증이다.
                 let pr = self.probe.stats();
                 answer(json!({ "chats": rows, "cli": self.cli.to_string_lossy(),
                                "limitProbe": { "asks": pr.asks, "fetches": pr.fetches,
                                                "blocked": pr.blocked, "clear": pr.clear,
-                                               "unavailable": pr.unavailable },
+                                               "unavailable": pr.unavailable, "unknown": pr.unknown },
                                "flags": crate::flags::active(),
                                // ★M10 — 라우터의 회계·거절 로그. 세션 간 메시지는 조용히
                                // 안 나가는 경우가 많고(상한·옵트인·중복), 그 사유를 읽을

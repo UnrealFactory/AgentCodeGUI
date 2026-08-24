@@ -147,6 +147,21 @@ pub fn peek_usage(email: &str, ttl_ms: u64) -> Option<Value> {
     (now_ms().saturating_sub(e.at) < ttl_ms).then(|| e.data.clone())
 }
 
+/// ★CRIT R1 — **테스트 전용** 스냅샷 심기. `null`이면 지운다.
+///
+/// 한도 재검증의 판정은 "이 계정의 창이 지금 어떤가"에 달려 있고, 그 판을 진짜로 만들려면
+/// 실계정 HTTP가 필요하다(=토큰 회전 위험). 캐시에 직접 앉히면 **HTTP 0건**으로 같은 판을
+/// 만든다 — `engine/limit_probe.rs`의 엔진 축 테스트가 이걸로 「클로드 주간 100%」를 세운다.
+#[cfg(test)]
+pub fn seed_peek_for_test(email: &str, data: Value) {
+    let mut g = cache().lock().unwrap_or_else(|e| e.into_inner());
+    if data.is_null() {
+        g.remove(email);
+        return;
+    }
+    g.insert(email.to_string(), Entry { at: now_ms(), token: "test-seed".into(), data });
+}
+
 /// `usage:get(fresh?, account?)` → `UsageInfo`.
 ///
 /// 2.6.2 `getUsage`(`index.ts:1025-1037`)와 같은 순서:
