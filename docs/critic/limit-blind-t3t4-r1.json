@@ -1,0 +1,64 @@
+{
+  "at": "2026-08-24T09:47:56.676Z",
+  "exe": "C:\\Code\\AgentCodeGUI\\target-t3t4\\release\\agentcodegui.exe",
+  "email": "blind-seed@t3t4.test",
+  "steps": {
+    "usageGet": {
+      "fiveHour": null,
+      "weekly": null,
+      "weeklyFable": null,
+      "extraCredit": null,
+      "unavailable": true
+    },
+    "usageGetDefault": {
+      "fiveHour": null,
+      "weekly": null,
+      "weeklyFable": null,
+      "extraCredit": null,
+      "unavailable": true
+    },
+    "usageGetBogus": {
+      "fiveHour": null,
+      "weekly": null,
+      "weeklyFable": null,
+      "extraCredit": null,
+      "unavailable": true
+    },
+    "oldVerdict": null,
+    "newVerdict": {
+      "unavailable": true,
+      "v1": {
+        "kind": "hold",
+        "resetsAt": 1787564777,
+        "probes": 1
+      },
+      "v2": {
+        "kind": "hold",
+        "resetsAt": 1787564777,
+        "probes": 2
+      }
+    },
+    "accountsUsage": [
+      {
+        "email": "blind-seed@t3t4.test",
+        "fiveHourPct": null,
+        "weeklyPct": null,
+        "fablePct": null,
+        "fiveHourResetsAt": null,
+        "weeklyResetsAt": null,
+        "fableResetsAt": null,
+        "unavailable": true
+      }
+    ],
+    "usageGetSessionWindow": {
+      "fiveHour": null,
+      "weekly": null,
+      "weeklyFable": null,
+      "extraCredit": null,
+      "unavailable": true
+    }
+  },
+  "findings": [],
+  "pass": 14,
+  "fail": 0
+}

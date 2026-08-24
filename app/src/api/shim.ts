@@ -17,6 +17,7 @@
  * ============================================================ */
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 import { IPC } from '@shared/protocol'
 import type {
   AgentStatus,
@@ -128,25 +129,57 @@ function toBase64(buf: ArrayBuffer): string {
 // 채널당 네이티브 리스너 하나, 구독자는 평범한 Set. 멀티 워크스페이스 혼자
 // ma:event에 12번 붙는 구조라 여기서 접어주지 않으면 리스너가 계속 증식한다.
 const hubs = new Map<string, Set<(payload: unknown) => void>>()
+
+/**
+ * ★최종 파리티 R1 확인 크리틱 **실패2** — 구독은 **이 창 것만** 받아야 한다.
+ *
+ * `listen()`의 기본 대상은 `{ kind: 'Any' }`이고, Tauri의 팬아웃은 그 대상을
+ * **필터보다 먼저** 통과시킨다(`tauri/src/event/listener.rs` `match_any_or_filter`:
+ * `*target == EventTarget::Any || filter(...)`). 즉 셸이 `emit_to(label, …)`로 **한
+ * 창에만** 보낸 이벤트를 **모든 창이 받았다**. 실측: 메인에서 `shortcut:close`를 1회
+ * 부르면 메인 1 + 추가 채팅 창 1 — 다른 창의 Ctrl+W가 이 창에 열린 파일 뷰어를 닫는다
+ * (`FileModal.tsx:2998`). 창별 상태(`win:state`)·닫기 전 flush 요청도 같은 병이었다.
+ *
+ * 라벨을 실어 등록하면 대상이 `AnyLabel`이 되어 셸의 필터가 살아난다. **브로드캐스트
+ * (`app.emit`)는 필터 자체가 없어 그대로 다 받는다** — 그래서 "전 창에 알린다"는 규약은
+ * 셸이 `emit_to(MAIN, …)`이 아니라 `emit(…)`으로 내는 것으로 지킨다(`win.rs`
+ * `broadcast_sessions` — 2.6.2 `broadcastSessionWins`가 `getAllWindows()`를 도는 자리).
+ *
+ * 라벨을 못 읽으면(내부 메타데이터 부재) 옛 동작(전역 수신)으로 떨어진다 — 이벤트를
+ * 통째로 잃는 것보다 낫다.
+ */
+function winLabel(): string {
+  try {
+    return getCurrentWindow().label || ''
+  } catch {
+    return ''
+  }
+}
+
 function subscribe<T>(channel: string, cb: (payload: T) => void): () => void {
   let subs = hubs.get(channel)
   if (!subs) {
     subs = new Set()
     hubs.set(channel, subs)
     const set = subs
+    const label = winLabel()
     // listen()은 비동기 등록이라 구독 직후 아주 잠깐의 공백이 있다. preload(동기 on)와
     // 다른 유일한 지점 — 부팅 직후 도착하는 이벤트는 백엔드가 스냅샷 조회(status/get)로
     // 따라잡게 되어 있어(계약면 규약) 실사용 의미는 같다.
-    void listen<unknown>(channel, (ev) => {
-      // 구독자가 디스패치 도중 해지/예외를 내도 루프가 깨지지 않게 사본을 돈다
-      for (const fn of [...set]) {
-        try {
-          fn(ev.payload)
-        } catch (err) {
-          console.error(`[shim] subscriber error on ${channel}`, err)
+    void listen<unknown>(
+      channel,
+      (ev) => {
+        // 구독자가 디스패치 도중 해지/예외를 내도 루프가 깨지지 않게 사본을 돈다
+        for (const fn of [...set]) {
+          try {
+            fn(ev.payload)
+          } catch (err) {
+            console.error(`[shim] subscriber error on ${channel}`, err)
+          }
         }
-      }
-    })
+      },
+      label ? { target: label } : undefined
+    )
   }
   const fn = cb as (payload: unknown) => void
   subs.add(fn)

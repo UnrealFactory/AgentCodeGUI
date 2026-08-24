@@ -27,7 +27,7 @@ import type {
 } from '@shared/protocol'
 import { isEn, t, useLang } from '../lib/i18n'
 import { sameCwd, type ThreadItem } from '../store/session'
-import { resumeDelayMs, type LimitHold } from '../lib/limitResume'
+import { holdDelayMs, type LimitHold } from '../lib/limitResume'
 import { noteLanding, putAnchor, takeAnchor } from '../lib/threadAnchor'
 import type { EngineHold } from '../lib/resumeOwner'
 import { settleText, useSettledReason } from '../lib/settled'
@@ -3338,9 +3338,12 @@ export function LimitHoldBar({
             ? t('한도가 풀렸어요 — 이어서 계속해요', 'Limit lifted — continuing')
             : enabled
               ? hold.resetsAt
-                ? t(
-                    `약 ${fmtEta(resumeDelayMs(hold.resetsAt, Date.now()))} 뒤 자동으로 이어서 계속해요`,
-                    `Auto-continues in ~${fmtEta(resumeDelayMs(hold.resetsAt, Date.now()))}`
+                ? // ★3.0 — 타이머와 **같은 함수**를 본다(`holdDelayMs`). 조회 실패로 재장전된
+                  // 표는 리셋 시각이 이미 지나 있어 `resumeDelayMs`가 늘 15초를 돌려줬고,
+                  // 배너만 "곧 이어감"이라고 말하면서 실제로는 재확인만 돌았다.
+                  t(
+                    `약 ${fmtEta(holdDelayMs(hold, Date.now()))} 뒤 자동으로 이어서 계속해요`,
+                    `Auto-continues in ~${fmtEta(holdDelayMs(hold, Date.now()))}`
                   )
                 : t('10분마다 확인해서 풀리면 자동으로 이어서 계속해요', 'Checks every 10 minutes and auto-continues once lifted')
               : t(

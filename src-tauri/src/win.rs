@@ -599,7 +599,14 @@ pub fn broadcast_sessions(app: &AppHandle) {
     } else {
         session_list()
     };
-    let _ = app.emit_to(MAIN, crate::ipc::ch::SESSION_WINS_CHANGED, payload);
+    // ★확인 크리틱 R1 실패2 — **전 창에** 낸다(`emit_to(MAIN)`이 아니다).
+    //
+    // 2.6.2 `broadcastSessionWins`는 `BrowserWindow.getAllWindows()`를 돌며 주석까지
+    // 달아 뒀다: *"메인 창뿐 아니라 전 창에 — 멀티 패널 팝아웃 창도 자기 panelId의 btw
+    // 알약을 그리므로 목록 변화를 같이 받아야 한다."* 3.0은 메인에만 쐈는데, 심의
+    // 구독이 대상 필터를 무력화하는 버그(`listen()`의 기본 대상 `Any`) 덕분에 **우연히**
+    // 전 창에 닿고 있었다. 그 버그를 고치면 이 줄이 곧 팝아웃 창의 btw 알약을 죽인다.
+    let _ = app.emit(crate::ipc::ch::SESSION_WINS_CHANGED, payload);
     // 3.0 계약면의 같은 사실 — `chat:windows`(WindowSlotInfo[] REPLACE, §6.1).
     // **둘 다 낸다**: 2.6.2 렌더러는 `session-wins:changed`만 알고, 3.0 화면은
     // `chat:windows`만 안다. 두 페이로드의 원천은 하나이므로 어긋날 수 없다.

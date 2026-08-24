@@ -25,6 +25,7 @@ diff -rq src/renderer app --exclude=dist
 | `app/toast.html` | 같음 (`toast.ts` 앞) | 토스트 창도 `window.api.notify.*`를 쓴다 |
 | `app/tray.html` | 같음 (`tray.ts` 앞) | 트레이 메뉴 창도 `window.api.trayMenu.*`를 쓴다 |
 | `app/src/lib/limitResume.ts` | `import type … from '../../../shared/protocol'` → `'@shared/protocol'` | 원본의 **상대 경로**가 `app/`으로 옮기면 레포 밖(`C:/Code/shared/protocol`)을 가리킨다. 타입 전용 import라 번들은 통과하지만 타입 검사가 깨진다(`npm run typecheck:app`가 잡았다). 앱의 다른 30개 파일이 쓰는 별칭으로 통일 — 2.6.2 쪽 원본은 그대로 둔다 |
+| `app/src/lib/limitResume.ts`<br>`app/src/lib/useLimitResume.ts`<br>`app/src/components/Chat.tsx` | 한도 재검증에 **「못 물어봤다」 갈래** 추가 (§6.3) | 조회 실패를 「풀렸다」로 오판해 **자동 전송**하던 자리(최종 파리티 R1 확인 크리틱 실패1). 아래 §6.3 |
 
 `src/renderer/src/**`의 나머지 60개 .ts/.tsx와 `styles.css`는 **한 글자도 바뀌지 않았다.**
 
@@ -81,6 +82,29 @@ preload는 `ipcRenderer.on`(동기)이었고 심은 `listen()`(비동기 등록)
 짧은 공백이 있다. 계약면이 "마운트 때 스냅샷 조회로 따라잡는다"(engineUpdate.status,
 app.getUpdateStatus, sessionWindows.list …)를 규약으로 갖고 있어 실사용 의미는 같지만,
 새 채널을 만들 때 이 규약을 어기면 M1에서만 나타나는 유령 버그가 된다.
+
+### 3.3.1 구독은 **이 창 것만** (최종 파리티 R1 확인 크리틱 실패2)
+
+preload의 `ipcRenderer.on`은 `webContents.send`로 온 것만 받았다 — 창 경계가 공짜였다.
+Tauri의 `listen()`은 기본 대상이 `{ kind: 'Any' }`이고, 팬아웃이 그 대상을 **필터보다
+먼저** 통과시킨다(`tauri/src/event/listener.rs` `match_any_or_filter`). 그래서 셸이
+`emit_to(창, …)`로 한 창에만 보낸 이벤트를 **모든 창이 받았다.**
+
+실측(크리틱): 메인에서 `shortcut:close`를 1회 부르면 메인 1 + 추가 채팅 창 1.
+`FileModal.tsx:2998`이 그 채널로 뷰어를 닫으므로 **다른 창의 Ctrl+W가 이 창에 열린 파일
+뷰어를 닫는다** — `ipc/parity/misc.rs:54`의 주석이 "그러면 안 된다"고 적은 바로 그 사고다.
+같은 병이 `win:state`(남의 최대화가 내 타이틀바 아이콘을 뒤집는다)와
+`session-wins:flush-request`(한 창을 닫으면 전 창이 저장한다)에도 있었다.
+
+`subscribe()`가 **현재 창 라벨을 실어 등록한다**(`{ target: label }` → `AnyLabel`).
+브로드캐스트(`app.emit`)는 필터 자체가 없어 그대로 다 받는다.
+
+> **짝이 되는 셸 수정 하나**: `win.rs broadcast_sessions`가 `emit_to(MAIN, …)`이었다.
+> 2.6.2 `broadcastSessionWins`는 `getAllWindows()`를 돌며 "팝아웃 창도 자기 btw 알약을
+> 그리므로 목록 변화를 같이 받아야 한다"고 적어 뒀는데, 3.0은 메인에만 쏘고 **위 버그
+> 덕분에 우연히** 전 창에 닿고 있었다. 필터를 살리는 순간 그 줄이 팝아웃·추가 채팅 창의
+> 알약을 죽인다 → `app.emit`(진짜 브로드캐스트)으로 바꿨다.
+> 검증: `poc-parity-t3t4.mjs` M1-2·M1-3(창 경계) · M1-4(브로드캐스트는 전 창).
 
 ### 3.4 부팅 페이로드 선주입 (`window.__CCG_BOOT`) — R3 추가
 
@@ -367,3 +391,35 @@ R1은 1440px 본채팅(판 883px)에서 7종 전부 이겼지만 420px 멀티 �
   가지를 잘랐다(F4).
 - **컴포저 위 `IdentityBand`는 안 건드렸다** — 트레이가 band 직계라 예전 flex 칸 그대로다
   (띄움 규칙은 `.ntf-tx > .ntf-tray`로 좁혀 두었다).
+
+### 6.3 한도 자동 이어서 — 「못 물어봤다」 갈래 (최종 파리티 R1 확인 크리틱 실패1)
+
+**2.6.2에는 없는 갈래를 일부러 더했다.** 원본의 2단 재검증은 판정이 **둘**이었다:
+`blockedResetsAt(usage)`가 시각을 주면 아직 막힌 것, `null`이면 풀린 것. 그런데 조회가
+실패해도 값의 모양이 `{fiveHour:null, weekly:null, weeklyFable:null, extraCredit:null}`
+이라 **같은 `null`에 착지한다** — 즉 "못 물어봤다"가 "풀렸다"로 읽힌다.
+
+2.6.2에서는 이 구멍이 대체로 덮여 있었다(실패 시 `getUsage`가 **마지막 성공값**을 주고,
+그 값이 대개 창을 갖고 있다). 3.0에서 실제 사고가 된 것은 R1의 `usage:get`이 실패에
+캐시조차 없을 때 빈 값을 그대로 냈기 때문이고, 크리틱이 `CCG_NO_NET=1` + 살아 있는
+계정으로 **자동 전송까지 재현**했다.
+
+| 조각 | 무엇 |
+|---|---|
+| `limitResume.ts` `usageUnavailable` | 셸의 `unavailable` 표식, 없으면 **창이 하나도 없다**가 같은 뜻 |
+| `limitResume.ts` `codexUsageUnavailable` | Codex 판(창 목록이 비었다) |
+| `limitResume.ts` `resumeVerdict` | 착지 셋 — 막혔다 / **못 물어봤다(유지)** / 풀렸다 |
+| `limitResume.ts` `MAX_AUTO_ATTEMPTS`·`RECHECK_MS`·`recheckDelayMs`·`holdDelayMs` | 재확인 간격(15초→배증→10분)과 **눈감고 쏘는 재개의 상한**(2 — `crates/ccg-engine/src/limit.rs`와 같은 값) |
+| `LimitHold.probes` | 연속 조회 실패 횟수. `sanitizeHold`가 복원에서도 살린다(껐다 켜기로 상한이 초기화되면 그게 곧 "부팅마다 한 번 눈감고 쏘기"다) |
+| `useLimitResume.ts` `fire()` | 위 판정을 부르는 배선. 조회가 **던져도** 실패로 읽는다 |
+| `Chat.tsx` `LimitHoldBar` | 카운트다운이 `resumeDelayMs` → `holdDelayMs`. 타이머와 배너가 같은 함수를 본다 |
+
+**계약면도 한 칸 넓혔다**(`src/shared/protocol.ts` `UsageInfo`): `unavailable?`·`stale?`.
+둘 다 선택이고 2.6.2 본체는 내지 않는다 — 없으면 위 ②(창 0개) 규칙으로 떨어진다.
+
+**언제 그래도 쏘나**: 조회 실패가 상한(2회)을 넘겼고 **문구가 알려 준 리셋 시각이 이미
+지났을 때**만 한 번. 시각을 모르면(배너형 문구) 영원히 안 쏜다 — 근거가 하나도 없다.
+
+검증: `scripts/poc-limit-resume.mjs` G절이 **실제 훅을 그대로 구동한다**(최소 훅 런타임
++ 가짜 `window.api`), 본채팅·멀티 패널·추가 채팅 **세 표면의 실제 props**로 각각.
+실패값은 지어낸 모양이 아니라 `scripts/poc-limit-blind.mjs`가 실 exe에서 읽어 온 값이다.

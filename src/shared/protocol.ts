@@ -827,6 +827,15 @@ export interface UsageInfo {
   weeklyFable: UsageWindow | null
   // 추가 사용 크레딧 — 응답에 spend가 없으면(구버전 API) null → UI는 행을 숨긴다
   extraCredit: ExtraCreditInfo | null
+  // ★3.0 — **조회 자체가 실패했다**(계정/토큰 없음·전송 오류·비200이고 캐시도 없음).
+  // 위 네 창이 전부 null인 값은 "한도가 없다"와 "못 물어봤다"를 구분할 수 없어서, 한도
+  // 자동 이어서의 2단 재검증이 조회 실패를 「풀렸다」로 오판하고 자동 전송을 했다
+  // (최종 파리티 R1 확인 크리틱 실패1). 값의 모양은 그대로 두고 표식만 얹는다 —
+  // 2.6.2 본체는 이 키를 내지 않고, 없으면 판정은 "창이 하나도 없다"로 떨어진다.
+  unavailable?: boolean
+  // 신선 조회가 실패해 **낡은 캐시**로 갈음한 값. 값이 있으므로 판정은 그대로 하고
+  // (그게 마지막 실측이다) 진단·하네스가 실패 경로를 확인하는 데 쓴다.
+  stale?: boolean
 }
 
 // ── Engine (Claude Code SDK) version management ──────────────

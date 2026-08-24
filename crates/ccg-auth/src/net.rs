@@ -67,6 +67,20 @@ impl std::fmt::Display for NetError {
 pub struct HttpResponse {
     pub status: u16,
     pub body: String,
+    /// ★T3T4 R2 — **응답 헤더**. R1은 상태와 본문만 들고 와서 429의 `Retry-After`를
+    /// 읽을 수가 없었고(2.6.2 `auth.ts:552`가 읽는 바로 그 헤더), 대신 본문의
+    /// `retry_after`를 봤다 — 그 필드가 없는 응답에서는 언제나 기본값 15초였다.
+    pub headers: Vec<(String, String)>,
+}
+
+impl HttpResponse {
+    /// 헤더 하나(대소문자 무시). HTTP 헤더 이름은 대소문자를 안 가린다.
+    pub fn header(&self, name: &str) -> Option<&str> {
+        self.headers
+            .iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case(name))
+            .map(|(_, v)| v.as_str())
+    }
 }
 
 /// 킬 스위치 — 하네스는 이걸 켜고 돈다.
@@ -118,18 +132,23 @@ pub fn send(req: &HttpRequest) -> Result<HttpResponse, NetError> {
         None => r.call(),
     };
     match res {
-        Ok(resp) => {
-            let status = resp.status();
-            let body = resp.into_string().unwrap_or_default();
-            Ok(HttpResponse { status, body })
-        }
+        Ok(resp) => Ok(take(resp)),
         // ureq는 4xx/5xx를 에러로 준다 — 상태 코드는 생사검증의 판정 재료라 살려 보낸다.
-        Err(ureq::Error::Status(code, resp)) => Ok(HttpResponse {
-            status: code,
-            body: resp.into_string().unwrap_or_default(),
-        }),
+        // **429가 바로 이 팔로 온다** — 헤더를 여기서 버리면 `Retry-After`도 함께 사라진다.
+        Err(ureq::Error::Status(_, resp)) => Ok(take(resp)),
         Err(e) => Err(NetError::Transport(e.to_string())),
     }
+}
+
+/// ureq 응답 → [`HttpResponse`]. 본문을 읽으면 응답이 소비되므로 **헤더를 먼저** 뜬다.
+fn take(resp: ureq::Response) -> HttpResponse {
+    let status = resp.status();
+    let headers = resp
+        .headers_names()
+        .into_iter()
+        .filter_map(|k| resp.header(&k).map(|v| (k.clone(), v.to_string())))
+        .collect();
+    HttpResponse { status, body: resp.into_string().unwrap_or_default(), headers }
 }
 
 /// ★R3(F9) — `HTTPS_PROXY`·`ALL_PROXY`(+소문자)를 읽어 프록시를 만든다. `NO_PROXY`에
@@ -451,17 +470,55 @@ fn now_ms() -> f64 {
         .unwrap_or(0.0)
 }
 
+/// ★T3T4 R2 — **강제 교환**(2.6.2 `freshAccountToken(email, true)`).
+///
+/// 401/403은 "시간상 유효해 보이는 토큰이 서버에서는 죽었다"는 뜻이다(다른 프로세스의
+/// 그랜트 회전 등). 그때만 부른다 — 평시 경로는 여전히 [`access_token`](로컬 우선)이다.
+///
+/// `stale`은 방금 거절당한 토큰이다. 레인에서 줄 서 있는 사이 앞 주자가 이미 새 토큰을
+/// 받아 놨으면 **그것이 답이고 교환을 또 하지 않는다** — 이중 회전은 잘해야 4xx 한 번이고
+/// 나쁘면 방금 저장한 refresh 토큰이 죽는다(R2 C1이 닫은 자리).
+pub fn force_refresh(email: &str, stale: &str) -> Result<String, NetError> {
+    let lane = lane(email);
+    let _flight = lane.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(t) = claude::account_access_token(email) {
+        if t != stale {
+            return Ok(t);
+        }
+    }
+    if let Some(why) = backoff_hit(email) {
+        return Err(NetError::RotateBackoff(why));
+    }
+    rotate(email)
+}
+
 /// 계정 한 건의 한도 — `GET /api/oauth/usage` + [`usage::parse_account_usage`].
 ///
-/// 429는 **한 번만** 재시도한다(`Retry-After` 우선, 상한 [`usage::RETRY_AFTER_MAX_MS`]).
-/// 두 번 이상 물고 늘어지면 계정 6개 훑기가 분 단위로 늘어난다 — 그 자리는 캐시가 메운다.
+/// 2.6.2 `fetchAccountUsage`(`auth.ts:533-560`)와 **같은 순서**다:
+///
+/// | # | 응답 | 하는 일 |
+/// |---|---|---|
+/// | ① | 401·403 | 강제 교환 후 **1회** 재시도(토큰이 그대로면 재시도할 이유가 없다) |
+/// | ② | 429 | `Retry-After`만큼 자고 **1회** 재시도(**원래 토큰으로** — 그쪽도 `hit(token)`이다) |
+/// | ③ | 그 밖의 비200 | 실패(호출부가 마지막 성공값으로 폴백) |
+///
+/// 재시도를 각각 1회로 묶는 이유: 두 번 이상 물고 늘어지면 계정 6개 훑기가 분 단위로
+/// 늘어난다 — 그 자리는 캐시가 메운다.
 pub fn fetch_account_usage(email: &str) -> Result<AccountUsage, NetError> {
     let token = access_token(email)?;
     let req = usage::usage_request(&token);
     let mut resp = send(&req)?;
+    // ① 서버가 무효화한 토큰 — 시간만 보는 로컬 판정으로는 못 거른다.
+    if resp.status == 401 || resp.status == 403 {
+        if let Ok(fresh) = force_refresh(email, &token) {
+            if fresh != token {
+                resp = send(&usage::usage_request(&fresh))?;
+            }
+        }
+    }
+    // ② 레이트리밋 — 예산이 매우 빡빡한 엔드포인트(분당 1~2건 실측).
     if resp.status == 429 {
-        let wait = retry_after_ms(&resp.body);
-        std::thread::sleep(Duration::from_millis(wait));
+        std::thread::sleep(Duration::from_millis(retry_after_ms(&resp)));
         resp = send(&req)?;
     }
     if !(200..300).contains(&resp.status) {
@@ -471,16 +528,29 @@ pub fn fetch_account_usage(email: &str) -> Result<AccountUsage, NetError> {
     Ok(usage::parse_account_usage(email, &v))
 }
 
-/// 429 본문의 `retry_after`(초) — 없으면 기본값, 상한까지만 믿는다.
-fn retry_after_ms(body: &str) -> u64 {
-    serde_json::from_str::<Value>(body)
-        .ok()
-        .and_then(|v| {
-            v.get("retry_after")
-                .or_else(|| v.get("error").and_then(|e| e.get("retry_after")))
-                .and_then(Value::as_f64)
+/// 429의 대기 시간 — **`Retry-After` 헤더가 먼저다**(2.6.2가 읽는 그 값:
+/// `parseInt(res.headers.get('retry-after'))` → 초). 없으면 본문의 `retry_after`(3.0이
+/// 관찰한 형태), 그것도 없으면 기본값. 어느 쪽이든 상한([`usage::RETRY_AFTER_MAX_MS`])
+/// 까지만 믿는다 — 서버가 3600을 불러도 계정 훑기를 한 시간 세울 수는 없다.
+///
+/// 2.6.2는 `parseInt`라 `"3.9"`는 3이고 `"120, 60"`도 120이다. 헤더는 초 단위 정수가
+/// 규약(RFC 9110)이라 여기서도 **앞자리 정수만** 읽는다.
+fn retry_after_ms(resp: &HttpResponse) -> u64 {
+    let from_header = resp.header("retry-after").and_then(|v| {
+        let digits: String = v.trim().chars().take_while(char::is_ascii_digit).collect();
+        digits.parse::<u64>().ok().map(|s| s.saturating_mul(1000))
+    });
+    from_header
+        .or_else(|| {
+            serde_json::from_str::<Value>(&resp.body)
+                .ok()
+                .and_then(|v| {
+                    v.get("retry_after")
+                        .or_else(|| v.get("error").and_then(|e| e.get("retry_after")))
+                        .and_then(Value::as_f64)
+                })
+                .map(|s| (s * 1000.0) as u64)
         })
-        .map(|s| (s * 1000.0) as u64)
         .unwrap_or(usage::RETRY_AFTER_DEFAULT_MS)
         .clamp(0, usage::RETRY_AFTER_MAX_MS)
 }
@@ -712,11 +782,63 @@ mod tests {
         drop(h);
     }
 
+    fn resp(status: u16, body: &str, headers: &[(&str, &str)]) -> HttpResponse {
+        HttpResponse {
+            status,
+            body: body.to_string(),
+            headers: headers.iter().map(|(k, v)| ((*k).to_string(), (*v).to_string())).collect(),
+        }
+    }
+
+    /// ★T3T4 R2(확인 크리틱 [부분]) — **`Retry-After` 헤더가 먼저다.**
+    /// R1은 헤더를 통째로 버리고(`HttpResponse`에 자리가 없었다) 본문만 봤다 —
+    /// 그 필드가 없는 실제 429에서는 언제나 기본값 15초였다(2.6.2와 다른 동작).
     #[test]
-    fn retry_after_is_read_and_capped() {
-        assert_eq!(retry_after_ms(r#"{"retry_after":3}"#), 3_000);
-        assert_eq!(retry_after_ms(r#"{"error":{"retry_after":2.5}}"#), 2_500);
-        assert_eq!(retry_after_ms("nope"), usage::RETRY_AFTER_DEFAULT_MS);
-        assert_eq!(retry_after_ms(r#"{"retry_after":600}"#), usage::RETRY_AFTER_MAX_MS);
+    fn retry_after_prefers_the_header_then_the_body_and_is_capped() {
+        assert_eq!(retry_after_ms(&resp(429, "", &[("retry-after", "3")])), 3_000, "헤더가 있으면 헤더다");
+        assert_eq!(retry_after_ms(&resp(429, "", &[("Retry-After", "7")])), 7_000, "헤더 이름은 대소문자를 안 가린다");
+        // 헤더가 이기고 본문은 안 본다(2.6.2와 같은 우선순위).
+        assert_eq!(retry_after_ms(&resp(429, r#"{"retry_after":1}"#, &[("retry-after", "9")])), 9_000);
+        // 2.6.2는 `parseInt`다 — 소수·꼬리 문자열은 앞자리 정수만.
+        assert_eq!(retry_after_ms(&resp(429, "", &[("retry-after", "3.9")])), 3_000);
+        assert_eq!(retry_after_ms(&resp(429, "", &[("retry-after", "Wed, 21 Oct 2026 07:28:00 GMT")])), usage::RETRY_AFTER_DEFAULT_MS, "HTTP-date 형식은 못 읽는다 = 기본값");
+        // 헤더가 없으면 본문(3.0이 관찰한 형태) — R1의 동작을 유지한다.
+        assert_eq!(retry_after_ms(&resp(429, r#"{"retry_after":3}"#, &[])), 3_000);
+        assert_eq!(retry_after_ms(&resp(429, r#"{"error":{"retry_after":2.5}}"#, &[])), 2_500);
+        assert_eq!(retry_after_ms(&resp(429, "nope", &[])), usage::RETRY_AFTER_DEFAULT_MS);
+        // 상한 — 서버가 10분을 불러도 계정 훑기를 그만큼 세울 수는 없다.
+        assert_eq!(retry_after_ms(&resp(429, "", &[("retry-after", "600")])), usage::RETRY_AFTER_MAX_MS);
+        assert_eq!(retry_after_ms(&resp(429, r#"{"retry_after":600}"#, &[])), usage::RETRY_AFTER_MAX_MS);
+    }
+
+    /// ★T3T4 R2(확인 크리틱 [부분]) — **전역 게이트가 실제로 간격을 벌리는가.**
+    /// 상수만 대조하는 테스트는 게이트를 통째로 걷어내도 초록이다(2.6.2 `usageSlot`의
+    /// 간격이 사라지면 같은 IP의 연속 호출이 429로 튕긴다 — M5 R1 실측).
+    #[test]
+    fn the_global_gate_actually_spaces_the_calls() {
+        let gap = Duration::from_millis(usage::USAGE_GAP_MS);
+        throttle(); // 기준점 — 앞선 테스트가 남긴 시각과 무관하게 만든다
+        let t0 = Instant::now();
+        throttle();
+        let first = t0.elapsed();
+        let t1 = Instant::now();
+        throttle();
+        let second = t1.elapsed();
+        println!("[gate] 연속 호출 간격 = {first:?} · {second:?} (규약 {gap:?})");
+        // 타이머 눈금(Windows ~15.6ms)만큼의 여유만 준다.
+        let slack = Duration::from_millis(30);
+        assert!(first + slack >= gap, "★ 게이트가 간격을 안 벌렸다: {first:?}");
+        assert!(second + slack >= gap, "★ 두 번째 호출도 간격이 필요하다: {second:?}");
+        assert!(first < gap * 3, "필요 이상으로 잔다(호출 하나가 {first:?})");
+    }
+
+    /// 응답 헤더가 **실제로 실려 온다**(위 판정의 전제). 본문을 읽으면 응답이 소비되므로
+    /// 헤더를 먼저 뜨는 순서가 깨지면 여기서 빈 목록이 된다.
+    #[test]
+    fn a_response_carries_its_headers() {
+        let r = resp(429, "{}", &[("retry-after", "5"), ("x-req-id", "abc")]);
+        assert_eq!(r.header("RETRY-AFTER"), Some("5"));
+        assert_eq!(r.header("x-req-id"), Some("abc"));
+        assert_eq!(r.header("nope"), None);
     }
 }

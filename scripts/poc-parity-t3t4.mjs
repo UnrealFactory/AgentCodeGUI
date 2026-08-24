@@ -45,7 +45,12 @@ const want = (id) => only === 'all' || only.split(',').includes(id)
 const HOME = path.join(REPO, '.poc-home-t3t4')
 const PORT = 9421
 const SCRATCH = path.join(REPO, '.poc-scratch-t3t4')
-const OUT = path.join(REPO, 'docs', 'critic', 'parity-t3t4-r1.json')
+// ★기준 결과 파일을 덮지 않는다(병렬 규율 6). 라운드마다 `--out=`으로 새 파일에 쓴다 —
+// R1 주행의 산출물(`parity-t3t4-r1.json`)은 크리틱이 읽는 기준이라 불변이어야 한다.
+const OUT = path.resolve(
+  REPO,
+  (args.find((a) => a.startsWith('--out=')) ?? '').split('=')[1] || 'docs/critic/parity-t3t4-r1.json'
+)
 const EXE =
   (args.find((a) => a.startsWith('--exe=')) ?? '').split('=')[1] ||
   path.join(REPO, 'target-t3t4', 'release', 'agentcodegui.exe')
@@ -404,26 +409,58 @@ async function main() {
       check('H2-6 끔 목록이 **앱 홈**에 남는다(사용자 ~/.claude 불가침)', diskM?.disabled?.includes('bench-mcp') && diskS?.disabled?.includes('bench-skill'), `${JSON.stringify({ diskM, diskS })}`, { diskM, diskS })
     }
 
-    // ── M1. Ctrl+W ───────────────────────────────────────────────────────
+    // ── M1. Ctrl+W + ★창 경계 (확인 크리틱 R1 실패2) ─────────────────────
     if (want('m1')) {
-      console.log('\nM1. shortcut:close (Ctrl+W)')
-      await app.cdp.eval(`window.__t3t4_close = 0; window.api.onCloseShortcut(() => { window.__t3t4_close++ })`)
-      // 주입 스크립트가 잡는 실제 키 이벤트를 합성한다(문서 keydown 캡처 단계).
-      await app.cdp.eval(
-        `document.dispatchEvent(new KeyboardEvent('keydown', { key: 'w', ctrlKey: true, bubbles: true }))`
-      )
-      await sleep(400)
-      let n = await app.j(`window.__t3t4_close`)
-      if (n === 0) {
-        // window 대상 리스너라 document 이벤트가 버블로 못 닿는 판이 있다 — 창에 직접.
-        await app.cdp.eval(
-          `window.dispatchEvent(new KeyboardEvent('keydown', { key: 'w', ctrlKey: true, bubbles: true }))`
+      console.log('\nM1. shortcut:close (Ctrl+W) — 왕복 + 창 경계')
+      // 크리틱이 잡은 것: 심의 `listen()`이 **전역 대상**이라 셸의 `emit_to(창)` 필터가
+      // 무력화됐다 → 메인에서 1회 부르면 메인 1 + 추가 채팅 창 1. `FileModal.tsx:2998`이
+      // 이 채널로 뷰어를 닫으므로 **다른 창의 Ctrl+W가 열린 파일 뷰어를 같이 닫는다**.
+      // 그래서 창 둘에 계수기를 달고 양방향으로 잰다.
+      const pagesBefore = new Set((await cdpTargets(PORT)).filter((t) => t.type === 'page').map((t) => t.id))
+      await app.j(IPC('win:open-session'))
+      await sleep(2200)
+      const fresh = (await cdpTargets(PORT)).find((t) => t.type === 'page' && /#session/.test(t.url) && !pagesBefore.has(t.id))
+      const other = fresh ? await Cdp.connect(fresh.webSocketDebuggerUrl, { timeoutMs: 8000 }) : null
+      // 계수기 둘: 닫기 단축키(창 한정이어야 한다) · 추가 채팅 목록(전 창이어야 한다)
+      const arm = (page) =>
+        page.eval(
+          `window.__t3t4_close = 0; window.api.onCloseShortcut(() => { window.__t3t4_close++ });
+           window.__t3t4_wins = 0; window.api.sessionWindows.onChanged(() => { window.__t3t4_wins++ }); 0`
         )
-        await sleep(400)
-        n = await app.j(`window.__t3t4_close`)
+      await arm(app.cdp)
+      if (other) await arm(other)
+      await sleep(600) // listen() 등록은 비동기다(심 §3.3)
+      const press = async (page) =>
+        page.eval(`window.dispatchEvent(new KeyboardEvent('keydown', { key: 'w', ctrlKey: true, bubbles: true }))`)
+      const counts = async () => ({
+        main: await app.j(`window.__t3t4_close`),
+        other: other ? await app.j(`window.__t3t4_close`, other) : null
+      })
+
+      await press(app.cdp)
+      await sleep(600)
+      const a = await counts()
+      rep.steps.m1 = { afterMainPress: a, hadSecondWindow: !!other }
+      check('M1-1 Ctrl+W가 렌더러까지 왕복한다', a.main >= 1, `수신 ${a.main}회 — 0이면 방출자가 여전히 없다`, a)
+      if (other) {
+        check('M1-2 ★메인의 Ctrl+W가 다른 창을 건드리지 않는다', a.other === 0, `추가 채팅 창이 ${a.other}회 받았다 — 그 창의 파일 뷰어가 같이 닫힌다`, a)
+        await press(other)
+        await sleep(600)
+        const b = await counts()
+        rep.steps.m1.afterOtherPress = b
+        check('M1-3 ★반대 방향도 창 경계를 지킨다', b.other === 1 && b.main === a.main, `메인 ${a.main}→${b.main} · 추가 ${a.other}→${b.other}`, b)
+        // 대상 필터를 살리면서 **브로드캐스트까지 죽이지 않았는가**. 목록 변경은 전 창이
+        // 받아야 한다(2.6.2 `broadcastSessionWins`가 `getAllWindows()`를 도는 자리 —
+        // 팝아웃·추가 채팅 창의 btw 알약이 이 신호로 뜬다).
+        const w0 = { main: await app.j(`window.__t3t4_wins`), other: await app.j(`window.__t3t4_wins`, other) }
+        await app.j(IPC('win:open-session'))
+        await sleep(2000)
+        const w1 = { main: await app.j(`window.__t3t4_wins`), other: await app.j(`window.__t3t4_wins`, other) }
+        rep.steps.m1.sessionWinsChanged = { before: w0, after: w1 }
+        check('M1-4 목록 브로드캐스트는 여전히 **전 창**에 닿는다', w1.main > w0.main && w1.other > w0.other, `메인 ${w0.main}→${w1.main} · 추가 ${w0.other}→${w1.other}`, { w0, w1 })
+      } else {
+        fail('M1-2..4', '두 번째 창을 못 열어 창 경계를 못 쟀다')
       }
-      rep.steps.m1 = { received: n }
-      check('M1 Ctrl+W가 렌더러까지 왕복한다', n >= 1, `수신 ${n}회 — 0이면 방출자가 여전히 없다`, { received: n })
     }
 
     // ── M3. API 설정 점프 ────────────────────────────────────────────────
@@ -509,16 +546,23 @@ async function main() {
       if (!page || !chatId) {
         fail('H5', `새 추가 채팅 창을 못 짚었다 (page=${!!page} chatId=${chatId})`)
       } else {
-        // ★증거를 **디스크에 남긴다.** 창은 flush 뒤 곧바로 파기되므로 페이지 안의
-        //   카운터는 읽어 낼 창이 없다. 그래서 이식 렌더러가 듣는 **옛 채널**에 귀를
-        //   달고, 그 귀가 하는 일을 실제 렌더러와 같게(= `session.persist`) 둔다.
-        //   창이 죽은 뒤 메인 창에서 그 제목이 보이면 = 요청이 실제로 도착했다.
+        // ★증거를 **디스크의 파일 마커**로 남긴다. 창은 flush 뒤 곧바로 파기되므로
+        //   페이지 안의 카운터는 읽어 낼 창이 없다.
+        //
+        //   R1은 여기서 `session.persist({title:'FLUSH-OK'})`를 썼는데, 그건 **컴포넌트
+        //   자신의 persist와 같은 그릇에 쓴다**(SessionWindow.tsx:351이 같은 요청에
+        //   자기 스냅샷을 저장한다) — 마지막에 쓴 쪽이 이긴다. 확인 크리틱이 같은 exe로
+        //   4회 중 1회만 통과한 이유가 이것이고, 기능이 아니라 **검사가 거짓 실패**였다.
+        //   경합 없는 그릇(스크래치 폴더의 파일)으로 바꾼다.
+        const MARKER = 'flush-marker.txt'
+        try {
+          fs.rmSync(path.join(SCRATCH, MARKER), { force: true })
+        } catch {
+          /* 없으면 그만 */
+        }
         await page.eval(`
           window.api.session.onFlushRequest(() => {
-            window.api.session.persist({
-              title: 'FLUSH-OK', status: 'idle', cwd: '', refDirs: [],
-              snapshot: { m: 'flush' }, picker: null, draft: '', draftImages: [], empty: false
-            })
+            window.api.writeFile(${JSON.stringify(SCRATCH)}, ${JSON.stringify(MARKER)}, String(Date.now()))
           })
         `)
         await sleep(400)
@@ -528,15 +572,17 @@ async function main() {
         const slots = await app.j(IPC('win:chat-list'))
         const stillOpen = (slots ?? []).some((w) => w.chatId === chatId)
         const list = await app.j(`window.api.sessionWindows.list()`)
-        const flushed = (list ?? []).find((w) => w.title === 'FLUSH-OK')
-        rep.steps.h5 = { chatId, stillOpen, flushed: flushed ?? null, list }
+        const marker = fs.existsSync(path.join(SCRATCH, MARKER))
+        const kept = (list ?? []).find((w) => w.id === chatId)
+        rep.steps.h5 = { chatId, stillOpen, marker, kept: kept ?? null }
         check('H5-1 X로 닫으면 창이 실제로 닫힌다(악수가 창을 붙잡아 두지 않는다)', !stillOpen, '창이 안 닫혔다 = 유예가 안 풀린다', { stillOpen })
         check(
-          'H5-2 닫기 직전 저장이 **실제로 도착**한다(옛 채널로)',
-          !!flushed,
+          'H5-2 닫기 직전 저장 요청이 **실제로 도착**한다(옛 채널로 — 경합 없는 파일 마커)',
+          marker,
           '요청이 안 왔다 — 디바운스 안 내려간 마지막 편집이 창과 함께 사라진다',
-          { flushed: flushed ?? null }
+          { marker }
         )
+        check('H5-2b 그 대화는 닫힌 뒤에도 목록에 남는다', !!kept, '창을 닫자 대화가 증발했다', { kept: kept ?? null })
         try {
           page.close?.()
         } catch {

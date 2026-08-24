@@ -9,7 +9,16 @@
 import { useEffect, useRef, useState, type MutableRefObject } from 'react'
 import { t } from './i18n'
 import type { SessionState } from '../store/session'
-import { classifyLimitError, blockedResetsAt, codexBlockedResetsAt, resumeDelayMs, type LimitHold } from './limitResume'
+import {
+  classifyLimitError,
+  blockedResetsAt,
+  codexBlockedResetsAt,
+  codexUsageUnavailable,
+  holdDelayMs,
+  resumeVerdict,
+  usageUnavailable,
+  type LimitHold
+} from './limitResume'
 
 // 재개 프롬프트 — 세션(resume)이 대화 문맥을 다 알고 있는 경우의 '이어서'
 const contPrompt = (): string =>
@@ -131,39 +140,46 @@ export function useLimitResume(o: LimitResumeSurface): LimitResumeHandle {
   }, [o.busy])
 
   // 발화 — 장전 시점 판단을 믿지 않고 신선 usage로 재검증한다(엔진 armHoldIdle 규약).
-  // 아직 막혀 있으면 그 해제 시각으로 재장전, 풀렸으면 ready 표시만 — 전송은 아래
-  // 소진 effect가 조건이 맞을 때 수행한다.
+  // 착지는 셋이다(`resumeVerdict`): 아직 막혔다 → 그 해제 시각으로 재장전 / **못 물어봤다
+  // → 유지하고 다시 묻는다** / 풀렸다 → ready 표시만(전송은 아래 소진 effect가 한다).
+  //
+  // ★3.0 — 가운데 갈래가 확인 크리틱 R1 실패1의 자리다. 조회가 실패하면 창 넷이 전부
+  // `null`인 값이 오는데 R1까지는 그걸 「막는 창 없음 = 풀렸다」로 읽어 **눈감고 전송**
+  // 했다(실측: `CCG_NO_NET=1` + 살아 있는 계정 → ready=true). 실패는 "풀렸다"가 아니다.
   const fire = async (armedAt: number): Promise<void> => {
     const cur = holdRef.current
     if (!cur || cur.at !== armedAt || !oRef.current.enabled || oRef.current.managed) return
     const nowSec = Math.floor(Date.now() / 1000)
+    let still: number | null = null
+    let unavailable = true // 물어보기 전에는 근거가 0이다 — 던지는 경로도 여기로 착지한다
     try {
-      let still: number | null = null
       if (cur.engine === 'claude') {
+        const u = await window.api.getUsage(true, cur.account)
+        unavailable = usageUnavailable(u)
         // +60s: 1분 안에 풀릴 창은 풀린 셈 — 경계에서 재장전이 진동하지 않게
-        still = blockedResetsAt(await window.api.getUsage(true, cur.account), cur.fable, nowSec + 60)
+        still = blockedResetsAt(u, cur.fable, nowSec + 60)
       } else {
         const list = await window.api.codexAuth.accountsUsage()
         const acct = cur.account ? list.find((a) => a.email === cur.account) : list[0]
+        unavailable = codexUsageUnavailable(acct?.windows)
         still = codexBlockedResetsAt(acct?.windows, nowSec + 60)
       }
-      if (still != null) {
-        if (holdRef.current?.at !== cur.at) return // 재검증 사이 지워졌거나 새로 장전됨
-        setHold({ ...cur, resetsAt: still, at: Date.now() }) // 타이머 effect가 새 시각으로 다시 건다
-        return
-      }
     } catch {
-      // 조회 실패 — 풀린 것으로 두고 진행. 아직 한도면 에러가 새 대기표를 장전한다
+      unavailable = true // 조회가 던졌다 = 물어보지 못했다(심은 던지지 않지만 계약은 아니다)
     }
-    if (holdRef.current?.at !== cur.at) return
-    setHold({ ...cur, ready: true })
+    if (holdRef.current?.at !== cur.at) return // 재검증 사이 지워졌거나 새로 장전됨
+    const v = resumeVerdict(cur, still, unavailable, nowSec)
+    // 타이머 effect가 새 시각(또는 재확인 간격)으로 다시 건다
+    if (v.kind === 'hold') setHold({ ...cur, resetsAt: v.resetsAt, probes: v.probes, at: Date.now() })
+    else setHold({ ...cur, ready: true })
   }
 
-  // 대기표 타이머 — 리셋 시각(+90s 여유)에 발화, 시각 미상이면 10분 간격 프로브.
+  // 대기표 타이머 — 리셋 시각(+90s 여유)에 발화, 시각 미상이면 10분 간격 프로브,
+  // 조회 실패로 재장전된 표는 15초부터 배로 늘어나는 재확인 간격(`holdDelayMs`).
   // 대기표 갱신(정제·재장전)이나 토글 해제가 이전 타이머를 걷는다.
   useEffect(() => {
     if (!hold || hold.ready || !o.enabled || o.managed) return
-    const id = window.setTimeout(() => void fire(hold.at), resumeDelayMs(hold.resetsAt, Date.now()))
+    const id = window.setTimeout(() => void fire(hold.at), holdDelayMs(hold, Date.now()))
     return () => window.clearTimeout(id)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hold, o.enabled, o.managed])
