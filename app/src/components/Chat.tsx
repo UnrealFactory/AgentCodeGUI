@@ -3361,7 +3361,8 @@ export function LimitHoldBar({
             ? hold.autoPaused
               ? // 엔진이 같은 착지에서 쓰는 공지와 같은 문장이다(runtime.rs `attempts >=
                 // MAX_AUTO_ATTEMPTS`) — 한 앱 안에서 같은 사실은 같은 말로.
-                t('자동으로 이어서 보낸 turn이 계속 한도에 막혔어요 — 눌러서 이어가기', 'Auto-resume kept hitting the limit — click to continue')
+                // ★R28d WCAP R4 — 한글 문장 안의 `turn`을 「턴」으로(WCAP 확인 크리틱 R1 §6).
+                t('자동으로 이어서 보낸 턴이 계속 한도에 막혔어요 — 눌러서 이어가기', 'Auto-resume kept hitting the limit — click to continue')
               : t('한도가 풀렸어요 — 이어서 계속해요', 'Limit lifted — continuing')
             : enabled
               ? hold.resetsAt

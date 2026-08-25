@@ -474,3 +474,166 @@ npm run typecheck(node·web) + typecheck:app → 3종 초록(exit 0)
   공통 맹점이다(크리틱 §3.2의 그 줄).
 * **라이브 앱 주행 없음**(R1·R2와 같은 이유 — 창 하나가 5시간이다). 실계정 토큰 0건 ·
   실 HTTP 0건 · 이름 기반 kill 0건.
+
+---
+
+# R4 — 같은 문(門)의 네 번째 판: 「이 턴이 연 도구 그룹」이 **누가 턴을 열었느냐**에 매달려 있었다
+
+빌더: WCAP R4 · 2026-08-25 · 과녁: `docs/critic/r28d-wcap-critic-r1.md`(커밋 `1ac86bb` — `06067db`를
+겨눈 **두 번째** R1 판정문. 첫 번째는 `0f404be`이고 같은 파일을 덮었다)
+
+## 17. 한 문단 — 판정문이 겨눈 회귀는 이미 닫혀 있었다. 그 판정문이 **남긴** 것을 닫는다
+
+판정문 `1ac86bb`는 `06067db`(R1)를 잰 것이고, 레포 HEAD에는 이미 R2(`f8da858`)·R3(`468d905`)가
+얹혀 있다. **그 최대 격차(내용 0 프레임 한 장이 상한을 지운다)는 R2가, 두 번째 격차(도구가 턴
+경계를 넘는다)는 R3가 이미 닫았다** —— 이 라운드는 그 말을 믿지 않고 **직접 재현했다**: 레포를
+한 줄도 안 고치고 `crates/`+`Cargo.toml`+`Cargo.lock`을 `%TEMP%/wcapr4ws`에 복사해 `arm_hold`의
+**한 줄만**(`saw_turn_output` → `saw_turn_activity`) R1 규칙으로 되돌린 대조군에 **같은 못**을
+먹였다. 판정문의 숫자가 그대로 나왔다: 내용 0 프레임 **71 → 2**, 턴 경계 넘은 도구 결과
+**71 → 2**, 그리고 판정문 P4의 **반쪽만 아는 벽 42 → 2**. 그 세 축은 HEAD에서 전부 초록이다.
+
+**그러나 판정문이 남긴 셋이 열려 있었다.** ① §6의 「한글 문장 안의 `turn`」은 실제로 미착수였고,
+② §8-3이 요구한 「같은 대본을 **양쪽에** 먹인 계수 궤적이 일치하는 못」은 없었으며, ③ 그 못을
+실제로 박아 보니 **파리티가 아직 한 자리에서 깨져 있었다** —— R3 확인 크리틱(`29712ed`) §4.3이
+「다음 라운드 후보」로 남긴 그 자리다. 두 축의 공통 문장은 R3에서 「**이 턴이 연** 비어 있지 않은
+도구 그룹」이 됐는데, 렌더러에서 「이 턴」을 정하는 것은 스토어의 `openGroupId`이고 그 값을 비우는
+자리에 **`user-echo`가 빠져 있었다.** 한도 자동 재개는 정확히 그 경로다(엔진이 큐를 드레인하며
+여는 턴). 그래서 **텍스트 없이 도구만 여는 재개 턴**에서 스토어는 그 도구를 앞 턴의 열린 그룹에
+밀어 넣었고, 뒤에서부터 훑는 `turnDidWork`는 사용자 말풍선에서 멎어 거짓을 냈다 —— 엔진은 참이라
+**71 대 2가 `tool_use` 문으로 한 번 더** 서 있었다. **스토어 한 줄로 닫았다.**
+
+## 18. 무엇을 고쳤나
+
+| # | 자리 | 무엇 |
+|---|---|---|
+| ① | `app/src/store/session.ts` — `user-echo` | **`openGroupId: null` 한 줄.** `begin`이 처음부터 갖고 있던 줄이다. 새 사용자 말풍선이 붙으면 열린 도구 그룹은 닫힌다 — **여는 주체와 무관하게.** |
+| ② | `crates/ccg-engine/src/runtime.rs` · `app/src/components/Chat.tsx` | 한글 공지·배너의 `turn` → **`턴`**(판정문 §6). 두 문장은 같은 착지(`attempts >= MAX_AUTO_ATTEMPTS`)에서 뜨므로 같이 고쳤다. |
+| ③ | `crates/ccg-engine/tests/wcap_limit_streak.rs` | 못 **⑧⑨ 신설**(판정문 P4 = **반쪽만 아는 벽** 축) · ⑤에 `content_block_stop` 편입 · `mixed_wall` 손잡이 |
+| ④ | `scripts/poc-limit-resume.mjs` | **K절 신설** — 픽스처를 안 쓰고 **실제 스토어 리듀서**로 스레드를 지어 `turnDidWork`와 **훅**에 먹인다. 같은 이벤트 열을 `begin`/`user-echo` 두 벌로 돌려 **답·스레드 모양·계수 궤적**이 같은지 본다(판정문 §8-3). |
+
+**판정 로직은 0줄이다.** `turnDidWork`·`carriedAttempts`·`windowRolled`·`arm_hold`의 규칙·상한 2·
+「이어가기」·계승 구조 전부 그대로다. R4가 고친 것은 **그 판정에 들어가는 스레드를 스토어가
+어떻게 짓는가**이고, 그래서 화면의 거짓(§20)도 같이 사라진다.
+
+### 18.1 왜 `result`는 안 비웠나
+
+R3 크리틱은 「`user-echo`(와 `result`)」라고 적었다. `result`는 **일부러 뺐다.** 파리티에는
+`user-echo` 하나로 충분하다 —— 렌더러가 보는 모든 턴은 `begin`(사용자 전송) 또는
+`user-echo`(엔진이 연 턴)로 시작하고, 그 둘이 다 비우면 「이 턴이 연 그룹」의 정의가 닫힌다.
+반대로 `result`까지 비우면 **같은 실행이 이어서 내용을 내는 판**(무음 오판 뒤 진짜 턴 재개 —
+`done→working` 재점등, `stripSilentTail`이 사는 그 자리)에서 한 턴이 도구 그룹 두 개로 쪼개진다.
+판정에는 영향이 없고 화면만 나빠지는 변경이라 안 했다.
+
+## 19. 실측 — 판정문이 실패시킨 표를 직접 재현했다
+
+### 19.1 엔진 A/B — 판정문의 숫자가 그대로 나온다(레포 무수정)
+
+`%TEMP%/wcapr4ws`(= `crates/`+`Cargo.toml`+`Cargo.lock` 복사 · workspace members에서 `src-tauri`만
+제거 · **Cargo.lock을 반드시 같이** — 판정문 §함정의 indexmap 함정). 대조군은 `arm_hold`의
+**한 줄만** R1 규칙으로 되돌린 것이고, 먹인 못은 **레포의 그 파일 그대로**다.
+
+| 못 | 대본 | R1 규칙(대조군) | HEAD |
+|---|---|---|---|
+| ⑤ | 내용 0 프레임 한 장(`message_start`·`ping`·`thinking_delta`·`content_block_start`·**`content_block_stop`**·빈 델타·빈 텍스트·짝 없는 도구 결과) · 12h | **71회 · attempts 0 · 안 접힘** (`left: 71 right: 2`) | **2회 · attempts 2 · ready+auto_paused** |
+| ⑦ | 앞 턴 도구의 결과만 오는 재개(P12) · 12h | **71회** (`left: 71 right: 2`) | **2회 · 접힘** |
+| **⑧** | **반쪽만 아는 벽**(첫 표만 꼬리 있음) + `ping` · 12h | **42회** (`left: 42 right: 2`) | **2회 · 접힘** |
+| ⑨ | 같은 축 + **진짜 산출** · 12h | 42회 · attempts 0 · 안 접힘 | **42회 · attempts 0 · 안 접힘**(불변) |
+| ①②③④⑥ | 창 이동 7 / 일한 재개 6 / 헛발질 2 / 같은 벽 2 / 산출 4종 6 | 전부 동일 | 전부 동일(불변) |
+
+대조군 실행 = **`6 passed; 3 failed`**(⑤⑦⑧이 붉다). **판별력 있음 · 과잉 절단 없음.**
+⑧의 **42**는 판정문 P4가 잰 값과 같은 숫자다(⑤의 71보다 작은 이유는 첫 대기가 꼬리대로 5시간을
+진짜 기다리기 때문이다). ⑨는 그 축에서 **좁히기가 과하지 않다**는 반대편 못이다.
+
+> ⑧이 ⑤와 다른 것을 재는 이유: `arm_hold`의 `match (resets_at, self.auto_resume_at)`는 **한쪽만
+> 미상이어도** 같은 `_ => worked` 가지로 떨어진다. 즉 ②가 유일 판정자가 되는 축은 「꼬리가 아예
+> 없는 codex 배너형」만이 아니다 —— 클로드 문구 중 `…|epoch` 꼬리가 붙는 것은 일부고
+> (`banner_limit_reached`·`your_limit`·한국어 계열엔 없다) 같은 계정이 턴마다 다른 문구를 받는다.
+> **R1의 자기 신고가 「codex 배너형 + 토큰 한 줄」로 축소돼 있던 자리**(판정문 §4)이고, R2·R3의
+> 못은 전부 `banner: true` 축에만 서 있었다.
+
+### 19.2 렌더러 A/B — 이 라운드가 실제로 고친 자리
+
+`%TEMP%/wcapr4ren`(= `app/`+`src/`+`scripts/poc-limit-resume.mjs` 복사 · `node_modules` 정션).
+대조군은 **`user-echo`의 `openGroupId: null` 한 줄만** 뺀 것이다.
+
+| 같은 이벤트 열(시각 미상 축 · 매 턴 도구를 여는 재개 · 6턴) | 대조군 | HEAD |
+|---|---|---|
+| 스레드(실제 리듀서) — 렌더러가 연다(`begin`) | `u TG(1) a! u TG(1) a!` | 동일(불변) |
+| 스레드 — **엔진이 연다**(`user-echo`) | **`u TG(2) a! u a!`** | **`u TG(1) a! u TG(1) a!`** |
+| `turnDidWork` — `begin` / `user-echo` | true / **false** | true / **true** |
+| 훅 실구동 발사·계수 — `begin` | 6발 · `[0,0,0,0,0,0]` · 안 접힘 | 동일(불변) |
+| 훅 실구동 발사·계수 — **`user-echo`** | **2발 · `[1,2]` · ready+autoPaused** | **6발 · `[0,0,0,0,0,0]` · 안 접힘** |
+
+대조군 실행 = **268 통과 · 5 실패**, HEAD = **273 통과 · 0 실패**(그 사본엔 `.git`이 없어 I절의
+`git show` 대조군 3단언이 빠진다 — 레포에서는 **276/0**). 반대 방향도 잠갔다: 「빈손(문전박대)」·
+「앞 턴 도구의 결과만」은 **`begin`·`user-echo` 양쪽 다 2발 · `[1,2]` · 접힘**(RCAP 불변).
+
+**그리고 이 표의 오른쪽 열이 곧 엔진의 답이다** —— K절의 기대값은 손으로 적은 숫자가 아니라
+`wcap_limit_streak.rs` ⑤⑥⑦의 착지를 그대로 옮긴 표(`K_WANT`)다. 판정문 §8-3이 요구한 「같은
+대본을 양쪽에 먹인 궤적이 일치하는 못」이 이것이다.
+
+### 19.3 무회귀
+
+| 검사 | 값 |
+|---|---|
+| `cargo test -p ccg-engine` | **217 / 0 / 2 무시** (R3의 215 + 신설 ⑧⑨) — 주행 뒤 **219/0/2**로 오름, §19.4 |
+| `wcap_limit_streak` **20회 반복** | **20/20 초록** (플레이키 0) |
+| `-p ccg-store` / `-p ccg-auth` / `-p ccg-fs` / `-p ccg-lsp` / `-p agentcodegui` | 90/0 · 110/0 · 101/0/2 · 59/0 · 146/0 |
+| `node scripts/poc-limit-resume.mjs` ×3 | **276 통과 · 0 실패** (R3 249 → **+27**, 무후퇴) |
+| `npm run typecheck`(node·web) + `typecheck:app` | 3종 **exit 0** |
+| `npm run app:build` | 초록(2.24s) — `app/dist/`는 `.gitignore` |
+| 릴리즈 빌드 `--release --features custom-protocol -p agentcodegui` | 초록 2m31s(`CARGO_TARGET_DIR=target-wcapr4`) + `-p ccg-engine --features fakecli --bins` 13s |
+| `node scripts/poc-limit-engine.mjs`(그 exe) | **11 / 0** — `spawns=0` · `stdin=0B` · `queue=0` · `asks=2` · `unavailable=2` |
+| `node scripts/poc-limit-codex.mjs`(그 exe) | **8 / 0** — t=90s 발사 · `spawns=1` · `stdin=502B` · `blocked=0` |
+
+### 19.4 계수가 주행 중에 217 → 219로 오른 이유(옆 갈래의 미커밋 변경)
+
+이 워킹트리는 세 갈래가 같이 쓴다. 커밋 직후 확인 주행에서 `ccg-engine`이 **219/0/2**로 나왔다 ——
++2는 **EXTN 갈래가 `crates/ccg-engine/src/codex/versions.rs`에 얹은 미커밋 인라인 테스트 둘**이고
+(`git diff`로 확인: `+156/-17` · `#[test]` 2개), 내 커밋에는 그 파일이 없다. **217은 그 변경이
+뜨기 전 트리의 값, 219는 뜬 뒤의 값**이다. 둘 다 `failed=0`이고 이 라운드가 만든 못은 그중
+`wcap_limit_streak` **9개**다(R3의 7 + ⑧⑨). 재측정하는 사람은 옆 갈래의 미커밋 상태에 따라 이
+숫자가 달라진다는 것을 알고 재야 한다 —— `--test wcap_limit_streak`으로 좁히면 **9/0**으로 고정이다.
+
+## 20. 화면 — 판정이 아니라 **눈에 보이는 것**도 고쳐졌다
+
+§19.2의 대조군 스레드 `u TG(2) a! u a!`를 사람 눈으로 읽으면 이렇다: 밤새 자동 재개가 71턴을
+돌면 **그 71턴이 연 도구 행이 전부 첫 턴의 도구 그룹에 쌓이고**, 그 아래 「이어서」 말풍선 71개는
+**텅 빈 채로** 남는다. R3 크리틱이 「지금은 계수가 안 갈리지만 **화면은 이미 거짓**」이라고 적은
+그 자리다(본채팅은 `resumeOwner:"engine"`이라 `turnDidWork`를 아무도 안 읽는다 — `lite.rs:175`).
+이 한 줄은 그 거짓과 파리티의 잠재 구멍을 **같이** 없앤다. 「이 턴이 연 도구 그룹」이라는 공통
+정의가 이제 **여는 방식에 안 매달린다**.
+
+## 21. 만진 파일(R4)
+
+| 파일 | 무엇 |
+|---|---|
+| `app/src/store/session.ts` | `user-echo`에 `openGroupId: null` **한 줄** + 근거 주석 |
+| `crates/ccg-engine/src/runtime.rs` | 공지 문장의 `turn` → `턴`(문자열 1줄 + 주석) |
+| `app/src/components/Chat.tsx` | 배너 문장의 `turn` → `턴`(한국어 쪽만 · 영문은 불변) |
+| `crates/ccg-engine/tests/wcap_limit_streak.rs` | `mixed_wall` 손잡이 · 못 ⑧⑨ 신설 · ⑤에 `content_block_stop` |
+| `scripts/poc-limit-resume.mjs` | K절 신설(실제 스토어 리듀서 구동 · **27단언** = 249 → 276) · `mountArmed(…, thread)` 손잡이 |
+| `app/src/lib/limitResume.ts` | **주석만**(R4 절 + 배너 인용 문구 정정) — 판정 로직 0줄 |
+| `docs/parity-fix-wcap-r1.md` | 이 절들 |
+
+**안 건드린 것**: `app/src/lib/useLimitResume.ts`(R2·R3·R4 전부 0줄) · `turnDidWork`/`carriedAttempts`/
+`windowRolled`/`arm_hold`의 판정 · 상한 2 · 「이어가기」 · `saw_turn_activity`의 T8/T9 쓰임 ·
+`result`의 `openGroupId`(§18.1) · CSS 0줄 · `src-tauri/**` 0줄(EXTN 갈래와 경로 무충돌) ·
+`src/renderer/**`(2.6.2 동결본) 0줄. 기준 결과 파일 **0개 덮음**(하네스 산출물은 `--out`으로
+`docs/critic/limit-{engine,codex}-wcapr4.json` 새 이름).
+
+## 22. 남는 리스크
+
+* **§14.2의 47발은 여전히 「정의」다.** R3 리스크 그대로 — 매 턴 진짜 산출을 내면서 같은 벽에
+  계속 부딪히는 서버가 있으면 빈손이 연달아 둘 오기 전까지 안 접힌다(12시간 42~71발).
+  파리티는 안 깨져 있다. R4가 그 축을 **⑧⑨로 두 개 더 덮었을 뿐** 구조는 안 바꿨다.
+* **`turnDidWork`를 읽는 표면이 늘어나면** §19.2의 A/B를 다시 돌려야 한다. 지금 본채팅은
+  엔진이 표를 들어 그 함수를 안 읽고(`managed`), 멀티 패널·팝아웃·추가 창은 자기 `send`로 쏘므로
+  늘 `begin`이다 —— **R4 뒤로는 그 규약이 깨져도 답이 안 바뀐다**는 것이 이 라운드의 산출이다.
+* **부팅 재장전 비대칭**(엔진 `reload_state`의 `attempts:0` ↔ 렌더러 `sanitizeHold`)은 R28c부터의
+  것이고 이 변경과 무관하다.
+* **`rate_limit_event` 경로**·**한도 문구가 어시스턴트 텍스트로 오는 판**은 R2·R3 기록 그대로.
+* **라이브 앱 주행 없음**(창 하나가 5시간). 다만 이번엔 릴리즈 exe로 `poc-limit-engine`·
+  `poc-limit-codex`를 직접 돌렸다. 실계정 토큰 0건 · 실 HTTP 0건(`CCG_NO_NET=1`) ·
+  이름 기반 kill 0건 · 격리 `CARGO_TARGET_DIR=target-wcapr4`(+`…r4b` 반복 · `…r4c` 대조군) ·
+  CDP 9425·9437은 주행 전 `netstat`로 비어 있음 확인.

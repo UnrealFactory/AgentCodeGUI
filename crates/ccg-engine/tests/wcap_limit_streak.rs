@@ -66,6 +66,13 @@ struct WcapCli {
     roll: u64,
     /// 꼬리가 아예 없는 배너형 문구(codex 한도 문구의 모양) — ①이 영영 침묵하는 축.
     banner: bool,
+    /// ★R4 — **첫 표만 꼬리가 있고 그다음부터 없다**(WCAP 확인 크리틱 R1 §2.2의 P4).
+    /// `arm_hold`의 `match (resets_at, self.auto_resume_at)`는 **한쪽만 미상이어도** 같은
+    /// `_ => worked` 가지로 떨어진다 — 즉 ②가 드는 축은 `banner` 판만이 아니다. 실전에서
+    /// 이 모양은 흔하다: 클로드 문구 중 `…|epoch` 꼬리가 붙는 것은 일부고
+    /// (`banner_limit_reached`·`your_limit`·한국어 계열엔 없다) 같은 계정이 턴마다 다른
+    /// 문구를 받는다.
+    mixed_wall: bool,
     /// result 에러 **앞에** 어시스턴트 출력을 흘린다 = 그 턴은 일을 했다.
     work: bool,
     /// ★R2 — result 에러 앞에 흘리는 **임의의 프레임들**. 구분자 ②의 *문턱*을 재는
@@ -123,7 +130,8 @@ impl CliDriver for WcapCli {
                     "session_id":"S1","uuid":"U-tn"}));
             }
         }
-        let text = if self.banner {
+        // ★R4 — `mixed_wall`이면 **첫 표만** 꼬리를 달고 그 뒤로는 배너형이다(P4 축).
+        let text = if self.banner || (self.mixed_wall && self.turns > 0) {
             "5-hour limit reached ∙ resets 3pm".to_string()
         } else {
             format!("Claude AI usage limit reached|{}", RESET + self.roll * self.turns)
@@ -332,6 +340,8 @@ fn a_frame_that_leaves_nothing_on_screen_does_not_clear_the_streak() {
         ("ping", vec![json!({"type":"stream_event","event":{"type":"ping"}})]),
         // 문턱의 나머지 반쪽 — **빈** 글자·**빈** 블록은 렌더러에서 `.trim()`에 걸린다.
         ("content_block_start", vec![json!({"type":"stream_event","event":{"type":"content_block_start","content_block":{"type":"text"}}})]),
+        // ★R4 — 닫는 쪽도 같은 `_ => {}` 가지다(WCAP 확인 크리틱 R1 §2.2의 P3).
+        ("content_block_stop", vec![json!({"type":"stream_event","event":{"type":"content_block_stop","index":0}})]),
         ("빈 text_delta", vec![delta(json!({"type":"text_delta","text":"   "}))]),
         ("빈 assistant 텍스트", vec![json!({"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":""}]}})]),
         // ★R3 — **짝 없는 도구 결과.** R2는 이 줄을 ⑥(안 접힘)에 두었는데 그건 렌더러와
@@ -452,4 +462,60 @@ fn a_tool_result_that_crosses_the_turn_boundary_does_not_clear_the_streak() {
     );
     assert!(h.ready && h.auto_paused, "★ 자동을 접고 사용자에게 넘겨야 한다");
     assert_eq!(h.attempts, MAX_AUTO_ATTEMPTS, "계수가 표에 실려 있다");
+}
+
+/// ⑧ ★R28d WCAP **R4** — **②가 드는 축은 「꼬리가 아예 없는 판」만이 아니다.**
+///
+/// WCAP 확인 크리틱 R1 §2.2의 **P4**(mixed) 대본이다. `arm_hold`의
+/// `match (resets_at, self.auto_resume_at)`는 **한쪽만 미상이어도** 같은 `_ => worked`
+/// 가지로 떨어진다 — 즉 첫 표는 꼬리가 있었고 그다음 문구부터 없어지는 판(같은 계정이
+/// 턴마다 다른 문구를 받는 실전 모양: `…|epoch` 꼬리는 클로드 문구 **일부**에만 붙는다)도
+/// 그 가지다. R1 규칙(`saw_turn_activity`)에서는 이 축이 `ping` 한 장에 **12시간 42발**
+/// 이었다(⑤의 71발보다 작은 이유는 첫 대기가 꼬리대로 5시간을 진짜 기다리기 때문이다).
+///
+/// ⑤와 같은 것을 재는 못이 아니다: ⑤는 「무엇이 산출인가」를, 이 못은 「**어느 판에서**
+/// ②가 유일 판정자가 되는가」를 잰다. R1의 자기 신고가 「codex 배너형 + 토큰 한 줄」로
+/// 축소돼 있던 자리이기도 하다(크리틱 §4).
+#[test]
+fn a_half_known_wall_axis_also_stops_at_the_cap() {
+    let ping = json!({"type":"stream_event","event":{"type":"ping"}});
+    let cli = WcapCli {
+        mixed_wall: true, // 첫 표만 꼬리 있음 → 그다음부터 배너형
+        pre: vec![ping],  // 화면에 아무것도 안 남기는 프레임 한 장
+        ..Default::default()
+    };
+    let (r, _clock, blind) = run(cli, 1_000 * SEC + 12 * HOUR);
+    let h = r.hold().expect("표는 서 있다");
+    println!(
+        "[WCAP⑧] 반쪽만 아는 벽 + ping {blind}회 · attempts {} · ready {} · auto_paused {}",
+        h.attempts, h.ready, h.auto_paused
+    );
+    assert_eq!(
+        blind as u32, MAX_AUTO_ATTEMPTS,
+        "★★ 반쪽만 아는 축에서 상한이 지워졌다 — 12시간에 {blind}회(R1 규칙에서 42회)"
+    );
+    assert!(h.ready && h.auto_paused, "★ 자동을 접고 사용자에게 넘겨야 한다");
+    assert_eq!(h.attempts, MAX_AUTO_ATTEMPTS, "계수가 표에 실려 있다");
+}
+
+/// ⑨ ★R28d WCAP **R4** — **반쪽만 아는 축에서도 「일한 재개」는 안 잘린다**(⑧의 반대편).
+///
+/// ⑧과 같은 대본에서 프레임 한 장만 **진짜 산출**로 바꾼다. 여기서 접히면 좁히기가
+/// 과했다는 뜻이고, 겨눈 격차(밤샘 주행)가 이 축에서 되살아난다.
+#[test]
+fn a_half_known_wall_axis_still_clears_on_real_output() {
+    let cli = WcapCli {
+        mixed_wall: true,
+        work: true, // 어시스턴트 텍스트 한 줄 = 화면에 남는 산출
+        ..Default::default()
+    };
+    let (r, _clock, blind) = run(cli, 1_000 * SEC + 12 * HOUR);
+    let h = r.hold().expect("표는 서 있다");
+    println!(
+        "[WCAP⑨] 반쪽만 아는 벽 + 진짜 산출 {blind}회 · attempts {} · auto_paused {}",
+        h.attempts, h.auto_paused
+    );
+    assert!(blind as u32 > MAX_AUTO_ATTEMPTS, "★ 일한 재개가 상한에 걸렸다 — {blind}회에서 멎었다");
+    assert_eq!(h.attempts, 0, "★ 일한 턴은 계수를 올리지 않는다");
+    assert!(!h.auto_paused, "★ 자동이 접혔다");
 }

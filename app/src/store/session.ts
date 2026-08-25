@@ -638,6 +638,21 @@ export function reducer(state: SessionState, action: Action): SessionState {
     return {
       ...state,
       seq,
+      // ★R28d WCAP R4 — **새 사용자 말풍선은 열린 도구 그룹을 닫는다**(WCAP 확인 크리틱
+      // R3 §4.3). `begin`은 이 줄을 처음부터 갖고 있었는데(623행) 여기엔 없었다. 그래서
+      // 엔진이 스스로 연 재개 턴(한도 자동 재개·예약 드레인·대화 연결 수신 = `hub.rs`의
+      // `user-echo`)이 텍스트 없이 도구만 열면, 스토어가 그 도구를 **앞 턴의 열린 그룹**에
+      // 밀어 넣었다. 실측(실제 리듀서 구동): 같은 이벤트 열에 여는 방식만 바꾸면
+      //   begin     → `user TG(tg2:1) assistant! user TG(tg5:1) assistant!`
+      //   user-echo → `user TG(tg2:2) assistant! user assistant!`
+      // 두 가지가 같이 틀어졌다. ① 화면이 거짓이다 — 밤샘 재개 71턴이 연 도구 행이 전부
+      // 첫 턴 그룹에 쌓이고 그 아래 「이어서」 말풍선들은 텅 빈 채로 남는다. ② 파리티가
+      // 규약 하나에 얹힌다 — `limitResume.ts::turnDidWork`는 **마지막 사용자 말풍선 뒤**를
+      // 이 턴으로 보므로 위 아래 줄에서 거짓이 되는데, 엔진(`runtime.rs::arm_hold` 구분자
+      // ②)은 그 턴이 연 도구를 산출로 세어 **참**이다. 시각 미상 축(codex 배너형)에서 그
+      // 어긋남이 곧 크리틱 R1·R2가 두 번 실패시킨 「엔진 71발 / 렌더러 2발」이다.
+      // 「이 턴이 연 도구 그룹」이라는 공통 정의는 **누가 턴을 열었는지와 무관**해야 한다.
+      openGroupId: null,
       messages: capThread([
         ...state.messages.filter((m) => m.id !== THINKING_ID),
         {

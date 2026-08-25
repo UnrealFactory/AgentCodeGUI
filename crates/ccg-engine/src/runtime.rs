@@ -3453,7 +3453,10 @@ impl<D: CliDriver> ChatRuntime<D> {
                 h.auto_paused = true;
             }
             self.emit(Event::Notice(
-                "자동으로 이어서 보낸 turn이 계속 한도에 막혀서 자동 재개를 멈췄어요 — 준비되면 눌러서 이어가세요.".into(),
+                // ★R28d WCAP R4 — 한글 문장 안의 `turn`을 「턴」으로(WCAP 확인 크리틱 R1 §6).
+                // 화면에 그대로 나가는 공지다 — 같은 사실을 말하는 `Chat.tsx`의 배너와
+                // 글자를 맞춘다.
+                "자동으로 이어서 보낸 턴이 계속 한도에 막혀서 자동 재개를 멈췄어요 — 준비되면 눌러서 이어가세요.".into(),
             ));
             self.broadcast_plan();
             return;

@@ -365,14 +365,16 @@ const flush = () => new Promise((r) => setTimeout(r, 0))
 
 /** 대기표 하나를 장전한 훅 호스트를 만든다. props는 화면이 실제로 넘기는 모양 그대로.
  *  `text`를 주면 그 문구로 죽은 턴을 만든다(codex 한도 문구에는 `…|epoch` 꼬리가 없다). */
-function mountArmed(props, text, mod = hookMod) {
+function mountArmed(props, text, mod = hookMod, thread = null) {
   timers.length = 0 // 앞 시나리오의 호스트가 걸어 둔 타이머와 섞이지 않게(가짜 시계 초기화)
   const errText = text ?? 'Claude AI usage limit reached|' + (NOW - 100)
   const state = {
     status: 'working',
     session: 'ses-1',
     interrupted: false,
-    messages: [
+    // `thread`를 주면 **실제 스토어 리듀서가 지은 스레드**로 장전한다(K절) — 손으로 만든
+    // 픽스처가 스토어가 결코 만들지 않는 모양일 위험을 없앤다(WCAP 확인 크리틱 R2 §4.3).
+    messages: thread ?? [
       { kind: 'msg', role: 'user', text: '원래 하던 일' },
       { kind: 'msg', role: 'assistant', text: errText, error: true }
     ]
@@ -731,7 +733,7 @@ eq('★ ✕로 취소한 뒤의 새 표도 백지', hx.hold?.attempts, undefined
 // 아무도 안 봤다(크리틱 실측: 조회가 매번 「풀렸다」고 답하는 판에서도
 // `attempts=1 → attempts=2 → PAUSED`). 현실 시나리오는 22시 한도 → 03시 재개(성공) →
 // 08시 새 한도 → … 인데, 그 밤샘 주행이 **창 두 개**에서 잘리고 배너는 「자동으로 이어서
-// 보낸 turn이 계속 한도에 막혔어요」라고 말한다 — 그 턴들은 막힌 게 아니라 일했다.
+// 보낸 턴이 계속 한도에 막혔어요」라고 말한다 — 그 턴들은 막힌 게 아니라 일했다.
 //
 // 구분자 둘을 받는다(엔진 `crates/ccg-engine/src/runtime.rs::arm_hold`가 같은 둘을 같은
 // 순서로 본다): ① 새 문구의 리셋 시각이 직전에 쏜 표보다 **뒤**이고 **아직 오지 않았다** /
@@ -903,6 +905,144 @@ usageAnswer = G_FREE
 const stale = await nightRun(I_PROPS, 8, J_SAME, true)
 eq('★★ 매 턴 출력을 내도 같은 벽이면 2발에서 멎는다', { sent: stale.sent, seen: stale.seen }, { sent: 2, seen: [1, 2] })
 ok('★ 그 표는 접혀 있다(사용자의 버튼 차례)', stale.h.hold?.ready === true && stale.h.hold?.autoPaused === true, JSON.stringify(stale.h.hold))
+
+// ── K. ★R28d WCAP R4 — 「이 턴이 연 도구 그룹」은 **누가 턴을 열었든** 같은 답이어야 한다 ──
+//
+// WCAP 확인 크리틱 R3 §4.3. R3에서 두 축의 공통 문장은 「이 턴이 연 비어 있지 않은 도구
+// 그룹」이 됐는데, 렌더러에서 「이 턴」을 정하는 것은 스토어의 `openGroupId`이고 그 값을
+// 비우는 자리에 **`user-echo`가 빠져 있었다**(`begin`·`assistant-*`·`verdict(blocked)`·
+// `interrupt`만 비웠다). 한도 자동 재개는 엔진이 여는 턴 = `user-echo`다(`hub.rs`의 큐
+// 드레인). 그래서 **텍스트 없이 도구만 여는 재개 턴**에서 스토어는 그 도구를 앞 턴의 열린
+// 그룹에 밀어 넣었고, 뒤에서부터 훑는 `turnDidWork`는 사용자 말풍선에서 멎어 거짓을 냈다 —
+// 엔진은 같은 판에서 참(그 턴이 연 도구 = 산출)이라 **71 대 2가 `tool_use` 문으로 한 번 더**
+// 서 있었다. 스토어 한 줄(`app/src/store/session.ts`의 `user-echo`: `openGroupId: null`)로
+// 닫았고, 이 절이 그 사실을 **실제 리듀서로** 잠근다.
+//
+// 이 절이 앞 절들과 다른 점: 스레드를 **손으로 안 만든다.** `begin`/`user-echo`/`status`/
+// `tool-start`/`tool-end`/`assistant-done`/`thinking`/`result`를 진짜 리듀서에 먹여 스레드를
+// 짓고, 그 스레드를 판정 함수와 **훅**에 그대로 넣는다.
+console.log('\nK. 실제 스토어 리듀서 — 엔진이 연 턴(user-echo)과 렌더러가 연 턴(begin)이 같은 답을 낸다')
+tag = 'WCAP R4'
+
+const store = await bundle(path.join(root, 'app/src/store/session.ts'), 'store.mjs', {
+  alias: { react: stubPath, '@shared': path.join(root, 'src/shared') }
+})
+const { reducer, initialSessionState } = store
+const kEv = (e) => ({ type: 'engine', event: e })
+const kTool = (id) => ({ id, name: 'Read', input: '', status: 'running' })
+// 꼬리(`…|epoch`)가 없는 문구 = **시각 미상 축**. 구분자 ①이 영영 침묵하므로 ②(일한 흔적)가
+// 유일 판정자다 — 엔진 못들이 71 대 2를 재던 그 축이고, codex 대기표의 기본 축이다.
+const kResult = (run) => ({
+  type: 'result', runId: run, isError: true, text: CX_BANNER,
+  costUsd: null, durationMs: null, numTurns: null, contextTokens: null, contextWindow: null, viaApi: false
+})
+
+/** 한 턴이 죽기 전에 흘리는 것 — 엔진 못(`crates/ccg-engine/tests/wcap_limit_streak.rs`)의
+ *  ⑤⑥⑦ 대본과 같은 다섯이다. `i`는 턴 번호(0 = 사용자가 보낸 첫 턴). */
+const K_BODY = {
+  '빈손(문전박대)': () => [],
+  '이 턴이 연 도구': (run, i) => [kEv({ type: 'tool-start', runId: run, tool: kTool(`toolu-${i}`) })],
+  // 턴0은 도구를 열어 놓고 죽고, 재개 턴들은 **앞 턴** 도구의 결과만 받는다(엔진 못 ⑦의 P12).
+  '앞 턴 도구의 결과만': (run, i) =>
+    i === 0
+      ? [kEv({ type: 'tool-start', runId: run, tool: kTool('toolu-0') })]
+      : [kEv({ type: 'tool-end', runId: run, id: 'toolu-0', status: 'ok', preview: 'ok' })],
+  '어시스턴트 텍스트': (run, i) => [kEv({ type: 'assistant-done', runId: run, messageId: `m${i}`, text: '고쳤어' })],
+  '추론만': (run) => [kEv({ type: 'thinking', runId: run, text: '어디부터 볼까' })]
+}
+
+/** 엔진이 같은 대본에 내는 답(= 위 못들의 착지). **이 표가 두 축의 계약이다.** */
+const K_WANT = {
+  '빈손(문전박대)': false, // ⑤ 12시간 2발 · attempts 2 · 접힘
+  '이 턴이 연 도구': true, // ⑥ 「결과 없이 죽는 도구 호출」 65분 6발 · attempts 0
+  '앞 턴 도구의 결과만': false, // ⑦ 12시간 2발 · 접힘
+  '어시스턴트 텍스트': true, // ⑥
+  '추론만': false // ⑤ (thinking_delta 한 장)
+}
+
+/** 한 턴을 스토어에 태운다. `openWith`가 이 절의 전부다 — 같은 이벤트 열을 렌더러가 여는
+ *  판(`begin`)과 엔진이 여는 판(`user-echo`)으로 두 벌 돌린다. */
+function kTurn(s, i, openWith, body) {
+  const run = `run-${i + 1}`
+  if (i === 0 || openWith === 'begin') s = reducer(s, { type: 'begin', text: i ? '이어서' : '원래 하던 일', time: '10:00', command: null })
+  else s = reducer(s, { type: 'user-echo', text: '이어서', time: '10:05' })
+  s = reducer(s, kEv({ type: 'status', status: 'analyzing', runId: run }))
+  for (const a of body(run, i)) s = reducer(s, a)
+  return reducer(s, kEv(kResult(run)))
+}
+const kThread = (openWith, body, turns = 2) => {
+  let s = initialSessionState
+  for (let i = 0; i < turns; i++) s = kTurn(s, i, openWith, body)
+  return s.messages
+}
+const kShape = (msgs) =>
+  msgs.map((m) => (m.kind === 'toolgroup' ? `TG(${m.tools.length})` : m.kind === 'msg' ? (m.error ? 'a!' : m.role[0]) : m.kind)).join(' ')
+
+console.log('   ① 판정 — 같은 이벤트 열, 여는 방식만 다르게')
+for (const [label, body] of Object.entries(K_BODY)) {
+  const a = kThread('begin', body)
+  const b = kThread('user-echo', body)
+  eq(`「${label}」 렌더러가 연 턴 = 엔진의 답`, lib3.turnDidWork(a), K_WANT[label])
+  eq(`★★ 「${label}」 엔진이 연 턴도 같은 답(여는 방식과 무관)`, lib3.turnDidWork(b), K_WANT[label])
+  // 답만이 아니라 **스레드 모양**까지 같아야 한다 — 답이 우연히 겹치는 것과 다르다.
+  eq(`★ 「${label}」 스레드 모양이 같다`, kShape(b), kShape(a))
+}
+// 이 절이 실제로 무엇을 잡는지 못 박는다 — 고치기 전 `user-echo` 판의 실측 모양이다.
+eq(
+  '★ 회귀 표식 — 재개 턴의 도구는 새 그룹을 연다(앞 턴 그룹에 안 쌓인다)',
+  kShape(kThread('user-echo', K_BODY['이 턴이 연 도구'])),
+  'u TG(1) a! u TG(1) a!'
+)
+
+// ② 계수 궤적 — 그 스레드를 **훅에 그대로** 먹인다(픽스처 0개).
+console.log('   ② 훅 실구동 — 스토어가 지은 스레드로 계수 궤적을 잰다')
+
+/** 쏜 재개 턴이 또 죽는다 — 스레드는 스토어가 준 것을 통째로 쓴다. */
+async function kRearm(h, messages) {
+  h.o.busy = true
+  h.o.state = { ...h.o.state, status: 'working' }
+  h.host.render()
+  await flush()
+  h.o.busy = false
+  h.o.state = { ...h.o.state, status: 'error', messages }
+  h.host.render()
+  await flush()
+}
+
+/** 첫 턴을 스토어로 태워 표를 세우고, 재개를 n번 돌린다(매번 같은 한도로 죽는다). */
+async function kNight(openWith, body, n) {
+  sent.length = 0
+  let s = kTurn(initialSessionState, 0, openWith, body)
+  const h = mountArmed(CX_PROPS, null, hookMod, s.messages)
+  const seen = []
+  for (let i = 1; i <= n; i++) {
+    if (!h.hold || h.hold.autoPaused) break
+    await tick(h)
+    if (h.hold) break // 안 쐈다 = 자동이 접혔다
+    s = kTurn(s, i, openWith, body)
+    await kRearm(h, s.messages)
+    seen.push(h.hold?.attempts ?? 0)
+  }
+  return { h, sent: sent.length, seen }
+}
+
+cxAnswer = [cxRow('me@openai.com', 5, REAL + 3600)] // 재검증은 「풀렸다」고 답한다
+const kBegin = await kNight('begin', K_BODY['이 턴이 연 도구'], 6)
+eq('매 턴 도구를 여는 재개 — 렌더러가 연 판은 안 잘린다', { sent: kBegin.sent, seen: kBegin.seen }, { sent: 6, seen: [0, 0, 0, 0, 0, 0] })
+const kEcho = await kNight('user-echo', K_BODY['이 턴이 연 도구'], 6)
+eq('★★ 엔진이 연 판도 같은 궤적 — 71 대 2가 `tool_use` 문으로 서 있던 자리', { sent: kEcho.sent, seen: kEcho.seen }, { sent: 6, seen: [0, 0, 0, 0, 0, 0] })
+ok('★ 접힌 표가 없다(엔진 못 ⑥과 같은 착지)', !kEcho.h.hold?.autoPaused, JSON.stringify(kEcho.h.hold))
+console.log(`   A/B — 같은 6턴 대본: begin ${kBegin.sent}발(계수 ${JSON.stringify(kBegin.seen)})  vs  user-echo ${kEcho.sent}발(계수 ${JSON.stringify(kEcho.seen)})`)
+
+// 반대 방향(과잉 절단) — 진짜 헛발질은 **양쪽 다** 2발에서 접힌다. RCAP 불변.
+for (const [label, want] of [['빈손(문전박대)', '빈손'], ['앞 턴 도구의 결과만', '앞 턴 결과']]) {
+  for (const how of ['begin', 'user-echo']) {
+    const r = await kNight(how, K_BODY[label], 6)
+    eq(`★ 「${want}」(${how})은 여전히 2발에서 멎는다`, { sent: r.sent, seen: r.seen }, { sent: 2, seen: [1, 2] })
+    ok(`★ 「${want}」(${how}) 표가 접혀 있다`, r.h.hold?.ready === true && r.h.hold?.autoPaused === true, JSON.stringify(r.h.hold))
+  }
+}
+cxAnswer = []
 
 fs.rmSync(tmp, { recursive: true, force: true })
 console.log(`\n${fail === 0 ? 'PASS' : 'FAIL'} — ${pass} 통과, ${fail} 실패`)
