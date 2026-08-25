@@ -54,9 +54,12 @@ R6이 실패한 지점은 문면이 아니라 **장부**였다. 그래서 모든
 **선점검이 실제로 막는가 — 실측.** 도장 이전 exe로 같은 갈래를 돌려 확인했다:
 
 ```
-node scripts/poc-talk.mjs --only=wall --exe=target/release/agentcodegui.exe      --fakecli=target-r28h-m10/release/ccg-fakecli.exe --tag=r7guard
+node scripts/poc-talk.mjs --only=wall --exe=target/release/agentcodegui.exe
+     --fakecli=target-r28h-m10/release/ccg-fakecli.exe --tag=r7guard
+
 → Error: ★문면 선점검 불가 — 이 exe의 engine:debug에 talk.fingerprint가 없다(도장 이전 빌드다).
-    exe: C:CodeAgentCodeGUI	argeteleaseagentcodegui.exe · sha256 4cdf77884071… · mtime 2026-08-24T09:09:47Z
+    exe: C:/Code/AgentCodeGUI/target/release/agentcodegui.exe
+         sha256 4cdf77884071… · mtime 2026-08-24T09:09:47Z
 ```
 
 W1 한 칸도 안 돌고 멎었고, **띄운 앱은 그 자리에서 거뒀다**(고아 0 — 던지는 경로에서
