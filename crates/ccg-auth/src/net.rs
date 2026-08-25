@@ -474,7 +474,18 @@ pub fn store_rotation(
     if report.as_ref().map(|r| r.unregistered).unwrap_or(false) {
         // 조회 중에 사용자가 그 계정을 로그아웃했다. 남길 곳이 없는 게 정상이고,
         // "재로그인이 필요할 수 있습니다"는 틀린 문장이다.
-        eprintln!("[auth] {email}는 스토어에서 사라졌다(로그아웃) — 회전 결과를 남기지 않는다");
+        //
+        // ★R28d(CASX R3) — **어디에 남았는지는 사실대로 적는다.** R2가 [`claude::freshest_creds`]를
+        // 폴더까지 보게 하면서, 「행은 없는데 폴더는 있다」는 판(로그아웃이 아니라 행 유실)에서
+        // 폴더 반쪽이 **성공한 채로** 이 가지에 처음 도달하게 됐다(확인 크리틱 R2 §7 곁가지).
+        // 그때 "남기지 않는다"는 틀린 문장이다 — 아래 `landed()` 검사는 이 `return` 뒤라
+        // 영영 안 닿는다. 돌려주는 값(`NoToken`)은 그대로다: 스토어에 행이 없으면 사용자의
+        // 계정 목록에도 없고, 그 계정을 자동 전환 후보로 계속 두는 쪽이 더 틀린다.
+        if report.as_ref().map(|r| r.landed()).unwrap_or(false) {
+            eprintln!("[auth] {email}는 스토어에서 사라졌다(로그아웃) — 회전 결과는 계정 폴더에만 남겼다");
+        } else {
+            eprintln!("[auth] {email}는 스토어에서 사라졌다(로그아웃) — 회전 결과를 남기지 않는다");
+        }
         return Err(NetError::NoToken);
     }
     if report.as_ref().map(|r| r.landed()).unwrap_or(false) {

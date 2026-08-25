@@ -138,9 +138,52 @@ fn read_store_quiet() -> StoreFile {
     read_store_raw().1
 }
 
+/// ★R28d(CASX R3) — **「지금은 모른다」를 「0개」로 읽지 않는** 조회용 읽기.
+///
+/// [`read_store_quiet`]는 단발이다. 잠금을 모르는 이웃(2.6.2 `writeFileSync`)이 쓰는
+/// **도중에** 걸리면 그 한 번의 읽기는 반쪽(`Unreadable`)이거나 아예 없고(`Missing`),
+/// 그 값의 `accounts`는 **빈 목록**이다. 그런데 이 크레이트에서 빈 목록의 뜻은
+/// "계정이 0개다"이지 "모른다"가 아니다. 그래서 그 한 판에
+///
+/// | 부르는 자리 | 단발 읽기가 만드는 오답 |
+/// |---|---|
+/// | [`freshest_creds`] | 회전 재료를 **못 찾는다** → 그 순간 회전 불가(사용자에게는 "재로그인") |
+/// | [`is_registered`] | 살아 있는 계정을 **「로그아웃됐다」**로 본다 → 회전이 폴더를 안 판다 · 격리 표식이 풀린다 |
+///
+/// 이건 이 갈래가 이미 한 번 고친 것과 **같은 병**이다: 편집 경로([`cas_edit`])는
+/// [`READ_RETRIES`]회 다시 읽고 [`recover_store`]로 복구까지 하는데 **조회 경로만
+/// 약하게 읽어서**, 편집이 지키는 불변식을 조회가 무너뜨렸다. 그래서 조회도 같은
+/// 강도로 읽는다 — 재시도, 그리고 [`vanished_but_we_know_better`]가 여는 그 문(같은 문,
+/// 같은 열쇠)까지.
+///
+/// 실측(확인 크리틱 dde4b34의 부하 조건 · 4레인 + 워크스페이스 릴리스 빌드):
+/// 대조군 40주행 중 1주행이 정확히 이 자리로 붉었다(`재료없음=1` · 배경 회전 699판 중 1판).
+fn read_store_settled() -> StoreFile {
+    let mut f = read_store_quiet();
+    for _ in 0..READ_RETRIES {
+        if f.origin.is_known() && !vanished_but_we_know_better(&f) {
+            return f;
+        }
+        // 이웃이 쓰는 중이다("지나가는 반쪽"). 쓰기 경로와 같은 간격으로 다시 본다.
+        std::thread::sleep(std::time::Duration::from_millis(READ_RETRY_MS));
+        f = read_store_quiet();
+    }
+    if f.origin.is_known() && !vanished_but_we_know_better(&f) {
+        return f;
+    }
+    // 여러 번 봐도 그대로다 = 지나가는 반쪽이 아니다. 마지막 성공본이 아는 것이 있으면
+    // **그것이 답이다**(`recover_store`가 그 사실을 한 줄로 적는다 — 침묵 금지).
+    recover_store(f.origin).unwrap_or(f)
+}
+
 /// 이 이메일이 스토어에 있나(조회 전용).
+///
+/// ★R28d(CASX R3) — [`read_store_settled`]로 읽는다. 이 함수의 `false`는 제품에서
+/// **"사용자가 그 계정을 지웠다"**로 읽히고([`persist_refreshed_report`]의 폴더 가드 ·
+/// [`crate::health::needs_login`]의 격리 해제), 그 판정을 이웃의 통짜 쓰기 한 번이
+/// 뒤집으면 안 된다.
 pub fn is_registered(email: &str) -> bool {
-    read_store_quiet().accounts.iter().any(|a| email_of(a) == Some(email))
+    read_store_settled().accounts.iter().any(|a| email_of(a) == Some(email))
 }
 
 /// 원문 한 벌 파싱. `None` = JSON 객체가 아니다(= 손상).
@@ -202,6 +245,10 @@ fn recover_store(was: StoreOrigin) -> Option<StoreFile> {
         StoreOrigin::Missing => "이 없다",
         _ => "이 깨졌다",
     };
+    // ★R28d(CASX R3) — 장부에도 남긴다. 이 문으로 들어온 목록은 이웃이 방금 지운 계정을
+    // 아직 담고 있을 수 있어서 「되살아남」의 출처가 되는데, 그 판은 **침묵이 아니다**
+    // (바로 아랫줄이 사실을 말한다). 못이 침묵을 셀 때 이 수를 같이 봐야 한다.
+    bury_stats::RECOVERED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     eprintln!("[auth] ★ {STORE_FILE}{why} — 마지막 성공본({STORE_BACKUP_FILE}, 계정 {}개)으로 되살린다", b.accounts.len());
     Some(StoreFile { origin: StoreOrigin::Recovered, ..b })
 }
@@ -281,6 +328,269 @@ const BURY_WATCH_BUDGET_MS: u64 = 20;
 /// 실측한 사라짐 창(최대 ~12ms)보다 짧았다. 6×3ms = 최대 18ms 기다렸다가 복구로 간다.
 const READ_RETRIES: usize = 6;
 const READ_RETRY_MS: u64 = 3;
+
+// ── ★R28d(CASX R3) — 커밋 **뒤에** 도착하는 매장 ─────────────────────────────
+//
+// R2까지 증인 검사는 이 문장 위에 서 있었다: *"이웃의 `writeFileSync`는 여는 순간 파일을
+// 0바이트로 자르므로, 우리가 갈아끼우기 전에 연 이웃이 있었다면 첫 판독이 반드시 `expect`와
+// 다르다."* **그 문장은 실측으로 거짓이다.**
+//
+// 이웃의 `CreateFile(CREATE_ALWAYS)`는 *이름을 푸는 것*과 *자르는 것* 사이가 벌어질 수 있다
+// (경합·선점). 그 틈에 우리 `rename`과 **첫 판독까지** 들어가면 옛 inode는 아직 옛 내용
+// 그대로고, 우리는 "묻은 것 없음 → Clean"으로 판정하고 자물쇠를 놓는다. 그리고 수십 µs~수 ms
+// 뒤에 그들의 통짜 쓰기가 **이름 없는 그 inode**로 떨어진다 — 그 쓰기가 로그아웃이었으면
+// 사용자의 로그아웃이 취소된 채로 남고, **우리 로그에는 한 줄도 안 남는다.**
+//
+// 확인 크리틱 R2가 잡은 헤드라인 실패(140주행 2붉음 · 그중 하나는 200ms 뒤에도 살아 있는
+// 진짜 취소 · 진단 셋 전부 0줄)의 정체가 이것이다. R3가 프로브로 못 박은 값:
+//
+// | 판정 | 판 | 그중 **뒤늦게** 옛 inode가 갈린 판 |
+// |---|---|---|
+// | 첫 판독 = `expect` → 지름길 `Clean` | 1,010 | **321 (31.8%)** |
+//
+// 그리고 321판 **전부** 이웃의 열기 번호가 우리 `rename` 시점 이하였다(= 걸터탄 열기).
+// 「이름이 잠깐 비어 이웃이 새 파일을 만든다」 가설(못 표의 ②)은 같은 프로브에서 **0/23,083**
+// 으로 기각됐다(유령 inode 0 · 이웃 열기 실패 0).
+//
+// 그래서 커밋 뒤에도 옛 inode를 계속 본다. 두 가지를 지킨다:
+//
+// 1. **자물쇠 밖에서** 본다 — 이름 없는 inode를 읽는 것뿐이라 남과 경합하지 않는다.
+//    임계 구역을 늘리면 로그아웃 한 번이 그만큼 멎는다(확인 크리틱 R1 §7의 그 대가).
+// 2. **부르는 쪽을 안 세운다** — 감시는 전용 스레드가 한다. 배경 회전이 판마다 50ms씩
+//    멎으면 이 못의 부하가 통째로 사라진다(못이 재는 것이 곧 그 부하다).
+/// 지연 감시가 옛 inode를 보는 시간. 위 실측의 꼬리(20ms까지 관측)를 덮는다.
+const LATE_WATCH_MS: u64 = 50;
+/// 판독 간격. 이름 없는 inode 읽기 한 번은 실측 3~9µs다.
+const LATE_WATCH_US: u64 = 250;
+/// 동시에 지켜보는 옛 inode 수의 상한(핸들이 새지 않게).
+const LATE_WATCH_MAX: usize = 64;
+
+/// ★R28d(CASX R3) — **이 프로세스가 이웃의 쓰기를 묻은 사실**의 장부.
+///
+/// 못이 재야 하는 것은 "되살아남이 0인가" 하나가 아니다. 확인 크리틱 R2의 최대 격차는
+/// **되살아났는데 아무도 모르는 판**이었다(붉은 주행에 진단 0줄). 그래서 "묻은 것을
+/// 봤나"를 제품이 세고, 못이 그 수를 읽는다 — 침묵이면 못이 붉어진다.
+pub mod bury_stats {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    pub(super) static IN_LOCK: AtomicUsize = AtomicUsize::new(0);
+    pub(super) static IN_LOCK_REVIVED: AtomicUsize = AtomicUsize::new(0);
+    pub(super) static LATE: AtomicUsize = AtomicUsize::new(0);
+    pub(super) static LATE_KEPT: AtomicUsize = AtomicUsize::new(0);
+    pub(super) static UNREAD: AtomicUsize = AtomicUsize::new(0);
+    pub(super) static DROPPED: AtomicUsize = AtomicUsize::new(0);
+    pub(super) static RECOVERED: AtomicUsize = AtomicUsize::new(0);
+
+    /// 자물쇠 **안에서** 파낸 판.
+    pub fn in_lock() -> usize {
+        IN_LOCK.load(Ordering::Relaxed)
+    }
+    /// 그중 **실제로 행을 되살린** 판(그들이 지운 계정이 있었다).
+    pub fn in_lock_revived() -> usize {
+        IN_LOCK_REVIVED.load(Ordering::Relaxed)
+    }
+    /// 묻힌 **로그아웃**을 되살린 판의 총합 — 못이 "이 되살아남을 제품이 봤나"를 이걸로 잰다.
+    pub fn repaired() -> usize {
+        in_lock_revived() + late()
+    }
+    /// 커밋 뒤 **지연 감시**가 파내 되살린 판.
+    pub fn late() -> usize {
+        LATE.load(Ordering::Relaxed)
+    }
+    /// 지연 감시가 파냈는데 **되살릴 것이 없던** 판(그들이 지운 계정이 없다).
+    pub fn late_kept() -> usize {
+        LATE_KEPT.load(Ordering::Relaxed)
+    }
+    /// 묻은 줄은 아는데 원문을 끝내 못 읽은 판.
+    pub fn unread() -> usize {
+        UNREAD.load(Ordering::Relaxed)
+    }
+    /// 감시 자리가 모자라 **못 지켜본** 판.
+    pub fn dropped() -> usize {
+        DROPPED.load(Ordering::Relaxed)
+    }
+    /// ★R28d(CASX R3) — 목록을 **마지막 성공본(`.bak`)으로 읽은** 판([`super::recover_store`]).
+    ///
+    /// 이것도 「되살아남」의 출처다. 이웃이 갈아끼우기 창에서 파일을 못 읽고 통짜로
+    /// 되쓴 뒤 우리가 그 반쪽을 복구하면, 복구본에는 그들이 방금 지운 계정이 아직
+    /// 들어 있을 수 있다. 그 판은 **침묵이 아니다** — [`super::recover_store`]가 한 줄을
+    /// 찍는다. 못이 「제품이 봤나」를 셀 때 이 수를 같이 봐야 그 한 줄을 인정하는 것이다.
+    pub fn recovered() -> usize {
+        RECOVERED.load(Ordering::Relaxed)
+    }
+    /// 이웃의 쓰기를 묻은 것을 우리가 **본** 판의 총합(= 침묵이 아니었던 판).
+    pub fn seen() -> usize {
+        in_lock() + late() + late_kept() + unread() + recovered()
+    }
+    /// 테스트가 주행 사이에 장부를 0으로 되돌린다(프로세스 전역이라 못끼리 물든다).
+    pub fn reset() {
+        for c in [&IN_LOCK, &IN_LOCK_REVIVED, &LATE, &LATE_KEPT, &UNREAD, &DROPPED, &RECOVERED] {
+            c.store(0, Ordering::Relaxed);
+        }
+    }
+}
+
+/// 커밋이 이름을 떼어 낸 **옛 inode** 한 자리. 이름이 없으므로 여기에 쓰는 것은
+/// 갈아끼우기 전에 이 파일을 열어 둔 이웃뿐이다 — 그래서 내용이 갈리면 그것은
+/// **우리가 묻은 그들의 쓰기**다(다른 해석이 없다).
+struct Orphan {
+    file: std::fs::File,
+    /// 갈아끼우기 직전에 우리가 읽은 그 내용.
+    was: String,
+}
+
+/// 지연 감시 한 자리.
+struct LateWatch {
+    orphan: Orphan,
+    /// 우리가 방금 커밋한 목록 — 그들이 지운 계정을 여기서 뺀다.
+    ours: Vec<Value>,
+    /// 이번 편집이 **새로 더한** 계정(되살리기가 이걸 지우면 방금 끝난 로그인이 증발한다).
+    added: std::collections::BTreeSet<String>,
+    /// 그때의 목적지. 홈이 갈리면(테스트) 남의 홈에 쓰지 않는다.
+    dst: PathBuf,
+    since: std::time::Instant,
+    /// 갈리긴 했는데 아직 못 읽었다(이웃이 쓰는 중).
+    torn: bool,
+}
+
+static LATE_Q: std::sync::Mutex<Vec<LateWatch>> = std::sync::Mutex::new(Vec::new());
+static LATE_RUNNING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+fn late_q() -> std::sync::MutexGuard<'static, Vec<LateWatch>> {
+    LATE_Q.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// 커밋한 자리에서 부른다 — **자물쇠를 놓은 뒤에**. 하는 일은 큐에 한 자리 넣는 것뿐이라
+/// (실측 1~2µs) 부르는 쪽은 안 선다.
+fn late_watch(w: LateWatch) {
+    use std::sync::atomic::Ordering;
+    {
+        let mut q = late_q();
+        if q.len() >= LATE_WATCH_MAX {
+            // 자리가 모자란다 = 이웃과 심하게 겹치는 판. 가장 오래된 것을 놓되 **조용히는
+            // 아니다** — 그 자리가 곧 우리가 못 본 매장이다.
+            q.remove(0);
+            bury_stats::DROPPED.fetch_add(1, Ordering::Relaxed);
+            static ONCE: std::sync::Once = std::sync::Once::new();
+            ONCE.call_once(|| {
+                eprintln!("[auth] ★ {STORE_FILE}: 갈아끼운 옛 사본을 지켜볼 자리가 {LATE_WATCH_MAX}개를 넘었다 — 그중 하나는 못 지켜본다(묻힌 이웃 쓰기를 놓칠 수 있다)");
+            });
+        }
+        q.push(w);
+    }
+    if !LATE_RUNNING.swap(true, Ordering::SeqCst) {
+        let spawned = std::thread::Builder::new().name("ccg-cas-late".into()).spawn(late_watch_loop);
+        if let Err(e) = spawned {
+            LATE_RUNNING.store(false, Ordering::SeqCst);
+            late_q().clear();
+            eprintln!("[auth] ★ {STORE_FILE}: 지연 감시 스레드를 못 띄웠다({e}) — 묻힌 이웃 쓰기를 못 파낸다");
+        }
+    }
+}
+
+/// 감시 스레드. **일이 없으면 죽는다** — 상주 스레드를 하나 더 두지 않는다.
+fn late_watch_loop() {
+    use std::sync::atomic::Ordering;
+    let mut batch: Vec<LateWatch> = Vec::new();
+    loop {
+        {
+            let mut q = late_q();
+            batch.append(&mut q);
+            if batch.is_empty() {
+                // 깃발은 **큐 잠금 안에서** 내린다 — 내리는 사이에 들어온 자리가 주인
+                // 없이 남는 것을 막는다.
+                LATE_RUNNING.store(false, Ordering::SeqCst);
+                return;
+            }
+        }
+        batch.retain_mut(|w| !late_watch_tick(w));
+        std::thread::sleep(std::time::Duration::from_micros(LATE_WATCH_US));
+    }
+}
+
+/// 한 자리를 한 번 본다. `true` = 이 자리는 끝났다.
+fn late_watch_tick(w: &mut LateWatch) -> bool {
+    if let Some(now) = crate::replace::read_witness(&mut w.orphan.file) {
+        if now != w.orphan.was {
+            match parse_store(&now).filter(|t| t.origin.is_known()) {
+                Some(theirs) => {
+                    late_revive(w, &theirs);
+                    return true;
+                }
+                // 반쪽(자르는 중이거나 쓰는 중) — 예산 안에서는 계속 본다.
+                None => w.torn = true,
+            }
+        }
+    }
+    if w.since.elapsed() < std::time::Duration::from_millis(LATE_WATCH_MS) {
+        return false;
+    }
+    if w.torn {
+        bury_stats::UNREAD.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        eprintln!(
+            "[auth] ★ {STORE_FILE}: 이웃이 쓰던 중에 갈아끼웠는데 {}ms를 기다려도 그 원문을 못 읽었다 — 그 쓰기가 로그아웃이었다면 취소된 채로 남는다",
+            w.since.elapsed().as_millis()
+        );
+    }
+    true
+}
+
+thread_local! {
+    /// 되살리기가 **또 감시를 낳지 않게** 한다(깊이 1). 되살리기 자체가 이웃과 겹치면
+    /// 그건 다음 편집이 본다 — 사슬을 길게 만드는 쪽이 위험하다.
+    static REVIVING: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// 파낸 원문으로 **그들이 지운 계정을 되살린다**(받는 것은 지우기뿐 — ABA 규칙은
+/// [`cas_edit`]의 `Commit::Buried` 주석과 같다).
+fn late_revive(w: &LateWatch, theirs: &StoreFile) {
+    use std::sync::atomic::Ordering;
+    let keep: std::collections::BTreeSet<&str> = theirs.accounts.iter().filter_map(email_of).collect();
+    let gone: Vec<String> = w
+        .ours
+        .iter()
+        .filter_map(email_of)
+        .filter(|e| !keep.contains(e) && !w.added.contains(*e))
+        .map(str::to_string)
+        .collect();
+    let us = w.since.elapsed().as_micros();
+    if gone.is_empty() {
+        // 그들이 지운 계정이 없다 = 되살릴 것도 없다(우리가 묻은 것은 그들의 편집이지
+        // 로그아웃이 아니다). 세기는 한다 — 이 판도 "우리가 봤다"에 들어간다.
+        bury_stats::LATE_KEPT.fetch_add(1, Ordering::Relaxed);
+        return;
+    }
+    if store_path() != w.dst || !w.dst.is_file() {
+        // 홈이 갈렸거나(테스트 하네스) 그사이 스토어 자체가 사라졌다. 남의 홈에는 한 글자도
+        // 안 쓰고, 없는 파일을 여기서 새로 만들지도 않는다 — 되살리기는 **지우기**뿐이다.
+        bury_stats::DROPPED.fetch_add(1, Ordering::Relaxed);
+        return;
+    }
+    let n = gone.len();
+    // ★R28d(CASX R3) — 장부를 **되살리기보다 먼저** 올린다. 순서가 반대면 못이 이렇게 진다:
+    // 되살리기가 디스크에 착지한 µs와 장부가 오르는 µs 사이에 못이 "되살아남이 걷혔다"를
+    // 보고 곧바로 장부를 읽으면 **아직 0**이고, 그러면 「제품이 못 봤다(침묵)」로 잘못
+    // 붉어진다. "봤다"는 파낸 순간의 사실이지 되살리기의 결과가 아니다.
+    bury_stats::LATE.fetch_add(1, Ordering::Relaxed);
+    let r = REVIVING.with(|c| {
+        c.set(true);
+        let r = cas_edit(|cur| {
+            let before = cur.accounts.len();
+            cur.accounts.retain(|a| email_of(a).is_none_or(|e| !gone.iter().any(|g| g == e)));
+            Ok(before - cur.accounts.len())
+        });
+        c.set(false);
+        r
+    });
+    match r {
+        Ok(k) => eprintln!(
+            "[auth] ★ {STORE_FILE}: 우리 갈아끼우기가 이웃의 로그아웃을 묻었다(계정 {n}개 · 커밋 {us}µs 뒤에 드러났다) — 자물쇠 밖 감시가 {k}개를 되살렸다"
+        ),
+        Err(e) => eprintln!(
+            "[auth] ★ {STORE_FILE}: 이웃의 로그아웃({n}개)을 묻었는데 되살리기가 실패했다({e}) — 그 로그아웃은 취소된 채로 남는다"
+        ),
+    }
+}
 
 // ── ★R28d(CASX) — CAS 경합 추적기 ───────────────────────────────────────────
 //
@@ -648,7 +958,7 @@ fn cas_edit<T>(mut edit: impl FnMut(&mut StoreFile) -> Result<T, AuthError>) -> 
                     stale = true;
                     break;
                 }
-                Commit::Clean => {
+                Commit::Clean(orphan) => {
                     set_base(&accounts, def.as_deref());
                     keep_backup(&body);
                     if let Some((was, now)) = revived {
@@ -656,6 +966,20 @@ fn cas_edit<T>(mut edit: impl FnMut(&mut StoreFile) -> Result<T, AuthError>) -> 
                     }
                     if retries > 0 {
                         eprintln!("[auth] {STORE_FILE} 저장 — 이웃과 {retries}번 부딪혀 다시 읽고 썼다(CAS)");
+                    }
+                    // ★R28d(CASX R3) — **자물쇠를 먼저 놓고** 옛 inode를 넘긴다. 감시는
+                    //   이름 없는 inode 읽기뿐이라 임계 구역에 있을 이유가 없다(있으면
+                    //   그만큼 사용자의 로그아웃이 멎는다).
+                    drop(_g);
+                    if let Some(orphan) = orphan.filter(|_| !REVIVING.with(std::cell::Cell::get)) {
+                        late_watch(LateWatch {
+                            orphan,
+                            ours: accounts,
+                            added,
+                            dst: store_path(),
+                            since: std::time::Instant::now(),
+                            torn: false,
+                        });
                     }
                     return Ok(out);
                 }
@@ -670,6 +994,8 @@ fn cas_edit<T>(mut edit: impl FnMut(&mut StoreFile) -> Result<T, AuthError>) -> 
                 //   비대칭은 의도적이다 — 잃은 로그인은 사용자가 다시 하면 보이지만,
                 //   되살아난 계정은 **살아 있는 토큰째** 조용히 돌아온다.
                 Commit::Buried(theirs) => {
+                    // ★R28d(CASX R3) — **봤다**는 사실을 장부에 남긴다(못이 침묵을 잰다).
+                    bury_stats::IN_LOCK.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                     let Some(t) = parse_store(&theirs).filter(|t| t.origin.is_known()) else {
                         eprintln!("[auth] ★ {STORE_FILE}: 이웃의 쓰기를 묻었는데 원문을 못 읽는다 — 우리 것으로 둔다");
                         break;
@@ -690,6 +1016,10 @@ fn cas_edit<T>(mut edit: impl FnMut(&mut StoreFile) -> Result<T, AuthError>) -> 
                     //   찍던 한 줄이 실측으로 되살리기를 0.8~7.6ms 늦췄고, 그동안 로그아웃한
                     //   계정이 `credEnc`째 파일에 앉아 있었다(이웃이 자기 쓰기 1ms 뒤에
                     //   다시 읽으면 그걸 본다). 사연은 커밋한 **뒤에** 적는다(`revived`).
+                    // ★R28d(CASX R3) — **행을 되살린** 판만 따로 센다. 못이 "이 되살아남을
+                    // 제품이 봤나"를 이 수로 재기 때문이다(그들의 편집을 묻은 판과 그들의
+                    // 로그아웃을 묻은 판은 무게가 다르다).
+                    bury_stats::IN_LOCK_REVIVED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                     revived = Some((accounts.len(), next.len()));
                     accounts = next;
                     expect = Some(body);
@@ -712,8 +1042,13 @@ fn cas_edit<T>(mut edit: impl FnMut(&mut StoreFile) -> Result<T, AuthError>) -> 
 
 /// [`commit_locked`]의 착지 세 갈래.
 enum Commit {
-    /// 커밋했고, 우리 `rename`이 묻은 쓰기는 없다.
-    Clean,
+    /// 커밋했고, **자물쇠 안에서 본 한** 묻은 쓰기는 없다.
+    ///
+    /// ★R28d(CASX R3) — "없다"가 아니라 "여기까지 봐서는 없다"이다. 이웃의 열기가 우리
+    /// 갈아끼우기를 걸터타면 그들의 쓰기는 **수 ms 뒤에** 이름 없는 옛 inode로 떨어진다
+    /// (실측 321/1,010). 그래서 그 옛 inode를 [`late_watch`]에 넘긴다 — `None`이면
+    /// 넘길 것이 없다는 뜻이다(증인을 못 열었거나 파일이 없던 판).
+    Clean(Option<Orphan>),
     /// 커밋했는데 `[확인, rename]` 창에 이웃이 통짜로 썼다 — 파낸 그 원문.
     Buried(String),
     /// 확인에서 갈렸다 — **커밋 안 했다**.
@@ -757,9 +1092,10 @@ fn commit_locked(body: &str, expect: Option<&str>, carry: &mut Option<std::fs::F
     cas_trace!("갈아끼우기 시작 — 본문=[{}]", cas_emails(body));
     *carry = staged.replace(&dst).map_err(|e| AuthError::Io(format!("{STORE_FILE}: {e}")))?;
     cas_trace!("갈아끼우기 끝");
-    let Some(w) = w.as_mut() else {
+    let (Some(mut w), Some(prev)) = (w, expect) else {
+        // 증인을 못 열었거나(경합) 애초에 파일이 없던 판 — 옛 inode가 없으니 볼 것도 없다.
         cas_trace!("증인 없음 → Clean(무검사)");
-        return Ok(Commit::Clean);
+        return Ok(Commit::Clean(None));
     };
     // 옛 inode를 다시 본다. 이웃이 쓰는 **도중**이면 반쪽이 읽히므로 잠깐 기다렸다 다시
     // 본다 — 그들은 자기 파일이 이미 갈렸다는 걸 모르고 끝까지 쓴다.
@@ -770,18 +1106,20 @@ fn commit_locked(body: &str, expect: Option<&str>, carry: &mut Option<std::fs::F
     // 없어 새로 열 수도 없다. 그래서 첫 판독이 `expect`면 묻은 쓰기는 **없다**.
     // 반대로 한 번이라도 흔들렸으면 이웃이 쓰는 중이므로 [`BURY_WATCH`]만큼 기다린다 —
     // R28d 이전의 상한(4×300µs)은 부하 걸린 판의 통짜 쓰기를 놓쳤다.
-    let watch_from = std::time::Instant::now();
     for k in 0..BURY_WATCH {
-        match crate::replace::read_witness(w) {
-            Some(a) if Some(a.as_str()) == expect => {
-                cas_trace!("옛 inode 그대로(k={k}) → Clean");
+        match crate::replace::read_witness(&mut w) {
+            Some(a) if a == prev => {
+                cas_trace!("옛 inode 그대로(k={k}) → Clean(지연 감시로 넘긴다)");
                 // ★R28d — 묻은 것이 없으면 목적지 핸들을 **여기서 놓는다.** 물려주는
                 //   이유는 되살리기 창의 `open` 350µs 하나뿐이고, 되살릴 것이 없는 판에서
                 //   계속 들고 있으면 다음 갈아끼우기가 「열려 있는 목적지」를 덮는 느린
                 //   길로 간다(실측: 목적지를 연 채 갈아끼우면 이름이 사라져 보이는 창이
                 //   두 배 — `replace.rs` 모듈 주석의 4판 A/B).
                 *carry = None;
-                return Ok(Commit::Clean);
+                // ★R28d(CASX R3) — 옛 inode는 **놓지 않는다.** 이 판정("그대로")이
+                //   틀리는 비율이 실측 31.8%다(모듈 주석 표) — 이웃의 열기가 우리
+                //   갈아끼우기를 걸터타면 그들의 쓰기는 몇 ms 뒤에 온다.
+                return Ok(Commit::Clean(Some(Orphan { file: w, was: a })));
             }
             Some(a) if parse_store(&a).is_some_and(|p| p.origin.is_known()) => {
                 cas_trace!("옛 inode 갈림(k={k}) → Buried=[{}]", cas_emails(&a));
@@ -797,16 +1135,15 @@ fn commit_locked(body: &str, expect: Option<&str>, carry: &mut Option<std::fs::F
         }
         std::thread::sleep(std::time::Duration::from_micros(BURY_WATCH_US));
     }
-    // ★R28d — 여기까지 왔다 = 옛 inode가 흔들린 채(반쪽·0바이트) 감시 예산을 다 썼다.
-    // 이웃이 쓰다 만 것이고, 그 쓰기가 로그아웃이었다면 **지금 우리 파일이 그것을
-    // 취소한 상태**다. 되살릴 재료가 없어 여기서 할 수 있는 것은 없지만, 조용히 지나가면
-    // 안 된다 — 사용자 로그가 이 줄을 들고 있어야 다음 사람이 같은 자리를 다시 판다.
-    cas_trace!("옛 inode 끝내 판독 불가 → Clean(★이웃 쓰기를 놓쳤을 수 있다)");
-    eprintln!(
-        "[auth] ★ {STORE_FILE}: 이웃이 쓰던 중에 갈아끼웠는데 {}ms를 기다려도 그 원문을 못 읽었다 — 그 쓰기가 로그아웃이었다면 취소된 채로 남는다",
-        watch_from.elapsed().as_millis()
-    );
-    Ok(Commit::Clean)
+    // ★R28d — 여기까지 왔다 = 옛 inode가 흔들린 채(반쪽·0바이트) 자물쇠 안 예산을 다 썼다.
+    // 이웃이 쓰다 만 것이고, 그 쓰기가 로그아웃이었다면 **지금 우리 파일이 그것을 취소한
+    // 상태**다.
+    //
+    // ★R28d(CASX R3) — R2는 여기서 "못 읽었다"를 찍고 끝냈다. 이제는 **자물쇠를 놓고
+    // 계속 본다** — 그들이 쓰기를 마치면 그 원문으로 되살릴 수 있고, 그래도 못 읽으면
+    // 그때 같은 줄을 [`late_watch_tick`]이 찍는다(둘 다 찍으면 같은 사고가 두 줄이 된다).
+    cas_trace!("옛 inode 아직 흔들림 → Clean(지연 감시로 넘긴다)");
+    Ok(Commit::Clean(Some(Orphan { file: w, was: prev.to_string() })))
 }
 
 /// 잠금 안에서 스토어 전체를 고친다(목록이 바뀌는 사용자 조작 — 로그인·로그아웃·정렬).
@@ -1234,7 +1571,11 @@ pub fn account_access_token(email: &str) -> Option<String> {
 /// 생기는" 뒷문으로 새지 않도록 [`persist_refreshed_report`]가 **없는 폴더를 새로 파는
 /// 것을 미등록 계정에는 거절한다** — 둘은 한 쌍이다.
 pub fn freshest_creds(email: &str) -> Option<String> {
-    let f = read_store_quiet();
+    // ★R28d(CASX R3) — 단발이 아니라 [`read_store_settled`]다. 이웃이 쓰는 도중에 읽으면
+    // 그 한 판의 목록은 "0개"가 아니라 "모름"인데, 여기서 그걸 0개로 읽으면 **회전 재료를
+    // 못 찾는다**(= 그 순간 회전 불가). 폴더 사본이 아직 없는 계정(2.6.2에서 넘어온
+    // `credEnc`만 있는 계정 · 로그인 직후)에서는 완충도 없어 그대로 실패한다.
+    let f = read_store_settled();
     let backup = f
         .accounts
         .iter()
@@ -1392,9 +1733,33 @@ pub fn persist_refreshed_report(email: &str, next_creds: &str) -> PersistReport 
         m.insert("credEnc".into(), json!(cred_enc));
         Ok(())
     });
-    // ★R28d(CASX R2) — 반쪽 **둘 다**를 본다. 위 폴더 가드도 `NotRegistered`로 착지하므로
-    // 한쪽만 보면 "로그아웃된 계정"을 "저장 실패"로 잘못 말하는 판이 생긴다.
-    let unregistered = matches!(backup, Err(AuthError::NotRegistered(_))) || matches!(folder, Err(AuthError::NotRegistered(_)));
+    // ★R28d(CASX R3) — 「사라졌다」의 근거는 **백업 반쪽 하나뿐이다.**
+    //
+    // R2는 여기에 `|| matches!(folder, Err(NotRegistered))`를 붙였다. 이유("한쪽만 보면
+    // 로그아웃된 계정을 저장 실패로 잘못 말한다")는 **검출력이 0**이었다 — 폴더 반쪽이
+    // `NotRegistered`를 내는 조건은 `!dir.exists() && !is_registered(email)`이고,
+    // `!is_registered`면 백업 반쪽도 같은 값을 낸다(폴더 ⊆ 백업).
+    //
+    // 대신 **반대 방향 오답**을 열었다. 두 반쪽의 읽기 강도가 달랐기 때문이다:
+    //
+    // | | 「행이 있나」를 무엇으로 보나 |
+    // |---|---|
+    // | 위 폴더 가드([`is_registered`]) | ~~자물쇠 밖 · 무재시도 · 무복구 단발 읽기~~ → **[`read_store_settled`]** |
+    // | 백업 반쪽([`cas_edit`]) | 자물쇠 안 · [`READ_RETRIES`]회 · **`.bak` 복구**([`vanished_but_we_know_better`]) |
+    //
+    // 그래서 이 갈래가 **일부러 열어 둔** 그 문(파일이 사라졌고 `.bak`은 안다)에서 둘의 답이
+    // 갈렸다. 확인 크리틱 R2 §7의 결정적 재현: `folder:Err(NotRegistered) · backup:Ok`인데
+    // 그 뒤 `is_registered=true` · 목록 1개 — **살아 있는 계정을 "사용자가 로그아웃했다"고
+    // 말했다.** 그 값은 `net.rs`에서 `NoToken`이 되고, `acct_switch::transient()`가 그것을
+    // **계정 탓**으로 분류해 멀쩡한 계정이 자동 전환 후보에서 빠진다.
+    //
+    // 두 줄로 닫는다: (1) 「사라졌다」의 근거를 **자물쇠 안 반쪽 하나**로 좁히고,
+    // (2) 폴더 가드의 읽기를 백업 반쪽과 **같은 강도**로 올린다([`read_store_settled`]).
+    // 둘 중 하나만 하면 반대편이 남는다 — 강도만 올리면 「사라졌다」가 여전히 두 근거에
+    // 매달리고, 근거만 좁히면 폴더 가드가 단발 읽기로 살아 있는 계정의 폴더를 거절한다.
+    //
+    // 아래 못이 그 자리를 지킨다: `a_backup_recovered_account_is_never_called_logged_out`.
+    let unregistered = matches!(backup, Err(AuthError::NotRegistered(_)));
     PersistReport { folder, backup: backup.and_then(|r| r), unregistered }
 }
 

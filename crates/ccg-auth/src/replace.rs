@@ -132,6 +132,41 @@ pub fn witness(path: &Path) -> Option<std::fs::File> {
     }
 }
 
+/// ★R28d(CASX R3) — 이 **핸들이 가리키는 파일의 신원**. 경로가 아니라 inode를 재는 값이다
+/// (볼륨 일련번호 + 파일 인덱스). `links`는 남은 이름 수 — 갈아끼우기에 밀려 이름을 잃은
+/// inode는 0이다.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Ident {
+    pub volume: u32,
+    pub index: u64,
+    pub links: u32,
+}
+
+/// [`Ident`]를 뜬다. **열지 않는다** — 이미 든 핸들에 메타데이터 한 번(실측 1~3µs)이라
+/// 되살리기 창에서도 낼 수 있는 값이다(`open`은 350µs다).
+#[cfg(windows)]
+pub fn ident(f: &std::fs::File) -> Option<Ident> {
+    use std::os::windows::io::AsRawHandle;
+    use windows::Win32::Foundation::HANDLE;
+    use windows::Win32::Storage::FileSystem::{GetFileInformationByHandle, BY_HANDLE_FILE_INFORMATION};
+
+    let mut info = BY_HANDLE_FILE_INFORMATION::default();
+    // SAFETY: 살아 있는 핸들과 우리가 소유한 출력 버퍼를 넘긴다.
+    unsafe { GetFileInformationByHandle(HANDLE(f.as_raw_handle() as _), &mut info) }.ok()?;
+    Some(Ident {
+        volume: info.dwVolumeSerialNumber,
+        index: (u64::from(info.nFileIndexHigh) << 32) | u64::from(info.nFileIndexLow),
+        links: info.nNumberOfLinks,
+    })
+}
+
+#[cfg(not(windows))]
+pub fn ident(f: &std::fs::File) -> Option<Ident> {
+    use std::os::unix::fs::MetadataExt;
+    let m = f.metadata().ok()?;
+    Some(Ident { volume: m.dev() as u32, index: m.ino(), links: m.nlink() as u32 })
+}
+
 /// 이 **inode**의 지금 내용(경로가 아니다).
 pub fn read_witness(f: &mut std::fs::File) -> Option<String> {
     use std::io::{Read, Seek, SeekFrom};
