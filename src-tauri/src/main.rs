@@ -184,8 +184,9 @@ fn main() {
         return;
     };
     // 잠금을 딴 쪽 = 첫 인스턴스다. 자기 명령줄 폴더는 `app:get-initial-dir`가 처리하므로
-    // 인계를 받을 일이 없다 — 먼젓번 주행이 남긴 잔해가 있으면 여기서 턴다.
-    ipc::app_meta::open_dir::clear_pending();
+    // 인계를 받을 일이 없다 — 먼젓번 주행이 남긴 **잔해만** 여기서 턴다(신선한 것을 지우면
+    // 잠금 경쟁에 걸린 형제의 폴더가 조용히 사라진다 — `clear_stale` 주석).
+    ipc::app_meta::open_dir::clear_stale();
 
     // ★R28 ACCT R2(F3) — **계정 순서 마이그레이션을 첫 조회보다 먼저 확정한다.**
     //

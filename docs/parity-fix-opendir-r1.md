@@ -59,7 +59,7 @@ cold(앱이 꺼져 있을 때 폴더 인자)            → 도착한다 (감사
 | 자리 | 하는 일 |
 |---|---|
 | `main.rs`(두 번째 인스턴스) | `open_dir::stash_from_args()` → **그 다음** `raise_existing()`. 반대면 첫 인스턴스가 아직 없는 파일을 읽는다 |
-| `main.rs`(첫 인스턴스 · 콜드) | `open_dir::clear_pending()` — 먼젓번 주행의 잔해를 턴다 |
+| `main.rs`(첫 인스턴스 · 콜드) | `open_dir::clear_stale()` — 먼젓번 주행의 **잔해만** 턴다(신선한 것을 지우면 잠금 경쟁에 걸린 형제의 폴더가 조용히 사라진다) |
 | `win::tray`의 raise 수신부 | `show_main()` **뒤에** `open_dir::deliver_pending()` — 숨어 있던 창이 먼저 서야 카드가 보이는 화면에 앉는다 |
 | `ipc/app_meta.rs` `open_dir` | 판정(`classify`) · 인계 읽기/쓰기 · 방출(`request`) |
 | `ipc/mod.rs` `ipc_call` | `app:open-directory` 원시 호출을 **전용 블로킹 풀**로 (UNC 21초 함정) |
@@ -96,19 +96,28 @@ match std::fs::metadata(&abs) {
 - **N8(앱 자동 업데이트 3채널)은 손대지 않았다** — 사용자가 범위 밖으로 선언했다.
   우클릭 메뉴 등록(`nsis/hooks.nsh`)도 **읽기만** 했다(항목 0개 추가).
 
+### 2.4 다듬기 — 콜드 부팅의 청소가 **잔해만** 턴다 (같은 라운드 · 커밋 둘째)
+
+첫 커밋의 `clear_pending()`은 인계 파일을 **무조건** 지웠다. 좁지만 실재하는 경쟁이 하나
+남는다: A가 잠금을 딴 직후 B가 잠금에 실패해 인계를 남기는 창. 거기서 무조건 삭제면
+**B가 들고 온 폴더가 조용히 사라진다** — 이 라운드가 없애려는 바로 그 모양이다.
+`clear_stale()`은 TTL을 넘긴 것만 지우고, 신선한 인계는 raise 수신부가 소비하거나
+아무도 안 받으면 스스로 만료된다. 못 하나가 지킨다
+(`clear_stale_drops_the_old_one_and_keeps_a_fresh_one`).
+
 ---
 
-## 3. 실측 (판정 exe 2주행 · 대조군 2주행 · 같은 하네스)
+## 3. 실측 (판정 exe 3주행 · 대조군 2주행 · 같은 하네스)
 
-`node scripts/poc-opendir.mjs --tag=r1 --port=10800` / `--tag=r2 --port=10804`
+`node scripts/poc-opendir.mjs --tag=r1 --port=10800` / `--tag=r2 --port=10804` / `--tag=r3 --port=10800`(§2.4 다듬기 뒤)
 대조군: `--tag=ctl --port=10802 --exe=…r28h-m10-critr2…` / `--tag=ctl2 --port=10806`
-결과 파일: `docs/critic/opendir-{r1,r2,ctl,ctl2}.json`
+결과 파일: `docs/critic/opendir-{r1,r2,r3,ctl,ctl2}.json`
 
 | 잣대 | 대조군(수정 전) | **판정 exe** |
 |---|---|---|
-| 웜(창이 보임) 폴더 도착 | **false** · 9,097 / 9,001ms 대기 후에도 `폴더 선택` | **true · 123ms / 126ms** · chat-head = 그 폴더 |
+| 웜(창이 보임) 폴더 도착 | **false** · 9,097 / 9,001ms 대기 후에도 `폴더 선택` | **true · 123 / 126 / 121ms** · chat-head = 그 폴더 |
 | 웜(트레이에 숨음) raise | true (보이는 창 1 → 0 → 1) | true (1 → 0 → 1) |
-| 웜(트레이에 숨음) 폴더 도착 | **false** (9,104 / 9,001ms) | **true · 142ms / 130ms** |
+| 웜(트레이에 숨음) 폴더 도착 | **false** (9,104 / 9,001ms) | **true · 142 / 130 / 142ms** |
 | `onOpenDirectory` 이벤트 수신 | 0건 | **유효한 4건만**(무효 인자에는 이벤트가 안 간다) |
 | 파일 인자 → 카드 | **없음(침묵)** | **뜬다** · 「폴더를 열지 못했어요」 + 파일 사유 · chat-head **불변** |
 | 없는 경로 → 카드 | **없음(침묵)** | **뜬다** · 경로 사유 · chat-head **불변** |
@@ -140,7 +149,7 @@ cargo test 크레이트별 (전부 0 failed):
   agentcodegui 170 (= 이 트리의 기존 164 + 내 6)   ccg-auth 126   ccg-fs 101
   ccg-engine  251 (추적분 233 + 남의 미추적 프로브 18)  ccg-lsp  59   ccg-store 92
   새 못 6: dir_wins_and_file_is_named · candidate_matches_the_cold_rule_and_keeps_the_bad_one
-           handoff_is_consumed_once · stale_handoff_is_dropped · clear_pending_removes_it
+           handoff_is_consumed_once · stale_handoff_is_dropped · clear_stale_drops_the_old_one_and_keeps_a_fresh_one
            broken_handoff_does_not_linger
 ```
 

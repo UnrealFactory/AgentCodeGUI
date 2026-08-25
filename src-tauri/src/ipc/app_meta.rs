@@ -203,10 +203,22 @@ pub mod open_dir {
         }
     }
 
-    /// 콜드 부팅이 부른다 — 잠금을 딴 쪽은 인계를 받을 일이 없다(자기가 첫 인스턴스이고
-    /// 자기 인자는 `app:get-initial-dir`가 처리한다). 남아 있던 잔해를 여기서 턴다.
-    pub fn clear_pending() {
-        let _ = std::fs::remove_file(handoff_path());
+    /// 콜드 부팅이 부른다 — 남아 있던 **잔해만** 턴다(자기 명령줄 폴더는
+    /// `app:get-initial-dir`가 처리하므로 첫 인스턴스는 인계를 받을 일이 없다).
+    ///
+    /// **무조건 지우지 않는 이유**: 좁지만 실재하는 경쟁이 하나 있다 — A가 잠금을 딴 직후
+    /// B가 잠금에 실패해 인계를 남기는 창. 거기서 「무조건 삭제」면 B가 들고 온 폴더가
+    /// 조용히 사라진다(이 라운드가 없애려는 바로 그 모양이다). 늦은 것만 지우면 신선한
+    /// 인계는 살아남아 raise 수신부가 소비하거나, 아무도 안 받으면 TTL로 스스로 사라진다.
+    pub fn clear_stale() {
+        let Some(v) = ccg_store::read_home_json(HANDOFF) else {
+            // 없거나 못 읽는다 — 못 읽는 잔해는 지운다(없으면 no-op)
+            let _ = std::fs::remove_file(handoff_path());
+            return;
+        };
+        if now_ms() - v.get("at").and_then(Value::as_i64).unwrap_or(0) > HANDOFF_TTL_MS {
+            let _ = std::fs::remove_file(handoff_path());
+        }
     }
 
     /// 판정 → 렌더러 방출. **두 경로가 이 함수 하나로 모인다**: 두 번째 인스턴스의
@@ -310,13 +322,20 @@ pub mod open_dir {
             assert_eq!(take_pending(), None);
         }
 
+        /// 콜드 부팅의 청소는 **잔해만** 턴다 — 신선한 인계(잠금 경쟁에서 방금 남긴 것)를
+        /// 지우면 그게 곧 「폴더가 조용히 사라졌다」다.
         #[test]
-        fn clear_pending_removes_it() {
+        fn clear_stale_drops_the_old_one_and_keeps_a_fresh_one() {
             let h = ccg_store::testhome::take("opendir-clear");
-            ccg_store::write_home_file(HANDOFF, &json!({ "path": "C:\\Code", "at": now_ms() }).to_string()).unwrap();
-            clear_pending();
+            ccg_store::write_home_file(HANDOFF, &json!({ "path": "C:\\Code", "at": now_ms() - HANDOFF_TTL_MS - 1 }).to_string())
+                .unwrap();
+            clear_stale();
             assert!(!h.dir.join(HANDOFF).exists());
-            assert_eq!(take_pending(), None);
+
+            ccg_store::write_home_file(HANDOFF, &json!({ "path": "C:\\Code", "at": now_ms() }).to_string()).unwrap();
+            clear_stale();
+            assert!(h.dir.join(HANDOFF).exists());
+            assert_eq!(take_pending().as_deref(), Some("C:\\Code"));
         }
 
         #[test]
