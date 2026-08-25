@@ -36,12 +36,17 @@ fn creds_of(email: &str, refresh: &str) -> String {
     .to_string()
 }
 
-fn seed(email: &str, refresh: &str) {
+/// 계정 행 한 벌(`accounts.json`의 원소).
+fn row_of(email: &str, refresh: &str) -> Value {
     let snap = json!({ "creds": creds_of(email, refresh), "account": { "emailAddress": email } });
     let enc = ccg_store::safe_storage::encrypt(&snap.to_string()).expect("safeStorage");
+    json!({ "email": email, "credEnc": enc, "subscriptionType": "max" })
+}
+
+fn seed(email: &str, refresh: &str) {
     let mut accounts: Vec<Value> = claude::read_store_file().accounts.clone();
     accounts.retain(|a| claude::email_of(a) != Some(email));
-    accounts.push(json!({ "email": email, "credEnc": enc, "subscriptionType": "max" }));
+    accounts.push(row_of(email, refresh));
     claude::write_store_file(&accounts, Some(email)).expect("시드 저장");
 }
 
@@ -1097,6 +1102,162 @@ fn a_whole_write_that_dropped_two_accounts_revives_both() {
         "★ 한 벌 쓰기가 계정 둘을 지웠는데 개수 규칙이 그것을 「오독」으로 몰아 둘 다 영구 취소했다"
     );
     assert!(claude::is_registered("mine@x"), "★ 되살리기가 그들이 지우지 **않은** 계정까지 지웠다");
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ★R28f — 확인 크리틱 R28e가 낸 결정적 재현 둘을 **못으로 박는다**
+// ══════════════════════════════════════════════════════════════════════════════
+
+/// 어느 계정이 `ms` 안에 파일에서 사라지나. `Some(경과ms)` = 사라졌다.
+fn gone_within(email: &str, ms: usize) -> Option<usize> {
+    for k in 0..(ms / 5) {
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        if !peer::has(email) {
+            return Some((k + 1) * 5);
+        }
+    }
+    None
+}
+
+/// 지금 디스크의 툼스톤 목록.
+fn tombs() -> Vec<Value> {
+    let p = ccg_store::app_home().join(ccg_auth::ledger::TOMB_FILE);
+    let Ok(raw) = std::fs::read_to_string(p) else { return Vec::new() };
+    serde_json::from_str::<Value>(&raw)
+        .ok()
+        .and_then(|v| v.get("tombstones").and_then(Value::as_array).cloned())
+        .unwrap_or_default()
+}
+
+/// ★R28f-①(치명 · 회귀 · 확인 크리틱 R28e §3-1) — **이웃이 자기 손으로 회전한 계정의
+/// 로그아웃이 영구히 취소되지 않는다.**
+///
+/// 크리틱의 다섯 걸음 그대로다. 핵심은 3번 — 우리 편집이 **아무것도 안 바꾸고 읽고만**
+/// 지나간다. 제품에서 흔한 모양이다(`sync_account_tokens`가 「변화 없음」으로 돌아온 판 ·
+/// 이미 맨 위인 계정의 `move_account_to_top` · 같은 순서의 `reorder_accounts`).
+///
+/// | 코드 | 크리틱 실측 10주행 |
+/// |---|---|
+/// | 대조군 `6f2f312`(R28d R4) | **10/10 살렸다**(10ms) |
+/// | `9aa75b5`(R28e) | **10/10 못 살렸다** — 1,500ms 안에 안 사라진다 = 영구 취소 |
+///
+/// R28e의 로그는 그 행을 두고 *"그들이 못 본 행이다"*라고 **단정했다**. 그 행은 이웃이
+/// 방금 자기 손으로 쓴 행이고 그들은 그것을 읽고 나서 로그아웃을 만들었다 — R4가
+/// *"그 뒤에 다시 로그인돼 있어 그대로 뒀다"*로 단정해 불합격한 자리와 같은 종류의 거짓이다.
+///
+/// ## 이 못이 같이 단정하는 것
+///
+/// 이 판은 **파일만으로 못 가른다**(그들의 읽기가 이웃 회전보다 앞인지 뒤인지 디스크에
+/// 안 남는다 — 두 경우 모두 그들 원문의 바이트가 같다). 그래서 「살았다」만으로는
+/// 부족하다. `unsure >= 1`을 같이 단정해 **못 갈랐다는 사실이 장부와 로그에 남았는지**를
+/// 잰다. 이 단정이 없으면 다음 라운드가 「그냥 다 지운다」로 바꿔도 못이 초록이다.
+#[test]
+fn a_logout_of_a_row_the_neighbour_rotated_is_never_permanently_cancelled() {
+    let home = ccg_store::testhome::take("r28f-peerrot");
+    std::env::set_var("CCG_NO_NET", "1");
+    claude::bury_stats::reset();
+    // ① mine@x · bye@x 두 계정을 심는다.
+    seed("mine@x", "m-1");
+    seed("bye@x", "b-1");
+
+    // ② 이웃(2.6.2)이 **자기 손으로** bye@x의 credEnc만 간다(`auth.ts:485`의 그 모양 —
+    //    `f.accounts.map(a => a.email === email ? { ...a, credEnc } : a)`). mine@x 행은 그대로다.
+    let (def, accounts) = peer::read_raw();
+    let rotated: Vec<Value> = accounts
+        .iter()
+        .map(|a| if claude::email_of(a) == Some("bye@x") { row_of("bye@x", "PEER-ROTATED") } else { a.clone() })
+        .collect();
+    peer::write_raw(def.as_deref(), &rotated);
+
+    // ③ 우리 편집이 한 번 **읽고 지나간다**. 목록이 안 갈리니 갈아끼우기도 없다.
+    claude::update_store(|_| ()).expect("무변화 편집");
+    assert!(peer::has("bye@x"), "전제 — 무변화 편집은 아무것도 안 지운다");
+
+    // ④ 이웃이 방금 그 상태를 읽고 bye@x를 로그아웃한다(걸터탄 열기).
+    let (held, logout_body) = straddling_open("bye@x");
+    // ⑤ 우리 배경 회전이 갈아끼운다 = 그들의 로그아웃이 묻힌다.
+    assert_eq!(rotate("mine@x", "m-2"), Landing::Both, "전제 — 커밋이 정착했다");
+    land_whole_write(held, &logout_body);
+
+    let gone_at = gone_within("bye@x", 1500);
+    println!(
+        "[r28f-peerrot] 되살리기 = {gone_at:?}ms · 장부(지연={} 신원세대로안지움={} ★못가름={} 근거못짚음={} 되살릴것없음={})",
+        claude::bury_stats::late(),
+        claude::bury_stats::moved_on(),
+        claude::bury_stats::unsure(),
+        claude::bury_stats::refused(),
+        claude::bury_stats::late_kept()
+    );
+    assert!(
+        gone_at.is_some(),
+        "★ 이웃이 자기 손으로 회전한 계정이라는 이유로 그들의 로그아웃이 **영구히** 취소됐다 — 사용자가 2.6.2에서 지운 계정이 credEnc째 목록에 남아 있다(확인 크리틱 R28e §3-1 · 대조군 6f2f312는 10/10 살렸다)"
+    );
+    assert!(
+        claude::bury_stats::unsure() >= 1,
+        "★ 살리긴 했는데 **못 갈랐다는 사실이 아무 데도 안 남았다** — 이 판은 파일만으로 못 가르는 판이고, 단정으로 적으면 그게 R28e가 불합격한 그 거짓이다"
+    );
+    assert_eq!(claude::bury_stats::moved_on(), 0, "★ 이웃의 회전을 「그들이 못 본 행」으로 셌다 — 로그가 정반대를 말한다");
+    assert!(claude::is_registered("mine@x"), "★ 되살리기가 이웃이 지우지 **않은** 계정까지 지웠다");
+    assert_eq!(store_refresh_of("mine@x").as_deref(), Some("m-2"), "★ 되살리기가 방금 정착한 회전 결과를 되돌렸다");
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// ★R28f-②(높음 · 확인 크리틱 R28e §3-2) — **되살리기가 남기는 툼스톤에 지문이 있다.**
+///
+/// 배치는 [`a_logout_tombstone_keeps_the_backup_from_resurrecting_the_account`]와 **같다**.
+/// 다른 것은 로그아웃의 주체가 `remove_account`(사용자 조작)가 아니라 **되살리기**(이웃이
+/// 낸 로그아웃을 우리가 파내 다시 적용했다)라는 것뿐이다 — 그리고 그 한 줄이 R28e에서
+/// 갈렸다: 되살리기 세 자리는 전부 `ledger::bury(e, "…", None)`이라 툼스톤의 지문이
+/// 문자열 `"0"`이었고, `ledger::without_buried`는 `t.fp == fp_of(a)`인 행만 걷어내므로
+/// **영원히 안 맞았다.** 즉 이 갈래의 헤드라인 대상인 「이웃이 낸 로그아웃」만 복구본에서
+/// `credEnc`째 되살아났고, 그 착지에 툼스톤을 언급하는 줄이 한 줄도 없었다.
+#[test]
+fn a_revived_neighbour_logout_leaves_a_tombstone_the_backup_respects() {
+    let home = ccg_store::testhome::take("r28f-revive-tomb");
+    std::env::set_var("CCG_NO_NET", "1");
+    claude::bury_stats::reset();
+    seed("keep@x", "K-1");
+    seed("bye@x", "B-1");
+    let bak = ccg_store::app_home().join(claude::STORE_BACKUP_FILE);
+    let stale_backup = std::fs::read_to_string(&bak).expect("마지막 성공본");
+    assert!(stale_backup.contains("bye@x"), "전제 — 복구본이 bye@x를 안다");
+
+    // ① 이웃이 bye@x를 로그아웃하고, 우리 커밋이 그 쓰기를 묻는다 → 되살리기가 다시 적용.
+    let (held, logout_body) = straddling_open("bye@x");
+    assert_eq!(rotate("keep@x", "K-2"), Landing::Both, "전제 — 커밋이 정착했다");
+    land_whole_write(held, &logout_body);
+    let gone_at = gone_within("bye@x", 1500);
+    assert!(gone_at.is_some(), "전제 — 되살리기가 이웃의 로그아웃을 다시 적용했다");
+
+    // ② 그 로그아웃의 **영속 기록**을 본다 — 이메일만이 아니라 **지문**까지.
+    let list = tombs();
+    println!("[r28f-revive-tomb] 되살리기 {gone_at:?}ms · 툼스톤={list:?}");
+    let t = list.iter().find(|t| t.get("email").and_then(Value::as_str) == Some("bye@x")).cloned();
+    let t = t.expect("★ 되살리기가 실행한 로그아웃이 영속 기록을 안 남겼다 — 재시작을 넘으면 「누가 지웠나」를 모른다");
+    let fp = t.get("fp").and_then(Value::as_str).unwrap_or("");
+    assert!(
+        fp != "0" && !fp.is_empty(),
+        "★ 툼스톤에 지문이 없다(fp={fp:?}) — `without_buried`는 지문이 맞는 행만 걷어내므로 이 기록은 아무것도 안 막는다(확인 크리틱 R28e §3-2)"
+    );
+
+    // ③ 복구본이 로그아웃 **이전** 판으로 돌아가고 본문이 사라진다.
+    std::fs::write(&bak, &stale_backup).expect("복구본 되돌리기");
+    std::fs::remove_file(peer::path()).expect("본문 치우기");
+    claude::update_store(|_| ()).expect("복구를 타는 편집");
+    println!(
+        "[r28f-revive-tomb] 복구 뒤 목록 = {:?}",
+        claude::read_store_file().accounts.iter().filter_map(claude::email_of).collect::<Vec<_>>()
+    );
+    assert!(
+        !claude::is_registered("bye@x"),
+        "★ 복구본이 **이웃이 낸 로그아웃**을 credEnc째 되돌렸다 — 사용자가 2.6.2에서 지운 계정이 살아 있는 토큰째 돌아와 앉았다"
+    );
+    assert!(claude::is_registered("keep@x"), "★ 툼스톤을 지키느라 멀쩡한 계정까지 잃었다");
+    assert!(claude::bury_stats::recovered() >= 1, "★ 복구본을 탄 사실이 장부에 안 남았다(침묵)");
+    // 같은 이메일의 **새 로그인**은 지문이 달라 이 툼스톤에 안 걸린다.
+    seed("bye@x", "B-2");
+    assert!(claude::is_registered("bye@x"), "★ 되살리기의 툼스톤이 사용자의 재로그인을 막았다");
     let _ = std::fs::remove_dir_all(&home);
 }
 

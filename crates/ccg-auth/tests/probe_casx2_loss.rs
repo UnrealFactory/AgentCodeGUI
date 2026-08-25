@@ -207,6 +207,52 @@ fn kept_4_a_neighbour_rotation_we_have_already_seen_is_a_valid_anchor() {
     let _ = std::fs::remove_dir_all(&home);
 }
 
+/// ★R28f — **유지④의 반대쪽.** 이웃이 회전한 그 행이 **지워지는 쪽**이면 어떻게 되나.
+///
+/// [`kept_4_a_neighbour_rotation_we_have_already_seen_is_a_valid_anchor`]는 이웃이 회전한
+/// 행이 **살아남는 쪽**(앵커)일 때만 쟀다. 지워지는 쪽은 R28e에서 한 번도 안 쟀고, 거기서
+/// 회귀가 났다 — 확인 크리틱 R28e §3-1(대조군 `6f2f312` 10/10 살림 · `9aa75b5` 10/10 취소).
+///
+/// 이 프로브는 `ledger`를 안 부르므로 **옛 코드 위에서도 그대로 컴파일된다** — 손실표의
+/// A/B가 여기서 나온다. 배치는 크리틱의 다섯 걸음 그대로다.
+#[test]
+#[ignore]
+fn regression_5_the_neighbour_rotated_row_is_the_one_logged_out() {
+    let home = ccg_store::testhome::take("casx2-reg5");
+    std::env::set_var("CCG_NO_NET", "1");
+    claude::bury_stats::reset();
+    // ① 두 계정.
+    seed("mine@x", "m-1");
+    seed("bye@x", "b-1");
+    // ② 이웃이 **자기 손으로** bye@x의 credEnc만 간다(별개 쓰기 · mine@x 행은 그대로).
+    let (def, accounts) = read_raw();
+    let rotated: Vec<Value> = accounts
+        .iter()
+        .map(|a| if claude::email_of(a) == Some("bye@x") { row_of("bye@x", "PEER-ROTATED") } else { a.clone() })
+        .collect();
+    std::fs::write(store_path(), peer_body(def.as_deref(), &rotated)).expect("이웃의 회전 쓰기");
+    // ③ 우리 편집이 한 번 **읽고 지나간다**(목록 무변화 → 갈아끼우기 없음).
+    claude::update_store(|_| ()).expect("무변화 편집");
+    // ④ 이웃이 방금 그 상태를 읽고 bye@x를 로그아웃한다(걸터탄 열기).
+    let (def, accounts) = read_raw();
+    let kept: Vec<Value> = accounts.iter().filter(|a| claude::email_of(a) != Some("bye@x")).cloned().collect();
+    let body = peer_body(def.as_deref(), &kept);
+    let held = std::fs::OpenOptions::new().write(true).open(store_path()).expect("이웃의 열기");
+    // ⑤ 우리 배경 회전이 갈아끼운다 = 그들의 로그아웃이 묻힌다.
+    assert!(rotate("mine@x", "m-2"), "전제 — 커밋이 정착했다");
+    land(held, &body);
+
+    let g = gone_within("bye@x", 1500);
+    println!(
+        "[casx2-reg5] 이웃이 회전한 그 행의 로그아웃이 살았나 = {g:?}ms · 장부(지연={} 신원세대로안지움={} 근거못짚음={} 되살릴것없음={})",
+        claude::bury_stats::late(),
+        claude::bury_stats::moved_on(),
+        claude::bury_stats::refused(),
+        claude::bury_stats::late_kept()
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}
+
 /// ★유지 ③(대조) — **평범한 로그아웃 매장은 그대로 산다.**
 ///
 /// 손실 둘을 재는 프로브가 「전부 못 살린다」의 증거로 오해되지 않게, 같은 파일에서
