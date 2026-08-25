@@ -1,0 +1,343 @@
+{
+  "at": "2026-08-25T12:44:17.872Z",
+  "exe": "C:/Temp/ccg-r28g-audit/target-sabd/release/agentcodegui.exe",
+  "what": "N1(Codex 계정 축) 출하 재판정 — 감사 R5",
+  "runs": [
+    {
+      "run": 1,
+      "home": "C:\\Temp\\ccg-r28g-audit\\home-n1-j1",
+      "cli": "C:\\Temp\\ccg-r28g-audit\\cli-n1-j1\\codex.cmd",
+      "pid": 7056,
+      "at": "2026-08-25T12:44:18.196Z",
+      "openSettings": "ok",
+      "before": {
+        "rows": [
+          {
+            "email": "r5-one@example.invalid",
+            "badge": true,
+            "acts": [
+              "삭제"
+            ]
+          },
+          {
+            "email": "r5-two@example.invalid",
+            "badge": false,
+            "acts": [
+              "맨 위로",
+              "삭제"
+            ]
+          }
+        ],
+        "notes": [
+          "계정 크리덴셜은 모두 ~/.agentcodegui에 암호화(DPAPI)되어 저장돼요. 터미널 Claude Code(~/.claude)·codex(~/.codex)의 로그인과는 완전히 분리돼 서로 영향을 주지 않아요."
+        ],
+        "failNote": null,
+        "addRow": true
+      },
+      "diskBefore": {
+        "bytes": 1013,
+        "order": [
+          "r5-one@example.invalid",
+          "r5-two@example.invalid"
+        ],
+        "defaultEmail": "r5-one@example.invalid"
+      },
+      "moveTop": {
+        "clickedEmail": "r5-two@example.invalid",
+        "settledMs": null
+      },
+      "afterMoveTop": {
+        "rows": [
+          {
+            "email": "r5-one@example.invalid",
+            "badge": true,
+            "acts": [
+              "삭제"
+            ]
+          },
+          {
+            "email": "r5-two@example.invalid",
+            "badge": false,
+            "acts": [
+              "맨 위로",
+              "삭제"
+            ]
+          }
+        ],
+        "notes": [
+          "순서를 바꾸지 못했어요 — 앱을 재시작한 뒤 다시 시도해 주세요",
+          "계정 크리덴셜은 모두 ~/.agentcodegui에 암호화(DPAPI)되어 저장돼요. 터미널 Claude Code(~/.claude)·codex(~/.codex)의 로그인과는 완전히 분리돼 서로 영향을 주지 않아요."
+        ],
+        "failNote": "순서를 바꾸지 못했어요 — 앱을 재시작한 뒤 다시 시도해 주세요",
+        "addRow": true
+      },
+      "diskAfterMoveTop": {
+        "bytes": 1013,
+        "order": [
+          "r5-one@example.invalid",
+          "r5-two@example.invalid"
+        ],
+        "defaultEmail": "r5-one@example.invalid"
+      },
+      "diskBeforeAdd": {
+        "bytes": 1013,
+        "order": [
+          "r5-one@example.invalid",
+          "r5-two@example.invalid"
+        ],
+        "defaultEmail": "r5-one@example.invalid"
+      },
+      "add": {
+        "before": 2,
+        "after": 3,
+        "ms": 109,
+        "spinTicks": 1,
+        "failNote": null,
+        "notes": [
+          "계정 크리덴셜은 모두 ~/.agentcodegui에 암호화(DPAPI)되어 저장돼요. 터미널 Claude Code(~/.claude)·codex(~/.codex)의 로그인과는 완전히 분리돼 서로 영향을 주지 않아요."
+        ]
+      },
+      "afterAdd": {
+        "rows": [
+          {
+            "email": "r5-one@example.invalid",
+            "badge": true,
+            "acts": [
+              "삭제"
+            ]
+          },
+          {
+            "email": "r5-two@example.invalid",
+            "badge": false,
+            "acts": [
+              "맨 위로",
+              "삭제"
+            ]
+          },
+          {
+            "email": "r5-three@example.invalid",
+            "badge": false,
+            "acts": [
+              "맨 위로",
+              "삭제"
+            ]
+          }
+        ],
+        "notes": [
+          "계정 크리덴셜은 모두 ~/.agentcodegui에 암호화(DPAPI)되어 저장돼요. 터미널 Claude Code(~/.claude)·codex(~/.codex)의 로그인과는 완전히 분리돼 서로 영향을 주지 않아요."
+        ],
+        "failNote": null,
+        "addRow": true
+      },
+      "diskAfterAdd": {
+        "bytes": 1526,
+        "order": [
+          "r5-one@example.invalid",
+          "r5-two@example.invalid",
+          "r5-three@example.invalid"
+        ],
+        "defaultEmail": "r5-one@example.invalid"
+      },
+      "rawChannels": {
+        "codex-auth:login-cancel": "null",
+        "codex-auth:list-accounts": "[{\"email\":\"r5-one@example.invalid\",\"plan\":\"plus\",\"isDefault\":true},{\"email\":\"r5-two@example.invalid\",\"plan\":\"pro\",\"isDefault\":false},{\"email\":\"r5-three@example.invalid\",\"plan\":\"pro\",\"isDefault\":false}]",
+        "codex-auth:reorder-accounts": "[{\"email\":\"r5-two@example.invalid\",\"plan\":\"pro\",\"isDefault\":true},{\"email\":\"r5-one@example.invalid\",\"plan\":\"plus\",\"isDefault\":false},{\"email\":\"r5-three@example.invalid\",\"plan\":\"pro\",\"isDefault\":false}]",
+        "codex-auth:set-default-account": "{\"__unimplemented\":true}",
+        "codex-auth:login": "[{\"email\":\"r5-two@example.invalid\",\"plan\":\"pro\",\"isDefault\":true},{\"email\":\"r5-one@example.invalid\",\"plan\":\"plus\",\"isDefault\":false},{\"email\":\"r5-three@example.invalid\",\"plan\":\"pro\",\"isDefault\":false},{\"email\":\"r5-four@example.invalid\",\"plan\":\"pro\",\"isDefault\":false}]"
+      },
+      "diskAfterRaw": {
+        "bytes": 2034,
+        "order": [
+          "r5-two@example.invalid",
+          "r5-one@example.invalid",
+          "r5-three@example.invalid",
+          "r5-four@example.invalid"
+        ],
+        "defaultEmail": "r5-two@example.invalid"
+      },
+      "forgeProbe": "{\"configurable\":false,\"writable\":false,\"defineErr\":\"Cannot redefine property: invoke\"}",
+      "cliLog": [
+        "[r5-fake-codex] login ",
+        "[r5-fake-codex] login"
+      ],
+      "diskEnd": {
+        "bytes": 2034,
+        "order": [
+          "r5-two@example.invalid",
+          "r5-one@example.invalid",
+          "r5-three@example.invalid",
+          "r5-four@example.invalid"
+        ],
+        "defaultEmail": "r5-two@example.invalid"
+      }
+    },
+    {
+      "run": 2,
+      "home": "C:\\Temp\\ccg-r28g-audit\\home-n1-j2",
+      "cli": "C:\\Temp\\ccg-r28g-audit\\cli-n1-j2\\codex.cmd",
+      "pid": 20252,
+      "at": "2026-08-25T12:44:32.914Z",
+      "openSettings": "ok",
+      "before": {
+        "rows": [
+          {
+            "email": "r5-one@example.invalid",
+            "badge": true,
+            "acts": [
+              "삭제"
+            ]
+          },
+          {
+            "email": "r5-two@example.invalid",
+            "badge": false,
+            "acts": [
+              "맨 위로",
+              "삭제"
+            ]
+          }
+        ],
+        "notes": [
+          "계정 크리덴셜은 모두 ~/.agentcodegui에 암호화(DPAPI)되어 저장돼요. 터미널 Claude Code(~/.claude)·codex(~/.codex)의 로그인과는 완전히 분리돼 서로 영향을 주지 않아요."
+        ],
+        "failNote": null,
+        "addRow": true
+      },
+      "diskBefore": {
+        "bytes": 1013,
+        "order": [
+          "r5-one@example.invalid",
+          "r5-two@example.invalid"
+        ],
+        "defaultEmail": "r5-one@example.invalid"
+      },
+      "moveTop": {
+        "clickedEmail": "r5-two@example.invalid",
+        "settledMs": null
+      },
+      "afterMoveTop": {
+        "rows": [
+          {
+            "email": "r5-one@example.invalid",
+            "badge": true,
+            "acts": [
+              "삭제"
+            ]
+          },
+          {
+            "email": "r5-two@example.invalid",
+            "badge": false,
+            "acts": [
+              "맨 위로",
+              "삭제"
+            ]
+          }
+        ],
+        "notes": [
+          "순서를 바꾸지 못했어요 — 앱을 재시작한 뒤 다시 시도해 주세요",
+          "계정 크리덴셜은 모두 ~/.agentcodegui에 암호화(DPAPI)되어 저장돼요. 터미널 Claude Code(~/.claude)·codex(~/.codex)의 로그인과는 완전히 분리돼 서로 영향을 주지 않아요."
+        ],
+        "failNote": "순서를 바꾸지 못했어요 — 앱을 재시작한 뒤 다시 시도해 주세요",
+        "addRow": true
+      },
+      "diskAfterMoveTop": {
+        "bytes": 1013,
+        "order": [
+          "r5-one@example.invalid",
+          "r5-two@example.invalid"
+        ],
+        "defaultEmail": "r5-one@example.invalid"
+      },
+      "diskBeforeAdd": {
+        "bytes": 1013,
+        "order": [
+          "r5-one@example.invalid",
+          "r5-two@example.invalid"
+        ],
+        "defaultEmail": "r5-one@example.invalid"
+      },
+      "add": {
+        "before": 2,
+        "after": 3,
+        "ms": 102,
+        "spinTicks": 1,
+        "failNote": null,
+        "notes": [
+          "계정 크리덴셜은 모두 ~/.agentcodegui에 암호화(DPAPI)되어 저장돼요. 터미널 Claude Code(~/.claude)·codex(~/.codex)의 로그인과는 완전히 분리돼 서로 영향을 주지 않아요."
+        ]
+      },
+      "afterAdd": {
+        "rows": [
+          {
+            "email": "r5-one@example.invalid",
+            "badge": true,
+            "acts": [
+              "삭제"
+            ]
+          },
+          {
+            "email": "r5-two@example.invalid",
+            "badge": false,
+            "acts": [
+              "맨 위로",
+              "삭제"
+            ]
+          },
+          {
+            "email": "r5-three@example.invalid",
+            "badge": false,
+            "acts": [
+              "맨 위로",
+              "삭제"
+            ]
+          }
+        ],
+        "notes": [
+          "계정 크리덴셜은 모두 ~/.agentcodegui에 암호화(DPAPI)되어 저장돼요. 터미널 Claude Code(~/.claude)·codex(~/.codex)의 로그인과는 완전히 분리돼 서로 영향을 주지 않아요."
+        ],
+        "failNote": null,
+        "addRow": true
+      },
+      "diskAfterAdd": {
+        "bytes": 1526,
+        "order": [
+          "r5-one@example.invalid",
+          "r5-two@example.invalid",
+          "r5-three@example.invalid"
+        ],
+        "defaultEmail": "r5-one@example.invalid"
+      },
+      "rawChannels": {
+        "codex-auth:login-cancel": "null",
+        "codex-auth:list-accounts": "[{\"email\":\"r5-one@example.invalid\",\"plan\":\"plus\",\"isDefault\":true},{\"email\":\"r5-two@example.invalid\",\"plan\":\"pro\",\"isDefault\":false},{\"email\":\"r5-three@example.invalid\",\"plan\":\"pro\",\"isDefault\":false}]",
+        "codex-auth:reorder-accounts": "[{\"email\":\"r5-two@example.invalid\",\"plan\":\"pro\",\"isDefault\":true},{\"email\":\"r5-one@example.invalid\",\"plan\":\"plus\",\"isDefault\":false},{\"email\":\"r5-three@example.invalid\",\"plan\":\"pro\",\"isDefault\":false}]",
+        "codex-auth:set-default-account": "{\"__unimplemented\":true}",
+        "codex-auth:login": "[{\"email\":\"r5-two@example.invalid\",\"plan\":\"pro\",\"isDefault\":true},{\"email\":\"r5-one@example.invalid\",\"plan\":\"plus\",\"isDefault\":false},{\"email\":\"r5-three@example.invalid\",\"plan\":\"pro\",\"isDefault\":false},{\"email\":\"r5-four@example.invalid\",\"plan\":\"pro\",\"isDefault\":false}]"
+      },
+      "diskAfterRaw": {
+        "bytes": 2034,
+        "order": [
+          "r5-two@example.invalid",
+          "r5-one@example.invalid",
+          "r5-three@example.invalid",
+          "r5-four@example.invalid"
+        ],
+        "defaultEmail": "r5-two@example.invalid"
+      },
+      "forgeProbe": "{\"configurable\":false,\"writable\":false,\"defineErr\":\"Cannot redefine property: invoke\"}",
+      "cliLog": [
+        "[r5-fake-codex] login ",
+        "[r5-fake-codex] login"
+      ],
+      "diskEnd": {
+        "bytes": 2034,
+        "order": [
+          "r5-two@example.invalid",
+          "r5-one@example.invalid",
+          "r5-three@example.invalid",
+          "r5-four@example.invalid"
+        ],
+        "defaultEmail": "r5-two@example.invalid"
+      }
+    }
+  ]
+}

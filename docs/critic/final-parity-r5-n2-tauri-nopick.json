@@ -1,0 +1,206 @@
+{
+  "at": "2026-08-25T12:24:39.799Z",
+  "kind": "tauri",
+  "exe": "C:/Temp/ccg-r28g-audit/target/release/agentcodegui.exe",
+  "closeMode": "hard",
+  "dwellMs": 15000,
+  "pickPlain": false,
+  "what": "N2(렌더 예외 부팅 루프) 출하 재판정 — 감사 R5",
+  "runs": [
+    {
+      "run": 1,
+      "home": "C:\\Temp\\ccg-r28g-audit\\home-n2-tauri-j1",
+      "uhome": null,
+      "at": "2026-08-25T12:24:39.868Z",
+      "states": [
+        {
+          "eb": 0,
+          "sb": 3,
+          "win": 1,
+          "chat": 1,
+          "ebText": null,
+          "mark": null,
+          "persistProbe": null,
+          "sbTitles": [
+            "정상 대화 A1지금",
+            "정상 대화 B지금",
+            "폭탄 대화지금"
+          ],
+          "label": "1. 부팅(활성=good)",
+          "disk": {
+            "file": "chats-v3/index.json",
+            "active": "r5-good"
+          }
+        },
+        {
+          "eb": 1,
+          "sb": 3,
+          "win": 0,
+          "chat": 0,
+          "ebText": "문제가 발생했어요대화 화면을 그리는 중 오류가 났어요. 대화 기록은 저장되어 있습니다.e.slice is not a function다시 시도앱 새로고침",
+          "mark": "r5-boom",
+          "persistProbe": "seeded-1787660685357",
+          "sbTitles": [
+            "정상 대화 A지금",
+            "정상 대화 B지금",
+            "폭탄 대화1지금"
+          ],
+          "label": "2. 폭탄 채팅 선택 직후",
+          "disk": {
+            "file": "chats-v3/index.json",
+            "active": "r5-boom"
+          }
+        },
+        {
+          "eb": 0,
+          "sb": 3,
+          "win": 1,
+          "chat": 1,
+          "ebText": null,
+          "mark": null,
+          "persistProbe": "seeded-1787660685357",
+          "sbTitles": [
+            "정상 대화 A1지금",
+            "정상 대화 B지금",
+            "폭탄 대화지금"
+          ],
+          "label": "3. 「앱 새로고침」 뒤",
+          "disk": {
+            "file": "chats-v3/index.json",
+            "active": "r5-good"
+          }
+        },
+        {
+          "eb": 1,
+          "sb": 3,
+          "win": 0,
+          "chat": 0,
+          "ebText": "문제가 발생했어요대화 화면을 그리는 중 오류가 났어요. 대화 기록은 저장되어 있습니다.e.slice is not a function다시 시도앱 새로고침",
+          "mark": "r5-boom",
+          "persistProbe": "seeded-1787660685357",
+          "sbTitles": [
+            "정상 대화 A지금",
+            "정상 대화 B지금",
+            "폭탄 대화1지금"
+          ],
+          "label": "4. 폭탄 재선택",
+          "disk": {
+            "file": "chats-v3/index.json",
+            "active": "r5-boom"
+          }
+        },
+        {
+          "eb": 0,
+          "sb": 3,
+          "win": 1,
+          "chat": 1,
+          "ebText": null,
+          "mark": "r5-boom",
+          "persistProbe": "seeded-1787660685357",
+          "sbTitles": [
+            "정상 대화 A1지금",
+            "정상 대화 B지금",
+            "폭탄 대화지금"
+          ],
+          "label": "5. 사이드바로 탈출(정상 A)",
+          "disk": {
+            "file": "chats-v3/index.json",
+            "active": "r5-good"
+          }
+        },
+        {
+          "eb": 1,
+          "sb": 3,
+          "win": 0,
+          "chat": 0,
+          "ebText": "문제가 발생했어요대화 화면을 그리는 중 오류가 났어요. 대화 기록은 저장되어 있습니다.e.slice is not a function다시 시도앱 새로고침",
+          "mark": "r5-boom",
+          "persistProbe": "seeded-1787660685357",
+          "sbTitles": [
+            "정상 대화 A지금",
+            "정상 대화 B지금",
+            "폭탄 대화1지금"
+          ],
+          "label": "6. 폭탄 활성 · 재시작 직전",
+          "disk": {
+            "file": "chats-v3/index.json",
+            "active": "r5-boom"
+          }
+        },
+        {
+          "eb": 1,
+          "sb": 3,
+          "win": 0,
+          "chat": 0,
+          "ebText": "문제가 발생했어요대화 화면을 그리는 중 오류가 났어요. 대화 기록은 저장되어 있습니다.e.slice is not a function다시 시도앱 새로고침",
+          "mark": "r5-boom",
+          "persistProbe": null,
+          "sbTitles": [
+            "정상 대화 A지금",
+            "정상 대화 B지금",
+            "폭탄 대화1지금"
+          ],
+          "label": "7. 폭탄 활성인 채로 재시작 #1",
+          "disk": {
+            "file": "chats-v3/index.json",
+            "active": "r5-boom"
+          }
+        },
+        {
+          "eb": 0,
+          "sb": 3,
+          "win": 1,
+          "chat": 1,
+          "ebText": null,
+          "mark": null,
+          "persistProbe": null,
+          "sbTitles": [
+            "정상 대화 A1지금",
+            "정상 대화 B지금",
+            "폭탄 대화지금"
+          ],
+          "label": "8. 폭탄 활성인 채로 재시작 #2",
+          "disk": {
+            "file": "chats-v3/index.json",
+            "active": "r5-good"
+          }
+        },
+        {
+          "eb": 0,
+          "sb": 3,
+          "win": 1,
+          "chat": 1,
+          "ebText": null,
+          "mark": null,
+          "persistProbe": null,
+          "sbTitles": [
+            "정상 대화 A1지금",
+            "정상 대화 B지금",
+            "폭탄 대화지금"
+          ],
+          "label": "9. 재시작 — 활성 복원(정상 B여야)",
+          "disk": {
+            "file": "chats-v3/index.json",
+            "active": "r5-good"
+          }
+        }
+      ],
+      "persistSeed": "seeded-1787660685357",
+      "clickBoom1": "clicked",
+      "clickReload": "clicked",
+      "clickBoom2": "clicked",
+      "escape": "clicked",
+      "clickBoom3": "clicked",
+      "dwellMs": 15000,
+      "shutdown1": "hard",
+      "diskAfterKill": {
+        "file": "chats-v3/index.json",
+        "active": "r5-boom"
+      },
+      "shutdown7": "hard",
+      "shutdown8": "hard",
+      "jailed": false,
+      "diskEqualsScreen": true
+    }
+  ]
+}

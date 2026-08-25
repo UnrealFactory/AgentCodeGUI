@@ -1,0 +1,260 @@
+{
+  "app": "tauri-3.0.0",
+  "kind": "tauri",
+  "arm": "synth-bare",
+  "withAccount": true,
+  "seededDiskCache": false,
+  "stubControl": false,
+  "syntheticEmail": "audit-r5@example.invalid",
+  "at": "2026-08-25T11:58:57.899Z",
+  "settleMs": 8000,
+  "plantedPct": {
+    "five": 42,
+    "weekly": 43,
+    "fable": 44
+  },
+  "expectedOnScreen": {
+    "five": 58,
+    "weekly": 57,
+    "fable": 56
+  },
+  "netBlock": "HTTPS_PROXY=http://127.0.0.1:10629 (CONNECT를 502로 끊는 싱크 — 외부로 0바이트)",
+  "discriminator": "심은 디스크 캐시 pct 42/43/44 — **닿으면 팝오버가 5행이 되고 화면에는 58/56/57(=100−pct)가 뜬다**",
+  "polarityNote": "팝오버는 남은 비율을 그린다(Chat.tsx:3640 rem = 100 - round(pct)). R4의 sees42(=/42|43|44/)는 가설이 참이어도 안 켜진다 — 판별력 0.",
+  "safety": "실홈 자격증명 복사 0 · 합성 계정(example.invalid)만 · 실 HTTP 0",
+  "runs": [
+    {
+      "run": 1,
+      "home": "C:\\Temp\\ccg-r28g-audit\\home-lp3-tauri-synth-bare-1",
+      "userProfileHome": null,
+      "pid": 41260,
+      "at": "2026-08-25T11:58:57.992Z",
+      "accountsRemovedFromFixture": [
+        "accounts.json",
+        "codex-accounts.json"
+      ],
+      "plantedAccount": "audit-r5@example.invalid",
+      "plantedCacheBytes": null,
+      "plantedCacheSha": null,
+      "acctCount": 1,
+      "acctEmails": "[\"audit-r5@example.invalid\"]",
+      "usageA": "{\"ms\":2,\"v\":\"{\\\"fiveHour\\\":null,\\\"weekly\\\":null,\\\"weeklyFable\\\":null,\\\"extraCredit\\\":null,\\\"unavailable\\\":true}\",\"e\":null}",
+      "usageB": "{\"ms\":1201,\"v\":\"{\\\"fiveHour\\\":null,\\\"weekly\\\":null,\\\"weeklyFable\\\":null,\\\"extraCredit\\\":null,\\\"unavailable\\\":true}\",\"e\":null}",
+      "clicked": "clicked",
+      "popText": "컨텍스트120K / 1M 토큰현재 컨텍스트이 대화가 차지하는 컨텍스트 창12%5시간 한도데이터 없음—주간 한도데이터 없음—토큰 사용량입력 0 · 출력 0 · 캐시 00",
+      "popRows": [
+        "현재 컨텍스트이 대화가 차지하는 컨텍스트 창12%",
+        "5시간 한도데이터 없음—",
+        "주간 한도데이터 없음—",
+        "토큰 사용량입력 0 · 출력 0 · 캐시 00"
+      ],
+      "prows": 4,
+      "hasNoData": true,
+      "seesRemain": false,
+      "seesPlanted": false,
+      "seesPlantedR4Regex": false,
+      "acctUsage": "{\"ms\":1,\"v\":\"[{\\\"email\\\":\\\"audit-r5@example.invalid\\\",\\\"fiveHourPct\\\":null,\\\"weeklyPct\\\":null,\\\"fablePct\\\":null,\\\"fiveHourResetsAt\\\":null,\\\"weeklyResetsAt\\\":null,\\\"fableResetsAt\\\":null,\\\"unavailable\\\":true}]\",\"e\":null}",
+      "diskCacheAfter": {
+        "exists": false,
+        "sha": null
+      },
+      "proxyHits": [
+        {
+          "at": "2026-08-25T11:58:58.470Z",
+          "method": "CONNECT",
+          "url": "api.anthropic.com:443"
+        },
+        {
+          "at": "2026-08-25T11:58:59.669Z",
+          "method": "CONNECT",
+          "url": "api.anthropic.com:443"
+        },
+        {
+          "at": "2026-08-25T11:59:00.870Z",
+          "method": "CONNECT",
+          "url": "api.anthropic.com:443"
+        },
+        {
+          "at": "2026-08-25T11:59:06.491Z",
+          "method": "CONNECT",
+          "url": "api.anthropic.com:443"
+        },
+        {
+          "at": "2026-08-25T11:59:07.692Z",
+          "method": "CONNECT",
+          "url": "api.anthropic.com:443"
+        },
+        {
+          "at": "2026-08-25T11:59:08.892Z",
+          "method": "CONNECT",
+          "url": "api.anthropic.com:443"
+        }
+      ]
+    },
+    {
+      "run": 2,
+      "home": "C:\\Temp\\ccg-r28g-audit\\home-lp3-tauri-synth-bare-2",
+      "userProfileHome": null,
+      "pid": 40076,
+      "at": "2026-08-25T11:59:13.396Z",
+      "accountsRemovedFromFixture": [
+        "accounts.json",
+        "codex-accounts.json"
+      ],
+      "plantedAccount": "audit-r5@example.invalid",
+      "plantedCacheBytes": null,
+      "plantedCacheSha": null,
+      "acctCount": 1,
+      "acctEmails": "[\"audit-r5@example.invalid\"]",
+      "usageA": "{\"ms\":1,\"v\":\"{\\\"fiveHour\\\":null,\\\"weekly\\\":null,\\\"weeklyFable\\\":null,\\\"extraCredit\\\":null,\\\"unavailable\\\":true}\",\"e\":null}",
+      "usageB": "{\"ms\":1200,\"v\":\"{\\\"fiveHour\\\":null,\\\"weekly\\\":null,\\\"weeklyFable\\\":null,\\\"extraCredit\\\":null,\\\"unavailable\\\":true}\",\"e\":null}",
+      "clicked": "clicked",
+      "popText": "컨텍스트120K / 1M 토큰현재 컨텍스트이 대화가 차지하는 컨텍스트 창12%5시간 한도데이터 없음—주간 한도데이터 없음—토큰 사용량입력 0 · 출력 0 · 캐시 00",
+      "popRows": [
+        "현재 컨텍스트이 대화가 차지하는 컨텍스트 창12%",
+        "5시간 한도데이터 없음—",
+        "주간 한도데이터 없음—",
+        "토큰 사용량입력 0 · 출력 0 · 캐시 00"
+      ],
+      "prows": 4,
+      "hasNoData": true,
+      "seesRemain": false,
+      "seesPlanted": false,
+      "seesPlantedR4Regex": false,
+      "acctUsage": "{\"ms\":2,\"v\":\"[{\\\"email\\\":\\\"audit-r5@example.invalid\\\",\\\"fiveHourPct\\\":null,\\\"weeklyPct\\\":null,\\\"fablePct\\\":null,\\\"fiveHourResetsAt\\\":null,\\\"weeklyResetsAt\\\":null,\\\"fableResetsAt\\\":null,\\\"unavailable\\\":true}]\",\"e\":null}",
+      "diskCacheAfter": {
+        "exists": false,
+        "sha": null
+      },
+      "proxyHits": [
+        {
+          "at": "2026-08-25T11:59:13.828Z",
+          "method": "CONNECT",
+          "url": "api.anthropic.com:443"
+        },
+        {
+          "at": "2026-08-25T11:59:15.027Z",
+          "method": "CONNECT",
+          "url": "api.anthropic.com:443"
+        },
+        {
+          "at": "2026-08-25T11:59:16.228Z",
+          "method": "CONNECT",
+          "url": "api.anthropic.com:443"
+        },
+        {
+          "at": "2026-08-25T11:59:21.865Z",
+          "method": "CONNECT",
+          "url": "api.anthropic.com:443"
+        },
+        {
+          "at": "2026-08-25T11:59:23.065Z",
+          "method": "CONNECT",
+          "url": "api.anthropic.com:443"
+        },
+        {
+          "at": "2026-08-25T11:59:24.265Z",
+          "method": "CONNECT",
+          "url": "api.anthropic.com:443"
+        }
+      ]
+    },
+    {
+      "run": 3,
+      "home": "C:\\Temp\\ccg-r28g-audit\\home-lp3-tauri-synth-bare-3",
+      "userProfileHome": null,
+      "pid": 42712,
+      "at": "2026-08-25T11:59:28.779Z",
+      "accountsRemovedFromFixture": [
+        "accounts.json",
+        "codex-accounts.json"
+      ],
+      "plantedAccount": "audit-r5@example.invalid",
+      "plantedCacheBytes": null,
+      "plantedCacheSha": null,
+      "acctCount": 1,
+      "acctEmails": "[\"audit-r5@example.invalid\"]",
+      "usageA": "{\"ms\":1,\"v\":\"{\\\"fiveHour\\\":null,\\\"weekly\\\":null,\\\"weeklyFable\\\":null,\\\"extraCredit\\\":null,\\\"unavailable\\\":true}\",\"e\":null}",
+      "usageB": "{\"ms\":1201,\"v\":\"{\\\"fiveHour\\\":null,\\\"weekly\\\":null,\\\"weeklyFable\\\":null,\\\"extraCredit\\\":null,\\\"unavailable\\\":true}\",\"e\":null}",
+      "clicked": "clicked",
+      "popText": "컨텍스트120K / 1M 토큰현재 컨텍스트이 대화가 차지하는 컨텍스트 창12%5시간 한도데이터 없음—주간 한도데이터 없음—토큰 사용량입력 0 · 출력 0 · 캐시 00",
+      "popRows": [
+        "현재 컨텍스트이 대화가 차지하는 컨텍스트 창12%",
+        "5시간 한도데이터 없음—",
+        "주간 한도데이터 없음—",
+        "토큰 사용량입력 0 · 출력 0 · 캐시 00"
+      ],
+      "prows": 4,
+      "hasNoData": true,
+      "seesRemain": false,
+      "seesPlanted": false,
+      "seesPlantedR4Regex": false,
+      "acctUsage": "{\"ms\":1,\"v\":\"[{\\\"email\\\":\\\"audit-r5@example.invalid\\\",\\\"fiveHourPct\\\":null,\\\"weeklyPct\\\":null,\\\"fablePct\\\":null,\\\"fiveHourResetsAt\\\":null,\\\"weeklyResetsAt\\\":null,\\\"fableResetsAt\\\":null,\\\"unavailable\\\":true}]\",\"e\":null}",
+      "diskCacheAfter": {
+        "exists": false,
+        "sha": null
+      },
+      "proxyHits": [
+        {
+          "at": "2026-08-25T11:59:29.230Z",
+          "method": "CONNECT",
+          "url": "api.anthropic.com:443"
+        },
+        {
+          "at": "2026-08-25T11:59:30.429Z",
+          "method": "CONNECT",
+          "url": "api.anthropic.com:443"
+        },
+        {
+          "at": "2026-08-25T11:59:31.629Z",
+          "method": "CONNECT",
+          "url": "api.anthropic.com:443"
+        },
+        {
+          "at": "2026-08-25T11:59:37.244Z",
+          "method": "CONNECT",
+          "url": "api.anthropic.com:443"
+        },
+        {
+          "at": "2026-08-25T11:59:38.445Z",
+          "method": "CONNECT",
+          "url": "api.anthropic.com:443"
+        },
+        {
+          "at": "2026-08-25T11:59:39.645Z",
+          "method": "CONNECT",
+          "url": "api.anthropic.com:443"
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "runs": 3,
+    "acctCounts": [
+      1
+    ],
+    "prows": [
+      4
+    ],
+    "hasNoData": [
+      true
+    ],
+    "seesRemain": [
+      false
+    ],
+    "seesPlanted": [
+      false
+    ],
+    "seesPlantedR4Regex": [
+      false
+    ],
+    "secondUsageCallMs": [
+      1201,
+      1200,
+      1201
+    ],
+    "gateOpen": true,
+    "proxyHits": 18,
+    "stable": true
+  }
+}

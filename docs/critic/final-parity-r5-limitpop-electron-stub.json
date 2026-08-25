@@ -1,0 +1,164 @@
+{
+  "app": "electron-2.6.2",
+  "kind": "electron",
+  "arm": "stub",
+  "withAccount": false,
+  "seededDiskCache": false,
+  "stubControl": true,
+  "syntheticEmail": null,
+  "at": "2026-08-25T12:07:05.772Z",
+  "settleMs": 8000,
+  "plantedPct": {
+    "five": 42,
+    "weekly": 43,
+    "fable": 44
+  },
+  "expectedOnScreen": {
+    "five": 58,
+    "weekly": 57,
+    "fable": 56
+  },
+  "netBlock": "accessToken에 개행 — undici Headers.append가 소켓 전에 TypeError (외부로 0바이트)",
+  "discriminator": "양성 대조 — getUsage를 pct 42/44/43 스텁으로 갈면 팝오버는 5행이고 화면 숫자는 58/56/57",
+  "polarityNote": "팝오버는 남은 비율을 그린다(Chat.tsx:3640 rem = 100 - round(pct)). R4의 sees42(=/42|43|44/)는 가설이 참이어도 안 켜진다 — 판별력 0.",
+  "safety": "실홈 자격증명 복사 0 · 합성 계정(example.invalid)만 · 실 HTTP 0",
+  "runs": [
+    {
+      "run": 1,
+      "home": "C:\\Temp\\ccg-r28g-audit\\home-lp3-electron-stub-1",
+      "userProfileHome": "C:\\Temp\\ccg-r28g-audit\\uprof-stub\\.agentcodegui",
+      "pid": 26056,
+      "at": "2026-08-25T12:07:05.893Z",
+      "accountsRemovedFromFixture": [
+        "accounts.json",
+        "codex-accounts.json"
+      ],
+      "plantedAccount": null,
+      "plantedCacheBytes": null,
+      "plantedCacheSha": null,
+      "acctCount": 0,
+      "acctEmails": "[]",
+      "stubInstalled": "THROW defineProperty=Cannot redefine property: getUsage proxy=Cannot redefine property: api",
+      "refetch": "closed",
+      "clicked": "clicked",
+      "popText": "컨텍스트120K / 1M 토큰현재 컨텍스트이 대화가 차지하는 컨텍스트 창12%5시간 한도데이터 없음—주간 한도데이터 없음—토큰 사용량입력 0 · 출력 0 · 캐시 00",
+      "popRows": [
+        "현재 컨텍스트이 대화가 차지하는 컨텍스트 창12%",
+        "5시간 한도데이터 없음—",
+        "주간 한도데이터 없음—",
+        "토큰 사용량입력 0 · 출력 0 · 캐시 00"
+      ],
+      "prows": 4,
+      "hasNoData": true,
+      "seesRemain": false,
+      "seesPlanted": false,
+      "seesPlantedR4Regex": false,
+      "diskCacheAfter": {
+        "exists": false,
+        "sha": null
+      },
+      "proxyHits": []
+    },
+    {
+      "run": 2,
+      "home": "C:\\Temp\\ccg-r28g-audit\\home-lp3-electron-stub-2",
+      "userProfileHome": "C:\\Temp\\ccg-r28g-audit\\uprof-stub\\.agentcodegui",
+      "pid": 15144,
+      "at": "2026-08-25T12:07:23.183Z",
+      "accountsRemovedFromFixture": [
+        "accounts.json",
+        "codex-accounts.json"
+      ],
+      "plantedAccount": null,
+      "plantedCacheBytes": null,
+      "plantedCacheSha": null,
+      "acctCount": 0,
+      "acctEmails": "[]",
+      "stubInstalled": "THROW defineProperty=Cannot redefine property: getUsage proxy=Cannot redefine property: api",
+      "refetch": "closed",
+      "clicked": "clicked",
+      "popText": "컨텍스트120K / 1M 토큰현재 컨텍스트이 대화가 차지하는 컨텍스트 창12%5시간 한도데이터 없음—주간 한도데이터 없음—토큰 사용량입력 0 · 출력 0 · 캐시 00",
+      "popRows": [
+        "현재 컨텍스트이 대화가 차지하는 컨텍스트 창12%",
+        "5시간 한도데이터 없음—",
+        "주간 한도데이터 없음—",
+        "토큰 사용량입력 0 · 출력 0 · 캐시 00"
+      ],
+      "prows": 4,
+      "hasNoData": true,
+      "seesRemain": false,
+      "seesPlanted": false,
+      "seesPlantedR4Regex": false,
+      "diskCacheAfter": {
+        "exists": false,
+        "sha": null
+      },
+      "proxyHits": []
+    },
+    {
+      "run": 3,
+      "home": "C:\\Temp\\ccg-r28g-audit\\home-lp3-electron-stub-3",
+      "userProfileHome": "C:\\Temp\\ccg-r28g-audit\\uprof-stub\\.agentcodegui",
+      "pid": 17180,
+      "at": "2026-08-25T12:07:40.588Z",
+      "accountsRemovedFromFixture": [
+        "accounts.json",
+        "codex-accounts.json"
+      ],
+      "plantedAccount": null,
+      "plantedCacheBytes": null,
+      "plantedCacheSha": null,
+      "acctCount": 0,
+      "acctEmails": "[]",
+      "stubInstalled": "THROW defineProperty=Cannot redefine property: getUsage proxy=Cannot redefine property: api",
+      "refetch": "closed",
+      "clicked": "clicked",
+      "popText": "컨텍스트120K / 1M 토큰현재 컨텍스트이 대화가 차지하는 컨텍스트 창12%5시간 한도데이터 없음—주간 한도데이터 없음—토큰 사용량입력 0 · 출력 0 · 캐시 00",
+      "popRows": [
+        "현재 컨텍스트이 대화가 차지하는 컨텍스트 창12%",
+        "5시간 한도데이터 없음—",
+        "주간 한도데이터 없음—",
+        "토큰 사용량입력 0 · 출력 0 · 캐시 00"
+      ],
+      "prows": 4,
+      "hasNoData": true,
+      "seesRemain": false,
+      "seesPlanted": false,
+      "seesPlantedR4Regex": false,
+      "diskCacheAfter": {
+        "exists": false,
+        "sha": null
+      },
+      "proxyHits": []
+    }
+  ],
+  "summary": {
+    "runs": 3,
+    "acctCounts": [
+      0
+    ],
+    "prows": [
+      4
+    ],
+    "hasNoData": [
+      true
+    ],
+    "seesRemain": [
+      false
+    ],
+    "seesPlanted": [
+      false
+    ],
+    "seesPlantedR4Regex": [
+      false
+    ],
+    "secondUsageCallMs": [
+      null,
+      null,
+      null
+    ],
+    "gateOpen": null,
+    "proxyHits": 0,
+    "stable": true
+  }
+}

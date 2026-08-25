@@ -1,0 +1,167 @@
+{
+  "app": "tauri-3.0.0",
+  "kind": "tauri",
+  "arm": "stub",
+  "withAccount": false,
+  "seededDiskCache": false,
+  "stubControl": true,
+  "syntheticEmail": null,
+  "at": "2026-08-25T12:01:09.488Z",
+  "settleMs": 8000,
+  "plantedPct": {
+    "five": 42,
+    "weekly": 43,
+    "fable": 44
+  },
+  "expectedOnScreen": {
+    "five": 58,
+    "weekly": 57,
+    "fable": 56
+  },
+  "netBlock": "HTTPS_PROXY=http://127.0.0.1:10629 (CONNECT를 502로 끊는 싱크 — 외부로 0바이트)",
+  "discriminator": "양성 대조 — getUsage를 pct 42/44/43 스텁으로 갈면 팝오버는 5행이고 화면 숫자는 58/56/57",
+  "polarityNote": "팝오버는 남은 비율을 그린다(Chat.tsx:3640 rem = 100 - round(pct)). R4의 sees42(=/42|43|44/)는 가설이 참이어도 안 켜진다 — 판별력 0.",
+  "safety": "실홈 자격증명 복사 0 · 합성 계정(example.invalid)만 · 실 HTTP 0",
+  "runs": [
+    {
+      "run": 1,
+      "home": "C:\\Temp\\ccg-r28g-audit\\home-lp3-tauri-stub-1",
+      "userProfileHome": null,
+      "pid": 11344,
+      "at": "2026-08-25T12:01:09.552Z",
+      "accountsRemovedFromFixture": [
+        "accounts.json",
+        "codex-accounts.json"
+      ],
+      "plantedAccount": null,
+      "plantedCacheBytes": null,
+      "plantedCacheSha": null,
+      "acctCount": 0,
+      "acctEmails": "[]",
+      "stubInstalled": "ok",
+      "refetch": "closed",
+      "clicked": "clicked",
+      "popText": "컨텍스트120K / 1M 토큰현재 컨텍스트이 대화가 차지하는 컨텍스트 창12%5시간 한도1시간 0분 후 초기화58% 남음Fable 주간 한도3일 0시간 후 초기화56% 남음주간 한도3일 0시간 후 초기화57% 남음토큰 사용량입력 0 · 출력 0 · 캐시 00",
+      "popRows": [
+        "현재 컨텍스트이 대화가 차지하는 컨텍스트 창12%",
+        "5시간 한도1시간 0분 후 초기화58% 남음",
+        "Fable 주간 한도3일 0시간 후 초기화56% 남음",
+        "주간 한도3일 0시간 후 초기화57% 남음",
+        "토큰 사용량입력 0 · 출력 0 · 캐시 00"
+      ],
+      "prows": 5,
+      "hasNoData": false,
+      "seesRemain": true,
+      "seesPlanted": false,
+      "seesPlantedR4Regex": false,
+      "diskCacheAfter": {
+        "exists": false,
+        "sha": null
+      },
+      "proxyHits": []
+    },
+    {
+      "run": 2,
+      "home": "C:\\Temp\\ccg-r28g-audit\\home-lp3-tauri-stub-2",
+      "userProfileHome": null,
+      "pid": 34196,
+      "at": "2026-08-25T12:01:26.379Z",
+      "accountsRemovedFromFixture": [
+        "accounts.json",
+        "codex-accounts.json"
+      ],
+      "plantedAccount": null,
+      "plantedCacheBytes": null,
+      "plantedCacheSha": null,
+      "acctCount": 0,
+      "acctEmails": "[]",
+      "stubInstalled": "ok",
+      "refetch": "closed",
+      "clicked": "clicked",
+      "popText": "컨텍스트120K / 1M 토큰현재 컨텍스트이 대화가 차지하는 컨텍스트 창12%5시간 한도1시간 0분 후 초기화58% 남음Fable 주간 한도3일 0시간 후 초기화56% 남음주간 한도3일 0시간 후 초기화57% 남음토큰 사용량입력 0 · 출력 0 · 캐시 00",
+      "popRows": [
+        "현재 컨텍스트이 대화가 차지하는 컨텍스트 창12%",
+        "5시간 한도1시간 0분 후 초기화58% 남음",
+        "Fable 주간 한도3일 0시간 후 초기화56% 남음",
+        "주간 한도3일 0시간 후 초기화57% 남음",
+        "토큰 사용량입력 0 · 출력 0 · 캐시 00"
+      ],
+      "prows": 5,
+      "hasNoData": false,
+      "seesRemain": true,
+      "seesPlanted": false,
+      "seesPlantedR4Regex": false,
+      "diskCacheAfter": {
+        "exists": false,
+        "sha": null
+      },
+      "proxyHits": []
+    },
+    {
+      "run": 3,
+      "home": "C:\\Temp\\ccg-r28g-audit\\home-lp3-tauri-stub-3",
+      "userProfileHome": null,
+      "pid": 32828,
+      "at": "2026-08-25T12:01:43.134Z",
+      "accountsRemovedFromFixture": [
+        "accounts.json",
+        "codex-accounts.json"
+      ],
+      "plantedAccount": null,
+      "plantedCacheBytes": null,
+      "plantedCacheSha": null,
+      "acctCount": 0,
+      "acctEmails": "[]",
+      "stubInstalled": "ok",
+      "refetch": "closed",
+      "clicked": "clicked",
+      "popText": "컨텍스트120K / 1M 토큰현재 컨텍스트이 대화가 차지하는 컨텍스트 창12%5시간 한도1시간 0분 후 초기화58% 남음Fable 주간 한도3일 0시간 후 초기화56% 남음주간 한도3일 0시간 후 초기화57% 남음토큰 사용량입력 0 · 출력 0 · 캐시 00",
+      "popRows": [
+        "현재 컨텍스트이 대화가 차지하는 컨텍스트 창12%",
+        "5시간 한도1시간 0분 후 초기화58% 남음",
+        "Fable 주간 한도3일 0시간 후 초기화56% 남음",
+        "주간 한도3일 0시간 후 초기화57% 남음",
+        "토큰 사용량입력 0 · 출력 0 · 캐시 00"
+      ],
+      "prows": 5,
+      "hasNoData": false,
+      "seesRemain": true,
+      "seesPlanted": false,
+      "seesPlantedR4Regex": false,
+      "diskCacheAfter": {
+        "exists": false,
+        "sha": null
+      },
+      "proxyHits": []
+    }
+  ],
+  "summary": {
+    "runs": 3,
+    "acctCounts": [
+      0
+    ],
+    "prows": [
+      5
+    ],
+    "hasNoData": [
+      false
+    ],
+    "seesRemain": [
+      true
+    ],
+    "seesPlanted": [
+      false
+    ],
+    "seesPlantedR4Regex": [
+      false
+    ],
+    "secondUsageCallMs": [
+      null,
+      null,
+      null
+    ],
+    "gateOpen": null,
+    "proxyHits": 0,
+    "stable": true
+  }
+}
