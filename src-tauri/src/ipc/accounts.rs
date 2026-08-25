@@ -188,7 +188,7 @@ impl LoginSlot {
         // 두 번째 「취소」가 같이 선다.
         let taken = self.proc.lock().unwrap_or_else(|e| e.into_inner()).take();
         if let Some(mut live) = taken {
-            // 순서가 중요하다 — 부모가 살아 있어야 직속 자식을 찾는다.
+            // 스냅샷을 **먼저** 찍는다 — 번호 재사용을 피하는 순서다([`direct_children`] 주석).
             kill_wrapped_child(live.child.id(), live.wrapped);
             let _ = live.child.kill();
             let _ = live.child.wait(); // 좀비를 남기지 않는다
@@ -257,16 +257,37 @@ fn kill_wrapped_child(pid: u32, wrapped: bool) {
     }
 }
 
-/// `pid`의 **직속** 자식 PID들. 부모가 아직 살아 있을 때만 부른다(죽은 뒤엔 링크가 끊긴다).
+/// `pid`의 **직속** 자식 PID들. 부모가 아직 살아 있을 때 부른다.
+///
+/// ★R28g GATE 실측(정정) — R1까지 여기에 「죽은 뒤엔 링크가 끊긴다」고 적혀 있었는데
+/// **그건 틀렸다.** `th32ParentProcessID`는 살아 있는 링크가 아니라 **기록된 값**이라
+/// 부모가 죽은 뒤에도 남는다. 순서를 뒤집은 돌연변이(`child.kill()`·`wait()` **뒤에**
+/// 스냅샷)에서 취소 테스트 셋이 그대로 초록이었다. 그래도 「살아 있을 때 찍는다」를
+/// 규칙으로 두는 진짜 이유는 **번호 재사용**이다 — 부모 핸들을 놓고 나면 그 번호가
+/// 남에게 갈 수 있고, 그때 이 함수는 **남의 자식**을 우리 손자로 돌려준다.
+///
+/// ★R28g GATE · R28f 확인 크리틱 R2 §3-C — 스냅샷 실패를 **조용한 빈 목록**으로 돌려주지
+/// 않는다. `CreateToolhelp32Snapshot`은 프로세스 표가 흔들리는 순간 `ERROR_BAD_LENGTH`로
+/// 실패할 수 있고(문서가 재시도를 지시하는 자리다), 그 한 번이 여기서는
+/// 「자식이 없다」와 **구분이 안 됐다** = [`kill_wrapped_child`]가 아무것도 안 죽이고
+/// 성공한 것처럼 돌아온다(래퍼 안의 CLI가 살아남는다). 그래서 실패는 실패로 돌려받아
+/// 몇 번 다시 찍는다. 끝까지 실패하면 그때는 빈 목록이지만, 그건 이제
+/// 「한 번 흔들렸다」가 아니라 「계속 못 찍는다」다.
 #[cfg(windows)]
 fn direct_children(pid: u32) -> Vec<u32> {
+    retrying(|| snapshot_children(pid))
+}
+
+/// 스냅샷 한 번. `None` = **스냅샷 자체를 못 찍었다**(≠ 자식이 없다).
+#[cfg(windows)]
+fn snapshot_children(pid: u32) -> Option<Vec<u32>> {
     use windows::Win32::Foundation::CloseHandle;
     use windows::Win32::System::Diagnostics::ToolHelp::{
         CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
     };
     let mut out = Vec::new();
     unsafe {
-        let Ok(snap) = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) else { return out };
+        let snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0).ok()?;
         let mut e = PROCESSENTRY32W { dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32, ..Default::default() };
         let mut ok = Process32FirstW(snap, &mut e).is_ok();
         while ok {
@@ -277,7 +298,26 @@ fn direct_children(pid: u32) -> Vec<u32> {
         }
         let _ = CloseHandle(snap);
     }
-    out
+    Some(out)
+}
+
+/// 스냅샷 재시도 상한. 표가 흔들리는 창은 밀리초 단위라 몇 번이면 충분하고,
+/// 여기는 **취소 경로**라(사용자가 방금 「취소」를 눌렀다) 오래 끌면 안 된다.
+#[cfg(windows)]
+const SNAPSHOT_TRIES: u32 = 4;
+
+/// `f`가 값을 줄 때까지 최대 [`SNAPSHOT_TRIES`]번. 끝까지 `None`이면 기본값.
+#[cfg(windows)]
+fn retrying<T: Default>(mut f: impl FnMut() -> Option<T>) -> T {
+    for i in 0..SNAPSHOT_TRIES {
+        if let Some(v) = f() {
+            return v;
+        }
+        if i + 1 < SNAPSHOT_TRIES {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+    T::default()
 }
 
 #[cfg(windows)]
@@ -857,7 +897,7 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn cancelling_a_wrapped_login_kills_the_program_inside_the_wrapper() {
-        let (child, pid, kids) = spawn_wrapped_fixture();
+        let WrappedFixture { child, pid, inside } = spawn_wrapped_fixture();
         let slot = LoginSlot::new();
         let gen = slot.begin();
         slot.put(gen, child, true);
@@ -866,9 +906,9 @@ mod tests {
         slot.cancel();
 
         assert!(!slot.owns(gen), "★취소 뒤 슬롯은 비어 있다 = 펌프가 EOF를 안 기다리고 깬다");
-        let leftover = wait_until_dead(&kids);
-        for p in &leftover {
-            terminate(*p); // 실패해도 뒤처리는 한다 — 테스트가 프로세스를 남기지 않게
+        let leftover = still_alive_after(&inside);
+        for w in &inside {
+            w.terminate(); // 실패해도 뒤처리는 한다 — 테스트가 프로세스를 남기지 않게
         }
         assert!(leftover.is_empty(), "★래퍼 안의 프로그램이 살아남았다(pid {pid}의 자식): {leftover:?}");
     }
@@ -878,7 +918,7 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn cancelling_an_unwrapped_login_leaves_what_the_cli_launched_alone() {
-        let (child, _pid, kids) = spawn_wrapped_fixture();
+        let WrappedFixture { child, pid: _, inside } = spawn_wrapped_fixture();
         // `wrapped:false` = 「이 자식이 곧 우리가 띄우려던 프로그램이다」.
         let slot = LoginSlot::new();
         let gen = slot.begin();
@@ -887,25 +927,95 @@ mod tests {
         assert!(!slot.owns(gen));
         // 자식(cmd.exe)은 죽었지만 그 아래는 우리 것이 아니다 — 1초 뒤에도 살아 있어야 한다.
         std::thread::sleep(Duration::from_millis(1000));
-        let still = kids.iter().copied().filter(|p| pid_is_alive(*p)).collect::<Vec<_>>();
-        for p in &kids {
-            terminate(*p); // 뒤처리
+        let still = inside.iter().filter(|w| w.alive()).map(|w| w.pid).collect::<Vec<_>>();
+        for w in &inside {
+            w.terminate(); // 뒤처리
         }
         assert!(!still.is_empty(), "★unwrapped인데 CLI가 띄운 것까지 죽었다(브라우저가 죽는 모양)");
     }
 
+    /// 두 취소 테스트가 앉히는 판: 래퍼(`cmd.exe`) 하나 + **그 안의 프로그램**(손자) 하나.
+    #[cfg(windows)]
+    struct WrappedFixture {
+        /// 슬롯에 앉힐 자식 = 래퍼 그 자체.
+        child: Child,
+        /// 그 pid(진단 문구용).
+        pid: u32,
+        /// **래퍼 안의 프로그램**. 번호가 아니라 **핸들**로 들고 있다([`PidWatch`]).
+        inside: Vec<PidWatch>,
+    }
+
     /// 크리틱의 `.cmd` 셰임과 같은 모양: `cmd /C`가 오래 도는 프로그램을 부르고, 파이프는
     /// [`pump_login`]처럼 **읽기 스레드**가 쥔다(`Child`에 남기지 않는다).
-    /// 돌려주는 것: 슬롯에 앉힐 자식 · 그 pid · 그 직속 자식(손자) 목록.
+    ///
+    /// ── ★R28g GATE — 이 픽스처는 전체 주행의 절반에서 붉었다. 왜였나 ─────────────
+    ///
+    /// R28f 확인 크리틱 R2 §3-A가 잰 값: `cargo test -p agentcodegui --bin agentcodegui`
+    /// (기본 병렬) 6회 중 **3회**가 `★래퍼 안의 프로그램이 안 떴다(자식 [])`로 죽었고,
+    /// `--test-threads=1`이면 안 났다. 크리틱의 가설은 「스냅샷이 한 번 빈 목록을 돌려주면
+    /// `kids`가 `[]`로 덮인다」였는데, **그 가설은 틀렸다.** 계기를 심어 6.4초의 폴링을
+    /// 통째로 찍어 보니(R28g GATE 실측):
+    ///
+    /// ```text
+    /// t0 +6ms  Ok([(33128, "conhost.exe")])      ← 스냅샷은 매 회 성공했다(Err 0회)
+    /// +113ms   Ok([])   … +6401ms Ok([])          ← 자식이 진짜로 없다
+    /// cwd=…\src-tauri
+    /// PATH[0..160]=C:\Users\…\Temp\ccg-test-codex-limit-path-11484-…\fakepath
+    /// cmd alive=false try_wait=Ok(Some(ExitStatus(1)))
+    /// SAID="'ping'은(는) 내부 또는 외부 명령, 실행할 수 있는 프로그램, 또는 배치 파일이 아닙니다."
+    /// ```
+    ///
+    /// 즉 **`cmd.exe`가 `ping`을 못 찾고 즉시 1로 죽었다.** 범인은 이웃 테스트다 —
+    /// `engine/codex_limit.rs`의 `a_codex_found_on_the_global_path_is_an_instrument_too`가
+    /// 「전역 PATH의 codex도 창구다」를 재려고 **프로세스 전역 `PATH`를 가짜 폴더 하나로
+    /// 통째로 갈아끼운다**(`EnvGuard::set("PATH", …fakepath)`). `set_var`는 프로세스 전역이고
+    /// 그 테스트가 쥐는 자물쇠는 `CCG_HOME`(`testhome`)뿐이라, 그 자물쇠를 안 쥐는 이 픽스처는
+    /// 그 창에 걸리면 System32가 없는 PATH를 물려받는다. `cmd.exe` 자신은 `CreateProcess`가
+    /// 언제나 System32를 뒤지므로 떴고(그래서 pid는 나온다), `cmd`가 자기 손으로 찾는 `ping`만
+    /// 못 찾았다. 창이 열려 있는 시간이 그 테스트의 수명뿐이라 **절반만 붉었다.**
+    ///
+    /// ── 그래서 무엇을 바꿨나 ───────────────────────────────────────────────────
+    ///
+    ///  ① **환경을 안 믿는다.** 래퍼도 그 안의 프로그램도 **절대 경로**로 못 박고
+    ///     (`system32()`), 존재를 먼저 확인한다. 게다가 자식의 `PATH`를 **일부러 없는 폴더**로
+    ///     준다 — 이 픽스처가 PATH에 조금이라도 기대면 절반이 아니라 **매번** 붉게 만들어
+    ///     회귀가 확률이 아니라 사실이 되게 하려고다.
+    ///  ② **「자식 수가 늘기를 멈출 때까지」라는 모양을 버렸다.** 그 모양은 부하에 취약하다
+    ///     (스냅샷 한 번의 빈 목록·conhost가 안 붙는 판·손자가 늦는 판이 전부 같은 값으로
+    ///     보인다). 대신 **이름으로 특정**하고(`PING.EXE`) **보인 적이 있다를 단조로 기억**한다
+    ///     — 한 번 보면 핸들을 열어 들고, 그 뒤 스냅샷이 무엇을 돌려주든 그 기억은 안 지워진다.
+    ///  ③ **번호가 아니라 핸들**로 들고 있다([`PidWatch`]). 158개 테스트가 초당 수백 개
+    ///     프로세스를 만들고 죽이는 판에서 pid는 재발급된다 — 죽인 뒤 「아직 사나」를 번호로
+    ///     물으면 남의 프로세스를 우리 손자로 오독한다.
+    ///  ④ **실패가 스스로 말한다.** 안 떴으면 래퍼가 무엇을 뱉었는지·언제 어떤 코드로 끝났는지·
+    ///     그 사이 스쳐간 자식이 무엇이었는지를 한 번에 적는다. R28f의 「자식 []」 한 줄은
+    ///     6초의 침묵만 남겨 다음 사람이 계기를 새로 심어야 했다(내가 그랬다).
     #[cfg(windows)]
-    fn spawn_wrapped_fixture() -> (Child, u32, Vec<u32>) {
+    fn spawn_wrapped_fixture() -> WrappedFixture {
         use std::os::windows::process::CommandExt;
-        let mut c = Command::new("cmd");
-        c.raw_arg("/C").raw_arg("ping -n 600 127.0.0.1");
+
+        let sys32 = system32();
+        let shell = sys32.join("cmd.exe");
+        let inside_prog = sys32.join(INSIDE_NAME);
+        assert!(
+            shell.is_file() && inside_prog.is_file(),
+            "★픽스처가 쓸 절대 경로가 없다: {shell:?} · {inside_prog:?}"
+        );
+
+        let mut c = Command::new(&shell);
+        // 제품(`codex_command`)과 **같은 인용 모양**: `cmd /C ""프로그램" 인자"`.
+        c.raw_arg("/C")
+            .raw_arg(format!("\"\"{}\" -n 600 127.0.0.1\"", inside_prog.display()));
         c.creation_flags(0x0800_0000);
+        // ★위 ①: 없는 폴더 하나만 준다. 이 픽스처의 어느 고리든 PATH에 기대면 **매번** 붉다.
+        c.env("PATH", std::env::temp_dir().join("ccg-r28g-gate-no-such-path"));
         c.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
         let mut child = c.spawn().expect("cmd 스폰");
         let pid = child.id();
+
+        // 파이프는 읽기 스레드가 쥔다(위 「픽스처의 함정」). 뱉은 말은 진단용으로 모은다 —
+        // 이 한 줄이 R28g에서 원인을 한 번에 지목했다.
+        let said = std::sync::Arc::new(Mutex::new(String::new()));
         for pipe in [
             child.stdout.take().map(|p| Box::new(p) as Box<dyn Read + Send>),
             child.stderr.take().map(|p| Box::new(p) as Box<dyn Read + Send>),
@@ -913,67 +1023,208 @@ mod tests {
         .into_iter()
         .flatten()
         {
+            let said = said.clone();
             std::thread::spawn(move || {
                 let mut pipe = pipe;
                 let mut buf = [0u8; 4096];
-                while matches!(pipe.read(&mut buf), Ok(n) if n > 0) {}
+                while let Ok(n) = pipe.read(&mut buf) {
+                    if n == 0 {
+                        return;
+                    }
+                    said.lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .push_str(&String::from_utf8_lossy(&buf[..n]));
+                }
             });
         }
-        // ★두 번째 픽스처 함정: `CREATE_NO_WINDOW`라도 `cmd.exe`는 **conhost.exe를 먼저**
-        // 자식으로 단다. 첫 스냅샷을 바로 찍으면 그 하나만 잡히고(정작 `ping`은 아직
-        // 안 떴다), conhost는 부모와 함께 죽으므로 두 테스트가 다 거짓으로 통과한다.
-        // 그래서 **자식이 늘기를 멈출 때까지** 기다린 뒤 찍는다.
-        let mut kids = direct_children(pid);
-        for _ in 0..60 {
-            std::thread::sleep(Duration::from_millis(100));
-            let now = direct_children(pid);
-            if now.len() > kids.len() {
-                kids = now;
-                continue;
+
+        // ★위 ②③ — 「보인 적이 있다」를 단조로 기억한다(수를 세지 않는다).
+        // conhost는 여기서 판정에 안 쓴다: `CREATE_NO_WINDOW`라도 `cmd.exe`에 conhost가
+        // **먼저** 붙으므로 「자식이 하나 있다」는 손자가 떴다는 뜻이 전혀 아니고,
+        // 반대로 conhost가 안 붙는 판(ConPTY 계열)에서는 「둘 이상」이 영영 안 온다.
+        let mut inside: Vec<PidWatch> = Vec::new();
+        let mut seen: Vec<(u32, String)> = Vec::new();
+        let deadline = std::time::Instant::now() + Duration::from_secs(6);
+        while std::time::Instant::now() < deadline {
+            for (kid, name) in named_children(pid) {
+                if !seen.iter().any(|(p, _)| *p == kid) {
+                    seen.push((kid, name.clone()));
+                }
+                if name.eq_ignore_ascii_case(INSIDE_NAME) && !inside.iter().any(|w| w.pid == kid) {
+                    if let Some(w) = PidWatch::open(kid) {
+                        inside.push(w);
+                    }
+                }
             }
-            if kids.len() >= 2 {
-                break;
+            if !inside.is_empty() {
+                return WrappedFixture { child, pid, inside };
             }
-            kids = now;
+            std::thread::sleep(Duration::from_millis(25));
         }
-        assert!(
-            kids.len() >= 2,
-            "★래퍼 안의 프로그램이 안 떴다 — 픽스처가 무의미하다(자식 {kids:?})"
+
+        // ★위 ④ — 실패는 6초의 침묵이 아니라 진술이어야 한다.
+        let ended = child.try_wait();
+        let said = said.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        let _ = child.kill();
+        let _ = child.wait();
+        for (p, _) in &seen {
+            terminate(*p);
+        }
+        panic!(
+            "★래퍼 안의 프로그램({INSIDE_NAME})이 안 떴다 — 픽스처가 무의미하다.\n\
+             래퍼 pid {pid} · try_wait {ended:?}\n\
+             스쳐간 직속 자식: {seen:?}\n\
+             래퍼가 뱉은 말: {said:?}"
         );
-        (child, pid, kids)
     }
 
-    /// 최대 5초 기다린 뒤 **아직 살아 있는** pid들.
+    /// 래퍼 안에서 띄울 프로그램. 초당 한 줄을 파이프에 쓰고 600초를 산다 —
+    /// 「손자가 파이프의 쓰기 끝을 쥔 채 살아 있다」가 이 픽스처의 전제다.
     #[cfg(windows)]
-    fn wait_until_dead(pids: &[u32]) -> Vec<u32> {
-        let mut alive = pids.to_vec();
+    const INSIDE_NAME: &str = "PING.EXE";
+
+    /// `System32` 폴더. **PATH를 안 본다**(위 ①). `CreateProcess`가 언제나 뒤지는 자리라
+    /// `cmd.exe`가 여기 있는 것으로 후보를 검증한다.
+    #[cfg(windows)]
+    fn system32() -> std::path::PathBuf {
+        let cands = [
+            std::env::var_os("SystemRoot").map(std::path::PathBuf::from),
+            std::env::var_os("windir").map(std::path::PathBuf::from),
+            Some(std::path::PathBuf::from(r"C:\Windows")),
+        ];
+        for base in cands.into_iter().flatten() {
+            let d = base.join("System32");
+            if d.join("cmd.exe").is_file() {
+                return d;
+            }
+        }
+        std::path::PathBuf::from(r"C:\Windows\System32")
+    }
+
+    /// 직속 자식의 (pid, 실행 파일 이름). 제품의 [`direct_children`]에 이름이 없는 이유는
+    /// 계약이 「직속 자식을 **모조리** 죽인다」라 이름을 볼 일이 없어서다 — **픽스처만**
+    /// 자기가 띄운 손자를 이름으로 특정한다(위 ②).
+    #[cfg(windows)]
+    fn named_children(pid: u32) -> Vec<(u32, String)> {
+        use windows::Win32::Foundation::CloseHandle;
+        use windows::Win32::System::Diagnostics::ToolHelp::{
+            CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
+        };
+        let mut out = Vec::new();
+        unsafe {
+            let Ok(snap) = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) else { return out };
+            let mut e = PROCESSENTRY32W { dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32, ..Default::default() };
+            let mut ok = Process32FirstW(snap, &mut e).is_ok();
+            while ok {
+                if e.th32ParentProcessID == pid && e.th32ProcessID != pid {
+                    let name = String::from_utf16_lossy(&e.szExeFile);
+                    out.push((e.th32ProcessID, name.trim_end_matches('\0').to_string()));
+                }
+                ok = Process32NextW(snap, &mut e).is_ok();
+            }
+            let _ = CloseHandle(snap);
+        }
+        out
+    }
+
+    /// 프로세스 하나를 **핸들로** 붙잡아 두는 관찰자.
+    ///
+    /// 왜 번호로는 안 되는가(위 ③): 죽인 뒤 「아직 사나」를 물으려면 그 사이에 그 번호가
+    /// **다른 프로세스에 재발급되지 않아야** 한다. 윈도우는 핸들이 하나라도 열려 있는 동안
+    /// 프로세스 객체를 놓지 않으므로 번호도 재사용되지 않는다. 158개 테스트가 초당 수백 개
+    /// 프로세스를 만들고 죽이는 판에서 이 보증이 없으면 남의 프로세스를 우리 손자로 읽는다.
+    #[cfg(windows)]
+    struct PidWatch {
+        pid: u32,
+        h: windows::Win32::Foundation::HANDLE,
+    }
+
+    #[cfg(windows)]
+    impl PidWatch {
+        fn open(pid: u32) -> Option<PidWatch> {
+            use windows::Win32::System::Threading::{
+                OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_TERMINATE,
+            };
+            unsafe {
+                let h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_TERMINATE, false, pid).ok()?;
+                if h.is_invalid() {
+                    return None;
+                }
+                Some(PidWatch { pid, h })
+            }
+        }
+
+        fn alive(&self) -> bool {
+            use windows::Win32::Foundation::STILL_ACTIVE;
+            use windows::Win32::System::Threading::GetExitCodeProcess;
+            unsafe {
+                let mut code: u32 = 0;
+                GetExitCodeProcess(self.h, &mut code).is_ok() && code == STILL_ACTIVE.0 as u32
+            }
+        }
+
+        fn terminate(&self) {
+            use windows::Win32::System::Threading::TerminateProcess;
+            unsafe {
+                let _ = TerminateProcess(self.h, 1);
+            }
+        }
+    }
+
+    #[cfg(windows)]
+    impl Drop for PidWatch {
+        fn drop(&mut self) {
+            use windows::Win32::Foundation::CloseHandle;
+            unsafe {
+                let _ = CloseHandle(self.h);
+            }
+        }
+    }
+
+    /// 최대 5초 기다린 뒤 **아직 살아 있는** 관찰 대상의 pid들.
+    #[cfg(windows)]
+    fn still_alive_after(watch: &[PidWatch]) -> Vec<u32> {
         for _ in 0..100 {
-            alive.retain(|p| pid_is_alive(*p));
-            if alive.is_empty() {
-                break;
+            if watch.iter().all(|w| !w.alive()) {
+                return Vec::new();
             }
             std::thread::sleep(Duration::from_millis(50));
         }
-        alive
+        watch.iter().filter(|w| w.alive()).map(|w| w.pid).collect()
     }
 
-    #[cfg(windows)]
-    fn pid_is_alive(pid: u32) -> bool {
-        use windows::Win32::Foundation::{CloseHandle, STILL_ACTIVE};
-        use windows::Win32::System::Threading::{
-            GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
-        };
-        unsafe {
-            let Ok(h) = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) else {
-                return false;
-            };
-            if h.is_invalid() {
-                return false;
+    /// ★R28f 확인 크리틱 R2 §3-C — 스냅샷 실패를 **조용한 빈 목록**으로 넘기지 않는다.
+    /// 재시도가 값을 되찾아 주고, 끝까지 실패해야 빈 값이다.
+    #[test]
+    fn a_snapshot_that_fails_once_is_retried_instead_of_read_as_no_children() {
+        let mut n = 0;
+        let got: Vec<u32> = retrying(|| {
+            n += 1;
+            if n < 3 {
+                None
+            } else {
+                Some(vec![7u32, 9])
             }
-            let mut code: u32 = 0;
-            let ok = GetExitCodeProcess(h, &mut code).is_ok();
-            let _ = CloseHandle(h);
-            ok && code == STILL_ACTIVE.0 as u32
-        }
+        });
+        assert_eq!(got, vec![7, 9], "★두 번 실패해도 세 번째 값이 나와야 한다");
+        assert_eq!(n, 3);
+
+        // 「자식이 없다」는 실패가 아니다 — 한 번에 끝난다(재시도로 늘어지지 않게).
+        let mut m = 0;
+        let empty: Vec<u32> = retrying(|| {
+            m += 1;
+            Some(vec![])
+        });
+        assert!(empty.is_empty());
+        assert_eq!(m, 1, "★빈 목록은 성공이다");
+
+        // 끝까지 실패하면 빈 값이다(제품이 `kill_wrapped_child`에서 아무것도 안 죽인다).
+        let mut k = 0;
+        let dead: Vec<u32> = retrying(|| {
+            k += 1;
+            None
+        });
+        assert!(dead.is_empty());
+        assert_eq!(k, SNAPSHOT_TRIES, "★상한이 있다 — 영원히 다시 찍지 않는다");
     }
 }
