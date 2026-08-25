@@ -1,0 +1,265 @@
+{
+  "at": "2026-08-25T13:51:56.690Z",
+  "exe": "C:\\Code\\AgentCodeGUI\\target-r28h-m10\\release\\agentcodegui.exe",
+  "fakecli": "target-r28h-m10/release/ccg-fakecli.exe",
+  "stamp": {
+    "at": "2026-08-25T13:51:56.691Z",
+    "host": "DESKTOP-SEAPM9E",
+    "exe": {
+      "path": "C:\\Code\\AgentCodeGUI\\target-r28h-m10\\release\\agentcodegui.exe",
+      "sha256": "cd5597a534efe6040784ac2f3724cb449dcd7a82f8927f78243f96f7656205b4",
+      "bytes": 6600192,
+      "mtime": "2026-08-25T12:07:52.303Z"
+    },
+    "git": {
+      "head": "ae53d19a97c6a1d4bc38088696350c50e5f0f661",
+      "branch": "feature/3.0.0-beta",
+      "dirty": []
+    },
+    "tag": "r28h1off",
+    "port0": 10714,
+    "fakecli": {
+      "path": "C:\\Code\\AgentCodeGUI\\target-r28h-m10\\release\\ccg-fakecli.exe",
+      "sha256": "92134e0fff077c4992fd927de061e626e5e195f487838556bfc8f9a423cbd48a",
+      "bytes": 200192,
+      "mtime": "2026-08-25T12:08:05.226Z"
+    },
+    "fingerprint": {
+      "ok": true,
+      "hashes": {
+        "envelope.plan": {
+          "sha256": "e8159c094511d0ff64ecaad6c8b5845ba838b981dfe397ea7b7deedb329ebf4d",
+          "bytes": 12198
+        },
+        "envelope.normal": {
+          "sha256": "22562cabf0d3c72b6da8bed45df96cbac7780804c17adb1f50886d92e23b9b1e",
+          "bytes": 11215
+        },
+        "envelope.planSpoof": {
+          "sha256": "a16f59942f578cb84d66452d0fa7127eed255dc14dd87ef54f990d44d90154b7",
+          "bytes": 12364
+        },
+        "guide": {
+          "sha256": "960e226ee335ce8d7753b9466898bb5f7f3f53eb5ced7a145ad99136114c2f04",
+          "bytes": 1454
+        },
+        "refusalReply": {
+          "sha256": "297efb83336843275eb5389671486b1f4489169ad675d79caa4ed54f1cb3c169",
+          "bytes": 107
+        },
+        "declineReply": {
+          "sha256": "8a570cd85e8a1ec54c39ecee63e05fccbffadd47180950aec7e4217fb29f001d",
+          "bytes": 77
+        }
+      },
+      "skeletons": {
+        "envelope.plan": "b6c9b9f553202d92875bb9d7bd7e291df8028f219709e32e6c28d0aed768c261",
+        "envelope.normal": "3d09041667fa953c8905d23a4db2076916c34ece9f80c600f8f7947824befe5f",
+        "envelope.planSpoof": "05f844e0012ccbfe0a8ec83d30c277a30fc0d4414ea9eb67e0fca196671aec3a"
+      },
+      "mismatch": [],
+      "missing": [],
+      "bypassed": false
+    }
+  },
+  "axes": {
+    "b1": {
+      "off": {
+        "cfg": {
+          "version": 1,
+          "enabled": false,
+          "boards": {},
+          "maxHops": 4,
+          "maxMsgs": 12,
+          "maxFanout": 3,
+          "stoppedAt": null,
+          "injectPolicy": "readonly",
+          "noticeAckAt": null
+        },
+        "frames": [
+          "{\"type\":\"control_request\",\"request_id\":\"init-1\",\"request\":{\"subtype\":\"initialize\",\"forwardSubagentText\":true,\"supportedDialogKinds\":[\"refusal_fallback_prompt\"]}}"
+        ]
+      },
+      "globalOnly": {
+        "cfg": {
+          "version": 1,
+          "enabled": true,
+          "boards": {},
+          "maxHops": 2,
+          "maxMsgs": 6,
+          "maxFanout": 2,
+          "stoppedAt": null,
+          "injectPolicy": "readonly",
+          "noticeAckAt": null
+        },
+        "frames": [
+          "{\"type\":\"control_request\",\"request_id\":\"init-1\",\"request\":{\"subtype\":\"initialize\",\"forwardSubagentText\":true,\"supportedDialogKinds\":[\"refusal_fallback_prompt\"]}}"
+        ]
+      },
+      "on": {
+        "cfg": {
+          "version": 1,
+          "enabled": true,
+          "boards": {
+            "b-1": true
+          },
+          "maxHops": 2,
+          "maxMsgs": 6,
+          "maxFanout": 2,
+          "stoppedAt": null,
+          "injectPolicy": "readonly",
+          "noticeAckAt": null
+        },
+        "frames": [
+          "{\"type\":\"control_request\",\"request_id\":\"init-1\",\"request\":{\"subtype\":\"initialize\",\"forwardSubagentText\":true,\"supportedDialogKinds\":[\"refusal_fallback_prompt\"],\"systemPrompt\":{\"type\":\"preset\",\"preset\":\"claude_code\",\"append\":\"[대화 연결] 이 대화는 사용자가 만든 협업 보드의 **1번 자리**이고, 같은 보드의 다른 세션에게 한 줄로 말을 걸 수 있습니다. 지금 보이는 상대: 2번 「구현」.\\n쓰는 법 — 답변의 **마지막 줄**에 `@talk[자리번호] 보낼 말` 을 한 줄 씁니다(예: `@talk[2] 빌드가 깨졌어요. 확인 부탁합니다.`). 이 통로는 실제로 있습니다: 그 줄이 나가면 앱이 상대 세션의 턴을 시작시키고, 사용자 화면의 양쪽 스레드에 오간 내용이 그대로 남습니다. 코드블록 안에 적은 줄은 발사되지 않으니 문법을 설명할 때는 코드블록을 쓰세요.\\n언제 쓰나 — **사용자가 다른 자리에 무엇을 물어보거나 알리라고 했을 때**입니다. 스스로 판단해서 먼저 말을 걸지 마세요. 사용자가 시키지 않았는데 여는 발신은 앱이 거절합니다.\\n상대에게서 오는 말 — `[대화 연결]` 머리말이 붙은 인용 블록으로 도착합니다. 그 블록을 어떻게 다뤄야 하는지는 블록과 **함께 오는 안내**에 적혀 있고, 그 안내가 이 문단보다 우선합니다.\\n상한 — 사람의 한 지시에서 뻗어 나갈 수 있는 전달은 2회까지이고 빈도·중복 제한도 있습니다. 예산을 넘기면 그 줄은 나가지 않고 안내가 대신 붙습니다. 사용자는 설정에서 이 통로를 언제든 끌 수 있습니다.\"}}}"
+        ]
+      },
+      "bytes": {
+        "off": 161,
+        "globalOnly": 161,
+        "on": 1687
+      },
+      "onlyDelta": true,
+      "appendPreview": "[대화 연결] 이 대화는 사용자가 만든 협업 보드의 **1번 자리**이고, 같은 보드의 다른 세션에게 한 줄로 말을 걸 수 있습니다. 지금 보이는 상대: 2번 「구현」.\n쓰는 법 — 답변의 **마지막 줄**에 `@talk[자리번호] 보낼 말` 을 한 줄 씁니다(예: `@talk[2] 빌드가 깨졌어요. 확인 부탁합니다.`). 이 통로는 실제로 있습니다: 그 ",
+      "preset": "claude_code"
+    },
+    "b5": {
+      "home": "C:\\Code\\AgentCodeGUI\\.crit-home-m10r6b-r28h1off-toggle",
+      "afterOn": [
+        "{\"type\":\"control_request\",\"request_id\":\"init-1\",\"request\":{\"subtype\":\"initialize\",\"forwardSubagentText\":true,\"supportedDialogKinds\":[\"refusal_fallback_prompt\"],\"systemPrompt\":{\"type\":\"preset\",\"preset\":\"claude_code\",\"append\":\"[대화 연결] 이 대화는 사용자가 만든 협업 보드의 **1번 자리**이고, 같은 보드의 다른 세션에게 한 줄로 말을 걸 수 있습니다. 지금 보이는 상대: 2번 「구현」.\\n쓰는 법 — 답변의 **마지막 줄**에 `@talk[자리번호] 보낼 말` 을 한 줄 씁니다(예: `@talk[2] 빌드가 깨졌어요. 확인 부탁합니다.`). 이 통로는 실제로 있습니다: 그 줄이 나가면 앱이 상대 세션의 턴을 시작시키고, 사용자 화면의 양쪽 스레드에 오간 내용이 그대로 남습니다. 코드블록 안에 적은 줄은 발사되지 않으니 문법을 설명할 때는 코드블록을 쓰세요.\\n언제 쓰나 — **사용자가 다른 자리에 무엇을 물어보거나 알리라고 했을 때**입니다. 스스로 판단해서 먼저 말을 걸지 마세요. 사용자가 시키지 않았는데 여는 발신은 앱이 거절합니다.\\n상대에게서 오는 말 — `[대화 연결]` 머리말이 붙은 인용 블록으로 도착합니다. 그 블록을 어떻게 다뤄야 하는지는 블록과 **함께 오는 안내**에 적혀 있고, 그 안내가 이 문단보다 우선합니다.\\n상한 — 사람의 한 지시에서 뻗어 나갈 수 있는 전달은 2회까지이고 빈도·중복 제한도 있습니다. 예산을 넘기면 그 줄은 나가지 않고 안내가 대신 붙습니다. 사용자는 설정에서 이 통로를 언제든 끌 수 있습니다.\"}}}"
+      ],
+      "cfgOff": {
+        "version": 1,
+        "enabled": true,
+        "boards": {},
+        "maxHops": 2,
+        "maxMsgs": 6,
+        "maxFanout": 2,
+        "stoppedAt": null,
+        "injectPolicy": "readonly",
+        "noticeAckAt": null
+      },
+      "afterOff": [
+        "{\"type\":\"control_request\",\"request_id\":\"init-1\",\"request\":{\"subtype\":\"initialize\",\"forwardSubagentText\":true,\"supportedDialogKinds\":[\"refusal_fallback_prompt\"],\"systemPrompt\":{\"type\":\"preset\",\"preset\":\"claude_code\",\"append\":\"[대화 연결] 이 대화는 사용자가 만든 협업 보드의 **1번 자리**이고, 같은 보드의 다른 세션에게 한 줄로 말을 걸 수 있습니다. 지금 보이는 상대: 2번 「구현」.\\n쓰는 법 — 답변의 **마지막 줄**에 `@talk[자리번호] 보낼 말` 을 한 줄 씁니다(예: `@talk[2] 빌드가 깨졌어요. 확인 부탁합니다.`). 이 통로는 실제로 있습니다: 그 줄이 나가면 앱이 상대 세션의 턴을 시작시키고, 사용자 화면의 양쪽 스레드에 오간 내용이 그대로 남습니다. 코드블록 안에 적은 줄은 발사되지 않으니 문법을 설명할 때는 코드블록을 쓰세요.\\n언제 쓰나 — **사용자가 다른 자리에 무엇을 물어보거나 알리라고 했을 때**입니다. 스스로 판단해서 먼저 말을 걸지 마세요. 사용자가 시키지 않았는데 여는 발신은 앱이 거절합니다.\\n상대에게서 오는 말 — `[대화 연결]` 머리말이 붙은 인용 블록으로 도착합니다. 그 블록을 어떻게 다뤄야 하는지는 블록과 **함께 오는 안내**에 적혀 있고, 그 안내가 이 문단보다 우선합니다.\\n상한 — 사람의 한 지시에서 뻗어 나갈 수 있는 전달은 2회까지이고 빈도·중복 제한도 있습니다. 예산을 넘기면 그 줄은 나가지 않고 안내가 대신 붙습니다. 사용자는 설정에서 이 통로를 언제든 끌 수 있습니다.\"}}}",
+        "{\"type\":\"control_request\",\"request_id\":\"init-1\",\"request\":{\"subtype\":\"initialize\",\"forwardSubagentText\":true,\"supportedDialogKinds\":[\"refusal_fallback_prompt\"]}}"
+      ],
+      "identicalToColdOff": true
+    },
+    "b6": {
+      "control": {
+        "order": "off-then-queue",
+        "home": "C:\\Code\\AgentCodeGUI\\.crit-home-m10r6b-r28h1off-b6-off-then-queue",
+        "off": {
+          "version": 1,
+          "enabled": true,
+          "boards": {},
+          "maxHops": 2,
+          "maxMsgs": 6,
+          "maxFanout": 2,
+          "stoppedAt": null,
+          "injectPolicy": "readonly",
+          "noticeAckAt": null
+        },
+        "enq": {
+          "cmd": "enqueue",
+          "kind": "queued",
+          "reason": null
+        },
+        "frames": [
+          "{\"type\":\"control_request\",\"request_id\":\"init-1\",\"request\":{\"subtype\":\"initialize\",\"forwardSubagentText\":true,\"supportedDialogKinds\":[\"refusal_fallback_prompt\"],\"systemPrompt\":{\"type\":\"preset\",\"preset\":\"claude_code\",\"append\":\"[대화 연결] 이 대화는 사용자가 만든 협업 보드의 **1번 자리**이고, 같은 보드의 다른 세션에게 한 줄로 말을 걸 수 있습니다. 지금 보이는 상대: 2번 「구현」.\\n쓰는 법 — 답변의 **마지막 줄**에 `@talk[자리번호] 보낼 말` 을 한 줄 씁니다(예: `@talk[2] 빌드가 깨졌어요. 확인 부탁합니다.`). 이 통로는 실제로 있습니다: 그 줄이 나가면 앱이 상대 세션의 턴을 시작시키고, 사용자 화면의 양쪽 스레드에 오간 내용이 그대로 남습니다. 코드블록 안에 적은 줄은 발사되지 않으니 문법을 설명할 때는 코드블록을 쓰세요.\\n언제 쓰나 — **사용자가 다른 자리에 무엇을 물어보거나 알리라고 했을 때**입니다. 스스로 판단해서 먼저 말을 걸지 마세요. 사용자가 시키지 않았는데 여는 발신은 앱이 거절합니다.\\n상대에게서 오는 말 — `[대화 연결]` 머리말이 붙은 인용 블록으로 도착합니다. 그 블록을 어떻게 다뤄야 하는지는 블록과 **함께 오는 안내**에 적혀 있고, 그 안내가 이 문단보다 우선합니다.\\n상한 — 사람의 한 지시에서 뻗어 나갈 수 있는 전달은 2회까지이고 빈도·중복 제한도 있습니다. 예산을 넘기면 그 줄은 나가지 않고 안내가 대신 붙습니다. 사용자는 설정에서 이 통로를 언제든 끌 수 있습니다.\"}}}",
+          "{\"type\":\"control_request\",\"request_id\":\"init-1\",\"request\":{\"subtype\":\"initialize\",\"forwardSubagentText\":true,\"supportedDialogKinds\":[\"refusal_fallback_prompt\"]}}"
+        ],
+        "userFrames": 2,
+        "userEchoes": 1,
+        "withGuide": 1,
+        "bytes": [
+          1687,
+          161
+        ]
+      },
+      "repro": {
+        "order": "queue-then-off",
+        "home": "C:\\Code\\AgentCodeGUI\\.crit-home-m10r6b-r28h1off-b6-queue-then-off",
+        "enq": {
+          "cmd": "enqueue",
+          "kind": "queued",
+          "reason": null
+        },
+        "off": {
+          "version": 1,
+          "enabled": true,
+          "boards": {},
+          "maxHops": 2,
+          "maxMsgs": 6,
+          "maxFanout": 2,
+          "stoppedAt": null,
+          "injectPolicy": "readonly",
+          "noticeAckAt": null
+        },
+        "frames": [
+          "{\"type\":\"control_request\",\"request_id\":\"init-1\",\"request\":{\"subtype\":\"initialize\",\"forwardSubagentText\":true,\"supportedDialogKinds\":[\"refusal_fallback_prompt\"],\"systemPrompt\":{\"type\":\"preset\",\"preset\":\"claude_code\",\"append\":\"[대화 연결] 이 대화는 사용자가 만든 협업 보드의 **1번 자리**이고, 같은 보드의 다른 세션에게 한 줄로 말을 걸 수 있습니다. 지금 보이는 상대: 2번 「구현」.\\n쓰는 법 — 답변의 **마지막 줄**에 `@talk[자리번호] 보낼 말` 을 한 줄 씁니다(예: `@talk[2] 빌드가 깨졌어요. 확인 부탁합니다.`). 이 통로는 실제로 있습니다: 그 줄이 나가면 앱이 상대 세션의 턴을 시작시키고, 사용자 화면의 양쪽 스레드에 오간 내용이 그대로 남습니다. 코드블록 안에 적은 줄은 발사되지 않으니 문법을 설명할 때는 코드블록을 쓰세요.\\n언제 쓰나 — **사용자가 다른 자리에 무엇을 물어보거나 알리라고 했을 때**입니다. 스스로 판단해서 먼저 말을 걸지 마세요. 사용자가 시키지 않았는데 여는 발신은 앱이 거절합니다.\\n상대에게서 오는 말 — `[대화 연결]` 머리말이 붙은 인용 블록으로 도착합니다. 그 블록을 어떻게 다뤄야 하는지는 블록과 **함께 오는 안내**에 적혀 있고, 그 안내가 이 문단보다 우선합니다.\\n상한 — 사람의 한 지시에서 뻗어 나갈 수 있는 전달은 2회까지이고 빈도·중복 제한도 있습니다. 예산을 넘기면 그 줄은 나가지 않고 안내가 대신 붙습니다. 사용자는 설정에서 이 통로를 언제든 끌 수 있습니다.\"}}}"
+        ],
+        "userFrames": 2,
+        "userEchoes": 1,
+        "withGuide": 1,
+        "bytes": [
+          1687
+        ]
+      },
+      "emergencyStop": {
+        "order": "stop",
+        "home": "C:\\Code\\AgentCodeGUI\\.crit-home-m10r6b-r28h1off-b6-stop",
+        "enq": {
+          "cmd": "enqueue",
+          "kind": "queued",
+          "reason": null
+        },
+        "off": {
+          "version": 1,
+          "enabled": false,
+          "boards": {},
+          "maxHops": 2,
+          "maxMsgs": 6,
+          "maxFanout": 2,
+          "stoppedAt": 1787665955.9377918,
+          "injectPolicy": "readonly",
+          "noticeAckAt": null,
+          "purged": 0,
+          "interrupted": 0,
+          "unstoppable": 0
+        },
+        "frames": [
+          "{\"type\":\"control_request\",\"request_id\":\"init-1\",\"request\":{\"subtype\":\"initialize\",\"forwardSubagentText\":true,\"supportedDialogKinds\":[\"refusal_fallback_prompt\"],\"systemPrompt\":{\"type\":\"preset\",\"preset\":\"claude_code\",\"append\":\"[대화 연결] 이 대화는 사용자가 만든 협업 보드의 **1번 자리**이고, 같은 보드의 다른 세션에게 한 줄로 말을 걸 수 있습니다. 지금 보이는 상대: 2번 「구현」.\\n쓰는 법 — 답변의 **마지막 줄**에 `@talk[자리번호] 보낼 말` 을 한 줄 씁니다(예: `@talk[2] 빌드가 깨졌어요. 확인 부탁합니다.`). 이 통로는 실제로 있습니다: 그 줄이 나가면 앱이 상대 세션의 턴을 시작시키고, 사용자 화면의 양쪽 스레드에 오간 내용이 그대로 남습니다. 코드블록 안에 적은 줄은 발사되지 않으니 문법을 설명할 때는 코드블록을 쓰세요.\\n언제 쓰나 — **사용자가 다른 자리에 무엇을 물어보거나 알리라고 했을 때**입니다. 스스로 판단해서 먼저 말을 걸지 마세요. 사용자가 시키지 않았는데 여는 발신은 앱이 거절합니다.\\n상대에게서 오는 말 — `[대화 연결]` 머리말이 붙은 인용 블록으로 도착합니다. 그 블록을 어떻게 다뤄야 하는지는 블록과 **함께 오는 안내**에 적혀 있고, 그 안내가 이 문단보다 우선합니다.\\n상한 — 사람의 한 지시에서 뻗어 나갈 수 있는 전달은 2회까지이고 빈도·중복 제한도 있습니다. 예산을 넘기면 그 줄은 나가지 않고 안내가 대신 붙습니다. 사용자는 설정에서 이 통로를 언제든 끌 수 있습니다.\"}}}"
+        ],
+        "userFrames": 2,
+        "userEchoes": 1,
+        "withGuide": 1,
+        "bytes": [
+          1687
+        ]
+      }
+    }
+  },
+  "broken": [
+    {
+      "id": "B6-재현(예약하고 끄기)",
+      "why": "예약 턴이 안내를 안은 채 돌았다 — 「꺼짐」을 못 봤다(E-1)",
+      "initCount": 1,
+      "withGuide": 1,
+      "bytes": [
+        1687
+      ],
+      "userFrames": 2
+    },
+    {
+      "id": "B6-재현(예약하고 긴급정지)",
+      "why": "예약 턴이 안내를 안은 채 돌았다 — 「꺼짐」을 못 봤다(E-1)",
+      "initCount": 1,
+      "withGuide": 1,
+      "bytes": [
+        1687
+      ],
+      "userFrames": 2
+    }
+  ]
+}

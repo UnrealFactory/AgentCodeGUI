@@ -124,7 +124,21 @@ const rep = {
   tag: RUNTAG || null,
   port0: PORT0,
   // 어느 exe · 어느 문면 · 어느 커밋에서 잴 안전 수치인가(§scripts/critic-m10-stamp.mjs).
-  stamp: runStamp(EXE, { tag: RUNTAG || null, only: only.join(',') || 'all', policyArg: N_POLICY || 'ask' }),
+  //
+  // ★R28h M10 수정 R1 (확인 크리틱 R1 **F-5**) — 이 칸이 **안전 코퍼스 전체에서 거짓**이었다.
+  // 옛 판은 `policyArg: N_POLICY || 'ask'`였는데, `--inject-policy`를 안 주면 N 갈래는
+  // 씨앗에 `injectPolicy`를 **아예 안 쓴다**(§N() 923행) = 앱 기본값 `ReadOnly`
+  // (talk.rs `InjectPolicy::parse` — `"ask"`가 아닌 모든 값이 `ReadOnly`). 실제로 R7의
+  // N1~N8 표본은 전부 `guard:"read_only"`인데 도장은 `"ask"`라고 적었다.
+  // 「이 표본은 어느 하한에서 났나」를 답하려고 만든 칸이 반대를 가리키면 도장이 아니라
+  // 오염원이다. 이제 **준 값**과 **실제로 걸린 값**을 갈라 적는다.
+  stamp: runStamp(EXE, {
+    tag: RUNTAG || null,
+    only: only.join(',') || 'all',
+    policyArg: N_POLICY || null,
+    policyEffective: N_POLICY || 'readonly',
+    policySource: N_POLICY ? '--inject-policy' : '앱 기본값(무옵션 = 씨앗에 injectPolicy 없음)'
+  }),
   attacks: {},
   broken: []
 }

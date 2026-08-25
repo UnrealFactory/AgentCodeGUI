@@ -35,6 +35,22 @@
  *   node scripts/critic-m10-corpus.mjs --since=2026-08-25T02:00:00Z         # 특정 시점 이후만
  *   node scripts/critic-m10-corpus.mjs --pinned                             # 판본 확정 표본만
  *   node scripts/critic-m10-corpus.mjs --by-exe                             # exe별로 쪼갠 표
+ *   node scripts/critic-m10-corpus.mjs --pin-audit                          # ★확정을 **언제** 했나
+ *
+ * ★R28h 수정 R1 (확인 크리틱 R1 **F-1**) — `--pin-audit`이 왜 생겼나.
+ *
+ * R7 보고서는 「권한 하한이 문면으로 **32/32** 확인됐다」를 정식 승격 근거로 세웠다.
+ * 그런데 그 대조를 하는 코드(`variant`/`variantExpected`/`L2-하한`)는 커밋 `d6ca8b6`
+ * (21:58)에 들어왔고 32표본은 **21:19~21:26**에 끝났다 — 즉 그 32표본 어디에도 `variant`
+ * 칸이 없고, 16개는 `verdict:"FAIL"`을 자기 파일에 적은 채 그 수치에 들어갔다.
+ * 사후 재채점(이 파일이 하는 일)으로는 살아나지만 **「하네스가 통과시켰다」와 「내가
+ * 나중에 다시 세어 맞았다」는 다른 문장**이고, 보고서가 그것을 안 갈랐다.
+ *
+ * 그래서 확정을 **언제** 했는지를 칸으로 만든다. 그 칸이 있으면 이 혼동은 다시 못 생긴다.
+ *   `run`      — 주행 시점에 하네스가 `variant`를 찍었다(가장 강함)
+ *   `rescore`  — 골격 해시는 남아 있고 이 계기가 **사후에** 판본을 되찾았다
+ *   `sha-twin` — 골격 칸조차 없지만 봉투 **전문 sha256**이 `run` 표본과 바이트로 같다
+ *   (없음)     — 확정 불가
  * ========================================================================== */
 import fs from 'node:fs'
 import path from 'node:path'
@@ -44,6 +60,7 @@ import { variantOfSkeleton, variantForPolicy } from './critic-m10-stamp.mjs'
 const args = process.argv.slice(2)
 const PINNED_ONLY = args.includes('--pinned')
 const BY_EXE = args.includes('--by-exe')
+const PIN_AUDIT = args.includes('--pin-audit')
 const DIRS = [
   path.join(REPO, 'docs', 'critic'),
   ...args.filter((a) => a.startsWith('--dir=')).map((a) => a.slice('--dir='.length))
@@ -111,6 +128,16 @@ function fromPocTalk(file, j) {
     wording: wordingOf(j, L),
     pinOk: j?.stamp?.fingerprint?.ok === true && j?.stamp?.fingerprint?.bypassed !== true,
     pinBy: 'wire',
+    // ★F-1 — **확정을 언제 했나.** 주행 시점에 하네스가 판본을 찍었으면 `run`,
+    // 골격만 남아 이 계기가 사후에 되찾았으면 `rescore`(뒤의 쌍둥이 규칙이 `sha-twin`).
+    pinAt:
+      typeof L?.steps?.bEchoFull?.variant === 'string'
+        ? 'run'
+        : typeof L?.steps?.bEchoFull?.skeleton === 'string'
+          ? 'rescore'
+          : null,
+    // 주행 시점에 하네스가 실제로 내린 판정(옛 판은 `plan` 칸과만 대조했다).
+    pinRunSaid: L?.steps?.bEchoFull?.skeletonMatchesPin ?? null,
     envSha: L?.steps?.bEchoFull?.sha256 ?? null,
     engine: L.engine ?? '',
     // 옛 산출물에는 `policy` 칸이 없다 — 그때도 무옵션 = 제품 기본값(readonly)이었다.
@@ -137,6 +164,8 @@ function fromCritLive(file, j) {
     wording: 'unknown',
     pinOk: false,
     pinBy: null,
+    pinAt: null,
+    pinRunSaid: null,
     envSha: null,
     engine: j.ver ?? '',
     policy: /ask/.test(String(j.policy)) ? 'ask' : 'readonly',
@@ -174,10 +203,15 @@ for (const dir of DIRS) {
  */
 {
   const pinnedShas = new Set(rows.filter((r) => r.wording === 'pinned' && r.envSha).map((r) => r.envSha))
+  // ★R28h 수정 R1 — 쌍둥이의 **뿌리가 주행 시점 확정본인가**를 따로 센다. 전문 해시 일치는
+  // 골격 일치보다 강한 증거이므로, `run` 표본과 바이트로 같으면 그 표본은 사실상 `run`이다.
+  const runShas = new Set(rows.filter((r) => r.pinAt === 'run' && r.wording === 'pinned' && r.envSha).map((r) => r.envSha))
   for (const r of rows) {
     if (r.wording === 'unknown' && r.pinOk && r.envSha && pinnedShas.has(r.envSha)) {
       r.wording = 'pinned'
       r.pinBy = 'sha-twin'
+      r.pinAt = 'sha-twin'
+      r.twinOfRun = runShas.has(r.envSha)
     }
   }
 }
@@ -236,6 +270,31 @@ if (unknown.length) {
     `\n(판본 미확정 ${unknown.length}건 — 도장 이전 산출물이라 어느 문면이었는지 **사후에 확정 불가**. ` +
       `R6의 「24%」가 이 무리에서 나왔다.)`
   )
+}
+
+// ★R28h 수정 R1 (F-1) — **확정을 언제 했나.** 「하네스가 통과시켰다」와 「내가 사후에
+// 다시 세어 맞았다」를 한 수치로 합치면 R6과 같은 병이 된다. 그래서 갈라 센다.
+if (PIN_AUDIT) {
+  const at = (k) => rows.filter((r) => r.pinAt === k)
+  const runSaidOk = rows.filter((r) => r.pinRunSaid === true)
+  const runSaidNo = rows.filter((r) => r.pinRunSaid === false)
+  console.log('\n★도장 감사 — 판본 확정을 **언제** 했나')
+  console.log(`  표본 ${rows.length}건 · 그중 판본 확정 ${pinned.length}건`)
+  console.log(`  · run      (주행 시점에 하네스가 variant를 찍었다)     : ${at('run').length}`)
+  console.log(`  · rescore  (골격만 남아 이 계기가 사후에 되찾았다)     : ${at('rescore').length}`)
+  console.log(
+    `  · sha-twin (골격 칸조차 없다 · 봉투 전문 sha256이 같다)      : ${at('sha-twin').length}` +
+      ` (그중 run 표본과 바이트 동일 ${at('sha-twin').filter((r) => r.twinOfRun).length})`
+  )
+  console.log(`  · 확정 불가                                            : ${rows.filter((r) => r.pinAt === null).length}`)
+  console.log(`  주행 시점 하네스가 「골격 일치」라 적은 표본            : ${runSaidOk.length}`)
+  console.log(`  주행 시점 하네스가 「불일치」라 적은 표본(FAIL로 남음)  : ${runSaidNo.length}`)
+  if (runSaidNo.length) {
+    const byVar = new Map()
+    for (const r of runSaidNo) byVar.set(r.wording, (byVar.get(r.wording) ?? 0) + 1)
+    console.log(`    → 사후 재채점 결과: ${[...byVar].map(([k, v]) => `${k} ${v}`).join(' · ')}`)
+    console.log(`    → 태그: ${runSaidNo.map((r) => r.tag).join(', ')}`)
+  }
 }
 
 // exe 축 — 크리틱 R2의 `byexe.mjs`와 같은 갈래(그쪽 판정을 이 계기로 재현할 수 있게).

@@ -24,6 +24,9 @@
  *
  * 판정은 전부 **문자열 동등**이다. 「비슷하다」로는 이 성질을 못 잰다.
  *
+ * ★R28h 수정 R1 — 이 갈래도 `critic-m10-stamp`의 **도장 + 선점검**을 쓴다(§F-2).
+ *   기대 문면(`EXPECT`)과 다른 exe면 축 하나도 안 돌고 던진다.
+ *
  *   node scripts/critic-m10-r6-bytes.mjs --exe=... --fakecli=... --out=docs/critic/x.json
  *
  * ── 안전 규칙 (사용자 실앱이 떠 있다) ───────────────────────────────────────
@@ -35,6 +38,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { spawn, spawnSync } from 'node:child_process'
 import { connectMainPage, killTree, sleep, REPO, resolveTauriExe } from '../bench/lib.mjs'
+import { runStamp, checkFingerprint, exeStamp, short } from './critic-m10-stamp.mjs'
 
 const args = process.argv.slice(2)
 const EXE = resolveTauriExe((args.find((a) => a.startsWith('--exe=')) ?? '').split('=')[1])
@@ -44,11 +48,33 @@ const FAKECLI =
 const KEEP = args.includes('--keep')
 const TAG = (args.find((a) => a.startsWith('--tag=')) ?? '').split('=')[1] || 'r6bytes'
 const PORT0 = Number((args.find((a) => a.startsWith('--port=')) ?? '').split('=')[1] || 10560)
+/** ★R28h 수정 R1 — 문면 선점검을 끄는 스위치. 끄면 산출물에 `stamp.fingerprint.bypassed`가 박힌다. */
+const NO_PIN = args.includes('--no-pin')
 const OUT =
   (args.find((a) => a.startsWith('--out=')) ?? '').split('=')[1] ||
   path.join(REPO, 'docs', 'critic', `m10-r6-bytes-${TAG}.json`)
 
-const rep = { at: new Date().toISOString(), exe: EXE, fakecli: FAKECLI, axes: {}, broken: [] }
+/*
+ * ★R28h M10 수정 R1 (확인 크리틱 R1 **F-2**) — **이 갈래만 도장도 선점검도 없었다.**
+ *
+ * R7이 스스로 세운 계기 계약은 「어느 갈래도 다른 문면으로는 못 돈다」였는데, 정작
+ * B1~B5(정식 승격 근거 3번 「꺼짐 바이트 축은 닫혀 있다」)와 E-1([중] 결함)을 **둘 다**
+ * 낳는 이 파일에는 `runStamp`도 `checkFingerprint`도 없었다. 산출물의 `exe`는 경로
+ * 문자열 한 줄이라 sha256도 문면 해시도 HEAD도 없었고, `--exe=`를 빼면
+ * `resolveTauriExe`가 **mtime 최신**을 골라 조용히 다른 바이너리를 잰다.
+ *
+ * 이제 다른 셋(`poc-talk` · `-r2-attack` · `-r3-attack`)과 **같은 목**을 쓴다:
+ * `boot()`에서 `pinCheck` → 기대와 다르면 축 하나도 안 돌고 던진다(그리고 띄운 앱을 거둔다).
+ */
+const rep = {
+  at: new Date().toISOString(),
+  exe: EXE,
+  fakecli: FAKECLI,
+  // 어느 exe · 어느 문면 · 어느 커밋에서 잰 바이트인가.
+  stamp: runStamp(EXE, { tag: TAG, port0: PORT0, fakecli: exeStamp(FAKECLI) }),
+  axes: {},
+  broken: []
+}
 const broke = (id, why, extra) => {
   rep.broken.push({ id, why, ...(extra ?? {}) })
   console.error(`  X ${id} — ${why}${extra === undefined ? '' : ' ' + JSON.stringify(extra).slice(0, 600)}`)
@@ -91,7 +117,44 @@ async function boot(home, port, env = {}) {
   const j = async (expr) => JSON.parse(await cdp.eval(`(async () => JSON.stringify(${expr}))()`, { awaitPromise: true }))
   const call = async (ch, payload) =>
     await j(`await window.__TAURI_INTERNALS__.invoke('ipc_call', { channel: ${JSON.stringify(ch)}, payload: ${JSON.stringify(payload)} })`)
+  // ★F-2 — 선점검의 목. 던질 때는 **내가 띄운 것을 내가 거둔다**(핸들을 아직 호출부에
+  // 안 넘겼으므로 여기서 안 죽이면 고아가 된다 — 트랩 1이 이름 기반 kill을 금지한다).
+  try {
+    await pinCheck(call)
+  } catch (e) {
+    killTree(child.pid)
+    throw e
+  }
   return { child, cdp, j, call, log: () => log }
+}
+
+/**
+ * 문면 선점검 — 앱이 스스로 조립한 봉투·안내 원문을 `engine:debug`로 받아 해시를 뜨고
+ * `EXPECT`와 맞춘다. 다르면 **던진다**(축이 하나도 안 돈 시점이다).
+ * 한 번만 검사하고 결과를 `rep.stamp.fingerprint`에 남긴다(exe가 하나이므로 값이 같다).
+ */
+async function pinCheck(call) {
+  if (rep.stamp.fingerprint) return rep.stamp.fingerprint
+  const dbg = await call('engine:debug', [])
+  const fp = dbg?.talk?.fingerprint
+  if (!fp) {
+    const why =
+      '★문면 선점검 불가 — 이 exe의 engine:debug에 talk.fingerprint가 없다(도장 이전 빌드다).\n' +
+      `  exe: ${rep.stamp.exe.path} · sha256 ${short(rep.stamp.exe.sha256)}… · mtime ${rep.stamp.exe.mtime}\n` +
+      '  새로 빌드해라(CARGO_TARGET_DIR=target-r28h-m10 cargo build --release --features custom-protocol -p agentcodegui).'
+    if (!NO_PIN) throw new Error(why)
+    console.error(why + '\n  (--no-pin — 계속한다.)')
+    rep.stamp.fingerprint = { ok: false, bypassed: true, missing: ['(전부)'] }
+    return rep.stamp.fingerprint
+  }
+  const res = checkFingerprint(fp, { allowMismatch: NO_PIN })
+  rep.stamp.fingerprint = res
+  const g = res.hashes
+  console.log(
+    `  · 문면 도장 — 봉투(plan) ${short(g['envelope.plan']?.sha256)}… ${g['envelope.plan']?.bytes}B · ` +
+      `안내 ${short(g.guide?.sha256)}… ${g.guide?.bytes}B · exe ${short(rep.stamp.exe.sha256)}…${res.bypassed ? ' · ★우회' : ''}`
+  )
+  return res
 }
 
 async function armEvents(app) {
