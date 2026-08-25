@@ -82,6 +82,13 @@ export function useLimitResume(o: LimitResumeSurface): LimitResumeHandle {
   // 같은 이유로 표 바깥에 있다: 표는 발사와 함께 걷히는데, 비교할 상대는 그 걷힌 표다.
   // 늘 `firesRef`와 **함께** 쓰인다 — 따로 놓이면 "계수는 2인데 비교할 시각은 어제 것"이 된다.
   const fireResetsRef = useRef<number | null>(null)
+  // ★R28e WFIRE — **이 한도 에피소드에서 태운 자동 재개의 총계**(엔진
+  // `ChatRuntime::episode_fires`의 짝이고, 표에 실려 가는 값이 `LimitHold.fires`다).
+  //
+  // `firesRef`(연속 헛발질)와 **지우는 자리가 다른 것이 이 갈래의 전부다**: 저쪽은 구분자
+  // ①·②가 0으로 되돌리지만 이쪽은 안 되돌린다. 그래서 「글자 한 줄」로는 상한이 안 지워진다
+  // (WCAP 확인 크리틱 R2 §5.1 — 시각 미상 축 12시간 71발).
+  const episodeRef = useRef(0)
 
   const setHold = (h: LimitHold | null): void => {
     // ★R28c RCAP — **표가 사라지면 재발사 연쇄도 사라진다.** ✕(대기 취소)·/clear·폴더
@@ -92,6 +99,9 @@ export function useLimitResume(o: LimitResumeSurface): LimitResumeHandle {
     if (!h) {
       firesRef.current = 0
       fireResetsRef.current = null
+      // ★R28e WFIRE — 예산도 여기서 새로 열린다. 이 문을 지나는 것은 전부 「사람 손이
+      // 닿았다」이므로(✕·직접 전송·계정 전환·「이어가기」) 막다른 방이 생기지 않는다.
+      episodeRef.current = 0
     }
     holdRef.current = h
     holdState(h)
@@ -121,6 +131,10 @@ export function useLimitResume(o: LimitResumeSurface): LimitResumeHandle {
     if (!found?.hit) {
       firesRef.current = 0
       fireResetsRef.current = null
+      // ★R28e WFIRE — **에피소드가 끝났다는 유일한 기계적 신호.** 한도 없이 착지한 턴
+      // 하나면 예산이 통째로 되살아난다(엔진 `!limited && hold.is_none()`의 짝) —
+      // 그래서 "일하다가 가끔 한도를 만나는" 정상 주행은 이 예산을 영영 못 만난다.
+      episodeRef.current = 0
       return
     }
     if (o.apiMode || o.state.interrupted) return
@@ -141,14 +155,18 @@ export function useLimitResume(o: LimitResumeSurface): LimitResumeHandle {
     // 엔진 `arm_hold`가 같은 자리에서 같은 둘을 같은 순서로 본다(`carriedAttempts` 주석).
     // ref도 같이 놓는다: 다음 소진이 `(attempts ?? 0) + 1`로 다시 만들지만, 표가 취소·
     // 재장전으로 갈리는 사이 둘이 어긋나 있으면 읽는 사람이 어느 쪽을 믿을지 모른다.
+    //
+    // ★R28e WFIRE — ②에 증거가 둘 더 붙는다(`TurnEvidence`):
+    //  * `mark` = 턴을 연 순간의 스레드 꼬리(`state.turnMark`). 말풍선이 아예 없는 엔진 턴에서
+    //    「이 턴」이 앞 턴까지 뒤로 새던 마지막 균열이다(크리틱 R2 §5.3).
+    //  * `ms`   = 그 턴이 산 시간(`Date.now() - state.turnAt`). 「한 줄 내고 즉사」와
+    //    「창을 꽉 채워 일함」을 가른다 — 이걸 안 보던 판이 12시간 71발이다(§5.1).
     const nowSec = Math.floor(Date.now() / 1000)
-    const carried = carriedAttempts(
-      firesRef.current,
-      fireResetsRef.current,
-      found.resetsAt,
-      msgs as readonly TurnItem[],
-      nowSec
-    )
+    const carried = carriedAttempts(firesRef.current, fireResetsRef.current, found.resetsAt, {
+      items: msgs as readonly TurnItem[],
+      mark: o.state.turnMark,
+      ms: o.state.turnAt != null ? Date.now() - o.state.turnAt : null
+    }, nowSec)
     firesRef.current = carried
     const next: LimitHold = {
       key: o.holdKey,
@@ -162,7 +180,10 @@ export function useLimitResume(o: LimitResumeSurface): LimitResumeHandle {
       // `auto_resume_streak`를 표에 싣는 것과 같다). 이 한 줄이 없으면 상한은 한
       // 대기표 안에서만 살아 있고, 쏜 턴이 또 죽을 때마다 백지 표가 다시 서서 주기가
       // 영원히 돈다. 0은 안 싣는다 — 영속 형태를 R28b와 같게 두려는 것이다.
-      ...(carried > 0 ? { attempts: carried } : {})
+      ...(carried > 0 ? { attempts: carried } : {}),
+      // ★R28e WFIRE — 예산은 **그대로** 실린다(위 `carried`와 달리 아무것도 안 지운다).
+      // 이 값이 여기서 안 실리면 `resumeVerdict`가 못 보고, 그러면 예산이 없는 것과 같다.
+      ...(episodeRef.current > 0 ? { fires: episodeRef.current } : {})
     }
     setHold(next) // ref가 즉시 갱신돼 큐 드레인 가드가 이번 커밋에서 본다
     // 리셋 시각 정제 — 신선 usage 조회로 "막고 있는 창"의 해제 시각을 얻는다 (문구
@@ -264,6 +285,9 @@ export function useLimitResume(o: LimitResumeSurface): LimitResumeHandle {
     if (!prompt) return
     // 눈감고 쏘는 재개 한 발 — 표는 방금 걷혔으니 계수는 ref가 나른다(다음 장전이 물려받는다).
     firesRef.current = (cur.attempts ?? 0) + 1
+    // ★R28e WFIRE — 예산 소비도 같은 자리에서 오른다(엔진 `consume_hold(auto=true)`의 짝).
+    // `setHold(null)`이 방금 0으로 놓았으므로 이 줄의 순서도 계약이다.
+    episodeRef.current = (cur.fires ?? 0) + 1
     // ★R28d WCAP — 함께 나르는 두 번째 값: **이 표가 걸려 있던 리셋 시각.** 다음 한도
     // 문구의 시각이 이보다 뒤면 창이 진짜로 넘어간 것이다(구분자 ①). `setHold(null)`이
     // 방금 둘 다 0/null로 놓았으므로 이 두 줄의 순서가 계약이다(위 `setHold` 주석).

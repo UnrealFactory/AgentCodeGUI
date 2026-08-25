@@ -368,13 +368,20 @@ const flush = () => new Promise((r) => setTimeout(r, 0))
 function mountArmed(props, text, mod = hookMod, thread = null) {
   timers.length = 0 // 앞 시나리오의 호스트가 걸어 둔 타이머와 섞이지 않게(가짜 시계 초기화)
   const errText = text ?? 'Claude AI usage limit reached|' + (NOW - 100)
+  // ★R28e WFIRE — `thread`는 배열(손 픽스처) 또는 **스토어 상태 통째**(K·L절)다. 뒤쪽이면
+  // `messages`만이 아니라 `turnMark`도 같이 가져온다 — 훅이 그 둘을 함께 읽기 때문이다.
+  const st = Array.isArray(thread) ? { messages: thread } : (thread ?? {})
   const state = {
     status: 'working',
     session: 'ses-1',
     interrupted: false,
+    // 첫 표는 계수가 0이라 수명 판정에 안 닿는다(『carriedAttempts』 첫 줄) — 그래도
+    // 실물과 같은 모양으로 둔다: 스토어는 턴을 열 때마다 이 값을 놓는다.
+    turnAt: Date.now(),
+    turnMark: st.turnMark ?? null,
     // `thread`를 주면 **실제 스토어 리듀서가 지은 스레드**로 장전한다(K절) — 손으로 만든
     // 픽스처가 스토어가 결코 만들지 않는 모양일 위험을 없앤다(WCAP 확인 크리틱 R2 §4.3).
-    messages: thread ?? [
+    messages: st.messages ?? [
       { kind: 'msg', role: 'user', text: '원래 하던 일' },
       { kind: 'msg', role: 'assistant', text: errText, error: true }
     ]
@@ -424,9 +431,15 @@ async function rearm(h, text, opts = {}) {
   const stale = opts.crossTool
     ? [{ kind: 'toolgroup', id: 'tg-prev', tools: [{ id: 'toolu-0', name: 'Read', status: 'ok' }] }]
     : []
+  // ★R28e WFIRE — **그 턴이 얼마나 살았나.** 스토어가 턴을 열 때 놓는 `turnAt`을 뒤로
+  // 밀어 수명을 만든다(`Date.now() - turnAt`). 기본 0 = *프롬프트를 받은 자리에서 즉사* —
+  // 그 모양이 크리틱 §5.1의 71발이고, 이제 「일했다」로 안 쳐 준다. 진짜로 창을 태운 재개는
+  // `lifeMs`를 준다(엔진 못의 `work_ms`와 같은 손잡이).
+  const lifeMs = opts.lifeMs ?? 0
   h.o.state = {
     ...h.o.state,
     status: 'error',
+    turnAt: Date.now() - lifeMs,
     messages: [
       ...h.o.state.messages,
       ...stale,
@@ -798,20 +811,26 @@ eq('★★ 앞 턴에서 열린 도구 그룹은 이 턴의 산출이 아니다(
 eq('★ 같은 턴에서 열린 도구 그룹은 산출이다(과잉 절단 방지)', lib3.turnDidWork([J_USER, J_TG, J_ERR]), true)
 
 const J_WORKED = [J_USER, { kind: 'msg', role: 'assistant', text: 'ok' }, J_ERR]
-eq('계수가 0이면 볼 것도 없다', lib3.carriedAttempts(0, NOW, NOW, [J_USER, J_ERR], NOW), 0)
-eq('헛발질이면 계수를 그대로 물려받는다(RCAP 불변)', lib3.carriedAttempts(2, NOW, NOW, [J_USER, J_ERR], NOW), 2)
-eq('★★ 창이 넘어갔으면 0', lib3.carriedAttempts(2, NOW - 3600, NOW + 5 * 3600, [J_USER, J_ERR], NOW), 0)
-eq('★★ 꼬리가 없어도 그 턴이 일했으면 0(codex 축)', lib3.carriedAttempts(2, null, null, [J_USER, { kind: 'toolgroup', tools: [{ id: 't' }] }, J_ERR], NOW), 0)
-eq('직전 표만 시각을 알아도 미상 판 — 일한 흔적이 판정한다', lib3.carriedAttempts(2, NOW, null, J_WORKED, NOW), 0)
-eq('이번 문구만 시각을 알아도 미상 판', lib3.carriedAttempts(2, null, NOW, J_WORKED, NOW), 0)
+// ★R28e WFIRE — `carriedAttempts`의 넷째 인자가 **증거 한 벌**(`TurnEvidence`)이 됐다.
+// `ms`(그 턴이 산 시간)를 안 주면 「모른다」이고, 모르는 것은 「일했다」가 아니다 —
+// 상한이 「모른다」로 지워지면 그건 상한이 아니다. 아래 기본값은 문턱을 **넘는** 수명이라
+// R28d의 이 못들이 재던 것(무엇을 산출로 세는가)은 한 글자도 안 바뀐 채로 남는다.
+const LONG = 20 * 60_000 // ≫ MIN_WORK_MS(5분)
+const EV = (items, ms = LONG, mark = null) => ({ items, ms, mark })
+eq('계수가 0이면 볼 것도 없다', lib3.carriedAttempts(0, NOW, NOW, EV([J_USER, J_ERR]), NOW), 0)
+eq('헛발질이면 계수를 그대로 물려받는다(RCAP 불변)', lib3.carriedAttempts(2, NOW, NOW, EV([J_USER, J_ERR]), NOW), 2)
+eq('★★ 창이 넘어갔으면 0', lib3.carriedAttempts(2, NOW - 3600, NOW + 5 * 3600, EV([J_USER, J_ERR]), NOW), 0)
+eq('★★ 꼬리가 없어도 그 턴이 일했으면 0(codex 축)', lib3.carriedAttempts(2, null, null, EV([J_USER, { kind: 'toolgroup', tools: [{ id: 't' }] }, J_ERR]), NOW), 0)
+eq('직전 표만 시각을 알아도 미상 판 — 일한 흔적이 판정한다', lib3.carriedAttempts(2, NOW, null, EV(J_WORKED), NOW), 0)
+eq('이번 문구만 시각을 알아도 미상 판', lib3.carriedAttempts(2, null, NOW, EV(J_WORKED), NOW), 0)
 // ★ 우선순위의 핵심 — 시각을 둘 다 아는데 벽이 그대로면, 그 턴이 무엇을 냈든 **못 넘은 것**이다.
 //   여기서 ②로 뒤집으면 「토큰 한 줄 + 같은 벽」 판이 무한 재발사로 되돌아간다.
-eq('★★ 시각을 둘 다 아는 판에서는 일한 흔적이 시계를 못 뒤집는다', lib3.carriedAttempts(2, NOW, NOW, J_WORKED, NOW), 2)
-eq('★ 되레 앞선 벽(지난 epoch 되돌림)도 못 넘은 것', lib3.carriedAttempts(2, NOW, NOW - 10, J_WORKED, NOW), 2)
-eq('★ 지난 벽을 되돌려 줘도 일한 흔적이 시계를 못 뒤집는다', lib3.carriedAttempts(2, NOW - 7200, NOW - 60, J_WORKED, NOW), 2)
+eq('★★ 시각을 둘 다 아는 판에서는 일한 흔적이 시계를 못 뒤집는다', lib3.carriedAttempts(2, NOW, NOW, EV(J_WORKED), NOW), 2)
+eq('★ 되레 앞선 벽(지난 epoch 되돌림)도 못 넘은 것', lib3.carriedAttempts(2, NOW, NOW - 10, EV(J_WORKED), NOW), 2)
+eq('★ 지난 벽을 되돌려 줘도 일한 흔적이 시계를 못 뒤집는다', lib3.carriedAttempts(2, NOW - 7200, NOW - 60, EV(J_WORKED), NOW), 2)
 // ★R3 — 같은 경계가 `carriedAttempts`에도 그대로 서야 한다(시각 미상 축 = ②가 유일 판정자).
-eq('★★ 앞 턴 도구 그룹은 계수를 못 지운다(codex 축)', lib3.carriedAttempts(2, null, null, [J_TG, J_USER, J_ERR], NOW), 2)
-eq('★ 이 턴이 연 도구 그룹은 계수를 지운다', lib3.carriedAttempts(2, null, null, [J_USER, J_TG, J_ERR], NOW), 0)
+eq('★★ 앞 턴 도구 그룹은 계수를 못 지운다(codex 축)', lib3.carriedAttempts(2, null, null, EV([J_TG, J_USER, J_ERR]), NOW), 2)
+eq('★ 이 턴이 연 도구 그룹은 계수를 지운다', lib3.carriedAttempts(2, null, null, EV([J_USER, J_TG, J_ERR]), NOW), 0)
 
 // ② 밤샘 연속 주행 — 조회는 「풀렸다」고 답하고 재개는 실제로 일한다(크리틱의 그 판).
 console.log('   ② 밤샘 주행 — 창을 여섯 번 넘어도 안 잘린다')
@@ -851,7 +870,9 @@ console.log(`   A/B — 같은 6창 대본: 일한 재개 ${night.sent}발(계�
 const onlyRoll = await nightRun(I_PROPS, 4, J_TAIL, false) // 창만 넘어간다(턴은 빈손)
 eq('★ ① 창 이동만으로도 안 잘린다', { sent: onlyRoll.sent, seen: onlyRoll.seen }, { sent: 4, seen: [0, 0, 0, 0] })
 cxAnswer = [cxRow('me@openai.com', 5, REAL + 3600)] // codex 채널이 「풀렸다」고 답한다
-const onlyWork = await nightRun(CX_PROPS, 4, () => CX_BANNER, true) // 꼬리가 없다 = ①은 침묵
+// ★R28e WFIRE — 「일했다」는 이제 **수명과 함께**다. `lifeMs`가 없으면 그 대본은 크리틱
+// §5.1의 71발짜리(한 줄 내고 즉사)이고, 아래 L절이 그쪽을 「2발에서 접힌다」로 잠근다.
+const onlyWork = await nightRun(CX_PROPS, 4, () => CX_BANNER, true, { lifeMs: LONG }) // 꼬리 없음 = ①은 침묵
 eq('★ ② 일한 흔적만으로도 안 잘린다(codex 배너형 — 읽을 꼬리가 없다)', { sent: onlyWork.sent, seen: onlyWork.seen }, { sent: 4, seen: [0, 0, 0, 0] })
 const cxDud = await nightRun(CX_PROPS, 4, () => CX_BANNER, false)
 eq('★ codex 축의 헛발질도 여전히 2발', { sent: cxDud.sent, seen: cxDud.seen }, { sent: 2, seen: [1, 2] })
@@ -870,7 +891,7 @@ eq('★★ 앞 턴 도구의 결과만 오는 턴도 2발에서 접힌다(엔진
 ok('★ 그 표는 접혀 있다', cxCross.h.hold?.ready === true && cxCross.h.hold?.autoPaused === true, JSON.stringify(cxCross.h.hold))
 // 반대 방향 — **이 턴 안에서** 도구가 돌면(work) 그건 일한 것이다. 그 그룹이 사용자 말풍선
 // 뒤에 서므로 계수가 안 오르고, 앞 턴 그룹이 스레드에 남아 있어도 답은 안 바뀐다.
-const cxCrossWork = await nightRun(CX_PROPS, 4, () => CX_BANNER, true, { crossTool: true })
+const cxCrossWork = await nightRun(CX_PROPS, 4, () => CX_BANNER, true, { crossTool: true, lifeMs: LONG })
 eq('★ 앞 턴 그룹이 남아 있어도 이 턴이 일했으면 안 접힌다', { sent: cxCrossWork.sent, seen: cxCrossWork.seen }, { sent: 4, seen: [0, 0, 0, 0] })
 cxAnswer = []
 
@@ -881,7 +902,7 @@ cxAnswer = [cxRow('me@openai.com', 5, REAL + 3600)]
 sent.length = 0
 const hmx = mountArmed(CX_PROPS, CX_BANNER)
 await tick(hmx)
-await rearm(hmx, CX_BANNER, { work: true }) // 그 턴은 일했다 → 계수 0
+await rearm(hmx, CX_BANNER, { work: true, lifeMs: LONG }) // 그 턴은 오래 일했다 → 계수 0
 eq('일한 재개 뒤의 표는 백지', hmx.hold?.attempts, undefined)
 await tick(hmx)
 await rearm(hmx, CX_BANNER) // 이번엔 빈손 → 1
@@ -902,7 +923,8 @@ cxAnswer = []
 //    타이머가 최소값(15초)으로 돌아 **RCAP 이전의 무한 재발사**가 그대로 돌아온다.
 console.log('   ④ 토큰 한 줄 + 같은 벽(지난 epoch 되돌림) — 상한이 무력화되지 않는다')
 usageAnswer = G_FREE
-const stale = await nightRun(I_PROPS, 8, J_SAME, true)
+// `lifeMs`를 **주고도** 멎어야 한다 — 시각을 둘 다 아는 판은 시계가 판정하기 때문이다.
+const stale = await nightRun(I_PROPS, 8, J_SAME, true, { lifeMs: LONG })
 eq('★★ 매 턴 출력을 내도 같은 벽이면 2발에서 멎는다', { sent: stale.sent, seen: stale.seen }, { sent: 2, seen: [1, 2] })
 ok('★ 그 표는 접혀 있다(사용자의 버튼 차례)', stale.h.hold?.ready === true && stale.h.hold?.autoPaused === true, JSON.stringify(stale.h.hold))
 
@@ -960,32 +982,43 @@ const K_WANT = {
   '추론만': false // ⑤ (thinking_delta 한 장)
 }
 
-/** 한 턴을 스토어에 태운다. `openWith`가 이 절의 전부다 — 같은 이벤트 열을 렌더러가 여는
- *  판(`begin`)과 엔진이 여는 판(`user-echo`)으로 두 벌 돌린다. */
+/** 한 턴을 스토어에 태운다. `openWith`가 이 절의 전부다 — 같은 이벤트 열을 **세 판**으로
+ *  돌린다: 렌더러가 여는 판(`begin`) · 엔진이 에코와 함께 여는 판(`user-echo`) ·
+ *  ★R28e WFIRE — **에코가 아예 없는 엔진 턴**(`none`).
+ *
+ *  셋째 판이 크리틱 R2 §5.3이다: 큐 항목 없이 엔진이 스스로 여는 턴(상주 정리턴 재개 ·
+ *  통지 기상 턴)은 `user-echo`가 안 나가므로 스레드에 **사용자 말풍선이 없다**. 그러면
+ *  「이 턴」의 창이 앞 턴까지 뒤로 새고, 앞 턴이 도구를 열어 뒀으면 답이 뒤집힌다
+ *  (엔진 = 헛발질 · 렌더러 = `true`). 유일한 신호는 **새 `runId`의 `analyzing`**이다. */
 function kTurn(s, i, openWith, body) {
   const run = `run-${i + 1}`
   if (i === 0 || openWith === 'begin') s = reducer(s, { type: 'begin', text: i ? '이어서' : '원래 하던 일', time: '10:00', command: null })
-  else s = reducer(s, { type: 'user-echo', text: '이어서', time: '10:05' })
+  else if (openWith === 'user-echo') s = reducer(s, { type: 'user-echo', text: '이어서', time: '10:05' })
   s = reducer(s, kEv({ type: 'status', status: 'analyzing', runId: run }))
   for (const a of body(run, i)) s = reducer(s, a)
   return reducer(s, kEv(kResult(run)))
 }
-const kThread = (openWith, body, turns = 2) => {
+const kState = (openWith, body, turns = 2) => {
   let s = initialSessionState
   for (let i = 0; i < turns; i++) s = kTurn(s, i, openWith, body)
-  return s.messages
+  return s
 }
+const kThread = (openWith, body, turns = 2) => kState(openWith, body, turns).messages
 const kShape = (msgs) =>
   msgs.map((m) => (m.kind === 'toolgroup' ? `TG(${m.tools.length})` : m.kind === 'msg' ? (m.error ? 'a!' : m.role[0]) : m.kind)).join(' ')
 
 console.log('   ① 판정 — 같은 이벤트 열, 여는 방식만 다르게')
 for (const [label, body] of Object.entries(K_BODY)) {
-  const a = kThread('begin', body)
-  const b = kThread('user-echo', body)
-  eq(`「${label}」 렌더러가 연 턴 = 엔진의 답`, lib3.turnDidWork(a), K_WANT[label])
-  eq(`★★ 「${label}」 엔진이 연 턴도 같은 답(여는 방식과 무관)`, lib3.turnDidWork(b), K_WANT[label])
+  const a = kState('begin', body)
+  const b = kState('user-echo', body)
+  eq(`「${label}」 렌더러가 연 턴 = 엔진의 답`, lib3.turnDidWork(a.messages, a.turnMark), K_WANT[label])
+  eq(`★★ 「${label}」 엔진이 연 턴도 같은 답(여는 방식과 무관)`, lib3.turnDidWork(b.messages, b.turnMark), K_WANT[label])
   // 답만이 아니라 **스레드 모양**까지 같아야 한다 — 답이 우연히 겹치는 것과 다르다.
-  eq(`★ 「${label}」 스레드 모양이 같다`, kShape(b), kShape(a))
+  eq(`★ 「${label}」 스레드 모양이 같다`, kShape(b.messages), kShape(a.messages))
+  // ★R28e WFIRE — **셋째 판(에코 없는 엔진 턴)**도 같은 답이어야 한다(크리틱 R2 §5.3).
+  //   모양은 다를 수밖에 없다(사용자 말풍선이 하나 없다) — 같아야 하는 것은 **답**이다.
+  const c = kState('none', body)
+  eq(`★★ 「${label}」 에코 없는 엔진 턴도 같은 답(§5.3)`, lib3.turnDidWork(c.messages, c.turnMark), K_WANT[label])
 }
 // 이 절이 실제로 무엇을 잡는지 못 박는다 — 고치기 전 `user-echo` 판의 실측 모양이다.
 eq(
@@ -993,34 +1026,44 @@ eq(
   kShape(kThread('user-echo', K_BODY['이 턴이 연 도구'])),
   'u TG(1) a! u TG(1) a!'
 )
+// ★R28e WFIRE — **에코 없는 판의 A/B.** 경계(`turnMark`)를 빼면 그 자리에서 답이 뒤집힌다.
+//   이 두 줄이 §5.3의 판별력이다: 같은 스레드에 경계만 있고 없고로 `true`/`false`가 갈린다.
+{
+  const c = kState('none', K_BODY['앞 턴 도구의 결과만'])
+  eq('★ 에코 없는 턴의 실측 모양(사용자 말풍선이 하나뿐이다)', kShape(c.messages), 'u TG(1) a! a!')
+  eq('★★ 경계가 없으면 앞 턴 도구가 이 턴의 산출로 읽힌다(고치기 전 값)', lib3.turnDidWork(c.messages), true)
+  eq('★★ 경계를 주면 엔진과 같은 답', lib3.turnDidWork(c.messages, c.turnMark), false)
+  ok('★ 그 경계는 스토어가 스스로 적은 값이다', typeof c.turnMark === 'string' && !!c.turnMark, JSON.stringify(c.turnMark))
+}
 
 // ② 계수 궤적 — 그 스레드를 **훅에 그대로** 먹인다(픽스처 0개).
 console.log('   ② 훅 실구동 — 스토어가 지은 스레드로 계수 궤적을 잰다')
 
-/** 쏜 재개 턴이 또 죽는다 — 스레드는 스토어가 준 것을 통째로 쓴다. */
-async function kRearm(h, messages) {
+/** 쏜 재개 턴이 또 죽는다 — 스레드·경계·수명 전부 **스토어가 준 상태**에서 온다.
+ *  `lifeMs`만 하네스가 정한다(가상 시계가 없으므로 `turnAt`을 뒤로 밀어 만든다). */
+async function kRearm(h, s, lifeMs) {
   h.o.busy = true
   h.o.state = { ...h.o.state, status: 'working' }
   h.host.render()
   await flush()
   h.o.busy = false
-  h.o.state = { ...h.o.state, status: 'error', messages }
+  h.o.state = { ...h.o.state, status: 'error', messages: s.messages, turnMark: s.turnMark, turnAt: Date.now() - lifeMs }
   h.host.render()
   await flush()
 }
 
 /** 첫 턴을 스토어로 태워 표를 세우고, 재개를 n번 돌린다(매번 같은 한도로 죽는다). */
-async function kNight(openWith, body, n) {
+async function kNight(openWith, body, n, lifeMs = LONG) {
   sent.length = 0
   let s = kTurn(initialSessionState, 0, openWith, body)
-  const h = mountArmed(CX_PROPS, null, hookMod, s.messages)
+  const h = mountArmed(CX_PROPS, null, hookMod, s)
   const seen = []
   for (let i = 1; i <= n; i++) {
     if (!h.hold || h.hold.autoPaused) break
     await tick(h)
     if (h.hold) break // 안 쐈다 = 자동이 접혔다
     s = kTurn(s, i, openWith, body)
-    await kRearm(h, s.messages)
+    await kRearm(h, s, lifeMs)
     seen.push(h.hold?.attempts ?? 0)
   }
   return { h, sent: sent.length, seen }
@@ -1032,16 +1075,122 @@ eq('매 턴 도구를 여는 재개 — 렌더러가 연 판은 안 잘린다', 
 const kEcho = await kNight('user-echo', K_BODY['이 턴이 연 도구'], 6)
 eq('★★ 엔진이 연 판도 같은 궤적 — 71 대 2가 `tool_use` 문으로 서 있던 자리', { sent: kEcho.sent, seen: kEcho.seen }, { sent: 6, seen: [0, 0, 0, 0, 0, 0] })
 ok('★ 접힌 표가 없다(엔진 못 ⑥과 같은 착지)', !kEcho.h.hold?.autoPaused, JSON.stringify(kEcho.h.hold))
-console.log(`   A/B — 같은 6턴 대본: begin ${kBegin.sent}발(계수 ${JSON.stringify(kBegin.seen)})  vs  user-echo ${kEcho.sent}발(계수 ${JSON.stringify(kEcho.seen)})`)
+// ★R28e WFIRE — 셋째 판도 같은 궤적이어야 한다(§5.3).
+const kNone = await kNight('none', K_BODY['이 턴이 연 도구'], 6)
+eq('★★ 에코 없는 엔진 턴도 같은 궤적', { sent: kNone.sent, seen: kNone.seen }, { sent: 6, seen: [0, 0, 0, 0, 0, 0] })
+console.log(
+  `   A/B — 같은 6턴 대본: begin ${kBegin.sent}발  vs  user-echo ${kEcho.sent}발  vs  에코 없음 ${kNone.sent}발` +
+    ` (계수 ${JSON.stringify(kEcho.seen)})`
+)
 
-// 반대 방향(과잉 절단) — 진짜 헛발질은 **양쪽 다** 2발에서 접힌다. RCAP 불변.
+// 반대 방향(과잉 절단) — 진짜 헛발질은 **세 판 다** 2발에서 접힌다. RCAP 불변.
 for (const [label, want] of [['빈손(문전박대)', '빈손'], ['앞 턴 도구의 결과만', '앞 턴 결과']]) {
-  for (const how of ['begin', 'user-echo']) {
+  for (const how of ['begin', 'user-echo', 'none']) {
     const r = await kNight(how, K_BODY[label], 6)
     eq(`★ 「${want}」(${how})은 여전히 2발에서 멎는다`, { sent: r.sent, seen: r.seen }, { sent: 2, seen: [1, 2] })
     ok(`★ 「${want}」(${how}) 표가 접혀 있다`, r.h.hold?.ready === true && r.h.hold?.autoPaused === true, JSON.stringify(r.h.hold))
   }
 }
+cxAnswer = []
+
+// ── L. ★R28e WFIRE — 상한의 단위: 「연속 빈손」 → 「에피소드 예산 + 턴 수명」 ──────────
+//
+// WCAP 확인 크리틱 R2 §5.1의 남은 격차. 구분자 ②가 「화면에 남는 산출 한 줄」이라, 리셋
+// 시각을 모르는 축에서는 재개 턴이 **글자 한 줄만 내도** `attempts`가 영영 0이 되어 RCAP의
+// 「자동은 최대 2발」이 사라졌다 — 12시간 **71발** · `attempts` 0 · 안 접힘. 그 표의 세 줄이
+// ① 어시스턴트 텍스트 한 줄 ② 도구 하나 열고 결과 없이 죽음 ③ **한도 문구 자체**를 텍스트로
+// 받은 턴이다(③이 가장 나쁘다 — 「일했다」가 사용자에게 명백한 거짓이 된다).
+//
+// 장치 둘을 **함께** 세운다(하나만으로는 서로의 사각을 못 덮는다):
+//  * **턴 수명**(`MIN_WORK_MS`) — 「30초 만에 같은 벽」과 「창을 꽉 채워 일함」을 가른다.
+//  * **에피소드 예산**(`MAX_EPISODE_FIRES`) — 산출을 흘리며 **천천히** 죽는 턴은 수명 문턱을
+//    넘으므로 ①·②로는 절대 안 멎는다. 아무 구분자도 못 지우는 총계가 그 천장이다.
+//
+// 엔진 짝은 `crates/ccg-engine/tests/wcap_limit_streak.rs` ⑩~⑬이고, 이 절과 **같은 대본·
+// 같은 착지**를 가상 시계로 잰다(엔진: 12시간 71발 → 2발 / 예산 12발에서 접힘).
+console.log('\nL. 에피소드 예산 + 턴 수명 — 「글자 한 줄」로는 상한을 못 지운다(크리틱 R2 §5.1)')
+tag = 'WFIRE'
+
+// ① 순수 판정 — 상수·수명 문턱·예산 게이트.
+console.log('   ① 상수와 문턱')
+eq('엔진과 같은 값 — 예산 12발', lib3.MAX_EPISODE_FIRES, 12)
+eq('엔진과 같은 값 — 최소 수명 5분', lib3.MIN_WORK_MS, 5 * 60_000)
+eq('★ 문턱 정각은 일한 것(>=)', lib3.turnLivedLongEnough(lib3.MIN_WORK_MS), true)
+eq('★ 문턱 1ms 아래는 헛발질', lib3.turnLivedLongEnough(lib3.MIN_WORK_MS - 1), false)
+eq('★★ 모르면 일한 게 아니다 — 상한이 「모른다」로 지워지면 그건 상한이 아니다', lib3.turnLivedLongEnough(null), false)
+eq('모름(undefined)도 같다', lib3.turnLivedLongEnough(undefined), false)
+
+const J_ONE_LINE = [J_USER, { kind: 'msg', role: 'assistant', text: '알겠습니다' }, J_ERR]
+eq('★★ 한 줄 내고 즉사한 턴은 계수를 못 지운다(12시간 71발의 자리)', lib3.carriedAttempts(2, null, null, { items: J_ONE_LINE, ms: 0 }, NOW), 2)
+eq('★ 30초도 아직 헛발질', lib3.carriedAttempts(2, null, null, { items: J_ONE_LINE, ms: 30_000 }, NOW), 2)
+eq('★★ 창을 태운 턴은 그대로 0(과잉 절단 방지)', lib3.carriedAttempts(2, null, null, { items: J_ONE_LINE, ms: 5 * 3600_000 }, NOW), 0)
+eq('★ 산출이 없으면 오래 살아도 헛발질(둘은 AND다)', lib3.carriedAttempts(2, null, null, { items: [J_USER, J_ERR], ms: 5 * 3600_000 }, NOW), 2)
+
+console.log('   ② 예산 게이트(resumeVerdict) — 계수가 0이어도 접힌다')
+const H_FIRES = (n) => H({ resetsAt: null, fires: n })
+eq('예산이 남았으면 그냥 ready', lib3.resumeVerdict(H_FIRES(lib3.MAX_EPISODE_FIRES - 1), null, false, NOW), { kind: 'ready' })
+eq(
+  '★★ 예산을 다 쓰면 접힌다 — `attempts`가 0이어도',
+  lib3.resumeVerdict(H_FIRES(lib3.MAX_EPISODE_FIRES), null, false, NOW),
+  { kind: 'ready', paused: true }
+)
+eq('★ 「아직 막혔다」는 여전히 먼저다(순서는 규약)', lib3.resumeVerdict(H_FIRES(99), NOW + 3600, false, NOW), { kind: 'hold', resetsAt: NOW + 3600, probes: 0 })
+eq('★ 예산은 영속된다 — 껐다 켜서 되살아나면 예산이 아니다', lib3.sanitizeHold({ ...H_FIRES(7), attempts: 1 }, NOW_MS)?.fires, 7)
+eq('0은 안 싣는다(영속 형태 유지)', lib3.sanitizeHold({ ...H_FIRES(0) }, NOW_MS)?.fires, undefined)
+
+// ③ 훅 실구동 — 엔진 못 ⑩·⑫와 **같은 대본**을 세 표면 중 codex 축(②가 유일 판정자)에 먹인다.
+console.log('   ③ 훅 실구동 — 71발의 세 줄, 그리고 예산 천장')
+cxAnswer = [cxRow('me@openai.com', 5, REAL + 3600)] // 조회는 매번 「풀렸다」고 답한다
+
+// 크리틱 §5.1 표의 세 줄. 전부 「산출은 있는데 즉사」다 = 이제 헛발질이다(엔진 ⑩ = 2발).
+const L_LINES = [
+  ['어시스턴트 텍스트 한 줄', { work: true, lifeMs: 0 }],
+  ['도구 하나 열고 즉사', { work: true, lifeMs: 0, crossTool: false }],
+  ['한도 문구를 어시스턴트 텍스트로', { work: true, lifeMs: 0 }]
+]
+for (const [label, opts] of L_LINES) {
+  const r = await nightRun(CX_PROPS, 20, () => CX_BANNER, opts.work, opts)
+  eq(`★★ 「${label}」도 2발에서 접힌다(엔진 ⑩과 같은 착지)`, { sent: r.sent, seen: r.seen }, { sent: 2, seen: [1, 2] })
+  ok(`★ 「${label}」 표가 접혀 있다`, r.h.hold?.ready === true && r.h.hold?.autoPaused === true, JSON.stringify(r.h.hold))
+}
+
+// 반대편 — 같은 대본에 **수명만** 주면 안 잘린다(엔진 ⑪).
+const lived = await nightRun(CX_PROPS, 6, () => CX_BANNER, true, { lifeMs: lib3.MIN_WORK_MS })
+eq('★★ 수명 문턱을 넘긴 턴은 그대로 이어간다', { sent: lived.sent, seen: lived.seen }, { sent: 6, seen: [0, 0, 0, 0, 0, 0] })
+ok('★ 접힌 표가 없다', !lived.h.hold?.autoPaused, JSON.stringify(lived.h.hold))
+
+// 그리고 그 대본을 **그냥 오래** 돌리면 예산이 천장으로 선다(엔진 ⑫ = 12발).
+const budget = await nightRun(CX_PROPS, 40, () => CX_BANNER, true, { lifeMs: LONG })
+eq(
+  '★★ 산출로도 못 지우는 천장 — 예산 12발에서 멎는다(엔진 ⑫와 같은 수)',
+  { sent: budget.sent, attempts: budget.h.hold?.attempts, fires: budget.h.hold?.fires },
+  { sent: lib3.MAX_EPISODE_FIRES, attempts: undefined, fires: lib3.MAX_EPISODE_FIRES }
+)
+ok('★ 접은 것은 계수가 아니라 예산이다(계수는 끝까지 0)', budget.seen.every((v) => v === 0), JSON.stringify(budget.seen))
+ok('★ 그 표는 접혀 있다', budget.h.hold?.ready === true && budget.h.hold?.autoPaused === true, JSON.stringify(budget.h.hold))
+console.log(`   A/B — 같은 codex 대본: 즉사 2발 · 수명만 주면 6발 · 오래 돌리면 ${budget.sent}발에서 예산 소진`)
+
+// ④ 막다른 방이 아니다 — 누르면 예산이 통째로 되살아난다(엔진 ⑬).
+console.log('   ④ 「이어가기」 — 예산을 다 쓴 표의 출구')
+budget.h.api.resumeNow()
+budget.h.host.render()
+await flush()
+eq('★★ 누르면 그 자리에서 보낸다', { hold: budget.h.hold, sent: sent.length }, { hold: null, sent: lib3.MAX_EPISODE_FIRES + 1 })
+await rearm(budget.h, CX_BANNER, { work: true, lifeMs: LONG })
+eq('★★ 누른 재개 뒤의 표는 예산도 백지 — 버튼이 한 번 쓰고 버리는 것이 되지 않는다', budget.h.hold?.fires, undefined)
+ok('★ 다시 쏠 수 있다(접혀 있지 않다)', !budget.h.hold?.autoPaused, JSON.stringify(budget.h.hold))
+
+// ⑤ 에피소드의 끝 — 한도가 아닌 착지 하나가 예산을 되살린다(엔진 `!limited`의 짝).
+console.log('   ⑤ 한도가 아닌 착지 — 에피소드가 끝났다는 유일한 기계적 신호')
+const ep = await nightRun(CX_PROPS, 40, () => CX_BANNER, true, { lifeMs: LONG })
+eq('먼저 예산을 다 쓴다', ep.sent, lib3.MAX_EPISODE_FIRES)
+ep.h.api.resumeNow()
+ep.h.host.render()
+await flush()
+await rearm(ep.h, 'Command failed with exit code 1') // 이번엔 한도가 아닌 이유로 죽었다
+eq('한도가 아닌 착지에는 표가 안 선다', ep.h.hold, null)
+await rearm(ep.h, CX_BANNER, { work: true, lifeMs: LONG })
+eq('★★ 그다음 표는 예산도 계수도 백지', { fires: ep.h.hold?.fires, attempts: ep.h.hold?.attempts }, { fires: undefined, attempts: undefined })
 cxAnswer = []
 
 fs.rmSync(tmp, { recursive: true, force: true })

@@ -325,6 +325,25 @@ pub struct ChatRuntime<D: CliDriver> {
     /// 것임이 보장된다 — 계수를 0으로 되돌리는 네 자리는 이 값을 안 지워도 무해하다
     /// (계수가 0이면 아래 판정이 어차피 0을 낸다).
     auto_resume_at: Option<Millis>,
+    /// ★R28e WFIRE — **직전 자동 발사의 시각**(런타임 ms). [`Self::arm_hold`]의 구분자 ②가
+    /// 「그 턴이 얼마나 살았나」를 재는 유일한 기준점이고, 렌더러 짝은 스토어의
+    /// `SessionState.turnAt`이다(`app/src/lib/useLimitResume.ts`).
+    ///
+    /// `auto_resume_at`(직전에 쏜 **표의 리셋 시각**)과 헷갈리기 쉬워 이름을 나눠 둔다:
+    /// 저쪽은 *벽의 좌표*, 이쪽은 *발사 순간*이다. 둘 다 [`Self::consume_hold`] 한 곳에서만
+    /// 놓인다.
+    auto_resume_fired_at: Option<Millis>,
+    /// ★R28e WFIRE — **이 한도 에피소드에서 태운 자동 재개 턴의 총계**
+    /// ([`crate::limit::MAX_EPISODE_FIRES`]).
+    ///
+    /// [`Self::auto_resume_streak`]와 **지우는 자리가 다른 것이 요점이다.** 연속 계수는
+    /// 「창이 넘어갔다(①)」·「그 턴이 일했다(②)」가 0으로 되돌리지만 이 예산은 안 되돌린다 —
+    /// 그래서 *산출 한 줄*로는 못 지운다. 되돌아가는 자리는 사람 손이 닿은 세 곳
+    /// (사용자 발화 · 사용자가 누른 이어가기 · 계정 전환)과 **한도 없이 착지한 턴** 하나다.
+    ///
+    /// 겨눈 격차(WCAP 확인 크리틱 R2 §5.1): 시각 미상 축에서 재개 턴이 텍스트 한 줄만 내면
+    /// `auto_resume_streak`가 영영 0이 되어 12시간 **71발**이 나갔다.
+    episode_fires: u32,
     /// ★R5 — 발화 직전 신선 usage 재검증 훅([`crate::limit::LimitProbe`]).
     /// 기본은 `NoProbe`(=미배선)라 기존 동작과 같고, 셸이 붙이면 2.6.2 `fire()`가 된다.
     limit_probe: Arc<dyn crate::limit::LimitProbe>,
@@ -442,6 +461,8 @@ impl<D: CliDriver> ChatRuntime<D> {
             last_echo: None,
             auto_resume_streak: 0,
             auto_resume_at: None,
+            auto_resume_fired_at: None,
+            episode_fires: 0,
             limit_probe: Arc::new(NoProbe),
             switcher: Arc::new(NoSwitch),
             switch_tried: BTreeSet::new(),
@@ -574,6 +595,12 @@ impl<D: CliDriver> ChatRuntime<D> {
     pub fn hold(&self) -> Option<&LimitHold> {
         self.hold.as_ref()
     }
+    /// ★R28e WFIRE — 이 한도 에피소드가 지금까지 태운 자동 재개 턴 수
+    /// ([`crate::limit::MAX_EPISODE_FIRES`] 예산의 소비분). 표 밖에 사는 값이라
+    /// [`Self::hold`]로는 안 보인다 — 못(`tests/wcap_limit_streak.rs` ⑩~⑬)과 셸의 진단이 읽는다.
+    pub fn episode_fires(&self) -> u32 {
+        self.episode_fires
+    }
     /// 지금 턴의 `RunId`(스트림·턴이 없으면 `None`).
     pub fn run_id(&self) -> Option<RunId> {
         self.stream.as_ref().and_then(|s| s.turn.as_ref().map(|t| t.run_id))
@@ -681,11 +708,23 @@ impl<D: CliDriver> ChatRuntime<D> {
         let fired_at = self.hold.as_ref().and_then(|h| h.resets_at);
         self.hold = None;
         // 사람 손이 닿은 재개(누름 · 대기 중 걸어 둔 메시지)는 카운터를 되돌린다.
+        //
+        // ★R28e WFIRE — 되돌아가는 카운터가 **셋**이 됐다. `auto_resume_streak`(연속 헛발질)와
+        // `auto_resume_at`(직전 벽)은 R28d 그대로이고, 여기 더해지는 둘은
+        //  * [`Self::auto_resume_fired_at`] — 이 발사의 **시각**. 다음 한도 착지에서
+        //    `now - 이 값`이 곧 그 재개 턴의 수명이고, 구분자 ②가 그 값으로 「일했다」를 가린다.
+        //  * [`Self::episode_fires`] — 이 에피소드의 **총 발사 수**. 연속 계수와 달리
+        //    구분자 ①·②가 못 지운다. 여기서만 오르고, 사람 손이 닿는 이 else 가지와
+        //    「한도 없이 착지」에서만 0으로 돌아간다.
         self.auto_resume_streak = if auto && !already {
             self.auto_resume_at = fired_at;
+            self.auto_resume_fired_at = Some(now);
+            self.episode_fires = self.episode_fires.saturating_add(1);
             self.auto_resume_streak.saturating_add(1)
         } else {
             self.auto_resume_at = None;
+            self.auto_resume_fired_at = None;
+            self.episode_fires = 0;
             0
         };
         if already {
@@ -807,7 +846,10 @@ impl<D: CliDriver> ChatRuntime<D> {
         // ① 표를 걷는다(§7.3의 일반 무효화 문장이 이 전환을 가리지 않게).
         self.hold = None;
         // 계정이 바뀌었으니 옛 계정에서 센 헛발질은 이 계정과 무관하다.
+        // ★R28e WFIRE — 에피소드 예산도 같은 이유로 새로 연다(다른 계정 = 다른 한도 창).
         self.auto_resume_streak = 0;
+        self.episode_fires = 0;
+        self.auto_resume_fired_at = None;
         let revert_to = self.revision;
         // ② 리비전 — origin이 곧 "내가 고른 값이 아니다"라는 표식이다.
         self.apply_identity(next, RevisionOrigin::AutoAccountSwitch, changed, vec![], vec![]);
@@ -1236,7 +1278,12 @@ impl<D: CliDriver> ChatRuntime<D> {
         // **사람만** 끊는다: AI가 보낸 줄이 사람의 개입을 사칭하면 헛 재개 상한이
         // 세션 사이의 왕복만으로 무한정 초기화된다.
         if matches!(verdict, Verdict::Accepted | Verdict::Queued) && origin == QueueOrigin::User {
+            // ★R28e WFIRE — 에피소드 예산도 여기서 새로 열린다. 사람이 말을 건 것은
+            // 「이 채팅을 지금 보고 있다」는 뜻이라, 예산을 다 쓴 채팅도 그 한마디로 살아난다
+            // (막다른 방 금지 — `resume_now`가 계수를 0으로 되돌리는 것과 같은 규약).
             self.auto_resume_streak = 0;
+            self.episode_fires = 0;
+            self.auto_resume_fired_at = None;
         }
         match verdict {
             Verdict::Accepted => {
@@ -2812,7 +2859,12 @@ impl<D: CliDriver> ChatRuntime<D> {
         // 영원히 안 끝났다). `limited`는 표의 생사와 무관한 사실이라 뒤집히지 않는다.
         // (전환이 없던 판에서는 `limited`가 참이면 표가 항상 서 있으므로 동작이 같다.)
         if !limited && self.hold.is_none() {
+            // ★R28e WFIRE — **에피소드가 끝났다는 유일한 기계적 신호**가 이 줄이다.
+            // 한도 없이 착지한 턴 하나면 예산이 통째로 되살아난다 — 그래서 "일하다가 가끔
+            // 한도를 만나는" 정상 주행은 이 예산을 영영 못 만난다.
             self.auto_resume_streak = 0;
+            self.episode_fires = 0;
+            self.auto_resume_fired_at = None;
             self.switch_tried.clear();
         }
         if self.state() == StateTag::Interrupting || aborted {
@@ -2917,11 +2969,29 @@ impl<D: CliDriver> ChatRuntime<D> {
         //
         // 계수는 표 안팎 두 벌이므로 되돌릴 때도 **둘 다** 놓는다. 밖(`auto_resume_streak`)만
         // 남으면 다음 소진이 그 값에서 +1 해서 되돌린 것이 도로 살아난다.
+        //
+        // ★R28e WFIRE — ②에 **수명**이 붙었다(WCAP 확인 크리틱 R2 §5.1). R4까지 ②는 「무엇을
+        // 냈나」만 봤고, 그래서 시각 미상 축에서 *한 줄 내고 즉사하는 턴*이 *다섯 시간을 태운
+        // 턴*과 같은 답을 받았다 — 12시간 **71발 · `attempts` 0 · 안 접힘**(어시스턴트 텍스트
+        // 한 줄 / 도구 하나 열고 결과 없이 죽음 / 한도 문구 자체를 텍스트로 받은 턴). 계수가
+        // 0이라 지수 백오프도 같이 죽어 10분 간격이 밤새 유지됐다.
+        //
+        // 이제 그 축의 문장은 R28d WCAP이 원래 쓰려던 문장 그대로다: **「30초 만에 같은 벽에
+        // 부딪혔나, 창을 꽉 채워 일하고 다음 벽에서 막혔나」.** 기준점은 우리가 쏜 시각
+        // ([`Self::auto_resume_fired_at`])이고, 렌더러 짝은 스토어의 `turnAt`이다.
+        // 모르면(=우리가 쏜 턴이 아니면) 인정하지 않는다 — 상한은 「모른다」로 지워지면 안 된다.
+        //
+        // 이 문턱만으로는 못 막는 판이 하나 남는다: 산출을 흘리며 **천천히** 죽는 턴
+        // (수명 ≥ [`MIN_WORK`]인데 매번 같은 벽). 그쪽은 [`Self::episode_fires`] 예산이
+        // 받는다([`Self::check_hold`]) — 두 장치가 서로의 사각을 덮는다.
         let worked = self
             .stream
             .as_ref()
             .and_then(|s| s.turn.as_ref())
-            .is_some_and(|t| t.saw_turn_output);
+            .is_some_and(|t| t.saw_turn_output)
+            && self
+                .auto_resume_fired_at
+                .is_some_and(|f| now.saturating_sub(f) >= crate::limit::MIN_WORK);
         let cleared = match (resets_at, self.auto_resume_at) {
             (Some(next), Some(prev)) => next > prev && next > now,
             _ => worked,
@@ -3448,16 +3518,33 @@ impl<D: CliDriver> ChatRuntime<D> {
         //   (F1과 겹칠 때가 최악이었다: 리셋으로 풀리지 않는 컨텍스트 초과 에러 하나가
         //    영원히 6.5분마다 재전송됐다. 그 문은 F1 쪽에서도 닫혔고 여기서도 닫는다.)
         let over = self.hold.as_ref().is_some_and(|h| h.attempts >= MAX_AUTO_ATTEMPTS);
-        if over {
+        // ★R28e WFIRE — **두 번째 문: 에피소드 총 발사 예산**([`crate::limit::MAX_EPISODE_FIRES`]).
+        //
+        // 위의 `over`는 「연속 헛발질」을 세므로 구분자 ①·②가 0으로 되돌리는 순간 사라진다.
+        // 그게 시각 미상 축에서 12시간 71발이 나오던 이유다(WCAP 확인 크리틱 R2 §5.1):
+        // 재개 턴이 산출을 한 줄이라도 내면 계수가 영영 0이었다. 이 문은 **아무 구분자도
+        // 못 지우는** 총계를 본다 — 되돌아가는 자리는 사람 손 셋과 「한도 없이 착지」 하나뿐이다.
+        //
+        // 밤샘 주행을 안 자르는 근거는 눈금 자체에 있다: 창 하나에 한 발이므로 12발이면
+        // **60시간**이다. 반대로 10분마다 도는 헛돌이는 2시간 안에 예산을 다 쓴다.
+        let budget_out = self.episode_fires >= crate::limit::MAX_EPISODE_FIRES;
+        if over || budget_out {
             if let Some(h) = &mut self.hold {
                 h.auto_paused = true;
             }
-            self.emit(Event::Notice(
+            self.emit(Event::Notice(if over {
                 // ★R28d WCAP R4 — 한글 문장 안의 `turn`을 「턴」으로(WCAP 확인 크리틱 R1 §6).
                 // 화면에 그대로 나가는 공지다 — 같은 사실을 말하는 `Chat.tsx`의 배너와
                 // 글자를 맞춘다.
-                "자동으로 이어서 보낸 턴이 계속 한도에 막혀서 자동 재개를 멈췄어요 — 준비되면 눌러서 이어가세요.".into(),
-            ));
+                "자동으로 이어서 보낸 턴이 계속 한도에 막혀서 자동 재개를 멈췄어요 — 준비되면 눌러서 이어가세요.".into()
+            } else {
+                // 사실이 다르면 문장도 달라야 한다(D7) — 이쪽 턴들은 **막히기만 한 게 아니라
+                // 일도 했다**. 그런데도 한도가 안 끝나서 예산을 다 썼다는 것이 이 착지다.
+                format!(
+                    "이 한도 창에서 자동으로 {}번 이어서 보냈는데 계속 한도에 걸려서 자동 재개를 멈췄어요 — 준비되면 눌러서 이어가세요.",
+                    self.episode_fires
+                )
+            }));
             self.broadcast_plan();
             return;
         }

@@ -153,7 +153,20 @@ export interface SessionState {
   curRunId: string | null
   // ★ M-UI §5-4 — 이번 턴이 시작한 시각(epoch ms). 중단선이 "얼마나 하다 끊겼는지"를
   // 말하려면 이 값이 필요하다. 영속하지 않는다(복원 직후엔 없는 게 맞다 — 지어내지 않는다).
+  //
+  // ★R28e WFIRE — 읽는 사람이 하나 늘었다: 한도 자동 이어서가 **「그 재개 턴이 얼마나
+  // 살았나」**로 헛발질과 진짜 작업을 가른다(`lib/limitResume.ts`의 `MIN_WORK_MS`).
+  // 그래서 이제 **턴을 여는 세 경로 전부**가 이 값을 놓는다(begin · user-echo ·
+  // 새 runId의 analyzing) — R4까지는 `begin` 하나뿐이라 엔진이 연 턴에서는 앞 턴 시각이
+  // 그대로 남아 있었다(= 수명이 몇 시간으로 읽혀 상한이 지워지는 자리).
   turnAt?: number
+  // ★R28e WFIRE — **턴을 연 순간의 스레드 꼬리 id**(WCAP 확인 크리틱 R2 §5.3).
+  //
+  // 「이 턴이 무엇을 냈나」의 경계를 *마지막 사용자 말풍선*으로만 정의하면, 엔진이
+  // **말풍선 없이** 여는 턴(상주 정리턴 재개 · 통지 기상 턴)에서 그 창이 앞 턴까지 뒤로 샌다.
+  // 실측: 스레드 `u TG(1) a! a! a!`에서 엔진은 「헛발질」인데 렌더러는 `turnDidWork = true`.
+  // 이 값이 그 자리의 두 번째 경계다(`turnDidWork(items, mark)`). 영속하지 않는다.
+  turnMark?: string | null
 }
 
 type Action =
@@ -320,7 +333,8 @@ export const initialSessionState: SessionState = {
   seq: 0,
   shownNotices: [],
   curRunId: null,
-  turnAt: undefined
+  turnAt: undefined,
+  turnMark: null
 }
 
 // ── growth caps ──────────────────────────────────────────────
@@ -579,6 +593,9 @@ export function reducer(state: SessionState, action: Action): SessionState {
       curRunId: PENDING_RUN,
       // 중단선이 "얼마나 하다 끊겼는지"를 말할 근거 (M-UI §5-4)
       turnAt: Date.now(),
+      // ★R28e WFIRE — 이 턴이 열리기 **전**의 스레드 꼬리. 아래 `user-echo`·`analyzing`도
+      // 같은 값을 적는다 — 세 경로가 한 규칙이어야 「이 턴」이 여는 방식과 무관해진다.
+      turnMark: without[without.length - 1]?.id ?? null,
       // 살아있는 백그라운드 작업(셸·에이전트)은 상주 유지로 턴을 넘는다 — 칩을 유지하고
       // 지난 턴에 끝난 항목만 걷는다(죽은 셸이 대화마다 되살아나던 문제의 처방은 그대로).
       // 새 스폰으로 이어진 경우(주입 불가)엔 엔진의 teardown이 곧 stopped로 정리해 준다.
@@ -635,9 +652,18 @@ export function reducer(state: SessionState, action: Action): SessionState {
     const tail = state.messages[state.messages.length - 1]
     if (tail && tail.kind === 'msg' && tail.role === 'user' && tail.text === action.text) return state
     const seq = state.seq + 1
+    const prior = state.messages.filter((m) => m.id !== THINKING_ID)
     return {
       ...state,
       seq,
+      // ★R28e WFIRE — `begin`이 갖고 있던 나머지 두 줄도 여기로 온다. 「이 턴」의 정의가
+      // **누가 열었는지와 무관**해야 한다는 R4의 문장은 도구 그룹에만 적용돼 있었다:
+      //   * `turnAt` — 앞 턴 시각이 그대로 남아 있으면 한도 재개의 **턴 수명**이 몇 시간으로
+      //     읽혀 「일했다」가 공짜가 된다(= 상한이 사라지는 자리).
+      //   * `turnMark` — 말풍선이 있는 이 경로에서는 답을 안 바꾸지만, 세 경로가 같은 값을
+      //     적어야 아래 `analyzing`(말풍선 없는 턴)의 규칙이 특례가 아니게 된다.
+      turnAt: Date.now(),
+      turnMark: prior[prior.length - 1]?.id ?? null,
       // ★R28d WCAP R4 — **새 사용자 말풍선은 열린 도구 그룹을 닫는다**(WCAP 확인 크리틱
       // R3 §4.3). `begin`은 이 줄을 처음부터 갖고 있었는데(623행) 여기엔 없었다. 그래서
       // 엔진이 스스로 연 재개 턴(한도 자동 재개·예약 드레인·대화 연결 수신 = `hub.rs`의
@@ -774,7 +800,24 @@ export function reducer(state: SessionState, action: Action): SessionState {
   switch (e.type) {
     case 'status':
       // analyzing = 모든 실행의 첫 이벤트 (엔진 계약) — 이 실행을 현재 실행으로 채택
-      if (e.status === 'analyzing') return { ...state, status: 'analyzing', curRunId: e.runId, interrupted: false }
+      if (e.status === 'analyzing') {
+        const adopt = { ...state, status: 'analyzing' as const, curRunId: e.runId, interrupted: false }
+        // ★R28e WFIRE — **셋째 판: 말풍선이 아예 없는 턴**(WCAP 확인 크리틱 R2 §5.3).
+        //
+        // R4는 「이 턴」의 경계를 `begin`과 `user-echo` 두 판에서 맞췄는데, 실제로는 셋째가
+        // 있다: 큐 항목 없이 엔진이 스스로 여는 턴(상주 정리턴 재개 T19b · 통지 기상 턴)은
+        // `user-echo`가 안 나가므로 스레드에 사용자 말풍선이 **없다**. 그러면 앞 턴의 열린
+        // 도구 그룹이 계속 열려 있고(`openGroupId`), 뒤에서부터 훑는 `turnDidWork`의 창도
+        // 앞 턴까지 뒤로 샌다 — 크리틱 실측: 엔진은 「헛발질」인데 렌더러는 `true`(이번엔
+        // 렌더러가 과다 재개). 새 `runId`가 곧 새 턴이므로, 여기서 세 값을 같이 놓아
+        // 「이 턴」이 **여는 방식과 무관**해진다.
+        //
+        // **같은 `runId`의 재통지에는 안 놓는다** — 그건 새 턴이 아니라 같은 턴의 재점등이고,
+        // 거기서 다시 놓으면 그 턴이 방금 낸 산출을 스스로 지우게 된다.
+        if (e.runId === state.curRunId) return adopt
+        const prior = state.messages.filter((m) => m.id !== THINKING_ID)
+        return { ...adopt, openGroupId: null, turnAt: Date.now(), turnMark: prior[prior.length - 1]?.id ?? null }
+      }
       if (staleRun(e.runId)) return state
       // 같은 실행의 재점등(done→working: 무음 오판 뒤 진짜 턴 재개) — 방금 붙인
       // '응답 없이 끝났어요' 안내는 오탐이었으므로 걷어낸다

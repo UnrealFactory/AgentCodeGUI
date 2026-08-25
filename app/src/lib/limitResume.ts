@@ -41,6 +41,18 @@ export interface LimitHold {
    *  ★R28d WCAP — 다만 **일한 재개는 안 센다.** 물려받을지 말지는 아래
    *  [`carriedAttempts`]가 가른다(창이 넘어갔나 · 그 턴이 일을 했나). */
   attempts?: number
+  /** ★R28e WFIRE — **이 한도 에피소드에서 태운 자동 재개 턴의 총계**(엔진
+   *  `ChatRuntime::episode_fires`의 짝 · 상한은 `MAX_EPISODE_FIRES`).
+   *
+   *  `attempts`와 **지우는 자리가 다른 것이 요점이다**: 저쪽(연속 헛발질)은 구분자
+   *  ①(창이 넘어갔다)·②(그 턴이 일했다)가 0으로 되돌리지만 이 총계는 **아무 구분자도
+   *  못 지운다.** 되돌아가는 자리는 사람 손이 닿은 곳(`setHold(null)` — 취소·직접 전송·
+   *  「이어가기」)과 한도가 아닌 착지 하나뿐이다.
+   *
+   *  왜 필요한가(WCAP 확인 크리틱 R2 §5.1 실측): 상한의 단위가 「연속 빈손」 하나뿐이라,
+   *  시각을 모르는 축에서는 재개 턴이 **글자 한 줄만 내면** 계수가 영영 0이 되어 12시간
+   *  **71발**이 나갔다(엔진 축 실측 · 렌더러도 같은 규칙이라 같은 답이었다). */
+  fires?: number
   /** ★R28c RCAP — **자동 재발사를 접었다**(엔진 `LimitHold::auto_paused`의 짝).
    *  표는 `ready`지만 소진 effect는 쏘지 않고, 배너의 「이어가기」가 유일한 출구다.
    *  영속하지 않는다 — 복원 뒤 재검증이 `attempts`로 다시 판정한다(`ready`와 같은 규약). */
@@ -169,6 +181,37 @@ export const MAX_RECHECKS = 2
  *  채널이 죽어 있는 판에서 5시간 창 하나에 **27회**를 눈감고 쐈다(11·22·32…290분).
  *  계수를 표에 물려(`LimitHold.attempts`) 대기표 사이를 건너게 해야 그 주기가 끊긴다. */
 export const MAX_AUTO_ATTEMPTS = 2
+
+/** ★R28e WFIRE — **한 한도 에피소드가 태울 수 있는 자동 재개 턴의 총량.**
+ *  엔진 `crates/ccg-engine/src/limit.rs`의 `MAX_EPISODE_FIRES`와 같은 값·같은 뜻이다.
+ *
+ *  `MAX_AUTO_ATTEMPTS`가 세는 것은 **연속** 헛발질이고 이것은 **총계**다. 그래서
+ *  구분자 ①·②가 이 값을 못 지운다 — 되돌아가는 자리는 사람 손(`setHold(null)`)과
+ *  한도가 아닌 착지뿐이다(`useLimitResume`).
+ *
+ *  왜(WCAP 확인 크리틱 R2 §5.1): 「연속 빈손 N」 하나로는 시각 미상 축에서 상한이
+ *  **글자 한 줄에** 지워졌다 — 12시간 71발 · `attempts` 0 · 안 접힘, 그리고 계수가 0이라
+ *  지수 백오프(10→20→40분)도 같이 죽어 10분 간격이 밤새 유지됐다.
+ *
+ *  12인 근거: 밤샘 연속 주행은 **창 하나에 한 발**이라 12발이면 60시간(이틀 반)이고,
+ *  반대로 10분마다 도는 헛돌이는 2시간 안에 예산을 다 쓴다. 그 사이를 가르는 것이
+ *  아래 `MIN_WORK_MS`이고, 둘은 함께 서야 한다. */
+export const MAX_EPISODE_FIRES = 12
+
+/** ★R28e WFIRE — **「그 턴이 일했다」로 인정하는 최소 턴 수명(ms).**
+ *  엔진 `crates/ccg-engine/src/limit.rs`의 `MIN_WORK`와 같은 값이다.
+ *
+ *  R28d WCAP이 원래 쓰려던 문장은 *"30초 만에 같은 벽에 부딪혔는지 5시간을 꽉 채워 일하고
+ *  다음 창에서 막혔는지"* 인데, R4까지 그 문장은 **시각을 아는 축(구분자 ①)에서만**
+ *  지켜졌다. 시각 미상 축에서는 「무엇을 냈나」만 보느라 *한 줄 내고 즉사한 턴*이
+ *  *다섯 시간을 태운 턴*과 같은 답을 받았다(= 71발). 이제 산출은 **수명과 함께** 본다.
+ *
+ *  5분인 이유: 시각 미상 대기의 기본 간격이 10분(`PROBE_MS`)이다. 문전박대는 초 단위로
+ *  돌아오고 창을 태운 턴은 분·시간 단위다 — 그 사이에서 가장 관대한 쪽으로 잡았다.
+ *  너무 크게 잡았을 때의 착지는 안전하다(`ready` + 「이어가기」 버튼, 누르면 계수·예산이
+ *  함께 0). 너무 작게 잡으면 그것이 곧 12시간 71발이다. */
+export const MIN_WORK_MS = 5 * 60_000
+
 /** 조회 실패 뒤 첫 재확인 간격. 배로 늘어 `PROBE_MS`에서 멎는다(네트워크 순간 단절이
  *  5시간 대기를 10분 더 늘리지 않게 짧게 시작한다). */
 export const RECHECK_MS = 15_000
@@ -221,7 +264,14 @@ export function resumeVerdict(hold: LimitHold, still: number | null, unavailable
   // 조회가 "풀렸다"고 말해도 접는 이유: 그 말은 이미 두 번 틀렸다(두 번의 재발사가 같은
   // 한도로 죽었다). 세 번째를 자동으로 태우는 대신 버튼 하나를 준다 — 사용자가 누른
   // 이어가기는 계수를 0으로 되돌리므로(`useLimitResume`) 막다른 방이 되지 않는다.
-  if ((hold.attempts ?? 0) >= MAX_AUTO_ATTEMPTS) return { kind: 'ready', paused: true }
+  //
+  // ★R28e WFIRE — **두 번째 문: 에피소드 총 발사 예산.** 위 한 줄은 「연속」을 세므로
+  // 구분자 ①·②가 0으로 되돌리는 순간 사라진다. 시각 미상 축에서 12시간 71발이 나오던
+  // 이유가 정확히 그것이다(§5.1). 이 줄이 보는 총계는 아무 구분자도 못 지운다 —
+  // 되돌아가는 자리는 사람 손과 「한도가 아닌 착지」뿐이다(`useLimitResume`).
+  // 엔진도 같은 자리에서 같은 둘을 본다(`runtime.rs::check_hold`의 `over || budget_out`).
+  if ((hold.attempts ?? 0) >= MAX_AUTO_ATTEMPTS || (hold.fires ?? 0) >= MAX_EPISODE_FIRES)
+    return { kind: 'ready', paused: true }
   return { kind: 'ready' }
 }
 
@@ -351,11 +401,21 @@ const THINKING_ID = 'thinking'
  *  ★R28d WCAP R2에서 엔진이 정확히 그 틈으로 갈라졌다(`thinking_delta` 한 장에
  *  「일했다」 → 12시간 71발). 이름으로 한 번 더 막아, 두 축이 **글자 그대로 같은 규칙**
  *  하나를 들게 한다: 비어 있지 않은 어시스턴트 텍스트 · 비어 있지 않은 도구 그룹.
- *  (다만 그 한 줄은 지금 스토어 모양에서는 무동작이다 — 위 `THINKING_ID` 주석.) */
-export function turnDidWork(items: readonly TurnItem[] | null | undefined): boolean {
+ *  (다만 그 한 줄은 지금 스토어 모양에서는 무동작이다 — 위 `THINKING_ID` 주석.)
+ *
+ *  ★R28e WFIRE — **경계가 하나 더 생겼다: `mark`**(WCAP 확인 크리틱 R2 §5.3).
+ *  R4까지 「이 턴의 시작」은 *마지막 사용자 말풍선* 하나로만 정의됐는데, 엔진이 여는 턴에는
+ *  **말풍선이 아예 없는 판**이 있다(상주 정리턴 재개 · 통지 기상 턴 — `user-echo`가 안 나간다).
+ *  그러면 이 루프가 앞 턴까지 뒤로 새고, 앞 턴이 도구를 열어 뒀거나 글자를 남겼으면 답이
+ *  뒤집힌다(크리틱 실측: 엔진 = 헛발질·접힘 / 렌더러 = `true` — 이번엔 렌더러가 과다 재개).
+ *  `mark`는 스토어가 턴을 열 때 적어 두는 **그 순간의 스레드 꼬리 id**(`SessionState.turnMark`)다.
+ *  말풍선이 있는 판에서는 그 말풍선이 먼저 걸리므로 답이 안 바뀐다 — 순수하게 좁히기만 한다.
+ *  (`capThread`가 그 항목을 걷어냈으면 못 찾고 지나간다 = R4와 같은 답. 안전한 쪽 폴백이다.) */
+export function turnDidWork(items: readonly TurnItem[] | null | undefined, mark?: string | null): boolean {
   const list = items ?? []
   for (let i = list.length - 1; i >= 0; i--) {
     const m = list[i]
+    if (mark && m.id === mark) return false
     if (m.id === THINKING_ID) continue
     if (m.kind === 'msg' && m.role === 'user') return false
     if (m.kind === 'toolgroup' && (m.tools?.length ?? 0) > 0) return true
@@ -364,24 +424,49 @@ export function turnDidWork(items: readonly TurnItem[] | null | undefined): bool
   return false
 }
 
+/** ★R28e WFIRE — 방금 착지한 턴에 대해 구분자 ②가 보는 **증거 한 벌**.
+ *
+ *  R4까지는 스레드 배열 하나였는데, 그 축이 두 자리에서 부족했다:
+ *   * `mark` — 「이 턴의 시작」이 사용자 말풍선에만 매달려 있었다(§5.3 · `turnDidWork` 주석).
+ *   * `ms` — 「무엇을 냈나」만 보고 **얼마나 살았나**를 안 봤다(§5.1 · 12시간 71발). */
+export interface TurnEvidence {
+  /** 그 대화의 스레드(스토어 `SessionState.messages`). */
+  items: readonly TurnItem[] | null | undefined
+  /** 턴을 연 순간의 스레드 꼬리 id(`SessionState.turnMark`) — 없으면 말풍선 경계만 쓴다. */
+  mark?: string | null
+  /** 그 턴이 산 시간(ms · `Date.now() - SessionState.turnAt`). `null` = 모른다. */
+  ms?: number | null
+}
+
+/** ★R28e WFIRE — **그 턴이 「일했다」로 인정받을 만큼 살았는가.**
+ *  모르면 인정하지 않는다 — 상한이 「모른다」로 지워지면 그건 상한이 아니다.
+ *  엔진 짝: `runtime.rs::arm_hold`의 `now - auto_resume_fired_at >= MIN_WORK`. */
+export function turnLivedLongEnough(ms: number | null | undefined): boolean {
+  return typeof ms === 'number' && ms >= MIN_WORK_MS
+}
+
 /** 새로 서는 대기표가 물려받을 **재발사 계수.** 엔진 `arm_hold`의 같은 네 줄이다.
  *
  *  `streak`는 표 바깥에 있는 연속 계수(훅의 `firesRef` · 엔진의 `auto_resume_streak`),
  *  `firedResetsAt`은 **직전에 쏜 표**의 리셋 시각(훅의 `fireResetsRef` · 엔진의
  *  `auto_resume_at`)이다. 위 절의 우선순위대로 "그 재개가 벽을 넘었나"를 가르고,
- *  넘었으면 0으로 되돌린다(= 헛발질 연쇄가 아니었다). */
+ *  넘었으면 0으로 되돌린다(= 헛발질 연쇄가 아니었다).
+ *
+ *  ★R28e WFIRE — ②의 문장이 「산출을 냈다」에서 **「산출을 내며 충분히 살았다」**로 바뀐다.
+ *  엔진도 같은 자리에서 같은 두 조건을 `&&`로 본다. 이 줄만으로 못 막는 판(산출을 흘리며
+ *  천천히 죽는 턴)은 `resumeVerdict`의 에피소드 예산이 받는다 — 두 장치가 서로의 사각을 덮는다. */
 export function carriedAttempts(
   streak: number,
   firedResetsAt: number | null,
   nextResetsAt: number | null,
-  items: readonly TurnItem[] | null | undefined,
+  turn: TurnEvidence,
   nowSec: number
 ): number {
   if (!(streak > 0)) return 0
   const cleared =
     firedResetsAt != null && nextResetsAt != null
       ? windowRolled(firedResetsAt, nextResetsAt, nowSec)
-      : turnDidWork(items)
+      : turnDidWork(turn.items, turn.mark) && turnLivedLongEnough(turn.ms)
   return cleared ? 0 : streak
 }
 
@@ -416,6 +501,10 @@ export function sanitizeHold(v: unknown, nowMs: number): LimitHold | null {
     // ★R28c RCAP — **재발사 계수도 같은 이유로 살린다.** 이쪽은 한 칸이 CLI 턴 1회라
     // 더 비싸다: 재시작으로 0이 되면 "껐다 켤 때마다 두 번 더 쏘는" 자리가 된다.
     // `autoPaused`는 복원하지 않는다 — `ready`와 같이 재검증이 이 값으로 다시 판정한다.
-    ...(typeof h.attempts === 'number' && h.attempts >= 1 ? { attempts: Math.min(Math.floor(h.attempts), 99) } : {})
+    ...(typeof h.attempts === 'number' && h.attempts >= 1 ? { attempts: Math.min(Math.floor(h.attempts), 99) } : {}),
+    // ★R28e WFIRE — **에피소드 예산도 같은 이유로 살린다.** 이 값이 재시작으로 0이 되면
+    // 「껐다 켤 때마다 12발이 공짜」가 되어 예산이 예산이 아니게 된다. (엔진 축은 아직
+    // `ReloadHold`에 이 칸이 없다 — docs/parity-fix-wfire-r1.md §미완에 적어 둔 격차다.)
+    ...(typeof h.fires === 'number' && h.fires >= 1 ? { fires: Math.min(Math.floor(h.fires), 99) } : {})
   }
 }
