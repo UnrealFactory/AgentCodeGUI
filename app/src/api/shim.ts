@@ -168,6 +168,24 @@ async function callList<T>(channel: string, args: unknown[]): Promise<T[]> {
   throw new ShimUnavailableError(channel, '목록이 아닌 응답', typeof detail === 'string' ? detail : undefined)
 }
 
+/**
+ * ★R28f SHIPBLOCK R2 — **`null`이 두 가지 뜻인 채널**을 위한 문.
+ *
+ * `lsp:pick-verse-server`는 「사용자가 파일 대화상자를 취소했다」를 `null`로 답한다. 그런데
+ * `call`의 안전값도 `null`이라, 채널이 미구현이면 그 사실이 **사용자의 취소로 번역**되어
+ * 호출부에 도착한다 — 그래서 「Verse 서버 고르기」를 눌러도 아무 일도 안 일어나고 아무
+ * 말도 없었다(확인 크리틱 「요구 3의 뒷절반」 · N1과 같은 모양).
+ *
+ * 그래서 문자열(고름) / `null`(취소) **둘만** 통과시키고, 그 밖의 응답은 사유를 실어
+ * reject한다. 셸은 이제 「없다」를 `{ error: "…" }`로 말한다(`ipc/lsp.rs`).
+ */
+async function callPathOrNull(channel: string, args: unknown[] = []): Promise<string | null> {
+  const r = await callStrict<unknown>(channel, args)
+  if (typeof r === 'string' || r == null) return (r as string | null) ?? null
+  const detail = (r as { error?: unknown }).error
+  throw new ShimUnavailableError(channel, '경로가 아닌 응답', typeof detail === 'string' ? detail : undefined)
+}
+
 /** 반환값이 없는(void) 채널 — 미구현이어도 조용한 no-op. */
 function callVoid(channel: string, args: unknown[] = []): Promise<void> {
   return call<void>(channel, args, undefined as void)
@@ -433,7 +451,8 @@ const api: WindowApi = {
     servers: () => call(IPC.lspServers, [], []),
     installServer: (id: string) => call(IPC.lspInstallServer, [id], failed()),
     uninstallServer: (id: string) => call(IPC.lspUninstallServer, [id], failed()),
-    pickVerseServer: () => call<string | null>(IPC.lspPickVerseServer, [], null),
+    // ★R28f SHIPBLOCK R2 — 안전값 `null`은 「사용자가 취소했다」와 구분이 안 된다.
+    pickVerseServer: () => callPathOrNull(IPC.lspPickVerseServer),
     setVersePath: (p: string) => call(IPC.lspSetVersePath, [p], failed()),
     clearVersePath: () => call(IPC.lspClearVersePath, [], failed())
   },

@@ -146,6 +146,18 @@ const LSP_INSTALL: &str = "lsp:install";
 const LSP_INSTALL_SERVER: &str = "lsp:install-server";
 const LSP_UNINSTALL_SERVER: &str = "lsp:uninstall-server";
 const LSP_INSTALL_PROGRESS: &str = "lsp:install-progress";
+// ★R28f SHIPBLOCK R2 — Verse **지정** 셋도 같은 이유로 여기 리터럴이다(공유
+// `ipc/mod.rs`를 이번 라운드에 안 건드린다). 원본은 `src/shared/protocol.ts`의
+// `IPC.lspPickVerseServer`·`lspSetVersePath`·`lspClearVersePath`.
+const LSP_PICK_VERSE_SERVER: &str = "lsp:pick-verse-server";
+const LSP_SET_VERSE_PATH: &str = "lsp:set-verse-path";
+const LSP_CLEAR_VERSE_PATH: &str = "lsp:clear-verse-path";
+
+/// Verse 서버 **지정**(고르기·경로 설정)이 3.0에 없다는 것을 사람이 읽는 문장으로.
+/// 조회 셋(`verse-registry`·`digests`·`excludes`)은 「없는 게 정상」이라 그냥 빈 값이지만
+/// (아래 dispatch), **사용자가 누른 버튼**은 아무 말 없이 끝나면 안 된다 —
+/// ★R28f SHIPBLOCK R2 · 확인 크리틱 「요구 3의 뒷절반」.
+const VERSE_OUT_OF_SCOPE: &str = "Verse 서버 지정은 3.0에서 아직 제공하지 않아요";
 
 /// 내려받는 동안 진행률을 흘린다(계약면 `LspInstallProgress`) — §R3-9 ②.
 ///
@@ -195,6 +207,10 @@ pub fn owns(channel: &str) -> bool {
             | ch::LSP_VERSE_REGISTRY
             | ch::LSP_VERSE_DIGESTS
             | ch::LSP_VERSE_EXCLUDES
+            // ★R28f SHIPBLOCK R2 — 「범위 밖」도 **여기서** 답한다(아래 VERSE_OUT_OF_SCOPE).
+            | LSP_PICK_VERSE_SERVER
+            | LSP_SET_VERSE_PATH
+            | LSP_CLEAR_VERSE_PATH
     )
 }
 
@@ -289,10 +305,61 @@ pub fn dispatch(channel: &str, p: &Value) -> Option<Value> {
         ch::LSP_VERSE_REGISTRY => Value::Null,
         ch::LSP_VERSE_DIGESTS | ch::LSP_VERSE_EXCLUDES => json!([]),
 
-        // Verse 서버 지정 채널(`lsp:pick-verse-server`·`lsp:set-verse-path`·
-        // `lsp:clear-verse-path`)은 **일부러 여기서 안 받는다** — 디스패처가
-        // `{__unimplemented:true}`로 떨어뜨리면 심이 채널당 1회 경고를 남긴다.
-        // Verse는 3.0 범위 밖이라(사용자 결정) "아직 없다"가 조용히 사라지지 않게 둔다.
+        // ★R28f SHIPBLOCK R2 — Verse 서버 지정 셋을 **여기서 받는다**(R1까지는 일부러
+        // 안 받아 디스패처가 `{__unimplemented:true}`로 떨어뜨렸다).
+        //
+        // 왜 바꿨나: 그 안전값이 화면에서 **침묵으로 번역**됐다. `pick`의 안전값 `null`은
+        // 「사용자가 파일 대화상자를 취소했다」와 구분이 안 되므로 호출부가 그냥 `return`
+        // 한다 — 「Verse 서버 고르기」를 눌러도 아무 일도 안 일어나고 아무 말도 없다.
+        // 그게 이 라운드가 닫은 N1과 **글자 그대로 같은 모양**이고, 확인 크리틱이
+        // 「요구 3의 뒷절반」으로 남긴 자리다. 채널당 1회 `console.warn`은 사용자가 아니다.
+        //
+        // Verse가 3.0 범위 밖이라는 결정은 그대로다(사용자 결정) — 바뀌는 것은 **그 사실을
+        // 화면이 말하는가**뿐이다. 그래서 구현이 아니라 **사유**를 돌려준다.
+        LSP_PICK_VERSE_SERVER => json!({ "error": VERSE_OUT_OF_SCOPE }),
+        LSP_SET_VERSE_PATH => json!({ "ok": false, "error": VERSE_OUT_OF_SCOPE }),
+        // 「지우기」는 지울 것이 없으면 **이미 목표 상태**다 — 실패가 아니다(위 둘과 달리
+        // 사용자가 원한 결과가 그대로 성립한다). 여기서 거짓 실패를 세우면 화면이 안 지워진
+        // 경로를 지웠다고 말하는 것보다 더 헷갈린다.
+        LSP_CLEAR_VERSE_PATH => json!({ "ok": true }),
+
         _ => return None,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// ★R28f SHIPBLOCK R2 — 「사용자가 누른 버튼」은 미구현이어도 **사유를 돌려준다**.
+    ///
+    /// 조회 셋은 빈 값이 정상이고(없는 게 정상), 지정 셋은 아니다: 심의 안전값이 `pick`의
+    /// `null`을 「사용자가 대화상자를 취소했다」로 번역해 버튼이 무반응이 됐다
+    /// (확인 크리틱 「요구 3의 뒷절반」). 이 테스트가 지키는 것은 **두 무리의 경계**다.
+    #[test]
+    fn the_verse_buttons_answer_with_a_reason_while_the_lookups_stay_quiet() {
+        for c in [LSP_PICK_VERSE_SERVER, LSP_SET_VERSE_PATH, LSP_CLEAR_VERSE_PATH] {
+            assert!(owns(c), "{c} — 디스패처까지 흘러가면 다시 __unimplemented다");
+        }
+        let pick = dispatch_pure(LSP_PICK_VERSE_SERVER).expect("답이 있다");
+        assert_eq!(pick["error"], json!(VERSE_OUT_OF_SCOPE));
+        assert!(!pick.is_string() && !pick.is_null(), "★문자열/null이면 심이 「취소」로 읽는다");
+
+        let set = dispatch_pure(LSP_SET_VERSE_PATH).expect("답이 있다");
+        assert_eq!(set["ok"], json!(false));
+        assert_eq!(set["error"], json!(VERSE_OUT_OF_SCOPE));
+
+        // 지울 것이 없으면 이미 목표 상태다 — 거짓 실패를 세우지 않는다.
+        assert_eq!(dispatch_pure(LSP_CLEAR_VERSE_PATH).expect("답이 있다")["ok"], json!(true));
+
+        // 조회 셋은 그대로 조용하다(사유 문구가 목록 자리에 앉으면 안 된다).
+        assert_eq!(dispatch_pure(ch::LSP_VERSE_REGISTRY), Some(Value::Null));
+        assert_eq!(dispatch_pure(ch::LSP_VERSE_DIGESTS), Some(json!([])));
+        assert_eq!(dispatch_pure(ch::LSP_VERSE_EXCLUDES), Some(json!([])));
+    }
+
+    /// 인자·언어 서버를 하나도 안 건드리는 채널만 이 문으로 부른다(위 테스트 전용).
+    fn dispatch_pure(channel: &str) -> Option<Value> {
+        dispatch(channel, &json!([]))
+    }
 }

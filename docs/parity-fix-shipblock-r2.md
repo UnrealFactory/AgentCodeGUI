@@ -181,11 +181,60 @@ IPC는 안 선다. 아래 4.2가 실패해도 되는 구조로 둔 것이 요점
    탈출구는 「취소」이고, 이제 그것이 **518ms에** 듣는다.
 3. **`busy`는 여전히 두 축을 같이 묶는다**(로그인 중에는 Anthropic 축 버튼도 disabled).
    2.6.2와 같은 모양이라 이 라운드에서 안 건드렸다.
-4. **요구 3의 뒷절반은 안 닫혔다** — strict 가드(`callStrict`/`callList`)는 계정 쓰기 8채널
-   전용이고, 미구현 13채널은 여전히 침묵으로 번역된다. 내 손으로 다시 센 목록(HEAD 기준,
-   243채널 중 13):
-   `talk:{run,cancel,permission-respond,question-respond,bg-task,event}`(**M10 소유**) ·
-   `lsp:{pick-verse-server,set-verse-path,clear-verse-path}` ·
-   `app:{update-check,update-install,update-event,open-directory}`.
-   크리틱이 든 예(`lsp:pick-verse-server`가 `resolve(null)`로 「Verse 서버 고르기」를
-   무반응으로 만든다)는 사실이다. 이 라운드는 ★최대 격차 하나에 집중했다.
+4. **요구 3의 뒷절반은 절반만 닫았다** — §9.
+
+---
+
+## 9. 요구 3의 뒷절반 — 절반은 닫고, 절반은 실측으로 반박한다
+
+크리틱: *"strict 가드는 계정 쓰기 8채널 전용이고 미구현 13채널은 여전히 침묵으로 번역된다
+(`lsp:pick-verse-server`가 `resolve(null)`로 「Verse 서버 고르기」를 무반응으로 만든다
+= N1과 같은 모양)."*
+
+**미구현 13은 내 손으로 다시 세도 13이다**(HEAD 기준 243채널 중):
+`talk:{run,cancel,permission-respond,question-respond,bg-task,event}`(**M10 소유** — 내 칸이 아니다) ·
+`lsp:{pick-verse-server,set-verse-path,clear-verse-path}` ·
+`app:{update-check,update-install,update-event,open-directory}`.
+
+### 9.1 닫은 것 — 채널의 침묵
+
+`pick`의 `null`에는 뜻이 **둘** 있었다: 「사용자가 파일 대화상자를 취소했다」(조용한 게
+맞다)와 「셸에 그 채널이 없다」(말해야 한다). 심의 안전값이 후자를 전자로 **번역**해
+호출부의 `if (!p) return`이 흔적 없이 삼켰다 — 크리틱이 「N1과 같은 모양」이라 한 것이 맞다.
+
+셸이 이제 사유를 돌려주고(`ipc/lsp.rs`의 `VERSE_OUT_OF_SCOPE`), 심의 `callPathOrNull`이
+문자열/`null` 둘만 통과시킨다. Verse가 3.0 범위 밖이라는 **결정은 안 바꿨다** — 구현이
+아니라 사유를 돌려준다.
+
+| | 대조군(`59b743ec…`) | R2b(`1645cae2…`) |
+|---|---|---|
+| `window.api.lsp.pickVerseServer()` | `resolve(null)` | `reject` · `detail="Verse 서버 지정은 3.0에서 아직 제공하지 않아요"` |
+
+### 9.2 반박 — 그 **버튼은 3.0 화면에 없다**
+
+크리틱의 문장은 채널 사실(`resolve(null)`)과 화면 증상(「Verse 서버 고르기」가 무반응)을
+붙여 놨는데, **뒤쪽은 3.0에서 재현되지 않는다.** 두 exe에서 설정 ▸ Code를 열어 셌다:
+
+```
+[ctl-verse2/clickPick] "no-btn|verseRows=0|btns=[\"설치\",\"설치\"]"
+[fix-verse2/clickPick] "no-btn|verseRows=0|btns=[\"설치\",\"설치\"]"
+```
+
+Verse 행이 **0개**다. `Provision::External`은 타입에 있지만 `crates/ccg-lsp/src/spec.rs`의
+어떤 서버 스펙도 그 값을 안 쓰고(`Bundled` 둘 · `Download` 둘), `s.kind === 'external'`
+가지가 안 그려지므로 「설정」 버튼 자체가 없다. 즉 **사용자가 그 침묵에 닿을 경로가 지금은
+없다.** 채널은 정말로 조용했고(9.1에서 실측·수정), 화면은 크리틱이 적은 그 모양이 아니었다.
+
+그래서 이 수정의 값어치는 「오늘 눈에 보이는 병을 고쳤다」가 아니라
+**「Verse 행이 3.0에 들어오는 날 이 침묵이 되살아나지 않게 하는 자물쇠」**다
+(테스트 `the_verse_buttons_answer_with_a_reason_while_the_lookups_stay_quiet`가 조회 셋과
+버튼 셋의 경계를 잡고 있다). 그 값어치대로만 적는다.
+
+### 9.3 남은 것
+
+`app:{update-check,update-install,open-directory}` 넷과 `talk:*` 여섯은 안 건드렸다.
+앞의 넷은 업데이터 서브시스템이 통째로 없는 자리라 「사유를 돌려준다」로 덮을 일이 아니고
+(`AppUpdateGate`가 부르는 `installUpdate`는 게이트가 뜰 때만 닿는다), 뒤의 여섯은 **M10 소유**다.
+
+무회귀 재측정: `cargo test --workspace` **780 passed / 0 failed**(`agentcodegui` 158 —
+9.1의 테스트 하나가 더 붙었다) · typecheck 3종 exit 0 · 설정 ▸ Code 목록은 두 exe가 동일.

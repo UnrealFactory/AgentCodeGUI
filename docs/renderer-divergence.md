@@ -760,3 +760,28 @@ refresh 토큰이 서버에서 죽는다(사용자는 앱을 켜기만 했다). 
 | 깊이 2 「브라우저」 — 취소 후 | 생존(CLI도 같이 생존) | **생존**(CLI만 죽는다) |
 
 마지막 줄이 처방 2의 근거다: 래퍼와 CLI는 죽고, **CLI가 연 것은 산다.**
+
+### 6.10 Verse 「지정」 셋은 **사유를 돌려준다**(조회 셋은 그대로 조용하다) — R28f SHIPBLOCK R2
+
+Verse가 3.0 범위 밖이라는 결정은 그대로다(사용자 결정 — §6.5와 같은 성격의 의도적 분기).
+바뀌는 것은 **그 사실을 화면이 말하는가**뿐이다.
+
+| 채널 | R1까지 | R2 |
+|---|---|---|
+| `lsp:verse-registry` / `-digests` / `-excludes`(조회) | `null` / `[]` (셸이 명시적으로) | **그대로** — 없는 게 정상이다 |
+| `lsp:pick-verse-server`(버튼) | 셸이 안 받음 → 심 안전값 `null` | `{ error: "Verse 서버 지정은 3.0에서 아직 제공하지 않아요" }` |
+| `lsp:set-verse-path`(버튼) | 〃 → `{ok:false,error:"unimplemented"}` | `{ ok:false, error: 위 문장 }` |
+| `lsp:clear-verse-path`(버튼) | 〃 | `{ ok:true }` — 지울 게 없으면 **이미 목표 상태**다 |
+
+**왜 `pick`만 유독 위험했나.** 그 채널의 `null`에는 뜻이 **둘** 있다 — 「사용자가 파일
+대화상자를 취소했다」(조용한 게 맞다)와 「셸에 그 채널이 없다」(말해야 한다). 심의 안전값이
+후자를 전자로 **번역**해서 호출부의 `if (!p) return`이 아무 흔적 없이 삼켰다. §3.5.2가
+계정 쓰기에 세운 것과 같은 처방을 여기에 놓는다: 심의 `callPathOrNull`이 문자열/`null`
+**둘만** 통과시키고, 그 밖은 사유(`detail`)를 실어 reject한다.
+
+**★그런데 그 버튼은 3.0 화면에 없다**(실측 — 이 절이 고친 것의 범위를 정직하게 적는다).
+설정 ▸ Code의 서버 목록에 Verse 행이 **0개**다: `Provision::External`은 타입에 있지만
+`crates/ccg-lsp/src/spec.rs`의 어떤 서버 스펙도 그 값을 안 쓴다. 두 exe에서 Code 탭을 열어
+센 결과가 같다 — `verseRows=0`, 버튼은 `["설치","설치"]`(C#·C++) 둘뿐.
+즉 지금 고친 것은 **채널의 정직함**이고, Verse 행이 3.0에 들어오는 날 이 침묵이 되살아나지
+않게 하는 자물쇠다(테스트 `the_verse_buttons_answer_with_a_reason_while_the_lookups_stay_quiet`).

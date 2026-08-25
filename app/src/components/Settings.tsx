@@ -2250,9 +2250,31 @@ function LspView() {
       .finally(refresh)
   }
   // Verse(external): the user picks their Verse.vsix / verse-lsp.exe; we extract+prepare it.
+  //
+  // ★R28f SHIPBLOCK R2 — 이 버튼이 **말없이 끝나던** 자리다(확인 크리틱 「요구 3의 뒷절반」).
+  // `pickVerseServer()`의 `null`에는 뜻이 둘 있었다: 「사용자가 대화상자를 취소했다」(조용한
+  // 게 맞다)와 「셸에 그 채널이 없다」(말해야 한다). 심의 안전값이 후자를 전자로 번역했고,
+  // 그래서 `if (!p) return`이 아무 흔적 없이 삼켰다 — 이 라운드가 닫은 N1과 같은 모양이다.
+  // 이제 심이 「없다」를 reject로 올리고(`callPathOrNull`), 그 사유가 카드로 선다.
   const doVersePick = async (): Promise<void> => {
-    const p = await window.api.lsp.pickVerseServer()
-    if (!p) return
+    let p: string | null
+    try {
+      p = await window.api.lsp.pickVerseServer()
+    } catch (e) {
+      setCard({
+        id: 'verse',
+        op: '준비',
+        label: 'Verse',
+        log: [],
+        status: 'error',
+        percent: null,
+        error:
+          (e as { detail?: string } | null)?.detail ??
+          t('요청이 실패했어요 — 잠시 뒤 다시 시도해 주세요.', 'The request failed — please try again shortly.')
+      })
+      return
+    }
+    if (!p) return // 사용자가 대화상자를 취소했다 — 이건 정상이고, 조용한 게 맞다
     setCard({
       id: 'verse',
       op: '준비',
