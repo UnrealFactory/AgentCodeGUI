@@ -1,201 +1,244 @@
-# R28d 「WCAP」 확인 크리틱 R1 — 밤샘 주행은 진짜로 안 잘린다. 다만 `ping` 한 프레임이 상한을 통째로 지운다
+# R28d 「WCAP」 확인 크리틱 R1 — 밤샘 주행은 진짜로 살아났다. 그리고 같은 손이 상한을 지우는 문을 새로 열었다
 
-판정 대상: `06067db` (R28d WCAP R1). 크리틱은 코드를 고치지 않았다 — 전부 직접 빌드·주행·실측했다.
-빌더 보고서(`docs/parity-fix-wcap-r1.md`)와 커밋 메시지는 **근거로 쓰지 않았다.**
+판정 대상: `06067db` (R28d WCAP R1). 크리틱은 **코드를 한 줄도 고치지 않았다** — 전부 직접 펼치고
+빌드하고 주행해서 쟀다. 빌더 보고서(`docs/parity-fix-wcap-r1.md`)와 커밋 메시지는 **근거로 쓰지 않았다**
+(재현 대상으로만 썼다).
 
-**판정: 불합격(pass=false).** 겨눈 격차(밤샘 연속 주행이 창 두 개에서 잘림)는 **진짜로 닫혔다.**
-빌더가 적은 수치도 내 손으로 재현했다. 그러나 체크리스트 2번 —— 「엔진·렌더러가 같은 구분자인가」 ——
-이 **실측으로 깨졌다.** 같은 서버 행동에 엔진은 12시간에 **71발**, 렌더러는 **2발**을 낸다.
+**판정: 불합격(pass=false).**
+
+겨눈 격차 — 「5시간을 꽉 채워 일하고 다음 창에서 막힌 재개까지 헛발질로 세서 밤샘 주행이 창 두 개에서
+잘린다」 — 는 **진짜로 닫혔다**(내 손으로 잰 밤샘 3창 주행: 16시간 3발·`attempts` 0·안 접힘). 빌더가 적은
+수치도 하나 빼지 않고 재현됐다. **그러나 같은 라운드가 상한을 통째로 지우는 문을 새로 열었다.**
+「그 턴이 일을 했다」의 엔진 쪽 증거가 `saw_turn_activity`인데, 그 깃발은 **내용이 0인 프로토콜 프레임
+한 장**(`ping` · `content_block_stop` · codex의 `thinking_delta`)에 켜진다. 꼬리 없는 한도 문구 축에서
+그 한 장이 섞이면 12시간에 **71발**이 나간다 — **R28c 대조군은 똑같은 대본에 2발**이다. 즉 이것은
+「남아 있던 구멍」이 아니라 **R1이 만든 회귀**다.
 
 ---
 
-## 0. 실측 환경
+## 0. 실측 환경 — 왜 레포에서 재지 않았나
+
+레포 워킹트리 HEAD는 `459993b`이고 그 위에는 **이 갈래의 R2·R3가 이미 얹혀 있다.** 레포에서 재면 R1을
+재는 것이 아니다. 그래서 `06067db`를 `git archive`로 통째로 펼쳐 그 사본에서만 쟀다(레포 무수정 —
+옆 갈래 셋이 같은 트리에서 돌고 있다).
 
 | 항목 | 값 |
 |---|---|
-| 격리 CARGO_TARGET_DIR | `%TEMP%/ccg-target-critwcap` (테스트) · `C:/Code/AgentCodeGUI/target-critwcap` (릴리즈) |
-| 릴리즈 빌드 | `cargo build --release --features custom-protocol -p agentcodegui` → 06:29 재빌드(2m12s) · `-p ccg-engine --features fakecli --bins` |
-| 하네스 exe | `target-critwcap/release/{agentcodegui,ccg-fakecli,ccg-fakecodex}.exe` |
-| 엔진 A/B 사본 | `%TEMP%/wcapws` (레포 `Cargo.toml`+`Cargo.lock`+`crates/` 복사 · `src-tauri` 멤버만 제거) |
-| 이름 기반 kill | 0건 (하네스 자체 `killTree`만) |
-| 실 HTTP | 0건 (`CCG_NO_NET=1` · 합성 자격증명) |
-| 기준 결과 파일 덮어씀 | 0개 (`git status`에 `docs/critic`·`bench/**` 수정 0 · 새 리포트는 `--out=…critwcap-r1.json`) |
-| 레포 코드 수정 | 0줄 (A/B·탐침은 전부 `%TEMP%` 사본) |
+| 판정본 | `git archive 06067db` → `%TEMP%\wcapcrit1\repo` (레포 파일 수정 0줄) |
+| 대조군(R28c 규칙) | `%TEMP%\wcapcrit1\ctrl` — 같은 펼침본에서 `arm_hold` **두 줄만** `let attempts = self.auto_resume_streak;`로 되돌림 |
+| 격리 CARGO_TARGET_DIR | `%TEMP%\ccg-tgt-critwcap1` (판정본) · `…critwcap1c` (대조군) |
+| node_modules | 레포 것을 정션(`mklink /J`) — `npm ci` 0회, `npm install` 0회 |
+| CDP 포트 | 9425(engine 하네스) · 9437(codex 하네스) — 주행 전 `netstat`로 비어 있음 확인 |
+| CCG_HOME | 하네스가 펼침본 안에 팜(`.poc-home-engine-t3t4` · `.poc-home-codex-crit`) — 사용자 실앱 홈 무접촉 |
+| 이름 기반 kill | **0건** (하네스 자체 `killTree`만) |
+| 실 HTTP | **0건** (`CCG_NO_NET=1` + 합성 자격증명) |
+| 기준 결과 파일 덮어씀 | **0개** (`--out=%TEMP%\wcapcrit1\*.json`) |
+| 레포 워킹트리 변경 | **0줄** (이 판정문 1개 제외) |
 
 ---
 
-## 1. 빌더 수치 재현 — 전부 맞다
+## 1. 빌더 수치 재현 — **전부 맞다.** 한 줄도 부풀리지 않았다
 
-### 1.1 A/B가 진짜로 판별력이 있는가 (직접 되돌려 확인)
+| 빌더 주장 | 내 실측 | 판정 |
+|---|---|---|
+| `node scripts/poc-limit-resume.mjs` 234 통과·0 실패 (197 → +37) | **234 통과 · 0 실패** · 5회 반복 전부 동일 | ✅ |
+| `cargo test -p ccg-engine` 212 통과 · 2 무시 · 0 실패 | **212 / 2 / 0** | ✅ |
+| 신설 테스트 20회 반복 20/20 | 신설 4종 + 내 탐침 8종을 **20회** — 이상 **0건** | ✅ |
+| `npm run typecheck` + `typecheck:app` 3종 초록 | node·web·app 전부 exit 0 | ✅ |
+| `cargo check -p agentcodegui --features custom-protocol` 초록 | 더 세게 — **`cargo build --features custom-protocol`로 exe까지 구움**(1m23s) | ✅ |
+| 기준 결과 파일 0개 덮음 | `git show --name-only 06067db` → `docs/critic/*.json`·`bench/**` 매치 **0** | ✅ |
+| 상한(2)·「이어가기」·`sanitizeHold`·`resumeVerdict` 무수정 | diff 확인 — `arm_hold`/`consume_hold` 추가분과 신설 필드뿐 | ✅ |
+| 경계 정정(`src-tauri/src/engine/runtime.rs`는 없는 파일) | `ls` 확인 — 없다. `lite.rs`는 `auto_resume_streak`/`attempts` 미참조 | ✅ |
 
-레포를 한 글자도 안 고치고 `%TEMP%/wcapws` 사본에서 `arm_hold`의 규칙 세 줄만 R28c
-(`let attempts = self.auto_resume_streak;`)로 되돌린 뒤 **빌더의 신설 테스트를 그대로** 먹였다.
+### 1.1 A/B가 진짜로 판별력이 있는가 — 직접 되돌려 확인
 
-| 판 | R28c 대조군 | HEAD |
+레포를 한 글자도 안 고치고 `%TEMP%\wcapcrit1\ctrl` 사본에서 `arm_hold`의 규칙 **두 줄만** R28c로
+되돌린 뒤, **빌더의 신설 테스트를 그대로** 먹였다.
+
+| 판 | R28c 대조군 | R1(HEAD) |
 |---|---|---|
 | ① 창이 진짜로 넘어간다(꼬리 +1h/턴 · 11h) | **2회 · attempts 2 · 접힘** ✗FAIL | **7회 · attempts 0 · 안 접힘** ✓ |
 | ② 꼬리 없는 문구 + 그 턴이 일했다(65분) | **2회 · attempts 2 · 접힘** ✗FAIL | **6회 · attempts 0 · 안 접힘** ✓ |
-| ③ 꼬리 없는 문구 + 빈손(5h) | 2회 · 접힘 ✓ | 2회 · 접힘 ✓ (불변) |
-| ④ 토큰 한 줄 + 같은 벽(6h) | 2회 · 접힘 ✓ | 2회 · 접힘 ✓ (불변) |
+| ③ 꼬리 없는 문구 + 빈손(5h) | 2회 · 접힘 ✓ | 2회 · 접힘 ✓(불변) |
+| ④ 토큰 한 줄 + 같은 벽(6h) | 2회 · 접힘 ✓ | 2회 · 접힘 ✓(불변) |
 
-빌더의 표와 **한 칸도 다르지 않다.** ①②는 대조군에서 붉고 HEAD에서 초록, ③④는 양쪽 초록 —
-새 못은 바꾼 것만 잡고 지켜야 할 것은 통과시킨다. 판별력 있음.
+빌더가 적은 그대로다. 못은 **바꾼 것만** 잡고 **지켜야 할 것은** 통과시킨다.
 
-### 1.2 그 밖의 초록
+### 1.2 하네스 무회귀 — 빌더가 안 돌린 둘을 내가 돌렸다
 
-| 검사 | 결과 |
-|---|---|
-| `cargo test -p ccg-engine` | **212 통과 · 0 실패 · 2 무시** (14개 바이너리 합) — 빌더 주장과 일치 |
-| 신설 `wcap_limit_streak` 20회 반복 | **20/20 초록** (플레이키 0) |
-| `cargo test -p ccg-store` | 89 / 0 |
-| `cargo test -p ccg-auth` | 104 / 0 |
-| `cargo test -p ccg-fs` | 101 / 0 / 2 무시 |
-| `cargo test -p ccg-lsp` | 59 / 0 |
-| `cargo test -p agentcodegui` | 146 / 0 |
-| `node scripts/poc-limit-resume.mjs` ×5 | **234 통과 · 0 실패**, 5회 전부 동일 (RCAP 기준 197 → +37, 무후퇴) |
-| `node scripts/poc-limit-engine.mjs` (WCAP exe) | **11 통과 · 0 실패** — 전송 0 · stdin 0B · 사다리 정상 |
-| `node scripts/poc-limit-codex.mjs` (WCAP exe) | **8 통과 · 0 실패** — t=90s 정상 발사 · 큐 해제 |
-| `npm run typecheck` (node·web) + `typecheck:app` | 3종 초록 |
+빌더는 「`npm run app:build` 안 돌림」이라 적고 `poc-limit-engine`·`poc-limit-codex`를 **재실행하지
+않았다**(체크리스트 3번의 절반). 내가 R1 exe를 구워서 돌렸다.
 
-### 1.3 경계 표기 정정도 사실
+* `poc-limit-engine` (조회 불가 판에서 전송 0) — **11 통과 · 0 실패**. `spawns:0` · `stdin 0B` · `queue:0` ·
+  `asks:2`(사다리) · `unavailable:2`.
+* `poc-limit-codex` (Codex 채팅이 클로드 창에 잡히지 않는가) — **8 통과 · 0 실패**. t=90s에 `spawns:1` ·
+  `stdin 534B` · `blocked:0`.
 
-`src-tauri/src/engine/runtime.rs`는 **없는 파일**이 맞다. 대기표 상태기계는
-`crates/ccg-engine/src/runtime.rs` 하나에 산다. EXTN의 `versions.rs`와 겹치지 않는다.
+**RCAP·T3T4의 못은 이 라운드에서 안 깨졌다.**
 
 ---
 
-## 2. 체크리스트 1 — 밤샘 주행 · 헛발질 (합격)
+## 2. 실패 1 (치명) — 「일했다」가 **일한 것을 안 잰다**
 
-내 대본으로 다시 쟀다(빌더 하네스가 아니라 크리틱이 쓴 것).
+### 2.1 코드가 하는 말
 
-**엔진**(`%TEMP%/wcapws` · 가상 시계):
+`runtime.rs`의 구분자 ②는 `Turn::saw_turn_activity`다. 그 깃발을 켜는 자리는 `mark_activity()`이고,
+호출부 셋 중 하나가 이렇다(`runtime.rs` `Frame::StreamEvent` 가지):
 
-* 창이 턴마다 1시간씩 뒤로 가는 판(11시간) → **7발 · attempts 0 · 안 접힘**
-* 배너형 + 빈손(12시간) → **2발 · attempts 2 · `ready+auto_paused`** — RCAP 동작 불변
-
-**렌더러**(`app/src/lib/useLimitResume.ts`를 esbuild로 번들해 실구동 — 레포 무수정):
-
-* 창이 5시간씩 열두 번 넘어가는 밤샘 → **12발 · 계수 `[0,0,0,…,0]` · 안 접힘**
-* 같은 벽 + 출력 0 → **2발 · `ready:true, autoPaused:true, attempts:2`** — 「이어가기」가 유일 출구
-
-「창 3개 연속이면 끝까지 이어간다」는 양쪽에서 참이다. 상한 2도 살아 있다.
-
-**배너 문구**(체크리스트 4의 뒷다리): `Chat.tsx:3364`의
-「자동으로 이어서 보낸 turn이 계속 한도에 막혔어요 — 눌러서 이어가기」는 `canPressContinue`
-(= `ready && autoPaused`) 일 때만 뜨고, `autoPaused`는 이제 `attempts >= 2`에서만 선다.
-그 둘은 **구분자가 「안 넘어갔다」고 판정한 착지**뿐이다 — 문구가 사실과 맞는다.
-(문구 속 영단어 `turn`은 §4.4로 이 라운드 과녁이 아님. 동의.)
-
----
-
-## 3. ★체크리스트 2 실패 — 「같은 규칙 한 벌」이 아니다
-
-### 3.1 궤적은 맞는다(내가 짠 7단 대본)
-
-엔진과 렌더러에 **같은 대본**을 먹였다. 대본은 착지 순서대로:
-
-```
-L0 꼬리=w0(지난 벽)·빈손 / L1 꼬리=w0(같은 벽)·일했다 / L2 꼬리=w1(+5h)·빈손
-L3 꼬리 없음·일했다      / L4 꼬리 없음·빈손        / L5 꼬리=w2(+10h)·빈손
+```rust
+match (kind.as_str(), delta_kind.as_deref()) {
+    (_, Some("text_delta")) => self.fire("F2"),
+    (_, Some("thinking_delta")) => self.fire("F3"),
+    ("content_block_start", _) => self.fire("F4"),
+    _ => {}
+}
+self.mark_activity();          // ← match **밖**. 어떤 stream_event든 무조건 켠다.
 ```
 
-| | 계수 궤적 | 착지 |
-|---|---|---|
-| 엔진 (`ChatRuntime`, 가상 시계) | `[0, 1, 0, 0, 1, 2]` | L5에서 접힘 |
-| 렌더러 (`useLimitResume` 실구동) | `[0, 1, 0, 0, 1, 2]` | L5에서 `ready+autoPaused` |
+`frames.rs`는 `{"type":"stream_event","event":{"type":"ping"}}`를 그대로
+`Frame::StreamEvent{kind:"ping", delta_kind:None}`으로 만든다. 그러면 `_ => {}`로 떨어지고 —
+**깃발은 켜진다.** 빌더 주석이 적은 「한도로 문전박대당한 턴에는 result 에러 하나뿐이다」는 사실이 아니다.
 
-**한 칸도 안 어긋난다.** 우선순위(시각을 둘 다 알면 시계가 이긴다)도, L5의 함정
-(창은 넘어갔지만 **직전 표**가 시각 미상이라 ①이 침묵 → 흔적이 판정 → 못 넘은 것으로 셈)도 같다.
-여기까지는 합격이다.
+이게 실기에 닿는지도 확인했다: `driver.rs:98`이 클로드 CLI에 **`--include-partial-messages`를 항상**
+넘긴다(SSE의 `ping`·`message_start`·`content_block_stop`이 전부 프레임으로 들어온다). codex 축은
+`codex/transcode.rs:725`가 추론 델타를 `thinking_delta` stream_event로 만든다.
 
-### 3.2 그런데 ②의 **문턱**이 다르다 — 같은 서버 행동에 71 대 2
+### 2.2 실측 — 같은 판, 프레임 한 장 차이
 
-구분자 ②는 「그 턴이 일을 했나」다. 두 축의 정의:
+`crates/ccg-engine/tests/probe_wcap_critr1.rs`(탐침, %TEMP% 사본에만 둠). 빌더의 `WcapCli`와 같은 자·
+같은 가상시계이고, **「일했다」의 증거만 어시스턴트 텍스트에서 내용 0 프레임으로 바꿨다.**
 
-* 엔진 `Turn::saw_turn_activity` — `mark_activity()`가 세우고, 그 호출은
-  `Frame::StreamEvent`의 **맨 끝줄에 조건 없이** 있다(`runtime.rs:2216`).
-  `match`의 `_ => {}` 갈래로 빠진 프레임도 그 줄에 닿는다.
-* 렌더러 `turnDidWork` — 마지막 사용자 말풍선 뒤의 **어시스턴트 텍스트(비어 있지 않음, 오류 아님)**
-  또는 **비어 있지 않은 toolgroup**만 센다.
-
-즉 엔진의 문턱은 「메인 경로 `stream_event`가 하나라도 왔나」이고, 렌더러의 문턱은
-「화면에 글자나 도구가 남았나」다. **`ping` 한 프레임이 그 사이를 가른다.**
-
-엔진 실측(가상 시계 12시간 · 시각 미상 배너형 문구 · 매 턴 같은 한도로 사망):
-
-| 죽기 전에 흘린 프레임 | 12시간 자동 재발사 | attempts | 접힘 |
+| 탐침 | 대본 | R28c 대조군 | **R1(HEAD)** |
 |---|---|---|---|
-| 없음(순수 문전박대) | **2회** | 2 | ✓ 접힘 |
-| `stream_event {type:"message_start"}` 하나 | **71회** | 0 | ✗ 안 접힘 |
-| `stream_event` `thinking_delta` 하나 | **71회** | 0 | ✗ 안 접힘 |
-| `stream_event {type:"ping"}` 하나 | **71회** | 0 | ✗ 안 접힘 |
+| P2 | 배너형(꼬리 없음) + 완전 무음 · 12h ＝ 빌더 ③ | 2발 · 접힘 | 2발 · attempts 2 · 접힘 ✓ |
+| **P1** | **같은 판 + `ping` 한 장** · 12h | **2발 · 접힘** | **71발 · attempts 0 · 안 접힘** ✗ |
+| **P3** | 같은 판 + `content_block_stop` 한 장 · 12h | **2발 · 접힘** | **71발 · attempts 0 · 안 접힘** ✗ |
+| **P8** | 같은 판 + `thinking_delta` 한 장(codex 추론) · 12h | — | **71발 · attempts 0 · 안 접힘** ✗ |
+| **P4** | 첫 표는 꼬리 있음 → 이후 꼬리 없음(mixed) + `ping` · 12h | **2발 · 접힘** | **42발 · attempts 0 · 안 접힘** ✗ |
+| P5 | 밤샘: 꼬리가 창마다 +5h · 그 턴이 일함 · 16h | (붉음) | **3발 · attempts 0 · 안 접힘** ✓ 겨눈 격차 |
+| P6 | 같은 벽 · 출력 0(클로드 꼬리 축) · 12h | 2발 | **2발 · attempts 2 · 접힘** ✓ |
+| P7 | 같은 벽 + `ping`(클로드 꼬리 축) · 12h | 2발 | **2발 · attempts 2 · 접힘** ✓ 시계가 이긴다 |
 
-같은 세 판에서 **렌더러의 스레드는 `[사용자 말풍선, 오류 말풍선]` 뿐이다.**
-`thinking`은 result가 오면 스토어가 걷고(`store/session.ts:1206` `without`),
-`ping`·`message_start`는 애초에 말풍선을 안 만든다. 그래서 `turnDidWork=false` →
-렌더러는 그 세 판 모두 **2발에서 접힌다**(내 주행에서 실측: `[1,2]` → `ready+autoPaused`).
+**P1 대 P2가 이 라운드의 전부다.** 사람 눈으로 두 판은 **완전히 같다**: 재개 턴이 아무 답도 못 내고
+같은 한도로 죽는다. 다른 것은 서버가 하트비트 한 장을 흘렸느냐뿐이고, 그 한 장에 **10분마다 밤새**
+CLI가 뜬다. `attempts`가 영원히 0이라 지수 백오프(`unknown_wait`: 10→20→40분)도 같이 죽는다 —
+71 ≈ 12h ÷ 10분.
 
-**71 대 2.** 커밋 메시지의 「렌더러 `carriedAttempts`가 **글자 그대로 같은 둘을 같은 순서로** 본다」는
-①에 대해서만 참이고 ②에 대해서는 거짓이다.
+**그리고 R28c 대조군은 P1·P3·P4 전부 2발이다.** 이 문은 R1이 열었다.
 
-### 3.3 왜 이게 아픈가 — RCAP의 보증이 codex 축에서 통째로 사라진다
-
-1. 엔진의 codex 대기표는 **언제나 시각 미상**이다. codex 한도 문구엔 `…|epoch` 꼬리가 없고,
-   방금 돌린 `poc-limit-codex`의 대기표도 `resetsAt=0` · 프로브 판정 `unknown=1`이었다.
-   ⇒ 그 축에서는 ①이 영영 침묵하고 **②가 유일한 판정자**다.
-2. codex 트랜스코더는 추론 꼬리를 **`stream_event` `thinking_delta`로 그대로 내보낸다**
-   (`crates/ccg-engine/src/codex/transcode.rs:725`).
-   ⇒ 추론 토큰 하나만 흘리고 한도로 죽는 codex 턴은 엔진이 「일했다」로 읽는다.
-3. 그러면 계수가 영영 0이고, 시각 미상 대기 간격은 `unknown_wait(0)` = 10분이다.
-   ⇒ **10분마다 CLI 한 턴.** 12시간 밤샘이면 71발.
-
-RVERD 크리틱이 잰 사고가 「5시간 창 하나에 27발」이었고 RCAP이 그걸 **2발**로 묶은 것이
-직전 두 라운드의 성과다. WCAP은 그 보증을 **화면에 아무것도 안 남기는 프레임 한 장**으로
-해제할 수 있게 만들었다(같은 5시간에 29발 — 27발보다 나쁘다).
-
-빌더도 이 판을 자기 신고했지만 두 군데가 사실과 다르다:
-
-* 「**토큰 한 줄만 내고**」 — 아니다. 토큰이 **0개**여도 된다. `ping`이면 충분하다.
-* 「출력 없는 턴이 한 번만 섞이면 계수가 곧바로 다시 선다」 — 그 「출력 없는 턴」은
-  **`stream_event`가 한 장도 없는 턴**이라야 한다. 문턱이 자기 신고보다 훨씬 낮다.
-
-### 3.4 재현 절차(그대로 다시 밟을 수 있다)
+### 2.3 재현
 
 ```
-# 레포를 안 건드리는 사본
-robocopy crates %TEMP%\wcapws\crates /E ;  copy Cargo.toml Cargo.lock %TEMP%\wcapws
-# Cargo.toml의 members에서 "src-tauri"만 제거  (Cargo.lock은 반드시 레포 것을 쓴다 —
-# 없으면 indexmap이 1.9.3 대신 2.14.0으로 풀려 이 판의 계측값이 통째로 달라진다)
-set CARGO_TARGET_DIR=%TEMP%\wcapws\tgt
-cargo test --offline -p ccg-engine --test critwcap_probe -- --nocapture
+git archive 06067db | tar -x -C %TEMP%\wcapcrit1\repo
+cp probe_wcap_critr1.rs %TEMP%\wcapcrit1\repo\crates\ccg-engine\tests\
+cd %TEMP%\wcapcrit1\repo
+set CARGO_TARGET_DIR=%TEMP%\ccg-tgt-critwcap1
+cargo test -p ccg-engine --offline --test probe_wcap_critr1 -- --nocapture --test-threads=1
 ```
-탐침 원본: `%TEMP%/wcapws/crates/ccg-engine/tests/critwcap_probe.rs`(P1~P4),
-렌더러 짝: `%TEMP%/wcapcrit/renderer-parity.mjs`(실제 훅 번들 구동).
 
 ---
 
-## 4. 부수 관찰(이 라운드 과녁 아님 · 기록만)
+## 3. 실패 2 — 「엔진·렌더러 같은 규칙 한 벌」이 **아니다** (체크리스트 2번)
 
-* **`arm_hold`의 「벽이 조금씩 밀리는」 판**: 서버가 같은 창의 리셋을 5분씩 뒤로 미는 대본에서는
-  ①이 매번 「넘어갔다」로 읽는다. 실측은 5시간 10분에 **2발**이라 실해는 없었다
-  (`due_at`이 새 벽 + 90초로 잡혀 스스로 벌어진다). 다만 원리적으로는 ①의 오탐 자리다.
-* **부팅 재장전은 계수를 안 물려받는다**(엔진 `reload_state`가 `attempts: 0`을 심는다).
-  렌더러는 `sanitizeHold`가 살린다. R28c부터 있던 비대칭이고 이 라운드 변경과 무관하다.
-* **의존성 함정**: `Cargo.lock` 없이 `crates/ccg-engine`만 떼어 빌드하면 `indexmap`이
-  2.14.0으로 풀리고, 그것만으로 위 ②의 실측값이 `71회 → 2회`로 뒤집힌다. 다음 크리틱이
-  같은 A/B를 할 때 **반드시 레포 `Cargo.lock`을 함께 복사할 것.**
+커밋 헤드라인은 「구분자 둘을 엔진·렌더러 한 벌로 넣는다」이고, 양쪽 주석은 서로 「글자 그대로 같은
+둘을 같은 순서로 본다」고 적는다. **같은 대본을 양쪽에 먹여 계수 궤적을 재 봤다.**
+
+렌더러 축은 훅의 결정 함수(`carriedAttempts`)와 훅의 발사 규칙(`firesRef = (attempts ?? 0) + 1`,
+`fireResetsRef = cur.resetsAt`)을 그대로 굴렸다(esbuild로 `app/src/lib/limitResume.ts` 번들 후 인메모리).
+
+| 같은 대본(꼬리 없는 문구 · 내용 0 프레임 한 장 · 12h) | 발사 | 계수 궤적 | 접힘 |
+|---|---|---|---|
+| **엔진** (`saw_turn_activity`) | **71발** | `[0,0,0,…,0]` | **안 접힘** |
+| **렌더러** (`turnDidWork`) | **2발** | `[0,1,2]` | `autoPaused=true` |
+
+같은 사실에 두 축이 정반대로 답한다:
+
+```
+turnDidWork([user, (ping은 항목을 안 만듦), error])   = false   ← 렌더러
+turnDidWork([user, 빈 toolgroup, error])              = false
+turnDidWork([user, 어시스턴트 본문, error])            = true
+```
+
+그리고 **빌더 자신이 이 어긋남을 주석에 적어 놓았다** — `limitResume.ts` `turnDidWork` 주석:
+「`thinking`은 result가 도착할 때 스토어가 걷어내므로 이 자리에 애초에 없다(**엔진의 thinking_delta
+활동과 다른 점** — 렌더러가 볼 수 있는 증거만 쓴다)」. 즉 「구분자 ②가 두 축에서 다른 것을 잰다」는
+사실을 알고 적었으면서, 커밋 헤드라인과 보고서는 **「같은 규칙 한 벌」**이라고 말한다. P8이 그 문장의
+값을 쟀다: 추론만 흘리고 죽는 codex 턴에서 엔진 **71발** 대 렌더러 **2발**.
+
+> 참고 — 이 격차는 학술적이지 않다. `App.tsx:635`가 `managed: engineOwnsResume(...)`이고, 훅은
+> `if (o.managed) return`으로 장전 자체를 건너뛴다. 3.0 본채팅에서 **실제로 도는 축은 엔진**이다.
+> 즉 71발 쪽이 사용자가 밤새 겪는 값이고, 2발 쪽(렌더러)은 폴백 경로다.
 
 ---
 
-## 5. 결론
+## 4. 실패 3 — 자기 신고한 「좁은 판」이 실제로는 넓다
 
-* **닫힌 것**(내 손으로 확인): 밤샘 연속 주행이 창 두 개에서 잘리던 §4.1의 격차. 엔진 7창·렌더러 12창을
-  끝까지 이어가고, 진짜 헛발질(같은 벽·출력 0)은 양쪽 다 2발에서 접히며 「이어가기」가 뜬다.
-  배너 문구도 이제 사실과 맞는다. 회귀 잠금(엔진 4종 · 렌더러 37단언)은 판별력이 있고 20/20 안정이다.
-* **남은 최대 격차**: 구분자 ②의 **문턱이 두 축에서 다르다.** 엔진은 `ping`·`message_start`·
-  `thinking_delta` 한 장이면 「일했다」로 읽어 시각 미상 축(= codex의 기본 축)에서 상한을 통째로
-  해제한다 — 같은 대본 12시간에 **엔진 71발 / 렌더러 2발**. RCAP이 세운 「자동은 최대 2발」이
-  화면에 아무것도 안 남기는 프레임 한 장으로 무너진다.
+빌더의 자기 신고:
 
-다음 라운드가 가장 먼저 재야 할 것: `saw_turn_activity`를 그대로 쓰지 말고 **렌더러와 같은 문턱**
-(어시스턴트 텍스트 · 도구 호출/결과)으로 좁힌 뒤, 위 P4 표의 네 줄이 전부 `2회 · 접힘`이 되는지.
+> 시각을 **한쪽도** 모르는 축(codex 배너형)에서 **매 턴 토큰 한 줄만 내고** 같은 한도로 죽는 서버가
+> 있으면 … 출력 없는 턴이 한 번만 섞이면 계수가 곧바로 다시 선다(J③이 잠금).
+
+실측으로 셋 다 틀렸다.
+
+1. **「토큰 한 줄」이 필요 없다.** 출력 0 + 프로토콜 프레임 한 장이면 된다(P1·P3·P8).
+2. **「codex 배너형」축만이 아니다.** `classify_limit_error`가 리셋 시각을 얻는 유일한 길은
+   `parse_epoch` = 문구 안의 `|<10자리>` 꼬리다. 클로드의 실전 문구 중 `banner_limit_reached`
+   (`5-hour/weekly/session/daily limit reached`) · `your_limit` · 한국어 `사용 한도…` 계열에는 그 꼬리가
+   **없다**. 그 판은 전부 `resets_at = None` → `_ => worked` 가지다. 그리고 **한쪽만 미상이어도**
+   같은 가지다(`match (resets_at, self.auto_resume_at)`의 `_`) — P4가 그 판이고 42발이다.
+3. **「출력 없는 턴이 한 번 섞이면 계수가 다시 선다」가 이 판에서는 안 통한다.** P1은 *모든* 턴이
+   출력 0이다. 그런데도 71발이다 — 계수를 세우는 것은 「출력이 없다」가 아니라 「`saw_turn_activity`가
+   꺼져 있다」인데, 그 깃발은 출력과 무관하게 켜진다.
+
+즉 자기 신고는 **격차의 축과 크기를 둘 다 축소**해서 적었다.
+
+---
+
+## 5. 실패 4 — 새 못이 그 문을 **못 본다** (테스트 커버리지)
+
+`tests/wcap_limit_streak.rs`의 ②·④는 「일했다」를 **어시스턴트 텍스트 프레임 하나**로만 먹인다.
+`scripts/poc-limit-resume.mjs` J절도 마찬가지로 어시스턴트 말풍선으로만 먹인다. 그래서 §2의 회귀가
+**212개 초록 안에 통째로 숨는다**(내가 넣은 탐침 8종 중 4종이 붉어야 할 자리다).
+
+「구분자 ②가 무엇을 증거로 받는가」가 이 라운드의 핵심 결정인데, 그 결정의 **경계값**(내용이 0인
+프레임)에 못이 하나도 없다. 다음 라운드는 못을 먼저 박고 고쳐야 한다.
+
+---
+
+## 6. 그 밖 — 못 미침(치명 아님)
+
+* **`turn`이 한글 문장 안에 그대로 있다.** `runtime.rs:3355` 공지 「자동으로 이어서 보낸 **turn**이 계속
+  한도에 막혀서…」 · `Chat.tsx:3364` 같은 문장. 빌더가 「이 라운드 과녁 아님」으로 미뤘고 실제로 미착수다.
+  (반대로 배너 문구 자체는 상황과 **맞다**: 엔진의 `auto_paused`는 `lite.rs:119`가 `autoResume=false`로
+  내려 보내고, 배너는 그때 「약 N 뒤 여기서 이어갈 수 있어요」 + 「이어가기」를 준다 — 확인했다.)
+* **라이브 앱 주행 없음**은 빌더 자기 신고 그대로이고, 이 변경의 성질상(5시간 단위) 타당한 대체다.
+  다만 §2의 회귀는 라이브가 아니라 **엔진 단위 재생만으로 잡힌다** — 대체 수단이 부족했던 게 아니라
+  탐침을 그 방향으로 안 쐈다.
+
+---
+
+## 7. 체크리스트 대조
+
+| # | 항목 | 결과 |
+|---|---|---|
+| 1 | 밤샘 3창 연속 → 끝까지 이어지고 정지 없음 | ✅ P5: 16h 3발 · attempts 0 · 안 접힘 |
+| 1 | 헛발질(같은 창·출력 0) → 상한 2 정지 + 이어가기 | ✅ P6/P2: 2발 · `ready+autoPaused` — **단, 프레임 한 장이 섞이면 무너짐(§2)** |
+| 2 | 엔진·렌더러가 같은 구분자인가 | ❌ **71 대 2** (§3) |
+| 3 | `poc-limit-resume.mjs` 무후퇴(197+) | ✅ 234/0 · 5회 동일 |
+| 3 | `poc-limit-engine`·`poc-limit-codex` 무회귀 | ✅ 11/0 · 8/0 (빌더는 안 돌렸다 — 내가 돌렸다) |
+| 4 | 크레이트별 cargo test + typecheck 3종 | ✅ ccg-engine 212/2/0 · typecheck 3종 exit 0 |
+| 4 | 배너 문구가 실제 상황과 일치 | ✅ (한글 속 `turn` 표기는 미착수 — §6) |
+
+---
+
+## 8. 다음 라운드 통과 조건 (셋 다 실측으로)
+
+1. **구분자 ②의 증거를 「내용이 있는 산출물」로 좁혀라.** `saw_turn_activity`는 스트림 생사 판정용
+   깃발이지 「일했다」의 증거가 아니다(하트비트로 켜지는 것이 그 깃발의 **정상 동작**이다). 별도 사실이
+   필요하다 — 예: 메인 경로 `text_delta`/`assistant{has_text|tool_uses}`/`tool_result`를 본 턴만.
+   ★그 자리를 고칠 때 `Frame::StreamEvent`의 `mark_activity()`는 **건드리지 마라** — T9(보류 취소)·
+   T19b(정리 턴 재개)가 그 호출에 매달려 있다.
+2. **통과 조건은 하나다** — `probe_wcap_critr1.rs`의 P1·P3·P4·P8이 **2발 · `attempts=2` ·
+   `auto_paused=true`**로 착지하고, P5·P6·P7·빌더 ①②③④가 **전부 그대로** 초록일 것.
+3. **같은 대본을 양쪽에 먹인 계수 궤적이 일치하는 못**을 박아라(엔진 탐침 ↔ `poc-limit-resume.mjs` J절).
+   지금은 두 축이 서로 다른 대본으로만 검증돼 있어서, 「같은 규칙 한 벌」이라는 문장을 지키는 못이 없다.
