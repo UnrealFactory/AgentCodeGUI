@@ -273,14 +273,32 @@ fn kill_wrapped_child(pid: u32, wrapped: bool) {
 /// 성공한 것처럼 돌아온다(래퍼 안의 CLI가 살아남는다). 그래서 실패는 실패로 돌려받아
 /// 몇 번 다시 찍는다. 끝까지 실패하면 그때는 빈 목록이지만, 그건 이제
 /// 「한 번 흔들렸다」가 아니라 「계속 못 찍는다」다.
+///
+/// ★R28i LOCKS ① — 이 **한 줄의 배선**을 잡는 못은
+/// [`tests::a_cancel_reaches_the_program_inside_even_if_the_first_snapshots_fail`]와
+/// [`tests::a_snapshot_that_never_comes_back_gives_up_at_the_cap`]이다. R28g가 남긴 못은
+/// [`retrying`]의 정책만 쟀고, 그래서 이 줄을 `snapshot_children(pid).unwrap_or_default()`로
+/// 되돌린 돌연변이가 **5/5 초록**이었다(R28g 확인 크리틱 돌연변이 D).
 #[cfg(windows)]
 fn direct_children(pid: u32) -> Vec<u32> {
     retrying(|| snapshot_children(pid))
 }
 
 /// 스냅샷 한 번. `None` = **스냅샷 자체를 못 찍었다**(≠ 자식이 없다).
+///
+/// ★R28i LOCKS 곁가지 — R28g는 `CreateToolhelp32Snapshot` 실패만 `None`으로 봤고,
+/// **표를 훑다 깨진 판**은 그때까지 모은 목록을 `Some`으로 내보냈다. 그건 위 계약을
+/// 깨뜨린다: 잘린 목록은 「자식이 이것뿐」과 구분이 안 되고, 그 한 번이 곧
+/// [`kill_wrapped_child`]가 **일부만 죽이고 성공한 척** 돌아오는 자리다(래퍼 안의 CLI가
+/// 마침 못 읽은 뒷줄에 있으면 살아남는다). 훑기가 **자연스럽게 끝났나**를
+/// [`walk_ended`]로 갈라, 깨진 판은 실패로 돌려받아 [`retrying`]이 다시 찍게 한다.
 #[cfg(windows)]
 fn snapshot_children(pid: u32) -> Option<Vec<u32>> {
+    // ★R28i GATE — 테스트가 심은 「이번 스냅샷은 흔들린다」(제품 빌드에는 없다).
+    #[cfg(test)]
+    if tests::take_snapshot_fault() {
+        return None;
+    }
     use windows::Win32::Foundation::CloseHandle;
     use windows::Win32::System::Diagnostics::ToolHelp::{
         CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
@@ -289,16 +307,34 @@ fn snapshot_children(pid: u32) -> Option<Vec<u32>> {
     unsafe {
         let snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0).ok()?;
         let mut e = PROCESSENTRY32W { dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32, ..Default::default() };
-        let mut ok = Process32FirstW(snap, &mut e).is_ok();
-        while ok {
+        // 첫 줄부터 못 읽었으면 **한 줄도 못 본 것**이다 — 빈 목록으로 내보내지 않는다.
+        // (전 프로세스 표라 정상 판에서는 늘 최소 한 줄이 있다.)
+        if Process32FirstW(snap, &mut e).is_err() {
+            let _ = CloseHandle(snap);
+            return None;
+        }
+        loop {
             if e.th32ParentProcessID == pid && e.th32ProcessID != pid {
                 out.push(e.th32ProcessID);
             }
-            ok = Process32NextW(snap, &mut e).is_ok();
+            if let Err(err) = Process32NextW(snap, &mut e) {
+                let ended = walk_ended(&err);
+                let _ = CloseHandle(snap);
+                return ended.then_some(out);
+            }
         }
-        let _ = CloseHandle(snap);
     }
-    Some(out)
+}
+
+/// 프로세스 표 훑기가 **끝까지 갔나**(= 더 볼 줄이 없다), 아니면 **중간에 깨졌나**.
+///
+/// `Process32NextW`는 목록의 끝에서도 `Err`를 준다 — 그때의 코드가
+/// `ERROR_NO_MORE_FILES`다(MSDN: *"ERROR_NO_MORE_FILES ... when no processes exist or the
+/// snapshot does not contain process information"*). 그 하나만 「끝」이고 나머지는 전부
+/// 「못 읽었다」다.
+#[cfg(windows)]
+fn walk_ended(e: &windows::core::Error) -> bool {
+    e.code() == windows::Win32::Foundation::ERROR_NO_MORE_FILES.to_hresult()
 }
 
 /// 스냅샷 재시도 상한. 표가 흔들리는 창은 밀리초 단위라 몇 번이면 충분하고,
@@ -1239,8 +1275,152 @@ mod tests {
         watch.iter().filter(|w| w.alive()).map(|w| w.pid).collect()
     }
 
+    // ══════════════════════════════════════════════════════════════════════════
+    // ★R28i LOCKS ① GATE — **재시도 처방을 배선으로 잰다**
+    // ══════════════════════════════════════════════════════════════════════════
+    //
+    // R28g가 늘린 유일한 못([`a_snapshot_that_fails_once_is_retried_instead_of_read_as_no_children`])은
+    // 손으로 만든 클로저를 [`retrying`]에 먹여 **정책**만 쟀다 — `direct_children`도
+    // `snapshot_children`도 한 번도 안 불렀다. R28g 확인 크리틱의 돌연변이 D가 그 구멍을
+    // 실측했다: `accounts.rs`의 `retrying(|| snapshot_children(pid))`를
+    // `snapshot_children(pid).unwrap_or_default()`로 **되돌려도 5/5 초록(161 passed)**.
+    // 즉 R28f가 지목한 병(스냅샷 실패가 취소 경로에서 「자식 없음」과 구분 안 됨)을 그대로
+    // 되살려도 게이트가 침묵했다.
+    //
+    // 그래서 「한 번 흔들린 스냅샷」을 **테스트가 심는다**. 심을 자리는 `snapshot_children`
+    // 하나뿐이다 — `CreateToolhelp32Snapshot`의 `ERROR_BAD_LENGTH`는 프로세스 표가 흔들리는
+    // 순간에만 나므로 밖에서 강제할 수단이 없고, 그걸 기다리는 못은 못이 아니라 복권이다.
+    //
+    // 손잡이의 성질(왜 이 모양이라야 하나):
+    //  * **`cfg(test)`** — 제품 빌드에는 이 분기가 아예 없다.
+    //  * **스레드 지역** — 158개 테스트가 병렬로 돌고 그중 셋이 같은 순간에 `cancel()`을
+    //    부른다. 전역 카운터면 남의 취소가 내 고장을 먹거나 내 고장이 남의 취소를 흔든다.
+    //    `cancel()`은 부른 스레드에서 그대로 도므로(잠금 밖 동기 호출) 스레드 지역이면
+    //    구조적으로 격리된다.
+    //  * **[`FaultBudget`] 가드** — 못이 붉게 죽어도(assert!) 잔량이 다음 테스트로 안 샌다.
+    #[cfg(windows)]
+    thread_local! {
+        static SNAPSHOT_FAULTS: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+    }
+
+    /// 제품의 [`snapshot_children`]이 묻는다 — 「이번 판은 흔들린 판인가」.
+    #[cfg(windows)]
+    pub(super) fn take_snapshot_fault() -> bool {
+        SNAPSHOT_FAULTS.with(|c| {
+            let n = c.get();
+            if n == 0 {
+                return false;
+            }
+            c.set(n - 1);
+            true
+        })
+    }
+
+    /// 이 스레드의 남은 고장 수를 `n`으로 두고, 떨어질 때 0으로 되돌린다.
+    #[cfg(windows)]
+    struct FaultBudget;
+
+    #[cfg(windows)]
+    impl FaultBudget {
+        fn arm(n: u32) -> FaultBudget {
+            SNAPSHOT_FAULTS.with(|c| c.set(n));
+            FaultBudget
+        }
+        fn left(&self) -> u32 {
+            SNAPSHOT_FAULTS.with(std::cell::Cell::get)
+        }
+    }
+
+    #[cfg(windows)]
+    impl Drop for FaultBudget {
+        fn drop(&mut self) {
+            SNAPSHOT_FAULTS.with(|c| c.set(0));
+        }
+    }
+
+    /// ★R28i LOCKS ① — **취소는 첫 스냅샷이 흔들려도 래퍼 안의 프로그램까지 닿는다.**
+    ///
+    /// 위 두 취소 못과 같은 판(래퍼 `cmd.exe` + 손자 `PING.EXE`)에 「스냅샷 실패」를 셋
+    /// 심어 둔다([`SNAPSHOT_TRIES`] - 1 = 마지막 한 번만 성공). 지나는 길은 제품 그대로다:
+    /// `LoginSlot::cancel` → [`kill_wrapped_child`] → [`direct_children`] → [`retrying`] →
+    /// [`snapshot_children`].
+    ///
+    /// 돌연변이 D(`retrying(|| snapshot_children(pid))` → `snapshot_children(pid).unwrap_or_default()`)
+    /// 에서는 첫 판이 고장이라 빈 목록이 되고, **손자가 살아남아** 아래 두 단정이 붉는다
+    /// (실측은 `docs/parity-fix-locks-r1.md`).
+    #[cfg(windows)]
+    #[test]
+    fn a_cancel_reaches_the_program_inside_even_if_the_first_snapshots_fail() {
+        let WrappedFixture { child, pid, inside } = spawn_wrapped_fixture();
+        let budget = FaultBudget::arm(SNAPSHOT_TRIES - 1);
+        let slot = LoginSlot::new();
+        let gen = slot.begin();
+        slot.put(gen, child, true);
+
+        slot.cancel();
+
+        let left = budget.left();
+        let leftover = still_alive_after(&inside);
+        for w in &inside {
+            w.terminate(); // 실패해도 뒤처리는 한다
+        }
+        // 사고부터 단정한다 — 붉을 때 첫 줄이 **사용자에게 일어난 일**이라야 한다
+        // (남은 고장 수는 그 사고의 기전이다).
+        assert!(
+            leftover.is_empty(),
+            "★첫 스냅샷이 흔들렸다고 래퍼 안의 프로그램을 놓쳤다(pid {pid}의 자식): {leftover:?} · 남은 고장 {left}"
+        );
+        assert_eq!(
+            left, 0,
+            "★취소가 스냅샷을 {}번 다시 안 찍었다(남은 고장 {left}) — 재시도 배선이 없다",
+            SNAPSHOT_TRIES - 1
+        );
+    }
+
+    /// 같은 손잡이로 **끝까지 실패하는 판**도 배선으로 잰다: 상한을 다 쓰고 빈 목록으로
+    /// 돌아온다(무한 재시도로 취소가 멎지 않는다). 위 못과 짝이다 — 저쪽은 "포기하지
+    /// 않는다", 이쪽은 "영원히 매달리지도 않는다".
+    #[cfg(windows)]
+    #[test]
+    fn a_snapshot_that_never_comes_back_gives_up_at_the_cap() {
+        let budget = FaultBudget::arm(SNAPSHOT_TRIES + 10);
+        let t = std::time::Instant::now();
+        let kids = direct_children(std::process::id());
+        let took = t.elapsed();
+        let left = budget.left();
+        assert!(kids.is_empty(), "★못 찍은 표에서 자식을 지어냈다: {kids:?}");
+        assert_eq!(
+            left,
+            10,
+            "★상한이 {SNAPSHOT_TRIES}가 아니다(남은 고장 {left}) — 취소 경로가 그만큼 멎는다"
+        );
+        assert!(took < Duration::from_secs(2), "★재시도가 취소를 {took:?} 붙잡았다");
+    }
+
+    /// ★R28i LOCKS ① 곁가지 — 표를 훑다 깨진 판과 **끝까지 간 판**을 가른다.
+    ///
+    /// `Process32NextW`는 목록의 끝에서도 `Err`를 준다(`ERROR_NO_MORE_FILES`). 그 하나만
+    /// 「끝」으로 읽어야 잘린 목록이 `Some`으로 새 나가지 않는다 — 이 판정이 뒤집히면
+    /// (모든 `Err`를 끝으로 읽던 R28g 모양) 아래 대조군이 붉는다.
+    #[cfg(windows)]
+    #[test]
+    fn only_no_more_files_means_the_process_walk_finished() {
+        use windows::Win32::Foundation::{ERROR_BAD_LENGTH, ERROR_NO_MORE_FILES};
+        assert!(walk_ended(&windows::core::Error::from_hresult(ERROR_NO_MORE_FILES.to_hresult())));
+        assert!(
+            !walk_ended(&windows::core::Error::from_hresult(ERROR_BAD_LENGTH.to_hresult())),
+            "★표가 흔들려 깨진 판(ERROR_BAD_LENGTH)을 「끝까지 봤다」로 읽는다 — 잘린 목록이 자식 전부인 척 나간다"
+        );
+        // 실물 한 번 — 이 프로세스의 표는 끝까지 훑린다(못이 픽스처에만 살지 않게).
+        assert!(snapshot_children(std::process::id()).is_some(), "★평시 스냅샷이 실패로 온다");
+    }
+
     /// ★R28f 확인 크리틱 R2 §3-C — 스냅샷 실패를 **조용한 빈 목록**으로 넘기지 않는다.
     /// 재시도가 값을 되찾아 주고, 끝까지 실패해야 빈 값이다.
+    ///
+    /// ★R28i LOCKS ① — 이 못은 [`retrying`]의 **정책**만 잰다(제품 배선은 위 세 못이
+    /// 잡는다). 둘을 갈라 두는 이유는 정책이 깨지는 모양과 배선이 끊기는 모양이 다르고,
+    /// 붉을 때 어느 쪽인지 한 줄로 알 수 있어야 해서다.
     #[test]
     fn a_snapshot_that_fails_once_is_retried_instead_of_read_as_no_children() {
         let mut n = 0;
