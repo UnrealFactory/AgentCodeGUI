@@ -11,6 +11,7 @@
 //! 3. **세션 기록은 정션으로 공유**한다. 정션이 아니면 resume이 계정별로 갈라져 죽는다
 //!    (`junction.rs` 참조).
 
+use crate::ledger;
 use crate::{account_slug, junction, read_file_or_null, read_json_file, token_fingerprint, AuthError};
 use serde_json::{json, Map, Value};
 use std::path::{Path, PathBuf};
@@ -237,9 +238,29 @@ fn read_store_raw() -> (Option<String>, StoreFile) {
 /// 아니라 없는 파일**이다(갈아끼우기 창 · 사용자나 지원 절차의 수동 삭제). 파일이 없었을
 /// 뿐인데 "깨졌다"고 적으면 다음 사람이 디스크 손상을 쫓는다(확인 크리틱 R1 §7).
 fn recover_store(was: StoreOrigin) -> Option<StoreFile> {
-    let b = read_file_or_null(&store_backup_path()).as_deref().and_then(parse_store)?;
+    let mut b = read_file_or_null(&store_backup_path()).as_deref().and_then(parse_store)?;
     if b.origin != StoreOrigin::Parsed || b.accounts.is_empty() {
         return None;
+    }
+    // ★R28e(CASX2) — **복구본은 툼스톤을 존중한다.**
+    //
+    // 이 파일은 「마지막으로 성공한 저장」이라 그 뒤에 실행된 로그아웃을 **아직 담고 있을
+    // 수 있다**(로그아웃이 `.bak`을 갱신하기 전에 본문이 깨지거나 사라진 판). 그 목록을
+    // 그대로 되쓰면 사용자가 지운 계정이 `credEnc`째 돌아온다 — 이 갈래가 닫으려는 바로
+    // 그 사고이고, R28d까지 이 문은 *"되살아난 계정은 사용자가 다시 지우면 된다"*로
+    // 열려 있었다. 이제 **지문이 그대로인 행만** 걷어낸다: 지문이 다르면 그건 시체가
+    // 아니라 그 뒤에 앉은 새 로그인이다(새 `credEnc`는 새 DPAPI 산출물이다).
+    let (kept, buried) = ledger::without_buried(std::mem::take(&mut b.accounts));
+    b.accounts = kept;
+    if !buried.is_empty() {
+        eprintln!(
+            "[auth] ★ {STORE_BACKUP_FILE}: 복구본에 우리가 로그아웃한 계정 {}개가 아직 있었다 — 되살리지 않는다({})",
+            buried.len(),
+            buried.join(" · ")
+        );
+    }
+    if b.accounts.is_empty() {
+        return None; // 걷어내고 나니 되살릴 것이 없다 = 복구할 재료가 없는 것과 같다
     }
     let why = match was {
         StoreOrigin::Missing => "이 없다",
@@ -398,9 +419,18 @@ const LATE_WATCH_MAX: usize = 256;
 /// (ENOENT 6연속 · 7.2ms — [`crate::replace`] 모듈 주석). 지나가는 창에 파낸 로그아웃을
 /// 버리면 그것이 곧 「사용자의 로그아웃이 취소된 채로 남는다」이다.
 const REVIVE_RETRY_MS: u64 = 250;
-/// ★R28d(CASX R4) — 되살리기가 한 번에 받아들이는 **지우기의 상한**. 근거는
-/// [`buried_removals`](로그아웃은 계정 하나를 지운다 · 둘 이상은 오독한 통짜 쓰기다).
-const REVIVE_MAX_REMOVALS: usize = 1;
+
+// ── ★R28e(CASX2) — 「몇 개 지웠나」는 여기서 **사라졌다** ────────────────────
+//
+// R4에는 `REVIVE_MAX_REMOVALS = 1`이 있었다. 근거는 사실이었다(2.6.2 `removeAccount(email)`는
+// 계정 하나를 지운다). 틀린 것은 **그 사실을 적용한 대상**이다 — R4는 `우리 목록 \ 그들 원문`을
+// "그들이 지운 것"으로 읽었는데, 그 차집합은 그들의 스냅샷이 우리 로그인 **하나만큼만**
+// 낡아도 둘이 된다. 그래서 진짜 로그아웃이 「오독한 통짜 쓰기」로 몰려 영구히 취소됐다
+// (확인 크리틱 R4 §3-2 · 결정적 재현 2/2). 그 앞 라운드는 같은 배치에서 반대로 틀렸다
+// (막 앉은 로그인까지 지웠다).
+//
+// 이제 [`ledger::attribute`]가 **그들의 스냅샷 세대를 짚어** 진짜 차집합을 낸다. 개수는
+// 판정의 근거가 아니라 결과다 — 그들이 둘을 한 번에 지운 원문이 진짜라면 둘 다 살린다.
 
 /// ★R28d(CASX R3) — **이 프로세스가 이웃의 쓰기를 묻은 사실**의 장부.
 ///
@@ -463,13 +493,21 @@ pub mod bury_stats {
     pub fn gave_up() -> usize {
         GAVE_UP.load(Ordering::Relaxed)
     }
-    /// ★R28d(CASX R4) — 파낸 원문이 **로그아웃이 아니라 오독한 통짜 쓰기**라 안 받은 판
-    /// ([`super::buried_removals`]). 한 건마다 한 줄을 찍는다.
+    /// ★R28e(CASX2) — 파낸 원문을 **우리 장부의 어느 시점에도 못 맞춰** 한 건도 안 지운 판
+    /// ([`super::ledger::Verdict::Blind`]). 한 건마다 한 줄을 찍는다.
+    ///
+    /// R4에서 이 수의 뜻은 *"지우기가 둘 이상이라 오독으로 봤다"*였다. 그 규칙이 진짜
+    /// 로그아웃을 영구히 취소했고(확인 크리틱 R4 §3-2) 로그도 원인을 반대로 적었다.
+    /// 이제 이 수는 **「모른다」의 수**다 — 알면 지우고, 모르면 안 지운다.
     pub fn refused() -> usize {
         REFUSED.load(Ordering::Relaxed)
     }
-    /// ★R28d(CASX R4) — 되살리기가 지우려던 행이 **커밋 뒤에 갈려 있어** 안 지운 판
-    /// (= 그 이메일로 새 로그인이 들어왔다). 세대 증표가 실제로 일한 횟수다.
+    /// ★R28e(CASX2) — 지울 후보였지만 **그 행의 신원이 그들 스냅샷보다 새것이라** 안 지운
+    /// 판(= 그 이메일로 새 로그인이 들어왔다). 신원 세대가 실제로 일한 횟수다.
+    ///
+    /// R4에서 이 수는 「커밋한 바이트와 다르다」였고, 그래서 **우리 자신의 배경 회전**이
+    /// 이 수를 올리며 사용자의 로그아웃을 영구히 취소했다(확인 크리틱 R4 §3-1).
+    /// 이제 회전은 이 수를 못 올린다([`super::ledger::Intent::Refresh`]).
     pub fn moved_on() -> usize {
         MOVED_ON.load(Ordering::Relaxed)
     }
@@ -514,22 +552,26 @@ struct Orphan {
     was: String,
 }
 
-/// 되살리기가 지울 행 한 자리 — **우리가 커밋한 그 바이트를 같이 든다**(세대 증표).
+/// 되살리기가 지울 행 한 자리 — `(이메일, 판정 당시의 **신원 세대**)`.
 ///
-/// ★R28d(CASX R4) — 이 한 칸이 확인 크리틱 R3의 최대 격차를 닫는다. R3의 자물쇠 밖
-/// 되살리기는 *커밋 시점의* 스냅샷으로 계산한 삭제 목록을 **최대 107ms 뒤의 디스크**에
-/// 이메일로 적용했다 — 그 사이에 같은 이메일로 새 로그인이 들어와 있으면 그 새 행이
-/// `credEnc`째 증발했고, 제품 로그는 "이웃의 로그아웃을 되살렸다"고 정반대를 적었다
-/// (크리틱의 결정적 재현: 커밋 14,713µs 뒤).
-type Stamp = (String, Value);
+/// ★R28e(CASX2) — R4까지 이 칸은 `(이메일, 우리가 커밋한 그 바이트)`였고, 앉히기 직전에
+/// **바이트가 그대로인가**를 물었다. 그 물음이 「사용자의 재로그인」과 **「우리 자신의
+/// 배경 회전」**을 못 갈랐다: 회전 한 바퀴가 그 행의 `credEnc`를 다시 쓰면 되살리기가
+/// 취소되고, 로그는 *"그 뒤에 다시 로그인돼 있어 그대로 뒀다"*고 **정반대를 적었다**
+/// (확인 크리틱 R4 §3-1 · 결정적 재현 4/4 · 회전만 뺀 대조군 4/4 초록).
+///
+/// 이제 묻는 것은 바이트가 아니라 [`crate::ledger`]가 든 **신원 세대**다. 회전은 그 값을
+/// 안 올리고([`ledger::Intent::Refresh`]), 로그인은 올린다. 추론이 아니라 기록이다.
+type Stamp = (String, u64);
 
 /// 지연 감시 한 자리.
 struct LateWatch {
     orphan: Orphan,
     /// 우리가 방금 커밋한 목록 — 그들이 지운 계정을 여기서 뺀다.
     ours: Vec<Value>,
-    /// 이번 편집이 **새로 더한** 계정(되살리기가 이걸 지우면 방금 끝난 로그인이 증발한다).
-    added: std::collections::BTreeSet<String>,
+    /// ★R28e(CASX2) — 이 커밋 **직전**의 장부 세대. 그들의 읽기는 우리 커밋보다 앞이므로
+    /// 후보 세대의 상한이 된다([`ledger::attribute`]).
+    at_gen: u64,
     /// 그때의 목적지. 홈이 갈리면(테스트) 남의 홈에 쓰지 않는다.
     dst: PathBuf,
     since: std::time::Instant,
@@ -540,6 +582,10 @@ struct LateWatch {
     /// ★R28d(CASX R4) — **파냈는데 아직 못 앉힌** 되살리기(갈아끼우기 창에 걸렸다).
     /// 있으면 이 자리는 판독을 멈추고 앉히기만 다시 시도한다.
     owed: Option<Vec<Stamp>>,
+    /// ★R28e(CASX2) — 후보였지만 **안 지운** 것과 그 사유. 로그가 이걸 그대로 적는다.
+    held: Vec<(String, String)>,
+    /// 「어떤 근거로 그렇게 봤나」 한 줄([`ledger::Verdict::Act::why`]).
+    why: String,
     /// `owed`가 생긴 시각([`REVIVE_RETRY_MS`]의 기준점) · 커밋에서 드러나기까지 걸린 µs.
     owed_since: Option<std::time::Instant>,
     found_us: u128,
@@ -663,36 +709,33 @@ thread_local! {
 /// [`cas_edit`]의 `Commit::Buried` 주석과 같다). `true` = 이 자리는 끝났다.
 fn late_dug(w: &mut LateWatch, theirs: &StoreFile) -> bool {
     use std::sync::atomic::Ordering;
-    let gone = match buried_removals(&w.ours, &w.added, theirs) {
+    let (remove, held, why) = match ledger::attribute(&w.ours, &theirs.accounts, w.at_gen) {
         // 그들이 지운 계정이 없다 = 되살릴 것도 없다(우리가 묻은 것은 그들의 편집이지
         // 로그아웃이 아니다). 세기는 한다 — 이 판도 "우리가 봤다"에 들어간다.
-        Removals::Nothing => {
+        ledger::Verdict::Nothing => {
             bury_stats::LATE_KEPT.fetch_add(1, Ordering::Relaxed);
             return true;
         }
-        Removals::Bogus(n) => {
+        ledger::Verdict::Blind(why) => {
             bury_stats::REFUSED.fetch_add(1, Ordering::Relaxed);
-            eprintln!("[auth] ★ {STORE_FILE}: {}", bogus_line(n, theirs));
+            eprintln!("[auth] ★ {STORE_FILE}: {}", blind_line(theirs, &why));
             return true;
         }
-        Removals::Logout(g) => g,
+        ledger::Verdict::Act { remove, held, why } => (remove, held, why),
     };
     // ★R28d(CASX R3) — 장부를 **되살리기보다 먼저** 올린다. 순서가 반대면 못이 이렇게 진다:
     // 되살리기가 디스크에 착지한 µs와 장부가 오르는 µs 사이에 못이 "되살아남이 걷혔다"를
     // 보고 곧바로 장부를 읽으면 **아직 0**이고, 그러면 「제품이 못 봤다(침묵)」로 잘못
     // 붉어진다. "봤다"는 파낸 순간의 사실이지 되살리기의 결과가 아니다.
     bury_stats::LATE.fetch_add(1, Ordering::Relaxed);
+    // 보류는 **판정한 그 자리에서 한 번만** 센다(앉히기가 재시도로 여러 번 돌아도).
+    bury_stats::MOVED_ON.fetch_add(held.len(), Ordering::Relaxed);
     w.found_us = w.since.elapsed().as_micros();
-    w.owed = Some(stamps_of(&w.ours, &gone));
+    w.owed = Some(remove);
+    w.held = held;
+    w.why = why;
     w.owed_since = Some(std::time::Instant::now());
     late_settle(w)
-}
-
-/// 우리가 커밋한 목록에서 **지울 행의 바이트**를 뜬다(세대 증표 — [`Stamp`]).
-fn stamps_of(ours: &[Value], gone: &[String]) -> Vec<Stamp> {
-    gone.iter()
-        .filter_map(|e| ours.iter().find(|a| email_of(a) == Some(e)).map(|v| (e.clone(), v.clone())))
-        .collect()
 }
 
 /// 파낸 되살리기를 **지금 디스크에** 앉힌다. `true` = 이 자리는 끝났다.
@@ -700,6 +743,19 @@ fn late_settle(w: &mut LateWatch) -> bool {
     use std::sync::atomic::Ordering;
     let Some(stamps) = w.owed.take() else { return true };
     let (n, us) = (stamps.len(), w.found_us);
+    // ★R28e(CASX2) — 지울 것이 하나도 없는 판정도 **한 줄을 남기고** 끝낸다. 후보는
+    //   있었는데 신원 세대가 그들 스냅샷보다 새것이라 전부 보류된 자리다(= R4가
+    //   「그 뒤에 다시 로그인돼 있어 그대로 뒀다」고 단정하던 그 자리). 이제 사유를
+    //   장부에서 그대로 옮겨 적는다 — 단정하지 않는다.
+    if stamps.is_empty() {
+        eprintln!(
+            "[auth] ★ {STORE_FILE}: 우리 갈아끼우기가 이웃의 쓰기를 묻었다(커밋 {us}µs 뒤에 드러났다 · {}) — 지울 후보 {}개를 전부 보류했다: {}",
+            w.why,
+            w.held.len(),
+            held_line(&w.held)
+        );
+        return true;
+    }
     // 홈이 갈렸다(테스트 하네스가 `CCG_HOME`을 바꿨다). 남의 홈에는 한 글자도 안 쓰고,
     // 다시 볼 이유도 없다 — 우리 목적지는 이제 없는 홈이다.
     if store_path() != w.dst {
@@ -724,29 +780,34 @@ fn late_settle(w: &mut LateWatch) -> bool {
         );
         return true;
     }
+    let dying: Vec<String> = stamps.iter().map(|(e, _)| e.clone()).collect();
     let r = REVIVING.with(|c| {
         c.set(true);
-        // ★R28d(CASX R4) — **세대 증표를 확인한 뒤에만 지운다.** 여기 오기까지 실측 최대
-        //   107ms(확인 크리틱 R3)가 흘렀고, 그 사이에 같은 이메일로 **새 로그인**이
+        // ★R28e(CASX2) — **신원 세대를 다시 확인한 뒤에만 지운다.** 여기 오기까지 실측
+        //   최대 107ms(확인 크리틱 R3)가 흘렀고, 그 사이에 같은 이메일로 **새 로그인**이
         //   들어와 있을 수 있다. 자물쇠 안 경로는 `expect` CAS가 그 사고를 구조적으로
         //   막는데, 자물쇠 밖에는 그 묶음이 없었다 — 이 절이 그것이다.
         //
-        //   묶음의 단위가 **파일 전체가 아니라 행**인 이유: 이 문이 열려 있는 동안 배경
-        //   회전은 계속 돌아(못의 실측 3ms마다) 파일 바이트는 거의 항상 갈려 있다. 파일
-        //   단위로 묶으면 되살리기가 사실상 늘 취소되고, 그건 이 갈래가 닫으려던 그
-        //   구멍(영구 취소)을 다시 여는 것이다. 행 단위 바이트 동일성은 **피해를 나르는
-        //   바로 그 값**을 본다 — 새 로그인은 `credEnc`가 새 DPAPI 산출물이라 반드시 다르다.
+        //   R4는 이 자리를 **바이트 동일성**으로 물었고, 그래서 우리 자신의 배경 회전
+        //   한 바퀴가 「재로그인」 행세를 해 사용자의 로그아웃을 영구히 취소했다
+        //   (확인 크리틱 R4 §3-1). 이제 묻는 것은 [`ledger`]의 신원 세대다 — 회전은 그
+        //   값을 안 올리고(선언된 [`ledger::Intent::Refresh`]), 로그인은 올린다.
         let r = cas_edit(|cur| {
             let (mut removed, mut moved) = (0usize, 0usize);
             cur.accounts.retain(|a| {
                 let Some(e) = email_of(a) else { return true };
-                let Some((_, was)) = stamps.iter().find(|(g, _)| g == e) else { return true };
-                if a == was {
-                    removed += 1;
-                    false
-                } else {
-                    moved += 1;
-                    true
+                let Some((_, born)) = stamps.iter().find(|(g, _)| g == e) else { return true };
+                match ledger::origin_gen(e) {
+                    Some(now) if now == *born => {
+                        removed += 1;
+                        false
+                    }
+                    // 신원이 갈렸다(= 그 사이에 새 로그인이 앉았다) 또는 장부가 그 행을
+                    // 더는 모른다 — 둘 다 **안 지운다**(모듈의 우선순위: 모르면 안 지운다).
+                    _ => {
+                        moved += 1;
+                        true
+                    }
                 }
             });
             Ok((removed, moved))
@@ -755,13 +816,22 @@ fn late_settle(w: &mut LateWatch) -> bool {
         r
     });
     match r {
-        Ok((k, 0)) => {
-            eprintln!("[auth] ★ {STORE_FILE}: 우리 갈아끼우기가 이웃의 로그아웃을 묻었다(계정 {n}개 · 커밋 {us}µs 뒤에 드러났다) — 자물쇠 밖 감시가 {k}개를 되살렸다");
-        }
         Ok((k, m)) => {
-            bury_stats::MOVED_ON.fetch_add(m, Ordering::Relaxed);
+            if m > 0 {
+                bury_stats::MOVED_ON.fetch_add(m, Ordering::Relaxed);
+            }
+            // ★R28e(CASX2) — 되살린 행마다 **툼스톤을 남긴다.** 이 로그아웃은 이웃이
+            //   냈지만 실행한 것은 우리라, 그 사실이 재시작을 넘어 남아야 복구본이 그
+            //   계정을 `credEnc`째 되살리지 않는다([`ledger::without_buried`]).
+            for (e, _) in stamps.iter().take(k) {
+                ledger::bury(e, "이웃(잠금 모르는 통짜 쓰기)의 로그아웃 — 우리가 묻은 것을 파내 다시 적용했다", None);
+            }
             eprintln!(
-                "[auth] ★ {STORE_FILE}: 우리 갈아끼우기가 이웃의 로그아웃을 묻었다(계정 {n}개 · 커밋 {us}µs 뒤에 드러났다) — {k}개를 되살렸고 {m}개는 그 뒤에 다시 로그인돼 있어 **그대로 뒀다**"
+                "[auth] ★ {STORE_FILE}: 우리 갈아끼우기가 이웃의 로그아웃을 묻었다(후보 {n}개 [{}] · 커밋 {us}µs 뒤에 드러났다 · {}) — {k}개를 되살렸다{}{}",
+                dying.join(","),
+                w.why,
+                if m > 0 { format!(" · {m}개는 앉히기 직전에 신원이 갈려 안 지웠다") } else { String::new() },
+                if w.held.is_empty() { String::new() } else { format!(" · 보류 {}: {}", w.held.len(), held_line(&w.held)) }
             );
         }
         Err(e) => eprintln!("[auth] ★ {STORE_FILE}: 이웃의 로그아웃({n}개)을 묻었는데 되살리기가 실패했다({e}) — 그 로그아웃은 취소된 채로 남는다"),
@@ -769,51 +839,28 @@ fn late_settle(w: &mut LateWatch) -> bool {
     true
 }
 
-/// ★R28d(CASX R4) — 파낸 이웃의 원문에서 **그들이 지운 계정**을 뽑는다.
-///
-/// 받는 것이 지우기뿐인 이유(ABA)는 [`cas_edit`]의 `Commit::Buried` 주석에 있다. 여기서
-/// 한 겹을 더 세운다 — **그 지우기가 로그아웃일 수 있나.**
-///
-/// 로그아웃은 계정 **하나**를 지운다(2.6.2 `removeAccount(email)`·`src/main/auth.ts:174` ·
-/// 3.0 [`remove_account`] 둘 다 이메일 하나를 받는다). 한 번에 둘 이상이 사라진 원문은
-/// 로그아웃이 아니라 **오독한 통짜 쓰기**다: 2.6.2 `readStoreFile`의 `catch { accounts: [] }`
-/// (`src/main/auth.ts:117`)가 갈아끼우기 창에서 파일을 못 읽었을 때 내는 그 착지다
-/// (실측 ENOENT 6연속 · 7.2ms — [`crate::replace`] 모듈 주석).
-///
-/// 그 원문을 되살리면 **우리가 이웃의 버그를 대신 실행하는 것**이 된다: 살아 있는 계정이
-/// `credEnc`째 통째로 사라지고 출구는 재로그인뿐이다. 그래서 안 받는다. 대가는 비대칭이라
-/// 이쪽이 맞다 — 안 받아서 잃는 것은 「그 로그아웃이 한 번 더 필요하다」(사용자 눈에 계정이
-/// 그대로 보인다)이고, 받아서 잃는 것은 **계정 전부**(조용하다).
-fn buried_removals(ours: &[Value], added: &std::collections::BTreeSet<String>, theirs: &StoreFile) -> Removals {
-    let keep: std::collections::BTreeSet<&str> = theirs.accounts.iter().filter_map(email_of).collect();
-    // `added`(이번 편집이 만든 계정)는 예외다 — 이웃의 스냅샷은 우리 로그인보다 앞선
-    // 것이라 담고 있을 수가 없고, 여기서 지우면 방금 끝난 로그인이 조용히 증발한다.
-    let gone: Vec<String> = ours
-        .iter()
-        .filter_map(email_of)
-        .filter(|e| !keep.contains(e) && !added.contains(*e))
-        .map(str::to_string)
-        .collect();
-    match gone.len() {
-        0 => Removals::Nothing,
-        n if n > REVIVE_MAX_REMOVALS => Removals::Bogus(n),
-        _ => Removals::Logout(gone),
-    }
+/// 자물쇠 **안에서** 되살린 판의 사연 — 커밋 뒤에 한 줄로 나간다(창 안에서는 안 찍는다).
+struct Revived {
+    was: usize,
+    now: usize,
+    why: String,
+    held: Vec<(String, String)>,
 }
 
-/// [`buried_removals`]의 답.
-enum Removals {
-    /// 되살릴 것이 없다(그들이 지운 계정이 없다).
-    Nothing,
-    /// 그들이 지운 계정 = 로그아웃.
-    Logout(Vec<String>),
-    /// 로그아웃 하나로는 도달할 수 없는 지우기 = 오독한 통짜 쓰기. 안 받는다.
-    Bogus(usize),
+/// 보류 사연을 한 줄로. **사유를 모르면 모른다고 적는다**(확인 크리틱 R4 §5-4).
+fn held_line(held: &[(String, String)]) -> String {
+    held.iter().map(|(e, why)| format!("{e}={why}")).collect::<Vec<_>>().join(" · ")
 }
 
-fn bogus_line(n: usize, theirs: &StoreFile) -> String {
+/// 「근거를 못 짚었다」의 한 줄.
+///
+/// ★R28e(CASX2) — R4의 이 자리는 *"「계정 0개」로 되쓴 착지"*라고 **원인을 단정했다.**
+/// 그런데 같은 줄이 이웃 스냅샷이 낡았을 뿐인 판에도 찍혔고(확인 크리틱 R4 §3-2:
+/// `그들 목록 1개`인데 「계정 0개」라고 적었다), 그러면 지원 담당이 엉뚱한 것을 쫓는다.
+/// 이제 **관측한 것만** 적는다 — 그들 원문의 계정 수와, 우리가 왜 못 짚었는지.
+fn blind_line(theirs: &StoreFile, why: &str) -> String {
     format!(
-        "이웃의 통짜 쓰기를 묻었는데 그 원문이 계정 {n}개를 한 번에 지운다(그들 목록 {}개) — 로그아웃 하나로는 못 만드는 상태다(갈아끼우기 창에서 파일을 못 읽고 「계정 0개」로 되쓴 착지) — 안 받는다",
+        "이웃의 통짜 쓰기를 묻었는데 그 원문을 우리 장부의 어느 시점에도 못 맞췄다(그들 목록 {}개) — {why}. 그들의 쓰기가 로그아웃이었다면 이번엔 못 살린다(사용자가 한 번 더 지우면 그때는 산다)",
         theirs.accounts.len()
     )
 }
@@ -875,11 +922,16 @@ pub fn write_store_file(accounts: &[Value], default_email: Option<&str>) -> Resu
     let base = take_base();
     let _g = store_lock();
     let disk = read_store_file();
+    // ★R28e(CASX2) — 이 문도 [`cas_edit`]과 같은 규율로 장부를 남긴다(읽은 것 · 쓴 것).
+    //   여기만 빼면 시드·마이그레이션이 만든 상태가 장부에 안 보이고, 그러면 이웃의
+    //   스냅샷을 짚을 때 그 세대가 통째로 비어 「모른다」가 된다.
+    ledger::note(&disk.accounts, &ledger::Intent::Plain);
     let (merged, def) = merge3(base.as_ref(), accounts, default_email, &disk);
     let r = write_store_locked(&merged, def.as_deref());
     if r.is_ok() {
         // 방금 쓴 것이 다음 쓰기의 기준점이다(같은 스레드가 연달아 저장하는 경로).
         set_base(&merged, def.as_deref());
+        ledger::note(&merged, &INTENT.with(|c| c.borrow().clone()));
     }
     r
 }
@@ -1109,7 +1161,30 @@ fn vanished_but_we_know_better(cur: &StoreFile) -> bool {
             .is_some_and(|b| b.origin == StoreOrigin::Parsed && !b.accounts.is_empty())
 }
 
+// ── ★R28e(CASX2) — **쓰기 경로가 자기 의도를 선언한다** ─────────────────────
+//
+// 딱 한 가지를 가르려고 있다: 「배경 회전이 `credEnc`만 갈았다」와 「사용자가 다시
+// 로그인해 그 행의 신원이 새로 섰다」. 둘은 디스크에서 **똑같이 보인다**(행 바이트가
+// 갈렸다) — R4가 그 둘을 바이트로 가르려다 로그아웃을 영구히 취소한 자리다
+// (확인 크리틱 R4 §3-1). 파일을 보고 못 가르는 것은 **부르는 쪽이 말해야 한다.**
+//
+// 선언이 없으면(기본값 [`ledger::Intent::Plain`]) 보수적으로 「신원이 새로 섰다」로 친다 =
+// 그 행은 안 지운다. 모르면 안 지우는 쪽으로 진다는 이 모듈의 우선순위 그대로다.
+thread_local! {
+    static INTENT: std::cell::RefCell<ledger::Intent> = const { std::cell::RefCell::new(ledger::Intent::Plain) };
+}
+
+/// 이 스코프의 쓰기가 무엇을 하려는 것인지 선언한다. 중첩되면 **안쪽이 이긴다**
+/// (되살리기 연쇄가 바깥 회전의 선언을 물려받지 않게 — 그건 다른 쓰기다).
+fn with_intent<T>(i: ledger::Intent, f: impl FnOnce() -> T) -> T {
+    let prev = INTENT.with(|c| c.replace(i));
+    let out = f();
+    INTENT.with(|c| *c.borrow_mut() = prev);
+    out
+}
+
 fn cas_edit<T>(mut edit: impl FnMut(&mut StoreFile) -> Result<T, AuthError>) -> Result<T, AuthError> {
+    let intent = INTENT.with(|c| c.borrow().clone());
     let mut retries = 0usize;
     let mut torn = 0usize;
     for _ in 0..CAS_TRIES {
@@ -1136,11 +1211,22 @@ fn cas_edit<T>(mut edit: impl FnMut(&mut StoreFile) -> Result<T, AuthError>) -> 
             // 이 읽기가 3-way 병합의 기준점이다(R3(F1)② — `read_store_file`과 같은 자리).
             record_base(&cur);
         }
+        // ★R28e(CASX2) — **잠금 안에서 본 디스크 상태를 장부에 적는다.**
+        //
+        //   이 한 줄이 「그들 스냅샷은 어느 세대였나」의 재료다. 이웃이 놓은 행(우리가
+        //   안 만든 계정)은 여기서만 장부에 들어온다 — 쓰기만 적으면 이웃의 로그인이
+        //   장부에 영영 안 보이고, 그러면 그들의 로그아웃도 못 짚는다.
+        //   직전 세대와 내용이 같으면 새 세대를 안 만든다([`ledger::note`]).
+        ledger::note(&cur.accounts, &ledger::Intent::Plain);
         // 복구본으로 읽었으면 **무조건 쓴다** — 그게 깨진 본문을 고치는 유일한 순간이다.
         let repair = cur.origin == StoreOrigin::Recovered;
         let seen = cur.accounts.clone();
         let seen_default = cur.default_email.clone();
         let seen_version = cur.version;
+        // ★R28e(CASX2) — 후보 세대의 **상한**. 그들의 읽기는 우리 커밋보다 앞이므로
+        //   이 세대 이하만 본다(안 그러면 이번 편집이 방금 더한 로그인을 「그들 스냅샷에
+        //   있었다」고 오독한다).
+        let at_gen = ledger::gen_now();
 
         let out = edit(&mut cur)?;
 
@@ -1151,23 +1237,17 @@ fn cas_edit<T>(mut edit: impl FnMut(&mut StoreFile) -> Result<T, AuthError>) -> 
         }
         let mut accounts = std::mem::take(&mut cur.accounts);
         let def = cur.default_email.clone();
-        // **이번 편집이 새로 더한** 계정 — 파묻힌 쓰기 되살리기가 이걸 지우면 안 된다.
-        // (이웃의 스냅샷은 우리 로그인보다 앞선 것이라 이 계정을 담고 있을 수가 없다.)
-        let added: std::collections::BTreeSet<String> = accounts
-            .iter()
-            .filter_map(email_of)
-            .filter(|e| !seen.iter().any(|a| email_of(a) == Some(*e)))
-            .map(str::to_string)
-            .collect();
         let mut body = render_store(&accounts, def.as_deref());
 
         // ── ② 갈아끼우기 + 파묻힌 쓰기 되살리기 ────────────────────────────
         let mut expect = before;
         let mut stale = false;
         // 되살리기 사연 — **커밋 뒤에** 찍는다(아래 `Commit::Buried` 주석 참고).
-        let mut revived: Option<(usize, usize)> = None;
-        // 안 받은 사연(오독한 통짜 쓰기)도 같은 규율로 커밋 뒤에 찍는다.
-        let mut bogus: Option<String> = None;
+        let mut revived: Option<Revived> = None;
+        // 되살린 로그아웃의 툼스톤도 커밋 **뒤에** 남긴다(파일 쓰기라 창 안에 두면 안 된다).
+        let mut buried_emails: Vec<String> = Vec::new();
+        // 안 받은 사연(근거를 못 짚었다)도 같은 규율로 커밋 뒤에 찍는다.
+        let mut unattributed: Option<String> = None;
         // ★R28d(CASX) — 목적지 핸들을 되살리기 연쇄 **안에서만** 물려준다. 바깥
         // (CAS 재시도) 까지 들고 가면 잠금을 놓은 사이 남이 갈아끼운 옛 inode를 증인으로
         // 삼게 된다 — 그건 증인이 아니라 유령이다.
@@ -1188,11 +1268,23 @@ fn cas_edit<T>(mut edit: impl FnMut(&mut StoreFile) -> Result<T, AuthError>) -> 
                 }
                 Commit::Clean(orphan) => {
                     set_base(&accounts, def.as_deref());
+                    // ★R28e(CASX2) — **디스크에 보인 그 목록을 장부에 적는다.** 여기가
+                    //   신원 세대가 서는(또는 안 서는) 자리다 — 선언된 회전이면 안 선다.
+                    ledger::note(&accounts, &intent);
                     keep_backup(&body);
-                    if let Some((was, now)) = revived {
-                        eprintln!("[auth] ★ {STORE_FILE}: 이웃의 로그아웃을 묻었다(계정 {was}개 → {now}개) — 그 자리에서 되살렸다");
+                    for e in &buried_emails {
+                        ledger::bury(e, "이웃(잠금 모르는 통짜 쓰기)의 로그아웃 — 자물쇠 안에서 파내 그 자리에서 되살렸다", None);
                     }
-                    if let Some(line) = &bogus {
+                    if let Some(r) = &revived {
+                        eprintln!(
+                            "[auth] ★ {STORE_FILE}: 이웃의 로그아웃을 묻었다(계정 {}개 → {}개 · {}) — 그 자리에서 되살렸다{}",
+                            r.was,
+                            r.now,
+                            r.why,
+                            if r.held.is_empty() { String::new() } else { format!(" · 보류 {}: {}", r.held.len(), held_line(&r.held)) }
+                        );
+                    }
+                    if let Some(line) = &unattributed {
                         eprintln!("[auth] ★ {STORE_FILE}: {line}");
                     }
                     if retries > 0 {
@@ -1206,12 +1298,14 @@ fn cas_edit<T>(mut edit: impl FnMut(&mut StoreFile) -> Result<T, AuthError>) -> 
                         late_watch(LateWatch {
                             orphan,
                             ours: accounts,
-                            added,
+                            at_gen,
                             dst: store_path(),
                             since: std::time::Instant::now(),
                             next_at: std::time::Instant::now(),
                             torn: false,
                             owed: None,
+                            held: Vec::new(),
+                            why: String::new(),
                             owed_since: None,
                             found_us: 0,
                         });
@@ -1235,21 +1329,37 @@ fn cas_edit<T>(mut edit: impl FnMut(&mut StoreFile) -> Result<T, AuthError>) -> 
                         eprintln!("[auth] ★ {STORE_FILE}: 이웃의 쓰기를 묻었는데 원문을 못 읽는다 — 우리 것으로 둔다");
                         break;
                     };
-                    // ★R28d(CASX R4) — 자물쇠 **안팎이 같은 규칙을 쓴다**([`buried_removals`]).
-                    //   R3까지 이 자리는 자기만의 `keep` 계산을 들고 있었고, 그래서 자물쇠
-                    //   밖에 세운 겹(오독한 통짜 쓰기는 안 받는다)이 여기엔 없었다.
-                    let gone = match buried_removals(&accounts, &added, &t) {
-                        Removals::Nothing => break, // 그들이 지운 계정이 없다 = 되살릴 것도 없다
-                        Removals::Bogus(n) => {
+                    // ★R28e(CASX2) — 자물쇠 **안팎이 같은 규칙을 쓴다**([`ledger::attribute`]).
+                    //   R3까지 이 자리는 자기만의 `keep` 계산을 들고 있었고, R4는 개수
+                    //   휴리스틱을 공유했다. 이제 둘 다 **그들 스냅샷 세대를 짚는** 같은
+                    //   판정을 지난다 — 안팎이 갈리면 그 격차가 곧 다음 라운드의 사고다.
+                    let (gone, held, why) = match ledger::attribute(&accounts, &t.accounts, at_gen) {
+                        ledger::Verdict::Nothing => break, // 그들이 지운 계정이 없다 = 되살릴 것도 없다
+                        ledger::Verdict::Blind(w) => {
                             bury_stats::REFUSED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                            // 되살리기 창 안이라 여기서 안 찍는다 — 커밋 뒤에 적는다(`bogus`).
-                            bogus = Some(bogus_line(n, &t));
+                            // 되살리기 창 안이라 여기서 안 찍는다 — 커밋 뒤에 적는다(`unattributed`).
+                            unattributed = Some(blind_line(&t, &w));
                             break;
                         }
-                        Removals::Logout(g) => g,
+                        ledger::Verdict::Act { remove, held, why } if remove.is_empty() => {
+                            // 후보는 있었는데 전부 「그들이 못 본 행」이다. 되살릴 것이 없고,
+                            // **사연은 남는다**(커밋 뒤에 찍는다).
+                            bury_stats::MOVED_ON.fetch_add(held.len(), std::sync::atomic::Ordering::Relaxed);
+                            unattributed = Some(format!(
+                                "이웃의 쓰기를 묻었는데({why}) 지울 후보 {}개가 전부 그들 스냅샷보다 새 신원이다 — 한 건도 안 지운다: {}",
+                                held.len(),
+                                held_line(&held)
+                            ));
+                            break;
+                        }
+                        ledger::Verdict::Act { remove, held, why } => (remove, held, why),
                     };
+                    buried_emails.extend(gone.iter().map(|(e, _)| e.clone()));
+                    if !held.is_empty() {
+                        bury_stats::MOVED_ON.fetch_add(held.len(), std::sync::atomic::Ordering::Relaxed);
+                    }
                     let next: Vec<Value> =
-                        accounts.iter().filter(|a| email_of(a).is_none_or(|e| !gone.iter().any(|g| g == e))).cloned().collect();
+                        accounts.iter().filter(|a| email_of(a).is_none_or(|e| !gone.iter().any(|(g, _)| g == e))).cloned().collect();
                     // ★R28d(CASX) — **되살리기 창 안에서는 한 줄도 안 찍는다.** 여기서
                     //   찍던 한 줄이 실측으로 되살리기를 0.8~7.6ms 늦췄고, 그동안 로그아웃한
                     //   계정이 `credEnc`째 파일에 앉아 있었다(이웃이 자기 쓰기 1ms 뒤에
@@ -1258,7 +1368,7 @@ fn cas_edit<T>(mut edit: impl FnMut(&mut StoreFile) -> Result<T, AuthError>) -> 
                     // 제품이 봤나"를 이 수로 재기 때문이다(그들의 편집을 묻은 판과 그들의
                     // 로그아웃을 묻은 판은 무게가 다르다).
                     bury_stats::IN_LOCK_REVIVED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                    revived = Some((accounts.len(), next.len()));
+                    revived = Some(Revived { was: accounts.len(), now: next.len(), why, held });
                     accounts = next;
                     expect = Some(body);
                     body = render_store(&accounts, def.as_deref());
@@ -1268,10 +1378,20 @@ fn cas_edit<T>(mut edit: impl FnMut(&mut StoreFile) -> Result<T, AuthError>) -> 
         if !stale {
             // 되살리기를 BURY_TRIES번 하고도 못 끝냈거나, 파낸 원문에 되살릴 것이 없었다.
             // 마지막 커밋은 이미 디스크에 있다(유실 아님) — 다음 회전이 이어 받는다.
-            if let Some((was, now)) = revived {
-                eprintln!("[auth] ★ {STORE_FILE}: 이웃의 로그아웃({was}개 → {now}개)을 되살리다 또 겹쳤다 — 여기서 접는다");
+            ledger::note(&accounts, &intent);
+            for e in &buried_emails {
+                ledger::bury(e, "이웃(잠금 모르는 통짜 쓰기)의 로그아웃 — 자물쇠 안에서 파내 그 자리에서 되살렸다", None);
             }
-            if let Some(line) = &bogus {
+            if let Some(r) = &revived {
+                eprintln!(
+                    "[auth] ★ {STORE_FILE}: 이웃의 로그아웃({}개 → {}개 · {})을 되살리다 또 겹쳤다 — 여기서 접는다{}",
+                    r.was,
+                    r.now,
+                    r.why,
+                    if r.held.is_empty() { String::new() } else { format!(" · 보류 {}: {}", r.held.len(), held_line(&r.held)) }
+                );
+            }
+            if let Some(line) = &unattributed {
                 eprintln!("[auth] ★ {STORE_FILE}: {line}");
             }
             keep_backup(&body);
@@ -1604,8 +1724,18 @@ pub fn move_account_to_top(email: &str) -> Vec<AccountInfo> {
 }
 
 /// 목록에서 제거 + 물질화된 폴더 정리. (서버 토큰 해지는 CLI 경로 — `verify::logout_command`)
+///
+/// ★R28e(CASX2) — 여기서 **툼스톤을 남긴다**(이메일 + 시각 + 주체). 이 갈래의 헤드라인은
+/// *"사용자의 로그아웃은 취소되지 않는다"*인데, R28d까지 그 의도는 **파일 상태로만** 남았다:
+/// 행이 없어진 것이 「사용자가 지웠다」인지 「누가 오독하고 통짜로 덮었다」인지 파일만 봐서는
+/// 모른다. 툼스톤은 그 구별을 **재시작을 넘어** 남기고, 마지막 성공본에서 목록을 복구할 때
+/// 그 계정이 `credEnc`째 돌아오는 것을 막는다([`ledger::without_buried`]).
 pub fn remove_account(email: &str) -> Vec<AccountInfo> {
+    // 지우기 **전에** 그 행을 뜬다 — 툼스톤이 드는 지문이 그 행의 것이라야
+    // 「되살아난 시체」와 「그 뒤의 새 로그인」이 갈린다.
+    let row = read_store_quiet().accounts.iter().find(|a| email_of(a) == Some(email)).cloned();
     let _ = update_store(|f| f.accounts.retain(|a| email_of(a) != Some(email)));
+    ledger::bury(email, "이 앱의 로그아웃(사용자 조작)", row.as_ref());
     delete_account_dir(email);
     // ★R4(G2) — 로그아웃은 **그 계정에 대한 우리 기억을 버리는** 자리다. 건강 장부를
     // 남겨 두면 같은 이메일로 다시 로그인했을 때 새 계정이 태어나자마자 격리된다.
@@ -1735,21 +1865,26 @@ pub fn sync_account_tokens(email: &str) -> bool {
     let Some(dir_creds) = read_file_or_null(&account_dir(email).join(".credentials.json")) else { return false };
     // ★R3(F1) — 판정과 쓰기를 **같은 증표 안에서**. 밖에서 읽고 안에서 쓰면 그 사이에
     //   다른 프로세스가 넣은 회전 결과를 우리가 덮는다(확인 크리틱 §5의 그 모양).
-    update_account_record(email, |m| {
-        let Some(raw) = m.get("credEnc").and_then(Value::as_str).and_then(dec_creds) else { return false };
-        let snap = Snapshot::parse(&raw);
-        if snap.raw.is_empty() {
-            return false; // JS: JSON.parse 실패면 return
-        }
-        if Some(dir_creds.as_str()) == snap.creds() {
-            return false; // 변화 없음
-        }
-        if creds_expires_at(Some(&dir_creds)) <= creds_expires_at(snap.creds()) {
-            return false; // 껍데기/후퇴 토큰 가드
-        }
-        let Some(cred_enc) = enc_creds(&snap.with_creds(&dir_creds)) else { return false };
-        m.insert("credEnc".into(), json!(cred_enc)); // 자리 보존 치환
-        true
+    // ★R28e(CASX2) — CLI가 폴더에서 리프레시한 토큰을 백업에 옮기는 것도 **회전**이다
+    //   (신원이 아니라 자격증명이 갈린다). 선언하지 않으면 장부가 이 쓰기를 재로그인으로
+    //   읽고, 그러면 이 계정의 로그아웃을 되살리기가 영영 못 살린다.
+    with_intent(ledger::Intent::Refresh(email.to_string()), || {
+        update_account_record(email, |m| {
+            let Some(raw) = m.get("credEnc").and_then(Value::as_str).and_then(dec_creds) else { return false };
+            let snap = Snapshot::parse(&raw);
+            if snap.raw.is_empty() {
+                return false; // JS: JSON.parse 실패면 return
+            }
+            if Some(dir_creds.as_str()) == snap.creds() {
+                return false; // 변화 없음
+            }
+            if creds_expires_at(Some(&dir_creds)) <= creds_expires_at(snap.creds()) {
+                return false; // 껍데기/후퇴 토큰 가드
+            }
+            let Some(cred_enc) = enc_creds(&snap.with_creds(&dir_creds)) else { return false };
+            m.insert("credEnc".into(), json!(cred_enc)); // 자리 보존 치환
+            true
+        })
     })
     .unwrap_or(false)
 }
@@ -1960,19 +2095,24 @@ pub fn persist_refreshed_report(email: &str, next_creds: &str) -> PersistReport 
         crate::write_file_atomic(&dir.join(".credentials.json"), next_creds)
     })();
     // ★R3(F1)③ — 백업은 **자기 항목만** 고친다(잠금 안에서 디스크를 다시 읽는다).
-    let backup = update_account_record(email, |m| {
-        let Some(raw) = m.get("credEnc").and_then(Value::as_str).and_then(dec_creds) else {
-            return Err(AuthError::Undecryptable(email.to_string()));
-        };
-        let snap = Snapshot::parse(&raw);
-        if snap.raw.is_empty() {
-            return Err(AuthError::CorruptSnapshot(email.to_string()));
-        }
-        let Some(cred_enc) = enc_creds(&snap.with_creds(next_creds)) else {
-            return Err(AuthError::Undecryptable(email.to_string()));
-        };
-        m.insert("credEnc".into(), json!(cred_enc));
-        Ok(())
+    // ★R28e(CASX2) — 그리고 **회전이라고 선언한다.** 이 한 줄이 없으면 장부는 이 쓰기를
+    //   「신원이 새로 섰다」로 읽고(보수적 기본값), 그러면 되살리기가 이 계정의 로그아웃을
+    //   영원히 못 살린다. 있으면 R4 §3-1이 닫힌다 — 회전은 로그아웃 취소 사유가 아니다.
+    let backup = with_intent(ledger::Intent::Refresh(email.to_string()), || {
+        update_account_record(email, |m| {
+            let Some(raw) = m.get("credEnc").and_then(Value::as_str).and_then(dec_creds) else {
+                return Err(AuthError::Undecryptable(email.to_string()));
+            };
+            let snap = Snapshot::parse(&raw);
+            if snap.raw.is_empty() {
+                return Err(AuthError::CorruptSnapshot(email.to_string()));
+            }
+            let Some(cred_enc) = enc_creds(&snap.with_creds(next_creds)) else {
+                return Err(AuthError::Undecryptable(email.to_string()));
+            };
+            m.insert("credEnc".into(), json!(cred_enc));
+            Ok(())
+        })
     });
     // ★R28d(CASX R3) — 「사라졌다」의 근거는 **백업 반쪽 하나뿐이다.**
     //
@@ -2058,11 +2198,16 @@ pub fn import_account_from_dir(
     rec.insert("credEnc".into(), json!(cred_enc));
     // ★R3(F1) — 목록이 바뀌는 조작이라 잠금 안에서 읽고 쓴다. 첫 계정이면
     // `write_store_locked`의 폴백이 기본 계정으로 세운다.
-    update_store(|f| {
-        f.accounts.retain(|a| email_of(a) != Some(email));
-        // `rec`를 **복제**해 넣는다 — CAS가 이 클로저를 다시 부를 수 있어서 통째로
-        // 옮기면 두 번째 시도에 빈 레코드가 들어간다(`update_store`의 `FnMut` 계약).
-        f.accounts.push(Value::Object(rec.clone()));
+    // ★R28e(CASX2) — **로그인이라고 선언한다.** 같은 이메일로 다시 로그인하면 그 행의
+    //   신원이 새로 서고, 그때부터 이웃의 **옛** 스냅샷에서 나온 로그아웃은 이 행에
+    //   적용되지 않는다(확인 크리틱 R3 §3-1이 잡은 그 사고를 여기서 막는다).
+    with_intent(ledger::Intent::Login(email.to_string()), || {
+        update_store(|f| {
+            f.accounts.retain(|a| email_of(a) != Some(email));
+            // `rec`를 **복제**해 넣는다 — CAS가 이 클로저를 다시 부를 수 있어서 통째로
+            // 옮기면 두 번째 시도에 빈 레코드가 들어간다(`update_store`의 `FnMut` 계약).
+            f.accounts.push(Value::Object(rec.clone()));
+        })
     })?;
     // ★R4(G2) — 로그인은 격리를 푸는 **가장 자연스러운 처방**이다. 지문 비교에 맡기지
     // 않고 여기서 직접 지운다(지문을 못 뜬 표식은 비교로는 안 풀린다 — 크리틱 C6).
