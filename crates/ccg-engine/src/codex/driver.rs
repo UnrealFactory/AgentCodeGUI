@@ -19,7 +19,7 @@ use crate::live::CloseCause;
 use serde_json::Value;
 use std::collections::VecDeque;
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::mpsc::{channel, Receiver, TryRecvError};
 use std::sync::{Arc, Mutex};
@@ -124,8 +124,8 @@ impl CodexDriver {
 /// 실행 준비된 `Command`.
 ///
 /// 1순위는 **네이티브 실행본 직접 스폰**이다(`versions::codex_bin`이 그걸 찾아 준다).
-/// `.cmd`/`.bat` shim이나 PATH 이름(`codex`)으로 떨어지는 경우에만 `cmd /C`를 경유한다 —
-/// 커널이 배치 파일을 직접 실행할 수 없기 때문이다.
+/// `cmd /C`를 경유하는 것은 **커널이 직접 못 띄우는 확장자**로 떨어졌을 때뿐이다
+/// (`.cmd` shim 등 — [`needs_shell`]).
 ///
 /// ★ 그 경로의 인용은 **`raw_arg`로 직접 쓴다.** `arg()`는 MSVC 규칙으로 `\"`를 넣는데
 /// `cmd.exe`는 백슬래시 이스케이프를 모른다 — 그래서 경로가 통째로 깨진다(이 라운드에
@@ -134,15 +134,52 @@ impl CodexDriver {
 /// `pub`인 이유: 셸의 `codex:models`(파리티 R1 H4)가 턴을 만들지 않고 app-server에
 /// 두 줄만 묻는데, 그 스폰도 **이 인용 규칙을 그대로 타야** 한다. 규칙을 복사하면
 /// 위 실측(공백 있는 경로가 통째로 깨지는 사고)이 한쪽에서만 고쳐진 채로 남는다.
+///
+/// ## ★R28d EXTN R2 — **맨 이름의 해석을 셸에 맡기지 않는다**
+///
+/// R1까지 맨 이름 `codex`는 그대로 `cmd /C ""codex" app-server"`로 나갔다. 그런데
+/// **`cmd.exe`는 `PATH`보다 현재 폴더를 먼저 뒤지고**, 이 명령의 현재 폴더는
+/// `CodexDriver::spawn`이 꽂는 `spec.cwd` — **사용자가 연 프로젝트 폴더**다. 그래서
+/// 게이트([`super::versions::resolve_bin`] = 실행 파일 폴더 + `PATH`)가 「창구 없음」이라
+/// 답한 판에서도 턴은 **그 폴더의 `codex.exe`로 떴다**. EXTN 확인 크리틱 R2 §5의 실측:
+///
+/// ```text
+/// parentCwd = C:\Temp          childCwd = C:\Temp\ccg-x2r2-projtest
+/// resolve_bin("codex") = null          ← 게이트: "물어볼 창구가 없다" → 한도 Unknown = 눈감고 발사
+/// cmd /C ""codex" app-server" → 뜬 파일 = C:\Temp\ccg-x2r2-projtest\codex.exe   ← 스폰
+/// ```
+///
+/// 그래서 맨 이름은 **여기서 게이트와 같은 함수로 해석해** 넘긴다:
+///
+/// | 해석 | 넘기는 값 | 셸이 다시 훑는가 |
+/// |---|---|---|
+/// | 찾았다 | 그 **절대 경로** | 아니오(`cmd`로 가도 경로가 박혀 있다) |
+/// | 못 찾았다 | `Command::new(맨 이름)` | 아니오 — Rust의 `Command`는 **CWD를 안 본다** |
+///
+/// 못 찾은 값을 `cmd`에 안 넘기는 것이 이 수정의 전부다. 그 판의 스폰은 그 자리에서
+/// 실패하고(`runtime.rs`가 그 오류를 삼키지 않는다 — ★R4 §R3.8-M), 「없다」가 게이트와
+/// **한 벌**이 된다. 반대 선택지(게이트가 `CWD`를 보게 하기)를 안 고른 이유는
+/// `super::versions::search_dirs`에 적었다 — 요약하면 **남의 저장소를 열기만 해도 그 안의
+/// `codex.exe`가 엔진으로 뜨는 것**을 사실로 인정하고 싶지 않아서다.
+///
+/// 남는 오차는 `Command`가 `system32`·`windows`를 더 본다는 것 하나인데 둘 다 사실상 언제나
+/// `PATH`에 있다(크리틱이 이 컴퓨터에서 다시 셌다).
 pub fn command_for(bin: &PathBuf) -> Command {
-    let s = bin.to_string_lossy().to_string();
-    let low = s.to_ascii_lowercase();
     // ★R28c CPATH — 맨 이름 판정은 `versions::is_bare_name` **한 벌**이다. 여기 사본을
     // 두면 "PATH에서 찾아 띄운다"와 "PATH에서 찾을 수 있나"가 서로 다른 규칙이 된다.
-    let bare_name = super::versions::is_bare_name(bin);
-    let needs_shell = cfg!(windows) && (low.ends_with(".cmd") || low.ends_with(".bat") || bare_name);
-    if !needs_shell {
-        let mut c = Command::new(bin);
+    // ★R28d EXTN R2 — 이제 **해석까지** 한 벌이다(위 표).
+    let resolved: PathBuf = if cfg!(windows) && super::versions::is_bare_name(bin) {
+        match super::versions::resolve_bin(bin) {
+            Some(p) => p,
+            // 게이트가 「없다」고 답한 이름 — 셸에 넘기면 셸이 **현재 폴더**를 뒤진다.
+            None => return Command::new(bin),
+        }
+    } else {
+        bin.clone()
+    };
+    let s = resolved.to_string_lossy().to_string();
+    if !needs_shell(&resolved) {
+        let mut c = Command::new(&resolved);
         c.arg("app-server");
         return c;
     }
@@ -158,6 +195,23 @@ pub fn command_for(bin: &PathBuf) -> Command {
         c.arg("/C").arg(format!("\"{s}\" app-server"));
     }
     c
+}
+
+/// `cmd /C`를 경유해야 하는 값인가 = **커널이 직접 못 띄우는 확장자**인가(Windows만).
+///
+/// R1까지 이 판정은 `.cmd` · `.bat` · **맨 이름** 셋이었다. 맨 이름은 [`command_for`]가 먼저
+/// 해석해서 사라졌고(위 표), 남은 둘 대신 **`.exe`·`.com`이 아닌 확장자 전부**를 셸로 보낸다.
+/// 게이트 쪽 후보는 `PATHEXT` **전부**(`versions::path_exts`)라 여기만 둘이면 「띄울 수 있다」고
+/// 답한 값을 직접 스폰해 실패하는 판이 남는다(`codex.vbs`·`codex.js` — 보고서 §7.3의 비대칭).
+/// 확장자가 **없는** 값은 그대로 커널에 준다(그쪽은 `CreateProcess`가 `.exe`를 붙여 본다).
+fn needs_shell(bin: &Path) -> bool {
+    if !cfg!(windows) {
+        return false;
+    }
+    match bin.extension().and_then(|e| e.to_str()) {
+        None => false,
+        Some(e) => !matches!(e.to_ascii_lowercase().as_str(), "exe" | "com"),
+    }
 }
 
 fn append_tail(file: &str, text: &str) {
@@ -379,11 +433,121 @@ mod tests {
         );
     }
 
+    /// ★R28d EXTN R2 — **맨 이름은 여기서 해석한다**(셸이 훑을 기회를 안 준다).
+    ///
+    /// R1까지 이 테스트는 *"맨 이름도 셸을 지난다"*(`get_program() == "cmd"`)였다. 그 규칙이
+    /// 확인 크리틱 R2 §5의 구멍이었다 — `cmd.exe`는 `PATH`보다 **현재 폴더**를 먼저 뒤지고
+    /// 그 폴더는 채팅의 작업 폴더다. 이제 두 갈래로 갈린다:
+    ///  ① 해석된다 → 셸에 **절대 경로**가 실린다(맨 이름이 실리면 회귀다),
+    ///  ② 아무 데도 없다 → 셸로 **안 보낸다**(= cmd가 현재 폴더를 볼 기회 자체가 없다).
+    ///
+    /// PATH를 안 만지고 재는 방법: 게이트의 **첫 폴더가 실행 파일 폴더**라(`search_dirs`)
+    /// 이 테스트 바이너리 옆에 shim을 심으면 그 자리가 그대로 답이 된다.
     #[cfg(windows)]
     #[test]
-    fn a_bare_name_goes_through_the_shell_too() {
-        // PATH 폴백(`codex`)도 Windows에선 `.cmd` shim이다.
-        let c = command_for(&PathBuf::from("codex"));
-        assert_eq!(c.get_program().to_string_lossy(), "cmd");
+    fn a_bare_name_is_resolved_here_so_the_shell_never_searches() {
+        let me = std::env::current_exe().unwrap();
+        let name = format!("ccg-extn-cmdfor-{}", std::process::id());
+        let shim = me.parent().unwrap().join(format!("{name}.cmd"));
+        std::fs::write(&shim, "@echo off\r\n").unwrap();
+
+        let c = command_for(&PathBuf::from(&name));
+        let args: Vec<String> = c.get_args().map(|a| a.to_string_lossy().to_string()).collect();
+        let _ = std::fs::remove_file(&shim);
+        assert_eq!(c.get_program().to_string_lossy(), "cmd", "`.cmd`는 여전히 셸을 지난다");
+        // 붙는 확장자는 `PATHEXT`의 **글자 그대로**다(이 컴퓨터의 값은 `.CMD`) — 같은 파일이다.
+        assert_eq!(
+            args[1].to_ascii_lowercase(),
+            format!("\"\"{}\" app-server\"", shim.display()).to_ascii_lowercase(),
+            "★ 셸에 맨 이름을 넘겼다 = cmd가 **현재 폴더부터** 다시 훑는다"
+        );
+
+        // ② 아무 데도 없는 이름 — 그대로 스폰해서 실패시킨다(게이트의 답과 한 벌).
+        let ghost = format!("ccg-extn-ghost-{}", std::process::id());
+        let g = command_for(&PathBuf::from(&ghost));
+        assert_eq!(
+            g.get_program().to_string_lossy(),
+            ghost,
+            "★ 게이트가 「없다」고 답한 맨 이름을 cmd에 넘겼다"
+        );
+    }
+
+    /// ★R28d EXTN R2 — **연 폴더에만 codex가 있는 판에서 게이트와 스폰의 답이 같다.**
+    ///
+    /// 확인 크리틱 R2 §5가 판 구멍이고 크리틱이 요구한 못이다. 게이트(`resolve_bin`)는
+    /// 실행 파일 폴더 + `PATH`만 보는데 스폰은 `cmd /C`라 **채팅의 작업 폴더**를 먼저 봤다:
+    /// 게이트 `null`(→ `can_ask=false` → 한도 `Unknown` → 눈감고 발사)인데 턴은 그 폴더의
+    /// 실행본으로 떴다.
+    ///
+    /// **`NoDefaultCurrentDirectoryInExePath`를 지우고 잰다.** Git Bash가 그 변수를 넣기
+    /// 때문에(레지스트리엔 없다 — 크리틱 §5.4) 안 지우면 `cmd`가 현재 폴더를 아예 안 뒤져
+    /// 이 못이 **조용히 초록**이 된다. 데스크탑에서 뜨는 사용자 앱에는 그 변수가 없다.
+    /// 그래서 대조 팔(고치기 전의 모양)이 이 못 안에 들어 있다 — 그쪽이 빨갛지 않으면
+    /// 이 못은 아무것도 안 잡는다는 뜻이라 같이 실패한다.
+    #[cfg(windows)]
+    #[test]
+    fn the_gate_and_a_real_spawn_agree_when_the_cli_sits_only_in_the_chat_folder() {
+        use std::os::windows::process::CommandExt;
+        let dir = std::env::temp_dir().join(format!("ccg-extn-cwd-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        // 「사용자가 연 폴더에 떨어져 있는 codex」 — 뜨면 표식을 남긴다.
+        let name = format!("ccg-extn-cwd-{}", std::process::id());
+        std::fs::write(dir.join(format!("{name}.cmd")), "@echo off\r\necho x> ran.txt\r\n").unwrap();
+        let ran = dir.join("ran.txt");
+
+        // ① 게이트 — 실행 파일 폴더에도 PATH에도 없는 이름이다.
+        let gate = crate::codex::versions::resolve_bin(Path::new(&name));
+
+        // ② 제품 경로 — 드라이버가 하는 그대로(현재 폴더 = 채팅의 작업 폴더).
+        let mut c = command_for(&PathBuf::from(&name));
+        c.current_dir(&dir)
+            .env_remove("NoDefaultCurrentDirectoryInExePath")
+            .creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+        let _ = c.output(); // 스폰 실패가 정상 착지다
+        let product_ran = ran.exists();
+
+        // ③ 대조 — R1까지의 모양(맨 이름을 그대로 `cmd /C`에).
+        let mut ctl = Command::new("cmd");
+        ctl.raw_arg("/C");
+        ctl.raw_arg(format!("\"\"{name}\" app-server\""));
+        ctl.current_dir(&dir)
+            .env_remove("NoDefaultCurrentDirectoryInExePath")
+            .creation_flags(0x0800_0000);
+        let _ = ctl.output();
+        let control_ran = ran.exists();
+
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(gate.is_none(), "게이트가 이미 그 폴더를 본다면 이 못의 전제가 다르다: {gate:?}");
+        assert!(
+            control_ran,
+            "옛 모양이 연 폴더의 {name}.cmd를 안 띄웠다 = 이 컴퓨터에서는 이 못이 아무것도 못 잡는다"
+        );
+        assert!(
+            !product_ran,
+            "★ 게이트는 「창구 없음」인데 스폰이 **연 폴더의 실행본**을 띄웠다(= 한도 Unknown으로 눈감고 발사)"
+        );
+    }
+
+    /// `.exe`·`.com`이 아닌 확장자는 전부 셸을 지난다 — 게이트의 후보가 `PATHEXT` 전부라
+    /// (`versions::path_exts`) 여기만 `.cmd`/`.bat`면 「띄울 수 있다」고 답한 값을 직접
+    /// 스폰해 실패한다(보고서 §7.3의 비대칭).
+    #[cfg(windows)]
+    #[test]
+    fn a_scripted_extension_goes_through_the_shell_but_a_native_one_does_not() {
+        for (p, shell) in [
+            ("C:\\x\\codex.vbs", true),
+            ("C:\\x\\codex.js", true),
+            ("C:\\x\\codex.bat", true),
+            ("C:\\x\\codex.exe", false),
+            ("C:\\x\\codex.COM", false),
+        ] {
+            let c = command_for(&PathBuf::from(p));
+            assert_eq!(
+                c.get_program().to_string_lossy() == "cmd",
+                shell,
+                "{p}의 갈래가 게이트와 어긋난다"
+            );
+        }
     }
 }

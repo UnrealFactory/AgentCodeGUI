@@ -286,8 +286,10 @@ R28c CPATH 확인 크리틱 R1 §5.2가 실측으로 반박한 문장이다. `ca
    닫았다(§9).** "경계 밖"이 아니라 이 라운드가 세운 불변식이 서지 않는 자리였다 — 게이트가
    `PATH`만 보고 스폰이 실행 파일 폴더를 먼저 보는 바람에 **로그아웃의 토큰 해지가 조용히
    생략되는 판**이 있었다(EXTN 확인 크리틱 R1 §2.1).
-2. **`resolve_bin`은 여전히 CWD를 안 본다.** `cmd.exe`는 PATH보다 먼저 현재 폴더를 뒤진다
-   (크리틱 §4.4). 지금 소비자에게는 도달 경로가 없다.
+2. ~~**`resolve_bin`은 여전히 CWD를 안 본다.** `cmd.exe`는 PATH보다 먼저 현재 폴더를 뒤진다
+   (크리틱 §4.4). 지금 소비자에게는 도달 경로가 없다.~~ → **★거짓이었다. 수정 R2에서 닫았다(§10).**
+   도달 경로는 있다 — `CodexDriver::spawn`의 `cmd.current_dir(&spec.cwd)`, 즉 **사용자가 연
+   프로젝트 폴더**다. "없다"는 확인하지 않고 적은 문장이다.
 3. **`.VBS`/`.JS` 비대칭**(크리틱 §4.4): `path_exts()`는 `PATHEXT` 전부를 후보로 쓰는데
    `command_for`는 `.cmd`/`.bat`/맨 이름만 셸로 보낸다. `codex.js`가 잡히면 「띄울 수 있다」고
    답한 뒤 직접 스폰해 실패한다. 이번에 더한 「이름 그대로」 후보는 이 비대칭을 넓히지 않는다
@@ -433,7 +435,183 @@ assertion `left == right` failed: ★ 스폰은 되는데 게이트가 「없다
 
 ### 9.7 안 한 것 (그대로 남은 것)
 
-1. `resolve_bin`은 **여전히 CWD·system32·windows를 안 본다**. 앞은 `cmd /C` 갈래에만 있는
+1. ~~`resolve_bin`은 **여전히 CWD·system32·windows를 안 본다**. 앞은 `cmd /C` 갈래에만 있는
    경로고(맨 이름 codex) 뒤 둘은 사실상 언제나 `PATH`에 있다. 둘 다 「없다고 했는데 뜬다」
-   방향이라 **해지 생략 방향은 아니다** — 방향이 다르다는 것이 이 라운드의 판단 근거다.
-2. `.VBS`/`.JS` 비대칭(§7.3)도 그대로다.
+   방향이라 **해지 생략 방향은 아니다** — 방향이 다르다는 것이 이 라운드의 판단 근거다.~~
+   → **★이 문단은 두 군데가 거짓이다. 확인 크리틱 R2 §5가 둘 다 실측으로 뒤집었고 수정
+   R2가 CWD 칸을 닫았다(§10).** 정정:
+   - *"`cmd /C` 갈래에만 있는 경로"* 는 맞지만 **그 갈래에 도달 경로가 있다** — 채팅의 작업
+     폴더(= 사용자가 연 프로젝트 폴더)가 그 명령의 현재 폴더다.
+   - *"「없다고 했는데 뜬다」 방향이라 해지 생략 방향은 아니다"* 는 **부호가 뒤집혔다**:
+     R1이 고친 해지 생략이 **정확히 그 방향**이었다(게이트 `None` → `logout`이 해지를 건너뜀).
+     클로드 축이 CWD에 안 걸리는 진짜 이유는 방향이 아니라 **Rust `Command`가 CWD를 아예 안
+     보기 때문**이고, 그 사실은 R1 장부 어디에도 없었다.
+2. ~~`.VBS`/`.JS` 비대칭(§7.3)도 그대로다.~~ → **수정 R2에서 같이 닫았다(§10.2).**
+
+---
+
+## 10. ★수정 라운드 R2 — 「연 폴더의 실행본」이 엔진이 되던 마지막 칸 (확인 크리틱 R2 FAIL 대응)
+
+> 크리틱 판정문: `docs/critic/r28d-extn-critic-r2.md`(커밋 `fca2feb`). 이 라운드는 커밋 하나
+> (코드 + 하네스 + 장부)로 들어간다.
+> 판정은 **FAIL**이고 이유는 §5 하나 — 그리고 그 §5는 「코드가 틀렸다」보다 **「안 닫은
+> 근거로 적힌 두 문장이 거짓이다」**에 무게가 있다. 크리틱이 자기 손으로 다시 재서 초록을
+> 확인한 것(클로드 축 X·P·N·M · codex 5팔 12/0 · `file_diff` 폴더 3종 · cargo 219/101/146 ·
+> 장부 정정 ②)은 **한 줄도 안 건드렸다.**
+
+### 10.1 무엇이 아직 깨져 있었나
+
+이 라운드가 표지에 건 불변식 — *"「띄울 수 있는가」와 「실제로 띄운다」가 **같은 폴더
+목록**을 본다"* — 이 codex 축에서 서지 않았다. 게이트는 `resolve_bin`(실행 파일 폴더 +
+`PATH`)인데 스폰은 `cmd /C ""codex" app-server"`이고, **`cmd.exe`는 `PATH`보다 현재 폴더를
+먼저 뒤진다.** 그 현재 폴더가 `codex/driver.rs`의 `cmd.current_dir(&spec.cwd)` —
+**사용자가 연 프로젝트 폴더**다.
+
+```text
+resolve_bin("codex") = null   ← 게이트: "물어볼 창구가 없다" → can_ask=false → 한도 Unknown = 눈감고 발사
+cmd /C ""codex" app-server"   → 실제로 뜬 파일 = <연 폴더>\codex.exe        ← 스폰
+```
+
+즉 **남의 저장소를 열기만 해도 그 안의 `codex.exe`가 이 앱의 엔진이 되고**, 그 판의 한도
+재검증은 R28c CPATH가 지운 바로 그 `Unknown`(눈감고 발사)으로 떨어진다.
+
+### 10.2 고친 것 — **게이트가 CWD를 보게** 하지 않고 **스폰이 CWD를 안 보게** 했다
+
+크리틱이 준 선택지는 둘이었다. (b) `search_dirs`가 `CWD`를 본다 = 지금 동작(그 폴더의
+실행본으로 턴을 띄운다)을 **사실로 인정**한다. (a) 못 찾은 맨 이름을 셸에 안 넘긴다 =
+스폰을 그 자리에서 실패시켜 「없다」를 한 벌로 만든다.
+
+**(a)를 골랐다. 이유는 규칙 수가 아니라 위험 방향이다** — (b)는 「클론한 저장소 안에
+`codex.exe`를 넣어 두면 사용자가 그 폴더를 열고 턴을 보내는 순간 그것이 뜬다」를 계약으로
+만든다(바이너리 심기). 앱이 띄울 실행본은 **사용자가 설치한 것**이어야지 열어 본 폴더가
+정하는 것이 아니다. 그래서 결정은 **「CWD는 창구가 아니다」** 이고, 두 답을 그 값으로 맞췄다.
+
+```rust
+// crates/ccg-engine/src/codex/driver.rs — 맨 이름의 해석을 **셸에 맡기지 않는다**
+pub fn command_for(bin: &PathBuf) -> Command {
+    let resolved: PathBuf = if cfg!(windows) && super::versions::is_bare_name(bin) {
+        match super::versions::resolve_bin(bin) {
+            Some(p) => p,                       // 찾았다 → 그 절대 경로로(셸이 다시 안 훑는다)
+            None => return Command::new(bin),   // 못 찾았다 → Rust의 Command는 **CWD를 안 본다**
+        }
+    } else { bin.clone() };
+    …
+}
+```
+
+곁가지 하나를 같이 닫았다(§7.3의 `.VBS`/`.JS` 비대칭): 셸로 보낼지 말지를 `.cmd`/`.bat`
+목록이 아니라 **`.exe`·`.com`이 아닌 확장자 전부**로 판정한다(`needs_shell`). 게이트의 후보는
+`PATHEXT` 전부인데 스폰만 둘이면 「띄울 수 있다」고 답한 값을 직접 스폰해 실패한다.
+
+| 판 | 게이트 `resolve_bin` | 스폰 `command_for` |
+|---|---|---|
+| PATH·exe 옆에 있다 | `Some(절대 경로)` | 그 **절대 경로**를 띄운다 |
+| 아무 데도 없다 | `None` | `Command::new(맨 이름)` → **실패**(CWD를 안 본다) |
+| 연 폴더에만 있다 | `None` | **실패**(← 이 라운드가 바꾼 칸) |
+
+### 10.3 실측 ① — 제품 경로로 재현하고 뒤집었다 (하네스 F팔)
+
+`scripts/poc-codex-path.mjs`에 팔을 하나 더했다. **F · 연 프로젝트 폴더에만 codex**:
+`CCG_CODEX_BIN=codex` · `PATH`에서 codex 제거 · **채팅의 작업 폴더에 `codex.cmd`를 심는다**
+(그 배치가 **자기 손으로** 표식 파일을 쓰고 가짜 app-server로 이어 준다 — "떴나"를 추론이
+아니라 디스크의 바이트로 읽는다).
+
+**그리고 `NoDefaultCurrentDirectoryInExePath`를 지우고 잰다.** Git Bash가 그 변수를 넣기
+때문에(레지스트리엔 없다 — 크리틱 §5.4) 안 지우면 `cmd`가 현재 폴더를 아예 안 뒤져 이 팔이
+**조용히 초록**이 된다. 데스크탑에서 뜨는 사용자 앱에는 그 변수가 없다.
+
+**대조군을 둘 세웠다.** ① R1이 구운 exe(다른 트리) · ② **같은 트리에서 내 hunk만 되돌려
+새로 구운 exe**(`command_for`의 그 세 줄만 R1 모양으로). ②가 있어야 "바뀐 것이 내 hunk다"가
+말이 아니라 값이 된다.
+
+| | ① R1 exe(`md5 f890d307…` · 6,479,872 B) | ② **같은 트리 · 내 hunk만 되돌림**(`md5 f97e357b…` · 6,509,056 B) | 수정본(`md5 0dfb1843…` · 6,509,568 B) |
+|---|---|---|---|
+| 연 폴더의 실행본이 떴나 | **`ran:true`** | **`ran:true`** | **`ran:false`** |
+| 그것과 말을 섞었나 | **`talked:true`**(stdin 기록 501 B) | **`talked:true`** | **`talked:false`** |
+| 게이트 판정 | `unknown:1`(창구 없음) | `unknown:1` | `unknown:1` — **같다** |
+| 발사 | t=90초(옛 계약) | t=90초 | t=90초 — **같다**(C팔과 같은 값 = 창구가 진짜 없으니 맞는 착지다) |
+| 판정 | **FAIL 3 · `hole:true`** | **FAIL 3 · `hole:true`** | **PASS · `hole:false`** |
+
+→ `docs/critic/codex-path-extnr2ctl.json`(①) · `codex-path-extnr2ctl2.json`(②) ·
+`codex-path-extnr2.json`(수정본 6팔)
+
+바뀐 칸은 **「그 폴더의 실행본이 뜨는가」 하나**다. 게이트의 답도, 발사 여부도, 시각도
+그대로다 — 「전부 막아서 얻은 초록」이 아니라는 뜻이다.
+
+### 10.4 실측 ② — 단위 못 둘 + **그 못이 진짜 빨개지는지**를 뮤테이션으로 확인
+
+`crates/ccg-engine/src/codex/driver.rs`에 넣었다.
+
+| 못 | 무엇을 잠그나 |
+|---|---|
+| `the_gate_and_a_real_spawn_agree_when_the_cli_sits_only_in_the_chat_folder` | 임시 폴더에 `<이름>.cmd`를 심고 게이트와 스폰을 나란히 묻는다. **대조 팔이 못 안에 들어 있다** — R1의 모양(`cmd /C` + 맨 이름)을 손으로 만들어 같은 폴더에 쏴서 **그쪽은 반드시 떠야** 한다(안 뜨면 이 컴퓨터에선 이 못이 아무것도 못 잡는다는 뜻이라 같이 실패한다). 둘 다 `NoDefaultCurrentDirectoryInExePath`를 지우고 잰다 |
+| `a_bare_name_is_resolved_here_so_the_shell_never_searches` | ① 해석되는 맨 이름은 셸에 **절대 경로**가 실린다 · ② 아무 데도 없는 맨 이름은 **셸로 안 간다** |
+| `a_scripted_extension_goes_through_the_shell_but_a_native_one_does_not` | `.vbs`·`.js`·`.bat`는 셸 · `.exe`·`.COM`은 직접(§7.3 비대칭) |
+
+`command_for`를 R1의 모양으로 되돌린 뮤테이션에서 **정확히 그 둘만** 빨갛다:
+
+```text
+---- the_gate_and_a_real_spawn_agree_when_the_cli_sits_only_in_the_chat_folder ----
+★ 게이트는 「창구 없음」인데 스폰이 **연 폴더의 실행본**을 띄웠다(= 한도 Unknown으로 눈감고 발사)
+---- a_bare_name_is_resolved_here_so_the_shell_never_searches ----
+  left: "\"\"ccg-extn-cmdfor-18108\" app-server\""            ← 맨 이름이 셸로 갔다
+ right: "\"\"…\deps\ccg-extn-cmdfor-18108.cmd\" app-server\""
+test result: FAILED. 4 passed; 2 failed  (codex::driver 필터)
+```
+
+### 10.5 실측 ③ — 무회귀
+
+| 무엇 | 값 | 기준 |
+|---|---|---|
+| 하네스 `poc-codex-path` 6팔(수정본) | **PASS 15 / FAIL 0 · `hole:false`** | 크리틱 12/0(5팔) → 새 팔 하나에 검사 3 |
+| A 전역 PATH · B 앱 설치본 · E `codex.exe` 철자 · D **이 컴퓨터의 진짜 전역 codex** | 넷 다 **미발사** · `asks:3 fetches:2 unavailable:3 unknown:0` · 대기표 유지 | 크리틱과 방향 동일(계수는 `--watch=140`이라 사다리가 한 칸 더 돌았다) |
+| C 아무 데도 | t=90초 **발사** · `unknown:1` | 옛 계약 유지 = 판별력 살아 있다 |
+| `cargo test -p ccg-engine` | **221 통과 · 0 실패 · 2 ignored** · 반복 **22/22** 초록 | 크리틱 219 + 내 못 2(셋을 더하고 하나를 교체했다) |
+| `cargo test -p ccg-fs` | **101 · 0 · 2** | 같음(안 건드렸다) |
+| `cargo test -p agentcodegui` | **151 · 0** · 반복 **22/22** 초록 | 크리틱 146 + **옆 갈래(M10)의 미커밋 `engine::talk::tests` 5**. 내가 더한 것은 **0** — `git diff -- src-tauri`의 내 두 파일은 **주석만** 바뀌었다(비주석 diff 0줄) |
+| `npm run typecheck`(node·web) · `typecheck:app` | 전부 **exit 0** | |
+
+### 10.6 장부 정정 ③ — **이번에 지운 두 문장은 「검증 안 하고 적은 문장」이다**
+
+| 어디 | 무엇이 거짓이었나 | 지금 |
+|---|---|---|
+| `codex/versions.rs` `search_dirs` 주석 | *"`CWD` … 지금 소비자에게 도달 경로가 없다"* | 도달 경로는 **채팅의 작업 폴더**다(위 실측). 「안 넣은 것은 결정이고 이유는 바이너리 심기」로 다시 적었다 |
+| 같은 주석 · 보고서 §9.7·§7.2 | *"둘 다 「없다고 했는데 뜬다」 방향이라 **해지 생략 방향은 아니다**"* | **부호가 뒤집혀 있었다.** R1이 고친 해지 생략이 정확히 그 방향이다(게이트 `None` → `logout`이 해지를 건너뜀). 클로드 축이 안전한 진짜 이유는 **Rust `Command`가 CWD를 아예 안 보기 때문**이고 그 사실을 처음으로 적었다 |
+| `codex/versions.rs` `resolve_bin` 주석 | AI 커밋 메시지 게이트 `aimsg.rs:268` | **`:271`**(268은 주석 블록 시작 줄이었다 — 크리틱이 3줄 어긋남을 지적했다) |
+| `engine/codex_limit.rs` `can_ask` 주석 | *"`command_for`가 `cmd /C`로 실제로 찾아 띄운다"*(현재형) | 그 이관을 명시했다 — R28c 당시엔 `cmd /C`가, R2부터는 `resolve_bin`이 찾는다 |
+
+### 10.7 격리·안전
+
+- **CDP 9781**(수정본·대조군①) · **9783**(대조군②) — 크리틱 9761~9769 · 빌더 R1 9741~9745 ·
+  옆 갈래와 무충돌.
+- 격리 홈 `.poc-home-extnr2` · `.poc-home-extnr2ctl` · `.poc-home-extnr2ctl2` — 주행 후 하네스가 지운다.
+- `CARGO_TARGET_DIR`: `C:\Temp\ccg-extnr2-tgt`(테스트·뮤테이션) · `target-extn`(수정본 exe) ·
+  `target-extnctl`(대조군② exe — 둘 다 이 갈래가 R1부터 쓰던 제 것이다).
+  **남의 `target-*`·공용 `target/`은 한 번도 안 썼다.**
+- 대조군① exe는 R1이 구운 `target-extn/release/agentcodegui.exe`를 **덮기 전에**
+  `C:\Temp\ccg-extnr2-ctl\`로 떠 둔 것이다(md5 `f890d307…`).
+  대조군②는 지금 트리에서 `command_for`의 세 줄만 R1 모양으로 되돌려 구웠고(md5 `f97e357b…`),
+  굽자마자 파일을 원본 해시(`22f10458…`)로 복원했다 — 워킹트리에 뮤테이션이 남아 있지 않다.
+- **워킹트리에 옆 갈래(M10)의 미커밋이 얹혀 있다**(`src-tauri/src/engine/hub.rs`·`talk.rs` ·
+  `crates/ccg-engine/src/runtime.rs`). 세 exe 전부 그 상태에서 구웠고 대조군②는 그 사이에
+  8줄이 더 움직였다(빌드 전후 `git diff --stat`으로 확인). 그래서 **「내 hunk 하나만 다르다」를
+  글자 그대로 보장하는 것은 단위 뮤테이션(§10.4 · 같은 초에 같은 트리)이고**, exe 둘은 그
+  결론을 제품 경로에서 재확인하는 자리다. 그 갈래의 파일은 **읽지도 고치지도 않았다**.
+- **이름 기반 kill 0회.** 죽인 것은 하네스가 spawn한 PID 트리뿐. 주행 뒤 `tasklist` 확인 —
+  사용자 실앱 `…\Programs\AgentCodeGUI\AgentCodeGUI.exe` **5프로세스 그대로**, 내 트리
+  (`target-extn`·`C:\Temp\ccg-extnr2-ctl`) 잔여 **0개**, `codex.exe`·`ccg-fakecodex.exe` 잔여 **0개**.
+  (살아 있는 `agentcodegui.exe` 하나는 옆 갈래 M10의 `target-m10r6` 것이라 **손대지 않았다** —
+  `Win32_Process`로 경로를 확인하고 넘겼다.)
+- 실계정 0 · `CCG_NO_NET=1` · 실 HTTP 0 · 토큰 회전 0. F팔이 띄우려던 것도 우리가 심은 배치다.
+- 기준 결과 파일 무접촉 — 새 산출물은 새 이름(`codex-path-extnr2.json` · `…r2ctl.json`)으로만.
+
+### 10.8 안 한 것
+
+1. `resolve_bin`은 여전히 `system32`·`windows`를 안 본다(`Command`는 본다). 이 컴퓨터에선
+   둘 다 `PATH`에 있어 답이 같지만, **방향은 「없다고 답했는데 뜬다」 = 해지 생략과 같은
+   방향**이다(R1이 반대로 적었던 그 자리). 닫으려면 그 두 칸을 `search_dirs`에 넣으면 된다 —
+   이번 라운드의 경계 밖이라 안 했고, 「안전해서 안 했다」가 아니라 **「같은 방향인데 아직
+   안 닫았다」**로 적어 둔다.
+2. 클로드 축은 `Command::new`라 CWD를 안 본다 — 고칠 것이 없다(이번에 그 **이유**를 적었다).
+3. `read_row`·`parity/codex.rs`의 `command_for` 호출은 `current_dir`를 안 꽂아 앱의 CWD를
+   물려받는다. 그 값이 사용자 콘텐츠는 아니지만, 이제 어느 쪽이든 **CWD는 후보가 아니다**.

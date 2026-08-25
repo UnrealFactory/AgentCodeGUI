@@ -34,6 +34,20 @@
  *                   전역 codex가 있을 때만 돈다. A와 같은 답이어야 크리틱이 지목한 인구가
  *                   **씨앗 없이도** 덮인다. (판정 계수는 재확인 사다리가 닿는 t≈90초에
  *                   처음 움직인다 — 첫 주행에서 20초만 보다가 `asks=0`으로 헛다리를 짚었다.)
+ *   F · 연 폴더에만  ★R28d EXTN R2. CCG_CODEX_BIN=codex + PATH에서 codex 제거 +
+ *                   **채팅의 작업 폴더에 codex**. EXTN 확인 크리틱 R2 §5가 판 구멍이다:
+ *                   게이트(`resolve_bin` = 실행 파일 폴더 + PATH)는 `null`인데
+ *                   `cmd /C ""codex" app-server"`는 **현재 폴더를 먼저** 뒤지고, 그 현재
+ *                   폴더가 `CodexDriver::spawn`의 `spec.cwd` = **사용자가 연 프로젝트
+ *                   폴더**였다. → 한도는 `Unknown`(눈감고 발사)인데 턴은 그 폴더의 실행본으로
+ *                   떴다. **C팔처럼 발사하는 것은 맞다**(창구가 진짜 없으니 옛 계약) —
+ *                   틀린 것은 「그 폴더의 실행본이 뜨는 것」이라 그 한 칸만 잰다.
+ *                   심는 것은 `codex.cmd`인데, 그 배치가 **자기 손으로** 표식을 쓰고 가짜
+ *                   app-server로 이어 준다 — "떴나"를 추론이 아니라 디스크의 바이트로 읽는다.
+ *
+ *   ※ F팔은 `NoDefaultCurrentDirectoryInExePath`를 **지우고** 잰다. Git Bash가 그 변수를
+ *     넣기 때문에(레지스트리엔 없다 — 크리틱 §5.4) 안 지우면 `cmd`가 현재 폴더를 아예 안
+ *     뒤져 이 팔이 **조용히 초록**이 된다. 데스크탑에서 뜨는 사용자 앱에는 그 변수가 없다.
  *
  * 세 팔의 나머지 씨앗은 완전히 같다: 클로드 계정 1 + **등록된 codex 계정 1** +
  * Codex 채팅 1 + 리셋이 2시간 전인 대기표 + 자동 재개 ON + `CCG_NO_NET=1`.
@@ -174,8 +188,14 @@ const IPC = (channel, payload = []) =>
   `await window.__TAURI_INTERNALS__.invoke('ipc_call', { channel: ${JSON.stringify(channel)}, payload: ${JSON.stringify(payload)} })`
 
 /** 팔 하나 — 씨앗을 새로 깔고 앱을 띄워 `watch`초(또는 발사까지) 지켜본다. */
-async function arm(label, { codexBin, pathEnv, watch = WATCH_S }) {
+async function arm(label, { codexBin, pathEnv, watch = WATCH_S, plantCwdCodex = false }) {
   const shim = seedHome()
+  // ★R28d EXTN R2 (F팔) — 「연 프로젝트 폴더에 떨어져 있는 codex」. 뜨면 **자기가** 표식을
+  // 남기고(추론이 아니라 디스크의 바이트다) 가짜 app-server로 이어 준다.
+  const mark = path.join(HOME, 'cwd-codex-ran.txt')
+  if (plantCwdCodex) {
+    write(path.join(HOME, 'work', 'codex.cmd'), `@echo off\r\necho x>"${mark}"\r\n"${FAKECODEX}" %*\r\n`)
+  }
   const env = {
     ...process.env,
     PATH: typeof pathEnv === 'function' ? pathEnv(shim) : pathEnv,
@@ -186,6 +206,12 @@ async function arm(label, { codexBin, pathEnv, watch = WATCH_S }) {
     CCG_FAKECODEX_SCRIPT: path.join(HOME, 'fakecodex.jsonl'),
     CCG_FAKECODEX_IN: path.join(HOME, 'codex-stdin.log'),
     CCG_NO_BOOT_ENGINE_UPDATE: '1'
+  }
+  // ★ 이 변수가 살아 있으면 `cmd`가 **현재 폴더를 안 뒤진다** = F팔이 조용히 초록이 된다
+  //   (Git Bash가 넣는다 · 레지스트리엔 없다 · 사용자 데스크탑 앱에는 없다).
+  //   Windows 환경 변수는 대소문자를 안 가리므로 이름을 접어서 지운다.
+  for (const k of Object.keys(env)) {
+    if (k.toLowerCase() === 'nodefaultcurrentdirectoryinexepath') delete env[k]
   }
   // `codexBin: null` = 우회로를 **아예 안 꽂는다**(= 앱이 진짜 폴백 사슬을 탄다 — D팔).
   if (codexBin == null) delete env.CCG_CODEX_BIN
@@ -247,6 +273,10 @@ async function arm(label, { codexBin, pathEnv, watch = WATCH_S }) {
     firedAt: samples.find((s) => s.spawns > 0)?.t ?? null,
     finalProbe: last.probe ?? null,
     holdAlive: !!last.hold,
+    // F팔의 두 신호 — ① 연 폴더의 실행본이 **떴나**(그 배치가 직접 남긴다) ·
+    //                ② 그것과 한 줄이라도 주고받았나(가짜 app-server의 stdin 기록).
+    cwdCodexRan: plantCwdCodex ? fs.existsSync(mark) : null,
+    cwdCodexTalked: plantCwdCodex ? fs.existsSync(path.join(HOME, 'codex-stdin.log')) : null,
     samples,
     tailLog: log.slice(-1200)
   }
@@ -288,6 +318,18 @@ async function main() {
     })
   }
 
+  // ★R28d EXTN R2 — **연 프로젝트 폴더에만 codex가 있는 판.** 게이트가 「창구 없음」이라
+  //   답하는 것은 맞고(C팔과 같다), 그 판에서 **그 폴더의 실행본이 뜨면** 두 답이 갈린 것이다.
+  if (want('f')) {
+    console.log('\nF. 연 폴더에만 codex — CCG_CODEX_BIN=codex · PATH에서 제거 · 채팅 작업 폴더에 심는다')
+    rep.arms.cwdOnly = await arm('F/CWD', {
+      codexBin: 'codex',
+      pathEnv: pathWithoutCodex(),
+      plantCwdCodex: true
+    })
+    await sleep(1500)
+  }
+
   // D. **이 컴퓨터의 진짜 전역 codex.** 우회로도 가짜도 없다 — 크리틱이 말한 그 인구를
   //    그대로 태운다. 고쳐진 판에서는 t≈90초의 재확인이 `unavailable`로 착지해 **발사하지
   //    않으므로** 사용자의 실 codex 프로세스는 뜨지 않는다(A팔이 그 사실을 먼저 잠근다).
@@ -308,6 +350,7 @@ async function main() {
   const c = rep.arms.nowhere
   const e = rep.arms.extName
   const d = rep.arms.realGlobal
+  const f = rep.arms.cwdOnly
   console.log('\n판정 — 전역 PATH codex도 「물어볼 창구」인가')
   if (a) {
     check('A1 ★★ 전역 PATH 판이 발사하지 않았다', !a.fired, `t=${a.firedAt}초에 쐈다 = 한도를 안 묻고 발사했다`, {
@@ -338,9 +381,9 @@ async function main() {
   }
   check(
     'C2 클로드 창으로 「막혔다」 판정을 한 팔이 없다',
-    [a, b, c, e, d].filter(Boolean).every((x) => (x.finalProbe?.blocked ?? 0) === 0),
+    [a, b, c, e, d, f].filter(Boolean).every((x) => (x.finalProbe?.blocked ?? 0) === 0),
     '엔진 축이 클로드 창을 봤다',
-    { blocked: [a, b, c, e, d].map((x) => x?.finalProbe?.blocked ?? null) }
+    { blocked: [a, b, c, e, d, f].map((x) => x?.finalProbe?.blocked ?? null) }
   )
   // ★R28d EXTN — 철자 하나로 규칙이 갈리면 안 된다. E팔은 A팔과 **같은 값**이어야 한다.
   if (e) {
@@ -370,6 +413,27 @@ async function main() {
     })
   }
 
+  if (f) {
+    check(
+      'F1 ★★ 연 폴더에 떨어진 codex를 띄우지 않았다',
+      f.cwdCodexRan === false,
+      '게이트는 「창구 없음」이라 답했는데 스폰은 **그 폴더의 실행본**을 띄웠다' +
+        ' = 한도 Unknown(눈감고 발사)으로 남의 저장소 안의 실행본이 엔진이 된다',
+      { ran: f.cwdCodexRan, talked: f.cwdCodexTalked, fired: f.fired, probe: f.finalProbe }
+    )
+    check(
+      'F2 ★ 게이트와 스폰의 답이 같다(둘 다 「없다」)',
+      (f.finalProbe?.unknown ?? 0) > 0 && f.cwdCodexRan === false,
+      `unknown=${f.finalProbe?.unknown} ran=${f.cwdCodexRan} — 두 답이 갈렸다`,
+      { probe: f.finalProbe, ran: f.cwdCodexRan }
+    )
+    check(
+      'F3 그 실행본과 한 줄도 주고받지 않았다',
+      f.cwdCodexTalked === false,
+      '가짜 app-server의 stdin 기록이 생겼다 = 앱이 그것과 말을 섞었다',
+      { talked: f.cwdCodexTalked }
+    )
+  }
   const holed = (x) => !!x && (x.finalProbe?.unknown ?? 0) > 0 && x.fired
   rep.verdict = {
     only: ONLY,
@@ -384,8 +448,12 @@ async function main() {
     'E.unavailable': e?.finalProbe?.unavailable ?? null,
     'D.unknown': d?.finalProbe?.unknown ?? null,
     'D.unavailable': d?.finalProbe?.unavailable ?? null,
-    // 크리틱의 `hole:true`가 뒤집혔는가 — A(또는 E)가 unknown으로 발사하면 구멍이 살아 있다.
-    hole: holed(a) || holed(e)
+    'F.fired': f?.fired ?? null,
+    'F.unknown': f?.finalProbe?.unknown ?? null,
+    'F.cwdCodexRan': f?.cwdCodexRan ?? null,
+    // 크리틱의 `hole:true`가 뒤집혔는가 — A(또는 E)가 unknown으로 발사하면 구멍이 살아 있고,
+    // ★R28d EXTN R2 — F가 「연 폴더의 실행본」을 띄워도 (다른 얼굴의) 같은 구멍이다.
+    hole: holed(a) || holed(e) || f?.cwdCodexRan === true
   }
   rep.pass = pass
   rep.fail = rep.findings.length

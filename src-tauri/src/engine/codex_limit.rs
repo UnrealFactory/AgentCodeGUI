@@ -114,9 +114,11 @@ pub fn can_ask(email: &str) -> bool {
     // ★R28c CPATH — **여기 있던 `codex_bin().is_file()`이 이 라운드의 구멍이었다.**
     // 옛 주석은 "맨 이름이 돌아오면 이 앱에는 실행본이 없다 · 그 판에서는 codex 턴 자체가
     // 못 뜬다"였는데 **둘 다 거짓**이다: 맨 이름은 「PATH에서 찾아라」는 뜻이고
-    // (`codex_versions::codex_bin`의 마지막 폴백), `command_for`가 `cmd /C`로 실제로 찾아
-    // 띄운다. 그래서 전역 설치(`npm i -g @openai/codex`) 사용자는 턴이 도는데 한도만
-    // 「창구 없음」 = `Unknown` = **눈감고 발사**였다(크리틱 A/B: t=90초 발사).
+    // (`codex_versions::codex_bin`의 마지막 폴백), 스폰은 실제로 그것을 찾아 띄웠다
+    // (R28c 당시엔 `command_for`의 `cmd /C`가, ★R28d EXTN R2부터는 `resolve_bin`이 —
+    // 그 이관이 「연 폴더의 실행본」 구멍을 닫은 자리다). 그래서 전역 설치
+    // (`npm i -g @openai/codex`) 사용자는 턴이 도는데 한도만 「창구 없음」 = `Unknown`
+    // = **눈감고 발사**였다(크리틱 A/B: t=90초 발사).
     // 지금은 턴·계정 조회와 **같은 문**을 본다(`codex_exe`의 표).
     if crate::engine::codex_versions::codex_exe().is_none() {
         return false;

@@ -139,7 +139,7 @@ pub fn codex_bin(home: &Path) -> PathBuf {
 /// | 한 사건 | 같은 이름을 해석하는 횟수 |
 /// |---|---|
 /// | codex 한도 재검증 1회 | **3** — `can_ask`(`engine/codex_limit.rs:121`) → `instrument`(`:138`) → `read_row`의 `spawn_bin()`(`:224`) |
-/// | AI 커밋 메시지 1회 | **2** — 게이트(`ipc/parity/aimsg.rs:268`) → 스폰(`:361`) |
+/// | AI 커밋 메시지 1회 | **2** — 게이트(`ipc/parity/aimsg.rs:271`) → 스폰(`:361`) |
 ///
 /// 한 번의 훑기는 이 컴퓨터에서 최악 **506 stat**(`PATH` 46칸 × `PATHEXT` 11개)이고
 /// 캐시는 그 3회·2회를 1회로 만든다. 재검증 사다리(15초·30초…) 자체는 tick마다 돌지
@@ -238,9 +238,33 @@ fn scan_dirs(name: &Path, dirs: impl IntoIterator<Item = PathBuf>) -> Option<Pat
 /// **Windows에서만이다.** POSIX의 `execvp`는 `PATH`만 본다 — 거기서 이 칸을 넣으면
 /// 이번엔 반대 방향의 거짓(있다고 했는데 못 뜬다)이 생긴다.
 ///
-/// 아직 안 보는 칸: `CWD`(맨 이름 codex는 `cmd /C`로 가고 `cmd.exe`는 현재 폴더를 먼저
-/// 본다 — 지금 소비자에게 도달 경로가 없다) · `system32`·`windows`(둘 다 사실상 언제나
-/// `PATH`에 있다). 둘 다 「없다고 답했는데 뜬다」쪽 오차라 해지 생략 방향은 아니다.
+/// ## ★R28d EXTN R2 — `CWD`는 **여기 안 넣는다. 대신 스폰 쪽에서 닫았다**
+///
+/// R1의 이 자리엔 *"`CWD` … 지금 소비자에게 도달 경로가 없다"* 고 적혀 있었다.
+/// **거짓이었다**(EXTN 확인 크리틱 R2 §5). 도달 경로는 `super::driver::CodexDriver::spawn`의
+/// `cmd.current_dir(&spec.cwd)` — **사용자가 연 프로젝트 폴더**다. 크리틱의 실측(부모 CWD는
+/// 딴 데 두고 자식 작업 폴더만 그 폴더로):
+///
+/// ```text
+/// resolve_bin("codex") = null                        ← 게이트: 창구 없음 → 한도 Unknown = 눈감고 발사
+/// cmd /C ""codex" app-server" (childCwd=…\projtest)  → 뜬 파일 = …\projtest\codex.exe
+/// ```
+///
+/// 그 칸을 이 목록에 **더하지 않은 것은 결정**이다. 더하면 「연 폴더에 떨어져 있는 실행본을
+/// 엔진으로 띄운다」를 사실로 인정하는 것이고, 그건 남의 저장소를 열기만 해도 그 안의
+/// `codex.exe`가 뜬다는 뜻이다(바이너리 심기). 그래서 반대로 **스폰이 그 폴더를 안 보게**
+/// 했다 — [`super::driver::command_for`]가 맨 이름을 여기서 해석해 넘긴다(그 함수의 표).
+///
+/// 클로드 축이 이 구멍에 안 걸린 진짜 이유도 **방향이 아니라 여기 있다**: 클로드 스폰은
+/// `Command::new`(`crate::driver::ClaudeDriver` · `ipc/parity/aimsg.rs`)이고 Rust의 `Command`는
+/// **CWD를 아예 안 본다**(크리틱 탐침의 `cwd` 판 — 게이트 `null` · 스폰 실패로 두 답이 일치).
+/// R1이 *"둘 다 「없다고 했는데 뜬다」 방향이라 해지 생략 방향은 아니다"* 라고 적은 문장은
+/// **부호가 뒤집혀 있었다**: R1이 고친 해지 생략이 정확히 그 방향이었다(게이트 `None` →
+/// `ipc/accounts.rs`의 `logout`이 해지 갈래를 건너뜀).
+///
+/// 그래서 아직 안 보는 칸은 `system32`·`windows` 둘뿐이고, 이 컴퓨터에서는 둘 다 `PATH`에
+/// 있다(크리틱이 다시 셌다). 그쪽은 **위험한 방향**의 오차이므로 「방향이 달라 안전하다」가
+/// 아니라 **「같은 방향인데 아직 안 닫았다」**로 적는다.
 fn search_dirs(path_env: &OsStr) -> Vec<PathBuf> {
     let mut dirs: Vec<PathBuf> = Vec::new();
     if cfg!(windows) {
