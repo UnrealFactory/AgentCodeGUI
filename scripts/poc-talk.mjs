@@ -15,6 +15,9 @@
  *   node scripts/poc-talk.mjs --only=inject # ★R2 봉투 주입 5종 (실 CLI · haiku)
  *   node scripts/poc-talk.mjs --keep       # 격리 홈 보존
  *   node scripts/poc-talk.mjs --tag        # 동시 실행(홈·포트·산출물 분리)
+ *   node scripts/poc-talk.mjs --only=live --workspace=bare
+ *                                          # ★R28f — 수신 세션의 작업 폴더를 **git 워크트리 밖**에
+ *                                          #   둔다(기본 `repo` = 레포 안 = 종전 그대로).
  *
  *   ※ wall 단계 전에:
  *      cargo build -p ccg-engine --features fakecli --bin ccg-fakecli --release
@@ -30,6 +33,7 @@ import path from 'node:path'
 import os from 'node:os'
 import { spawn, spawnSync } from 'node:child_process'
 import { connectMainPage, killTree, sleep, REPO, resolveTauriExe } from '../bench/lib.mjs'
+import { preflight as acctPreflight, saveBack as acctSaveBack } from './critic-m10-live-account.mjs'
 
 const args = process.argv.slice(2)
 const only = (args.find((a) => a.startsWith('--only=')) ?? '').split('=')[1] || 'all'
@@ -765,6 +769,36 @@ const LIVE_ACCOUNT_DIR = (
   ''
 ).trim()
 
+/**
+ * ★M10 R28f 수정 R1 — **수신 세션의 작업 폴더가 어디인가**(`--workspace=repo|bare`).
+ *
+ * 이 스위치가 생긴 이유는 R6의 간판 수치와 확인 크리틱의 수치가 **정반대**였고, 두 주행의
+ * 유일한 구조적 차이가 이 자리였기 때문이다:
+ *
+ *   · 이 하네스의 홈은 `REPO/.poc-home-talk-*` 라서 그 안의 `work/` 는 **AgentCodeGUI
+ *     워크트리 안**이다. 수신 CLI는 계획 모드에서 그 사실을 보고(브랜치·미추적 파일
+ *     더미) 「여기 할 일이 잔뜩인데 사용자가 시킨 건 없다」로 턴을 마무리한다 —
+ *     실측 답변 하나가 `feature/3.0.0-beta` 브랜치의 미추적 목록을 그대로 읊었다.
+ *   · 크리틱의 하네스는 홈이 `C:\Temp\…` 라서 `work/` 가 **git 워크트리 밖**이다.
+ *     계획할 거리가 애초에 없고, 그래서 봉투에 그냥 답한다.
+ *
+ * 어느 쪽이 「제품」인가 — 사용자의 실제 채팅은 프로젝트 폴더(대개 git)에 앉는다. 그래서
+ * **기본은 `repo`**(종전 그대로 = 과거 표본과 비교 가능)로 두고, 청정실은 옵트인으로 둔다.
+ * 두 값을 **같은 시각에 교차로** 돌려야 이 축이 갈린다(§docs/m10-report-r6.md R6.10).
+ */
+const WORKSPACE = ((args.find((a) => a.startsWith('--workspace=')) ?? '').split('=')[1] || 'repo').trim()
+if (WORKSPACE !== 'repo' && WORKSPACE !== 'bare') {
+  throw new Error(`--workspace는 repo|bare 둘뿐이다: ${WORKSPACE}`)
+}
+/** 라이브 갈래의 작업 폴더. `bare`면 레포(=git 워크트리) **밖**에 만든다. */
+const workDirFor = (HOME, name) =>
+  WORKSPACE === 'bare' ? path.join(os.tmpdir(), 'ccg-poc-talk-work', `${name}${RUNTAG ? `-${RUNTAG}` : ''}`) : path.join(HOME, 'work')
+/** 그 폴더가 실제로 git 워크트리 안인지 — 주장 말고 값으로 산출물에 남긴다. */
+const inGitWorktree = (dir) => {
+  const r = spawnSync('git', ['-C', dir, 'rev-parse', '--show-toplevel'], { encoding: 'utf8' })
+  return r.status === 0 ? r.stdout.trim() : null
+}
+
 /** 격리 홈에 계정 하나를 앉힌다. 반환 = 그 계정 이메일. */
 function seedLiveAccount(HOME) {
   if (LIVE_ACCOUNT_DIR) {
@@ -808,8 +842,9 @@ function seedLiveAccount(HOME) {
 
 function seedLiveHome() {
   const HOME = homeFor('live')
-  const WORK = path.join(HOME, 'work')
+  const WORK = workDirFor(HOME, 'live')
   rmrf(HOME)
+  rmrf(WORK)
   fs.mkdirSync(WORK, { recursive: true })
 
   // (a) 엔진 — 실홈 engines를 정션(복사 없음·쓰기 없음)
@@ -829,16 +864,28 @@ function seedLiveHome() {
   // (d) 대화 연결 — 이 보드만, 홉 2.
   //
   // ★M10 R6 — `--policy=`로 **봉투 턴의 권한 하한**을 갈아 끼운다(기본은 제품 기본값과
-  // 같은 `readonly`). 이 스위치가 필요한 이유는 R6 라이브 8표본이 전부 같은 자리에서
-  // 멎었기 때문이다: 하한 `readonly`는 그 턴을 **계획 모드**로 낮추고, 계획 모드의 CLI
-  // 프레이밍(「조사해서 계획을 제출하라」)이 봉투 문면보다 세다 — 8/8이 *"no actual task
-  // from you"*·*"nothing to plan"* 을 말했다. 그 값이 문면 탓인지 하한 탓인지는 **하한을
-  // 바꿔 같은 질문을 다시 던져야만** 갈린다. 이 스위치는 그 대조군을 만든다(제품 기본값을
-  // 바꾸지 않는다 — 재는 것과 정하는 것은 다르다).
+  // 같은 `readonly`). 하한 `readonly`는 그 턴을 **계획 모드**로 낮추고, 계획 모드의 CLI
+  // 프레이밍(「조사해서 계획을 제출하라」)이 봉투 문면과 겨룬다 — 실패한 표본은 거의 전부
+  // *"no actual task from you"*·*"nothing to plan"* 을 말한다. 그 값이 문면 탓인지 하한
+  // 탓인지는 **하한을 바꿔 같은 질문을 다시 던져야만** 갈린다. 이 스위치는 그 대조군을
+  // 만든다(제품 기본값은 안 바꾼다 — 재는 것과 정하는 것은 다르다).
+  //
+  // ★R28f 수정 R1 — 여기 있던 「R6 라이브 8표본이 **전부** 그 자리에서 멎었다」는 주석을
+  // 지웠다. 같은 날 같은 하한으로 돈 32표본을 다시 세니 8/32가 왕복했고(레포 밖 청정실은
+  // 12/20), 「전부」는 표본 열한 개를 성질로 읽은 것이었다(R6.10).
   const cfg = { version: 1, enabled: true, boards: { 'b-1': true }, maxHops: 2, maxMsgs: 6, maxFanout: 2 }
   if (INJECT_POLICY) cfg.injectPolicy = INJECT_POLICY
   write(path.join(HOME, 'talk-config.json'), cfg)
-  return { HOME, WORK, ver, email, policy: INJECT_POLICY || 'readonly' }
+  return {
+    HOME,
+    WORK,
+    ver,
+    email,
+    policy: INJECT_POLICY || 'readonly',
+    // 이 두 칸이 R6의 격차를 만든 자리다 — 주장이 아니라 값으로 산출물에 남긴다.
+    workspace: WORKSPACE,
+    workGitRoot: inGitWorktree(WORK)
+  }
 }
 
 /**
@@ -865,8 +912,28 @@ const LIVE_PROMPT = [
 
 async function phaseLive() {
   console.log('\n[LIVE] 실 CLI 왕복 — A→B→A (haiku 3턴)')
+  // ★R28f 수정 R1 — 계정 수명 선점검. 만료된 토큰으로 돌면 이 갈래는 **4분을 태우고**
+  // "OAuth session expired"만 남긴다(그 실패가 R6→크리틱 사이에서 실제로 일어났다).
+  const pre = acctPreflight(LIVE_ACCOUNT_DIR)
+  if (pre) console.log(`  · 계정 — ${pre.msg}`)
+  if (pre?.fatal) {
+    fail('L0-계정', pre.msg, { expiresAt: pre.state?.expiresAt ?? null })
+    rep.steps.live = { skipped: 'account_expired', account: LIVE_ACCOUNT_DIR }
+    return false
+  }
   const s = seedLiveHome()
-  const out = { home: s.HOME, engine: s.ver, account: s.email, policy: s.policy, steps: {} }
+  const out = {
+    home: s.HOME,
+    work: s.WORK,
+    workspace: s.workspace,
+    workGitRoot: s.workGitRoot,
+    engine: s.ver,
+    account: s.email,
+    policy: s.policy,
+    steps: {}
+  }
+  // 이 한 줄이 R6의 격차를 다음 라운드에서 **눈에 보이게** 만든다(§R6.10).
+  console.log(`  · 작업 폴더 — ${s.WORK} · workspace=${s.workspace} · git 워크트리=${s.workGitRoot ?? '(밖)'}`)
   const app = await boot(s.HOME, portFor(9392), { CCG_ENGINE_LOG: path.join(s.HOME, 'frames.jsonl') })
   try {
     await armEvents(app)
@@ -956,7 +1023,14 @@ async function phaseLive() {
   } finally {
     killTree(app.child.pid)
     await sleep(900)
-    if (!KEEP) rmrf(s.HOME)
+    // ★R28f 수정 R1 — CLI가 갱신한 자격증명을 **측정 계정 폴더로 되돌린다**. 이걸 안 해서
+    // 리프레시 회전이 홈과 함께 지워졌고, 다음 주행부터 계정이 통째로 죽었다.
+    out.account_saveBack = acctSaveBack(LIVE_ACCOUNT_DIR, s.HOME)
+    if (out.account_saveBack?.saved) console.log(`  · 계정 — 갱신된 자격증명을 되돌렸다(만료 ${out.account_saveBack.expiresAt})`)
+    if (!KEEP) {
+      rmrf(s.HOME)
+      if (WORKSPACE === 'bare') rmrf(s.WORK)
+    }
   }
   rep.steps.live = out
   return rep.findings.filter((f) => f.id.startsWith('L')).length === 0
@@ -1045,8 +1119,9 @@ const pressPrompt = (body) =>
  */
 function seedInjectHome(tag) {
   const HOME = homeFor(`inject-${tag}`)
-  const WORK = path.join(HOME, 'work')
+  const WORK = workDirFor(HOME, `inject-${tag}`)
   rmrf(HOME)
+  rmrf(WORK)
   fs.mkdirSync(WORK, { recursive: true })
   const ver = JSON.parse(fs.readFileSync(path.join(REAL_HOME, 'config.json'), 'utf8')).activeVersion
   write(path.join(HOME, 'config.json'), { activeVersion: ver })
@@ -1061,7 +1136,7 @@ function seedInjectHome(tag) {
   const cfg = { version: 1, enabled: true, boards: { 'b-1': true }, maxHops: 1, maxMsgs: 4, maxFanout: 2 }
   if (INJECT_POLICY) cfg.injectPolicy = INJECT_POLICY
   write(path.join(HOME, 'talk-config.json'), cfg)
-  return { HOME, WORK, ver, email, policy: INJECT_POLICY || 'readonly' }
+  return { HOME, WORK, ver, email, policy: INJECT_POLICY || 'readonly', workspace: WORKSPACE, workGitRoot: inGitWorktree(WORK) }
 }
 
 const WAIT = 150_000
@@ -1132,12 +1207,24 @@ async function injectOne(id, body, n) {
   } finally {
     killTree(app.child.pid)
     await sleep(900)
-    if (!KEEP) rmrf(s.HOME)
+    row.account_saveBack = acctSaveBack(LIVE_ACCOUNT_DIR, s.HOME) // ★R28f 수정 R1 — 리프레시 체인 보존
+    if (!KEEP) {
+      rmrf(s.HOME)
+      if (WORKSPACE === 'bare') rmrf(s.WORK)
+    }
   }
 }
 
 async function phaseInject() {
   console.log('\n[INJECT] 봉투 주입 — 적대 본문 5종이 수신 세션을 움직이나 (실 CLI · haiku · 본문마다 새 홈)')
+  // ★R28f 수정 R1 — 계정 수명 선점검(§phaseLive). 만료면 다섯 홈 × 150초를 헛되이 태운다.
+  const pre = acctPreflight(LIVE_ACCOUNT_DIR)
+  if (pre) console.log(`  · 계정 — ${pre.msg}`)
+  if (pre?.fatal) {
+    fail('I-계정', pre.msg, { expiresAt: pre.state?.expiresAt ?? null })
+    rep.steps.inject = { skipped: 'account_expired', account: LIVE_ACCOUNT_DIR }
+    return false
+  }
   const out = { cases: {} }
   let n = 0
   for (const [id, body] of HOSTILE) {

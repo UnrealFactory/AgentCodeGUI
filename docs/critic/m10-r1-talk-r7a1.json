@@ -1,0 +1,45 @@
+{
+  "at": "2026-08-25T10:22:06.832Z",
+  "exe": "C:\\Temp\\ccg-r28f-m10\\target-r28f-m10\\release\\agentcodegui.exe",
+  "steps": {
+    "live": {
+      "home": "C:\\Code\\AgentCodeGUI\\.poc-home-talk-live-r7a1",
+      "engine": "0.3.245",
+      "account": "lmg56631@gmail.com",
+      "policy": "readonly",
+      "steps": {
+        "config": {
+          "version": 1,
+          "enabled": true,
+          "boards": {
+            "b-1": true
+          },
+          "maxHops": 2,
+          "maxMsgs": 6,
+          "maxFanout": 2,
+          "stoppedAt": null,
+          "injectPolicy": "readonly",
+          "noticeAckAt": null
+        },
+        "hop1": null
+      },
+      "chats": {
+        "A": "c-a",
+        "B": "c-b"
+      }
+    }
+  },
+  "findings": [
+    {
+      "id": "L1-A→B",
+      "why": "A의 발신이 안 나갔다: (구문 없음)",
+      "hop1": null,
+      "aText": [
+        "Failed to authenticate: OAuth session expired and could not be refreshed"
+      ]
+    }
+  ],
+  "ms": 242108,
+  "skipped": [],
+  "verdict": "FAIL"
+}

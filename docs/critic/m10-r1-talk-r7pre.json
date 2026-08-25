@@ -1,0 +1,20 @@
+{
+  "at": "2026-08-25T10:44:20.365Z",
+  "exe": "C:\\Temp\\ccg-r28f-m10\\target-r28f-m10\\release\\agentcodegui.exe",
+  "steps": {
+    "live": {
+      "skipped": "account_expired",
+      "account": "C:/Temp/ccg-m10-live/accounts/lmg56631_gmail.com"
+    }
+  },
+  "findings": [
+    {
+      "id": "L0-계정",
+      "why": "측정 계정의 액세스 토큰이 2026-08-25T10:01:59.262Z에 만료됐다(42분 지남). 이 폴더의 리프레시 토큰은 회전으로 죽었을 수 있다 — 라이브 주행은 4분씩 헛되이 태우고 \"OAuth session expired and could not be refreshed\"로 끝난다. 격리 홈에서 재로그인해라.",
+      "expiresAt": "2026-08-25T10:01:59.262Z"
+    }
+  ],
+  "ms": 2,
+  "skipped": [],
+  "verdict": "FAIL"
+}

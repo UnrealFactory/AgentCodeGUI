@@ -1,0 +1,38 @@
+{
+  "at": "2026-08-25T10:48:54.297Z",
+  "exe": "C:\\Temp\\ccg-r28f-m10\\target-r28f-m10\\release\\agentcodegui.exe",
+  "steps": {
+    "stop": {
+      "home": "C:\\Code\\AgentCodeGUI\\.poc-home-talk-policy-stop-r7s",
+      "stop": {
+        "version": 1,
+        "enabled": false,
+        "boards": {},
+        "maxHops": 4,
+        "maxMsgs": 12,
+        "maxFanout": 3,
+        "stoppedAt": 1787654938.5520341,
+        "injectPolicy": "readonly",
+        "noticeAckAt": null,
+        "purged": 0,
+        "interrupted": 1,
+        "unstoppable": 0
+      },
+      "sent": {
+        "purged": 0,
+        "interrupted": 1,
+        "unstoppable": 0
+      },
+      "verdict": {
+        "interrupted": 1,
+        "unstoppable": 0,
+        "purged": 0
+      },
+      "bNotices": []
+    }
+  },
+  "findings": [],
+  "ms": 13997,
+  "skipped": [],
+  "verdict": "PASS"
+}

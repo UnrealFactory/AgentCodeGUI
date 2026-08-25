@@ -53,6 +53,7 @@ import path from 'node:path'
 import os from 'node:os'
 import { spawn, spawnSync } from 'node:child_process'
 import { Cdp, cdpTargets, connectMainPage, killTree, sleep, REPO, resolveTauriExe } from '../bench/lib.mjs'
+import { preflight as acctPreflight, saveBack as acctSaveBack } from './critic-m10-live-account.mjs'
 
 const args = process.argv.slice(2)
 const only = ((args.find((a) => a.startsWith('--only=')) ?? '').split('=')[1] || '').split(',').filter(Boolean)
@@ -61,10 +62,29 @@ const KEEP = args.includes('--keep')
 const EXE =
   // M12 R2 — mainBinaryName 변경으로 exe 이름이 둘이다(구·신 모두 탐색·최신 mtime 우선)
   resolveTauriExe((args.find((a) => a.startsWith('--exe=')) ?? '').split('=')[1])
+/**
+ * ★R28f 수정 R1 (크리틱 D-5) — **병렬 주행 격리**. 이 하네스는 홈 이름(`.crit-home-m10r2-*`)과
+ * 포트(10400)가 고정이라 같은 스크립트를 두 벌 돌리면 서로를 밟았다(크리틱이 4병렬로
+ * N6을 돌렸다가 2주행이 즉사했다). `--tag=<이름>`이 셋을 한꺼번에 민다 — 홈 접미·포트
+ * 대역·기본 산출물 이름. **무태그는 종전과 한 글자도 다르지 않다**(옛 명령이 그대로 돈다).
+ *
+ * 포트 대역을 10400 근처가 아니라 11400+로 미는 이유: 10500~10600대는 다른 갈래에
+ * 배정된 CDP 대역이다(같은 워킹트리에서 다섯 갈래가 동시에 돈다).
+ */
+const tagArg = args.find((a) => a === '--tag' || a.startsWith('--tag='))
+const RUNTAG = tagArg === undefined ? '' : tagArg.split('=')[1] || `${process.pid}-${Math.random().toString(36).slice(2, 6)}`
+const hash32 = (s) => {
+  let h = 2166136261
+  for (const c of s) h = Math.imul(h ^ c.charCodeAt(0), 16777619)
+  return h >>> 0
+}
+const SUF = RUNTAG ? `-${RUNTAG}` : ''
 const OUT =
-  (args.find((a) => a.startsWith('--out=')) ?? '').split('=')[1] || path.join(REPO, 'docs', 'critic', 'm10-r2-attack-new.json')
+  (args.find((a) => a.startsWith('--out=')) ?? '').split('=')[1] ||
+  path.join(REPO, 'docs', 'critic', `m10-r2-attack-new${SUF}.json`)
 const REAL_HOME = path.join(os.homedir(), '.agentcodegui')
-const PORT0 = 10400
+// 한 주행이 PORT0..PORT0+40을 쓴다 — 태그당 50씩 민다.
+const PORT0 = RUNTAG ? 11400 + (hash32(RUNTAG) % 10) * 50 : 10400
 /** ★R4 — D1·D2가 잴 봉투 턴 하한. 그 정책이 기대하는 **어휘 한 벌**을 함께 들고 다닌다. */
 const POLICY = (args.find((a) => a.startsWith('--policy=')) ?? '').split('=')[1] === 'readonly' ? 'readonly' : 'ask'
 const EXPECT = POLICY === 'readonly' ? { mode: 'plan', guard: 'read_only' } : { mode: 'normal', guard: 'mode_downgraded' }
@@ -83,7 +103,7 @@ if (N_POLICY && N_POLICY !== 'readonly' && N_POLICY !== 'ask') {
   throw new Error(`--inject-policy는 readonly|ask 둘뿐이다: ${N_POLICY}`)
 }
 
-const rep = { at: new Date().toISOString(), exe: EXE, attacks: {}, broken: [] }
+const rep = { at: new Date().toISOString(), exe: EXE, tag: RUNTAG || null, port0: PORT0, attacks: {}, broken: [] }
 const broke = (id, why, extra) => {
   rep.broken.push({ id, why, ...(extra ?? {}) })
   console.error(`  X ${id} — ${why}${extra === undefined ? '' : ' ' + JSON.stringify(extra).slice(0, 600)}`)
@@ -105,6 +125,16 @@ const rmrf = (p) => {
 const write = (p, v) => {
   fs.mkdirSync(path.dirname(p), { recursive: true })
   fs.writeFileSync(p, typeof v === 'string' ? v : JSON.stringify(v))
+}
+/**
+ * ★R28f 수정 R1 — 홈을 지우기 **전에** 갱신된 자격증명을 측정 계정 폴더로 되돌린다.
+ * 이걸 안 해서 리프레시 회전이 홈과 함께 사라졌고 측정 계정이 통째로 죽었다
+ * (§scripts/critic-m10-live-account.mjs). `--account=`가 없으면 아무 일도 안 한다.
+ */
+const dropHome = (HOME) => {
+  const back = acctSaveBack(LIVE_ACCOUNT_DIR, HOME)
+  if (back?.saved) console.log(`  · 계정 — 갱신된 자격증명을 되돌렸다(만료 ${back.expiresAt})`)
+  if (!KEEP) rmrf(HOME)
 }
 const readJson = (p) => {
   try {
@@ -187,7 +217,7 @@ function fakeScript(work, sid, text, holdMs = 0, die = true) {
 
 /** `modes[i]` = i번째 채팅의 승인 모드(기본 normal). */
 function seedFakeHome(name, n, cfg, modes = []) {
-  const HOME = path.join(REPO, `.crit-home-m10r2-${name}`)
+  const HOME = path.join(REPO, `.crit-home-m10r2-${name}${SUF}`)
   const WORK = path.join(HOME, 'work')
   rmrf(HOME)
   fs.mkdirSync(WORK, { recursive: true })
@@ -291,7 +321,7 @@ async function D1() {
   } finally {
     killTree(app.child.pid)
     await sleep(700)
-    if (!KEEP) rmrf(s.HOME)
+    dropHome(s.HOME)
   }
   rep.attacks.D1 = out
 }
@@ -332,7 +362,7 @@ async function D2() {
   } finally {
     killTree(app.child.pid)
     await sleep(700)
-    if (!KEEP) rmrf(s.HOME)
+    dropHome(s.HOME)
   }
   rep.attacks.D2 = out
 }
@@ -388,7 +418,7 @@ async function D3() {
   } finally {
     killTree(app.child.pid)
     await sleep(700)
-    if (!KEEP) rmrf(s.HOME)
+    dropHome(s.HOME)
   }
   rep.attacks.D3 = out
 }
@@ -450,7 +480,7 @@ async function D4() {
       killTree(app.child.pid)
     } catch {}
     await sleep(700)
-    if (!KEEP) rmrf(s.HOME)
+    dropHome(s.HOME)
   }
   rep.attacks.D4 = out
 }
@@ -509,7 +539,7 @@ async function D5() {
   } finally {
     killTree(app.child.pid)
     await sleep(700)
-    if (!KEEP) rmrf(s.HOME)
+    dropHome(s.HOME)
   }
   rep.attacks.D5 = out
 }
@@ -569,7 +599,7 @@ async function D6() {
   } finally {
     killTree(app.child.pid)
     await sleep(700)
-    if (!KEEP) rmrf(s.HOME)
+    dropHome(s.HOME)
   }
   rep.attacks.D6 = out
 }
@@ -636,7 +666,7 @@ async function D7() {
   } finally {
     killTree(app.child.pid)
     await sleep(700)
-    if (!KEEP) rmrf(s.HOME)
+    dropHome(s.HOME)
   }
   rep.attacks.D7 = out
 }
@@ -679,7 +709,7 @@ async function D8() {
       killTree(app.child.pid)
     } catch {}
     await sleep(700)
-    if (!KEEP) rmrf(s.HOME)
+    dropHome(s.HOME)
   }
   rep.attacks.D8 = out
 }
@@ -735,7 +765,7 @@ function seedLiveAccount(HOME) {
 }
 
 function seedLiveHome(name, cfg, n = 2, modes = []) {
-  const HOME = path.join(REPO, `.crit-home-m10r2-${name}`)
+  const HOME = path.join(REPO, `.crit-home-m10r2-${name}${SUF}`)
   const WORK = path.join(HOME, 'work')
   rmrf(HOME)
   fs.mkdirSync(WORK, { recursive: true })
@@ -939,12 +969,22 @@ async function injectOne(id, body, n) {
   } finally {
     killTree(app.child.pid)
     await sleep(900)
-    if (!KEEP) rmrf(s.HOME)
+    dropHome(s.HOME)
   }
 }
 
 // ── main ─────────────────────────────────────────────────────────────────────
 const t0 = Date.now()
+// ★R28f 수정 R1 — 측정 계정의 남은 수명을 **먼저** 말한다(N 갈래는 표본당 150초를 태운다).
+{
+  const pre = acctPreflight(LIVE_ACCOUNT_DIR)
+  if (pre) console.log(`계정 — ${pre.msg}`)
+  rep.account = pre?.state ?? null
+  if (pre?.fatal && only.some((id) => /^N/.test(id))) {
+    console.error('실 CLI 갈래(N*)는 만료된 계정으로 못 돈다 — 재로그인 뒤 다시 돌려라.')
+    process.exit(3)
+  }
+}
 if (!fs.existsSync(EXE)) {
   console.error(`앱 실물이 없다: ${EXE}`)
   process.exit(2)
