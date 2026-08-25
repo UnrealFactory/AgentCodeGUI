@@ -102,6 +102,18 @@ pub struct HoldLite {
     /// 재충전). 쓰는 쪽은 `hub::persist_hold`, 읽어 나르는 쪽은 `engine::reload_pending`
     /// → `ccg_engine::runtime::ReloadHold`다.
     pub fires: u32,
+    /// ★R28g BANNER — **엔진이 자동을 접었다**(엔진 `LimitHold::auto_paused` · 와이어
+    /// `hold.paused` · 렌더러 `LimitHold.autoPaused`).
+    ///
+    /// R28f는 이 칸을 안 뒀고 [`truth_from_chat_file`]이 부팅 행에 `false`를 **상수로**
+    /// 적었다. 근거는 「접힘은 판정 결과이고 판정은 부팅 뒤 `check_hold`가 다시 한다」였는데
+    /// 그 문장이 실측과 반대였다(확인 크리틱 R1 F1 — `check_hold`의 첫 문
+    /// `filter(|h| !h.ready)`가 접힌 표를 재판정에서 뺀다). 결과: 12발을 태우고 여전히
+    /// 막힌 표에 대고 부팅 직후 배너가 「한도가 풀렸어요 — 눌러서 이어가기」라고 말했다.
+    ///
+    /// 옛 파일에는 이 칸이 없다 → `serde(default)`로 `false`이고, 그건 R28f의 동작
+    /// 그대로다(회귀 0).
+    pub paused: bool,
 }
 
 struct State {
@@ -310,11 +322,14 @@ fn truth_from_chat_file(id: &str) -> (usize, Value) {
         // ★R28f WFIRE — 키 집합은 `engine::lite::build`의 그것과 **같아야** 한다(규약 3).
         // 갈리면 부팅 행과 첫 허브 갱신이 매번 달라 배너가 한 번 깜빡인다.
         //
-        // `paused`가 **상수 `false`**인 것은 값을 몰라서가 아니라 그게 사실이기 때문이다:
-        // `auto_paused`는 「지금 자동을 접었다」는 판정 결과이고, 재장전은 그 결과를
-        // 물려받지 않는다(`ReloadHold` 주석 · `reload_state`가 늘 `false`를 놓는다).
-        // 그러니 이 행이 그리게 될 상태도 「아직 안 접힌 표」다.
-        Some(h) => json!({ "resetAt": h.resets_at, "ready": h.ready, "fires": h.fires, "paused": false }),
+        // ★R28g BANNER — `paused`는 이제 **파일이 말하는 값**이다. R28f는 여기에 상수
+        // `false`를 적고 "재장전이 접힘을 안 물려받으니 그게 사실"이라고 주석했는데,
+        // 그 전제가 거짓이었다(확인 크리틱 R1 F1). 부팅 행은 첫 프레임의 진실이고
+        // (허브의 첫 `refresh_lite`보다 먼저 화면에 닿는다), 그 프레임이 12발 태운 표를
+        // 「한도가 풀렸어요」로 그리면 그건 R28d·R28e가 고친 것과 같은 종류의 거짓이다.
+        // 이제 `hub::persist_hold`가 적고 `ReloadHold::paused`가 런타임까지 나른다 —
+        // 세 자리가 같은 사실을 말한다.
+        Some(h) => json!({ "resetAt": h.resets_at, "ready": h.ready, "fires": h.fires, "paused": h.paused }),
         None => Value::Null,
     };
     (queued, hold)
@@ -1117,5 +1132,46 @@ mod tests {
         h.write("chats-v3/c.json", &json!({ "id": "c", "snapshot": { "messages": [] } }).to_string());
         let ids = ["a".to_string(), "b".to_string(), "c".to_string()];
         assert_eq!(reload_candidates(&ids), vec!["a".to_string(), "b".to_string()]);
+    }
+
+    /// ★R28g BANNER — **부팅 행이 「접힌 표」를 접힌 채로 그린다**(R28f 확인 크리틱 R1 F1).
+    ///
+    /// 이 자리가 그 거짓말의 출처였다: [`truth_from_chat_file`]이 `paused`에 상수 `false`를
+    /// 적었고, 그래서 12발을 태우고 여전히 막힌 표가 부팅 첫 프레임에서 「아직 안 접힌 표」로
+    /// 섰다. 화면은 그 행에 렌더러 실번들 `budgetLanding(paused, fires)`를 먹여 문장을
+    /// 고르므로(`app/src/components/Chat.tsx`), 그 한 칸이 곧 배너 문장이다.
+    ///
+    /// 대조군을 못 안에 둔다 — 같은 함수·같은 파일 모양에서 `paused` 한 칸만 빼면
+    /// (= 옛 파일 · R28f가 쓰던 모양) 그 거짓말이 그대로 재현된다.
+    #[test]
+    fn the_boot_row_says_a_folded_table_is_folded() {
+        let h = crate::testkit::temp_home("status-paused");
+        // 실앱이 실제로 남긴 파일의 모양(크리틱이 포획한 원문 그대로).
+        h.write(
+            "chats-v3/c-fold.json",
+            &json!({ "id": "c-fold",
+                     "hold": { "resetsAt": 1_787_649_364.888_f64, "ready": true, "attempts": 0, "fires": 12, "paused": true } })
+            .to_string(),
+        );
+        // 대조군 — `paused` 칸이 없던 판(옛 파일도 이 모양이다).
+        h.write(
+            "chats-v3/c-old.json",
+            &json!({ "id": "c-old",
+                     "hold": { "resetsAt": 1_787_649_364.888_f64, "ready": true, "attempts": 0, "fires": 12 } })
+            .to_string(),
+        );
+        // 렌더러 실번들 `budgetLanding`과 **같은 식**(`app/src/lib/limitResume.ts`).
+        let banner_says_budget = |row: &Value| {
+            row["paused"].as_bool().unwrap_or(false) && row["fires"].as_u64().unwrap_or(0) >= 12
+        };
+        let (_, folded) = truth_from_chat_file("c-fold");
+        let (_, old) = truth_from_chat_file("c-old");
+        assert_eq!(folded["paused"], json!(true), "★★ 부팅 행이 접힌 표를 안 접힌 것으로 그린다: {folded}");
+        assert_eq!(folded["ready"], json!(true));
+        assert_eq!(folded["fires"], json!(12));
+        assert!(banner_says_budget(&folded), "★★ 배너가 12발 태운 표에 「한도가 풀렸어요」라고 말한다");
+        assert_eq!(old["paused"], json!(false), "★ 칸이 없는 파일은 R28f 그대로여야 한다(회귀 0)");
+        assert!(!banner_says_budget(&old), "★ 대조군이 그 거짓말을 재현하지 못했다 — 이 못은 아무것도 안 재고 있다");
+        let _ = h;
     }
 }

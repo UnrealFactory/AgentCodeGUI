@@ -1506,10 +1506,17 @@ impl Hub {
                 // 말고는 할 수 있는 일이 없었다 — 재시작 한 번이 「아무 구분자도 못 지우는
                 // 예산」을 통째로 지웠다(확인 크리틱 R1 §4.1: 재장전 뒤 20시간 12발 재충전).
                 //
-                // `auto_paused`는 **안 내린다**(렌더러 `sanitizeHold`가 `autoPaused`를 안
-                // 살리는 것과 같은 규약): 그건 판정 결과이고, 판정은 부팅 뒤 `check_hold`가
-                // 이 두 값으로 다시 한다. 사실만 적고 결론은 그때 다시 낸다.
-                json!({ "resetsAt": resets_at, "ready": h.ready,
+                // ★R28g BANNER — **`auto_paused`도 내린다.** R28f는 "판정 결과는 안 적고
+                // 부팅 뒤 `check_hold`가 이 두 값으로 다시 판정한다"고 적었는데, 그 문장이
+                // 실측과 반대였다(확인 크리틱 R1 F1): `check_hold`의 첫 문이
+                // `filter(|h| !h.ready)`라 **접힌 표는 재판정에 도달하지 못한다.** 그래서
+                // 부팅 행이 `paused:false`로 서고, 12발을 태운 표에 대고 배너가 「한도가
+                // 풀렸어요」라고 말했다(포획된 실앱 원문 `{"ready":true,"fires":12,"paused":false}`).
+                //
+                // 참이었던 상태는 잃지 않는 쪽이 정직하다. 재판정 쪽도 함께 고쳤지만
+                // (`LimitHold::reloaded`) 그건 **부팅 뒤 첫 due**에나 도는 값이고, 화면은
+                // 그전에 이미 이 파일을 읽어 첫 프레임을 그린다(`status::truth_from_chat_file`).
+                json!({ "resetsAt": resets_at, "ready": h.ready, "paused": h.auto_paused,
                         "attempts": h.attempts, "fires": slot.rt.episode_fires() })
             }
             None => Value::Null,

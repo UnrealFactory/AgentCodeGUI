@@ -162,6 +162,10 @@ fn reload_pending(ids: &[String]) {
             // 이 두 줄이 없으면 `reload_state`가 아무리 칸을 내도 경계에서 값이 증발한다.
             attempts: h.attempts,
             fires: h.fires,
+            // ★R28g BANNER — 접힘도 그대로 나른다(옛 파일엔 없어서 `false` = R28f 동작).
+            // 이 줄이 없으면 `reload_state`가 칸을 내도 경계에서 값이 증발해, 12발을 태운
+            // 표가 부팅 한 번에 「아직 안 접힌 표」로 되살아난다(확인 크리틱 R1 F1).
+            paused: h.paused,
         });
         if queued.is_empty() && hold.is_none() {
             continue;

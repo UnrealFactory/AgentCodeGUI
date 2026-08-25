@@ -23,7 +23,10 @@ export interface LimitHold {
   fable: boolean // 장전 당시 모델이 Fable — Fable 주간 창을 게이트로 볼지
   lastPrompt: string // 세션이 아예 없을 때(첫 턴 사망) '이어서' 대신 원문 재전송
   at: number // 장전 시각(ms) — 늦은 비동기 갱신 대조 + 복원 시 24시간 만료 판정
-  ready?: boolean // 한도가 풀림 — 그 채팅이 활성·로드되면 이어서 보낸다 (영속 안 함)
+  // 한도가 풀림 — 그 채팅이 활성·로드되면 이어서 보낸다. 영속 안 함(★R28g BANNER —
+  // 예외 하나: `autoPaused`인 표는 `ready`째로 되살린다. 접힌 표는 아무것도 안 쏘고
+  // 버튼이 유일한 출구인데, `ready`가 없으면 그 버튼이 안 뜬다 — `sanitizeHold` 주석).
+  ready?: boolean
   // ★3.0 — **조회 실패로 재검증을 못 한 횟수**(연속). 값을 얻은 재검증은 0으로 되돌린다.
   // 재확인 간격(recheckDelayMs)과 눈감고 쏘는 재개의 재확인 상한(MAX_RECHECKS)이 이걸 센다.
   probes?: number
@@ -55,7 +58,11 @@ export interface LimitHold {
   fires?: number
   /** ★R28c RCAP — **자동 재발사를 접었다**(엔진 `LimitHold::auto_paused`의 짝).
    *  표는 `ready`지만 소진 effect는 쏘지 않고, 배너의 「이어가기」가 유일한 출구다.
-   *  영속하지 않는다 — 복원 뒤 재검증이 `attempts`로 다시 판정한다(`ready`와 같은 규약). */
+   *
+   *  ★R28g BANNER — **영속한다**(`sanitizeHold`가 `ready`와 함께 되살린다). R28f까지는
+   *  "복원 뒤 재검증이 `attempts`로 다시 판정한다"였는데, 같은 문장을 적고 있던 엔진 축에서
+   *  그 재판정이 **일어나지 않는다**는 것이 실측됐다(확인 크리틱 R1 F1). 두 축의 규칙을
+   *  같게 두는 것이 이 파일의 존재 이유다. */
   autoPaused?: boolean
 }
 
@@ -508,8 +515,9 @@ export function holdDelayMs(hold: LimitHold, nowMs: number): number {
 }
 
 /** ui-prefs에서 복원한 대기표 위생 — 형태가 어긋나거나 24시간 지난 표는 버린다
- *  (며칠 전 대기표가 부팅하자마자 옛 채팅에 프롬프트를 쏘는 사고 방지). ready는
- *  영속하지 않는다 — 복원 후 발화 경로가 재검증으로 다시 판정한다.
+ *  (며칠 전 대기표가 부팅하자마자 옛 채팅에 프롬프트를 쏘는 사고 방지). `ready`는
+ *  영속하지 않는다 — 복원 후 발화 경로가 재검증으로 다시 판정한다. **예외는 접힌 표
+ *  하나**다(아래 ★R28g).
  *
  *  ── ★R28f WFIRE — **이 함수에는 지금 살아 있는 호출자가 없다.** 정직하게 적는다.
  *
@@ -566,6 +574,26 @@ export function sanitizeHold(v: unknown, nowMs: number): LimitHold | null {
     // ← `hub::persist_hold`). R28e 주석이 가리키던 「아직 없다」는 이제 사실이 아니다 —
     // 두 축이 같은 규칙이고, 그 궤적 일치를 `poc-limit-resume.mjs` L절 ⑥과 엔진
     // `tests/wcap_limit_streak.rs` ⑭가 **같은 대본**으로 잰다.
-    ...(typeof h.fires === 'number' && h.fires >= 1 ? { fires: Math.min(Math.floor(h.fires), 99) } : {})
+    ...(typeof h.fires === 'number' && h.fires >= 1 ? { fires: Math.min(Math.floor(h.fires), 99) } : {}),
+    // ★R28g BANNER — **접힘은 그것을 낳은 사실과 함께 건넌다**(엔진 `ReloadHold::paused` ←
+    // `HoldLite::paused` ← `hub::persist_hold`의 짝).
+    //
+    // R28f까지 이 파일의 규칙은 「사실(`attempts`·`fires`)만 나르고 결론(`autoPaused`·`ready`)은
+    // 복원 뒤 재검증이 다시 낸다」였고, 엔진 주석도 같은 문장을 적고 있었다. 그런데 엔진
+    // 축에서 그 문장이 **거짓**이었다(R28f 확인 크리틱 R1 F1: `check_hold`의
+    // `filter(|h| !h.ready)`가 접힌 표를 재판정에서 뺀다) — 12발을 태운 표가 부팅 한 번에
+    // 「한도가 풀렸어요」로 되살아났다. 엔진이 접힘을 영속하는 쪽으로 닫혔으므로 **두 축의
+    // 규칙을 다시 같게** 맞춘다(`poc-limit-resume.mjs` N절이 같은 대본으로 궤적을 잰다).
+    //
+    // `ready`를 함께 켜는 이유: 접힌 표의 출구는 배너의 「이어가기」 하나인데
+    // (`canPressContinue = ready && autoPaused`), `ready`가 없으면 그 버튼이 안 뜨고 배너는
+    // 「약 N 뒤 자동으로 이어서 계속해요」라고 **또 다른 거짓 약속**을 한다(타이머 effect는
+    // `autoPaused`를 안 보고 도는데 소진 effect가 막아서 아무것도 안 나간다).
+    //
+    // 위험이 없는 이유는 접힘의 정의 그 자체다: 소진 effect의 첫 문이 `cur.autoPaused`에서
+    // 되돌아가고 타이머 effect도 `hold.ready`에서 멎는다 — **이 표는 사람이 누르기 전에는
+    // 한 글자도 안 보낸다.** 이 문단이 지키려는 사고("며칠 전 표가 부팅하자마자 쏜다")는
+    // 위 24시간 만료와 이 두 문이 함께 막는다.
+    ...(h.autoPaused === true ? { ready: true, autoPaused: true } : {})
   }
 }

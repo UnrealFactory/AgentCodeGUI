@@ -48,13 +48,28 @@ const PORT = Number(argOf('port', 9425))
 const OUT = argOf('out', path.join(REPO, 'docs', 'critic', 'limit-engine-t3t4-r3.json'))
 const EXE = argOf('exe', path.join(REPO, 'target-t3t4', 'release', 'agentcodegui.exe'))
 const FAKECLI = argOf('fakecli', path.join(REPO, 'target-t3t4', 'release', 'ccg-fakecli.exe'))
+/** ★R28g BANNER — **접힘 모드**. 「예산으로 접힌 표를 들고 앱을 껐다 켠다」를 실물로 만든다
+ *  (R28f 확인 크리틱 R1 F1의 그 재현). 표준 주행(E0~E13)과 **재는 판이 다르다** — 이미
+ *  접힌 표는 재검증 사다리가 아예 안 도므로 E5~E8의 전제가 성립하지 않는다.
+ *
+ *    node scripts/poc-limit-engine.mjs --fold --paused=1 --seed-fires=12 --out=…   # 고친 판
+ *    node scripts/poc-limit-engine.mjs --fold --paused=0 --seed-fires=12 --out=…   # 대조군(R28f) */
+const FOLD = args.includes('--fold')
 /** 관찰창(초). 크리틱은 92초를 봤다 — 그보다 길게 본다.
  *  `--long`은 손 드는 순간까지 본다: 첫 재검증이 리셋+90초(=t≈90s)이고 그 뒤
- *  15+30+60+120+240 = 465초라 t≈555s. 여유를 얹어 620초. */
-const WATCH_S = Number(argOf('watch', LONG ? 620 : 110))
+ *  15+30+60+120+240 = 465초라 t≈555s. 여유를 얹어 620초.
+ *  `--fold`는 「부팅 뒤 첫 판정」 하나만 보면 된다. 리셋 시각이 이미 지난 표의 `due_at`은
+ *  `max(resets_at + 90s, armed_at + 15s)`인데 재장전이 `resets_at`을 **지금**으로 놓으므로
+ *  (`engine::remaining_ms`가 0을 낸다) 그 판정은 **재장전 + 90초**다. 여유를 얹어 120초.
+ *  (실측: 45초 창에서는 대조군의 통행권이 아직 안 열려 F7이 붉었다.) */
+const WATCH_S = Number(argOf('watch', FOLD ? 120 : LONG ? 620 : 110))
 // ★R28f WFIRE — 디스크에 심는 상한 두 칸(0 = R28e 이전의 판 그대로).
 const SEED_FIRES = Number(argOf('seed-fires', 0))
 const SEED_ATTEMPTS = Number(argOf('seed-attempts', 0))
+// ★R28g BANNER — 접힘 모드가 파일에 심는 두 칸. `paused` 한 칸이 이 라운드의 과녁이고,
+// `ready:true`는 **접힌 표가 디스크에 남는 유일한 모양**이다(`check_hold`의 세 착지).
+const SEED_PAUSED = FOLD && argOf('paused', '1') === '1'
+const SEED_READY = FOLD || argOf('seed-ready', '0') === '1'
 const EMAIL = 'engine-seed@t3t4.test'
 const CHAT = 'c-limit-engine'
 
@@ -147,7 +162,10 @@ function seedHome() {
     // ★R28f WFIRE — `attempts`·`fires`는 **디스크에 적히는 상한**이다(`hub::persist_hold`).
     // `--seed-fires=N`으로 「예산을 N발 쓴 채 앱을 껐다」를 만든다 — 그 값이 새 프로세스의
     // 런타임까지 살아 오는지가 E11이 재는 것이고, 기본 0은 R28e와 한 글자도 다르지 않다.
-    hold: { resetsAt, ready: false, attempts: SEED_ATTEMPTS, fires: SEED_FIRES },
+    // ★R28g BANNER — `--fold`면 **접힌 표 그대로**(`ready:true` + `paused`)를 심는다.
+    // 크리틱이 실앱에서 포획한 원문이 정확히 이 모양이다:
+    //   {"hold":{"resetAt":…,"ready":true,"fires":12,"paused":false}}  ← R28f
+    hold: { resetsAt, ready: SEED_READY, attempts: SEED_ATTEMPTS, fires: SEED_FIRES, ...(FOLD ? { paused: SEED_PAUSED } : {}) },
     draft: '',
     draftImages: [],
     updatedAt: Date.now(),
@@ -213,6 +231,112 @@ const stdinHead = () => {
   }
 }
 
+/** 디스크에 지금 적혀 있는 `hold`(쓰는 쪽의 물증). */
+const holdOnDisk = () => {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(HOME, 'chats-v3', `${CHAT}.json`), 'utf8')).hold ?? null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * ★R28g BANNER — **접힘 모드**(`--fold`). R28f 확인 크리틱 R1 F1의 재현을 계기로 못 박는다.
+ *
+ * 크리틱이 실앱에서 포획한 행:
+ *   {"chatId":"c-crit-carry","hold":{"resetAt":…,"ready":true,"fires":12,"paused":false},…}
+ * 그 행에 렌더러 실번들 `budgetLanding(paused, fires)`를 먹이면 **false**라 배너가
+ * 「한도가 풀렸어요 — 눌러서 이어가기」라고 말한다 — 12발을 태우고 여전히 막힌 표에 대고.
+ *
+ * `--paused=1/0` 한 칸이 **대조군 스위치**다. 같은 바이너리·같은 대본·같은 네 칸 경로
+ * (`hub::persist_hold` → 채팅 파일 → `status::HoldLite` → `ReloadHold` → `LimitHold`)에서
+ * 그 한 칸만 바꾸면 R28f의 거짓말이 그대로 재현된다. 그리고 **같은 스위치가 통행권
+ * (`LimitHold::reloaded`)도 가른다** — 접힌 표는 부팅 뒤 판정에 안 들어가고(조회 0),
+ * 안 접힌 `ready` 표는 정확히 한 번 들어간다(조회 ≥1).
+ */
+async function foldRun(app) {
+  const wireRow = async () => {
+    const got = await app.j(IPC('chats:get', [{ light: true }])).catch(() => null)
+    return got?.statuses?.[CHAT] ?? null
+  }
+  await sleep(3000)
+  const wire = await wireRow()
+  const dbg0 = await app.j(IPC('engine:debug')).catch(() => null)
+  const row0 = (dbg0?.chats ?? []).find((c) => c.chatId === CHAT) ?? null
+  // 렌더러 실번들과 **같은 식**(`app/src/lib/limitResume.ts`의 `budgetLanding`).
+  const budget = !!wire?.hold?.paused && (wire?.hold?.fires ?? 0) >= 12
+  rep.steps.fold = { seeded: { paused: SEED_PAUSED, ready: SEED_READY, fires: SEED_FIRES }, wire, engine: row0, budgetLanding: budget }
+  console.log(`\n① 부팅 행(앱이 실제로 내리는 그 행) — ${JSON.stringify(wire?.hold ?? null)}`)
+  check('F0 부팅 재장전이 표를 다시 걸었다', !!row0?.hold, '엔진이 표를 안 들었다 = 재는 판이 아니다', { row: row0 })
+  check(
+    `F1 ★★ 와이어 행의 paused가 파일과 같다 — 심은 값 ${SEED_PAUSED}`,
+    wire?.hold?.paused === SEED_PAUSED,
+    `심은 ${SEED_PAUSED} · 행 ${JSON.stringify(wire?.hold ?? null)}`,
+    { seeded: SEED_PAUSED, got: wire?.hold?.paused ?? null }
+  )
+  check(`F2 ★ 예산도 그대로 건너왔다 — 심은 값 ${SEED_FIRES}`, (wire?.hold?.fires ?? -1) === SEED_FIRES, JSON.stringify(wire?.hold ?? null), {
+    got: wire?.hold?.fires ?? null
+  })
+  check(
+    `F3 ★★ 배너 문장이 갈린다(budgetLanding=${budget}) — ${SEED_PAUSED ? '「12번 보냈는데 계속 막혔어요」' : '「한도가 풀렸어요」(= R28f의 거짓말)'}`,
+    budget === (SEED_PAUSED && SEED_FIRES >= 12),
+    `budgetLanding=${budget}`,
+    { budgetLanding: budget }
+  )
+  check('F4 ★ 엔진 런타임도 같은 값을 든다', row0?.hold?.autoPaused === SEED_PAUSED, JSON.stringify(row0?.hold ?? null), {
+    got: row0?.hold?.autoPaused ?? null
+  })
+
+  console.log(`\n② 관찰 — ${WATCH_S}초(부팅 뒤 첫 판정 = 재장전 + 90초 · due_at = resets_at + GRACE)`)
+  const t0 = Date.now()
+  let worst = { spawns: 0, stdin: 0, queue: 0 }
+  while ((Date.now() - t0) / 1000 < WATCH_S) {
+    await sleep(5000)
+    const dbg = await app.j(IPC('engine:debug')).catch(() => null)
+    const row = (dbg?.chats ?? []).find((c) => c.chatId === CHAT) ?? null
+    worst = {
+      spawns: Math.max(worst.spawns, row?.spawns ?? 0),
+      stdin: Math.max(worst.stdin, stdinBytes()),
+      queue: Math.max(worst.queue, (row?.queue ?? []).length)
+    }
+    process.stdout.write(
+      `   t=${String(Math.round((Date.now() - t0) / 1000)).padStart(3)}s spawns=${row?.spawns ?? '-'} stdin=${stdinBytes()}B ` +
+        `ready=${row?.hold?.ready ?? '-'} paused=${row?.hold?.autoPaused ?? '-'} probes=${row?.hold?.probes ?? '-'} ` +
+        `asks=${dbg?.limitProbe?.asks ?? '-'} fires=${row?.episodeFires ?? '-'}\n`
+    )
+    if ((row?.spawns ?? 0) > 0 || stdinBytes() > 0) break
+  }
+  const dbg1 = await app.j(IPC('engine:debug')).catch(() => null)
+  const row1 = (dbg1?.chats ?? []).find((c) => c.chatId === CHAT) ?? null
+  const asks = dbg1?.limitProbe?.asks ?? 0
+  const disk = holdOnDisk()
+  rep.steps.foldAfter = { row: row1, asks, disk, worst }
+  console.log('\n③ 판정')
+  check('F5 ★★ 예산을 다 쓴 표는 한 글자도 안 보낸다(전송 0)', worst.spawns === 0 && worst.stdin === 0, JSON.stringify(worst), { worst })
+  check('F6 ★ 디스크의 hold가 `paused` 칸을 들고 왕복한다(쓰는 쪽)', typeof disk?.paused === 'boolean', JSON.stringify(disk), { disk })
+  // ★ 통행권(`LimitHold::reloaded`) — **같은 스위치가 부팅 뒤 첫 판정의 유무를 가른다.**
+  //   접힌 표: 판정에 안 들어간다 → 조회 0 · `ready` 유지(버튼이 유일한 출구).
+  //   안 접힌 `ready` 표: 정확히 한 번 들어간다 → 조회 ≥1(CCG_NO_NET이라 「못 물어봤다」로
+  //   착지하고 재확인 사다리가 시작된다). R28f에서는 **양쪽 다 0**이었다(F1/F3의 뿌리).
+  if (SEED_PAUSED) {
+    check('F7 ★★ 접힌 표에는 통행권이 없다 — 조회 0 · ready 유지', asks === 0 && row1?.hold?.ready === true, `asks=${asks} ready=${row1?.hold?.ready}`, {
+      asks,
+      ready: row1?.hold?.ready ?? null
+    })
+    check('F8 ★ 접힌 채 그대로다(재판정이 접힘을 풀지 않았다)', row1?.hold?.autoPaused === true, JSON.stringify(row1?.hold ?? null), { hold: row1?.hold ?? null })
+  } else {
+    check(
+      'F7 ★★ `ready` 표는 부팅 뒤 **한 번** 판정에 들어간다(크리틱 F3: 20시간 0발이던 자리)',
+      asks >= 1 && (row1?.hold?.probes ?? 0) >= 1,
+      `asks=${asks} probes=${row1?.hold?.probes}`,
+      { asks, probes: row1?.hold?.probes ?? null }
+    )
+    check('F8 ★ 그 판정은 처음부터 다시 한다(ready를 내리고 인프로세스와 같은 경로)', row1?.hold?.ready === false, JSON.stringify(row1?.hold ?? null), {
+      hold: row1?.hold ?? null
+    })
+  }
+}
+
 async function main() {
   const seed = seedHome()
   const app = await boot()
@@ -221,6 +345,14 @@ async function main() {
   try {
     // 부팅 재장전은 `chats:get`이 도는 부팅 흐름에서 걸린다 — 화면이 뜬 뒤 한 박자 준다.
     await app.j(IPC('chats:get', [{ light: true }])).catch(() => null)
+    // ★R28g BANNER — 접힘 모드는 **재는 판이 다르다**(이미 접힌 표는 재검증 사다리가 아예
+    // 안 돈다 = E5~E8의 전제가 성립하지 않는다). 표준 주행과 섞지 않고 여기서 갈라진다.
+    // 라벨 블록을 쓰는 이유는 하나다 — 아래 표준 본문을 **한 줄도 안 건드리려고**.
+    standard: {
+      if (FOLD) {
+        await foldRun(app)
+        break standard
+      }
     await sleep(3000)
 
     const dbg0 = await app.j(IPC('engine:debug'))
@@ -342,6 +474,7 @@ async function main() {
         })
       }
     }
+    } // ← standard 라벨 블록 끝(★R28g BANNER)
   } finally {
     try {
       app.cdp.close?.()

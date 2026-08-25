@@ -222,7 +222,14 @@ eq('재발사 상한은 엔진과 같은 값', lib3.MAX_AUTO_ATTEMPTS, 2)
 eq('재확인 상한은 이름이 바뀌었을 뿐 값은 그대로', lib3.MAX_RECHECKS, 2)
 eq('attempts 복원(위생) — 재시작이 상한을 지우면 껐다 켤 때마다 두 발이다', lib3.sanitizeHold({ ...H({ attempts: 2 }), at: NOW_MS - 1000 }, NOW_MS)?.attempts, 2)
 eq('attempts 오염(음수)은 버린다', lib3.sanitizeHold({ ...H({ attempts: -3 }), at: NOW_MS - 1000 }, NOW_MS)?.attempts, undefined)
-eq('autoPaused는 영속하지 않는다(ready와 같은 규약)', lib3.sanitizeHold({ ...H({ attempts: 2, autoPaused: true }), at: NOW_MS - 1000 }, NOW_MS)?.autoPaused, undefined)
+// ★R28g BANNER — **규칙이 바뀐 자리.** R28f까지는 「`autoPaused`는 영속하지 않는다(복원 뒤
+// 재검증이 `attempts`로 다시 판정한다)」였고 이 줄이 `undefined`를 단언했다. 그런데 같은
+// 문장을 적고 있던 엔진 축에서 그 재판정이 **일어나지 않는다**는 것이 실측됐다(확인 크리틱
+// R1 F1 — `check_hold`의 `filter(|h| !h.ready)`). 엔진이 영속하는 쪽으로 닫혔으므로 두 축의
+// 규칙을 다시 같게 둔다. 자세한 궤적 일치는 N절.
+eq('★★ autoPaused는 영속한다(엔진 `ReloadHold::paused`와 같은 규칙)', lib3.sanitizeHold({ ...H({ attempts: 2, autoPaused: true }), at: NOW_MS - 1000 }, NOW_MS)?.autoPaused, true)
+eq('★★ 접힌 표는 `ready`도 함께 — 없으면 버튼이 안 뜬다(출구가 사라진다)', lib3.sanitizeHold({ ...H({ attempts: 2, autoPaused: true }), at: NOW_MS - 1000 }, NOW_MS)?.ready, true)
+eq('★ 안 접힌 표의 `ready`는 여전히 안 되살린다(재검증이 다시 판정한다)', lib3.sanitizeHold({ ...H({ attempts: 2, ready: true }), at: NOW_MS - 1000 }, NOW_MS)?.ready, undefined)
 
 // 배너의 버튼 조건 — `LimitHoldBar`의 비-`managed` 갈래가 **이 함수**를 본다(Chat.tsx).
 // 엔진 축의 `canPressResume`과 같은 규칙: 아무도 안 쏘는 `ready`에만 버튼을 준다.
@@ -1293,6 +1300,93 @@ for (const [name, props] of SURFACES.slice(1)) {
   ok(`★ ${name}의 훅은 살아 있다(managed 미전달)`, !!live.hold, JSON.stringify(live.hold))
 }
 console.log('   → 결론: `sanitizeHold`의 계수·예산 복원은 **규칙으로는 엔진과 같고**(L⑥) 실앱에는 호출자가 없다.')
+
+// ── N. ★R28g BANNER — **접힘이 재시작을 넘는다**(두 축이 같은 규칙인가) ────────────
+//
+// R28f 확인 크리틱 R1 F1: ⑭이 예산을 재시작 너머로 실어 나른 **바로 그 경로에서** 화면이
+// 거짓말을 했다. 예산으로 접힌 표를 들고 앱을 껐다 켜면 실앱이 내리는 행이
+//   {"chatId":"c-crit-carry","hold":{"resetAt":…,"ready":true,"fires":12,"paused":false},…}
+// 이고, 그 행에 이 파일의 `budgetLanding`을 먹이면 **false**라 배너가 「한도가 풀렸어요 —
+// 눌러서 이어가기」라고 말한다. 12발을 태우고 여전히 막힌 표에 대고.
+//
+// 엔진 축은 접힘을 **영속**하는 쪽으로 닫혔다(`hub::persist_hold` → `HoldLite::paused` →
+// `ReloadHold::paused` → `LimitHold::auto_paused`) + 부팅 뒤 첫 판정 통행권
+// (`LimitHold::reloaded`). 이 절은 **렌더러 축이 같은 답을 내는지**를 같은 자로 잰다:
+//
+// | 대본 | 엔진(`wcap_limit_streak` ⑰⑱ · `ccg-store` 부팅 행 못) | 렌더러(아래) |
+// |---|---|---|
+// | 접힌 표로 재시작 → 첫 프레임 | `paused true · fires 12` → 예산 문구 | 같음 |
+// | 〃 그 뒤 20시간(엔진) / 타이머(렌더러) | **0발** · 접힌 채 | **0발** · 접힌 채 |
+// | 접힘을 안 물려주면(R28f) 첫 프레임 | `paused false` → **「풀렸어요」** | 같은 거짓말 |
+// | `ready`로 저장된 표(안 접힘·자동 켬) | 부팅 뒤 **1발**(통행권 한 장) | **1발** |
+console.log('\nN. ★R28g — 접힘이 재시작을 넘는가(엔진 ⑰⑱과 같은 대본)')
+tag = 'BANNER'
+
+// ① 순수 규칙 — `sanitizeHold`가 접힌 표를 접힌 채로 되살린다.
+console.log('   ① 복원 규칙 — 접힘은 그것을 낳은 사실과 함께 건넌다')
+// 표의 주인·엔진은 아래 훅이 실제로 쓰는 표면(codex 축 = `CX_PROPS`)에 맞춘다 — 소유 키가
+// 어긋나면 소진 effect가 `cur.key !== o.holdKey`에서 되돌아가 「안 쏜다」가 이유 없이 참이 된다.
+const N_FOLDED = { ...H({ key: '0', engine: 'codex', resetsAt: REAL - 100, fires: lib3.MAX_EPISODE_FIRES, autoPaused: true }), at: Date.now() }
+// App.tsx가 pref에 적는 모양 그대로(`ready`는 안 싣는다 — `App.tsx:692`).
+const N_PERSISTED = JSON.parse(JSON.stringify({ ...N_FOLDED, ready: undefined }))
+const N_BACK = lib3.sanitizeHold(N_PERSISTED, Date.now())
+eq('★★ 접힘이 살아 돌아온다', { paused: N_BACK?.autoPaused, fires: N_BACK?.fires }, { paused: true, fires: lib3.MAX_EPISODE_FIRES })
+eq('★★ `ready`도 함께 — 없으면 버튼이 안 뜨고 배너가 「약 N 뒤 자동으로」라고 또 거짓말한다', N_BACK?.ready, true)
+eq('★ 그래서 출구가 열려 있다', lib3.canPressContinue(N_BACK), true)
+eq('★★ 배너 문장은 「예산 착지」다', lib3.budgetLanding(N_BACK?.autoPaused, N_BACK?.fires), true)
+// 대조군 — 접히지 않은 표는 규칙이 그대로다(`ready`를 안 되살린다).
+const N_OPEN = lib3.sanitizeHold(
+  JSON.parse(JSON.stringify({ ...H({ key: '0', engine: 'codex', resetsAt: REAL - 100, at: Date.now() }), ready: undefined })),
+  Date.now()
+)
+eq('★ 대조군: 안 접힌 표는 `ready`를 안 되살린다(재검증이 다시 판정한다)', { ready: N_OPEN?.ready, paused: N_OPEN?.autoPaused }, { ready: undefined, paused: undefined })
+eq('★ 대조군: R28f 모양(접힘 없음)이면 배너도 R28f 문장', lib3.budgetLanding(N_OPEN?.autoPaused, lib3.MAX_EPISODE_FIRES), false)
+
+// ② 훅 실구동 — 복원한 접힌 표가 **아무것도 안 쏜다**(위험이 없다는 증거).
+console.log('   ② 훅 실구동 — 복원된 접힌 표는 사람이 누르기 전엔 한 글자도 안 보낸다')
+sent.length = 0
+const nHost = mountArmed(CX_PROPS, CX_BANNER)
+nHost.api.setHold(N_BACK)
+nHost.host.render()
+sent.length = 0
+for (let i = 0; i < 5; i++) await tick(nHost)
+eq(
+  '★★ 재시작 뒤 0발 — 엔진 ⑰과 같은 착지(0발 · 접힌 채)',
+  { sent: sent.length, paused: nHost.hold?.autoPaused === true, ready: nHost.hold?.ready === true },
+  { sent: 0, paused: true, ready: true }
+)
+nHost.api.resumeNow()
+nHost.host.render()
+await flush()
+eq('★ 막다른 방이 아니다 — 누르면 그 자리에서 나간다', { hold: nHost.hold, sent: sent.length }, { hold: null, sent: 1 })
+
+// ③ **엔진이 내리는 행 그대로**(`status::truth_from_chat_file` = `engine/lite.rs`의 키 집합)를
+//    실번들에 먹인다 — 크리틱이 포획한 그 원문과 고친 뒤의 원문을 나란히.
+console.log('   ③ 엔진 행 → 배너 문장(크리틱이 포획한 원문 그대로)')
+const N_ROW = (paused) => ({
+  chatId: 'c-crit-carry', status: 'error', busy: false, bgActive: false, ask: 'none',
+  hold: { resetAt: 1_787_649_364.888, ready: true, fires: 12, paused },
+  queued: 0, unread: 0, autoResume: false, resumeOwner: 'engine', updatedAt: 1
+})
+const N_FIX = owner.engineHoldOf(N_ROW(true))
+const N_OLD = owner.engineHoldOf(N_ROW(false)) // ← 크리틱이 실앱에서 포획한 그 행
+eq('★★ 고친 행 → 예산 문구(「자동으로 12번 이어서 보냈는데 계속 막혔어요」)', lib3.budgetLanding(N_FIX?.paused, N_FIX?.fires), true)
+eq('★ 대조군: 포획된 R28f 행 → 「한도가 풀렸어요」(그 거짓말)', lib3.budgetLanding(N_OLD?.paused, N_OLD?.fires), false)
+eq('★ 두 행 다 버튼은 있다(출구는 R28f에도 있었다 — 틀린 건 문장이다)', [owner.canPressResume(N_ROW(true)), owner.canPressResume(N_ROW(false))], [true, true])
+
+// ④ `ready`로 저장된 표(F3 축) — 두 축이 **1발**로 같은 답을 낸다.
+//    엔진: 부팅 뒤 통행권 한 장(⑱). 렌더러: `ready`를 안 되살리므로 타이머가 그 자리에서 재판정.
+console.log('   ④ `ready`로 저장된 표 — 「곧 이어서 계속해요」라는 약속을 지키는가')
+cxAnswer = [cxRow('me@openai.com', 5, REAL + 3600)] // 조회는 「풀렸다」고 답한다
+sent.length = 0
+const nReady = mountArmed(CX_PROPS, CX_BANNER)
+nReady.api.setHold(N_OPEN)
+nReady.host.render()
+sent.length = 0
+await tick(nReady)
+eq('★★ 약속대로 한 발 나간다 — 엔진 ⑱과 같은 착지(1발)', { sent: sent.length, hold: nReady.hold }, { sent: 1, hold: null })
+cxAnswer = []
+console.log('   → 두 축 궤적: 접힌 표 재시작 = (0발 · 접힘 · 버튼) · `ready` 표 재시작 = (1발) — 엔진 ⑰⑱과 같다.')
 
 fs.rmSync(tmp, { recursive: true, force: true })
 console.log(`\n${fail === 0 ? 'PASS' : 'FAIL'} — ${pass} 통과, ${fail} 실패`)

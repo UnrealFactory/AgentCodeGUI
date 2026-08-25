@@ -27,6 +27,16 @@
 //! | ⑭ | 예산을 다 쓴 표로 **앱을 껐다 켠다**(★R28f) | 0발 — 재시작은 예산을 재충전하지 않는다 |
 //! | ⑮ | 5시간 창 · 4.5시간 작업을 **끝까지**(★R28f) | **60시간**에 접힌다 = 불변식의 유효 범위 |
 //! | ⑯ | 상한까지 쏜 표로 앱을 껐다 켠다(★R28f) | 0발 — 크리틱이 잰 「+2발」이 닫힌다 |
+//! | ⑰ | **접힌 표로 앱을 껐다 켠다**(★R28g) | 첫 프레임부터 `auto_paused` — 배너가 「풀렸어요」라고 안 한다 |
+//! | ⑱ | **`ready`로 저장된 표**로 앱을 껐다 켠다(★R28g) | 부팅 뒤 **한 번** 판정 → 약속대로 이어간다 |
+//!
+//! ⑰⑱이 **R28g에서 새로 박은 못**이고, 둘 다 R28f 확인 크리틱 R1이 남긴 격차다.
+//! ⑭이 예산을 재시작 너머로 실어 나른 **바로 그 경로에서** 화면이 거짓말을 했다:
+//! `hub::persist_hold`가 `auto_paused`를 안 적고 `status::truth_from_chat_file`이 부팅 행에
+//! `paused:false`를 상수로 적었으며, 그 둘이 근거로 든 「판정은 부팅 뒤 `check_hold`가 다시
+//! 한다」가 **거짓**이었다(`check_hold`의 첫 문 `filter(|h| !h.ready)`). ⑰이 영속을 잠그고
+//! ⑱이 재판정을 잠근다 — 그리고 ⑰의 대조군이 **왜 접힌 표는 재판정에서 빼도 되는지**를
+//! 잰다(접힘의 근거가 함께 건너오므로 재판정은 같은 답을 낸다).
 //!
 //! ⑭⑯이 **R28f에서 새로 박은 못**이고 **대조군을 못 안에 품는다**(R28e 확인 크리틱 R1 §4.1).
 //! 같은 바이너리·같은 대본·같은 재장전 경로에서 `ReloadHold`의 새 칸을 0으로 두면 R28e의
@@ -787,7 +797,7 @@ fn the_episode_budget_survives_a_restart() {
         let mut r = rt(clock.clone(), cli);
         r.reload_state(
             vec![],
-            Some(ReloadHold { in_ms: Some(60 * SEC), ready: false, attempts: saved.attempts, fires }),
+            Some(ReloadHold { in_ms: Some(60 * SEC), ready: false, attempts: saved.attempts, fires, paused: false }),
         );
         pump(&mut r, &clock, 1_000 * SEC + 20 * HOUR);
         (r.driver_ref().turns as usize, r.episode_fires(), r.hold().is_some_and(|h| h.auto_paused))
@@ -868,7 +878,7 @@ fn the_blind_shot_cap_also_survives_a_restart() {
     let fresh = |attempts: u32, fires: u32| {
         let clock = clock_at(5 * 3600);
         let mut r = rt(clock.clone(), WcapCli { banner: true, ..Default::default() });
-        r.reload_state(vec![], Some(ReloadHold { in_ms: Some(60 * SEC), ready: false, attempts, fires }));
+        r.reload_state(vec![], Some(ReloadHold { in_ms: Some(60 * SEC), ready: false, attempts, fires, paused: false }));
         pump(&mut r, &clock, 1_000 * SEC + 12 * HOUR);
         r.driver_ref().turns as usize
     };
@@ -877,4 +887,130 @@ fn the_blind_shot_cap_also_survives_a_restart() {
     println!("[WFIRE⑯] 재장전 뒤 12시간 — 계수 물려받음 {kept}발  vs  0으로 재장전 {lost}발(= 크리틱이 잰 +2발)");
     assert_eq!(kept, 0, "★★ 재시작이 「눈감고 두 발」을 공짜로 만들었다");
     assert_eq!(lost as u32, MAX_AUTO_ATTEMPTS, "★ 대조군이 +2발을 재현하지 못했다");
+}
+
+/// ⑰ ★R28g BANNER — **접힘도 재시작을 넘는다: 부팅 첫 프레임이 진실을 말한다.**
+///
+/// R28f 확인 크리틱 R1 F1이 잰 격차. ⑭이 예산을 재시작 너머로 실어 나른 **바로 그
+/// 경로에서** 화면이 거짓말을 했다 — 예산으로 접힌 표를 들고 앱을 껐다 켜면 실앱이
+/// 내리는 행이 `{ready:true, fires:12, paused:false}`이고, 그 행에 렌더러 실번들
+/// `budgetLanding(paused, fires)`를 먹이면 **false**라 배너가 「한도가 풀렸어요 — 눌러서
+/// 이어가기」라고 말한다. 12발을 태우고 여전히 막힌 표에 대고.
+///
+/// 이 못이 재는 것은 **와이어에 실리는 두 값**이다(`engine/lite.rs`의 `hold.paused`·
+/// `hold.fires` = 부팅 행 `status::truth_from_chat_file`의 그 두 칸):
+///   `budgetLanding = paused && fires >= MAX_EPISODE_FIRES`
+///
+/// **대조군이 둘 다 못 안에 있다.**
+///  * `paused:false`로 재장전 = R28f의 동작 → 첫 프레임이 그대로 그 거짓말이다.
+///  * 그리고 그 대조군을 **그냥 계속 돌리면** 부팅 뒤 첫 판정이 접힘을 *다시* 만든다
+///    (`LimitHold::reloaded` 통행권). 즉 「접힌 표를 재판정에서 빼도 되는가」의 답이
+///    측정으로 나온다 — 접힘의 근거(`attempts`·`fires`)가 함께 건너오므로 재판정은
+///    **같은 답**을 내고, 다른 것은 공지 한 줄이 더 붙는지뿐이다.
+#[test]
+fn the_fold_survives_a_restart_and_the_first_frame_says_so() {
+    // ① 예산을 다 쓴 상태를 만든다(⑫·⑭와 한 글자도 다르지 않은 대본).
+    let cli = WcapCli { banner: true, work: true, work_ms: 20 * MIN, ..Default::default() };
+    let (r0, _c0, blind0) = run(cli, 1_000 * SEC + 20 * HOUR);
+    assert_eq!(blind0 as u32, ccg_engine::limit::MAX_EPISODE_FIRES, "먼저 예산을 다 쓴다");
+    let saved = r0.hold().cloned().expect("접힌 표가 서 있다");
+    let saved_fires = r0.episode_fires();
+    assert!(saved.ready && saved.auto_paused, "디스크로 내려갈 표의 모양: ready + 접힘");
+
+    // ② 앱을 껐다 켠다. `paused`는 `hub::persist_hold` → `status::HoldLite` → `ReloadHold`로
+    //    건너오는 그 칸이다(한 칸만 갈아 끼워 대조군을 만든다).
+    let boot = |paused: bool| {
+        let clock = clock_at(5 * 3600);
+        let cli = WcapCli { banner: true, work: true, work_ms: 20 * MIN, ..Default::default() };
+        let mut r = rt(clock.clone(), cli);
+        r.reload_state(
+            vec![],
+            Some(ReloadHold {
+                in_ms: Some(60 * SEC),
+                ready: saved.ready,
+                attempts: saved.attempts,
+                fires: saved_fires,
+                paused,
+            }),
+        );
+        // **첫 프레임** — 허브가 첫 tick을 돌기 전, 화면이 실제로 읽는 값.
+        let first = r.hold().map(|h| (h.auto_paused, r.episode_fires())).expect("표가 섰다");
+        pump(&mut r, &clock, 1_000 * SEC + 20 * HOUR);
+        let last = r.hold().map(|h| (h.auto_paused, r.episode_fires())).expect("표가 남아 있다");
+        (first, last, r.driver_ref().turns as usize)
+    };
+    // 렌더러 실번들 `budgetLanding`과 **같은 식**(`app/src/lib/limitResume.ts`).
+    let banner_says_budget = |(paused, fires): (bool, u32)| paused && fires >= ccg_engine::limit::MAX_EPISODE_FIRES;
+
+    let (kept_first, kept_last, kept_turns) = boot(true);
+    let (lost_first, lost_last, lost_turns) = boot(false);
+    println!(
+        "[BANNER⑰] 접힘 물려받음 첫프레임 {kept_first:?}(예산문구 {}) · 20시간 뒤 {kept_last:?} · {kept_turns}발  vs  \
+         R28f 대조군 첫프레임 {lost_first:?}(예산문구 {}) · 20시간 뒤 {lost_last:?} · {lost_turns}발",
+        banner_says_budget(kept_first),
+        banner_says_budget(lost_first)
+    );
+    assert!(
+        banner_says_budget(kept_first),
+        "★★ 부팅 첫 프레임이 12발 태운 표를 「한도가 풀렸어요」로 그린다 — {kept_first:?}"
+    );
+    assert!(
+        !banner_says_budget(lost_first),
+        "★ 대조군이 R28f의 거짓말을 재현하지 못했다 — 이 못은 아무것도 안 재고 있다: {lost_first:?}"
+    );
+    assert_eq!(kept_turns, 0, "★ 접힌 채 돌아온 표는 20시간을 밀어도 0발이다");
+    // 대조군의 **재판정**: 접힘을 안 물려줘도 근거만으로 같은 자리에서 다시 접힌다.
+    // 이것이 「접힌 표는 통행권에서 빼도 된다」의 실측 근거다(공지 한 줄 차이뿐).
+    assert!(
+        banner_says_budget(lost_last),
+        "★★ 재판정이 근거(fires)만으로 같은 답을 못 냈다 — 그러면 통행권에서 뺀 판단이 틀린 것이다: {lost_last:?}"
+    );
+    assert_eq!(lost_turns, 0, "★ 그 재판정이 한 발이라도 태우면 예산이 예산이 아니다");
+}
+
+/// ⑱ ★R28g BANNER — **`ready`로 저장된 표는 부팅 뒤 한 번 판정받는다**(약속을 지킨다).
+///
+/// R28f 확인 크리틱 R1 F3: `check_hold`의 첫 문이 `filter(|h| !h.ready)`라, 디스크에
+/// `ready:true`로 적힌 표(= 화면 밖에서 풀린 표가 정확히 그 모양이다)는 재장전 뒤
+/// **영영 판정에 도달하지 못한다**(실측: 자동 켬 + 20시간 **0발**). 그동안 배너는
+/// 「한도가 풀렸어요 — 곧 이어서 계속해요」라고 말한다 — 침묵이 아니라 **거짓 약속**이고,
+/// F1과 뿌리가 같다.
+///
+/// 통행권([`ccg_engine::runtime::ReloadHold`] → `LimitHold::reloaded`)은 **배너가 약속을
+/// 하는 표에만** 준다. 그 조건 셋을 한 줄씩 갈아 끼워 잰다:
+///
+/// | 재장전된 표 | 화면이 하는 말 | 기대 |
+/// |---|---|---|
+/// | `ready` · 자동 켬 · 안 접힘 | 「곧 이어서 계속해요」 | **1발** — 약속을 지킨다 |
+/// | `ready:false`(R28f도 판정하던 모양) | 같음 | 1발 — 두 모양이 **같은 답** |
+/// | `ready` · 접힘 | 「N번 보냈는데 막혔어요」 + 버튼 | 0발 — 접힌 표는 버튼이 출구 |
+/// | `ready` · 자동 끔(화면 밖) | 「눌러서 이어가기」 + 버튼 | 0발 · `ready` 유지 — 이미 정직하다 |
+#[test]
+fn a_ready_table_reloaded_from_disk_gets_exactly_one_judgment() {
+    // 꼬리가 있는 문구(같은 벽) · 즉사 — 재개가 나가면 곧바로 새 표가 서고 그 벽은 5시간
+    // 뒤라, 관찰창(20분) 안의 발사는 **정확히 통행권 한 장**이다.
+    let boot = |ready: bool, paused: bool, auto: bool| {
+        let clock = clock_at(5 * 3600);
+        let mut r = rt(clock.clone(), WcapCli::default());
+        r.set_auto_resume(auto);
+        r.reload_state(
+            vec![],
+            Some(ReloadHold { in_ms: Some(60 * SEC), ready, attempts: 0, fires: 0, paused }),
+        );
+        pump(&mut r, &clock, 1_000 * SEC + 20 * MIN);
+        (r.driver_ref().turns as usize, r.hold().is_some_and(|h| h.ready))
+    };
+    let (promise, _) = boot(true, false, true);
+    let (baseline, _) = boot(false, false, true);
+    let (folded, folded_ready) = boot(true, true, true);
+    let (offscreen, offscreen_ready) = boot(true, false, false);
+    println!(
+        "[BANNER⑱] ready 표 {promise}발 · ready:false {baseline}발 · 접힌 표 {folded}발(ready {folded_ready}) · 화면 밖 {offscreen}발(ready {offscreen_ready})"
+    );
+    assert_eq!(promise, 1, "★★ 「곧 이어서 계속해요」라고 해 놓고 안 보냈다 — 크리틱 F3의 20시간 0발");
+    assert_eq!(promise, baseline, "★ `ready` 한 칸으로 답이 갈리면 그건 규칙이 아니라 사고다");
+    assert_eq!(folded, 0, "★★ 접힌 표에 통행권을 줬다 — 예산이 재시작마다 한 발씩 새는 자리다");
+    assert!(folded_ready, "★ 접힌 표는 `ready`를 유지해야 버튼이 뜬다");
+    assert_eq!(offscreen, 0, "★★ 화면 밖 채팅이 부팅하자마자 토큰을 태웠다(스펙 ⑤)");
+    assert!(offscreen_ready, "★ 화면 밖 표도 `ready` 유지 — 출구는 사용자의 버튼이다");
 }
