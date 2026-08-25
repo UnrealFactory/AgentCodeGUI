@@ -1363,8 +1363,23 @@ fn disk_row(email: &str) -> Option<Value> {
 /// 쓰는 것과 같은 자식 패턴). 자식이 자기 장부를 먼저 단정하므로 **어느 쪽이 붉어도**
 /// 진단이 남는다.
 ///
-/// 자물쇠 안 경로(`cas_edit`의 `Commit::Buried`)도 **같은 두 줄**을 쓴다
-/// (`bury_stats::REFUSED` + `blind_line`). 그래서 이 못은 어느 쪽이 파냈든 같은 값을 잰다.
+/// ## 이 못이 재는 것은 **자물쇠 밖 갈래**다 (R28i LOCKS ② 정정)
+///
+/// R28g는 여기에 *"자물쇠 안 경로(`cas_edit`의 `Commit::Buried`)도 **같은 두 줄**을 쓴다 …
+/// 그래서 이 못은 어느 쪽이 파냈든 같은 값을 잰다"*고 적었다. **그 문장은 다음 사람을
+/// 오도한다** — 두 자리가 같은 두 줄을 *쓰는* 것은 사실이지만, 그것이 「어느 쪽이 서든
+/// 이 못이 붉어진다」를 뜻하지 않는다. 실측으로 두 자리는 갈린다:
+///
+/// | 무엇 | 실측 |
+/// |---|---|
+/// | 이 못 31주행 | **전부 `in_lock=0`** (착지는 언제나 자물쇠 **밖** = `late_watch_tick`) |
+/// | 이웃 통짜쓰기 12,700판(크리틱 k6) | 자물쇠 **안** Blind 262 · 자물쇠 **밖** Blind 0 |
+/// | 자물쇠 **안** 두 줄만 지운 돌연변이 | `cargo test -p ccg-auth` **125 통과 0 실패** |
+///
+/// 즉 이 못이 밟는 길과 실사용에서 실제로 서는 길이 서로 남남이었고, 자물쇠 안 두 줄은
+/// **무방비**였다. 그 갈래를 지나는 못은 이 파일 아래의
+/// `a_bury_the_lock_dug_up_itself_is_refused_out_loud_too`다 — 둘 다 있어야
+/// 「같은 두 줄」이 두 자리에서 참이다.
 #[test]
 fn an_anchor_without_a_matching_generation_is_refused_out_loud_on_the_product_path() {
     if std::env::var(BLIND_CHILD).is_ok() {
@@ -1481,6 +1496,182 @@ fn blind_child_run() {
     assert!(
         claude::is_registered("dropme@x"),
         "★ 근거 없이 지웠다 — 대조군 6f2f312의 거동(10ms에 소멸)이 돌아왔다. 「모르면 안 지운다」가 이 모듈의 우선순위다"
+    );
+    assert!(
+        claude::is_registered("anchor@x") && claude::is_registered("late@x"),
+        "★ 못 짚은 판정이 멀쩡한 계정까지 데려갔다"
+    );
+    assert_eq!(store_refresh_of("anchor@x").as_deref(), Some("A-3"), "★ 방금 정착한 회전 결과가 되돌아갔다");
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ★R28i LOCKS ② — 자물쇠 **안** Blind: 실사용에서 실제로 서는 자리
+// ══════════════════════════════════════════════════════════════════════════════
+
+/// 자식 주행 표식(위 [`BLIND_CHILD`]와 같은 규율 — 이쪽은 자물쇠 **안** 갈래를 세운다).
+const IN_LOCK_CHILD: &str = "CCG_R28I_INLOCK_CHILD";
+
+/// 리허설 창(ms). 자식의 커밋마다 갈아끼우기 **직후** 이만큼 쉬고, 그 사이 이웃 스레드가
+/// 옛 inode에 통짜로 쓴다 — `claude::bury_rehearsal`의 그 손잡이다.
+const REHEARSAL_MS: &str = "300";
+
+/// ★R28i LOCKS ② — **우리 자물쇠가 자기 손으로 파낸 매장**도 「못 짚었다」를 소리 내어
+/// 말한다(`bury_stats::REFUSED` + `blind_line` 한 줄).
+///
+/// ## 왜 이 못이 따로 필요한가
+///
+/// 위 못(`an_anchor_without_a_matching_generation_is_refused_out_loud_on_the_product_path`)은
+/// 31주행 전부 `in_lock=0`으로 착지했다 — 즉 언제나 자물쇠 **밖**(`late_watch_tick`)이 파냈다.
+/// 그런데 이웃이 우리 커밋에 걸터타 통짜 쓰기를 계속 던지는 실측(크리틱 k6 · 12,700판)에서
+/// 실제로 선 것은 거의 자물쇠 **안**뿐이었다(안 262 · 밖 0). 그래서 `claude.rs`의 자물쇠 안
+/// Blind 두 줄을 **통째로 지운 돌연변이가 125 통과 0 실패**였다 — 266판 중 264가 침묵으로
+/// 사라졌는데도 게이트가 한 칸도 안 붉었다.
+///
+/// ## 어떻게 **결정적으로** 세우나 (75초짜리 확률 프로브를 안 넣는 이유)
+///
+/// 자물쇠 안 갈래가 서려면 이웃의 열기가 `[증인 읽기 → 갈아끼우기]` 창(실측 50~600µs)에
+/// 들어오고 그들의 쓰기가 **갈아끼우기 직후 첫 판독 전에** 떨어져야 한다. 크리틱의 적중률은
+/// 2.06%였고, 그 모양을 그대로 게이트에 넣으면 못이 아니라 복권이다(75초 · 실패해도
+/// 「오늘은 안 걸렸다」로 읽힌다).
+///
+/// 그래서 **경합을 지우는 대신 순서를 잡아 준다**: 자식은 `CCG_CAS_BURY_REHEARSAL_MS`로
+/// 갈아끼우기 직후의 리허설 창을 열고(제품 기본 0), 이웃 스레드는 「이름이 새 inode를
+/// 가리킨다」를 보자마자 **걸터탄 옛 핸들**에 통짜로 쓴다. 늦춰지는 것은 잠금 보유 시간
+/// 하나뿐이고, 그 뒤의 판독·판정·되살리기·로그는 전부 제품 코드 그대로 지난다.
+///
+/// 자식 프로세스인 이유는 둘이다: ① 그 손잡이는 `OnceLock`이라 **프로세스 첫 커밋 전에**
+/// 서야 하고(같은 바이너리의 이웃 테스트를 늦추지 않으려면 프로세스가 갈려야 한다),
+/// ② 제품의 진단 한 줄은 stderr로 나가므로 같은 프로세스에서는 읽을 수단이 없다.
+#[test]
+fn a_bury_the_lock_dug_up_itself_is_refused_out_loud_too() {
+    if std::env::var(IN_LOCK_CHILD).is_ok() {
+        return in_lock_blind_child_run();
+    }
+    let home = ccg_store::testhome::take("r28i-inlock");
+    let exe = std::env::current_exe().expect("테스트 바이너리");
+    let out = std::process::Command::new(exe)
+        .args(["--exact", "a_bury_the_lock_dug_up_itself_is_refused_out_loud_too", "--nocapture", "--test-threads=1"])
+        .env(IN_LOCK_CHILD, "1")
+        .env("CCG_HOME", home.dir.as_os_str())
+        .env("CCG_NO_NET", "1")
+        .env("CCG_CAS_BURY_REHEARSAL_MS", REHEARSAL_MS)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .output()
+        .expect("자식 프로세스");
+    let so = String::from_utf8_lossy(&out.stdout).to_string();
+    let se = String::from_utf8_lossy(&out.stderr).to_string();
+    for l in so.lines().filter(|l| l.contains("[r28i-inlock]")) {
+        println!("{l}");
+    }
+    let said: Vec<&str> = se.lines().filter(|l| l.contains("세대가 하나도 없다")).collect();
+    for l in &said {
+        println!("[r28i-inlock] 제품 줄: {l}");
+    }
+    assert!(
+        out.status.success(),
+        "★ 자식(자물쇠 안 갈래 주행)이 붉었다 — 아래가 그 주행의 꼬리다\n--- stdout ---\n{}\n--- stderr ---\n{}",
+        tail(&so, 40),
+        tail(&se, 40)
+    );
+    assert_eq!(
+        said.len(),
+        1,
+        "★ 자물쇠가 **자기 손으로 파낸** 매장이 침묵으로 지나갔다(제품 줄 {}개) — 자물쇠 밖 갈래만 말하고 있다\n--- stderr ---\n{}",
+        said.len(),
+        tail(&se, 40)
+    );
+    let line = said[0];
+    assert!(line.contains("[auth] ★ accounts.json:"), "★ 그 줄이 제품의 매장 진단 줄이 아니다: {line}");
+    assert!(
+        line.contains("앵커 2행은 우리 장부에 있는데"),
+        "★ 앵커가 둘 다 서 있는 판이 아니다 — 다른 `Blind` 갈래를 재고 있다: {line}"
+    );
+    assert!(line.contains("dropme@x"), "★ 못 짚은 계정 이름이 줄에 없다: {line}");
+    println!("[r28i-inlock] 자식 홈 = {}", home.dir.display());
+}
+
+/// 자식 몫 — R28g와 **같은 여섯 걸음**을 밟되, 이웃의 통짜 쓰기가 자물쇠 **안**에서
+/// 파헤쳐지도록 리허설 창 안에 떨어뜨린다. 자기 장부를 먼저 단정하므로 어느 쪽이 붉어도
+/// 진단이 남는다.
+fn in_lock_blind_child_run() {
+    let home = std::env::var("CCG_HOME").expect("★ 부모가 격리 홈을 안 넘겼다 — 실홈으로 떨어진다");
+    assert!(home.contains("r28i-inlock"), "★ 격리 홈이 아니다: {home}");
+    assert_eq!(
+        std::env::var("CCG_CAS_BURY_REHEARSAL_MS").ok().as_deref(),
+        Some(REHEARSAL_MS),
+        "★ 리허설 창이 안 켜졌다 — 이 주행은 자물쇠 안 갈래를 못 세운다"
+    );
+    std::env::set_var("CCG_NO_NET", "1");
+    claude::bury_stats::reset();
+
+    // ①~④ — 「한 세대에 같이 있은 적 없는 두 앵커」를 만든다(R28g의 그 배치 그대로).
+    seed("anchor@x", "A-1");
+    let old_anchor = disk_row("anchor@x").expect("① anchor@x 행");
+    seed("dropme@x", "D-1");
+    seed("anchor@x", "A-2");
+    seed("late@x", "L-1");
+    let late_row = disk_row("late@x").expect("④ late@x 행");
+    assert_ne!(disk_row("anchor@x"), Some(old_anchor.clone()), "전제 — ③이 anchor@x 행을 실제로 갈았다");
+
+    // ⑤ 이웃 원문 = [①의 행, ④의 행] — dropme@x가 빠졌다.
+    let (def, _) = peer::read_raw();
+    let theirs = peer::body(def.as_deref(), &[old_anchor, late_row]);
+    let before = std::fs::read_to_string(peer::path()).expect("커밋 전 본문");
+    let held = std::fs::OpenOptions::new().write(true).open(peer::path()).expect("이웃의 걸터탄 열기");
+
+    // ⑥ 이웃 스레드 — **이름이 새 inode를 가리키는 순간**(= 우리 갈아끼우기가 끝났다)
+    //    걸터탄 옛 핸들에 통짜로 쓴다. 그 쓰기는 이름 없는 옛 inode로 가고, 우리 커밋은
+    //    아직 리허설 창 안이라 **자물쇠를 쥔 채** 그것을 판독한다.
+    let neighbour = std::thread::spawn(move || {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        let mut saw = false;
+        while std::time::Instant::now() < deadline {
+            if std::fs::read_to_string(peer::path()).is_ok_and(|now| now != before) {
+                saw = true;
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_micros(200));
+        }
+        land_whole_write(held, &theirs);
+        saw
+    });
+    assert_eq!(rotate("anchor@x", "A-3"), Landing::Both, "전제 — 커밋이 정착했다");
+    let saw = neighbour.join().expect("이웃 스레드");
+    assert!(saw, "★ 이웃이 우리 갈아끼우기를 못 봤다 — 통짜 쓰기가 걸터타지 못했다");
+    // 자물쇠 밖 감시가 (혹시) 뒤늦게 말할 시간을 준다 — 두 자리가 같이 말하면 그것도 사고다.
+    std::thread::sleep(std::time::Duration::from_millis(1200));
+
+    println!(
+        "[r28i-inlock] 장부(자물쇠안={} 자물쇠안되살림={} 근거못짚음={} 되살릴것없음={} 지연={} 신원세대로안지움={}) · dropme 살아있나={} anchor={} late={}",
+        claude::bury_stats::in_lock(),
+        claude::bury_stats::in_lock_revived(),
+        claude::bury_stats::refused(),
+        claude::bury_stats::late_kept(),
+        claude::bury_stats::late(),
+        claude::bury_stats::moved_on(),
+        claude::is_registered("dropme@x"),
+        claude::is_registered("anchor@x"),
+        claude::is_registered("late@x")
+    );
+    assert!(
+        claude::bury_stats::in_lock() >= 1,
+        "★ 이웃의 쓰기가 자물쇠 **안**에서 안 파헤쳐졌다 — 이 못은 (위 못처럼) 자물쇠 밖 갈래를 재고 있다"
+    );
+    assert_eq!(
+        claude::bury_stats::in_lock_revived(),
+        0,
+        "★ 근거를 못 짚었다면서 행을 되살렸다(지웠다) — 자물쇠 안 판정이 `Blind`가 아니다"
+    );
+    assert_eq!(
+        claude::bury_stats::refused(),
+        1,
+        "★ 「못 짚었다」가 장부에 안 남았다 — 자물쇠 안 Blind 두 줄이 침묵으로 지나갔다"
+    );
+    assert_eq!(claude::bury_stats::late(), 0, "★ 자물쇠 밖에서도 되살렸다 — 같은 사고가 두 번 처리됐다");
+    assert!(
+        claude::is_registered("dropme@x"),
+        "★ 근거 없이 지웠다 — 「모르면 안 지운다」가 이 모듈의 우선순위다"
     );
     assert!(
         claude::is_registered("anchor@x") && claude::is_registered("late@x"),

@@ -1476,6 +1476,39 @@ fn cas_edit<T>(mut edit: impl FnMut(&mut StoreFile) -> Result<T, AuthError>) -> 
     Err(AuthError::Io(format!("{STORE_FILE}: 다른 프로세스와 {CAS_TRIES}번 부딪혀 저장을 접었다")))
 }
 
+/// ★R28i LOCKS ② — **「이웃이 우리 갈아끼우기에 걸터탔다」를 못이 세우는 리허설 창.**
+///
+/// 기본값 `0`이다 — 값이 없으면 이 함수는 `OnceLock` 한 번 읽기고 제품 거동은 글자 그대로
+/// 안 바뀐다(같은 모양의 선례: [`cas_trace_on`] · `replace.rs`의 `CASX_OLD_SWAP`).
+///
+/// ## 왜 이런 손잡이가 필요한가
+///
+/// 자물쇠 **안** `Commit::Buried` 갈래는 이웃의 열기가 `[증인 읽기 → 갈아끼우기]`
+/// 사이에 들어오고 그들의 쓰기가 **갈아끼우기 직후 첫 판독 전에** 떨어져야 선다. 그 창은
+/// 실측 50~600µs고, 크리틱이 이웃 통짜 쓰기를 **12,700판** 던져 262판(2.06%)에서 세웠다
+/// (75초짜리 프로브). 그 모양을 그대로 게이트에 넣으면 못이 아니라 복권이고, 넣지 않으면
+/// 그 갈래는 **무방비**다 — 실제로 자물쇠 안 Blind 두 줄(카운터 + 진단 한 줄)을 통째로
+/// 지운 돌연변이에서 `cargo test -p ccg-auth`가 125 통과 0 실패였다.
+///
+/// 그래서 **경합을 없애는 대신 순서를 잡아 준다**: 갈아끼우기 직후 여기서 쉬는 동안
+/// 이웃(못 안의 스레드)이 「이름이 새 inode를 가리킨다」를 보고 옛 핸들에 통짜로 쓴다.
+/// 그 뒤의 판독·판정·되살리기는 **제품 코드 그대로**다 — 늦추는 것은 잠금 보유 시간뿐이고
+/// 분기는 한 줄도 안 바꾼다.
+fn bury_rehearsal() {
+    static MS: std::sync::OnceLock<u64> = std::sync::OnceLock::new();
+    let ms = *MS.get_or_init(|| {
+        std::env::var("CCG_CAS_BURY_REHEARSAL_MS")
+            .ok()
+            .and_then(|v| v.trim().parse::<u64>().ok())
+            .filter(|v| *v <= 5_000) // 손이 미끄러져도 잠금이 초 단위로 멎지 않게
+            .unwrap_or(0)
+    });
+    if ms > 0 {
+        eprintln!("[auth] ★ 리허설 창 {ms}ms — 테스트 손잡이(CCG_CAS_BURY_REHEARSAL_MS)가 켜져 있다");
+        std::thread::sleep(std::time::Duration::from_millis(ms));
+    }
+}
+
 /// [`commit_locked`]의 착지 세 갈래.
 enum Commit {
     /// 커밋했고, **자물쇠 안에서 본 한** 묻은 쓰기는 없다.
@@ -1528,6 +1561,7 @@ fn commit_locked(body: &str, expect: Option<&str>, carry: &mut Option<std::fs::F
     cas_trace!("갈아끼우기 시작 — 본문=[{}]", cas_emails(body));
     *carry = staged.replace(&dst).map_err(|e| AuthError::Io(format!("{STORE_FILE}: {e}")))?;
     cas_trace!("갈아끼우기 끝");
+    bury_rehearsal();
     let (Some(mut w), Some(prev)) = (w, expect) else {
         // 증인을 못 열었거나(경합) 애초에 파일이 없던 판 — 옛 inode가 없으니 볼 것도 없다.
         cas_trace!("증인 없음 → Clean(무검사)");
