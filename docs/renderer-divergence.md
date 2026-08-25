@@ -160,7 +160,16 @@ codexAuth.reorderAccounts(현재 순서) → {__unimplemented:true} → 심이 [
 | 문 | 쓰는 채널 | 실패하면 |
 |---|---|---|
 | `call` | 조회 전부 · `auth:login`(반환값 `{ok:false,error}`에 실패가 실린다) | 안전값 resolve |
-| `callStrict` | `auth:{logout,set-default-account,remove-account,reorder-accounts}` · `codex-auth:{login,logout,set-default-account,reorder-accounts}` | **reject** → 호출부가 문구를 세운다 |
+| `callStrict` | `auth:{logout,set-default-account,remove-account,reorder-accounts}` · `codex-auth:{logout,set-default-account,reorder-accounts}` | **reject** → 호출부가 문구를 세운다 |
+| `callList` | `codex-auth:login` | strict + **배열이 아니면 reject**(사유는 `detail`) |
+
+`callList`가 따로 있는 이유(★R28f · 2.6.2와의 분기): `codex-auth:login`은 **띄울 CLI가
+없을 때** 목록이 아니라 `{ "error": "codex 실행 파일을 찾지 못했어요" }`를 돌려준다.
+2.6.2는 그 판에서 목록을 그대로 돌려줬고(`src/main/codex/auth.ts:334` — `codexBin()`이
+없어도 spawn 실패로 `finish()`가 돈다), 그러면 화면은 「눌렀는데 아무 일도 안 일어난다」다 =
+이 절이 닫는 병과 같은 모양이다. claude 축은 반환 타입에 `error` 칸이 있어 이미 말하고
+있었다(`status_wire`). 그 객체가 목록 setter에 그대로 앉으면 `cxAccounts.map`이 죽으므로
+**배열만** 통과시킨다.
 
 호출부 짝(`Settings.tsx`): 계정 쓰기의 `catch`가 예외 없이 `setNote(...)`를 세운다
 (R1까지는 대부분 `/* ignore */`였고, 심이 안 던졌으니 티가 안 났다).

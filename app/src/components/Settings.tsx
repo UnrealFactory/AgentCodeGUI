@@ -473,12 +473,15 @@ function AccountView(): React.ReactElement {
   // **실패를 안 던졌기** 때문이다(미구현 채널이 안전값 `[]`로 resolve → 목록이 빈 배열로
   // 갈아끼워짐 → 아무 문구도 없음 — 최종 파리티 감사 R2 §N1). 이제 쓰기 채널은 reject하고
   // (`api/shim.ts`의 `callStrict`), 그 reject가 도착하는 자리는 예외 없이 이 문구를 세운다.
-  const failNote = (): void =>
+  // 셸이 사람이 읽는 사유를 실어 보냈으면(`ShimUnavailableError.detail` — 예: "codex 실행
+  // 파일을 찾지 못했어요") 그걸 그대로 보여 준다. 없으면 일반 문구.
+  const failNote = (e?: unknown): void =>
     setNote(
-      t(
-        '요청이 실패했어요 — 앱을 재시작한 뒤 다시 시도해 주세요(계정 목록은 그대로 둡니다)',
-        'The request failed — restart the app and try again (the account list is left untouched)'
-      )
+      (e as { detail?: string } | null)?.detail ??
+        t(
+          '요청이 실패했어요 — 앱을 재시작한 뒤 다시 시도해 주세요(계정 목록은 그대로 둡니다)',
+          'The request failed — restart the app and try again (the account list is left untouched)'
+        )
     )
   // 삭제 = 그 계정 토큰 해지(서버) + 등록 제거 — 다시 쓰려면 재로그인
   const doDelete = async (email: string): Promise<void> => {
@@ -486,8 +489,8 @@ function AccountView(): React.ReactElement {
     setNote(null)
     try {
       setAccounts(await window.api.auth.logout(email))
-    } catch {
-      failNote()
+    } catch (e) {
+      failNote(e)
     }
     setBusy(null)
     reload()
@@ -518,8 +521,8 @@ function AccountView(): React.ReactElement {
     setNote(null)
     try {
       setCxAccounts(await window.api.codexAuth.login())
-    } catch {
-      failNote()
+    } catch (e) {
+      failNote(e)
     }
     setBusy(null)
     setLoginUrl(null)
@@ -530,8 +533,8 @@ function AccountView(): React.ReactElement {
     setNote(null)
     try {
       setCxAccounts(await window.api.codexAuth.logout(email))
-    } catch {
-      failNote()
+    } catch (e) {
+      failNote(e)
     }
     setBusy(null)
   }

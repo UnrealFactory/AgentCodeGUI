@@ -127,10 +127,13 @@ async function call<T>(channel: string, args: unknown[], fallback: T): Promise<T
  */
 export class ShimUnavailableError extends Error {
   readonly channel: string
-  constructor(channel: string, why: string) {
+  /** 백엔드가 준 **사람이 읽는 사유**(있을 때만). 없으면 호출부가 일반 문구를 쓴다. */
+  readonly detail?: string
+  constructor(channel: string, why: string, detail?: string) {
     super(`${channel}: ${why}`)
     this.name = 'ShimUnavailableError'
     this.channel = channel
+    this.detail = detail
   }
 }
 
@@ -148,6 +151,21 @@ async function callStrict<T>(channel: string, args: unknown[]): Promise<T> {
     throw new ShimUnavailableError(channel, '백엔드 미구현 채널')
   }
   return res as T
+}
+
+/**
+ * 목록을 돌려주기로 한 채널의 strict 호출 — **배열이 아니면 reject**한다.
+ *
+ * 왜: `codex-auth:login`은 「띄울 수조차 없었다」를 `{ error: "…" }`로 알린다
+ * (`ipc/accounts.rs`의 `login_error` — 그 자리에 목록을 돌려주면 화면은 「눌렀는데 아무 일도
+ * 안 일어난다」가 되고, 그게 이 라운드가 닫는 병이다). 그 객체가 목록 setter에 그대로
+ * 앉으면 `cxAccounts.map`이 죽으므로 **배열만** 통과시키고 사유는 `detail`로 올린다.
+ */
+async function callList<T>(channel: string, args: unknown[]): Promise<T[]> {
+  const r = await callStrict<unknown>(channel, args)
+  if (Array.isArray(r)) return r as T[]
+  const detail = (r as { error?: unknown } | null)?.error
+  throw new ShimUnavailableError(channel, '목록이 아닌 응답', typeof detail === 'string' ? detail : undefined)
 }
 
 /** 반환값이 없는(void) 채널 — 미구현이어도 조용한 no-op. */
@@ -314,7 +332,9 @@ const api: WindowApi = {
     listAccounts: () => call(IPC.codexListAccounts, [], []),
     // ★R28f SHIPBLOCK N1 — 목록을 **갈아끼우는** 넷은 전부 strict다. 이 넷의 안전값이
     // `[]`였던 것이 감사 §N1의 두 번째 피해(계정 목록 증발 + 안내 문구 0개)의 기전이다.
-    login: () => callStrict(IPC.codexLogin, []),
+    // 목록 채널 중 유일하게 **사유 객체**가 올 수 있는 자리(띄울 CLI가 없다 등) — `callList`가
+    // 배열만 통과시키고 사유를 `ShimUnavailableError.detail`로 올린다.
+    login: () => callList(IPC.codexLogin, []),
     logout: (email: string) => callStrict(IPC.codexLogout, [email]),
     setDefaultAccount: (email: string) => callStrict(IPC.codexSetDefaultAccount, [email]),
     cancelLogin: () => callVoid(IPC.codexLoginCancel),

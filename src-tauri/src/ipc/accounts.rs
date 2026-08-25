@@ -414,10 +414,16 @@ fn no_net() -> bool {
 ///
 /// 브라우저는 CLI가 직접 연다. 뽑은 URL은 claude 축과 **같은 채널**(`auth:login-url`)로
 /// 보낸다 — 2.6.2도 codex 로그인에서 `IPC.authLoginUrl`을 쓴다(`src/main/codex/auth.ts:357`).
+///
+/// ★**띄울 수조차 없을 때는 목록이 아니라 사유를 돌려준다**(`{ "error": "…" }`).
+/// 2.6.2는 그 판에서 목록을 그대로 돌려줬고, 그러면 화면은 「눌렀는데 아무 일도 안 일어난다」다
+/// — 이 라운드가 닫는 병과 **정확히 같은 모양**이다. claude 축은 반환 타입에 `error` 칸이
+/// 있어 이미 말하고 있었다(`status_wire`). 심(`callStrict` + 배열 검사)이 이 모양을 reject로
+/// 올리고 설정 화면이 문구를 세운다. 목록 setter에는 **배열만** 앉는다.
 fn codex_login(app: &AppHandle) -> Value {
     // 「띄울 수 있는가」의 판정은 앱에 **한 자리**뿐이다(`codex_exe`의 표 — R28c CPATH).
     let Some(bin) = crate::engine::codex_versions::codex_exe() else {
-        return super::system::list_codex_accounts();
+        return login_error(NO_CODEX_BIN);
     };
     let gen = CODEX_LOGIN_SLOT.begin();
     CODEX_LOGIN_SLOT.cancel(); // 이전 시도가 있으면 정리(2.6.2 `codexLoginCancel()` 첫 줄)
@@ -425,13 +431,13 @@ fn codex_login(app: &AppHandle) -> Value {
     let dir = IsolatedConfigDir::for_codex_login();
     // 반쯤 남은 `auth.json`을 이번 로그인의 결과로 오독하면 **엉뚱한 계정이 편입된다**.
     let _ = std::fs::remove_dir_all(dir.path());
-    if std::fs::create_dir_all(dir.path()).is_err() {
-        return super::system::list_codex_accounts();
+    if let Err(e) = std::fs::create_dir_all(dir.path()) {
+        return login_error(&format!("로그인 폴더를 만들지 못했어요: {e}"));
     }
 
     let spec = verify::codex_login_command(&bin.to_string_lossy());
-    if pump_login(app, &CODEX_LOGIN_SLOT, gen, codex_command(&bin, &spec), spec.timeout_ms).is_err() {
-        return super::system::list_codex_accounts();
+    if let Err(e) = pump_login(app, &CODEX_LOGIN_SLOT, gen, codex_command(&bin, &spec), spec.timeout_ms) {
+        return login_error(&format!("{NO_CODEX_BIN} ({e})"));
     }
     // 다른 로그인이 시작됐으면 임시 폴더는 이제 그쪽 것이다 — 읽지도 지우지도 않는다
     // (claude 축의 같은 자리와 같은 이유 · R28 T1T2 R2 §6.3).
@@ -443,6 +449,15 @@ fn codex_login(app: &AppHandle) -> Value {
     // 평문 토큰을 임시 자리에 남기지 않는다(성공이든 실패든).
     let _ = std::fs::remove_dir_all(dir.path());
     super::system::list_codex_accounts()
+}
+
+const NO_CODEX_BIN: &str = "codex 실행 파일을 찾지 못했어요";
+
+/// 로그인이 **시작조차 못 했을 때**의 와이어 — 배열이 아니라 사유 객체다(위 주석).
+/// 사용자가 브라우저에서 취소한 경우는 여기 해당하지 않는다(그건 실패가 아니라 선택이고,
+/// 2.6.2처럼 목록을 그대로 돌려준다).
+fn login_error(why: &str) -> Value {
+    json!({ "error": why })
 }
 
 /// 계정 하나를 버린다 — `codex logout`(그 계정 폴더의 **로컬** auth 제거) → 등록 제거 +

@@ -1,0 +1,149 @@
+{
+  "app": "tauri-3.0.0",
+  "kind": "tauri",
+  "boot": "single",
+  "at": "2026-08-25T08:22:53.527Z",
+  "exe": "C:\\Code\\AgentCodeGUI\\target-r28f-ship\\release\\agentcodegui.exe",
+  "home": "C:\\Temp\\ccg-r28f-ship\\home-tauri-single-r7",
+  "pid": 41980,
+  "cases": {
+    "codex-channels": {
+      "diskBefore": [
+        "r28f-a@example.invalid",
+        "r28f-b@example.invalid"
+      ],
+      "tab": "Account",
+      "cxBefore": [
+        "r28f-a@example.invalid*",
+        "r28f-b@example.invalid"
+      ],
+      "reorderReturns": {
+        "ok": true,
+        "isArray": true,
+        "n": 2,
+        "emails": [
+          "r28f-a@example.invalid",
+          "r28f-b@example.invalid"
+        ]
+      },
+      "raw": {
+        "cancel": "null",
+        "setDefault": "array:2",
+        "reorder": "array:2"
+      }
+    },
+    "codex-move-top": {
+      "diskBefore": [
+        "r28f-a@example.invalid",
+        "r28f-b@example.invalid"
+      ],
+      "pressed": true,
+      "rowsAfter": 2,
+      "cxAfter": [
+        "r28f-b@example.invalid*",
+        "r28f-a@example.invalid"
+      ],
+      "emailsOnScreen": [
+        "r28f-b@example.invalid",
+        "r28f-a@example.invalid"
+      ],
+      "notes": [],
+      "diskAfter": [
+        "r28f-b@example.invalid",
+        "r28f-a@example.invalid"
+      ]
+    },
+    "codex-login": {
+      "diskBefore": [
+        "r28f-b@example.invalid",
+        "r28f-a@example.invalid"
+      ],
+      "pressed": true,
+      "busySpinner": 0,
+      "loginCard": 0,
+      "ms": 1214,
+      "cxAfter": [
+        "r28f-b@example.invalid",
+        "r28f-a@example.invalid",
+        "r28f-new@example.invalid"
+      ],
+      "emailsOnScreen": [
+        "r28f-b@example.invalid",
+        "r28f-a@example.invalid",
+        "r28f-new@example.invalid"
+      ],
+      "loginUrls": [
+        "https://auth.openai.com/r28f-stub-login"
+      ],
+      "diskAfter": [
+        "r28f-b@example.invalid",
+        "r28f-a@example.invalid",
+        "r28f-new@example.invalid"
+      ],
+      "stubLog": [
+        "login C:\\Temp\\ccg-r28f-ship\\home-tauri-single-r7\\codex\\login ",
+        "app-server C:\\Temp\\ccg-r28f-ship\\home-tauri-single-r7\\codex\\accounts\\r28f-new_example.invalid-y82sac"
+      ],
+      "notes": [],
+      "noCli": false
+    },
+    "codex-delete": {
+      "diskBefore": [
+        "r28f-b@example.invalid",
+        "r28f-a@example.invalid",
+        "r28f-new@example.invalid"
+      ],
+      "recBefore": [
+        "r28f-b@example.invalid:email+plan",
+        "r28f-a@example.invalid:email+plan",
+        "r28f-new@example.invalid:authEnc+email+plan"
+      ],
+      "authFiles": [
+        "r28f-new_example.invalid-y82sac/auth"
+      ],
+      "pressed": true,
+      "cxAfter": [
+        "r28f-b@example.invalid",
+        "r28f-a@example.invalid"
+      ],
+      "diskAfter": [
+        "r28f-b@example.invalid",
+        "r28f-a@example.invalid"
+      ],
+      "notes": [],
+      "stubLog": [
+        "login C:\\Temp\\ccg-r28f-ship\\home-tauri-single-r7\\codex\\login ",
+        "app-server C:\\Temp\\ccg-r28f-ship\\home-tauri-single-r7\\codex\\accounts\\r28f-new_example.invalid-y82sac ",
+        "logout C:\\Temp\\ccg-r28f-ship\\home-tauri-single-r7\\codex\\accounts\\r28f-new_example.invalid-y82sac"
+      ]
+    },
+    "error-boundary": {
+      "explorerClosed": true,
+      "sbItemsPre": 3,
+      "selected": 1,
+      "beforeReload": {
+        "eb": 1,
+        "sbItems": 3,
+        "win": 1,
+        "chat": 0
+      },
+      "activeBeforeReload": "fix-boom",
+      "escapeBySidebar": {
+        "eb": 0,
+        "chat": 1
+      },
+      "reselected": 1,
+      "activeBeforeReload2": "fix-boom",
+      "afterReload": {
+        "eb": 0,
+        "sbItems": 3,
+        "win": 1,
+        "chat": 1
+      },
+      "activeAfterReload": "fix-long-thread",
+      "titleAfterReload": "C:\\Code\\AgentCodeGUI",
+      "stuck": false
+    }
+  },
+  "shimWarns": []
+}

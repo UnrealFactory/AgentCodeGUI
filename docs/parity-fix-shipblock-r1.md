@@ -117,6 +117,10 @@ codexAuth.reorderAccounts(현재 순서) → {__unimplemented:true} → 심이 [
 `[]`가 정당한 결과**라 그 가드는 진짜 빈 목록을 못 그리게 만든다. 실패를 실패로 올리면
 가드가 필요 없다.
 
+목록 채널 하나는 한 겹 더 본다 — **`callList`**: `codexAuth.login`은 「띄울 CLI가 없다」를
+`{error}`로 알릴 수 있으므로(아래 §2.6), 배열이 아니면 목록 setter에 앉히지 않고 사유를
+`ShimUnavailableError.detail`로 올린다(그 객체가 앉으면 `cxAccounts.map`이 죽는다).
+
 호출부 짝(`app/src/components/Settings.tsx`): 계정 쓰기의 `catch`가 **예외 없이**
 `setNote(...)`를 세운다 — 추가·삭제·맨 위로·꾹드래그·정렬 버튼 전부(R1까지는 대부분
 `/* ignore */`였고, 심이 안 던졌으니 티가 안 났다).
@@ -137,17 +141,41 @@ IPC 자체가 던지는 판(`ipc dead`)도 같은 결론이다: 쓰기는 reject
 [codex-channels] raw: cancel=null · setDefault=array:2 · reorder=array:2   (__unimplemented 0회)
                  reorderReturns: {ok:true, isArray:true, n:2, emails:[a,b]}
 [codex-move-top] 화면 「맨 위로」 클릭 → 행 2개 유지 · 화면 [b,a] · 디스크 [b,a]   ← 실제로 저장된다
-[codex-login]    「계정 추가」 클릭 → 1215ms 뒤 화면 3행 · 디스크 3개
+[codex-login]    「계정 추가」 클릭 → 1214ms 뒤 화면 3행 · 디스크 3개
                  loginUrls: ["https://auth.openai.com/r28f-stub-login"]     ← 폴백 링크 방출 확인
-                 stubLog:   ["login C:\\Temp\\...\\home-tauri-single-r2\\codex\\login"]  ← 격리 CODEX_HOME
+                 stubLog:   ["login …\home-tauri-single-r7\codex\login"]    ← 격리 CODEX_HOME
 [codex-delete]   합성 계정만 삭제 → 화면·디스크 둘 다 2개로
+                 stubLog:   [… , "logout …\codex\accounts\r28f-new_example.invalid-y82sac"]
 ```
 
-- `stubLog`의 `CODEX_HOME`이 **앱 홈 아래 `codex/login`**이다 = 실홈으로 새지 않았다.
-- 로그인이 1.2초에 끝나 「로그인 진행 중…」 카드는 측정 시점에 이미 사라졌다
+- `stubLog`의 `CODEX_HOME`이 **앱 홈 아래**다(로그인은 `codex/login`, 로그아웃은 그 계정
+  폴더) = 실홈으로 새지 않았다.
+- `codex logout`은 `--nonet=0` 주행에서만 뜬다. 기본(`CCG_NO_NET=1`)에서는 CLI를 건너뛰고
+  **결과는 같다**(바로 뒤 `remove_account`가 폴더째 지운다) — 두 주행 다 화면·디스크가 같다.
+- 로그인이 1.2초에 끝나 「로그인 진행 중…」 카드는 측정 시점(1.2초)에 이미 사라졌다
   (`busySpinner:0`·`loginCard:0`). 감사가 잰 「4.5초 = 스피너 0·새 행 0」과 다른 사실이다 —
   그때는 **아무 일도 안 일어났고**, 지금은 **끝나 있었다**(새 행 1 + 디스크 반영).
-- 결과 파일: `docs/critic/shipblock-r2-tauri-single.json`.
+- 결과 파일: `docs/critic/shipblock-r7-tauri-single.json`(`--nonet=0`) ·
+  `docs/critic/shipblock-r2-tauri-single.json`(기본).
+
+### 2.6 「띄울 CLI가 없다」도 화면이 말한다
+
+이 라운드에서 하나 더 닫았다. 2.6.2의 `codexLogin`은 CLI가 없으면 **목록을 그대로**
+돌려준다 — 화면은 「눌렀는데 아무 일도 안 일어난다」이고, 그건 §N1이 잡은 증상과 **글자
+그대로 같은 모양**이다(claude 축은 반환 타입에 `error` 칸이 있어 이미 말하고 있었다).
+그래서 `codex-auth:login`은 시작조차 못 하면 배열이 아니라 `{ "error": "…" }`를 돌려주고,
+심의 `callList`가 **배열만** 목록 setter로 통과시키며 사유는 `ShimUnavailableError.detail`로
+올린다. 설정 화면은 그 문장을 그대로 보여 준다.
+
+실측(`--nocli=1` — 진짜 codex가 사는 PATH 칸만 정확히 빼고 스텁도 안 끼운 주행):
+
+```
+[codex-login] pressed:true · stubLog:[] · 화면 계정 2행 **그대로**
+              notes: ["codex 실행 파일을 찾지 못했어요"]
+```
+
+목록이 비지도 않고(구조적 처방), 아무 말 없이 끝나지도 않는다.
+결과 파일: `docs/critic/shipblock-r6-tauri-nocli.json`.
 
 ---
 

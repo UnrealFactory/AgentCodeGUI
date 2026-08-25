@@ -165,6 +165,23 @@ const stubLog = makeStub()
 makeHome()
 fs.writeFileSync(stubLog, '')
 
+/**
+ * `--nocli=1` — codex를 **찾을 수 없는** PATH를 만든다(스텁도 안 끼운다).
+ * 「띄울 CLI가 없다」를 사용자에게 말하는가를 재는 주행용. 진짜 codex가 사는 칸
+ * (`%APPDATA%\npm` 등)만 정확히 빼고 나머지는 그대로 둔다 — PATH를 통째로 갈면
+ * WebView2·시스템 DLL 경로까지 흔들려 다른 것을 재게 된다.
+ */
+function pathWithoutCodex() {
+  return (process.env.PATH ?? '')
+    .split(';')
+    .filter((d) => {
+      if (!d) return false
+      try { return !fs.readdirSync(d).some((f) => /^codex(\.|$)/i.test(f)) } catch { return true }
+    })
+    .join(';')
+}
+const NO_CLI = arg('nocli', '0') === '1'
+
 const profile = kind === 'tauri' ? tauriProfile({ port: PORT, exe: arg('exe', undefined) }) : electronProfile({ port: PORT })
 if (kind !== 'tauri') profile.args = ['.', `--remote-debugging-port=${PORT}`]
 
@@ -175,9 +192,11 @@ const child = spawn(profile.cmd, profile.args, {
     CCG_HOME: HOME,
     CCG_STUB_LOG: stubLog,
     // 진짜 codex/claude가 절대 안 잡히게 스텁 폴더를 맨 앞에 둔다
-    PATH: `${STUB};${process.env.PATH}`,
-    // 한도 HTTP·토큰 해지 왕복 차단(합성 계정이라 어차피 못 가지만 이중 안전핀)
-    CCG_NO_NET: '1'
+    PATH: NO_CLI ? pathWithoutCodex() : `${STUB};${process.env.PATH}`,
+    // 한도 HTTP·토큰 해지 왕복 차단(합성 계정이라 어차피 못 가지만 이중 안전핀).
+    // `--nonet=0`으로만 끈다 — 그때도 codex는 **PATH 스텁**이라 진짜 CLI는 안 뜬다
+    // (`codex logout`이 실제로 스폰되는지를 재는 주행용).
+    ...(arg('nonet', '1') === '0' ? {} : { CCG_NO_NET: '1' })
   },
   cwd: profile.cwd,
   stdio: 'ignore'
@@ -356,12 +375,21 @@ try {
       r.loginUrls = await cdp.eval(`window.__loginUrls || 'no-hook'`)
       r.diskAfter = emailsOnDisk()
       r.stubLog = fs.readFileSync(stubLog, 'utf8').trim().split(/\r?\n/).filter(Boolean)
+      // 「띄울 CLI가 없다」를 **사용자에게 말하는가**(`--nocli=1` 주행에서만 의미 있다)
+      r.notes = await cdp.eval(`__all('.set-note2').map(x => (x.textContent||'').replace(/\\s+/g,' ').trim()).filter(s => /찾지 못|실패|Could not|failed|not find/.test(s))`)
+      r.noCli = NO_CLI
       record('codex-login', r)
     }
 
     // ── 4. 「삭제」 — 방금 만든 합성 계정만 지운다 ─────────────────────────────
     if (kind === 'tauri') {
       const r = { diskBefore: emailsOnDisk() }
+      // 레코드에 authEnc가 있는지 = `codex logout`을 띄울 조건이 되는지(격리 홈 물질화)
+      r.recBefore = (readStore()?.accounts ?? []).map((a) => `${a.email}:${Object.keys(a).sort().join('+')}`)
+      r.authFiles = (() => {
+        const base = path.join(HOME, 'codex', 'accounts')
+        try { return fs.readdirSync(base).map((d) => `${d}/${fs.existsSync(path.join(base, d, 'auth.json')) ? 'auth' : '-'}`) } catch { return [] }
+      })()
       r.pressed = await cdp.eval(
         `(async () => {
            const card = [...document.querySelectorAll('.set-inner .sc2.acct')].find(c => (c.textContent||'').includes('${NEW_EMAIL}'))
@@ -376,6 +404,8 @@ try {
       r.cxAfter = await cdp.eval(`window.api.codexAuth.listAccounts().then(l => l.map(a => a.email))`, { awaitPromise: true, timeoutMs: 25000 })
       r.diskAfter = emailsOnDisk()
       r.notes = await cdp.eval(`__all('.set-note2').map(x => (x.textContent||'').replace(/\\s+/g,' ').trim()).filter(s => /실패|Could not|failed/.test(s))`)
+      // `codex logout`이 실제로 떴는가(스텁 로그의 마지막 줄들). `--nonet=0`일 때만 뜬다.
+      r.stubLog = fs.readFileSync(stubLog, 'utf8').trim().split(/\r?\n/).filter(Boolean)
       record('codex-delete', r)
     }
 
