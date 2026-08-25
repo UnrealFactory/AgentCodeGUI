@@ -131,7 +131,10 @@ pub fn codex_bin() -> PathBuf {
 /// 전역 설치(`npm i -g`) 판에서 `is_file()`이 언제나 거짓이었기 때문이다. 그래서 턴은 돌고
 /// 한도만 `Unknown`(= 눈감고 발사)이었고, 설정 ▸ Account의 OpenAI 게이지도 비었다.
 ///
-/// 해석 규칙과 캐시 규약은 [`versions::resolve_bin`]에 있다(허브 tick이 부르는 자리다).
+/// 해석 규칙(폴더 순서 · 확장자 후보)과 캐시 규약은 [`versions::resolve_bin`]에 있다.
+/// ★R28d EXTN R1 — 여기 있던 *"(허브 tick이 부르는 자리다)"* 는 사실이 아니라 지웠다.
+/// 이 함수에 되돌아오는 자리는 tick이 아니라 **한도 재확인 사다리**(15초·30초…)다
+/// (`poc-limit-engine` E8 「tick마다 조회하지 않는다 — asks:2」).
 pub fn codex_exe() -> Option<PathBuf> {
     versions::resolve_bin(&codex_bin())
 }
