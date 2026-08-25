@@ -923,15 +923,31 @@ mod tests {
         let slot = LoginSlot::new();
         let gen = slot.begin();
         slot.put(gen, child, false);
+        let t = std::time::Instant::now();
         slot.cancel();
         assert!(!slot.owns(gen));
         // 자식(cmd.exe)은 죽었지만 그 아래는 우리 것이 아니다 — 1초 뒤에도 살아 있어야 한다.
-        std::thread::sleep(Duration::from_millis(1000));
+        //
+        // 통짜로 1초를 자지 않고 25ms마다 훑는 이유는 [`spawn_wrapped_fixture`]의 ④와 같다:
+        // **언제·어떤 코드로** 죽었는지가 곧 원인이다. 이 한 줄이 ⑤(0xC000010A · +26ms)를
+        // 잡았다 — 통짜 sleep이었다면 「죽었다」만 남았을 것이다.
+        let mut died_at: Vec<String> = Vec::new();
+        for _ in 0..40 {
+            std::thread::sleep(Duration::from_millis(25));
+            for w in &inside {
+                if !w.alive() && !died_at.iter().any(|s| s.starts_with(&format!("{}:", w.pid))) {
+                    died_at.push(format!("{}: +{}ms code={:#x}", w.pid, t.elapsed().as_millis(), w.code()));
+                }
+            }
+        }
         let still = inside.iter().filter(|w| w.alive()).map(|w| w.pid).collect::<Vec<_>>();
         for w in &inside {
             w.terminate(); // 뒤처리
         }
-        assert!(!still.is_empty(), "★unwrapped인데 CLI가 띄운 것까지 죽었다(브라우저가 죽는 모양)");
+        assert!(
+            !still.is_empty(),
+            "★unwrapped인데 CLI가 띄운 것까지 죽었다(브라우저가 죽는 모양) — {died_at:?}"
+        );
     }
 
     /// 두 취소 테스트가 앉히는 판: 래퍼(`cmd.exe`) 하나 + **그 안의 프로그램**(손자) 하나.
@@ -990,6 +1006,10 @@ mod tests {
     ///  ④ **실패가 스스로 말한다.** 안 떴으면 래퍼가 무엇을 뱉었는지·언제 어떤 코드로 끝났는지·
     ///     그 사이 스쳐간 자식이 무엇이었는지를 한 번에 적는다. R28f의 「자식 []」 한 줄은
     ///     6초의 침묵만 남겨 다음 사람이 계기를 새로 심어야 했다(내가 그랬다).
+    ///  ⑤ **준비 신호는 자식이 준다** — 「프로세스 표에 있다」로는 부족하다. ②③만 세운 판을
+    ///     100회 돌렸더니 여전히 2회 붉었고(취소 +26ms · 종료 코드 `0xC000010A`), 원인은
+    ///     초기화 중인 손자를 「떴다」로 읽은 것이었다. 아래 대기 루프의 `spoke` 조건이 그
+    ///     자리다. 자세한 근거는 그 주석에.
     #[cfg(windows)]
     fn spawn_wrapped_fixture() -> WrappedFixture {
         use std::os::windows::process::CommandExt;
@@ -1042,6 +1062,22 @@ mod tests {
         // conhost는 여기서 판정에 안 쓴다: `CREATE_NO_WINDOW`라도 `cmd.exe`에 conhost가
         // **먼저** 붙으므로 「자식이 하나 있다」는 손자가 떴다는 뜻이 전혀 아니고,
         // 반대로 conhost가 안 붙는 판(ConPTY 계열)에서는 「둘 이상」이 영영 안 온다.
+        //
+        // ★위 ⑤ — 그리고 **「프로세스 표에 있다」는 「떴다」가 아니다.** R28g GATE가 ②③만
+        // 세우고 100회를 돌렸더니 `cancelling_an_unwrapped_login_…`이 2회 붉었다. 계기를
+        // 심어 잡은 값: 손자가 **취소 +26ms**에 종료 코드 **0xC000010A**
+        // (`STATUS_PROCESS_IS_TERMINATING`)로 죽었다. 즉 우리가 죽인 것도, 스스로 끝난 것도
+        // 아니고 **아직 초기화 중이던 프로세스가 부모가 사라지면서 함께 무너진** 것이다.
+        // 스냅샷은 `CreateProcess`가 프로세스 객체를 만든 **즉시** 그 pid를 보여주므로
+        // (로더도, 콘솔 부착도, stdio 개통도 아직이다) ②의 「보였다」로 준비 완료를 선언하면
+        // 그 초기화 창을 그대로 밟는다.
+        //
+        // 그래서 **자식이 스스로 남기는 신호**를 하나 더 요구한다: 파이프에 **뭐라도 썼는가**.
+        // `ping`은 시작하자마자 "…에 Ping 데이터 사용:" 한 줄을 뱉는다(문면은 로캘마다
+        // 다르므로 **비어 있지 않다**만 본다). 무언가를 썼다 = 로더를 지났고 stdio가 살아 있다
+        // = 이 픽스처가 전제하는 「손자가 파이프의 쓰기 끝을 쥔 채 살아 있다」가 참이다.
+        // 이름 조건과 **함께** 걸어 두므로 래퍼가 에러 문구를 뱉은 판은 여기 안 걸린다
+        // (그 판은 PING.EXE 자식이 영영 안 생겨 아래 진단으로 떨어진다).
         let mut inside: Vec<PidWatch> = Vec::new();
         let mut seen: Vec<(u32, String)> = Vec::new();
         let deadline = std::time::Instant::now() + Duration::from_secs(6);
@@ -1056,7 +1092,8 @@ mod tests {
                     }
                 }
             }
-            if !inside.is_empty() {
+            let spoke = !said.lock().unwrap_or_else(|e| e.into_inner()).is_empty();
+            if !inside.is_empty() && spoke {
                 return WrappedFixture { child, pid, inside };
             }
             std::thread::sleep(Duration::from_millis(25));
@@ -1160,6 +1197,15 @@ mod tests {
             unsafe {
                 let mut code: u32 = 0;
                 GetExitCodeProcess(self.h, &mut code).is_ok() && code == STILL_ACTIVE.0 as u32
+            }
+        }
+
+        fn code(&self) -> u32 {
+            use windows::Win32::System::Threading::GetExitCodeProcess;
+            unsafe {
+                let mut c: u32 = 0;
+                let _ = GetExitCodeProcess(self.h, &mut c);
+                c
             }
         }
 
