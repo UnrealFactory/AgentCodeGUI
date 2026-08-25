@@ -22,6 +22,15 @@
 | 홈 | 전 주행 격리(`%TEMP%\ccg-screens-*` · `%TEMP%\ccg-r28e-*`) · CDP 포트 태그 분리(10230~10235 · 9637) |
 | 프로세스 | 이름 기반 kill **0회** — 내가 스폰한 PID만(`taskkill /T /F /PID 5128`) |
 
+> **측정 기준선 이후에 두 커밋이 착지했다**(감사 중 옆 갈래가 커밋했다):
+> `61d818a` R28e WFIRE R1(`app/src/lib/limitResume.ts`·`useLimitResume.ts`·`store/session.ts`·
+> `ccg-engine/limit.rs`·`runtime.rs`) · `b6c559b` R28e CASX2(`ccg-auth` 원장).
+> 이 보고서의 수치는 **전부 `72a142d`**의 것이다. 둘 중 어느 것도 이 라운드의 치명 2건이
+> 짚는 자리(`codex-auth:*` 배선 · `ErrorBoundary`/`activeChatId` 영속 · `app:open-directory`)를
+> 건드리지 않으므로 **N1·N2·N3의 판정은 그대로 선다.** 다만 WFIRE가 한도 이어서의 렌더러
+> 두 파일을 바꿨으므로 `limit-hold-bar`·`workbar-context-pop`의 **화면 수치는 다음 라운드에
+> 다시 떠야 한다**(이 라운드 값은 그 커밋 이전이다).
+
 ### 증거 파일 (전부 이 라운드 산출)
 
 | 파일 | 무엇 |
