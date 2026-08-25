@@ -58,6 +58,9 @@ import { parseBtw, btwForkOf } from './lib/btw'
 import { SubAgentModal } from './components/AgentPanel'
 import { Explorer } from './components/Explorer'
 import { FolderSwitchDialog } from './components/FolderSwitchDialog'
+import { NoticeModal } from './components/NoticeModal'
+// ★R28i N3 — 「AgentCodeGUI3으로 열기」가 폴더를 못 열었을 때의 사유(3.0 전용 셸 채널).
+import { onOpenDirectoryFailed, type OpenDirFailure } from './api/shim'
 // 지연 로드 — FileModal이 CodeMirror 전체(+cm 유틸·semTokens)를 끌고 와 번들의 ~1/3이다.
 // 뷰어를 처음 열 때 로컬 청크 한 번만 로드하면 되고, 그 전엔 파스·메모리 비용이 0이 된다.
 const FileModal = lazy(() => import('./components/FileModal').then((m) => ({ default: m.FileModal })))
@@ -321,6 +324,9 @@ function MainApp({ user }: { user: AppUser }) {
   // a working-folder change that would reset the current conversation, parked here
   // until the user confirms it in the card modal (변경) or backs out (취소)
   const [pendingFolder, setPendingFolder] = useState<string | null>(null)
+  // ★R28i N3 — 「AgentCodeGUI3으로 열기」로 온 경로를 **못 열었을 때**의 사유 카드.
+  // 실패가 조용하면 사용자는 "눌렀는데 아무 일도 안 일어났다"만 본다(R5 §9.1 N3).
+  const [openDirFail, setOpenDirFail] = useState<OpenDirFailure | null>(null)
   const [openSubagentId, setOpenSubagentId] = useState<string | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [chats, setChats] = useState<ChatMeta[]>(() => [newChatMeta()])
@@ -1795,6 +1801,10 @@ function MainApp({ user }: { user: AppUser }) {
     return window.api.app.onOpenDirectory((dir) => openProjectDirRef.current(dir))
   }, [])
 
+  // ★R28i N3 — 같은 우클릭이 **열 수 없는 경로**를 들고 왔을 때. 셸이 사유를 붙여 보내고
+  // (없음·파일·권한) 여기서 카드로 말한다 — 창은 이미 앞으로 나와 있다(셸이 raise 먼저).
+  useEffect(() => onOpenDirectoryFailed((f) => setOpenDirFail(f)), [])
+
   // apply the folder passed at launch, but only after chats hydrate so the restored
   // chat's saved cwd doesn't clobber it. Consumed once (the main side clears it).
   const initDirApplied = useRef(false)
@@ -2592,6 +2602,15 @@ function MainApp({ user }: { user: AppUser }) {
         />
       )}
 
+      {/* ★R28i N3 — 「AgentCodeGUI3으로 열기」가 못 연 경로. 조용히 사라지지 않는다 */}
+      {openDirFail && (
+        <NoticeModal
+          title={t('폴더를 열지 못했어요', "Couldn't open that folder")}
+          message={openDirFailMessage(openDirFail)}
+          onClose={() => setOpenDirFail(null)}
+        />
+      )}
+
       {settingsOpen && (
         <SettingsModal
           cwd={cwd}
@@ -2650,6 +2669,31 @@ function MainApp({ user }: { user: AppUser }) {
       <EngineUpdateGate />
       <AppUpdateGate />
     </div>
+  )
+}
+
+// ★R28i N3 — 「AgentCodeGUI3으로 열기」 실패 문구. **함수인 이유**: 모듈 스코프 상수로
+// 굳히면 t()가 언어 로드 시점에 박제된다(i18n 규약) — 카드를 그릴 때 평가한다.
+function openDirFailMessage(f: OpenDirFailure): string {
+  const p = f.path || '(빈 경로)'
+  if (f.reason === 'not-a-dir') {
+    return t(
+      `‘${p}’ 은(는) 파일이에요. 작업 폴더로는 폴더만 열 수 있어요 — 그 파일이 든 폴더를 우클릭해 주세요.`,
+      `‘${p}’ is a file. A working folder has to be a folder — right-click the folder that contains it instead.`
+    )
+  }
+  if (f.reason === 'denied') {
+    return t(
+      `‘${p}’ 을(를) 열 권한이 없어요. 폴더 접근 권한을 확인해 주세요.`,
+      `No permission to open ‘${p}’. Check the folder's access rights.`
+    )
+  }
+  if (f.reason === 'empty') {
+    return t('열 폴더 경로가 비어 있어요.', 'The folder path was empty.')
+  }
+  return t(
+    `‘${p}’ 경로를 찾을 수 없어요. 폴더가 옮겨졌거나 지워졌을 수 있어요.`,
+    `‘${p}’ could not be found — the folder may have been moved or deleted.`
   )
 }
 

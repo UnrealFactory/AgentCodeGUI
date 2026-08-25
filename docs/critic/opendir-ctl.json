@@ -1,0 +1,116 @@
+{
+  "at": "2026-08-25T15:01:23.601Z",
+  "tag": "ctl",
+  "exe": "C:\\Code\\AgentCodeGUI\\target-r28h-m10-critr2\\release\\agentcodegui.exe",
+  "exeMtime": "2026-08-25T14:18:33.595Z",
+  "port": 10802,
+  "root": "C:\\Temp\\ccg-r28i-od\\ctl",
+  "waitMs": 9000,
+  "cases": {
+    "boot": {
+      "chatHead": "폴더 선택",
+      "card": null,
+      "cardBody": null,
+      "events": []
+    },
+    "warmVisible": {
+      "arg": "C:\\Temp\\ccg-r28i-od\\ctl\\dirs\\proj-warm-visible",
+      "second": {
+        "pid": 8196,
+        "code": 0,
+        "exitMs": 15
+      },
+      "folderArrived": false,
+      "ok": false,
+      "ms": 9097,
+      "chatHead": "폴더 선택",
+      "card": null,
+      "cardBody": null,
+      "events": [],
+      "handoffLeft": false
+    },
+    "hidden": {
+      "visibleBefore": 1,
+      "visibleAfterClose": 0,
+      "arg": "C:\\Temp\\ccg-r28i-od\\ctl\\dirs\\proj-warm-hidden",
+      "second": {
+        "pid": 14380,
+        "code": 0,
+        "exitMs": 15
+      },
+      "folderArrived": false,
+      "raised": true,
+      "visibleAfterRaise": 1,
+      "ok": false,
+      "ms": 9104,
+      "chatHead": "폴더 선택",
+      "card": null,
+      "cardBody": null,
+      "events": []
+    },
+    "warmFile": {
+      "arg": "C:\\Temp\\ccg-r28i-od\\ctl\\dirs\\not-a-folder.txt",
+      "second": {
+        "pid": 38484,
+        "code": 0,
+        "exitMs": 14
+      },
+      "cardBefore": null,
+      "spoke": false,
+      "ok": false,
+      "ms": 9122,
+      "chatHead": "폴더 선택",
+      "card": null,
+      "cardBody": null,
+      "events": [],
+      "chatHeadUnchanged": true
+    },
+    "warmMissing": {
+      "arg": "C:\\Temp\\ccg-r28i-od\\ctl\\dirs\\gone-forever",
+      "second": {
+        "pid": 35732,
+        "code": 0,
+        "exitMs": 15
+      },
+      "spoke": false,
+      "ok": false,
+      "ms": 9118,
+      "chatHead": "폴더 선택",
+      "card": null,
+      "cardBody": null,
+      "events": [],
+      "chatHeadUnchanged": true
+    },
+    "raw": {
+      "app:open-directory(T3)": "{\"__unimplemented\":true}",
+      "landedT3": false,
+      "app:open-directory(\"\")": "{\"__unimplemented\":true}",
+      "emptySpoke": false,
+      "emptyCard": null,
+      "app:open-directory(\"C:\\\\Code\")": "{\"__unimplemented\":true}",
+      "app:get-initial-dir": "null",
+      "landedCCode": false,
+      "chatHeadAfter": "폴더 선택"
+    },
+    "eventsSeen": [],
+    "cold": {
+      "arg": "C:\\Temp\\ccg-r28i-od\\ctl\\dirs\\proj-cold",
+      "mounted": true,
+      "folderArrived": true,
+      "msFromLaunch": 675,
+      "chatHead": "C:\\Temp\\ccg-r28i-od\\ctl\\dirs\\proj-cold",
+      "card": null
+    }
+  },
+  "dirs": {
+    "t1": "C:\\Temp\\ccg-r28i-od\\ctl\\dirs\\proj-warm-visible",
+    "t2": "C:\\Temp\\ccg-r28i-od\\ctl\\dirs\\proj-warm-hidden",
+    "t3": "C:\\Temp\\ccg-r28i-od\\ctl\\dirs\\proj-raw",
+    "t4": "C:\\Temp\\ccg-r28i-od\\ctl\\dirs\\proj-cold",
+    "file": "C:\\Temp\\ccg-r28i-od\\ctl\\dirs\\not-a-folder.txt",
+    "missing": "C:\\Temp\\ccg-r28i-od\\ctl\\dirs\\gone-forever"
+  },
+  "pid": 29656,
+  "mounted": true,
+  "sameLanding": false
+}

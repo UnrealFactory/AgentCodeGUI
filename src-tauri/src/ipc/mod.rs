@@ -26,7 +26,9 @@
 /// 계정 **쓰기**(최종 파리티 T1 — 로그인·로그아웃·기본·삭제·순서). 읽기는 `system`.
 /// 로그인이 사용자를 최대 5분 기다리므로 **블로킹 스레드**에서 돈다.
 mod accounts;
-mod app_meta;
+/// `pub`인 이유: 「AgentCodeGUI3으로 열기」의 웜 런치 반쪽(`open_dir`)을 셸의 두 자리가
+/// 부른다 — 두 번째 인스턴스의 인계(`main.rs`)와 「창을 앞으로」 수신부(`win::tray`).
+pub mod app_meta;
 /// 파일·Git 도메인(M6). 다른 모듈과 달리 **블로킹 스레드**에서 돈다 — `ipc_call` 주석 참고.
 mod fs;
 mod git;
@@ -66,6 +68,14 @@ pub mod ch {
     // app meta / update
     pub const APP_GET_VERSION: &str = "app:get-version";
     pub const APP_GET_INITIAL_DIR: &str = "app:get-initial-dir";
+    /// 「AgentCodeGUI3으로 열기」의 **웜 런치 반쪽** — 이미 떠 있는 앱에 폴더가 또 왔다.
+    /// main→렌더러 방출(페이로드 = 폴더 경로 문자열, 2.6.2 `send(IPC.openDirectory, dir)`와
+    /// 같은 모양)이면서 **원시 호출도 받는다**(`ipc_call` → `app_meta::open_dir::request`).
+    pub const APP_OPEN_DIRECTORY: &str = "app:open-directory";
+    /// 셸 내부 채널 — 계약면(protocol.ts)에 **없다**. 2.6.2에는 이 통지가 아예 없었고
+    /// (잘못된 인자는 조용히 버려졌다), 그 침묵이 R5 §9.1 N3의 핵심이었다.
+    /// 페이로드 `{ path, reason }` — `reason`은 `open_dir::Verdict::reason()`.
+    pub const APP_OPEN_DIRECTORY_FAILED: &str = "app:open-directory-failed";
     pub const UPDATE_GET_STATUS: &str = "app:update-status";
     // engine
     pub const ENGINE_AUTO_UPDATE: &str = "engine:auto-update";
@@ -318,6 +328,19 @@ pub async fn ipc_call(app: AppHandle, window: WebviewWindow, channel: String, pa
             .await
             // 블로킹 작업이 panic으로 죽어도(=버그) 렌더러에는 안전값이 가야 한다.
             .unwrap_or_else(|_| unimplemented());
+    }
+
+    // ★R28i N3 — 「AgentCodeGUI3으로 열기」(웜 런치). 위 팔들과 **같은 이유**로 전용
+    // 블로킹 풀에서 돈다: 판정이 `fs::metadata` 한 번인데 도달 불가 UNC 경로면 그 한 번이
+    // **21초**다(main.rs `ccg-img` 비동기 등록 주석의 실측). async 워커에서 그걸 자면
+    // 그동안 모든 창의 IPC가 통째로 굶는다.
+    if channel == ch::APP_OPEN_DIRECTORY {
+        let a = app.clone();
+        return tauri::async_runtime::spawn_blocking(move || {
+            app_meta::open_dir::request(&a, arg(&payload, 0).as_str().unwrap_or_default())
+        })
+        .await
+        .unwrap_or_else(|_| unimplemented());
     }
 
     // ★최종 파리티 T1·T2 — 계정 쓰기(`ipc/accounts.rs`)와 엔진 CLI 버전 관리

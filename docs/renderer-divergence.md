@@ -785,3 +785,42 @@ Verse가 3.0 범위 밖이라는 결정은 그대로다(사용자 결정 — §6
 센 결과가 같다 — `verseRows=0`, 버튼은 `["설치","설치"]`(C#·C++) 둘뿐.
 즉 지금 고친 것은 **채널의 정직함**이고, Verse 행이 3.0에 들어오는 날 이 침묵이 되살아나지
 않게 하는 자물쇠다(테스트 `the_verse_buttons_answer_with_a_reason_while_the_lookups_stay_quiet`).
+
+### 6.11 「AgentCodeGUI3으로 열기」의 **웜 런치 반쪽** — 실패가 화면에 뜬다 (R28i N3)
+
+우클릭 메뉴 자체는 이미 설치기가 HKCU에 쓴다(`src-tauri/nsis/hooks.nsh` —
+`Directory\shell` + `Directory\Background\shell`, 명령은 `"<exe>" "%V"`). 3.0은 X를 눌러도
+트레이로 숨는 것이 기본이라(`win.rs` `hide_on_close`) **「이미 떠 있다」가 정상 상태**고,
+R28h까지 그 상태에서 그 메뉴를 누르면 `main.rs`의 단일 인스턴스 관문이 창만 앞으로 올리고
+**폴더 인자를 버렸다** — 오류도 안내도 없이(최종 파리티 R5 §9.1 `N3` · 높음).
+
+| 축 | 2.6.2 | 3.0 R28h까지 | 3.0 R28i |
+|---|---|---|---|
+| 콜드 런치(앱이 꺼져 있음) | `openedDirFromArgv(process.argv)` → `app:get-initial-dir` | **같다**(`parity::misc::initial_dir`) | 같다 — **안 건드렸다** |
+| 웜 런치(이미 떠 있음) | `second-instance` → `send(IPC.openDirectory, dir)` | **없다**(방출자 0 · `raise_existing()` 뒤 `return`) | `main.rs`가 인계 파일을 남기고 → `win::tray`의 raise 수신부가 소비 → `app:open-directory` |
+| 폴더가 아닌 인자 | `statSync().isDirectory()`가 false → **조용히 버림** | 〃(그 앞에서 이미 버려짐) | **`app:open-directory-failed`로 사유를 보낸다** → `NoticeModal` 카드 |
+| 원시 `app:open-directory` 호출 | (핸들러 없음 — send 전용) | `{__unimplemented:true}` | `{ok:true,dir}` / `{ok:false,reason,path}` |
+
+**성공 페이로드는 2.6.2와 글자 그대로 같다**(문자열 하나) — 렌더러 구독부(`App.tsx`의
+`onOpenDirectory`)는 한 글자도 안 고쳤다. 갈라진 것은 **실패 통지**뿐이고, 그것은 계약면
+(`src/shared/protocol.ts`)에 **없는** 3.0 전용 셸 채널이다(`app:open-directory-failed`).
+2.6.2에 대응물이 없으니 계약면 채널 수(216)는 안 움직인다 — 대신 `IPC.openDirectory`가
+`missing`에서 `impl`로 넘어가 계약면 재고가 **10 → 9**가 된다.
+
+**왜 인계가 파일인가.** 두 번째 인스턴스가 첫 인스턴스를 깨우는 통로는 등록 윈도우 메시지
+브로드캐스트다(`raise_existing` — 이름에 앱 홈 해시가 있어 격리 홈끼리 안 섞인다). 그 봉투에는
+`WPARAM`/`LPARAM`(정수 둘)뿐이라 **경로가 안 실린다**: 포인터는 남의 주소 공간이고
+`WM_COPYDATA`는 브로드캐스트가 안 된다(대상 HWND를 알아야 하는데 우리는 모른다). 그래서 앱 홈
+아래 `.pending-open-dir`에 `{path, at}`를 원자 저장하고 브로드캐스트를 뒤에 보낸다(순서가 규약).
+받는 쪽은 **읽으면 지우고**(소비 1회), 15초보다 오래된 것은 버린다 — 안 그러면 한참 뒤의
+평범한 재실행이 엉뚱한 폴더를 연다. 콜드 부팅은 잔해를 한 번 턴다.
+
+**파일 인자는 부모로 올리지 않는다.** 사용자가 안 고른 자리에 조용히 착지하는 것이고,
+콜드 런치(`initial_dir`)는 파일을 그냥 무시하므로 두 경로의 착지가 갈린다. 대신 카드가
+"‘…’ 은(는) 파일이에요"라고 말한다.
+
+**남은 비대칭 하나(정직하게).** 실패 통지는 **웜 경로에만** 있다. 콜드 런치에서 잘못된
+인자가 오면 R28h까지와 똑같이 조용하다(= 2.6.2와 동일). 이벤트를 부팅 중에 쏘면 렌더러의
+`listen()` 등록보다 앞설 수 있어(§3.3) 「3번에 1번 안 뜨는 카드」가 되고, 그걸 피하려면
+조회 채널을 하나 더 만들어야 한다 — N3이 가리키는 사고(**정상 상태인 웜 경로의 침묵**)와는
+다른 자리라 이 라운드의 범위 밖으로 둔다.

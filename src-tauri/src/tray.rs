@@ -46,6 +46,11 @@
 //! 안 일어나는" 앱을 보게 된다. 이제 물러나기 전에 `raise_existing()`으로
 //! 등록 윈도우 메시지를 브로드캐스트하고, 먼저 뜬 인스턴스가 그걸 받아 창을 앞으로 올린다.
 //! 메시지 이름에 **앱 홈 경로**를 넣으므로 격리 홈(dev·벤치)끼리는 서로를 안 건드린다.
+//!
+//! ★R28i N3 — 그 신호에는 **폴더가 같이 온다**. 봉투(`WPARAM`/`LPARAM`)에는 경로가 안
+//! 실리므로 두 번째 인스턴스가 앱 홈에 인계 파일을 쓰고(`ipc::app_meta::open_dir`),
+//! 이쪽은 창을 세운 **뒤에** 그것을 소비한다. 「AgentCodeGUI3으로 열기」가 트레이에
+//! 숨어 있는 앱에도 통하는 자리가 여기다.
 
 use serde_json::{json, Value};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -618,7 +623,14 @@ pub fn arm_raise_listener(app: &AppHandle, win: &tauri::WebviewWindow) {
                 let a = app.clone();
                 // 창 조작은 메인 스레드에서 — 지금 여기가 그 스레드지만 wndproc 안에서
                 // 창을 만지면 재진입이 생길 수 있어 큐로 넘긴다.
-                let _ = app.run_on_main_thread(move || show_main(&a));
+                let _ = app.run_on_main_thread(move || {
+                    show_main(&a);
+                    // ★R28i N3 — 두 번째 인스턴스가 남긴 폴더 인계를 소비해 렌더러로 흘린다.
+                    // **raise 뒤**에 오는 것이 규약이다: 트레이에 숨어 있던 창이 먼저 서야
+                    // 폴더 확인 카드·안내 카드가 보이는 화면에 앉는다. 판정은 자기 스레드에서
+                    // 돈다(`deliver_pending` 주석 — UNC 21초 함정).
+                    crate::ipc::app_meta::open_dir::deliver_pending(&a);
+                });
             }
             return LRESULT(0);
         }

@@ -1,0 +1,132 @@
+{
+  "at": "2026-08-25T15:00:38.094Z",
+  "tag": "r1",
+  "exe": "C:\\Code\\AgentCodeGUI\\target-r28i-od\\release\\agentcodegui.exe",
+  "exeMtime": "2026-08-25T14:57:28.016Z",
+  "port": 10800,
+  "root": "C:\\Temp\\ccg-r28i-od\\r1",
+  "waitMs": 9000,
+  "cases": {
+    "boot": {
+      "chatHead": "폴더 선택",
+      "card": null,
+      "cardBody": null,
+      "events": []
+    },
+    "warmVisible": {
+      "arg": "C:\\Temp\\ccg-r28i-od\\r1\\dirs\\proj-warm-visible",
+      "second": {
+        "pid": 31340,
+        "code": 0,
+        "exitMs": 16
+      },
+      "folderArrived": true,
+      "ok": true,
+      "ms": 123,
+      "chatHead": "C:\\Temp\\ccg-r28i-od\\r1\\dirs\\proj-warm-visible",
+      "card": null,
+      "cardBody": null,
+      "events": [
+        "C:\\Temp\\ccg-r28i-od\\r1\\dirs\\proj-warm-visible"
+      ],
+      "handoffLeft": false
+    },
+    "hidden": {
+      "visibleBefore": 1,
+      "visibleAfterClose": 0,
+      "arg": "C:\\Temp\\ccg-r28i-od\\r1\\dirs\\proj-warm-hidden",
+      "second": {
+        "pid": 18056,
+        "code": 0,
+        "exitMs": 16
+      },
+      "folderArrived": true,
+      "raised": true,
+      "visibleAfterRaise": 1,
+      "ok": true,
+      "ms": 142,
+      "chatHead": "C:\\Temp\\ccg-r28i-od\\r1\\dirs\\proj-warm-hidden",
+      "card": null,
+      "cardBody": null,
+      "events": [
+        "C:\\Temp\\ccg-r28i-od\\r1\\dirs\\proj-warm-visible",
+        "C:\\Temp\\ccg-r28i-od\\r1\\dirs\\proj-warm-hidden"
+      ]
+    },
+    "warmFile": {
+      "arg": "C:\\Temp\\ccg-r28i-od\\r1\\dirs\\not-a-folder.txt",
+      "second": {
+        "pid": 34160,
+        "code": 0,
+        "exitMs": 15
+      },
+      "cardBefore": null,
+      "spoke": true,
+      "ok": true,
+      "ms": 125,
+      "chatHead": "C:\\Temp\\ccg-r28i-od\\r1\\dirs\\proj-warm-hidden",
+      "card": "폴더를 열지 못했어요",
+      "cardBody": "‘C:\\Temp\\ccg-r28i-od\\r1\\dirs\\not-a-folder.txt’ 은(는) 파일이에요. 작업 폴더로는 폴더만 열 수 있어요 — 그 파일이 든 폴더를 우클릭해 주세요.",
+      "events": [
+        "C:\\Temp\\ccg-r28i-od\\r1\\dirs\\proj-warm-visible",
+        "C:\\Temp\\ccg-r28i-od\\r1\\dirs\\proj-warm-hidden"
+      ],
+      "chatHeadUnchanged": true
+    },
+    "warmMissing": {
+      "arg": "C:\\Temp\\ccg-r28i-od\\r1\\dirs\\gone-forever",
+      "second": {
+        "pid": 20520,
+        "code": 0,
+        "exitMs": 18
+      },
+      "spoke": true,
+      "ok": true,
+      "ms": 125,
+      "chatHead": "C:\\Temp\\ccg-r28i-od\\r1\\dirs\\proj-warm-hidden",
+      "card": "폴더를 열지 못했어요",
+      "cardBody": "‘C:\\Temp\\ccg-r28i-od\\r1\\dirs\\gone-forever’ 경로를 찾을 수 없어요. 폴더가 옮겨졌거나 지워졌을 수 있어요.",
+      "events": [
+        "C:\\Temp\\ccg-r28i-od\\r1\\dirs\\proj-warm-visible",
+        "C:\\Temp\\ccg-r28i-od\\r1\\dirs\\proj-warm-hidden"
+      ],
+      "chatHeadUnchanged": true
+    },
+    "raw": {
+      "app:open-directory(T3)": "{\"ok\":true,\"dir\":\"C:\\\\Temp\\\\ccg-r28i-od\\\\r1\\\\dirs\\\\proj-raw\"}",
+      "landedT3": true,
+      "app:open-directory(\"\")": "{\"ok\":false,\"reason\":\"empty\",\"path\":\"\"}",
+      "emptySpoke": true,
+      "emptyCard": "폴더를 열지 못했어요",
+      "app:open-directory(\"C:\\\\Code\")": "{\"ok\":true,\"dir\":\"C:\\\\Code\"}",
+      "app:get-initial-dir": "null",
+      "landedCCode": true,
+      "chatHeadAfter": "C:\\Code"
+    },
+    "eventsSeen": [
+      "C:\\Temp\\ccg-r28i-od\\r1\\dirs\\proj-warm-visible",
+      "C:\\Temp\\ccg-r28i-od\\r1\\dirs\\proj-warm-hidden",
+      "C:\\Temp\\ccg-r28i-od\\r1\\dirs\\proj-raw",
+      "C:\\Code"
+    ],
+    "cold": {
+      "arg": "C:\\Temp\\ccg-r28i-od\\r1\\dirs\\proj-cold",
+      "mounted": true,
+      "folderArrived": true,
+      "msFromLaunch": 953,
+      "chatHead": "C:\\Temp\\ccg-r28i-od\\r1\\dirs\\proj-cold",
+      "card": null
+    }
+  },
+  "dirs": {
+    "t1": "C:\\Temp\\ccg-r28i-od\\r1\\dirs\\proj-warm-visible",
+    "t2": "C:\\Temp\\ccg-r28i-od\\r1\\dirs\\proj-warm-hidden",
+    "t3": "C:\\Temp\\ccg-r28i-od\\r1\\dirs\\proj-raw",
+    "t4": "C:\\Temp\\ccg-r28i-od\\r1\\dirs\\proj-cold",
+    "file": "C:\\Temp\\ccg-r28i-od\\r1\\dirs\\not-a-folder.txt",
+    "missing": "C:\\Temp\\ccg-r28i-od\\r1\\dirs\\gone-forever"
+  },
+  "pid": 36564,
+  "mounted": true,
+  "sameLanding": true
+}

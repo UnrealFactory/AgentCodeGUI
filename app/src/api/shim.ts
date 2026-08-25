@@ -270,6 +270,24 @@ function subscribe<T>(channel: string, cb: (payload: T) => void): () => void {
   }
 }
 
+// ── ★R28i N3 — 「AgentCodeGUI3으로 열기」가 **실패했다**는 통지 ────────────────
+// 계약면(src/shared/protocol.ts)에는 없는 **3.0 전용** 셸 채널이다. 2.6.2는 폴더가 아닌
+// 인자를 `openedDirFromArgv`에서 조용히 버렸고(통지 자체가 없다), 그 침묵이 최종 파리티
+// R5 §9.1 `N3`의 핵심이었다 — "창만 앞으로 오고 폴더는 사라진다. 오류도 안내도 없다."
+// 성공 쪽은 계약 그대로 `IPC.openDirectory`(문자열 하나)로 온다 — 여기서 안 건드린다.
+const OPEN_DIRECTORY_FAILED = 'app:open-directory-failed'
+
+/** 열지 못한 사유 — Rust `open_dir::Verdict::reason()`과 같은 이름표다. */
+export type OpenDirFailure = {
+  path: string
+  reason: 'empty' | 'not-a-dir' | 'denied' | 'not-found' | (string & {})
+}
+
+/** 셸이 폴더를 열지 못했을 때(없음·파일·권한). 구독 해지 함수를 돌려준다. */
+export function onOpenDirectoryFailed(cb: (f: OpenDirFailure) => void): () => void {
+  return subscribe<OpenDirFailure>(OPEN_DIRECTORY_FAILED, cb)
+}
+
 // ── 안전값 상수 (시그니처에 맞는 "데이터 없음" 모양) ──────────────────────────
 const NO_USAGE: UsageInfo = { fiveHour: null, weekly: null, weeklyFable: null, extraCredit: null }
 const NO_AUTH: AuthStatus & { ok: boolean } = { ok: false, loggedIn: false, error: 'unimplemented' }
