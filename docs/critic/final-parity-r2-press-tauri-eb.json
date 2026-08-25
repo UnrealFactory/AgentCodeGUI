@@ -1,0 +1,34 @@
+{
+  "app": "tauri-3.0.0",
+  "kind": "tauri",
+  "at": "2026-08-25T06:24:45.408Z",
+  "exe": "C:\\Temp\\ccg-r28e\\target\\release\\agentcodegui.exe",
+  "home": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-r28e-press-tauri",
+  "pid": 34720,
+  "cases": {
+    "limit-pop": {
+      "clicked": true,
+      "popText": "컨텍스트120K / 1M 토큰현재 컨텍스트이 대화가 차지하는 컨텍스트 창12%5시간 한도초기화 시간 미상100% 남음Fable 주간 한도1일 7시간 후 초기화67% 남음주간 한도1일 7시간 후 초기화0% 남음토큰 사용량입력 0 · 출력 0 · 캐시 00",
+      "prows": 5,
+      "hasNoData": false
+    },
+    "error-boundary": {
+      "explorerClosed": true,
+      "sbItemsPre": 3,
+      "selected": 1,
+      "beforeReload": {
+        "eb": 1,
+        "sbItems": 0,
+        "win": 0
+      },
+      "afterReload": {
+        "eb": 1,
+        "sbItems": 0,
+        "win": 0,
+        "chat": 0
+      },
+      "stuck": true
+    }
+  },
+  "shimWarns": []
+}

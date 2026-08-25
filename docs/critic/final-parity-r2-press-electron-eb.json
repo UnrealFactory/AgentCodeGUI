@@ -1,0 +1,34 @@
+{
+  "app": "electron-2.6.2",
+  "kind": "electron",
+  "at": "2026-08-25T06:25:21.645Z",
+  "exe": "C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe",
+  "home": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-r28e-press-electron",
+  "pid": 6564,
+  "cases": {
+    "limit-pop": {
+      "clicked": true,
+      "popText": "컨텍스트120K / 1M 토큰현재 컨텍스트이 대화가 차지하는 컨텍스트 창12%5시간 한도데이터 없음—주간 한도데이터 없음—토큰 사용량입력 0 · 출력 0 · 캐시 00",
+      "prows": 4,
+      "hasNoData": true
+    },
+    "error-boundary": {
+      "explorerClosed": true,
+      "sbItemsPre": 3,
+      "selected": 1,
+      "beforeReload": {
+        "eb": 1,
+        "sbItems": 0,
+        "win": 0
+      },
+      "afterReload": {
+        "eb": 0,
+        "sbItems": 3,
+        "win": 1,
+        "chat": 1
+      },
+      "stuck": false
+    }
+  },
+  "shimWarns": []
+}

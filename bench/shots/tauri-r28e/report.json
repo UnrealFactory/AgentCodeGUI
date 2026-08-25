@@ -1,0 +1,2370 @@
+{
+  "app": "tauri-3.0.0",
+  "kind": "tauri",
+  "at": "2026-08-25T06:16:50.513Z",
+  "sizePolicy": "app-own — 하네스가 창 크기를 강제하지 않는다(settleWindowSize)",
+  "canvas": [
+    1320,
+    880
+  ],
+  "screens": [
+    {
+      "id": "boot-splash-native",
+      "label": "네이티브 시작 스플래시",
+      "area": "1. 부팅",
+      "surface": "panel-window",
+      "ok": true,
+      "ms": 2376,
+      "via": "in-window-overlay",
+      "found": 1,
+      "viewport": [
+        1320,
+        880
+      ],
+      "png": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "boot-loading",
+      "label": "렌더러 로딩 화면",
+      "area": "1. 부팅",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 3898,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "chat-thread",
+      "label": "대화 스레드(코드 뷰)",
+      "area": "2. 본채팅",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 476,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "chat-header",
+      "label": "채팅 헤더",
+      "area": "2. 본채팅",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 481,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "composer",
+      "label": "컴포저(한 줄 고스트 필)",
+      "area": "2. 본채팅",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 499,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "workbar",
+      "label": "작업 바(5칩)",
+      "area": "2. 본채팅",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 473,
+      "found": 5,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "chat-welcome",
+      "label": "웰컴(빈 채팅)",
+      "area": "2. 본채팅",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 1945,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "chat-jump-bottom",
+      "label": "맨 아래로 점프 버튼",
+      "area": "2. 본채팅",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 1017,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "chat-find",
+      "label": "대화에서 찾기 바",
+      "area": "2. 본채팅",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 1001,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "chat-selection-bar",
+      "label": "선택 툴바(복사/더 자세히)",
+      "area": "2. 본채팅",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 797,
+      "found": 2,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "chat-gesture-overlay",
+      "label": "마우스 제스처 궤적·라벨",
+      "area": "2. 본채팅",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 1034,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "chat-zoom-badge",
+      "label": "줌 배지",
+      "area": "2. 본채팅",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 2037,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "chat-folder-pop",
+      "label": "작업 폴더 팝오버",
+      "area": "2. 본채팅",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 1336,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "composer-two-line",
+      "label": "컴포저 2줄 승격",
+      "area": "2. 본채팅",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 798,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "composer-picker-pop",
+      "label": "모델·모드·과금·계정 통합 팝오버",
+      "area": "2. 본채팅",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 934,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "composer-slash-palette",
+      "label": "\"/\" 명령 팔레트(+스킬)",
+      "area": "2. 본채팅",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 988,
+      "found": 6,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "composer-mention-palette",
+      "label": "\"@\" 파일 멘션 팔레트",
+      "area": "2. 본채팅",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 971,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "composer-drop-hint",
+      "label": "파일 드롭 힌트 오버레이",
+      "area": "2. 본채팅",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 518,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "composer-attachments",
+      "label": "첨부 트레이(이미지 썸네일)",
+      "area": "2. 본채팅",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 763,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "image-lightbox",
+      "label": "이미지 라이트박스",
+      "area": "2. 본채팅",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 1123,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "image-lightbox-strip",
+      "label": "라이트박스 — 여러 장(썸네일 스트립)",
+      "area": "2. 본채팅",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 1515,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "folder-switch-dialog",
+      "label": "작업 폴더 변경 확인 카드",
+      "area": "2. 본채팅",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 1404,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "workbar-todo-pop",
+      "label": "할 일 팝오버",
+      "area": "2. 본채팅",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 952,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "workbar-subagent-pop",
+      "label": "서브에이전트 팝오버",
+      "area": "2. 본채팅",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 939,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "workbar-shell-pop",
+      "label": "백그라운드 셸 팝오버",
+      "area": "2. 본채팅",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 934,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "workbar-file-pop",
+      "label": "변경된 파일 팝오버",
+      "area": "2. 본채팅",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 949,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "workbar-context-pop",
+      "label": "컨텍스트·한도 팝오버",
+      "area": "2. 본채팅",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 934,
+      "found": 5,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "workbar-context-pop-api",
+      "label": "컨텍스트 팝오버 — API 과금 모드",
+      "area": "2. 본채팅",
+      "ok": false,
+      "skipped": true,
+      "reason": "과금 모드를 API로 바꾸는 조작이 사용자 실계정 api-config.json(키·예산·누적 사용액)을 건드린다 — 벤치에서 과금 경로 조작 금지"
+    },
+    {
+      "id": "subagent-modal",
+      "label": "서브에이전트 상세 카드",
+      "area": "2. 본채팅",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 1392,
+      "found": 2,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "bgtask-modal",
+      "label": "백그라운드 셸 카드(중지)",
+      "area": "2. 본채팅",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 1413,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "bash-log-modal",
+      "label": "Bash 출력 카드",
+      "area": "2. 본채팅",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 892,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "cmd-result-card",
+      "label": "내장 명령 결과 카드(/init 등)",
+      "area": "2. 본채팅",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 890,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "btw-dock",
+      "label": "/btw 질문 창 알약 도크",
+      "area": "2. 본채팅",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 3375,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "chat-working",
+      "label": "작업 인디케이터(마스코트+경과)",
+      "area": "2. 본채팅",
+      "ok": false,
+      "skipped": true,
+      "reason": "엔진 턴 필요 — --engine 없이 실행(기본 제외)"
+    },
+    {
+      "id": "composer-queue",
+      "label": "예약 큐(작업 중 보낸 메시지)",
+      "area": "2. 본채팅",
+      "ok": false,
+      "skipped": true,
+      "reason": "엔진 턴 필요 — --engine 없이 실행(기본 제외)"
+    },
+    {
+      "id": "permission-card",
+      "label": "도구 승인 요청 카드",
+      "area": "2. 본채팅",
+      "ok": false,
+      "skipped": true,
+      "reason": "엔진 턴 필요 — --engine 없이 실행(기본 제외)"
+    },
+    {
+      "id": "question-mini",
+      "label": "질문 내려두기 알약",
+      "area": "2. 본채팅",
+      "ok": false,
+      "skipped": true,
+      "reason": "질문/승인 카드가 살아 있는 동안에만 존재 — permission-card 턴을 거부로 닫는 벤치 정책과 충돌(승인 카드를 남긴 채 알약으로 내리면 다음 화면이 전부 오염)"
+    },
+    {
+      "id": "question-card",
+      "label": "AI 질문 카드",
+      "area": "2. 본채팅",
+      "ok": false,
+      "skipped": true,
+      "reason": "AskUserQuestion 도구 호출은 모델 재량이라 결정적 재현 불가 — 5턴 예산 안에서 안정적으로 뽑히지 않는다"
+    },
+    {
+      "id": "question-card-multistep",
+      "label": "AI 질문 카드 — 다단계(N/M)",
+      "area": "2. 본채팅",
+      "ok": false,
+      "skipped": true,
+      "reason": "질문 2개 이상을 모델이 한 번에 내야 함 — 재현 비결정적"
+    },
+    {
+      "id": "workflow-dock",
+      "label": "워크플로 알약 도크",
+      "area": "2. 본채팅",
+      "ok": false,
+      "skipped": true,
+      "reason": "workflows는 sanitizeSnapshot이 복원하지 않아 픽스처로 심을 수 없고(초기값으로 덮임), 상주 워크플로 실행은 5턴 예산 밖"
+    },
+    {
+      "id": "workflow-card",
+      "label": "워크플로 펼침 카드",
+      "area": "2. 본채팅",
+      "ok": false,
+      "skipped": true,
+      "reason": "위와 같음 — 워크플로 상주 실행 필요"
+    },
+    {
+      "id": "limit-hold-bar",
+      "label": "한도 자동 이어서 대기표 바",
+      "area": "2. 본채팅",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 299,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "autohide-preview",
+      "label": "사이드바 감지 폭 미리보기 띠",
+      "area": "2. 본채팅",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 4090,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "sidebar-autohide-edge",
+      "label": "사이드바 자동 숨김 — 접힘/가장자리 띠",
+      "area": "2. 본채팅",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 4634,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "sidebar",
+      "label": "채팅 사이드바(2.6.2=3섹션 / 3.0=채팅·배치 2섹션)",
+      "area": "3. 사이드바",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 475,
+      "found": 2,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "sidebar-empty",
+      "label": "섹션 빈 상태",
+      "area": "3. 사이드바",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 482,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "sidebar-section-search",
+      "label": "섹션 검색 입력",
+      "area": "3. 사이드바",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 944,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "sidebar-ctx-menu",
+      "label": "채팅 우클릭 메뉴",
+      "area": "3. 사이드바",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 996,
+      "found": 2,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "sidebar-rename-inline",
+      "label": "채팅 이름 인라인 편집",
+      "area": "3. 사이드바",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 1104,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "sidebar-delete-confirm",
+      "label": "채팅 삭제 확인 카드",
+      "area": "3. 사이드바",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 1170,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "sidebar-deleteall-confirm",
+      "label": "섹션 전체 삭제 확인 카드",
+      "area": "3. 사이드바",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 995,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "new-chat-step1",
+      "label": "새 채팅 — 일반/멀티 선택",
+      "area": "3. 사이드바",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 934,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "new-chat-step2",
+      "label": "새 채팅 — 패널 수(2~6)",
+      "area": "3. 사이드바",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 1197,
+      "found": 5,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "prompt-library-list",
+      "label": "프롬프트 라이브러리 — 목록",
+      "area": "3. 사이드바",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 1015,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "prompt-library-editor",
+      "label": "프롬프트 편집(제목+본문)",
+      "area": "3. 사이드바",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 1340,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "prompt-library-delete",
+      "label": "프롬프트 삭제 확인",
+      "area": "3. 사이드바",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 1276,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "explorer-tree",
+      "label": "탐색기 트리",
+      "area": "4. 탐색기",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 892,
+      "found": 103,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "explorer-settings-foot",
+      "label": "탐색기 하단 프로필/설정 행",
+      "area": "4. 탐색기",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 503,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "explorer-git-strip",
+      "label": "Git 상태 스트립",
+      "area": "4. 탐색기",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 500,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "explorer-search",
+      "label": "파일 검색 결과",
+      "area": "4. 탐색기",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 941,
+      "found": 2,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "explorer-search-empty",
+      "label": "검색 결과 없음",
+      "area": "4. 탐색기",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 930,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "explorer-hidden-on",
+      "label": "숨긴 항목 보기 ON",
+      "area": "4. 탐색기",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 1164,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "explorer-ctx-menu",
+      "label": "탐색기 우클릭 메뉴",
+      "area": "4. 탐색기",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 1024,
+      "found": 8,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "explorer-fileop",
+      "label": "파일 작업 카드(새 파일)",
+      "area": "4. 탐색기",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 2735,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "explorer-notice",
+      "label": "파일 작업 오류 알림 카드",
+      "area": "4. 탐색기",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 3422,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "explorer-fileop-delete",
+      "label": "탐색기 삭제 확인 카드",
+      "area": "4. 탐색기",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 2203,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "explorer-blank",
+      "label": "탐색기 — 폴더 없음",
+      "area": "4. 탐색기",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 3077,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "changed-files-modal",
+      "label": "변경된 파일 카드(스코프 폴더)",
+      "area": "4. 탐색기",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 2997,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "explorer-verse-section",
+      "label": "Verse API digest 접이식 묶음",
+      "area": "4. 탐색기",
+      "ok": false,
+      "skipped": true,
+      "reason": "Verse 프로젝트(.vproject/.uefnproject) 작업 폴더가 필요 — 이 레포에 없고, 벤치가 외부 UEFN 프로젝트를 여는 건 파일 경계 밖"
+    },
+    {
+      "id": "explorer-verse-digest",
+      "label": "Verse digest 뷰",
+      "area": "4. 탐색기",
+      "ok": false,
+      "skipped": true,
+      "reason": "위와 같음 — UEFN 프로젝트 필요"
+    },
+    {
+      "id": "viewer-code-read",
+      "label": "코드 뷰어 — 읽기 모드",
+      "area": "5. 뷰어",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 2832,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "viewer-diff-on",
+      "label": "변경 마킹(diff) 표시",
+      "area": "5. 뷰어",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 2609,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "viewer-code-edit",
+      "label": "코드 뷰어 — 편집 모드(Ctrl+E)",
+      "area": "5. 뷰어",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 2628,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "viewer-cm-find",
+      "label": "CM 편집기 찾기 바",
+      "area": "5. 뷰어",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 7153,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "viewer-code-dirty",
+      "label": "편집 중 미저장(● 저장 칩)",
+      "area": "5. 뷰어",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 3319,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "viewer-close-confirm",
+      "label": "미저장 편집 닫기 확인",
+      "area": "5. 뷰어",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 2835,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "viewer-code-saved",
+      "label": "저장됨 칩",
+      "area": "5. 뷰어",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 7371,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "viewer-save-error",
+      "label": "저장 실패 카드",
+      "area": "5. 뷰어",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 3419,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "viewer-markdown-preview",
+      "label": "마크다운 렌더 뷰",
+      "area": "5. 뷰어",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 2443,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "viewer-markdown-source",
+      "label": "마크다운 — 변경 소스 보기",
+      "area": "5. 뷰어",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 2597,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "viewer-find",
+      "label": "뷰어 찾기 바(비-CM)",
+      "area": "5. 뷰어",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 7164,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "viewer-image",
+      "label": "이미지 뷰(뷰어 안)",
+      "area": "5. 뷰어",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 2518,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "viewer-html-preview",
+      "label": "HTML 페이지 미리보기(ccg-page)",
+      "area": "5. 뷰어",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 3444,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "viewer-html-code",
+      "label": "HTML 코드 보기(Ctrl+D)",
+      "area": "5. 뷰어",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 2693,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "viewer-svg-preview",
+      "label": "SVG 렌더 미리보기",
+      "area": "5. 뷰어",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 2534,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "viewer-svg-source",
+      "label": "SVG 마크업 소스",
+      "area": "5. 뷰어",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 2650,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "viewer-empty",
+      "label": "뷰어 — 내용 없음/오류",
+      "area": "5. 뷰어",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 2532,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "viewer-truncated",
+      "label": "일부만 표시 칩",
+      "area": "5. 뷰어",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 2767,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "viewer-loading",
+      "label": "뷰어 로딩 스피너",
+      "area": "5. 뷰어",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 10826,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "capturedInReach": true,
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "viewer-selection-ask-bar",
+      "label": "코드 선택 툴바(복사/질문)",
+      "area": "5. 뷰어",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 2543,
+      "found": 2,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "viewer-ask-panel",
+      "label": "선택 코드 질문 패널",
+      "area": "5. 뷰어",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 2856,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "viewer-header-ctx-menu",
+      "label": "뷰어 헤더 우클릭 메뉴",
+      "area": "5. 뷰어",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 2881,
+      "found": 2,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "viewer-maximized",
+      "label": "뷰어 최대화",
+      "area": "5. 뷰어",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 2982,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "viewer-git-snapshot",
+      "label": "Git 커밋 스냅샷 뷰어",
+      "area": "5. 뷰어",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 2820,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "viewer-hover-card",
+      "label": "LSP 호버 타입 카드",
+      "area": "5. 뷰어",
+      "ok": false,
+      "skipped": true,
+      "reason": "typescript-language-server의 준비·인덱싱 시점이 비결정적(.fv-lsp.starting 소멸 시각이 레포 크기·디스크 캐시에 따라 수십 초 편차) — 캡처 타이밍을 고정할 수 없다"
+    },
+    {
+      "id": "viewer-back-forward",
+      "label": "뷰어 파일 히스토리(뒤로/앞으로)",
+      "area": "5. 뷰어",
+      "ok": false,
+      "skipped": true,
+      "reason": "심볼 정의 점프(Ctrl+클릭)가 LSP 준비를 전제 — viewer-hover-card와 같은 사유"
+    },
+    {
+      "id": "git-changes",
+      "label": "Git — 변경 목록 + 커밋 컴포저",
+      "area": "6. Git",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 1015,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "git-history",
+      "label": "Git — 히스토리(커밋 리스트)",
+      "area": "6. Git",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 1166,
+      "found": 100,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "git-commit-detail",
+      "label": "Git — 커밋 상세(우측 패널)",
+      "area": "6. Git",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 1384,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "git-new-branch",
+      "label": "Git — 새 브랜치 입력",
+      "area": "6. Git",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 1224,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "git-ai-commit-step1",
+      "label": "AI 커밋 메시지 — 1/2 계정",
+      "area": "6. Git",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 1708,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "git-ai-commit-step2",
+      "label": "AI 커밋 메시지 — 2/2 모델·effort",
+      "area": "6. Git",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 1981,
+      "found": 2,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "git-repo-list",
+      "label": "Git — 저장소 선택(2곳 이상)",
+      "area": "6. Git",
+      "ok": false,
+      "skipped": true,
+      "reason": "하위 저장소가 2곳 이상인 작업 폴더가 필요 — 이 레포에는 중첩 .git이 없다(실측)"
+    },
+    {
+      "id": "git-discard-confirm",
+      "label": "변경 되돌리기 확인",
+      "area": "6. Git",
+      "ok": false,
+      "skipped": true,
+      "reason": "되돌리기 카드에 도달하려면 실제 워킹트리 변경을 조준해야 하는데, 지금 트리는 다른 에이전트가 동시 편집 중 — 오조작 한 번이 남의 작업을 파괴한다"
+    },
+    {
+      "id": "git-switch-confirm",
+      "label": "더티 브랜치 전환 확인",
+      "area": "6. Git",
+      "ok": false,
+      "skipped": true,
+      "reason": "더티 트리에서 브랜치 전환을 유도해야 함 — 위와 같은 파괴 위험"
+    },
+    {
+      "id": "git-error",
+      "label": "Git 오류 칩",
+      "area": "6. Git",
+      "ok": false,
+      "skipped": true,
+      "reason": "Pull/Push 등 원격 조작을 실제로 일으켜야 재현 — 벤치에서 원격 조작 금지"
+    },
+    {
+      "id": "settings-profile",
+      "label": "설정 — Profile",
+      "area": "7. 설정",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 1615,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "settings-account",
+      "label": "설정 — Account",
+      "area": "7. 설정",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 1668,
+      "found": 6,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "settings-account-logout-confirm",
+      "label": "Account — 로그아웃 확인 카드",
+      "area": "7. 설정",
+      "ok": false,
+      "skipped": true,
+      "reason": "실측 결과 확인 카드가 없다 — 계정 카드의 삭제 버튼이 곧바로 실계정 토큰을 해지한다(Settings.tsx doDelete). 인벤토리 행 정정 필요"
+    },
+    {
+      "id": "settings-engine",
+      "label": "설정 — Engine",
+      "area": "7. 설정",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 1634,
+      "found": 2,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "settings-engine-confirm",
+      "label": "Engine — 이전 버전 정리 확인",
+      "area": "7. 설정",
+      "surface": "main-window",
+      "ok": false,
+      "ms": 1322,
+      "error": "clickText: no .set-inner button containing 정리",
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "settings-api",
+      "label": "설정 — API",
+      "area": "7. 설정",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 1620,
+      "found": 2,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "settings-mcp",
+      "label": "설정 — MCP",
+      "area": "7. 설정",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 1621,
+      "found": 3,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "settings-skill",
+      "label": "설정 — Skill",
+      "area": "7. 설정",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 1626,
+      "found": 3,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "settings-display",
+      "label": "설정 — Display",
+      "area": "7. 설정",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 1619,
+      "found": 3,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "settings-language",
+      "label": "설정 — Language",
+      "area": "7. 설정",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 1623,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "settings-code-lsp",
+      "label": "설정 — Code(언어 서버)",
+      "area": "7. 설정",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 1640,
+      "found": 4,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "settings-code-expanded",
+      "label": "Code — 행 펼침",
+      "area": "7. 설정",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 1765,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "settings-explorer",
+      "label": "설정 — Explorer",
+      "area": "7. 설정",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 1634,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "settings-gestures",
+      "label": "설정 — Gestures",
+      "area": "7. 설정",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 1627,
+      "found": 2,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "settings-rail-search",
+      "label": "설정 — 레일 검색 필터",
+      "area": "7. 설정",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 2499,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "settings-account-login",
+      "label": "Account — 로그인 진행",
+      "area": "7. 설정",
+      "ok": false,
+      "skipped": true,
+      "reason": "계정 추가를 누르면 실제 OAuth 플로우가 시작돼 외부 브라우저가 열리고 사용자 실계정 스토어를 건드린다 — 벤치 금지"
+    },
+    {
+      "id": "settings-engine-install-card",
+      "label": "Engine — 설치/정리 로그 카드",
+      "area": "7. 설정",
+      "ok": false,
+      "skipped": true,
+      "reason": "다른 엔진 버전을 실제로 내려받아 설치해야 재현(네트워크·디스크) — 게다가 engines는 실홈과 정션 공유라 실사용 설치본을 오염시킨다"
+    },
+    {
+      "id": "settings-code-install-card",
+      "label": "Code — 분석 서버 설치 로그 카드",
+      "area": "7. 설정",
+      "ok": false,
+      "skipped": true,
+      "reason": "LSP 서버 실제 설치(네트워크·수백 MB) 유발 — 벤치 금지"
+    },
+    {
+      "id": "settings-code-delete-confirm",
+      "label": "Code — 분석 서버 삭제 확인",
+      "area": "7. 설정",
+      "ok": false,
+      "skipped": true,
+      "reason": "삭제 확인 카드는 사용자가 실제로 설치해 둔 LSP 서버를 조준한다 — 오조작 시 실사용 환경 파괴"
+    },
+    {
+      "id": "multi-grid-empty",
+      "label": "멀티 — 빈 패널 그리드(4분할)",
+      "area": "8. 멀티",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 1583,
+      "found": 4,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "multi-grid-counts",
+      "label": "멀티 — 패널 수 배치(n6)",
+      "area": "8. 멀티",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 1947,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "multi-panel-expanded",
+      "label": "멀티 — 크게 보기 오버레이 카드",
+      "area": "8. 멀티",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 816,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "multi-panel-ghost-expanded",
+      "label": "멀티 — 크게 보는 중 그리드 자리지킴",
+      "area": "8. 멀티",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 794,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "multi-panel-rename",
+      "label": "멀티 — 패널 제목 인라인 편집(F2)",
+      "area": "8. 멀티",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 906,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "multi-panel-folder-pop",
+      "label": "멀티 — 패널 폴더 팝오버",
+      "area": "8. 멀티",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 889,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "multi-explorer",
+      "label": "멀티 — 포커스 패널을 따라가는 탐색기",
+      "area": "8. 멀티",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 3100,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "multi-reorder",
+      "label": "멀티 — 패널 자리 드래그 재배치",
+      "area": "8. 멀티",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 2249,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "multi-panel-ghost-popped",
+      "label": "멀티 — 팝아웃 중 그리드 유령",
+      "area": "8. 멀티",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 627,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "panel-window",
+      "label": "멀티 패널 팝아웃 창",
+      "area": "9. 독립 창",
+      "surface": "panel-window",
+      "ok": true,
+      "ms": 3806,
+      "found": 1,
+      "png": [
+        1100,
+        820
+      ],
+      "viewport": [
+        1100,
+        820
+      ]
+    },
+    {
+      "id": "multi-panel-btw-dock",
+      "label": "멀티 — 패널 btw 알약 도크",
+      "area": "8. 멀티",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 3739,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "multi-hydrate",
+      "label": "멀티 — 세션 복원 스피너",
+      "area": "8. 멀티",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 2978,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "multi-panel-peek",
+      "label": "멀티 — 첫 지시 호버 peek",
+      "area": "8. 멀티",
+      "ok": false,
+      "skipped": true,
+      "reason": "peek은 그 패널의 첫 지시(대화)가 있어야 그린다 — 빈 그리드에선 미표시이고, 채우려면 패널마다 엔진 턴이 필요(5턴 예산 밖)"
+    },
+    {
+      "id": "multi-panel-running",
+      "label": "멀티 — 패널 실행 중",
+      "area": "8. 멀티",
+      "ok": false,
+      "skipped": true,
+      "reason": "패널 실행 턴 필요 — 엔진 예산은 본채팅 대표 3화면에 배정"
+    },
+    {
+      "id": "multi-panel-done-ring",
+      "label": "멀티 — 진짜 완료 링",
+      "area": "8. 멀티",
+      "ok": false,
+      "skipped": true,
+      "reason": "위와 같음 — 턴 종료+bg 정리까지 필요"
+    },
+    {
+      "id": "multi-panel-question",
+      "label": "멀티 — 패널 스코프 질문 카드",
+      "area": "8. 멀티",
+      "ok": false,
+      "skipped": true,
+      "reason": "AskUserQuestion 재현 비결정적 + 패널 실행 턴 필요"
+    },
+    {
+      "id": "multi-panel-permission",
+      "label": "멀티 — 패널 스코프 승인 카드",
+      "area": "8. 멀티",
+      "ok": false,
+      "skipped": true,
+      "reason": "패널 실행 턴 필요 — 엔진 예산 밖(본채팅 permission-card로 대표)"
+    },
+    {
+      "id": "multi-panel-workflow-dock",
+      "label": "멀티 — 패널 워크플로 도크",
+      "area": "8. 멀티",
+      "ok": false,
+      "skipped": true,
+      "reason": "워크플로 상주 실행 필요 — workflow-dock과 같은 사유"
+    },
+    {
+      "id": "session-window-welcome",
+      "label": "추가 채팅 창 — 웰컴",
+      "area": "9. 독립 창",
+      "surface": "session-window",
+      "ok": true,
+      "ms": 4149,
+      "found": 1,
+      "png": [
+        560,
+        720
+      ],
+      "viewport": [
+        560,
+        720
+      ]
+    },
+    {
+      "id": "session-window-btw",
+      "label": "btw 질문 창 — 이어받기 안내 웰컴",
+      "area": "9. 독립 창",
+      "surface": "session-window",
+      "ok": true,
+      "ms": 4895,
+      "found": 1,
+      "png": [
+        560,
+        720
+      ],
+      "viewport": [
+        560,
+        720
+      ]
+    },
+    {
+      "id": "session-window-thread",
+      "label": "추가 채팅 창 — 대화 스레드",
+      "area": "9. 독립 창",
+      "ok": false,
+      "skipped": true,
+      "reason": "추가 채팅 창에서 실제 턴을 돌려야 스레드가 생긴다 — 엔진 예산 밖"
+    },
+    {
+      "id": "panel-window-viewer",
+      "label": "팝아웃 창 안의 코드 뷰어",
+      "area": "9. 독립 창",
+      "ok": false,
+      "skipped": true,
+      "reason": "팝아웃 창엔 탐색기가 없어 파일을 여는 진입점이 스레드의 파일 링크뿐 — 그 링크를 만들려면 그 패널에서 실행 턴이 필요"
+    },
+    {
+      "id": "toast-single",
+      "label": "알림 토스트 — 단건 상세 카드",
+      "area": "10. 알림",
+      "surface": "toast",
+      "ok": true,
+      "ms": 4346,
+      "found": 1,
+      "png": [
+        360,
+        109
+      ],
+      "viewport": [
+        360,
+        109
+      ]
+    },
+    {
+      "id": "toast-aggregate",
+      "label": "알림 토스트 — 집계 행",
+      "area": "10. 알림",
+      "surface": "toast",
+      "ok": true,
+      "ms": 5591,
+      "found": 1,
+      "png": [
+        360,
+        172
+      ],
+      "viewport": [
+        360,
+        172
+      ]
+    },
+    {
+      "id": "tray-menu",
+      "label": "트레이 우클릭 메뉴 창",
+      "area": "10. 알림",
+      "ok": false,
+      "skipped": true,
+      "reason": "트레이 아이콘 우클릭은 셸(Explorer) 알림 영역의 OS 이벤트라 CDP로 합성 불가 — Win32 자동화(UIAutomation) 없이는 트리거 자체가 안 된다"
+    },
+    {
+      "id": "engine-gate-prompt",
+      "label": "엔진 미설치 안내 카드",
+      "area": "10. 알림",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 1673,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ]
+    },
+    {
+      "id": "engine-gate-install",
+      "label": "엔진 설치 로그 카드",
+      "area": "10. 알림",
+      "ok": false,
+      "skipped": true,
+      "reason": "게이트에서 설치를 누르면 실제로 엔진을 내려받는다(네트워크·수백 MB) — 벤치 금지"
+    },
+    {
+      "id": "engine-update-gate",
+      "label": "엔진 자동 업데이트 카드",
+      "area": "10. 알림",
+      "ok": false,
+      "skipped": true,
+      "reason": "engine-auto-update.enabled + 구버전 엔진 조합이 필요한데, engines는 실홈과 정션 공유라 버전을 조작하면 사용자 실사용 설치본이 바뀐다"
+    },
+    {
+      "id": "app-update-gate",
+      "label": "앱 업데이트 바",
+      "area": "10. 알림",
+      "ok": false,
+      "skipped": true,
+      "reason": "업데이트 서버가 새 버전을 보고해야 뜬다 — 서버 응답을 벤치가 위조하려면 네트워크 가로채기가 필요"
+    },
+    {
+      "id": "update-splash",
+      "label": "업데이트 적용 스플래시",
+      "area": "10. 알림",
+      "ok": false,
+      "skipped": true,
+      "reason": "Electron 밖 프로세스(cmd /c powershell WPF 창)라 CDP 타깃이 없다 — 데스크톱 캡처로만 판정 가능"
+    },
+    {
+      "id": "error-boundary",
+      "label": "에러 안전망 카드",
+      "area": "1. 부팅",
+      "surface": "main-window",
+      "ok": true,
+      "ms": 12593,
+      "found": 1,
+      "png": [
+        1320,
+        880
+      ],
+      "viewport": [
+        1320,
+        880
+      ],
+      "dirtyAfterReset": [
+        ".eb-card"
+      ],
+      "reloadedAfter": true
+    }
+  ],
+  "canvasSettled": true,
+  "mergedFrom": "2026-08-25T05:51:35.806Z",
+  "summary": {
+    "defined": 156,
+    "attempted": 121,
+    "ok": 120,
+    "failed": 1,
+    "skipped": 35,
+    "successRatePct": 99.2
+  },
+  "canvasComparedWith": {
+    "app": "electron-2.6.2",
+    "at": "2026-08-25T06:12:55.707Z",
+    "rows": 121
+  },
+  "canvasMismatch": [
+    "toast-single [360,109]≠[344,103]",
+    "toast-aggregate [360,172]≠[344,164]"
+  ]
+}

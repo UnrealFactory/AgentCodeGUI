@@ -1,0 +1,134 @@
+{
+  "app": "tauri-3.0.0",
+  "kind": "tauri",
+  "at": "2026-08-25T06:23:29.646Z",
+  "exe": "C:\\Temp\\ccg-r28e\\target\\release\\agentcodegui.exe",
+  "home": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-r28e-press-tauri",
+  "pid": 40204,
+  "cases": {
+    "account": {
+      "tab": "Account",
+      "before": {
+        "antRows": 0,
+        "cards": 6,
+        "addBtns": 2,
+        "emails": [
+          ".AnthropicLlmg56634@gmail.com",
+          "Llmg56635@gmail.comMax",
+          "Llmg56630@gmail.comMax",
+          "Jjunelius@naver.comMax",
+          "Llmg56632@gmail.comMax",
+          "Llmg56631@gmail.comMax"
+        ],
+        "sortBtns": [
+          "초기화 임박순",
+          "한도 적게 남은순",
+          "삭제",
+          "맨 위로",
+          "삭제",
+          "맨 위로",
+          "삭제",
+          "맨 위로",
+          "삭제",
+          "맨 위로",
+          "삭제",
+          "맨 위로",
+          "삭제",
+          "계정 추가",
+          "계정 추가"
+        ]
+      },
+      "apiBefore": {
+        "ant": [
+          "lmg56634@gmail.com",
+          "lmg56635@gmail.com",
+          "lmg56630@gmail.com",
+          "junelius@naver.com",
+          "lmg56632@gmail.com",
+          "lmg56631@gmail.com"
+        ],
+        "cx": []
+      }
+    },
+    "codex-reorder": {
+      "cxBefore": [],
+      "reorderReturns": {
+        "isArray": true,
+        "n": 0,
+        "emails": []
+      },
+      "antReorderReturns": {
+        "isArray": true,
+        "n": 6
+      }
+    },
+    "codex-login": {
+      "tab": "Account",
+      "addRows": [
+        "계정 추가",
+        "계정 추가"
+      ],
+      "pressed": true,
+      "msAfterPress": 4018,
+      "busySpinner": 0,
+      "cxRowsAfter": 0,
+      "newWindows": [
+        "AgentCodeGUI3",
+        "",
+        "io.rookiss.workspace-siw",
+        ""
+      ],
+      "shimWarnsNow": [
+        "[shim] codex-auth:reorder-accounts — 백엔드 미구현 채널 (3.0 M1: 안전값 반환)",
+        "[shim] codex-auth:login — 백엔드 미구현 채널 (3.0 M1: 안전값 반환)"
+      ]
+    },
+    "limit-pop": {
+      "clicked": true,
+      "popText": "컨텍스트120K / 1M 토큰현재 컨텍스트이 대화가 차지하는 컨텍스트 창12%5시간 한도데이터 없음—주간 한도데이터 없음—토큰 사용량입력 0 · 출력 0 · 캐시 00",
+      "prows": 4,
+      "hasNoData": true
+    },
+    "attach-plus": {
+      "before": [
+        "AgentCodeGUI3",
+        "",
+        "io.rookiss.workspace-siw",
+        ""
+      ],
+      "btnFound": 1,
+      "dialogWindows": [
+        "÷���� ���� ����"
+      ],
+      "opened": true,
+      "afterClose": [
+        "AgentCodeGUI3",
+        "",
+        "io.rookiss.workspace-siw",
+        ""
+      ]
+    },
+    "ctrl-w-pre": {
+      "opened": true
+    },
+    "error-boundary": {
+      "selected": "no-item",
+      "beforeReload": {
+        "eb": 0,
+        "sbItems": 0,
+        "win": 1
+      },
+      "afterReload": {
+        "eb": 0,
+        "sbItems": 0,
+        "win": 1,
+        "chat": 1
+      },
+      "stuck": false
+    }
+  },
+  "shimWarns": [
+    "[shim] codex-auth:reorder-accounts — 백엔드 미구현 채널 (3.0 M1: 안전값 반환)",
+    "[shim] codex-auth:login — 백엔드 미구현 채널 (3.0 M1: 안전값 반환)"
+  ]
+}
