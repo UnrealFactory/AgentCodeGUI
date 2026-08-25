@@ -149,6 +149,15 @@ const EXE: &str = "claude";
 /// `claude.exe`를 안 봤다(CPATH 확인 크리틱 R1 §4). 그 상태로 이 교체를 했으면 전역 PATH
 /// claude 사용자(이 컴퓨터: `C:\Users\User\.local\bin\claude.exe`)가 **로그인·로그아웃(=토큰
 /// 해지)·AI 커밋 메시지에서 전부 막혔다.** 그래서 `scan_path`를 먼저 고쳤다.
+///
+/// ## 「PATH만 보면 된다」도 거짓이었다 (★R28d EXTN R1)
+///
+/// R1은 이 함수를 `resolve_bin`으로 바꾸면서 그것이 **`PATH`만** 훑는다는 사실을 안 봤다.
+/// 턴 스폰은 `Command::new(맨 이름)`이고 그건 `PATH`보다 **실행 파일이 있는 폴더**를 먼저
+/// 본다 — 그래서 「앱 exe 옆에만 claude가 있는」 판에서 이 함수는 `None`(로그인 실패 문구 ·
+/// **로그아웃의 토큰 해지 생략**)인데 같은 이름의 스폰은 성공했다(EXTN 확인 크리틱 R1 §2.1).
+/// 이제 `resolve_bin`의 폴더 목록에 그 한 칸이 들어갔고(`search_dirs`), 반대편인
+/// `engine/hub.rs`의 턴 스폰도 [`claude_spawn_bin`]을 지난다 — 두 자리가 **한 함수**다.
 pub fn claude_exe() -> Option<PathBuf> {
     ccg_engine::codex::versions::resolve_bin(&claude_bin())
 }

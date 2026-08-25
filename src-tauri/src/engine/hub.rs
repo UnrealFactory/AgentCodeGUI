@@ -286,8 +286,18 @@ impl RouteCache {
 /// activeVersion + 실행 파일 존재 → 없으면 PATH). 계정 팔이 `claude auth login`을
 /// 조립할 때 같은 실행 파일을 써야 하는데, 그 경로가 두 곳에 적혀 있으면 한쪽만
 /// 고쳐지는 순간 "채팅은 도는데 로그인만 안 되는" 상태가 태어난다.
+///
+/// ★R28d EXTN R1 — **위 주석이 경고한 그 상태가 R28d R1에서 실제로 태어났다.**
+/// 계정 팔은 `claude_exe()`(= PATH 훑기)로 갈아탔는데 이 줄만 맨 이름 `claude.exe`를
+/// 그대로 넘겼고, `Command::new(맨 이름)`은 `PATH`보다 **실행 파일이 있는 폴더**를 먼저
+/// 본다(`ccg_engine::codex::versions::search_dirs`의 실측). 그래서 「앱 exe 옆에만 claude가
+/// 있는」 판에서 턴은 뜨는데 로그인은 「실행 파일을 찾지 못했어요」였고 **로그아웃이 토큰
+/// 해지를 조용히 건너뛰었다**(EXTN 확인 크리틱 R1 §2.1). 이제 두 자리가 **같은 함수**를
+/// 지난다 — 여기는 `claude_spawn_bin()`(해석된 실물 · 못 찾으면 옛 인자 그대로),
+/// 계정·커밋 메시지는 `claude_exe()`, 그 둘은 `resolve_bin` 한 벌이다.
+/// codex 축이 R28c에 이미 밟은 규약(`spawn_bin()`)과 같은 모양이다.
 fn cli_path() -> std::path::PathBuf {
-    super::versions::claude_bin()
+    super::versions::claude_spawn_bin()
 }
 
 impl Hub {
