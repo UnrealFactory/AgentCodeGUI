@@ -1,0 +1,82 @@
+{
+  "at": "2026-08-25T13:01:08.616Z",
+  "exe": "C:\\Code\\AgentCodeGUI\\target-r28h-m10\\release\\agentcodegui.exe",
+  "tag": "r7n6e",
+  "port0": 11750,
+  "stamp": {
+    "at": "2026-08-25T13:01:08.616Z",
+    "host": "DESKTOP-SEAPM9E",
+    "exe": {
+      "path": "C:\\Code\\AgentCodeGUI\\target-r28h-m10\\release\\agentcodegui.exe",
+      "sha256": "cd5597a534efe6040784ac2f3724cb449dcd7a82f8927f78243f96f7656205b4",
+      "bytes": 6600192,
+      "mtime": "2026-08-25T12:07:52.303Z"
+    },
+    "git": {
+      "head": "0f20aad50daa09a59695fd71c77ffc9d621a3fe1",
+      "branch": "feature/3.0.0-beta",
+      "dirty": []
+    },
+    "tag": "r7n6e",
+    "only": "N6",
+    "policyArg": "ask",
+    "fingerprint": {
+      "ok": true,
+      "hashes": {
+        "envelope.plan": {
+          "sha256": "e8159c094511d0ff64ecaad6c8b5845ba838b981dfe397ea7b7deedb329ebf4d",
+          "bytes": 12198
+        },
+        "envelope.normal": {
+          "sha256": "22562cabf0d3c72b6da8bed45df96cbac7780804c17adb1f50886d92e23b9b1e",
+          "bytes": 11215
+        },
+        "envelope.planSpoof": {
+          "sha256": "a16f59942f578cb84d66452d0fa7127eed255dc14dd87ef54f990d44d90154b7",
+          "bytes": 12364
+        },
+        "guide": {
+          "sha256": "960e226ee335ce8d7753b9466898bb5f7f3f53eb5ced7a145ad99136114c2f04",
+          "bytes": 1454
+        },
+        "refusalReply": {
+          "sha256": "297efb83336843275eb5389671486b1f4489169ad675d79caa4ed54f1cb3c169",
+          "bytes": 107
+        },
+        "declineReply": {
+          "sha256": "8a570cd85e8a1ec54c39ecee63e05fccbffadd47180950aec7e4217fb29f001d",
+          "bytes": 77
+        }
+      },
+      "skeletons": {
+        "envelope.plan": "b6c9b9f553202d92875bb9d7bd7e291df8028f219709e32e6c28d0aed768c261",
+        "envelope.normal": "3d09041667fa953c8905d23a4db2076916c34ece9f80c600f8f7947824befe5f",
+        "envelope.planSpoof": "05f844e0012ccbfe0a8ec83d30c277a30fc0d4414ea9eb67e0fca196671aec3a"
+      },
+      "mismatch": [],
+      "missing": [],
+      "bypassed": false
+    }
+  },
+  "attacks": {
+    "N6-거절무기화": {
+      "id": "N6-거절무기화",
+      "home": "C:\\Code\\AgentCodeGUI\\.crit-home-m10r2-n6-r7n6e",
+      "attempts": [
+        null,
+        null
+      ],
+      "sent": null,
+      "note": "발신 안 됨(→) — 수신 벽을 재지 못했다"
+    }
+  },
+  "broken": [],
+  "account": {
+    "expiresAt": "2026-08-25T19:54:52.152Z",
+    "msLeft": 24823485,
+    "expired": false,
+    "refreshExpiresAt": "2026-09-23T00:04:43.152Z"
+  },
+  "ms": 13865,
+  "verdict": "HELD"
+}
