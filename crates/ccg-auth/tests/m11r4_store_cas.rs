@@ -364,9 +364,12 @@ fn a_lock_unaware_neighbour_cannot_undo_a_logout() {
     );
     // ★R28d(CASX R4) — 이 라운드가 새로 세운 겹의 장부. 앞의 줄이 「무엇을 봤나」라면
     // 이 줄은 「보고 무엇을 안 했나」다(확인 크리틱 R3의 §3-1·§3-2·§3-3이 각각 여기 온다).
+    // ★R28f — `못가름`을 같이 낸다. 부하에서 이 수가 0이 아니면 동률 세대의 새 가름이
+    // 실제로 일한 것이고, 그만큼의 판이 「지우는 쪽」으로 골라진 것이다(로그에 사유 한 줄씩).
     println!(
-        "[r4-cas] 이 라운드가 세운 겹: 세대증표로 안지움={} · 끝내못앉힘={} · 오독통짜라 안받음={} · 예산까지보고접음={}",
+        "[r4-cas] 이 라운드가 세운 겹: 세대증표로 안지움={} · ★못가름={} · 끝내못앉힘={} · 근거못짚음={} · 예산까지보고접음={}",
         claude::bury_stats::moved_on(),
+        claude::bury_stats::unsure(),
         claude::bury_stats::gave_up(),
         claude::bury_stats::refused(),
         claude::bury_stats::watched_out()
