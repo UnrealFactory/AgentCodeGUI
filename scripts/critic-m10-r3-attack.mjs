@@ -160,7 +160,14 @@ async function boot(home, port, env = {}) {
     await j(`await window.__TAURI_INTERNALS__.invoke('ipc_call', { channel: ${JSON.stringify(ch)}, payload: ${JSON.stringify(payload)} })`)
   // ★R28h R7 — **문면 선점검**(§scripts/critic-m10-stamp.mjs). 안전 수치도 「어느 문면에서
   // 0뚫림이었나」를 못 말하면 다음 라운드에 못 넘긴다 — R6의 기능 수치가 그렇게 오염됐다.
-  await pinCheck(call)
+  // 던질 때는 **내가 띄운 것을 내가 거둔다** — 아직 호출부에 핸들을 안 넘겼으므로
+  // 여기서 안 죽이면 그 앱이 고아가 된다(트랩 1은 이름 기반 kill을 금지하니 더 그렇다).
+  try {
+    await pinCheck(call)
+  } catch (e) {
+    killTree(child.pid)
+    throw e
+  }
   return { child, cdp, j, call, port, log: () => log }
 }
 

@@ -51,6 +51,18 @@ R6이 실패한 지점은 문면이 아니라 **장부**였다. 그래서 모든
 전부 그 함수로 앱을 띄우므로 **어느 갈래도** 다른 문면으로는 못 돈다. 도장 이전 빌드
 (`talk.fingerprint`가 없는 exe)도 같은 자리에서 거부된다 — R6의 24%를 만든 바로 그 exe들이다.
 
+**선점검이 실제로 막는가 — 실측.** 도장 이전 exe로 같은 갈래를 돌려 확인했다:
+
+```
+node scripts/poc-talk.mjs --only=wall --exe=target/release/agentcodegui.exe      --fakecli=target-r28h-m10/release/ccg-fakecli.exe --tag=r7guard
+→ Error: ★문면 선점검 불가 — 이 exe의 engine:debug에 talk.fingerprint가 없다(도장 이전 빌드다).
+    exe: C:CodeAgentCodeGUI	argeteleaseagentcodegui.exe · sha256 4cdf77884071… · mtime 2026-08-24T09:09:47Z
+```
+
+W1 한 칸도 안 돌고 멎었고, **띄운 앱은 그 자리에서 거뒀다**(고아 0 — 던지는 경로에서
+`killTree`를 건다. 트랩 1이 이름 기반 kill을 금지하므로 고아를 남기면 회수할 길이 없다).
+같은 명령을 도장 있는 exe로 돌리면 종전대로 `PASS 0건 · 5.5s`다.
+
 그리고 **와이어에서 한 번 더** 대조한다(주장이 아니라 사실로 만드는 자리): 수신 세션이
 실제로 받은 봉투에서 본문 한 줄을 지운 **골격 해시**가 위 표의 한 칸과 같아야 하고,
 **어느 칸인가**가 권한 하한과 맞아야 한다(`readonly`→`plan` · `ask`→`normal`).

@@ -158,7 +158,15 @@ async function boot(home, port, env = {}) {
   // ★R28h R7 — **여기가 선점검의 유일한 목**이다. 모든 갈래가 이 함수로 앱을 띄우므로,
   // 여기서 막으면 wall·policy·stop·live·inject 어느 쪽도 「기대와 다른 문면」으로는
   // 표본을 한 건도 못 만든다. 실계정 할당량을 태운 뒤에 판본을 세는 것은 이미 늦다.
-  await pinCheck(call)
+  //
+  // 던질 때는 **내가 띄운 것을 내가 거둔다** — 아직 호출부에 핸들을 안 넘겼으므로
+  // 여기서 안 죽이면 그 앱이 고아가 된다(트랩 1은 이름 기반 kill을 금지하니 더 그렇다).
+  try {
+    await pinCheck(call)
+  } catch (e) {
+    killTree(child.pid)
+    throw e
+  }
   return { child, cdp, j, call, log: () => log }
 }
 
