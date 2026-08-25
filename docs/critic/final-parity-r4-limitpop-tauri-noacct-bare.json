@@ -1,0 +1,95 @@
+{
+  "app": "tauri-3.0.0",
+  "kind": "tauri",
+  "arm": "noacct-bare",
+  "withAccount": false,
+  "seededDiskCache": false,
+  "syntheticEmail": null,
+  "at": "2026-08-25T08:47:16.568Z",
+  "settleMs": 8000,
+  "netBlock": "HTTPS_PROXY=http://127.0.0.1:10539 (CONNECT를 502로 끊는 싱크 — 외부로 0바이트)",
+  "discriminator": "심은 디스크 캐시는 5h 42% · 주간 43% · Fable 44% — 닿으면 팝오버가 5행이 되고 42/43/44가 보인다",
+  "safety": "실홈 자격증명 복사 0 · 합성 계정(example.invalid)만 · 실 HTTP 0",
+  "runs": [
+    {
+      "run": 1,
+      "home": "C:\\Temp\\ccg-r28f-audit\\home-lp2-tauri-noacct-bare-1",
+      "userProfileHome": null,
+      "pid": 26960,
+      "at": "2026-08-25T08:47:16.610Z",
+      "accountsRemovedFromFixture": [
+        "accounts.json",
+        "codex-accounts.json"
+      ],
+      "plantedAccount": null,
+      "plantedCacheBytes": null,
+      "plantedCacheSha": null,
+      "acctCount": 0,
+      "acctEmails": "[]",
+      "usageA": "{\"ms\":1,\"v\":\"{\\\"fiveHour\\\":null,\\\"weekly\\\":null,\\\"weeklyFable\\\":null,\\\"extraCredit\\\":null,\\\"unavailable\\\":true}\",\"e\":null}",
+      "usageB": "{\"ms\":1,\"v\":\"{\\\"fiveHour\\\":null,\\\"weekly\\\":null,\\\"weeklyFable\\\":null,\\\"extraCredit\\\":null,\\\"unavailable\\\":true}\",\"e\":null}",
+      "clicked": true,
+      "popText": "컨텍스트120K / 1M 토큰현재 컨텍스트이 대화가 차지하는 컨텍스트 창12%5시간 한도데이터 없음—주간 한도데이터 없음—토큰 사용량입력 0 · 출력 0 · 캐시 00",
+      "prows": 4,
+      "hasNoData": true,
+      "sees42": false,
+      "acctUsage": "{\"ms\":1,\"v\":\"[]\",\"e\":null}",
+      "diskCacheAfter": {
+        "exists": false,
+        "sha": null
+      },
+      "proxyHits": []
+    },
+    {
+      "run": 2,
+      "home": "C:\\Temp\\ccg-r28f-audit\\home-lp2-tauri-noacct-bare-2",
+      "userProfileHome": null,
+      "pid": 42148,
+      "at": "2026-08-25T08:47:30.808Z",
+      "accountsRemovedFromFixture": [
+        "accounts.json",
+        "codex-accounts.json"
+      ],
+      "plantedAccount": null,
+      "plantedCacheBytes": null,
+      "plantedCacheSha": null,
+      "acctCount": 0,
+      "acctEmails": "[]",
+      "usageA": "{\"ms\":1,\"v\":\"{\\\"fiveHour\\\":null,\\\"weekly\\\":null,\\\"weeklyFable\\\":null,\\\"extraCredit\\\":null,\\\"unavailable\\\":true}\",\"e\":null}",
+      "usageB": "{\"ms\":1,\"v\":\"{\\\"fiveHour\\\":null,\\\"weekly\\\":null,\\\"weeklyFable\\\":null,\\\"extraCredit\\\":null,\\\"unavailable\\\":true}\",\"e\":null}",
+      "clicked": true,
+      "popText": "컨텍스트120K / 1M 토큰현재 컨텍스트이 대화가 차지하는 컨텍스트 창12%5시간 한도데이터 없음—주간 한도데이터 없음—토큰 사용량입력 0 · 출력 0 · 캐시 00",
+      "prows": 4,
+      "hasNoData": true,
+      "sees42": false,
+      "acctUsage": "{\"ms\":1,\"v\":\"[]\",\"e\":null}",
+      "diskCacheAfter": {
+        "exists": false,
+        "sha": null
+      },
+      "proxyHits": []
+    }
+  ],
+  "summary": {
+    "runs": 2,
+    "acctCounts": [
+      0
+    ],
+    "prows": [
+      4
+    ],
+    "hasNoData": [
+      true
+    ],
+    "sees42": [
+      false
+    ],
+    "secondUsageCallMs": [
+      1,
+      1
+    ],
+    "gateOpen": false,
+    "proxyHits": 0,
+    "stable": true
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "at": "2026-08-25T08:51:35.316Z",
+  "electron": "42.3.2",
+  "node": "24.15.0",
+  "undici": "7.24.4",
+  "poisoned": {
+    "ms": 20,
+    "error": "Headers.append: \"Bearer synthetic-audit-access-token\nnot-real\" is an invalid header value.",
+    "errorName": "TypeError",
+    "socketsOpened": 0
+  },
+  "socketArgs": []
+}

@@ -91,7 +91,11 @@ try {
   out.probes['shim:codexAuth.login()'] = await api(`window.api.codexAuth.login()`)
   out.probes['shim:codexAuth.logout("nobody@example.invalid")'] = await api(`window.api.codexAuth.logout('nobody@example.invalid')`)
   out.probes['shim:codexAuth.listAccounts()'] = await api(`window.api.codexAuth.listAccounts()`)
-  out.probes['shim:app.openDirectory 구독자'] = await api(`typeof window.api.app.onOpenDirectory`)
+  // ★R4(F4) — R3의 키는 `shim:app.openDirectory 구독자`였는데 실제로 잰 것은 **구독자**
+  //   (`onOpenDirectory`)다. 라벨이 방출자 이름을 달고 있어 다음 독자가 「3.0에 방출자가
+  //   있다」로 읽는다. 이름을 고치고, 방출자 쪽도 **따로** 잰다(런타임 undefined 기대).
+  out.probes['shim:app.onOpenDirectory 구독자'] = await api(`typeof window.api.app.onOpenDirectory`)
+  out.probes['shim:app.openDirectory 방출자'] = await api(`typeof window.api.app.openDirectory`)
 
   // ── 값이 있는가 (T2·T3·H4·M5·M6) ─────────────────────────────────────────
   out.probes['engine.state'] = await api(`window.api.engine.state()`)

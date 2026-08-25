@@ -1,0 +1,42 @@
+{
+  "app": "tauri-3.0.0",
+  "at": "2026-08-25T08:51:50.071Z",
+  "exe": "C:\\Temp\\ccg-r28f-audit\\target\\release\\agentcodegui.exe",
+  "home": "C:\\Temp\\ccg-r28f-audit\\home-raw",
+  "accountsRemoved": [
+    "accounts.json",
+    "codex-accounts.json"
+  ],
+  "pid": 19864,
+  "probes": {
+    "raw:codex-auth:login": "{\"__unimplemented\":true}",
+    "raw:codex-auth:logout": "{\"__unimplemented\":true}",
+    "raw:codex-auth:login-cancel": "{\"__unimplemented\":true}",
+    "raw:codex-auth:reorder-accounts": "{\"__unimplemented\":true}",
+    "raw:codex-auth:set-default-account": "{\"__unimplemented\":true}",
+    "raw:app:open-directory": "{\"__unimplemented\":true}",
+    "raw:app:get-initial-dir": "null",
+    "raw:auth:login-cancel": "null",
+    "raw:auth:reorder-accounts": "[]",
+    "raw:shortcut:close": "null",
+    "raw:ui:open-api-settings": "null",
+    "raw:btw:open": "null",
+    "shim:codexAuth.reorderAccounts([])": "[]",
+    "shim:codexAuth.login()": "[]",
+    "shim:codexAuth.logout(\"nobody@example.invalid\")": "[]",
+    "shim:codexAuth.listAccounts()": "[]",
+    "shim:app.onOpenDirectory 구독자": "\"function\"",
+    "shim:app.openDirectory 방출자": "\"undefined\"",
+    "engine.state": "{\"package\":\"@anthropic-ai/claude-agent-sdk\",\"bundled\":\"unknown\",\"active\":\"0.3.245\",\"installed\":[\"0.3.245\"]}",
+    "engine.listAvailable().latest": "{\"latest\":\"0.3.245\",\"n\":277}",
+    "usage.get(false)": "{\"fiveHour\":null,\"weekly\":null,\"weeklyFable\":null,\"extraCredit\":null,\"unavailable\":true}",
+    "auth.listAccounts()": "0",
+    "codex.models": "[\"gpt-5.6-sol\",\"gpt-5.6-terra\",\"gpt-5.6-luna\",\"gpt-5.5\"]",
+    "git.aiMessage(비-git)": "{\"ok\":false,\"error\":\"Git 저장소가 아니에요\"}"
+  },
+  "shimWarns": [
+    "[shim] codex-auth:reorder-accounts — 백엔드 미구현 채널 (3.0 M1: 안전값 반환)",
+    "[shim] codex-auth:login — 백엔드 미구현 채널 (3.0 M1: 안전값 반환)",
+    "[shim] codex-auth:logout — 백엔드 미구현 채널 (3.0 M1: 안전값 반환)"
+  ]
+}

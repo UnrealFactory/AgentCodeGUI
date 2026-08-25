@@ -1,0 +1,650 @@
+{
+  "at": "2026-08-25T09:01:39.569Z",
+  "what": "한도 축 관측 **전량** — 포함 규칙: 「한도 수치를 보여 주는 표면의 값이 기록된 자리」. 뺀 관측 0건",
+  "rule": "표면 5종(팝오버·usage.get·설정 Account 클로드/Codex 한도·API 과금) + 블라인드 판정 행",
+  "total": 62,
+  "bySeries": {
+    "B": 7,
+    "E": 5,
+    "F": 7,
+    "C": 6,
+    "G": 1,
+    "A": 4,
+    "D": 12,
+    "H": 20
+  },
+  "r3TableCounted": "A+B(apiprobe만)+C+D = 27건 — R3가 「전량」이라 부른 범위",
+  "observations": [
+    {
+      "series": "B",
+      "surface": "usage.get(채널)",
+      "source": "docs/critic/final-parity-r1-apiprobe-tauri.json",
+      "at": "2026-08-24T03:16:49.046Z",
+      "app": "tauri-3.0.0",
+      "prows": null,
+      "hasNoData": true,
+      "note": "nulls"
+    },
+    {
+      "series": "E",
+      "surface": "설정▸Account 한도(auth.accountsUsage)",
+      "source": "docs/critic/final-parity-r1-apiprobe-tauri.json",
+      "at": "2026-08-24T03:16:49.046Z",
+      "app": "tauri-3.0.0",
+      "prows": null,
+      "hasNoData": null,
+      "note": "0행 :: []"
+    },
+    {
+      "series": "F",
+      "surface": "codexAuth.accountsUsage",
+      "source": "docs/critic/final-parity-r1-apiprobe-tauri.json",
+      "at": "2026-08-24T03:16:49.046Z",
+      "app": "tauri-3.0.0",
+      "prows": null,
+      "hasNoData": null,
+      "note": "0행 :: []"
+    },
+    {
+      "series": "F",
+      "surface": "apiConfig.listUsage",
+      "source": "docs/critic/final-parity-r1-apiprobe-tauri.json",
+      "at": "2026-08-24T03:16:49.046Z",
+      "app": "tauri-3.0.0",
+      "prows": null,
+      "hasNoData": null,
+      "note": "0행 :: []"
+    },
+    {
+      "series": "B",
+      "surface": "usage.get(채널)",
+      "source": "docs/critic/final-parity-r1-apiprobe-electron.json",
+      "at": "2026-08-24T03:16:53.837Z",
+      "app": "electron-2.6.2",
+      "prows": null,
+      "hasNoData": false,
+      "note": "실값 (Fable행 有)"
+    },
+    {
+      "series": "E",
+      "surface": "설정▸Account 한도(auth.accountsUsage)",
+      "source": "docs/critic/final-parity-r1-apiprobe-electron.json",
+      "at": "2026-08-24T03:16:53.837Z",
+      "app": "electron-2.6.2",
+      "prows": null,
+      "hasNoData": null,
+      "note": "최소 5행 :: [{\"email\":\"lmg…@…\",\"fiveHourPct\":0,\"weeklyPct\":1"
+    },
+    {
+      "series": "F",
+      "surface": "codexAuth.accountsUsage",
+      "source": "docs/critic/final-parity-r1-apiprobe-electron.json",
+      "at": "2026-08-24T03:16:53.837Z",
+      "app": "electron-2.6.2",
+      "prows": null,
+      "hasNoData": null,
+      "note": "0행 :: []"
+    },
+    {
+      "series": "F",
+      "surface": "apiConfig.listUsage",
+      "source": "docs/critic/final-parity-r1-apiprobe-electron.json",
+      "at": "2026-08-24T03:16:53.837Z",
+      "app": "electron-2.6.2",
+      "prows": null,
+      "hasNoData": null,
+      "note": "0행 :: []"
+    },
+    {
+      "series": "C",
+      "surface": "팝오버(A/B found)",
+      "source": "bench/shots/tauri/report.json",
+      "at": "2026-08-24T03:21:47.331Z",
+      "app": "tauri-3.0.0",
+      "prows": 4,
+      "hasNoData": true,
+      "note": "ok=true · mergedFrom 2026-08-24T03:00:03.306Z"
+    },
+    {
+      "series": "C",
+      "surface": "팝오버(A/B found)",
+      "source": "bench/shots/electron/report.json",
+      "at": "2026-08-24T03:24:05.491Z",
+      "app": "electron-2.6.2",
+      "prows": 5,
+      "hasNoData": false,
+      "note": "ok=true · mergedFrom 2026-08-24T03:07:25.088Z"
+    },
+    {
+      "series": "G",
+      "surface": "블라인드 판정(workbar-context-pop)",
+      "source": "docs/critic/final-parity-r1-blind.json",
+      "at": "2026-08-24T03:36:32.682Z",
+      "app": "judge:2.6.2",
+      "prows": null,
+      "hasNoData": null,
+      "note": "A는 5시간/주간 한도가 '데이터 없음', Fable 행 자체가 없음. B는 %·초기화 시각·게이지"
+    },
+    {
+      "series": "C",
+      "surface": "팝오버(A/B found)",
+      "source": "bench/shots/electron-r28e/report.json",
+      "at": "2026-08-25T06:12:55.707Z",
+      "app": "electron-2.6.2",
+      "prows": 4,
+      "hasNoData": true,
+      "note": "ok=true · mergedFrom 2026-08-25T05:55:18.128Z"
+    },
+    {
+      "series": "C",
+      "surface": "팝오버(A/B found)",
+      "source": "bench/shots/tauri-r28e/report.json",
+      "at": "2026-08-25T06:16:50.513Z",
+      "app": "tauri-3.0.0",
+      "prows": 5,
+      "hasNoData": false,
+      "note": "ok=true · mergedFrom 2026-08-25T05:51:35.806Z"
+    },
+    {
+      "series": "B",
+      "surface": "usage.get(채널)",
+      "source": "docs/critic/final-parity-r2-apiprobe-tauri.json",
+      "at": "2026-08-25T06:21:24.234Z",
+      "app": "tauri-3.0.0",
+      "prows": null,
+      "hasNoData": false,
+      "note": "실값 (Fable행 有)"
+    },
+    {
+      "series": "E",
+      "surface": "설정▸Account 한도(auth.accountsUsage(cachedOnly))",
+      "source": "docs/critic/final-parity-r2-apiprobe-tauri.json",
+      "at": "2026-08-25T06:21:24.234Z",
+      "app": "tauri-3.0.0",
+      "prows": null,
+      "hasNoData": null,
+      "note": "6행 :: [{\"e\":\"lmg\"},{\"e\":\"lmg\"},{\"e\":\"lmg\"},{\"e\":\"jun\"},{\"e\":\"lmg\"}"
+    },
+    {
+      "series": "F",
+      "surface": "codexAuth.accountsUsage",
+      "source": "docs/critic/final-parity-r2-apiprobe-tauri.json",
+      "at": "2026-08-25T06:21:24.234Z",
+      "app": "tauri-3.0.0",
+      "prows": null,
+      "hasNoData": null,
+      "note": "0행 :: []"
+    },
+    {
+      "series": "B",
+      "surface": "usage.get(채널)",
+      "source": "docs/critic/final-parity-r2-apiprobe-electron.json",
+      "at": "2026-08-25T06:22:08.163Z",
+      "app": "electron-2.6.2",
+      "prows": null,
+      "hasNoData": true,
+      "note": "nulls"
+    },
+    {
+      "series": "E",
+      "surface": "설정▸Account 한도(auth.accountsUsage(cachedOnly))",
+      "source": "docs/critic/final-parity-r2-apiprobe-electron.json",
+      "at": "2026-08-25T06:22:08.163Z",
+      "app": "electron-2.6.2",
+      "prows": null,
+      "hasNoData": null,
+      "note": "수치 아님 :: \"(2.6.2에서는 안 부른다 — cachedOnly 옵션이 없어 6계정 실조회 = 토큰 회전 위험)\""
+    },
+    {
+      "series": "F",
+      "surface": "codexAuth.accountsUsage",
+      "source": "docs/critic/final-parity-r2-apiprobe-electron.json",
+      "at": "2026-08-25T06:22:08.163Z",
+      "app": "electron-2.6.2",
+      "prows": null,
+      "hasNoData": null,
+      "note": "0행 :: []"
+    },
+    {
+      "series": "B",
+      "surface": "usage.get(채널)",
+      "source": "docs/critic/final-parity-r2-apiprobe-tauri-nonet.json",
+      "at": "2026-08-25T06:22:33.442Z",
+      "app": "tauri-3.0.0",
+      "prows": null,
+      "hasNoData": true,
+      "note": "nulls+unavailable"
+    },
+    {
+      "series": "E",
+      "surface": "설정▸Account 한도(auth.accountsUsage(cachedOnly))",
+      "source": "docs/critic/final-parity-r2-apiprobe-tauri-nonet.json",
+      "at": "2026-08-25T06:22:33.442Z",
+      "app": "tauri-3.0.0",
+      "prows": null,
+      "hasNoData": null,
+      "note": "최소 5행 :: [\"{\\\"email\\\":\\\"lmg…@…\\\",\\\"fiveHourPct\\\":0,\\\"week"
+    },
+    {
+      "series": "F",
+      "surface": "codexAuth.accountsUsage",
+      "source": "docs/critic/final-parity-r2-apiprobe-tauri-nonet.json",
+      "at": "2026-08-25T06:22:33.442Z",
+      "app": "tauri-3.0.0",
+      "prows": null,
+      "hasNoData": null,
+      "note": "0행 :: []"
+    },
+    {
+      "series": "A",
+      "surface": "팝오버(press)",
+      "source": "docs/critic/final-parity-r2-press-tauri.json",
+      "at": "2026-08-25T06:23:29.646Z",
+      "app": "tauri-3.0.0",
+      "home": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-r28e-press-tauri",
+      "prows": 4,
+      "hasNoData": true,
+      "note": "컨텍스트120K / 1M 토큰현재 컨텍스트이 대화가 차지하는 컨텍스트 창12%5시간 한도데이터 없음—주간 한도데이터 없음—토큰 사용량입력 0 · 출력 0 · 캐시"
+    },
+    {
+      "series": "A",
+      "surface": "팝오버(press)",
+      "source": "docs/critic/final-parity-r2-press-tauri-eb.json",
+      "at": "2026-08-25T06:24:45.408Z",
+      "app": "tauri-3.0.0",
+      "home": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-r28e-press-tauri",
+      "prows": 5,
+      "hasNoData": false,
+      "note": "컨텍스트120K / 1M 토큰현재 컨텍스트이 대화가 차지하는 컨텍스트 창12%5시간 한도초기화 시간 미상100% 남음Fable 주간 한도1일 7시간 후 초기화67"
+    },
+    {
+      "series": "A",
+      "surface": "팝오버(press)",
+      "source": "docs/critic/final-parity-r2-press-electron-eb.json",
+      "at": "2026-08-25T06:25:21.645Z",
+      "app": "electron-2.6.2",
+      "home": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-r28e-press-electron",
+      "prows": 4,
+      "hasNoData": true,
+      "note": "컨텍스트120K / 1M 토큰현재 컨텍스트이 대화가 차지하는 컨텍스트 창12%5시간 한도데이터 없음—주간 한도데이터 없음—토큰 사용량입력 0 · 출력 0 · 캐시"
+    },
+    {
+      "series": "A",
+      "surface": "팝오버(press)",
+      "source": "docs/critic/final-parity-r2-press-electron-limit2.json",
+      "at": "2026-08-25T06:27:49.844Z",
+      "app": "electron-2.6.2",
+      "home": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-r28e-press-electron",
+      "prows": 4,
+      "hasNoData": true,
+      "note": "컨텍스트120K / 1M 토큰현재 컨텍스트이 대화가 차지하는 컨텍스트 창12%5시간 한도데이터 없음—주간 한도데이터 없음—토큰 사용량입력 0 · 출력 0 · 캐시"
+    },
+    {
+      "series": "C",
+      "surface": "팝오버(A/B found)",
+      "source": "bench/shots/tauri-r28e2/report.json",
+      "at": "2026-08-25T06:29:42.874Z",
+      "app": "tauri-3.0.0",
+      "prows": 5,
+      "hasNoData": false,
+      "note": "ok=true"
+    },
+    {
+      "series": "C",
+      "surface": "팝오버(A/B found)",
+      "source": "bench/shots/tauri-r28ex/report.json",
+      "at": "2026-08-25T06:35:59.586Z",
+      "app": "tauri-3.0.0",
+      "prows": 4,
+      "hasNoData": true,
+      "note": "ok=true"
+    },
+    {
+      "series": "D",
+      "surface": "팝오버(R3 seeded)",
+      "source": "docs/critic/final-parity-r3-limitpop-tauri-seeded.json#run1",
+      "at": "2026-08-25T07:45:46.162Z",
+      "app": "tauri-3.0.0",
+      "prows": 4,
+      "hasNoData": true,
+      "note": "계정 0개 · usage-cache 1682B · nulls+unavailable"
+    },
+    {
+      "series": "D",
+      "surface": "팝오버(R3 seeded·USERPROFILE 격리)",
+      "source": "docs/critic/final-parity-r3-limitpop-electron-seeded.json#run1",
+      "at": "2026-08-25T07:45:50.430Z",
+      "app": "electron-2.6.2",
+      "prows": 4,
+      "hasNoData": true,
+      "note": "계정 0개 · usage-cache 1682B · nulls"
+    },
+    {
+      "series": "D",
+      "surface": "팝오버(R3 seeded)",
+      "source": "docs/critic/final-parity-r3-limitpop-tauri-seeded.json#run2",
+      "at": "2026-08-25T07:46:02.388Z",
+      "app": "tauri-3.0.0",
+      "prows": 4,
+      "hasNoData": true,
+      "note": "계정 0개 · usage-cache 1682B · nulls+unavailable"
+    },
+    {
+      "series": "D",
+      "surface": "팝오버(R3 seeded·USERPROFILE 격리)",
+      "source": "docs/critic/final-parity-r3-limitpop-electron-seeded.json#run2",
+      "at": "2026-08-25T07:46:06.750Z",
+      "app": "electron-2.6.2",
+      "prows": 4,
+      "hasNoData": true,
+      "note": "계정 0개 · usage-cache 1682B · nulls"
+    },
+    {
+      "series": "D",
+      "surface": "팝오버(R3 seeded)",
+      "source": "docs/critic/final-parity-r3-limitpop-tauri-seeded.json#run3",
+      "at": "2026-08-25T07:46:18.517Z",
+      "app": "tauri-3.0.0",
+      "prows": 4,
+      "hasNoData": true,
+      "note": "계정 0개 · usage-cache 1682B · nulls+unavailable"
+    },
+    {
+      "series": "D",
+      "surface": "팝오버(R3 seeded·USERPROFILE 격리)",
+      "source": "docs/critic/final-parity-r3-limitpop-electron-seeded.json#run3",
+      "at": "2026-08-25T07:46:23.124Z",
+      "app": "electron-2.6.2",
+      "prows": 4,
+      "hasNoData": true,
+      "note": "계정 0개 · usage-cache 1682B · nulls"
+    },
+    {
+      "series": "D",
+      "surface": "팝오버(R3 bare)",
+      "source": "docs/critic/final-parity-r3-limitpop-tauri-bare.json#run1",
+      "at": "2026-08-25T07:46:53.938Z",
+      "app": "tauri-3.0.0",
+      "prows": 4,
+      "hasNoData": true,
+      "note": "계정 0개 · usage-cache 0B · nulls+unavailable"
+    },
+    {
+      "series": "D",
+      "surface": "팝오버(R3 bare·USERPROFILE 격리)",
+      "source": "docs/critic/final-parity-r3-limitpop-electron-bare.json#run1",
+      "at": "2026-08-25T07:46:57.287Z",
+      "app": "electron-2.6.2",
+      "prows": 4,
+      "hasNoData": true,
+      "note": "계정 0개 · usage-cache 0B · nulls"
+    },
+    {
+      "series": "D",
+      "surface": "팝오버(R3 bare)",
+      "source": "docs/critic/final-parity-r3-limitpop-tauri-bare.json#run2",
+      "at": "2026-08-25T07:47:10.152Z",
+      "app": "tauri-3.0.0",
+      "prows": 4,
+      "hasNoData": true,
+      "note": "계정 0개 · usage-cache 0B · nulls+unavailable"
+    },
+    {
+      "series": "D",
+      "surface": "팝오버(R3 bare·USERPROFILE 격리)",
+      "source": "docs/critic/final-parity-r3-limitpop-electron-bare.json#run2",
+      "at": "2026-08-25T07:47:13.662Z",
+      "app": "electron-2.6.2",
+      "prows": 4,
+      "hasNoData": true,
+      "note": "계정 0개 · usage-cache 0B · nulls"
+    },
+    {
+      "series": "D",
+      "surface": "팝오버(R3 bare)",
+      "source": "docs/critic/final-parity-r3-limitpop-tauri-bare.json#run3",
+      "at": "2026-08-25T07:47:26.288Z",
+      "app": "tauri-3.0.0",
+      "prows": 4,
+      "hasNoData": true,
+      "note": "계정 0개 · usage-cache 0B · nulls+unavailable"
+    },
+    {
+      "series": "D",
+      "surface": "팝오버(R3 bare·USERPROFILE 격리)",
+      "source": "docs/critic/final-parity-r3-limitpop-electron-bare.json#run3",
+      "at": "2026-08-25T07:47:29.993Z",
+      "app": "electron-2.6.2",
+      "prows": 4,
+      "hasNoData": true,
+      "note": "계정 0개 · usage-cache 0B · nulls"
+    },
+    {
+      "series": "B",
+      "surface": "usage.get(false)(채널)",
+      "source": "docs/critic/final-parity-r3-rawprobe.json",
+      "at": "2026-08-25T07:51:41.454Z",
+      "app": "tauri-3.0.0",
+      "prows": null,
+      "hasNoData": true,
+      "note": "nulls+unavailable"
+    },
+    {
+      "series": "H",
+      "surface": "팝오버(R4 synth-seeded)",
+      "source": "docs/critic/final-parity-r4-limitpop-tauri-synth-seeded.json#run1",
+      "at": "2026-08-25T08:45:15.260Z",
+      "app": "tauri-3.0.0",
+      "prows": 4,
+      "hasNoData": true,
+      "note": "계정 1개 · 2차 usage:get 1201ms · 프록시 CONNECT 5 · nulls+unavailable"
+    },
+    {
+      "series": "H",
+      "surface": "팝오버(R4 synth-seeded)",
+      "source": "docs/critic/final-parity-r4-limitpop-tauri-synth-seeded.json#run2",
+      "at": "2026-08-25T08:45:30.795Z",
+      "app": "tauri-3.0.0",
+      "prows": 4,
+      "hasNoData": true,
+      "note": "계정 1개 · 2차 usage:get 1201ms · 프록시 CONNECT 5 · nulls+unavailable"
+    },
+    {
+      "series": "H",
+      "surface": "팝오버(R4 synth-seeded)",
+      "source": "docs/critic/final-parity-r4-limitpop-tauri-synth-seeded.json#run3",
+      "at": "2026-08-25T08:45:46.209Z",
+      "app": "tauri-3.0.0",
+      "prows": 4,
+      "hasNoData": true,
+      "note": "계정 1개 · 2차 usage:get 1200ms · 프록시 CONNECT 5 · nulls+unavailable"
+    },
+    {
+      "series": "H",
+      "surface": "팝오버(R4 synth-bare)",
+      "source": "docs/critic/final-parity-r4-limitpop-tauri-synth-bare.json#run1",
+      "at": "2026-08-25T08:46:01.819Z",
+      "app": "tauri-3.0.0",
+      "prows": 4,
+      "hasNoData": true,
+      "note": "계정 1개 · 2차 usage:get 1200ms · 프록시 CONNECT 6 · nulls+unavailable"
+    },
+    {
+      "series": "H",
+      "surface": "팝오버(R4 synth-bare)",
+      "source": "docs/critic/final-parity-r4-limitpop-tauri-synth-bare.json#run2",
+      "at": "2026-08-25T08:46:17.264Z",
+      "app": "tauri-3.0.0",
+      "prows": 4,
+      "hasNoData": true,
+      "note": "계정 1개 · 2차 usage:get 1199ms · 프록시 CONNECT 6 · nulls+unavailable"
+    },
+    {
+      "series": "H",
+      "surface": "팝오버(R4 synth-bare)",
+      "source": "docs/critic/final-parity-r4-limitpop-tauri-synth-bare.json#run3",
+      "at": "2026-08-25T08:46:32.719Z",
+      "app": "tauri-3.0.0",
+      "prows": 4,
+      "hasNoData": true,
+      "note": "계정 1개 · 2차 usage:get 1200ms · 프록시 CONNECT 6 · nulls+unavailable"
+    },
+    {
+      "series": "H",
+      "surface": "팝오버(R4 noacct-seeded)",
+      "source": "docs/critic/final-parity-r4-limitpop-tauri-noacct-seeded.json#run1",
+      "at": "2026-08-25T08:46:48.225Z",
+      "app": "tauri-3.0.0",
+      "prows": 4,
+      "hasNoData": true,
+      "note": "계정 0개 · 2차 usage:get 1ms · 프록시 CONNECT 0 · nulls+unavailable"
+    },
+    {
+      "series": "H",
+      "surface": "팝오버(R4 noacct-seeded)",
+      "source": "docs/critic/final-parity-r4-limitpop-tauri-noacct-seeded.json#run2",
+      "at": "2026-08-25T08:47:02.409Z",
+      "app": "tauri-3.0.0",
+      "prows": 4,
+      "hasNoData": true,
+      "note": "계정 0개 · 2차 usage:get 1ms · 프록시 CONNECT 0 · nulls+unavailable"
+    },
+    {
+      "series": "H",
+      "surface": "팝오버(R4 noacct-bare)",
+      "source": "docs/critic/final-parity-r4-limitpop-tauri-noacct-bare.json#run1",
+      "at": "2026-08-25T08:47:16.610Z",
+      "app": "tauri-3.0.0",
+      "prows": 4,
+      "hasNoData": true,
+      "note": "계정 0개 · 2차 usage:get 1ms · 프록시 CONNECT 0 · nulls+unavailable"
+    },
+    {
+      "series": "H",
+      "surface": "팝오버(R4 noacct-bare)",
+      "source": "docs/critic/final-parity-r4-limitpop-tauri-noacct-bare.json#run2",
+      "at": "2026-08-25T08:47:30.808Z",
+      "app": "tauri-3.0.0",
+      "prows": 4,
+      "hasNoData": true,
+      "note": "계정 0개 · 2차 usage:get 1ms · 프록시 CONNECT 0 · nulls+unavailable"
+    },
+    {
+      "series": "H",
+      "surface": "팝오버(R4 synth-seeded)",
+      "source": "docs/critic/final-parity-r4-limitpop-electron-synth-seeded.json#run1",
+      "at": "2026-08-25T08:47:45.031Z",
+      "app": "electron-2.6.2",
+      "prows": 4,
+      "hasNoData": true,
+      "note": "계정 1개 · 2차 usage:get 1204ms · 프록시 CONNECT 0 · nulls"
+    },
+    {
+      "series": "H",
+      "surface": "팝오버(R4 synth-seeded)",
+      "source": "docs/critic/final-parity-r4-limitpop-electron-synth-seeded.json#run2",
+      "at": "2026-08-25T08:48:00.662Z",
+      "app": "electron-2.6.2",
+      "prows": 4,
+      "hasNoData": true,
+      "note": "계정 1개 · 2차 usage:get 1203ms · 프록시 CONNECT 0 · nulls"
+    },
+    {
+      "series": "H",
+      "surface": "팝오버(R4 synth-seeded)",
+      "source": "docs/critic/final-parity-r4-limitpop-electron-synth-seeded.json#run3",
+      "at": "2026-08-25T08:48:16.301Z",
+      "app": "electron-2.6.2",
+      "prows": 4,
+      "hasNoData": true,
+      "note": "계정 1개 · 2차 usage:get 1213ms · 프록시 CONNECT 0 · nulls"
+    },
+    {
+      "series": "H",
+      "surface": "팝오버(R4 synth-bare)",
+      "source": "docs/critic/final-parity-r4-limitpop-electron-synth-bare.json#run1",
+      "at": "2026-08-25T08:48:32.358Z",
+      "app": "electron-2.6.2",
+      "prows": 4,
+      "hasNoData": true,
+      "note": "계정 1개 · 2차 usage:get 1203ms · 프록시 CONNECT 0 · nulls"
+    },
+    {
+      "series": "H",
+      "surface": "팝오버(R4 synth-bare)",
+      "source": "docs/critic/final-parity-r4-limitpop-electron-synth-bare.json#run2",
+      "at": "2026-08-25T08:48:47.960Z",
+      "app": "electron-2.6.2",
+      "prows": 4,
+      "hasNoData": true,
+      "note": "계정 1개 · 2차 usage:get 1214ms · 프록시 CONNECT 0 · nulls"
+    },
+    {
+      "series": "H",
+      "surface": "팝오버(R4 synth-bare)",
+      "source": "docs/critic/final-parity-r4-limitpop-electron-synth-bare.json#run3",
+      "at": "2026-08-25T08:49:03.666Z",
+      "app": "electron-2.6.2",
+      "prows": 4,
+      "hasNoData": true,
+      "note": "계정 1개 · 2차 usage:get 1216ms · 프록시 CONNECT 0 · nulls"
+    },
+    {
+      "series": "H",
+      "surface": "팝오버(R4 noacct-seeded)",
+      "source": "docs/critic/final-parity-r4-limitpop-electron-noacct-seeded.json#run1",
+      "at": "2026-08-25T08:49:19.708Z",
+      "app": "electron-2.6.2",
+      "prows": 4,
+      "hasNoData": true,
+      "note": "계정 0개 · 2차 usage:get 0ms · 프록시 CONNECT 0 · nulls"
+    },
+    {
+      "series": "H",
+      "surface": "팝오버(R4 noacct-seeded)",
+      "source": "docs/critic/final-parity-r4-limitpop-electron-noacct-seeded.json#run2",
+      "at": "2026-08-25T08:49:34.123Z",
+      "app": "electron-2.6.2",
+      "prows": 4,
+      "hasNoData": true,
+      "note": "계정 0개 · 2차 usage:get 0ms · 프록시 CONNECT 0 · nulls"
+    },
+    {
+      "series": "H",
+      "surface": "팝오버(R4 noacct-bare)",
+      "source": "docs/critic/final-parity-r4-limitpop-electron-noacct-bare.json#run1",
+      "at": "2026-08-25T08:49:48.682Z",
+      "app": "electron-2.6.2",
+      "prows": 4,
+      "hasNoData": true,
+      "note": "계정 0개 · 2차 usage:get 0ms · 프록시 CONNECT 0 · nulls"
+    },
+    {
+      "series": "H",
+      "surface": "팝오버(R4 noacct-bare)",
+      "source": "docs/critic/final-parity-r4-limitpop-electron-noacct-bare.json#run2",
+      "at": "2026-08-25T08:50:02.982Z",
+      "app": "electron-2.6.2",
+      "prows": 4,
+      "hasNoData": true,
+      "note": "계정 0개 · 2차 usage:get 0ms · 프록시 CONNECT 0 · nulls"
+    },
+    {
+      "series": "B",
+      "surface": "usage.get(false)(채널)",
+      "source": "docs/critic/final-parity-r4-rawprobe.json",
+      "at": "2026-08-25T08:51:50.071Z",
+      "app": "tauri-3.0.0",
+      "prows": null,
+      "hasNoData": true,
+      "note": "nulls+unavailable"
+    }
+  ],
+  "polarity": {
+    "scope": "A~D(팝오버·usage.get)만 — E~H는 행 수/판정이라 4↔5 극성이 없다",
+    "tauri 값 있음": 4,
+    "tauri 데이터 없음": 13,
+    "electron 값 있음": 2,
+    "electron 데이터 없음": 10
+  }
+}
