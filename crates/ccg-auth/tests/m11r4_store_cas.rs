@@ -201,7 +201,7 @@ mod peer {
 ///
 /// | # | 무엇이 무엇을 이겼나 | 사용자 피해 | 지금 상태 |
 /// |---|---|---|---|
-/// | ① | 갈아끼우는 동안 **파일이 없어 보였다**(ENOENT 6연속·7.2ms) | 이웃이 "계정 0개"로 읽고 그 위에 쓰면 **목록 전체 소멸** | ⚠️ **우리 쪽만 닫혔다** — 이웃의 오독 자체는 동결 트리라 못 고친다. R4가 닫은 것은 **우리가 그것을 대신 실행하지 않는다**까지다(`claude::buried_removals` · 결정적 못 [`a_mis_read_whole_write_never_takes_the_whole_account_list_with_it`]). 우리 쪽 읽기는 `vanished_but_we_know_better`가 막는다 |
+/// | ① | 갈아끼우는 동안 **파일이 없어 보였다**(ENOENT 6연속·7.2ms) | 이웃이 "계정 0개"로 읽고 그 위에 쓰면 **목록 전체 소멸** | ⚠️ **우리 쪽만 닫혔다** — 이웃의 오독 자체는 동결 트리라 못 고친다. R4가 닫은 것은 **우리가 그것을 대신 실행하지 않는다**까지다(★R28e부터 `ccg_auth::ledger::attribute` — R4의 `buried_removals`(개수 규칙)는 진짜 로그아웃까지 죽여서 걷어냈다 · 결정적 못 [`a_mis_read_whole_write_never_takes_the_whole_account_list_with_it`]). 우리 쪽 읽기는 `vanished_but_we_know_better`가 막는다 |
 /// | ② | 그 창에서 이웃의 `CREATE_ALWAYS`가 **새 파일**을 만들고 우리 갈아끼우기가 그걸 덮었다 | 묻힌 줄도 모른 채 로그아웃 취소가 **85ms 지속**(다음 이웃 쓰기까지) | ❌ **기각**(R3) — 실측 유령 inode **0/23,083** · 이웃 열기 실패 0. 진짜 정체는 아래 ④ |
 /// | ③ | 묻힌 것을 찾아 되살리는 동안 로그아웃한 계정이 파일에 앉아 있었다(실측 1.7~7.6ms) | 이웃이 자기 쓰기 1ms 뒤에 다시 읽으면 그걸 본다 | ✅ 창 안의 `eprintln` 제거 + 증인 핸들 물려주기(`open` 350µs 절약) |
 /// | ④ | 이웃의 `CreateFile`이 **우리 `rename`과 첫 판독을 걸터탔다** — 옛 inode는 우리 눈에 "그대로"고 그들의 쓰기는 몇 ms 뒤에 그 이름 없는 inode로 떨어진다 | 로그아웃 취소가 **다음 이웃 쓰기까지 지속** · 우리 로그에는 **한 줄도 안 남는다** | ✅ **R3** — 커밋 뒤 자물쇠 밖 지연 감시(`claude::late_watch`)가 파내 되살리고 사연을 적는다 |
@@ -786,8 +786,12 @@ fn a_dug_up_logout_is_retried_through_the_window_where_the_store_file_is_missing
 /// 지울 목록에 **우리 계정 전부**가 들어간다 — 되살리기가 그걸 실행하면 우리가 이웃의
 /// 버그를 대신 수행하는 셈이고, 살아 있는 계정이 `credEnc`째 통째로 사라진다.
 ///
-/// 가르는 근거는 [수 하나]다: 로그아웃은 계정 **하나**를 지운다(2.6.2 `removeAccount(email)` ·
-/// 3.0 `remove_account`). 둘 이상이 한 번에 사라진 원문은 로그아웃이 아니다.
+/// ★R28e(CASX2) — **가르는 근거가 바뀌었다.** R4는 [수 하나]로 갈랐다(로그아웃은 계정
+/// 하나를 지운다 · 둘 이상이면 오독). 그 규칙이 이웃 스냅샷이 우리 로그인 하나만큼만
+/// 낡아도 걸려 **진짜 로그아웃을 영구히 취소**했다(확인 크리틱 R4 §3-2). 이제 근거는
+/// **「그 원문이 우리 어느 시점 목록에서 나왔나」**다(`ccg_auth::ledger::attribute`).
+/// `{"accounts":[]}`에는 짚을 앵커가 하나도 없으므로 **한 건도 안 지운다** — 그리고
+/// 그 사실을 로그가 사유와 함께 말한다(단정하지 않는다).
 #[test]
 fn a_mis_read_whole_write_never_takes_the_whole_account_list_with_it() {
     let home = ccg_store::testhome::take("r4casx4c");
