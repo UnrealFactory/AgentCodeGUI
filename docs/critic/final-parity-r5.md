@@ -44,6 +44,23 @@
 2.6.2 프로세스 전체의 나가는 소켓을 잡는 장치를 나는 이번에도 안 달았다. 위험은 낮지만(공개
 레지스트리·자격증명 없음) 헤드라인으로 「0건」이라 쓰지 않는다 — **usage 경로만** 0이다.
 
+### 0.2 ★측정 기준선 **이후에 착지한 커밋** — `c2f828d`(GATE R2)
+
+이 판정문을 처음 커밋한 직후(`03b7423`) 옆 갈래가 `c2f828d`를 올렸고, 그것이 **내가 N1을 잰 바로 그 파일**
+(`src-tauri/src/ipc/accounts.rs`)을 만졌다. 자기 증거와 어긋날 수 있는 사실이므로 **내가 먼저 적는다**:
+
+```
+git show --stat c2f828d      → docs/parity-fix-gate-r1.md · src-tauri/src/ipc/accounts.rs (+52/-9)
+git diff --stat 2071c36..c2f828d -- src-tauri/src/ipc app/src ...
+                             → src-tauri/src/ipc/accounts.rs 만 (+355/-58 · 대부분 #[cfg(test)] 픽스처)
+바뀐 것: snapshot_children/retrying(스냅샷 실패 재시도) + 테스트 픽스처(PidWatch·named_children 등) + 새 테스트 셋
+안 바뀐 것: codex 다섯 채널의 dispatch 팔 · codex_login/codex_logout/move_account_to_top · 심·렌더러 전부
+계약면 재스캔(c2f828d 트리): total 216 · impl 206 · commentOnly 0 · missing 10   ← 내 §3.3과 **동일**
+```
+
+→ **§3(N1)의 수치는 `c2f828d`에도 그대로 유효하다.** §4(N2)는 그 커밋이 안 건드린 축이다.
+그리고 이 커밋이 **§5의 게이트 플레이크를 닫았다** — 내가 새 트리·새 target에서 다시 쟀다(§5.1).
+
 ---
 
 ## 1. 한 문단 결론
@@ -72,7 +89,8 @@ leveldb를 직접 열어 확인). 둘 다 **치명이 아니다**(전자는 2.6.
 
 **따라서 R3·R4가 걸어 둔 「치명 2 · 출하 불가」를 나는 해제한다 — 치명 0.**
 남는 최고 등급은 **높음 1(N3 `app:open-directory`)**, 이 라운드가 새로 적는 **낮음 2**, **미판정 1**(블라인드),
-그리고 **M10은 미결·사용자 대기**로 분리한다. **게이트 플레이크는 차단으로 안 셌다**(근거 §5).
+그리고 **M10은 미결·사용자 대기**로 분리한다. **게이트 플레이크는 차단으로 안 셌고**(근거 §5), 판정문을
+쓰는 사이에 GATE가 그것을 닫았다 — 내가 새 트리·새 target에서 다시 재니 **4/4 초록 · 161 passed**(§5.1).
 
 ---
 
@@ -377,6 +395,23 @@ cargo test -p agentcodegui --bin agentcodegui  ×3
 그래서 **차단(치명)에는 안 넣되, 「높음: 출하 전 반드시 초록으로 만들 것」으로 §9 표에 남긴다.**
 소유는 GATE 갈래다.
 
+### 5.1 ★그 사이에 GATE가 닫았다 — 내가 새 트리에서 다시 쟀다
+
+`c2f828d`(§0.2)가 `direct_children`의 스냅샷 실패를 **재시도**로 바꾸고 테스트 픽스처를 다시 썼다.
+믿지 않고 다시 쟀다 — `git archive c2f828d` → `C:\Temp\ccg-r28g-audit\wt2` · **또 새** `CARGO_TARGET_DIR`
+(`target-test2` — 함정 11대로 재활용 안 함 · 전체 debug 재컴파일):
+
+```
+cargo test -p agentcodegui --bin agentcodegui  ×4
+  RUN 1 → ok  161 passed; 0 failed  exit 0        RUN 3 → ok  161 passed; 0 failed  exit 0
+  RUN 2 → ok  161 passed; 0 failed  exit 0        RUN 4 → ok  161 passed; 0 failed  exit 0
+(내 기준선 2071c36에서는 같은 명령이 3회 중 2회 붉었다 — 156 passed; 2 failed · exit 101)
+```
+
+**4/4 초록. 붉던 둘이 안 붉다.** 테스트 수 158 → **161**(GATE가 셋 더했다 · 함정 10대로 이 크레이트만 셌다).
+→ §9.1의 `G-1`을 **닫힌 것으로** 고친다. 다만 `cargo test --workspace` 전수는 내가 안 돌렸고(§10),
+「6회 중 3회」를 관측한 것은 SHIPBLOCK 크리틱의 표본이므로 **그쪽 재현은 GATE 갈래 크리틱의 몫**이다.
+
 ---
 
 ## 6. M10 — **미결 · 사용자 대기** (라이브 주행 시도 0)
@@ -448,7 +483,7 @@ R3가 「전량」이라 부른 범위 = A+B(apiprobe만)+C+D = **27** · R4가 
 | # | 결함 | 등급 | 근거 | 소유 |
 |---|---|---|---|---|
 | N3 | `app:open-directory` 미구현 — 방출자 런타임 `undefined`, 설치기는 HKCU에 우클릭 항목을 쓴다(`src-tauri/nsis/hooks.nsh:28` · 쓰기 :39-41·:44-46) | **높음** | HEAD 스캔에서도 `missing`(§3.3) | GATE |
-| G-1 | 회귀 게이트가 반은 붉다(`cargo test -p agentcodegui --bin agentcodegui` 내 3회 = 2붉음) | **높음(출하 전 초록 필수)** | §5 | **GATE(진행 중)** |
+| ~~G-1~~ | ~~회귀 게이트가 반은 붉다~~ → **닫혔다.** `c2f828d`(내 기준선 이후 착지) 뒤 같은 명령이 **4/4 초록 · 161 passed** (내 기준선에서는 3회 중 2회 붉음) | ~~높음~~ → **해소** | §5.1 | GATE(착지) |
 | N6 | 에러 카드가 뜬 동안 창 컨트롤이 사라진다(경계 안) | 낮음 | §4.2 · 2.6.2도 같음(파리티) | — |
 | N7 | 부팅 격리 표식이 「프로파일 첫 세션 + 강제 종료」를 못 넘는다 | 낮음 | §4.2(leveldb 직독) | — |
 | N4·N5 | R3에서 낮음으로 분류된 둘 | 낮음 | 변화 없음 | — |
