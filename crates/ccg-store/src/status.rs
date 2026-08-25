@@ -578,7 +578,7 @@ pub fn forget() {
 /// 영구히 어긋났고, 하필 그것이 무손실 하네스가 재는 값이다
 /// (`poc-chat-unify-migrate.mjs`: BEFORE=`rec.snapshot.status` ↔ AFTER=`status.json`).
 /// 그 대상 인구는 **턴 도중에 죽은 채팅** — 규약 4가 존재하는 이유인 바로 그 집단이다.
-/// 그래서 파일에는 [`write_map`]으로 **마이그레이터가 준 값 그대로** 내려보낸다(§5.2
+/// 그래서 파일에는 [`write_map_to`]로 **마이그레이터가 준 값 그대로** 내려보낸다(§5.2
 /// "상태 맵 동일" · `migrate_v3::status_of`의 "파일은 사실, 메모리는 안전값"). 다음 장전이
 /// 그 파일을 읽을 때 [`row_from_disk`]가 다시 얼리므로 화면은 어느 쪽이든 안전값이다.
 ///
@@ -614,6 +614,70 @@ pub fn seed(map: BTreeMap<String, Value>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// ★R28d(CASX R2) — **쓰기 문은 목적지를 자물쇠 안에서 뜬다.** 코드만 고치고 못을
+    /// 안 박아서 되돌아가도 게이트가 안 울던 자리다(확인 크리틱 R1 §6: *"`status::seed()` —
+    /// 코드는 닫혔고 못이 없다"*).
+    ///
+    /// ## 왜 이 성질이 사고인가 (R28c AG2 R3의 실측 이력)
+    ///
+    /// 자물쇠를 놓고 [`path`]를 뜨면 그 사이에 홈이 걷힐 수 있다. 걷는 쪽
+    /// (`testkit::Home`의 Drop)은 **[`forget`]으로 이 자물쇠를 먼저 잡고** 그다음
+    /// `CCG_HOME`을 원래 값으로 되돌린다. 그러니 자물쇠 밖에서 뜬 목적지는 **되돌아온 홈 =
+    /// 사용자 실홈**을 가리킬 수 있고, 그 순간의 쓰기가 실데이터를 향한다.
+    /// 자물쇠 안에서 뜨면 `forget`이 아직 못 들어왔다는 뜻이라 그 창이 구조적으로 닫힌다.
+    ///
+    /// ## 왜 소스를 읽는 못인가
+    ///
+    /// 이 성질의 위반은 **나노초 창**이라 행동으로 재면 못이 1/1000로 붉는 못이 된다 —
+    /// 그건 게이트가 아니다. 그래서 성질을 **구조로** 잰다(선례: `ccg-engine`의
+    /// `zz_coverage_gate`). 규칙 둘뿐이고 둘 다 우회하려면 규약을 눈에 보이게 깨야 한다.
+    #[test]
+    fn every_write_path_takes_its_destination_inside_the_lock() {
+        const SRC: &str = include_str!("status.rs");
+        // 못 자신이 소스를 읽으므로, 재는 대상은 **프로덕션 구역**뿐이다(테스트 코드 제외).
+        let prod = SRC.split("#[cfg(test)]").next().expect("프로덕션 구역");
+
+        let mut depth = 0i32;
+        let mut lock_at: Option<i32> = None; // 자물쇠를 잡은 시점의 블록 깊이
+        let mut naked: Vec<(usize, String)> = vec![]; // 자물쇠 **밖**에서 뜬 `path()`
+        for (i, raw) in prod.lines().enumerate() {
+            // 주석은 코드가 아니다(이 파일에는 `//`를 담은 문자열 리터럴이 없다).
+            let code = raw.split("//").next().unwrap_or("");
+            if code.contains(".lock()") {
+                lock_at = Some(depth);
+            }
+            // ① 목적지를 **호출 자리에서** 뜨면 그건 자물쇠 밖이다 — 모양만으로 잡힌다.
+            assert!(
+                !(code.contains("write_map_to(") && code.contains("path()")),
+                "status.rs:{}: 목적지를 `write_map_to` 호출 자리에서 뜬다 = 자물쇠 밖이다 — {}",
+                i + 1,
+                raw.trim()
+            );
+            if code.contains("path()") && !code.contains("fn path()") && lock_at.is_none() {
+                naked.push((i + 1, raw.trim().to_string()));
+            }
+            if code.contains("drop(st)") {
+                lock_at = None;
+            }
+            depth += code.matches('{').count() as i32 - code.matches('}').count() as i32;
+            // 증표는 자기 블록이 닫히면 떨어진다(`d`는 증표를 잡은 시점의 깊이 = 그 블록 안).
+            if lock_at.is_some_and(|d| depth < d) {
+                lock_at = None;
+            }
+        }
+
+        // ② 자물쇠 밖의 `path()`는 **읽기만** 허용된다. 쓰기 문 셋(`flush`·`seed`·디바운스)의
+        //    목적지가 여기 끼는 순간 붉어진다.
+        println!("[CASX R2] 자물쇠 밖 `path()` = {naked:?}");
+        let offenders: Vec<&(usize, String)> = naked.iter().filter(|(_, l)| !l.contains("read_to_string(path())")).collect();
+        assert!(
+            offenders.is_empty(),
+            "★ 자물쇠 밖에서 목적지를 뜨는 자리가 생겼다 — 홈이 걷히는 창에서 이 쓰기는 사용자 실홈을 향한다: {offenders:?}"
+        );
+        // 읽기 쪽이 통째로 사라지면(= 이 못이 아무것도 안 재게 되면) 그것도 알아야 한다.
+        assert_eq!(naked.len(), 1, "읽기 경로의 `path()` 수가 달라졌다 — 이 못의 전제를 다시 보라: {naked:?}");
+    }
 
     #[test]
     fn shallow_view_skips_the_snapshot() {

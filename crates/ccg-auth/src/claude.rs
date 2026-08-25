@@ -188,12 +188,21 @@ fn read_store_raw() -> (Option<String>, StoreFile) {
 /// R3는 깨진 파일을 빈 목록으로 읽고 그 위에 사용자의 로그인을 얹었다 = 나머지 계정이
 /// `credEnc`째 사라졌다(크리틱 C7). 여기서 되살릴 재료가 없으면 그 자리에서 쓰기를
 /// 포기하는 것이 맞다 — 모르는 위에 덮어쓰는 것이 유실의 정체다.
-fn recover_store() -> Option<StoreFile> {
+///
+/// ★R28d(CASX R2) — **로그가 사실을 말한다.** R1까지 이 줄은 무조건 "`accounts.json`이
+/// 깨졌다"였는데, [`vanished_but_we_know_better`]가 여는 문의 대상은 대개 **깨진 파일이
+/// 아니라 없는 파일**이다(갈아끼우기 창 · 사용자나 지원 절차의 수동 삭제). 파일이 없었을
+/// 뿐인데 "깨졌다"고 적으면 다음 사람이 디스크 손상을 쫓는다(확인 크리틱 R1 §7).
+fn recover_store(was: StoreOrigin) -> Option<StoreFile> {
     let b = read_file_or_null(&store_backup_path()).as_deref().and_then(parse_store)?;
     if b.origin != StoreOrigin::Parsed || b.accounts.is_empty() {
         return None;
     }
-    eprintln!("[auth] ★ {STORE_FILE}이 깨졌다 — 마지막 성공본({STORE_BACKUP_FILE}, 계정 {}개)으로 되살린다", b.accounts.len());
+    let why = match was {
+        StoreOrigin::Missing => "이 없다",
+        _ => "이 깨졌다",
+    };
+    eprintln!("[auth] ★ {STORE_FILE}{why} — 마지막 성공본({STORE_BACKUP_FILE}, 계정 {}개)으로 되살린다", b.accounts.len());
     Some(StoreFile { origin: StoreOrigin::Recovered, ..b })
 }
 
@@ -247,8 +256,27 @@ const BURY_TRIES: usize = 4;
 /// 옛 값 4×300µs(=1.2ms)는 짧았다. 실측한 이웃 통짜 쓰기는 0.3~16ms였고, 못 기다리면
 /// **로그아웃이 묻힌 줄도 모르고** 지나간다(그 판의 되살아남은 다음 이웃 쓰기까지 =
 /// 실측 85ms 지속). 40×500µs = 최대 19.5ms — 흔들린 판에서만 내는 값이라 평시 비용은 0이다.
+///
+/// ★R28d(CASX R2) — 이 상한은 **[`BURY_WATCH_BUDGET_MS`]와 함께** 읽어야 한다. 확인 크리틱
+/// R1이 추적 1주행(커밋 1,078건)에서 잰 판독 분포는 `k=0` 1,078건 · **`k>0` 0건**이었다 —
+/// 이 값을 4에서 40으로 늘린 것은 측정된 영역에서 효과 0이다. 그럼에도 남기는 이유는
+/// 첫 판독이 흔들린 판(이웃이 쓰는 중)을 못 봐서가 아니라 **아직 못 봤기 때문**이고,
+/// 대신 그 대가(잠금 보유 시간)를 아래 예산이 문다.
 const BURY_WATCH: usize = 40;
 const BURY_WATCH_US: u64 = 500;
+/// ★R28d(CASX R2) — 파묻힘 감시의 **총 예산**(CAS 시도 1회당).
+///
+/// R1은 [`BURY_WATCH`]를 `BURY_TRIES`번의 되살리기 연쇄마다 **따로** 썼다. 그러면 최악
+/// 잠금 보유가 `CAS_TRIES(16) × [READ_RETRIES … + BURY_TRIES(4) × 19.5ms]` ≈ **1.3초**가
+/// 된다(옛 값 ≈83ms). 오늘은 이 문을 배경 워커만 쓰지만 [`update_store`] 주석이 적어 둔
+/// 대로 `auth:*` 쓰기 채널이 붙는 순간 그 문은 **사용자 손**에 들어온다 — 로그아웃 한 번이
+/// 1.3초 멎으면 그건 그것대로 사고다(확인 크리틱 R1 §7).
+///
+/// 그래서 감시를 **횟수가 아니라 시계**로 끊는다. 예산은 CAS 시도마다 새로 준다 —
+/// 시도 전체가 하나의 예산을 나눠 쓰면 경합이 심한 판에서 뒤쪽 시도의 검출력이 0이 되고,
+/// 그건 이 라운드가 지켜야 할 **로그아웃 승리 불변식**을 갉는다. 20ms는 실측한 이웃 통짜
+/// 쓰기(0.3~16ms) 하나를 통째로 덮는다. 최악 = 16 × 20ms = 320ms(4배 개선).
+const BURY_WATCH_BUDGET_MS: u64 = 20;
 /// ★R28d(CASX) — "지금은 모른다"(반쪽 · 사라짐)에서 **다시 읽는 횟수**. 옛 값 4×2ms는
 /// 실측한 사라짐 창(최대 ~12ms)보다 짧았다. 6×3ms = 최대 18ms 기다렸다가 복구로 간다.
 const READ_RETRIES: usize = 6;
@@ -518,8 +546,25 @@ pub fn update_account_record<T>(email: &str, mut f: impl FnMut(&mut Map<String, 
 /// 사실이 아니라 창이라고 본다 — 다시 읽고, 그래도 없으면 복구한다. 진짜 첫 실행에는
 /// 복구본이 없으므로 이 문은 안 열린다(빈 스토어 → 첫 로그인 그대로).
 ///
-/// [`merge3`]이 이미 같은 판단을 한다("`accounts.json`이 사라졌다 — 우리 목록으로 복구").
-/// 새 정책이 아니라 **같은 정책을 CAS 경로에도 세우는 것**이다.
+/// ### ★R28d(CASX R2) — 이것은 [`merge3`]의 「같은 정책」이 **아니다**(정책 판단으로 명시)
+///
+/// R1은 이 문을 "[`merge3`]이 이미 하는 판단을 CAS 경로에도 세우는 것"이라고 적었는데,
+/// 확인 크리틱 R1 §7이 짚은 대로 **근거가 다르고 그래서 사정거리가 더 넓다**:
+///
+/// | | 근거 | 사정거리 |
+/// |---|---|---|
+/// | [`merge3`]의 `Missing` 문 | **이 프로세스 메모리의 base**(`!base_accounts.is_empty()`) | 그 프로세스가 이미 계정을 아는 판에서만 열린다 |
+/// | 여기 | **디스크의 [`STORE_BACKUP_FILE`]** | **재시작을 넘어 산다** |
+///
+/// 그래서 이 문은 사용자(또는 지원 절차)가 `accounts.json`을 **지우고 앱을 새로 띄우는**
+/// 판까지 연다 — 다음 편집 한 번이 백업에서 전 계정을 `credEnc`째 되살린다.
+/// 그 대가를 알고도 여는 이유는 비대칭이다: 되살아난 계정은 사용자가 다시 지우면 되지만,
+/// 갈아끼우기 창에 얻어맞은 목록은 **살아 있는 토큰째** 조용히 사라지고 출구가 재로그인뿐이다
+/// (실측: 그 창에서 이웃이 `{"accounts":[]}`를 쓴 판에서 `m11r4_store_cas`가 붉었다).
+/// 최소한 로그는 사실을 말한다 — [`recover_store`]가 "깨졌다"와 "없다"를 갈라 적는다.
+///
+/// **"파일을 지워서 계정을 지운다"는 지원 절차가 되면 안 된다**는 뜻이기도 하다. 계정을
+/// 지우는 문은 [`remove_account`] 하나다(행 + 폴더 + 건강 장부를 같이 지운다).
 fn vanished_but_we_know_better(cur: &StoreFile) -> bool {
     cur.origin == StoreOrigin::Missing
         && read_file_or_null(&store_backup_path())
@@ -546,10 +591,9 @@ fn cas_edit<T>(mut edit: impl FnMut(&mut StoreFile) -> Result<T, AuthError>) -> 
             }
             // 여러 번 다시 읽어도 그대로다 = 지나가는 반쪽이 아니라 **정말 깨진(또는 정말
             // 사라진) 파일**이다.
-            let Some(rec) = recover_store() else {
-                return Err(AuthError::Io(format!(
-                    "{STORE_FILE}: 파일이 손상됐고 복구본도 없다 — 계정 목록을 덮어쓰지 않는다"
-                )));
+            let Some(rec) = recover_store(cur.origin) else {
+                let what = if cur.origin == StoreOrigin::Missing { "사라졌고" } else { "손상됐고" };
+                return Err(AuthError::Io(format!("{STORE_FILE}: 파일이 {what} 복구본도 없다 — 계정 목록을 덮어쓰지 않는다")));
             };
             cur = rec;
         } else {
@@ -590,9 +634,13 @@ fn cas_edit<T>(mut edit: impl FnMut(&mut StoreFile) -> Result<T, AuthError>) -> 
         // (CAS 재시도) 까지 들고 가면 잠금을 놓은 사이 남이 갈아끼운 옛 inode를 증인으로
         // 삼게 된다 — 그건 증인이 아니라 유령이다.
         let mut carry: Option<std::fs::File> = None;
+        // ★R28d(CASX R2) — 파묻힘 감시 예산은 **CAS 시도마다 새로** 준다(연쇄 전체가 나눠
+        // 쓴다). 시도 전체가 한 예산을 나누면 경합이 심한 판에서 뒤쪽 시도의 검출력이 0이
+        // 되고, 그건 이 라운드가 지켜야 할 로그아웃 승리 불변식을 갉는다.
+        let bury_deadline = std::time::Instant::now() + std::time::Duration::from_millis(BURY_WATCH_BUDGET_MS);
         cas_trace!("edit 준비 — 읽은목록=[{}] 쓸목록=[{}]", seen.iter().filter_map(email_of).collect::<Vec<_>>().join(","), cas_emails(&body));
         for _ in 0..BURY_TRIES {
-            match commit_locked(&body, expect.as_deref(), &mut carry)? {
+            match commit_locked(&body, expect.as_deref(), &mut carry, bury_deadline)? {
                 Commit::Stale => {
                     // 이웃이 그사이에 썼다. 우리 스냅샷은 이미 낡았다 — 여기서 쓰면 그
                     // 쓰기가 사라진다(= 로그아웃 취소). 클로저부터 다시 돈다.
@@ -678,11 +726,19 @@ enum Commit {
 /// **증인 읽기(실측 17µs) → 갈아끼우기(실측 50~600µs)**. R3의 8~14ms에서 20~200배 좁다.
 /// 커밋 뒤 옛 inode를 한 번 더 읽어 그 창에 떨어진 쓰기가 있었는지 본다(그 읽기는 창 밖이다).
 ///
-/// ★R28d(CASX) — 갈아끼우기는 [`crate::replace`]다(std `rename` 아님). 이유는 그 모듈
-/// 주석에 실측 로그와 함께 적었다: std의 `rename`은 부하가 걸리면 **지우고-옮기는 두
-/// 걸음**으로 떨어져 ① 읽는 이웃에게 ENOENT를 보이고 ② 쓰는 이웃을 *제3의 inode*로
-/// 보내 아래 증인 검사를 통째로 무력화했다.
-fn commit_locked(body: &str, expect: Option<&str>, carry: &mut Option<std::fs::File>) -> Result<Commit, AuthError> {
+/// ★R28d(CASX) — 갈아끼우기는 [`crate::replace`]다(std `rename` 아님).
+///
+/// ★R28d(CASX R2) — R1은 그 이유를 "std의 `rename`은 부하가 걸리면 지우고-옮기는 두
+/// 걸음으로 떨어져 ① 읽는 이웃에게 ENOENT를 보이고 ② 쓰는 이웃을 제3의 inode로 보낸다"고
+/// 적었는데 **그 진단은 A/B로 철회됐다**(옛 길에서 그 창이 더 컸다 = OS 성질·선존).
+/// ①②는 지금도 **열려 있다** — 확인 크리틱 R1이 HEAD 20주행 중 2주행에서 이웃의 읽기
+/// 실패를 그대로 관측했다(`m11r4_store_cas`의 `missed`). 이 모듈이 실제로 주는 것은
+/// **되살리기 창의 속도**다: `replace`가 갈아끼운 핸들을 돌려주므로 아래 증인 검사와
+/// 되살리기 연쇄가 `open`(실측 350µs)을 안 낸다.
+///
+/// `deadline`은 아래 파묻힘 감시의 **총 예산**이다 — [`cas_edit`]의 CAS 시도 한 번이
+/// 되살리기 연쇄 전체와 나눠 쓴다(자세한 이유는 [`BURY_WATCH_BUDGET_MS`]).
+fn commit_locked(body: &str, expect: Option<&str>, carry: &mut Option<std::fs::File>, deadline: std::time::Instant) -> Result<Commit, AuthError> {
     let dst = store_path();
     // 임시 파일 쓰기(실측 140µs)는 창 **밖**이다 — 갈아끼우기만 창 안이다.
     let staged = crate::replace::stage(&dst, body).map_err(|e| AuthError::Io(format!("{STORE_FILE}: {e}")))?;
@@ -714,6 +770,7 @@ fn commit_locked(body: &str, expect: Option<&str>, carry: &mut Option<std::fs::F
     // 없어 새로 열 수도 없다. 그래서 첫 판독이 `expect`면 묻은 쓰기는 **없다**.
     // 반대로 한 번이라도 흔들렸으면 이웃이 쓰는 중이므로 [`BURY_WATCH`]만큼 기다린다 —
     // R28d 이전의 상한(4×300µs)은 부하 걸린 판의 통짜 쓰기를 놓쳤다.
+    let watch_from = std::time::Instant::now();
     for k in 0..BURY_WATCH {
         match crate::replace::read_witness(w) {
             Some(a) if Some(a.as_str()) == expect => {
@@ -732,18 +789,22 @@ fn commit_locked(body: &str, expect: Option<&str>, carry: &mut Option<std::fs::F
             }
             other => cas_trace!("옛 inode 판독 불가(k={k}) — {}", other.map(|s| format!("{}B", s.len())).unwrap_or("읽기실패".into())),
         }
-        if k + 1 < BURY_WATCH {
-            std::thread::sleep(std::time::Duration::from_micros(BURY_WATCH_US));
+        // ★R28d(CASX R2) — 상한은 **횟수와 시계 둘 다**다([`BURY_WATCH_BUDGET_MS`]).
+        // 판독은 위에서 이미 한 번 했으므로, 예산이 0이어도 옛 4×300µs 시절보다
+        // 검출력이 낮아지지는 않는다.
+        if k + 1 >= BURY_WATCH || std::time::Instant::now() >= deadline {
+            break;
         }
+        std::thread::sleep(std::time::Duration::from_micros(BURY_WATCH_US));
     }
-    // ★R28d — 여기까지 왔다 = 옛 inode가 흔들린 채(반쪽·0바이트) [`BURY_WATCH`]를 다
-    // 썼다. 이웃이 쓰다 만 것이고, 그 쓰기가 로그아웃이었다면 **지금 우리 파일이 그것을
+    // ★R28d — 여기까지 왔다 = 옛 inode가 흔들린 채(반쪽·0바이트) 감시 예산을 다 썼다.
+    // 이웃이 쓰다 만 것이고, 그 쓰기가 로그아웃이었다면 **지금 우리 파일이 그것을
     // 취소한 상태**다. 되살릴 재료가 없어 여기서 할 수 있는 것은 없지만, 조용히 지나가면
     // 안 된다 — 사용자 로그가 이 줄을 들고 있어야 다음 사람이 같은 자리를 다시 판다.
     cas_trace!("옛 inode 끝내 판독 불가 → Clean(★이웃 쓰기를 놓쳤을 수 있다)");
     eprintln!(
         "[auth] ★ {STORE_FILE}: 이웃이 쓰던 중에 갈아끼웠는데 {}ms를 기다려도 그 원문을 못 읽었다 — 그 쓰기가 로그아웃이었다면 취소된 채로 남는다",
-        BURY_WATCH as u64 * BURY_WATCH_US / 1000
+        watch_from.elapsed().as_millis()
     );
     Ok(Commit::Clean)
 }
@@ -1145,15 +1206,52 @@ pub fn account_access_token(email: &str) -> Option<String> {
 }
 
 /// 폴더 vs 백업 중 신선한 크리덴셜 원문. 리프레시(refreshToken 꺼내기)의 재료이기도 하다.
+///
+/// ★R28d(CASX R2) — **스토어에 행이 없어도 폴더는 본다.** R1까지 이 함수의 첫 줄은
+/// `accounts.iter().find(...)?`였다. 그래서 스토어 행이 어떤 이유로든 사라지면 —
+/// 잠금을 모르는 이웃이 갈아끼우기 창에서 「계정 0개」로 읽고 통짜로 되쓰거나
+/// (`m11r4_store_cas`의 실측), 파일이 손으로 지워지거나 — **폴더에 멀쩡히 앉아 있는
+/// 리프레시 토큰에 제품이 도달할 길이 없어졌다**. 그 계정은 그 뒤로 영원히 회전에
+/// 실패하고 출구는 재로그인뿐이다(확인 크리틱 R1 §4 실측: HEAD 120주행 중 3주행,
+/// 한 판은 배경 회전 1,143판 중 **마지막 880판이 연속 실패**).
+///
+/// 그런데 모듈 규약 2는 **"살아 있는 토큰의 거처는 계정 폴더고 `credEnc`는 폴더
+/// 재생성용 백업"**이다. 완충이 있다는 말은 그 완충에 **손이 닿을 때** 하는 말이다.
+///
+/// ### 이것이 로그아웃을 되살리지 않는 이유 (판정의 근거)
+///
+/// **로그아웃은 행과 폴더를 같이 지운다.** 3.0은 [`remove_account`](= `retain` +
+/// [`delete_account_dir`])이고 2.6.2도 `removeAccount` → `deleteAccountDir`이다
+/// (`src/main/auth.ts:176-183`, 동결 트리). 그러므로
+///
+/// | 스토어 행 | 계정 폴더 | 무슨 일인가 | 이 함수의 답 |
+/// |---|---|---|---|
+/// | 있다 | 있다/없다 | 평시 | 신선한 쪽(R1까지와 **동일**) |
+/// | **없다** | **없다** | 사용자가 로그아웃했다 | `None` — 되살릴 것이 없다 |
+/// | **없다** | **있다** | 로그아웃이 **아니다**(행 유실·오독 쓰기·수동 편집) | 폴더 = 마지막 완충 |
+///
+/// 세 번째 줄이 이 라운드가 여는 문이다. 그리고 그 문이 "로그아웃 뒤에 폴더가 다시
+/// 생기는" 뒷문으로 새지 않도록 [`persist_refreshed_report`]가 **없는 폴더를 새로 파는
+/// 것을 미등록 계정에는 거절한다** — 둘은 한 쌍이다.
 pub fn freshest_creds(email: &str) -> Option<String> {
     let f = read_store_quiet();
-    let target = f.accounts.iter().find(|a| email_of(a) == Some(email))?;
-    let backup = cred_enc_of(target).and_then(dec_creds).map(|raw| Snapshot::parse(&raw)).and_then(|s| s.creds().map(str::to_string));
+    let backup = f
+        .accounts
+        .iter()
+        .find(|a| email_of(a) == Some(email))
+        .and_then(cred_enc_of)
+        .and_then(dec_creds)
+        .map(|raw| Snapshot::parse(&raw))
+        .and_then(|s| s.creds().map(str::to_string));
     let dir_creds = read_file_or_null(&account_dir(email).join(".credentials.json"));
-    if creds_expires_at(dir_creds.as_deref()) > creds_expires_at(backup.as_deref()) {
-        dir_creds
-    } else {
-        backup
+    match (dir_creds, backup) {
+        // 둘 다 있으면 신선한 쪽 — R1까지의 판정 그대로다(동점은 백업이 이긴다).
+        (Some(d), Some(b)) => Some(if creds_expires_at(Some(&d)) > creds_expires_at(Some(&b)) { d } else { b }),
+        // 한쪽만 있으면 **그쪽이 답이다.** 만료 시각 비교로 있는 재료를 버리지 않는다 —
+        // 껍데기(accessToken 없음)는 [`creds_expires_at`]이 0.0을 주므로, 옛 코드는
+        // `0.0 > 0.0`이 거짓이라 refreshToken을 물고 있는 유일한 사본을 놓쳤다.
+        (Some(d), None) => Some(d),
+        (None, b) => b,
     }
 }
 
@@ -1262,6 +1360,20 @@ pub fn apply_rotated_refresh(base_creds: &str, refresh_token: &str) -> Option<St
 pub fn persist_refreshed_report(email: &str, next_creds: &str) -> PersistReport {
     let folder = (|| -> Result<(), AuthError> {
         let dir = account_dir(email);
+        // ★R28d(CASX R2) — **없는 폴더를 새로 파는 것은 등록된 계정에만.**
+        //
+        // [`freshest_creds`]가 이제 스토어 행이 없어도 폴더를 보므로, 이 자리가 열려 있으면
+        // 뒷문이 하나 생긴다: 사용자가 로그아웃한 **직후**([`remove_account`]가 행을 지우고
+        // 폴더를 지운 뒤) 비행 중이던 회전이 착지하면 `create_dir_all`이 그 폴더를 다시 파고
+        // 살아 있는 refresh 토큰을 평문으로 앉힌다. 그러면 로그아웃한 계정의 재료가
+        // **다시 도달 가능**해진다 — 2.6.2 규약("로그아웃 = 해지 → 제거")이 무너지는 자리다.
+        //
+        // 반대로 **폴더가 이미 있는데 행만 없는** 판은 로그아웃이 아니다(로그아웃은 둘을 같이
+        // 지운다). 그건 행 유실이고, 그때 폴더 쓰기를 거절하면 우리가 마지막 완충을 스스로
+        // 낡게 만든다. 그래서 조건은 "행이 없다"가 아니라 **"행도 없고 폴더도 없다"**이다.
+        if !dir.exists() && !is_registered(email) {
+            return Err(AuthError::NotRegistered(email.to_string()));
+        }
         std::fs::create_dir_all(&dir).map_err(|e| AuthError::Io(e.to_string()))?;
         crate::write_file_atomic(&dir.join(".credentials.json"), next_creds)
     })();
@@ -1280,7 +1392,9 @@ pub fn persist_refreshed_report(email: &str, next_creds: &str) -> PersistReport 
         m.insert("credEnc".into(), json!(cred_enc));
         Ok(())
     });
-    let unregistered = matches!(backup, Err(AuthError::NotRegistered(_)));
+    // ★R28d(CASX R2) — 반쪽 **둘 다**를 본다. 위 폴더 가드도 `NotRegistered`로 착지하므로
+    // 한쪽만 보면 "로그아웃된 계정"을 "저장 실패"로 잘못 말하는 판이 생긴다.
+    let unregistered = matches!(backup, Err(AuthError::NotRegistered(_))) || matches!(folder, Err(AuthError::NotRegistered(_)));
     PersistReport { folder, backup: backup.and_then(|r| r), unregistered }
 }
 

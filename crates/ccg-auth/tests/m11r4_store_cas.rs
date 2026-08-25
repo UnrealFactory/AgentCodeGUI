@@ -45,13 +45,37 @@ fn seed(email: &str, refresh: &str) {
     claude::write_store_file(&accounts, Some(email)).expect("시드 저장");
 }
 
+/// ★R28d(CASX R2) — 배경 쓰기 한 바퀴의 **착지**.
+///
+/// R1까지 이 함수는 `bool`(= `both()`)이었고, 그래서 「폴더에만 남았다」와 「아무 데도 못
+/// 남겼다」가 같은 `false`로 뭉개졌다. 확인 크리틱 R1이 잰 참사(배경 회전 1,143판 중
+/// **마지막 880판 연속 실패**)는 그 뭉개진 값 안에 있었고, 못은 주행 **끝의 한 줄**로만
+/// 그것을 봤다 — 그래서 2.5%짜리 제비뽑기가 됐다. 이제 착지를 셋으로 갈라 **매 판** 센다.
+#[derive(Debug, PartialEq, Eq)]
+enum Landing {
+    /// 평시 — 폴더와 백업 둘 다.
+    Both,
+    /// 스토어 행이 없어 폴더 완충에만 남았다(규약 2의 그 완충이 실제로 일한 판).
+    FolderOnly,
+    /// ★ **회전 재료를 못 찾았다** — `freshest_creds`가 `None`. 이 값이 0이 아니면 그
+    /// 계정은 그 순간 회전이 불가능하다(출구는 재로그인).
+    NoMaterial,
+    /// 재료는 찾았는데 어디에도 못 썼다(디스크·잠금 사고).
+    NotStored,
+}
+
 /// 3.0의 배경 쓰기 한 바퀴(= 자동 전환 워커의 회전 정착).
-fn rotate(email: &str, refresh: &str) -> bool {
-    let Some(base) = claude::freshest_creds(email) else { return false };
+fn rotate(email: &str, refresh: &str) -> Landing {
+    let Some(base) = claude::freshest_creds(email) else { return Landing::NoMaterial };
     let Some(next) = claude::apply_refresh(&base, &format!("A-{refresh}"), Some(refresh), 3600.0, now_ms()) else {
-        return false;
+        return Landing::NotStored;
     };
-    claude::persist_refreshed_report(email, &next).both()
+    let r = claude::persist_refreshed_report(email, &next);
+    match (r.both(), r.folder.is_ok()) {
+        (true, _) => Landing::Both,
+        (false, true) => Landing::FolderOnly,
+        (false, false) => Landing::NotStored,
+    }
 }
 
 /// 계정 **폴더**의 살아 있는 토큰 — 스토어를 거치지 않고 직접 읽는다(규약 2: 살아 있는
@@ -170,13 +194,25 @@ mod peer {
 ///
 /// 크리틱 실측 4/20(대조군도 동률 = 선존)을 R28d가 추적으로 갈랐다. 셋 다 제품 창이다.
 ///
-/// | # | 무엇이 무엇을 이겼나 | 사용자 피해 | 닫은 자리 |
+/// | # | 무엇이 무엇을 이겼나 | 사용자 피해 | 지금 상태 |
 /// |---|---|---|---|
-/// | ① | `std::fs::rename`이 도는 동안 **파일이 없어 보였다**(ENOENT 6연속·7.2ms) | 이웃이 "계정 0개"로 읽고 그 위에 쓰면 **목록 전체 소멸**(실측: 이 못이 「회전 재료가 어디에도 안 남았다」로 붉었다) | [`ccg_auth::replace`] — POSIX 의미론 단일 호출 |
-/// | ② | 그 창에서 이웃의 `CREATE_ALWAYS`가 **새 파일**을 만들고 우리 rename이 그걸 덮었다 | 묻힌 줄도 모른 채 로그아웃 취소가 **85ms 지속**(다음 이웃 쓰기까지) | 같은 자리(제3의 inode가 안 생긴다) |
-/// | ③ | 묻힌 것을 찾아 되살리는 동안 로그아웃한 계정이 파일에 앉아 있었다(실측 1.7~7.6ms) | 이웃이 자기 쓰기 1ms 뒤에 다시 읽으면 그걸 본다 | 창 안의 `eprintln` 제거 + 증인 핸들 물려주기(`open` 350µs 절약) |
+/// | ① | 갈아끼우는 동안 **파일이 없어 보였다**(ENOENT 6연속·7.2ms) | 이웃이 "계정 0개"로 읽고 그 위에 쓰면 **목록 전체 소멸** | ❌ **안 닫혔다** — 아래 「철회」 참고. 우리 쪽 읽기만 `vanished_but_we_know_better`가 막는다 |
+/// | ② | 그 창에서 이웃의 `CREATE_ALWAYS`가 **새 파일**을 만들고 우리 갈아끼우기가 그걸 덮었다 | 묻힌 줄도 모른 채 로그아웃 취소가 **85ms 지속**(다음 이웃 쓰기까지) | ❌ **안 닫혔다**(①의 다른 얼굴) |
+/// | ③ | 묻힌 것을 찾아 되살리는 동안 로그아웃한 계정이 파일에 앉아 있었다(실측 1.7~7.6ms) | 이웃이 자기 쓰기 1ms 뒤에 다시 읽으면 그걸 본다 | ✅ 창 안의 `eprintln` 제거 + 증인 핸들 물려주기(`open` 350µs 절약) |
+///
+/// ### ★R28d(CASX R2) — ①②의 「닫았다」는 **철회한다**
+///
+/// R1은 ①②를 "std `rename`이 지우고-옮기는 두 걸음으로 떨어지는 것"으로 진단하고
+/// [`ccg_auth::replace`](POSIX 단일 호출)가 닫았다고 이 표에 적었다. **틀렸다.** 같은
+/// 하네스로 네 판(옛 길/새 길 × 증인 보유/없음)을 18주행씩 번갈아 재니 그 창은 **옛 길에서
+/// 더 컸다** = 이 OS에서 "이름 바꿔 덮기"의 성질이고 선존이다. 확인 크리틱 R1도 HEAD
+/// 20주행 중 2주행에서 그대로 관측했다(아래 `missed`). R1 보고서 §2는 이미 철회했는데
+/// 코드 주석 세 자리(여기 · `lib.rs` · `commit_locked`)가 아직 "닫았다"고 말하고 있었다.
+/// [`ccg_auth::replace`]가 실제로 주는 것은 **되살리기 창의 속도**(③)다.
 ///
 /// A/B(같은 부하·번갈아 20주행): **대조군 5/20 붉음 · 고친 판 0/20**.
+/// 확인 크리틱 R1의 독립 재측: 대조군(옛 코드 + **새 못**) 2/20 · HEAD 0/20 ·
+/// 되살아남 이벤트로 재면 대조군 40주행 4건 → HEAD 120주행 0건.
 #[test]
 fn a_lock_unaware_neighbour_cannot_undo_a_logout() {
     // ★M11 R4(리드) — 홈 자물쇠는 ccg-store 공용(testhome). 한 바이너리 안의 병렬
@@ -190,15 +226,18 @@ fn a_lock_unaware_neighbour_cannot_undo_a_logout() {
     // 3.0의 배경 쓰기(자동 전환 워커) — 잠금·CAS·좁히기를 전부 탄다.
     let writer = std::thread::spawn(move || {
         let mut i = 0usize;
-        let mut ok = 0usize;
+        let (mut ok, mut folder_only, mut no_material, mut not_stored) = (0usize, 0usize, 0usize, 0usize);
         while !s2.load(std::sync::atomic::Ordering::Relaxed) {
-            if rotate("mine@x", &format!("m-{i}")) {
-                ok += 1;
+            match rotate("mine@x", &format!("m-{i}")) {
+                Landing::Both => ok += 1,
+                Landing::FolderOnly => folder_only += 1,
+                Landing::NoMaterial => no_material += 1,
+                Landing::NotStored => not_stored += 1,
             }
             i += 1;
             std::thread::sleep(std::time::Duration::from_millis(3));
         }
-        (i, ok)
+        (i, ok, folder_only, no_material, not_stored)
     });
 
     let mut resurrected = 0usize;
@@ -240,10 +279,11 @@ fn a_lock_unaware_neighbour_cannot_undo_a_logout() {
         }
     }
     stop.store(true, std::sync::atomic::Ordering::Relaxed);
-    let (rounds, ok) = writer.join().expect("배경 쓰기 스레드");
+    let (rounds, ok, folder_only, no_material, not_stored) = writer.join().expect("배경 쓰기 스레드");
     let missed = peer::MISSED.load(std::sync::atomic::Ordering::Relaxed);
     let wfail = peer::WRITE_FAILED.load(std::sync::atomic::Ordering::Relaxed);
     println!("[r4-cas] 이웃 로그아웃 {ROUNDS}판 · 배경 회전 {rounds}판(성공 {ok}) — 로그아웃이 취소된 판={resurrected}(그중 지속={persisted})");
+    println!("[r4-cas] 회전 착지: 양쪽={ok} · 폴더완충만={folder_only} · ★재료없음={no_material} · 저장실패={not_stored}");
     println!("[r4-cas] 이웃이 파일을 못 읽은 횟수={missed} · 이웃 쓰기 실패={wfail}");
     println!(
         "[r4-cas] 최종 store(mine)={:?} 폴더원본(mine)={:?} freshest(mine)={:?}",
@@ -270,26 +310,112 @@ fn a_lock_unaware_neighbour_cannot_undo_a_logout() {
     //         ↑ 이웃이 지웠다        ↑ 재료는 여기 그대로 있다      ↑ 그런데 못 찾는다
     // ```
     //
-    // 즉 「어디에도 안 남았다」는 **사실이 아니었다.** 그 판에서 벌어진 일은 둘이고
-    // 둘 다 이 못이 겨눈 것이 아니다:
+    // 벌어진 일은 둘이다:
     //
     // 1. 이웃이 갈아끼우기 창에서 `accounts.json`을 못 읽고(위 `missed`) 「계정 0개」로
     //    읽어 통짜로 되썼다 — 2.6.2 `readStoreFile`의 `catch { accounts: [] }` 그대로다
-    //    (`src/main/auth.ts:117`). 동결 트리라 우리가 못 고친다.
-    // 2. 그래서 스토어에서 행이 사라졌고, [`claude::freshest_creds`]는 **스토어에 행이
-    //    없으면 폴더를 아예 안 본다**(`accounts.iter().find(...)?`가 첫 줄이다).
-    //    규약 2가 "살아 있는 토큰의 거처는 폴더"라고 못 박은 바로 그 완충이 여기서 꺼진다.
-    //    → **남은 격차**(docs/parity-fix-casx-r1.md §남은 격차 1).
+    //    (`src/main/auth.ts:117`). 동결 트리라 **우리가 못 고친다.**
+    // 2. 그래서 스토어에서 행이 사라졌고, [`claude::freshest_creds`]가 스토어에 행이 없으면
+    //    폴더를 아예 안 봤다(`accounts.iter().find(...)?`가 첫 줄이었다).
     //
-    // 그래서 못을 사실대로 쪼갠다: **완충 자체**는 무조건 요구하고(폴더 사본), 스토어를
-    // 거치는 조회는 **스토어가 살아 있을 때만** 요구한다. 이웃이 스토어를 지운 판까지
-    // `freshest`를 요구하면 이 못은 「우리가 못 고치는 이웃의 사고」를 재는 못이 된다.
+    // ★R28d(CASX R2) — R1은 여기서 **2를 못으로 재는 대신 단정을 조건부로 감았다.**
+    // 확인 크리틱 R1이 그 대가를 쟀다: 이 착지의 비율은 대조군 1/40(🔴)에서 HEAD
+    // 3/120(🟢 전부)으로 **한 톨도 안 줄었고**(2.5% → 2.5%) 경보만 꺼졌다. 그리고
+    // 깜빡임이 아니었다 — 한 주행은 배경 회전 1,143판 중 **마지막 880판(77%)이 연속 실패**로
+    // 끝났다. 제품어로는 계정 행이 목록에서 사라진 뒤 **폴더에 멀쩡히 앉아 있는 리프레시
+    // 토큰에 제품이 도달할 길이 없어져 그 계정이 영원히 회전에 실패한다**(출구는 재로그인).
+    //
+    // 이제 2는 닫혔다([`claude::freshest_creds`]가 행이 없어도 폴더를 본다). 1은 여전히
+    // 우리 밖이지만, **완충에 손이 닿는다**는 것이 이 못이 원래 재던 것이다 — 그래서
+    // 단정을 **무조건으로 되돌린다.**
+    // ★R28d(CASX R2) — **주행 끝의 한 줄이 아니라 매 판을 센다.** 아래 세 단정이 최종
+    // 상태만 보던 R1의 눈을 판당 눈으로 바꾼다: 확인 크리틱이 잡은 참사(마지막 880판
+    // 연속 실패)는 이제 `no_material=880`으로 **주행 중에** 드러난다.
+    assert_eq!(
+        no_material, 0,
+        "★ 배경 회전이 {no_material}판에서 재료를 못 찾았다 — 폴더에 앉아 있는 리프레시 토큰에 제품이 못 닿는다(출구는 재로그인)"
+    );
+    assert!(ok + folder_only > 0, "★ 이 주행은 회전이 한 번도 정착 못 했다 — 하네스가 아무것도 안 잰 것이다");
     assert!(folder_refresh_of("mine@x").is_some(), "★ 회전 재료가 폴더에도 안 남았다 — 마지막 완충이 뚫렸다");
-    if store_refresh_of("mine@x").is_some() {
-        assert!(claude::refresh_token("mine@x").is_some(), "★ 스토어에 행이 있는데 회전 재료를 못 찾는다");
-    } else {
-        println!("[r4-cas] ※ 이웃이 스토어의 mine@x 행을 지웠다(못 읽은 횟수={missed}) — freshest 조회는 이 판에서 못 센다");
+    assert!(
+        claude::refresh_token("mine@x").is_some(),
+        "★ 회전 재료가 폴더에 있는데 제품이 못 찾는다(store={:?} 폴더={:?}) — 그 계정은 영원히 회전에 실패한다",
+        store_refresh_of("mine@x"),
+        folder_refresh_of("mine@x")
+    );
+    if store_refresh_of("mine@x").is_none() || folder_only > 0 {
+        println!(
+            "[r4-cas] ※ 이웃이 스토어의 mine@x 행을 지웠다(못 읽은 횟수={missed} · 폴더완충만={folder_only}) — 완충으로 회전 재료는 살아 있다"
+        );
     }
     assert!(!peer::has("ghost@x"), "마지막 상태도 로그아웃이어야 한다");
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// ★R28d(CASX R2) — **완충에 손이 닿는가.** 규약 2는 *"살아 있는 토큰의 거처는 계정
+/// 폴더고 `credEnc`는 폴더 재생성용 백업"*이라고 못 박았는데, R1까지
+/// [`claude::freshest_creds`]의 첫 줄은 `accounts.iter().find(...)?`였다 — 스토어 행이
+/// 사라지면 폴더의 회전 재료가 **도달 불가**였고, 위 못은 그 착지를 확인 크리틱 R1의
+/// 120주행 중 3주행에서 냈다(한 판은 배경 회전 1,143판 중 마지막 880판이 연속 실패).
+///
+/// 그 성질을 위 못은 **부하 안에서 우연히** 밟는다(그래서 R1이 단정을 감을 수 있었다).
+/// 이 못은 같은 성질을 **결정적으로** 잰다. 세 판이고, 셋을 가르는 사실은 하나다 —
+/// **로그아웃은 행과 폴더를 같이 지운다**(3.0 [`claude::remove_account`] · 2.6.2
+/// `removeAccount` → `deleteAccountDir`, `src/main/auth.ts:176-183`).
+///
+/// | 판 | 스토어 행 | 계정 폴더 | 요구 |
+/// |---|---|---|---|
+/// | ① 행 유실(이웃의 오독 통짜 쓰기) | 없다 | **있다** | 회전 재료에 **도달한다** · 되쓰기도 계속 앉는다 · 행은 조용히 안 되살아난다 |
+/// | ② 진짜 로그아웃 | 없다 | 없다 | `None` — 되살릴 것이 없다 |
+/// | ③ 로그아웃 **뒤에 착지한** 회전 | 없다 | 없다 | 폴더를 **다시 파지 않는다**(①이 연 문의 뒷문 봉인) |
+///
+/// ③이 없으면 ①은 그 자체로 사고가 된다: 로그아웃 직후 비행 중이던 회전이 폴더를 다시
+/// 파고 평문 refresh 토큰을 앉히면, ①의 문이 그것을 **다시 도달 가능하게** 만든다.
+#[test]
+fn the_folder_copy_stays_reachable_when_the_row_vanishes_but_never_after_a_logout() {
+    let home = ccg_store::testhome::take("r4casx2");
+    std::env::set_var("CCG_NO_NET", "1");
+
+    // ── ① 이웃이 「계정 0개」로 오독하고 통짜로 되썼다(행만 사라진다) ──────────────
+    seed("lost@x", "L-1");
+    assert_eq!(rotate("lost@x", "L-2"), Landing::Both, "시드 회전이 양쪽에 정착해야 이 판의 전제가 선다");
+    assert_eq!(folder_refresh_of("lost@x").as_deref(), Some("L-2"), "전제 — 폴더에 살아 있는 토큰이 앉았다");
+
+    peer::write_raw(None, &[]); // ★ 폴더는 안 건드린다 = 이것은 로그아웃이 **아니다**
+    assert!(!claude::is_registered("lost@x"), "전제 — 행이 사라졌다");
+    assert_eq!(
+        claude::refresh_token("lost@x").as_deref(),
+        Some("L-2"),
+        "★ 행이 사라졌다고 폴더의 회전 재료까지 못 찾으면 그 계정은 그 뒤로 영원히 회전에 실패한다(출구는 재로그인)"
+    );
+
+    // 그 재료로 회전이 계속 돈다 — 폴더 반쪽은 정착하고, 스토어 행은 **조용히 안 되살아난다**.
+    let base = claude::freshest_creds("lost@x").expect("폴더 완충");
+    let next = claude::apply_refresh(&base, "A-L-3", Some("L-3"), 3600.0, now_ms()).expect("회전 조립");
+    let rep = claude::persist_refreshed_report("lost@x", &next);
+    println!("[r4-casx2] ① 행 유실 뒤 되쓰기 = folder:{:?} unregistered={}", rep.folder, rep.unregistered);
+    assert!(rep.folder.is_ok(), "★ 폴더가 멀쩡한데 되쓰기를 거절하면 마지막 완충이 낡아 죽는다: {:?}", rep.folder);
+    assert!(rep.unregistered, "행이 없으니 백업 반쪽은 「저장 실패」가 아니라 「미등록」이다");
+    assert_eq!(folder_refresh_of("lost@x").as_deref(), Some("L-3"), "★ 회전 결과가 폴더에 안 앉았다");
+    assert!(!claude::is_registered("lost@x"), "★ 배경 회전이 스토어 행을 조용히 되살렸다(로그아웃 취소와 같은 방향)");
+
+    // ── ② 진짜 로그아웃 — 행·폴더·건강 장부를 같이 지운다 ────────────────────────
+    seed("bye@x", "B-1");
+    assert_eq!(rotate("bye@x", "B-2"), Landing::Both, "전제 — 폴더가 물질화됐다");
+    assert!(claude::account_dir("bye@x").exists(), "전제 — 폴더가 있다");
+    claude::remove_account("bye@x");
+    assert!(!claude::account_dir("bye@x").exists(), "전제 — 로그아웃은 폴더를 지운다(2.6.2·3.0 공통)");
+    assert!(claude::freshest_creds("bye@x").is_none(), "★ 로그아웃했는데 크리덴셜이 읽힌다");
+    assert!(claude::refresh_token("bye@x").is_none(), "★ 로그아웃한 계정의 회전 재료가 살아 있다 = 로그아웃이 안 된 것이다");
+
+    // ── ③ 그 로그아웃 **뒤에** 비행 중이던 회전이 착지한다 ───────────────────────
+    let stale = creds_of("bye@x", "B-3");
+    let after = claude::persist_refreshed_report("bye@x", &stale);
+    println!("[r4-casx2] ③ 로그아웃 뒤 착지 = folder:{:?} unregistered={}", after.folder, after.unregistered);
+    assert!(after.folder.is_err(), "★ 로그아웃한 계정의 폴더를 배경 회전이 다시 팠다 — 평문 refresh 토큰이 되살아난다");
+    assert!(!claude::account_dir("bye@x").exists(), "★ 로그아웃한 계정의 폴더가 되살아났다");
+    assert!(after.unregistered, "그 착지는 「저장 실패」가 아니라 「사용자가 로그아웃했다」다(문구가 갈린다)");
+    assert!(claude::freshest_creds("bye@x").is_none(), "★ 로그아웃 뒤 회전 재료가 다시 도달 가능해졌다");
+
     let _ = std::fs::remove_dir_all(&home);
 }
