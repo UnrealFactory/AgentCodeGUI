@@ -1,0 +1,85 @@
+{
+  "app": "electron-2.6.2",
+  "kind": "electron",
+  "arm": "seeded",
+  "at": "2026-08-25T07:45:50.377Z",
+  "settleMs": 9000,
+  "popWaitMs": 4000,
+  "userProfileOverride": "C:\\Temp\\ccg-r28f-audit\\uprof",
+  "safety": "accounts.json·codex-accounts.json을 앱 기동 **전에** 삭제 — 실계정 토큰이 프로세스에 안 들어간다(회전 0)",
+  "runs": [
+    {
+      "run": 1,
+      "home": "C:\\Temp\\ccg-r28f-audit\\home-lp-electron-seeded-1",
+      "pid": 40508,
+      "at": "2026-08-25T07:45:50.430Z",
+      "accountsRemoved": [
+        "accounts.json",
+        "codex-accounts.json"
+      ],
+      "usageCacheSeededBytes": 1682,
+      "accountsJsonPresentAtLaunch": false,
+      "userProfile": "C:\\Temp\\ccg-r28f-audit\\uprof",
+      "chips": 5,
+      "acctCount": 0,
+      "clicked": true,
+      "popText": "컨텍스트120K / 1M 토큰현재 컨텍스트이 대화가 차지하는 컨텍스트 창12%5시간 한도데이터 없음—주간 한도데이터 없음—토큰 사용량입력 0 · 출력 0 · 캐시 00",
+      "prows": 4,
+      "hasNoData": true,
+      "usageGet": "{\"fiveHour\":null,\"weekly\":null,\"weeklyFable\":null,\"extraCredit\":null}",
+      "diskCacheStillThere": true
+    },
+    {
+      "run": 2,
+      "home": "C:\\Temp\\ccg-r28f-audit\\home-lp-electron-seeded-2",
+      "pid": 31908,
+      "at": "2026-08-25T07:46:06.750Z",
+      "accountsRemoved": [
+        "accounts.json",
+        "codex-accounts.json"
+      ],
+      "usageCacheSeededBytes": 1682,
+      "accountsJsonPresentAtLaunch": false,
+      "userProfile": "C:\\Temp\\ccg-r28f-audit\\uprof",
+      "chips": 5,
+      "acctCount": 0,
+      "clicked": true,
+      "popText": "컨텍스트120K / 1M 토큰현재 컨텍스트이 대화가 차지하는 컨텍스트 창12%5시간 한도데이터 없음—주간 한도데이터 없음—토큰 사용량입력 0 · 출력 0 · 캐시 00",
+      "prows": 4,
+      "hasNoData": true,
+      "usageGet": "{\"fiveHour\":null,\"weekly\":null,\"weeklyFable\":null,\"extraCredit\":null}",
+      "diskCacheStillThere": true
+    },
+    {
+      "run": 3,
+      "home": "C:\\Temp\\ccg-r28f-audit\\home-lp-electron-seeded-3",
+      "pid": 8756,
+      "at": "2026-08-25T07:46:23.124Z",
+      "accountsRemoved": [
+        "accounts.json",
+        "codex-accounts.json"
+      ],
+      "usageCacheSeededBytes": 1682,
+      "accountsJsonPresentAtLaunch": false,
+      "userProfile": "C:\\Temp\\ccg-r28f-audit\\uprof",
+      "chips": 5,
+      "acctCount": 0,
+      "clicked": true,
+      "popText": "컨텍스트120K / 1M 토큰현재 컨텍스트이 대화가 차지하는 컨텍스트 창12%5시간 한도데이터 없음—주간 한도데이터 없음—토큰 사용량입력 0 · 출력 0 · 캐시 00",
+      "prows": 4,
+      "hasNoData": true,
+      "usageGet": "{\"fiveHour\":null,\"weekly\":null,\"weeklyFable\":null,\"extraCredit\":null}",
+      "diskCacheStillThere": true
+    }
+  ],
+  "summary": {
+    "runs": 3,
+    "prows": [
+      4
+    ],
+    "hasNoData": [
+      true
+    ],
+    "stable": true
+  }
+}

@@ -1,0 +1,2146 @@
+{
+  "at": "2026-08-25T07:50:18.209Z",
+  "tree": "C:\\Temp\\ccg-r28f-audit\\wt",
+  "gitHead": "be308fa",
+  "total": 216,
+  "impl": 198,
+  "commentOnly": 0,
+  "missing": 18,
+  "rows": [
+    {
+      "key": "runStart",
+      "ch": "claude:run",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:257"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "runCancel",
+      "ch": "claude:cancel",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:258"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "runInterrupt",
+      "ch": "claude:interrupt",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:259"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "permissionRespond",
+      "ch": "claude:permission-respond",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:260"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "questionRespond",
+      "ch": "claude:question-respond",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:261"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "bgTask",
+      "ch": "claude:bg-task",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:262"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "maRun",
+      "ch": "ma:run",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:271"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "maCancel",
+      "ch": "ma:cancel",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:272"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "maInterrupt",
+      "ch": "ma:interrupt",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:273"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "maPermissionRespond",
+      "ch": "ma:permission-respond",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:274"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "maQuestionRespond",
+      "ch": "ma:question-respond",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:275"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "maBgTask",
+      "ch": "ma:bg-task",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:276"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "maDispose",
+      "ch": "ma:dispose",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:277"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "maGet",
+      "ch": "ma:get",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:84"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "maSave",
+      "ch": "ma:save",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:85"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "maLoadSession",
+      "ch": "ma:load-session",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:86"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "maPanelOpen",
+      "ch": "ma:panel-open",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/windows.rs:36"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "maPanelHydrate",
+      "ch": "ma:panel-hydrate",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/windows.rs:37"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "maPanelPersist",
+      "ch": "ma:panel-persist",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/windows.rs:38"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "maPanelFocus",
+      "ch": "ma:panel-focus",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/windows.rs:39"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "maPanelClose",
+      "ch": "ma:panel-close",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/windows.rs:40"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "maPanelStates",
+      "ch": "ma:panel-states",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/windows.rs:41"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "maPanelLeftoverClear",
+      "ch": "ma:panel-leftover-clear",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/windows.rs:42"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "talkRun",
+      "ch": "talk:run",
+      "verdict": "missing",
+      "code": [],
+      "codeN": 0,
+      "commentN": 0
+    },
+    {
+      "key": "talkCancel",
+      "ch": "talk:cancel",
+      "verdict": "missing",
+      "code": [],
+      "codeN": 0,
+      "commentN": 0
+    },
+    {
+      "key": "talkPermissionRespond",
+      "ch": "talk:permission-respond",
+      "verdict": "missing",
+      "code": [],
+      "codeN": 0,
+      "commentN": 0
+    },
+    {
+      "key": "talkQuestionRespond",
+      "ch": "talk:question-respond",
+      "verdict": "missing",
+      "code": [],
+      "codeN": 0,
+      "commentN": 0
+    },
+    {
+      "key": "talkBgTask",
+      "ch": "talk:bg-task",
+      "verdict": "missing",
+      "code": [],
+      "codeN": 0,
+      "commentN": 0
+    },
+    {
+      "key": "talkGet",
+      "ch": "talk:get",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:88"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "talkSave",
+      "ch": "talk:save",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:89"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "openSessionWindow",
+      "ch": "win:open-session",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:98"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "sessionRun",
+      "ch": "session:run",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:264"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "sessionCancel",
+      "ch": "session:cancel",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:265"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "sessionInterrupt",
+      "ch": "session:interrupt",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:266"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "sessionPermissionRespond",
+      "ch": "session:permission-respond",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:267"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "sessionQuestionRespond",
+      "ch": "session:question-respond",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:268"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "sessionBgTask",
+      "ch": "session:bg-task",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:269"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "sessionWindowsList",
+      "ch": "session-wins:list",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:99"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "sessionWindowFocus",
+      "ch": "session-wins:focus",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:100"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "sessionWindowClose",
+      "ch": "session-wins:close",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:101"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "sessionWindowRename",
+      "ch": "session-wins:rename",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:108"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "sessionReport",
+      "ch": "session-wins:report",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:102"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "sessionHydrate",
+      "ch": "session-wins:hydrate",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:107"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "sessionPersist",
+      "ch": "session-wins:persist",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:106"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "btwOpen",
+      "ch": "btw:open",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/parity/mod.rs:57"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "pickDirectory",
+      "ch": "dialog:pick-directory",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:127"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "dirExists",
+      "ch": "fs:dir-exists",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:126"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "pickAttachments",
+      "ch": "dialog:pick-attachments",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/parity/mod.rs:59"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "saveAttachmentData",
+      "ch": "attachment:save-data",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:147"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "getUsage",
+      "ch": "usage:get",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/parity/mod.rs:53"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "authLogin",
+      "ch": "auth:login",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/accounts.rs:385",
+        "src-tauri/src/ipc/mod.rs:199"
+      ],
+      "codeN": 2,
+      "commentN": 0
+    },
+    {
+      "key": "authLogout",
+      "ch": "auth:logout",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/accounts.rs:385",
+        "src-tauri/src/ipc/mod.rs:204"
+      ],
+      "codeN": 2,
+      "commentN": 0
+    },
+    {
+      "key": "authLoginCancel",
+      "ch": "auth:login-cancel",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/accounts.rs:385",
+        "src-tauri/src/ipc/mod.rs:200"
+      ],
+      "codeN": 2,
+      "commentN": 0
+    },
+    {
+      "key": "authLoginUrl",
+      "ch": "auth:login-url",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:203"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "authListAccounts",
+      "ch": "auth:list-accounts",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/accounts.rs:388",
+        "src-tauri/src/ipc/mod.rs:194"
+      ],
+      "codeN": 2,
+      "commentN": 0
+    },
+    {
+      "key": "authSetDefaultAccount",
+      "ch": "auth:set-default-account",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/accounts.rs:385",
+        "src-tauri/src/ipc/mod.rs:205"
+      ],
+      "codeN": 2,
+      "commentN": 0
+    },
+    {
+      "key": "authRemoveAccount",
+      "ch": "auth:remove-account",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/accounts.rs:385",
+        "src-tauri/src/ipc/mod.rs:206"
+      ],
+      "codeN": 2,
+      "commentN": 0
+    },
+    {
+      "key": "authAccountsUsage",
+      "ch": "auth:accounts-usage",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/parity/mod.rs:55"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "authReorderAccounts",
+      "ch": "auth:reorder-accounts",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/accounts.rs:385",
+        "src-tauri/src/ipc/mod.rs:207"
+      ],
+      "codeN": 2,
+      "commentN": 0
+    },
+    {
+      "key": "codexListAccounts",
+      "ch": "codex-auth:list-accounts",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/accounts.rs:389",
+        "src-tauri/src/ipc/mod.rs:195",
+        "src-tauri/src/ipc/parity/mod.rs:158"
+      ],
+      "codeN": 3,
+      "commentN": 0
+    },
+    {
+      "key": "codexLogin",
+      "ch": "codex-auth:login",
+      "verdict": "missing",
+      "code": [],
+      "codeN": 0,
+      "commentN": 0
+    },
+    {
+      "key": "codexLogout",
+      "ch": "codex-auth:logout",
+      "verdict": "missing",
+      "code": [],
+      "codeN": 0,
+      "commentN": 0
+    },
+    {
+      "key": "codexSetDefaultAccount",
+      "ch": "codex-auth:set-default-account",
+      "verdict": "missing",
+      "code": [],
+      "codeN": 0,
+      "commentN": 0
+    },
+    {
+      "key": "codexLoginCancel",
+      "ch": "codex-auth:login-cancel",
+      "verdict": "missing",
+      "code": [],
+      "codeN": 0,
+      "commentN": 0
+    },
+    {
+      "key": "codexAccountsUsage",
+      "ch": "codex-auth:accounts-usage",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/parity/mod.rs:75",
+        "src-tauri/src/ipc/parity/mod.rs:155"
+      ],
+      "codeN": 2,
+      "commentN": 0
+    },
+    {
+      "key": "codexReorderAccounts",
+      "ch": "codex-auth:reorder-accounts",
+      "verdict": "missing",
+      "code": [],
+      "codeN": 0,
+      "commentN": 0
+    },
+    {
+      "key": "engineAutoUpdate",
+      "ch": "engine:auto-update",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:71"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "engineUpdateStatus",
+      "ch": "engine:update-status",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:72"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "apiConfigGet",
+      "ch": "api-config:get",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:91"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "apiConfigSetKey",
+      "ch": "api-config:set-key",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:92"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "apiConfigClearKey",
+      "ch": "api-config:clear-key",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:93"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "apiConfigSetBudget",
+      "ch": "api-config:set-budget",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:94"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "apiConfigResetBudget",
+      "ch": "api-config:reset-budget",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:95"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "apiUsageList",
+      "ch": "api-usage:list",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:96"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "openApiSettings",
+      "ch": "ui:open-api-settings",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/parity/misc.rs:44"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "apiSettingsRequested",
+      "ch": "ui:api-settings-requested",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/parity/misc.rs:46"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "profileGet",
+      "ch": "profile:get",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:76"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "profileSave",
+      "ch": "profile:save",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:77"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "chatsGet",
+      "ch": "chats:get",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:78"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "chatsSave",
+      "ch": "chats:save",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:79"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "chatLoad",
+      "ch": "chats:load",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:80"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "uiPrefsGet",
+      "ch": "ui-prefs:get",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:81"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "uiPrefsSave",
+      "ch": "ui-prefs:save",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:82"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "uiGlassChanged",
+      "ch": "ui-glass:changed",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:111"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "uiLangChanged",
+      "ch": "ui-lang:changed",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:112"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "skillList",
+      "ch": "skill:list",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/parity/mod.rs:64"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "skillSetEnabled",
+      "ch": "skill:set-enabled",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/parity/mod.rs:65"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "mcpList",
+      "ch": "mcp:list",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/parity/mod.rs:61"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "mcpSetEnabled",
+      "ch": "mcp:set-enabled",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/parity/mod.rs:62"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "shellOpenPath",
+      "ch": "shell:open-path",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:140"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "shellRevealPath",
+      "ch": "shell:reveal-path",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:141"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "fsRename",
+      "ch": "fs:rename",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:136"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "fsDelete",
+      "ch": "fs:delete",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:137"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "fsCreate",
+      "ch": "fs:create",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:138"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "fsMove",
+      "ch": "fs:move",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:139"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "readFile",
+      "ch": "fs:read-file",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:134"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "writeFile",
+      "ch": "fs:write-file",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:135"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "htmlPreviewUrl",
+      "ch": "fs:html-preview-url",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:144"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "closeShortcut",
+      "ch": "shortcut:close",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/parity/misc.rs:42"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "listFiles",
+      "ch": "fs:list-files",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:133"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "listDir",
+      "ch": "fs:list-dir",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:131"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "gitRepos",
+      "ch": "git:repos",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:175"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "gitStatus",
+      "ch": "git:status",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:176"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "gitLog",
+      "ch": "git:log",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:177"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "gitFileDiff",
+      "ch": "git:file-diff",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:178"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "gitCommitDetail",
+      "ch": "git:commit-detail",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:179"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "gitCommitFileDiff",
+      "ch": "git:commit-file-diff",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:180"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "gitCommit",
+      "ch": "git:commit",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:181"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "gitPush",
+      "ch": "git:push",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:182"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "gitPull",
+      "ch": "git:pull",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:183"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "gitFetch",
+      "ch": "git:fetch",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:184"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "gitDiscard",
+      "ch": "git:discard",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:185"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "gitBranches",
+      "ch": "git:branches",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:186"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "gitSwitchBranch",
+      "ch": "git:switch-branch",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:187"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "gitCreateBranch",
+      "ch": "git:create-branch",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:188"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "gitAiMessage",
+      "ch": "git:ai-message",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:192",
+        "src-tauri/src/ipc/parity/mod.rs:79"
+      ],
+      "codeN": 2,
+      "commentN": 0
+    },
+    {
+      "key": "lspStatus",
+      "ch": "lsp:status",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:150"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "lspHover",
+      "ch": "lsp:hover",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:151"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "lspDefinition",
+      "ch": "lsp:definition",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:152"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "lspSemanticTokens",
+      "ch": "lsp:semantic-tokens",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:153"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "lspCachedTokens",
+      "ch": "lsp:cached-tokens",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:154"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "lspCompletion",
+      "ch": "lsp:completion",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:155"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "lspResolveCompletion",
+      "ch": "lsp:completion-resolve",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:156"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "lspPrewarm",
+      "ch": "lsp:prewarm",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:157"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "lspWarm",
+      "ch": "lsp:warm",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:158"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "lspVerseRegistry",
+      "ch": "lsp:verse-registry",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:170"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "lspProjectStatus",
+      "ch": "lsp:project-status",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:159"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "lspVerseDigests",
+      "ch": "lsp:verse-digests",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:171"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "lspVerseExcludes",
+      "ch": "lsp:verse-excludes",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:172"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "lspInstall",
+      "ch": "lsp:install",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/lsp.rs:145"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "lspServers",
+      "ch": "lsp:servers",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:160"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "lspInstallServer",
+      "ch": "lsp:install-server",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/lsp.rs:146"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "lspUninstallServer",
+      "ch": "lsp:uninstall-server",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/lsp.rs:147"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "lspPickVerseServer",
+      "ch": "lsp:pick-verse-server",
+      "verdict": "missing",
+      "code": [],
+      "codeN": 0,
+      "commentN": 0
+    },
+    {
+      "key": "lspSetVersePath",
+      "ch": "lsp:set-verse-path",
+      "verdict": "missing",
+      "code": [],
+      "codeN": 0,
+      "commentN": 0
+    },
+    {
+      "key": "lspClearVersePath",
+      "ch": "lsp:clear-verse-path",
+      "verdict": "missing",
+      "code": [],
+      "codeN": 0,
+      "commentN": 0
+    },
+    {
+      "key": "lspFilesChanged",
+      "ch": "lsp:files-changed",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:167"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "winMinimize",
+      "ch": "win:minimize",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:115"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "winMaximizeToggle",
+      "ch": "win:maximize-toggle",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:116"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "winClose",
+      "ch": "win:close",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:117"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "winIsMaximized",
+      "ch": "win:is-maximized",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:118"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "codexEngineListAvailable",
+      "ch": "codex-engine:list-available",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/engine/codex_versions.rs:32"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "codexEngineState",
+      "ch": "codex-engine:state",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:74"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "codexEngineInstall",
+      "ch": "codex-engine:install",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/engine/codex_versions.rs:33"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "codexEngineUninstall",
+      "ch": "codex-engine:uninstall",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/engine/codex_versions.rs:34"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "codexEngineSetActive",
+      "ch": "codex-engine:set-active",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/engine/codex_versions.rs:35"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "codexEngineCleanup",
+      "ch": "codex-engine:cleanup",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/engine/codex_versions.rs:36"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "codexEngineInstallProgress",
+      "ch": "codex-engine:install-progress",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/engine/codex_versions.rs:37"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "engineListAvailable",
+      "ch": "engine:list-available",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/engine/versions.rs:31"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "codexModels",
+      "ch": "codex:models",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/parity/mod.rs:67"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "engineState",
+      "ch": "engine:state",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:73"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "engineInstall",
+      "ch": "engine:install",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/engine/versions.rs:32"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "engineUninstall",
+      "ch": "engine:uninstall",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/engine/versions.rs:33"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "engineSetActive",
+      "ch": "engine:set-active",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/engine/versions.rs:34"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "engineCleanup",
+      "ch": "engine:cleanup",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/engine/versions.rs:35"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "appGetVersion",
+      "ch": "app:get-version",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:67"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "appGetInitialDir",
+      "ch": "app:get-initial-dir",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:68"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "updateGetStatus",
+      "ch": "app:update-status",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:69"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "updateCheck",
+      "ch": "app:update-check",
+      "verdict": "missing",
+      "code": [],
+      "codeN": 0,
+      "commentN": 0
+    },
+    {
+      "key": "updateInstall",
+      "ch": "app:update-install",
+      "verdict": "missing",
+      "code": [],
+      "codeN": 0,
+      "commentN": 0
+    },
+    {
+      "key": "engineEvent",
+      "ch": "engine:event",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:263"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "openDirectory",
+      "ch": "app:open-directory",
+      "verdict": "missing",
+      "code": [],
+      "codeN": 0,
+      "commentN": 0
+    },
+    {
+      "key": "updateEvent",
+      "ch": "app:update-event",
+      "verdict": "missing",
+      "code": [],
+      "codeN": 0,
+      "commentN": 0
+    },
+    {
+      "key": "maEvent",
+      "ch": "ma:event",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:278"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "maPanelClosed",
+      "ch": "ma:panel-closed",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/popout.rs:299"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "talkEvent",
+      "ch": "talk:event",
+      "verdict": "missing",
+      "code": [],
+      "codeN": 0,
+      "commentN": 0
+    },
+    {
+      "key": "sessionEvent",
+      "ch": "session:event",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:270"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "sessionWindowsChanged",
+      "ch": "session-wins:changed",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:109"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "sessionFlushRequest",
+      "ch": "session-wins:flush-request",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/windows.rs:31"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "engineUpdateEvent",
+      "ch": "engine:update-event",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/engine/boot_update.rs:46"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "engineInstallProgress",
+      "ch": "engine:install-progress",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/engine/versions.rs:36"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "lspInstallProgress",
+      "ch": "lsp:install-progress",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/lsp.rs:148"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "winState",
+      "ch": "win:state",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:113"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "notifyEvent",
+      "ch": "notify:event",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/notify.rs:50"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "notifyOpen",
+      "ch": "notify:open",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/notify.rs:51"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "notifyClose",
+      "ch": "notify:close",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/notify.rs:52"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "notifyResize",
+      "ch": "notify:resize",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/notify.rs:53"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "notifyShow",
+      "ch": "notify:show",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/notify.rs:54"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "notifyJump",
+      "ch": "notify:jump",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/notify.rs:55"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "trayMenuShow",
+      "ch": "traymenu:show",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/tray.rs:62"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "trayMenuResize",
+      "ch": "traymenu:resize",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/tray.rs:63"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "trayMenuAction",
+      "ch": "traymenu:action",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/tray.rs:64"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "chatRun",
+      "ch": "chat:run",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:222"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "chatInterrupt",
+      "ch": "chat:interrupt",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:223"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "chatCancel",
+      "ch": "chat:cancel",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:224"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "chatPermission",
+      "ch": "chat:permission",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:225"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "chatAnswer",
+      "ch": "chat:answer",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:226"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "chatRespondDialog",
+      "ch": "chat:respond-dialog",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:227"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "chatBgTask",
+      "ch": "chat:bg-task",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:228"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "chatDispose",
+      "ch": "chat:dispose",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:229"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "chatIdentityGet",
+      "ch": "chat:identity-get",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:230"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "chatIdentitySet",
+      "ch": "chat:identity-set",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:231"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "chatIdentityRevert",
+      "ch": "chat:identity-revert",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:232"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "chatQueueMutate",
+      "ch": "chat:queue-mutate",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:233"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "chatForceSettle",
+      "ch": "chat:force-settle",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:234"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "chatToolingGet",
+      "ch": "chat:tooling-get",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:237"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "chatsSetActive",
+      "ch": "chats:set-active",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:212"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "boardGet",
+      "ch": "board:get",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:213"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "boardLoad",
+      "ch": "board:load",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:214"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "boardSave",
+      "ch": "board:save",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:215"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "winChatOpen",
+      "ch": "win:chat-open",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/windows.rs:16"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "winChatClose",
+      "ch": "win:chat-close",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/windows.rs:17"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "winChatFocus",
+      "ch": "win:chat-focus",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/windows.rs:18"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "winChatList",
+      "ch": "win:chat-list",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/windows.rs:19"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "chatEvent",
+      "ch": "chat:event",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:239"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "chatIdentityEvent",
+      "ch": "chat:identity",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:240"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "chatQueueEvent",
+      "ch": "chat:queue",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:241"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "chatRunState",
+      "ch": "chat:run-state",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:242"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "chatVerdict",
+      "ch": "chat:verdict",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:243"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "chatStatus",
+      "ch": "chat:status",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:218"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "chatWindows",
+      "ch": "chat:windows",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/windows.rs:20"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "chatFlushReq",
+      "ch": "chat:flush-req",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/windows.rs:22"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "crosstalkConfig",
+      "ch": "crosstalk:config",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:250"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "crosstalkSet",
+      "ch": "crosstalk:set",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:251"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "crosstalkStop",
+      "ch": "crosstalk:stop",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:252"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    },
+    {
+      "key": "crosstalkState",
+      "ch": "crosstalk:state",
+      "verdict": "impl",
+      "code": [
+        "src-tauri/src/ipc/mod.rs:254"
+      ],
+      "codeN": 1,
+      "commentN": 0
+    }
+  ]
+}
