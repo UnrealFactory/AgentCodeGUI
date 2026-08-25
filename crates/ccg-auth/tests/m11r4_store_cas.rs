@@ -1311,3 +1311,186 @@ fn a_logout_tombstone_keeps_the_backup_from_resurrecting_the_account() {
     assert!(claude::is_registered("bye@x"), "★ 툼스톤이 사용자의 재로그인을 막았다 — 지문으로 시체와 갈라야 한다");
     let _ = std::fs::remove_dir_all(&home);
 }
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ★R28g — 확인 크리틱 R28f §2-1: 「제품 경로로 강제가 안 된다」는 **사실이 아니었다**
+// ══════════════════════════════════════════════════════════════════════════════
+
+/// 자식 주행 표식. 이 변수가 있으면 아래 못은 **제품 경로 주행**만 하고, 없으면
+/// 자기 자신을 자식으로 띄워 그 주행의 **stderr를 읽는다**.
+const BLIND_CHILD: &str = "CCG_R28G_BLIND_CHILD";
+
+/// 지금 디스크에 있는 그 계정의 **행 바이트**(이웃이 자기 손에 드는 것과 같은 값).
+fn disk_row(email: &str) -> Option<Value> {
+    peer::read_raw().1.into_iter().find(|a| claude::email_of(a) == Some(email))
+}
+
+/// ★R28g(확인 크리틱 R28f §2-1) — **앵커는 섰는데 맞는 세대가 없는 판이 `refused`로,
+/// 그리고 한 줄로 착지한다** — 제품 경로에서.
+///
+/// R28f 보고서 §3과 그 완료 보고는 이렇게 적었다: *"크리틱과 같은 이유로 제품 경로 못은
+/// 안 세웠다 — 우리 커밋의 읽기가 대개 그 이메일을 먼저 보기 때문에 **제품 경로로 강제가
+/// 안 된다**."* 확인 크리틱 R28f가 그것을 반증했다(§2-1 · 5/5 결정적). 필요한 것은
+/// 「우리가 못 본 이메일」이 아니라 **「한 세대에 같이 있은 적 없는 두 앵커 행」**이다.
+///
+/// ```text
+/// ① our_login(anchor@x)      → 그때의 anchor@x 행 바이트를 뜬다
+/// ② our_login(dropme@x)
+/// ③ our_login(anchor@x) 다시  → 옛 anchor 행은 이제 어느 최신 세대에도 없다
+/// ④ our_login(late@x)        → late@x 행 바이트를 뜬다
+/// ⑤ 이웃 원문 = [①의 행, ④의 행] → dropme@x가 빠졌다(두 앵커가 한 세대에 같이 없다)
+/// ⑥ 우리 회전이 커밋 → 이웃이 걸터탄 통짜 쓰기가 이름 없는 옛 inode로 착지
+/// ```
+///
+/// 두 앵커는 **각각** 우리 장부에 있으므로 `anchors.is_empty()` 갈래에는 안 걸리고,
+/// 두 앵커를 **함께** 담은 세대는 하나도 없으므로 후보가 텅 빈다 — R28e가 여기서
+/// `Verdict::Nothing`을 돌려줬고 부르는 쪽이 그것을 「되살릴 것이 없다」로 읽어
+/// `late_kept`만 올리고 **로그를 한 줄도 안 찍었다**(그 침묵이 R28e §3-3의 불합격 사유다).
+///
+/// | 코드 | 크리틱 실측 5주행 |
+/// |---|---|
+/// | `6f2f312`(R28d R4) | 근거 없이 10ms에 지운다 |
+/// | `9aa75b5`(R28e) | `late_kept=1` · **로그 0줄**(그 침묵) |
+/// | `0596b41`(R28f) | `refused=1` + **한 줄** |
+///
+/// ## 왜 자식 프로세스인가 (정직하게 적는다)
+///
+/// R28f가 세운 못은 `ledger.rs`의 **단위 못**뿐이었다(`Verdict::Blind`를 돌려주나).
+/// 이 라운드가 닫는 것은 그 갈래가 아니라 **부르는 쪽**이다 — `claude.rs`의 `refused`
+/// 집계와 `eprintln!` 한 줄. 그 한 줄은 **지연 감시 스레드의 stderr**로 나가므로 같은
+/// 프로세스 안에서는 읽을 수단이 없다. 그래서 이 못은 자기 자신을 `--exact … --nocapture`로
+/// 띄워 그 프로세스의 stderr를 그대로 읽는다(`critic_m11r3_attack.rs`·`m11r3_store_race.rs`가
+/// 쓰는 것과 같은 자식 패턴). 자식이 자기 장부를 먼저 단정하므로 **어느 쪽이 붉어도**
+/// 진단이 남는다.
+///
+/// 자물쇠 안 경로(`cas_edit`의 `Commit::Buried`)도 **같은 두 줄**을 쓴다
+/// (`bury_stats::REFUSED` + `blind_line`). 그래서 이 못은 어느 쪽이 파냈든 같은 값을 잰다.
+#[test]
+fn an_anchor_without_a_matching_generation_is_refused_out_loud_on_the_product_path() {
+    if std::env::var(BLIND_CHILD).is_ok() {
+        return blind_child_run();
+    }
+    let home = ccg_store::testhome::take("r28g-blind");
+    let exe = std::env::current_exe().expect("테스트 바이너리");
+    let out = std::process::Command::new(exe)
+        .args([
+            "--exact",
+            "an_anchor_without_a_matching_generation_is_refused_out_loud_on_the_product_path",
+            "--nocapture",
+            "--test-threads=1",
+        ])
+        .env(BLIND_CHILD, "1")
+        .env("CCG_HOME", home.dir.as_os_str())
+        .env("CCG_NO_NET", "1")
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .output()
+        .expect("자식 프로세스");
+    let so = String::from_utf8_lossy(&out.stdout).to_string();
+    let se = String::from_utf8_lossy(&out.stderr).to_string();
+    // `--nocapture`는 `test <이름> ... `을 같은 줄 앞에 붙인다 — `starts_with`로 찾으면 못 찾는다.
+    for l in so.lines().filter(|l| l.contains("[r28g-blind]")) {
+        println!("{l}");
+    }
+    // 제품이 「못 짚었다」를 말한 줄 — §3-3의 그 갈래인지까지 본다(다른 `Blind` 셋과 가른다).
+    let said: Vec<&str> = se.lines().filter(|l| l.contains("세대가 하나도 없다")).collect();
+    for l in &said {
+        println!("[r28g-blind] 제품 줄: {l}");
+    }
+    assert!(
+        out.status.success(),
+        "★ 자식(제품 경로 주행)이 붉었다 — 아래가 그 주행의 꼬리다\n--- stdout ---\n{}\n--- stderr ---\n{}",
+        tail(&so, 40),
+        tail(&se, 40)
+    );
+    assert_eq!(
+        said.len(),
+        1,
+        "★ 앵커는 섰는데 맞는 세대가 없는 판이 **침묵으로** 지나갔다(제품 줄 {}개) — R28e가 불합격한 그 자리다\n--- stderr ---\n{}",
+        said.len(),
+        tail(&se, 40)
+    );
+    let line = said[0];
+    assert!(line.contains("[auth] ★ accounts.json:"), "★ 그 줄이 제품의 매장 진단 줄이 아니다: {line}");
+    assert!(
+        line.contains("앵커 2행은 우리 장부에 있는데"),
+        "★ 앵커가 둘 다 서 있는 판이 아니다 — 이 못이 재려던 판이 아니라 다른 `Blind` 갈래다: {line}"
+    );
+    assert!(
+        line.contains("dropme@x"),
+        "★ 못 짚은 계정 이름이 줄에 없다 — 지원 담당이 무엇을 못 살렸는지 못 읽는다: {line}"
+    );
+    // `.bak`·툼스톤·계정 폴더가 부모 홈 밖으로 샜는지 본다(자식은 이 홈만 만져야 한다).
+    println!("[r28g-blind] 자식 홈 = {}", home.dir.display());
+}
+
+/// 자식 몫 — 위 여섯 걸음을 **제품 경로로** 밟고 자기 장부를 단정한다.
+fn blind_child_run() {
+    // 홈은 부모가 증표(`ccg_store::testhome::take`)를 들고 넘겨준다. 여기서 `CCG_HOME`을
+    // 만들지도 지우지도 않는다 — 대신 **실홈으로 떨어지지 않았는지**만 확인한다.
+    let home = std::env::var("CCG_HOME").expect("★ 부모가 격리 홈을 안 넘겼다 — 실홈으로 떨어진다");
+    assert!(home.contains("r28g-blind"), "★ 격리 홈이 아니다: {home}");
+    std::env::set_var("CCG_NO_NET", "1");
+    claude::bury_stats::reset();
+
+    // ① 우리 로그인 anchor@x → **그 행의 디스크 바이트**를 뜬다.
+    seed("anchor@x", "A-1");
+    let old_anchor = disk_row("anchor@x").expect("① anchor@x 행");
+    // ② 우리 로그인 dropme@x — 나중에 이웃이 지웠다고 말할 계정.
+    seed("dropme@x", "D-1");
+    // ③ anchor@x 다시 로그인 — ①의 행은 이제 **어느 최신 세대에도 없다**.
+    seed("anchor@x", "A-2");
+    // ④ 우리 로그인 late@x → 그 행 바이트를 뜬다.
+    seed("late@x", "L-1");
+    let late_row = disk_row("late@x").expect("④ late@x 행");
+    assert_ne!(disk_row("anchor@x"), Some(old_anchor.clone()), "전제 — ③이 anchor@x 행을 실제로 갈았다");
+
+    // ⑤ 이웃 원문 = [①의 행, ④의 행]. dropme@x가 빠졌고, **두 앵커가 한 세대에 같이 있은
+    //    적이 없다**(①의 행이 있던 세대에는 late@x가 없었고, late@x가 생긴 세대의 anchor@x는
+    //    ③이 갈아 놓은 다른 행이다).
+    let (def, _) = peer::read_raw();
+    let theirs = peer::body(def.as_deref(), &[old_anchor, late_row]);
+    let held = std::fs::OpenOptions::new().write(true).open(peer::path()).expect("이웃의 걸터탄 열기");
+    // ⑥ 우리 회전이 갈아끼운다 → 이웃의 통짜 쓰기가 이름 없는 옛 inode로 착지 = 우리가 묻었다.
+    assert_eq!(rotate("anchor@x", "A-3"), Landing::Both, "전제 — 커밋이 정착했다");
+    land_whole_write(held, &theirs);
+
+    std::thread::sleep(std::time::Duration::from_millis(1200));
+    println!(
+        "[r28g-blind] 장부(근거못짚음={} 되살릴것없음={} 지연={} 신원세대로안지움={} ★못가름={}) · dropme 살아있나={} anchor={} late={}",
+        claude::bury_stats::refused(),
+        claude::bury_stats::late_kept(),
+        claude::bury_stats::late(),
+        claude::bury_stats::moved_on(),
+        claude::bury_stats::unsure(),
+        claude::is_registered("dropme@x"),
+        claude::is_registered("anchor@x"),
+        claude::is_registered("late@x")
+    );
+    assert_eq!(
+        claude::bury_stats::refused(),
+        1,
+        "★ 「못 짚었다」가 장부에 안 남았다 — R28e는 이 판을 `Nothing`으로 떨어뜨려 `late_kept`만 올렸다(확인 크리틱 R28e §3-3의 침묵)"
+    );
+    assert_eq!(
+        claude::bury_stats::late_kept(),
+        0,
+        "★ 「그들이 지운 계정이 없다」로 셌다 — 지운 계정은 있고(dropme@x) 우리가 못 짚었을 뿐이다"
+    );
+    assert_eq!(claude::bury_stats::late(), 0, "★ 근거를 못 짚었다면서 무언가를 되살렸다(지웠다)");
+    assert!(
+        claude::is_registered("dropme@x"),
+        "★ 근거 없이 지웠다 — 대조군 6f2f312의 거동(10ms에 소멸)이 돌아왔다. 「모르면 안 지운다」가 이 모듈의 우선순위다"
+    );
+    assert!(
+        claude::is_registered("anchor@x") && claude::is_registered("late@x"),
+        "★ 못 짚은 판정이 멀쩡한 계정까지 데려갔다"
+    );
+    assert_eq!(store_refresh_of("anchor@x").as_deref(), Some("A-3"), "★ 방금 정착한 회전 결과가 되돌아갔다");
+}
+
+/// 자식 출력의 꼬리 `n`줄 — 붉을 때 진단이 남게(전문을 다 붙이면 못 읽는다).
+fn tail(s: &str, n: usize) -> String {
+    let v: Vec<&str> = s.lines().collect();
+    v[v.len().saturating_sub(n)..].join("\n")
+}

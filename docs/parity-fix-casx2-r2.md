@@ -4,7 +4,11 @@
 - 앞 판정: `docs/critic/r28e-casx2-critic-r1.md`(대상 `b6c559b` + `9aa75b5` · **불합격**)
 - 앞 보고서: [`docs/parity-fix-casx2-r1.md`](parity-fix-casx2-r1.md) — **§3 손실표에 정정이
   있다**(아래 §4). r1의 「유지④」는 이 라운드에서 **회귀**로 다시 적힌다.
-- 커밋: `be164f7`(수정 + 못) · `<이 문서 커밋>`(보고서 · 부하 재측정)
+- 커밋: `be164f7`(수정 + 못) · `0596b41`(보고서 · 부하 재측정)
+- ★**R28g 정정이 얹혀 있다.** 확인 크리틱 `docs/critic/r28f-casx2-critic-r1.md`(**합격**)가
+  낸 문면 흠 넷을 §1-3 · §2 · §3 · §5에 **★R28g 정정** 블록으로 적었다. 본문은 그때의
+  기록으로 남긴다(r1에 한 처리와 같다) — 지운 문장은 없고, 틀린 문장 바로 아래에 무엇이
+  틀렸는지와 무엇으로 쟀는지를 붙였다. 그중 하나(§3)는 **못이 없다고 적은 자리에 못이 섰다.**
 - 한 줄: **장부는 「우리가 본 것」과 「우리가 쓴 것」을 같은 칸에 적고 있었다. 그래서
   이웃이 자기 손으로 회전한 행이 「우리가 신원을 새로 세운 행」으로 적혔고, 그 행이
   지울 후보일 때 로그아웃이 영구히 취소됐다. 읽기를 읽기라고 적자 판정이 갈렸다 —
@@ -19,7 +23,7 @@
 |---|---|---|
 | **①**(치명·회귀) 이웃이 자기 손으로 회전한 계정의 로그아웃이 영구 취소 | §1 | **닫음** — 못 하나 + 프로브 A/B 3판 |
 | **②**(높음) 되살리기 툼스톤에 지문이 없어 무효 | §2 | **닫음** — 못 하나 |
-| **③**(중간) 「못 짚었다」가 「되살릴 것 없다」로 떨어져 침묵 | §3 | **닫음** — 단위 못 하나 |
+| **③**(중간) 「못 짚었다」가 「되살릴 것 없다」로 떨어져 침묵 | §3 | **닫음** — 단위 못 하나 · ★R28g에서 **제품 경로 못 하나 추가**(§3 정정) |
 | **④**(낮음) 보고서 손실표·부하 수치 정정 | §4 · §5 | **정정** |
 
 ---
@@ -119,6 +123,26 @@ bye@x=그 행의 신원은 세대 4에서 섰고(회전이라고 선언되지 �
 문장으로 박았다. 우선순위 표에는 **★ 표시로 예외임을 명시**했다 — 다음 사람이 표만
 읽고 「모르면 언제나 안 지운다」로 되돌리지 않게.
 
+> ### ★R28g 정정 — 그 **예외의 사정거리가 근거보다 넓다**(확인 크리틱 R28f §2-3)
+>
+> 근거 3이 성립하는 판은 *「이웃이 **회전만** 한, 원래부터 있던 행」*이다. 그런데 코드가
+> 묻는 것은 **「그 행의 *마지막* 신원 변경이 이웃 손인가」** 하나라(`Origin::by`는
+> `note`가 덮어쓴다 — 장부는 「그 행을 **처음** 놓은 것이 누구인가」를 안 든다),
+> **이웃이 만들고 이웃이 회전한 행**도 같은 칸에 들어온다. 그 판에서 「지움」의 대가는
+> 근거 3이 말하는 비대칭이 아니라 **살아 있는 토큰째 사라짐**(출구 없음)이다. 즉 코드는
+> S1(살려야 하는 판)과 S5(지우면 안 되는 판)를 **구조적으로 못 가른다.**
+>
+> **회귀는 아니다** — 크리틱의 S5 실측(5/5 결정적)에서 대조군 `6f2f312`(R28d R4)도
+> 그 행을 **똑같이 지운다**(10ms). `9aa75b5`(R28e) 한 라운드만 우연히 살렸다. 이것은
+> 이 라운드가 새로 낸 손실이 아니라 **선존 손실을 처음 적는 것**이다. 그리고 이 판이
+> 서려면 이웃이 **자기 두 쓰기를 가로지르는 낡은 스냅샷**으로 통짜 쓰기를 해야 해서
+> 단일 프로세스인 2.6.2에서는 현실성이 낮다 — 그래서 등급이 낮음이다.
+>
+> 가르려면 장부가 `origin`에 **첫 주체**를 따로 들어야 한다(덮어쓰기 대신 최초 1회 고정).
+> R28g는 그것을 **안 한다** — 못 없이 근거를 바꾸는 것이 이 파일이 네 라운드 미끄러진
+> 방식이라서다. 대신 그 대가를 `ledger.rs` 모듈 주석(「★R28g — 그 예외의 사정거리가
+> 근거보다 넓다」 절)에 적어 다음 라운드가 근거를 들고 고르게 했다.
+
 ### 1-4. 실측 — 결정적
 
 프로브 `regression_5_the_neighbour_rotated_row_is_the_one_logged_out`
@@ -161,6 +185,19 @@ R28e는 되살리기 세 자리(`claude.rs:827`·`:1276`·`:1383`)가 전부
 자물쇠 안 경로는 `buried_rows: Vec<Value>`(이메일 목록이 아니라 행 목록), 자물쇠 밖
 경로는 `retain`이 뜬 행을 그대로 돌려준다. 두 자리를 `bury_all(rows, by)` 하나로 묶었다.
 
+> **★R28g 정정 — 「두 자리를 묶었다」는 절반만 사실이었다**(확인 크리틱 R28f §2-4).
+> 되살리기 자리는 **셋**이고(`cas_edit`의 `Commit::Clean`·연쇄 소진, 그리고 자물쇠 **밖**
+> `late_settle`), R28f의 `bury_all` 호출부는 **둘 다 `cas_edit` 안**이었다
+> (`claude.rs:1338`·`:1452`). 자물쇠 밖(`late_settle`)은 같은 루프를 **손으로 들고 있었다**
+> — 거동은 같았지만 사본이 하나 남아 있었다. R28g에서 그 세 번째 자리도 `bury_all`로
+> 보냈다(거동 동일 · 못
+> `a_revived_neighbour_logout_leaves_a_tombstone_the_backup_respects`가 정확히 그 자리를
+> 지킨다 · 15주행 초록).
+>
+> 같은 자리에서 **`bury_all`의 doc 첫 세 줄이 `unsure_tail`의 설명**이었고
+> (`claude.rs:883-891` — *"「지웠는데 못 갈랐다」의 꼬리 …"*) `unsure_tail` 자신에게는
+> doc이 한 줄도 없었다. 두 doc이 병합될 때 갈린 자리다. R28g에서 각자 제자리로 보냈다.
+
 부수적으로 `clear_tomb_if_other_fp`(「그 이메일로 지문이 다른 행이 나타나면 툼스톤을
 지운다」)의 두 겹째도 같이 풀린다 — 시체가 돌아올 때 지문이 **같으므로** 툼스톤이 산다.
 
@@ -198,6 +235,47 @@ R28e는 되살리기 세 자리(`claude.rs:827`·`:1276`·`:1383`)가 전부
 단위 못 `an_anchor_without_a_matching_generation_is_blind_not_nothing`
 (`ledger.rs`의 `tests`). 크리틱과 같은 이유로 **제품 경로 못은 안 세웠다** — 우리 커밋의
 읽기가 대개 그 이메일을 먼저 보기 때문에 제품 경로로 강제가 안 된다. 그 사실을 여기 적는다.
+
+> ### ★R28g 정정 — 위 마지막 문장은 **사실이 아니다.** 강제된다
+>
+> 확인 크리틱 R28f §2-1이 제품 경로로 강제했다(`crit_s3_anchor_without_matching_generation`
+> · 40줄 · 5/5 결정적). 필요한 것은 「우리가 못 본 이메일」이 아니라 **「한 세대에 같이
+> 있은 적 없는 두 앵커 행」**이다:
+>
+> ```text
+> ① our_login(anchor@x)      → 그때의 anchor@x 행 바이트를 뜬다
+> ② our_login(dropme@x)
+> ③ our_login(anchor@x) 다시  → ①의 행은 이제 어느 최신 세대에도 없다
+> ④ our_login(late@x)        → late@x 행 바이트를 뜬다
+> ⑤ 이웃 원문 = [①의 행, ④의 행] → dropme@x가 빠졌다
+> ⑥ 우리 회전이 커밋 → 이웃이 걸터탄 통짜 쓰기가 이름 없는 옛 inode로 착지
+> ```
+>
+> 두 앵커는 **각각** 장부에 있으므로 `anchors.is_empty()` 갈래에 안 걸리고, 두 앵커를
+> **함께** 담은 세대는 하나도 없으므로 후보가 텅 빈다 — 정확히 이 절의 그 판이다.
+>
+> **대가도 크리틱이 맞다.** `Verdict::Blind`를 돌려주는 `ledger.rs` 쪽에는 단위 못이
+> 있었지만 **부르는 쪽**(`claude.rs`의 `refused` 집계 + `blind_line` 한 줄)에는 못이
+> 하나도 없었다. R28f가 닫은 것이 정확히 그 호출부의 침묵인데 그 자리가 무방비였다.
+>
+> **R28g가 그 여섯 줄을 제품 경로 못으로 박았다** —
+> `m11r4_store_cas::an_anchor_without_a_matching_generation_is_refused_out_loud_on_the_product_path`.
+> 그 한 줄은 **지연 감시 스레드의 stderr**로 나가므로 같은 프로세스에서는 읽을 수단이
+> 없다. 그래서 못은 자기 자신을 `--exact … --nocapture`로 띄워 그 프로세스의 stderr를
+> 그대로 읽는다(`critic_m11r3_attack.rs`가 쓰는 자식 패턴). 단정은 넷이다 —
+> `refused==1` · `late_kept==0`(R28e의 그 침묵 경로) · `late==0` ·
+> 제품 줄이 **정확히 1줄**이고 그 줄이 `앵커 2행은 우리 장부에 있는데`와 못 짚은 계정
+> 이름(`dropme@x`)을 든다. 덧붙여 `dropme@x`가 **안 지워졌는지**도 잰다(대조군
+> `6f2f312`는 근거 없이 10ms에 지운다).
+>
+> | 무엇 | 실측 |
+> |---|---|
+> | 못 단독 12주행 + 크레이트 전체 3주행 = **15주행** | **0붉음** · 매 주행 `refused=1 late_kept=0 late=0` · 제품 줄 1 |
+> | ★돌연변이(`ledger.rs`의 그 `plausible.is_empty()` 갈래를 `Verdict::Nothing`으로 되돌림 · 폐기용 워크트리 + **새** `CARGO_TARGET_DIR`) | 못 **4/4 붉음** — `refused=0 late_kept=1` · 제품 줄 **0** (= R28e의 그 침묵이 그대로 재현된다) |
+> | 같은 돌연변이 트리의 단위 못 | `ledger::tests::an_anchor_without_a_matching_generation_is_blind_not_nothing` **붉음**(그 외 92 통과) |
+>
+> 즉 두 못은 **다른 층을 잡는다**: 단위 못은 `attribute`가 `Blind`를 돌려주나, 제품 경로
+> 못은 부르는 쪽이 그것을 **세고 말하나**.
 
 ---
 
@@ -252,6 +330,14 @@ R28e는 되살리기 세 자리(`claude.rs:827`·`:1276`·`:1383`)가 전부
   놔서 동률 세대의 가운데 칸을 구조적으로 안 밟는다 — 그래서 §1의 새 가름을 재는 것은
   이 못이 아니라 §1-4의 못/프로브다. 그 사실을 여기 적는다(부하에서 0이라고 「안 일어난다」로
   읽으면 안 된다).
+
+  > **★R28g 정정 — 「구조적으로 안 밟는다」는 단정이고, 그 단정은 틀렸다.** 확인 크리틱
+  > R28f §2-2의 부하 확장 **180주행 중 1주행이 밟았다**(`logs/load2/L4-9.log` ·
+  > `그들 스냅샷 = 장부 세대 326~330 중 하나 … ★못 가른 판 1`). 이 못의 `ghost@x`는
+  > **이웃이 놓고 이웃이 지우는** 행이라, 이웃의 로그인/로그아웃이 우리 커밋을 걸터타면
+  > 동률 세대가 실제로 선다. 맞는 문장은 이것이다 — *"내 120주행에서는 0이었다(크리틱의
+  > 180주행에서는 1이다 — **드물지만 밟는다**)."* 제품 거동과는 무관하지만, 앞 라운드를
+  > 불합격시킨 사유가 **바로 이 종류의 단정**이라 지운 것이 아니라 정정으로 남긴다.
 - 부하 확장에서 「행 소멸 착지」(`폴더완충만`) 403판을 지나고도 `재료없음=0` — 폴더
   완충에 손이 닿는다는 R28d의 성질이 유지된다. 이웃 쓰기 실패 0 · 이웃 읽기 실패 39.
 
@@ -268,6 +354,18 @@ R28e는 되살리기 세 자리(`claude.rs:827`·`:1276`·`:1383`)가 전부
 | `npm run typecheck`(node+web) · `npm run typecheck:app` | **셋 다 exit 0** |
 | `poc-account-switch` | **PASS 6/6**(PICK/NONE/OFF/DIRTY/CHAIN/TOGGLE) · exe는 이 갈래가 직접 빌드(`--features custom-protocol`) · 리포트 `docs/critic/m11-r1-switch-casx2r2.json`(`--out=-casx2r2` — 기준 파일 무손상) |
 
+### ★R28g 재측정(이 정정 커밋의 값)
+
+| 무엇 | 결과 |
+|---|---|
+| `cargo test -p ccg-auth` | lib **93** · `critic_m11r3_attack` 14 · `m11r3_store_race` 2 · `m11r4_store_cas` **15**(+1 = §3의 새 제품 경로 못) · `t1_list_edit_race` 1 = **125 통과 · 0 실패** · `#[ignore]` 9(프로브) · 전체 3주행 0붉음 |
+| `cargo test -p ccg-store` | **91 통과 · 0 실패**. R28f가 적은 90과의 차 1은 **옆 갈래(BANNER)의 미커밋 `crates/ccg-store/src/status.rs`**가 더한 `the_boot_row_says_a_folded_table_is_folded`다 — 내 변경이 아니다(`git diff`로 확인) |
+| 새 못 단독 | **12/12 초록**(디버그 · `--exact`) · 매 주행 `refused=1 late_kept=0 late=0` · 제품 줄 1 |
+| ★돌연변이(`Blind`→`Nothing`) | 새 못 **4/4 붉음** · 단위 못도 붉음 · 폐기용 워크트리 + **새** `CARGO_TARGET_DIR`(재활용 0) |
+| `cargo clippy -p ccg-auth --tests` | `ccg-auth` 경고 **0**(뜨는 10건은 전부 `ccg-store` — 선존 + 옆 갈래의 미커밋 `status.rs`) |
+| `npm run typecheck`(node+web) · `npm run typecheck:app` | **셋 다 exit 0** |
+| `poc-account-switch` | **PASS 6/6** · exe는 이 갈래가 직접 빌드(`CARGO_TARGET_DIR=target-r28g-nail` · `--features custom-protocol` · sha256 `7c935abb9292a2073f0abe8a5e6d0f32f3ec6f5c03ceac9472a3f92272ce670c`) · 리포트 `docs/critic/m11-r1-switch-r28gnail.json`(`--out=-r28gnail` — 기준 파일 무손상) |
+
 ---
 
 ## 7. 만진 파일
@@ -280,6 +378,16 @@ R28e는 되살리기 세 자리(`claude.rs:827`·`:1276`·`:1383`)가 전부
 | `crates/ccg-auth/tests/probe_casx2_loss.rs` | 프로브 `regression_5`(옛 코드에서도 컴파일되는 A/B용) |
 | `docs/parity-fix-casx2-r2.md` (이 파일) · `docs/parity-fix-casx2-r1.md` | r1에는 §3 손실표·§2-2 부하표에 **정정 링크만** 얹었다(본문은 그때의 기록으로 남긴다) |
 | `docs/critic/m11-r1-switch-casx2r2.json` | poc 리포트(새 파일) |
+
+### ★R28g가 만진 것(이 정정 커밋)
+
+| 파일 | 무엇 |
+|---|---|
+| `crates/ccg-auth/tests/m11r4_store_cas.rs` | 새 **제품 경로 못** 1(§3의 여섯 걸음 · 자식 프로세스로 stderr를 읽는다) + `disk_row`/`tail` 헬퍼 |
+| `crates/ccg-auth/src/claude.rs` | `bury_all`↔`unsure_tail`의 doc을 **제자리로**(확인 크리틱 R28f §2-4) · `late_settle`의 손 루프를 `bury_all`로(거동 동일 — 되살리기 세 자리가 이제 한 문을 지난다) |
+| `crates/ccg-auth/src/ledger.rs` | 모듈 주석에 「★R28g — 그 예외의 사정거리가 근거보다 넓다」 절(§1-3 정정의 코드 쪽 · **주석만**) |
+| `docs/parity-fix-casx2-r2.md`(이 파일) | ★R28g 정정 넷(§1-3 · §2 · §3 · §5) + §6 재측정 + 이 표 |
+| `docs/critic/m11-r1-switch-r28gnail.json` | poc 리포트(새 파일 · `--out=-r28gnail`) |
 
 ---
 
@@ -297,3 +405,17 @@ R28e는 되살리기 세 자리(`claude.rs:827`·`:1276`·`:1383`)가 전부
   (레포 무수정 · 판정 뒤 `git worktree remove --force` + `prune`).
 - 기준 결과 파일 덮음 **0**(`--out=-casx2r2`) · 동결 구역(`src/main`·`src/preload`·
   `src/renderer`·`out/`·`dist/`) 안 만졌다.
+
+### ★R28g(이 정정 커밋)
+
+- 격리: `CARGO_TARGET_DIR=target-r28g-nail`(디버그 + 릴리스 exe) · 돌연변이는 폐기용
+  워크트리 `C:/Temp/ccg-r28g-nail/wt-mut`(`HEAD` detached) + **새** `CARGO_TARGET_DIR`
+  `C:/Temp/ccg-r28g-nail/tgt-mut`(재활용 0 — R28d의 거짓 초록 함정) · 판정 뒤
+  `git worktree remove --force` + `prune` + target 삭제.
+- 새 못이 쓰는 홈은 부모가 `ccg_store::testhome::take("r28g-blind")`로 잡아 **환경변수로
+  자식에 넘긴다.** 자식은 `CCG_HOME`을 만들지도 지우지도 않고, 그 값이 격리 홈인지
+  (`r28g-blind` 포함) **먼저 단정한다** — 잘못 불려도 실홈으로 못 떨어진다.
+- 브랜치 이동 0 · `main` 접촉 0 · `git add -A` 0 · `git commit --only` ·
+  남의 미커밋 변경(`app`·`crates/ccg-engine`·`crates/ccg-store`·`src-tauri`·`scripts`)
+  무접촉 · 이름 기반 kill 0 · 실 HTTP 0(`CCG_NO_NET=1`) · 실계정 토큰 회전 0 ·
+  사용자 실홈 `accounts*` 읽기·쓰기 0 · 기준 결과 파일 덮음 0(`--out=-r28gnail`).
