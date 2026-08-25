@@ -679,10 +679,22 @@ impl Hub {
             _ => {}
         }
 
+        // ★M10 R6 — **발신 배선.** 턴을 여는 op에서만 안내를 다시 계산한다(디스크를 두 번
+        // 읽으므로 `Respond`·`Cmd` 같은 잔 op에는 안 붙인다). 켜져 있지 않으면 `None`이고,
+        // 그때 `initialize`의 바이트는 한 톨도 안 변한다 — 꺼짐이 진짜 꺼짐이다.
+        //
+        // R5까지 이 자리가 비어 있었다: 앱은 발신자에게 `@talk[…]` 통로를 **말해 준 적이
+        // 없었고**, 그래서 정당한 협업 프롬프트에서도 모델이 *"저는 다른 세션으로 메시지를
+        // 보낼 수 없습니다"* 라고 답했다(홉1 4/5 · 홉2 0/4).
+        let guide = matches!(op, Op::Run(_) | Op::Enqueue(_)).then(|| talk::guide_for(&chat));
+
         let Some(slot) = self.ensure(&chat) else {
             answer(Value::Null);
             return;
         };
+        if let Some(g) = guide {
+            slot.rt.set_talk_guide(g);
+        }
 
         match op {
             Op::Run(req) => {
