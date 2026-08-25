@@ -29,6 +29,7 @@ import path from 'node:path'
 import os from 'node:os'
 import { spawn, spawnSync } from 'node:child_process'
 import { connectMainPage, killTree, sleep, REPO, resolveTauriExe } from '../bench/lib.mjs'
+import { runStamp, checkFingerprint, short } from './critic-m10-stamp.mjs'
 
 const args = process.argv.slice(2)
 const only = ((args.find((a) => a.startsWith('--only=')) ?? '').split('=')[1] || '').split(',').filter(Boolean)
@@ -37,11 +38,28 @@ const KEEP = args.includes('--keep')
 const EXE =
   // M12 R2 — mainBinaryName 변경으로 exe 이름이 둘이다(구·신 모두 탐색·최신 mtime 우선)
   resolveTauriExe((args.find((a) => a.startsWith('--exe=')) ?? '').split('=')[1])
+/** ★R28h R7 — 가짜 CLI는 앱 exe와 같은 빌드에서 온다(§scripts/poc-talk.mjs의 같은 상수). */
+const FAKECLI = (() => {
+  const forced = (args.find((a) => a.startsWith('--fakecli=')) ?? '').split('=').slice(1).join('=')
+  if (forced) return path.resolve(forced)
+  const sib = path.join(path.dirname(path.resolve(EXE)), 'ccg-fakecli.exe')
+  return fs.existsSync(sib) ? sib : path.join(REPO, 'target', 'release', 'ccg-fakecli.exe')
+})()
 const OUT = (args.find((a) => a.startsWith('--out=')) ?? '').split('=')[1] || path.join(REPO, 'docs', 'critic', 'm10-r1-attack.json')
 const REAL_HOME = path.join(os.homedir(), '.agentcodegui')
 const PORT0 = 9421
 
-const rep = { at: new Date().toISOString(), exe: EXE, attacks: {}, broken: [] }
+/** ★R28h R7 — 문면 선점검을 끄는 스위치. 끄면 산출물에 `stamp.fingerprint.bypassed`가 박힌다. */
+const NO_PIN = args.includes('--no-pin')
+
+const rep = {
+  at: new Date().toISOString(),
+  exe: EXE,
+  // 어느 exe · 어느 문면 · 어느 커밋에서 잰 안전 수치인가(§scripts/critic-m10-stamp.mjs).
+  stamp: runStamp(EXE, { only: args.find((a) => a.startsWith('--only=')) ?? 'all' }),
+  attacks: {},
+  broken: []
+}
 const broke = (id, why, extra) => {
   rep.broken.push({ id, why, ...(extra ?? {}) })
   console.error(`  X ${id} — ${why}${extra === undefined ? '' : ' ' + JSON.stringify(extra).slice(0, 500)}`)
@@ -83,7 +101,25 @@ async function boot(home, port, env = {}) {
   const j = async (expr) => JSON.parse(await cdp.eval(`(async () => JSON.stringify(${expr}))()`, { awaitPromise: true }))
   const call = async (ch, payload) =>
     await j(`await window.__TAURI_INTERNALS__.invoke('ipc_call', { channel: ${JSON.stringify(ch)}, payload: ${JSON.stringify(payload)} })`)
+  // ★R28h R7 — **문면 선점검**(§scripts/critic-m10-stamp.mjs).
+  await pinCheck(call)
   return { child, cdp, j, call, log: () => log }
+}
+
+async function pinCheck(call) {
+  if (rep.stamp.fingerprint) return
+  const fp = (await call('engine:debug', []))?.talk?.fingerprint
+  if (!fp) {
+    const why = `★문면 선점검 불가 — 이 exe의 engine:debug에 talk.fingerprint가 없다(도장 이전 빌드다): ${rep.stamp.exe.path}`
+    if (!NO_PIN) throw new Error(why)
+    console.error(why)
+    rep.stamp.fingerprint = { ok: false, bypassed: true }
+    return
+  }
+  rep.stamp.fingerprint = checkFingerprint(fp, { allowMismatch: NO_PIN })
+  console.log(
+    `  · 문면 도장 — 봉투(plan) ${short(rep.stamp.fingerprint.hashes['envelope.plan']?.sha256)}… · exe ${short(rep.stamp.exe.sha256)}…`
+  )
 }
 
 async function armEvents(app) {
@@ -119,7 +155,7 @@ function seedHome(name, n, cfg) {
   const WORK = path.join(HOME, 'work')
   rmrf(HOME)
   fs.mkdirSync(WORK, { recursive: true })
-  const stub = path.join(REPO, 'target', 'release', 'ccg-fakecli.exe')
+  const stub = FAKECLI
   if (!fs.existsSync(stub)) throw new Error(`가짜 CLI 없음: ${stub}`)
   const engd = path.join(HOME, 'engines', 'fake', 'node_modules', '@anthropic-ai', 'claude-agent-sdk-win32-x64')
   fs.mkdirSync(engd, { recursive: true })
@@ -673,7 +709,7 @@ function seedMigHome(name) {
   const WORK = path.join(HOME, 'work')
   rmrf(HOME)
   fs.mkdirSync(WORK, { recursive: true })
-  const stub = path.join(REPO, 'target', 'release', 'ccg-fakecli.exe')
+  const stub = FAKECLI
   const engd = path.join(HOME, 'engines', 'fake', 'node_modules', '@anthropic-ai', 'claude-agent-sdk-win32-x64')
   fs.mkdirSync(engd, { recursive: true })
   fs.copyFileSync(stub, path.join(engd, 'claude.exe'))

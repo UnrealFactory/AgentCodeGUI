@@ -34,6 +34,7 @@ import os from 'node:os'
 import { spawn, spawnSync } from 'node:child_process'
 import { connectMainPage, killTree, sleep, REPO, resolveTauriExe } from '../bench/lib.mjs'
 import { preflight as acctPreflight, saveBack as acctSaveBack } from './critic-m10-live-account.mjs'
+import { runStamp, checkFingerprint, gitWorktreeOf, sha256s, short, envSkeleton, variantOfSkeleton, variantForPolicy } from './critic-m10-stamp.mjs'
 
 const args = process.argv.slice(2)
 const only = (args.find((a) => a.startsWith('--only=')) ?? '').split('=')[1] || 'all'
@@ -55,7 +56,39 @@ const portFor = (base) => base + PORT_SHIFT
 // **기준 결과 파일을 덮지 않는다** — 라운드마다 자기 파일에 쓴다.
 const OUT = path.join(REPO, 'docs', 'critic', `m10-r1-talk${RUNTAG ? `-${RUNTAG}` : ''}.json`)
 
-const rep = { at: new Date().toISOString(), exe: EXE, steps: {}, findings: [] }
+/**
+ * ★R28h R7 — **문면 선점검을 끄는 스위치**(기본은 켜짐).
+ *
+ * 끄면 표본에 `stamp.fingerprint.bypassed:true`가 박힌다. 그 표식이 있는 표본은 다음
+ * 라운드의 채점에서 **판본이 확정되지 않은 값**으로 다뤄야 한다 — R6의 24%가 그랬다.
+ */
+const NO_PIN = args.includes('--no-pin')
+
+/**
+ * ★R28h R7 — **가짜 CLI는 앱 exe와 같은 빌드에서 온다.**
+ *
+ * R6까지 이 경로는 `REPO/target/release/ccg-fakecli.exe`로 **고정**이었다. `--exe=`로 다른
+ * 타깃 디렉터리의 앱을 띄우면 앱은 새 빌드, 가짜 CLI는 공용 `target/`의 **아무 때나 남은
+ * 것**이 되는 구조다 — 이 라운드가 고치려는 「판본이 섞인 표본」의 축소판이다. 그래서
+ * 기본을 **앱 exe의 형제 파일**로 두고, 없으면 종전 자리로 떨어진다(`--fakecli=`로 강제).
+ */
+const FAKECLI = (() => {
+  const forced = (args.find((a) => a.startsWith('--fakecli=')) ?? '').split('=').slice(1).join('=')
+  if (forced) return path.resolve(forced)
+  const sib = path.join(path.dirname(path.resolve(EXE)), 'ccg-fakecli.exe')
+  if (fs.existsSync(sib)) return sib
+  return path.join(REPO, 'target', 'release', 'ccg-fakecli.exe')
+})()
+
+const rep = {
+  at: new Date().toISOString(),
+  exe: EXE,
+  // 아래 도장 하나가 이 라운드의 목적이다(§scripts/critic-m10-stamp.mjs).
+  // 「이 수치는 어느 코드의 값인가」를 산출물이 스스로 답한다.
+  stamp: runStamp(EXE, { tag: RUNTAG || null, only, fakecli: FAKECLI, workspaceArg: null, policyArg: null }),
+  steps: {},
+  findings: []
+}
 const fail = (id, why, extra) => {
   rep.findings.push({ id, why, ...(extra ?? {}) })
   console.error(`  x ${id} — ${why}${extra === undefined ? '' : ' ' + JSON.stringify(extra).slice(0, 400)}`)
@@ -122,7 +155,42 @@ async function boot(home, port, env = {}) {
   const j = async (expr) => JSON.parse(await cdp.eval(`(async () => JSON.stringify(${expr}))()`, { awaitPromise: true }))
   const call = async (ch, payload) =>
     await j(`await window.__TAURI_INTERNALS__.invoke('ipc_call', { channel: ${JSON.stringify(ch)}, payload: ${JSON.stringify(payload)} })`)
+  // ★R28h R7 — **여기가 선점검의 유일한 목**이다. 모든 갈래가 이 함수로 앱을 띄우므로,
+  // 여기서 막으면 wall·policy·stop·live·inject 어느 쪽도 「기대와 다른 문면」으로는
+  // 표본을 한 건도 못 만든다. 실계정 할당량을 태운 뒤에 판본을 세는 것은 이미 늦다.
+  await pinCheck(call)
   return { child, cdp, j, call, log: () => log }
+}
+
+/**
+ * 문면 선점검 — 앱이 스스로 조립한 봉투·안내 원문을 `engine:debug`로 받아 해시를 뜨고
+ * `EXPECT`와 맞춘다. 다르면 **던진다**(주행이 시작되기 전이다).
+ *
+ * 한 번만 검사하고 결과를 `rep.stamp.fingerprint`에 남긴다 — 같은 주행에서 앱을 여러 번
+ * 띄워도 exe는 하나이므로 값이 같다.
+ */
+async function pinCheck(call) {
+  if (rep.stamp.fingerprint) return rep.stamp.fingerprint
+  const dbg = await call('engine:debug', [])
+  const fp = dbg?.talk?.fingerprint
+  if (!fp) {
+    const why =
+      '★문면 선점검 불가 — 이 exe의 engine:debug에 talk.fingerprint가 없다(도장 이전 빌드다).\n' +
+      `  exe: ${rep.stamp.exe.path} · sha256 ${short(rep.stamp.exe.sha256)}… · mtime ${rep.stamp.exe.mtime}\n` +
+      '  R6의 24%가 정확히 이 exe들에서 나왔다. 새로 빌드해라(CARGO_TARGET_DIR=target-r28h-m10 cargo build --release --features custom-protocol -p agentcodegui).'
+    if (!NO_PIN) throw new Error(why)
+    console.error(why + '\n  (--no-pin — 계속한다.)')
+    rep.stamp.fingerprint = { ok: false, bypassed: true, missing: ['(전부)'] }
+    return rep.stamp.fingerprint
+  }
+  const res = checkFingerprint(fp, { allowMismatch: NO_PIN })
+  rep.stamp.fingerprint = res
+  const g = res.hashes
+  console.log(
+    `  · 문면 도장 — 봉투(plan) ${short(g['envelope.plan']?.sha256)}… ${g['envelope.plan']?.bytes}B · ` +
+      `안내 ${short(g.guide?.sha256)}… ${g.guide?.bytes}B · exe ${short(rep.stamp.exe.sha256)}…${res.bypassed ? ' · ★우회' : ''}`
+  )
+  return res
 }
 
 /** 모든 채팅의 `chat:event`를 창 하나에서 통째로 받아 둔다(화면과 독립인 증거). */
@@ -147,6 +215,34 @@ async function waitFor(fn, ms, every = 200) {
   for (;;) {
     const v = await fn().catch(() => null)
     if (v) return v
+    if (Date.now() - t0 > ms) return null
+    await sleep(every)
+  }
+}
+
+/**
+ * ★R28h R7 — **「안 나왔다」를 240초 기다려서 아는 것은 계기의 낭비다.**
+ *
+ * 첫 교차 주행 1회가 485초 걸렸고 그중 **480초가 두 번의 헛기다림**이었다(홉2도 홉3도
+ * 애초에 올 수 없는 상태에서 각각 240초 만기를 채웠다). 32표본이면 4시간이 넘고, 그
+ * 시간은 실계정 토큰 수명(8시간)과 겨룬다 — 표를 못 채우면 이 라운드는 R6과 같은
+ * 자리에서 끝난다.
+ *
+ * **판정은 한 글자도 안 바꾼다.** 앞당기는 것은 시각뿐이다: 그 채팅의 턴이 기대한 수만큼
+ * **완주했고**(`assistant-done`) 그 뒤 유예가 지나도 통지가 없으면, 그 통지는 오지 않는다
+ * (라우터는 턴이 정착한 자리에서 **동기로** 통지를 앉힌다 — `hub::settle`).
+ */
+async function waitForSettled(app, chatId, fn, { ms, minDone = 1, graceMs = 20_000, every = 400 }) {
+  const t0 = Date.now()
+  let doneAt = null
+  for (;;) {
+    const v = await fn().catch(() => null)
+    if (v) return v
+    const n = (await events(app, chatId).catch(() => [])).filter((e) => e?.type === 'assistant-done').length
+    if (n >= minDone) {
+      if (doneAt === null) doneAt = Date.now()
+      if (Date.now() - doneAt > graceMs) return null
+    } else doneAt = null
     if (Date.now() - t0 > ms) return null
     await sleep(every)
   }
@@ -239,7 +335,7 @@ function seedWallHome() {
   const WORK = path.join(HOME, 'work')
   rmrf(HOME)
   fs.mkdirSync(WORK, { recursive: true })
-  const stub = path.join(REPO, 'target', 'release', 'ccg-fakecli.exe')
+  const stub = FAKECLI
   if (!fs.existsSync(stub)) {
     throw new Error(`가짜 CLI가 없다: ${stub}\n  cargo build -p ccg-engine --features fakecli --bin ccg-fakecli --release`)
   }
@@ -371,7 +467,7 @@ function seedPolicyHome(tag, modes) {
   const WORK = path.join(HOME, 'work')
   rmrf(HOME)
   fs.mkdirSync(WORK, { recursive: true })
-  const stub = path.join(REPO, 'target', 'release', 'ccg-fakecli.exe')
+  const stub = FAKECLI
   if (!fs.existsSync(stub)) throw new Error(`가짜 CLI가 없다: ${stub}`)
   const enginedir = path.join(HOME, 'engines', 'fake', 'node_modules', '@anthropic-ai', 'claude-agent-sdk-win32-x64')
   fs.mkdirSync(enginedir, { recursive: true })
@@ -793,11 +889,8 @@ if (WORKSPACE !== 'repo' && WORKSPACE !== 'bare') {
 /** 라이브 갈래의 작업 폴더. `bare`면 레포(=git 워크트리) **밖**에 만든다. */
 const workDirFor = (HOME, name) =>
   WORKSPACE === 'bare' ? path.join(os.tmpdir(), 'ccg-poc-talk-work', `${name}${RUNTAG ? `-${RUNTAG}` : ''}`) : path.join(HOME, 'work')
-/** 그 폴더가 실제로 git 워크트리 안인지 — 주장 말고 값으로 산출물에 남긴다. */
-const inGitWorktree = (dir) => {
-  const r = spawnSync('git', ['-C', dir, 'rev-parse', '--show-toplevel'], { encoding: 'utf8' })
-  return r.status === 0 ? r.stdout.trim() : null
-}
+/** 그 폴더가 실제로 git 워크트리 안인지 — 주장 말고 값으로 산출물에 남긴다(공용 도장). */
+const inGitWorktree = gitWorktreeOf
 
 /** 격리 홈에 계정 하나를 앉힌다. 반환 = 그 계정 이메일. */
 function seedLiveAccount(HOME) {
@@ -923,6 +1016,10 @@ async function phaseLive() {
   }
   const s = seedLiveHome()
   const out = {
+    // ★R28h R7 — **한 표본이 스스로 답해야 하는 칸들.** 어느 exe · 어느 문면 · 어느 커밋 ·
+    // 언제 · 어느 폴더(워크트리 안인가) · 어느 권한 하한. R6의 24%가 오염된 것은 이 여섯
+    // 중 앞 셋이 산출물에 없었기 때문이다(§scripts/critic-m10-stamp.mjs).
+    startedAt: new Date().toISOString(),
     home: s.HOME,
     work: s.WORK,
     workspace: s.workspace,
@@ -932,6 +1029,8 @@ async function phaseLive() {
     policy: s.policy,
     steps: {}
   }
+  rep.stamp.workspaceArg = s.workspace
+  rep.stamp.policyArg = s.policy
   // 이 한 줄이 R6의 격차를 다음 라운드에서 **눈에 보이게** 만든다(§R6.10).
   console.log(`  · 작업 폴더 — ${s.WORK} · workspace=${s.workspace} · git 워크트리=${s.workGitRoot ?? '(밖)'}`)
   const app = await boot(s.HOME, portFor(9392), { CCG_ENGINE_LOG: path.join(s.HOME, 'frames.jsonl') })
@@ -945,9 +1044,11 @@ async function phaseLive() {
     else ok('L0-설정', { enabled: true, maxHops: cfg.maxHops, boards: Object.keys(cfg.boards ?? {}) })
 
     // ── L1. A의 사람 턴 → B로 발신 ────────────────────────────────────────
+    const tRun = Date.now()
     await app.call('chat:run', [{ chatId: A, prompt: LIVE_PROMPT }])
-    const hop1 = await waitFor(async () => (await talkNotices(app, A)).find((n) => n.hop === 1), 240_000)
+    const hop1 = await waitForSettled(app, A, async () => (await talkNotices(app, A)).find((n) => n.hop === 1), { ms: 240_000 })
     out.steps.hop1 = hop1
+    out.ms = { hop1: Date.now() - tRun }
     if (!hop1 || (hop1.result !== 'delivered' && hop1.result !== 'queued')) {
       fail('L1-A→B', `A의 발신이 안 나갔다: ${hop1?.result ?? '(구문 없음)'}`, {
         hop1,
@@ -959,13 +1060,50 @@ async function phaseLive() {
 
     // ── L2. B가 봉투를 말풍선으로 받고, 그 턴을 돈다 ──────────────────────
     const bEcho = await waitFor(async () => (await events(app, B)).find((e) => e?.type === 'user-echo'), 90_000)
-    out.steps.bEcho = bEcho ? String(bEcho.text).slice(0, 300) : null
-    if (!bEcho || !String(bEcho.text).includes('[대화 연결]')) fail('L2-수신', 'B 스레드에 봉투 말풍선이 없다', out.steps.bEcho)
-    else ok('L2-수신', { envelope: true })
+    // ★R28h R7 (크리틱 R2 E-6) — R6까지 이 자리는 **정확히 300자**에서 잘렸고, 그 라운드가
+    // 고친 세 문단은 전부 그 뒤에 있었다 → 코퍼스만으로는 어느 표본이 어느 문면이었는지
+    // **영원히 못 갈랐다**. 이제 셋을 남긴다: 전문 해시(대조의 근거) · 바이트 길이 ·
+    // 눈으로 읽을 앞머리 2000자. 해시는 도장의 `envelope.plan`과 **같은 값이어야 한다**
+    // (본문·이름·홉만 다르므로 전체 일치는 아니고, 대조는 골격 해시로 따로 뜬다).
+    const bEchoText = bEcho ? String(bEcho.text) : null
+    const skel = bEchoText === null ? null : sha256s(envSkeleton(bEchoText))
+    // 어느 판본을 받았나 — `readonly`는 `envelope.plan`, `ask`는 `envelope.normal`이어야 한다.
+    const variant = skel === null ? null : variantOfSkeleton(skel)
+    const wantVariant = variantForPolicy(s.policy)
+    out.steps.bEcho = bEchoText === null ? null : bEchoText.slice(0, 2000)
+    out.steps.bEchoFull =
+      bEchoText === null
+        ? null
+        : {
+            sha256: sha256s(bEchoText),
+            bytes: Buffer.byteLength(bEchoText, 'utf8'),
+            chars: bEchoText.length,
+            // 골격이 도장의 한 칸과 같은가 — **이 표본이 출하 문면에서 나왔다**의 와이어 증거.
+            skeleton: skel,
+            variant,
+            variantExpected: wantVariant,
+            skeletonMatchesPin: variant !== null
+          }
+    if (!bEcho || !bEchoText.includes('[대화 연결]')) fail('L2-수신', 'B 스레드에 봉투 말풍선이 없다', out.steps.bEcho?.slice(0, 300))
+    else {
+      ok('L2-수신', { envelope: true, sha256: short(out.steps.bEchoFull.sha256), bytes: out.steps.bEchoFull.bytes, variant })
+      // 도장이 「이 exe는 X를 말한다」였다면 이 줄은 「이 표본이 실제로 X를 받았다」다.
+      // 둘이 갈리면 그 표본은 이 라운드의 표에서 **빼야 한다**(R6의 24%가 그 갈림이었다).
+      if (variant === null) {
+        fail('L2-문면', '수신한 봉투의 골격이 도장의 어느 판본과도 다르다 — 이 표본은 출하 문면이 아니다', { got: short(skel) })
+      } else if (variant !== wantVariant) {
+        // 권한 하한이 실제로 걸렸나 — 문면이 그 사실의 증인이다(`readonly`→계획 모드 문단).
+        fail('L2-하한', `봉투 판본이 권한 하한과 안 맞는다: ${variant} (기대 ${wantVariant} · policy=${s.policy})`)
+      }
+    }
 
     // ── L3. B → A (홉 2) ──────────────────────────────────────────────────
-    const hop2 = await waitFor(async () => (await talkNotices(app, B)).find((n) => n.hop === 2 || n.result === 'hop_cap'), 240_000)
+    const tHop2 = Date.now()
+    const hop2 = await waitForSettled(app, B, async () => (await talkNotices(app, B)).find((n) => n.hop === 2 || n.result === 'hop_cap'), {
+      ms: 240_000
+    })
     out.steps.hop2 = hop2
+    out.ms.hop2 = Date.now() - tHop2
     if (!hop2 || (hop2.result !== 'delivered' && hop2.result !== 'queued')) {
       fail('L3-B→A', `B의 회신이 안 나갔다: ${hop2?.result ?? '(구문 없음)'}`, {
         hop2,
@@ -974,11 +1112,20 @@ async function phaseLive() {
     } else ok('L3-B→A', { result: hop2.result, hop: hop2.hop })
 
     // ── L4. A의 셋째 발신이 **상한에서 멎는다** ───────────────────────────
-    const capped = await waitFor(
-      async () => (await talkNotices(app, A)).find((n) => n.result === 'hop_cap' || (n.hop ?? 0) >= 3),
-      240_000
-    )
+    //
+    // ★R28h R7 — 홉2가 안 나갔으면 A의 셋째 턴은 **애초에 열리지 않는다**(A를 깨우는 것이
+    // 그 회신이다). 그 자리에서 240초를 기다리는 것은 없는 것을 기다리는 것이다 — 판정은
+    // 종전과 같은 「조건 미충족」이고 시각만 즉시가 된다.
+    const tHop3 = Date.now()
+    const hop2Live = hop2 && (hop2.result === 'delivered' || hop2.result === 'queued')
+    const capped = hop2Live
+      ? await waitForSettled(app, A, async () => (await talkNotices(app, A)).find((n) => n.result === 'hop_cap' || (n.hop ?? 0) >= 3), {
+          ms: 240_000,
+          minDone: 2
+        })
+      : null
     out.steps.hop3 = capped
+    out.ms.hop3 = Date.now() - tHop3
     if (!capped) {
       // ★R3 — **조건 미충족이지 실패가 아니다**(크리틱 D3와 같은 사유).
       //
@@ -1032,6 +1179,10 @@ async function phaseLive() {
       if (WORKSPACE === 'bare') rmrf(s.WORK)
     }
   }
+  // 표본 하나만 떼어 봐도 판본을 알 수 있게 도장을 안쪽에도 둔다(코퍼스 채점기는
+  // `steps.live`만 읽는 것이 관행이었고, 그래서 R6의 exe 축이 보이지 않았다).
+  out.stamp = rep.stamp
+  out.endedAt = new Date().toISOString()
   rep.steps.live = out
   return rep.findings.filter((f) => f.id.startsWith('L')).length === 0
 }

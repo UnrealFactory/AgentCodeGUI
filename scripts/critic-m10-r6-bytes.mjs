@@ -217,6 +217,17 @@ function initFrames(inPath) {
 
 const PROMPT = '한 문장으로만 답해라. 지금 무엇을 맡고 있나?'
 
+/** stdin 로그의 **사용자 프레임**(턴 하나가 실제로 CLI에 들어간 증거 · ★R28h R7 B6). */
+function userFrames(inPath) {
+  let raw = ''
+  try {
+    raw = fs.readFileSync(inPath, 'utf8')
+  } catch {
+    return []
+  }
+  return raw.split(/\r?\n/).filter((l) => l.includes('"type":"user"'))
+}
+
 /** 홈 하나를 돌려 `initialize` 프레임을 받아 온다. */
 async function runOne(name, talk, port) {
   const s = seed(name, talk)
@@ -366,8 +377,123 @@ async function axisToggleBack() {
   }
 }
 
+/**
+ * ★R28h R7 (확인 크리틱 R2 **E-1**) — **끄기 전에 이미 큐에 앉은 턴은 「꺼짐」을 못 본다.**
+ *
+ * B5가 닫은 것은 「끈 **뒤에** 사람이 다시 말을 걸면」이다. 그 자리는 `hub.rs:695`가
+ * `Op::Run`/`Op::Enqueue`에서 안내를 다시 계산하므로 `reuse_decision`이 돌고 CLI가
+ * 재스폰된다. 그런데 **순서가 반대면** 그 계산이 아예 안 걸린다:
+ *
+ *   ① 사람이 A에 전송(턴 1이 돈다 · 안내 1454B가 실린 채)
+ *   ② 사람이 A에 **예약**(그 순간에도 보드는 켜져 있으니 안내는 그대로)
+ *   ③ 사람이 보드를 **끈다**(또는 긴급 정지)
+ *   ④ 턴 1이 끝나고 큐가 드레인된다 — `spawn_guide == talk_guide`라 **재사용**이고,
+ *      그 턴은 1454바이트 안내를 실은 스트림에서 그대로 돈다.
+ *
+ * 배달은 라우터가 막는다(`no_board`/`stopped` — 수신 봉투 0). 새는 것은 바이트와
+ * **모델의 믿음**이지 메시지가 아니다. 그래도 `runtime.rs:297-299`가 스스로 *"보드를
+ * 껐는데 도는 CLI가 계속 그 통로를 알고 있으면 「꺼짐이 진짜 꺼짐」이 아니다"* 라고 못
+ * 박은 바로 그 칸이다.
+ *
+ * ★이 축은 **재는 것뿐이고 고치지 않는다.** 처방이 `hub.rs`(안내 재계산의 자리)나
+ * `runtime.rs`(재사용 판정)에 있는데 둘 다 이 라운드의 소유가 아니다 — `talk.rs`의
+ * `guide_for`는 값을 만들 뿐 **언제 다시 만들지를 못 정한다**(`Op::TalkConfig`·`Op::TalkStop`은
+ * `ensure()` **앞에서** 답하고 끝나 슬롯 런타임에 닿지 않는다). 그래서 여기 계기만 세운다.
+ */
+async function axisQueuedBeforeOff() {
+  console.log('\n[B6] 큐에 앉은 뒤 끄기 — 그 턴은 「꺼짐」을 보는가 (E-1)')
+  // 턴 1을 **느리게** 만들어야 ②가 큐에 앉는다(끝나 버리면 예약이 아니라 즉시 실행이다).
+  const slow = (HOME, WORK) => {
+    const lines = [
+      { afterMs: 80, emit: { type: 'system', subtype: 'init', session_id: 'FAKE-A', model: 'claude-haiku-4', cwd: WORK, tools: [], apiKeySource: 'none' } },
+      { afterMs: 5000, emit: { type: 'assistant', session_id: 'FAKE-A', parent_tool_use_id: null, message: { role: 'assistant', content: [{ type: 'text', text: '확인했습니다.' }], usage: { input_tokens: 7 } } } },
+      { emit: { type: 'result', subtype: 'success', is_error: false, result: '확인했습니다.', session_id: 'FAKE-A', total_cost_usd: 0, duration_ms: 1, num_turns: 1 } }
+    ]
+    write(path.join(HOME, 'fake.a_fake.test.jsonl'), lines.map((l) => JSON.stringify(l)).join('\n') + '\n')
+  }
+  /** `order`: 'queue-then-off'(재현) · 'off-then-queue'(대조 — B5와 같은 순서) · 'stop'(긴급 정지판) */
+  const one = async (order, port) => {
+    const s = seed(`b6-${order}`, ON)
+    slow(s.HOME, s.WORK)
+    const app = await boot(s.HOME, port, { CCG_FAKECLI_SCRIPT: s.SCRIPT, CCG_FAKECLI_IN: s.IN })
+    const out = { order, home: s.HOME }
+    try {
+      await armEvents(app)
+      const { a: A } = await installBoard(app)
+      await app.call('chat:run', [{ chatId: A, prompt: PROMPT }])
+      await sleep(1200) // 턴 1이 도는 중
+      const enq = async () => await app.call('chat:queue-mutate', [{ chatId: A, op: 'enqueue', text: PROMPT + ' (예약)' }])
+      const kill = async () =>
+        order === 'stop' ? await app.call('crosstalk:stop', []) : await app.call('crosstalk:set', [{ board: 'b-1', on: false }])
+      if (order === 'off-then-queue') {
+        out.off = await kill()
+        await sleep(300)
+        out.enq = await enq()
+      } else {
+        out.enq = await enq()
+        await sleep(300)
+        out.off = await kill()
+      }
+      // 두 턴이 다 나갈 때까지 — **이벤트 버스가 아니라 stdin으로** 센다. 재는 것이
+      // 「CLI에 실제로 들어간 바이트」이므로 완주 판정도 같은 자리에서 나와야 한다
+      // (렌더러 이벤트는 예약 드레인에 대해 항상 말풍선을 내지는 않는다 — 실측).
+      await waitFor(async () => userFrames(s.IN).length >= 2, 60_000)
+      // 그리고 **프레임 수가 멎을 때까지** 기다린다. 대조군은 재스폰이 한 박자 늦게
+      // 오는데(끔 → 다음 스폰), 고정 유예로 끊으면 그 프레임을 놓쳐 대조가 무너진다.
+      for (let i = 0, stable = 0, last = -1; i < 60 && stable < 4; i++) {
+        const n = initFrames(s.IN).length
+        stable = n === last ? stable + 1 : 0
+        last = n
+        await sleep(400)
+      }
+      out.frames = initFrames(s.IN)
+      out.userFrames = userFrames(s.IN).length
+      out.userEchoes = (await events(app, A)).filter((e) => e?.type === 'user-echo').length
+      out.withGuide = out.frames.filter((f) => f.includes('"systemPrompt"')).length
+      out.bytes = out.frames.map((f) => Buffer.byteLength(f, 'utf8'))
+    } finally {
+      killTree(app.child.pid)
+      await sleep(900)
+      if (!KEEP) rmrf(s.HOME)
+    }
+    return out
+  }
+
+  const ctl = await one('off-then-queue', PORT0 + 4)
+  const bad = await one('queue-then-off', PORT0 + 5)
+  const stop = await one('stop', PORT0 + 6)
+  rep.axes.b6 = { control: ctl, repro: bad, emergencyStop: stop }
+
+  // 대조군 — 끄고 나서 예약하면 두 번째 프레임에 안내가 **없다**(B5와 같은 결론).
+  if (ctl.userFrames >= 2 && ctl.frames.length >= 2 && !ctl.frames[ctl.frames.length - 1].includes('"systemPrompt"')) {
+    held('B6-대조(끄고 예약)', { initCount: ctl.frames.length, withGuide: ctl.withGuide, bytes: ctl.bytes, userFrames: ctl.userFrames })
+  } else {
+    broke('B6-대조(끄고 예약)', '대조군이 성립 안 했다 — 이 축의 재현 판정을 믿을 수 없다', { frames: ctl.frames.map((f) => f.slice(0, 120)) })
+  }
+  // 재현 — 예약하고 끄면 재스폰이 없고 그 턴은 안내를 안은 채 돈다.
+  for (const [label, r] of [
+    ['B6-재현(예약하고 끄기)', bad],
+    ['B6-재현(예약하고 긴급정지)', stop]
+  ]) {
+    if (r.userFrames < 2) {
+      broke(label, `예약 턴이 안 돌았다 — 표본 미성립(user 프레임 ${r.userFrames})`, { frames: r.frames.length })
+    } else if (r.frames.length === 1 && r.withGuide === 1) {
+      // **이것이 E-1이다.** 실패로 센다(고칠 자리가 남의 파일이라도 결함은 결함이다).
+      broke(label, '예약 턴이 안내를 안은 채 돌았다 — 「꺼짐」을 못 봤다(E-1)', {
+        initCount: r.frames.length,
+        withGuide: r.withGuide,
+        bytes: r.bytes,
+        userFrames: r.userFrames
+      })
+    } else {
+      held(label, { initCount: r.frames.length, withGuide: r.withGuide, bytes: r.bytes, userFrames: r.userFrames })
+    }
+  }
+}
+
 await axisOnOff()
 await axisToggleBack()
+await axisQueuedBeforeOff()
 
 fs.mkdirSync(path.dirname(OUT), { recursive: true })
 fs.writeFileSync(OUT, JSON.stringify(rep, null, 2))
