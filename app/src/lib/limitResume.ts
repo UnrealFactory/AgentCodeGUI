@@ -195,7 +195,14 @@ export const MAX_AUTO_ATTEMPTS = 2
  *
  *  12인 근거: 밤샘 연속 주행은 **창 하나에 한 발**이라 12발이면 60시간(이틀 반)이고,
  *  반대로 10분마다 도는 헛돌이는 2시간 안에 예산을 다 쓴다. 그 사이를 가르는 것이
- *  아래 `MIN_WORK_MS`이고, 둘은 함께 서야 한다. */
+ *  아래 `MIN_WORK_MS`이고, 둘은 함께 서야 한다.
+ *
+ *  ★R28f WFIRE — **불변식의 유효 범위를 정확히 적는다.** R28e가 적어 둔 「진짜 일한
+ *  밤샘 연속은 안 잘린다」는 **끝이 있는 문장**이다(WFIRE 확인 크리틱 R1 §4.2 실측:
+ *  5시간 창 · 4.5시간 작업 대본이 120시간에서가 아니라 **12발 ≈ 60시간**에 접힌다).
+ *  참인 문장은 **「약 60시간까지는 안 잘린다」**이고, 유지 조건은 하룻밤(12시간 = 7발)이
+ *  **한 발도 안 깎이는 것**이다(`poc-limit-resume.mjs` J절 ②가 그 7발을 잠근다).
+ *  그 너머는 접히되 배너 버튼이 열려 있다 — 사람이 한마디만 해도 예산이 새로 열린다. */
 export const MAX_EPISODE_FIRES = 12
 
 /** ★R28e WFIRE — **「그 턴이 일했다」로 인정하는 최소 턴 수명(ms).**
@@ -283,6 +290,27 @@ export function resumeVerdict(hold: LimitHold, still: number | null, unavailable
  *  누를 게 없는 버튼(침묵 no-op · M-LOGIC P7)이 된다. */
 export function canPressContinue(hold: LimitHold | null | undefined): boolean {
   return !!hold?.ready && !!hold.autoPaused
+}
+
+/** ★R28f WFIRE — **접힌 표가 「예산 착지」인가**(연속 헛발질이 아니라).
+ *
+ *  두 착지는 화면에서 같은 모양(`ready` + 접힘 + 버튼)인데 **사실이 정반대**다:
+ *   * 연속 헛발질(`attempts >= MAX_AUTO_ATTEMPTS`) — 자동으로 보낸 턴이 문전박대만 당했다.
+ *   * 예산 착지(`fires >= MAX_EPISODE_FIRES`) — 그 턴들은 `MIN_WORK_MS`를 넘겨 **일했다**
+ *     (그러라고 만든 문턱이다). 그런데도 한도가 안 끝나서 에피소드 예산을 다 썼다.
+ *
+ *  R28e는 둘 다 「자동으로 이어서 보낸 턴이 계속 한도에 막혔어요」로 말했고, 뒤쪽
+ *  사용자에게 그 문장은 **사실이 아니다** — R28d가 밤샘 축에서 고친 것과 같은 종류의
+ *  거짓이다(R28e 확인 크리틱 R1 §4.3). 엔진은 스레드 공지로는 이미 둘을 갈라 말하고
+ *  있었으므로(`runtime.rs::check_hold`의 `over` / `budget_out`) 화면 위 한 줄만 뭉갰다.
+ *
+ *  **두 축이 이 함수 하나를 본다**(`Chat.tsx` `LimitHoldBar`):
+ *   * 엔진 관장 표 — `chat:status`의 `hold.paused`/`hold.fires`(`engine/lite.rs`).
+ *   * 렌더러가 든 표 — `LimitHold.autoPaused`/`.fires`.
+ *  값의 출처만 다르고 뜻은 글자 그대로 같다. `paused`를 안 싣는 옛 셸에서는 언제나
+ *  거짓 = R28e의 문장 그대로(침묵도 회귀도 아니다). */
+export function budgetLanding(paused?: boolean, fires?: number): boolean {
+  return !!paused && (fires ?? 0) >= MAX_EPISODE_FIRES
 }
 
 /* ── ★R28d WCAP — 상한이 「헛발질」과 「제대로 일한 재개」를 가른다 ──────────────
@@ -481,7 +509,37 @@ export function holdDelayMs(hold: LimitHold, nowMs: number): number {
 
 /** ui-prefs에서 복원한 대기표 위생 — 형태가 어긋나거나 24시간 지난 표는 버린다
  *  (며칠 전 대기표가 부팅하자마자 옛 채팅에 프롬프트를 쏘는 사고 방지). ready는
- *  영속하지 않는다 — 복원 후 발화 경로가 재검증으로 다시 판정한다. */
+ *  영속하지 않는다 — 복원 후 발화 경로가 재검증으로 다시 판정한다.
+ *
+ *  ── ★R28f WFIRE — **이 함수에는 지금 살아 있는 호출자가 없다.** 정직하게 적는다.
+ *
+ *  R28e 보고서는 「예산이 재시작을 못 넘는 것은 엔진만의 문제이고 렌더러는 `sanitizeHold`가
+ *  복원한다」로 신고했는데, 확인 크리틱 R1 §4.1이 그 절반을 깼다. 실앱의 배선은 이렇다:
+ *
+ *   * `limitResume.hold` pref를 읽고 쓰는 곳은 **`App.tsx` 본채팅 하나**뿐이다.
+ *   * 그 훅은 **늘 `managed`**다 — `ccg_store::status::empty_lite`와 `engine/lite.rs`가
+ *     **조건 없이** `resumeOwner:"engine"`을 싣기 때문이다(실측: `engineOwnsResume`가
+ *     빈 행에도 산 행에도 `true`). `managed`면 `useLimitResume`이 `if (o.managed) return`
+ *     으로 장전 자체를 안 하므로 `limitResume.hold`는 늘 비고, 아래 복원 분기는 안 돈다.
+ *   * 렌더러가 실제로 표를 드는 표면(멀티 패널·추가 채팅 창·팝아웃)은 `managed`를 아예
+ *     안 넘기지만(= 살아 있다) **영속을 안 한다** — 설계상 런타임 전용이다(창을 닫으면
+ *     자동 재개 약속도 접힌다).
+ *
+ *  **왜 그래도 안 걷어냈나**(두 선택지를 다 재고 고른 것이다):
+ *   ① *도달 가능하게 만든다* → `resumeOwner`를 조건화하는 것인데, 그 필드는 **한 채팅에
+ *      재개 주체가 둘이 되는 것을 막으려고** 만든 선언이다(M-UX R2.9 · 재현 축: 한도로 죽은
+ *      턴 → 재시작 → 리셋 도달 → 전송이 한 번인가 두 번인가). 조건을 붙이는 순간 그 틈이
+ *      다시 열린다. 멀티 패널 쪽에 영속을 주는 길도 더 나쁘다 — 슬롯은 **자리 번호**라
+ *      복원 시 그 자리에 다른 대화가 앉아 있으면 남의 대화에 재개 프롬프트를 쏜다.
+ *   ② *죽은 분기를 걷어낸다* → 그러면 **파리티가 깨진다.** 같은 대본(예산 소진 → 저장 →
+ *      복원)을 두 축에 먹였을 때 엔진은 예산을 지키고 렌더러는 재충전하는, 정확히
+ *      R28e가 야단맞은 그 모양이 반대 방향으로 생긴다. 이 파일의 함수들은 **두 축의 공통
+ *      규칙 그 자체**이고(`turnDidWork` 주석), 규칙을 한쪽만 지우는 것은 규칙을 바꾸는 것이다.
+ *
+ *  그래서 남긴다. 대신 **「지금 도달 불가」라는 사실을 계기로 못 박는다** —
+ *  `scripts/poc-limit-resume.mjs` M절이 실번들의 `engineOwnsResume`에 `empty_lite` 행과
+ *  산 lite 행을 먹여 둘 다 `true`임을 재고, 실제 훅에 `managed:true`를 주면 장전이 0임을
+ *  잰다. `resumeOwner`가 언젠가 조건부가 되면 그 절이 빨강이 되고, 그때 이 주석을 보게 된다. */
 export function sanitizeHold(v: unknown, nowMs: number): LimitHold | null {
   if (!v || typeof v !== 'object') return null
   const h = v as Partial<LimitHold>
@@ -503,8 +561,11 @@ export function sanitizeHold(v: unknown, nowMs: number): LimitHold | null {
     // `autoPaused`는 복원하지 않는다 — `ready`와 같이 재검증이 이 값으로 다시 판정한다.
     ...(typeof h.attempts === 'number' && h.attempts >= 1 ? { attempts: Math.min(Math.floor(h.attempts), 99) } : {}),
     // ★R28e WFIRE — **에피소드 예산도 같은 이유로 살린다.** 이 값이 재시작으로 0이 되면
-    // 「껐다 켤 때마다 12발이 공짜」가 되어 예산이 예산이 아니게 된다. (엔진 축은 아직
-    // `ReloadHold`에 이 칸이 없다 — docs/parity-fix-wfire-r1.md §미완에 적어 둔 격차다.)
+    // 「껐다 켤 때마다 12발이 공짜」가 되어 예산이 예산이 아니게 된다.
+    // ★R28f WFIRE — 엔진 축에도 같은 칸이 생겼다(`ReloadHold.fires` ← `HoldLite.fires`
+    // ← `hub::persist_hold`). R28e 주석이 가리키던 「아직 없다」는 이제 사실이 아니다 —
+    // 두 축이 같은 규칙이고, 그 궤적 일치를 `poc-limit-resume.mjs` L절 ⑥과 엔진
+    // `tests/wcap_limit_streak.rs` ⑭가 **같은 대본**으로 잰다.
     ...(typeof h.fires === 'number' && h.fires >= 1 ? { fires: Math.min(Math.floor(h.fires), 99) } : {})
   }
 }

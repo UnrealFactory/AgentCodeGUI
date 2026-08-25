@@ -105,9 +105,23 @@ pub fn build<D: CliDriver>(rt: &ChatRuntime<D>, terminal: Terminal, now_ms: u64)
     // 남은 시간을 만들고(`Chat.tsx` `LimitHoldBar`), 디스크 짝(`hub::persist_hold`)도
     // 같은 축이다. R4까지 여기만 **런타임 시계 ms**(앱 기동 뒤 경과)를 그대로 실어
     // 배너의 "약 N 뒤"가 늘 0이었다 — F2가 적은 "화면도 거짓말한다"의 나머지 반쪽이다.
+    // ★R28f WFIRE — 배너가 **착지를 구분해서** 말하려면 두 값이 더 필요하다
+    // (R28e 확인 크리틱 R1 §4.3). R28e까지 이 표면의 문장은 `ready`면 늘
+    // 「한도가 풀렸어요 — 눌러서 이어가기」였는데, 예산으로 접힌 표는 한도가 **안**
+    // 풀렸다: 자동으로 12번 이어서 보냈고 그때마다 일도 했는데 그래도 막혀서 멈춘
+    // 것이다. 엔진은 그 사실을 스레드 공지로는 정확히 말하고 있었으므로(`check_hold`)
+    // 화면 위 한 줄만 거짓이었다.
+    //
+    //  * `paused` — 「엔진이 자동을 접었다」(`auto_paused`). 아래 `auto_resume`가 표시용으로
+    //    접어 버리는 값을 **접기 전 사실 그대로** 싣는다. 이게 없으면 화면은 「예산으로
+    //    접힌 표」와 「화면 밖이라 안 쏘는 표」를 구분할 수 없다 — 둘 다 `auto:false`다.
+    //  * `fires` — 그 에피소드가 태운 자동 재개 수. 접힌 이유가 예산인지 연속 헛발질인지를
+    //    가르고(`>= MAX_EPISODE_FIRES`), 공지와 **같은 숫자**를 배너에도 준다.
     let hold = match rt.hold() {
         Some(h) => json!({ "resetAt": runtime_ms_to_epoch_secs(rt.now(), now_ms, h.resets_at),
-                           "ready": h.ready }),
+                           "ready": h.ready,
+                           "fires": rt.episode_fires(),
+                           "paused": h.auto_paused }),
         None => Value::Null,
     };
     // ★R5 — **자동 재발화 상한을 넘겨 멈춘 표**(`LimitHold::auto_paused`)는 화면에서

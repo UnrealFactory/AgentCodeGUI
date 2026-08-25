@@ -39,9 +39,12 @@ import { connectMainPage, killTree, sleep, REPO } from '../bench/lib.mjs'
 const args = process.argv.slice(2)
 const KEEP = args.includes('--keep')
 const LONG = args.includes('--long')
-const HOME = path.join(REPO, '.poc-home-engine-t3t4')
-const PORT = 9425
 const argOf = (k, d) => (args.find((a) => a.startsWith(`--${k}=`)) ?? '').split('=')[1] || d
+// ★R28f WFIRE — 홈·CDP 포트를 **인자로 받는다**(기본값은 R28e 그대로). 다섯 갈래가 같은
+// 워킹트리에서 동시에 도는 라운드라, 하드코딩된 9425 · 레포 안 고정 홈은 두 갈래가 같은
+// 시각에 이 하네스를 돌리면 서로의 홈과 디버깅 포트를 밟는다(단일 인스턴스 락 · CDP 충돌).
+const HOME = argOf('home', path.join(REPO, '.poc-home-engine-t3t4'))
+const PORT = Number(argOf('port', 9425))
 const OUT = argOf('out', path.join(REPO, 'docs', 'critic', 'limit-engine-t3t4-r3.json'))
 const EXE = argOf('exe', path.join(REPO, 'target-t3t4', 'release', 'agentcodegui.exe'))
 const FAKECLI = argOf('fakecli', path.join(REPO, 'target-t3t4', 'release', 'ccg-fakecli.exe'))
@@ -49,6 +52,9 @@ const FAKECLI = argOf('fakecli', path.join(REPO, 'target-t3t4', 'release', 'ccg-
  *  `--long`은 손 드는 순간까지 본다: 첫 재검증이 리셋+90초(=t≈90s)이고 그 뒤
  *  15+30+60+120+240 = 465초라 t≈555s. 여유를 얹어 620초. */
 const WATCH_S = Number(argOf('watch', LONG ? 620 : 110))
+// ★R28f WFIRE — 디스크에 심는 상한 두 칸(0 = R28e 이전의 판 그대로).
+const SEED_FIRES = Number(argOf('seed-fires', 0))
+const SEED_ATTEMPTS = Number(argOf('seed-attempts', 0))
 const EMAIL = 'engine-seed@t3t4.test'
 const CHAT = 'c-limit-engine'
 
@@ -138,7 +144,10 @@ function seedHome() {
       tools: { skillOverrides: {}, deniedMcp: [] }
     },
     // ★ 이 표가 이 하네스의 과녁이다. 리셋 시각은 이미 지났다 = 옛 판이 쏘던 조건.
-    hold: { resetsAt, ready: false },
+    // ★R28f WFIRE — `attempts`·`fires`는 **디스크에 적히는 상한**이다(`hub::persist_hold`).
+    // `--seed-fires=N`으로 「예산을 N발 쓴 채 앱을 껐다」를 만든다 — 그 값이 새 프로세스의
+    // 런타임까지 살아 오는지가 E11이 재는 것이고, 기본 0은 R28e와 한 글자도 다르지 않다.
+    hold: { resetsAt, ready: false, attempts: SEED_ATTEMPTS, fires: SEED_FIRES },
     draft: '',
     draftImages: [],
     updatedAt: Date.now(),
@@ -232,6 +241,8 @@ async function main() {
         spawns: row?.spawns ?? -1,
         queue: (row?.queue ?? []).length,
         hold: row?.hold ?? null,
+        // ★R28f WFIRE — 예산은 표 **밖**에 산다(`ChatRuntime::episode_fires`) — 별도 칸이다.
+        episodeFires: row?.episodeFires ?? null,
         stdin: stdinBytes(),
         probe: dbg?.limitProbe ?? null
       }
@@ -243,7 +254,8 @@ async function main() {
       }
       process.stdout.write(
         `   t=${String(s.t).padStart(3)}s spawns=${s.spawns} stdin=${s.stdin}B queue=${s.queue} ` +
-          `probes=${s.hold?.probes ?? '-'} ready=${s.hold?.ready ?? '-'} asks=${s.probe?.asks ?? '-'}\n`
+          `probes=${s.hold?.probes ?? '-'} ready=${s.hold?.ready ?? '-'} asks=${s.probe?.asks ?? '-'} ` +
+          `fires=${s.episodeFires ?? '-'}/att=${s.hold?.attempts ?? '-'}\n`
       )
       if (s.spawns > 0 || s.stdin > 0) break // 이미 졌다 — 더 볼 것이 없다
     }
@@ -271,6 +283,45 @@ async function main() {
     check('E8 tick마다 조회하지 않는다(사다리)', (last.probe?.asks ?? 0) <= Math.ceil(WATCH_S / 15) + 2, `asks=${last.probe?.asks}`, {
       asks: last.probe?.asks
     })
+
+    // ★R28f WFIRE — **상한이 프로세스 경계를 넘어왔는가**(R28e 확인 크리틱 R1 §4.1).
+    //
+    // 여기가 「엔진 못 ⑭·⑯이 재는 규칙」과 「실앱의 배선」 사이의 유일한 간극이다: 못은
+    // `reload_state`를 직접 부르지만 실앱은 `hub::persist_hold` → 채팅 파일 →
+    // `status::HoldLite` → `engine::reload_pending` → `ReloadHold`의 네 칸을 지난다.
+    // 그중 한 칸만 값을 안 나르면 못은 초록인데 앱은 그대로 재충전된다.
+    //
+    // 대조군은 **같은 하네스의 기본값**이다(`--seed-fires=0` → 아래 두 값이 0).
+    console.log('\n③′ ★R28f — 디스크에 적힌 상한이 새 프로세스로 살아 왔나')
+    rep.steps.seed = { fires: SEED_FIRES, attempts: SEED_ATTEMPTS }
+    rep.steps.carried = { episodeFires: last.episodeFires ?? null, attempts: last.hold?.attempts ?? null }
+    check(
+      `E11 ★★ 예산(fires)이 재장전을 넘었다 — 심은 값 ${SEED_FIRES}`,
+      (last.episodeFires ?? -1) === SEED_FIRES,
+      `심은 ${SEED_FIRES} · 읽힌 ${last.episodeFires}`,
+      { seeded: SEED_FIRES, got: last.episodeFires ?? null }
+    )
+    check(
+      `E12 ★ 연속 계수(attempts)도 넘었다 — 심은 값 ${SEED_ATTEMPTS}`,
+      (last.hold?.attempts ?? -1) === SEED_ATTEMPTS,
+      `심은 ${SEED_ATTEMPTS} · 읽힌 ${last.hold?.attempts}`,
+      { seeded: SEED_ATTEMPTS, got: last.hold?.attempts ?? null }
+    )
+    // 그리고 **쓰는 쪽**: 살아 있는 앱이 채팅 파일에 그 두 칸을 실제로 적는가.
+    const onDisk = (() => {
+      try {
+        return JSON.parse(fs.readFileSync(path.join(HOME, 'chats-v3', `${CHAT}.json`), 'utf8')).hold ?? null
+      } catch {
+        return null
+      }
+    })()
+    rep.steps.holdOnDisk = onDisk
+    check(
+      'E13 ★ 채팅 파일의 hold가 두 칸을 들고 있다(쓰는 쪽)',
+      !!onDisk && typeof onDisk.fires === 'number' && typeof onDisk.attempts === 'number',
+      JSON.stringify(onDisk),
+      { hold: onDisk }
+    )
 
     if (LONG) {
       console.log('\n④ --long — 계속 실패하면 「눌러서 이어가기」로 착지하나')

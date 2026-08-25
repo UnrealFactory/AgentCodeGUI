@@ -24,6 +24,16 @@
 //! | ⑪ | 같은 대본 + **수명 ≥ `MIN_WORK`**(★R28e) | 안 접힌다(⑩의 반대편 · 문턱 아래는 접힌다) |
 //! | ⑫ | 오래 일하며 계속 막힌다(★R28e) | **`MAX_EPISODE_FIRES`발**에서 접힌다 — 예산이 천장 |
 //! | ⑬ | 예산을 다 쓴 뒤 사용자가 누른다(★R28e) | 다시 쏜다 — 막다른 방이 아니다 |
+//! | ⑭ | 예산을 다 쓴 표로 **앱을 껐다 켠다**(★R28f) | 0발 — 재시작은 예산을 재충전하지 않는다 |
+//! | ⑮ | 5시간 창 · 4.5시간 작업을 **끝까지**(★R28f) | **60시간**에 접힌다 = 불변식의 유효 범위 |
+//! | ⑯ | 상한까지 쏜 표로 앱을 껐다 켠다(★R28f) | 0발 — 크리틱이 잰 「+2발」이 닫힌다 |
+//!
+//! ⑭⑯이 **R28f에서 새로 박은 못**이고 **대조군을 못 안에 품는다**(R28e 확인 크리틱 R1 §4.1).
+//! 같은 바이너리·같은 대본·같은 재장전 경로에서 `ReloadHold`의 새 칸을 0으로 두면 R28e의
+//! 동작(12발·2발 재충전)이 그대로 재현된다 — 즉 두 못은 「고쳐졌나」와 「그 칸이 정말
+//! 원인이었나」를 함께 잰다. ⑮는 고치는 못이 아니라 **문장을 정확히 하는 못**이다:
+//! 「밤샘은 안 잘린다」의 참인 판은 「**약 60시간까지는** 안 잘린다」이고, 그 범위의 반대쪽
+//! 끝(하룻밤 7발)은 ①이 이미 잠그고 있다.
 //!
 //! ④가 이 라운드가 스스로 판 함정이다. 구분자를 OR로 두면 그 판에서 계수가 영영 0이 되고,
 //! `due_at`이 `max(resets_at + 90s, armed_at + 15s)`라 **15초마다** 재발사가 돈다 =
@@ -52,7 +62,7 @@ use ccg_engine::clock::{Clock, Millis, VirtualClock, HOUR, MIN, SEC};
 use ccg_engine::driver::{CliDriver, SpawnSpec};
 use ccg_engine::identity::*;
 use ccg_engine::limit::MAX_AUTO_ATTEMPTS;
-use ccg_engine::runtime::{ChatRuntime, Cmd};
+use ccg_engine::runtime::{ChatRuntime, Cmd, ReloadHold};
 use serde_json::{json, Value};
 use std::collections::BTreeSet;
 use std::sync::Arc;
@@ -747,4 +757,124 @@ fn pressing_resume_reopens_the_episode_budget() {
         r.hold().is_some_and(|h| !h.auto_paused),
         "★ 누른 직후의 표가 다시 접혀 있다 — 막다른 방"
     );
+}
+
+/// ⑭ ★R28f WFIRE — **예산은 프로세스 재시작을 넘는다.**
+///
+/// R28e 확인 크리틱 R1 §4.1이 잰 최대 격차: `ReloadHold`에 `attempts`도 `fires`도 없어서
+/// [`ChatRuntime::reload_state`]가 둘 다 0을 놓았다. 「아무 구분자도 못 지우는 총계」라고
+/// 적어 둔 값이 **프로세스 경계 하나에** 통째로 지워진다면 그건 예산이 아니라 *재시작
+/// 버튼 하나짜리 무제한*이다(크리틱 실측: 재장전 뒤 20시간 **12발 재충전**).
+///
+/// **대조군이 이 못 안에 있다.** 같은 바이너리·같은 대본·같은 재장전 경로에서
+/// `fires` 한 칸만 0으로 두면(= R28e의 동작) 12발이 그대로 재충전된다. 즉 아래 두
+/// `assert`는 「고쳐졌나」와 「그 칸이 정말 원인이었나」를 함께 잰다.
+#[test]
+fn the_episode_budget_survives_a_restart() {
+    // ① 예산을 다 쓴 상태를 만든다(⑫와 한 글자도 다르지 않은 대본).
+    let cli = WcapCli { banner: true, work: true, work_ms: 20 * MIN, ..Default::default() };
+    let (r0, _c0, blind0) = run(cli, 1_000 * SEC + 20 * HOUR);
+    assert_eq!(blind0 as u32, ccg_engine::limit::MAX_EPISODE_FIRES, "먼저 예산을 다 쓴다");
+    let saved = r0.hold().cloned().expect("접힌 표가 서 있다");
+    let saved_fires = r0.episode_fires();
+    assert!(saved.auto_paused, "그 표는 접혀 있다");
+
+    // ② 앱을 껐다 켠다 — 셸이 디스크(`hub::persist_hold` → `status::HoldLite`)에서 읽어
+    //    온 두 칸을 그대로 실어 재장전한다. 새 런타임 · 새 시계 = 새 프로세스.
+    let fresh = |fires: u32| {
+        let clock = clock_at(5 * 3600);
+        let cli = WcapCli { banner: true, work: true, work_ms: 20 * MIN, ..Default::default() };
+        let mut r = rt(clock.clone(), cli);
+        r.reload_state(
+            vec![],
+            Some(ReloadHold { in_ms: Some(60 * SEC), ready: false, attempts: saved.attempts, fires }),
+        );
+        pump(&mut r, &clock, 1_000 * SEC + 20 * HOUR);
+        (r.driver_ref().turns as usize, r.episode_fires(), r.hold().is_some_and(|h| h.auto_paused))
+    };
+
+    let (kept, kept_fires, kept_paused) = fresh(saved_fires);
+    let (lost, lost_fires, _) = fresh(0); // ← R28e의 동작(그 칸이 없던 판)
+    println!(
+        "[WFIRE⑭] 재장전 뒤 20시간 — 예산 물려받음 {kept}발(잔여예산 {kept_fires} · 접힘 {kept_paused})  vs  0으로 재장전 {lost}발(잔여예산 {lost_fires})"
+    );
+    assert_eq!(kept, 0, "★★ 재시작이 예산을 재충전했다 — 20시간에 {kept}발");
+    assert!(kept_paused, "★ 재장전 직후의 판정도 「예산 소진」이어야 한다(버튼이 유일한 출구)");
+    assert_eq!(
+        lost as u32,
+        ccg_engine::limit::MAX_EPISODE_FIRES,
+        "★ 대조군이 재충전을 재현하지 못했다 — 이 못은 아무것도 안 재고 있다"
+    );
+}
+
+/// ⑮ ★R28f WFIRE — **「밤샘은 안 잘린다」의 유효 범위는 약 60시간이다.**
+///
+/// R28e 확인 크리틱 R1 §4.2: 실전 눈금(5시간 창 · 4시간 30분 작업) 120시간 대본이
+/// **12발에서 접힌다**. 그러니 불변식의 참인 문장은 「안 잘린다」가 아니라
+/// **「약 60시간까지는 안 잘린다」**이고, 문서·주석이 그렇게 적어야 한다
+/// ([`ccg_engine::limit::MAX_EPISODE_FIRES`]).
+///
+/// 이 못이 지키는 것은 **범위의 양 끝**이다: 하룻밤은 한 발도 안 깎이고(①이 7발로 잠근다)
+/// 이틀 반 근처에서 접히되 막다른 방이 아니다(⑬의 버튼).
+#[test]
+fn the_night_run_invariant_is_good_for_about_sixty_hours() {
+    let cli = WcapCli {
+        banner: true,
+        work: true,
+        work_ms: 4 * HOUR + 30 * MIN, // 5시간 창을 거의 꽉 채워 일하는 턴
+        ..Default::default()
+    };
+    let clock = clock_at(5 * 3600);
+    let mut r = rt(clock.clone(), cli);
+    r.dispatch(Cmd::Send { text: "첫 턴".into() });
+    // 80시간 안에 접혀야 한다(60시간 언저리를 기대한다 — 안 접히면 그대로 실패).
+    let cap = clock.now_ms() + 80 * HOUR;
+    while clock.now_ms() < cap && !r.hold().is_some_and(|h| h.auto_paused) {
+        clock.advance_by(SEC);
+        r.tick();
+    }
+    let folded_h = (clock.now_ms() - 1_000 * SEC) / HOUR;
+    let h = r.hold().expect("표는 서 있다");
+    println!(
+        "[WFIRE⑮] 5시간 창 · 4.5시간 작업 — {folded_h}시간에 접힘 · 발사 {} · attempts {} · auto_paused {}",
+        r.driver_ref().turns - 1,
+        h.attempts,
+        h.auto_paused
+    );
+    assert!(h.auto_paused, "★ 80시간을 밀어도 안 접혔다 — 예산이 천장이 아니다");
+    assert_eq!(h.attempts, 0, "★ 접은 것은 연속 계수가 아니라 예산이다(그 턴들은 일했다)");
+    assert!(
+        (48..=72).contains(&folded_h),
+        "★★ 유효 범위가 「약 60시간」이 아니다 — {folded_h}시간에 접혔다(문서 문장을 고쳐야 한다)"
+    );
+}
+
+/// ⑯ ★R28f WFIRE — **연속 헛발질 계수도 재시작을 넘는다**(⑭의 다른 축).
+///
+/// 예산이 「천천히 죽는 축」의 천장이라면 [`MAX_AUTO_ATTEMPTS`]는 「즉사 축」의 천장이다.
+/// R28e 확인 크리틱 R1 §4.1이 **재시작 1회의 실손해를 +2발**로 잰 자리가 정확히 여기다 —
+/// 그 값은 R28d의 `ReloadHold`가 이미 `attempts: 0`으로 놓고 있었으므로 회귀는 아니었지만,
+/// 렌더러(`sanitizeHold`)가 R28c부터 이 값을 살려 복원하고 있었으니 **두 축의 규칙이
+/// 갈린 자리**였다. 이제 같다.
+#[test]
+fn the_blind_shot_cap_also_survives_a_restart() {
+    // 문전박대 축 — 산출도 수명도 없다(⑩·③의 그 대본).
+    let cli = WcapCli { banner: true, ..Default::default() };
+    let (r0, _c0, blind0) = run(cli, 1_000 * SEC + 12 * HOUR);
+    assert_eq!(blind0 as u32, MAX_AUTO_ATTEMPTS, "먼저 상한까지 쏜다");
+    let saved = r0.hold().cloned().expect("접힌 표가 서 있다");
+    assert_eq!(saved.attempts, MAX_AUTO_ATTEMPTS, "계수가 상한이다");
+
+    let fresh = |attempts: u32, fires: u32| {
+        let clock = clock_at(5 * 3600);
+        let mut r = rt(clock.clone(), WcapCli { banner: true, ..Default::default() });
+        r.reload_state(vec![], Some(ReloadHold { in_ms: Some(60 * SEC), ready: false, attempts, fires }));
+        pump(&mut r, &clock, 1_000 * SEC + 12 * HOUR);
+        r.driver_ref().turns as usize
+    };
+    let kept = fresh(saved.attempts, r0.episode_fires());
+    let lost = fresh(0, 0); // ← R28e의 동작
+    println!("[WFIRE⑯] 재장전 뒤 12시간 — 계수 물려받음 {kept}발  vs  0으로 재장전 {lost}발(= 크리틱이 잰 +2발)");
+    assert_eq!(kept, 0, "★★ 재시작이 「눈감고 두 발」을 공짜로 만들었다");
+    assert_eq!(lost as u32, MAX_AUTO_ATTEMPTS, "★ 대조군이 +2발을 재현하지 못했다");
 }

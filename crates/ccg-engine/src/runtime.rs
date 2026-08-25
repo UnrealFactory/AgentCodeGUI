@@ -417,9 +417,9 @@ impl crate::limit::AccountSwitcher for NoSwitch {
     }
 }
 
-/// 부팅 재장전이 실어 오는 한도 대기표(§5.8 2단계). 저장된 값은 이 둘뿐이고
-/// `account`는 **지금 정체성**에서 다시 만든다 — 계정이 바뀌었으면 대기표는 무효라는
-/// §7.3 규약을 재장전에도 그대로 적용하기 위해서다(발화 시점에 `check_hold`가 잰다).
+/// 부팅 재장전이 실어 오는 한도 대기표(§5.8 2단계). `account`는 **지금 정체성**에서
+/// 다시 만든다 — 계정이 바뀌었으면 대기표는 무효라는 §7.3 규약을 재장전에도 그대로
+/// 적용하기 위해서다(발화 시점에 `check_hold`가 잰다).
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ReloadHold {
     /// **지금부터 남은 시간(ms)** — 절대 시각이 아니다.
@@ -430,6 +430,23 @@ pub struct ReloadHold {
     /// 경계에서 남은 시간으로 옮기고, 여기서 `now`를 더한다.
     pub in_ms: Option<Millis>,
     pub ready: bool,
+    /// ★R28f WFIRE — **연속 헛발질 계수**([`LimitHold::attempts`]의 디스크 짝).
+    ///
+    /// R28e까지 이 칸이 없었고 [`Self::reload_state`]가 무조건 `0`을 놓았다. 렌더러
+    /// (`sanitizeHold`)는 R28c부터 이 값을 살려 복원하고 있었으므로 **두 축의 규칙이
+    /// 갈린 자리**였다 — 재시작 한 번이 「눈감고 두 발」을 공짜로 만들었다.
+    pub attempts: u32,
+    /// ★R28f WFIRE — **이 에피소드가 이미 태운 자동 재개의 총계**
+    /// ([`ChatRuntime::episode_fires`]의 디스크 짝 · 상한은 [`crate::limit::MAX_EPISODE_FIRES`]).
+    ///
+    /// **왜 이 칸이 예산의 존폐를 가르나**(R28e 확인 크리틱 R1 §4.1 실측): 예산을 다 쓴
+    /// 대본을 새 런타임에 `reload_state`로 재장전하니 20시간 **12발 재충전**이 나왔다.
+    /// 「아무 구분자도 못 지우는 총계」라고 적어 둔 값이 프로세스 경계 하나에 통째로
+    /// 지워지면 그건 예산이 아니라 **재시작 버튼 하나짜리 무제한**이다.
+    ///
+    /// 되돌아가는 자리는 여전히 셋뿐이다 — 사람 손(`resume_now`·사용자 전송) ·
+    /// 한도가 아닌 착지 · `/clear`류. **재시작은 그 셋이 아니다.**
+    pub fires: u32,
 }
 
 impl<D: CliDriver> ChatRuntime<D> {
@@ -700,8 +717,15 @@ impl<D: CliDriver> ChatRuntime<D> {
                 verified_at: None,
                 ready: h.ready,
                 auto_paused: false,
-                // 재장전은 새 에피소드다 — 지난 판의 헛발질 횟수는 디스크에 없다.
-                attempts: 0,
+                // ★R28f WFIRE — **재장전은 새 에피소드가 아니다.** R28e까지 이 자리는
+                // `attempts: 0`이었고 주석은 "지난 판의 헛발질 횟수는 디스크에 없다"였다 —
+                // 그 문장이 사실이었던 이유는 우리가 안 적었기 때문이다(경계가 안 실어
+                // 보냈다). 이제 `hub::persist_hold`가 적고 `status::HoldLite`가 읽는다.
+                //
+                // `auto_paused`만 여전히 `false`다: 그건 「지금 자동을 접었다」는 **판정
+                // 결과**이고, 판정은 `check_hold`가 재장전 뒤 다시 한다(§7.3 "복원이 아니라
+                // 재장전"). 계수와 예산은 판정 결과가 아니라 **사실**이라 물려받는다.
+                attempts: h.attempts,
                 probes: 0,
                 probed_at: None,
                 armed_from_run: RunId(0),
@@ -712,6 +736,17 @@ impl<D: CliDriver> ChatRuntime<D> {
                 // 없다) — 미뤄 둔 문장도 없다.
                 notice_due: false,
             });
+            // ★R28f WFIRE — 예산은 표 **밖**에 산다([`Self::episode_fires`]) — 표를 다시
+            // 세우는 것만으로는 안 돌아온다. 여기서 함께 놓지 않으면 위 `attempts`만
+            // 물려받고 「천천히 죽는 축」의 천장(12발)은 재시작마다 새로 열린다
+            // (R28e 확인 크리틱 R1 §4.1 실측: 재장전 뒤 20시간 12발 재충전).
+            //
+            // 짝인 `auto_resume_at`/`auto_resume_fired_at`은 **안 놓는다.** 그 둘은
+            // *직전에 쏜 표의 벽*과 *그 발사의 런타임 시각*이고, 런타임 시계는 프로세스마다
+            // 0에서 다시 시작한다 — 옛 프로세스의 ms를 새 축에 놓으면 구분자 ①·②가
+            // 거짓 「넘어갔다」를 낸다. 모르면 `None`이 정답이고, `None`은 안전한 쪽
+            // (「일했다고 인정하지 않는다」 = 상한이 살아 있는 쪽)으로 떨어진다.
+            self.episode_fires = h.fires;
         }
         self.broadcast_plan();
     }
@@ -3600,6 +3635,11 @@ impl<D: CliDriver> ChatRuntime<D> {
         //
         // 밤샘 주행을 안 자르는 근거는 눈금 자체에 있다: 창 하나에 한 발이므로 12발이면
         // **60시간**이다. 반대로 10분마다 도는 헛돌이는 2시간 안에 예산을 다 쓴다.
+        //
+        // ★R28f WFIRE — 그래서 이 문의 불변식은 「밤샘은 안 잘린다」가 아니라
+        // **「약 60시간까지는 안 잘린다」**이다(R28e 확인 크리틱 R1 §4.2 실측: 5시간 창 ·
+        // 4.5시간 작업 대본이 12발 = 약 56~60시간에서 접힌다). 하룻밤(12시간 7발)이 한 발도
+        // 안 깎이는 것이 유지 조건이고, 그 너머는 접히되 버튼이 열려 있다.
         let budget_out = self.episode_fires >= crate::limit::MAX_EPISODE_FIRES;
         if over || budget_out {
             if let Some(h) = &mut self.hold {
@@ -4121,7 +4161,7 @@ mod reload_tests {
         let mut r = rt(clock.clone());
         r.reload_state(
             vec!["예약1".into(), "예약2".into()],
-            Some(ReloadHold { in_ms: Some(60 * SEC), ready: false }),
+            Some(ReloadHold { in_ms: Some(60 * SEC), ready: false, ..Default::default() }),
         );
         assert_eq!(r.queue_len(), 2, "예약이 살아 있다");
         assert!(r.hold().is_some(), "대기표가 재장전됐다");
@@ -4140,7 +4180,7 @@ mod reload_tests {
         let mut r = rt(clock.clone());
         r.reload_state(
             vec!["예약1".into()],
-            Some(ReloadHold { in_ms: Some(60 * SEC), ready: false }),
+            Some(ReloadHold { in_ms: Some(60 * SEC), ready: false, ..Default::default() }),
         );
         // resets_at = 재장전 시각(10s) + 남은 60s = 70s. due_at = +90s(§7.3 재검증 지연).
         clock.advance_to(10 * SEC + 60 * SEC + 91 * SEC);
@@ -4165,7 +4205,7 @@ mod reload_tests {
         r.set_auto_resume(false);
         r.reload_state(
             vec!["예약1".into()],
-            Some(ReloadHold { in_ms: Some(60 * SEC), ready: false }),
+            Some(ReloadHold { in_ms: Some(60 * SEC), ready: false, ..Default::default() }),
         );
         clock.advance_to(10 * SEC + 60 * SEC + 91 * SEC);
         r.tick();
@@ -4424,6 +4464,7 @@ mod r4_queue_and_resume_tests {
             Some(ReloadHold {
                 in_ms: Some(60 * SEC),
                 ready: false,
+                ..Default::default()
             }),
         );
         // 렌더러(또는 사용자)가 대기 중에 재개 프롬프트를 보낸다 → 게이트가 주차한다.
@@ -4460,6 +4501,7 @@ mod r4_queue_and_resume_tests {
             Some(ReloadHold {
                 in_ms: Some(60 * SEC),
                 ready: false,
+                ..Default::default()
             }),
         );
         clock.advance_by(5 * SEC);
@@ -4489,6 +4531,7 @@ mod r4_queue_and_resume_tests {
             Some(ReloadHold {
                 in_ms: Some(60 * SEC),
                 ready: false,
+                ..Default::default()
             }),
         );
         clock.advance_to(10 * SEC + 60 * SEC + 91 * SEC);

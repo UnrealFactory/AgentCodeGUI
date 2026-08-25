@@ -19,8 +19,16 @@
  * ============================================================ */
 import type { ChatStatusLite } from '@shared/protocol'
 
-/** 계약면에 아직 없는 두 필드를 읽기 위한 확장(§R3 7 · 배선 R4 접점). */
-type ResumeLite = ChatStatusLite & { resumeOwner?: string; autoResume?: boolean }
+/** 계약면에 아직 없는 필드를 읽기 위한 확장(§R3 7 · 배선 R4 접점).
+ *
+ *  ★R28f WFIRE — `hold`에 두 칸이 붙었다(`engine/lite.rs`). 계약면(`ChatStatusLite.hold`)은
+ *  여전히 `{resetAt, ready}`이고 `src/shared/`는 이 라운드의 경계 밖이라, `resumeOwner`·
+ *  `autoResume`과 **같은 방식**으로 선택적 확장으로만 읽는다(없으면 옛 문장으로 떨어진다). */
+type ResumeLite = ChatStatusLite & {
+  resumeOwner?: string
+  autoResume?: boolean
+  hold?: ({ resetAt: number | null; ready: boolean } & { fires?: number; paused?: boolean }) | null
+}
 
 /**
  * 엔진이 이 채팅의 재개를 관장하는가 = **렌더러 기계를 꺼야 하는가.**
@@ -46,12 +54,25 @@ export interface EngineHold {
   ready: boolean
   /** 엔진이 스스로 쏠 것인가(스펙 ⑤). 모르면 undefined — 그때는 ready에 버튼을 준다. */
   auto?: boolean
+  /** ★R28f WFIRE — **엔진이 자동을 접었다**(`LimitHold::auto_paused`). `auto:false`와
+   *  다른 사실이다: 저쪽은 「화면 밖이라 안 쏜다」도 포함하고(그 표는 한도가 진짜로
+   *  풀린 표다), 이쪽은 「상한에 걸려 멈췄다」뿐이다. 배너 문구가 갈리는 자리다. */
+  paused?: boolean
+  /** ★R28f WFIRE — 이 에피소드가 태운 자동 재개 수(`ChatRuntime::episode_fires`).
+   *  `paused`의 **이유**를 가른다 — `>= MAX_EPISODE_FIRES`면 예산 착지, 아니면 연속 헛발질. */
+  fires?: number
 }
 
 export function engineHoldOf(row?: ChatStatusLite | null): EngineHold | null {
   const r = row as ResumeLite | null | undefined
   if (!r?.hold || !engineOwnsResume(r)) return null
-  return { resetAt: r.hold.resetAt ?? null, ready: !!r.hold.ready, auto: r.autoResume }
+  return {
+    resetAt: r.hold.resetAt ?? null,
+    ready: !!r.hold.ready,
+    auto: r.autoResume,
+    paused: r.hold.paused,
+    fires: r.hold.fires
+  }
 }
 
 /**

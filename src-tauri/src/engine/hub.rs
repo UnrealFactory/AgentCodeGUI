@@ -532,6 +532,11 @@ impl Hub {
                                 "hold": s.rt.hold().map(|h| json!({ "resetsAt": h.resets_at, "ready": h.ready,
                                                                     "dueAt": h.due_at(), "probes": h.probes,
                                                                     "attempts": h.attempts, "autoPaused": h.auto_paused })),
+                                // ★R28f WFIRE — **에피소드 예산의 소비분**(`episode_fires`).
+                                // 표 **밖**에 사는 값이라 위 `hold` 안에는 못 넣는다(표가 없어도 산다).
+                                // 「왜 안 쐈나」의 두 번째 답이고, 재장전이 이 값을 물려받는지를
+                                // 밖에서 확인할 수 있는 유일한 창이다(`scripts/poc-limit-engine.mjs` E11).
+                                "episodeFires": s.rt.episode_fires(),
                                 "queue": s.rt.queue_texts() })
                     })
                     .collect();
@@ -1496,7 +1501,16 @@ impl Hub {
                 let resets_at = h
                     .resets_at
                     .map(|r| epoch_now + (r as f64 - now_ms as f64) / 1000.0);
-                json!({ "resetsAt": resets_at, "ready": h.ready })
+                // ★R28f WFIRE — **상한도 함께 내린다.** R28e까지 여기 실리는 것은 시각과
+                // `ready` 둘뿐이었고, 그래서 `reload_state`가 계수·예산을 0으로 놓는 것
+                // 말고는 할 수 있는 일이 없었다 — 재시작 한 번이 「아무 구분자도 못 지우는
+                // 예산」을 통째로 지웠다(확인 크리틱 R1 §4.1: 재장전 뒤 20시간 12발 재충전).
+                //
+                // `auto_paused`는 **안 내린다**(렌더러 `sanitizeHold`가 `autoPaused`를 안
+                // 살리는 것과 같은 규약): 그건 판정 결과이고, 판정은 부팅 뒤 `check_hold`가
+                // 이 두 값으로 다시 한다. 사실만 적고 결론은 그때 다시 낸다.
+                json!({ "resetsAt": resets_at, "ready": h.ready,
+                        "attempts": h.attempts, "fires": slot.rt.episode_fires() })
             }
             None => Value::Null,
         };

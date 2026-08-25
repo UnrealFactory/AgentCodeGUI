@@ -37,9 +37,11 @@ import { connectMainPage, killTree, sleep, REPO } from '../bench/lib.mjs'
 
 const args = process.argv.slice(2)
 const KEEP = args.includes('--keep')
-const HOME = path.join(REPO, '.poc-home-codex-crit')
-const PORT = 9437
 const argOf = (k, d) => (args.find((a) => a.startsWith(`--${k}=`)) ?? '').split('=')[1] || d
+// ★R28f WFIRE — 홈·CDP 포트를 **인자로 받는다**(기본값은 R28e 그대로 · `poc-limit-engine`과
+// 같은 이유). 다섯 갈래가 한 워킹트리에서 도는 라운드라 하드코딩은 서로의 홈·포트를 밟는다.
+const HOME = argOf('home', path.join(REPO, '.poc-home-codex-crit'))
+const PORT = Number(argOf('port', 9437))
 const OUT = argOf('out', path.join(REPO, 'docs', 'critic', 'limit-codex-crit-r1.json'))
 const EXE = argOf('exe', path.join(REPO, 'target-crit', 'release', 'agentcodegui.exe'))
 const FAKECODEX = argOf('fakecodex', path.join(REPO, 'target-crit', 'release', 'ccg-fakecodex.exe'))

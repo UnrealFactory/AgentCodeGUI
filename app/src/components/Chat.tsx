@@ -29,7 +29,7 @@ import { isEn, t, useLang } from '../lib/i18n'
 // ★R28 ACCT §1·§3 — 계정 목록·한도·「사용 중」 역인덱스의 단일 스토어.
 import { ensureAccounts, ensureCodexAccounts, inUseLabel, primeUsageFromDisk, refreshCodexUsage, refreshUsage, useAccounts } from '../lib/accounts'
 import { sameCwd, type ThreadItem } from '../store/session'
-import { canPressContinue, holdDelayMs, type LimitHold } from '../lib/limitResume'
+import { budgetLanding, canPressContinue, holdDelayMs, type LimitHold } from '../lib/limitResume'
 import { noteLanding, putAnchor, takeAnchor } from '../lib/threadAnchor'
 import type { EngineHold } from '../lib/resumeOwner'
 import { settleText, useSettledReason } from '../lib/settled'
@@ -3327,7 +3327,23 @@ export function LimitHoldBar({
           <span className="lh-sub">
             {managed.ready
               ? press
-                ? t('한도가 풀렸어요 — 눌러서 이어가기', 'Limit lifted — click to continue')
+                ? // ★R28f WFIRE — **왜 멈췄는지에 따라 말이 갈린다**(확인 크리틱 R1 §4.3).
+                  //   R28e까지 이 자리는 언제나 「한도가 풀렸어요 — 눌러서 이어가기」였다.
+                  //   그런데 `press`가 참이 되는 길은 셋이고 그중 둘은 **한도가 안 풀린** 표다:
+                  //     · 예산 착지  — 자동으로 N번 이어서 보냈고 그 턴들은 **일도 했는데** 계속 막혔다
+                  //     · 연속 헛발질 — 자동으로 보낸 턴이 문전박대만 당했다
+                  //     · 화면 밖    — 진짜로 풀렸는데 이 채팅이 안 보여서 안 쏜 것(그때만 「풀렸어요」)
+                  //   엔진은 세 착지를 스레드 공지로는 정확히 구분해 말하고 있었다(`check_hold`) —
+                  //   화면 위 한 줄만 셋을 하나로 뭉갰다. 여기서 같은 셋으로 가른다(D7 · 같은
+                  //   사실은 같은 말로: 아래 렌더러 소유 갈래·엔진 공지와 문장을 맞춘다).
+                  budgetLanding(managed.paused, managed.fires)
+                  ? t(
+                      `이 한도 창에서 자동으로 ${managed.fires}번 이어서 보냈는데 계속 막혔어요 — 눌러서 이어가기`,
+                      `Auto-continued ${managed.fires}× in this limit window and it's still blocked — click to continue`
+                    )
+                  : managed.paused
+                    ? t('자동으로 이어서 보낸 턴이 계속 한도에 막혔어요 — 눌러서 이어가기', 'Auto-resume kept hitting the limit — click to continue')
+                    : t('한도가 풀렸어요 — 눌러서 이어가기', 'Limit lifted — click to continue')
                 : t('한도가 풀렸어요 — 곧 이어서 계속해요', 'Limit lifted — continuing shortly')
               : eta
                 ? managed.auto === false
@@ -3362,7 +3378,17 @@ export function LimitHoldBar({
               ? // 엔진이 같은 착지에서 쓰는 공지와 같은 문장이다(runtime.rs `attempts >=
                 // MAX_AUTO_ATTEMPTS`) — 한 앱 안에서 같은 사실은 같은 말로.
                 // ★R28d WCAP R4 — 한글 문장 안의 `turn`을 「턴」으로(WCAP 확인 크리틱 R1 §6).
-                t('자동으로 이어서 보낸 턴이 계속 한도에 막혔어요 — 눌러서 이어가기', 'Auto-resume kept hitting the limit — click to continue')
+                // ★R28f WFIRE — **예산 착지는 다른 말이다**(확인 크리틱 R1 §4.3): 그 턴들은
+                // 「막히기만」 한 게 아니라 `MIN_WORK` 넘게 **일도 했다**(그러라고 만든 문턱이다).
+                // 그런데도 한도가 안 끝나서 예산을 다 쓴 것이라, 위 문장은 그 사용자에게
+                // 사실이 아니다 — R28d가 밤샘 축에서 고친 것과 같은 종류의 거짓이다.
+                // 엔진 공지(`check_hold`의 `budget_out` 갈래)와 숫자·어휘를 맞춘다.
+                budgetLanding(hold.autoPaused, hold.fires)
+                ? t(
+                    `이 한도 창에서 자동으로 ${hold.fires}번 이어서 보냈는데 계속 막혔어요 — 눌러서 이어가기`,
+                    `Auto-continued ${hold.fires}× in this limit window and it's still blocked — click to continue`
+                  )
+                : t('자동으로 이어서 보낸 턴이 계속 한도에 막혔어요 — 눌러서 이어가기', 'Auto-resume kept hitting the limit — click to continue')
               : t('한도가 풀렸어요 — 이어서 계속해요', 'Limit lifted — continuing')
             : enabled
               ? hold.resetsAt

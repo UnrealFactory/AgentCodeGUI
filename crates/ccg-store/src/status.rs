@@ -90,6 +90,18 @@ pub struct HoldLite {
     #[serde(rename = "resetsAt")]
     pub resets_at: Option<f64>,
     pub ready: bool,
+    /// ★R28f WFIRE — **연속 헛발질 계수**(엔진 `LimitHold::attempts` · 렌더러
+    /// `LimitHold.attempts`). 옛 파일에는 없다 → `serde(default)`로 0이고, 0은 R28e의
+    /// 동작 그대로다(재장전이 무조건 0을 놓던 판).
+    pub attempts: u32,
+    /// ★R28f WFIRE — **이 에피소드가 태운 자동 재개의 총계**(엔진
+    /// `ChatRuntime::episode_fires` · 렌더러 `LimitHold.fires`).
+    ///
+    /// 이 두 칸이 디스크에 없던 동안 「아무 구분자도 못 지우는 예산」이 **프로세스
+    /// 경계 하나에 통째로 지워졌다**(R28e 확인 크리틱 R1 §4.1: 재장전 뒤 20시간 12발
+    /// 재충전). 쓰는 쪽은 `hub::persist_hold`, 읽어 나르는 쪽은 `engine::reload_pending`
+    /// → `ccg_engine::runtime::ReloadHold`다.
+    pub fires: u32,
 }
 
 struct State {
@@ -295,7 +307,14 @@ fn truth_from_chat_file(id: &str) -> (usize, Value) {
     let Some(lite) = read_chat_lite(id) else { return (0, Value::Null) };
     let queued = lite.queue.as_ref().map(|q| q.len()).unwrap_or(0);
     let hold = match lite.hold {
-        Some(h) => json!({ "resetAt": h.resets_at, "ready": h.ready }),
+        // ★R28f WFIRE — 키 집합은 `engine::lite::build`의 그것과 **같아야** 한다(규약 3).
+        // 갈리면 부팅 행과 첫 허브 갱신이 매번 달라 배너가 한 번 깜빡인다.
+        //
+        // `paused`가 **상수 `false`**인 것은 값을 몰라서가 아니라 그게 사실이기 때문이다:
+        // `auto_paused`는 「지금 자동을 접었다」는 판정 결과이고, 재장전은 그 결과를
+        // 물려받지 않는다(`ReloadHold` 주석 · `reload_state`가 늘 `false`를 놓는다).
+        // 그러니 이 행이 그리게 될 상태도 「아직 안 접힌 표」다.
+        Some(h) => json!({ "resetAt": h.resets_at, "ready": h.ready, "fires": h.fires, "paused": false }),
         None => Value::Null,
     };
     (queued, hold)

@@ -1191,7 +1191,108 @@ await rearm(ep.h, 'Command failed with exit code 1') // 이번엔 한도가 아�
 eq('한도가 아닌 착지에는 표가 안 선다', ep.h.hold, null)
 await rearm(ep.h, CX_BANNER, { work: true, lifeMs: LONG })
 eq('★★ 그다음 표는 예산도 계수도 백지', { fires: ep.h.hold?.fires, attempts: ep.h.hold?.attempts }, { fires: undefined, attempts: undefined })
+
+// ⑥ ★R28f WFIRE — **예산이 프로세스 재시작을 넘는가**(엔진 ⑭·⑯과 **같은 대본·같은 착지**).
+//
+// R28e 확인 크리틱 R1 §4.1: 「예산이 재시작을 못 넘는다」가 **두 축 다** 사실이었다.
+// 엔진 축은 `ReloadHold`에 칸을 내서 닫았고(⑭ = 재장전 뒤 20시간 0발 · 대조군 12발),
+// 이 절은 **렌더러 축의 규칙이 같은 답을 내는지**를 같은 자로 잰다. 두 축의 눈금:
+//
+// | 대본 | 엔진(`wcap_limit_streak` ⑭⑯) | 렌더러(아래) |
+// |---|---|---|
+// | 예산을 다 쓴 표로 재시작 | 20시간 **0발** · 접힘 | **0발** · `autoPaused` |
+// | 그 칸을 0으로 두면(R28e) | **12발** 재충전 | `{kind:'ready'}` = 12발이 새로 열린다 |
+// | 상한까지 쏜 표로 재시작 | 12시간 **0발** | **0발** · `autoPaused` |
+console.log('   ⑥ ★R28f — 재시작을 넘는 예산(엔진 ⑭·⑯과 같은 대본)')
+const spent = await nightRun(CX_PROPS, 40, () => CX_BANNER, true, { lifeMs: LONG })
+eq('먼저 예산을 다 쓴다(엔진 ⑭ ①단계와 같은 자리)', spent.sent, lib3.MAX_EPISODE_FIRES)
+// App.tsx가 pref에 적는 모양 그대로(`ready`는 안 싣는다) → JSON 왕복 = 앱을 껐다 켠 것.
+const persisted = JSON.parse(JSON.stringify({ ...spent.h.hold, ready: undefined }))
+const restored = lib3.sanitizeHold(persisted, Date.now())
+eq('★★ 복원된 표가 예산을 그대로 들고 있다', restored?.fires, lib3.MAX_EPISODE_FIRES)
+// 그 표를 **새 훅**(= 새 프로세스의 그 화면)에 얹고 타이머를 돌린다.
+const rst = mountArmed(CX_PROPS, CX_BANNER)
+rst.api.setHold(restored)
+rst.host.render()
+sent.length = 0
+await tick(rst)
+eq(
+  '★★ 재시작 뒤 0발 — 엔진 ⑭와 같은 착지(0발 · 접힘)',
+  { sent: sent.length, paused: rst.hold?.autoPaused === true, ready: rst.hold?.ready === true },
+  { sent: 0, paused: true, ready: true }
+)
+// 대조군 — 그 칸을 잃은 표(= R28e의 엔진 축)는 그냥 `ready`다: 예산이 통째로 새로 열린다.
+eq(
+  '★ 대조군: `fires`를 잃은 표는 접히지 않는다(= 재충전 12발의 렌더러 판)',
+  lib3.resumeVerdict({ ...restored, fires: undefined }, null, false, NOW),
+  { kind: 'ready' }
+)
+// 즉사 축(엔진 ⑯) — `attempts`도 같은 규약으로 넘는다. 이건 R28c부터 이미 렌더러의 규칙이었고,
+// R28f에서 엔진이 여기로 맞춰 왔다. 두 축이 같은 답을 내는지 확인한다.
+const blindHold = lib3.sanitizeHold({ ...persisted, fires: undefined, attempts: lib3.MAX_AUTO_ATTEMPTS }, Date.now())
+eq('★★ 상한까지 쏜 표도 재시작 뒤 접힌 채다 — 엔진 ⑯과 같은 착지', lib3.resumeVerdict(blindHold, null, false, NOW), {
+  kind: 'ready',
+  paused: true
+})
+eq('★ 대조군: 그 칸을 잃으면 「눈감고 두 발」이 공짜가 된다', lib3.resumeVerdict({ ...blindHold, attempts: undefined }, null, false, NOW), { kind: 'ready' })
+
+// ⑦ ★R28f WFIRE — **배너가 예산 착지를 구분하는가**(확인 크리틱 R1 §4.3).
+//
+// 접힌 표 둘은 화면에서 같은 모양인데 사실이 정반대다. `budgetLanding`이 그 갈림길이고,
+// `Chat.tsx`의 두 갈래(엔진 관장 · 렌더러 소유)가 **이 함수 하나**를 본다.
+console.log('   ⑦ ★R28f — 배너 문구의 갈림길(예산 착지 vs 연속 헛발질)')
+eq('★★ 예산으로 접힌 표 = 예산 문구', lib3.budgetLanding(true, lib3.MAX_EPISODE_FIRES), true)
+eq('★★ 연속 헛발질로 접힌 표 = 옛 문구 그대로', lib3.budgetLanding(true, 2), false)
+eq('★★ 화면 밖이라 안 쏘는 표는 접힌 게 아니다 = 「한도가 풀렸어요」', lib3.budgetLanding(false, 99), false)
+eq('★ `paused`를 안 싣는 옛 셸에서는 언제나 옛 문구(회귀 0)', lib3.budgetLanding(undefined, undefined), false)
+eq('★ 예산 문구에 쓰는 숫자는 엔진 공지의 그 숫자다', spent.h.hold?.fires, lib3.MAX_EPISODE_FIRES)
+ok('★ 그 표는 실제로 접혀 있다(문구가 도달 가능한 자리다)', lib3.budgetLanding(spent.h.hold?.autoPaused, spent.h.hold?.fires), JSON.stringify(spent.h.hold))
 cxAnswer = []
+
+// ── M. ★R28f WFIRE — **「렌더러 축의 영속은 지금 도달 불가」라는 사실을 못으로 박는다** ──
+//
+// R28e 확인 크리틱 R1 §4.1의 나머지 반쪽: 위 L⑥이 재는 `sanitizeHold` 복원 분기는 **실앱에
+// 살아 있는 호출자가 없다**. 이 절은 그 사실을 *주장*이 아니라 *측정*으로 남긴다 — 그래야
+// 다음 라운드가 「렌더러는 복원한다」로 다시 신고하지 못하고, `resumeOwner`가 언젠가
+// 조건부가 되면 이 절이 빨강이 되어 `limitResume.ts`의 그 주석을 보게 된다.
+console.log('\nM. 렌더러 축 영속의 도달 가능성 — 사실을 계기로 남긴다(크리틱 R1 §4.1)')
+tag = 'WFIRE R2'
+const owner = await bundle(path.join(root, 'app/src/lib/resumeOwner.ts'), 'owner.mjs', {
+  alias: { '@shared': path.join(root, 'src/shared') }
+})
+// ① 셸이 실제로 싣는 두 행의 **모양 그대로**(`ccg_store::status::empty_lite` ·
+//    `src-tauri/src/engine/lite.rs::build`). 둘 다 `resumeOwner:"engine"`을 **조건 없이** 싣는다.
+const EMPTY_LITE = {
+  chatId: 'c1', status: 'idle', busy: false, bgActive: false, ask: 'none',
+  hold: null, queued: 0, unread: 0, autoResume: true, resumeOwner: 'engine', updatedAt: 0
+}
+const LIVE_LITE = {
+  chatId: 'c1', status: 'error', account: 'a@b.c', panelId: null, busy: false, bgActive: false, ask: 'none',
+  hold: { resetAt: REAL + 3600, ready: false, fires: 3, paused: false },
+  queued: 0, unread: 0, autoResume: true, resumeOwner: 'engine', updatedAt: 1
+}
+eq('★★ 빈 행도 엔진 소유다(`empty_lite`)', owner.engineOwnsResume(EMPTY_LITE), true)
+eq('★★ 산 행도 엔진 소유다(`lite::build`)', owner.engineOwnsResume(LIVE_LITE), true)
+eq('★ 표가 없는 산 행도 마찬가지(선언이 전부다)', owner.engineOwnsResume({ ...LIVE_LITE, hold: null }), true)
+// 판별력 — 이 절의 참값이 **무조건 참**이 아님을 보인다(선언이 달라지면 답도 달라진다).
+// 이 줄이 빨강이 되는 날 = `resumeOwner`가 조건부가 된 날이고, 그때 `sanitizeHold`의
+// 복원 분기는 **도달 가능해진다**. 그 주석(limitResume.ts)이 그날의 독자에게 하는 말이다.
+eq('★ 판별력: 선언이 렌더러면 답도 렌더러다', owner.engineOwnsResume({ ...LIVE_LITE, resumeOwner: 'renderer' }), false)
+// ② 그러므로 본채팅 훅은 늘 `managed`다 — 그 상태에서 **장전 자체가 안 일어난다.**
+sent.length = 0
+const mgd = mountArmed({ holdKey: 'chat-1', account: 'a@b.c', canSend: () => true, readyDep: true, managed: true }, CX_BANNER)
+eq('★★ `managed`면 한도로 죽어도 표가 안 선다 = pref에 적힐 값이 없다', { hold: mgd.hold, sent: sent.length }, { hold: null, sent: 0 })
+eq('★ 그래서 `sanitizeHold`가 받는 값은 언제나 이것이다', lib3.sanitizeHold(null, Date.now()), null)
+// ③ 판별력 — 같은 훅에 `managed:false`만 주면 그 자리에서 표가 선다(②가 무동작이 아님).
+const unmgd = mountArmed({ holdKey: 'chat-1', account: 'a@b.c', canSend: () => true, readyDep: true, managed: false }, CX_BANNER)
+ok('★ 대조군: `managed:false`면 같은 대본에 표가 선다', !!unmgd.hold, JSON.stringify(unmgd.hold))
+// ④ 반대편 — 렌더러가 **실제로** 표를 드는 세 표면은 `managed`를 아예 안 넘긴다(= 살아 있다).
+//    그쪽은 설계상 런타임 전용이라 영속을 안 한다(창을 닫으면 자동 재개 약속도 접힌다).
+for (const [name, props] of SURFACES.slice(1)) {
+  const live = mountArmed(props, CX_BANNER)
+  ok(`★ ${name}의 훅은 살아 있다(managed 미전달)`, !!live.hold, JSON.stringify(live.hold))
+}
+console.log('   → 결론: `sanitizeHold`의 계수·예산 복원은 **규칙으로는 엔진과 같고**(L⑥) 실앱에는 호출자가 없다.')
 
 fs.rmSync(tmp, { recursive: true, force: true })
 console.log(`\n${fail === 0 ? 'PASS' : 'FAIL'} — ${pass} 통과, ${fail} 실패`)

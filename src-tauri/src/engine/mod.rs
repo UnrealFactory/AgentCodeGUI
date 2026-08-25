@@ -158,6 +158,10 @@ fn reload_pending(ids: &[String]) {
             // 이고 런타임 시계는 프로세스 기동 기준 단조 밀리초다 — **남은 시간**으로 옮긴다.
             in_ms: h.resets_at.map(remaining_ms),
             ready: h.ready,
+            // ★R28f WFIRE — 상한 두 칸을 **그대로** 나른다(옛 파일엔 없어서 0 = R28e 동작).
+            // 이 두 줄이 없으면 `reload_state`가 아무리 칸을 내도 경계에서 값이 증발한다.
+            attempts: h.attempts,
+            fires: h.fires,
         });
         if queued.is_empty() && hold.is_none() {
             continue;
