@@ -1,0 +1,273 @@
+{
+  "at": "2026-08-25T16:27:29.252Z",
+  "tag": "ctl6028521",
+  "exe": "C:\\Temp\\odfix\\before-6028521.exe",
+  "exeMtime": "2026-08-25T16:21:13.439Z",
+  "port": 10832,
+  "root": "C:\\Temp\\ccg-r28i-odcrit\\ctl6028521",
+  "race": [
+    30,
+    150,
+    330,
+    600,
+    900
+  ],
+  "cases": {
+    "baseLanding": {
+      "arg": "C:\\Temp\\ccg-r28i-odcrit\\ctl6028521\\fx\\ProjA",
+      "second": {
+        "pid": 28868,
+        "code": 0,
+        "exitMs": 19
+      },
+      "landed": true,
+      "ms": 107,
+      "chatHead": "C:\\Temp\\ccg-r28i-odcrit\\ctl6028521\\fx\\ProjA",
+      "treeRows": 2
+    },
+    "D1_warmDenied": {
+      "arg": "C:\\Temp\\ccg-r28i-odcrit\\ctl6028521\\fx\\Denied",
+      "second": {
+        "pid": 11540,
+        "code": 0,
+        "exitMs": 15
+      },
+      "spoke": false,
+      "ms": 9052,
+      "card": null,
+      "cardBody": null,
+      "chatHeadBefore": "C:\\Temp\\ccg-r28i-odcrit\\ctl6028521\\fx\\ProjA",
+      "chatHeadAfter": "C:\\Temp\\ccg-r28i-odcrit\\ctl6028521\\fx\\Denied",
+      "chatHeadUnchanged": false,
+      "landedOnDenied": true,
+      "tree": "비어 있음",
+      "treeRows": 0,
+      "handoffLeft": false
+    },
+    "D4_blank": {
+      "second": {
+        "pid": 4948,
+        "code": 0,
+        "exitMs": 17
+      },
+      "spoke": false,
+      "ms": 9030,
+      "card": null,
+      "cardBody": null,
+      "chatHeadUnchanged": true
+    },
+    "emptyDirStillOpens": {
+      "arg": "C:\\Temp\\ccg-r28i-odcrit\\ctl6028521\\fx\\EmptyProj",
+      "second": {
+        "pid": 38396,
+        "code": 0,
+        "exitMs": 20
+      },
+      "landed": true,
+      "ms": 106,
+      "tree": "비어 있음",
+      "treeRows": 0,
+      "card": null
+    },
+    "D2_hijackNoArg": {
+      "planted": "C:\\Temp\\ccg-r28i-odcrit\\ctl6028521\\fx\\ProjB",
+      "second": {
+        "pid": 41740,
+        "code": 0,
+        "exitMs": 14
+      },
+      "chatHeadBefore": "C:\\Temp\\ccg-r28i-odcrit\\ctl6028521\\fx\\EmptyProj",
+      "chatHeadAfter": "C:\\Temp\\ccg-r28i-odcrit\\ctl6028521\\fx\\ProjB",
+      "hijacked": true,
+      "unchanged": false,
+      "card": null,
+      "raised": true,
+      "handoffStillThere": false
+    },
+    "realOpenStillWorks": {
+      "arg": "C:\\Temp\\ccg-r28i-odcrit\\ctl6028521\\fx\\ProjB",
+      "second": {
+        "pid": 36048,
+        "code": 0,
+        "exitMs": 15
+      },
+      "landed": true,
+      "ms": 0,
+      "handoffLeft": true
+    },
+    "D5_overlap": {
+      "first": {
+        "arg": "C:\\Temp\\ccg-r28i-odcrit\\ctl6028521\\fx\\ProjA",
+        "pid": 16392,
+        "code": 0,
+        "exitMs": 13
+      },
+      "second": {
+        "arg": "C:\\Temp\\ccg-r28i-odcrit\\ctl6028521\\fx\\ProjB",
+        "pid": 23516,
+        "code": 0,
+        "exitMs": 14
+      },
+      "chatHead": "C:\\Temp\\ccg-r28i-odcrit\\ctl6028521\\fx\\ProjB",
+      "endsOnB": true,
+      "endsOnA": false
+    },
+    "raw": {
+      "open-directory(Denied)": "{\"ok\":true,\"dir\":\"C:\\\\Temp\\\\ccg-r28i-odcrit\\\\ctl6028521\\\\fx\\\\Denied\"}",
+      "open-directory(Empty)": "{\"ok\":true,\"dir\":\"C:\\\\Temp\\\\ccg-r28i-odcrit\\\\ctl6028521\\\\fx\\\\EmptyProj\"}",
+      "open-directory(\"   \")": "{\"ok\":false,\"reason\":\"empty\",\"path\":\"   \"}",
+      "get-initial-dir": "null"
+    },
+    "D1_coldDenied": {
+      "arg": "C:\\Temp\\ccg-r28i-odcrit\\ctl6028521\\fx\\Denied",
+      "mounted": true,
+      "spoke": false,
+      "ms": 20095,
+      "card": null,
+      "cardBody": null,
+      "chatHead": "C:\\Temp\\ccg-r28i-odcrit\\ctl6028521\\fx\\Denied",
+      "landedOnArg": true,
+      "treeRows": 0
+    },
+    "D3_coldFile": {
+      "arg": "C:\\Temp\\ccg-r28i-odcrit\\ctl6028521\\fx\\a-file.txt",
+      "mounted": true,
+      "spoke": false,
+      "ms": 20062,
+      "card": null,
+      "cardBody": null,
+      "chatHead": "폴더 선택",
+      "landedOnArg": false,
+      "treeRows": -1
+    },
+    "D3_coldMissing": {
+      "arg": "C:\\Temp\\ccg-r28i-odcrit\\ctl6028521\\fx\\no-such-folder-xyz",
+      "mounted": true,
+      "spoke": false,
+      "ms": 20043,
+      "card": null,
+      "cardBody": null,
+      "chatHead": "폴더 선택",
+      "landedOnArg": false,
+      "treeRows": -1
+    },
+    "coldGood": {
+      "arg": "C:\\Temp\\ccg-r28i-odcrit\\ctl6028521\\fx\\ProjB",
+      "mounted": true,
+      "landed": true,
+      "ms": 863,
+      "chatHead": "C:\\Temp\\ccg-r28i-odcrit\\ctl6028521\\fx\\ProjB",
+      "card": null,
+      "treeRows": 1
+    },
+    "D2_race": [
+      {
+        "delay": 30,
+        "second": {
+          "pid": 20172,
+          "code": 0,
+          "exitMs": 14
+        },
+        "mounted": true,
+        "landed": false,
+        "ms": 20053,
+        "chatHead": "폴더 선택",
+        "card": null,
+        "cardBody": null,
+        "handoffLeft": true,
+        "afterNoArg": {
+          "second": {
+            "pid": 39732,
+            "code": 0,
+            "exitMs": 18
+          },
+          "chatHead": "폴더 선택",
+          "hijacked": false
+        }
+      },
+      {
+        "delay": 150,
+        "second": {
+          "pid": 27628,
+          "code": 0,
+          "exitMs": 28
+        },
+        "mounted": true,
+        "landed": false,
+        "ms": 20038,
+        "chatHead": "폴더 선택",
+        "card": null,
+        "cardBody": null,
+        "handoffLeft": true,
+        "afterNoArg": {
+          "second": {
+            "pid": 10000,
+            "code": 0,
+            "exitMs": 15
+          },
+          "chatHead": "폴더 선택",
+          "hijacked": false
+        }
+      },
+      {
+        "delay": 330,
+        "second": {
+          "pid": 28340,
+          "code": 0,
+          "exitMs": 15
+        },
+        "mounted": true,
+        "landed": false,
+        "ms": 20065,
+        "chatHead": "폴더 선택",
+        "card": null,
+        "cardBody": null,
+        "handoffLeft": false
+      },
+      {
+        "delay": 600,
+        "second": {
+          "pid": 22712,
+          "code": 0,
+          "exitMs": 71
+        },
+        "mounted": true,
+        "landed": true,
+        "ms": 116,
+        "chatHead": "C:\\Temp\\ccg-r28i-odcrit\\ctl6028521\\fx\\ProjA",
+        "card": null,
+        "cardBody": null,
+        "handoffLeft": false
+      },
+      {
+        "delay": 900,
+        "second": {
+          "pid": 16940,
+          "code": 0,
+          "exitMs": 68
+        },
+        "mounted": true,
+        "landed": true,
+        "ms": 1,
+        "chatHead": "C:\\Temp\\ccg-r28i-odcrit\\ctl6028521\\fx\\ProjA",
+        "card": null,
+        "cardBody": null,
+        "handoffLeft": false
+      }
+    ]
+  },
+  "fixtures": {
+    "PROJ_A": "C:\\Temp\\ccg-r28i-odcrit\\ctl6028521\\fx\\ProjA",
+    "PROJ_B": "C:\\Temp\\ccg-r28i-odcrit\\ctl6028521\\fx\\ProjB",
+    "EMPTY": "C:\\Temp\\ccg-r28i-odcrit\\ctl6028521\\fx\\EmptyProj",
+    "DENIED": "C:\\Temp\\ccg-r28i-odcrit\\ctl6028521\\fx\\Denied",
+    "FILE": "C:\\Temp\\ccg-r28i-odcrit\\ctl6028521\\fx\\a-file.txt",
+    "MISSING": "C:\\Temp\\ccg-r28i-odcrit\\ctl6028521\\fx\\no-such-folder-xyz"
+  },
+  "aclProbe": {
+    "listable": false,
+    "statable": true
+  },
+  "pid": 40664,
+  "mounted": true
+}

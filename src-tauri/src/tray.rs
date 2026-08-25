@@ -579,25 +579,38 @@ fn raise_msg() -> u32 {
     unsafe { RegisterWindowMessageW(PCWSTR(name.as_ptr())) }
 }
 
+/// 봉투에 실을 수 있는 **유일한 정보** — "폴더를 들고 왔다". 경로는 인계 파일에 있고
+/// (`WPARAM`/`LPARAM`은 정수 둘뿐이다), 이 한 비트가 「걷어야 할 인계가 있는가」를 말한다.
+///
+/// ★R28i 확인 크리틱 R1 **D2** — R1은 이 비트가 없어 raise 신호가 전부 똑같았고,
+/// **인자 없는 재실행**의 raise가 앞선 부팅 경주가 남긴 인계 잔해를 소비해 창이
+/// 엉뚱한 폴더로 끌려갔다(실측 `hijacked=true`). 「인자 없는 두 번째 실행 = 그냥
+/// raise만」은 이 라운드가 지켜야 한다고 적힌 무회귀 항목이다.
+#[cfg(windows)]
+const RAISE_WITH_HANDOFF: usize = 1;
+
 /// **두 번째 인스턴스가 부른다** — 먼저 뜬 같은 홈의 인스턴스에게 "창을 앞으로" 신호.
 /// 등록 메시지(0xC000~0xFFFF)는 브로드캐스트가 UIPI를 통과한다. 이름에 홈 해시가 있으니
 /// 남의 창은 이 값을 모르고, 알아도 우리 subclass만 처리한다.
+///
+/// `with_handoff` = 이 프로세스가 인계 파일(`.pending-open-dir`)을 남겼는가.
 #[cfg(windows)]
-pub fn raise_existing() {
+pub fn raise_existing(with_handoff: bool) {
     use windows::Win32::Foundation::{LPARAM, WPARAM};
     use windows::Win32::UI::WindowsAndMessaging::{PostMessageW, HWND_BROADCAST};
     let msg = raise_msg();
     if msg == 0 {
         return;
     }
+    let w = WPARAM(if with_handoff { RAISE_WITH_HANDOFF } else { 0 });
     // PostMessage는 큐에 넣고 즉시 돌아온다 — 우리가 바로 죽어도 메시지는 이미 갔다.
     unsafe {
-        let _ = PostMessageW(Some(HWND_BROADCAST), msg, WPARAM(0), LPARAM(0));
+        let _ = PostMessageW(Some(HWND_BROADCAST), msg, w, LPARAM(0));
     }
 }
 
 #[cfg(not(windows))]
-pub fn raise_existing() {}
+pub fn raise_existing(_with_handoff: bool) {}
 
 /// **첫 인스턴스가 부른다** — 메인 창에 subclass를 얹어 위 메시지를 듣는다.
 /// glass.rs도 같은 hwnd에 subclass를 걸지만 ID가 달라 체인으로 공존한다.
@@ -621,6 +634,8 @@ pub fn arm_raise_listener(app: &AppHandle, win: &tauri::WebviewWindow) {
         if Some(&msg) == RAISE_MSG.get() {
             if let Some(app) = RAISE_APP.get() {
                 let a = app.clone();
+                // 봉투의 한 비트 — **폴더를 들고 온 신호만** 인계를 걷는다.
+                let with_handoff = w.0 == RAISE_WITH_HANDOFF;
                 // 창 조작은 메인 스레드에서 — 지금 여기가 그 스레드지만 wndproc 안에서
                 // 창을 만지면 재진입이 생길 수 있어 큐로 넘긴다.
                 let _ = app.run_on_main_thread(move || {
@@ -629,7 +644,9 @@ pub fn arm_raise_listener(app: &AppHandle, win: &tauri::WebviewWindow) {
                     // **raise 뒤**에 오는 것이 규약이다: 트레이에 숨어 있던 창이 먼저 서야
                     // 폴더 확인 카드·안내 카드가 보이는 화면에 앉는다. 판정은 자기 스레드에서
                     // 돈다(`deliver_pending` 주석 — UNC 21초 함정).
-                    crate::ipc::app_meta::open_dir::deliver_pending(&a);
+                    if with_handoff {
+                        crate::ipc::app_meta::open_dir::deliver_pending(&a);
+                    }
                 });
             }
             return LRESULT(0);

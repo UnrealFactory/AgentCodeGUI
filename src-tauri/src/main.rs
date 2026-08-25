@@ -179,8 +179,11 @@ fn main() {
         // 창만 앞으로 오고 폴더는 **오류도 안내도 없이** 사라졌다(최종 파리티 R5 §9.1 N3).
         // 순서가 규약이다: 인계 파일이 **먼저**, 브로드캐스트가 나중 — 그 반대면 먼저 뜬
         // 인스턴스가 아직 없는 파일을 읽는다.
-        ipc::app_meta::open_dir::stash_from_args();
-        win::tray::raise_existing();
+        //
+        // ★확인 크리틱 R1 D2 — 신호에 **한 비트**를 실어 보낸다. 인계를 남겼는지를 그쪽이
+        // 알아야 「인자 없는 재실행」의 raise가 남의 인계 잔해를 소비하지 않는다.
+        let handed = ipc::app_meta::open_dir::stash_from_args();
+        win::tray::raise_existing(handed);
         return;
     };
     // 잠금을 딴 쪽 = 첫 인스턴스다. 자기 명령줄 폴더는 `app:get-initial-dir`가 처리하므로

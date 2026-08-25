@@ -343,6 +343,22 @@ pub async fn ipc_call(app: AppHandle, window: WebviewWindow, channel: String, pa
         .unwrap_or_else(|_| unimplemented());
     }
 
+    // ★R28i 확인 크리틱 R1 — 「…으로 열기」의 **콜드 런치 반쪽**도 같은 잣대로 답한다.
+    // R1까지 이 채널은 `app_meta::dispatch`의 한 줄(`parity::misc::initial_dir`)이었고
+    // async 워커에서 돌았다. 두 가지가 바뀐다:
+    //   ① 판정에 `AppHandle`이 필요하다 — 못 여는 경로면 실패 카드를 쏜다(D1·D3).
+    //   ② **블로킹 풀로 내린다** — 그 판정은 명령줄 인자에 `is_dir()`를 부르는 일이라
+    //      도달 불가 UNC 인자면 21초다(위 `APP_OPEN_DIRECTORY`와 같은 실측). 그동안 async
+    //      워커를 물고 있으면 모든 창의 IPC가 통째로 굶는다 — R1은 그 자리에 있었다.
+    // 이 호출은 렌더러가 **하이드레이션을 마친 뒤** 한 번 오므로 「이제 듣고 있다」의
+    // 신호이기도 하다(`open_dir::initial_dir` 주석).
+    if channel == ch::APP_GET_INITIAL_DIR {
+        let a = app.clone();
+        return tauri::async_runtime::spawn_blocking(move || app_meta::open_dir::initial_dir(&a))
+            .await
+            .unwrap_or_else(|_| unimplemented());
+    }
+
     // ★최종 파리티 T1·T2 — 계정 쓰기(`ipc/accounts.rs`)와 엔진 CLI 버전 관리
     // (`engine/versions.rs`·`engine/codex_versions.rs`). 위 팔들과 **같은 이유**로 전용
     // 블로킹 풀에서 돌지만 막히는 시간의 자릿수가 다르다:

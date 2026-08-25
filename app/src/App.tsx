@@ -2675,7 +2675,7 @@ function MainApp({ user }: { user: AppUser }) {
 // ★R28i N3 — 「AgentCodeGUI3으로 열기」 실패 문구. **함수인 이유**: 모듈 스코프 상수로
 // 굳히면 t()가 언어 로드 시점에 박제된다(i18n 규약) — 카드를 그릴 때 평가한다.
 function openDirFailMessage(f: OpenDirFailure): string {
-  const p = f.path || '(빈 경로)'
+  const p = f.path.trim() || t('(빈 경로)', '(empty path)')
   if (f.reason === 'not-a-dir') {
     return t(
       `‘${p}’ 은(는) 파일이에요. 작업 폴더로는 폴더만 열 수 있어요 — 그 파일이 든 폴더를 우클릭해 주세요.`,
@@ -2683,9 +2683,12 @@ function openDirFailMessage(f: OpenDirFailure): string {
     )
   }
   if (f.reason === 'denied') {
+    // ★R28i 확인 크리틱 R1 D1 — 「목록을 못 연다」가 정확한 사실이다. 폴더 자체는
+    // 보이는데(부모의 디렉터리 엔트리) 안을 못 읽는 것이라, 그냥 열어 버리면 탐색기가
+    // "비어 있음"이라고 **사실이 아닌 것**을 적는다. 그래서 안 열고 이렇게 말한다.
     return t(
-      `‘${p}’ 을(를) 열 권한이 없어요. 폴더 접근 권한을 확인해 주세요.`,
-      `No permission to open ‘${p}’. Check the folder's access rights.`
+      `‘${p}’ 안을 읽을 권한이 없어요. 폴더 접근 권한을 확인해 주세요.`,
+      `No permission to read inside ‘${p}’. Check the folder's access rights.`
     )
   }
   if (f.reason === 'empty') {

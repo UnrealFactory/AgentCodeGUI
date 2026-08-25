@@ -1,0 +1,255 @@
+{
+  "at": "2026-08-25T16:26:23.196Z",
+  "tag": "fixr1",
+  "exe": "C:\\Temp\\odfix\\after.exe",
+  "exeMtime": "2026-08-25T16:24:16.753Z",
+  "port": 10820,
+  "root": "C:\\Temp\\ccg-r28i-odcrit\\fixr1",
+  "race": [
+    30,
+    150,
+    330,
+    600,
+    900
+  ],
+  "cases": {
+    "baseLanding": {
+      "arg": "C:\\Temp\\ccg-r28i-odcrit\\fixr1\\fx\\ProjA",
+      "second": {
+        "pid": 17736,
+        "code": 0,
+        "exitMs": 18
+      },
+      "landed": true,
+      "ms": 110,
+      "chatHead": "C:\\Temp\\ccg-r28i-odcrit\\fixr1\\fx\\ProjA",
+      "treeRows": 2
+    },
+    "D1_warmDenied": {
+      "arg": "C:\\Temp\\ccg-r28i-odcrit\\fixr1\\fx\\Denied",
+      "second": {
+        "pid": 36668,
+        "code": 0,
+        "exitMs": 16
+      },
+      "spoke": true,
+      "ms": 110,
+      "card": "폴더를 열지 못했어요",
+      "cardBody": "‘C:\\Temp\\ccg-r28i-odcrit\\fixr1\\fx\\Denied’ 안을 읽을 권한이 없어요. 폴더 접근 권한을 확인해 주세요.",
+      "chatHeadBefore": "C:\\Temp\\ccg-r28i-odcrit\\fixr1\\fx\\ProjA",
+      "chatHeadAfter": "C:\\Temp\\ccg-r28i-odcrit\\fixr1\\fx\\ProjA",
+      "chatHeadUnchanged": true,
+      "landedOnDenied": false,
+      "tree": "alpha_dirAAA_alpha.txt",
+      "treeRows": 2,
+      "handoffLeft": false
+    },
+    "D4_blank": {
+      "second": {
+        "pid": 30024,
+        "code": 0,
+        "exitMs": 17
+      },
+      "spoke": true,
+      "ms": 109,
+      "card": "폴더를 열지 못했어요",
+      "cardBody": "열 폴더 경로가 비어 있어요.",
+      "chatHeadUnchanged": true
+    },
+    "emptyDirStillOpens": {
+      "arg": "C:\\Temp\\ccg-r28i-odcrit\\fixr1\\fx\\EmptyProj",
+      "second": {
+        "pid": 2028,
+        "code": 0,
+        "exitMs": 19
+      },
+      "landed": true,
+      "ms": 109,
+      "tree": "비어 있음",
+      "treeRows": 0,
+      "card": null
+    },
+    "D2_hijackNoArg": {
+      "planted": "C:\\Temp\\ccg-r28i-odcrit\\fixr1\\fx\\ProjB",
+      "second": {
+        "pid": 12684,
+        "code": 0,
+        "exitMs": 16
+      },
+      "chatHeadBefore": "C:\\Temp\\ccg-r28i-odcrit\\fixr1\\fx\\EmptyProj",
+      "chatHeadAfter": "C:\\Temp\\ccg-r28i-odcrit\\fixr1\\fx\\EmptyProj",
+      "hijacked": false,
+      "unchanged": true,
+      "card": null,
+      "raised": true,
+      "handoffStillThere": true
+    },
+    "realOpenStillWorks": {
+      "arg": "C:\\Temp\\ccg-r28i-odcrit\\fixr1\\fx\\ProjB",
+      "second": {
+        "pid": 38904,
+        "code": 0,
+        "exitMs": 15
+      },
+      "landed": true,
+      "ms": 1,
+      "handoffLeft": false
+    },
+    "D5_overlap": {
+      "first": {
+        "arg": "C:\\Temp\\ccg-r28i-odcrit\\fixr1\\fx\\ProjA",
+        "pid": 37016,
+        "code": 0,
+        "exitMs": 15
+      },
+      "second": {
+        "arg": "C:\\Temp\\ccg-r28i-odcrit\\fixr1\\fx\\ProjB",
+        "pid": 6224,
+        "code": 0,
+        "exitMs": 15
+      },
+      "chatHead": "C:\\Temp\\ccg-r28i-odcrit\\fixr1\\fx\\ProjB",
+      "endsOnB": true,
+      "endsOnA": false
+    },
+    "raw": {
+      "open-directory(Denied)": "{\"ok\":false,\"reason\":\"denied\",\"path\":\"C:\\\\Temp\\\\ccg-r28i-odcrit\\\\fixr1\\\\fx\\\\Denied\"}",
+      "open-directory(Empty)": "{\"ok\":true,\"dir\":\"C:\\\\Temp\\\\ccg-r28i-odcrit\\\\fixr1\\\\fx\\\\EmptyProj\"}",
+      "open-directory(\"   \")": "{\"ok\":false,\"reason\":\"empty\",\"path\":\"   \"}",
+      "get-initial-dir": "null"
+    },
+    "D1_coldDenied": {
+      "arg": "C:\\Temp\\ccg-r28i-odcrit\\fixr1\\fx\\Denied",
+      "mounted": true,
+      "spoke": true,
+      "ms": 370,
+      "card": "폴더를 열지 못했어요",
+      "cardBody": "‘C:\\Temp\\ccg-r28i-odcrit\\fixr1\\fx\\Denied’ 안을 읽을 권한이 없어요. 폴더 접근 권한을 확인해 주세요.",
+      "chatHead": "폴더 선택",
+      "landedOnArg": false,
+      "treeRows": -1
+    },
+    "D3_coldFile": {
+      "arg": "C:\\Temp\\ccg-r28i-odcrit\\fixr1\\fx\\a-file.txt",
+      "mounted": true,
+      "spoke": true,
+      "ms": 444,
+      "card": "폴더를 열지 못했어요",
+      "cardBody": "‘C:\\Temp\\ccg-r28i-odcrit\\fixr1\\fx\\a-file.txt’ 은(는) 파일이에요. 작업 폴더로는 폴더만 열 수 있어요 — 그 파일이 든 폴더를 우클릭해 주세요.",
+      "chatHead": "폴더 선택",
+      "landedOnArg": false,
+      "treeRows": -1
+    },
+    "D3_coldMissing": {
+      "arg": "C:\\Temp\\ccg-r28i-odcrit\\fixr1\\fx\\no-such-folder-xyz",
+      "mounted": true,
+      "spoke": true,
+      "ms": 329,
+      "card": "폴더를 열지 못했어요",
+      "cardBody": "‘C:\\Temp\\ccg-r28i-odcrit\\fixr1\\fx\\no-such-folder-xyz’ 경로를 찾을 수 없어요. 폴더가 옮겨졌거나 지워졌을 수 있어요.",
+      "chatHead": "폴더 선택",
+      "landedOnArg": false,
+      "treeRows": -1
+    },
+    "coldGood": {
+      "arg": "C:\\Temp\\ccg-r28i-odcrit\\fixr1\\fx\\ProjB",
+      "mounted": true,
+      "landed": true,
+      "ms": 878,
+      "chatHead": "C:\\Temp\\ccg-r28i-odcrit\\fixr1\\fx\\ProjB",
+      "card": null,
+      "treeRows": 1
+    },
+    "D2_race": [
+      {
+        "delay": 30,
+        "second": {
+          "pid": 34892,
+          "code": 0,
+          "exitMs": 13
+        },
+        "mounted": true,
+        "landed": true,
+        "ms": 439,
+        "chatHead": "C:\\Temp\\ccg-r28i-odcrit\\fixr1\\fx\\ProjA",
+        "card": null,
+        "cardBody": null,
+        "handoffLeft": false
+      },
+      {
+        "delay": 150,
+        "second": {
+          "pid": 12872,
+          "code": 0,
+          "exitMs": 18
+        },
+        "mounted": true,
+        "landed": true,
+        "ms": 325,
+        "chatHead": "C:\\Temp\\ccg-r28i-odcrit\\fixr1\\fx\\ProjA",
+        "card": null,
+        "cardBody": null,
+        "handoffLeft": false
+      },
+      {
+        "delay": 330,
+        "second": {
+          "pid": 8596,
+          "code": 0,
+          "exitMs": 318
+        },
+        "mounted": true,
+        "landed": true,
+        "ms": 328,
+        "chatHead": "C:\\Temp\\ccg-r28i-odcrit\\fixr1\\fx\\ProjA",
+        "card": null,
+        "cardBody": null,
+        "handoffLeft": false
+      },
+      {
+        "delay": 600,
+        "second": {
+          "pid": 29488,
+          "code": 0,
+          "exitMs": 14
+        },
+        "mounted": true,
+        "landed": true,
+        "ms": 216,
+        "chatHead": "C:\\Temp\\ccg-r28i-odcrit\\fixr1\\fx\\ProjA",
+        "card": null,
+        "cardBody": null,
+        "handoffLeft": false
+      },
+      {
+        "delay": 900,
+        "second": {
+          "pid": 2812,
+          "code": 0,
+          "exitMs": 14
+        },
+        "mounted": true,
+        "landed": true,
+        "ms": 111,
+        "chatHead": "C:\\Temp\\ccg-r28i-odcrit\\fixr1\\fx\\ProjA",
+        "card": null,
+        "cardBody": null,
+        "handoffLeft": false
+      }
+    ]
+  },
+  "fixtures": {
+    "PROJ_A": "C:\\Temp\\ccg-r28i-odcrit\\fixr1\\fx\\ProjA",
+    "PROJ_B": "C:\\Temp\\ccg-r28i-odcrit\\fixr1\\fx\\ProjB",
+    "EMPTY": "C:\\Temp\\ccg-r28i-odcrit\\fixr1\\fx\\EmptyProj",
+    "DENIED": "C:\\Temp\\ccg-r28i-odcrit\\fixr1\\fx\\Denied",
+    "FILE": "C:\\Temp\\ccg-r28i-odcrit\\fixr1\\fx\\a-file.txt",
+    "MISSING": "C:\\Temp\\ccg-r28i-odcrit\\fixr1\\fx\\no-such-folder-xyz"
+  },
+  "aclProbe": {
+    "listable": false,
+    "statable": true
+  },
+  "pid": 31908,
+  "mounted": true
+}
