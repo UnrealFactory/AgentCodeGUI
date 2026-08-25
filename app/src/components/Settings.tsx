@@ -467,6 +467,19 @@ function AccountView(): React.ReactElement {
     setLoginUrl(null)
     reload()
   }
+  // ★R28f SHIPBLOCK N1(3) — 계정 쓰기의 **실패는 화면에 보인다**.
+  //
+  // R1까지 이 화면의 catch는 대부분 `/* ignore */`였고, 그래도 티가 안 났던 이유는 심이
+  // **실패를 안 던졌기** 때문이다(미구현 채널이 안전값 `[]`로 resolve → 목록이 빈 배열로
+  // 갈아끼워짐 → 아무 문구도 없음 — 최종 파리티 감사 R2 §N1). 이제 쓰기 채널은 reject하고
+  // (`api/shim.ts`의 `callStrict`), 그 reject가 도착하는 자리는 예외 없이 이 문구를 세운다.
+  const failNote = (): void =>
+    setNote(
+      t(
+        '요청이 실패했어요 — 앱을 재시작한 뒤 다시 시도해 주세요(계정 목록은 그대로 둡니다)',
+        'The request failed — restart the app and try again (the account list is left untouched)'
+      )
+    )
   // 삭제 = 그 계정 토큰 해지(서버) + 등록 제거 — 다시 쓰려면 재로그인
   const doDelete = async (email: string): Promise<void> => {
     setBusy(email)
@@ -474,7 +487,7 @@ function AccountView(): React.ReactElement {
     try {
       setAccounts(await window.api.auth.logout(email))
     } catch {
-      /* ignore */
+      failNote()
     }
     setBusy(null)
     reload()
@@ -506,10 +519,11 @@ function AccountView(): React.ReactElement {
     try {
       setCxAccounts(await window.api.codexAuth.login())
     } catch {
-      /* ignore */
+      failNote()
     }
     setBusy(null)
     setLoginUrl(null)
+    reload()
   }
   const doCodexDelete = async (email: string): Promise<void> => {
     setBusy('cx:' + email)
@@ -517,24 +531,25 @@ function AccountView(): React.ReactElement {
     try {
       setCxAccounts(await window.api.codexAuth.logout(email))
     } catch {
-      /* ignore */
+      failNote()
     }
     setBusy(null)
   }
-  // ★R28 ACCT §4 — Codex 축의 「맨 위로」. 셸에 이 채널의 핸들러가 없으므로(심의 안전값)
-  // **재정렬 채널로 보낸다** — 결과는 같고(맨 위 = 기본), 실제로 저장된다.
+  // ★R28 ACCT §4 — Codex 축의 「맨 위로」.
+  //
+  // ★R28f SHIPBLOCK N1 — 이 자리가 R1까지 `reorderAccounts`를 부른 이유는 *"셸에 이
+  // 채널의 핸들러가 없으므로"*였고, 그래서 주석의 *"실제로 저장된다"*는 **거짓이었다**
+  // (재정렬 채널에도 핸들러가 없었다 — 두 채널 다 `{__unimplemented}`). 이제 다섯 채널이
+  // 전부 셸에 있고, Anthropic 축의 `doMoveTop`과 **같은 채널**을 쓴다(`setDefaultAccount`
+  // = 「맨 위로 이동」 — `ipc/accounts.rs`·장부 §6.5).
   const doCodexMoveTop = async (email: string): Promise<void> => {
     setNote(null)
-    let order: string[] = []
     updateCodexAccounts((prev) => {
       const i = prev?.findIndex((a) => a.email === email) ?? -1
-      const next = prev && i > 0 ? arrMove(prev, i, 0) : prev
-      order = next?.map((a) => a.email) ?? []
-      return next
+      return prev && i > 0 ? arrMove(prev, i, 0) : prev
     })
-    if (!order.length) return
     try {
-      setCxAccounts(await window.api.codexAuth.reorderAccounts(order))
+      setCxAccounts(await window.api.codexAuth.setDefaultAccount(email))
     } catch {
       setNote(t('순서를 바꾸지 못했어요 — 앱을 재시작한 뒤 다시 시도해 주세요', 'Could not change the order — restart the app and try again'))
       reload()
@@ -546,12 +561,17 @@ function AccountView(): React.ReactElement {
   // ── 꾹-드래그 재정렬 — 스토어 배열 순서가 곧 표시 순서(채팅 계정 picker 공통)라 로컬을
   // 즉시 재배열(낙관)하고, 놓을 때 최종 순서를 저장한다(실패하면 reload로 서버 순서 복원).
   // drop의 함수형 setState는 저장 시점에 "마지막 move까지 반영된" 배열을 읽기 위한 것.
+  // 저장 실패는 **조용히 넘어가지 않는다** — 서버 순서로 되돌리고(reload) 문구를 세운다.
+  const orderFailed = (): void => {
+    setNote(t('순서를 저장하지 못했어요 — 앱을 재시작한 뒤 다시 시도해 주세요', 'Could not save the order — restart the app and try again'))
+    reload()
+  }
   const antDrag = useHoldReorder(
     accounts?.length ?? 0,
     (from, to) => updateAccounts((prev) => (prev ? arrMove(prev, from, to) : prev)),
     () =>
       updateAccounts((prev) => {
-        if (prev) void window.api.auth.reorderAccounts(prev.map((a) => a.email)).then(setAccounts).catch(() => reload())
+        if (prev) void window.api.auth.reorderAccounts(prev.map((a) => a.email)).then(setAccounts).catch(orderFailed)
         return prev
       })
   )
@@ -560,7 +580,7 @@ function AccountView(): React.ReactElement {
     (from, to) => updateCodexAccounts((prev) => (prev ? arrMove(prev, from, to) : prev)),
     () =>
       updateCodexAccounts((prev) => {
-        if (prev) void window.api.codexAuth.reorderAccounts(prev.map((a) => a.email)).then(setCxAccounts).catch(() => reload())
+        if (prev) void window.api.codexAuth.reorderAccounts(prev.map((a) => a.email)).then(setCxAccounts).catch(orderFailed)
         return prev
       })
   )
@@ -574,14 +594,14 @@ function AccountView(): React.ReactElement {
       if (!prev || prev.length < 2) return prev
       const next = sortAccounts(prev, sort, (a) => antSortKeys(usage[a.email]))
       if (next.every((a, i) => a === prev[i])) return prev
-      void window.api.auth.reorderAccounts(next.map((a) => a.email)).then(setAccounts).catch(() => reload())
+      void window.api.auth.reorderAccounts(next.map((a) => a.email)).then(setAccounts).catch(orderFailed)
       return next
     })
     updateCodexAccounts((prev) => {
       if (!prev || prev.length < 2) return prev
       const next = sortAccounts(prev, sort, (a) => cxSortKeys(cxUsage[a.email]))
       if (next.every((a, i) => a === prev[i])) return prev
-      void window.api.codexAuth.reorderAccounts(next.map((a) => a.email)).then(setCxAccounts).catch(() => reload())
+      void window.api.codexAuth.reorderAccounts(next.map((a) => a.email)).then(setCxAccounts).catch(orderFailed)
       return next
     })
   }

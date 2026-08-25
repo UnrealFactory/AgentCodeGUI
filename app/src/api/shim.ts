@@ -105,6 +105,51 @@ async function call<T>(channel: string, args: unknown[], fallback: T): Promise<T
   return res as T
 }
 
+/**
+ * ★R28f SHIPBLOCK N1(3) — **안전값을 돌려주면 안 되는 채널**을 위한 문.
+ *
+ * 위 `call`의 계약("어떤 화면도 크래시하지 않는다")은 **조회**에 옳다. 목록이 잠깐 비는
+ * 것은 다음 조회가 고친다. 그런데 **상태를 바꾸라는 호출**에서는 그 계약이 정확히 거꾸로
+ * 돈다 — 최종 파리티 감사 R2 §N1의 실측이 그 모양이다:
+ *
+ * ```
+ * codexAuth.reorderAccounts(현재 순서)  →  {__unimplemented:true}  →  심이 [] 로 갈음
+ *   → setCxAccounts([])  →  화면의 OpenAI 계정이 **통째로 사라진다**
+ *   → 호출부의 catch는 reject일 때만 도니 **영원히 안 돈다**(안내 문구 0개)
+ * ```
+ *
+ * 즉 "실패했다"가 "빈 결과가 왔다"로 **번역**되어 호출부에 도착했다. 그래서 쓰기 채널은
+ * 실패를 **구분 가능한 결과**로 올린다(reject). 호출부는 이미 try/catch를 갖고 있고,
+ * 거기서 사용자에게 보이는 문구를 세운다(`Settings.tsx`의 `setNote`).
+ *
+ * 조회 채널은 그대로 `call`이다 — 이 문을 거기까지 넓히면 목록 하나가 없다고 설정 화면이
+ * 통째로 죽는다(그게 M1이 `call`을 만든 이유다).
+ */
+export class ShimUnavailableError extends Error {
+  readonly channel: string
+  constructor(channel: string, why: string) {
+    super(`${channel}: ${why}`)
+    this.name = 'ShimUnavailableError'
+    this.channel = channel
+  }
+}
+
+async function callStrict<T>(channel: string, args: unknown[]): Promise<T> {
+  let res: unknown
+  try {
+    res = await invoke('ipc_call', { channel, payload: args })
+  } catch (err) {
+    const why = String((err as Error)?.message ?? err)
+    warnOnce(channel + ' !', `호출 실패: ${why}`)
+    throw new ShimUnavailableError(channel, why)
+  }
+  if (isUnimplemented(res)) {
+    warnOnce(channel, '백엔드 미구현 채널')
+    throw new ShimUnavailableError(channel, '백엔드 미구현 채널')
+  }
+  return res as T
+}
+
 /** 반환값이 없는(void) 채널 — 미구현이어도 조용한 no-op. */
 function callVoid(channel: string, args: unknown[] = []): Promise<void> {
   return call<void>(channel, args, undefined as void)
@@ -251,25 +296,29 @@ const api: WindowApi = {
   pathForFile: (file: File) => dropPathFor(file),
   getUsage: (fresh?: boolean, account?: string) => call(IPC.getUsage, [fresh, account], NO_USAGE),
   auth: {
+    // `login`만 `call`이다 — 반환값 자체가 `{ok:false, error}`라 **실패가 결과 안에 실린다**
+    // (호출부가 `res.ok`를 보고 문구를 세운다). 아래 넷은 그런 자리가 없어 strict다.
     login: (useConsole?: boolean) => call(IPC.authLogin, [useConsole], NO_AUTH),
-    logout: (email: string) => call(IPC.authLogout, [email], []),
+    logout: (email: string) => callStrict(IPC.authLogout, [email]),
     cancelLogin: () => callVoid(IPC.authLoginCancel),
     onLoginUrl: (cb: (url: string) => void) => subscribe(IPC.authLoginUrl, cb),
     listAccounts: () => call(IPC.authListAccounts, [], []),
-    setDefaultAccount: (email: string) => call(IPC.authSetDefaultAccount, [email], []),
-    removeAccount: (email: string) => call(IPC.authRemoveAccount, [email], []),
-    reorderAccounts: (emails: string[]) => call(IPC.authReorderAccounts, [emails], []),
+    setDefaultAccount: (email: string) => callStrict(IPC.authSetDefaultAccount, [email]),
+    removeAccount: (email: string) => callStrict(IPC.authRemoveAccount, [email]),
+    reorderAccounts: (emails: string[]) => callStrict(IPC.authReorderAccounts, [emails]),
     // ★R28 ACCT §1 — 인자 0개가 2.6.2 규약이고 3.0은 선택 옵션 하나를 더 받는다.
     // 안 넘기면 `undefined`가 실려 셸이 `Value::Null`로 읽는다(= R1과 같은 동작).
     accountsUsage: (opts?: AccountsUsageOpts) => call(IPC.authAccountsUsage, [opts], [])
   },
   codexAuth: {
     listAccounts: () => call(IPC.codexListAccounts, [], []),
-    login: () => call(IPC.codexLogin, [], []),
-    logout: (email: string) => call(IPC.codexLogout, [email], []),
-    setDefaultAccount: (email: string) => call(IPC.codexSetDefaultAccount, [email], []),
+    // ★R28f SHIPBLOCK N1 — 목록을 **갈아끼우는** 넷은 전부 strict다. 이 넷의 안전값이
+    // `[]`였던 것이 감사 §N1의 두 번째 피해(계정 목록 증발 + 안내 문구 0개)의 기전이다.
+    login: () => callStrict(IPC.codexLogin, []),
+    logout: (email: string) => callStrict(IPC.codexLogout, [email]),
+    setDefaultAccount: (email: string) => callStrict(IPC.codexSetDefaultAccount, [email]),
     cancelLogin: () => callVoid(IPC.codexLoginCancel),
-    reorderAccounts: (emails: string[]) => call(IPC.codexReorderAccounts, [emails], []),
+    reorderAccounts: (emails: string[]) => callStrict(IPC.codexReorderAccounts, [emails]),
     accountsUsage: () => call(IPC.codexAccountsUsage, [], [])
   },
   engineAutoUpdate: (enabled?: boolean) => call(IPC.engineAutoUpdate, [enabled], true),

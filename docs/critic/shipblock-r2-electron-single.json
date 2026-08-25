@@ -1,0 +1,36 @@
+{
+  "app": "electron-2.6.2",
+  "kind": "electron",
+  "boot": "single",
+  "at": "2026-08-25T08:00:11.318Z",
+  "exe": "C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe",
+  "home": "C:\\Temp\\ccg-r28f-ship\\home-electron-single-r2",
+  "pid": 28784,
+  "cases": {
+    "error-boundary": {
+      "explorerClosed": true,
+      "sbItemsPre": 3,
+      "selected": 1,
+      "beforeReload": {
+        "eb": 1,
+        "sbItems": 0,
+        "win": 0,
+        "chat": 0
+      },
+      "activeBeforeReload": "fix-long-thread",
+      "escapeBySidebar": "no-item",
+      "reselected": "no-item",
+      "activeBeforeReload2": "fix-long-thread",
+      "afterReload": {
+        "eb": 0,
+        "sbItems": 3,
+        "win": 1,
+        "chat": 1
+      },
+      "activeAfterReload": "fix-long-thread",
+      "titleAfterReload": "C:\\Code\\AgentCodeGUI",
+      "stuck": false
+    }
+  },
+  "shimWarns": []
+}

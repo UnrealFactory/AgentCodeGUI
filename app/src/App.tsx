@@ -218,6 +218,45 @@ interface PersistedChats {
   activeChatId: string
 }
 
+// ── ★R28f SHIPBLOCK N2 — 렌더 예외로 앱이 갇히지 않게 (감사 R2 §N2) ──────────
+//
+// 실측: 예외를 던지는 채팅을 고르면 앱 루트 경계가 잡아 **사이드바도 창 크롬도 없는**
+// 카드 한 장만 남고, 「앱 새로고침」을 눌러도 3.0은 같은 카드로 되돌아왔다. 2.6.2가
+// 복구되는 이유는 `activeChatId`가 **저장되기 전에** 예외가 터져서다(디바운스 저장).
+// 3.0은 전환 즉시 영속한다(`chats:set-active` → `chats_v3::set_active`).
+//
+// **즉시 영속은 안 건드린다.** 그건 M-UX §6.2 U3의 계약이고(별칭 계층이 인자에 chatId가
+// 없어 "그 순간의 활성 채팅"으로 실행을 라우팅한다), 미루면 "전환 직후 전송"이 남의
+// 런타임에 붙는다. 게다가 미뤄도 이 감옥은 안 풀린다 — 「앱 새로고침」은 **웹뷰만**
+// 다시 그리고 셸(Rust)의 메모리 스토어는 그대로라 활성 채팅이 그대로 돌아온다.
+//
+// 그래서 탈출구를 둘 만든다:
+//  ① 자리 단위 경계 — 본채팅 워크스페이스가 자기 경계를 갖는다(멀티 보드는 이미 그렇다).
+//     크롬이 경계 **밖**에 남으므로 카드가 떠도 사이드바로 다른 대화에 갈 수 있다.
+//  ② 부팅 격리(아래 두 함수) — 직전 렌더에서 앱을 넘어뜨린 채팅 id를 적어 두고, 다음
+//     부팅이 **그 채팅을 활성으로 잡으려 하면** 다른 대화로 착지한다. **1회 소비**다
+//     (읽는 즉시 지운다) — 영구 블랙리스트가 아니라 "같은 카드로 되돌아가지 않는다"만
+//     보장한다. 사용자가 그 대화를 다시 고르면 평소처럼 열리고(그리고 또 터지면 다시
+//     적힌다), 사이드바에서도 사라지지 않는다.
+const CHAT_CRASH_KEY = 'ccg.chatRenderCrash'
+function markChatCrash(id: string): void {
+  try {
+    if (id) localStorage.setItem(CHAT_CRASH_KEY, id)
+  } catch {
+    /* 저장소가 막혀 있어도(사생활 모드 등) 카드는 떠야 한다 */
+  }
+}
+/** 표식을 **읽으면서 지운다** — 다음 부팅은 이 사실을 다시 쓰지 않는다. */
+function takeChatCrash(): string {
+  try {
+    const v = localStorage.getItem(CHAT_CRASH_KEY) ?? ''
+    if (v) localStorage.removeItem(CHAT_CRASH_KEY)
+    return v
+  } catch {
+    return ''
+  }
+}
+
 function MainApp({ user }: { user: AppUser }) {
   const lang = useLang() // 언어 전환 시 아래 useMemo(사이드바 섹션 라벨 등)가 새 언어로 재계산되게
   const { state, elapsed, busy, begin, clearPermission, clearQuestion, answerQuestion, load, interruptTurn, noteVerdict, noteReverted } = useAgentSession()
@@ -670,10 +709,19 @@ function MainApp({ user }: { user: AppUser }) {
         // including the per-chat folder, so restoring an old chat never sets undefined.
         // 활성 채팅만 스냅샷을 통째로 살린다 — 비활성은 자리표시자+unloaded로 두고 전환 때
         // 디스크에서 되읽는다(모든 채팅의 전체 스냅샷 상주가 렌더러 힙을 GB대로 키웠다)
-        const bootActiveId =
+        const wantedActiveId =
           data && Array.isArray(data.chats) && data.chats.length
             ? ((data.chats.find((c) => c?.id === data.activeChatId) ?? data.chats[0])?.id ?? '')
             : ''
+        // ★R28f SHIPBLOCK N2 ② — 직전 렌더에서 앱을 넘어뜨린 그 채팅이 다시 활성으로
+        // 잡히려 하면 **다른 대화로 착지한다**(1회 소비). 표식이 없거나 다른 채팅을
+        // 가리키면 이 줄은 아무것도 안 한다.
+        const crashed = takeChatCrash()
+        const escapeId =
+          crashed && crashed === wantedActiveId
+            ? (data?.chats.find((c) => c?.id && c.id !== crashed)?.id ?? '')
+            : ''
+        const bootActiveId = escapeId || wantedActiveId
         const restored =
           data && Array.isArray(data.chats) && data.chats.length
             ? data.chats.map((c) => {
@@ -709,7 +757,10 @@ function MainApp({ user }: { user: AppUser }) {
             draftImages: c.draftImages
           }))
         if (restored) {
-          const active = restored.find((c) => c.id === data!.activeChatId) ?? restored[0]
+          // ★R28f SHIPBLOCK N2 — 착지도 `bootActiveId`를 따른다(위 격리가 고른 값).
+          // R1까지 이 줄은 `data.activeChatId`를 다시 읽었고, 그래서 스냅샷을 살린 채팅과
+          // 착지한 채팅이 갈릴 수 있었다.
+          const active = restored.find((c) => c.id === bootActiveId) ?? restored[0]
           // 공유 최근 폴더 콜드 스타트 — 비어 있으면 기존 채팅들의 폴더로 1회 시드
           seedRecentDirs(restored.map((c) => ({ p: c.manualCwd, t: c.updatedAt ?? 0 })))
           setChats([...restored, ...migrated])
@@ -2302,6 +2353,16 @@ function MainApp({ user }: { user: AppUser }) {
             />
           </ErrorBoundary>
         ) : (
+        // ★R28f SHIPBLOCK N2 ① — 본채팅도 **자기 경계**를 갖는다(멀티 보드는 이미 그랬다).
+        //
+        // 이 한 줄이 감사 §N2의 「나올 수 없다」를 닫는다: 예외가 여기서 잡히면 왼쪽
+        // 칼럼(사이드바·탐색기)과 창 크롬은 경계 **밖**이라 그대로 살아 있고, 사용자는
+        // 사이드바에서 다른 대화를 고르면 된다. `resetKey`가 활성 채팅 id라 그 클릭
+        // 하나로 경계가 스스로 풀린다(「다시 시도」를 또 누르게 하지 않는다).
+        //
+        // 앱 루트 경계(`App`)는 그대로 남는다 — 여기 밖(사이드바·모달)에서 난 예외는
+        // 여전히 그쪽이 받는다. 이건 **자리 단위 경계를 하나 더 놓는 일**이지 옮기는 게 아니다.
+        <ErrorBoundary label={t('대화', 'Chat')} resetKey={activeChatId} onError={() => markChatCrash(activeChatIdRef.current)}>
         <>
         <div className="chat chat--code">
           <ChatHeader
@@ -2453,6 +2514,7 @@ function MainApp({ user }: { user: AppUser }) {
         </div>
 
         </>
+        </ErrorBoundary>
         )}
       </div>
 

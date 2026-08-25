@@ -26,6 +26,7 @@ diff -rq src/renderer app --exclude=dist
 | `app/tray.html` | 같음 (`tray.ts` 앞) | 트레이 메뉴 창도 `window.api.trayMenu.*`를 쓴다 |
 | `app/src/lib/limitResume.ts` | `import type … from '../../../shared/protocol'` → `'@shared/protocol'` | 원본의 **상대 경로**가 `app/`으로 옮기면 레포 밖(`C:/Code/shared/protocol`)을 가리킨다. 타입 전용 import라 번들은 통과하지만 타입 검사가 깨진다(`npm run typecheck:app`가 잡았다). 앱의 다른 30개 파일이 쓰는 별칭으로 통일 — 2.6.2 쪽 원본은 그대로 둔다 |
 | `app/src/lib/limitResume.ts`<br>`app/src/lib/useLimitResume.ts`<br>`app/src/components/Chat.tsx` | 한도 재검증에 **「못 물어봤다」 갈래** 추가 (§6.3) | 조회 실패를 「풀렸다」로 오판해 **자동 전송**하던 자리(최종 파리티 R1 확인 크리틱 실패1). 아래 §6.3 |
+| `app/src/components/ErrorBoundary.tsx` ★R28f | 선택 prop 둘(`resetKey`·`onError`) 추가 | **여기까지는 두 앱이 바이트 동일이었다**(md5 `6f1115813f09eac2936de557eec34448`) — 최종 파리티 감사 R2 §N2가 그 사실을 근거로 "갈리는 것은 스토어"라고 적었다. 그 사실이 이 라운드부터 **거짓**이다. 렌더 예외에서 나올 길을 만드는 데 이 둘이 필요했다. 아래 §6.8 |
 
 `src/renderer/src/**`의 나머지 60개 .ts/.tsx와 `styles.css`는 **한 글자도 바뀌지 않았다.**
 
@@ -138,6 +139,32 @@ window.__CCG_BOOT = { "ui-prefs:get": {...}, "profile:get": {...}, "app:get-vers
 1회** `console.warn` 후 시그니처에 맞는 값(빈 배열/null/false/no-op)을 돌려준다. 예외는
 `saveAttachmentData` 하나 — "경로 없음"을 뜻하는 안전한 문자열이 없어 reject하고,
 유일한 호출부가 try/catch로 감싸 첨부를 건너뛴다(위 3.2).
+
+### 3.5.2 ★R28f — **쓰기 채널은 안전값을 안 쓴다**(reject한다)
+
+위 규약("어떤 화면도 크래시하지 않는다")은 **조회**에 옳다. 목록이 잠깐 비는 것은 다음
+조회가 고친다. **상태를 바꾸라는 호출**에서는 그 규약이 정확히 거꾸로 돈다 — 최종 파리티
+감사 R2 §N1이 잰 모양이다:
+
+```
+codexAuth.reorderAccounts(현재 순서) → {__unimplemented:true} → 심이 [] 로 갈음
+  → setCxAccounts([]) → 화면의 OpenAI 계정이 통째로 사라진다
+  → 호출부의 catch는 reject일 때만 도니 영원히 안 돈다(안내 문구 0개)
+```
+
+즉 **"실패했다"가 "빈 결과가 왔다"로 번역돼** 호출부에 도착했다. 그래서 `shim.ts`에 문이
+하나 더 생겼다: `callStrict` — 미구현·IPC 실패를 `ShimUnavailableError`(어느 채널인지
+들고 있다)로 **reject**한다. 조회는 그대로 `call`이다(그 문을 조회까지 넓히면 목록 하나가
+없다고 설정 화면이 통째로 죽는다 = M1이 `call`을 만든 이유).
+
+| 문 | 쓰는 채널 | 실패하면 |
+|---|---|---|
+| `call` | 조회 전부 · `auth:login`(반환값 `{ok:false,error}`에 실패가 실린다) | 안전값 resolve |
+| `callStrict` | `auth:{logout,set-default-account,remove-account,reorder-accounts}` · `codex-auth:{login,logout,set-default-account,reorder-accounts}` | **reject** → 호출부가 문구를 세운다 |
+
+호출부 짝(`Settings.tsx`): 계정 쓰기의 `catch`가 예외 없이 `setNote(...)`를 세운다
+(R1까지는 대부분 `/* ignore */`였고, 심이 안 던졌으니 티가 안 났다).
+실측기 `scripts/poc-shim-strict.mjs` — `invoke`를 스텁으로 갈아끼워 두 갈래를 같이 잰다.
 
 ### 3.5.1 **같은 사실의 두 채널 이름** — 셸이 둘 다 쏜다 (최종 파리티 R1 H5)
 
@@ -467,7 +494,28 @@ R1은 1440px 본채팅(판 883px)에서 7종 전부 이겼지만 420px 멀티 �
 | 배지 | 「기본」 | 「기본 · 맨 위」 — 인덱스 0의 파생 표시 |
 | `AccountInfo.isDefault` | `defaultEmail === email` | `index === 0` (`ipc/system.rs`·`claude::list_accounts`) |
 | `auth:set-default-account` | 필드를 쓴다 | **「맨 위로 이동」과 동치**(채널은 남는다 — 동결 2.6.2 렌더러가 아직 부른다) |
-| `codex-auth:set-default-account` | 필드를 쓴다 | 3.0 화면은 **안 부른다**(`reorderAccounts`로 같은 결과를 저장한다) |
+| `codex-auth:set-default-account` | 필드를 쓴다 | **「맨 위로 이동」과 동치** — Anthropic 축과 같은 규약(★R28f 정정, 아래) |
+
+**★R28f SHIPBLOCK 정정 — 이 표의 마지막 줄은 R28f 이전까지 거짓이었다.**
+그 자리에는 *"3.0 화면은 안 부른다(`reorderAccounts`로 **같은 결과를 저장한다**)"* 라고
+적혀 있었고, `Settings.tsx`의 주석도 *"결과는 같고(맨 위 = 기본), **실제로 저장된다**"* 라고
+적었다. **저장되지 않았다** — `codex-auth:reorder-accounts`에도 핸들러가 없었다(감사 R2 §N1의
+전수 grep: `codex-auth:{login,logout,login-cancel,reorder-accounts,set-default-account}` 문자열이
+Rust 소스에 **0회**). 화면이 부르던 채널과 장부가 가리키던 채널이 **둘 다 비어 있었다.**
+
+R28f가 다섯을 배선하면서(`src-tauri/src/ipc/accounts.rs`) 이 칸의 선택도 다시 골랐다 —
+**재정렬로 흡수한다**(`codex::set_default_account` = `move_account_to_top`). 근거 셋:
+
+1. 같은 홈을 여는 **2.6.2 렌더러(동결)** 가 아직 이 채널을 부른다. 거기서 「기본으로」를
+   누르면 3.0에서도 같은 결과(그 계정이 맨 위 = 기본)가 나와야 한다.
+2. Anthropic 축이 이미 이 선택을 했다(위 줄). 두 축이 같은 이름의 채널에서 다르게 굴면
+   장부가 두 벌이 되고, 다음 라운드에 한쪽만 고쳐진다.
+3. no-op은 **성공처럼 보이는 실패**다 — 렌더러는 새 목록을 받아 그대로 그리므로 아무 표시
+   없이 순서만 안 바뀐다. 이 라운드가 닫는 병과 정확히 같은 모양이다.
+
+그리고 3.0 화면도 이제 **이 채널을 부른다**(`doCodexMoveTop` → `codexAuth.setDefaultAccount`) —
+Anthropic 축의 `doMoveTop`과 같은 모양으로. 꾹-드래그·정렬 버튼은 그대로
+`reorderAccounts`다(그건 순서 전체를 옮기는 조작이라 채널도 그쪽이 맞다).
 
 **마이그레이션**(`claude::migrate_default_to_top` · `codex::migrate_default_to_top`):
 기존 `defaultEmail`이 3번째를 가리키고 있었으면 그 계정을 **맨 위로 옮긴 뒤** 우리는 그
@@ -611,3 +659,52 @@ refresh 토큰이 서버에서 죽는다(사용자는 앱을 켜기만 했다). 
 문 **둘 다**(`access_token`·`force_refresh`)가 그 관문을 지나 `NetError::RotateForbidden`으로
 착지한다. 스레드 로컬인 이유: 사용자가 Account 탭을 직접 열어 부른 조회는 **구역 밖**이라
 옛 규약대로 교환까지 간다(거기까지 막으면 만료된 계정의 게이지가 영영 안 낫는다).
+
+### 6.8 `ErrorBoundary`가 **자리 단위**가 된다 + 부팅 격리 (R28f SHIPBLOCK N2)
+
+`app/src/components/ErrorBoundary.tsx`는 이 라운드 전까지 2.6.2와 **바이트 동일**이었다
+(md5 `6f1115813f09eac2936de557eec34448`). 이제 갈린다. 갈라야 했던 이유는 감사 R2 §N2의 실측이다:
+
+```
+                       선택 직후                  「앱 새로고침」 클릭 뒤
+ 3.0(R28f 전)  eb 1·sb 0·win 0  →  eb 1·sb 0·win 0·chat 0   activeChatId="fix-boom"  갇힘
+ 2.6.2         eb 1·sb 0·win 0  →  eb 0·sb 3·win 1·chat 1   activeChatId="fix-long…" 복구
+```
+
+두 앱 다 **선택 직후 화면에서 크롬이 통째로 사라진다**(경계가 앱 루트 하나뿐이라
+`MainApp`이 언마운트된다 = 사이드바도 없다). 갈리는 곳은 새로고침 뒤다: 3.0은 활성 채팅을
+**즉시 영속**하므로(`chats:set-active` → `chats_v3::set_active`) 예외 채팅이 활성인 채로
+재부팅되고 같은 카드로 되돌아온다. 2.6.2는 디바운스 저장이라 옛 활성 채팅으로 돌아온다.
+
+**즉시 영속은 안 건드린다.** ① 그건 M-UX §6.2 U3의 계약이고(별칭 계층은 인자에 `chatId`가
+없어 "그 순간의 활성 채팅"으로 실행을 라우팅한다 — 미루면 "전환 직후 전송"이 남의
+`ChatRuntime`에 붙는다), ② **미뤄도 이 감옥은 안 풀린다**: 「앱 새로고침」은 웹뷰만 다시
+그리고 셸(Rust) 프로세스는 그대로라, 활성 채팅의 진실이 셸 메모리에 남아 그대로 돌아온다.
+
+대신 탈출구를 **둘** 만든다.
+
+| # | 무엇 | 어디 |
+|---|---|---|
+| ① | 본채팅 워크스페이스가 **자기 경계**를 갖는다(멀티 보드는 이미 그랬다) | `App.tsx` 단일 모드 가지 |
+| ② | 렌더를 넘어뜨린 채팅 id를 적어 두고, 다음 부팅이 그 채팅을 활성으로 잡으려 하면 **다른 대화로 착지**한다(1회 소비) | `App.tsx` `markChatCrash`/`takeChatCrash` + `ErrorBoundary.onError` |
+
+①이 있으면 카드가 떠도 왼쪽 칼럼(사이드바·탐색기)과 창 크롬은 경계 **밖**이라 그대로
+살아 있다 — 다른 대화로 갈 수단이 화면에 있다. 그 클릭 하나로 경계가 스스로 풀리도록
+`resetKey`(=활성 채팅 id) prop이 붙었다(「다시 시도」를 또 누르게 하지 않는다).
+②는 새로고침 경로를 2.6.2와 **같은 결과**로 만든다. 영구 블랙리스트가 아니다 —
+표식은 읽는 즉시 지워지고, 그 대화는 사이드바에 그대로 있으며 다시 고르면 평소처럼 열린다
+(그리고 또 터지면 다시 적힌다).
+
+**실측**(`scripts/poc-shipblock.mjs` — 두 앱 나란히, 같은 픽스처·같은 순서):
+
+```
+                     선택 직후                       사이드바로 탈출   새로고침 뒤
+ 3.0(R28f)  eb 1·sb 3·win 1·chat 0            eb 0·chat 1      eb 0·sb 3·win 1·chat 1  active=fix-long-thread
+ 2.6.2      eb 1·sb 0·win 0·chat 0            (사이드바 없음)   eb 0·sb 3·win 1·chat 1  active=fix-long-thread
+```
+
+**「다른 문」도 같이 쟀다**(`--boot=multi` — 예외를 던지는 것이 멀티 보드일 때):
+3.0 `eb 1·sb 6·win 1`, 2.6.2 `eb 1·sb 4·win 1`, 둘 다 사이드바로 탈출 성공. 멀티 보드는
+**두 앱 다 원래 안 갇힌다**(자기 경계가 이미 있었다 — 그래서 본채팅에도 같은 처방을 놓은 것이다).
+설정 모달은 `settingsOpen`이 `useState(false)`이고 어떤 pref에도 안 실리므로
+(`App.tsx:325` · `setPref` 호출 목록에 없다) 새로고침이 언제나 닫힌 채로 착지한다 = 부팅 루프가 없다.

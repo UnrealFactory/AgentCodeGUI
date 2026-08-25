@@ -1,0 +1,23 @@
+{
+  "app": "tauri-3.0.0",
+  "kind": "tauri",
+  "boot": "multi",
+  "at": "2026-08-25T08:00:42.701Z",
+  "exe": "C:\\Code\\AgentCodeGUI\\target-r28f-ship\\release\\agentcodegui.exe",
+  "home": "C:\\Temp\\ccg-r28f-ship\\home-tauri-multi-r2",
+  "pid": 35436,
+  "cases": {
+    "multi-boom": {
+      "eb": 1,
+      "sbItems": 6,
+      "win": 1,
+      "panels": 0,
+      "escaped": {
+        "eb": 0,
+        "chat": 1
+      },
+      "stuck": false
+    }
+  },
+  "shimWarns": []
+}

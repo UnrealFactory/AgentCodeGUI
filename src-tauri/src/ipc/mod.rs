@@ -205,6 +205,19 @@ pub mod ch {
     pub const AUTH_SET_DEFAULT_ACCOUNT: &str = "auth:set-default-account";
     pub const AUTH_REMOVE_ACCOUNT: &str = "auth:remove-account";
     pub const AUTH_REORDER_ACCOUNTS: &str = "auth:reorder-accounts";
+    // ── Codex 계정 쓰기(R28f SHIPBLOCK N1 · `ipc/accounts.rs`) ─────────────────
+    // 이 다섯이 비어 있는 동안 **Codex 축이 통째로 못 쓰였다**: 실홈의
+    // `codex-accounts.json`은 `accounts: []`인데 「계정 추가」가 무반응이라 등록할 길이
+    // 없었고(= 구독 엔진을 한 번도 못 켠다), 「맨 위로」·정렬은 심의 안전값 `[]`가
+    // 그대로 목록 setter에 앉아 **화면의 OpenAI 계정이 통째로 사라졌다**
+    // (최종 파리티 감사 R2 §N1 · 확인 크리틱 R1 §4).
+    pub const CODEX_LOGIN: &str = "codex-auth:login";
+    pub const CODEX_LOGIN_CANCEL: &str = "codex-auth:login-cancel";
+    pub const CODEX_LOGOUT: &str = "codex-auth:logout";
+    /// 「기본 계정」은 3.0에서 사라졌다(기본 = 맨 위). 이 채널은 **「맨 위로 이동」과
+    /// 동치**다 — Anthropic 축의 `auth:set-default-account`와 같은 규약(§6.5).
+    pub const CODEX_SET_DEFAULT_ACCOUNT: &str = "codex-auth:set-default-account";
+    pub const CODEX_REORDER_ACCOUNTS: &str = "codex-auth:reorder-accounts";
 
     // ── 통합 스토어(chats-v3) — CCG_UNIFIED_STORE=1에서만 산다 (M-UX §6.1) ────
     /// 활성 채팅 전환. **즉시** 반영된다 — 저장 디바운스와 무관해야 "전환 직후 전송"이

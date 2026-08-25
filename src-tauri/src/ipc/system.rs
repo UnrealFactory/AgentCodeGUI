@@ -162,7 +162,10 @@ pub(super) fn list_claude_accounts() -> Value {
     json!(out)
 }
 
-fn list_codex_accounts() -> Value {
+/// `pub(super)`인 이유는 [`list_claude_accounts`]와 같다 — Codex 쓰기 채널
+/// (`ipc/accounts.rs`의 로그인·로그아웃·맨 위로·순서)이 **같은 함수로** 새 목록을 만들어
+/// 돌려줘야 렌더러가 받는 모양이 조회와 한 벌이다.
+pub(super) fn list_codex_accounts() -> Value {
     // ★R28 ACCT R2(F3) — Anthropic 축과 같은 이유(위 참고).
     ccg_auth::codex::ensure_default_migrated();
     let Some(f) = ccg_store::read_home_json("codex-accounts.json") else { return json!([]) };

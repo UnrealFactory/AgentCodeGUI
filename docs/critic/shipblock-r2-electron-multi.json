@@ -1,0 +1,23 @@
+{
+  "app": "electron-2.6.2",
+  "kind": "electron",
+  "boot": "multi",
+  "at": "2026-08-25T08:00:52.944Z",
+  "exe": "C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe",
+  "home": "C:\\Temp\\ccg-r28f-ship\\home-electron-multi-r2",
+  "pid": 35676,
+  "cases": {
+    "multi-boom": {
+      "eb": 1,
+      "sbItems": 4,
+      "win": 1,
+      "panels": 0,
+      "escaped": {
+        "eb": 0,
+        "chat": 1
+      },
+      "stuck": false
+    }
+  },
+  "shimWarns": []
+}

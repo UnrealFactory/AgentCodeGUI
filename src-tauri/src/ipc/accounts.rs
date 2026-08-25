@@ -48,8 +48,33 @@ use ccg_auth::{CommandSpec, IsolatedConfigDir};
 pub fn owns(channel: &str) -> bool {
     matches!(
         channel,
-        ch::AUTH_LOGIN | ch::AUTH_LOGIN_CANCEL | ch::AUTH_LOGOUT | ch::AUTH_SET_DEFAULT_ACCOUNT | ch::AUTH_REMOVE_ACCOUNT | ch::AUTH_REORDER_ACCOUNTS
+        ch::AUTH_LOGIN
+            | ch::AUTH_LOGIN_CANCEL
+            | ch::AUTH_LOGOUT
+            | ch::AUTH_SET_DEFAULT_ACCOUNT
+            | ch::AUTH_REMOVE_ACCOUNT
+            | ch::AUTH_REORDER_ACCOUNTS
+            // ★R28f SHIPBLOCK N1 — Codex 축의 같은 다섯. `codex login`도 사용자가
+            // 브라우저에서 끝낼 때까지 최대 5분 막히므로 **같은 블로킹 풀**이어야 한다.
+            | ch::CODEX_LOGIN
+            | ch::CODEX_LOGIN_CANCEL
+            | ch::CODEX_LOGOUT
+            | ch::CODEX_SET_DEFAULT_ACCOUNT
+            | ch::CODEX_REORDER_ACCOUNTS
     )
+}
+
+/// 인자 0의 이메일(문자열) — 두 축의 삭제·맨 위로가 같은 자리를 읽는다.
+fn email_arg(p: &Value) -> String {
+    arg(p, 0).as_str().unwrap_or("").to_string()
+}
+
+/// 인자 0의 이메일 배열(순서 변경).
+fn emails_arg(p: &Value) -> Vec<String> {
+    arg(p, 0)
+        .as_array()
+        .map(|a| a.iter().filter_map(Value::as_str).map(str::to_string).collect())
+        .unwrap_or_default()
 }
 
 pub fn dispatch(app: &AppHandle, channel: &str, p: &Value) -> Option<Value> {
@@ -78,12 +103,37 @@ pub fn dispatch(app: &AppHandle, channel: &str, p: &Value) -> Option<Value> {
             super::system::list_claude_accounts()
         }
         ch::AUTH_REORDER_ACCOUNTS => {
-            let emails: Vec<String> = arg(p, 0)
-                .as_array()
-                .map(|a| a.iter().filter_map(Value::as_str).map(str::to_string).collect())
-                .unwrap_or_default();
-            claude::reorder_accounts(&emails);
+            claude::reorder_accounts(&emails_arg(p));
             super::system::list_claude_accounts()
+        }
+
+        // ── Codex(OpenAI) 축 — 같은 저장소·같은 잠금 규율 ────────────────────────
+        // 도메인은 전부 `ccg_auth::codex`에 있다(M5). 여기는 **배선**이고, 세 규약은
+        // 위 Anthropic 축과 글자 그대로 같다: 실홈 불가침(`IsolatedConfigDir`) ·
+        // 목록을 바꾸는 쓰기는 도메인 함수 하나만 지난다 · 자식은 우리가 스폰한 것만 죽인다.
+        ch::CODEX_LOGIN => codex_login(app),
+        ch::CODEX_LOGIN_CANCEL => {
+            CODEX_LOGIN_SLOT.cancel();
+            Value::Null
+        }
+        ch::CODEX_LOGOUT => codex_logout(&email_arg(p)),
+        // ★R28f SHIPBLOCK N1(2) — 「기본 계정」이 사라진 뒤의 이 채널.
+        //
+        // **재정렬로 흡수한다**(`codex::set_default_account` = `move_account_to_top`).
+        // no-op으로 두지 않는 이유 셋:
+        //  ① 같은 홈을 여는 **2.6.2 렌더러(동결)**가 아직 이 채널을 부른다. 거기서
+        //     「기본으로」를 누르면 3.0에서도 같은 결과(그 계정이 맨 위 = 기본)가 나와야 한다.
+        //  ② Anthropic 축이 이미 이 선택을 했다(`AUTH_SET_DEFAULT_ACCOUNT`). 두 축이
+        //     같은 이름의 채널에서 다르게 굴면 장부가 두 벌이 된다.
+        //  ③ no-op은 **성공처럼 보이는 실패**다 — 렌더러는 새 목록을 받아 그대로 그리므로
+        //     아무 표시 없이 순서만 안 바뀐다(이 라운드가 닫는 병과 정확히 같은 모양).
+        ch::CODEX_SET_DEFAULT_ACCOUNT => {
+            ccg_auth::codex::set_default_account(&email_arg(p));
+            super::system::list_codex_accounts()
+        }
+        ch::CODEX_REORDER_ACCOUNTS => {
+            ccg_auth::codex::reorder_accounts(&emails_arg(p));
+            super::system::list_codex_accounts()
         }
         _ => return None,
     })
@@ -101,21 +151,61 @@ pub fn dispatch(app: &AppHandle, channel: &str, p: &Value) -> Option<Value> {
 /// `wait()`** 한다. 그러면 `LOGIN`이 비어 「취소」가 아무것도 못 죽이고, A가 B의 임시
 /// 폴더를 읽고 지운다. (크리틱은 코드 근거만 남겼다 — 1.5초 간격 이중 로그인으로는
 /// A가 18ms에 착지해 창이 안 열렸다.)
-static LOGIN: Mutex<Option<(u64, Child)>> = Mutex::new(None);
-/// 로그인 시도 번호. **스폰 전에** 올린다 — 다음 시도가 우리를 죽이기 전에 번호가
-/// 올라가야 "내가 아직 최신인가"가 그 사이의 창에서도 참이다.
-static LOGIN_GEN: AtomicU64 = AtomicU64::new(0);
+/// ★R28f SHIPBLOCK N1 — 축이 **둘**이 되면서(claude·codex) 이 규칙도 두 벌이 될
+/// 뻔했다. 두 벌이면 한쪽만 고쳐지는 순간 그 축에서만 "취소가 아무것도 못 죽인다"가
+/// 되살아난다. 그래서 슬롯을 타입으로 만들고 정적 인스턴스를 축마다 하나씩 둔다
+/// (핸들은 축별로 **따로** 있어야 한다 — codex 로그인이 진행 중인 claude 로그인을
+/// 죽이면 안 된다).
+struct LoginSlot {
+    proc: Mutex<Option<(u64, Child)>>,
+    /// 로그인 시도 번호. **스폰 전에** 올린다 — 다음 시도가 우리를 죽이기 전에 번호가
+    /// 올라가야 "내가 아직 최신인가"가 그 사이의 창에서도 참이다.
+    gen: AtomicU64,
+}
 
-fn cancel_login() {
-    if let Some((_, mut c)) = LOGIN.lock().unwrap_or_else(|e| e.into_inner()).take() {
-        let _ = c.kill();
-        let _ = c.wait(); // 좀비를 남기지 않는다
+impl LoginSlot {
+    const fn new() -> LoginSlot {
+        LoginSlot { proc: Mutex::new(None), gen: AtomicU64::new(0) }
+    }
+
+    /// 다음 시도 번호를 발급한다(스폰 **전에** 부른다).
+    fn begin(&self) -> u64 {
+        self.gen.fetch_add(1, AtomicOrd::SeqCst) + 1
+    }
+
+    fn cancel(&self) {
+        if let Some((_, mut c)) = self.proc.lock().unwrap_or_else(|e| e.into_inner()).take() {
+            let _ = c.kill();
+            let _ = c.wait(); // 좀비를 남기지 않는다
+        }
+    }
+
+    fn put(&self, gen: u64, child: Child) {
+        *self.proc.lock().unwrap_or_else(|e| e.into_inner()) = Some((gen, child));
+    }
+
+    /// 이 시도가 아직 **가장 최근의 시도**인가 — 2.6.2 `loginProc === child`의 판정.
+    fn still_current(&self, gen: u64) -> bool {
+        self.gen.load(AtomicOrd::SeqCst) == gen
+    }
+
+    /// **자기 자식일 때만** 핸들을 놓고 기다린다(2.6.2 `if (loginProc === child)`).
+    fn finish(&self, gen: u64) {
+        let mut g = self.proc.lock().unwrap_or_else(|e| e.into_inner());
+        let mine = g.as_ref().map(|(id, _)| *id) == Some(gen);
+        let taken = if mine { g.take() } else { None };
+        drop(g); // wait()는 잠금 밖에서 — 남의 자식을 기다리며 취소를 막지 않는다
+        if let Some((_, mut c)) = taken {
+            let _ = c.wait();
+        }
     }
 }
 
-/// 이 시도가 아직 **가장 최근의 시도**인가 — 2.6.2 `loginProc === child`의 판정.
-fn still_current(gen: u64) -> bool {
-    LOGIN_GEN.load(AtomicOrd::SeqCst) == gen
+static LOGIN: LoginSlot = LoginSlot::new();
+static CODEX_LOGIN_SLOT: LoginSlot = LoginSlot::new();
+
+fn cancel_login() {
+    LOGIN.cancel()
 }
 
 /// `claude auth login` — 브라우저 OAuth. **로그인 전엔 이메일을 모르므로** 임시 폴더
@@ -132,7 +222,7 @@ fn login(app: &AppHandle, use_console: bool) -> Value {
     let Some(bin) = crate::engine::versions::claude_exe() else {
         return status_wire(false, &AuthStatus::default(), Some(NO_BIN));
     };
-    let gen = LOGIN_GEN.fetch_add(1, AtomicOrd::SeqCst) + 1;
+    let gen = LOGIN.begin();
     cancel_login(); // 이전 시도가 있으면 정리(2.6.2와 같은 첫 줄)
 
     let dir = IsolatedConfigDir::for_claude_login();
@@ -144,12 +234,47 @@ fn login(app: &AppHandle, use_console: bool) -> Value {
     }
 
     let spec = verify::login_command(&bin.to_string_lossy(), use_console);
-    let mut cmd = build(&spec);
+    if let Err(e) = pump_login(app, &LOGIN, gen, build(&spec), spec.timeout_ms) {
+        return status_wire(false, &AuthStatus::default(), Some(&format!("{NO_BIN} ({e})")));
+    }
+    // 우리가 도는 사이에 **다른 로그인이 시작**됐다면 이 시도는 이미 무효다. 임시 폴더는
+    // 이제 그쪽 것이므로 읽지도 지우지도 않고 물러난다 — 안 그러면 A가 B의 자격증명을
+    // 자기 결과로 읽거나(엉뚱한 계정 편입) B가 쓰는 중에 폴더를 지운다.
+    // (취소로 핸들이 사라진 경우는 여기 해당하지 않는다 — 번호가 그대로다.)
+    if !LOGIN.still_current(gen) {
+        return status_wire(false, &AuthStatus::default(), Some("다른 로그인이 시작되어 이 시도는 취소됐어요."));
+    }
+
+    // 결과 판정은 종료 코드가 아니라 `auth status --json`이다 — 로그아웃 상태면 CLI가
+    // **비-0으로 끝나면서** JSON에 `loggedIn:false`를 준다(verify 모듈 헤더).
+    let status = status_for(&bin.to_string_lossy(), &dir);
+    let ok = status.logged_in && status.email.is_some();
+    if ok {
+        let email = status.email.clone().unwrap_or_default();
+        // 편입은 CAS 경로(`update_store`)를 탄다. 가드는 2.6.2 `authLogin`과 같은 `None` —
+        // 방금 그 계정으로 붙은 것이 확실하므로 토큰 충돌 검사로 막지 않는다.
+        if let Err(e) = claude::import_account_from_dir(dir.path(), &email, status.subscription_type.as_deref(), ccg_auth::claude::ImportGuard::None) {
+            let _ = std::fs::remove_dir_all(dir.path());
+            return status_wire(false, &status, Some(&format!("계정을 저장하지 못했어요: {e}")));
+        }
+    }
+    // 평문 토큰을 임시 자리에 남기지 않는다(성공이든 실패든).
+    let _ = std::fs::remove_dir_all(dir.path());
+    status_wire(ok, &status, None)
+}
+
+/// 로그인 자식 **하나**를 끝까지 돌린다 — 두 축이 공유하는 몸통.
+///
+/// 스폰 → 출력 두 갈래에서 첫 `https://` URL을 `auth:login-url`로 방출 → 상한·취소·자연
+/// 종료 중 하나로 마무리. 마무리는 **자기 자식일 때만** 핸들을 놓는다([`LoginSlot::finish`]).
+/// `Err` = 스폰 자체가 실패했다(사유 문구는 호출부가 축 이름을 얹어 만든다).
+///
+/// ★R28f SHIPBLOCK N1 — 이 함수가 생기기 전에는 claude 축에만 이 몸통이 있었다. Codex
+/// 축을 배선하면서 복사했다면 「청크 단위로 읽는다」(개행 없이 멈추는 CLI)·「취소가 자기
+/// 자식만 죽인다」 같은 실측 규약이 두 벌이 됐을 것이고, 다음 라운드에 한쪽만 고쳐진다.
+fn pump_login(app: &AppHandle, slot: &LoginSlot, gen: u64, mut cmd: Command, timeout_ms: u64) -> Result<(), String> {
     cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
-    let mut child = match cmd.spawn() {
-        Ok(c) => c,
-        Err(e) => return status_wire(false, &AuthStatus::default(), Some(&format!("{NO_BIN} ({e})"))),
-    };
+    let mut child = cmd.spawn().map_err(|e| e.to_string())?;
 
     // 출력 두 갈래를 한 채널로 모은다 — URL은 stdout에도 stderr에도 올 수 있다.
     let (tx, rx) = channel::<String>();
@@ -174,14 +299,14 @@ fn login(app: &AppHandle, use_console: bool) -> Value {
         });
     }
     drop(tx);
-    *LOGIN.lock().unwrap_or_else(|e| e.into_inner()) = Some((gen, child));
+    slot.put(gen, child);
 
-    let deadline = std::time::Instant::now() + Duration::from_millis(spec.timeout_ms);
+    let deadline = std::time::Instant::now() + Duration::from_millis(timeout_ms);
     let mut sent_url = false;
     loop {
         let left = deadline.saturating_duration_since(std::time::Instant::now());
         if left.is_zero() {
-            cancel_login(); // 5분 상한(2.6.2의 setTimeout과 같은 값)
+            slot.cancel(); // 5분 상한(2.6.2의 setTimeout과 같은 값)
             break;
         }
         match rx.recv_timeout(left) {
@@ -194,47 +319,15 @@ fn login(app: &AppHandle, use_console: bool) -> Value {
                 }
             }
             Err(RecvTimeoutError::Timeout) => {
-                cancel_login();
+                slot.cancel();
                 break;
             }
             // 파이프 둘이 다 닫혔다 = 자식이 끝났다.
             Err(RecvTimeoutError::Disconnected) => break,
         }
     }
-    // **자기 자식일 때만** 핸들을 놓는다(2.6.2 `if (loginProc === child)`).
-    {
-        let mut g = LOGIN.lock().unwrap_or_else(|e| e.into_inner());
-        let mine = g.as_ref().map(|(id, _)| *id) == Some(gen);
-        let taken = if mine { g.take() } else { None };
-        drop(g); // wait()는 잠금 밖에서 — 남의 자식을 기다리며 취소를 막지 않는다
-        if let Some((_, mut c)) = taken {
-            let _ = c.wait();
-        }
-    }
-    // 우리가 도는 사이에 **다른 로그인이 시작**됐다면 이 시도는 이미 무효다. 임시 폴더는
-    // 이제 그쪽 것이므로 읽지도 지우지도 않고 물러난다 — 안 그러면 A가 B의 자격증명을
-    // 자기 결과로 읽거나(엉뚱한 계정 편입) B가 쓰는 중에 폴더를 지운다.
-    // (취소로 핸들이 사라진 경우는 여기 해당하지 않는다 — 번호가 그대로다.)
-    if !still_current(gen) {
-        return status_wire(false, &AuthStatus::default(), Some("다른 로그인이 시작되어 이 시도는 취소됐어요."));
-    }
-
-    // 결과 판정은 종료 코드가 아니라 `auth status --json`이다 — 로그아웃 상태면 CLI가
-    // **비-0으로 끝나면서** JSON에 `loggedIn:false`를 준다(verify 모듈 헤더).
-    let status = status_for(&bin.to_string_lossy(), &dir);
-    let ok = status.logged_in && status.email.is_some();
-    if ok {
-        let email = status.email.clone().unwrap_or_default();
-        // 편입은 CAS 경로(`update_store`)를 탄다. 가드는 2.6.2 `authLogin`과 같은 `None` —
-        // 방금 그 계정으로 붙은 것이 확실하므로 토큰 충돌 검사로 막지 않는다.
-        if let Err(e) = claude::import_account_from_dir(dir.path(), &email, status.subscription_type.as_deref(), ccg_auth::claude::ImportGuard::None) {
-            let _ = std::fs::remove_dir_all(dir.path());
-            return status_wire(false, &status, Some(&format!("계정을 저장하지 못했어요: {e}")));
-        }
-    }
-    // 평문 토큰을 임시 자리에 남기지 않는다(성공이든 실패든).
-    let _ = std::fs::remove_dir_all(dir.path());
-    status_wire(ok, &status, None)
+    slot.finish(gen);
+    Ok(())
 }
 
 const NO_BIN: &str = "claude 실행 파일을 찾지 못했어요";
@@ -302,6 +395,134 @@ fn logout(email: &str) -> Value {
 
 fn no_net() -> bool {
     std::env::var("CCG_NO_NET").is_ok_and(|v| !v.is_empty() && v != "0")
+}
+
+// ── Codex(OpenAI) 계정 ───────────────────────────────────────────────────────
+//
+// ★R28f SHIPBLOCK N1 — 최종 파리티 감사 R2와 그 확인 크리틱이 **독립적으로** 재현한
+// 출하 차단. 실홈의 `codex-accounts.json`이 `accounts: []`인데 「계정 추가」가 무반응이라
+// 이 사용자는 3.0에서 Codex 구독 엔진을 **한 번도 시작할 수 없었다**.
+//
+// 도메인은 M5부터 다 있었다(`ccg_auth::codex`). 없던 것은 이 파일의 다섯 줄이다.
+
+/// `codex login` — 브라우저 OAuth. claude 축과 **같은 문법**이고 다른 점만 셋이다:
+///
+///  1. 격리 홈의 환경 변수 이름이 `CODEX_HOME`이다(`IsolatedConfigDir::for_codex_login`).
+///  2. 결과 판정에 `auth status --json` 같은 창구가 없다 — 끝난 뒤 **임시 폴더의
+///     `auth.json`을 읽어** 편입한다(`codex::import_account_from_dir`, 2.6.2와 같다).
+///  3. 반환이 상태 객체가 아니라 **갱신된 계정 목록**이다(계약면 `codexAuth.login()`).
+///
+/// 브라우저는 CLI가 직접 연다. 뽑은 URL은 claude 축과 **같은 채널**(`auth:login-url`)로
+/// 보낸다 — 2.6.2도 codex 로그인에서 `IPC.authLoginUrl`을 쓴다(`src/main/codex/auth.ts:357`).
+fn codex_login(app: &AppHandle) -> Value {
+    // 「띄울 수 있는가」의 판정은 앱에 **한 자리**뿐이다(`codex_exe`의 표 — R28c CPATH).
+    let Some(bin) = crate::engine::codex_versions::codex_exe() else {
+        return super::system::list_codex_accounts();
+    };
+    let gen = CODEX_LOGIN_SLOT.begin();
+    CODEX_LOGIN_SLOT.cancel(); // 이전 시도가 있으면 정리(2.6.2 `codexLoginCancel()` 첫 줄)
+
+    let dir = IsolatedConfigDir::for_codex_login();
+    // 반쯤 남은 `auth.json`을 이번 로그인의 결과로 오독하면 **엉뚱한 계정이 편입된다**.
+    let _ = std::fs::remove_dir_all(dir.path());
+    if std::fs::create_dir_all(dir.path()).is_err() {
+        return super::system::list_codex_accounts();
+    }
+
+    let spec = verify::codex_login_command(&bin.to_string_lossy());
+    if pump_login(app, &CODEX_LOGIN_SLOT, gen, codex_command(&bin, &spec), spec.timeout_ms).is_err() {
+        return super::system::list_codex_accounts();
+    }
+    // 다른 로그인이 시작됐으면 임시 폴더는 이제 그쪽 것이다 — 읽지도 지우지도 않는다
+    // (claude 축의 같은 자리와 같은 이유 · R28 T1T2 R2 §6.3).
+    if !CODEX_LOGIN_SLOT.still_current(gen) {
+        return super::system::list_codex_accounts();
+    }
+    // 편입 + 계정 폴더 물질화. API 키 인증(이메일 없음)이면 None을 주고 목록은 그대로다.
+    let _ = ccg_auth::codex::import_account_from_dir(dir.path());
+    // 평문 토큰을 임시 자리에 남기지 않는다(성공이든 실패든).
+    let _ = std::fs::remove_dir_all(dir.path());
+    super::system::list_codex_accounts()
+}
+
+/// 계정 하나를 버린다 — `codex logout`(그 계정 폴더의 **로컬** auth 제거) → 등록 제거 +
+/// 폴더 삭제. 2.6.2 `codexLogout`과 같은 순서다.
+///
+/// claude 축과 달리 이 명령은 **서버 토큰 해지가 아니다**(로컬 `auth.json`을 지운다).
+/// 그래도 `CCG_NO_NET`에서 건너뛰는 이유는 대칭이다 — 하네스가 계정 축을 지나갈 때
+/// 자식 프로세스를 하나도 안 띄우는 것이 규약이고, 어차피 바로 뒤의 `remove_account`가
+/// 폴더째 지우므로 **결과가 같다**.
+fn codex_logout(email: &str) -> Value {
+    if !email.is_empty() && !no_net() {
+        if let Ok(dir) = IsolatedConfigDir::for_codex_account(email) {
+            // 폴더에 auth.json이 있을 때만 — 2.6.2도 `fs.existsSync`로 먼저 묻는다.
+            if dir.path().join("auth.json").is_file() {
+                if let Some(bin) = crate::engine::codex_versions::codex_exe() {
+                    let spec = verify::codex_logout_command(&bin.to_string_lossy(), &dir);
+                    wait_or_kill(codex_command(&bin, &spec), spec.timeout_ms);
+                }
+            }
+        }
+    }
+    // 등록 제거 + 폴더 정리(정션 해제 포함) — 전부 `ccg_auth::codex::remove_account`.
+    ccg_auth::codex::remove_account(email);
+    super::system::list_codex_accounts()
+}
+
+/// 출력이 필요 없는 한 방짜리 명령(`codex logout`). 상한을 넘으면 **우리가 스폰한 그
+/// 자식만** 죽인다([`run`]과 같은 규약 — 이름 기반 kill 없음).
+fn wait_or_kill(mut cmd: Command, timeout_ms: u64) {
+    cmd.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+    let Ok(mut child) = cmd.spawn() else { return };
+    let deadline = std::time::Instant::now() + Duration::from_millis(timeout_ms);
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => return,
+            Ok(None) if std::time::Instant::now() < deadline => std::thread::sleep(Duration::from_millis(60)),
+            _ => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return;
+            }
+        }
+    }
+}
+
+/// codex CLI용 [`Command`]. [`build`]와 다른 점 하나 — **커널이 직접 못 띄우는 확장자**면
+/// `cmd /C`를 경유한다.
+///
+/// 왜 필요한가: codex는 전역 npm 설치에서 `codex.cmd` 셰임으로 앉는다(2.6.2가 `shell:true`로
+/// 띄우던 이유). 앱이 관리하는 설치본은 네이티브 `.exe`라 이 갈래를 안 탄다.
+/// 판정 규칙은 `ccg_engine::codex::driver::command_for`의 `needs_shell`과 같다 —
+/// `.exe`·`.com`만 직접, 나머지 확장자는 셸. (그 함수는 인자가 `app-server` 고정이라
+/// 로그인·로그아웃에 못 쓴다. 그 크레이트는 이 라운드의 경계 밖이라 판정만 옮겨 적는다.)
+fn codex_command(bin: &std::path::Path, spec: &CommandSpec) -> Command {
+    let needs_shell = cfg!(windows)
+        && bin
+            .extension()
+            .and_then(|e| e.to_str())
+            .is_some_and(|e| !matches!(e.to_ascii_lowercase().as_str(), "exe" | "com"));
+    if !needs_shell {
+        return build(spec);
+    }
+    let mut c = Command::new("cmd");
+    let s = bin.to_string_lossy().to_string();
+    let args = spec.args.join(" ");
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        c.raw_arg("/C");
+        c.raw_arg(format!("\"\"{s}\" {args}\""));
+        c.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    }
+    #[cfg(not(windows))]
+    {
+        c.arg("/C").arg(format!("\"{s}\" {args}"));
+    }
+    for (k, v) in &spec.env {
+        c.env(k, v);
+    }
+    c
 }
 
 // ── 자식 프로세스 ────────────────────────────────────────────────────────────
@@ -378,23 +599,55 @@ mod tests {
         assert!(full.get("error").is_none(), "성공에는 error 키가 없다");
     }
 
-    /// 다섯 쓰기 채널이 전부 이 모듈 것이어야 `ipc_call`이 블로킹 풀로 보낸다.
+    /// 쓰기 채널이 전부 이 모듈 것이어야 `ipc_call`이 블로킹 풀로 보낸다.
     /// (하나라도 빠지면 그 채널만 async 워커에서 5분을 잔다 = 앱 전체가 멈춘다.)
+    ///
+    /// ★R28f SHIPBLOCK N1 — Codex 축 다섯이 여기 붙었다. R1까지 이 다섯은 문자열이
+    /// Rust 소스에 **0회**였고(감사 전수 grep), 그래서 심이 안전값 `[]`를 돌려줬다.
     #[test]
-    fn the_five_write_channels_are_all_claimed() {
-        for c in ["auth:login", "auth:login-cancel", "auth:logout", "auth:set-default-account", "auth:remove-account", "auth:reorder-accounts"] {
+    fn the_write_channels_of_both_axes_are_all_claimed() {
+        for c in [
+            "auth:login",
+            "auth:login-cancel",
+            "auth:logout",
+            "auth:set-default-account",
+            "auth:remove-account",
+            "auth:reorder-accounts",
+            "codex-auth:login",
+            "codex-auth:login-cancel",
+            "codex-auth:logout",
+            "codex-auth:set-default-account",
+            "codex-auth:reorder-accounts",
+        ] {
             assert!(owns(c), "{c}");
         }
         assert!(!owns("auth:list-accounts"), "읽기는 system.rs 것이다");
         assert!(!owns("codex-auth:list-accounts"));
+        assert!(!owns("codex-auth:accounts-usage"), "한도 조회는 ipc/parity 것이다");
     }
 
     /// 취소는 **없는 자식에게도 안전**해야 한다(사용자가 카드를 두 번 닫는다).
+    /// 두 축이 **따로** 취소된다는 것도 같이 잰다 — 슬롯이 한 벌이면 codex 로그인 취소가
+    /// 진행 중인 claude 로그인을 죽인다.
     #[test]
     fn cancelling_with_no_login_in_flight_is_a_no_op() {
         cancel_login();
         cancel_login();
-        assert!(LOGIN.lock().unwrap().is_none());
+        CODEX_LOGIN_SLOT.cancel();
+        assert!(LOGIN.proc.lock().unwrap().is_none());
+        assert!(CODEX_LOGIN_SLOT.proc.lock().unwrap().is_none());
+        assert!(!std::ptr::eq(&LOGIN as *const LoginSlot, &CODEX_LOGIN_SLOT as *const LoginSlot));
+    }
+
+    /// 인자 읽기 — 이메일 하나·이메일 배열. 잘못된 모양은 **빈 값**이고,
+    /// 도메인이 빈 이메일을 조용히 무시한다(2.6.2와 같다).
+    #[test]
+    fn arg_readers_are_total() {
+        assert_eq!(email_arg(&json!(["a@b.c"])), "a@b.c");
+        assert_eq!(email_arg(&json!([])), "");
+        assert_eq!(email_arg(&json!([42])), "");
+        assert_eq!(emails_arg(&json!([["a", "b"]])), vec!["a".to_string(), "b".to_string()]);
+        assert!(emails_arg(&json!(["a"])).is_empty(), "배열이 아니면 빈 순서 = 아무것도 안 바꾼다");
     }
 
     /// ★확인 크리틱 §6.3 — 로그인 자식의 **소유권**. 겹친 로그인에서 A의 마무리가
@@ -404,15 +657,20 @@ mod tests {
     /// 잰다: 번호는 스폰 전에 올라가고, 마무리는 자기 번호일 때만 핸들을 놓는다.
     #[test]
     fn a_finishing_login_never_takes_the_next_ones_handle() {
-        let a = LOGIN_GEN.fetch_add(1, AtomicOrd::SeqCst) + 1; // 로그인 A 시작
-        assert!(still_current(a), "혼자면 최신이다");
+        let a = LOGIN.begin(); // 로그인 A 시작
+        assert!(LOGIN.still_current(a), "혼자면 최신이다");
         // A가 마무리에 닿기 전에 로그인 B가 시작한다(번호 먼저 — 그 다음 kill·spawn).
-        let b = LOGIN_GEN.fetch_add(1, AtomicOrd::SeqCst) + 1;
-        assert!(!still_current(a), "★A는 더 이상 최신이 아니다 = 폴더도 핸들도 A 것이 아니다");
-        assert!(still_current(b));
+        let b = LOGIN.begin();
+        assert!(!LOGIN.still_current(a), "★A는 더 이상 최신이 아니다 = 폴더도 핸들도 A 것이 아니다");
+        assert!(LOGIN.still_current(b));
         // 그 창에서 A가 마무리해도 B의 자리는 그대로다(핸들을 꺼내는 조건이 번호다).
-        let mut g = LOGIN.lock().unwrap_or_else(|e| e.into_inner());
+        let mut g = LOGIN.proc.lock().unwrap_or_else(|e| e.into_inner());
         *g = None; // 자식 없이 번호만 확인하는 자리 — Child를 만들지 않는다
         assert!(g.as_ref().map(|(id, _)| *id) != Some(a));
+        drop(g);
+        // ★R28f — 축이 갈린다: codex 쪽 번호를 올려도 claude 쪽 "최신" 판정은 안 흔들린다.
+        let c = CODEX_LOGIN_SLOT.begin();
+        assert!(LOGIN.still_current(b), "★두 축은 서로의 시도를 무효화하지 않는다");
+        assert!(CODEX_LOGIN_SLOT.still_current(c));
     }
 }
