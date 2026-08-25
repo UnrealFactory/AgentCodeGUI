@@ -53,6 +53,11 @@ const OUT =
   (args.find((a) => a.startsWith('--out=')) ?? '').split('=')[1] || path.join(REPO, 'docs', 'critic', 'm10-r3c-attack-new.json')
 const REAL_HOME = path.join(os.homedir(), '.agentcodegui')
 const PORT0 = 10700
+/** ★M10 R6 — 봉투 턴의 권한 하한(`readonly`(기본·무옵션) · `ask`). §L() 씨앗 참고. */
+const INJECT_POLICY = ((args.find((a) => a.startsWith('--inject-policy=')) ?? '').split('=')[1] || '').trim()
+if (INJECT_POLICY && INJECT_POLICY !== 'readonly' && INJECT_POLICY !== 'ask') {
+  throw new Error(`--inject-policy는 readonly|ask 둘뿐이다: ${INJECT_POLICY}`)
+}
 
 const rep = { at: new Date().toISOString(), exe: EXE, attacks: {}, broken: [] }
 const broke = (id, why, extra) => {
@@ -655,7 +660,22 @@ const WAIT = 180_000
  */
 async function shipOne(tag, body, port, opts = {}) {
   const n = opts.n ?? 2
-  const s = seedLiveHome(tag, { enabled: true, boards: { 'b-1': true }, maxHops: opts.maxHops ?? 2, maxMsgs: 6, maxFanout: 2 }, n, opts.modes ?? [])
+  const s = seedLiveHome(
+    tag,
+    {
+      enabled: true,
+      boards: { 'b-1': true },
+      maxHops: opts.maxHops ?? 2,
+      maxMsgs: 6,
+      maxFanout: 2,
+      // ★M10 R6 — 봉투 턴의 **권한 하한**을 갈아 끼우는 대조군 스위치. 무옵션이면 씨앗에
+      // 안 쓰므로 제품 기본값(`readonly`)이고 지금까지의 L·K 수치와 같은 조건이다.
+      // 읽기 누수(K)는 하한을 올렸을 때 **가장 먼저 값이 변할** 축이라 여기에도 붙인다.
+      ...(INJECT_POLICY ? { injectPolicy: INJECT_POLICY } : {})
+    },
+    n,
+    opts.modes ?? []
+  )
   const row = { tag, home: s.HOME, work: s.WORK, attempts: [] }
   const app = await boot(s.HOME, port, {})
   try {

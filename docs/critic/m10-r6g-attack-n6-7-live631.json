@@ -1,0 +1,19 @@
+{
+  "at": "2026-08-25T08:22:03.164Z",
+  "exe": "C:\\Temp\\ccg-r28f-m10\\target-r28f-m10\\release\\agentcodegui.exe",
+  "attacks": {
+    "N6-거절무기화": {
+      "id": "N6-거절무기화",
+      "home": "C:\\Code\\AgentCodeGUI\\.crit-home-m10r2-n6",
+      "attempts": [
+        null,
+        null
+      ],
+      "sent": null,
+      "note": "발신 안 됨(→) — 수신 벽을 재지 못했다"
+    }
+  },
+  "broken": [],
+  "ms": 14812,
+  "verdict": "HELD"
+}

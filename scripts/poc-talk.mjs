@@ -754,6 +754,11 @@ async function phaseStop() {
 //
 // 이 값이 있으면 **실홈의 accounts/ 는 읽지도 쓰지도 않는다**(engines 정션만 읽기 전용으로
 // 그대로 쓴다). 이메일은 그 폴더의 `.claude.json`(oauthAccount.emailAddress)에서 읽는다.
+/** ★M10 R6 — 봉투 턴의 권한 하한(`readonly`(기본) · `ask`). §seedLiveHome (d). */
+const INJECT_POLICY = ((args.find((a) => a.startsWith('--policy=')) ?? '').split('=')[1] || '').trim()
+if (INJECT_POLICY && INJECT_POLICY !== 'readonly' && INJECT_POLICY !== 'ask') {
+  throw new Error(`--policy는 readonly|ask 둘뿐이다: ${INJECT_POLICY}`)
+}
 const LIVE_ACCOUNT_DIR = (
   (args.find((a) => a.startsWith('--account=')) ?? '').split('=').slice(1).join('=') ||
   process.env.CCG_LIVE_ACCOUNT_DIR ||
@@ -822,8 +827,18 @@ function seedLiveHome() {
   // (c) 채팅 둘 + 보드 하나. 값싼 조합(haiku·minimal)에 도구를 쓸 일이 없는 대화다.
   seedChats(HOME, WORK, { model: 'haiku', effort: 'minimal', mode: 'normal' })
   // (d) 대화 연결 — 이 보드만, 홉 2.
-  write(path.join(HOME, 'talk-config.json'), { version: 1, enabled: true, boards: { 'b-1': true }, maxHops: 2, maxMsgs: 6, maxFanout: 2 })
-  return { HOME, WORK, ver, email }
+  //
+  // ★M10 R6 — `--policy=`로 **봉투 턴의 권한 하한**을 갈아 끼운다(기본은 제품 기본값과
+  // 같은 `readonly`). 이 스위치가 필요한 이유는 R6 라이브 8표본이 전부 같은 자리에서
+  // 멎었기 때문이다: 하한 `readonly`는 그 턴을 **계획 모드**로 낮추고, 계획 모드의 CLI
+  // 프레이밍(「조사해서 계획을 제출하라」)이 봉투 문면보다 세다 — 8/8이 *"no actual task
+  // from you"*·*"nothing to plan"* 을 말했다. 그 값이 문면 탓인지 하한 탓인지는 **하한을
+  // 바꿔 같은 질문을 다시 던져야만** 갈린다. 이 스위치는 그 대조군을 만든다(제품 기본값을
+  // 바꾸지 않는다 — 재는 것과 정하는 것은 다르다).
+  const cfg = { version: 1, enabled: true, boards: { 'b-1': true }, maxHops: 2, maxMsgs: 6, maxFanout: 2 }
+  if (INJECT_POLICY) cfg.injectPolicy = INJECT_POLICY
+  write(path.join(HOME, 'talk-config.json'), cfg)
+  return { HOME, WORK, ver, email, policy: INJECT_POLICY || 'readonly' }
 }
 
 /**
@@ -851,7 +866,7 @@ const LIVE_PROMPT = [
 async function phaseLive() {
   console.log('\n[LIVE] 실 CLI 왕복 — A→B→A (haiku 3턴)')
   const s = seedLiveHome()
-  const out = { home: s.HOME, engine: s.ver, account: s.email, steps: {} }
+  const out = { home: s.HOME, engine: s.ver, account: s.email, policy: s.policy, steps: {} }
   const app = await boot(s.HOME, portFor(9392), { CCG_ENGINE_LOG: path.join(s.HOME, 'frames.jsonl') })
   try {
     await armEvents(app)
@@ -1041,8 +1056,12 @@ function seedInjectHome(tag) {
   if (!fs.existsSync(cli)) throw new Error(`claude.exe 없음: ${cli}\n${r.stdout}${r.stderr}`)
   const email = seedLiveAccount(HOME)
   seedChats(HOME, WORK, { model: 'haiku', effort: 'minimal', mode: 'normal' })
-  write(path.join(HOME, 'talk-config.json'), { version: 1, enabled: true, boards: { 'b-1': true }, maxHops: 1, maxMsgs: 4, maxFanout: 2 })
-  return { HOME, WORK, ver, email }
+  // ★M10 R6 — `--policy=`가 여기에도 걸린다(§seedLiveHome (d)). 봉투 주입은 하한을
+  // 바꿨을 때 **가장 직접** 값이 변하는 갈래라, 대조군을 live와 같은 스위치로 돌린다.
+  const cfg = { version: 1, enabled: true, boards: { 'b-1': true }, maxHops: 1, maxMsgs: 4, maxFanout: 2 }
+  if (INJECT_POLICY) cfg.injectPolicy = INJECT_POLICY
+  write(path.join(HOME, 'talk-config.json'), cfg)
+  return { HOME, WORK, ver, email, policy: INJECT_POLICY || 'readonly' }
 }
 
 const WAIT = 150_000

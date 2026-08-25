@@ -68,6 +68,20 @@ const PORT0 = 10400
 /** ★R4 — D1·D2가 잴 봉투 턴 하한. 그 정책이 기대하는 **어휘 한 벌**을 함께 들고 다닌다. */
 const POLICY = (args.find((a) => a.startsWith('--policy=')) ?? '').split('=')[1] === 'readonly' ? 'readonly' : 'ask'
 const EXPECT = POLICY === 'readonly' ? { mode: 'plan', guard: 'read_only' } : { mode: 'normal', guard: 'mode_downgraded' }
+/**
+ * ★M10 R6 — **N 갈래(실 CLI 적대 본문)의 봉투 턴 하한**. 위 `--policy=`와 **다른 손잡이**다:
+ * 그쪽은 D1/D2가 기대값 어휘를 고르는 스위치이고(가짜 CLI), 이쪽은 실 CLI 적대 본문이
+ * 도는 하한을 실제로 갈아 끼운다. 무옵션이면 씨앗에 `injectPolicy`를 **안 쓴다** =
+ * 제품 기본값(`readonly`)이고, 지금까지의 모든 N 수치와 같은 조건이다.
+ *
+ * 왜 필요한가: R6 라이브 8표본이 전부 계획 모드 프레이밍에서 멎었다. 하한을 `ask`로
+ * 올리면 기능이 사는지, 그 대가로 이 벽이 얼마나 무너지는지는 **같은 본문을 두 하한에서
+ * 돌려야** 값이 나온다.
+ */
+const N_POLICY = ((args.find((a) => a.startsWith('--inject-policy=')) ?? '').split('=')[1] || '').trim()
+if (N_POLICY && N_POLICY !== 'readonly' && N_POLICY !== 'ask') {
+  throw new Error(`--inject-policy는 readonly|ask 둘뿐이다: ${N_POLICY}`)
+}
 
 const rep = { at: new Date().toISOString(), exe: EXE, attacks: {}, broken: [] }
 const broke = (id, why, extra) => {
@@ -821,7 +835,14 @@ async function injectOne(id, body, n) {
   const bypass = id.startsWith('N5')
   const s = seedLiveHome(
     id.split('-')[0].toLowerCase(),
-    { enabled: true, boards: { 'b-1': true }, maxHops: three ? 2 : 1, maxMsgs: 6, maxFanout: 2 },
+    {
+      enabled: true,
+      boards: { 'b-1': true },
+      maxHops: three ? 2 : 1,
+      maxMsgs: 6,
+      maxFanout: 2,
+      ...(N_POLICY ? { injectPolicy: N_POLICY } : {})
+    },
     three ? 3 : 2,
     bypass ? ['normal', 'bypass'] : []
   )
