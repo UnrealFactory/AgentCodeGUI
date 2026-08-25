@@ -72,4 +72,8 @@ windows = { version = "0.61", features = [
   # 배터리 절약·원격 세션까지 한 값에 반영된다(DwmGetColorizationColor의
   # pfOpaqueBlend는 Win11 26200에서 거짓을 돌려줘 쓸 수 없다 — glass.rs 헤더 실측)
   "UI_ViewManagement",
+  # ★R28f SHIPBLOCK R2 — 로그인 취소가 **래퍼 안의 CLI**까지 닿게(ipc/accounts.rs
+  # `kill_wrapped_child`). `cmd /C`를 거쳐 띄운 `.cmd` 셰임은 우리 자식이 cmd.exe라
+  # `Child::kill()`이 정작 CLI를 못 죽인다 — 스냅샷으로 **직속 자식만** 찾아 죽인다.
+  "Win32_System_Diagnostics_ToolHelp",
 ] }

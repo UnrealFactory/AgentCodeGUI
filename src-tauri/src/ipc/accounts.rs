@@ -157,10 +157,19 @@ pub fn dispatch(app: &AppHandle, channel: &str, p: &Value) -> Option<Value> {
 /// (핸들은 축별로 **따로** 있어야 한다 — codex 로그인이 진행 중인 claude 로그인을
 /// 죽이면 안 된다).
 struct LoginSlot {
-    proc: Mutex<Option<(u64, Child)>>,
+    proc: Mutex<Option<Live>>,
     /// 로그인 시도 번호. **스폰 전에** 올린다 — 다음 시도가 우리를 죽이기 전에 번호가
     /// 올라가야 "내가 아직 최신인가"가 그 사이의 창에서도 참이다.
     gen: AtomicU64,
+}
+
+/// 슬롯에 앉은 살아 있는 로그인 하나.
+struct Live {
+    gen: u64,
+    child: Child,
+    /// `cmd /C` 래퍼를 거쳐 띄웠는가([`codex_command`]). 그렇다면 **우리가 띄우려던
+    /// 프로그램**은 이 자식이 아니라 이 자식의 직속 자식이다 — 취소가 거기까지 닿아야 한다.
+    wrapped: bool,
 }
 
 impl LoginSlot {
@@ -174,14 +183,20 @@ impl LoginSlot {
     }
 
     fn cancel(&self) {
-        if let Some((_, mut c)) = self.proc.lock().unwrap_or_else(|e| e.into_inner()).take() {
-            let _ = c.kill();
-            let _ = c.wait(); // 좀비를 남기지 않는다
+        // 잠금 **밖에서** 죽인다. 래퍼 갈래는 프로세스 스냅샷을 한 번 훑으므로
+        // 수십 ms가 걸리고, 그동안 잠금을 쥐고 있으면 `owns()`를 묻는 펌프 스레드와
+        // 두 번째 「취소」가 같이 선다.
+        let taken = self.proc.lock().unwrap_or_else(|e| e.into_inner()).take();
+        if let Some(mut live) = taken {
+            // 순서가 중요하다 — 부모가 살아 있어야 직속 자식을 찾는다.
+            kill_wrapped_child(live.child.id(), live.wrapped);
+            let _ = live.child.kill();
+            let _ = live.child.wait(); // 좀비를 남기지 않는다
         }
     }
 
-    fn put(&self, gen: u64, child: Child) {
-        *self.proc.lock().unwrap_or_else(|e| e.into_inner()) = Some((gen, child));
+    fn put(&self, gen: u64, child: Child, wrapped: bool) {
+        *self.proc.lock().unwrap_or_else(|e| e.into_inner()) = Some(Live { gen, child, wrapped });
     }
 
     /// 이 시도가 아직 **가장 최근의 시도**인가 — 2.6.2 `loginProc === child`의 판정.
@@ -189,17 +204,103 @@ impl LoginSlot {
         self.gen.load(AtomicOrd::SeqCst) == gen
     }
 
+    /// 슬롯에 **아직 내 자식이 앉아 있는가**. `false` = 취소됐거나 다음 시도가 치웠다
+    /// (둘 다 "내 자식은 이미 죽었다"는 뜻이다).
+    ///
+    /// ★R28f SHIPBLOCK R2 — 이 물음이 [`pump_login`]의 두 번째 완료 신호다. R1까지
+    /// 완료 신호는 **파이프 EOF 하나**뿐이었고, 그것이 확인 크리틱이 잰 5분 감옥의 기전이다.
+    fn owns(&self, gen: u64) -> bool {
+        self.proc.lock().unwrap_or_else(|e| e.into_inner()).as_ref().map(|l| l.gen) == Some(gen)
+    }
+
     /// **자기 자식일 때만** 핸들을 놓고 기다린다(2.6.2 `if (loginProc === child)`).
     fn finish(&self, gen: u64) {
         let mut g = self.proc.lock().unwrap_or_else(|e| e.into_inner());
-        let mine = g.as_ref().map(|(id, _)| *id) == Some(gen);
+        let mine = g.as_ref().map(|l| l.gen) == Some(gen);
         let taken = if mine { g.take() } else { None };
         drop(g); // wait()는 잠금 밖에서 — 남의 자식을 기다리며 취소를 막지 않는다
-        if let Some((_, mut c)) = taken {
-            let _ = c.wait();
+        if let Some(mut live) = taken {
+            let _ = live.child.wait();
         }
     }
 }
+
+/// `cmd /C` 래퍼 갈래에서 **래퍼 안의 CLI**를 죽인다 — 래퍼가 아닌 경우엔 아무것도 안 한다.
+///
+/// ★R28f SHIPBLOCK R2 · 확인 크리틱 ★최대 격차의 절반.
+///
+/// 실측(크리틱): 가짜 `codex.cmd`(login이 `ping -n 600`으로 버팀)를 PATH 맨 앞에 두고
+/// 「계정 추가」→「취소」를 누르면 **손자 `PING.EXE`가 앱 종료 뒤에도 산다**. 기전은
+/// [`codex_command`]의 `cmd /C`다 — 우리 자식은 `cmd.exe`고 `Child::kill()`은 그것만
+/// 죽인다. 정작 우리가 띄우려던 프로그램(셰임이 부른 CLI)은 재부모화되어 살아남는다.
+///
+/// ## 왜 트리 전체(`taskkill /T`)가 아니라 **직속 자식까지**인가
+///
+/// 로그인 CLI는 **브라우저를 자기가 연다**(`login()` 헤더의 실측 — "Opening browser to
+/// sign in…"). 그 브라우저는 CLI의 자식이므로 트리째 죽이면 **사용자가 방금 연 브라우저
+/// 창이 같이 죽는다**(그 브라우저가 그때 처음 뜬 인스턴스면 창이 통째로 사라진다).
+///
+/// 그리고 `.exe` 갈래와 **대칭이 맞아야 한다**: 네이티브 `codex.exe`를 띄웠을 때
+/// `Child::kill()`은 codex.exe만 죽이고 그것이 연 브라우저는 건드리지 않는다. `cmd /C`는
+/// **우리 구현의 사정**이지 사용자의 것이 아니므로, 래퍼 갈래에서 죽여야 할 것은 정확히
+/// 「래퍼 + 래퍼가 대신 띄운 그 프로그램」 = 자식과 **직속** 자식들이다. 그 아래는 CLI가
+/// 스스로 띄운 것이고, 그건 `.exe` 갈래에서도 살아남는다.
+///
+/// 스냅샷은 **우리 자식이 아직 살아 있을 때** 찍는다(부모 링크가 있어야 찾는다). 그래서
+/// 호출 순서는 이 함수 → `child.kill()`이다.
+fn kill_wrapped_child(pid: u32, wrapped: bool) {
+    if !wrapped {
+        return;
+    }
+    for c in direct_children(pid) {
+        terminate(c);
+    }
+}
+
+/// `pid`의 **직속** 자식 PID들. 부모가 아직 살아 있을 때만 부른다(죽은 뒤엔 링크가 끊긴다).
+#[cfg(windows)]
+fn direct_children(pid: u32) -> Vec<u32> {
+    use windows::Win32::Foundation::CloseHandle;
+    use windows::Win32::System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
+    };
+    let mut out = Vec::new();
+    unsafe {
+        let Ok(snap) = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) else { return out };
+        let mut e = PROCESSENTRY32W { dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32, ..Default::default() };
+        let mut ok = Process32FirstW(snap, &mut e).is_ok();
+        while ok {
+            if e.th32ParentProcessID == pid && e.th32ProcessID != pid {
+                out.push(e.th32ProcessID);
+            }
+            ok = Process32NextW(snap, &mut e).is_ok();
+        }
+        let _ = CloseHandle(snap);
+    }
+    out
+}
+
+#[cfg(windows)]
+fn terminate(pid: u32) {
+    use windows::Win32::Foundation::CloseHandle;
+    use windows::Win32::System::Threading::{OpenProcess, TerminateProcess, PROCESS_TERMINATE};
+    unsafe {
+        if let Ok(h) = OpenProcess(PROCESS_TERMINATE, false, pid) {
+            if !h.is_invalid() {
+                let _ = TerminateProcess(h, 1);
+                let _ = CloseHandle(h);
+            }
+        }
+    }
+}
+
+#[cfg(not(windows))]
+fn direct_children(_pid: u32) -> Vec<u32> {
+    Vec::new()
+}
+
+#[cfg(not(windows))]
+fn terminate(_pid: u32) {}
 
 static LOGIN: LoginSlot = LoginSlot::new();
 static CODEX_LOGIN_SLOT: LoginSlot = LoginSlot::new();
@@ -234,7 +335,8 @@ fn login(app: &AppHandle, use_console: bool) -> Value {
     }
 
     let spec = verify::login_command(&bin.to_string_lossy(), use_console);
-    if let Err(e) = pump_login(app, &LOGIN, gen, build(&spec), spec.timeout_ms) {
+    // claude 축은 래퍼를 안 쓴다(`build` = 직접 스폰) — `wrapped: false`.
+    if let Err(e) = pump_login(app, &LOGIN, gen, build(&spec), spec.timeout_ms, false) {
         return status_wire(false, &AuthStatus::default(), Some(&format!("{NO_BIN} ({e})")));
     }
     // 우리가 도는 사이에 **다른 로그인이 시작**됐다면 이 시도는 이미 무효다. 임시 폴더는
@@ -272,7 +374,26 @@ fn login(app: &AppHandle, use_console: bool) -> Value {
 /// ★R28f SHIPBLOCK N1 — 이 함수가 생기기 전에는 claude 축에만 이 몸통이 있었다. Codex
 /// 축을 배선하면서 복사했다면 「청크 단위로 읽는다」(개행 없이 멈추는 CLI)·「취소가 자기
 /// 자식만 죽인다」 같은 실측 규약이 두 벌이 됐을 것이고, 다음 라운드에 한쪽만 고쳐진다.
-fn pump_login(app: &AppHandle, slot: &LoginSlot, gen: u64, mut cmd: Command, timeout_ms: u64) -> Result<(), String> {
+///
+/// ★R28f SHIPBLOCK R2 — **완료 신호가 하나뿐이면 안 된다**(확인 크리틱 ★최대 격차).
+/// R1의 완료 판정은 파이프 EOF([`RecvTimeoutError::Disconnected`]) 하나였는데, 파이프의
+/// 쓰기 끝은 **자식이 아니라 자식의 후손 전부**가 들고 있다. `cmd /C` 래퍼 갈래에서
+/// 「취소」가 cmd.exe만 죽이면 손자가 파이프를 쥔 채 살아 EOF가 **영영 안 온다** →
+/// 이 루프가 5분 상한까지 서고 → `codex-auth:login` IPC가 5분간 안 돌아오고 →
+/// 렌더러 `busy='codex-login'`이 계정 탭의 두 축 버튼을 전부 disabled로 묶는다.
+///
+/// 그래서 신호를 **둘**로 만든다: 파이프 EOF **또는** 「슬롯에 내 자식이 더 이상 없다」
+/// ([`LoginSlot::owns`]). 후자는 취소·다음 시도 둘 다를 덮는다(R1은 「다음 로그인이
+/// 시작됐다」에서도 같은 이유로 EOF를 기다렸다). 손자 쪽은 [`kill_wrapped_child`]가
+/// 따로 닫는다 — 이 루프는 그것이 실패해도 서지 않아야 한다.
+fn pump_login(
+    app: &AppHandle,
+    slot: &LoginSlot,
+    gen: u64,
+    mut cmd: Command,
+    timeout_ms: u64,
+    wrapped: bool,
+) -> Result<(), String> {
     cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
     let mut child = cmd.spawn().map_err(|e| e.to_string())?;
 
@@ -299,17 +420,21 @@ fn pump_login(app: &AppHandle, slot: &LoginSlot, gen: u64, mut cmd: Command, tim
         });
     }
     drop(tx);
-    slot.put(gen, child);
+    slot.put(gen, child, wrapped);
 
     let deadline = std::time::Instant::now() + Duration::from_millis(timeout_ms);
     let mut sent_url = false;
     loop {
+        // 신호 ②: 슬롯이 비었거나 다른 시도의 것이다 = 취소됐다 / 밀려났다.
+        if !slot.owns(gen) {
+            break;
+        }
         let left = deadline.saturating_duration_since(std::time::Instant::now());
         if left.is_zero() {
             slot.cancel(); // 5분 상한(2.6.2의 setTimeout과 같은 값)
             break;
         }
-        match rx.recv_timeout(left) {
+        match rx.recv_timeout(left.min(CANCEL_POLL)) {
             Ok(chunk) => {
                 if !sent_url {
                     if let Some(url) = verify::extract_login_url(&chunk) {
@@ -318,10 +443,9 @@ fn pump_login(app: &AppHandle, slot: &LoginSlot, gen: u64, mut cmd: Command, tim
                     }
                 }
             }
-            Err(RecvTimeoutError::Timeout) => {
-                slot.cancel();
-                break;
-            }
+            // 폴 주기가 끝났을 뿐이다 — 상한과 취소는 루프 머리에서 다시 판정한다.
+            // (여기서 바로 끊으면 조용한 CLI가 150ms 만에 죽는다.)
+            Err(RecvTimeoutError::Timeout) => {}
             // 파이프 둘이 다 닫혔다 = 자식이 끝났다.
             Err(RecvTimeoutError::Disconnected) => break,
         }
@@ -329,6 +453,10 @@ fn pump_login(app: &AppHandle, slot: &LoginSlot, gen: u64, mut cmd: Command, tim
     slot.finish(gen);
     Ok(())
 }
+
+/// 「취소됐는가」를 다시 묻는 주기. 이 값이 곧 **취소 → 화면이 풀리기까지의 상한**이다
+/// (5분 상한의 정확도에는 영향이 없다 — 상한은 `deadline`으로 따로 잰다).
+const CANCEL_POLL: Duration = Duration::from_millis(150);
 
 const NO_BIN: &str = "claude 실행 파일을 찾지 못했어요";
 
@@ -436,7 +564,8 @@ fn codex_login(app: &AppHandle) -> Value {
     }
 
     let spec = verify::codex_login_command(&bin.to_string_lossy());
-    if let Err(e) = pump_login(app, &CODEX_LOGIN_SLOT, gen, codex_command(&bin, &spec), spec.timeout_ms) {
+    let (cmd, wrapped) = codex_command(&bin, &spec);
+    if let Err(e) = pump_login(app, &CODEX_LOGIN_SLOT, gen, cmd, spec.timeout_ms, wrapped) {
         return login_error(&format!("{NO_CODEX_BIN} ({e})"));
     }
     // 다른 로그인이 시작됐으면 임시 폴더는 이제 그쪽 것이다 — 읽지도 지우지도 않는다
@@ -474,7 +603,8 @@ fn codex_logout(email: &str) -> Value {
             if dir.path().join("auth.json").is_file() {
                 if let Some(bin) = crate::engine::codex_versions::codex_exe() {
                     let spec = verify::codex_logout_command(&bin.to_string_lossy(), &dir);
-                    wait_or_kill(codex_command(&bin, &spec), spec.timeout_ms);
+                    let (cmd, wrapped) = codex_command(&bin, &spec);
+                    wait_or_kill(cmd, spec.timeout_ms, wrapped);
                 }
             }
         }
@@ -486,7 +616,10 @@ fn codex_logout(email: &str) -> Value {
 
 /// 출력이 필요 없는 한 방짜리 명령(`codex logout`). 상한을 넘으면 **우리가 스폰한 그
 /// 자식만** 죽인다([`run`]과 같은 규약 — 이름 기반 kill 없음).
-fn wait_or_kill(mut cmd: Command, timeout_ms: u64) {
+///
+/// ★R28f SHIPBLOCK R2 — 래퍼 갈래는 로그인과 같은 규칙을 쓴다([`kill_wrapped_child`]):
+/// 상한을 넘겨 죽일 때 `cmd.exe`만 죽이면 정작 `codex logout`이 살아남는다.
+fn wait_or_kill(mut cmd: Command, timeout_ms: u64, wrapped: bool) {
     cmd.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
     let Ok(mut child) = cmd.spawn() else { return };
     let deadline = std::time::Instant::now() + Duration::from_millis(timeout_ms);
@@ -495,6 +628,8 @@ fn wait_or_kill(mut cmd: Command, timeout_ms: u64) {
             Ok(Some(_)) => return,
             Ok(None) if std::time::Instant::now() < deadline => std::thread::sleep(Duration::from_millis(60)),
             _ => {
+                // 순서가 중요하다 — 부모가 살아 있어야 직속 자식을 찾는다.
+                kill_wrapped_child(child.id(), wrapped);
                 let _ = child.kill();
                 let _ = child.wait();
                 return;
@@ -511,14 +646,19 @@ fn wait_or_kill(mut cmd: Command, timeout_ms: u64) {
 /// 판정 규칙은 `ccg_engine::codex::driver::command_for`의 `needs_shell`과 같다 —
 /// `.exe`·`.com`만 직접, 나머지 확장자는 셸. (그 함수는 인자가 `app-server` 고정이라
 /// 로그인·로그아웃에 못 쓴다. 그 크레이트는 이 라운드의 경계 밖이라 판정만 옮겨 적는다.)
-fn codex_command(bin: &std::path::Path, spec: &CommandSpec) -> Command {
+///
+/// ★R28f SHIPBLOCK R2 — 두 번째 값이 **래퍼를 썼는가**다. 호출부는 그 한 비트를 자식과
+/// 함께 들고 다녀야 한다: 래퍼 갈래에서는 죽여야 할 대상이 우리 자식(`cmd.exe`)이 아니라
+/// **그 직속 자식**이기 때문이다([`kill_wrapped_child`]). 비트를 여기서 같이 돌려주는
+/// 이유는 판정이 **한 자리**여야 해서다 — 호출부가 확장자를 다시 보면 두 판정이 갈린다.
+fn codex_command(bin: &std::path::Path, spec: &CommandSpec) -> (Command, bool) {
     let needs_shell = cfg!(windows)
         && bin
             .extension()
             .and_then(|e| e.to_str())
             .is_some_and(|e| !matches!(e.to_ascii_lowercase().as_str(), "exe" | "com"));
     if !needs_shell {
-        return build(spec);
+        return (build(spec), false);
     }
     let mut c = Command::new("cmd");
     let s = bin.to_string_lossy().to_string();
@@ -537,7 +677,7 @@ fn codex_command(bin: &std::path::Path, spec: &CommandSpec) -> Command {
     for (k, v) in &spec.env {
         c.env(k, v);
     }
-    c
+    (c, true)
 }
 
 // ── 자식 프로세스 ────────────────────────────────────────────────────────────
@@ -681,11 +821,159 @@ mod tests {
         // 그 창에서 A가 마무리해도 B의 자리는 그대로다(핸들을 꺼내는 조건이 번호다).
         let mut g = LOGIN.proc.lock().unwrap_or_else(|e| e.into_inner());
         *g = None; // 자식 없이 번호만 확인하는 자리 — Child를 만들지 않는다
-        assert!(g.as_ref().map(|(id, _)| *id) != Some(a));
+        assert!(g.as_ref().map(|l| l.gen) != Some(a));
         drop(g);
         // ★R28f — 축이 갈린다: codex 쪽 번호를 올려도 claude 쪽 "최신" 판정은 안 흔들린다.
         let c = CODEX_LOGIN_SLOT.begin();
         assert!(LOGIN.still_current(b), "★두 축은 서로의 시도를 무효화하지 않는다");
         assert!(CODEX_LOGIN_SLOT.still_current(c));
+    }
+
+    /// ★R28f SHIPBLOCK R2 — 래퍼 판정은 **한 자리**고, 그 비트가 호출부까지 간다.
+    #[test]
+    fn the_wrapper_bit_travels_with_the_command() {
+        let spec = CommandSpec { program: "x".into(), args: vec!["login".into()], env: vec![], timeout_ms: 1000 };
+        let (_, wrapped_exe) = codex_command(std::path::Path::new(r"C:\a\codex.exe"), &spec);
+        let (_, wrapped_cmd) = codex_command(std::path::Path::new(r"C:\a\codex.cmd"), &spec);
+        assert!(!wrapped_exe, "네이티브 exe는 래퍼를 안 쓴다 = 죽일 대상이 자식 그 자체다");
+        assert_eq!(wrapped_cmd, cfg!(windows), "윈도우에서 .cmd는 cmd /C를 거친다");
+    }
+
+    /// ★R28f SHIPBLOCK R2 · 확인 크리틱 ★최대 격차 — **취소가 래퍼 안의 CLI까지 닿는가**.
+    ///
+    /// 크리틱의 픽스처를 그대로 코드로 옮긴다: `cmd /C`로 오래 도는 프로그램을 띄우고
+    /// (셰임이 CLI를 부르는 모양), 파이프를 자식이 아니라 **손자**가 쥐게 한 뒤 취소한다.
+    ///
+    /// R1의 `cancel()`은 `cmd.exe`만 죽였다 — 그러면 손자가 살아 파이프가 안 닫히고
+    /// `pump_login`의 유일한 완료 신호(EOF)가 영영 안 와서 IPC가 5분을 선다.
+    /// 여기서 재는 것은 그 사슬의 첫 고리다: **손자가 죽는가**, 그리고 **슬롯이 비는가**
+    /// (= `owns()`가 false = 펌프의 두 번째 완료 신호가 선다).
+    ///
+    /// ★픽스처의 함정(이 라운드에서 실제로 밟았다): 파이프를 `Child`에 그대로 둔 채
+    /// 취소하면 `Child`가 드롭되면서 **읽기 끝이 닫히고**, 그러면 손자가 첫 출력에서
+    /// 죽어 「고쳤다」가 거짓으로 초록이 된다(처방을 무력화해도 통과했다). 제품 경로는
+    /// [`pump_login`]이 파이프를 **읽기 스레드로 옮기고** 그 스레드가 영영 안 끝나는
+    /// 모양이라, 테스트도 그대로 옮겨야 한다.
+    #[cfg(windows)]
+    #[test]
+    fn cancelling_a_wrapped_login_kills_the_program_inside_the_wrapper() {
+        let (child, pid, kids) = spawn_wrapped_fixture();
+        let slot = LoginSlot::new();
+        let gen = slot.begin();
+        slot.put(gen, child, true);
+        assert!(slot.owns(gen), "스폰 직후엔 내 자식이 앉아 있다");
+
+        slot.cancel();
+
+        assert!(!slot.owns(gen), "★취소 뒤 슬롯은 비어 있다 = 펌프가 EOF를 안 기다리고 깬다");
+        let leftover = wait_until_dead(&kids);
+        for p in &leftover {
+            terminate(*p); // 실패해도 뒤처리는 한다 — 테스트가 프로세스를 남기지 않게
+        }
+        assert!(leftover.is_empty(), "★래퍼 안의 프로그램이 살아남았다(pid {pid}의 자식): {leftover:?}");
+    }
+
+    /// 래퍼가 **아닌** 자식은 직속 자식을 건드리지 않는다 — 네이티브 CLI가 연 브라우저를
+    /// 취소가 같이 죽이면 안 된다(그것이 트리째 죽이지 않는 이유다).
+    #[cfg(windows)]
+    #[test]
+    fn cancelling_an_unwrapped_login_leaves_what_the_cli_launched_alone() {
+        let (child, _pid, kids) = spawn_wrapped_fixture();
+        // `wrapped:false` = 「이 자식이 곧 우리가 띄우려던 프로그램이다」.
+        let slot = LoginSlot::new();
+        let gen = slot.begin();
+        slot.put(gen, child, false);
+        slot.cancel();
+        assert!(!slot.owns(gen));
+        // 자식(cmd.exe)은 죽었지만 그 아래는 우리 것이 아니다 — 1초 뒤에도 살아 있어야 한다.
+        std::thread::sleep(Duration::from_millis(1000));
+        let still = kids.iter().copied().filter(|p| pid_is_alive(*p)).collect::<Vec<_>>();
+        for p in &kids {
+            terminate(*p); // 뒤처리
+        }
+        assert!(!still.is_empty(), "★unwrapped인데 CLI가 띄운 것까지 죽었다(브라우저가 죽는 모양)");
+    }
+
+    /// 크리틱의 `.cmd` 셰임과 같은 모양: `cmd /C`가 오래 도는 프로그램을 부르고, 파이프는
+    /// [`pump_login`]처럼 **읽기 스레드**가 쥔다(`Child`에 남기지 않는다).
+    /// 돌려주는 것: 슬롯에 앉힐 자식 · 그 pid · 그 직속 자식(손자) 목록.
+    #[cfg(windows)]
+    fn spawn_wrapped_fixture() -> (Child, u32, Vec<u32>) {
+        use std::os::windows::process::CommandExt;
+        let mut c = Command::new("cmd");
+        c.raw_arg("/C").raw_arg("ping -n 600 127.0.0.1");
+        c.creation_flags(0x0800_0000);
+        c.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
+        let mut child = c.spawn().expect("cmd 스폰");
+        let pid = child.id();
+        for pipe in [
+            child.stdout.take().map(|p| Box::new(p) as Box<dyn Read + Send>),
+            child.stderr.take().map(|p| Box::new(p) as Box<dyn Read + Send>),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            std::thread::spawn(move || {
+                let mut pipe = pipe;
+                let mut buf = [0u8; 4096];
+                while matches!(pipe.read(&mut buf), Ok(n) if n > 0) {}
+            });
+        }
+        // ★두 번째 픽스처 함정: `CREATE_NO_WINDOW`라도 `cmd.exe`는 **conhost.exe를 먼저**
+        // 자식으로 단다. 첫 스냅샷을 바로 찍으면 그 하나만 잡히고(정작 `ping`은 아직
+        // 안 떴다), conhost는 부모와 함께 죽으므로 두 테스트가 다 거짓으로 통과한다.
+        // 그래서 **자식이 늘기를 멈출 때까지** 기다린 뒤 찍는다.
+        let mut kids = direct_children(pid);
+        for _ in 0..60 {
+            std::thread::sleep(Duration::from_millis(100));
+            let now = direct_children(pid);
+            if now.len() > kids.len() {
+                kids = now;
+                continue;
+            }
+            if kids.len() >= 2 {
+                break;
+            }
+            kids = now;
+        }
+        assert!(
+            kids.len() >= 2,
+            "★래퍼 안의 프로그램이 안 떴다 — 픽스처가 무의미하다(자식 {kids:?})"
+        );
+        (child, pid, kids)
+    }
+
+    /// 최대 5초 기다린 뒤 **아직 살아 있는** pid들.
+    #[cfg(windows)]
+    fn wait_until_dead(pids: &[u32]) -> Vec<u32> {
+        let mut alive = pids.to_vec();
+        for _ in 0..100 {
+            alive.retain(|p| pid_is_alive(*p));
+            if alive.is_empty() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        alive
+    }
+
+    #[cfg(windows)]
+    fn pid_is_alive(pid: u32) -> bool {
+        use windows::Win32::Foundation::{CloseHandle, STILL_ACTIVE};
+        use windows::Win32::System::Threading::{
+            GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+        };
+        unsafe {
+            let Ok(h) = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) else {
+                return false;
+            };
+            if h.is_invalid() {
+                return false;
+            }
+            let mut code: u32 = 0;
+            let ok = GetExitCodeProcess(h, &mut code).is_ok();
+            let _ = CloseHandle(h);
+            ok && code == STILL_ACTIVE.0 as u32
+        }
     }
 }
