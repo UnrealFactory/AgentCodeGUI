@@ -1,0 +1,231 @@
+{
+  "at": "2026-08-25T13:50:41.392Z",
+  "arm": "ready",
+  "exe": "C:/Temp/ccg-r28g-audit/target-upd/release/agentcodegui.exe",
+  "port": 10632,
+  "plant": {
+    "phase": "downloaded",
+    "version": "9.9.9-upd-stub",
+    "percent": 100,
+    "log": [
+      "stub"
+    ],
+    "error": null
+  },
+  "what": "앱 자동 업데이트 통로(app:update-check/install/event) 화면 축 판정 — 감사 R5 수정 라운드 1",
+  "runs": [
+    {
+      "run": 1,
+      "home": "C:\\Temp\\ccg-r28g-audit\\home-upd-ready-j1",
+      "at": "2026-08-25T13:50:41.418Z",
+      "console": [
+        {
+          "type": "warning",
+          "txt": "[shim] app:update-check — 백엔드 미구현 채널 (3.0 M1: 안전값 반환)"
+        },
+        {
+          "type": "warning",
+          "txt": "[shim] app:update-install — 백엔드 미구현 채널 (3.0 M1: 안전값 반환)"
+        }
+      ],
+      "pid": 32692,
+      "mounted1": true,
+      "href1": "http://tauri.localhost/",
+      "injected": "ok",
+      "mounted2": true,
+      "screen": {
+        "href": "http://tauri.localhost/",
+        "upd": 1,
+        "updText": "새 버전이 나왔어요3.0.0-beta.1 → 9.9.9-upd-stub · 바로 적용돼요나중에업데이트",
+        "goBtn": 1,
+        "laterBtn": 1,
+        "bar": 0,
+        "sb": 0,
+        "win": 1,
+        "rootKids": 1,
+        "stub": "{\"applied\":true,\"via\":\"window.api setter\",\"planted\":{\"phase\":\"downloaded\",\"version\":\"9.9.9-upd-stub\",\"percent\":100,\"log\":[\"stub\"],\"error\":null}}"
+      },
+      "valid": true,
+      "raw": {
+        "app:get-version": "\"3.0.0-beta.1\"",
+        "app:update-status": "{\"phase\":\"idle\",\"version\":null,\"percent\":0,\"log\":[],\"error\":null}",
+        "app:update-check": "{\"__unimplemented\":true}",
+        "app:update-event": "{\"__unimplemented\":true}",
+        "ccg:no-such-channel-r5upd": "{\"__unimplemented\":true}"
+      },
+      "apiGetStatus": "{\"phase\":\"downloaded\",\"version\":\"9.9.9-upd-stub\",\"percent\":100,\"log\":[\"stub\"],\"error\":null}",
+      "apiCheck": "resolved:null",
+      "clickGo": "clicked",
+      "screenAfterGo": {
+        "href": "http://tauri.localhost/",
+        "upd": 1,
+        "updText": "새 버전이 나왔어요3.0.0-beta.1 → 9.9.9-upd-stub · 적용하는 중…",
+        "goBtn": 0,
+        "laterBtn": 0,
+        "bar": 0,
+        "sb": 0,
+        "win": 1,
+        "rootKids": 1,
+        "stub": "{\"applied\":true,\"via\":\"window.api setter\",\"planted\":{\"phase\":\"downloaded\",\"version\":\"9.9.9-upd-stub\",\"percent\":100,\"log\":[\"stub\"],\"error\":null}}"
+      },
+      "aliveAfterGo": true,
+      "rawInstall": "{\"__unimplemented\":true}",
+      "aliveAfterInstall": true,
+      "screenAfterInstall": {
+        "href": "http://tauri.localhost/",
+        "upd": 1,
+        "updText": "새 버전이 나왔어요3.0.0-beta.1 → 9.9.9-upd-stub · 적용하는 중…",
+        "goBtn": 0,
+        "laterBtn": 0,
+        "bar": 0,
+        "sb": 0,
+        "win": 1,
+        "rootKids": 1,
+        "stub": "{\"applied\":true,\"via\":\"window.api setter\",\"planted\":{\"phase\":\"downloaded\",\"version\":\"9.9.9-upd-stub\",\"percent\":100,\"log\":[\"stub\"],\"error\":null}}"
+      },
+      "portFreeMs": 26
+    },
+    {
+      "run": 2,
+      "home": "C:\\Temp\\ccg-r28g-audit\\home-upd-ready-j2",
+      "at": "2026-08-25T13:50:53.514Z",
+      "console": [
+        {
+          "type": "warning",
+          "txt": "[shim] app:update-check — 백엔드 미구현 채널 (3.0 M1: 안전값 반환)"
+        },
+        {
+          "type": "warning",
+          "txt": "[shim] app:update-install — 백엔드 미구현 채널 (3.0 M1: 안전값 반환)"
+        }
+      ],
+      "pid": 16440,
+      "mounted1": true,
+      "href1": "http://tauri.localhost/",
+      "injected": "ok",
+      "mounted2": true,
+      "screen": {
+        "href": "http://tauri.localhost/",
+        "upd": 1,
+        "updText": "새 버전이 나왔어요3.0.0-beta.1 → 9.9.9-upd-stub · 바로 적용돼요나중에업데이트",
+        "goBtn": 1,
+        "laterBtn": 1,
+        "bar": 0,
+        "sb": 0,
+        "win": 1,
+        "rootKids": 1,
+        "stub": "{\"applied\":true,\"via\":\"window.api setter\",\"planted\":{\"phase\":\"downloaded\",\"version\":\"9.9.9-upd-stub\",\"percent\":100,\"log\":[\"stub\"],\"error\":null}}"
+      },
+      "valid": true,
+      "raw": {
+        "app:get-version": "\"3.0.0-beta.1\"",
+        "app:update-status": "{\"phase\":\"idle\",\"version\":null,\"percent\":0,\"log\":[],\"error\":null}",
+        "app:update-check": "{\"__unimplemented\":true}",
+        "app:update-event": "{\"__unimplemented\":true}",
+        "ccg:no-such-channel-r5upd": "{\"__unimplemented\":true}"
+      },
+      "apiGetStatus": "{\"phase\":\"downloaded\",\"version\":\"9.9.9-upd-stub\",\"percent\":100,\"log\":[\"stub\"],\"error\":null}",
+      "apiCheck": "resolved:null",
+      "clickGo": "clicked",
+      "screenAfterGo": {
+        "href": "http://tauri.localhost/",
+        "upd": 1,
+        "updText": "새 버전이 나왔어요3.0.0-beta.1 → 9.9.9-upd-stub · 적용하는 중…",
+        "goBtn": 0,
+        "laterBtn": 0,
+        "bar": 0,
+        "sb": 0,
+        "win": 1,
+        "rootKids": 1,
+        "stub": "{\"applied\":true,\"via\":\"window.api setter\",\"planted\":{\"phase\":\"downloaded\",\"version\":\"9.9.9-upd-stub\",\"percent\":100,\"log\":[\"stub\"],\"error\":null}}"
+      },
+      "aliveAfterGo": true,
+      "rawInstall": "{\"__unimplemented\":true}",
+      "aliveAfterInstall": true,
+      "screenAfterInstall": {
+        "href": "http://tauri.localhost/",
+        "upd": 1,
+        "updText": "새 버전이 나왔어요3.0.0-beta.1 → 9.9.9-upd-stub · 적용하는 중…",
+        "goBtn": 0,
+        "laterBtn": 0,
+        "bar": 0,
+        "sb": 0,
+        "win": 1,
+        "rootKids": 1,
+        "stub": "{\"applied\":true,\"via\":\"window.api setter\",\"planted\":{\"phase\":\"downloaded\",\"version\":\"9.9.9-upd-stub\",\"percent\":100,\"log\":[\"stub\"],\"error\":null}}"
+      },
+      "portFreeMs": 27
+    },
+    {
+      "run": 3,
+      "home": "C:\\Temp\\ccg-r28g-audit\\home-upd-ready-j3",
+      "at": "2026-08-25T13:51:05.845Z",
+      "console": [
+        {
+          "type": "warning",
+          "txt": "[shim] app:update-check — 백엔드 미구현 채널 (3.0 M1: 안전값 반환)"
+        },
+        {
+          "type": "warning",
+          "txt": "[shim] app:update-install — 백엔드 미구현 채널 (3.0 M1: 안전값 반환)"
+        }
+      ],
+      "pid": 42132,
+      "mounted1": true,
+      "href1": "http://tauri.localhost/",
+      "injected": "ok",
+      "mounted2": true,
+      "screen": {
+        "href": "http://tauri.localhost/",
+        "upd": 1,
+        "updText": "새 버전이 나왔어요3.0.0-beta.1 → 9.9.9-upd-stub · 바로 적용돼요나중에업데이트",
+        "goBtn": 1,
+        "laterBtn": 1,
+        "bar": 0,
+        "sb": 0,
+        "win": 1,
+        "rootKids": 1,
+        "stub": "{\"applied\":true,\"via\":\"window.api setter\",\"planted\":{\"phase\":\"downloaded\",\"version\":\"9.9.9-upd-stub\",\"percent\":100,\"log\":[\"stub\"],\"error\":null}}"
+      },
+      "valid": true,
+      "raw": {
+        "app:get-version": "\"3.0.0-beta.1\"",
+        "app:update-status": "{\"phase\":\"idle\",\"version\":null,\"percent\":0,\"log\":[],\"error\":null}",
+        "app:update-check": "{\"__unimplemented\":true}",
+        "app:update-event": "{\"__unimplemented\":true}",
+        "ccg:no-such-channel-r5upd": "{\"__unimplemented\":true}"
+      },
+      "apiGetStatus": "{\"phase\":\"downloaded\",\"version\":\"9.9.9-upd-stub\",\"percent\":100,\"log\":[\"stub\"],\"error\":null}",
+      "apiCheck": "resolved:null",
+      "clickGo": "clicked",
+      "screenAfterGo": {
+        "href": "http://tauri.localhost/",
+        "upd": 1,
+        "updText": "새 버전이 나왔어요3.0.0-beta.1 → 9.9.9-upd-stub · 적용하는 중…",
+        "goBtn": 0,
+        "laterBtn": 0,
+        "bar": 0,
+        "sb": 0,
+        "win": 1,
+        "rootKids": 1,
+        "stub": "{\"applied\":true,\"via\":\"window.api setter\",\"planted\":{\"phase\":\"downloaded\",\"version\":\"9.9.9-upd-stub\",\"percent\":100,\"log\":[\"stub\"],\"error\":null}}"
+      },
+      "aliveAfterGo": true,
+      "rawInstall": "{\"__unimplemented\":true}",
+      "aliveAfterInstall": true,
+      "screenAfterInstall": {
+        "href": "http://tauri.localhost/",
+        "upd": 1,
+        "updText": "새 버전이 나왔어요3.0.0-beta.1 → 9.9.9-upd-stub · 적용하는 중…",
+        "goBtn": 0,
+        "laterBtn": 0,
+        "bar": 0,
+        "sb": 0,
+        "win": 1,
+        "rootKids": 1,
+        "stub": "{\"applied\":true,\"via\":\"window.api setter\",\"planted\":{\"phase\":\"downloaded\",\"version\":\"9.9.9-upd-stub\",\"percent\":100,\"log\":[\"stub\"],\"error\":null}}"
+      },
+      "portFreeMs": 22
+    }
+  ]
+}

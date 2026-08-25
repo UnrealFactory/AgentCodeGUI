@@ -1,0 +1,42 @@
+{
+  "at": "2026-08-25T13:53:58.917Z",
+  "app": "2.6.2(out/ · 개발 실행)",
+  "port": 10634,
+  "what": "2.6.2 자동 업데이트 IPC 핸들러 런타임 유무",
+  "runs": [
+    {
+      "run": 1,
+      "home": "C:\\Temp\\ccg-r28g-audit\\home-upd262-j1",
+      "uprof": "C:\\Temp\\ccg-r28g-audit\\uprof-upd262-j1",
+      "at": "2026-08-25T13:53:59.858Z",
+      "pid": 8692,
+      "screen": {
+        "upd": 0,
+        "updText": "",
+        "rootKids": 1
+      },
+      "version": "RESOLVE:\"2.6.2\"",
+      "getStatus": "RESOLVE:{\"phase\":\"idle\",\"version\":null,\"percent\":0,\"log\":[],\"error\":null}",
+      "check": "RESOLVE:null",
+      "install": "RESOLVE:null",
+      "aliveAfterInstall": true
+    },
+    {
+      "run": 2,
+      "home": "C:\\Temp\\ccg-r28g-audit\\home-upd262-j2",
+      "uprof": "C:\\Temp\\ccg-r28g-audit\\uprof-upd262-j2",
+      "at": "2026-08-25T13:54:09.714Z",
+      "pid": 7176,
+      "screen": {
+        "upd": 0,
+        "updText": "",
+        "rootKids": 1
+      },
+      "version": "RESOLVE:\"2.6.2\"",
+      "getStatus": "RESOLVE:{\"phase\":\"idle\",\"version\":null,\"percent\":0,\"log\":[],\"error\":null}",
+      "check": "RESOLVE:null",
+      "install": "RESOLVE:null",
+      "aliveAfterInstall": true
+    }
+  ]
+}

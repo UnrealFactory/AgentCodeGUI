@@ -1,0 +1,166 @@
+{
+  "at": "2026-08-25T13:50:13.271Z",
+  "arm": "bare",
+  "exe": "C:/Temp/ccg-r28g-audit/target-upd/release/agentcodegui.exe",
+  "port": 10631,
+  "plant": null,
+  "what": "앱 자동 업데이트 통로(app:update-check/install/event) 화면 축 판정 — 감사 R5 수정 라운드 1",
+  "runs": [
+    {
+      "run": 1,
+      "home": "C:\\Temp\\ccg-r28g-audit\\home-upd-bare-j1",
+      "at": "2026-08-25T13:50:13.295Z",
+      "console": [
+        {
+          "type": "warning",
+          "txt": "[shim] app:update-check — 백엔드 미구현 채널 (3.0 M1: 안전값 반환)"
+        }
+      ],
+      "pid": 7560,
+      "mounted1": true,
+      "href1": "http://tauri.localhost/",
+      "mounted2": true,
+      "screen": {
+        "href": "http://tauri.localhost/",
+        "upd": 0,
+        "updText": "",
+        "goBtn": 0,
+        "laterBtn": 0,
+        "bar": 0,
+        "sb": 0,
+        "win": 1,
+        "rootKids": 1,
+        "stub": null
+      },
+      "valid": true,
+      "raw": {
+        "app:get-version": "\"3.0.0-beta.1\"",
+        "app:update-status": "{\"phase\":\"idle\",\"version\":null,\"percent\":0,\"log\":[],\"error\":null}",
+        "app:update-check": "{\"__unimplemented\":true}",
+        "app:update-event": "{\"__unimplemented\":true}",
+        "ccg:no-such-channel-r5upd": "{\"__unimplemented\":true}"
+      },
+      "apiGetStatus": "{\"phase\":\"idle\",\"version\":null,\"percent\":0,\"log\":[],\"error\":null}",
+      "apiCheck": "resolved:null",
+      "rawInstall": "{\"__unimplemented\":true}",
+      "aliveAfterInstall": true,
+      "screenAfterInstall": {
+        "href": "http://tauri.localhost/",
+        "upd": 0,
+        "updText": "",
+        "goBtn": 0,
+        "laterBtn": 0,
+        "bar": 0,
+        "sb": 0,
+        "win": 1,
+        "rootKids": 1,
+        "stub": null
+      },
+      "portFreeMs": 22
+    },
+    {
+      "run": 2,
+      "home": "C:\\Temp\\ccg-r28g-audit\\home-upd-bare-j2",
+      "at": "2026-08-25T13:50:22.681Z",
+      "console": [
+        {
+          "type": "warning",
+          "txt": "[shim] app:update-check — 백엔드 미구현 채널 (3.0 M1: 안전값 반환)"
+        }
+      ],
+      "pid": 37956,
+      "mounted1": true,
+      "href1": "http://tauri.localhost/",
+      "mounted2": true,
+      "screen": {
+        "href": "http://tauri.localhost/",
+        "upd": 0,
+        "updText": "",
+        "goBtn": 0,
+        "laterBtn": 0,
+        "bar": 0,
+        "sb": 0,
+        "win": 1,
+        "rootKids": 1,
+        "stub": null
+      },
+      "valid": true,
+      "raw": {
+        "app:get-version": "\"3.0.0-beta.1\"",
+        "app:update-status": "{\"phase\":\"idle\",\"version\":null,\"percent\":0,\"log\":[],\"error\":null}",
+        "app:update-check": "{\"__unimplemented\":true}",
+        "app:update-event": "{\"__unimplemented\":true}",
+        "ccg:no-such-channel-r5upd": "{\"__unimplemented\":true}"
+      },
+      "apiGetStatus": "{\"phase\":\"idle\",\"version\":null,\"percent\":0,\"log\":[],\"error\":null}",
+      "apiCheck": "resolved:null",
+      "rawInstall": "{\"__unimplemented\":true}",
+      "aliveAfterInstall": true,
+      "screenAfterInstall": {
+        "href": "http://tauri.localhost/",
+        "upd": 0,
+        "updText": "",
+        "goBtn": 0,
+        "laterBtn": 0,
+        "bar": 0,
+        "sb": 0,
+        "win": 1,
+        "rootKids": 1,
+        "stub": null
+      },
+      "portFreeMs": 28
+    },
+    {
+      "run": 3,
+      "home": "C:\\Temp\\ccg-r28g-audit\\home-upd-bare-j3",
+      "at": "2026-08-25T13:50:31.952Z",
+      "console": [
+        {
+          "type": "warning",
+          "txt": "[shim] app:update-check — 백엔드 미구현 채널 (3.0 M1: 안전값 반환)"
+        }
+      ],
+      "pid": 19476,
+      "mounted1": true,
+      "href1": "http://tauri.localhost/",
+      "mounted2": true,
+      "screen": {
+        "href": "http://tauri.localhost/",
+        "upd": 0,
+        "updText": "",
+        "goBtn": 0,
+        "laterBtn": 0,
+        "bar": 0,
+        "sb": 0,
+        "win": 1,
+        "rootKids": 1,
+        "stub": null
+      },
+      "valid": true,
+      "raw": {
+        "app:get-version": "\"3.0.0-beta.1\"",
+        "app:update-status": "{\"phase\":\"idle\",\"version\":null,\"percent\":0,\"log\":[],\"error\":null}",
+        "app:update-check": "{\"__unimplemented\":true}",
+        "app:update-event": "{\"__unimplemented\":true}",
+        "ccg:no-such-channel-r5upd": "{\"__unimplemented\":true}"
+      },
+      "apiGetStatus": "{\"phase\":\"idle\",\"version\":null,\"percent\":0,\"log\":[],\"error\":null}",
+      "apiCheck": "resolved:null",
+      "rawInstall": "{\"__unimplemented\":true}",
+      "aliveAfterInstall": true,
+      "screenAfterInstall": {
+        "href": "http://tauri.localhost/",
+        "upd": 0,
+        "updText": "",
+        "goBtn": 0,
+        "laterBtn": 0,
+        "bar": 0,
+        "sb": 0,
+        "win": 1,
+        "rootKids": 1,
+        "stub": null
+      },
+      "portFreeMs": 32
+    }
+  ]
+}
