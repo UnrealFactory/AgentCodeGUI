@@ -1,0 +1,44 @@
+{
+  "at": "2026-08-25T02:14:35.172Z",
+  "exe": "C:\\Code\\AgentCodeGUI\\target\\release\\agentcodegui.exe",
+  "steps": {
+    "live": {
+      "home": "C:\\Code\\AgentCodeGUI\\.poc-home-talk-live-live631",
+      "engine": "0.3.241",
+      "account": "lmg56631@gmail.com",
+      "steps": {
+        "config": {
+          "version": 1,
+          "enabled": true,
+          "boards": {
+            "b-1": true
+          },
+          "maxHops": 2,
+          "maxMsgs": 6,
+          "maxFanout": 2,
+          "stoppedAt": null,
+          "injectPolicy": "readonly",
+          "noticeAckAt": null
+        },
+        "hop1": null
+      },
+      "chats": {
+        "A": "c-a",
+        "B": "c-b"
+      }
+    }
+  },
+  "findings": [
+    {
+      "id": "L1-A→B",
+      "why": "A의 발신이 안 나갔다: (구문 없음)",
+      "hop1": null,
+      "aText": [
+        "ndle impossible requests or exploring multi-agent communication patterns, I'd be happy to discuss that directly instead. Or if you have an actual task—whether it's code work, exploration, or something else—I'm ready to help with the real tools available to me."
+      ]
+    }
+  ],
+  "ms": 241845,
+  "skipped": [],
+  "verdict": "FAIL"
+}

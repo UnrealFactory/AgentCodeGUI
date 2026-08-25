@@ -526,6 +526,55 @@ async function A7() {
 // A8 — 봉투 주입(실 CLI · haiku). 적대 본문이 봉투 경고를 무력화시키나.
 //      A는 사람이 시킨 대로 적대 한 줄을 쓰고, B가 그걸 어떻게 읽는지 본다.
 // ═══════════════════════════════════════════════════════════════════════════
+// 계정 주입 — `--account=<폴더>` 또는 `CCG_LIVE_ACCOUNT_DIR`이 있으면 **실홈 accounts/ 를
+// 읽지도 쓰지도 않고** 그 격리 폴더의 자격증명을 쓴다(측정 전용 계정으로 도는 라운드에서
+// 실앱 토큰이 되싱크되는 것을 막는다). 무옵션이면 종전대로 실홈 기본 계정을 복사한다.
+const LIVE_ACCOUNT_DIR = (
+  (args.find((a) => a.startsWith('--account=')) ?? '').split('=').slice(1).join('=') ||
+  process.env.CCG_LIVE_ACCOUNT_DIR ||
+  ''
+).trim()
+
+/** 격리 홈에 계정 하나를 앉힌다. 반환 = 그 계정 이메일. */
+function seedLiveAccount(HOME) {
+  if (LIVE_ACCOUNT_DIR) {
+    const srcDir = path.resolve(LIVE_ACCOUNT_DIR)
+    const cred = path.join(srcDir, '.credentials.json')
+    if (!fs.existsSync(cred)) throw new Error(`--account 폴더에 .credentials.json 없음: ${srcDir}`)
+    const name = path.basename(srcDir)
+    let email = ''
+    let sub = 'max'
+    try {
+      email = JSON.parse(fs.readFileSync(path.join(srcDir, '.claude.json'), 'utf8'))?.oauthAccount?.emailAddress ?? ''
+    } catch {}
+    if (!email) email = name.replace(/-[0-9a-z]+$/i, '').replace('_', '@')
+    try {
+      sub = JSON.parse(fs.readFileSync(cred, 'utf8'))?.claudeAiOauth?.subscriptionType || 'max'
+    } catch {}
+    const dstDir = path.join(HOME, 'accounts', name)
+    fs.mkdirSync(dstDir, { recursive: true })
+    for (const f of ['.credentials.json', '.claude.json']) {
+      const s = path.join(srcDir, f)
+      if (fs.existsSync(s)) fs.copyFileSync(s, path.join(dstDir, f))
+    }
+    write(path.join(HOME, 'accounts.json'), { version: 3, defaultEmail: email, accounts: [{ email, subscriptionType: sub }] })
+    return email
+  }
+  const accounts = JSON.parse(fs.readFileSync(path.join(REAL_HOME, 'accounts.json'), 'utf8'))
+  const email = accounts.defaultEmail
+  const prefix = email.replace('@', '_').replace('+', '-')
+  const srcDir = fs.readdirSync(path.join(REAL_HOME, 'accounts')).find((n) => n === prefix || n.startsWith(prefix + '-'))
+  if (!srcDir) throw new Error(`기본 계정 폴더 없음: ${prefix}`)
+  const dstDir = path.join(HOME, 'accounts', srcDir)
+  fs.mkdirSync(dstDir, { recursive: true })
+  for (const f of ['.credentials.json', '.claude.json']) {
+    const src = path.join(REAL_HOME, 'accounts', srcDir, f)
+    if (fs.existsSync(src)) fs.copyFileSync(src, path.join(dstDir, f))
+  }
+  write(path.join(HOME, 'accounts.json'), accounts)
+  return email
+}
+
 function seedLiveHome(name, cfg) {
   const HOME = path.join(REPO, `.crit-home-m10-${name}`)
   const WORK = path.join(HOME, 'work')
@@ -537,17 +586,7 @@ function seedLiveHome(name, cfg) {
   const r = spawnSync('cmd', ['/c', 'mklink', '/J', link, path.join(REAL_HOME, 'engines')], { encoding: 'utf8' })
   const cli = path.join(link, ver, 'node_modules/@anthropic-ai/claude-agent-sdk-win32-x64/claude.exe')
   if (!fs.existsSync(cli)) throw new Error(`claude.exe 없음: ${cli}\n${r.stdout}${r.stderr}`)
-  const accounts = JSON.parse(fs.readFileSync(path.join(REAL_HOME, 'accounts.json'), 'utf8'))
-  const email = accounts.defaultEmail
-  const prefix = email.replace('@', '_').replace('+', '-')
-  const srcDir = fs.readdirSync(path.join(REAL_HOME, 'accounts')).find((n) => n === prefix || n.startsWith(prefix + '-'))
-  const dstDir = path.join(HOME, 'accounts', srcDir)
-  fs.mkdirSync(dstDir, { recursive: true })
-  for (const f of ['.credentials.json', '.claude.json']) {
-    const src = path.join(REAL_HOME, 'accounts', srcDir, f)
-    if (fs.existsSync(src)) fs.copyFileSync(src, path.join(dstDir, f))
-  }
-  write(path.join(HOME, 'accounts.json'), accounts)
+  const email = seedLiveAccount(HOME)
   write(path.join(HOME, 'chats', 'index.json'), { version: 1, order: ['c-a', 'c-b'], activeChatId: 'c-a' })
   for (const [id, title] of [
     ['c-a', '설계'],

@@ -741,6 +741,66 @@ async function phaseStop() {
 //    본문 자체가 상대에게 "너도 한 줄 써라"라고 지시하므로 왕복이 성립하고,
 //    마지막 한 걸음만 **라우터가** 막는다(모델의 자제가 아니라 벽으로 막는 것을 본다).
 // ═════════════════════════════════════════════════════════════════════════════
+// ═════════════════════════════════════════════════════════════════════════════
+// 계정 주입 — 실 CLI 주행이 **어느 계정으로** 도는가
+//
+// 기본(무옵션)은 종전과 같다: 실홈 기본 계정의 자격증명을 격리 홈으로 **복사**한다.
+// 그런데 복사본이라도 토큰 자체는 같은 것이라, CLI가 리프레시를 돌리면 실앱이 들고 있는
+// 토큰이 되싱크될 수 있다(M11이 고친 그 실패다). 그래서 「측정 전용 계정」을 따로 로그인해
+// 둔 폴더를 가리킬 수 있게 한다:
+//
+//   node scripts/poc-talk.mjs --only=live --account=C:\Temp\ccg-m10-live\accounts\lmg56631_gmail.com
+//   CCG_LIVE_ACCOUNT_DIR=... node scripts/poc-talk.mjs --only=inject
+//
+// 이 값이 있으면 **실홈의 accounts/ 는 읽지도 쓰지도 않는다**(engines 정션만 읽기 전용으로
+// 그대로 쓴다). 이메일은 그 폴더의 `.claude.json`(oauthAccount.emailAddress)에서 읽는다.
+const LIVE_ACCOUNT_DIR = (
+  (args.find((a) => a.startsWith('--account=')) ?? '').split('=').slice(1).join('=') ||
+  process.env.CCG_LIVE_ACCOUNT_DIR ||
+  ''
+).trim()
+
+/** 격리 홈에 계정 하나를 앉힌다. 반환 = 그 계정 이메일. */
+function seedLiveAccount(HOME) {
+  if (LIVE_ACCOUNT_DIR) {
+    const srcDir = path.resolve(LIVE_ACCOUNT_DIR)
+    const cred = path.join(srcDir, '.credentials.json')
+    if (!fs.existsSync(cred)) throw new Error(`--account 폴더에 .credentials.json 없음: ${srcDir}`)
+    const name = path.basename(srcDir)
+    let email = ''
+    let sub = 'max'
+    try {
+      email = JSON.parse(fs.readFileSync(path.join(srcDir, '.claude.json'), 'utf8'))?.oauthAccount?.emailAddress ?? ''
+    } catch {}
+    if (!email) email = name.replace(/-[0-9a-z]+$/i, '').replace('_', '@')
+    try {
+      sub = JSON.parse(fs.readFileSync(cred, 'utf8'))?.claudeAiOauth?.subscriptionType || 'max'
+    } catch {}
+    const dstDir = path.join(HOME, 'accounts', name)
+    fs.mkdirSync(dstDir, { recursive: true })
+    for (const f of ['.credentials.json', '.claude.json']) {
+      const s = path.join(srcDir, f)
+      if (fs.existsSync(s)) fs.copyFileSync(s, path.join(dstDir, f))
+    }
+    // 스토어의 credEnc는 폴더 재생성용 **백업**일 뿐이다 — 폴더 크리덴셜만으로 충분하다.
+    write(path.join(HOME, 'accounts.json'), { version: 3, defaultEmail: email, accounts: [{ email, subscriptionType: sub }] })
+    return email
+  }
+  const accounts = JSON.parse(fs.readFileSync(path.join(REAL_HOME, 'accounts.json'), 'utf8'))
+  const email = accounts.defaultEmail
+  const prefix = email.replace('@', '_').replace('+', '-')
+  const srcDir = fs.readdirSync(path.join(REAL_HOME, 'accounts')).find((n) => n === prefix || n.startsWith(prefix + '-'))
+  if (!srcDir) throw new Error(`기본 계정 폴더 없음: ${prefix}`)
+  const dstDir = path.join(HOME, 'accounts', srcDir)
+  fs.mkdirSync(dstDir, { recursive: true })
+  for (const f of ['.credentials.json', '.claude.json']) {
+    const src = path.join(REAL_HOME, 'accounts', srcDir, f)
+    if (fs.existsSync(src)) fs.copyFileSync(src, path.join(dstDir, f))
+  }
+  write(path.join(HOME, 'accounts.json'), accounts)
+  return email
+}
+
 function seedLiveHome() {
   const HOME = homeFor('live')
   const WORK = path.join(HOME, 'work')
@@ -755,19 +815,9 @@ function seedLiveHome() {
   const cli = path.join(link, ver, 'node_modules/@anthropic-ai/claude-agent-sdk-win32-x64/claude.exe')
   if (!fs.existsSync(cli)) throw new Error(`claude.exe 없음: ${cli}\n${r.stdout}${r.stderr}`)
 
-  // (b) 계정 — 기본 계정 자격증명을 **복사**(CLI의 토큰 갱신이 실홈에 안 닿게)
-  const accounts = JSON.parse(fs.readFileSync(path.join(REAL_HOME, 'accounts.json'), 'utf8'))
-  const email = accounts.defaultEmail
-  const prefix = email.replace('@', '_').replace('+', '-')
-  const srcDir = fs.readdirSync(path.join(REAL_HOME, 'accounts')).find((n) => n === prefix || n.startsWith(prefix + '-'))
-  if (!srcDir) throw new Error(`기본 계정 폴더 없음: ${prefix}`)
-  const dstDir = path.join(HOME, 'accounts', srcDir)
-  fs.mkdirSync(dstDir, { recursive: true })
-  for (const f of ['.credentials.json', '.claude.json']) {
-    const src = path.join(REAL_HOME, 'accounts', srcDir, f)
-    if (fs.existsSync(src)) fs.copyFileSync(src, path.join(dstDir, f))
-  }
-  write(path.join(HOME, 'accounts.json'), accounts)
+  // (b) 계정 — 자격증명을 **복사**(CLI의 토큰 갱신이 실홈에 안 닿게). `--account=`가 있으면
+  //     실홈이 아니라 그 격리 폴더에서 복사한다(§seedLiveAccount).
+  const email = seedLiveAccount(HOME)
 
   // (c) 채팅 둘 + 보드 하나. 값싼 조합(haiku·minimal)에 도구를 쓸 일이 없는 대화다.
   seedChats(HOME, WORK, { model: 'haiku', effort: 'minimal', mode: 'normal' })
@@ -989,18 +1039,7 @@ function seedInjectHome(tag) {
   const r = spawnSync('cmd', ['/c', 'mklink', '/J', link, path.join(REAL_HOME, 'engines')], { encoding: 'utf8' })
   const cli = path.join(link, ver, 'node_modules/@anthropic-ai/claude-agent-sdk-win32-x64/claude.exe')
   if (!fs.existsSync(cli)) throw new Error(`claude.exe 없음: ${cli}\n${r.stdout}${r.stderr}`)
-  const accounts = JSON.parse(fs.readFileSync(path.join(REAL_HOME, 'accounts.json'), 'utf8'))
-  const email = accounts.defaultEmail
-  const prefix = email.replace('@', '_').replace('+', '-')
-  const srcDir = fs.readdirSync(path.join(REAL_HOME, 'accounts')).find((n) => n === prefix || n.startsWith(prefix + '-'))
-  if (!srcDir) throw new Error(`기본 계정 폴더 없음: ${prefix}`)
-  const dstDir = path.join(HOME, 'accounts', srcDir)
-  fs.mkdirSync(dstDir, { recursive: true })
-  for (const f of ['.credentials.json', '.claude.json']) {
-    const src = path.join(REAL_HOME, 'accounts', srcDir, f)
-    if (fs.existsSync(src)) fs.copyFileSync(src, path.join(dstDir, f))
-  }
-  write(path.join(HOME, 'accounts.json'), accounts)
+  const email = seedLiveAccount(HOME)
   seedChats(HOME, WORK, { model: 'haiku', effort: 'minimal', mode: 'normal' })
   write(path.join(HOME, 'talk-config.json'), { version: 1, enabled: true, boards: { 'b-1': true }, maxHops: 1, maxMsgs: 4, maxFanout: 2 })
   return { HOME, WORK, ver, email }

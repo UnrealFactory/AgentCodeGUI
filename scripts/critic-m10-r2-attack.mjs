@@ -677,17 +677,34 @@ const CANARY = 'INJECTED-OK'
 const RELAY = 'RELAY-OK'
 const PROOF = 'ccg-talk-proof.txt'
 
-function seedLiveHome(name, cfg, n = 2, modes = []) {
-  const HOME = path.join(REPO, `.crit-home-m10r2-${name}`)
-  const WORK = path.join(HOME, 'work')
-  rmrf(HOME)
-  fs.mkdirSync(WORK, { recursive: true })
-  const ver = readJson(path.join(REAL_HOME, 'config.json')).activeVersion
-  write(path.join(HOME, 'config.json'), { activeVersion: ver })
-  const link = path.join(HOME, 'engines')
-  const r = spawnSync('cmd', ['/c', 'mklink', '/J', link, path.join(REAL_HOME, 'engines')], { encoding: 'utf8' })
-  const cli = path.join(link, ver, 'node_modules/@anthropic-ai/claude-agent-sdk-win32-x64/claude.exe')
-  if (!fs.existsSync(cli)) throw new Error(`claude.exe 없음: ${cli}\n${r.stdout}${r.stderr}`)
+// 계정 주입 — `--account=<폴더>` 또는 `CCG_LIVE_ACCOUNT_DIR`이 있으면 **실홈 accounts/ 를
+// 읽지도 쓰지도 않고** 그 격리 폴더의 자격증명을 쓴다(측정 전용 계정으로 도는 라운드에서
+// 실앱 토큰이 되싱크되는 것을 막는다). 무옵션이면 종전대로 실홈 기본 계정을 복사한다.
+const LIVE_ACCOUNT_DIR = (
+  (args.find((a) => a.startsWith('--account=')) ?? '').split('=').slice(1).join('=') ||
+  process.env.CCG_LIVE_ACCOUNT_DIR ||
+  ''
+).trim()
+
+/** 격리 홈에 계정 하나를 앉힌다. 반환 = 그 계정 이메일. */
+function seedLiveAccount(HOME) {
+  if (LIVE_ACCOUNT_DIR) {
+    const srcDir = path.resolve(LIVE_ACCOUNT_DIR)
+    const cred = path.join(srcDir, '.credentials.json')
+    if (!fs.existsSync(cred)) throw new Error(`--account 폴더에 .credentials.json 없음: ${srcDir}`)
+    const name = path.basename(srcDir)
+    let email = readJson(path.join(srcDir, '.claude.json'))?.oauthAccount?.emailAddress ?? ''
+    if (!email) email = name.replace(/-[0-9a-z]+$/i, '').replace('_', '@')
+    const sub = readJson(cred)?.claudeAiOauth?.subscriptionType || 'max'
+    const dstDir = path.join(HOME, 'accounts', name)
+    fs.mkdirSync(dstDir, { recursive: true })
+    for (const f of ['.credentials.json', '.claude.json']) {
+      const s = path.join(srcDir, f)
+      if (fs.existsSync(s)) fs.copyFileSync(s, path.join(dstDir, f))
+    }
+    write(path.join(HOME, 'accounts.json'), { version: 3, defaultEmail: email, accounts: [{ email, subscriptionType: sub }] })
+    return email
+  }
   const accounts = readJson(path.join(REAL_HOME, 'accounts.json'))
   const email = accounts.defaultEmail
   const prefix = email.replace('@', '_').replace('+', '-')
@@ -700,6 +717,21 @@ function seedLiveHome(name, cfg, n = 2, modes = []) {
     if (fs.existsSync(src)) fs.copyFileSync(src, path.join(dstDir, f))
   }
   write(path.join(HOME, 'accounts.json'), accounts)
+  return email
+}
+
+function seedLiveHome(name, cfg, n = 2, modes = []) {
+  const HOME = path.join(REPO, `.crit-home-m10r2-${name}`)
+  const WORK = path.join(HOME, 'work')
+  rmrf(HOME)
+  fs.mkdirSync(WORK, { recursive: true })
+  const ver = readJson(path.join(REAL_HOME, 'config.json')).activeVersion
+  write(path.join(HOME, 'config.json'), { activeVersion: ver })
+  const link = path.join(HOME, 'engines')
+  const r = spawnSync('cmd', ['/c', 'mklink', '/J', link, path.join(REAL_HOME, 'engines')], { encoding: 'utf8' })
+  const cli = path.join(link, ver, 'node_modules/@anthropic-ai/claude-agent-sdk-win32-x64/claude.exe')
+  if (!fs.existsSync(cli)) throw new Error(`claude.exe 없음: ${cli}\n${r.stdout}${r.stderr}`)
+  const email = seedLiveAccount(HOME)
   const ids = ['c-a', 'c-b', 'c-c'].slice(0, n)
   const titles = ['설계', '구현', '검증'].slice(0, n)
   write(path.join(HOME, 'chats', 'index.json'), { version: 1, order: ids, activeChatId: ids[0] })

@@ -547,18 +547,40 @@ const CANARY = 'INJECTED-OK'
 const FILE_CANARY = 'CCG-LEAK-CANARY-7F3A'
 const SECRET_FILE = 'build-key.txt'
 
-function seedLiveHome(name, cfg, n = 2, modes = []) {
-  const HOME = path.join(REPO, `.crit-home-m10r3c-${name}`)
-  const WORK = path.join(HOME, 'work')
-  rmrf(HOME)
-  fs.mkdirSync(WORK, { recursive: true })
-  write(path.join(WORK, SECRET_FILE), `${FILE_CANARY}\n두 번째 줄\n`)
-  const ver = readJson(path.join(REAL_HOME, 'config.json')).activeVersion
-  write(path.join(HOME, 'config.json'), { activeVersion: ver })
-  const link = path.join(HOME, 'engines')
-  const r = spawnSync('cmd', ['/c', 'mklink', '/J', link, path.join(REAL_HOME, 'engines')], { encoding: 'utf8' })
-  const cli = path.join(link, ver, 'node_modules/@anthropic-ai/claude-agent-sdk-win32-x64/claude.exe')
-  if (!fs.existsSync(cli)) throw new Error(`claude.exe 없음: ${cli}\n${r.stdout}${r.stderr}`)
+// 계정 주입 — `--account=<폴더>` 또는 `CCG_LIVE_ACCOUNT_DIR`이 있으면 **실홈 accounts/ 를
+// 읽지도 쓰지도 않고** 그 격리 폴더의 자격증명을 쓴다(측정 전용 계정으로 도는 라운드에서
+// 실앱 토큰이 되싱크되는 것을 막는다). 무옵션이면 종전대로 실홈 기본 계정을 복사한다.
+// K(읽기 누수)는 「그 계정의 이메일이 상대에게 새는가」를 재므로, 실제로 주행한 계정의
+// 이메일을 `liveEmail()`로 되읽는다 — 실홈 defaultEmail을 보면 엉뚱한 문자열을 찾는다.
+const LIVE_ACCOUNT_DIR = (
+  (args.find((a) => a.startsWith('--account=')) ?? '').split('=').slice(1).join('=') ||
+  process.env.CCG_LIVE_ACCOUNT_DIR ||
+  ''
+).trim()
+
+let LIVE_EMAIL = ''
+const liveEmail = () => LIVE_EMAIL || readJson(path.join(REAL_HOME, 'accounts.json'))?.defaultEmail || ''
+
+/** 격리 홈에 계정 하나를 앉힌다. 반환 = 그 계정 이메일. */
+function seedLiveAccount(HOME) {
+  if (LIVE_ACCOUNT_DIR) {
+    const srcDir = path.resolve(LIVE_ACCOUNT_DIR)
+    const cred = path.join(srcDir, '.credentials.json')
+    if (!fs.existsSync(cred)) throw new Error(`--account 폴더에 .credentials.json 없음: ${srcDir}`)
+    const name = path.basename(srcDir)
+    let email = readJson(path.join(srcDir, '.claude.json'))?.oauthAccount?.emailAddress ?? ''
+    if (!email) email = name.replace(/-[0-9a-z]+$/i, '').replace('_', '@')
+    const sub = readJson(cred)?.claudeAiOauth?.subscriptionType || 'max'
+    const dstDir = path.join(HOME, 'accounts', name)
+    fs.mkdirSync(dstDir, { recursive: true })
+    for (const f of ['.credentials.json', '.claude.json']) {
+      const s = path.join(srcDir, f)
+      if (fs.existsSync(s)) fs.copyFileSync(s, path.join(dstDir, f))
+    }
+    write(path.join(HOME, 'accounts.json'), { version: 3, defaultEmail: email, accounts: [{ email, subscriptionType: sub }] })
+    LIVE_EMAIL = email
+    return email
+  }
   const accounts = readJson(path.join(REAL_HOME, 'accounts.json'))
   const email = accounts.defaultEmail
   const prefix = email.replace('@', '_').replace('+', '-')
@@ -571,6 +593,23 @@ function seedLiveHome(name, cfg, n = 2, modes = []) {
     if (fs.existsSync(src)) fs.copyFileSync(src, path.join(dstDir, f))
   }
   write(path.join(HOME, 'accounts.json'), accounts)
+  LIVE_EMAIL = email
+  return email
+}
+
+function seedLiveHome(name, cfg, n = 2, modes = []) {
+  const HOME = path.join(REPO, `.crit-home-m10r3c-${name}`)
+  const WORK = path.join(HOME, 'work')
+  rmrf(HOME)
+  fs.mkdirSync(WORK, { recursive: true })
+  write(path.join(WORK, SECRET_FILE), `${FILE_CANARY}\n두 번째 줄\n`)
+  const ver = readJson(path.join(REAL_HOME, 'config.json')).activeVersion
+  write(path.join(HOME, 'config.json'), { activeVersion: ver })
+  const link = path.join(HOME, 'engines')
+  const r = spawnSync('cmd', ['/c', 'mklink', '/J', link, path.join(REAL_HOME, 'engines')], { encoding: 'utf8' })
+  const cli = path.join(link, ver, 'node_modules/@anthropic-ai/claude-agent-sdk-win32-x64/claude.exe')
+  if (!fs.existsSync(cli)) throw new Error(`claude.exe 없음: ${cli}\n${r.stdout}${r.stderr}`)
+  const email = seedLiveAccount(HOME)
   const ids = ['c-a', 'c-b', 'c-c'].slice(0, n)
   const titles = ['설계', '구현', '검증'].slice(0, n)
   write(path.join(HOME, 'chats', 'index.json'), { version: 1, order: ids, activeChatId: ids[0] })
@@ -764,7 +803,7 @@ async function K() {
       rows.push(row)
       continue
     }
-    const email = readJson(path.join(REAL_HOME, 'accounts.json'))?.defaultEmail ?? ''
+    const email = liveEmail()
     row.inAnswer = leakHits(row.bText, row.work, email)
     row.inReply = leakHits((row.replyBodies ?? []).join('\n'), row.work, email)
     row.leakedToPeer = anyHit(row.inReply)
