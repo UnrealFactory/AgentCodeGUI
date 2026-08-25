@@ -159,6 +159,11 @@ fn claim_boot() -> bool {
 }
 
 /// 빈 `ChatStatusLite` — 채팅은 있는데 상태 기록이 없을 때의 값.
+///
+/// ★R28i BANNER — 여기 `autoResume: true`는 **대기표를 모르는 기본값**이다(이 함수는
+/// `chat_id` 말고는 아무것도 안 본다). 대기표를 아는 자리는 [`row_from_disk`]이고,
+/// 접힌 표(`hold.paused`)에서 이 칸을 접는 것도 거기다 — 이 상수를 그대로 화면까지
+/// 보내면 배너가 「곧 이어서 계속해요」라고 적고 버튼을 안 준다(아무 일도 안 일어나는데).
 pub fn empty_lite(chat_id: &str) -> Value {
     json!({
         "chatId": chat_id,
@@ -252,6 +257,25 @@ fn row_from_disk(id: &str, stored: &Map<String, Value>) -> Value {
     if let Some(o) = lite.as_object_mut() {
         let (queued, hold) = truth_from_chat_file(id);
         o.insert("queued".into(), json!(queued));
+        // ★R28i BANNER — **접힌 표는 `autoResume`도 접는다.**
+        //
+        // R28g가 `hold.paused`를 진실로 만들었는데, 배너 문장이 갈리는 **다른 한 칸**은
+        // 아직 상수였다: `status.json`에 그 채팅 행이 없으면(마이그레이션 직후 · 파일
+        // 유실 · 이 홈에서 한 번도 안 돈 채팅) 행은 [`empty_lite`]에서 나오고 그 값은
+        // 언제나 `autoResume: true`다. 그러면 12발을 태우고 엔진이 자동을 접은 표가
+        // 부팅 첫 프레임에서 `ready:true` + `auto:true`로 서고, 렌더러의 갈림
+        // (`LimitHoldBar`의 `press = managed.ready && managed.auto !== true`)이 **뒤집힌다**
+        // — 화면은 「한도가 풀렸어요 — 곧 이어서 계속해요」라고 적고 「이어가기」 버튼을
+        // 안 준다. 누를 것도 없고 일어날 일도 없다(엔진은 이미 접었다).
+        //
+        // 규칙은 런타임 쪽(`engine::lite::build`)과 **같다**:
+        // `auto_resume = rt.auto_resume() && !hold.auto_paused`. 부팅에는 런타임이 없으니
+        // 앞항은 행이 들고 온 값(스토어 행이면 마지막 lite, 없으면 기본값 `true`)이고,
+        // 뒷항은 방금 파일에서 읽은 그 사실이다. 접힘은 **디스크가 아는 진실**이라
+        // 행의 출처와 무관하게 이긴다(규약 3의 정신 그대로 — 어긋나면 채팅 파일이 이긴다).
+        if hold.get("paused").and_then(Value::as_bool).unwrap_or(false) {
+            o.insert("autoResume".into(), json!(false));
+        }
         o.insert("hold".into(), hold);
     }
     lite
@@ -1172,6 +1196,83 @@ mod tests {
         assert!(banner_says_budget(&folded), "★★ 배너가 12발 태운 표에 「한도가 풀렸어요」라고 말한다");
         assert_eq!(old["paused"], json!(false), "★ 칸이 없는 파일은 R28f 그대로여야 한다(회귀 0)");
         assert!(!banner_says_budget(&old), "★ 대조군이 그 거짓말을 재현하지 못했다 — 이 못은 아무것도 안 재고 있다");
+        let _ = h;
+    }
+
+    /// ★R28i BANNER — **`status.json`이 모르는 채팅**의 부팅 행에서도 화면 문구가 갈린다.
+    ///
+    /// R28g가 `hold.paused`를 진실로 만들었지만, 배너가 갈리는 칸은 **둘**이다:
+    /// `hold.paused`와 `autoResume`. 뒤쪽은 [`empty_lite`]의 상수 `true`였고, 행이 거기서
+    /// 나오는 판이 실제로 있다 — 마이그레이션 직후 · `status.json` 유실 · 이 홈에서 한 번도
+    /// 안 돈 채팅. 그 판에서 렌더러의 갈림
+    /// (`Chat.tsx` `LimitHoldBar`: `press = managed.ready && managed.auto !== true`)이
+    /// 뒤집혀 「곧 이어서 계속해요」가 서고 **「이어가기」 버튼이 없다**. 엔진은 이미 자동을
+    /// 접었으므로 그 화면에서는 아무 일도 안 일어난다(= 사용자에게 출구가 없다).
+    ///
+    /// 이 못은 그 배치를 그대로 세운다(홈에 `status.json`이 없다 · 채팅 파일만 있다) —
+    /// 그리고 재는 것은 필드가 아니라 **화면 문구**다. 대조군(같은 파일에서 `paused`만
+    /// 거짓 = 진짜로 풀린 표)은 그대로 「곧 이어서 계속해요」여야 한다.
+    #[test]
+    fn a_folded_table_still_gets_the_button_in_a_home_status_json_never_saw() {
+        let h = crate::testkit::temp_home("status-noboot-auto");
+        // ① 12발 태우고 엔진이 접은 표(실앱이 남긴 모양 그대로).
+        h.write(
+            "chats-v3/c-fold.json",
+            &json!({ "id": "c-fold",
+                     "hold": { "resetsAt": 1_787_649_364.888_f64, "ready": true, "attempts": 0, "fires": 12, "paused": true } })
+            .to_string(),
+        );
+        // ② 대조군 — 진짜로 풀린 표(엔진이 아직 안 접었다).
+        h.write(
+            "chats-v3/c-open.json",
+            &json!({ "id": "c-open",
+                     "hold": { "resetsAt": 1_787_649_364.888_f64, "ready": true, "attempts": 0, "fires": 3, "paused": false } })
+            .to_string(),
+        );
+        assert!(!path().exists(), "★ 전제가 깨졌다 — 이 못은 상태 파일이 **없는** 홈을 재야 한다: {}", path().display());
+
+        let boot = load_boot(&["c-fold".to_string(), "c-open".to_string()]);
+        let fold = &boot["c-fold"];
+        let open = &boot["c-open"];
+        println!("[R28i BANNER] 부팅 행 c-fold = {fold}");
+        println!("[R28i BANNER] 부팅 행 c-open = {open}");
+
+        // 렌더러 실번들과 **같은 식**(`Chat.tsx` `LimitHoldBar` · `limitResume.ts` `budgetLanding`).
+        let press = |row: &Value| {
+            row["hold"]["ready"].as_bool().unwrap_or(false) && row["autoResume"].as_bool() != Some(true)
+        };
+        let says = |row: &Value| -> String {
+            if !row["hold"]["ready"].as_bool().unwrap_or(false) {
+                return "약 N 뒤 …".into();
+            }
+            if !press(row) {
+                return "한도가 풀렸어요 — 곧 이어서 계속해요".into();
+            }
+            let paused = row["hold"]["paused"].as_bool().unwrap_or(false);
+            let fires = row["hold"]["fires"].as_u64().unwrap_or(0);
+            if paused && fires >= 12 {
+                format!("이 한도 창에서 자동으로 {fires}번 이어서 보냈는데 계속 막혔어요 — 눌러서 이어가기")
+            } else if paused {
+                "자동으로 이어서 보낸 턴이 계속 한도에 막혔어요 — 눌러서 이어가기".into()
+            } else {
+                "한도가 풀렸어요 — 눌러서 이어가기".into()
+            }
+        };
+
+        // 화면부터 단정한다 — 붉을 때 첫 줄이 **사용자가 읽는 문장**이라야 한다.
+        assert_eq!(
+            says(fold),
+            "이 한도 창에서 자동으로 12번 이어서 보냈는데 계속 막혔어요 — 눌러서 이어가기",
+            "★★ 부팅 첫 프레임의 문장이 거짓이다(행: {fold})"
+        );
+        assert!(press(fold), "★★ 12발 태운 표에 「이어가기」 버튼이 없다 — 엔진은 이미 접었고 사용자에게 출구가 없다");
+        assert_eq!(fold["autoResume"], json!(false), "★★ 접힌 표의 부팅 행이 「자동이 켜져 있다」고 말한다: {fold}");
+        assert_eq!(fold["hold"]["paused"], json!(true), "★ 접힘 자체가 안 실렸다(R28g 회귀): {fold}");
+
+        // 대조군 — 진짜로 풀린 표는 R28g 그대로다(회귀 0). 엔진이 곧 쏜다.
+        assert_eq!(open["autoResume"], json!(true), "★ 안 접힌 표까지 접었다: {open}");
+        assert!(!press(open), "★ 곧 엔진이 쏠 표에 버튼을 줬다 — 그 버튼은 이중 전송의 입구다");
+        assert_eq!(says(open), "한도가 풀렸어요 — 곧 이어서 계속해요");
         let _ = h;
     }
 }
