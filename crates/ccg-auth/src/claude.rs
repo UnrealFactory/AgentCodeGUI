@@ -358,12 +358,49 @@ const READ_RETRY_MS: u64 = 3;
 //    임계 구역을 늘리면 로그아웃 한 번이 그만큼 멎는다(확인 크리틱 R1 §7의 그 대가).
 // 2. **부르는 쪽을 안 세운다** — 감시는 전용 스레드가 한다. 배경 회전이 판마다 50ms씩
 //    멎으면 이 못의 부하가 통째로 사라진다(못이 재는 것이 곧 그 부하다).
-/// 지연 감시가 옛 inode를 보는 시간. 위 실측의 꼬리(20ms까지 관측)를 덮는다.
-const LATE_WATCH_MS: u64 = 50;
+/// 지연 감시가 옛 inode를 보는 시간.
+///
+/// ★R28d(CASX R4) — R3의 값 50ms는 **외삽이었다.** 근거로 삼은 프로브(`late_burial_probe`)의
+/// 관측이 20ms에서 끝나서 꼬리를 아예 안 쟀고, 그 사이 제품 로그(확인 크리틱 R3 §3-3, n=18)에
+/// 51.9ms·107.6ms짜리 착지가 찍혔다 — 그 둘은 감시 틱이 늦게 돌아서 **우연히** 살았다.
+/// 틱이 제때 돌았으면 둘 다 50ms에서 버려졌고, 버릴 때 흔적이 없었다.
+///
+/// 이제 꼬리를 끝까지 잰다(`late_burial_tail_probe` — 1초까지 · 제품과 같은 큐 모양).
+/// 그 실측 분포에서 고른 값이고, 이 값이 무엇을 못 보는지는 [`bury_stats::watched_out`]이
+/// 세서 못이 읽는다(= 예산을 넘겨 접은 판이 몇이었나).
+/// 실측(`late_burial_tail_probe` · 갈아끼우기 3,000 · 이웃 쓰기 38,318 · 늦은 매장 359건):
+///
+/// | | 값 |
+/// |---|---|
+/// | 최소 · 중앙값 · p90 · p99 · **최대** | 171µs · 6.2ms · 9.4ms · 31.6ms · **411.7ms** |
+/// | 그 값이 상한이면 **못 보는 판** | 20ms=5 · **50ms=2** · 100ms=1 · 200ms=1 · **500ms=0** |
+///
+/// 그래서 500ms다 — 이 표본에서 놓침이 0이 되는 첫 칸이다. 그 대가(핸들 보유·판독 I/O)는
+/// [`LATE_WATCH_US`]가 문다: 앞 25ms만 촘촘하게 보고 나머지는 5ms 간격이라, 커밋 한 번당
+/// 판독 수는 R3(50ms 전부 250µs = 200회)와 거의 같은 ~195회다.
+const LATE_WATCH_MS: u64 = 500;
 /// 판독 간격. 이름 없는 inode 읽기 한 번은 실측 3~9µs다.
+///
+/// ★R28d(CASX R4) — 예산이 길어진 만큼 **뒤로 갈수록 성기게** 본다([`LATE_WATCH_DENSE_MS`]).
+/// 앞쪽이 촘촘해야 하는 이유는 되살리기가 늦으면 그만큼 로그아웃한 계정이 파일에 앉아
+/// 있기 때문이고(실측 중앙값 3.8ms), 뒤쪽까지 촘촘하면 그 I/O가 곧 이웃과 부딪히는 비용이
+/// 된다(확인 크리틱 R3 §3-4가 잰 그 대가).
 const LATE_WATCH_US: u64 = 250;
+/// 이 시각까지는 [`LATE_WATCH_US`] 간격으로, 그 뒤로는 [`LATE_WATCH_SPARSE_US`]로 본다.
+const LATE_WATCH_DENSE_MS: u64 = 25;
+const LATE_WATCH_SPARSE_US: u64 = 5_000;
 /// 동시에 지켜보는 옛 inode 수의 상한(핸들이 새지 않게).
-const LATE_WATCH_MAX: usize = 64;
+const LATE_WATCH_MAX: usize = 256;
+/// ★R28d(CASX R4) — 파낸 되살리기를 그 자리에서 **못 앉혔을 때** 다시 보는 시간.
+///
+/// R3는 `!dst.is_file()`이면 재시도도 로그도 없이 **영구히** 접었다(확인 크리틱 R3 §3-2).
+/// 그런데 그 창은 이 갈래가 스스로 실측해 표에 적어 둔 갈아끼우기 창이다
+/// (ENOENT 6연속 · 7.2ms — [`crate::replace`] 모듈 주석). 지나가는 창에 파낸 로그아웃을
+/// 버리면 그것이 곧 「사용자의 로그아웃이 취소된 채로 남는다」이다.
+const REVIVE_RETRY_MS: u64 = 250;
+/// ★R28d(CASX R4) — 되살리기가 한 번에 받아들이는 **지우기의 상한**. 근거는
+/// [`buried_removals`](로그아웃은 계정 하나를 지운다 · 둘 이상은 오독한 통짜 쓰기다).
+const REVIVE_MAX_REMOVALS: usize = 1;
 
 /// ★R28d(CASX R3) — **이 프로세스가 이웃의 쓰기를 묻은 사실**의 장부.
 ///
@@ -380,6 +417,10 @@ pub mod bury_stats {
     pub(super) static UNREAD: AtomicUsize = AtomicUsize::new(0);
     pub(super) static DROPPED: AtomicUsize = AtomicUsize::new(0);
     pub(super) static RECOVERED: AtomicUsize = AtomicUsize::new(0);
+    pub(super) static GAVE_UP: AtomicUsize = AtomicUsize::new(0);
+    pub(super) static REFUSED: AtomicUsize = AtomicUsize::new(0);
+    pub(super) static MOVED_ON: AtomicUsize = AtomicUsize::new(0);
+    pub(super) static WATCHED_OUT: AtomicUsize = AtomicUsize::new(0);
 
     /// 자물쇠 **안에서** 파낸 판.
     pub fn in_lock() -> usize {
@@ -406,8 +447,39 @@ pub mod bury_stats {
         UNREAD.load(Ordering::Relaxed)
     }
     /// 감시 자리가 모자라 **못 지켜본** 판.
+    ///
+    /// ★R28d(CASX R4) — 이 수는 [`seen`]에 **안 들어간다.** 여기 걸린 자리는 우리가 아예
+    /// 안 본 자리라, 그 판에 매장이 있었는지조차 모른다 — 「봤다」에 넣으면 못이 재는
+    /// 침묵이 그만큼 헐거워진다(확인 크리틱 R3의 요구는 *"포기하면 한 줄은 찍어라"*였고,
+    /// 그 요구가 가리킨 자리는 **파낸 뒤에** 못 앉힌 판이다 = [`gave_up`]).
     pub fn dropped() -> usize {
         DROPPED.load(Ordering::Relaxed)
+    }
+    /// ★R28d(CASX R4) — 이웃의 로그아웃을 **파냈는데 끝내 못 앉힌** 판.
+    ///
+    /// R3에서 이 자리는 `!dst.is_file()` 한 줄이었고 재시도도 로그도 없었다(확인 크리틱
+    /// R3 §3-2 · 결정적 재현 있음). 이제 [`REVIVE_RETRY_MS`]만큼 다시 보고, 그래도 못
+    /// 앉히면 **한 건마다 한 줄을 찍는다** — 그래서 이 수는 [`seen`]에 들어간다.
+    pub fn gave_up() -> usize {
+        GAVE_UP.load(Ordering::Relaxed)
+    }
+    /// ★R28d(CASX R4) — 파낸 원문이 **로그아웃이 아니라 오독한 통짜 쓰기**라 안 받은 판
+    /// ([`super::buried_removals`]). 한 건마다 한 줄을 찍는다.
+    pub fn refused() -> usize {
+        REFUSED.load(Ordering::Relaxed)
+    }
+    /// ★R28d(CASX R4) — 되살리기가 지우려던 행이 **커밋 뒤에 갈려 있어** 안 지운 판
+    /// (= 그 이메일로 새 로그인이 들어왔다). 세대 증표가 실제로 일한 횟수다.
+    pub fn moved_on() -> usize {
+        MOVED_ON.load(Ordering::Relaxed)
+    }
+    /// ★R28d(CASX R4) — 감시 예산([`LATE_WATCH_MS`])까지 보고 **아무 변화 없이** 접은 판.
+    ///
+    /// 이 판들은 대개 진짜로 아무 일도 없었던 판이지만(평시의 절대다수), 그중 몇이
+    /// 예산 밖에서 갈렸는지는 원리적으로 못 안다. 그래서 **분모를 남긴다** — 예산이
+    /// 맞는지는 이 수와 [`late`]의 비, 그리고 `late_burial_tail_probe`의 꼬리 분포로 잰다.
+    pub fn watched_out() -> usize {
+        WATCHED_OUT.load(Ordering::Relaxed)
     }
     /// ★R28d(CASX R3) — 목록을 **마지막 성공본(`.bak`)으로 읽은** 판([`super::recover_store`]).
     ///
@@ -419,12 +491,15 @@ pub mod bury_stats {
         RECOVERED.load(Ordering::Relaxed)
     }
     /// 이웃의 쓰기를 묻은 것을 우리가 **본** 판의 총합(= 침묵이 아니었던 판).
+    ///
+    /// 규칙 하나로 정리된다: **한 줄이라도 찍힌 판만 여기 들어온다.** 그래서 [`dropped`]
+    /// (아예 안 본 판)와 [`watched_out`](봤는데 아무 일도 없던 판)은 빠진다.
     pub fn seen() -> usize {
-        in_lock() + late() + late_kept() + unread() + recovered()
+        in_lock() + late() + late_kept() + unread() + recovered() + gave_up() + refused()
     }
     /// 테스트가 주행 사이에 장부를 0으로 되돌린다(프로세스 전역이라 못끼리 물든다).
     pub fn reset() {
-        for c in [&IN_LOCK, &IN_LOCK_REVIVED, &LATE, &LATE_KEPT, &UNREAD, &DROPPED, &RECOVERED] {
+        for c in [&IN_LOCK, &IN_LOCK_REVIVED, &LATE, &LATE_KEPT, &UNREAD, &DROPPED, &RECOVERED, &GAVE_UP, &REFUSED, &MOVED_ON, &WATCHED_OUT] {
             c.store(0, Ordering::Relaxed);
         }
     }
@@ -439,6 +514,15 @@ struct Orphan {
     was: String,
 }
 
+/// 되살리기가 지울 행 한 자리 — **우리가 커밋한 그 바이트를 같이 든다**(세대 증표).
+///
+/// ★R28d(CASX R4) — 이 한 칸이 확인 크리틱 R3의 최대 격차를 닫는다. R3의 자물쇠 밖
+/// 되살리기는 *커밋 시점의* 스냅샷으로 계산한 삭제 목록을 **최대 107ms 뒤의 디스크**에
+/// 이메일로 적용했다 — 그 사이에 같은 이메일로 새 로그인이 들어와 있으면 그 새 행이
+/// `credEnc`째 증발했고, 제품 로그는 "이웃의 로그아웃을 되살렸다"고 정반대를 적었다
+/// (크리틱의 결정적 재현: 커밋 14,713µs 뒤).
+type Stamp = (String, Value);
+
 /// 지연 감시 한 자리.
 struct LateWatch {
     orphan: Orphan,
@@ -449,8 +533,16 @@ struct LateWatch {
     /// 그때의 목적지. 홈이 갈리면(테스트) 남의 홈에 쓰지 않는다.
     dst: PathBuf,
     since: std::time::Instant,
+    /// 다음 판독 시각(뒤로 갈수록 성기게 본다 — [`LATE_WATCH_DENSE_MS`]).
+    next_at: std::time::Instant,
     /// 갈리긴 했는데 아직 못 읽었다(이웃이 쓰는 중).
     torn: bool,
+    /// ★R28d(CASX R4) — **파냈는데 아직 못 앉힌** 되살리기(갈아끼우기 창에 걸렸다).
+    /// 있으면 이 자리는 판독을 멈추고 앉히기만 다시 시도한다.
+    owed: Option<Vec<Stamp>>,
+    /// `owed`가 생긴 시각([`REVIVE_RETRY_MS`]의 기준점) · 커밋에서 드러나기까지 걸린 µs.
+    owed_since: Option<std::time::Instant>,
+    found_us: u128,
 }
 
 static LATE_Q: std::sync::Mutex<Vec<LateWatch>> = std::sync::Mutex::new(Vec::new());
@@ -469,12 +561,20 @@ fn late_watch(w: LateWatch) {
         if q.len() >= LATE_WATCH_MAX {
             // 자리가 모자란다 = 이웃과 심하게 겹치는 판. 가장 오래된 것을 놓되 **조용히는
             // 아니다** — 그 자리가 곧 우리가 못 본 매장이다.
+            //
+            // ★R28d(CASX R4) — R3는 이 줄을 `Once`로 **딱 한 번만** 찍었다. 그러면 두
+            // 번째부터는 장부만 오르고 로그는 침묵이라, 「매 건 한 줄」이라는 이 갈래의
+            // 헤드라인이 여기서만 거짓이 된다. 그렇다고 매번 찍으면 이 자리는 배경 회전이
+            // 초당 수백 번 지나는 길이라 로그가 그것만으로 찬다(`replace.rs`의 실측:
+            // 24주행에 17,486줄). 그래서 **2의 거듭제곱마다** 누적 수와 함께 찍는다 —
+            // 줄 수는 log에 갇히고 마지막 줄은 항상 총계를 말한다.
+            let n = bury_stats::DROPPED.fetch_add(1, Ordering::Relaxed) + 1;
+            if n.is_power_of_two() {
+                eprintln!(
+                    "[auth] ★ {STORE_FILE}: 갈아끼운 옛 사본을 지켜볼 자리가 {LATE_WATCH_MAX}개를 넘었다 — 누적 {n}개를 못 지켜봤다(묻힌 이웃 쓰기를 놓칠 수 있다)"
+                );
+            }
             q.remove(0);
-            bury_stats::DROPPED.fetch_add(1, Ordering::Relaxed);
-            static ONCE: std::sync::Once = std::sync::Once::new();
-            ONCE.call_once(|| {
-                eprintln!("[auth] ★ {STORE_FILE}: 갈아끼운 옛 사본을 지켜볼 자리가 {LATE_WATCH_MAX}개를 넘었다 — 그중 하나는 못 지켜본다(묻힌 이웃 쓰기를 놓칠 수 있다)");
-            });
         }
         q.push(w);
     }
@@ -503,34 +603,52 @@ fn late_watch_loop() {
                 return;
             }
         }
-        batch.retain_mut(|w| !late_watch_tick(w));
+        let now = std::time::Instant::now();
+        batch.retain_mut(|w| !late_watch_tick(w, now));
         std::thread::sleep(std::time::Duration::from_micros(LATE_WATCH_US));
     }
 }
 
 /// 한 자리를 한 번 본다. `true` = 이 자리는 끝났다.
-fn late_watch_tick(w: &mut LateWatch) -> bool {
-    if let Some(now) = crate::replace::read_witness(&mut w.orphan.file) {
-        if now != w.orphan.was {
-            match parse_store(&now).filter(|t| t.origin.is_known()) {
-                Some(theirs) => {
-                    late_revive(w, &theirs);
-                    return true;
-                }
+fn late_watch_tick(w: &mut LateWatch, now: std::time::Instant) -> bool {
+    // ★R28d(CASX R4) — 파냈는데 못 앉힌 자리는 **판독을 그만두고** 앉히기만 다시 한다.
+    // (옛 inode를 더 봐야 나올 것이 없다 — 우리는 이미 그들의 원문을 손에 들었다.)
+    if w.owed.is_some() {
+        return late_settle(w);
+    }
+    if now < w.next_at {
+        return false;
+    }
+    let age = w.since.elapsed();
+    w.next_at = now
+        + std::time::Duration::from_micros(if age < std::time::Duration::from_millis(LATE_WATCH_DENSE_MS) {
+            LATE_WATCH_US
+        } else {
+            LATE_WATCH_SPARSE_US
+        });
+    if let Some(cur) = crate::replace::read_witness(&mut w.orphan.file) {
+        if cur != w.orphan.was {
+            match parse_store(&cur).filter(|t| t.origin.is_known()) {
+                Some(theirs) => return late_dug(w, &theirs),
                 // 반쪽(자르는 중이거나 쓰는 중) — 예산 안에서는 계속 본다.
                 None => w.torn = true,
             }
         }
     }
-    if w.since.elapsed() < std::time::Duration::from_millis(LATE_WATCH_MS) {
+    if age < std::time::Duration::from_millis(LATE_WATCH_MS) {
         return false;
     }
     if w.torn {
         bury_stats::UNREAD.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         eprintln!(
             "[auth] ★ {STORE_FILE}: 이웃이 쓰던 중에 갈아끼웠는데 {}ms를 기다려도 그 원문을 못 읽었다 — 그 쓰기가 로그아웃이었다면 취소된 채로 남는다",
-            w.since.elapsed().as_millis()
+            age.as_millis()
         );
+    } else {
+        // 예산까지 보고 아무 변화도 없었다 = 대개 진짜로 아무 일도 없던 판이다. 그래도
+        // **분모는 남긴다** — 예산이 꼬리를 덮는지는 이 수와 [`bury_stats::late`]의 비로만
+        // 잴 수 있다(확인 크리틱 R3 §3-3의 요구).
+        bury_stats::WATCHED_OUT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
     true
 }
@@ -542,54 +660,162 @@ thread_local! {
 }
 
 /// 파낸 원문으로 **그들이 지운 계정을 되살린다**(받는 것은 지우기뿐 — ABA 규칙은
-/// [`cas_edit`]의 `Commit::Buried` 주석과 같다).
-fn late_revive(w: &LateWatch, theirs: &StoreFile) {
+/// [`cas_edit`]의 `Commit::Buried` 주석과 같다). `true` = 이 자리는 끝났다.
+fn late_dug(w: &mut LateWatch, theirs: &StoreFile) -> bool {
     use std::sync::atomic::Ordering;
-    let keep: std::collections::BTreeSet<&str> = theirs.accounts.iter().filter_map(email_of).collect();
-    let gone: Vec<String> = w
-        .ours
-        .iter()
-        .filter_map(email_of)
-        .filter(|e| !keep.contains(e) && !w.added.contains(*e))
-        .map(str::to_string)
-        .collect();
-    let us = w.since.elapsed().as_micros();
-    if gone.is_empty() {
+    let gone = match buried_removals(&w.ours, &w.added, theirs) {
         // 그들이 지운 계정이 없다 = 되살릴 것도 없다(우리가 묻은 것은 그들의 편집이지
         // 로그아웃이 아니다). 세기는 한다 — 이 판도 "우리가 봤다"에 들어간다.
-        bury_stats::LATE_KEPT.fetch_add(1, Ordering::Relaxed);
-        return;
-    }
-    if store_path() != w.dst || !w.dst.is_file() {
-        // 홈이 갈렸거나(테스트 하네스) 그사이 스토어 자체가 사라졌다. 남의 홈에는 한 글자도
-        // 안 쓰고, 없는 파일을 여기서 새로 만들지도 않는다 — 되살리기는 **지우기**뿐이다.
-        bury_stats::DROPPED.fetch_add(1, Ordering::Relaxed);
-        return;
-    }
-    let n = gone.len();
+        Removals::Nothing => {
+            bury_stats::LATE_KEPT.fetch_add(1, Ordering::Relaxed);
+            return true;
+        }
+        Removals::Bogus(n) => {
+            bury_stats::REFUSED.fetch_add(1, Ordering::Relaxed);
+            eprintln!("[auth] ★ {STORE_FILE}: {}", bogus_line(n, theirs));
+            return true;
+        }
+        Removals::Logout(g) => g,
+    };
     // ★R28d(CASX R3) — 장부를 **되살리기보다 먼저** 올린다. 순서가 반대면 못이 이렇게 진다:
     // 되살리기가 디스크에 착지한 µs와 장부가 오르는 µs 사이에 못이 "되살아남이 걷혔다"를
     // 보고 곧바로 장부를 읽으면 **아직 0**이고, 그러면 「제품이 못 봤다(침묵)」로 잘못
     // 붉어진다. "봤다"는 파낸 순간의 사실이지 되살리기의 결과가 아니다.
     bury_stats::LATE.fetch_add(1, Ordering::Relaxed);
+    w.found_us = w.since.elapsed().as_micros();
+    w.owed = Some(stamps_of(&w.ours, &gone));
+    w.owed_since = Some(std::time::Instant::now());
+    late_settle(w)
+}
+
+/// 우리가 커밋한 목록에서 **지울 행의 바이트**를 뜬다(세대 증표 — [`Stamp`]).
+fn stamps_of(ours: &[Value], gone: &[String]) -> Vec<Stamp> {
+    gone.iter()
+        .filter_map(|e| ours.iter().find(|a| email_of(a) == Some(e)).map(|v| (e.clone(), v.clone())))
+        .collect()
+}
+
+/// 파낸 되살리기를 **지금 디스크에** 앉힌다. `true` = 이 자리는 끝났다.
+fn late_settle(w: &mut LateWatch) -> bool {
+    use std::sync::atomic::Ordering;
+    let Some(stamps) = w.owed.take() else { return true };
+    let (n, us) = (stamps.len(), w.found_us);
+    // 홈이 갈렸다(테스트 하네스가 `CCG_HOME`을 바꿨다). 남의 홈에는 한 글자도 안 쓰고,
+    // 다시 볼 이유도 없다 — 우리 목적지는 이제 없는 홈이다.
+    if store_path() != w.dst {
+        bury_stats::GAVE_UP.fetch_add(1, Ordering::Relaxed);
+        eprintln!("[auth] ★ {STORE_FILE}: 이웃의 로그아웃({n}개 · 커밋 {us}µs 뒤)을 파냈는데 그사이 홈이 바뀌었다 — 남의 홈에는 안 쓴다");
+        return true;
+    }
+    // ★R28d(CASX R4) — **갈아끼우기 창은 「포기」가 아니라 「다시 본다」이다.**
+    //
+    // R3는 여기서 재시도도 로그도 없이 접었고(확인 크리틱 R3 §3-2 · 결정적 재현), 그 창은
+    // 이 갈래가 스스로 실측한 7.2ms짜리 지나가는 창이다. 파낸 로그아웃을 지나가는 창에
+    // 버리면 그게 곧 「사용자의 로그아웃이 취소된 채로 남는다」이다.
+    if !w.dst.is_file() {
+        let waited = w.owed_since.map(|t| t.elapsed()).unwrap_or_default();
+        if waited < std::time::Duration::from_millis(REVIVE_RETRY_MS) {
+            w.owed = Some(stamps);
+            return false;
+        }
+        bury_stats::GAVE_UP.fetch_add(1, Ordering::Relaxed);
+        eprintln!(
+            "[auth] ★ {STORE_FILE}: 이웃의 로그아웃({n}개 · 커밋 {us}µs 뒤)을 파냈는데 {REVIVE_RETRY_MS}ms 동안 {STORE_FILE}이 자리에 없었다 — 그 로그아웃은 취소된 채로 남는다"
+        );
+        return true;
+    }
     let r = REVIVING.with(|c| {
         c.set(true);
+        // ★R28d(CASX R4) — **세대 증표를 확인한 뒤에만 지운다.** 여기 오기까지 실측 최대
+        //   107ms(확인 크리틱 R3)가 흘렀고, 그 사이에 같은 이메일로 **새 로그인**이
+        //   들어와 있을 수 있다. 자물쇠 안 경로는 `expect` CAS가 그 사고를 구조적으로
+        //   막는데, 자물쇠 밖에는 그 묶음이 없었다 — 이 절이 그것이다.
+        //
+        //   묶음의 단위가 **파일 전체가 아니라 행**인 이유: 이 문이 열려 있는 동안 배경
+        //   회전은 계속 돌아(못의 실측 3ms마다) 파일 바이트는 거의 항상 갈려 있다. 파일
+        //   단위로 묶으면 되살리기가 사실상 늘 취소되고, 그건 이 갈래가 닫으려던 그
+        //   구멍(영구 취소)을 다시 여는 것이다. 행 단위 바이트 동일성은 **피해를 나르는
+        //   바로 그 값**을 본다 — 새 로그인은 `credEnc`가 새 DPAPI 산출물이라 반드시 다르다.
         let r = cas_edit(|cur| {
-            let before = cur.accounts.len();
-            cur.accounts.retain(|a| email_of(a).is_none_or(|e| !gone.iter().any(|g| g == e)));
-            Ok(before - cur.accounts.len())
+            let (mut removed, mut moved) = (0usize, 0usize);
+            cur.accounts.retain(|a| {
+                let Some(e) = email_of(a) else { return true };
+                let Some((_, was)) = stamps.iter().find(|(g, _)| g == e) else { return true };
+                if a == was {
+                    removed += 1;
+                    false
+                } else {
+                    moved += 1;
+                    true
+                }
+            });
+            Ok((removed, moved))
         });
         c.set(false);
         r
     });
     match r {
-        Ok(k) => eprintln!(
-            "[auth] ★ {STORE_FILE}: 우리 갈아끼우기가 이웃의 로그아웃을 묻었다(계정 {n}개 · 커밋 {us}µs 뒤에 드러났다) — 자물쇠 밖 감시가 {k}개를 되살렸다"
-        ),
-        Err(e) => eprintln!(
-            "[auth] ★ {STORE_FILE}: 이웃의 로그아웃({n}개)을 묻었는데 되살리기가 실패했다({e}) — 그 로그아웃은 취소된 채로 남는다"
-        ),
+        Ok((k, 0)) => {
+            eprintln!("[auth] ★ {STORE_FILE}: 우리 갈아끼우기가 이웃의 로그아웃을 묻었다(계정 {n}개 · 커밋 {us}µs 뒤에 드러났다) — 자물쇠 밖 감시가 {k}개를 되살렸다");
+        }
+        Ok((k, m)) => {
+            bury_stats::MOVED_ON.fetch_add(m, Ordering::Relaxed);
+            eprintln!(
+                "[auth] ★ {STORE_FILE}: 우리 갈아끼우기가 이웃의 로그아웃을 묻었다(계정 {n}개 · 커밋 {us}µs 뒤에 드러났다) — {k}개를 되살렸고 {m}개는 그 뒤에 다시 로그인돼 있어 **그대로 뒀다**"
+            );
+        }
+        Err(e) => eprintln!("[auth] ★ {STORE_FILE}: 이웃의 로그아웃({n}개)을 묻었는데 되살리기가 실패했다({e}) — 그 로그아웃은 취소된 채로 남는다"),
     }
+    true
+}
+
+/// ★R28d(CASX R4) — 파낸 이웃의 원문에서 **그들이 지운 계정**을 뽑는다.
+///
+/// 받는 것이 지우기뿐인 이유(ABA)는 [`cas_edit`]의 `Commit::Buried` 주석에 있다. 여기서
+/// 한 겹을 더 세운다 — **그 지우기가 로그아웃일 수 있나.**
+///
+/// 로그아웃은 계정 **하나**를 지운다(2.6.2 `removeAccount(email)`·`src/main/auth.ts:174` ·
+/// 3.0 [`remove_account`] 둘 다 이메일 하나를 받는다). 한 번에 둘 이상이 사라진 원문은
+/// 로그아웃이 아니라 **오독한 통짜 쓰기**다: 2.6.2 `readStoreFile`의 `catch { accounts: [] }`
+/// (`src/main/auth.ts:117`)가 갈아끼우기 창에서 파일을 못 읽었을 때 내는 그 착지다
+/// (실측 ENOENT 6연속 · 7.2ms — [`crate::replace`] 모듈 주석).
+///
+/// 그 원문을 되살리면 **우리가 이웃의 버그를 대신 실행하는 것**이 된다: 살아 있는 계정이
+/// `credEnc`째 통째로 사라지고 출구는 재로그인뿐이다. 그래서 안 받는다. 대가는 비대칭이라
+/// 이쪽이 맞다 — 안 받아서 잃는 것은 「그 로그아웃이 한 번 더 필요하다」(사용자 눈에 계정이
+/// 그대로 보인다)이고, 받아서 잃는 것은 **계정 전부**(조용하다).
+fn buried_removals(ours: &[Value], added: &std::collections::BTreeSet<String>, theirs: &StoreFile) -> Removals {
+    let keep: std::collections::BTreeSet<&str> = theirs.accounts.iter().filter_map(email_of).collect();
+    // `added`(이번 편집이 만든 계정)는 예외다 — 이웃의 스냅샷은 우리 로그인보다 앞선
+    // 것이라 담고 있을 수가 없고, 여기서 지우면 방금 끝난 로그인이 조용히 증발한다.
+    let gone: Vec<String> = ours
+        .iter()
+        .filter_map(email_of)
+        .filter(|e| !keep.contains(e) && !added.contains(*e))
+        .map(str::to_string)
+        .collect();
+    match gone.len() {
+        0 => Removals::Nothing,
+        n if n > REVIVE_MAX_REMOVALS => Removals::Bogus(n),
+        _ => Removals::Logout(gone),
+    }
+}
+
+/// [`buried_removals`]의 답.
+enum Removals {
+    /// 되살릴 것이 없다(그들이 지운 계정이 없다).
+    Nothing,
+    /// 그들이 지운 계정 = 로그아웃.
+    Logout(Vec<String>),
+    /// 로그아웃 하나로는 도달할 수 없는 지우기 = 오독한 통짜 쓰기. 안 받는다.
+    Bogus(usize),
+}
+
+fn bogus_line(n: usize, theirs: &StoreFile) -> String {
+    format!(
+        "이웃의 통짜 쓰기를 묻었는데 그 원문이 계정 {n}개를 한 번에 지운다(그들 목록 {}개) — 로그아웃 하나로는 못 만드는 상태다(갈아끼우기 창에서 파일을 못 읽고 「계정 0개」로 되쓴 착지) — 안 받는다",
+        theirs.accounts.len()
+    )
 }
 
 // ── ★R28d(CASX) — CAS 경합 추적기 ───────────────────────────────────────────
@@ -940,6 +1166,8 @@ fn cas_edit<T>(mut edit: impl FnMut(&mut StoreFile) -> Result<T, AuthError>) -> 
         let mut stale = false;
         // 되살리기 사연 — **커밋 뒤에** 찍는다(아래 `Commit::Buried` 주석 참고).
         let mut revived: Option<(usize, usize)> = None;
+        // 안 받은 사연(오독한 통짜 쓰기)도 같은 규율로 커밋 뒤에 찍는다.
+        let mut bogus: Option<String> = None;
         // ★R28d(CASX) — 목적지 핸들을 되살리기 연쇄 **안에서만** 물려준다. 바깥
         // (CAS 재시도) 까지 들고 가면 잠금을 놓은 사이 남이 갈아끼운 옛 inode를 증인으로
         // 삼게 된다 — 그건 증인이 아니라 유령이다.
@@ -964,6 +1192,9 @@ fn cas_edit<T>(mut edit: impl FnMut(&mut StoreFile) -> Result<T, AuthError>) -> 
                     if let Some((was, now)) = revived {
                         eprintln!("[auth] ★ {STORE_FILE}: 이웃의 로그아웃을 묻었다(계정 {was}개 → {now}개) — 그 자리에서 되살렸다");
                     }
+                    if let Some(line) = &bogus {
+                        eprintln!("[auth] ★ {STORE_FILE}: {line}");
+                    }
                     if retries > 0 {
                         eprintln!("[auth] {STORE_FILE} 저장 — 이웃과 {retries}번 부딪혀 다시 읽고 썼다(CAS)");
                     }
@@ -978,7 +1209,11 @@ fn cas_edit<T>(mut edit: impl FnMut(&mut StoreFile) -> Result<T, AuthError>) -> 
                             added,
                             dst: store_path(),
                             since: std::time::Instant::now(),
+                            next_at: std::time::Instant::now(),
                             torn: false,
+                            owed: None,
+                            owed_since: None,
+                            found_us: 0,
                         });
                     }
                     return Ok(out);
@@ -1000,18 +1235,21 @@ fn cas_edit<T>(mut edit: impl FnMut(&mut StoreFile) -> Result<T, AuthError>) -> 
                         eprintln!("[auth] ★ {STORE_FILE}: 이웃의 쓰기를 묻었는데 원문을 못 읽는다 — 우리 것으로 둔다");
                         break;
                     };
-                    let keep: std::collections::BTreeSet<&str> = t.accounts.iter().filter_map(email_of).collect();
-                    // `added`(이번 편집이 만든 계정)는 예외다 — 이웃의 스냅샷은 우리
-                    // 로그인보다 앞선 것이라 담고 있을 수가 없고, 여기서 지우면 방금 끝난
-                    // 로그인이 조용히 증발한다.
-                    let next: Vec<Value> = accounts
-                        .iter()
-                        .filter(|a| email_of(a).is_none_or(|e| keep.contains(e) || added.contains(e)))
-                        .cloned()
-                        .collect();
-                    if next.len() == accounts.len() {
-                        break; // 그들이 지운 계정이 없다 = 되살릴 것도 없다
-                    }
+                    // ★R28d(CASX R4) — 자물쇠 **안팎이 같은 규칙을 쓴다**([`buried_removals`]).
+                    //   R3까지 이 자리는 자기만의 `keep` 계산을 들고 있었고, 그래서 자물쇠
+                    //   밖에 세운 겹(오독한 통짜 쓰기는 안 받는다)이 여기엔 없었다.
+                    let gone = match buried_removals(&accounts, &added, &t) {
+                        Removals::Nothing => break, // 그들이 지운 계정이 없다 = 되살릴 것도 없다
+                        Removals::Bogus(n) => {
+                            bury_stats::REFUSED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                            // 되살리기 창 안이라 여기서 안 찍는다 — 커밋 뒤에 적는다(`bogus`).
+                            bogus = Some(bogus_line(n, &t));
+                            break;
+                        }
+                        Removals::Logout(g) => g,
+                    };
+                    let next: Vec<Value> =
+                        accounts.iter().filter(|a| email_of(a).is_none_or(|e| !gone.iter().any(|g| g == e))).cloned().collect();
                     // ★R28d(CASX) — **되살리기 창 안에서는 한 줄도 안 찍는다.** 여기서
                     //   찍던 한 줄이 실측으로 되살리기를 0.8~7.6ms 늦췄고, 그동안 로그아웃한
                     //   계정이 `credEnc`째 파일에 앉아 있었다(이웃이 자기 쓰기 1ms 뒤에
@@ -1032,6 +1270,9 @@ fn cas_edit<T>(mut edit: impl FnMut(&mut StoreFile) -> Result<T, AuthError>) -> 
             // 마지막 커밋은 이미 디스크에 있다(유실 아님) — 다음 회전이 이어 받는다.
             if let Some((was, now)) = revived {
                 eprintln!("[auth] ★ {STORE_FILE}: 이웃의 로그아웃({was}개 → {now}개)을 되살리다 또 겹쳤다 — 여기서 접는다");
+            }
+            if let Some(line) = &bogus {
+                eprintln!("[auth] ★ {STORE_FILE}: {line}");
             }
             keep_backup(&body);
             return Ok(out);

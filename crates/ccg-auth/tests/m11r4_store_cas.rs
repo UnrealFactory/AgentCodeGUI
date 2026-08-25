@@ -201,7 +201,7 @@ mod peer {
 ///
 /// | # | 무엇이 무엇을 이겼나 | 사용자 피해 | 지금 상태 |
 /// |---|---|---|---|
-/// | ① | 갈아끼우는 동안 **파일이 없어 보였다**(ENOENT 6연속·7.2ms) | 이웃이 "계정 0개"로 읽고 그 위에 쓰면 **목록 전체 소멸** | ❌ **안 닫혔다** — 아래 「철회」 참고. 우리 쪽 읽기만 `vanished_but_we_know_better`가 막는다 |
+/// | ① | 갈아끼우는 동안 **파일이 없어 보였다**(ENOENT 6연속·7.2ms) | 이웃이 "계정 0개"로 읽고 그 위에 쓰면 **목록 전체 소멸** | ⚠️ **우리 쪽만 닫혔다** — 이웃의 오독 자체는 동결 트리라 못 고친다. R4가 닫은 것은 **우리가 그것을 대신 실행하지 않는다**까지다(`claude::buried_removals` · 결정적 못 [`a_mis_read_whole_write_never_takes_the_whole_account_list_with_it`]). 우리 쪽 읽기는 `vanished_but_we_know_better`가 막는다 |
 /// | ② | 그 창에서 이웃의 `CREATE_ALWAYS`가 **새 파일**을 만들고 우리 갈아끼우기가 그걸 덮었다 | 묻힌 줄도 모른 채 로그아웃 취소가 **85ms 지속**(다음 이웃 쓰기까지) | ❌ **기각**(R3) — 실측 유령 inode **0/23,083** · 이웃 열기 실패 0. 진짜 정체는 아래 ④ |
 /// | ③ | 묻힌 것을 찾아 되살리는 동안 로그아웃한 계정이 파일에 앉아 있었다(실측 1.7~7.6ms) | 이웃이 자기 쓰기 1ms 뒤에 다시 읽으면 그걸 본다 | ✅ 창 안의 `eprintln` 제거 + 증인 핸들 물려주기(`open` 350µs 절약) |
 /// | ④ | 이웃의 `CreateFile`이 **우리 `rename`과 첫 판독을 걸터탔다** — 옛 inode는 우리 눈에 "그대로"고 그들의 쓰기는 몇 ms 뒤에 그 이름 없는 inode로 떨어진다 | 로그아웃 취소가 **다음 이웃 쓰기까지 지속** · 우리 로그에는 **한 줄도 안 남는다** | ✅ **R3** — 커밋 뒤 자물쇠 밖 지연 감시(`claude::late_watch`)가 파내 되살리고 사연을 적는다 |
@@ -279,8 +279,19 @@ fn a_lock_unaware_neighbour_cannot_undo_a_logout() {
     // 파일을 못 읽고 반쪽을 남긴 뒤 우리가 그 반쪽을 `.bak`으로 복구한 것이다(복구본에는 그들이
     // 방금 지운 계정이 아직 있다). 둘째도 **침묵이 아니다** — `recover_store`가 사실을 한 줄
     // 적는다. 못이 재는 것은 "되살아남에 이름이 붙었나"이지 "어느 문으로 들어왔나"가 아니다.
-    let repaired_or_unread =
-        || claude::bury_stats::repaired() + claude::bury_stats::unread() + claude::bury_stats::recovered();
+    //
+    // ★R28d(CASX R4) — 여기에 `gave_up`·`refused`가 들어온다. 규칙은 하나다:
+    // **한 건마다 한 줄이 찍히는 판만 「봤다」에 넣는다.** 둘 다 그렇다(각각
+    // "…{REVIVE_RETRY_MS}ms 동안 자리에 없었다" · "…로그아웃 하나로는 못 만드는 상태다").
+    // 반대로 `dropped`(감시 자리 부족)는 **안 넣는다** — 그 자리는 아예 안 본 자리라
+    // 매장이 있었는지조차 모른다(`claude::bury_stats::dropped` 주석).
+    let repaired_or_unread = || {
+        claude::bury_stats::repaired()
+            + claude::bury_stats::unread()
+            + claude::bury_stats::recovered()
+            + claude::bury_stats::gave_up()
+            + claude::bury_stats::refused()
+    };
     for _ in 0..ROUNDS {
         peer::login("ghost@x");
         std::thread::sleep(std::time::Duration::from_millis(3));
@@ -346,6 +357,15 @@ fn a_lock_unaware_neighbour_cannot_undo_a_logout() {
         claude::bury_stats::dropped(),
         claude::bury_stats::recovered()
     );
+    // ★R28d(CASX R4) — 이 라운드가 새로 세운 겹의 장부. 앞의 줄이 「무엇을 봤나」라면
+    // 이 줄은 「보고 무엇을 안 했나」다(확인 크리틱 R3의 §3-1·§3-2·§3-3이 각각 여기 온다).
+    println!(
+        "[r4-cas] 이 라운드가 세운 겹: 세대증표로 안지움={} · 끝내못앉힘={} · 오독통짜라 안받음={} · 예산까지보고접음={}",
+        claude::bury_stats::moved_on(),
+        claude::bury_stats::gave_up(),
+        claude::bury_stats::refused(),
+        claude::bury_stats::watched_out()
+    );
     println!("[r4-cas] 회전 착지: 양쪽={ok} · 폴더완충만={folder_only} · ★재료없음={no_material} · 저장실패={not_stored}");
     println!("[r4-cas] 이웃이 파일을 못 읽은 횟수={missed} · 이웃 쓰기 실패={wfail}");
     println!(
@@ -387,6 +407,24 @@ fn a_lock_unaware_neighbour_cannot_undo_a_logout() {
         "★ 로그아웃이 되살아났는데 제품이 그것을 본 흔적이 0이다(침묵) — 로그가 이 사고를 안 들면 다음 사람이 같은 자리를 다시 판다"
     );
     assert_eq!(persisted, 0, "★ 잠금을 모르는 이웃의 로그아웃이 우리 배경 쓰기에 **취소**됐다(200ms 뒤에도 살아 있다)");
+    // ── ★R28d(CASX R4) — 셋째 값에도 **회귀 예산**을 박는다 ────────────────────
+    //
+    // 확인 크리틱 R3 §3-4의 요구다. R3이 단정을 `resurrected == 0`에서 내리면서 그 값이
+    // 조용히 3.1배가 됐고(변수 하나짜리 A/B: 회전 1,000판당 0.80 대 0.26), 로그에만 남아서
+    // 다음 사람이 A/B를 새로 짜야 알 수 있었다. 이제 못이 직접 든다.
+    //
+    // 값이 `0`이 아니라 예산인 이유는 위 표에 적은 그대로다 — 이 OS에서 깜빡임 0은 약속할
+    // 수 없다(이웃의 열기가 우리 갈아끼우기를 걸터타는 창 · 실측 31.6%). 약속할 수 있는
+    // 것은 **그 폭이 이 크기를 안 넘는다**이고, 크기는 실측에서 왔다: 이 라운드의 부하
+    // 40주행(단독 20 + 병렬 20)에서 한 주행 최대 되살아남은 아래 로그에 찍힌다.
+    // 예산은 로그아웃 판수의 **10%**로, 관측 최악값의 여러 배를 남긴다 — 예산이 하는
+    // 일은 "다섯에 한 번 붉게 하는 것"이 아니라 **3배가 조용히 지나가지 않게 하는 것**이다.
+    let budget = ROUNDS / 10;
+    println!("[r4-cas] 깜빡임 회귀 예산: 되살아남 {resurrected} / 예산 {budget}(로그아웃 {ROUNDS}판의 10%)");
+    assert!(
+        resurrected <= budget,
+        "★ 되살아남이 회귀 예산을 넘었다({resurrected} > {budget}) — 취소는 아니지만 사용자가 지운 계정이 그만큼 자주 파일에 돌아와 앉았다는 뜻이다"
+    );
     // ── 회전 재료는 어디에도 안 잃는다(폴더 사본이 마지막 완충 — R2 §5) ──────────
     //
     // ★R28d — 이 자리는 R4까지 `claude::refresh_token(...)` **한 줄**이었다. 그 한 줄이
@@ -593,6 +631,190 @@ fn a_neighbour_logout_that_lands_after_our_swap_is_revived() {
         Some("m-2"),
         "★ 되살리기가 방금 정착한 회전 결과를 되돌렸다(옛 credEnc로 돌아갔다)"
     );
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// **걸터탄 열기**를 손에 든 채 우리 회전을 한 바퀴 돌린다 — 즉 이웃의 `CreateFile`은
+/// 끝났고(이름은 지금 이 inode를 가리킨다) 자르기·쓰기는 아직인 그 창을, 우리 `rename`이
+/// 통과하게 만든다. 돌려주는 핸들에 나중에 쓰면 그 쓰기는 **이름 없는 옛 inode**로 간다
+/// (= 우리가 묻었다). 아래 세 못이 이 상태를 공유한다.
+fn straddling_open(logout_of: &str) -> (std::fs::File, String) {
+    let (def, accounts) = peer::read_raw();
+    let kept: Vec<Value> = accounts.iter().filter(|a| claude::email_of(a) != Some(logout_of)).cloned().collect();
+    let body = peer::body(def.as_deref(), &kept);
+    let held = std::fs::OpenOptions::new().write(true).open(peer::path()).expect("이웃의 열기");
+    (held, body)
+}
+
+/// 걸터탄 핸들로 통짜 쓰기를 마친다(2.6.2 `writeFileSync`의 자르기 + 쓰기).
+fn land_whole_write(mut held: std::fs::File, body: &str) {
+    use std::io::{Seek, Write};
+    held.set_len(0).expect("자르기");
+    held.seek(std::io::SeekFrom::Start(0)).expect("되감기");
+    held.write_all(body.as_bytes()).expect("이웃의 통짜 쓰기");
+    drop(held);
+}
+
+/// ★R28d(CASX R4) — **자물쇠 밖 되살리기는 커밋 뒤에 생긴 로그인을 안 지운다.**
+///
+/// 확인 크리틱 R3 §3-1(치명 · 결정적 재현)이 연 문이다. R3의 `late_revive`는 *커밋 시점의*
+/// 스냅샷으로 계산한 삭제 목록을 **최대 107ms 뒤의 디스크**에 이메일로 적용했다. 자물쇠 안
+/// `Commit::Buried`는 `expect` CAS로 묶여 이 사고가 구조적으로 불가능한데 자물쇠 밖에는
+/// 그 묶음이 없었다 — 그래서 크리틱의 재현에서 커밋 14,713µs 뒤에 **방금 끝난 로그인이
+/// `credEnc`째 지워졌고**, 제품 로그는 "이웃의 로그아웃을 되살렸다"고 정반대를 적었다.
+///
+/// 이 못은 그 순서를 손으로 세운다: 걸터탄 열기 → 우리 회전 커밋 → **같은 이메일 재로그인**
+/// → 그제서야 옛 로그아웃 본문이 이름 없는 옛 inode로 착지. 요구는 둘이다.
+///
+/// 1. 그 새 행은 **살아남는다**(사용자가 겪는 값).
+/// 2. 세대 증표가 **일했다는 사실**이 장부에 남는다(`moved_on`) — 침묵으로 지나가면
+///    다음 사람은 "안 지웠다"와 "지울 것이 없었다"를 못 가른다.
+#[test]
+fn a_late_revive_never_deletes_a_login_that_landed_after_our_commit() {
+    let home = ccg_store::testhome::take("r4casx4a");
+    std::env::set_var("CCG_NO_NET", "1");
+    claude::bury_stats::reset();
+    seed("mine@x", "m-1");
+    peer::login("ghost@x");
+    assert!(peer::has("ghost@x"), "전제 — 이웃이 계정을 하나 더 넣었다");
+
+    let (held, logout_body) = straddling_open("ghost@x");
+    assert_eq!(rotate("mine@x", "m-2"), Landing::Both, "전제 — 회전이 양쪽에 정착했다(= 옛 inode에서 이름이 떨어졌다)");
+
+    // ★ 사용자가 ghost@x로 **다시 로그인**한다 — 새 `credEnc`가 얹힌다.
+    let snap = json!({ "creds": creds_of("ghost@x", "g-NEW"), "account": { "emailAddress": "ghost@x" } });
+    let enc = ccg_store::safe_storage::encrypt(&snap.to_string()).expect("safeStorage");
+    let fresh = json!({ "email": "ghost@x", "credEnc": enc, "subscriptionType": "max" });
+    claude::update_store(|f| {
+        f.accounts.retain(|a| claude::email_of(a) != Some("ghost@x"));
+        f.accounts.push(fresh.clone());
+    })
+    .expect("재로그인 저장");
+    assert!(peer::has("ghost@x"), "전제 — 재로그인이 앉았다");
+
+    // 이제 **옛** 로그아웃 본문이 도착한다(그들의 스냅샷은 재로그인 이전 것이다).
+    land_whole_write(held, &logout_body);
+
+    // 지연 감시 예산을 넉넉히 넘겨 기다린다 — 지울 거라면 이 안에 지운다.
+    std::thread::sleep(std::time::Duration::from_millis(800));
+    println!(
+        "[r4-casx4a] ghost 살아있나={} · 장부(지연={} 세대증표로안지움={} 되살릴것없음={})",
+        peer::has("ghost@x"),
+        claude::bury_stats::late(),
+        claude::bury_stats::moved_on(),
+        claude::bury_stats::late_kept()
+    );
+    assert!(
+        peer::has("ghost@x"),
+        "★ 커밋 뒤에 들어온 로그인을 자물쇠 밖 되살리기가 지웠다 — 사용자에게는 「로그인했는데 곧 계정이 사라졌다」이고 로그는 「로그아웃을 되살렸다」고 정반대를 적는다"
+    );
+    let (_, accounts) = peer::read_raw();
+    assert!(
+        accounts.iter().any(|a| a == &fresh),
+        "★ 행은 남았는데 내용이 옛 credEnc로 돌아갔다 — 그건 로그인을 지운 것과 같다"
+    );
+    assert!(
+        claude::bury_stats::moved_on() >= 1,
+        "★ 되살리기가 그 행을 안 지운 것이 세대 증표 때문인지 「지울 것이 없어서」인지 장부로 못 가른다(증표가 한 번도 안 걸렸다)"
+    );
+    assert!(claude::is_registered("mine@x"), "★ 되살리기가 이웃이 지우지 **않은** 계정까지 지웠다");
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// ★R28d(CASX R4) — **파낸 로그아웃을 「지나가는 창」에 안 버린다.**
+///
+/// 확인 크리틱 R3 §3-2(높음 · 결정적 재현)가 연 문이다. R3는 `!dst.is_file()`이면 재시도도
+/// `eprintln`도 없이 **영구히** 접었고(그 자리는 `late_watch_tick`이 이미 `true`를 돌려줘
+/// 큐에서 빠진다 = 다시 안 본다), 그 창은 이 갈래가 스스로 실측해 표에 적어 둔 갈아끼우기
+/// 창이다(ENOENT 6연속 · **7.2ms** — `ccg_auth::replace` 모듈 주석).
+///
+/// 여기서는 그 창을 손으로 만든다 — `accounts.json`을 잠깐 딴 이름으로 치웠다가 되돌린다.
+/// 요구: 그 창이 지나가면 **되살리기가 다시 와서 앉는다**(포기가 아니라 재시도).
+#[test]
+fn a_dug_up_logout_is_retried_through_the_window_where_the_store_file_is_missing() {
+    let home = ccg_store::testhome::take("r4casx4b");
+    std::env::set_var("CCG_NO_NET", "1");
+    claude::bury_stats::reset();
+    seed("mine@x", "m-1");
+    peer::login("ghost@x");
+
+    let (held, logout_body) = straddling_open("ghost@x");
+    assert_eq!(rotate("mine@x", "m-2"), Landing::Both, "전제 — 회전이 양쪽에 정착했다");
+
+    // ★ 갈아끼우기 창의 결정적 재현 — 파일이 **잠깐 없다**.
+    let hidden = ccg_store::app_home().join("accounts.json.gone");
+    std::fs::rename(peer::path(), &hidden).expect("스토어 치우기");
+    land_whole_write(held, &logout_body);
+    // 감시가 그 원문을 파내고 「지금은 못 앉힌다」로 접어야 하는 시간(실측 창의 8배).
+    std::thread::sleep(std::time::Duration::from_millis(60));
+    assert!(claude::bury_stats::late() >= 1, "전제 — 이 사이에 감시가 로그아웃을 파냈어야 한다");
+    assert_eq!(claude::bury_stats::gave_up(), 0, "★ 창이 아직 안 지났는데 벌써 접었다");
+    std::fs::rename(&hidden, peer::path()).expect("스토어 되돌리기");
+
+    let mut gone_at = None;
+    for k in 0..80 {
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        if !peer::has("ghost@x") {
+            gone_at = Some((k + 1) * 5);
+            break;
+        }
+    }
+    println!(
+        "[r4-casx4b] 창이 지난 뒤 되살리기 = {gone_at:?}ms · 장부(지연={} 끝내못앉힘={} 세대증표={})",
+        claude::bury_stats::late(),
+        claude::bury_stats::gave_up(),
+        claude::bury_stats::moved_on()
+    );
+    assert!(
+        gone_at.is_some(),
+        "★ 파낸 로그아웃을 갈아끼우기 창에 버렸다 — 창은 7.2ms짜리인데 그 로그아웃은 영구히 취소된 채로 남는다"
+    );
+    assert_eq!(claude::bury_stats::gave_up(), 0, "★ 창이 지났는데도 접었다(재시도가 안 돌았다)");
+    assert!(claude::is_registered("mine@x"), "★ 되살리기가 이웃이 지우지 **않은** 계정까지 지웠다");
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// ★R28d(CASX R4) — **이웃의 오독 통짜 쓰기를 되살려 계정 전부를 지우지 않는다.**
+///
+/// 확인 크리틱 R3 §3-1이 "같은 구멍의 더 나쁜 변형"으로 적은 착지다. `theirs`가 2.6.2
+/// `readStoreFile`의 `catch { accounts: [] }`(`src/main/auth.ts:117`)면 `keep`이 비고
+/// 지울 목록에 **우리 계정 전부**가 들어간다 — 되살리기가 그걸 실행하면 우리가 이웃의
+/// 버그를 대신 수행하는 셈이고, 살아 있는 계정이 `credEnc`째 통째로 사라진다.
+///
+/// 가르는 근거는 [수 하나]다: 로그아웃은 계정 **하나**를 지운다(2.6.2 `removeAccount(email)` ·
+/// 3.0 `remove_account`). 둘 이상이 한 번에 사라진 원문은 로그아웃이 아니다.
+#[test]
+fn a_mis_read_whole_write_never_takes_the_whole_account_list_with_it() {
+    let home = ccg_store::testhome::take("r4casx4c");
+    std::env::set_var("CCG_NO_NET", "1");
+    claude::bury_stats::reset();
+    seed("a@x", "A-1");
+    seed("b@x", "B-1");
+
+    // 이웃이 갈아끼우기 창에서 파일을 못 읽고 「계정 0개」 위에 통짜로 되쓴다.
+    let bogus = peer::body(None, &[]);
+    let held = std::fs::OpenOptions::new().write(true).open(peer::path()).expect("이웃의 열기");
+    assert_eq!(rotate("a@x", "A-2"), Landing::Both, "전제 — 회전이 양쪽에 정착했다");
+    land_whole_write(held, &bogus);
+
+    std::thread::sleep(std::time::Duration::from_millis(800));
+    println!(
+        "[r4-casx4c] a 살아있나={} · b 살아있나={} · 장부(지연={} 오독통짜라안받음={} 자물쇠안={})",
+        claude::is_registered("a@x"),
+        claude::is_registered("b@x"),
+        claude::bury_stats::late(),
+        claude::bury_stats::refused(),
+        claude::bury_stats::in_lock()
+    );
+    assert!(
+        claude::is_registered("a@x") && claude::is_registered("b@x"),
+        "★ 이웃의 오독 통짜 쓰기를 되살려 계정 목록을 통째로 지웠다 — 살아 있는 토큰째 사라지고 출구는 재로그인뿐이다"
+    );
+    assert!(
+        claude::bury_stats::refused() >= 1,
+        "★ 안 지운 것이 규칙 때문인지 우연인지 장부로 못 가른다(오독 통짜 판정이 한 번도 안 걸렸다)"
+    );
+    assert_eq!(store_refresh_of("a@x").as_deref(), Some("A-2"), "★ 회전 결과가 되돌려졌다");
     let _ = std::fs::remove_dir_all(&home);
 }
 

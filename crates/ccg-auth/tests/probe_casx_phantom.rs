@@ -266,5 +266,124 @@ fn late_burial_probe() {
         peer_n.load(Ordering::Relaxed)
     );
     println!("[probe-late] ★지름길 Clean 뒤에 갈린 판(누적 시각별): 100µs={} · 400µs={} · 2ms={} · 20ms={}", late[0], late[1], late[2], late[3]);
+    println!("[probe-late] ※ 이 프로브는 20ms에서 측정을 끝낸다 — 꼬리는 `late_burial_tail_probe`가 잰다");
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// ★R28d(CASX R4) — **늦은 매장의 꼬리를 끝까지 잰다.**
+///
+/// 확인 크리틱 R3 §3-3의 요구다: [`late_burial_probe`]의 `waits_us`가 20ms에서 끝나서
+/// *"`LATE_WATCH_MS`(50ms)가 꼬리를 덮는다"*는 **실측이 아니라 외삽**이었다. 그 사이
+/// 제품 로그(n=18)에서 51.9ms·107.6ms짜리 착지가 나왔으므로 50ms는 상한이 아니다.
+///
+/// 여기서는 제품과 **같은 모양**으로 잰다 — 옛 inode를 큐에 쌓아 두고 250µs마다 전부
+/// 훑는다(제품의 `late_watch_loop`). 그래서 한 판마다 예산을 통째로 자는 [`late_burial_probe`]와
+/// 달리 꼬리를 길게(기본 1초) 봐도 주행 시간이 안 터진다.
+///
+/// 세는 것: 매장이 **드러난 시각**의 분포 · 예산 안에 한 번도 안 갈린 판 · 최대값.
+#[test]
+#[ignore = "측정 프로브 — 게이트가 아니다(약 40초). --ignored로 부른다"]
+fn late_burial_tail_probe() {
+    let home = ccg_store::testhome::take("casx-tail");
+    let dst = ccg_store::app_home().join("accounts.json");
+    std::fs::write(&dst, "{\"version\":3,\"accounts\":[]}").unwrap();
+
+    /// 꼬리를 보는 상한. 제품의 `LATE_WATCH_MS`를 **넘겨서** 봐야 그 값이 맞는지 알 수 있다.
+    const TAIL_MS: u64 = 1_000;
+    const SWAPS: usize = 3_000;
+
+    let stop = Arc::new(AtomicBool::new(false));
+    let peer_n = Arc::new(AtomicUsize::new(0));
+    let (s2, n2, d2) = (stop.clone(), peer_n.clone(), dst.clone());
+    let peer = std::thread::spawn(move || {
+        let mut i = 0usize;
+        while !s2.load(Ordering::Relaxed) {
+            i += 1;
+            let body = format!("{{\"version\":3,\"accounts\":[{{\"email\":\"ghost{i}@x\"}}]}}");
+            if let Ok(mut f) = std::fs::OpenOptions::new().write(true).create(true).truncate(true).share_mode(SHARE_ALL).open(&d2) {
+                let _ = f.write_all(body.as_bytes());
+                n2.fetch_add(1, Ordering::Relaxed);
+            }
+        }
+    });
+
+    // 제품의 지연 감시 큐와 같은 모양 — (옛 inode 핸들, 갈아끼우기 직전 내용, 커밋 시각).
+    let mut watching: Vec<(std::fs::File, String, std::time::Instant)> = Vec::new();
+    let mut found_us: Vec<u128> = Vec::new();
+    let (mut clean_first, mut buried_first, mut unreadable_first, mut never) = (0usize, 0usize, 0usize, 0usize);
+    let body = format!("{{\"version\":3,\"accounts\":[{{\"email\":\"mine@x\"}}],\"pad\":\"{}\"}}", "x".repeat(600));
+
+    let sweep = |watching: &mut Vec<(std::fs::File, String, std::time::Instant)>, found: &mut Vec<u128>, never: &mut usize| {
+        watching.retain_mut(|(f, was, at)| {
+            if let Some(now) = ccg_auth::replace::read_witness(f) {
+                if &now != was {
+                    found.push(at.elapsed().as_micros());
+                    return false;
+                }
+            }
+            if at.elapsed() >= std::time::Duration::from_millis(TAIL_MS) {
+                *never += 1;
+                return false;
+            }
+            true
+        });
+    };
+
+    for _ in 0..SWAPS {
+        let mut w = ccg_auth::replace::witness(&dst);
+        let before = w.as_mut().and_then(ccg_auth::replace::read_witness);
+        let p = ccg_auth::replace::stage(&dst, &body).unwrap();
+        let carried = p.replace(&dst).unwrap();
+        let at = std::time::Instant::now();
+        let first = w.as_mut().and_then(ccg_auth::replace::read_witness);
+        match (&first, &before, w) {
+            // 제품이 지름길 `Clean`을 내는 그 자리 — 여기서부터 꼬리를 본다.
+            (Some(a), Some(b), Some(w)) if a == b => {
+                clean_first += 1;
+                watching.push((w, b.clone(), at));
+            }
+            (Some(_), _, _) => buried_first += 1,
+            (None, _, _) => unreadable_first += 1,
+        }
+        drop(carried);
+        // 큐 전체를 훑는다(제품의 250µs 틱과 같은 간격).
+        for _ in 0..8 {
+            sweep(&mut watching, &mut found_us, &mut never);
+            std::thread::sleep(std::time::Duration::from_micros(250));
+        }
+    }
+    // 남은 자리는 예산까지 다 본다.
+    let drain = std::time::Instant::now();
+    while !watching.is_empty() && drain.elapsed() < std::time::Duration::from_millis(TAIL_MS + 200) {
+        sweep(&mut watching, &mut found_us, &mut never);
+        std::thread::sleep(std::time::Duration::from_micros(250));
+    }
+    stop.store(true, Ordering::Relaxed);
+    peer.join().unwrap();
+
+    found_us.sort_unstable();
+    let n = found_us.len();
+    let at = |p: usize| -> u128 { if n == 0 { 0 } else { found_us[(n * p / 100).min(n - 1)] } };
+    let over = |us: u128| found_us.iter().filter(|v| **v > us).count();
+    println!(
+        "[probe-tail] 갈아끼우기 {SWAPS} · 이웃 쓰기 {} — 첫판독: 그대로 {clean_first} / 갈림 {buried_first} / 판독불가 {unreadable_first}",
+        peer_n.load(Ordering::Relaxed)
+    );
+    println!(
+        "[probe-tail] ★지름길 Clean 뒤 늦은 매장 {n}건 / {clean_first}판 — 최소 {}µs · 중앙값 {}µs · p90 {}µs · p99 {}µs · 최대 {}µs",
+        found_us.first().copied().unwrap_or(0),
+        at(50),
+        at(90),
+        at(99),
+        found_us.last().copied().unwrap_or(0)
+    );
+    println!(
+        "[probe-tail] ★예산별 놓침(그 값이 상한이면 못 보는 판): 20ms={} · 50ms={} · 100ms={} · 200ms={} · 500ms={} · {TAIL_MS}ms 안에 한 번도 안 갈림={never}",
+        over(20_000),
+        over(50_000),
+        over(100_000),
+        over(200_000),
+        over(500_000)
+    );
     let _ = std::fs::remove_dir_all(&home);
 }
