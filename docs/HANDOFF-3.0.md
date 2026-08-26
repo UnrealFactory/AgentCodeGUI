@@ -117,6 +117,15 @@ WebView2가 Chromium 4개(314MB) 자리에 6개(386MB)를 띄워 반납했다. "
 2. **`cargo build --release` 단독 금지.** `custom-protocol` 피처가 꺼지면 tauri가 dev로
    간주해 devUrl을 로드한다 — 릴리즈 exe가 빈 페이지를 띄우고, dev 서버가 떠 있으면
    **벤치가 dev 서버를 재는 사고**가 난다. `npm run tauri:build`를 써라.
+   ★**그 명령은 이제 업데이트 서명 개인키를 요구한다**(R28j N8 이후). `tauri.conf.json`의
+   `plugins.updater.pubkey` + `bundle.createUpdaterArtifacts:true` 때문에 tauri CLI가 번들
+   **마지막 단계에서** 설치기를 minisign으로 서명하고, 키가 없으면 **설치기를 다 만들어 놓고도
+   종료 코드 1**이다(실측: 키 없음 exit 1 · 키 있음 exit 0 + `*-setup.exe.sig` 436 B).
+   그래서 `npm run tauri:build`는 `scripts/tauri-build.mjs`를 거친다 — 키를
+   `~/.tauri/agentcodegui3-updater.key`(또는 `CCG_UPDATER_KEY`·`TAURI_SIGNING_PRIVATE_KEY`)에서
+   찾아 실어 주고, **없으면 cargo를 켜기 전에** 사유를 말하고 끝낸다(0.6초). 서명 없이 설치기만
+   필요하면 `npm run tauri:build:unsigned` — 그 산출물은 `.sig`가 없어 **릴리스에 올리면 안 된다**
+   (올리면 `latest.json`을 쓸 수 없어 깔린 앱들이 영원히 「최신입니다」만 본다).
 3. **계정 복호화**: `accounts.json`의 토큰은 Chromium OSCrypt(userData의 `Local State`에
    DPAPI로 감싼 AES 키)로 암호화돼 있다. 홈만 옮기면 앱이 "복호화하지 못했어요"로 실행을
    거부한다. `bench/fixture.mjs`가 설치본의 Local State를 복사해 해결한다. 3.0의

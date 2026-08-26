@@ -13,6 +13,15 @@ default-run = "agentcodegui"
 # 재는 사고로 이어진다). 그래서 빌드는 반드시 `npm run tauri:build`로,
 # 수동 cargo 빌드가 필요하면 `cargo build --release --features custom-protocol`.
 # default에 넣지 않는 이유: `tauri dev`는 dev 모드(=이 피처 꺼짐)여야 devUrl을 쓴다.
+#
+# ★R28j UPDATER 수정 R1 — 그 `npm run tauri:build`는 이제 **업데이트 서명 개인키를 요구한다.**
+# `tauri.conf.json`에 `plugins.updater.pubkey` + `bundle.createUpdaterArtifacts:true`가 들어가면서
+# CLI가 번들 **마지막 단계에서** 설치기를 minisign으로 서명하고, 키가 없으면 종료 코드 1이다
+# (설치기는 이미 나온 뒤라 「성공한 빌드를 실패로 읽는」 자리였다 — 확인 크리틱 R1 §3.1 실측).
+# 그래서 그 npm 스크립트는 `scripts/tauri-build.mjs`를 거친다: 키를 찾아 env로 실어 주고
+# (`~/.tauri/agentcodegui3-updater.key` · `CCG_UPDATER_KEY`로 덮음), 없으면 cargo를 켜기 **전에**
+# 무엇을 해야 하는지 말하고 끝낸다. 서명 없이 설치기만 필요하면 `npm run tauri:build:unsigned`
+# (`createUpdaterArtifacts:false` — 그 산출물은 릴리스에 올리면 안 된다).
 [features]
 custom-protocol = ["tauri/custom-protocol"]
 
