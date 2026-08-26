@@ -45,8 +45,19 @@ const argv = (k, d) => (process.argv.find((a) => a.startsWith(`--${k}=`)) ?? `--
 const TAG = argv('tag', '')
 const OUT_NAME = argv('out', '')
 const PORT = Number(argv('port', kind === 'tauri' ? 9334 : 9333))
+// ── --cwd (R28j DECIDE 수정 R1) ───────────────────────────────────────────────
+// ★ 이 한 줄이 주 게이트의 해석을 바꾼다.
+// `crates/ccg-lsp/src/launch.rs::shipped_module()`은 node_modules를 ① CCG_LSP_MODULES
+// ② **exe 폴더에서 위로** ③ **프로세스 cwd에서 위로** 훑어 찾는다. 벤치는 exe가
+// `target-*/release`(레포 안)이고 cwd도 레포라 **항상 레포의 node_modules를 문다** —
+// 그래서 3.0 팔에만 LSP 헬퍼가 뜬다. 설치본은 `%LOCALAPPDATA%\AgentCodeGUI3`에 exe와
+// uninstall.exe 두 파일뿐이고 조상 폴더에도 node_modules가 없어 헬퍼가 **0개**다.
+// 즉 벤치 경로와 배포 경로가 다른 상태를 잰다. `--cwd=`는 그 차이를 **재게** 해 준다.
+// 없으면 예전과 완전히 같은 동작(REPO).
+const CWD = argv('cwd', '')
 const profile = kind === 'tauri' ? tauriProfile({ ...(exeArg ? { exe: exeArg } : {}), port: PORT }) : electronProfile({ port: PORT })
 if (TAG) profile.env.CCG_HOME += '-' + TAG
+if (CWD) profile.cwd = path.resolve(CWD)
 const appVersion = kind === 'tauri' ? '3.0.0-beta.1' : '2.6.2'
 const home = profile.env.CCG_HOME
 const arm = armName({ ...process.env, ...profile.env })
@@ -250,6 +261,8 @@ const summary = {
 const out = {
   app: profile.name,
   ...provenance(profile),
+  // ★ 어디서 띄웠는가 — LSP 헬퍼가 뜨는지가 이 한 줄로 갈린다(위 `--cwd` 주석).
+  launchCwd: profile.cwd,
   panels,
   repeats,
   env: envInfo(),

@@ -1,0 +1,131 @@
+{
+  "app": "tauri-3.0.0",
+  "arm": "default",
+  "bin": {
+    "exe": "C:\\Users\\User\\AppData\\Local\\ccg-r28j-dec-r1-dist\\AgentCodeGUI3.exe",
+    "exeMtime": "2026-08-26T04:07:58.158Z",
+    "exeSize": 7066624,
+    "exeSha256": "0a3e5384cea48ba8",
+    "gitHead": "55a4549",
+    "gitDirty": true
+  },
+  "armEnv": {
+    "CCG_LSP_MODULES": "C:\\Code\\AgentCodeGUI",
+    "CCG_HOME": "C:\\Code\\AgentCodeGUI\\.bench-home-tauri-r28jdecr1mod",
+    "CCG_CDP_PORT": "10943"
+  },
+  "launchCwd": "C:\\Users\\User\\AppData\\Local\\ccg-r28j-dec-r1-dist",
+  "panels": 4,
+  "repeats": 1,
+  "env": {
+    "ramGB": 63.8,
+    "cpu": "13th Gen Intel(R) Core(TM) i7-13700KF",
+    "os": "Microsoft Windows 11 Home 26200"
+  },
+  "summary": {
+    "idleGridWsMB": 601.4,
+    "idleGridPrivMB": 365.1,
+    "idleGridProcs": 8,
+    "idleWithWindowsWsMB": 638.3,
+    "idleWithWindowsPrivMB": 362.5,
+    "wsMBPerWindow": 18.4,
+    "procsAdded": 0,
+    "scrollInPanel": {
+      "avgFps": 59.8,
+      "p95Ms": 16.8,
+      "worstDroppedPct": 0.3,
+      "zeroDropRuns": 0
+    },
+    "scrollAllPanels": {
+      "avgFps": 58.8,
+      "p95Ms": 16.8,
+      "worstDroppedPct": 1.7,
+      "zeroDropRuns": 0
+    },
+    "runs": 1
+  },
+  "perRun": [
+    {
+      "seq": 1,
+      "panels": 4,
+      "itemsPerPanel": 120,
+      "gridPanels": 4,
+      "at": "2026-08-26T04:21:32.307Z",
+      "idleGrid": {
+        "totalWsMB": 601.4,
+        "totalPrivMB": 365.1,
+        "procs": 8
+      },
+      "idleWithWindows": {
+        "totalWsMB": 638.3,
+        "totalPrivMB": 362.5,
+        "procs": 8
+      },
+      "windowCost": {
+        "wsMBPerWindow": 18.4,
+        "procsAdded": 0
+      },
+      "scrollInPanel": {
+        "frames": 358,
+        "avgFps": 59.8,
+        "p95Ms": 16.8,
+        "worstMs": 33.4,
+        "droppedPct": 0.3,
+        "droppedFrames": 1,
+        "longTaskMs": 0
+      },
+      "scrollAllPanels": {
+        "frames": 360,
+        "avgFps": 58.8,
+        "p95Ms": 16.8,
+        "worstMs": 50,
+        "droppedPct": 1.7,
+        "droppedFrames": 6,
+        "longTaskMs": 0
+      },
+      "procDetail": [
+        {
+          "name": "AgentCodeGUI3.exe",
+          "wsMB": 44.6,
+          "privMB": 20.9
+        },
+        {
+          "name": "node.exe",
+          "wsMB": 64.5,
+          "privMB": 60.4
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "wsMB": 230.2,
+          "privMB": 105
+        },
+        {
+          "name": "conhost.exe",
+          "wsMB": 7.7,
+          "privMB": 1.2
+        },
+        {
+          "name": "node.exe",
+          "wsMB": 79.8,
+          "privMB": 43.9
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "wsMB": 18.2,
+          "privMB": 3.4
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "wsMB": 19.8,
+          "privMB": 9
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "wsMB": 217.2,
+          "privMB": 143.8
+        }
+      ]
+    }
+  ],
+  "at": "2026-08-26T04:22:30.622Z"
+}

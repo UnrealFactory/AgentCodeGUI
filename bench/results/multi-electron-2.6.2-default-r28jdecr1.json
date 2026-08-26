@@ -1,0 +1,306 @@
+{
+  "app": "electron-2.6.2",
+  "arm": "default",
+  "bin": {
+    "exe": "C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe",
+    "exeMtime": "1979-12-31T15:00:00.000Z",
+    "exeSize": 223950848,
+    "exeSha256": "4e3b585c8cbbc45a",
+    "gitHead": "55a4549",
+    "gitDirty": true
+  },
+  "armEnv": {
+    "CCG_HOME": "C:\\Code\\AgentCodeGUI\\.bench-home-r28jdecr1e"
+  },
+  "launchCwd": "C:\\Code\\AgentCodeGUI",
+  "panels": 4,
+  "repeats": 3,
+  "env": {
+    "ramGB": 63.8,
+    "cpu": "13th Gen Intel(R) Core(TM) i7-13700KF",
+    "os": "Microsoft Windows 11 Home 26200"
+  },
+  "summary": {
+    "idleGridWsMB": 718.6,
+    "idleGridPrivMB": 508.9,
+    "idleGridProcs": 7,
+    "idleWithWindowsWsMB": 934,
+    "idleWithWindowsPrivMB": 558.2,
+    "wsMBPerWindow": 107.7,
+    "procsAdded": 2,
+    "scrollInPanel": {
+      "avgFps": 60,
+      "p95Ms": 16.9,
+      "worstDroppedPct": 0,
+      "zeroDropRuns": 3
+    },
+    "scrollAllPanels": {
+      "avgFps": 59.8,
+      "p95Ms": 16.9,
+      "worstDroppedPct": 0.8,
+      "zeroDropRuns": 1
+    },
+    "runs": 3
+  },
+  "perRun": [
+    {
+      "seq": 1,
+      "panels": 4,
+      "itemsPerPanel": 120,
+      "gridPanels": 4,
+      "at": "2026-08-26T04:08:42.151Z",
+      "idleGrid": {
+        "totalWsMB": 718.6,
+        "totalPrivMB": 515.8,
+        "procs": 7
+      },
+      "idleWithWindows": {
+        "totalWsMB": 934,
+        "totalPrivMB": 558.2,
+        "procs": 9
+      },
+      "windowCost": {
+        "wsMBPerWindow": 107.7,
+        "procsAdded": 2
+      },
+      "scrollInPanel": {
+        "frames": 357,
+        "avgFps": 59.9,
+        "p95Ms": 16.9,
+        "worstMs": 17.4,
+        "droppedPct": 0,
+        "droppedFrames": 0,
+        "longTaskMs": 0
+      },
+      "scrollAllPanels": {
+        "frames": 358,
+        "avgFps": 59.8,
+        "p95Ms": 16.9,
+        "worstMs": 33.6,
+        "droppedPct": 0.3,
+        "droppedFrames": 1,
+        "longTaskMs": 0
+      },
+      "procDetail": [
+        {
+          "name": "electron.exe",
+          "wsMB": 119.2,
+          "privMB": 87
+        },
+        {
+          "name": "electron.exe",
+          "wsMB": 35.1,
+          "privMB": 11.6
+        },
+        {
+          "name": "electron.exe",
+          "wsMB": 121.2,
+          "privMB": 161.8
+        },
+        {
+          "name": "electron.exe",
+          "wsMB": 53.9,
+          "privMB": 15.8
+        },
+        {
+          "name": "electron.exe",
+          "wsMB": 199.1,
+          "privMB": 145.1
+        },
+        {
+          "name": "electron.exe",
+          "wsMB": 94.6,
+          "privMB": 59.8
+        },
+        {
+          "name": "electron.exe",
+          "wsMB": 122.9,
+          "privMB": 55.2
+        },
+        {
+          "name": "electron.exe",
+          "wsMB": 126.1,
+          "privMB": 59.6
+        },
+        {
+          "name": "electron.exe",
+          "wsMB": 107.5,
+          "privMB": 42.2
+        }
+      ]
+    },
+    {
+      "seq": 2,
+      "panels": 4,
+      "itemsPerPanel": 120,
+      "gridPanels": 4,
+      "at": "2026-08-26T04:09:43.784Z",
+      "idleGrid": {
+        "totalWsMB": 719,
+        "totalPrivMB": 507.3,
+        "procs": 7
+      },
+      "idleWithWindows": {
+        "totalWsMB": 939.5,
+        "totalPrivMB": 558.9,
+        "procs": 9
+      },
+      "windowCost": {
+        "wsMBPerWindow": 110.3,
+        "procsAdded": 2
+      },
+      "scrollInPanel": {
+        "frames": 355,
+        "avgFps": 60,
+        "p95Ms": 16.8,
+        "worstMs": 16.9,
+        "droppedPct": 0,
+        "droppedFrames": 0,
+        "longTaskMs": 0
+      },
+      "scrollAllPanels": {
+        "frames": 355,
+        "avgFps": 60,
+        "p95Ms": 16.8,
+        "worstMs": 17,
+        "droppedPct": 0,
+        "droppedFrames": 0,
+        "longTaskMs": 0
+      },
+      "procDetail": [
+        {
+          "name": "electron.exe",
+          "wsMB": 116.3,
+          "privMB": 85
+        },
+        {
+          "name": "electron.exe",
+          "wsMB": 35.1,
+          "privMB": 11.6
+        },
+        {
+          "name": "electron.exe",
+          "wsMB": 118.4,
+          "privMB": 162.7
+        },
+        {
+          "name": "electron.exe",
+          "wsMB": 53.7,
+          "privMB": 15.8
+        },
+        {
+          "name": "electron.exe",
+          "wsMB": 202.8,
+          "privMB": 147
+        },
+        {
+          "name": "electron.exe",
+          "wsMB": 95,
+          "privMB": 59.8
+        },
+        {
+          "name": "electron.exe",
+          "wsMB": 125.9,
+          "privMB": 57.7
+        },
+        {
+          "name": "electron.exe",
+          "wsMB": 125.7,
+          "privMB": 58.2
+        },
+        {
+          "name": "electron.exe",
+          "wsMB": 110.4,
+          "privMB": 44.5
+        }
+      ]
+    },
+    {
+      "seq": 3,
+      "panels": 4,
+      "itemsPerPanel": 120,
+      "gridPanels": 4,
+      "at": "2026-08-26T04:10:44.889Z",
+      "idleGrid": {
+        "totalWsMB": 715.7,
+        "totalPrivMB": 508.9,
+        "procs": 7
+      },
+      "idleWithWindows": {
+        "totalWsMB": 931,
+        "totalPrivMB": 554.6,
+        "procs": 9
+      },
+      "windowCost": {
+        "wsMBPerWindow": 107.6,
+        "procsAdded": 2
+      },
+      "scrollInPanel": {
+        "frames": 357,
+        "avgFps": 60,
+        "p95Ms": 16.9,
+        "worstMs": 18.5,
+        "droppedPct": 0,
+        "droppedFrames": 0,
+        "longTaskMs": 0
+      },
+      "scrollAllPanels": {
+        "frames": 356,
+        "avgFps": 59.4,
+        "p95Ms": 16.9,
+        "worstMs": 33.4,
+        "droppedPct": 0.8,
+        "droppedFrames": 3,
+        "longTaskMs": 0
+      },
+      "procDetail": [
+        {
+          "name": "electron.exe",
+          "wsMB": 116.2,
+          "privMB": 84.1
+        },
+        {
+          "name": "electron.exe",
+          "wsMB": 35.1,
+          "privMB": 11.6
+        },
+        {
+          "name": "electron.exe",
+          "wsMB": 122.7,
+          "privMB": 158.4
+        },
+        {
+          "name": "electron.exe",
+          "wsMB": 53.8,
+          "privMB": 15.7
+        },
+        {
+          "name": "electron.exe",
+          "wsMB": 204.3,
+          "privMB": 149.9
+        },
+        {
+          "name": "electron.exe",
+          "wsMB": 97.5,
+          "privMB": 62.5
+        },
+        {
+          "name": "electron.exe",
+          "wsMB": 123,
+          "privMB": 55.8
+        },
+        {
+          "name": "electron.exe",
+          "wsMB": 125.1,
+          "privMB": 57.9
+        },
+        {
+          "name": "electron.exe",
+          "wsMB": 107.2,
+          "privMB": 41.4
+        }
+      ]
+    }
+  ],
+  "at": "2026-08-26T04:11:42.783Z"
+}
