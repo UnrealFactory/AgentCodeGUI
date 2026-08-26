@@ -76,7 +76,19 @@ pub mod ch {
     /// (잘못된 인자는 조용히 버려졌다), 그 침묵이 R5 §9.1 N3의 핵심이었다.
     /// 페이로드 `{ path, reason }` — `reason`은 `open_dir::Verdict::reason()`.
     pub const APP_OPEN_DIRECTORY_FAILED: &str = "app:open-directory-failed";
+    // ── 앱 자동 업데이트(★R28j N8 — `src/updater.rs`) ─────────────────────────
+    // R28i까지 이 계열은 `UPDATE_GET_STATUS` **하나뿐**이었고 그것도 하드코딩 `idle`이었다
+    // (최종 파리티 R5 §9.0.7). 나머지 셋은 상수조차 없어 `{__unimplemented:true}`로
+    // 떨어졌고, 그래서 `AppUpdateGate`는 실려 있어도 **어떤 경로로도 뜰 수 없었다**.
     pub const UPDATE_GET_STATUS: &str = "app:update-status";
+    /// 조회를 건다(수동 방아쇠). 주기 확인은 셸의 `updater::init`이 스스로 돈다 —
+    /// 2.6.2도 같았다(렌더러에 `checkForUpdate()` 호출부는 0이다).
+    pub const UPDATE_CHECK: &str = "app:update-check";
+    /// 받아둔 설치본을 적용한다 = 카드의 「업데이트」 버튼(`AppUpdateGate.tsx:108`).
+    /// **설치를 부르는 유일한 통로**다(`updater.rs` 헤더의 「종료 시 자동 설치」 함정).
+    pub const UPDATE_INSTALL: &str = "app:update-install";
+    /// 상태 푸시(main → 메인 창). 페이로드는 계약면 `UpdateStatus` 그대로.
+    pub const UPDATE_EVENT: &str = "app:update-event";
     // engine
     pub const ENGINE_AUTO_UPDATE: &str = "engine:auto-update";
     pub const ENGINE_UPDATE_STATUS: &str = "engine:update-status";
@@ -432,7 +444,7 @@ fn dispatch(app: &AppHandle, window: &WebviewWindow, channel: &str, p: &Value) -
             return v;
         }
     }
-    if let Some(v) = app_meta::dispatch(channel, p) {
+    if let Some(v) = app_meta::dispatch(app, channel, p) {
         return v;
     }
     if let Some(v) = stores::dispatch(app, channel, p) {

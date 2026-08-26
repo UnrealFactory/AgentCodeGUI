@@ -17,9 +17,17 @@
       "csp": null
     }
   },
+  "plugins": {
+    "updater": {
+      "endpoints": ["https://github.com/UnrealFactory/AgentCodeGUI/releases/latest/download/latest.json"],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEU2RjRERjcyMzZFNTVFNDYKUldSR1h1VTJjdC8wNWtCZ2dUMXFZR0pXR2ZZU1dYeXp6VWhGMHhsMGE4YXVMdC9nY0h2MjFNM2cK",
+      "windows": { "installMode": "passive" }
+    }
+  },
   "bundle": {
     "active": true,
     "targets": ["nsis"],
+    "createUpdaterArtifacts": true,
     "icon": ["../build/icon3.ico"],
     "publisher": "AgentCodeGUI",
     "homepage": "https://github.com/UnrealFactory/AgentCodeGUI",

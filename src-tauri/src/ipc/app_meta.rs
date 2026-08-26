@@ -2,19 +2,32 @@
 
 use super::{arg, ch};
 use serde_json::{json, Value};
+use tauri::AppHandle;
 
-pub fn dispatch(channel: &str, p: &Value) -> Option<Value> {
+pub fn dispatch(app: &AppHandle, channel: &str, p: &Value) -> Option<Value> {
     Some(match channel {
         // ── app meta ────────────────────────────────────────────────────────
         ch::APP_GET_VERSION => json!(env!("CARGO_PKG_VERSION")),
         // (`app:get-initial-dir`는 여기 없다 — 판정이 파일을 만지고 실패 카드를 쏘려면
         //  `AppHandle`이 필요해 `ipc_call`의 블로킹 팔에서 `open_dir::initial_dir`이 받는다.
         //  콜드·웜 두 반쪽이 **같은 잣대**를 쓰게 하는 자리다. 아래 [`open_dir`] 참고.)
-        // 앱 자동 업데이트(electron-updater 자리)는 아직 없다 — 정직하게 idle.
-        // AppUpdateGate는 phase가 available/downloading/downloaded/error일 때만 뜬다.
-        ch::UPDATE_GET_STATUS => json!({
-            "phase": "idle", "version": Value::Null, "percent": 0, "log": [], "error": Value::Null
-        }),
+
+        // ── ★R28j N8. 앱 자동 업데이트 3채널 (몸통은 `crate::updater`) ─────────
+        // R28i까지 이 자리는 하드코딩 `idle` 하나였다 — 「electron-updater 자리는 아직
+        // 없다, 정직하게 idle」. 정직했지만 사용자가 얻는 것은 없었다: 앱 안에서 새 버전을
+        // **알 수도 받을 수도 없었다**(최종 파리티 R5 §9.1 `N8` · 높음).
+        //
+        // 셋 다 **개발 실행에서는 no-op**이다(2.6.2 `app.isPackaged` 게이트와 같은 성질).
+        // 그래서 `npm run tauri:dev` 중에 가짜 오류 카드가 뜨지 않는다.
+        ch::UPDATE_GET_STATUS => crate::updater::status(),
+        ch::UPDATE_CHECK => {
+            crate::updater::check(app);
+            Value::Null
+        }
+        ch::UPDATE_INSTALL => {
+            crate::updater::install(app);
+            Value::Null
+        }
 
         // ── engine ─────────────────────────────────────────────────────────
         // 두 엔진 CLI 공통 자동 업데이트 플래그. 인자 있으면 설정, 항상 현재 값 반환.

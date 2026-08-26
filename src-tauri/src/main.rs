@@ -6,6 +6,8 @@ mod engine;
 /// 서브시스템 무력화 스위치 — 유휴 메모리 귀속용 A/B 팔 가르개(★R4, `flags.rs` 헤더).
 mod flags;
 mod ipc;
+/// 앱 자동 업데이트(★R28j N8 — 2.6.2 `src/main/updater.ts`의 자리).
+mod updater;
 mod webview_args;
 mod win;
 
@@ -213,6 +215,14 @@ fn main() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        // ── 앱 자동 업데이트(★R28j N8) ───────────────────────────────────────
+        // 플러그인은 **항상** 등록한다(개발 실행에서도). 등록은 설정을 읽어 상태 하나를
+        // 심는 일이라 네트워크를 만지지 않고, 조회·다운로드·설치는 전부 `updater.rs`가
+        // `tauri::is_dev()` 게이트 뒤에서 부른다 — 등록을 조건부로 하면 두 빌드의 플러그인
+        // 테이블이 달라져 비교 대상이 흔들린다(`ccg-img` 스킴을 조건부 등록하지 않는 것과
+        // 같은 규율). 렌더러는 플러그인의 커맨드를 **직접 부르지 않는다**: 계약면은
+        // `ipc_call` 하나이고 화면이 보는 것은 `app:update-*` 세 채널뿐이다.
+        .plugin(tauri_plugin_updater::Builder::new().build())
         // ── 로컬 이미지 스킴(M6) ─────────────────────────────────────────────
         // 렌더러는 자기 오리진에서 file://을 못 읽어(webSecurity), 첨부 이미지와 뷰어의
         // 이미지/SVG 보기가 2.6.2부터 이 전용 스킴으로 바이트를 받아 간다.
@@ -266,6 +276,9 @@ fn main() {
             // 돌고, 할 일이 없으면 아무 카드도 안 뜬다. 이것이 없는 동안 3.0은 **엔진도
             // CLI도 없는 새 컴퓨터에서 아무 말도 하지 않았다**(확인 크리틱 §4.2).
             engine::boot_update::spawn(app.handle().clone());
+            // ★R28j N8 — **앱** 자동 업데이트(위 줄은 **엔진 CLI** 축이다 · 다른 계열).
+            // 자기 스레드에서 돌고, 개발 실행에서는 이 함수가 첫 줄에서 돌아온다.
+            updater::init(app.handle());
             Ok(())
         })
         .build(tauri::generate_context!())
