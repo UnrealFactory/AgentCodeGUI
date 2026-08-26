@@ -103,9 +103,15 @@ pub fn dispatch(app: &AppHandle, channel: &str, p: &Value) -> Option<Value> {
 /// 확인한다(= 설정만 되고 안 깔린 버전을 거른다). 여기서는 **`config.json`에 적힌 값 +
 /// 실행 파일 존재**만 본다. 이유는 하네스다: 가짜 CLI를 꽂는 스크립트들은
 /// `engines/<v>/node_modules/@anthropic-ai/claude-agent-sdk-win32-x64/claude.exe` 하나만
-/// 심고 SDK 패키지는 안 깐다(`scripts/critic-m10-attack.mjs:124`). 엄격하게 바꾸면
-/// 그 하네스가 전부 PATH 폴백으로 떨어져 조용히 다른 것을 재게 된다. R28 이전(`hub.rs`
-/// `cli_path`)의 판정과 **한 글자도 다르지 않게** 유지한다.
+/// 심고 SDK 패키지는 안 깐다(`scripts/poc-m10-removal-bytes.mjs:104-106` ·
+/// `scripts/poc-live-chat.mjs:480` — 살아 있는 자리 전부는
+/// `git grep -l claude-agent-sdk-win32-x64 -- scripts docs/critic/tools`가 센다).
+/// 엄격하게 바꾸면 그 하네스가 전부 PATH 폴백으로 떨어져 조용히 다른 것을 재게 된다.
+/// R28 이전(`hub.rs` `cli_path`)의 판정과 **한 글자도 다르지 않게** 유지한다.
+///
+/// > ★R28L LONE — R28k까지 이 자리가 근거로 댄 `scripts/critic-m10-attack.mjs:124`는
+/// > **M10 제거가 지운 파일**이다(`e86edd5`). 판정을 조이려고 근거를 확인하러 간 다음
+/// > 사람이 빈 경로를 만나므로 살아 있는 자리로 옮겼다. **판정 자체는 안 건드렸다.**
 ///
 /// `CCG_CLAUDE_BIN`은 하네스 전용 우회로다(`CCG_CODEX_BIN`과 대칭).
 /// 폴백은 PATH의 `claude.exe` — 스폰 실패는 T3(엔진 층)가 사용자 문장으로 낸다.

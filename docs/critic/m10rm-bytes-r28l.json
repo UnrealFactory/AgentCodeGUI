@@ -1,0 +1,28 @@
+{
+  "at": "2026-08-26T05:59:22.182Z",
+  "tag": "r28l",
+  "exe": {
+    "path": "C:\\Code\\AgentCodeGUI\\target-r28l\\release\\agentcodegui.exe",
+    "sha256": "c48e2ecb3ea0f3484f773bc5c38b7de35dc5249807e91395654c91a3e985de0d",
+    "bytes": 7066112,
+    "mtime": "2026-08-26T05:36:41.319Z"
+  },
+  "home": "C:\\Code\\AgentCodeGUI\\.poc-home-m10rm-r28l",
+  "extra": "너는 코드 리뷰어다. 답은 한 문장으로만 한다.",
+  "prompt": "한 문장으로만 답해라. 지금 무엇을 맡고 있나?",
+  "plain": {
+    "frame": "{\"type\":\"control_request\",\"request_id\":\"init-1\",\"request\":{\"subtype\":\"initialize\",\"forwardSubagentText\":true,\"supportedDialogKinds\":[\"refusal_fallback_prompt\"]}}",
+    "sha256": "afb039fc7966a648299e042446cbfa874a555a0a73b1d395370ea36174532b0f",
+    "bytes": 161,
+    "hasSystemPromptKey": false
+  },
+  "instructed": {
+    "frame": "{\"type\":\"control_request\",\"request_id\":\"init-1\",\"request\":{\"subtype\":\"initialize\",\"forwardSubagentText\":true,\"supportedDialogKinds\":[\"refusal_fallback_prompt\"],\"systemPrompt\":{\"type\":\"preset\",\"preset\":\"claude_code\",\"append\":\"너는 코드 리뷰어다. 답은 한 문장으로만 한다.\"}}}",
+    "sha256": "e73cf2f2310ebd74526f43665aabac34caa71b702ccc229c184ce0943391ab6a",
+    "bytes": 291,
+    "append": "너는 코드 리뷰어다. 답은 한 문장으로만 한다.",
+    "carries": true
+  },
+  "frames": 2,
+  "pass": true
+}

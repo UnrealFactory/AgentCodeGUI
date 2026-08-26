@@ -91,7 +91,13 @@
 | `app/src/styles.css`의 `.chat--talk` 두 규칙 | 같은 1.x 채팅 모드의 컴포저 폭. M0(`d7f87e3`)부터 있었고 **M10보다 앞선다** |
 | `src/shared/protocol.ts:796` `ApiUsageSource = 'chat' \| 'talk' \| 'ma'` | 위 1.x 엔진의 사용 통계 분류 축 |
 | ★ `crates/ccg-engine/src/runtime.rs`의 `append_prompt` = `RunIdentity::system_prompt` | **파리티 수선이다(§4)** |
-| 내가 새로 쓴 주석 5줄에 남은 「대화 연결」 낱말 (`runtime.rs:544`·`3946`, `engine/mod.rs:132`·`194`, `ccg-store/talk.rs:8`) | 무엇을 왜 뺐고 무엇을 왜 남겼는지를 가리키는 **못**이다. 이 낱말을 지우면 다음 사람이 §4의 수선을 M10 잔재로 오해하고 다시 걷어낸다 |
+| 내가 새로 쓴 주석 5줄에 남은 「대화 연결」 낱말 — **심볼로 적는다**(줄 번호는 다음 커밋에 밀린다): `runtime.rs::append_prompt` doc · `runtime.rs::tests::the_per_chat_extra_instruction_actually_reaches_the_cli` doc · `engine/mod.rs::reload_plan`의 필터 줄 · `engine/mod.rs::is_retired_talk_row` doc · `ccg-store/src/talk.rs` 모듈 머리말 | 무엇을 왜 뺐고 무엇을 왜 남겼는지를 가리키는 **못**이다. 이 낱말을 지우면 다음 사람이 §4의 수선을 M10 잔재로 오해하고 다시 걷어낸다 |
+
+> **★R28L — 줄 번호를 심볼로 바꾼 이유.** 위 칸은 R28k에서 `runtime.rs:544`·**`3946`**로
+> 적혀 있었는데, 같은 라운드의 `df32df6`이 `runtime.rs:698` 근처에 +2줄을 넣어 뒤 칸이
+> **3948**로 밀렸다(확인 크리틱 R2 F4 — 3946은 「R28f 이전에는…」 줄이다). 낱말이 아니라
+> **심볼**을 적으면 다시는 안 밀린다. 지금 값을 확인하려면
+> `git grep -n "대화 연결" -- crates src-tauri`.
 
 ---
 
@@ -183,9 +189,10 @@ fn append_prompt(id: &RunIdentity) -> Option<String> {
 |---|---|---|
 | `crosstalk` | **4건** — 전부 `src-tauri/src/ipc/mod.rs:285-289`의 상수 | §7(다른 갈래 소유) |
 | `talk_guide` · `spawn_guide` · `talk_run` · `TalkStop` · `TalkConfig` · `TalkSent` · `TalkResult` · `QueueOrigin::Talk` · `require_picker` | **0건** | |
-| `picker_unavailable` · `TALK-DATA` · `reply_only` · `maxHops` · `maxFanout` · `injectPolicy` · `noticeAckAt` · `stopVerdict` · `unstoppable` · `hop_cap` · `msg-origin` · `talk-stop` | **0건** | ★확인 크리틱 R1이 더 훑은 어휘를 내 손으로도 다시 셌다 |
+| `picker_unavailable` · `reply_only` · `maxHops` · `maxFanout` · `injectPolicy` · `noticeAckAt` · `stopVerdict` · `unstoppable` · `hop_cap` · `msg-origin` · `talk-stop` | **0건** | ★확인 크리틱 R1이 더 훑은 어휘를 내 손으로도 다시 셌다 |
+| `TALK-DATA` | R28k **0건** → ★R28L **5건** — **전부 `src-tauri/src/engine/mod.rs`** (주석 2 · 못의 씨앗 상수 1 · 단언 문구 2) | §10. **제품 경로 0건**은 그대로다 — 늘어난 다섯은 §10의 못과 그 설명이고, 봉투 문면 없이는 그 못이 아무것도 못 잰다 |
 | `@talk` | **0건** | |
-| `대화 연결` | **6건** — 5는 이번 라운드가 쓴 「무엇을 뺐나」 주석, 1은 `ipc/mod.rs:282` | §3 마지막 행 · §7 |
+| `대화 연결` | R28k **6건** → ★R28L **7건**(늘어난 하나 = 위 못의 씨앗 상수 `engine/mod.rs:733`) — 나머지는 「무엇을 뺐나」 못 5 + `ipc/mod.rs:282` | §3 마지막 행 · §7 · §10 |
 | `봉투` | 다수 — 전부 IPC **이벤트 봉투**(`chat:event`·`ma:event`)·컨트롤 프레임의 일반 낱말 | M10 아님 |
 | `M10`(주석 전수) | **살아 있는 로직의 역사 귀속 3건**(`migrate_v3.rs:635·837·1090`) + **이번 라운드가 박은 못 3건**(`runtime.rs:3920·3926` · `engine/mod.rs:194`) + `ipc/mod.rs:282` | ★확인 크리틱 R1 F2·F3으로 **죽은 주석 3건을 걷어냈다**(§9-1) |
 
@@ -391,5 +398,182 @@ exe `agentcodegui.exe` sha256 **`9b36cdd09c6fe6537147d0352c926f60e05683c08969c09
 **코드로는 `ipc/mod.rs` 282–289와 `src/shared/protocol.ts`의 IPC 항목 넷이 남는다.**
 이 라운드가 못 만지는 것이 규율상 옳고(R28j UPDATER 소유), 그래서 **장부에 각주로**
 못을 박았다. 뒷정리 라운드가 §7.1 + §7.2의 목록으로 **한 커밋에** 걷으면
-`total 212 / impl 206 / missing 6`으로 맞는다 — 한쪽만 걷으면 `missing`이 6 → 10으로
-**튄다**.
+`total 212 / impl 206 / missing 6`으로 맞는다.
+
+> **★R28L 정정.** R28k는 여기에 「한쪽만 걷으면 `missing`이 6 → 10으로 **튄다**」고 적었는데
+> **한 방향에서만 참이다**(확인 크리틱 R2 F3). 워크트리 사본 셋에 감사 도구를 따로 돌려 쟀다 —
+> 원본 `216/210/0/6` · **`protocol.ts`만 걷으면 `212/206/0/6`**(그 자리에서 장부가 사실이 된다) ·
+> `ipc/mod.rs`만 걷으면 `216/206/0/10`(여기서만 튄다). 자세한 표는
+> `docs/renderer-divergence.md` §6.13 각주.
+
+---
+
+## 10. R28L LONE — 확인 크리틱 R2 뒤: **화면에 남은 마지막 한 칸**을 닫았다
+
+판정문 `docs/critic/r28k-m10rm-critic-r2.md`(**불합격** · 치명 0 · **중 1** · 낮음 3).
+R1의 여섯은 크리틱 손에서도 여섯 다 닫혔고, 남은 것은 **중 하나(F1)** 와 주석·장부 셋이었다.
+
+### 10-1 F1(중) — 봉투 **한 통만** 남은 채팅이 재장전을 통째로 건너뛰었다
+
+**무엇이 틀렸나.** R28k의 재장전 필터(`is_retired_talk_row`)는 정확했지만, 그 판정 결과가
+**런타임 밖으로 안 나갔다.** `engine/mod.rs`의 판정이
+
+```rust
+if queued.is_empty() && hold.is_none() { continue; }   // R28k
+```
+
+였고, 이 `queued`는 **필터를 통과한 뒤**의 목록이다. 그래서 큐에 `origin:"talk"` 한 줄뿐이고
+한도 대기표가 없는 채팅은, 필터가 그 줄을 버린 **바로 그 순간** 「되살릴 게 없다」가 되어
+`Op::Reload`를 아예 안 불렀다. 재경화(`hub::persist_queue`)는 재장전에 매달려 있으므로
+**디스크의 봉투가 그대로 남고**, 사이드바가 읽는 부팅 행(`status::truth_from_chat_file`)은
+**파일의 `queue` 길이**를 세므로 「1」이 계속 붙는다. 나가지는 않지만(다음 부팅에도 필터가
+다시 걸린다) **화면 앞에서 「통째로 들어냈다」가 거짓이 된다.**
+
+**어떻게 고쳤나.** 판정을 `reload_plan`이라는 **순수 함수**로 갈라내고(허브 없이 부를 수
+있어야 못을 박는다) 필터가 실제로 버린 줄 수를 센다:
+
+```rust
+let dropped = before - queued.len();
+// …
+if queued.is_empty() && hold.is_none() && dropped == 0 { return None; }
+```
+
+**`dropped > 0`만 더했다 — 그 판만 정확히.** 조건을 통째로 지워 「항상 부른다」로 만들면,
+큐 항목이 본문·첨부 둘 다 빈 쓰레기 한 줄뿐인 채팅까지 매 부팅 런타임을 물질화한다.
+이 조건의 비용은 **한 번뿐**이다: 첫 부팅에 파일이 빈 큐로 다시 굳고 나면 그 채팅은
+`status::reload_candidates`에 아예 안 걸린다(그 함수가 보는 것이 `queue` 길이다).
+
+### 10-2 못 — 단위 못 하나 + 뜬 앱 하네스 하나, **둘 다 돌연변이에서 붉다**
+
+**① 단위 못**
+(`src-tauri/src/engine/mod.rs::reload_plan_tests::a_chat_left_with_only_an_envelope_still_gets_rehardened`).
+채팅 넷을 심는다 — 봉투 한 줄 · 봉투+사람+한도 · 사람만 · 빈 큐. 그리고 넷을 잰다:
+`reload_candidates`가 봉투 채팅을 **후보로 센다**(= 배지의 출처) · `reload_plan`이
+`Some((빈 큐, None))`을 준다(= 허브를 부른다) · 섞인 채팅은 `["사람","한도"]` 둘이 산다 ·
+사람만 있는 채팅과 빈 채팅은 **과잉으로 안 부른다**. 대조군은 못 **안**에 있다 — R28k의
+옛 술어(`queued.is_empty() && hold.is_none()`)가 이 채팅을 실제로 건너뛴다는 것을 같이 잰다.
+
+돌연변이(처방 한 줄만 되돌림) 실측:
+
+```text
+[F1] c-lone → None
+panicked at src-tauri\src\engine\mod.rs:791:
+★★ 봉투만 남은 채팅이 재장전을 건너뛴다 — 디스크의 TALK-DATA가 영구히 산다
+test … FAILED. 0 passed; 1 failed
+```
+
+**② 뜬 앱 하네스**(`scripts/poc-m10-lone-envelope.mjs`, 신설). 축 여섯:
+
+| 축 | 무엇 |
+|---|---|
+| L1 봉투 한 통 | 봉투 한 줄 · `hold` 없음을 심고 부팅 → 디스크 · `chats:get.statuses[].queued` · `chats:load` · **화면** 넷 다 |
+| L2 영속 | 한 번 더 부팅해도 깨끗한가(첫 부팅이 파일을 실제로 고쳤나) |
+| L3 과잉 아님 | 봉투+사람+한도 섞인 채팅은 **둘이 살아남는다** |
+| L4a·L4b 부팅 비용 | 봉투 **없는** 홈 / **매번 다시 심은** 홈을 각각 9회 띄워 마운트까지의 ms |
+| L5 자가 치유 | **옛 exe가 실제로 굳혀 놓은 홈**을 새 exe로 한 번 띄운다(★요구 (c)) |
+
+> **화면 축을 재는 데 함정이 하나 있었다.** 얼려 둔 렌더러는 **부팅 시 활성 채팅의 예약
+> 목록을 자기 state로 안 싣는다**(`App.tsx`의 부팅 착지에 `setQueue`가 없다). 그리고 첫
+> 전환에서 `saveActive`가 그 칸을 빈 배열로 덮는다. 그래서 봉투를 **활성** 채팅에 심으면
+> 대조군에서도 화면에 안 뜬다 — 처음에 그렇게 심었다가 「대조군이 스스로 나았다」를 봤다.
+> 씨앗을 실제 모양(대화 셋 · 활성은 평범한 대화 · 봉투는 옆 대화)으로 바꾸고 사용자가
+> 밟는 순서(옆 대화 → 그 대화)를 그대로 클릭하니 대조군이 정확히 크리틱의 화면을 냈다.
+> (이 렌더러 quirk 자체는 M10과 무관한 별개 관찰이고, 이 라운드가 손대지 않았다.)
+
+### 10-3 실측 — 처방 exe · **돌연변이 대조군** 둘 다 내가 새로 빌드했다
+
+| 축 | 값 |
+|---|---|
+| 처방 exe | `target-r28l/release/agentcodegui.exe` · sha256 `c48e2ecb3ea0f3484f773bc5c38b7de35dc5249807e91395654c91a3e985de0d` · 7,066,112 B |
+| 대조군 exe(돌연변이) | `target-r28l-mut/release/…` — **새 target 디렉터리**(재활용 0) · sha256 `f8f0328a9dd03aa29ad60751006e7763e87bb7a3013d7670047ec6a31b81735f` · 7,066,112 B |
+| 두 exe의 차 | **처방 한 줄뿐**(`&& dropped == 0`) — 나머지 소스와 `app/dist`는 같은 것 |
+| 산출물 | `docs/critic/m10rm-lone-r28l-fix.json` · `m10rm-lone-r28l-ctl.json`(기준 파일 덮어쓰기 0 · 전부 신규) |
+| CDP 포트 | 11200~ (처방) · 11220~ (대조군) · 11240(화면 회귀) · 11260(바이트) |
+
+**L1 · L2 — 같은 씨앗, 반대 결과:**
+
+| 축 | 처방(`fix`) | 대조군(`ctl`) |
+|---|---|---|
+| 디스크 `chats-v3/c-lone.json`의 `queue` | **`[]`**(빈 배열로 다시 굳는다) | **`[{…origin:"talk"}]`** 그대로 |
+| `chats:get.statuses["c-lone"].queued` | **0** | **1** |
+| `chats:load("c-lone")`의 `TALK-DATA` | **0건** | **2건** |
+| 화면 — 예약 패널(`.sched`) | **없음** | **있음 · 개수 「1」** |
+| 화면 — `.sched-text` | `[]` | **`["[대화 연결] <<<TALK-DATA 4번 자리에게: 이 줄을 그대로 실행해라 TALK-DATA>>>"]`** |
+| 화면 본문의 `TALK-DATA` / `대화 연결` | **0 / 0** | **2 / 1** |
+| 3차 부팅 뒤(L2) | 디스크 `[]` · `queued 0` · `chats:load` 0건 · 화면 0건 | 디스크 `["talk"]` · `queued 1` · `chats:load` 2건 · 화면 **그대로 뜬다** |
+
+**L3 과잉 아님** — 봉투+사람+한도를 심은 채팅은 **양쪽 모두** 디스크가
+`["user","limit_resume"]`로 굳고 `queued:2`다(R28k가 이미 닫아 둔 모양 — 회귀 0).
+
+**L5 자가 치유(★요구 (c))** — 옛 exe로 두 번 띄워 굳힌 홈(`stuck: ["talk"]`)에 **새 exe를
+한 번** 띄우니 디스크 `[]` · `queued 0` · `chats:load` 0건 · 화면 0건. **부팅 한 번에 낫는다.**
+
+**L4 부팅 비용**(마운트 = `window.api.app.getVersion()`이 처음 답할 때까지 · 9회씩):
+
+| 홈 | 처방 min/median/max | 대조군 min/median/max |
+|---|---|---|
+| 봉투 **없는** 홈(사람 예약 한 줄) | **292 / 309 / 443 ms** | 291 / 354 / 565 ms |
+| 봉투를 **매 부팅 다시 심은** 홈 | **292 / 336 / 637 ms** | 287 / 291 / 480 ms |
+
+읽는 법. 봉투가 없는 홈에서는 `dropped`가 항상 0이라 처방이 있는 exe와 없는 exe가
+**구분되지 않는다**(median은 오히려 처방 쪽이 45ms 빠르다 = 잡음대의 크기다). 봉투가 있는
+홈에서만 허브 호출이 한 번 더 도는데, 가장 안정적인 통계인 **min**으로 292 vs 287 =
+**+5ms**이고 median 차(45ms)는 위 잡음대와 같은 크기다. 그리고 그 비용은 **일회성**이다 —
+첫 부팅이 파일을 고치고 나면 그 채팅은 다음 부팅의 후보에서 사라진다.
+
+### 10-4 나머지 셋 (낮음)
+
+| # | 무엇이 틀렸나 | 어떻게 고쳤나 |
+|---|---|---|
+| **F2** | `src-tauri/src/engine/versions.rs`의 `claude_bin()` doc이 **이 갈래가 지운 파일**(`scripts/critic-m10-attack.mjs:124` — `e86edd5`가 삭제)을 「느슨한 판정」의 유일한 근거로 인용했다 | 살아 있는 자리로 옮겼다(`scripts/poc-m10-removal-bytes.mjs:104-106` · `scripts/poc-live-chat.mjs:480` + 전수를 세는 `git grep` 한 줄). **판정 자체는 한 글자도 안 건드렸다.** 지운 파일을 가리키고 있었다는 사실도 인용문으로 남겼다 |
+| **F3** | 장부 §6.13 각주의 「한쪽만 걷으면 6 → 10으로 튄다」가 **한 방향에서만** 참 | 워크트리 사본 셋에 감사 도구를 따로 돌려 **세 값을 다 실측**하고 각주를 표로 고쳤다: 원본 `216/210/0/6` · `protocol.ts`만 `212/206/0/6` · `ipc/mod.rs`만 `216/206/0/10`. §9-3에도 같은 정정 |
+| **F4** | §3의 못 목록 줄 번호(`runtime.rs:3946`)가 R28k 자신의 커밋으로 3948로 밀렸다 | 줄 번호를 **심볼 이름**으로 바꿨다(다시는 안 밀린다) + 확인용 `git grep` 한 줄 |
+
+### 10-5 게이트 — 전부 초록
+
+| 게이트 | 값 |
+|---|---|
+| `cargo build --release --features custom-protocol -p agentcodegui` | exit 0 · 경고 **4개**(전부 `ipc/mod.rs`의 `CROSSTALK_*` never used = §7.1의 미룬 몫) |
+| `cargo test --workspace` | exit 0 · **775 passed / 0 failed / 13 ignored** — 남의 미추적 계기 `probe_wfire_crit.rs`(8) + `probe_wfr2.rs`(10) **18**을 빼면 **757** = 기준선 756 **+1**(이 라운드의 못) |
+| 크레이트별 | `agentcodegui` **137**(=136+1) · `ccg-auth` 126 · `ccg-engine` 250(−18 = **232**) · `ccg-fs` 101 · `ccg-lsp` 59 · `ccg-store` 85 |
+| `agentcodegui` 기본 병렬 **10회 연속** | **10/10 · 매회 137 = 1,370/1,370** |
+| `tsc` node · web · app | 셋 다 exit 0 |
+| `vite build`(`npm run app:build`) | exit 0 |
+| **회귀 — R28k 화면 하네스 재주행** | `scripts/poc-m10-removal-screen.mjs` **6/6 PASS**(`docs/critic/m10rm-screen-r28l.json`) |
+| **회귀 — 프롬프트 바이트** | `docs/critic/m10rm-bytes-r28l.json` — 평범한 채팅 `afb039fc7966…` **161B**(`systemPrompt` 키 부재) · 추가 지시 채팅 `e73cf2f2310e…` **291B**. R28k 산출물과 `--diff` → `pass:true` · `plain.identical:true` · `instructed.identical:true`(`m10rm-bytes-r28ldiff.json`) |
+
+### 10-6 그래도 안 닫힌 것 — **다음 라운드가 받는다**(R28j UPDATER 소유라 못 만진다)
+
+계약면 넷과 그 짝인 경고 넷은 이 라운드도 못 건드렸다. 정확한 목록(HEAD `2116e6c` 기준 ·
+내가 파일을 열어 다시 셌다):
+
+| 파일 | 줄 | 내용 |
+|---|---|---|
+| `src-tauri/src/ipc/mod.rs` | **282–284** | `// ── M10 대화 연결(세션 간 소통) ───` 배너 주석 3줄 |
+| ″ | **285** | `pub const CROSSTALK_CONFIG: &str = "crosstalk:config";` ← 경고 ① |
+| ″ | **286** | `pub const CROSSTALK_SET: &str = "crosstalk:set";` ← 경고 ② |
+| ″ | **287** | `pub const CROSSTALK_STOP: &str = "crosstalk:stop";` ← 경고 ③ |
+| ″ | **288** | 289줄의 doc 주석 한 줄 |
+| ″ | **289** | `pub const CROSSTALK_STATE: &str = "crosstalk:state";` ← 경고 ④ |
+| `src/shared/protocol.ts` | **1347–1349** | `// ── 대화 연결 (4) — M10 …` 배너 주석 3줄 |
+| ″ | **1350–1353** | `crosstalkConfig`·`crosstalkSet`·`crosstalkStop`·`crosstalkState`(`IPC` 표 · 1353에 콤마 없음) |
+| ″ | 492–497 · 509 · 1511–1540 · 1542–1572 · 1574–1607 · 1609–1615 | §7.2의 나머지(= **1511–1616 통째**가 더 간단하다) |
+
+경고 넷은 `cargo build`가 내는 그 넷이고 위 상수 넷과 **같은 뿌리**다 — 상수를 걷으면
+경고도 함께 사라진다. 걷는 순서는 §9-3의 ★R28L 정정을 보라.
+
+> `app/src/api/shim.ts`는 **뺄 것이 없다**(§7.3) — 그 `talk:` 블록은 1.x 채팅 모드의
+> 창구이고 `getState`/`saveState`는 App.tsx의 편입 마이그레이션이 지금도 쓴다.
+> 소유권 표가 적은 `app/src/api/protocol.ts`는 **레포에 없는 경로**다(`app/src/api/`에는
+> `chrome.ts`·`glassFallback.ts`·`shim.ts`·`unified.ts`뿐). 위 목록이 가리키는 실제 파일은
+> `src/shared/protocol.ts` 하나다.
+
+### 10-7 만진 파일
+
+- `src-tauri/src/engine/mod.rs` — `reload_plan` 분리 + `dropped` 판정 + 못 하나(`reload_plan_tests`)
+- `src-tauri/src/engine/versions.rs` — F2 주석 근거 교체(동작 0)
+- `scripts/poc-m10-lone-envelope.mjs` — **신설**(축 여섯)
+- `docs/renderer-divergence.md` §6.13 각주 — F3 정정(표 셋)
+- `docs/parity-fix-m10-removal-r1.md` — §3(F4 · 심볼로) · §5.3(어휘 표) · §9-3(F3) · 이 §10
+- `docs/critic/m10rm-lone-r28l-{fix,ctl}.json` · `m10rm-screen-r28l.json` ·
+  `m10rm-bytes-r28l.json` · `m10rm-bytes-r28ldiff.json` — **전부 신규**(기준 파일 덮어쓰기 0)
