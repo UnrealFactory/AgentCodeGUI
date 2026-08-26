@@ -13,6 +13,8 @@
 - 계기: `scripts/poc-m10-removal-bytes.mjs` · `scripts/poc-m10-removal-screen.mjs`
 - 산출물: `docs/critic/m10rm-bytes-{pre,post,diff}.json` ·
   `docs/critic/m10rm-screen-{r3,ctl}.json`
+- **확인 크리틱 R1 수정 라운드**(§9): 판정문 `docs/critic/r28k-m10rm-critic-r1.md` ·
+  재실측 산출물 `docs/critic/m10rm-{screen-critfix1,bytes-critfix1,bytes-critfix1diff}.json`
 
 ---
 
@@ -157,6 +159,10 @@ fn append_prompt(id: &RunIdentity) -> Option<String> {
 `talk-state.json` = 연쇄 회계, 그리고 마이그레이션된 채팅 파일에 손으로 심은
 `origin:"talk"` 봉투 한 통 + 사람 예약 한 줄).
 
+> **★확인 크리틱 R1 뒤 이 하네스의 두 축을 더 조였다**(§9-2). S0은 채널을 **넷 다** 누르고,
+> S1은 씨앗을 **세 줄**(봉투 · 사람 · 한도 이어서)로 늘려 필터가 **과잉이 아닌지**까지
+> 본다. 아래 표는 원판 주행이고, 조인 뒤의 값은 §9-2에 있다.
+
 | 축 | 제거 후(`m10rm-screen-r3.json`) | 제거 전 대조군(`m10rm-screen-ctl.json`) |
 |---|---|---|
 | **S0 옛 홈 관용** | 부팅 ✔ · `#root` 마운트 ✔ · `crosstalk:config` → `{__unimplemented:true}` · 옛 두 파일 **그대로 남음**(`enabled:true` 유지) | 채널이 살아 있어 설정 전문을 돌려준다 |
@@ -177,9 +183,11 @@ fn append_prompt(id: &RunIdentity) -> Option<String> {
 |---|---|---|
 | `crosstalk` | **4건** — 전부 `src-tauri/src/ipc/mod.rs:285-289`의 상수 | §7(다른 갈래 소유) |
 | `talk_guide` · `spawn_guide` · `talk_run` · `TalkStop` · `TalkConfig` · `TalkSent` · `TalkResult` · `QueueOrigin::Talk` · `require_picker` | **0건** | |
+| `picker_unavailable` · `TALK-DATA` · `reply_only` · `maxHops` · `maxFanout` · `injectPolicy` · `noticeAckAt` · `stopVerdict` · `unstoppable` · `hop_cap` · `msg-origin` · `talk-stop` | **0건** | ★확인 크리틱 R1이 더 훑은 어휘를 내 손으로도 다시 셌다 |
 | `@talk` | **0건** | |
-| `대화 연결` | **5건** — 전부 이번 라운드가 쓴 「무엇을 뺐나」 주석 | §3 마지막 행 |
+| `대화 연결` | **6건** — 5는 이번 라운드가 쓴 「무엇을 뺐나」 주석, 1은 `ipc/mod.rs:282` | §3 마지막 행 · §7 |
 | `봉투` | 다수 — 전부 IPC **이벤트 봉투**(`chat:event`·`ma:event`)·컨트롤 프레임의 일반 낱말 | M10 아님 |
+| `M10`(주석 전수) | **살아 있는 로직의 역사 귀속 3건**(`migrate_v3.rs:635·837·1090`) + **이번 라운드가 박은 못 3건**(`runtime.rs:3920·3926` · `engine/mod.rs:194`) + `ipc/mod.rs:282` | ★확인 크리틱 R1 F2·F3으로 **죽은 주석 3건을 걷어냈다**(§9-1) |
 
 빌드 산출물(`app/dist/assets/*.{js,css}`)에서 `crosstalk` · `talk-stop` · `@talk` ·
 `대화 연결` · `msg-origin` **각 0건**.
@@ -271,23 +279,39 @@ M10은 **2.6.2에 없던 3.0 전용 신기능**이다. 2.6.2에는 세션 간 �
 | 288 | `/// 브로드캐스트 — 설정이 바뀌었다(긴급 정지 포함)…` (289줄의 doc) |
 | 289 | `pub const CROSSTALK_STATE: &str = "crosstalk:state";` |
 
-**282–289 통째 삭제**가 답이다. `TALK_GET`(98) · `TALK_SAVE`(99)와 22줄의 `talk:*(은퇴)`
-언급은 **1.x 블롭**이므로 **건드리지 마라**.
+**282–289 통째 삭제**가 답이다(290은 빈 줄이라 남겨도 되고 같이 지워도 된다).
+`TALK_GET`(**110**) · `TALK_SAVE`(**111**)와 22줄의 `talk:*(은퇴)` 언급은 **1.x 블롭**
+이므로 **건드리지 마라**. (★확인 크리틱 R1 뒤 다시 셌다 — 원본이 적은 `98`·`99`는
+`PROFILE_GET`/`PROFILE_SAVE` 줄이다. 그 줄을 지웠으면 **프로필 저장이 죽었다**.)
+
+**이 넷은 지금 계약면 장부를 거짓말하게 만들고 있다.** 감사 도구
+(`docs/critic/tools/critic-r28e-channels.mjs`)는 이 죽은 상수 정의 한 줄씩을 근거로
+`crosstalk:*` 넷을 아직 `verdict:"impl"`(`codeN:1`)로 세지만, **뜬 앱은 넷 다
+`{__unimplemented:true}`**를 돌려준다. 자세한 것은 `docs/renderer-divergence.md` §6.13의
+각주 — 그 표의 `missing 6`은 도구의 관대함이고 **참값은 10**이다.
 
 ### 7.2 `src/shared/protocol.ts`
 
-| 줄 | 내용 |
-|---|---|
-| 492–496 | `// ★ M10 — talk이 붙어 오면 …` 주석 5줄 (`notice` 변형에 붙어 있다) |
-| 509 | `talk?: TalkSent` — `EngineEvent{type:'notice'}`의 선택 필드 |
-| 1347–1349 | `// ── 대화 연결 (4) — M10 …` 배너 주석 3줄 |
-| 1350–1353 | `crosstalkConfig` · `crosstalkSet` · `crosstalkStop` · `crosstalkState` (`IPC` 표) |
-| 1511–1540 | `/* ── M10 대화 연결 … */` 블록 주석 + `export type TalkResult` (17값) |
-| 1542–1571 | `TalkSent` doc + `export interface TalkSent` |
-| 1574–1608 | `TalkConfig` doc + `export interface TalkConfig` |
-| 1610–1616 | `export const CROSSTALK = { … } as const` |
+**★확인 크리틱 R1 F6으로 세 칸을 정정했다**(아래 표는 정정본이다 — 원본은 `492–496` ·
+`1542–1571` · `1610–1616`이었고 세 군데 다 한 줄씩 짧아 지우면 고아가 남았다). 줄 번호는
+`b9f5701` 시점의 `src/shared/protocol.ts`이고, **내가 파일을 한 줄씩 열어 다시 셌다.**
 
-**건드리면 안 되는 것**: 1117–1122의 `talkRun`/`talkCancel`/`talkPermissionRespond`/
+| 줄 | 내용 | 끝 줄이 무엇인가(정정의 근거) |
+|---|---|---|
+| **492–497** | `// ★ M10 — talk이 붙어 오면 …` 주석 **6줄** (`notice` 변형에 붙어 있다) | 497 = `// 사용자는 두 세션이 왜 안 붙는지 알 수 없고, 모델은 같은 줄을 …` |
+| 509 | `talk?: TalkSent` — `EngineEvent{type:'notice'}`의 선택 필드 | — |
+| 1347–1349 | `// ── 대화 연결 (4) — M10 …` 배너 주석 3줄 | 1349 = `//    호출이 새 라우터로 떨어진다.` |
+| 1350–1353 | `crosstalkConfig` · `crosstalkSet` · `crosstalkStop` · `crosstalkState` (`IPC` 표) | 1353 = `crosstalkState: 'crosstalk:state'` (**뒤에 콤마 없음** — 1346 `chatFlushReq` 줄의 콤마는 그대로 둔다) |
+| 1511–1540 | `/* ── M10 대화 연결 … */` 블록 주석 + `export type TalkResult` (17값) | 1540 = `| 'picker_unavailable'` |
+| **1542–1572** | `TalkSent` doc + `export interface TalkSent` | 1572 = 인터페이스 닫는 `}` |
+| 1574–**1607** | `TalkConfig` doc + `export interface TalkConfig` | 1607 = 인터페이스 닫는 `}` |
+| **1609**–1615 | `/** 긴급 정지 상수 … */` doc(1609) + `export const CROSSTALK = { … } as const`(1610–1615) | 1615 = `} as const` |
+
+> **더 간단한 길.** 1511부터 1616까지는 M10 블록 넷과 그 사이 빈 줄뿐이다(1541 · 1573 ·
+> 1608 · 1616이 빈 줄). **1511–1616을 통째로 지우면** 1510(빈 줄)과 1617(`ChatStatusLite`
+> doc) 사이가 빈 줄 하나로 정확히 맞는다 — 위 네 칸을 따로 셀 필요가 없다.
+
+**건드리면 안 되는 것**: 1117–1123의 `talkRun`/`talkCancel`/`talkPermissionRespond`/
 `talkQuestionRespond`/`talkBgTask`/`talkGet`/`talkSave` · 1275의 `talkEvent` · 796의
 `ApiUsageSource`의 `'talk'` — 전부 **1.x 채팅 모드**다.
 
@@ -321,3 +345,51 @@ critic-m10-stamp,score-m10-leak}.mjs`(9)
 
 **문서**: `docs/design/m10-talk.md` · `docs/m10-report-r{1,5,6,7}.md`(철회 헤더) ·
 `docs/renderer-divergence.md`(장부) · 이 문서
+
+---
+
+## 9. 확인 크리틱 R1 뒤 — 잔재 여섯을 걷었다 (수정 R1)
+
+판정문 `docs/critic/r28k-m10rm-critic-r1.md`(**불합격** · 치명 0 · 중 1 · 낮음 5).
+크리틱이 **제품 동작 회귀는 하나도 못 찾았다** — 걸린 것은 전부 「죽은 채 남은 것」과
+「장부가 실제와 다른 것」이다. 여섯 다 고쳤고, **여섯 다 내 손으로 다시 쟀다.**
+
+### 9-1 무엇을 고쳤나
+
+| # | 등급 | 무엇이 틀렸나 | 어떻게 고쳤나 |
+|---|---|---|---|
+| **F1** | 중 | 장부 §6.13이 `missing 6`을 표로 못 박았는데 **뜬 앱의 사실이 아니다**(참값 10). 감사 도구가 죽은 상수 넷을 근거로 `crosstalk:*`를 아직 `impl`로 센다 | `docs/renderer-divergence.md` §6.13에 **각주**를 달았다 — 표 칸에 「★아래 각주. **뜬 앱의 참값은 10이다**」를 박고, 왜 이 라운드가 코드를 못 고치는지(UPDATER 소유)와 뒷정리가 **두 파일을 같은 커밋에서** 걷어야 하는 이유까지 적었다. §7.1에도 같은 경고를 옮겼다 |
+| **F2** | 낮 | 지운 `<TalkStopPill />`을 **설명하는 주석**이 그 자리에 남아 「이 창에도 정지가 있다」고 거짓을 말했다(`SessionWindow.tsx:737` · `PanelWindow.tsx:452`) | 두 주석 덩이 **삭제**. 남은 주석은 그 자리 원래 주인(「본채팅 화면 그대로…」 · 「창 드래그 띠…」)뿐이다 |
+| **F3** | 낮 | `runtime.rs:701`의 주석이 **불가능해진 시나리오**(`talk`으로 앉아 있던 예약)를 설명했다 | 쌍둥이 주석(`status.rs`의 `QueuedText.origin`)과 서사를 맞췄다 — 지금 살아 있는 이름표 셋(`limit_resume`·`viewer_ask`·`notif_replay`)을 적고 `talk`을 뺐다 |
+| **F3+** | — | **크리틱이 못 본 넷째 자리.** `src-tauri/src/engine/hub.rs:1113`의 주석이 억제 예외를 `` (`Talk`·`LimitResume`…) ``라고 적어 **없어진 열거 값**을 가리켰다 | 살아 있는 셋(`LimitResume`·`ViewerAsk`·`NotifReplay`)으로 고치고 「봉투」 어휘를 「기계 예약」으로 바꿨다. 규칙 자체는 그대로 산다 |
+| **F4** | 낮 | 인수인계서가 아직 **「M10을 새로 짜라」**고 말했다(`HANDOFF-3.0.md:198`) · `ARCHITECTURE-3.0.md:42`의 `ccg-peer`도 철회 표시 없음 | 두 줄 다 **철회 문단**으로 바꿨다. HANDOFF는 취소선 + 사유(왕복 18~93% · 거짓 거절 3/11) + 기록 위치 + 「다시 하자는 제안이 오면 이 문단을 먼저 보여 줘라」. ARCHITECTURE는 그 크레이트가 **만들어진 적 없다**는 사실까지 같이 적었다 |
+| **F5** | 낮 | `docs/critic/`의 M10 판정문 **일곱 장**에 철회 헤더가 없었다 | 일곱 장 전부에 다섯 장과 같은 헤더를 달았다(`m10-r{1,2,3}.md` · `r28f-m10-critic-r{1,2}.md` · `r28h-m10-critic-r{1,2}.md`). 판정문에는 한 문단을 더 붙였다 — **「아래의 『고쳐라』는 전부 효력이 없다」** |
+| **F6** | 낮 | 미룬 계약면 줄 목록이 **세 군데 한 줄씩** 어긋났다(§7.2) | 셋 다 정정하고 **끝 줄이 무엇인지**를 근거 칸으로 붙였다. 「**1511–1616 통째 삭제**」라는 더 간단한 길도 적었다. 덤으로 §7.1의 `TALK_GET(98)/TALK_SAVE(99)`가 실은 **`PROFILE_GET`/`PROFILE_SAVE`** 줄이라는 것을 잡아 **110/111**로 고쳤다(그 줄을 지웠으면 프로필 저장이 죽었다). §7.2의 「건드리지 마라」도 7개 이름에 6줄이던 것을 **1117–1123**으로 맞췄다 |
+| **계기 흠** | — | 크리틱이 지적한 `poc-m10-removal-bytes.mjs`의 `exe.sha256`이 **파일의 sha256이 아니었다**(latin1 왕복) | 버퍼를 그대로 해싱하도록 고치고 `bytes`(파일 크기)도 같이 싣는다. 이제 `sha256sum`과 값이 맞는다 |
+
+### 9-2 무엇을 다시 쟀나 (전부 내 손, 새 빌드)
+
+빌드: `vite build` + `cargo build --release --features custom-protocol`
+(`CARGO_TARGET_DIR=target-r28k-rm`) 둘 다 **exit 0**.
+exe `agentcodegui.exe` sha256 **`9b36cdd09c6fe6537147d0352c926f60e05683c08969c09e09a2c9ff39a12097`** ·
+7,066,112 B. 가짜 CLI `ccg-fakecli.exe` sha256 `c7592a8f53a9…`.
+
+| 축 | 값 | 무엇을 말하나 |
+|---|---|---|
+| **★F1 라이브 — 네 채널을 다 눌렀다** | `crosstalk:{config,set,stop,state}` → **넷 다 `{__unimplemented:true}`** (`m10rm-screen-critfix1.json` S0) | 감사 도구의 `impl`은 **죽은 상수**를 본 것이고, 사용자가 겪는 계약면은 `missing`이다 |
+| **★F1 도구 — 원자료를 열었다** | 넷 다 `verdict:"impl"` · `code:["src-tauri/src/ipc/mod.rs:285|286|287|289"]` · **`codeN:1`** · `commentN:0` | 근거가 상수 정의 **한 줄씩**뿐이다 — 디스패처 팔은 없다 |
+| **★F1 컴파일러 — 셋째 증인** | `never used` **정확히 4개**(`CROSSTALK_{CONFIG,SET,STOP,STATE}`) · 그 밖의 경고 0 | 컴파일러도 「죽었다」고 말한다 |
+| 계약면 재고 | `total 216 · impl 210 · commentOnly 0 · missing 6` (`C:/Temp/r28k-fix/chan-post.json`) | 빌더·크리틱 수치 재현. **그 수치의 뜻은 §6.13 각주가 말한다** |
+| 프롬프트 바이트 | 추가 지시 **없는** 채팅 `initialize` = sha `afb039fc7966…` · **161B** · `systemPrompt` 키 부재 → 제거 전 exe와 **`identical:true`** · 있는 채팅 = `e73cf2f2310e…` · 291B · append에 그 문자열 · **`pass:true`** (`m10rm-bytes-critfix1.json` + `--diff`) | 주석을 세 자리 고쳤는데 **선 위 바이트는 한 글자도 안 변했다** |
+| 화면 잔재 | **6/6 PASS** — S0 옛 홈(부팅 ✔ · 옛 두 파일 그대로 · `enabled:true` 유지) · S1 · S2 나침반(`talk`·`대화 연결`·`crosstalk` 셋 다 `[]`) · S3a 메인 · S3b `#session` · S3c `#mapanel` | 세 창 전부 알약 없음 · Ctrl+Shift+. 무반응 |
+| **S1 — 필터가 과잉이 아니다** | 씨앗 **세 줄**(`talk` · `user` · `limit_resume`) → 런타임 `queued:2`, 디스크 `queue`가 **`["user","limit_resume"]`로 다시 굳는다** | 봉투만 죽고 사람·한도 예약은 산다. 런타임에서만 거른 게 아니라 **파일에서도 사라진다** |
+| grep | `crosstalk` 4(전부 `ipc/mod.rs`) · `대화 연결` 6(5 = 내 못, 1 = `ipc/mod.rs`) · 나머지 22개 어휘 **각 0** · 번들 **각 0** | §5.3 표 갱신 |
+| 게이트 | `cargo test --workspace` **exit 0 · 0 failed** · `agentcodegui` 기본 병렬 **10회 연속 10/10** · `tsc` node·web·app **셋 다 exit 0** · `vite build` exit 0 | 후퇴 0 |
+
+### 9-3 그래도 안 닫힌 것 — 다음 라운드가 받는다
+
+**코드로는 `ipc/mod.rs` 282–289와 `src/shared/protocol.ts`의 IPC 항목 넷이 남는다.**
+이 라운드가 못 만지는 것이 규율상 옳고(R28j UPDATER 소유), 그래서 **장부에 각주로**
+못을 박았다. 뒷정리 라운드가 §7.1 + §7.2의 목록으로 **한 커밋에** 걷으면
+`total 212 / impl 206 / missing 6`으로 맞는다 — 한쪽만 걷으면 `missing`이 6 → 10으로
+**튄다**.

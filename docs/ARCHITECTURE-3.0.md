@@ -39,7 +39,9 @@ crates/
                # clangd, verse-lsp)·시맨틱 토큰 디스크 캐시·Verse 레지스트리 파서
   ccg-git      # git CLI 래퍼 (status/log/diff/commit/push/pull/branches/AI 메시지)
   ccg-fs       # 탐색기 목록·읽기/쓰기 캡·휴지통·워처(notify)·HTML 미리보기 루트
-  ccg-peer     # (M10) 세션 간 메시징 허브 — N개 세션 버스, stash 설계 부활
+  (ccg-peer)   # ★계획만 있었고 만들어진 적 없다. (M10) 세션 간 메시징 허브였는데,
+               # M10 자체가 2026-08-26 사용자 결정으로 철회됐다(R28k 제거 —
+               # docs/parity-fix-m10-removal-r1.md). 이 줄은 그 사실을 적어 두려고 남긴다.
 src-tauri/     # 앱 셸: 창 레지스트리·트레이·전역 단축키·아크릴·단일 인스턴스·업데이터
                # + IPC 디스패처(#[tauri::command] ipc_call 하나 + 채널 레지스트리)
 app/           # 이식된 렌더러 (vite 루트) — src/api/shim.ts 가 WindowApi 구현

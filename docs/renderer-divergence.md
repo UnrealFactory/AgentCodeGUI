@@ -974,9 +974,28 @@ K 상대배달 0/10). 닫히지 않은 것은 **기능**이다 — 같은 exe·�
 | 트리 | total | impl | commentOnly | missing |
 |---|---|---|---|---|
 | 제거 전(같은 HEAD의 detached 워크트리) | 216 | 207 | 0 | **9** (`talk:*` 6 + `app:update-*` 3) |
-| 제거 후 | 216 | 210 | 0 | **6** (`talk:*` 6) |
+| 제거 후 | 216 | 210 | 0 | **6** (`talk:*` 6) — ★아래 각주. **뜬 앱의 참값은 10이다** |
 
 줄어든 셋은 §6.12(앱 자동 업데이트)의 몫이다.
+
+> ### ★ 각주 — 위 표의 `missing 6`을 최종 파리티 서명이 그대로 인용하면 **안 된다**
+> **참값은 10이다.** 위 넷(`crosstalk:{config,set,stop,state}`)은 화면·셸·디스패처가
+> 통째로 없어졌는데도 감사 도구가 아직 `impl`로 센다 — 근거가
+> `src-tauri/src/ipc/mod.rs:285-289`에 남은 **죽은 상수 정의 한 줄씩**뿐이고
+> (`verdict:"impl"` · `codeN:1`), 그 상수를 참조하는 디스패처 팔은 이미 없다.
+> 컴파일러가 같은 사실을 말한다: 제거 **전** 빌드 경고 0개 → **후** `never used` **4개**.
+> **뜬 앱의 실측은 반대다** — 격리 홈으로 exe를 띄워
+> `invoke('ipc_call',{channel:'crosstalk:config'})`를 넷 다 눌러 보면
+> **넷 다 `{__unimplemented:true}`**다(하네스 `scripts/poc-m10-removal-screen.mjs` S0 축이
+> 이 넷을 못으로 박는다). 즉 위 표의 `impl 210 / missing 6`은 **도구의 관대함**이고,
+> 사용자가 겪는 계약면은 `impl 206 / missing 10`이다.
+>
+> 왜 이 라운드가 안 고쳤나: `src-tauri/src/ipc/mod.rs`는 **R28j UPDATER 소유**라 이 갈래가
+> 못 만진다(파일 소유권 규율). 뒷정리 라운드가 `ipc/mod.rs` **282-289**와
+> `src/shared/protocol.ts`의 IPC 항목 넷(**1347-1353**)을 **같은 커밋에서** 걷으면
+> 그 순간 표가 `total 212 / impl 206 / missing 6`으로 맞는다 —
+> 한쪽만 걷으면 오히려 `missing`이 6 → 10으로 **튄다**. 목록은
+> `docs/parity-fix-m10-removal-r1.md` §7에 있다.
 
 **★ 같이 걷어내면 안 되는 것 하나.** M10 R6이 `initialize`의 `systemPrompt.append`를
 배선하면서 **파리티 수선**을 함께 얹었다: R28f 이전에는 그 인자가 두 호출처 모두 무조건
