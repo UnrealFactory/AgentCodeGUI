@@ -1,0 +1,186 @@
+{
+  "at": "2026-08-26T05:50:52.800Z",
+  "tag": "r28l-fix",
+  "ctl": false,
+  "exe": "C:\\Code\\AgentCodeGUI\\target-r28l\\release\\agentcodegui.exe",
+  "axes": {
+    "L1-봉투한통": {
+      "pass": true,
+      "chatId": "c-lone",
+      "diskLone": [],
+      "rawLone": [],
+      "queuedLive": 0,
+      "talkInLoad": 0,
+      "screen": {
+        "titles": [
+          "평범한 대화",
+          "봉투만 남은 대화",
+          "봉투 + 사람 + 한도"
+        ],
+        "clicked": true,
+        "schedUp": false,
+        "count": null,
+        "items": [],
+        "talkDataOnScreen": 0,
+        "koOnScreen": 0,
+        "alive": true
+      },
+      "boot2Ms": 427
+    },
+    "L3-섞임": {
+      "pass": true,
+      "chatId": "c-mixed",
+      "diskMixed": [
+        "user",
+        "limit_resume"
+      ],
+      "queuedMixed": 2
+    },
+    "L2-영속": {
+      "pass": true,
+      "disk3": [],
+      "queued3": 0,
+      "talkInLoad3": 0,
+      "screen3": {
+        "titles": [
+          "평범한 대화",
+          "봉투만 남은 대화",
+          "봉투 + 사람 + 한도"
+        ],
+        "clicked": true,
+        "schedUp": false,
+        "count": null,
+        "items": [],
+        "talkDataOnScreen": 0,
+        "koOnScreen": 0,
+        "alive": true
+      },
+      "boot3Ms": 422
+    },
+    "L4a-부팅비용(봉투없는홈)": {
+      "pass": true,
+      "n": 9,
+      "ms": [
+        441,
+        292,
+        302,
+        443,
+        297,
+        309,
+        420,
+        417,
+        300
+      ],
+      "min": 292,
+      "median": 309,
+      "max": 443
+    },
+    "L4b-부팅비용(봉투있는홈)": {
+      "pass": true,
+      "n": 9,
+      "ms": [
+        294,
+        304,
+        637,
+        292,
+        336,
+        413,
+        422,
+        305,
+        408
+      ],
+      "min": 292,
+      "median": 336,
+      "max": 637
+    },
+    "L5-굳은홈-자가치유": {
+      "pass": true,
+      "oldExe": "target-r28l-mut/release/agentcodegui.exe",
+      "stuck": [
+        "talk"
+      ],
+      "healedDisk": [],
+      "queued": 0,
+      "talkInLoad": 0,
+      "screen": {
+        "titles": [
+          "평범한 대화",
+          "봉투만 남은 대화",
+          "봉투 + 사람 + 한도"
+        ],
+        "clicked": true,
+        "schedUp": false,
+        "count": null,
+        "items": [],
+        "talkDataOnScreen": 0,
+        "koOnScreen": 0,
+        "alive": true
+      }
+    }
+  },
+  "seeded": {
+    "active": "c-lone",
+    "mixed": "c-mixed",
+    "lone": [
+      "talk"
+    ],
+    "mixedQueue": [
+      "talk",
+      "user",
+      "limit_resume"
+    ]
+  },
+  "engineDebug": [
+    {
+      "chatId": "c-lone",
+      "queued": 0,
+      "state": "Idle"
+    },
+    {
+      "chatId": "c-mixed",
+      "queued": 2,
+      "state": "Idle"
+    }
+  ],
+  "home": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-r28l-lone-r28l-fix-main",
+  "bootMs": {
+    "boot2Ms": 427,
+    "boot3Ms": 422,
+    "clean": {
+      "n": 9,
+      "ms": [
+        441,
+        292,
+        302,
+        443,
+        297,
+        309,
+        420,
+        417,
+        300
+      ],
+      "min": 292,
+      "median": 309,
+      "max": 443
+    },
+    "envelope": {
+      "n": 9,
+      "ms": [
+        294,
+        304,
+        637,
+        292,
+        336,
+        413,
+        422,
+        305,
+        408
+      ],
+      "min": 292,
+      "median": 336,
+      "max": 637
+    }
+  },
+  "pass": true,
+  "fails": []
+}

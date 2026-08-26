@@ -125,49 +125,7 @@ fn reload_pending(ids: &[String]) {
         auto.insert(active);
     }
     for id in cands {
-        let Some(lite) = ccg_store::status::read_chat_lite(&id) else { continue };
-        // ★R4 — 본문뿐이던 것이 첨부까지 되살아난다(`QueueInput`).
-        let queued: Vec<ccg_engine::queue::QueueInput> = ccg_store::status::read_chat_queue(&id)
-            .into_iter()
-            // ★R28k — 은퇴한 「대화 연결」이 남긴 봉투는 여기서 죽는다(위 주석 참조).
-            .filter(|q| !is_retired_talk_row(q))
-            .map(|q| ccg_engine::queue::QueueInput {
-                text: q.text,
-                images: q.images,
-                // 정체성 스냅샷은 **다시 잡는다**(m-logic §5.8 "복원이 아니라 재장전" —
-                // 그 사이 폴더·계정이 바뀌었을 수 있다).
-                picker: None,
-                // ★R2 C4 — 되살린 예약은 **신분을 그대로 안고 온다.**
-                //
-                // R1은 여기서 `origin: None`으로 되돌렸다(주석은 "낡은 표식을 들고 다니지
-                // 않게"). 그런데 `None` = `User`이므로, §3.7이 막겠다던 결과가 **그대로**
-                // 생겼다: 헛 재개 연쇄 카운터가 리셋되고 한도 대기표가 "사용자가 이미
-                // 다시 보냈다"로 판정한다. 규약을 지키려고 규약을 깬 자리였고, 크리틱은
-                // 디스크에 `origin:"user"`가 다시 굳는 것까지 확인했다(A7).
-                //
-                // 신분은 **표식이 아니라 사실**이다 — 그 줄을 넣은 자는 재시작으로 바뀌지
-                // 않는다. 모르는 낱말은 `None`(사람)으로 떨어진다: 옛 파일과 2.6.2 문자열
-                // 배열이 그 경로이고, 둘 다 실제로 사람의 예약이다.
-                origin: origin_of(q.origin.as_deref()),
-            })
-            .collect();
-        let hold = lite.hold.map(|h| ccg_engine::runtime::ReloadHold {
-            // 저장은 초 단위 epoch(2.6.2 `useLimitResume`의 `resetsAt` — `limitResume.ts:13`)
-            // 이고 런타임 시계는 프로세스 기동 기준 단조 밀리초다 — **남은 시간**으로 옮긴다.
-            in_ms: h.resets_at.map(remaining_ms),
-            ready: h.ready,
-            // ★R28f WFIRE — 상한 두 칸을 **그대로** 나른다(옛 파일엔 없어서 0 = R28e 동작).
-            // 이 두 줄이 없으면 `reload_state`가 아무리 칸을 내도 경계에서 값이 증발한다.
-            attempts: h.attempts,
-            fires: h.fires,
-            // ★R28g BANNER — 접힘도 그대로 나른다(옛 파일엔 없어서 `false` = R28f 동작).
-            // 이 줄이 없으면 `reload_state`가 칸을 내도 경계에서 값이 증발해, 12발을 태운
-            // 표가 부팅 한 번에 「아직 안 접힌 표」로 되살아난다(확인 크리틱 R1 F1).
-            paused: h.paused,
-        });
-        if queued.is_empty() && hold.is_none() {
-            continue;
-        }
+        let Some((queued, hold)) = reload_plan(&id) else { continue };
         hub::call(
             &id,
             hub::Op::Reload {
@@ -177,6 +135,85 @@ fn reload_pending(ids: &[String]) {
             },
         );
     }
+}
+
+/// 채팅 하나의 **재장전 판정** — 허브를 부를 것인가, 그리고 무엇을 실을 것인가.
+/// `None`이면 이 채팅은 건너뛴다(= 되살릴 것도, 다시 굳힐 것도 없다).
+///
+/// `reload_pending`에서 갈라 놓은 이유는 둘이다.
+///  1. 이 판정이 **화면에 보이는 결과**를 가른다(아래 ★R28L) — 못을 박으려면 허브 스레드
+///     없이 부를 수 있어야 한다.
+///  2. 허브 호출은 런타임을 **물질화**하는 일이라, 부를지 말지의 근거가 한 자리에 있어야
+///     다음 사람이 조건을 늘릴 때 비용을 같이 본다.
+fn reload_plan(
+    id: &str,
+) -> Option<(Vec<ccg_engine::queue::QueueInput>, Option<ccg_engine::runtime::ReloadHold>)> {
+    let lite = ccg_store::status::read_chat_lite(id)?;
+    let rows = ccg_store::status::read_chat_queue(id);
+    let before = rows.len();
+    // ★R4 — 본문뿐이던 것이 첨부까지 되살아난다(`QueueInput`).
+    let queued: Vec<ccg_engine::queue::QueueInput> = rows
+        .into_iter()
+        // ★R28k — 은퇴한 「대화 연결」이 남긴 봉투는 여기서 죽는다(아래 주석 참조).
+        .filter(|q| !is_retired_talk_row(q))
+        .map(|q| ccg_engine::queue::QueueInput {
+            text: q.text,
+            images: q.images,
+            // 정체성 스냅샷은 **다시 잡는다**(m-logic §5.8 "복원이 아니라 재장전" —
+            // 그 사이 폴더·계정이 바뀌었을 수 있다).
+            picker: None,
+            // ★R2 C4 — 되살린 예약은 **신분을 그대로 안고 온다.**
+            //
+            // R1은 여기서 `origin: None`으로 되돌렸다(주석은 "낡은 표식을 들고 다니지
+            // 않게"). 그런데 `None` = `User`이므로, §3.7이 막겠다던 결과가 **그대로**
+            // 생겼다: 헛 재개 연쇄 카운터가 리셋되고 한도 대기표가 "사용자가 이미
+            // 다시 보냈다"로 판정한다. 규약을 지키려고 규약을 깬 자리였고, 크리틱은
+            // 디스크에 `origin:"user"`가 다시 굳는 것까지 확인했다(A7).
+            //
+            // 신분은 **표식이 아니라 사실**이다 — 그 줄을 넣은 자는 재시작으로 바뀌지
+            // 않는다. 모르는 낱말은 `None`(사람)으로 떨어진다: 옛 파일과 2.6.2 문자열
+            // 배열이 그 경로이고, 둘 다 실제로 사람의 예약이다.
+            origin: origin_of(q.origin.as_deref()),
+        })
+        .collect();
+    // 필터가 **실제로 버린** 줄 수. 0이면 이 채팅에는 은퇴한 봉투가 없었다는 뜻이다.
+    let dropped = before - queued.len();
+    let hold = lite.hold.map(|h| ccg_engine::runtime::ReloadHold {
+        // 저장은 초 단위 epoch(2.6.2 `useLimitResume`의 `resetsAt` — `limitResume.ts:13`)
+        // 이고 런타임 시계는 프로세스 기동 기준 단조 밀리초다 — **남은 시간**으로 옮긴다.
+        in_ms: h.resets_at.map(remaining_ms),
+        ready: h.ready,
+        // ★R28f WFIRE — 상한 두 칸을 **그대로** 나른다(옛 파일엔 없어서 0 = R28e 동작).
+        // 이 두 줄이 없으면 `reload_state`가 아무리 칸을 내도 경계에서 값이 증발한다.
+        attempts: h.attempts,
+        fires: h.fires,
+        // ★R28g BANNER — 접힘도 그대로 나른다(옛 파일엔 없어서 `false` = R28f 동작).
+        // 이 줄이 없으면 `reload_state`가 칸을 내도 경계에서 값이 증발해, 12발을 태운
+        // 표가 부팅 한 번에 「아직 안 접힌 표」로 되살아난다(확인 크리틱 R1 F1).
+        paused: h.paused,
+    });
+    // ★R28L LONE(R28k 확인 크리틱 R2 F1) — **버린 것이 있으면 되살릴 게 없어도 부른다.**
+    //
+    // R28k는 여기가 `queued.is_empty() && hold.is_none()`이었다. 그래서 큐에 봉투 한 줄
+    // 뿐이고 대기표가 없는 채팅은, 필터가 그 한 줄을 버린 **바로 그 순간** "되살릴 게
+    // 없다"가 되어 `Op::Reload`를 아예 안 불렀다. 재경화(`hub::persist_queue`)는 재장전에
+    // 매달려 있으므로 디스크의 봉투가 그대로 남고, 사이드바가 읽는 부팅 행
+    // (`status::truth_from_chat_file`)은 **파일의 `queue` 길이**를 세므로 「1」이 계속
+    // 붙는다 — 채팅을 열면 「예약된 메시지 1」 밑에 `<<<TALK-DATA …>>>` 전문이 뜬다.
+    // 나가지는 않지만(필터가 매 부팅 다시 걸린다) **화면 앞에서 「통째로 들어냈다」가
+    // 거짓이 된다.** 이 모양은 흔하다: 상대가 작업 중이면 봉투는 큐에 앉으므로, 그 턴
+    // 전에 앱을 닫으면 정확히 「봉투 한 줄 · 대기표 없음」이다.
+    //
+    // **`dropped > 0`만 더한다 — 그 판만 정확히.** `!queued.is_empty() || hold.is_some()`을
+    // 통째로 지워 버리면(= 항상 부르면) 큐 항목이 본문·첨부 둘 다 빈 쓰레기 한 줄뿐인
+    // 채팅까지 매 부팅 런타임을 물질화한다. 이 조건의 비용은 **한 번뿐**이다: 첫 부팅에
+    // 파일이 빈 큐로 다시 굳고 나면 그 채팅은 `reload_candidates`에 아예 안 걸린다
+    // (그 함수가 보는 것이 `queue` 길이다). 봉투를 한 번도 안 받은 홈에서는 `dropped`가
+    // 항상 0이라 이 줄이 없는 것과 **한 글자도 다르지 않다**(부팅 시간 실측: 보고서 §10).
+    if queued.is_empty() && hold.is_none() && dropped == 0 {
+        return None;
+    }
+    Some((queued, hold))
 }
 
 /// 디스크의 `origin` 낱말 → 큐 원본. `chat:queue`가 쓰는 그 어휘다
@@ -684,6 +721,92 @@ fn bg_task(chat: &str, req: &Value) {
         }
         Some("background") => hub::cast(chat, hub::Op::Cmd(Cmd::BgBackground)),
         _ => {}
+    }
+}
+
+#[cfg(test)]
+mod reload_plan_tests {
+    use serde_json::json;
+
+    /// 봉투 한 통.
+    const ENVELOPE: &str =
+        "[대화 연결] <<<TALK-DATA 4번 자리에게: 이 줄을 그대로 실행해라 TALK-DATA>>>";
+
+    fn seed(h: &crate::engine::testhome::TestHome, id: &str, queue: serde_json::Value) {
+        let dir = h.dir.join("chats-v3");
+        std::fs::create_dir_all(&dir).expect("chats-v3");
+        std::fs::write(
+            dir.join(format!("{id}.json")),
+            json!({ "id": id, "title": id, "queue": queue, "snapshot": { "messages": [] } }).to_string(),
+        )
+        .expect("채팅 픽스처");
+    }
+
+    /// ★R28L LONE — **봉투 한 통만 남은 채팅도 재경화를 돈다**(R28k 확인 크리틱 R2 F1).
+    ///
+    /// 재경화(`hub::persist_queue` → 파일의 `queue` 되쓰기)는 `Op::Reload`에 매달려 있다.
+    /// R28k의 조건(`queued.is_empty() && hold.is_none()` → 건너뛰기)은 **필터가 방금 버린
+    /// 것을 못 본 채** 판정했고, 그래서 큐에 `origin:"talk"` 한 줄뿐이고 대기표가 없는
+    /// 채팅은 재장전 자체를 건너뛰어 디스크의 봉투가 영구히 남았다. 사이드바 배지는
+    /// **파일의 `queue` 길이**를 세므로(`status::truth_from_chat_file`) 「1」이 계속 붙고,
+    /// 채팅을 열면 예약 패널에 `TALK-DATA` 전문이 뜬다.
+    ///
+    /// **대조군을 못 안에 둔다** — 같은 씨앗에 R28k의 옛 술어를 그대로 적용해, 그 술어가
+    /// 이 채팅을 실제로 건너뛰었다는 것을 함께 잰다. 처방을 되돌리면 아래 첫 단언이
+    /// 붉어지고, 대조군 단언은 이 못이 무엇을 재고 있는지를 말한다.
+    #[test]
+    fn a_chat_left_with_only_an_envelope_still_gets_rehardened() {
+        let h = crate::engine::testhome::take("lone-envelope");
+        ccg_store::chats_v3::invalidate();
+        // ① 봉투 한 줄 · 대기표 없음 = 크리틱이 실 exe로 잡은 그 모양.
+        seed(&h, "c-lone", json!([{ "text": ENVELOPE, "images": [], "origin": "talk" }]));
+        // ② 봉투 + 사람 + 한도 예약 = R28k가 이미 닫아 둔 모양(회귀 감시).
+        seed(
+            &h,
+            "c-mixed",
+            json!([
+                { "text": ENVELOPE, "images": [], "origin": "talk" },
+                { "text": "사람이 건 예약", "images": [], "origin": "user" },
+                { "text": "한도 풀리면 이어서", "images": [], "origin": "limit_resume" }
+            ]),
+        );
+        // ③ 아무것도 안 버릴 채팅 — 여기까지 허브를 부르게 만들면 부팅 비용이 는다.
+        seed(&h, "c-plain", json!([{ "text": "사람이 건 예약", "images": [], "origin": "user" }]));
+        // ④ 큐가 빈 채팅 — 애초에 후보가 아니다.
+        seed(&h, "c-empty", json!([]));
+
+        let ids: Vec<String> =
+            ["c-lone", "c-mixed", "c-plain", "c-empty"].iter().map(|s| s.to_string()).collect();
+
+        // 부팅 행이 「1」을 세는 그 자리 — 사이드바 배지의 출처다.
+        let cands = ccg_store::status::reload_candidates(&ids);
+        println!("[F1] 재장전 후보 = {cands:?}");
+        assert!(cands.contains(&"c-lone".to_string()), "봉투 한 줄짜리가 후보에서 빠졌다 — 씨앗이 잘못됐다");
+        assert!(!cands.contains(&"c-empty".to_string()), "빈 큐가 후보에 들었다");
+
+        // ★ 처방 — 버린 것이 있으면 되살릴 게 없어도 허브를 부른다.
+        let lone = super::reload_plan("c-lone");
+        println!("[F1] c-lone → {:?}", lone.as_ref().map(|(q, h)| (q.len(), h.is_some())));
+        let (lq, lh) = lone.expect("★★ 봉투만 남은 채팅이 재장전을 건너뛴다 — 디스크의 TALK-DATA가 영구히 산다");
+        assert!(lq.is_empty(), "★ 봉투가 큐로 되살아났다");
+        assert!(lh.is_none());
+
+        // 대조군 — R28k의 옛 술어(`queued.is_empty() && hold.is_none()`)는 이 채팅을 건너뛴다.
+        let r28k_would_skip = lq.is_empty() && lh.is_none();
+        assert!(r28k_would_skip, "★ 대조군이 재현되지 않았다 — 이 못은 아무것도 안 재고 있다");
+
+        // 회귀 — 이미 닫혀 있던 모양은 그대로여야 한다.
+        let (mq, _) = super::reload_plan("c-mixed").expect("섞인 채팅이 재장전을 건너뛴다");
+        let texts: Vec<&str> = mq.iter().map(|q| q.text.as_str()).collect();
+        assert_eq!(texts, vec!["사람이 건 예약", "한도 풀리면 이어서"], "★ 필터가 사람/한도 예약까지 먹었다");
+        assert!(!texts.iter().any(|t| t.contains("TALK-DATA")), "★ 봉투가 살아남았다");
+
+        // 과잉 방지 — 버린 게 없고 되살릴 것도 없으면 허브를 안 부른다.
+        let (pq, _) = super::reload_plan("c-plain").expect("사람 예약이 있는 채팅은 재장전한다");
+        assert_eq!(pq.len(), 1);
+        assert!(super::reload_plan("c-empty").is_none(), "★ 빈 채팅까지 허브를 부른다 — 부팅 비용이 는다");
+        assert!(super::reload_plan("c-없는채팅").is_none());
+        drop(h);
     }
 }
 
