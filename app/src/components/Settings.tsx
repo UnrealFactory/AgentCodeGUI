@@ -63,13 +63,9 @@ import {
   IconMouse,
   IconContrast,
   IconGlobe,
-  IconMessage,
   type IconProps
 } from './icons'
 import { getLang, isEn, setLang, t, type UiLang } from '../lib/i18n'
-// ★M10 R2 — 대화 연결(크로스톡)의 설정 창구. 채널 문자열은 이 모듈 하나가 안다.
-import { STOP_HOTKEY, readTalkBoards, setTalkBoard, setTalkConfig, stopTalk, useTalkConfig } from '../lib/crosstalk'
-import { stopSaid } from './TalkStop'
 import { GestureGlyph, GESTURE_DEFAULTS, MouseGestureLayer, scrollGestures } from './mouseGesture'
 import { remainTone } from './Chat'
 import {
@@ -83,7 +79,7 @@ import {
   setHideFiles
 } from '../lib/hideDirs'
 
-export type SettingsView = 'profile' | 'account' | 'version' | 'api' | 'mcp' | 'skill' | 'lsp' | 'explorer' | 'gesture' | 'display' | 'language' | 'talk'
+export type SettingsView = 'profile' | 'account' | 'version' | 'api' | 'mcp' | 'skill' | 'lsp' | 'explorer' | 'gesture' | 'display' | 'language'
 type View = SettingsView
 
 // 레일 — PoC 재해석: 그룹 라벨(사용자/엔진/확장/환경) 아래 항목. keys는 검색어(한국어·영어 동의어).
@@ -108,10 +104,7 @@ function navGroups(): { label: string; items: { id: View; label: string; Icon: (
       label: t('확장', 'Extensions'),
       items: [
         { id: 'mcp', label: 'MCP', Icon: IconServer, keys: 'mcp 서버 도구 server tool' },
-        { id: 'skill', label: 'Skill', Icon: IconBook, keys: '스킬 명령 슬래시 skill command slash' },
-        // ★M10 R2 — 대화 연결. R1은 라우터를 끝까지 만들고 이 자리를 안 만들었다:
-        // 켜는 문도 끄는 문도 없어 사용자가 존재를 알 방법이 없었다(크리틱 D7).
-        { id: 'talk', label: 'Talk', Icon: IconMessage, keys: '대화 연결 세션 협업 정지 crosstalk talk session collaboration stop 긴급' }
+        { id: 'skill', label: 'Skill', Icon: IconBook, keys: '스킬 명령 슬래시 skill command slash' }
       ]
     },
     {
@@ -2872,304 +2865,6 @@ function PxSlider({
 // 슬라이더 0~100 하나가 창 뒤가 비치는 정도를 정한다. 값은 ui.glass로 저장되고 lib/glass가
 // :root 인라인 변수(--panel/--chat-bg)로 반영 — 50이 styles.css의 PoC 확정값(스타일시트 원본).
 // 추가 채팅 창은 저장 시 uiGlassChanged 브로드캐스트로 따라온다(드래그 중엔 이 창만 즉시).
-/* ═══════════════════════════════════════════════════════════════════════════
- * 대화 연결(M10) — **켜는 문과 끄는 문**.
- *
- * R1은 라우터·상한·옵트인을 전부 세우고 표면을 R2로 미뤘다. 크리틱은 그 순서를
- * 뒤집으라고 판정했다(D7): 위험한 절반은 완성됐는데 사람이 누를 자리가 0이었다.
- *
- * 이 화면의 규칙 셋.
- *  ① **옵트인은 2단이다** — 전역 스위치 ∧ 보드별 동의. 전역만 켜도 아무것도 안 나간다.
- *  ② **끄면 키가 사라진다** — false를 남기면 "예전에 켰던 보드" 목록이 쌓이고,
- *     그게 쌓이면 전역 스위치 한 번이 전원 재무장이 된다(크리틱 D3).
- *  ③ **정지 뒤에는 정지라고 말한다** — 그냥 꺼짐과 정지는 디스크에서 같은
- *     `enabled:false`지만 사용자에게 할 말이 정반대다(D4).
- * ══════════════════════════════════════════════════════════════════════════ */
-function TalkView(): React.ReactElement {
-  const { cfg, refresh } = useTalkConfig()
-  const [boards, setBoards] = useState<{ id: string; title: string }[]>([])
-  const [said, setSaid] = useState('')
-  // ★R3 — 켜기 전에 뜨는 **1회 고지 카드**(네이티브 다이얼로그 금지 — 앱 규약).
-  const [confirmOn, setConfirmOn] = useState(false)
-  useEffect(() => {
-    void readTalkBoards().then(setBoards)
-  }, [])
-  const say = (m: string): void => {
-    setSaid(m)
-    window.setTimeout(() => setSaid(''), 6000)
-  }
-  const stoppedAt = cfg.stoppedAt ?? null
-  const turnOn = (): void => {
-    void setTalkConfig({ enabled: true, noticeAck: true }).then(refresh)
-    setConfirmOn(false)
-  }
-  return (
-    <>
-      <div className="set-h1">{t('대화 연결', 'Cross-talk')}</div>
-      <div className="set-h1-sub">
-        {t(
-          '같은 보드에 앉은 세션끼리 답변 마지막 줄의 @talk[자리] 한 줄로 서로에게 말을 겁니다. 사람의 지시에서만 시작하고, 홉·총량·팬아웃 상한에서 스스로 멎어요. 기본값은 꺼짐이고, 켜는 행위 자체가 동의입니다.',
-          'Sessions on the same board message each other with a single @talk[slot] line at the end of a reply. A chain only ever starts from your instruction and stops at the hop / total / fan-out caps. Off by default — turning it on is the consent.'
-        )}
-      </div>
-
-      {/* ★R3 — **고지를 스위치보다 앞에 둔다.** R2는 이 내용이 화면 맨 아래 작은 글씨
-          한 문단이었다(켜는 스위치보다 뒤에, 더 작게). 크리틱 권고 ①②의 순서 뒤집기다.
-          문장은 **실측으로** 쓴다 — 세 번 중 세 번 따른 형태가 있었다는 사실을 적는다. */}
-      <div className="set-note2" style={{ borderColor: 'var(--amber, #c9922e)', marginBottom: 14 }}>
-        {t(
-          '먼저 알아야 할 것: 받은 메시지는 인용 블록에 갇히고 그 턴의 권한은 아래 하한까지 낮아지지만, 이건 완화이지 차단이 아닙니다 — 실제 시험에서 세 번 중 세 번 지시를 그대로 따른 형태가 있었습니다(그 형태는 막았지만 다음 형태를 막았다는 뜻은 아닙니다). 되돌릴 수 없는 일을 하는 보드(배포·마이그레이션·rm)에서는 켜지 마세요.',
-          'Read this first: an incoming message is walled inside a quoted block and that turn runs under the floor you set below — but this is a mitigation, not a block. In real testing there was a shape the receiver obeyed three times out of three (that shape is closed now; that does not mean the next one is). Do not enable this on boards that do irreversible work (deploys, migrations, rm).'
-        )}
-        {/* ★R4 — 크리틱 권고 ③. **실측 숫자 그대로** 적는다: 읽기 누수는 하한이 막지
-            않는 축이고(쓰기만 막는다), 회신 전용의 수명은 R4에서 규칙이 바뀌었다. */}
-        <div style={{ marginTop: 8 }}>
-          {t(
-            '· 읽기는 막지 않습니다. 받은 세션이 읽어서 알아낸 것(작업 폴더 경로·파일 목록·파일 내용)을 회신에 실어 보낼 수 있고, 시험 21회 중 2회 실제로 상대 세션까지 갔습니다(같은 문장이 다른 회차엔 거절됐습니다 — 재량이라 회차마다 갈립니다).',
-            '· Reading is not blocked. What the receiving session learns by reading (working-folder path, file listing, file contents) can ride back in its reply — in testing that reached the other session 2 times out of 21 (the same sentence was refused on other runs; it is discretion, so it varies).'
-          )}
-        </div>
-        <div style={{ marginTop: 6 }}>
-          {t(
-            '· 회신 전용은 이 채팅에 말을 걸어도 풀리지 않습니다(R3까지는 한 마디면 풀렸어요). 다른 자리로 옮기려면 사용자가 프롬프트에 @talk[자리] 한 줄을 직접 써야 하고, 그 줄을 쓰는 순간 그 채팅의 홉·총량 예산도 새로 시작합니다.',
-            '· Reply-only no longer lifts when you type into that chat (until R3 a single word lifted it). To relay elsewhere you must write an @talk[slot] line in your own prompt — and that line also restarts the hop / total budget for that chat.'
-          )}
-        </div>
-      </div>
-
-      {stoppedAt != null && (
-        <div className="set-note2" style={{ borderColor: 'var(--red)', marginBottom: 14 }}>
-          {t(
-            '긴급 정지가 걸려 있어요. 도는 연쇄와 대기 중이던 메시지는 버려졌고, 보드 동의도 전부 해제됐습니다 — 다시 쓰려면 아래에서 켜고 보드마다 다시 동의해 주세요.',
-            'An emergency stop is in effect. Running chains and queued messages were dropped and every board opt-in was revoked — turn it back on below and re-consent per board.'
-          )}
-        </div>
-      )}
-
-      <div className="set-sec">{t('전역', 'Global')}</div>
-      <div className="sc2 tgl">
-        <div>
-          <div className="em">{t('대화 연결 사용', 'Enable cross-talk')}</div>
-          <div className="meta">
-            {cfg.enabled
-              ? t('아래에서 동의한 보드에서만 오갑니다', 'Messages flow only on the boards you consented to below')
-              : t('꺼져 있으면 @talk 구문은 답변에 글자로만 남아요', 'While off, an @talk line stays plain text in the reply')}
-          </div>
-        </div>
-        <span className="sp" />
-        <button
-          className={'sw2' + (cfg.enabled ? ' on' : '')}
-          role="switch"
-          aria-checked={cfg.enabled}
-          aria-label={cfg.enabled ? t('대화 연결 끄기', 'Turn off cross-talk') : t('대화 연결 켜기', 'Turn on cross-talk')}
-          onClick={() => {
-            // 끄는 것은 즉시. **켜는 것**은 처음 한 번 확인 카드를 지난다(★R3 권고 ①).
-            if (cfg.enabled) {
-              void setTalkConfig({ enabled: false }).then(refresh)
-              return
-            }
-            if (cfg.noticeAckAt == null) setConfirmOn(true)
-            else turnOn()
-          }}
-        />
-      </div>
-
-      {/* 1회 확인 카드 — 네이티브 다이얼로그를 쓰지 않는다(스레드를 막고 한글 IME를
-          망가뜨린다 — 앱 규약). 표식은 홈에 남아 창을 옮겨도 다시 뜨지 않는다. */}
-      {confirmOn && (
-        <div className="set-dialog" style={{ marginTop: 10 }}>
-          <div className="em">{t('대화 연결을 켤까요?', 'Turn cross-talk on?')}</div>
-          <div className="meta" style={{ marginTop: 6, lineHeight: 1.65 }}>
-            {t(
-              '켜면 이 보드의 세션들이 서로에게 지시를 보냅니다. 앱이 하는 일: ① 받은 메시지를 인용 블록에 가두고 ② 그 턴만 권한을 낮추고(기본: 읽기 전용) ③ 받은 세션의 발신을 보낸 세션 하나로 묶고 ④ 홉·총량·팬아웃에서 멎게 하고 ⑤ 거절 회신을 앱이 정한 한 문장으로 다시 씁니다(받은 글의 문자열이 회신에 실려 나가지 않게).',
-              'Once on, the sessions on this board send each other instructions. What the app does: (1) walls the incoming text in a quoted block, (2) lowers that one turn’s permissions (default: read-only), (3) pins the receiver’s sends to the sender alone, (4) stops it at the hop / total / fan-out caps, and (5) rewrites a refusal reply to one fixed sentence so nothing from the incoming text rides back out.'
-            )}
-          </div>
-          <div className="meta" style={{ marginTop: 8, lineHeight: 1.65 }}>
-            {t(
-              '앱이 못 하는 일: 받은 글이 시키는 대로 모델이 따르는 것 자체는 막지 못합니다. 실제 시험에서 세 번 중 세 번 따른 형태가 있었고(봉투의 표식을 답에 옮겨 쓰게 하는 형태), 그 형태는 닫았지만 다음 형태를 닫았다는 보장은 없습니다 — 바로 다음 라운드에 「거절하면서 인용하게 하는」 형태가 세 번 중 한 번 통했습니다. 그래서 하한을 「읽기 전용」으로 두면 따르더라도 파일을 고치거나 명령을 돌릴 수단이 그 턴에 없습니다.',
-              'What the app cannot do: it cannot stop the model from complying with what the text asks. In real testing one shape was obeyed three times out of three (getting the receiver to echo the envelope markers). That shape is closed; the next one was not — a “refuse, but quote what you were asked for” shape landed 1 time out of 3 the very next round. That is why the read-only floor matters — even if it complies, that turn has no way to edit files or run commands.'
-            )}
-          </div>
-          <div className="meta" style={{ marginTop: 8, lineHeight: 1.65 }}>
-            {t(
-              '그리고 두 가지를 미리 아셔야 합니다. ① 읽기는 막지 않습니다 — 받은 세션이 읽어서 알아낸 것(경로·파일 목록·파일 내용)을 회신에 실을 수 있고, 시험 21회 중 2회 실제로 상대 세션까지 갔습니다. ② 회신 전용은 그 채팅에 말을 걸어도 유지되고, 사용자가 프롬프트에 @talk[자리] 한 줄을 직접 쓸 때만 풀립니다.',
-              'Two more things up front. (1) Reading is not blocked — what the receiver learns by reading (paths, file listings, file contents) can ride back in its reply; that reached the other session 2 times out of 21 in testing. (2) Reply-only survives you typing into that chat; it lifts only when you write an @talk[slot] line in your own prompt.'
-            )}
-          </div>
-          <div className="set-dialog-row" style={{ marginTop: 12 }}>
-            <button className="btn2" onClick={() => setConfirmOn(false)}>
-              {t('안 켤래요', 'Cancel')}
-            </button>
-            <button className="btn2 pri" onClick={turnOn}>
-              {t('읽고 켭니다', 'I read it — turn it on')}
-            </button>
-          </div>
-        </div>
-      )}
-
-      <div className="set-sec" style={{ marginTop: 26 }}>
-        {t('보드별 동의', 'Per-board consent')}
-      </div>
-      <div className="set-note2">
-        {t(
-          '전역 스위치만으로는 아무것도 나가지 않아요 — 이 목록에서 켠 보드의 보이는 자리끼리만 서로를 볼 수 있습니다.',
-          'The global switch alone sends nothing — only the visible slots of the boards you enable here can reach each other.'
-        )}
-      </div>
-      {boards.length === 0 ? (
-        <div className="sc2 meta">{t('보드가 없어요.', 'No boards yet.')}</div>
-      ) : (
-        boards.map((b) => {
-          const on = cfg.boards?.[b.id] === true
-          return (
-            <div className="sc2 tgl" key={b.id} style={{ marginTop: 8 }}>
-              <div>
-                <div className="em">{b.title || b.id}</div>
-                <div className="meta">{b.id}</div>
-              </div>
-              <span className="sp" />
-              <button
-                className={'sw2' + (on ? ' on' : '')}
-                role="switch"
-                aria-checked={on}
-                aria-label={b.title || b.id}
-                onClick={() => {
-                  void setTalkBoard(b.id, !on).then(refresh)
-                }}
-              />
-            </div>
-          )
-        })
-      )}
-
-      {/* ★R3 C1 — **봉투 턴의 권한 하한.** 이게 이 기능에서 유일하게 "재량이 아닌" 축이다. */}
-      <div className="set-sec" style={{ marginTop: 26 }}>
-        {t('받은 메시지가 만든 턴', 'Turns created by an incoming message')}
-      </div>
-      <div className="set-note2">
-        {t(
-          '받은 글이 무엇을 시키든, 그 턴이 실제로 할 수 있는 일의 천장입니다. 봉투(인용 블록·경고 문구)는 모델의 판단에 기대는 완화라 뚫릴 수 있어요 — 뚫렸을 때 남는 것이 이 설정입니다.',
-          'Whatever the incoming text asks for, this is the ceiling on what that turn can actually do. The envelope (quoted block + warnings) leans on the model’s judgement and can be beaten — this setting is what is left when it is.'
-        )}
-      </div>
-      <div className="sc2 tgl">
-        <div>
-          <div className="em">{t('읽기 전용으로 돌리기', 'Run it read-only')}</div>
-          <div className="meta">
-            {cfg.injectPolicy !== 'ask'
-              ? t(
-                  '그 턴만 계획 모드로 돕니다 — 파일 수정·명령 실행의 수단이 아예 없어요(허용 목록에 넣어 둔 도구도 그 턴에는 안 돕니다). 권장.',
-                  'That one turn runs in plan mode — it has no way at all to edit files or run commands (not even tools you already allow-listed).'
-                )
-              : t(
-                  '자동승인 모드일 때만 승인 필수로 낮춥니다. 주의: 이미 허용 목록에 넣어 둔 도구는 승인 없이 그대로 실행돼요.',
-                  'Only downgrades auto-approving modes to ask-first. Note: tools you already allow-listed still run without asking.'
-                )}
-          </div>
-        </div>
-        <span className="sp" />
-        <button
-          className={'sw2' + (cfg.injectPolicy !== 'ask' ? ' on' : '')}
-          role="switch"
-          aria-checked={cfg.injectPolicy !== 'ask'}
-          aria-label={t('받은 메시지 턴을 읽기 전용으로', 'Run incoming-message turns read-only')}
-          onClick={() => {
-            void setTalkConfig({ injectPolicy: cfg.injectPolicy === 'ask' ? 'readonly' : 'ask' }).then(refresh)
-          }}
-        />
-      </div>
-
-      <div className="set-sec" style={{ marginTop: 26 }}>
-        {t('상한', 'Caps')}
-      </div>
-      <div className="set-note2">
-        {t(
-          `한 번의 지시가 태울 수 있는 크기예요 — 지금 값이면 최대 ${cfg.maxMsgs}개의 세션 턴입니다. 상한은 「시도」에서 깎으므로 거절된 건도 예산을 씁니다.`,
-          `How large one instruction can grow — at these values, at most ${cfg.maxMsgs} session turns. Budget is spent on the attempt, so refused sends count too.`
-        )}
-      </div>
-      <div className="sc2">
-        <PxSlider
-          label={t('전달 횟수(홉)', 'Hops')}
-          desc={t('A→B→A→B… 가 이 횟수에서 멎어요', 'A→B→A→B… stops after this many hand-offs')}
-          min={1}
-          max={12}
-          def={4}
-          unit=""
-          value={cfg.maxHops}
-          onChange={(v) => {
-            void setTalkConfig({ maxHops: v }).then(refresh)
-          }}
-        />
-      </div>
-      <div className="sc2" style={{ marginTop: 10 }}>
-        <PxSlider
-          label={t('연쇄 총량', 'Total per chain')}
-          desc={t('한 지시에서 뻗어 나온 메시지의 총 개수', 'Total messages that can branch from one instruction')}
-          min={1}
-          max={24}
-          def={12}
-          unit=""
-          value={cfg.maxMsgs}
-          onChange={(v) => {
-            void setTalkConfig({ maxMsgs: v }).then(refresh)
-          }}
-        />
-      </div>
-      <div className="sc2" style={{ marginTop: 10 }}>
-        <PxSlider
-          label={t('한 턴의 상대 수(팬아웃)', 'Fan-out')}
-          desc={t('한 턴이 동시에 깨우는 세션 수 — 방송 한 줄의 값이 여기서 정해져요', 'How many sessions one turn can wake at once — this is what a broadcast line costs')}
-          min={1}
-          max={5}
-          def={3}
-          unit=""
-          value={cfg.maxFanout}
-          onChange={(v) => {
-            void setTalkConfig({ maxFanout: v }).then(refresh)
-          }}
-        />
-      </div>
-
-      <div className="set-sec" style={{ marginTop: 26 }}>
-        {t('긴급 정지', 'Emergency stop')}
-      </div>
-      <div className="set-note2">
-        {t(
-          `연쇄를 버리고, 다른 세션의 대기 줄에 서 있는 메시지를 뽑아내고, 이미 시작된 「받은 메시지 턴」에 중단을 보내고, 보드 동의를 전부 해제합니다. 메인 창·추가 채팅 창·팝아웃 패널 어디서든 ${STOP_HOTKEY} 로도 눌러요. 사용자가 직접 시킨 턴은 건드리지 않습니다.`,
-          `Drops chains, pulls back messages queued in other sessions, interrupts incoming-message turns that already started, and revokes every board opt-in. ${STOP_HOTKEY} works in the main window, extra chat windows and popped-out panels alike. Turns you started yourself are left alone.`
-        )}
-      </div>
-      <div className="sc2" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <button
-          type="button"
-          className="talk-stop"
-          onClick={() => {
-            void stopTalk().then((c) => {
-              refresh()
-              // ★R3 C2 — 알약과 **같은 문장**을 쓴다(한 소스). R2는 여기서 `purged`만
-              // 세어 「정지했어요」라고 했고, 그때 도는 턴은 끝까지 갔다.
-              say(stopSaid(c))
-            })
-          }}
-        >
-          <span className="talk-stop-dot" />
-          {t('지금 멈추기', 'Stop now')}
-        </button>
-        {said && <span className="meta">{said}</span>}
-      </div>
-
-      <div className="set-note2" style={{ marginTop: 22 }}>
-        {t(
-          '남은 위험(정직하게): ① 봉투는 완화입니다 — 모델이 받은 글을 따르는 것 자체는 못 막습니다. ② 「읽기 전용」을 끄면 이미 허용 목록에 넣어 둔 도구는 승인 없이 실행됩니다. ③ 정지는 이미 도는 턴에 중단을 보내지만 CLI가 안 받으면 몇 초 뒤 스트림을 접는 방식이라 그 사이에 한 일은 남습니다(정지 알약은 8초 뒤 실제 결과로 문장을 정정합니다). ④ 받은 턴이 답으로 남기는 글은 여전히 자유 문장이라, 경로 같은 정보를 옮겨 적는 누수는 남습니다 — 앱이 되쓰는 것은 상대에게 나가는 회신뿐이고, 그 세션 자기 화면의 답변은 못 고칩니다(고치면 사용자가 보는 답과 실제가 갈립니다).',
-          'Remaining risk, honestly: (1) the envelope is a mitigation — it cannot stop the model from complying with what it reads. (2) With read-only off, tools you already allow-listed run without asking. (3) Stop interrupts a running turn, but if the CLI ignores the interrupt the stream is torn down a few seconds later — whatever happened in between stands (the stop pill corrects its own wording 8 seconds later with the measured result). (4) The reply is still free text, so a leak that merely quotes a path remains possible — the app only rewrites what goes out to the other session; it never edits the answer shown in that session’s own thread (that would split what you read from what happened).'
-        )}
-      </div>
-    </>
-  )
-}
-
 function DisplayView(): React.ReactElement {
   const [glass, setGlass] = useState<number>(() => getPref(GLASS_PREF, GLASS_DEFAULT))
   // 사이드바 자동 숨김 — 값을 바꾸면 이벤트로 메인 창이 즉시 다시 읽어 반영한다(applyGlass와 같은 결).
@@ -3688,7 +3383,6 @@ export function SettingsModal({
               {view === 'api' && <ApiView />}
               {view === 'mcp' && <McpView cwd={cwd} />}
               {view === 'skill' && <SkillView cwd={cwd} />}
-              {view === 'talk' && <TalkView />}
               {view === 'display' && <DisplayView />}
               {view === 'language' && <LanguageView />}
               {view === 'lsp' && <LspView />}

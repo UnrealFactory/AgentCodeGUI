@@ -27,11 +27,6 @@ export type ThreadItem =
       error?: boolean
       time: string
       images?: string[]
-      /** ★M10 R3 — 이 사용자 말풍선을 **누가 넣었나**(`user-echo`의 origin). 사람이 친 것은
-       *  없음, 앱이 넣은 것은 `'talk'`(대화 연결) 등. R2까지 `engineAction`이 이 값을
-       *  버려서, 수신 봉투가 사용자가 친 말과 **똑같은 말풍선**이었고 구분 신호는 본문
-       *  첫 글자뿐이었다(크리틱 D5). 본문은 위조될 수 있으므로 구조 신호가 있어야 한다. */
-      origin?: string
     }
   | { kind: 'thinking'; id: string; text: string }
   | { kind: 'toolgroup'; id: string; tools: ToolLogItem[]; time: string }
@@ -183,7 +178,7 @@ type Action =
   // ★ R4 — 엔진이 **스스로 연 턴**의 사용자 말풍선(`user-echo`, hub.rs:823). 계약면
   // (`EngineEvent`)에 없는 이벤트라 `{type:'engine'}`으로는 못 들어온다 — engineAction이
   // 여기로 접는다. 한도 재개·예약 드레인이 이 경로다(크리틱 R14 §5-F5).
-  | { type: 'user-echo'; text: string; images?: string[]; time: string; origin?: string }
+  | { type: 'user-echo'; text: string; images?: string[]; time: string }
   // ★ R4 — `chat:verdict`의 착지점. 거부는 **전송이 없던 일이 됐다**는 뜻이라 말풍선
   // 하나로 끝나지 않는다: begin이 올려 둔 busy를 되감아야 침묵 정지가 사라진다(D7).
   | { type: 'verdict'; text: string; blocked: boolean; time: string }
@@ -666,7 +661,7 @@ export function reducer(state: SessionState, action: Action): SessionState {
       turnMark: prior[prior.length - 1]?.id ?? null,
       // ★R28d WCAP R4 — **새 사용자 말풍선은 열린 도구 그룹을 닫는다**(WCAP 확인 크리틱
       // R3 §4.3). `begin`은 이 줄을 처음부터 갖고 있었는데(623행) 여기엔 없었다. 그래서
-      // 엔진이 스스로 연 재개 턴(한도 자동 재개·예약 드레인·대화 연결 수신 = `hub.rs`의
+      // 엔진이 스스로 연 재개 턴(한도 자동 재개·예약 드레인 = `hub.rs`의
       // `user-echo`)이 텍스트 없이 도구만 열면, 스토어가 그 도구를 **앞 턴의 열린 그룹**에
       // 밀어 넣었다. 실측(실제 리듀서 구동): 같은 이벤트 열에 여는 방식만 바꾸면
       //   begin     → `user TG(tg2:1) assistant! user TG(tg5:1) assistant!`
@@ -688,8 +683,7 @@ export function reducer(state: SessionState, action: Action): SessionState {
           text: action.text,
           animate: false,
           time: action.time,
-          images: action.images?.length ? action.images : undefined,
-          origin: action.origin
+          images: action.images?.length ? action.images : undefined
         }
       ])
     }
@@ -1404,17 +1398,12 @@ export function reducer(state: SessionState, action: Action): SessionState {
  * 지나야 한다 — 한 곳이라도 `{type:'engine'}`을 직접 만들면 그 화면만 말풍선이 없다.
  */
 export function engineAction(event: EngineEventV3): Action {
-  const e = event as unknown as { type?: string; text?: unknown; images?: unknown; origin?: unknown }
+  const e = event as unknown as { type?: string; text?: unknown; images?: unknown }
   if (e?.type === 'user-echo' && typeof e.text === 'string')
     return {
       type: 'user-echo',
       text: e.text,
       images: Array.isArray(e.images) ? (e.images as string[]).filter((s) => typeof s === 'string') : undefined,
-      // ★M10 R3(D5) — **origin을 버리지 않는다.** R2까지 이 줄이 없어서, 다른 세션이
-      // 보낸 봉투가 사용자가 친 말과 똑같은 말풍선으로 섰고 구분 신호는 본문 첫 글자
-      // (`[대화 연결]`)뿐이었다. 그런데 본문은 위조 시도의 표적이다(크리틱 C3에서
-      // 실제로 그 글자가 본문에 복원됐다) — 구분은 **구조**에서 와야 한다.
-      origin: typeof e.origin === 'string' && e.origin !== 'user' ? e.origin : undefined,
       time: nowTime()
     }
   return { type: 'engine', event }

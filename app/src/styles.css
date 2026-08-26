@@ -295,53 +295,6 @@ input,textarea{ font-family:inherit; }
 }
 .atp-lbl span{ font-weight:400; font-size:10.5px; color:var(--text-3); }
 
-/* ---- ★M10 R2 — 대화 연결 긴급 정지 알약 -------------------------------------
-   기능이 **켜져 있을 때만** 뜬다(기본값은 꺼짐). 자리는 창 오른쪽 아래 — 어느 화면
-   (단일·멀티·뷰어)에 있어도 같은 자리에 있고, 모달(z-70)보다 위(z-95)라 설정을 열어
-   둔 채로도 누를 수 있다. 「긴급 정지」가 모달 뒤에 가리면 그건 긴급 정지가 아니다. */
-.talk-stop-wrap{
-  position:fixed; right:16px; bottom:16px; z-index:95;
-  display:flex; flex-direction:column; align-items:flex-end; gap:6px;
-  animation:fade .14s ease both;
-}
-.talk-stop{
-  display:inline-flex; align-items:center; gap:7px;
-  height:30px; padding:0 12px; border-radius:999px;
-  font-size:11.5px; font-weight:700; letter-spacing:.1px;
-  color:#fff; background:color-mix(in oklab, var(--red) 82%, #000 18%);
-  border:1px solid color-mix(in oklab, var(--red) 55%, #fff 12%);
-  box-shadow:var(--shadow-sm); cursor:pointer;
-}
-.talk-stop:hover{ background:var(--red); }
-.talk-stop:disabled{ opacity:.55; cursor:default; }
-.talk-stop-dot{
-  width:7px; height:7px; border-radius:50%; background:#fff;
-  animation:talkpulse 1.6s ease-in-out infinite;
-}
-@keyframes talkpulse{ 0%,100%{ opacity:1 } 50%{ opacity:.35 } }
-.talk-stop-said{
-  max-width:340px; padding:6px 10px; border-radius:8px;
-  font-size:11px; color:var(--text-2);
-  background:var(--surface-2); border:1px solid var(--line-2); box-shadow:var(--shadow-sm);
-}
-
-/* ★M10 R3(D5) — **주입된 사용자 말풍선의 구조 배지.**
-   R2까지 다른 세션이 보낸 봉투는 사용자가 친 말과 **똑같은 말풍선**이었고, 구분 신호는
-   본문 첫 글자(`[대화 연결]`)뿐이었다. 그런데 본문은 정확히 위조 시도의 표적이라
-   (크리틱 C3에서 그 글자가 본문 안에 복원됐다) 둘이 서로를 약화시켰다. 신호는 본문이
-   아니라 **틀**에서 와야 한다 — 이 배지는 셸이 준 `origin`으로만 뜬다. */
-.msg.user.injected .msg-main{
-  border-left:2px solid color-mix(in oklab, var(--amber, #c9922e) 70%, transparent);
-  padding-left:9px;
-}
-.msg-origin{
-  display:inline-block; margin-bottom:5px; padding:1px 7px; border-radius:999px;
-  font-size:10px; font-weight:700; letter-spacing:.1px;
-  color:var(--amber, #c9922e);
-  background:color-mix(in oklab, var(--amber, #c9922e) 14%, transparent);
-  border:1px solid color-mix(in oklab, var(--amber, #c9922e) 34%, transparent);
-}
-
 /* ---- sidebar — 재질이 은은히 비치는 면 (배경 없음 = body의 --panel 틴트) ---- */
 .sidebar{
   width:var(--lcol-w, 242px); flex:0 0 auto;

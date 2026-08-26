@@ -34,8 +34,6 @@ import {
   type WindowSlot
 } from './api/unified'
 import { noteSettled } from './lib/settled'
-// ★M10 R2 — 대화 연결의 **긴급 정지**. R1은 채널만 있고 누를 자리가 0이었다(크리틱 D7).
-import { TalkStopPill } from './components/TalkStop'
 import { NewChatModal } from './components/NewChatModal'
 import { getPref, setPref, delPref } from './lib/prefs'
 import { t, useLang } from './lib/i18n'
@@ -2278,26 +2276,9 @@ function MainApp({ user }: { user: AppUser }) {
     else if (a.kind === 'billing-off') onApiModeChange(false, picker.engine)
   })
 
-  /* ── ★M10 R2 C3 — 대화 연결 **긴급 정지**. ───────────────────────────────
-   *
-   * 크리틱 D7: `grep -rn crosstalk app/src` = **0건**. 라우터·상한·옵트인은 전부
-   * 섰는데 사람이 누를 자리가 없었다 — 「멈추는 방법」이 무게중심이라던 라운드에서
-   * 정지가 제품에 없었다는 뜻이다. 여기가 그 자리다.
-   *
-   * 자리를 **둘**로 두는 이유: 설정 모달을 열어야 누를 수 있으면 그건 긴급 정지가
-   * 아니다. 켜져 있을 때만 뜨는 알약 하나 + 어디서나 듣는 단축키 하나.
-   */
-  //
-  // ★R3 C4 — 알약·단축키·상태 구독이 **한 덩어리**로 `components/TalkStop.tsx`에
-  // 들어갔다. R2는 이 셋이 여기(MainApp) 안에만 있었고, 렌더러 뿌리가 셋이라
-  // 추가 창·팝아웃에는 누를 자리가 없었다(크리틱 D6). 세 뿌리가 같은 것을 건다.
-
   return (
     <div className="win">
       <div className="blurwarm" />
-      {/* 켜져 있을 때만 뜬다. 기본값이 꺼짐인 기능의 정지 버튼을 상시 띄우면 화면만
-          시끄럽고, 꺼져 있으면 위험이 0이므로 자리도 0이어야 한다. */}
-      <TalkStopPill />
       <div className="win-body">
         {/* 왼쪽 칼럼 — 채팅 사이드바 ⟷ 파일 탐색기 전환 ( ` 또는 헤더 돋보기 옆 버튼).
             멀티 뷰의 탐색기는 마지막으로 클릭한 패널의 폴더를 따라간다(패널 전환 = 트리 전환).

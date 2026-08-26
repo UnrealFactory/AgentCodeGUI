@@ -13,7 +13,6 @@ import { WinControls } from './TitleBar'
 import { FolderSwitchDialog } from './FolderSwitchDialog'
 import { SubAgentModal } from './AgentPanel'
 import { ImageViewer } from './ImageViewer'
-import { TalkStopPill } from './TalkStop'
 import type { PickerState, ScheduledMsg } from './Chat'
 import {
   PanelView,
@@ -453,7 +452,6 @@ function PanelHost({ boot }: { boot: PanelPopState }): React.ReactElement {
       <div className="blurwarm" />
       {/* ★M10 R3 C4 — 팝아웃 패널은 **보드를 보는 창**이다. 두 세션이 주고받는 것을
           지켜보는 그 창이 정확히 정지가 없는 창이었다(크리틱 D6). */}
-      <TalkStopPill />
       {/* 창 드래그 띠 + 창 컨트롤 — 패널 헤더는 버튼이 많아 드래그 면으로 못 쓴다 */}
       <div className="pw-head">
         <span className="pw-drag" />
