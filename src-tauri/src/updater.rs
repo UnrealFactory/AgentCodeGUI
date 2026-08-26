@@ -4,7 +4,7 @@
 //! 최종 파리티 감사 R5 §9.0이 자기 exe로 재 둔 상태: 원시 `app:update-check` ·
 //! `app:update-install` · `app:update-event` 셋 다 `{"__unimplemented":true}`(9/9),
 //! 셸에 방출자·업데이터·`plugins` 설정이 **전부 0**. 화면(`AppUpdateGate.tsx`)은
-//! 그대로 실려 **항상 마운트되지만**(`App.tsx:2670`) 값을 넣어 줄 통로가 없어 어떤
+//! 그대로 실려 **항상 마운트되지만**(`App.tsx:2651`의 `<AppUpdateGate />`) 값을 넣어 줄 통로가 없어 어떤
 //! 경로로도 카드가 뜰 수 없었다 — 감사가 시드를 심으니 카드는 정상적으로 떴다
 //! (ready 3/3 · downloading 3/3 대 bare 0/3). **화면은 멀쩡하고 배선만 없었다.**
 //! 사용자 문장으로: 출하된 3.0 사용자는 앱 안에서 새 버전을 알 수도 받을 수도 없다.
@@ -35,8 +35,10 @@
 //! 사라진다**. 3.0에서 이 함정은 **구조적으로 없다**: `tauri-plugin-updater`에는
 //! `autoInstallOnAppQuit`에 해당하는 것이 아예 없고, 설치는 [`install`]을 **누군가 부를
 //! 때만** 일어난다. 그리고 이 파일은 그것을 `app:update-install`(=카드의 「업데이트」
-//! 버튼) 한 곳에서만 부른다 — 종료 경로(`main.rs`의 `RunEvent::ExitRequested`)는
-//! 이 모듈을 아예 모른다. 그 성질을 못으로도 박아 둔다(`install_is_never_wired_to_exit`).
+//! 버튼) 한 곳에서만 부른다 — **종료 문 둘**(사용자가 실제로 앱을 끝내는 `tray.rs`의
+//! `quit()` → `app.exit(0)`, 그 뒤에 오는 `main.rs`의 `RunEvent::ExitRequested`)은
+//! 이 모듈을 아예 모른다. 그 성질을 못으로도 박아 둔다(`install_is_never_wired_to_exit` —
+//! 그 못은 파일을 고르지 않고 `src-tauri/src` 전수를 걷는다. 이유는 못의 주석에).
 //!
 //! ── 2.6.2와 알면서 다른 것 두 가지 ─────────────────────────────────────────
 //! ① **받아둔 설치본을 다음 실행으로 넘기지 않는다.** electron-updater는 pending 캐시에
@@ -81,7 +83,7 @@ pub const FEED_ENV: &str = "CCG_UPDATE_FEED";
 // ── 상태 ────────────────────────────────────────────────────────────────────
 
 /// 계약면 `UpdateStatus`의 `phase`. 문자열은 `src/shared/protocol.ts:1074`가 원본이고
-/// 화면(`AppUpdateGate.tsx:47`)이 이 중 넷에서만 카드를 띄운다.
+/// 화면(`AppUpdateGate.tsx:47-48`의 `const active`)이 이 중 넷에서만 카드를 띄운다.
 mod phase {
     pub const IDLE: &str = "idle";
     pub const CHECKING: &str = "checking";
@@ -101,7 +103,7 @@ struct St {
     /// 받아둔(downloaded) 상태의 **조용한 재확인** 표식 — 2.6.2 `updater.ts:29`의 `probing`.
     /// 받아둔 뒤에 더 새 릴리즈가 올라왔는지만 본다. 같은 버전이 다시 잡히는 동안엔 상태를
     /// 일절 건드리지 않아('나중에'로 접은 카드는 phase가 downloaded로 **다시 구르는**
-    /// 순간 되뜨므로 — `AppUpdateGate.tsx:36`), 침묵이 곧 카드 보호다.
+    /// 순간 되뜨므로 — `AppUpdateGate.tsx:38`의 `setDismissed(false)`), 침묵이 곧 카드 보호다.
     probing: bool,
     /// 5%마다 한 줄만 남기려는 눈금(`-1` = 이번 사이클에 아직 안 남겼다).
     last_step: i64,
@@ -502,7 +504,7 @@ mod tests {
         assert!(v["error"].is_null());
     }
 
-    /// 화면이 카드를 띄우는 네 값(`AppUpdateGate.tsx:47`)이 우리가 쓰는 문자열과
+    /// 화면이 카드를 띄우는 네 값(`AppUpdateGate.tsx:48`)이 우리가 쓰는 문자열과
     /// **글자 그대로** 같아야 한다. 오타 하나면 카드는 영원히 안 뜬다.
     #[test]
     fn phase_names_match_the_renderer() {
@@ -544,31 +546,79 @@ mod tests {
         assert_eq!(log_step(100), 20);
     }
 
+    /// 주석과 `#[cfg(test)]` 아래를 뺀 **진짜 코드 줄**만 준다. 못이 자기 소스에 적힌
+    /// 문자열 리터럴을 세어 늘 깨지는 것을 막는 자리다.
+    fn code_lines(src: &str) -> impl Iterator<Item = &str> {
+        src.split("#[cfg(test)]")
+            .next()
+            .unwrap_or_default()
+            .lines()
+            .filter(|l| !l.trim_start().starts_with("//"))
+    }
+
+    /// `src-tauri/src` 아래 `.rs` 전부. 외부 크레이트 없이 손으로 걷는다.
+    fn collect_rs(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+        let Ok(rd) = std::fs::read_dir(dir) else { return };
+        for e in rd.flatten() {
+            let p = e.path();
+            if p.is_dir() {
+                collect_rs(&p, out);
+            } else if p.extension().is_some_and(|x| x == "rs") {
+                out.push(p);
+            }
+        }
+    }
+
     /// ★2.6.2의 실제 사고를 되풀이하지 않는다는 **구조적** 못.
     ///
     /// 종료 시 자동 설치는 화면 없이 NSIS가 도는 경로라 그 사이에 PC가 꺼지면 앱이
     /// 통째로 사라진다(`updater.ts:59-65`). 3.0에서 설치를 부르는 자리는 [`install`]
-    /// **하나**여야 하고, 종료 경로(`main.rs`의 `RunEvent::ExitRequested`)는 이 모듈을
-    /// 아예 몰라야 한다. 소스를 읽어 그 성질을 확인한다 — 다음 라운드가 "종료할 때 겸사겸사
-    /// 설치하자"를 한 줄 더하는 순간 이 못이 먼저 부러진다.
+    /// **하나**여야 하고, 종료 문은 이 모듈을 아예 몰라야 한다.
+    ///
+    /// ── ★R28j 확인 크리틱 R1 §3.2 — **이 못은 한 번 부러졌다** ──────────────────
+    /// 원래 이 못은 `main.rs` **한 파일만** 읽었다. 그런데 사용자가 실제로 앱을 끝내는 문은
+    /// `tray.rs`의 `quit()`이다(트레이 메뉴 「완전히 종료」와 첫 숨김 안내 카드가 **둘 다**
+    /// 거기로 온다 → `app.exit(0)`). `main.rs`의 `RunEvent::ExitRequested`는 그 **뒤에**
+    /// 오는 핸들러일 뿐이다. 크리틱이 격리 트리에서 `quit()`에 `crate::updater::install(app)`을
+    /// 한 줄 심었더니 **못이 그대로 통과했다**(경고도 안 붙었다). 막겠다고 선언한 바로 그
+    /// 회귀가 못을 지나간 것이다.
+    ///
+    /// 그래서 이제 **파일을 고르지 않는다**: `src-tauri/src` 전수를 걸어 `updater::install`을
+    /// 부르는 **파일의 집합**을 세고, 그 집합이 `ipc/app_meta.rs`(=카드의 「업데이트」 버튼이
+    /// 오는 자리) 하나임을 박는다. 어느 파일에 심어도 — 종료 문이든, 아직 없는 새 파일이든 —
+    /// 이 못이 먼저 부러진다. (`include_str!`은 컴파일 시각 상수라 이런 전수를 못 한다.
+    /// 그래서 테스트 **실행 시각**에 `CARGO_MANIFEST_DIR`부터 디렉터리를 걷는다.)
     #[test]
     fn install_is_never_wired_to_exit() {
-        let me = include_str!("updater.rs");
-        // 못 자신과 주석은 빼고 센다 — 안 그러면 이 못의 소스가 자기를 세어 늘 깨진다.
-        let body = me.split("#[cfg(test)]").next().unwrap_or_default();
-        let calls = body
-            .lines()
-            .filter(|l| {
-                let t = l.trim_start();
-                !t.starts_with("//") && t.contains(".install(")
-            })
-            .count();
-        // 이 파일 안에서 설치기를 실제로 부르는 자리는 정확히 하나(=[`install`]의 몸통)
+        // ① 이 파일 안에서 설치기를 실제로 부르는 자리는 정확히 하나(=[`install`]의 몸통)
+        let calls = code_lines(include_str!("updater.rs")).filter(|l| l.contains(".install(")).count();
         assert_eq!(calls, 1, "설치 호출부가 하나가 아니다");
-        let main_rs = include_str!("main.rs");
-        // 종료 핸들러가 있는 파일이 업데이터의 설치 문을 알면 안 된다
-        assert!(!main_rs.contains("updater::install"), "종료 경로가 설치를 부른다");
-        // 그리고 실제로 종료 이벤트를 다루는 파일이 맞는지 확인(못이 엉뚱한 파일을 보지 않게)
-        assert!(main_rs.contains("RunEvent::ExitRequested"), "종료 핸들러를 못 찾았다");
+
+        // ② `src-tauri/src` 전수 — `updater::install`을 부르는 파일의 집합
+        let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut files = Vec::new();
+        collect_rs(&src, &mut files);
+        // 못이 빈 트리를 보고 「통과」하지 않게 — 이 셸은 파일이 열 개는 넘는다
+        assert!(files.len() >= 10, "소스 트리를 못 읽었다({}개) — 못이 헛돈다", files.len());
+
+        let mut callers: Vec<String> = Vec::new();
+        let (mut saw_main, mut saw_tray) = (false, false);
+        for p in &files {
+            let rel = p.strip_prefix(&src).unwrap_or(p).to_string_lossy().replace('\\', "/");
+            let text = std::fs::read_to_string(p).unwrap_or_default();
+            // 못이 엉뚱한 트리를 본 게 아닌지 — **진짜 종료 문 둘**이 거기 있어야 한다
+            if rel == "main.rs" {
+                saw_main = text.contains("RunEvent::ExitRequested");
+            } else if rel == "tray.rs" {
+                saw_tray = text.contains("app.exit(0)");
+            }
+            if code_lines(&text).any(|l| l.contains("updater::install")) {
+                callers.push(rel);
+            }
+        }
+        callers.sort();
+        assert_eq!(callers, ["ipc/app_meta.rs"], "설치를 부르는 파일이 카드 한 곳이 아니다");
+        assert!(saw_main, "main.rs의 RunEvent::ExitRequested를 못 찾았다");
+        assert!(saw_tray, "tray.rs의 app.exit(0)(=「완전히 종료」)를 못 찾았다");
     }
 }
