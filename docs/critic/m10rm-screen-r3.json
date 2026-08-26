@@ -1,0 +1,81 @@
+{
+  "at": "2026-08-26T03:46:05.668Z",
+  "tag": "r3",
+  "exe": "C:\\Code\\AgentCodeGUI\\target-r28k-rm\\release\\agentcodegui.exe",
+  "axes": {
+    "S0-옛홈": {
+      "pass": true,
+      "mounted": true,
+      "channelGone": true,
+      "filesKept": true,
+      "enabledStillTrueOnDisk": true
+    },
+    "S1-봉투버림": {
+      "pass": true,
+      "chatId": "c-a",
+      "queued": 1,
+      "seeded": 2
+    },
+    "S2-나침반": {
+      "pass": true,
+      "opened": "clicked",
+      "modalUp": true,
+      "talk": [],
+      "ko": [],
+      "crosstalk": []
+    },
+    "S3a-메인창": {
+      "pass": true,
+      "before": {
+        "pill": false,
+        "said": false,
+        "wrap": false
+      },
+      "after": {
+        "pill": false,
+        "said": false,
+        "wrap": false
+      },
+      "alive": true
+    },
+    "S3b-추가창": {
+      "pass": true,
+      "before": {
+        "pill": false,
+        "said": false,
+        "wrap": false
+      },
+      "after": {
+        "pill": false,
+        "said": false,
+        "wrap": false
+      },
+      "alive": true
+    },
+    "S3c-팝아웃": {
+      "pass": true,
+      "before": {
+        "pill": false,
+        "said": false,
+        "wrap": false
+      },
+      "after": {
+        "pill": false,
+        "said": false,
+        "wrap": false
+      },
+      "alive": true
+    }
+  },
+  "seeded": {
+    "chatFile": "c-a.json",
+    "queue": [
+      "talk",
+      "user"
+    ]
+  },
+  "popoutLabel": "panel-1",
+  "home": "C:\\Code\\AgentCodeGUI\\.poc-home-m10rm-screen-r3",
+  "pass": true,
+  "fails": []
+}

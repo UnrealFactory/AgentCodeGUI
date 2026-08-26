@@ -1,0 +1,37 @@
+{
+  "at": "2026-08-26T03:39:48.938Z",
+  "a": {
+    "file": "docs/critic/m10rm-bytes-pre.json",
+    "tag": "pre",
+    "exe": {
+      "path": "C:\\Code\\AgentCodeGUI\\target-r28k-rm-pre\\release\\agentcodegui.exe",
+      "sha256": "a138644493de397219082c2c7853730faf48db2c9d969152d6b018a461c2fc4b",
+      "mtime": "2026-08-26T03:04:48.889Z"
+    }
+  },
+  "b": {
+    "file": "docs/critic/m10rm-bytes-post.json",
+    "tag": "post",
+    "exe": {
+      "path": "C:\\Code\\AgentCodeGUI\\target-r28k-rm\\release\\agentcodegui.exe",
+      "sha256": "b51ab0227840f2a05430a24041039226ef12787281db3a1582e568e0d98a758c",
+      "mtime": "2026-08-26T03:38:06.357Z"
+    }
+  },
+  "plain": {
+    "aFrame": "{\"type\":\"control_request\",\"request_id\":\"init-1\",\"request\":{\"subtype\":\"initialize\",\"forwardSubagentText\":true,\"supportedDialogKinds\":[\"refusal_fallback_prompt\"]}}",
+    "bFrame": "{\"type\":\"control_request\",\"request_id\":\"init-1\",\"request\":{\"subtype\":\"initialize\",\"forwardSubagentText\":true,\"supportedDialogKinds\":[\"refusal_fallback_prompt\"]}}",
+    "aSha": "afb039fc7966a648299e042446cbfa874a555a0a73b1d395370ea36174532b0f",
+    "bSha": "afb039fc7966a648299e042446cbfa874a555a0a73b1d395370ea36174532b0f",
+    "identical": true,
+    "hasSystemPromptKey": false
+  },
+  "instructed": {
+    "aAppend": "너는 코드 리뷰어다. 답은 한 문장으로만 한다.",
+    "bAppend": "너는 코드 리뷰어다. 답은 한 문장으로만 한다.",
+    "aCarries": true,
+    "bCarries": true,
+    "identical": true
+  },
+  "pass": true
+}

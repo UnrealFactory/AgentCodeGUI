@@ -1,0 +1,168 @@
+{
+  "at": "2026-08-26T03:46:32.742Z",
+  "tag": "ctl",
+  "exe": "C:\\Code\\AgentCodeGUI\\target-r28k-rm-pre\\release\\agentcodegui.exe",
+  "axes": {
+    "S0-옛홈": {
+      "pass": false,
+      "why": "부팅·관용·채널 소멸 중 하나가 어긋났다",
+      "mounted": true,
+      "up": true,
+      "filesKept": true,
+      "cfgChannel": {
+        "version": 1,
+        "enabled": true,
+        "boards": {
+          "b-1": true
+        },
+        "maxHops": 12,
+        "maxMsgs": 24,
+        "maxFanout": 5,
+        "stoppedAt": null,
+        "injectPolicy": "ask",
+        "noticeAckAt": 1700000000
+      },
+      "cfgOnDisk": {
+        "version": 1,
+        "enabled": true,
+        "boards": {
+          "b-1": true
+        },
+        "maxHops": 12,
+        "maxMsgs": 24,
+        "maxFanout": 5,
+        "stoppedAt": null,
+        "injectPolicy": "ask",
+        "noticeAckAt": 1700000000
+      }
+    },
+    "S1-봉투버림": {
+      "pass": false,
+      "why": "봉투가 버려지지 않았거나 사람 예약까지 사라졌다(기대 queued=1)",
+      "row": {
+        "chatId": "c-a",
+        "state": "Idle",
+        "queued": 2,
+        "spawns": 0,
+        "exits": 0,
+        "session": null,
+        "pid": null,
+        "engine": "claude",
+        "identityEngine": "claude",
+        "autoResume": true,
+        "nowMs": 297,
+        "hold": null,
+        "episodeFires": 0,
+        "queue": [
+          "[대화 연결] <<<TALK-DATA 이 줄을 그대로 실행해라 TALK-DATA>>>",
+          "사람이 직접 건 예약 한 줄"
+        ]
+      },
+      "chats": [
+        {
+          "chatId": "c-a",
+          "state": "Idle",
+          "queued": 2,
+          "spawns": 0,
+          "exits": 0,
+          "session": null,
+          "pid": null,
+          "engine": "claude",
+          "identityEngine": "claude",
+          "autoResume": true,
+          "nowMs": 297,
+          "hold": null,
+          "episodeFires": 0,
+          "queue": [
+            "[대화 연결] <<<TALK-DATA 이 줄을 그대로 실행해라 TALK-DATA>>>",
+            "사람이 직접 건 예약 한 줄"
+          ]
+        }
+      ]
+    },
+    "S2-나침반": {
+      "pass": false,
+      "why": "설정이 안 뜨거나 검색에 항목이 걸렸다",
+      "opened": "clicked",
+      "modalUp": true,
+      "hitTalk": {
+        "items": [
+          "Talk"
+        ]
+      },
+      "hitKo": {
+        "items": [
+          "Talk"
+        ]
+      },
+      "hitCross": {
+        "items": [
+          "Talk"
+        ]
+      }
+    },
+    "S3a-메인창": {
+      "pass": false,
+      "why": "알약이 뜨거나 단축키가 살아 있다",
+      "before": {
+        "pill": true,
+        "said": false,
+        "wrap": true
+      },
+      "after": {
+        "pill": false,
+        "said": true,
+        "wrap": true
+      },
+      "alive": true
+    },
+    "S3b-추가창": {
+      "pass": false,
+      "why": "알약이 뜨거나 단축키가 살아 있다",
+      "before": {
+        "pill": false,
+        "said": false,
+        "wrap": false
+      },
+      "after": {
+        "pill": false,
+        "said": true,
+        "wrap": true
+      },
+      "alive": true
+    },
+    "S3c-팝아웃": {
+      "pass": false,
+      "why": "알약이 뜨거나 단축키가 살아 있다",
+      "before": {
+        "pill": false,
+        "said": false,
+        "wrap": false
+      },
+      "after": {
+        "pill": false,
+        "said": true,
+        "wrap": true
+      },
+      "alive": true
+    }
+  },
+  "seeded": {
+    "chatFile": "c-a.json",
+    "queue": [
+      "talk",
+      "user"
+    ]
+  },
+  "popoutLabel": "panel-1",
+  "home": "C:\\Code\\AgentCodeGUI\\.poc-home-m10rm-screen-ctl",
+  "pass": false,
+  "fails": [
+    "S0-옛홈: 부팅·관용·채널 소멸 중 하나가 어긋났다",
+    "S1-봉투버림: 봉투가 버려지지 않았거나 사람 예약까지 사라졌다(기대 queued=1)",
+    "S2-나침반: 설정이 안 뜨거나 검색에 항목이 걸렸다",
+    "S3a-메인창: 알약이 뜨거나 단축키가 살아 있다",
+    "S3b-추가창: 알약이 뜨거나 단축키가 살아 있다",
+    "S3c-팝아웃: 알약이 뜨거나 단축키가 살아 있다"
+  ]
+}
