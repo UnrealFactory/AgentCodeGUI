@@ -246,7 +246,7 @@ pub fn parse_json_source(raw: &str) -> Option<serde_json::Value> {
 /// 그 값을 지키는 자물쇠가 둘이면 **서로를 모른다**: `testhome::take`가 홈을 갈아끼우는
 /// 창에 `temp_home`을 든 테스트가 *쓰기와 읽기 사이*로 들어가면 남의 홈을 읽는다.
 /// 실측(확인 크리틱 R2): `cargo test -p ccg-store --lib`이 기본 병렬에서 **9/37 붉었고**
-/// (`migrate_v3` 재마이그레이션 2종·`talk::opting_a_board` — 매번 다른 자리),
+/// (`migrate_v3` 재마이그레이션 2종·설정 왕복 1종 — 매번 다른 자리),
 /// `testhome` 스왑 못 하나만 빼면 0/35, `--test-threads=1`도 0/10이었다.
 /// 그래서 자물쇠를 버리고 [`testhome::take`]에 얹는다 — 증표는 그쪽이 준다.
 #[cfg(test)]

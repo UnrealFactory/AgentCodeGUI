@@ -411,9 +411,10 @@ pub fn read_chat_queue(id: &str) -> Vec<QueuedText> {
 pub struct QueuedText {
     pub text: String,
     pub images: Vec<String>,
-    /// ★M10 R2 C4 — **이 예약을 넣은 자**(`chat:queue`의 `origin` 그대로: `user` ·
-    /// `talk` · `limit_resume` …). R1은 이 값을 안 읽었고, 재장전이 전부 사람 것으로
-    /// 되돌려 세션 간 메시지가 **사람의 이름표를 달고** 되살아났다(크리틱 A7).
+    /// ★R2 C4 — **이 예약을 넣은 자**(`chat:queue`의 `origin` 그대로: `user` ·
+    /// `limit_resume` · `viewer_ask` · `notif_replay`). R1은 이 값을 안 읽었고,
+    /// 재장전이 전부 사람 것으로 되돌려 기계가 넣은 줄이 **사람의 이름표를 달고**
+    /// 되살아났다(크리틱 A7).
     pub origin: Option<String>,
 }
 

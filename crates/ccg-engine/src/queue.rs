@@ -10,14 +10,6 @@ pub enum QueueOrigin {
     LimitResume,
     ViewerAsk,
     NotifReplay,
-    /// ★M10 — **다른 채팅의 세션이 보낸 메시지**(대화 연결 · `engine/talk.rs`).
-    ///
-    /// `User`와 갈라 두는 것이 안전 규약의 일부다: 이 값은 "사람이 개입했다"로 읽히면
-    /// 안 된다. `User`였다면 ① 헛 재개 연쇄 카운터(`auto_resume_streak`)가 리셋되고
-    /// ② 한도 대기표가 "사용자가 이미 다시 보냈다"로 판정해(`armed_at` 비교) 기계의
-    /// 이어서 항목을 생략한다 — 둘 다 **AI가 보낸 줄 하나로** 사람의 자리를 대신
-    /// 차지하는 것이다.
-    Talk,
 }
 
 /// 예약 후 채팅 정체성이 바뀌었을 때의 정책. 기본은 **예약할 때 보던 대로**(P5의 약속 확장).
@@ -42,7 +34,6 @@ impl QueueOrigin {
             QueueOrigin::LimitResume => "limit_resume",
             QueueOrigin::ViewerAsk => "viewer_ask",
             QueueOrigin::NotifReplay => "notif_replay",
-            QueueOrigin::Talk => "talk",
         }
     }
 }
@@ -62,22 +53,12 @@ pub struct QueueInput {
     /// 첨부 이미지의 **경로**(2.6.2 `ScheduledMsg.images`와 같은 값).
     pub images: Vec<String>,
     pub picker: Option<crate::identity::RawIdentityPatch>,
-    /// ★M10 — **이 입력을 만든 자**. `None` = 사람(옛 경로 전부의 뜻 그대로).
+    /// **이 입력을 만든 자**. `None` = 사람(옛 경로 전부의 뜻 그대로).
     ///
     /// 필드로 둔 이유: `Cmd::Enqueue`는 상태에 따라 *지금 보낼지 세울지*가 갈리는
     /// 명령표의 한 행이고, 그 행을 원본마다 복제하면 표가 두 벌이 된다. 갈라야 하는
     /// 것은 **누가 넣었나**뿐이라 입력에 싣는다.
     pub origin: Option<QueueOrigin>,
-    /// ★M10 R3 — **picker가 안 서면 이 항목을 버려라**(fail-closed).
-    ///
-    /// 기본은 `false` = 지금까지의 규약 그대로다: 정규화가 실패하면(폴더 없음·계정
-    /// 없음) 항목이 사라지는 것보다 *"보던 대로"* 로 떨어지는 편이 낫다(R4 폴백).
-    ///
-    /// 그 규약이 **대화 연결에는 안 맞는다.** 거기서 picker는 "예약할 때 보던 대로"가
-    /// 아니라 **봉투 턴의 권한 하한**이고, 하한을 못 걸면 그 한 건이 원래 모드
-    /// (`bypass`일 수 있다)로 돈다 — 예약 하나가 사라지는 것보다 나쁘다. 도달 경로는
-    /// 좁지만 실재한다: `AccountUnavailable`은 폴더가 멀쩡한 채로 난다(M11 로그아웃).
-    pub require_picker: bool,
 }
 
 impl QueueInput {

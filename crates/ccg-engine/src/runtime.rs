@@ -214,10 +214,6 @@ impl Turn {
 struct Stream {
     id: StreamId,
     spawn_identity: RunIdentity,
-    /// ★M10 R6 — 이 스트림이 **실제로 들고 뜬** 대화 연결 안내. `spawn_identity`와 같은
-    /// 이유로 스트림에 굳는다: 재사용 판정의 좌변은 「지금 설정」이 아니라 「이 프로세스가
-    /// 뜰 때의 값」이어야 한다. 이 값이 현재 값과 다르면 재스폰이다(`reuse_decision`).
-    spawn_guide: Option<String>,
     state: StateTag,
     why: Option<ResidentWhy>,
     /// 스폰 시점에 굳은 종료 정책(§3.4-b). 런타임 기본값이 바뀌어도 이 스트림은 뜬 값으로 산다.
@@ -281,23 +277,6 @@ pub struct ChatRuntime<D: CliDriver> {
     pub close_policy: StreamClosePolicy,
     pub spawns: usize,
     pub exits: usize,
-    /// ★M10 R6 — 스폰 직전에 시스템 프롬프트에 덧붙일 **「대화 연결」 안내**.
-    ///
-    /// R5 실증이 남긴 결함 하나가 여기다: 이 앱은 발신자에게 `@talk[…]` 라는 통로가
-    /// 있다고 **말해 준 적이 없었다**(`@talk` 문법이 모델에게 적히는 자리는 이미 봉투를
-    /// 받은 세션에게 주는 회신 안내 한 곳뿐이었다). 그래서 기능이 도는지가 「모델이
-    /// 사용자 프롬프트의 주장을 믿어 주느냐」에 달려 있었다 — 정당한 협업 프롬프트도
-    /// 5회 중 1회는 *"저는 다른 세션으로 메시지를 보낼 수 없습니다"* 로 끝났다.
-    ///
-    /// **정체성(`RunIdentity`)에 안 넣는 이유.** 정체성은 `Event::Identity` →
-    /// `chats_v3::set_owned`로 **디스크에 굳는다**. 보드 옵트인은 사용자가 언제든 걷는
-    /// 값인데, 그 문면이 채팅 설정 파일에 남으면 보드를 꺼도 흔적이 산다 —
-    /// 「꺼짐이 진짜 꺼짐」이 깨진다. 그래서 셸이 스폰마다 얹는 **비영속 축**이다.
-    ///
-    /// 대신 [`ChatRuntime::reuse_decision`]이 이 값을 함께 본다. 안 그러면
-    /// 보드를 끈 뒤에도 **도는 CLI는 계속 그 통로를 알고 있다**(라우터가 `off`로
-    /// 거절하므로 나가지는 않지만, 모델에게 거짓을 가르친 채로 도는 것은 그 자체가 결함이다).
-    talk_guide: Option<String>,
     cli_path: std::path::PathBuf,
     /// 앱 홈 — 계정 격리 `CLAUDE_CONFIG_DIR`의 뿌리.
     pub home: std::path::PathBuf,
@@ -521,7 +500,6 @@ impl<D: CliDriver> ChatRuntime<D> {
             close_policy: StreamClosePolicy::OnIdle,
             spawns: 0,
             exits: 0,
-            talk_guide: None,
             cli_path: std::path::PathBuf::from("claude.exe"),
             home: std::path::PathBuf::from("C:\\ccg-fixture\\home\\.agentcodegui"),
             account_dir_override: None,
@@ -557,33 +535,20 @@ impl<D: CliDriver> ChatRuntime<D> {
         self
     }
 
-    /// ★M10 R6 — 셸이 턴을 열 때마다 다시 얹는 **「대화 연결」 안내**(§[`Self::talk_guide`]).
+    /// `initialize`에 실을 **append 프롬프트** = 이 채팅의 **추가 지시**
+    /// (`RunIdentity::system_prompt`).
     ///
-    /// `None` = 이 채팅은 대화 연결이 꺼진 자리다. 그때 `initialize` 프레임은
-    /// `systemPrompt` 키 자체를 **안 싣는다** — 꺼진 보드의 프롬프트 바이트는
-    /// 한 톨도 안 변한다(그게 이 기능의 옵트인 규약이다).
-    pub fn set_talk_guide(&mut self, guide: Option<String>) {
-        self.talk_guide = guide;
-    }
-
-    /// `initialize`에 실을 **append 프롬프트**. 둘을 이어 붙인다:
+    /// ★R28f 파리티 수선 — R28f 이전에는 두 호출처([`Self::t1_spawn`] · 능동 프로브)가
+    /// 이 인자를 **무조건 `None`**으로 넘겼다. 그래서 사용자가 채팅에 적어 둔 추가 지시가
+    /// **Claude 엔진에서는 한 번도 안 나갔다**(Codex는 `developerInstructions`로 이미
+    /// 싣고 있었다 — 같은 설정이 엔진에 따라 사문이었다는 뜻이다). R28k가 「대화 연결」을
+    /// 들어낼 때 이 수선까지 걷어내면 그 파리티 결함이 되살아난다. 못은
+    /// [`tests::the_per_chat_extra_instruction_actually_reaches_the_cli`]가 박고 있다.
     ///
-    /// | 조각 | 어디서 | R6 전 |
-    /// |---|---|---|
-    /// | 채팅별 추가 지시(`RunIdentity::system_prompt`) | 사용자 설정 | Codex는 `developerInstructions`로 이미 싣고 있었는데 **Claude는 한 번도 안 나갔다** — 두 호출처가 무조건 `None`이었다 |
-    /// | 대화 연결 안내 | 보드 옵트인(비영속) | 아예 없었다 |
-    ///
-    /// 둘 다 없으면 `None`이고, 그때 `initialize_request`는 `systemPrompt` 키를
-    /// 넣지 않는다(빈 문자열을 실으면 CLI가 `claude_code` 프리셋을 죽인다 — driver §4.2).
-    fn append_prompt(id: &RunIdentity, guide: Option<&str>) -> Option<String> {
-        let mut parts: Vec<&str> = vec![];
-        if let Some(p) = id.system_prompt() {
-            parts.push(p);
-        }
-        if let Some(g) = guide.filter(|g| !g.trim().is_empty()) {
-            parts.push(g);
-        }
-        (!parts.is_empty()).then(|| parts.join("\n\n"))
+    /// 없으면 `None`이고, 그때 `initialize_request`는 `systemPrompt` 키를 **넣지 않는다**
+    /// (빈 문자열을 실으면 CLI가 `claude_code` 프리셋을 죽인다 — driver §4.2).
+    fn append_prompt(id: &RunIdentity) -> Option<String> {
+        id.system_prompt().filter(|p| !p.trim().is_empty()).map(str::to_string)
     }
     /// ★R5 — 발화 직전 **신선 usage 재검증** 훅을 꽂는다(2.6.2 `useLimitResume.fire()`).
     ///
@@ -1393,21 +1358,8 @@ impl<D: CliDriver> ChatRuntime<D> {
 
     /// `send`·`enqueue`의 공통 착지 — 큐에 세우고, 판정이 `Accepted`면 드레인까지 본다.
     fn accept_user_message(&mut self, input: QueueInput, verdict: Verdict, now: Millis) -> Verdict {
-        // ★M10 — 넣은 자가 사람이 아닐 수 있다(대화 연결: 다른 채팅의 세션).
+        // 넣은 자가 사람이 아닐 수 있다(한도 재개·예약 드레인·뷰어 질문·통지 재주입).
         let origin = input.origin.unwrap_or(QueueOrigin::User);
-        // ★M10 R3 — **하한을 못 걸면 안 넣는다**(fail-closed · 크리틱 D4).
-        // `make_queue_item`의 폴백은 "정체성 오류로 예약이 사라지는 것보다 보던 대로가
-        // 낫다"인데, 봉투 턴의 picker는 *보던 대로*가 아니라 **권한 하한**이다.
-        if input.require_picker
-            && matches!(verdict, Verdict::Accepted | Verdict::Queued)
-            && input
-                .picker
-                .as_ref()
-                .filter(|p| !p.is_empty())
-                .is_some_and(|p| RunIdentity::normalize(self.identity_raw.patched(p), &self.defaults).is_err())
-        {
-            return Verdict::Rejected("picker_unavailable");
-        }
         // 사용자가 직접 말을 걸었다 = 엔진의 헛 재개 연쇄는 여기서 끊긴다(★R5).
         // **사람만** 끊는다: AI가 보낸 줄이 사람의 개입을 사칭하면 헛 재개 상한이
         // 세션 사이의 왕복만으로 무한정 초기화된다.
@@ -1706,16 +1658,7 @@ impl<D: CliDriver> ChatRuntime<D> {
         if s.state != StateTag::Resident {
             return ReuseDecision::ColdStart;
         }
-        let mut idiff = s.spawn_identity.diff(want);
-        // ★M10 R6 — 대화 연결 안내는 정체성 밖(비영속)이지만 **스폰 축**이다: 보드를
-        // 껐는데 도는 CLI가 계속 그 통로를 알고 있으면 「꺼짐이 진짜 꺼짐」이 아니다.
-        // 새 어휘를 만들지 않고 `SystemPrompt`로 보고한다 — 실제로 그 프레임의 `append`가
-        // 바뀌는 것이고, 사용자가 읽는 재스폰 문장도 그 낱말이 맞다.
-        if s.spawn_guide.as_deref() != self.talk_guide.as_deref()
-            && !idiff.contains(&IdentityField::SystemPrompt)
-        {
-            idiff.push(IdentityField::SystemPrompt);
-        }
+        let idiff = s.spawn_identity.diff(want);
         let thread_changed = thread == ThreadIntent::Fresh
             || self
                 .thread
@@ -1801,7 +1744,6 @@ impl<D: CliDriver> ChatRuntime<D> {
         self.stream = Some(Stream {
             id: sid,
             spawn_identity: m.identity.clone(),
-            spawn_guide: self.talk_guide.clone(),
             state: StateTag::Starting,
             why: None,
             close_policy: self.close_policy,
@@ -1846,10 +1788,9 @@ impl<D: CliDriver> ChatRuntime<D> {
             self.close_and_finish(CloseCause::SpawnFailed);
             return;
         }
-        // ★M10 R6 — **여기가 R5가 「빠진 배선」이라고 적은 그 자리다.** R5까지 이 인자는
-        // 무조건 `None`이었고, 그래서 대화 연결을 켜도 CLI에 들어가는 프롬프트 바이트가
-        // 0 변했다(채팅별 추가 지시도 같은 이유로 Claude에서는 사문이었다).
-        let append = Self::append_prompt(&m.identity, self.talk_guide.as_deref());
+        // ★R28f 파리티 수선 — R28f 이전에는 이 인자가 **무조건 `None`**이었고, 그래서
+        // 채팅별 추가 지시가 Claude 엔진에서는 한 번도 안 나갔다(§[`Self::append_prompt`]).
+        let append = Self::append_prompt(&m.identity);
         self.driver
             .send(initialize_request("init-1", append.as_deref()));
         let prompt = compose_prompt(&m);
@@ -3453,13 +3394,14 @@ impl<D: CliDriver> ChatRuntime<D> {
                     s.probe_expect = probe_needed.clone();
                     (s.id, s.probe_id)
                 };
-                // ★M10 R6 — 프로브도 **뜰 때와 같은 append**를 싣는다. 이 프레임이 CLI에서
+                // ★R28f — 프로브도 **뜰 때와 같은 append**를 싣는다. 이 프레임이 CLI에서
                 // 무시되든 다시 적용되든 결과가 같아야 한다: `None`을 실으면 「다시 적용」
                 // 쪽 구현에서 시스템 프롬프트가 조용히 지워진다. 좌변은 현재 설정이 아니라
                 // **이 스트림이 뜰 때의 값**이다(설정이 바뀌었으면 재스폰이 그 일을 한다).
-                let append = self.stream.as_ref().and_then(|s| {
-                    Self::append_prompt(&s.spawn_identity, s.spawn_guide.as_deref())
-                });
+                let append = self
+                    .stream
+                    .as_ref()
+                    .and_then(|s| Self::append_prompt(&s.spawn_identity));
                 self.driver
                     .send(initialize_request(&format!("probe-{pid}"), append.as_deref()));
                 self.emit(Event::ProbeSent {
@@ -3973,13 +3915,16 @@ mod t22_tests {
             .map(str::to_string)
     }
 
-    /// ★M10 R6 — **꺼짐이 진짜 꺼짐이다.**
+    /// ★R28k M10 제거 — **없으면 바이트가 안 변한다.**
     ///
-    /// 대화 연결이 안 켜진 채팅의 `initialize` 프레임에는 `systemPrompt` 키가 아예 없다.
-    /// (빈 문자열을 실으면 CLI가 `claude_code` 프리셋을 죽인다 — driver §4.2. 그래서
-    /// 「없음」은 빈 값이 아니라 **키의 부재**여야 한다.)
+    /// 추가 지시가 없는 평범한 채팅의 `initialize` 프레임에는 `systemPrompt` 키가 아예
+    /// 없다. (빈 문자열을 실으면 CLI가 `claude_code` 프리셋을 죽인다 — driver §4.2.
+    /// 그래서 「없음」은 빈 값이 아니라 **키의 부재**여야 한다.)
+    ///
+    /// 이 못은 M10을 들어내기 **전과 후**를 잇는다: 제거 전 실측 프레임
+    /// (`docs/critic/m10rm-bytes-pre.json`)과 바이트가 같아야 한다.
     #[test]
-    fn a_chat_without_a_talk_guide_changes_no_prompt_bytes() {
+    fn a_chat_without_extra_instructions_changes_no_prompt_bytes() {
         let mut r = rt();
         r.dispatch(Cmd::Send { text: "안녕".into() });
         let f = r
@@ -3990,77 +3935,61 @@ mod t22_tests {
             .expect("initialize를 안 보냈다");
         assert!(
             f["request"].get("systemPrompt").is_none(),
-            "꺼진 채팅에 systemPrompt 키가 실렸다: {f}"
+            "추가 지시가 없는 채팅에 systemPrompt 키가 실렸다: {f}"
         );
     }
 
-    /// ★M10 R6 — **발신 배선.** 안내를 얹으면 그것이 실제로 CLI에 들어가고,
-    /// 채팅별 추가 지시가 있으면 **둘 다** 들어간다.
+    /// ★R28f 파리티 수선의 못 — **채팅별 추가 지시는 Claude CLI까지 간다.**
     ///
-    /// R5까지 이 인자는 두 호출처 모두 무조건 `None`이었다: 대화 연결을 켜도 프롬프트
-    /// 바이트가 0 변했고(그래서 모델은 `@talk[…]` 통로가 있는지 몰랐다), `RunIdentity`의
-    /// 채팅별 추가 지시도 Claude 쪽에서는 **한 번도 나간 적이 없었다**(Codex만
-    /// `developerInstructions`로 실었다).
+    /// R28f 이전에는 `append_prompt`의 두 호출처가 무조건 `None`을 넘겼고, 그래서
+    /// 사용자가 채팅에 적어 둔 추가 지시가 Claude 엔진에서는 **한 번도 안 나갔다**
+    /// (Codex만 `developerInstructions`로 실었다). R28k가 「대화 연결」을 들어내면서
+    /// 이 수선까지 걷어내면 그 결함이 되살아나므로, 못을 여기 남긴다.
     #[test]
-    fn the_talk_guide_actually_reaches_the_cli() {
+    fn the_per_chat_extra_instruction_actually_reaches_the_cli() {
         let mut r = rt();
-        r.set_talk_guide(Some("[대화 연결] 2번 자리에게 말을 걸 수 있습니다.".into()));
-        r.dispatch(Cmd::Send { text: "안녕".into() });
-        let append = init_append(&r).expect("안내를 얹었는데 프레임에 안 실렸다");
-        assert!(append.contains("[대화 연결]"), "안내가 안 들어갔다: {append}");
-
-        // 채팅별 추가 지시와 **함께** 실린다(둘 중 하나가 다른 하나를 밀어내지 않는다).
+        // 채팅별 추가 지시를 얹는다 — 이 값은 `RunIdentity::system_prompt`다.
         let id = r.identity().clone();
-        let with_prompt =
-            RunIdentity::normalize(id.to_raw().patched(&{
+        let with_prompt = RunIdentity::normalize(
+            id.to_raw().patched(&{
                 let mut p = RawIdentityPatch::default();
                 p.system_prompt = Some(Some("너는 코드 리뷰어다.".into()));
                 p
-            }), &r.defaults)
-            .expect("정규화");
-        let both = ChatRuntime::<EofCli>::append_prompt(
-            &with_prompt,
-            Some("[대화 연결] 안내"),
+            }),
+            &r.defaults,
         )
-        .expect("둘 다 있는데 None이다");
-        assert!(both.contains("코드 리뷰어"), "채팅별 지시가 빠졌다: {both}");
-        assert!(both.contains("[대화 연결]"), "대화 연결 안내가 빠졌다: {both}");
-        // 아무것도 없으면 **키 자체가 없다**(빈 문자열이 아니다).
-        assert_eq!(ChatRuntime::<EofCli>::append_prompt(&id, None), None);
-        assert_eq!(ChatRuntime::<EofCli>::append_prompt(&id, Some("   ")), None, "공백은 없음이다");
-    }
+        .expect("정규화");
+        assert_eq!(
+            ChatRuntime::<EofCli>::append_prompt(&with_prompt).as_deref(),
+            Some("너는 코드 리뷰어다."),
+            "추가 지시가 append로 안 접혔다"
+        );
+        // 없거나 공백뿐이면 **키 자체가 없다**(빈 문자열이 아니다).
+        assert_eq!(ChatRuntime::<EofCli>::append_prompt(&id), None);
+        let blank = RunIdentity::normalize(
+            id.to_raw().patched(&{
+                let mut p = RawIdentityPatch::default();
+                p.system_prompt = Some(Some("   ".into()));
+                p
+            }),
+            &r.defaults,
+        )
+        .expect("정규화");
+        assert_eq!(ChatRuntime::<EofCli>::append_prompt(&blank), None, "공백은 없음이다");
 
-    /// ★M10 R6 — 보드를 끄면 **도는 CLI도 그것을 배워야 한다**.
-    ///
-    /// 안내는 정체성 밖(비영속)이라 `RunIdentity::diff`가 못 본다. 그런데 스폰 축이므로
-    /// 재사용 판정이 이 값을 함께 봐야 한다 — 안 그러면 보드를 끈 뒤에도 상주 CLI는
-    /// 계속 「@talk로 말을 걸 수 있다」고 알고 있다. 라우터가 `off`로 거절하니 나가지는
-    /// 않지만, 모델에게 거짓을 가르친 채로 도는 것은 그 자체가 결함이다.
-    #[test]
-    fn turning_the_board_off_respawns_the_resident_cli() {
-        let mut r = rt();
-        r.set_talk_guide(Some("[대화 연결] 안내".into()));
-        r.dispatch(Cmd::Send { text: "안녕".into() });
-        // 상주로 올려 재사용 판정이 성립하게 한다.
-        if let Some(s) = &mut r.stream {
-            s.state = StateTag::Resident;
-        }
-        let want = r.identity().clone();
-        assert_eq!(
-            r.reuse_decision(&want, ThreadIntent::Continue),
-            ReuseDecision::Reuse,
-            "같은 안내인데 재스폰한다"
-        );
-        // 보드를 껐다 → 안내가 사라진다 → 이 프로세스는 낡은 것을 알고 있다.
-        r.set_talk_guide(None);
-        assert_eq!(
-            r.reuse_decision(&want, ThreadIntent::Continue),
-            ReuseDecision::Respawn {
-                identity: vec![IdentityField::SystemPrompt],
-                thread: false
+        // 그리고 **실제로 프레임에 실린다**(위 단위 판정이 배선을 대신하지 않게).
+        r.dispatch(Cmd::IdentitySet {
+            patch: {
+                let mut p = RawIdentityPatch::default();
+                p.system_prompt = Some(Some("너는 코드 리뷰어다.".into()));
+                p
             },
-            "안내가 바뀌었는데 그대로 재사용한다"
-        );
+            policy: ApplyPolicy::Now,
+            op: PendingOp::Merge,
+        });
+        r.dispatch(Cmd::Send { text: "안녕".into() });
+        let append = init_append(&r).expect("추가 지시를 얹었는데 프레임에 안 실렸다");
+        assert!(append.contains("코드 리뷰어"), "추가 지시가 안 들어갔다: {append}");
     }
 
     /// `Starting`→`Streaming`으로 올린 뒤 승인 카드를 세운다(공격 E의 자리).
@@ -4418,7 +4347,6 @@ mod r4_queue_and_resume_tests {
             images: vec![r"C:\shot\a.png".into(), r"C:\shot\b.png".into()],
             picker: Some(pick),
             origin: None,
-            require_picker: false,
         }));
         assert_eq!(v, Verdict::Queued);
 
@@ -4440,7 +4368,6 @@ mod r4_queue_and_resume_tests {
             images: vec![r"C:\shot\a.png".into()],
             picker: None,
             origin: None,
-            require_picker: false,
         }));
         // Idle에서의 enqueue는 곧장 나간다(명령표 `enqueue`/Idle = Accept T27).
         let sent = r.sent_user_texts().join("\n");
