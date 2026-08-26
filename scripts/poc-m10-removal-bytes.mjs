@@ -215,7 +215,16 @@ async function main() {
   const rep = {
     at: new Date().toISOString(),
     tag: TAG,
-    exe: { path: EXE, sha256: sha(fs.readFileSync(EXE).toString('latin1')), mtime: fs.statSync(EXE).mtime.toISOString() },
+    // ★확인 크리틱 R1 — 이 값은 **파일의 sha256이어야 한다.** 원판은
+    // `sha(readFileSync().toString('latin1'))`이었다: 바이트를 latin1 문자열로 되읽고
+    // 그것을 다시 utf8로 해싱해서, 도장으로는 작동하지만 이름이 사실과 달랐다
+    // (`sha256sum`과 값이 안 맞는다). 버퍼를 그대로 넣는다.
+    exe: {
+      path: EXE,
+      sha256: crypto.createHash('sha256').update(fs.readFileSync(EXE)).digest('hex'),
+      bytes: fs.statSync(EXE).size,
+      mtime: fs.statSync(EXE).mtime.toISOString()
+    },
     home: s.HOME,
     extra: EXTRA,
     prompt: PROMPT
