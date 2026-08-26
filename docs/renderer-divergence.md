@@ -888,6 +888,63 @@ R1은 여기에 「남은 비대칭 **하나**(콜드 침묵)」라고 적었다
   R1까지 이 21초는 async 워커에서 잤다 — 그동안 **모든 창의 IPC가 굶었다**. 이제
   `app:get-initial-dir`도 `app:open-directory`와 같은 블로킹 풀에서 돈다.
 
+### 6.12 앱 자동 업데이트 — **화면은 그대로, 셸이 값을 넣는다** (R28j N8)
+
+`AppUpdateGate.tsx`는 2.6.2에서 **한 글자도 안 고치고** 이식돼 있었고 `App.tsx:2670`에서
+항상 마운트됐다. 그런데 값을 넣어 줄 통로가 없었다 — `app:update-status`는 하드코딩
+`idle`이었고 `app:update-{check,install,event}`는 상수조차 없었다. 그래서 **어떤 경로로도
+카드가 뜰 수 없었다**(최종 파리티 R5 §9.1 `N8` · 높음. 그 감사가 시드를 심자 카드는
+ready 3/3 · downloading 3/3으로 정상 동작했다 = 화면은 멀쩡하고 배선만 없었다).
+
+**이 라운드는 렌더러를 한 글자도 안 고쳤다.** `app/src/components/AppUpdateGate.tsx`·
+`app/src/api/shim.ts`·`src/shared/protocol.ts` 전부 무변이고, 갈라진 것은 **셸의 구현체**뿐이다
+(`src-tauri/src/updater.rs` 신규 · `electron-updater` → `tauri-plugin-updater`).
+
+| 축 | 2.6.2 (`src/main/updater.ts`) | 3.0 (`src-tauri/src/updater.rs`) |
+|---|---|---|
+| 업데이터 | electron-updater 6.8.9 | `tauri-plugin-updater` 2.10.1 |
+| 피드 | GitHub Releases(`electron-builder` `publish:github` · `latest.yml`) | GitHub Releases 정적 매니페스트(`latest.json`) — 주소는 `tauri.conf.json` `plugins.updater.endpoints` |
+| 패키지 진위 | 코드 서명서(없음) + `latest.yml`의 sha512 | **minisign 공개키**(`plugins.updater.pubkey`) — 개인키는 레포에 없다 |
+| 개발 실행 | `app.isPackaged` 게이트 → 세 함수 즉시 반환 | `tauri::is_dev()`(= `!cfg!(feature="custom-protocol")`) 게이트 → 같은 자리 |
+| 자동 다운로드 | `autoDownload = true` | 조회에서 새 버전을 찾으면 곧바로 `download()` |
+| **종료 시 자동 설치** | `autoInstallOnAppQuit = false` (끄는 코드가 필요했다) | **개념 자체가 없다** — 설치는 `app:update-install`을 부를 때만 |
+| 설치 화면 | NSIS `/S`(무음) + PowerShell·WPF 자체 스플래시 | NSIS `passive`(`/P /R`) — **설치기 자신의 진행 막대**가 뜨고 끝나면 앱을 다시 띄운다 |
+| 주기 재확인 | 30분 · `probing`(받아둔 뒤엔 조용히) | **같은 규칙·같은 값** |
+| 상태 `phase` 7값·`log`·`percent`·`error` | 계약면 `UpdateStatus` | **글자 그대로 같다**(그래서 카드가 안 바뀐다) |
+| 이벤트 청중 | `send()` = 메인 창 | `emit_to(win::MAIN, …)` |
+
+**알면서 다르게 한 것 둘.**
+
+1. **받아둔 설치본을 다음 실행으로 넘기지 않는다.** electron-updater는 pending 캐시에
+   파일을 남겨 재사용했다. 3.0은 검증이 끝난 바이트를 **이 세션의 메모리에만** 든다.
+   디스크에 남기면 다음 실행에서 그것을 **다시 검증할 길**을 우리가 새로 만들어야 하는데
+   (플러그인의 `verify_signature`는 비공개이고 검증은 `download()` 안에서만 일어난다),
+   검증 없이 재사용하는 순간 "받아둔 파일을 바꿔치기하면 임의 코드가 설치된다"가 된다.
+   대가는 앱을 껐다 켜면 다시 받는 것뿐이다(설치본 한 장 · 실측 8.1MB에 ~4초).
+2. **설치 스플래시를 안 만든다.** 2.6.2가 그것을 만든 이유는 `/S`가 화면을 통째로 비웠기
+   때문이다(그 자리에 detached PowerShell 함정과 cmd 8191자 한계가 같이 살았다).
+   `passive`는 NSIS가 자기 진행 막대를 그리므로 빈 화면 구간이 없다 — 스플래시가 필요 없고
+   그 두 함정도 통째로 사라진다. 설치기 헤더·사이드바 이미지는 우리 것 그대로다.
+
+**오류가 화면에 뜨는 규칙은 2.6.2와 같다**(같은 컴포넌트다): 카드는 `available` ·
+`downloading` · `downloaded` · `error`**이면서 `version != null`**일 때만 뜬다
+(`AppUpdateGate.tsx:47-48`). 즉 **조회 단계의 실패(오프라인·피드 404)는 카드를 안 띄운다** —
+오프라인일 때마다 오류 카드가 뜨면 그게 더 나쁘기 때문이고, 2.6.2가 그렇게 정해 둔 자리다.
+그 실패도 사라지지는 않는다: `app:update-status`의 `phase:"error"` + `error` 문구 +
+`log`에 남고 셸 stderr에 `[updater] …` 한 줄이 찍힌다. **다운로드 단계의 실패(서명 불일치 ·
+설치기 임시 파일 쓰기 실패)는 그때 이미 버전을 알고 있으므로 카드가 뜬다** — 실측표는
+`docs/parity-fix-updater-r1.md` §5.
+
+**계약면 재고**: `app:update-check` · `app:update-install` · `app:update-event` 셋이
+`missing` → `impl`로 넘어가 **9 → 6**이 된다(남은 6 = `talk` 여섯 · M10 · 미결).
+채널 수(216)는 안 움직인다 — 새 계약면 채널을 만들지 않았다.
+
+> **`app:update-event`를 원시 `ipc_call`로 부르면 여전히 `{__unimplemented:true}`가 온다.**
+> 그것이 **방출 전용 채널의 모양**이다(2.6.2도 `ipcRenderer.invoke('app:update-event')`는
+> "No handler registered"로 거절한다). 같은 성질의 양성 대조가 옆에 있다 — 이미 구현된
+> 엔진 축의 `engine:update-event`도 원시 호출에는 똑같이 `{__unimplemented:true}`를 준다
+> (실측 · `docs/parity-fix-updater-r1.md` §3). 화면이 그 채널을 쓰는 길은 `listen()`이다.
+
 ### 6.13 M10 「대화 연결」 — **3.0 전용 신기능을 도로 들어냈다** (R28k)
 
 세션 간 소통(M10)은 **2.6.2에 없던 3.0 전용 신기능**이었다. 그래서 이 장부의 §6에
