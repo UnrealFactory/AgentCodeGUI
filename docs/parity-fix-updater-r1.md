@@ -16,6 +16,10 @@
 
 **렌더러는 한 글자도 안 고쳤다.** 이 라운드가 만진 것은 셸(`src-tauri/`)과 문서뿐이다.
 
+> **★확인 크리틱 R1 뒤의 수정은 §11에 있다.** 여덟 항목 중 일곱은 크리틱의 손에서도
+> 닫혔고, 남은 회귀 하나(`npm run tauri:build`가 종료 코드 1)와 부실한 못 하나를
+> 고쳤다 — 재현·수정·재실측 전부 §11.
+
 ---
 
 ## 1. 무엇이 없었는가 (감사가 잰 것 · 내가 다시 확인한 것)
@@ -311,14 +315,20 @@ tauri NSIS 템플릿의 「passive · 설치 후 재시작 · 업데이트 모�
 ### 8.2 릴리스 한 번의 순서
 
 1. 버전 상승(두 곳: `src-tauri/tauri.conf.json` `version` · `Cargo.toml` `workspace.package.version`).
-2. 서명 키를 환경에 얹고 번들:
+2. 번들:
    ```
-   set TAURI_SIGNING_PRIVATE_KEY=%USERPROFILE%\.tauri\agentcodegui3-updater.key
-   set TAURI_SIGNING_PRIVATE_KEY_PASSWORD=
    npm run tauri:build
    ```
+   ★**서명 키를 손으로 얹을 필요가 없다**(수정 R1 · §11.1). `scripts/tauri-build.mjs`가
+   `%USERPROFILE%\.tauri\agentcodegui3-updater.key`를 찾아 `TAURI_SIGNING_PRIVATE_KEY`로
+   실어 준다 — **내용이 아니라 경로**를 넘기므로 키가 로그에 남을 자리가 없다.
+   키가 다른 자리에 있으면 `set CCG_UPDATER_KEY=<키 경로>`.
    `bundle.createUpdaterArtifacts: true`라 NSIS `*-setup.exe`와 **짝이 되는 `*-setup.exe.sig`**가
-   같이 나온다. (키 없이 빌드하면 `.sig`가 안 나오고, 그 릴리스는 자동 업데이트가 안 된다.)
+   같이 나온다(실측 **436 B**).
+   ★**키가 없으면 빌드는 시작조차 하지 않는다**(0.62초 만에 종료 코드 1 + 사유 · §11.1).
+   그렇게 만든 이유는 「서명 없는 릴리스」가 **조용한 고장**이기 때문이다 — `.sig`가 없으면
+   `latest.json`을 쓸 수 없고, 깔린 앱들은 영원히 「최신입니다」만 본다. 서명 없이 설치기만
+   필요한 자리(로컬 확인)는 `npm run tauri:build:unsigned`로 **명시적으로** 간다.
 3. GitHub Release에 **셋**을 올린다: `*-setup.exe` · `*-setup.exe.sig` · **`latest.json`**.
    `latest.json`의 모양(플러그인이 요구하는 정적 형식 · 하네스가 실제로 먹인 것과 같다):
    ```json
@@ -368,6 +378,13 @@ tauri NSIS 템플릿의 「passive · 설치 후 재시작 · 업데이트 모�
 6. `src-tauri/src/updater.rs`의 `en_ui()`는 `tray.rs`의 같은 이름 함수와 **같은 한 줄**이다
    (`ui-prefs`의 `"ui.lang"`). 원본 데이터는 한 곳이지만 술어가 두 벌이다 — `tray.rs`가 내
    소유 밖이라 이번엔 합치지 않았다. 셋째 벌이 생기면 그때 합치는 것이 맞다.
+7. **(수정 R1)** 조회 단계 실패는 **화면에 아무 흔적이 없다**(§11.3) · 받아둔 설치본이
+   세션 내내 메모리에 산다(§11.4 · `PV +14.3MB`) · 출하 바이너리에 `CCG_UPDATE_FEED`가
+   살아 있다(§11.5 · 남기는 근거와 방어 세 겹). 셋 다 **알면서 남긴 것**이고 장부로 옮길
+   문장은 §11.9에 있다.
+8. **(수정 R1)** 이제 `npm run tauri:build`는 **서명 개인키가 있어야 초록**이다(§11.1).
+   개인키를 잃으면 릴리스가 막히고(§8.1), CI로 옮길 때는 `TAURI_SIGNING_PRIVATE_KEY`를
+   시크릿으로 넣으면 래퍼가 그것을 그대로 쓴다(래퍼가 덮지 않는다).
 
 ---
 
@@ -431,4 +448,227 @@ workspace 798)은 **R28k M10 제거 이전 값**이라 이 트리와 직접 비�
 | 해시 | 무엇 |
 |---|---|
 | `971e3f7` | 코드 — 업데이터 본체 + 3채널 배선 + 설정 |
-| (이 커밋) | 문서 — `renderer-divergence.md` §6.12 + 이 보고서 |
+| `55a4549` | 문서 — `renderer-divergence.md` §6.12 + 이 보고서 |
+| (수정 R1 · §11) | 빌드 파이프라인 · 못 · 장부 |
+
+---
+
+## 11. ★확인 크리틱 R1 대응 — 수정 R1
+
+판정문: `docs/critic/r28j-updater-critic-r1.md`(커밋 `2116e6c` · 1파일 467줄 · 레포 코드 수정 0).
+**여덟 항목 중 일곱은 크리틱의 손에서도 닫혔다** — 시드 0으로 카드가 스스로 떴고, 「업데이트」가
+진짜 설치기를 `/P /R /UPDATE /ARGS`로 띄웠고, 받아둔 채 완전히 종료해도 설치기가 0이었고,
+개발 팔은 피드에 한 번도 안 물었다(히트 0 대 패키징 1). 이 절은 **닫히지 않은 목록**을 받는다.
+
+> **이 절의 수치는 전부 내가 다시 냈다.** 크리틱의 값을 인용한 자리는 「크리틱 실측」이라고
+> 적었다. 빌드는 `CARGO_TARGET_DIR=target-r28j-upd`(UPDATER 몫), 로그는
+> `C:\Temp\ccg-r28j-updr2\`에 있다.
+
+### 11.1 【중간】 `npm run tauri:build`가 종료 코드 1 — **고쳤다**
+
+**먼저 내 손으로 재현했다**(고치기 **전** 워킹트리 · 그때의 `tauri:build` = `tauri build`):
+
+| 팔 | 명령 | 종료 코드 | `*-setup.exe` | `*-setup.exe.sig` | 걸린 시간 |
+|---|---|---|---|---|---|
+| **고치기 전** | `npm run tauri:build` | **1** | **2,811,711 B — 나온다** | **없다** | 전체 빌드 |
+| 고친 뒤 · 키 있음 | `npm run tauri:build` | **0** | 2,810,332 B | **436 B** | 전체 빌드 |
+| 고친 뒤 · 키 없음 | `CCG_UPDATER_KEY=C:\nope\missing-key.key npm run tauri:build` | **1** | — (cargo를 **켜지도 않는다**) | — | **0.62초** |
+| 고친 뒤 · 서명 안 함 | `npm run tauri:build:unsigned` | **0** | 2,811,784 B | **안 만든다**(의도 · 미리 지워 두고 확인) | 전체 빌드 |
+
+「고치기 전」 팔의 마지막 두 줄(내 로그 그대로):
+
+```
+    Finished 1 bundle at:
+        …\bundle\nsis\AgentCodeGUI3_3.0.0-beta.1_x64-setup.exe
+
+A public key has been found, but no private key. Make sure to set `TAURI_SIGNING_PRIVATE_KEY` environment variable.
+       Error A public key has been found, but no private key. …
+```
+
+**즉 크리틱이 옳다.** 설치기는 다 나온 뒤에 죽으므로 그 명령을 시키는 문서를 따르는 사람·스크립트는
+**성공한 빌드를 실패로 읽고**, 반대로 오류를 무시하고 올리면 `.sig` 없는 릴리스가 나가
+`latest.json`을 쓸 수 없게 되어 깔린 앱들이 영원히 「최신입니다」만 본다.
+
+**무엇을 넣었나** — `scripts/tauri-build.mjs`(신규 · `package.json`의 `tauri:build`·`tauri:bundle`이
+이걸 거친다):
+
+1. **키를 찾아 env로 실어 준다.** 순서는 `TAURI_SIGNING_PRIVATE_KEY`(이미 설정됨) →
+   `CCG_UPDATER_KEY`(경로) → `~/.tauri/agentcodegui3-updater.key`. ★**키 내용을 읽지 않는다** —
+   CLI가 경로도 받으므로 **경로만** 넘긴다(로그·콘솔에 키가 실릴 자리가 아예 없다).
+   `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`가 없으면 빈 문자열을 넣는다 — 없으면 CLI가 **대화형으로
+   물어보고 그 자리에서 멈추기** 때문이다(이 레포가 이미 밟은 「모달이 스크립트를 잡아먹는」 함정).
+2. **키가 없으면 cargo를 켜기 전에 끝낸다**(0.62초). 10분을 태우고 마지막 줄에서 죽는 대신
+   0초에 무엇을 해야 하는지 세 갈래로 말한다. **조용한 성공(=서명 없는 릴리스)은 만들지 않는다.**
+3. 서명 없이 설치기만 필요한 자리에는 **명시적인 문**을 준다 — `npm run tauri:build:unsigned`가
+   `--config {"bundle":{"createUpdaterArtifacts":false}}`를 얹어 서명 단계 자체를 없애고,
+   「이 설치기는 릴리스에 올리지 마라」를 세 줄 찍는다.
+
+**그 조건을 적은 자리**(크리틱이 「한 줄도 없다」고 지적한 두 곳 + 절차):
+`docs/HANDOFF-3.0.md` 함정 2번 · `src-tauri/Cargo.toml`의 빌드 주석 · 이 문서 §8.2.
+
+### 11.2 【낮음】 「종료 시 자동 설치 금지」 못이 진짜 종료 문을 안 본다 — **고쳤고, 부러지는 것을 눈으로 봤다**
+
+크리틱이 옳다. 옛 못은 `main.rs` **한 파일만** 읽었는데, 사용자가 실제로 앱을 끝내는 문은
+`tray.rs`의 `quit()`이다(트레이 메뉴 「완전히 종료」와 첫 숨김 안내 카드가 **둘 다** 거기로 온다
+→ `app.exit(0)`). `main.rs`의 `RunEvent::ExitRequested`는 그 **뒤에** 오는 핸들러일 뿐이다.
+
+**새 못은 파일을 고르지 않는다**: `src-tauri/src` 전수를 걸어 `updater::install`을 부르는
+**파일의 집합**을 세고 그 집합이 `ipc/app_meta.rs` 하나임을 박는다(`include_str!`은 컴파일 시각
+상수라 전수를 못 한다 — 그래서 테스트 실행 시각에 `CARGO_MANIFEST_DIR`부터 디렉터리를 걷는다).
+빈 트리를 보고 「통과」하지 않도록 파일 수 하한과, **진짜 종료 문 둘의 앵커**
+(`main.rs`의 `RunEvent::ExitRequested` · `tray.rs`의 `app.exit(0)`)도 같이 확인한다.
+
+**실증** — 격리 사본(`git archive HEAD` → `C:\Temp\ccg-r28j-updr2\nailtree`)에서
+`tray.rs::quit()`에 크리틱과 **같은 한 줄**을 심고, 옛 못과 새 못을 **같은 바이너리에 나란히**
+넣어 한 번에 돌렸다(이렇게 하면 「스테일 바이너리를 본 것 아니냐」가 원천 봉쇄된다 —
+새 못의 실패 메시지가 doctored 파일 이름을 그대로 뱉으므로 그 회차가 doctored 트리를 읽었다는
+증거가 된다):
+
+```rust
+ fn quit(app: &AppHandle) {
+     QUITTING.store(true, Ordering::SeqCst);
++    crate::updater::install(app); // ← 2.6.2가 밟은 바로 그 사고
+     app.exit(0);
+ }
+```
+
+```
+test updater::tests::old_nail_reads_only_main_rs ... ok        ← 옛 못은 **그냥 통과한다**(크리틱 §3.2 재현)
+test updater::tests::install_is_never_wired_to_exit ... FAILED ← 새 못은 부러진다
+
+assertion `left == right` failed: 설치를 부르는 파일이 카드 한 곳이 아니다
+  left: ["ipc/app_meta.rs", "tray.rs"]
+ right: ["ipc/app_meta.rs"]
+```
+
+깨끗한 레포 트리에서는 다시 초록이다(`updater::tests` 5/5 · `-p agentcodegui` 137/137).
+실증 뒤 격리 사본은 그대로 두고 **레포 `src-tauri/src/tray.rs`는 한 글자도 안 건드렸다**
+(`git status`로 확인 — 이 라운드가 만진 Rust 파일은 `updater.rs` 하나다).
+
+### 11.3 【낮음】 조회 단계 실패는 화면에 안 뜬다 — **고치지 않는다. 알려진 성질로 장부에 박는다**
+
+크리틱의 판정(파리티로는 합격 · 사용자 관점에서는 미해결)에 동의한다. 카드 조건
+`phase==='error' && version != null`은 **2.6.2와 바이트가 같은 컴포넌트**가 정한 규칙이고
+(오프라인일 때마다 오류 카드가 뜨는 쪽이 더 나쁘다), 이 라운드의 계약은 「2.6.2와 같게」다.
+그래서 코드를 안 고치고 **장부에 알려진 성질로 적었다**(`renderer-divergence.md` §6.12):
+네트워크 없음·피드 404는 `app:update-status`의 `phase:"error"`+사유+로그와 셸 stderr
+`[updater] …`에만 남고 **화면에는 아무것도 안 남는다.** 바꾸려면 그것은 **2.6.2에서 갈라지는
+결정**이므로 리드의 몫이다(설정 화면에 업데이트 상태 칸을 만드는 쪽이 자연스럽다).
+
+### 11.4 【낮음】 받아둔 설치본이 세션 내내 메모리에 산다 — **값을 장부에 넣었다**
+
+크리틱 실측: 팔 A(8.0MiB 받음) 대 팔 B(404) = **WorkingSet +9.3MB · PrivateBytes +14.3MB**
+(1회 측정 · 프로세스 트리 합). 갈라짐 자체(§10.1 ①: 디스크 캐시 대신 세션 메모리)는 검증
+경로가 비공개라서 한 선택이고 크리틱도 「이유는 타당하다」고 적었다 — **없던 것은 값이었다.**
+그 값과, 실제 설치기가 **2.81MB**(내가 방금 구운 NSIS setup.exe)라 유지량이 ~3~6MB급이라는
+것, 그리고 **앱을 껐다 켤 때마다 한 번 다시 받는다**는 것을 §6.12에 적었다.
+
+### 11.5 【낮음】 출하 바이너리의 `CCG_UPDATE_FEED` — **남긴다. 판단을 장부에 적었다**
+
+크리틱이 준 두 갈래(장부에 적기 / `#[cfg(debug_assertions)]`로 지우기) 중 **남기기**를 골랐다.
+근거:
+
+* **지우면 출하 exe를 검사할 길이 같이 사라진다.** 크리틱 자신이 §2.5의 **음성 대조**
+  (「출하 exe는 `http://` 피드를 아예 거절한다 · 요청 히트 0」)와 「출하 엔드포인트에 실제로
+  닿는다」를 그 문으로 쟀다. `cfg(debug_assertions)`로 가리면 그 두 칸은 **출하 바이너리에서**
+  다시는 못 잰다.
+* **실효 공격면이 좁다.** 세 겹이 이미 있다 — `https` 강제(플러그인 · 실측) · minisign 서명 검증
+  (실측: 1바이트 변조를 8MiB 받아 놓고도 거절) · `release.version > current_version`(다운그레이드
+  차단). 남는 것은 **「그 사용자의 환경변수를 이미 쥔 자」가 우리 개인키로 서명된 더 높은
+  버전을 골라 설치시키는 것**뿐이고, 그 전제(임의 env 주입)를 가진 자는 이미 더 나쁜 짓을 할 수 있다.
+* 2.6.2에 없던 문인 것은 사실이므로 **§6.12의 「알면서 다르게 한 것」에 ③으로 올렸다** —
+  크리틱이 「거기에 없다」고 지적한 바로 그 자리다.
+
+### 11.6 【낮음 · 장부】 `971e3f7` 커밋 메시지의 수치 오기 — **정정한다**
+
+**`971e3f7`의 「agentcodegui 179(+5) · workspace 807」은 오기다. 참값은 136 / 756이다**
+(`55a4549`가 적은 값이 맞다). 커밋 메시지는 되돌릴 수 없으니 여기에 박아 둔다.
+
+내가 이 라운드에서 다시 잰 값과 그 분해:
+
+| 크레이트 | 내 워킹트리(수정 R1) | 크리틱의 HEAD 측정 | 차이의 정체 |
+|---|---|---|---|
+| `agentcodegui` | **137** | 136 | **+1 = 남의 미커밋**(`src-tauri/src/engine/mod.rs`에 `#[test]` 하나) |
+| `ccg-auth` | 143 | 126 | 크리틱의 크레이트별 값이 통합 테스트 셋(14+2+1=**17**)을 빼고 세어졌다 — 워크스페이스 합계끼리는 맞는다 |
+| `ccg-engine` | **250** | 232 | **+18 = 남의 미추적 계기** `probe_wfire_crit.rs`(8) + `probe_wfr2.rs`(10) |
+| `ccg-fs` | 101 | 101 | 같음 |
+| `ccg-lsp` | 59 | 59 | 같음 |
+| `ccg-store` | 85 | 85 | 같음 |
+| **workspace** | **775 passed · 0 failed · 13 ignored · exit 0** | 756 | **775 = 756 + 18 + 1** — **이 라운드가 더한 테스트는 0개다**(못을 제자리에서 갈아 끼웠다) |
+
+### 11.7 【정보】 줄 번호 셋 — 정정했다
+
+| 자리 | 옛 값 | 새 값 |
+|---|---|---|
+| `updater.rs` 헤더 · `renderer-divergence.md` §6.12 | `App.tsx:2670` | **`App.tsx:2651`**(`<AppUpdateGate />`) |
+| `updater.rs` `phase` 주석 · 못 주석 | `AppUpdateGate.tsx:47` | **`:47-48`**(`const active`) · 못 쪽은 **`:48`** |
+| `updater.rs:104`(`probing`) | `AppUpdateGate.tsx:36` | **`:38`**(`setDismissed(false)`) |
+
+셋 다 **가리키는 심볼 이름을 같이 적었다** — 다음에 또 밀려도 읽는 사람이 스스로 찾을 수 있게.
+
+### 11.8 무회귀 (수정 R1)
+
+| 축 | 값 | 판정 |
+|---|---|---|
+| `cargo test --workspace` | **775 passed · 0 failed · 13 ignored · exit 0** | 초록(분해는 §11.6) |
+| `cargo test -p agentcodegui` | **137 / 137** | 초록 |
+| 컴파일 경고 | **4**(같은 `CROSSTALK_*` 넷) | 더한 것 0 |
+| `typecheck:node` · `:web` · `:app` | **3종 초록** | — |
+| 릴리스 번들 | setup.exe **2,810,332 B** + `.sig` **436 B** · exit 0 | §11.1 |
+| 이 라운드가 더한 테스트 | **0**(못 하나를 제자리에서 교체) | — |
+
+**Rust 코드 변경은 `src-tauri/src/updater.rs` 한 파일 · 그중 실행 코드는 0줄이다** —
+바뀐 것은 `#[cfg(test)]` 안의 못과 주석뿐이라 **출하 바이너리는 의미상 무변**이다.
+
+> 참고로 내가 구운 릴리스 exe는 **7,096,832 B**(sha256 `b3ad2df3…`)로 크리틱의 EXE-R
+> (7,066,112 B)보다 **+30,720 B**다. 내 Rust 변경은 테스트 전용이므로 그 차이는 이 라운드의
+> 것이 아니다 — 워킹트리에 **남의 미커밋 변경**(`src-tauri/src/engine/mod.rs` 210줄 ·
+> `versions.rs` 12줄)이 함께 컴파일된 결과다. 같은 이유로 이 절의 exe 크기는 무회귀 축으로
+> 쓰지 않았다(테스트·경고·타입체크·번들 산출물로 잰다).
+
+### 11.9 ★장부(`renderer-divergence.md` §6.12)에 옮겨야 할 것 — **이 라운드는 그 파일을 못 만졌다**
+
+§11.3~11.7의 내용은 원래 장부 §6.12에 들어가야 한다. **그런데 이 라운드는 그 파일을
+커밋하지 않았다.** 이유는 규율이다: 같은 워킹트리에서 도는 **다른 갈래(R28L)의 미커밋 hunk가
+같은 파일 §6.13에 살아 있고**(「한쪽만 걷으면 6→10으로 튄다」 정정 · 20줄),
+`git commit --only <파일>`은 **인덱스가 아니라 워킹트리 내용을 통째로** 가져간다
+(내가 빈 레포로 확인했다: 부분 스테이징을 해 둬도 커밋된 것은 워킹트리 전체였다).
+즉 그 파일을 건드리는 순간 **남의 문단을 내 커밋이 삼킨다** — 이 레포가 R28에서 두 번 밟은 사고다.
+
+**그래서 다음에 그 파일을 커밋하는 갈래가 §6.12에 아래를 그대로 넣어 달라**(내용은 전부
+이 문서 §11에 실측과 함께 있다):
+
+1. `App.tsx:2670` → **`App.tsx:2651`**(`<AppUpdateGate />`) — 유일한 좌표 오기.
+2. **「알면서 다르게 한 것」에 ③ 추가** — `CCG_UPDATE_FEED`(2.6.2에 없던 문). 남기는 근거와
+   방어 세 겹은 §11.5.
+3. **①(세션 메모리)에 실측값 한 줄** — 크리틱 실측 `PrivateBytes +14.3MB` /
+   `WorkingSet +9.3MB`(8.0MiB 페이로드 · 진짜 설치기는 2.81MB라 실제 유지량은 ~3~6MB급) ·
+   **앱을 껐다 켤 때마다 한 번 다시 받는다**.
+4. **「오류가 화면에 뜨는 규칙」 문단에 알려진 성질 한 줄** — 조회 단계 실패(오프라인·404)는
+   상태·로그·stderr에만 남고 **화면에는 아무 흔적이 없다**. 파리티로는 합격, 사용자
+   관점에서는 미해결(§11.3).
+5. **빌드 절차 한 줄** — 이제 `npm run tauri:build`는 서명 개인키를 요구한다(§11.1).
+
+### 11.10 수정 R1이 만진 것 · 커밋
+
+| 파일 | 무엇 |
+|---|---|
+| `scripts/tauri-build.mjs` | **신규** — 서명 키를 찾아 실어 주는 빌드 래퍼(§11.1) |
+| `package.json` | `tauri:build`·`tauri:bundle`이 래퍼를 거친다 + `tauri:build:unsigned` 신설 |
+| `src-tauri/Cargo.toml` | 빌드 주석에 「이제 서명 키를 요구한다」 |
+| `docs/HANDOFF-3.0.md` | 함정 2번에 같은 조건(그 명령을 시키는 자리) |
+| `src-tauri/src/updater.rs` | 못을 전수 스캔으로 · 좌표 셋 정정. **실행 코드 0줄** |
+| `docs/parity-fix-updater-r1.md` | 이 §11 + §8.2 릴리스 절차 갱신 |
+
+| 해시 | 무엇 |
+|---|---|
+| `51446c6` | ① 빌드 파이프라인 |
+| `4409097` | ② 못 + 좌표 |
+| (이 커밋) | ③ 보고서 |
+
+**안 만진 것**: `src-tauri/src/tray.rs`(못 실증은 격리 사본에서만) ·
+`app/**`(렌더러 무변) · `docs/renderer-divergence.md`(§11.9의 이유) ·
+`bench/results/*`·`bench/shots/*/report.json`·`docs/critic/*.json`(기준 결과 파일 무변) ·
+남의 미커밋 변경(`src-tauri/src/engine/{mod,versions}.rs` · `docs/parity-fix-m10-removal-r1.md`).
+**외부 행위 0** — push · 태그 · 릴리스 생성/삭제 · 원격 API 쓰기 전부 없다. 이 라운드는
+네트워크로 나간 GET조차 없다(로컬 피드도 안 세웠다 — 이번에 잰 것은 빌드·못·테스트다).
