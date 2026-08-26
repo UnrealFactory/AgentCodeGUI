@@ -356,6 +356,65 @@ CcgCaseProbe.exe / ccgcaseprobe.exe / CCGCASEPROBE.exe → 전부 같은 프로�
 **결정되면 붙이는 자리는 이미 있다**: `bundle.windows.certificateThumbprint` 또는
 `bundle.windows.signCommand`. 설정 두 줄이고, 이 라운드의 산출물은 그대로 쓴다.
 
+### 6.1 ★ 결정됨 (R28j `DECIDE` · 2026-08-26) — **1안. 서명하지 않는다**
+
+> **사용자 결정: 서명하지 않는다. 제품명 `AgentCodeGUI3`과 기존 아이콘·이름을 그대로 간다.**
+> 사유: **「어차피 이어서 갈 거라」** — 3.0은 2.6.2의 후속이고 배포 채널·사용자층이 같다.
+> 이름과 마크를 바꿔 평판을 새로 쌓기 시작할 이유가 없고, 2안~4안 중 **오늘의 경고를
+> 없애 주는 안이 하나도 없다**(2안은 평판을 처음부터 쌓아야 하고, 3·4안은 1인 프로젝트에
+> 과하거나 자격 요건이 미확인이다). **비용 0 · 파이프라인 변경 0.**
+
+2~4안의 비용은 위 목록에 **참고로 남긴다**(지웠다가 다시 조사하는 일이 없게).
+되돌리는 비용은 낮다 — 설정 두 줄이고 이 라운드의 산출물은 그대로 쓴다.
+
+**R28j 재측정**(이 표를 다시 뜬 값 — 위 표와 같다):
+
+| 파일 | 서명 | MOTW |
+|---|---|---|
+| `AgentCodeGUI3_3.0.0-beta.1_x64-setup.exe` | NotSigned | False |
+| `AgentCodeGUI3.exe`(설치본) · `uninstall.exe` | NotSigned | False |
+| `AgentCodeGUI-Setup-2.6.2.exe` · `AgentCodeGUI.exe`(설치본) | NotSigned | False |
+
+MOTW 기전도 실증했다(원본 무접촉 · `C:\Temp`의 복사본에만 `Zone.Identifier`를 붙임):
+붙이기 전 `False` → 붙인 뒤 `True`(`[ZoneTransfer] ZoneId=3`). 즉 **GitHub Releases에서
+내려받는 순간** 경고 조건이 갖춰지고, 로컬 빌드로는 이 기계에서 재현되지 않는다.
+SmartScreen **대화상자 자체는 재현하지 않았다** — 그러려면 MOTW가 붙은 설치기를 사용자
+실기계에서 실제로 실행해야 하고, 이 라운드의 계약(실설치 2.6.2 비접촉)에 어긋난다.
+
+### 6.2 첫 실행 안내 문구 — 배포 문서에 그대로 넣을 것 (ko/en)
+
+> **처음 실행할 때 파란 경고 창이 뜹니다 — 정상입니다.**
+> AgentCodeGUI3은 코드 서명 인증서를 쓰지 않습니다(2.6.2도 마찬가지입니다). 그래서 처음
+> 내려받아 실행하면 Windows가 「**Windows의 PC 보호**」 창을 띄웁니다.
+> ① 창 안의 「**추가 정보**」를 누르세요. ② 나타나는 「**실행**」 버튼을 누르면 설치가 시작됩니다.
+> 설치는 관리자 권한이 필요 없고(현재 사용자 전용), 설치 위치는 `%LOCALAPPDATA%\AgentCodeGUI3`
+> 입니다. 기존 2.6.2는 **지워지지 않고 그대로 남습니다** — 두 버전을 나란히 쓸 수 있습니다.
+>
+> **A blue warning appears the first time you run it — this is expected.**
+> AgentCodeGUI3 is not code-signed (neither was 2.6.2). When you download and run it, Windows
+> shows a “**Windows protected your PC**” dialog.
+> ① Click “**More info**”. ② Click “**Run anyway**”.
+> The installer needs no administrator rights (current-user install) and installs to
+> `%LOCALAPPDATA%\AgentCodeGUI3`. Your existing 2.6.2 is **left untouched** — the two versions
+> run side by side.
+
+### 6.3 「2.6.2를 덮어쓰지 않는다」 — R28j 재확인 (레지스트리·파일 시스템 읽기만)
+
+§5.1이 막은 사고가 **여전히 막혀 있는지** 오늘 다시 확인했다. 결론: **전부 갈려 있다.**
+
+| 자리 | 2.6.2 | 3.0 | 겹치나 |
+|---|---|---|---|
+| 실행 파일 이름 | `AgentCodeGUI.exe` | `AgentCodeGUI3.exe` | 아니다(대소문자 무시해도) |
+| 설치 경로 | `%LOCALAPPDATA%\Programs\AgentCodeGUI` | `%LOCALAPPDATA%\AgentCodeGUI3` | 아니다 |
+| 언인스톨 키 | `HKCU\…\Uninstall\f2fb66d4-fc28-5d68-b3f6-0c28b821972a` | `HKCU\…\Uninstall\AgentCodeGUI3` | 아니다 |
+| 시작 메뉴 | `AgentCodeGUI.lnk` | `AgentCodeGUI3.lnk` | 아니다(둘 다 실재) |
+| 우클릭 키 | `…\Directory\shell\AgentCodeGUI` | `…\Directory\shell\AgentCodeGUI3` | 아니다 |
+| 실행 중 프로세스 | `AgentCodeGUI.exe` 6개(PID 6644·12924·16340·23792·24836·26924) | — | 측정 중 **무접촉** |
+
+**남는 겹침 하나**: `bundle.identifier` = `com.agentcodegui.app`가 2.6.2 `build.appId`와
+**같다**(오늘 확인). 작업 표시줄 그룹이 붙을 수 있다 — R2 §4.1의 상자와 같은 자리이고
+**아직 실물 미확인**이다.
+
 ---
 
 ## 7. 아직 없는 것 (다음 라운드로)

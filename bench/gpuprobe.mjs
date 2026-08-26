@@ -18,9 +18,20 @@ import { makeMultiFixture } from './fixture.mjs'
 
 const kind = process.argv[2] ?? 'tauri'
 const SETTLE = Number((process.argv.find((a) => a.startsWith('--settle=')) ?? '--settle=14').split('=')[1])
-const HOME = path.join(REPO, '.bench-home-gpu' + (kind === 'tauri' ? '-tauri' : ''))
-const OUT = path.join(REPO, 'bench', 'results', 'gpu-css-probe.json')
-const profile = kind === 'tauri' ? tauriProfile({ port: 9381 }) : electronProfile({ port: 9382 })
+// ── --out / --tag / --port (R28j DECIDE) ──────────────────────────────────────
+// `bench/results/gpu-css-probe.json`은 M1 R4의 **기준 결과 파일**이다. 새 주행이 그것을
+// 말없이 덮으면(같은 워크트리에서 여러 갈래가 동시에 돈다) 근거가 사라진다 — 실제로
+// 한 번 일어난 사고다(fpsab 고정 파일명, m1-report-r4 §9.5). 그래서:
+//   --out=<이름>   결과 파일을 bench/results/<이름>으로 (기본은 기준 파일)
+//   --tag=<t>      격리 홈 접미사(동시 주행 충돌 방지). 없으면 예전과 같은 경로
+//   --port=<n>     CDP 포트(갈래별 배정표를 지키기 위해)
+const arg = (k, d) => (process.argv.find((a) => a.startsWith(`--${k}=`)) ?? `--${k}=${d}`).split('=').slice(1).join('=')
+const TAG = arg('tag', '')
+const OUT_NAME = arg('out', 'gpu-css-probe.json')
+const PORT = Number(arg('port', kind === 'tauri' ? 9381 : 9382))
+const HOME = path.join(REPO, '.bench-home-gpu' + (kind === 'tauri' ? '-tauri' : '') + (TAG ? '-' + TAG : ''))
+const OUT = path.join(REPO, 'bench', 'results', OUT_NAME)
+const profile = kind === 'tauri' ? tauriProfile({ port: PORT }) : electronProfile({ port: PORT })
 profile.env.CCG_HOME = HOME
 
 fs.rmSync(HOME, { recursive: true, force: true })

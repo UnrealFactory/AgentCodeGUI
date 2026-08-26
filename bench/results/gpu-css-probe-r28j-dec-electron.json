@@ -1,0 +1,350 @@
+{
+  "env": {
+    "ramGB": 63.8,
+    "cpu": "13th Gen Intel(R) Core(TM) i7-13700KF",
+    "os": "Microsoft Windows 11 Home 26200"
+  },
+  "what": "합성기/렌더러 메모리의 출처 — 살아 있는 앱에 CSS 오버라이드를 누적으로 얹으며 역할별 재측정",
+  "electron-2.6.2+default": {
+    "panels": 4,
+    "settleSec": 14,
+    "arm": "default",
+    "bin": {
+      "exe": "C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe",
+      "exeMtime": "1979-12-31T15:00:00.000Z",
+      "exeSize": 223950848,
+      "exeSha256": "4e3b585c8cbbc45a",
+      "gitHead": "57e55e6",
+      "gitDirty": true
+    },
+    "armEnv": {
+      "CCG_HOME": "C:\\Code\\AgentCodeGUI\\.bench-home-gpu-r28jdec"
+    },
+    "steps": [
+      {
+        "label": "0-baseline",
+        "wsMB": 699.5,
+        "privMB": 485.2,
+        "procs": 7,
+        "byRole": {
+          "browser": {
+            "n": 3,
+            "wsMB": 336.8,
+            "privMB": 208.1
+          },
+          "crashpad-handler": {
+            "n": 1,
+            "wsMB": 35.5,
+            "privMB": 11.7
+          },
+          "gpu-process": {
+            "n": 1,
+            "wsMB": 112.3,
+            "privMB": 141.9
+          },
+          "utility:NetworkService": {
+            "n": 1,
+            "wsMB": 54.1,
+            "privMB": 16
+          },
+          "renderer": {
+            "n": 1,
+            "wsMB": 160.7,
+            "privMB": 107.4
+          }
+        },
+        "jsHeap": {
+          "usedMB": 12.8,
+          "totalMB": 14.5
+        },
+        "dom": {
+          "documents": 1,
+          "nodes": 8476,
+          "jsEventListeners": 635
+        }
+      },
+      {
+        "label": "1-no-blurwarm",
+        "wsMB": 682.4,
+        "privMB": 458.2,
+        "procs": 7,
+        "byRole": {
+          "browser": {
+            "n": 3,
+            "wsMB": 321.6,
+            "privMB": 190.1
+          },
+          "crashpad-handler": {
+            "n": 1,
+            "wsMB": 35.5,
+            "privMB": 11.6
+          },
+          "gpu-process": {
+            "n": 1,
+            "wsMB": 111.6,
+            "privMB": 135.4
+          },
+          "utility:NetworkService": {
+            "n": 1,
+            "wsMB": 54,
+            "privMB": 15.7
+          },
+          "renderer": {
+            "n": 1,
+            "wsMB": 159.7,
+            "privMB": 105.4
+          }
+        },
+        "jsHeap": {
+          "usedMB": 12.8,
+          "totalMB": 14.5
+        },
+        "dom": {
+          "documents": 1,
+          "nodes": 8478,
+          "jsEventListeners": 635
+        }
+      },
+      {
+        "label": "2-no-backdrop-filter",
+        "wsMB": 679.9,
+        "privMB": 453.2,
+        "procs": 7,
+        "byRole": {
+          "browser": {
+            "n": 3,
+            "wsMB": 319.3,
+            "privMB": 187.5
+          },
+          "crashpad-handler": {
+            "n": 1,
+            "wsMB": 35.5,
+            "privMB": 11.6
+          },
+          "gpu-process": {
+            "n": 1,
+            "wsMB": 111.6,
+            "privMB": 133.3
+          },
+          "utility:NetworkService": {
+            "n": 1,
+            "wsMB": 54,
+            "privMB": 15.7
+          },
+          "renderer": {
+            "n": 1,
+            "wsMB": 159.6,
+            "privMB": 105.2
+          }
+        },
+        "jsHeap": {
+          "usedMB": 12.8,
+          "totalMB": 14.5
+        },
+        "dom": {
+          "documents": 1,
+          "nodes": 8478,
+          "jsEventListeners": 635
+        }
+      },
+      {
+        "label": "3-no-box-shadow",
+        "wsMB": 674.2,
+        "privMB": 440.3,
+        "procs": 7,
+        "byRole": {
+          "browser": {
+            "n": 3,
+            "wsMB": 319.4,
+            "privMB": 187.5
+          },
+          "crashpad-handler": {
+            "n": 1,
+            "wsMB": 35.5,
+            "privMB": 11.6
+          },
+          "gpu-process": {
+            "n": 1,
+            "wsMB": 112.5,
+            "privMB": 127.2
+          },
+          "utility:NetworkService": {
+            "n": 1,
+            "wsMB": 53.8,
+            "privMB": 15.4
+          },
+          "renderer": {
+            "n": 1,
+            "wsMB": 153.1,
+            "privMB": 98.7
+          }
+        },
+        "jsHeap": {
+          "usedMB": 12.8,
+          "totalMB": 14.5
+        },
+        "dom": {
+          "documents": 1,
+          "nodes": 8478,
+          "jsEventListeners": 635
+        }
+      },
+      {
+        "label": "4-one-panel-visible",
+        "wsMB": 667.2,
+        "privMB": 433.6,
+        "procs": 7,
+        "byRole": {
+          "browser": {
+            "n": 3,
+            "wsMB": 319.4,
+            "privMB": 187.5
+          },
+          "crashpad-handler": {
+            "n": 1,
+            "wsMB": 35.5,
+            "privMB": 11.6
+          },
+          "gpu-process": {
+            "n": 1,
+            "wsMB": 112.9,
+            "privMB": 128.2
+          },
+          "utility:NetworkService": {
+            "n": 1,
+            "wsMB": 53.8,
+            "privMB": 15.4
+          },
+          "renderer": {
+            "n": 1,
+            "wsMB": 145.7,
+            "privMB": 91
+          }
+        },
+        "jsHeap": {
+          "usedMB": 12.8,
+          "totalMB": 14.5
+        },
+        "dom": {
+          "documents": 1,
+          "nodes": 8355,
+          "jsEventListeners": 635
+        }
+      },
+      {
+        "label": "5-empty-root-innerHTML(대조·무효 예상)",
+        "wsMB": 663,
+        "privMB": 428.5,
+        "procs": 7,
+        "byRole": {
+          "browser": {
+            "n": 3,
+            "wsMB": 319.4,
+            "privMB": 187.5
+          },
+          "crashpad-handler": {
+            "n": 1,
+            "wsMB": 35.5,
+            "privMB": 11.6
+          },
+          "gpu-process": {
+            "n": 1,
+            "wsMB": 112.8,
+            "privMB": 127.3
+          },
+          "utility:NetworkService": {
+            "n": 1,
+            "wsMB": 53.8,
+            "privMB": 15.4
+          },
+          "renderer": {
+            "n": 1,
+            "wsMB": 141.5,
+            "privMB": 86.8
+          }
+        },
+        "jsHeap": {
+          "usedMB": 12.8,
+          "totalMB": 14.5
+        },
+        "dom": {
+          "documents": 1,
+          "nodes": 8305,
+          "jsEventListeners": 635
+        },
+        "release": {
+          "released": false,
+          "nodes": "8476 → 8305",
+          "jsEventListeners": "635 → 635",
+          "jsHeapMB": "12.8 → 12.8",
+          "droppedNodes": 171,
+          "droppedListeners": 0,
+          "droppedHeapMB": 0,
+          "verdict": "**무효** — DOM/리스너가 살아 있다. 이 델타는 앱 몫이 아니라 그리는 값이다"
+        }
+      },
+      {
+        "label": "6-about-blank(진짜 언로드)",
+        "wsMB": 643.1,
+        "privMB": 399.3,
+        "procs": 7,
+        "byRole": {
+          "browser": {
+            "n": 3,
+            "wsMB": 319.7,
+            "privMB": 187.5
+          },
+          "crashpad-handler": {
+            "n": 1,
+            "wsMB": 35.5,
+            "privMB": 11.6
+          },
+          "gpu-process": {
+            "n": 1,
+            "wsMB": 113.2,
+            "privMB": 118.4
+          },
+          "utility:NetworkService": {
+            "n": 1,
+            "wsMB": 53.7,
+            "privMB": 15.3
+          },
+          "renderer": {
+            "n": 1,
+            "wsMB": 121,
+            "privMB": 66.4
+          }
+        },
+        "jsHeap": {
+          "usedMB": 12.8,
+          "totalMB": 14.5
+        },
+        "dom": {
+          "documents": 1,
+          "nodes": 4,
+          "jsEventListeners": 0
+        },
+        "release": {
+          "released": true,
+          "nodes": "8476 → 4",
+          "jsEventListeners": "635 → 0",
+          "jsHeapMB": "12.8 → 12.8",
+          "droppedNodes": 8472,
+          "droppedListeners": 635,
+          "droppedHeapMB": 0,
+          "verdict": "해제됨 — 이 단계의 델타는 앱 몫(하한)으로 인용 가능"
+        }
+      }
+    ],
+    "appShare": {
+      "what": "앱 몫 = 4패널 기준선 − 빈 문서(about:blank). 이 값만 \"우리 UI의 값\"이라고 부를 수 있다.",
+      "wsMB": 56.4,
+      "privMB": 85.9,
+      "baselineWsMB": 699.5,
+      "blankWsMB": 643.1,
+      "valid": true,
+      "note": "언로드 검증 통과(노드·리스너 90%+ 감소)"
+    },
+    "at": "2026-08-26T03:01:53.560Z"
+  }
+}

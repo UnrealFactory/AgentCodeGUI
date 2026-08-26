@@ -1,0 +1,316 @@
+{
+  "env": {
+    "ramGB": 63.8,
+    "cpu": "13th Gen Intel(R) Core(TM) i7-13700KF",
+    "os": "Microsoft Windows 11 Home 26200"
+  },
+  "what": "합성기/렌더러 메모리의 출처 — 살아 있는 앱에 CSS 오버라이드를 누적으로 얹으며 역할별 재측정",
+  "tauri-3.0.0+default": {
+    "panels": 4,
+    "settleSec": 14,
+    "arm": "default",
+    "bin": {
+      "exe": "C:\\Code\\AgentCodeGUI\\target\\release\\agentcodegui.exe",
+      "exeMtime": "2026-08-24T09:09:47.196Z",
+      "exeSize": 6344192,
+      "exeSha256": "4cdf778840717bb2",
+      "gitHead": "57e55e6",
+      "gitDirty": true
+    },
+    "armEnv": {
+      "CCG_HOME": "C:\\Code\\AgentCodeGUI\\.bench-home-gpu-tauri-r28jdec",
+      "CCG_CDP_PORT": "10922"
+    },
+    "steps": [
+      {
+        "label": "0-baseline",
+        "wsMB": 574.2,
+        "privMB": 335.3,
+        "procs": 8,
+        "byRole": {
+          "browser": {
+            "n": 5,
+            "wsMB": 382.8,
+            "privMB": 217.6
+          },
+          "crashpad-handler": {
+            "n": 1,
+            "wsMB": 9.5,
+            "privMB": 2.5
+          },
+          "utility:StorageService": {
+            "n": 1,
+            "wsMB": 19.7,
+            "privMB": 8.9
+          },
+          "renderer": {
+            "n": 1,
+            "wsMB": 162.2,
+            "privMB": 106.3
+          }
+        },
+        "jsHeap": {
+          "usedMB": 9.5,
+          "totalMB": 11.1
+        },
+        "dom": {
+          "documents": 1,
+          "nodes": 8513,
+          "jsEventListeners": 672
+        }
+      },
+      {
+        "label": "1-no-blurwarm",
+        "wsMB": 575.9,
+        "privMB": 332.4,
+        "procs": 8,
+        "byRole": {
+          "browser": {
+            "n": 5,
+            "wsMB": 377.7,
+            "privMB": 217
+          },
+          "crashpad-handler": {
+            "n": 1,
+            "wsMB": 18.2,
+            "privMB": 3.3
+          },
+          "utility:StorageService": {
+            "n": 1,
+            "wsMB": 19.7,
+            "privMB": 8.9
+          },
+          "renderer": {
+            "n": 1,
+            "wsMB": 160.3,
+            "privMB": 103.1
+          }
+        },
+        "jsHeap": {
+          "usedMB": 9.5,
+          "totalMB": 10.6
+        },
+        "dom": {
+          "documents": 1,
+          "nodes": 8515,
+          "jsEventListeners": 672
+        }
+      },
+      {
+        "label": "2-no-backdrop-filter",
+        "wsMB": 575.4,
+        "privMB": 331.7,
+        "procs": 8,
+        "byRole": {
+          "browser": {
+            "n": 5,
+            "wsMB": 377.7,
+            "privMB": 217
+          },
+          "crashpad-handler": {
+            "n": 1,
+            "wsMB": 18.2,
+            "privMB": 3.3
+          },
+          "utility:StorageService": {
+            "n": 1,
+            "wsMB": 19.7,
+            "privMB": 8.9
+          },
+          "renderer": {
+            "n": 1,
+            "wsMB": 159.8,
+            "privMB": 102.4
+          }
+        },
+        "jsHeap": {
+          "usedMB": 9.5,
+          "totalMB": 10.6
+        },
+        "dom": {
+          "documents": 1,
+          "nodes": 8515,
+          "jsEventListeners": 672
+        }
+      },
+      {
+        "label": "3-no-box-shadow",
+        "wsMB": 572.3,
+        "privMB": 332.1,
+        "procs": 8,
+        "byRole": {
+          "browser": {
+            "n": 5,
+            "wsMB": 379.4,
+            "privMB": 217.3
+          },
+          "crashpad-handler": {
+            "n": 1,
+            "wsMB": 12.5,
+            "privMB": 3
+          },
+          "utility:StorageService": {
+            "n": 1,
+            "wsMB": 19.8,
+            "privMB": 8.9
+          },
+          "renderer": {
+            "n": 1,
+            "wsMB": 160.6,
+            "privMB": 102.9
+          }
+        },
+        "jsHeap": {
+          "usedMB": 9.6,
+          "totalMB": 10.6
+        },
+        "dom": {
+          "documents": 1,
+          "nodes": 8515,
+          "jsEventListeners": 672
+        }
+      },
+      {
+        "label": "4-one-panel-visible",
+        "wsMB": 557,
+        "privMB": 321.5,
+        "procs": 8,
+        "byRole": {
+          "browser": {
+            "n": 5,
+            "wsMB": 377.8,
+            "privMB": 217.6
+          },
+          "crashpad-handler": {
+            "n": 1,
+            "wsMB": 12.5,
+            "privMB": 3
+          },
+          "utility:StorageService": {
+            "n": 1,
+            "wsMB": 19.8,
+            "privMB": 8.9
+          },
+          "renderer": {
+            "n": 1,
+            "wsMB": 146.9,
+            "privMB": 92
+          }
+        },
+        "jsHeap": {
+          "usedMB": 9.6,
+          "totalMB": 10.6
+        },
+        "dom": {
+          "documents": 1,
+          "nodes": 8392,
+          "jsEventListeners": 672
+        }
+      },
+      {
+        "label": "5-empty-root-innerHTML(대조·무효 예상)",
+        "wsMB": 540.5,
+        "privMB": 315.2,
+        "procs": 8,
+        "byRole": {
+          "browser": {
+            "n": 5,
+            "wsMB": 373.1,
+            "privMB": 217.3
+          },
+          "crashpad-handler": {
+            "n": 1,
+            "wsMB": 12.5,
+            "privMB": 3
+          },
+          "utility:StorageService": {
+            "n": 1,
+            "wsMB": 19.8,
+            "privMB": 8.9
+          },
+          "renderer": {
+            "n": 1,
+            "wsMB": 135.1,
+            "privMB": 86
+          }
+        },
+        "jsHeap": {
+          "usedMB": 9.6,
+          "totalMB": 10.6
+        },
+        "dom": {
+          "documents": 1,
+          "nodes": 8342,
+          "jsEventListeners": 672
+        },
+        "release": {
+          "released": false,
+          "nodes": "8513 → 8342",
+          "jsEventListeners": "672 → 672",
+          "jsHeapMB": "9.5 → 9.6",
+          "droppedNodes": 171,
+          "droppedListeners": 0,
+          "droppedHeapMB": -0.1,
+          "verdict": "**무효** — DOM/리스너가 살아 있다. 이 델타는 앱 몫이 아니라 그리는 값이다"
+        }
+      },
+      {
+        "label": "6-about-blank(진짜 언로드)",
+        "wsMB": 515.9,
+        "privMB": 289.9,
+        "procs": 8,
+        "byRole": {
+          "browser": {
+            "n": 5,
+            "wsMB": 374.6,
+            "privMB": 217.8
+          },
+          "crashpad-handler": {
+            "n": 1,
+            "wsMB": 12.5,
+            "privMB": 3
+          },
+          "utility:StorageService": {
+            "n": 1,
+            "wsMB": 19.8,
+            "privMB": 8.9
+          },
+          "renderer": {
+            "n": 1,
+            "wsMB": 109,
+            "privMB": 60.1
+          }
+        },
+        "jsHeap": {
+          "usedMB": 0.9,
+          "totalMB": 2.5
+        },
+        "dom": {
+          "documents": 1,
+          "nodes": 6,
+          "jsEventListeners": 4
+        },
+        "release": {
+          "released": true,
+          "nodes": "8513 → 6",
+          "jsEventListeners": "672 → 4",
+          "jsHeapMB": "9.5 → 0.9",
+          "droppedNodes": 8507,
+          "droppedListeners": 668,
+          "droppedHeapMB": 8.6,
+          "verdict": "해제됨 — 이 단계의 델타는 앱 몫(하한)으로 인용 가능"
+        }
+      }
+    ],
+    "appShare": {
+      "what": "앱 몫 = 4패널 기준선 − 빈 문서(about:blank). 이 값만 \"우리 UI의 값\"이라고 부를 수 있다.",
+      "wsMB": 58.3,
+      "privMB": 45.4,
+      "baselineWsMB": 574.2,
+      "blankWsMB": 515.9,
+      "valid": true,
+      "note": "언로드 검증 통과(노드·리스너 90%+ 감소)"
+    },
+    "at": "2026-08-26T03:05:47.870Z"
+  }
+}

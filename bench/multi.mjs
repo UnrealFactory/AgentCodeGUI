@@ -36,7 +36,17 @@ const repeats = Number((process.argv.find((a) => a.startsWith('--repeats=')) ?? 
 // `rm -f target/release/agentcodegui.exe && npm run tauri:build`을 돌리면 exe가 사라진다
 // (R3 §R3.6에서 두 번 밟았고, 이번 라운드에선 `node_modules`가 통째로 비는 것도 봤다).
 const exeArg = (process.argv.find((a) => a.startsWith('--exe=')) ?? '').split('=').slice(1).join('=')
-const profile = kind === 'tauri' ? tauriProfile(exeArg ? { exe: exeArg } : {}) : electronProfile({})
+// ── --tag / --out / --port (R28j DECIDE) ──────────────────────────────────────
+// `multi-<app>-<arm>.json`은 **주 게이트의 기준 결과 파일**이다(파리티 감사가 인용한다).
+// 같은 워크트리에서 여러 갈래가 동시에 도는 지금, 새 주행이 그것을 말없이 덮으면 근거가
+// 사라진다. `--tag=<t>`는 (a) 결과 파일명에 접미사를 붙이고 (b) 격리 홈을 갈라
+// (c) CDP 포트 충돌을 피하게 한다. 태그가 없으면 예전과 완전히 같은 동작이다.
+const argv = (k, d) => (process.argv.find((a) => a.startsWith(`--${k}=`)) ?? `--${k}=${d}`).split('=').slice(1).join('=')
+const TAG = argv('tag', '')
+const OUT_NAME = argv('out', '')
+const PORT = Number(argv('port', kind === 'tauri' ? 9334 : 9333))
+const profile = kind === 'tauri' ? tauriProfile({ ...(exeArg ? { exe: exeArg } : {}), port: PORT }) : electronProfile({ port: PORT })
+if (TAG) profile.env.CCG_HOME += '-' + TAG
 const appVersion = kind === 'tauri' ? '3.0.0-beta.1' : '2.6.2'
 const home = profile.env.CCG_HOME
 const arm = armName({ ...process.env, ...profile.env })
@@ -247,7 +257,10 @@ const out = {
   perRun: runs,
   at: new Date().toISOString()
 }
-const file = path.join(REPO, 'bench', 'results', `multi-${profile.name}-${arm}.json`)
+const file = path.join(
+  REPO, 'bench', 'results',
+  OUT_NAME || `multi-${profile.name}-${arm}${TAG ? '-' + TAG : ''}.json`
+)
 fs.writeFileSync(file, JSON.stringify(out, null, 2))
 console.log('\nsummary:', JSON.stringify(summary, null, 2))
 console.log('saved:', path.relative(REPO, file))

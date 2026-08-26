@@ -1,0 +1,633 @@
+{
+  "what": "UI 언어(ko/en) 범위·규약 훑기 — 3.0(app/src) vs 2.6.2(src/renderer/src)",
+  "method": "콜사이트 인라인 t(ko,en) 소스 스캔(사전 파일이 없어 사전 diff가 불가능하다). ④는 후보이고 과잉 덮기 때문에 **하한**이다.",
+  "at": "2026-08-26T03:12:08.302Z",
+  "trees": [
+    {
+      "id": "tauri-3.0",
+      "label": "3.0 (app/src)",
+      "files": 72,
+      "loc": 36199,
+      "tCallSites": 1388,
+      "distinctKoStrings": 1052,
+      "nonLiteralCalls": 11,
+      "violations": {
+        "argCount": 0,
+        "enHasHangul": 2,
+        "sameBothSides": 0,
+        "moduleScope": 0
+      },
+      "hardcodedKoreanCandidates": 255,
+      "hardcodedByKind": {
+        "string-tpl": 43,
+        "string": 81,
+        "jsx-text": 131
+      },
+      "hardcodedPlainStrings": 81,
+      "hardcodedPlainStringsExPatchNotes": 58,
+      "hardcodedByFile": [
+        [
+          "app/src/components/PatchNotes.tsx",
+          94
+        ],
+        [
+          "app/src/components/Settings.tsx",
+          72
+        ],
+        [
+          "app/src/components/Chat.tsx",
+          44
+        ],
+        [
+          "app/src/components/FileModal.tsx",
+          14
+        ],
+        [
+          "app/src/api/shim.ts",
+          9
+        ],
+        [
+          "app/src/components/GitModal.tsx",
+          5
+        ],
+        [
+          "app/src/App.tsx",
+          3
+        ],
+        [
+          "app/src/components/AgentPanel.tsx",
+          3
+        ],
+        [
+          "app/src/components/MultiAgent.tsx",
+          3
+        ],
+        [
+          "app/src/components/SessionWindow.tsx",
+          3
+        ],
+        [
+          "app/src/components/PanelWindow.tsx",
+          2
+        ],
+        [
+          "app/src/toast.ts",
+          2
+        ]
+      ]
+    },
+    {
+      "id": "electron-2.6.2",
+      "label": "2.6.2 (src/renderer/src)",
+      "files": 60,
+      "loc": 28942,
+      "tCallSites": 1154,
+      "distinctKoStrings": 863,
+      "nonLiteralCalls": 11,
+      "violations": {
+        "argCount": 0,
+        "enHasHangul": 2,
+        "sameBothSides": 0,
+        "moduleScope": 0
+      },
+      "hardcodedKoreanCandidates": 194,
+      "hardcodedByKind": {
+        "string-tpl": 35,
+        "string": 61,
+        "jsx-text": 98
+      },
+      "hardcodedPlainStrings": 61,
+      "hardcodedPlainStringsExPatchNotes": 49,
+      "hardcodedByFile": [
+        [
+          "src/renderer/src/components/Settings.tsx",
+          70
+        ],
+        [
+          "src/renderer/src/components/PatchNotes.tsx",
+          50
+        ],
+        [
+          "src/renderer/src/components/Chat.tsx",
+          39
+        ],
+        [
+          "src/renderer/src/components/FileModal.tsx",
+          14
+        ],
+        [
+          "src/renderer/src/components/GitModal.tsx",
+          5
+        ],
+        [
+          "src/renderer/src/App.tsx",
+          3
+        ],
+        [
+          "src/renderer/src/components/AgentPanel.tsx",
+          3
+        ],
+        [
+          "src/renderer/src/components/MultiAgent.tsx",
+          3
+        ],
+        [
+          "src/renderer/src/components/SessionWindow.tsx",
+          3
+        ],
+        [
+          "src/renderer/src/components/PanelWindow.tsx",
+          2
+        ],
+        [
+          "src/renderer/src/toast.ts",
+          2
+        ]
+      ]
+    }
+  ],
+  "hosts": [
+    {
+      "id": "host-3.0(rust)",
+      "label": "3.0 호스트 (src-tauri/src · crates)",
+      "files": 145,
+      "tCallSitesWithKorean": 54,
+      "distinctKo": 37,
+      "hardcodedKoreanCandidates": 3251,
+      "hardcodedByFile": [
+        [
+          "crates/ccg-fs/src/git.rs",
+          331
+        ],
+        [
+          "crates/ccg-auth/tests/m11r4_store_cas.rs",
+          223
+        ],
+        [
+          "crates/ccg-engine/src/state.rs",
+          150
+        ],
+        [
+          "crates/ccg-engine/tests/wcap_limit_streak.rs",
+          131
+        ],
+        [
+          "src-tauri/src/engine/wire.rs",
+          125
+        ],
+        [
+          "crates/ccg-engine/src/runtime.rs",
+          123
+        ],
+        [
+          "crates/ccg-engine/tests/replay_standing.rs",
+          120
+        ],
+        [
+          "crates/ccg-engine/tests/replay.rs",
+          116
+        ],
+        [
+          "crates/ccg-auth/src/claude.rs",
+          101
+        ],
+        [
+          "crates/ccg-engine/tests/m11_account_switch.rs",
+          98
+        ]
+      ]
+    },
+    {
+      "id": "host-2.6.2(main)",
+      "label": "2.6.2 호스트 (src/main)",
+      "files": 39,
+      "tCallSitesWithKorean": 238,
+      "distinctKo": 194,
+      "hardcodedKoreanCandidates": 82,
+      "hardcodedByFile": [
+        [
+          "src/main/lsp/verse.ts",
+          60
+        ],
+        [
+          "src/main/lsp/manager.ts",
+          10
+        ],
+        [
+          "src/main/git.ts",
+          3
+        ],
+        [
+          "src/main/lsp/jsonrpc.ts",
+          2
+        ],
+        [
+          "src/main/lsp/ue.ts",
+          2
+        ],
+        [
+          "src/main/updater.ts",
+          2
+        ],
+        [
+          "src/main/claude/engine.ts",
+          1
+        ],
+        [
+          "src/main/codex/engine.ts",
+          1
+        ],
+        [
+          "src/main/index.ts",
+          1
+        ]
+      ]
+    }
+  ],
+  "scope": {
+    "koOnlyIn262": 9,
+    "koOnlyIn262_excludingVerse": 9,
+    "koOnlyIn30": 198,
+    "shared": 854
+  },
+  "samples": {
+    "koOnlyIn262": [
+      {
+        "ko": "약 ${fmtEta(resumeDelayMs(hold.resetsAt, Date.now()))} 뒤 자동으로 이어서 계속해요",
+        "en": "Auto-continues in ~${fmtEta(resumeDelayMs(hold.resetsAt, Date.now()))}",
+        "at": "src/renderer/src/components/Chat.tsx:2749"
+      },
+      {
+        "ko": "기본 계정을 바꾸지 못했어요 — 앱을 재시작한 뒤 다시 시도해 주세요",
+        "en": "Could not change the default account — restart the app and try again",
+        "at": "src/renderer/src/components/Settings.tsx:398"
+      },
+      {
+        "ko": "기본으로",
+        "en": "Make default",
+        "at": "src/renderer/src/components/Settings.tsx:542"
+      },
+      {
+        "ko": "명령을 중단했어요",
+        "en": "Command stopped",
+        "at": "src/renderer/src/store/session.ts:510"
+      },
+      {
+        "ko": "컨텍스트 ${Math.round((before / window) * 100)}% → ${Math.round((after / window) * 100)}% 로 절약 · 토큰 ${saved} 회수",
+        "en": "Context ${Math.round((before / window) * 100)}% → ${Math.round((after / window) * 100)}% · ${saved} tokens reclaimed",
+        "at": "src/renderer/src/store/session.ts:876"
+      },
+      {
+        "ko": "토큰 ${saved} 회수",
+        "en": "${saved} tokens reclaimed",
+        "at": "src/renderer/src/store/session.ts:880"
+      },
+      {
+        "ko": "컨텍스트가 가득 차 대화를 자동으로 요약했어요",
+        "en": "Context was full — conversation auto-summarized",
+        "at": "src/renderer/src/store/session.ts:891"
+      },
+      {
+        "ko": "이전 대화를 핵심 요약으로 압축하고 이어서 진행합니다.",
+        "en": "Compressed the earlier conversation into a summary and carried on.",
+        "at": "src/renderer/src/store/session.ts:892"
+      },
+      {
+        "ko": "명령을 완료하지 못했어요",
+        "en": "Couldn't finish the command",
+        "at": "src/renderer/src/store/session.ts:952"
+      }
+    ],
+    "violations30": {
+      "enHasHangul": [
+        {
+          "file": "app/src/components/Settings.tsx",
+          "line": 2133,
+          "args": [
+            "op",
+            "op === '설치' ? 'Install' : op === '삭제' ? 'Removal' : 'Setup'"
+          ],
+          "ko": "op",
+          "en": "op === '설치' ? 'Install' : op === '삭제' ? 'Removal' : 'Setup'"
+        },
+        {
+          "file": "app/src/components/Settings.tsx",
+          "line": 2136,
+          "args": [
+            "op",
+            "op === '설치' ? 'Installing' : op === '삭제' ? 'Removing' : 'Preparing'"
+          ],
+          "ko": "op",
+          "en": "op === '설치' ? 'Installing' : op === '삭제' ? 'Removing' : 'Preparing'"
+        }
+      ],
+      "sameBothSides": [],
+      "moduleScope": [],
+      "argCount": []
+    },
+    "hardcoded30": [
+      {
+        "file": "app/src/api/shim.ts",
+        "line": 102,
+        "kind": "string",
+        "text": "백엔드 미구현 채널"
+      },
+      {
+        "file": "app/src/api/shim.ts",
+        "line": 150,
+        "kind": "string",
+        "text": "백엔드 미구현 채널"
+      },
+      {
+        "file": "app/src/api/shim.ts",
+        "line": 151,
+        "kind": "string",
+        "text": "백엔드 미구현 채널"
+      },
+      {
+        "file": "app/src/api/shim.ts",
+        "line": 168,
+        "kind": "string",
+        "text": "목록이 아닌 응답"
+      },
+      {
+        "file": "app/src/api/shim.ts",
+        "line": 186,
+        "kind": "string",
+        "text": "경로가 아닌 응답"
+      },
+      {
+        "file": "app/src/api/shim.ts",
+        "line": 606,
+        "kind": "string",
+        "text": "Tauri에는 File→OS 경로 동기 해석이 없다"
+      },
+      {
+        "file": "app/src/components/AgentPanel.tsx",
+        "line": 78,
+        "kind": "string",
+        "text": "탐색"
+      },
+      {
+        "file": "app/src/components/AgentPanel.tsx",
+        "line": 79,
+        "kind": "string",
+        "text": "검증"
+      },
+      {
+        "file": "app/src/components/AgentPanel.tsx",
+        "line": 80,
+        "kind": "string",
+        "text": "구현"
+      },
+      {
+        "file": "app/src/components/Chat.tsx",
+        "line": 1107,
+        "kind": "string",
+        "text": " — 이후 대화도 같은 모델로 갑니다."
+      },
+      {
+        "file": "app/src/components/Chat.tsx",
+        "line": 2811,
+        "kind": "string",
+        "text": "주간"
+      },
+      {
+        "file": "app/src/components/Chat.tsx",
+        "line": 3061,
+        "kind": "string",
+        "text": "주간"
+      },
+      {
+        "file": "app/src/components/FileModal.tsx",
+        "line": 189,
+        "kind": "string",
+        "text": "매개 변수"
+      },
+      {
+        "file": "app/src/components/FileModal.tsx",
+        "line": 192,
+        "kind": "string",
+        "text": "지역 변수"
+      },
+      {
+        "file": "app/src/components/FileModal.tsx",
+        "line": 193,
+        "kind": "string",
+        "text": "로컬 변수"
+      },
+      {
+        "file": "app/src/components/FileModal.tsx",
+        "line": 1126,
+        "kind": "string",
+        "text": "객체 타입입니다. 상속·메서드를 가질 수 있고, 담아도 복사되지 않고 원본을 가리킵니다."
+      },
+      {
+        "file": "app/src/components/FileModal.tsx",
+        "line": 1127,
+        "kind": "string",
+        "text": "데이터를 묶는 값 타입입니다. 넘기거나 대입할 때 전체가 복사됩니다."
+      },
+      {
+        "file": "app/src/components/FileModal.tsx",
+        "line": 1128,
+        "kind": "string",
+        "text": "이름을 붙인 값들을 나열한 목록 타입입니다."
+      },
+      {
+        "file": "app/src/components/FileModal.tsx",
+        "line": 1129,
+        "kind": "string",
+        "text": "구현해야 할 메서드들을 정해 둔 약속입니다. 클래스가 이를 구현합니다."
+      },
+      {
+        "file": "app/src/components/FileModal.tsx",
+        "line": 1130,
+        "kind": "string",
+        "text": "관련 코드를 묶는 단위입니다. 경로(`/My.com/Game`)로 구분됩니다."
+      },
+      {
+        "file": "app/src/components/FileModal.tsx",
+        "line": 1131,
+        "kind": "string",
+        "text": "값을 바꿀 수 있는 변수입니다. `set` 으로 새 값을 넣습니다."
+      },
+      {
+        "file": "app/src/components/FileModal.tsx",
+        "line": 1132,
+        "kind": "string",
+        "text": "한 번 정해지면 바뀌지 않는 값(상수)입니다."
+      },
+      {
+        "file": "app/src/components/FileModal.tsx",
+        "line": 1133,
+        "kind": "string",
+        "text": "호출하면 동작을 수행하고 값을 돌려줄 수 있는 함수입니다."
+      },
+      {
+        "file": "app/src/components/FileModal.tsx",
+        "line": 1134,
+        "kind": "string",
+        "text": "심볼에 부가 정보를 다는 `@`속성입니다."
+      },
+      {
+        "file": "app/src/components/FileModal.tsx",
+        "line": 1135,
+        "kind": "string",
+        "text": "타입입니다."
+      }
+    ],
+    "hardcoded262": [
+      {
+        "file": "src/renderer/src/components/AgentPanel.tsx",
+        "line": 77,
+        "kind": "string",
+        "text": "탐색"
+      },
+      {
+        "file": "src/renderer/src/components/AgentPanel.tsx",
+        "line": 78,
+        "kind": "string",
+        "text": "검증"
+      },
+      {
+        "file": "src/renderer/src/components/AgentPanel.tsx",
+        "line": 79,
+        "kind": "string",
+        "text": "구현"
+      },
+      {
+        "file": "src/renderer/src/components/Chat.tsx",
+        "line": 2348,
+        "kind": "string",
+        "text": "주간"
+      },
+      {
+        "file": "src/renderer/src/components/Chat.tsx",
+        "line": 2528,
+        "kind": "string",
+        "text": "주간"
+      },
+      {
+        "file": "src/renderer/src/components/FileModal.tsx",
+        "line": 189,
+        "kind": "string",
+        "text": "매개 변수"
+      },
+      {
+        "file": "src/renderer/src/components/FileModal.tsx",
+        "line": 192,
+        "kind": "string",
+        "text": "지역 변수"
+      },
+      {
+        "file": "src/renderer/src/components/FileModal.tsx",
+        "line": 193,
+        "kind": "string",
+        "text": "로컬 변수"
+      },
+      {
+        "file": "src/renderer/src/components/FileModal.tsx",
+        "line": 1126,
+        "kind": "string",
+        "text": "객체 타입입니다. 상속·메서드를 가질 수 있고, 담아도 복사되지 않고 원본을 가리킵니다."
+      },
+      {
+        "file": "src/renderer/src/components/FileModal.tsx",
+        "line": 1127,
+        "kind": "string",
+        "text": "데이터를 묶는 값 타입입니다. 넘기거나 대입할 때 전체가 복사됩니다."
+      },
+      {
+        "file": "src/renderer/src/components/FileModal.tsx",
+        "line": 1128,
+        "kind": "string",
+        "text": "이름을 붙인 값들을 나열한 목록 타입입니다."
+      },
+      {
+        "file": "src/renderer/src/components/FileModal.tsx",
+        "line": 1129,
+        "kind": "string",
+        "text": "구현해야 할 메서드들을 정해 둔 약속입니다. 클래스가 이를 구현합니다."
+      },
+      {
+        "file": "src/renderer/src/components/FileModal.tsx",
+        "line": 1130,
+        "kind": "string",
+        "text": "관련 코드를 묶는 단위입니다. 경로(`/My.com/Game`)로 구분됩니다."
+      },
+      {
+        "file": "src/renderer/src/components/FileModal.tsx",
+        "line": 1131,
+        "kind": "string",
+        "text": "값을 바꿀 수 있는 변수입니다. `set` 으로 새 값을 넣습니다."
+      },
+      {
+        "file": "src/renderer/src/components/FileModal.tsx",
+        "line": 1132,
+        "kind": "string",
+        "text": "한 번 정해지면 바뀌지 않는 값(상수)입니다."
+      },
+      {
+        "file": "src/renderer/src/components/FileModal.tsx",
+        "line": 1133,
+        "kind": "string",
+        "text": "호출하면 동작을 수행하고 값을 돌려줄 수 있는 함수입니다."
+      },
+      {
+        "file": "src/renderer/src/components/FileModal.tsx",
+        "line": 1134,
+        "kind": "string",
+        "text": "심볼에 부가 정보를 다는 `@`속성입니다."
+      },
+      {
+        "file": "src/renderer/src/components/FileModal.tsx",
+        "line": 1135,
+        "kind": "string",
+        "text": "타입입니다."
+      },
+      {
+        "file": "src/renderer/src/components/Settings.tsx",
+        "line": 79,
+        "kind": "string",
+        "text": "프로필 닉네임 아바타 이름 색 profile nickname avatar name color"
+      },
+      {
+        "file": "src/renderer/src/components/Settings.tsx",
+        "line": 80,
+        "kind": "string",
+        "text": "계정 로그인 구독 기본 한도 openai chatgpt account login subscription default limit"
+      },
+      {
+        "file": "src/renderer/src/components/Settings.tsx",
+        "line": 86,
+        "kind": "string",
+        "text": "엔진 claude code codex cli 버전 업데이트 설치 engine version update install"
+      },
+      {
+        "file": "src/renderer/src/components/Settings.tsx",
+        "line": 87,
+        "kind": "string",
+        "text": "api 키 예산 과금 비용 key budget billing cost"
+      },
+      {
+        "file": "src/renderer/src/components/Settings.tsx",
+        "line": 93,
+        "kind": "string",
+        "text": "mcp 서버 도구 server tool"
+      },
+      {
+        "file": "src/renderer/src/components/Settings.tsx",
+        "line": 94,
+        "kind": "string",
+        "text": "스킬 명령 슬래시 skill command slash"
+      },
+      {
+        "file": "src/renderer/src/components/Settings.tsx",
+        "line": 100,
+        "kind": "string",
+        "text": "화면 유리 투명 아크릴 벽지 비침 배경 glass 알림 토스트 notification display transparent acrylic wallpaper background toast sidebar"
+      }
+    ]
+  }
+}
