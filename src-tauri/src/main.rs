@@ -184,8 +184,12 @@ fn main() {
         //
         // ★확인 크리틱 R1 D2 — 신호에 **한 비트**를 실어 보낸다. 인계를 남겼는지를 그쪽이
         // 알아야 「인자 없는 재실행」의 raise가 남의 인계 잔해를 소비하지 않는다.
-        let handed = ipc::app_meta::open_dir::stash_from_args();
-        win::tray::raise_existing(handed);
+        // ★확인 크리틱 R2 D1 — 두 줄이던 자리를 **인자 없는 한 줄**로 내렸다. R2가
+        // 판정 커밋의 사본에서 `raise_existing(handed)`를 `raise_existing(true)`로
+        // 바꿔 봤더니 174/174이 초록이었다 — 호출부에 상수를 박을 자리가 있으면 어떤
+        // 못도 그것을 못 잡는다. 이제 그 자리가 없다(`stash_and_raise`는 인자를 안 받고,
+        // 자기가 남긴 성패를 그대로 봉투에 싣는다).
+        ipc::app_meta::open_dir::stash_and_raise();
         return;
     };
     // 잠금을 딴 쪽 = 첫 인스턴스다. 자기 명령줄 폴더는 `app:get-initial-dir`가 처리하므로

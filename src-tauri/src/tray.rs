@@ -586,31 +586,55 @@ fn raise_msg() -> u32 {
 /// **인자 없는 재실행**의 raise가 앞선 부팅 경주가 남긴 인계 잔해를 소비해 창이
 /// 엉뚱한 폴더로 끌려갔다(실측 `hijacked=true`). 「인자 없는 두 번째 실행 = 그냥
 /// raise만」은 이 라운드가 지켜야 한다고 적힌 무회귀 항목이다.
-#[cfg(windows)]
 const RAISE_WITH_HANDOFF: usize = 1;
+
+/// **송신부의 판정** — 인계를 남겼을 때만 비트를 세운다.
+///
+/// ★R28i 확인 크리틱 R2 **D1** — 이 값이 `raise_existing` 본문 안의 인라인 `if`였을
+/// 때는 못을 박을 자리가 없었다. 크리틱이 판정 커밋의 사본에서 배선 셋을 하나씩
+/// 되돌려 봤더니 **셋 다 174/174 초록**이었다(= 누가 리팩터로 되돌려도 게이트는
+/// 조용하고 사용자만 폴더를 잃는다). 순수 함수로 내려 [`should_deliver`]와 함께
+/// 왕복을 못으로 잠근다.
+pub(crate) fn raise_wparam(with_handoff: bool) -> usize {
+    if with_handoff {
+        RAISE_WITH_HANDOFF
+    } else {
+        0
+    }
+}
+
+/// **수신부의 판정** — 이 비트가 선 봉투만 인계를 걷는다.
+///
+/// [`raise_wparam`]의 짝이다. 둘이 어긋나면 둘 중 하나다: 폴더를 들고 왔는데 안 걷거나
+/// (N3이 없애려던 「조용히 사라진다」), 인자 없는 재실행이 남의 인계 잔해를 걷는다
+/// (확인 크리틱 R1 D2의 `hijacked=true`). 그래서 못은 **왕복**을 재야 한다.
+pub(crate) fn should_deliver(wparam: usize) -> bool {
+    wparam == RAISE_WITH_HANDOFF
+}
 
 /// **두 번째 인스턴스가 부른다** — 먼저 뜬 같은 홈의 인스턴스에게 "창을 앞으로" 신호.
 /// 등록 메시지(0xC000~0xFFFF)는 브로드캐스트가 UIPI를 통과한다. 이름에 홈 해시가 있으니
 /// 남의 창은 이 값을 모르고, 알아도 우리 subclass만 처리한다.
 ///
-/// `with_handoff` = 이 프로세스가 인계 파일(`.pending-open-dir`)을 남겼는가.
+/// `wparam` = [`raise_wparam`]이 지은 봉투 비트. **`bool`을 안 받는다** — 호출부에
+/// `true`를 박을 자리를 남기지 않으려는 것이다(확인 크리틱 R2 D1의 변이 ①이 정확히
+/// `raise_existing(handed)` → `raise_existing(true)`였다).
 #[cfg(windows)]
-pub fn raise_existing(with_handoff: bool) {
+pub fn raise_existing(wparam: usize) {
     use windows::Win32::Foundation::{LPARAM, WPARAM};
     use windows::Win32::UI::WindowsAndMessaging::{PostMessageW, HWND_BROADCAST};
     let msg = raise_msg();
     if msg == 0 {
         return;
     }
-    let w = WPARAM(if with_handoff { RAISE_WITH_HANDOFF } else { 0 });
     // PostMessage는 큐에 넣고 즉시 돌아온다 — 우리가 바로 죽어도 메시지는 이미 갔다.
     unsafe {
-        let _ = PostMessageW(Some(HWND_BROADCAST), msg, w, LPARAM(0));
+        let _ = PostMessageW(Some(HWND_BROADCAST), msg, WPARAM(wparam), LPARAM(0));
     }
 }
 
 #[cfg(not(windows))]
-pub fn raise_existing(_with_handoff: bool) {}
+pub fn raise_existing(_wparam: usize) {}
 
 /// **첫 인스턴스가 부른다** — 메인 창에 subclass를 얹어 위 메시지를 듣는다.
 /// glass.rs도 같은 hwnd에 subclass를 걸지만 ID가 달라 체인으로 공존한다.
@@ -635,7 +659,8 @@ pub fn arm_raise_listener(app: &AppHandle, win: &tauri::WebviewWindow) {
             if let Some(app) = RAISE_APP.get() {
                 let a = app.clone();
                 // 봉투의 한 비트 — **폴더를 들고 온 신호만** 인계를 걷는다.
-                let with_handoff = w.0 == RAISE_WITH_HANDOFF;
+                // 판정은 [`should_deliver`]에 있다(못이 박힌 자리) — 여기서 다시 비교하지 않는다.
+                let with_handoff = should_deliver(w.0);
                 // 창 조작은 메인 스레드에서 — 지금 여기가 그 스레드지만 wndproc 안에서
                 // 창을 만지면 재진입이 생길 수 있어 큐로 넘긴다.
                 let _ = app.run_on_main_thread(move || {

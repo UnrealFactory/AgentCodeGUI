@@ -241,6 +241,21 @@ pub mod open_dir {
         ccg_store::write_home_file(HANDOFF, &json!({ "path": raw, "at": now_ms() }).to_string()).is_ok()
     }
 
+    /// **두 번째 인스턴스의 착지 전부** — 인계를 남기고, 그 **성패를 그대로** 봉투 비트로
+    /// 실어 보낸다. 반환 = 실제로 보낸 `wparam`(진단·테스트용).
+    ///
+    /// ★확인 크리틱 R2 **D1** — 이 함수가 없을 때 `main.rs`는
+    /// `let handed = stash_from_args(); raise_existing(handed);` 두 줄이었고, 크리틱이
+    /// 그 둘째 줄을 `raise_existing(true)`로 바꾼 사본에서 **174/174이 초록**이었다.
+    /// 인자를 받지 않는 한 줄로 내려 **상수를 박을 자리를 없앤다** — 못으로 잡는 것보다
+    /// 애초에 못 틀리게 만드는 쪽이 낫다. 남은 왕복(비트 ↔ 판정)은
+    /// [`crate::win::tray::raise_wparam`]·[`crate::win::tray::should_deliver`]에 못이 박혀 있다.
+    pub fn stash_and_raise() -> usize {
+        let w = crate::win::tray::raise_wparam(stash_from_args());
+        crate::win::tray::raise_existing(w);
+        w
+    }
+
     /// **렌더러가 듣고 있는가.** `app:get-initial-dir`가 도착한 순간 켜진다.
     ///
     /// 그 호출이 신호인 이유: 렌더러는 하이드레이션이 끝난 뒤에 그것을 묻고
@@ -287,6 +302,17 @@ pub mod open_dir {
             return None;
         }
         take_pending()
+    }
+
+    /// raise 수신 스레드가 **실제로 부르는** 문 — 인자를 안 받는다.
+    ///
+    /// ★확인 크리틱 R2 **D1** — `deliver_pending` 안이
+    /// `pending_for_delivery(renderer_ready())`였을 때, 크리틱이 그 인자를 `true`로
+    /// 바꾼 사본에서 **174/174이 초록**이었다(= 부팅 창의 침묵 D2(a)가 통째로 재개통되는데
+    /// 게이트는 조용하다). `stash_and_raise`와 같은 처방이다: 호출부에서 상수를 박을
+    /// 자리를 없애고, 판정은 못이 박힌 [`pending_for_delivery`] 한 곳에만 둔다.
+    pub(super) fn pending_now() -> Option<String> {
+        pending_for_delivery(renderer_ready())
     }
 
     /// 콜드 부팅이 부른다 — 남아 있던 **잔해만** 턴다(자기 명령줄 폴더는
@@ -400,7 +426,7 @@ pub mod open_dir {
     pub fn deliver_pending(app: &AppHandle) {
         let a = app.clone();
         let _ = std::thread::Builder::new().name("ccg-opendir".into()).spawn(move || {
-            if let Some(raw) = pending_for_delivery(renderer_ready()) {
+            if let Some(raw) = pending_now() {
                 let _ = request(&a, &raw);
             }
         });
@@ -568,6 +594,49 @@ pub mod open_dir {
             // 듣기 시작하면 그때 걷힌다(= 늦게라도 착지한다)
             assert_eq!(pending_for_delivery(true).as_deref(), Some("C:\\Code"));
             assert!(!h.dir.join(HANDOFF).exists());
+        }
+
+        /// ★확인 크리틱 R2 **D1** — 위 못은 `pending_for_delivery`를 **직접** 불렀다.
+        /// 그래서 `deliver_pending`이 그 인자를 `true`로 박아 버려도(= 부팅 창의 침묵
+        /// 재개통) 174/174이 초록이었다. 이 못은 **배선이 실제로 부르는 문**([`pending_now`])을
+        /// 지난다 — 그 안에서 `renderer_ready()`를 안 보면 여기서 붉어진다.
+        ///
+        /// 단위 테스트 프로세스에서 `RENDERER_READY`는 `false`다: 그 값을 켜는 자리는
+        /// `initial_dir(app)` 하나뿐이고 그건 `AppHandle`을 요구해 여기서 못 부른다.
+        /// 그러니 「신선한 인계가 디스크에 있는데도 `pending_now()`가 `None`」이 이 못의
+        /// 단정이고, 인자를 `true`로 박은 변이는 `Some`을 돌려주며 즉시 붉어진다.
+        #[test]
+        fn the_wire_that_delivery_actually_calls_still_waits_for_a_listener() {
+            let h = ccg_store::testhome::take("opendir-pending-now");
+            ccg_store::write_home_file(HANDOFF, &json!({ "path": "C:\\Code", "at": now_ms() }).to_string()).unwrap();
+
+            assert_eq!(
+                pending_now(),
+                None,
+                "★ 배선이 렌더러를 안 보고 인계를 걷었다 — 부팅 창의 폴더가 다시 조용히 사라진다"
+            );
+            assert!(h.dir.join(HANDOFF).exists(), "★ 안 걷었다면서 파일을 지웠다");
+        }
+
+        /// ★확인 크리틱 R2 **D1** — 봉투 한 비트의 **왕복**.
+        ///
+        /// 송신부(`raise_wparam`)와 수신부(`should_deliver`)가 어긋나면 둘 중 하나다:
+        /// 폴더를 들고 왔는데 안 걷거나(N3이 없애려던 「조용히 사라진다」), 인자 없는
+        /// 재실행이 남의 인계 잔해를 걷는다(R1 D2의 `hijacked=true`). 그래서 한쪽 값이
+        /// 아니라 **왕복**을 잰다.
+        #[test]
+        fn the_handoff_bit_survives_the_round_trip() {
+            use crate::win::tray::{raise_wparam, should_deliver};
+
+            // 인계를 남긴 재실행 → 걷는다
+            assert!(should_deliver(raise_wparam(true)), "★ 폴더를 들고 왔는데 안 걷는다");
+            // 인자 없는 재실행 → 안 걷는다(잔해 납치 방지)
+            assert!(!should_deliver(raise_wparam(false)), "★ 인자 없는 재실행이 인계를 걷는다");
+            // 두 봉투는 실제로 **다른 값**이어야 한다 — 같으면 위 둘 중 하나가 거짓이 된다
+            assert_ne!(raise_wparam(true), raise_wparam(false));
+            // 우리가 안 지은 봉투(다른 앱·옛 버전의 브로드캐스트)도 걷지 않는다
+            assert!(!should_deliver(0), "★ 빈 봉투가 인계를 걷는다");
+            assert!(!should_deliver(2), "★ 모르는 봉투가 인계를 걷는다");
         }
 
         /// ★확인 크리틱 R1 **D4** — 공백만 있는 인계도 **사유를 갖는다**.
