@@ -315,6 +315,55 @@ pub mod open_dir {
         pending_for_delivery(renderer_ready())
     }
 
+    /// 콜드 런치 인자를 **한 번만** 쓴다 — 이미 걷었으면 두 번째부터는 `None`.
+    static COLD_TAKEN: AtomicBool = AtomicBool::new(false);
+
+    /// 기동 인자의 폴더 한 개. **「한 번 쓰고 버린다」가 계약이다** —
+    /// `src/shared/protocol.ts`의 `app:get-initial-dir` 주석이 그렇게 적혀 있고
+    /// (*"folder passed via … at launch (**consumed once**)"*), 2.6.2도 그렇게 한다
+    /// (`src/main/index.ts`가 `pendingOpenDir`을 읽고 `null`로 지운다).
+    ///
+    /// ★확인 크리틱 R2 **D2** — 3.0은 부를 때마다 `argv`를 **다시 읽었다**(원시 호출
+    /// 3회에 세 번 다 같은 폴더). 대조군도 같아 이월 항목이었지만, R28i가 그 자리에
+    /// **실패 카드**를 더하면서 사용자가 겪는 모양이 생겼다: 못 여는 폴더로 기동해
+    /// 카드를 닫아도 **조회가 한 번 더 오면 카드가 되돌아온다**.
+    ///
+    /// 그 조회는 드물지 않다 — `crash.rs::reload_all()`이 렌더러 복구 때 **모든 창의
+    /// 문서를 다시 세우고**, 그러면 `App`이 다시 마운트되어 이 채널을 또 부른다.
+    /// 그때 기동 폴더가 **다시** 적용되면 사용자가 그 사이에 옮겨 놓은 폴더를 덮는다
+    /// (대화가 있으면 「폴더를 바꿀까요」 카드가 난데없이 뜨고, 턴이 도는 중이면 조용히
+    /// 버려진다). 그래서 **계약대로 한 번만** 쓴다.
+    ///
+    /// 인계(`take_pending`)는 이 문에 안 걸린다 — 그쪽은 기동 인자가 아니라
+    /// **사용자가 방금 한 행동**이라 올 때마다 새로 처리하는 것이 맞다.
+    fn take_cold_arg() -> Option<String> {
+        take_once(&COLD_TAKEN, cold_source)
+    }
+
+    /// 기동 인자에서 고른 후보 한 개(소비 규칙 **없이**). 「어느 인자가 폴더인가」의
+    /// 잣대는 2.6.2 `openedDirFromArgv` 자리를 그대로 쓴다.
+    fn cold_source() -> Option<String> {
+        match crate::ipc::parity::misc::initial_dir() {
+            Value::String(s) => Some(s),
+            // 폴더인 인자가 하나도 없었다 — 사유를 말하려면 무엇이 왔는지가 남아야 한다
+            _ => arg_candidate(),
+        }
+    }
+
+    /// [`take_cold_arg`]의 몸통 — **「한 번만」이라는 규칙 자체**다. 깃발과 원천을 주입받는
+    /// 이유는 하나뿐이다: 못을 박을 수 있어야 하기 때문이다.
+    ///
+    /// 초판은 이 갈래 없이 `take_cold_arg()`를 곧장 못으로 잡으려 했는데 **장식이었다** —
+    /// 테스트 러너의 argv에는 폴더 인자가 없어 첫 호출부터 `None`이라, 소비 규칙을
+    /// 통째로 걷어낸 변이에서도 단정이 그대로 초록이었다(내가 변이로 확인했다).
+    /// 확인 크리틱 R2 D1이 지적한 것과 **정확히 같은 종류의 헛못**이라 다시 만들었다.
+    fn take_once(flag: &AtomicBool, src: impl FnOnce() -> Option<String>) -> Option<String> {
+        if flag.swap(true, Ordering::SeqCst) {
+            return None;
+        }
+        src()
+    }
+
     /// 콜드 부팅이 부른다 — 남아 있던 **잔해만** 턴다(자기 명령줄 폴더는
     /// `app:get-initial-dir`가 처리하므로 첫 인스턴스는 인계를 받을 일이 없다).
     ///
@@ -383,12 +432,7 @@ pub mod open_dir {
         RENDERER_READY.store(true, Ordering::SeqCst);
 
         let mut answer = Value::Null;
-        let cold = match crate::ipc::parity::misc::initial_dir() {
-            Value::String(s) => Some(s),
-            // 폴더인 인자가 하나도 없었다 — 사유를 말하려면 무엇이 왔는지가 남아야 한다
-            _ => arg_candidate(),
-        };
-        if let Some(raw) = cold {
+        if let Some(raw) = take_cold_arg() {
             answer = landing(app, &raw);
         }
         if let Some(raw) = take_pending() {
@@ -616,6 +660,36 @@ pub mod open_dir {
                 "★ 배선이 렌더러를 안 보고 인계를 걷었다 — 부팅 창의 폴더가 다시 조용히 사라진다"
             );
             assert!(h.dir.join(HANDOFF).exists(), "★ 안 걷었다면서 파일을 지웠다");
+        }
+
+        /// ★확인 크리틱 R2 **D2** — 콜드 인자는 **한 번 쓰고 버린다**.
+        ///
+        /// 계약면이 그렇게 적어 뒀고(`app:get-initial-dir` — *consumed once*) 2.6.2도
+        /// 그렇게 한다. 3.0은 부를 때마다 argv를 다시 읽어, 못 여는 폴더로 기동해
+        /// **카드를 닫아도 조회가 한 번 더 오면 카드가 되돌아왔다**(크래시 복구의
+        /// `reload_all()`이 그 조회를 만든다).
+        ///
+        /// 이 못은 규칙의 몸통([`take_once`])을 지난다. **원천을 주입하는 이유**가
+        /// 여기 있다: 테스트 러너의 argv에는 폴더 인자가 없어서, 진짜 argv를 쓰면 첫
+        /// 호출부터 `None`이라 소비 규칙을 걷어낸 변이에서도 단정이 초록이다(초판이
+        /// 그랬고 내가 변이로 확인했다). 원천이 **언제나 `Some`**이어야 「두 번째부터
+        /// `None`」이 의미를 갖는다.
+        #[test]
+        fn the_launch_folder_is_consumed_once() {
+            let flag = AtomicBool::new(false);
+            let src = || Some("C:\\Proj".to_string());
+
+            assert_eq!(take_once(&flag, src).as_deref(), Some("C:\\Proj"), "첫 호출이 인자를 못 들고 왔다");
+            assert_eq!(
+                take_once(&flag, src),
+                None,
+                "★ 기동 인자가 두 번 쓰였다 — 닫은 카드가 되돌아오고, 사용자가 옮겨 놓은 폴더를 덮는다"
+            );
+            assert_eq!(take_once(&flag, src), None, "★ 세 번째도 살아 있다");
+
+            // 깃발은 **각자의 것**이다 — 다른 채팅/다른 축의 소비가 서로를 죽이면 안 된다.
+            let other = AtomicBool::new(false);
+            assert_eq!(take_once(&other, src).as_deref(), Some("C:\\Proj"), "★ 깃발이 공유되고 있다");
         }
 
         /// ★확인 크리틱 R2 **D1** — 봉투 한 비트의 **왕복**.
