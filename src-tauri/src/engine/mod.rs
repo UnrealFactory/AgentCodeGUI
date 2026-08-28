@@ -197,9 +197,16 @@ fn reload_plan(
     // R28k는 여기가 `queued.is_empty() && hold.is_none()`이었다. 그래서 큐에 봉투 한 줄
     // 뿐이고 대기표가 없는 채팅은, 필터가 그 한 줄을 버린 **바로 그 순간** "되살릴 게
     // 없다"가 되어 `Op::Reload`를 아예 안 불렀다. 재경화(`hub::persist_queue`)는 재장전에
-    // 매달려 있으므로 디스크의 봉투가 그대로 남고, 사이드바가 읽는 부팅 행
-    // (`status::truth_from_chat_file`)은 **파일의 `queue` 길이**를 세므로 「1」이 계속
-    // 붙는다 — 채팅을 열면 「예약된 메시지 1」 밑에 `<<<TALK-DATA …>>>` 전문이 뜬다.
+    // 매달려 있으므로 디스크의 봉투가 그대로 남고, **채팅을 열면** 예약 패널
+    // (`Chat.tsx`의 「예약된 메시지」)에 `<<<TALK-DATA …>>>` 전문이 그대로 뜬다 —
+    // 그 패널은 `App.tsx`가 채팅의 `queue` 배열을 `setQueue`로 세운 것이라 파일이
+    // 되굳기 전까지 봉투를 계속 싣는다.
+    //
+    // ★사이드바에는 안 보인다(R28L 확인 크리틱 R1 F1이 정정). `status.json`의
+    // `queued` 칸은 계약면에만 있는 파생값이고 `app/src` 어디에서도 안 읽는다
+    // (`rg "\.queued\b" app/src` = 0건 · `Sidebar.tsx`에는 그 낱말이 역사상 없었다).
+    // 앞 라운드가 「사이드바 배지 「1」」이라 적은 것은 재보지 않고 옮긴 문장이다.
+    //
     // 나가지는 않지만(필터가 매 부팅 다시 걸린다) **화면 앞에서 「통째로 들어냈다」가
     // 거짓이 된다.** 이 모양은 흔하다: 상대가 작업 중이면 봉투는 큐에 앉으므로, 그 턴
     // 전에 앱을 닫으면 정확히 「봉투 한 줄 · 대기표 없음」이다.
@@ -747,13 +754,13 @@ mod reload_plan_tests {
     /// 재경화(`hub::persist_queue` → 파일의 `queue` 되쓰기)는 `Op::Reload`에 매달려 있다.
     /// R28k의 조건(`queued.is_empty() && hold.is_none()` → 건너뛰기)은 **필터가 방금 버린
     /// 것을 못 본 채** 판정했고, 그래서 큐에 `origin:"talk"` 한 줄뿐이고 대기표가 없는
-    /// 채팅은 재장전 자체를 건너뛰어 디스크의 봉투가 영구히 남았다. 사이드바 배지는
-    /// **파일의 `queue` 길이**를 세므로(`status::truth_from_chat_file`) 「1」이 계속 붙고,
-    /// 채팅을 열면 예약 패널에 `TALK-DATA` 전문이 뜬다.
+    /// 채팅은 재장전 자체를 건너뛰어 디스크의 봉투가 영구히 남았다. 그 봉투가 **보이는
+    /// 자리는 채팅 안의 예약 패널 하나**다(`Chat.tsx`의 「예약된 메시지」 ← `App.tsx`가
+    /// 채팅의 `queue` 배열을 `setQueue`로 세운다). 사이드바에는 안 보인다 —
+    /// `status.json`의 `queued`는 `app/src`가 한 번도 안 읽는 계약면 파생값이다
+    /// (R28L 확인 크리틱 R1 F1이 앞 라운드의 「사이드바 배지」 문장을 정정했다).
     ///
-    /// **대조군을 못 안에 둔다** — 같은 씨앗에 R28k의 옛 술어를 그대로 적용해, 그 술어가
-    /// 이 채팅을 실제로 건너뛰었다는 것을 함께 잰다. 처방을 되돌리면 아래 첫 단언이
-    /// 붉어지고, 대조군 단언은 이 못이 무엇을 재고 있는지를 말한다.
+    /// 처방을 되돌리면 아래 `.expect(…)`가 붉어진다 — 그것이 이 못의 자물쇠다.
     #[test]
     fn a_chat_left_with_only_an_envelope_still_gets_rehardened() {
         let h = crate::engine::testhome::take("lone-envelope");
@@ -778,7 +785,7 @@ mod reload_plan_tests {
         let ids: Vec<String> =
             ["c-lone", "c-mixed", "c-plain", "c-empty"].iter().map(|s| s.to_string()).collect();
 
-        // 부팅 행이 「1」을 세는 그 자리 — 사이드바 배지의 출처다.
+        // 재장전 후보를 고르는 자리 — 여기에 들어와야 필터가 봉투에 입이라도 댄다.
         let cands = ccg_store::status::reload_candidates(&ids);
         println!("[F1] 재장전 후보 = {cands:?}");
         assert!(cands.contains(&"c-lone".to_string()), "봉투 한 줄짜리가 후보에서 빠졌다 — 씨앗이 잘못됐다");
@@ -791,9 +798,11 @@ mod reload_plan_tests {
         assert!(lq.is_empty(), "★ 봉투가 큐로 되살아났다");
         assert!(lh.is_none());
 
-        // 대조군 — R28k의 옛 술어(`queued.is_empty() && hold.is_none()`)는 이 채팅을 건너뛴다.
-        let r28k_would_skip = lq.is_empty() && lh.is_none();
-        assert!(r28k_would_skip, "★ 대조군이 재현되지 않았다 — 이 못은 아무것도 안 재고 있다");
+        // ↑ 위 두 단언이 곧 「R28k의 옛 술어(`queued.is_empty() && hold.is_none()`)라면
+        // 여기서 건너뛴다」는 뜻이다. R28L 초판은 그 둘을 `&&`로 다시 묶어 세 번째 단언을
+        // 뒀는데, 앞의 둘이 이미 보장하므로 **독립적으로 붉어질 수 없었다** — 확인 크리틱
+        // R1의 관찰대로 걷어낸다. 이 못의 진짜 자물쇠는 위의 `.expect(…)`이고,
+        // `&& dropped == 0`을 되돌린 돌연변이에서 실제로 붉어지는 것을 확인했다.
 
         // 회귀 — 이미 닫혀 있던 모양은 그대로여야 한다.
         let (mq, _) = super::reload_plan("c-mixed").expect("섞인 채팅이 재장전을 건너뛴다");
