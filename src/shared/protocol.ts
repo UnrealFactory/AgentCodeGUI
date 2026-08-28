@@ -506,7 +506,6 @@ export type EngineEvent =
         soonestReset: number | null // 옮겨간 계정이 다음에 초기화되는 unix 초(모르면 null)
         revertTo: number
       }
-      talk?: TalkSent
     }
   | { type: 'error'; runId: string; message: string }
 
@@ -1343,14 +1342,10 @@ export const IPC = {
   chatVerdict: 'chat:verdict', // 거부/큐잉 사유
   chatStatus: 'chat:status', // ★ 전 채팅 경량 상태 REPLACE (§4.3)
   chatWindows: 'chat:windows', // 창 자리 목록 REPLACE
-  chatFlushReq: 'chat:flush-req', // 창 닫기 전 마지막 저장 요청
-  // ── 대화 연결 (4) — M10. **`talk:*`가 아니다**: 그 이름은 1.x의 은퇴한 "채팅 모드"
-  //    블롭(`talkGet`/`talkSave`, 위쪽)이 이미 쓰고 있어 재사용하면 옛 렌더러의
-  //    호출이 새 라우터로 떨어진다.
-  crosstalkConfig: 'crosstalk:config', // 설정 조회 (기본값 = 꺼짐)
-  crosstalkSet: 'crosstalk:set', // 부분 갱신 {enabled?, board?, on?, maxHops?, …}
-  crosstalkStop: 'crosstalk:stop', // ★ 긴급 정지 — 도는 연쇄 폐기 + enabled=false
-  crosstalkState: 'crosstalk:state' // main → 렌더러: 설정 전문 REPLACE
+  chatFlushReq: 'chat:flush-req' // 창 닫기 전 마지막 저장 요청
+  // ★R28k — 대화 연결(M10)의 `crosstalk:*` 넷이 여기 있었다. 사용자 결정으로 기능을
+  //   전면 제거하면서 함께 걷었다(아래 타입 블록도 같이). `talkGet`/`talkSave`는 **남는다**
+  //   — 그 둘은 1.x의 은퇴한 "채팅 모드" 블롭이고 M10과 무관한 파리티 항목이다.
 } as const
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -1508,111 +1503,18 @@ export interface Board {
   updatedAt?: number
 }
 
-/* ── M10 대화 연결(세션 간 소통) ───────────────────────────────────────────
- * 근거 문서: docs/design/m10-talk.md.
+/* ── (제거됨) M10 대화 연결 ─────────────────────────────────────────────
+ * 2026-08-26 사용자 결정으로 3.0에서 **전면 제거**. 여기 있던 `TalkResult`·`TalkSent`·
+ * `TalkConfig`·`CROSSTALK` 넷과 `crosstalk:*` 채널 넷, 그리고 notice 이벤트의
+ * `talk?: TalkSent` 필드를 함께 걷었다. 소비처는 제거 시점에 0이었다.
  *
- * 도달 범위는 **보드 하나**다: 같은 보드의 보이는 자리들끼리만 말을 걸 수 있고,
- * 그 보드의 옵트인이 켜져 있어야 한다. 주소는 자리 번호(사용자가 화면에서 보는 그
- * 번호)이고, 발신 문법은 어시스턴트 답변 마지막의 한 줄 `@talk[자리] 본문`이다.
+ * 사유(요약): 안전은 닫혔으나(실 CLI 공격 26표본 0뚫림) 기능이 모델 재량에 좌우돼
+ * 정당한 왕복 완성률이 같은 exe·같은 문면으로 18~93%를 오갔고, 제품 기본값 팔에서
+ * 평범한 인사에 앱의 고정 거절 문장이 3/11로 붙었다. 다섯 라운드의 실측은
+ * docs/m10-report-*.md와 docs/design/m10-talk.md에 철회 헤더와 함께 남아 있다.
  *
- * 이 기능은 2.6.2에서 만들었다가 **사용자 요청으로 롤백된 적이 있다**("자동으로
- * 대화하는 게 위험하다"). 그래서 타입에도 상한이 드러난다 — `hop`/`maxHops`는
- * 장식이 아니라 UI가 "지금 몇 번째 왕복인가"를 그려야 하는 값이다. */
-export type TalkResult =
-  | 'delivered' // 상대가 유휴 — 그 자리에서 턴이 시작된다
-  | 'queued' // 상대가 작업 중 — 그 턴이 끝나면 나간다
-  | 'rejected' // 상대 런타임이 지금 받을 수 없다(폴더·계정 문제)
-  | 'off' // 대화 연결이 꺼져 있다 (기본값)
-  | 'no_board' // 대화 연결이 켜진 보드에 이 대화가 없다
-  | 'no_chain' // 사람이 시작한 턴이 아니다 — 자율 발신은 출발점이 될 수 없다
-  | 'no_target' // 그런 자리 없음
-  | 'ambiguous' // 같은 제목의 자리가 여럿 — 자리 번호로 다시
-  | 'self' // 자기 자신
-  | 'hop_cap' // 세션 간 전달 상한
-  | 'msg_cap' // 이 연쇄의 총 메시지 상한
-  | 'fanout_cap' // 한 턴의 수신자 수 상한
-  | 'rate_limited' // 같은 상대에게 너무 잦은 발신
-  | 'duplicate' // 같은 내용 반복
-  | 'stopped' // 긴급 정지
-  // ★R3 — 봉투를 받아 도는 턴은 **보낸 세션에게만** 회신한다(중계는 사람이 지시해야 한다).
-  | 'reply_only'
-  // ★R3 — 봉투 턴에 권한 하한을 못 걸어 넣지 않았다(fail-closed). 낮추지 못한 채로는 안 간다.
-  | 'picker_unavailable'
-
-/** `EngineEvent{type:'notice'}.talk` — 발신자 스레드에 남는 한 줄의 구조 본문.
- *
- *  ★M10 R2 — `to`/`target`/`body`는 R1에서 **모든 거절에 null**이었다(계약 드리프트).
- *  대상이 이미 확정된 거절(`hop_cap`·`rate_limited`…)은 이제 상대를 싣고, `target`에는
- *  해석된 제목이 아니라 **모델이 적은 원문**이 들어간다(아래 주석 그대로). */
-export interface TalkSent {
-  dir: 'out'
-  from: string // 발신 chatId
-  to: string | null // 수신 chatId (대상 확정 실패면 null)
-  target?: string // 모델이 적은 원문 대상(`2` · 제목 · `*`)
-  toSlot?: number | null // 수신자의 자리 번호(1-based)
-  toName?: string | null
-  body: string | null
-  result: TalkResult
-  hop?: number // 이 메시지가 몇 번째 전달인가 (사람의 지시 = 0)
-  maxHops?: number
-  chainId?: string // 같은 사람 지시에서 뻗어 나온 메시지들의 묶음
-  /** ★R2 C1 — 본문에 사용자·시스템 사칭 문구가 있어 봉투에 경고를 붙였다. */
-  spoof?: boolean
-  /** ★R2 C1 — 이 배달에 걸린 2차 벽. `'read_only'`(그 턴만 계획 모드) ·
-   *  `'mode_downgraded'`(자동승인 → 승인 필수). **실제로 걸린 것만** 이름을 얻는다
-   *  (★R3 D4 — R2의 `guard`는 "시도했다"는 뜻이라 걸렸는지를 말하지 않았다). */
-  guard?: string | null
-  /** ★R3 C1 — 이 봉투 턴이 **실제로 돌 모드**(`picker.mode`와 같은 어휘).
-   *  `guard`가 "무엇을 했나"라면 이 값은 "결과가 무엇인가"다 — 봉투 문면·발신자 통지·
-   *  큐 항목이 전부 이 값을 말한다. */
-  turnMode?: 'plan' | 'normal' | 'acceptEdits' | 'auto' | 'bypass'
-  /** ★R3 D2 — 긴급 정지가 거둬들였는데 **보낸 세션을 모른다**(장부에도 없는 옛 큐 항목).
-   *  이 줄은 수신자 스레드에 서고 `from`은 수신자다 — UI가 발신 기록으로 묶으면 안 된다. */
-  orphan?: boolean
-}
-
-/** `crosstalk:config` / `crosstalk:set` / `crosstalk:state`의 본문. 파일: `talk-config.json`. */
-export interface TalkConfig {
-  version: 1
-  enabled: boolean // ★ 기본 false. 긴급 정지가 이 값을 false로 되돌린다
-  boards: Record<string, true> // 옵트인한 보드만 키가 있다(끄면 키가 사라진다)
-  maxHops: number // 기본 4 · 실효 최대 12
-  maxMsgs: number // 기본 12 — 한 연쇄가 태울 수 있는 총 메시지 · 실효 최대 24
-  maxFanout: number // 기본 3 — 한 턴이 동시에 깨우는 세션 수 · 실효 최대 5
-  /** ★R2 D4 — **긴급 정지가 남긴 표식**(epoch 초). 디스크에서 정지와 그냥 꺼짐은 둘 다
-   *  `enabled:false`지만 사용자에게 할 말이 정반대다. 다시 켜면 null로 지워진다. */
-  stoppedAt?: number | null
-  /** ★R3 C1 — **봉투 턴의 권한 하한.** 기본 `'readonly'` = 봉투가 만든 턴 한 건만
-   *  계획 모드로 돈다(파일 수정·명령 실행의 수단이 그 턴에 아예 없다 — 사용자의
-   *  allowlist도 무력하다). `'ask'` = R2 동작(자동승인 3종만 승인 필수로 강등). */
-  injectPolicy?: 'readonly' | 'ask'
-  /** ★R3 — 켤 때 뜨는 **1회 고지 카드**를 읽고 눌렀다(epoch 초). 없으면 아직 안 봤다. */
-  noticeAckAt?: number | null
-  /** `crosstalk:stop`의 응답에만 실린다 — **큐에서 실제로 뽑아낸 봉투 수**(R2 C3). */
-  purged?: number
-  /** ★R3 C2 — 정지가 **이미 CLI에 들어가 도는 봉투 턴**에 중단을 보낸 수. R2는 이걸
-   *  못 해 놓고 알약이 「정지했어요」라고만 말했다(크리틱 D3 — 그 턴은 끝까지 갔다). */
-  interrupted?: number
-  /** ★R3 C2 — 도는 봉투 턴인데 **중단 명령이 안 받아들여진** 수. 0이 아니면 알약이
-   *  「M개는 끝까지 갑니다」라고 말한다 — 못 멈춘 것을 멈췄다고 하지 않는다. */
-  unstoppable?: number
-  /** ★R4 D2 — 이 숫자들이 **보낸 값이 아니라 잰 값**이다.
-   *
-   *  소프트 중단은 요청이라 보낸 순간에는 결과를 모른다. `crosstalk:stop`의 응답은
-   *  「보냈다」까지만 말하고(그때 `interrupted` = 보낸 수), 셸이 몇 초 뒤 다시 재서
-   *  `crosstalk:state`로 한 번 더 싣는다 — 그 payload에만 이 표식이 붙고,
-   *  그때의 `interrupted`는 **실제로 멎은 수**, `unstoppable`은 **아직 도는 수**다.
-   *  R3은 이 구분이 없어 「도는 턴 1개 중단」이 「보냈다」의 다른 말이었다(크리틱 D2). */
-  stopVerdict?: boolean
-}
-
-/** 긴급 정지 상수 — 렌더러가 이 값으로 채널을 부른다(자유 문자열 금지). */
-export const CROSSTALK = {
-  config: 'crosstalk:config',
-  set: 'crosstalk:set',
-  stop: 'crosstalk:stop',
-  state: 'crosstalk:state'
-} as const
+ * ★혼동 주의: 위쪽 `talkGet`/`talkSave`는 **1.x의 은퇴한 "채팅 모드" 블롭**이고
+ * M10과 무관한 파리티 항목이다 — 그 둘은 살아 있다. */
 
 /** 마커 채팅도 항상 갖는 경량 상태 — 스냅샷이 아니다(§4.3).
  *  파일은 `chats-v3/status.json` **하나**이고 쓰기 주인은 **Rust**다(렌더러는 읽기만). */

@@ -279,14 +279,11 @@ pub mod ch {
     /// 셸 내부 진단 — 계약면(protocol.ts)에 없다. 하네스가 런타임 회계를 읽는다.
     pub const ENGINE_DEBUG: &str = "engine:debug";
 
-    // ── M10 대화 연결(세션 간 소통) ─────────────────────────────────────────
-    // **`talk:*`를 쓰지 않는다**: 위 `TALK_GET`/`TALK_SAVE`가 1.x의 은퇴한 "채팅 모드"
-    // 블롭이고, 그 이름을 재사용하면 옛 렌더러의 호출이 새 라우터로 떨어진다.
-    pub const CROSSTALK_CONFIG: &str = "crosstalk:config";
-    pub const CROSSTALK_SET: &str = "crosstalk:set";
-    pub const CROSSTALK_STOP: &str = "crosstalk:stop";
-    /// 브로드캐스트 — 설정이 바뀌었다(긴급 정지 포함). 페이로드 = 설정 전문.
-    pub const CROSSTALK_STATE: &str = "crosstalk:state";
+    // ── (제거됨) M10 대화 연결 ───────────────────────────────────────────────
+    // `CROSSTALK_CONFIG`·`_SET`·`_STOP`·`_STATE` 넷이 여기 있었다. 2026-08-26 사용자
+    // 결정으로 기능을 전면 제거하면서 계약면(`src/shared/protocol.ts`)과 함께 걷었다
+    // — 남겨 두면 `never used` 경고 넷이 계속 뜨고, 다음 사람이 「배선만 빠진 채널」로
+    // 오해한다. ★위 `TALK_GET`/`TALK_SAVE`는 1.x의 은퇴한 "채팅 모드" 블롭이라 **남는다**.
 
     // ── 과도기 별칭: 2.6.2 실행 표면(§6.2) ───────────────────────────────────
     pub const CLAUDE_RUN: &str = "claude:run";
