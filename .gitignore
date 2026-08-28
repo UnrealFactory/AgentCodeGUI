@@ -36,6 +36,12 @@ promo/
 .devhome/
 .dev-home/
 .bench-home*/
+# ★크리틱·PoC가 레포 안에 만든 격리 홈. 2026-08-26에 10MB짜리
+# `.crit-home-m10r6b-r28h1halt-off/`가 루트에 남아 있었고 그 안에 `accounts.json`이
+# 있었다(합성 계정뿐이라 유출은 없었다). 이 줄이 없으면 `git add -A` 한 번에 들어간다 —
+# 홈은 %TEMP%에 만드는 것이 규약이지만, 레포 안에 만들더라도 커밋은 막는다.
+.crit-home*/
+.ccg-home*/
 
 # A/B 화면 캡처 — PNG 바이너리는 커밋하지 않는다(수백 장·수십 MB, 매 실행 재생성).
 # 단 report.json(도달 성공/실패 기록)은 파리티 판정의 근거라 커밋 대상.
