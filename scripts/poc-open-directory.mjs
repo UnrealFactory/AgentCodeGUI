@@ -32,7 +32,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
 import { spawn } from 'node:child_process'
-import { connectMainPage, killTree, sleep, REPO, resolveTauriExe } from '../bench/lib.mjs'
+import { connectMainPage, killTree, sleep, REPO, resolveTauriExe, quietHome } from '../bench/lib.mjs'
 
 const args = process.argv.slice(2)
 const EXE = resolveTauriExe((args.find((a) => a.startsWith('--exe=')) ?? '').split('=')[1])
@@ -63,6 +63,9 @@ const GONE = path.join(HOME, 'no-such-folder-4b1c')
 function seed() {
   rmrf(HOME)
   for (const d of [HOME, PROJ_A, PROJ_B]) fs.mkdirSync(d, { recursive: true })
+  // ★부팅 엔진 자동 설치를 끈다 — 안 끄면 이 홈 하나가 CLI ~630MB를 내려받는다
+  //   (R28j UPDATER 확인 크리틱 R2: 주행 16개가 ~10GB를 받아 C: 여유가 0이 됐다).
+  quietHome(HOME)
   fs.writeFileSync(path.join(PROJ_A, 'a.txt'), 'a')
   fs.writeFileSync(path.join(PROJ_B, 'b.txt'), 'b')
   fs.writeFileSync(path.join(HOME, 'profile.json'), JSON.stringify({ nickname: 'poc' }))

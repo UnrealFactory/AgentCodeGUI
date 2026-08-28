@@ -350,6 +350,29 @@ export function killTree(pid) {
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
+/**
+ * 격리 홈을 **조용하게** 만든다 — 부팅 엔진 자동 설치를 끈다.
+ *
+ * ★왜 이게 공용 헬퍼여야 하나(R28j UPDATER 확인 크리틱 R2의 운영 보고):
+ * 새 `CCG_HOME`은 기본값이 「부팅 때 엔진 CLI 자동 설치 on」이라 홈 하나당 **~630MB**를
+ * 내려받는다. 그 크리틱의 주행 16개가 그렇게 **~10GB**를 받았고, 같은 라운드에서
+ * C: 여유가 0이 돼 측정이 흔들렸다(R1도 같은 자리에서 ENOSPC를 만났다).
+ *
+ * `bench/fixture.mjs`는 이미 이 파일을 심고 있었다 — 문제는 **손으로 홈을 만드는
+ * 하네스들**이 그 한 줄을 저마다 빠뜨린다는 것이다. 그래서 모두가 이미 import하는
+ * `lib.mjs`에 둔다.
+ *
+ * 측정에 미치는 영향은 없다: 이 플래그가 끄는 것은 **부팅 시 자동 내려받기**뿐이고,
+ * 하네스가 쓰는 CLI는 `--fakecli`나 `engines/` 정션으로 따로 준다.
+ *
+ * @param {string} homeDir 격리 홈 경로(없으면 만든다)
+ */
+export function quietHome(homeDir) {
+  fs.mkdirSync(homeDir, { recursive: true })
+  fs.writeFileSync(path.join(homeDir, 'engine-auto-update.json'), JSON.stringify({ enabled: false }))
+  return homeDir
+}
+
 // 짝수 길이에서 **정수로 반올림하지 않는다**(R4 크리틱 §3.3). `Math.round`를 쓰면 참
 // 중앙값 58.5가 `59`로 찍혀 절대 게이트(`medianAvgFps >= 59.0`)를 반올림으로 통과한다.
 // 12시행·6쌍처럼 이 프로젝트의 대표 표본은 대부분 짝수라 상시로 걸리던 자리다.
