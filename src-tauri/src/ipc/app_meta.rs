@@ -163,6 +163,44 @@ pub mod open_dir {
         std::fs::read_dir(dir).map(|_| ())
     }
 
+    /// 2.6.2 `path.resolve`의 **어휘적 정규화**(확인 크리틱 R2 **D3**).
+    ///
+    /// R28i까지 3.0은 「절대 경로로 올리기」만 하고 `.`·`..`·중복 구분자·끝 구분자를
+    /// 그대로 뒀다. 탐색기 컨텍스트 메뉴는 늘 절대 경로(`%V`)를 주므로 **정상 경로에서는
+    /// 차이가 0**이지만, 셸에서 손으로 친 인자에서 갈렸다. 문제는 폴더가 안 열리는 것이
+    /// 아니라(파일 시스템이 알아서 푼다) **문자열이 달라지는 것**이다 — 그 값이 채팅의
+    /// 작업 폴더로 저장되므로, 같은 폴더가 `C:\Code`와 `C:\Code\..\Code`로 두 벌 앉는다.
+    ///
+    /// **`canonicalize`를 안 쓰는 이유**: Windows에서 그 함수는 `\\?\C:\…` 형태의 verbatim
+    /// 경로를 돌려준다. 그 접두사가 UI와 저장값에 새면 사용자에게 보이고, 일부 API는
+    /// 그 형태를 못 먹는다. `path.resolve`도 파일 시스템을 안 본다 — 어휘적 처리다.
+    ///
+    /// 정답은 Node로 직접 뽑아 못에 박아 뒀다(아래 `a_launch_path_is_resolved_like_2_6_2`).
+    fn resolve_lexical(p: &std::path::Path) -> std::path::PathBuf {
+        use std::path::Component;
+        let mut out = std::path::PathBuf::new();
+        for c in p.components() {
+            match c {
+                // `.`는 버린다(중복 구분자는 `components()`가 이미 버린다)
+                Component::CurDir => {}
+                // `..`는 **평범한 이름 하나만** 걷어낸다. 루트·프리픽스 위로는 못 올라간다
+                // (`path.resolve("C:\\..\\Code")` = `C:\Code` — Node도 거기서 멈춘다).
+                Component::ParentDir => {
+                    if matches!(out.components().next_back(), Some(Component::Normal(_))) {
+                        out.pop();
+                    }
+                }
+                other => out.push(other.as_os_str()),
+            }
+        }
+        // 전부 걷힌 판(예: 빈 경로)은 원본을 돌려준다 — 판정을 빈 문자열로 만들지 않는다.
+        if out.as_os_str().is_empty() {
+            p.to_path_buf()
+        } else {
+            out
+        }
+    }
+
     /// **파일을 한 번 만진다**(`metadata` + 폴더면 [`enumerable`]). 도달 불가 UNC 경로면
     /// 그 한 번이 21초라(main.rs `ccg-img` 헤더의 실측) 이 함수는 UI 스레드·async
     /// 워커에서 부르지 않는다.
@@ -185,6 +223,7 @@ pub mod open_dir {
         } else {
             std::env::current_dir().map(|c| c.join(p)).unwrap_or_else(|_| p.to_path_buf())
         };
+        let abs = resolve_lexical(&abs);
         match std::fs::metadata(&abs) {
             Ok(m) if m.is_dir() => match enumerable(&abs) {
                 Ok(()) => Verdict::Ok(abs.to_string_lossy().to_string()),
@@ -660,6 +699,33 @@ pub mod open_dir {
                 "★ 배선이 렌더러를 안 보고 인계를 걷었다 — 부팅 창의 폴더가 다시 조용히 사라진다"
             );
             assert!(h.dir.join(HANDOFF).exists(), "★ 안 걷었다면서 파일을 지웠다");
+        }
+
+        /// ★확인 크리틱 R2 **D3** — 기동 경로를 2.6.2 `path.resolve`와 **같게** 다듬는다.
+        ///
+        /// 오른쪽 값은 내가 지은 것이 아니라 **Node에서 직접 뽑은 정답**이다
+        /// (`node -e "path.resolve(…)"` · 이 기계 · Windows). 2.6.2가 그 함수를 쓰므로
+        /// 그것이 파리티의 기준이다.
+        ///
+        /// 왜 중요한가: 폴더가 안 열리는 것이 아니라 **문자열이 갈리는 것**이 문제다.
+        /// 그 값이 채팅의 작업 폴더로 저장되므로, 정규화가 없으면 같은 폴더가
+        /// `C:\Code`와 `C:\Code\..\Code`로 **두 벌** 앉는다.
+        #[test]
+        fn a_launch_path_is_resolved_like_2_6_2() {
+            let same = |raw: &str, want: &str| {
+                let got = resolve_lexical(std::path::Path::new(raw));
+                assert_eq!(got.to_string_lossy(), want, "★ {raw} 의 정규화가 2.6.2와 다르다");
+            };
+            same(r"C:\Code\..\Code\AgentCodeGUI", r"C:\Code\AgentCodeGUI");
+            same(r"C:\Code\.\AgentCodeGUI", r"C:\Code\AgentCodeGUI");
+            same(r"C:\Code\", r"C:\Code");
+            same("C:/Code/AgentCodeGUI", r"C:\Code\AgentCodeGUI");
+            // 루트 위로는 못 올라간다 — Node도 여기서 멈춘다
+            same(r"C:\..\Code", r"C:\Code");
+            same(r"C:\Code\\AgentCodeGUI", r"C:\Code\AgentCodeGUI");
+            same(r"\\srv\share\a\..\b", r"\\srv\share\b");
+            same(r"C:\Code\a\..\..\b", r"C:\b");
+            same(r"C:\", r"C:\");
         }
 
         /// ★확인 크리틱 R2 **D2** — 콜드 인자는 **한 번 쓰고 버린다**.
