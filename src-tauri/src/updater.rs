@@ -82,7 +82,7 @@ pub const FEED_ENV: &str = "CCG_UPDATE_FEED";
 
 // ── 상태 ────────────────────────────────────────────────────────────────────
 
-/// 계약면 `UpdateStatus`의 `phase`. 문자열은 `src/shared/protocol.ts:1074`가 원본이고
+/// 계약면 `UpdateStatus`의 `phase`. 문자열은 `src/shared/protocol.ts:1073`이 원본이고
 /// 화면(`AppUpdateGate.tsx:47-48`의 `const active`)이 이 중 넷에서만 카드를 띄운다.
 mod phase {
     pub const IDLE: &str = "idle";
@@ -612,7 +612,16 @@ mod tests {
             } else if rel == "tray.rs" {
                 saw_tray = text.contains("app.exit(0)");
             }
-            if code_lines(&text).any(|l| l.contains("updater::install")) {
+            // ★확인 크리틱 R2 — `contains("updater::install")`은 **공백이 낀 경로를 놓친다**.
+            // 크리틱이 격리 사본에 `crate :: updater :: install(app);`을 심었더니
+            // **컴파일은 되는데 이 못은 초록**이었다(변이 M4). Rust는 `::` 둘레의 공백을
+            // 허용하므로 그 형태가 진짜 회피 수단이다.
+            //
+            // 공백은 **`code_lines`가 거른 줄 안에서만** 접는다 — 파일 전체를 접으면
+            // 주석·`#[cfg(test)]` 구역까지 한 덩어리가 되어 그 필터가 무효가 된다.
+            if code_lines(&text).any(|l| {
+                l.chars().filter(|c| !c.is_whitespace()).collect::<String>().contains("updater::install")
+            }) {
                 callers.push(rel);
             }
         }
