@@ -143,12 +143,22 @@ function lspSplit(j) {
 const splitT = lspSplit(F.t30MultiNew)
 const splitE = lspSplit(F.e26MultiNew)
 if (tN && eN && splitT && splitE) {
-  add('[R28j·LSP제외] 유휴 WS', tN.idleGridWsMB - splitT.helperWsMB, eN.idleGridWsMB - splitE.helperWsMB, { gate: G.idleWs, from: 'summary − procDetail의 헬퍼(node/conhost) 합', note: '두 팔에서 같은 규칙으로 뺀다' })
-  add('[R28j·LSP제외] 유휴 Private', tN.idleGridPrivMB - splitT.helperPrivMB, eN.idleGridPrivMB - splitE.helperPrivMB, { gate: G.idlePriv, from: 'summary − procDetail 헬퍼' })
+  // ★★ 확인 크리틱 R2 **F2** — 아래 **세 줄 전부가 「서로 다른 두 순간의 뺄셈」**이다.
+  //   피감수(`summary.*`)는 정착 직후의 값이고, 감수(`procDetail`의 헬퍼 합)는 **주행 맨 끝**
+  //   표본이다. 초판은 이 근사를 G4 한 줄에만 주석으로 달아 두어, 유휴 두 줄은 마치
+  //   같은 순간의 뺄셈인 것처럼 읽혔다.
+  //
+  //   크기가 무시할 수준도 아니다 — 벤치 팔의 두 총계가 **691.3 대 594.6**으로 벌어진다
+  //   (`procDetail` 합 ≠ `summary` 총계). 헬퍼가 창을 열어도 안 늘어난다는 성질 덕분에
+  //   **방향은 두 팔에서 같고** 게이트 판정을 뒤집지는 않지만, 이 수를 인용할 때는
+  //   「같은 규칙으로 뺀 근사」까지가 정확한 표현이다. 정공법은 `summary`와 같은 순간의
+  //   역할별 표본을 남기는 것이고, 그건 하네스 숙제다.
+  const LSP_APPROX = '★근사 — 피감수는 정착 직후 summary, 감수는 주행 끝 procDetail(서로 다른 순간). 두 팔에 같은 규칙'
+  add('[R28j·LSP제외] 유휴 WS', tN.idleGridWsMB - splitT.helperWsMB, eN.idleGridWsMB - splitE.helperWsMB, { gate: G.idleWs, from: 'summary − procDetail의 헬퍼(node/conhost) 합', note: LSP_APPROX })
+  add('[R28j·LSP제외] 유휴 Private', tN.idleGridPrivMB - splitT.helperPrivMB, eN.idleGridPrivMB - splitE.helperPrivMB, { gate: G.idlePriv, from: 'summary − procDetail 헬퍼', note: LSP_APPROX })
   // ★ S3-1 — G4(+창2)도 **같은 자로** 뺀다. 한 표 안에서 G1은 LSP 제외, G4는 있는 그대로면
-  //   그건 잣대가 아니라 서술이다. (헬퍼 WS는 주행 끝의 `procDetail`에서 온 값이라
-  //   +창2 시점과 완전히 같은 순간은 아니다 — 헬퍼는 창을 열어도 안 늘어나므로 근사.)
-  add('[R28j·LSP제외] +창2 WS', tN.idleWithWindowsWsMB - splitT.helperWsMB, eN.idleWithWindowsWsMB - splitE.helperWsMB, { gate: G.withWindows, from: 'summary.idleWithWindowsWsMB − procDetail 헬퍼', note: 'G1과 같은 자. 있는 그대로와 섞어 읽지 말 것' })
+  //   그건 잣대가 아니라 서술이다.
+  add('[R28j·LSP제외] +창2 WS', tN.idleWithWindowsWsMB - splitT.helperWsMB, eN.idleWithWindowsWsMB - splitE.helperWsMB, { gate: G.withWindows, from: 'summary.idleWithWindowsWsMB − procDetail 헬퍼', note: 'G1과 같은 자. 있는 그대로와 섞어 읽지 말 것 · ' + LSP_APPROX })
 }
 
 // ── 1c. ★★ 벤치 경로 vs 배포 경로 — 같은 exe를 두 자리에서 잰다 (S2-1) ───────
