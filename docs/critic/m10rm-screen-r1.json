@@ -1,0 +1,83 @@
+{
+  "at": "2026-08-26T03:43:42.052Z",
+  "tag": "r1",
+  "exe": "C:\\Code\\AgentCodeGUI\\target-r28k-rm\\release\\agentcodegui.exe",
+  "axes": {
+    "S0-옛홈": {
+      "pass": true,
+      "mounted": true,
+      "channelGone": true,
+      "filesKept": true,
+      "enabledStillTrueOnDisk": true
+    },
+    "S1-봉투버림": {
+      "pass": true,
+      "chatId": "c-a",
+      "queued": 1,
+      "seeded": 2
+    },
+    "S2-나침반": {
+      "pass": true,
+      "opened": "clicked",
+      "modalUp": true,
+      "talk": [],
+      "ko": [],
+      "crosstalk": []
+    },
+    "S3a-메인창": {
+      "pass": true,
+      "before": {
+        "pill": false,
+        "said": false,
+        "wrap": false
+      },
+      "after": {
+        "pill": false,
+        "said": false,
+        "wrap": false
+      },
+      "alive": true
+    },
+    "S3b-추가창": {
+      "pass": true,
+      "before": {
+        "pill": false,
+        "said": false,
+        "wrap": false
+      },
+      "after": {
+        "pill": false,
+        "said": false,
+        "wrap": false
+      },
+      "alive": true
+    },
+    "S3c-팝아웃": {
+      "pass": false,
+      "why": "#mapanel 창이 안 떴다",
+      "clicked": "no-btn",
+      "targets": [
+        {
+          "url": "http://tauri.localhost/index.html#session",
+          "ws": "ws://127.0.0.1:11031/devtools/page/AEA175B70BACE53CD96469B973C536C1"
+        },
+        {
+          "url": "http://tauri.localhost/",
+          "ws": "ws://127.0.0.1:11031/devtools/page/E1B4AB02D55A41DDF3C72B8E1A96A0B1"
+        }
+      ]
+    }
+  },
+  "seeded": {
+    "chatFile": "c-a.json",
+    "queue": [
+      "talk",
+      "user"
+    ]
+  },
+  "home": "C:\\Code\\AgentCodeGUI\\.poc-home-m10rm-screen-r1",
+  "pass": false,
+  "fails": [
+    "S3c-팝아웃: #mapanel 창이 안 떴다"
+  ]
+}

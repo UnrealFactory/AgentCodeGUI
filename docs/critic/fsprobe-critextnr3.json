@@ -1,0 +1,99 @@
+{
+  "repo": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-x3r3-fsseed-fix",
+  "sha": "e1776725039f78f956488561c5154444b929f5f2",
+  "file_diff": {
+    "-dir": {
+      "tag": null,
+      "add": null,
+      "del": null,
+      "error": "내용을 읽을 수 없어요",
+      "headLen": null
+    },
+    "보통dir": {
+      "tag": null,
+      "add": null,
+      "del": null,
+      "error": "내용을 읽을 수 없어요",
+      "headLen": null
+    },
+    "app/posts/[id]": {
+      "tag": null,
+      "add": null,
+      "del": null,
+      "error": "내용을 읽을 수 없어요",
+      "headLen": null
+    },
+    "-파일.txt": {
+      "tag": "edit",
+      "add": 1,
+      "del": 1,
+      "error": null,
+      "headLen": null
+    },
+    "app/posts/[id]/page.tsx": {
+      "tag": "edit",
+      "add": 1,
+      "del": 0,
+      "error": null,
+      "headLen": null
+    },
+    "함정.txt": {
+      "tag": "edit",
+      "add": 0,
+      "del": 0,
+      "error": null,
+      "headLen": null
+    },
+    "보통.txt": {
+      "tag": "edit",
+      "add": 1,
+      "del": 1,
+      "error": null,
+      "headLen": null
+    }
+  },
+  "commit_file_diff": {
+    "-dir": {
+      "tag": null,
+      "add": null,
+      "del": null,
+      "error": "내용을 읽을 수 없어요",
+      "contentLen": null
+    },
+    "보통dir": {
+      "tag": null,
+      "add": null,
+      "del": null,
+      "error": "내용을 읽을 수 없어요",
+      "contentLen": null
+    },
+    "app/posts/[id]": {
+      "tag": null,
+      "add": null,
+      "del": null,
+      "error": "내용을 읽을 수 없어요",
+      "contentLen": null
+    },
+    "-파일.txt": {
+      "tag": "edit",
+      "add": 1,
+      "del": 0,
+      "error": null,
+      "contentLen": 28
+    },
+    "app/posts/[id]/page.tsx": {
+      "tag": "edit",
+      "add": 1,
+      "del": 1,
+      "error": null,
+      "contentLen": 15
+    },
+    "함정.txt": {
+      "tag": "edit",
+      "add": 0,
+      "del": 0,
+      "error": null,
+      "contentLen": 36
+    }
+  }
+}

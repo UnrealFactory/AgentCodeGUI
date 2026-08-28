@@ -1,0 +1,52 @@
+{
+  "at": "2026-08-25T05:11:15.896Z",
+  "tag": "critextnr3",
+  "exe": "C:\\Temp\\ccg-x3r3-tgt\\release\\agentcodegui.exe",
+  "arms": {
+    "x": {
+      "where": "exe",
+      "exeDir": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-claude-path-critextnr3\\x\\app",
+      "pathHead": "C:\\Users\\User\\bin",
+      "loginUrl": "https://claude.ai/oauth/authorize?code=FAKE-T1T2&email=fake@t1t2.test",
+      "loginError": null,
+      "loginNoBin": false,
+      "aimsgError": "AI 메시지 생성에 실패했어요",
+      "aimsgBlocked": false,
+      "logoutList": [],
+      "logoutCalled": true,
+      "logoutWith": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-claude-path-critextnr3\\x\\home\\accounts\\seed-critextnr3_claudepath.test-nz79j5"
+    },
+    "p": {
+      "where": "path",
+      "exeDir": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-claude-path-critextnr3\\p\\app",
+      "pathHead": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-claude-path-critextnr3\\p\\bin",
+      "loginUrl": "https://claude.ai/oauth/authorize?code=FAKE-T1T2&email=fake@t1t2.test",
+      "loginError": null,
+      "loginNoBin": false,
+      "aimsgError": "AI 메시지 생성에 실패했어요",
+      "aimsgBlocked": false,
+      "logoutList": [],
+      "logoutCalled": true,
+      "logoutWith": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-claude-path-critextnr3\\p\\home\\accounts\\seed-critextnr3_claudepath.test-nz79j5"
+    },
+    "n": {
+      "where": "none",
+      "exeDir": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-claude-path-critextnr3\\n\\app",
+      "pathHead": "C:\\Users\\User\\bin",
+      "loginUrl": null,
+      "loginError": "claude 실행 파일을 찾지 못했어요",
+      "loginNoBin": true,
+      "aimsgError": "설치된 엔진이 없어요 — 설정 → Engine에서 먼저 설치해 주세요",
+      "aimsgBlocked": true,
+      "logoutList": [],
+      "logoutCalled": false,
+      "logoutWith": null
+    }
+  },
+  "findings": [],
+  "pass": true,
+  "headline": {
+    "armX_logoutCalled": true,
+    "armX_loginNoBin": false
+  }
+}

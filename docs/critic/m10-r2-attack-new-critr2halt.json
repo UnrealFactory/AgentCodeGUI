@@ -1,0 +1,31 @@
+{
+  "at": "2026-08-25T14:21:41.356Z",
+  "exe": "C:\\Code\\AgentCodeGUI\\target\\release\\agentcodegui.exe",
+  "tag": "critr2halt",
+  "port0": 11400,
+  "stamp": {
+    "at": "2026-08-25T14:21:41.356Z",
+    "host": "DESKTOP-SEAPM9E",
+    "exe": {
+      "path": "C:\\Code\\AgentCodeGUI\\target\\release\\agentcodegui.exe",
+      "sha256": "4cdf778840717bb22c46a2b944ea5910bd8f81766dce3b989340419a9bf167b1",
+      "bytes": 6344192,
+      "mtime": "2026-08-24T09:09:47.196Z"
+    },
+    "git": {
+      "head": "a918d8afbcbaf9a97c26fa89e81915f9c61aa281",
+      "branch": "feature/3.0.0-beta",
+      "dirty": []
+    },
+    "tag": "critr2halt",
+    "only": "wall",
+    "policyArg": null,
+    "policyEffective": "readonly",
+    "policySource": "앱 기본값(무옵션 = 씨앗에 injectPolicy 없음)"
+  },
+  "attacks": {},
+  "broken": [],
+  "account": null,
+  "ms": 0,
+  "verdict": "HELD"
+}

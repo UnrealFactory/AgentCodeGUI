@@ -1,0 +1,492 @@
+{
+  "at": "2026-08-24T18:39:07.293Z",
+  "exe": "C:/Code/AgentCodeGUI/target-critcpath/release/agentcodegui.exe",
+  "watchSec": 120,
+  "steps": {
+    "reload": {
+      "row": {
+        "chatId": "c-codex-hold",
+        "state": "Idle",
+        "queued": 0,
+        "spawns": 0,
+        "exits": 0,
+        "session": null,
+        "pid": null,
+        "engine": "claude",
+        "identityEngine": "codex",
+        "autoResume": true,
+        "nowMs": 3274,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 90000,
+          "probes": 0,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "queue": []
+      },
+      "limitProbe": {
+        "asks": 0,
+        "fetches": 0,
+        "blocked": 0,
+        "clear": 0,
+        "unavailable": 0,
+        "unknown": 0
+      }
+    },
+    "userSend": {
+      "chatId": "c-codex-hold",
+      "state": "Idle",
+      "queued": 1,
+      "spawns": 0,
+      "exits": 0,
+      "session": null,
+      "pid": null,
+      "engine": "claude",
+      "identityEngine": "codex",
+      "autoResume": true,
+      "nowMs": 4790,
+      "hold": {
+        "resetsAt": 0,
+        "ready": false,
+        "dueAt": 90000,
+        "probes": 0,
+        "attempts": 0,
+        "autoPaused": false
+      },
+      "queue": [
+        "사용자가 직접 보낸 새 메시지"
+      ]
+    },
+    "samples": [
+      {
+        "t": 5,
+        "spawns": 0,
+        "queue": 1,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 90000,
+          "probes": 0,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "stdin": 0,
+        "probe": {
+          "asks": 0,
+          "fetches": 0,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 0,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 10,
+        "spawns": 0,
+        "queue": 1,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 90000,
+          "probes": 0,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "stdin": 0,
+        "probe": {
+          "asks": 0,
+          "fetches": 0,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 0,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 15,
+        "spawns": 0,
+        "queue": 1,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 90000,
+          "probes": 0,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "stdin": 0,
+        "probe": {
+          "asks": 0,
+          "fetches": 0,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 0,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 20,
+        "spawns": 0,
+        "queue": 1,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 90000,
+          "probes": 0,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "stdin": 0,
+        "probe": {
+          "asks": 0,
+          "fetches": 0,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 0,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 25,
+        "spawns": 0,
+        "queue": 1,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 90000,
+          "probes": 0,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "stdin": 0,
+        "probe": {
+          "asks": 0,
+          "fetches": 0,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 0,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 30,
+        "spawns": 0,
+        "queue": 1,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 90000,
+          "probes": 0,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "stdin": 0,
+        "probe": {
+          "asks": 0,
+          "fetches": 0,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 0,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 35,
+        "spawns": 0,
+        "queue": 1,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 90000,
+          "probes": 0,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "stdin": 0,
+        "probe": {
+          "asks": 0,
+          "fetches": 0,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 0,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 40,
+        "spawns": 0,
+        "queue": 1,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 90000,
+          "probes": 0,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "stdin": 0,
+        "probe": {
+          "asks": 0,
+          "fetches": 0,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 0,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 45,
+        "spawns": 0,
+        "queue": 1,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 90000,
+          "probes": 0,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "stdin": 0,
+        "probe": {
+          "asks": 0,
+          "fetches": 0,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 0,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 50,
+        "spawns": 0,
+        "queue": 1,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 90000,
+          "probes": 0,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "stdin": 0,
+        "probe": {
+          "asks": 0,
+          "fetches": 0,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 0,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 55,
+        "spawns": 0,
+        "queue": 1,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 90000,
+          "probes": 0,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "stdin": 0,
+        "probe": {
+          "asks": 0,
+          "fetches": 0,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 0,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 60,
+        "spawns": 0,
+        "queue": 1,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 90000,
+          "probes": 0,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "stdin": 0,
+        "probe": {
+          "asks": 0,
+          "fetches": 0,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 0,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 65,
+        "spawns": 0,
+        "queue": 1,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 90000,
+          "probes": 0,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "stdin": 0,
+        "probe": {
+          "asks": 0,
+          "fetches": 0,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 0,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 70,
+        "spawns": 0,
+        "queue": 1,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 90000,
+          "probes": 0,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "stdin": 0,
+        "probe": {
+          "asks": 0,
+          "fetches": 0,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 0,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 75,
+        "spawns": 0,
+        "queue": 1,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 90000,
+          "probes": 0,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "stdin": 0,
+        "probe": {
+          "asks": 0,
+          "fetches": 0,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 0,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 80,
+        "spawns": 0,
+        "queue": 1,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 90000,
+          "probes": 0,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "stdin": 0,
+        "probe": {
+          "asks": 0,
+          "fetches": 0,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 0,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 85,
+        "spawns": 0,
+        "queue": 1,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 90000,
+          "probes": 0,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "stdin": 0,
+        "probe": {
+          "asks": 0,
+          "fetches": 0,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 0,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 90,
+        "spawns": 1,
+        "queue": 0,
+        "hold": null,
+        "stdin": 502,
+        "probe": {
+          "asks": 1,
+          "fetches": 0,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 0,
+          "unknown": 1
+        }
+      }
+    ],
+    "fired": {
+      "t": 90,
+      "spawns": 1,
+      "queue": 0,
+      "hold": null,
+      "stdin": 502,
+      "probe": {
+        "asks": 1,
+        "fetches": 0,
+        "blocked": 0,
+        "clear": 0,
+        "unavailable": 0,
+        "unknown": 1
+      }
+    },
+    "afterFire": {
+      "chatId": "c-codex-hold",
+      "state": "Starting",
+      "queued": 0,
+      "spawns": 1,
+      "exits": 0,
+      "session": null,
+      "pid": 24844,
+      "engine": "codex",
+      "identityEngine": "codex",
+      "autoResume": true,
+      "nowMs": 97990,
+      "hold": null,
+      "queue": []
+    },
+    "appLog": "[store] chats-v3 마이그레이션: {\"ok\":true,\"migratedAt\":1787596747740.0,\"elapsedMs\":3.0,\"backupDir\":\"C:\\\\Code\\\\AgentCodeGUI\\\\.poc-home-codex-crit\\\\backup-2.6.2-1787596747740\",\"counts\":{\"chats\":0,\"maSessions\":0,\"maPanels\":0,\"sessionChats\":0,\"talkAbsorbed\":0,\"carried\":1,\"keptV3\":0,\"keptV3Boards\":0,\"total\":0,\"messages\":0,\"boards\":1},\"idMap\":{},\"order\":[],\"activeChatId\":\"\",\"boardOrder\":[\"default\"],\"activeBoardId\":\"default\",\"activeSessionId\":\"\",\"btw\":{\"rewritten\":0,\"dropped\":0},\"holdMoved\":0,\"sourceIndexOrders\":{\"chats\":[],\"multiAgent\":[],\"sessionChats\":[]},\"warnings\":[]}\n"
+  },
+  "findings": [],
+  "seed": {
+    "resetsAt": 1787589547,
+    "work": "C:\\Code\\AgentCodeGUI\\.poc-home-codex-crit\\work"
+  },
+  "pass": 8,
+  "fail": 0
+}

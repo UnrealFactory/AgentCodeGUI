@@ -1,0 +1,320 @@
+{
+  "sha1": "a168dd49f1bce21b90054fd4fe35042de3efbb98",
+  "sha2": "f8a7c43e3eb23003cebf6c369275d8322872dfdc",
+  "git": "git version 2.53.0.windows.1",
+  "rows": [
+    {
+      "q": "file_diff(-dir)",
+      "r": {
+        "diff": {
+          "path": "-dir",
+          "tag": "edit",
+          "add": 0,
+          "del": 3,
+          "lines": [
+            {
+              "t": "del",
+              "text": "tree HEAD:-dir"
+            },
+            {
+              "t": "del",
+              "text": ""
+            },
+            {
+              "t": "del",
+              "text": "a.txt"
+            }
+          ]
+        },
+        "headContent": "tree HEAD:-dir\n\na.txt\n"
+      }
+    },
+    {
+      "q": "file_diff(보통dir)",
+      "r": {
+        "diff": {
+          "path": "보통dir",
+          "tag": "edit",
+          "add": 0,
+          "del": 3,
+          "lines": [
+            {
+              "t": "del",
+              "text": "tree HEAD:보통dir"
+            },
+            {
+              "t": "del",
+              "text": ""
+            },
+            {
+              "t": "del",
+              "text": "a.txt"
+            }
+          ]
+        },
+        "headContent": "tree HEAD:보통dir\n\na.txt\n"
+      }
+    },
+    {
+      "q": "file_diff(app/posts/[id])",
+      "r": {
+        "diff": {
+          "path": "app/posts/[id]",
+          "tag": "edit",
+          "add": 0,
+          "del": 3,
+          "lines": [
+            {
+              "t": "del",
+              "text": "tree HEAD:app/posts/[id]"
+            },
+            {
+              "t": "del",
+              "text": ""
+            },
+            {
+              "t": "del",
+              "text": "page.tsx"
+            }
+          ]
+        },
+        "headContent": "tree HEAD:app/posts/[id]\n\npage.tsx\n"
+      }
+    },
+    {
+      "q": "file_diff(-파일.txt)",
+      "r": {
+        "diff": {
+          "path": "-파일.txt",
+          "tag": "edit",
+          "add": 1,
+          "del": 0,
+          "lines": [
+            {
+              "t": "ctx",
+              "text": "one"
+            },
+            {
+              "t": "ctx",
+              "text": "two"
+            },
+            {
+              "t": "add",
+              "text": "three"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "q": "file_diff(app/posts/[id]/page.tsx)",
+      "r": {
+        "diff": {
+          "path": "app/posts/[id]/page.tsx",
+          "tag": "edit",
+          "add": 0,
+          "del": 0,
+          "lines": [
+            {
+              "t": "ctx",
+              "text": "x"
+            },
+            {
+              "t": "ctx",
+              "text": "y"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "q": "file_diff(함정.txt)",
+      "r": {
+        "diff": {
+          "path": "함정.txt",
+          "tag": "edit",
+          "add": 0,
+          "del": 0,
+          "lines": [
+            {
+              "t": "ctx",
+              "text": "tree HEAD:함정.txt"
+            },
+            {
+              "t": "ctx",
+              "text": ""
+            },
+            {
+              "t": "ctx",
+              "text": "something else"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "q": "commit_file_diff(-dir)",
+      "r": {
+        "diff": {
+          "path": "-dir",
+          "tag": "edit",
+          "add": 1,
+          "del": 1,
+          "lines": [
+            {
+              "t": "del",
+              "text": "tree f8a7c43e3eb23003cebf6c369275d8322872dfdc^:-dir"
+            },
+            {
+              "t": "add",
+              "text": "tree f8a7c43e3eb23003cebf6c369275d8322872dfdc:-dir"
+            },
+            {
+              "t": "ctx",
+              "text": ""
+            },
+            {
+              "t": "ctx",
+              "text": "a.txt"
+            }
+          ]
+        },
+        "content": "tree f8a7c43e3eb23003cebf6c369275d8322872dfdc:-dir\n\na.txt\n"
+      }
+    },
+    {
+      "q": "commit_file_diff(보통dir)",
+      "r": {
+        "diff": {
+          "path": "보통dir",
+          "tag": "edit",
+          "add": 1,
+          "del": 1,
+          "lines": [
+            {
+              "t": "del",
+              "text": "tree f8a7c43e3eb23003cebf6c369275d8322872dfdc^:보통dir"
+            },
+            {
+              "t": "add",
+              "text": "tree f8a7c43e3eb23003cebf6c369275d8322872dfdc:보통dir"
+            },
+            {
+              "t": "ctx",
+              "text": ""
+            },
+            {
+              "t": "ctx",
+              "text": "a.txt"
+            }
+          ]
+        },
+        "content": "tree f8a7c43e3eb23003cebf6c369275d8322872dfdc:보통dir\n\na.txt\n"
+      }
+    },
+    {
+      "q": "commit_file_diff(app/posts/[id])",
+      "r": {
+        "diff": {
+          "path": "app/posts/[id]",
+          "tag": "edit",
+          "add": 1,
+          "del": 1,
+          "lines": [
+            {
+              "t": "del",
+              "text": "tree f8a7c43e3eb23003cebf6c369275d8322872dfdc^:app/posts/[id]"
+            },
+            {
+              "t": "add",
+              "text": "tree f8a7c43e3eb23003cebf6c369275d8322872dfdc:app/posts/[id]"
+            },
+            {
+              "t": "ctx",
+              "text": ""
+            },
+            {
+              "t": "ctx",
+              "text": "page.tsx"
+            }
+          ]
+        },
+        "content": "tree f8a7c43e3eb23003cebf6c369275d8322872dfdc:app/posts/[id]\n\npage.tsx\n"
+      }
+    },
+    {
+      "q": "commit_file_diff(-파일.txt)",
+      "r": {
+        "diff": {
+          "path": "-파일.txt",
+          "tag": "edit",
+          "add": 1,
+          "del": 0,
+          "lines": [
+            {
+              "t": "ctx",
+              "text": "one"
+            },
+            {
+              "t": "add",
+              "text": "two"
+            }
+          ]
+        },
+        "content": "one\ntwo\n"
+      }
+    },
+    {
+      "q": "commit_file_diff(app/posts/[id]/page.tsx)",
+      "r": {
+        "diff": {
+          "path": "app/posts/[id]/page.tsx",
+          "tag": "edit",
+          "add": 1,
+          "del": 0,
+          "lines": [
+            {
+              "t": "ctx",
+              "text": "x"
+            },
+            {
+              "t": "add",
+              "text": "y"
+            }
+          ]
+        },
+        "content": "x\ny\n"
+      }
+    },
+    {
+      "q": "commit_file_diff(함정.txt)",
+      "r": {
+        "diff": {
+          "path": "함정.txt",
+          "tag": "edit",
+          "add": 1,
+          "del": 1,
+          "lines": [
+            {
+              "t": "ctx",
+              "text": "tree HEAD:함정.txt"
+            },
+            {
+              "t": "ctx",
+              "text": ""
+            },
+            {
+              "t": "del",
+              "text": "something"
+            },
+            {
+              "t": "add",
+              "text": "something else"
+            }
+          ]
+        },
+        "content": "tree HEAD:함정.txt\n\nsomething else\n"
+      }
+    }
+  ]
+}

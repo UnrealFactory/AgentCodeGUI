@@ -1,0 +1,50 @@
+{
+  "P_path_only": {
+    "gate": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-x3r3-gs-37936\\pathdir\\ccgx3p37936.CMD",
+    "ran": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-x3r3-gs-37936\\pathdir\\ccgx3p37936.cmd",
+    "shape": "cmd /C \"\"C:\\Users\\User\\AppData\\Local\\Temp\\ccg-x3r3-gs-37936\\pathdir\\ccgx3p37936.CMD\" app-server\"",
+    "spawnOk": true
+  },
+  "X_exe_dir_only": {
+    "gate": "C:\\Temp\\ccg-x3r3-gs-tgt\\release\\ccgx3x37936.CMD",
+    "ran": "C:\\Temp\\ccg-x3r3-gs-tgt\\release\\ccgx3x37936.cmd",
+    "shape": "cmd /C \"\"C:\\Temp\\ccg-x3r3-gs-tgt\\release\\ccgx3x37936.CMD\" app-server\"",
+    "spawnOk": true
+  },
+  "C_cwd_only_cmd": {
+    "gate": null,
+    "ran": null,
+    "shape": "ccgx3c37936 ",
+    "spawnOk": false
+  },
+  "C2_cwd_only_exe": {
+    "gate": null,
+    "ran": null,
+    "shape": "ccgx3d37936 ",
+    "spawnOk": false
+  },
+  "C3_cwd_only_exe_named": {
+    "gate": null,
+    "ran": null,
+    "shape": "ccgx3e37936.exe ",
+    "spawnOk": false
+  },
+  "N_nowhere": {
+    "gate": null,
+    "ran": null,
+    "shape": "ccgx3n37936 ",
+    "spawnOk": false
+  },
+  "M_cwd_and_path": {
+    "gate": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-x3r3-gs-37936\\pathdir\\ccgx3m37936.CMD",
+    "ran": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-x3r3-gs-37936\\pathdir\\ccgx3m37936.cmd",
+    "shape": "cmd /C \"\"C:\\Users\\User\\AppData\\Local\\Temp\\ccg-x3r3-gs-37936\\pathdir\\ccgx3m37936.CMD\" app-server\"",
+    "spawnOk": true
+  },
+  "E_path_exe_name": {
+    "gate": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-x3r3-gs-37936\\pathdir\\ccgx3f37936.exe",
+    "ran": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-x3r3-gs-37936\\pathdir\\ccgx3f37936.exe",
+    "shape": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-x3r3-gs-37936\\pathdir\\ccgx3f37936.exe app-server",
+    "spawnOk": true
+  }
+}

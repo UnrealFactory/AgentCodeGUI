@@ -1,0 +1,2960 @@
+{
+  "at": "2026-08-25T08:31:24.586Z",
+  "exe": "C:/Code/AgentCodeGUI/target-r28f-wfire/release/agentcodegui.exe",
+  "watchSec": 620,
+  "long": true,
+  "steps": {
+    "reload": {
+      "row": {
+        "chatId": "c-limit-engine",
+        "state": "Idle",
+        "queued": 0,
+        "spawns": 0,
+        "exits": 0,
+        "session": null,
+        "pid": null,
+        "engine": "claude",
+        "identityEngine": "claude",
+        "autoResume": true,
+        "nowMs": 3306,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 90000,
+          "probes": 0,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "queue": []
+      },
+      "limitProbe": {
+        "asks": 0,
+        "fetches": 0,
+        "blocked": 0,
+        "clear": 0,
+        "unavailable": 0,
+        "unknown": 0
+      }
+    },
+    "samples": [
+      {
+        "t": 5,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 90000,
+          "probes": 0,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 0,
+          "fetches": 0,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 0,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 10,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 90000,
+          "probes": 0,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 0,
+          "fetches": 0,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 0,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 15,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 90000,
+          "probes": 0,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 0,
+          "fetches": 0,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 0,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 20,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 90000,
+          "probes": 0,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 0,
+          "fetches": 0,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 0,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 25,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 90000,
+          "probes": 0,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 0,
+          "fetches": 0,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 0,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 30,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 90000,
+          "probes": 0,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 0,
+          "fetches": 0,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 0,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 35,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 90000,
+          "probes": 0,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 0,
+          "fetches": 0,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 0,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 40,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 90000,
+          "probes": 0,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 0,
+          "fetches": 0,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 0,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 45,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 90000,
+          "probes": 0,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 0,
+          "fetches": 0,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 0,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 50,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 90000,
+          "probes": 0,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 0,
+          "fetches": 0,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 0,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 55,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 90000,
+          "probes": 0,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 0,
+          "fetches": 0,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 0,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 60,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 90000,
+          "probes": 0,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 0,
+          "fetches": 0,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 0,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 65,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 90000,
+          "probes": 0,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 0,
+          "fetches": 0,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 0,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 70,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 90000,
+          "probes": 0,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 0,
+          "fetches": 0,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 0,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 75,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 90000,
+          "probes": 0,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 0,
+          "fetches": 0,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 0,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 80,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 90000,
+          "probes": 0,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 0,
+          "fetches": 0,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 0,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 85,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 90000,
+          "probes": 0,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 0,
+          "fetches": 0,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 0,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 90,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 105052,
+          "probes": 1,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 1,
+          "fetches": 1,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 1,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 95,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 105052,
+          "probes": 1,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 1,
+          "fetches": 1,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 1,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 100,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 105052,
+          "probes": 1,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 1,
+          "fetches": 1,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 1,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 105,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 135108,
+          "probes": 2,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 2,
+          "fetches": 2,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 2,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 110,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 135108,
+          "probes": 2,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 2,
+          "fetches": 2,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 2,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 115,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 135108,
+          "probes": 2,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 2,
+          "fetches": 2,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 2,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 120,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 135108,
+          "probes": 2,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 2,
+          "fetches": 2,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 2,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 125,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 135108,
+          "probes": 2,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 2,
+          "fetches": 2,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 2,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 130,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 135108,
+          "probes": 2,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 2,
+          "fetches": 2,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 2,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 135,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 195177,
+          "probes": 3,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 3,
+          "fetches": 3,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 3,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 141,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 195177,
+          "probes": 3,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 3,
+          "fetches": 3,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 3,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 146,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 195177,
+          "probes": 3,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 3,
+          "fetches": 3,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 3,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 151,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 195177,
+          "probes": 3,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 3,
+          "fetches": 3,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 3,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 156,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 195177,
+          "probes": 3,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 3,
+          "fetches": 3,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 3,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 161,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 195177,
+          "probes": 3,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 3,
+          "fetches": 3,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 3,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 166,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 195177,
+          "probes": 3,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 3,
+          "fetches": 3,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 3,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 171,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 195177,
+          "probes": 3,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 3,
+          "fetches": 3,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 3,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 176,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 195177,
+          "probes": 3,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 3,
+          "fetches": 3,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 3,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 181,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 195177,
+          "probes": 3,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 3,
+          "fetches": 3,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 3,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 186,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 195177,
+          "probes": 3,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 3,
+          "fetches": 3,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 3,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 191,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 195177,
+          "probes": 3,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 3,
+          "fetches": 3,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 3,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 196,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 315239,
+          "probes": 4,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 4,
+          "fetches": 4,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 4,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 201,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 315239,
+          "probes": 4,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 4,
+          "fetches": 4,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 4,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 206,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 315239,
+          "probes": 4,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 4,
+          "fetches": 4,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 4,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 211,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 315239,
+          "probes": 4,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 4,
+          "fetches": 4,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 4,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 217,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 315239,
+          "probes": 4,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 4,
+          "fetches": 4,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 4,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 222,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 315239,
+          "probes": 4,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 4,
+          "fetches": 4,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 4,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 227,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 315239,
+          "probes": 4,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 4,
+          "fetches": 4,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 4,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 232,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 315239,
+          "probes": 4,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 4,
+          "fetches": 4,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 4,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 237,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 315239,
+          "probes": 4,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 4,
+          "fetches": 4,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 4,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 242,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 315239,
+          "probes": 4,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 4,
+          "fetches": 4,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 4,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 247,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 315239,
+          "probes": 4,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 4,
+          "fetches": 4,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 4,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 252,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 315239,
+          "probes": 4,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 4,
+          "fetches": 4,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 4,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 257,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 315239,
+          "probes": 4,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 4,
+          "fetches": 4,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 4,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 262,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 315239,
+          "probes": 4,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 4,
+          "fetches": 4,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 4,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 267,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 315239,
+          "probes": 4,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 4,
+          "fetches": 4,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 4,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 272,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 315239,
+          "probes": 4,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 4,
+          "fetches": 4,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 4,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 277,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 315239,
+          "probes": 4,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 4,
+          "fetches": 4,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 4,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 282,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 315239,
+          "probes": 4,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 4,
+          "fetches": 4,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 4,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 287,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 315239,
+          "probes": 4,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 4,
+          "fetches": 4,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 4,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 292,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 315239,
+          "probes": 4,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 4,
+          "fetches": 4,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 4,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 297,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 315239,
+          "probes": 4,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 4,
+          "fetches": 4,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 4,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 302,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 315239,
+          "probes": 4,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 4,
+          "fetches": 4,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 4,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 307,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 315239,
+          "probes": 4,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 4,
+          "fetches": 4,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 4,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 312,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 315239,
+          "probes": 4,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 4,
+          "fetches": 4,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 4,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 317,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 555316,
+          "probes": 5,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 5,
+          "fetches": 5,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 5,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 322,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 555316,
+          "probes": 5,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 5,
+          "fetches": 5,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 5,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 327,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 555316,
+          "probes": 5,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 5,
+          "fetches": 5,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 5,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 332,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 555316,
+          "probes": 5,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 5,
+          "fetches": 5,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 5,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 337,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 555316,
+          "probes": 5,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 5,
+          "fetches": 5,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 5,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 342,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 555316,
+          "probes": 5,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 5,
+          "fetches": 5,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 5,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 347,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 555316,
+          "probes": 5,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 5,
+          "fetches": 5,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 5,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 352,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 555316,
+          "probes": 5,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 5,
+          "fetches": 5,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 5,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 357,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 555316,
+          "probes": 5,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 5,
+          "fetches": 5,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 5,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 362,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 555316,
+          "probes": 5,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 5,
+          "fetches": 5,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 5,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 367,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 555316,
+          "probes": 5,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 5,
+          "fetches": 5,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 5,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 372,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 555316,
+          "probes": 5,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 5,
+          "fetches": 5,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 5,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 377,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 555316,
+          "probes": 5,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 5,
+          "fetches": 5,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 5,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 382,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 555316,
+          "probes": 5,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 5,
+          "fetches": 5,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 5,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 387,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 555316,
+          "probes": 5,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 5,
+          "fetches": 5,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 5,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 392,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 555316,
+          "probes": 5,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 5,
+          "fetches": 5,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 5,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 397,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 555316,
+          "probes": 5,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 5,
+          "fetches": 5,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 5,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 402,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 555316,
+          "probes": 5,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 5,
+          "fetches": 5,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 5,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 407,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 555316,
+          "probes": 5,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 5,
+          "fetches": 5,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 5,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 412,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 555316,
+          "probes": 5,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 5,
+          "fetches": 5,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 5,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 417,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 555316,
+          "probes": 5,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 5,
+          "fetches": 5,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 5,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 422,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 555316,
+          "probes": 5,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 5,
+          "fetches": 5,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 5,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 427,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 555316,
+          "probes": 5,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 5,
+          "fetches": 5,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 5,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 432,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 555316,
+          "probes": 5,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 5,
+          "fetches": 5,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 5,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 437,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 555316,
+          "probes": 5,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 5,
+          "fetches": 5,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 5,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 443,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 555316,
+          "probes": 5,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 5,
+          "fetches": 5,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 5,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 448,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 555316,
+          "probes": 5,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 5,
+          "fetches": 5,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 5,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 453,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 555316,
+          "probes": 5,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 5,
+          "fetches": 5,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 5,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 458,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 555316,
+          "probes": 5,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 5,
+          "fetches": 5,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 5,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 463,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 555316,
+          "probes": 5,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 5,
+          "fetches": 5,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 5,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 468,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 555316,
+          "probes": 5,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 5,
+          "fetches": 5,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 5,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 473,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 555316,
+          "probes": 5,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 5,
+          "fetches": 5,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 5,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 478,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 555316,
+          "probes": 5,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 5,
+          "fetches": 5,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 5,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 483,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 555316,
+          "probes": 5,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 5,
+          "fetches": 5,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 5,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 488,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 555316,
+          "probes": 5,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 5,
+          "fetches": 5,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 5,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 493,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 555316,
+          "probes": 5,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 5,
+          "fetches": 5,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 5,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 498,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 555316,
+          "probes": 5,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 5,
+          "fetches": 5,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 5,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 503,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 555316,
+          "probes": 5,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 5,
+          "fetches": 5,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 5,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 508,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 555316,
+          "probes": 5,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 5,
+          "fetches": 5,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 5,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 513,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 555316,
+          "probes": 5,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 5,
+          "fetches": 5,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 5,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 518,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 555316,
+          "probes": 5,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 5,
+          "fetches": 5,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 5,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 523,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 555316,
+          "probes": 5,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 5,
+          "fetches": 5,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 5,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 528,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 555316,
+          "probes": 5,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 5,
+          "fetches": 5,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 5,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 533,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 555316,
+          "probes": 5,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 5,
+          "fetches": 5,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 5,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 538,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 555316,
+          "probes": 5,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 5,
+          "fetches": 5,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 5,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 543,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 555316,
+          "probes": 5,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 5,
+          "fetches": 5,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 5,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 548,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": false,
+          "dueAt": 555316,
+          "probes": 5,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 5,
+          "fetches": 5,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 5,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 553,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": true,
+          "dueAt": 1035344,
+          "probes": 6,
+          "attempts": 0,
+          "autoPaused": true
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 6,
+          "fetches": 6,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 6,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 558,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": true,
+          "dueAt": 1035344,
+          "probes": 6,
+          "attempts": 0,
+          "autoPaused": true
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 6,
+          "fetches": 6,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 6,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 563,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": true,
+          "dueAt": 1035344,
+          "probes": 6,
+          "attempts": 0,
+          "autoPaused": true
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 6,
+          "fetches": 6,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 6,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 569,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": true,
+          "dueAt": 1035344,
+          "probes": 6,
+          "attempts": 0,
+          "autoPaused": true
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 6,
+          "fetches": 6,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 6,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 574,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": true,
+          "dueAt": 1035344,
+          "probes": 6,
+          "attempts": 0,
+          "autoPaused": true
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 6,
+          "fetches": 6,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 6,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 579,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": true,
+          "dueAt": 1035344,
+          "probes": 6,
+          "attempts": 0,
+          "autoPaused": true
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 6,
+          "fetches": 6,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 6,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 584,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": true,
+          "dueAt": 1035344,
+          "probes": 6,
+          "attempts": 0,
+          "autoPaused": true
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 6,
+          "fetches": 6,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 6,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 589,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": true,
+          "dueAt": 1035344,
+          "probes": 6,
+          "attempts": 0,
+          "autoPaused": true
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 6,
+          "fetches": 6,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 6,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 594,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": true,
+          "dueAt": 1035344,
+          "probes": 6,
+          "attempts": 0,
+          "autoPaused": true
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 6,
+          "fetches": 6,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 6,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 599,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": true,
+          "dueAt": 1035344,
+          "probes": 6,
+          "attempts": 0,
+          "autoPaused": true
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 6,
+          "fetches": 6,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 6,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 604,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": true,
+          "dueAt": 1035344,
+          "probes": 6,
+          "attempts": 0,
+          "autoPaused": true
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 6,
+          "fetches": 6,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 6,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 609,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": true,
+          "dueAt": 1035344,
+          "probes": 6,
+          "attempts": 0,
+          "autoPaused": true
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 6,
+          "fetches": 6,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 6,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 614,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": true,
+          "dueAt": 1035344,
+          "probes": 6,
+          "attempts": 0,
+          "autoPaused": true
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 6,
+          "fetches": 6,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 6,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 619,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": true,
+          "dueAt": 1035344,
+          "probes": 6,
+          "attempts": 0,
+          "autoPaused": true
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 6,
+          "fetches": 6,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 6,
+          "unknown": 0
+        }
+      },
+      {
+        "t": 624,
+        "spawns": 0,
+        "queue": 0,
+        "hold": {
+          "resetsAt": 0,
+          "ready": true,
+          "dueAt": 1035344,
+          "probes": 6,
+          "attempts": 0,
+          "autoPaused": true
+        },
+        "episodeFires": 0,
+        "stdin": 0,
+        "probe": {
+          "asks": 6,
+          "fetches": 6,
+          "blocked": 0,
+          "clear": 0,
+          "unavailable": 6,
+          "unknown": 0
+        }
+      }
+    ],
+    "stdinHead": "",
+    "seed": {
+      "fires": 0,
+      "attempts": 0
+    },
+    "carried": {
+      "episodeFires": 0,
+      "attempts": 0
+    },
+    "holdOnDisk": {
+      "resetsAt": 1787646684.924303,
+      "ready": true,
+      "attempts": 0,
+      "fires": 0
+    },
+    "giveUp": {
+      "t": 553,
+      "spawns": 0,
+      "queue": 0,
+      "hold": {
+        "resetsAt": 0,
+        "ready": true,
+        "dueAt": 1035344,
+        "probes": 6,
+        "attempts": 0,
+        "autoPaused": true
+      },
+      "episodeFires": 0,
+      "stdin": 0,
+      "probe": {
+        "asks": 6,
+        "fetches": 6,
+        "blocked": 0,
+        "clear": 0,
+        "unavailable": 6,
+        "unknown": 0
+      }
+    },
+    "afterPress": {
+      "row": {
+        "chatId": "c-limit-engine",
+        "state": "Idle",
+        "queued": 0,
+        "spawns": 1,
+        "exits": 1,
+        "session": "S1",
+        "pid": 30140,
+        "engine": "claude",
+        "identityEngine": "claude",
+        "autoResume": true,
+        "nowMs": 631076,
+        "hold": null,
+        "episodeFires": 0,
+        "queue": []
+      },
+      "stdin": 313
+    },
+    "appLog": "[store] chats-v3 마이그레이션: {\"ok\":true,\"migratedAt\":1787646685088.0,\"elapsedMs\":4.0,\"backupDir\":\"C:/Temp/ccg-r28f-wfire/home-englong2\\\\backup-2.6.2-1787646685088\",\"counts\":{\"chats\":0,\"maSessions\":0,\"maPanels\":0,\"sessionChats\":0,\"talkAbsorbed\":0,\"carried\":1,\"keptV3\":0,\"keptV3Boards\":0,\"total\":0,\"messages\":0,\"boards\":1},\"idMap\":{},\"order\":[],\"activeChatId\":\"\",\"boardOrder\":[\"default\"],\"activeBoardId\":\"default\",\"activeSessionId\":\"\",\"btw\":{\"rewritten\":0,\"dropped\":0},\"holdMoved\":0,\"sourceIndexOrders\":{\"chats\":[],\"multiAgent\":[],\"sessionChats\":[]},\"warnings\":[]}\n"
+  },
+  "findings": [],
+  "seed": {
+    "resetsAt": 1787639484,
+    "work": "C:\\Temp\\ccg-r28f-wfire\\home-englong2\\work"
+  },
+  "pass": 17,
+  "fail": 0
+}

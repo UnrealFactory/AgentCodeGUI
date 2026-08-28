@@ -1,0 +1,50 @@
+{
+  "P_path_only": {
+    "gate": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-x3r3-gs-13572\\pathdir\\ccgx3p13572.CMD",
+    "ran": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-x3r3-gs-13572\\pathdir\\ccgx3p13572.cmd",
+    "shape": "cmd /C \"\"ccgx3p13572\" app-server\"",
+    "spawnOk": true
+  },
+  "X_exe_dir_only": {
+    "gate": "C:\\Temp\\ccg-x3r3-gsctl-tgt\\release\\ccgx3x13572.CMD",
+    "ran": null,
+    "shape": "cmd /C \"\"ccgx3x13572\" app-server\"",
+    "spawnOk": true
+  },
+  "C_cwd_only_cmd": {
+    "gate": null,
+    "ran": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-x3r3-gs-13572\\cwd\\ccgx3c13572.cmd",
+    "shape": "cmd /C \"\"ccgx3c13572\" app-server\"",
+    "spawnOk": true
+  },
+  "C2_cwd_only_exe": {
+    "gate": null,
+    "ran": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-x3r3-gs-13572\\cwd\\ccgx3d13572.exe",
+    "shape": "cmd /C \"\"ccgx3d13572\" app-server\"",
+    "spawnOk": true
+  },
+  "C3_cwd_only_exe_named": {
+    "gate": null,
+    "ran": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-x3r3-gs-13572\\cwd\\ccgx3e13572.exe",
+    "shape": "cmd /C \"\"ccgx3e13572.exe\" app-server\"",
+    "spawnOk": true
+  },
+  "N_nowhere": {
+    "gate": null,
+    "ran": null,
+    "shape": "cmd /C \"\"ccgx3n13572\" app-server\"",
+    "spawnOk": true
+  },
+  "M_cwd_and_path": {
+    "gate": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-x3r3-gs-13572\\pathdir\\ccgx3m13572.CMD",
+    "ran": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-x3r3-gs-13572\\cwd\\ccgx3m13572.cmd",
+    "shape": "cmd /C \"\"ccgx3m13572\" app-server\"",
+    "spawnOk": true
+  },
+  "E_path_exe_name": {
+    "gate": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-x3r3-gs-13572\\pathdir\\ccgx3f13572.exe",
+    "ran": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-x3r3-gs-13572\\pathdir\\ccgx3f13572.exe",
+    "shape": "cmd /C \"\"ccgx3f13572.exe\" app-server\"",
+    "spawnOk": true
+  }
+}

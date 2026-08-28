@@ -1,0 +1,54 @@
+{
+  "sibling": {
+    "case": "sibling",
+    "cwd": "C:\\Temp\\ccg-x2r2-gatespawn2\\sibling\\cwd",
+    "exe_dir": "C:\\Temp\\ccg-x2r2-gatespawn2\\sibling\\app",
+    "path_head": "C:\\Users\\User\\bin",
+    "gate_claude": "C:\\Temp\\ccg-x2r2-gatespawn2\\sibling\\app\\claude.exe",
+    "spawn_claude_ok": true,
+    "spawn_claude_ran": "C:\\Temp\\ccg-x2r2-gatespawn2\\sibling\\app\\claude.exe",
+    "gate_codex": "C:\\Temp\\ccg-x2r2-gatespawn2\\sibling\\app\\codex.EXE",
+    "codex_arg": "C:\\Temp\\ccg-x2r2-gatespawn2\\sibling\\app\\codex.EXE",
+    "spawn_codex_ok": true,
+    "spawn_codex_ran": "C:\\Temp\\ccg-x2r2-gatespawn2\\sibling\\app\\codex.EXE"
+  },
+  "cwd": {
+    "case": "cwd",
+    "cwd": "C:\\Temp\\ccg-x2r2-gatespawn2\\cwd\\cwd",
+    "exe_dir": "C:\\Temp\\ccg-x2r2-gatespawn2\\cwd\\app",
+    "path_head": "C:\\Users\\User\\bin",
+    "gate_claude": null,
+    "spawn_claude_ok": false,
+    "spawn_claude_ran": null,
+    "gate_codex": null,
+    "codex_arg": "codex",
+    "spawn_codex_ok": true,
+    "spawn_codex_ran": "C:\\Temp\\ccg-x2r2-gatespawn2\\cwd\\cwd\\codex.exe"
+  },
+  "both": {
+    "case": "both",
+    "cwd": "C:\\Temp\\ccg-x2r2-gatespawn2\\both\\cwd",
+    "exe_dir": "C:\\Temp\\ccg-x2r2-gatespawn2\\both\\app",
+    "path_head": "C:/Temp/ccg-x2r2-gatespawn2\\both\\path",
+    "gate_claude": "C:\\Temp\\ccg-x2r2-gatespawn2\\both\\app\\claude.exe",
+    "spawn_claude_ok": true,
+    "spawn_claude_ran": "C:\\Temp\\ccg-x2r2-gatespawn2\\both\\app\\claude.exe",
+    "gate_codex": "C:\\Temp\\ccg-x2r2-gatespawn2\\both\\app\\codex.EXE",
+    "codex_arg": "C:\\Temp\\ccg-x2r2-gatespawn2\\both\\app\\codex.EXE",
+    "spawn_codex_ok": true,
+    "spawn_codex_ran": "C:\\Temp\\ccg-x2r2-gatespawn2\\both\\app\\codex.EXE"
+  },
+  "none": {
+    "case": "none",
+    "cwd": "C:\\Temp\\ccg-x2r2-gatespawn2\\none\\cwd",
+    "exe_dir": "C:\\Temp\\ccg-x2r2-gatespawn2\\none\\app",
+    "path_head": "C:\\Users\\User\\bin",
+    "gate_claude": null,
+    "spawn_claude_ok": false,
+    "spawn_claude_ran": null,
+    "gate_codex": null,
+    "codex_arg": "codex",
+    "spawn_codex_ok": true,
+    "spawn_codex_ran": null
+  }
+}

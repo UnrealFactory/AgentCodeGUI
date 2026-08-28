@@ -1,0 +1,73 @@
+{
+  "at": "2026-08-25T03:19:14.776Z",
+  "tag": "critextnr2ctl",
+  "exe": "C:\\Temp\\ccg-x2r2ctl-tgt\\release\\agentcodegui.exe",
+  "arms": {
+    "x": {
+      "where": "exe",
+      "exeDir": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-claude-path-critextnr2ctl\\x\\app",
+      "pathHead": "C:\\Users\\User\\bin",
+      "loginUrl": null,
+      "loginError": "claude 실행 파일을 찾지 못했어요",
+      "loginNoBin": true,
+      "aimsgError": "설치된 엔진이 없어요 — 설정 → Engine에서 먼저 설치해 주세요",
+      "aimsgBlocked": true,
+      "logoutList": [],
+      "logoutCalled": false,
+      "logoutWith": null
+    },
+    "p": {
+      "where": "path",
+      "exeDir": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-claude-path-critextnr2ctl\\p\\app",
+      "pathHead": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-claude-path-critextnr2ctl\\p\\bin",
+      "loginUrl": "https://claude.ai/oauth/authorize?code=FAKE-T1T2&email=fake@t1t2.test",
+      "loginError": null,
+      "loginNoBin": false,
+      "aimsgError": "AI 메시지 생성에 실패했어요",
+      "aimsgBlocked": false,
+      "logoutList": [],
+      "logoutCalled": true,
+      "logoutWith": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-claude-path-critextnr2ctl\\p\\home\\accounts\\seed-critextnr2ctl_claudepath.test-191j9th"
+    },
+    "n": {
+      "where": "none",
+      "exeDir": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-claude-path-critextnr2ctl\\n\\app",
+      "pathHead": "C:\\Users\\User\\bin",
+      "loginUrl": null,
+      "loginError": "claude 실행 파일을 찾지 못했어요",
+      "loginNoBin": true,
+      "aimsgError": "설치된 엔진이 없어요 — 설정 → Engine에서 먼저 설치해 주세요",
+      "aimsgBlocked": true,
+      "logoutList": [],
+      "logoutCalled": false,
+      "logoutWith": null
+    }
+  },
+  "findings": [
+    {
+      "id": "x.login→NO_BIN 아님",
+      "why": "기대 false · 실제 true"
+    },
+    {
+      "id": "x.login→login-url 도착",
+      "why": "기대 true · 실제 false"
+    },
+    {
+      "id": "x.aimsg→엔진 게이트 통과",
+      "why": "기대 false · 실제 true"
+    },
+    {
+      "id": "x.logout→★토큰 해지 호출이 나갔다",
+      "why": "기대 true · 실제 false"
+    },
+    {
+      "id": "x.logout→격리 계정 폴더로",
+      "why": "기대 true · 실제 false"
+    }
+  ],
+  "pass": false,
+  "headline": {
+    "armX_logoutCalled": false,
+    "armX_loginNoBin": true
+  }
+}

@@ -1,0 +1,200 @@
+{
+  "at": "2026-08-24T18:54:44.515Z",
+  "exe": "C:\\Code\\AgentCodeGUI\\target-critag2\\release\\agentcodegui.exe",
+  "sc": {
+    "inuse": {
+      "liveStatus": [
+        {
+          "chatId": "c-a",
+          "status": "done",
+          "account": "one@ccg.test",
+          "panelId": null
+        }
+      ],
+      "chipLive": [
+        "기본 · 맨 위",
+        "사용 중 · 첫 채팅"
+      ],
+      "log1": [
+        "[store] chats-v3 마이그레이션: {\"ok\":true,\"migratedAt\":1787597685189.0,\"elapsedMs\":5.0,\"backupDir\":\"C:\\\\Users\\\\User\\\\AppData\\\\Local\\\\Temp\\\\ccg-acct-live-critag2r2\\\\inuse\\\\backup-2.6.2-1787597685189\",\"counts\":{\"chats\":1,\"maSessions\":0,\"maPanels\":0,\"sessionChats\":0,\"talkAbsorbed\":0,\"carried\":0,\"keptV3\":0,\"keptV3Boards\":0,\"total\":1,\"messages\":0,\"boards\":1},\"idMap\":{\"c-a\":\"c-a\"},\"order\":[\"c-a\"],\"activeChatId\":\"c-a\",\"boardOrder\":[\"default\"],\"activeBoardId\":\"default\",\"activeSessionId\":\"\",\"btw\":{\"rewritten\":0,\"dropped\":0},\"holdMoved\":0,\"sourceIndexOrders\":{\"chats\":[\"c-a\"],\"multiAgent\":[],\"sessionChats\":[]},\"warnings\":[]}"
+      ],
+      "statusFile": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-acct-live-critag2r2\\inuse\\chats-v3\\status.json",
+      "statusRaw": "{\"version\":1,\"statuses\":{\"c-a\":{\"chatId\":\"c-a\",\"status\":\"done\",\"updatedAt\":1787597685497,\"resumeOwner\":\"engine\",\"busy\":false,\"bgActive\":false,\"ask\":\"none\",\"hold\":null,\"queued\":0,\"unread\":0,\"autoResume\":true}}}",
+      "accountOnDisk": false,
+      "poisoned": "{\"version\":1,\"statuses\":{\"c-a\":{\"chatId\":\"c-a\",\"status\":\"done\",\"updatedAt\":1787597685497,\"resumeOwner\":\"engine\",\"busy\":false,\"bgActive\":false,\"ask\":\"none\",\"hold\":null,\"queued\":0,\"unread\":0,\"autoResume\":true,\"account\":\"one@ccg.test\",\"panelId\":\"default::0\"}}}",
+      "rebootStatus": [
+        {
+          "chatId": "c-a",
+          "status": "done",
+          "account": null,
+          "panelId": null
+        }
+      ],
+      "chipReboot": [
+        "기본 · 맨 위"
+      ],
+      "log2": []
+    },
+    "undo": {
+      "chip0": "Haiku 4.5 · 최소 · 일반 · one",
+      "picked": "two",
+      "undoRow": "one → two 전환됨 | 되돌리기",
+      "chipAfter": "Haiku 4.5 · 최소 · 일반 · one",
+      "log1": [
+        "[store] chats-v3 마이그레이션: {\"ok\":true,\"migratedAt\":1787597697308.0,\"elapsedMs\":6.0,\"backupDir\":\"C:\\\\Users\\\\User\\\\AppData\\\\Local\\\\Temp\\\\ccg-acct-live-critag2r2\\\\undo\\\\backup-2.6.2-1787597697308\",\"counts\":{\"chats\":1,\"maSessions\":0,\"maPanels\":0,\"sessionChats\":0,\"talkAbsorbed\":0,\"carried\":0,\"keptV3\":0,\"keptV3Boards\":0,\"total\":1,\"messages\":0,\"boards\":1},\"idMap\":{\"c-a\":\"c-a\"},\"order\":[\"c-a\"],\"activeChatId\":\"c-a\",\"boardOrder\":[\"default\"],\"activeBoardId\":\"default\",\"activeSessionId\":\"\",\"btw\":{\"rewritten\":0,\"dropped\":0},\"holdMoved\":0,\"sourceIndexOrders\":{\"chats\":[\"c-a\"],\"multiAgent\":[],\"sessionChats\":[]},\"warnings\":[]}"
+      ],
+      "diskAccount": "one@ccg.test",
+      "chipReboot": "Haiku 4.5 · 최소 · 일반 · one",
+      "ran": "RAN-one_ccg.test",
+      "log2": []
+    },
+    "top": {
+      "want": "three@ccg.test",
+      "storeOrder": [
+        "three@ccg.test",
+        "one@ccg.test",
+        "two@ccg.test"
+      ],
+      "mainChip": "Haiku 4.5 · 최소 · 일반 · three",
+      "tabList": [
+        "three@ccg.test",
+        "one@ccg.test",
+        "two@ccg.test"
+      ],
+      "newChat": "clicked",
+      "newChip": "Haiku 4.5 · 최소 · 일반 · three",
+      "ran": "RAN-three_ccg.test",
+      "log": [
+        "[store] chats-v3 마이그레이션: {\"ok\":true,\"migratedAt\":1787597713221.0,\"elapsedMs\":5.0,\"backupDir\":\"C:\\\\Users\\\\User\\\\AppData\\\\Local\\\\Temp\\\\ccg-acct-live-critag2r2\\\\top\\\\backup-2.6.2-1787597713221\",\"counts\":{\"chats\":1,\"maSessions\":0,\"maPanels\":0,\"sessionChats\":0,\"talkAbsorbed\":0,\"carried\":0,\"keptV3\":0,\"keptV3Boards\":0,\"total\":1,\"messages\":0,\"boards\":1},\"idMap\":{\"c-a\":\"c-a\"},\"order\":[\"c-a\"],\"activeChatId\":\"c-a\",\"boardOrder\":[\"default\"],\"activeBoardId\":\"default\",\"activeSessionId\":\"\",\"btw\":{\"rewritten\":0,\"dropped\":0},\"holdMoved\":0,\"sourceIndexOrders\":{\"chats\":[\"c-a\"],\"multiAgent\":[],\"sessionChats\":[]},\"warnings\":[]}"
+      ]
+    },
+    "retry": {
+      "hasFail": true,
+      "before": 3,
+      "clicked": "clicked",
+      "after": 4,
+      "lastOpts": [
+        {
+          "cachedOnly": true
+        },
+        {
+          "priority": "one@ccg.test",
+          "retry": true
+        }
+      ],
+      "log": [
+        "[store] chats-v3 마이그레이션: {\"ok\":true,\"migratedAt\":1787597726505.0,\"elapsedMs\":4.0,\"backupDir\":\"C:\\\\Users\\\\User\\\\AppData\\\\Local\\\\Temp\\\\ccg-acct-live-critag2r2\\\\retry\\\\backup-2.6.2-1787597726505\",\"counts\":{\"chats\":1,\"maSessions\":0,\"maPanels\":0,\"sessionChats\":0,\"talkAbsorbed\":0,\"carried\":0,\"keptV3\":0,\"keptV3Boards\":0,\"total\":1,\"messages\":0,\"boards\":1},\"idMap\":{\"c-a\":\"c-a\"},\"order\":[\"c-a\"],\"activeChatId\":\"c-a\",\"boardOrder\":[\"default\"],\"activeBoardId\":\"default\",\"activeSessionId\":\"\",\"btw\":{\"rewritten\":0,\"dropped\":0},\"holdMoved\":0,\"sourceIndexOrders\":{\"chats\":[\"c-a\"],\"multiAgent\":[],\"sessionChats\":[]},\"warnings\":[]}"
+      ]
+    },
+    "del": {
+      "want": "one@ccg.test",
+      "picked": "clicked",
+      "before": [
+        {
+          "chatId": "c-a",
+          "status": "done",
+          "account": "one@ccg.test",
+          "panelId": null
+        },
+        {
+          "chatId": "c-b",
+          "status": "done",
+          "account": "one@ccg.test",
+          "panelId": null
+        }
+      ],
+      "warnBefore": [
+        "사용 중 · 첫 채팅"
+      ],
+      "emits0": 7,
+      "deleted": "confirmed",
+      "after": [
+        {
+          "chatId": "c-b",
+          "status": "done",
+          "account": "one@ccg.test",
+          "panelId": null
+        }
+      ],
+      "emits1": 8,
+      "warnAfter": [],
+      "diskOrder": [
+        "c-b"
+      ],
+      "slots": [
+        "c-b"
+      ],
+      "log": [
+        "[store] chats-v3 마이그레이션: {\"ok\":true,\"migratedAt\":1787597736575.0,\"elapsedMs\":10.0,\"backupDir\":\"C:\\\\Users\\\\User\\\\AppData\\\\Local\\\\Temp\\\\ccg-acct-live-critag2r2\\\\del\\\\backup-2.6.2-1787597736575\",\"counts\":{\"chats\":2,\"maSessions\":0,\"maPanels\":0,\"sessionChats\":0,\"talkAbsorbed\":0,\"carried\":0,\"keptV3\":0,\"keptV3Boards\":0,\"total\":2,\"messages\":0,\"boards\":1},\"idMap\":{\"c-b\":\"c-b\",\"c-a\":\"c-a\"},\"order\":[\"c-a\",\"c-b\"],\"activeChatId\":\"c-a\",\"boardOrder\":[\"default\"],\"activeBoardId\":\"default\",\"activeSessionId\":\"\",\"btw\":{\"rewritten\":0,\"dropped\":0},\"holdMoved\":0,\"sourceIndexOrders\":{\"chats\":[\"c-a\",\"c-b\"],\"multiAgent\":[],\"sessionChats\":[]},\"warnings\":[]}"
+      ]
+    },
+    "get": {
+      "want": "one@ccg.test",
+      "picked": "clicked",
+      "before": [
+        {
+          "chatId": "c-a",
+          "status": "done",
+          "account": "one@ccg.test",
+          "panelId": null
+        },
+        {
+          "chatId": "c-b",
+          "status": "done",
+          "account": "one@ccg.test",
+          "panelId": null
+        }
+      ],
+      "warnBefore": [
+        "사용 중 · 첫 채팅"
+      ],
+      "getStatuses": [
+        {
+          "chatId": "c-a",
+          "status": "done",
+          "account": "one@ccg.test",
+          "ask": "none"
+        },
+        {
+          "chatId": "c-b",
+          "status": "done",
+          "account": "one@ccg.test",
+          "ask": "none"
+        }
+      ],
+      "after": [
+        {
+          "chatId": "c-a",
+          "status": "done",
+          "account": "one@ccg.test",
+          "panelId": null
+        },
+        {
+          "chatId": "c-b",
+          "status": "done",
+          "account": "one@ccg.test",
+          "panelId": null
+        }
+      ],
+      "warnAfter": [
+        "사용 중 · 첫 채팅"
+      ],
+      "slots": [
+        {
+          "chatId": "c-a",
+          "pid": 12656,
+          "state": "Idle"
+        },
+        {
+          "chatId": "c-b",
+          "pid": 3844,
+          "state": "Idle"
+        }
+      ],
+      "log": [
+        "[store] chats-v3 마이그레이션: {\"ok\":true,\"migratedAt\":1787597755547.0,\"elapsedMs\":12.0,\"backupDir\":\"C:\\\\Users\\\\User\\\\AppData\\\\Local\\\\Temp\\\\ccg-acct-live-critag2r2\\\\get\\\\backup-2.6.2-1787597755547\",\"counts\":{\"chats\":2,\"maSessions\":0,\"maPanels\":0,\"sessionChats\":0,\"talkAbsorbed\":0,\"carried\":0,\"keptV3\":0,\"keptV3Boards\":0,\"total\":2,\"messages\":0,\"boards\":1},\"idMap\":{\"c-b\":\"c-b\",\"c-a\":\"c-a\"},\"order\":[\"c-a\",\"c-b\"],\"activeChatId\":\"c-a\",\"boardOrder\":[\"default\"],\"activeBoardId\":\"default\",\"activeSessionId\":\"\",\"btw\":{\"rewritten\":0,\"dropped\":0},\"holdMoved\":0,\"sourceIndexOrders\":{\"chats\":[\"c-a\",\"c-b\"],\"multiAgent\":[],\"sessionChats\":[]},\"warnings\":[]}"
+      ]
+    }
+  },
+  "findings": []
+}

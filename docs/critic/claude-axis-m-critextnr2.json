@@ -1,0 +1,56 @@
+{
+  "at": "2026-08-25T03:20:23.856Z",
+  "exe": "C:/Temp/ccg-x2r2-tgt/release/agentcodegui.exe",
+  "tag": "r2fix",
+  "arms": {
+    "m": {
+      "id": "m",
+      "kind": "managed",
+      "home": "C:/Temp/ccg-crx2-cx-r2fix-m",
+      "exe": "C:/Temp/ccg-x2r2-tgt/release/agentcodegui.exe",
+      "pathHead": "C:\\Users\\User\\bin",
+      "listen": "ok",
+      "login": {
+        "ok": true,
+        "loggedIn": true,
+        "email": "login-m@crx2.test",
+        "authMethod": "claudeai",
+        "subscriptionType": "max"
+      },
+      "loginMs": 335,
+      "loginUrls": [
+        "https://claude.ai/oauth/authorize?code=FAKE-T1T2&email=login-m@crx2.test"
+      ],
+      "accounts": [
+        {
+          "email": "seed@crx2.test",
+          "subscriptionType": "max",
+          "isDefault": true
+        },
+        {
+          "email": "login-m@crx2.test",
+          "subscriptionType": "max",
+          "isDefault": false
+        }
+      ],
+      "logoutTarget": "seed@crx2.test",
+      "logout": [
+        {
+          "email": "login-m@crx2.test",
+          "subscriptionType": "max",
+          "isDefault": true
+        }
+      ],
+      "logoutCalled": true,
+      "logoutCalledWith": "C:/Temp/ccg-crx2-cx-r2fix-m\\accounts\\seed_crx2.test-14goa20",
+      "aimsg": {
+        "ok": false,
+        "error": "account not registered: seed@crx2.test"
+      },
+      "log": "[store] chats-v3 마이그레이션: {\"ok\":true,\"migratedAt\":1787628025242.0,\"elapsedMs\":3.0,\"backupDir\":\"C:/Temp/ccg-crx2-cx-r2fix-m\\\\backup-2.6.2-1787628025242\",\"counts\":{\"chats\":0,\"maSessions\":0,\"maPanels\":0,\"sessionChats\":0,\"talkAbsorbed\":0,\"carried\":0,\"keptV3\":0,\"keptV3Boards\":0,\"total\":0,\"messages\":0,\"boards\":1},\"idMap\":{},\"order\":[],\"activeChatId\":\"\",\"boardOrder\":[\"default\"],\"activeBoardId\":\"default\",\"activeSessionId\":\"\",\"btw\":{\"rewritten\":0,\"dropped\":0},\"holdMoved\":0,\"sourceIndexOrders\":{\"chats\":[],\"multiAgent\":[],\"sessionChats\":[]},\"warnings\":[]}\n"
+    }
+  },
+  "findings": [],
+  "pass": 4,
+  "fail": 0
+}

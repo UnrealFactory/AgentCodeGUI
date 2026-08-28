@@ -1,0 +1,411 @@
+{
+  "at": "2026-08-25T03:49:45.806Z",
+  "exe": "C:\\Code\\AgentCodeGUI\\target-casxr3rel\\release\\agentcodegui.exe",
+  "scenarios": {
+    "pick": {
+      "home": "C:\\Code\\AgentCodeGUI\\.poc-home-m11-pick",
+      "emails": [
+        "a@ccg.test",
+        "soon@ccg.test",
+        "late@ccg.test"
+      ],
+      "ready": true,
+      "switched": true,
+      "after": {
+        "account": "soon@ccg.test",
+        "revision": 1,
+        "origins": [
+          "default#0[]",
+          "auto_account_switch#1[billingAccount]"
+        ],
+        "state": "Idle",
+        "hold": null,
+        "spawns": 2,
+        "accountSwitch": {
+          "on": true,
+          "busy": [],
+          "worker": {
+            "runs": 1,
+            "fetches": 0
+          },
+          "picked": "soon@ccg.test",
+          "skipped": [
+            {
+              "email": "a@ccg.test",
+              "why": "current"
+            }
+          ]
+        },
+        "banners": [
+          {
+            "text": "사용 한도에 걸려 soon@ccg.test 계정으로 바꿔 이어갑니다 — 이 계정은 약 29분 뒤 초기화돼요.",
+            "from": "a@ccg.test",
+            "to": "soon@ccg.test",
+            "soonestReset": 1787631585,
+            "revertTo": 0
+          }
+        ],
+        "notices": [
+          "사용 한도에 걸려 soon@ccg.test 계정으로 바꿔 이어갑니다 — 이 계정은 약 29분 뒤 초기화돼요."
+        ],
+        "domHasSwitch": true,
+        "domHasWait": false,
+        "thread": "한도에 걸릴 질문\n\n복사\n오후 12:49\nClaude AI usage limit reached|1787647786\n계정 되돌리기\n오후 12:49\n사용 한도에 걸려 soon@ccg.test 계정으로 바꿔 이어갑니다 — 이 계정은 약 29분 뒤 초기화돼요.\n\n이어서 진행해 주세요\n\nOK-soon_ccg.test"
+      },
+      "revertTo": 0,
+      "pill": {
+        "found": true,
+        "labels": [
+          "계정 되돌리기"
+        ],
+        "disabled": [
+          false
+        ]
+      },
+      "pillClick": "clicked",
+      "afterRevert": {
+        "account": "a@ccg.test",
+        "revision": 2,
+        "origins": [
+          "default#0[]",
+          "auto_account_switch#1[billingAccount]",
+          "revert#2[billingAccount]"
+        ],
+        "state": "Idle",
+        "hold": null,
+        "spawns": 2,
+        "accountSwitch": {
+          "on": true,
+          "busy": [],
+          "worker": {
+            "runs": 1,
+            "fetches": 0
+          },
+          "picked": "soon@ccg.test",
+          "skipped": [
+            {
+              "email": "a@ccg.test",
+              "why": "current"
+            }
+          ]
+        },
+        "banners": [
+          {
+            "text": "사용 한도에 걸려 soon@ccg.test 계정으로 바꿔 이어갑니다 — 이 계정은 약 29분 뒤 초기화돼요.",
+            "from": "a@ccg.test",
+            "to": "soon@ccg.test",
+            "soonestReset": 1787631585,
+            "revertTo": 0
+          }
+        ],
+        "notices": [
+          "사용 한도에 걸려 soon@ccg.test 계정으로 바꿔 이어갑니다 — 이 계정은 약 29분 뒤 초기화돼요."
+        ],
+        "domHasSwitch": true,
+        "domHasWait": false,
+        "thread": "한도에 걸릴 질문\n\n복사\n오후 12:49\nClaude AI usage limit reached|1787647786\n되돌림 ✓\n오후 12:49\n사용 한도에 걸려 soon@ccg.test 계정으로 바꿔 이어갑니다 — 이 계정은 약 29분 뒤 초기화돼요.\n\n이어서 진행해 주세요\n\nOK-soon_ccg.test"
+      },
+      "settled": {
+        "band": true,
+        "labels": [
+          "되돌림 ✓"
+        ],
+        "disabled": [
+          true
+        ]
+      },
+      "appLog": [
+        "[store] chats-v3 마이그레이션: {\"ok\":true,\"migratedAt\":1787629786655.0,\"elapsedMs\":6.0,\"backupDir\":\"C:\\\\Code\\\\AgentCodeGUI\\\\.poc-home-m11-pick\\\\backup-2.6.2-1787629786655\",\"counts\":{\"chats\":1,\"maSessions\":0,\"maPanels\":0,\"sessionChats\":0,\"talkAbsorbed\":0,\"carried\":0,\"keptV3\":0,\"keptV3Boards\":0,\"total\":1,\"messages\":0,\"boards\":1},\"idMap\":{\"c-m11\":\"c-m11\"},\"order\":[\"c-m11\"],\"activeChatId\":\"c-m11\",\"boardOrder\":[\"default\"],\"activeBoardId\":\"default\",\"activeSessionId\":\"\",\"btw\":{\"rewritten\":0,\"dropped\":0},\"holdMoved\":0,\"sourceIndexOrders\":{\"chats\":[\"c-m11\"],\"multiAgent\":[],\"sessionChats\":[]},\"warnings\":[]}"
+      ]
+    },
+    "none": {
+      "home": "C:\\Code\\AgentCodeGUI\\.poc-home-m11-none",
+      "emails": [
+        "a@ccg.test"
+      ],
+      "ready": true,
+      "waited": true,
+      "after": {
+        "account": "a@ccg.test",
+        "revision": 0,
+        "origins": [
+          "default#0[]"
+        ],
+        "state": "Idle",
+        "hold": {
+          "resetsAt": 17998747,
+          "ready": false,
+          "dueAt": 18088747,
+          "probes": 0,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "spawns": 1,
+        "accountSwitch": {
+          "on": true,
+          "busy": [],
+          "worker": {
+            "runs": 1,
+            "fetches": 0
+          },
+          "picked": null,
+          "skipped": [
+            {
+              "email": "a@ccg.test",
+              "why": "current"
+            }
+          ]
+        },
+        "banners": [],
+        "notices": [
+          "사용 한도에 걸려 대기합니다 — 풀리는 시각에 맞춰 이어서 보낼게요."
+        ],
+        "domHasSwitch": false,
+        "domHasWait": true,
+        "thread": "한도에 걸릴 질문\n\n복사\n오후 12:49\nClaude AI usage limit reached|1787647790\n오후 12:49\n사용 한도에 걸려 대기합니다 — 풀리는 시각에 맞춰 이어서 보낼게요."
+      },
+      "appLog": [
+        "[store] chats-v3 마이그레이션: {\"ok\":true,\"migratedAt\":1787629791100.0,\"elapsedMs\":5.0,\"backupDir\":\"C:\\\\Code\\\\AgentCodeGUI\\\\.poc-home-m11-none\\\\backup-2.6.2-1787629791100\",\"counts\":{\"chats\":1,\"maSessions\":0,\"maPanels\":0,\"sessionChats\":0,\"talkAbsorbed\":0,\"carried\":0,\"keptV3\":0,\"keptV3Boards\":0,\"total\":1,\"messages\":0,\"boards\":1},\"idMap\":{\"c-m11\":\"c-m11\"},\"order\":[\"c-m11\"],\"activeChatId\":\"c-m11\",\"boardOrder\":[\"default\"],\"activeBoardId\":\"default\",\"activeSessionId\":\"\",\"btw\":{\"rewritten\":0,\"dropped\":0},\"holdMoved\":0,\"sourceIndexOrders\":{\"chats\":[\"c-m11\"],\"multiAgent\":[],\"sessionChats\":[]},\"warnings\":[]}"
+      ]
+    },
+    "off": {
+      "home": "C:\\Code\\AgentCodeGUI\\.poc-home-m11-off",
+      "emails": [
+        "a@ccg.test",
+        "soon@ccg.test"
+      ],
+      "ready": true,
+      "waited": true,
+      "after": {
+        "account": "a@ccg.test",
+        "revision": 0,
+        "origins": [
+          "default#0[]"
+        ],
+        "state": "Idle",
+        "hold": {
+          "resetsAt": 17998627,
+          "ready": false,
+          "dueAt": 18088627,
+          "probes": 0,
+          "attempts": 0,
+          "autoPaused": false
+        },
+        "spawns": 1,
+        "accountSwitch": {
+          "on": false,
+          "busy": [],
+          "worker": {
+            "runs": 0,
+            "fetches": 0
+          },
+          "picked": null,
+          "skipped": []
+        },
+        "banners": [],
+        "notices": [
+          "사용 한도에 걸려 대기합니다 — 풀리는 시각에 맞춰 이어서 보낼게요."
+        ],
+        "domHasSwitch": false,
+        "domHasWait": true,
+        "thread": "한도에 걸릴 질문\n\n복사\n오후 12:49\nClaude AI usage limit reached|1787647793\n오후 12:49\n사용 한도에 걸려 대기합니다 — 풀리는 시각에 맞춰 이어서 보낼게요."
+      },
+      "appLog": [
+        "[store] chats-v3 마이그레이션: {\"ok\":true,\"migratedAt\":1787629794189.0,\"elapsedMs\":4.0,\"backupDir\":\"C:\\\\Code\\\\AgentCodeGUI\\\\.poc-home-m11-off\\\\backup-2.6.2-1787629794189\",\"counts\":{\"chats\":1,\"maSessions\":0,\"maPanels\":0,\"sessionChats\":0,\"talkAbsorbed\":0,\"carried\":0,\"keptV3\":0,\"keptV3Boards\":0,\"total\":1,\"messages\":0,\"boards\":1},\"idMap\":{\"c-m11\":\"c-m11\"},\"order\":[\"c-m11\"],\"activeChatId\":\"c-m11\",\"boardOrder\":[\"default\"],\"activeBoardId\":\"default\",\"activeSessionId\":\"\",\"btw\":{\"rewritten\":0,\"dropped\":0},\"holdMoved\":0,\"sourceIndexOrders\":{\"chats\":[\"c-m11\"],\"multiAgent\":[],\"sessionChats\":[]},\"warnings\":[]}"
+      ]
+    },
+    "dirty": {
+      "home": "C:\\Code\\AgentCodeGUI\\.poc-home-m11-dirty",
+      "emails": [
+        "a@ccg.test",
+        "dirty@ccg.test",
+        "clean@ccg.test"
+      ],
+      "ready": true,
+      "seeded": {
+        "seeded": [
+          {
+            "email": "dirty@ccg.test",
+            "tokenOwner": "a@ccg.test",
+            "dup": true
+          },
+          {
+            "email": "a@ccg.test",
+            "tokenOwner": "a@ccg.test",
+            "dup": false
+          },
+          {
+            "email": "clean@ccg.test",
+            "tokenOwner": "clean@ccg.test",
+            "dup": false
+          }
+        ],
+        "default": "dirty@ccg.test",
+        "total": 3,
+        "preflight": [
+          {
+            "email": "dirty@ccg.test",
+            "verdict": "Contaminated(\"a@ccg.test\")"
+          },
+          {
+            "email": "a@ccg.test",
+            "verdict": "Contaminated(\"dirty@ccg.test\")"
+          },
+          {
+            "email": "clean@ccg.test",
+            "verdict": "Probe"
+          }
+        ]
+      },
+      "switched": true,
+      "after": {
+        "account": "clean@ccg.test",
+        "revision": 1,
+        "origins": [
+          "default#0[]",
+          "auto_account_switch#1[billingAccount]"
+        ],
+        "state": "Idle",
+        "hold": null,
+        "spawns": 2,
+        "accountSwitch": {
+          "on": true,
+          "busy": [],
+          "worker": {
+            "runs": 1,
+            "fetches": 0
+          },
+          "picked": "clean@ccg.test",
+          "skipped": [
+            {
+              "email": "dirty@ccg.test",
+              "why": "contaminated"
+            },
+            {
+              "email": "a@ccg.test",
+              "why": "current"
+            }
+          ]
+        },
+        "banners": [
+          {
+            "text": "사용 한도에 걸려 clean@ccg.test 계정으로 바꿔 이어갑니다 — 이 계정은 약 1시간 뒤 초기화돼요.",
+            "from": "a@ccg.test",
+            "to": "clean@ccg.test",
+            "soonestReset": 1787636997,
+            "revertTo": 0
+          }
+        ],
+        "notices": [
+          "사용 한도에 걸려 clean@ccg.test 계정으로 바꿔 이어갑니다 — 이 계정은 약 1시간 뒤 초기화돼요."
+        ],
+        "domHasSwitch": true,
+        "domHasWait": false,
+        "thread": "한도에 걸릴 질문\n\n복사\n오후 12:49\nClaude AI usage limit reached|1787647797\n계정 되돌리기\n오후 12:49\n사용 한도에 걸려 clean@ccg.test 계정으로 바꿔 이어갑니다 — 이 계정은 약 1시간 뒤 초기화돼요.\n\n이어서 진행해 주세요\n\nOK-clean_ccg.test"
+      },
+      "appLog": [
+        "[store] chats-v3 마이그레이션: {\"ok\":true,\"migratedAt\":1787629797555.0,\"elapsedMs\":6.0,\"backupDir\":\"C:\\\\Code\\\\AgentCodeGUI\\\\.poc-home-m11-dirty\\\\backup-2.6.2-1787629797555\",\"counts\":{\"chats\":1,\"maSessions\":0,\"maPanels\":0,\"sessionChats\":0,\"talkAbsorbed\":0,\"carried\":0,\"keptV3\":0,\"keptV3Boards\":0,\"total\":1,\"messages\":0,\"boards\":1},\"idMap\":{\"c-m11\":\"c-m11\"},\"order\":[\"c-m11\"],\"activeChatId\":\"c-m11\",\"boardOrder\":[\"default\"],\"activeBoardId\":\"default\",\"activeSessionId\":\"\",\"btw\":{\"rewritten\":0,\"dropped\":0},\"holdMoved\":0,\"sourceIndexOrders\":{\"chats\":[\"c-m11\"],\"multiAgent\":[],\"sessionChats\":[]},\"warnings\":[]}"
+      ]
+    },
+    "chain": {
+      "home": "C:\\Code\\AgentCodeGUI\\.poc-home-m11-chain",
+      "emails": [
+        "a@ccg.test",
+        "b@ccg.test",
+        "c@ccg.test"
+      ],
+      "ready": true,
+      "two": true,
+      "after": {
+        "account": "c@ccg.test",
+        "revision": 2,
+        "origins": [
+          "default#0[]",
+          "auto_account_switch#1[billingAccount]",
+          "auto_account_switch#2[billingAccount]"
+        ],
+        "state": "Idle",
+        "hold": null,
+        "spawns": 3,
+        "accountSwitch": {
+          "on": true,
+          "busy": [],
+          "worker": {
+            "runs": 1,
+            "fetches": 0
+          },
+          "picked": "c@ccg.test",
+          "skipped": [
+            {
+              "email": "a@ccg.test",
+              "why": "already_tried"
+            },
+            {
+              "email": "b@ccg.test",
+              "why": "current"
+            }
+          ]
+        },
+        "banners": [
+          {
+            "text": "사용 한도에 걸려 b@ccg.test 계정으로 바꿔 이어갑니다 — 이 계정은 약 29분 뒤 초기화돼요.",
+            "from": "a@ccg.test",
+            "to": "b@ccg.test",
+            "soonestReset": 1787631600,
+            "revertTo": 0
+          },
+          {
+            "text": "사용 한도에 걸려 c@ccg.test 계정으로 바꿔 이어갑니다 — 이 계정은 약 2시간 뒤 초기화돼요.",
+            "from": "b@ccg.test",
+            "to": "c@ccg.test",
+            "soonestReset": 1787640600,
+            "revertTo": 1
+          }
+        ],
+        "notices": [
+          "사용 한도에 걸려 b@ccg.test 계정으로 바꿔 이어갑니다 — 이 계정은 약 29분 뒤 초기화돼요.",
+          "사용 한도에 걸려 c@ccg.test 계정으로 바꿔 이어갑니다 — 이 계정은 약 2시간 뒤 초기화돼요.",
+          "계정 변경(으)로 새 프로세스에서 시작했어요"
+        ],
+        "domHasSwitch": true,
+        "domHasWait": false,
+        "thread": "한도에 걸릴 질문\n\n복사\n오후 12:50\nClaude AI usage limit reached|1787647800\n계정 되돌리기\n오후 12:50\n사용 한도에 걸려 b@ccg.test 계정으로 바꿔 이어갑니다 — 이 계정은 약 29분 뒤 초기화돼요.\n\n이어서 진행해 주세요\n\n복사\n오후 12:50\nClaude AI usage limit reached|1787647800\n계정 되돌리기\n오후 12:50\n사용 한도에 걸려 c@ccg.test 계정으로 바꿔 이어갑니다 — 이 계정은 약 2시간 뒤 초기화돼요.\n오후 12:50\n계정 변경(으)로 새 프로세스에서 시작했어요\n\n이어서 진행해 주세요\n\nOK-c_ccg.test"
+      },
+      "appLog": [
+        "[store] chats-v3 마이그레이션: {\"ok\":true,\"migratedAt\":1787629800799.0,\"elapsedMs\":4.0,\"backupDir\":\"C:\\\\Code\\\\AgentCodeGUI\\\\.poc-home-m11-chain\\\\backup-2.6.2-1787629800799\",\"counts\":{\"chats\":1,\"maSessions\":0,\"maPanels\":0,\"sessionChats\":0,\"talkAbsorbed\":0,\"carried\":0,\"keptV3\":0,\"keptV3Boards\":0,\"total\":1,\"messages\":0,\"boards\":1},\"idMap\":{\"c-m11\":\"c-m11\"},\"order\":[\"c-m11\"],\"activeChatId\":\"c-m11\",\"boardOrder\":[\"default\"],\"activeBoardId\":\"default\",\"activeSessionId\":\"\",\"btw\":{\"rewritten\":0,\"dropped\":0},\"holdMoved\":0,\"sourceIndexOrders\":{\"chats\":[\"c-m11\"],\"multiAgent\":[],\"sessionChats\":[]},\"warnings\":[]}"
+      ]
+    },
+    "toggle": {
+      "home": "C:\\Code\\AgentCodeGUI\\.poc-home-m11-toggle",
+      "emails": [
+        "a@ccg.test",
+        "b@ccg.test"
+      ],
+      "ready": true,
+      "before": false,
+      "opened": "clicked",
+      "row": {
+        "label": "한도 소진 시 계정 자동 전환",
+        "desc": "한도에 걸리면 풀릴 때까지 기다려요(지금 동작). 켜면 노는 계정으로 갈아타 바로 이어갑니다.",
+        "checked": "false",
+        "hasSwitch": true
+      },
+      "onDisk": true,
+      "shellSaw": true,
+      "after": {
+        "on": true,
+        "busy": [],
+        "worker": {
+          "runs": 0,
+          "fetches": 0
+        },
+        "picked": null,
+        "skipped": []
+      },
+      "appLog": [
+        "[store] chats-v3 마이그레이션: {\"ok\":true,\"migratedAt\":1787629804541.0,\"elapsedMs\":4.0,\"backupDir\":\"C:\\\\Code\\\\AgentCodeGUI\\\\.poc-home-m11-toggle\\\\backup-2.6.2-1787629804541\",\"counts\":{\"chats\":1,\"maSessions\":0,\"maPanels\":0,\"sessionChats\":0,\"talkAbsorbed\":0,\"carried\":0,\"keptV3\":0,\"keptV3Boards\":0,\"total\":1,\"messages\":0,\"boards\":1},\"idMap\":{\"c-m11\":\"c-m11\"},\"order\":[\"c-m11\"],\"activeChatId\":\"c-m11\",\"boardOrder\":[\"default\"],\"activeBoardId\":\"default\",\"activeSessionId\":\"\",\"btw\":{\"rewritten\":0,\"dropped\":0},\"holdMoved\":0,\"sourceIndexOrders\":{\"chats\":[\"c-m11\"],\"multiAgent\":[],\"sessionChats\":[]},\"warnings\":[]}"
+      ]
+    }
+  },
+  "findings": []
+}

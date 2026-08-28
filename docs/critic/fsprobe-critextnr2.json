@@ -1,0 +1,194 @@
+{
+  "sha1": "a3fe09bddf6ebff9636b4696bc0ee525d00618e3",
+  "sha2": "3d78f111a3166a1c30a14ba2ec26a17cb321799b",
+  "git": "git version 2.53.0.windows.1",
+  "rows": [
+    {
+      "q": "file_diff(-dir)",
+      "r": {
+        "diff": null,
+        "error": "내용을 읽을 수 없어요"
+      }
+    },
+    {
+      "q": "file_diff(보통dir)",
+      "r": {
+        "diff": null,
+        "error": "내용을 읽을 수 없어요"
+      }
+    },
+    {
+      "q": "file_diff(app/posts/[id])",
+      "r": {
+        "diff": null,
+        "error": "내용을 읽을 수 없어요"
+      }
+    },
+    {
+      "q": "file_diff(-파일.txt)",
+      "r": {
+        "diff": {
+          "path": "-파일.txt",
+          "tag": "edit",
+          "add": 1,
+          "del": 0,
+          "lines": [
+            {
+              "t": "ctx",
+              "text": "one"
+            },
+            {
+              "t": "ctx",
+              "text": "two"
+            },
+            {
+              "t": "add",
+              "text": "three"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "q": "file_diff(app/posts/[id]/page.tsx)",
+      "r": {
+        "diff": {
+          "path": "app/posts/[id]/page.tsx",
+          "tag": "edit",
+          "add": 0,
+          "del": 0,
+          "lines": [
+            {
+              "t": "ctx",
+              "text": "x"
+            },
+            {
+              "t": "ctx",
+              "text": "y"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "q": "file_diff(함정.txt)",
+      "r": {
+        "diff": {
+          "path": "함정.txt",
+          "tag": "edit",
+          "add": 0,
+          "del": 0,
+          "lines": [
+            {
+              "t": "ctx",
+              "text": "tree HEAD:함정.txt"
+            },
+            {
+              "t": "ctx",
+              "text": ""
+            },
+            {
+              "t": "ctx",
+              "text": "something else"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "q": "commit_file_diff(-dir)",
+      "r": {
+        "diff": null,
+        "error": "내용을 읽을 수 없어요"
+      }
+    },
+    {
+      "q": "commit_file_diff(보통dir)",
+      "r": {
+        "diff": null,
+        "error": "내용을 읽을 수 없어요"
+      }
+    },
+    {
+      "q": "commit_file_diff(app/posts/[id])",
+      "r": {
+        "diff": null,
+        "error": "내용을 읽을 수 없어요"
+      }
+    },
+    {
+      "q": "commit_file_diff(-파일.txt)",
+      "r": {
+        "diff": {
+          "path": "-파일.txt",
+          "tag": "edit",
+          "add": 1,
+          "del": 0,
+          "lines": [
+            {
+              "t": "ctx",
+              "text": "one"
+            },
+            {
+              "t": "add",
+              "text": "two"
+            }
+          ]
+        },
+        "content": "one\ntwo\n"
+      }
+    },
+    {
+      "q": "commit_file_diff(app/posts/[id]/page.tsx)",
+      "r": {
+        "diff": {
+          "path": "app/posts/[id]/page.tsx",
+          "tag": "edit",
+          "add": 1,
+          "del": 0,
+          "lines": [
+            {
+              "t": "ctx",
+              "text": "x"
+            },
+            {
+              "t": "add",
+              "text": "y"
+            }
+          ]
+        },
+        "content": "x\ny\n"
+      }
+    },
+    {
+      "q": "commit_file_diff(함정.txt)",
+      "r": {
+        "diff": {
+          "path": "함정.txt",
+          "tag": "edit",
+          "add": 1,
+          "del": 1,
+          "lines": [
+            {
+              "t": "ctx",
+              "text": "tree HEAD:함정.txt"
+            },
+            {
+              "t": "ctx",
+              "text": ""
+            },
+            {
+              "t": "del",
+              "text": "something"
+            },
+            {
+              "t": "add",
+              "text": "something else"
+            }
+          ]
+        },
+        "content": "tree HEAD:함정.txt\n\nsomething else\n"
+      }
+    }
+  ]
+}

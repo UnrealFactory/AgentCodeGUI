@@ -1,0 +1,443 @@
+{
+  "at": "2026-08-25T05:09:26.122Z",
+  "exe": "C:/Temp/ccg-x3r3ctl-tgt/release/agentcodegui.exe",
+  "watchSec": 120,
+  "arms": {
+    "cwdOnly": {
+      "label": "F/CWD",
+      "codexBin": "codex",
+      "watchSec": 120,
+      "fired": true,
+      "firedAt": 90,
+      "finalProbe": {
+        "asks": 1,
+        "fetches": 0,
+        "blocked": 0,
+        "clear": 0,
+        "unavailable": 0,
+        "unknown": 1
+      },
+      "holdAlive": false,
+      "cwdCodexRan": true,
+      "cwdCodexTalked": true,
+      "samples": [
+        {
+          "t": 5,
+          "spawns": 0,
+          "hold": {
+            "resetsAt": 0,
+            "ready": false,
+            "dueAt": 90000,
+            "probes": 0,
+            "attempts": 0,
+            "autoPaused": false
+          },
+          "probe": {
+            "asks": 0,
+            "fetches": 0,
+            "blocked": 0,
+            "clear": 0,
+            "unavailable": 0,
+            "unknown": 0
+          }
+        },
+        {
+          "t": 10,
+          "spawns": 0,
+          "hold": {
+            "resetsAt": 0,
+            "ready": false,
+            "dueAt": 90000,
+            "probes": 0,
+            "attempts": 0,
+            "autoPaused": false
+          },
+          "probe": {
+            "asks": 0,
+            "fetches": 0,
+            "blocked": 0,
+            "clear": 0,
+            "unavailable": 0,
+            "unknown": 0
+          }
+        },
+        {
+          "t": 15,
+          "spawns": 0,
+          "hold": {
+            "resetsAt": 0,
+            "ready": false,
+            "dueAt": 90000,
+            "probes": 0,
+            "attempts": 0,
+            "autoPaused": false
+          },
+          "probe": {
+            "asks": 0,
+            "fetches": 0,
+            "blocked": 0,
+            "clear": 0,
+            "unavailable": 0,
+            "unknown": 0
+          }
+        },
+        {
+          "t": 20,
+          "spawns": 0,
+          "hold": {
+            "resetsAt": 0,
+            "ready": false,
+            "dueAt": 90000,
+            "probes": 0,
+            "attempts": 0,
+            "autoPaused": false
+          },
+          "probe": {
+            "asks": 0,
+            "fetches": 0,
+            "blocked": 0,
+            "clear": 0,
+            "unavailable": 0,
+            "unknown": 0
+          }
+        },
+        {
+          "t": 25,
+          "spawns": 0,
+          "hold": {
+            "resetsAt": 0,
+            "ready": false,
+            "dueAt": 90000,
+            "probes": 0,
+            "attempts": 0,
+            "autoPaused": false
+          },
+          "probe": {
+            "asks": 0,
+            "fetches": 0,
+            "blocked": 0,
+            "clear": 0,
+            "unavailable": 0,
+            "unknown": 0
+          }
+        },
+        {
+          "t": 30,
+          "spawns": 0,
+          "hold": {
+            "resetsAt": 0,
+            "ready": false,
+            "dueAt": 90000,
+            "probes": 0,
+            "attempts": 0,
+            "autoPaused": false
+          },
+          "probe": {
+            "asks": 0,
+            "fetches": 0,
+            "blocked": 0,
+            "clear": 0,
+            "unavailable": 0,
+            "unknown": 0
+          }
+        },
+        {
+          "t": 35,
+          "spawns": 0,
+          "hold": {
+            "resetsAt": 0,
+            "ready": false,
+            "dueAt": 90000,
+            "probes": 0,
+            "attempts": 0,
+            "autoPaused": false
+          },
+          "probe": {
+            "asks": 0,
+            "fetches": 0,
+            "blocked": 0,
+            "clear": 0,
+            "unavailable": 0,
+            "unknown": 0
+          }
+        },
+        {
+          "t": 40,
+          "spawns": 0,
+          "hold": {
+            "resetsAt": 0,
+            "ready": false,
+            "dueAt": 90000,
+            "probes": 0,
+            "attempts": 0,
+            "autoPaused": false
+          },
+          "probe": {
+            "asks": 0,
+            "fetches": 0,
+            "blocked": 0,
+            "clear": 0,
+            "unavailable": 0,
+            "unknown": 0
+          }
+        },
+        {
+          "t": 45,
+          "spawns": 0,
+          "hold": {
+            "resetsAt": 0,
+            "ready": false,
+            "dueAt": 90000,
+            "probes": 0,
+            "attempts": 0,
+            "autoPaused": false
+          },
+          "probe": {
+            "asks": 0,
+            "fetches": 0,
+            "blocked": 0,
+            "clear": 0,
+            "unavailable": 0,
+            "unknown": 0
+          }
+        },
+        {
+          "t": 50,
+          "spawns": 0,
+          "hold": {
+            "resetsAt": 0,
+            "ready": false,
+            "dueAt": 90000,
+            "probes": 0,
+            "attempts": 0,
+            "autoPaused": false
+          },
+          "probe": {
+            "asks": 0,
+            "fetches": 0,
+            "blocked": 0,
+            "clear": 0,
+            "unavailable": 0,
+            "unknown": 0
+          }
+        },
+        {
+          "t": 55,
+          "spawns": 0,
+          "hold": {
+            "resetsAt": 0,
+            "ready": false,
+            "dueAt": 90000,
+            "probes": 0,
+            "attempts": 0,
+            "autoPaused": false
+          },
+          "probe": {
+            "asks": 0,
+            "fetches": 0,
+            "blocked": 0,
+            "clear": 0,
+            "unavailable": 0,
+            "unknown": 0
+          }
+        },
+        {
+          "t": 60,
+          "spawns": 0,
+          "hold": {
+            "resetsAt": 0,
+            "ready": false,
+            "dueAt": 90000,
+            "probes": 0,
+            "attempts": 0,
+            "autoPaused": false
+          },
+          "probe": {
+            "asks": 0,
+            "fetches": 0,
+            "blocked": 0,
+            "clear": 0,
+            "unavailable": 0,
+            "unknown": 0
+          }
+        },
+        {
+          "t": 65,
+          "spawns": 0,
+          "hold": {
+            "resetsAt": 0,
+            "ready": false,
+            "dueAt": 90000,
+            "probes": 0,
+            "attempts": 0,
+            "autoPaused": false
+          },
+          "probe": {
+            "asks": 0,
+            "fetches": 0,
+            "blocked": 0,
+            "clear": 0,
+            "unavailable": 0,
+            "unknown": 0
+          }
+        },
+        {
+          "t": 70,
+          "spawns": 0,
+          "hold": {
+            "resetsAt": 0,
+            "ready": false,
+            "dueAt": 90000,
+            "probes": 0,
+            "attempts": 0,
+            "autoPaused": false
+          },
+          "probe": {
+            "asks": 0,
+            "fetches": 0,
+            "blocked": 0,
+            "clear": 0,
+            "unavailable": 0,
+            "unknown": 0
+          }
+        },
+        {
+          "t": 75,
+          "spawns": 0,
+          "hold": {
+            "resetsAt": 0,
+            "ready": false,
+            "dueAt": 90000,
+            "probes": 0,
+            "attempts": 0,
+            "autoPaused": false
+          },
+          "probe": {
+            "asks": 0,
+            "fetches": 0,
+            "blocked": 0,
+            "clear": 0,
+            "unavailable": 0,
+            "unknown": 0
+          }
+        },
+        {
+          "t": 80,
+          "spawns": 0,
+          "hold": {
+            "resetsAt": 0,
+            "ready": false,
+            "dueAt": 90000,
+            "probes": 0,
+            "attempts": 0,
+            "autoPaused": false
+          },
+          "probe": {
+            "asks": 0,
+            "fetches": 0,
+            "blocked": 0,
+            "clear": 0,
+            "unavailable": 0,
+            "unknown": 0
+          }
+        },
+        {
+          "t": 85,
+          "spawns": 0,
+          "hold": {
+            "resetsAt": 0,
+            "ready": false,
+            "dueAt": 90000,
+            "probes": 0,
+            "attempts": 0,
+            "autoPaused": false
+          },
+          "probe": {
+            "asks": 0,
+            "fetches": 0,
+            "blocked": 0,
+            "clear": 0,
+            "unavailable": 0,
+            "unknown": 0
+          }
+        },
+        {
+          "t": 90,
+          "spawns": 1,
+          "hold": null,
+          "probe": {
+            "asks": 1,
+            "fetches": 0,
+            "blocked": 0,
+            "clear": 0,
+            "unavailable": 0,
+            "unknown": 1
+          }
+        }
+      ],
+      "tailLog": "[store] chats-v3 마이그레이션: {\"ok\":true,\"migratedAt\":1787634567468.0,\"elapsedMs\":7.0,\"backupDir\":\"C:\\\\Temp\\\\ccg-x3r3\\\\.poc-home-critx3r3ctl\\\\backup-2.6.2-1787634567468\",\"counts\":{\"chats\":0,\"maSessions\":0,\"maPanels\":0,\"sessionChats\":0,\"talkAbsorbed\":0,\"carried\":1,\"keptV3\":0,\"keptV3Boards\":0,\"total\":0,\"messages\":0,\"boards\":1},\"idMap\":{},\"order\":[],\"activeChatId\":\"\",\"boardOrder\":[\"default\"],\"activeBoardId\":\"default\",\"activeSessionId\":\"\",\"btw\":{\"rewritten\":0,\"dropped\":0},\"holdMoved\":0,\"sourceIndexOrders\":{\"chats\":[],\"multiAgent\":[],\"sessionChats\":[]},\"warnings\":[]}\n"
+    },
+    "realGlobal": null
+  },
+  "findings": [
+    {
+      "id": "F1 ★★ 연 폴더에 떨어진 codex를 띄우지 않았다",
+      "why": "게이트는 「창구 없음」이라 답했는데 스폰은 **그 폴더의 실행본**을 띄웠다 = 한도 Unknown(눈감고 발사)으로 남의 저장소 안의 실행본이 엔진이 된다",
+      "ran": true,
+      "talked": true,
+      "fired": true,
+      "probe": {
+        "asks": 1,
+        "fetches": 0,
+        "blocked": 0,
+        "clear": 0,
+        "unavailable": 0,
+        "unknown": 1
+      }
+    },
+    {
+      "id": "F2 ★ 게이트와 스폰의 답이 같다(둘 다 「없다」)",
+      "why": "unknown=1 ran=true — 두 답이 갈렸다",
+      "probe": {
+        "asks": 1,
+        "fetches": 0,
+        "blocked": 0,
+        "clear": 0,
+        "unavailable": 0,
+        "unknown": 1
+      },
+      "ran": true
+    },
+    {
+      "id": "F3 그 실행본과 한 줄도 주고받지 않았다",
+      "why": "가짜 app-server의 stdin 기록이 생겼다 = 앱이 그것과 말을 섞었다",
+      "talked": true
+    }
+  ],
+  "machine": {
+    "whereCodex": [
+      "C:\\Users\\User\\AppData\\Roaming\\npm\\codex",
+      "C:\\Users\\User\\AppData\\Roaming\\npm\\codex.cmd"
+    ]
+  },
+  "verdict": {
+    "only": "f",
+    "A.fired": null,
+    "A.unknown": null,
+    "A.unavailable": null,
+    "B.fired": null,
+    "C.fired": null,
+    "C.unknown": null,
+    "E.fired": null,
+    "E.unknown": null,
+    "E.unavailable": null,
+    "D.unknown": null,
+    "D.unavailable": null,
+    "F.fired": true,
+    "F.unknown": 1,
+    "F.cwdCodexRan": true,
+    "hole": true
+  },
+  "pass": 1,
+  "fail": 3
+}

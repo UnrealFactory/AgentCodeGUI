@@ -1,0 +1,99 @@
+{
+  "repo": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-x3r3-fsseed-ctl",
+  "sha": "a04e6c98a104b48753a747f4e2bb960440a85e81",
+  "file_diff": {
+    "-dir": {
+      "tag": "edit",
+      "add": 0,
+      "del": 5,
+      "error": null,
+      "headLen": 34
+    },
+    "보통dir": {
+      "tag": "edit",
+      "add": 0,
+      "del": 4,
+      "error": null,
+      "headLen": 33
+    },
+    "app/posts/[id]": {
+      "tag": "edit",
+      "add": 0,
+      "del": 3,
+      "error": null,
+      "headLen": 35
+    },
+    "-파일.txt": {
+      "tag": "edit",
+      "add": 1,
+      "del": 1,
+      "error": null,
+      "headLen": null
+    },
+    "app/posts/[id]/page.tsx": {
+      "tag": "edit",
+      "add": 1,
+      "del": 0,
+      "error": null,
+      "headLen": null
+    },
+    "함정.txt": {
+      "tag": "edit",
+      "add": 0,
+      "del": 0,
+      "error": null,
+      "headLen": null
+    },
+    "보통.txt": {
+      "tag": "edit",
+      "add": 1,
+      "del": 1,
+      "error": null,
+      "headLen": null
+    }
+  },
+  "commit_file_diff": {
+    "-dir": {
+      "tag": "edit",
+      "add": 1,
+      "del": 1,
+      "error": null,
+      "contentLen": 70
+    },
+    "보통dir": {
+      "tag": "edit",
+      "add": 1,
+      "del": 1,
+      "error": null,
+      "contentLen": 69
+    },
+    "app/posts/[id]": {
+      "tag": "edit",
+      "add": 1,
+      "del": 1,
+      "error": null,
+      "contentLen": 71
+    },
+    "-파일.txt": {
+      "tag": "edit",
+      "add": 1,
+      "del": 0,
+      "error": null,
+      "contentLen": 28
+    },
+    "app/posts/[id]/page.tsx": {
+      "tag": "edit",
+      "add": 1,
+      "del": 1,
+      "error": null,
+      "contentLen": 15
+    },
+    "함정.txt": {
+      "tag": "edit",
+      "add": 0,
+      "del": 0,
+      "error": null,
+      "contentLen": 36
+    }
+  }
+}
