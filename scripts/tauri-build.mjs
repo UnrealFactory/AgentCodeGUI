@@ -29,13 +29,16 @@
  * `docs/parity-fix-updater-r1.md` §8 · 공개키만 `tauri.conf.json`에 들어간다.
  */
 
-import { spawn } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { spawn, spawnSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
+import { createReadStream, existsSync, mkdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 const require = createRequire(import.meta.url)
+const REPO = join(dirname(fileURLToPath(import.meta.url)), '..')
 
 /** 개인키 기본 보관 자리. 레포 **밖**이다 — 안에 두면 커밋 사고가 시간문제다. */
 const DEFAULT_KEY = join(homedir(), '.tauri', 'agentcodegui3-updater.key')
@@ -43,7 +46,9 @@ const DEFAULT_KEY = join(homedir(), '.tauri', 'agentcodegui3-updater.key')
 const argv = process.argv.slice(2)
 const unsigned = argv.includes('--unsigned')
 const rest = argv.filter((a) => a !== '--unsigned')
-const sub = rest[0] === 'bundle' || rest[0] === 'build' ? rest.shift() : 'build'
+const sub = rest[0] === 'bundle' || rest[0] === 'build' || rest[0] === 'stage' ? rest.shift() : 'build'
+/** `stage` = 굽지 않고 LSP node 런타임만 준비한다(개발·하네스용). 서명 키를 안 묻는다. */
+const stageOnly = sub === 'stage'
 
 /** 서명 키를 어디서 찾았나 — 값이 아니라 **출처**만 돌려준다. */
 function findKey() {
@@ -61,7 +66,10 @@ function findKey() {
 const args = [...rest]
 const env = { ...process.env }
 
-if (unsigned) {
+if (stageOnly) {
+  // `stage`는 굽지 않는다 — 서명 키를 물을 이유가 없다(하네스·개발자가 런타임만 받는 문).
+  console.log('[tauri-build] stage — LSP node 런타임만 준비한다(빌드 없음 · 서명 없음).')
+} else if (unsigned) {
   // 업데이터 아티팩트를 아예 만들지 않는다 = 서명 단계가 돌지 않는다.
   // (`--config`는 JSON 문자열을 그대로 받는다. 셸을 안 거치므로 따옴표 지옥이 없다.)
   args.push('--config', JSON.stringify({ bundle: { createUpdaterArtifacts: false } }))
@@ -95,6 +103,109 @@ if (unsigned) {
   // 빈 문자열이라도 넣어 두면 그 프롬프트가 안 뜬다. 암호를 건 키라면 호출자가 직접 채운다.
   if (process.env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD === undefined) env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD = ''
   console.log(`[tauri-build] 서명 키: ${key.from}`)
+}
+
+// ── ★LSPDIST R2 — LSP용 Node 런타임을 **판 고정 + sha256 검증**으로 스테이징한다 ─────
+//
+// 왜 여기인가: `bundle.resources`가 `src-tauri/lsp-runtime/node.exe`를 가리키는데, 그 파일은
+// 레포에 없다(93MB짜리 바이너리를 커밋할 수는 없다). 그래서 **설치기를 굽기 직전에** 만든다.
+//
+// 왜 「빌더 PC의 node.exe 복사」가 아닌가(R1이 이걸 이유로 미뤘다): 그러면 설치기가 **빌드한
+// 사람의 node 판**에 따라 달라진다. 여기서는 판과 해시를 레포에 박고 공식 dist에서만 받는다 —
+// 누가 어디서 구워도 같은 바이트가 실린다.
+//
+// 규약은 서명 키와 같다: **일찍, 사유를 말하고 실패한다.** 해시가 어긋나거나 못 받으면
+// cargo를 켜기 전에 끝낸다. 10분을 태우고 마지막 줄에서 죽거나, 더 나쁘게는 **검증 안 된
+// 바이너리를 사용자 PC에 싣는** 일이 없어야 한다.
+const NODE_PIN = {
+  version: 'v24.20.0', // LTS(Krypton). tsls는 node>=20, pyright는 그 이하도 되지만 하나로 맞춘다
+  // https://nodejs.org/dist/v24.20.0/SHASUMS256.txt 의 `win-x64/node.exe` 줄
+  sha256: '5c976096e04e5c2c1f091938926234cc9fbebfe9787ddd149351b3b0ecc707b5',
+  bytes: 93381448
+}
+/// `crates/ccg-lsp/src/launch.rs::STAGED_RUNTIME_DIR`와 **같은 이름**이어야 한다 —
+/// 개발 실행(③ 칸)이 레포 안의 이 파일을 그대로 물기 때문이다.
+const STAGE_DIR = join(REPO, 'src-tauri', 'lsp-runtime')
+const STAGE_EXE = join(STAGE_DIR, 'node.exe')
+const STAGE_PIN = join(STAGE_DIR, 'node.exe.pin.json')
+
+function sha256File(p) {
+  return new Promise((res, rej) => {
+    const h = createHash('sha256')
+    createReadStream(p).on('error', rej).on('data', (c) => h.update(c)).on('end', () => res(h.digest('hex')))
+  })
+}
+
+/** curl(Win10+ 기본 탑재) → 없으면 PowerShell. `install.rs`와 같은 순서·같은 이유. */
+function download(url, dest) {
+  const sys32 = join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'curl.exe')
+  if (existsSync(sys32)) {
+    const r = spawnSync(sys32, ['-sSL', '--fail', '-A', 'AgentCodeGUI', '-o', dest, url], { stdio: 'inherit' })
+    if (r.status === 0) return
+    throw new Error(`curl 종료 코드 ${r.status}`)
+  }
+  const ps = `Invoke-WebRequest -UseBasicParsing -Uri '${url}' -OutFile '${dest}' -UserAgent 'AgentCodeGUI'`
+  const r = spawnSync('powershell', ['-NoProfile', '-NonInteractive', '-Command', ps], { stdio: 'inherit' })
+  if (r.status !== 0) throw new Error(`PowerShell 종료 코드 ${r.status}`)
+}
+
+async function stageNodeRuntime() {
+  const url = `https://nodejs.org/dist/${NODE_PIN.version}/win-x64/node.exe`
+  // ① 이미 있고 핀이 맞으면 그대로 쓴다. **해시는 매번 다시 센다** — 캐시가 조용히 상하는
+  //    경우(백신 수정·부분 복사·다른 판 덮어쓰기)를 파일 크기로만 걸러선 안 된다.
+  if (existsSync(STAGE_EXE)) {
+    const sz = statSync(STAGE_EXE).size
+    const got = await sha256File(STAGE_EXE)
+    if (got === NODE_PIN.sha256 && sz === NODE_PIN.bytes) {
+      console.log(`[tauri-build] LSP node 런타임: 캐시 적중 ${NODE_PIN.version} (${(sz / 1048576).toFixed(2)}MB · sha256 확인)`)
+      return
+    }
+    console.log(`[tauri-build] LSP node 런타임: 캐시가 핀과 다르다 — 다시 받는다(있던 sha256=${got.slice(0, 16)}…)`)
+    rmSync(STAGE_EXE, { force: true })
+  }
+  // ② 받는다 → 임시 파일에 → 해시 검증 → **검증한 뒤에만** 제자리로 옮긴다.
+  //    (검증 전 파일이 목적지에 있으면, 다음 빌드가 그 반쯤 받은 것을 캐시로 착각한다.)
+  mkdirSync(STAGE_DIR, { recursive: true })
+  const tmp = `${STAGE_EXE}.part`
+  rmSync(tmp, { force: true })
+  console.log(`[tauri-build] LSP node 런타임 내려받는 중: ${url}`)
+  try {
+    download(url, tmp)
+  } catch (e) {
+    rmSync(tmp, { force: true })
+    fatalRuntime(`내려받기 실패 — ${e.message}`, url)
+  }
+  const got = await sha256File(tmp)
+  const sz = statSync(tmp).size
+  if (got !== NODE_PIN.sha256 || sz !== NODE_PIN.bytes) {
+    rmSync(tmp, { force: true })
+    fatalRuntime(`sha256/크기 불일치 — 받은 것 ${got} (${sz} B) · 핀 ${NODE_PIN.sha256} (${NODE_PIN.bytes} B)`, url)
+  }
+  renameSync(tmp, STAGE_EXE)
+  writeFileSync(STAGE_PIN, JSON.stringify({ ...NODE_PIN, url, stagedAt: new Date().toISOString() }, null, 2) + '\n')
+  console.log(`[tauri-build] LSP node 런타임 준비 완료: ${NODE_PIN.version} (${(sz / 1048576).toFixed(2)}MB · sha256 검증됨)`)
+}
+
+function fatalRuntime(why, url) {
+  console.error('[tauri-build] ✖ LSP용 Node 런타임을 준비하지 못했다 — 빌드를 시작하지 않는다.')
+  console.error(`[tauri-build]   ${why}`)
+  console.error('[tauri-build]')
+  console.error('[tauri-build]   왜 필수인가: TypeScript·Python 언어 서버는 순수 JS라 node가 있어야 뜬다.')
+  console.error('[tauri-build]   3.0은 그 런타임을 설치기에 실어 사용자 PATH에 안 기댄다(확인 크리틱 R1 §1.2:')
+  console.error('[tauri-build]   PATH에 node가 없으면 두 언어 × 두 cwd 네 팔이 전부 죽었다).')
+  console.error('[tauri-build]   이 파일이 없으면 설치기는 그 상태로 나간다 — 그래서 여기서 멈춘다.')
+  console.error('[tauri-build]')
+  console.error(`[tauri-build]   주소: ${url}`)
+  console.error(`[tauri-build]   자리: ${STAGE_EXE}`)
+  console.error('[tauri-build]   오프라인이라면 위 주소의 파일을 직접 그 자리에 두면 된다(해시를 다시 검증한다).')
+  console.error(`[tauri-build]   핀을 올리려면 scripts/tauri-build.mjs의 NODE_PIN과 nodejs.org의 SHASUMS256.txt를 같이 고쳐라.`)
+  process.exit(1)
+}
+
+await stageNodeRuntime()
+if (stageOnly) {
+  console.log('[tauri-build] 스테이징만 하고 끝낸다(stage) — 굽지 않는다.')
+  process.exit(0)
 }
 
 const cli = require.resolve('@tauri-apps/cli/tauri.js')

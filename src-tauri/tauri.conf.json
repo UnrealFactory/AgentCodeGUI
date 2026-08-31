@@ -29,6 +29,7 @@
     "targets": ["nsis"],
     "createUpdaterArtifacts": true,
     "resources": {
+      "lsp-runtime/node.exe": "node.exe",
       "../node_modules/typescript-language-server/lib": "node_modules/typescript-language-server/lib",
       "../node_modules/typescript-language-server/package.json": "node_modules/typescript-language-server/package.json",
       "../node_modules/typescript/lib": "node_modules/typescript/lib",

@@ -75,3 +75,8 @@ scripts/poc-rs/target/
 # 격리 홈도 하네스마다 하나씩 판다(`.poc-home-<갈래>`). 둘 다 수 GB / 수백 MB다.
 target-*/
 .poc-home-*/
+
+# ★LSPDIST R2 — 설치기에 싣는 LSP용 Node 런타임(판 고정 + sha256 검증 스테이징).
+# 93MB짜리 바이너리라 커밋하지 않는다. 만드는 사람은 `scripts/tauri-build.mjs`이고
+# 판·해시는 그 파일의 NODE_PIN에 박혀 있다 — 지워도 다음 빌드가 다시 받아 검증한다.
+src-tauri/lsp-runtime/
