@@ -1,0 +1,132 @@
+{
+  "rev": "09b9bc7",
+  "at": "2026-08-31T03:31:54.359Z",
+  "pass": true,
+  "results": [
+    {
+      "name": "3.0 labels()의 t() 콜사이트 4",
+      "pass": true,
+      "detail": "실제 4"
+    },
+    {
+      "name": "2.6.2 pickAttachments의 t() 콜사이트 4",
+      "pass": true,
+      "detail": "실제 4"
+    },
+    {
+      "name": "넷이 (ko, en) 바이트까지 같다 · 순서까지",
+      "pass": true,
+      "detail": "0:ko=en= 1:ko=en= 2:ko=en= 3:ko=en="
+    },
+    {
+      "name": "en 인자에 한글이 없다",
+      "pass": true
+    },
+    {
+      "name": "ko와 en이 같은 칸이 없다",
+      "pass": true
+    },
+    {
+      "name": "pick_attachments가 labels()를 부른다",
+      "pass": true
+    },
+    {
+      "name": "set_title/add_filter가 labels()의 값을 그대로 받는다",
+      "pass": true
+    },
+    {
+      "name": "빌더 구간에 한국어 리터럴 0",
+      "pass": true
+    },
+    {
+      "name": "필터 첫 줄 = 첨부 가능한 파일(f_all)",
+      "pass": true
+    },
+    {
+      "name": "2.6.2 t()는 ui.lang=='en'만 영어",
+      "pass": true
+    },
+    {
+      "name": "3.0 is_en()도 ui.lang=='en'만 영어",
+      "pass": true
+    },
+    {
+      "name": "3.0 is_en() TTL은 2초 · 프로세스 전역 원자 캐시",
+      "pass": true
+    },
+    {
+      "name": "labels()는 const가 아니라 호출 시점 평가(fn)",
+      "pass": true
+    }
+  ],
+  "pairs": [
+    {
+      "i": 0,
+      "rust": [
+        "첨부할 파일 선택",
+        "Choose files to attach"
+      ],
+      "ts": [
+        "첨부할 파일 선택",
+        "Choose files to attach"
+      ],
+      "koEq": true,
+      "enEq": true,
+      "rustKoHex": "ecb2a8ebb680ed95a020ed8c8cec9dbc20ec84a0ed839d",
+      "tsKoHex": "ecb2a8ebb680ed95a020ed8c8cec9dbc20ec84a0ed839d",
+      "rustEnHex": "43686f6f73652066696c657320746f20617474616368",
+      "tsEnHex": "43686f6f73652066696c657320746f20617474616368"
+    },
+    {
+      "i": 1,
+      "rust": [
+        "첨부 가능한 파일",
+        "Attachable files"
+      ],
+      "ts": [
+        "첨부 가능한 파일",
+        "Attachable files"
+      ],
+      "koEq": true,
+      "enEq": true,
+      "rustKoHex": "ecb2a8ebb68020eab080eb8aa5ed959c20ed8c8cec9dbc",
+      "tsKoHex": "ecb2a8ebb68020eab080eb8aa5ed959c20ed8c8cec9dbc",
+      "rustEnHex": "41747461636861626c652066696c6573",
+      "tsEnHex": "41747461636861626c652066696c6573"
+    },
+    {
+      "i": 2,
+      "rust": [
+        "이미지",
+        "Images"
+      ],
+      "ts": [
+        "이미지",
+        "Images"
+      ],
+      "koEq": true,
+      "enEq": true,
+      "rustKoHex": "ec9db4ebafb8eca780",
+      "tsKoHex": "ec9db4ebafb8eca780",
+      "rustEnHex": "496d61676573",
+      "tsEnHex": "496d61676573"
+    },
+    {
+      "i": 3,
+      "rust": [
+        "텍스트·문서",
+        "Text & documents"
+      ],
+      "ts": [
+        "텍스트·문서",
+        "Text & documents"
+      ],
+      "koEq": true,
+      "enEq": true,
+      "rustKoHex": "ed858dec8aa4ed8ab8c2b7ebacb8ec849c",
+      "tsKoHex": "ed858dec8aa4ed8ab8c2b7ebacb8ec849c",
+      "rustEnHex": "54657874202620646f63756d656e7473",
+      "tsEnHex": "54657874202620646f63756d656e7473"
+    }
+  ]
+}
