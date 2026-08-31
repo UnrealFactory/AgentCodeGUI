@@ -33,22 +33,29 @@ const RELEASES: Record<string, LocalizedRelease> = {
   //   키는 **풀버전**(`3.0.0`)이다. 지금 앱 버전은 `3.0.0-beta.1`이라 `RELEASES[v]`가 빗나가지만,
   //   그때는 위 컴포넌트가 「현재 버전 노트가 없으면 최신 노트」로 떨어져 이 덩이를 연다.
   //   정식 3.0.0이 나가면 키가 그대로 맞는다.
-  //   숫자는 전부 이 라운드까지의 **실측**이다(docs/m12-report-r1.md §3 · docs/critic/final-parity-r1.md §4.1
-  //   · bench/results/crash-recovery-r5-attacks.json). 반올림만 했고 지어낸 값은 없다.
+  //   숫자는 전부 **실측**이다. 반올림만 했고 지어낸 값은 없다.
+  //   ★PATCHNOTES R1(§1.6-D 해소) — 용량·메모리 수치를 **배포 경로**(사용자가 실제로 켜는 자리)
+  //   실측으로 갈아 끼웠다. 옛 값은 LSP가 안 뜨던 판의 것이라 오늘 사용자가 겪는 값이 아니다.
+  //   출처: bench/results/multi-tauri-3.0.0-default-patchnotes-dist.json(exe sha `730e8b2d…` ·
+  //   launchCwd = 배포 모사 · 3회) · coldstart-patchnotes-dist.json · docs/parity-fix-patchnotes-r1.md.
+  //   시작 시간(336→290 / 422→373)은 m12 설치본 실측 그대로 둔다 — 오늘 재측정이 254 / 329.5로
+  //   **더 빠르지만** 분모(2.6.2)가 그 세션 값이라 짝을 깨지 않는다(§1.6-E의 교훈).
+  //   크래시 복구 0.45초는 이 라운드가 안 건드린 값이다.
   '3.0.0': {
     ko: {
       eyebrow: 'REBUILT',
-      lead: '속은 전부 새로 지었습니다 — 화면은 그대로인데 설치 파일이 66배 작아지고, 창을 하나 더 여는 비용이 4분의 1이 됐어요. 화면이 죽어도 앱이 스스로 되살아납니다.',
+      lead: '속은 전부 새로 지었습니다 — 화면은 그대로인데 설치 파일이 5배 작아지고, 창을 하나 더 여는 비용이 5분의 1이 됐어요. 코드 분석은 깔자마자 되고, 화면이 죽어도 앱이 스스로 되살아납니다.',
       notes: [
         {
           tag: '용량',
-          name: '설치 파일 157.5MB → 2.4MB',
+          name: '설치 파일 157.5MB → 30.9MB',
           desc: (
             <>
               앱이 <b>크롬 한 벌을 통째로 안고 다니던 구조</b>를 버리고, 윈도우에 이미 있는
-              웹 엔진(WebView2)을 씁니다. 설치 파일은 <b>157.5MB → 2.4MB(66배)</b>, 설치 폴더는{' '}
-              <b>633.7MB → 6.0MB(106배)</b>, 들어가는 파일 수는 <b>8,141개 → 2개</b>가 됐어요.
-              디스크에서 <b>627.7MB</b>가 그대로 사라집니다.
+              웹 엔진(WebView2)을 씁니다. 설치 파일은 <b>157.5MB → 30.9MB(5.1배)</b>, 설치 폴더는{' '}
+              <b>633.7MB → 139.4MB(4.5배)</b>가 됐어요 — 디스크에서 <b>494MB</b>가 사라집니다.
+              그중 <b>앱 자체는 6.8MB</b>고, 나머지 <b>132.6MB는 코드 인텔리전스</b>(언어 서버와
+              그걸 돌리는 런타임)예요. 2.6.2도 같은 서버를 안고 다녔으니 <b>같은 것끼리 견준 값</b>입니다.
             </>
           )
         },
@@ -58,9 +65,9 @@ const RELEASES: Record<string, LocalizedRelease> = {
           desc: (
             <>
               예전엔 추가 채팅·팝아웃 창을 하나 열 때마다 <b>110.7MB와 프로세스 하나</b>가
-              같이 붙었습니다. 이제 <b>25.1MB · 프로세스 0개</b>예요 — 모든 창이 엔진 하나를
-              나눠 씁니다. 4패널 멀티를 켜 두고 쉴 때 쓰는 메모리도 <b>505MB → 253MB</b>로
-              절반이 됐어요.
+              같이 붙었습니다. 이제 <b>19.6MB · 프로세스 0개</b>예요 — 모든 창이 엔진 하나를
+              나눠 씁니다. 4패널 멀티를 켜 두고 쉴 때 쓰는 메모리는 <b>505MB → 361MB</b>고,
+              그 안에는 <b>코드 인텔리전스 서버가 켜진 몫(약 115MB)</b>이 들어 있어요.
             </>
           )
         },
@@ -88,6 +95,19 @@ const RELEASES: Record<string, LocalizedRelease> = {
           )
         },
         {
+          tag: '코드 분석',
+          name: '깔자마자 색이 칠해집니다',
+          desc: (
+            <>
+              <b>TypeScript·JavaScript·Python</b>은 설치 직후 <b>아무것도 더 깔지 않아도</b>{' '}
+              호버·정의 이동·자동완성이 됩니다 — 언어 서버와 <b>전용 Node 런타임을 앱이 직접
+              안고</b> 다녀요(그래서 설치 파일이 커졌습니다). 컴퓨터에 Node가 있든 없든,
+              어디서 앱을 켜든 <b>똑같이</b> 동작해요. <b>C#·C++</b>는 설정 ▸ 코드 분석에서
+              한 번 누르면 받아집니다.
+            </>
+          )
+        },
+        {
           tag: '탐색기',
           name: '폴더 우클릭으로 바로 열기',
           desc: (
@@ -102,17 +122,19 @@ const RELEASES: Record<string, LocalizedRelease> = {
     },
     en: {
       eyebrow: 'REBUILT',
-      lead: 'Everything under the hood is new — the screens look the same, but the installer is 66× smaller and opening one more window costs a quarter of what it did. And if the view crashes, the app brings itself back.',
+      lead: 'Everything under the hood is new — the screens look the same, but the installer is 5× smaller and opening one more window costs a fifth of what it did. Code intelligence works the moment you install, and if the view crashes the app brings itself back.',
       notes: [
         {
           tag: 'Size',
-          name: 'Installer: 157.5MB → 2.4MB',
+          name: 'Installer: 157.5MB → 30.9MB',
           desc: (
             <>
               The app no longer <b>carries an entire copy of Chrome</b>; it uses the web engine
-              Windows already ships (WebView2). The installer went <b>157.5MB → 2.4MB (66×)</b>,
-              the installed folder <b>633.7MB → 6.0MB (106×)</b>, and the file count{' '}
-              <b>8,141 → 2</b>. That is <b>627.7MB</b> given back to your disk.
+              Windows already ships (WebView2). The installer went <b>157.5MB → 30.9MB (5.1×)</b>{' '}
+              and the installed folder <b>633.7MB → 139.4MB (4.5×)</b> — <b>494MB</b> given back
+              to your disk. Of what remains, <b>the app itself is 6.8MB</b>; the other{' '}
+              <b>132.6MB is code intelligence</b> (the language servers and the runtime that
+              drives them). 2.6.2 shipped the same servers, so this compares like with like.
             </>
           )
         },
@@ -122,8 +144,9 @@ const RELEASES: Record<string, LocalizedRelease> = {
           desc: (
             <>
               Every extra chat or pop-out window used to add <b>110.7MB and a whole process</b>.
-              Now it is <b>25.1MB and zero extra processes</b> — every window shares one engine.
-              Sitting idle with a 4-panel multi board also dropped from <b>505MB to 253MB</b>.
+              Now it is <b>19.6MB and zero extra processes</b> — every window shares one engine.
+              Sitting idle with a 4-panel multi board went from <b>505MB to 361MB</b>, and that
+              figure <b>includes the code-intelligence servers running</b> (about 115MB of it).
             </>
           )
         },
@@ -147,6 +170,19 @@ const RELEASES: Record<string, LocalizedRelease> = {
               From click to <b>first window: 336ms → 290ms</b>, and to <b>actually usable:
               422ms → 373ms</b> (measured on the installed build). The startup splash also stays
               inside the window instead of <b>popping from a small card to a big window</b>.
+            </>
+          )
+        },
+        {
+          tag: 'Code',
+          name: 'Syntax intelligence works out of the box',
+          desc: (
+            <>
+              <b>TypeScript, JavaScript and Python</b> get hover, go-to-definition and completion{' '}
+              <b>with nothing else to install</b> — the app now <b>carries the language servers
+              and their own Node runtime</b> (that is why the installer grew). It behaves the
+              same whether or not Node is on your machine, and no matter where you launch the app
+              from. <b>C# and C++</b> are one click away in Settings ▸ Code analysis.
             </>
           )
         },
