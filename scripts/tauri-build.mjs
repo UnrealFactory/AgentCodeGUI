@@ -187,6 +187,10 @@ async function stageNodeRuntime() {
 }
 
 function fatalRuntime(why, url) {
+  // ★R3(크리틱 R2-L3) — 실패하고 나가면서 **원장을 지운다.** R2는 `node.exe`가 없는데
+  // `node.exe.pin.json`만 남겨서, 폴더를 열어 본 사람에게 "스테이징됐다"고 거짓말했다.
+  // 코드가 이 파일을 안 읽으므로 무해했지만, 사람이 보는 원장으로서는 틀렸다.
+  rmSync(STAGE_PIN, { force: true })
   console.error('[tauri-build] ✖ LSP용 Node 런타임을 준비하지 못했다 — 빌드를 시작하지 않는다.')
   console.error(`[tauri-build]   ${why}`)
   console.error('[tauri-build]')
