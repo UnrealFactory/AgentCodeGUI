@@ -49,11 +49,21 @@ const ok = (cond, label, extra = '') => {
 
 // ── A. 정적 대조 ────────────────────────────────────────────────────────────
 
-/** `ccg_fs::t("ko", "en")` 호출을 순서대로 뽑는다. */
+/** 필드 ↔ 2.6.2 자리의 대응표. **이 순서가 규약이다**(2.6.2는 이름 없이 순서만 갖는다). */
+const FIELDS = ['title', 'filter_all', 'filter_images', 'filter_docs']
+
+/**
+ * `필드: ccg_fs::t("ko", "en")` 넷을 **이름과 함께** 뽑는다 → `[[field, ko, en], …]`.
+ *
+ * ★R4: R3까지 이 함수는 이름을 버리고 **등장 순서**로만 뽑았다. 그래서 `labels()`의
+ * 초기화 줄 순서만 바꾸는 **무해한** 변경(EPAIRI)에 하네스가 **거짓 양성**으로 붉었다
+ * — 크레이트 못은 R3에서 이름 기준으로 고쳤는데 하네스만 순서 기준으로 남아 있었다.
+ * (R3는 이 변이에 cargo만 돌리고 하네스를 안 돌려서 못 봤다. R4에서 둘 다 돌려 찾았다.)
+ */
 function rustPairs(src) {
   // ★R3: `labels()`가 `[String; 4]`에서 `DialogLabels` 구조체 리터럴로 바뀌어 본문이 길어졌다.
   const body = src.slice(src.indexOf('fn labels()'), src.indexOf('fn labels()') + 900)
-  return [...body.matchAll(/ccg_fs::t\("([^"]*)",\s*"([^"]*)"\)/g)].map((m) => [m[1], m[2]])
+  return [...body.matchAll(/(\w+):\s*ccg_fs::t\("([^"]*)",\s*"([^"]*)"\)/g)].map((m) => [m[1], m[2], m[3]])
 }
 
 /** 2.6.2 `pickAttachments` 핸들러 안의 `t('ko', 'en')`을 순서대로 뽑는다. */
@@ -71,13 +81,16 @@ const refPairs = tsPairs(ts)
 console.log('A. 정적 — dialog.rs vs 2.6.2 index.ts')
 ok(rsPairs.length === 4, `3.0 labels()의 t() 콜사이트 4개`, `실제 ${rsPairs.length}`)
 ok(refPairs.length === 4, `2.6.2 pickAttachments의 t() 콜사이트 4개`, `실제 ${refPairs.length}`)
-ok(
-  JSON.stringify(rsPairs) === JSON.stringify(refPairs),
-  '넷이 (ko, en) 글자까지 같다',
-  JSON.stringify(rsPairs) === JSON.stringify(refPairs) ? '' : `\n    3.0  : ${JSON.stringify(rsPairs)}\n    2.6.2: ${JSON.stringify(refPairs)}`
-)
-ok(!rsPairs.some(([, en]) => /[가-힣]/.test(en)), 'en 인자에 한글이 없다')
-ok(!rsPairs.some(([ko, en]) => ko === en), 'ko와 en이 같은 칸이 없다')
+
+// ★R4: **필드 이름으로** 조회해 2.6.2 자리와 맞춘다(소스 등장 순서에 안 기댄다).
+const byField = new Map(rsPairs.map(([f, ko, en]) => [f, [ko, en]]))
+const missing = FIELDS.filter((f) => !byField.has(f))
+ok(missing.length === 0, 'labels()에 필드 넷이 다 있다', missing.length ? `없는 필드: ${missing}` : '')
+const rsOrdered = FIELDS.map((f) => byField.get(f) ?? [])
+const same = JSON.stringify(rsOrdered) === JSON.stringify(refPairs)
+ok(same, '넷이 (ko, en) 글자까지 같다 — 필드 대응 기준', same ? '' : `\n    3.0  : ${JSON.stringify(rsOrdered)}\n    2.6.2: ${JSON.stringify(refPairs)}`)
+ok(!rsPairs.some(([, , en]) => /[가-힣]/.test(en)), 'en 인자에 한글이 없다')
+ok(!rsPairs.some(([, ko, en]) => ko === en), 'ko와 en이 같은 칸이 없다')
 
 // 빌더가 정말 `labels()`를 먹는가 + 한국어 리터럴이 되살아나지 않았는가(회귀 방지).
 // ★이 둘이 없으면 A의 대조는 「아무도 안 쓰는 함수」를 재는 셈이 된다.
@@ -91,7 +104,19 @@ const PAIRS = [
   ['.add_filter(l.filter_images, &IMAGE)', '둘째 필터(이미지)'],
   ['.add_filter(l.filter_docs, &TEXT)', '셋째 필터(텍스트·문서)']
 ]
-for (const [pat, what] of PAIRS) ok(call.includes(pat), `${what}가 제 짝을 받는다`, pat)
+// ★R3 마감(크리틱 R3의 EORDER): 존재뿐 아니라 **순서**도 본다 — 첫 필터가 곧 기본 선택이라
+// `.add_filter` 세 줄을 재배열하면 첨부 창 첫 화면에서 텍스트 파일이 안 보인다.
+let prevAt = -1
+let prevWhat = ''
+for (const [pat, what] of PAIRS) {
+  const at = call.indexOf(pat)
+  ok(at >= 0, `${what}가 제 짝을 받는다`, pat)
+  if (at >= 0) {
+    if (prevAt >= 0) ok(prevAt < at, `${what}가 「${prevWhat}」보다 뒤에 온다(기본 필터 규약)`)
+    prevAt = at
+    prevWhat = what
+  }
+}
 ok(!/[가-힣]/.test(call.replace(/\/\/.*$/gm, '')), '빌더 구간에 한국어 리터럴 0')
 
 // ── B. 실측 — 격리 홈 셋에서 labels()를 직접 받아 온다 ──────────────────────
@@ -139,7 +164,6 @@ if (!exe || !fs.existsSync(exe)) {
 } else {
   console.log(`  exe: ${exe}`)
   // 필드 이름을 같이 적는다 — 자리 뒤바꿈(크리틱 EPAIR)이 값 비교에서 바로 드러난다.
-  const FIELDS = ['title', 'filter_all', 'filter_images', 'filter_docs']
   const pair = (words) => FIELDS.map((f, i) => [f, words[i]])
   const KO = pair(['첨부할 파일 선택', '첨부 가능한 파일', '이미지', '텍스트·문서'])
   const EN = pair(['Choose files to attach', 'Attachable files', 'Images', 'Text & documents'])

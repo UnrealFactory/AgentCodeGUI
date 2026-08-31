@@ -13,10 +13,13 @@
 //   M3      en 한 칸 표류                          → 2.6.2 대조 못 + 런타임 못
 //   EPAIRF  ★필드 바꿔치기(.set_title(l.filter_all)) → 짝 못. 크리틱 EPAIR의 R3 상응물
 //   E6      빌더 밖 const + concat!으로 한국어 밀반입 → 짝 못(크리틱 R2-D2의 구멍)
+//   EORDER  ★`.add_filter` 세 줄 재배열 → 순서 못(크리틱 R3의 EORDER). 짝은 다 맞는데
+//           **기본 필터가 「이미지」**가 되어 첫 화면에 텍스트 파일이 안 보인다
 //
-// 변이 — **초록이어야 하는 것**(제품이 안 깨진다. "표현 불가능"의 증명):
-//   EPAIRI  labels()의 **초기화 줄 순서**만 뒤바꿈  → 구조체 리터럴은 이름으로 짝지으므로 무해
-//   EPAIRD  구조체 **선언 필드 순서**만 뒤바꿈      → 〃
+// 변이 — **초록이어야 하는 것**(제품이 안 깨진다. "표현 불가능"·"과민하지 않음"의 증명):
+//   EPAIRI   labels()의 **초기화 줄 순서**만 뒤바꿈  → 구조체 리터럴은 이름으로 짝지으므로 무해
+//   EPAIRD   구조체 **선언 필드 순서**만 뒤바꿈      → 〃
+//   EORDEROK 빌더 안 **주석 줄만** 아래로 이동       → 줄 순서 규약은 그대로 = 무해
 //
 //   restore 원본 복구
 //
@@ -83,6 +86,20 @@ const PAIR_SWAPPED = `        .set_title(l.filter_all)
 // 크리틱 R2-D2의 밀반입 — 빌더 구간에 따옴표도 연속 한글도 안 남긴다.
 const SNEAK_CONST = `const SNEAK: &str = concat!("첨", "부할 파일 선택");\n\nfn labels()`
 
+// ★크리틱 R3의 EORDER — `.add_filter` 세 줄 재배열. 짝은 넷 다 그대로 있고 이름도
+// 안 바뀌지만 **기본 필터가 「이미지」**가 된다(첫 화면에 텍스트 파일이 안 보인다).
+const ORDER_OK = `        .add_filter(l.filter_all, &all)
+        .add_filter(l.filter_images, &IMAGE)
+        .add_filter(l.filter_docs, &TEXT)`
+const ORDER_SHUFFLED = `        .add_filter(l.filter_images, &IMAGE)
+        .add_filter(l.filter_all, &all)
+        .add_filter(l.filter_docs, &TEXT)`
+
+// 무해 대조군 — 빌더 안 **주석 줄만** 아래로 옮긴다. 줄 순서 규약은 그대로다.
+// 순서 못이 과민하지 않은지(주석 이동에 안 걸리는지) 보는 자리.
+const CMT = `        // 순서가 곧 대화상자의 기본 필터다 — 2.6.2와 같이 「첨부 가능한 파일」이 첫 줄.\n        .add_filter(l.filter_all, &all)`
+const CMT_MOVED = `        .add_filter(l.filter_all, &all)\n        // 순서가 곧 대화상자의 기본 필터다 — 2.6.2와 같이 「첨부 가능한 파일」이 첫 줄.`
+
 let out = orig
 const must = (before, after, tag) => {
   if (!out.includes(before)) {
@@ -115,6 +132,12 @@ switch (which) {
     break
   case 'EPAIRD':
     must(DECL_OK, DECL_SWAPPED, 'EPAIRD 선언 순서')
+    break
+  case 'EORDER':
+    must(ORDER_OK, ORDER_SHUFFLED, 'EORDER 필터 줄 재배열')
+    break
+  case 'EORDEROK':
+    must(CMT, CMT_MOVED, 'EORDEROK 주석만 이동')
     break
   case 'restore':
     out = orig

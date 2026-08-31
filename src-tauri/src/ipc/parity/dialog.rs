@@ -309,16 +309,34 @@ mod tests {
         // `.set_title(SNEAK)`)도 여기서 죽는다. 빌더가 쓸 수 있는 표현이 **이 넷뿐**이라
         // 다른 무엇을 넣든 짝이 어긋난다. (필드 이름을 바꾸는 리팩터는 이 못을 붉힌다.
         // 의도한 값이다 — 짝을 옮기는 변경은 사람이 한 번 봐야 한다.)
+        // 2'' — ★R3 마감(크리틱 R3의 **EORDER**): 존재만이 아니라 **줄의 순서**를 잰다.
+        //
+        // `contains` 넷은 「있는가」만 본다. 그래서 세 `.add_filter` 줄을 **재배열**하면
+        // 넷이 전부 그대로 있으므로 통과했다 — `cargo test`도 하네스도 초록. 그런데
+        // **순서가 곧 대화상자의 기본 필터**다: `filter_images`가 첫 줄로 올라오면 기본
+        // 선택이 「이미지」가 되고, 사용자가 「＋」를 누른 **첫 화면에 `.md`·`.txt`·소스
+        // 파일이 안 보인다**(필터를 손으로 바꿔야 나온다). 2.6.2 규약 위반이기도 하다.
+        //
+        // 그 규약은 R3까지 **주석으로만** 존재했다(바로 위 `// 순서가 곧 …` 한 줄).
+        // 규약을 주석에 적어 두는 것과 못으로 박는 것은 다르다 — 여기서 실행 가능하게 만든다.
+        let mut prev: Option<(usize, &str)> = None;
         for pair in [
             ".set_title(l.title)",
             ".add_filter(l.filter_all, &all)",
             ".add_filter(l.filter_images, &IMAGE)",
             ".add_filter(l.filter_docs, &TEXT)",
         ] {
-            assert!(
-                builder.contains(pair),
-                "★빌더가 `{pair}`를 안 쓴다 — 값이 제 짝에 안 갔다(크리틱 EPAIR):\n{builder}"
-            );
+            let at = builder.find(pair).unwrap_or_else(|| {
+                panic!("★빌더가 `{pair}`를 안 쓴다 — 값이 제 짝에 안 갔다(크리틱 EPAIR):\n{builder}")
+            });
+            if let Some((prev_at, prev_pair)) = prev {
+                assert!(
+                    prev_at < at,
+                    "★빌더 줄 순서가 규약을 어겼다 — `{prev_pair}`가 `{pair}`보다 뒤에 있다.\n\
+                     첫 필터가 곧 기본 선택이다(크리틱 R3 EORDER):\n{builder}"
+                );
+            }
+            prev = Some((at, pair));
         }
 
         // 3 — 한국어 문구는 labels() 안에만 산다.
