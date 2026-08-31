@@ -1,0 +1,52 @@
+{
+  "rev": "5ab35ce",
+  "critic": "hosti18n-critic-r2",
+  "tree": "%TEMP%/ccg-h2-crit (git archive 5ab35ce · node_modules + src-tauri/lsp-runtime 정션 · app/dist는 vite로 실제 빌드)",
+  "suites": {
+    "agentcodegui": "148 passed / 0 failed / 2 ignored",
+    "ccg-lsp": "75 passed / 0 failed",
+    "ccg-fs": "103 passed / 0 failed / 2 ignored",
+    "release": "exit 0 · warning 0줄",
+    "typecheck:app": "exit 0"
+  },
+  "mutationMatrix": {
+    "H1": 101, "H2": 101, "H3": 101, "H4": 101, "H5": 101,
+    "HOK1": 0, "HOK2": 0,
+    "S0": 101, "S1": 101, "S2": 101, "S3": 101, "S4": 101, "S5": 101,
+    "SOK": 0,
+    "note": "크리틱 R1이 뚫은 S1~S5가 전부 닫혔다. SOK(영어 error)는 초록 — 거짓 양성 없음"
+  },
+  "criticNewMutations": [
+    { "id": "N1", "what": "값이 함수 호출을 거친다 — fn sneak_reason() -> String { \"한국어\".into() } + \"error\": sneak_reason()", "cargo": 0, "verdict": "구멍이지만 빌더가 못 주석에 스스로 한계로 적어 뒀다(정직) — 결함으로 세지 않음" },
+    { "id": "N2", "what": "감시 키 목록 밖의 키 — \"detail\": \"한국어\"", "cargo": 0, "verdict": "구멍. 못은 error/message/reason 셋만 본다. 크리틱 R1-D3의 실물(requires)이 바로 목록 밖 키였다" }
+  ],
+  "d3LiveScreen": {
+    "badges": ["Bundled", "Bundled", ".NET SDK 10+ required"],
+    "koreanInCodePanel": 0,
+    "before": "docs/critic/critic-hosti18n-r1-en-screen.png (R1: .NET SDK 10+ 필요)",
+    "after": "docs/critic/critic-hosti18n-r2-en-screen.png (R2: .NET SDK 10+ required)"
+  },
+  "requiresEnFallback": {
+    "question": "requiresEn 부재 시 ko 폴백이 en 사용자에게 남는 케이스가 실재하는가",
+    "answer": "아니다 — spec.rs:120의 requires는 Option<(&str, &str)> **튜플**이라 ko만 있고 en이 없는 상태가 구조적으로 불가능하다. 현재 requires를 가진 서버는 cs 하나뿐(.NET SDK 10+ 필요/required). `|| s.requires` 폴백은 방어용이고 실제 도달 경로가 없다"
+  },
+  "d1Modal": {
+    "dialogWindow": { "class": "#32770", "title": "Choose a project folder to work in", "enabled": true },
+    "parentWhileOpen": { "class": "Tauri Window", "title": "AgentCodeGUI3", "enabled": false },
+    "afterWmClose": { "parentEnabled": true, "rendererAlive": true, "buttons": 41 },
+    "verdict": "부모가 실제로 걸린다(모달). WM_CLOSE(고아 그물과 같은 수법) 뒤 부모가 정상 복귀하고 렌더러도 살아 있다 — 모달 잠김/IME 계열 회귀 없음",
+    "discrepancy": "빌더는 '#32770으로 열거되지 않아 소유자 HWND로 못 쟀다'고 적었으나, 나는 첫 시도에 #32770으로 열거했다. 방법(모달 동작)은 여전히 타당하고 결론도 같지만 그 사유 서술은 재현되지 않는다"
+  },
+  "carriedOverAudit": [
+    { "entry": "ccg-engine/runtime.rs 「사용자가 중지했습니다」", "checked": "runtime.rs:2209 json!({\"behavior\":\"deny\",\"message\":...}) — §6.1이 이월한 runtime.rs 덩어리의 일부. 이월 사유 일치" },
+    { "entry": "ccg-engine/runtime.rs 「거부」", "checked": "runtime.rs:2245 같은 모양. 부분 문자열 매칭이지만 실제 일치는 1줄뿐이라 과잉 허용 없음" },
+    { "entry": "ccg-store/migrate_v3.rs 「스테이징 디렉터리 생성 실패」", "checked": ":510 json!({\"ok\":false,\"error\":...}). 호출부 unified.rs:157 ensure_migrated()의 결과는 eprintln!로만 나가고 렌더러로 안 간다 — '진단 기록' 사유 **참으로 확인**" },
+    { "entry": "ccg-store/migrate_v3.rs 「채팅 파일 쓰기 실패」", "checked": ":588 같은 경로. 위와 같음" }
+  ],
+  "carriedOverProtocol": "목록 항목이 더는 안 걸리면 테스트가 실패한다(자기검증) — 목록이 썩지 않는다. R2가 닫힌 둘(ccg-lsp 쌍둥이·install.rs)을 실제로 지웠다",
+  "boundary": {
+    "files": 9,
+    "ccgLspTouch": "crates/ccg-lsp/src/lib.rs — 옆 갈래 영역이지만 LSPDIST가 f0a3496로 마감한 **뒤**다(f0a3496는 5ab35ce의 조상). install.rs:316을 LSPDIST가 닫았다는 장부 서술도 그 커밋으로 확인",
+    "verdict": "혼입 없음"
+  }
+}
