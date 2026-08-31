@@ -1048,6 +1048,66 @@ mod tests {
             assert!(pkgs.contains(&pkg), "{pkg}: SPECS에 없는데 설치기가 나른다(유령 적재)");
         }
 
+        // ── ★R3 · 크리틱 R2-C2 — **출처(키)도 본다** ────────────────────────────
+        // R2까지 이 계약은 `res.values()`, 즉 **목적지만** 읽었다. 크리틱의 회피 변이 셋이
+        // 그 구멍으로 들어왔고 전부 초록이었다:
+        //   E1 dest는 그대로 두고 src만 남의 폴더로   → tsserver 실종(C3이 막으려던 그 고장)
+        //   E2 `{"../node_modules": "node_modules"}`   → 레포 node_modules 통째 적재
+        //   E3 dest=node.exe · src=…/LICENSE.txt      → $INSTDIR\node.exe가 텍스트 파일이 된다
+        // 목적지 문자열이 완벽해도 **나르는 물건이 다르면** 사용자는 같은 고장을 만난다.
+        for (src, dest) in res.iter().filter_map(|(k, v)| v.as_str().map(|d| (k.as_str(), d))) {
+            // (E2) 트리를 통째로 삼키는 항목 금지 — 「매니페스트 단순화」로 실제로 나올 수 있는
+            // 편집인데, 유령 검사는 `strip_prefix("node_modules/")`가 `None`이라 못 잡는다.
+            assert_ne!(dest, "node_modules", "매니페스트가 node_modules를 통째로 나른다(출처 {src})");
+            let src_norm = src.replace('\\', "/");
+            assert!(!src_norm.trim_end_matches('/').ends_with("node_modules"), "출처가 node_modules 뿌리다: {src}");
+
+            // (E1) 목적지가 `node_modules/<tail>`이면 출처도 `../node_modules/<같은 tail>`이어야 한다.
+            //      매니페스트는 **거울**이지 재배치 도구가 아니다.
+            if let Some(tail) = dest.strip_prefix("node_modules/") {
+                let want = format!("../node_modules/{tail}");
+                assert_eq!(
+                    src_norm, want,
+                    "출처와 목적지가 안 맞는다 — 목적지는 {dest}인데 {src}를 나른다. \
+                     매니페스트는 node_modules 구조를 그대로 비추기만 해야 한다"
+                );
+            }
+
+            // (E3) 런타임 항목의 출처는 **스테이징 자리 하나뿐**이다. 아무 파일이나 이 자리에
+            //      오면 `$INSTDIR\node.exe`가 그 파일이 되고, R2가 PATH를 끊었으므로 복구가 없다.
+            if dest == "node.exe" || dest == "resources/node.exe" {
+                assert_eq!(
+                    src_norm,
+                    format!("{}/node.exe", crate::launch::STAGED_RUNTIME_DIR),
+                    "node 런타임의 출처가 스테이징 자리가 아니다 — scripts/tauri-build.mjs가 해시를 \
+                     검증해 놓는 그 파일만 실을 수 있다"
+                );
+            }
+
+            // 출처가 실재하는가(디스크가 있을 때만) — 번들 단계에서야 터지는 것을 앞당긴다.
+            let abs = format!("{root}/src-tauri/{src}");
+            if std::path::Path::new(&format!("{root}/node_modules")).is_dir() && !src.starts_with(crate::launch::STAGED_RUNTIME_DIR) {
+                assert!(std::path::Path::new(&abs).exists(), "매니페스트의 출처가 없는 자리다: {abs}");
+            }
+        }
+
+        // ── ★R3 — 스테이징된 실물이 **핀 그대로인가** ───────────────────────────
+        // 스테이징 스크립트도 같은 해시를 보지만 그건 **빌드 시각**의 검사다. 그 뒤에 파일이
+        // 바뀌면(E3처럼 다른 것이 놓이면) 아무도 안 본다. 여기서 한 번 더 본다.
+        // 스테이징 전(갓 클론)에는 파일이 없다 — 그때만 건너뛴다.
+        let staged = format!("{root}/src-tauri/{}/node.exe", crate::launch::STAGED_RUNTIME_DIR);
+        let staged = std::path::Path::new(&staged);
+        if staged.is_file() {
+            let pin = node_pin_from_build_script(root);
+            let got = crate::sha256::file_hex(staged).expect("스테이징된 node.exe를 못 읽었다");
+            assert_eq!(
+                got, pin.sha256,
+                "스테이징된 node.exe가 NODE_PIN과 다르다 — 이 상태로 구우면 검증 안 된 바이너리가 \
+                 사용자 PC에 실린다. `node scripts/tauri-build.mjs stage`로 다시 받아라"
+            );
+            assert_eq!(staged.metadata().unwrap().len(), pin.bytes, "크기도 핀과 달라야 할 이유가 없다");
+        }
+
         // 매니페스트가 **없는 자리**를 가리키면 번들 단계에서야 터진다 — 여기서 먼저 터뜨린다.
         // (`node_modules`가 없는 기계에서는 건너뛴다 — 이 검사만 디스크에 의존한다.)
         if std::path::Path::new(&format!("{root}/node_modules")).is_dir() {
@@ -1056,6 +1116,26 @@ mod tests {
                 assert!(std::path::Path::new(&p).exists(), "매니페스트가 약속한 파일이 레포에 없다: {p}");
             }
         }
+    }
+
+    /// `scripts/tauri-build.mjs`의 `NODE_PIN` — **핀의 단일 출처는 그 스크립트다.**
+    /// 여기서 값을 한 벌 더 적으면 그 순간 두 번째 진실이 생기고, 판을 올릴 때 한쪽만 고쳐진다
+    /// (§1.6-A2를 낳은 그 모양). 그래서 **읽어 온다.**
+    struct NodePin {
+        sha256: String,
+        bytes: u64,
+    }
+    fn node_pin_from_build_script(root: &str) -> NodePin {
+        let src = std::fs::read_to_string(format!("{root}/scripts/tauri-build.mjs"))
+            .expect("scripts/tauri-build.mjs를 못 읽었다 — 핀의 출처다");
+        let grab = |key: &str| -> String {
+            let at = src.find(&format!("{key}:")).unwrap_or_else(|| panic!("NODE_PIN.{key}를 못 찾았다"));
+            let rest = &src[at + key.len() + 1..];
+            let rest = rest.trim_start();
+            let rest = rest.trim_start_matches('\'');
+            rest.chars().take_while(|c| c.is_ascii_alphanumeric() || *c == '.').collect()
+        };
+        NodePin { sha256: grab("sha256"), bytes: grab("bytes").parse().expect("NODE_PIN.bytes가 수가 아니다") }
     }
 
     /// 파생 목록이 **세 출처를 다 본다** — `module` · `module[0]/package.json`(자동) ·

@@ -19,6 +19,7 @@ pub mod rpc;
 pub mod semcache;
 pub mod server;
 pub mod sha1;
+pub mod sha256;
 pub mod spec;
 
 use semcache::SemanticTokens;
