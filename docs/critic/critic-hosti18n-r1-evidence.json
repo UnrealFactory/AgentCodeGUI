@@ -1,0 +1,52 @@
+{
+  "rev": "026c00d",
+  "critic": "hosti18n-critic-r1",
+  "tree": "%TEMP%/ccg-hosti18n-crit (git archive 026c00d · node_modules + src-tauri/lsp-runtime 정션 · app/dist는 vite로 실제 빌드)",
+  "baseline": {
+    "agentcodegui": "148 passed / 0 failed / 2 ignored",
+    "release": "exit 0 · warning 0줄",
+    "staticInstrument": "critic-hosti18n-r1.mjs 15/15 PASS (en 넷 바이트 동일 · 배선 · fn · 출처 하나)"
+  },
+  "builderMutationsReproduced": [
+    { "id": "H1", "cargo": 101, "failed": ["the_host_strings_follow_ui_lang"] },
+    { "id": "H2", "cargo": 101, "failed": ["the_call_sites_use_the_translated_helpers"] },
+    { "id": "H3", "cargo": 101, "failed": ["the_call_sites_use_the_translated_helpers"] },
+    { "id": "H4", "cargo": 101, "failed": ["the_en_strings_came_from_the_frozen_262_source", "the_host_strings_follow_ui_lang"] },
+    { "id": "H5", "cargo": 101, "failed": ["the_shell_never_sends_a_raw_korean_error_to_the_renderer"] },
+    { "id": "HOK1", "cargo": 0, "note": "무해 — 거짓 양성 없음" },
+    { "id": "HOK2", "cargo": 0, "note": "무해 — 거짓 양성 없음" }
+  ],
+  "scanNailEvasions": [
+    { "id": "S0", "what": "한 줄 생 한국어(빌더의 H5와 같은 형태)", "cargo": 101, "verdict": "잡힌다(대조군)" },
+    { "id": "S1", "what": "\"error\": 뒤 줄바꿈 — 한국어가 다음 줄", "cargo": 0, "verdict": "구멍 — rustfmt가 긴 줄을 접으면 비적대적으로도 발생" },
+    { "id": "S2", "what": "변수 경유(let m = \"한국어\"; \"error\": m)", "cargo": 0, "verdict": "구멍 — 실제 사례 존재: accounts.rs:659 NO_CODEX_BIN" },
+    { "id": "S3", "what": "유니코드 이스케이프", "cargo": 0, "verdict": "구멍" },
+    { "id": "S4", "what": "다른 키(\"message\")", "cargo": 0, "verdict": "구멍 — 못은 \"error\"만 본다" },
+    { "id": "S5", "what": "format! 경유", "cargo": 0, "verdict": "구멍" }
+  ],
+  "liveScreen": {
+    "how": "격리 홈(ui.lang=en) + 릴리즈 exe + CDP 11020. 사용자 실앱(다른 경로)은 무접촉, 내 PID만 종료",
+    "rendererLanguage": "en 확인 — 'New chat' · 'Extra chat' · 'Select folder' · 'LANGUAGE SERVERS' · 'Install'",
+    "verseThroughShim": "pickVerseServer() → THREW detail=\"Setting a Verse server isn't available in 3.0 yet\" (영어)",
+    "verseSetPath": "setVersePath() → {\"ok\":false,\"error\":\"Setting a Verse server isn't available in 3.0 yet\"} (영어)",
+    "ordering": "detail이 non-nullish 영어이므로 `detail ?? t(폴백)`은 detail을 고른다 — ①의 처방 A가 실제 경로에서 성립",
+    "verseRowRendered": false,
+    "verseRowNote": "Settings>Code의 서버 목록에 Verse 행 자체가 안 그려진다(TypeScript·Python·C#·C·C++ 넷뿐) — 고친 문구가 이 화면에서는 현재 도달 불가",
+    "koreanOnEnglishScreen": {
+      "text": ".NET SDK 10+ 필요",
+      "where": "Settings > Code > C# 행 배지",
+      "cause": "app/src/components/Settings.tsx:2377 이 {s.requires}(ko)를 무조건 그린다. 셸이 함께 보내는 requiresEn을 app/ 어디도 안 읽는다(전수 grep 0건)",
+      "shot": "%TEMP%/ccg-crit-en-code.png"
+    }
+  },
+  "parentWindowClaim": {
+    "builderSaid": "tauri-plugin-dialog의 pick_folder에 부모 지정이 없다(rfd set_parent 미노출) → 미수정·이월",
+    "measured": "거짓. tauri-plugin-dialog-2.7.2/src/lib.rs의 impl FileDialogBuilder에 `pub fn set_parent<...>`가 있고(set_file_name과 set_title 사이), desktop.rs:100-101이 `if let Some(parent) = d.parent { builder = builder.set_parent(&parent) }`로 rfd FileDialog에 적용한다 — pick_folder 포함",
+    "alsoWrongIn": "src-tauri/src/ipc/parity/dialog.rs 모듈 헤더(SMALL3 R1부터 실려 있던 같은 전제)"
+  },
+  "staticKoreanStillReachingRenderer": [
+    { "shell": "src-tauri/src/ipc/accounts.rs:659", "text": "codex 실행 파일을 찾지 못했어요", "form": "const → login_error(why) → json!({\"error\": why})", "renderer": "app/src/components/Settings.tsx:473", "note": "못이 훑는 디렉터리 안인데도 모양(변수 경유) 때문에 안 걸린다" },
+    { "shell": "src-tauri/src/ipc/accounts.rs:423", "text": "다른 로그인이 시작되어 이 시도는 취소됐어요.", "form": "status_wire(..., Some(\"...\"))", "renderer": "app/src/components/Settings.tsx:455", "note": "같은 디렉터리 · 같은 이유로 안 걸린다" },
+    { "shell": "crates/ccg-lsp/src/install.rs:316", "text": "파일이 아직 사용 중이에요. 잠시 후 다시 시도하거나 앱을 재시작해 주세요.", "form": "Err(\"...\".into())", "renderer": "app/src/components/Settings.tsx:2234", "note": "crates/ 는 못의 범위 밖" }
+  ]
+}

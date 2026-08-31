@@ -1,0 +1,109 @@
+{
+  "rev": "026c00d",
+  "at": "2026-08-31T05:19:48.926Z",
+  "pass": true,
+  "results": [
+    {
+      "name": "en 바이트 일치 — 작업할 프로젝트 폴더 선택",
+      "pass": true,
+      "detail": "\"Choose a project folder to work in\""
+    },
+    {
+      "name": "en 바이트 일치 — 추가 채팅 — AgentCodeGUI",
+      "pass": true,
+      "detail": "\"Extra chat — AgentCodeGUI\""
+    },
+    {
+      "name": "en 바이트 일치 — btw 질문 — AgentCodeGUI",
+      "pass": true,
+      "detail": "\"btw question — AgentCodeGUI\""
+    },
+    {
+      "name": "en 바이트 일치 — 패널 — AgentCodeGUI",
+      "pass": true,
+      "detail": "\"Panel — AgentCodeGUI\""
+    },
+    {
+      "name": "en 인자에 한글이 없다",
+      "pass": true
+    },
+    {
+      "name": "verse 문구는 2.6.2에 없다(3.0 전용이라는 주장의 확인)",
+      "pass": true
+    },
+    {
+      "name": "verse: const가 아니라 fn",
+      "pass": true
+    },
+    {
+      "name": "verse 배선",
+      "pass": true
+    },
+    {
+      "name": "설치 대상 없음도 t()로",
+      "pass": true
+    },
+    {
+      "name": "pickdir: fn + 배선",
+      "pass": true
+    },
+    {
+      "name": "win: fn + 배선",
+      "pass": true
+    },
+    {
+      "name": "popout: fn + 배선",
+      "pass": true
+    },
+    {
+      "name": "win.rs: 「추가 채팅 — AgentCodeGUI」가 헬퍼 밖에 없다",
+      "pass": true
+    },
+    {
+      "name": "popout.rs: 「패널 — AgentCodeGUI」가 헬퍼 밖에 없다",
+      "pass": true
+    },
+    {
+      "name": "system.rs: 「작업할 프로젝트 폴더 선택」가 헬퍼 밖에 없다",
+      "pass": true
+    }
+  ],
+  "pairs": [
+    {
+      "rel": "src-tauri/src/ipc/system.rs",
+      "ko": "작업할 프로젝트 폴더 선택",
+      "ourEn": "Choose a project folder to work in",
+      "theirEn": "Choose a project folder to work in",
+      "same": true,
+      "ourHex": "43686f6f736520612070726f6a65637420666f6c64657220746f20776f726b20696e",
+      "theirHex": "43686f6f736520612070726f6a65637420666f6c64657220746f20776f726b20696e"
+    },
+    {
+      "rel": "src-tauri/src/win.rs",
+      "ko": "추가 채팅 — AgentCodeGUI",
+      "ourEn": "Extra chat — AgentCodeGUI",
+      "theirEn": "Extra chat — AgentCodeGUI",
+      "same": true,
+      "ourHex": "4578747261206368617420e28094204167656e74436f6465475549",
+      "theirHex": "4578747261206368617420e28094204167656e74436f6465475549"
+    },
+    {
+      "rel": "src-tauri/src/win.rs",
+      "ko": "btw 질문 — AgentCodeGUI",
+      "ourEn": "btw question — AgentCodeGUI",
+      "theirEn": "btw question — AgentCodeGUI",
+      "same": true,
+      "ourHex": "627477207175657374696f6e20e28094204167656e74436f6465475549",
+      "theirHex": "627477207175657374696f6e20e28094204167656e74436f6465475549"
+    },
+    {
+      "rel": "src-tauri/src/popout.rs",
+      "ko": "패널 — AgentCodeGUI",
+      "ourEn": "Panel — AgentCodeGUI",
+      "theirEn": "Panel — AgentCodeGUI",
+      "same": true,
+      "ourHex": "50616e656c20e28094204167656e74436f6465475549",
+      "theirHex": "50616e656c20e28094204167656e74436f6465475549"
+    }
+  ]
+}
