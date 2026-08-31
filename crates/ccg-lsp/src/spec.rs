@@ -133,19 +133,26 @@ pub struct ServerSpec {
 
     pub launch: Launch,
 
-    /// [`Launch::Node`] 서버가 **실행 스크립트 말고 또** 배포본에 실려야 하는 `node_modules`
-    /// 최상위 패키지들. `module[0]`은 [`bundled_packages`]가 자동으로 넣으므로 여기 안 적는다.
+    /// [`Launch::Node`] 서버가 **실행 스크립트 말고 또** 배포본에서 여는 파일들 —
+    /// `node_modules` 기준 상대 경로 **조각**(패키지 이름이 아니다).
     ///
-    /// ★ LSPDIST R1이 판 확장점. 왜 필요했나 — TS가 실제로 쓰는 패키지는 **둘**이다:
-    /// 실행은 `typescript-language-server`가 하고, 그게 스폰할 tsserver는
-    /// [`ts_init_options`]가 `typescript` 패키지에서 못박아 넘긴다. `Launch::Node`만 보고
-    /// 번들을 만들면 `typescript`가 빠지고, 그러면 서버는 **뜨는데** tsserver를 못 찾아
-    /// 색이 반만 나온다(진단이 제일 어려운 종류의 고장이다).
+    /// `module` 자신과 `module[0]/package.json`은 [`bundled_files`]가 자동으로 넣으므로
+    /// 여기 안 적는다.
     ///
-    /// 이 값이 곧 `src-tauri/tauri.conf.json`의 `bundle.resources`와 맞물리는 계약이고,
-    /// 어긋나면 [`tests::every_bundled_node_package_is_in_the_installer_manifest`]가 잡는다 —
+    /// ★ LSPDIST R1이 판 확장점 · **R2가 패키지 → 파일로 내렸다.**
+    ///
+    /// R1의 값은 「최상위 패키지 이름」이었고 계약도 패키지 단위였다. 확인 크리틱 R1 C3이
+    /// 그 그물의 구멍을 실측했다 — `"…/typescript/lib"` 한 줄만 지우거나
+    /// `"…/typescript-language-server/package.json"` 한 줄만 지워도 테스트가 **초록**이었다.
+    /// 하필 그 둘이 이 라운드가 실제로 밟은 고장이다:
+    ///  - tsserver 누락 → 서버는 **뜨는데** 색이 반만 나온다(§2.3이 "제일 어려운 고장"이라 부른 것)
+    ///  - `package.json` 누락 → `cli.mjs`가 기동 즉시 `ENOENT`로 죽는다(R1 §5)
+    ///
+    /// 그래서 값을 **파일**로 바꿨다. 이 값이 곧 `src-tauri/tauri.conf.json`의
+    /// `bundle.resources`와 맞물리는 계약이고, 어긋나면
+    /// [`tests::every_bundled_file_is_covered_by_the_installer_manifest`]가 잡는다 —
     /// `Provision::Download`가 `install.rs::download_for`와 짝을 이루는 것과 같은 규율이다.
-    pub extra_modules: &'static [&'static str],
+    pub extra_files: &'static [&'static [&'static str]],
 
     pub root: RootRule,
 
@@ -683,7 +690,10 @@ ServerSpec {
     },
     // tsserver는 `typescript` 패키지에서 온다(`ts_init_options`가 경로를 못박는다) —
     // 실행 스크립트와 **다른 패키지**라 번들 목록에 따로 실어야 한다.
-    extra_modules: &["typescript"],
+    // tsserver는 `typescript` 패키지에서 온다(`ts_init_options`가 이 **파일 경로**를 못박아
+    // `initializationOptions.tsserver.path`로 넘긴다). `package.json`은 tsls가 판 문자열을
+    // 읽는 자리다 — 둘 다 없으면 서버가 뜨고도 반만 산다.
+    extra_files: &[&["typescript", "lib", "tsserver.js"], &["typescript", "package.json"]],
     root: RootRule::ProjectCwd,
     init_options: ts_init_options,
     prepare_root: None,
@@ -715,7 +725,7 @@ ServerSpec {
     detect_markers: &["pyproject.toml", "requirements.txt", "setup.py"],
     launch: Launch::Node { module: &["pyright", "langserver.index.js"], args: &["--stdio"] },
     // pyright는 자기 완결이다 — 번들 JS(`dist/`)와 `typeshed-fallback/`이 같은 패키지 안에 있다.
-    extra_modules: &[],
+    extra_files: &[],
     root: RootRule::ProjectCwd,
     init_options: no_init_options,
     prepare_root: None,
@@ -749,7 +759,7 @@ ServerSpec {
         extra_args: cs_extra_args,
     },
     // `Launch::Exe` — 앱 홈에 내려받는 서버라 `node_modules`와 무관하다.
-    extra_modules: &[],
+    extra_files: &[],
     // 보는 파일이 csproj 하나여도 그 csproj를 **참조하는** 솔루션이 있으면 솔루션째 연다 —
     // 크로스 프로젝트 분석이 살고, 프로젝트를 오가도 서버가 하나만 뜬다.
     root: RootRule::ReferencingSolution {
@@ -811,7 +821,7 @@ ServerSpec {
         args: &["--background-index", "--header-insertion=never"],
         extra_args: cpp_extra_args,
     },
-    extra_modules: &[],
+    extra_files: &[],
     // 컴파일 루트는 CDB/CMake가 있는 폴더다(없으면 cwd — 2.6.2와 같은 자리).
     root: RootRule::NearestMarker { markers: CPP_MARKERS },
     init_options: no_init_options,
@@ -845,25 +855,42 @@ ServerSpec {
 /// 배포본에는 파일이 없었다).
 ///
 /// 나가는 곳 둘: `src-tauri/tauri.conf.json`의 `bundle.resources`(사람이 적는다)와
-/// 그 둘을 대조하는 [`tests::every_bundled_node_package_is_in_the_installer_manifest`].
-pub fn bundled_packages() -> Vec<&'static str> {
-    let mut v: Vec<&'static str> = Vec::new();
-    let mut add = |p: &'static str| {
-        if !v.contains(&p) {
-            v.push(p);
+/// 그 둘을 대조하는 [`tests::every_bundled_file_is_covered_by_the_installer_manifest`].
+///
+/// ★ R2 — 목록의 단위가 **패키지에서 파일로** 내려갔다(크리틱 C3). 패키지 단위 계약은
+/// 「패키지를 통째로 빼먹는」 실수만 잡았고, 이 라운드가 실제로 밟은 두 고장
+/// (`typescript/lib` 누락 · `tsls/package.json` 누락)은 통과시켰다.
+pub fn bundled_files() -> Vec<Vec<&'static str>> {
+    let mut v: Vec<Vec<&'static str>> = Vec::new();
+    let mut add = |f: Vec<&'static str>| {
+        if !v.contains(&f) {
+            v.push(f);
         }
     };
     for s in SPECS {
         if let Launch::Node { module, .. } = &s.launch {
-            if let Some(first) = module.first() {
-                add(first);
+            add(module.to_vec());
+            // **npm 패키지의 진입 스크립트는 자기 `package.json`을 읽는다.** R1이 `files:["lib"]`만
+            // 보고 tsls의 `lib`만 싣다가 기동 즉시 ENOENT로 죽은 자리다(R1 §5). 한 서버의
+            // 사고로 두지 않고 **모든 `Launch::Node`에 거는 규칙**으로 올린다 — 다음 언어는
+            // 같은 함정을 밟을 기회 자체가 없다.
+            if let Some(pkg) = module.first() {
+                add(vec![pkg, "package.json"]);
             }
         }
-        for p in s.extra_modules {
-            add(p);
+        for f in s.extra_files {
+            add(f.to_vec());
         }
     }
     v.sort_unstable();
+    v
+}
+
+/// [`bundled_files`]가 건드리는 최상위 패키지들 — 「유령 적재」 역방향 검사용.
+pub fn bundled_packages() -> Vec<&'static str> {
+    let mut v: Vec<&'static str> = bundled_files().into_iter().filter_map(|f| f.first().copied()).collect();
+    v.sort_unstable();
+    v.dedup();
     v
 }
 
@@ -965,49 +992,89 @@ mod tests {
         }
     }
 
-    /// ★ LSPDIST R1의 게이트 — **`Provision::Bundled`가 거짓말이 아닌가.**
+    /// ★ LSPDIST R1의 게이트 · **R2가 파일 단위로 내렸다** — `Provision::Bundled`가 거짓말이 아닌가.
     ///
     /// 스펙의 `kind`는 "앱에 같이 실린다 — 항상 쓸 수 있다"고 말한다. 그 말이 참이려면
-    /// 설치기가 그 패키지를 실제로 실어야 하고, 그 목록은 `tauri.conf.json` 한 곳에만 있다.
+    /// 설치기가 그 **파일들**을 실제로 실어야 하고, 그 목록은 `tauri.conf.json` 한 곳에만 있다.
     /// R28j까지 이 대조가 없어서, 코드는 `Bundled`인데 설치 폴더에는 파일이 없는 상태로
-    /// **베타가 나갔다**(§1.6-A2). `install.rs::every_download_spec_has_a_source`가
-    /// `Provision::Download`에 걸어 둔 것과 같은 규율을 `Bundled`에도 건다.
+    /// **베타가 나갔다**(§1.6-A2).
+    ///
+    /// **왜 파일 단위인가**(확인 크리틱 R1 C3): R1의 계약은 패키지 단위라
+    /// `"…/typescript/lib"` 한 줄만 지우거나 `"…/typescript-language-server/package.json"`
+    /// 한 줄만 지워도 **초록**이었다. 하필 그 둘이 이 라운드가 실제로 밟은 고장이다.
+    /// 이제는 [`bundled_files`]의 **모든 경로**가 매니페스트 어느 항목의 하위에 들어와야 한다.
     #[test]
-    fn every_bundled_node_package_is_in_the_installer_manifest() {
-        let conf = concat!(env!("CARGO_MANIFEST_DIR"), "/../../src-tauri/tauri.conf.json");
-        let body = std::fs::read_to_string(conf).expect("tauri.conf.json을 못 읽었다");
+    fn every_bundled_file_is_covered_by_the_installer_manifest() {
+        let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
+        let body = std::fs::read_to_string(format!("{root}/src-tauri/tauri.conf.json"))
+            .expect("tauri.conf.json을 못 읽었다");
         let v: Value = serde_json::from_str(&body).expect("tauri.conf.json이 JSON이 아니다");
         let res = v["bundle"]["resources"].as_object().expect("bundle.resources가 없다 — 배포본에 모듈이 안 실린다");
         let dests: Vec<&str> = res.values().filter_map(Value::as_str).collect();
-        let want = bundled_packages();
+
+        // 한 항목이 파일 하나를 덮는가 = 그 항목이 **그 파일 자체**이거나 **그 파일의 상위 폴더**인가.
+        let covered = |rel: &[&str]| {
+            let p = format!("node_modules/{}", rel.join("/"));
+            dests.iter().any(|d| *d == p || p.starts_with(&format!("{d}/")))
+        };
+
+        let want = bundled_files();
         assert!(!want.is_empty(), "Launch::Node 스펙이 하나도 없다면 이 테스트를 지워라");
-        for pkg in &want {
-            let prefix = format!("node_modules/{pkg}/");
+        for rel in &want {
             assert!(
-                dests.iter().any(|d| d.starts_with(&prefix) || *d == prefix.trim_end_matches('/')),
-                "{pkg}: tauri.conf.json의 bundle.resources에 없다. 배포본에서 이 서버는 안 뜬다 \
-                 — 언어를 붙였으면 매니페스트도 한 줄 더해라"
+                covered(rel),
+                "node_modules/{}: tauri.conf.json의 bundle.resources 어느 항목도 이 **파일**을 안 덮는다. \
+                 배포본에서 이 서버는 안 뜨거나(진입 스크립트) 반만 산다(tsserver·package.json). \
+                 — 언어를 붙였거나 매니페스트를 줄였으면 여기부터 맞춰라",
+                rel.join("/")
             );
         }
-        // 반대 방향도 본다: SPECS에서 사라진 패키지를 설치기가 계속 나르면 수십 MB가 유령으로 남는다.
+
+        // ★ R2 — 런타임도 계약이다. `Launch::Node` 서버가 하나라도 있으면 설치기가
+        //   node 런타임을 실어야 한다(안 그러면 크리틱 §1.2의 「네 팔 전부 error」로 돌아간다).
+        if SPECS.iter().any(|s| matches!(s.launch, Launch::Node { .. })) {
+            assert!(
+                dests.iter().any(|d| *d == "node.exe" || *d == "resources/node.exe"),
+                "Launch::Node 서버가 있는데 설치기가 node 런타임을 안 싣는다 \
+                 — scripts/tauri-build.mjs의 스테이징과 bundle.resources를 같이 봐라"
+            );
+        }
+
+        // 반대 방향: SPECS에서 사라진 패키지를 설치기가 계속 나르면 수십 MB가 유령으로 남는다.
+        let pkgs = bundled_packages();
         for d in &dests {
             let Some(rest) = d.strip_prefix("node_modules/") else { continue };
             let pkg = rest.split('/').next().unwrap_or("");
-            assert!(want.contains(&pkg), "{pkg}: SPECS에 없는데 설치기가 나른다(유령 적재)");
+            assert!(pkgs.contains(&pkg), "{pkg}: SPECS에 없는데 설치기가 나른다(유령 적재)");
+        }
+
+        // 매니페스트가 **없는 자리**를 가리키면 번들 단계에서야 터진다 — 여기서 먼저 터뜨린다.
+        // (`node_modules`가 없는 기계에서는 건너뛴다 — 이 검사만 디스크에 의존한다.)
+        if std::path::Path::new(&format!("{root}/node_modules")).is_dir() {
+            for rel in &want {
+                let p = format!("{root}/node_modules/{}", rel.join("/"));
+                assert!(std::path::Path::new(&p).exists(), "매니페스트가 약속한 파일이 레포에 없다: {p}");
+            }
         }
     }
 
-    /// 파생 목록이 **양쪽 출처를 다 본다** — `Launch::Node`의 `module[0]`과 `extra_modules`.
-    /// `typescript`가 빠지면 서버는 뜨는데 tsserver를 못 찾아 색이 반만 나온다.
+    /// 파생 목록이 **세 출처를 다 본다** — `module` · `module[0]/package.json`(자동) ·
+    /// `extra_files`. R1 §5의 ENOENT 함정을 「모든 Node 스펙에 거는 규칙」으로 올린 자리다.
     #[test]
-    fn bundled_packages_covers_both_the_launcher_and_its_extras() {
-        let v = bundled_packages();
-        assert_eq!(v, vec!["pyright", "typescript", "typescript-language-server"], "{v:?}");
+    fn bundled_files_covers_the_launcher_its_package_json_and_the_extras() {
+        let v = bundled_files();
+        let has = |f: &[&str]| v.iter().any(|x| x.as_slice() == f);
+        assert!(has(&["typescript-language-server", "lib", "cli.mjs"]), "실행 스크립트");
+        assert!(has(&["typescript-language-server", "package.json"]), "★자동 — R1 §5의 ENOENT 자리");
+        assert!(has(&["pyright", "langserver.index.js"]));
+        assert!(has(&["pyright", "package.json"]), "★자동");
+        assert!(has(&["typescript", "lib", "tsserver.js"]), "extra_files — tsserver");
+        assert_eq!(bundled_packages(), vec!["pyright", "typescript", "typescript-language-server"]);
         for s in SPECS {
             match &s.launch {
-                Launch::Node { module, .. } => assert!(v.contains(&module[0]), "{}: 실행 스크립트가 안 실린다", s.id),
+                Launch::Node { module, .. } => assert!(has(module), "{}: 실행 스크립트가 안 실린다", s.id),
                 // 내려받는 서버는 번들 목록에 낄 자리가 없다(앱 홈에 설치된다).
-                Launch::Exe { .. } => assert!(s.extra_modules.is_empty(), "{}: Exe 스펙에 번들 모듈이 붙었다", s.id),
+                Launch::Exe { .. } => assert!(s.extra_files.is_empty(), "{}: Exe 스펙에 번들 파일이 붙었다", s.id),
             }
         }
     }
