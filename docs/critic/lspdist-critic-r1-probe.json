@@ -1,0 +1,1019 @@
+{
+  "critic": "lspdist-r1",
+  "at": "2026-08-31T03:47:29.899Z",
+  "node": "v24.13.1",
+  "inputs": {
+    "PROBE": "C:\\Temp\\ccg-critic-lspdist-target\\release\\ccg-lspprobe.exe",
+    "BEFORE": "C:\\Temp\\ccg-critic-lspdist-before-target\\release\\ccg-lspprobe.exe",
+    "NSI": "C:\\Temp\\ccg-critic-lspdist-target\\release\\nsis\\x64\\installer.nsi",
+    "TREE": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist\\tree"
+  },
+  "deploySim": {
+    "DIST": {
+      "dir": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\bundled",
+      "ancestorsWithNodeModules": []
+    },
+    "BARE": {
+      "dir": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\bare",
+      "ancestorsWithNodeModules": []
+    },
+    "SIDE": {
+      "dir": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\sidecar",
+      "ancestorsWithNodeModules": []
+    },
+    "OLD": {
+      "dir": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\before-bare",
+      "ancestorsWithNodeModules": []
+    },
+    "NOWHERE": {
+      "dir": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\nowhere",
+      "ancestorsWithNodeModules": []
+    }
+  },
+  "payload": {
+    "nsi": "C:\\Temp\\ccg-critic-lspdist-target\\release\\nsis\\x64\\installer.nsi",
+    "entries": 5426,
+    "topPackages": [
+      "pyright",
+      "typescript",
+      "typescript-language-server"
+    ],
+    "files": 5426,
+    "bytes": 45646102,
+    "mb": 43.53,
+    "onDiskMb": 58.78
+  },
+  "sidecarNodeFrom": "C:\\Program Files\\nodejs\\node.exe",
+  "fixture": {
+    "proj": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist\\tree\\critic-fx\\proj",
+    "ts": "lspbench/big.ts",
+    "py": "lspbench_py/big.py",
+    "ancestorsWithNodeModules": [
+      "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist\\tree"
+    ]
+  },
+  "arms": {
+    "bundled/install-cwd|ts": {
+      "exitCode": 0,
+      "wallMs": 1183,
+      "stderrTail": null,
+      "probe": {
+        "cwd": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist\\tree\\critic-fx\\proj",
+        "rel": "lspbench/big.ts",
+        "samples": 6,
+        "specId": "ts",
+        "serverRoot": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist\\tree\\critic-fx\\proj",
+        "resolve": {
+          "exe": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\bundled\\ccg-lspprobe.exe",
+          "processCwd": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\bundled",
+          "node": "C:\\Program Files\\nodejs\\node.exe",
+          "modules": {
+            "ts": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\bundled\\node_modules\\typescript-language-server\\lib\\cli.mjs",
+            "py": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\bundled\\node_modules\\pyright\\langserver.index.js",
+            "ts.tsserver": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\bundled\\node_modules\\typescript\\lib\\tsserver.js"
+          },
+          "searchHint": "찾아본 자리 8곳: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\bundled · C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\bundled\\resources · C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist · C:\\Users\\User\\AppData\\Local · …"
+        },
+        "cachedMs": 15.75,
+        "cachedHit": false,
+        "prewarmMs": 101,
+        "status": "ready",
+        "states": [
+          "starting",
+          "ready"
+        ],
+        "tokenMs": 812,
+        "tokens": 1565,
+        "tokenTries": 0,
+        "semanticSupported": true,
+        "spots": 6,
+        "syms": [
+          "makeConfig",
+          "summarize"
+        ],
+        "hover": {
+          "n": 6,
+          "hits": 6,
+          "p50": 2.91,
+          "p95": 9.99
+        },
+        "definition": {
+          "n": 6,
+          "hits": 6,
+          "crossFile": 6,
+          "p50": 0.79,
+          "p95": 2.95
+        },
+        "completion": {
+          "n": 10,
+          "maxItems": 4,
+          "sample": [
+            "lookup",
+            "register",
+            "size",
+            "tagsOf"
+          ],
+          "p50": 4.35,
+          "p95": 24.53
+        }
+      }
+    },
+    "bundled/project-cwd|ts": {
+      "exitCode": 0,
+      "wallMs": 702,
+      "stderrTail": null,
+      "probe": {
+        "cwd": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist\\tree\\critic-fx\\proj",
+        "rel": "lspbench/big.ts",
+        "samples": 6,
+        "specId": "ts",
+        "serverRoot": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist\\tree\\critic-fx\\proj",
+        "resolve": {
+          "exe": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\bundled\\ccg-lspprobe.exe",
+          "processCwd": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist\\tree\\critic-fx\\proj",
+          "node": "C:\\Program Files\\nodejs\\node.exe",
+          "modules": {
+            "ts": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\bundled\\node_modules\\typescript-language-server\\lib\\cli.mjs",
+            "py": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\bundled\\node_modules\\pyright\\langserver.index.js",
+            "ts.tsserver": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\bundled\\node_modules\\typescript\\lib\\tsserver.js"
+          },
+          "searchHint": "찾아본 자리 8곳: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\bundled · C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\bundled\\resources · C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist · C:\\Users\\User\\AppData\\Local · …"
+        },
+        "cachedMs": 0.12,
+        "cachedHit": false,
+        "prewarmMs": 100,
+        "status": "ready",
+        "states": [
+          "starting",
+          "ready"
+        ],
+        "tokenMs": 423,
+        "tokens": 1565,
+        "tokenTries": 0,
+        "semanticSupported": true,
+        "spots": 6,
+        "syms": [
+          "makeConfig",
+          "summarize"
+        ],
+        "hover": {
+          "n": 6,
+          "hits": 6,
+          "p50": 2.34,
+          "p95": 10.15
+        },
+        "definition": {
+          "n": 6,
+          "hits": 6,
+          "crossFile": 6,
+          "p50": 0.7,
+          "p95": 3
+        },
+        "completion": {
+          "n": 10,
+          "maxItems": 4,
+          "sample": [
+            "lookup",
+            "register",
+            "size",
+            "tagsOf"
+          ],
+          "p50": 4.47,
+          "p95": 23.65
+        }
+      }
+    },
+    "bare/install-cwd|ts": {
+      "exitCode": 0,
+      "wallMs": 102,
+      "stderrTail": null,
+      "probe": {
+        "cwd": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist\\tree\\critic-fx\\proj",
+        "rel": "lspbench/big.ts",
+        "samples": 6,
+        "specId": "ts",
+        "serverRoot": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist\\tree\\critic-fx\\proj",
+        "resolve": {
+          "exe": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\bare\\ccg-lspprobe.exe",
+          "processCwd": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\bare",
+          "node": "C:\\Program Files\\nodejs\\node.exe",
+          "modules": {
+            "ts": null,
+            "py": null,
+            "ts.tsserver": null
+          },
+          "searchHint": "찾아본 자리 8곳: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\bare · C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\bare\\resources · C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist · C:\\Users\\User\\AppData\\Local · …"
+        },
+        "cachedMs": 0.16,
+        "cachedHit": false,
+        "prewarmMs": 50,
+        "status": "error",
+        "states": [
+          "starting",
+          "error"
+        ]
+      }
+    },
+    "bare/project-cwd|ts": {
+      "exitCode": 0,
+      "wallMs": 63,
+      "stderrTail": null,
+      "probe": {
+        "cwd": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist\\tree\\critic-fx\\proj",
+        "rel": "lspbench/big.ts",
+        "samples": 6,
+        "specId": "ts",
+        "serverRoot": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist\\tree\\critic-fx\\proj",
+        "resolve": {
+          "exe": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\bare\\ccg-lspprobe.exe",
+          "processCwd": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist\\tree\\critic-fx\\proj",
+          "node": "C:\\Program Files\\nodejs\\node.exe",
+          "modules": {
+            "ts": null,
+            "py": null,
+            "ts.tsserver": null
+          },
+          "searchHint": "찾아본 자리 8곳: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\bare · C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\bare\\resources · C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist · C:\\Users\\User\\AppData\\Local · …"
+        },
+        "cachedMs": 0.13,
+        "cachedHit": false,
+        "prewarmMs": 50,
+        "status": "error",
+        "states": [
+          "starting",
+          "error"
+        ]
+      }
+    },
+    "bundled/install-cwd|py": {
+      "exitCode": 0,
+      "wallMs": 808,
+      "stderrTail": null,
+      "probe": {
+        "cwd": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist\\tree\\critic-fx\\proj",
+        "rel": "lspbench_py/big.py",
+        "samples": 6,
+        "specId": "py",
+        "serverRoot": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist\\tree\\critic-fx\\proj",
+        "resolve": {
+          "exe": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\bundled\\ccg-lspprobe.exe",
+          "processCwd": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\bundled",
+          "node": "C:\\Program Files\\nodejs\\node.exe",
+          "modules": {
+            "ts": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\bundled\\node_modules\\typescript-language-server\\lib\\cli.mjs",
+            "py": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\bundled\\node_modules\\pyright\\langserver.index.js",
+            "ts.tsserver": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\bundled\\node_modules\\typescript\\lib\\tsserver.js"
+          },
+          "searchHint": "찾아본 자리 8곳: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\bundled · C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\bundled\\resources · C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist · C:\\Users\\User\\AppData\\Local · …"
+        },
+        "cachedMs": 6.28,
+        "cachedHit": false,
+        "prewarmMs": 302,
+        "status": "ready",
+        "states": [
+          "starting",
+          "ready"
+        ],
+        "tokenMs": null,
+        "tokens": 0,
+        "tokenTries": 0,
+        "semanticSupported": false,
+        "spots": 6,
+        "syms": [
+          "make_config",
+          "summarize"
+        ],
+        "hover": {
+          "n": 6,
+          "hits": 6,
+          "p50": 0.51,
+          "p95": 322.42
+        },
+        "definition": {
+          "n": 6,
+          "hits": 6,
+          "crossFile": 6,
+          "p50": 0.28,
+          "p95": 0.66
+        },
+        "completion": {
+          "n": 10,
+          "maxItems": 29,
+          "sample": [
+            "__doc__",
+            "__module__",
+            "__qualname__",
+            "__init__",
+            "register"
+          ],
+          "p50": 8.55,
+          "p95": 14.51
+        }
+      }
+    },
+    "bundled/project-cwd|py": {
+      "exitCode": 0,
+      "wallMs": 623,
+      "stderrTail": null,
+      "probe": {
+        "cwd": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist\\tree\\critic-fx\\proj",
+        "rel": "lspbench_py/big.py",
+        "samples": 6,
+        "specId": "py",
+        "serverRoot": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist\\tree\\critic-fx\\proj",
+        "resolve": {
+          "exe": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\bundled\\ccg-lspprobe.exe",
+          "processCwd": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist\\tree\\critic-fx\\proj",
+          "node": "C:\\Program Files\\nodejs\\node.exe",
+          "modules": {
+            "ts": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\bundled\\node_modules\\typescript-language-server\\lib\\cli.mjs",
+            "py": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\bundled\\node_modules\\pyright\\langserver.index.js",
+            "ts.tsserver": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\bundled\\node_modules\\typescript\\lib\\tsserver.js"
+          },
+          "searchHint": "찾아본 자리 8곳: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\bundled · C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\bundled\\resources · C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist · C:\\Users\\User\\AppData\\Local · …"
+        },
+        "cachedMs": 0.13,
+        "cachedHit": false,
+        "prewarmMs": 151,
+        "status": "ready",
+        "states": [
+          "starting",
+          "ready"
+        ],
+        "tokenMs": null,
+        "tokens": 0,
+        "tokenTries": 0,
+        "semanticSupported": false,
+        "spots": 6,
+        "syms": [
+          "make_config",
+          "summarize"
+        ],
+        "hover": {
+          "n": 6,
+          "hits": 6,
+          "p50": 0.48,
+          "p95": 295.12
+        },
+        "definition": {
+          "n": 6,
+          "hits": 6,
+          "crossFile": 6,
+          "p50": 0.29,
+          "p95": 0.68
+        },
+        "completion": {
+          "n": 10,
+          "maxItems": 29,
+          "sample": [
+            "__doc__",
+            "__module__",
+            "__qualname__",
+            "__init__",
+            "register"
+          ],
+          "p50": 8.46,
+          "p95": 14.62
+        }
+      }
+    },
+    "bare/install-cwd|py": {
+      "exitCode": 0,
+      "wallMs": 63,
+      "stderrTail": null,
+      "probe": {
+        "cwd": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist\\tree\\critic-fx\\proj",
+        "rel": "lspbench_py/big.py",
+        "samples": 6,
+        "specId": "py",
+        "serverRoot": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist\\tree\\critic-fx\\proj",
+        "resolve": {
+          "exe": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\bare\\ccg-lspprobe.exe",
+          "processCwd": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\bare",
+          "node": "C:\\Program Files\\nodejs\\node.exe",
+          "modules": {
+            "ts": null,
+            "py": null,
+            "ts.tsserver": null
+          },
+          "searchHint": "찾아본 자리 8곳: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\bare · C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\bare\\resources · C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist · C:\\Users\\User\\AppData\\Local · …"
+        },
+        "cachedMs": 0.12,
+        "cachedHit": false,
+        "prewarmMs": 50,
+        "status": "error",
+        "states": [
+          "starting",
+          "error"
+        ]
+      }
+    },
+    "bare/project-cwd|py": {
+      "exitCode": 0,
+      "wallMs": 62,
+      "stderrTail": null,
+      "probe": {
+        "cwd": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist\\tree\\critic-fx\\proj",
+        "rel": "lspbench_py/big.py",
+        "samples": 6,
+        "specId": "py",
+        "serverRoot": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist\\tree\\critic-fx\\proj",
+        "resolve": {
+          "exe": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\bare\\ccg-lspprobe.exe",
+          "processCwd": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist\\tree\\critic-fx\\proj",
+          "node": "C:\\Program Files\\nodejs\\node.exe",
+          "modules": {
+            "ts": null,
+            "py": null,
+            "ts.tsserver": null
+          },
+          "searchHint": "찾아본 자리 8곳: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\bare · C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\bare\\resources · C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist · C:\\Users\\User\\AppData\\Local · …"
+        },
+        "cachedMs": 0.14,
+        "cachedHit": false,
+        "prewarmMs": 51,
+        "status": "error",
+        "states": [
+          "starting",
+          "error"
+        ]
+      }
+    },
+    "nonode/bundled/install-cwd|ts": {
+      "exitCode": 0,
+      "wallMs": 67,
+      "stderrTail": null,
+      "probe": {
+        "cwd": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist\\tree\\critic-fx\\proj",
+        "rel": "lspbench/big.ts",
+        "samples": 2,
+        "specId": "ts",
+        "serverRoot": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist\\tree\\critic-fx\\proj",
+        "resolve": {
+          "exe": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\bundled\\ccg-lspprobe.exe",
+          "processCwd": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\bundled",
+          "node": null,
+          "modules": {
+            "ts": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\bundled\\node_modules\\typescript-language-server\\lib\\cli.mjs",
+            "py": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\bundled\\node_modules\\pyright\\langserver.index.js",
+            "ts.tsserver": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\bundled\\node_modules\\typescript\\lib\\tsserver.js"
+          },
+          "searchHint": "찾아본 자리 8곳: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\bundled · C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\bundled\\resources · C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist · C:\\Users\\User\\AppData\\Local · …"
+        },
+        "cachedMs": 0.14,
+        "cachedHit": false,
+        "prewarmMs": 51,
+        "status": "error",
+        "states": [
+          "starting",
+          "error"
+        ]
+      }
+    },
+    "nonode/bundled/project-cwd|ts": {
+      "exitCode": 0,
+      "wallMs": 64,
+      "stderrTail": null,
+      "probe": {
+        "cwd": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist\\tree\\critic-fx\\proj",
+        "rel": "lspbench/big.ts",
+        "samples": 2,
+        "specId": "ts",
+        "serverRoot": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist\\tree\\critic-fx\\proj",
+        "resolve": {
+          "exe": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\bundled\\ccg-lspprobe.exe",
+          "processCwd": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist\\tree\\critic-fx\\proj",
+          "node": null,
+          "modules": {
+            "ts": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\bundled\\node_modules\\typescript-language-server\\lib\\cli.mjs",
+            "py": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\bundled\\node_modules\\pyright\\langserver.index.js",
+            "ts.tsserver": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\bundled\\node_modules\\typescript\\lib\\tsserver.js"
+          },
+          "searchHint": "찾아본 자리 8곳: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\bundled · C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\bundled\\resources · C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist · C:\\Users\\User\\AppData\\Local · …"
+        },
+        "cachedMs": 0.13,
+        "cachedHit": false,
+        "prewarmMs": 50,
+        "status": "error",
+        "states": [
+          "starting",
+          "error"
+        ]
+      }
+    },
+    "nonode/bundled/install-cwd|py": {
+      "exitCode": 0,
+      "wallMs": 63,
+      "stderrTail": null,
+      "probe": {
+        "cwd": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist\\tree\\critic-fx\\proj",
+        "rel": "lspbench_py/big.py",
+        "samples": 2,
+        "specId": "py",
+        "serverRoot": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist\\tree\\critic-fx\\proj",
+        "resolve": {
+          "exe": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\bundled\\ccg-lspprobe.exe",
+          "processCwd": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\bundled",
+          "node": null,
+          "modules": {
+            "ts": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\bundled\\node_modules\\typescript-language-server\\lib\\cli.mjs",
+            "py": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\bundled\\node_modules\\pyright\\langserver.index.js",
+            "ts.tsserver": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\bundled\\node_modules\\typescript\\lib\\tsserver.js"
+          },
+          "searchHint": "찾아본 자리 8곳: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\bundled · C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\bundled\\resources · C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist · C:\\Users\\User\\AppData\\Local · …"
+        },
+        "cachedMs": 0.13,
+        "cachedHit": false,
+        "prewarmMs": 50,
+        "status": "error",
+        "states": [
+          "starting",
+          "error"
+        ]
+      }
+    },
+    "nonode/bundled/project-cwd|py": {
+      "exitCode": 0,
+      "wallMs": 64,
+      "stderrTail": null,
+      "probe": {
+        "cwd": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist\\tree\\critic-fx\\proj",
+        "rel": "lspbench_py/big.py",
+        "samples": 2,
+        "specId": "py",
+        "serverRoot": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist\\tree\\critic-fx\\proj",
+        "resolve": {
+          "exe": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\bundled\\ccg-lspprobe.exe",
+          "processCwd": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist\\tree\\critic-fx\\proj",
+          "node": null,
+          "modules": {
+            "ts": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\bundled\\node_modules\\typescript-language-server\\lib\\cli.mjs",
+            "py": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\bundled\\node_modules\\pyright\\langserver.index.js",
+            "ts.tsserver": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\bundled\\node_modules\\typescript\\lib\\tsserver.js"
+          },
+          "searchHint": "찾아본 자리 8곳: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\bundled · C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\bundled\\resources · C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist · C:\\Users\\User\\AppData\\Local · …"
+        },
+        "cachedMs": 0.13,
+        "cachedHit": false,
+        "prewarmMs": 51,
+        "status": "error",
+        "states": [
+          "starting",
+          "error"
+        ]
+      }
+    },
+    "nonode/sidecar/install-cwd|ts": {
+      "exitCode": 0,
+      "wallMs": 2499,
+      "stderrTail": null,
+      "probe": {
+        "cwd": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist\\tree\\critic-fx\\proj",
+        "rel": "lspbench/big.ts",
+        "samples": 2,
+        "specId": "ts",
+        "serverRoot": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist\\tree\\critic-fx\\proj",
+        "resolve": {
+          "exe": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\sidecar\\ccg-lspprobe.exe",
+          "processCwd": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\sidecar",
+          "node": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\sidecar\\node.exe",
+          "modules": {
+            "ts": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\sidecar\\node_modules\\typescript-language-server\\lib\\cli.mjs",
+            "py": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\sidecar\\node_modules\\pyright\\langserver.index.js",
+            "ts.tsserver": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\sidecar\\node_modules\\typescript\\lib\\tsserver.js"
+          },
+          "searchHint": "찾아본 자리 8곳: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\sidecar · C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\sidecar\\resources · C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist · C:\\Users\\User\\AppData\\Local · …"
+        },
+        "cachedMs": 0.14,
+        "cachedHit": false,
+        "prewarmMs": 905,
+        "status": "ready",
+        "states": [
+          "starting",
+          "ready"
+        ],
+        "tokenMs": 1405,
+        "tokens": 1565,
+        "tokenTries": 0,
+        "semanticSupported": true,
+        "spots": 2,
+        "syms": [
+          "makeConfig",
+          "summarize"
+        ],
+        "hover": {
+          "n": 2,
+          "hits": 2,
+          "p50": 10.23,
+          "p95": 10.23
+        },
+        "definition": {
+          "n": 2,
+          "hits": 2,
+          "crossFile": 2,
+          "p50": 3.42,
+          "p95": 3.42
+        },
+        "completion": {
+          "n": 10,
+          "maxItems": 4,
+          "sample": [
+            "lookup",
+            "register",
+            "size",
+            "tagsOf"
+          ],
+          "p50": 3.69,
+          "p95": 24.63
+        }
+      }
+    },
+    "nonode/sidecar/install-cwd|py": {
+      "exitCode": 0,
+      "wallMs": 895,
+      "stderrTail": null,
+      "probe": {
+        "cwd": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist\\tree\\critic-fx\\proj",
+        "rel": "lspbench_py/big.py",
+        "samples": 2,
+        "specId": "py",
+        "serverRoot": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist\\tree\\critic-fx\\proj",
+        "resolve": {
+          "exe": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\sidecar\\ccg-lspprobe.exe",
+          "processCwd": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\sidecar",
+          "node": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\sidecar\\node.exe",
+          "modules": {
+            "ts": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\sidecar\\node_modules\\typescript-language-server\\lib\\cli.mjs",
+            "py": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\sidecar\\node_modules\\pyright\\langserver.index.js",
+            "ts.tsserver": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\sidecar\\node_modules\\typescript\\lib\\tsserver.js"
+          },
+          "searchHint": "찾아본 자리 8곳: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\sidecar · C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\sidecar\\resources · C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist · C:\\Users\\User\\AppData\\Local · …"
+        },
+        "cachedMs": 0.13,
+        "cachedHit": false,
+        "prewarmMs": 302,
+        "status": "ready",
+        "states": [
+          "starting",
+          "ready"
+        ],
+        "tokenMs": null,
+        "tokens": 0,
+        "tokenTries": 0,
+        "semanticSupported": false,
+        "spots": 2,
+        "syms": [
+          "make_config",
+          "summarize"
+        ],
+        "hover": {
+          "n": 2,
+          "hits": 2,
+          "p50": 412.66,
+          "p95": 412.66
+        },
+        "definition": {
+          "n": 2,
+          "hits": 2,
+          "crossFile": 2,
+          "p50": 0.79,
+          "p95": 0.79
+        },
+        "completion": {
+          "n": 10,
+          "maxItems": 29,
+          "sample": [
+            "__doc__",
+            "__module__",
+            "__qualname__",
+            "__init__",
+            "register"
+          ],
+          "p50": 8.3,
+          "p95": 14.38
+        }
+      }
+    },
+    "lever/CCG_LSP_MODULES|ts": {
+      "exitCode": 0,
+      "wallMs": 691,
+      "stderrTail": null,
+      "probe": {
+        "cwd": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist\\tree\\critic-fx\\proj",
+        "rel": "lspbench/big.ts",
+        "samples": 2,
+        "specId": "ts",
+        "serverRoot": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist\\tree\\critic-fx\\proj",
+        "resolve": {
+          "exe": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\bare\\ccg-lspprobe.exe",
+          "processCwd": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\bare",
+          "node": "C:\\Program Files\\nodejs\\node.exe",
+          "modules": {
+            "ts": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist\\tree\\node_modules\\typescript-language-server\\lib\\cli.mjs",
+            "py": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist\\tree\\node_modules\\pyright\\langserver.index.js",
+            "ts.tsserver": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist\\tree\\node_modules\\typescript\\lib\\tsserver.js"
+          },
+          "searchHint": "찾아본 자리 9곳: C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist\\tree · C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\bare · C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\bare\\resources · C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist · …"
+        },
+        "cachedMs": 0.13,
+        "cachedHit": false,
+        "prewarmMs": 101,
+        "status": "ready",
+        "states": [
+          "starting",
+          "ready"
+        ],
+        "tokenMs": 421,
+        "tokens": 1565,
+        "tokenTries": 0,
+        "semanticSupported": true,
+        "spots": 2,
+        "syms": [
+          "makeConfig",
+          "summarize"
+        ],
+        "hover": {
+          "n": 2,
+          "hits": 2,
+          "p50": 9.97,
+          "p95": 9.97
+        },
+        "definition": {
+          "n": 2,
+          "hits": 2,
+          "crossFile": 2,
+          "p50": 3.42,
+          "p95": 3.42
+        },
+        "completion": {
+          "n": 10,
+          "maxItems": 4,
+          "sample": [
+            "lookup",
+            "register",
+            "size",
+            "tagsOf"
+          ],
+          "p50": 4.3,
+          "p95": 24.59
+        }
+      }
+    },
+    "dev/exe-in-tree|cwd=nowhere|ts": {
+      "exitCode": 0,
+      "wallMs": 710,
+      "stderrTail": null,
+      "probe": {
+        "cwd": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist\\tree\\critic-fx\\proj",
+        "rel": "lspbench/big.ts",
+        "samples": 2,
+        "specId": "ts",
+        "serverRoot": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist\\tree\\critic-fx\\proj",
+        "resolve": {
+          "exe": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist\\tree\\target-sim\\release\\ccg-lspprobe.exe",
+          "processCwd": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\nowhere",
+          "node": "C:\\Program Files\\nodejs\\node.exe",
+          "modules": {
+            "ts": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist\\tree\\node_modules\\typescript-language-server\\lib\\cli.mjs",
+            "py": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist\\tree\\node_modules\\pyright\\langserver.index.js",
+            "ts.tsserver": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist\\tree\\node_modules\\typescript\\lib\\tsserver.js"
+          },
+          "searchHint": "찾아본 자리 11곳: C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist\\tree\\target-sim\\release · C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist\\tree\\target-sim\\release\\resources · C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist\\tree\\target-sim · C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist\\tree · …"
+        },
+        "cachedMs": 0.14,
+        "cachedHit": false,
+        "prewarmMs": 100,
+        "status": "ready",
+        "states": [
+          "starting",
+          "ready"
+        ],
+        "tokenMs": 407,
+        "tokens": 1565,
+        "tokenTries": 0,
+        "semanticSupported": true,
+        "spots": 2,
+        "syms": [
+          "makeConfig",
+          "summarize"
+        ],
+        "hover": {
+          "n": 2,
+          "hits": 2,
+          "p50": 9.95,
+          "p95": 9.95
+        },
+        "definition": {
+          "n": 2,
+          "hits": 2,
+          "crossFile": 2,
+          "p50": 3.49,
+          "p95": 3.49
+        },
+        "completion": {
+          "n": 10,
+          "maxItems": 4,
+          "sample": [
+            "lookup",
+            "register",
+            "size",
+            "tagsOf"
+          ],
+          "p50": 4.41,
+          "p95": 24.05
+        }
+      }
+    },
+    "before/bare/install-cwd|ts": {
+      "exitCode": 0,
+      "wallMs": 102,
+      "stderrTail": null,
+      "probe": {
+        "cwd": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist\\tree\\critic-fx\\proj",
+        "rel": "lspbench/big.ts",
+        "samples": 2,
+        "specId": "ts",
+        "serverRoot": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist\\tree\\critic-fx\\proj",
+        "cachedMs": 0.19,
+        "cachedHit": false,
+        "prewarmMs": 50,
+        "status": "error",
+        "states": [
+          "starting",
+          "error"
+        ]
+      }
+    },
+    "before/bare/project-cwd|ts": {
+      "exitCode": 0,
+      "wallMs": 680,
+      "stderrTail": null,
+      "probe": {
+        "cwd": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist\\tree\\critic-fx\\proj",
+        "rel": "lspbench/big.ts",
+        "samples": 2,
+        "specId": "ts",
+        "serverRoot": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist\\tree\\critic-fx\\proj",
+        "cachedMs": 0.19,
+        "cachedHit": false,
+        "prewarmMs": 100,
+        "status": "ready",
+        "states": [
+          "starting",
+          "ready"
+        ],
+        "tokenMs": 403,
+        "tokens": 1565,
+        "tokenTries": 0,
+        "semanticSupported": true,
+        "spots": 2,
+        "syms": [
+          "makeConfig",
+          "summarize"
+        ],
+        "hover": {
+          "n": 2,
+          "hits": 2,
+          "p50": 10.24,
+          "p95": 10.24
+        },
+        "definition": {
+          "n": 2,
+          "hits": 2,
+          "crossFile": 2,
+          "p50": 3.22,
+          "p95": 3.22
+        },
+        "completion": {
+          "n": 10,
+          "maxItems": 4,
+          "sample": [
+            "lookup",
+            "register",
+            "size",
+            "tagsOf"
+          ],
+          "p50": 4.19,
+          "p95": 24.44
+        }
+      }
+    },
+    "before/bare/install-cwd|py": {
+      "exitCode": 0,
+      "wallMs": 65,
+      "stderrTail": null,
+      "probe": {
+        "cwd": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist\\tree\\critic-fx\\proj",
+        "rel": "lspbench_py/big.py",
+        "samples": 2,
+        "specId": "py",
+        "serverRoot": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist\\tree\\critic-fx\\proj",
+        "cachedMs": 0.21,
+        "cachedHit": false,
+        "prewarmMs": 51,
+        "status": "error",
+        "states": [
+          "starting",
+          "error"
+        ]
+      }
+    },
+    "before/bare/project-cwd|py": {
+      "exitCode": 0,
+      "wallMs": 634,
+      "stderrTail": null,
+      "probe": {
+        "cwd": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist\\tree\\critic-fx\\proj",
+        "rel": "lspbench_py/big.py",
+        "samples": 2,
+        "specId": "py",
+        "serverRoot": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist\\tree\\critic-fx\\proj",
+        "cachedMs": 0.18,
+        "cachedHit": false,
+        "prewarmMs": 151,
+        "status": "ready",
+        "states": [
+          "starting",
+          "ready"
+        ],
+        "tokenMs": null,
+        "tokens": 0,
+        "tokenTries": 0,
+        "semanticSupported": false,
+        "spots": 2,
+        "syms": [
+          "make_config",
+          "summarize"
+        ],
+        "hover": {
+          "n": 2,
+          "hits": 2,
+          "p50": 286.76,
+          "p95": 286.76
+        },
+        "definition": {
+          "n": 2,
+          "hits": 2,
+          "crossFile": 2,
+          "p50": 0.76,
+          "p95": 0.76
+        },
+        "completion": {
+          "n": 10,
+          "maxItems": 29,
+          "sample": [
+            "__doc__",
+            "__module__",
+            "__qualname__",
+            "__init__",
+            "register"
+          ],
+          "p50": 8.21,
+          "p95": 14.56
+        }
+      }
+    }
+  },
+  "nonode_ts": {
+    "installCwd": {
+      "status": "error",
+      "node": null
+    },
+    "projectCwd": {
+      "status": "error",
+      "node": null
+    }
+  },
+  "sidecar_ts": {
+    "status": "ready",
+    "node": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\sidecar\\node.exe"
+  },
+  "nonode_py": {
+    "installCwd": {
+      "status": "error",
+      "node": null
+    },
+    "projectCwd": {
+      "status": "error",
+      "node": null
+    }
+  },
+  "sidecar_py": {
+    "status": "ready",
+    "node": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\sidecar\\node.exe"
+  },
+  "before": {
+    "ts": {
+      "install": "error",
+      "project": "ready"
+    },
+    "py": {
+      "install": "error",
+      "project": "ready"
+    }
+  },
+  "verdict": {
+    "failures": [],
+    "ok": true
+  }
+}

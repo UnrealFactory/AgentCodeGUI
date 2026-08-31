@@ -1,0 +1,200 @@
+{
+  "critic": "lspdist-critic-r1",
+  "at": "2026-08-31T04:04:39.126Z",
+  "tip": "bcd0734",
+  "tree": "git archive bcd0734 -> %TEMP%ccg-critic-lspdist\tree (node_modules = junction only)",
+  "targetDir": "C:Tempccg-critic-lspdist-target",
+  "build": "npm run tauri:build:unsigned + cargo build --release -p ccg-lsp --features cli --bin ccg-lspprobe",
+  "footprint": {
+    "installerWithResourcesBytes": 8973000,
+    "installerWithoutResourcesBytes": 2812813,
+    "deltaBytes": 6160187,
+    "deltaMB": 5.87,
+    "builderClaimDeltaBytes": 6160174,
+    "deltaOfDeltasBytes": 13,
+    "payloadFiles": 5426,
+    "payloadRawMB": 43.53,
+    "payloadClusterMB": 58.78,
+    "packages": [
+      "pyright",
+      "typescript",
+      "typescript-language-server"
+    ],
+    "ghostBytesMB": {
+      "_tsc": 5.95,
+      "locales": 4.27,
+      "pyrightMaps": 2.55,
+      "tslsMap": 1.35,
+      "sum": 14.12
+    },
+    "e262InstallerBytes": 165119775,
+    "e262UnpackedMB": 650,
+    "e262Files": 8139,
+    "nodeExeBytes": 91406496,
+    "nodeExeMB": 87.17
+  },
+  "functional": {
+    "allChecksPassed": true,
+    "checkFailures": [],
+    "noNodeOnPath": {
+      "ts": {
+        "installCwd": {
+          "status": "error",
+          "node": null
+        },
+        "projectCwd": {
+          "status": "error",
+          "node": null
+        }
+      },
+      "py": {
+        "installCwd": {
+          "status": "error",
+          "node": null
+        },
+        "projectCwd": {
+          "status": "error",
+          "node": null
+        }
+      }
+    },
+    "sidecarNode": {
+      "ts": {
+        "status": "ready",
+        "node": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\sidecar\\node.exe"
+      },
+      "py": {
+        "status": "ready",
+        "node": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist\\sidecar\\node.exe"
+      },
+      "copiedFrom": "C:\\Program Files\\nodejs\\node.exe"
+    },
+    "beforeCode": {
+      "ts": {
+        "install": "error",
+        "project": "ready"
+      },
+      "py": {
+        "install": "error",
+        "project": "ready"
+      }
+    }
+  },
+  "memory": {
+    "denominator262": {
+      "ws": 718.6,
+      "priv": 508.9
+    },
+    "arms": [
+      {
+        "arm": "cwd=install-folder",
+        "cwd": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-app",
+        "exeSha": "6959cdb0a684d11f",
+        "repeats": 2,
+        "idleWs": 568.85,
+        "idlePriv": 354.45,
+        "procs": 8,
+        "helperCount": 3,
+        "helperWsMB": 124.7,
+        "ratioWs": 0.792,
+        "ratioPriv": 0.697,
+        "g1": 0.618,
+        "fps": {
+          "avgFps": 60,
+          "p95Ms": 16.8,
+          "worstDroppedPct": 0,
+          "zeroDropRuns": 2
+        }
+      },
+      {
+        "arm": "cwd=project",
+        "cwd": "C:\\Code\\AgentCodeGUI",
+        "exeSha": "6959cdb0a684d11f",
+        "repeats": 2,
+        "idleWs": 573.5,
+        "idlePriv": 362.8,
+        "procs": 8,
+        "helperCount": 3,
+        "helperWsMB": 125,
+        "ratioWs": 0.798,
+        "ratioPriv": 0.713,
+        "g1": 0.624,
+        "fps": {
+          "avgFps": 60,
+          "p95Ms": 16.8,
+          "worstDroppedPct": 0,
+          "zeroDropRuns": 2
+        }
+      }
+    ],
+    "bandWsMB": 4.65,
+    "builderBandWsMB": 9.8,
+    "preFixBandWsMB": 153.2
+  },
+  "tests": {
+    "workspacePassed": 787,
+    "workspaceFailed": 0,
+    "workspaceIgnored": 14,
+    "ccgLspLibPassed": 66,
+    "reportClaim": 362
+  },
+  "mutations": [
+    {
+      "id": "M1",
+      "what": "SPECS에 가짜 Launch::Node 서버 추가",
+      "expected": "red",
+      "got": "red",
+      "tests": [
+        "every_bundled_node_package_is_in_the_installer_manifest",
+        "bundled_packages_covers_both_the_launcher_and_its_extras"
+      ]
+    },
+    {
+      "id": "M2",
+      "what": "매니페스트에서 \"../node_modules/typescript/lib\" 한 줄 삭제(tsserver 누락)",
+      "expected": "red",
+      "got": "GREEN",
+      "note": "★계약 구멍 — 서버는 뜨는데 tsserver를 못 찾는 바로 그 고장"
+    },
+    {
+      "id": "M3",
+      "what": "매니페스트에서 typescript 패키지 두 줄 전부 삭제",
+      "expected": "red",
+      "got": "red"
+    },
+    {
+      "id": "M4",
+      "what": "매니페스트에서 typescript-language-server/package.json 한 줄 삭제",
+      "expected": "red",
+      "got": "GREEN",
+      "note": "★계약 구멍 — §5가 적은 ENOENT 함정 그 자체"
+    },
+    {
+      "id": "M5",
+      "what": "SPECS에 없는 패키지를 매니페스트에 추가(유령 적재)",
+      "expected": "red",
+      "got": "red"
+    },
+    {
+      "id": "M6",
+      "what": "module_roots_from 안에 cwd 사슬 부활",
+      "expected": "red",
+      "got": "red"
+    },
+    {
+      "id": "M7",
+      "what": "module_roots()(=shipped_module이 부르는 층)에 cwd 사슬 부활",
+      "expected": "red",
+      "got": "GREEN",
+      "note": "★가드 구멍 — 옛 결함이 살던 바로 그 층"
+    }
+  ],
+  "ratiosHelperClassifier": {
+    "regex": "/^(node|conhost|python|pyright|clangd|Microsoft.CodeAnalysis)/i",
+    "e262ProcDetailNames": "9 x electron.exe (전부)",
+    "e262HelperMatches": 0,
+    "claim3_true": true,
+    "builder65SubArgument": "summary 7 vs procDetail 9 -> 주행 중 LSP가 떴다는 추론",
+    "refutation": "같은 파일의 idleWithWindows.procs=9 / windowCost.procsAdded=2 — 7->9는 창 2개다. LSP 근거 아님"
+  }
+}
