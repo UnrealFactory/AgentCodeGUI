@@ -1,0 +1,126 @@
+{
+ "at": "2026-08-31T10:57:30.743Z",
+ "tree": "C:/Temp/critic-lspidle",
+ "results": [
+  {
+   "id": "onDemandRevert",
+   "why": "온디맨드 되돌림 — ts 스펙을 Eager로",
+   "file": "crates/ccg-lsp/src/spec.rs",
+   "claimedByBuilder": true,
+   "applied": true,
+   "anyRed": true,
+   "ranNothing": false,
+   "per": {
+    "every_shipped_spec_is_on_demand": {
+     "red": true,
+     "tail": "test spec::tests::every_shipped_spec_is_on_demand ... FAILED"
+    },
+    "prewarm_prepares_without_spawning_a_single_process": {
+     "red": false,
+     "ranTests": 1,
+     "ranNothing": false,
+     "tail": "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+    }
+   }
+  },
+  {
+   "id": "reclaimTimerIgnored",
+   "why": "회수 타이머 무시 — TTL 검사 삭제",
+   "file": "crates/ccg-lsp/src/manager.rs",
+   "claimedByBuilder": true,
+   "applied": true,
+   "anyRed": true,
+   "ranNothing": false,
+   "per": {
+    "the_reclaim_rule_honours_the_timer_the_grace_and_the_cap": {
+     "red": true,
+     "tail": "test manager::tests::the_reclaim_rule_honours_the_timer_the_grace_and_the_cap ... FAILED"
+    }
+   }
+  },
+  {
+   "id": "graceCapRemoved",
+   "why": "유예 상한(안전망) 제거",
+   "file": "crates/ccg-lsp/src/manager.rs",
+   "claimedByBuilder": true,
+   "applied": true,
+   "anyRed": true,
+   "ranNothing": false,
+   "per": {
+    "the_reclaim_rule_honours_the_timer_the_grace_and_the_cap": {
+     "red": true,
+     "tail": "test manager::tests::the_reclaim_rule_honours_the_timer_the_grace_and_the_cap ... FAILED"
+    }
+   }
+  },
+  {
+   "id": "dietEatsContract",
+   "why": "다이어트가 계약 파일을 먹는다 — typescript/lib/ 통째로 제외",
+   "file": "scripts/tauri-build.mjs",
+   "claimedByBuilder": true,
+   "applied": true,
+   "anyRed": true,
+   "ranNothing": false,
+   "per": {
+    "the_diet_never_eats_a_file_the_contract_promises": {
+     "red": true,
+     "tail": "test spec::tests::the_diet_never_eats_a_file_the_contract_promises ... FAILED"
+    }
+   }
+  },
+  {
+   "id": "manifestBypassesDiet",
+   "why": "매니페스트가 레포 node_modules를 직접 가리킨다",
+   "file": "src-tauri/tauri.conf.json",
+   "claimedByBuilder": true,
+   "applied": true,
+   "anyRed": true,
+   "ranNothing": false,
+   "per": {
+    "every_bundled_file_is_covered_by_the_installer_manifest": {
+     "red": true,
+     "tail": "test spec::tests::every_bundled_file_is_covered_by_the_installer_manifest ... FAILED"
+    }
+   }
+  },
+  {
+   "id": "safetyNetKillsNothing",
+   "why": "좀비 안전망이 아무것도 안 죽인다",
+   "file": "crates/ccg-lsp/src/zombie.rs",
+   "claimedByBuilder": true,
+   "applied": true,
+   "anyRed": true,
+   "ranNothing": false,
+   "per": {
+    "a_real_orphan_is_actually_killed": {
+     "red": true,
+     "tail": "test zombie::tests::a_real_orphan_is_actually_killed ... FAILED"
+    }
+   }
+  },
+  {
+   "id": "rewindDoesNotActuallyRewind",
+   "why": "유예가 되감기를 안 한다 — Sweep::Rewind가 touch()를 안 부른다(순수 함수는 그대로)",
+   "file": "crates/ccg-lsp/src/manager.rs",
+   "claimedByBuilder": false,
+   "applied": true,
+   "anyRed": false,
+   "ranNothing": false,
+   "per": {
+    "the_reclaim_rule_honours_the_timer_the_grace_and_the_cap": {
+     "red": false,
+     "ranTests": 1,
+     "ranNothing": false,
+     "tail": "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+    },
+    "the_timers_stay_injectable_for_the_bench": {
+     "red": false,
+     "ranTests": 1,
+     "ranNothing": false,
+     "tail": "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+    }
+   }
+  }
+ ],
+ "restoredGreen": true
+}

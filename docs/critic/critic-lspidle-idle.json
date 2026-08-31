@@ -1,0 +1,272 @@
+{
+ "at": "2026-08-31T11:02:00.858Z",
+ "note": "배포 모사(설치 폴더=exe+node.exe+node_modules) · bench/multi.mjs · --repeats=2 · 격리 CCG_HOME · CDP 11120/11122. 코드 뷰어는 한 번도 열지 않는다 — after의 0은 「회수돼서 0」이 아니라 「애초에 안 떠서 0」이다.",
+ "before": {
+  "bin": {
+   "exe": "C:\\Temp\\ccg-sim-before\\agentcodegui.exe",
+   "exeMtime": "2026-08-31T10:00:15.987Z",
+   "exeSize": 7074304,
+   "exeSha256": "e4d97511301d9e36"
+  },
+  "launchCwd": "C:\\Temp\\ccg-sim-before",
+  "armEnv": {
+   "CCG_HOME": "C:\\Temp\\critic-lspidle\\.bench-home-tauri-criticbefore",
+   "CCG_CDP_PORT": "11120"
+  },
+  "repeats": 2,
+  "summary": {
+   "idleGridWsMB": 580.85,
+   "idleGridPrivMB": 353.7,
+   "idleGridProcs": 8,
+   "idleWithWindowsWsMB": 618.15,
+   "idleWithWindowsPrivMB": 356.6,
+   "wsMBPerWindow": 18.7,
+   "procsAdded": 0,
+   "scrollInPanel": {
+    "avgFps": 59.65,
+    "p95Ms": 16.9,
+    "worstDroppedPct": 0,
+    "zeroDropRuns": 2
+   },
+   "scrollAllPanels": {
+    "avgFps": 60,
+    "p95Ms": 16.9,
+    "worstDroppedPct": 0,
+    "zeroDropRuns": 2
+   },
+   "runs": 2,
+   "fpsErrorRuns": 0
+  },
+  "procDetailIdle": [
+   [
+    {
+     "name": "agentcodegui.exe",
+     "wsMB": 45.7,
+     "privMB": 17.8,
+     "cmd": "C:\\Temp\\ccg-sim-before\\agentcodegui.exe"
+    },
+    {
+     "name": "msedgewebview2.exe",
+     "wsMB": 191.4,
+     "privMB": 93.3,
+     "cmd": "\"C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe\" --embedded-browser-webview="
+    },
+    {
+     "name": "node.exe",
+     "wsMB": 54.6,
+     "privMB": 58,
+     "cmd": "\"C:\\Temp\\ccg-sim-before\\node.exe\" C:\\Temp\\ccg-sim-before\\node_modules\\typescript-language-server\\lib\\cli.mjs --stdio"
+    },
+    {
+     "name": "msedgewebview2.exe",
+     "wsMB": 12.7,
+     "privMB": 2.5,
+     "cmd": "\"C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe\" --type=crashpad-handler --u"
+    },
+    {
+     "name": "msedgewebview2.exe",
+     "wsMB": 22.6,
+     "privMB": 9,
+     "cmd": "\"C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe\" --type=utility --utility-su"
+    },
+    {
+     "name": "msedgewebview2.exe",
+     "wsMB": 185.3,
+     "privMB": 128.6,
+     "cmd": "\"C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe\" --type=renderer --noerrdial"
+    },
+    {
+     "name": "conhost.exe",
+     "wsMB": 7.6,
+     "privMB": 1.2,
+     "cmd": "\\??\\C:\\WINDOWS\\system32\\conhost.exe 0x4"
+    },
+    {
+     "name": "node.exe",
+     "wsMB": 63,
+     "privMB": 41.6,
+     "cmd": "C:\\Temp\\ccg-sim-before\\node.exe --max-old-space-size=3072 C:\\Temp\\ccg-sim-before\\node_modules\\typescript\\lib\\tsserver.js"
+    }
+   ],
+   [
+    {
+     "name": "agentcodegui.exe",
+     "wsMB": 39.8,
+     "privMB": 17.8,
+     "cmd": "C:\\Temp\\ccg-sim-before\\agentcodegui.exe"
+    },
+    {
+     "name": "node.exe",
+     "wsMB": 44.7,
+     "privMB": 58,
+     "cmd": "\"C:\\Temp\\ccg-sim-before\\node.exe\" C:\\Temp\\ccg-sim-before\\node_modules\\typescript-language-server\\lib\\cli.mjs --stdio"
+    },
+    {
+     "name": "msedgewebview2.exe",
+     "wsMB": 202,
+     "privMB": 94.9,
+     "cmd": "\"C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe\" --embedded-browser-webview="
+    },
+    {
+     "name": "conhost.exe",
+     "wsMB": 7.6,
+     "privMB": 1.2,
+     "cmd": "\\??\\C:\\WINDOWS\\system32\\conhost.exe 0x4"
+    },
+    {
+     "name": "node.exe",
+     "wsMB": 62.9,
+     "privMB": 41.2,
+     "cmd": "C:\\Temp\\ccg-sim-before\\node.exe --max-old-space-size=3072 C:\\Temp\\ccg-sim-before\\node_modules\\typescript\\lib\\tsserver.js"
+    },
+    {
+     "name": "msedgewebview2.exe",
+     "wsMB": 12.7,
+     "privMB": 2.5,
+     "cmd": "\"C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe\" --type=crashpad-handler --u"
+    },
+    {
+     "name": "msedgewebview2.exe",
+     "wsMB": 22.6,
+     "privMB": 9,
+     "cmd": "\"C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe\" --type=utility --utility-su"
+    },
+    {
+     "name": "msedgewebview2.exe",
+     "wsMB": 186.5,
+     "privMB": 130.9,
+     "cmd": "\"C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe\" --type=renderer --noerrdial"
+    }
+   ]
+  ]
+ },
+ "after": {
+  "bin": {
+   "exe": "C:\\Temp\\ccg-sim-after\\agentcodegui.exe",
+   "exeMtime": "2026-08-31T09:58:41.714Z",
+   "exeSize": 7080960,
+   "exeSha256": "d3ba0f3ce7a29bfb"
+  },
+  "launchCwd": "C:\\Temp\\ccg-sim-after",
+  "armEnv": {
+   "CCG_HOME": "C:\\Temp\\critic-lspidle\\.bench-home-tauri-criticafter",
+   "CCG_CDP_PORT": "11122"
+  },
+  "repeats": 2,
+  "summary": {
+   "idleGridWsMB": 460.9,
+   "idleGridPrivMB": 252.75,
+   "idleGridProcs": 5,
+   "idleWithWindowsWsMB": 496.05,
+   "idleWithWindowsPrivMB": 255.3,
+   "wsMBPerWindow": 17.6,
+   "procsAdded": 0,
+   "scrollInPanel": {
+    "avgFps": 59.85,
+    "p95Ms": 16.9,
+    "worstDroppedPct": 0,
+    "zeroDropRuns": 2
+   },
+   "scrollAllPanels": {
+    "avgFps": 59.85,
+    "p95Ms": 16.9,
+    "worstDroppedPct": 0,
+    "zeroDropRuns": 2
+   },
+   "runs": 2,
+   "fpsErrorRuns": 0
+  },
+  "procDetailIdle": [
+   [
+    {
+     "name": "agentcodegui.exe",
+     "wsMB": 43,
+     "privMB": 16.2,
+     "cmd": "C:\\Temp\\ccg-sim-after\\agentcodegui.exe"
+    },
+    {
+     "name": "msedgewebview2.exe",
+     "wsMB": 202.7,
+     "privMB": 93.8,
+     "cmd": "\"C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe\" --embedded-browser-webview="
+    },
+    {
+     "name": "msedgewebview2.exe",
+     "wsMB": 12.7,
+     "privMB": 2.5,
+     "cmd": "\"C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe\" --type=crashpad-handler --u"
+    },
+    {
+     "name": "msedgewebview2.exe",
+     "wsMB": 22.6,
+     "privMB": 9,
+     "cmd": "\"C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe\" --type=utility --utility-su"
+    },
+    {
+     "name": "msedgewebview2.exe",
+     "wsMB": 185.9,
+     "privMB": 131,
+     "cmd": "\"C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe\" --type=renderer --noerrdial"
+    }
+   ],
+   [
+    {
+     "name": "agentcodegui.exe",
+     "wsMB": 39.8,
+     "privMB": 16,
+     "cmd": "C:\\Temp\\ccg-sim-after\\agentcodegui.exe"
+    },
+    {
+     "name": "msedgewebview2.exe",
+     "wsMB": 190.5,
+     "privMB": 93.4,
+     "cmd": "\"C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe\" --embedded-browser-webview="
+    },
+    {
+     "name": "msedgewebview2.exe",
+     "wsMB": 12.7,
+     "privMB": 2.5,
+     "cmd": "\"C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe\" --type=crashpad-handler --u"
+    },
+    {
+     "name": "msedgewebview2.exe",
+     "wsMB": 22.6,
+     "privMB": 8.9,
+     "cmd": "\"C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe\" --type=utility --utility-su"
+    },
+    {
+     "name": "msedgewebview2.exe",
+     "wsMB": 189.2,
+     "privMB": 132.2,
+     "cmd": "\"C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe\" --type=renderer --noerrdial"
+    }
+   ]
+  ]
+ },
+ "delta": {
+  "idleGridWsMB": -119.95,
+  "idleGridPrivMB": -100.95,
+  "idleGridProcs": -3
+ },
+ "helperShareBefore": [
+  {
+   "name": "node.exe",
+   "wsMB": 54.6,
+   "privMB": 58,
+   "cmd": "\"C:\\Temp\\ccg-sim-before\\node.exe\" C:\\Temp\\ccg-sim-before\\node_modules\\typescript-language-server\\lib\\cli.mjs --stdio"
+  },
+  {
+   "name": "conhost.exe",
+   "wsMB": 7.6,
+   "privMB": 1.2,
+   "cmd": "\\??\\C:\\WINDOWS\\system32\\conhost.exe 0x4"
+  },
+  {
+   "name": "node.exe",
+   "wsMB": 63,
+   "privMB": 41.6,
+   "cmd": "C:\\Temp\\ccg-sim-before\\node.exe --max-old-space-size=3072 C:\\Temp\\ccg-sim-before\\node_modules\\typescript\\lib\\tsserver.js"
+  }
+ ],
+ "helperShareAfter": []
+}

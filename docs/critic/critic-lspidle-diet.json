@@ -1,0 +1,426 @@
+{
+ "at": "2026-08-31T10:48:15.686Z",
+ "size": {
+  "repo": {
+   "files": 5426,
+   "mb": 43.53
+  },
+  "filtered": {
+   "files": 5406,
+   "mb": 29.42
+  },
+  "removedFiles": 20,
+  "removedMB": 14.12,
+  "removed": [
+   {
+    "path": "typescript/lib/_tsc.js",
+    "mb": 5.95
+   },
+   {
+    "path": "pyright/dist/pyright-internal.js.map",
+    "mb": 1.85
+   },
+   {
+    "path": "typescript-language-server/lib/cli.mjs.map",
+    "mb": 1.35
+   },
+   {
+    "path": "pyright/dist/vendor.js.map",
+    "mb": 0.7
+   },
+   {
+    "path": "typescript/lib/ru/diagnosticMessages.generated.json",
+    "mb": 0.42
+   },
+   {
+    "path": "typescript/lib/ja/diagnosticMessages.generated.json",
+    "mb": 0.37
+   },
+   {
+    "path": "typescript/lib/de/diagnosticMessages.generated.json",
+    "mb": 0.33
+   },
+   {
+    "path": "typescript/lib/es/diagnosticMessages.generated.json",
+    "mb": 0.33
+   },
+   {
+    "path": "typescript/lib/fr/diagnosticMessages.generated.json",
+    "mb": 0.33
+   },
+   {
+    "path": "typescript/lib/ko/diagnosticMessages.generated.json",
+    "mb": 0.33
+   },
+   {
+    "path": "typescript/lib/pl/diagnosticMessages.generated.json",
+    "mb": 0.33
+   },
+   {
+    "path": "typescript/lib/it/diagnosticMessages.generated.json",
+    "mb": 0.32
+   },
+   {
+    "path": "typescript/lib/pt-br/diagnosticMessages.generated.json",
+    "mb": 0.32
+   },
+   {
+    "path": "typescript/lib/tr/diagnosticMessages.generated.json",
+    "mb": 0.32
+   },
+   {
+    "path": "typescript/lib/cs/diagnosticMessages.generated.json",
+    "mb": 0.31
+   },
+   {
+    "path": "typescript/lib/zh-cn/diagnosticMessages.generated.json",
+    "mb": 0.28
+   },
+   {
+    "path": "typescript/lib/zh-tw/diagnosticMessages.generated.json",
+    "mb": 0.28
+   },
+   {
+    "path": "typescript/lib/tsc.js",
+    "mb": 0
+   },
+   {
+    "path": "pyright/dist/pyright-langserver.js.map",
+    "mb": 0
+   },
+   {
+    "path": "pyright/dist/pyright.js.map",
+    "mb": 0
+   }
+  ],
+  "unexpectedExtras": []
+ },
+ "equivalence": {
+  "ts": {
+   "filtered": {
+    "modulesRoot": "C:/Temp/ccg-sim-after",
+    "boundToThisRoot": true,
+    "cmdlineSample": [
+     "\\??\\C:\\WINDOWS\\system32\\conhost.exe 0x4",
+     "\"C:\\Temp\\ccg-sim-after\\node.exe\" C:/Temp/ccg-sim-after\\node_modules\\typescript-language-server\\lib\\cli.mjs --stdio",
+     "C:\\Temp\\ccg-sim-after\\node.exe --max-old-space-size=3072 C:/Temp/ccg-sim-after\\node_modules\\typescript\\lib\\tsserver.js --useInferredProjectPerProjectR"
+    ],
+    "opened": {
+     "phase": "opened",
+     "lifecycle": {
+      "live": 1,
+      "pids": [
+       26796
+      ],
+      "reclaimed": 0,
+      "revivals": 0,
+      "tracked": 1
+     },
+     "status": "ready",
+     "readyMs": 400.375,
+     "polls": 2
+    },
+    "firstUse": {
+     "phase": "firstUse",
+     "lifecycle": {
+      "live": 1,
+      "pids": [
+       26796
+      ],
+      "reclaimed": 0,
+      "revivals": 0,
+      "tracked": 1
+     },
+     "tokensMs": 550.413,
+     "tokens": 125,
+     "hoverMs": 9.62,
+     "hoverHit": true,
+     "hover": "```typescript\nfunction dist(p: Point): number\n```",
+     "defs": 1,
+     "primed": null
+    },
+    "hoverAfterReclaim": {
+     "phase": "hoverRightAfterReclaim",
+     "lifecycle": {
+      "live": 1,
+      "pids": [
+       13212
+      ],
+      "reclaimed": 0,
+      "revivals": 1,
+      "tracked": 1
+     },
+     "ms": 756.913,
+     "hit": true,
+     "sameAsBefore": true,
+     "hover": "```typescript\nfunction dist(p: Point): number\n```",
+     "uiStatusWouldStillSay": "ready(렌더러는 ready에서 폴링을 멈춘다)"
+    },
+    "tokensAfterReclaim": {
+     "phase": "tokensRightAfter",
+     "lifecycle": {
+      "live": 1,
+      "pids": [
+       13212
+      ],
+      "reclaimed": 0,
+      "revivals": 1,
+      "tracked": 1
+     },
+     "ms": 2.311,
+     "tokens": 125,
+     "sameCount": true
+    }
+   },
+   "repo": {
+    "modulesRoot": "C:/Temp/critic-lspidle",
+    "boundToThisRoot": true,
+    "cmdlineSample": [
+     "\\??\\C:\\WINDOWS\\system32\\conhost.exe 0x4",
+     "\"C:\\Temp\\ccg-sim-after\\node.exe\" C:/Temp/critic-lspidle\\node_modules\\typescript-language-server\\lib\\cli.mjs --stdio",
+     "C:\\Temp\\ccg-sim-after\\node.exe --max-old-space-size=3072 C:/Temp/critic-lspidle\\node_modules\\typescript\\lib\\tsserver.js --useInferredProjectPerProject"
+    ],
+    "opened": {
+     "phase": "opened",
+     "lifecycle": {
+      "live": 1,
+      "pids": [
+       6244
+      ],
+      "reclaimed": 0,
+      "revivals": 0,
+      "tracked": 1
+     },
+     "status": "ready",
+     "readyMs": 400.592,
+     "polls": 2
+    },
+    "firstUse": {
+     "phase": "firstUse",
+     "lifecycle": {
+      "live": 1,
+      "pids": [
+       6244
+      ],
+      "reclaimed": 0,
+      "revivals": 0,
+      "tracked": 1
+     },
+     "tokensMs": 512.524,
+     "tokens": 125,
+     "hoverMs": 9.598,
+     "hoverHit": true,
+     "hover": "```typescript\nfunction dist(p: Point): number\n```",
+     "defs": 1,
+     "primed": null
+    },
+    "hoverAfterReclaim": {
+     "phase": "hoverRightAfterReclaim",
+     "lifecycle": {
+      "live": 1,
+      "pids": [
+       8552
+      ],
+      "reclaimed": 0,
+      "revivals": 1,
+      "tracked": 1
+     },
+     "ms": 767.685,
+     "hit": true,
+     "sameAsBefore": true,
+     "hover": "```typescript\nfunction dist(p: Point): number\n```",
+     "uiStatusWouldStillSay": "ready(렌더러는 ready에서 폴링을 멈춘다)"
+    },
+    "tokensAfterReclaim": {
+     "phase": "tokensRightAfter",
+     "lifecycle": {
+      "live": 1,
+      "pids": [
+       8552
+      ],
+      "reclaimed": 0,
+      "revivals": 1,
+      "tracked": 1
+     },
+     "ms": 2.567,
+     "tokens": 125,
+     "sameCount": true
+    }
+   },
+   "verdict": {
+    "bothBoundToOwnRoot": true,
+    "sameStatus": true,
+    "sameHover": true,
+    "sameHoverHit": true,
+    "sameDefs": true,
+    "sameTokens": true,
+    "tokens": [
+     125,
+     125
+    ]
+   }
+  },
+  "py": {
+   "filtered": {
+    "modulesRoot": "C:/Temp/ccg-sim-after",
+    "boundToThisRoot": true,
+    "cmdlineSample": [
+     "\\??\\C:\\WINDOWS\\system32\\conhost.exe 0x4",
+     "\"C:\\Temp\\ccg-sim-after\\node.exe\" C:/Temp/ccg-sim-after\\node_modules\\pyright\\langserver.index.js --stdio"
+    ],
+    "opened": {
+     "phase": "opened",
+     "lifecycle": {
+      "live": 1,
+      "pids": [
+       27240
+      ],
+      "reclaimed": 0,
+      "revivals": 0,
+      "tracked": 1
+     },
+     "status": "ready",
+     "readyMs": 400.55,
+     "polls": 2
+    },
+    "firstUse": {
+     "phase": "firstUse",
+     "lifecycle": {
+      "live": 1,
+      "pids": [
+       27240
+      ],
+      "reclaimed": 0,
+      "revivals": 0,
+      "tracked": 1
+     },
+     "tokensMs": 0.012,
+     "tokens": 0,
+     "hoverMs": 740.919,
+     "hoverHit": true,
+     "hover": "```python\n(function) def area(\n    w: float,\n    h: float\n) -> float\n```",
+     "defs": 1,
+     "primed": null
+    },
+    "hoverAfterReclaim": {
+     "phase": "hoverRightAfterReclaim",
+     "lifecycle": {
+      "live": 1,
+      "pids": [
+       28492
+      ],
+      "reclaimed": 0,
+      "revivals": 1,
+      "tracked": 1
+     },
+     "ms": 1152.988,
+     "hit": true,
+     "sameAsBefore": true,
+     "hover": "```python\n(function) def area(\n    w: float,\n    h: float\n) -> float\n```",
+     "uiStatusWouldStillSay": "ready(렌더러는 ready에서 폴링을 멈춘다)"
+    },
+    "tokensAfterReclaim": {
+     "phase": "tokensRightAfter",
+     "lifecycle": {
+      "live": 1,
+      "pids": [
+       28492
+      ],
+      "reclaimed": 0,
+      "revivals": 1,
+      "tracked": 1
+     },
+     "ms": 0.011,
+     "tokens": 0,
+     "sameCount": true
+    }
+   },
+   "repo": {
+    "modulesRoot": "C:/Temp/critic-lspidle",
+    "boundToThisRoot": true,
+    "cmdlineSample": [
+     "\\??\\C:\\WINDOWS\\system32\\conhost.exe 0x4",
+     "\"C:\\Temp\\ccg-sim-after\\node.exe\" C:/Temp/critic-lspidle\\node_modules\\pyright\\langserver.index.js --stdio"
+    ],
+    "opened": {
+     "phase": "opened",
+     "lifecycle": {
+      "live": 1,
+      "pids": [
+       12092
+      ],
+      "reclaimed": 0,
+      "revivals": 0,
+      "tracked": 1
+     },
+     "status": "ready",
+     "readyMs": 400.551,
+     "polls": 2
+    },
+    "firstUse": {
+     "phase": "firstUse",
+     "lifecycle": {
+      "live": 1,
+      "pids": [
+       12092
+      ],
+      "reclaimed": 0,
+      "revivals": 0,
+      "tracked": 1
+     },
+     "tokensMs": 0.009,
+     "tokens": 0,
+     "hoverMs": 778.031,
+     "hoverHit": true,
+     "hover": "```python\n(function) def area(\n    w: float,\n    h: float\n) -> float\n```",
+     "defs": 1,
+     "primed": null
+    },
+    "hoverAfterReclaim": {
+     "phase": "hoverRightAfterReclaim",
+     "lifecycle": {
+      "live": 1,
+      "pids": [
+       25228
+      ],
+      "reclaimed": 0,
+      "revivals": 1,
+      "tracked": 1
+     },
+     "ms": 1184.506,
+     "hit": true,
+     "sameAsBefore": true,
+     "hover": "```python\n(function) def area(\n    w: float,\n    h: float\n) -> float\n```",
+     "uiStatusWouldStillSay": "ready(렌더러는 ready에서 폴링을 멈춘다)"
+    },
+    "tokensAfterReclaim": {
+     "phase": "tokensRightAfter",
+     "lifecycle": {
+      "live": 1,
+      "pids": [
+       25228
+      ],
+      "reclaimed": 0,
+      "revivals": 1,
+      "tracked": 1
+     },
+     "ms": 0.01,
+     "tokens": 0,
+     "sameCount": true
+    }
+   },
+   "verdict": {
+    "bothBoundToOwnRoot": true,
+    "sameStatus": true,
+    "sameHover": true,
+    "sameHoverHit": true,
+    "sameDefs": true,
+    "sameTokens": true,
+    "tokens": [
+     0,
+     0
+    ]
+   }
+  }
+ }
+}

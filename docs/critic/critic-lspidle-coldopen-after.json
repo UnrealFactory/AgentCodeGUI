@@ -1,0 +1,169 @@
+{
+ "at": "2026-08-31T11:01:34.643Z",
+ "arm": "after",
+ "probe": "C:/Temp/ccg-t-critic/debug/critic-idle.exe",
+ "runs": {
+  "boot0": {
+   "n": 3,
+   "waitAfterOpenMs": 560.4,
+   "readyMs": 76.3,
+   "firstLiveTokensMs": 476.3,
+   "sinceStartToTokensMs": 570.7,
+   "cacheHit": "all-miss(의도)",
+   "tokens": [
+    125,
+    125,
+    125
+   ],
+   "raw": [
+    {
+     "phase": "coldOpen",
+     "lifecycle": {
+      "live": 1,
+      "pids": [
+       7896
+      ],
+      "reclaimed": 0,
+      "revivals": 0,
+      "tracked": 1
+     },
+     "prewarmMs": 0.418,
+     "cachedPaintMs": 0.129,
+     "cacheHit": false,
+     "status": "ready",
+     "readyMs": 76.284,
+     "firstLiveTokensMs": 488.453,
+     "tokens": 125,
+     "sinceStartToTokensMs": 575.331,
+     "hoverMs": 10.041,
+     "hoverHit": true
+    },
+    {
+     "phase": "coldOpen",
+     "lifecycle": {
+      "live": 1,
+      "pids": [
+       8024
+      ],
+      "reclaimed": 0,
+      "revivals": 0,
+      "tracked": 1
+     },
+     "prewarmMs": 0.32,
+     "cachedPaintMs": 0.147,
+     "cacheHit": false,
+     "status": "ready",
+     "readyMs": 102.128,
+     "firstLiveTokensMs": 458.227,
+     "tokens": 125,
+     "sinceStartToTokensMs": 570.749,
+     "hoverMs": 9.92,
+     "hoverHit": true
+    },
+    {
+     "phase": "coldOpen",
+     "lifecycle": {
+      "live": 1,
+      "pids": [
+       12556
+      ],
+      "reclaimed": 0,
+      "revivals": 0,
+      "tracked": 1
+     },
+     "prewarmMs": 0.337,
+     "cachedPaintMs": 0.107,
+     "cacheHit": false,
+     "status": "ready",
+     "readyMs": 76.244,
+     "firstLiveTokensMs": 476.25,
+     "tokens": 125,
+     "sinceStartToTokensMs": 562.718,
+     "hoverMs": 9.775,
+     "hoverHit": true
+    }
+   ]
+  },
+  "boot800": {
+   "n": 3,
+   "waitAfterOpenMs": 546.3,
+   "readyMs": 76.1,
+   "firstLiveTokensMs": 469.9,
+   "sinceStartToTokensMs": 1356.4,
+   "cacheHit": "all-miss(의도)",
+   "tokens": [
+    125,
+    125,
+    125
+   ],
+   "raw": [
+    {
+     "phase": "coldOpen",
+     "lifecycle": {
+      "live": 1,
+      "pids": [
+       28900
+      ],
+      "reclaimed": 0,
+      "revivals": 0,
+      "tracked": 1
+     },
+     "prewarmMs": 0.333,
+     "cachedPaintMs": 0.337,
+     "cacheHit": false,
+     "status": "ready",
+     "readyMs": 76.041,
+     "firstLiveTokensMs": 477.979,
+     "tokens": 125,
+     "sinceStartToTokensMs": 1364.687,
+     "hoverMs": 9.891,
+     "hoverHit": true
+    },
+    {
+     "phase": "coldOpen",
+     "lifecycle": {
+      "live": 1,
+      "pids": [
+       26432
+      ],
+      "reclaimed": 0,
+      "revivals": 0,
+      "tracked": 1
+     },
+     "prewarmMs": 0.335,
+     "cachedPaintMs": 0.25,
+     "cacheHit": false,
+     "status": "ready",
+     "readyMs": 76.069,
+     "firstLiveTokensMs": 459.853,
+     "tokens": 125,
+     "sinceStartToTokensMs": 1345.92,
+     "hoverMs": 8.976,
+     "hoverHit": true
+    },
+    {
+     "phase": "coldOpen",
+     "lifecycle": {
+      "live": 1,
+      "pids": [
+       27956
+      ],
+      "reclaimed": 0,
+      "revivals": 0,
+      "tracked": 1
+     },
+     "prewarmMs": 0.348,
+     "cachedPaintMs": 0.258,
+     "cacheHit": false,
+     "status": "ready",
+     "readyMs": 76.399,
+     "firstLiveTokensMs": 469.937,
+     "tokens": 125,
+     "sinceStartToTokensMs": 1356.42,
+     "hoverMs": 8.999,
+     "hoverHit": true
+    }
+   ]
+  }
+ }
+}

@@ -1,0 +1,573 @@
+{
+ "at": "2026-08-31T10:39:00.166Z",
+ "probe": "C:/Temp/ccg-t-critic/debug/critic-idle.exe",
+ "sim": "C:/Temp/ccg-sim-after",
+ "home": "C:/Temp/critic-home",
+ "scenarios": {
+  "viewing-ts": {
+   "prewarmDescendants": 1,
+   "steadyDescendants": 3,
+   "steadyConhost": 1,
+   "afterReclaimDescendants": 1,
+   "opened": {
+    "phase": "opened",
+    "lifecycle": {
+     "live": 1,
+     "pids": [
+      14076
+     ],
+     "reclaimed": 0,
+     "revivals": 0,
+     "tracked": 1
+    },
+    "status": "ready",
+    "readyMs": 400.916,
+    "polls": 2
+   },
+   "firstUse": {
+    "phase": "firstUse",
+    "lifecycle": {
+     "live": 1,
+     "pids": [
+      14076
+     ],
+     "reclaimed": 0,
+     "revivals": 0,
+     "tracked": 1
+    },
+    "tokensMs": 325.806,
+    "tokens": 125,
+    "hoverMs": 9.55,
+    "hoverHit": true,
+    "hover": "```typescript\nfunction dist(p: Point): number\n```",
+    "defs": 1,
+    "primed": null
+   },
+   "reclaimed": {
+    "phase": "viewedThroughTtl",
+    "lifecycle": {
+     "live": 0,
+     "pids": [],
+     "reclaimed": 1,
+     "revivals": 0,
+     "tracked": 0
+    },
+    "reclaimedAfterMs": 7413.324,
+    "budgetMs": 32000,
+    "statusPolls": 0,
+    "settledMs": 2500
+   },
+   "hoverRightAfter": {
+    "phase": "hoverRightAfterReclaim",
+    "lifecycle": {
+     "live": 1,
+     "pids": [
+      10180
+     ],
+     "reclaimed": 0,
+     "revivals": 1,
+     "tracked": 1
+    },
+    "ms": 535.664,
+    "hit": true,
+    "sameAsBefore": true,
+    "hover": "```typescript\nfunction dist(p: Point): number\n```",
+    "uiStatusWouldStillSay": "ready(렌더러는 ready에서 폴링을 멈춘다)"
+   },
+   "definitionRightAfter": {
+    "phase": "definitionRightAfter",
+    "lifecycle": {
+     "live": 1,
+     "pids": [
+      10180
+     ],
+     "reclaimed": 0,
+     "revivals": 1,
+     "tracked": 1
+    },
+    "ms": 10.981,
+    "defs": 1,
+    "sameCount": true
+   },
+   "tokensRightAfter": {
+    "phase": "tokensRightAfter",
+    "lifecycle": {
+     "live": 1,
+     "pids": [
+      10180
+     ],
+     "reclaimed": 0,
+     "revivals": 1,
+     "tracked": 1
+    },
+    "ms": 2.223,
+    "tokens": 125,
+    "sameCount": true
+   },
+   "hoverSecondTry": {
+    "phase": "hoverSecondTry",
+    "lifecycle": {
+     "live": 1,
+     "pids": [
+      10180
+     ],
+     "reclaimed": 0,
+     "revivals": 1,
+     "tracked": 1
+    },
+    "ms": 1.041,
+    "hit": true,
+    "sameAsBefore": true,
+    "primed": null
+   }
+  },
+  "viewing-py": {
+   "prewarmDescendants": 1,
+   "steadyDescendants": 2,
+   "steadyConhost": 1,
+   "afterReclaimDescendants": 1,
+   "opened": {
+    "phase": "opened",
+    "lifecycle": {
+     "live": 1,
+     "pids": [
+      28732
+     ],
+     "reclaimed": 0,
+     "revivals": 0,
+     "tracked": 1
+    },
+    "status": "ready",
+    "readyMs": 400.167,
+    "polls": 2
+   },
+   "firstUse": {
+    "phase": "firstUse",
+    "lifecycle": {
+     "live": 1,
+     "pids": [
+      28732
+     ],
+     "reclaimed": 0,
+     "revivals": 0,
+     "tracked": 1
+    },
+    "tokensMs": 0.009,
+    "tokens": 0,
+    "hoverMs": 178.307,
+    "hoverHit": true,
+    "hover": "```python\n(function) def area(\n    w: float,\n    h: float\n) -> float\n```",
+    "defs": 1,
+    "primed": null
+   },
+   "reclaimed": {
+    "phase": "viewedThroughTtl",
+    "lifecycle": {
+     "live": 0,
+     "pids": [],
+     "reclaimed": 1,
+     "revivals": 0,
+     "tracked": 0
+    },
+    "reclaimedAfterMs": 7616.807,
+    "budgetMs": 32000,
+    "statusPolls": 0,
+    "settledMs": 2500
+   },
+   "hoverRightAfter": {
+    "phase": "hoverRightAfterReclaim",
+    "lifecycle": {
+     "live": 1,
+     "pids": [
+      17724
+     ],
+     "reclaimed": 0,
+     "revivals": 1,
+     "tracked": 1
+    },
+    "ms": 576.014,
+    "hit": true,
+    "sameAsBefore": true,
+    "hover": "```python\n(function) def area(\n    w: float,\n    h: float\n) -> float\n```",
+    "uiStatusWouldStillSay": "ready(렌더러는 ready에서 폴링을 멈춘다)"
+   },
+   "definitionRightAfter": {
+    "phase": "definitionRightAfter",
+    "lifecycle": {
+     "live": 1,
+     "pids": [
+      17724
+     ],
+     "reclaimed": 0,
+     "revivals": 1,
+     "tracked": 1
+    },
+    "ms": 0.906,
+    "defs": 1,
+    "sameCount": true
+   },
+   "tokensRightAfter": {
+    "phase": "tokensRightAfter",
+    "lifecycle": {
+     "live": 1,
+     "pids": [
+      17724
+     ],
+     "reclaimed": 0,
+     "revivals": 1,
+     "tracked": 1
+    },
+    "ms": 0.009,
+    "tokens": 0,
+    "sameCount": true
+   },
+   "hoverSecondTry": {
+    "phase": "hoverSecondTry",
+    "lifecycle": {
+     "live": 1,
+     "pids": [
+      17724
+     ],
+     "reclaimed": 0,
+     "revivals": 1,
+     "tracked": 1
+    },
+    "ms": 0.442,
+    "hit": true,
+    "sameAsBefore": true,
+    "primed": null
+   }
+  },
+  "thrash-gentle": {
+   "ttlMs": 400,
+   "sweepMs": 150,
+   "result": {
+    "phase": "thrashed",
+    "lifecycle": {
+     "live": 1,
+     "pids": [
+      11968
+     ],
+     "reclaimed": 0,
+     "revivals": 0,
+     "tracked": 1
+    },
+    "tries": 40,
+    "hoverMiss": 0,
+    "hoverDiffer": 0,
+    "worstHoverMs": 5.157,
+    "emptyTokenReplies": 0,
+    "revivals": 0,
+    "base": "```typescript\nfunction dist(p: Point): number\n```"
+   }
+  },
+  "thrash-brutal": {
+   "ttlMs": 1,
+   "sweepMs": 30,
+   "result": {
+    "phase": "abort",
+    "lifecycle": {
+     "live": 0,
+     "pids": [],
+     "reclaimed": 1,
+     "revivals": 223,
+     "tracked": 0
+    },
+    "status": "starting"
+   }
+  },
+  "multiLanguage": {
+   "prewarmDescendants": 1,
+   "bothOpenDescendants": 4,
+   "bothOpenConhost": 1,
+   "openedA": {
+    "phase": "openedA",
+    "lifecycle": {
+     "live": 1,
+     "pids": [
+      7960
+     ],
+     "reclaimed": 0,
+     "revivals": 0,
+     "tracked": 1
+    },
+    "status": "ready",
+    "readyMs": 400.558
+   },
+   "openedB": {
+    "phase": "openedB",
+    "lifecycle": {
+     "live": 2,
+     "pids": [
+      7960,
+      27988
+     ],
+     "reclaimed": 0,
+     "revivals": 0,
+     "tracked": 2
+    },
+    "status": "ready",
+    "readyMs": 400.18
+   },
+   "bothTokens": {
+    "phase": "bothTokens",
+    "lifecycle": {
+     "live": 2,
+     "pids": [
+      7960,
+      27988
+     ],
+     "reclaimed": 0,
+     "revivals": 0,
+     "tracked": 2
+    },
+    "aTokens": 125,
+    "bTokens": 0,
+    "servers": 4
+   }
+  },
+  "cwdChange": {
+   "afterPrewarmADescendants": 1,
+   "afterPrewarmBDescendants": 1,
+   "openDescendants": 3,
+   "openedB": {
+    "phase": "openedB",
+    "lifecycle": {
+     "live": 1,
+     "pids": [
+      26356
+     ],
+     "reclaimed": 0,
+     "revivals": 0,
+     "tracked": 1
+    },
+    "status": "ready",
+    "readyMs": 400.353,
+    "polls": 2
+   },
+   "tokensB": {
+    "phase": "tokensB",
+    "lifecycle": {
+     "live": 1,
+     "pids": [
+      26356
+     ],
+     "reclaimed": 0,
+     "revivals": 0,
+     "tracked": 1
+    },
+    "tokens": 125
+   }
+  },
+  "conhostNormal": {
+   "descendants": 3,
+   "conhost": 1,
+   "names": [
+    "conhost.exe",
+    "node.exe",
+    "node.exe"
+   ],
+   "rows": [
+    {
+     "pid": 29924,
+     "ppid": 13164,
+     "name": "conhost.exe",
+     "probePid": 13164
+    },
+    {
+     "pid": 30632,
+     "ppid": 13164,
+     "name": "node.exe",
+     "probePid": 13164
+    },
+    {
+     "pid": 24572,
+     "ppid": 30632,
+     "name": "node.exe",
+     "probePid": 13164
+    }
+   ],
+   "opened": {
+    "phase": "opened",
+    "lifecycle": {
+     "live": 1,
+     "pids": [
+      30632
+     ],
+     "reclaimed": 0,
+     "revivals": 0,
+     "tracked": 1
+    },
+    "status": "ready",
+    "readyMs": 400.394,
+    "polls": 2
+   },
+   "firstUse": {
+    "phase": "firstUse",
+    "lifecycle": {
+     "live": 1,
+     "pids": [
+      30632
+     ],
+     "reclaimed": 0,
+     "revivals": 0,
+     "tracked": 1
+    },
+    "tokensMs": 319.846,
+    "tokens": 125,
+    "hoverMs": 9.184,
+    "hoverHit": true,
+    "hover": "```typescript\nfunction dist(p: Point): number\n```",
+    "defs": 1,
+    "primed": null
+   },
+   "abort": null,
+   "stderrHead": ""
+  },
+  "conhostFragmentUnwritable": {
+   "descendants": 4,
+   "conhost": 2,
+   "names": [
+    "conhost.exe",
+    "node.exe",
+    "node.exe",
+    "conhost.exe"
+   ],
+   "rows": [
+    {
+     "pid": 25208,
+     "ppid": 30388,
+     "name": "conhost.exe",
+     "probePid": 30388
+    },
+    {
+     "pid": 3868,
+     "ppid": 30388,
+     "name": "node.exe",
+     "probePid": 30388
+    },
+    {
+     "pid": 8024,
+     "ppid": 3868,
+     "name": "node.exe",
+     "probePid": 30388
+    },
+    {
+     "pid": 27176,
+     "ppid": 8024,
+     "name": "conhost.exe",
+     "probePid": 30388
+    }
+   ],
+   "opened": {
+    "phase": "opened",
+    "lifecycle": {
+     "live": 1,
+     "pids": [
+      3868
+     ],
+     "reclaimed": 0,
+     "revivals": 0,
+     "tracked": 1
+    },
+    "status": "ready",
+    "readyMs": 400.258,
+    "polls": 2
+   },
+   "firstUse": {
+    "phase": "firstUse",
+    "lifecycle": {
+     "live": 1,
+     "pids": [
+      3868
+     ],
+     "reclaimed": 0,
+     "revivals": 0,
+     "tracked": 1
+    },
+    "tokensMs": 241.167,
+    "tokens": 125,
+    "hoverMs": 8.503,
+    "hoverHit": true,
+    "hover": "```typescript\nfunction dist(p: Point): number\n```",
+    "defs": 1,
+    "primed": null
+   },
+   "abort": null,
+   "stderrHead": ""
+  },
+  "conhostFragmentMissingAtSpawn": {
+   "descendants": 0,
+   "conhost": 0,
+   "names": [],
+   "rows": [],
+   "opened": {
+    "phase": "opened",
+    "lifecycle": {
+     "live": 0,
+     "pids": [],
+     "reclaimed": 0,
+     "revivals": 0,
+     "tracked": 0
+    },
+    "status": "error",
+    "readyMs": null,
+    "polls": 2
+   },
+   "firstUse": null,
+   "abort": {
+    "phase": "abort",
+    "lifecycle": {
+     "live": 0,
+     "pids": [],
+     "reclaimed": 0,
+     "revivals": 0,
+     "tracked": 0
+    },
+    "why": "ready로 안 갔다",
+    "status": "error",
+    "servers": [
+     {
+      "id": "ts",
+      "label": "TypeScript",
+      "langs": "TypeScript · JavaScript",
+      "exts": ".ts .tsx .mts .cts .js .jsx .mjs .cjs",
+      "kind": "bundled",
+      "state": "bundled"
+     },
+     {
+      "id": "py",
+      "label": "Pyright",
+      "langs": "Python",
+      "exts": ".py .pyw .pyi",
+      "kind": "bundled",
+      "state": "bundled"
+     },
+     {
+      "id": "cs",
+      "label": "C#",
+      "langs": "C#",
+      "exts": ".cs .csx",
+      "kind": "download",
+      "state": "none",
+      "requires": ".NET SDK 10+ 필요",
+      "requiresEn": ".NET SDK 10+ required"
+     },
+     {
+      "id": "cpp",
+      "label": "C/C++",
+      "langs": "C · C++",
+      "exts": ".c .h .cpp .cc .cxx .hpp .hxx .hh .inl",
+      "kind": "download",
+      "state": "none"
+     }
+    ],
+    "projectStatus": {
+     "state": "idle",
+     "percent": null
+    }
+   },
+   "stderrHead": ""
+  }
+ }
+}
