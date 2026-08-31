@@ -1,0 +1,190 @@
+{
+  "critic": "lspdist-r3-final",
+  "at": "2026-08-31T05:32:49.532Z",
+  "tip": "2979178",
+  "verdict": "합격 — 최종 종결 · 치명 0 · 중 0 · 낮음 1",
+  "carryOverClosed": [
+    {
+      "id": "R2-C1",
+      "what": "죽을 때 하는 말이 틀렸다",
+      "r2": "server.rs:139가 \"PATH 순으로 찾는다\" — 거짓",
+      "r3": "node_search_hint()가 사슬과 단일 출처. 실패 문자열 전문 실측 — 자리 전부 + ko/en",
+      "closed": true
+    },
+    {
+      "id": "R2-C2",
+      "what": "계약이 출처를 안 본다",
+      "r2": "E1·E2·E3 전부 초록",
+      "r3": "E1·E2·E3·E4 전부 red",
+      "closed": true
+    },
+    {
+      "id": "R2-L1",
+      "what": "FPS가 증거 파일과 다르다",
+      "r3": "취소선+정정(59.4/17)",
+      "closed": true
+    },
+    {
+      "id": "R2-L2",
+      "what": "게이트가 상류보다 약하다",
+      "r2": "G6 = ready(미끼 물었다)",
+      "r3": "G6 = error · node=null (ts·py)",
+      "closed": true
+    },
+    {
+      "id": "R2-L3",
+      "what": "실패 후 원장 잔재",
+      "r3": "ee64ed1 — 정리",
+      "closed": true
+    },
+    {
+      "id": "R2-L4",
+      "what": "메모리 한 팔만",
+      "r3": "projcwd 560.6 · 띠 7.0MB",
+      "closed": true
+    },
+    {
+      "id": "§1.6-F",
+      "what": "공시 팔 미결",
+      "r3": "★이관 주석 — ①③ 닫고 ②만 §1.4-b로. 본문 수치 무접촉(diff 확인)",
+      "closed": true
+    }
+  ],
+  "failureMessage": {
+    "arm": "사이드카 유실 · PATH에 진짜 node를 둔 채",
+    "status": "error",
+    "node": null,
+    "containsSlots": [
+      "① CCG_LSP_NODE",
+      "② 설치 폴더 사이드카(절대경로)",
+      "② resources 사이드카",
+      "③ 개발 스테이징 x2 + 조상 5칸",
+      "④ PATH: 배포본이라 보지 않는다"
+    ],
+    "removedLie": "\"PATH 순으로 찾는다\" 소멸",
+    "bilingual": true,
+    "tellsUserWhatToDo": "재설치 · node 설치는 소용없음",
+    "fullText": "설치된 Node 런타임을 못 찾았어요. 설치가 손상됐을 수 있으니 앱을 다시 설치해 주세요 (PATH에 node를 깔아도 낫지 않아요). / The bundled Node runtime is missing — reinstall the app; installing Node on PATH will not help. 찾아본 자리 / looked in:\n  - ① CCG_LSP_NODE 미설정 / unset\n  - ② 설치 폴더 사이드카: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\sidecar-lost\\node.exe (없음 / missing)\n  - ② resources 사이드카: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\sidecar-lost\\resources\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\sidecar-lost\\src-tauri\\lsp-runtime\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\src-tauri\\lsp-runtime\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: 조상 5칸 더 봤지만 없다 / 5 more ancestors\n  - ④ PATH: 배포본이라 **보지 않는다**(결정론) / not consulted in a deployed build"
+  },
+  "devGate": {
+    "dev/target-release": {
+      "status": "ready",
+      "node": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\bait-path\\node.exe",
+      "open": true,
+      "launchError": null
+    },
+    "dev/target-lspdist-release": {
+      "status": "ready",
+      "node": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\bait-path\\node.exe",
+      "open": true,
+      "launchError": null
+    },
+    "dev/target-triple-release": {
+      "status": "ready",
+      "node": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\bait-path\\node.exe",
+      "open": true,
+      "launchError": null
+    },
+    "dev/CUSTOM-suffix-target": {
+      "status": "error",
+      "node": null,
+      "open": false,
+      "launchError": "설치된 Node 런타임을 못 찾았어요. 설치가 손상됐을 수 있으니 앱을 다시 설치해 주세요 (PATH에 node를 깔아도 낫지 않아요). / The bundled Node runtime is missing — reinstall the app; installing Node on PATH will not help. 찾아본 자리 / looked in:\n  - ① CCG_LSP_NODE 미설정 / unset\n  - ② 설치 폴더 사이드카: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\d\\ccg-critic-r3-target\\release\\node.exe (없음 / missing)\n  - ② resources 사이드카: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\d\\ccg-critic-r3-target\\release\\resources\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\d\\ccg-critic-r3-target\\release\\src-tauri\\lsp-runtime\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\d\\ccg-critic-r3-target\\src-tauri\\lsp-runtime\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: 조상 8칸 더 봤지만 없다 / 8 more ancestors\n  - ④ PATH: 배포본이라 **보지 않는다**(결정론) / not consulted in a deployed build"
+    },
+    "dev/CUSTOM-build-out": {
+      "status": "error",
+      "node": null,
+      "open": false,
+      "launchError": "설치된 Node 런타임을 못 찾았어요. 설치가 손상됐을 수 있으니 앱을 다시 설치해 주세요 (PATH에 node를 깔아도 낫지 않아요). / The bundled Node runtime is missing — reinstall the app; installing Node on PATH will not help. 찾아본 자리 / looked in:\n  - ① CCG_LSP_NODE 미설정 / unset\n  - ② 설치 폴더 사이드카: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\e\\build\\release\\node.exe (없음 / missing)\n  - ② resources 사이드카: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\e\\build\\release\\resources\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\e\\build\\release\\src-tauri\\lsp-runtime\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\e\\build\\src-tauri\\lsp-runtime\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: 조상 8칸 더 봤지만 없다 / 8 more ancestors\n  - ④ PATH: 배포본이라 **보지 않는다**(결정론) / not consulted in a deployed build"
+    }
+  },
+  "mutations": [
+    {
+      "id": "E1",
+      "what": "dest 유지 · src를 pyright/dist로",
+      "r2": "GREEN",
+      "r3": "red"
+    },
+    {
+      "id": "E2",
+      "what": "resources = {node.exe, ../node_modules -> node_modules}",
+      "r2": "GREEN",
+      "r3": "red"
+    },
+    {
+      "id": "E3",
+      "what": "dest=node.exe · src=pyright/LICENSE.txt",
+      "r2": "GREEN",
+      "r3": "red"
+    },
+    {
+      "id": "E4",
+      "what": "스테이징 실물 1바이트 변조(크기 동일)",
+      "r2": "n/a",
+      "r3": "red"
+    },
+    {
+      "id": "control",
+      "what": "대조군(복구 후)",
+      "r3": "green"
+    }
+  ],
+  "sha256CrossCheck": {
+    "theirRustImpl": "5c976096e04e5c2c1f091938926234cc9fbebfe9787ddd149351b3b0ecc707b5",
+    "coreutilsSha256sum": "5c976096e04e5c2c1f091938926234cc9fbebfe9787ddd149351b3b0ecc707b5",
+    "nodePin": "5c976096e04e5c2c1f091938926234cc9fbebfe9787ddd149351b3b0ecc707b5",
+    "officialShasums": "5c976096e04e5c2c1f091938926234cc9fbebfe9787ddd149351b3b0ecc707b5",
+    "input": "93,381,448 B staged node.exe",
+    "allAgree": true
+  },
+  "tests": {
+    "workspacePassed": 804,
+    "workspaceFailed": 0,
+    "workspaceIgnored": 15,
+    "targets": 35,
+    "ccgLspLib": 74,
+    "ccgLspIntegration": 1,
+    "ccgLspLibSeconds": 2.47,
+    "builderClaim": "804/0/15 · 74+1 · 0.05s->2.5s",
+    "match": true
+  },
+  "memory": {
+    "r3ProjcwdWs": 560.6,
+    "r2InstcwdWs": 567.6,
+    "bandMB": 7,
+    "procs": 8,
+    "helpers": 3,
+    "bandHistory": {
+      "r1Builder": 9.8,
+      "r1Critic": 4.65,
+      "r2Critic": 6.9,
+      "r3": 7
+    }
+  },
+  "commitBoundary": {
+    "r3Files": 13,
+    "hosti18nFiles": 16,
+    "intersection": 0,
+    "note": "HOSTI18N이 만지는 src-tauri/src/ipc/lsp.rs를 R3이 안 열었다(af03756이 그 이유를 커밋 메시지에 적었다)"
+  },
+  "residual": [
+    {
+      "id": "R3-L1",
+      "grade": "낮음",
+      "what": "말단이 target으로 시작하지 않는 CARGO_TARGET_DIR은 PATH칸을 잃고, 그 문장이 \"배포본이라\"고 단정한다",
+      "measured": [
+        "ccg-critic-r3-target/release -> error",
+        "build/release -> error"
+      ],
+      "unaffected": [
+        "target/release",
+        "target-lspdist/release",
+        "target/<triple>/release",
+        "스테이징 돌린 개발자(3번칸)"
+      ],
+      "mitigation": "같은 문장이 ① CCG_LSP_NODE를 이름으로 말한다 — 탈출구가 화면에 있다",
+      "fix": "④ 줄의 이유를 조건에 맞게 분기 — 한 줄"
+    }
+  ],
+  "largestRemainingGap": null
+}

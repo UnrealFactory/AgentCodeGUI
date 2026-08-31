@@ -1,0 +1,629 @@
+{
+  "critic": "lspdist-r3",
+  "at": "2026-08-31T05:25:53.095Z",
+  "inputs": {
+    "PROBE": "C:\\Temp\\ccg-critic-r3-target\\release\\ccg-lspprobe.exe",
+    "TREE": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist-r3\\tree"
+  },
+  "arms": {
+    "deployed/nonode|ts": {
+      "exitCode": 0,
+      "probe": {
+        "cwd": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist-r3\\tree\\critic-fx-r3\\proj",
+        "rel": "lspbench/big.ts",
+        "samples": 6,
+        "specId": "ts",
+        "serverRoot": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist-r3\\tree\\critic-fx-r3\\proj",
+        "resolve": {
+          "exe": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\deployed\\ccg-lspprobe.exe",
+          "processCwd": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\deployed",
+          "node": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\deployed\\node.exe",
+          "modules": {
+            "ts": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\deployed\\node_modules\\typescript-language-server\\lib\\cli.mjs",
+            "py": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\deployed\\node_modules\\pyright\\langserver.index.js",
+            "ts.tsserver": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\deployed\\node_modules\\typescript\\lib\\tsserver.js"
+          },
+          "searchHint": "찾아본 자리 8곳: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\deployed · C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\deployed\\resources · C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3 · C:\\Users\\User\\AppData\\Local · …",
+          "nodeHint": "설치된 Node 런타임을 못 찾았어요. 설치가 손상됐을 수 있으니 앱을 다시 설치해 주세요 (PATH에 node를 깔아도 낫지 않아요). / The bundled Node runtime is missing — reinstall the app; installing Node on PATH will not help. 찾아본 자리 / looked in:\n  - ① CCG_LSP_NODE 미설정 / unset\n  - ② 설치 폴더 사이드카: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\deployed\\node.exe (없음 / missing)\n  - ② resources 사이드카: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\deployed\\resources\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\deployed\\src-tauri\\lsp-runtime\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\src-tauri\\lsp-runtime\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: 조상 5칸 더 봤지만 없다 / 5 more ancestors\n  - ④ PATH: 배포본이라 **보지 않는다**(결정론) / not consulted in a deployed build",
+          "launchError": null
+        },
+        "cachedMs": 17.06,
+        "cachedHit": false,
+        "prewarmMs": 956,
+        "status": "ready",
+        "states": [
+          "starting",
+          "ready"
+        ],
+        "tokenMs": 983,
+        "tokens": 1565,
+        "tokenTries": 0,
+        "semanticSupported": true,
+        "spots": 6,
+        "syms": [
+          "makeConfig",
+          "summarize"
+        ],
+        "hover": {
+          "n": 6,
+          "hits": 6,
+          "p50": 2.71,
+          "p95": 21.81
+        },
+        "definition": {
+          "n": 6,
+          "hits": 6,
+          "crossFile": 6,
+          "p50": 0.63,
+          "p95": 3.26
+        },
+        "completion": {
+          "n": 10,
+          "maxItems": 4,
+          "sample": [
+            "lookup",
+            "register",
+            "size",
+            "tagsOf"
+          ],
+          "p50": 3.56,
+          "p95": 21.29
+        }
+      }
+    },
+    "deployed/nonode|py": {
+      "exitCode": 0,
+      "probe": {
+        "cwd": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist-r3\\tree\\critic-fx-r3\\proj",
+        "rel": "lspbench_py/big.py",
+        "samples": 6,
+        "specId": "py",
+        "serverRoot": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist-r3\\tree\\critic-fx-r3\\proj",
+        "resolve": {
+          "exe": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\deployed\\ccg-lspprobe.exe",
+          "processCwd": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\deployed",
+          "node": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\deployed\\node.exe",
+          "modules": {
+            "ts": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\deployed\\node_modules\\typescript-language-server\\lib\\cli.mjs",
+            "py": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\deployed\\node_modules\\pyright\\langserver.index.js",
+            "ts.tsserver": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\deployed\\node_modules\\typescript\\lib\\tsserver.js"
+          },
+          "searchHint": "찾아본 자리 8곳: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\deployed · C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\deployed\\resources · C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3 · C:\\Users\\User\\AppData\\Local · …",
+          "nodeHint": "설치된 Node 런타임을 못 찾았어요. 설치가 손상됐을 수 있으니 앱을 다시 설치해 주세요 (PATH에 node를 깔아도 낫지 않아요). / The bundled Node runtime is missing — reinstall the app; installing Node on PATH will not help. 찾아본 자리 / looked in:\n  - ① CCG_LSP_NODE 미설정 / unset\n  - ② 설치 폴더 사이드카: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\deployed\\node.exe (없음 / missing)\n  - ② resources 사이드카: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\deployed\\resources\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\deployed\\src-tauri\\lsp-runtime\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\src-tauri\\lsp-runtime\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: 조상 5칸 더 봤지만 없다 / 5 more ancestors\n  - ④ PATH: 배포본이라 **보지 않는다**(결정론) / not consulted in a deployed build",
+          "launchError": null
+        },
+        "cachedMs": 6.81,
+        "cachedHit": false,
+        "prewarmMs": 251,
+        "status": "ready",
+        "states": [
+          "starting",
+          "ready"
+        ],
+        "tokenMs": null,
+        "tokens": 0,
+        "tokenTries": 0,
+        "semanticSupported": false,
+        "spots": 6,
+        "syms": [
+          "make_config",
+          "summarize"
+        ],
+        "hover": {
+          "n": 6,
+          "hits": 6,
+          "p50": 0.53,
+          "p95": 369.86
+        },
+        "definition": {
+          "n": 6,
+          "hits": 6,
+          "crossFile": 6,
+          "p50": 0.3,
+          "p95": 0.67
+        },
+        "completion": {
+          "n": 10,
+          "maxItems": 29,
+          "sample": [
+            "__doc__",
+            "__module__",
+            "__qualname__",
+            "__init__",
+            "register"
+          ],
+          "p50": 8.37,
+          "p95": 14.44
+        }
+      }
+    },
+    "G6/forged-cargolock+bait|ts": {
+      "exitCode": 0,
+      "probe": {
+        "cwd": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist-r3\\tree\\critic-fx-r3\\proj",
+        "rel": "lspbench/big.ts",
+        "samples": 2,
+        "specId": "ts",
+        "serverRoot": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist-r3\\tree\\critic-fx-r3\\proj",
+        "resolve": {
+          "exe": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\forged-cargolock\\ccg-lspprobe.exe",
+          "processCwd": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\forged-cargolock",
+          "node": null,
+          "modules": {
+            "ts": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\forged-cargolock\\node_modules\\typescript-language-server\\lib\\cli.mjs",
+            "py": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\forged-cargolock\\node_modules\\pyright\\langserver.index.js",
+            "ts.tsserver": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\forged-cargolock\\node_modules\\typescript\\lib\\tsserver.js"
+          },
+          "searchHint": "찾아본 자리 8곳: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\forged-cargolock · C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\forged-cargolock\\resources · C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3 · C:\\Users\\User\\AppData\\Local · …",
+          "nodeHint": "설치된 Node 런타임을 못 찾았어요. 설치가 손상됐을 수 있으니 앱을 다시 설치해 주세요 (PATH에 node를 깔아도 낫지 않아요). / The bundled Node runtime is missing — reinstall the app; installing Node on PATH will not help. 찾아본 자리 / looked in:\n  - ① CCG_LSP_NODE 미설정 / unset\n  - ② 설치 폴더 사이드카: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\forged-cargolock\\node.exe (없음 / missing)\n  - ② resources 사이드카: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\forged-cargolock\\resources\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\forged-cargolock\\src-tauri\\lsp-runtime\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\src-tauri\\lsp-runtime\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: 조상 5칸 더 봤지만 없다 / 5 more ancestors\n  - ④ PATH: 배포본이라 **보지 않는다**(결정론) / not consulted in a deployed build",
+          "launchError": "설치된 Node 런타임을 못 찾았어요. 설치가 손상됐을 수 있으니 앱을 다시 설치해 주세요 (PATH에 node를 깔아도 낫지 않아요). / The bundled Node runtime is missing — reinstall the app; installing Node on PATH will not help. 찾아본 자리 / looked in:\n  - ① CCG_LSP_NODE 미설정 / unset\n  - ② 설치 폴더 사이드카: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\forged-cargolock\\node.exe (없음 / missing)\n  - ② resources 사이드카: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\forged-cargolock\\resources\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\forged-cargolock\\src-tauri\\lsp-runtime\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\src-tauri\\lsp-runtime\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: 조상 5칸 더 봤지만 없다 / 5 more ancestors\n  - ④ PATH: 배포본이라 **보지 않는다**(결정론) / not consulted in a deployed build"
+        },
+        "cachedMs": 0.14,
+        "cachedHit": false,
+        "prewarmMs": 50,
+        "status": "error",
+        "states": [
+          "starting",
+          "error"
+        ]
+      }
+    },
+    "G6/forged-cargolock+bait|py": {
+      "exitCode": 0,
+      "probe": {
+        "cwd": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist-r3\\tree\\critic-fx-r3\\proj",
+        "rel": "lspbench_py/big.py",
+        "samples": 2,
+        "specId": "py",
+        "serverRoot": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist-r3\\tree\\critic-fx-r3\\proj",
+        "resolve": {
+          "exe": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\forged-cargolock\\ccg-lspprobe.exe",
+          "processCwd": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\forged-cargolock",
+          "node": null,
+          "modules": {
+            "ts": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\forged-cargolock\\node_modules\\typescript-language-server\\lib\\cli.mjs",
+            "py": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\forged-cargolock\\node_modules\\pyright\\langserver.index.js",
+            "ts.tsserver": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\forged-cargolock\\node_modules\\typescript\\lib\\tsserver.js"
+          },
+          "searchHint": "찾아본 자리 8곳: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\forged-cargolock · C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\forged-cargolock\\resources · C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3 · C:\\Users\\User\\AppData\\Local · …",
+          "nodeHint": "설치된 Node 런타임을 못 찾았어요. 설치가 손상됐을 수 있으니 앱을 다시 설치해 주세요 (PATH에 node를 깔아도 낫지 않아요). / The bundled Node runtime is missing — reinstall the app; installing Node on PATH will not help. 찾아본 자리 / looked in:\n  - ① CCG_LSP_NODE 미설정 / unset\n  - ② 설치 폴더 사이드카: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\forged-cargolock\\node.exe (없음 / missing)\n  - ② resources 사이드카: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\forged-cargolock\\resources\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\forged-cargolock\\src-tauri\\lsp-runtime\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\src-tauri\\lsp-runtime\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: 조상 5칸 더 봤지만 없다 / 5 more ancestors\n  - ④ PATH: 배포본이라 **보지 않는다**(결정론) / not consulted in a deployed build",
+          "launchError": "설치된 Node 런타임을 못 찾았어요. 설치가 손상됐을 수 있으니 앱을 다시 설치해 주세요 (PATH에 node를 깔아도 낫지 않아요). / The bundled Node runtime is missing — reinstall the app; installing Node on PATH will not help. 찾아본 자리 / looked in:\n  - ① CCG_LSP_NODE 미설정 / unset\n  - ② 설치 폴더 사이드카: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\forged-cargolock\\node.exe (없음 / missing)\n  - ② resources 사이드카: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\forged-cargolock\\resources\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\forged-cargolock\\src-tauri\\lsp-runtime\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\src-tauri\\lsp-runtime\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: 조상 5칸 더 봤지만 없다 / 5 more ancestors\n  - ④ PATH: 배포본이라 **보지 않는다**(결정론) / not consulted in a deployed build"
+        },
+        "cachedMs": 0.13,
+        "cachedHit": false,
+        "prewarmMs": 51,
+        "status": "error",
+        "states": [
+          "starting",
+          "error"
+        ]
+      }
+    },
+    "lost/realnode-on-PATH|ts": {
+      "exitCode": 0,
+      "probe": {
+        "cwd": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist-r3\\tree\\critic-fx-r3\\proj",
+        "rel": "lspbench/big.ts",
+        "samples": 2,
+        "specId": "ts",
+        "serverRoot": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist-r3\\tree\\critic-fx-r3\\proj",
+        "resolve": {
+          "exe": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\sidecar-lost\\ccg-lspprobe.exe",
+          "processCwd": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\sidecar-lost",
+          "node": null,
+          "modules": {
+            "ts": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\sidecar-lost\\node_modules\\typescript-language-server\\lib\\cli.mjs",
+            "py": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\sidecar-lost\\node_modules\\pyright\\langserver.index.js",
+            "ts.tsserver": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\sidecar-lost\\node_modules\\typescript\\lib\\tsserver.js"
+          },
+          "searchHint": "찾아본 자리 8곳: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\sidecar-lost · C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\sidecar-lost\\resources · C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3 · C:\\Users\\User\\AppData\\Local · …",
+          "nodeHint": "설치된 Node 런타임을 못 찾았어요. 설치가 손상됐을 수 있으니 앱을 다시 설치해 주세요 (PATH에 node를 깔아도 낫지 않아요). / The bundled Node runtime is missing — reinstall the app; installing Node on PATH will not help. 찾아본 자리 / looked in:\n  - ① CCG_LSP_NODE 미설정 / unset\n  - ② 설치 폴더 사이드카: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\sidecar-lost\\node.exe (없음 / missing)\n  - ② resources 사이드카: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\sidecar-lost\\resources\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\sidecar-lost\\src-tauri\\lsp-runtime\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\src-tauri\\lsp-runtime\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: 조상 5칸 더 봤지만 없다 / 5 more ancestors\n  - ④ PATH: 배포본이라 **보지 않는다**(결정론) / not consulted in a deployed build",
+          "launchError": "설치된 Node 런타임을 못 찾았어요. 설치가 손상됐을 수 있으니 앱을 다시 설치해 주세요 (PATH에 node를 깔아도 낫지 않아요). / The bundled Node runtime is missing — reinstall the app; installing Node on PATH will not help. 찾아본 자리 / looked in:\n  - ① CCG_LSP_NODE 미설정 / unset\n  - ② 설치 폴더 사이드카: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\sidecar-lost\\node.exe (없음 / missing)\n  - ② resources 사이드카: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\sidecar-lost\\resources\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\sidecar-lost\\src-tauri\\lsp-runtime\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\src-tauri\\lsp-runtime\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: 조상 5칸 더 봤지만 없다 / 5 more ancestors\n  - ④ PATH: 배포본이라 **보지 않는다**(결정론) / not consulted in a deployed build"
+        },
+        "cachedMs": 0.14,
+        "cachedHit": false,
+        "prewarmMs": 51,
+        "status": "error",
+        "states": [
+          "starting",
+          "error"
+        ]
+      }
+    },
+    "lost/realnode-on-PATH|py": {
+      "exitCode": 0,
+      "probe": {
+        "cwd": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist-r3\\tree\\critic-fx-r3\\proj",
+        "rel": "lspbench_py/big.py",
+        "samples": 2,
+        "specId": "py",
+        "serverRoot": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist-r3\\tree\\critic-fx-r3\\proj",
+        "resolve": {
+          "exe": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\sidecar-lost\\ccg-lspprobe.exe",
+          "processCwd": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\sidecar-lost",
+          "node": null,
+          "modules": {
+            "ts": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\sidecar-lost\\node_modules\\typescript-language-server\\lib\\cli.mjs",
+            "py": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\sidecar-lost\\node_modules\\pyright\\langserver.index.js",
+            "ts.tsserver": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\sidecar-lost\\node_modules\\typescript\\lib\\tsserver.js"
+          },
+          "searchHint": "찾아본 자리 8곳: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\sidecar-lost · C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\sidecar-lost\\resources · C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3 · C:\\Users\\User\\AppData\\Local · …",
+          "nodeHint": "설치된 Node 런타임을 못 찾았어요. 설치가 손상됐을 수 있으니 앱을 다시 설치해 주세요 (PATH에 node를 깔아도 낫지 않아요). / The bundled Node runtime is missing — reinstall the app; installing Node on PATH will not help. 찾아본 자리 / looked in:\n  - ① CCG_LSP_NODE 미설정 / unset\n  - ② 설치 폴더 사이드카: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\sidecar-lost\\node.exe (없음 / missing)\n  - ② resources 사이드카: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\sidecar-lost\\resources\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\sidecar-lost\\src-tauri\\lsp-runtime\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\src-tauri\\lsp-runtime\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: 조상 5칸 더 봤지만 없다 / 5 more ancestors\n  - ④ PATH: 배포본이라 **보지 않는다**(결정론) / not consulted in a deployed build",
+          "launchError": "설치된 Node 런타임을 못 찾았어요. 설치가 손상됐을 수 있으니 앱을 다시 설치해 주세요 (PATH에 node를 깔아도 낫지 않아요). / The bundled Node runtime is missing — reinstall the app; installing Node on PATH will not help. 찾아본 자리 / looked in:\n  - ① CCG_LSP_NODE 미설정 / unset\n  - ② 설치 폴더 사이드카: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\sidecar-lost\\node.exe (없음 / missing)\n  - ② resources 사이드카: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\sidecar-lost\\resources\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\sidecar-lost\\src-tauri\\lsp-runtime\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\src-tauri\\lsp-runtime\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: 조상 5칸 더 봤지만 없다 / 5 more ancestors\n  - ④ PATH: 배포본이라 **보지 않는다**(결정론) / not consulted in a deployed build"
+        },
+        "cachedMs": 0.13,
+        "cachedHit": false,
+        "prewarmMs": 50,
+        "status": "error",
+        "states": [
+          "starting",
+          "error"
+        ]
+      }
+    },
+    "dev/target-release|ts": {
+      "exitCode": 0,
+      "probe": {
+        "cwd": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist-r3\\tree\\critic-fx-r3\\proj",
+        "rel": "lspbench/big.ts",
+        "samples": 2,
+        "specId": "ts",
+        "serverRoot": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist-r3\\tree\\critic-fx-r3\\proj",
+        "resolve": {
+          "exe": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\a\\target\\release\\ccg-lspprobe.exe",
+          "processCwd": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\a\\target\\release",
+          "node": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\bait-path\\node.exe",
+          "modules": {
+            "ts": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\a\\target\\release\\node_modules\\typescript-language-server\\lib\\cli.mjs",
+            "py": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\a\\target\\release\\node_modules\\pyright\\langserver.index.js",
+            "ts.tsserver": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\a\\target\\release\\node_modules\\typescript\\lib\\tsserver.js"
+          },
+          "searchHint": "찾아본 자리 11곳: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\a\\target\\release · C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\a\\target\\release\\resources · C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\a\\target · C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\a · …",
+          "nodeHint": "설치된 Node 런타임을 못 찾았어요. 설치가 손상됐을 수 있으니 앱을 다시 설치해 주세요 (PATH에 node를 깔아도 낫지 않아요). / The bundled Node runtime is missing — reinstall the app; installing Node on PATH will not help. 찾아본 자리 / looked in:\n  - ① CCG_LSP_NODE 미설정 / unset\n  - ② 설치 폴더 사이드카: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\a\\target\\release\\node.exe (없음 / missing)\n  - ② resources 사이드카: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\a\\target\\release\\resources\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\a\\target\\release\\src-tauri\\lsp-runtime\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\a\\target\\src-tauri\\lsp-runtime\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: 조상 8칸 더 봤지만 없다 / 8 more ancestors\n  - ④ PATH: cargo 산출 폴더라 봤지만 node를 못 찾았다 / searched PATH (cargo output dir)",
+          "launchError": null
+        },
+        "cachedMs": 0.15,
+        "cachedHit": false,
+        "prewarmMs": 1006,
+        "status": "ready",
+        "states": [
+          "starting",
+          "ready"
+        ],
+        "tokenMs": 941,
+        "tokens": 1565,
+        "tokenTries": 0,
+        "semanticSupported": true,
+        "spots": 2,
+        "syms": [
+          "makeConfig",
+          "summarize"
+        ],
+        "hover": {
+          "n": 2,
+          "hits": 2,
+          "p50": 10.38,
+          "p95": 10.38
+        },
+        "definition": {
+          "n": 2,
+          "hits": 2,
+          "crossFile": 2,
+          "p50": 3.36,
+          "p95": 3.36
+        },
+        "completion": {
+          "n": 10,
+          "maxItems": 4,
+          "sample": [
+            "lookup",
+            "register",
+            "size",
+            "tagsOf"
+          ],
+          "p50": 4.17,
+          "p95": 23.75
+        }
+      }
+    },
+    "dev/target-lspdist-release|ts": {
+      "exitCode": 0,
+      "probe": {
+        "cwd": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist-r3\\tree\\critic-fx-r3\\proj",
+        "rel": "lspbench/big.ts",
+        "samples": 2,
+        "specId": "ts",
+        "serverRoot": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist-r3\\tree\\critic-fx-r3\\proj",
+        "resolve": {
+          "exe": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\b\\target-lspdist\\release\\ccg-lspprobe.exe",
+          "processCwd": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\b\\target-lspdist\\release",
+          "node": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\bait-path\\node.exe",
+          "modules": {
+            "ts": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\b\\target-lspdist\\release\\node_modules\\typescript-language-server\\lib\\cli.mjs",
+            "py": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\b\\target-lspdist\\release\\node_modules\\pyright\\langserver.index.js",
+            "ts.tsserver": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\b\\target-lspdist\\release\\node_modules\\typescript\\lib\\tsserver.js"
+          },
+          "searchHint": "찾아본 자리 11곳: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\b\\target-lspdist\\release · C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\b\\target-lspdist\\release\\resources · C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\b\\target-lspdist · C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\b · …",
+          "nodeHint": "설치된 Node 런타임을 못 찾았어요. 설치가 손상됐을 수 있으니 앱을 다시 설치해 주세요 (PATH에 node를 깔아도 낫지 않아요). / The bundled Node runtime is missing — reinstall the app; installing Node on PATH will not help. 찾아본 자리 / looked in:\n  - ① CCG_LSP_NODE 미설정 / unset\n  - ② 설치 폴더 사이드카: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\b\\target-lspdist\\release\\node.exe (없음 / missing)\n  - ② resources 사이드카: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\b\\target-lspdist\\release\\resources\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\b\\target-lspdist\\release\\src-tauri\\lsp-runtime\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\b\\target-lspdist\\src-tauri\\lsp-runtime\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: 조상 8칸 더 봤지만 없다 / 8 more ancestors\n  - ④ PATH: cargo 산출 폴더라 봤지만 node를 못 찾았다 / searched PATH (cargo output dir)",
+          "launchError": null
+        },
+        "cachedMs": 0.13,
+        "cachedHit": false,
+        "prewarmMs": 201,
+        "status": "ready",
+        "states": [
+          "starting",
+          "ready"
+        ],
+        "tokenMs": 942,
+        "tokens": 1565,
+        "tokenTries": 0,
+        "semanticSupported": true,
+        "spots": 2,
+        "syms": [
+          "makeConfig",
+          "summarize"
+        ],
+        "hover": {
+          "n": 2,
+          "hits": 2,
+          "p50": 10.43,
+          "p95": 10.43
+        },
+        "definition": {
+          "n": 2,
+          "hits": 2,
+          "crossFile": 2,
+          "p50": 3.46,
+          "p95": 3.46
+        },
+        "completion": {
+          "n": 10,
+          "maxItems": 4,
+          "sample": [
+            "lookup",
+            "register",
+            "size",
+            "tagsOf"
+          ],
+          "p50": 4.01,
+          "p95": 23.9
+        }
+      }
+    },
+    "dev/target-triple-release|ts": {
+      "exitCode": 0,
+      "probe": {
+        "cwd": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist-r3\\tree\\critic-fx-r3\\proj",
+        "rel": "lspbench/big.ts",
+        "samples": 2,
+        "specId": "ts",
+        "serverRoot": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist-r3\\tree\\critic-fx-r3\\proj",
+        "resolve": {
+          "exe": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\c\\target\\x86_64-pc-windows-msvc\\release\\ccg-lspprobe.exe",
+          "processCwd": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\c\\target\\x86_64-pc-windows-msvc\\release",
+          "node": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\bait-path\\node.exe",
+          "modules": {
+            "ts": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\c\\target\\x86_64-pc-windows-msvc\\release\\node_modules\\typescript-language-server\\lib\\cli.mjs",
+            "py": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\c\\target\\x86_64-pc-windows-msvc\\release\\node_modules\\pyright\\langserver.index.js",
+            "ts.tsserver": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\c\\target\\x86_64-pc-windows-msvc\\release\\node_modules\\typescript\\lib\\tsserver.js"
+          },
+          "searchHint": "찾아본 자리 12곳: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\c\\target\\x86_64-pc-windows-msvc\\release · C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\c\\target\\x86_64-pc-windows-msvc\\release\\resources · C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\c\\target\\x86_64-pc-windows-msvc · C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\c\\target · …",
+          "nodeHint": "설치된 Node 런타임을 못 찾았어요. 설치가 손상됐을 수 있으니 앱을 다시 설치해 주세요 (PATH에 node를 깔아도 낫지 않아요). / The bundled Node runtime is missing — reinstall the app; installing Node on PATH will not help. 찾아본 자리 / looked in:\n  - ① CCG_LSP_NODE 미설정 / unset\n  - ② 설치 폴더 사이드카: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\c\\target\\x86_64-pc-windows-msvc\\release\\node.exe (없음 / missing)\n  - ② resources 사이드카: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\c\\target\\x86_64-pc-windows-msvc\\release\\resources\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\c\\target\\x86_64-pc-windows-msvc\\release\\src-tauri\\lsp-runtime\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\c\\target\\x86_64-pc-windows-msvc\\src-tauri\\lsp-runtime\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: 조상 9칸 더 봤지만 없다 / 9 more ancestors\n  - ④ PATH: cargo 산출 폴더라 봤지만 node를 못 찾았다 / searched PATH (cargo output dir)",
+          "launchError": null
+        },
+        "cachedMs": 0.14,
+        "cachedHit": false,
+        "prewarmMs": 201,
+        "status": "ready",
+        "states": [
+          "starting",
+          "ready"
+        ],
+        "tokenMs": 935,
+        "tokens": 1565,
+        "tokenTries": 0,
+        "semanticSupported": true,
+        "spots": 2,
+        "syms": [
+          "makeConfig",
+          "summarize"
+        ],
+        "hover": {
+          "n": 2,
+          "hits": 2,
+          "p50": 10.05,
+          "p95": 10.05
+        },
+        "definition": {
+          "n": 2,
+          "hits": 2,
+          "crossFile": 2,
+          "p50": 3.48,
+          "p95": 3.48
+        },
+        "completion": {
+          "n": 10,
+          "maxItems": 4,
+          "sample": [
+            "lookup",
+            "register",
+            "size",
+            "tagsOf"
+          ],
+          "p50": 4.09,
+          "p95": 23.95
+        }
+      }
+    },
+    "dev/CUSTOM-suffix-target|ts": {
+      "exitCode": 0,
+      "probe": {
+        "cwd": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist-r3\\tree\\critic-fx-r3\\proj",
+        "rel": "lspbench/big.ts",
+        "samples": 2,
+        "specId": "ts",
+        "serverRoot": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist-r3\\tree\\critic-fx-r3\\proj",
+        "resolve": {
+          "exe": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\d\\ccg-critic-r3-target\\release\\ccg-lspprobe.exe",
+          "processCwd": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\d\\ccg-critic-r3-target\\release",
+          "node": null,
+          "modules": {
+            "ts": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\d\\ccg-critic-r3-target\\release\\node_modules\\typescript-language-server\\lib\\cli.mjs",
+            "py": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\d\\ccg-critic-r3-target\\release\\node_modules\\pyright\\langserver.index.js",
+            "ts.tsserver": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\d\\ccg-critic-r3-target\\release\\node_modules\\typescript\\lib\\tsserver.js"
+          },
+          "searchHint": "찾아본 자리 11곳: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\d\\ccg-critic-r3-target\\release · C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\d\\ccg-critic-r3-target\\release\\resources · C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\d\\ccg-critic-r3-target · C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\d · …",
+          "nodeHint": "설치된 Node 런타임을 못 찾았어요. 설치가 손상됐을 수 있으니 앱을 다시 설치해 주세요 (PATH에 node를 깔아도 낫지 않아요). / The bundled Node runtime is missing — reinstall the app; installing Node on PATH will not help. 찾아본 자리 / looked in:\n  - ① CCG_LSP_NODE 미설정 / unset\n  - ② 설치 폴더 사이드카: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\d\\ccg-critic-r3-target\\release\\node.exe (없음 / missing)\n  - ② resources 사이드카: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\d\\ccg-critic-r3-target\\release\\resources\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\d\\ccg-critic-r3-target\\release\\src-tauri\\lsp-runtime\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\d\\ccg-critic-r3-target\\src-tauri\\lsp-runtime\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: 조상 8칸 더 봤지만 없다 / 8 more ancestors\n  - ④ PATH: 배포본이라 **보지 않는다**(결정론) / not consulted in a deployed build",
+          "launchError": "설치된 Node 런타임을 못 찾았어요. 설치가 손상됐을 수 있으니 앱을 다시 설치해 주세요 (PATH에 node를 깔아도 낫지 않아요). / The bundled Node runtime is missing — reinstall the app; installing Node on PATH will not help. 찾아본 자리 / looked in:\n  - ① CCG_LSP_NODE 미설정 / unset\n  - ② 설치 폴더 사이드카: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\d\\ccg-critic-r3-target\\release\\node.exe (없음 / missing)\n  - ② resources 사이드카: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\d\\ccg-critic-r3-target\\release\\resources\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\d\\ccg-critic-r3-target\\release\\src-tauri\\lsp-runtime\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\d\\ccg-critic-r3-target\\src-tauri\\lsp-runtime\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: 조상 8칸 더 봤지만 없다 / 8 more ancestors\n  - ④ PATH: 배포본이라 **보지 않는다**(결정론) / not consulted in a deployed build"
+        },
+        "cachedMs": 0.13,
+        "cachedHit": false,
+        "prewarmMs": 50,
+        "status": "error",
+        "states": [
+          "starting",
+          "error"
+        ]
+      }
+    },
+    "dev/CUSTOM-build-out|ts": {
+      "exitCode": 0,
+      "probe": {
+        "cwd": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist-r3\\tree\\critic-fx-r3\\proj",
+        "rel": "lspbench/big.ts",
+        "samples": 2,
+        "specId": "ts",
+        "serverRoot": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist-r3\\tree\\critic-fx-r3\\proj",
+        "resolve": {
+          "exe": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\e\\build\\release\\ccg-lspprobe.exe",
+          "processCwd": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\e\\build\\release",
+          "node": null,
+          "modules": {
+            "ts": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\e\\build\\release\\node_modules\\typescript-language-server\\lib\\cli.mjs",
+            "py": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\e\\build\\release\\node_modules\\pyright\\langserver.index.js",
+            "ts.tsserver": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\e\\build\\release\\node_modules\\typescript\\lib\\tsserver.js"
+          },
+          "searchHint": "찾아본 자리 11곳: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\e\\build\\release · C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\e\\build\\release\\resources · C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\e\\build · C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\e · …",
+          "nodeHint": "설치된 Node 런타임을 못 찾았어요. 설치가 손상됐을 수 있으니 앱을 다시 설치해 주세요 (PATH에 node를 깔아도 낫지 않아요). / The bundled Node runtime is missing — reinstall the app; installing Node on PATH will not help. 찾아본 자리 / looked in:\n  - ① CCG_LSP_NODE 미설정 / unset\n  - ② 설치 폴더 사이드카: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\e\\build\\release\\node.exe (없음 / missing)\n  - ② resources 사이드카: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\e\\build\\release\\resources\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\e\\build\\release\\src-tauri\\lsp-runtime\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\e\\build\\src-tauri\\lsp-runtime\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: 조상 8칸 더 봤지만 없다 / 8 more ancestors\n  - ④ PATH: 배포본이라 **보지 않는다**(결정론) / not consulted in a deployed build",
+          "launchError": "설치된 Node 런타임을 못 찾았어요. 설치가 손상됐을 수 있으니 앱을 다시 설치해 주세요 (PATH에 node를 깔아도 낫지 않아요). / The bundled Node runtime is missing — reinstall the app; installing Node on PATH will not help. 찾아본 자리 / looked in:\n  - ① CCG_LSP_NODE 미설정 / unset\n  - ② 설치 폴더 사이드카: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\e\\build\\release\\node.exe (없음 / missing)\n  - ② resources 사이드카: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\e\\build\\release\\resources\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\e\\build\\release\\src-tauri\\lsp-runtime\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\e\\build\\src-tauri\\lsp-runtime\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: 조상 8칸 더 봤지만 없다 / 8 more ancestors\n  - ④ PATH: 배포본이라 **보지 않는다**(결정론) / not consulted in a deployed build"
+        },
+        "cachedMs": 0.14,
+        "cachedHit": false,
+        "prewarmMs": 51,
+        "status": "error",
+        "states": [
+          "starting",
+          "error"
+        ]
+      }
+    },
+    "dev/staged-ancestor|nonode|ts": {
+      "exitCode": 0,
+      "probe": {
+        "cwd": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist-r3\\tree\\critic-fx-r3\\proj",
+        "rel": "lspbench/big.ts",
+        "samples": 2,
+        "specId": "ts",
+        "serverRoot": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist-r3\\tree\\critic-fx-r3\\proj",
+        "resolve": {
+          "exe": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist-r3\\tree\\target-sim\\release\\ccg-lspprobe.exe",
+          "processCwd": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\nowhere",
+          "node": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist-r3\\tree\\src-tauri\\lsp-runtime\\node.exe",
+          "modules": {
+            "ts": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist-r3\\tree\\node_modules\\typescript-language-server\\lib\\cli.mjs",
+            "py": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist-r3\\tree\\node_modules\\pyright\\langserver.index.js",
+            "ts.tsserver": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist-r3\\tree\\node_modules\\typescript\\lib\\tsserver.js"
+          },
+          "searchHint": "찾아본 자리 11곳: C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist-r3\\tree\\target-sim\\release · C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist-r3\\tree\\target-sim\\release\\resources · C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist-r3\\tree\\target-sim · C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist-r3\\tree · …",
+          "nodeHint": "설치된 Node 런타임을 못 찾았어요. 설치가 손상됐을 수 있으니 앱을 다시 설치해 주세요 (PATH에 node를 깔아도 낫지 않아요). / The bundled Node runtime is missing — reinstall the app; installing Node on PATH will not help. 찾아본 자리 / looked in:\n  - ① CCG_LSP_NODE 미설정 / unset\n  - ② 설치 폴더 사이드카: C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist-r3\\tree\\target-sim\\release\\node.exe (없음 / missing)\n  - ② resources 사이드카: C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist-r3\\tree\\target-sim\\release\\resources\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist-r3\\tree\\target-sim\\release\\src-tauri\\lsp-runtime\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-lspdist-r3\\tree\\target-sim\\src-tauri\\lsp-runtime\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: 조상 8칸 더 봤지만 없다 / 8 more ancestors\n  - ④ PATH: cargo 산출 폴더라 봤지만 node를 못 찾았다 / searched PATH (cargo output dir)",
+          "launchError": null
+        },
+        "cachedMs": 0.14,
+        "cachedHit": false,
+        "prewarmMs": 101,
+        "status": "ready",
+        "states": [
+          "starting",
+          "ready"
+        ],
+        "tokenMs": 420,
+        "tokens": 1565,
+        "tokenTries": 0,
+        "semanticSupported": true,
+        "spots": 2,
+        "syms": [
+          "makeConfig",
+          "summarize"
+        ],
+        "hover": {
+          "n": 2,
+          "hits": 2,
+          "p50": 10.34,
+          "p95": 10.34
+        },
+        "definition": {
+          "n": 2,
+          "hits": 2,
+          "crossFile": 2,
+          "p50": 3.59,
+          "p95": 3.59
+        },
+        "completion": {
+          "n": 10,
+          "maxItems": 4,
+          "sample": [
+            "lookup",
+            "register",
+            "size",
+            "tagsOf"
+          ],
+          "p50": 4.28,
+          "p95": 24.67
+        }
+      }
+    }
+  },
+  "lostArm": {
+    "status": "error",
+    "node": null,
+    "launchError": "설치된 Node 런타임을 못 찾았어요. 설치가 손상됐을 수 있으니 앱을 다시 설치해 주세요 (PATH에 node를 깔아도 낫지 않아요). / The bundled Node runtime is missing — reinstall the app; installing Node on PATH will not help. 찾아본 자리 / looked in:\n  - ① CCG_LSP_NODE 미설정 / unset\n  - ② 설치 폴더 사이드카: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\sidecar-lost\\node.exe (없음 / missing)\n  - ② resources 사이드카: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\sidecar-lost\\resources\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\sidecar-lost\\src-tauri\\lsp-runtime\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\src-tauri\\lsp-runtime\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: 조상 5칸 더 봤지만 없다 / 5 more ancestors\n  - ④ PATH: 배포본이라 **보지 않는다**(결정론) / not consulted in a deployed build",
+    "nodeHint": "설치된 Node 런타임을 못 찾았어요. 설치가 손상됐을 수 있으니 앱을 다시 설치해 주세요 (PATH에 node를 깔아도 낫지 않아요). / The bundled Node runtime is missing — reinstall the app; installing Node on PATH will not help. 찾아본 자리 / looked in:\n  - ① CCG_LSP_NODE 미설정 / unset\n  - ② 설치 폴더 사이드카: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\sidecar-lost\\node.exe (없음 / missing)\n  - ② resources 사이드카: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\sidecar-lost\\resources\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\sidecar-lost\\src-tauri\\lsp-runtime\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\src-tauri\\lsp-runtime\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: 조상 5칸 더 봤지만 없다 / 5 more ancestors\n  - ④ PATH: 배포본이라 **보지 않는다**(결정론) / not consulted in a deployed build"
+  },
+  "devGate": {
+    "dev/target-release": {
+      "status": "ready",
+      "node": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\bait-path\\node.exe",
+      "open": true,
+      "launchError": null
+    },
+    "dev/target-lspdist-release": {
+      "status": "ready",
+      "node": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\bait-path\\node.exe",
+      "open": true,
+      "launchError": null
+    },
+    "dev/target-triple-release": {
+      "status": "ready",
+      "node": "C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\bait-path\\node.exe",
+      "open": true,
+      "launchError": null
+    },
+    "dev/CUSTOM-suffix-target": {
+      "status": "error",
+      "node": null,
+      "open": false,
+      "launchError": "설치된 Node 런타임을 못 찾았어요. 설치가 손상됐을 수 있으니 앱을 다시 설치해 주세요 (PATH에 node를 깔아도 낫지 않아요). / The bundled Node runtime is missing — reinstall the app; installing Node on PATH will not help. 찾아본 자리 / looked in:\n  - ① CCG_LSP_NODE 미설정 / unset\n  - ② 설치 폴더 사이드카: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\d\\ccg-critic-r3-target\\release\\node.exe (없음 / missing)\n  - ② resources 사이드카: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\d\\ccg-critic-r3-target\\release\\resources\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\d\\ccg-critic-r3-target\\release\\src-tauri\\lsp-runtime\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\d\\ccg-critic-r3-target\\src-tauri\\lsp-runtime\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: 조상 8칸 더 봤지만 없다 / 8 more ancestors\n  - ④ PATH: 배포본이라 **보지 않는다**(결정론) / not consulted in a deployed build"
+    },
+    "dev/CUSTOM-build-out": {
+      "status": "error",
+      "node": null,
+      "open": false,
+      "launchError": "설치된 Node 런타임을 못 찾았어요. 설치가 손상됐을 수 있으니 앱을 다시 설치해 주세요 (PATH에 node를 깔아도 낫지 않아요). / The bundled Node runtime is missing — reinstall the app; installing Node on PATH will not help. 찾아본 자리 / looked in:\n  - ① CCG_LSP_NODE 미설정 / unset\n  - ② 설치 폴더 사이드카: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\e\\build\\release\\node.exe (없음 / missing)\n  - ② resources 사이드카: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\e\\build\\release\\resources\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\e\\build\\release\\src-tauri\\lsp-runtime\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: C:\\Users\\User\\AppData\\Local\\ccg-critic-lspdist-r3\\gate\\e\\build\\src-tauri\\lsp-runtime\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: 조상 8칸 더 봤지만 없다 / 8 more ancestors\n  - ④ PATH: 배포본이라 **보지 않는다**(결정론) / not consulted in a deployed build"
+    }
+  },
+  "verdict": {
+    "failures": [],
+    "ok": true
+  }
+}
