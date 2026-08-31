@@ -53,30 +53,75 @@ fn env_path(key: &str) -> Option<PathBuf> {
 
 /// Node 런타임. 없으면 `None` → `Launch::Node` 스펙은 기동 불가로 보고된다.
 ///
-/// **이 사슬에도 cwd는 없다** — 세 칸 다 「환경변수 · exe 위치 · PATH」라 프로세스를 어디서
-/// 켰는지와 무관하다. 그래서 LSPDIST R1이 고친 것은 모듈 쪽 하나뿐이다.
+/// ## ★ LSPDIST R2 — 사이드카를 실었고 배포본에서 PATH를 끊었다
 ///
-/// [남은 구멍 · 정직하게] ②를 채우는 사람이 아직 없다 = 배포본은 **PATH의 node**에 기댄다.
-/// 2.6.2는 Electron이 곧 Node라 전제가 0이었으므로 이건 파리티 후퇴가 맞다. 닫는 값은
-/// 쟀다(`docs/parity-fix-lspdist-r1.md` §4): 고정 판 node.exe를 실으면 설치기 +21.8MB ·
-/// 설치 폴더 +87.2MB. 이번 라운드가 안 실은 이유는 크기가 아니라 **재현성**이다 —
-/// 빌더 PC의 `node.exe`를 집어넣으면 설치기가 빌드한 사람의 node 판에 따라 달라진다.
+/// R1은 모듈만 싣고 런타임은 **PATH**에 기댔다. 확인 크리틱 R1 §1.2가 그 대가를 실측했다:
+/// PATH에서 node를 걷어낸 기계 모사에서 **두 언어 × 두 cwd 네 팔 전부 `error`**,
+/// 그리고 `<설치 폴더>\node.exe` **한 파일**을 두면 두 언어가 즉시 `ready`.
+/// 즉 빠진 것은 코드가 아니라 적재물이었다. R2가 그 파일을 싣는다
+/// (`scripts/tauri-build.mjs`의 판 고정 + sha256 검증 스테이징 → `bundle.resources`).
+///
+/// 사슬은 이제 **전부 exe 경로의 함수**다 — 기계의 PATH 상태가 배포본의 코드 인텔리전스를
+/// 못 흔든다(nvm이 판을 갈아 끼워도 우리 서버는 고정 판 위에서 돈다):
+///
+/// | 칸 | 자리 | 누가 채우나 |
+/// |---|---|---|
+/// | ① | `CCG_LSP_NODE` | 벤치·포터블·하네스 |
+/// | ② | **exe 폴더 / exe 폴더의 `resources`** | **배포본** — 스테이징한 고정 판이 `$INSTDIR\node.exe`로 깔린다 |
+/// | ③ | exe **조상**의 `src-tauri/lsp-runtime/node.exe` | 개발·벤치 — 같은 스테이징 산출물을 레포 안에서 그대로 문다 |
+/// | ④ | PATH — **exe가 cargo 산출 폴더에 있을 때만** | 스테이징을 아직 안 돌린 `cargo run` 개발자 |
+///
+/// **④가 배포본에 절대 안 닿는 이유**: 판정을 `.cargo-lock`(cargo가 프로필 폴더에 두는
+/// 잠금 파일)의 존재로 한다 — `tauri_utils::platform::resource_dir`가 「개발 중인가」를
+/// 가르는 데 쓰는 바로 그 신호다. NSIS가 깐 `$INSTDIR`에는 그 파일이 없다. 그래서 이 칸은
+/// **exe 경로의 함수**이지 환경의 함수가 아니고, 크리틱이 요구한 결정론을 안 깬다
+/// (테스트 `path_fallback_is_unreachable_for_a_deployed_exe`).
+///
+/// [남은 위험 · 정직하게] 사이드카가 **없어진** 설치본(백신 격리 등)은 이제 PATH로 못
+/// 살아난다 — 조용히 다른 판을 무는 대신 **소리 내어 죽는다**. 그 교환은 의도한 것이고,
+/// 실패 문자열이 사이드카 경로를 지목한다(`crate::server::plan`).
 pub fn node_exe() -> Option<PathBuf> {
+    node_exe_from(env_path("CCG_LSP_NODE"), exe_dir())
+}
+
+/// [`node_exe`]의 순수 알맹이 — 테스트가 가짜 exe 폴더를 먹인다.
+fn node_exe_from(explicit: Option<PathBuf>, exe_dir: Option<PathBuf>) -> Option<PathBuf> {
     // ① 명시 지정(벤치·포터블 배포)
-    if let Some(p) = env_path("CCG_LSP_NODE") {
+    if let Some(p) = explicit {
         return Some(p);
     }
-    // ② exe 옆 사이드카(패키징 라운드가 여기에 싣는다)
-    if let Some(d) = exe_dir() {
-        for rel in [["node.exe"].as_slice(), ["resources", "node.exe"].as_slice()] {
-            let p = rel.iter().fold(d.clone(), |a, s| a.join(s));
-            if p.exists() {
-                return Some(p);
-            }
+    let Some(d) = exe_dir else { return None };
+    // ② exe 옆 사이드카 — **배포본이 여기다**
+    for rel in [["node.exe"].as_slice(), ["resources", "node.exe"].as_slice()] {
+        let p = rel.iter().fold(d.clone(), |a, s| a.join(s));
+        if p.is_file() {
+            return Some(p);
         }
     }
-    // ③ PATH
-    which("node.exe").or_else(|| which("node"))
+    // ③ 개발 — exe 조상의 스테이징 산출물(`npm run tauri:build`가 만든 그 파일)
+    let mut cur: Option<&Path> = Some(&d);
+    while let Some(c) = cur {
+        let p = c.join("src-tauri").join(STAGED_RUNTIME_DIR).join("node.exe");
+        if p.is_file() {
+            return Some(p);
+        }
+        cur = c.parent();
+    }
+    // ④ PATH — **cargo 산출 폴더에서 뜬 exe일 때만**(배포본은 절대 여기 못 온다)
+    if is_cargo_output_dir(&d) {
+        return which("node.exe").or_else(|| which("node"));
+    }
+    None
+}
+
+/// 스테이징 자리 이름 — `scripts/tauri-build.mjs`와 `tauri.conf.json`이 쓰는 그 이름.
+/// 세 곳이 같아야 개발(③)과 배포(②)가 같은 파일을 문다.
+pub const STAGED_RUNTIME_DIR: &str = "lsp-runtime";
+
+/// 이 폴더가 **cargo 산출 폴더**인가 — `target*/<profile>/`에 cargo가 남기는 `.cargo-lock`.
+/// `tauri_utils::platform::resource_dir`의 `is_cargo_output_directory`와 같은 신호다.
+fn is_cargo_output_dir(dir: &Path) -> bool {
+    dir.join(".cargo-lock").exists()
 }
 
 /// `node_modules`를 담고 있을 수 있는 폴더들 — **우선순위 순서**. 순수 함수라 테스트가
@@ -296,6 +341,69 @@ mod tests {
             find_module(&roots, &["typescript", "lib", "tsserver.js"]),
             Some(inst.join("node_modules").join("typescript").join("lib").join("tsserver.js"))
         );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// ★ LSPDIST R2 · 크리틱 C4 — **못을 한 층 위로.**
+    ///
+    /// R1의 사슬 대조는 순수 함수 `module_roots_from`만 물었다. 크리틱이 실측한 대로
+    /// **한 층 위 `module_roots()`에 cwd를 되살리면 그 테스트는 초록**이었고, 하필 거기가
+    /// 옛 결함(`09b9bc7`의 `shipped_module()` 본문)이 살던 자리다. 여기서는 공개 층이
+    /// **순수 층에 아무것도 더하지 않는다**를 요구한다 — 어느 칸을 끼워 넣어도 두 값이 갈린다.
+    ///
+    /// (블랙박스 쪽 못은 `tests/cwd_is_never_consulted.rs`가 따로 박는다 — 그쪽은 진짜로
+    /// 프로세스 cwd를 미끼 폴더로 바꿔 놓고 `shipped_module()`에 직접 묻는다.)
+    #[test]
+    fn the_public_layer_adds_nothing_to_the_pure_chain() {
+        assert_eq!(
+            module_roots(),
+            module_roots_from(env_path("CCG_LSP_MODULES"), exe_dir()),
+            "module_roots()가 순수 사슬에 칸을 더했다 — cwd가 되살아났는지부터 봐라"
+        );
+    }
+
+    /// ★ R2 — 런타임 사슬도 **exe 경로의 함수**다. 배포 모사 exe 폴더에 사이드카를 두면
+    /// 그것을 물고, 없으면 조상의 스테이징 산출물을 물고, 그것도 없으면 **PATH로 안 간다.**
+    #[test]
+    fn the_node_chain_prefers_the_sidecar_then_the_staged_dev_copy() {
+        let root = scratch("node-chain");
+        let inst = root.join("AgentCodeGUI3");
+        std::fs::create_dir_all(&inst).unwrap();
+        // ③ 개발 스테이징 산출물(조상에 있다)
+        let staged = root.join("src-tauri").join(STAGED_RUNTIME_DIR).join("node.exe");
+        put(&staged);
+        assert_eq!(node_exe_from(None, Some(inst.clone())), Some(staged), "조상의 스테이징 산출물을 문다");
+        // ② 사이드카가 생기면 그쪽이 이긴다(배포본)
+        let side = inst.join("node.exe");
+        put(&side);
+        assert_eq!(node_exe_from(None, Some(inst.clone())), Some(side.clone()), "사이드카가 최우선");
+        // ① 명시 지정이 그보다 앞
+        let ex = root.join("elsewhere.exe");
+        put(&ex);
+        assert_eq!(node_exe_from(Some(ex.clone()), Some(inst)), Some(ex));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// ★ R2 · 결정론의 못 — **배포본 모양의 exe 폴더에서는 PATH 칸에 못 간다.**
+    /// (`.cargo-lock`이 없으면 cargo 산출 폴더가 아니다 = NSIS가 깐 `$INSTDIR`.)
+    #[test]
+    fn path_fallback_is_unreachable_for_a_deployed_exe() {
+        let root = scratch("no-path-fallback");
+        let inst = root.join("AgentCodeGUI3");
+        std::fs::create_dir_all(&inst).unwrap();
+        assert!(!is_cargo_output_dir(&inst), "설치 폴더에는 .cargo-lock이 없다");
+        assert_eq!(
+            node_exe_from(None, Some(inst.clone())),
+            None,
+            "사이드카가 없는 배포본은 **소리 내어 죽어야** 한다 — PATH의 아무 node나 물면 안 된다"
+        );
+        // 같은 폴더가 cargo 산출 폴더면(개발) 그때만 PATH를 본다.
+        put(&inst.join(".cargo-lock"));
+        assert!(is_cargo_output_dir(&inst));
+        // 이 기계에 node가 있으면 Some, 없으면 None — 어느 쪽이든 **위와 달라질 수 있는 칸**이
+        // 열렸다는 것만 확인한다(PATH 유무는 기계의 사정이라 값으로 못 박지 않는다).
+        let opened = node_exe_from(None, Some(inst.clone()));
+        assert_eq!(opened.is_some(), which("node.exe").or_else(|| which("node")).is_some());
         let _ = std::fs::remove_dir_all(&root);
     }
 
