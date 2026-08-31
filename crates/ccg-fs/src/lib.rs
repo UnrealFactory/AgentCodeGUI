@@ -49,27 +49,70 @@ pub mod serve;
 /// 디스크 읽기는 많아야 1회). 다만 **캐시가 프로세스 전역**이라는 성질은 남아서,
 /// 두 언어를 한 프로세스에서 재려는 테스트는 반드시 프로세스를 갈라야 한다
 /// (`dialog.rs`의 `the_dialog_labels_follow_ui_lang`이 그래서 자식을 띄운다).
+/// **회계 말고 순서**에 관한 성질은 아래 `lang_pack`의 주석에 따로 적었다(SMALL3 R2 D4).
 pub fn t(ko: &str, en: &str) -> String {
     if is_en() { en.to_string() } else { ko.to_string() }
 }
 
+/// 캐시 수명. 2.6.2에는 없던 값이다(그쪽은 저장 핸들러가 캐시를 직접 갱신했다).
+const LANG_TTL_MS: u64 = 2000;
+
+/// 신선도(ms)와 값(1비트)을 **한 워드**에 담는다.
+///
+/// ★SMALL3 R2(확인 크리틱 D4). 초판은 `AtomicBool` + `AtomicU64` **둘**이었고 넷 다
+/// `Relaxed`였다 — 한 스레드가 쓴 새 시각을 다른 스레드가 먼저 보고 **옛 값**을 읽는
+/// 순서가 막혀 있지 않았다(찢어진 관측). 피해는 "최대 2초 동안 한 번 틀린 언어"로
+/// 작지만, R1이 이 함수를 실패 경로에서 **사용자가 보는 성공 경로**로 끌어올려
+/// 도달성이 커졌다. 값이 싸므로 근거를 적는 대신 **닫았다**.
+///
+/// 하나로 합치면 `Release`/`Acquire`도 펜스도 필요 없다 — 단일 원자의 로드/스토어는
+/// 그 자체가 쪼개지지 않으므로 **신선도와 값이 언제나 같은 세대**로 관측된다.
+/// (여전히 두 스레드가 동시에 갱신하면 마지막 쓰기가 이긴다. 그건 결함이 아니다 —
+/// 둘 다 같은 파일을 읽었고 답이 같다.)
+///
+/// 밀리초는 상위 63비트로 민다: `2^63 ms ≈ 2.9억 년`이라 `as_millis() as u64`가
+/// 이 자리를 넘칠 일은 없다. `at_ms == 0`은 **아직 한 번도 안 읽음**의 표식이라
+/// 비워 둔다(그래서 저장할 때 `now.max(1)`을 쓴다).
+const fn lang_pack(at_ms: u64, en: bool) -> u64 {
+    (at_ms << 1) | (en as u64)
+}
+const fn lang_unpack(cell: u64) -> (u64, bool) {
+    (cell >> 1, cell & 1 == 1)
+}
+
 fn is_en() -> bool {
-    use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+    use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
-    static CACHED: AtomicBool = AtomicBool::new(false);
-    static AT_MS: AtomicU64 = AtomicU64::new(0);
+    static CELL: AtomicU64 = AtomicU64::new(0);
     let now = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0);
-    let at = AT_MS.load(Ordering::Relaxed);
-    if at != 0 && now.saturating_sub(at) < 2000 {
-        return CACHED.load(Ordering::Relaxed);
+    let (at, cached) = lang_unpack(CELL.load(Ordering::Relaxed));
+    if at != 0 && now.saturating_sub(at) < LANG_TTL_MS {
+        return cached;
     }
     let en = ccg_store::prefs::read_ui_prefs()
         .get("ui.lang")
         .and_then(serde_json::Value::as_str)
         == Some("en");
-    CACHED.store(en, Ordering::Relaxed);
-    AT_MS.store(now.max(1), Ordering::Relaxed);
+    CELL.store(lang_pack(now.max(1), en), Ordering::Relaxed);
     en
+}
+
+#[cfg(test)]
+mod lang_cache_tests {
+    use super::{lang_pack, lang_unpack};
+
+    /// 못 — 신선도와 값이 **한 워드로 같이** 다닌다(왕복이 손실 없음).
+    /// 이게 깨지면 D4가 돌아온 것이다(둘을 다시 갈랐거나 시프트를 잘못 잡았거나).
+    #[test]
+    fn the_freshness_and_the_value_travel_as_one_word() {
+        for at in [1u64, 2, 1_999, 2_000, 1_767_000_000_000, u64::MAX >> 1] {
+            for en in [false, true] {
+                assert_eq!(lang_unpack(lang_pack(at, en)), (at, en), "왕복이 깨졌다 at={at} en={en}");
+            }
+        }
+        // 갓 부팅한 셀은 "아직 안 읽음"이어야 한다 — `at == 0`이 그 표식이다.
+        assert_eq!(lang_unpack(0), (0, false), "빈 셀이 캐시 적중으로 읽히면 안 된다");
+    }
 }
 
 // ── 경로 해석 — 2.6.2 핸들러들이 공유하던 한 줄을 한 곳으로 ────────────────────
