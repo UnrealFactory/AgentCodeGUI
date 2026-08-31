@@ -28,6 +28,13 @@
     "active": true,
     "targets": ["nsis"],
     "createUpdaterArtifacts": true,
+    "resources": {
+      "../node_modules/typescript-language-server/lib": "node_modules/typescript-language-server/lib",
+      "../node_modules/typescript-language-server/package.json": "node_modules/typescript-language-server/package.json",
+      "../node_modules/typescript/lib": "node_modules/typescript/lib",
+      "../node_modules/typescript/package.json": "node_modules/typescript/package.json",
+      "../node_modules/pyright": "node_modules/pyright"
+    },
     "icon": ["../build/icon3.ico"],
     "publisher": "AgentCodeGUI",
     "homepage": "https://github.com/UnrealFactory/AgentCodeGUI",

@@ -132,6 +132,21 @@ pub struct ServerSpec {
     pub detect_markers: &'static [&'static str],
 
     pub launch: Launch,
+
+    /// [`Launch::Node`] 서버가 **실행 스크립트 말고 또** 배포본에 실려야 하는 `node_modules`
+    /// 최상위 패키지들. `module[0]`은 [`bundled_packages`]가 자동으로 넣으므로 여기 안 적는다.
+    ///
+    /// ★ LSPDIST R1이 판 확장점. 왜 필요했나 — TS가 실제로 쓰는 패키지는 **둘**이다:
+    /// 실행은 `typescript-language-server`가 하고, 그게 스폰할 tsserver는
+    /// [`ts_init_options`]가 `typescript` 패키지에서 못박아 넘긴다. `Launch::Node`만 보고
+    /// 번들을 만들면 `typescript`가 빠지고, 그러면 서버는 **뜨는데** tsserver를 못 찾아
+    /// 색이 반만 나온다(진단이 제일 어려운 종류의 고장이다).
+    ///
+    /// 이 값이 곧 `src-tauri/tauri.conf.json`의 `bundle.resources`와 맞물리는 계약이고,
+    /// 어긋나면 [`tests::every_bundled_node_package_is_in_the_installer_manifest`]가 잡는다 —
+    /// `Provision::Download`가 `install.rs::download_for`와 짝을 이루는 것과 같은 규율이다.
+    pub extra_modules: &'static [&'static str],
+
     pub root: RootRule,
 
     /// `initialize`의 `initializationOptions` — 루트를 받아 만든다(없으면 `None`).
@@ -666,6 +681,9 @@ ServerSpec {
         module: &["typescript-language-server", "lib", "cli.mjs"],
         args: &["--stdio"],
     },
+    // tsserver는 `typescript` 패키지에서 온다(`ts_init_options`가 경로를 못박는다) —
+    // 실행 스크립트와 **다른 패키지**라 번들 목록에 따로 실어야 한다.
+    extra_modules: &["typescript"],
     root: RootRule::ProjectCwd,
     init_options: ts_init_options,
     prepare_root: None,
@@ -696,6 +714,8 @@ ServerSpec {
     exts: &[("py", "python"), ("pyw", "python"), ("pyi", "python")],
     detect_markers: &["pyproject.toml", "requirements.txt", "setup.py"],
     launch: Launch::Node { module: &["pyright", "langserver.index.js"], args: &["--stdio"] },
+    // pyright는 자기 완결이다 — 번들 JS(`dist/`)와 `typeshed-fallback/`이 같은 패키지 안에 있다.
+    extra_modules: &[],
     root: RootRule::ProjectCwd,
     init_options: no_init_options,
     prepare_root: None,
@@ -728,6 +748,8 @@ ServerSpec {
         args: &["--stdio", "--logLevel=Information"],
         extra_args: cs_extra_args,
     },
+    // `Launch::Exe` — 앱 홈에 내려받는 서버라 `node_modules`와 무관하다.
+    extra_modules: &[],
     // 보는 파일이 csproj 하나여도 그 csproj를 **참조하는** 솔루션이 있으면 솔루션째 연다 —
     // 크로스 프로젝트 분석이 살고, 프로젝트를 오가도 서버가 하나만 뜬다.
     root: RootRule::ReferencingSolution {
@@ -789,6 +811,7 @@ ServerSpec {
         args: &["--background-index", "--header-insertion=never"],
         extra_args: cpp_extra_args,
     },
+    extra_modules: &[],
     // 컴파일 루트는 CDB/CMake가 있는 폴더다(없으면 cwd — 2.6.2와 같은 자리).
     root: RootRule::NearestMarker { markers: CPP_MARKERS },
     init_options: no_init_options,
@@ -813,6 +836,36 @@ ServerSpec {
     idle_ttl_ms: 30 * 60_000,
     cache_version: 1,
 }];
+
+/// 배포본에 실어야 할 `node_modules` 최상위 패키지 전부 — **[`SPECS`]에서 파생된다.**
+///
+/// 수기 목록을 따로 두지 않는 이유: 그 목록이 곧 두 번째 진실이 되고, 언어를 하나 붙일 때
+/// 한쪽만 고쳐지면 **설치기에는 없고 코드에는 있는** 서버가 태어난다 — 그게 §1.6-A2로
+/// 올라온 사고의 모양 그대로다(코드는 `Provision::Bundled`라 「항상 쓸 수 있다」고 말하는데
+/// 배포본에는 파일이 없었다).
+///
+/// 나가는 곳 둘: `src-tauri/tauri.conf.json`의 `bundle.resources`(사람이 적는다)와
+/// 그 둘을 대조하는 [`tests::every_bundled_node_package_is_in_the_installer_manifest`].
+pub fn bundled_packages() -> Vec<&'static str> {
+    let mut v: Vec<&'static str> = Vec::new();
+    let mut add = |p: &'static str| {
+        if !v.contains(&p) {
+            v.push(p);
+        }
+    };
+    for s in SPECS {
+        if let Launch::Node { module, .. } = &s.launch {
+            if let Some(first) = module.first() {
+                add(first);
+            }
+        }
+        for p in s.extra_modules {
+            add(p);
+        }
+    }
+    v.sort_unstable();
+    v
+}
 
 /// 이 폴더의 **주력 언어** — 프리웜이 부른다(2.6.2 `detectProjectServer`).
 /// 판정 재료는 폴더 바로 아래의 파일 이름 목록뿐이고, 표는 각 스펙의
@@ -909,6 +962,53 @@ mod tests {
                 assert!(seen.insert(e), "{e}를 두 스펙이 주장한다");
             }
             assert!(s.cache_version >= 1, "{}: cache_version은 1부터다", s.id);
+        }
+    }
+
+    /// ★ LSPDIST R1의 게이트 — **`Provision::Bundled`가 거짓말이 아닌가.**
+    ///
+    /// 스펙의 `kind`는 "앱에 같이 실린다 — 항상 쓸 수 있다"고 말한다. 그 말이 참이려면
+    /// 설치기가 그 패키지를 실제로 실어야 하고, 그 목록은 `tauri.conf.json` 한 곳에만 있다.
+    /// R28j까지 이 대조가 없어서, 코드는 `Bundled`인데 설치 폴더에는 파일이 없는 상태로
+    /// **베타가 나갔다**(§1.6-A2). `install.rs::every_download_spec_has_a_source`가
+    /// `Provision::Download`에 걸어 둔 것과 같은 규율을 `Bundled`에도 건다.
+    #[test]
+    fn every_bundled_node_package_is_in_the_installer_manifest() {
+        let conf = concat!(env!("CARGO_MANIFEST_DIR"), "/../../src-tauri/tauri.conf.json");
+        let body = std::fs::read_to_string(conf).expect("tauri.conf.json을 못 읽었다");
+        let v: Value = serde_json::from_str(&body).expect("tauri.conf.json이 JSON이 아니다");
+        let res = v["bundle"]["resources"].as_object().expect("bundle.resources가 없다 — 배포본에 모듈이 안 실린다");
+        let dests: Vec<&str> = res.values().filter_map(Value::as_str).collect();
+        let want = bundled_packages();
+        assert!(!want.is_empty(), "Launch::Node 스펙이 하나도 없다면 이 테스트를 지워라");
+        for pkg in &want {
+            let prefix = format!("node_modules/{pkg}/");
+            assert!(
+                dests.iter().any(|d| d.starts_with(&prefix) || *d == prefix.trim_end_matches('/')),
+                "{pkg}: tauri.conf.json의 bundle.resources에 없다. 배포본에서 이 서버는 안 뜬다 \
+                 — 언어를 붙였으면 매니페스트도 한 줄 더해라"
+            );
+        }
+        // 반대 방향도 본다: SPECS에서 사라진 패키지를 설치기가 계속 나르면 수십 MB가 유령으로 남는다.
+        for d in &dests {
+            let Some(rest) = d.strip_prefix("node_modules/") else { continue };
+            let pkg = rest.split('/').next().unwrap_or("");
+            assert!(want.contains(&pkg), "{pkg}: SPECS에 없는데 설치기가 나른다(유령 적재)");
+        }
+    }
+
+    /// 파생 목록이 **양쪽 출처를 다 본다** — `Launch::Node`의 `module[0]`과 `extra_modules`.
+    /// `typescript`가 빠지면 서버는 뜨는데 tsserver를 못 찾아 색이 반만 나온다.
+    #[test]
+    fn bundled_packages_covers_both_the_launcher_and_its_extras() {
+        let v = bundled_packages();
+        assert_eq!(v, vec!["pyright", "typescript", "typescript-language-server"], "{v:?}");
+        for s in SPECS {
+            match &s.launch {
+                Launch::Node { module, .. } => assert!(v.contains(&module[0]), "{}: 실행 스크립트가 안 실린다", s.id),
+                // 내려받는 서버는 번들 목록에 낄 자리가 없다(앱 홈에 설치된다).
+                Launch::Exe { .. } => assert!(s.extra_modules.is_empty(), "{}: Exe 스펙에 번들 모듈이 붙었다", s.id),
+            }
         }
     }
 
