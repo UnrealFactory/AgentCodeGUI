@@ -1,0 +1,284 @@
+{
+  "critic": "patchnotes-r1",
+  "at": "2026-08-31T06:36:14.190Z",
+  "inputs": {
+    "EXE": "C:\\Users\\User\\AppData\\Local\\ccg-critic-pn-app\\AgentCodeGUI3.exe",
+    "INSTALLDIR": "C:\\Users\\User\\AppData\\Local\\ccg-critic-pn-app"
+  },
+  "sources": {
+    "e262": {
+      "idleWs": 712.8,
+      "idlePriv": 505.3,
+      "perWindowWs": 110.7,
+      "panels": 4
+    },
+    "t30": {
+      "idleWs": 565.6,
+      "idlePriv": 360.9,
+      "perWindowWs": 19.6,
+      "procsAdded": 0,
+      "helperWs": 115.1,
+      "helperPriv": 101.6
+    },
+    "cold": {
+      "paint": 254,
+      "root": 329.5,
+      "win": 230
+    },
+    "exeSha": "730e8b2d9a262e63",
+    "launchCwd": "C:\\Users\\User\\AppData\\Local\\ccg-patchnotes-r1"
+  },
+  "disk": {
+    "e262SetupBytes": 165119775,
+    "e262SetupMB": 157.47,
+    "e262DirMB": 633.51,
+    "e262Files": 8139,
+    "setup30Bytes": 32412570,
+    "setup30MB": 30.91,
+    "installDirMB": 139.36,
+    "installFiles": 5428,
+    "appExeMB": 6.78,
+    "nodeExeMB": 89.06,
+    "modulesMB": 43.53
+  },
+  "claims": [
+    {
+      "label": "설치 파일 2.6.2(MB)",
+      "claim": 157.5,
+      "actual": 157.47,
+      "ok": true,
+      "unitNote": null
+    },
+    {
+      "label": "설치 파일 3.0(MB)",
+      "claim": 30.9,
+      "actual": 30.91,
+      "ok": true,
+      "unitNote": null
+    },
+    {
+      "label": "설치 파일 비(5.1배)",
+      "claim": 5.1,
+      "actual": 5.1,
+      "ok": true,
+      "unitNote": null
+    },
+    {
+      "label": "설치 폴더 2.6.2(MB)",
+      "claim": 633.7,
+      "actual": 633.51,
+      "ok": true,
+      "unitNote": null
+    },
+    {
+      "label": "설치 폴더 3.0(MB)",
+      "claim": 139.4,
+      "actual": 139.36,
+      "ok": true,
+      "unitNote": null
+    },
+    {
+      "label": "설치 폴더 비(4.5배)",
+      "claim": 4.5,
+      "actual": 4.55,
+      "ok": true,
+      "unitNote": null
+    },
+    {
+      "label": "디스크 절감(MB)",
+      "claim": 494,
+      "actual": 494.3,
+      "ok": true,
+      "unitNote": "633.7−139.4"
+    },
+    {
+      "label": "앱 자체(MB)",
+      "claim": 6.8,
+      "actual": 6.78,
+      "ok": true,
+      "unitNote": null
+    },
+    {
+      "label": "코드 인텔리전스(MB)",
+      "claim": 132.6,
+      "actual": 132.59,
+      "ok": true,
+      "unitNote": "node+모듈"
+    },
+    {
+      "label": "창당 2.6.2(MB·WS)",
+      "claim": 110.7,
+      "actual": 110.7,
+      "ok": true,
+      "unitNote": null
+    },
+    {
+      "label": "창당 3.0(MB·WS)",
+      "claim": 19.6,
+      "actual": 19.6,
+      "ok": true,
+      "unitNote": null
+    },
+    {
+      "label": "멀티 유휴 2.6.2(MB·Private)",
+      "claim": 505,
+      "actual": 505.3,
+      "ok": true,
+      "unitNote": null
+    },
+    {
+      "label": "멀티 유휴 3.0(MB·Private)",
+      "claim": 361,
+      "actual": 360.9,
+      "ok": true,
+      "unitNote": null
+    },
+    {
+      "label": "헬퍼 몫(Private 총계의 구성분으로 적힘)",
+      "claim": 115,
+      "actual": 101.6,
+      "ok": false,
+      "unitNote": "WS라면 115.1 · Private이면 101.6"
+    }
+  ],
+  "render": {
+    "ko": {
+      "cardFound": true,
+      "chars": 1391,
+      "bad": {
+        "undefined": false,
+        "NaN": false,
+        "objectObject": false,
+        "gluedKo": [
+          " 엔진(WebView2)을 씁니다. 설치 파일은",
+          "139.4MB(4.5배)가 됐어요 — 디스크에서",
+          "와 그걸 돌리는 런타임)예요. 2.6.2도 같은",
+          "켜진 몫(약 115MB)이 들어 있어요."
+        ],
+        "gluedEn": null
+      },
+      "text": "업데이트 소식\nv3.0.0-beta.1\nREBUILT\n3.0\n3.0\n\n속은 전부 새로 지었습니다 — 화면은 그대로인데 설치 파일이 5배 작아지고, 창을 하나 더 여는 비용이 5분의 1이 됐어요. 코드 분석은 깔자마자 되고, 화면이 죽어도 앱이 스스로 되살아납니다.\n\nv3.0.0\nv2.6.2\nv2.6.1\nv2.6.0\nv2.5.2\n01\n용량\n설치 파일 157.5MB → 30.9MB\n\n앱이 크롬 한 벌을 통째로 안고 다니던 구조를 버리고, 윈도우에 이미 있는 웹 엔진(WebView2)을 씁니다. 설치 파일은 157.5MB → 30.9MB(5.1배), 설치 폴더는 633.7MB → 139.4MB(4.5배)가 됐어요 — 디스크에서 494MB가 사라집니다. 그중 앱 자체는 6.8MB고, 나머지 132.6MB는 코드 인텔리전스(언어 서버와 그걸 돌리는 런타임)예요. 2.6.2도 같은 서버를 안고 다녔으니 같은 것끼리 견준 값입니다.\n\n02\n메모리\n창을 더 열어도 무겁지 않아요\n\n예전엔 추가 채팅·팝아웃 창을 하나 열 때마다 110.7MB와 프로세스 하나가 같이 붙었습니다. 이제 19.6MB · 프로세스 0개예요 — 모든 창이 엔진 하나를 나눠 씁니다. 4패널 멀티를 켜 두고 쉴 때 쓰는 메모리는 505MB → 361MB고, 그 안에는 코드 인텔리전스 서버가 켜진 몫(약 115MB)이 들어 있어요.\n\n03\n안정성\n화면이 죽어도 앱이 살아납니다\n\n웹 화면을 그리는 부분이 죽으면 예전엔 빈 창만 남아 앱을 껐다 켜야 했습니다. 이제 앱이 그 사고를 스스로 감지해 화면만 다시 그립니다 — 실측 0.45초 만에 되돌아오고, 대화도 그대로예요. 창을 여러 개 띄워 둔 상태에서도 죽은 창 하나만 복구됩니다.\n\n04\n속도\n시작이 조금 더 빠릅니다\n\n아이콘을 누르고 첫 창이 뜰 때까지 336ms → 290ms, 실제로 쓸 수 있게 될 때까지 422ms → 373ms(설치본 실측). 시작 화면도 작은 카드가 떴다가 큰 창으로 튀는 대신 창 안에서 그대로 이어집니다.\n\n05\n코드 분석\n깔자마자 색이 칠해집니다\n\nTypeScript·JavaScript·Python은 설치 직후 아무것도 더 깔지 않아도 호버·정의 이동·자동완성이 됩니다 — 언어 서버와 전용 Node 런타임을 앱이 직접 안고 다녀요(그래서 설치 파일이 커졌습니다). 컴퓨터에 Node가 있든 없든, 어디서 앱을 켜든 똑같이 동작해요. C#·C++는 설정 ▸ 코드 분석에서 한 번 누르면 받아집니다.\n\n06\n탐색기\n폴더 우클릭으로 바로 열기\n\n탐색기에서 폴더를 우클릭하면 'AgentCodeGUI3으로 열기'가 뜹니다. 기존 2.6 버전을 지우지 않아도 되도록 아이콘(teal 3 배지)·메뉴 글자·설치 폴더를 전부 따로 뒀어요 — 둘을 나란히 두고 천천히 옮기셔도 됩니다.\n\n닫으면 이 버전 소식은 다시 뜨지 않아요\n시작하기"
+    },
+    "en": {
+      "cardFound": true,
+      "chars": 2501,
+      "bad": {
+        "undefined": false,
+        "NaN": false,
+        "objectObject": false,
+        "gluedKo": null,
+        "gluedEn": [
+          "hat drives them). 2.6.2 shippe",
+          "out 115MB of it).",
+          "installed build). The startup ",
+          " installer grew). It behaves t",
+          "n (teal 3 badge), menu label a"
+        ]
+      },
+      "text": "What's new\nv3.0.0-beta.1\nREBUILT\n3.0\n3.0\n\nEverything under the hood is new — the screens look the same, but the installer is 5× smaller and opening one more window costs a fifth of what it did. Code intelligence works the moment you install, and if the view crashes the app brings itself back.\n\nv3.0.0\nv2.6.2\nv2.6.1\nv2.6.0\nv2.5.2\n01\nSize\nInstaller: 157.5MB → 30.9MB\n\nThe app no longer carries an entire copy of Chrome; it uses the web engine Windows already ships (WebView2). The installer went 157.5MB → 30.9MB (5.1×) and the installed folder 633.7MB → 139.4MB (4.5×) — 494MB given back to your disk. Of what remains, the app itself is 6.8MB; the other 132.6MB is code intelligence (the language servers and the runtime that drives them). 2.6.2 shipped the same servers, so this compares like with like.\n\n02\nMemory\nExtra windows are cheap now\n\nEvery extra chat or pop-out window used to add 110.7MB and a whole process. Now it is 19.6MB and zero extra processes — every window shares one engine. Sitting idle with a 4-panel multi board went from 505MB to 361MB, and that figure includes the code-intelligence servers running (about 115MB of it).\n\n03\nStability\nThe app recovers from a dead view\n\nWhen the part that draws the UI crashed, you used to be left with an empty window and had to restart. The app now detects that and redraws the view by itself — measured at 0.45s, with your conversation intact. With several windows open, only the one that died is recovered.\n\n04\nSpeed\nStarts a little faster\n\nFrom click to first window: 336ms → 290ms, and to actually usable: 422ms → 373ms (measured on the installed build). The startup splash also stays inside the window instead of popping from a small card to a big window.\n\n05\nCode\nSyntax intelligence works out of the box\n\nTypeScript, JavaScript and Python get hover, go-to-definition and completion with nothing else to install — the app now carries the language servers and their own Node runtime (that is why the installer grew). It behaves the same whether or not Node is on your machine, and no matter where you launch the app from. C# and C++ are one click away in Settings ▸ Code analysis.\n\n06\nExplorer\nOpen a folder straight from right-click\n\nRight-click a folder in Explorer and you get \"AgentCodeGUI3으로 열기\". So you never have to uninstall 2.6 first, the icon (teal 3 badge), menu label and install folder are all separate — keep both side by side and move over at your own pace.\n\nOnce closed, this version's news won't show again\nGet started"
+    }
+  },
+  "verdict": {
+    "pass": true,
+    "closed": false,
+    "reason": "중 1건(PN-C1)이 사용자에게 나가는 수라 그 한 칸을 고친 뒤 종결",
+    "치명": 0,
+    "중": 1,
+    "낮음": 2
+  },
+  "remeasure": {
+    "tool": "bench/multi.mjs --tag=critpnI --port=11036 --out=docs/critic/…",
+    "repeats": 2,
+    "exeSha": "71ee824eac0e3949",
+    "launchCwd": "C:\\Users\\User\\AppData\\Local\\ccg-critic-pn-app",
+    "idleGridPrivMB": 354,
+    "idleGridWsMB": 569.4,
+    "wsMBPerWindow": 24.25,
+    "procsAdded": 0,
+    "procs": 8,
+    "helperWs": 120.1,
+    "helperPriv": 101.85,
+    "fps": {
+      "avgFps": 59.9,
+      "p95Ms": 16.8,
+      "worstDroppedPct": 0.3,
+      "zeroDropRuns": 1
+    }
+  },
+  "deployPathSpread": {
+    "note": "배포 경로 3.0 파일들의 창당 WS(LSP 상주 이후)",
+    "values": {
+      "lspdist-instcwd": 19.2,
+      "patchnotes-dist(공시)": 19.6,
+      "lspdist-projcwd": 20,
+      "lspdistr2-instcwd": 20.1,
+      "lspdistr3-projcwd": 21.1,
+      "critic-today(2회·이상치)": 24.25
+    },
+    "idlePrivValues": {
+      "lspdist-instcwd": 363.7,
+      "patchnotes-dist(공시)": 360.9,
+      "lspdistr2-instcwd": 357.6,
+      "lspdistr3-projcwd": 356,
+      "critic-today": 354,
+      "lspdist-projcwd": 353.3
+    }
+  },
+  "docChecks": {
+    "maxVersions": "5 · 무변경",
+    "releaseKeys": [
+      "3.0.0",
+      "2.6.2",
+      "2.6.1",
+      "2.6.0",
+      "2.5.2"
+    ],
+    "versionBump": "없음(package.json·tauri.conf.json 무변경)",
+    "notesPerLang": 6,
+    "notesParallel": true,
+    "decisionsAnnotation": "삽입 인용 블록만 · 본문 수치 무접촉(diff 확인)",
+    "frozenDenomsVerified": {
+      "712.8": "idleGrid.totalWsMB",
+      "505.3": "idleGrid.totalPrivMB",
+      "110.7": "windowCost.wsMBPerWindow",
+      "4패널": "panels=4"
+    }
+  },
+  "commitBoundary": {
+    "patchnotesFiles": 5,
+    "hosti18nFiles": 13,
+    "intersection": 0
+  },
+  "defects": [
+    {
+      "id": "PN-C1",
+      "grade": "중",
+      "what": "헬퍼 몫 115MB가 열이 틀렸다 — Private 총계(360.9)의 구성분으로 적었는데 115.1은 WS 열이고 Private 열은 101.6이다",
+      "where": [
+        "app/src/components/PatchNotes.tsx 3.0.0 ko 02 메모리",
+        "같은 파일 en 02 Memory",
+        "docs/parity-fix-patchnotes-r1.md §3 표 · §3.1"
+      ],
+      "impact": "사용자가 읽는 앱 자체 몫이 361-115=246으로 보이지만 실제는 361-101.6=259.4 — 13% 과대",
+      "fix": "115 -> 약 102(또는 열을 밝혀 「WS 기준 115MB」로 표기)"
+    },
+    {
+      "id": "PN-L1",
+      "grade": "낮음",
+      "what": "보고서 §3 표의 2.6.2 파일 수 8,141이 R1 크리틱 L3에서 8,139로 정정된 값을 되살렸다",
+      "measured": "내 실측 8,139(2.6.2) / 5,428+uninstall=5,429(3.0)",
+      "impact": "패치노트에서는 그 행을 뺐으므로 사용자에게 안 나간다 — 장부만의 흠"
+    },
+    {
+      "id": "PN-L2",
+      "grade": "낮음",
+      "what": "창당 19.6MB의 소수점 한 자리가 재현 폭보다 정밀하다",
+      "measured": "배포 경로 3회 주행 5개 파일 19.2~21.1 · 내 2회 주행 24.25(이상치)",
+      "impact": "공시값은 군집 안이라 틀리지 않는다. 결론(110.7 -> 약 20MB · 프로세스 0)도 안 바뀐다"
+    }
+  ],
+  "observations": [
+    "505.3(박제 8/22 세션) ↔ 360.9(오늘 세션)은 교차 세션 짝이다. decisions ★해소 주석이 「분모는 박제값을 썼고 §1.4-b 단서를 그대로 진다」로 명시해 은폐는 아니다. 다만 같은 라운드에서 시작 시간은 짝을 이유로 안 고쳤는데 메모리는 분모를 둔 채 분자만 갈았고, 그 비대칭의 근거는 보고서에 없다(startup은 짝이 맞았고 memory는 원래 안 맞았다는 차이로 정당화는 된다).",
+    "패치노트는 단위를 안 밝힌다 — 110.7/19.6은 WS, 505/361은 Private이 한 문단에 같은 모양으로 나온다. 사용자용 문서로는 허용 범위지만 PN-C1이 생긴 자리가 정확히 그 지점이다."
+  ]
+}
