@@ -67,7 +67,7 @@ const RELEASES: Record<string, LocalizedRelease> = {
               예전엔 추가 채팅·팝아웃 창을 하나 열 때마다 <b>110.7MB와 프로세스 하나</b>가
               같이 붙었습니다. 이제 <b>19.6MB · 프로세스 0개</b>예요 — 모든 창이 엔진 하나를
               나눠 씁니다. 4패널 멀티를 켜 두고 쉴 때 쓰는 메모리는 <b>505MB → 361MB</b>고,
-              그 안에는 <b>코드 인텔리전스 서버가 켜진 몫(약 115MB)</b>이 들어 있어요.
+              그 안에는 <b>코드 인텔리전스 서버가 켜진 몫(약 102MB)</b>이 들어 있어요.
             </>
           )
         },
@@ -146,7 +146,7 @@ const RELEASES: Record<string, LocalizedRelease> = {
               Every extra chat or pop-out window used to add <b>110.7MB and a whole process</b>.
               Now it is <b>19.6MB and zero extra processes</b> — every window shares one engine.
               Sitting idle with a 4-panel multi board went from <b>505MB to 361MB</b>, and that
-              figure <b>includes the code-intelligence servers running</b> (about 115MB of it).
+              figure <b>includes the code-intelligence servers running</b> (about 102MB of it).
             </>
           )
         },
