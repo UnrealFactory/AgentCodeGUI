@@ -47,11 +47,25 @@ impl Drop for DialogGuard {
     }
 }
 
+/// 폴더 선택 창의 제목. 2.6.2 `src/main/index.ts:1339`에서 **글자 그대로** 옮겼다.
+///
+/// ★HOSTI18N R1 — 초판은 이 제목이 **아예 없었다**. 문구가 한국어로 굳은 게 아니라
+/// 2.6.2가 주던 제목을 통째로 잃어서 OS 기본 제목이 떴다(확인 크리틱 R1 §4.2-2).
+/// `const`가 아니라 `fn`인 이유는 `ipc/parity/dialog.rs`의 `labels()`와 같다 —
+/// 호출 시점 평가라야 설정에서 바꾼 언어가 다음 창부터 따라온다.
+pub(crate) fn pick_directory_title() -> String {
+    ccg_fs::t("작업할 프로젝트 폴더 선택", "Choose a project folder to work in")
+}
+
 fn pick_directory(app: &AppHandle) -> Value {
     use tauri_plugin_dialog::DialogExt;
     let (tx, rx) = std::sync::mpsc::channel();
     let guard = DialogGuard::new();
-    app.dialog().file().pick_folder(move |p| {
+    // 부모 창은 **여전히 못 건다** — `tauri-plugin-dialog`의 `pick_folder`에 부모 지정이
+    // 없다(rfd `set_parent` 미노출). `pick_attachments`와 같은 제약이고, 그쪽처럼
+    // 고아 대화상자는 아래 `close_orphan_dialogs`가 거둔다. 2.6.2는 부모를 걸 수 있었다
+    // (`BrowserWindow.fromWebContents`) — 그 차이는 장부에 남겼다(HOSTI18N R1 보고서).
+    app.dialog().file().set_title(pick_directory_title()).pick_folder(move |p| {
         let _ = tx.send(p);
     });
     let r = rx.recv();
@@ -192,4 +206,272 @@ pub(super) fn list_codex_accounts() -> Value {
         })
         .collect();
     json!(out)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ★HOSTI18N R1 — 호스트 문구가 `ui.lang`을 따르는가
+//
+// 확인 크리틱 R1·R2가 두 라운드 연속 「남은 최대 격차」로 지목한 §3.4-A의 **실물 세 자리**를
+// 이 라운드가 닫았다. 못은 SMALL3(`ipc/parity/dialog.rs`)에서 세운 문법을 그대로 쓴다:
+//
+//   ① 격리 홈 실측 — 언어마다 **자식 프로세스**를 띄운다. `ccg_fs::t`의 언어 판정은 2초
+//      TTL의 프로세스 전역 캐시라 한 프로세스에서 두 언어를 볼 수 없다.
+//   ② 동결 원문 대조 — en을 우리가 지어내지 않았음을 `src/main/index.ts`에서 읽어 증명한다.
+//   ③ 소스 훑기 — 셸이 사용자에게 보내는 `error` 필드에 생 한국어가 다시 안 생기게.
+//
+// 문구가 네 모듈(`ipc/lsp.rs`·`ipc/system.rs`·`win.rs`·`popout.rs`)에 흩어져 있어 각자
+// 못을 두면 자식 프로세스가 넷이 된다. 그래서 **여기 한 곳**에 모으고 각 함수를
+// `pub(crate)`로 열었다.
+#[cfg(test)]
+mod hosti18n_tests {
+    use std::path::{Path, PathBuf};
+
+    const CHILD_ENV: &str = "CCG_HOSTI18N_CHILD";
+    const CHILD_TEST: &str = "ipc::system::hosti18n_tests::child_prints_the_host_strings";
+    const MARK: &str = "HOSTI18N>";
+
+    /// 이 라운드가 닫은 자리 전부. `필드=문구`로 찍어 **순서에 안 기댄다**
+    /// (SMALL3 R3가 배운 것 — 위치 대응은 못 안에도 만들지 않는다).
+    fn sites() -> Vec<(&'static str, String)> {
+        vec![
+            ("verse", crate::ipc::lsp::verse_out_of_scope()),
+            ("pickdir", super::pick_directory_title()),
+            ("win_chat", crate::win::session_window_title(false)),
+            ("win_btw", crate::win::session_window_title(true)),
+            ("panel", crate::win::popout::panel_window_title()),
+        ]
+    }
+
+    /// 자식 역할 — `CHILD_ENV`가 있을 때만 일한다.
+    #[test]
+    #[ignore = "부모(the_host_strings_follow_ui_lang)가 격리 홈과 함께 직접 띄운다"]
+    fn child_prints_the_host_strings() {
+        if std::env::var(CHILD_ENV).is_err() {
+            return;
+        }
+        let line: Vec<String> = sites().into_iter().map(|(k, v)| format!("{k}={v}")).collect();
+        println!("{MARK}{}", line.join("\t"));
+    }
+
+    /// `ui.lang` 하나만 든 격리 홈에서 자식을 돌려 `필드=문구`를 받아 온다.
+    /// 사용자 실홈은 읽지도 복사하지도 않는다 — `%TEMP%`에 새로 만들고 지운다.
+    fn sites_under(tag: &str, lang: Option<&str>) -> Vec<(String, String)> {
+        let home = std::env::temp_dir().join(format!(
+            "ccg-hosti18n-{tag}-{}-{:?}",
+            std::process::id(),
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0)
+        ));
+        std::fs::create_dir_all(&home).expect("격리 홈을 못 만들었다");
+        if let Some(l) = lang {
+            std::fs::write(home.join("ui-prefs.json"), format!("{{\"ui.lang\":\"{l}\"}}"))
+                .expect("ui-prefs.json을 못 썼다");
+        }
+        let out = std::process::Command::new(std::env::current_exe().expect("테스트 바이너리"))
+            .args(["--exact", CHILD_TEST, "--nocapture", "--include-ignored"])
+            .env(CHILD_ENV, "1")
+            .env("CCG_HOME", &home)
+            .output()
+            .expect("자식 프로세스를 못 띄웠다");
+        let _ = std::fs::remove_dir_all(&home);
+        let text = String::from_utf8_lossy(&out.stdout).into_owned();
+        let line = text
+            .lines()
+            .find_map(|l| l.strip_prefix(MARK))
+            .unwrap_or_else(|| panic!("자식이 문구를 안 찍었다 ({tag}):\n{text}"));
+        line.split('\t')
+            .map(|kv| {
+                let (k, v) = kv.split_once('=').unwrap_or_else(|| panic!("이름표가 없다: {kv}"));
+                (k.to_string(), v.to_string())
+            })
+            .collect()
+    }
+
+    fn expect_pairs(words: [&str; 5]) -> Vec<(String, String)> {
+        ["verse", "pickdir", "win_chat", "win_btw", "panel"]
+            .iter()
+            .zip(words)
+            .map(|(k, w)| (k.to_string(), w.to_string()))
+            .collect()
+    }
+
+    /// 못 ① — 다섯 자리가 전부 `ui.lang`을 따른다(격리 홈 실측).
+    ///
+    /// 크리틱이 지목한 증상이 여기다: en 사용자가 「Verse 서버 지정」을 누르면 한국어
+    /// 한 문장을 받고, 둘째 채팅 창은 제목 표시줄이 한국어였다.
+    #[test]
+    fn the_host_strings_follow_ui_lang() {
+        let ko = expect_pairs([
+            "Verse 서버 지정은 3.0에서 아직 제공하지 않아요",
+            "작업할 프로젝트 폴더 선택",
+            "추가 채팅 — AgentCodeGUI",
+            "btw 질문 — AgentCodeGUI",
+            "패널 — AgentCodeGUI",
+        ]);
+        let en = expect_pairs([
+            "Setting a Verse server isn't available in 3.0 yet",
+            "Choose a project folder to work in",
+            "Extra chat — AgentCodeGUI",
+            "btw question — AgentCodeGUI",
+            "Panel — AgentCodeGUI",
+        ]);
+        assert_eq!(sites_under("en", Some("en")), en, "★ui.lang=en인데 영어가 아니다");
+        assert_eq!(sites_under("ko", Some("ko")), ko, "ui.lang=ko가 한국어가 아니다");
+        // 무변 확인 — 언어를 한 번도 안 고른 홈은 예전과 같이 한국어다.
+        assert_eq!(sites_under("default", None), ko, "기본(설정 없음)이 한국어가 아니다");
+    }
+
+    fn repo(rel: &str) -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR")).join(rel)
+    }
+
+    /// 못 ② — **en을 우리가 지어내지 않았다.** 동결 구역 `src/main/index.ts`에서 읽어 대조한다.
+    ///
+    /// 넷은 2.6.2에 원문이 있고(폴더 선택 제목 · 창 제목 셋), `verse`만 **3.0 전용**이라
+    /// 대조할 원문이 없다. 그 사실 자체를 여기 적어 둔다 — 나중에 누가 "왜 verse만
+    /// 빠졌나"를 다시 묻지 않도록.
+    #[test]
+    fn the_en_strings_came_from_the_frozen_262_source() {
+        let ts = std::fs::read_to_string(repo("../src/main/index.ts")).expect("동결 원문을 못 읽었다");
+        // ★en을 **우리 소스에서 읽어** 2.6.2와 맞춘다.
+        //
+        // 초판은 기대값 넷을 이 못 안에 적어 두고 "2.6.2에 그게 있나"만 봤다. 그러면
+        // 우리 쪽 en이 표류해도 안 걸린다 — 실제로 변이 H4(`Choose a project folder to
+        // work in` → `Choose a folder`)에서 이 못이 **조용히 통과**했다(실측 못만 붉었다).
+        // SMALL3 R3가 배운 것과 같은 함정이다: 기대값을 못 안에 두면 문구와 기대값을
+        // 같이 바꾸는 손을 못 막는다. 그래서 **양쪽 다 파일에서 읽어** 대조한다.
+        for (rel, ko) in [
+            ("src/ipc/system.rs", "작업할 프로젝트 폴더 선택"),
+            ("src/win.rs", "추가 채팅 — AgentCodeGUI"),
+            ("src/win.rs", "btw 질문 — AgentCodeGUI"),
+            ("src/popout.rs", "패널 — AgentCodeGUI"),
+        ] {
+            let ours = std::fs::read_to_string(repo(rel)).unwrap_or_else(|e| panic!("{rel}: {e}"));
+            let needle = format!("ccg_fs::t(\"{ko}\", \"");
+            let at = ours
+                .find(&needle)
+                .unwrap_or_else(|| panic!("★`{rel}`에 `ccg_fs::t(\"{ko}\", …)`가 없다"));
+            let rest = &ours[at + needle.len()..];
+            let en = &rest[..rest.find('"').expect("en 인자가 안 닫혔다")];
+            let want = format!("t('{ko}', '{en}')");
+            assert!(
+                ts.contains(&want),
+                "★우리 en(`{en}`)이 2.6.2 원문과 다르다 — `{rel}`의 `{ko}`.\n\
+                 2.6.2 `src/main/index.ts`에 `{want}`가 없다(표류했거나 지어냈다)."
+            );
+        }
+        // verse만 3.0 전용이다(2.6.2에는 Verse 지정이 실재하므로 대응 문구가 없다).
+        assert!(
+            !ts.contains("Verse 서버 지정은 3.0에서"),
+            "2.6.2에 이 문구가 생겼다면 거기서 옮겨 와야 한다(지금은 3.0 전용이라 우리가 정했다)"
+        );
+    }
+
+    /// 못 ③ — 셸이 사용자에게 보내는 **`error` 필드에 생 한국어 리터럴이 없다.**
+    ///
+    /// 이 라운드가 닫은 부류의 재발을 막는 그물이다. 렌더러는 `r.error ?? t(…)` 꼴로
+    /// 받으므로 **셸이 문자열을 실어 보내는 순간 번역문은 폴백으로 밀린다** — 즉 셸이
+    /// 한국어를 보내면 en 사용자가 한국어를 본다. `src-tauri/src` 전체를 훑는다.
+    ///
+    /// 경계: `crates/` 아래는 안 본다(`ccg-lsp`는 옆 갈래 소유, `ccg-store`의 마이그레이션
+    /// 리포트는 성격이 다르다 — 보고서의 이월 절에 적었다).
+    #[test]
+    fn the_shell_never_sends_a_raw_korean_error_to_the_renderer() {
+        fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
+            let Ok(rd) = std::fs::read_dir(dir) else { return };
+            for e in rd.flatten() {
+                let p = e.path();
+                if p.is_dir() {
+                    walk(&p, out);
+                } else if p.extension().is_some_and(|x| x == "rs") {
+                    out.push(p);
+                }
+            }
+        }
+        let mut files = Vec::new();
+        walk(&repo("src"), &mut files);
+        assert!(files.len() > 20, "훑기가 파일을 거의 못 찾았다({}개)", files.len());
+
+        let mut bad = Vec::new();
+        for f in &files {
+            let Ok(src) = std::fs::read_to_string(f) else { continue };
+            // **제품 구역만** 본다. `#[cfg(test)]` 뒤의 assert 메시지에는 한국어가 정상이고
+            // (`"이유 없는 실패는 침묵이다"` 같은 것), 기대값 리터럴도 한국어가 맞다.
+            let prod = src.find("#[cfg(test)]").map(|i| &src[..i]).unwrap_or(src.as_str());
+            for (i, line) in prod.lines().enumerate() {
+                if line.trim_start().starts_with("//") {
+                    continue; // 주석은 한국어가 정상이다
+                }
+                let Some(at) = line.find("\"error\"") else { continue };
+                let rest = &line[at + 7..];
+                // **`ccg_fs::t(`로 감쌌으면 통과** — 그게 이 라운드의 처방이다.
+                // (감싼 줄에도 ko 인자가 한국어로 남아 있으므로 이 면제가 없으면
+                //  고친 자리가 그대로 다시 걸린다 — 실제로 초판이 그랬다.)
+                if rest.contains("ccg_fs::t(") {
+                    continue;
+                }
+                // `"error": "…한국어…"` — 따옴표 안에 한글이 든 생 리터럴.
+                let Some(q) = rest.find('"') else { continue };
+                let after = &rest[q + 1..];
+                let Some(end) = after.find('"') else { continue };
+                if after[..end].chars().any(|c| ('가'..='힣').contains(&c)) {
+                    bad.push(format!("{}:{}  {}", f.display(), i + 1, line.trim()));
+                }
+            }
+        }
+        assert!(
+            bad.is_empty(),
+            "★셸이 렌더러로 생 한국어 `error`를 보낸다({}건) — `ccg_fs::t(ko, en)`으로 감싸라.\n렌더러는 `r.error ?? t(…)`라 셸 문자열이 번역문을 이긴다:\n{}",
+            bad.len(),
+            bad.join("\n")
+        );
+    }
+
+    /// 못 ④ — **호출부가 정말 그 헬퍼를 쓰는가**(배선).
+    ///
+    /// ★SMALL3 R2의 D2가 가르친 것을 그대로 옮긴 자리다. 못 ①은 헬퍼를 **직접** 부르므로
+    /// 헬퍼만 멀쩡하면 초록이다 — 즉 `set_title(...)` 한 줄을 지우거나 `.title(...)`을
+    /// 리터럴로 되돌려도 ①은 아무 말도 안 한다(그때 제품은 다시 깨져 있다).
+    /// 그래서 **호출부를 소스로 재는** 못을 따로 둔다.
+    #[test]
+    fn the_call_sites_use_the_translated_helpers() {
+        // (파일, 제품 구역에 반드시 있어야 하는 배선, 사람이 읽을 이름)
+        for (rel, wiring, what) in [
+            ("src/ipc/lsp.rs", "\"error\": verse_out_of_scope()", "Verse 지정 버튼의 사유"),
+            ("src/ipc/lsp.rs", "\"error\": ccg_fs::t(", "설치 대상 없음 사유"),
+            ("src/ipc/system.rs", ".set_title(pick_directory_title())", "폴더 선택 창 제목"),
+            ("src/win.rs", ".title(session_window_title(", "둘째 채팅 창 제목"),
+            ("src/popout.rs", ".title(panel_window_title())", "패널 창 제목"),
+        ] {
+            let src = std::fs::read_to_string(repo(rel)).unwrap_or_else(|e| panic!("{rel}: {e}"));
+            let prod = src.find("#[cfg(test)]").map(|i| &src[..i]).unwrap_or(src.as_str());
+            assert!(
+                prod.contains(wiring),
+                "★{what}의 배선이 사라졌다 — `{rel}`에 `{wiring}`가 없다.\n\
+                 헬퍼만 멀쩡하고 호출부가 우회하면 못 ①은 초록인 채 제품이 깨진다(SMALL3 R2 D2)."
+            );
+        }
+
+        // 문구의 출처가 하나인가 — 헬퍼 밖에 같은 한국어가 되살아나면 잡는다.
+        for (rel, helper, ko) in [
+            ("src/win.rs", "pub(crate) fn session_window_title", "추가 채팅 — AgentCodeGUI"),
+            ("src/popout.rs", "pub(crate) fn panel_window_title", "패널 — AgentCodeGUI"),
+            ("src/ipc/system.rs", "pub(crate) fn pick_directory_title", "작업할 프로젝트 폴더 선택"),
+        ] {
+            let src = std::fs::read_to_string(repo(rel)).unwrap_or_else(|e| panic!("{rel}: {e}"));
+            let prod = src.find("#[cfg(test)]").map(|i| &src[..i]).unwrap_or(src.as_str());
+            // 주석을 걷고(주석에는 문구를 인용해도 된다) 헬퍼 본문 구간을 도려낸 나머지.
+            let bare: String = prod
+                .lines()
+                .filter(|l| !l.trim_start().starts_with("//"))
+                .collect::<Vec<_>>()
+                .join("\n");
+            let at = bare.find(helper).unwrap_or_else(|| panic!("{rel}: `{helper}`가 없다"));
+            let end = bare[at..].find("\n}").map(|e| at + e).unwrap_or(bare.len());
+            let outside = format!("{}{}", &bare[..at], &bare[end..]);
+            assert!(
+                !outside.contains(ko),
+                "★`{ko}`가 `{rel}`의 헬퍼 밖에 있다 — 문구의 출처가 둘이 됐다(SMALL3 R3의 검사 ③)"
+            );
+        }
+    }
 }

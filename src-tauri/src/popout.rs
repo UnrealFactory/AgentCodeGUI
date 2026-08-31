@@ -63,6 +63,14 @@ static CLOSING: Mutex<Option<HashSet<String>>> = Mutex::new(None);
 /// 지금까지 나간 "닫기 전 마지막 저장" 요청 수 — 하네스가 규약이 실제로 도는지 읽는다.
 static FLUSH_REQS: AtomicI64 = AtomicI64::new(0);
 
+/// 팝아웃 패널 창의 **제목 표시줄** 문구. 2.6.2 `src/main/index.ts:695`에서 글자 그대로.
+///
+/// ★HOSTI18N R1 — `win.rs`의 둘째 채팅 창 제목과 **같은 부류**다(확인 크리틱 R1 §4.2-3이
+/// "`popout.rs:140`도 같다"고 짚었다). 같은 라운드에서 같은 처방으로 닫는다.
+pub(crate) fn panel_window_title() -> String {
+    ccg_fs::t("패널 — AgentCodeGUI", "Panel — AgentCodeGUI")
+}
+
 fn with_map<T>(m: &Mutex<Option<HashMap<String, Value>>>, f: impl FnOnce(&mut HashMap<String, Value>) -> T) -> T {
     let mut g = m.lock().unwrap_or_else(|e| e.into_inner());
     f(g.get_or_insert_with(HashMap::new))
@@ -137,7 +145,7 @@ pub fn open(app: &AppHandle, state: &Value) -> Result<String, String> {
         WebviewWindowBuilder::new(app, &label, WebviewUrl::App("index.html#mapanel".into())),
         &label,
     )
-    .title("패널 — AgentCodeGUI")
+    .title(panel_window_title())
     .initialization_script(&super::boot_payload_script())
     .inner_size(1100.0, 820.0)
     .min_inner_size(560.0, 480.0)

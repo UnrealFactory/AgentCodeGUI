@@ -55,7 +55,8 @@ pub fn dispatch(app: &AppHandle, channel: &str, p: &Value) -> Option<Value> {
         ch::INSTALL => {
             let version = arg(p, 0).as_str().unwrap_or("").to_string();
             if version.is_empty() {
-                return Some(json!({ "ok": false, "error": "버전이 비어 있어요" }));
+                // ★HOSTI18N R1 — 셸이 고정 한국어로 답하던 자리(렌더러 `?? t(…)`가 진다).
+                return Some(json!({ "ok": false, "error": ccg_fs::t("버전이 비어 있어요", "The version is empty") }));
             }
             let app2 = app.clone();
             let v2 = version.clone();

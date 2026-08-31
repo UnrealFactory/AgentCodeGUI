@@ -157,7 +157,25 @@ const LSP_CLEAR_VERSE_PATH: &str = "lsp:clear-verse-path";
 /// 조회 셋(`verse-registry`·`digests`·`excludes`)은 「없는 게 정상」이라 그냥 빈 값이지만
 /// (아래 dispatch), **사용자가 누른 버튼**은 아무 말 없이 끝나면 안 된다 —
 /// ★R28f SHIPBLOCK R2 · 확인 크리틱 「요구 3의 뒷절반」.
-const VERSE_OUT_OF_SCOPE: &str = "Verse 서버 지정은 3.0에서 아직 제공하지 않아요";
+///
+/// ★HOSTI18N R1 — **`const`에서 함수로.** 초판은 한국어 리터럴 상수였고, 그 값이
+/// `:319-320`에서 렌더러로 나가는 `error` 필드에 그대로 실렸다. 렌더러는
+/// `app/src/components/Settings.tsx`에서 `r.error ?? t('요청이 실패했어요…', 'The request
+/// failed…')` 꼴로 받는다 — 즉 **번역문은 폴백일 뿐이고 화면에 실제로 앉는 값은 셸이
+/// 준 한국어**였다. 화면 쪽 i18n이 멀쩡한데 호스트 한 줄이 그것을 덮는 구조다.
+///
+/// `const`가 아니라 `fn`인 것이 규약이다 — 상수였다면 프로세스 첫 언어로 박제된다
+/// (모듈 스코프 `t()` 금지). 여기서 호출 시점에 평가되므로 설정을 바꾸면 다음 답부터 따라온다.
+///
+/// 이 문구는 **3.0 전용**이라 2.6.2에 대응 원문이 없다(2.6.2에는 Verse 지정이 실재한다).
+/// 그래서 en은 옮겨 온 것이 아니라 **여기서 정한 것**이고, 동결 원문 대조 못이 없는
+/// 유일한 자리다(§보고서). ko는 초판 문자열을 **한 글자도 안 바꿨다**.
+pub(crate) fn verse_out_of_scope() -> String {
+    ccg_fs::t(
+        "Verse 서버 지정은 3.0에서 아직 제공하지 않아요",
+        "Setting a Verse server isn't available in 3.0 yet",
+    )
+}
 
 /// 내려받는 동안 진행률을 흘린다(계약면 `LspInstallProgress`) — §R3-9 ②.
 ///
@@ -207,7 +225,7 @@ pub fn owns(channel: &str) -> bool {
             | ch::LSP_VERSE_REGISTRY
             | ch::LSP_VERSE_DIGESTS
             | ch::LSP_VERSE_EXCLUDES
-            // ★R28f SHIPBLOCK R2 — 「범위 밖」도 **여기서** 답한다(아래 VERSE_OUT_OF_SCOPE).
+            // ★R28f SHIPBLOCK R2 — 「범위 밖」도 **여기서** 답한다(아래 verse_out_of_scope()).
             | LSP_PICK_VERSE_SERVER
             | LSP_SET_VERSE_PATH
             | LSP_CLEAR_VERSE_PATH
@@ -297,7 +315,12 @@ pub fn dispatch(channel: &str, p: &Value) -> Option<Value> {
         // 뷰어의 "설치할까요?" — 파일 경로로 어느 서버인지 정한다
         LSP_INSTALL => match ccg_lsp::server_id_for_file(s(a, "cwd"), s(a, "relPath")) {
             Some(id) => install_streaming(&id),
-            None => json!({ "ok": false, "error": "이 파일 형식을 맡는 서버가 없어요" }),
+            // ★HOSTI18N R1 — VERSE와 **같은 부류**(사용자가 누른 버튼에 셸이 고정 한국어로
+            // 답하고 렌더러의 `?? t(…)` 폴백이 그것에 진다). 같은 라운드에서 같이 닫는다.
+            None => json!({
+                "ok": false,
+                "error": ccg_fs::t("이 파일 형식을 맡는 서버가 없어요", "No language server handles this file type"),
+            }),
         },
 
         // Verse는 3.0 범위에서 제외(사용자 결정) — 렌더러가 부르긴 하므로 **안전값**을
@@ -316,8 +339,8 @@ pub fn dispatch(channel: &str, p: &Value) -> Option<Value> {
         //
         // Verse가 3.0 범위 밖이라는 결정은 그대로다(사용자 결정) — 바뀌는 것은 **그 사실을
         // 화면이 말하는가**뿐이다. 그래서 구현이 아니라 **사유**를 돌려준다.
-        LSP_PICK_VERSE_SERVER => json!({ "error": VERSE_OUT_OF_SCOPE }),
-        LSP_SET_VERSE_PATH => json!({ "ok": false, "error": VERSE_OUT_OF_SCOPE }),
+        LSP_PICK_VERSE_SERVER => json!({ "error": verse_out_of_scope() }),
+        LSP_SET_VERSE_PATH => json!({ "ok": false, "error": verse_out_of_scope() }),
         // 「지우기」는 지울 것이 없으면 **이미 목표 상태**다 — 실패가 아니다(위 둘과 달리
         // 사용자가 원한 결과가 그대로 성립한다). 여기서 거짓 실패를 세우면 화면이 안 지워진
         // 경로를 지웠다고 말하는 것보다 더 헷갈린다.
@@ -342,12 +365,12 @@ mod tests {
             assert!(owns(c), "{c} — 디스패처까지 흘러가면 다시 __unimplemented다");
         }
         let pick = dispatch_pure(LSP_PICK_VERSE_SERVER).expect("답이 있다");
-        assert_eq!(pick["error"], json!(VERSE_OUT_OF_SCOPE));
+        assert_eq!(pick["error"], json!(verse_out_of_scope()));
         assert!(!pick.is_string() && !pick.is_null(), "★문자열/null이면 심이 「취소」로 읽는다");
 
         let set = dispatch_pure(LSP_SET_VERSE_PATH).expect("답이 있다");
         assert_eq!(set["ok"], json!(false));
-        assert_eq!(set["error"], json!(VERSE_OUT_OF_SCOPE));
+        assert_eq!(set["error"], json!(verse_out_of_scope()));
 
         // 지울 것이 없으면 이미 목표 상태다 — 거짓 실패를 세우지 않는다.
         assert_eq!(dispatch_pure(LSP_CLEAR_VERSE_PATH).expect("답이 있다")["ok"], json!(true));

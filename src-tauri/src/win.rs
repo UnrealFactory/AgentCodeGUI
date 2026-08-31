@@ -354,6 +354,23 @@ pub fn open_session_window(app: &AppHandle) -> tauri::Result<()> {
     open_session_window_for(app, None).map(|_| ())
 }
 
+/// 둘째 채팅 창의 **제목 표시줄** 문구. 2.6.2 `src/main/index.ts:553-554`에서 글자 그대로.
+///
+/// ★HOSTI18N R1 — 초판은 한국어 리터럴 둘을 `t()` 없이 걸어서, `ui.lang=en` 사용자의
+/// 둘째 채팅 창은 **제목 표시줄만 한국어**였다(확인 크리틱 R1 §4.2-3). 작업 표시줄에도
+/// 그 문구가 뜨므로 en 사용자에게는 앱 밖에서까지 보이는 자리다.
+///
+/// **알아 둘 성질**: 제목은 창을 만들 때 한 번 정해진다 — 이미 열린 창은 언어를 바꿔도
+/// 그대로다. 2.6.2도 같다(생성 시 `t()`). 파리티가 어긋난 게 아니라 **둘 다 같은 성질**이라
+/// 그대로 뒀다.
+pub(crate) fn session_window_title(is_btw: bool) -> String {
+    if is_btw {
+        ccg_fs::t("btw 질문 — AgentCodeGUI", "btw question — AgentCodeGUI")
+    } else {
+        ccg_fs::t("추가 채팅 — AgentCodeGUI", "Extra chat — AgentCodeGUI")
+    }
+}
+
 /// 창 하나를 띄운다. `chat`이 있으면 **그 영속 채팅을 여는 창**이고(사이드바에서
 /// 닫힌 추가 채팅을 클릭한 경로), 없으면 새 채팅 id를 발급한다.
 /// 반환값은 만들어진 **창 라벨**(`win:chat-open`이 자리 정보를 돌려줘야 한다).
@@ -387,7 +404,7 @@ pub fn open_session_window_for(app: &AppHandle, chat: Option<&str>) -> tauri::Re
         WebviewWindowBuilder::new(app, &label, WebviewUrl::App("index.html#session".into())),
         &label,
     )
-    .title(if btw_of.is_some() { "btw 질문 — AgentCodeGUI" } else { "추가 채팅 — AgentCodeGUI" })
+    .title(session_window_title(btw_of.is_some()))
     // 추가 채팅 창도 같은 번들·같은 loadPrefs 경로를 탄다 — 왕복을 똑같이 없앤다.
     .initialization_script(&boot_payload_script())
     // 추가 채팅 창에도 뷰어(FileModal)가 뜬다 — Ctrl+W는 그 창에서도 살아야 한다.
