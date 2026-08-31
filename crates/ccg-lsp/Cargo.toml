@@ -21,6 +21,10 @@ serde_json = { workspace = true }
 # 앱 홈(`~/.agentcodegui`) 경로 — 토큰 디스크 캐시와 내려받은 서버 바이너리가 사는 곳.
 # 2.6.2가 쓰던 그 자리(`<home>/lsp/semcache`, `<home>/lsp/bin`)를 그대로 쓴다.
 ccg-store = { path = "../ccg-store" }
+# 표시 언어(`ui.lang`)를 읽어 사용자에게 닿는 문구를 ko/en으로 고른다 — HOSTI18N의 `t(ko, en)`.
+# 스토어를 두 벌 두지 않으려고 그 크레이트가 이미 들고 있는 것을 그대로 쓴다(순환 없음:
+# ccg-fs → ccg-store 만 본다).
+ccg-fs = { path = "../ccg-fs" }
 
 [target.'cfg(windows)'.dependencies]
 # Win32_System_JobObjects: 스폰한 언어 서버를 **KILL_ON_JOB_CLOSE 잡**에 넣는다.

@@ -313,7 +313,14 @@ pub fn uninstall(id: &str) -> Result<(), String> {
         }
         std::thread::sleep(std::time::Duration::from_millis(250 * (i + 1)));
     }
-    Err("파일이 아직 사용 중이에요. 잠시 후 다시 시도하거나 앱을 재시작해 주세요.".into())
+    // ★마감(HOSTI18N 이월분) — 사용자가 설정 ▸ 코드 분석에서 「제거」를 눌렀을 때 보는 문구다.
+    // **en은 2.6.2 원문 그대로**다(`src/main/lsp/install.ts:195`의 `t(...)` 둘째 인자를 바이트
+    // 그대로 옮겼다) — 이 자리는 3.0 전용이 아니라 **대응 원문이 있는 쌍**이라 지어낼 필요가
+    // 없었다. 동결 구역이 답을 갖고 있으면 그쪽이 언제나 옳다.
+    Err(ccg_fs::t(
+        "파일이 아직 사용 중이에요. 잠시 후 다시 시도하거나 앱을 재시작해 주세요.",
+        "Files are still in use. Try again in a moment or restart the app.",
+    ))
 }
 
 #[cfg(test)]

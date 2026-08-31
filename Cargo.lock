@@ -374,6 +374,7 @@ dependencies = [
 name = "ccg-lsp"
 version = "3.0.0-beta.1"
 dependencies = [
+ "ccg-fs",
  "ccg-store",
  "serde",
  "serde_json",
