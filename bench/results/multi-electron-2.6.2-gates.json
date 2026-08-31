@@ -1,0 +1,859 @@
+{
+  "app": "electron-2.6.2",
+  "arm": "default",
+  "bin": {
+    "exe": "C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe",
+    "exeMtime": "1979-12-31T15:00:00.000Z",
+    "exeSize": 223950848,
+    "exeSha256": "4e3b585c8cbbc45a",
+    "gitHead": "01d6210",
+    "gitDirty": true
+  },
+  "armEnv": {
+    "CCG_HOME": "C:\\Code\\AgentCodeGUI\\.bench-home-gates"
+  },
+  "launchCwd": "C:\\Code\\AgentCodeGUI",
+  "panels": 4,
+  "repeats": 3,
+  "env": {
+    "ramGB": 63.8,
+    "cpu": "13th Gen Intel(R) Core(TM) i7-13700KF",
+    "os": "Microsoft Windows 11 Home 26200"
+  },
+  "summary": {
+    "idleGridWsMB": 721.2,
+    "idleGridPrivMB": 507.4,
+    "idleGridProcs": 7,
+    "idleWithWindowsWsMB": 940.3,
+    "idleWithWindowsPrivMB": 559.6,
+    "wsMBPerWindow": 109.5,
+    "procsAdded": 2,
+    "scrollInPanel": {
+      "avgFps": 60,
+      "p95Ms": 16.8,
+      "worstDroppedPct": 0,
+      "zeroDropRuns": 3
+    },
+    "scrollAllPanels": {
+      "avgFps": 60,
+      "p95Ms": 16.8,
+      "worstDroppedPct": 0,
+      "zeroDropRuns": 3
+    },
+    "runs": 3,
+    "fpsErrorRuns": 0
+  },
+  "perRun": [
+    {
+      "seq": 1,
+      "panels": 4,
+      "itemsPerPanel": 120,
+      "gridPanels": 4,
+      "at": "2026-08-31T08:32:40.986Z",
+      "idleGrid": {
+        "totalWsMB": 721.2,
+        "totalPrivMB": 507.4,
+        "procs": 7
+      },
+      "procDetailIdle": [
+        {
+          "pid": 28196,
+          "ppid": 1216,
+          "name": "electron.exe",
+          "role": "browser",
+          "wsMB": 127.7,
+          "privMB": 95.8,
+          "cmdline": "C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe . --remote-debugging-port=11067"
+        },
+        {
+          "pid": 8544,
+          "ppid": 28196,
+          "name": "electron.exe",
+          "role": "crashpad-handler",
+          "wsMB": 35.1,
+          "privMB": 11.7,
+          "cmdline": "C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe --type=crashpad-handler --user-data-dir=C:\\Code\\AgentCodeGUI\\.bench-home-gates\\userData /prefetch:4 --no-rate-limit --monitor-self-annotation=ptype=crashpad-handler --database=C:\\Code\\AgentCodeGUI\\.bench-home-gates\\userData\\Crashpad --annotation=_productName=agent-code-gui --annotation=_version=2.6.2 --annotation=plat=Win64 --annotation=prod=Electron --annotation=ver=42.3.2 --initial-client-data=0x4dc,0x4e0,0x4e4,0x4d8,0x4e8,0x7ff7b1cb3648,0x7ff7b1cb3658,0x7ff7b1cb3668"
+        },
+        {
+          "pid": 19600,
+          "ppid": 28196,
+          "name": "electron.exe",
+          "role": "gpu-process",
+          "wsMB": 110.6,
+          "privMB": 136.6,
+          "cmdline": "\"C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe\" --type=gpu-process --user-data-dir=\"C:\\Code\\AgentCodeGUI\\.bench-home-gates\\userData\" --gpu-preferences=SAAAAAAAAADgAAAEAAAAAAAAAAAAAGAAAQAAAAAAAAAAAAAAAAAAAAIAAAAAAAAAAAAAAAAAAAAQAAAAAAAAABAAAAAAAAAACAAAAAAAAAAIAAAAAAAAAA== --field-trial-handle=1788,i,9081198188605573930,5484781052202154602,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1784,i,17141949346192242144,2873015605407717740,4 --trace-process-track-uuid=3190708988185955192 --mojo-platform-channel-handle=1776 /prefetch:2"
+        },
+        {
+          "pid": 17256,
+          "ppid": 28196,
+          "name": "electron.exe",
+          "role": "utility",
+          "wsMB": 53.7,
+          "privMB": 15.8,
+          "cmdline": "\"C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe\" --type=utility --utility-sub-type=network.mojom.NetworkService --lang=ko --service-sandbox-type=none --user-data-dir=\"C:\\Code\\AgentCodeGUI\\.bench-home-gates\\userData\" --standard-schemes=ccg-img,ccg-page --secure-schemes=ccg-img,ccg-page --bypasscsp-schemes=ccg-img,ccg-page --cors-schemes=ccg-page --fetch-schemes=ccg-img,ccg-page --streaming-schemes=ccg-img,ccg-page --field-trial-handle=1788,i,9081198188605573930,5484781052202154602,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1784,i,17141949346192242144,2873015605407717740,4 --trace-process-track-uuid=3190708989122997041 --mojo-platform-channel-handle=1992 /prefetch:11"
+        },
+        {
+          "pid": 30644,
+          "ppid": 28196,
+          "name": "electron.exe",
+          "role": "renderer",
+          "wsMB": 183.6,
+          "privMB": 134.1,
+          "cmdline": "\"C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe\" --type=renderer --user-data-dir=\"C:\\Code\\AgentCodeGUI\\.bench-home-gates\\userData\" --standard-schemes=ccg-img,ccg-page --secure-schemes=ccg-img,ccg-page --bypasscsp-schemes=ccg-img,ccg-page --cors-schemes=ccg-page --fetch-schemes=ccg-img,ccg-page --streaming-schemes=ccg-img,ccg-page --app-path=\"C:\\Code\\AgentCodeGUI\" --no-sandbox --no-zygote --remote-debugging-port=11067 --video-capture-use-gpu-memory-buffer --lang=ko --device-scale-factor=1 --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=5 --time-ticks-at-unix-epoch=-1788142984303305 --launch-time-ticks=22172109269 --field-trial-handle=1788,i,9081198188605573930,5484781052202154602,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1784,i,17141949346192242144,2873015605407717740,4 --trace-process-track-uuid=3190708990997080739 --mojo-platform-channel-handle=2848 /prefetch:1"
+        },
+        {
+          "pid": 3564,
+          "ppid": 28196,
+          "name": "electron.exe",
+          "role": "browser",
+          "wsMB": 96.6,
+          "privMB": 64,
+          "cmdline": "C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe C:\\Code\\AgentCodeGUI\\node_modules\\typescript-language-server\\lib\\cli.mjs --stdio"
+        },
+        {
+          "pid": 9016,
+          "ppid": 3564,
+          "name": "electron.exe",
+          "role": "browser",
+          "wsMB": 113.9,
+          "privMB": 49.3,
+          "cmdline": "C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe --max-old-space-size=3072 C:\\Code\\AgentCodeGUI\\node_modules\\typescript\\lib\\tsserver.js --useInferredProjectPerProjectRoot --disableAutomaticTypingAcquisition --cancellationPipeName C:\\Users\\User\\AppData\\Local\\Temp\\1cfe279d43c972637ad3e783a45bf73b\\tscancellation* --locale en --validateDefaultNpmLocation --useNodeIpc"
+        }
+      ],
+      "idleWithWindows": {
+        "totalWsMB": 940.3,
+        "totalPrivMB": 558.6,
+        "procs": 9
+      },
+      "procDetailWindows": [
+        {
+          "pid": 28196,
+          "ppid": 1216,
+          "name": "electron.exe",
+          "role": "browser",
+          "wsMB": 120.8,
+          "privMB": 86.9,
+          "cmdline": "C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe . --remote-debugging-port=11067"
+        },
+        {
+          "pid": 8544,
+          "ppid": 28196,
+          "name": "electron.exe",
+          "role": "crashpad-handler",
+          "wsMB": 35.1,
+          "privMB": 11.6,
+          "cmdline": "C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe --type=crashpad-handler --user-data-dir=C:\\Code\\AgentCodeGUI\\.bench-home-gates\\userData /prefetch:4 --no-rate-limit --monitor-self-annotation=ptype=crashpad-handler --database=C:\\Code\\AgentCodeGUI\\.bench-home-gates\\userData\\Crashpad --annotation=_productName=agent-code-gui --annotation=_version=2.6.2 --annotation=plat=Win64 --annotation=prod=Electron --annotation=ver=42.3.2 --initial-client-data=0x4dc,0x4e0,0x4e4,0x4d8,0x4e8,0x7ff7b1cb3648,0x7ff7b1cb3658,0x7ff7b1cb3668"
+        },
+        {
+          "pid": 19600,
+          "ppid": 28196,
+          "name": "electron.exe",
+          "role": "gpu-process",
+          "wsMB": 114.1,
+          "privMB": 111.5,
+          "cmdline": "\"C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe\" --type=gpu-process --user-data-dir=\"C:\\Code\\AgentCodeGUI\\.bench-home-gates\\userData\" --gpu-preferences=SAAAAAAAAADgAAAEAAAAAAAAAAAAAGAAAQAAAAAAAAAAAAAAAAAAAAIAAAAAAAAAAAAAAAAAAAAQAAAAAAAAABAAAAAAAAAACAAAAAAAAAAIAAAAAAAAAA== --field-trial-handle=1788,i,9081198188605573930,5484781052202154602,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1784,i,17141949346192242144,2873015605407717740,4 --trace-process-track-uuid=3190708988185955192 --mojo-platform-channel-handle=1776 /prefetch:2"
+        },
+        {
+          "pid": 17256,
+          "ppid": 28196,
+          "name": "electron.exe",
+          "role": "utility",
+          "wsMB": 53.8,
+          "privMB": 15.8,
+          "cmdline": "\"C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe\" --type=utility --utility-sub-type=network.mojom.NetworkService --lang=ko --service-sandbox-type=none --user-data-dir=\"C:\\Code\\AgentCodeGUI\\.bench-home-gates\\userData\" --standard-schemes=ccg-img,ccg-page --secure-schemes=ccg-img,ccg-page --bypasscsp-schemes=ccg-img,ccg-page --cors-schemes=ccg-page --fetch-schemes=ccg-img,ccg-page --streaming-schemes=ccg-img,ccg-page --field-trial-handle=1788,i,9081198188605573930,5484781052202154602,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1784,i,17141949346192242144,2873015605407717740,4 --trace-process-track-uuid=3190708989122997041 --mojo-platform-channel-handle=1992 /prefetch:11"
+        },
+        {
+          "pid": 30644,
+          "ppid": 28196,
+          "name": "electron.exe",
+          "role": "renderer",
+          "wsMB": 162.2,
+          "privMB": 110.5,
+          "cmdline": "\"C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe\" --type=renderer --user-data-dir=\"C:\\Code\\AgentCodeGUI\\.bench-home-gates\\userData\" --standard-schemes=ccg-img,ccg-page --secure-schemes=ccg-img,ccg-page --bypasscsp-schemes=ccg-img,ccg-page --cors-schemes=ccg-page --fetch-schemes=ccg-img,ccg-page --streaming-schemes=ccg-img,ccg-page --app-path=\"C:\\Code\\AgentCodeGUI\" --no-sandbox --no-zygote --remote-debugging-port=11067 --video-capture-use-gpu-memory-buffer --lang=ko --device-scale-factor=1 --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=5 --time-ticks-at-unix-epoch=-1788142984303305 --launch-time-ticks=22172109269 --field-trial-handle=1788,i,9081198188605573930,5484781052202154602,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1784,i,17141949346192242144,2873015605407717740,4 --trace-process-track-uuid=3190708990997080739 --mojo-platform-channel-handle=2848 /prefetch:1"
+        },
+        {
+          "pid": 3564,
+          "ppid": 28196,
+          "name": "electron.exe",
+          "role": "browser",
+          "wsMB": 94.7,
+          "privMB": 61,
+          "cmdline": "C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe C:\\Code\\AgentCodeGUI\\node_modules\\typescript-language-server\\lib\\cli.mjs --stdio"
+        },
+        {
+          "pid": 29700,
+          "ppid": 28196,
+          "name": "electron.exe",
+          "role": "renderer",
+          "wsMB": 123.9,
+          "privMB": 57.3,
+          "cmdline": "\"C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe\" --type=renderer --user-data-dir=\"C:\\Code\\AgentCodeGUI\\.bench-home-gates\\userData\" --standard-schemes=ccg-img,ccg-page --secure-schemes=ccg-img,ccg-page --bypasscsp-schemes=ccg-img,ccg-page --cors-schemes=ccg-page --fetch-schemes=ccg-img,ccg-page --streaming-schemes=ccg-img,ccg-page --app-path=\"C:\\Code\\AgentCodeGUI\" --no-sandbox --no-zygote --remote-debugging-port=11067 --video-capture-use-gpu-memory-buffer --lang=ko --device-scale-factor=1 --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=6 --time-ticks-at-unix-epoch=-1788142984303305 --launch-time-ticks=22197324397 --field-trial-handle=1788,i,9081198188605573930,5484781052202154602,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1784,i,17141949346192242144,2873015605407717740,4 --trace-process-track-uuid=3190708991934122588 --mojo-platform-channel-handle=3816 /prefetch:1"
+        },
+        {
+          "pid": 30288,
+          "ppid": 28196,
+          "name": "electron.exe",
+          "role": "renderer",
+          "wsMB": 125.8,
+          "privMB": 59.5,
+          "cmdline": "\"C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe\" --type=renderer --user-data-dir=\"C:\\Code\\AgentCodeGUI\\.bench-home-gates\\userData\" --standard-schemes=ccg-img,ccg-page --secure-schemes=ccg-img,ccg-page --bypasscsp-schemes=ccg-img,ccg-page --cors-schemes=ccg-page --fetch-schemes=ccg-img,ccg-page --streaming-schemes=ccg-img,ccg-page --app-path=\"C:\\Code\\AgentCodeGUI\" --no-sandbox --no-zygote --remote-debugging-port=11067 --video-capture-use-gpu-memory-buffer --lang=ko --device-scale-factor=1 --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=7 --time-ticks-at-unix-epoch=-1788142984303305 --launch-time-ticks=22200834486 --field-trial-handle=1788,i,9081198188605573930,5484781052202154602,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1784,i,17141949346192242144,2873015605407717740,4 --trace-process-track-uuid=3190708992871164437 --mojo-platform-channel-handle=3840 /prefetch:1"
+        },
+        {
+          "pid": 9016,
+          "ppid": 3564,
+          "name": "electron.exe",
+          "role": "browser",
+          "wsMB": 109.8,
+          "privMB": 44.4,
+          "cmdline": "C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe --max-old-space-size=3072 C:\\Code\\AgentCodeGUI\\node_modules\\typescript\\lib\\tsserver.js --useInferredProjectPerProjectRoot --disableAutomaticTypingAcquisition --cancellationPipeName C:\\Users\\User\\AppData\\Local\\Temp\\1cfe279d43c972637ad3e783a45bf73b\\tscancellation* --locale en --validateDefaultNpmLocation --useNodeIpc"
+        }
+      ],
+      "windowCost": {
+        "wsMBPerWindow": 109.5,
+        "procsAdded": 2
+      },
+      "scrollInPanel": {
+        "frames": 356,
+        "avgFps": 60,
+        "p95Ms": 16.8,
+        "worstMs": 17.5,
+        "droppedPct": 0,
+        "droppedFrames": 0,
+        "longTaskMs": 0
+      },
+      "scrollAllPanels": {
+        "frames": 356,
+        "avgFps": 60,
+        "p95Ms": 16.8,
+        "worstMs": 18.2,
+        "droppedPct": 0,
+        "droppedFrames": 0,
+        "longTaskMs": 0
+      },
+      "procDetail": [
+        {
+          "pid": 28196,
+          "ppid": 1216,
+          "name": "electron.exe",
+          "role": "browser",
+          "wsMB": 121.7,
+          "privMB": 87.2,
+          "cmdline": "C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe . --remote-debugging-port=11067"
+        },
+        {
+          "pid": 8544,
+          "ppid": 28196,
+          "name": "electron.exe",
+          "role": "crashpad-handler",
+          "wsMB": 35.1,
+          "privMB": 11.6,
+          "cmdline": "C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe --type=crashpad-handler --user-data-dir=C:\\Code\\AgentCodeGUI\\.bench-home-gates\\userData /prefetch:4 --no-rate-limit --monitor-self-annotation=ptype=crashpad-handler --database=C:\\Code\\AgentCodeGUI\\.bench-home-gates\\userData\\Crashpad --annotation=_productName=agent-code-gui --annotation=_version=2.6.2 --annotation=plat=Win64 --annotation=prod=Electron --annotation=ver=42.3.2 --initial-client-data=0x4dc,0x4e0,0x4e4,0x4d8,0x4e8,0x7ff7b1cb3648,0x7ff7b1cb3658,0x7ff7b1cb3668"
+        },
+        {
+          "pid": 19600,
+          "ppid": 28196,
+          "name": "electron.exe",
+          "role": "gpu-process",
+          "wsMB": 122.1,
+          "privMB": 166.8,
+          "cmdline": "\"C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe\" --type=gpu-process --user-data-dir=\"C:\\Code\\AgentCodeGUI\\.bench-home-gates\\userData\" --gpu-preferences=SAAAAAAAAADgAAAEAAAAAAAAAAAAAGAAAQAAAAAAAAAAAAAAAAAAAAIAAAAAAAAAAAAAAAAAAAAQAAAAAAAAABAAAAAAAAAACAAAAAAAAAAIAAAAAAAAAA== --field-trial-handle=1788,i,9081198188605573930,5484781052202154602,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1784,i,17141949346192242144,2873015605407717740,4 --trace-process-track-uuid=3190708988185955192 --mojo-platform-channel-handle=1776 /prefetch:2"
+        },
+        {
+          "pid": 17256,
+          "ppid": 28196,
+          "name": "electron.exe",
+          "role": "utility",
+          "wsMB": 53.7,
+          "privMB": 15.7,
+          "cmdline": "\"C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe\" --type=utility --utility-sub-type=network.mojom.NetworkService --lang=ko --service-sandbox-type=none --user-data-dir=\"C:\\Code\\AgentCodeGUI\\.bench-home-gates\\userData\" --standard-schemes=ccg-img,ccg-page --secure-schemes=ccg-img,ccg-page --bypasscsp-schemes=ccg-img,ccg-page --cors-schemes=ccg-page --fetch-schemes=ccg-img,ccg-page --streaming-schemes=ccg-img,ccg-page --field-trial-handle=1788,i,9081198188605573930,5484781052202154602,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1784,i,17141949346192242144,2873015605407717740,4 --trace-process-track-uuid=3190708989122997041 --mojo-platform-channel-handle=1992 /prefetch:11"
+        },
+        {
+          "pid": 30644,
+          "ppid": 28196,
+          "name": "electron.exe",
+          "role": "renderer",
+          "wsMB": 206.1,
+          "privMB": 152.5,
+          "cmdline": "\"C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe\" --type=renderer --user-data-dir=\"C:\\Code\\AgentCodeGUI\\.bench-home-gates\\userData\" --standard-schemes=ccg-img,ccg-page --secure-schemes=ccg-img,ccg-page --bypasscsp-schemes=ccg-img,ccg-page --cors-schemes=ccg-page --fetch-schemes=ccg-img,ccg-page --streaming-schemes=ccg-img,ccg-page --app-path=\"C:\\Code\\AgentCodeGUI\" --no-sandbox --no-zygote --remote-debugging-port=11067 --video-capture-use-gpu-memory-buffer --lang=ko --device-scale-factor=1 --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=5 --time-ticks-at-unix-epoch=-1788142984303305 --launch-time-ticks=22172109269 --field-trial-handle=1788,i,9081198188605573930,5484781052202154602,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1784,i,17141949346192242144,2873015605407717740,4 --trace-process-track-uuid=3190708990997080739 --mojo-platform-channel-handle=2848 /prefetch:1"
+        },
+        {
+          "pid": 3564,
+          "ppid": 28196,
+          "name": "electron.exe",
+          "role": "browser",
+          "wsMB": 94.7,
+          "privMB": 61,
+          "cmdline": "C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe C:\\Code\\AgentCodeGUI\\node_modules\\typescript-language-server\\lib\\cli.mjs --stdio"
+        },
+        {
+          "pid": 29700,
+          "ppid": 28196,
+          "name": "electron.exe",
+          "role": "renderer",
+          "wsMB": 120.4,
+          "privMB": 52.2,
+          "cmdline": "\"C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe\" --type=renderer --user-data-dir=\"C:\\Code\\AgentCodeGUI\\.bench-home-gates\\userData\" --standard-schemes=ccg-img,ccg-page --secure-schemes=ccg-img,ccg-page --bypasscsp-schemes=ccg-img,ccg-page --cors-schemes=ccg-page --fetch-schemes=ccg-img,ccg-page --streaming-schemes=ccg-img,ccg-page --app-path=\"C:\\Code\\AgentCodeGUI\" --no-sandbox --no-zygote --remote-debugging-port=11067 --video-capture-use-gpu-memory-buffer --lang=ko --device-scale-factor=1 --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=6 --time-ticks-at-unix-epoch=-1788142984303305 --launch-time-ticks=22197324397 --field-trial-handle=1788,i,9081198188605573930,5484781052202154602,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1784,i,17141949346192242144,2873015605407717740,4 --trace-process-track-uuid=3190708991934122588 --mojo-platform-channel-handle=3816 /prefetch:1"
+        },
+        {
+          "pid": 30288,
+          "ppid": 28196,
+          "name": "electron.exe",
+          "role": "renderer",
+          "wsMB": 125.8,
+          "privMB": 59.5,
+          "cmdline": "\"C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe\" --type=renderer --user-data-dir=\"C:\\Code\\AgentCodeGUI\\.bench-home-gates\\userData\" --standard-schemes=ccg-img,ccg-page --secure-schemes=ccg-img,ccg-page --bypasscsp-schemes=ccg-img,ccg-page --cors-schemes=ccg-page --fetch-schemes=ccg-img,ccg-page --streaming-schemes=ccg-img,ccg-page --app-path=\"C:\\Code\\AgentCodeGUI\" --no-sandbox --no-zygote --remote-debugging-port=11067 --video-capture-use-gpu-memory-buffer --lang=ko --device-scale-factor=1 --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=7 --time-ticks-at-unix-epoch=-1788142984303305 --launch-time-ticks=22200834486 --field-trial-handle=1788,i,9081198188605573930,5484781052202154602,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1784,i,17141949346192242144,2873015605407717740,4 --trace-process-track-uuid=3190708992871164437 --mojo-platform-channel-handle=3840 /prefetch:1"
+        },
+        {
+          "pid": 9016,
+          "ppid": 3564,
+          "name": "electron.exe",
+          "role": "browser",
+          "wsMB": 109.8,
+          "privMB": 44.4,
+          "cmdline": "C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe --max-old-space-size=3072 C:\\Code\\AgentCodeGUI\\node_modules\\typescript\\lib\\tsserver.js --useInferredProjectPerProjectRoot --disableAutomaticTypingAcquisition --cancellationPipeName C:\\Users\\User\\AppData\\Local\\Temp\\1cfe279d43c972637ad3e783a45bf73b\\tscancellation* --locale en --validateDefaultNpmLocation --useNodeIpc"
+        }
+      ]
+    },
+    {
+      "seq": 2,
+      "panels": 4,
+      "itemsPerPanel": 120,
+      "gridPanels": 4,
+      "at": "2026-08-31T08:33:42.529Z",
+      "idleGrid": {
+        "totalWsMB": 717.9,
+        "totalPrivMB": 502.5,
+        "procs": 7
+      },
+      "procDetailIdle": [
+        {
+          "pid": 23316,
+          "ppid": 1216,
+          "name": "electron.exe",
+          "role": "browser",
+          "wsMB": 123.9,
+          "privMB": 92.8,
+          "cmdline": "C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe . --remote-debugging-port=11067"
+        },
+        {
+          "pid": 25216,
+          "ppid": 23316,
+          "name": "electron.exe",
+          "role": "crashpad-handler",
+          "wsMB": 35.1,
+          "privMB": 11.7,
+          "cmdline": "C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe --type=crashpad-handler --user-data-dir=C:\\Code\\AgentCodeGUI\\.bench-home-gates\\userData /prefetch:4 --no-rate-limit --monitor-self-annotation=ptype=crashpad-handler --database=C:\\Code\\AgentCodeGUI\\.bench-home-gates\\userData\\Crashpad --annotation=_productName=agent-code-gui --annotation=_version=2.6.2 --annotation=plat=Win64 --annotation=prod=Electron --annotation=ver=42.3.2 --initial-client-data=0x4cc,0x4d0,0x4d4,0x4c8,0x4d8,0x7ff7b1cb3648,0x7ff7b1cb3658,0x7ff7b1cb3668"
+        },
+        {
+          "pid": 18860,
+          "ppid": 23316,
+          "name": "electron.exe",
+          "role": "gpu-process",
+          "wsMB": 111.2,
+          "privMB": 136.3,
+          "cmdline": "\"C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe\" --type=gpu-process --user-data-dir=\"C:\\Code\\AgentCodeGUI\\.bench-home-gates\\userData\" --gpu-preferences=SAAAAAAAAADgAAAEAAAAAAAAAAAAAGAAAQAAAAAAAAAAAAAAAAAAAAIAAAAAAAAAAAAAAAAAAAAQAAAAAAAAABAAAAAAAAAACAAAAAAAAAAIAAAAAAAAAA== --field-trial-handle=1772,i,7129929552527403426,117848967985825193,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1780,i,13398363889210629050,12767700499838715259,4 --trace-process-track-uuid=3190708988185955192 --mojo-platform-channel-handle=1760 /prefetch:2"
+        },
+        {
+          "pid": 10040,
+          "ppid": 23316,
+          "name": "electron.exe",
+          "role": "utility",
+          "wsMB": 53.6,
+          "privMB": 15.8,
+          "cmdline": "\"C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe\" --type=utility --utility-sub-type=network.mojom.NetworkService --lang=ko --service-sandbox-type=none --user-data-dir=\"C:\\Code\\AgentCodeGUI\\.bench-home-gates\\userData\" --standard-schemes=ccg-img,ccg-page --secure-schemes=ccg-img,ccg-page --bypasscsp-schemes=ccg-img,ccg-page --cors-schemes=ccg-page --fetch-schemes=ccg-img,ccg-page --streaming-schemes=ccg-img,ccg-page --field-trial-handle=1772,i,7129929552527403426,117848967985825193,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1780,i,13398363889210629050,12767700499838715259,4 --trace-process-track-uuid=3190708989122997041 --mojo-platform-channel-handle=1980 /prefetch:11"
+        },
+        {
+          "pid": 18868,
+          "ppid": 23316,
+          "name": "electron.exe",
+          "role": "renderer",
+          "wsMB": 186.1,
+          "privMB": 136.6,
+          "cmdline": "\"C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe\" --type=renderer --user-data-dir=\"C:\\Code\\AgentCodeGUI\\.bench-home-gates\\userData\" --standard-schemes=ccg-img,ccg-page --secure-schemes=ccg-img,ccg-page --bypasscsp-schemes=ccg-img,ccg-page --cors-schemes=ccg-page --fetch-schemes=ccg-img,ccg-page --streaming-schemes=ccg-img,ccg-page --app-path=\"C:\\Code\\AgentCodeGUI\" --no-sandbox --no-zygote --remote-debugging-port=11067 --video-capture-use-gpu-memory-buffer --lang=ko --device-scale-factor=1 --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=5 --time-ticks-at-unix-epoch=-1788142984303305 --launch-time-ticks=22233669074 --field-trial-handle=1772,i,7129929552527403426,117848967985825193,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1780,i,13398363889210629050,12767700499838715259,4 --trace-process-track-uuid=3190708990997080739 --mojo-platform-channel-handle=2796 /prefetch:1"
+        },
+        {
+          "pid": 7540,
+          "ppid": 23316,
+          "name": "electron.exe",
+          "role": "browser",
+          "wsMB": 96.7,
+          "privMB": 63,
+          "cmdline": "C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe C:\\Code\\AgentCodeGUI\\node_modules\\typescript-language-server\\lib\\cli.mjs --stdio"
+        },
+        {
+          "pid": 8784,
+          "ppid": 7540,
+          "name": "electron.exe",
+          "role": "browser",
+          "wsMB": 111.2,
+          "privMB": 46.3,
+          "cmdline": "C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe --max-old-space-size=3072 C:\\Code\\AgentCodeGUI\\node_modules\\typescript\\lib\\tsserver.js --useInferredProjectPerProjectRoot --disableAutomaticTypingAcquisition --cancellationPipeName C:\\Users\\User\\AppData\\Local\\Temp\\515cc6127cf94e0801d9a315f7517616\\tscancellation* --locale en --validateDefaultNpmLocation --useNodeIpc"
+        }
+      ],
+      "idleWithWindows": {
+        "totalWsMB": 936.8,
+        "totalPrivMB": 565.2,
+        "procs": 9
+      },
+      "procDetailWindows": [
+        {
+          "pid": 23316,
+          "ppid": 1216,
+          "name": "electron.exe",
+          "role": "browser",
+          "wsMB": 117.1,
+          "privMB": 83.1,
+          "cmdline": "C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe . --remote-debugging-port=11067"
+        },
+        {
+          "pid": 25216,
+          "ppid": 23316,
+          "name": "electron.exe",
+          "role": "crashpad-handler",
+          "wsMB": 35.1,
+          "privMB": 11.6,
+          "cmdline": "C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe --type=crashpad-handler --user-data-dir=C:\\Code\\AgentCodeGUI\\.bench-home-gates\\userData /prefetch:4 --no-rate-limit --monitor-self-annotation=ptype=crashpad-handler --database=C:\\Code\\AgentCodeGUI\\.bench-home-gates\\userData\\Crashpad --annotation=_productName=agent-code-gui --annotation=_version=2.6.2 --annotation=plat=Win64 --annotation=prod=Electron --annotation=ver=42.3.2 --initial-client-data=0x4cc,0x4d0,0x4d4,0x4c8,0x4d8,0x7ff7b1cb3648,0x7ff7b1cb3658,0x7ff7b1cb3668"
+        },
+        {
+          "pid": 18860,
+          "ppid": 23316,
+          "name": "electron.exe",
+          "role": "gpu-process",
+          "wsMB": 116.1,
+          "privMB": 128.6,
+          "cmdline": "\"C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe\" --type=gpu-process --user-data-dir=\"C:\\Code\\AgentCodeGUI\\.bench-home-gates\\userData\" --gpu-preferences=SAAAAAAAAADgAAAEAAAAAAAAAAAAAGAAAQAAAAAAAAAAAAAAAAAAAAIAAAAAAAAAAAAAAAAAAAAQAAAAAAAAABAAAAAAAAAACAAAAAAAAAAIAAAAAAAAAA== --field-trial-handle=1772,i,7129929552527403426,117848967985825193,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1780,i,13398363889210629050,12767700499838715259,4 --trace-process-track-uuid=3190708988185955192 --mojo-platform-channel-handle=1760 /prefetch:2"
+        },
+        {
+          "pid": 10040,
+          "ppid": 23316,
+          "name": "electron.exe",
+          "role": "utility",
+          "wsMB": 53.8,
+          "privMB": 15.8,
+          "cmdline": "\"C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe\" --type=utility --utility-sub-type=network.mojom.NetworkService --lang=ko --service-sandbox-type=none --user-data-dir=\"C:\\Code\\AgentCodeGUI\\.bench-home-gates\\userData\" --standard-schemes=ccg-img,ccg-page --secure-schemes=ccg-img,ccg-page --bypasscsp-schemes=ccg-img,ccg-page --cors-schemes=ccg-page --fetch-schemes=ccg-img,ccg-page --streaming-schemes=ccg-img,ccg-page --field-trial-handle=1772,i,7129929552527403426,117848967985825193,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1780,i,13398363889210629050,12767700499838715259,4 --trace-process-track-uuid=3190708989122997041 --mojo-platform-channel-handle=1980 /prefetch:11"
+        },
+        {
+          "pid": 18868,
+          "ppid": 23316,
+          "name": "electron.exe",
+          "role": "renderer",
+          "wsMB": 161.4,
+          "privMB": 108.4,
+          "cmdline": "\"C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe\" --type=renderer --user-data-dir=\"C:\\Code\\AgentCodeGUI\\.bench-home-gates\\userData\" --standard-schemes=ccg-img,ccg-page --secure-schemes=ccg-img,ccg-page --bypasscsp-schemes=ccg-img,ccg-page --cors-schemes=ccg-page --fetch-schemes=ccg-img,ccg-page --streaming-schemes=ccg-img,ccg-page --app-path=\"C:\\Code\\AgentCodeGUI\" --no-sandbox --no-zygote --remote-debugging-port=11067 --video-capture-use-gpu-memory-buffer --lang=ko --device-scale-factor=1 --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=5 --time-ticks-at-unix-epoch=-1788142984303305 --launch-time-ticks=22233669074 --field-trial-handle=1772,i,7129929552527403426,117848967985825193,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1780,i,13398363889210629050,12767700499838715259,4 --trace-process-track-uuid=3190708990997080739 --mojo-platform-channel-handle=2796 /prefetch:1"
+        },
+        {
+          "pid": 7540,
+          "ppid": 23316,
+          "name": "electron.exe",
+          "role": "browser",
+          "wsMB": 94.5,
+          "privMB": 59.8,
+          "cmdline": "C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe C:\\Code\\AgentCodeGUI\\node_modules\\typescript-language-server\\lib\\cli.mjs --stdio"
+        },
+        {
+          "pid": 18640,
+          "ppid": 23316,
+          "name": "electron.exe",
+          "role": "renderer",
+          "wsMB": 124.3,
+          "privMB": 56.3,
+          "cmdline": "\"C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe\" --type=renderer --user-data-dir=\"C:\\Code\\AgentCodeGUI\\.bench-home-gates\\userData\" --standard-schemes=ccg-img,ccg-page --secure-schemes=ccg-img,ccg-page --bypasscsp-schemes=ccg-img,ccg-page --cors-schemes=ccg-page --fetch-schemes=ccg-img,ccg-page --streaming-schemes=ccg-img,ccg-page --app-path=\"C:\\Code\\AgentCodeGUI\" --no-sandbox --no-zygote --remote-debugging-port=11067 --video-capture-use-gpu-memory-buffer --lang=ko --device-scale-factor=1 --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=6 --time-ticks-at-unix-epoch=-1788142984303305 --launch-time-ticks=22258878692 --field-trial-handle=1772,i,7129929552527403426,117848967985825193,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1780,i,13398363889210629050,12767700499838715259,4 --trace-process-track-uuid=3190708991934122588 --mojo-platform-channel-handle=3792 /prefetch:1"
+        },
+        {
+          "pid": 4124,
+          "ppid": 23316,
+          "name": "electron.exe",
+          "role": "renderer",
+          "wsMB": 127.1,
+          "privMB": 59.5,
+          "cmdline": "\"C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe\" --type=renderer --user-data-dir=\"C:\\Code\\AgentCodeGUI\\.bench-home-gates\\userData\" --standard-schemes=ccg-img,ccg-page --secure-schemes=ccg-img,ccg-page --bypasscsp-schemes=ccg-img,ccg-page --cors-schemes=ccg-page --fetch-schemes=ccg-img,ccg-page --streaming-schemes=ccg-img,ccg-page --app-path=\"C:\\Code\\AgentCodeGUI\" --no-sandbox --no-zygote --remote-debugging-port=11067 --video-capture-use-gpu-memory-buffer --lang=ko --device-scale-factor=1 --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=7 --time-ticks-at-unix-epoch=-1788142984303305 --launch-time-ticks=22262393444 --field-trial-handle=1772,i,7129929552527403426,117848967985825193,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1780,i,13398363889210629050,12767700499838715259,4 --trace-process-track-uuid=3190708992871164437 --mojo-platform-channel-handle=3864 /prefetch:1"
+        },
+        {
+          "pid": 8784,
+          "ppid": 7540,
+          "name": "electron.exe",
+          "role": "browser",
+          "wsMB": 107.4,
+          "privMB": 41.9,
+          "cmdline": "C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe --max-old-space-size=3072 C:\\Code\\AgentCodeGUI\\node_modules\\typescript\\lib\\tsserver.js --useInferredProjectPerProjectRoot --disableAutomaticTypingAcquisition --cancellationPipeName C:\\Users\\User\\AppData\\Local\\Temp\\515cc6127cf94e0801d9a315f7517616\\tscancellation* --locale en --validateDefaultNpmLocation --useNodeIpc"
+        }
+      ],
+      "windowCost": {
+        "wsMBPerWindow": 109.5,
+        "procsAdded": 2
+      },
+      "scrollInPanel": {
+        "frames": 356,
+        "avgFps": 60,
+        "p95Ms": 16.8,
+        "worstMs": 17.3,
+        "droppedPct": 0,
+        "droppedFrames": 0,
+        "longTaskMs": 0
+      },
+      "scrollAllPanels": {
+        "frames": 356,
+        "avgFps": 60,
+        "p95Ms": 16.8,
+        "worstMs": 17.1,
+        "droppedPct": 0,
+        "droppedFrames": 0,
+        "longTaskMs": 0
+      },
+      "procDetail": [
+        {
+          "pid": 23316,
+          "ppid": 1216,
+          "name": "electron.exe",
+          "role": "browser",
+          "wsMB": 119.6,
+          "privMB": 85.2,
+          "cmdline": "C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe . --remote-debugging-port=11067"
+        },
+        {
+          "pid": 25216,
+          "ppid": 23316,
+          "name": "electron.exe",
+          "role": "crashpad-handler",
+          "wsMB": 35.1,
+          "privMB": 11.6,
+          "cmdline": "C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe --type=crashpad-handler --user-data-dir=C:\\Code\\AgentCodeGUI\\.bench-home-gates\\userData /prefetch:4 --no-rate-limit --monitor-self-annotation=ptype=crashpad-handler --database=C:\\Code\\AgentCodeGUI\\.bench-home-gates\\userData\\Crashpad --annotation=_productName=agent-code-gui --annotation=_version=2.6.2 --annotation=plat=Win64 --annotation=prod=Electron --annotation=ver=42.3.2 --initial-client-data=0x4cc,0x4d0,0x4d4,0x4c8,0x4d8,0x7ff7b1cb3648,0x7ff7b1cb3658,0x7ff7b1cb3668"
+        },
+        {
+          "pid": 18860,
+          "ppid": 23316,
+          "name": "electron.exe",
+          "role": "gpu-process",
+          "wsMB": 123.6,
+          "privMB": 159.7,
+          "cmdline": "\"C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe\" --type=gpu-process --user-data-dir=\"C:\\Code\\AgentCodeGUI\\.bench-home-gates\\userData\" --gpu-preferences=SAAAAAAAAADgAAAEAAAAAAAAAAAAAGAAAQAAAAAAAAAAAAAAAAAAAAIAAAAAAAAAAAAAAAAAAAAQAAAAAAAAABAAAAAAAAAACAAAAAAAAAAIAAAAAAAAAA== --field-trial-handle=1772,i,7129929552527403426,117848967985825193,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1780,i,13398363889210629050,12767700499838715259,4 --trace-process-track-uuid=3190708988185955192 --mojo-platform-channel-handle=1760 /prefetch:2"
+        },
+        {
+          "pid": 10040,
+          "ppid": 23316,
+          "name": "electron.exe",
+          "role": "utility",
+          "wsMB": 53.7,
+          "privMB": 15.7,
+          "cmdline": "\"C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe\" --type=utility --utility-sub-type=network.mojom.NetworkService --lang=ko --service-sandbox-type=none --user-data-dir=\"C:\\Code\\AgentCodeGUI\\.bench-home-gates\\userData\" --standard-schemes=ccg-img,ccg-page --secure-schemes=ccg-img,ccg-page --bypasscsp-schemes=ccg-img,ccg-page --cors-schemes=ccg-page --fetch-schemes=ccg-img,ccg-page --streaming-schemes=ccg-img,ccg-page --field-trial-handle=1772,i,7129929552527403426,117848967985825193,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1780,i,13398363889210629050,12767700499838715259,4 --trace-process-track-uuid=3190708989122997041 --mojo-platform-channel-handle=1980 /prefetch:11"
+        },
+        {
+          "pid": 18868,
+          "ppid": 23316,
+          "name": "electron.exe",
+          "role": "renderer",
+          "wsMB": 203.4,
+          "privMB": 149.1,
+          "cmdline": "\"C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe\" --type=renderer --user-data-dir=\"C:\\Code\\AgentCodeGUI\\.bench-home-gates\\userData\" --standard-schemes=ccg-img,ccg-page --secure-schemes=ccg-img,ccg-page --bypasscsp-schemes=ccg-img,ccg-page --cors-schemes=ccg-page --fetch-schemes=ccg-img,ccg-page --streaming-schemes=ccg-img,ccg-page --app-path=\"C:\\Code\\AgentCodeGUI\" --no-sandbox --no-zygote --remote-debugging-port=11067 --video-capture-use-gpu-memory-buffer --lang=ko --device-scale-factor=1 --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=5 --time-ticks-at-unix-epoch=-1788142984303305 --launch-time-ticks=22233669074 --field-trial-handle=1772,i,7129929552527403426,117848967985825193,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1780,i,13398363889210629050,12767700499838715259,4 --trace-process-track-uuid=3190708990997080739 --mojo-platform-channel-handle=2796 /prefetch:1"
+        },
+        {
+          "pid": 7540,
+          "ppid": 23316,
+          "name": "electron.exe",
+          "role": "browser",
+          "wsMB": 94.5,
+          "privMB": 59.8,
+          "cmdline": "C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe C:\\Code\\AgentCodeGUI\\node_modules\\typescript-language-server\\lib\\cli.mjs --stdio"
+        },
+        {
+          "pid": 18640,
+          "ppid": 23316,
+          "name": "electron.exe",
+          "role": "renderer",
+          "wsMB": 121.2,
+          "privMB": 52.4,
+          "cmdline": "\"C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe\" --type=renderer --user-data-dir=\"C:\\Code\\AgentCodeGUI\\.bench-home-gates\\userData\" --standard-schemes=ccg-img,ccg-page --secure-schemes=ccg-img,ccg-page --bypasscsp-schemes=ccg-img,ccg-page --cors-schemes=ccg-page --fetch-schemes=ccg-img,ccg-page --streaming-schemes=ccg-img,ccg-page --app-path=\"C:\\Code\\AgentCodeGUI\" --no-sandbox --no-zygote --remote-debugging-port=11067 --video-capture-use-gpu-memory-buffer --lang=ko --device-scale-factor=1 --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=6 --time-ticks-at-unix-epoch=-1788142984303305 --launch-time-ticks=22258878692 --field-trial-handle=1772,i,7129929552527403426,117848967985825193,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1780,i,13398363889210629050,12767700499838715259,4 --trace-process-track-uuid=3190708991934122588 --mojo-platform-channel-handle=3792 /prefetch:1"
+        },
+        {
+          "pid": 4124,
+          "ppid": 23316,
+          "name": "electron.exe",
+          "role": "renderer",
+          "wsMB": 125.4,
+          "privMB": 57.8,
+          "cmdline": "\"C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe\" --type=renderer --user-data-dir=\"C:\\Code\\AgentCodeGUI\\.bench-home-gates\\userData\" --standard-schemes=ccg-img,ccg-page --secure-schemes=ccg-img,ccg-page --bypasscsp-schemes=ccg-img,ccg-page --cors-schemes=ccg-page --fetch-schemes=ccg-img,ccg-page --streaming-schemes=ccg-img,ccg-page --app-path=\"C:\\Code\\AgentCodeGUI\" --no-sandbox --no-zygote --remote-debugging-port=11067 --video-capture-use-gpu-memory-buffer --lang=ko --device-scale-factor=1 --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=7 --time-ticks-at-unix-epoch=-1788142984303305 --launch-time-ticks=22262393444 --field-trial-handle=1772,i,7129929552527403426,117848967985825193,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1780,i,13398363889210629050,12767700499838715259,4 --trace-process-track-uuid=3190708992871164437 --mojo-platform-channel-handle=3864 /prefetch:1"
+        },
+        {
+          "pid": 8784,
+          "ppid": 7540,
+          "name": "electron.exe",
+          "role": "browser",
+          "wsMB": 107.4,
+          "privMB": 41.9,
+          "cmdline": "C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe --max-old-space-size=3072 C:\\Code\\AgentCodeGUI\\node_modules\\typescript\\lib\\tsserver.js --useInferredProjectPerProjectRoot --disableAutomaticTypingAcquisition --cancellationPipeName C:\\Users\\User\\AppData\\Local\\Temp\\515cc6127cf94e0801d9a315f7517616\\tscancellation* --locale en --validateDefaultNpmLocation --useNodeIpc"
+        }
+      ]
+    },
+    {
+      "seq": 3,
+      "panels": 4,
+      "itemsPerPanel": 120,
+      "gridPanels": 4,
+      "at": "2026-08-31T08:34:44.175Z",
+      "idleGrid": {
+        "totalWsMB": 734.5,
+        "totalPrivMB": 530.8,
+        "procs": 7
+      },
+      "procDetailIdle": [
+        {
+          "pid": 30468,
+          "ppid": 1216,
+          "name": "electron.exe",
+          "role": "browser",
+          "wsMB": 127.1,
+          "privMB": 96.1,
+          "cmdline": "C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe . --remote-debugging-port=11067"
+        },
+        {
+          "pid": 21208,
+          "ppid": 30468,
+          "name": "electron.exe",
+          "role": "crashpad-handler",
+          "wsMB": 35.1,
+          "privMB": 11.7,
+          "cmdline": "C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe --type=crashpad-handler --user-data-dir=C:\\Code\\AgentCodeGUI\\.bench-home-gates\\userData /prefetch:4 --no-rate-limit --monitor-self-annotation=ptype=crashpad-handler --database=C:\\Code\\AgentCodeGUI\\.bench-home-gates\\userData\\Crashpad --annotation=_productName=agent-code-gui --annotation=_version=2.6.2 --annotation=plat=Win64 --annotation=prod=Electron --annotation=ver=42.3.2 --initial-client-data=0x4d4,0x4d8,0x4dc,0x4d0,0x4e0,0x7ff7b1cb3648,0x7ff7b1cb3658,0x7ff7b1cb3668"
+        },
+        {
+          "pid": 23796,
+          "ppid": 30468,
+          "name": "electron.exe",
+          "role": "gpu-process",
+          "wsMB": 113.5,
+          "privMB": 149.2,
+          "cmdline": "\"C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe\" --type=gpu-process --user-data-dir=\"C:\\Code\\AgentCodeGUI\\.bench-home-gates\\userData\" --gpu-preferences=SAAAAAAAAADgAAAEAAAAAAAAAAAAAGAAAQAAAAAAAAAAAAAAAAAAAAIAAAAAAAAAAAAAAAAAAAAQAAAAAAAAABAAAAAAAAAACAAAAAAAAAAIAAAAAAAAAA== --field-trial-handle=1756,i,16589539984552036754,9429484439236435822,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1780,i,7018981269595586348,8130806993183597861,4 --trace-process-track-uuid=3190708988185955192 --mojo-platform-channel-handle=1764 /prefetch:2"
+        },
+        {
+          "pid": 30104,
+          "ppid": 30468,
+          "name": "electron.exe",
+          "role": "utility",
+          "wsMB": 53.6,
+          "privMB": 15.7,
+          "cmdline": "\"C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe\" --type=utility --utility-sub-type=network.mojom.NetworkService --lang=ko --service-sandbox-type=none --user-data-dir=\"C:\\Code\\AgentCodeGUI\\.bench-home-gates\\userData\" --standard-schemes=ccg-img,ccg-page --secure-schemes=ccg-img,ccg-page --bypasscsp-schemes=ccg-img,ccg-page --cors-schemes=ccg-page --fetch-schemes=ccg-img,ccg-page --streaming-schemes=ccg-img,ccg-page --field-trial-handle=1756,i,16589539984552036754,9429484439236435822,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1780,i,7018981269595586348,8130806993183597861,4 --trace-process-track-uuid=3190708989122997041 --mojo-platform-channel-handle=1988 /prefetch:11"
+        },
+        {
+          "pid": 30008,
+          "ppid": 30468,
+          "name": "electron.exe",
+          "role": "renderer",
+          "wsMB": 196.9,
+          "privMB": 146.7,
+          "cmdline": "\"C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe\" --type=renderer --user-data-dir=\"C:\\Code\\AgentCodeGUI\\.bench-home-gates\\userData\" --standard-schemes=ccg-img,ccg-page --secure-schemes=ccg-img,ccg-page --bypasscsp-schemes=ccg-img,ccg-page --cors-schemes=ccg-page --fetch-schemes=ccg-img,ccg-page --streaming-schemes=ccg-img,ccg-page --app-path=\"C:\\Code\\AgentCodeGUI\" --no-sandbox --no-zygote --remote-debugging-port=11067 --video-capture-use-gpu-memory-buffer --lang=ko --device-scale-factor=1 --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=5 --time-ticks-at-unix-epoch=-1788142984303305 --launch-time-ticks=22295293516 --field-trial-handle=1756,i,16589539984552036754,9429484439236435822,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1780,i,7018981269595586348,8130806993183597861,4 --trace-process-track-uuid=3190708990997080739 --mojo-platform-channel-handle=2812 /prefetch:1"
+        },
+        {
+          "pid": 4148,
+          "ppid": 30468,
+          "name": "electron.exe",
+          "role": "browser",
+          "wsMB": 96.9,
+          "privMB": 64,
+          "cmdline": "C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe C:\\Code\\AgentCodeGUI\\node_modules\\typescript-language-server\\lib\\cli.mjs --stdio"
+        },
+        {
+          "pid": 29100,
+          "ppid": 4148,
+          "name": "electron.exe",
+          "role": "browser",
+          "wsMB": 111.4,
+          "privMB": 47.3,
+          "cmdline": "C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe --max-old-space-size=3072 C:\\Code\\AgentCodeGUI\\node_modules\\typescript\\lib\\tsserver.js --useInferredProjectPerProjectRoot --disableAutomaticTypingAcquisition --cancellationPipeName C:\\Users\\User\\AppData\\Local\\Temp\\985dafa555fe8f472627628419ed1aed\\tscancellation* --locale en --validateDefaultNpmLocation --useNodeIpc"
+        }
+      ],
+      "idleWithWindows": {
+        "totalWsMB": 942.7,
+        "totalPrivMB": 559.6,
+        "procs": 9
+      },
+      "procDetailWindows": [
+        {
+          "pid": 30468,
+          "ppid": 1216,
+          "name": "electron.exe",
+          "role": "browser",
+          "wsMB": 120.1,
+          "privMB": 86.2,
+          "cmdline": "C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe . --remote-debugging-port=11067"
+        },
+        {
+          "pid": 21208,
+          "ppid": 30468,
+          "name": "electron.exe",
+          "role": "crashpad-handler",
+          "wsMB": 35.1,
+          "privMB": 11.6,
+          "cmdline": "C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe --type=crashpad-handler --user-data-dir=C:\\Code\\AgentCodeGUI\\.bench-home-gates\\userData /prefetch:4 --no-rate-limit --monitor-self-annotation=ptype=crashpad-handler --database=C:\\Code\\AgentCodeGUI\\.bench-home-gates\\userData\\Crashpad --annotation=_productName=agent-code-gui --annotation=_version=2.6.2 --annotation=plat=Win64 --annotation=prod=Electron --annotation=ver=42.3.2 --initial-client-data=0x4d4,0x4d8,0x4dc,0x4d0,0x4e0,0x7ff7b1cb3648,0x7ff7b1cb3658,0x7ff7b1cb3668"
+        },
+        {
+          "pid": 23796,
+          "ppid": 30468,
+          "name": "electron.exe",
+          "role": "gpu-process",
+          "wsMB": 114.3,
+          "privMB": 113.3,
+          "cmdline": "\"C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe\" --type=gpu-process --user-data-dir=\"C:\\Code\\AgentCodeGUI\\.bench-home-gates\\userData\" --gpu-preferences=SAAAAAAAAADgAAAEAAAAAAAAAAAAAGAAAQAAAAAAAAAAAAAAAAAAAAIAAAAAAAAAAAAAAAAAAAAQAAAAAAAAABAAAAAAAAAACAAAAAAAAAAIAAAAAAAAAA== --field-trial-handle=1756,i,16589539984552036754,9429484439236435822,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1780,i,7018981269595586348,8130806993183597861,4 --trace-process-track-uuid=3190708988185955192 --mojo-platform-channel-handle=1764 /prefetch:2"
+        },
+        {
+          "pid": 30104,
+          "ppid": 30468,
+          "name": "electron.exe",
+          "role": "utility",
+          "wsMB": 53.6,
+          "privMB": 15.6,
+          "cmdline": "\"C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe\" --type=utility --utility-sub-type=network.mojom.NetworkService --lang=ko --service-sandbox-type=none --user-data-dir=\"C:\\Code\\AgentCodeGUI\\.bench-home-gates\\userData\" --standard-schemes=ccg-img,ccg-page --secure-schemes=ccg-img,ccg-page --bypasscsp-schemes=ccg-img,ccg-page --cors-schemes=ccg-page --fetch-schemes=ccg-img,ccg-page --streaming-schemes=ccg-img,ccg-page --field-trial-handle=1756,i,16589539984552036754,9429484439236435822,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1780,i,7018981269595586348,8130806993183597861,4 --trace-process-track-uuid=3190708989122997041 --mojo-platform-channel-handle=1988 /prefetch:11"
+        },
+        {
+          "pid": 30008,
+          "ppid": 30468,
+          "name": "electron.exe",
+          "role": "renderer",
+          "wsMB": 164.6,
+          "privMB": 110.9,
+          "cmdline": "\"C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe\" --type=renderer --user-data-dir=\"C:\\Code\\AgentCodeGUI\\.bench-home-gates\\userData\" --standard-schemes=ccg-img,ccg-page --secure-schemes=ccg-img,ccg-page --bypasscsp-schemes=ccg-img,ccg-page --cors-schemes=ccg-page --fetch-schemes=ccg-img,ccg-page --streaming-schemes=ccg-img,ccg-page --app-path=\"C:\\Code\\AgentCodeGUI\" --no-sandbox --no-zygote --remote-debugging-port=11067 --video-capture-use-gpu-memory-buffer --lang=ko --device-scale-factor=1 --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=5 --time-ticks-at-unix-epoch=-1788142984303305 --launch-time-ticks=22295293516 --field-trial-handle=1756,i,16589539984552036754,9429484439236435822,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1780,i,7018981269595586348,8130806993183597861,4 --trace-process-track-uuid=3190708990997080739 --mojo-platform-channel-handle=2812 /prefetch:1"
+        },
+        {
+          "pid": 4148,
+          "ppid": 30468,
+          "name": "electron.exe",
+          "role": "browser",
+          "wsMB": 95,
+          "privMB": 61.1,
+          "cmdline": "C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe C:\\Code\\AgentCodeGUI\\node_modules\\typescript-language-server\\lib\\cli.mjs --stdio"
+        },
+        {
+          "pid": 17000,
+          "ppid": 30468,
+          "name": "electron.exe",
+          "role": "renderer",
+          "wsMB": 126.6,
+          "privMB": 59.3,
+          "cmdline": "\"C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe\" --type=renderer --user-data-dir=\"C:\\Code\\AgentCodeGUI\\.bench-home-gates\\userData\" --standard-schemes=ccg-img,ccg-page --secure-schemes=ccg-img,ccg-page --bypasscsp-schemes=ccg-img,ccg-page --cors-schemes=ccg-page --fetch-schemes=ccg-img,ccg-page --streaming-schemes=ccg-img,ccg-page --app-path=\"C:\\Code\\AgentCodeGUI\" --no-sandbox --no-zygote --remote-debugging-port=11067 --video-capture-use-gpu-memory-buffer --lang=ko --device-scale-factor=1 --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=6 --time-ticks-at-unix-epoch=-1788142984303305 --launch-time-ticks=22320510354 --field-trial-handle=1756,i,16589539984552036754,9429484439236435822,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1780,i,7018981269595586348,8130806993183597861,4 --trace-process-track-uuid=3190708991934122588 --mojo-platform-channel-handle=3832 /prefetch:1"
+        },
+        {
+          "pid": 19696,
+          "ppid": 30468,
+          "name": "electron.exe",
+          "role": "renderer",
+          "wsMB": 126.1,
+          "privMB": 58.7,
+          "cmdline": "\"C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe\" --type=renderer --user-data-dir=\"C:\\Code\\AgentCodeGUI\\.bench-home-gates\\userData\" --standard-schemes=ccg-img,ccg-page --secure-schemes=ccg-img,ccg-page --bypasscsp-schemes=ccg-img,ccg-page --cors-schemes=ccg-page --fetch-schemes=ccg-img,ccg-page --streaming-schemes=ccg-img,ccg-page --app-path=\"C:\\Code\\AgentCodeGUI\" --no-sandbox --no-zygote --remote-debugging-port=11067 --video-capture-use-gpu-memory-buffer --lang=ko --device-scale-factor=1 --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=7 --time-ticks-at-unix-epoch=-1788142984303305 --launch-time-ticks=22324032139 --field-trial-handle=1756,i,16589539984552036754,9429484439236435822,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1780,i,7018981269595586348,8130806993183597861,4 --trace-process-track-uuid=3190708992871164437 --mojo-platform-channel-handle=1824 /prefetch:1"
+        },
+        {
+          "pid": 29100,
+          "ppid": 4148,
+          "name": "electron.exe",
+          "role": "browser",
+          "wsMB": 107.5,
+          "privMB": 42.9,
+          "cmdline": "C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe --max-old-space-size=3072 C:\\Code\\AgentCodeGUI\\node_modules\\typescript\\lib\\tsserver.js --useInferredProjectPerProjectRoot --disableAutomaticTypingAcquisition --cancellationPipeName C:\\Users\\User\\AppData\\Local\\Temp\\985dafa555fe8f472627628419ed1aed\\tscancellation* --locale en --validateDefaultNpmLocation --useNodeIpc"
+        }
+      ],
+      "windowCost": {
+        "wsMBPerWindow": 104.1,
+        "procsAdded": 2
+      },
+      "scrollInPanel": {
+        "frames": 359,
+        "avgFps": 60,
+        "p95Ms": 16.8,
+        "worstMs": 18.6,
+        "droppedPct": 0,
+        "droppedFrames": 0,
+        "longTaskMs": 0
+      },
+      "scrollAllPanels": {
+        "frames": 364,
+        "avgFps": 60,
+        "p95Ms": 16.8,
+        "worstMs": 18.1,
+        "droppedPct": 0,
+        "droppedFrames": 0,
+        "longTaskMs": 0
+      },
+      "procDetail": [
+        {
+          "pid": 30468,
+          "ppid": 1216,
+          "name": "electron.exe",
+          "role": "browser",
+          "wsMB": 121,
+          "privMB": 86.7,
+          "cmdline": "C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe . --remote-debugging-port=11067"
+        },
+        {
+          "pid": 21208,
+          "ppid": 30468,
+          "name": "electron.exe",
+          "role": "crashpad-handler",
+          "wsMB": 35.1,
+          "privMB": 11.6,
+          "cmdline": "C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe --type=crashpad-handler --user-data-dir=C:\\Code\\AgentCodeGUI\\.bench-home-gates\\userData /prefetch:4 --no-rate-limit --monitor-self-annotation=ptype=crashpad-handler --database=C:\\Code\\AgentCodeGUI\\.bench-home-gates\\userData\\Crashpad --annotation=_productName=agent-code-gui --annotation=_version=2.6.2 --annotation=plat=Win64 --annotation=prod=Electron --annotation=ver=42.3.2 --initial-client-data=0x4d4,0x4d8,0x4dc,0x4d0,0x4e0,0x7ff7b1cb3648,0x7ff7b1cb3658,0x7ff7b1cb3668"
+        },
+        {
+          "pid": 23796,
+          "ppid": 30468,
+          "name": "electron.exe",
+          "role": "gpu-process",
+          "wsMB": 124.5,
+          "privMB": 165.2,
+          "cmdline": "\"C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe\" --type=gpu-process --user-data-dir=\"C:\\Code\\AgentCodeGUI\\.bench-home-gates\\userData\" --gpu-preferences=SAAAAAAAAADgAAAEAAAAAAAAAAAAAGAAAQAAAAAAAAAAAAAAAAAAAAIAAAAAAAAAAAAAAAAAAAAQAAAAAAAAABAAAAAAAAAACAAAAAAAAAAIAAAAAAAAAA== --field-trial-handle=1756,i,16589539984552036754,9429484439236435822,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1780,i,7018981269595586348,8130806993183597861,4 --trace-process-track-uuid=3190708988185955192 --mojo-platform-channel-handle=1764 /prefetch:2"
+        },
+        {
+          "pid": 30104,
+          "ppid": 30468,
+          "name": "electron.exe",
+          "role": "utility",
+          "wsMB": 53.6,
+          "privMB": 15.6,
+          "cmdline": "\"C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe\" --type=utility --utility-sub-type=network.mojom.NetworkService --lang=ko --service-sandbox-type=none --user-data-dir=\"C:\\Code\\AgentCodeGUI\\.bench-home-gates\\userData\" --standard-schemes=ccg-img,ccg-page --secure-schemes=ccg-img,ccg-page --bypasscsp-schemes=ccg-img,ccg-page --cors-schemes=ccg-page --fetch-schemes=ccg-img,ccg-page --streaming-schemes=ccg-img,ccg-page --field-trial-handle=1756,i,16589539984552036754,9429484439236435822,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1780,i,7018981269595586348,8130806993183597861,4 --trace-process-track-uuid=3190708989122997041 --mojo-platform-channel-handle=1988 /prefetch:11"
+        },
+        {
+          "pid": 30008,
+          "ppid": 30468,
+          "name": "electron.exe",
+          "role": "renderer",
+          "wsMB": 209.4,
+          "privMB": 154.8,
+          "cmdline": "\"C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe\" --type=renderer --user-data-dir=\"C:\\Code\\AgentCodeGUI\\.bench-home-gates\\userData\" --standard-schemes=ccg-img,ccg-page --secure-schemes=ccg-img,ccg-page --bypasscsp-schemes=ccg-img,ccg-page --cors-schemes=ccg-page --fetch-schemes=ccg-img,ccg-page --streaming-schemes=ccg-img,ccg-page --app-path=\"C:\\Code\\AgentCodeGUI\" --no-sandbox --no-zygote --remote-debugging-port=11067 --video-capture-use-gpu-memory-buffer --lang=ko --device-scale-factor=1 --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=5 --time-ticks-at-unix-epoch=-1788142984303305 --launch-time-ticks=22295293516 --field-trial-handle=1756,i,16589539984552036754,9429484439236435822,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1780,i,7018981269595586348,8130806993183597861,4 --trace-process-track-uuid=3190708990997080739 --mojo-platform-channel-handle=2812 /prefetch:1"
+        },
+        {
+          "pid": 4148,
+          "ppid": 30468,
+          "name": "electron.exe",
+          "role": "browser",
+          "wsMB": 95,
+          "privMB": 61.1,
+          "cmdline": "C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe C:\\Code\\AgentCodeGUI\\node_modules\\typescript-language-server\\lib\\cli.mjs --stdio"
+        },
+        {
+          "pid": 17000,
+          "ppid": 30468,
+          "name": "electron.exe",
+          "role": "renderer",
+          "wsMB": 124.3,
+          "privMB": 55.9,
+          "cmdline": "\"C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe\" --type=renderer --user-data-dir=\"C:\\Code\\AgentCodeGUI\\.bench-home-gates\\userData\" --standard-schemes=ccg-img,ccg-page --secure-schemes=ccg-img,ccg-page --bypasscsp-schemes=ccg-img,ccg-page --cors-schemes=ccg-page --fetch-schemes=ccg-img,ccg-page --streaming-schemes=ccg-img,ccg-page --app-path=\"C:\\Code\\AgentCodeGUI\" --no-sandbox --no-zygote --remote-debugging-port=11067 --video-capture-use-gpu-memory-buffer --lang=ko --device-scale-factor=1 --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=6 --time-ticks-at-unix-epoch=-1788142984303305 --launch-time-ticks=22320510354 --field-trial-handle=1756,i,16589539984552036754,9429484439236435822,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1780,i,7018981269595586348,8130806993183597861,4 --trace-process-track-uuid=3190708991934122588 --mojo-platform-channel-handle=3832 /prefetch:1"
+        },
+        {
+          "pid": 19696,
+          "ppid": 30468,
+          "name": "electron.exe",
+          "role": "renderer",
+          "wsMB": 126,
+          "privMB": 58.7,
+          "cmdline": "\"C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe\" --type=renderer --user-data-dir=\"C:\\Code\\AgentCodeGUI\\.bench-home-gates\\userData\" --standard-schemes=ccg-img,ccg-page --secure-schemes=ccg-img,ccg-page --bypasscsp-schemes=ccg-img,ccg-page --cors-schemes=ccg-page --fetch-schemes=ccg-img,ccg-page --streaming-schemes=ccg-img,ccg-page --app-path=\"C:\\Code\\AgentCodeGUI\" --no-sandbox --no-zygote --remote-debugging-port=11067 --video-capture-use-gpu-memory-buffer --lang=ko --device-scale-factor=1 --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=7 --time-ticks-at-unix-epoch=-1788142984303305 --launch-time-ticks=22324032139 --field-trial-handle=1756,i,16589539984552036754,9429484439236435822,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1780,i,7018981269595586348,8130806993183597861,4 --trace-process-track-uuid=3190708992871164437 --mojo-platform-channel-handle=1824 /prefetch:1"
+        },
+        {
+          "pid": 29100,
+          "ppid": 4148,
+          "name": "electron.exe",
+          "role": "browser",
+          "wsMB": 107.5,
+          "privMB": 42.9,
+          "cmdline": "C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe --max-old-space-size=3072 C:\\Code\\AgentCodeGUI\\node_modules\\typescript\\lib\\tsserver.js --useInferredProjectPerProjectRoot --disableAutomaticTypingAcquisition --cancellationPipeName C:\\Users\\User\\AppData\\Local\\Temp\\985dafa555fe8f472627628419ed1aed\\tscancellation* --locale en --validateDefaultNpmLocation --useNodeIpc"
+        }
+      ]
+    }
+  ],
+  "at": "2026-08-31T08:35:42.808Z"
+}

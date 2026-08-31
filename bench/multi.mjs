@@ -21,7 +21,7 @@
 //   (c) 어느 exe로 쟀는지(mtime/sha/gitHead)를 파일에 박는다(§9-6).
 import fs from 'node:fs'
 import path from 'node:path'
-import { spawn } from 'node:child_process'
+import { spawn, execFileSync } from 'node:child_process'
 import {
   electronProfile, tauriProfile, connectMainPage,
   procTreeMem, killTree, median, sleep, envInfo, provenance, armName, REPO
@@ -55,6 +55,10 @@ const PORT = Number(argv('port', kind === 'tauri' ? 9334 : 9333))
 // 즉 벤치 경로와 배포 경로가 다른 상태를 잰다. `--cwd=`는 그 차이를 **재게** 해 준다.
 // 없으면 예전과 완전히 같은 동작(REPO).
 const CWD = argv('cwd', '')
+// ── --no-cmdline (GATES R1) ───────────────────────────────────────────────────
+// 프로세스 표본에 **명령줄과 부모 PID**를 같이 싣는다. 끄는 문(`--no-cmdline`)은 남기되
+// 기본은 켬이다 — 이유는 `procSample()` 머리말에 있다(2.6.2의 LSP를 이름으로는 못 센다).
+const NO_CMDLINE = process.argv.includes('--no-cmdline')
 const profile = kind === 'tauri' ? tauriProfile({ ...(exeArg ? { exe: exeArg } : {}), port: PORT }) : electronProfile({ port: PORT })
 if (TAG) profile.env.CCG_HOME += '-' + TAG
 if (CWD) profile.cwd = path.resolve(CWD)
@@ -83,6 +87,60 @@ const HARVEST = `(() => {
     droppedFrames: f.filter((x) => x > 33).length,
     longTaskMs: Math.round(b.long) }
 })()`
+
+// ── ★ 프로세스 표본 — 이름이 아니라 **명령줄**로 가른다 (GATES R1) ────────────
+//
+// 결함(LSPDIST R1 §6.5 · 그 확인 크리틱 C5가 확정): `bench/ratios.mjs`의 헬퍼 분류기는
+// 프로세스 **이름** 정규식 `/^(node|conhost|…)/`이었는데, **2.6.2는 언어 서버를
+// `electron.exe`로 띄운다**(`ELECTRON_RUN_AS_NODE=1`). 즉 2.6.2의 LSP 헬퍼는 그 정규식에
+// **구조적으로 안 걸린다** — 「2.6.2 헬퍼 0」은 측정이 아니라 **분류 산물**이었고,
+// 그 위에서 계산한 「LSP 제외」 비율은 3.0에서만 100MB대를 빼고 2.6.2에서는 0을 뺐다.
+// 게이트를 그 수로 확정하려는 지금, 이 결함을 먼저 고치지 않으면 잣대가 한쪽으로 기운다.
+//
+// 처방: 표본에 `cmdline`과 `ppid`를 싣는다. 그러면 소비자(ratios.mjs)가
+//   ① 명령줄의 **서버 스크립트 이름**으로 헬퍼를 가르고(두 앱에서 같은 자),
+//   ② 부모-자식으로 딸린 `conhost.exe`까지 헬퍼 몫에 붙일 수 있다.
+// (LSPDIST R1 §6.5가 「다음 라운드 숙제」로 남긴 두 갈래 ⅰ·ⅱ가 바로 이것이다.)
+//
+// **값과 분류를 다른 순간에서 뽑지 않는다**: WS/Private은 `procTreeMem` 한 번의 스냅샷이고,
+// 두 번째 질의는 **분류에 쓸 문자열만** 가져온다(PID는 그 사이에 정체가 안 바뀐다).
+//
+// ★ 그리고 표본을 **세 순간에** 남긴다(`procDetailIdle`/`Windows` + 주행 끝 `procDetail`).
+//   전에는 주행 맨 끝 한 장뿐이라, 「LSP 제외」가 *정착 직후 summary − 주행 끝 헬퍼*라는
+//   **서로 다른 두 순간의 뺄셈**이었다(decisions §1.6-A (c″) — 「정공법은 하네스 숙제」).
+//   게이트를 그 뺄셈 위에 세우는 라운드라 그 숙제를 여기서 갚는다.
+function cmdlineMeta(pids) {
+  if (NO_CMDLINE || !pids?.length) return {}
+  const ps = String.raw`
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$ids = @(${pids.join(',')})
+$rows = Get-CimInstance Win32_Process | Where-Object { $ids -contains [int]$_.ProcessId } |
+  ForEach-Object { @{ pid = [uint32]$_.ProcessId; ppid = [uint32]$_.ParentProcessId; cmdline = $_.CommandLine } }
+ConvertTo-Json -InputObject @($rows) -Depth 3 -Compress
+`
+  try {
+    const raw = execFileSync('powershell', ['-NoProfile', '-Command', ps], { encoding: 'utf8', timeout: 30000 })
+    const arr = JSON.parse(raw.trim() || '[]')
+    const out = {}
+    for (const r of (Array.isArray(arr) ? arr : [arr])) out[r.pid] = { ppid: r.ppid ?? null, cmdline: r.cmdline ?? null }
+    return out
+  } catch {
+    return {}   // 분류가 없으면 소비자가 예전 방식(이름)으로 떨어진다 — 값은 안 잃는다
+  }
+}
+function procSample(rootPid) {
+  const m = procTreeMem(rootPid, { role: true })
+  const rows = m.procs ?? []
+  const meta = cmdlineMeta(rows.map((p) => p.pid))
+  return {
+    totalWsMB: m.totalWsMB,
+    totalPrivMB: m.totalPrivMB,
+    procs: rows.map((p) => ({
+      pid: p.pid, ppid: meta[p.pid]?.ppid ?? null, name: p.name, role: p.role ?? null,
+      wsMB: p.wsMB, privMB: p.privMB, cmdline: meta[p.pid]?.cmdline ?? null
+    }))
+  }
+}
 
 /** 패널 중심 좌표들. 부하 팔은 이 전부에 매 틱 휠을 뿌린다. */
 const PANEL_POINTS = `(() => [...document.querySelectorAll('.ma-p-thread')].map((el) => {
@@ -135,8 +193,11 @@ async function runOnce(seq) {
 
   // ── 1) 멀티 그리드만 띄운 유휴 ──
   await sleep(20000)
-  const memGrid = procTreeMem(child.pid)
+  const memGrid = procSample(child.pid)
   out.idleGrid = { totalWsMB: memGrid.totalWsMB, totalPrivMB: memGrid.totalPrivMB, procs: memGrid.procs?.length }
+  // ★ `summary.idleGrid*`와 **같은 스냅샷**의 프로세스별 내역. 「LSP 제외」의 감수를
+  //   여기서 뽑으면 피감수와 같은 순간이 된다(§1.6-A (c″)가 남긴 하네스 숙제).
+  out.procDetailIdle = memGrid.procs
   console.log('  idle (grid only):', JSON.stringify(out.idleGrid))
 
   // ── 2) 추가 채팅 창 2개를 더 연 뒤의 유휴 (창당 비용) ──
@@ -145,8 +206,9 @@ async function runOnce(seq) {
     await sleep(3500)
   }
   await sleep(12000)
-  const memWins = procTreeMem(child.pid)
+  const memWins = procSample(child.pid)
   out.idleWithWindows = { totalWsMB: memWins.totalWsMB, totalPrivMB: memWins.totalPrivMB, procs: memWins.procs?.length }
+  out.procDetailWindows = memWins.procs   // ★ +창2 게이트(G4)도 같은 순간으로 뺀다
   out.windowCost = {
     wsMBPerWindow: Math.round(((memWins.totalWsMB - memGrid.totalWsMB) / 2) * 10) / 10,
     procsAdded: (memWins.procs?.length ?? 0) - (memGrid.procs?.length ?? 0)
@@ -154,13 +216,27 @@ async function runOnce(seq) {
   console.log('  idle (+2 session windows):', JSON.stringify(out.idleWithWindows), 'cost/window:', JSON.stringify(out.windowCost))
 
   // ── 3) 스크롤 FPS: 한 패널 / 4패널 동시(부하 팔) ──
-  const pts = await cdp.eval(PANEL_POINTS).catch(() => null)
-  if (pts?.length) {
-    out.scrollInPanel = await measureFps(cdp, [pts[0]])
-    console.log('  scroll in one panel (others alive):', JSON.stringify(out.scrollInPanel))
-    await sleep(1500)
-    out.scrollAllPanels = await measureFps(cdp, pts)
-    console.log(`  scroll in ALL ${pts.length} panels (부하 팔):`, JSON.stringify(out.scrollAllPanels))
+  // ★GATES R1 — **FPS 단계의 실패가 주행 전체를 버리지 않게 한다.**
+  //   2.6.2 팔에서 `Input.dispatchMouseEvent`가 20초 타임아웃으로 죽는 일이 잦다
+  //   (이 라운드 실측: 다섯 번 중 네 번). 메모리 표본은 이 단계 **앞에서** 이미 다 찍혔는데
+  //   예외 하나가 `runOnce`를 통째로 깨뜨려 **결과 파일이 아예 안 써졌다** — 분모를 못 재던
+  //   진짜 원인이 이것이다.
+  //   ★ 내 변경 탓이 아니라는 것은 대조로 확인했다: `git archive HEAD`로 푼 격리 트리에서
+  //   **손대지 않은 HEAD의 이 파일**을 그대로 돌려도 같은 자리에서 죽는다(주행 2/3).
+  //   그래서 잡아서 `fpsError`로 남기고 주행을 마친다 — FPS 칸은 null이 되고(숨기지 않는다)
+  //   메모리 칸은 산다.
+  try {
+    const pts = await cdp.eval(PANEL_POINTS).catch(() => null)
+    if (pts?.length) {
+      out.scrollInPanel = await measureFps(cdp, [pts[0]])
+      console.log('  scroll in one panel (others alive):', JSON.stringify(out.scrollInPanel))
+      await sleep(1500)
+      out.scrollAllPanels = await measureFps(cdp, pts)
+      console.log(`  scroll in ALL ${pts.length} panels (부하 팔):`, JSON.stringify(out.scrollAllPanels))
+    }
+  } catch (e) {
+    out.fpsError = String(e?.message ?? e)
+    console.error('  ! FPS 단계 실패 — 메모리 표본은 유효하다:', out.fpsError)
   }
 
   // ── 4) 패널 N개 동시 스트리밍 (--live) ──
@@ -222,7 +298,8 @@ async function runOnce(seq) {
     }
   }
 
-  out.procDetail = (procTreeMem(child.pid).procs ?? []).map((p) => ({ name: p.name, wsMB: p.wsMB, privMB: p.privMB }))
+  // 주행 맨 끝 표본 — 옛 파일과 같은 자리(호환). 이제 `cmdline`/`ppid`/`role`이 더 실린다.
+  out.procDetail = procSample(child.pid).procs
   cdp.close()
   await sleep(800)
   killTree(child.pid)
@@ -255,7 +332,9 @@ const summary = {
     worstDroppedPct: Math.max(...runs.map((r) => r.scrollAllPanels?.droppedPct ?? 0)),
     zeroDropRuns: runs.filter((r) => (r.scrollAllPanels?.droppedPct ?? 1) === 0).length
   },
-  runs: runs.length
+  runs: runs.length,
+  // ★ FPS 단계가 죽은 주행 수. 0이 아니면 위 scroll* 칸은 **그만큼 적은 표본**이다.
+  fpsErrorRuns: runs.filter((r) => r.fpsError).length
 }
 
 const out = {

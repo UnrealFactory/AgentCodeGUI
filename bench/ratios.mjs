@@ -60,6 +60,12 @@ const SRC = {
   //   원인이 「위치」가 아니라 **node_modules 해석**이라는 것이 못 박힌다(1회).
   t30MultiDistMod: 'multi-tauri-3.0.0-default-r28jdecr1-distmod.json',
   e26MultiR1: 'multi-electron-2.6.2-default-r28jdecr1.json',       // 2.6.2 분모(같은 세션)
+  // ★★ GATES R1(2026-08-31) — **확정 게이트가 읽는 짝**. 같은 세션 두 팔 · 각 3회 ·
+  //   분류는 명령줄 기반(`cmdline`) · 헬퍼 표본은 `summary`와 **같은 순간**(procDetailIdle).
+  //   3.0 = HEAD 격리 트리에서 구운 exe를 `%LOCALAPPDATA%` 배포 모사(exe + node.exe +
+  //   node_modules 5,428파일)에 두고 실행. 2.6.2 = 레포 `out/` + `node_modules/electron`.
+  e26MultiGates: 'multi-electron-2.6.2-gates.json',
+  t30MultiGates: 'multi-tauri-3.0.0-default-gates-dist.json',
   t30FloorR4: 'critic-r4-gpuprobe.json',                 // 3.0 빈 문서 바닥값(R4 크리틱)
   t30Floor: 'gpu-css-probe-r28j-dec-tauri.json',         // 3.0 빈 문서 바닥값(R28j)
   e26Floor: 'gpu-css-probe-r28j-dec-electron.json',      // 2.6.2 빈 문서 바닥값(R28j · 최초 측정)
@@ -86,13 +92,23 @@ const add = (metric, tauri, electron, { lower = true, from, note, gate } = {}) =
 // ── 1. 주 게이트(멀티 4패널) ─────────────────────────────────────────────────
 const e = F.e26Multi
 const t4 = F.t30MultiR4?.summary
-// ★ `gate`는 **제안 합격선**이다(docs/decisions-3.0.md §1.5의 G1~G12).
-//   결정되면 이 숫자만 바꾸면 판정이 따라온다.
-const G = { idleWs: 0.7, idlePriv: 0.6, withWindows: 0.7, perWindow: 0.3, coldRoot: 0.85, coldApp: 0.7, footprint: 0.1 }
+// ★★ `gate`는 이제 **확정 합격선**이다 — 사용자 승인 2026-08-31(GATES R1).
+//   결정 내용 셋:
+//    ① 메모리 게이트(유휴 WS·유휴 Private·+창2)의 잣대는 **「LSP 제외」**다.
+//       「있는 그대로」 행은 게이트를 걸지 않는다(gate=null · 공시/참고용).
+//       근거: 배포본에 언어 서버가 실리면서(LSPDIST R1·R2) 「있는 그대로」 수는
+//       **성능이 아니라 적재물의 함수**가 됐다. 회귀 추적선은 LSP 제외 쪽이다.
+//    ② `footprint` 0.10 → **0.25**. 설치기 실측이 30.9/157.5 = **0.196**이라
+//       옛 0.10은 이미 미달이다. 게이트가 막아야 하는 것은 「크롬을 도로 안고 오는 것」이지
+//       「언어 서버를 실은 것」이 아니다.
+//    ③ 나머지(창당·콜드·앱 몫)는 제안값 그대로.
+//   ★ 여유(headroomPct)는 기계가 낸다 — 이 파일에도, 장부에도 손으로 적지 마라.
+const G = { idleWs: 0.7, idlePriv: 0.6, withWindows: 0.7, perWindow: 0.3, coldRoot: 0.85, coldApp: 0.7, footprint: 0.25 }
 if (e && t4) {
-  add('멀티 4패널 유휴 WS', t4.idleGridWsMB, e.idleGrid?.totalWsMB, { gate: G.idleWs, from: `${SRC.t30MultiR4}.summary.idleGridWsMB ÷ ${SRC.e26Multi}.idleGrid.totalWsMB` })
-  add('멀티 4패널 유휴 Private', t4.idleGridPrivMB, e.idleGrid?.totalPrivMB, { gate: G.idlePriv, from: `${SRC.t30MultiR4} ÷ ${SRC.e26Multi}` })
-  add('+추가 창 2개 WS', t4.idleWithWindowsWsMB, e.idleWithWindows?.totalWsMB, { gate: G.withWindows, from: `${SRC.t30MultiR4} ÷ ${SRC.e26Multi}` })
+  // ★GATES R1 — 아래 세 줄은 「있는 그대로」다. **게이트를 뗐다**(결정 ①). 참고 행으로 남긴다.
+  add('멀티 4패널 유휴 WS(있는 그대로)', t4.idleGridWsMB, e.idleGrid?.totalWsMB, { gate: null, from: `${SRC.t30MultiR4}.summary.idleGridWsMB ÷ ${SRC.e26Multi}.idleGrid.totalWsMB` })
+  add('멀티 4패널 유휴 Private(있는 그대로)', t4.idleGridPrivMB, e.idleGrid?.totalPrivMB, { gate: null, from: `${SRC.t30MultiR4} ÷ ${SRC.e26Multi}` })
+  add('+추가 창 2개 WS(있는 그대로)', t4.idleWithWindowsWsMB, e.idleWithWindows?.totalWsMB, { gate: null, from: `${SRC.t30MultiR4} ÷ ${SRC.e26Multi}` })
   add('창 1개 추가 비용(WS)', t4.wsMBPerWindow, e.windowCost?.wsMBPerWindow, { gate: G.perWindow, from: `${SRC.t30MultiR4} ÷ ${SRC.e26Multi}` })
   add('유휴 프로세스 수', t4.idleGridProcs, e.idleGrid?.procs, { gate: 1, from: `${SRC.t30MultiR4} ÷ ${SRC.e26Multi}` })
 }
@@ -102,8 +118,8 @@ if (e && t4) {
 //   싣는 것은 선택을 감추는 것이다. (대안 쪽 exe가 더 새것이고 트리도 `gitDirty:false`다.)
 const tAlt = F.t30MultiAlt?.summary
 if (e && tAlt) {
-  add('[대안 출처] 멀티 4패널 유휴 WS', tAlt.idleGridWsMB, e.idleGrid?.totalWsMB, { gate: G.idleWs, from: `${SRC.t30MultiAlt} ÷ ${SRC.e26Multi}`, note: `exe ${F.t30MultiAlt?.bin?.exeSha256}·${F.t30MultiAlt?.bin?.gitHead}·dirty=${F.t30MultiAlt?.bin?.gitDirty}` })
-  add('[대안 출처] 멀티 4패널 유휴 Private', tAlt.idleGridPrivMB, e.idleGrid?.totalPrivMB, { gate: G.idlePriv, from: `${SRC.t30MultiAlt} ÷ ${SRC.e26Multi}`, note: '253.2의 진짜 출처 — 파리티 감사가 인용한 0.50이 여기서 나왔다' })
+  add('[대안 출처] 멀티 4패널 유휴 WS', tAlt.idleGridWsMB, e.idleGrid?.totalWsMB, { gate: null, from: `${SRC.t30MultiAlt} ÷ ${SRC.e26Multi}`, note: `exe ${F.t30MultiAlt?.bin?.exeSha256}·${F.t30MultiAlt?.bin?.gitHead}·dirty=${F.t30MultiAlt?.bin?.gitDirty}` })
+  add('[대안 출처] 멀티 4패널 유휴 Private', tAlt.idleGridPrivMB, e.idleGrid?.totalPrivMB, { gate: null, from: `${SRC.t30MultiAlt} ÷ ${SRC.e26Multi}`, note: '253.2의 진짜 출처 — 파리티 감사가 인용한 0.50이 여기서 나왔다' })
   add('[대안 출처] 창 1개 추가 비용(WS)', tAlt.wsMBPerWindow, e.windowCost?.wsMBPerWindow, { gate: G.perWindow, from: `${SRC.t30MultiAlt} ÷ ${SRC.e26Multi}` })
 }
 // R28j 재측정(같은 세션 두 팔) — 파일이 있을 때만
@@ -112,7 +128,7 @@ const eN = F.e26MultiNew?.summary
 if (tN && eN) {
   add('[R28j 같은세션] 유휴 WS(있는 그대로)', tN.idleGridWsMB, eN.idleGridWsMB, { gate: null, from: `${SRC.t30MultiNew} ÷ ${SRC.e26MultiNew}` })
   add('[R28j 같은세션] 유휴 Private(있는 그대로)', tN.idleGridPrivMB, eN.idleGridPrivMB, { gate: null, from: `${SRC.t30MultiNew} ÷ ${SRC.e26MultiNew}` })
-  add('[R28j 같은세션] +창2 WS', tN.idleWithWindowsWsMB, eN.idleWithWindowsWsMB, { gate: G.withWindows, from: `${SRC.t30MultiNew} ÷ ${SRC.e26MultiNew}` })
+  add('[R28j 같은세션] +창2 WS(있는 그대로)', tN.idleWithWindowsWsMB, eN.idleWithWindowsWsMB, { gate: null, from: `${SRC.t30MultiNew} ÷ ${SRC.e26MultiNew}` })
   add('[R28j 같은세션] 창당 비용', tN.wsMBPerWindow, eN.wsMBPerWindow, { gate: G.perWindow, from: `${SRC.t30MultiNew} ÷ ${SRC.e26MultiNew}` })
 }
 
@@ -122,23 +138,77 @@ if (tN && eN) {
 // 2.6.2는 같은 프리웜을 **렌더러에서** 부르지만 서버가 앱 홈에 설치돼 있어야 뜨고,
 // 벤치 픽스처 홈은 비어 있어 **안 뜬다.** 그래서 같은 픽스처가 3.0에만 node.exe 2개(+conhost)를
 // 얹는다 — 두 팔이 같은 것을 재고 있지 않다. 수를 나눠 싣는 이유다.
-const HELPER = /^(node|conhost|python|pyright|clangd|Microsoft\.CodeAnalysis)/i
-function lspSplit(j) {
+// ★★ GATES R1 — **이름 기반 분류는 2.6.2를 구조적으로 못 셌다.**
+//   옛 규칙은 `/^(node|conhost|…)/`로 **프로세스 이름**을 봤는데, 2.6.2는 TS·Python 서버를
+//   `electron.exe`로 띄운다(`ELECTRON_RUN_AS_NODE=1` · `src/main/lsp/manager.ts:788`).
+//   그래서 「2.6.2 헬퍼 0」은 측정이 아니라 **분류 산물**이었고(LSPDIST R1 §6.5 · 확인
+//   크리틱 C5), 그 위에 세운 「LSP 제외」는 3.0에서만 100MB대를 빼고 2.6.2에서는 0을 뺐다.
+//   게이트를 그 수로 확정하는 라운드라 분류부터 고친다.
+//
+//   새 규칙은 **명령줄**이다 — 두 앱이 같은 서버 스크립트를 같은 이름으로 넘긴다:
+//     2.6.2 : electron.exe <레포>\node_modules\typescript-language-server\lib\cli.mjs --stdio
+//     3.0   : node.exe     <배포>\node_modules\typescript-language-server\lib\cli.mjs --stdio
+//   `bench/lsp.mjs:373`이 이미 쓰던 판정과 같은 자다(그쪽은 진작 명령줄을 봤다).
+//
+//   ★ `node_modules`를 키로 쓰면 안 된다 — 레포에서 띄운 2.6.2는 **모든** 프로세스의
+//   argv[0]이 `…\node_modules\electron\dist\electron.exe`다(렌더러·GPU·크래시패드 전부).
+//   엔진 CLI(`…\engines\<v>\node_modules\…\claude.exe`)도 같은 낱말을 달고 다닌다.
+const LSP_CMD = /typescript-language-server|tsserver|pyright|langserver\.index\.js|Microsoft\.CodeAnalysis\.LanguageServer|clangd|verse-lsp/i
+// 옛 결과 파일(= `cmdline` 필드가 없는 파일)을 읽을 때만 쓰는 폴백. 산출물에 `mode`로 남는다.
+const HELPER_NAME = /^(node|conhost|python|pyright|clangd|Microsoft\.CodeAnalysis)/i
+
+/**
+ * 한 주행의 프로세스 표본에서 LSP 헬퍼를 갈라낸다.
+ * @param phase 'idle' = `summary.idleGrid*`와 같은 순간 · 'windows' = +창2와 같은 순간 ·
+ *              'end' = 주행 맨 끝(옛 파일에 있는 유일한 표본).
+ */
+function lspSplit(j, phase = 'end') {
   const runs = j?.perRun ?? []
+  const key = phase === 'idle' ? 'procDetailIdle' : phase === 'windows' ? 'procDetailWindows' : 'procDetail'
   const per = runs.map((r) => {
-    const d = r.procDetail ?? []
-    const h = d.filter((p) => HELPER.test(p.name))
+    const rows = r[key] ?? r.procDetail ?? []
+    const exact = Array.isArray(r[key]) && r[key].length > 0
+    const hasCmd = rows.some((p) => Object.prototype.hasOwnProperty.call(p, 'cmdline'))
+    let h
+    if (hasCmd) {
+      // ① 명령줄이 서버를 가리키는 프로세스
+      const hit = new Set(rows.filter((p) => p.cmdline && LSP_CMD.test(p.cmdline)).map((p) => p.pid))
+      // ② 그 자손(=`conhost.exe`)까지 헬퍼 몫에 붙인다. 콘솔 서브시스템 자식에 Windows가
+      //    하나씩 붙이는 프로세스인데 **그 명령줄에는 서버 이름이 없다.** 3.0은 node.exe라
+      //    conhost가 붙고 2.6.2는 electron.exe(GUI)라 안 붙는다 — 비대칭이 실재하므로
+      //    「LSP가 지우면 같이 사라지는 몫」에 넣는 것이 맞다.
+      for (let grew = true; grew;) {
+        grew = false
+        for (const p of rows) if (!hit.has(p.pid) && p.ppid != null && hit.has(p.ppid)) { hit.add(p.pid); grew = true }
+      }
+      h = rows.filter((p) => hit.has(p.pid))
+    } else {
+      h = rows.filter((p) => HELPER_NAME.test(p.name))
+    }
     return {
-      procs: d.length,
+      mode: hasCmd ? 'cmdline' : 'name(legacy)',
+      sameMoment: exact,
+      procs: rows.length,
       helpers: h.length,
       helperWsMB: r2(h.reduce((a, p) => a + (p.wsMB ?? 0), 0)),
       helperPrivMB: r2(h.reduce((a, p) => a + (p.privMB ?? 0), 0)),
-      names: h.map((p) => p.name)
+      names: h.map((p) => p.name),
+      // 무엇을 헬퍼라 불렀는지 **파일에 남긴다** — 분류가 결론을 만드는 자리라 감사 가능해야 한다.
+      hits: h.map((p) => (p.cmdline ?? p.name).slice(0, 160))
     }
   })
   if (!per.length) return null
   const mid = (k) => { const a = per.map((x) => x[k]).sort((x, y) => x - y); return a[Math.floor(a.length / 2)] }
-  return { runs: per.length, helperCount: mid('helpers'), helperWsMB: mid('helperWsMB'), helperPrivMB: mid('helperPrivMB'), names: [...new Set(per.flatMap((p) => p.names))], per }
+  return {
+    runs: per.length,
+    mode: per[0].mode,
+    sameMoment: per.every((p) => p.sameMoment),
+    phase,
+    helperCount: mid('helpers'), helperWsMB: mid('helperWsMB'), helperPrivMB: mid('helperPrivMB'),
+    names: [...new Set(per.flatMap((p) => p.names))],
+    hits: [...new Set(per.flatMap((p) => p.hits))],
+    per
+  }
 }
 const splitT = lspSplit(F.t30MultiNew)
 const splitE = lspSplit(F.e26MultiNew)
@@ -153,12 +223,48 @@ if (tN && eN && splitT && splitE) {
   //   **방향은 두 팔에서 같고** 게이트 판정을 뒤집지는 않지만, 이 수를 인용할 때는
   //   「같은 규칙으로 뺀 근사」까지가 정확한 표현이다. 정공법은 `summary`와 같은 순간의
   //   역할별 표본을 남기는 것이고, 그건 하네스 숙제다.
-  const LSP_APPROX = '★근사 — 피감수는 정착 직후 summary, 감수는 주행 끝 procDetail(서로 다른 순간). 두 팔에 같은 규칙'
+  // ★GATES R1 덧붙임 — 이 세 줄의 **분모는 이제 틀린 것으로 밝혀졌다.** 옛 파일에는
+  //   `cmdline`이 없어 이름 분류로 떨어지는데, 그 규칙은 2.6.2의 tsls+tsserver를 못 센다
+  //   (= 2.6.2에서 0을 뺀다). 회귀 기록으로 남기되 **판정은 위 GATES 블록이 한다.**
+  const LSP_APPROX = `★근사 — 피감수는 정착 직후 summary, 감수는 주행 끝 procDetail(서로 다른 순간) · 분류=${splitE?.mode ?? '?'}(2.6.2 헬퍼 ${splitE?.helperCount ?? '?'}개 — 이름 분류의 과소계수)`
   add('[R28j·LSP제외] 유휴 WS', tN.idleGridWsMB - splitT.helperWsMB, eN.idleGridWsMB - splitE.helperWsMB, { gate: G.idleWs, from: 'summary − procDetail의 헬퍼(node/conhost) 합', note: LSP_APPROX })
   add('[R28j·LSP제외] 유휴 Private', tN.idleGridPrivMB - splitT.helperPrivMB, eN.idleGridPrivMB - splitE.helperPrivMB, { gate: G.idlePriv, from: 'summary − procDetail 헬퍼', note: LSP_APPROX })
   // ★ S3-1 — G4(+창2)도 **같은 자로** 뺀다. 한 표 안에서 G1은 LSP 제외, G4는 있는 그대로면
   //   그건 잣대가 아니라 서술이다.
   add('[R28j·LSP제외] +창2 WS', tN.idleWithWindowsWsMB - splitT.helperWsMB, eN.idleWithWindowsWsMB - splitE.helperWsMB, { gate: G.withWindows, from: 'summary.idleWithWindowsWsMB − procDetail 헬퍼', note: 'G1과 같은 자. 있는 그대로와 섞어 읽지 말 것 · ' + LSP_APPROX })
+}
+
+// ── 1b′. ★★★ GATES R1 — **확정 잣대로 판정하는 자리** (사용자 승인 2026-08-31) ──
+// 위 블록들과 다른 점 셋:
+//   ① 분류가 **명령줄** 기반이다 — 2.6.2의 LSP(=`electron.exe`로 뜨는 tsls+tsserver)가
+//      드디어 세어진다. 옛 이름 분류에서 「2.6.2 헬퍼 0」은 측정이 아니라 산물이었다.
+//   ② 감수(헬퍼 합)를 **피감수와 같은 스냅샷**에서 뽑는다(`procDetailIdle`/`Windows`) —
+//      §1.6-A (c″)의 「서로 다른 두 순간의 뺄셈」이 여기서는 성립하지 않는다.
+//   ③ 3.0은 **node 사이드카까지 놓인 배포 모사**다(LSPDIST R2 이후의 진짜 배포 상태).
+// 메모리 게이트는 **LSP 제외 행에만** 건다. 「있는 그대로」는 바로 아래 참고 행이다.
+const tG = F.t30MultiGates?.summary
+const eG = F.e26MultiGates?.summary
+const splitGT = lspSplit(F.t30MultiGates, 'idle')
+const splitGE = lspSplit(F.e26MultiGates, 'idle')
+const splitGTw = lspSplit(F.t30MultiGates, 'windows')
+const splitGEw = lspSplit(F.e26MultiGates, 'windows')
+if (tG && eG && splitGT && splitGE) {
+  const nx = (s) => (s?.sameMoment ? '같은 순간 표본' : '★근사(주행 끝 표본)')
+  const cls = `분류=${splitGT.mode}/${splitGE.mode} · 헬퍼 3.0=${splitGT.helperCount} / 2.6.2=${splitGE.helperCount} · ${nx(splitGT)}`
+  add('★★[GATES] 유휴 WS — LSP 제외(확정 잣대)', tG.idleGridWsMB - splitGT.helperWsMB, eG.idleGridWsMB - splitGE.helperWsMB,
+    { gate: G.idleWs, from: `${SRC.t30MultiGates} ÷ ${SRC.e26MultiGates} — summary − procDetailIdle의 헬퍼`, note: cls })
+  add('★★[GATES] 유휴 Private — LSP 제외(확정 잣대)', tG.idleGridPrivMB - splitGT.helperPrivMB, eG.idleGridPrivMB - splitGE.helperPrivMB,
+    { gate: G.idlePriv, from: `${SRC.t30MultiGates} ÷ ${SRC.e26MultiGates} — summary − procDetailIdle의 헬퍼`, note: cls })
+  add('★★[GATES] +창2 WS — LSP 제외(확정 잣대)', tG.idleWithWindowsWsMB - (splitGTw ?? splitGT).helperWsMB, eG.idleWithWindowsWsMB - (splitGEw ?? splitGE).helperWsMB,
+    { gate: G.withWindows, from: `${SRC.t30MultiGates} ÷ ${SRC.e26MultiGates} — summary − procDetailWindows의 헬퍼`, note: `G1과 같은 자 · ${nx(splitGTw)}` })
+  add('★★[GATES] 창 1개 추가 비용(WS)', tG.wsMBPerWindow, eG.wsMBPerWindow,
+    { gate: G.perWindow, from: `${SRC.t30MultiGates} ÷ ${SRC.e26MultiGates}`, note: '두 스냅샷의 뺄셈이라 헬퍼가 약분된다 — LSP 잣대와 무관' })
+  add('★★[GATES] 유휴 프로세스 수', tG.idleGridProcs, eG.idleGridProcs, { gate: 1, from: `${SRC.t30MultiGates} ÷ ${SRC.e26MultiGates}` })
+  add('[GATES·참고] 유휴 WS(있는 그대로)', tG.idleGridWsMB, eG.idleGridWsMB, { gate: null, from: `${SRC.t30MultiGates} ÷ ${SRC.e26MultiGates}`, note: '공시용 — 게이트 아님(결정 ①). 적재물이 바뀌면 같이 움직인다' })
+  add('[GATES·참고] 유휴 Private(있는 그대로)', tG.idleGridPrivMB, eG.idleGridPrivMB, { gate: null, from: `${SRC.t30MultiGates} ÷ ${SRC.e26MultiGates}` })
+  add('[GATES·참고] +창2 WS(있는 그대로)', tG.idleWithWindowsWsMB, eG.idleWithWindowsWsMB, { gate: null, from: `${SRC.t30MultiGates} ÷ ${SRC.e26MultiGates}` })
+  add('[GATES·참고] LSP 헬퍼 몫 WS', splitGT.helperWsMB, splitGE.helperWsMB, { gate: null, from: 'procDetailIdle의 헬퍼 합', note: '이 줄이 1에 가까울수록 두 팔이 같은 것을 지고 잰다는 뜻이다' })
+  add('[GATES·참고] LSP 헬퍼 몫 Private', splitGT.helperPrivMB, splitGE.helperPrivMB, { gate: null, from: 'procDetailIdle의 헬퍼 합' })
 }
 
 // ── 1c. ★★ 벤치 경로 vs 배포 경로 — 같은 exe를 두 자리에서 잰다 (S2-1) ───────
@@ -175,9 +281,11 @@ const splitBench = lspSplit(F.t30MultiBench)
 const splitDistMod = lspSplit(F.t30MultiDistMod)
 const splitER1 = lspSplit(F.e26MultiR1)
 if (tDist && eR1) {
-  add('★[배포 경로] 유휴 WS — 오늘 사용자가 겪는 값', tDist.idleGridWsMB, eR1.idleGridWsMB, { gate: G.idleWs, from: `${SRC.t30MultiDist} ÷ ${SRC.e26MultiR1}`, note: `LSP 헬퍼 3.0=${splitDist?.helperCount} / 2.6.2=${splitER1?.helperCount}` })
-  add('★[배포 경로] 유휴 Private', tDist.idleGridPrivMB, eR1.idleGridPrivMB, { gate: G.idlePriv, from: `${SRC.t30MultiDist} ÷ ${SRC.e26MultiR1}` })
-  add('★[배포 경로] +창2 WS', tDist.idleWithWindowsWsMB, eR1.idleWithWindowsWsMB, { gate: G.withWindows, from: `${SRC.t30MultiDist} ÷ ${SRC.e26MultiR1}` })
+  // ★GATES R1 — 게이트를 뗐다. 이 파일들은 **LSPDIST 이전**의 배포본(= 언어 서버가 안 실린
+  //   판)이고, 분모 쪽 헬퍼 수(`2.6.2=…`)도 **옛 이름 분류**의 산물이다. 회귀 기록으로만 남긴다.
+  add('[배포 경로·LSPDIST 이전] 유휴 WS', tDist.idleGridWsMB, eR1.idleGridWsMB, { gate: null, from: `${SRC.t30MultiDist} ÷ ${SRC.e26MultiR1}`, note: `LSP 헬퍼 3.0=${splitDist?.helperCount} / 2.6.2=${splitER1?.helperCount} (분류 ${splitER1?.mode})` })
+  add('[배포 경로·LSPDIST 이전] 유휴 Private', tDist.idleGridPrivMB, eR1.idleGridPrivMB, { gate: null, from: `${SRC.t30MultiDist} ÷ ${SRC.e26MultiR1}` })
+  add('[배포 경로·LSPDIST 이전] +창2 WS', tDist.idleWithWindowsWsMB, eR1.idleWithWindowsWsMB, { gate: null, from: `${SRC.t30MultiDist} ÷ ${SRC.e26MultiR1}` })
   add('★[배포 경로] 창 1개 추가 비용', tDist.wsMBPerWindow, eR1.wsMBPerWindow, { gate: G.perWindow, from: `${SRC.t30MultiDist} ÷ ${SRC.e26MultiR1}` })
 }
 if (tBench && eR1) {
@@ -280,10 +388,10 @@ const out = {
   what: '성능 게이트 비율 재계산(측정 없음 — 커밋된 결과 파일의 산술)',
   at: new Date().toISOString(),
   sources: Object.fromEntries(Object.entries(SRC).map(([k, v]) => [k, { file: v, present: !!F[k] }])),
-  proposedGates: {
-    note: '★제안이다 — 결정은 사용자 몫(docs/decisions-3.0.md §1.5)',
-    'G1 주게이트 유휴 WS(LSP 헬퍼 제외)': G.idleWs,
-    'G2 유휴 WS(★배포 경로 실측 = 오늘 사용자가 겪는 값)': G.idleWs,
+  gates: {
+    note: '★확정 — 사용자 승인 2026-08-31(GATES R1). 잣대=LSP 제외 · footprint 0.25. docs/decisions-3.0.md §1.5 후속 절',
+    'G1 주게이트 유휴 WS(LSP 헬퍼 제외 · 명령줄 분류)': G.idleWs,
+    'G2 유휴 WS(있는 그대로)': '게이트 아님 — 공시만. 적재물(언어 서버·node)의 함수라 성능 회귀선이 못 된다',
     'G2b 유휴 WS(벤치 경로·있는 그대로)': '게이트 아님 — 공시만. 배포본에 없는 상태다(decisions-3.0.md §1.4·§1.6-A)',
     'G3 유휴 Private(LSP 제외)': G.idlePriv,
     'G4 +창2 WS(★G1과 같은 자 — LSP 제외)': G.withWindows,
@@ -296,8 +404,15 @@ const out = {
     'G11 앱 몫 WS': '게이트 아님 — 관측만',
     'G12 앱 몫 콜드': G.coldApp
   },
+  // ★GATES R1 — 확정 게이트가 실제로 쓴 분류. `mode`가 `name(legacy)`면 그 줄의 2.6.2 헬퍼는
+  //   **못 센 것**이지 없는 것이 아니다. `hits`에 무엇을 헬퍼라 불렀는지 그대로 남긴다.
+  lspSplitGates: (splitGT || splitGE) && {
+    tauri: splitGT, electron: splitGE,
+    tauriWindows: splitGTw, electronWindows: splitGEw,
+    note: '헬퍼 = 명령줄에 서버 스크립트 이름이 있는 프로세스 + 그 자손(conhost). 두 앱에 같은 자.'
+  },
   rows,
-  lspSplit: { tauri: splitT, electron: splitE, note: '헬퍼 = procDetail에서 node/conhost/clangd/roslyn 계열. 3.0만 부팅 프리웜으로 뜬다(R28j 실측)' },
+  lspSplit: { tauri: splitT, electron: splitE, note: '★옛 파일 전용 — 이름 분류(node/conhost/…)라 2.6.2의 electron.exe LSP를 구조적으로 못 센다. 판정은 lspSplitGates가 한다' },
   // ★ S2-1 — 같은 exe를 두 자리에서 잰 짝. 「있는 그대로」가 어느 상태의 수인지 여기서 갈린다.
   paths: {
     what: '같은 exe · 같은 픽스처 · 같은 세션. 다른 것은 exe 위치와 프로세스 cwd 하나뿐이다.',
@@ -315,13 +430,21 @@ const out = {
 const w = (s, n) => String(s ?? '—').padEnd(n)
 const wr = (s, n) => String(s ?? '—').padStart(n)
 console.log('──── 비율 재계산 (측정 없음 · 커밋된 결과 파일의 산술) ────')
-console.log(w('지표', 44) + wr('3.0', 10) + wr('2.6.2', 10) + wr('비율', 8) + wr('제안선', 8) + wr('여유%', 8) + '  판정')
+console.log(w('지표', 44) + wr('3.0', 10) + wr('2.6.2', 10) + wr('비율', 8) + wr('합격선', 8) + wr('여유%', 8) + '  판정')
 for (const r of rows) {
   console.log(
     w(r.metric, 44) + wr(r.tauri, 10) + wr(r.electron, 10) + wr(r.ratio, 8) + wr(typeof r.gate === 'number' ? r.gate : '—', 8) +
       wr(r.headroomPct == null ? '—' : r.headroomPct.toFixed(1), 8) +
       '  ' + (r.pass == null ? '(게이트 없음)' : r.pass ? '통과' : '미달') + (r.note ? '  ← ' + r.note : '')
   )
+}
+if (splitGT || splitGE) {
+  console.log('\n── ★ GATES R1 — LSP 헬퍼 분류(명령줄 기반 · 확정 잣대가 쓰는 수) ──')
+  for (const [k, s] of [['3.0', splitGT], ['2.6.2', splitGE]]) {
+    if (!s) continue
+    console.log(`  ${w(k, 6)} 분류=${w(s.mode, 14)} 같은순간=${w(s.sameMoment, 6)} 헬퍼 ${wr(s.helperCount, 2)}개  WS ${wr(s.helperWsMB, 7)}  Priv ${wr(s.helperPrivMB, 7)}`)
+    for (const h of s.hits) console.log(`         · ${h}`)
+  }
 }
 if (out.paths?.dist && out.paths?.bench) {
   console.log('\n── ★ 벤치 경로 vs 배포 경로 (같은 exe · cwd/위치만 다름) ──')

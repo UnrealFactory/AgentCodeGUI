@@ -1,0 +1,1141 @@
+{
+  "what": "성능 게이트 비율 재계산(측정 없음 — 커밋된 결과 파일의 산술)",
+  "at": "2026-08-31T08:43:36.339Z",
+  "sources": {
+    "e26Multi": {
+      "file": "multi-electron-2.6.2.json",
+      "present": true
+    },
+    "t30MultiR4": {
+      "file": "critic-r4-multi-default.json",
+      "present": true
+    },
+    "t30MultiAlt": {
+      "file": "multi-tauri-3.0.0-default.json",
+      "present": true
+    },
+    "t30MultiNew": {
+      "file": "multi-tauri-3.0.0-default-r28jdec.json",
+      "present": true
+    },
+    "e26MultiNew": {
+      "file": "multi-electron-2.6.2-default-r28jdec.json",
+      "present": true
+    },
+    "t30MultiDist": {
+      "file": "multi-tauri-3.0.0-default-r28jdecr1-dist.json",
+      "present": true
+    },
+    "t30MultiBench": {
+      "file": "multi-tauri-3.0.0-default-r28jdecr1-bench.json",
+      "present": true
+    },
+    "t30MultiDistMod": {
+      "file": "multi-tauri-3.0.0-default-r28jdecr1-distmod.json",
+      "present": true
+    },
+    "e26MultiR1": {
+      "file": "multi-electron-2.6.2-default-r28jdecr1.json",
+      "present": true
+    },
+    "e26MultiGates": {
+      "file": "multi-electron-2.6.2-gates.json",
+      "present": true
+    },
+    "t30MultiGates": {
+      "file": "multi-tauri-3.0.0-default-gates-dist.json",
+      "present": true
+    },
+    "t30FloorR4": {
+      "file": "critic-r4-gpuprobe.json",
+      "present": true
+    },
+    "t30Floor": {
+      "file": "gpu-css-probe-r28j-dec-tauri.json",
+      "present": true
+    },
+    "e26Floor": {
+      "file": "gpu-css-probe-r28j-dec-electron.json",
+      "present": true
+    },
+    "coldE26": {
+      "file": "coldstart-electron-2.6.2.json",
+      "present": true
+    },
+    "coldPair": {
+      "file": "pair-coldstart.json",
+      "present": true
+    },
+    "boot": {
+      "file": "boot-breakdown.json",
+      "present": true
+    },
+    "foot": {
+      "file": "footprint.json",
+      "present": true
+    }
+  },
+  "gates": {
+    "note": "★확정 — 사용자 승인 2026-08-31(GATES R1). 잣대=LSP 제외 · footprint 0.25. docs/decisions-3.0.md §1.5 후속 절",
+    "G1 주게이트 유휴 WS(LSP 헬퍼 제외 · 명령줄 분류)": 0.7,
+    "G2 유휴 WS(있는 그대로)": "게이트 아님 — 공시만. 적재물(언어 서버·node)의 함수라 성능 회귀선이 못 된다",
+    "G2b 유휴 WS(벤치 경로·있는 그대로)": "게이트 아님 — 공시만. 배포본에 없는 상태다(decisions-3.0.md §1.4·§1.6-A)",
+    "G3 유휴 Private(LSP 제외)": 0.6,
+    "G4 +창2 WS(★G1과 같은 자 — LSP 제외)": 0.7,
+    "G5 창당 비용 WS": 0.3,
+    "G6 창당 프로세스": "= 0 (절대)",
+    "G7 콜드 rootMs": 0.85,
+    "G8 콜드 첫 가시 창": "게이트에서 내림 — 두 앱이 다른 사건을 잰다",
+    "G9 설치 풋프린트": 0.25,
+    "G10 FPS": "드랍 0% + p95 ≤ 25ms (절대 · avgFps는 세션 속성이라 게이트 부적합)",
+    "G11 앱 몫 WS": "게이트 아님 — 관측만",
+    "G12 앱 몫 콜드": 0.7
+  },
+  "lspSplitGates": {
+    "tauri": {
+      "runs": 3,
+      "mode": "cmdline",
+      "sameMoment": true,
+      "phase": "idle",
+      "helperCount": 3,
+      "helperWsMB": 115.5,
+      "helperPrivMB": 101.6,
+      "names": [
+        "node.exe",
+        "conhost.exe"
+      ],
+      "hits": [
+        "\"C:\\Users\\User\\AppData\\Local\\ccg-gates-r1\\node.exe\" C:\\Users\\User\\AppData\\Local\\ccg-gates-r1\\node_modules\\typescript-language-server\\lib\\cli.mjs --stdio",
+        "\\??\\C:\\WINDOWS\\system32\\conhost.exe 0x4",
+        "C:\\Users\\User\\AppData\\Local\\ccg-gates-r1\\node.exe --max-old-space-size=3072 C:\\Users\\User\\AppData\\Local\\ccg-gates-r1\\node_modules\\typescript\\lib\\tsserver.js --u"
+      ],
+      "per": [
+        {
+          "mode": "cmdline",
+          "sameMoment": true,
+          "procs": 8,
+          "helpers": 3,
+          "helperWsMB": 114.9,
+          "helperPrivMB": 101.6,
+          "names": [
+            "node.exe",
+            "conhost.exe",
+            "node.exe"
+          ],
+          "hits": [
+            "\"C:\\Users\\User\\AppData\\Local\\ccg-gates-r1\\node.exe\" C:\\Users\\User\\AppData\\Local\\ccg-gates-r1\\node_modules\\typescript-language-server\\lib\\cli.mjs --stdio",
+            "\\??\\C:\\WINDOWS\\system32\\conhost.exe 0x4",
+            "C:\\Users\\User\\AppData\\Local\\ccg-gates-r1\\node.exe --max-old-space-size=3072 C:\\Users\\User\\AppData\\Local\\ccg-gates-r1\\node_modules\\typescript\\lib\\tsserver.js --u"
+          ]
+        },
+        {
+          "mode": "cmdline",
+          "sameMoment": true,
+          "procs": 8,
+          "helpers": 3,
+          "helperWsMB": 115.6,
+          "helperPrivMB": 101.7,
+          "names": [
+            "node.exe",
+            "conhost.exe",
+            "node.exe"
+          ],
+          "hits": [
+            "\"C:\\Users\\User\\AppData\\Local\\ccg-gates-r1\\node.exe\" C:\\Users\\User\\AppData\\Local\\ccg-gates-r1\\node_modules\\typescript-language-server\\lib\\cli.mjs --stdio",
+            "\\??\\C:\\WINDOWS\\system32\\conhost.exe 0x4",
+            "C:\\Users\\User\\AppData\\Local\\ccg-gates-r1\\node.exe --max-old-space-size=3072 C:\\Users\\User\\AppData\\Local\\ccg-gates-r1\\node_modules\\typescript\\lib\\tsserver.js --u"
+          ]
+        },
+        {
+          "mode": "cmdline",
+          "sameMoment": true,
+          "procs": 8,
+          "helpers": 3,
+          "helperWsMB": 115.5,
+          "helperPrivMB": 101.4,
+          "names": [
+            "node.exe",
+            "conhost.exe",
+            "node.exe"
+          ],
+          "hits": [
+            "\"C:\\Users\\User\\AppData\\Local\\ccg-gates-r1\\node.exe\" C:\\Users\\User\\AppData\\Local\\ccg-gates-r1\\node_modules\\typescript-language-server\\lib\\cli.mjs --stdio",
+            "\\??\\C:\\WINDOWS\\system32\\conhost.exe 0x4",
+            "C:\\Users\\User\\AppData\\Local\\ccg-gates-r1\\node.exe --max-old-space-size=3072 C:\\Users\\User\\AppData\\Local\\ccg-gates-r1\\node_modules\\typescript\\lib\\tsserver.js --u"
+          ]
+        }
+      ]
+    },
+    "electron": {
+      "runs": 3,
+      "mode": "cmdline",
+      "sameMoment": true,
+      "phase": "idle",
+      "helperCount": 2,
+      "helperWsMB": 208.3,
+      "helperPrivMB": 111.3,
+      "names": [
+        "electron.exe"
+      ],
+      "hits": [
+        "C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe C:\\Code\\AgentCodeGUI\\node_modules\\typescript-language-server\\lib\\cli.mjs --stdio",
+        "C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe --max-old-space-size=3072 C:\\Code\\AgentCodeGUI\\node_modules\\typescript\\lib\\tsserver.js --useInferre"
+      ],
+      "per": [
+        {
+          "mode": "cmdline",
+          "sameMoment": true,
+          "procs": 7,
+          "helpers": 2,
+          "helperWsMB": 210.5,
+          "helperPrivMB": 113.3,
+          "names": [
+            "electron.exe",
+            "electron.exe"
+          ],
+          "hits": [
+            "C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe C:\\Code\\AgentCodeGUI\\node_modules\\typescript-language-server\\lib\\cli.mjs --stdio",
+            "C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe --max-old-space-size=3072 C:\\Code\\AgentCodeGUI\\node_modules\\typescript\\lib\\tsserver.js --useInferre"
+          ]
+        },
+        {
+          "mode": "cmdline",
+          "sameMoment": true,
+          "procs": 7,
+          "helpers": 2,
+          "helperWsMB": 207.9,
+          "helperPrivMB": 109.3,
+          "names": [
+            "electron.exe",
+            "electron.exe"
+          ],
+          "hits": [
+            "C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe C:\\Code\\AgentCodeGUI\\node_modules\\typescript-language-server\\lib\\cli.mjs --stdio",
+            "C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe --max-old-space-size=3072 C:\\Code\\AgentCodeGUI\\node_modules\\typescript\\lib\\tsserver.js --useInferre"
+          ]
+        },
+        {
+          "mode": "cmdline",
+          "sameMoment": true,
+          "procs": 7,
+          "helpers": 2,
+          "helperWsMB": 208.3,
+          "helperPrivMB": 111.3,
+          "names": [
+            "electron.exe",
+            "electron.exe"
+          ],
+          "hits": [
+            "C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe C:\\Code\\AgentCodeGUI\\node_modules\\typescript-language-server\\lib\\cli.mjs --stdio",
+            "C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe --max-old-space-size=3072 C:\\Code\\AgentCodeGUI\\node_modules\\typescript\\lib\\tsserver.js --useInferre"
+          ]
+        }
+      ]
+    },
+    "tauriWindows": {
+      "runs": 3,
+      "mode": "cmdline",
+      "sameMoment": true,
+      "phase": "windows",
+      "helperCount": 3,
+      "helperWsMB": 115.4,
+      "helperPrivMB": 101.3,
+      "names": [
+        "node.exe",
+        "conhost.exe"
+      ],
+      "hits": [
+        "\"C:\\Users\\User\\AppData\\Local\\ccg-gates-r1\\node.exe\" C:\\Users\\User\\AppData\\Local\\ccg-gates-r1\\node_modules\\typescript-language-server\\lib\\cli.mjs --stdio",
+        "\\??\\C:\\WINDOWS\\system32\\conhost.exe 0x4",
+        "C:\\Users\\User\\AppData\\Local\\ccg-gates-r1\\node.exe --max-old-space-size=3072 C:\\Users\\User\\AppData\\Local\\ccg-gates-r1\\node_modules\\typescript\\lib\\tsserver.js --u"
+      ],
+      "per": [
+        {
+          "mode": "cmdline",
+          "sameMoment": true,
+          "procs": 8,
+          "helpers": 3,
+          "helperWsMB": 114.7,
+          "helperPrivMB": 101.3,
+          "names": [
+            "node.exe",
+            "conhost.exe",
+            "node.exe"
+          ],
+          "hits": [
+            "\"C:\\Users\\User\\AppData\\Local\\ccg-gates-r1\\node.exe\" C:\\Users\\User\\AppData\\Local\\ccg-gates-r1\\node_modules\\typescript-language-server\\lib\\cli.mjs --stdio",
+            "\\??\\C:\\WINDOWS\\system32\\conhost.exe 0x4",
+            "C:\\Users\\User\\AppData\\Local\\ccg-gates-r1\\node.exe --max-old-space-size=3072 C:\\Users\\User\\AppData\\Local\\ccg-gates-r1\\node_modules\\typescript\\lib\\tsserver.js --u"
+          ]
+        },
+        {
+          "mode": "cmdline",
+          "sameMoment": true,
+          "procs": 8,
+          "helpers": 3,
+          "helperWsMB": 115.4,
+          "helperPrivMB": 101.6,
+          "names": [
+            "node.exe",
+            "conhost.exe",
+            "node.exe"
+          ],
+          "hits": [
+            "\"C:\\Users\\User\\AppData\\Local\\ccg-gates-r1\\node.exe\" C:\\Users\\User\\AppData\\Local\\ccg-gates-r1\\node_modules\\typescript-language-server\\lib\\cli.mjs --stdio",
+            "\\??\\C:\\WINDOWS\\system32\\conhost.exe 0x4",
+            "C:\\Users\\User\\AppData\\Local\\ccg-gates-r1\\node.exe --max-old-space-size=3072 C:\\Users\\User\\AppData\\Local\\ccg-gates-r1\\node_modules\\typescript\\lib\\tsserver.js --u"
+          ]
+        },
+        {
+          "mode": "cmdline",
+          "sameMoment": true,
+          "procs": 8,
+          "helpers": 3,
+          "helperWsMB": 115.4,
+          "helperPrivMB": 101.2,
+          "names": [
+            "node.exe",
+            "conhost.exe",
+            "node.exe"
+          ],
+          "hits": [
+            "\"C:\\Users\\User\\AppData\\Local\\ccg-gates-r1\\node.exe\" C:\\Users\\User\\AppData\\Local\\ccg-gates-r1\\node_modules\\typescript-language-server\\lib\\cli.mjs --stdio",
+            "\\??\\C:\\WINDOWS\\system32\\conhost.exe 0x4",
+            "C:\\Users\\User\\AppData\\Local\\ccg-gates-r1\\node.exe --max-old-space-size=3072 C:\\Users\\User\\AppData\\Local\\ccg-gates-r1\\node_modules\\typescript\\lib\\tsserver.js --u"
+          ]
+        }
+      ]
+    },
+    "electronWindows": {
+      "runs": 3,
+      "mode": "cmdline",
+      "sameMoment": true,
+      "phase": "windows",
+      "helperCount": 2,
+      "helperWsMB": 202.5,
+      "helperPrivMB": 104,
+      "names": [
+        "electron.exe"
+      ],
+      "hits": [
+        "C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe C:\\Code\\AgentCodeGUI\\node_modules\\typescript-language-server\\lib\\cli.mjs --stdio",
+        "C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe --max-old-space-size=3072 C:\\Code\\AgentCodeGUI\\node_modules\\typescript\\lib\\tsserver.js --useInferre"
+      ],
+      "per": [
+        {
+          "mode": "cmdline",
+          "sameMoment": true,
+          "procs": 9,
+          "helpers": 2,
+          "helperWsMB": 204.5,
+          "helperPrivMB": 105.4,
+          "names": [
+            "electron.exe",
+            "electron.exe"
+          ],
+          "hits": [
+            "C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe C:\\Code\\AgentCodeGUI\\node_modules\\typescript-language-server\\lib\\cli.mjs --stdio",
+            "C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe --max-old-space-size=3072 C:\\Code\\AgentCodeGUI\\node_modules\\typescript\\lib\\tsserver.js --useInferre"
+          ]
+        },
+        {
+          "mode": "cmdline",
+          "sameMoment": true,
+          "procs": 9,
+          "helpers": 2,
+          "helperWsMB": 201.9,
+          "helperPrivMB": 101.7,
+          "names": [
+            "electron.exe",
+            "electron.exe"
+          ],
+          "hits": [
+            "C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe C:\\Code\\AgentCodeGUI\\node_modules\\typescript-language-server\\lib\\cli.mjs --stdio",
+            "C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe --max-old-space-size=3072 C:\\Code\\AgentCodeGUI\\node_modules\\typescript\\lib\\tsserver.js --useInferre"
+          ]
+        },
+        {
+          "mode": "cmdline",
+          "sameMoment": true,
+          "procs": 9,
+          "helpers": 2,
+          "helperWsMB": 202.5,
+          "helperPrivMB": 104,
+          "names": [
+            "electron.exe",
+            "electron.exe"
+          ],
+          "hits": [
+            "C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe C:\\Code\\AgentCodeGUI\\node_modules\\typescript-language-server\\lib\\cli.mjs --stdio",
+            "C:\\Code\\AgentCodeGUI\\node_modules\\electron\\dist\\electron.exe --max-old-space-size=3072 C:\\Code\\AgentCodeGUI\\node_modules\\typescript\\lib\\tsserver.js --useInferre"
+          ]
+        }
+      ]
+    },
+    "note": "헬퍼 = 명령줄에 서버 스크립트 이름이 있는 프로세스 + 그 자손(conhost). 두 앱에 같은 자."
+  },
+  "rows": [
+    {
+      "metric": "멀티 4패널 유휴 WS(있는 그대로)",
+      "tauri": 421.3,
+      "electron": 712.8,
+      "ratio": 0.591,
+      "gate": null,
+      "pass": null,
+      "headroomPct": null,
+      "from": "critic-r4-multi-default.json.summary.idleGridWsMB ÷ multi-electron-2.6.2.json.idleGrid.totalWsMB"
+    },
+    {
+      "metric": "멀티 4패널 유휴 Private(있는 그대로)",
+      "tauri": 239.3,
+      "electron": 505.3,
+      "ratio": 0.474,
+      "gate": null,
+      "pass": null,
+      "headroomPct": null,
+      "from": "critic-r4-multi-default.json ÷ multi-electron-2.6.2.json"
+    },
+    {
+      "metric": "+추가 창 2개 WS(있는 그대로)",
+      "tauri": 470.9,
+      "electron": 934.1,
+      "ratio": 0.504,
+      "gate": null,
+      "pass": null,
+      "headroomPct": null,
+      "from": "critic-r4-multi-default.json ÷ multi-electron-2.6.2.json"
+    },
+    {
+      "metric": "창 1개 추가 비용(WS)",
+      "tauri": 23.6,
+      "electron": 110.7,
+      "ratio": 0.213,
+      "gate": 0.3,
+      "pass": true,
+      "headroomPct": 28.937,
+      "from": "critic-r4-multi-default.json ÷ multi-electron-2.6.2.json"
+    },
+    {
+      "metric": "유휴 프로세스 수",
+      "tauri": 5,
+      "electron": 7,
+      "ratio": 0.714,
+      "gate": 1,
+      "pass": true,
+      "headroomPct": 28.571,
+      "from": "critic-r4-multi-default.json ÷ multi-electron-2.6.2.json"
+    },
+    {
+      "metric": "[대안 출처] 멀티 4패널 유휴 WS",
+      "tauri": 438.1,
+      "electron": 712.8,
+      "ratio": 0.615,
+      "gate": null,
+      "pass": null,
+      "headroomPct": null,
+      "from": "multi-tauri-3.0.0-default.json ÷ multi-electron-2.6.2.json",
+      "note": "exe b6755c26833f5c0c·14ccb90·dirty=false"
+    },
+    {
+      "metric": "[대안 출처] 멀티 4패널 유휴 Private",
+      "tauri": 253.2,
+      "electron": 505.3,
+      "ratio": 0.501,
+      "gate": null,
+      "pass": null,
+      "headroomPct": null,
+      "from": "multi-tauri-3.0.0-default.json ÷ multi-electron-2.6.2.json",
+      "note": "253.2의 진짜 출처 — 파리티 감사가 인용한 0.50이 여기서 나왔다"
+    },
+    {
+      "metric": "[대안 출처] 창 1개 추가 비용(WS)",
+      "tauri": 20.7,
+      "electron": 110.7,
+      "ratio": 0.187,
+      "gate": 0.3,
+      "pass": true,
+      "headroomPct": 37.669,
+      "from": "multi-tauri-3.0.0-default.json ÷ multi-electron-2.6.2.json"
+    },
+    {
+      "metric": "[R28j 같은세션] 유휴 WS(있는 그대로)",
+      "tauri": 605.1,
+      "electron": 714.4,
+      "ratio": 0.847,
+      "gate": null,
+      "pass": null,
+      "headroomPct": null,
+      "from": "multi-tauri-3.0.0-default-r28jdec.json ÷ multi-electron-2.6.2-default-r28jdec.json"
+    },
+    {
+      "metric": "[R28j 같은세션] 유휴 Private(있는 그대로)",
+      "tauri": 362.7,
+      "electron": 506.9,
+      "ratio": 0.716,
+      "gate": null,
+      "pass": null,
+      "headroomPct": null,
+      "from": "multi-tauri-3.0.0-default-r28jdec.json ÷ multi-electron-2.6.2-default-r28jdec.json"
+    },
+    {
+      "metric": "[R28j 같은세션] +창2 WS(있는 그대로)",
+      "tauri": 639.6,
+      "electron": 935.6,
+      "ratio": 0.684,
+      "gate": null,
+      "pass": null,
+      "headroomPct": null,
+      "from": "multi-tauri-3.0.0-default-r28jdec.json ÷ multi-electron-2.6.2-default-r28jdec.json"
+    },
+    {
+      "metric": "[R28j 같은세션] 창당 비용",
+      "tauri": 18.1,
+      "electron": 110,
+      "ratio": 0.165,
+      "gate": 0.3,
+      "pass": true,
+      "headroomPct": 45.152,
+      "from": "multi-tauri-3.0.0-default-r28jdec.json ÷ multi-electron-2.6.2-default-r28jdec.json"
+    },
+    {
+      "metric": "[R28j·LSP제외] 유휴 WS",
+      "tauri": 459.6,
+      "electron": 714.4,
+      "ratio": 0.643,
+      "gate": 0.7,
+      "pass": true,
+      "headroomPct": 8.095,
+      "from": "summary − procDetail의 헬퍼(node/conhost) 합",
+      "note": "★근사 — 피감수는 정착 직후 summary, 감수는 주행 끝 procDetail(서로 다른 순간) · 분류=name(legacy)(2.6.2 헬퍼 0개 — 이름 분류의 과소계수)"
+    },
+    {
+      "metric": "[R28j·LSP제외] 유휴 Private",
+      "tauri": 257.7,
+      "electron": 506.9,
+      "ratio": 0.508,
+      "gate": 0.6,
+      "pass": true,
+      "headroomPct": 15.269,
+      "from": "summary − procDetail 헬퍼",
+      "note": "★근사 — 피감수는 정착 직후 summary, 감수는 주행 끝 procDetail(서로 다른 순간) · 분류=name(legacy)(2.6.2 헬퍼 0개 — 이름 분류의 과소계수)"
+    },
+    {
+      "metric": "[R28j·LSP제외] +창2 WS",
+      "tauri": 494.1,
+      "electron": 935.6,
+      "ratio": 0.528,
+      "gate": 0.7,
+      "pass": true,
+      "headroomPct": 24.556,
+      "from": "summary.idleWithWindowsWsMB − procDetail 헬퍼",
+      "note": "G1과 같은 자. 있는 그대로와 섞어 읽지 말 것 · ★근사 — 피감수는 정착 직후 summary, 감수는 주행 끝 procDetail(서로 다른 순간) · 분류=name(legacy)(2.6.2 헬퍼 0개 — 이름 분류의 과소계수)"
+    },
+    {
+      "metric": "★★[GATES] 유휴 WS — LSP 제외(확정 잣대)",
+      "tauri": 454.5,
+      "electron": 512.9,
+      "ratio": 0.886,
+      "gate": 0.7,
+      "pass": false,
+      "headroomPct": -26.591,
+      "from": "multi-tauri-3.0.0-default-gates-dist.json ÷ multi-electron-2.6.2-gates.json — summary − procDetailIdle의 헬퍼",
+      "note": "분류=cmdline/cmdline · 헬퍼 3.0=3 / 2.6.2=2 · 같은 순간 표본"
+    },
+    {
+      "metric": "★★[GATES] 유휴 Private — LSP 제외(확정 잣대)",
+      "tauri": 249.5,
+      "electron": 396.1,
+      "ratio": 0.63,
+      "gate": 0.6,
+      "pass": false,
+      "headroomPct": -4.982,
+      "from": "multi-tauri-3.0.0-default-gates-dist.json ÷ multi-electron-2.6.2-gates.json — summary − procDetailIdle의 헬퍼",
+      "note": "분류=cmdline/cmdline · 헬퍼 3.0=3 / 2.6.2=2 · 같은 순간 표본"
+    },
+    {
+      "metric": "★★[GATES] +창2 WS — LSP 제외(확정 잣대)",
+      "tauri": 503,
+      "electron": 737.8,
+      "ratio": 0.682,
+      "gate": 0.7,
+      "pass": true,
+      "headroomPct": 2.606,
+      "from": "multi-tauri-3.0.0-default-gates-dist.json ÷ multi-electron-2.6.2-gates.json — summary − procDetailWindows의 헬퍼",
+      "note": "G1과 같은 자 · 같은 순간 표본"
+    },
+    {
+      "metric": "★★[GATES] 창 1개 추가 비용(WS)",
+      "tauri": 24.1,
+      "electron": 109.5,
+      "ratio": 0.22,
+      "gate": 0.3,
+      "pass": true,
+      "headroomPct": 26.636,
+      "from": "multi-tauri-3.0.0-default-gates-dist.json ÷ multi-electron-2.6.2-gates.json",
+      "note": "두 스냅샷의 뺄셈이라 헬퍼가 약분된다 — LSP 잣대와 무관"
+    },
+    {
+      "metric": "★★[GATES] 유휴 프로세스 수",
+      "tauri": 8,
+      "electron": 7,
+      "ratio": 1.143,
+      "gate": 1,
+      "pass": false,
+      "headroomPct": -14.286,
+      "from": "multi-tauri-3.0.0-default-gates-dist.json ÷ multi-electron-2.6.2-gates.json"
+    },
+    {
+      "metric": "[GATES·참고] 유휴 WS(있는 그대로)",
+      "tauri": 570,
+      "electron": 721.2,
+      "ratio": 0.79,
+      "gate": null,
+      "pass": null,
+      "headroomPct": null,
+      "from": "multi-tauri-3.0.0-default-gates-dist.json ÷ multi-electron-2.6.2-gates.json",
+      "note": "공시용 — 게이트 아님(결정 ①). 적재물이 바뀌면 같이 움직인다"
+    },
+    {
+      "metric": "[GATES·참고] 유휴 Private(있는 그대로)",
+      "tauri": 351.1,
+      "electron": 507.4,
+      "ratio": 0.692,
+      "gate": null,
+      "pass": null,
+      "headroomPct": null,
+      "from": "multi-tauri-3.0.0-default-gates-dist.json ÷ multi-electron-2.6.2-gates.json"
+    },
+    {
+      "metric": "[GATES·참고] +창2 WS(있는 그대로)",
+      "tauri": 618.4,
+      "electron": 940.3,
+      "ratio": 0.658,
+      "gate": null,
+      "pass": null,
+      "headroomPct": null,
+      "from": "multi-tauri-3.0.0-default-gates-dist.json ÷ multi-electron-2.6.2-gates.json"
+    },
+    {
+      "metric": "[GATES·참고] LSP 헬퍼 몫 WS",
+      "tauri": 115.5,
+      "electron": 208.3,
+      "ratio": 0.554,
+      "gate": null,
+      "pass": null,
+      "headroomPct": null,
+      "from": "procDetailIdle의 헬퍼 합",
+      "note": "이 줄이 1에 가까울수록 두 팔이 같은 것을 지고 잰다는 뜻이다"
+    },
+    {
+      "metric": "[GATES·참고] LSP 헬퍼 몫 Private",
+      "tauri": 101.6,
+      "electron": 111.3,
+      "ratio": 0.913,
+      "gate": null,
+      "pass": null,
+      "headroomPct": null,
+      "from": "procDetailIdle의 헬퍼 합"
+    },
+    {
+      "metric": "[배포 경로·LSPDIST 이전] 유휴 WS",
+      "tauri": 450.5,
+      "electron": 718.6,
+      "ratio": 0.627,
+      "gate": null,
+      "pass": null,
+      "headroomPct": null,
+      "from": "multi-tauri-3.0.0-default-r28jdecr1-dist.json ÷ multi-electron-2.6.2-default-r28jdecr1.json",
+      "note": "LSP 헬퍼 3.0=0 / 2.6.2=0 (분류 name(legacy))"
+    },
+    {
+      "metric": "[배포 경로·LSPDIST 이전] 유휴 Private",
+      "tauri": 258.1,
+      "electron": 508.9,
+      "ratio": 0.507,
+      "gate": null,
+      "pass": null,
+      "headroomPct": null,
+      "from": "multi-tauri-3.0.0-default-r28jdecr1-dist.json ÷ multi-electron-2.6.2-default-r28jdecr1.json"
+    },
+    {
+      "metric": "[배포 경로·LSPDIST 이전] +창2 WS",
+      "tauri": 498.2,
+      "electron": 934,
+      "ratio": 0.533,
+      "gate": null,
+      "pass": null,
+      "headroomPct": null,
+      "from": "multi-tauri-3.0.0-default-r28jdecr1-dist.json ÷ multi-electron-2.6.2-default-r28jdecr1.json"
+    },
+    {
+      "metric": "★[배포 경로] 창 1개 추가 비용",
+      "tauri": 22.8,
+      "electron": 107.7,
+      "ratio": 0.212,
+      "gate": 0.3,
+      "pass": true,
+      "headroomPct": 29.434,
+      "from": "multi-tauri-3.0.0-default-r28jdecr1-dist.json ÷ multi-electron-2.6.2-default-r28jdecr1.json"
+    },
+    {
+      "metric": "[벤치 경로] 유휴 WS(있는 그대로)",
+      "tauri": 599.1,
+      "electron": 718.6,
+      "ratio": 0.834,
+      "gate": null,
+      "pass": null,
+      "headroomPct": null,
+      "from": "multi-tauri-3.0.0-default-r28jdecr1-bench.json ÷ multi-electron-2.6.2-default-r28jdecr1.json",
+      "note": "헬퍼 3개가 얹힌 상태 — 배포본에 없는 상태다"
+    },
+    {
+      "metric": "[벤치 경로] 유휴 Private(있는 그대로)",
+      "tauri": 359,
+      "electron": 508.9,
+      "ratio": 0.705,
+      "gate": null,
+      "pass": null,
+      "headroomPct": null,
+      "from": "multi-tauri-3.0.0-default-r28jdecr1-bench.json ÷ multi-electron-2.6.2-default-r28jdecr1.json"
+    },
+    {
+      "metric": "콜드 첫 가시 창(박제 분모 · ★비대칭)",
+      "tauri": 250,
+      "electron": 336,
+      "ratio": 0.744,
+      "gate": null,
+      "pass": null,
+      "headroomPct": null,
+      "from": "pair-coldstart.json.summary.tauri.winMs ÷ coldstart-electron-2.6.2.json.medianWinMs",
+      "note": "3.0=본 창 / 2.6.2=300×240 스플래시 — 서로 다른 사건. 게이트로 쓰지 말 것"
+    },
+    {
+      "metric": "콜드 UI 사용 가능 rootMs(박제 분모)",
+      "tauri": 348,
+      "electron": 422,
+      "ratio": 0.825,
+      "gate": 0.85,
+      "pass": true,
+      "headroomPct": 2.983,
+      "from": "pair-coldstart.json ÷ coldstart-electron-2.6.2.json"
+    },
+    {
+      "metric": "콜드 첫 가시 창(교대 · ★비대칭)",
+      "tauri": 250,
+      "electron": 371,
+      "ratio": 0.674,
+      "gate": null,
+      "pass": null,
+      "headroomPct": null,
+      "from": "pair-coldstart.json.summary",
+      "note": "위와 같은 비대칭"
+    },
+    {
+      "metric": "콜드 UI 사용 가능 rootMs(교대)",
+      "tauri": 348,
+      "electron": 443,
+      "ratio": 0.786,
+      "gate": 0.85,
+      "pass": true,
+      "headroomPct": 7.582,
+      "from": "pair-coldstart.json.summary"
+    },
+    {
+      "metric": "설치본 파일 크기",
+      "tauri": 2492395,
+      "electron": 165119775,
+      "ratio": 0.015,
+      "gate": 0.25,
+      "pass": true,
+      "headroomPct": 93.962,
+      "from": "footprint.json.compare.installerBytes"
+    },
+    {
+      "metric": "설치 폴더(논리)",
+      "tauri": 6285316,
+      "electron": 664461448,
+      "ratio": 0.009,
+      "gate": 0.25,
+      "pass": true,
+      "headroomPct": 96.216,
+      "from": "footprint.json.compare.installDirLogical"
+    },
+    {
+      "metric": "설치 폴더(할당 4K)",
+      "tauri": 6291456,
+      "electron": 688041984,
+      "ratio": 0.009,
+      "gate": 0.25,
+      "pass": true,
+      "headroomPct": 96.342,
+      "from": "footprint.json.compare.installDirAlloc"
+    },
+    {
+      "metric": "★ 앱 몫 WS (R28j 같은 세션)",
+      "tauri": 58.3,
+      "electron": 56.4,
+      "ratio": 1.034,
+      "gate": null,
+      "pass": null,
+      "headroomPct": null,
+      "from": "gpu-css-probe-r28j-dec-tauri.json ÷ gpu-css-probe-r28j-dec-electron.json (appShare.wsMB)"
+    },
+    {
+      "metric": "★ 앱 몫 Private (R28j 같은 세션)",
+      "tauri": 45.4,
+      "electron": 85.9,
+      "ratio": 0.529,
+      "gate": null,
+      "pass": null,
+      "headroomPct": null,
+      "from": "appShare.privMB"
+    },
+    {
+      "metric": "런타임 바닥값 WS (앱 코드로 못 줄이는 몫)",
+      "tauri": 515.9,
+      "electron": 643.1,
+      "ratio": 0.802,
+      "gate": null,
+      "pass": null,
+      "headroomPct": null,
+      "from": "appShare.blankWsMB",
+      "note": "이 비율은 우리 성과가 아니라 WebView2 ÷ Chromium이다"
+    },
+    {
+      "metric": "★ 앱 몫 WS (3.0=R4 크리틱 exe · 세션 다름)",
+      "tauri": 47.3,
+      "electron": 56.4,
+      "ratio": 0.839,
+      "gate": null,
+      "pass": null,
+      "headroomPct": null,
+      "from": "critic-r4-gpuprobe.json ÷ gpu-css-probe-r28j-dec-electron.json",
+      "note": "3.0 쪽은 2026-08-22 exe다 — 교차 세션 비교라 참고값"
+    },
+    {
+      "metric": "★ 앱 몫 WS — renderer만(문서가 붙드는 몫)",
+      "tauri": 53.2,
+      "electron": 39.7,
+      "ratio": 1.34,
+      "gate": null,
+      "pass": null,
+      "headroomPct": null,
+      "from": "gpu-css-probe-r28j-dec-tauri.json ÷ gpu-css-probe-r28j-dec-electron.json — steps[0].byRole.renderer − steps[마지막].byRole.renderer",
+      "note": ">1이면 우리 문서가 2.6.2보다 더 쓴다는 뜻이다"
+    },
+    {
+      "metric": "★ 앱 몫 Private — renderer만",
+      "tauri": 46.2,
+      "electron": 41,
+      "ratio": 1.127,
+      "gate": null,
+      "pass": null,
+      "headroomPct": null,
+      "from": "byRole.renderer(Private)",
+      "note": "총량 앱 몫 Private 0.53과 방향이 반대다 — 0.53은 우리 코드가 아니다"
+    },
+    {
+      "metric": "앱 몫 Private — 비-렌더러(런타임 프로세스 구조)",
+      "tauri": -0.7,
+      "electron": 44.9,
+      "ratio": -0.016,
+      "gate": null,
+      "pass": null,
+      "headroomPct": null,
+      "from": "byRole에서 renderer를 뺀 합",
+      "note": "2.6.2의 browser+gpu-process가 언로드 때 Private을 반납한다 — 0.53의 진짜 출처"
+    },
+    {
+      "metric": "★ 콜드 앱 몫(rootMs − 런타임 기동)",
+      "tauri": 149,
+      "electron": 244,
+      "ratio": 0.611,
+      "gate": 0.7,
+      "pass": true,
+      "headroomPct": 12.763,
+      "from": "pair-coldstart.json.summary − boot-breakdown.json.spawnToTimeOriginMs",
+      "note": "런타임 기동 바닥값 3.0 199ms / 2.6.2 199ms — 같은 값이다"
+    }
+  ],
+  "lspSplit": {
+    "tauri": {
+      "runs": 3,
+      "mode": "name(legacy)",
+      "sameMoment": true,
+      "phase": "end",
+      "helperCount": 3,
+      "helperWsMB": 145.5,
+      "helperPrivMB": 105,
+      "names": [
+        "node.exe",
+        "conhost.exe"
+      ],
+      "hits": [
+        "node.exe",
+        "conhost.exe"
+      ],
+      "per": [
+        {
+          "mode": "name(legacy)",
+          "sameMoment": true,
+          "procs": 8,
+          "helpers": 3,
+          "helperWsMB": 145.2,
+          "helperPrivMB": 105,
+          "names": [
+            "node.exe",
+            "conhost.exe",
+            "node.exe"
+          ],
+          "hits": [
+            "node.exe",
+            "conhost.exe",
+            "node.exe"
+          ]
+        },
+        {
+          "mode": "name(legacy)",
+          "sameMoment": true,
+          "procs": 8,
+          "helpers": 3,
+          "helperWsMB": 145.8,
+          "helperPrivMB": 104.9,
+          "names": [
+            "node.exe",
+            "conhost.exe",
+            "node.exe"
+          ],
+          "hits": [
+            "node.exe",
+            "conhost.exe",
+            "node.exe"
+          ]
+        },
+        {
+          "mode": "name(legacy)",
+          "sameMoment": true,
+          "procs": 8,
+          "helpers": 3,
+          "helperWsMB": 145.5,
+          "helperPrivMB": 105.1,
+          "names": [
+            "node.exe",
+            "conhost.exe",
+            "node.exe"
+          ],
+          "hits": [
+            "node.exe",
+            "conhost.exe",
+            "node.exe"
+          ]
+        }
+      ]
+    },
+    "electron": {
+      "runs": 3,
+      "mode": "name(legacy)",
+      "sameMoment": true,
+      "phase": "end",
+      "helperCount": 0,
+      "helperWsMB": 0,
+      "helperPrivMB": 0,
+      "names": [],
+      "hits": [],
+      "per": [
+        {
+          "mode": "name(legacy)",
+          "sameMoment": true,
+          "procs": 9,
+          "helpers": 0,
+          "helperWsMB": 0,
+          "helperPrivMB": 0,
+          "names": [],
+          "hits": []
+        },
+        {
+          "mode": "name(legacy)",
+          "sameMoment": true,
+          "procs": 9,
+          "helpers": 0,
+          "helperWsMB": 0,
+          "helperPrivMB": 0,
+          "names": [],
+          "hits": []
+        },
+        {
+          "mode": "name(legacy)",
+          "sameMoment": true,
+          "procs": 9,
+          "helpers": 0,
+          "helperWsMB": 0,
+          "helperPrivMB": 0,
+          "names": [],
+          "hits": []
+        }
+      ]
+    },
+    "note": "★옛 파일 전용 — 이름 분류(node/conhost/…)라 2.6.2의 electron.exe LSP를 구조적으로 못 센다. 판정은 lspSplitGates가 한다"
+  },
+  "paths": {
+    "what": "같은 exe · 같은 픽스처 · 같은 세션. 다른 것은 exe 위치와 프로세스 cwd 하나뿐이다.",
+    "why": "crates/ccg-lsp/src/launch.rs::shipped_module()이 node_modules를 exe 폴더/프로세스 cwd에서 위로 훑는다. 레포 안이면 물고, 배포 위치(파일 2개)면 못 문다.",
+    "dist": {
+      "source": "multi-tauri-3.0.0-default-r28jdecr1-dist.json",
+      "cwd": "C:\\Users\\User\\AppData\\Local\\ccg-r28j-dec-r1-dist",
+      "exe": "C:\\Users\\User\\AppData\\Local\\ccg-r28j-dec-r1-dist\\AgentCodeGUI3.exe",
+      "exeSha": "0a3e5384cea48ba8",
+      "idleWs": 450.5,
+      "idlePriv": 258.1,
+      "procs": 5,
+      "helpers": 0,
+      "helperWsMB": 0,
+      "helperNames": []
+    },
+    "bench": {
+      "source": "multi-tauri-3.0.0-default-r28jdecr1-bench.json",
+      "cwd": "C:\\Code\\AgentCodeGUI",
+      "exe": "C:\\Code\\AgentCodeGUI\\target-r28j-dec-r1\\release\\agentcodegui.exe",
+      "exeSha": "0a3e5384cea48ba8",
+      "idleWs": 599.1,
+      "idlePriv": 359,
+      "procs": 8,
+      "helpers": 3,
+      "helperWsMB": 151.6,
+      "helperNames": [
+        "node.exe",
+        "conhost.exe"
+      ]
+    },
+    "distWithModules": {
+      "source": "multi-tauri-3.0.0-default-r28jdecr1-distmod.json",
+      "cwd": "C:\\Users\\User\\AppData\\Local\\ccg-r28j-dec-r1-dist",
+      "exeSha": "0a3e5384cea48ba8",
+      "env": "C:\\Code\\AgentCodeGUI",
+      "idleWs": 601.4,
+      "idlePriv": 365.1,
+      "procs": 8,
+      "helpers": 3,
+      "note": "배포 위치 그대로 + CCG_LSP_MODULES만 얹음(1회) — 헬퍼가 돌아오면 원인은 위치가 아니라 node_modules 해석이다"
+    },
+    "electron": {
+      "source": "multi-electron-2.6.2-default-r28jdecr1.json",
+      "cwd": "C:\\Code\\AgentCodeGUI",
+      "idleWs": 718.6,
+      "idlePriv": 508.9,
+      "procs": 7,
+      "helpers": 0
+    }
+  },
+  "appShare": {
+    "what": "앱 몫 = (4패널 기준선 − 빈 문서 바닥값). 같은 실행 안에서 뺀 값이라 세션 밴드에 둔감하다.",
+    "method": "bench/gpuprobe.mjs 6단계: Page.navigate about:blank → DOM 노드·리스너 90%+ 감소를 해제 조건으로 검증(release.verdict)",
+    "tauri": {
+      "source": "gpu-css-probe-r28j-dec-tauri.json",
+      "baselineWs": 574.2,
+      "blankFloorWs": 515.9,
+      "appWs": 58.3,
+      "appPriv": 45.4,
+      "valid": true,
+      "exe": "C:\\Code\\AgentCodeGUI\\target\\release\\agentcodegui.exe",
+      "exeSha": "4cdf778840717bb2",
+      "priv": {
+        "base": 335.3,
+        "blank": 289.9
+      }
+    },
+    "tauriR4": {
+      "source": "critic-r4-gpuprobe.json",
+      "baselineWs": 398.8,
+      "blankFloorWs": 351.5,
+      "appWs": 47.3,
+      "appPriv": 39.7,
+      "exeSha": "682ad08988a40a17",
+      "priv": {
+        "base": 214.3,
+        "blank": 174.6
+      }
+    },
+    "electron": {
+      "source": "gpu-css-probe-r28j-dec-electron.json",
+      "baselineWs": 699.5,
+      "blankFloorWs": 643.1,
+      "appWs": 56.4,
+      "appPriv": 85.9,
+      "valid": true,
+      "exeSha": "4e3b585c8cbbc45a",
+      "priv": {
+        "base": 485.2,
+        "blank": 399.3
+      }
+    }
+  },
+  "roleSplit": {
+    "tauri": {
+      "baseline": "0-baseline",
+      "blank": "6-about-blank(진짜 언로드)",
+      "roles": {
+        "browser": {
+          "procs": 5,
+          "dWsMB": 8.2,
+          "dPrivMB": -0.2
+        },
+        "crashpad-handler": {
+          "procs": 1,
+          "dWsMB": -3,
+          "dPrivMB": -0.5
+        },
+        "utility:StorageService": {
+          "procs": 1,
+          "dWsMB": -0.1,
+          "dPrivMB": 0
+        },
+        "renderer": {
+          "procs": 1,
+          "dWsMB": 53.2,
+          "dPrivMB": 46.2
+        }
+      },
+      "sumDWsMB": 58.3,
+      "sumDPrivMB": 45.5
+    },
+    "electron": {
+      "baseline": "0-baseline",
+      "blank": "6-about-blank(진짜 언로드)",
+      "roles": {
+        "browser": {
+          "procs": 3,
+          "dWsMB": 17.1,
+          "dPrivMB": 20.6
+        },
+        "crashpad-handler": {
+          "procs": 1,
+          "dWsMB": 0,
+          "dPrivMB": 0.1
+        },
+        "gpu-process": {
+          "procs": 1,
+          "dWsMB": -0.9,
+          "dPrivMB": 23.5
+        },
+        "utility:NetworkService": {
+          "procs": 1,
+          "dWsMB": 0.4,
+          "dPrivMB": 0.7
+        },
+        "renderer": {
+          "procs": 1,
+          "dWsMB": 39.7,
+          "dPrivMB": 41
+        }
+      },
+      "sumDWsMB": 56.3,
+      "sumDPrivMB": 85.9
+    },
+    "note": "기준선 − 빈 문서를 역할별로. renderer만 떼면 3.0이 더 많이 쓴다 — 앱 몫 Private 0.53을 「우리 코드」라 부르면 안 되는 이유(확인 크리틱 S2-2)"
+  },
+  "webRuntimeBootFloorMs": {
+    "tauri": 199,
+    "electron": 199,
+    "source": "boot-breakdown.json"
+  }
+}
