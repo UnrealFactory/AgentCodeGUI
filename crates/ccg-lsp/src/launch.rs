@@ -144,7 +144,7 @@ pub fn node_search_hint() -> String {
         return "실행 파일 경로를 못 읽었다 / cannot resolve current exe path".to_string();
     };
     let env_set = std::env::var("CCG_LSP_NODE").ok().filter(|s| !s.is_empty());
-    let gate = is_cargo_output_dir(&d);
+    let gate = cargo_gate(&d);
     let mut lines: Vec<String> = Vec::new();
     lines.push(match &env_set {
         Some(v) => format!("① CCG_LSP_NODE={v} (그 자리에 파일이 없다 / not a file)"),
@@ -169,17 +169,38 @@ pub fn node_search_hint() -> String {
     if staged_hidden > 0 {
         lines.push(format!("③ 개발 스테이징: 조상 {staged_hidden}칸 더 봤지만 없다 / {staged_hidden} more ancestors"));
     }
-    lines.push(if gate {
-        "④ PATH: cargo 산출 폴더라 봤지만 node를 못 찾았다 / searched PATH (cargo output dir)".to_string()
-    } else {
-        "④ PATH: 배포본이라 **보지 않는다**(결정론) / not consulted in a deployed build".to_string()
-    });
-    format!(
+    // ★마감(확인 크리틱 R3 **R3-L1**) — ④ 줄과 머리 문장이 **닫힌 이유를 갈라 말한다.**
+    //
+    // R3까지는 게이트가 닫히기만 하면 무조건 「배포본이라」였고 머리 문장은 「다시 설치해
+    // 주세요」였다. 그런데 게이트가 닫히는 이유는 **둘**이다 — `.cargo-lock`이 없거나(진짜
+    // 배포본), 있는데 폴더 이름이 `target…`이 아니거나(말단을 바꾼 `CARGO_TARGET_DIR`).
+    // 뒤엣것은 **개발 판**인데 거기에 대고 재설치를 권하면, R2-C1이 고친 병
+    // (**검증하지 않은 이유를 단정한다**)의 축소판을 그대로 다시 저지르는 것이다.
+    let deployed = matches!(gate, CargoGate::NoLock);
+    lines.push(
+        match gate {
+            CargoGate::Open => "④ PATH: cargo 산출 폴더라 봤지만 node를 못 찾았다 / searched PATH (cargo output dir)",
+            CargoGate::NoLock => "④ PATH: 보지 않는다 — 배포본이다(`.cargo-lock` 없음) / not consulted: deployed build",
+            // 이 줄이 R3-L1이 연 자리다. 「배포본이라」고 단정하지 않고 **본 것**만 말한다.
+            CargoGate::NotTargetDir => {
+                "④ PATH: 보지 않는다 — `.cargo-lock`은 있지만 폴더 이름이 `target…`이 아니다(개발 판일 수 있다) \
+                 / not consulted: has .cargo-lock but folder is not named target…"
+            }
+        }
+        .to_string(),
+    );
+    // 머리 문장도 같이 갈린다 — 개발자에게 「다시 설치」는 헛수고고, 그 자리의 진짜 처방은
+    // 스테이징이나 `CCG_LSP_NODE`다.
+    let head = if deployed {
         "설치된 Node 런타임을 못 찾았어요. 설치가 손상됐을 수 있으니 앱을 다시 설치해 주세요 \
          (PATH에 node를 깔아도 낫지 않아요). / The bundled Node runtime is missing — reinstall the app; \
-         installing Node on PATH will not help. 찾아본 자리 / looked in:\n  - {}",
-        lines.join("\n  - ")
-    )
+         installing Node on PATH will not help."
+    } else {
+        "Node 런타임을 못 찾았어요. 개발 배치로 보입니다 — `node scripts/tauri-build.mjs stage`로 \
+         런타임을 받거나 `CCG_LSP_NODE`로 직접 지정해 주세요. / Node runtime not found. This looks like a \
+         dev layout — run `node scripts/tauri-build.mjs stage`, or point `CCG_LSP_NODE` at a node binary."
+    };
+    format!("{head} 찾아본 자리 / looked in:\n  - {}", lines.join("\n  - "))
 }
 
 /// 스테이징 자리 이름 — `scripts/tauri-build.mjs`와 `tauri.conf.json`이 쓰는 그 이름.
@@ -199,13 +220,38 @@ pub const STAGED_RUNTIME_DIR: &str = "lsp-runtime";
 /// `…\target-lspdist\release`(개발) ✔ · `…\target\x86_64-pc-windows-msvc\release` ✔ ·
 /// `%LOCALAPPDATA%\AgentCodeGUI3`(배포) ✘ — `.cargo-lock`을 심어도 ✘.
 fn is_cargo_output_dir(dir: &Path) -> bool {
+    matches!(cargo_gate(dir), CargoGate::Open)
+}
+
+/// 게이트의 **판정과 그 이유** — ★마감(크리틱 R3-L1).
+///
+/// `bool` 하나로는 「왜 닫혔는가」를 못 말한다. 그런데 진단 문장이 바로 그것을 말해야 한다
+/// ([`node_search_hint`]) — 닫힌 이유가 「`.cargo-lock` 없음」이면 배포본이고,
+/// 「폴더 이름」이면 개발 판일 수 있어서 **처방이 정반대**다(재설치 ↔ 스테이징).
+/// R2-C1이 고친 병이 「검증하지 않은 이유를 단정한다」였으므로, 이유를 값으로 들고 다닌다.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum CargoGate {
+    /// cargo 산출 폴더가 맞다 — ④ PATH 칸이 열린다.
+    Open,
+    /// `.cargo-lock`이 없다 = NSIS가 깐 배포본.
+    NoLock,
+    /// `.cargo-lock`은 있는데 조상 폴더 이름이 `target…`이 아니다.
+    /// 말단을 바꾼 `CARGO_TARGET_DIR`(예: `…/build/release`)이 여기 온다 — **개발 판일 수 있다.**
+    NotTargetDir,
+}
+
+fn cargo_gate(dir: &Path) -> CargoGate {
     if !dir.join(".cargo-lock").exists() {
-        return false;
+        return CargoGate::NoLock;
     }
     let parts: Vec<&str> = dir.components().filter_map(|c| c.as_os_str().to_str()).collect();
     let n = parts.len();
     let target_at = |i: usize| parts.get(i).is_some_and(|s| s.starts_with("target"));
-    (n >= 2 && target_at(n - 2)) || (n >= 3 && target_at(n - 3))
+    if (n >= 2 && target_at(n - 2)) || (n >= 3 && target_at(n - 3)) {
+        CargoGate::Open
+    } else {
+        CargoGate::NotTargetDir
+    }
 }
 
 /// `node_modules`를 담고 있을 수 있는 폴더들 — **우선순위 순서**. 순수 함수라 테스트가
@@ -527,6 +573,34 @@ mod tests {
         assert!(h.contains("다시 설치") && h.contains("reinstall"), "ko/en 두 벌이 아니다: {h}");
         // ★그리고 「node를 PATH에 깔면 낫는다」는 **오해를 막는 문장**이 있어야 한다.
         assert!(h.contains("낫지 않아요") && h.contains("will not help"), "헛수고 안내가 빠졌다: {h}");
+    }
+
+    /// ★마감 · 크리틱 R3-L1 — **게이트가 닫힌 이유를 가른다.**
+    ///
+    /// `bool` 하나였을 때는 「닫혔다 = 배포본이다」로 읽혀서, 말단이 `target`으로 시작하지
+    /// 않는 `CARGO_TARGET_DIR`(예: `…/build/release`)로 짓는 개발자에게 **「앱을 다시 설치해
+    /// 주세요」**라는 헛수고를 권했다. R2-C1이 고친 병(검증하지 않은 이유를 단정한다)의
+    /// 축소판이다. 이제 이유가 값이라 문장이 갈린다.
+    #[test]
+    fn the_cargo_gate_reports_why_it_closed() {
+        let root = scratch("gate-why");
+        // ⓐ 배포본 — `.cargo-lock`이 없다
+        let inst = root.join("AgentCodeGUI3");
+        std::fs::create_dir_all(&inst).unwrap();
+        assert_eq!(cargo_gate(&inst), CargoGate::NoLock);
+        // ⓑ 개발인데 타깃 폴더 이름이 `target…`이 아니다(말단을 바꾼 CARGO_TARGET_DIR)
+        let odd = root.join("build").join("release");
+        std::fs::create_dir_all(&odd).unwrap();
+        put(&odd.join(".cargo-lock"));
+        assert_eq!(cargo_gate(&odd), CargoGate::NotTargetDir, "이 팔이 R3-L1이 연 자리다");
+        // ⓒ 문서화된 개발 배치
+        let ok = root.join("target-lspdist").join("release");
+        std::fs::create_dir_all(&ok).unwrap();
+        put(&ok.join(".cargo-lock"));
+        assert_eq!(cargo_gate(&ok), CargoGate::Open);
+        // 세 이유가 **서로 다른 문장**을 만든다 — 안 그러면 가른 값어치가 없다.
+        assert!(is_cargo_output_dir(&ok) && !is_cargo_output_dir(&odd) && !is_cargo_output_dir(&inst));
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     /// 진단 문자열이 **실제로 자리를 말한다** — §1.6-A2가 늦게 발견된 이유가 이 침묵이었다.
