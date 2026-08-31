@@ -1,0 +1,263 @@
+{
+  "critic": "lspdist-critic-r2",
+  "at": "2026-08-31T04:55:20.673Z",
+  "tip": "b4f89b5",
+  "tree": "git archive b4f89b5 -> %TEMP%ccg-critic-lspdist-r2\tree (node_modules junction only)",
+  "targetDir": "C:Tempccg-critic-r2-target",
+  "nodePin": {
+    "pinnedInRepo": "5c976096e04e5c2c1f091938926234cc9fbebfe9787ddd149351b3b0ecc707b5",
+    "officialShasums": "5c976096e04e5c2c1f091938926234cc9fbebfe9787ddd149351b3b0ecc707b5",
+    "source": "https://nodejs.org/dist/v24.20.0/SHASUMS256.txt (win-x64/node.exe)",
+    "match": true,
+    "version": "v24.20.0",
+    "ltsName": "Krypton",
+    "releaseDate": "2026-08-26",
+    "isLatestV24": true,
+    "stagedBytes": 93381448,
+    "myOwnSha256Recompute": "match"
+  },
+  "staging": [
+    {
+      "id": "S1",
+      "what": "캐시 1바이트 오염(크기 동일)",
+      "expected": "거절+재다운로드",
+      "got": "거절+재다운로드",
+      "detail": "있던 sha256=36165c06828d6cb4… -> 재스테이징 후 핀과 일치"
+    },
+    {
+      "id": "S2",
+      "what": "NODE_PIN.sha256 변조 후 build --unsigned",
+      "expected": "exit1 · cargo 전",
+      "got": "exit1 · Compiling 0줄",
+      "detail": "사유·주소·자리·오프라인 문 전부 출력"
+    },
+    {
+      "id": "S3",
+      "what": "NODE_PIN.version을 없는 판으로 (404)",
+      "expected": "exit1 · cargo 전 · .part 정리",
+      "got": "exit1 · Compiling 0줄 · .part 0개",
+      "detail": "curl 종료 코드 22"
+    },
+    {
+      "id": "S4",
+      "what": "복구 후 재스테이징 -> 2회차",
+      "expected": "다운로드 -> 캐시 적중",
+      "got": "다운로드 -> 캐시 적중",
+      "detail": null
+    }
+  ],
+  "gateAttacks": [
+    {
+      "id": "G1",
+      "what": "배포 배치·사이드카 없음 + PATH에 진짜 node",
+      "expected": "error",
+      "got": "error · resolve.node=null"
+    },
+    {
+      "id": "G2",
+      "what": "배포 배치·사이드카 없음 + 미끼 node.exe를 PATH 첫 칸 (ts)",
+      "expected": "error",
+      "got": "error · null · 미끼 안 뭄"
+    },
+    {
+      "id": "G3",
+      "what": "같은 것 (py)",
+      "expected": "error",
+      "got": "error · null"
+    },
+    {
+      "id": "G4",
+      "what": "같은 것 + cwd를 .cargo-lock 있는 폴더로",
+      "expected": "error",
+      "got": "error · null — 게이트는 exe 경로의 함수"
+    },
+    {
+      "id": "G5",
+      "what": "고아 exe(사이드카·조상·.cargo-lock 전부 없음)",
+      "expected": "error",
+      "got": "error"
+    },
+    {
+      "id": "G6",
+      "what": "에 0바이트 .cargo-lock을 심음 + 미끼 node",
+      "expected": "ready(설계대로)",
+      "got": "ready · node=bait-path\node.exe",
+      "note": "게이트의 실체 = 그 한 파일. 상류 tauri_utils는 target 폴더명 조건을 AND로 더 건다"
+    }
+  ],
+  "mutations": [
+    {
+      "id": "C3-a",
+      "what": "매니페스트 typescript/lib 한 줄 삭제",
+      "r1": "GREEN(구멍)",
+      "r2": "red"
+    },
+    {
+      "id": "C3-b",
+      "what": "매니페스트 tsls/package.json 한 줄 삭제",
+      "r1": "GREEN(구멍)",
+      "r2": "red"
+    },
+    {
+      "id": "R2-c",
+      "what": "매니페스트 lsp-runtime/node.exe 한 줄 삭제",
+      "r1": "n/a",
+      "r2": "red"
+    },
+    {
+      "id": "D",
+      "what": "매니페스트 pyright 한 줄 삭제",
+      "r1": "red",
+      "r2": "red"
+    },
+    {
+      "id": "E",
+      "what": "유령 적재(SPECS에 없는 패키지)",
+      "r1": "red",
+      "r2": "red"
+    },
+    {
+      "id": "C4-a",
+      "what": "module_roots_from에 cwd 부활",
+      "r1": "red",
+      "r2": "red(단위)"
+    },
+    {
+      "id": "C4-b",
+      "what": "module_roots()에 cwd 부활",
+      "r1": "GREEN(구멍)",
+      "r2": "red(단위+통합)"
+    },
+    {
+      "id": "C4-c",
+      "what": "shipped_module 본문에 cwd 부활(옛 결함 자리)",
+      "r1": "n/a",
+      "r2": "red(통합만)"
+    },
+    {
+      "id": "E1★",
+      "what": "출처 바꿔치기 — dest 유지, src를 pyright/dist로",
+      "expected": "red",
+      "got": "GREEN",
+      "note": "크리틱 신규 회피변이 — tsserver 누락"
+    },
+    {
+      "id": "E2★",
+      "what": "resources를 {node.exe, ../node_modules -> node_modules}로",
+      "expected": "red",
+      "got": "GREEN",
+      "note": "크리틱 신규 — 계약 만족하며 레포 node_modules 통째 적재, 유령검사도 건너뜀"
+    },
+    {
+      "id": "E3★",
+      "what": "dest=node.exe · src=pyright/LICENSE.txt",
+      "expected": "red",
+      "got": "GREEN",
+      "note": "크리틱 신규 — 실측: is_file()이 텍스트를 통과, resolve.node가 그것을 가리키고 서버 사망. PATH 복구 경로 없음"
+    }
+  ],
+  "footprint": {
+    "installerBytes": 32410584,
+    "builderClaimBytes": 32410863,
+    "deltaBytes": 279,
+    "installedFolderMB": 150,
+    "e262InstallerBytes": 165119775,
+    "e262UnpackedMB": 650,
+    "ratioInstaller": 19.63,
+    "ratioFolder": 23.1,
+    "nsiNodeExeLine": 6948,
+    "nsiUninstallLine": 12493,
+    "nsiModuleEntries": 5426,
+    "nsiTotalFileEntries": 5427,
+    "payloadRawMB": 43.53,
+    "payloadClusterMB": 58.78
+  },
+  "tests": {
+    "workspacePassed": 795,
+    "workspaceFailed": 0,
+    "workspaceIgnored": 14,
+    "testTargets": 35,
+    "ccgLspLib": 69,
+    "ccgLspIntegration": 1,
+    "builderClaim": "795/0/14 · 35 · 69+1",
+    "match": true
+  },
+  "memory": {
+    "denominator262": {
+      "ws": 718.6,
+      "priv": 508.9
+    },
+    "arms": [
+      {
+        "arm": "cwd=install-folder",
+        "cwd": "C:\\Users\\User\\AppData\\Local\\ccg-critic-r2-app",
+        "exeSha": "d7db3f038503cd51",
+        "repeats": 2,
+        "idleWs": 571.5,
+        "idlePriv": 358.8,
+        "procs": 8,
+        "helperCount": 3,
+        "helperWsMB": 119.7,
+        "ratioWs": 0.795,
+        "g1": 0.629,
+        "fps": {
+          "avgFps": 59.35,
+          "p95Ms": 17,
+          "worstDroppedPct": 0,
+          "zeroDropRuns": 2
+        }
+      },
+      {
+        "arm": "cwd=project",
+        "cwd": "C:\\Code\\AgentCodeGUI",
+        "exeSha": "d7db3f038503cd51",
+        "repeats": 2,
+        "idleWs": 564.6,
+        "idlePriv": 356.45,
+        "procs": 8,
+        "helperCount": 3,
+        "helperWsMB": 114.75,
+        "ratioWs": 0.786,
+        "g1": 0.626,
+        "fps": {
+          "avgFps": 60.35,
+          "p95Ms": 16.8,
+          "worstDroppedPct": 0,
+          "zeroDropRuns": 2
+        }
+      }
+    ],
+    "bandWsMB": 6.9,
+    "builderSingleArmWs": 567.6,
+    "builderArmsRun": 1,
+    "criticArmsRun": 2,
+    "reportFpsClaim": "60.0 / p95 16.8",
+    "builderFileFps": "59.4 / p95 17.0",
+    "criticFps": [
+      59.35,
+      60.35
+    ]
+  },
+  "functional": {
+    "allChecksPassed": true,
+    "checks": 23,
+    "noNodeOnPath": "4팔(두 언어x두 cwd) 전부 ready · node=사이드카",
+    "r1Comparison": "R1에서는 넷 전부 error"
+  },
+  "diagnosticDefect": {
+    "file": "crates/ccg-lsp/src/server.rs:139",
+    "text": "Node 런타임을 못 찾음 (CCG_LSP_NODE · exe 옆 node.exe · PATH 순으로 찾는다)",
+    "why": "R2가 배포본에서 PATH를 끊었으므로 이 메시지가 뜨는 상황에서 PATH는 안 본다. 3번칸(조상 스테이징본)은 언급도 없고 경로를 하나도 안 싣는다.",
+    "contradicts": [
+      "crates/ccg-lsp/src/launch.rs 머리말 「실패 문자열이 사이드카 경로를 지목한다」",
+      "docs/parity-fix-lspdist-r2.md §6.1 같은 문장"
+    ],
+    "serverRsLastChanged": "adcef10 (LSPDIST R1) — R2는 한 줄도 안 고쳤다"
+  },
+  "commitBoundary": {
+    "r2Files": 11,
+    "small3Files": 8,
+    "intersection": 0,
+    "sharedFileTouched": ".gitignore(LSPDIST 정당)"
+  }
+}
