@@ -1,0 +1,43 @@
+{
+  "rev": "28eb7e0",
+  "critic": "small3-critic-r2",
+  "tree": "%TEMP%/ccg-small3-crit-r2 (git archive 28eb7e0, node_modules=워크트리 정션, app/dist=최소 스텁)",
+  "cargoTargetDir": ["C:/Temp/target-small3-crit-r2", "C:/Temp/target-small3-crit-r2-rel"],
+  "baseline": {
+    "agentcodegui": "144 passed / 0 failed / 1 ignored (exit 0)",
+    "ccg-fs": "102 passed / 0 failed / 2 ignored (exit 0)",
+    "release": "cargo build --release --features custom-protocol → exit 0 · warning 0줄",
+    "harness": "poc-small3-dialog-i18n.mjs → 전부 통과 exit 0",
+    "i18nSweep": "3.0 호스트 t(ko,en) 58 · 고유 ko 41",
+    "dialogRsHash": "d6be21b7000a5da118aaac941ac8c21401e583f4 (= 28eb7e0 blob)",
+    "ccgFsHash": "56e0d2792fc9477b8edd633a44177b12bcc2990f (= 28eb7e0 blob)"
+  },
+  "mutations": [
+    { "id": "M1", "what": "labels()를 한국어 리터럴로", "cargo": 101, "failed": ["the_dialog_labels_follow_ui_lang", "the_labels_still_mirror_the_frozen_262_wording"], "verdict": "문다" },
+    { "id": "M2", "what": "빌더만 리터럴로 (R1이 뚫은 구멍)", "cargo": 101, "failed": ["the_builder_can_only_say_what_labels_gave_it"], "verdict": "문다 — D2 닫힘 확인" },
+    { "id": "M3", "what": "en 한 칸 표류 (Text and documents)", "cargo": 101, "failed": ["the_dialog_labels_follow_ui_lang", "the_labels_still_mirror_the_frozen_262_wording"], "verdict": "문다" },
+    { "id": "E1", "what": "빌더 안에서 concat!", "cargo": 101, "failed": ["the_builder_can_only_say_what_labels_gave_it"], "verdict": "문다" },
+    { "id": "E2", "what": "빌더 밖 const에 한국어 리터럴", "cargo": 101, "failed": ["the_builder_can_only_say_what_labels_gave_it"], "verdict": "문다 (검사 ③)" },
+    { "id": "E3", "what": "빌더 밖 const에 유니코드 이스케이프(연속 한글 0)", "cargo": 0, "failed": [], "harness": 1, "verdict": "구멍 — cargo 통과, 하네스만 잡음" },
+    { "id": "E6", "what": "빌더 밖 const에 concat!(\"첨\",\"부할 파일 선택\")", "cargo": 0, "failed": [], "harness": 1, "verdict": "★구멍 — cargo 통과, 하네스만 잡음" },
+    { "id": "E4", "what": "labels() 안에서 `ccg_fs :: t(` 공백 (UPDATER R2 전례)", "cargo": 101, "failed": ["the_labels_still_mirror_the_frozen_262_wording"], "verdict": "문다 — len!=4로 붉어짐" },
+    { "id": "EPAIR", "what": "구조분해 순서만 뒤바꿈 (title↔f_all)", "cargo": 0, "failed": [], "harness": 0, "verdict": "★★구멍 — cargo도 하네스도 전부 초록. 제품은 제목/첫필터가 뒤바뀜" },
+    { "id": "ESRC", "what": "동결 원문 src/main/index.ts를 감춤", "cargo": 101, "failed": ["the_labels_still_mirror_the_frozen_262_wording"], "verdict": "조용히 스킵 안 함 — 크게 죽는다" }
+  ],
+  "d4": {
+    "dropValueBit": "lang_pack에서 en 제거 → ccg-fs 못 FAILED (왕복이 깨졌다 at=1 en=true)",
+    "wrongShift": "at_ms << 2 → ccg-fs 못 FAILED",
+    "ttlValueChange": "LANG_TTL_MS 2000→60000 → 102/0/2 전부 통과 (★TTL 값에는 못이 없다)",
+    "ttlBehaviourProbe": "격리 사본 임시 못: first=한 · within_2s=한 · after_2.2s=en → TTL 의미 보존(동작 무변 참)"
+  },
+  "epairProof": {
+    "method": "rustc -O 독립 스니펫(제품 코드 미접촉)",
+    "before": "set_title=첨부할 파일 선택 | 첫필터=첨부 가능한 파일",
+    "after": "set_title=첨부 가능한 파일 | 첫필터=첨부할 파일 선택"
+  },
+  "d3": {
+    "mjsRefs": 6,
+    "mjsLines": [190, 192, 193, 197, 229, 232],
+    "tombstones": { "src-tauri/src/ipc/mod.rs:282-286": 5, "src/shared/protocol.ts:1346-1348": 3, "src/shared/protocol.ts:1506-1517": 12, "total": 20 }
+  }
+}
