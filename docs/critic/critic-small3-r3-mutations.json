@@ -1,0 +1,36 @@
+{
+  "rev": "bae5bd7",
+  "critic": "small3-critic-r3",
+  "tree": "%TEMP%/ccg-small3-crit-r3 (git archive bae5bd7 · node_modules=워크트리 정션 · app/dist=최소 스텁)",
+  "cargoTargetDir": ["C:/Temp/target-small3-crit-r3", "C:/Temp/target-small3-crit-r3-rel"],
+  "baseline": {
+    "agentcodegui": "144 passed / 0 failed / 1 ignored",
+    "ccg-fs": "103 passed / 0 failed / 2 ignored",
+    "release": "exit 0 · warning 0줄",
+    "harness": "poc-small3-dialog-i18n.mjs 전부 통과 exit 0",
+    "i18nSweep": "3.0 호스트 t(ko,en) 58 · 고유 ko 41",
+    "dialogRsHash": "b0a6fcd858213b967091203732af4ae69c171e81",
+    "ccgFsHash": "4bc377c8f40c42282d499425ee3a9d561ac0ab38"
+  },
+  "builderTableReproduced": [
+    { "id": "M1", "cargo": 101, "failed": ["the_dialog_labels_follow_ui_lang", "the_labels_still_mirror_the_frozen_262_wording"] },
+    { "id": "M2", "cargo": 101, "failed": ["the_builder_can_only_say_what_labels_gave_it"] },
+    { "id": "M3", "cargo": 101, "failed": ["the_dialog_labels_follow_ui_lang", "the_labels_still_mirror_the_frozen_262_wording"] },
+    { "id": "EPAIRF", "cargo": 101, "failed": ["the_builder_can_only_say_what_labels_gave_it"], "note": "필드 오지목 — 짝 못이 잡는다" },
+    { "id": "E6", "cargo": 101, "failed": ["the_builder_can_only_say_what_labels_gave_it"], "note": "R2-D2의 concat! 밀반입이 닫혔다" },
+    { "id": "EPAIRI", "cargo": 0, "note": "초기화 줄 순서 — 무해. 거짓 양성 없음(의도한 초록)" },
+    { "id": "EPAIRD", "cargo": 0, "note": "선언 필드 순서 — 무해. 거짓 양성 없음(의도한 초록)" }
+  ],
+  "criticNewMutations": [
+    { "id": "EORDER", "what": "빌더의 .add_filter 줄 순서만 바꾼다(이미지가 첫 줄)", "cargo": 0, "harness": 0, "verdict": "★구멍 — 짝 못이 contains로 존재만 보고 순서를 안 본다. 제품은 기본 필터가 「이미지」가 되어 첨부 창에서 텍스트 파일이 기본으로 안 보인다" },
+    { "id": "ETWICE", "what": ".set_title을 두 번 부른다(뒤엣것이 이긴다)", "cargo": 101, "verdict": "구멍 아님 — 컴파일 거부 error[E0382] use of moved value: l.filter_all. 구조체 필드가 move되므로 타입 체계가 막는다" },
+    { "id": "EKOEN", "what": "t(ko,en)의 두 인자를 맞바꾼다", "cargo": 101, "harness": 1, "failed": ["the_dialog_labels_follow_ui_lang", "the_labels_still_mirror_the_frozen_262_wording"], "verdict": "잡힌다" },
+    { "id": "EXFIELD", "what": "labels() 안에서 title과 filter_all 값을 맞바꾼다", "cargo": 101, "harness": 1, "failed": ["the_dialog_labels_follow_ui_lang", "the_labels_still_mirror_the_frozen_262_wording"], "verdict": "잡힌다 — 이름 기준 대조가 듣는다" }
+  ],
+  "ttlNail": {
+    "2000to60000": "FAILED — ★2.000초에 만료된다 (R2-D3에서 초록이던 자리가 닫혔다)",
+    "2000to1000": "FAILED — 1.999초는 아직 신선하다 (양방향으로 문다)"
+  },
+  "r2ToolStatus": "docs/critic/tools/critic-small3-r2-mutate.mjs → '앵커를 못 찾았다' (fn labels() -> [String; 4] · let [title, f_all…] 소멸). 보존됨. 빌더 서술과 일치",
+  "orderGuardSearch": "레포 전체에서 필터 순서를 재는 실행 가능한 검사 0건 — 「첫 줄」 규약은 주석/문서로만 존재(dialog.rs:55 doc · :87 인라인 주석)"
+}
