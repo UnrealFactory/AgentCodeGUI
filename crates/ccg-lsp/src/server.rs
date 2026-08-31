@@ -131,8 +131,10 @@ pub fn now_ms() -> u64 {
 fn plan(spec: &ServerSpec, root: &Path) -> Result<(PathBuf, Vec<String>), String> {
     match &spec.launch {
         Launch::Node { module, args } => {
-            let script = crate::launch::shipped_module(module)
-                .ok_or_else(|| format!("번들 모듈을 못 찾음: node_modules/{}", module.join("/")))?;
+            let script = crate::launch::shipped_module(module).ok_or_else(|| {
+                // **어디를 봤는지**까지 적는다 — 이유는 `launch::module_search_hint()` 주석.
+                format!("번들 모듈을 못 찾음: node_modules/{} — {}", module.join("/"), crate::launch::module_search_hint())
+            })?;
             let node = crate::launch::node_exe().ok_or_else(|| {
                 "Node 런타임을 못 찾음 (CCG_LSP_NODE · exe 옆 node.exe · PATH 순으로 찾는다)".to_string()
             })?;
