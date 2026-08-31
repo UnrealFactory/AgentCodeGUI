@@ -1,0 +1,456 @@
+{
+  "poc": "lspdist-r1",
+  "at": "2026-08-31T03:21:00.165Z",
+  "repo": "C:\\Code\\AgentCodeGUI",
+  "node": "v24.13.1",
+  "deploySim": {
+    "dist": "C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r1\\bundled",
+    "bare": "C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r1\\bare",
+    "ancestorsWithNodeModules": {
+      "dist": [],
+      "bare": []
+    }
+  },
+  "probe": {
+    "path": "C:\\Code\\AgentCodeGUI\\target-lspdist\\release\\ccg-lspprobe.exe",
+    "rebuilt": false,
+    "bytes": 598016
+  },
+  "payload": {
+    "source": "installer.nsi(x64)",
+    "nsi": "C:\\Code\\AgentCodeGUI\\src-tauri\\target-lspdist\\release\\nsis\\x64\\installer.nsi",
+    "entries": 5426,
+    "dir": "C:\\Code\\AgentCodeGUI\\target-lspdist\\poc-lspdist\\payload\\node_modules",
+    "files": 5426,
+    "bytes": 45646102,
+    "mb": 43.53,
+    "onDiskMb": 58.78,
+    "installer": {
+      "path": "C:\\Code\\AgentCodeGUI\\src-tauri\\target-lspdist\\release\\bundle\\nsis\\AgentCodeGUI3_3.0.0-beta.1_x64-setup.exe",
+      "bytes": 8971808
+    }
+  },
+  "fixture": {
+    "proj": "C:\\Code\\AgentCodeGUI\\target-lspdist\\poc-lspdist\\proj",
+    "ts": "lspbench/big.ts",
+    "py": "lspbench_py/big.py",
+    "tsLines": 489,
+    "pyLines": 490,
+    "ancestorsWithNodeModules": [
+      "C:\\Code\\AgentCodeGUI"
+    ]
+  },
+  "arms": {
+    "bundled/install-cwd|ts": {
+      "exitCode": 0,
+      "wallMs": 1172,
+      "stderrTail": null,
+      "probe": {
+        "cwd": "C:\\Code\\AgentCodeGUI\\target-lspdist\\poc-lspdist\\proj",
+        "rel": "lspbench/big.ts",
+        "samples": 8,
+        "specId": "ts",
+        "serverRoot": "C:\\Code\\AgentCodeGUI\\target-lspdist\\poc-lspdist\\proj",
+        "resolve": {
+          "exe": "C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r1\\bundled\\ccg-lspprobe.exe",
+          "processCwd": "C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r1\\bundled",
+          "node": "C:\\Program Files\\nodejs\\node.exe",
+          "modules": {
+            "ts": "C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r1\\bundled\\node_modules\\typescript-language-server\\lib\\cli.mjs",
+            "py": "C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r1\\bundled\\node_modules\\pyright\\langserver.index.js",
+            "ts.tsserver": "C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r1\\bundled\\node_modules\\typescript\\lib\\tsserver.js"
+          },
+          "searchHint": "찾아본 자리 8곳: C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r1\\bundled · C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r1\\bundled\\resources · C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r1 · C:\\Users\\User\\AppData\\Local · …"
+        },
+        "cachedMs": 16.97,
+        "cachedHit": true,
+        "prewarmMs": 151,
+        "status": "ready",
+        "states": [
+          "starting",
+          "ready"
+        ],
+        "tokenMs": 780,
+        "tokens": 1565,
+        "tokenTries": 0,
+        "semanticSupported": true,
+        "spots": 8,
+        "syms": [
+          "makeConfig",
+          "summarize"
+        ],
+        "hover": {
+          "n": 8,
+          "hits": 8,
+          "p50": 1.07,
+          "p95": 10.17
+        },
+        "definition": {
+          "n": 8,
+          "hits": 8,
+          "crossFile": 8,
+          "p50": 0.55,
+          "p95": 3.14
+        },
+        "completion": {
+          "n": 10,
+          "maxItems": 4,
+          "sample": [
+            "lookup",
+            "register",
+            "size",
+            "tagsOf"
+          ],
+          "p50": 4.34,
+          "p95": 24.07
+        }
+      }
+    },
+    "bundled/install-cwd|py": {
+      "exitCode": 0,
+      "wallMs": 807,
+      "stderrTail": null,
+      "probe": {
+        "cwd": "C:\\Code\\AgentCodeGUI\\target-lspdist\\poc-lspdist\\proj",
+        "rel": "lspbench_py/big.py",
+        "samples": 8,
+        "specId": "py",
+        "serverRoot": "C:\\Code\\AgentCodeGUI\\target-lspdist\\poc-lspdist\\proj",
+        "resolve": {
+          "exe": "C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r1\\bundled\\ccg-lspprobe.exe",
+          "processCwd": "C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r1\\bundled",
+          "node": "C:\\Program Files\\nodejs\\node.exe",
+          "modules": {
+            "ts": "C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r1\\bundled\\node_modules\\typescript-language-server\\lib\\cli.mjs",
+            "py": "C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r1\\bundled\\node_modules\\pyright\\langserver.index.js",
+            "ts.tsserver": "C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r1\\bundled\\node_modules\\typescript\\lib\\tsserver.js"
+          },
+          "searchHint": "찾아본 자리 8곳: C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r1\\bundled · C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r1\\bundled\\resources · C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r1 · C:\\Users\\User\\AppData\\Local · …"
+        },
+        "cachedMs": 6.7,
+        "cachedHit": false,
+        "prewarmMs": 301,
+        "status": "ready",
+        "states": [
+          "starting",
+          "ready"
+        ],
+        "tokenMs": null,
+        "tokens": 0,
+        "tokenTries": 0,
+        "semanticSupported": false,
+        "spots": 8,
+        "syms": [
+          "make_config",
+          "summarize"
+        ],
+        "hover": {
+          "n": 8,
+          "hits": 8,
+          "p50": 0.4,
+          "p95": 336.07
+        },
+        "definition": {
+          "n": 8,
+          "hits": 8,
+          "crossFile": 8,
+          "p50": 0.26,
+          "p95": 0.7
+        },
+        "completion": {
+          "n": 10,
+          "maxItems": 29,
+          "sample": [
+            "__doc__",
+            "__module__",
+            "__qualname__",
+            "__init__",
+            "register"
+          ],
+          "p50": 8.17,
+          "p95": 15.63
+        }
+      }
+    },
+    "bundled/project-cwd|ts": {
+      "exitCode": 0,
+      "wallMs": 689,
+      "stderrTail": null,
+      "probe": {
+        "cwd": "C:\\Code\\AgentCodeGUI\\target-lspdist\\poc-lspdist\\proj",
+        "rel": "lspbench/big.ts",
+        "samples": 8,
+        "specId": "ts",
+        "serverRoot": "C:\\Code\\AgentCodeGUI\\target-lspdist\\poc-lspdist\\proj",
+        "resolve": {
+          "exe": "C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r1\\bundled\\ccg-lspprobe.exe",
+          "processCwd": "C:\\Code\\AgentCodeGUI\\target-lspdist\\poc-lspdist\\proj",
+          "node": "C:\\Program Files\\nodejs\\node.exe",
+          "modules": {
+            "ts": "C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r1\\bundled\\node_modules\\typescript-language-server\\lib\\cli.mjs",
+            "py": "C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r1\\bundled\\node_modules\\pyright\\langserver.index.js",
+            "ts.tsserver": "C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r1\\bundled\\node_modules\\typescript\\lib\\tsserver.js"
+          },
+          "searchHint": "찾아본 자리 8곳: C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r1\\bundled · C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r1\\bundled\\resources · C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r1 · C:\\Users\\User\\AppData\\Local · …"
+        },
+        "cachedMs": 0.38,
+        "cachedHit": true,
+        "prewarmMs": 103,
+        "status": "ready",
+        "states": [
+          "starting",
+          "ready"
+        ],
+        "tokenMs": 423,
+        "tokens": 1565,
+        "tokenTries": 0,
+        "semanticSupported": true,
+        "spots": 8,
+        "syms": [
+          "makeConfig",
+          "summarize"
+        ],
+        "hover": {
+          "n": 8,
+          "hits": 8,
+          "p50": 1.16,
+          "p95": 10.73
+        },
+        "definition": {
+          "n": 8,
+          "hits": 8,
+          "crossFile": 8,
+          "p50": 0.47,
+          "p95": 3.44
+        },
+        "completion": {
+          "n": 10,
+          "maxItems": 4,
+          "sample": [
+            "lookup",
+            "register",
+            "size",
+            "tagsOf"
+          ],
+          "p50": 4.21,
+          "p95": 24.49
+        }
+      }
+    },
+    "bundled/project-cwd|py": {
+      "exitCode": 0,
+      "wallMs": 610,
+      "stderrTail": null,
+      "probe": {
+        "cwd": "C:\\Code\\AgentCodeGUI\\target-lspdist\\poc-lspdist\\proj",
+        "rel": "lspbench_py/big.py",
+        "samples": 8,
+        "specId": "py",
+        "serverRoot": "C:\\Code\\AgentCodeGUI\\target-lspdist\\poc-lspdist\\proj",
+        "resolve": {
+          "exe": "C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r1\\bundled\\ccg-lspprobe.exe",
+          "processCwd": "C:\\Code\\AgentCodeGUI\\target-lspdist\\poc-lspdist\\proj",
+          "node": "C:\\Program Files\\nodejs\\node.exe",
+          "modules": {
+            "ts": "C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r1\\bundled\\node_modules\\typescript-language-server\\lib\\cli.mjs",
+            "py": "C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r1\\bundled\\node_modules\\pyright\\langserver.index.js",
+            "ts.tsserver": "C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r1\\bundled\\node_modules\\typescript\\lib\\tsserver.js"
+          },
+          "searchHint": "찾아본 자리 8곳: C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r1\\bundled · C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r1\\bundled\\resources · C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r1 · C:\\Users\\User\\AppData\\Local · …"
+        },
+        "cachedMs": 0.11,
+        "cachedHit": false,
+        "prewarmMs": 151,
+        "status": "ready",
+        "states": [
+          "starting",
+          "ready"
+        ],
+        "tokenMs": null,
+        "tokens": 0,
+        "tokenTries": 0,
+        "semanticSupported": false,
+        "spots": 8,
+        "syms": [
+          "make_config",
+          "summarize"
+        ],
+        "hover": {
+          "n": 8,
+          "hits": 8,
+          "p50": 0.36,
+          "p95": 294.82
+        },
+        "definition": {
+          "n": 8,
+          "hits": 8,
+          "crossFile": 8,
+          "p50": 0.25,
+          "p95": 0.7
+        },
+        "completion": {
+          "n": 10,
+          "maxItems": 29,
+          "sample": [
+            "__doc__",
+            "__module__",
+            "__qualname__",
+            "__init__",
+            "register"
+          ],
+          "p50": 7.99,
+          "p95": 14.45
+        }
+      }
+    },
+    "bare/install-cwd|ts": {
+      "exitCode": 0,
+      "wallMs": 104,
+      "stderrTail": null,
+      "probe": {
+        "cwd": "C:\\Code\\AgentCodeGUI\\target-lspdist\\poc-lspdist\\proj",
+        "rel": "lspbench/big.ts",
+        "samples": 8,
+        "specId": "ts",
+        "serverRoot": "C:\\Code\\AgentCodeGUI\\target-lspdist\\poc-lspdist\\proj",
+        "resolve": {
+          "exe": "C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r1\\bare\\ccg-lspprobe.exe",
+          "processCwd": "C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r1\\bare",
+          "node": "C:\\Program Files\\nodejs\\node.exe",
+          "modules": {
+            "ts": null,
+            "py": null,
+            "ts.tsserver": null
+          },
+          "searchHint": "찾아본 자리 8곳: C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r1\\bare · C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r1\\bare\\resources · C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r1 · C:\\Users\\User\\AppData\\Local · …"
+        },
+        "cachedMs": 0.13,
+        "cachedHit": false,
+        "prewarmMs": 50,
+        "status": "error",
+        "states": [
+          "starting",
+          "error"
+        ]
+      }
+    },
+    "bare/install-cwd|py": {
+      "exitCode": 0,
+      "wallMs": 65,
+      "stderrTail": null,
+      "probe": {
+        "cwd": "C:\\Code\\AgentCodeGUI\\target-lspdist\\poc-lspdist\\proj",
+        "rel": "lspbench_py/big.py",
+        "samples": 8,
+        "specId": "py",
+        "serverRoot": "C:\\Code\\AgentCodeGUI\\target-lspdist\\poc-lspdist\\proj",
+        "resolve": {
+          "exe": "C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r1\\bare\\ccg-lspprobe.exe",
+          "processCwd": "C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r1\\bare",
+          "node": "C:\\Program Files\\nodejs\\node.exe",
+          "modules": {
+            "ts": null,
+            "py": null,
+            "ts.tsserver": null
+          },
+          "searchHint": "찾아본 자리 8곳: C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r1\\bare · C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r1\\bare\\resources · C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r1 · C:\\Users\\User\\AppData\\Local · …"
+        },
+        "cachedMs": 0.13,
+        "cachedHit": false,
+        "prewarmMs": 51,
+        "status": "error",
+        "states": [
+          "starting",
+          "error"
+        ]
+      }
+    },
+    "bare/project-cwd|ts": {
+      "exitCode": 0,
+      "wallMs": 62,
+      "stderrTail": null,
+      "probe": {
+        "cwd": "C:\\Code\\AgentCodeGUI\\target-lspdist\\poc-lspdist\\proj",
+        "rel": "lspbench/big.ts",
+        "samples": 8,
+        "specId": "ts",
+        "serverRoot": "C:\\Code\\AgentCodeGUI\\target-lspdist\\poc-lspdist\\proj",
+        "resolve": {
+          "exe": "C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r1\\bare\\ccg-lspprobe.exe",
+          "processCwd": "C:\\Code\\AgentCodeGUI\\target-lspdist\\poc-lspdist\\proj",
+          "node": "C:\\Program Files\\nodejs\\node.exe",
+          "modules": {
+            "ts": null,
+            "py": null,
+            "ts.tsserver": null
+          },
+          "searchHint": "찾아본 자리 8곳: C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r1\\bare · C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r1\\bare\\resources · C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r1 · C:\\Users\\User\\AppData\\Local · …"
+        },
+        "cachedMs": 0.12,
+        "cachedHit": false,
+        "prewarmMs": 51,
+        "status": "error",
+        "states": [
+          "starting",
+          "error"
+        ]
+      }
+    },
+    "bare/project-cwd|py": {
+      "exitCode": 0,
+      "wallMs": 63,
+      "stderrTail": null,
+      "probe": {
+        "cwd": "C:\\Code\\AgentCodeGUI\\target-lspdist\\poc-lspdist\\proj",
+        "rel": "lspbench_py/big.py",
+        "samples": 8,
+        "specId": "py",
+        "serverRoot": "C:\\Code\\AgentCodeGUI\\target-lspdist\\poc-lspdist\\proj",
+        "resolve": {
+          "exe": "C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r1\\bare\\ccg-lspprobe.exe",
+          "processCwd": "C:\\Code\\AgentCodeGUI\\target-lspdist\\poc-lspdist\\proj",
+          "node": "C:\\Program Files\\nodejs\\node.exe",
+          "modules": {
+            "ts": null,
+            "py": null,
+            "ts.tsserver": null
+          },
+          "searchHint": "찾아본 자리 8곳: C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r1\\bare · C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r1\\bare\\resources · C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r1 · C:\\Users\\User\\AppData\\Local · …"
+        },
+        "cachedMs": 0.12,
+        "cachedHit": false,
+        "prewarmMs": 51,
+        "status": "error",
+        "states": [
+          "starting",
+          "error"
+        ]
+      }
+    }
+  },
+  "before": {
+    "exe": "C:\\Code\\AgentCodeGUI\\target-lspdist\\before-head\\target\\release\\ccg-lspprobe.exe",
+    "arms": {
+      "install-cwd": {
+        "status": "error",
+        "hoverHits": null,
+        "tokens": null
+      },
+      "project-cwd": {
+        "status": "ready",
+        "hoverHits": 4,
+        "tokens": 1565
+      }
+    }
+  },
+  "residual": {
+    "what": "PATH에 node가 없는 컴퓨터 — 번들은 모듈만 싣고 런타임은 안 싣는다",
+    "status": "error",
+    "resolvedNode": null,
+    "modulesFound": "C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r1\\bundled\\node_modules\\typescript-language-server\\lib\\cli.mjs"
+  },
+  "verdict": {
+    "failures": [],
+    "ok": true
+  }
+}

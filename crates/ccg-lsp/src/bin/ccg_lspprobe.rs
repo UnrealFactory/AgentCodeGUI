@@ -63,6 +63,31 @@ fn main() {
         }
     }
 
+    // ── 해석 출처(★LSPDIST R1) ───────────────────────────────────────────────
+    // 이 라운드의 피감수는 속도가 아니라 **어느 파일을 물었나**다. "cwd가 결과를 안 가른다"는
+    // 주장은 두 팔의 이 블록이 **바이트 단위로 같아야** 참이고, 그건 아래 `hover`/`tokens`가
+    // 둘 다 성공하는 것만으로는 증명되지 않는다(둘 다 성공하면서 서로 다른 판을 물 수 있다).
+    {
+        let stringify = |p: Option<std::path::PathBuf>| {
+            p.map(|p| Value::String(p.to_string_lossy().to_string())).unwrap_or(Value::Null)
+        };
+        let mut modules = json!({});
+        for s in ccg_lsp::spec::SPECS {
+            if let ccg_lsp::spec::Launch::Node { module, .. } = &s.launch {
+                modules[s.id] = stringify(ccg_lsp::launch::shipped_module(module));
+            }
+        }
+        // tsserver는 실행 스크립트와 다른 패키지에서 온다(`extra_modules`) — 따로 찍는다.
+        modules["ts.tsserver"] = stringify(ccg_lsp::launch::shipped_module(&["typescript", "lib", "tsserver.js"]));
+        out["resolve"] = json!({
+            "exe": stringify(std::env::current_exe().ok()),
+            "processCwd": stringify(std::env::current_dir().ok()),
+            "node": stringify(ccg_lsp::launch::node_exe()),
+            "modules": modules,
+            "searchHint": ccg_lsp::launch::module_search_hint(),
+        });
+    }
+
     // ── 캐시 적중(서버를 안 띄우는 즉시 색칠) ────────────────────────────────
     let t = Instant::now();
     let cached = ccg_lsp::cached_tokens(&cwd, &rel);
