@@ -1,6 +1,6 @@
 {
   "poc": "lspdist-r1",
-  "at": "2026-08-31T03:21:00.165Z",
+  "at": "2026-08-31T03:37:18.591Z",
   "repo": "C:\\Code\\AgentCodeGUI",
   "node": "v24.13.1",
   "deploySim": {
@@ -43,7 +43,7 @@
   "arms": {
     "bundled/install-cwd|ts": {
       "exitCode": 0,
-      "wallMs": 1172,
+      "wallMs": 1128,
       "stderrTail": null,
       "probe": {
         "cwd": "C:\\Code\\AgentCodeGUI\\target-lspdist\\poc-lspdist\\proj",
@@ -62,15 +62,15 @@
           },
           "searchHint": "찾아본 자리 8곳: C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r1\\bundled · C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r1\\bundled\\resources · C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r1 · C:\\Users\\User\\AppData\\Local · …"
         },
-        "cachedMs": 16.97,
+        "cachedMs": 17.37,
         "cachedHit": true,
-        "prewarmMs": 151,
+        "prewarmMs": 101,
         "status": "ready",
         "states": [
           "starting",
           "ready"
         ],
-        "tokenMs": 780,
+        "tokenMs": 785,
         "tokens": 1565,
         "tokenTries": 0,
         "semanticSupported": true,
@@ -82,15 +82,15 @@
         "hover": {
           "n": 8,
           "hits": 8,
-          "p50": 1.07,
-          "p95": 10.17
+          "p50": 1.27,
+          "p95": 9.86
         },
         "definition": {
           "n": 8,
           "hits": 8,
           "crossFile": 8,
-          "p50": 0.55,
-          "p95": 3.14
+          "p50": 0.57,
+          "p95": 3.02
         },
         "completion": {
           "n": 10,
@@ -101,14 +101,14 @@
             "size",
             "tagsOf"
           ],
-          "p50": 4.34,
-          "p95": 24.07
+          "p50": 4.05,
+          "p95": 23.64
         }
       }
     },
     "bundled/install-cwd|py": {
       "exitCode": 0,
-      "wallMs": 807,
+      "wallMs": 793,
       "stderrTail": null,
       "probe": {
         "cwd": "C:\\Code\\AgentCodeGUI\\target-lspdist\\poc-lspdist\\proj",
@@ -127,7 +127,7 @@
           },
           "searchHint": "찾아본 자리 8곳: C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r1\\bundled · C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r1\\bundled\\resources · C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r1 · C:\\Users\\User\\AppData\\Local · …"
         },
-        "cachedMs": 6.7,
+        "cachedMs": 5.9,
         "cachedHit": false,
         "prewarmMs": 301,
         "status": "ready",
@@ -147,15 +147,15 @@
         "hover": {
           "n": 8,
           "hits": 8,
-          "p50": 0.4,
-          "p95": 336.07
+          "p50": 0.33,
+          "p95": 327.47
         },
         "definition": {
           "n": 8,
           "hits": 8,
           "crossFile": 8,
-          "p50": 0.26,
-          "p95": 0.7
+          "p50": 0.27,
+          "p95": 0.66
         },
         "completion": {
           "n": 10,
@@ -167,14 +167,14 @@
             "__init__",
             "register"
           ],
-          "p50": 8.17,
-          "p95": 15.63
+          "p50": 8.21,
+          "p95": 14.35
         }
       }
     },
     "bundled/project-cwd|ts": {
       "exitCode": 0,
-      "wallMs": 689,
+      "wallMs": 681,
       "stderrTail": null,
       "probe": {
         "cwd": "C:\\Code\\AgentCodeGUI\\target-lspdist\\poc-lspdist\\proj",
@@ -193,15 +193,15 @@
           },
           "searchHint": "찾아본 자리 8곳: C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r1\\bundled · C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r1\\bundled\\resources · C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r1 · C:\\Users\\User\\AppData\\Local · …"
         },
-        "cachedMs": 0.38,
+        "cachedMs": 0.35,
         "cachedHit": true,
-        "prewarmMs": 103,
+        "prewarmMs": 101,
         "status": "ready",
         "states": [
           "starting",
           "ready"
         ],
-        "tokenMs": 423,
+        "tokenMs": 416,
         "tokens": 1565,
         "tokenTries": 0,
         "semanticSupported": true,
@@ -213,15 +213,15 @@
         "hover": {
           "n": 8,
           "hits": 8,
-          "p50": 1.16,
-          "p95": 10.73
+          "p50": 1.18,
+          "p95": 10.16
         },
         "definition": {
           "n": 8,
           "hits": 8,
           "crossFile": 8,
-          "p50": 0.47,
-          "p95": 3.44
+          "p50": 0.46,
+          "p95": 3.06
         },
         "completion": {
           "n": 10,
@@ -232,14 +232,14 @@
             "size",
             "tagsOf"
           ],
-          "p50": 4.21,
-          "p95": 24.49
+          "p50": 4.66,
+          "p95": 23.75
         }
       }
     },
     "bundled/project-cwd|py": {
       "exitCode": 0,
-      "wallMs": 610,
+      "wallMs": 609,
       "stderrTail": null,
       "probe": {
         "cwd": "C:\\Code\\AgentCodeGUI\\target-lspdist\\poc-lspdist\\proj",
@@ -258,7 +258,7 @@
           },
           "searchHint": "찾아본 자리 8곳: C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r1\\bundled · C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r1\\bundled\\resources · C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r1 · C:\\Users\\User\\AppData\\Local · …"
         },
-        "cachedMs": 0.11,
+        "cachedMs": 0.12,
         "cachedHit": false,
         "prewarmMs": 151,
         "status": "ready",
@@ -278,15 +278,15 @@
         "hover": {
           "n": 8,
           "hits": 8,
-          "p50": 0.36,
-          "p95": 294.82
+          "p50": 0.34,
+          "p95": 296.23
         },
         "definition": {
           "n": 8,
           "hits": 8,
           "crossFile": 8,
-          "p50": 0.25,
-          "p95": 0.7
+          "p50": 0.26,
+          "p95": 0.68
         },
         "completion": {
           "n": 10,
@@ -298,14 +298,14 @@
             "__init__",
             "register"
           ],
-          "p50": 7.99,
-          "p95": 14.45
+          "p50": 7.8,
+          "p95": 14.6
         }
       }
     },
     "bare/install-cwd|ts": {
       "exitCode": 0,
-      "wallMs": 104,
+      "wallMs": 102,
       "stderrTail": null,
       "probe": {
         "cwd": "C:\\Code\\AgentCodeGUI\\target-lspdist\\poc-lspdist\\proj",
@@ -324,9 +324,9 @@
           },
           "searchHint": "찾아본 자리 8곳: C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r1\\bare · C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r1\\bare\\resources · C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r1 · C:\\Users\\User\\AppData\\Local · …"
         },
-        "cachedMs": 0.13,
+        "cachedMs": 0.14,
         "cachedHit": false,
-        "prewarmMs": 50,
+        "prewarmMs": 51,
         "status": "error",
         "states": [
           "starting",
@@ -336,7 +336,7 @@
     },
     "bare/install-cwd|py": {
       "exitCode": 0,
-      "wallMs": 65,
+      "wallMs": 66,
       "stderrTail": null,
       "probe": {
         "cwd": "C:\\Code\\AgentCodeGUI\\target-lspdist\\poc-lspdist\\proj",
@@ -355,9 +355,9 @@
           },
           "searchHint": "찾아본 자리 8곳: C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r1\\bare · C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r1\\bare\\resources · C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r1 · C:\\Users\\User\\AppData\\Local · …"
         },
-        "cachedMs": 0.13,
+        "cachedMs": 0.14,
         "cachedHit": false,
-        "prewarmMs": 51,
+        "prewarmMs": 50,
         "status": "error",
         "states": [
           "starting",
@@ -367,7 +367,7 @@
     },
     "bare/project-cwd|ts": {
       "exitCode": 0,
-      "wallMs": 62,
+      "wallMs": 65,
       "stderrTail": null,
       "probe": {
         "cwd": "C:\\Code\\AgentCodeGUI\\target-lspdist\\poc-lspdist\\proj",
@@ -386,9 +386,9 @@
           },
           "searchHint": "찾아본 자리 8곳: C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r1\\bare · C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r1\\bare\\resources · C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r1 · C:\\Users\\User\\AppData\\Local · …"
         },
-        "cachedMs": 0.12,
+        "cachedMs": 0.13,
         "cachedHit": false,
-        "prewarmMs": 51,
+        "prewarmMs": 50,
         "status": "error",
         "states": [
           "starting",
@@ -417,9 +417,9 @@
           },
           "searchHint": "찾아본 자리 8곳: C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r1\\bare · C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r1\\bare\\resources · C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r1 · C:\\Users\\User\\AppData\\Local · …"
         },
-        "cachedMs": 0.12,
+        "cachedMs": 0.13,
         "cachedHit": false,
-        "prewarmMs": 51,
+        "prewarmMs": 50,
         "status": "error",
         "states": [
           "starting",
