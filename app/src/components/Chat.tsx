@@ -686,6 +686,31 @@ function ToolGroup({
 // 글자 수가 이 한도를 넘는 답변은 부드러운 공개 애니메이션을 생략한다 (아래 주석 참고)
 const REVEAL_LIMIT = 24_000
 
+// ── 144Hz: 「일」이 표시율을 따라 늘지 않게 하는 바닥 ──────────────────────────
+// 아래 공개 루프와 바닥 고정 루프는 둘 다 **rAF 콜백**이라 프레임마다 돈다. 60Hz에선
+// 초당 60번이지만 144Hz에선 **초당 144번**이다 — 같은 코드가 모니터만 바꿔도 일을
+// 2.4배 한다. 그런데 그 일(마크다운 재파싱·바닥 재고정)이 늘어난 만큼 사람이 더 보는
+// 것은 없다: 공개 커서의 속도는 시간 기반이라 표시율과 무관하고(=총 공개 시간 동일),
+// 바닥 고정은 **내용이 바뀐 프레임에만** 의미가 있다.
+//
+// 실측 근거(scripts/poc-fps144-stream.mjs --trace, 4패널 합성 스트리밍 8.1초):
+//   메인 스레드 busy 4487ms 중 `FunctionCall` **자기 시간 2734.6ms(61%)** ·
+//   `FireAnimationFrame` 4372회(≈프레임당 9개 = 패널 4 × 2 루프 + 눈금 1) ·
+//   프레임당 JS 5.6ms — 6.9ms 예산의 대부분이 여기서 나간다.
+//
+// 그래서 두 루프에 **시간 바닥**을 둔다. 상한을 표시율이 아니라 **사람이 보는 속도**에
+// 거는 것이다: 60Hz(16.7ms)에선 바닥이 늘 만족돼 오늘과 동작이 같고, 144Hz(6.9ms)에선
+// 두 프레임에 한 번으로 접혀 초당 일이 60Hz 때와 비슷해진다.
+//
+// ★ 바닥값을 10으로 정한 이유 — 처음엔 15로 두었다가 **실측으로 되돌렸다.**
+//   15ms는 60Hz 프레임 주기(16.67ms)에 너무 가까워서, rAF 타임스탬프가 조금만 흔들려도
+//   (14.8ms 간격) 커밋이 한 번 걸러진다. 그러면 다음 커밋이 **두 배 길이**를 한 프레임에
+//   파싱해 오히려 꼬리가 두꺼워진다. 부팅 교대 A/B 실측(60Hz·3라운드 짝지은 중앙값):
+//       15ms: dP50 +0.5ms · dP95 +0.7ms · >6.9ms +1.2%p  ← 60Hz 후퇴
+//   10ms는 60Hz에서 **구조적으로 못 걸린다**(16.67 > 10이라 건너뛸 프레임이 없다).
+//   그래도 144Hz에선 100커밋/초로 상한이 걸려 이득은 그대로다.
+const MIN_COMMIT_MS = 10
+
 function SmoothMarkdown({ text, running }: { text: string; running: boolean }) {
   const [shown, setShown] = useState(() => (running ? 0 : text.length))
   const targetRef = useRef(text)
@@ -737,7 +762,9 @@ function SmoothMarkdown({ text, running }: { text: string; running: boolean }) {
         // 프레임, 이후 점점 늘어 최대 50ms) 프레임당 파싱 비용에 상한을 둔다. 커서는
         // 매 프레임 전진하므로 공개 총 시간은 그대로고 한 커밋에 드러나는 글자만 커진다.
         // 따라잡은 순간엔 즉시 커밋 — plain→하이라이트 전환이 스로틀에 걸리지 않게.
-        if (cur >= target || now - lastCommit.current >= Math.min(50, cur / 400)) {
+        // `MIN_COMMIT_MS` 바닥은 **표시율 분리**다(위 주석): 60Hz에선 매 프레임이라
+        // 오늘과 같고, 144Hz에선 초당 커밋(=재파싱) 수가 60Hz 때와 같아진다.
+        if (cur >= target || now - lastCommit.current >= Math.max(MIN_COMMIT_MS, Math.min(50, cur / 400))) {
           lastCommit.current = now
           setShown(Math.floor(cur))
         }
@@ -2243,9 +2270,18 @@ export function useThreadFollow(scrollEl: HTMLElement | null, busy: boolean) {
     if (!busy || !scrollEl) return
     let raf = 0
     let alive = true
-    const stick = (): void => {
+    let lastStick = 0
+    const stick = (now: number): void => {
       if (!alive) return
-      if (stickRef.current) scrollEl.scrollTop = scrollEl.scrollHeight
+      // `scrollHeight` 읽기는 그 프레임의 레이아웃을 **강제로** 끝내게 만들고(React가 방금
+      // DOM을 건드렸으므로), 이어지는 `scrollTop` 쓰기는 scroll 이벤트를 낸다(그 핸들러가
+      // 또 세 값을 읽는다). 프레임마다 표면 4개면 그 왕복이 프레임당 4벌이다.
+      // 내용은 커밋(MIN_COMMIT_MS)보다 자주 바뀌지 않으므로 **그보다 자주 고정할 이유가
+      // 없다** — 60Hz에선 매 프레임이라 오늘과 같고, 144Hz에선 3프레임에 한 번이 된다.
+      if (stickRef.current && now - lastStick >= MIN_COMMIT_MS) {
+        lastStick = now
+        scrollEl.scrollTop = scrollEl.scrollHeight
+      }
       raf = requestAnimationFrame(stick)
     }
     raf = requestAnimationFrame(stick)

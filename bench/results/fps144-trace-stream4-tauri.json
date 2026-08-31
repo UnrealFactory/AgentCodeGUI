@@ -1,0 +1,358 @@
+{
+  "what": "합성 스트리밍(엔진 이벤트 경계 주입) + 4패널 스크롤 — 프레임 작업 시간, 부팅 교대 A/B",
+  "budgetMs": 6.9,
+  "rounds": 1,
+  "panels": 4,
+  "schedule": {
+    "chunkMs": 40,
+    "chunkChars": 48,
+    "seconds": 8
+  },
+  "arms": [
+    {
+      "name": "A",
+      "exe": "C:\\Users\\User\\AppData\\Local/ccg-fps144/AgentCodeGUI3.exe",
+      "cwd": "C:\\Users\\User\\AppData\\Local/ccg-fps144",
+      "bin": {
+        "exe": "C:\\Users\\User\\AppData\\Local/ccg-fps144/AgentCodeGUI3.exe",
+        "exeMtime": "2026-08-31T08:58:13.043Z",
+        "exeSize": 7074304,
+        "exeSha256": "5987142387f0b5b8",
+        "gitHead": "493b1db",
+        "gitDirty": true
+      }
+    }
+  ],
+  "env": {
+    "ramGB": 63.8,
+    "cpu": "13th Gen Intel(R) Core(TM) i7-13700KF",
+    "os": "Microsoft Windows 11 Home 26200"
+  },
+  "summary": {
+    "A": {
+      "scrollAllPanels": {
+        "n": 1,
+        "workP50": 3.5,
+        "workP95": 5.1,
+        "workP99": 5.8,
+        "workMaxWorst": 5.9,
+        "over69Pct": 0,
+        "over69PctWorst": 0,
+        "over166Pct": 0,
+        "avgFps": 59,
+        "rafP95Ms": 17,
+        "worstDroppedPct": 0,
+        "zeroDropRuns": 1,
+        "sysCpuPct": 10.8,
+        "longTaskMs": 0
+      },
+      "streamSynthetic": {
+        "n": 1,
+        "workP50": 2.8,
+        "workP95": 7.9,
+        "workP99": 16.6,
+        "workMaxWorst": 22.2,
+        "over69Pct": 6.4,
+        "over69PctWorst": 6.4,
+        "over166Pct": 1,
+        "avgFps": 59.9,
+        "rafP95Ms": 16.8,
+        "worstDroppedPct": 0,
+        "zeroDropRuns": 1,
+        "sysCpuPct": 10.6,
+        "longTaskMs": 0
+      }
+    }
+  },
+  "paired": {},
+  "rows": [
+    {
+      "round": 1,
+      "arm": "A",
+      "at": "2026-08-31T09:29:08.970Z",
+      "inject": {
+        "wrapped": true,
+        "main": 2,
+        "panels": [
+          "fix-multi-session::0",
+          "fix-multi-session::1",
+          "fix-multi-session::2",
+          "fix-multi-session::3",
+          "fix-multi-session::4",
+          "fix-multi-session::5"
+        ],
+        "err": null,
+        "defineErr": null
+      },
+      "gridPanels": 4,
+      "scrollAllPanels": {
+        "frames": 234,
+        "workP50": 3.5,
+        "workP75": 3.8,
+        "workP95": 5.1,
+        "workP99": 5.8,
+        "workMax": 5.9,
+        "workMean": 2.96,
+        "over69Pct": 0,
+        "over166Pct": 0,
+        "over33Pct": 0,
+        "rafP50": 16.9,
+        "rafP95": 17,
+        "rafMax": 24.2,
+        "avgFps": 59,
+        "droppedPct": 0,
+        "droppedFrames": 0,
+        "longTaskMs": 0,
+        "loaf": null,
+        "worstFramesMs": [
+          5.9,
+          5.8,
+          5.8,
+          5.5,
+          5.4,
+          5.4,
+          5.4,
+          5.4
+        ],
+        "hist": [
+          37,
+          15,
+          2,
+          0,
+          2,
+          8,
+          47,
+          79,
+          21,
+          7,
+          12,
+          4,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "sysCpuPct": 10.8
+      },
+      "streamInfo": {
+        "panels": 4,
+        "chars": 9730,
+        "ms": 8137
+      },
+      "streamSynthetic": {
+        "frames": 486,
+        "workP50": 2.8,
+        "workP75": 4.4,
+        "workP95": 7.9,
+        "workP99": 16.6,
+        "workMax": 22.2,
+        "workMean": 3.35,
+        "over69Pct": 6.4,
+        "over166Pct": 1,
+        "over33Pct": 0,
+        "rafP50": 16.7,
+        "rafP95": 16.8,
+        "rafMax": 23.8,
+        "avgFps": 59.9,
+        "droppedPct": 0,
+        "droppedFrames": 0,
+        "longTaskMs": 0,
+        "loaf": null,
+        "worstFramesMs": [
+          22.2,
+          17.1,
+          16.7,
+          16.7,
+          16.6,
+          15.5,
+          15.4,
+          15.4
+        ],
+        "hist": [
+          3,
+          31,
+          154,
+          16,
+          22,
+          30,
+          61,
+          34,
+          17,
+          19,
+          15,
+          21,
+          23,
+          9,
+          6,
+          1,
+          2,
+          0,
+          0,
+          1,
+          0,
+          1,
+          1,
+          1,
+          1,
+          1,
+          2,
+          0,
+          1,
+          3,
+          4,
+          1,
+          0,
+          3,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "sysCpuPct": 10.6,
+        "trace": {
+          "thread": "26908:3848",
+          "tasks": 13412,
+          "taskP50Ms": 0,
+          "taskP95Ms": 1.63,
+          "taskP99Ms": 9.11,
+          "taskMaxMs": 20.28,
+          "taskOver69Pct": 1.4,
+          "busyMsTotal": 4487,
+          "breakdown": [
+            {
+              "name": "FunctionCall",
+              "selfMs": 2734.6,
+              "n": 14576
+            },
+            {
+              "name": "PrePaint",
+              "selfMs": 288.7,
+              "n": 716
+            },
+            {
+              "name": "Layerize",
+              "selfMs": 262.8,
+              "n": 487
+            },
+            {
+              "name": "RunTask",
+              "selfMs": 224,
+              "n": 13412
+            },
+            {
+              "name": "Layout",
+              "selfMs": 223.3,
+              "n": 285
+            },
+            {
+              "name": "Paint",
+              "selfMs": 221.9,
+              "n": 6967
+            },
+            {
+              "name": "UpdateLayoutTree",
+              "selfMs": 200,
+              "n": 567
+            },
+            {
+              "name": "IntersectionObserverController::computeIntersections",
+              "selfMs": 73.5,
+              "n": 1204
+            },
+            {
+              "name": "V8.GC_SCAVENGER_SCAVENGE_PARALLEL",
+              "selfMs": 60.8,
+              "n": 156
+            },
+            {
+              "name": "ScrollLayer",
+              "selfMs": 48.9,
+              "n": 912
+            },
+            {
+              "name": "Commit",
+              "selfMs": 36.6,
+              "n": 488
+            },
+            {
+              "name": "FireAnimationFrame",
+              "selfMs": 14.7,
+              "n": 4372
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "at": "2026-08-31T09:29:34.409Z"
+}
