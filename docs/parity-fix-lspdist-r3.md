@@ -244,6 +244,74 @@ R2 §6의 목록 중 **6.1(진단 문자열)은 이 라운드가 닫았다.** �
 
 ---
 
+## 5-b. ★마감 — 확인 크리틱 R3이 남긴 마이크로 2건 (종결)
+
+R3 판정문은 **합격 최종 종결**이면서 「라운드를 하나 더 열 값은 아닌」 한 줄급 둘을 남겼다.
+둘 다 `crates/ccg-lsp` 안이라 여기서 닫는다.
+
+### 5-b.1 R3-L1 — ④ 줄이 「배포본이라」고 단정했다
+
+**결함**: 게이트가 닫히는 이유는 둘인데(`.cargo-lock` 없음 ↔ 폴더 이름이 `target…`이 아님)
+문장은 언제나 *"배포본이라 보지 않는다"* + *"앱을 다시 설치해 주세요"*였다. 말단이
+`target`으로 시작하지 않는 `CARGO_TARGET_DIR`(예: `…/build/release`)로 짓는 개발자는
+**개발 판인데 재설치를 권유받는다** — R2-C1이 고친 병(**검증하지 않은 이유를 단정한다**)의
+축소판이다.
+
+**처방**: 게이트의 반환을 `bool` → `enum CargoGate {Open, NoLock, NotTargetDir}`로 바꿔
+**이유를 값으로** 들고 다닌다. ④ 줄과 **머리 문장이 같이** 갈린다 — 개발 판에는 재설치가
+아니라 `stage` / `CCG_LSP_NODE`를 권한다(그게 그 자리의 진짜 처방이다).
+
+**실측**(exe를 `%LOCALAPPDATA%\ccg-lspdist-fin\build\release\`에 두고 `.cargo-lock`을 심은 뒤
+PATH에서 node를 걷어내고 `CCG_LSP_MODULES`만 준 팔 — 모듈은 있고 런타임만 없는 상태):
+
+```
+Node 런타임을 못 찾았어요. 개발 배치로 보입니다 — `node scripts/tauri-build.mjs stage`로
+런타임을 받거나 `CCG_LSP_NODE`로 직접 지정해 주세요. / Node runtime not found. This looks
+like a dev layout — run `node scripts/tauri-build.mjs stage`, or point `CCG_LSP_NODE` at a
+node binary. 찾아본 자리 / looked in:
+  - ① CCG_LSP_NODE 미설정 / unset
+  - ② 설치 폴더 사이드카: …\build\release\node.exe (없음 / missing)
+  …
+  - ④ PATH: 보지 않는다 — `.cargo-lock`은 있지만 폴더 이름이 `target…`이 아니다(개발 판일 수
+    있다) / not consulted: has .cargo-lock but folder is not named target…
+```
+
+「배포본이라」도 「다시 설치」도 사라졌고, ④는 **본 것만** 말한다.
+**배포 팔은 안 흔들렸다** — 사이드카 유실 팔은 여전히 `$INSTDIR\node.exe`를 지목하고
+재설치를 권한다(§3.1 팔 전부 재통과). 못은 `the_cargo_gate_reports_why_it_closed`.
+
+### 5-b.2 HOSTI18N 이월분 — `install.rs`의 정적 한국어
+
+`crates/ccg-lsp/src/install.rs`의 제거 실패 문구(설정 ▸ 코드 분석에서 「제거」를 눌렀을 때
+사용자가 보는 문장)를 `ccg_fs::t(ko, en)`으로 감쌌다. `ccg-lsp`에 `ccg-fs` 의존을 더했다
+(순환 없음 — `ccg-fs`는 `ccg-store`만 본다).
+
+**en은 지어내지 않았다.** 이 자리는 3.0 전용이 아니라 **동결 구역에 대응 원문이 있는 쌍**이다
+— `src/main/lsp/install.ts:195`의 `t()` 둘째 인자를 **바이트 그대로** 옮겼다
+(`"Files are still in use. Try again in a moment or restart the app."`).
+HOSTI18N 규약이 *"ko/en 넷 쌍은 2.6.2 원문 그대로, 넷은 3.0 전용이라 여기서 정함"*이므로
+이 건은 **앞쪽 부류**다. 조율자 지시문의 「en은 지어내되 3.0 전용임을 명시」는 이 자리에는
+해당하지 않는다 — 동결 구역이 답을 갖고 있으면 그쪽이 언제나 옳다.
+
+**기존 훑기 못이 이 파일을 무는가 — 실측: 안 문다.**
+`src-tauri/src/ipc/system.rs`의 `the_shell_never_sends_a_raw_korean_value_to_the_renderer`는
+ⓓ대로 `crates/`까지 걷지만, **`"error"`/`"message"`/`"reason"` 키의 값 자리**만 본다.
+이 문구는 `Result::Err(...)`의 payload라 그 모양이 아니어서 **고치기 전에도 초록이었고
+고친 뒤에도 초록이다**(내 변경은 그 못에 보이지 않는다). 즉 이 건은 그물이 잡아서 고친 게
+아니라 **HOSTI18N이 장부에 손으로 적어 이월해 둔 것**이고, 그래서 이월 장부가 그물보다
+넓었던 자리다. 그 못의 한계 주석(*"값이 함수 호출을 거치면 따라가지 않는다"*)과 같은 계열의
+사각이다 — 넓히는 것은 그 파일의 주인(HOSTI18N)의 몫이라 **안 건드렸다**.
+
+> **같이 안 고친 것 하나 — 일부러다.** 그 못의 `CARRIED_OVER`에는
+> `ccg-lsp/src/lib.rs`의 *"이 파일 형식을 맡는 서버가 없어요"*가 올라 있고, 그 목록은
+> **「있는데 안 걸리면 그것도 실패」**라는 규약을 진다. 내가 지금 그 줄을 고치면
+> **HOSTI18N R2의 테스트가 깨진다**(고쳐졌으면 목록에서 지워야 하는데 그 파일은 내 경계
+> 밖이다). 그래서 남긴다 — 그 줄은 `CARRIED_OVER` 항목을 지우는 커밋과 **같은 커밋**에서
+> 닫혀야 한다.
+
+**무후퇴**: `cargo test -p ccg-lsp` 라이브러리 **75** + 통합 1 · 워크스페이스 **805 통과 · 0 실패 · 15 무시**(바이너리 35) ·
+HOSTI18N 훑기 못 통과 확인.
+
 ## 6. 재현
 
 ```bash
