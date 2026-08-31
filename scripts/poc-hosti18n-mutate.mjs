@@ -17,7 +17,7 @@
 //
 //   restore  원본 복구
 //
-// 사용: node scripts/poc-hosti18n-mutate.mjs <격리트리> <H1|H2|H3|H4|H5|HOK1|HOK2|restore>
+// 사용: node scripts/poc-hosti18n-mutate.mjs <격리트리> <H1..H5|HOK1|HOK2|S0..S5|SOK|restore>
 
 import fs from 'node:fs'
 import path from 'node:path'
@@ -58,6 +58,8 @@ const restoreAll = () => {
   for (const [k, p] of Object.entries(F)) fs.writeFileSync(p, orig(k))
 }
 
+const CLEAR_OK = `LSP_CLEAR_VERSE_PATH => json!({ "ok": true }),`
+
 const VERSE_OK = `    ccg_fs::t(
         "Verse 서버 지정은 3.0에서 아직 제공하지 않아요",
         "Setting a Verse server isn't available in 3.0 yet",
@@ -85,7 +87,7 @@ switch (which) {
     patch('lsp', VERSE_OK, VERSE_LITERAL, 'H1 verse 리터럴')
     break
   case 'H2':
-    patch('sys', '.set_title(pick_directory_title()).pick_folder(', '.pick_folder(', 'H2 제목 제거')
+    patch('sys', '.set_title(pick_directory_title())', '', 'H2 제목 제거')
     break
   case 'H3':
     patch('win', WIN_OK, WIN_LITERAL, 'H3 창 제목 리터럴')
@@ -111,6 +113,29 @@ switch (which) {
     break
   case 'HOK2':
     patch('win', IFELSE_OK, IFELSE_FLIPPED, 'HOK2 if/else 뒤집기')
+    break
+  // ── ★HOSTI18N R2 — 크리틱 R1-D4의 회피 다섯. R1의 못은 S0만 잡고 넷을 놓쳤다.
+  // 앵커는 전부 `lsp.rs`의 `LSP_CLEAR_VERSE_PATH` 한 줄(원래 `{ "ok": true }`)이다.
+  case 'S0': // 한 줄 — R1도 잡던 형태(대조군)
+    patch('lsp', CLEAR_OK, `LSP_CLEAR_VERSE_PATH => json!({ "ok": false, "error": "지우지 못했어요" }),`, 'S0')
+    break
+  case 'S1': // 줄바꿈 — rustfmt만으로도 나는 형태
+    patch('lsp', CLEAR_OK, `LSP_CLEAR_VERSE_PATH => json!({ "ok": false, "error":\n            "지우지 못했어요" }),`, 'S1')
+    break
+  case 'S2': // 변수 경유 — `NO_CODEX_BIN`이 실물이었다
+    patch('lsp', CLEAR_OK, `LSP_CLEAR_VERSE_PATH => { let m = "지우지 못했어요"; json!({ "ok": false, "error": m }) },`, 'S2')
+    break
+  case 'S3': // 유니코드 이스케이프
+    patch('lsp', CLEAR_OK, `LSP_CLEAR_VERSE_PATH => json!({ "ok": false, "error": "\\u{c9c0}\\u{c6b0}\\u{c9c0} \\u{BABB}\\u{d588}\\u{c5b4}\\u{c694}" }),`, 'S3')
+    break
+  case 'S4': // 다른 키
+    patch('lsp', CLEAR_OK, `LSP_CLEAR_VERSE_PATH => json!({ "ok": false, "message": "지우지 못했어요" }),`, 'S4')
+    break
+  case 'S5': // format! 경유
+    patch('lsp', CLEAR_OK, `LSP_CLEAR_VERSE_PATH => json!({ "ok": false, "error": format!("{} 못했어요", "지우지") }),`, 'S5')
+    break
+  case 'SOK': // 무해 대조군 — **영어** error는 걸리면 안 된다
+    patch('lsp', CLEAR_OK, `LSP_CLEAR_VERSE_PATH => json!({ "ok": false, "error": "could not clear" }),`, 'SOK')
     break
   case 'restore':
     break

@@ -2374,7 +2374,14 @@ function LspView() {
                       ))}
                     {/* Verse의 요구사항·경로·문서 언어는 행을 펼치면 보인다 — 접힌 행은
                         다른 서버들과 같은 2줄 높이를 유지한다 */}
-                    {!isVerse && s.requires && <span className="set-badge off">{s.requires}</span>}
+                    {/* ★HOSTI18N R2(크리틱 R1-D3) — 셸은 `requires`(ko)와 `requiresEn`(en)을
+                        **둘 다** 보내는데(`ccg-lsp/src/lib.rs:449-453`, 주석에 "표시 쪽이 고르게
+                        한다") 초판은 `{s.requires}`를 무조건 그렸다. 그래서 en 화면의 C# 행
+                        배지만 「.NET SDK 10+ 필요」로 한국어였다 — 계약면에 필드만 있고
+                        배선이 없던 자리다. en이 없는 서버는 ko로 떨어진다(2.6.2와 같다). */}
+                    {!isVerse && s.requires && (
+                      <span className="set-badge off">{t(s.requires, s.requiresEn || s.requires)}</span>
+                    )}
                   </div>
                   <div className="meta mono">{s.exts}</div>
                 </div>

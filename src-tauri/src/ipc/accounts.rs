@@ -397,7 +397,7 @@ fn login(app: &AppHandle, use_console: bool) -> Value {
     // R28c까지는 PATH 폴백이면 무조건 통과였고(= 판정을 안 했다), 그 뒤 스폰이 실패해야
     // 사유가 나왔다. 통과하면 **해석된 실물 경로**로 띄운다(OS가 같은 훑기를 또 하지 않게).
     let Some(bin) = crate::engine::versions::claude_exe() else {
-        return status_wire(false, &AuthStatus::default(), Some(NO_BIN));
+        return status_wire(false, &AuthStatus::default(), Some(&no_bin()));
     };
     let gen = LOGIN.begin();
     cancel_login(); // 이전 시도가 있으면 정리(2.6.2와 같은 첫 줄)
@@ -413,14 +413,14 @@ fn login(app: &AppHandle, use_console: bool) -> Value {
     let spec = verify::login_command(&bin.to_string_lossy(), use_console);
     // claude 축은 래퍼를 안 쓴다(`build` = 직접 스폰) — `wrapped: false`.
     if let Err(e) = pump_login(app, &LOGIN, gen, build(&spec), spec.timeout_ms, false) {
-        return status_wire(false, &AuthStatus::default(), Some(&format!("{NO_BIN} ({e})")));
+        return status_wire(false, &AuthStatus::default(), Some(&format!("{} ({e})", no_bin())));
     }
     // 우리가 도는 사이에 **다른 로그인이 시작**됐다면 이 시도는 이미 무효다. 임시 폴더는
     // 이제 그쪽 것이므로 읽지도 지우지도 않고 물러난다 — 안 그러면 A가 B의 자격증명을
     // 자기 결과로 읽거나(엉뚱한 계정 편입) B가 쓰는 중에 폴더를 지운다.
     // (취소로 핸들이 사라진 경우는 여기 해당하지 않는다 — 번호가 그대로다.)
     if !LOGIN.still_current(gen) {
-        return status_wire(false, &AuthStatus::default(), Some("다른 로그인이 시작되어 이 시도는 취소됐어요."));
+        return status_wire(false, &AuthStatus::default(), Some(&ccg_fs::t("다른 로그인이 시작되어 이 시도는 취소됐어요.", "Another login started, so this attempt was cancelled.")));
     }
 
     // 결과 판정은 종료 코드가 아니라 `auth status --json`이다 — 로그아웃 상태면 CLI가
@@ -534,7 +534,18 @@ fn pump_login(
 /// (5분 상한의 정확도에는 영향이 없다 — 상한은 `deadline`으로 따로 잰다).
 const CANCEL_POLL: Duration = Duration::from_millis(150);
 
-const NO_BIN: &str = "claude 실행 파일을 찾지 못했어요";
+/// ★HOSTI18N R2(확인 크리틱 R1-D2) — `const`가 아니라 **함수**다.
+///
+/// R1 보고서는 렌더러 `?? t(…)` 18건 중 "나머지는 동적 값이라 부류가 다르다"고 적었는데,
+/// 크리틱이 표본을 열어 보니 **정적 한국어가 섞여 있었다**. 이 자리가 그중 하나다:
+/// `status_wire(..., Some(NO_BIN))` → `Settings.tsx:455`가 `?? t(…)`로 받는다 = 셸의
+/// 한국어가 번역문을 이긴다(R1이 닫은 다섯 자리와 **정확히 같은 증상**).
+///
+/// R1의 훑기 못이 이걸 못 잡은 이유는 범위가 아니라 **모양**이다 — 못이 `"error"`와
+/// 한국어가 같은 줄에 있을 때만 봤는데 여기는 상수를 거친다. 그 눈은 §R2-4에서 넓혔다.
+fn no_bin() -> String {
+    ccg_fs::t("claude 실행 파일을 찾지 못했어요", "Couldn't find the claude executable")
+}
 
 /// `auth status --json` 한 번(20초 상한).
 fn status_for(bin: &str, dir: &IsolatedConfigDir) -> AuthStatus {
@@ -627,7 +638,7 @@ fn no_net() -> bool {
 fn codex_login(app: &AppHandle) -> Value {
     // 「띄울 수 있는가」의 판정은 앱에 **한 자리**뿐이다(`codex_exe`의 표 — R28c CPATH).
     let Some(bin) = crate::engine::codex_versions::codex_exe() else {
-        return login_error(NO_CODEX_BIN);
+        return login_error(&no_codex_bin());
     };
     let gen = CODEX_LOGIN_SLOT.begin();
     CODEX_LOGIN_SLOT.cancel(); // 이전 시도가 있으면 정리(2.6.2 `codexLoginCancel()` 첫 줄)
@@ -642,7 +653,7 @@ fn codex_login(app: &AppHandle) -> Value {
     let spec = verify::codex_login_command(&bin.to_string_lossy());
     let (cmd, wrapped) = codex_command(&bin, &spec);
     if let Err(e) = pump_login(app, &CODEX_LOGIN_SLOT, gen, cmd, spec.timeout_ms, wrapped) {
-        return login_error(&format!("{NO_CODEX_BIN} ({e})"));
+        return login_error(&format!("{} ({e})", no_codex_bin()));
     }
     // 다른 로그인이 시작됐으면 임시 폴더는 이제 그쪽 것이다 — 읽지도 지우지도 않는다
     // (claude 축의 같은 자리와 같은 이유 · R28 T1T2 R2 §6.3).
@@ -656,7 +667,11 @@ fn codex_login(app: &AppHandle) -> Value {
     super::system::list_codex_accounts()
 }
 
-const NO_CODEX_BIN: &str = "codex 실행 파일을 찾지 못했어요";
+/// ★HOSTI18N R2 — `no_bin()`과 같은 부류(크리틱 R1-D2의 표본 첫째).
+/// `login_error(NO_CODEX_BIN)` → `Settings.tsx:473`이 `?? t(…)`로 받던 자리다.
+fn no_codex_bin() -> String {
+    ccg_fs::t("codex 실행 파일을 찾지 못했어요", "Couldn't find the codex executable")
+}
 
 /// 로그인이 **시작조차 못 했을 때**의 와이어 — 배열이 아니라 사유 객체다(위 주석).
 /// 사용자가 브라우저에서 취소한 경우는 여기 해당하지 않는다(그건 실패가 아니라 선택이고,

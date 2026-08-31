@@ -9,10 +9,18 @@
 //! 회귀다. 초판이 `set_title`/`add_filter`에 한국어 리터럴을 그대로 박아 `ui.lang=en`
 //! 에서도 네이티브 창의 제목·필터 이름만 한국어로 남았다. `ccg_fs::t`로 감쌌고 en
 //! 문자열은 2.6.2 `index.ts:1355-1360`에서 글자 그대로 가져왔다). 다른 것 하나:
-//! **부모 창**을 못 건다 — `tauri-plugin-dialog`의 `pick_files`에는
-//! 부모 지정이 없다(rfd `set_parent`가 노출되지 않는다). 모달이 아니라 그냥 다른 창이
-//! 되는데, 대신 크래시 복구가 고아 대화상자를 거두는 그물이 이미 있다
-//! (`ipc/system.rs close_orphan_dialogs` — 그쪽 `DIALOGS_OPEN` 계수기를 함께 쓴다).
+//! **부모 창**도 2.6.2와 같이 건다(`showOpenDialog(mainWindow, …)`).
+//!
+//! ★HOSTI18N R2 정정(확인 크리틱 R1-D1): 이 자리는 SMALL3 R1부터 *"`pick_files`에는 부모
+//! 지정이 없다(rfd `set_parent`가 노출되지 않는다)"* 고 적혀 있었다. **거짓이었다** —
+//! `set_parent`는 우리가 이미 쓰는 `set_title` 바로 옆 공개 메서드이고
+//! (`tauri-plugin-dialog-2.7.2/src/lib.rs:464`), `desktop.rs:99-102`가 `pick_files`·
+//! `pick_folder`를 포함한 모든 변환에 적용한다. 크리틱이 세 라운드를 읽고도 못 짚었다고
+//! 적었지만, 애초에 **확인 없이 쓴 것은 우리 쪽**이다. 근거 없는 제약을 장부에 올리면
+//! 다음 사람이 다시 안 찾아본다 — 그게 이 정정의 값어치다.
+//!
+//! 부모가 붙어도 고아 대화상자 그물은 그대로 필요하다(렌더러가 죽어도 창은 남는다):
+//! `ipc/system.rs close_orphan_dialogs` — 그쪽 `DIALOGS_OPEN` 계수기를 함께 쓴다.
 
 use serde_json::{json, Value};
 use tauri::AppHandle;
@@ -81,16 +89,22 @@ pub fn pick_attachments(app: &AppHandle) -> Value {
     let (tx, rx) = std::sync::mpsc::channel();
     let guard = super::super::system::DialogGuard::new();
     let l = labels();
-    app.dialog()
+    // ★HOSTI18N R2 — 부모(모듈 헤더). 없으면 예전처럼 부모 없이 뜬다.
+    let parent = super::super::system::dialog_parent(app);
+    let mut b = app
+        .dialog()
         .file()
         .set_title(l.title)
         // 순서가 곧 대화상자의 기본 필터다 — 2.6.2와 같이 「첨부 가능한 파일」이 첫 줄.
         .add_filter(l.filter_all, &all)
         .add_filter(l.filter_images, &IMAGE)
-        .add_filter(l.filter_docs, &TEXT)
-        .pick_files(move |p| {
-            let _ = tx.send(p);
-        });
+        .add_filter(l.filter_docs, &TEXT);
+    if let Some(w) = &parent {
+        b = b.set_parent(w);
+    }
+    b.pick_files(move |p| {
+        let _ = tx.send(p);
+    });
     let r = rx.recv();
     drop(guard);
     let paths = match r {
@@ -281,7 +295,14 @@ mod tests {
 
         let call_at = prod.find("pub fn pick_attachments").expect("호출부가 사라졌다");
         let call = &prod[call_at..];
-        let b_at = call.find("app.dialog()").expect("빌더가 사라졌다");
+        // ★HOSTI18N R2 — 앵커를 `app.dialog()`에서 `.dialog()`로 줄였다.
+        //
+        // 이 못이 **실제로 한 번 헛디뎠다**: R2가 부모 창을 걸면서 줄이 길어지자
+        // rustfmt가 `app` 다음에서 접어 `app\n.dialog()`가 됐고, 그 순간 앵커가 사라져
+        // "빌더가 사라졌다"로 죽었다(제품은 멀쩡한데). 확인 크리틱 R1-D4가 훑기 못을 두고
+        // 경고한 **S1(줄바꿈) 회피가 가설이 아니라 실물**임을 내 못이 스스로 증명한 셈이다.
+        // 포매터가 못을 깨면 사람은 못을 의심하는 대신 지우고 싶어진다 — 그래서 줄인다.
+        let b_at = call.find(".dialog()").expect("빌더가 사라졌다");
         let b_end = call.find(".pick_files(").expect("pick_files가 사라졌다");
         assert!(b_at < b_end, "빌더 구간이 뒤집혔다");
 

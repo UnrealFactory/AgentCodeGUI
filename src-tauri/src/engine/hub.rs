@@ -395,7 +395,13 @@ impl Hub {
         self.fanout(
             &chat,
             json!({ "type": "error", "runId": run,
-                    "message": format!("{why}. 고친 뒤 다시 보내면 이어집니다.") }),
+                    // ★HOSTI18N R2 — 강화한 훑기 못(§R2-4)이 새로 찾아낸 자리다.
+                    // 채팅 기록에 그대로 앉는 문장이라 en 사용자가 한국어를 본다.
+                    // `{why}`는 셸이 만든 사유라 그쪽도 같이 번역돼야 완성이다(이월 §R2-6).
+                    "message": ccg_fs::t(
+                        &format!("{why}. 고친 뒤 다시 보내면 이어집니다."),
+                        &format!("{why}. Fix it and send again to continue."),
+                    ) }),
         );
         self.fanout(&chat, json!({ "type": "status", "runId": run, "status": "error" }));
         // 사이드바·다른 창이 읽는 요약면에도 앉힌다(`chat:status`). 런타임이 없으니

@@ -158,7 +158,13 @@ pub fn uninstall_server(id: &str) -> Value {
 /// 뷰어의 "이 언어 서버를 설치할까요?" 버튼 — 파일 경로로 어느 서버인지 정한다.
 pub fn install_for_file(cwd: &str, rel: &str) -> Value {
     let Some(id) = server_id_for_file(cwd, rel) else {
-        return json!({ "ok": false, "error": "이 파일 형식을 맡는 서버가 없어요" });
+        // ★HOSTI18N R2 — 셸(`ipc/lsp.rs`)의 **쌍둥이 문구**와 같이 닫는다. 그쪽은 R1이
+        // 이미 감쌌고 제품 경로도 그쪽이지만(셸이 `server_id_for_file`을 직접 부른다),
+        // 이 함수도 공개 API라 다른 호출자가 생기면 그대로 한국어가 나간다.
+        //
+        // en은 셸과 **같은 문자열**을 쓴다 — 2.6.2에 대응 원문이 없는 **3.0 전용**이라
+        // 옮겨 올 곳이 없고, 같은 뜻에 두 en을 두면 화면마다 문구가 갈린다.
+        return json!({ "ok": false, "error": ccg_fs::t("이 파일 형식을 맡는 서버가 없어요", "No language server handles this file type") });
     };
     install_server(&id)
 }
