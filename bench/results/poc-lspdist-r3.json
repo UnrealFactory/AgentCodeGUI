@@ -1,0 +1,82 @@
+{
+  "poc": "lspdist-r3",
+  "at": "2026-08-31T05:16:43.503Z",
+  "repo": "C:\\Code\\AgentCodeGUI",
+  "node": "v24.13.1",
+  "deploySim": {
+    "dist": "C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r3\\deployed",
+    "entries": 5427,
+    "nsi": "C:\\Code\\AgentCodeGUI\\src-tauri\\target-lspdist\\release\\nsis\\x64\\installer.nsi"
+  },
+  "intact": {
+    "ts": {
+      "status": "ready",
+      "node": "C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r3\\deployed\\node.exe",
+      "hover": 4
+    },
+    "py": {
+      "status": "ready",
+      "node": "C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r3\\deployed\\node.exe",
+      "hover": 4
+    }
+  },
+  "sidecarLost": {
+    "ts": {
+      "status": "error",
+      "node": null,
+      "launchError": "설치된 Node 런타임을 못 찾았어요. 설치가 손상됐을 수 있으니 앱을 다시 설치해 주세요 (PATH에 node를 깔아도 낫지 않아요). / The bundled Node runtime is missing — reinstall the app; installing Node on PATH will not help. 찾아본 자리 / looked in:\n  - ① CCG_LSP_NODE 미설정 / unset\n  - ② 설치 폴더 사이드카: C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r3\\deployed\\node.exe (없음 / missing)\n  - ② resources 사이드카: C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r3\\deployed\\resources\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r3\\deployed\\src-tauri\\lsp-runtime\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r3\\src-tauri\\lsp-runtime\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: C:\\Users\\User\\AppData\\Local\\src-tauri\\lsp-runtime\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: C:\\Users\\User\\AppData\\src-tauri\\lsp-runtime\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: C:\\Users\\User\\src-tauri\\lsp-runtime\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: C:\\Users\\src-tauri\\lsp-runtime\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: C:\\src-tauri\\lsp-runtime\\node.exe (없음 / missing)\n  - ④ PATH: 배포본이라 **보지 않는다**(결정론) / not consulted in a deployed build"
+    },
+    "py": {
+      "status": "error",
+      "node": null,
+      "launchError": "설치된 Node 런타임을 못 찾았어요. 설치가 손상됐을 수 있으니 앱을 다시 설치해 주세요 (PATH에 node를 깔아도 낫지 않아요). / The bundled Node runtime is missing — reinstall the app; installing Node on PATH will not help. 찾아본 자리 / looked in:\n  - ① CCG_LSP_NODE 미설정 / unset\n  - ② 설치 폴더 사이드카: C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r3\\deployed\\node.exe (없음 / missing)\n  - ② resources 사이드카: C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r3\\deployed\\resources\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r3\\deployed\\src-tauri\\lsp-runtime\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r3\\src-tauri\\lsp-runtime\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: C:\\Users\\User\\AppData\\Local\\src-tauri\\lsp-runtime\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: C:\\Users\\User\\AppData\\src-tauri\\lsp-runtime\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: C:\\Users\\User\\src-tauri\\lsp-runtime\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: C:\\Users\\src-tauri\\lsp-runtime\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: C:\\src-tauri\\lsp-runtime\\node.exe (없음 / missing)\n  - ④ PATH: 배포본이라 **보지 않는다**(결정론) / not consulted in a deployed build"
+    }
+  },
+  "cargoLockPlanted": {
+    "ts": {
+      "status": "error",
+      "node": null
+    },
+    "py": {
+      "status": "error",
+      "node": null
+    }
+  },
+  "mutations": {
+    "tree": "C:\\Code\\AgentCodeGUI\\target-lspdist\\poc-lspdist-r3\\mutant",
+    "results": [
+      {
+        "id": "E1 · dest는 그대로, src만 남의 폴더로",
+        "why": "크리틱 R2-C2 — 목적지 문자열이 완벽해도 나르는 물건이 다르면 tsserver가 실종된다",
+        "expect": "every_bundled_file_is_covered_by_the_installer_manifest (출처↔목적지)",
+        "applied": true,
+        "red": true
+      },
+      {
+        "id": "E2 · node_modules를 통째로 나르기",
+        "why": "「매니페스트 단순화」로 실제로 나올 수 있는 편집. 유령 검사도 못 잡았다",
+        "expect": "〃 (트리 통째 적재 금지)",
+        "applied": true,
+        "red": true
+      },
+      {
+        "id": "E3 · dest=node.exe · src=LICENSE.txt",
+        "why": "★비가역 — $INSTDIR\\node.exe가 텍스트 파일이 되고 R2가 PATH를 끊어 복구 경로가 없다",
+        "expect": "〃 (런타임 출처는 스테이징 자리 하나뿐)",
+        "applied": true,
+        "red": true
+      },
+      {
+        "id": "E4 · 스테이징된 실물을 다른 파일로 바꾸기",
+        "why": "스테이징의 해시 검사는 **빌드 시각**의 것이다 — 그 뒤에 바뀌면 아무도 안 봤다",
+        "expect": "〃 (스테이징 실물 sha256 == NODE_PIN)",
+        "applied": true,
+        "red": true
+      }
+    ]
+  },
+  "verdict": {
+    "failures": [],
+    "ok": true
+  }
+}

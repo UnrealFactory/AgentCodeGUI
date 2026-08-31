@@ -79,12 +79,28 @@ fn main() {
         }
         // tsserver는 실행 스크립트와 다른 패키지에서 온다(`extra_modules`) — 따로 찍는다.
         modules["ts.tsserver"] = stringify(ccg_lsp::launch::shipped_module(&["typescript", "lib", "tsserver.js"]));
+        // ★R3(크리틱 R2-C1) — **죽을 때 하는 말**을 그대로 싣는다. R2까지 프로브는 `status`만
+        // 냈고, 그래서 "실패 문자열이 사이드카 경로를 지목한다"는 보고서의 주장을 아무도
+        // 실측할 수 없었다(그리고 그건 거짓이었다). `launchable`은 `plan()`의 오류를 그대로
+        // 돌려주므로, 사용자가 볼 문장이 여기 그대로 박힌다.
+        let launch_err = {
+            let a = std::path::Path::new(&cwd).join(&rel);
+            match ccg_lsp::spec::spec_for_path(&a) {
+                Some(spec) => {
+                    let root = ccg_lsp::manager::root_of(spec, &a, std::path::Path::new(&cwd));
+                    ccg_lsp::server::launchable(spec, &root).err()
+                }
+                None => None,
+            }
+        };
         out["resolve"] = json!({
             "exe": stringify(std::env::current_exe().ok()),
             "processCwd": stringify(std::env::current_dir().ok()),
             "node": stringify(ccg_lsp::launch::node_exe()),
             "modules": modules,
             "searchHint": ccg_lsp::launch::module_search_hint(),
+            "nodeHint": ccg_lsp::launch::node_search_hint(),
+            "launchError": launch_err,
         });
     }
 
