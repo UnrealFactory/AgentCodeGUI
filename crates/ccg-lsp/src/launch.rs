@@ -71,17 +71,44 @@ fn env_path(key: &str) -> Option<PathBuf> {
 /// | ③ | exe **조상**의 `src-tauri/lsp-runtime/node.exe` | 개발·벤치 — 같은 스테이징 산출물을 레포 안에서 그대로 문다 |
 /// | ④ | PATH — **exe가 cargo 산출 폴더에 있을 때만** | 스테이징을 아직 안 돌린 `cargo run` 개발자 |
 ///
-/// **④가 배포본에 절대 안 닿는 이유**: 판정을 `.cargo-lock`(cargo가 프로필 폴더에 두는
-/// 잠금 파일)의 존재로 한다 — `tauri_utils::platform::resource_dir`가 「개발 중인가」를
-/// 가르는 데 쓰는 바로 그 신호다. NSIS가 깐 `$INSTDIR`에는 그 파일이 없다. 그래서 이 칸은
-/// **exe 경로의 함수**이지 환경의 함수가 아니고, 크리틱이 요구한 결정론을 안 깬다
-/// (테스트 `path_fallback_is_unreachable_for_a_deployed_exe`).
+/// **④가 배포본에 절대 안 닿는 이유**(★R3 정정 · 크리틱 R2-L2): 판정은 두 조건의 **AND**다 —
+/// ⓐ 폴더 이름이 `target…`인 조상이 한두 칸 위에 있고 ⓑ 그 폴더에 `.cargo-lock`이 있다.
+///
+/// > R2는 ⓑ만 걸고 *"`tauri_utils::platform::resource_dir`가 「개발 중인가」를 가르는 바로 그
+/// > 신호"*라고 적었는데 **두 군데가 틀렸다**. 첫째, 상류는 `target` 폴더명 조건을 **AND로 더**
+/// > 건다(*"This ensures the check is safer so it doesn't affect apps in production"*). 둘째,
+/// > **Windows에서는 `cfg!(target_os = "windows")`가 먼저 단락되어 상류가 `.cargo-lock`을 아예
+/// > 안 본다** — 그러니 그 인용은 이 플랫폼에서 성립하지 않는 서술이었다.
+/// > 크리틱 실측(G6): `$INSTDIR`에 **0바이트** `.cargo-lock`을 심으면 PATH 칸이 열렸다.
+/// > 상류의 조건을 마저 가져와 그 문을 닫는다(단, 이 레포는 `target-lspdist`처럼 접미사가
+/// > 붙은 타깃 폴더를 쓰므로 `starts_with("target")`으로 본다).
 ///
 /// [남은 위험 · 정직하게] 사이드카가 **없어진** 설치본(백신 격리 등)은 이제 PATH로 못
 /// 살아난다 — 조용히 다른 판을 무는 대신 **소리 내어 죽는다**. 그 교환은 의도한 것이고,
-/// 실패 문자열이 사이드카 경로를 지목한다(`crate::server::plan`).
+/// 그때 하는 말은 [`node_search_hint`]가 만든다(★R3 — R2까지 그 말이 틀렸다).
 pub fn node_exe() -> Option<PathBuf> {
     node_exe_from(env_path("CCG_LSP_NODE"), exe_dir())
+}
+
+/// 런타임 후보들 — **사슬의 단일 출처.** `(칸 이름, 경로)`를 우선순위대로 낸다.
+///
+/// ★R3(크리틱 R2-C1)이 이 함수를 판 이유: R2는 사슬을 `node_exe_from`에 두고 진단 문자열은
+/// `server.rs`에 **따로** 적었다. 그래서 사슬이 바뀌어도 문자열은 안 바뀌었고, 배포본이
+/// 죽을 때 *"CCG_LSP_NODE · exe 옆 node.exe · **PATH** 순으로 찾는다"*라고 말했다 —
+/// 그 상황에서 PATH는 **안 보는데도**. 이제 탐색과 진단이 **같은 목록**을 읽는다.
+/// 둘이 갈라질 수 있는 구조를 없애는 것이 고침의 본체다(문구 수정이 아니라).
+fn node_candidates(exe_dir: &Path) -> Vec<(&'static str, PathBuf)> {
+    let mut v: Vec<(&'static str, PathBuf)> = Vec::new();
+    // ② exe 옆 사이드카 — **배포본이 여기다**
+    v.push(("② 설치 폴더 사이드카", exe_dir.join("node.exe")));
+    v.push(("② resources 사이드카", exe_dir.join("resources").join("node.exe")));
+    // ③ 개발 — exe 조상의 스테이징 산출물(`npm run tauri:build`가 만든 그 파일)
+    let mut cur: Option<&Path> = Some(exe_dir);
+    while let Some(c) = cur {
+        v.push(("③ 개발 스테이징", c.join("src-tauri").join(STAGED_RUNTIME_DIR).join("node.exe")));
+        cur = c.parent();
+    }
+    v
 }
 
 /// [`node_exe`]의 순수 알맹이 — 테스트가 가짜 exe 폴더를 먹인다.
@@ -90,22 +117,9 @@ fn node_exe_from(explicit: Option<PathBuf>, exe_dir: Option<PathBuf>) -> Option<
     if let Some(p) = explicit {
         return Some(p);
     }
-    let Some(d) = exe_dir else { return None };
-    // ② exe 옆 사이드카 — **배포본이 여기다**
-    for rel in [["node.exe"].as_slice(), ["resources", "node.exe"].as_slice()] {
-        let p = rel.iter().fold(d.clone(), |a, s| a.join(s));
-        if p.is_file() {
-            return Some(p);
-        }
-    }
-    // ③ 개발 — exe 조상의 스테이징 산출물(`npm run tauri:build`가 만든 그 파일)
-    let mut cur: Option<&Path> = Some(&d);
-    while let Some(c) = cur {
-        let p = c.join("src-tauri").join(STAGED_RUNTIME_DIR).join("node.exe");
-        if p.is_file() {
-            return Some(p);
-        }
-        cur = c.parent();
+    let d = exe_dir?;
+    if let Some((_, p)) = node_candidates(&d).into_iter().find(|(_, p)| p.is_file()) {
+        return Some(p);
     }
     // ④ PATH — **cargo 산출 폴더에서 뜬 exe일 때만**(배포본은 절대 여기 못 온다)
     if is_cargo_output_dir(&d) {
@@ -114,14 +128,84 @@ fn node_exe_from(explicit: Option<PathBuf>, exe_dir: Option<PathBuf>) -> Option<
     None
 }
 
+/// 런타임을 못 찾았을 때 화면·로그에 실을 진단 — **실제로 뒤진 자리를 그대로 싣는다.**
+///
+/// ★R3 · 크리틱 R2-C1. R2가 「조용히 틀린 판을 무는 것보다 소리 내어 죽는 편이 낫다」를 사서
+/// PATH를 끊었는데, **죽을 때 하는 말이 틀렸으면 그 거래에서 산 것을 절반 잃는다.**
+/// R1이 모듈 쪽에 [`module_search_hint`]로 고친 병을 런타임 쪽에 대칭으로 놓는다.
+///
+/// **ko/en 한 문자열인 이유**: 이건 Rust가 만드는 문자열이라 렌더러의 `t()`를 못 탄다
+/// (스펙의 `requires`/`requiresEn`이 두 벌을 실어 나르는 것과 같은 사정 — §R3-9 ⑤).
+/// 계약면을 갈라 두 벌로 나르는 길은 `ipc/lsp.rs`를 여는데 그 파일은 지금 다른 갈래(HOSTI18N)의
+/// 것이라, **한 문자열에 두 언어를 담고** 경로는 언어와 무관하게 그대로 싣는다.
+/// 나중에 호스트 i18n이 서면 이 함수가 낼 값을 쪼개면 된다(경로 목록은 그대로 쓰인다).
+pub fn node_search_hint() -> String {
+    let Some(d) = exe_dir() else {
+        return "실행 파일 경로를 못 읽었다 / cannot resolve current exe path".to_string();
+    };
+    let env_set = std::env::var("CCG_LSP_NODE").ok().filter(|s| !s.is_empty());
+    let gate = is_cargo_output_dir(&d);
+    let mut lines: Vec<String> = Vec::new();
+    lines.push(match &env_set {
+        Some(v) => format!("① CCG_LSP_NODE={v} (그 자리에 파일이 없다 / not a file)"),
+        None => "① CCG_LSP_NODE 미설정 / unset".to_string(),
+    });
+    // ③은 exe 조상마다 한 줄이라 드라이브 뿌리까지 일곱 줄이 되기도 한다. 사용자가 읽는
+    // 문장이므로 **두 줄까지만 적고 나머지는 개수로** 말한다 — 자리를 숨기는 게 아니라
+    // 「몇 칸을 더 봤는지」를 정확히 밝힌다(진단의 값은 ②와 ④에 있다).
+    let cands = node_candidates(&d);
+    let mut staged_shown = 0usize;
+    let mut staged_hidden = 0usize;
+    for (slot, p) in &cands {
+        if slot.starts_with('③') {
+            staged_shown += 1;
+            if staged_shown > 2 {
+                staged_hidden += 1;
+                continue;
+            }
+        }
+        lines.push(format!("{slot}: {} (없음 / missing)", p.to_string_lossy()));
+    }
+    if staged_hidden > 0 {
+        lines.push(format!("③ 개발 스테이징: 조상 {staged_hidden}칸 더 봤지만 없다 / {staged_hidden} more ancestors"));
+    }
+    lines.push(if gate {
+        "④ PATH: cargo 산출 폴더라 봤지만 node를 못 찾았다 / searched PATH (cargo output dir)".to_string()
+    } else {
+        "④ PATH: 배포본이라 **보지 않는다**(결정론) / not consulted in a deployed build".to_string()
+    });
+    format!(
+        "설치된 Node 런타임을 못 찾았어요. 설치가 손상됐을 수 있으니 앱을 다시 설치해 주세요 \
+         (PATH에 node를 깔아도 낫지 않아요). / The bundled Node runtime is missing — reinstall the app; \
+         installing Node on PATH will not help. 찾아본 자리 / looked in:\n  - {}",
+        lines.join("\n  - ")
+    )
+}
+
 /// 스테이징 자리 이름 — `scripts/tauri-build.mjs`와 `tauri.conf.json`이 쓰는 그 이름.
 /// 세 곳이 같아야 개발(③)과 배포(②)가 같은 파일을 문다.
 pub const STAGED_RUNTIME_DIR: &str = "lsp-runtime";
 
-/// 이 폴더가 **cargo 산출 폴더**인가 — `target*/<profile>/`에 cargo가 남기는 `.cargo-lock`.
-/// `tauri_utils::platform::resource_dir`의 `is_cargo_output_directory`와 같은 신호다.
+/// 이 폴더가 **cargo 산출 폴더**인가 — ⓐ 한두 칸 위 조상 폴더 이름이 `target…`이고
+/// ⓑ 여기에 cargo가 남기는 `.cargo-lock`이 있다. **AND다**(★R3 · 크리틱 R2-L2).
+///
+/// `tauri_utils::platform`(2.9.3)이 거는 조건을 그대로 옮겼다:
+/// `(parts[len-2] == "target") || (parts[len-3] == "target")` **&&** `is_cargo_output_directory(..)`.
+/// R2는 뒤 절반만 가져왔고, 그래서 `$INSTDIR`에 빈 `.cargo-lock` 하나를 심는 것만으로
+/// PATH 칸이 열렸다(크리틱 G6 실측). 이 레포는 `target-lspdist`·`target-lead`처럼 접미사가
+/// 붙은 타깃 폴더를 여럿 쓰므로 이름 비교는 `starts_with("target")`이다.
+///
+/// 배치별 판정:
+/// `…\target-lspdist\release`(개발) ✔ · `…\target\x86_64-pc-windows-msvc\release` ✔ ·
+/// `%LOCALAPPDATA%\AgentCodeGUI3`(배포) ✘ — `.cargo-lock`을 심어도 ✘.
 fn is_cargo_output_dir(dir: &Path) -> bool {
-    dir.join(".cargo-lock").exists()
+    if !dir.join(".cargo-lock").exists() {
+        return false;
+    }
+    let parts: Vec<&str> = dir.components().filter_map(|c| c.as_os_str().to_str()).collect();
+    let n = parts.len();
+    let target_at = |i: usize| parts.get(i).is_some_and(|s| s.starts_with("target"));
+    (n >= 2 && target_at(n - 2)) || (n >= 3 && target_at(n - 3))
 }
 
 /// `node_modules`를 담고 있을 수 있는 폴더들 — **우선순위 순서**. 순수 함수라 테스트가
@@ -385,7 +469,7 @@ mod tests {
     }
 
     /// ★ R2 · 결정론의 못 — **배포본 모양의 exe 폴더에서는 PATH 칸에 못 간다.**
-    /// (`.cargo-lock`이 없으면 cargo 산출 폴더가 아니다 = NSIS가 깐 `$INSTDIR`.)
+    /// ★R3(크리틱 R2-L2) — `.cargo-lock`을 **심어도** 안 열린다. 그게 G6 실측이 연 문이다.
     #[test]
     fn path_fallback_is_unreachable_for_a_deployed_exe() {
         let root = scratch("no-path-fallback");
@@ -397,14 +481,52 @@ mod tests {
             None,
             "사이드카가 없는 배포본은 **소리 내어 죽어야** 한다 — PATH의 아무 node나 물면 안 된다"
         );
-        // 같은 폴더가 cargo 산출 폴더면(개발) 그때만 PATH를 본다.
+        // ★R3 — 공격자/사고가 `$INSTDIR`에 빈 `.cargo-lock`을 떨궈도 문은 안 열린다.
+        // (R2는 여기서 열렸다 — 크리틱 G6가 미끼 node를 물게 만들었다.)
         put(&inst.join(".cargo-lock"));
-        assert!(is_cargo_output_dir(&inst));
-        // 이 기계에 node가 있으면 Some, 없으면 None — 어느 쪽이든 **위와 달라질 수 있는 칸**이
-        // 열렸다는 것만 확인한다(PATH 유무는 기계의 사정이라 값으로 못 박지 않는다).
-        let opened = node_exe_from(None, Some(inst.clone()));
-        assert_eq!(opened.is_some(), which("node.exe").or_else(|| which("node")).is_some());
+        assert!(!is_cargo_output_dir(&inst), "조상 폴더 이름이 target…이 아니면 cargo 산출 폴더가 아니다");
+        assert_eq!(node_exe_from(None, Some(inst.clone())), None, "★R3: .cargo-lock을 심어도 PATH 칸은 안 열린다");
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// ★R3 — 개발 배치에서는 **여전히** 열린다(고친 게이트가 개발을 죽이지 않았다는 확인).
+    /// 이 레포는 `target-lspdist`처럼 접미사 붙은 타깃 폴더를 쓰므로 그것도 포함해야 한다.
+    #[test]
+    fn the_cargo_gate_still_opens_for_real_dev_layouts() {
+        let root = scratch("cargo-gate-dev");
+        for rel in [
+            ["target", "release"].as_slice(),
+            ["target-lspdist", "release"].as_slice(),
+            ["target", "x86_64-pc-windows-msvc", "release"].as_slice(),
+        ] {
+            let d = rel.iter().fold(root.clone(), |a, s| a.join(s));
+            std::fs::create_dir_all(&d).unwrap();
+            assert!(!is_cargo_output_dir(&d), "{}: .cargo-lock이 없으면 아직 아니다", d.display());
+            put(&d.join(".cargo-lock"));
+            assert!(is_cargo_output_dir(&d), "{}: 개발 배치인데 게이트가 안 열렸다", d.display());
+        }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// ★R3 · 크리틱 R2-C1 — **죽을 때 하는 말이 사슬과 같은가.**
+    ///
+    /// R2의 문자열은 손으로 적은 것이라 사슬이 바뀌어도 안 바뀌었다(그래서 PATH를 끊은 뒤에도
+    /// "PATH 순으로 찾는다"고 말했다). 이제 둘이 같은 목록을 읽으므로, 그 목록에 있는 자리가
+    /// 진단에도 **반드시** 나와야 한다.
+    #[test]
+    fn the_runtime_hint_names_every_slot_it_actually_searched() {
+        let h = node_search_hint();
+        let d = exe_dir().unwrap();
+        // ② 사이드카 두 자리와 ③ 첫 칸이 **경로 문자열 그대로** 들어 있어야 한다.
+        for (_, p) in node_candidates(&d).into_iter().take(3) {
+            assert!(h.contains(&*p.to_string_lossy()), "진단이 실제로 뒤진 자리를 안 싣는다: {}\n{h}", p.display());
+        }
+        assert!(h.contains("① CCG_LSP_NODE"), "{h}");
+        assert!(h.contains("④ PATH"), "{h}");
+        // 한국어와 영어가 같이 실린다(Rust 문자열은 렌더러의 t()를 못 탄다 — 함수 주석 참고).
+        assert!(h.contains("다시 설치") && h.contains("reinstall"), "ko/en 두 벌이 아니다: {h}");
+        // ★그리고 「node를 PATH에 깔면 낫는다」는 **오해를 막는 문장**이 있어야 한다.
+        assert!(h.contains("낫지 않아요") && h.contains("will not help"), "헛수고 안내가 빠졌다: {h}");
     }
 
     /// 진단 문자열이 **실제로 자리를 말한다** — §1.6-A2가 늦게 발견된 이유가 이 침묵이었다.

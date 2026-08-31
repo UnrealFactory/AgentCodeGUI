@@ -135,9 +135,12 @@ fn plan(spec: &ServerSpec, root: &Path) -> Result<(PathBuf, Vec<String>), String
                 // **어디를 봤는지**까지 적는다 — 이유는 `launch::module_search_hint()` 주석.
                 format!("번들 모듈을 못 찾음: node_modules/{} — {}", module.join("/"), crate::launch::module_search_hint())
             })?;
-            let node = crate::launch::node_exe().ok_or_else(|| {
-                "Node 런타임을 못 찾음 (CCG_LSP_NODE · exe 옆 node.exe · PATH 순으로 찾는다)".to_string()
-            })?;
+            // ★R3(크리틱 R2-C1) — R2까지 이 자리는 *"CCG_LSP_NODE · exe 옆 node.exe · **PATH**
+            // 순으로 찾는다"*라고 말했다. 그런데 이 문자열이 뜨는 상황은 정확히 **배포본 +
+            // 사이드카 유실**이고, 거기서 PATH는 **안 본다**. 사슬 ③(개발 스테이징)은 언급도
+            // 없었고 뒤진 경로도 하나도 안 실었다. 사용자를 「node를 설치하라」는 헛수고로
+            // 보내는 문장이었다 — 설치해도 안 낫는다. 이제 사슬과 **같은 목록**에서 만든다.
+            let node = crate::launch::node_exe().ok_or_else(crate::launch::node_search_hint)?;
             let mut a = vec![script.to_string_lossy().to_string()];
             a.extend(args.iter().map(|s| s.to_string()));
             Ok((node, a))
