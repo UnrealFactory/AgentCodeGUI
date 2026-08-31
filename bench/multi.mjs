@@ -26,7 +26,7 @@ import {
   electronProfile, tauriProfile, connectMainPage,
   procTreeMem, killTree, median, sleep, envInfo, provenance, armName, REPO
 } from './lib.mjs'
-import { makeMultiFixture } from './fixture.mjs'
+import { makeMultiFixture, plantAccountDirs } from './fixture.mjs'
 
 const kind = process.argv[2] ?? 'electron'
 const live = process.argv.includes('--live')
@@ -59,6 +59,9 @@ const CWD = argv('cwd', '')
 // 프로세스 표본에 **명령줄과 부모 PID**를 같이 싣는다. 끄는 문(`--no-cmdline`)은 남기되
 // 기본은 켬이다 — 이유는 `procSample()` 머리말에 있다(2.6.2의 LSP를 이름으로는 못 센다).
 const NO_CMDLINE = process.argv.includes('--no-cmdline')
+// ★FPS144 R2 — 격리 홈에 계정 설정 폴더를 심어 **--live 턴이 로그인 상태를 잇게** 한다.
+// 기본 끔이라 기존 주행은 한 글자도 안 바뀐다. 왜 필요한지는 fixture.mjs의 plantAccountDirs.
+const ACCT = process.argv.includes('--acct')
 const profile = kind === 'tauri' ? tauriProfile({ ...(exeArg ? { exe: exeArg } : {}), port: PORT }) : electronProfile({ port: PORT })
 if (TAG) profile.env.CCG_HOME += '-' + TAG
 if (CWD) profile.cwd = path.resolve(CWD)
@@ -168,6 +171,7 @@ async function measureFps(cdp, points, { ms = 6000 } = {}) {
 async function runOnce(seq) {
   fs.rmSync(home, { recursive: true, force: true })
   const fx = makeMultiFixture(home, appVersion, { panels })
+  if (ACCT) { const r = plantAccountDirs(home); if (seq === 0) console.log('계정 설정 폴더 이식:', JSON.stringify(r)) }
   if (seq === 0) console.log(`multi fixture: ${panels} panels x ${fx.itemsPerPanel} items @ ${home}`)
 
   const child = spawn(profile.cmd, profile.args, {
@@ -277,6 +281,24 @@ async function runOnce(seq) {
       out.liveStream = await cdp.eval(HARVEST)
       out.liveStream.busyMs = Math.round(performance.now() - t0)
       out.liveStream.panelsSent = sent
+      // ★FPS144 R2 — 답변 **내용 증인**. 프레임 수와 busy 지속만 남기면, 3.0이 40자짜리
+      //   `Not logged in` 오류 말풍선 한 장을 재고 있어도 표가 정상으로 보인다(R1이 그렇게
+      //   당했다: 프레임 15장·busy 314ms를 「스트리밍」으로 실었다). `looksLikeStreaming`이
+      //   false인 행은 **스트리밍을 잰 행이 아니다** — 인용하기 전에 이 칸을 본다.
+      const wit = await cdp.eval(`(() => {
+        const rows = [...document.querySelectorAll('.ma-panel')].map((p) => {
+          const ms = p.querySelectorAll('.ma-p-thread .msg')
+          const last = ms[ms.length - 1]
+          return { chars: last ? last.textContent.length : 0, tail: last ? last.textContent.slice(-60) : null }
+        })
+        return { perPanel: rows.map((r) => r.chars), total: rows.reduce((a, r) => a + r.chars, 0), tails: rows.map((r) => r.tail) }
+      })()`).catch(() => null)
+      if (wit) {
+        out.liveStream.answerChars = wit.total
+        out.liveStream.answerPerPanel = wit.perPanel
+        out.liveStream.answerTail = wit.tails?.[0] ?? null
+        out.liveStream.looksLikeStreaming = wit.total >= 400 && !/not logged in|please run \/login/i.test((wit.tails ?? []).join(' '))
+      }
       console.log('  concurrent streaming:', JSON.stringify(out.liveStream))
       // 앱 몫 / 엔진 몫 분리 — 엔진(CLI) 프로세스 비용은 두 앱이 똑같이 부담하는 외부
       // 비용이라, 총합만 보면 "절반 이하"가 구조적으로 불가능해진다. 유휴 시점의 PID

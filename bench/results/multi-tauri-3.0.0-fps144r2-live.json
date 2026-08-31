@@ -1,0 +1,342 @@
+{
+  "app": "tauri-3.0.0",
+  "arm": "default",
+  "bin": {
+    "exe": "C:\\Users\\User\\AppData\\Local\\ccg-fps144-r2e\\AgentCodeGUI3.exe",
+    "exeMtime": "2026-08-31T11:23:24.223Z",
+    "exeSize": 7074304,
+    "exeSha256": "2c2ebffc07a9c09a",
+    "gitHead": "322a3f5",
+    "gitDirty": true
+  },
+  "armEnv": {
+    "CCG_HOME": "C:\\Code\\AgentCodeGUI\\.bench-home-tauri-r2live",
+    "CCG_CDP_PORT": "11118"
+  },
+  "launchCwd": "C:\\Users\\User\\AppData\\Local\\ccg-fps144-r2e",
+  "panels": 4,
+  "repeats": 1,
+  "env": {
+    "ramGB": 63.8,
+    "cpu": "13th Gen Intel(R) Core(TM) i7-13700KF",
+    "os": "Microsoft Windows 11 Home 26200"
+  },
+  "summary": {
+    "idleGridWsMB": 576.2,
+    "idleGridPrivMB": 361,
+    "idleGridProcs": 8,
+    "idleWithWindowsWsMB": 614.3,
+    "idleWithWindowsPrivMB": 363.2,
+    "wsMBPerWindow": 19,
+    "procsAdded": 0,
+    "scrollInPanel": {
+      "avgFps": 60,
+      "p95Ms": 16.8,
+      "worstDroppedPct": 0,
+      "zeroDropRuns": 1
+    },
+    "scrollAllPanels": {
+      "avgFps": 60,
+      "p95Ms": 16.8,
+      "worstDroppedPct": 0,
+      "zeroDropRuns": 1
+    },
+    "runs": 1,
+    "fpsErrorRuns": 0
+  },
+  "perRun": [
+    {
+      "seq": 1,
+      "panels": 4,
+      "itemsPerPanel": 120,
+      "gridPanels": 4,
+      "at": "2026-08-31T11:43:25.926Z",
+      "idleGrid": {
+        "totalWsMB": 576.2,
+        "totalPrivMB": 361,
+        "procs": 8
+      },
+      "procDetailIdle": [
+        {
+          "pid": 31492,
+          "ppid": 31764,
+          "name": "AgentCodeGUI3.exe",
+          "role": "browser",
+          "wsMB": 40.1,
+          "privMB": 16.6,
+          "cmdline": "C:\\Users\\User\\AppData\\Local\\ccg-fps144-r2e\\AgentCodeGUI3.exe"
+        },
+        {
+          "pid": 30824,
+          "ppid": 31492,
+          "name": "node.exe",
+          "role": "browser",
+          "wsMB": 44.9,
+          "privMB": 58.9,
+          "cmdline": "\"C:\\Users\\User\\AppData\\Local\\ccg-fps144-r2e\\node.exe\" C:\\Users\\User\\AppData\\Local\\ccg-fps144-r2e\\node_modules\\typescript-language-server\\lib\\cli.mjs --stdio"
+        },
+        {
+          "pid": 28876,
+          "ppid": 31492,
+          "name": "msedgewebview2.exe",
+          "role": "browser",
+          "wsMB": 191,
+          "privMB": 93.3,
+          "cmdline": "\"C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe\" --embedded-browser-webview=1 --webview-exe-name=AgentCodeGUI3.exe --webview-exe-version=3.0.0-beta.1 --user-data-dir=\"C:\\Code\\AgentCodeGUI\\.bench-home-tauri-r2live\\webview2\\EBWebView\" --noerrdialogs --embedded-browser-webview-dpi-awareness=2 --disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --enable-features=NetworkServiceInProcess2 --in-process-gpu --process-per-site --remote-debugging-port=11118 --lang=ko-KR --mojo-named-platform-channel-pipe=31492.7172.8255085759840845903 /pfhostedapp:864d669cbfd9c1112d56c7280a4f670e297ec44f"
+        },
+        {
+          "pid": 3964,
+          "ppid": 30824,
+          "name": "conhost.exe",
+          "role": "browser",
+          "wsMB": 7.6,
+          "privMB": 1.2,
+          "cmdline": "\\??\\C:\\WINDOWS\\system32\\conhost.exe 0x4"
+        },
+        {
+          "pid": 29212,
+          "ppid": 30824,
+          "name": "node.exe",
+          "role": "browser",
+          "wsMB": 63.1,
+          "privMB": 42.5,
+          "cmdline": "C:\\Users\\User\\AppData\\Local\\ccg-fps144-r2e\\node.exe --max-old-space-size=3072 C:\\Users\\User\\AppData\\Local\\ccg-fps144-r2e\\node_modules\\typescript\\lib\\tsserver.js --useInferredProjectPerProjectRoot --disableAutomaticTypingAcquisition --cancellationPipeName C:\\Users\\User\\AppData\\Local\\Temp\\760c4be0b7cfde289589c618ece5c011\\tscancellation* --locale en --validateDefaultNpmLocation --useNodeIpc"
+        },
+        {
+          "pid": 3592,
+          "ppid": 28876,
+          "name": "msedgewebview2.exe",
+          "role": "crashpad-handler",
+          "wsMB": 12.7,
+          "privMB": 2.5,
+          "cmdline": "\"C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe\" --type=crashpad-handler --user-data-dir=C:\\Code\\AgentCodeGUI\\.bench-home-tauri-r2live\\webview2\\EBWebView /prefetch:4 /pfhostedapp:864d669cbfd9c1112d56c7280a4f670e297ec44f --monitor-self-annotation=ptype=crashpad-handler --database=C:\\Code\\AgentCodeGUI\\.bench-home-tauri-r2live\\webview2\\EBWebView\\Crashpad --annotation=IsOfficialBuild=1 --annotation=channel= --annotation=chromium-version=151.0.7922.174 \"--annotation=exe=C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe\" --annotation=plat=Win64 \"--annotation=prod=Edge WebView2\" --annotation=ver=151.0.4129.107 --initial-client-data=0x174,0x178,0x17c,0x150,0x184,0x7ffd849165f0,0x7ffd84916600,0x7ffd84916610"
+        },
+        {
+          "pid": 8516,
+          "ppid": 28876,
+          "name": "msedgewebview2.exe",
+          "role": "utility",
+          "wsMB": 22.6,
+          "privMB": 9,
+          "cmdline": "\"C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe\" --type=utility --utility-sub-type=storage.mojom.StorageService --lang=ko --service-sandbox-type=service --noerrdialogs --user-data-dir=\"C:\\Code\\AgentCodeGUI\\.bench-home-tauri-r2live\\webview2\\EBWebView\" --webview-exe-name=AgentCodeGUI3.exe --webview-exe-version=3.0.0-beta.1 --embedded-browser-webview=1 --embedded-browser-webview-dpi-awareness=2 --startup-read-main-dll --metrics-shmem-handle=2600,i,2433728325176004048,10200430674223035027,524288 --field-trial-handle=2640,i,16150485717392077640,2696310340971692126,262144 --enable-features=NetworkServiceInProcess2 --disable-features=msPdfOOUI,msSmartScreenProtection,msWebOOUI --variations-seed-version --pseudonymization-salt-handle=2644,i,7179700865203616778,9097274865168202321,4 --trace-process-track-uuid=3190708989122997041 --mojo-platform-channel-handle=2636 /prefetch:13 /pfhostedapp:864d669cbfd9c1112d56c7280a4f670e297ec44f"
+        },
+        {
+          "pid": 32596,
+          "ppid": 28876,
+          "name": "msedgewebview2.exe",
+          "role": "renderer",
+          "wsMB": 194.1,
+          "privMB": 137,
+          "cmdline": "\"C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe\" --type=renderer --noerrdialogs --user-data-dir=\"C:\\Code\\AgentCodeGUI\\.bench-home-tauri-r2live\\webview2\\EBWebView\" --webview-exe-name=AgentCodeGUI3.exe --webview-exe-version=3.0.0-beta.1 --embedded-browser-webview=1 --embedded-browser-webview-dpi-awareness=2 --remote-debugging-port=11118 --video-capture-use-gpu-memory-buffer --lang=ko --device-scale-factor=1 --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=4 --js-flags=\"--expose-gc --ms-user-locale=ko_KR\" --time-ticks-at-unix-epoch=-1788142984303305 --launch-time-ticks=33617320035 --startup-read-main-dll --metrics-shmem-handle=4084,i,3578403196991517938,10272810212933765034,2097152 --field-trial-handle=2640,i,16150485717392077640,2696310340971692126,262144 --enable-features=NetworkServiceInProcess2 --disable-features=msPdfOOUI,msSmartScreenProtection,msWebOOUI --variations-seed-version --pseudonymization-salt-handle=2644,i,7179700865203616778,9097274865168202321,4 --trace-process-track-uuid=3190708990060038890 --mojo-platform-channel-handle=4092 /pfhostedapp:864d669cbfd9c1112d56c7280a4f670e297ec44f /prefetch:1"
+        }
+      ],
+      "idleWithWindows": {
+        "totalWsMB": 614.3,
+        "totalPrivMB": 363.2,
+        "procs": 8
+      },
+      "procDetailWindows": [
+        {
+          "pid": 31492,
+          "ppid": 31764,
+          "name": "AgentCodeGUI3.exe",
+          "role": "browser",
+          "wsMB": 43.7,
+          "privMB": 20.8,
+          "cmdline": "C:\\Users\\User\\AppData\\Local\\ccg-fps144-r2e\\AgentCodeGUI3.exe"
+        },
+        {
+          "pid": 30824,
+          "ppid": 31492,
+          "name": "node.exe",
+          "role": "browser",
+          "wsMB": 44.9,
+          "privMB": 58.8,
+          "cmdline": "\"C:\\Users\\User\\AppData\\Local\\ccg-fps144-r2e\\node.exe\" C:\\Users\\User\\AppData\\Local\\ccg-fps144-r2e\\node_modules\\typescript-language-server\\lib\\cli.mjs --stdio"
+        },
+        {
+          "pid": 28876,
+          "ppid": 31492,
+          "name": "msedgewebview2.exe",
+          "role": "browser",
+          "wsMB": 222.9,
+          "privMB": 104.8,
+          "cmdline": "\"C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe\" --embedded-browser-webview=1 --webview-exe-name=AgentCodeGUI3.exe --webview-exe-version=3.0.0-beta.1 --user-data-dir=\"C:\\Code\\AgentCodeGUI\\.bench-home-tauri-r2live\\webview2\\EBWebView\" --noerrdialogs --embedded-browser-webview-dpi-awareness=2 --disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --enable-features=NetworkServiceInProcess2 --in-process-gpu --process-per-site --remote-debugging-port=11118 --lang=ko-KR --mojo-named-platform-channel-pipe=31492.7172.8255085759840845903 /pfhostedapp:864d669cbfd9c1112d56c7280a4f670e297ec44f"
+        },
+        {
+          "pid": 3964,
+          "ppid": 30824,
+          "name": "conhost.exe",
+          "role": "browser",
+          "wsMB": 7.6,
+          "privMB": 1.2,
+          "cmdline": "\\??\\C:\\WINDOWS\\system32\\conhost.exe 0x4"
+        },
+        {
+          "pid": 29212,
+          "ppid": 30824,
+          "name": "node.exe",
+          "role": "browser",
+          "wsMB": 63.1,
+          "privMB": 42.4,
+          "cmdline": "C:\\Users\\User\\AppData\\Local\\ccg-fps144-r2e\\node.exe --max-old-space-size=3072 C:\\Users\\User\\AppData\\Local\\ccg-fps144-r2e\\node_modules\\typescript\\lib\\tsserver.js --useInferredProjectPerProjectRoot --disableAutomaticTypingAcquisition --cancellationPipeName C:\\Users\\User\\AppData\\Local\\Temp\\760c4be0b7cfde289589c618ece5c011\\tscancellation* --locale en --validateDefaultNpmLocation --useNodeIpc"
+        },
+        {
+          "pid": 3592,
+          "ppid": 28876,
+          "name": "msedgewebview2.exe",
+          "role": "crashpad-handler",
+          "wsMB": 21.3,
+          "privMB": 3.3,
+          "cmdline": "\"C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe\" --type=crashpad-handler --user-data-dir=C:\\Code\\AgentCodeGUI\\.bench-home-tauri-r2live\\webview2\\EBWebView /prefetch:4 /pfhostedapp:864d669cbfd9c1112d56c7280a4f670e297ec44f --monitor-self-annotation=ptype=crashpad-handler --database=C:\\Code\\AgentCodeGUI\\.bench-home-tauri-r2live\\webview2\\EBWebView\\Crashpad --annotation=IsOfficialBuild=1 --annotation=channel= --annotation=chromium-version=151.0.7922.174 \"--annotation=exe=C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe\" --annotation=plat=Win64 \"--annotation=prod=Edge WebView2\" --annotation=ver=151.0.4129.107 --initial-client-data=0x174,0x178,0x17c,0x150,0x184,0x7ffd849165f0,0x7ffd84916600,0x7ffd84916610"
+        },
+        {
+          "pid": 8516,
+          "ppid": 28876,
+          "name": "msedgewebview2.exe",
+          "role": "utility",
+          "wsMB": 22.7,
+          "privMB": 9,
+          "cmdline": "\"C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe\" --type=utility --utility-sub-type=storage.mojom.StorageService --lang=ko --service-sandbox-type=service --noerrdialogs --user-data-dir=\"C:\\Code\\AgentCodeGUI\\.bench-home-tauri-r2live\\webview2\\EBWebView\" --webview-exe-name=AgentCodeGUI3.exe --webview-exe-version=3.0.0-beta.1 --embedded-browser-webview=1 --embedded-browser-webview-dpi-awareness=2 --startup-read-main-dll --metrics-shmem-handle=2600,i,2433728325176004048,10200430674223035027,524288 --field-trial-handle=2640,i,16150485717392077640,2696310340971692126,262144 --enable-features=NetworkServiceInProcess2 --disable-features=msPdfOOUI,msSmartScreenProtection,msWebOOUI --variations-seed-version --pseudonymization-salt-handle=2644,i,7179700865203616778,9097274865168202321,4 --trace-process-track-uuid=3190708989122997041 --mojo-platform-channel-handle=2636 /prefetch:13 /pfhostedapp:864d669cbfd9c1112d56c7280a4f670e297ec44f"
+        },
+        {
+          "pid": 32596,
+          "ppid": 28876,
+          "name": "msedgewebview2.exe",
+          "role": "renderer",
+          "wsMB": 188.1,
+          "privMB": 122.9,
+          "cmdline": "\"C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe\" --type=renderer --noerrdialogs --user-data-dir=\"C:\\Code\\AgentCodeGUI\\.bench-home-tauri-r2live\\webview2\\EBWebView\" --webview-exe-name=AgentCodeGUI3.exe --webview-exe-version=3.0.0-beta.1 --embedded-browser-webview=1 --embedded-browser-webview-dpi-awareness=2 --remote-debugging-port=11118 --video-capture-use-gpu-memory-buffer --lang=ko --device-scale-factor=1 --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=4 --js-flags=\"--expose-gc --ms-user-locale=ko_KR\" --time-ticks-at-unix-epoch=-1788142984303305 --launch-time-ticks=33617320035 --startup-read-main-dll --metrics-shmem-handle=4084,i,3578403196991517938,10272810212933765034,2097152 --field-trial-handle=2640,i,16150485717392077640,2696310340971692126,262144 --enable-features=NetworkServiceInProcess2 --disable-features=msPdfOOUI,msSmartScreenProtection,msWebOOUI --variations-seed-version --pseudonymization-salt-handle=2644,i,7179700865203616778,9097274865168202321,4 --trace-process-track-uuid=3190708990060038890 --mojo-platform-channel-handle=4092 /pfhostedapp:864d669cbfd9c1112d56c7280a4f670e297ec44f /prefetch:1"
+        }
+      ],
+      "windowCost": {
+        "wsMBPerWindow": 19,
+        "procsAdded": 0
+      },
+      "scrollInPanel": {
+        "frames": 357,
+        "avgFps": 60,
+        "p95Ms": 16.8,
+        "worstMs": 16.8,
+        "droppedPct": 0,
+        "droppedFrames": 0,
+        "longTaskMs": 0
+      },
+      "scrollAllPanels": {
+        "frames": 355,
+        "avgFps": 60,
+        "p95Ms": 16.8,
+        "worstMs": 16.8,
+        "droppedPct": 0,
+        "droppedFrames": 0,
+        "longTaskMs": 0
+      },
+      "liveStream": {
+        "frames": 185,
+        "avgFps": 60,
+        "p95Ms": 16.8,
+        "worstMs": 16.8,
+        "droppedPct": 0,
+        "droppedFrames": 0,
+        "longTaskMs": 0,
+        "busyMs": 3163,
+        "panelsSent": 4,
+        "answerChars": 1367,
+        "answerPerPanel": [
+          371,
+          371,
+          371,
+          254
+        ],
+        "answerTail": "\n106\n107\n108\n109\n110\n111\n112\n113\n114\n115\n116\n117\n118\n119\n120",
+        "looksLikeStreaming": true
+      },
+      "memAfterStream": {
+        "totalWsMB": 789.5,
+        "totalPrivMB": 458.4,
+        "procs": 8,
+        "uiWsMB": 789.6,
+        "uiPrivMB": 458.4,
+        "uiProcs": 8,
+        "engineWsMB": 0,
+        "enginePrivMB": 0,
+        "engineProcs": 0
+      },
+      "procDetail": [
+        {
+          "pid": 31492,
+          "ppid": 31764,
+          "name": "AgentCodeGUI3.exe",
+          "role": "browser",
+          "wsMB": 46,
+          "privMB": 23,
+          "cmdline": "C:\\Users\\User\\AppData\\Local\\ccg-fps144-r2e\\AgentCodeGUI3.exe"
+        },
+        {
+          "pid": 30824,
+          "ppid": 31492,
+          "name": "node.exe",
+          "role": "browser",
+          "wsMB": 44.9,
+          "privMB": 58.8,
+          "cmdline": "\"C:\\Users\\User\\AppData\\Local\\ccg-fps144-r2e\\node.exe\" C:\\Users\\User\\AppData\\Local\\ccg-fps144-r2e\\node_modules\\typescript-language-server\\lib\\cli.mjs --stdio"
+        },
+        {
+          "pid": 28876,
+          "ppid": 31492,
+          "name": "msedgewebview2.exe",
+          "role": "browser",
+          "wsMB": 291,
+          "privMB": 120.9,
+          "cmdline": "\"C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe\" --embedded-browser-webview=1 --webview-exe-name=AgentCodeGUI3.exe --webview-exe-version=3.0.0-beta.1 --user-data-dir=\"C:\\Code\\AgentCodeGUI\\.bench-home-tauri-r2live\\webview2\\EBWebView\" --noerrdialogs --embedded-browser-webview-dpi-awareness=2 --disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --enable-features=NetworkServiceInProcess2 --in-process-gpu --process-per-site --remote-debugging-port=11118 --lang=ko-KR --mojo-named-platform-channel-pipe=31492.7172.8255085759840845903 /pfhostedapp:864d669cbfd9c1112d56c7280a4f670e297ec44f"
+        },
+        {
+          "pid": 3964,
+          "ppid": 30824,
+          "name": "conhost.exe",
+          "role": "browser",
+          "wsMB": 7.6,
+          "privMB": 1.2,
+          "cmdline": "\\??\\C:\\WINDOWS\\system32\\conhost.exe 0x4"
+        },
+        {
+          "pid": 29212,
+          "ppid": 30824,
+          "name": "node.exe",
+          "role": "browser",
+          "wsMB": 63.1,
+          "privMB": 42.4,
+          "cmdline": "C:\\Users\\User\\AppData\\Local\\ccg-fps144-r2e\\node.exe --max-old-space-size=3072 C:\\Users\\User\\AppData\\Local\\ccg-fps144-r2e\\node_modules\\typescript\\lib\\tsserver.js --useInferredProjectPerProjectRoot --disableAutomaticTypingAcquisition --cancellationPipeName C:\\Users\\User\\AppData\\Local\\Temp\\760c4be0b7cfde289589c618ece5c011\\tscancellation* --locale en --validateDefaultNpmLocation --useNodeIpc"
+        },
+        {
+          "pid": 3592,
+          "ppid": 28876,
+          "name": "msedgewebview2.exe",
+          "role": "crashpad-handler",
+          "wsMB": 15.6,
+          "privMB": 3,
+          "cmdline": "\"C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe\" --type=crashpad-handler --user-data-dir=C:\\Code\\AgentCodeGUI\\.bench-home-tauri-r2live\\webview2\\EBWebView /prefetch:4 /pfhostedapp:864d669cbfd9c1112d56c7280a4f670e297ec44f --monitor-self-annotation=ptype=crashpad-handler --database=C:\\Code\\AgentCodeGUI\\.bench-home-tauri-r2live\\webview2\\EBWebView\\Crashpad --annotation=IsOfficialBuild=1 --annotation=channel= --annotation=chromium-version=151.0.7922.174 \"--annotation=exe=C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe\" --annotation=plat=Win64 \"--annotation=prod=Edge WebView2\" --annotation=ver=151.0.4129.107 --initial-client-data=0x174,0x178,0x17c,0x150,0x184,0x7ffd849165f0,0x7ffd84916600,0x7ffd84916610"
+        },
+        {
+          "pid": 8516,
+          "ppid": 28876,
+          "name": "msedgewebview2.exe",
+          "role": "utility",
+          "wsMB": 22.8,
+          "privMB": 9,
+          "cmdline": "\"C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe\" --type=utility --utility-sub-type=storage.mojom.StorageService --lang=ko --service-sandbox-type=service --noerrdialogs --user-data-dir=\"C:\\Code\\AgentCodeGUI\\.bench-home-tauri-r2live\\webview2\\EBWebView\" --webview-exe-name=AgentCodeGUI3.exe --webview-exe-version=3.0.0-beta.1 --embedded-browser-webview=1 --embedded-browser-webview-dpi-awareness=2 --startup-read-main-dll --metrics-shmem-handle=2600,i,2433728325176004048,10200430674223035027,524288 --field-trial-handle=2640,i,16150485717392077640,2696310340971692126,262144 --enable-features=NetworkServiceInProcess2 --disable-features=msPdfOOUI,msSmartScreenProtection,msWebOOUI --variations-seed-version --pseudonymization-salt-handle=2644,i,7179700865203616778,9097274865168202321,4 --trace-process-track-uuid=3190708989122997041 --mojo-platform-channel-handle=2636 /prefetch:13 /pfhostedapp:864d669cbfd9c1112d56c7280a4f670e297ec44f"
+        },
+        {
+          "pid": 32596,
+          "ppid": 28876,
+          "name": "msedgewebview2.exe",
+          "role": "renderer",
+          "wsMB": 310.2,
+          "privMB": 210.6,
+          "cmdline": "\"C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe\" --type=renderer --noerrdialogs --user-data-dir=\"C:\\Code\\AgentCodeGUI\\.bench-home-tauri-r2live\\webview2\\EBWebView\" --webview-exe-name=AgentCodeGUI3.exe --webview-exe-version=3.0.0-beta.1 --embedded-browser-webview=1 --embedded-browser-webview-dpi-awareness=2 --remote-debugging-port=11118 --video-capture-use-gpu-memory-buffer --lang=ko --device-scale-factor=1 --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=4 --js-flags=\"--expose-gc --ms-user-locale=ko_KR\" --time-ticks-at-unix-epoch=-1788142984303305 --launch-time-ticks=33617320035 --startup-read-main-dll --metrics-shmem-handle=4084,i,3578403196991517938,10272810212933765034,2097152 --field-trial-handle=2640,i,16150485717392077640,2696310340971692126,262144 --enable-features=NetworkServiceInProcess2 --disable-features=msPdfOOUI,msSmartScreenProtection,msWebOOUI --variations-seed-version --pseudonymization-salt-handle=2644,i,7179700865203616778,9097274865168202321,4 --trace-process-track-uuid=3190708990060038890 --mojo-platform-channel-handle=4092 /pfhostedapp:864d669cbfd9c1112d56c7280a4f670e297ec44f /prefetch:1"
+        }
+      ]
+    }
+  ],
+  "at": "2026-08-31T11:44:28.967Z"
+}

@@ -137,6 +137,51 @@ export function makeFixtureHome(homeDir, appVersion) {
 }
 
 /**
+ * ★FPS144 R2 — 격리 홈에서 **실엔진 턴이 로그인 상태를 잇게** 한다.
+ *
+ * 왜 필요한가: 3.0의 라이브 팔은 격리 홈에서 `Not logged in · Please run /login`으로
+ * 즉사했고(FPS144 R1 §3.3), R1은 그것을 「격리 홈에선 원래 안 되는 것」으로 닫았다.
+ * **오분류였다.** 기전은 슬러그 불일치다:
+ *   · `ccg-auth::account_slug()`  → `<email-slug>-<base36 해시>` (로그인이 만드는 실제 폴더)
+ *   · `ccg-engine::Runtime::account_dir()` (runtime.rs:606-621) → 해시 **없는** 이름을 만들고
+ *     `<home>/accounts`를 훑어 `slug-`로 시작하는 폴더를 찾는 **폴백**에 기댄다.
+ * 실홈에는 그 폴더가 있어 폴백이 맞지만 **격리 홈에는 `accounts/`가 아예 없어** 폴백이
+ * 실패하고, 존재하지 않는 경로가 그대로 `CLAUDE_CONFIG_DIR`로 나간다(driver.rs:141).
+ * CLI가 그 빈 폴더를 만들고 "Not logged in"을 찍는다. 복호화(safe_storage)는 이 경로에서
+ * **호출되지도 않는다** — `ccg-engine`은 `ccg-auth` 의존조차 없다.
+ *
+ * 그래서 로그인 파일만 **같은 슬러그 이름으로** 심는다. 실측(2026-08-31): 이걸 심으면
+ * 3.0이 1~200을 실제로 스트리밍한다(691자 · busy ≈4s — 2.6.2의 4046ms와 같은 급).
+ *
+ * **기본값은 끔**이다. 기존 하네스의 홈 구성을 말없이 바꾸면 그 결과 파일들이 다른 조건을
+ * 재게 된다 — 부르는 쪽이 명시적으로 켠다(`bench/fps.mjs --acct`).
+ * 실홈은 **읽기만** 한다: sessions/projects 같은 산출물은 안 옮기고, 격리 홈으로 복사만 한다
+ * (정션을 쓰면 CLI가 실홈에 써서 사용자 자료를 건드린다 — 절대 금지).
+ *
+ * @returns {{slugs:number, files:number}}
+ */
+export function plantAccountDirs(homeDir) {
+  const realAccts = path.join(os.homedir(), '.agentcodegui', 'accounts')
+  const dst = path.join(homeDir, 'accounts')
+  let slugs = 0
+  let files = 0
+  if (!fs.existsSync(realAccts)) return { slugs, files }
+  for (const slug of fs.readdirSync(realAccts)) {
+    const from = path.join(realAccts, slug)
+    let st
+    try { st = fs.statSync(from) } catch { continue }
+    if (!st.isDirectory()) continue
+    fs.mkdirSync(path.join(dst, slug), { recursive: true })
+    slugs++
+    for (const f of ['.credentials.json', '.claude.json', 'settings.json', 'settings.local.json']) {
+      const src = path.join(from, f)
+      if (fs.existsSync(src)) { fs.copyFileSync(src, path.join(dst, slug, f)); files++ }
+    }
+  }
+  return { slugs, files }
+}
+
+/**
  * 멀티채팅 픽스처 — N개 패널이 각자 스레드를 가진 세션 1개.
  * 사용자 지적: "여러 개 켰을 때가 항상 문제" → 이게 성능의 주 무대다.
  * ui-prefs의 workspace.mode를 multi로 돌려 부팅 즉시 멀티 그리드가 뜨게 한다.

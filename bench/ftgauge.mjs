@@ -183,12 +183,80 @@ export function analyzeTrace(events) {
   const r2 = (x) => x == null ? null : Math.round(x * 100) / 100
   const q = (p) => r2(s[Math.min(s.length - 1, Math.floor(s.length * p))])
   return {
-    thread: best.k, tasks: s.length,
+    thread: best.k,
+    // ── 모집단 ① 그 스레드의 **모든** RunTask ────────────────────────────────
+    // ★ 이 분위를 인페이지 `work`와 나란히 놓으면 **안 된다**(FPS144 R1이 저지른 오류).
+    //   `work`의 모집단은 「프레임」이고 이쪽은 「태스크 전부」다 — 프레임 태스크는 그중
+    //   일부고 나머지는 잡티(타이머·IPC·GC)라 p50이 0.01ms로 깔린다. 실제로 R1의
+    //   §2.2 대조는 1패널 최대값이 126% 어긋났다(10.5 vs 23.76). 이 칸은 「메인 스레드가
+    //   전체로 얼마나 바빴나」에만 쓴다.
+    tasks: s.length,
     taskP50Ms: q(0.5), taskP95Ms: q(0.95), taskP99Ms: q(0.99), taskMaxMs: r2(s[s.length - 1]),
     taskOver69Pct: Math.round(s.filter((x) => x > 6.9).length / s.length * 1000) / 10,
     busyMsTotal: Math.round(best.sum),
-    breakdown: selfTime(events, best.k)
+    // ── 모집단 ② **프레임 태스크만** — 인페이지 눈금과 같은 모집단 ───────────
+    //   `FireAnimationFrame`을 품은 RunTask = 그 프레임의 BeginMainFrame이다.
+    //   이것만이 인페이지 `work`와 짝지어 비교할 수 있는 독립 대조다.
+    frame: frameTasks(events, best.k),
+    breakdown: selfTime(events, best.k),
+    // ── 한계의 크기 — 메인 스레드 눈금이 못 보는 몫이 예산을 뒤집나 ──────────
+    threads: threadBusy(events)
   }
+}
+
+/**
+ * **프레임 태스크만** 고른다 — `FireAnimationFrame`을 품은 `RunTask`.
+ * 인페이지 눈금(rAF 콜백 시작 → 커밋 뒤)과 **같은 모집단**이라 분위끼리 비교가 성립한다.
+ */
+export function frameTasks(events, threadKey) {
+  const on = (e) => `${e.pid}:${e.tid}` === threadKey && e.ph === 'X' && typeof e.dur === 'number'
+  const runs = events.filter((e) => on(e) && e.name === 'RunTask').sort((a, b) => a.ts - b.ts)
+  const fafs = events.filter((e) => on(e) && e.name === 'FireAnimationFrame').map((e) => e.ts).sort((a, b) => a - b)
+  if (!runs.length || !fafs.length) return { tasks: 0, note: 'FireAnimationFrame 없음' }
+  // 각 RunTask 구간 [ts, ts+dur] 안에 FAF 시작점이 있는지 — 이분 탐색
+  const lower = (x) => { let lo = 0, hi = fafs.length; while (lo < hi) { const m = (lo + hi) >> 1; if (fafs[m] < x) lo = m + 1; else hi = m } return lo }
+  const picked = []
+  for (const r of runs) {
+    const i = lower(r.ts)
+    if (i < fafs.length && fafs[i] <= r.ts + r.dur) picked.push(r.dur / 1000)
+  }
+  if (!picked.length) return { tasks: 0, note: 'rAF를 품은 RunTask 없음' }
+  const s = picked.sort((a, b) => a - b)
+  const r2 = (x) => x == null ? null : Math.round(x * 100) / 100
+  const q = (p) => r2(s[Math.min(s.length - 1, Math.floor(s.length * p))])
+  return {
+    tasks: s.length,
+    p50Ms: q(0.5), p95Ms: q(0.95), p99Ms: q(0.99), maxMs: r2(s[s.length - 1]),
+    over69Pct: Math.round(s.filter((x) => x > 6.9).length / s.length * 1000) / 10,
+    busyMsTotal: Math.round(s.reduce((a, c) => a + c, 0))
+  }
+}
+
+/**
+ * 스레드별 busy 합 — 「컴포지터/GPU는 안 보인다」는 한계의 **크기**를 재기 위한 것.
+ * 메인 스레드 눈금이 놓치는 몫이 예산을 뒤집는지 아닌지는 이 표로만 닫을 수 있다.
+ */
+export function threadBusy(events, { top = 8 } = {}) {
+  const name = new Map()
+  for (const e of events) {
+    if (e.ph === 'M' && e.name === 'thread_name' && e.args?.name) name.set(`${e.pid}:${e.tid}`, e.args.name)
+  }
+  // 최상위(중첩 안 된) 'X' 이벤트만 더한다 — 자식까지 더하면 이중 계산이 된다
+  const byThread = new Map()
+  for (const e of events) {
+    if (e.ph !== 'X' || typeof e.dur !== 'number') continue
+    const k = `${e.pid}:${e.tid}`
+    if (!byThread.has(k)) byThread.set(k, [])
+    byThread.get(k).push(e)
+  }
+  const rows = []
+  for (const [k, evs] of byThread) {
+    evs.sort((a, b) => (a.ts - b.ts) || (b.dur - a.dur))
+    let sum = 0, end = -Infinity
+    for (const e of evs) { if (e.ts >= end) { sum += e.dur; end = e.ts + e.dur } }
+    rows.push({ thread: name.get(k) ?? k, key: k, busyMs: Math.round(sum / 1000) })
+  }
+  return rows.sort((a, b) => b.busyMs - a.busyMs).slice(0, top)
 }
 
 /**

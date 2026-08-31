@@ -1,0 +1,87 @@
+{
+  "what": "공개 커밋 박자(사람이 보는 갱신) + 바닥 고정 증인",
+  "bin": {
+    "exe": "C:\\Users\\User\\AppData\\Local/ccg-fps144-r2a/AgentCodeGUI3.exe",
+    "exeMtime": "2026-08-31T11:23:23.937Z",
+    "exeSize": 7074304,
+    "exeSha256": "5987142387f0b5b8",
+    "gitHead": "322a3f5",
+    "gitDirty": true
+  },
+  "env": {
+    "ramGB": 63.8,
+    "cpu": "13th Gen Intel(R) Core(TM) i7-13700KF",
+    "os": "Microsoft Windows 11 Home 26200"
+  },
+  "row": {
+    "tag": "r2A2",
+    "novsync": true,
+    "exe": "C:\\Users\\User\\AppData\\Local/ccg-fps144-r2a/AgentCodeGUI3.exe",
+    "at": "2026-08-31T11:42:06.595Z",
+    "refreshRateHz": 57.5,
+    "inject": {
+      "wrapped": true,
+      "panels": 6
+    },
+    "gridPanels": 4,
+    "cadenceOn": {
+      "ok": true,
+      "tag": "ma-p-thread scroll"
+    },
+    "streamInfo": {
+      "panels": 4,
+      "chars": 9730,
+      "ms": 8186
+    },
+    "frame": {
+      "frames": 1420,
+      "workP50": 1.9,
+      "workP75": 4.3,
+      "workP95": 12.2,
+      "workP99": 20.8,
+      "workMax": 33.5,
+      "workMean": 3.33,
+      "over69Pct": 10.7,
+      "over166Pct": 1.8,
+      "over33Pct": 0.1,
+      "rafP50": 3.1,
+      "rafP95": 16.4,
+      "rafMax": 48.4,
+      "avgFps": 174.3,
+      "droppedPct": 0.2,
+      "droppedFrames": 3,
+      "longTaskMs": 0,
+      "loaf": null,
+      "worstFramesMs": [
+        33.5,
+        32.8,
+        30.8,
+        29.9,
+        29.5,
+        27.3,
+        25.7,
+        25.5
+      ],
+      "sysCpuPct": 21.6
+    },
+    "cadence": {
+      "commits": 662,
+      "spanMs": 8219,
+      "commitsPerSec": 80.54,
+      "gapP50": 11.6,
+      "gapP95": 25.6,
+      "gapP99": 40.7,
+      "gapMax": 63.4,
+      "gapOver33": 15,
+      "gapOver50": 2,
+      "growP50": 13,
+      "growP95": 29,
+      "growMax": 81,
+      "finalLen": 14161,
+      "pinSamples": 81,
+      "pinOffP50": 0,
+      "pinOffP95": 1,
+      "pinOffMax": 40
+    }
+  }
+}

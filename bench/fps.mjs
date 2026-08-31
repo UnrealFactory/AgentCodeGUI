@@ -41,7 +41,7 @@ import { spawn } from 'node:child_process'
 import {
   electronProfile, tauriProfile, connectMainPage, killTree, median, sleep, envInfo, provenance, armName, REPO
 } from './lib.mjs'
-import { makeFixtureHome, makeMultiFixture } from './fixture.mjs'
+import { makeFixtureHome, makeMultiFixture, plantAccountDirs } from './fixture.mjs'
 import {
   COLLECT, HARVEST, cpuMark, cpuSince, wheelSweep, traceStart, traceEnd, analyzeTrace, BUDGET_MS
 } from './ftgauge.mjs'
@@ -62,6 +62,9 @@ const DUR = Number(argv('ms', 6000))
 const LIVE = has('live')
 const NOVSYNC = has('novsync')
 const TRACE = has('trace')
+// ★R2 — 격리 홈에 계정 설정 폴더를 심어 **실엔진 턴이 로그인 상태를 잇게** 한다.
+// 기본 끔(기존 하네스의 홈 구성 불변). 이유는 fixture.mjs의 plantAccountDirs 머리말.
+const ACCT = has('acct')
 
 // 측정 전용 플래그. **제품 기본값을 바꾸지 않는다** — 3.0은 이미 있는 env 옵트인으로,
 // 2.6.2는 커맨드라인 인자로만 준다(그쪽 트리는 읽기·실행만).
@@ -107,6 +110,7 @@ async function runOnce(seq) {
   const fx = MODE === 'scroll'
     ? makeFixtureHome(home, appVersion)
     : makeMultiFixture(home, appVersion, { panels: PANELS })
+  if (ACCT) { const r = plantAccountDirs(home); if (seq === 0) console.log('계정 설정 폴더 이식:', JSON.stringify(r)) }
   if (seq === 0) console.log(`fixture(${MODE}): ${JSON.stringify(fx)} @ ${home}`)
 
   const child = spawn(profile.cmd, profile.args, {
@@ -203,6 +207,28 @@ async function runOnce(seq) {
             }
           })
           if (out.streamLive) { out.streamLive.busyMs = Math.round(performance.now() - t0); out.streamLive.polls = polls }
+          // ★ 답변 **내용 증인** (FPS144 R2 — 크리틱 §11의 「이 결함을 두 번 못 겪게 하는
+          //   유일한 못」). R1의 라이브 팔은 프레임 수와 busy 지속만 남겨서, 3.0이 40자짜리
+          //   `Not logged in` 오류 말풍선 한 장을 재고 있는데도 표가 정상으로 보였다
+          //   (프레임 15장 · busy 314ms). 답변 길이와 꼬리를 같이 남기면 그 자리에서 걸린다.
+          //   판정 규칙: `answerChars`가 수백 자 미만이거나 `answerTail`이 오류 문구면
+          //   그 행은 **스트리밍을 잰 행이 아니다.**
+          const wit = await cdp.eval(`(() => {
+            const panels = [...document.querySelectorAll('.ma-panel')]
+            const rows = panels.map((p) => {
+              const ms = p.querySelectorAll('.ma-p-thread .msg')
+              const last = ms[ms.length - 1]
+              return { chars: last ? last.textContent.length : 0, tail: last ? last.textContent.slice(-60) : null }
+            })
+            return { perPanel: rows, total: rows.reduce((a, r) => a + r.chars, 0) }
+          })()`).catch(() => null)
+          if (out.streamLive && wit) {
+            out.streamLive.answerChars = wit.total
+            out.streamLive.answerPerPanel = wit.perPanel.map((r) => r.chars)
+            out.streamLive.answerTail = wit.perPanel[0]?.tail ?? null
+            out.streamLive.looksLikeStreaming = wit.total >= 400 && !/not logged in|please run \/login/i.test(wit.perPanel.map((r) => r.tail ?? '').join(' '))
+          }
+          console.log(`    답변 증인: ${out.streamLive?.answerChars}자 ${JSON.stringify(out.streamLive?.answerPerPanel)} streaming=${out.streamLive?.looksLikeStreaming} tail=${JSON.stringify(String(out.streamLive?.answerTail).slice(-40))}`)
         }
       }
     }
@@ -251,7 +277,7 @@ for (const k of KEYS) {
 const out = {
   what: '프레임 타임(작업 시간) 눈금 — 144Hz 예산 6.9ms 기준. rAF 간격이 아니라 BeginMainFrame 작업 시간.',
   app: profile.name, mode: MODE, panels: MODE === 'multi' ? PANELS : null,
-  budgetMs: BUDGET_MS, live: LIVE, novsync: NOVSYNC, trace: TRACE,
+  budgetMs: BUDGET_MS, live: LIVE, acctPlanted: ACCT, novsync: NOVSYNC, trace: TRACE,
   novsyncSwitches: NOVSYNC ? NOVSYNC_SWITCHES : null,
   ...provenance(profile),
   launchCwd: profile.cwd,
