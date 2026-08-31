@@ -20,6 +20,7 @@
 //! | clangd/UE: 그 compile DB를 **만들어야** 한다(UBT) · 만들어지면 재기동 | [`ServerSpec::prepare_root`] (R4) |
 //! | 프리웜의 주력 언어 감지 | [`ServerSpec::detect_markers`] (R4 — R3까지 `lib.rs` 하드코딩) |
 //! | 무거운 서버는 유휴 회수를 길게 | [`ServerSpec::idle_ttl_ms`] |
+//! | 프로젝트를 열었다고 서버까지 띄우지는 않는다 | [`ServerSpec::prewarm`] (LSPIDLE R1) |
 //! | 토큰 캐시 포맷이 바뀌면 옛 캐시를 버려야 | [`ServerSpec::cache_version`] |
 //!
 //! **검증 기준**(다음 라운드): C#·C++를 붙이는 diff가 이 파일의 `SPECS` 배열에 항목을
@@ -43,6 +44,41 @@ pub enum Provision {
     Download,
     /// 사용자가 직접 바이너리를 대야 한다(Verse: Epic의 verse-lsp.exe — 3.0 범위 밖).
     External,
+}
+
+// ── 프리웜 정책 ──────────────────────────────────────────────────────────────
+/// ★LSPIDLE R1 — 프로젝트를 열었을 때(=`lsp:prewarm`) 이 서버에 무엇을 하는가.
+///
+/// ## 왜 이 칸이 생겼나
+///
+/// R1까지 프리웜은 곧 **기동**이었다(`lib.rs::prewarm` → `manager::start`). 그래서 사용자가
+/// 코드 뷰어를 한 번도 열지 않아도 프로젝트를 연 것만으로 언어 서버가 떠서 상주했다 —
+/// gates 태그 실측으로 헬퍼 3개(tsls·tsserver·conhost) WS 115.5MB / Private 101.6MB,
+/// 유휴 프로세스 8 대 7(2.6.2). 「안 쓰는 기능이 메모리를 문다」는 그 자리다.
+///
+/// 그렇다고 프리웜을 통째로 지우면 다른 손해가 난다: 서버 인자를 만들려면 **먼저 파일을
+/// 만들어야 하는** 언어가 있고(clangd의 `compile_commands.json` — UBT가 수 초~수 분),
+/// 루트를 정하려면 솔루션을 스캔해야 하는 언어가 있다(C#). 그 일들은 **메모리를 상주시키지
+/// 않으므로** 앞당겨도 공짜다. 기동만 미루면 된다.
+///
+/// 그래서 프리웜을 두 조각으로 쪼갠 것이 이 칸이다.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Prewarm {
+    /// **준비만 한다 — 프로세스는 안 뜬다.** 3.0의 기본이자 지금 네 언어 전부의 값.
+    ///
+    /// 하는 일은 [`crate::manager::prepare`]에: 준비 훅(`prepare_root`) · 루트 해석 ·
+    /// 실행 계획 경로 사슬 메모. 실제 기동은 **그 언어의 파일을 열 때**
+    /// (`lsp:status`/`lsp:warm`) 일어난다.
+    Prepare,
+    /// 프로젝트를 여는 즉시 띄운다 — R1까지의 동작.
+    ///
+    /// **지금 이 값을 쓰는 스펙은 없다.** 남겨 둔 이유는 둘이다: ① 첫 열람 지연이 도저히
+    /// 안 되는 서버가 나오면 엔진을 열지 않고 여기 한 글자로 되돌릴 수 있어야 하고,
+    /// ② 값이 없으면 「온디맨드」가 정책이 아니라 **삭제된 코드**가 되어, 되돌리는 사람이
+    /// 무엇을 되돌리는지 모른 채 `lib.rs`를 고치게 된다.
+    /// 되돌린다면 그 순간 유휴 헬퍼 몫이 그 언어만큼 되살아난다는 것을 알고 해야 한다 —
+    /// `every_shipped_spec_is_on_demand` 못이 그 말을 하려고 서 있다.
+    Eager,
 }
 
 // ── 실행 명령 ────────────────────────────────────────────────────────────────
@@ -226,6 +262,12 @@ pub struct ServerSpec {
     /// 유휴 회수 TTL — 마지막 사용에서 이만큼 지나면 프로세스째 접는다.
     /// bundled 10분 / 무거운 서버(Roslyn 솔루션 인덱싱·clangd 인덱스) 30분(2.6.2 규약).
     pub idle_ttl_ms: u64,
+
+    /// ★LSPIDLE R1 — **프로젝트를 열었을 때 이 서버를 어디까지 할 것인가.**
+    ///
+    /// 「기동은 열람 시에만」은 정책이지만, 그 정책이 언어마다 같은 값을 낼 이유는 없다 —
+    /// 그래서 엔진이 아니라 여기에 둔다. 엔진([`crate::manager`])에는 여전히 언어 이름이 없다.
+    pub prewarm: Prewarm,
 
     /// 토큰 디스크 캐시의 세대. 이 서버의 토큰 해석 방식이 바뀌면 올려 옛 캐시를 버린다.
     /// (전역 세대는 [`crate::semcache::CACHE_VERSION`] — 둘이 함께 키에 들어간다)
@@ -711,6 +753,7 @@ ServerSpec {
     reload_project: None,
     watch_exts: &["ts", "tsx", "mts", "cts", "js", "jsx", "mjs", "cjs"],
     idle_ttl_ms: 10 * 60_000,
+    prewarm: Prewarm::Prepare,
     cache_version: 1,
 },
 // ── Python (pyright) — "값만 다른 두 번째 언어"의 실증 ────────────────────────
@@ -741,6 +784,7 @@ ServerSpec {
     reload_project: None,
     watch_exts: &["py", "pyw", "pyi"],
     idle_ttl_ms: 10 * 60_000,
+    prewarm: Prewarm::Prepare,
     cache_version: 1,
 },
 // ── C# (Roslyn) — 2.6.2가 피 흘려 얻은 함정이 전부 값이 되는 자리 ─────────────
@@ -787,6 +831,7 @@ ServerSpec {
     watch_exts: &["cs", "csx", "csproj", "sln", "slnx", "props", "targets"],
     // 솔루션 인덱싱이 비싼 서버 — 회수를 길게(2.6.2 IDLE_TTL_HEAVY).
     idle_ttl_ms: 30 * 60_000,
+    prewarm: Prewarm::Prepare,
     cache_version: 1,
 },
 // ── C/C++ (clangd) — R3이 만든 확장점의 두 번째 사용자 ────────────────────────
@@ -844,6 +889,7 @@ ServerSpec {
     watch_exts: &["c", "h", "cpp", "cc", "cxx", "hpp", "hxx", "hh", "inl"],
     // 인덱스 재구축이 비싼 서버 — 회수를 길게(2.6.2 IDLE_TTL_HEAVY, cs와 같은 값).
     idle_ttl_ms: 30 * 60_000,
+    prewarm: Prewarm::Prepare,
     cache_version: 1,
 }];
 
@@ -1062,14 +1108,22 @@ mod tests {
             let src_norm = src.replace('\\', "/");
             assert!(!src_norm.trim_end_matches('/').ends_with("node_modules"), "출처가 node_modules 뿌리다: {src}");
 
-            // (E1) 목적지가 `node_modules/<tail>`이면 출처도 `../node_modules/<같은 tail>`이어야 한다.
+            // (E1) 목적지가 `node_modules/<tail>`이면 출처도 **스테이징 사본의 같은 tail**이어야 한다.
             //      매니페스트는 **거울**이지 재배치 도구가 아니다.
+            //
+            //      ★LSPIDLE R1 — 비추는 대상이 `../node_modules`에서 `lsp-modules/node_modules`로
+            //      바뀌었다. 레포를 직접 나르면 안 쓰는 14.1MB가 그대로 실리기 때문이다
+            //      (`docs/parity-fix-lspdist-r1.md` §6). 거울이라는 성질은 그대로다 —
+            //      **한 칸 옮겨 놓고 그 칸을 못으로 고정한다**. 사본을 만드는 규칙은
+            //      `scripts/tauri-build.mjs::stageLspModules`이고, 그 규칙이 계약을 침범하지
+            //      못한다는 것은 아래 `the_diet_never_eats_a_file_the_contract_promises`가 본다.
             if let Some(tail) = dest.strip_prefix("node_modules/") {
-                let want = format!("../node_modules/{tail}");
+                let want = format!("{}/node_modules/{tail}", crate::launch::STAGED_MODULES_DIR);
                 assert_eq!(
                     src_norm, want,
                     "출처와 목적지가 안 맞는다 — 목적지는 {dest}인데 {src}를 나른다. \
-                     매니페스트는 node_modules 구조를 그대로 비추기만 해야 한다"
+                     매니페스트는 스테이징한 node_modules 사본을 그대로 비추기만 해야 한다 \
+                     (레포의 ../node_modules를 직접 가리키면 걸러 낸 14.8MB가 도로 실린다)"
                 );
             }
 
@@ -1084,10 +1138,20 @@ mod tests {
                 );
             }
 
-            // 출처가 실재하는가(디스크가 있을 때만) — 번들 단계에서야 터지는 것을 앞당긴다.
+            // 출처가 실재하는가 — 번들 단계에서야 터지는 것을 앞당긴다.
+            //
+            // ★LSPIDLE R1: 이제 **두 출처가 다 스테이징 산출물**이라(런타임 `lsp-runtime` ·
+            // 모듈 `lsp-modules`), 갓 클론한 레포에는 둘 다 없는 게 정상이다. 그래서 검사는
+            // 「폴더가 이미 있으면 그 안이 맞는가」로 바뀐다 — 스테이징을 돈 사람에게는
+            // 그대로 검사가 서고, 안 돈 사람에게는 헛경보가 안 난다.
+            let staged_dir = format!("{root}/src-tauri/{}", crate::launch::STAGED_MODULES_DIR);
             let abs = format!("{root}/src-tauri/{src}");
-            if std::path::Path::new(&format!("{root}/node_modules")).is_dir() && !src.starts_with(crate::launch::STAGED_RUNTIME_DIR) {
-                assert!(std::path::Path::new(&abs).exists(), "매니페스트의 출처가 없는 자리다: {abs}");
+            if src.starts_with(crate::launch::STAGED_MODULES_DIR) && std::path::Path::new(&staged_dir).is_dir() {
+                assert!(
+                    std::path::Path::new(&abs).exists(),
+                    "스테이징 사본에 매니페스트의 출처가 없다: {abs} \
+                     — `node scripts/tauri-build.mjs stage`를 다시 돌려라"
+                );
             }
         }
 
@@ -1116,6 +1180,67 @@ mod tests {
                 assert!(std::path::Path::new(&p).exists(), "매니페스트가 약속한 파일이 레포에 없다: {p}");
             }
         }
+    }
+
+    /// ★LSPIDLE R1 — **다이어트가 계약을 갉아먹지 못한다.**
+    ///
+    /// `scripts/tauri-build.mjs`의 `MODULE_EXCLUDES`는 설치기에서 파일을 빼는 규칙이다.
+    /// 그 규칙이 [`bundled_files`]가 약속한 경로에 닿는 순간, 배포본은 **코드가
+    /// `Bundled`라고 말하는데 파일이 없는** 상태가 된다 — §1.6-A2로 올라온 그 사고의 모양
+    /// 그대로고, 이번에는 원인이 「매니페스트를 줄였다」가 아니라 「거르는 규칙이 넓었다」다.
+    ///
+    /// 그래서 규칙을 **읽어 와서** 계약 목록에 직접 대 본다. 규칙을 넓히는 편집(예: 실수로
+    /// `typescript/lib/`을 통째로 넣는다)은 빌드가 아니라 **여기서** 먼저 죽는다.
+    /// 목록을 여기 한 벌 더 적지 않는 이유는 `NODE_PIN`과 같다 — 두 번째 진실을 만들면
+    /// 한쪽만 고쳐진다.
+    #[test]
+    fn the_diet_never_eats_a_file_the_contract_promises() {
+        let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
+        let pats = module_excludes_from_build_script(root);
+        assert!(!pats.is_empty(), "MODULE_EXCLUDES를 못 읽었다 — 다이어트 규칙의 출처가 사라졌다");
+        // 규칙 해석은 스크립트의 `isExcluded`와 같아야 한다(폴더는 `/`로 끝, 확장자는 `*`로 시작).
+        let hits = |rel: &str| -> Option<String> {
+            pats.iter()
+                .find(|p| {
+                    if let Some(suffix) = p.strip_prefix('*') {
+                        rel.ends_with(suffix)
+                    } else if let Some(dir) = p.strip_suffix('/') {
+                        rel == dir || rel.starts_with(p.as_str())
+                    } else {
+                        rel == p.as_str()
+                    }
+                })
+                .cloned()
+        };
+        for f in bundled_files() {
+            let rel = f.join("/");
+            assert_eq!(
+                hits(&rel),
+                None,
+                "★다이어트 규칙이 계약이 약속한 파일을 뺀다: node_modules/{rel} \
+                 — 이 상태로 구우면 그 서버는 배포본에서 안 뜬다(§1.6-A2와 같은 모양)"
+            );
+        }
+        // 그리고 규칙이 **실제로 무언가는 빼야** 한다 — 전부 지워 놓고 초록인 상태를 막는다.
+        for must in ["typescript/lib/_tsc.js", "typescript/lib/ko/diagnosticMessages.generated.json"] {
+            assert!(hits(must).is_some(), "{must}: 유령 바이트가 다시 실린다(다이어트 규칙이 지워졌나)");
+        }
+        assert!(hits("pyright/dist/pyright-internal.js.map").is_some(), "소스맵이 다시 실린다");
+    }
+
+    /// `scripts/tauri-build.mjs`의 `MODULE_EXCLUDES` 배열을 읽어 온다(문자열 리터럴만).
+    fn module_excludes_from_build_script(root: &str) -> Vec<String> {
+        let src = std::fs::read_to_string(format!("{root}/scripts/tauri-build.mjs"))
+            .expect("scripts/tauri-build.mjs를 못 읽었다 — 다이어트 규칙의 출처다");
+        let at = src.find("const MODULE_EXCLUDES = [").expect("MODULE_EXCLUDES를 못 찾았다");
+        let body = &src[at..];
+        let end = body.find("\n]").expect("MODULE_EXCLUDES가 안 닫혔다");
+        body[..end]
+            .split('\'')
+            .skip(1)
+            .step_by(2)
+            .map(str::to_string)
+            .collect()
     }
 
     /// `scripts/tauri-build.mjs`의 `NODE_PIN` — **핀의 단일 출처는 그 스크립트다.**
@@ -1156,6 +1281,26 @@ mod tests {
                 // 내려받는 서버는 번들 목록에 낄 자리가 없다(앱 홈에 설치된다).
                 Launch::Exe { .. } => assert!(s.extra_files.is_empty(), "{}: Exe 스펙에 번들 파일이 붙었다", s.id),
             }
+        }
+    }
+
+    /// ★LSPIDLE R1 — **온디맨드의 못.** 배포되는 스펙 중 하나라도 부팅에 서버를 띄우면
+    /// 「코드 뷰어를 안 쓰면 헬퍼 0」이 그 언어만큼 거짓이 된다.
+    ///
+    /// 값을 되돌리는 것 자체는 [`Prewarm::Eager`]가 허용한다 — 막으려는 것은 **모르고
+    /// 되돌리는 것**이다. 이 테스트가 붉어지면 그 주석을 읽게 되고, 되돌리는 대가
+    /// (유휴 헬퍼 몫이 그 언어만큼 되살아난다)를 알고 고르게 된다.
+    #[test]
+    fn every_shipped_spec_is_on_demand() {
+        for s in SPECS {
+            assert_eq!(
+                s.prewarm,
+                Prewarm::Prepare,
+                "{}: 프리웜이 기동을 유발한다 — 프로젝트를 열기만 해도 이 서버가 상주한다. \
+                 gates 태그 실측으로 헬퍼 3개 = WS 115.5MB · Private 101.6MB · 유휴 프로세스 8 대 7이었고, \
+                 그 방아쇠가 정확히 이 값이다. 되돌리려면 Prewarm::Eager 주석을 먼저 읽어라",
+                s.id
+            );
         }
     }
 

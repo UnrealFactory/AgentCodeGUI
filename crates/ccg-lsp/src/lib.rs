@@ -21,6 +21,7 @@ pub mod server;
 pub mod sha1;
 pub mod sha256;
 pub mod spec;
+pub mod zombie;
 
 use semcache::SemanticTokens;
 use serde_json::{json, Value};
@@ -342,9 +343,26 @@ pub fn resolve_completion(cwd: &str, rel: &str, gen: i64, ri: usize) -> Option<V
 }
 
 // ── lsp:prewarm ──────────────────────────────────────────────────────────────
-/// 프로젝트를 열 때 — 첫 파일을 보기 **전에** 그 프로젝트의 주력 서버를 띄운다.
-/// 재실행 체감의 핵심: 프리웜 + 토큰 디스크 캐시가 함께 있어야 "켜자마자 색이 있고,
-/// 곧바로 호버가 된다"가 된다(둘 중 하나만 있으면 둘 중 하나가 늦는다).
+/// 프로젝트를 열 때 — 그 프로젝트의 주력 서버를 **기동 직전까지** 준비한다.
+///
+/// ## ★LSPIDLE R1 — 여기서 프로세스를 띄우지 않는다
+///
+/// R1까지 이 함수의 마지막 줄은 `manager::start(spec, &root)`였다. 그 한 줄 때문에
+/// **코드 뷰어를 한 번도 열지 않아도** 언어 서버가 떠서 앱이 사는 내내 상주했다
+/// (gates 태그 실측: 헬퍼 3개 · WS 115.5MB · Private 101.6MB · 유휴 프로세스 8 대 7).
+/// 유휴 회수(10/30분)는 그 뒤에도 멀쩡히 돌고 있었지만, **회수는 열람한 적 있는 서버를
+/// 접을 뿐 애초에 안 뜨게 하지는 못한다.** 「안 쓰는 기능이 메모리를 문다」의 본체는
+/// 회수가 아니라 이 방아쇠였다.
+///
+/// 지금은 [`spec::Prewarm`]이 그 결정을 들고 있고, 네 언어 전부 `Prepare`다 — 하는 일은
+/// 디스크·경로·캐시 준비뿐이고 기동은 **그 언어의 파일을 열 때** 일어난다
+/// (`lsp:status`가 지연 스폰의 방아쇠, `lsp:warm`이 문서 예열).
+///
+/// **첫 열람이 그만큼 늦어지지 않는가** — 두 가지가 받친다. ① 색은 서버를 안 기다린다:
+/// `lsp:cached-tokens`가 토큰 디스크 캐시에서 바로 칠한다(서버를 띄우지 않는 경로다).
+/// ② 기동 자체의 앞부분(준비 훅·루트 해석·런타임/모듈 경로 사슬)은 여기서 이미 치렀다.
+/// 남는 것은 `CreateProcess` + 서버 초기화뿐이고, 그 값은 `bench/lsp.mjs`의
+/// 프리웜·첫 색칠 눈금으로 잰다(수치는 `docs/parity-fix-lspidle-r1.md`).
 pub fn prewarm(cwd: &str) {
     if cwd.is_empty() {
         return;
@@ -362,12 +380,20 @@ pub fn prewarm(cwd: &str) {
         Some(f) => manager::root_of(spec, &f, &cwd_path),
         None => cwd_path,
     };
-    if server::launchable(spec, &root).is_err() {
-        return;
+    match spec.prewarm {
+        // 기동 없이 준비만 — 이 라운드의 본체. 못 띄우는 상태여도 그냥 준비한다
+        // (`launchable` 판정은 열람 시 `status`가 `need-install`로 정직하게 말할 몫이다).
+        spec::Prewarm::Prepare => manager::prepare(spec, &root),
+        // R1까지의 동작. 지금 이 팔로 오는 스펙은 없다(`Prewarm::Eager` 주석 참고).
+        spec::Prewarm::Eager => {
+            if server::launchable(spec, &root).is_err() {
+                return;
+            }
+            // `start`는 스폰을 백그라운드로 걸고 곧바로 돌아온다 — 여기서 스레드를 또 만들 이유가
+            // 없고, 첫 `status`와 겹쳐도 자리가 하나라 **프로세스는 한 벌만** 뜬다(C-4).
+            let _ = manager::start(spec, &root);
+        }
     }
-    // `start`는 스폰을 백그라운드로 걸고 곧바로 돌아온다 — 여기서 스레드를 또 만들 이유가
-    // 없고, 첫 `status`와 겹쳐도 자리가 하나라 **프로세스는 한 벌만** 뜬다(C-4).
-    let _ = manager::start(spec, &root);
 }
 
 /// 이 폴더의 주력 언어를 값싼 파일 신호로 추정. 표는 각 스펙의
@@ -524,6 +550,28 @@ pub fn dispose_all() {
     manager::dispose_all();
 }
 
+// ── 수명 진단(★LSPIDLE R1) ──────────────────────────────────────────────────
+/// 지금 서버 수명이 어떤 상태인가 — **벤치·PoC가 읽는 눈금**이자 사람이 읽는 진단.
+///
+/// 프로세스 목록을 세는 것만으로는 「회수됐다」와 「애초에 안 떴다」를 못 가른다. 둘은
+/// 겉보기가 같지만(헬퍼 0) 뜻이 정반대라, 이 라운드의 주장을 그 구분 없이 실측했다고
+/// 말할 수 없다. 그래서 앱 안의 판정을 그대로 내보낸다.
+///
+/// - `live` — 지금 말이 통하는 서버 수
+/// - `reclaimed` — 유휴로 접혀 비어 있는 자리 수(= 「회수됨」)
+/// - `revivals` — 회수 뒤 다시 살아난 횟수(= 「투명 재기동」이 실제로 돈 횟수)
+/// - `tracked` — 좀비 원장이 핸들을 들고 있는 자식 수(정상이면 `live`와 같다)
+pub fn lifecycle() -> Value {
+    let (reclaimed, revivals) = manager::reclaim_stats();
+    json!({
+        "live": manager::live_count(),
+        "pids": manager::live_pids(),
+        "reclaimed": reclaimed,
+        "revivals": revivals,
+        "tracked": zombie::tracked_count(),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -564,6 +612,37 @@ mod tests {
         assert_eq!(first_source_file(&w, cs), Some(w.join("src/App/Big.cs")), "node_modules를 걸러야 한다");
         let py = spec::spec_by_id("py").unwrap();
         assert_eq!(first_source_file(&w, py), None);
+    }
+
+    /// ★LSPIDLE R1 — **프리웜은 프로세스를 안 만든다.**
+    ///
+    /// 스펙 쪽 못(`every_shipped_spec_is_on_demand`)은 «값이 Prepare인가»를 보고, 이 못은
+    /// «그 값이 실제로 지켜지는가»를 본다. 둘이 다른 이유: R1의 결함은 값이 아니라
+    /// `prewarm()`의 마지막 줄이었고, 그 줄은 스펙을 보지도 않았다.
+    ///
+    /// 진짜 TS 프로젝트 모양(package.json)을 만들어 감지가 **걸리게** 한 뒤 부른다 —
+    /// 감지가 안 걸려서 조용한 것은 이 테스트가 원하는 초록이 아니다.
+    #[test]
+    fn prewarm_prepares_without_spawning_a_single_process() {
+        let w = std::env::temp_dir().join(format!("ccg-lsp-prewarm-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&w);
+        std::fs::create_dir_all(w.join("src")).unwrap();
+        std::fs::write(w.join("package.json"), "{}").unwrap();
+        std::fs::write(w.join("src/a.ts"), "export const a = 1\n").unwrap();
+        // 감지가 실제로 TS를 문다(안 물면 아래 0이 공짜로 나온다 — 그건 증명이 아니다)
+        assert_eq!(detect_project_spec(&w).map(|s| s.id), Some("ts"), "픽스처가 TS 프로젝트로 안 읽힌다");
+
+        let before = manager::live_count();
+        prewarm(&w.to_string_lossy());
+        // 스폰은 백그라운드 스레드라 «즉시 0»만으로는 부족하다 — 뜰 시간을 주고도 0이어야 한다.
+        std::thread::sleep(Duration::from_millis(700));
+        assert_eq!(
+            manager::live_count(),
+            before,
+            "★프리웜이 서버를 띄웠다 — 코드 뷰어를 한 번도 안 열어도 헬퍼가 상주한다는 뜻이다"
+        );
+        assert_eq!(lifecycle()["live"], json!(before));
+        let _ = std::fs::remove_dir_all(&w);
     }
 
     #[test]

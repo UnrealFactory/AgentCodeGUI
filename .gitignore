@@ -80,3 +80,8 @@ target-*/
 # 93MB짜리 바이너리라 커밋하지 않는다. 만드는 사람은 `scripts/tauri-build.mjs`이고
 # 판·해시는 그 파일의 NODE_PIN에 박혀 있다 — 지워도 다음 빌드가 다시 받아 검증한다.
 src-tauri/lsp-runtime/
+
+# ★LSPIDLE R1 — 설치기에 싣는 LSP 모듈의 **거른 사본**(유령 바이트 14.8MB를 뺀 것).
+# 레포의 node_modules에서 매 빌드 새로 만든다(`scripts/tauri-build.mjs::stageLspModules`) —
+# 지워도 되고, 지우는 편이 안전하다(남은 사본을 재활용하면 뺀 파일이 되살아난다).
+src-tauri/lsp-modules/

@@ -1,0 +1,1103 @@
+{
+  "harness": "bench/lsp.mjs",
+  "at": "2026-08-31T09:29:22.399Z",
+  "kind": "tauri",
+  "version": "3.0.0",
+  "lang": "ts",
+  "fixture": {
+    "work": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo",
+    "bigRel": "lspbench/big.ts",
+    "libRel": "lspbench/lib.ts",
+    "lines": 3369,
+    "bytes": 127334,
+    "hoverSamples": 48,
+    "defSamples": 34
+  },
+  "env": {
+    "ramGB": 63.8,
+    "cpu": "13th Gen Intel(R) Core(TM) i7-13700KF",
+    "os": "Microsoft Windows 11 Home 26200"
+  },
+  "arm": "default",
+  "bin": {
+    "exe": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-exe\\agentcodegui.exe",
+    "exeMtime": "2026-08-28T07:23:06.099Z",
+    "exeSize": 7066624,
+    "exeSha256": "219a2e50c9298dad",
+    "gitHead": "493b1db",
+    "gitDirty": true
+  },
+  "armEnv": {
+    "CCG_LSP_MODULES": "C:/Code/AgentCodeGUI",
+    "CCG_LSP_NODE": "C:/Code/AgentCodeGUI/src-tauri/lsp-runtime/node.exe",
+    "CCG_HOME": "C:\\Code\\AgentCodeGUI\\.bench-home-tauri",
+    "CCG_CDP_PORT": "9372"
+  },
+  "note": "메모리는 재지 않는다(동시 주행 노이즈 — 리드가 procs의 PID로 따로 잰다).",
+  "cold": {
+    "phase": "cold",
+    "home": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-home-tauri",
+    "pid": 28588,
+    "semantic": true,
+    "mounted": true,
+    "probeSurvived": true,
+    "ready": {
+      "installedAt": 171,
+      "watchStart": 171,
+      "readyAt": 264,
+      "states": [
+        "ready"
+      ],
+      "statusErr": null
+    },
+    "prewarmMs": 264,
+    "prewarmFromProbeMs": 93,
+    "paint": {
+      "cacheAtMs": 264,
+      "cacheHit": false,
+      "cacheN": 0,
+      "liveAtMs": 629,
+      "liveN": 10925,
+      "tries": 0,
+      "liveAfterReadyMs": 364
+    },
+    "liveTokens": {
+      "ms": 31,
+      "n": 10925,
+      "types": 12,
+      "tries": 0
+    },
+    "cached": {
+      "ms": 10.3,
+      "p50": 5.1,
+      "min": 4.9,
+      "n": 10925,
+      "hit": true,
+      "rows": [
+        {
+          "ms": 10.3,
+          "n": 10925,
+          "hit": true
+        },
+        {
+          "ms": 5.1,
+          "n": 10925,
+          "hit": true
+        },
+        {
+          "ms": 5.2,
+          "n": 10925,
+          "hit": true
+        },
+        {
+          "ms": 5.1,
+          "n": 10925,
+          "hit": true
+        },
+        {
+          "ms": 4.9,
+          "n": 10925,
+          "hit": true
+        }
+      ]
+    },
+    "fps": {
+      "frames": 123,
+      "spanMs": 2100,
+      "fps": 58.1,
+      "medGapMs": 16.7,
+      "p95GapMs": 16.8,
+      "maxGapMs": 50,
+      "longFrames": 3,
+      "window": "문서 시작 → 첫 색칠+토큰 왕복+캐시 표본 (최소 2s)"
+    },
+    "hover": {
+      "n": 48,
+      "hits": 48,
+      "hitRate": 100,
+      "p50": 2.5,
+      "p95": 4.1,
+      "max": 11,
+      "p50All": 2.5,
+      "rows": [
+        {
+          "ms": 11,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "makeConfig",
+          "meta": "```typescript\n(alias) function makeConfig(id: number, name: "
+        },
+        {
+          "ms": 3.6,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "makeConfig",
+          "meta": "```typescript\n(alias) makeConfig(id: number, name: string, m"
+        },
+        {
+          "ms": 4,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "makeConfig",
+          "meta": "```typescript\n(alias) makeConfig(id: number, name: string, m"
+        },
+        {
+          "ms": 2.8,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "makeConfig",
+          "meta": "```typescript\n(alias) makeConfig(id: number, name: string, m"
+        },
+        {
+          "ms": 2.7,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "makeConfig",
+          "meta": "```typescript\n(alias) makeConfig(id: number, name: string, m"
+        },
+        {
+          "ms": 2.6,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "makeConfig",
+          "meta": "```typescript\n(alias) makeConfig(id: number, name: string, m"
+        },
+        {
+          "ms": 2.4,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "makeConfig",
+          "meta": "```typescript\n(alias) makeConfig(id: number, name: string, m"
+        },
+        {
+          "ms": 2.8,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "makeConfig",
+          "meta": "```typescript\n(alias) makeConfig(id: number, name: string, m"
+        },
+        {
+          "ms": 2.8,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "makeConfig",
+          "meta": "```typescript\n(alias) makeConfig(id: number, name: string, m"
+        },
+        {
+          "ms": 2.6,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "makeConfig",
+          "meta": "```typescript\n(alias) makeConfig(id: number, name: string, m"
+        },
+        {
+          "ms": 2.5,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "makeConfig",
+          "meta": "```typescript\n(alias) makeConfig(id: number, name: string, m"
+        },
+        {
+          "ms": 2.7,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "makeConfig",
+          "meta": "```typescript\n(alias) makeConfig(id: number, name: string, m"
+        },
+        {
+          "ms": 2.5,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "makeConfig",
+          "meta": "```typescript\n(alias) makeConfig(id: number, name: string, m"
+        },
+        {
+          "ms": 2.6,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "makeConfig",
+          "meta": "```typescript\n(alias) makeConfig(id: number, name: string, m"
+        },
+        {
+          "ms": 3.2,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "summarize",
+          "meta": "```typescript\n(alias) function summarize(reg: BenchRegistry,"
+        },
+        {
+          "ms": 2.6,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "summarize",
+          "meta": "```typescript\n(alias) summarize(reg: BenchRegistry, ids: num"
+        },
+        {
+          "ms": 2.3,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "summarize",
+          "meta": "```typescript\n(alias) summarize(reg: BenchRegistry, ids: num"
+        },
+        {
+          "ms": 3,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "summarize",
+          "meta": "```typescript\n(alias) summarize(reg: BenchRegistry, ids: num"
+        },
+        {
+          "ms": 2.7,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "summarize",
+          "meta": "```typescript\n(alias) summarize(reg: BenchRegistry, ids: num"
+        },
+        {
+          "ms": 2.3,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "summarize",
+          "meta": "```typescript\n(alias) summarize(reg: BenchRegistry, ids: num"
+        },
+        {
+          "ms": 2.4,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "summarize",
+          "meta": "```typescript\n(alias) summarize(reg: BenchRegistry, ids: num"
+        },
+        {
+          "ms": 2.7,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "summarize",
+          "meta": "```typescript\n(alias) summarize(reg: BenchRegistry, ids: num"
+        },
+        {
+          "ms": 2.7,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "summarize",
+          "meta": "```typescript\n(alias) summarize(reg: BenchRegistry, ids: num"
+        },
+        {
+          "ms": 2.4,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "summarize",
+          "meta": "```typescript\n(alias) summarize(reg: BenchRegistry, ids: num"
+        },
+        {
+          "ms": 2.3,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "summarize",
+          "meta": "```typescript\n(alias) summarize(reg: BenchRegistry, ids: num"
+        },
+        {
+          "ms": 4.6,
+          "ok": true,
+          "kind": "cross-fn",
+          "word": "summarize",
+          "meta": "```typescript\n(alias) summarize(reg: BenchRegistry, ids: num"
+        },
+        {
+          "ms": 3.3,
+          "ok": true,
+          "kind": "module-var",
+          "word": "registry",
+          "meta": "```typescript\nconst registry: BenchRegistry\n```"
+        },
+        {
+          "ms": 2.8,
+          "ok": true,
+          "kind": "module-var",
+          "word": "registry",
+          "meta": "```typescript\nconst registry: BenchRegistry\n```"
+        },
+        {
+          "ms": 2.7,
+          "ok": true,
+          "kind": "module-var",
+          "word": "registry",
+          "meta": "```typescript\nconst registry: BenchRegistry\n```"
+        },
+        {
+          "ms": 2.2,
+          "ok": true,
+          "kind": "module-var",
+          "word": "registry",
+          "meta": "```typescript\nconst registry: BenchRegistry\n```"
+        },
+        {
+          "ms": 2.1,
+          "ok": true,
+          "kind": "module-var",
+          "word": "registry",
+          "meta": "```typescript\nconst registry: BenchRegistry\n```"
+        },
+        {
+          "ms": 2.3,
+          "ok": true,
+          "kind": "module-var",
+          "word": "registry",
+          "meta": "```typescript\nconst registry: BenchRegistry\n```"
+        },
+        {
+          "ms": 2.4,
+          "ok": true,
+          "kind": "module-var",
+          "word": "registry",
+          "meta": "```typescript\nconst registry: BenchRegistry\n```"
+        },
+        {
+          "ms": 2.4,
+          "ok": true,
+          "kind": "module-var",
+          "word": "registry",
+          "meta": "```typescript\nconst registry: BenchRegistry\n```"
+        },
+        {
+          "ms": 2.5,
+          "ok": true,
+          "kind": "module-var",
+          "word": "registry",
+          "meta": "```typescript\nconst registry: BenchRegistry\n```"
+        },
+        {
+          "ms": 2.1,
+          "ok": true,
+          "kind": "module-var",
+          "word": "registry",
+          "meta": "```typescript\nconst registry: BenchRegistry\n```"
+        },
+        {
+          "ms": 2.6,
+          "ok": true,
+          "kind": "local",
+          "word": "local0000",
+          "meta": "```typescript\nconst local0000: BenchConfig\n```"
+        },
+        {
+          "ms": 2.3,
+          "ok": true,
+          "kind": "local",
+          "word": "local0000",
+          "meta": "```typescript\nconst local0000: BenchConfig\n```"
+        },
+        {
+          "ms": 2.2,
+          "ok": true,
+          "kind": "local",
+          "word": "local0000",
+          "meta": "```typescript\nconst local0000: BenchConfig\n```"
+        },
+        {
+          "ms": 2.2,
+          "ok": true,
+          "kind": "local",
+          "word": "local0000",
+          "meta": "```typescript\nconst local0000: BenchConfig\n```"
+        },
+        {
+          "ms": 4.1,
+          "ok": true,
+          "kind": "local",
+          "word": "local0001",
+          "meta": "```typescript\nconst local0001: BenchConfig\n```"
+        },
+        {
+          "ms": 2.4,
+          "ok": true,
+          "kind": "local",
+          "word": "local0001",
+          "meta": "```typescript\nconst local0001: BenchConfig\n```"
+        },
+        {
+          "ms": 2.3,
+          "ok": true,
+          "kind": "local",
+          "word": "local0001",
+          "meta": "```typescript\nconst local0001: BenchConfig\n```"
+        },
+        {
+          "ms": 2.3,
+          "ok": true,
+          "kind": "local",
+          "word": "local0001",
+          "meta": "```typescript\nconst local0001: BenchConfig\n```"
+        },
+        {
+          "ms": 2.4,
+          "ok": true,
+          "kind": "local",
+          "word": "local0002",
+          "meta": "```typescript\nconst local0002: BenchConfig\n```"
+        },
+        {
+          "ms": 2.2,
+          "ok": true,
+          "kind": "local",
+          "word": "local0002",
+          "meta": "```typescript\nconst local0002: BenchConfig\n```"
+        },
+        {
+          "ms": 2.3,
+          "ok": true,
+          "kind": "local",
+          "word": "local0002",
+          "meta": "```typescript\nconst local0002: BenchConfig\n```"
+        },
+        {
+          "ms": 2.5,
+          "ok": true,
+          "kind": "local",
+          "word": "local0002",
+          "meta": "```typescript\nconst local0002: BenchConfig\n```"
+        }
+      ]
+    },
+    "definition": {
+      "n": 34,
+      "hits": 34,
+      "hitRate": 100,
+      "p50": 2.2,
+      "p95": 3.4,
+      "max": 4.5,
+      "p50All": 2.2,
+      "crossFileHits": 24,
+      "rows": [
+        {
+          "ms": 4.5,
+          "ok": true,
+          "kind": "cross-file",
+          "word": "makeConfig",
+          "meta": "c:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench\\lib.ts"
+        },
+        {
+          "ms": 3.4,
+          "ok": true,
+          "kind": "cross-file",
+          "word": "makeConfig",
+          "meta": "c:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench\\lib.ts"
+        },
+        {
+          "ms": 2.3,
+          "ok": true,
+          "kind": "cross-file",
+          "word": "makeConfig",
+          "meta": "c:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench\\lib.ts"
+        },
+        {
+          "ms": 2.2,
+          "ok": true,
+          "kind": "cross-file",
+          "word": "makeConfig",
+          "meta": "c:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench\\lib.ts"
+        },
+        {
+          "ms": 2.5,
+          "ok": true,
+          "kind": "cross-file",
+          "word": "makeConfig",
+          "meta": "c:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench\\lib.ts"
+        },
+        {
+          "ms": 2.1,
+          "ok": true,
+          "kind": "cross-file",
+          "word": "makeConfig",
+          "meta": "c:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench\\lib.ts"
+        },
+        {
+          "ms": 2.2,
+          "ok": true,
+          "kind": "cross-file",
+          "word": "makeConfig",
+          "meta": "c:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench\\lib.ts"
+        },
+        {
+          "ms": 2.2,
+          "ok": true,
+          "kind": "cross-file",
+          "word": "makeConfig",
+          "meta": "c:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench\\lib.ts"
+        },
+        {
+          "ms": 2.4,
+          "ok": true,
+          "kind": "cross-file",
+          "word": "makeConfig",
+          "meta": "c:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench\\lib.ts"
+        },
+        {
+          "ms": 2.4,
+          "ok": true,
+          "kind": "cross-file",
+          "word": "makeConfig",
+          "meta": "c:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench\\lib.ts"
+        },
+        {
+          "ms": 2.2,
+          "ok": true,
+          "kind": "cross-file",
+          "word": "makeConfig",
+          "meta": "c:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench\\lib.ts"
+        },
+        {
+          "ms": 2.2,
+          "ok": true,
+          "kind": "cross-file",
+          "word": "makeConfig",
+          "meta": "c:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench\\lib.ts"
+        },
+        {
+          "ms": 2.3,
+          "ok": true,
+          "kind": "cross-file",
+          "word": "summarize",
+          "meta": "c:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench\\lib.ts"
+        },
+        {
+          "ms": 2.3,
+          "ok": true,
+          "kind": "cross-file",
+          "word": "summarize",
+          "meta": "c:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench\\lib.ts"
+        },
+        {
+          "ms": 2.1,
+          "ok": true,
+          "kind": "cross-file",
+          "word": "summarize",
+          "meta": "c:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench\\lib.ts"
+        },
+        {
+          "ms": 2.2,
+          "ok": true,
+          "kind": "cross-file",
+          "word": "summarize",
+          "meta": "c:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench\\lib.ts"
+        },
+        {
+          "ms": 2.6,
+          "ok": true,
+          "kind": "cross-file",
+          "word": "summarize",
+          "meta": "c:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench\\lib.ts"
+        },
+        {
+          "ms": 2,
+          "ok": true,
+          "kind": "cross-file",
+          "word": "summarize",
+          "meta": "c:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench\\lib.ts"
+        },
+        {
+          "ms": 2.3,
+          "ok": true,
+          "kind": "cross-file",
+          "word": "summarize",
+          "meta": "c:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench\\lib.ts"
+        },
+        {
+          "ms": 2.3,
+          "ok": true,
+          "kind": "cross-file",
+          "word": "summarize",
+          "meta": "c:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench\\lib.ts"
+        },
+        {
+          "ms": 2.1,
+          "ok": true,
+          "kind": "cross-file",
+          "word": "summarize",
+          "meta": "c:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench\\lib.ts"
+        },
+        {
+          "ms": 2.2,
+          "ok": true,
+          "kind": "cross-file",
+          "word": "summarize",
+          "meta": "c:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench\\lib.ts"
+        },
+        {
+          "ms": 2.1,
+          "ok": true,
+          "kind": "cross-file",
+          "word": "BenchRegistry",
+          "meta": "c:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench\\lib.ts"
+        },
+        {
+          "ms": 2.5,
+          "ok": true,
+          "kind": "cross-file",
+          "word": "BenchRegistry",
+          "meta": "c:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench\\lib.ts"
+        },
+        {
+          "ms": 2.7,
+          "ok": true,
+          "kind": "same-file",
+          "word": "local0000",
+          "meta": "c:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench\\big.ts"
+        },
+        {
+          "ms": 2.1,
+          "ok": true,
+          "kind": "same-file",
+          "word": "local0000",
+          "meta": "c:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench\\big.ts"
+        },
+        {
+          "ms": 2,
+          "ok": true,
+          "kind": "same-file",
+          "word": "local0000",
+          "meta": "c:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench\\big.ts"
+        },
+        {
+          "ms": 2.1,
+          "ok": true,
+          "kind": "same-file",
+          "word": "local0000",
+          "meta": "c:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench\\big.ts"
+        },
+        {
+          "ms": 2.2,
+          "ok": true,
+          "kind": "same-file",
+          "word": "local0001",
+          "meta": "c:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench\\big.ts"
+        },
+        {
+          "ms": 2,
+          "ok": true,
+          "kind": "same-file",
+          "word": "local0001",
+          "meta": "c:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench\\big.ts"
+        },
+        {
+          "ms": 2.1,
+          "ok": true,
+          "kind": "same-file",
+          "word": "local0001",
+          "meta": "c:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench\\big.ts"
+        },
+        {
+          "ms": 2,
+          "ok": true,
+          "kind": "same-file",
+          "word": "local0001",
+          "meta": "c:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench\\big.ts"
+        },
+        {
+          "ms": 2.2,
+          "ok": true,
+          "kind": "same-file",
+          "word": "local0002",
+          "meta": "c:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench\\big.ts"
+        },
+        {
+          "ms": 2,
+          "ok": true,
+          "kind": "same-file",
+          "word": "local0002",
+          "meta": "c:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-repo\\lspbench\\big.ts"
+        }
+      ]
+    },
+    "completion": {
+      "n": 10,
+      "hits": 10,
+      "hitRate": 100,
+      "p50": 12.3,
+      "p95": 35.9,
+      "max": 35.9,
+      "p50All": 12.3,
+      "items": 4,
+      "rows": [
+        {
+          "ms": 35.9,
+          "items": 4,
+          "ok": true,
+          "sample": [
+            "lookup",
+            "register",
+            "size",
+            "tagsOf"
+          ]
+        },
+        {
+          "ms": 12.5,
+          "items": 4,
+          "ok": true,
+          "sample": [
+            "lookup",
+            "register",
+            "size",
+            "tagsOf"
+          ]
+        },
+        {
+          "ms": 12.3,
+          "items": 4,
+          "ok": true,
+          "sample": [
+            "lookup",
+            "register",
+            "size",
+            "tagsOf"
+          ]
+        },
+        {
+          "ms": 12.9,
+          "items": 4,
+          "ok": true,
+          "sample": [
+            "lookup",
+            "register",
+            "size",
+            "tagsOf"
+          ]
+        },
+        {
+          "ms": 16,
+          "items": 4,
+          "ok": true,
+          "sample": [
+            "lookup",
+            "register",
+            "size",
+            "tagsOf"
+          ]
+        },
+        {
+          "ms": 11.5,
+          "items": 4,
+          "ok": true,
+          "sample": [
+            "lookup",
+            "register",
+            "size",
+            "tagsOf"
+          ]
+        },
+        {
+          "ms": 10.8,
+          "items": 4,
+          "ok": true,
+          "sample": [
+            "lookup",
+            "register",
+            "size",
+            "tagsOf"
+          ]
+        },
+        {
+          "ms": 11.1,
+          "items": 4,
+          "ok": true,
+          "sample": [
+            "lookup",
+            "register",
+            "size",
+            "tagsOf"
+          ]
+        },
+        {
+          "ms": 11.3,
+          "items": 4,
+          "ok": true,
+          "sample": [
+            "lookup",
+            "register",
+            "size",
+            "tagsOf"
+          ]
+        },
+        {
+          "ms": 10.8,
+          "items": 4,
+          "ok": true,
+          "sample": [
+            "lookup",
+            "register",
+            "size",
+            "tagsOf"
+          ]
+        }
+      ]
+    },
+    "retokenize": {
+      "ms": 108,
+      "tries": 0,
+      "line": 3367,
+      "via": "semanticTokens"
+    },
+    "retokenizeHover": {
+      "ms": 2,
+      "tries": 0
+    },
+    "fpsIdle": {
+      "frames": 181,
+      "spanMs": 3002,
+      "fps": 60,
+      "medGapMs": 16.7,
+      "p95GapMs": 16.8,
+      "maxGapMs": 16.8,
+      "longFrames": 0,
+      "window": "idle 3s (대조군)"
+    },
+    "procs": [
+      {
+        "pid": 28588,
+        "name": "agentcodegui.exe",
+        "lsp": null
+      },
+      {
+        "pid": 27308,
+        "name": "node.exe",
+        "lsp": "ts-ls"
+      },
+      {
+        "pid": 31060,
+        "name": "conhost.exe",
+        "lsp": null
+      },
+      {
+        "pid": 29664,
+        "name": "msedgewebview2.exe",
+        "lsp": null
+      },
+      {
+        "pid": 30380,
+        "name": "msedgewebview2.exe",
+        "lsp": null
+      },
+      {
+        "pid": 18572,
+        "name": "node.exe",
+        "lsp": "tsserver"
+      },
+      {
+        "pid": 25172,
+        "name": "msedgewebview2.exe",
+        "lsp": null
+      },
+      {
+        "pid": 18840,
+        "name": "msedgewebview2.exe",
+        "lsp": null
+      }
+    ],
+    "viewer": {
+      "checks": [
+        {
+          "id": "viewer-open",
+          "ok": true,
+          "ms": 2131,
+          "detail": {
+            "lines": 36
+          }
+        },
+        {
+          "id": "viewer-semantic-paint",
+          "ok": true,
+          "ms": 1,
+          "detail": {
+            "spans": 45,
+            "waitMs": 1,
+            "kind": "semantic"
+          }
+        },
+        {
+          "id": "viewer-hover-card",
+          "ok": true,
+          "ms": 417,
+          "detail": {
+            "waitMs": 411,
+            "card": "FUNCTION NAME makeConfig PARAMS id: number name: string mode?: BenchMode RETURN BenchConfig"
+          }
+        },
+        {
+          "id": "viewer-goto-definition",
+          "ok": true,
+          "ms": 258,
+          "detail": {
+            "waitMs": 252,
+            "from": "big.ts",
+            "title": "lib.ts"
+          }
+        },
+        {
+          "id": "viewer-completion-popup",
+          "ok": true,
+          "ms": 3618,
+          "detail": {
+            "waitMs": 259,
+            "options": 4,
+            "first": [
+              "lookup",
+              "register",
+              "size",
+              "tagsOf"
+            ]
+          }
+        }
+      ],
+      "shots": "C:\\Code\\AgentCodeGUI\\bench\\shots\\lsp-tauri-ts",
+      "pass": 5,
+      "total": 5
+    }
+  },
+  "warm": {
+    "phase": "warm",
+    "home": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-lsp-home-tauri",
+    "pid": 6636,
+    "semantic": true,
+    "mounted": true,
+    "probeSurvived": true,
+    "ready": {
+      "installedAt": 48,
+      "watchStart": 48,
+      "readyAt": 170,
+      "states": [
+        "ready"
+      ],
+      "statusErr": null
+    },
+    "prewarmMs": 170,
+    "prewarmFromProbeMs": 122,
+    "paint": {
+      "cacheAtMs": 172,
+      "cacheHit": true,
+      "cacheN": 10925,
+      "liveAtMs": 551,
+      "liveN": 10925,
+      "tries": 0,
+      "liveAfterReadyMs": 381
+    },
+    "liveTokens": {
+      "ms": 31,
+      "n": 10925,
+      "types": 12,
+      "tries": 0
+    },
+    "cached": {
+      "ms": 11,
+      "p50": 5.1,
+      "min": 5,
+      "n": 10925,
+      "hit": true,
+      "rows": [
+        {
+          "ms": 11,
+          "n": 10925,
+          "hit": true
+        },
+        {
+          "ms": 5.1,
+          "n": 10925,
+          "hit": true
+        },
+        {
+          "ms": 5,
+          "n": 10925,
+          "hit": true
+        },
+        {
+          "ms": 5,
+          "n": 10925,
+          "hit": true
+        },
+        {
+          "ms": 5.1,
+          "n": 10925,
+          "hit": true
+        }
+      ]
+    },
+    "fps": {
+      "frames": 121,
+      "spanMs": 2066,
+      "fps": 58.1,
+      "medGapMs": 16.7,
+      "p95GapMs": 17,
+      "maxGapMs": 50,
+      "longFrames": 1,
+      "window": "문서 시작 → 첫 색칠+토큰 왕복+캐시 표본 (최소 2s)"
+    },
+    "procs": [
+      {
+        "pid": 6636,
+        "name": "agentcodegui.exe",
+        "lsp": null
+      },
+      {
+        "pid": 15364,
+        "name": "node.exe",
+        "lsp": "ts-ls"
+      },
+      {
+        "pid": 9644,
+        "name": "conhost.exe",
+        "lsp": null
+      },
+      {
+        "pid": 32280,
+        "name": "msedgewebview2.exe",
+        "lsp": null
+      },
+      {
+        "pid": 412,
+        "name": "msedgewebview2.exe",
+        "lsp": null
+      },
+      {
+        "pid": 32080,
+        "name": "node.exe",
+        "lsp": "tsserver"
+      },
+      {
+        "pid": 29364,
+        "name": "msedgewebview2.exe",
+        "lsp": null
+      },
+      {
+        "pid": 29168,
+        "name": "msedgewebview2.exe",
+        "lsp": null
+      }
+    ]
+  },
+  "idle": {
+    "supported": true,
+    "ttlMs": 6000,
+    "beforeIdle": [
+      {
+        "pid": 31296,
+        "kind": "ts-ls"
+      },
+      {
+        "pid": 11760,
+        "kind": "tsserver"
+      }
+    ],
+    "afterIdle": [],
+    "reclaimed": true,
+    "respawnMs": 854,
+    "afterRespawn": [
+      {
+        "pid": 30972,
+        "kind": "ts-ls"
+      },
+      {
+        "pid": 30940,
+        "kind": "tsserver"
+      }
+    ],
+    "respawnedNewPid": true
+  }
+}

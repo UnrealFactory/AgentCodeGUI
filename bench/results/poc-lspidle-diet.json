@@ -1,0 +1,184 @@
+{
+  "harness": "poc-lspidle-diet",
+  "at": "2026-08-31T09:30:59.864Z",
+  "stage": "C:\\Code\\AgentCodeGUI\\src-tauri\\lsp-modules",
+  "size": {
+    "rawBytes": 45646102,
+    "rawFiles": 5426,
+    "stagedBytes": 30844953,
+    "stagedFiles": 5406,
+    "savedBytes": 14801149,
+    "savedFiles": 20
+  },
+  "arms": {
+    "repo": {
+      "cwd": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-lspidle-diet-work",
+      "rel": "src/big.ts",
+      "samples": 12,
+      "specId": "ts",
+      "serverRoot": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-lspidle-diet-work",
+      "resolve": {
+        "exe": "C:\\Code\\AgentCodeGUI\\target-lspidle\\release\\ccg-lspprobe.exe",
+        "processCwd": "C:\\Code\\AgentCodeGUI",
+        "node": "C:\\Code\\AgentCodeGUI\\src-tauri\\lsp-runtime\\node.exe",
+        "modules": {
+          "ts": "C:\\Code\\AgentCodeGUI\\node_modules\\typescript-language-server\\lib\\cli.mjs",
+          "py": "C:\\Code\\AgentCodeGUI\\node_modules\\pyright\\langserver.index.js",
+          "ts.tsserver": "C:\\Code\\AgentCodeGUI\\node_modules\\typescript\\lib\\tsserver.js"
+        },
+        "searchHint": "찾아본 자리 7곳: C:\\Code\\AgentCodeGUI · C:\\Code\\AgentCodeGUI\\target-lspidle\\release · C:\\Code\\AgentCodeGUI\\target-lspidle\\release\\resources · C:\\Code\\AgentCodeGUI\\target-lspidle · …",
+        "nodeHint": "Node 런타임을 못 찾았어요. 개발 배치로 보입니다 — `node scripts/tauri-build.mjs stage`로 런타임을 받거나 `CCG_LSP_NODE`로 직접 지정해 주세요. / Node runtime not found. This looks like a dev layout — run `node scripts/tauri-build.mjs stage`, or point `CCG_LSP_NODE` at a node binary. 찾아본 자리 / looked in:\n  - ① CCG_LSP_NODE=C:\\Code\\AgentCodeGUI\\src-tauri\\lsp-runtime\\node.exe (그 자리에 파일이 없다 / not a file)\n  - ② 설치 폴더 사이드카: C:\\Code\\AgentCodeGUI\\target-lspidle\\release\\node.exe (없음 / missing)\n  - ② resources 사이드카: C:\\Code\\AgentCodeGUI\\target-lspidle\\release\\resources\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: C:\\Code\\AgentCodeGUI\\target-lspidle\\release\\src-tauri\\lsp-runtime\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: C:\\Code\\AgentCodeGUI\\target-lspidle\\src-tauri\\lsp-runtime\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: 조상 3칸 더 봤지만 없다 / 3 more ancestors\n  - ④ PATH: cargo 산출 폴더라 봤지만 node를 못 찾았다 / searched PATH (cargo output dir)",
+        "launchError": null
+      },
+      "cachedMs": 20.4,
+      "cachedHit": false,
+      "prewarmMs": 101,
+      "status": "ready",
+      "states": [
+        "starting",
+        "ready"
+      ],
+      "tokenMs": 654,
+      "tokens": 1800,
+      "tokenTries": 0,
+      "semanticSupported": true,
+      "spots": 12,
+      "syms": [
+        "makeConfig",
+        "summarize"
+      ],
+      "hover": {
+        "n": 12,
+        "hits": 12,
+        "p50": 1.01,
+        "p95": 11.66
+      },
+      "definition": {
+        "n": 12,
+        "hits": 12,
+        "crossFile": 12,
+        "p50": 0.42,
+        "p95": 1.82
+      },
+      "completion": {
+        "n": 10,
+        "maxItems": 3,
+        "sample": [
+          "lookup",
+          "register",
+          "size"
+        ],
+        "p50": 4.09,
+        "p95": 22.77
+      }
+    },
+    "staged": {
+      "cwd": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-lspidle-diet-work",
+      "rel": "src/big.ts",
+      "samples": 12,
+      "specId": "ts",
+      "serverRoot": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-lspidle-diet-work",
+      "resolve": {
+        "exe": "C:\\Code\\AgentCodeGUI\\target-lspidle\\release\\ccg-lspprobe.exe",
+        "processCwd": "C:\\Code\\AgentCodeGUI",
+        "node": "C:\\Code\\AgentCodeGUI\\src-tauri\\lsp-runtime\\node.exe",
+        "modules": {
+          "ts": "C:\\Code\\AgentCodeGUI\\src-tauri\\lsp-modules\\node_modules\\typescript-language-server\\lib\\cli.mjs",
+          "py": "C:\\Code\\AgentCodeGUI\\src-tauri\\lsp-modules\\node_modules\\pyright\\langserver.index.js",
+          "ts.tsserver": "C:\\Code\\AgentCodeGUI\\src-tauri\\lsp-modules\\node_modules\\typescript\\lib\\tsserver.js"
+        },
+        "searchHint": "찾아본 자리 7곳: C:\\Code\\AgentCodeGUI\\src-tauri\\lsp-modules · C:\\Code\\AgentCodeGUI\\target-lspidle\\release · C:\\Code\\AgentCodeGUI\\target-lspidle\\release\\resources · C:\\Code\\AgentCodeGUI\\target-lspidle · …",
+        "nodeHint": "Node 런타임을 못 찾았어요. 개발 배치로 보입니다 — `node scripts/tauri-build.mjs stage`로 런타임을 받거나 `CCG_LSP_NODE`로 직접 지정해 주세요. / Node runtime not found. This looks like a dev layout — run `node scripts/tauri-build.mjs stage`, or point `CCG_LSP_NODE` at a node binary. 찾아본 자리 / looked in:\n  - ① CCG_LSP_NODE=C:\\Code\\AgentCodeGUI\\src-tauri\\lsp-runtime\\node.exe (그 자리에 파일이 없다 / not a file)\n  - ② 설치 폴더 사이드카: C:\\Code\\AgentCodeGUI\\target-lspidle\\release\\node.exe (없음 / missing)\n  - ② resources 사이드카: C:\\Code\\AgentCodeGUI\\target-lspidle\\release\\resources\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: C:\\Code\\AgentCodeGUI\\target-lspidle\\release\\src-tauri\\lsp-runtime\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: C:\\Code\\AgentCodeGUI\\target-lspidle\\src-tauri\\lsp-runtime\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: 조상 3칸 더 봤지만 없다 / 3 more ancestors\n  - ④ PATH: cargo 산출 폴더라 봤지만 node를 못 찾았다 / searched PATH (cargo output dir)",
+        "launchError": null
+      },
+      "cachedMs": 0.18,
+      "cachedHit": false,
+      "prewarmMs": 101,
+      "status": "ready",
+      "states": [
+        "starting",
+        "ready"
+      ],
+      "tokenMs": 638,
+      "tokens": 1800,
+      "tokenTries": 0,
+      "semanticSupported": true,
+      "spots": 12,
+      "syms": [
+        "makeConfig",
+        "summarize"
+      ],
+      "hover": {
+        "n": 12,
+        "hits": 12,
+        "p50": 0.99,
+        "p95": 11.74
+      },
+      "definition": {
+        "n": 12,
+        "hits": 12,
+        "crossFile": 12,
+        "p50": 0.45,
+        "p95": 1.88
+      },
+      "completion": {
+        "n": 10,
+        "maxItems": 3,
+        "sample": [
+          "lookup",
+          "register",
+          "size"
+        ],
+        "p50": 4.44,
+        "p95": 22.89
+      }
+    }
+  },
+  "checks": [
+    {
+      "name": "repo: 서버가 ready로 뜬다",
+      "ok": true,
+      "detail": "status=ready launchError=—"
+    },
+    {
+      "name": "staged: 서버가 ready로 뜬다",
+      "ok": true,
+      "detail": "status=ready launchError=—"
+    },
+    {
+      "name": "★거른 사본을 물었다(레포가 아니라)",
+      "ok": true,
+      "detail": "C:\\Code\\AgentCodeGUI\\src-tauri\\lsp-modules\\node_modules\\typescript-language-server\\lib\\cli.mjs"
+    },
+    {
+      "name": "레포 팔은 레포를 물었다(대조군)",
+      "ok": true,
+      "detail": "C:\\Code\\AgentCodeGUI\\node_modules\\typescript-language-server\\lib\\cli.mjs"
+    },
+    {
+      "name": "★호버 적중이 두 팔에서 같다",
+      "ok": true,
+      "detail": "repo 12/12 · staged 12/12"
+    },
+    {
+      "name": "★정의 이동(크로스 파일)이 두 팔에서 같다",
+      "ok": true,
+      "detail": "repo 12 · staged 12"
+    },
+    {
+      "name": "★시맨틱 토큰 수가 두 팔에서 같다",
+      "ok": true,
+      "detail": "repo 1800 · staged 1800"
+    },
+    {
+      "name": "자동완성 후보 수가 두 팔에서 같다",
+      "ok": true,
+      "detail": "repo 3(lookup,register,size) · staged 3(lookup,register,size)"
+    },
+    {
+      "name": "★실제로 줄었다",
+      "ok": true,
+      "detail": "43.53MB(5426개) → 29.42MB(5406개) · −14.12MB"
+    }
+  ]
+}

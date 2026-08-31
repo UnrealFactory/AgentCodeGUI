@@ -127,6 +127,31 @@ pub fn now_ms() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
 }
 
+/// ★LSPIDLE R1 — 자식을 **콘솔 없이** 띄우는 플래그. `CREATE_NO_WINDOW`가 아니다.
+///
+/// 두 플래그의 차이가 프로세스 하나를 만든다:
+///
+/// | 플래그 | 콘솔 | 결과 |
+/// |---|---|---|
+/// | `CREATE_NO_WINDOW`(0x0800_0000) | **새 콘솔을 만든다**(창만 안 보인다) | 그 콘솔을 host할 `conhost.exe`가 **같이 뜬다** |
+/// | `DETACHED_PROCESS`(0x0000_0008) | 아예 안 만들고 부모 것도 안 물려준다 | conhost 없음 |
+///
+/// 유휴 프로세스 수 실측이 그 한 칸이었다: `bench/results/ratios-gates-r1.json`의
+/// `lspSplitGates.tauri`가 센 헬퍼 **3개**는 `tsls cli.mjs` · `tsserver.js` ·
+/// **`conhost.exe 0x4`**다. 게이트 G6(유휴 프로세스 수)이 8 대 7로 진 그 한 칸이고,
+/// 2.6.2는 Electron을 Node로 재활용해 GUI 프로세스로 띄우므로 애초에 콘솔이 없었다.
+/// (conhost 몫은 `ratios.mjs:176-179`이 ppid로 헬퍼에 붙여 세고 있어 메모리에도 실린다.)
+///
+/// **stdio 파이프는 그대로 산다.** DETACHED_PROCESS가 끊는 것은 «콘솔 연결»이지
+/// «표준 핸들»이 아니다 — 우리는 셋 다 `Stdio::piped()`로 명시해 넘기므로 자식은 콘솔이
+/// 있든 없든 그 파이프를 받는다. 콘솔을 물려받는 경로에 기대는 프로그램(대화형 셸,
+/// `powershell.exe`)만 이 플래그에서 기동 자체가 막힌다 — 업데이트 스플래시가 밟았던
+/// 그 함정이다. 우리가 띄우는 것은 `node.exe`·`clangd.exe`·Roslyn으로 전부 stdio LSP
+/// 서버라 콘솔을 안 쓴다. 그래도 **말로 때우지 않는다**: `scripts/poc-lspidle-conhost.mjs`가
+/// 실물 서버를 띄워 ① conhost 0개 ② 호버·토큰이 파이프로 오간다를 같이 확인한다.
+#[cfg(windows)]
+const DETACHED_PROCESS: u32 = 0x0000_0008;
+
 /// 스펙의 실행 계획을 실제 명령으로 — 못 만들면 이유를 문자열로.
 fn plan(spec: &ServerSpec, root: &Path) -> Result<(PathBuf, Vec<String>), String> {
     match &spec.launch {
@@ -176,18 +201,26 @@ impl Server {
             // 2.6.2는 Electron을 Node로 쓰느라 이 변수가 필요했다. 진짜 node.exe에는
             // 무해하지만, 혹시 Electron 바이너리를 가리키게 되어도 같은 동작이 되게 남긴다.
             c.env("ELECTRON_RUN_AS_NODE", "1");
+            // ★LSPIDLE R1 — 이 node가 **손자를 띄울 때도** 콘솔을 안 만들게(자세한 이유는
+            // `launch::NO_CONSOLE_PRELOAD`). 조각을 못 쓰면 `None`이고, 그때는 아무것도 안
+            // 건다 — 없는 파일을 `--require`하면 node가 기동조차 못 한다.
+            if let Some(v) = crate::launch::node_options_with_preload(std::env::var("NODE_OPTIONS").ok()) {
+                c.env("NODE_OPTIONS", v);
+            }
         }
         #[cfg(windows)]
         {
             use std::os::windows::process::CommandExt;
-            // CREATE_NO_WINDOW — 콘솔 창이 깜빡이지 않게
-            c.creation_flags(0x0800_0000);
+            c.creation_flags(DETACHED_PROCESS);
         }
         let mut child = c.spawn().map_err(|e| format!("서버 실행 실패: {e}"))?;
         let pid = child.id();
         // 앱이 어떤 식으로 죽든(크래시 포함) OS가 이 트리를 걷어가게 — jobkill.rs 헤더 참고.
         // 정상 경로의 회수(유휴 스윕·dispose_all)는 그대로 있고, 이건 그 밑의 안전망이다.
         crate::jobkill::adopt(pid);
+        // ★LSPIDLE R1 — 회수를 **놓쳤을 때**의 세 번째 겹(zombie.rs 헤더의 표).
+        // 여기서 핸들을 열어 두면 이 PID는 재사용되지 않는다 = 나중에 죽여도 안전하다.
+        crate::zombie::track(pid);
         let stdin = child.stdin.take().ok_or("stdin 없음")?;
         let stdout = child.stdout.take().ok_or("stdout 없음")?;
         let stderr = child.stderr.take();
@@ -499,6 +532,26 @@ impl Server {
             let _ = child.wait();
         }
         *c = None;
+        drop(c);
+        // 정상 경로로 접었다 — 원장에서 내린다(핸들도 여기서 닫힌다).
+        crate::zombie::forget(self.pid);
+    }
+
+    /// 지금 **일을 하고 있는가** — 초기화 중이거나 백그라운드 인덱싱 진행률이 흐르는 중.
+    ///
+    /// ★LSPIDLE R1이 판 자리. 유휴 판정은 «마지막 쿼리 이후 경과»뿐이었는데(§R2-1이
+    /// `status` 폴링의 touch를 걷어낸 뒤로 그렇다), 그러면 **인덱싱만 하는 서버가 유휴로
+    /// 보인다**. clangd가 UE 프로젝트를 30분 넘게 인덱싱하는 동안 쿼리가 한 번도 없으면
+    /// TTL(30분)이 그대로 차서, 회수 → 재스폰 → 인덱스를 처음부터 → 다시 회수… 로 도는
+    /// 방아를 만든다. 「회수가 체감 손해가 아니다」는 명제가 거기서 뒤집힌다.
+    ///
+    /// 그래서 스윕은 이 값이 참인 동안 **타이머를 되감는다**(건너뛰지 않는다 — 건너뛰기만
+    /// 하면 인덱싱이 끝나는 순간 이미 TTL을 넘긴 상태라 곧바로 접힌다).
+    /// 되감기가 영원히 이어지는 병(진행률 `end`를 안 보내는 서버가 실재한다)은
+    /// [`crate::manager`]의 절대 상한이 따로 막는다.
+    pub fn indexing(&self) -> bool {
+        let st = self.state.lock().unwrap();
+        st.status == Status::Starting || st.project_init_pending || st.progress_pct.is_some()
     }
 
     // ── 문서 동기화 ──────────────────────────────────────────────────────────
@@ -1130,13 +1183,21 @@ fn kill_tree(pid: u32) {
     use std::os::windows::process::CommandExt;
     let _ = Command::new("taskkill")
         .args(["/PID", &pid.to_string(), "/T", "/F"])
-        .creation_flags(0x0800_0000)
+        // ★LSPIDLE R1 — 여기도 CREATE_NO_WINDOW였다. taskkill은 수십 ms만 살지만 그 사이
+        // conhost가 같이 뜨고, 회수가 잦아질수록(이 라운드가 하는 일이다) 그 깜빡임도 잦아진다.
+        .creation_flags(DETACHED_PROCESS)
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status();
 }
 #[cfg(not(windows))]
 fn kill_tree(_pid: u32) {}
+
+/// 좀비 안전망이 쓰는 문 — `Server` 없이 **PID만으로** 트리를 접는다.
+/// (원장이 들고 있는 PID는 핸들 덕에 재사용이 없다 — [`crate::zombie`] 헤더 참고.)
+pub(crate) fn kill_tree_pid(pid: u32) {
+    kill_tree(pid);
+}
 
 #[allow(dead_code)]
 fn provision_note(p: Provision) -> &'static str {
@@ -1150,6 +1211,23 @@ fn provision_note(p: Provision) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// ★LSPIDLE R1 — **conhost를 부르는 플래그로 되돌아가지 않게.**
+    ///
+    /// 이 값은 눈으로는 옛 값과 구분이 안 되고(둘 다 「창 없이」로 읽힌다), 틀려도 기능은
+    /// 멀쩡히 돈다 — 프로세스가 하나 더 뜰 뿐이다. 그래서 실측 없이는 아무도 모른다.
+    /// 실물 확인은 `scripts/poc-lspidle-conhost.mjs`가 하고, 여기서는 **값이 바뀌면
+    /// 그 이유를 읽게** 만든다.
+    #[cfg(windows)]
+    #[test]
+    fn the_child_is_spawned_detached_not_merely_windowless() {
+        assert_eq!(DETACHED_PROCESS, 0x0000_0008, "DETACHED_PROCESS의 값이 아니다");
+        assert_ne!(
+            DETACHED_PROCESS, 0x0800_0000,
+            "CREATE_NO_WINDOW로 되돌렸다 — 창은 안 보여도 콘솔은 만들어지고 conhost.exe가 따라 뜬다. \
+             유휴 프로세스 수가 헬퍼마다 하나씩 늘어난다(게이트 G6가 8 대 7로 진 그 칸)"
+        );
+    }
 
     #[test]
     fn absolutize_matches_lsp_relative_encoding() {

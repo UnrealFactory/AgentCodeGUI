@@ -31,7 +31,18 @@
 
 import { spawn, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { createReadStream, existsSync, mkdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import {
+  copyFileSync,
+  createReadStream,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync
+} from 'node:fs'
 import { createRequire } from 'node:module'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -186,6 +197,105 @@ async function stageNodeRuntime() {
   console.log(`[tauri-build] LSP node 런타임 준비 완료: ${NODE_PIN.version} (${(sz / 1048576).toFixed(2)}MB · sha256 검증됨)`)
 }
 
+// ── ★LSPIDLE R1 — LSP 모듈을 **걸러서** 스테이징한다(유령 바이트 다이어트) ──────────
+//
+// R2까지 `bundle.resources`는 레포의 `../node_modules/…`를 그대로 가리켰고, tauri 번들러가
+// 그 폴더를 통째로 날랐다. `docs/parity-fix-lspdist-r1.md` §6이 그 안의 **14.1MB가 아무도 안
+// 쓰는 바이트**임을 이미 재 놓았는데(설치 폴더의 9.4%), R1은 「파일 목록을 손으로 관리하는
+// 비용」을 이유로 남겨 뒀다.
+//
+// 그 비용을 없애는 방법은 **목록이 아니라 규칙**이다. 아래 `MODULE_EXCLUDES`는 파일 이름이
+// 아니라 «무엇을 안 싣는가»의 패턴이라, TypeScript 판이 올라 파일이 바뀌어도 그대로 산다.
+// 그리고 규칙이 계약을 침범하지 못하게 **크레이트 쪽 못**이 이 배열을 읽어
+// `bundled_files()`의 어느 경로도 걸리지 않는지 확인한다
+// (`crates/ccg-lsp/src/spec.rs::the_diet_never_eats_a_file_the_contract_promises`).
+// 즉 이 목록에 `lib`나 `package.json`을 실수로 넣으면 **빌드가 아니라 테스트가** 먼저 죽는다.
+//
+// ★단일 출처는 이 배열이다 — 크레이트가 여기서 읽어 간다(NODE_PIN과 같은 규약).
+const MODULE_EXCLUDES = [
+  // tsc(명령줄 컴파일러)의 본체. 우리는 tsserver만 띄운다 — `tsserver.js`가 요구하는 것은
+  // `_tsserver.js`고 그것이 요구하는 것은 `typescript.js`다(둘 다 남는다). 6.24MB.
+  'typescript/lib/_tsc.js',
+  'typescript/lib/tsc.js',
+  // 진단 메시지 번역 13벌. tsserver는 `--locale`을 받을 때만 읽는데 우리는 안 넘긴다.
+  // (뷰어가 쓰는 것은 호버·토큰·정의·완성이고 그 문자열은 언제나 영어 원문이다.) 4.47MB.
+  'typescript/lib/cs/', 'typescript/lib/de/', 'typescript/lib/es/', 'typescript/lib/fr/',
+  'typescript/lib/it/', 'typescript/lib/ja/', 'typescript/lib/ko/', 'typescript/lib/pl/',
+  'typescript/lib/pt-br/', 'typescript/lib/ru/', 'typescript/lib/tr/', 'typescript/lib/zh-cn/',
+  'typescript/lib/zh-tw/',
+  // 소스맵 — 디버거가 붙을 때만 읽힌다. 사용자 PC에서 그럴 일이 없다. 4.09MB.
+  '*.js.map',
+  '*.mjs.map'
+]
+
+const STAGE_MODULES = join(REPO, 'src-tauri', 'lsp-modules')
+
+/** 이 상대 경로(`node_modules` 아래, 슬래시 표기)가 제외 대상인가. */
+function isExcluded(rel) {
+  const r = rel.replace(/\\/g, '/')
+  return MODULE_EXCLUDES.some((p) => {
+    if (p.startsWith('*')) return r.endsWith(p.slice(1)) // 확장자 패턴
+    if (p.endsWith('/')) return r === p.slice(0, -1) || r.startsWith(p) // 폴더 통째
+    return r === p // 파일 하나
+  })
+}
+
+/** 폴더/파일 하나를 거르며 복사. 반환 = `{files, bytes, skipped, skippedBytes}`. */
+function copyFiltered(srcAbs, dstAbs, relBase, acc) {
+  const st = statSync(srcAbs, { throwIfNoEntry: false })
+  if (!st) throw new Error(`스테이징 출처가 없다: ${srcAbs}`)
+  if (st.isDirectory()) {
+    for (const name of readdirSync(srcAbs)) {
+      copyFiltered(join(srcAbs, name), join(dstAbs, name), `${relBase}/${name}`, acc)
+    }
+    return
+  }
+  if (isExcluded(relBase)) {
+    acc.skipped += 1
+    acc.skippedBytes += st.size
+    return
+  }
+  mkdirSync(dirname(dstAbs), { recursive: true })
+  copyFileSync(srcAbs, dstAbs)
+  acc.files += 1
+  acc.bytes += st.size
+}
+
+/**
+ * `tauri.conf.json`의 `bundle.resources` 중 `node_modules/…`로 가는 항목들을 **거른 사본**으로
+ * 만든다. 실을 목록의 출처는 여전히 매니페스트 하나다 — 여기서 두 번째 목록을 만들지 않는다.
+ */
+function stageLspModules() {
+  const conf = JSON.parse(readFileSync(join(REPO, 'src-tauri', 'tauri.conf.json'), 'utf8'))
+  const res = conf?.bundle?.resources ?? {}
+  const wanted = Object.entries(res)
+    .filter(([, dest]) => typeof dest === 'string' && dest.startsWith('node_modules/'))
+    .map(([, dest]) => dest.slice('node_modules/'.length))
+  if (wanted.length === 0) {
+    console.log('[tauri-build] LSP 모듈: 매니페스트에 node_modules 항목이 없다 — 스테이징 건너뜀.')
+    return
+  }
+  // **매번 새로 만든다.** 남은 사본을 재활용하면 매니페스트에서 항목을 뺐을 때 그 파일이
+  // 설치기에 계속 실린다(=유령이 다시 산다). 스테이징은 수백 ms짜리 파일 복사다.
+  rmSync(STAGE_MODULES, { recursive: true, force: true })
+  const acc = { files: 0, bytes: 0, skipped: 0, skippedBytes: 0 }
+  for (const tail of wanted) {
+    const src = join(REPO, 'node_modules', ...tail.split('/'))
+    const dst = join(STAGE_MODULES, 'node_modules', ...tail.split('/'))
+    if (!existsSync(src)) {
+      console.error(`[tauri-build] ✖ LSP 모듈 스테이징 실패 — 매니페스트가 약속한 자리가 없다: ${src}`)
+      console.error('[tauri-build]   `npm install`이 안 돌았거나 매니페스트가 틀렸다. 굽기 전에 멈춘다.')
+      process.exit(1)
+    }
+    copyFiltered(src, dst, tail, acc)
+  }
+  const mb = (n) => (n / 1048576).toFixed(2)
+  console.log(
+    `[tauri-build] LSP 모듈 스테이징 완료: ${acc.files}개 ${mb(acc.bytes)}MB ` +
+      `(유령 ${acc.skipped}개 ${mb(acc.skippedBytes)}MB 뺐다 → ${STAGE_MODULES})`
+  )
+}
+
 function fatalRuntime(why, url) {
   // ★R3(크리틱 R2-L3) — 실패하고 나가면서 **원장을 지운다.** R2는 `node.exe`가 없는데
   // `node.exe.pin.json`만 남겨서, 폴더를 열어 본 사람에게 "스테이징됐다"고 거짓말했다.
@@ -207,6 +317,10 @@ function fatalRuntime(why, url) {
 }
 
 await stageNodeRuntime()
+// ★LSPIDLE R1 — 런타임 바로 뒤에서 모듈도 거른 사본으로 만든다(위 stageLspModules 주석).
+// `stage` 하위 명령에도 걸린다: 개발 실행이 무는 자리는 여전히 레포의 node_modules라
+// 개발이 안 깨지고, 굽기 전에 사본이 최신이라는 것만 보장된다.
+stageLspModules()
 if (stageOnly) {
   console.log('[tauri-build] 스테이징만 하고 끝낸다(stage) — 굽지 않는다.')
   process.exit(0)

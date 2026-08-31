@@ -16,7 +16,7 @@ use crate::server::{now_ms, Server, Status};
 use crate::spec::{root_for, ServerSpec};
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
@@ -24,6 +24,22 @@ use std::time::{Duration, Instant};
 /// 밖에서 죽인 서버의 **자동 복귀 시간**이기도 하다 — 2.6.2 실측 30.6초와 같은 자리.
 const RESPAWN_COOLDOWN_MS: u64 = 30_000;
 const SWEEP_EVERY_MS_DEFAULT: u64 = 60_000;
+
+/// ★LSPIDLE R1 — **절대 상한.** 어떤 유예도 이 나이를 넘겨 서버를 살려 두지 못한다.
+///
+/// [`Server::indexing`]이 도입한 되감기가 여는 구멍을 여기서 닫는다: 진행률 `end`를 영영
+/// 안 보내는 서버(clangd가 실제로 그런다 — `project_state`가 그 때문에 진행률이 흐르는 동안을
+/// 따로 다룬다)는 `indexing()`이 계속 참이라 타이머가 무한히 되감긴다. 그러면 이 라운드가
+/// 고치려던 «항상 산다»를 다른 문으로 되살리는 셈이다.
+///
+/// 값은 2.6.2의 무거운 서버 TTL과 같은 30분이다 — 「그만큼 조용했으면 접는다」의 파리티.
+/// 스펙의 `idle_ttl_ms`가 이보다 길면 그쪽을 존중한다(상한은 **유예**의 상한이지
+/// 스펙의 상한이 아니다).
+const IDLE_GRACE_CAP_MS: u64 = 30 * 60_000;
+
+/// 원장에 남은 자식이 이 나이를 넘겼는데 주인이 없으면 걷는다([`crate::zombie::sweep`]).
+/// 2.6.2 엔진 좀비 안전망과 같은 눈금.
+const ZOMBIE_MAX_AGE_MS: u64 = 30 * 60_000;
 /// 기능 호출이 "스폰이 끝나기"를 기다리는 상한. `status`는 이걸 **안 기다린다**(아래 `start`).
 const SPAWN_WAIT: Duration = Duration::from_millis(5_000);
 
@@ -35,11 +51,19 @@ struct Entry {
     /// 죽음을 **처음 관측한** 시각(0 = 살아 있음) — 쿨다운 판정의 기준점.
     died_at_ms: u64,
     last_error: Option<String>,
+    /// ★LSPIDLE R1 — **「회수됨」**. 유휴 스윕이 정상적으로 접은 시각(0 = 그런 적 없음).
+    ///
+    /// `died_at_ms`와 일부러 다른 칸이다. 죽음은 **사고**고 회수는 **정책**이라, 둘을 한
+    /// 칸에 쓰면 회수가 재스폰 쿨다운 30초를 무는(= 재열람이 30초 멈추는) 일이 생긴다.
+    /// 여기는 진단·계약면(`reclaimed`)이 읽는 자리이기도 하다.
+    reclaimed_at_ms: u64,
+    /// 회수 뒤 다시 살아난 횟수 — 「투명 재기동」이 실제로 도는지 벤치가 읽는 눈금.
+    revivals: u32,
 }
 
 impl Entry {
     fn empty() -> Entry {
-        Entry { server: None, spawning: false, died_at_ms: 0, last_error: None }
+        Entry { server: None, spawning: false, died_at_ms: 0, last_error: None, reclaimed_at_ms: 0, revivals: 0 }
     }
 }
 
@@ -128,6 +152,8 @@ fn key_of(spec: &ServerSpec, root: &Path) -> String {
 pub fn start(spec: &'static ServerSpec, root: &Path) -> Slot {
     let key = key_of(spec, root);
     prepare_once(spec, root, &key);
+    // 스윕이 멎어 있으면 여기서 되살린다 — 회수가 도는 유일한 보장이다(★LSPIDLE R1).
+    kick_sweeper_if_stalled();
     // 자리에서 밀려나는 죽은 서버 — 잠금을 놓은 뒤에 접는다(taskkill은 수십 ms).
     let stale: Option<Arc<Server>>;
     {
@@ -178,6 +204,53 @@ pub fn start(spec: &'static ServerSpec, root: &Path) -> Slot {
     }
     spawn_in_background(spec, root.to_path_buf(), key);
     Slot::Starting
+}
+
+/// ★LSPIDLE R1 — **기동 없이 준비만.** 프리웜([`crate::prewarm`])이 부르는 자리.
+///
+/// R1까지 프리웜은 `start()`를 불렀고, 그래서 「프로젝트를 열었다」만으로 서버가 떴다 —
+/// 코드 뷰어를 한 번도 안 열어도 헬퍼 세 개가 상주했다(`bench/results` gates 태그:
+/// WS 115.5MB · Priv 101.6MB · 유휴 프로세스 8 대 7). 그 자리를 이 함수가 대신한다.
+///
+/// 여기서 하는 일은 **다음에 올 기동을 싸게 만드는 것**뿐이고, 프로세스는 하나도 안 뜬다:
+///  - 스펙의 준비 훅(`prepare_root`) — C++의 `compile_commands.json`처럼 **서버 인자를
+///    만들려면 먼저 파일이 있어야 하는** 언어가 있다. 이건 수 초~수 분짜리라 열람 시점으로
+///    미루면 첫 호버가 그만큼 멈춘다. 기동과 달리 메모리를 상주시키지 않으므로 앞당겨도 된다.
+///  - 루트 해석(`root_for`) — C#의 «참조 프로젝트 최대» 솔루션 스캔이 여기서 캐시에 앉는다.
+///  - 실행 계획 해석(`launchable`) — node 런타임·번들 모듈 경로 사슬을 메모에 태운다.
+///
+/// 스윕도 여기서 깨우지 않는다 — 접을 서버가 없는데 60초마다 도는 스레드를 만들 이유가 없다.
+pub fn prepare(spec: &'static ServerSpec, root: &Path) {
+    prepare_once(spec, root, &key_of(spec, root));
+    // 실행 계획을 한 번 풀어 경로 메모를 데운다. 결과(기동 가능 여부)는 여기서 안 쓴다 —
+    // 못 띄우는 상태여도 그건 열람 시 `status`가 `need-install`로 정직하게 말할 일이다.
+    let _ = crate::server::launchable(spec, root);
+}
+
+/// 지금 살아 있는 서버들의 PID — 재기동이 **정말 새 프로세스인지** 보는 눈금.
+/// (회수가 이름만 바꾸고 같은 프로세스를 재사용하면 회수가 아니다.)
+pub fn live_pids() -> Vec<u32> {
+    let (m, _) = reg();
+    let r = m.lock().unwrap();
+    let mut v: Vec<u32> = r
+        .map
+        .values()
+        .filter_map(|e| e.server.as_ref())
+        .filter(|s| s.raw_status() != Status::Error)
+        .map(|s| s.pid)
+        .collect();
+    v.sort_unstable();
+    v
+}
+
+/// 지금 **회수돼 비어 있는** 자리 수와, 회수 뒤 되살아난 횟수(진단·벤치).
+/// `(회수된 자리, 재기동 횟수)` — 「투명 재기동」이 실제로 도는지 보는 눈금이다.
+pub fn reclaim_stats() -> (usize, u32) {
+    let (m, _) = reg();
+    let r = m.lock().unwrap();
+    let reclaimed = r.map.values().filter(|e| e.server.is_none() && e.reclaimed_at_ms > 0).count();
+    let revivals = r.map.values().map(|e| e.revivals).sum();
+    (reclaimed, revivals)
 }
 
 /// 스펙의 **준비 훅**([`ServerSpec::prepare_root`]) — 루트당 한 번, 백그라운드로.
@@ -248,6 +321,11 @@ fn spawn_in_background(spec: &'static ServerSpec, root: PathBuf, key: String) {
                 e.server = Some(s.clone());
                 e.died_at_ms = 0;
                 e.last_error = None;
+                // 회수됐던 자리가 다시 찼다 = **투명 재기동**이 한 번 돌았다.
+                if e.reclaimed_at_ms > 0 {
+                    e.reclaimed_at_ms = 0;
+                    e.revivals = e.revivals.saturating_add(1);
+                }
                 Some(s)
             }
             Err(err) => {
@@ -425,23 +503,90 @@ pub fn notify_files_changed(paths: &[PathBuf]) -> Vec<PathBuf> {
     notified.into_values().collect()
 }
 
+/// 마지막 스윕이 **끝난** 시각(0 = 아직 한 번도 안 돌았다) — 워치독의 맥박.
+static LAST_SWEEP_MS: AtomicU64 = AtomicU64::new(0);
+
+fn sweep_every_ms() -> u64 {
+    env_u64("CCG_LSP_SWEEP_MS").unwrap_or(SWEEP_EVERY_MS_DEFAULT)
+}
+
 fn start_sweeper() {
     if SWEEPER.swap(true, Ordering::SeqCst) {
         return;
     }
-    let every = env_u64("CCG_LSP_SWEEP_MS").unwrap_or(SWEEP_EVERY_MS_DEFAULT);
-    std::thread::Builder::new()
+    let every = sweep_every_ms();
+    let spawned = std::thread::Builder::new()
         .name("ccg-lsp-sweep".into())
         .spawn(move || loop {
             std::thread::sleep(Duration::from_millis(every));
             sweep_idle();
         })
-        .ok();
+        .is_ok();
+    if !spawned {
+        // 스레드를 못 만들었다 — 깃발을 도로 내려 다음 스폰이 다시 시도하게 한다.
+        // (여기서 참으로 남겨 두면 스윕이 **영원히** 안 돈다 = 회수도 안 돈다.)
+        SWEEPER.store(false, Ordering::SeqCst);
+    }
+}
+
+/// ★LSPIDLE R1 — **스윕 스레드의 워치독.** 맥박이 멎었으면 다시 띄운다.
+///
+/// 왜 필요한가: `SWEEPER`는 «한 번만 띄운다»는 래치라, 그 스레드가 어떤 이유로든 사라지면
+/// (패닉·OS의 스레드 실패) 깃발만 참으로 남고 회수는 **영영 안 돈다**. 그 상태는 밖에서
+/// 안 보인다 — 서버가 계속 사는 것으로만 나타난다. 이 라운드가 없애려는 증상 그대로다.
+///
+/// 스폰 경로에서만 부른다(= 서버가 실제로 있을 때만). 판정은 「마지막 스윕이 주기의 세 배보다
+/// 오래됐다」 — 한 번 늦은 것을 고장으로 오해하지 않을 만큼 느슨하다.
+fn kick_sweeper_if_stalled() {
+    if !SWEEPER.load(Ordering::SeqCst) {
+        return; // 아직 안 띄웠다 — start_sweeper가 할 일이다
+    }
+    let last = LAST_SWEEP_MS.load(Ordering::SeqCst);
+    if last == 0 {
+        return; // 첫 스윕 전 — 아직 맥박을 잴 수 없다
+    }
+    if now_ms().saturating_sub(last) <= sweep_every_ms().saturating_mul(3) {
+        return;
+    }
+    SWEEPER.store(false, Ordering::SeqCst);
+    start_sweeper();
+}
+
+/// 스윕이 살아 있는 서버 하나에 내리는 판정.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Sweep {
+    /// 아직 TTL 안 — 그대로 둔다.
+    Keep,
+    /// 일하는 중 — 타이머를 되감는다(유예).
+    Rewind,
+    /// 접는다.
+    Reclaim,
+}
+
+/// ★LSPIDLE R1 — 회수 규칙 **전부**가 여기 있다. 순수 함수인 이유는 하나다:
+/// 이 규칙의 돌연변이(타이머 무시 · 유예 삭제 · 상한 삭제)가 각각 다른 테스트를 붉히게
+/// 하려면, 판정이 실물 프로세스를 띄우지 않고도 불릴 수 있어야 한다.
+///
+/// 세 줄로 읽는다:
+///  1. TTL을 아직 안 채웠으면 둔다.
+///  2. 채웠지만 **일하는 중**이면(초기화·프로젝트 로드·인덱싱 진행률) 되감는다 —
+///     쿼리가 없다는 것과 노는 것은 다르다.
+///  3. 단, 그 유예도 [`IDLE_GRACE_CAP_MS`]까지다. 진행률 `end`를 영영 안 보내는 서버가
+///     이 문으로 영생하면 이 라운드가 고친 「항상 산다」가 다른 이름으로 돌아온다.
+fn sweep_decision(idle_ms: u64, ttl_ms: u64, indexing: bool) -> Sweep {
+    if idle_ms < ttl_ms {
+        return Sweep::Keep;
+    }
+    if indexing && idle_ms < IDLE_GRACE_CAP_MS {
+        return Sweep::Rewind;
+    }
+    Sweep::Reclaim
 }
 
 /// 유휴 회수 + 좀비 정리. 스윕 스레드가 부르고, 테스트가 직접 부를 수도 있다.
 pub fn sweep_idle() {
     let mut doomed: Vec<(Arc<Server>, &'static str)> = Vec::new();
+    let mut live_pids: Vec<u32> = Vec::new();
     {
         let (m, _) = reg();
         let mut r = m.lock().unwrap();
@@ -469,11 +614,18 @@ pub fn sweep_idle() {
                 }
                 continue;
             }
-            // ② 유휴 회수
-            if s.idle_ms() >= ttl_for(s.spec) {
-                doomed.push((s.clone(), "유휴 서버 회수"));
-                e.server = None;
-                e.died_at_ms = 0; // 정상 회수 — 쿨다운 없이 다음 요청이 바로 되살린다
+            live_pids.push(s.pid);
+            // ②③ 유휴 판정 — 규칙은 [`sweep_decision`]에 순수 함수로 있다(못이 거기 박힌다).
+            match sweep_decision(s.idle_ms(), ttl_for(s.spec), s.indexing()) {
+                Sweep::Keep => {}
+                // 일하는 중이다 — 타이머를 되감는다(★LSPIDLE R1, [`Server::indexing`])
+                Sweep::Rewind => s.touch(),
+                Sweep::Reclaim => {
+                    doomed.push((s.clone(), "유휴 서버 회수"));
+                    e.server = None;
+                    e.died_at_ms = 0; // 정상 회수 — 쿨다운 없이 다음 요청이 바로 되살린다
+                    e.reclaimed_at_ms = now_ms(); // 「회수됨」 — 사고가 아니라 정책이다
+                }
             }
         }
         for k in drop_keys {
@@ -484,6 +636,10 @@ pub fn sweep_idle() {
     for (s, why) in doomed {
         s.shutdown(why);
     }
+    // ④ 원장 스윕 — 위 셋을 **다 놓쳤을 때**의 마지막 겹(zombie.rs 헤더의 표 ③).
+    //    방금 접은 것들은 이미 `forget`으로 내려갔으므로 여기 안 걸린다.
+    let _ = crate::zombie::sweep(&live_pids, ZOMBIE_MAX_AGE_MS);
+    LAST_SWEEP_MS.store(now_ms(), Ordering::SeqCst);
 }
 
 /// 앱 종료 — 서버를 전부 접는다(안 접으면 node/tsserver가 그대로 남는다).
@@ -520,6 +676,67 @@ mod tests {
         assert_eq!(a, c, "후행 구분자가 다른 키를 만들면 서버가 두 벌 뜬다");
         // 대소문자도 접힌다(키는 소문자화된다)
         assert_eq!(a, key_of(spec, Path::new(&base.to_uppercase())));
+    }
+
+    /// ★LSPIDLE R1 — **회수 규칙의 못.** 세 돌연변이가 각각 다른 줄에서 붉어진다.
+    #[test]
+    fn the_reclaim_rule_honours_the_timer_the_grace_and_the_cap() {
+        let ttl = 10 * 60_000; // bundled 기본값(2.6.2 준거)
+
+        // ① 타이머 — TTL 전이면 무슨 일이 있어도 안 접는다.
+        //    (돌연변이 「회수 타이머 무시」= 항상 Reclaim → 이 줄이 붉어진다)
+        assert_eq!(sweep_decision(0, ttl, false), Sweep::Keep);
+        assert_eq!(sweep_decision(ttl - 1, ttl, false), Sweep::Keep);
+        assert_eq!(sweep_decision(ttl - 1, ttl, true), Sweep::Keep);
+
+        // ② TTL을 채웠고 노는 중이면 접는다. **경계는 >= 다** — `>`로 바꾸면
+        //    스윕 주기(60초)만큼 늦게 접힌다.
+        assert_eq!(sweep_decision(ttl, ttl, false), Sweep::Reclaim);
+        assert_eq!(sweep_decision(ttl * 9, ttl, false), Sweep::Reclaim);
+
+        // ③ 유예 — 일하는 중이면 되감는다.
+        //    (돌연변이 「유예 삭제」= indexing을 안 봄 → 이 줄이 붉어진다.
+        //     그 상태의 대가는 clangd 인덱스를 30분마다 처음부터 다시 도는 방아다.)
+        assert_eq!(sweep_decision(ttl, ttl, true), Sweep::Rewind);
+        assert_eq!(sweep_decision(IDLE_GRACE_CAP_MS - 1, ttl, true), Sweep::Rewind);
+
+        // ④ 절대 상한 — 유예도 여기까지다.
+        //    (돌연변이 「안전망 제거」= 상한 조건 삭제 → 이 줄이 붉어진다)
+        assert_eq!(sweep_decision(IDLE_GRACE_CAP_MS, ttl, true), Sweep::Reclaim);
+        assert_eq!(sweep_decision(IDLE_GRACE_CAP_MS * 2, ttl, true), Sweep::Reclaim);
+
+        // ⑤ 값 자체 — 2.6.2 파리티(10분/30분 · 안전망 30분)를 조용히 못 바꾸게.
+        assert_eq!(IDLE_GRACE_CAP_MS, 30 * 60_000, "유예 상한이 2.6.2의 무거운 TTL과 갈렸다");
+        assert_eq!(ZOMBIE_MAX_AGE_MS, 30 * 60_000, "좀비 안전망이 30분급이 아니다");
+        assert_eq!(SWEEP_EVERY_MS_DEFAULT, 60_000, "스윕 주기가 2.6.2(IDLE_SWEEP_EVERY)와 갈렸다");
+    }
+
+    /// ★LSPIDLE R1 — 회수 TTL과 스윕 주기는 **주입 가능해야** 한다.
+    /// 이 문이 없으면 벤치가 회수를 실증하려고 10분을 기다려야 하고, 그러면 아무도 안 잰다.
+    #[test]
+    fn the_timers_stay_injectable_for_the_bench() {
+        let ts = crate::spec::spec_by_id("ts").unwrap();
+        // 기본값은 스펙 그대로
+        std::env::remove_var("CCG_LSP_IDLE_TTL_MS");
+        assert_eq!(ttl_for(ts), ts.idle_ttl_ms);
+        std::env::remove_var("CCG_LSP_SWEEP_MS");
+        assert_eq!(sweep_every_ms(), SWEEP_EVERY_MS_DEFAULT);
+        // 주입하면 그 값이 이긴다(bench/lsp.mjs가 6000/1000을 먹인다)
+        std::env::set_var("CCG_LSP_IDLE_TTL_MS", "6000");
+        std::env::set_var("CCG_LSP_SWEEP_MS", "1000");
+        assert_eq!(ttl_for(ts), 6000);
+        assert_eq!(sweep_every_ms(), 1000);
+        std::env::remove_var("CCG_LSP_IDLE_TTL_MS");
+        std::env::remove_var("CCG_LSP_SWEEP_MS");
+    }
+
+    /// 서버가 하나도 없어도 스윕은 죽지 않는다(원장 스윕까지 포함해서).
+    #[test]
+    fn sweeping_an_empty_registry_is_harmless() {
+        sweep_idle();
+        assert_eq!(live_count(), 0);
+        // 회수한 적이 없으면 「회수됨」도 0이다(자리가 없는 것과 회수된 것은 다르다).
+        assert_eq!(reclaim_stats().0, 0);
     }
 
     /// 없는 폴더도 키를 만들 수 있어야 한다(canonicalize 실패 → 문법적 정규화).

@@ -207,6 +207,102 @@ pub fn node_search_hint() -> String {
 /// 세 곳이 같아야 개발(③)과 배포(②)가 같은 파일을 문다.
 pub const STAGED_RUNTIME_DIR: &str = "lsp-runtime";
 
+/// ★LSPIDLE R1 — **모듈 스테이징 자리.** 런타임(`lsp-runtime`)의 짝이다.
+///
+/// R2까지 `bundle.resources`는 레포의 `../node_modules/…`를 **그대로** 가리켰고, 그래서
+/// 설치기는 그 폴더를 통째로 날랐다 — 안 쓰는 14.1MB까지(§`docs/parity-fix-lspdist-r1.md` §6:
+/// `_tsc.js` 6.2MB · 로케일 13벌 4.5MB · 소스맵 4.1MB). R1은 그걸 알고도 남겼다.
+/// 사유가 「파일 목록을 손으로 관리하는 비용」이었는데, 그 비용을 **거르는 규칙**으로
+/// 바꾸면(=지우는 목록이 아니라 안 싣는 패턴) 판이 올라도 목록이 안 썩는다.
+///
+/// 이제 사슬은 레포 → **거른 사본** → 설치기다. 매니페스트는 여전히 「거울」이지만
+/// 비추는 대상이 거른 사본이고, 그 대조는 `spec.rs`의 매니페스트 못이 한다.
+pub const STAGED_MODULES_DIR: &str = "lsp-modules";
+
+// ── ★LSPIDLE R1 — 손자 프로세스의 conhost 끊기 ───────────────────────────────
+
+/// node 자식들이 **콘솔을 만들지 않게** 하는 프리로드 조각. 내용은 여기 문자열이 원본이고,
+/// 첫 기동 때 앱 홈에 떨군다(번들에 파일을 더하지 않는다 — 매니페스트 계약을 안 건드린다).
+///
+/// ## 왜 필요한가 — 플래그만으로는 절반만 닫힌다
+///
+/// [`crate::server`]의 `DETACHED_PROCESS`는 **우리가 띄우는 프로세스**의 콘솔을 없앤다.
+/// 그런데 TypeScript 서버는 두 겹이다: 우리가 띄우는 것은 `typescript-language-server`이고,
+/// 그것이 자기 손으로 `tsserver`를 `child_process.fork`한다. node의 기본값이
+/// `windowsHide:true`(=`CREATE_NO_WINDOW`)라 **그 손자가 콘솔을 새로 만든다** — 실측:
+/// 플래그만 바꾸면 conhost가 사라지는 게 아니라 부모에서 손자로 **옮겨간다**(둘 다 1개).
+///
+/// 우리는 그 fork 호출을 못 고친다. 그래서 그 프로세스의 node에게 **기본값을 바꿔 준다**:
+/// `NODE_OPTIONS=--require <이 파일>`은 node 트리 전체에 상속되므로, tsls가 tsserver를,
+/// tsserver가 typingsInstaller를 띄울 때도 같이 적용된다.
+/// libuv에서 `detached: true` → `DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP`이라
+/// 결과가 우리 플래그와 같아진다. 실측(`scripts/poc-lspidle-reclaim.mjs`):
+/// 정상 상태 자손이 **3(node·node·conhost) → 2(node·node)**.
+///
+/// ## 안전 규약 — 없으면 **안 건다**
+///
+/// `--require`가 가리키는 파일이 없으면 node는 `MODULE_NOT_FOUND`로 **기동 자체가 실패한다**.
+/// 즉 이 조각이 유실되면 그 대가가 「conhost가 하나 늘어난다」가 아니라 「코드 인텔리전스가
+/// 통째로 죽는다」다. 그래서 [`node_preload`]는 **파일을 쓰고 실재를 확인한 뒤에만** 경로를
+/// 돌려주고, 실패하면 `None` → 호출부는 `NODE_OPTIONS`를 아예 안 건다(서버는 그대로 뜨고
+/// conhost만 하나 남는다). 잃는 것이 큰 쪽으로 기울지 않게 만든 기본값이다.
+///
+/// 조각 자체도 **아무것도 던지지 않는다**: 감싸는 대상이 함수가 아니면 그냥 넘어가고,
+/// win32가 아니면 손대지 않는다.
+const NO_CONSOLE_PRELOAD: &str = r#"// AgentCodeGUI — LSP 자식 프로세스가 콘솔(conhost)을 만들지 않게 한다.
+// 이 파일은 앱이 만든다(crates/ccg-lsp/src/launch.rs::NO_CONSOLE_PRELOAD). 직접 고치지 마라 —
+// 다음 기동에 덮어쓴다. 실패해도 서버가 죽지 않도록 어떤 경우에도 throw하지 않는다.
+'use strict'
+try {
+  if (process.platform === 'win32') {
+    const cp = require('child_process')
+    // libuv: detached → DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP → 콘솔을 안 만든다.
+    // 트리 종료(taskkill /T)와 잡 오브젝트는 ppid를 보므로 그대로 동작한다.
+    const wrap = (name) => {
+      const orig = cp[name]
+      if (typeof orig !== 'function') return
+      cp[name] = function (...a) {
+        const i = a.length - 1
+        const isOpts = i >= 1 && a[i] && typeof a[i] === 'object' && !Array.isArray(a[i]) && typeof a[i] !== 'function'
+        if (isOpts) a[i] = Object.assign({}, a[i], { detached: true })
+        else a.push({ detached: true })
+        return orig.apply(this, a)
+      }
+    }
+    wrap('spawn')
+    wrap('fork')
+    wrap('execFile')
+  }
+} catch {
+  /* 콘솔이 하나 더 뜰 뿐이다 — 서버를 죽이지 않는다 */
+}
+"#;
+
+/// 프리로드 조각의 자리(앱 홈). 없거나 내용이 다르면 쓰고, **실재를 확인한 뒤** 돌려준다.
+/// 못 쓰면 `None` — 호출부는 그때 `NODE_OPTIONS`를 안 건다(위 「안전 규약」).
+pub fn node_preload() -> Option<PathBuf> {
+    let dir = ccg_store::app_home().join("lsp");
+    let p = dir.join("no-console-spawn.cjs");
+    let ok = std::fs::read_to_string(&p).map(|s| s == NO_CONSOLE_PRELOAD).unwrap_or(false);
+    if !ok {
+        std::fs::create_dir_all(&dir).ok()?;
+        std::fs::write(&p, NO_CONSOLE_PRELOAD).ok()?;
+    }
+    p.is_file().then_some(p)
+}
+
+/// `NODE_OPTIONS`에 실을 값 — 기존 값이 있으면 **앞에 두고 이어 붙인다**(사용자가 건 옵션을
+/// 지우지 않는다). 경로는 슬래시로 적는다: node의 `NODE_OPTIONS` 파서는 역슬래시를
+/// 이스케이프로 볼 여지가 있어, 사용자 이름에 든 `\U` 같은 조각에서 조용히 깨질 수 있다.
+pub fn node_options_with_preload(existing: Option<String>) -> Option<String> {
+    let p = node_preload()?;
+    let arg = format!("--require \"{}\"", p.to_string_lossy().replace('\\', "/"));
+    Some(match existing.filter(|s| !s.trim().is_empty()) {
+        Some(prev) => format!("{prev} {arg}"),
+        None => arg,
+    })
+}
+
 /// 이 폴더가 **cargo 산출 폴더**인가 — ⓐ 한두 칸 위 조상 폴더 이름이 `target…`이고
 /// ⓑ 여기에 cargo가 남기는 `.cargo-lock`이 있다. **AND다**(★R3 · 크리틱 R2-L2).
 ///

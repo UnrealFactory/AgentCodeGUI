@@ -15,6 +15,13 @@ name = "ccg-lspprobe"
 path = "src/bin/ccg_lspprobe.rs"
 required-features = ["cli"]
 
+# ★LSPIDLE R1 — 수명 시나리오(프리웜 무기동 → 열람 기동 → 유휴 회수 → 투명 재기동).
+# 같은 `cli` 피처 뒤에 둔다 — 앱 빌드에는 안 들어간다.
+[[bin]]
+name = "ccg-lspidle"
+path = "src/bin/ccg_lspidle.rs"
+required-features = ["cli"]
+
 [dependencies]
 serde = { workspace = true }
 serde_json = { workspace = true }
