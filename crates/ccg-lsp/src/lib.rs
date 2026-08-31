@@ -12,6 +12,7 @@
 
 pub mod cppdb;
 pub mod install;
+pub mod lifecycle;
 pub mod jobkill;
 pub mod launch;
 pub mod manager;
@@ -180,8 +181,37 @@ pub fn project_status(cwd: &str) -> Value {
     if cwd.is_empty() {
         return json!({ "state": "idle", "percent": Value::Null });
     }
-    let (state, pct) = manager::project_state(&normalize(Path::new(cwd)));
-    json!({ "state": state, "percent": pct })
+    let (state, pct, err) = manager::project_state(&normalize(Path::new(cwd)));
+    let mut o = json!({ "state": state, "percent": pct });
+    // ★LSPIDLE R2(크리틱 B급 ②) — **죽을 때 하는 말을 싣는다.**
+    //
+    // 크리틱이 판 자리: 프리로드 조각이 유실된 세계에서 `lsp:status`는 정직하게 `error`로
+    // 가는데, **그 이유가 어디에도 안 실렸다**. `Entry.last_error`(node의 `MODULE_NOT_FOUND`가
+    // 담기는 자리)는 `status`의 `Slot::Failed(_) => "error"`에서 버려지고, `servers()`에도
+    // `project_status()`에도 없었다. 그러면 사용자가 보는 것은 「코드 인텔리전스가 통째로
+    // 죽었고 이유는 안 보인다」다.
+    //
+    // LSPDIST가 런타임 쪽에 `node_search_hint`로 세운 규약 — 「소리 내어 죽되, **죽을 때
+    // 하는 말이 맞아야 한다**」 — 을 이 경로에도 놓는다. 계약면에 **더하기만** 하므로
+    // (`{state, percent}`는 그대로) 옛 렌더러는 이 칸을 무시하고 그대로 돈다.
+    if let Some(e) = err {
+        o["error"] = json!(clip(&e, 320));
+    }
+    o
+}
+
+/// 화면에 실을 만큼만 남긴다 — **앞에서** 자른다.
+///
+/// 서버가 죽을 때의 stderr 꼬리는 스택 전체(수천 자)일 수 있는데, 사용자가 읽어야 할 것은
+/// 거의 언제나 첫 줄들이다(`Error: Cannot find module 'X'`). 뒤를 자르면 그 문장이 남고,
+/// 앞을 자르면 프레임 목록만 남는다. 문자 경계에서 안전하게 자른다(한국어 경로가 섞인다).
+fn clip(s: &str, max: usize) -> String {
+    let t = s.trim();
+    if t.chars().count() <= max {
+        return t.to_string();
+    }
+    let head: String = t.chars().take(max).collect();
+    format!("{head}…")
 }
 
 // ── lsp:hover ────────────────────────────────────────────────────────────────
@@ -622,6 +652,23 @@ mod tests {
     ///
     /// 진짜 TS 프로젝트 모양(package.json)을 만들어 감지가 **걸리게** 한 뒤 부른다 —
     /// 감지가 안 걸려서 조용한 것은 이 테스트가 원하는 초록이 아니다.
+    ///
+    /// ## ★LSPIDLE R2 — 크리틱 B급 ①: 이 못은 **환경이 맞을 때만** 참이었다
+    ///
+    /// R1은 「프로세스가 떴는가」(`live_count`)만 봤다. 그런데 R1의 결함을 그대로 되살려도
+    /// (= `prewarm`이 스펙을 무시하고 `manager::start`를 부르게 해도) `Prewarm::Eager` 팔은
+    /// `server::launchable()` 실패에서 즉시 return하므로, **node 런타임이나 번들 모듈을 못
+    /// 찾는 기계에서는 아무것도 안 띄우고 조용히 초록**이었다. 크리틱이 두 팔로 갈라 실증했다:
+    ///
+    /// ```text
+    /// CCG_LSP_NODE·CCG_LSP_MODULES 없음 → ok. 1 passed   ← 결함이 있는데 초록
+    /// CCG_LSP_NODE·CCG_LSP_MODULES 있음 → FAILED
+    /// ```
+    ///
+    /// 갓 클론한 레포·스테이징 안 한 CI가 전부 앞쪽이다. 그래서 관측점을 **한 층 내린다**:
+    /// 「떴는가」가 아니라 **「기동을 걸었는가」**([`manager::start_calls`]). 그 수는 디스크에도
+    /// PATH에도 안 기대므로 어느 기계에서나 결함을 잡는다.
+    /// (「떴는가」도 그대로 같이 본다 — 둘은 서로를 대신하지 않는다.)
     #[test]
     fn prewarm_prepares_without_spawning_a_single_process() {
         let w = std::env::temp_dir().join(format!("ccg-lsp-prewarm-{}", std::process::id()));
@@ -633,9 +680,18 @@ mod tests {
         assert_eq!(detect_project_spec(&w).map(|s| s.id), Some("ts"), "픽스처가 TS 프로젝트로 안 읽힌다");
 
         let before = manager::live_count();
+        let starts_before = manager::start_calls();
         prewarm(&w.to_string_lossy());
         // 스폰은 백그라운드 스레드라 «즉시 0»만으로는 부족하다 — 뜰 시간을 주고도 0이어야 한다.
         std::thread::sleep(Duration::from_millis(700));
+        // ★관측점 ①(환경 무관) — 기동을 **걸었는가**. 이 줄이 크리틱 B급 ①을 닫는다.
+        assert_eq!(
+            manager::start_calls(),
+            starts_before,
+            "★프리웜이 manager::start를 불렀다 — 프로젝트를 여는 것만으로 기동이 걸린다는 뜻이고, \
+             이 기계에 node 런타임이 없어서 프로세스가 안 떴을 뿐이다(크리틱 B급 ①이 실증한 구멍)"
+        );
+        // ★관측점 ② — 실제로 뜬 프로세스(런타임이 잡히는 기계에서 한 겹 더).
         assert_eq!(
             manager::live_count(),
             before,

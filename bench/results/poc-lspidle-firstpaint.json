@@ -1,0 +1,112 @@
+{
+  "harness": "poc-lspidle-firstpaint",
+  "at": "2026-08-31T11:42:56.312Z",
+  "measures": "탐색기 클릭 → 뷰어 시맨틱 스팬>20 (캐시 미적중 · 온디맨드 기동 포함)",
+  "note": "bench/lsp.mjs의 「첫 색칠」은 프로브가 직접 부른 값이라 FileModal 폴링 격자를 안 지난다 — 그래서 이 계기가 따로 있다",
+  "runs": 4,
+  "arms": {
+    "fixed400": {
+      "runs": [
+        1241,
+        1253,
+        1245,
+        1279
+      ],
+      "median": 1253
+    },
+    "backoff": {
+      "runs": [
+        1066,
+        1169,
+        1070,
+        1060
+      ],
+      "median": 1070
+    },
+    "eager": {
+      "runs": [
+        1168,
+        1146,
+        1104,
+        1098
+      ],
+      "median": 1146
+    }
+  },
+  "recoveredByBackoffMs": 183,
+  "remainingOnDemandCostMs": -76,
+  "rows": [
+    {
+      "arm": "fixed400",
+      "seq": 1,
+      "paintMs": 1241,
+      "spans": 45
+    },
+    {
+      "arm": "backoff",
+      "seq": 1,
+      "paintMs": 1066,
+      "spans": 45
+    },
+    {
+      "arm": "eager",
+      "seq": 1,
+      "paintMs": 1168,
+      "spans": 45
+    },
+    {
+      "arm": "fixed400",
+      "seq": 2,
+      "paintMs": 1253,
+      "spans": 45
+    },
+    {
+      "arm": "backoff",
+      "seq": 2,
+      "paintMs": 1169,
+      "spans": 45
+    },
+    {
+      "arm": "eager",
+      "seq": 2,
+      "paintMs": 1146,
+      "spans": 45
+    },
+    {
+      "arm": "fixed400",
+      "seq": 3,
+      "paintMs": 1245,
+      "spans": 45
+    },
+    {
+      "arm": "backoff",
+      "seq": 3,
+      "paintMs": 1070,
+      "spans": 45
+    },
+    {
+      "arm": "eager",
+      "seq": 3,
+      "paintMs": 1104,
+      "spans": 45
+    },
+    {
+      "arm": "fixed400",
+      "seq": 4,
+      "paintMs": 1279,
+      "spans": 45
+    },
+    {
+      "arm": "backoff",
+      "seq": 4,
+      "paintMs": 1060,
+      "spans": 45
+    },
+    {
+      "arm": "eager",
+      "seq": 4,
+      "paintMs": 1098,
+      "spans": 45
+    }
+  ]
+}

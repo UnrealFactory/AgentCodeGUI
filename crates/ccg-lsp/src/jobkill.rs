@@ -16,11 +16,13 @@ mod imp {
     use std::sync::OnceLock;
     use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
     use windows_sys::Win32::System::JobObjects::{
-        AssignProcessToJobObject, CreateJobObjectW, SetInformationJobObject,
+        AssignProcessToJobObject, CreateJobObjectW, IsProcessInJob, SetInformationJobObject,
         JobObjectExtendedLimitInformation, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
         JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
     };
-    use windows_sys::Win32::System::Threading::{OpenProcess, PROCESS_SET_QUOTA, PROCESS_TERMINATE};
+    use windows_sys::Win32::System::Threading::{
+        OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SET_QUOTA, PROCESS_TERMINATE,
+    };
 
     struct Job(HANDLE);
     // HANDLE은 그냥 포인터라 Send/Sync가 아니지만, 우리는 값을 읽어 Win32에 넘기기만 한다.
@@ -53,6 +55,27 @@ mod imp {
         .map(|j| j.0)
     }
 
+    /// 이 PID가 **우리 잡 안에 있는가**(`None` = 물어볼 수 없었다).
+    ///
+    /// ★LSPIDLE R2(크리틱 B급 ③) — 이 함수가 생긴 이유는 `zombie.rs` 헤더가 「손자만 남은
+    /// 트리」를 원장이 막는다고 **틀리게** 적었기 때문이다. 원장은 직계 자식만 추적한다.
+    /// 그럼 손자는 누가 덮나? **잡이 덮는다** — Windows에서 잡 멤버십은 상속되므로
+    /// (breakaway를 안 걸었다) 잡 안의 프로세스가 낳은 자식도 자동으로 같은 잡에 들어간다.
+    /// 그 주장을 말로 두지 않고 **재는** 문이 여기다(`zombie.rs`의 한계 못이 부른다).
+    pub fn contains(pid: u32) -> Option<bool> {
+        let j = job()?;
+        unsafe {
+            let h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+            if h.is_null() {
+                return None;
+            }
+            let mut out: i32 = 0;
+            let ok = IsProcessInJob(h, j, &mut out);
+            CloseHandle(h);
+            (ok != 0).then_some(out != 0)
+        }
+    }
+
     /// 스폰 직후의 자식을 잡에 넣는다. 실패해도 조용히 넘어간다 — 회수 경로(유휴 스윕·
     /// `dispose_all`)가 여전히 있고, 잡은 **크래시 경로의 안전망**이지 유일한 수단이 아니다.
     pub fn adopt(pid: u32) -> bool {
@@ -74,6 +97,9 @@ mod imp {
     pub fn adopt(_pid: u32) -> bool {
         false
     }
+    pub fn contains(_pid: u32) -> Option<bool> {
+        None
+    }
 }
 
-pub use imp::adopt;
+pub use imp::{adopt, contains};

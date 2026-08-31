@@ -1,6 +1,6 @@
 {
   "harness": "poc-lspidle-diet",
-  "at": "2026-08-31T09:30:59.864Z",
+  "at": "2026-08-31T11:50:13.736Z",
   "stage": "C:\\Code\\AgentCodeGUI\\src-tauri\\lsp-modules",
   "size": {
     "rawBytes": 45646102,
@@ -30,7 +30,7 @@
         "nodeHint": "Node 런타임을 못 찾았어요. 개발 배치로 보입니다 — `node scripts/tauri-build.mjs stage`로 런타임을 받거나 `CCG_LSP_NODE`로 직접 지정해 주세요. / Node runtime not found. This looks like a dev layout — run `node scripts/tauri-build.mjs stage`, or point `CCG_LSP_NODE` at a node binary. 찾아본 자리 / looked in:\n  - ① CCG_LSP_NODE=C:\\Code\\AgentCodeGUI\\src-tauri\\lsp-runtime\\node.exe (그 자리에 파일이 없다 / not a file)\n  - ② 설치 폴더 사이드카: C:\\Code\\AgentCodeGUI\\target-lspidle\\release\\node.exe (없음 / missing)\n  - ② resources 사이드카: C:\\Code\\AgentCodeGUI\\target-lspidle\\release\\resources\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: C:\\Code\\AgentCodeGUI\\target-lspidle\\release\\src-tauri\\lsp-runtime\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: C:\\Code\\AgentCodeGUI\\target-lspidle\\src-tauri\\lsp-runtime\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: 조상 3칸 더 봤지만 없다 / 3 more ancestors\n  - ④ PATH: cargo 산출 폴더라 봤지만 node를 못 찾았다 / searched PATH (cargo output dir)",
         "launchError": null
       },
-      "cachedMs": 20.4,
+      "cachedMs": 21.73,
       "cachedHit": false,
       "prewarmMs": 101,
       "status": "ready",
@@ -38,7 +38,7 @@
         "starting",
         "ready"
       ],
-      "tokenMs": 654,
+      "tokenMs": 491,
       "tokens": 1800,
       "tokenTries": 0,
       "semanticSupported": true,
@@ -51,14 +51,14 @@
         "n": 12,
         "hits": 12,
         "p50": 1.01,
-        "p95": 11.66
+        "p95": 12.61
       },
       "definition": {
         "n": 12,
         "hits": 12,
         "crossFile": 12,
-        "p50": 0.42,
-        "p95": 1.82
+        "p50": 0.46,
+        "p95": 1.85
       },
       "completion": {
         "n": 10,
@@ -68,8 +68,8 @@
           "register",
           "size"
         ],
-        "p50": 4.09,
-        "p95": 22.77
+        "p50": 4.88,
+        "p95": 22.88
       }
     },
     "staged": {
@@ -91,15 +91,15 @@
         "nodeHint": "Node 런타임을 못 찾았어요. 개발 배치로 보입니다 — `node scripts/tauri-build.mjs stage`로 런타임을 받거나 `CCG_LSP_NODE`로 직접 지정해 주세요. / Node runtime not found. This looks like a dev layout — run `node scripts/tauri-build.mjs stage`, or point `CCG_LSP_NODE` at a node binary. 찾아본 자리 / looked in:\n  - ① CCG_LSP_NODE=C:\\Code\\AgentCodeGUI\\src-tauri\\lsp-runtime\\node.exe (그 자리에 파일이 없다 / not a file)\n  - ② 설치 폴더 사이드카: C:\\Code\\AgentCodeGUI\\target-lspidle\\release\\node.exe (없음 / missing)\n  - ② resources 사이드카: C:\\Code\\AgentCodeGUI\\target-lspidle\\release\\resources\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: C:\\Code\\AgentCodeGUI\\target-lspidle\\release\\src-tauri\\lsp-runtime\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: C:\\Code\\AgentCodeGUI\\target-lspidle\\src-tauri\\lsp-runtime\\node.exe (없음 / missing)\n  - ③ 개발 스테이징: 조상 3칸 더 봤지만 없다 / 3 more ancestors\n  - ④ PATH: cargo 산출 폴더라 봤지만 node를 못 찾았다 / searched PATH (cargo output dir)",
         "launchError": null
       },
-      "cachedMs": 0.18,
+      "cachedMs": 0.17,
       "cachedHit": false,
-      "prewarmMs": 101,
+      "prewarmMs": 100,
       "status": "ready",
       "states": [
         "starting",
         "ready"
       ],
-      "tokenMs": 638,
+      "tokenMs": 471,
       "tokens": 1800,
       "tokenTries": 0,
       "semanticSupported": true,
@@ -111,15 +111,15 @@
       "hover": {
         "n": 12,
         "hits": 12,
-        "p50": 0.99,
-        "p95": 11.74
+        "p50": 0.97,
+        "p95": 12.32
       },
       "definition": {
         "n": 12,
         "hits": 12,
         "crossFile": 12,
-        "p50": 0.45,
-        "p95": 1.88
+        "p50": 0.44,
+        "p95": 1.83
       },
       "completion": {
         "n": 10,
@@ -129,8 +129,8 @@
           "register",
           "size"
         ],
-        "p50": 4.44,
-        "p95": 22.89
+        "p50": 4.49,
+        "p95": 23.31
       }
     }
   },

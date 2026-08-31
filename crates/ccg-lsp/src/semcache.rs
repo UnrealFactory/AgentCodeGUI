@@ -248,7 +248,18 @@ mod tests {
         let base = std::env::temp_dir().join("ccg-lsp-semcache-test");
         let _ = fs::remove_dir_all(&base);
         *TEST_DIR.get_or_init(Default::default).lock().unwrap() = Some(base.clone());
-        let (cwd, abs, body) = ("C:\\proj", "C:\\proj\\a.ts", "const x = 1");
+        // ★LSPIDLE R2 — cwd는 **실재하는 폴더**여야 한다.
+        //
+        // 옛 값은 `C:\proj`(없는 폴더)였고, 그래서 같은 프로세스의 다른 테스트가 부른
+        // `gc_dead_buckets`(「원본 폴더가 사라진 프로젝트의 캐시를 회수」)가 이 버킷을
+        // **죽은 것으로 보고 지웠다** — 이 테스트가 방금 쓴 파일이 그 사이에 사라져
+        // 드물게 붉어졌다(R1의 `prewarm` 못이 백그라운드로 gc를 돌리면서 드러났다).
+        // 폴더를 실재하게 만들면 gc의 판정 자체가 이 버킷을 안 건드린다.
+        let proj = std::env::temp_dir().join("ccg-lsp-semcache-proj");
+        fs::create_dir_all(&proj).unwrap();
+        let cwd_s = proj.to_string_lossy().to_string();
+        let abs_s = proj.join("a.ts").to_string_lossy().to_string();
+        let (cwd, abs, body) = (cwd_s.as_str(), abs_s.as_str(), "const x = 1");
         let t = SemanticTokens { data: vec![0, 1, 2, 3, 4], types: vec!["variable".into()], mods: vec![] };
         put(cwd, 1, "ts", abs, body, &t);
         assert_eq!(get(cwd, 1, "ts", abs, body).map(|v| v.data), Some(t.data.clone()));

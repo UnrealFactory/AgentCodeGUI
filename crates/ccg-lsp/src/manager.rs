@@ -12,6 +12,7 @@
 //! 테스트 주입: `CCG_LSP_IDLE_TTL_MS`(TTL 덮어쓰기) · `CCG_LSP_SWEEP_MS`(스윕 주기).
 //! 기본값은 스펙/2.6.2 그대로 — 벤치가 10분을 기다리지 않고 회수를 실증하기 위한 문이다.
 
+use crate::lifecycle::Sweep;
 use crate::server::{now_ms, Server, Status};
 use crate::spec::{root_for, ServerSpec};
 use std::collections::{BTreeMap, HashMap};
@@ -24,18 +25,6 @@ use std::time::{Duration, Instant};
 /// 밖에서 죽인 서버의 **자동 복귀 시간**이기도 하다 — 2.6.2 실측 30.6초와 같은 자리.
 const RESPAWN_COOLDOWN_MS: u64 = 30_000;
 const SWEEP_EVERY_MS_DEFAULT: u64 = 60_000;
-
-/// ★LSPIDLE R1 — **절대 상한.** 어떤 유예도 이 나이를 넘겨 서버를 살려 두지 못한다.
-///
-/// [`Server::indexing`]이 도입한 되감기가 여는 구멍을 여기서 닫는다: 진행률 `end`를 영영
-/// 안 보내는 서버(clangd가 실제로 그런다 — `project_state`가 그 때문에 진행률이 흐르는 동안을
-/// 따로 다룬다)는 `indexing()`이 계속 참이라 타이머가 무한히 되감긴다. 그러면 이 라운드가
-/// 고치려던 «항상 산다»를 다른 문으로 되살리는 셈이다.
-///
-/// 값은 2.6.2의 무거운 서버 TTL과 같은 30분이다 — 「그만큼 조용했으면 접는다」의 파리티.
-/// 스펙의 `idle_ttl_ms`가 이보다 길면 그쪽을 존중한다(상한은 **유예**의 상한이지
-/// 스펙의 상한이 아니다).
-const IDLE_GRACE_CAP_MS: u64 = 30 * 60_000;
 
 /// 원장에 남은 자식이 이 나이를 넘겼는데 주인이 없으면 걷는다([`crate::zombie::sweep`]).
 /// 2.6.2 엔진 좀비 안전망과 같은 눈금.
@@ -82,6 +71,16 @@ struct Registry {
 
 static REG: OnceLock<(Mutex<Registry>, Condvar)> = OnceLock::new();
 static SWEEPER: AtomicBool = AtomicBool::new(false);
+/// [`start`]가 불린 횟수 — **온디맨드 못의 관측점**(★LSPIDLE R2 · 크리틱 B급 ①).
+///
+/// 크리틱이 실측으로 보인 구멍: R1의 못 `prewarm_prepares_without_spawning_a_single_process`는
+/// 「프로세스가 떴는가」를 봤는데, `Prewarm::Eager` 팔은 `server::launchable()` 실패에서 즉시
+/// return하므로 **런타임·모듈이 안 잡히는 환경에서는 아무것도 안 띄우고 조용히 통과**했다.
+/// 갓 클론한 레포·스테이징 안 한 CI·크리틱의 배치가 전부 그 환경이다.
+///
+/// 그래서 못이 보는 것을 「떴는가」에서 **「기동을 걸었는가」**로 내린다. 이 수는 디스크에도
+/// PATH에도 안 기대므로 어느 기계에서나 같은 답을 낸다.
+static START_CALLS: AtomicU64 = AtomicU64::new(0);
 /// `dispose_all` 뒤에 착지하는 스폰이 고아로 남지 않게 하는 문.
 static SHUTTING_DOWN: AtomicBool = AtomicBool::new(false);
 
@@ -150,6 +149,7 @@ fn key_of(spec: &ServerSpec, root: &Path) -> String {
 /// 파일을 열어 둔 것만으로 TTL이 영원히 안 찬다 — 죽은 서버의 자리도 그래서 안 걷혔다.
 /// 유휴 회수는 **실제 쿼리**(호버·정의·토큰·완성)가 있을 때만 미뤄져야 한다.
 pub fn start(spec: &'static ServerSpec, root: &Path) -> Slot {
+    START_CALLS.fetch_add(1, Ordering::Relaxed);
     let key = key_of(spec, root);
     prepare_once(spec, root, &key);
     // 스윕이 멎어 있으면 여기서 되살린다 — 회수가 도는 유일한 보장이다(★LSPIDLE R1).
@@ -225,6 +225,12 @@ pub fn prepare(spec: &'static ServerSpec, root: &Path) {
     // 실행 계획을 한 번 풀어 경로 메모를 데운다. 결과(기동 가능 여부)는 여기서 안 쓴다 —
     // 못 띄우는 상태여도 그건 열람 시 `status`가 `need-install`로 정직하게 말할 일이다.
     let _ = crate::server::launchable(spec, root);
+}
+
+/// [`start`]가 지금까지 불린 횟수(진단·못 전용). 「기동을 걸었는가」의 관측점이다.
+/// 「프로세스가 떴는가」와 달리 디스크·PATH에 안 기대므로 어느 기계에서나 같은 답을 낸다.
+pub fn start_calls() -> u64 {
+    START_CALLS.load(Ordering::Relaxed)
 }
 
 /// 지금 살아 있는 서버들의 PID — 재기동이 **정말 새 프로세스인지** 보는 눈금.
@@ -402,7 +408,7 @@ pub fn root_of(spec: &ServerSpec, abs: &Path, cwd: &Path) -> PathBuf {
 }
 
 /// cwd 아래(또는 그 자체)에 뜬 서버들의 상태 — 탐색기 폴더 배지.
-pub fn project_state(cwd: &Path) -> (&'static str, Option<f64>) {
+pub fn project_state(cwd: &Path) -> (&'static str, Option<f64>, Option<String>) {
     // 키와 **같은 정규화**를 거쳐야 접두 비교가 맞는다(C-3와 같은 자리)
     let root = canon_root(cwd).to_string_lossy().to_ascii_lowercase();
     let prefix = format!("{root}{}", std::path::MAIN_SEPARATOR);
@@ -411,14 +417,27 @@ pub fn project_state(cwd: &Path) -> (&'static str, Option<f64>) {
     let mut analyzing = false;
     let mut ready = false;
     let mut pct = None;
+    // ★LSPIDLE R2(크리틱 B급 ②) — 죽은 서버의 **사유**. 이 자리 말고는 밖으로 나갈 길이 없었다.
+    let mut err: Option<String> = None;
     for (k, e) in r.map.iter() {
         let sroot = &k[k.find('|').map(|i| i + 1).unwrap_or(0)..];
         if sroot != root && !sroot.starts_with(&prefix) {
             continue;
         }
-        let Some(s) = &e.server else { continue };
+        let Some(s) = &e.server else {
+            // 서버가 없는 자리라도 **왜 없는지**는 남아 있을 수 있다(기동 실패·쿨다운).
+            if err.is_none() {
+                err = e.last_error.clone();
+            }
+            continue;
+        };
         match s.raw_status() {
-            Status::Error => continue,
+            Status::Error => {
+                if err.is_none() {
+                    err = s.error().or_else(|| e.last_error.clone());
+                }
+                continue;
+            }
             Status::Starting => {
                 analyzing = true;
                 if let Some(p) = s.progress_pct() {
@@ -443,11 +462,12 @@ pub fn project_state(cwd: &Path) -> (&'static str, Option<f64>) {
         }
     }
     if analyzing {
-        ("analyzing", pct)
+        ("analyzing", pct, None)
     } else if ready {
-        ("ready", None)
+        ("ready", None, None)
     } else {
-        ("idle", None)
+        // 「할 일이 없어 idle」과 「죽어서 idle」은 겉보기가 같다 — 사유가 있으면 실어 보낸다.
+        ("idle", None, err)
     }
 }
 
@@ -552,37 +572,6 @@ fn kick_sweeper_if_stalled() {
     start_sweeper();
 }
 
-/// 스윕이 살아 있는 서버 하나에 내리는 판정.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum Sweep {
-    /// 아직 TTL 안 — 그대로 둔다.
-    Keep,
-    /// 일하는 중 — 타이머를 되감는다(유예).
-    Rewind,
-    /// 접는다.
-    Reclaim,
-}
-
-/// ★LSPIDLE R1 — 회수 규칙 **전부**가 여기 있다. 순수 함수인 이유는 하나다:
-/// 이 규칙의 돌연변이(타이머 무시 · 유예 삭제 · 상한 삭제)가 각각 다른 테스트를 붉히게
-/// 하려면, 판정이 실물 프로세스를 띄우지 않고도 불릴 수 있어야 한다.
-///
-/// 세 줄로 읽는다:
-///  1. TTL을 아직 안 채웠으면 둔다.
-///  2. 채웠지만 **일하는 중**이면(초기화·프로젝트 로드·인덱싱 진행률) 되감는다 —
-///     쿼리가 없다는 것과 노는 것은 다르다.
-///  3. 단, 그 유예도 [`IDLE_GRACE_CAP_MS`]까지다. 진행률 `end`를 영영 안 보내는 서버가
-///     이 문으로 영생하면 이 라운드가 고친 「항상 산다」가 다른 이름으로 돌아온다.
-fn sweep_decision(idle_ms: u64, ttl_ms: u64, indexing: bool) -> Sweep {
-    if idle_ms < ttl_ms {
-        return Sweep::Keep;
-    }
-    if indexing && idle_ms < IDLE_GRACE_CAP_MS {
-        return Sweep::Rewind;
-    }
-    Sweep::Reclaim
-}
-
 /// 유휴 회수 + 좀비 정리. 스윕 스레드가 부르고, 테스트가 직접 부를 수도 있다.
 pub fn sweep_idle() {
     let mut doomed: Vec<(Arc<Server>, &'static str)> = Vec::new();
@@ -616,10 +605,12 @@ pub fn sweep_idle() {
             }
             live_pids.push(s.pid);
             // ②③ 유휴 판정 — 규칙은 [`sweep_decision`]에 순수 함수로 있다(못이 거기 박힌다).
-            match sweep_decision(s.idle_ms(), ttl_for(s.spec), s.indexing()) {
-                Sweep::Keep => {}
-                // 일하는 중이다 — 타이머를 되감는다(★LSPIDLE R1, [`Server::indexing`])
-                Sweep::Rewind => s.touch(),
+            // ★LSPIDLE R2 — 판정과 전이를 **함께** 받는다([`Server::sweep_step`]).
+            //   호출부에 남은 일은 `Reclaim`일 때 프로세스를 접는 것뿐이다 — 잊을 수 있는
+            //   전이가 없으므로 크리틱의 `Rewind => {}` 돌연변이가 **쓸 수 없는 모양**이 됐다.
+            //   규칙 자체와 그 못은 전부 `crate::lifecycle`에 있다.
+            match s.sweep_step(ttl_for(s.spec)) {
+                Sweep::Keep | Sweep::Rewind | Sweep::Settle => {}
                 Sweep::Reclaim => {
                     doomed.push((s.clone(), "유휴 서버 회수"));
                     e.server = None;
@@ -678,37 +669,24 @@ mod tests {
         assert_eq!(a, key_of(spec, Path::new(&base.to_uppercase())));
     }
 
-    /// ★LSPIDLE R1 — **회수 규칙의 못.** 세 돌연변이가 각각 다른 줄에서 붉어진다.
+    /// ★LSPIDLE R2 — **회수 규칙은 이제 여기 없다.** 규칙과 그 못은 전부
+    /// []로 갔다(크리틱 R1 §3 A급: 판정과 전이가 갈려 있어서
+    /// 「호출부가 전이를 잊는」 돌연변이가 초록으로 지나갔다).
+    ///
+    /// 이 자리에 남는 것은 **2.6.2 파리티 값**뿐이다 — 조용히 바뀌면 안 되는 눈금들.
     #[test]
-    fn the_reclaim_rule_honours_the_timer_the_grace_and_the_cap() {
-        let ttl = 10 * 60_000; // bundled 기본값(2.6.2 준거)
-
-        // ① 타이머 — TTL 전이면 무슨 일이 있어도 안 접는다.
-        //    (돌연변이 「회수 타이머 무시」= 항상 Reclaim → 이 줄이 붉어진다)
-        assert_eq!(sweep_decision(0, ttl, false), Sweep::Keep);
-        assert_eq!(sweep_decision(ttl - 1, ttl, false), Sweep::Keep);
-        assert_eq!(sweep_decision(ttl - 1, ttl, true), Sweep::Keep);
-
-        // ② TTL을 채웠고 노는 중이면 접는다. **경계는 >= 다** — `>`로 바꾸면
-        //    스윕 주기(60초)만큼 늦게 접힌다.
-        assert_eq!(sweep_decision(ttl, ttl, false), Sweep::Reclaim);
-        assert_eq!(sweep_decision(ttl * 9, ttl, false), Sweep::Reclaim);
-
-        // ③ 유예 — 일하는 중이면 되감는다.
-        //    (돌연변이 「유예 삭제」= indexing을 안 봄 → 이 줄이 붉어진다.
-        //     그 상태의 대가는 clangd 인덱스를 30분마다 처음부터 다시 도는 방아다.)
-        assert_eq!(sweep_decision(ttl, ttl, true), Sweep::Rewind);
-        assert_eq!(sweep_decision(IDLE_GRACE_CAP_MS - 1, ttl, true), Sweep::Rewind);
-
-        // ④ 절대 상한 — 유예도 여기까지다.
-        //    (돌연변이 「안전망 제거」= 상한 조건 삭제 → 이 줄이 붉어진다)
-        assert_eq!(sweep_decision(IDLE_GRACE_CAP_MS, ttl, true), Sweep::Reclaim);
-        assert_eq!(sweep_decision(IDLE_GRACE_CAP_MS * 2, ttl, true), Sweep::Reclaim);
-
-        // ⑤ 값 자체 — 2.6.2 파리티(10분/30분 · 안전망 30분)를 조용히 못 바꾸게.
-        assert_eq!(IDLE_GRACE_CAP_MS, 30 * 60_000, "유예 상한이 2.6.2의 무거운 TTL과 갈렸다");
-        assert_eq!(ZOMBIE_MAX_AGE_MS, 30 * 60_000, "좀비 안전망이 30분급이 아니다");
+    fn the_lifetime_constants_still_match_the_262_contract() {
         assert_eq!(SWEEP_EVERY_MS_DEFAULT, 60_000, "스윕 주기가 2.6.2(IDLE_SWEEP_EVERY)와 갈렸다");
+        assert_eq!(ZOMBIE_MAX_AGE_MS, 30 * 60_000, "좀비 안전망이 30분급이 아니다");
+        assert_eq!(RESPAWN_COOLDOWN_MS, 30_000, "재스폰 쿨다운이 2.6.2 실측 30.6초 자리와 갈렸다");
+        // 스펙의 TTL도 2.6.2 그대로(bundled 10분 / 무거운 서버 30분)
+        for s in crate::spec::SPECS {
+            let want = match s.id {
+                "ts" | "py" => 10 * 60_000,
+                _ => 30 * 60_000,
+            };
+            assert_eq!(s.idle_ttl_ms, want, "{}: 유휴 TTL이 2.6.2 규약과 갈렸다", s.id);
+        }
     }
 
     /// ★LSPIDLE R1 — 회수 TTL과 스윕 주기는 **주입 가능해야** 한다.

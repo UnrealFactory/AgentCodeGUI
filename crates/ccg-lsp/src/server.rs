@@ -14,6 +14,7 @@
 
 use crate::rpc::Rpc;
 use crate::semcache::SemanticTokens;
+use crate::lifecycle::{Lifecycle, Sweep};
 use crate::spec::{Launch, Provision, Reprime, ServerSpec};
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -114,7 +115,9 @@ pub struct Server {
     state: Mutex<State>,
     ready_cv: Condvar,
     docs: Mutex<Docs>,
-    last_used_ms: AtomicU64,
+    /// ★LSPIDLE R2 — 수명 시계들. 규칙과 전이는 전부 [`crate::lifecycle`]에 있다.
+    /// 여기서 `Mutex`인 이유: 판정과 전이가 한 걸음이라 원자 변수로 쪼개면 그 사이가 벌어진다.
+    life: Mutex<Lifecycle>,
     /// 마지막 `didOpen` 시각 — 프라임의 최소 오픈 갭(규약 ①) 기준점.
     last_open_ms: AtomicU64,
     prime: Mutex<Prime>,
@@ -284,7 +287,7 @@ impl Server {
             state,
             ready_cv: Condvar::new(),
             docs: Mutex::new(Docs::default()),
-            last_used_ms: AtomicU64::new(now_ms()),
+            life: Mutex::new(Lifecycle::new(now_ms())),
             last_open_ms: AtomicU64::new(0),
             prime: Mutex::new(Prime::default()),
             prime_cv: Condvar::new(),
@@ -304,6 +307,8 @@ impl Server {
     fn on_notify(&self, method: &str, params: &Value) {
         match method {
             "workspace/projectInitializationComplete" => {
+                // ★LSPIDLE R2 — 프로젝트 로드가 끝났다 = 일한 증거다(멎음 시계를 되감는다)
+                self.saw_work();
                 let mut st = self.state.lock().unwrap();
                 st.project_init_pending = false;
                 st.progress_pct = None;
@@ -311,6 +316,9 @@ impl Server {
                 self.ready_cv.notify_all();
             }
             "$/progress" => {
+                // ★LSPIDLE R2 — **이 통지가 유예의 근거다.** 인덱싱이 실제로 진행 중이라는
+                // 유일한 관측 가능한 증거이고, 이것이 멎으면 유예도 멎는다(크리틱 A-2).
+                self.saw_work();
                 let v = params.get("value");
                 let kind = v.and_then(|v| v.get("kind")).and_then(Value::as_str);
                 let mut st = self.state.lock().unwrap();
@@ -448,11 +456,33 @@ impl Server {
         }
     }
 
+    /// 사용자의 실제 쿼리 — 유휴 시계를 되감는다. 상태 폴링은 여기 안 온다(C-1 ②).
     pub fn touch(&self) {
-        self.last_used_ms.store(now_ms(), Ordering::Relaxed);
+        self.life.lock().unwrap().touch(now_ms());
     }
     pub fn idle_ms(&self) -> u64 {
-        now_ms().saturating_sub(self.last_used_ms.load(Ordering::Relaxed))
+        self.life.lock().unwrap().idle_ms(now_ms())
+    }
+
+    /// 서버가 **일한다는 증거**를 보냈다 — 멎음 시계를 되감는 **유일한** 문(★LSPIDLE R2).
+    /// 스윕은 이 시계를 못 건드린다. 그게 상한이 「절대 시계」가 되는 자리다.
+    fn saw_work(&self) {
+        self.life.lock().unwrap().saw_work(now_ms());
+    }
+
+    /// 스윕 한 걸음 — **판정과 전이를 함께** 받는다(★LSPIDLE R2 · 크리틱 A급).
+    ///
+    /// 호출부가 전이를 잊을 수 있는 모양을 없앴다: R1은 `Sweep::Rewind`일 때 호출부가
+    /// `touch()`를 부르는 구조였고, 크리틱이 그 줄을 지운 돌연변이(`Rewind => {}`)로
+    /// **초록**을 받아 냈다. 이제 잊을 것이 없다 — 여기서 다 끝난다.
+    pub fn sweep_step(&self, ttl_ms: u64) -> Sweep {
+        let indexing = self.indexing();
+        self.life.lock().unwrap().step(now_ms(), ttl_ms, indexing)
+    }
+
+    /// 지금 유예 중인가(진단·`lifecycle()`).
+    pub fn in_grace(&self) -> bool {
+        self.life.lock().unwrap().in_grace()
     }
 
     /// 렌더러가 보는 상태. `awaits_project_init` 서버는 인덱스가 끝나기 전까지 `starting`.

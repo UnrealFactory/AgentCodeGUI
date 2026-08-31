@@ -34,7 +34,14 @@ fn ms(t: Instant) -> f64 {
 /// 온디맨드가 멀쩡히 도는데도 자손 3개가 찍혔다. 단계 이름과 표본 시각이 어긋나면
 /// 그 측정은 무엇을 재는지 모르는 측정이다.
 fn say(phase: &str, extra: Value) {
-    let mut o = json!({ "phase": phase, "lifecycle": ccg_lsp::lifecycle() });
+    // ★LSPIDLE R2(크리틱 B급 ②) — `project_status`도 같이 싣는다. 프리로드 조각이 유실된
+    // 세계에서 **죽은 이유가 계약면에 실려 나오는지**를 하네스가 이 칸으로 확인한다.
+    let cwd = std::env::args().nth(1).unwrap_or_default();
+    let mut o = json!({
+        "phase": phase,
+        "lifecycle": ccg_lsp::lifecycle(),
+        "projectStatus": ccg_lsp::project_status(&cwd),
+    });
     if let (Some(a), Some(b)) = (o.as_object_mut(), extra.as_object()) {
         for (k, v) in b {
             a.insert(k.clone(), v.clone());

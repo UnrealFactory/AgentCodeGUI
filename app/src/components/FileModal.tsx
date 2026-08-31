@@ -45,6 +45,43 @@ const HL_LIMIT = 200_000
 // doesn't spam the language server
 const HOVER_DELAY = 300
 
+/**
+ * ★LSPIDLE R2 — 서버가 데워지는 동안의 status 폴링 격자(ms). 첫 몇 발만 촘촘하다.
+ *
+ * ## 왜 고정 400ms가 손해였나
+ *
+ * LSPIDLE R1이 기동을 부팅에서 **열람 시점**으로 옮기면서(온디맨드) 첫 색칠(캐시 미적중)이
+ * 654 → 1153ms로 늦어졌다. 그런데 확인 크리틱이 그 +499ms를 갈라 보니 **기동 때문인 몫은
+ * 224ms뿐**이었다. 나머지는 이 줄이었다:
+ *
+ * - 여기 status 폴링이 `starting` 동안 **고정 400ms**였다.
+ * - 라이브 토큰 이펙트는 `lspStatus !== 'ready'`면 **아예 시작을 안 한다**.
+ *
+ * 서버가 이미 떠 있던 R1 이전에는 첫 status가 곧바로 `ready`라 토큰이 0ms에 출발했다.
+ * 온디맨드에서는 첫 status가 `starting`이므로 **가장 빨라야 400ms 뒤**에 출발한다 —
+ * 기동이 76ms에 끝나도 그렇다. 크리틱 실측: 같은 서버를 25ms로 물으면 ready 76ms,
+ * 400ms로 물으면 400ms(**+324ms가 순전히 폴링 격자**).
+ *
+ * 즉 이 격자는 **메모리를 한 톨도 안 내주고** 되찾을 수 있는 자리였다. 온디맨드를 되돌리는
+ * (=3프로세스·101MB를 다시 무는) 선택지와 달리 값이 공짜다.
+ *
+ * ## 값의 근거
+ *
+ * 첫 몇 발은 아주 촘촘하게(기동이 빨리 끝나는 경우를 놓치지 않게), 그 뒤로는 **2초 근방까지
+ * 200ms를 유지**한다. 뒤쪽이 중요한 이유가 실측에 있다: 이 제품 경로에서 서버가 `ready`에
+ * 닿는 시각은 700~900ms대인데, 초판 배열([25,50,75,100,150,200,300])은 그 지점에서 이미
+ * 400ms 격자로 떨어져 있어 되찾는 값이 절반에 그쳤다(`poc-lspidle-firstpaint` 실측).
+ *
+ * 배열이 다 소진되면 `LSP_POLL_STEADY_MS`(옛 값 그대로)로 떨어진다 — 오래 걸리는 워밍
+ * (clangd 인덱싱·Roslyn 솔루션 로드)에서는 R1과 **같은 부하**다. 늘어나는 호출은 첫 2초 안의
+ * 열몇 번뿐이고, 그 구간은 어차피 사용자가 파일이 뜨기를 기다리는 시간이다.
+ */
+const WARMUP_POLL_MS = [25, 50, 75, 100, 150, 200, 200, 200, 200, 200, 200, 200, 200, 250, 300]
+/** 워밍 백오프가 끝난 뒤의 정상 간격 — R1까지의 고정값 그대로. */
+const LSP_POLL_STEADY_MS = 400
+/** 워밍을 포기하지 않고 계속 묻는 창(≈8분). 횟수가 아니라 **경과 시간**으로 센다. */
+const LSP_WARMUP_WINDOW_MS = 8 * 60_000
+
 // ── path helpers (renderer has no node:path; windows-first, '/'-tolerant) ───
 function displayPath(abs: string, cwd: string): string {
   const a = abs.replace(/\//g, '\\')
@@ -3036,20 +3073,26 @@ export function FileModal({
     // 커밋 시점 내용은 디스크와 다를 수 있다 — LSP 좌표가 거짓이 되므로 끈다
     if (!effPath || isImg || ovContent != null) return
     let alive = true
-    let tries = 0
+    let warm = 0
+    let errs = 0
+    const startedAt = Date.now()
     const tick = (): void => {
       window.api.lsp
         .status(cwd, effPath)
         .then((st) => {
           if (!alive) return
           setLspStatus(st)
-          // 촘촘히 폴링(400ms)해서 ready 감지 지연을 줄인다 — 그래야 ready 직후 색이
-          // 폴더 배지가 사라지기 전에/같이 들어온다. 워밍은 길 수 있어 창을 넓게(≈8분).
-          if ((st === 'starting' || st === 'installing') && tries++ < 1200) setTimeout(tick, 400)
+          // ★LSPIDLE R2 — 첫 몇 발만 촘촘한 백오프(WARMUP_POLL_MS). 왜인지는 그 상수에.
+          // 워밍은 길 수 있어 창은 그대로 넓게(≈8분) 두되, 횟수가 아니라 **경과 시간**으로 센다
+          // (백오프가 초반 호출 수를 늘리므로 옛 `tries < 1200`은 창을 좁혔을 것이다).
+          if ((st === 'starting' || st === 'installing') && Date.now() - startedAt < LSP_WARMUP_WINDOW_MS)
+            setTimeout(tick, WARMUP_POLL_MS[warm++] ?? LSP_POLL_STEADY_MS)
           // 'error'에서 폴링을 멈추면 서버가 쿨다운(30초) 뒤 되살아나도 이 파일은 영영
           // lsp=off — 파일을 닫았다 열어야만 복구됐다. 느슨하게(3초) 계속 물어 다음
           // ensure가 재스폰하면 자동으로 starting→ready 경로에 다시 올라탄다.
-          else if (st === 'error' && tries++ < 160) setTimeout(tick, 3000)
+          // (에러 재시도는 워밍 백오프와 **다른 시계**를 쓴다 — 섞으면 한 번 error를 본
+          //  파일이 워밍 예산을 다 태워 재시도를 못 하게 된다.)
+          else if (st === 'error' && errs++ < 160) setTimeout(tick, 3000)
         })
         .catch(() => alive && setLspStatus('error'))
     }
