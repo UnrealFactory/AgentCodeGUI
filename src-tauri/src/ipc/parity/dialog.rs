@@ -34,20 +34,40 @@ const TEXT: [&str; 56] = [
     "verse", "uproject", "uplugin", "patch", "diff",
 ];
 
-/// 대화상자 문구 넷 — `[제목, 필터1, 필터2, 필터3]`. **순서가 곧 아래 빌더 순서다.**
+/// 대화상자 문구 넷 — **자리마다 이름이 있다.**
 ///
-/// ★SMALL3 R1. 인라인이 아니라 함수로 뺀 이유는 하나다 — **못을 박을 자리**가 필요했다.
-/// `pick_attachments`는 네이티브 창을 여는 블로킹 호출이라 테스트가 못 부른다. 문구만
-/// 떼어 두면 언어 판정이 실제로 도는 것을 프로세스 밖에서 잴 수 있다(아래 `tests`).
+/// ★SMALL3 R3(확인 크리틱 R2의 EPAIR). R2까지 이것은 `[String; 4]`였고, 그래서
+/// 구조분해 한 줄의 **순서만** 뒤바꾸면(`let [f_all, title, …] = labels();`) 제목과 첫
+/// 필터가 서로 자리를 바꾼 채 **레포의 자동 검사가 전부 초록**이었다 — 못 셋도 하네스도.
+/// 리터럴이 는 것도, 한국어가 는 것도, 변수 이름이 바뀐 것도 아니어서 **볼 것이 없었다**.
+/// 게다가 악의가 필요 없다: 구조분해 줄을 만지는 평범한 리팩터가 그대로 내는 사고다.
 ///
+/// 처방은 못을 하나 더 박는 게 아니라 **버그를 표현 불가능하게** 만드는 것이다.
+/// 이름을 붙이면 「위치」라는 개념 자체가 사라진다 — 필드는 순서로 섞이지 않는다.
+///
+/// ★SMALL3 R1(원래의 이유, 그대로 유효): 인라인이 아니라 함수로 뺀 것은 **못을 박을
+/// 자리**가 필요했기 때문이다. `pick_attachments`는 네이티브 창을 여는 블로킹 호출이라
+/// 테스트가 못 부른다. 문구만 떼어 두면 언어 판정이 실제로 도는 것을 프로세스 밖에서
+/// 잴 수 있다(아래 `tests`).
+struct DialogLabels {
+    /// 창 제목.
+    title: String,
+    /// **첫** 필터 — 이미지+텍스트 전부. 첫 줄인 것이 2.6.2와의 규약이다.
+    filter_all: String,
+    /// 둘째 필터 — 이미지만.
+    filter_images: String,
+    /// 셋째 필터 — 텍스트·문서만.
+    filter_docs: String,
+}
+
 /// en 문자열은 2.6.2 `src/main/index.ts:1355-1360`에서 **글자 그대로** 가져왔다.
-fn labels() -> [String; 4] {
-    [
-        ccg_fs::t("첨부할 파일 선택", "Choose files to attach"),
-        ccg_fs::t("첨부 가능한 파일", "Attachable files"),
-        ccg_fs::t("이미지", "Images"),
-        ccg_fs::t("텍스트·문서", "Text & documents"),
-    ]
+fn labels() -> DialogLabels {
+    DialogLabels {
+        title: ccg_fs::t("첨부할 파일 선택", "Choose files to attach"),
+        filter_all: ccg_fs::t("첨부 가능한 파일", "Attachable files"),
+        filter_images: ccg_fs::t("이미지", "Images"),
+        filter_docs: ccg_fs::t("텍스트·문서", "Text & documents"),
+    }
 }
 
 /// `dialog:pick-attachments()` → `string[]`(취소는 `[]`).
@@ -60,14 +80,14 @@ pub fn pick_attachments(app: &AppHandle) -> Value {
     let all: Vec<&str> = IMAGE.iter().chain(TEXT.iter()).copied().collect();
     let (tx, rx) = std::sync::mpsc::channel();
     let guard = super::super::system::DialogGuard::new();
-    let [title, f_all, f_img, f_txt] = labels();
+    let l = labels();
     app.dialog()
         .file()
-        .set_title(title)
+        .set_title(l.title)
         // 순서가 곧 대화상자의 기본 필터다 — 2.6.2와 같이 「첨부 가능한 파일」이 첫 줄.
-        .add_filter(f_all, &all)
-        .add_filter(f_img, &IMAGE)
-        .add_filter(f_txt, &TEXT)
+        .add_filter(l.filter_all, &all)
+        .add_filter(l.filter_images, &IMAGE)
+        .add_filter(l.filter_docs, &TEXT)
         .pick_files(move |p| {
             let _ = tx.send(p);
         });
@@ -131,19 +151,27 @@ mod tests {
     const MARK: &str = "SMALL3-LABELS>";
 
     /// 자식 역할 — `CHILD_ENV`가 있을 때만 일한다. 평소 주행에서는 `#[ignore]`라 건너뛴다.
+    ///
+    /// ★R3: **필드 이름표를 달아** 찍는다. R2까지는 배열을 `join`해 위치로 넘겼는데,
+    /// 그러면 이 못 자체가 「위치 대응」을 하나 더 만드는 셈이라 EPAIR과 같은 부류의
+    /// 어긋남을 스스로 들여올 수 있었다. 이름으로 넘기면 순서에 기대지 않는다.
     #[test]
     #[ignore = "부모(the_dialog_labels_follow_ui_lang)가 격리 홈과 함께 직접 띄운다"]
     fn child_prints_the_dialog_labels() {
         if std::env::var(CHILD_ENV).is_err() {
             return;
         }
-        // 탭은 이 문구 넷에 안 들어간다 — 구분자로 안전하다.
-        println!("{MARK}{}", labels().join("\t"));
+        let l = labels();
+        // 탭도 `=`도 이 문구 넷에 안 들어간다 — 구분자로 안전하다.
+        println!(
+            "{MARK}title={}\tfilter_all={}\tfilter_images={}\tfilter_docs={}",
+            l.title, l.filter_all, l.filter_images, l.filter_docs
+        );
     }
 
-    /// `ui.lang` 하나만 든 격리 홈에서 자식을 돌리고 라벨 넷을 받아 온다.
+    /// `ui.lang` 하나만 든 격리 홈에서 자식을 돌리고 `필드=문구` 넷을 받아 온다.
     /// `lang`이 `None`이면 `ui-prefs.json`을 아예 안 놓는다(= 갓 설치한 홈).
-    fn labels_under(tag: &str, lang: Option<&str>) -> Vec<String> {
+    fn labels_under(tag: &str, lang: Option<&str>) -> Vec<(String, String)> {
         let home = std::env::temp_dir().join(format!(
             "ccg-small3-dialog-{tag}-{}-{:?}",
             std::process::id(),
@@ -166,17 +194,34 @@ mod tests {
             .lines()
             .find_map(|l| l.strip_prefix(MARK))
             .unwrap_or_else(|| panic!("자식이 라벨을 안 찍었다 ({tag}):\n{text}"));
-        line.split('\t').map(str::to_string).collect()
+        line.split('\t')
+            .map(|kv| {
+                let (k, v) = kv.split_once('=').unwrap_or_else(|| panic!("이름표가 없다 ({tag}): {kv}"));
+                (k.to_string(), v.to_string())
+            })
+            .collect()
+    }
+
+    /// `필드=문구` 넷을 소스 순서와 무관하게 비교하기 위한 기대값.
+    fn expected(words: [&str; 4]) -> Vec<(String, String)> {
+        ["title", "filter_all", "filter_images", "filter_docs"]
+            .iter()
+            .zip(words)
+            .map(|(f, w)| (f.to_string(), w.to_string()))
+            .collect()
     }
 
     /// 못 — `ui.lang=en`이면 네 문구 전부 영어, 기본/`ko`면 전부 한국어.
     ///
     /// `decisions-3.0.md` §3.4-B가 잡은 회귀가 여기다: 초판은 리터럴을 그대로 박아
     /// **어느 언어에서도 한국어**였다. 이 못이 부러지면 그 회귀가 돌아온 것이다.
+    ///
+    /// ★R3: 비교가 **필드 이름 기준**이라 자리 뒤바꿈도 여기서 걸린다
+    /// (예: `title`에 「첨부 가능한 파일」이 오면 첫 쌍부터 어긋난다).
     #[test]
     fn the_dialog_labels_follow_ui_lang() {
-        let ko = ["첨부할 파일 선택", "첨부 가능한 파일", "이미지", "텍스트·문서"];
-        let en = ["Choose files to attach", "Attachable files", "Images", "Text & documents"];
+        let ko = expected(["첨부할 파일 선택", "첨부 가능한 파일", "이미지", "텍스트·문서"]);
+        let en = expected(["Choose files to attach", "Attachable files", "Images", "Text & documents"]);
 
         assert_eq!(labels_under("en", Some("en")), en, "★ui.lang=en인데 영어가 아니다");
         assert_eq!(labels_under("ko", Some("ko")), ko, "ui.lang=ko가 한국어가 아니다");
@@ -253,6 +298,29 @@ mod tests {
             "★빌더 구간에 문자열 리터럴이 있다(= t()를 우회했다). 크리틱 M2가 이 자리다:\n{builder}"
         );
 
+        // 2' — ★R3: **값이 제 짝에 갔는가.** 크리틱 R2의 EPAIR이 이 자리다.
+        //
+        // 구조체로 바꾼 것만으로 「구조분해 순서 뒤바꿈」은 표현 불가능해졌지만,
+        // 필드를 **명시적으로 잘못 지목하는 것**(`.set_title(l.filter_all)`)은 여전히
+        // 쓸 수 있다. 이제는 이름이 눈에 보이므로 조용하지는 않은데, 조용하지 않은 것과
+        // 잡히는 것은 다르다 — 그래서 짝을 글자로 고정한다.
+        //
+        // 덤으로 크리틱의 E3·E6(빌더 밖 `const`에 이스케이프·`concat!`로 한국어를 숨기고
+        // `.set_title(SNEAK)`)도 여기서 죽는다. 빌더가 쓸 수 있는 표현이 **이 넷뿐**이라
+        // 다른 무엇을 넣든 짝이 어긋난다. (필드 이름을 바꾸는 리팩터는 이 못을 붉힌다.
+        // 의도한 값이다 — 짝을 옮기는 변경은 사람이 한 번 봐야 한다.)
+        for pair in [
+            ".set_title(l.title)",
+            ".add_filter(l.filter_all, &all)",
+            ".add_filter(l.filter_images, &IMAGE)",
+            ".add_filter(l.filter_docs, &TEXT)",
+        ] {
+            assert!(
+                builder.contains(pair),
+                "★빌더가 `{pair}`를 안 쓴다 — 값이 제 짝에 안 갔다(크리틱 EPAIR):\n{builder}"
+            );
+        }
+
         // 3 — 한국어 문구는 labels() 안에만 산다.
         let (l_at, l_end) = labels_body(&prod);
         let outside = format!("{}{}", &prod[..l_at], &prod[l_end..]);
@@ -270,17 +338,22 @@ mod tests {
     /// 누가 en 문구와 그 기대값을 **같이** 바꾸면 조용히 통과한다. 여기서는 기대값을
     /// 동결 구역(`src/main/index.ts`)에서 읽어 온다 — 우리 쪽만 고쳐서는 못 넘는다.
     /// (크리틱 M3 = `Text & documents` → `Text and documents` 표류가 이 자리다.)
+    ///
+    /// ★R3: 대조가 **필드 이름 기준**이다(R2까지는 소스 등장 순서였다). 구조체 리터럴은
+    /// 필드로 짝지으므로 **초기화 줄의 순서를 바꿔도 제품은 멀쩡한데**, 순서로 대조하면
+    /// 그 무해한 변경이 못을 붉힌다(거짓 양성). 이름으로 대조하면 잡을 것만 잡는다 —
+    /// 예컨대 `title:`에 「이미지」를 넣는 **진짜** 어긋남은 그대로 걸린다.
     #[test]
     fn the_labels_still_mirror_the_frozen_262_wording() {
         let prod = production_source();
         let (l_at, l_end) = labels_body(&prod);
-        // 3.0 — `ccg_fs::t("ko", "en")` 넷.
-        let ours: Vec<(String, String)> = prod[l_at..l_end]
-            .split("ccg_fs::t(")
-            .skip(1)
-            .map(|seg| {
-                let q: Vec<&str> = seg.split('"').collect();
-                (q[1].to_string(), q[3].to_string())
+        // 3.0 — `필드: ccg_fs::t("ko", "en")` 넷을 **이름과 함께** 뽑는다.
+        let ours: Vec<(String, (String, String))> = prod[l_at..l_end]
+            .lines()
+            .filter_map(|line| {
+                let (lhs, rhs) = line.split_once(": ccg_fs::t(")?;
+                let q: Vec<&str> = rhs.split('"').collect();
+                Some((lhs.trim().to_string(), (q[1].to_string(), q[3].to_string())))
             })
             .collect();
 
@@ -302,6 +375,18 @@ mod tests {
 
         assert_eq!(ours.len(), 4, "labels()의 t() 콜사이트가 넷이 아니다: {ours:?}");
         assert_eq!(theirs.len(), 4, "2.6.2 쪽이 넷이 아니다: {theirs:?}");
-        assert_eq!(ours, theirs, "★문구가 2.6.2에서 표류했다(순서 포함)");
+
+        // 필드 ↔ 2.6.2 자리의 대응표. **이 표가 규약이다** — 2.6.2는 순서만 갖고
+        // (제목 · 전체 · 이미지 · 텍스트) 우리는 이름을 갖는다. 여기서 둘을 잇는다.
+        for (i, field) in ["title", "filter_all", "filter_images", "filter_docs"].iter().enumerate() {
+            let got = ours
+                .iter()
+                .find(|(k, _)| k == field)
+                .unwrap_or_else(|| panic!("★`{field}` 필드가 labels()에 없다: {ours:?}"));
+            assert_eq!(
+                got.1, theirs[i],
+                "★`{field}`의 문구가 2.6.2 {i}번째와 다르다(표류했거나 자리가 섞였다)"
+            );
+        }
     }
 }

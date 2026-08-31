@@ -51,7 +51,8 @@ const ok = (cond, label, extra = '') => {
 
 /** `ccg_fs::t("ko", "en")` 호출을 순서대로 뽑는다. */
 function rustPairs(src) {
-  const body = src.slice(src.indexOf('fn labels()'), src.indexOf('fn labels()') + 600)
+  // ★R3: `labels()`가 `[String; 4]`에서 `DialogLabels` 구조체 리터럴로 바뀌어 본문이 길어졌다.
+  const body = src.slice(src.indexOf('fn labels()'), src.indexOf('fn labels()') + 900)
   return [...body.matchAll(/ccg_fs::t\("([^"]*)",\s*"([^"]*)"\)/g)].map((m) => [m[1], m[2]])
 }
 
@@ -82,10 +83,15 @@ ok(!rsPairs.some(([ko, en]) => ko === en), 'ko와 en이 같은 칸이 없다')
 // ★이 둘이 없으면 A의 대조는 「아무도 안 쓰는 함수」를 재는 셈이 된다.
 const call = rs.slice(rs.indexOf('pub fn pick_attachments'), rs.indexOf('.pick_files('))
 ok(/=\s*labels\(\)\s*;/.test(call), 'pick_attachments가 labels()를 부른다')
-ok(
-  /\.set_title\(title\)/.test(call) && /\.add_filter\(f_all,/.test(call) && /\.add_filter\(f_img,/.test(call) && /\.add_filter\(f_txt,/.test(call),
-  'set_title/add_filter 넷이 labels()의 값을 그대로 받는다'
-)
+// ★R3(크리틱 EPAIR): 「무엇을 쓰나」가 아니라 **「어느 자리에 쓰나」**를 본다.
+// 이름 있는 필드로 바뀌었으므로 짝이 글자로 고정된다.
+const PAIRS = [
+  ['.set_title(l.title)', '제목'],
+  ['.add_filter(l.filter_all, &all)', '첫 필터(전체)'],
+  ['.add_filter(l.filter_images, &IMAGE)', '둘째 필터(이미지)'],
+  ['.add_filter(l.filter_docs, &TEXT)', '셋째 필터(텍스트·문서)']
+]
+for (const [pat, what] of PAIRS) ok(call.includes(pat), `${what}가 제 짝을 받는다`, pat)
 ok(!/[가-힣]/.test(call.replace(/\/\/.*$/gm, '')), '빌더 구간에 한국어 리터럴 0')
 
 // ── B. 실측 — 격리 홈 셋에서 labels()를 직접 받아 온다 ──────────────────────
@@ -114,7 +120,15 @@ function labelsUnder(exe, tag, lang) {
   const line = String(r.stdout || '')
     .split(/\r?\n/)
     .find((l) => l.startsWith(MARK))
-  return line ? line.slice(MARK.length).split('\t') : null
+  if (!line) return null
+  // ★R3: 자식이 `필드=문구`로 찍는다(위치 대응을 하나 더 만들지 않으려고).
+  return line
+    .slice(MARK.length)
+    .split('\t')
+    .map((kv) => {
+      const i = kv.indexOf('=')
+      return [kv.slice(0, i), kv.slice(i + 1)]
+    })
 }
 
 console.log('\nB. 실측 — 격리 홈에서 labels()가 실제로 뱉는 것')
@@ -124,12 +138,15 @@ if (!exe || !fs.existsSync(exe)) {
   console.log(`  FAIL 테스트 바이너리를 못 찾았다 — CARGO_TARGET_DIR=target-small3 cargo test -p agentcodegui --features custom-protocol 을 먼저 돌려라`)
 } else {
   console.log(`  exe: ${exe}`)
-  const KO = ['첨부할 파일 선택', '첨부 가능한 파일', '이미지', '텍스트·문서']
-  const EN = ['Choose files to attach', 'Attachable files', 'Images', 'Text & documents']
+  // 필드 이름을 같이 적는다 — 자리 뒤바꿈(크리틱 EPAIR)이 값 비교에서 바로 드러난다.
+  const FIELDS = ['title', 'filter_all', 'filter_images', 'filter_docs']
+  const pair = (words) => FIELDS.map((f, i) => [f, words[i]])
+  const KO = pair(['첨부할 파일 선택', '첨부 가능한 파일', '이미지', '텍스트·문서'])
+  const EN = pair(['Choose files to attach', 'Attachable files', 'Images', 'Text & documents'])
   for (const [tag, lang, want] of [['en', 'en', EN], ['ko', 'ko', KO], ['기본(설정 없음)', null, KO]]) {
     const got = labelsUnder(exe, tag.replace(/[^a-z]/g, '') || 'def', lang)
     console.log(`  ui.lang=${String(lang)} (${tag})`)
-    console.log(`    ${got ? got.join(' | ') : '(자식이 라벨을 안 찍었다)'}`)
+    console.log(`    ${got ? got.map(([f, w]) => `${f}=${w}`).join(' | ') : '(자식이 라벨을 안 찍었다)'}`)
     ok(got != null && JSON.stringify(got) === JSON.stringify(want), `  ${tag} 기대와 일치`)
   }
 }

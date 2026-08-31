@@ -80,13 +80,26 @@ const fn lang_unpack(cell: u64) -> (u64, bool) {
     (cell >> 1, cell & 1 == 1)
 }
 
+/// 캐시가 아직 쓸 만한가.
+///
+/// ★SMALL3 R3(확인 크리틱 R2의 R2-D3). 이 판정은 `is_en()` 안에 인라인으로 있었고,
+/// 그래서 **`LANG_TTL_MS` 값 자체에는 못이 없었다** — 크리틱이 2000을 60000으로 바꿔
+/// 봤더니 `cargo test -p ccg-fs`가 102/0/2로 **전부 통과**했다. 사용자 체감은 "설정에서
+/// 언어를 바꿔도 1분 동안 옛 언어"인데 아무도 안 붉어졌다는 뜻이다.
+/// 순수 함수로 떼어 내면 시계도 전역 캐시도 없이 경계값을 잴 수 있다(아래 못).
+///
+/// `at_ms == 0`은 **한 번도 안 읽음**의 표식이라 언제나 낡은 것으로 본다.
+const fn lang_fresh(at_ms: u64, now_ms: u64) -> bool {
+    at_ms != 0 && now_ms.saturating_sub(at_ms) < LANG_TTL_MS
+}
+
 fn is_en() -> bool {
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
     static CELL: AtomicU64 = AtomicU64::new(0);
     let now = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0);
     let (at, cached) = lang_unpack(CELL.load(Ordering::Relaxed));
-    if at != 0 && now.saturating_sub(at) < LANG_TTL_MS {
+    if lang_fresh(at, now) {
         return cached;
     }
     let en = ccg_store::prefs::read_ui_prefs()
@@ -112,6 +125,27 @@ mod lang_cache_tests {
         }
         // 갓 부팅한 셀은 "아직 안 읽음"이어야 한다 — `at == 0`이 그 표식이다.
         assert_eq!(lang_unpack(0), (0, false), "빈 셀이 캐시 적중으로 읽히면 안 된다");
+    }
+
+    /// 못 — **TTL 값 자체**를 잰다(★R3 · 크리틱 R2-D3).
+    ///
+    /// 왕복 못은 인코딩만 봤지 `LANG_TTL_MS`를 안 봤다. 여기서 경계를 못 박는다:
+    /// 이 값을 늘리면(크리틱이 시험한 2000→60000) **`at + 2_000` 줄에서 붉어진다.**
+    #[test]
+    fn the_language_cache_holds_for_two_seconds_and_not_a_tick_longer() {
+        use super::lang_fresh;
+        let at = 1_767_000_000_000u64; // 아무 실제 시각
+
+        assert!(!lang_fresh(0, at), "빈 셀(at=0)은 절대 신선하지 않다");
+        assert!(lang_fresh(at, at), "같은 순간은 신선하다");
+        assert!(lang_fresh(at, at + 1_999), "1.999초는 아직 신선하다");
+        assert!(!lang_fresh(at, at + 2_000), "★2.000초에 만료된다 — TTL을 늘리면 여기가 붉어진다");
+        assert!(!lang_fresh(at, at + 60_000), "1분이면 당연히 만료");
+
+        // 시계가 뒤로 간 경우(NTP 보정·수동 변경)의 거동을 **적어 둔다**: `saturating_sub`이
+        // 0으로 누르므로 캐시는 신선한 것으로 읽힌다. 시계가 정상 진행하면 곧 만료되므로
+        // 최악이 "옛 언어를 조금 더 본다"이고, 그건 TTL 설계가 이미 받아들인 값이다.
+        assert!(lang_fresh(at, at - 5_000), "과거 now는 0으로 눌려 신선으로 읽힌다(의도)");
     }
 }
 
