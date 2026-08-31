@@ -1,0 +1,292 @@
+{
+  "app": "tauri-3.0.0",
+  "arm": "default",
+  "bin": {
+    "exe": "C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r2-app\\AgentCodeGUI3.exe",
+    "exeMtime": "2026-08-31T04:26:20.484Z",
+    "exeSize": 7097856,
+    "exeSha256": "a8e5fcb19cd3555f",
+    "gitHead": "bae5bd7",
+    "gitDirty": true
+  },
+  "armEnv": {
+    "CCG_HOME": "C:\\Code\\AgentCodeGUI\\.bench-home-tauri-lspdistr2",
+    "CCG_CDP_PORT": "11003"
+  },
+  "launchCwd": "C:\\Users\\User\\AppData\\Local\\ccg-lspdist-r2-app",
+  "panels": 4,
+  "repeats": 3,
+  "env": {
+    "ramGB": 63.8,
+    "cpu": "13th Gen Intel(R) Core(TM) i7-13700KF",
+    "os": "Microsoft Windows 11 Home 26200"
+  },
+  "summary": {
+    "idleGridWsMB": 567.6,
+    "idleGridPrivMB": 357.6,
+    "idleGridProcs": 8,
+    "idleWithWindowsWsMB": 603.1,
+    "idleWithWindowsPrivMB": 357.9,
+    "wsMBPerWindow": 20.1,
+    "procsAdded": 0,
+    "scrollInPanel": {
+      "avgFps": 59.4,
+      "p95Ms": 17,
+      "worstDroppedPct": 0,
+      "zeroDropRuns": 3
+    },
+    "scrollAllPanels": {
+      "avgFps": 60,
+      "p95Ms": 17,
+      "worstDroppedPct": 0,
+      "zeroDropRuns": 3
+    },
+    "runs": 3
+  },
+  "perRun": [
+    {
+      "seq": 1,
+      "panels": 4,
+      "itemsPerPanel": 120,
+      "gridPanels": 4,
+      "at": "2026-08-31T04:27:01.226Z",
+      "idleGrid": {
+        "totalWsMB": 576.7,
+        "totalPrivMB": 354.5,
+        "procs": 8
+      },
+      "idleWithWindows": {
+        "totalWsMB": 617.6,
+        "totalPrivMB": 357.9,
+        "procs": 8
+      },
+      "windowCost": {
+        "wsMBPerWindow": 20.4,
+        "procsAdded": 0
+      },
+      "scrollInPanel": {
+        "frames": 358,
+        "avgFps": 60.3,
+        "p95Ms": 16.8,
+        "worstMs": 24.8,
+        "droppedPct": 0,
+        "droppedFrames": 0,
+        "longTaskMs": 0
+      },
+      "scrollAllPanels": {
+        "frames": 355,
+        "avgFps": 60,
+        "p95Ms": 16.8,
+        "worstMs": 17.1,
+        "droppedPct": 0,
+        "droppedFrames": 0,
+        "longTaskMs": 0
+      },
+      "procDetail": [
+        {
+          "name": "AgentCodeGUI3.exe",
+          "wsMB": 49.6,
+          "privMB": 21
+        },
+        {
+          "name": "node.exe",
+          "wsMB": 55,
+          "privMB": 58.4
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "wsMB": 235.3,
+          "privMB": 106.6
+        },
+        {
+          "name": "conhost.exe",
+          "wsMB": 7.1,
+          "privMB": 1.2
+        },
+        {
+          "name": "node.exe",
+          "wsMB": 62.9,
+          "privMB": 41.3
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "wsMB": 18.5,
+          "privMB": 3.4
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "wsMB": 19.9,
+          "privMB": 9
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "wsMB": 234.9,
+          "privMB": 161.1
+        }
+      ]
+    },
+    {
+      "seq": 2,
+      "panels": 4,
+      "itemsPerPanel": 120,
+      "gridPanels": 4,
+      "at": "2026-08-31T04:28:01.874Z",
+      "idleGrid": {
+        "totalWsMB": 562.6,
+        "totalPrivMB": 357.6,
+        "procs": 8
+      },
+      "idleWithWindows": {
+        "totalWsMB": 602.7,
+        "totalPrivMB": 358.3,
+        "procs": 8
+      },
+      "windowCost": {
+        "wsMBPerWindow": 20.1,
+        "procsAdded": 0
+      },
+      "scrollInPanel": {
+        "frames": 355,
+        "avgFps": 59.4,
+        "p95Ms": 18.1,
+        "worstMs": 25.1,
+        "droppedPct": 0,
+        "droppedFrames": 0,
+        "longTaskMs": 0
+      },
+      "scrollAllPanels": {
+        "frames": 358,
+        "avgFps": 59.5,
+        "p95Ms": 17,
+        "worstMs": 24.1,
+        "droppedPct": 0,
+        "droppedFrames": 0,
+        "longTaskMs": 0
+      },
+      "procDetail": [
+        {
+          "name": "AgentCodeGUI3.exe",
+          "wsMB": 46.7,
+          "privMB": 21.2
+        },
+        {
+          "name": "node.exe",
+          "wsMB": 45.1,
+          "privMB": 58.5
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "wsMB": 231.9,
+          "privMB": 106.3
+        },
+        {
+          "name": "conhost.exe",
+          "wsMB": 7.1,
+          "privMB": 1.2
+        },
+        {
+          "name": "node.exe",
+          "wsMB": 63.1,
+          "privMB": 41.6
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "wsMB": 18.5,
+          "privMB": 3.3
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "wsMB": 19.9,
+          "privMB": 9
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "wsMB": 242.6,
+          "privMB": 170.6
+        }
+      ]
+    },
+    {
+      "seq": 3,
+      "panels": 4,
+      "itemsPerPanel": 120,
+      "gridPanels": 4,
+      "at": "2026-08-31T04:29:02.233Z",
+      "idleGrid": {
+        "totalWsMB": 567.6,
+        "totalPrivMB": 362,
+        "procs": 8
+      },
+      "idleWithWindows": {
+        "totalWsMB": 603.1,
+        "totalPrivMB": 357.8,
+        "procs": 8
+      },
+      "windowCost": {
+        "wsMBPerWindow": 17.8,
+        "procsAdded": 0
+      },
+      "scrollInPanel": {
+        "frames": 354,
+        "avgFps": 59.4,
+        "p95Ms": 17,
+        "worstMs": 25,
+        "droppedPct": 0,
+        "droppedFrames": 0,
+        "longTaskMs": 0
+      },
+      "scrollAllPanels": {
+        "frames": 358,
+        "avgFps": 60.1,
+        "p95Ms": 17,
+        "worstMs": 24.6,
+        "droppedPct": 0,
+        "droppedFrames": 0,
+        "longTaskMs": 0
+      },
+      "procDetail": [
+        {
+          "name": "AgentCodeGUI3.exe",
+          "wsMB": 45.9,
+          "privMB": 20.2
+        },
+        {
+          "name": "node.exe",
+          "wsMB": 44.8,
+          "privMB": 58.5
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "wsMB": 231.3,
+          "privMB": 105.1
+        },
+        {
+          "name": "conhost.exe",
+          "wsMB": 7.1,
+          "privMB": 1.2
+        },
+        {
+          "name": "node.exe",
+          "wsMB": 63,
+          "privMB": 41.8
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "wsMB": 18.5,
+          "privMB": 3.3
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "wsMB": 19.9,
+          "privMB": 9
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "wsMB": 234.6,
+          "privMB": 161.5
+        }
+      ]
+    }
+  ],
+  "at": "2026-08-31T04:29:59.557Z"
+}
