@@ -1,0 +1,57 @@
+{
+  "at": "2026-09-01T02:49:47.396Z",
+  "exe": "C:\\Code\\.cargo-slugr2\\release\\agentcodegui.exe",
+  "scenarios": {
+    "resolve": {
+      "home": "C:\\Code\\ccg-slugr2\\.poc-home-slug-resolve",
+      "email": "slug-a@example.invalid",
+      "realSlug": "slug-a_example.invalid-1atacxe",
+      "oldGuess": "slug-a_example.invalid",
+      "ready": true,
+      "answered": true,
+      "state": "Idle",
+      "spawns": 1,
+      "notices": [],
+      "thread": "어느 폴더로 떴니\n\nOK-REAL",
+      "picked": "real",
+      "materialized": true,
+      "poisonMaterialized": false,
+      "stdinBytes": 307,
+      "argvSupported": true,
+      "argv": [
+        "--output-format",
+        "stream-json",
+        "--verbose",
+        "--input-format"
+      ],
+      "appLog": [
+        "[store] chats-v3 마이그레이션: {\"ok\":true,\"migratedAt\":1788230988249.0,\"elapsedMs\":4.0,\"backupDir\":\"C:\\\\Code\\\\ccg-slugr2\\\\.poc-home-slug-resolve\\\\backup-2.6.2-1788230988249\",\"counts\":{\"chats\":1,\"maSessions\":0,\"maPanels\":0,\"sessionChats\":0,\"talkAbsorbed\":0,\"carried\":0,\"keptV3\":0,\"keptV3Boards\":0,\"total\":1,\"messages\":0,\"boards\":1},\"idMap\":{\"c-slug\":\"c-slug\"},\"order\":[\"c-slug\"],\"activeChatId\":\"c-slug\",\"boardOrder\":[\"default\"],\"activeBoardId\":\"default\",\"activeSessionId\":\"\",\"btw\":{\"rewritten\":0,\"dropped\":0},\"holdMoved\":0,\"sourceIndexOrders\":{\"chats\":[\"c-slug\"],\"multiAgent\":[],\"sessionChats\":[]},\"warnings\":[]}"
+      ]
+    },
+    "fail": {
+      "home": "C:\\Code\\ccg-slugr2\\.poc-home-slug-fail",
+      "email": "slug-b@example.invalid",
+      "realSlug": "slug-b_example.invalid-1x70hdf",
+      "oldGuess": "slug-b_example.invalid",
+      "ready": true,
+      "noticed": true,
+      "state": "Idle",
+      "spawns": 1,
+      "notices": [
+        "slug-b@example.invalid 계정 폴더를 열지 못했어요 — 저장된 자격증명을 풀지 못했어요 — 다른 사용자·다른 PC의 홈을 옮겨 온 경우예요(다시 로그인해 주세요)"
+      ],
+      "thread": "못 뜰 턴\n\n오전 11:49\nslug-b@example.invalid 계정 폴더를 열지 못했어요 — 저장된 자격증명을 풀지 못했어요 — 다른 사용자·다른 PC의 홈을 옮겨 온 경우예요(다시 로그인해 주세요)\n복사\n오전 11:49\n엔진을 시작하지 못했어요.",
+      "notice": "slug-b@example.invalid 계정 폴더를 열지 못했어요 — 저장된 자격증명을 풀지 못했어요 — 다른 사용자·다른 PC의 홈을 옮겨 온 경우예요(다시 로그인해 주세요)",
+      "domHasReason": true,
+      "stdinBytes": 0,
+      "argvSupported": true,
+      "cliSpawned": false,
+      "settled": true,
+      "appLog": [
+        "[auth] slug-b@example.invalid 토큰 교환 실패 1회 — 60s 동안 재시도하지 않는다(no usable access token)",
+        "[store] chats-v3 마이그레이션: {\"ok\":true,\"migratedAt\":1788230991708.0,\"elapsedMs\":5.0,\"backupDir\":\"C:\\\\Code\\\\ccg-slugr2\\\\.poc-home-slug-fail\\\\backup-2.6.2-1788230991708\",\"counts\":{\"chats\":1,\"maSessions\":0,\"maPanels\":0,\"sessionChats\":0,\"talkAbsorbed\":0,\"carried\":0,\"keptV3\":0,\"keptV3Boards\":0,\"total\":1,\"messages\":0,\"boards\":1},\"idMap\":{\"c-slug\":\"c-slug\"},\"order\":[\"c-slug\"],\"activeChatId\":\"c-slug\",\"boardOrder\":[\"default\"],\"activeBoardId\":\"default\",\"activeSessionId\":\"\",\"btw\":{\"rewritten\":0,\"dropped\":0},\"holdMoved\":0,\"sourceIndexOrders\":{\"chats\":[\"c-slug\"],\"multiAgent\":[],\"sessionChats\":[]},\"warnings\":[]}"
+      ]
+    }
+  },
+  "findings": []
+}

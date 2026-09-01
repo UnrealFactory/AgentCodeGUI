@@ -1,0 +1,59 @@
+{
+  "at": "2026-09-01T02:47:54.567Z",
+  "repo": "C:\\Code\\ccg-slugcrit",
+  "baseline": {
+    "engine": {
+      "compiled": true,
+      "pass": 4,
+      "fail": 0,
+      "failed": [],
+      "firstError": null
+    },
+    "shell": {
+      "compiled": true,
+      "pass": 7,
+      "fail": 0,
+      "failed": [],
+      "firstError": null
+    },
+    "attack": {
+      "compiled": true,
+      "pass": 8,
+      "fail": 0,
+      "failed": [],
+      "firstError": null
+    }
+  },
+  "mutants": [
+    {
+      "id": "E1P",
+      "what": "E1′ — 실패했을 때만 옛 스캔으로 때우되, **스캔이 빈손이면 Err를 그대로 올린다**(빌더 주장의 형태)",
+      "suites": {
+        "engine": {
+          "compiled": true,
+          "pass": 4,
+          "fail": 0,
+          "failed": [],
+          "firstError": null
+        },
+        "shell": {
+          "compiled": true,
+          "pass": 7,
+          "fail": 0,
+          "failed": [],
+          "firstError": null
+        },
+        "attack": {
+          "compiled": true,
+          "pass": 8,
+          "fail": 0,
+          "failed": [],
+          "firstError": null
+        }
+      },
+      "killedBy": [],
+      "failedTests": [],
+      "survived": true
+    }
+  ]
+}

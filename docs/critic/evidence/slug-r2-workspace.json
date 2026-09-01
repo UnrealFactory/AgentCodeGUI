@@ -1,0 +1,14 @@
+{
+  "at": "2026-09-01T02:54:14.031Z",
+  "what": "cargo test --workspace (격리 사본 4e289c2 · 크리틱 시험 파일 제외)",
+  "binaries": 36,
+  "passed": 857,
+  "failed": 0,
+  "deltaFromR1": {
+    "note": "R1 기준선은 커밋 1255f17(35바이너리/847건)",
+    "agentcodegui": "155→158 (셸 새 못 3)",
+    "ccg_engine": "79→80 (엔진 새 못 1)",
+    "slug_r2_store_settled": "신규 바이너리 4건",
+    "ccg_lsp": "106→108 — 이 커밋이 아니라 병렬 커밋 0f63195(LSPIDLE)의 것"
+  }
+}

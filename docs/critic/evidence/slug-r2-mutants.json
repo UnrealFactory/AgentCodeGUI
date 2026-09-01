@@ -1,0 +1,216 @@
+{
+  "at": "2026-09-01T02:45:37.399Z",
+  "repo": "C:\\Code\\ccg-slugr2",
+  "baseline": {
+    "authR2": {
+      "compiled": true,
+      "pass": 4,
+      "fail": 0,
+      "failed": [],
+      "firstError": null
+    },
+    "engine": {
+      "compiled": true,
+      "pass": 5,
+      "fail": 0,
+      "failed": [],
+      "firstError": null
+    },
+    "shell": {
+      "compiled": true,
+      "pass": 10,
+      "fail": 0,
+      "failed": [],
+      "firstError": null
+    },
+    "attack": {
+      "compiled": true,
+      "pass": 8,
+      "fail": 0,
+      "failed": [],
+      "firstError": null
+    }
+  },
+  "mutants": [
+    {
+      "id": "M4",
+      "what": "★R2의 한 줄을 되돌린다 — `snapshot_of`가 다시 단발 읽기",
+      "suites": {
+        "authR2": {
+          "compiled": true,
+          "pass": 0,
+          "fail": 4,
+          "failed": [
+            "a_half_written_store_no_longer_kills_the_turn",
+            "a_passing_half_is_ridden_out_by_the_turn_path_too",
+            "a_vanished_store_no_longer_kills_the_turn",
+            "the_query_path_and_the_turn_path_never_disagree_about_registration"
+          ],
+          "firstError": null
+        },
+        "engine": {
+          "compiled": true,
+          "pass": 5,
+          "fail": 0,
+          "failed": [],
+          "firstError": null
+        },
+        "shell": {
+          "compiled": true,
+          "pass": 10,
+          "fail": 0,
+          "failed": [],
+          "firstError": null
+        },
+        "attack": {
+          "compiled": true,
+          "pass": 8,
+          "fail": 0,
+          "failed": [],
+          "firstError": null
+        }
+      },
+      "killedBy": [
+        "authR2"
+      ],
+      "failedTests": [
+        "a_half_written_store_no_longer_kills_the_turn",
+        "a_passing_half_is_ridden_out_by_the_turn_path_too",
+        "a_vanished_store_no_longer_kills_the_turn",
+        "the_query_path_and_the_turn_path_never_disagree_about_registration"
+      ],
+      "survived": false
+    },
+    {
+      "id": "E1P",
+      "what": "E1′ — 실패했을 때만 옛 스캔으로 때우되, **스캔이 빈손이면 Err를 그대로 올린다**(빌더 주장의 형태)",
+      "suites": {
+        "authR2": {
+          "compiled": true,
+          "pass": 4,
+          "fail": 0,
+          "failed": [],
+          "firstError": null
+        },
+        "engine": {
+          "compiled": true,
+          "pass": 5,
+          "fail": 0,
+          "failed": [],
+          "firstError": null
+        },
+        "shell": {
+          "compiled": true,
+          "pass": 9,
+          "fail": 1,
+          "failed": [
+            "engine::claude_account::tests::a_failure_is_never_papered_over_with_a_scanned_folder"
+          ],
+          "firstError": null
+        },
+        "attack": {
+          "compiled": true,
+          "pass": 8,
+          "fail": 0,
+          "failed": [],
+          "firstError": null
+        }
+      },
+      "killedBy": [
+        "shell"
+      ],
+      "failedTests": [
+        "engine::claude_account::tests::a_failure_is_never_papered_over_with_a_scanned_folder"
+      ],
+      "survived": false
+    },
+    {
+      "id": "E2",
+      "what": "리졸버가 이메일별로 한 번만 진짜를 부르고 이후 캐시(물질화 부작용이 사라진다)",
+      "suites": {
+        "authR2": {
+          "compiled": true,
+          "pass": 4,
+          "fail": 0,
+          "failed": [],
+          "firstError": null
+        },
+        "engine": {
+          "compiled": true,
+          "pass": 5,
+          "fail": 0,
+          "failed": [],
+          "firstError": null
+        },
+        "shell": {
+          "compiled": true,
+          "pass": 9,
+          "fail": 1,
+          "failed": [
+            "engine::claude_account::tests::every_call_materialises_again_not_just_the_first_one_per_email"
+          ],
+          "firstError": null
+        },
+        "attack": {
+          "compiled": true,
+          "pass": 8,
+          "fail": 0,
+          "failed": [],
+          "firstError": null
+        }
+      },
+      "killedBy": [
+        "shell"
+      ],
+      "failedTests": [
+        "engine::claude_account::tests::every_call_materialises_again_not_just_the_first_one_per_email"
+      ],
+      "survived": false
+    },
+    {
+      "id": "E3",
+      "what": "`why()`가 `NotRegistered` 외 넷을 같은 한 줄로 뭉갠다",
+      "suites": {
+        "authR2": {
+          "compiled": true,
+          "pass": 4,
+          "fail": 0,
+          "failed": [],
+          "firstError": null
+        },
+        "engine": {
+          "compiled": true,
+          "pass": 5,
+          "fail": 0,
+          "failed": [],
+          "firstError": null
+        },
+        "shell": {
+          "compiled": true,
+          "pass": 8,
+          "fail": 2,
+          "failed": [
+            "engine::claude_account::tests::a_failure_is_never_papered_over_with_a_scanned_folder",
+            "engine::claude_account::tests::each_reason_branch_says_its_own_thing"
+          ],
+          "firstError": null
+        },
+        "attack": {
+          "compiled": true,
+          "pass": 8,
+          "fail": 0,
+          "failed": [],
+          "firstError": null
+        }
+      },
+      "killedBy": [
+        "shell"
+      ],
+      "failedTests": [
+        "engine::claude_account::tests::a_failure_is_never_papered_over_with_a_scanned_folder",
+        "engine::claude_account::tests::each_reason_branch_says_its_own_thing"
+      ],
+      "survived": false
+    }
+  ]
+}

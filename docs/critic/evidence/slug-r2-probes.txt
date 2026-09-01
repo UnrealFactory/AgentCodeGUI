@@ -1,0 +1,40 @@
+### 빌더의 초록 못 4건(기준)
+test a_half_written_store_no_longer_kills_the_turn ... ok
+test a_passing_half_is_ridden_out_by_the_turn_path_too ... ok
+test a_vanished_store_no_longer_kills_the_turn ... ok
+test the_query_path_and_the_turn_path_never_disagree_about_registration ... ok
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.33s
+
+### 내 R1 탐침 — R2에서 붉어야 옳다(결함 제거 서명)
+[STORE-half] is_registered=true account_run_dir=None
+thread 'a_half_written_store_makes_the_turn_path_and_the_query_path_disagree' (30796) panicked at crates\ccg-auth\tests\critic_slug_r1_store.rs:62:5:
+반쪽을 보고도 폴더를 냈다면 이 탐침은 무효다: Ok("C:\\Users\\User\\AppData\\Local\\Temp\\ccg-test-slug-crit-store-half-33228-1788231240875310100\\accounts\\race_example.invalid-7e82ro")
+[STORE-gone] is_registered=true account_run_dir=None
+thread 'a_vanished_store_makes_the_turn_path_and_the_query_path_disagree' (21324) panicked at crates\ccg-auth\tests\critic_slug_r1_store.rs:91:5:
+Ok("C:\\Users\\User\\AppData\\Local\\Temp\\ccg-test-slug-crit-store-gone-33228-1788231240937829700\\accounts\\gone_example.invalid-1o0eok2")
+[STORE-passing] 턴경로=None 조회경로=true
+thread 'the_query_path_survives_a_passing_half_but_the_turn_path_has_no_such_gear' (21616) panicked at crates\ccg-auth\tests\critic_slug_r1_store.rs:124:5:
+이 대조군이 성립해야 「격상 목록에서 빠졌다」가 말이 된다: turn=Ok("C:\\Users\\User\\AppData\\Local\\Temp\\ccg-test-slug-crit-store-passing-33228-1788231240991766300\\accounts\\pass_example.invalid-1yf3bd0") query=true
+test result: FAILED. 0 passed; 3 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.19s
+
+### 코덱스 쌍둥이
+[CL-half ] turn_ok=true query=true
+[CL-empty] turn_ok=true query=true
+[CL-gone ] turn_ok=true query=true
+[CX-half ]   run_dir=Some(NotRegistered("cx@example.invalid")) default=None
+[CX-empty]   run_dir=Some(NotRegistered("cx@example.invalid")) default=None
+[CX-gone ]   run_dir=Some(NotRegistered("cx@example.invalid")) default=None
+[CX-restored] run_dir=Ok
+[CX-origin] 손상=0개 진짜0개=0개 — 구분 불가=true
+[CX-retry] 지나가는 반쪽 → Some(NotRegistered("cx2@example.invalid")) (소요 5.611ms)
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.26s
+
+### 격상의 부작용
+[SE2] .bak 존재 = true
+[SE2] 턴=Some(NotRegistered("bye@example.invalid")) 조회=false
+[SE2] 본문 손상 + 로그아웃 → 턴=Some(NotRegistered("bye@example.invalid"))
+[SE3] 재시도 예산 18ms 대비 소요 = 22.1µs
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s
+
+### 내 R1 공격 8건(무회귀)
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
