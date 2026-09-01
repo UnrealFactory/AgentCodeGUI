@@ -14,7 +14,7 @@
 
 use crate::rpc::Rpc;
 use crate::semcache::SemanticTokens;
-use crate::lifecycle::{Lifecycle, Sweep};
+use crate::lifecycle::{Budget, Lifecycle, Sweep};
 use crate::spec::{Launch, Provision, Reprime, ServerSpec};
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -304,6 +304,46 @@ impl Server {
         Ok(server)
     }
 
+    /// ★LSPIDLE R3 — **프로세스 없는 서버**(못 전용 · 크리틱 R2 §4-B의 생존 돌연변이용).
+    ///
+    /// 수명 판정이 실제로 만지는 것은 `state`(→ [`Server::indexing`])와 `life` 둘뿐이다.
+    /// 그 둘만 진짜로 만들고 나머지는 비운다 — 그러면 못이 **어느 기계에서나** 같은 답을
+    /// 낸다(진짜 언어 서버가 없어도 돈다). `rpc`가 「살아 있음」인 이유는
+    /// [`crate::rpc::Rpc::inert_for_test`]에 적었다.
+    ///
+    /// `pid: 0`은 좀비 원장에 없는 번호다 — [`crate::zombie::forget`]이 무해하게 지나간다.
+    #[cfg(test)]
+    pub(crate) fn inert_for_test(spec: &'static ServerSpec, root: &Path, status: Status) -> Arc<Server> {
+        Arc::new(Server {
+            spec,
+            root: root.to_path_buf(),
+            pid: 0,
+            rpc: Rpc::inert_for_test(),
+            child: Mutex::new(None),
+            state: Mutex::new(State {
+                status,
+                caps: Caps { sync_kind: 1, ..Default::default() },
+                project_init_pending: false,
+                progress_pct: None,
+                err: None,
+            }),
+            ready_cv: Condvar::new(),
+            docs: Mutex::new(Docs::default()),
+            life: Mutex::new(Lifecycle::new(now_ms())),
+            last_open_ms: AtomicU64::new(0),
+            prime: Mutex::new(Prime::default()),
+            prime_cv: Condvar::new(),
+            compl: Mutex::new(ComplCache::default()),
+            stderr_tail: Arc::new(Mutex::new(String::new())),
+        })
+    }
+
+    /// 못 전용 — 「그만큼 시간이 흘렀다」([`crate::lifecycle::Lifecycle::rewind_for_test`]).
+    #[cfg(test)]
+    pub(crate) fn rewind_clocks_for_test(&self, by_ms: u64) {
+        self.life.lock().unwrap().rewind_for_test(by_ms);
+    }
+
     fn on_notify(&self, method: &str, params: &Value) {
         match method {
             "workspace/projectInitializationComplete" => {
@@ -475,12 +515,22 @@ impl Server {
     /// 호출부가 전이를 잊을 수 있는 모양을 없앴다: R1은 `Sweep::Rewind`일 때 호출부가
     /// `touch()`를 부르는 구조였고, 크리틱이 그 줄을 지운 돌연변이(`Rewind => {}`)로
     /// **초록**을 받아 냈다. 이제 잊을 것이 없다 — 여기서 다 끝난다.
-    pub fn sweep_step(&self, ttl_ms: u64) -> Sweep {
+    ///
+    /// ★LSPIDLE R3 — 이 **얇은 껍데기**에도 못이 생겼다. 크리틱 R2 §4-B가 여기서
+    /// `saw_work()`를 한 줄 부르는 돌연변이(C1)로 94개 못을 전부 웃게 만들었다 —
+    /// 그러면 스윕이 스스로 「일한다는 증거」를 만들어 R1의 A-2(되감기 무효화)가 되살아난다.
+    /// 그 문장을 지키는 못은 [`tests::the_sweep_can_never_forge_the_work_clock`]이다.
+    pub fn sweep_step(&self, b: Budget) -> Sweep {
         let indexing = self.indexing();
-        self.life.lock().unwrap().step(now_ms(), ttl_ms, indexing)
+        self.life.lock().unwrap().step(now_ms(), b, indexing)
     }
 
-    /// 지금 유예 중인가(진단·`lifecycle()`).
+    /// 지금 유예 중인가 — 진단([`crate::lifecycle_stats`]의 `grace` 칸)과 못이 읽는다.
+    ///
+    /// ★LSPIDLE R3 · 크리틱 R2 §5 C-3: R2는 이 함수를 「진단·`lifecycle()`」이라 적어 놓고
+    /// `lifecycle()`에 안 실었다 — 테스트 밖 호출자가 없는 죽은 코드였다. 문서를 코드에
+    /// 맞추는 대신 **코드를 문서에 맞췄다**(계약면 `grace` 칸을 실제로 만들었다). 유예는
+    /// 이 라운드가 세운 개념 중 밖에서 유일하게 안 보이던 것이라, 보이는 편이 낫다.
     pub fn in_grace(&self) -> bool {
         self.life.lock().unwrap().in_grace()
     }
@@ -1257,6 +1307,84 @@ mod tests {
             "CREATE_NO_WINDOW로 되돌렸다 — 창은 안 보여도 콘솔은 만들어지고 conhost.exe가 따라 뜬다. \
              유휴 프로세스 수가 헬퍼마다 하나씩 늘어난다(게이트 G6가 8 대 7로 진 그 칸)"
         );
+    }
+
+    // ── ★LSPIDLE R3 — 「멎음 시계는 절대 시계다」를 **껍데기 층에서** 지키는 못들 ─────
+    //
+    // 크리틱 R2 §4-B가 판 자리: 이 라운드의 핵심 불변식은 「스윕은 멎음 시계를 절대 못
+    // 건드린다」인데, 그걸 지키는 못이 `lifecycle.rs` **안쪽**에만 있었다. `server.rs`의
+    // 얇은 껍데기(`sweep_step`·`status`)에서 `saw_work()`를 한 줄 부르면 R1의 A-2가
+    // 그대로 되살아나고 94개 못이 전부 초록이었다. 아래 둘이 그 두 줄을 막는다.
+
+    /// 픽스처 — 프로세스 없는 서버 하나(자세한 이유는 [`crate::rpc::Rpc::inert_for_test`]).
+    fn inert(id: &str, status: Status) -> std::sync::Arc<Server> {
+        let spec = crate::spec::spec_by_id(id).unwrap();
+        Server::inert_for_test(spec, Path::new("C:\\ccg-lspidle-r3-fixture"), status)
+    }
+
+    /// ★C1형 — **스윕이 「일한다는 증거」를 스스로 만들면 안 된다.**
+    ///
+    /// 시나리오: TTL도 멎음 눈금도 넘긴 서버가 계속 「인덱싱 중」이라 말한다.
+    /// 규칙대로면 첫 스윕에서 회수다. `sweep_step`이 `saw_work()`를 부르면 매 걸음이
+    /// 멎음 시계를 지금으로 되감아 **영영 안 접힌다** — R1 A-2의 부활 그 자체다.
+    #[test]
+    fn the_sweep_can_never_forge_the_work_clock() {
+        let s = inert("cpp", Status::Starting); // Starting = indexing() 참
+        let b = Budget::of(s.spec);
+        // 「TTL도 멎음 눈금도 넘길 만큼 시간이 흘렀다」 — 진행 통지는 한 번도 없었다.
+        s.rewind_clocks_for_test(b.ttl_ms + b.stall_ms + 60_000);
+        assert!(s.indexing(), "픽스처가 「일하는 중」이 아니다 — 시나리오가 성립 안 한다");
+        assert_eq!(
+            s.sweep_step(b),
+            Sweep::Reclaim,
+            "★스윕이 멎음 시계를 되감았다 — 「일한다」고 말만 하는 서버가 영생한다(크리틱 R2 §4-B C1)"
+        );
+        // 한 번이 아니라 **반복해도** 그렇다(되감기는 누적으로 드러난다).
+        let s = inert("ts", Status::Starting);
+        let b = Budget::of(s.spec);
+        s.rewind_clocks_for_test(b.ttl_ms + 60_000);
+        for i in 0..40u64 {
+            let v = s.sweep_step(b);
+            if v == Sweep::Reclaim {
+                assert!(i > 0, "유예를 한 번도 안 받았다 — 시나리오가 반대로 섰다");
+                return;
+            }
+            s.rewind_clocks_for_test(60_000); // 1분 더 흘렀다
+        }
+        panic!("★40분을 돌려도 안 접혔다 — 멎음 시계가 되감기고 있다");
+    }
+
+    /// ★C2형 — **상태 폴링이 멎음 시계를 되감으면 안 된다.**
+    ///
+    /// 렌더러는 `status`를 400ms(워밍 중엔 25ms)로 부른다. 그 경로가 `saw_work()`를 부르면
+    /// **파일을 열어 둔 것만으로** 유예가 영원해진다. 유휴 시계 쪽은 R1이 이미 닫았고
+    /// (`start`가 touch를 안 한다), 이 못은 멎음 시계 쪽을 같은 이유로 닫는다.
+    #[test]
+    fn polling_the_status_can_never_forge_the_work_clock() {
+        let s = inert("cs", Status::Starting);
+        let b = Budget::of(s.spec);
+        s.rewind_clocks_for_test(b.ttl_ms + b.stall_ms + 60_000);
+        for _ in 0..50 {
+            let _ = s.status(); // 렌더러의 폴링
+            let _ = s.raw_status();
+        }
+        assert_eq!(
+            s.sweep_step(b),
+            Sweep::Reclaim,
+            "★상태를 물었더니 멎음 시계가 되감겼다 — 폴링만으로 유예가 영원해진다(크리틱 R2 §4-B C2)"
+        );
+    }
+
+    /// 픽스처가 **진짜 규칙 위에서** 돈다는 대조 — 진행 통지가 흐르면 안 접힌다.
+    /// (위 둘이 「항상 Reclaim」인 코드에서도 초록이 되지 않게 하는 음성 대조다.)
+    #[test]
+    fn the_fixture_still_grants_the_grace_when_work_is_real() {
+        let s = inert("cpp", Status::Starting);
+        let b = Budget::of(s.spec);
+        s.rewind_clocks_for_test(b.ttl_ms + 60_000);
+        s.saw_work(); // 서버가 방금 $/progress를 흘렸다
+        assert_eq!(s.sweep_step(b), Sweep::Rewind, "진행 통지가 방금 왔는데 접으려 한다");
+        assert!(s.in_grace(), "유예 시작 시각이 안 남았다");
     }
 
     #[test]

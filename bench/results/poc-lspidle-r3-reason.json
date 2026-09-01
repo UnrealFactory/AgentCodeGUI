@@ -1,0 +1,26 @@
+{
+  "harness": "poc-lspidle-r3-reason",
+  "at": "2026-09-01T01:07:23.425Z",
+  "exe": "C:/Temp/ccg-t-lspidle-r3mut/release/agentcodegui.exe",
+  "measures": "실앱 뷰어 머리의 `.fv-lsp.error` 칩 — 텍스트와 툴팁 전문",
+  "ghostModule": "C:/nope/ccg-lspidle-r3-missing-preload.cjs",
+  "healthy": {
+    "arm": "healthy",
+    "errText": null,
+    "errTip": null,
+    "anyChip": null,
+    "shot": "C:\\Code\\AgentCodeGUI\\bench\\results\\poc-lspidle-r3-reason-healthy.png"
+  },
+  "broken": {
+    "arm": "broken",
+    "errText": "Error: Cannot find module 'C:/nope/ccg-lspidle-r3-missing-preload.cjs'",
+    "errTip": "LSP 서버가 종료됨 · stderr: node:internal/modules/cjs/loader:1568\r\n  throw err;\r\n  ^\r\n\r\nError: Cannot find module 'C:/nope/ccg-lspidle-r3-missing-preload.cjs'\r\nRequire stack:\r\n- internal/preload\r\n    at Module._resolveFilename (node:internal/modules/cjs/loader:1564:15)\r\n    at wrapResolveFilename (node:internal/modules/cjs/l…",
+    "anyChip": "fv-lsp error htip :: Error: Cannot find module 'C:/nope/ccg-lspidle-r3-missing-preload.cjs'",
+    "shot": "C:\\Code\\AgentCodeGUI\\bench\\results\\poc-lspidle-r3-reason-broken.png"
+  },
+  "verdict": {
+    "chipShownWhenDead": true,
+    "chipHiddenWhenHealthy": true,
+    "reasonNamesTheMissingModule": true
+  }
+}

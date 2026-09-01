@@ -510,6 +510,11 @@ R1 구조에서는 그게 원리상 안 잡힌다 — 순수 함수에 합성 �
 | `Eager`(비교용 · 프리웜이 기동) | 1146ms | 1168 · 1146 · 1104 · 1098 |
 
 - **폴링 격자로 되찾은 값: 183ms**(4/4 주행에서 백오프가 이겼다).
+  > ★**R3 정정(확인 크리틱 R2 §5 C-1).** 이 「183ms」는 **한 주행의 값**이지 재현되는 값이
+  > 아니다 — 크리틱의 독립 재주행은 **−495ms**였다(고정팔 중앙값 1567ms · 스프레드
+  > 1243~1778ms). 고정 400ms 팔의 큰 분산은 격자 양자화로 설명되므로 **결론(백오프가
+  > 낫다 · 8/8 주행에서 방향 일관)은 안 흔들리고**, 흔들리는 것은 숫자다.
+  > 지금 정직하게 말할 수 있는 것은 **「−180ms에서 −500ms 사이」**뿐이다. 자세한 것은 §R3-5.
 - **온디맨드가 제품 경로에서 남긴 비용: −76ms** — 즉 **없다.** 백오프를 켠 온디맨드가
   프리웜 기동(`Eager`)보다 오히려 빠르거나 같다(두 팔의 범위가 겹치므로 「같다」로 읽는 것이
   정직하다). 뷰어가 스스로 하는 일(모달·CodeMirror 마운트·본문 렌더)이 기동과 겹쳐서,
@@ -582,3 +587,313 @@ R1이 둘(ppid 재사용 · 단계와 표본의 시각 어긋남)을 고쳤고, 
 결과 파일(R2): `bench/results/poc-lspidle-firstpaint.json` ·
 `poc-lspidle-reclaim.json`·`poc-lspidle-diet.json`(재주행) ·
 `lsp-tauri-3.0.0-r2{fixed,backoff}{1,2,3}.json`(계기가 이 변경을 못 본다는 증거로 남긴다).
+
+---
+
+# §R3 — 확인 크리틱 R2(커밋 `2fef407`)에 답한다
+
+*2026-09-01 · 판정문: `docs/critic/lspidle-critic-r2.md` — **합격(조건부)**, A급 1 · B급 3 · C급 4.*
+
+R2가 받은 A급의 요지는 짧다. **새 규칙이 내건 보장이 무조건형으로 적혀 있는데 실제로는
+조건부였고, 그 조건이 참인지는 이 기능을 만든 명분이었던 두 스펙(cs·cpp)에서 재지 못한
+값이었다.** R3은 그 문장을 사실로 고치고, 눈금을 **서버마다 다르게 줄 수 있는 자리**로
+내렸다. 나머지 여섯(B급 3 · C급 4 중 셋)은 못과 배선으로 닫고, 하나(C-2)는 규약을 인정한다.
+
+## R3-1 [A급] 유예가 「진짜로 일하는 서버」를 못 지키던 것 — 눈금을 스펙으로 내렸다
+
+### 반증을 그대로 재현했다
+
+크리틱의 시나리오(40분 인덱싱 · 진행 통지 간격만 훑기)를 계기로 만들어
+(`scripts/poc-lspidle-r3-grace.mjs`) **옛 값과 새 값에서 각각** 돌렸다. 규칙은 안 건드리고
+**값만** 갈아 끼운다 — 그래야 무엇이 고쳤는지가 드러난다.
+
+| 통지 간격 | 1분 | 2분 | 4분 | 5분 | **6분** | **10분** |
+|---|---|---|---|---|---|---|
+| **R2 값**(멎음 5분 상수) ts·py(TTL 10분) | 안 끊김 | 안 끊김 | 안 끊김 | 안 끊김 | **11분에 회수** | **15분에 회수** |
+| **R2 값** cs·cpp(TTL 30분) | 안 끊김 | 안 끊김 | 안 끊김 | 안 끊김 | **35분에 회수** | **35분에 회수** |
+| **R3 값**(스펙 필드) ts·py(멎음 15분) | 안 끊김 | 안 끊김 | 안 끊김 | 안 끊김 | 안 끊김 | 안 끊김 |
+| **R3 값** cs·cpp(멎음 30분) | 안 끊김 | 안 끊김 | 안 끊김 | 안 끊김 | 안 끊김 | 안 끊김 |
+
+**끊긴 칸 8 → 0.** 위 표의 「R2 값」 줄은 크리틱이 낸 표와 **분 단위까지 같다**(11·15·35·35).
+계기가 규칙을 옮겨 적은 것이 맞다는 대조가 그 일치다.
+
+### 고친 것 ① — `stall_grace_ms`·`ready_wait_ms`가 `ServerSpec`의 필드가 됐다
+
+R2는 TTL만 스펙에서 오고 멎음 유예는 엔진 상수(`GRACE_STALL_MS = 5분`)였다.
+**그 비대칭이 근인이다** — 유예를 만든 명분인 두 서버에 값을 따로 줄 수가 없었다.
+이제 둘이 같은 자리에 선다(`crates/ccg-lsp/src/spec.rs`). 엔진은 여전히 언어를 모른다.
+
+| 스펙 | `idle_ttl_ms` | `stall_grace_ms` | `ready_wait_ms` | 말만 하는 서버의 최대 수명 |
+|---|---:|---:|---:|---:|
+| ts · py | 10분 | **15분** | 1500ms | 25분 |
+| cs (Roslyn) | 30분 | **30분** | **5000ms** | 60분 |
+| cpp (clangd) | 30분 | **30분** | **4000ms** | 60분 |
+
+**★네 스펙의 값은 재지 않고 골랐다.** 이 기계에 .NET SDK 10도 clangd도 없어 실물 통지
+간격을 관측할 수 없다(§R3-7 이월). 스펙 주석과 이 표에 **그렇게 적었다** — 크리틱의 처방이
+「보수적 기본값을 주되 재지 않고 고른 값임을 명시하라」였고, 값의 대가(오른쪽 칸)도 같이
+적어 두는 편이 정직하다. `cs`가 가장 위험한 자리라는 크리틱의 지적(§3-3:
+`awaits_project_init`이라 솔루션 로드 내내 `indexing()`이 참인데 되감는 문은 둘뿐)을
+그대로 받아 TTL과 같은 크기를 줬다.
+
+### 고친 것 ② — 주석의 과한 약속을 사실로 정정했다
+
+R2의 문장(「**진짜로 일하는 서버를 안 죽인다**: 30분이 걸리든 두 시간이 걸리든…」)은
+거짓이었다. 지금 참인 문장은 조건부다:
+
+> 진행 통지가 그 서버의 `stall_grace_ms`보다 **촘촘한 동안은** 30분이 걸리든 두 시간이
+> 걸리든 유예가 이어진다. 그보다 드물면 마지막 통지로부터 `stall_grace_ms`에 접힌다.
+
+`lifecycle.rs` 머리에 반증 표까지 함께 옮겨 적었다 — 다음 사람이 같은 문장을 다시 쓰지
+않게 하려면 「틀렸다」보다 **「어떻게 틀렸는지」**가 남아야 한다.
+
+### 고친 것 ③ — 그 조건부 문장을 **못이 지킨다**
+
+값만 고치면 다음 라운드에 같은 자리가 다시 열린다. 그래서 못을 **둘로 나눠** 박았다
+(`crates/ccg-lsp/src/lifecycle.rs`):
+
+- `the_promise_holds_exactly_while_progress_is_finer_than_the_stall_grace`
+  — **규칙**을 지킨다. 배포되는 스펙 값을 읽어 ① 통지가 `stall_ms`보다 촘촘하면 **두 시간**을
+  돌려도 한 번도 안 끊기고 ② 통지가 멎으면 상한 안에 반드시 접힌다를 **양쪽 다** 본다.
+  한쪽만 보면 「값을 키워 놓고 통과」가 되기 때문이다.
+- `the_critics_forty_minute_index_is_not_cut_at_any_shipped_spec`
+  — **값**을 지킨다. 크리틱이 실제로 재현한 그 시나리오(40분 · 간격 1~10분)를 그대로 돈다.
+  누가 `stall_grace_ms`를 10분 아래로 내리면 규칙 못은 초록인데 이 못이 문다.
+
+## R3-2 [B급 ①] 죽을 때 하는 말이 사람 눈에 안 닿던 것 — 세 겹을 다 뚫었다
+
+크리틱이 짚은 세 겹을 순서대로 닫았다. 셸(`src-tauri/src/ipc/lsp.rs`)은 **안 건드렸다** —
+`LSP_PROJECT_STATUS` 갈래가 크레이트의 `Value`를 그대로 통과시키므로 이미 사유가 지나간다.
+
+1. **계약 타입에 칸이 없다** → `src/shared/protocol.ts`는 동결이라 못 연다.
+   LSPDIST·R28i N3이 쓴 방식(3.0 전용 타입 + 전용 헬퍼)을 그대로 놓았다
+   (`app/src/api/shim.ts`): `LspProjectStatusEx`(`error?`) · `lspProjectStatusEx(cwd)` ·
+   `LspTokensEx`(`pending?`) · `isTokensPending()`. 채널·페이로드는 그대로다.
+2. **렌더러가 안 읽는다** → `FileModal.tsx`가 `lspProjectStatusEx`로 갈아타 `error`를 읽는다.
+3. **★그 세계에서는 아예 안 부른다** → 폴링 게이트가 `analyzing` 하나였다. 그 값은
+   `starting|installing|ready`에서만 참이라 **서버가 죽어 사유가 생긴 바로 그 순간**
+   `projectStatus()`가 한 번도 안 불렸다. 문을 하나 더 냈다:
+
+   ```ts
+   const wantProjectStatus = (analyzing || lspStatus === 'error') && isCodeView
+   ```
+
+   그리고 죽은 세계의 폴링은 3초 간격이다(재스폰 쿨다운이 30초라 800ms는 낭비다).
+
+화면에는 `.fv-lsp.error` 칩이 뜬다 — **스타일은 이미 있었고 쓰는 곳만 없었다**
+(`app/src/styles.css:2499`). 칩에는 첫 줄 72자, 툴팁(`data-tip`)에 전문을 싣는다.
+
+### 실화면 실측 — 하네스 바이너리가 아니라 **화면에서** 봤다
+
+크리틱의 지적 중 가장 아픈 대목이 「빌더의 증거 표는 PoC 하네스에서 뜬 값이지 화면에서 뜬
+값이 아니다」였다. 그래서 계기를 실앱으로 옮겼다(`scripts/poc-lspidle-r3-reason.mjs`):
+격리 홈 + 격리 사본 빌드로 앱을 띄우고, `NODE_OPTIONS`가 **없는 조각**을 가리키게 해서
+node를 `MODULE_NOT_FOUND`로 죽인 뒤(= 배포본에서 조각이 빠졌을 때 실제로 나는 모양),
+뷰어 머리의 칩을 DOM에서 읽고 스크린샷까지 뜬다. 음성 대조(`healthy`) 팔이 같이 돈다.
+
+| 팔 | 화면의 사유 칩(`.fv-lsp.error`) | 판정 |
+|---|---|---|
+| `healthy`(대조) | **칩 자체가 없다**(`.fv-lsp`가 아예 안 뜬다) | 멀쩡하면 안 보인다 ✔ |
+| `broken` | **`Error: Cannot find module 'C:/nope/ccg-lspidle-r3-missing-preload.cjs'`** | 죽으면 보인다 ✔ · 모듈 이름을 댄다 ✔ |
+
+툴팁(`data-tip`)에는 전문이 실린다 — `LSP 서버가 종료됨 · stderr: node:internal/modules/…`
+부터 `Require stack` 까지, Rust가 앞에서 320자로 자른 그대로.
+증거: `bench/results/poc-lspidle-r3-reason.json` ·
+스크린샷 `poc-lspidle-r3-reason-{broken,healthy}.png`.
+
+**계기를 화면으로 옮기니 곧바로 하나가 드러났다.** 첫 주행의 칩은
+`LSP 서버가 종료됨 · stderr: node:internal/modules/cjs/loader:1568`이었다 — 사유의 **첫 줄이
+쓸모없는 줄**이고, 사용자가 읽어야 할 `Error: Cannot find module 'X'`는 다섯 번째 줄이었다.
+「소리 내어 죽되 죽을 때 하는 말이 맞아야 한다」의 마지막 한 자가 거기였다. 그래서 칩이
+**말인 줄을 먼저 고르게** 했다(`errHeadline` — 스택 프레임을 건너뛰고 `…Error:` 줄을 집는다,
+못 찾으면 첫 줄). 위 표는 그 수정 뒤의 값이다.
+
+이 발견이 크리틱의 지적을 그대로 증명한다: 같은 사유가 하네스에서는 「맞는 말」이었고
+화면에서는 아니었다. **어디서 재는가가 판정을 바꾼다.**
+
+## R3-3 [B급 ②] 생존 돌연변이 7 — 못을 보강했다
+
+크리틱 표에서 **초록으로 살아남은 일곱**(B1·B2·B3·C1·C2·D1·D2)이 과제였다. 그중 C1이
+가장 아팠다: `server.rs`의 얇은 껍데기에서 `saw_work()`를 한 줄 부르면 R1의 A-2(되감기
+무효화)가 그대로 되살아나는데 **94개 못이 전부 초록**이었다.
+
+### 왜 못이 없었나 — 그리고 어떻게 만들었나
+
+넷(B1·B2·C1·C2)은 **`Server`를 실제로 통과해야** 잡힌다. 그런데 `Server::spawn`은 진짜
+언어 서버를 요구하고, 그건 갓 클론한 레포·CI·크리틱의 배치에서 안 뜬다 — 환경에 기대는
+못은 조용히 통과한다(R2가 B급 ①에서 이미 밟은 함정이다).
+
+그래서 수명 판정이 **실제로 만지는 것**만 진짜인 서버를 만들었다:
+`Server::inert_for_test`(프로세스 없음 · `Rpc::inert_for_test`로 「살아 있는」 파이프 없는 rpc)
++ `Lifecycle::rewind_for_test`(「그만큼 시간이 흘렀다」). 둘 다 `cfg(test)`고, 진짜 시계
+(`now_ms()`) 위에서 24시간짜리 시나리오를 만들 수 있게 하는 문이다.
+
+레지스트리 쪽은 `seed_server_for_test`·`seed_error_for_test`·`entry_state_for_test`·
+`reset_sweeper_for_test`로 자리를 합성한다. 전역 상태라 `registry_test_lock()` 하나로
+직렬화했고, 기존 못(`sweeping_an_empty_registry_is_harmless`·`the_timers_stay_injectable…`)도
+같은 자물쇠를 쥐게 했다 — 안 그러면 「비어 있다」를 세는 못이 남의 픽스처를 본다.
+
+### 박은 못
+
+| 돌연변이 | 이제 무는 못 |
+|---|---|
+| **C1** `sweep_step`이 `saw_work()`를 부른다 | `server::tests::the_sweep_can_never_forge_the_work_clock` |
+| **C2** `status()`가 `saw_work()`를 부른다 | `server::tests::polling_the_status_can_never_forge_the_work_clock` |
+| **B1** 호출부가 `Reclaim`을 실행 안 한다 | `manager::tests::the_sweep_actually_folds_the_server_it_decided_to_reclaim` |
+| **B2** 호출부가 `step`을 안 부른다 | 같은 못(판정이 `Keep`이면 결과가 같다) |
+| **B3** 스윕 스레드를 안 띄운다 | `manager::tests::starting_the_sweeper_actually_makes_it_sweep` |
+| **D1** `START_CALLS` 증가 제거 | `manager::tests::asking_for_a_server_is_always_counted_as_a_start_call` |
+| **D2** `error` 칸 제거 | `tests::the_project_status_carries_the_reason_a_server_died` |
+
+음성 대조도 같이 뒀다 — `the_fixture_still_grants_the_grace_when_work_is_real`(진행 통지가
+흐르면 안 접힌다)과 `the_sweep_leaves_a_server_that_is_still_inside_its_ttl`(TTL 안이면
+안 접힌다). 「스윕이 무조건 다 접는다」로 고쳐도 위 못들이 초록이 되지 않게 하는 자리다.
+
+### B3을 박으면서 고친 것 하나 — 첫 스윕이 **자기 전에** 온다
+
+`start_sweeper`는 한 주기(60초)를 자고 나서야 첫 스윕이었다. 그러면 워치독
+(`kick_sweeper_if_stalled`)이 멎은 스윕을 되살려도 회수는 **또 60초** 뒤다 — 되살리는
+의미가 그만큼 준다. 순서를 뒤집었다(부팅 직후 첫 스윕은 레지스트리가 비어 무해하다).
+
+## R3-4 [B급 ③] READY_WAIT 조용한 빈손 — 「ready라고 말했으면 값이 있다」
+
+크리틱이 인위 지연 서버로 **실재를 확인**한 위험이다. 두 갈래로 닫았다.
+
+**① 예산을 스펙으로 내렸다.** `READY_WAIT` 1500ms 상수 → `ServerSpec::ready_wait_ms`
+(위 표). 이 값이 덮는 것은 **첫 기동이 아니라 재기동**이다 — 첫 기동은 렌더러가 status
+폴링으로 따로 보고 있어서 여기서 오래 매달릴 이유가 없고(IPC 스레드가 그만큼 묶인다),
+회수 뒤 재기동은 렌더러가 이미 `ready`라 믿는 구간이라 **여기서만** 덮을 수 있다.
+
+**② 실패를 성공으로 위장하지 않는다.** R2는 예산을 넘기면 **성공한 빈 토큰 집합**을
+돌려줬다. 렌더러에게 그것은 「이 파일에 심볼이 없다」와 한 글자도 다르지 않고, 실제로
+`FileModal`은 빈 응답이 재시도 한도까지 이어지면 `noSem`으로 확정해 색칠을 hljs로 굳힌다.
+이제 그 자리는 `{data:[], types:[], mods:[], pending:true}`다 — 계약면에 **더하기만** 한다.
+
+그리고 렌더러가 그 표를 읽고 **status 폴링을 되켠다**(`lspEpoch`). 이게 핵심이다:
+status 폴링 루프는 `ready`에 닿으면 **끝난다.** 그 뒤에 서버가 회수되고 재기동에 들어가면
+렌더러는 영영 「ready」라 믿는다 — 다시 알려 줄 사람이 `pending` 말고 없었다.
+
+되켜면서 두 함정을 같이 막았다:
+
+- 재장전 때 `setLspStatus('unsupported')`를 **안 한다**(파일이 바뀔 때만 한다). 안 그러면
+  게이트가 한 틱 꺼지며 토큰 효과가 통째로 재장착되고, 끊긴 자리에서 다시 「아직」을 받아
+  **무한 재장전**이 된다.
+- 한 사슬에서 **한 번만** 깨운다(`rearmed`). 매 응답마다 올리면 800ms마다 재장전이다.
+
+못: `a_not_ready_answer_is_distinguishable_from_an_empty_one`(두 답이 실제로 구분된다 ·
+진짜 빈 답에는 표가 **없다**) · `the_ready_budget_comes_from_the_spec_for_every_server`
+(느린 서버가 빠른 서버보다 짧은 예산을 받으면 붉어진다).
+
+**남는 한 칸**: 호버·정의는 여전히 예산을 넘기면 `null`이고, 그건 「여기 심볼이 없다」와
+구분이 안 된다. 크리틱 실측대로 **다음 호버에서는 되는** 한 번의 헛손질이라 계약면을
+갈라 가며 닫지 않았다 — 다만 `pending`이 status를 되켜므로 그 구간이 이제 **칩으로 보인다**.
+
+## R3-5 [C급] 넷 — 답한다
+
+- **C-1 폴링 이득의 크기가 재현되지 않는다.** 인정한다. R2가 발표한 **−183ms는 한 주행의
+  값**이지 재현되는 값이 아니다(크리틱의 독립 재주행은 −495ms, 고정팔 중앙값 1567ms·스프레드
+  1243~1778ms). 고정 400ms 팔의 큰 분산은 격자 양자화로 설명되므로 결론(백오프가 낫다 ·
+  4/4 승)은 안 흔들린다. **§R2-5의 「183ms」는 범위로 읽어야 한다 — 두 관측을 합치면
+  「−180ms에서 −500ms 사이, 방향은 8/8 주행에서 일관」이 지금 말할 수 있는 전부다.**
+  숫자 하나를 다시 내지 않는 이유: 이 라운드는 폴링 격자를 안 건드렸고, 안 건드린 것에
+  새 숫자를 붙이면 그 숫자도 한 주행이 된다.
+- **C-2 n=4의 「중앙값」이 상위 순서통계량이다.** 맞다. `median = sorted[floor(n/2)]`라
+  n이 짝수면 위쪽 값을 집는다(참 중앙값보다 크게 잡힌다). 빌더·크리틱이 **같은 규약**을
+  써서 비교 자체는 공정하고 결론은 불변이므로, 규약을 바꾸는 대신 **이름값을 적어 둔다** —
+  발표된 수는 「n=4의 상위 중앙값」이다.
+- **C-3 `Server::in_grace()`가 죽은 코드다.** 맞다. 문서는 「진단·`lifecycle()`」이라 적었는데
+  `lifecycle()`은 안 실었다. **문서를 좁히는 대신 코드를 문서에 맞췄다**: `manager::grace_count()`를
+  만들어 `lifecycle()`에 `grace` 칸을 실었다. 유예는 이 라운드가 세운 개념 중 밖에서 유일하게
+  안 보이던 것이고, 「지금 몇 개가 유예로 살아 있는가」는 회수 규칙을 의심할 때 가장 먼저
+  묻게 되는 수다. 못: `the_lifecycle_diagnostic_reports_the_grace`.
+- **C-4 인계 프로브 ①의 등급 정정.** 크리틱이 스스로 내렸고(위상 훑기 36조합 전부에서
+  「24시간 불사」 위상이 0/P), 그 정정을 받아들인다. 수확 공격은 **스위퍼의 위상을 관측해야**
+  성립하는데 실제 서버는 그것을 못 본다. 「결함이 아니라 남은 성질」이 맞고, 이 라운드가
+  더 할 일은 없다.
+
+## R3-6 돌연변이 표 — 붉을 것과 초록일 것
+
+`scripts/poc-lspidle-r3-mutants.mjs`(격리 사본 `C:/Temp/lspidle-r3-mutx` · 기준선 107 통과 ·
+복구 초록 확인). R2 하네스를 그대로 못 쓴 이유는 앵커 셋이 이 라운드에서 **문법째** 바뀌었기
+때문이다(눈금이 스펙으로 내려가며 `Budget`이 됐다) — 앵커를 못 찾은 돌연변이는 「무효」로
+떨어지고, 무효는 초록도 붉음도 아니라서 표가 그 자리에서 거짓말을 한다. 그래서 같은 13종을
+R3 문법으로 다시 적고, 이 라운드가 새로 세운 것을 겨누는 다섯(E1~E5)을 더했다.
+
+| # | 돌연변이 | 무엇을 깨나 | R2 | **R3** |
+|---|---|---|---|---|
+| A1 | 유예 제거(`indexing`을 안 본다) | 규칙 | 붉음 | **붉음** |
+| A2 | 멎음 상한 제거 | 규칙 | 붉음 | **붉음** |
+| A3 | `Settle` → `Reclaim` | 규칙 | 붉음 | **붉음** |
+| A4 | `Settle`이 유휴 시계를 안 리셋 | 규칙 | 붉음 | **붉음** |
+| A5 | TTL 검사 삭제 | 규칙 | 붉음 | **붉음** |
+| A6 | 새 서버의 멎음 시계를 먼 미래로 | 규칙 | 붉음 | **붉음** |
+| **B1** | 호출부가 `Reclaim`을 실행 안 한다 | 회수가 영영 안 난다 | ★초록 | **붉음** |
+| **B2** | 호출부가 `step`을 안 부른다 | 살아 있는 서버를 건너뛴다 | ★초록 | **붉음** |
+| **B3** | 스윕 스레드를 안 띄운다 | 회수 루프가 안 돈다 | ★초록 | **붉음** |
+| **C1** | `sweep_step`이 `saw_work()`를 부른다 | **R1 A-2의 부활** | ★초록 | **붉음** |
+| **C2** | `status()`가 `saw_work()`를 부른다 | 폴링만으로 유예가 영원 | ★초록 | **붉음** |
+| **D1** | `START_CALLS` 증가 제거 | 관측점이 한쪽만 본다 | ★초록 | **붉음** |
+| **D2** | `error` 칸 제거 | 침묵으로 복귀 | ★초록 | **붉음** |
+| **E1** | 멎음 유예를 5분으로 되돌린다(값만) | **이 라운드의 A급 그 자체** | — | **붉음** |
+| **E2** | 느린 서버의 ready 예산을 1500ms로 | B급 ③ | — | **붉음** |
+| **E3** | `pending` 표를 뺀다 | 조용한 빈손으로 복귀 | — | **붉음** |
+| **E4** | 진단에서 `grace` 칸을 뺀다 | C-3이 도로 죽는다 | — | **붉음** |
+| **E5** | 렌더러가 에러 세계에서 다시 안 묻는다 | B급 ① | — | 러스트 밖 |
+
+**17/17 붉음 · 앵커 무효 0 · 기대와 어긋난 칸 없음.**
+E5만 「해당없음」인데 **숨기지 않고 표에 남긴다** — 렌더러 배선이라 `cargo test`도
+`typecheck`도 못 문다. 그 칸의 답은 §R3-2의 **실화면 프로브**가 낸다. 「러스트 못이 다
+잡는다」고 적었다면 그게 R2가 받은 지적을 되풀이하는 것이다.
+
+결과 파일: `bench/results/poc-lspidle-r3-mutants.json`.
+
+## R3-7 이월 — 무엇이 아직 안 재졌나
+
+**여전히 못 잰다: 실물 Roslyn·clangd의 진행 통지 간격과 재기동 시간.** 이 기계에 .NET SDK
+10도 clangd도 없다. 그래서 `stall_grace_ms`(cs·cpp 30분)와 `ready_wait_ms`(5000·4000ms)는
+**재지 않고 고른 값**이고, 스펙 주석·§R3-1 표·이 칸 셋 다 그렇게 적었다.
+
+R2는 이 위험을 「그럴 수 있다」로 적었는데, 크리틱이 §4-C에서 **실재를 확인**했다.
+그래서 이 라운드의 이월 문장은 한 단계 강하다:
+
+> 새 값이 **충분히 큰지**는 미지수다. 값이 작으면 일하는 중에 끊기고(A급이 되살아난다),
+> 크면 말만 하는 서버가 최대 60분 산다. 지금 고른 값은 **뒤쪽 대가를 사고 앞쪽 위험을 판**
+> 선택이며, SDK 있는 기계에서 한 번 재면 둘 다 정해진다.
+
+측정이 가능해졌을 때 볼 것: cs가 솔루션 로드 중 `$/progress`를 **어떤 간격으로** 쏘는가
+(안 쏘면 `awaits_project_init` 서버는 `projectInitializationComplete` 하나에만 기대게 된다) ·
+clangd의 `--background-index`가 큰 번역 단위에서 몇 분까지 조용해지는가 · Roslyn 재기동의
+`initialize` 응답까지 실제 몇 초인가.
+
+그 밖에 이월(R2에서 그대로): transient conhost · NSIS 설치기 미실행(규율).
+
+## R3-8 건드린 곳 (R3)
+
+- `crates/ccg-lsp/src/spec.rs` — `stall_grace_ms`·`ready_wait_ms` 필드 + 네 스펙의 값·근거
+- `crates/ccg-lsp/src/lifecycle.rs` — `Budget` · `step`이 예산을 받는다 · 약속 정정 · A급 못 둘 · `rewind_for_test`
+- `crates/ccg-lsp/src/server.rs` — `sweep_step(Budget)` · `inert_for_test` · C1·C2형 못 + 음성 대조
+- `crates/ccg-lsp/src/manager.rs` — `budget_for` · `grace_count` · 첫 스윕을 앞으로 · 레지스트리 못 문 · B1·B2·B3·D1형 못
+- `crates/ccg-lsp/src/rpc.rs` — `inert_for_test`(파이프 없는 살아 있는 rpc)
+- `crates/ccg-lsp/src/lib.rs` — `ready_wait(spec)` · `tokens_pending()` · `lifecycle()`에 `grace` · D2형·규약 못 셋
+- `app/src/api/shim.ts` — **3.0 전용 계약면**(`LspProjectStatusEx`·`lspProjectStatusEx`·`isTokensPending`)
+- `app/src/components/FileModal.tsx` — 에러 세계 폴링 · 사유 칩 · `pending` 재장전
+- `scripts/poc-lspidle-r3-grace.mjs`·`poc-lspidle-r3-reason.mjs`·`poc-lspidle-r3-mutants.mjs` — **신규**
+
+`src/`·`out/`·`dist/`·`main`(동결)과 `src-tauri/src/ipc/lsp.rs`는 **안 건드렸다.**
+FPS144 갈래(`Chat.tsx`·`bench/fps*`)와도 안 겹친다.
+
+## R3-9 검증
+
+| 무엇 | 결과 |
+|---|---|
+| `cargo test --workspace`(격리 사본 · HEAD 기준선) | 35 스위트 · **823 통과** · 0 실패 |
+| `cargo test --workspace`(격리 사본 · HEAD + R3) | 35 스위트 · **836 통과** · 0 실패 — **+13 못, 후퇴 0** |
+| `npm run typecheck:app` | 초록 |
+| A급 전후 프로브 | 끊긴 칸 **8 → 0**(`bench/results/poc-lspidle-r3-grace.json`) |
+| 돌연변이 | **17/17 붉음** · 무효 0(§R3-6) |
+| B급 ① 실화면 | §R3-2 |
+
+**★워크트리 주의.** 이 라운드 중 같은 워크트리에서 다른 갈래가 `crates/ccg-engine/src/runtime.rs`·
+`src-tauri/src/engine/*`를 고치고 있었고, 그 미완성 변경이 `critic_m11r2_attack`의 못 셋을
+붉게 만들었다(내 파일과 무관 — 순정 HEAD 사본에서는 초록). 그래서 무후퇴는 **「HEAD + 내
+변경만」인 격리 사본**에서 쟀고, 커밋도 경로를 지정해 내 파일만 담았다.

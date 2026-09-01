@@ -1,25 +1,25 @@
 {
   "harness": "poc-lspidle-reclaim",
-  "at": "2026-08-31T11:44:21.197Z",
+  "at": "2026-09-01T01:08:54.378Z",
   "ttlMs": 6000,
   "sweepMs": 1000,
   "home": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-lspidle-home",
   "work": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-lspidle-work",
   "numbers": {
-    "prewarmMs": 0.266,
+    "prewarmMs": 0.343,
     "cachedBeforeOpen": {
-      "ms": 15.557,
+      "ms": 15.136,
       "hit": false,
       "n": 0
     },
-    "readyMs": 854.913,
-    "liveTokensMs": 764.658,
-    "reclaimMs": 5008.569,
+    "readyMs": 905.089,
+    "liveTokensMs": 707.387,
+    "reclaimMs": 4808.491,
     "procGoneAfterReclaimMs": 0,
-    "repaintFromCacheMs": 0.708,
+    "repaintFromCacheMs": 0.729,
     "repaintHit": true,
-    "reviveMs": 595.182,
-    "procsWhileOpen": 4,
+    "reviveMs": 580.676,
+    "procsWhileOpen": 2,
     "procsAfterReclaim": 0,
     "conhostSteady": [
       0,
@@ -29,8 +29,8 @@
       2,
       2
     ],
-    "transientConhostAtOpen": 1,
-    "transientProcsAtOpen": 4
+    "transientConhostAtOpen": 0,
+    "transientProcsAtOpen": 2
   },
   "checks": [
     {
@@ -41,7 +41,7 @@
     {
       "name": "시작 시 서버 0",
       "ok": true,
-      "detail": "{\"live\":0,\"pids\":[],\"reclaimed\":0,\"revivals\":0,\"tracked\":0}"
+      "detail": "{\"live\":0,\"pids\":[],\"reclaimed\":0,\"revivals\":0,\"tracked\":0,\"grace\":0}"
     },
     {
       "name": "★프리웜이 서버를 안 띄운다(온디맨드)",
@@ -51,7 +51,7 @@
     {
       "name": "열람하면 뜬다",
       "ok": true,
-      "detail": "status=ready readyMs=854.913 자손=4"
+      "detail": "status=ready readyMs=905.089 자손=2"
     },
     {
       "name": "★정상 상태에 conhost가 없다",
@@ -66,7 +66,7 @@
     {
       "name": "★TTL 뒤 서버 프로세스 0",
       "ok": true,
-      "detail": "회수 판정 5008.569ms · 프로세스 소멸까지 +0ms · live=0 자손=0"
+      "detail": "회수 판정 4808.491ms · 프로세스 소멸까지 +0ms · live=0 자손=0"
     },
     {
       "name": "회수가 「회수됨」으로 기록된다",
@@ -76,12 +76,12 @@
     {
       "name": "★회수 뒤에도 캐시로 즉시 칠한다",
       "ok": true,
-      "detail": "캐시 0.708ms · n=22560 · 그 순간 서버 live=0"
+      "detail": "캐시 0.729ms · n=22560 · 그 순간 서버 live=0"
     },
     {
       "name": "★재열람이 새 PID로 되살린다",
       "ok": true,
-      "detail": "revivals=1 전 pids=[12660] 후 pids=[28912]"
+      "detail": "revivals=1 전 pids=[27576] 후 pids=[15828]"
     },
     {
       "name": "되살아난 토큰이 처음과 같은 양",
@@ -102,7 +102,8 @@
         "pids": [],
         "reclaimed": 0,
         "revivals": 0,
-        "tracked": 0
+        "tracked": 0,
+        "grace": 0
       },
       "projectStatus": {
         "state": "idle",
@@ -124,13 +125,14 @@
         "pids": [],
         "reclaimed": 0,
         "revivals": 0,
-        "tracked": 0
+        "tracked": 0,
+        "grace": 0
       },
       "projectStatus": {
         "state": "idle",
         "percent": null
       },
-      "prewarmMs": 0.266,
+      "prewarmMs": 0.343,
       "procs": [],
       "procCount": 0,
       "conhost": 0,
@@ -144,13 +146,14 @@
         "pids": [],
         "reclaimed": 0,
         "revivals": 0,
-        "tracked": 0
+        "tracked": 0,
+        "grace": 0
       },
       "projectStatus": {
         "state": "idle",
         "percent": null
       },
-      "ms": 15.557,
+      "ms": 15.136,
       "hit": false,
       "n": 0,
       "procs": [],
@@ -164,53 +167,38 @@
       "lifecycle": {
         "live": 1,
         "pids": [
-          12660
+          27576
         ],
         "reclaimed": 0,
         "revivals": 0,
-        "tracked": 1
+        "tracked": 1,
+        "grace": 0
       },
       "projectStatus": {
         "state": "ready",
         "percent": null
       },
       "status": "ready",
-      "readyMs": 854.913,
+      "readyMs": 905.089,
       "procs": [
         "node.exe",
-        "node.exe",
-        "node.exe",
-        "conhost.exe"
+        "node.exe"
       ],
-      "procCount": 4,
-      "conhost": 1,
-      "conhostOwners": [
-        31324
-      ],
+      "procCount": 2,
+      "conhost": 0,
+      "conhostOwners": [],
       "tree": [
         {
-          "pid": 12660,
-          "ppid": 12088,
+          "pid": 27576,
+          "ppid": 21652,
           "name": "node.exe",
           "cmd": "\"C:\\Code\\AgentCodeGUI\\target-lspidle\\release\\node.exe\" C:\\Code\\AgentCodeGUI\\target-lspidle\\release\\node_modules\\typescri"
         },
         {
-          "pid": 25456,
-          "ppid": 12660,
+          "pid": 29316,
+          "ppid": 27576,
           "name": "node.exe",
           "cmd": "C:\\Code\\AgentCodeGUI\\target-lspidle\\release\\node.exe --max-old-space-size=3072 C:\\Code\\AgentCodeGUI\\target-lspidle\\relea"
-        },
-        {
-          "pid": 31324,
-          "ppid": 25456,
-          "name": "node.exe",
-          "cmd": ""
-        },
-        {
-          "pid": 3568,
-          "ppid": 31324,
-          "name": "conhost.exe",
-          "cmd": "\\??\\C:\\WINDOWS\\system32\\conhost.exe 0x4"
         }
       ]
     },
@@ -219,17 +207,18 @@
       "lifecycle": {
         "live": 1,
         "pids": [
-          12660
+          27576
         ],
         "reclaimed": 0,
         "revivals": 0,
-        "tracked": 1
+        "tracked": 1,
+        "grace": 0
       },
       "projectStatus": {
         "state": "ready",
         "percent": null
       },
-      "ms": 764.658,
+      "ms": 707.387,
       "n": 22560,
       "procs": [
         "node.exe",
@@ -240,14 +229,14 @@
       "conhostOwners": [],
       "tree": [
         {
-          "pid": 12660,
-          "ppid": 12088,
+          "pid": 27576,
+          "ppid": 21652,
           "name": "node.exe",
           "cmd": "\"C:\\Code\\AgentCodeGUI\\target-lspidle\\release\\node.exe\" C:\\Code\\AgentCodeGUI\\target-lspidle\\release\\node_modules\\typescri"
         },
         {
-          "pid": 25456,
-          "ppid": 12660,
+          "pid": 29316,
+          "ppid": 27576,
           "name": "node.exe",
           "cmd": "C:\\Code\\AgentCodeGUI\\target-lspidle\\release\\node.exe --max-old-space-size=3072 C:\\Code\\AgentCodeGUI\\target-lspidle\\relea"
         }
@@ -260,13 +249,14 @@
         "pids": [],
         "reclaimed": 1,
         "revivals": 0,
-        "tracked": 0
+        "tracked": 1,
+        "grace": 0
       },
       "projectStatus": {
         "state": "idle",
         "percent": null
       },
-      "ms": 5008.569,
+      "ms": 4808.491,
       "budgetMs": 24000,
       "procs": [],
       "procCount": 0,
@@ -281,13 +271,14 @@
         "pids": [],
         "reclaimed": 1,
         "revivals": 0,
-        "tracked": 0
+        "tracked": 0,
+        "grace": 0
       },
       "projectStatus": {
         "state": "idle",
         "percent": null
       },
-      "ms": 0.708,
+      "ms": 0.729,
       "hit": true,
       "n": 22560,
       "procs": [],
@@ -301,17 +292,18 @@
       "lifecycle": {
         "live": 1,
         "pids": [
-          28912
+          15828
         ],
         "reclaimed": 0,
         "revivals": 1,
-        "tracked": 1
+        "tracked": 1,
+        "grace": 0
       },
       "projectStatus": {
         "state": "ready",
         "percent": null
       },
-      "ms": 595.182,
+      "ms": 580.676,
       "n": 22560,
       "procs": [
         "node.exe",
@@ -322,14 +314,14 @@
       "conhostOwners": [],
       "tree": [
         {
-          "pid": 28912,
-          "ppid": 12088,
+          "pid": 15828,
+          "ppid": 21652,
           "name": "node.exe",
           "cmd": "\"C:\\Code\\AgentCodeGUI\\target-lspidle\\release\\node.exe\" C:\\Code\\AgentCodeGUI\\target-lspidle\\release\\node_modules\\typescri"
         },
         {
-          "pid": 31824,
-          "ppid": 28912,
+          "pid": 8920,
+          "ppid": 15828,
           "name": "node.exe",
           "cmd": "C:\\Code\\AgentCodeGUI\\target-lspidle\\release\\node.exe --max-old-space-size=3072 C:\\Code\\AgentCodeGUI\\target-lspidle\\relea"
         }
@@ -342,7 +334,8 @@
         "pids": [],
         "reclaimed": 0,
         "revivals": 0,
-        "tracked": 0
+        "tracked": 0,
+        "grace": 0
       },
       "projectStatus": {
         "state": "idle",

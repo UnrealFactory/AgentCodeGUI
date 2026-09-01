@@ -1,0 +1,108 @@
+{
+ "harness": "poc-lspidle-r3-grace",
+ "at": "2026-09-01T00:55:37.396Z",
+ "measures": "40분 인덱싱 · 진행 통지 간격별 「일하는 중 회수」가 나는 분(null = 안 끊김)",
+ "gapsMin": [
+  1,
+  2,
+  4,
+  5,
+  6,
+  10
+ ],
+ "specs": {
+  "ts": {
+   "ttlMin": 10,
+   "stallMinAfter": 15,
+   "stallMinBefore": 5
+  },
+  "py": {
+   "ttlMin": 10,
+   "stallMinAfter": 15,
+   "stallMinBefore": 5
+  },
+  "cs": {
+   "ttlMin": 30,
+   "stallMinAfter": 30,
+   "stallMinBefore": 5
+  },
+  "cpp": {
+   "ttlMin": 30,
+   "stallMinAfter": 30,
+   "stallMinBefore": 5
+  }
+ },
+ "table": {
+  "before": {
+   "ts": {
+    "1분": null,
+    "2분": null,
+    "4분": null,
+    "5분": null,
+    "6분": 11,
+    "10분": 15
+   },
+   "py": {
+    "1분": null,
+    "2분": null,
+    "4분": null,
+    "5분": null,
+    "6분": 11,
+    "10분": 15
+   },
+   "cs": {
+    "1분": null,
+    "2분": null,
+    "4분": null,
+    "5분": null,
+    "6분": 35,
+    "10분": 35
+   },
+   "cpp": {
+    "1분": null,
+    "2분": null,
+    "4분": null,
+    "5분": null,
+    "6분": 35,
+    "10분": 35
+   }
+  },
+  "after": {
+   "ts": {
+    "1분": null,
+    "2분": null,
+    "4분": null,
+    "5분": null,
+    "6분": null,
+    "10분": null
+   },
+   "py": {
+    "1분": null,
+    "2분": null,
+    "4분": null,
+    "5분": null,
+    "6분": null,
+    "10분": null
+   },
+   "cs": {
+    "1분": null,
+    "2분": null,
+    "4분": null,
+    "5분": null,
+    "6분": null,
+    "10분": null
+   },
+   "cpp": {
+    "1분": null,
+    "2분": null,
+    "4분": null,
+    "5분": null,
+    "6분": null,
+    "10분": null
+   }
+  }
+ },
+ "cutsBefore": 8,
+ "cutsAfter": 0,
+ "verdict": "새 값에서는 한 칸도 안 끊긴다"
+}

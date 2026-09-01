@@ -288,6 +288,49 @@ export function onOpenDirectoryFailed(cb: (f: OpenDirFailure) => void): () => vo
   return subscribe<OpenDirFailure>(OPEN_DIRECTORY_FAILED, cb)
 }
 
+// ── ★LSPIDLE R3 — 「죽을 때 하는 말」과 「아직 못 물어봤다」를 읽는 3.0 전용 계약면 ──
+//
+// 동결 계약면(`src/shared/protocol.ts:176`)의 `LspProjectStatus`는 `{state, percent}`뿐이고,
+// `LspSemanticTokens`는 `{data, types, mods}`뿐이다. Rust는 두 칸을 **더해서** 보내는데
+// (`ccg-lsp/src/lib.rs` — `error` · `pending`) 타입이 막아 렌더러가 읽을 수가 없었다.
+// 크리틱 LSPIDLE R2 §4-A가 그 세 겹(타입에 칸 없음 · 렌더러가 안 읽음 · 에러 세계에선
+// 아예 안 부름)을 짚은 자리다.
+//
+// 동결 트리를 열지 않고 여기서 닫는다 — `OpenDirFailure`(위)와 같은 모양이다:
+// **3.0 전용 타입 + 전용 헬퍼**를 내보내고, 호출부는 `window.api`가 아니라 이 함수를 쓴다.
+// 채널·페이로드는 그대로라 셸(`src-tauri/src/ipc/lsp.rs`)도 안 건드린다.
+
+/** `lsp:project-status`의 **실제** 모양 — 동결 타입에 `error` 한 칸이 더 온다. */
+export type LspProjectStatusEx = {
+  state: 'idle' | 'analyzing' | 'ready'
+  percent: number | null
+  /**
+   * 서버가 죽었다면 그 사유(`Error: Cannot find module 'X'` 등). Rust가 **앞에서** 320자만
+   * 남겨 보낸다 — 사용자가 읽어야 할 것은 거의 언제나 첫 줄이라서.
+   * 살아 있는 프로젝트에서는 이 칸이 아예 없다(`undefined`).
+   */
+  error?: string
+}
+
+/** 프로젝트 분석 상태 + **사유**. `window.api.lsp.projectStatus`의 3.0판이다. */
+export function lspProjectStatusEx(cwd: string): Promise<LspProjectStatusEx> {
+  return call<LspProjectStatusEx>(IPC.lspProjectStatus, [{ cwd }], { state: 'idle', percent: null })
+}
+
+/** `lsp:semantic-tokens`의 **실제** 모양 — 「아직 못 물어봤다」 표가 더 온다. */
+export type LspTokensEx = { data: number[]; types: string[]; mods: string[]; pending?: boolean }
+
+/**
+ * 서버가 예산 안에 `ready`가 못 되어 **묻지도 못한** 답인가.
+ *
+ * 빈 토큰과 모양이 같으면 렌더러는 「이 파일엔 심볼이 없다」로 굳는다(크리틱이 이름 붙인
+ * 「조용한 빈손」). 회수 뒤 재기동이 정확히 그 모양인데, 그때 렌더러는 이미 `ready`라 믿고
+ * status 폴링을 멈춘 뒤라 **다시 알려 줄 사람이 이 표 말고 없다**.
+ */
+export function isTokensPending(t: unknown): boolean {
+  return !!t && (t as LspTokensEx).pending === true
+}
+
 // ── 안전값 상수 (시그니처에 맞는 "데이터 없음" 모양) ──────────────────────────
 const NO_USAGE: UsageInfo = { fiveHour: null, weekly: null, weeklyFable: null, extraCredit: null }
 const NO_AUTH: AuthStatus & { ok: boolean } = { ok: false, loggedIn: false, error: 'unimplemented' }

@@ -33,9 +33,15 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
-/// 기능 요청이 서버의 `ready`를 기다리는 최대 시간. 넘으면 안전값으로 떨어진다 —
-/// 렌더러는 status 폴링으로 ready를 따로 보고 있으므로 여기서 오래 매달릴 이유가 없다.
-const READY_WAIT: Duration = Duration::from_millis(1500);
+/// 기능 요청이 이 서버의 `ready`를 기다리는 예산 — **값은 스펙이 정한다**(★LSPIDLE R3).
+///
+/// R2까지는 `const READY_WAIT = 1500ms` 하나였고, 빌더가 그것을 위험으로 이월했다.
+/// 확인 크리틱 R2 §4-C가 인위 지연 서버로 **실재를 확인**했다: 재기동이 2500ms 걸리면
+/// 첫 호버가 빈손이고, 그때 UI가 보는 status는 이미 `ready`다. 값을
+/// [`spec::ServerSpec::ready_wait_ms`]로 내려 Roslyn·clangd에 제 예산을 준다.
+fn ready_wait(spec: &ServerSpec) -> Duration {
+    Duration::from_millis(spec.ready_wait_ms)
+}
 
 /// 파일 경로 해석 — 상대 경로는 cwd 기준. cwd도 rel도 비면 `None`.
 fn resolve(cwd: &str, rel: &str) -> Option<PathBuf> {
@@ -74,7 +80,7 @@ fn spec_and_root(cwd: &str, rel: &str) -> Option<(&'static ServerSpec, PathBuf, 
 fn ready_server(cwd: &str, rel: &str) -> Option<(Arc<Server>, PathBuf)> {
     let (spec, abs, root) = spec_and_root(cwd, rel)?;
     let s = manager::ensure(spec, &root).ok()?;
-    if !s.wait_ready(READY_WAIT) {
+    if !s.wait_ready(ready_wait(spec)) {
         return None;
     }
     s.touch();
@@ -254,8 +260,20 @@ static SEM_WRITES: OnceLock<Mutex<HashMap<String, String>>> = OnceLock::new();
 pub fn semantic_tokens(cwd: &str, rel: &str) -> Option<Value> {
     let (spec, abs, root) = spec_and_root(cwd, rel)?;
     let s = manager::ensure(spec, &root).ok()?;
-    if !s.wait_ready(READY_WAIT) {
-        return Some(json!({ "data": [], "types": [], "mods": [] }));
+    if !s.wait_ready(ready_wait(spec)) {
+        // ★LSPIDLE R3 — **「ready라고 말했으면 값이 있다」**(크리틱 R2 §4-C).
+        //
+        // R2는 여기서 **성공한 빈 토큰 집합**을 돌려줬다. 렌더러에는 그것이
+        // 「이 파일에 심볼이 없다」와 **한 글자도 다르지 않다** — 크리틱이 이름 붙인
+        // 「조용한 빈손」이다. 실제로 렌더러(`FileModal`)는 빈 응답이 재시도 한도까지
+        // 이어지면 `noSem`으로 확정하고 색칠을 hljs로 굳힌다.
+        //
+        // 이 자리는 「없다」가 아니라 **「아직 못 물어봤다」**다. 그래서 계약면에 그렇게
+        // 적는다: `pending: true`. 칸을 **더하기만** 하므로 옛 렌더러는 지금처럼
+        // 빈 토큰으로 읽고(무해), 3.0 렌더러는 이 칸을 보고 ① 다시 묻고 ② **status
+        // 폴링을 다시 켠다**. ②가 핵심이다 — 회수 뒤 재기동이 정확히 이 모양인데,
+        // 렌더러는 `ready`에서 폴링을 멈추므로 「다시 알려 줄 사람」이 여기 말고 없다.
+        return Some(tokens_pending());
     }
     s.touch();
     let tokens = s.semantic_tokens(&abs)?;
@@ -281,6 +299,14 @@ pub fn semantic_tokens(cwd: &str, rel: &str) -> Option<Value> {
         }
     }
     Some(to_value(&tokens))
+}
+
+/// 「아직 못 물어봤다」 — **「없다」가 아니다**(★LSPIDLE R3 · 크리틱 R2 §4-C).
+///
+/// 진짜 빈 답([`to_value`]가 만드는 `{data:[],…}`)과 **모양이 달라야** 한다.
+/// 그 차이 한 칸이 렌더러가 「이 파일엔 심볼이 없다」로 굳는 것과 다시 묻는 것을 가른다.
+fn tokens_pending() -> Value {
+    json!({ "data": [], "types": [], "mods": [], "pending": true })
 }
 
 fn fingerprint(data: &[u32]) -> u32 {
@@ -591,6 +617,7 @@ pub fn dispose_all() {
 /// - `reclaimed` — 유휴로 접혀 비어 있는 자리 수(= 「회수됨」)
 /// - `revivals` — 회수 뒤 다시 살아난 횟수(= 「투명 재기동」이 실제로 돈 횟수)
 /// - `tracked` — 좀비 원장이 핸들을 들고 있는 자식 수(정상이면 `live`와 같다)
+/// - `grace` — 지금 **유예로** 살아 있는 서버 수(★LSPIDLE R3 · 크리틱 R2 §5 C-3)
 pub fn lifecycle() -> Value {
     let (reclaimed, revivals) = manager::reclaim_stats();
     json!({
@@ -599,6 +626,10 @@ pub fn lifecycle() -> Value {
         "reclaimed": reclaimed,
         "revivals": revivals,
         "tracked": zombie::tracked_count(),
+        // R2는 `Server::in_grace()`를 「진단·lifecycle()」이라 적고 여기 안 실었다 —
+        // 테스트 밖 호출자가 없는 죽은 코드였다. 문서를 좁히는 대신 칸을 만들었다:
+        // 「지금 몇 개가 유예로 살아 있는가」는 회수 규칙을 의심할 때 가장 먼저 묻는 수다.
+        "grace": manager::grace_count(),
     })
 }
 
@@ -610,6 +641,85 @@ mod tests {
     fn unknown_extension_is_unsupported() {
         assert_eq!(status("C:\\x", "readme.md"), "unsupported");
         assert_eq!(status("C:\\x", ""), "unsupported");
+    }
+
+    /// ★LSPIDLE R3 · 크리틱 R2 §4-B D2 — **죽을 때 하는 말이 계약면에 실제로 실린다.**
+    ///
+    /// R2가 이 칸을 만들었지만 못이 없어서, `error` 칸을 통째로 지워도 94개가 전부 초록이었다.
+    /// 여기서 「기동에 실패해 자리만 남은 프로젝트」를 합성하고, `lsp:project-status`가
+    /// ① `idle`로 가면서 ② **사유를 싣고** ③ 앞에서 320자로 자르는지를 한 자리에서 본다.
+    ///
+    /// 왜 `idle`인가: 서버가 죽은 세계에서 `project_state`는 `analyzing`도 `ready`도 아니다.
+    /// 「할 일이 없어 idle」과 「죽어서 idle」이 겉보기가 같다는 것이 R1이 지적한 침묵이고,
+    /// 그 둘을 가르는 유일한 값이 이 칸이다.
+    #[test]
+    fn the_project_status_carries_the_reason_a_server_died() {
+        let _g = manager::registry_test_lock();
+        let spec = spec::spec_by_id("ts").unwrap();
+        let root = std::env::temp_dir().join("ccg-lspidle-r3-reason");
+        let _ = std::fs::create_dir_all(&root);
+        manager::drop_entry_for_test(spec, &root);
+
+        // 사유 없는 세계 — 침묵이 정상인 자리(음성 대조).
+        let quiet = project_status(&root.to_string_lossy());
+        assert_eq!(quiet["state"], "idle");
+        assert!(quiet.get("error").is_none(), "죽지도 않았는데 사유가 실렸다: {quiet}");
+
+        // node가 조각을 못 찾아 죽은 세계 — 사용자가 읽어야 할 첫 줄이 이것이다.
+        let head = "LSP 서버가 종료됨 · stderr: Error: Cannot find module 'C:/nope/missing.cjs'";
+        manager::seed_error_for_test(spec, &root, &format!("{head}{}", "\n    at Function._load".repeat(40)));
+        let v = project_status(&root.to_string_lossy());
+        assert_eq!(v["state"], "idle", "{v}");
+        let msg = v["error"].as_str().unwrap_or_else(|| panic!("★사유 칸이 없다 — 침묵이 그대로다: {v}"));
+        assert!(msg.starts_with(head), "★앞이 잘렸다 — 프레임 목록만 남았다: {msg}");
+        assert!(msg.chars().count() <= 321, "★320자 상한을 안 지켰다({}자)", msg.chars().count());
+        assert!(msg.ends_with('…'), "★잘랐으면 잘랐다고 보여야 한다: {msg}");
+
+        manager::drop_entry_for_test(spec, &root);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// ★LSPIDLE R3 · 크리틱 R2 §4-C — **「아직」과 「없다」는 다른 답이어야 한다.**
+    ///
+    /// 조용한 빈손의 정체는 두 사건이 **같은 바이트**로 나가는 것이었다:
+    /// ① 서버가 예산 안에 안 뜨는 바람에 못 물어봤다 ② 물어봤더니 이 파일엔 토큰이 없다.
+    /// ②는 색칠을 hljs로 굳혀야 하는 정직한 끝이고, ①은 다시 물어야 하는 중간이다.
+    #[test]
+    fn a_not_ready_answer_is_distinguishable_from_an_empty_one() {
+        let pending = tokens_pending();
+        assert_eq!(pending["pending"], serde_json::Value::Bool(true), "{pending}");
+        assert_eq!(pending["data"].as_array().map(Vec::len), Some(0), "아직인데 토큰이 들었다");
+        // 진짜 빈 답에는 그 칸이 **없어야** 한다 — 있으면 렌더러가 영영 다시 묻는다.
+        let empty = to_value(&SemanticTokens::default());
+        assert!(empty.get("pending").is_none(), "★빈 답에 '아직' 표가 붙었다: {empty}");
+        // 두 답이 실제로 구분된다(같아지는 순간 R2의 침묵이 그대로 돌아온다).
+        assert_ne!(pending, empty);
+    }
+
+    /// ★LSPIDLE R3 — ready 예산은 **스펙에서** 온다(상수로 되돌아가지 않게).
+    #[test]
+    fn the_ready_budget_comes_from_the_spec_for_every_server() {
+        for s in spec::SPECS {
+            assert_eq!(
+                ready_wait(s),
+                Duration::from_millis(s.ready_wait_ms),
+                "{}: ready 예산이 스펙 값이 아니다",
+                s.id
+            );
+        }
+        // 느린 서버가 빠른 서버보다 짧은 예산을 받으면 이 라운드의 처방이 뒤집힌 것이다.
+        let (ts, cs) = (spec::spec_by_id("ts").unwrap(), spec::spec_by_id("cs").unwrap());
+        assert!(
+            cs.ready_wait_ms > ts.ready_wait_ms,
+            "★Roslyn(재기동 ~3.1초)이 tsserver(~0.55초)보다 짧은 예산을 받는다 — 크리틱 R2 §4-C가 실측한 그 사고"
+        );
+    }
+
+    /// ★LSPIDLE R3 — 진단에 `grace` 칸이 실제로 있다(크리틱 R2 §5 C-3의 죽은 코드를 살린 자리).
+    #[test]
+    fn the_lifecycle_diagnostic_reports_the_grace() {
+        let v = lifecycle();
+        assert!(v.get("grace").and_then(Value::as_u64).is_some(), "유예 칸이 없다: {v}");
     }
 
     #[test]

@@ -263,6 +263,42 @@ pub struct ServerSpec {
     /// bundled 10분 / 무거운 서버(Roslyn 솔루션 인덱싱·clangd 인덱스) 30분(2.6.2 규약).
     pub idle_ttl_ms: u64,
 
+    /// ★LSPIDLE R3 — **「일하는 중」이라는 말을 증거 없이 믿어 주는 시간**(멎음 유예).
+    ///
+    /// TTL이 지난 서버가 [`crate::server::Server::indexing`]으로 참을 말해도, 진행 신호
+    /// (`$/progress`·`projectInitializationComplete`)가 이만큼 한 톨도 없으면 그 말을 안 믿고
+    /// 접는다. 규칙 본문은 [`crate::lifecycle::Lifecycle::step`]에 있다.
+    ///
+    /// **R2는 이 값을 엔진에 5분 상수(`GRACE_STALL_MS`)로 박아 뒀다가 A급을 받았다.**
+    /// 확인 크리틱 R2 §3의 반증: 진행 통지가 6분 간격인 40분 인덱싱에서 ts·py는 11분,
+    /// cs·cpp는 35분에 **일하는 중 접혔다**. 「진짜로 일하는 서버를 안 죽인다」는 무조건형
+    /// 약속이 실제로는 「통지가 5분보다 촘촘할 때만」이었던 것이다. 값이 하나뿐이라 그
+    /// 조건을 서버마다 다르게 줄 수도 없었다 — 그래서 [`ServerSpec::idle_ttl_ms`]와 같은
+    /// 자리로 내린다. 언어마다 진행 통지의 성질이 다르다는 것이 이 필드가 있는 이유다.
+    ///
+    /// ★**아래 네 값은 재지 않고 골랐다.** 실물 Roslyn(.NET SDK 10)도 clangd도 이 기계에
+    /// 없어서 진짜 통지 간격을 관측할 수 없다(장부 §R3-1의 이월 칸). 고른 근거는 「TTL을
+    /// 넘긴 뒤 이만큼 조용하면 멎은 것으로 봐도 사용자가 잃는 게 없다」는 판단뿐이고,
+    /// 값이 큰 쪽의 대가는 **말만 하는 서버가 최대 `idle_ttl_ms + stall_grace_ms`까지
+    /// 산다**는 것이다(ts·py 25분 · cs·cpp 60분). SDK 있는 기계에서 재고 나면 고칠 값이다.
+    pub stall_grace_ms: u64,
+
+    /// ★LSPIDLE R3 — 기능 요청(호버·정의·토큰·완성)이 이 서버의 `ready`를 기다리는 예산.
+    ///
+    /// R2까지는 `lib.rs`의 `READY_WAIT` 1500ms 하나였다. 확인 크리틱 R2 §4-C가 인위 지연
+    /// 서버로 **실재를 확인**했다: 재기동이 2500ms 걸리면 첫 호버가 예산을 넘겨 **조용한
+    /// 빈손**(오류가 아니라 「결과 없음」)을 낸다. Roslyn 재기동은 실측 ~3.1초라 1500ms로는
+    /// 매번 넘긴다. `stall_grace_ms`와 같은 처방 — 상수를 스펙 필드로 내린다.
+    ///
+    /// 이 값은 **첫 기동이 아니라 재기동**을 덮는 크기다. 첫 기동은 렌더러가 status 폴링으로
+    /// 따로 보고 있어서 여기서 오래 매달릴 이유가 없고(그러면 IPC 스레드가 그만큼 묶인다),
+    /// 회수 뒤 재기동은 렌더러가 이미 `ready`라 믿는 구간이라 여기서만 덮을 수 있다.
+    /// 넘겼을 때 **성공한 빈손을 돌려주지 않는 것**은 [`crate::semantic_tokens`]의 규약이다.
+    ///
+    /// ★cs·cpp 값도 재지 않고 골랐다(위와 같은 이유). 근거는 크리틱이 인용한 Roslyn
+    /// 재기동 ~3.1초와 clangd의 즉시 `initialize` 응답이다.
+    pub ready_wait_ms: u64,
+
     /// ★LSPIDLE R1 — **프로젝트를 열었을 때 이 서버를 어디까지 할 것인가.**
     ///
     /// 「기동은 열람 시에만」은 정책이지만, 그 정책이 언어마다 같은 값을 낼 이유는 없다 —
@@ -753,6 +789,11 @@ ServerSpec {
     reload_project: None,
     watch_exts: &["ts", "tsx", "mts", "cts", "js", "jsx", "mjs", "cjs"],
     idle_ttl_ms: 10 * 60_000,
+    // 번들 서버 — 프로젝트를 통째로 읽는 단계가 없어 「일하는 중」이 길어야 기동 구간이다.
+    // 15분이면 그 구간을 넉넉히 덮고, 말만 하는 서버가 사는 최대치는 25분이다.
+    stall_grace_ms: 15 * 60_000,
+    // 크리틱 실측: ts 재기동은 530~570ms. 1500ms는 그 세 배 여유다.
+    ready_wait_ms: 1_500,
     prewarm: Prewarm::Prepare,
     cache_version: 1,
 },
@@ -784,6 +825,9 @@ ServerSpec {
     reload_project: None,
     watch_exts: &["py", "pyw", "pyi"],
     idle_ttl_ms: 10 * 60_000,
+    // ts와 같은 사정(번들·프로젝트 로드 단계 없음) — 같은 값.
+    stall_grace_ms: 15 * 60_000,
+    ready_wait_ms: 1_500,
     prewarm: Prewarm::Prepare,
     cache_version: 1,
 },
@@ -831,6 +875,17 @@ ServerSpec {
     watch_exts: &["cs", "csx", "csproj", "sln", "slnx", "props", "targets"],
     // 솔루션 인덱싱이 비싼 서버 — 회수를 길게(2.6.2 IDLE_TTL_HEAVY).
     idle_ttl_ms: 30 * 60_000,
+    // ★네 스펙 중 **가장 위험한 자리**(크리틱 R2 §3-3). `awaits_project_init: true`라서
+    // 솔루션 로드가 끝날 때까지 `indexing()`이 내내 참인데, 그동안 멎음 시계를 되감는 문은
+    // `$/progress`와 `projectInitializationComplete` **둘뿐**이다. Roslyn이 로드 중
+    // `$/progress`를 드물게 쏘면 초기화가 끝나기도 전에 TTL+유예로 접힌다 — 5분이었을 때
+    // 정확히 그 사고가 났다(크리틱 프로브: 통지 6분 간격 → 35분에 회수).
+    // 그래서 TTL과 같은 크기(30분)를 준다. 대가는 말만 하는 서버가 최대 60분 사는 것이고,
+    // 그쪽은 「인덱스를 처음부터 다시」보다 싸다.
+    stall_grace_ms: 30 * 60_000,
+    // Roslyn 재기동 ~3.1초(스펙 주석의 실측) + 여유. 첫 기동은 이 예산으로 못 덮고
+    // 덮을 이유도 없다 — 그건 렌더러가 status 폴링으로 본다.
+    ready_wait_ms: 5_000,
     prewarm: Prewarm::Prepare,
     cache_version: 1,
 },
@@ -889,6 +944,13 @@ ServerSpec {
     watch_exts: &["c", "h", "cpp", "cc", "cxx", "hpp", "hxx", "hh", "inl"],
     // 인덱스 재구축이 비싼 서버 — 회수를 길게(2.6.2 IDLE_TTL_HEAVY, cs와 같은 값).
     idle_ttl_ms: 30 * 60_000,
+    // 유예를 만든 명분이 바로 이 서버다 — clangd가 UE를 40분 인덱싱하는 동안 회수하면
+    // 재스폰 뒤 인덱스를 **처음부터** 쌓는다. `--background-index`의 `$/progress`는 보통
+    // 초 단위지만, 큰 번역 단위 하나에 오래 물릴 수 있어 cs와 같은 30분을 준다.
+    stall_grace_ms: 30 * 60_000,
+    // clangd의 `initialize`는 즉시 답한다(인덱싱은 그 뒤 `$/progress`) — 재기동은 실행
+    // 파일 기동 시간이 전부다. cs보다 짧게 잡되 디스크가 느린 기계를 감안해 4초.
+    ready_wait_ms: 4_000,
     prewarm: Prewarm::Prepare,
     cache_version: 1,
 }];

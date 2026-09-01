@@ -72,6 +72,31 @@ impl Rpc {
         rpc
     }
 
+    /// ★LSPIDLE R3 — **자식도 스레드도 없는 살아 있는 rpc**(못 전용).
+    ///
+    /// 왜 필요한가: 크리틱 R2 §4-B가 생존시킨 돌연변이 넷(`sweep_step`·`status`가 멎음 시계를
+    /// 위조 · 호출부가 `Reclaim`을 안 하거나 `step`을 안 부름)은 전부 **`Server`를 실제로
+    /// 통과해야** 잡힌다. 그런데 `Server::spawn`은 진짜 언어 서버를 요구하고, 그건 갓 클론한
+    /// 레포·CI·크리틱의 배치에서 안 뜬다 — 못이 환경에 기대면 조용히 통과한다(R2가 B급 ①에서
+    /// 이미 밟은 함정이다).
+    ///
+    /// 그래서 수명 판정이 **실제로 만지는 것**(상태·시계)만 진짜인 서버를 만든다. `is_dead()`가
+    /// 거짓이라야 스윕의 좀비 갈래로 새지 않으므로, 여기서 파이프 없이 「살아 있음」을 준다.
+    /// 요청을 보내면 `write`가 「stdin 닫힘」으로 실패한다 — 수명 못은 요청을 안 보낸다.
+    #[cfg(test)]
+    pub(crate) fn inert_for_test() -> Arc<Rpc> {
+        Arc::new(Rpc {
+            stdin: Mutex::new(None),
+            next_id: AtomicI64::new(1),
+            shared: Arc::new(Shared {
+                pending: Mutex::new(HashMap::new()),
+                cv: Condvar::new(),
+                dead: AtomicBool::new(false),
+            }),
+            config: null_config(),
+        })
+    }
+
     pub fn is_dead(&self) -> bool {
         self.shared.dead.load(Ordering::Relaxed)
     }

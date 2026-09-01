@@ -96,6 +96,21 @@ fn ttl_for(spec: &ServerSpec) -> u64 {
     env_u64("CCG_LSP_IDLE_TTL_MS").unwrap_or(spec.idle_ttl_ms)
 }
 
+/// 이 서버에 걸리는 수명 예산 — **값은 스펙이 정한다**(★LSPIDLE R3).
+///
+/// R2는 TTL만 스펙에서 오고 멎음 유예는 엔진 상수(5분)였다. 그 비대칭이 크리틱 R2 §3
+/// A급의 근인이다 — 유예를 만든 명분인 두 서버(cs·cpp)에 값을 따로 줄 수가 없었다.
+/// 여기서 둘을 같은 자리에 세운다. 엔진은 여전히 언어 이름을 모른다.
+///
+/// `CCG_LSP_STALL_MS`는 `CCG_LSP_IDLE_TTL_MS`와 같은 성격의 **테스트 주입 문**이다
+/// (벤치가 30분을 기다리지 않고 멎음 회수를 실증하기 위한 것).
+fn budget_for(spec: &ServerSpec) -> crate::lifecycle::Budget {
+    crate::lifecycle::Budget {
+        ttl_ms: ttl_for(spec),
+        stall_ms: env_u64("CCG_LSP_STALL_MS").unwrap_or(spec.stall_grace_ms),
+    }
+}
+
 /// 레지스트리 키에 쓰는 루트 표기 — **정규화한 뒤에** 만든다.
 ///
 /// 크리틱 C-3: R1은 소문자화만 했고, 같은 폴더가 `C:\x`(프리웜의 `normalize`)와
@@ -247,6 +262,18 @@ pub fn live_pids() -> Vec<u32> {
         .collect();
     v.sort_unstable();
     v
+}
+
+/// 지금 **유예 중인** 서버 수 — ★LSPIDLE R3 · 크리틱 R2 §5 C-3.
+///
+/// R2는 [`crate::server::Server::in_grace`]를 「진단·`lifecycle()`」이라 문서화해 놓고
+/// `lifecycle()`에 안 실어서 죽은 코드로 뒀다. 유예는 이 라운드가 세운 개념 중 밖에서
+/// 유일하게 안 보이던 것이고, 「지금 몇 개가 유예로 살아 있는가」는 회수 규칙을 의심할 때
+/// 가장 먼저 묻게 되는 수다. 그래서 지우는 대신 **계약면에 태웠다**.
+pub fn grace_count() -> usize {
+    let (m, _) = reg();
+    let r = m.lock().unwrap();
+    r.map.values().filter_map(|e| e.server.as_ref()).filter(|s| s.in_grace()).count()
 }
 
 /// 지금 **회수돼 비어 있는** 자리 수와, 회수 뒤 되살아난 횟수(진단·벤치).
@@ -537,9 +564,14 @@ fn start_sweeper() {
     let every = sweep_every_ms();
     let spawned = std::thread::Builder::new()
         .name("ccg-lsp-sweep".into())
+        // ★LSPIDLE R3 — **자고 나서가 아니라 먼저 한 번 쓸고 잔다.**
+        //   R2까지는 한 주기(60초)를 잔 뒤에야 첫 스윕이었다. 그러면 워치독
+        //   ([`kick_sweeper_if_stalled`])이 멎은 스윕을 되살려도 회수는 **또 60초** 뒤다 —
+        //   되살리는 의미가 그만큼 준다. 부팅 직후의 첫 스윕은 레지스트리가 비어 있어
+        //   무해하고(좀비 원장도 비어 있다), 대신 「스윕이 정말 도는가」가 즉시 관측된다.
         .spawn(move || loop {
-            std::thread::sleep(Duration::from_millis(every));
             sweep_idle();
+            std::thread::sleep(Duration::from_millis(every));
         })
         .is_ok();
     if !spawned {
@@ -609,7 +641,7 @@ pub fn sweep_idle() {
             //   호출부에 남은 일은 `Reclaim`일 때 프로세스를 접는 것뿐이다 — 잊을 수 있는
             //   전이가 없으므로 크리틱의 `Rewind => {}` 돌연변이가 **쓸 수 없는 모양**이 됐다.
             //   규칙 자체와 그 못은 전부 `crate::lifecycle`에 있다.
-            match s.sweep_step(ttl_for(s.spec)) {
+            match s.sweep_step(budget_for(s.spec)) {
                 Sweep::Keep | Sweep::Rewind | Sweep::Settle => {}
                 Sweep::Reclaim => {
                     doomed.push((s.clone(), "유휴 서버 회수"));
@@ -631,6 +663,73 @@ pub fn sweep_idle() {
     //    방금 접은 것들은 이미 `forget`으로 내려갔으므로 여기 안 걸린다.
     let _ = crate::zombie::sweep(&live_pids, ZOMBIE_MAX_AGE_MS);
     LAST_SWEEP_MS.store(now_ms(), Ordering::SeqCst);
+}
+
+// ── ★LSPIDLE R3 — 못 전용 문 (크리틱 R2 §4-B의 생존 돌연변이를 붉히기 위한 것) ─────
+//
+// 크리틱이 생존시킨 일곱 중 넷은 **레지스트리와 스윕 루프를 실제로 지나야** 잡힌다
+// (「호출부가 Reclaim을 실행 안 한다」·「step을 안 부른다」·「스윕 스레드를 안 띄운다」·
+// 「기동 계수기를 지운다」). 진짜 언어 서버를 띄우는 못은 환경에 기대므로 못 쓴다 —
+// R2가 B급 ①에서 이미 그 함정을 밟았다. 그래서 자리를 **합성**한다.
+/// 레지스트리를 만지는 못끼리 겹치지 않게 하는 자물쇠(전역 상태라 병렬로 돌면 서로 지운다).
+#[cfg(test)]
+pub(crate) fn registry_test_lock() -> std::sync::MutexGuard<'static, ()> {
+    static L: OnceLock<Mutex<()>> = OnceLock::new();
+    L.get_or_init(|| Mutex::new(())).lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// 살아 있는 서버 하나를 자리에 앉힌다(스윕이 볼 수 있게).
+#[cfg(test)]
+pub(crate) fn seed_server_for_test(root: &Path, server: Arc<Server>) {
+    let key = key_of(server.spec, root);
+    let (m, _) = reg();
+    let mut r = m.lock().unwrap();
+    let e = r.map.entry(key).or_insert_with(Entry::empty);
+    e.server = Some(server);
+    e.spawning = false;
+    e.died_at_ms = 0;
+    e.reclaimed_at_ms = 0;
+}
+
+/// 서버는 없고 **사유만 남은** 자리(기동 실패 뒤의 모양) — `project_state`의 err 경로용.
+#[cfg(test)]
+pub(crate) fn seed_error_for_test(spec: &'static ServerSpec, root: &Path, err: &str) {
+    let key = key_of(spec, root);
+    let (m, _) = reg();
+    let mut r = m.lock().unwrap();
+    let e = r.map.entry(key).or_insert_with(Entry::empty);
+    e.server = None;
+    e.spawning = false;
+    e.last_error = Some(err.to_string());
+}
+
+/// `(자리에 서버가 있는가, 「회수됨」이 찍혔는가)`.
+#[cfg(test)]
+pub(crate) fn entry_state_for_test(spec: &'static ServerSpec, root: &Path) -> (bool, bool) {
+    let key = key_of(spec, root);
+    let (m, _) = reg();
+    let r = m.lock().unwrap();
+    r.map.get(&key).map(|e| (e.server.is_some(), e.reclaimed_at_ms > 0)).unwrap_or((false, false))
+}
+
+/// 못이 앉힌 자리를 도로 치운다(다른 못이 이 자리를 세지 않게).
+#[cfg(test)]
+pub(crate) fn drop_entry_for_test(spec: &'static ServerSpec, root: &Path) {
+    let key = key_of(spec, root);
+    let (m, _) = reg();
+    m.lock().unwrap().map.remove(&key);
+}
+
+/// 스윕 래치를 내린다 — 「다시 띄우면 정말 도는가」를 볼 수 있게.
+#[cfg(test)]
+pub(crate) fn reset_sweeper_for_test() {
+    SWEEPER.store(false, Ordering::SeqCst);
+    LAST_SWEEP_MS.store(0, Ordering::SeqCst);
+}
+
+#[cfg(test)]
+pub(crate) fn last_sweep_ms_for_test() -> u64 {
+    LAST_SWEEP_MS.load(Ordering::SeqCst)
 }
 
 /// 앱 종료 — 서버를 전부 접는다(안 접으면 node/tsserver가 그대로 남는다).
@@ -687,30 +786,173 @@ mod tests {
             };
             assert_eq!(s.idle_ttl_ms, want, "{}: 유휴 TTL이 2.6.2 규약과 갈렸다", s.id);
         }
+        // ★LSPIDLE R3 — 새로 내려온 두 눈금도 **조용히** 바뀌면 안 된다.
+        //   이 값들은 재지 않고 골랐다(스펙 주석) — 그래서 더더욱 근거 없이 움직이면 안 된다.
+        for s in crate::spec::SPECS {
+            let (stall, ready) = match s.id {
+                "ts" | "py" => (15 * 60_000, 1_500),
+                _ => (30 * 60_000, if s.id == "cs" { 5_000 } else { 4_000 }),
+            };
+            assert_eq!(s.stall_grace_ms, stall, "{}: 멎음 유예가 R3이 고른 값과 갈렸다", s.id);
+            assert_eq!(s.ready_wait_ms, ready, "{}: ready 예산이 R3이 고른 값과 갈렸다", s.id);
+            // 유예가 TTL보다 짧을 이유는 없지만, **0이면 유예가 통째로 사라진다** —
+            // 그 상태를 값으로 만들 수 없게 막는다(크리틱 A-1의 공집합이 다른 얼굴로 돌아온다).
+            assert!(s.stall_grace_ms > 0, "{}: 멎음 유예가 0이면 유예가 공집합이다", s.id);
+            assert!(s.ready_wait_ms > 0, "{}: ready 예산이 0이면 모든 기능이 즉시 빈손이다", s.id);
+        }
     }
 
     /// ★LSPIDLE R1 — 회수 TTL과 스윕 주기는 **주입 가능해야** 한다.
     /// 이 문이 없으면 벤치가 회수를 실증하려고 10분을 기다려야 하고, 그러면 아무도 안 잰다.
     #[test]
     fn the_timers_stay_injectable_for_the_bench() {
+        let _g = registry_test_lock(); // 환경 변수는 프로세스 전역이다 — 남의 못과 안 겹치게
         let ts = crate::spec::spec_by_id("ts").unwrap();
         // 기본값은 스펙 그대로
         std::env::remove_var("CCG_LSP_IDLE_TTL_MS");
         assert_eq!(ttl_for(ts), ts.idle_ttl_ms);
         std::env::remove_var("CCG_LSP_SWEEP_MS");
         assert_eq!(sweep_every_ms(), SWEEP_EVERY_MS_DEFAULT);
+        // ★LSPIDLE R3 — 멎음 유예도 같은 문을 갖는다(안 그러면 30분을 기다려야 잰다)
+        std::env::remove_var("CCG_LSP_STALL_MS");
+        assert_eq!(budget_for(ts), crate::lifecycle::Budget::of(ts), "주입이 없으면 스펙 값 그대로");
         // 주입하면 그 값이 이긴다(bench/lsp.mjs가 6000/1000을 먹인다)
         std::env::set_var("CCG_LSP_IDLE_TTL_MS", "6000");
         std::env::set_var("CCG_LSP_SWEEP_MS", "1000");
+        std::env::set_var("CCG_LSP_STALL_MS", "2000");
         assert_eq!(ttl_for(ts), 6000);
         assert_eq!(sweep_every_ms(), 1000);
+        assert_eq!(budget_for(ts), crate::lifecycle::Budget { ttl_ms: 6000, stall_ms: 2000 });
         std::env::remove_var("CCG_LSP_IDLE_TTL_MS");
         std::env::remove_var("CCG_LSP_SWEEP_MS");
+        std::env::remove_var("CCG_LSP_STALL_MS");
+    }
+
+    // ── ★LSPIDLE R3 — 스윕 **루프**를 지키는 못들(크리틱 R2 §4-B의 B1·B2·B3·D1) ──────
+    //
+    // R2는 「호출부에 잊을 수 있는 것이 남아 있지 않다」고 적었지만, 남은 하나
+    // (`Reclaim`일 때 실제로 접기)가 R1의 `Rewind => {}`와 **같은 모양으로** 무방비였다.
+    // 잊을 자리가 둘에서 하나로 줄었을 뿐 사라지지 않았고, 그 하나에 못이 없었다.
+
+    fn fixture_root(name: &str) -> PathBuf {
+        std::env::temp_dir().join(format!("ccg-lspidle-r3-{name}"))
+    }
+
+    /// ★B1·B2형 — **판정이 맞아도 아무도 안 접으면 회수는 없다.**
+    ///
+    /// 살아 있는 서버 하나를 자리에 앉히고 TTL을 넘긴 뒤 `sweep_idle()`을 한 번 돌린다.
+    /// 그 뒤 ① 자리가 비었고 ② 「회수됨」이 찍혔고 ③ 프로세스가 접혔어야 한다.
+    /// - 호출부가 `Reclaim` 갈래에서 아무것도 안 하면(B1) 셋 다 안 일어난다.
+    /// - 호출부가 `sweep_step`을 아예 안 부르면(B2) 판정 자체가 `Keep`이라 같은 결과다.
+    #[test]
+    fn the_sweep_actually_folds_the_server_it_decided_to_reclaim() {
+        let _g = registry_test_lock();
+        let root = fixture_root("reclaim");
+        let spec = crate::spec::spec_by_id("ts").unwrap();
+        drop_entry_for_test(spec, &root);
+        let s = Server::inert_for_test(spec, &root, Status::Ready);
+        // 「TTL을 넘길 만큼 시간이 흘렀다」 — 인덱싱도 아니고 쿼리도 없었다.
+        s.rewind_clocks_for_test(ttl_for(spec) + 60_000);
+        seed_server_for_test(&root, s.clone());
+        assert_eq!(entry_state_for_test(spec, &root), (true, false), "픽스처가 자리에 안 앉았다");
+        assert!(!s.is_dead(), "픽스처가 앉기도 전에 죽어 있다");
+
+        sweep_idle();
+
+        let (has_server, reclaimed) = entry_state_for_test(spec, &root);
+        assert!(
+            !has_server,
+            "★TTL이 지난 서버가 자리에 그대로다 — 판정은 맞게 받고 **접지를 않았다**\
+             (크리틱 R2 §4-B B1: R1의 `Rewind => {{}}`와 같은 모양으로 무방비였던 그 자리)"
+        );
+        assert!(reclaimed, "★「회수됨」이 안 찍혔다 — 사고와 정책을 가르는 칸이 비었다");
+        assert!(
+            s.is_dead(),
+            "★자리에서는 내렸는데 프로세스를 안 접었다 — 회수가 이름만 회수다(핸들이 샌다)"
+        );
+        drop_entry_for_test(spec, &root);
+    }
+
+    /// 위 못의 **음성 대조** — 아직 TTL 안인 서버는 안 접힌다.
+    /// (「스윕이 무조건 다 접는다」로 고쳐도 위 못이 초록이 되지 않게 한다.)
+    #[test]
+    fn the_sweep_leaves_a_server_that_is_still_inside_its_ttl() {
+        let _g = registry_test_lock();
+        let root = fixture_root("keep");
+        let spec = crate::spec::spec_by_id("ts").unwrap();
+        drop_entry_for_test(spec, &root);
+        let s = Server::inert_for_test(spec, &root, Status::Ready);
+        seed_server_for_test(&root, s.clone());
+        sweep_idle();
+        let (has_server, reclaimed) = entry_state_for_test(spec, &root);
+        assert!(has_server && !reclaimed, "★TTL 안인데 접혔다 — 방금 쓴 서버가 사라진다");
+        assert!(!s.is_dead());
+        drop_entry_for_test(spec, &root);
+        s.shutdown("못 정리");
+    }
+
+    /// ★B3형 — **스윕 스레드를 안 띄우면 회수는 영영 안 돈다.**
+    ///
+    /// 규칙도 호출부도 맞는데 루프가 안 돌면 밖에서는 「서버가 계속 산다」로만 보인다 —
+    /// 이 라운드가 없애려는 증상 그대로다. 래치를 내리고 다시 띄워, 맥박
+    /// (`LAST_SWEEP_MS`)이 실제로 뛰는지 본다. 첫 스윕이 **자기 전에** 오므로 즉시 관측된다.
+    #[test]
+    fn starting_the_sweeper_actually_makes_it_sweep() {
+        let _g = registry_test_lock();
+        reset_sweeper_for_test();
+        assert_eq!(last_sweep_ms_for_test(), 0, "맥박을 못 내렸다 — 이 못은 무효다");
+        start_sweeper();
+        let deadline = Instant::now() + Duration::from_millis(3_000);
+        while last_sweep_ms_for_test() == 0 && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert_ne!(
+            last_sweep_ms_for_test(),
+            0,
+            "★스윕 스레드를 띄웠는데 3초가 지나도 한 번도 안 쓸었다 — 회수 루프가 안 돈다"
+        );
+    }
+
+    /// ★D1형 — 관측점은 **양쪽**을 봐야 한다.
+    ///
+    /// R2는 `START_CALLS`로 「기동을 안 걸었는가」(0이어야 한다)만 봤다. 그래서 계수기를
+    /// 통째로 지워도 초록이었다 — 0은 언제나 0이기 때문이다. 「걸어야 할 때 걸었는가」를
+    /// 여기서 본다. `start`는 이 기계에 서버가 있든 없든 **불린 사실**을 남겨야 한다.
+    #[test]
+    fn asking_for_a_server_is_always_counted_as_a_start_call() {
+        let _g = registry_test_lock();
+        let spec = crate::spec::spec_by_id("ts").unwrap();
+        let root = fixture_root("startcalls");
+        let _ = std::fs::create_dir_all(&root);
+        let before = start_calls();
+        // 자리를 미리 「기동 중」으로 만들어 둔다 — 이 못이 진짜 프로세스를 안 띄우게.
+        // (묻는 것은 「띄웠는가」가 아니라 「기동을 걸었다고 셌는가」다.)
+        {
+            let key = key_of(spec, &root);
+            let (m, _) = reg();
+            let mut r = m.lock().unwrap();
+            let e = r.map.entry(key).or_insert_with(Entry::empty);
+            e.server = None;
+            e.spawning = true;
+        }
+        let _ = start(spec, &root);
+        let _ = start(spec, &root);
+        assert_eq!(
+            start_calls().saturating_sub(before),
+            2,
+            "★기동 요청을 걸었는데 관측점이 안 움직였다 — 계수기를 지워도 아무도 안 짖는다\
+             (크리틱 R2 §4-B D1)"
+        );
+        drop_entry_for_test(spec, &root);
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     /// 서버가 하나도 없어도 스윕은 죽지 않는다(원장 스윕까지 포함해서).
     #[test]
     fn sweeping_an_empty_registry_is_harmless() {
+        // ★LSPIDLE R3 — 위 못들이 자리를 합성하므로 같은 자물쇠를 쥔다(안 그러면
+        //   「비어 있다」를 세는 이 못이 남의 픽스처를 본다).
+        let _g = registry_test_lock();
         sweep_idle();
         assert_eq!(live_count(), 0);
         // 회수한 적이 없으면 「회수됨」도 0이다(자리가 없는 것과 회수된 것은 다르다).

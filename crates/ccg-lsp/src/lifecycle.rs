@@ -36,7 +36,7 @@
 //! 2. **`Rewind`** — TTL은 지났지만 **일하는 중**이다. 안 접는다.
 //!    쿼리가 없다는 것과 노는 것은 다르다.
 //! 3. **`Reclaim`** — TTL이 지났고 놀고 있다. 접는다.
-//!    **일하는 중이라 해도** 진행 신호가 [`GRACE_STALL_MS`]만큼 멎었으면 여기로 온다
+//!    **일하는 중이라 해도** 진행 신호가 [`Budget::stall_ms`]만큼 멎었으면 여기로 온다
 //!    (「일한다」가 말뿐인 서버가 유예로 영생하지 못하게 — A-2가 막으려던 그 자리).
 //! 4. **`Settle`** — 유예 중이었는데 일이 **끝났다**. 접지 않고 **유휴 시계를 지금부터** 센다.
 //!    일하는 동안은 서버를 쓸 수가 없었으므로 그 구간을 「안 쓴 시간」으로 세는 것이
@@ -67,19 +67,52 @@ pub enum Sweep {
     Reclaim,
 }
 
-/// 「일하는 중」이라고 말하면서 이만큼 **아무 진행 신호도 없으면** 그 말을 안 믿는다.
+/// 서버 하나에 걸리는 **수명 예산** — 값은 전부 [`crate::spec::ServerSpec`]에서 온다.
 ///
-/// 값의 근거: 실제로 인덱싱하는 서버는 `$/progress`를 수 초 간격으로 쏟는다(clangd가
-/// 그렇다). 5분 동안 한 톨도 없으면 그건 진행이 아니라 **멎은 것**이다.
+/// ## ★LSPIDLE R3 — 왜 상수가 아니라 값이 됐나 (확인 크리틱 R2 §3 A급)
 ///
-/// R1의 `IDLE_GRACE_CAP_MS`(30분·`idle` 기준)를 대신한다. 그 값은 ① cs·cpp에서 TTL과 같아
-/// 유예를 공집합으로 만들었고 ② 되감기 때문에 ts·py에서 영영 안 떴다(크리틱 A-1·A-2).
-/// 이 값은 **되감기가 못 건드리는 시계**로 재므로 두 병이 같이 사라진다.
+/// R2는 멎음 유예를 `GRACE_STALL_MS = 5분` **하나의 상수**로 뒀고, 그 위에 이렇게 적었다:
 ///
-/// 그리고 이 눈금은 **진짜로 일하는 서버를 안 죽인다**: 30분이 걸리든 두 시간이 걸리든
-/// 진행 신호가 흐르는 동안은 유예가 이어진다. R1의 절대 상한(30분)이었다면 UE 인덱싱을
-/// 30분에 끊어 «막겠다던 그 방아»를 30분 늦춰 되살렸을 것이다.
-pub const GRACE_STALL_MS: u64 = 5 * 60_000;
+/// > 이 눈금은 **진짜로 일하는 서버를 안 죽인다**: 30분이 걸리든 두 시간이 걸리든
+/// > 진행 신호가 흐르는 동안은 유예가 이어진다.
+///
+/// **거짓이었다.** 크리틱이 배포되는 네 스펙에 40분짜리 인덱싱을 먹이고 통지 간격만 훑어
+/// 반증했다 — 진행 신호가 **흐르는데도** 서버가 접힌다:
+///
+/// | 통지 간격 | ts(TTL 10분) | py(10분) | cs(30분) | cpp(30분) |
+/// |---:|---:|---:|---:|---:|
+/// | 1·2·4·5분 | 안 끊김 | 안 끊김 | 안 끊김 | 안 끊김 |
+/// | **6분** | **11분에 회수** | **11분** | **35분** | **35분** |
+/// | **10분** | **15분에 회수** | **15분** | **35분** | **35분** |
+///
+/// 약속에 빠져 있던 조건은 「통지가 멎음 눈금보다 촘촘할 때만」이다. 그리고 값이 하나뿐이라
+/// 그 조건을 서버마다 다르게 줄 수도 없었다 — 유예를 만든 명분이었던 두 서버(clangd의 장기
+/// 인덱싱·Roslyn의 느린 로드)가 하필 가장 드문 통지를 낼 후보인데도.
+///
+/// 그래서 R3은 ① 눈금을 [`crate::spec::ServerSpec::stall_grace_ms`]로 내리고
+/// ② 약속을 **조건부로** 다시 쓴다. 아래가 지금 참인 문장이다:
+///
+/// > 진행 통지가 그 서버의 `stall_grace_ms`보다 **촘촘한 동안은** 30분이 걸리든 두 시간이
+/// > 걸리든 유예가 이어진다. 그보다 드물면 마지막 통지로부터 `stall_grace_ms`에 접힌다.
+///
+/// 못은 [`tests::the_promise_holds_exactly_while_progress_is_finer_than_the_stall_grace`]와
+/// [`tests::the_critics_forty_minute_index_is_not_cut_at_any_shipped_spec`]가 박는다 —
+/// 앞엣것이 **조건부 약속 그 자체**를, 뒤엣것이 **크리틱이 실측한 그 표**를 못 박는다.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Budget {
+    /// 마지막 쿼리에서 이만큼 지나면 회수 대상([`crate::spec::ServerSpec::idle_ttl_ms`]).
+    pub ttl_ms: u64,
+    /// 「일하는 중」이라는 말을 증거 없이 믿어 주는 시간
+    /// ([`crate::spec::ServerSpec::stall_grace_ms`]).
+    pub stall_ms: u64,
+}
+
+impl Budget {
+    /// 스펙이 정한 예산 그대로. 테스트 주입(`CCG_LSP_*`)은 [`crate::manager`]가 얹는다.
+    pub fn of(spec: &crate::spec::ServerSpec) -> Budget {
+        Budget { ttl_ms: spec.idle_ttl_ms, stall_ms: spec.stall_grace_ms }
+    }
+}
 
 /// 서버 하나의 수명 시계들. **순수하다** — 프로세스도 진짜 시각도 안 만진다
 /// (`now`는 늘 인자로 들어온다). 그래서 테스트가 타임라인을 통째로 돌릴 수 있다.
@@ -113,14 +146,29 @@ impl Lifecycle {
         now.saturating_sub(self.last_used_ms)
     }
 
+    /// ★LSPIDLE R3 — **시계를 통째로 과거로 민다**(못 전용 · 「그만큼 시간이 흘렀다」).
+    ///
+    /// 못이 진짜 `now_ms()` 위에서 도는데도 24시간짜리 시나리오를 만들 수 있게 하는 문이다.
+    /// 제품 경로에는 `now`가 늘 인자로 들어오므로 이 함수가 필요 없고, 그래서 `cfg(test)`다.
+    #[cfg(test)]
+    pub(crate) fn rewind_for_test(&mut self, by_ms: u64) {
+        self.last_used_ms = self.last_used_ms.saturating_sub(by_ms);
+        self.last_work_ms = self.last_work_ms.saturating_sub(by_ms);
+        if self.grace_since_ms != 0 {
+            self.grace_since_ms = self.grace_since_ms.saturating_sub(by_ms).max(1);
+        }
+    }
+
     /// 지금 유예 중인가(진단).
     pub fn in_grace(&self) -> bool {
         self.grace_since_ms != 0
     }
 
     /// 스윕 한 걸음 — **판정 + 전이**. 위 「규칙 (네 갈래)」 그대로다.
-    pub fn step(&mut self, now: u64, ttl_ms: u64, indexing: bool) -> Sweep {
-        if self.idle_ms(now) < ttl_ms {
+    ///
+    /// 예산([`Budget`])이 인자인 것이 ★LSPIDLE R3다 — 눈금이 서버마다 다르다.
+    pub fn step(&mut self, now: u64, b: Budget, indexing: bool) -> Sweep {
+        if self.idle_ms(now) < b.ttl_ms {
             // 쿼리가 최근에 있었다 = 유예를 이어 갈 이유가 없다(스트릭 종료).
             self.grace_since_ms = 0;
             return Sweep::Keep;
@@ -128,7 +176,7 @@ impl Lifecycle {
         if indexing {
             // ★상한: 「일한다」는 말이 **증거로 뒷받침되는 동안만** 믿는다.
             //   이 판정에 `idle`이 안 들어가는 것이 A-2의 고침이다.
-            if now.saturating_sub(self.last_work_ms) >= GRACE_STALL_MS {
+            if now.saturating_sub(self.last_work_ms) >= b.stall_ms {
                 return Sweep::Reclaim;
             }
             if self.grace_since_ms == 0 {
@@ -165,7 +213,7 @@ mod tests {
             let now = s.idle_ttl_ms;
             l.saw_work(now);
             assert_eq!(
-                l.step(now, s.idle_ttl_ms, true),
+                l.step(now, Budget::of(s), true),
                 Sweep::Rewind,
                 "{}: TTL={}ms인데 유예가 안 난다 — 인덱싱 중 회수 → 재스폰 방아가 그대로 돈다 \
                  (크리틱 A-1이 cs·cpp에서 실측한 자리)",
@@ -190,7 +238,7 @@ mod tests {
             // 24시간을 60초 간격으로 — R1은 여기서 None이었다
             for _ in 0..(24 * 60) {
                 now += MIN;
-                if l.step(now, s.idle_ttl_ms, true) == Sweep::Reclaim {
+                if l.step(now, Budget::of(s), true) == Sweep::Reclaim {
                     verdict = Some(now);
                     break;
                 }
@@ -200,12 +248,107 @@ mod tests {
             });
             // TTL을 넘긴 뒤 멎음 눈금 안에 접혀야 한다(그 이상 끌면 상한이 헐거운 것이다)
             assert!(
-                at <= s.idle_ttl_ms + GRACE_STALL_MS + MIN,
-                "{}: {at}ms에 접혔다 — TTL({})+멎음({GRACE_STALL_MS})보다 한참 늦다",
+                at <= s.idle_ttl_ms + s.stall_grace_ms + MIN,
+                "{}: {at}ms에 접혔다 — TTL({})+멎음({})보다 한참 늦다",
                 s.id,
-                s.idle_ttl_ms
+                s.idle_ttl_ms,
+                s.stall_grace_ms
             );
         }
+    }
+
+    /// ★LSPIDLE R3 · 크리틱 R2 §3 A급 — **약속을 그 문장 그대로 못 박는다.**
+    ///
+    /// R2가 무조건형으로 적었다가 반증당한 자리다. 지금 참인 문장은 조건부이고, 이 못은
+    /// 그 조건의 **양쪽**을 다 본다 — 한쪽만 보면 「값을 키워 놓고 통과」가 되기 때문이다:
+    ///
+    /// 1. 통지 간격이 `stall_ms`보다 **촘촘하면** 두 시간을 인덱싱해도 안 끊긴다.
+    /// 2. 통지 간격이 `stall_ms`보다 **드물면** 마지막 통지로부터 `stall_ms`에 끊긴다
+    ///    (= 「일한다」가 말뿐인 서버가 영생하지 못한다는 상한이 살아 있다).
+    ///
+    /// 배포되는 스펙 값을 그대로 읽으므로, 누가 `stall_grace_ms`를 바꿔도 이 못은 새 값에
+    /// 대해 같은 문장을 검사한다. 즉 **값이 아니라 규칙**을 지킨다.
+    #[test]
+    fn the_promise_holds_exactly_while_progress_is_finer_than_the_stall_grace() {
+        for s in crate::spec::SPECS {
+            let b = Budget::of(s);
+            // ── ① 촘촘한 쪽: 두 시간을 돌려도 한 번도 안 끊긴다 ──────────────────
+            for div in [2u64, 3, 5, 10] {
+                let gap = b.stall_ms / div; // stall보다 확실히 촘촘한 간격
+                assert!(gap > 0, "{}: 멎음 눈금이 너무 작아 시나리오를 못 만든다", s.id);
+                let mut l = Lifecycle::new(0);
+                let mut now = 0u64;
+                while now < 120 * MIN {
+                    now += MIN;
+                    if now % gap < MIN {
+                        l.saw_work(now); // 서버가 진행 통지를 흘렸다
+                    }
+                    assert_ne!(
+                        l.step(now, b, true),
+                        Sweep::Reclaim,
+                        "★{}: 통지 {}ms 간격(멎음 {}ms보다 촘촘)인데 {}분에 **일하는 중** 접혔다 \
+                         — R2가 반증당한 그 사고다",
+                        s.id,
+                        gap,
+                        b.stall_ms,
+                        now / MIN
+                    );
+                }
+            }
+            // ── ② 드문 쪽: 상한이 살아 있다(영생하지 않는다) ────────────────────
+            let mut l = Lifecycle::new(0);
+            let mut now = 0u64;
+            let mut cut = None;
+            // 통지를 **한 번만** 흘리고 입을 다무는 서버 = 가장 드문 간격
+            l.saw_work(0);
+            while now < 24 * 60 * MIN {
+                now += MIN;
+                if l.step(now, b, true) == Sweep::Reclaim {
+                    cut = Some(now);
+                    break;
+                }
+            }
+            let at = cut.unwrap_or_else(|| panic!("{}: 통지가 멎었는데 24시간 안에 안 접혔다", s.id));
+            assert!(
+                at <= b.ttl_ms.max(b.stall_ms) + MIN,
+                "{}: {at}ms에 접혔다 — 상한(TTL {} · 멎음 {})보다 한참 늦다",
+                s.id,
+                b.ttl_ms,
+                b.stall_ms
+            );
+        }
+    }
+
+    /// ★LSPIDLE R3 · 크리틱 R2 §3의 **표 그대로** — 40분 인덱싱이 안 끊긴다.
+    ///
+    /// 크리틱 프로브(`critic_r2_a_forty_minute_index_is_cut_when_progress_is_sparse`)를
+    /// 제품 못으로 승격한 것이다. R2 값(5분 상수)이면 6분·10분 칸에서 네 스펙 전부 붉어진다:
+    /// ts·py는 11분/15분에, cs·cpp는 35분에 **일하는 중** 회수됐다.
+    ///
+    /// 위 못과 나누어 두는 이유: 저쪽은 규칙(조건부 약속)을, 이쪽은 **값**을 지킨다.
+    /// 누가 `stall_grace_ms`를 10분 아래로 내리면 규칙 못은 여전히 초록인데 이 못이 문다 —
+    /// 「크리틱이 실제로 재현한 시나리오」가 다시 깨졌다는 뜻이기 때문이다.
+    #[test]
+    fn the_critics_forty_minute_index_is_not_cut_at_any_shipped_spec() {
+        let mut cut: Vec<String> = Vec::new();
+        for s in crate::spec::SPECS {
+            let b = Budget::of(s);
+            for gap in [1u64, 2, 4, 5, 6, 10] {
+                let mut l = Lifecycle::new(0);
+                let mut now = 0u64;
+                while now < 40 * MIN {
+                    now += MIN;
+                    if now % (gap * MIN) == 0 {
+                        l.saw_work(now);
+                    }
+                    if l.step(now, b, true) == Sweep::Reclaim {
+                        cut.push(format!("{}@통지{}분간격→{}분에회수", s.id, gap, now / MIN));
+                        break;
+                    }
+                }
+            }
+        }
+        assert!(cut.is_empty(), "★40분 인덱싱이 일하는 중에 끊긴 조합: {cut:?}");
     }
 
     /// **진짜로 일하는 서버는 안 죽는다** — 상한이 「절대 시계」가 되면서 생길 수 있는
@@ -220,7 +363,7 @@ mod tests {
             now += MIN;
             l.saw_work(now); // clangd가 초 단위로 쏟는 `$/progress`
             assert_ne!(
-                l.step(now, cpp.idle_ttl_ms, true),
+                l.step(now, Budget::of(cpp), true),
                 Sweep::Reclaim,
                 "{now}ms에 접혔다 — 진행 신호가 흐르는데 끊었다(막겠다던 방아를 되살린 것이다)"
             );
@@ -234,51 +377,54 @@ mod tests {
     #[test]
     fn finishing_the_work_restarts_the_idle_clock_instead_of_reclaiming() {
         let cpp = crate::spec::spec_by_id("cpp").unwrap();
-        let ttl = cpp.idle_ttl_ms;
+        let b = Budget::of(cpp);
+        let ttl = b.ttl_ms;
         let mut l = Lifecycle::new(0);
         let mut now = 0u64;
         // 40분 동안 인덱싱(TTL 30분을 넘긴다) — 유예로 살아남는다
         for _ in 0..40 {
             now += MIN;
             l.saw_work(now);
-            l.step(now, ttl, true);
+            l.step(now, b, true);
         }
         assert!(l.in_grace(), "40분 인덱싱 뒤에도 유예 중이어야 한다");
         // 인덱싱 끝 — 접히지 않고 유휴 시계가 리셋된다
         now += MIN;
-        assert_eq!(l.step(now, ttl, false), Sweep::Settle, "★일이 끝나는 순간 접혔다");
+        assert_eq!(l.step(now, b, false), Sweep::Settle, "★일이 끝나는 순간 접혔다");
         assert!(!l.in_grace());
         assert_eq!(l.idle_ms(now), 0, "유휴 시계가 안 리셋됐다");
         // 그 뒤로는 평범하게 TTL을 센다
         now += ttl - MIN;
-        assert_eq!(l.step(now, ttl, false), Sweep::Keep, "리셋 직후 TTL 안인데 접으려 했다");
+        assert_eq!(l.step(now, b, false), Sweep::Keep, "리셋 직후 TTL 안인데 접으려 했다");
         now += MIN;
-        assert_eq!(l.step(now, ttl, false), Sweep::Reclaim, "리셋 뒤 TTL이 지나면 접혀야 한다");
+        assert_eq!(l.step(now, b, false), Sweep::Reclaim, "리셋 뒤 TTL이 지나면 접혀야 한다");
     }
 
     /// 평범한 갈래 — 일 안 하는 서버는 TTL에 정확히 접힌다(경계는 `>=`).
     #[test]
     fn an_idle_server_is_reclaimed_exactly_at_the_ttl() {
-        let ttl = 10 * MIN;
+        let b = Budget { ttl_ms: 10 * MIN, stall_ms: 5 * MIN };
+        let ttl = b.ttl_ms;
         let mut l = Lifecycle::new(0);
-        assert_eq!(l.step(ttl - 1, ttl, false), Sweep::Keep);
-        assert_eq!(l.step(ttl, ttl, false), Sweep::Reclaim);
+        assert_eq!(l.step(ttl - 1, b, false), Sweep::Keep);
+        assert_eq!(l.step(ttl, b, false), Sweep::Reclaim);
         // 쿼리가 오면 시계가 되감긴다
         let mut l = Lifecycle::new(0);
         l.touch(ttl - 1);
-        assert_eq!(l.step(ttl, ttl, false), Sweep::Keep);
+        assert_eq!(l.step(ttl, b, false), Sweep::Keep);
     }
 
     /// 쿼리가 오면 유예 스트릭이 끊긴다 — 다음 인덱싱은 새 유예를 받는다.
     #[test]
     fn a_query_ends_the_grace_streak() {
-        let ttl = 10 * MIN;
+        let b = Budget { ttl_ms: 10 * MIN, stall_ms: 5 * MIN };
+        let ttl = b.ttl_ms;
         let mut l = Lifecycle::new(0);
         l.saw_work(ttl);
-        assert_eq!(l.step(ttl, ttl, true), Sweep::Rewind);
+        assert_eq!(l.step(ttl, b, true), Sweep::Rewind);
         assert!(l.in_grace());
         l.touch(ttl + 1); // 사용자가 호버했다
-        assert_eq!(l.step(ttl + 2, ttl, true), Sweep::Keep);
+        assert_eq!(l.step(ttl + 2, b, true), Sweep::Keep);
         assert!(!l.in_grace(), "쿼리가 왔는데 유예 스트릭이 안 끊겼다");
     }
 
@@ -287,21 +433,24 @@ mod tests {
     fn the_r1_pair_of_defects_cannot_come_back() {
         // A-1: 유예 구간이 TTL과 상한의 대소 관계에 **의존하지 않는다**.
         //      (R1은 `idle < CAP`이라 ttl >= CAP인 스펙에서 공집합이었다.)
-        for ttl in [1 * MIN, 10 * MIN, 30 * MIN, 90 * MIN, GRACE_STALL_MS, GRACE_STALL_MS * 10] {
+        let stall = 5 * MIN;
+        for ttl in [1 * MIN, 10 * MIN, 30 * MIN, 90 * MIN, stall, stall * 10] {
             let mut l = Lifecycle::new(0);
             l.saw_work(ttl);
-            assert_eq!(l.step(ttl, ttl, true), Sweep::Rewind, "ttl={ttl}에서 유예가 공집합이다");
+            let b = Budget { ttl_ms: ttl, stall_ms: stall };
+            assert_eq!(l.step(ttl, b, true), Sweep::Rewind, "ttl={ttl}에서 유예가 공집합이다");
         }
         // A-2: 되감기(유예)가 **상한 시계를 못 건드린다**.
         //   TTL을 막 넘긴 순간에 마지막 진행 신호가 있었고, 그 뒤로는 서버가 「일하는 중」이라
         //   말만 한다. R1이라면 매 걸음의 `touch()`가 `idle`을 0으로 되감아 상한이 영영 안 떴다.
         let ttl = 10 * MIN;
+        let b = Budget { ttl_ms: ttl, stall_ms: stall };
         let mut l = Lifecycle::new(0);
         let mut now = ttl;
         l.saw_work(now);
         let mut rewinds = 0;
         loop {
-            match l.step(now, ttl, true) {
+            match l.step(now, b, true) {
                 Sweep::Rewind => rewinds += 1,
                 Sweep::Reclaim => break,
                 other => panic!("예상 밖 판정 {other:?}"),
@@ -311,6 +460,6 @@ mod tests {
         }
         assert!(rewinds > 0, "유예를 한 번도 안 받았다 — A-1 쪽이 깨졌다");
         // 멎음 시계는 **마지막 진행 신호**로부터 잰다 — 유예를 몇 번 받았든 무관하다.
-        assert_eq!(now, ttl + GRACE_STALL_MS, "멎음 시계가 절대 시계가 아니다");
+        assert_eq!(now, ttl + stall, "멎음 시계가 절대 시계가 아니다");
     }
 }

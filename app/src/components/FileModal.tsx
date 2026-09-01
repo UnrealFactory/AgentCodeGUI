@@ -15,6 +15,31 @@ import { verseReg } from '../lib/verseRegistry'
 import { VERSE_SPECIFIERS, VERSE_ATTRIBUTES } from '@shared/verseKeywords'
 import { glossaryDoc, hasGlossary, UE_CPP_WORD_DOCS } from '@shared/langGlossary'
 import { FileBadge, fileTypeFor, paletteClassFor } from './fileType'
+// ★LSPIDLE R3 — 동결 계약면이 모르는 두 칸(`error`·`pending`)을 읽는 3.0 전용 문.
+// 왜 `window.api`가 아니라 여기서 오는지는 `api/shim.ts`의 그 블록에 적었다.
+import { lspProjectStatusEx, isTokensPending } from '../api/shim'
+
+/**
+ * ★LSPIDLE R3 — 사유 여러 줄에서 **칩 한 줄**을 고른다.
+ *
+ * 실화면 프로브에서 바로 드러난 것이다: 사유의 **첫 줄이 쓸모없을 수 있다.**
+ * node가 조각을 못 찾고 죽으면 stderr 꼬리의 첫 줄은
+ * `LSP 서버가 종료됨 · stderr: node:internal/modules/cjs/loader:1568`이고,
+ * 사용자가 읽어야 할 `Error: Cannot find module 'X'`는 **다섯 번째 줄**이다.
+ * 첫 줄을 그대로 자르면 화면에 남는 것은 로더의 줄 번호뿐이다 — 「소리 내어 죽되
+ * 죽을 때 하는 말이 맞아야 한다」의 마지막 한 자가 여기였다.
+ *
+ * 그래서 **말인 줄**을 먼저 찾는다(`…Error:`). 스택 프레임(`at …`)은 건너뛰고,
+ * 못 찾으면 첫 줄로 떨어진다. 전문은 늘 툴팁에 있으므로 여기서 잃는 것은 없다.
+ */
+function errHeadline(s: string): string {
+  const lines = s
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean)
+  const said = lines.find((l) => /(^|\s)[A-Za-z]*Error:/.test(l) && !/^at\s/.test(l))
+  return (said || lines[0] || '').slice(0, 96)
+}
 import {
   IconBook,
   IconBot,
@@ -2867,6 +2892,14 @@ export function FileModal({
   // 열려 있는 문서는 재열람 전까지 새 타입이 무색으로 남는다.
   const [semEpoch, setSemEpoch] = useState(0)
   const [anPct, setAnPct] = useState<number | null>(null) // 분석 진행률(프로젝트 인덱싱 %)
+  // ★LSPIDLE R3(크리틱 R2 §4-A) — 서버가 **죽은 사유**. R2가 Rust에서 실어 보내기 시작했는데
+  // 여기까지 오는 길이 없어서 사용자는 이유 없는 침묵을 그대로 봤다.
+  const [lspErr, setLspErr] = useState<string | null>(null)
+  // status 폴링을 **다시 켜는** 세대. 회수 뒤 재기동처럼 「ready라고 믿는데 아직 아닌」
+  // 구간을 토큰 응답(`pending`)이 알려 오면 여기를 올려 폴링 효과를 되살린다.
+  const [lspEpoch, setLspEpoch] = useState(0)
+  // 그 재장전이 「파일이 바뀐 것」과 구분되게 하는 기억(아래 status 효과의 리셋 조건).
+  const lspFileKeyRef = useRef('')
   const [vs, setVs] = useState<ViewState>({
     root: path,
     stack: [],
@@ -3069,7 +3102,15 @@ export function FileModal({
   // (lsp={ready} below). The first ask lazily spawns the project's server, so poll
   // while it warms up ('starting'/'installing'). 상태 칩은 코드창에 없다(폴더 배지로 이동).
   useEffect(() => {
-    setLspStatus('unsupported')
+    // ★LSPIDLE R3 — 리셋은 **파일이 바뀔 때만**. 이 효과는 이제 `lspEpoch`로도 다시 도는데
+    // (토큰이 「아직」이라고 알려 온 순간 — 회수 뒤 재기동이 그 모양이다), 그때마다
+    // `unsupported`로 되돌리면 게이트가 한 틱 꺼지며 토큰 효과가 통째로 재장착된다.
+    // 그러면 재시도 사슬이 끊기고, 끊긴 자리에서 다시 「아직」을 받아 **무한 재장전**이 된다.
+    const key = `${cwd}|${effPath}`
+    if (lspFileKeyRef.current !== key) {
+      lspFileKeyRef.current = key
+      setLspStatus('unsupported')
+    }
     // 커밋 시점 내용은 디스크와 다를 수 있다 — LSP 좌표가 거짓이 되므로 끈다
     if (!effPath || isImg || ovContent != null) return
     let alive = true
@@ -3100,7 +3141,7 @@ export function FileModal({
     return () => {
       alive = false
     }
-  }, [effPath, cwd, isImg, ovContent])
+  }, [effPath, cwd, isImg, ovContent, lspEpoch])
 
   // instant paint: on open, ask the disk cache for this file's last-known tokens
   // (keyed by content hash — no server spawn) and paint immediately. The live
@@ -3165,6 +3206,7 @@ export function FileModal({
     if (!effPath || lspStatus !== 'ready' || res?.content == null) return
     let alive = true
     let tries = 0
+    let rearmed = false // ★LSPIDLE R3 — 이 사슬에서 status 폴링을 이미 깨웠는가
     let lastSig = '' // 마지막으로 받은 토큰의 지문 — 개선 감시(아래) 비교 기준
     let stable = 0 // 같은 결과가 연속으로 온 횟수 — 2번이면 확정으로 보고 폴링 종료
     const sig = (d: number[]): string => {
@@ -3177,6 +3219,22 @@ export function FileModal({
         .semanticTokens(cwd, effPath)
         .then((t) => {
           if (!alive) return
+          // ★LSPIDLE R3(크리틱 R2 §4-C) — **「아직」은 「없다」가 아니다.**
+          //
+          // 서버가 예산 안에 ready가 못 되면 Rust가 이 표를 달아 보낸다. 아래 갈래들은
+          // 빈 응답을 「이 파일엔 심볼이 없다」로 굳히므로(noSem), 여기서 갈라야 한다.
+          // 그리고 **status 폴링을 되켠다** — 이 상황(회수 뒤 재기동)에서 렌더러는 이미
+          // `ready`라 믿고 폴링을 멈춘 뒤라, 다시 알려 줄 사람이 이 자리 말고 없다.
+          if (isTokensPending(t)) {
+            // 한 사슬에 **한 번만** 깨운다 — 매 응답마다 올리면 status 효과가 800ms마다
+            // 재장전되고, 그건 폴링을 되켜는 게 아니라 재장전 폭풍이다.
+            if (!rearmed) {
+              rearmed = true
+              setLspEpoch((n) => n + 1)
+            }
+            if (tries++ < 75) setTimeout(fetchTokens, 800)
+            return
+          }
           if (t && t.data.length) {
             const s = sig(t.data)
             if (s !== lastSig) {
@@ -3233,26 +3291,39 @@ export function FileModal({
   const isCodeView = !!effPath && !isImg && ovContent == null && res?.content != null
   const analyzing =
     isCodeView && !(semLive && hoverReady) && !noSem && (lspStatus === 'starting' || lspStatus === 'installing' || lspStatus === 'ready')
-  // 분석 중에만 프로젝트 인덱싱 %를 가볍게 폴링해 칩에 보여준다(없으면 % 없이 '심볼 분석 중')
+  // ★LSPIDLE R3(크리틱 R2 §4-A) — **에러 세계에서도 물어본다.**
+  //
+  // R2까지 이 효과의 문은 `analyzing` 하나였고, 그 값은 `starting|installing|ready`에서만
+  // 참이다. 즉 **서버가 죽어 사유가 생긴 바로 그 순간** `projectStatus()`를 한 번도 안 불렀다.
+  // Rust가 사유를 싣고 셸이 그대로 통과시키는데 마지막 한 자가 끊겨 있던 자리다.
+  const wantProjectStatus = (analyzing || lspStatus === 'error') && isCodeView
+  // 분석 중이면 인덱싱 %를, 죽었으면 **사유**를 가볍게 폴링한다.
   useEffect(() => {
-    if (!analyzing || !cwd) {
+    if (!wantProjectStatus || !cwd) {
       setAnPct(null)
+      setLspErr(null)
       return
     }
     let alive = true
     const tick = (): void => {
-      window.api.lsp
-        .projectStatus(cwd)
-        .then((s) => alive && setAnPct(s.state === 'analyzing' ? s.percent : null))
+      lspProjectStatusEx(cwd)
+        .then((s) => {
+          if (!alive) return
+          setAnPct(s.state === 'analyzing' ? s.percent : null)
+          // 사유는 `state === 'idle'`에 실려 온다 — 「할 일이 없어 idle」과 「죽어서 idle」을
+          // 가르는 유일한 값이다(`manager::project_state`). 살아나면 조용히 사라진다.
+          setLspErr(s.error?.trim() || null)
+        })
         .catch(() => {})
     }
     tick()
-    const iv = setInterval(tick, 800)
+    // 죽은 뒤에는 급할 게 없다 — 재스폰 쿨다운이 30초라 3초 간격이면 충분하다.
+    const iv = setInterval(tick, analyzing ? 800 : 3000)
     return () => {
       alive = false
       clearInterval(iv)
     }
-  }, [analyzing, cwd])
+  }, [wantProjectStatus, analyzing, cwd])
 
   // 헤더 우클릭 메뉴 — 경로 복사 / 파일 탐색기에서 보기 (탐색기 ctx-menu와 같은 디자인·클램프)
   const [headCtx, setHeadCtx] = useState<{ x: number; y: number } | null>(null)
@@ -3588,6 +3659,16 @@ export function FileModal({
             <span className="fv-lsp starting">
               <span className="spin" /> {t('심볼 분석 중', 'Analyzing symbols')}
               {anPct != null ? ` ${anPct}%` : ''}
+            </span>
+          )}
+          {/* ★LSPIDLE R3(크리틱 R2 §4-A) — 코드 인텔리전스가 죽었을 때 **이유를 보여 준다.**
+              R1이 지적한 증상은 「사용자는 이유 없이 침묵을 본다」였고, R2가 사유를 계약면에
+              실었지만 화면까지 오는 길이 없었다. 칩은 짧게(첫 줄), 전문은 툴팁으로 —
+              사유는 `Cannot find module 'C:\…\preload.cjs'`처럼 경로가 길다.
+              `.fv-lsp.error` 스타일은 이미 있었고 쓰는 곳만 없었다(styles.css). */}
+          {!analyzing && lspStatus === 'error' && (
+            <span className="fv-lsp error htip" data-tip={lspErr || t('코드 인텔리전스가 멈췄어요', 'Code intelligence stopped')}>
+              {lspErr ? errHeadline(lspErr) : t('코드 인텔리전스 오류', 'Code intelligence error')}
             </span>
           )}
           {res?.truncated && <span className="fv-trunc">{t('일부만 표시', 'Partial view')}</span>}
