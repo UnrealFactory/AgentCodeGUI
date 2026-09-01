@@ -1,0 +1,54 @@
+   --> crates\ccg-engine\tests\critic_slug_r1_attack.rs:269:5
+    |
+267 | struct OneShot {
+    |        ------- field in this struct
+268 |     to: String,
+269 |     fail_to: bool,
+    |     ^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+
+running 8 tests
+test a1_a_failing_account_queued_mid_turn_still_settles_with_a_reason ... [A1] state=Idle q=0 notices=["bad@x.test 계정 폴더를 열지 못했어요 — <사유:bad@x.test>"]
+[A1] 물어본 계정 = ["a@x.test", "bad@x.test"]
+ok
+test a2_three_failures_in_a_row_each_speak_and_each_settle ... [A2] #0 state=Idle notices=["bad@x.test 계정 폴더를 열지 못했어요 — <사유:bad@x.test>"]
+[A2] #1 state=Idle notices=["bad@x.test 계정 폴더를 열지 못했어요 — <사유:bad@x.test>"]
+[A2] #2 state=Idle notices=["bad@x.test 계정 폴더를 열지 못했어요 — <사유:bad@x.test>"]
+ok
+test a3_the_resolver_is_asked_again_even_for_the_same_email ... [A3] 물어본 횟수=3 스폰=3 log=["a@x.test", "a@x.test", "a@x.test"]
+ok
+test a4_after_an_auto_switch_the_resolver_is_asked_for_the_new_account ... [A4] banners=["a@x.test→b@x.test"] asked=["a@x.test", "b@x.test"] tails=["a@x.test", "b@x.test"] state=Idle
+ok
+test a4b_a_switch_target_whose_folder_fails_still_speaks ... [A4b] state=Idle q=0 notices=["b@x.test 계정 폴더를 열지 못했어요 — <사유:b@x.test>"] asked=["a@x.test", "b@x.test"]
+ok
+test a5_the_override_beats_the_resolver_and_ignores_the_email ... [A5] tails=["forced", "forced"] asked=[]
+ok
+test a6_the_fallback_marker_can_leave_its_layer ... [A6] user@example.invalid         → C:\h\accounts\_no-resolver\user_example.invalid (층 안=true)
+[A6] a.b+tag@Example.invalid      → C:\h\accounts\_no-resolver\a.b-tag_Example.invalid (층 안=true)
+[A6] a\..\..\evil@x.com           → C:\h\accounts\evil_x.com (층 안=false)
+[A6] a/../../evil@x.com           → C:\h\accounts\evil_x.com (층 안=false)
+[A6] 탈출한 표식 = [("a\\..\\..\\evil@x.com", "C:\\h\\accounts\\evil_x.com"), ("a/../../evil@x.com", "C:\\h\\accounts\\evil_x.com")]
+ok
+test a7_api_key_turns_are_untouched_by_account_failures ... [A7] state=Starting spawns=1
+ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+===STORE===
+
+running 3 tests
+test a_half_written_store_makes_the_turn_path_and_the_query_path_disagree ... [auth] ★ accounts.json이 깨졌다 — 마지막 성공본(accounts.json.bak, 계정 1개)으로 되살린다
+[STORE-half] is_registered=true account_run_dir=Some(NotRegistered("race@example.invalid"))
+[STORE-half] ★ 같은 순간, 조회는 「등록돼 있다」, 턴 경로는 「미등록」 — 화면 문장은 「설정 ▸ Account에 등록된 계정이 아니에요(로그인이 필요해요)」
+ok
+test a_vanished_store_makes_the_turn_path_and_the_query_path_disagree ... [auth] ★ accounts.json이 없다 — 마지막 성공본(accounts.json.bak, 계정 1개)으로 되살린다
+[STORE-gone] is_registered=true account_run_dir=Some(NotRegistered("gone@example.invalid"))
+ok
+test the_query_path_survives_a_passing_half_but_the_turn_path_has_no_such_gear ... [auth] ★ accounts.json이 깨졌다 — 마지막 성공본(accounts.json.bak, 계정 1개)으로 되살린다
+[STORE-passing] 턴경로=Some(NotRegistered("pass@example.invalid")) 조회경로=true
+ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.14s
+

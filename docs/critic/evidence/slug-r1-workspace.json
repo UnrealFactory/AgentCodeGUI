@@ -1,0 +1,7 @@
+{
+  "at": "2026-09-01T02:08:28.932Z",
+  "what": "cargo test --workspace (격리 사본 1255f17 · 크리틱 시험 파일 제외)",
+  "binaries": 35,
+  "passed": 847,
+  "failed": 0
+}

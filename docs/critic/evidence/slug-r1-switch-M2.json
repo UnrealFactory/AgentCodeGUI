@@ -1,0 +1,123 @@
+{
+  "at": "2026-09-01T02:03:58.290Z",
+  "exe": "C:\\Code\\.cargo-slugcrit\\release\\agentcodegui.exe",
+  "scenarios": {
+    "pick": {
+      "home": "C:\\Code\\ccg-slugcrit\\.poc-home-m11-pick",
+      "emails": [
+        "a@ccg.test",
+        "soon@ccg.test",
+        "late@ccg.test"
+      ],
+      "ready": true,
+      "switched": true,
+      "after": {
+        "account": "soon@ccg.test",
+        "revision": 1,
+        "origins": [
+          "default#0[]",
+          "auto_account_switch#1[billingAccount]"
+        ],
+        "state": "Idle",
+        "hold": null,
+        "spawns": 2,
+        "accountSwitch": {
+          "on": true,
+          "busy": [],
+          "worker": {
+            "runs": 1,
+            "fetches": 0
+          },
+          "picked": "soon@ccg.test",
+          "skipped": [
+            {
+              "email": "a@ccg.test",
+              "why": "current"
+            }
+          ]
+        },
+        "banners": [
+          {
+            "text": "사용 한도에 걸려 soon@ccg.test 계정으로 바꿔 이어갑니다 — 이 계정은 약 29분 뒤 초기화돼요.",
+            "from": "a@ccg.test",
+            "to": "soon@ccg.test",
+            "soonestReset": 1788230038,
+            "revertTo": 0
+          }
+        ],
+        "notices": [
+          "사용 한도에 걸려 soon@ccg.test 계정으로 바꿔 이어갑니다 — 이 계정은 약 29분 뒤 초기화돼요."
+        ],
+        "domHasSwitch": true,
+        "domHasWait": false,
+        "thread": "한도에 걸릴 질문\n\n복사\n오전 11:03\nClaude AI usage limit reached|1788246238\n계정 되돌리기\n오전 11:03\n사용 한도에 걸려 soon@ccg.test 계정으로 바꿔 이어갑니다 — 이 계정은 약 29분 뒤 초기화돼요.\n\n이어서 진행해 주세요\n\nOK-soon_ccg.test-se6jr2"
+      },
+      "revertTo": 0,
+      "pill": {
+        "found": true,
+        "labels": [
+          "계정 되돌리기"
+        ],
+        "disabled": [
+          false
+        ]
+      },
+      "pillClick": "clicked",
+      "afterRevert": {
+        "account": "a@ccg.test",
+        "revision": 2,
+        "origins": [
+          "default#0[]",
+          "auto_account_switch#1[billingAccount]",
+          "revert#2[billingAccount]"
+        ],
+        "state": "Idle",
+        "hold": null,
+        "spawns": 2,
+        "accountSwitch": {
+          "on": true,
+          "busy": [],
+          "worker": {
+            "runs": 1,
+            "fetches": 0
+          },
+          "picked": "soon@ccg.test",
+          "skipped": [
+            {
+              "email": "a@ccg.test",
+              "why": "current"
+            }
+          ]
+        },
+        "banners": [
+          {
+            "text": "사용 한도에 걸려 soon@ccg.test 계정으로 바꿔 이어갑니다 — 이 계정은 약 29분 뒤 초기화돼요.",
+            "from": "a@ccg.test",
+            "to": "soon@ccg.test",
+            "soonestReset": 1788230038,
+            "revertTo": 0
+          }
+        ],
+        "notices": [
+          "사용 한도에 걸려 soon@ccg.test 계정으로 바꿔 이어갑니다 — 이 계정은 약 29분 뒤 초기화돼요."
+        ],
+        "domHasSwitch": true,
+        "domHasWait": false,
+        "thread": "한도에 걸릴 질문\n\n복사\n오전 11:03\nClaude AI usage limit reached|1788246238\n되돌림 ✓\n오전 11:03\n사용 한도에 걸려 soon@ccg.test 계정으로 바꿔 이어갑니다 — 이 계정은 약 29분 뒤 초기화돼요.\n\n이어서 진행해 주세요\n\nOK-soon_ccg.test-se6jr2"
+      },
+      "settled": {
+        "band": true,
+        "labels": [
+          "되돌림 ✓"
+        ],
+        "disabled": [
+          true
+        ]
+      },
+      "appLog": [
+        "[store] chats-v3 마이그레이션: {\"ok\":true,\"migratedAt\":1788228239001.0,\"elapsedMs\":5.0,\"backupDir\":\"C:\\\\Code\\\\ccg-slugcrit\\\\.poc-home-m11-pick\\\\backup-2.6.2-1788228239001\",\"counts\":{\"chats\":1,\"maSessions\":0,\"maPanels\":0,\"sessionChats\":0,\"talkAbsorbed\":0,\"carried\":0,\"keptV3\":0,\"keptV3Boards\":0,\"total\":1,\"messages\":0,\"boards\":1},\"idMap\":{\"c-m11\":\"c-m11\"},\"order\":[\"c-m11\"],\"activeChatId\":\"c-m11\",\"boardOrder\":[\"default\"],\"activeBoardId\":\"default\",\"activeSessionId\":\"\",\"btw\":{\"rewritten\":0,\"dropped\":0},\"holdMoved\":0,\"sourceIndexOrders\":{\"chats\":[\"c-m11\"],\"multiAgent\":[],\"sessionChats\":[]},\"warnings\":[]}"
+      ]
+    }
+  },
+  "findings": []
+}

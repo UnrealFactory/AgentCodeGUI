@@ -1,0 +1,231 @@
+{
+  "at": "2026-09-01T01:46:06.205Z",
+  "repo": "C:\\Code\\ccg-slugcrit",
+  "baseline": {
+    "engine": {
+      "label": "engine",
+      "compiled": true,
+      "pass": 4,
+      "fail": 0,
+      "red": 0,
+      "firstError": null
+    },
+    "shell": {
+      "label": "shell",
+      "compiled": true,
+      "pass": 7,
+      "fail": 0,
+      "red": 0,
+      "firstError": null
+    },
+    "attack": {
+      "label": "attack",
+      "compiled": true,
+      "pass": 8,
+      "fail": 0,
+      "red": 0,
+      "firstError": null
+    }
+  },
+  "mutants": [
+    {
+      "id": "M1",
+      "what": "엔진 `account_dir`이 리졸버를 무시하고 옛 조립+스캔으로 되돌아간다",
+      "suites": {
+        "engine": {
+          "label": "engine",
+          "compiled": true,
+          "pass": 0,
+          "fail": 4,
+          "red": 4,
+          "firstError": null
+        },
+        "shell": {
+          "label": "shell",
+          "compiled": true,
+          "pass": 7,
+          "fail": 0,
+          "red": 0,
+          "firstError": null
+        },
+        "attack": {
+          "label": "attack",
+          "compiled": true,
+          "pass": 3,
+          "fail": 5,
+          "red": 5,
+          "firstError": null
+        }
+      },
+      "killedBy": [
+        "engine",
+        "attack"
+      ],
+      "survived": false
+    },
+    {
+      "id": "M2",
+      "what": "셸 리졸버 안에서 옛 조립+스캔이 부활한다(`ccg-auth`를 안 부른다)",
+      "suites": {
+        "engine": {
+          "label": "engine",
+          "compiled": true,
+          "pass": 4,
+          "fail": 0,
+          "red": 0,
+          "firstError": null
+        },
+        "shell": {
+          "label": "shell",
+          "compiled": true,
+          "pass": 1,
+          "fail": 6,
+          "red": 6,
+          "firstError": null
+        },
+        "attack": {
+          "label": "attack",
+          "compiled": true,
+          "pass": 8,
+          "fail": 0,
+          "red": 0,
+          "firstError": null
+        }
+      },
+      "killedBy": [
+        "shell"
+      ],
+      "survived": false
+    },
+    {
+      "id": "M3",
+      "what": "`hub.rs`의 `.with_account_resolver(…)` 한 줄이 사라진다(배선만 제거)",
+      "suites": {
+        "engine": {
+          "label": "engine",
+          "compiled": true,
+          "pass": 4,
+          "fail": 0,
+          "red": 0,
+          "firstError": null
+        },
+        "shell": {
+          "label": "shell",
+          "compiled": true,
+          "pass": 7,
+          "fail": 0,
+          "red": 0,
+          "firstError": null
+        },
+        "attack": {
+          "label": "attack",
+          "compiled": true,
+          "pass": 8,
+          "fail": 0,
+          "red": 0,
+          "firstError": null
+        }
+      },
+      "killedBy": [],
+      "survived": true
+    },
+    {
+      "id": "E1",
+      "what": "리졸버가 **실패했을 때만** 옛 스캔으로 슬그머니 되돌아간다(사유를 삼킨다)",
+      "suites": {
+        "engine": {
+          "label": "engine",
+          "compiled": true,
+          "pass": 4,
+          "fail": 0,
+          "red": 0,
+          "firstError": null
+        },
+        "shell": {
+          "label": "shell",
+          "compiled": true,
+          "pass": 6,
+          "fail": 1,
+          "red": 1,
+          "firstError": null
+        },
+        "attack": {
+          "label": "attack",
+          "compiled": true,
+          "pass": 8,
+          "fail": 0,
+          "red": 0,
+          "firstError": null
+        }
+      },
+      "killedBy": [
+        "shell"
+      ],
+      "survived": false
+    },
+    {
+      "id": "E2",
+      "what": "리졸버가 이메일별로 **한 번만** 진짜를 부르고 그 뒤로는 캐시를 낸다(물질화가 사라진다)",
+      "suites": {
+        "engine": {
+          "label": "engine",
+          "compiled": true,
+          "pass": 4,
+          "fail": 0,
+          "red": 0,
+          "firstError": null
+        },
+        "shell": {
+          "label": "shell",
+          "compiled": true,
+          "pass": 7,
+          "fail": 0,
+          "red": 0,
+          "firstError": null
+        },
+        "attack": {
+          "label": "attack",
+          "compiled": true,
+          "pass": 8,
+          "fail": 0,
+          "red": 0,
+          "firstError": null
+        }
+      },
+      "killedBy": [],
+      "survived": true
+    },
+    {
+      "id": "E3",
+      "what": "`why()`가 `NotRegistered` 말고는 전부 같은 뭉뚱그린 한 줄을 낸다(사유가 사라진다)",
+      "suites": {
+        "engine": {
+          "label": "engine",
+          "compiled": true,
+          "pass": 4,
+          "fail": 0,
+          "red": 0,
+          "firstError": null
+        },
+        "shell": {
+          "label": "shell",
+          "compiled": true,
+          "pass": 7,
+          "fail": 0,
+          "red": 0,
+          "firstError": null
+        },
+        "attack": {
+          "label": "attack",
+          "compiled": true,
+          "pass": 8,
+          "fail": 0,
+          "red": 0,
+          "firstError": null
+        }
+      },
+      "killedBy": [],
+      "survived": true
+    }
+  ]
+}

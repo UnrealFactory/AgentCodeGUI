@@ -1,0 +1,293 @@
+{
+  "at": "2026-09-01T01:37:21.162Z",
+  "repo": "C:\\Code\\ccg-slugcrit",
+  "checks": {
+    "s1": {
+      "vectors": 8,
+      "files": [
+        {
+          "file": "poc-account-switch.mjs",
+          "parsed": true,
+          "mismatches": 0,
+          "equalsOldGuess": false
+        },
+        {
+          "file": "poc-acct-live.mjs",
+          "parsed": true,
+          "mismatches": 0,
+          "equalsOldGuess": false
+        },
+        {
+          "file": "poc-slug-account-dir.mjs",
+          "parsed": true,
+          "mismatches": 0,
+          "equalsOldGuess": false
+        }
+      ]
+    },
+    "s2": [
+      {
+        "short": "bob@ex.invalid",
+        "long": "bob@ex.invalid-corp.test",
+        "realSlug": "bob_ex.invalid-3o2bl3",
+        "neighbourSlug": "bob_ex.invalid-corp.test-1xvr7e8",
+        "orders": {
+          "real-first": {
+            "enumerated": [
+              "bob_ex.invalid-3o2bl3",
+              "bob_ex.invalid-corp.test-1xvr7e8"
+            ],
+            "hits": [
+              "bob_ex.invalid-3o2bl3",
+              "bob_ex.invalid-corp.test-1xvr7e8"
+            ],
+            "picked": "bob_ex.invalid-3o2bl3",
+            "wrong": false
+          },
+          "neighbour-first": {
+            "enumerated": [
+              "bob_ex.invalid-3o2bl3",
+              "bob_ex.invalid-corp.test-1xvr7e8"
+            ],
+            "hits": [
+              "bob_ex.invalid-3o2bl3",
+              "bob_ex.invalid-corp.test-1xvr7e8"
+            ],
+            "picked": "bob_ex.invalid-3o2bl3",
+            "wrong": false
+          }
+        }
+      },
+      {
+        "short": "eve@ex.invalid",
+        "long": "eve@ex.invalid-corp.test",
+        "realSlug": "eve_ex.invalid-m1yb3c",
+        "neighbourSlug": "eve_ex.invalid-corp.test-12ig38x",
+        "orders": {
+          "real-first": {
+            "enumerated": [
+              "eve_ex.invalid-corp.test-12ig38x",
+              "eve_ex.invalid-m1yb3c"
+            ],
+            "hits": [
+              "eve_ex.invalid-corp.test-12ig38x",
+              "eve_ex.invalid-m1yb3c"
+            ],
+            "picked": "eve_ex.invalid-corp.test-12ig38x",
+            "wrong": true
+          },
+          "neighbour-first": {
+            "enumerated": [
+              "eve_ex.invalid-corp.test-12ig38x",
+              "eve_ex.invalid-m1yb3c"
+            ],
+            "hits": [
+              "eve_ex.invalid-corp.test-12ig38x",
+              "eve_ex.invalid-m1yb3c"
+            ],
+            "picked": "eve_ex.invalid-corp.test-12ig38x",
+            "wrong": true
+          }
+        }
+      },
+      {
+        "short": "bob@x.com",
+        "long": "bob@x.com-corp.net",
+        "realSlug": "bob_x.com-zr9ku8",
+        "neighbourSlug": "bob_x.com-corp.net-jkqc3q",
+        "orders": {
+          "real-first": {
+            "enumerated": [
+              "bob_x.com-corp.net-jkqc3q",
+              "bob_x.com-zr9ku8"
+            ],
+            "hits": [
+              "bob_x.com-corp.net-jkqc3q",
+              "bob_x.com-zr9ku8"
+            ],
+            "picked": "bob_x.com-corp.net-jkqc3q",
+            "wrong": true
+          },
+          "neighbour-first": {
+            "enumerated": [
+              "bob_x.com-corp.net-jkqc3q",
+              "bob_x.com-zr9ku8"
+            ],
+            "hits": [
+              "bob_x.com-corp.net-jkqc3q",
+              "bob_x.com-zr9ku8"
+            ],
+            "picked": "bob_x.com-corp.net-jkqc3q",
+            "wrong": true
+          }
+        }
+      }
+    ],
+    "s2Verdict": {
+      "bobHidden": true,
+      "eveExposed": true
+    },
+    "s3": [
+      {
+        "file": "poc-account-switch.mjs",
+        "emails": [
+          {
+            "email": "a@ccg.test",
+            "real": "a_ccg.test-1vut4pk",
+            "old": "a_ccg.test",
+            "scriptWouldBeChosen": false
+          },
+          {
+            "email": "soon@ccg.test",
+            "real": "soon_ccg.test-se6jr2",
+            "old": "soon_ccg.test",
+            "scriptWouldBeChosen": false
+          },
+          {
+            "email": "late@ccg.test",
+            "real": "late_ccg.test-1j6yohf",
+            "old": "late_ccg.test",
+            "scriptWouldBeChosen": false
+          },
+          {
+            "email": "dirty@ccg.test",
+            "real": "dirty_ccg.test-1lb83if",
+            "old": "dirty_ccg.test",
+            "scriptWouldBeChosen": false
+          },
+          {
+            "email": "clean@ccg.test",
+            "real": "clean_ccg.test-1jihfe8",
+            "old": "clean_ccg.test",
+            "scriptWouldBeChosen": false
+          },
+          {
+            "email": "b@ccg.test",
+            "real": "b_ccg.test-1slt5x3",
+            "old": "b_ccg.test",
+            "scriptWouldBeChosen": false
+          },
+          {
+            "email": "c@ccg.test",
+            "real": "c_ccg.test-1pct74m",
+            "old": "c_ccg.test",
+            "scriptWouldBeChosen": false
+          }
+        ],
+        "anyChosen": false
+      },
+      {
+        "file": "poc-acct-live.mjs",
+        "emails": [
+          {
+            "email": "one@ccg.test",
+            "real": "one_ccg.test-63qsoj",
+            "old": "one_ccg.test",
+            "scriptWouldBeChosen": false
+          },
+          {
+            "email": "two@ccg.test",
+            "real": "two_ccg.test-xqo3x",
+            "old": "two_ccg.test",
+            "scriptWouldBeChosen": false
+          },
+          {
+            "email": "three@ccg.test",
+            "real": "three_ccg.test-cz5abf",
+            "old": "three_ccg.test",
+            "scriptWouldBeChosen": false
+          }
+        ],
+        "anyChosen": false
+      }
+    ],
+    "s4": {
+      "engineScanRemains": false,
+      "guessInProd": 1,
+      "ctors": [
+        {
+          "file": "src-tauri/src/engine/hub.rs",
+          "line": 302,
+          "inTestModule": false
+        },
+        {
+          "file": "src-tauri/src/engine/lite.rs",
+          "line": 250,
+          "inTestModule": true
+        }
+      ],
+      "prodCtors": [
+        {
+          "file": "src-tauri/src/engine/hub.rs",
+          "line": 302,
+          "inTestModule": false
+        }
+      ],
+      "hubWired": true
+    },
+    "s5": [
+      {
+        "email": "user@example.invalid",
+        "marker": "user_example.invalid",
+        "resolved": "C:\\home\\accounts\\_no-resolver\\user_example.invalid",
+        "escapesFallbackLayer": false
+      },
+      {
+        "email": "a.b+tag@Example.invalid",
+        "marker": "a.b-tag_Example.invalid",
+        "resolved": "C:\\home\\accounts\\_no-resolver\\a.b-tag_Example.invalid",
+        "escapesFallbackLayer": false
+      },
+      {
+        "email": "o'brien@x.com",
+        "marker": "o'brien_x.com",
+        "resolved": "C:\\home\\accounts\\_no-resolver\\o'brien_x.com",
+        "escapesFallbackLayer": false
+      },
+      {
+        "email": "한글@x.com",
+        "marker": "한글_x.com",
+        "resolved": "C:\\home\\accounts\\_no-resolver\\한글_x.com",
+        "escapesFallbackLayer": false
+      },
+      {
+        "email": "a\\..\\..\\evil@x.com",
+        "marker": "a\\..\\..\\evil_x.com",
+        "resolved": "C:\\home\\accounts\\evil_x.com",
+        "escapesFallbackLayer": true
+      },
+      {
+        "email": "a/../../evil@x.com",
+        "marker": "a/../../evil_x.com",
+        "resolved": "C:\\home\\accounts\\evil_x.com",
+        "escapesFallbackLayer": true
+      },
+      {
+        "email": "..@x.com",
+        "marker": ".._x.com",
+        "resolved": "C:\\home\\accounts\\_no-resolver\\.._x.com",
+        "escapesFallbackLayer": false
+      }
+    ]
+  },
+  "findings": [
+    {
+      "id": "S5",
+      "why": "표식이 `_no-resolver` 층을 탈출한다 — 「구조로 막았다」는 절대 보장이 아니다",
+      "esc": [
+        {
+          "email": "a\\..\\..\\evil@x.com",
+          "marker": "a\\..\\..\\evil_x.com",
+          "resolved": "C:\\home\\accounts\\evil_x.com",
+          "escapesFallbackLayer": true
+        },
+        {
+          "email": "a/../../evil@x.com",
+          "marker": "a/../../evil_x.com",
+          "resolved": "C:\\home\\accounts\\evil_x.com",
+          "escapesFallbackLayer": true
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,85 @@
+{
+  "at": "2026-09-01T01:54:23.544Z",
+  "exe": "C:\\Code\\.cargo-slugcrit\\release\\agentcodegui.exe",
+  "scenarios": {
+    "resolve": {
+      "home": "C:\\Code\\ccg-slugcrit\\.poc-home-slug-resolve",
+      "email": "slug-a@example.invalid",
+      "realSlug": "slug-a_example.invalid-1atacxe",
+      "oldGuess": "slug-a_example.invalid",
+      "ready": true,
+      "answered": true,
+      "state": "Idle",
+      "spawns": 1,
+      "notices": [],
+      "thread": "어느 폴더로 떴니\n\nWRONG-GUESS",
+      "picked": "poison",
+      "materialized": false,
+      "poisonMaterialized": false,
+      "stdinBytes": 307,
+      "argvSupported": true,
+      "argv": [
+        "--output-format",
+        "stream-json",
+        "--verbose",
+        "--input-format"
+      ],
+      "appLog": [
+        "[store] chats-v3 마이그레이션: {\"ok\":true,\"migratedAt\":1788227664269.0,\"elapsedMs\":5.0,\"backupDir\":\"C:\\\\Code\\\\ccg-slugcrit\\\\.poc-home-slug-resolve\\\\backup-2.6.2-1788227664269\",\"counts\":{\"chats\":1,\"maSessions\":0,\"maPanels\":0,\"sessionChats\":0,\"talkAbsorbed\":0,\"carried\":0,\"keptV3\":0,\"keptV3Boards\":0,\"total\":1,\"messages\":0,\"boards\":1},\"idMap\":{\"c-slug\":\"c-slug\"},\"order\":[\"c-slug\"],\"activeChatId\":\"c-slug\",\"boardOrder\":[\"default\"],\"activeBoardId\":\"default\",\"activeSessionId\":\"\",\"btw\":{\"rewritten\":0,\"dropped\":0},\"holdMoved\":0,\"sourceIndexOrders\":{\"chats\":[\"c-slug\"],\"multiAgent\":[],\"sessionChats\":[]},\"warnings\":[]}"
+      ]
+    },
+    "fail": {
+      "home": "C:\\Code\\ccg-slugcrit\\.poc-home-slug-fail",
+      "email": "slug-b@example.invalid",
+      "realSlug": "slug-b_example.invalid-1x70hdf",
+      "oldGuess": "slug-b_example.invalid",
+      "ready": true,
+      "noticed": false,
+      "state": "Idle",
+      "spawns": 1,
+      "notices": [],
+      "thread": "못 뜰 턴\n\nWRONG-GUESS",
+      "notice": null,
+      "domHasReason": false,
+      "stdinBytes": 295,
+      "argvSupported": true,
+      "cliSpawned": true,
+      "settled": true,
+      "appLog": [
+        "[auth] slug-b@example.invalid 토큰 교환 실패 1회 — 60s 동안 재시도하지 않는다(no usable access token)",
+        "[store] chats-v3 마이그레이션: {\"ok\":true,\"migratedAt\":1788227667201.0,\"elapsedMs\":3.0,\"backupDir\":\"C:\\\\Code\\\\ccg-slugcrit\\\\.poc-home-slug-fail\\\\backup-2.6.2-1788227667201\",\"counts\":{\"chats\":1,\"maSessions\":0,\"maPanels\":0,\"sessionChats\":0,\"talkAbsorbed\":0,\"carried\":0,\"keptV3\":0,\"keptV3Boards\":0,\"total\":1,\"messages\":0,\"boards\":1},\"idMap\":{\"c-slug\":\"c-slug\"},\"order\":[\"c-slug\"],\"activeChatId\":\"c-slug\",\"boardOrder\":[\"default\"],\"activeBoardId\":\"default\",\"activeSessionId\":\"\",\"btw\":{\"rewritten\":0,\"dropped\":0},\"holdMoved\":0,\"sourceIndexOrders\":{\"chats\":[\"c-slug\"],\"multiAgent\":[],\"sessionChats\":[]},\"warnings\":[]}",
+        "[updater] Could not fetch a valid release JSON from the remote"
+      ]
+    }
+  },
+  "findings": [
+    {
+      "id": "A1",
+      "why": "CLAUDE_CONFIG_DIR이 실물 폴더가 아니다 (poison)",
+      "thread": "어느 폴더로 떴니\n\nWRONG-GUESS"
+    },
+    {
+      "id": "A2",
+      "why": "실물 폴더에 자격증명이 없다: C:\\Code\\ccg-slugcrit\\.poc-home-slug-resolve\\accounts\\slug-a_example.invalid-1atacxe\\.credentials.json"
+    },
+    {
+      "id": "B1",
+      "why": "침묵했다 — notice가 없다",
+      "notices": []
+    },
+    {
+      "id": "B2",
+      "why": "이메일이 사유에 없다"
+    },
+    {
+      "id": "B3",
+      "why": "notice는 나갔는데 화면에는 안 보인다",
+      "thread": "못 뜰 턴\n\nWRONG-GUESS"
+    },
+    {
+      "id": "B4",
+      "why": "없는 계정 폴더로 CLI를 띄웠다",
+      "stdinBytes": 295
+    }
+  ]
+}

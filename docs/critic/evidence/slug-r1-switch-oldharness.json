@@ -1,0 +1,74 @@
+{
+  "at": "2026-09-01T02:00:41.799Z",
+  "exe": "C:\\Code\\.cargo-slugcrit\\release\\agentcodegui.exe",
+  "scenarios": {
+    "pick": {
+      "home": "C:\\Code\\ccg-slugcrit\\.poc-home-m11-pick",
+      "emails": [
+        "a@ccg.test",
+        "soon@ccg.test",
+        "late@ccg.test"
+      ],
+      "ready": true,
+      "switched": false,
+      "after": {
+        "account": "a@ccg.test",
+        "revision": 0,
+        "origins": [
+          "default#0[]"
+        ],
+        "state": "Idle",
+        "hold": null,
+        "spawns": 1,
+        "accountSwitch": {
+          "on": true,
+          "busy": [],
+          "worker": {
+            "runs": 0,
+            "fetches": 0
+          },
+          "picked": null,
+          "skipped": []
+        },
+        "banners": [],
+        "notices": [],
+        "domHasSwitch": false,
+        "domHasWait": false,
+        "thread": "한도에 걸릴 질문\n\nDEFAULT-OK"
+      },
+      "appLog": [
+        "[store] chats-v3 마이그레이션: {\"ok\":true,\"migratedAt\":1788228042321.0,\"elapsedMs\":4.0,\"backupDir\":\"C:\\\\Code\\\\ccg-slugcrit\\\\.poc-home-m11-pick\\\\backup-2.6.2-1788228042321\",\"counts\":{\"chats\":1,\"maSessions\":0,\"maPanels\":0,\"sessionChats\":0,\"talkAbsorbed\":0,\"carried\":0,\"keptV3\":0,\"keptV3Boards\":0,\"total\":1,\"messages\":0,\"boards\":1},\"idMap\":{\"c-m11\":\"c-m11\"},\"order\":[\"c-m11\"],\"activeChatId\":\"c-m11\",\"boardOrder\":[\"default\"],\"activeBoardId\":\"default\",\"activeSessionId\":\"\",\"btw\":{\"rewritten\":0,\"dropped\":0},\"holdMoved\":0,\"sourceIndexOrders\":{\"chats\":[\"c-m11\"],\"multiAgent\":[],\"sessionChats\":[]},\"warnings\":[]}",
+        "[updater] Could not fetch a valid release JSON from the remote"
+      ]
+    }
+  },
+  "findings": [
+    {
+      "id": "PICK-전환",
+      "why": "배너가 안 왔다 — 전환이 안 일어났다",
+      "account": "a@ccg.test",
+      "revision": 0,
+      "origins": [
+        "default#0[]"
+      ],
+      "state": "Idle",
+      "hold": null,
+      "spawns": 1,
+      "accountSwitch": {
+        "on": true,
+        "busy": [],
+        "worker": {
+          "runs": 0,
+          "fetches": 0
+        },
+        "picked": null,
+        "skipped": []
+      },
+      "banners": [],
+      "notices": [],
+      "domHasSwitch": false,
+      "domHasWait": false,
+      "thread": "한도에 걸릴 질문\n\nDEFAULT-OK"
+    }
+  ]
+}
