@@ -1,0 +1,130 @@
+{
+ "at": "2026-09-01T00:20:30.542Z",
+ "commit": "d01203b",
+ "tree": "C:/Temp/critic2-lspidle (git archive 격리 · 제품 코드 무수정)",
+ "note": "①~④=전임 크리틱이 세운 프로브, ⑤⑥=이번 라운드가 세운 프로브. 전부 격리 사본의 lifecycle.rs 테스트 모듈에만 있다.",
+ "runner": "cargo test -p ccg-lsp critic_ -- --nocapture --test-threads=1",
+ "testResult": "test result: FAILED. 4 passed; 2 failed; 0 ignored; 0 measured; 93 filtered out; finished in 0.00s",
+ "probes": [
+  {
+   "id": "R2-①",
+   "name": "critic_settle_farming_extends_life_without_bound",
+   "q": "Settle을 수확하면 수명이 무한정 늘어나는가(최적 위상 공격)",
+   "by": "전임",
+   "verdict": "붉음",
+   "observations": [
+    "[critic-r2]   ↑ Settle 130회",
+    "[critic-r2] ts ttl=10분 → 24h 안에 회수: None · 든 비용: 진행 통지 131개(≈TTL당 1개)"
+   ]
+  },
+  {
+   "id": "R2-②",
+   "name": "critic_a_progress_heartbeat_has_no_ceiling_at_all",
+   "q": "진행 통지가 계속 흐르면 절대 상한이 아예 없는가",
+   "by": "전임",
+   "verdict": "초록",
+   "observations": [
+    "[critic-r2] 진행 통지를 계속 쏘는 서버: 7일 동안 회수 0회 — 절대 상한 없음(의도된 교환)"
+   ]
+  },
+  {
+   "id": "R2-③",
+   "name": "critic_the_stall_clock_holds_at_any_sweep_cadence",
+   "q": "스윕 격자를 바꿔도 상한이 유지되는가",
+   "by": "전임",
+   "verdict": "초록",
+   "observations": []
+  },
+  {
+   "id": "R2-④",
+   "name": "critic_a_server_with_sparse_progress_is_cut_mid_work",
+   "q": "진행 통지가 드문 서버가 일하는 중에 끊기는가(cs)",
+   "by": "전임",
+   "verdict": "초록",
+   "observations": [
+    "[critic-r2] cs · 진행 통지 1분 간격 → 회수 시각 None (R1이라면 TTL 30분에 무조건 접혔다)",
+    "[critic-r2] cs · 진행 통지 4분 간격 → 회수 시각 None (R1이라면 TTL 30분에 무조건 접혔다)",
+    "[critic-r2] cs · 진행 통지 6분 간격 → 회수 시각 Some(35) (R1이라면 TTL 30분에 무조건 접혔다)",
+    "[critic-r2] cs · 진행 통지 20분 간격 → 회수 시각 Some(30) (R1이라면 TTL 30분에 무조건 접혔다)"
+   ]
+  },
+  {
+   "id": "R2-⑤",
+   "name": "critic_r2_how_often_does_periodic_churn_make_a_server_immortal",
+   "q": "주기적 churn이 **위상 무관하게** 불사를 만드는가(①의 현실성)",
+   "by": "이번",
+   "verdict": "초록",
+   "observations": [
+    "[critic-r2b] ts ttl=10분 · 1분 일/5분 주기(하루 일 288분) → 24h 불사 위상 0/5",
+    "[critic-r2b] ts ttl=10분 · 1분 일/10분 주기(하루 일 144분) → 24h 불사 위상 0/10",
+    "[critic-r2b] ts ttl=10분 · 2분 일/10분 주기(하루 일 288분) → 24h 불사 위상 0/10",
+    "[critic-r2b] ts ttl=10분 · 1분 일/15분 주기(하루 일 96분) → 24h 불사 위상 0/15",
+    "[critic-r2b] ts ttl=10분 · 2분 일/15분 주기(하루 일 192분) → 24h 불사 위상 0/15",
+    "[critic-r2b] ts ttl=10분 · 1분 일/30분 주기(하루 일 48분) → 24h 불사 위상 0/30",
+    "[critic-r2b] ts ttl=10분 · 5분 일/30분 주기(하루 일 240분) → 24h 불사 위상 0/30",
+    "[critic-r2b] ts ttl=10분 · 2분 일/60분 주기(하루 일 48분) → 24h 불사 위상 0/60",
+    "[critic-r2b] ts ttl=10분 · 10분 일/60분 주기(하루 일 240분) → 24h 불사 위상 0/60",
+    "[critic-r2b] py ttl=10분 · 1분 일/5분 주기(하루 일 288분) → 24h 불사 위상 0/5",
+    "[critic-r2b] py ttl=10분 · 1분 일/10분 주기(하루 일 144분) → 24h 불사 위상 0/10",
+    "[critic-r2b] py ttl=10분 · 2분 일/10분 주기(하루 일 288분) → 24h 불사 위상 0/10",
+    "[critic-r2b] py ttl=10분 · 1분 일/15분 주기(하루 일 96분) → 24h 불사 위상 0/15",
+    "[critic-r2b] py ttl=10분 · 2분 일/15분 주기(하루 일 192분) → 24h 불사 위상 0/15",
+    "[critic-r2b] py ttl=10분 · 1분 일/30분 주기(하루 일 48분) → 24h 불사 위상 0/30",
+    "[critic-r2b] py ttl=10분 · 5분 일/30분 주기(하루 일 240분) → 24h 불사 위상 0/30",
+    "[critic-r2b] py ttl=10분 · 2분 일/60분 주기(하루 일 48분) → 24h 불사 위상 0/60",
+    "[critic-r2b] py ttl=10분 · 10분 일/60분 주기(하루 일 240분) → 24h 불사 위상 0/60",
+    "[critic-r2b] cs ttl=30분 · 1분 일/5분 주기(하루 일 288분) → 24h 불사 위상 0/5",
+    "[critic-r2b] cs ttl=30분 · 1분 일/10분 주기(하루 일 144분) → 24h 불사 위상 0/10",
+    "[critic-r2b] cs ttl=30분 · 2분 일/10분 주기(하루 일 288분) → 24h 불사 위상 0/10",
+    "[critic-r2b] cs ttl=30분 · 1분 일/15분 주기(하루 일 96분) → 24h 불사 위상 0/15",
+    "[critic-r2b] cs ttl=30분 · 2분 일/15분 주기(하루 일 192분) → 24h 불사 위상 0/15",
+    "[critic-r2b] cs ttl=30분 · 1분 일/30분 주기(하루 일 48분) → 24h 불사 위상 0/30",
+    "[critic-r2b] cs ttl=30분 · 5분 일/30분 주기(하루 일 240분) → 24h 불사 위상 0/30",
+    "[critic-r2b] cs ttl=30분 · 2분 일/60분 주기(하루 일 48분) → 24h 불사 위상 0/60",
+    "[critic-r2b] cs ttl=30분 · 10분 일/60분 주기(하루 일 240분) → 24h 불사 위상 0/60",
+    "[critic-r2b] cpp ttl=30분 · 1분 일/5분 주기(하루 일 288분) → 24h 불사 위상 0/5",
+    "[critic-r2b] cpp ttl=30분 · 1분 일/10분 주기(하루 일 144분) → 24h 불사 위상 0/10",
+    "[critic-r2b] cpp ttl=30분 · 2분 일/10분 주기(하루 일 288분) → 24h 불사 위상 0/10",
+    "[critic-r2b] cpp ttl=30분 · 1분 일/15분 주기(하루 일 96분) → 24h 불사 위상 0/15",
+    "[critic-r2b] cpp ttl=30분 · 2분 일/15분 주기(하루 일 192분) → 24h 불사 위상 0/15",
+    "[critic-r2b] cpp ttl=30분 · 1분 일/30분 주기(하루 일 48분) → 24h 불사 위상 0/30",
+    "[critic-r2b] cpp ttl=30분 · 5분 일/30분 주기(하루 일 240분) → 24h 불사 위상 0/30",
+    "[critic-r2b] cpp ttl=30분 · 2분 일/60분 주기(하루 일 48분) → 24h 불사 위상 0/60",
+    "[critic-r2b] cpp ttl=30분 · 10분 일/60분 주기(하루 일 240분) → 24h 불사 위상 0/60"
+   ]
+  },
+  {
+   "id": "R2-⑥",
+   "name": "critic_r2_a_forty_minute_index_is_cut_when_progress_is_sparse",
+   "q": "40분 인덱싱이 통지 간격 때문에 중간에 끊기는가(배포 4스펙)",
+   "by": "이번",
+   "verdict": "붉음",
+   "observations": [
+    "[critic-r2b] ts · 40분 인덱싱 · 진행 통지 1분 간격 → 일하는 중 회수 None분",
+    "[critic-r2b] ts · 40분 인덱싱 · 진행 통지 2분 간격 → 일하는 중 회수 None분",
+    "[critic-r2b] ts · 40분 인덱싱 · 진행 통지 4분 간격 → 일하는 중 회수 None분",
+    "[critic-r2b] ts · 40분 인덱싱 · 진행 통지 5분 간격 → 일하는 중 회수 None분",
+    "[critic-r2b] ts · 40분 인덱싱 · 진행 통지 6분 간격 → 일하는 중 회수 Some(11)분",
+    "[critic-r2b] ts · 40분 인덱싱 · 진행 통지 10분 간격 → 일하는 중 회수 Some(15)분",
+    "[critic-r2b] py · 40분 인덱싱 · 진행 통지 1분 간격 → 일하는 중 회수 None분",
+    "[critic-r2b] py · 40분 인덱싱 · 진행 통지 2분 간격 → 일하는 중 회수 None분",
+    "[critic-r2b] py · 40분 인덱싱 · 진행 통지 4분 간격 → 일하는 중 회수 None분",
+    "[critic-r2b] py · 40분 인덱싱 · 진행 통지 5분 간격 → 일하는 중 회수 None분",
+    "[critic-r2b] py · 40분 인덱싱 · 진행 통지 6분 간격 → 일하는 중 회수 Some(11)분",
+    "[critic-r2b] py · 40분 인덱싱 · 진행 통지 10분 간격 → 일하는 중 회수 Some(15)분",
+    "[critic-r2b] cs · 40분 인덱싱 · 진행 통지 1분 간격 → 일하는 중 회수 None분",
+    "[critic-r2b] cs · 40분 인덱싱 · 진행 통지 2분 간격 → 일하는 중 회수 None분",
+    "[critic-r2b] cs · 40분 인덱싱 · 진행 통지 4분 간격 → 일하는 중 회수 None분",
+    "[critic-r2b] cs · 40분 인덱싱 · 진행 통지 5분 간격 → 일하는 중 회수 None분",
+    "[critic-r2b] cs · 40분 인덱싱 · 진행 통지 6분 간격 → 일하는 중 회수 Some(35)분",
+    "[critic-r2b] cs · 40분 인덱싱 · 진행 통지 10분 간격 → 일하는 중 회수 Some(35)분",
+    "[critic-r2b] cpp · 40분 인덱싱 · 진행 통지 1분 간격 → 일하는 중 회수 None분",
+    "[critic-r2b] cpp · 40분 인덱싱 · 진행 통지 2분 간격 → 일하는 중 회수 None분",
+    "[critic-r2b] cpp · 40분 인덱싱 · 진행 통지 4분 간격 → 일하는 중 회수 None분",
+    "[critic-r2b] cpp · 40분 인덱싱 · 진행 통지 5분 간격 → 일하는 중 회수 None분",
+    "[critic-r2b] cpp · 40분 인덱싱 · 진행 통지 6분 간격 → 일하는 중 회수 Some(35)분",
+    "[critic-r2b] cpp · 40분 인덱싱 · 진행 통지 10분 간격 → 일하는 중 회수 Some(35)분"
+   ]
+  }
+ ]
+}

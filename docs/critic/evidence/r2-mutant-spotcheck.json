@@ -1,0 +1,27 @@
+{
+ "at": "2026-09-01T00:22:46.281Z",
+ "commit": "d01203b",
+ "note": "전임 하네스가 낸 「생존」 셋을 이번 라운드가 독립으로 다시 심어 확인했다. 기준선(무변이)도 94개 — 생존 판정이 «필터가 0개를 골랐다»가 아님을 같은 수로 못 박는다.",
+ "baselinePassed": 94,
+ "runner": "cargo test -p ccg-lsp -- --test-threads=1 --skip critic_",
+ "results": [
+  {
+   "id": "C1-sweepForgesWork",
+   "applied": true,
+   "survived": true,
+   "passed": 94
+  },
+  {
+   "id": "B1-callerForgetsToReclaim",
+   "applied": true,
+   "survived": true,
+   "passed": 94
+  },
+  {
+   "id": "B3-sweeperNeverStarts",
+   "applied": true,
+   "survived": true,
+   "passed": 94
+  }
+ ]
+}

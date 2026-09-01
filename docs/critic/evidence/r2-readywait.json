@@ -1,0 +1,138 @@
+{
+ "at": "2026-09-01T00:14:13.560Z",
+ "note": "READY_WAIT(1500ms) 창을 인위 지연 서버로 넘겨 본다",
+ "arms": [
+  {
+   "arm": "control-0ms",
+   "delayMs": 0,
+   "first": {
+    "phase": "firstRequestWhileStarting",
+    "lifecycle": {
+     "live": 1,
+     "pids": [
+      30876
+     ],
+     "reclaimed": 0,
+     "revivals": 0,
+     "tracked": 1
+    },
+    "hoverMs": 2389.831,
+    "hoverHit": true,
+    "hover": "```typescript\nfunction dist(p: Point): number\n```",
+    "tokensMs": 14.747,
+    "tokens": 125,
+    "tokensWasSome": true,
+    "statusNow": "ready",
+    "projectStatus": {
+     "state": "ready",
+     "percent": null
+    }
+   },
+   "after": {
+    "phase": "afterReady",
+    "lifecycle": {
+     "live": 1,
+     "pids": [
+      30876
+     ],
+     "reclaimed": 0,
+     "revivals": 0,
+     "tracked": 1
+    },
+    "readyAfterMs": 0.02,
+    "status": "ready",
+    "hoverMs": 1.667,
+    "hoverHit": true,
+    "hover": "```typescript\nfunction dist(p: Point): number\n```"
+   }
+  },
+  {
+   "arm": "slow-2500ms",
+   "delayMs": 2500,
+   "first": {
+    "phase": "firstRequestWhileStarting",
+    "lifecycle": {
+     "live": 1,
+     "pids": [
+      10140
+     ],
+     "reclaimed": 0,
+     "revivals": 0,
+     "tracked": 1
+    },
+    "hoverMs": 1507.501,
+    "hoverHit": false,
+    "hover": "",
+    "tokensMs": 1750.527,
+    "tokens": 125,
+    "tokensWasSome": true,
+    "statusNow": "ready",
+    "projectStatus": {
+     "state": "ready",
+     "percent": null
+    }
+   },
+   "after": {
+    "phase": "afterReady",
+    "lifecycle": {
+     "live": 1,
+     "pids": [
+      10140
+     ],
+     "reclaimed": 0,
+     "revivals": 0,
+     "tracked": 1
+    },
+    "readyAfterMs": 0.032,
+    "status": "ready",
+    "hoverMs": 9.324,
+    "hoverHit": true,
+    "hover": "```typescript\nfunction dist(p: Point): number\n```"
+   }
+  },
+  {
+   "arm": "slow-3100ms",
+   "delayMs": 3100,
+   "first": {
+    "phase": "firstRequestWhileStarting",
+    "lifecycle": {
+     "live": 1,
+     "pids": [
+      9396
+     ],
+     "reclaimed": 0,
+     "revivals": 0,
+     "tracked": 1
+    },
+    "hoverMs": 1516.55,
+    "hoverHit": false,
+    "hover": "",
+    "tokensMs": 1502.21,
+    "tokens": 0,
+    "tokensWasSome": true,
+    "statusNow": "starting",
+    "projectStatus": {
+     "state": "analyzing",
+     "percent": null
+    }
+   },
+   "after": {
+    "phase": "afterReady",
+    "lifecycle": {
+     "live": 1,
+     "pids": [
+      9396
+     ],
+     "reclaimed": 0,
+     "revivals": 0,
+     "tracked": 1
+    },
+    "readyAfterMs": 184.037,
+    "status": "ready",
+    "hoverMs": 643.194,
+    "hoverHit": true,
+    "hover": "```typescript\nfunction dist(p: Point): number\n```"
+   }
+  }
+ ]
+}

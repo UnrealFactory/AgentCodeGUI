@@ -1,0 +1,173 @@
+{
+ "at": "2026-08-31T12:13:59.374Z",
+ "tree": "C:/Temp/critic2-lspidle",
+ "results": [
+  {
+   "id": "A1-graceRemoved",
+   "zone": "묶음 안",
+   "why": "유예 자체를 제거(indexing을 안 본다)",
+   "applied": true,
+   "expectRed": true,
+   "red": true,
+   "ranTests": 88,
+   "ranNothing": false,
+   "failed": [],
+   "compileErr": false
+  },
+  {
+   "id": "A2-stallCapRemoved",
+   "zone": "묶음 안",
+   "why": "멎음 상한 제거 — 「일한다」는 말을 증거 없이 믿는다",
+   "applied": true,
+   "expectRed": true,
+   "red": true,
+   "ranTests": 91,
+   "ranNothing": false,
+   "failed": [],
+   "compileErr": false
+  },
+  {
+   "id": "A3-settleReclaims",
+   "zone": "묶음 안",
+   "why": "일이 끝나는 순간 접는다(Settle → Reclaim)",
+   "applied": true,
+   "expectRed": true,
+   "red": true,
+   "ranTests": 92,
+   "ranNothing": false,
+   "failed": [],
+   "compileErr": false
+  },
+  {
+   "id": "A4-settleDoesNotResetIdle",
+   "zone": "묶음 안",
+   "why": "Settle이 유휴 시계를 리셋하지 않는다(전이를 잊는다 — 묶음 안 버전)",
+   "applied": true,
+   "expectRed": true,
+   "red": true,
+   "ranTests": 92,
+   "ranNothing": false,
+   "failed": [],
+   "compileErr": false
+  },
+  {
+   "id": "A5-ttlIgnored",
+   "zone": "묶음 안",
+   "why": "TTL 검사 삭제",
+   "applied": true,
+   "expectRed": true,
+   "red": true,
+   "ranTests": 90,
+   "ranNothing": false,
+   "failed": [],
+   "compileErr": false
+  },
+  {
+   "id": "A6-neverStalls",
+   "zone": "묶음 안",
+   "why": "새 서버의 멎음 시계를 먼 미래로 — 영생",
+   "applied": true,
+   "expectRed": true,
+   "red": true,
+   "ranTests": 92,
+   "ranNothing": false,
+   "failed": [],
+   "compileErr": false
+  },
+  {
+   "id": "B1-callerForgetsToReclaim",
+   "zone": "묶음 밖",
+   "why": "★호출부가 Reclaim을 실행하지 않는다(판정은 맞게 받고 아무것도 안 한다)",
+   "applied": true,
+   "expectRed": null,
+   "red": false,
+   "ranTests": 94,
+   "ranNothing": false,
+   "failed": [],
+   "compileErr": false
+  },
+  {
+   "id": "B2-callerNeverSteps",
+   "zone": "묶음 밖",
+   "why": "★호출부가 step을 아예 안 부른다(스윕이 살아 있는 서버를 건너뛴다)",
+   "applied": true,
+   "expectRed": null,
+   "red": false,
+   "ranTests": 94,
+   "ranNothing": false,
+   "failed": [],
+   "compileErr": false
+  },
+  {
+   "id": "B3-sweeperNeverStarts",
+   "zone": "묶음 밖",
+   "why": "스윕 스레드를 아예 안 띄운다(회수가 영영 안 돈다)",
+   "applied": true,
+   "expectRed": null,
+   "red": false,
+   "ranTests": 94,
+   "ranNothing": false,
+   "failed": [],
+   "compileErr": false
+  },
+  {
+   "id": "C1-sweepForgesWork",
+   "zone": "시계 위조",
+   "why": "★스윕이 스스로 「일한다는 증거」를 만든다(sweep_step이 saw_work를 부른다)",
+   "applied": true,
+   "expectRed": null,
+   "red": false,
+   "ranTests": 94,
+   "ranNothing": false,
+   "failed": [],
+   "compileErr": false
+  },
+  {
+   "id": "C2-statusPollForgesWork",
+   "zone": "시계 위조",
+   "why": "★상태 폴링이 멎음 시계를 되감는다(status가 saw_work를 부른다)",
+   "applied": true,
+   "expectRed": null,
+   "red": false,
+   "ranTests": 94,
+   "ranNothing": false,
+   "failed": [],
+   "compileErr": false
+  },
+  {
+   "id": "D1-startCallsNotCounted",
+   "zone": "B급 ①",
+   "why": "「기동을 걸었는가」 관측점을 지운다",
+   "applied": true,
+   "expectRed": null,
+   "red": false,
+   "ranTests": 94,
+   "ranNothing": false,
+   "failed": [],
+   "compileErr": false
+  },
+  {
+   "id": "D2-errorReasonDropped",
+   "zone": "B급 ②",
+   "why": "죽을 때 하는 말을 계약면에서 도로 뺀다",
+   "applied": true,
+   "expectRed": null,
+   "red": false,
+   "ranTests": 94,
+   "ranNothing": false,
+   "failed": [],
+   "compileErr": false
+  },
+  {
+   "id": "D3-pollBackoffReverted",
+   "zone": "폴링 격자",
+   "why": "백오프를 고정 400ms로 되돌린다(R2가 산 −183ms를 도로 판다)",
+   "applied": true,
+   "expectRed": null,
+   "red": null,
+   "note": "러스트 테스트 대상 아님(§폴링 격자는 실측으로 본다)"
+  }
+ ],
+ "restoredGreen": true,
+ "restoredRan": 94
+}
