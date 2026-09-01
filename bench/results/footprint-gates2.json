@@ -1,0 +1,11 @@
+{
+  "what": "GATES R2 — 3.0 배포 모사 설치 폴더의 논리 크기(파일 수·바이트). NSIS 설치기는 굽지 않았으므로 installerBytes는 여기 없다.",
+  "how": "tauri.conf.json의 bundle.resources 매핑 그대로 복제(exe + node.exe + 거른 node_modules). uninstall.exe(NSIS 생성)는 빠져 있어 실제 설치 폴더는 이 값보다 조금 크다.",
+  "dir": "C:\\Users\\User\\AppData\\Local\\ccg-gates-r2",
+  "exeSha256": "d896c0ee0c3be2a0a3e3e200ad711824926e3818334b58bb4aecd97135232afa",
+  "gitHead": "7b6a369b969f9b34780257fb6a0ec39f1d571c0f",
+  "installDirLogicalBytes": 131311969,
+  "files": 5408,
+  "at": "2026-09-01T03:16:15.186Z",
+  "note": "2.6.2 분모는 bench/results/footprint.json의 compare.installDirLogical.electron을 그대로 쓴다 — ratios.mjs가 두 파일에서 각각 읽는다(손으로 옮겨 적는 칸 없음)."
+}

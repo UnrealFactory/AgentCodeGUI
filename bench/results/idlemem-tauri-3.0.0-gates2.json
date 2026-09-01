@@ -1,0 +1,49 @@
+{
+  "app": "tauri-3.0.0",
+  "settleSec": 60,
+  "totalPrivMB": 187.3,
+  "totalWsMB": 411.9,
+  "procs": [
+    {
+      "name": "AgentCodeGUI3.exe",
+      "sub": "",
+      "pid": 33468,
+      "wsMB": 40.8,
+      "role": "browser",
+      "privMB": 14.8
+    },
+    {
+      "name": "msedgewebview2.exe",
+      "sub": "",
+      "pid": 25332,
+      "wsMB": 203.6,
+      "role": "browser",
+      "privMB": 93.9
+    },
+    {
+      "name": "msedgewebview2.exe",
+      "sub": "",
+      "pid": 30760,
+      "wsMB": 15.7,
+      "role": "crashpad-handler",
+      "privMB": 3.1
+    },
+    {
+      "name": "msedgewebview2.exe",
+      "sub": "storage.mojom.StorageService",
+      "pid": 22024,
+      "wsMB": 22.7,
+      "role": "utility",
+      "privMB": 8.9
+    },
+    {
+      "name": "msedgewebview2.exe",
+      "sub": "",
+      "pid": 5676,
+      "wsMB": 129.2,
+      "role": "renderer",
+      "privMB": 66.5
+    }
+  ],
+  "at": "2026-09-01T03:14:21.569Z"
+}

@@ -1,0 +1,89 @@
+{
+  "app": "tauri-3.0.0",
+  "arm": "default",
+  "bin": {
+    "exe": "C:\\Users\\User\\AppData\\Local\\ccg-gates-r2\\AgentCodeGUI3.exe",
+    "exeMtime": "2026-09-01T03:03:50.348Z",
+    "exeSize": 7085568,
+    "exeSha256": "d896c0ee0c3be2a0",
+    "gitHead": "7b6a369",
+    "gitDirty": true
+  },
+  "armEnv": {
+    "CCG_EXE": "C:\\Users\\User\\AppData\\Local\\ccg-gates-r2\\AgentCodeGUI3.exe",
+    "CCG_HOME": "C:\\Code\\AgentCodeGUI\\.bench-home-tauri",
+    "CCG_CDP_PORT": "9334"
+  },
+  "runs": [
+    {
+      "winMs": 405,
+      "rootMs": 473,
+      "paintMs": 431,
+      "winW": 1336,
+      "winH": 889,
+      "winTitle": "AgentCodeGUI3"
+    },
+    {
+      "winMs": 241,
+      "rootMs": 283,
+      "paintMs": 248,
+      "winW": 1336,
+      "winH": 889,
+      "winTitle": "AgentCodeGUI3"
+    },
+    {
+      "winMs": 234,
+      "rootMs": 281,
+      "paintMs": 255,
+      "winW": 1336,
+      "winH": 889,
+      "winTitle": "AgentCodeGUI3"
+    },
+    {
+      "winMs": 225,
+      "rootMs": 334,
+      "paintMs": 262,
+      "winW": 1336,
+      "winH": 889,
+      "winTitle": "AgentCodeGUI3"
+    },
+    {
+      "winMs": 223,
+      "rootMs": 335,
+      "paintMs": 252,
+      "winW": 1336,
+      "winH": 889,
+      "winTitle": "AgentCodeGUI3"
+    },
+    {
+      "winMs": 240,
+      "rootMs": 331,
+      "paintMs": 248,
+      "winW": 1336,
+      "winH": 889,
+      "winTitle": "AgentCodeGUI3"
+    }
+  ],
+  "firstRun": {
+    "winMs": 405,
+    "rootMs": 473,
+    "paintMs": 431,
+    "winW": 1336,
+    "winH": 889,
+    "winTitle": "AgentCodeGUI3"
+  },
+  "medianWinMs": 234,
+  "medianRootMs": 331,
+  "medianPaintMs": 252,
+  "firstWindow": {
+    "w": 1336,
+    "h": 889,
+    "title": "AgentCodeGUI3"
+  },
+  "env": {
+    "ramGB": 63.8,
+    "cpu": "13th Gen Intel(R) Core(TM) i7-13700KF",
+    "os": "Microsoft Windows 11 Home 26200"
+  },
+  "at": "2026-09-01T03:13:14.034Z"
+}

@@ -38,6 +38,22 @@ const RELEASES: Record<string, LocalizedRelease> = {
   //   실측으로 갈아 끼웠다. 옛 값은 LSP가 안 뜨던 판의 것이라 오늘 사용자가 겪는 값이 아니다.
   //   출처: bench/results/multi-tauri-3.0.0-default-patchnotes-dist.json(exe sha `730e8b2d…` ·
   //   launchCwd = 배포 모사 · 3회) · coldstart-patchnotes-dist.json · docs/parity-fix-patchnotes-r1.md.
+  //
+  //   ★★GATES R2(2026-09-01) — **02 메모리 절만** 오늘의 배포 경로 실측으로 다시 갈아 끼웠다.
+  //   LSPIDLE(온디맨드 기동)이 착지하면서 **유휴에 언어 서버가 한 톨도 안 뜬다** → PATCHNOTES R1이
+  //   적은 「361MB · 그중 코드 인텔리전스 102MB」가 통째로 낡았다.
+  //   출처: bench/results/multi-tauri-3.0.0-default-gates2-dist.json
+  //     (exe sha `d896c0ee…` · launchCwd = `%LOCALAPPDATA%\ccg-gates-r2` 배포 모사 · 3회 중앙값)
+  //   ★**어느 열인지**: `505MB → 256MB`는 둘 다 **Private** 열이다
+  //     (2.6.2 = 박제 505.3 · 3.0 = 오늘 255.6). 창당 `19MB`와 `110.7MB`는 **WS** 열이다.
+  //     PATCHNOTES R1이 WS(115)와 Private(101.6)을 한 문장에 섞은 사고(§3.1 ★R2 정정)가 있던
+  //     자리라, 값을 옮길 때 열 이름을 값과 함께 들고 다닌다.
+  //   「약 100MB」 = 서버가 실제로 떠 있을 때의 Private 몫(101.6MB · GATES R1 = PATCHNOTES R1
+  //     실측이 같은 자리를 두 번 세웠다). 유휴에는 그 몫이 **0**이다.
+  //   ★**용량(01) 절은 안 건드렸다** — 설치기 바이트는 NSIS를 다시 구워야 재는데 이 라운드는
+  //     안 구웠다. LSPIDLE 다이어트(−14.1MB)로 실제 값은 공시값보다 **작아졌을 뿐**이라
+  //     공시가 사용자에게 불리한 방향으로 틀리지 않는다(설치 폴더 실측 139.4 → 125.2MB ·
+  //     bench/results/footprint-gates2.json). 다음에 설치기를 구울 때 같이 고칠 자리다.
   //   시작 시간(336→290 / 422→373)은 m12 설치본 실측 그대로 둔다 — 오늘 재측정이 254 / 329.5로
   //   **더 빠르지만** 분모(2.6.2)가 그 세션 값이라 짝을 깨지 않는다(§1.6-E의 교훈).
   //   크래시 복구 0.45초는 이 라운드가 안 건드린 값이다.
@@ -65,9 +81,11 @@ const RELEASES: Record<string, LocalizedRelease> = {
           desc: (
             <>
               예전엔 추가 채팅·팝아웃 창을 하나 열 때마다 <b>110.7MB와 프로세스 하나</b>가
-              같이 붙었습니다. 이제 <b>19.6MB · 프로세스 0개</b>예요 — 모든 창이 엔진 하나를
-              나눠 씁니다. 4패널 멀티를 켜 두고 쉴 때 쓰는 메모리는 <b>505MB → 361MB</b>고,
-              그 안에는 <b>코드 인텔리전스 서버가 켜진 몫(약 102MB)</b>이 들어 있어요.
+              같이 붙었습니다. 이제 <b>19MB · 프로세스 0개</b>예요 — 모든 창이 엔진 하나를
+              나눠 씁니다. 4패널 멀티를 켜 두고 쉴 때 쓰는 메모리는 <b>505MB → 256MB</b>로
+              절반 아래고, <b>코드 분석을 안 쓰는 동안엔 그 몫을 아예 안 뭅니다</b> — 언어
+              서버는 파일을 열어 볼 때만 뜨고(그때 <b>약 100MB</b>), 한동안 안 쓰면 스스로
+              물러나며 그 메모리를 돌려줘요.
             </>
           )
         },
@@ -144,9 +162,11 @@ const RELEASES: Record<string, LocalizedRelease> = {
           desc: (
             <>
               Every extra chat or pop-out window used to add <b>110.7MB and a whole process</b>.
-              Now it is <b>19.6MB and zero extra processes</b> — every window shares one engine.
-              Sitting idle with a 4-panel multi board went from <b>505MB to 361MB</b>, and that
-              figure <b>includes the code-intelligence servers running</b> (about 102MB of it).
+              Now it is <b>19MB and zero extra processes</b> — every window shares one engine.
+              Sitting idle with a 4-panel multi board went from <b>505MB to 256MB</b>, less than
+              half, and <b>you pay nothing for code intelligence while you are not using it</b> —
+              the language servers start only when you open a file (about <b>100MB</b> then), and
+              step back on their own after a while, handing that memory back.
             </>
           )
         },
