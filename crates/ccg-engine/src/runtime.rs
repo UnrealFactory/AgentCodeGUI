@@ -249,6 +249,24 @@ struct Stream {
     probe_id: u64,
 }
 
+/// 이메일 → **격리 `CLAUDE_CONFIG_DIR`**(자격증명 물질화까지 끝난 실물 폴더).
+///
+/// ★SLUG R1 — Codex 축의 [`crate::codex::driver::HomeResolver`]와 **같은 모양**이다:
+/// 폴더 이름을 만드는 규칙은 계정 스토어(`ccg-auth::account_slug` — 소문자화 · 허용 밖
+/// 문자 접기 · **항상 `-<base36 해시>` 접미**)의 소관이고, 엔진 크레이트는 그 크레이트를
+/// 모른다. 그래서 셸이 `ccg_auth::claude::account_run_dir`을 여기 꽂는다
+/// (`src-tauri/src/engine/hub.rs`).
+///
+/// SLUG R1 이전에는 이 고리가 **Claude 축에만 없어서** 런타임이 `@`→`_`·`+`→`-` 두 치환의
+/// **추측 슬러그**로 `accounts/`를 접두 스캔했다. 해시 접미를 모르니 정상 이메일도 전부
+/// 빗나갔고, 빗나가면 **존재하지 않는 경로를 조용히** 내보내 CLI가 빈 폴더를 파고
+/// "Not logged in"이 됐다(그 빈 폴더가 다음 실행부터 정확 일치로 잡혀 **영구화**됐다).
+///
+/// `Err`는 **사유**다(미등록 · 복호 불가 · IO). 침묵하고 아무 경로나 내보내는 것이 그
+/// 버그의 뿌리였으므로, 실패는 그 자리에서 턴을 정착시킨다([`ChatRuntime::t1_spawn`]).
+pub type AccountResolver =
+    Arc<dyn Fn(&str) -> Result<std::path::PathBuf, String> + Send + Sync>;
+
 pub struct ChatRuntime<D: CliDriver> {
     pub chat_id: ChatId,
     clock: Arc<dyn Clock>,
@@ -281,6 +299,8 @@ pub struct ChatRuntime<D: CliDriver> {
     /// 앱 홈 — 계정 격리 `CLAUDE_CONFIG_DIR`의 뿌리.
     pub home: std::path::PathBuf,
     account_dir_override: Option<std::path::PathBuf>,
+    /// ★SLUG R1 — 계정 폴더를 **아는 쪽**이 답하는 자리([`AccountResolver`]).
+    account_resolver: Option<AccountResolver>,
     /// 실제로 밟은 전이/프레임소화 id — 커버리지 게이트의 원본 데이터(재생 §3.5 `covers`).
     fired: RefCell<std::collections::BTreeSet<&'static str>>,
     /// 재스폰 진행 중 표식 — 종료 처리(T25/T26)가 **다음 큐 항목을 먼저 집어가는 것**을 막는다.
@@ -503,6 +523,7 @@ impl<D: CliDriver> ChatRuntime<D> {
             cli_path: std::path::PathBuf::from("claude.exe"),
             home: std::path::PathBuf::from("C:\\ccg-fixture\\home\\.agentcodegui"),
             account_dir_override: None,
+            account_resolver: None,
             fired: RefCell::new(Default::default()),
             suspend_drain: false,
             task_by_tool_use: Default::default(),
@@ -600,29 +621,68 @@ impl<D: CliDriver> ChatRuntime<D> {
 
     /// 계정 격리 `CLAUDE_CONFIG_DIR`(§8.6 `accountRunDir`).
     ///
-    /// 실물 폴더 이름은 `<slug>-<임의 접미사>`다(예: `a_x-68e935`) — 슬러그만으로 조립하면
-    /// **존재하지 않는 폴더**가 되어 CLI가 미로그인 상태로 뜬다. 그래서 접두 스캔이 1순위,
-    /// 조립은 폴백이다(2.6.2 `accountRunDir` + PoC `default_account_dir` 파리티).
-    pub fn account_dir(&self, email: &str) -> std::path::PathBuf {
+    /// ★SLUG R1 — **여기서 폴더 이름을 만들지 않는다.** 우선순위 세 칸이 전부다:
+    ///
+    /// | 순위 | 자리 | 무엇 |
+    /// |---|---|---|
+    /// | 1 | [`Self::with_account_dir_override`] | 라이브 스모크가 강제한 **단일** 경로(이메일 무관) |
+    /// | 2 | [`AccountResolver`] | 셸이 꽂은 `ccg_auth::claude::account_run_dir` — 실물 폴더 + 자격증명 물질화 |
+    /// | 3 | [`Self::unresolved_account_dir`] | 리졸버가 **없는 세계**(단위 테스트·재생 하네스)의 명시 폴백 |
+    ///
+    /// 3순위는 실물 계정 폴더 이름을 **흉내 내지 않는다**(`accounts/_no-resolver/…` — 한 층
+    /// 더 들어가므로 어떤 계정 폴더와도 겹칠 수 없다). 옛 코드의 폴백은 정반대였다:
+    /// 그럴듯한 이름(`a_x.com`)을 계정 폴더들 **옆에** 만들어 놓고, 다음 실행부터 자기가
+    /// 만든 빈 폴더를 정확 일치로 다시 집었다(자가영속 오염).
+    pub fn account_dir(&self, email: &str) -> Result<std::path::PathBuf, String> {
         if let Some(p) = &self.account_dir_override {
-            return p.clone();
+            return Ok(p.clone());
         }
-        let slug = email.replace('@', "_").replace('+', "-");
-        let root = self.home.join("accounts");
-        if let Ok(rd) = std::fs::read_dir(&root) {
-            for e in rd.flatten() {
-                let n = e.file_name().to_string_lossy().to_string();
-                if n == slug || n.starts_with(&format!("{slug}-")) {
-                    return root.join(n);
-                }
-            }
+        match &self.account_resolver {
+            Some(r) => r(email),
+            None => Ok(self.unresolved_account_dir(email)),
         }
-        root.join(slug)
+    }
+
+    /// 리졸버가 안 꽂힌 세계의 폴백 — **경로가 곧 조건의 진술**이다.
+    ///
+    /// `accounts/_no-resolver/<이메일표식>` 두 층이다. 두 조각이 각각 일을 한다:
+    ///
+    /// - `_no-resolver` — 실물 계정 폴더는 언제나 `accounts/<safe>-<base36>` **한 층**이다.
+    ///   한 층 더 들어간 이 경로는 실계정을 **가리지도 흉내 내지도 못한다**. 값이 그대로
+    ///   `CLAUDE_CONFIG_DIR`에 실려 나가므로 스폰 인자만 봐도 "셸이 리졸버를 안 꽂았다"가
+    ///   읽힌다.
+    /// - `<이메일표식>` — **계정이 갈리면 경로도 갈려야 한다.** 하네스들이 스폰 인자의
+    ///   `CLAUDE_CONFIG_DIR` 꼬리로 "이 턴이 어느 계정으로 떴나"를 읽는다(가짜 CLI의
+    ///   계정별 대본 선택 · M11 크리틱 하네스의 `slug_of`). 여기서 계정을 한 폴더로
+    ///   뭉개면 그 판독이 통째로 눈이 먼다.
+    ///
+    /// 표식의 모양(`@`→`_`·`+`→`-`)은 옛 추측과 같지만 **하는 일이 다르다**: 이것은
+    /// 찾기 위한 **열쇠가 아니라 이름표**다. 아무도 이 이름으로 `accounts/`를 훑지 않고,
+    /// 한 층 아래라 실계정과 겹칠 수도 없다. 옛 코드의 죄는 이름의 모양이 아니라
+    /// **그 이름으로 실계정 폴더를 찾아다닌 것**이었다.
+    pub fn unresolved_account_dir(&self, email: &str) -> std::path::PathBuf {
+        self.home
+            .join("accounts")
+            .join("_no-resolver")
+            .join(email.replace('@', "_").replace('+', "-"))
     }
 
     /// 라이브 스모크 전용 — 자격증명을 **복사한** 격리 폴더를 강제한다(실홈 쓰기 방지).
+    ///
+    /// ★SLUG R1 위상 정리 — 이것은 리졸버의 대체가 아니라 **그 위의 강제**다. 인자가
+    /// 이메일을 안 받으므로 계정이 둘 이상인 판에서는 의미가 없다(모든 계정이 같은 폴더로
+    /// 간다). 앱은 [`Self::with_account_resolver`]를 쓴다.
     pub fn with_account_dir_override(mut self, p: std::path::PathBuf) -> Self {
         self.account_dir_override = Some(p);
+        self
+    }
+
+    /// ★SLUG R1 — 계정 폴더 리졸버를 꽂는다(셸 전용 · [`AccountResolver`] 참고).
+    ///
+    /// 안 꽂으면 구독 과금 턴의 `CLAUDE_CONFIG_DIR`은 [`Self::unresolved_account_dir`]가
+    /// 되고, 그 폴더에는 자격증명이 없다 — **실계정 폴더를 잘못 집는 일은 없다.**
+    pub fn with_account_resolver(mut self, r: AccountResolver) -> Self {
+        self.account_resolver = Some(r);
         self
     }
 
@@ -1712,24 +1772,41 @@ impl<D: CliDriver> ChatRuntime<D> {
         };
         // 계정 격리 폴더는 **큐 항목의 정체성 스냅샷**에서 나온다 —
         // 지금 채팅의 계정이 아니라 "예약할 때 보던 계정"으로 나가야 한다(P5의 약속).
-        let config_dir = match m.identity.billing() {
+        //
+        // ★SLUG R1 — 그래서 리졸버는 **스폰마다** 부른다. 런타임 생성 시점에 한 번 굳히면
+        // 그 P5 약속이 깨지고(계정을 바꾼 뒤 예약분이 옛 폴더로 나간다), 재로그인으로
+        // 폴더가 갈린 경우도 못 따라간다.
+        let account_dir = match m.identity.billing() {
             crate::identity::BillingAxis::Subscription { account, .. } => {
-                Some(self.account_dir(account))
+                match self.account_dir(account) {
+                    Ok(p) => Ok(Some(p)),
+                    // 사유를 들고 온 실패다 — 없는 경로를 대신 내보내지 않는다(아래 정착).
+                    Err(e) => Err(format!("{account} 계정 폴더를 열지 못했어요 — {e}")),
+                }
             }
-            crate::identity::BillingAxis::ApiKey { .. } => None,
+            crate::identity::BillingAxis::ApiKey { .. } => Ok(None),
         };
         let spec = build_spawn_spec(
             self.cli_path.clone(),
             &m.identity,
             resume.as_deref(),
             fork,
-            config_dir,
+            account_dir.clone().unwrap_or(None),
             self.defaults.api_key.as_deref(),
         );
         // ★R4(§R3.8-M) — **IO 오류를 삼키지 않는다.** R3까지 이 줄은 `let _ =` 였고,
         //   `claude.exe`가 없거나 실행 권한이 없으면 아무 말 없이 `Starting`으로 들어가
         //   **T3(20초)** 까지 침묵했다. 오류는 그 자리에서 이미 확정된 사실이다.
-        let spawn_err = self.driver.spawn(&spec).err();
+        //
+        // ★SLUG R1 — 계정 폴더를 못 낸 판은 **프로세스를 띄우지 않는다**. 옛 코드는 없는
+        //   경로를 `CLAUDE_CONFIG_DIR`로 넘겨 CLI를 태웠고, CLI는 거기 빈 폴더를 판 뒤
+        //   "Not logged in"으로 죽었다 — 사용자가 보는 것은 사유가 아니라 그 증상이었다.
+        let start_err: Option<String> = match &account_dir {
+            Err(why) => Some(why.clone()),
+            Ok(_) => self.driver.spawn(&spec).err().map(|e| {
+                format!("엔진을 시작하지 못했어요 — {} ({e})", self.cli_path.display())
+            }),
+        };
         self.spawns += 1;
         self.emit(Event::Spawn {
             stream: sid,
@@ -1777,15 +1854,12 @@ impl<D: CliDriver> ChatRuntime<D> {
         // 관측 모델 기준선은 **스트림마다** 새로 잡는다(§6.2 미러는 프로세스 종속이다).
         self.observed_model = None;
         self.set_state("T1", StateTag::Starting, None);
-        if let Some(e) = spawn_err {
+        if let Some(e) = start_err {
             // 셀은 T3와 **같다**(`Starting → Terminating{SpawnFailed}`) — 계기만 다르다:
-            // 20초 무응답이 아니라 커널이 방금 거절했다. `Event::Exit{SpawnFailed}`가
-            // 셸의 `stream_closed`로 이어져 오류 말풍선 · 스피너 정착 · 컴포저 해제까지
-            // 간다(그 배선은 R3 §R3.1의 `error` 항목).
-            self.emit(Event::Notice(format!(
-                "엔진을 시작하지 못했어요 — {} ({e})",
-                self.cli_path.display()
-            )));
+            // 20초 무응답이 아니라 커널이 방금 거절했다(또는 ★SLUG R1: 계정 폴더를 못 냈다).
+            // `Event::Exit{SpawnFailed}`가 셸의 `stream_closed`로 이어져 오류 말풍선 ·
+            // 스피너 정착 · 컴포저 해제까지 간다(그 배선은 R3 §R3.1의 `error` 항목).
+            self.emit(Event::Notice(e));
             self.set_state("T3", StateTag::Terminating, None);
             self.close_and_finish(CloseCause::SpawnFailed);
             return;
@@ -4593,5 +4667,261 @@ mod r4_queue_and_resume_tests {
         });
         assert_eq!(r.state(), StateTag::Starting);
         assert_eq!(r.sent_user_texts(), vec!["다시".to_string()]);
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ★SLUG R1 — 계정 격리 폴더는 **주입된다**(추측하지 않는다)
+//
+// 여기서 재는 것 넷:
+//  ① 리졸버가 낸 경로가 그대로 `CLAUDE_CONFIG_DIR`로 나간다 — `accounts/`가 아무리
+//     어질러져 있어도 런타임은 **훑지 않는다**((a)~(d)의 뿌리를 자른다).
+//  ② 리졸버는 **스폰마다** 큐 항목의 계정으로 불린다(P5 — 생성 시 고정 금지).
+//  ③ 리졸버가 사유를 들고 거절하면 그 턴은 **사유가 보이는 오류로 정착**한다
+//     (없는 경로를 내보내고 CLI를 태우지 않는다 — M-LOGIC 침묵 no-op 금지).
+//  ④ 리졸버가 없는 세계의 폴백은 실계정 폴더를 **흉내 내지 않는다**.
+//
+// (a)~(d) 각 갈래를 `ccg-auth`의 진짜 슬러그로 재현하는 못은 셸 쪽에 있다 —
+// `src-tauri/src/engine/claude_account.rs`(엔진 크레이트는 계정 스토어를 모른다).
+// ─────────────────────────────────────────────────────────────────────────────
+#[cfg(test)]
+mod slug_r1_account_dir_tests {
+    use super::*;
+    use crate::clock::VirtualClock;
+    use crate::driver::SpawnSpec;
+    use crate::identity::*;
+    use std::collections::BTreeSet;
+    use std::sync::Mutex;
+
+    /// 스폰 인자를 **통째로** 적어 두는 드라이버 — 보려는 것은 argv가 아니라 env다.
+    #[derive(Default)]
+    struct SpecCli {
+        alive: bool,
+        eof: Option<CloseCause>,
+        specs: Vec<SpawnSpec>,
+    }
+    impl CliDriver for SpecCli {
+        fn spawn(&mut self, spec: &SpawnSpec) -> std::io::Result<()> {
+            self.specs.push(spec.clone());
+            self.alive = true;
+            Ok(())
+        }
+        fn send(&mut self, _line: Value) {}
+        fn close_input(&mut self) {}
+        fn kill(&mut self) {
+            self.alive = false;
+        }
+        fn process_alive(&self) -> bool {
+            self.alive
+        }
+        fn stream_eof(&mut self) -> Option<CloseCause> {
+            self.eof.take()
+        }
+        fn poll_frames(&mut self, _now: Millis) -> Vec<Value> {
+            vec![]
+        }
+    }
+
+    fn rt(accounts: &[&str]) -> ChatRuntime<SpecCli> {
+        let raw = RawIdentity {
+            engine: RawEngine {
+                kind: EngineKind::Claude,
+                model: "haiku".into(),
+                effort: EffortId::Minimal,
+                codex_account: None,
+            },
+            billing: RawBilling {
+                kind: BillingKind::Subscription,
+                account: Some(accounts[0].into()),
+                drop_env_key: Some(false),
+            },
+            cwd: r"C:\ccg-fixture\work".into(),
+            add_dirs: vec![],
+            mode: ModeId::Normal,
+            system_prompt: None,
+            output_style: None,
+            tools: RawTools::default(),
+        };
+        let defaults = IdentityDefaults {
+            known_accounts: accounts.iter().map(|s| s.to_string()).collect::<BTreeSet<_>>(),
+            ..Default::default()
+        };
+        ChatRuntime::new("c-slug", raw, defaults, VirtualClock::new(), SpecCli::default())
+            .expect("정규화")
+    }
+
+    fn config_dir_of(spec: &SpawnSpec) -> Option<&str> {
+        spec.env_set
+            .iter()
+            .find(|(k, _)| k == "CLAUDE_CONFIG_DIR")
+            .map(|(_, v)| v.as_str())
+    }
+
+    /// 실물 폴더 이름의 모양 — `ccg-auth::account_slug("user@example.invalid")`.
+    const REAL: &str = "user_example.invalid-1sqbe9q";
+    /// 옛 엔진이 조립하던 이름 — 실패 주행이 이 빈 폴더를 남겼다((a) 오염).
+    const POISON: &str = "user_example.invalid";
+
+    /// ① `accounts/`가 어질러져 있어도 결과는 **리졸버가 말한 것 하나**다.
+    #[test]
+    fn the_spawn_env_is_whatever_the_resolver_said_not_what_a_folder_scan_finds() {
+        let home = std::env::temp_dir().join(format!("ccg-slug-r1-eng-{}", std::process::id()));
+        let root = home.join("accounts");
+        let _ = std::fs::remove_dir_all(&home);
+        // (a) 오염 폴더 · (c) 접두 그림자 · (b) 같은 safe의 남의 폴더를 전부 깔아 둔다.
+        // 옛 코드라면 이 넷 중 하나가 `read_dir` 순서로 뽑혔다.
+        for n in [
+            POISON,
+            REAL,
+            "user_example.invalid-corp.test-1xvr7e8",
+            "user_example.invalid-99zzzz",
+        ] {
+            std::fs::create_dir_all(root.join(n)).unwrap();
+        }
+        let want = root.join(REAL);
+        let w = want.clone();
+
+        let mut r = rt(&["user@example.invalid"])
+            .with_home(home.clone())
+            .with_account_resolver(Arc::new(move |_e: &str| Ok(w.clone())));
+        r.dispatch(Cmd::Send { text: "안녕".into() });
+
+        let spec = &r.driver_ref().specs[0];
+        assert_eq!(
+            config_dir_of(spec),
+            Some(want.to_string_lossy().as_ref()),
+            "훑기가 아니라 리졸버가 답한다"
+        );
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    /// ② 리졸버는 **스폰마다** 큐 항목의 계정으로 불린다(P5 — 생성 시 고정 금지).
+    #[test]
+    fn the_resolver_is_asked_per_spawn_with_the_queued_snapshots_account() {
+        let seen: Arc<Mutex<Vec<String>>> = Arc::default();
+        let log = seen.clone();
+        let mut r = rt(&["a@example.invalid", "b@example.invalid"])
+            .with_home(std::path::PathBuf::from(r"C:\ccg-fixture\home"))
+            .with_account_resolver(Arc::new(move |e: &str| {
+                log.lock().unwrap().push(e.to_string());
+                Ok(std::path::PathBuf::from(format!(r"C:\acct\{e}")))
+            }));
+
+        r.dispatch(Cmd::Send { text: "첫 턴".into() });
+        // 두 번째는 **다른 계정**으로 예약한다 — 스냅샷이 계정을 데리고 다녀야 한다.
+        let mut pick = RawIdentityPatch::default();
+        pick.billing.account = Some("b@example.invalid".into());
+        r.dispatch(Cmd::Enqueue(QueueInput {
+            text: "둘째 턴".into(),
+            images: vec![],
+            picker: Some(pick),
+            origin: None,
+        }));
+        // 첫 스트림을 닫고 예약분을 드레인시킨다.
+        r.driver().alive = false;
+        r.driver().eof = Some(CloseCause::CliExit);
+        r.tick();
+
+        assert_eq!(
+            *seen.lock().unwrap(),
+            vec!["a@example.invalid".to_string(), "b@example.invalid".to_string()],
+            "생성 시 한 번 굳히면 예약분이 옛 계정 폴더로 나간다"
+        );
+        let dirs: Vec<_> = r
+            .driver_ref()
+            .specs
+            .iter()
+            .map(|s| config_dir_of(s).unwrap_or("").to_string())
+            .collect();
+        assert_eq!(
+            dirs,
+            vec![
+                r"C:\acct\a@example.invalid".to_string(),
+                r"C:\acct\b@example.invalid".to_string()
+            ]
+        );
+    }
+
+    /// ③ 리졸버가 거절하면 **프로세스를 안 띄우고** 사유를 화면에 낸다.
+    ///    옛 코드는 없는 경로를 넘겨 CLI를 태웠고, 사용자가 본 것은 사유가 아니라
+    ///    CLI의 "Not logged in"이었다.
+    #[test]
+    fn a_resolver_failure_settles_the_turn_with_the_reason_visible() {
+        let mut r = rt(&["ghost@example.invalid"])
+            .with_home(std::path::PathBuf::from(r"C:\ccg-fixture\home"))
+            .with_account_resolver(Arc::new(|_e: &str| {
+                Err("설정 ▸ Account에 등록된 계정이 아니에요(로그인이 필요해요)".into())
+            }));
+        let _ = r.drain_events();
+        r.dispatch(Cmd::Send { text: "안녕".into() });
+
+        assert!(r.driver_ref().specs.is_empty(), "프로세스를 띄우면 안 된다");
+        assert_eq!(r.state(), StateTag::Idle, "그 자리에서 정착한다");
+        let evs = r.drain_events();
+        assert!(
+            evs.iter()
+                .any(|e| matches!(e, Event::Exit { cause: CloseCause::SpawnFailed, .. })),
+            "SpawnFailed로 닫힌다: {evs:?}"
+        );
+        let notice = evs
+            .iter()
+            .find_map(|e| match e {
+                Event::Notice(t) => Some(t.clone()),
+                _ => None,
+            })
+            .expect("사유 한 줄이 나가야 한다(침묵 no-op 금지)");
+        assert!(
+            notice.contains("ghost@example.invalid") && notice.contains("등록된 계정이 아니에요"),
+            "누구의 · 무엇이 실패했는지가 둘 다 있어야 한다: {notice}"
+        );
+        assert!(
+            r.sent_user_texts().is_empty(),
+            "못 뜬 프로세스에 프롬프트를 적어 두지 않는다"
+        );
+
+        // 래치가 남으면 채팅이 굳는다 — 계정을 고치면 다음 전송이 나가야 한다.
+        let mut r =
+            r.with_account_resolver(Arc::new(|_e: &str| Ok(std::path::PathBuf::from(r"C:\ok"))));
+        r.dispatch(Cmd::Send { text: "다시".into() });
+        assert_eq!(r.state(), StateTag::Starting);
+        assert_eq!(config_dir_of(&r.driver_ref().specs[0]), Some(r"C:\ok"));
+    }
+
+    /// ④ 리졸버가 **없는 세계**(단위 테스트·재생 하네스)의 폴백은 실계정을 흉내 내지 않는다.
+    /// 옛 폴백은 정반대였다: 계정 폴더들 **옆에** 그럴듯한 이름을 만들어 놓고 다음
+    /// 실행부터 자기가 만든 빈 폴더를 다시 집었다(자가영속 오염).
+    ///
+    /// 동시에 **계정이 갈리면 경로도 갈린다** — 하네스들이 `CLAUDE_CONFIG_DIR` 꼬리로
+    /// "어느 계정으로 떴나"를 읽기 때문이다(그 성질을 잃으면 M11 크리틱 하네스가 눈이 먼다).
+    #[test]
+    fn without_a_resolver_the_fallback_cannot_be_mistaken_for_an_account_folder() {
+        let home = std::path::PathBuf::from(r"C:\ccg-fixture\home");
+        let mut r = rt(&["user@example.invalid"]).with_home(home.clone());
+        r.dispatch(Cmd::Send { text: "안녕".into() });
+        let got = config_dir_of(&r.driver_ref().specs[0]).unwrap().to_string();
+        let want = home
+            .join("accounts")
+            .join("_no-resolver")
+            .join("user_example.invalid");
+        assert_eq!(got, want.to_string_lossy());
+        // 실계정 폴더는 `accounts/` **바로 아래** 한 층이다 — 이 경로는 한 층 더 깊어
+        // 어떤 계정 폴더도 가리거나 흉내 낼 수 없다.
+        assert_eq!(
+            std::path::Path::new(&got).parent().and_then(|p| p.file_name()),
+            Some(std::ffi::OsStr::new("_no-resolver")),
+            "폴백은 언제나 `_no-resolver` 아래다: {got}"
+        );
+        assert!(!got.ends_with(REAL), "실물 슬러그를 흉내 내지 않는다: {got}");
+        assert_ne!(
+            std::path::Path::new(&got).parent(),
+            Some(home.join("accounts").as_path()),
+            "실계정 폴더들과 **같은 층**에 앉으면 안 된다(그것이 (a) 오염의 자리다): {got}"
+        );
+
+        // 계정이 다르면 경로도 다르다.
+        let mut r2 = rt(&["other@example.invalid"]).with_home(home.clone());
+        r2.dispatch(Cmd::Send { text: "안녕".into() });
+        let got2 = config_dir_of(&r2.driver_ref().specs[0]).unwrap().to_string();
+        assert_ne!(got, got2, "계정을 한 폴더로 뭉개면 하네스가 눈이 먼다");
     }
 }

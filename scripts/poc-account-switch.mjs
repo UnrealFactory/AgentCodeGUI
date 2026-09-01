@@ -74,8 +74,24 @@ const write = (p, v) => {
   fs.mkdirSync(path.dirname(p), { recursive: true })
   fs.writeFileSync(p, typeof v === 'string' ? v : JSON.stringify(v))
 }
-/** 이메일 → 계정 폴더 슬러그. `ccg_auth::account_slug`와 **같은 규칙**이어야 한다. */
-const slug = (email) => email.replace(/@/g, '_')
+/**
+ * 이메일 → 계정 폴더 슬러그. `ccg_auth::account_slug`와 **같은 규칙**이어야 한다
+ * (crates/ccg-auth/src/lib.rs:125 — 소문자화 · 허용 밖 문자의 **연속 구간**을 `_`
+ * 하나로 접기 · 소문자화 **전** UTF-16 코드 유닛 해시의 base36 접미).
+ *
+ * ★SLUG R1 — 여기 있던 `email.replace(/@/g,'_')`는 규칙이 아니라 **엔진의 옛 추측**과
+ * 같은 값이었다. 그래서 이 하네스는 "맞아서" 돈 것이 아니라 **엔진과 같은 실수를 해서**
+ * 돌았다: 엔진이 `accounts/a_ccg.test`를 집고 이 파일이 `fake.a_ccg.test.jsonl`을 써서
+ * 우연히 맞물렸던 것이다. 엔진이 실물 폴더(`a_ccg.test-<해시>`)를 집기 시작하면 그
+ * 맞물림이 풀리고 계정별 대본이 **한 장도 안 골라진다**(전부 기본 대본으로 떨어져
+ * 한도 시나리오가 조용히 사라진다).
+ */
+const slug = (email) => {
+  const safe = email.toLowerCase().replace(/[^a-z0-9._-]+/g, '_')
+  let h = 0
+  for (let i = 0; i < email.length; i++) h = (h * 31 + email.charCodeAt(i)) >>> 0
+  return `${safe}-${h.toString(36)}`
+}
 
 // ── 앱 부팅 + CDP ────────────────────────────────────────────────────────────
 async function boot(home, port, env = {}) {

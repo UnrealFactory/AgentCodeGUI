@@ -70,7 +70,18 @@ const write = (p, v) => {
   fs.mkdirSync(path.dirname(p), { recursive: true })
   fs.writeFileSync(p, typeof v === 'string' ? v : JSON.stringify(v))
 }
-const slug = (e) => e.replace(/@/g, '_')
+/**
+ * 이메일 → 계정 폴더 슬러그(`ccg_auth::account_slug` 파리티 — lib.rs:125).
+ * ★SLUG R1 — 여기 있던 `e.replace(/@/g,'_')`는 규칙이 아니라 **엔진의 옛 추측**이었다.
+ * 엔진이 실물 폴더를 집게 된 뒤로는 그 값으로 쓴 `fake.<slug>.jsonl`이 한 장도
+ * 안 골라진다(자세한 사정은 poc-account-switch.mjs의 같은 함수 주석).
+ */
+const slug = (e) => {
+  const safe = e.toLowerCase().replace(/[^a-z0-9._-]+/g, '_')
+  let h = 0
+  for (let i = 0; i < e.length; i++) h = (h * 31 + e.charCodeAt(i)) >>> 0
+  return `${safe}-${h.toString(36)}`
+}
 const rmrf = (p) => {
   for (let i = 0; i < 10; i++) {
     try {

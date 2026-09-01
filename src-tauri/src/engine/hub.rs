@@ -317,6 +317,12 @@ impl Hub {
             let rt = rt
                 .with_cli_path(self.cli.clone())
                 .with_home(ccg_store::app_home())
+                // ★SLUG R1 — 계정 격리 `CLAUDE_CONFIG_DIR`을 **아는 쪽**이 답한다.
+                // 이 줄이 없으면 구독 턴은 `accounts/_no-resolver`로 나간다(자격증명이
+                // 없는 폴더 = 미로그인). 있으면 `ccg_auth::claude::account_run_dir`이
+                // 실물 폴더를 내고 자격증명까지 물질화한다. Codex 축의
+                // `with_home_resolver(codex_versions::resolver())`와 같은 자리다.
+                .with_account_resolver(super::claude_account::resolver())
                 // ★M11 — 한도 소진 시 노는 계정으로 갈아타기. 훅은 앱 전체가 하나를
                 // 공유하고, 설정이 꺼져 있으면 언제나 `None`을 내 옛 경로(대기표)가 된다.
                 .with_account_switcher(self.switcher.clone())
