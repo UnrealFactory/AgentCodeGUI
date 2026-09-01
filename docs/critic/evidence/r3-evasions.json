@@ -1,0 +1,66 @@
+{
+ "at": "2026-09-01T01:27:45.429Z",
+ "commit": "ee14cb9",
+ "tree": "C:/Temp/c4-mutx (git archive 격리)",
+ "note": "빌더 표(A1~A6·B1~B3·C1·C2·D1·D2·E1~E5) 밖에서 이번 라운드가 새로 심은 회피 넷. 전부 붉었다 — 특히 N1(값 부풀리기)은 못의 상한이 값과 함께 커질까 의심해서 심었는데 the_lifetime_constants_still_match_the_262_contract가 물었다.",
+ "runner": "cargo test -p ccg-lsp -- --test-threads=1",
+ "results": [
+  {
+   "id": "N1-stallInflated10x",
+   "zone": "★새 회피",
+   "why": "멎음 유예를 10배로 부풀린다(값만) — 「말만 하는 서버」 수명이 25/60분 → 250/600분",
+   "applied": 4,
+   "survived": false,
+   "passed": 104,
+   "compileErr": false,
+   "bit": [
+    "manager::tests::the_lifetime_constants_still_match_the_262_contract",
+    "server::tests::the_sweep_can_never_forge_the_work_clock"
+   ],
+   "expectRed": true,
+   "matchedExpectation": true
+  },
+  {
+   "id": "N2-budgetForIgnoresSpec",
+   "zone": "★새 회피",
+   "why": "제품 경로(budget_for)만 옛 5분으로 되돌린다 — 못이 Budget::of만 본다면 안 걸린다",
+   "applied": 1,
+   "survived": false,
+   "passed": 105,
+   "compileErr": false,
+   "bit": [
+    "manager::tests::the_timers_stay_injectable_for_the_bench"
+   ],
+   "expectRed": true,
+   "matchedExpectation": true
+  },
+  {
+   "id": "N3-readyWaitInflated",
+   "zone": "★새 회피",
+   "why": "ready 예산을 100배로 — IPC 스레드가 그만큼 묶인다(위쪽 상한이 있나)",
+   "applied": 4,
+   "survived": false,
+   "passed": 105,
+   "compileErr": false,
+   "bit": [
+    "manager::tests::the_lifetime_constants_still_match_the_262_contract"
+   ],
+   "expectRed": true,
+   "matchedExpectation": true
+  },
+  {
+   "id": "N4-pendingOnEveryAnswer",
+   "zone": "★새 회피",
+   "why": "진짜 답에도 「아직」 표를 단다 — 렌더러가 영원히 재장전한다",
+   "applied": 1,
+   "survived": false,
+   "passed": 105,
+   "compileErr": false,
+   "bit": [
+    "tests::a_not_ready_answer_is_distinguishable_from_an_empty_one"
+   ],
+   "expectRed": true,
+   "matchedExpectation": true
+  }
+ ]
+}

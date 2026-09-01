@@ -1,0 +1,38 @@
+{
+ "at": "2026-09-01T01:27:45.430Z",
+ "commit": "ee14cb9",
+ "note": "「말인 줄 먼저」(FileModal.tsx errHeadline)가 다른 stderr 모양에서도 옳은 줄을 고르는가",
+ "verdict": "node 모양에는 옳다. 소문자 error:와 Error: 없는 스택에서는 빗나간다(대소문자 구분 + node 형태 가정).",
+ "cases": [
+  {
+   "name": "node MODULE_NOT_FOUND(고친 그 모양)",
+   "picked": "Error: Cannot find module (C:/nope/x.cjs)",
+   "expectedGood": true
+  },
+  {
+   "name": "TypeError",
+   "picked": "TypeError: undefined is not a function",
+   "expectedGood": true
+  },
+  {
+   "name": "스택 프레임에 Error가 든 경우",
+   "picked": "Error: real reason here",
+   "expectedGood": true
+  },
+  {
+   "name": "clangd 모양(대문자 Error: 없음)",
+   "picked": "clangd: /build/llvm/lib.cpp:812: assertion failed",
+   "expectedGood": true
+  },
+  {
+   "name": "★소문자 error: (pyright 등)",
+   "picked": "info: pyright 1.1.0",
+   "expectedGood": false
+  },
+  {
+   "name": "★Error: 줄이 아예 없음",
+   "picked": "node:internal/modules/cjs/loader:1568",
+   "expectedGood": false
+  }
+ ]
+}

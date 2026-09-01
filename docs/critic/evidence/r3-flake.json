@@ -1,0 +1,14 @@
+{
+ "at": "2026-09-01T01:27:45.430Z",
+ "commit": "ee14cb9",
+ "finding": "tests::files_changed_is_silent_without_a_live_server 가 registry_test_lock()을 안 쥔다 — R3이 새로 넣은 레지스트리 픽스처와 경합한다",
+ "evidence": {
+  "alone": "초록(1 passed)",
+  "serial": "초록(106 passed · --test-threads=1)",
+  "parallelDefault": "10회 중 1회 실패(~10%)",
+  "workspaceSerial": "35스위트 836통과 0실패",
+  "workspaceParallel": "실패 1 — 28스위트에서 중단"
+ },
+ "impact": "빌더가 보고한 836/0은 직렬 실행에서만 재현된다. 보고서는 그 조건을 안 적었다.",
+ "fix": "그 못에 let _g = manager::registry_test_lock(); 한 줄"
+}

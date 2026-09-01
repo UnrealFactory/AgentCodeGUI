@@ -1,0 +1,73 @@
+{
+ "at": "2026-09-01T01:22:20.059Z",
+ "commit": "ee14cb9",
+ "note": "R2에서 조용한 빈손이 났던 인위 지연 서버로 pending 규약을 확인한다",
+ "arms": [
+  {
+   "arm": "control-0ms",
+   "delayMs": 0,
+   "rows": [
+    {
+     "phase": "firstWhileStarting",
+     "ms": 1371.623,
+     "tokens": 125,
+     "pending": null,
+     "status": "ready",
+     "raw": null
+    },
+    {
+     "phase": "afterReady",
+     "readyAfterMs": 1.08,
+     "status": "ready",
+     "tokens": 125,
+     "pending": null
+    }
+   ],
+   "violation": null
+  },
+  {
+   "arm": "slow-2500ms",
+   "delayMs": 2500,
+   "rows": [
+    {
+     "phase": "firstWhileStarting",
+     "ms": 1511.323,
+     "tokens": 0,
+     "pending": true,
+     "status": "starting",
+     "raw": true
+    },
+    {
+     "phase": "afterReady",
+     "readyAfterMs": 1526.101,
+     "status": "ready",
+     "tokens": 125,
+     "pending": null
+    }
+   ],
+   "violation": null
+  },
+  {
+   "arm": "slow-3100ms",
+   "delayMs": 3100,
+   "rows": [
+    {
+     "phase": "firstWhileStarting",
+     "ms": 1515.372,
+     "tokens": 0,
+     "pending": true,
+     "status": "starting",
+     "raw": true
+    },
+    {
+     "phase": "afterReady",
+     "readyAfterMs": 2138.013,
+     "status": "ready",
+     "tokens": 125,
+     "pending": null
+    }
+   ],
+   "violation": null
+  }
+ ]
+}
