@@ -1,0 +1,81 @@
+{
+  "harness": "poc-lspidle-r3-headline",
+  "at": "2026-09-01T01:38:18.888Z",
+  "measures": "제품 소스에서 뽑은 errHeadline을 stderr 모양들에 물린다(규칙을 옮겨 적지 않는다)",
+  "from": "app/src/components/FileModal.tsx",
+  "functionSource": "function errHeadline(s: string): string {\n  const lines = s\n    .split('\\n')\n    .map((l) => l.trim())\n    .filter(Boolean)\n  const said = lines.find(\n    (l) => /(^|\\s)(?!std(err|out):)[A-Za-z]*(error|fatal|panic):/i.test(l) && !/^at\\s/.test(l)\n  )\n  return (said || lines[0] || '').slice(0, 96)\n}",
+  "passed": 10,
+  "total": 10,
+  "rows": [
+    {
+      "id": "node-module-not-found",
+      "why": "배포되는 죽음(번들 node) — 첫 줄이 쓸모없고 말은 다섯째 줄에 있다",
+      "got": "Error: Cannot find module 'C:/nope/missing.cjs'",
+      "want": "Error: Cannot find module 'C:/nope/missing.cjs'",
+      "ok": true
+    },
+    {
+      "id": "typeerror",
+      "why": "접두사가 붙은 에러 이름",
+      "got": "TypeError: undefined is not a function",
+      "want": "TypeError: undefined is not a function",
+      "ok": true
+    },
+    {
+      "id": "stack-frame-mentions-error",
+      "why": "스택 프레임에 `…Error:`가 들어도 프레임을 안 고른다",
+      "got": "Error: real reason here",
+      "want": "Error: real reason here",
+      "ok": true
+    },
+    {
+      "id": "clangd-assertion",
+      "why": "대문자 Error:가 없다 — 첫 줄이 곧 말이다(폴백이 옳게 동작하는 칸)",
+      "got": "clangd: /src/x.cpp:12: assertion failed",
+      "want": "clangd: /src/x.cpp:12: assertion failed",
+      "ok": true
+    },
+    {
+      "id": "lowercase-error-only",
+      "why": "★크리틱이 붉게 만든 칸 — 소문자 error:만 있고 첫 줄은 버전 배너다",
+      "got": "error: Invalid configuration in pyrightconfig.json",
+      "want": "error: Invalid configuration in pyrightconfig.json",
+      "ok": true
+    },
+    {
+      "id": "lowercase-error-with-location",
+      "why": "★소문자 error:가 줄 가운데 있다(clangd/gcc 모양)",
+      "got": "/src/x.cpp:12:3: error: expected ';' after expression",
+      "want": "/src/x.cpp:12:3: error: expected ';' after expression",
+      "ok": true
+    },
+    {
+      "id": "fatal",
+      "why": "fatal: 도 말이다",
+      "got": "fatal: could not read config",
+      "want": "fatal: could not read config",
+      "ok": true
+    },
+    {
+      "id": "stderr-must-not-win",
+      "why": "★대소문자를 무시하면 첫 줄의 `stderr:`가 걸려 고치려던 줄이 되돌아온다",
+      "got": "Error: Cannot find module 'C:/nope/missing.cjs'",
+      "want": "Error: Cannot find module 'C:/nope/missing.cjs'",
+      "ok": true
+    },
+    {
+      "id": "no-message-line-at-all",
+      "why": "말인 줄이 없으면 첫 줄로 떨어진다(더 나빠지지 않는다)",
+      "got": "LSP 서버가 종료됨 · stderr: node:internal/modules/cjs/loader:1568",
+      "want": "LSP 서버가 종료됨 · stderr: node:internal/modules/cjs/loader:1568",
+      "ok": true
+    },
+    {
+      "id": "empty",
+      "why": "빈 사유에 안 죽는다",
+      "got": "",
+      "want": "",
+      "ok": true
+    }
+  ]
+}

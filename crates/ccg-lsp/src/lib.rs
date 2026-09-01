@@ -718,6 +718,7 @@ mod tests {
     /// ★LSPIDLE R3 — 진단에 `grace` 칸이 실제로 있다(크리틱 R2 §5 C-3의 죽은 코드를 살린 자리).
     #[test]
     fn the_lifecycle_diagnostic_reports_the_grace() {
+        let _g = manager::registry_test_lock(); // `lifecycle()`은 레지스트리를 통째로 읽는다
         let v = lifecycle();
         assert!(v.get("grace").and_then(Value::as_u64).is_some(), "유예 칸이 없다: {v}");
     }
@@ -781,6 +782,9 @@ mod tests {
     /// (「떴는가」도 그대로 같이 본다 — 둘은 서로를 대신하지 않는다.)
     #[test]
     fn prewarm_prepares_without_spawning_a_single_process() {
+        // ★LSPIDLE R3 마감 — 이 못은 `start_calls()`의 **델타**를 본다. 자물쇠 밖에 있으면
+        //   남의 못이 그 사이에 기동을 걸어 「프리웜이 걸었다」로 잘못 읽힌다(거짓 붉음).
+        let _g = manager::registry_test_lock();
         let w = std::env::temp_dir().join(format!("ccg-lsp-prewarm-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&w);
         std::fs::create_dir_all(w.join("src")).unwrap();
@@ -829,6 +833,10 @@ mod tests {
     /// ("갱신할 토큰도 없다" — manager.ts:2395). 이 테스트에는 뜬 서버가 없다.
     #[test]
     fn files_changed_is_silent_without_a_live_server() {
+        // ★LSPIDLE R3 마감(확인 크리틱 R3 §7) — 전역 레지스트리를 읽는다 = 자물쇠를 쥔다.
+        //   이 못은 「뜬 서버가 없다」를 전제로 하는데, 자물쇠 밖에 있으면 남의 픽스처가
+        //   심어 둔 서버를 보고 넘어진다(기본 병렬에서 ~10% 붉었다).
+        let _g = manager::registry_test_lock();
         assert!(files_changed(&["C:\\a\\x.md".into()]).is_none());
         assert!(files_changed(&["C:\\a\\x.ts".into()]).is_none());
     }

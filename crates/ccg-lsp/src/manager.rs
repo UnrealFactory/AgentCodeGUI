@@ -947,6 +947,100 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    /// ★LSPIDLE R3 마감 — **규약을 못으로 박는다**: 전역 레지스트리를 만지는 못은
+    /// 예외 없이 [`registry_test_lock`]을 쥔다.
+    ///
+    /// 왜 한 줄 고침으로 안 끝냈나. 이 기능의 이력에서 **같은 모양이 세 번째**다:
+    /// R2-7의 `semcache` 픽스처 오염(다른 못의 gc가 방금 쓴 파일을 지웠다) · R3이
+    /// 레지스트리 픽스처를 들이면서 드러난 `files_changed_is_silent_without_a_live_server` ·
+    /// 그 옆에 나란히 있던 `the_lifecycle_diagnostic_reports_the_grace`와
+    /// `prewarm_prepares_without_spawning_a_single_process`. 셋 다 **원래 있던 못**이고,
+    /// 전역 상태를 만지는 못이 하나 늘 때마다 자물쇠를 안 쥔 옛 못이 하나씩 드러났다.
+    /// 즉 고쳐야 할 것은 그 못들이 아니라 **「다음에 또 이렇게 추가된다」**는 쪽이다.
+    ///
+    /// 그래서 소스를 읽는다. `#[test]` 본문에 전역 레지스트리를 만지는 문이 있으면
+    /// 같은 본문에 `registry_test_lock()`이 있어야 한다. 새 못이 자물쇠 없이 들어오면
+    /// **그 못이 아니라 이 못이** 붉어지고, 메시지가 무엇을 해야 하는지 말한다.
+    ///
+    /// 한계는 정직하게 적는다: 문자열 검색이라 **이름이 겹치면 오탐**할 수 있고,
+    /// 간접 호출(`let f = live_count; f()`)은 못 본다. 그래도 실제로 일어난 세 번을
+    /// 전부 잡고, 값싸며, 틀리면 붉어지는 쪽으로 틀린다.
+    #[test]
+    fn every_test_that_touches_the_global_registry_holds_the_lock() {
+        // 이 못 자신도 자물쇠를 쥔다 — 아래 목록이 **본문에 그대로** 들어 있어서
+        // 자기 자신이 「레지스트리를 만지는 못」으로 걸리기 때문이다. 예외를 두는 대신
+        // 규약을 그대로 지키는 편이 낫다(쥐는 것은 무해하다 — 소스만 읽는다).
+        let _g = registry_test_lock();
+
+        /// 전역 레지스트리를 읽거나 쓰는 문들. 괄호까지 적어 이름 겹침을 줄인다.
+        const TOUCHES: &[&str] = &[
+            "sweep_idle(",
+            "live_count(",
+            "live_pids(",
+            "reclaim_stats(",
+            "grace_count(",
+            "start_calls(",
+            "lifecycle()",
+            "project_status(",
+            "files_changed(",
+            "dispose_all(",
+            "start_sweeper(",
+            "seed_server_for_test(",
+            "seed_error_for_test(",
+            "entry_state_for_test(",
+            "drop_entry_for_test(",
+            "reset_sweeper_for_test(",
+            "last_sweep_ms_for_test(",
+        ];
+        const SOURCES: &[(&str, &str)] = &[
+            ("manager.rs", include_str!("manager.rs")),
+            ("lib.rs", include_str!("lib.rs")),
+            ("server.rs", include_str!("server.rs")),
+        ];
+
+        let mut naked: Vec<String> = Vec::new();
+        for (file, src) in SOURCES {
+            // `#[test]` 하나부터 **다음 `#[test]`까지**를 그 못의 몫으로 본다. 중괄호를
+            // 세지 않는 이유: 본문의 포맷 문자열(`"{v}"`·`"{{}}"`)이 균형을 흔든다.
+            // 넓게 잡는 쪽으로 틀리므로 **놓치지는 않고**, 넓어서 생기는 오탐은 위 한계다.
+            let blocks: Vec<&str> = src.split("#[test]").skip(1).collect();
+            for b in blocks {
+                let name = b
+                    .split("fn ")
+                    .nth(1)
+                    .and_then(|s| s.split(['(', '<']).next())
+                    .unwrap_or("?")
+                    .trim();
+                let Some(hit) = TOUCHES.iter().find(|t| b.contains(**t)) else { continue };
+                if !b.contains("registry_test_lock()") {
+                    naked.push(format!("{file}::{name} (「{hit}」를 부른다)"));
+                }
+            }
+        }
+        assert!(
+            naked.is_empty(),
+            "★전역 레지스트리를 만지면서 자물쇠를 안 쥔 못이 있다 — 기본 병렬에서 남의 픽스처와 \
+             경합해 **가끔** 붉어진다(이 기능에서 세 번 났다). 그 못 맨 앞에 \
+             `let _g = registry_test_lock();` 한 줄을 넣어라: {naked:?}"
+        );
+    }
+
+    /// 위 못이 **실제로 문다**는 대조 — 규약을 어긴 모양을 합성해 먹인다.
+    /// (「필터가 아무것도 안 골랐다」와 「전부 지킨다」는 겉보기가 같다.)
+    #[test]
+    fn the_lock_convention_nail_actually_bites_a_naked_test() {
+        let _g = registry_test_lock();
+        // ★어트리뷰트 리터럴을 **쪼개서** 만든다. 통째로 적으면 위 못의 스캐너가 이 줄을
+        //   진짜 못의 시작으로 읽어 `a_naked_one`이라는 유령 못을 만들어 낸다(실제로 그랬다).
+        //   계기가 자기가 재는 대상을 오염시키지 않게 하는 자리다.
+        let attr = concat!("#[te", "st]");
+        let fake = format!("{attr}\nfn a_naked_one() {{\n    sweep_idle();\n}}\n");
+        let blocks: Vec<&str> = fake.split(attr).skip(1).collect();
+        assert_eq!(blocks.len(), 1);
+        assert!(blocks[0].contains("sweep_idle("), "합성 픽스처가 규약 위반이 아니다");
+        assert!(!blocks[0].contains("registry_test_lock()"), "합성 픽스처가 이미 자물쇠를 쥐었다");
+    }
+
     /// 서버가 하나도 없어도 스윕은 죽지 않는다(원장 스윕까지 포함해서).
     #[test]
     fn sweeping_an_empty_registry_is_harmless() {

@@ -31,13 +31,24 @@ import { lspProjectStatusEx, isTokensPending } from '../api/shim'
  *
  * 그래서 **말인 줄**을 먼저 찾는다(`…Error:`). 스택 프레임(`at …`)은 건너뛰고,
  * 못 찾으면 첫 줄로 떨어진다. 전문은 늘 툴팁에 있으므로 여기서 잃는 것은 없다.
+ *
+ * ★R3 마감(확인 크리틱 R3 §7 C급) — 초판은 `[A-Za-z]*Error:`로 **대소문자를 가렸다.**
+ * 소문자 `error:`를 쓰는 서버(pyright 등)에서는 그 줄을 못 보고 첫 줄인 버전 배너
+ * (`info: pyright 1.1.0`)를 골랐다. 배포되는 죽음(번들 node)에는 옳았지만 `Launch::Exe`
+ * 쪽(cs·cpp)에서 어긋난다. `fatal:`·`panic:`까지 함께 받는다.
+ *
+ * 다만 `/i`만 붙이면 **고치려던 그 줄이 되돌아온다**: 사유의 첫 줄이
+ * `LSP 서버가 종료됨 · stderr: node:internal/…`이고 `stderr:`가 `[a-z]*error:`에 걸린다.
+ * 그래서 `std(err|out):`은 앞에서 잘라 낸다 — 그 둘은 **말이 아니라 어디서 왔는지**다.
  */
 function errHeadline(s: string): string {
   const lines = s
     .split('\n')
     .map((l) => l.trim())
     .filter(Boolean)
-  const said = lines.find((l) => /(^|\s)[A-Za-z]*Error:/.test(l) && !/^at\s/.test(l))
+  const said = lines.find(
+    (l) => /(^|\s)(?!std(err|out):)[A-Za-z]*(error|fatal|panic):/i.test(l) && !/^at\s/.test(l)
+  )
   return (said || lines[0] || '').slice(0, 96)
 }
 import {

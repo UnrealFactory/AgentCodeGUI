@@ -897,3 +897,86 @@ FPS144 갈래(`Chat.tsx`·`bench/fps*`)와도 안 겹친다.
 `src-tauri/src/engine/*`를 고치고 있었고, 그 미완성 변경이 `critic_m11r2_attack`의 못 셋을
 붉게 만들었다(내 파일과 무관 — 순정 HEAD 사본에서는 초록). 그래서 무후퇴는 **「HEAD + 내
 변경만」인 격리 사본**에서 쟀고, 커밋도 경로를 지정해 내 파일만 담았다.
+
+---
+
+## ★R3 마감 — 확인 크리틱 R3(`1225e99`)의 테스트 전용 잔손 둘
+
+*LSPIDLE는 확인 크리틱 R3에서 **합격·종결**됐다. 남은 셋 중 제품 동작에 닿는 것은 없었고,
+그중 둘(스위트 경합 · `errHeadline` 모양)을 여기서 닫는다. 셋째(전/후 계기가 규칙을 JS로
+옮겨 적었다)는 §R3-1에 「모델의 출력」임을 이미 적었고 러스트 못 둘이 같은 결론을 독립으로
+뒷받침하므로 그대로 둔다 — 다만 이번 계기(`poc-lspidle-r3-headline.mjs`)는 그 지적을 받아
+**규칙을 옮겨 적지 않고 제품 소스에서 함수를 뽑아 실행**한다.*
+
+### ① [B급·테스트 경합] 자물쇠를 안 쥔 못 — 셋이었다
+
+크리틱이 짚은 것은 `files_changed_is_silent_without_a_live_server`(기본 병렬 10회에 1회 붉음)
+하나였지만, 같은 병을 앓는 못이 **셋**이었다:
+
+| 못 | 무엇을 읽나 | 왜 경합하나 |
+|---|---|---|
+| `files_changed_is_silent_without_a_live_server` | `files_changed()` | 「뜬 서버가 없다」가 전제인데 남의 픽스처가 심어 둔 서버를 본다 |
+| `the_lifecycle_diagnostic_reports_the_grace` | `lifecycle()` | 레지스트리를 통째로 읽는다 |
+| `prewarm_prepares_without_spawning_a_single_process` | `start_calls()` **델타** | R3의 D1 못이 그 사이 기동을 걸면 「프리웜이 걸었다」로 잘못 읽힌다 |
+
+셋 다 `let _g = manager::registry_test_lock();` 한 줄로 닫았다.
+
+**그런데 한 줄로 끝내지 않았다.** 크리틱의 지적대로 이 기능의 이력에서 같은 모양이 세 번째다
+(R2-7 `semcache` 픽스처 오염 → R3 레지스트리 픽스처가 드러낸 이 셋). 매번 「전역 상태를
+만지는 못이 하나 늘 때마다 자물쇠를 안 쥔 옛 못이 하나씩 드러나는」 모양이라, 고쳐야 할 것은
+그 못들이 아니라 **「다음에 또 이렇게 추가된다」**는 쪽이다. 그래서 규약을 못으로 박았다:
+
+`manager::tests::every_test_that_touches_the_global_registry_holds_the_lock` — `include_str!`로
+`manager.rs`·`lib.rs`·`server.rs`를 읽어, `#[test]` 본문이 전역 레지스트리를 만지는 문
+(`sweep_idle(`·`live_count(`·`start_calls(`·`lifecycle()`·`project_status(`·픽스처 문 등 17개)을
+부르면서 `registry_test_lock()`이 없으면 **그 못이 아니라 이 못이** 붉어지고, 메시지가
+무엇을 해야 하는지 말한다.
+
+두 가지를 같이 적어 둔다:
+
+- **한계.** 문자열 검색이라 이름이 겹치면 오탐할 수 있고 간접 호출은 못 본다. 블록 경계도
+  중괄호를 세지 않고 「다음 `#[test]`까지」로 넓게 잡는다(본문의 포맷 문자열 `"{v}"`·`"{{}}"`가
+  균형을 흔들기 때문). **넓게 잡는 쪽으로 틀리므로 놓치지는 않는다.**
+- **계기가 자기가 재는 대상을 오염시킨 자리.** 대조 못
+  (`the_lock_convention_nail_actually_bites_a_naked_test`)이 합성 픽스처에 `#[test]`를
+  통째로 적었더니 스캐너가 그 줄을 진짜 못의 시작으로 읽어 **`a_naked_one`이라는 유령 못**을
+  만들어 냈다(첫 주행에서 실제로 붉었다). 어트리뷰트 리터럴을 `concat!`으로 쪼개 끊었다.
+
+**실측: 기본 병렬 `cargo test -p ccg-lsp` 10회 연속 — 10/10 초록 · 매회 108 통과.**
+(크리틱의 같은 조건 주행은 1회 붉음이었다. R3 시점 106 → 마감 108: 규약 못 + 그 대조 못.)
+
+### ② [C급] `errHeadline`이 대소문자를 가렸다
+
+크리틱이 여섯 모양에 물려 두 칸이 어긋나는 것을 보였다 — 소문자 `error:`(pyright 등)에서
+버전 배너를 골랐고, `Error:` 줄이 없으면 고치려던 `node:internal` 줄로 되돌아갔다.
+대소문자 무시 + `fatal:`·`panic:` 허용으로 고쳤다.
+
+**`/i`만 붙이면 안 됐다.** 사유의 첫 줄이 `LSP 서버가 종료됨 · stderr: node:internal/…`인데
+`stderr:`가 `[a-z]*error:`에 걸린다 — 대소문자를 무시하는 순간 **고치려던 바로 그 줄이
+1순위로 뽑힌다.** 그래서 `std(err|out):`을 앞에서 잘라 낸다(그 둘은 말이 아니라 어디서
+왔는지다). 그 회귀는 못으로도 박았다(`stderr-must-not-win`).
+
+계기: `scripts/poc-lspidle-r3-headline.mjs` — **제품 소스에서 `errHeadline` 함수를 그대로
+뽑아 실행한다**(규칙을 JS로 옮겨 적지 않는다. 크리틱이 유예 계기에 준 C급을 되풀이하지
+않으려는 자리다). `--src`로 옛 파일을 물려 대조한다.
+
+| 픽스처 | 고침 전(`ee14cb9`) | 고침 후 |
+|---|---|---|
+| node `MODULE_NOT_FOUND` · `TypeError:` · 스택 프레임 · clangd assertion | ✔ | ✔ |
+| **소문자 `error:`만**(pyright) | ✘ `info: pyright 1.1.0` | ✔ `error: Invalid configuration…` |
+| **소문자 `error:`가 줄 가운데**(clangd/gcc) | ✘ `clangd version 17.0.0` | ✔ `/src/x.cpp:12:3: error: …` |
+| **`fatal:`** | ✘ `starting up` | ✔ `fatal: could not read config` |
+| `stderr:`가 이기면 안 된다(`/i`의 회귀) | ✔ | ✔ |
+| 말인 줄이 없음 · 빈 사유 | ✔ | ✔ |
+
+**7/10 → 10/10.** 고침 전 값이 크리틱 표의 값(`info: pyright 1.1.0`)과 같다.
+
+### 마감 검증
+
+| 무엇 | 결과 |
+|---|---|
+| `cargo test -p ccg-lsp` **기본 병렬 10회 연속** | **10/10 초록 · 108 통과** |
+| `npm run typecheck:app` | 초록 |
+| `poc-lspidle-r3-headline` | **10/10**(고침 전 7/10) |
+
+이것으로 LSPIDLE는 완전 종결이다. 이월은 하나 그대로다(실물 Roslyn·clangd 값 — §R3-7).
