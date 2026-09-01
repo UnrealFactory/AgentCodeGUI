@@ -82,6 +82,25 @@ const slug = (e) => {
   for (let i = 0; i < e.length; i++) h = (h * 31 + e.charCodeAt(i)) >>> 0
   return `${safe}-${h.toString(36)}`
 }
+
+/**
+ * ★SLUG R2(확인 크리틱 R1 경미⑧) — 사본을 **권위**(`ccg-auth-probe diagnose`의
+ * `claude.rows[].slug`)와 대조하고 어긋나면 죽는다. 사본이 조용히 틀어지면 이 하네스는
+ * 계정별 대본을 한 장도 못 고른 채 "기본 대본으로도 통과하는" 것만 초록으로 남긴다
+ * (자세한 사정은 poc-account-switch.mjs의 같은 함수 주석).
+ */
+function assertSlugParity(home, emails) {
+  const d = spawnSync(PROBE, ['diagnose'], { env: { ...process.env, CCG_HOME: home }, encoding: 'utf8' })
+  if (d.status !== 0) throw new Error(`diagnose 실패: ${d.stderr || d.stdout}`)
+  const truth = new Set((JSON.parse(d.stdout).claude?.rows ?? []).map((r) => r.slug))
+  const bad = emails.map(slug).filter((s) => !truth.has(s))
+  if (bad.length) {
+    throw new Error(
+      `★ 슬러그 사본이 ccg-auth와 어긋났다 — 하네스가 헛것을 재고 있다\n` +
+        `  하네스: ${JSON.stringify(emails.map(slug))}\n  ccg-auth: ${JSON.stringify([...truth])}`
+    )
+  }
+}
 const rmrf = (p) => {
   for (let i = 0; i < 10; i++) {
     try {
@@ -131,6 +150,7 @@ function seedHome(
 
   const r = spawnSync(PROBE, ['seed', ...emails], { env: { ...process.env, CCG_HOME: HOME }, encoding: 'utf8' })
   if (r.status !== 0) throw new Error(`계정 심기 실패: ${r.stderr || r.stdout}`)
+  assertSlugParity(HOME, emails)
   for (const e of emails) fs.mkdirSync(path.join(HOME, 'accounts', slug(e)), { recursive: true })
   if (defaultEmail) {
     const st = JSON.parse(fs.readFileSync(path.join(HOME, 'accounts.json'), 'utf8'))

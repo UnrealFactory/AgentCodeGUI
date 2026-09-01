@@ -656,15 +656,38 @@ impl<D: CliDriver> ChatRuntime<D> {
     ///   계정별 대본 선택 · M11 크리틱 하네스의 `slug_of`). 여기서 계정을 한 폴더로
     ///   뭉개면 그 판독이 통째로 눈이 먼다.
     ///
-    /// 표식의 모양(`@`→`_`·`+`→`-`)은 옛 추측과 같지만 **하는 일이 다르다**: 이것은
-    /// 찾기 위한 **열쇠가 아니라 이름표**다. 아무도 이 이름으로 `accounts/`를 훑지 않고,
-    /// 한 층 아래라 실계정과 겹칠 수도 없다. 옛 코드의 죄는 이름의 모양이 아니라
-    /// **그 이름으로 실계정 폴더를 찾아다닌 것**이었다.
+    /// 표식은 찾기 위한 **열쇠가 아니라 이름표**다. 아무도 이 이름으로 `accounts/`를 훑지
+    /// 않는다. 옛 코드의 죄는 이름의 모양이 아니라 **그 이름으로 실계정 폴더를 찾아다닌
+    /// 것**이었다.
+    ///
+    /// ★SLUG R2(확인 크리틱 R1 경미④) — 표식은 `[A-Za-z0-9._-]` **밖을 전부** `_`로 접는다.
+    /// R1은 `@`·`+`만 치환해서, 경로 구분자를 품은 「이메일」이면 `_no-resolver` 층을
+    /// **벗어나 실계정과 같은 층에 앉았다**:
+    ///
+    /// ```text
+    /// a\..\..\evil@x.com → …\accounts\evil_x.com   (층 밖 — R1)
+    /// a/../../evil@x.com → …\accounts\evil_x.com   (층 밖 — R1)
+    /// ```
+    ///
+    /// 제품 도달 경로는 없었다(배선이 하나뿐이라 폴백은 테스트·재생 세계뿐이고, 실물
+    /// 슬러그는 구분자를 접는다). 그래도 §1.1이 「구조로 겹칠 수 없다」고 **절대**로 적었으니
+    /// 그 문장을 참으로 만드는 쪽을 골랐다 — 서술을 좁히는 것보다 값이 크다.
+    ///
+    /// 잔여(의도적): 치환이 1:1이라 허용 밖 문자만 다른 두 「이메일」은 같은 표식을 갖는다
+    /// (`a!b@x`·`a_b@x` → 둘 다 `a_b_x`). 해시를 붙이면 갈리지만 그러면 실물 슬러그를
+    /// 닮아 읽는 사람을 헷갈리게 하고, `CLAUDE_CONFIG_DIR` 꼬리로 계정을 읽는 하네스들의
+    /// 기대값도 깨진다. **자격증명이 하나도 없는 세계**의 이름표라 값보다 비용이 크다.
     pub fn unresolved_account_dir(&self, email: &str) -> std::path::PathBuf {
-        self.home
-            .join("accounts")
-            .join("_no-resolver")
-            .join(email.replace('@', "_").replace('+', "-"))
+        let mut label = String::with_capacity(email.len());
+        for c in email.chars() {
+            let keep = c.is_ascii_alphanumeric() || c == '.' || c == '_' || c == '-';
+            label.push(if keep { c } else { '_' });
+        }
+        // `.`·`..` 같은 상대 경로 조각은 이름이 아니다(구분자를 접어도 이건 남는다).
+        if label.trim_matches('.').is_empty() {
+            label = "_".into();
+        }
+        self.home.join("accounts").join("_no-resolver").join(label)
     }
 
     /// 라이브 스모크 전용 — 자격증명을 **복사한** 격리 폴더를 강제한다(실홈 쓰기 방지).
@@ -4923,5 +4946,42 @@ mod slug_r1_account_dir_tests {
         r2.dispatch(Cmd::Send { text: "안녕".into() });
         let got2 = config_dir_of(&r2.driver_ref().specs[0]).unwrap().to_string();
         assert_ne!(got, got2, "계정을 한 폴더로 뭉개면 하네스가 눈이 먼다");
+    }
+
+    /// ★SLUG R2(경미④) — 표식은 **`_no-resolver` 층을 못 벗어난다.**
+    ///
+    /// R1은 `@`·`+`만 치환해서, 경로 구분자를 품은 「이메일」이 층을 탈출해 실계정과
+    /// **같은 층**에 앉을 수 있었다(크리틱 A6). 제품 도달 경로는 없었지만 §1.1이
+    /// 「구조로 겹칠 수 없다」고 절대로 적었으므로, 그 문장을 참으로 만든다.
+    #[test]
+    fn the_fallback_label_can_never_climb_out_of_its_layer() {
+        let home = std::path::PathBuf::from(r"C:\ccg-fixture\home");
+        let r = rt(&["user@example.invalid"]).with_home(home.clone());
+        let layer = home.join("accounts").join("_no-resolver");
+
+        for hostile in [
+            r"a\..\..\evil@x.com",
+            "a/../../evil@x.com",
+            "../../evil@x.com",
+            r"..\..\evil@x.com",
+            "..",
+            ".",
+            "",
+            "a:b@x.com",
+            "한글@x.com",
+        ] {
+            let got = r.unresolved_account_dir(hostile);
+            assert_eq!(
+                got.parent(),
+                Some(layer.as_path()),
+                "★ 층을 벗어났다: {hostile:?} → {got:?}"
+            );
+            // 부모가 맞다는 것만으로는 부족하다 — 조각 자체에 상대 경로가 없어야 한다.
+            let leaf = got.file_name().unwrap().to_string_lossy().to_string();
+            assert!(
+                !leaf.contains('/') && !leaf.contains('\\') && leaf.trim_matches('.') != "",
+                "★ 표식에 경로 조각이 남았다: {hostile:?} → {leaf:?}"
+            );
+        }
     }
 }

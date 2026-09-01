@@ -93,6 +93,30 @@ const slug = (email) => {
   return `${safe}-${h.toString(36)}`
 }
 
+/**
+ * ★SLUG R2(확인 크리틱 R1 경미⑧) — **사본을 권위와 대조하고, 어긋나면 죽는다.**
+ *
+ * 위 `slug()`는 `ccg_auth::account_slug`의 **사본**이다. 사본이 조용히 어긋나면 이
+ * 하네스는 계정별 대본을 한 장도 못 고르면서 "기본 대본으로도 통과하는" 시나리오만
+ * 초록으로 남긴다 — 정확히 SLUG R1 이전에 벌어지던 일이다(그때는 사본이 엔진의 옛
+ * 추측과 같아서 우연히 맞물렸다).
+ *
+ * `ccg-auth-probe diagnose`가 내는 `claude.rows[].slug`가 **권위**다(그 값을 만드는 것이
+ * 제품 코드 자신이다). 이메일은 평문으로 안 나오므로 슬러그 집합으로 대조한다.
+ */
+function assertSlugParity(home, emails) {
+  const d = spawnSync(PROBE, ['diagnose'], { env: { ...process.env, CCG_HOME: home }, encoding: 'utf8' })
+  if (d.status !== 0) throw new Error(`diagnose 실패: ${d.stderr || d.stdout}`)
+  const truth = new Set((JSON.parse(d.stdout).claude?.rows ?? []).map((r) => r.slug))
+  const mine = emails.map(slug).filter((s) => !truth.has(s))
+  if (mine.length) {
+    throw new Error(
+      `★ 슬러그 사본이 ccg-auth와 어긋났다 — 하네스가 헛것을 재고 있다\n` +
+        `  하네스: ${JSON.stringify(emails.map(slug))}\n  ccg-auth: ${JSON.stringify([...truth])}`
+    )
+  }
+}
+
 // ── 앱 부팅 + CDP ────────────────────────────────────────────────────────────
 async function boot(home, port, env = {}) {
   const child = spawn(EXE, [], {
@@ -198,6 +222,7 @@ function seedHome(name, accounts, opts = {}) {
   const r = spawnSync(PROBE, seedArgs, { env: { ...process.env, CCG_HOME: HOME }, encoding: 'utf8' })
   if (r.status !== 0) throw new Error(`계정 심기 실패: ${r.stderr || r.stdout}`)
   const seeded = JSON.parse(r.stdout)
+  assertSlugParity(HOME, emails)
   for (const e of emails) fs.mkdirSync(path.join(HOME, 'accounts', slug(e)), { recursive: true })
 
   // ② 합성 usage — 셸의 워커는 이 캐시를 먼저 보고, TTL 안쪽이면 조회를 안 한다.
