@@ -1,0 +1,62 @@
+{
+ "what": "GATES R2 — 패치노트 02 메모리 절 ko/en 실렌더 재현",
+ "at": "2026-09-01T03:47:09.986Z",
+ "exe": "C:\\Users\\User\\AppData\\Local\\ccg-gates-r2c\\AgentCodeGUI3.exe",
+ "installdir": "C:\\Users\\User\\AppData\\Local\\ccg-gates-r2c",
+ "render": {
+  "ko": {
+   "cardFound": true,
+   "lang": null,
+   "chars": 1452,
+   "bad": {
+    "undefined": false,
+    "NaN": false,
+    "objectObject": false,
+    "sourceVsRender": null
+   },
+   "present": {
+    "19MB": true,
+    "505MB": true,
+    "256MB": true,
+    "100MB": true,
+    "프로세스 0개": true
+   },
+   "stale": {
+    "19.6MB": false,
+    "361MB": false,
+    "102MB": false
+   },
+   "memorySection": "예전엔 추가 채팅·팝아웃 창을 하나 열 때마다 110.7MB와 프로세스 하나가 같이 붙었습니다. 이제 19MB · 프로세스 0개예요 — 모든 창이 엔진 하나를 나눠 씁니다. 4패널 멀티를 켜 두고 쉴 때 쓰는 메모리는 505MB → 256MB로 절반 아래고, 코드 분석을 안 쓰는 동안엔 그 몫을 아예 안 뭅니다 — 언어 서버는 파일을 열어 볼 때만 뜨고(그때 약 100MB), 한동안 안 쓰면 스스로 물러나며 그 메모리를 돌려줘요.\n\n03\n안정성\n화면이 죽어도 앱이 살아납니다",
+   "text": "업데이트 소식\nv3.0.0-beta.1\nREBUILT\n3.0\n3.0\n\n속은 전부 새로 지었습니다 — 화면은 그대로인데 설치 파일이 5배 작아지고, 창을 하나 더 여는 비용이 5분의 1이 됐어요. 코드 분석은 깔자마자 되고, 화면이 죽어도 앱이 스스로 되살아납니다.\n\nv3.0.0\nv2.6.2\nv2.6.1\nv2.6.0\nv2.5.2\n01\n용량\n설치 파일 157.5MB → 30.9MB\n\n앱이 크롬 한 벌을 통째로 안고 다니던 구조를 버리고, 윈도우에 이미 있는 웹 엔진(WebView2)을 씁니다. 설치 파일은 157.5MB → 30.9MB(5.1배), 설치 폴더는 633.7MB → 139.4MB(4.5배)가 됐어요 — 디스크에서 494MB가 사라집니다. 그중 앱 자체는 6.8MB고, 나머지 132.6MB는 코드 인텔리전스(언어 서버와 그걸 돌리는 런타임)예요. 2.6.2도 같은 서버를 안고 다녔으니 같은 것끼리 견준 값입니다.\n\n02\n메모리\n창을 더 열어도 무겁지 않아요\n\n예전엔 추가 채팅·팝아웃 창을 하나 열 때마다 110.7MB와 프로세스 하나가 같이 붙었습니다. 이제 19MB · 프로세스 0개예요 — 모든 창이 엔진 하나를 나눠 씁니다. 4패널 멀티를 켜 두고 쉴 때 쓰는 메모리는 505MB → 256MB로 절반 아래고, 코드 분석을 안 쓰는 동안엔 그 몫을 아예 안 뭅니다 — 언어 서버는 파일을 열어 볼 때만 뜨고(그때 약 100MB), 한동안 안 쓰면 스스로 물러나며 그 메모리를 돌려줘요.\n\n03\n안정성\n화면이 죽어도 앱이 살아납니다\n\n웹 화면을 그리는 부분이 죽으면 예전엔 빈 창만 남아 앱을 껐다 켜야 했습니다. 이제 앱이 그 사고를 스스로 감지해 화면만 다시 그립니다 — 실측 0.45초 만에 되돌아오고, 대화도 그대로예요. 창을 여러 개 띄워 둔 상태에서도 죽은 창 하나만 복구됩니다.\n\n04\n속도\n시작이 조금 더 빠릅니다\n\n아이콘을 누르고 첫 창이 뜰 때까지 336ms → 290ms, 실제로 쓸 수 있게 될 때까지 422ms → 373ms(설치본 실측). 시작 화면도 작은 카드가 떴다가 큰 창으로 튀는 대신 창 안에서 그대로 이어집니다.\n\n05\n코드 분석\n깔자마자 색이 칠해집니다\n\nTypeScript·JavaScript·Python은 설치 직후 아무것도 더 깔지 않아도 호버·정의 이동·자동완성이 됩니다 — 언어 서버와 전용 Node 런타임을 앱이 직접 안고 다녀요(그래서 설치 파일이 커졌습니다). 컴퓨터에 Node가 있든 없든, 어디서 앱을 켜든 똑같이 동작해요. C#·C++는 설정 ▸ 코드 분석에서 한 번 누르면 받아집니다.\n\n06\n탐색기\n폴더 우클릭으로 바로 열기\n\n탐색기에서 폴더를 우클릭하면 'AgentCodeGUI3으로 열기'가 뜹니다. 기존 2.6 버전을 지우지 않아도 되도록 아이콘(teal 3 배지)·메뉴 글자·설치 폴더를 전부 따로 뒀어요 — 둘을 나란히 두고 천천히 옮기셔도 됩니다.\n\n닫으면 이 버전 소식은 다시 뜨지 않아요\n시작하기"
+  },
+  "en": {
+   "cardFound": true,
+   "lang": null,
+   "chars": 2643,
+   "bad": {
+    "undefined": false,
+    "NaN": false,
+    "objectObject": false,
+    "sourceVsRender": null
+   },
+   "present": {
+    "19MB": true,
+    "505MB": true,
+    "256MB": true,
+    "100MB": true,
+    "zero extra processes": true
+   },
+   "stale": {
+    "19.6MB": false,
+    "361MB": false,
+    "102MB": false
+   },
+   "memorySection": "Every extra chat or pop-out window used to add 110.7MB and a whole process. Now it is 19MB and zero extra processes — every window shares one engine. Sitting idle with a 4-panel multi board went from 505MB to 256MB, less than half, and you pay nothing for code intelligence while you are not using it — the language servers start only when you open a file (about 100MB then), and step back on their own after a while, handing that memory back.\n\n03\nStability\nThe app recovers from a dead view",
+   "text": "What's new\nv3.0.0-beta.1\nREBUILT\n3.0\n3.0\n\nEverything under the hood is new — the screens look the same, but the installer is 5× smaller and opening one more window costs a fifth of what it did. Code intelligence works the moment you install, and if the view crashes the app brings itself back.\n\nv3.0.0\nv2.6.2\nv2.6.1\nv2.6.0\nv2.5.2\n01\nSize\nInstaller: 157.5MB → 30.9MB\n\nThe app no longer carries an entire copy of Chrome; it uses the web engine Windows already ships (WebView2). The installer went 157.5MB → 30.9MB (5.1×) and the installed folder 633.7MB → 139.4MB (4.5×) — 494MB given back to your disk. Of what remains, the app itself is 6.8MB; the other 132.6MB is code intelligence (the language servers and the runtime that drives them). 2.6.2 shipped the same servers, so this compares like with like.\n\n02\nMemory\nExtra windows are cheap now\n\nEvery extra chat or pop-out window used to add 110.7MB and a whole process. Now it is 19MB and zero extra processes — every window shares one engine. Sitting idle with a 4-panel multi board went from 505MB to 256MB, less than half, and you pay nothing for code intelligence while you are not using it — the language servers start only when you open a file (about 100MB then), and step back on their own after a while, handing that memory back.\n\n03\nStability\nThe app recovers from a dead view\n\nWhen the part that draws the UI crashed, you used to be left with an empty window and had to restart. The app now detects that and redraws the view by itself — measured at 0.45s, with your conversation intact. With several windows open, only the one that died is recovered.\n\n04\nSpeed\nStarts a little faster\n\nFrom click to first window: 336ms → 290ms, and to actually usable: 422ms → 373ms (measured on the installed build). The startup splash also stays inside the window instead of popping from a small card to a big window.\n\n05\nCode\nSyntax intelligence works out of the box\n\nTypeScript, JavaScript and Python get hover, go-to-definition and completion with nothing else to install — the app now carries the language servers and their own Node runtime (that is why the installer grew). It behaves the same whether or not Node is on your machine, and no matter where you launch the app from. C# and C++ are one click away in Settings ▸ Code analysis.\n\n06\nExplorer\nOpen a folder straight from right-click\n\nRight-click a folder in Explorer and you get \"AgentCodeGUI3으로 열기\". So you never have to uninstall 2.6 first, the icon (teal 3 badge), menu label and install folder are all separate — keep both side by side and move over at your own pace.\n\nOnce closed, this version's news won't show again\nGet started"
+  }
+ },
+ "verdict": {
+  "failures": [],
+  "ok": true
+ }
+}

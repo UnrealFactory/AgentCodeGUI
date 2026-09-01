@@ -1,0 +1,468 @@
+{
+ "what": "GATES R2 확인 크리틱 — 게이트 전 칸 독립 재계산 + 귀속 격자 + 절대 천장 대조",
+ "at": "2026-09-01T03:43:26.131Z",
+ "medianCheck": {
+  "idleGridWsMB": {
+   "runs": [
+    466.1,
+    460.4,
+    455.6
+   ],
+   "median": 460.4,
+   "summary": 460.4,
+   "ok": true
+  },
+  "idleGridPrivMB": {
+   "runs": [
+    259.6,
+    255.6,
+    252.8
+   ],
+   "median": 255.6,
+   "summary": 255.6,
+   "ok": true
+  },
+  "idleGridProcs": {
+   "runs": [
+    5,
+    5,
+    5
+   ],
+   "median": 5,
+   "summary": 5,
+   "ok": true
+  },
+  "idleWithWindowsWsMB": {
+   "runs": [
+    502.4,
+    498.4,
+    501.2
+   ],
+   "median": 501.2,
+   "summary": 501.2,
+   "ok": true
+  },
+  "idleWithWindowsPrivMB": {
+   "runs": [
+    257.5,
+    255.4,
+    259.4
+   ],
+   "median": 257.5,
+   "summary": 257.5,
+   "ok": true
+  },
+  "wsMBPerWindow": {
+   "runs": [
+    18.1,
+    19,
+    22.8
+   ],
+   "median": 19,
+   "summary": 19,
+   "ok": true
+  },
+  "procsAdded": {
+   "runs": [
+    0,
+    0,
+    0
+   ],
+   "median": 0,
+   "summary": 0,
+   "ok": true
+  }
+ },
+ "helperCount": {
+  "r2Idle": [
+   {
+    "procs": 5,
+    "helpers": 0,
+    "names": [
+     "AgentCodeGUI3.exe",
+     "msedgewebview2.exe",
+     "msedgewebview2.exe",
+     "msedgewebview2.exe",
+     "msedgewebview2.exe"
+    ]
+   },
+   {
+    "procs": 5,
+    "helpers": 0,
+    "names": [
+     "AgentCodeGUI3.exe",
+     "msedgewebview2.exe",
+     "msedgewebview2.exe",
+     "msedgewebview2.exe",
+     "msedgewebview2.exe"
+    ]
+   },
+   {
+    "procs": 5,
+    "helpers": 0,
+    "names": [
+     "AgentCodeGUI3.exe",
+     "msedgewebview2.exe",
+     "msedgewebview2.exe",
+     "msedgewebview2.exe",
+     "msedgewebview2.exe"
+    ]
+   }
+  ],
+  "note": "R2 유휴 표본에 node/conhost가 한 톨도 없으면 「처음부터 헬퍼 0」(온디맨드)이 관측된 것이다"
+ },
+ "gateCells": [
+  {
+   "id": "G1 유휴 WS",
+   "num": 460.4,
+   "den": 721.2,
+   "ratio": 0.638,
+   "gate": 0.7,
+   "pass": true,
+   "headroomPct": 8.803,
+   "alt": {
+    "den": 712.8,
+    "ratio": 0.646,
+    "pass": true,
+    "headroomPct": 7.728
+   }
+  },
+  {
+   "id": "G3 유휴 Priv",
+   "num": 255.6,
+   "den": 507.4,
+   "ratio": 0.504,
+   "gate": 0.6,
+   "pass": true,
+   "headroomPct": 16.043,
+   "alt": {
+    "den": 505.3,
+    "ratio": 0.506,
+    "pass": true,
+    "headroomPct": 15.694
+   }
+  },
+  {
+   "id": "G4 +창2 WS",
+   "num": 501.2,
+   "den": 940.3,
+   "ratio": 0.533,
+   "gate": 0.6,
+   "pass": true,
+   "headroomPct": 11.163,
+   "alt": {
+    "den": 934.1,
+    "ratio": 0.537,
+    "pass": true,
+    "headroomPct": 10.573
+   }
+  },
+  {
+   "id": "G5 창당 WS",
+   "num": 19,
+   "den": 109.5,
+   "ratio": 0.174,
+   "gate": 0.25,
+   "pass": true,
+   "headroomPct": 30.594,
+   "alt": {
+    "den": 110.7,
+    "ratio": 0.172,
+    "pass": true,
+    "headroomPct": 31.346
+   }
+  },
+  {
+   "id": "G1b 유휴 프로세스",
+   "num": 5,
+   "den": 7,
+   "ratio": 0.714,
+   "gate": 1,
+   "pass": true,
+   "headroomPct": 28.571,
+   "alt": {
+    "den": 7,
+    "ratio": 0.714,
+    "pass": true,
+    "headroomPct": 28.571
+   }
+  },
+  {
+   "id": "G7 콜드 rootMs",
+   "num": 331,
+   "den": 422,
+   "ratio": 0.784,
+   "gate": 0.85,
+   "pass": true,
+   "headroomPct": 7.722
+  },
+  {
+   "id": "G9 설치 폴더",
+   "num": 131311969,
+   "den": 664461448,
+   "ratio": 0.198,
+   "gate": 0.25,
+   "pass": true,
+   "headroomPct": 20.951
+  }
+ ],
+ "g6": {
+  "tauriProcsAdded": 0,
+  "electronProcsAdded": 2,
+  "pass": true
+ },
+ "g10": {
+  "droppedPct": 0,
+  "p95Ms": 16.8,
+  "fpsErrorRuns": 0,
+  "pass": true
+ },
+ "vsBuilder": [
+  {
+   "metric": "★★[GATES R2] 유휴 WS(있는 그대로 · 배포 경로)",
+   "builderRatio": 0.638,
+   "builderHeadroom": 8.803,
+   "builderTauri": 460.4,
+   "builderElectron": 721.2
+  },
+  {
+   "metric": "★★[GATES R2] 유휴 Private(있는 그대로)",
+   "builderRatio": 0.504,
+   "builderHeadroom": 16.043,
+   "builderTauri": 255.6,
+   "builderElectron": 507.4
+  },
+  {
+   "metric": "★★[GATES R2] +창2 WS(있는 그대로)",
+   "builderRatio": 0.533,
+   "builderHeadroom": 11.163,
+   "builderTauri": 501.2,
+   "builderElectron": 940.3
+  },
+  {
+   "metric": "★★[GATES R2] 창 1개 추가 비용(WS)",
+   "builderRatio": 0.174,
+   "builderHeadroom": 30.594,
+   "builderTauri": 19,
+   "builderElectron": 109.5
+  },
+  {
+   "metric": "★★[GATES R2] 유휴 프로세스 수",
+   "builderRatio": 0.714,
+   "builderHeadroom": 28.571,
+   "builderTauri": 5,
+   "builderElectron": 7
+  },
+  {
+   "metric": "★★[GATES R2] 창 1개 추가 프로세스(절대 0)",
+   "builderRatio": 0,
+   "builderHeadroom": null,
+   "builderTauri": 0,
+   "builderElectron": 1
+  },
+  {
+   "metric": "★★[GATES R2] 콜드 UI 사용 가능 rootMs",
+   "builderRatio": 0.784,
+   "builderHeadroom": 7.722,
+   "builderTauri": 331,
+   "builderElectron": 422
+  },
+  {
+   "metric": "콜드 UI 사용 가능 rootMs(교대)",
+   "builderRatio": 0.786,
+   "builderHeadroom": 7.582,
+   "builderTauri": 348,
+   "builderElectron": 443
+  },
+  {
+   "metric": "★★[GATES R2] 설치 폴더(논리 · 배포 모사)",
+   "builderRatio": 0.198,
+   "builderHeadroom": 20.951,
+   "builderTauri": 131311969,
+   "builderElectron": 664461448
+  },
+  {
+   "metric": "★ 콜드 앱 몫(rootMs − 런타임 기동)",
+   "builderRatio": 0.611,
+   "builderHeadroom": 12.763,
+   "builderTauri": 149,
+   "builderElectron": 244
+  }
+ ],
+ "attributionGrid": {
+  "idleWs": {
+   "label": "유휴 WS",
+   "gate": 0.7,
+   "R1측정 × LSP제외": {
+    "v": 0.886,
+    "pass": false
+   },
+   "R1측정 × 있는그대로": {
+    "v": 0.79,
+    "pass": false,
+    "note": "★보고서·산출물에 없는 칸"
+   },
+   "R2측정 × LSP제외": {
+    "v": 0.898,
+    "pass": false
+   },
+   "R2측정 × 있는그대로": {
+    "v": 0.638,
+    "pass": true
+   }
+  },
+  "idlePriv": {
+   "label": "유휴 Private",
+   "gate": 0.6,
+   "R1측정 × LSP제외": {
+    "v": 0.63,
+    "pass": false
+   },
+   "R1측정 × 있는그대로": {
+    "v": 0.692,
+    "pass": false,
+    "note": "★보고서·산출물에 없는 칸"
+   },
+   "R2측정 × LSP제외": {
+    "v": 0.645,
+    "pass": false
+   },
+   "R2측정 × 있는그대로": {
+    "v": 0.504,
+    "pass": true
+   }
+  },
+  "note": "한 칸만 바꿔서 초록이 되는지 보라. 넷 중 초록이 하나뿐이면 두 변화가 **둘 다 필요조건**이고, 어느 하나에 「초록을 만들었다」를 귀속할 수 없다."
+ },
+ "ceilingCompare": [
+  {
+   "id": "G1 유휴 WS",
+   "unit": "MB",
+   "R1": {
+    "gate": 0.7,
+    "den": 512.9,
+    "ceiling": 359
+   },
+   "R2": {
+    "gate": 0.7,
+    "den": 721.2,
+    "ceiling": 504.8
+   },
+   "deltaCeiling": 145.8,
+   "deltaPct": 40.612,
+   "verdict": "★천장이 올라갔다(실질 완화)"
+  },
+  {
+   "id": "G3 유휴 Priv",
+   "unit": "MB",
+   "R1": {
+    "gate": 0.6,
+    "den": 396.1,
+    "ceiling": 237.7
+   },
+   "R2": {
+    "gate": 0.6,
+    "den": 507.4,
+    "ceiling": 304.4
+   },
+   "deltaCeiling": 66.8,
+   "deltaPct": 28.099,
+   "verdict": "★천장이 올라갔다(실질 완화)"
+  },
+  {
+   "id": "G4 +창2 WS",
+   "unit": "MB",
+   "R1": {
+    "gate": 0.7,
+    "den": 737.8,
+    "ceiling": 516.5
+   },
+   "R2": {
+    "gate": 0.6,
+    "den": 940.3,
+    "ceiling": 564.2
+   },
+   "deltaCeiling": 47.7,
+   "deltaPct": 9.24,
+   "verdict": "★천장이 올라갔다(실질 완화)"
+  },
+  {
+   "id": "G5 창당 WS",
+   "unit": "MB",
+   "R1": {
+    "gate": 0.3,
+    "den": 109.5,
+    "ceiling": 32.9
+   },
+   "R2": {
+    "gate": 0.25,
+    "den": 109.5,
+    "ceiling": 27.4
+   },
+   "deltaCeiling": -5.5,
+   "deltaPct": -16.667,
+   "verdict": "천장이 내려갔다(실질 조임)"
+  },
+  {
+   "id": "G7 콜드 rootMs",
+   "unit": "ms",
+   "R1": {
+    "gate": 0.85,
+    "den": 422,
+    "ceiling": 358.7
+   },
+   "R2": {
+    "gate": 0.85,
+    "den": 422,
+    "ceiling": 358.7
+   },
+   "deltaCeiling": 0,
+   "deltaPct": 0,
+   "verdict": "동일"
+  },
+  {
+   "id": "G9 설치 폴더",
+   "unit": "bytes",
+   "R1": {
+    "gate": 0.25,
+    "den": 664461448,
+    "ceiling": 166115362
+   },
+   "R2": {
+    "gate": 0.25,
+    "den": 664461448,
+    "ceiling": 166115362
+   },
+   "deltaCeiling": 0,
+   "deltaPct": 0,
+   "verdict": "동일"
+  },
+  {
+   "id": "G12 앱 몫 콜드",
+   "unit": "ms",
+   "R1": {
+    "gate": 0.7,
+    "den": 244,
+    "ceiling": 170.8
+   },
+   "R2": {
+    "gate": 0.7,
+    "den": 244,
+    "ceiling": 170.8
+   },
+   "deltaCeiling": 0,
+   "deltaPct": 0,
+   "verdict": "동일"
+  }
+ ],
+ "ceilingNote": "「느슨해진 칸은 하나도 없다」는 **비율 숫자**에 대해서는 참이다. 위 표는 **천장(MB)**으로 같은 질문을 다시 한 것이다.",
+ "g1Slack": {
+  "ceilingSameSession": 504.8,
+  "ceilingFrozen": 499,
+  "today": 460.4,
+  "worstRun": 466.1,
+  "slackMBSameSession": 44.4,
+  "slackMBFrozen": 38.6,
+  "reportClaim": "유휴 WS를 20MB 넘게 얹는 기능이 착지하면 이 칸이 먼저 붉어진다"
+ }
+}
