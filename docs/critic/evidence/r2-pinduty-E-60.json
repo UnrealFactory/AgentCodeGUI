@@ -1,0 +1,104 @@
+{
+  "what": "공개 커밋 박자(사람이 보는 갱신) + 바닥 고정 증인",
+  "bin": {
+    "exe": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-fps144\\deployE\\AgentCodeGUI3.exe",
+    "exeMtime": "2026-08-31T12:03:52.331Z",
+    "exeSize": 7083008,
+    "exeSha256": "04ac976e2de87537",
+    "gitHead": "44e1ba4",
+    "gitDirty": true
+  },
+  "env": {
+    "ramGB": 63.8,
+    "cpu": "13th Gen Intel(R) Core(TM) i7-13700KF",
+    "os": "Microsoft Windows 11 Home 26200"
+  },
+  "row": {
+    "tag": "E",
+    "novsync": false,
+    "exe": "C:\\Users\\User\\AppData\\Local\\Temp\\ccg-critic-fps144\\deployE\\AgentCodeGUI3.exe",
+    "at": "2026-08-31T12:20:22.926Z",
+    "refreshRateHz": 59,
+    "inject": {
+      "wrapped": true,
+      "panels": 6
+    },
+    "gridPanels": 4,
+    "cadenceOn": {
+      "ok": true,
+      "tag": "ma-p-thread scroll",
+      "sampleMs": 5
+    },
+    "streamInfo": {
+      "panels": 4,
+      "chars": 9730,
+      "ms": 8120
+    },
+    "frame": {
+      "frames": 483,
+      "workP50": 2.5,
+      "workP75": 3.3,
+      "workP95": 8.8,
+      "workP99": 16.3,
+      "workMax": 17.8,
+      "workMean": 2.88,
+      "over69Pct": 5.4,
+      "over166Pct": 0.6,
+      "over33Pct": 0,
+      "rafP50": 16.7,
+      "rafP95": 16.8,
+      "rafMax": 16.8,
+      "avgFps": 60,
+      "droppedPct": 0,
+      "droppedFrames": 0,
+      "longTaskMs": 0,
+      "loaf": null,
+      "worstFramesMs": [
+        17.8,
+        17.5,
+        17.4,
+        16.5,
+        16.3,
+        16.3,
+        16.2,
+        15.7
+      ],
+      "sysCpuPct": 9.1
+    },
+    "cadence": {
+      "commits": 271,
+      "spanMs": 8104,
+      "commitsPerSec": 33.44,
+      "gapP50": 32.5,
+      "gapP95": 37.3,
+      "gapP99": 47.5,
+      "gapMax": 99.1,
+      "gapOver33": 103,
+      "gapOver50": 1,
+      "growP50": 32,
+      "growP95": 39,
+      "growMax": 69,
+      "finalLen": 14024,
+      "pinSamples": 1294,
+      "pinOffP50": 1,
+      "pinOffP95": 65,
+      "pinOffMax": 161,
+      "pinSampleMs": 5,
+      "pinDuty": [
+        {
+          "th": 8,
+          "pct": 28.1
+        },
+        {
+          "th": 20,
+          "pct": 27.4
+        },
+        {
+          "th": 40,
+          "pct": 9
+        }
+      ],
+      "pinMaxRunMs": 30
+    }
+  }
+}

@@ -1,0 +1,226 @@
+{
+  "what": "쌍봉 가르기 + 144Hz rAF 대리자 — 무대 증인 포함",
+  "bin": {
+    "exe": "C:/Users/User/AppData/Local/Temp/ccg-critic-fps144/deployA/AgentCodeGUI3.exe",
+    "exeMtime": "2026-08-31T10:18:34.259Z",
+    "exeSize": 7080960,
+    "exeSha256": "f195e768ab268d68",
+    "gitHead": "44e1ba4",
+    "gitDirty": true
+  },
+  "env": {
+    "ramGB": 63.8,
+    "cpu": "13th Gen Intel(R) Core(TM) i7-13700KF",
+    "os": "Microsoft Windows 11 Home 26200"
+  },
+  "row": {
+    "tag": "A",
+    "novsync": true,
+    "wheel": true,
+    "rafGate": null,
+    "exe": "C:/Users/User/AppData/Local/Temp/ccg-critic-fps144/deployA/AgentCodeGUI3.exe",
+    "at": "2026-09-01T00:14:10.894Z",
+    "refreshRateHz": 56.3,
+    "inject": {
+      "wrapped": true,
+      "panels": 6
+    },
+    "gridPanels": 4,
+    "sceneBoot": {
+      "panels": [
+        {
+          "off": 1,
+          "sh": 9973,
+          "ch": 347,
+          "len": 5622,
+          "hljs": 260,
+          "pre": 20
+        },
+        {
+          "off": 1,
+          "sh": 9973,
+          "ch": 347,
+          "len": 5622,
+          "hljs": 260,
+          "pre": 20
+        },
+        {
+          "off": 1,
+          "sh": 9973,
+          "ch": 347,
+          "len": 5622,
+          "hljs": 260,
+          "pre": 20
+        },
+        {
+          "off": 1,
+          "sh": 9973,
+          "ch": 347,
+          "len": 5622,
+          "hljs": 260,
+          "pre": 20
+        }
+      ],
+      "atBottom": 4,
+      "rafGate": null
+    },
+    "sceneBeforeStream": {
+      "panels": [
+        {
+          "off": 1238,
+          "sh": 11469,
+          "ch": 347,
+          "len": 5622,
+          "hljs": 260,
+          "pre": 20
+        },
+        {
+          "off": 1238,
+          "sh": 11469,
+          "ch": 347,
+          "len": 5622,
+          "hljs": 260,
+          "pre": 20
+        },
+        {
+          "off": 1238,
+          "sh": 11469,
+          "ch": 347,
+          "len": 5622,
+          "hljs": 260,
+          "pre": 20
+        },
+        {
+          "off": 1238,
+          "sh": 11469,
+          "ch": 347,
+          "len": 5622,
+          "hljs": 260,
+          "pre": 20
+        }
+      ],
+      "atBottom": 0,
+      "rafGate": null
+    },
+    "cadenceOn": {
+      "ok": true,
+      "tag": "ma-p-thread scroll",
+      "sampleMs": 5
+    },
+    "streamInfo": {
+      "panels": 4,
+      "chars": 9730,
+      "ms": 8134
+    },
+    "frame": {
+      "frames": 1640,
+      "workP50": 1.5,
+      "workP75": 3.8,
+      "workP95": 9.8,
+      "workP99": 29.7,
+      "workMax": 35.6,
+      "workMean": 2.86,
+      "over69Pct": 7.6,
+      "over166Pct": 1.3,
+      "over33Pct": 0.2,
+      "rafP50": 2.5,
+      "rafP95": 16.2,
+      "rafMax": 37,
+      "avgFps": 202.5,
+      "droppedPct": 0.4,
+      "droppedFrames": 6,
+      "longTaskMs": 0,
+      "loaf": null,
+      "worstFramesMs": [
+        35.6,
+        33.8,
+        33.5,
+        33.3,
+        33,
+        32.2,
+        31.9,
+        31.8
+      ],
+      "sysCpuPct": 10.6
+    },
+    "cadence": {
+      "commits": 728,
+      "spanMs": 8233,
+      "commitsPerSec": 88.42,
+      "gapP50": 9.4,
+      "gapP95": 22.8,
+      "gapP99": 42.4,
+      "gapMax": 68.2,
+      "gapOver33": 23,
+      "growP50": null,
+      "growP95": null,
+      "finalLen": 0,
+      "pinSamples": 836,
+      "pinOffP50": 4779,
+      "pinOffP90": 10540,
+      "pinOffP95": 11461,
+      "pinOffP99": 12195,
+      "pinOffMax": 12343,
+      "pinSampleMs": 5,
+      "pinEffMs": 9.85,
+      "pinDuty": [
+        {
+          "th": 8,
+          "pct": 100
+        },
+        {
+          "th": 20,
+          "pct": 100
+        },
+        {
+          "th": 40,
+          "pct": 100
+        },
+        {
+          "th": 80,
+          "pct": 100
+        }
+      ],
+      "pinMaxRunMs": 4180
+    },
+    "sceneAfterStream": {
+      "panels": [
+        {
+          "off": 12343,
+          "sh": 22574,
+          "ch": 347,
+          "len": 13652,
+          "hljs": 283,
+          "pre": 43
+        },
+        {
+          "off": 12343,
+          "sh": 22574,
+          "ch": 347,
+          "len": 13652,
+          "hljs": 283,
+          "pre": 43
+        },
+        {
+          "off": 12343,
+          "sh": 22574,
+          "ch": 347,
+          "len": 13652,
+          "hljs": 283,
+          "pre": 43
+        },
+        {
+          "off": 12343,
+          "sh": 22574,
+          "ch": 347,
+          "len": 13652,
+          "hljs": 283,
+          "pre": 43
+        }
+      ],
+      "atBottom": 0,
+      "rafGate": null
+    },
+    "gateFired": null
+  }
+}

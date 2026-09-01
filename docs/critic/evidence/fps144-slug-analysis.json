@@ -1,0 +1,123 @@
+{
+  "what": "슬러그 불일치 검증 — ccg-auth::account_slug vs ccg-engine::Runtime::account_dir (읽기 전용·실홈 무접촉)",
+  "vectorsChecked": 8,
+  "vectorsOk": 8,
+  "worlds": [
+    {
+      "email": "lmg56632@gmail.com",
+      "note": "평범한 소문자 (이 기계의 실계정 모양)",
+      "real": "lmg56632_gmail.com-1to4267",
+      "eslug": "lmg56632_gmail.com",
+      "W1": false,
+      "W1via": "fallback(없는 경로)",
+      "W2": true,
+      "W2via": "prefix"
+    },
+    {
+      "email": "junelius@naver.com",
+      "note": "평범한 소문자",
+      "real": "junelius_naver.com-qha69s",
+      "eslug": "junelius_naver.com",
+      "W1": false,
+      "W1via": "fallback(없는 경로)",
+      "W2": true,
+      "W2via": "prefix"
+    },
+    {
+      "email": "Bob@Example.com",
+      "note": "대문자 포함",
+      "real": "bob_example.com-ito88i",
+      "eslug": "Bob_Example.com",
+      "W1": false,
+      "W1via": "fallback(없는 경로)",
+      "W2": false,
+      "W2via": "fallback(없는 경로)"
+    },
+    {
+      "email": "a.b+tag@example.com",
+      "note": "플러스 주소",
+      "real": "a.b_tag_example.com-1h9zuu9",
+      "eslug": "a.b-tag_example.com",
+      "W1": false,
+      "W1via": "fallback(없는 경로)",
+      "W2": false,
+      "W2via": "fallback(없는 경로)"
+    },
+    {
+      "email": "A.B+tag@Example.COM",
+      "note": "대문자 + 플러스 (레포 벡터)",
+      "real": "a.b_tag_example.com-onyezl",
+      "eslug": "A.B-tag_Example.COM",
+      "W1": false,
+      "W1via": "fallback(없는 경로)",
+      "W2": false,
+      "W2via": "fallback(없는 경로)"
+    },
+    {
+      "email": "o'brien@x.com",
+      "note": "아포스트로피 (허용 밖 문자)",
+      "real": "o_brien_x.com-oxnu45",
+      "eslug": "o'brien_x.com",
+      "W1": false,
+      "W1via": "fallback(없는 경로)",
+      "W2": false,
+      "W2via": "fallback(없는 경로)"
+    },
+    {
+      "email": "한글@x.com",
+      "note": "비 ASCII (레포 벡터)",
+      "real": "_x.com-188jyzz",
+      "eslug": "한글_x.com",
+      "W1": false,
+      "W1via": "fallback(없는 경로)",
+      "W2": false,
+      "W2via": "fallback(없는 경로)"
+    },
+    {
+      "email": "user_name@sub.domain.co.kr",
+      "note": "밑줄 + 다단 도메인",
+      "real": "user_name_sub.domain.co.kr-fnd79q",
+      "eslug": "user_name_sub.domain.co.kr",
+      "W1": false,
+      "W1via": "fallback(없는 경로)",
+      "W2": true,
+      "W2via": "prefix"
+    }
+  ],
+  "scenarios": [
+    {
+      "name": "(a) 자기오염(sticky)",
+      "detail": "실패 주행이 accounts/lmg56632_gmail.com 를 만든 뒤에는 훑기가 그 빈 폴더를 exact로 먼저 집는다",
+      "entries": [
+        "lmg56632_gmail.com",
+        "lmg56632_gmail.com-1to4267"
+      ],
+      "picked": "lmg56632_gmail.com",
+      "via": "exact",
+      "ok": false
+    },
+    {
+      "name": "(b) safe 충돌",
+      "detail": "서로 다른 이메일 a!b@x.com · a#b@x.com 가 같은 safe(a_b_x.com)를 갖는다 — 구분은 해시뿐인데 엔진은 해시를 안 쓴다",
+      "entries": [
+        "a_b_x.com-61b897",
+        "a_b_x.com-jf6c3x"
+      ],
+      "picked": "a!b_x.com",
+      "via": "fallback(없는 경로)",
+      "ok": false
+    },
+    {
+      "name": "(c) 접두 그림자",
+      "detail": "bob@x.com 를 찾는데 bob@x.com-corp.net 의 폴더(bob_x.com-corp.net-jkqc3q)가 'bob_x.com-' 접두에 걸린다 — read_dir 순서가 정하는 우연",
+      "entries": [
+        "bob_x.com-corp.net-jkqc3q",
+        "bob_x.com-zr9ku8"
+      ],
+      "picked": "bob_x.com-corp.net-jkqc3q",
+      "via": "prefix",
+      "ok": false
+    }
+  ],
+  "at": "2026-08-31T12:10:39.429Z"
+}
