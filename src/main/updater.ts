@@ -28,6 +28,13 @@ let recheckTimer: ReturnType<typeof setInterval> | null = null
 // v2.3.1을 받아둔 채 v2.3.2가 올라와도 업데이트 버튼은 항상 가장 마지막 패치본을 설치.
 let probing = false
 
+// ★ 2.6.3 = 2.x의 마지막 릴리즈(브리지, 2026-09-02 결정). 3.0은 Tauri + Rust로 업데이트 포맷이
+// 달라(latest.json + minisign) electron-updater가 읽는 latest.yml이 더는 올라오지 않는다 —
+// 확인을 계속 돌리면 조용한 에러만 반복하고, 억지로 latest.yml을 주면 3.0 설치기를 /S로
+// 돌려 앱이 되돌아오지 않는다. 그래서 확인·다운로드·설치를 통째로 끈다. 3.0 안내는
+// PatchNotes 「개발자의 메시지」 카드(내려받기 버튼)가 맡는다.
+const UPDATES_DISABLED = true
+
 function emit(): void {
   sender?.(state)
 }
@@ -54,6 +61,7 @@ export function getUpdateStatus(): UpdateStatus {
  */
 export function initAutoUpdater(send: (s: UpdateStatus) => void): void {
   sender = send
+  if (UPDATES_DISABLED) return // 상태는 idle 그대로 → AppUpdateGate는 뜨지 않는다
   if (!app.isPackaged) return
   autoUpdater.autoDownload = true // download in the background as soon as one is found
   // 종료 시 자동 설치는 쓰지 않는다: 그 경로는 아무 화면 없이 NSIS 설치기가 "이전 버전
@@ -143,6 +151,7 @@ export function initAutoUpdater(send: (s: UpdateStatus) => void): void {
 
 /** Trigger an update check. Safe to call repeatedly; ignored outside a packaged build. */
 export function checkForUpdates(): void {
+  if (UPDATES_DISABLED) return
   if (!app.isPackaged) return
   // offline, or no release published yet → the 'error' event already surfaces anything
   // worth showing, so just swallow the rejection here.
@@ -227,6 +236,7 @@ $null = $script:w.ShowDialog()
 
 /** Quit and install an already-downloaded update, then relaunch the app. */
 export function quitAndInstall(): void {
+  if (UPDATES_DISABLED) return
   if (!app.isPackaged) return
   // isSilent=true: NSIS를 /S로 돌려 설치 마법사 없이 이전 위치에 그대로 덮어쓴다
   // (사용자별 설치라 UAC도 없음) — 앱이 꺼졌다가 새 버전으로 바로 돌아오는 경험.
