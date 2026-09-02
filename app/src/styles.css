@@ -4266,13 +4266,13 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
 .pn-overlay{
   position:fixed; inset:0; z-index:80;
   background:oklch(0.1 0.004 60 / 0.6);
-  display:flex; align-items:center; justify-content:center; padding:44px;
+  display:flex; align-items:center; justify-content:center; padding:32px;
   animation:fade .18s ease both;
 }
 .pncard{
-  width:min(620px,100%); max-height:min(720px, calc(100vh - 96px));
+  width:min(860px,100%); max-height:min(940px, calc(100vh - 64px));
   display:flex; flex-direction:column;
-  padding:18px 26px 18px; border-radius:18px;
+  padding:20px 32px 20px; border-radius:20px;
   background:var(--bg); border:1px solid var(--line-2);
   box-shadow:0 26px 70px -16px rgba(0,0,0,.8), inset 0 1px 0 rgba(255,255,255,.05);
   animation:pncard .3s cubic-bezier(.2,.8,.2,1) both;
@@ -4306,7 +4306,7 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
   animation:pnsheen 1.5s ease .5s both;
 }
 @keyframes pnsheen{ from{ background-position:150% 0; } to{ background-position:-80% 0; } }
-.pn-lead{ margin-top:12px; font-size:14.5px; line-height:1.55; color:var(--text-2); word-break:keep-all; }
+.pn-lead{ margin-top:12px; font-size:15.5px; line-height:1.55; color:var(--text-2); word-break:keep-all; }
 
 /* 릴리즈 선택 필 — 시리즈 안의 버전(최신 5개)을 페이지처럼 오간다 */
 .pn-vers{ display:flex; gap:6px; flex-wrap:wrap; flex:0 0 auto; padding:0 2px 13px; }
@@ -4339,8 +4339,8 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
 @keyframes pnrise{ from{ opacity:0; transform:translateY(10px); } }
 .pn-num{ font-family:var(--font-mono); font-size:11px; font-weight:600; color:var(--text-4); padding-top:4px; }
 .pn-tag{ display:inline-block; font-family:var(--font-mono); font-size:10px; font-weight:600; letter-spacing:.02em; color:var(--text-3); background:var(--surface-2); padding:2.5px 9px; border-radius:99px; margin-bottom:8px; }
-.pn-name{ font-size:15px; font-weight:650; letter-spacing:-.01em; color:var(--text); line-height:1.4; word-break:keep-all; }
-.pn-desc{ margin-top:5px; font-size:12.5px; line-height:1.65; color:var(--text-3); word-break:keep-all; }
+.pn-name{ font-size:16px; font-weight:650; letter-spacing:-.01em; color:var(--text); line-height:1.4; word-break:keep-all; }
+.pn-desc{ margin-top:6px; font-size:13.5px; line-height:1.7; color:var(--text-3); word-break:keep-all; }
 .pn-desc b{ font-weight:600; color:var(--text-2); }
 
 .pn-foot{ display:flex; align-items:center; gap:10px; flex:0 0 auto; padding-top:14px; }
@@ -4617,3 +4617,21 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
   background:var(--surface); border:1px solid var(--line); font-size:10.5px; color:var(--text-3);
 }
 .sb-foldhint .sp{ flex:1; }
+
+/* 패치노트 전/후 비교 막대(PatchNotes Cmp) — 2.6.2 = 물러난 회색, 3.0 = --blue.
+   막대 9px·데이터 끝만 4px 라운드·기준선 쪽은 각·둘 사이 3px 표면 간격. 값·라벨·범례 글자는
+   텍스트 토큰(막대 색을 글자에 입히지 않는다) — 정체성은 범례+끝 라벨이 같이 든다. */
+.pn-cmp{ margin-top:12px; padding:11px 14px 8px; border:1px solid var(--line); border-radius:10px; background:rgba(255,255,255,.02); }
+.pn-cmp-legend{ display:flex; gap:14px; font-family:var(--font-mono); font-size:10.5px; font-weight:600; color:var(--text-3); margin-bottom:6px; }
+.pn-cmp-legend span{ display:inline-flex; align-items:center; gap:6px; }
+.pn-sw{ display:inline-block; width:10px; height:10px; border-radius:3px; }
+.pn-sw.old, .pn-cmp-bar i.old{ background:rgba(255,255,255,.18); }
+.pn-sw.new, .pn-cmp-bar i.new{ background:var(--blue); }
+.pn-cmp-row{ display:grid; grid-template-columns:118px 1fr 44px; gap:0 12px; align-items:center; padding:7px 0; }
+.pn-cmp-row + .pn-cmp-row{ border-top:1px solid var(--line); }
+.pn-cmp-label{ font-size:12px; color:var(--text-2); word-break:keep-all; line-height:1.35; }
+.pn-cmp-bars{ display:flex; flex-direction:column; gap:3px; }
+.pn-cmp-bar{ display:grid; grid-template-columns:1fr 60px; gap:8px; align-items:center; }
+.pn-cmp-bar i{ display:block; height:9px; min-width:2px; border-radius:0 4px 4px 0; }
+.pn-cmp-bar span{ font-family:var(--font-mono); font-size:11px; color:var(--text-2); font-variant-numeric:tabular-nums; white-space:nowrap; }
+.pn-cmp-delta{ font-family:var(--font-mono); font-size:11px; color:var(--text-3); text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
