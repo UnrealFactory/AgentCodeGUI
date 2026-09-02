@@ -20,14 +20,87 @@ export function seriesOf(v: string): string {
 }
 
 type Note = { tag: string; name: ReactNode; desc: ReactNode }
-type Release = { eyebrow: string; lead: ReactNode; notes: Note[] }
+// headline·hero·cta·hint는 2.6.3 「개발자의 메시지」용 선택 필드 — 없으면 기존 패치노트 모양 그대로.
+//   headline: 헤더 라벨(기본 「업데이트 소식」) · hero: 큰 숫자(기본 시리즈 「2.6」) ·
+//   cta: 푸터의 주 버튼(외부 URL — window.open → 메인의 setWindowOpenHandler가 OS 브라우저로) ·
+//   hint: 푸터 안내(기본 「닫으면 다시 뜨지 않아요」).
+type Release = {
+  eyebrow: string
+  lead: ReactNode
+  notes: Note[]
+  headline?: string
+  hero?: string
+  cta?: { label: string; url: string }
+  hint?: string
+  // 편지 모드 — 있으면 notes 목록과 버전 알약 줄을 그리지 않고 이 본문(문단들)만 보인다.
+  message?: ReactNode
+}
 type LocalizedRelease = { ko: Release; en: Release }
 
 // 버전별 패치노트 — 릴리즈마다 여기에 한 덩이씩(ko/en 두 벌) 얹는다. 카드의 버전
 // 버튼으로 오갈 수 있는 건 최신 MAX_VERSIONS개까지 — 그보다 오래된 덩이는 릴리즈 때 지운다.
 // 지난 1.x 노트들은 은퇴한 UpdateNotes와 함께 정리했다(이제 보여줄 경로가 없다).
+const RELEASE_URL = 'https://github.com/UnrealFactory/AgentCodeGUI/releases/latest'
 const MAX_VERSIONS = 5
 const RELEASES: Record<string, LocalizedRelease> = {
+  // ★ 2.6.3 = 2.x의 마지막 릴리즈(브리지). 3.0(Tauri + Rust)은 업데이트 포맷이 달라(latest.json)
+  //   electron-updater로는 못 넘어간다 — 그래서 이 카드가 「개발자의 메시지」로 3.0을 알리고
+  //   내려받기 버튼을 준다. 자동 업데이트 확인은 src/main/updater.ts에서 껐다(2026-09-02 결정).
+  //   RELEASE_URL은 /releases/latest — 3.0.0이 올라가면 그 페이지가 된다.
+  '2.6.3': {
+    ko: {
+      headline: '개발자의 메시지',
+      eyebrow: 'A NOTE FROM THE DEVELOPER',
+      hero: '3.0',
+      lead: '안녕하세요, 개발자 Liu입니다.',
+      notes: [],
+      message: (
+        <>
+          <p>
+            기능이 계속 늘어나면서 앱이 점점 무거워지는 게 느껴졌습니다. 그래서 2주 전부터 <b>모든 시스템을
+            바닥부터 다시 설계</b>했습니다. Electron을 <b>Tauri + Rust</b>로 완전히 갈아 끼웠고, 채팅 루프
+            아키텍처와 웹뷰 시스템 전체를 함께 다시 짰습니다. 그 결과 <b>체감 성능은 50% 이상</b> 좋아졌고,
+            기능도 <b>15가지 넘게</b> 새로 들어갔습니다. 자세한 내용은 3.0을 설치하면 첫 화면의 패치노트에서
+            보실 수 있어요.
+          </p>
+          <p>
+            다만 완전히 새로운 엔진이라 <b>자동 업데이트로는 넘어갈 수 없습니다</b>. 번거로우시겠지만{' '}
+            <b>AgentCodeGUI3를 새로 내려받아 설치</b>해 주세요. 기존 2.6.2는 지워지지 않고 그대로 남으며,
+            대화와 로그인은 3.0에서 새로 시작합니다.
+          </p>
+          <p>감사합니다.</p>
+        </>
+      ),
+      cta: { label: '3.0 내려받기', url: RELEASE_URL },
+      hint: '닫아도 github.com/UnrealFactory/AgentCodeGUI/releases 에서 언제든 받을 수 있어요'
+    },
+    en: {
+      headline: 'A note from the developer',
+      eyebrow: 'A NOTE FROM THE DEVELOPER',
+      hero: '3.0',
+      lead: 'Hello, this is Liu, the developer.',
+      notes: [],
+      message: (
+        <>
+          <p>
+            As features kept piling up, the app was getting heavier. So two weeks ago I started{' '}
+            <b>redesigning every system from the ground up</b>: Electron was replaced with{' '}
+            <b>Tauri + Rust</b>, and the chat loop architecture and the whole webview system were rebuilt
+            along with it. The result is <b>50%+ better perceived performance</b> and <b>more than 15 new
+            features</b> — the full list is in the patch notes you will see when you first open 3.0.
+          </p>
+          <p>
+            Because it is an entirely new engine, <b>auto-update cannot carry you over</b>. I am sorry for
+            the hassle, but please <b>download and install AgentCodeGUI3 fresh</b>. Your existing 2.6.2
+            stays installed and untouched; chats and logins start fresh in 3.0.
+          </p>
+          <p>Thank you.</p>
+        </>
+      ),
+      cta: { label: 'Download 3.0', url: RELEASE_URL },
+      hint: 'You can always get it later at github.com/UnrealFactory/AgentCodeGUI/releases'
+    }
+  },
   '2.6.2': {
     ko: {
       eyebrow: 'IMPROVED',
@@ -400,49 +473,6 @@ const RELEASES: Record<string, LocalizedRelease> = {
       ]
     }
   },
-  '2.5.1': {
-    ko: {
-      eyebrow: 'IMPROVED',
-      lead: '긴 대화에서 컨텍스트가 가득 차 자동으로 요약될 때, 이제 그 순간을 카드로 알려드립니다 — 게이지가 말없이 뚝 떨어지는 일이 없어요.',
-      notes: [
-        {
-          tag: '컨텍스트',
-          name: '자동 요약이 보이게 됐어요',
-          desc: (
-            <>
-              대화가 길어져 컨텍스트가 가득 차면 Claude가 <b>스스로 이전 대화를 요약</b>해
-              자리를 비우는데, 지금까지는 아무 표시 없이 게이지만 갑자기 떨어졌습니다. 이제
-              그 지점에 <b>/compact 계열 카드</b>가 떠서 자동 요약이 일어났음을 알려주고,{' '}
-              <b>컨텍스트 절약(전 → 후 %)과 회수한 토큰</b>도 실측으로 함께 보여줘요. 카드는
-              게이지가 떨어지는 바로 그 순간에 나타나 이유를 설명합니다 — 본채팅·멀티
-              패널·팝아웃·추가 채팅 어디서든요.
-            </>
-          )
-        }
-      ]
-    },
-    en: {
-      eyebrow: 'IMPROVED',
-      lead: 'When a long conversation fills the context and gets auto-summarized, a card now marks the moment — no more gauge silently plummeting.',
-      notes: [
-        {
-          tag: 'Context',
-          name: 'Auto-compaction is now visible',
-          desc: (
-            <>
-              When the context fills up, Claude <b>summarizes the earlier conversation on its
-              own</b> to make room — but until now the only sign was the gauge suddenly
-              dropping. A <b>/compact-style card</b> now appears right at that point, showing
-              that an auto-summary happened along with the <b>measured savings (before → after
-              %) and tokens reclaimed</b>. The card lands at the exact moment the gauge drops,
-              explaining it — in the main chat, multi panels, pop-outs, and extra chat windows
-              alike.
-            </>
-          )
-        }
-      ]
-    }
-  },
 }
 
 // 카드가 보여줄 버전 목록 — 최신부터, 최대 MAX_VERSIONS개 (가독성 캡)
@@ -497,13 +527,14 @@ export function PatchNotes(): ReactNode {
   const cur = sel && RELEASES[sel] ? sel : versions[0]
   const rel = RELEASES[cur][lang === 'en' ? 'en' : 'ko']
   const series = seriesOf(cur)
+  const hero = rel.hero ?? series // 2.6.3 브리지 카드는 「3.0」을 크게 띄운다
 
   return (
     <div className="pn-overlay" onMouseDown={(e) => e.target === e.currentTarget && close()}>
-      <div className="pncard" role="dialog" aria-label={t('업데이트 소식', "What's new")}>
+      <div className="pncard" role="dialog" aria-label={rel.headline ?? t('업데이트 소식', "What's new")}>
         <div className="pn-head">
           <IconMascot size={18} />
-          <span className="pn-hl">{t('업데이트 소식', "What's new")}</span>
+          <span className="pn-hl">{rel.headline ?? t('업데이트 소식', "What's new")}</span>
           <span className="pn-sp" />
           <span className="pn-verpill">v{version}</span>
           <button className="pn-x" onClick={close} aria-label={t('닫기', 'Close')}>
@@ -516,17 +547,17 @@ export function PatchNotes(): ReactNode {
           <IconMascot className="pn-wm" stroke={1.1} aria-hidden="true" />
           <div className="pn-eyebrow">{rel.eyebrow}</div>
           <div className="pn-ver">
-            {series}
+            {hero}
             {/* 등장 때 딱 한 번 스치는 시인 — 같은 숫자를 겹쳐 그라데이션만 흐른다 */}
             <span className="pn-sheen" aria-hidden="true">
-              {series}
+              {hero}
             </span>
           </div>
           <p className="pn-lead">{rel.lead}</p>
         </div>
 
         {/* 릴리즈 선택 — 시리즈 안의 버전들을 페이지처럼 오간다 (최신 5개까지) */}
-        {versions.length > 1 && (
+        {versions.length > 1 && !rel.message && (
           <div className="pn-vers">
             {versions.map((v) => (
               <button key={v} className={'pn-vbtn' + (v === cur ? ' on' : '')} onClick={() => setSel(v)}>
@@ -538,6 +569,7 @@ export function PatchNotes(): ReactNode {
 
         {/* key=버전 — 릴리즈를 바꾸면 스크롤이 맨 위에서 다시 시작한다 */}
         <div className="pn-scroll" key={cur}>
+          {rel.message && <div className="pn-letter">{rel.message}</div>}
           {rel.notes.map((n, i) => (
             <article key={i} className="pn-item">
               <div className="pn-num">{String(i + 1).padStart(2, '0')}</div>
@@ -552,11 +584,23 @@ export function PatchNotes(): ReactNode {
 
         <div className="pn-foot">
           <span className="pn-hint">
-            {t('닫으면 이 버전 소식은 다시 뜨지 않아요', "Once closed, this version's news won't show again")}
+            {rel.hint ?? t('닫으면 이 버전 소식은 다시 뜨지 않아요', "Once closed, this version's news won't show again")}
           </span>
-          <button className="pn-go" onClick={close} autoFocus>
-            {t('시작하기', 'Get started')}
-          </button>
+          {rel.cta ? (
+            <>
+              {/* 브리지 카드: 「나중에」는 닫기, 주 버튼은 외부 링크(카드는 열린 채 — 다시 읽을 수 있게) */}
+              <button className="pn-later" onClick={close}>
+                {t('나중에', 'Later')}
+              </button>
+              <button className="pn-go" onClick={() => window.open(rel.cta!.url, '_blank')} autoFocus>
+                {rel.cta.label}
+              </button>
+            </>
+          ) : (
+            <button className="pn-go" onClick={close} autoFocus>
+              {t('시작하기', 'Get started')}
+            </button>
+          )}
         </div>
       </div>
     </div>

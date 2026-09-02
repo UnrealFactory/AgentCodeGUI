@@ -4053,3 +4053,17 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
 /* 메인 앱의 .win 크롬을 안 쓰므로 뷰포트를 직접 채우고, 안은 .chat.chat--code 그대로다.
    타이틀바 역할은 ChatHeader(.chat-head)가 한다 — 이미 app-region:drag + 창 컨트롤 포함. */
 .sw{ position:fixed; inset:0; display:flex; flex-direction:column; background:var(--chat-bg); color:var(--text); }
+
+/* 2.6.3 브리지 카드 — 푸터의 보조 버튼(「나중에」=닫기). 주 버튼(.pn-go)은 3.0 내려받기 링크. */
+.pn-foot .pn-later{ font-size:12.5px; font-weight:600; color:var(--text-3); padding:8px 12px; border-radius:9px; margin-right:6px; white-space:nowrap; flex:0 0 auto; }
+/* 브리지 카드는 힌트가 길다 — 힌트가 줄고 버튼은 한 줄을 지킨다 */
+.pn-foot .pn-hint{ flex:1 1 auto; min-width:0; }
+.pn-foot .pn-go{ white-space:nowrap; flex:0 0 auto; }
+.pn-foot .pn-later:hover{ background:var(--hover); color:var(--text); }
+
+/* 편지 모드(PatchNotes message) — 노트 목록 대신 문단 몇 개. 본문은 text-2, 서명은 text-3. */
+.pn-letter{ padding:6px 6px 14px; font-size:13.5px; line-height:1.8; color:var(--text-2); word-break:keep-all; }
+.pn-letter p{ margin:0 0 14px; }
+.pn-letter p:last-child{ margin-bottom:0; }
+.pn-letter b{ font-weight:600; color:var(--text); }
+.pn-letter .pn-sig{ margin-top:18px; color:var(--text-3); font-weight:600; }
