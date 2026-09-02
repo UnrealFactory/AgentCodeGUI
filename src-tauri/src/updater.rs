@@ -47,11 +47,18 @@
 //!    (플러그인의 `verify_signature`는 비공개다 · 검증은 `download()` 안에서만 일어난다),
 //!    검증 없이 재사용하는 순간 「받아둔 파일을 바꿔치기하면 임의 코드가 설치된다」가 된다.
 //!    대가는 앱을 껐다 켜면 다시 받는 것뿐이다(설치본 한 장 · 수 MB).
-//! ② **설치 진행 화면이 NSIS 자신의 것**이다. 2.6.2는 `/S`(무음)로 돌리고 그 빈 화면을
-//!    PowerShell+WPF 스플래시로 메꿨다(`updater.ts:159-226` — detached 함정 · cmd 8191자
-//!    한계까지 안고 있는 자리다). 플러그인 기본은 `passive`(`/P /R`)라 **NSIS가 자기
-//!    진행 막대를 그리고 끝나면 앱을 다시 띄운다** — 화면이 비는 구간이 없으니 그 스플래시가
-//!    필요 없고, 그 두 함정도 통째로 사라진다. 설치기 헤더/사이드바 이미지는 우리 것이다.
+//! ② **설치 화면은 2.6.2와 같은 스플래시다** — 설치기는 `/S`(무음)로 돌리고
+//!    (`tauri.conf.json` `installMode: "quiet"` → 플러그인이 `/S /R /UPDATE`를 붙인다) 그
+//!    빈 화면을 PowerShell+WPF 스플래시로 메꾼다([`show_splash`] — `updater.ts:159-226`의
+//!    이식). 3.0.0~3.0.1은 플러그인 기본 `passive`(`/P /R`)로 **NSIS 자신의 진행 페이지**를
+//!    보였는데, 사용자에게 그것은 「뒤로/다음/취소」 단추와 `node_modules\typescript\lib\…`
+//!    추출 경로가 흐르는 윈도우 기본 설치 마법사였다(3.0.1 첫 주 보고 — 2.6.2의 스플래시가
+//!    제품의 얼굴이었다). 2.6.2가 안고 있던 두 함정은 여기 없다: Rust의 자식은 libuv 잡
+//!    오브젝트에 안 묶이므로 `cmd.exe` 한 다리 없이 `powershell.exe`를 바로 띄우고(8191자
+//!    한계도 같이 사라진다), 콘솔은 `CREATE_NO_WINDOW`로 숨긴다(`DETACHED_PROCESS`는
+//!    powershell의 기동 자체를 막는다 — `ccg-lsp/src/server.rs`의 같은 실측). 끝나면 NSIS가
+//!    `/R`로 앱을 다시 띄우고(템플릿 `.onInstSuccess` — 무음·수동 모드에서만 `/R`을 본다),
+//!    스플래시는 새 앱 프로세스(시작 시각 > 자기 시작)를 보면 스스로 닫힌다.
 
 use serde_json::{json, Value};
 use std::sync::Mutex;
@@ -288,30 +295,170 @@ pub fn install(app: &AppHandle) {
         return;
     };
     let a = app.clone();
-    // **메인 스레드에서** 설치한다. 두 가지 이유가 있다:
-    //  ① `TrayIcon::drop`의 `DestroyWindow`는 창을 만든 스레드에서만 성공한다
-    //     (`ipc/windows.rs:280`의 같은 실측) — 아래 `on_before_exit`가 그것을 놓는다.
-    //  ② 플러그인의 Windows 경로는 `ShellExecuteW` 직후 `std::process::exit(0)`이다.
-    //     tokio 워커에서 그걸 돌리면 그 순간 남의 IPC가 진행 중이든 말든 끝난다.
-    let _ = app.run_on_main_thread(move || match update.install(&bytes) {
-        // 여기 도달하지 않는다 — 성공 경로는 안에서 프로세스를 끝낸다.
-        Ok(()) => {}
-        // 추출(임시 파일 쓰기) 실패 등. **이 경우 `on_before_exit`는 아직 안 돌았다**
-        // (플러그인은 추출 성공 뒤에 부른다) — 앱은 멀쩡히 살아 있고, 화면에 사유를 말한다.
-        Err(e) => {
-            let msg = e.to_string();
-            // 받아둔 설치본은 그대로 유효하다 — 되돌려 놓아 다시 누를 수 있게.
-            {
-                let mut g = lock();
-                g.pending = Some((update, bytes));
+    // 스플래시 → 한 박자 → 설치. 한 박자는 워커에서 잔다(메인 스레드를 1.2초 잠그면 카드의
+    // 「적용하는 중…」이 굳는다). 스레드는 `spawn`이다 — `Builder`의 `Err`를 삼키면 이미
+    // 꺼낸 `pending`이 조용히 사라지는데, 그 실패는 OS가 스레드를 못 만드는 상황뿐이라
+    // 패닉이 맞다(조용한 소실보다 낫다).
+    std::thread::spawn(move || {
+        #[cfg(windows)]
+        show_splash(&update.version);
+        std::thread::sleep(SPLASH_LEAD);
+        let b = a.clone();
+        // **메인 스레드에서** 설치한다. 두 가지 이유가 있다:
+        //  ① `TrayIcon::drop`의 `DestroyWindow`는 창을 만든 스레드에서만 성공한다
+        //     (`ipc/windows.rs:280`의 같은 실측) — 아래 `on_before_exit`가 그것을 놓는다.
+        //  ② 플러그인의 Windows 경로는 `ShellExecuteW` 직후 `std::process::exit(0)`이다.
+        //     tokio 워커에서 그걸 돌리면 그 순간 남의 IPC가 진행 중이든 말든 끝난다.
+        let _ = a.run_on_main_thread(move || match update.install(&bytes) {
+            // 여기 도달하지 않는다 — 성공 경로는 안에서 프로세스를 끝낸다.
+            Ok(()) => {}
+            // 추출(임시 파일 쓰기) 실패 등. **이 경우 `on_before_exit`는 아직 안 돌았다**
+            // (플러그인은 추출 성공 뒤에 부른다) — 앱은 멀쩡히 살아 있고, 화면에 사유를 말한다.
+            // 스플래시는 새 앱 프로세스를 못 보니 [`SPLASH_GIVE_UP_SECS`] 뒤 스스로 닫힌다.
+            Err(e) => {
+                let msg = e.to_string();
+                // 받아둔 설치본은 그대로 유효하다 — 되돌려 놓아 다시 누를 수 있게.
+                {
+                    let mut g = lock();
+                    g.pending = Some((update, bytes));
+                }
+                set(&b, |s| {
+                    s.phase = phase::ERROR;
+                    s.error = Some(msg.clone());
+                    s.log.push(t("설치를 시작하지 못했어요", "Could not start the installer"));
+                });
             }
-            set(&a, |s| {
-                s.phase = phase::ERROR;
-                s.error = Some(msg.clone());
-                s.log.push(t("설치를 시작하지 못했어요", "Could not start the installer"));
-            });
-        }
+        });
     });
+}
+
+// ── 업데이트 스플래시(2.6.2 `updater.ts:159-226`의 이식) ────────────────────
+
+/// 스플래시가 그려질 때까지 설치기를 늦추는 한 박자 — 2.6.2 `quitAndInstall`의
+/// `setTimeout(…, 1200)`과 같은 값·같은 이유: PowerShell+WPF가 창을 올리는 데 1~2초가
+/// 걸리므로 앱이 사라지기 **전에** 겹쳐 나타나게 해 화면이 텅 비는 순간을 줄인다.
+const SPLASH_LEAD: Duration = Duration::from_millis(1200);
+
+/// 스플래시가 새 앱 프로세스를 못 봐도(설치 실패·취소) 이만큼 지나면 포기하고 닫힌다.
+/// 2.6.2는 90초였다 — 3.0 설치본은 LSP 런타임(node·typescript·pyright) 파일 수가 많아
+/// 느린 디스크에서 더 걸릴 수 있어 여유를 둔다. 상한이 남아 있는 이유는 하나다: 설치기가
+/// 죽어도 화면 한가운데 「업데이트하는 중」이 영원히 떠 있지 않게.
+const SPLASH_GIVE_UP_SECS: u32 = 150;
+
+/// 2.6.2 `showUpdateSplash`가 버전에 걸던 것과 같은 체 — `[^0-9A-Za-z.\-]`를 걷는다.
+/// 이 값은 XAML 속성 안에 **그대로** 박히므로 `"`·`<`·`&`가 섞이면 스플래시 자체가 안 뜬다
+/// (장식이라 설치는 그대로 가지만, 매니페스트의 문자열이 우리 화면을 깨는 길을 막는다).
+fn safe_version(v: &str) -> String {
+    v.chars().filter(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-')).collect()
+}
+
+/// 스플래시가 「새 앱이 떴다」를 판정할 프로세스 이름 — 우리 exe의 stem. NSIS는
+/// `$INSTDIR\${MAINBINARYNAME}.exe`를 다시 띄우므로 지금 도는 exe와 같은 이름이다.
+/// PowerShell 한 줄에 그대로 들어가므로 문자 집합을 좁히고, 못 읽으면 번들 이름으로.
+fn splash_process_name() -> String {
+    std::env::current_exe()
+        .ok()
+        .and_then(|p| p.file_stem().map(|s| s.to_string_lossy().into_owned()))
+        .filter(|s| !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.')))
+        .unwrap_or_else(|| "AgentCodeGUI3".to_string())
+}
+
+/// 스플래시 본문 — 2.6.2의 XAML(마스코트·제목·부제·무한 진행 막대)을 글자 그대로 옮기고
+/// 세 자리만 채운다. `format!`이 아니라 치환인 이유: PowerShell 블록의 `{}`를 전부
+/// 이스케이프하면 원본과 대조가 안 된다.
+fn splash_script(title: &str, sub: &str, process: &str) -> String {
+    SPLASH_PS
+        .replace("@@TITLE@@", title)
+        .replace("@@SUB@@", sub)
+        .replace("@@PROCESS@@", process)
+        .replace("@@GIVEUP@@", &SPLASH_GIVE_UP_SECS.to_string())
+}
+
+/// 2.6.2 `updater.ts:172-215`의 스크립트. 스플래시는 새로 뜬 앱 프로세스(StartTime >
+/// 스플래시 시작)를 감지하면 스스로 닫히고, 상한이 지나면 포기하고 닫힌다.
+const SPLASH_PS: &str = r##"Add-Type -AssemblyName PresentationFramework
+$script:t0 = Get-Date
+$xaml = @'
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        SizeToContent="Height" Width="392" WindowStyle="None" AllowsTransparency="True"
+        Background="Transparent" WindowStartupLocation="CenterScreen" Topmost="True"
+        ShowInTaskbar="False" ResizeMode="NoResize">
+  <Border Background="#F21B1B1B" CornerRadius="14" BorderBrush="#26FFFFFF" BorderThickness="1" Padding="22,20,22,22" Margin="14">
+    <Border.Effect>
+      <DropShadowEffect BlurRadius="26" ShadowDepth="6" Opacity="0.45" Color="#000000"/>
+    </Border.Effect>
+    <StackPanel>
+      <StackPanel Orientation="Horizontal" Margin="0,0,0,15">
+        <Border Width="31" Height="31" CornerRadius="9" Background="#E9E9E9">
+          <Viewbox Width="18" Height="18">
+            <Canvas Width="24" Height="24">
+              <Path Stroke="#161616" StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                    Data="M10 8h4a4.5 4.5 0 0 1 4.5 4.5v1a4.5 4.5 0 0 1 -4.5 4.5h-4a4.5 4.5 0 0 1 -4.5 -4.5v-1a4.5 4.5 0 0 1 4.5 -4.5z M9.5 8Q9 5.8 7.3 4.9 M14.5 8Q15 5.8 16.7 4.9 M4.4 10.6C3 11.5 3 14.5 4.4 15.4 M19.6 10.6C21 11.5 21 14.5 19.6 15.4"/>
+              <Path Fill="#161616" Data="M10.2 13m-.95 0a.95 .95 0 1 0 1.9 0a.95 .95 0 1 0 -1.9 0M13.8 13m-.95 0a.95 .95 0 1 0 1.9 0a.95 .95 0 1 0 -1.9 0M7 4.7m-.85 0a.85 .85 0 1 0 1.7 0a.85 .85 0 1 0 -1.7 0M17 4.7m-.85 0a.85 .85 0 1 0 1.7 0a.85 .85 0 1 0 -1.7 0"/>
+            </Canvas>
+          </Viewbox>
+        </Border>
+        <StackPanel Margin="12,0,0,0" VerticalAlignment="Center">
+          <TextBlock Text="@@TITLE@@" Foreground="#F2F2F2" FontSize="14" FontWeight="SemiBold" FontFamily="Segoe UI"/>
+          <TextBlock Text="@@SUB@@" Foreground="#9A9A9A" FontSize="11.5" Margin="0,3,0,0" FontFamily="Segoe UI"/>
+        </StackPanel>
+      </StackPanel>
+      <ProgressBar IsIndeterminate="True" Height="4" Foreground="#E9E9E9" Background="#2E2E2E" BorderThickness="0"/>
+    </StackPanel>
+  </Border>
+</Window>
+'@
+$script:w = [Windows.Markup.XamlReader]::Parse($xaml)
+$timer = New-Object Windows.Threading.DispatcherTimer
+$timer.Interval = [TimeSpan]::FromMilliseconds(500)
+$timer.Add_Tick({
+  $done = $false
+  foreach ($p in @(Get-Process @@PROCESS@@ -ErrorAction SilentlyContinue)) {
+    try { if ($p.StartTime -gt $script:t0) { $done = $true } } catch {}
+  }
+  if ($done -or ((Get-Date) - $script:t0).TotalSeconds -gt @@GIVEUP@@) { $script:w.Close() }
+})
+$timer.Start()
+$null = $script:w.ShowDialog()
+"##;
+
+/// 앱 밖 프로세스로 스플래시를 띄운다. 무음 설치(`/S`) 동안 앱이 완전히 내려가 화면이
+/// 몇 초 비므로 그 공백을 메꾼다. 앱 자신을 다시 띄워 쓰면 실행 파일이 잠겨 설치가
+/// 실패하므로 Windows 내장 PowerShell + WPF다. `-EncodedCommand`(UTF-16LE base64)는
+/// 실행 정책(Restricted)의 적용 대상이 아니라 어디서나 돈다(2.6.2와 같은 선택).
+///
+/// 실패해도 설치는 그대로 간다 — 스플래시는 장식이다. 다만 **조용히**는 아니다: stderr에
+/// 사유를 남긴다(패키지 빌드의 로그 채널).
+#[cfg(windows)]
+fn show_splash(version: &str) {
+    use base64::Engine as _;
+    use std::os::windows::process::CommandExt;
+    use std::process::{Command, Stdio};
+    let ver = safe_version(version);
+    let title = t("새 버전으로 업데이트하는 중", "Updating to the new version");
+    let sub = if ver.is_empty() {
+        t("설치가 끝나면 자동으로 다시 열려요", "Reopens automatically once the install finishes")
+    } else {
+        t(
+            &format!("v{ver} 설치가 끝나면 자동으로 다시 열려요"),
+            &format!("Reopens automatically once v{ver} is installed"),
+        )
+    };
+    let ps = splash_script(&title, &sub, &splash_process_name());
+    let wide: Vec<u8> = ps.encode_utf16().flat_map(u16::to_le_bytes).collect();
+    let encoded = base64::engine::general_purpose::STANDARD.encode(wide);
+    let r = Command::new("powershell.exe")
+        .args(["-NoProfile", "-NonInteractive", "-EncodedCommand", &encoded])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        // CREATE_NO_WINDOW — 콘솔은 만들되 창은 안 보인다. 2.6.2 `windowsHide:true`와 같은
+        // 플래그. `DETACHED_PROCESS`(콘솔 없음)는 powershell.exe의 기동 자체를 막는다.
+        .creation_flags(0x0800_0000)
+        .spawn();
+    if let Err(e) = r {
+        eprintln!("[updater] 스플래시를 못 띄웠다(설치는 그대로 진행): {e}");
+    }
 }
 
 // ── 몸통 ────────────────────────────────────────────────────────────────────
@@ -486,6 +633,35 @@ fn build(app: &AppHandle) -> tauri_plugin_updater::Result<tauri_plugin_updater::
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 스플래시 본문의 자리(제목·부제·프로세스 이름·상한)가 전부 채워져야 한다 —
+    /// `@@` 표식이 하나라도 남으면 PowerShell이 그 자리에서 죽어 스플래시가 안 뜬다.
+    #[test]
+    fn splash_script_fills_every_slot() {
+        let s = splash_script("T", "S", "AgentCodeGUI3");
+        assert!(!s.contains("@@"), "안 채워진 자리: {s}");
+        assert!(s.contains("Get-Process AgentCodeGUI3 "));
+        assert!(s.contains(&format!("-gt {SPLASH_GIVE_UP_SECS})")));
+        assert!(s.contains("Text=\"T\"") && s.contains("Text=\"S\""));
+        // here-string을 닫는 `'@`는 0열이어야 한다(PowerShell 문법) — 들여쓰기가 섞이면 파싱 실패
+        assert!(s.lines().any(|l| l == "'@"), "here-string 닫힘이 0열이 아니다");
+    }
+
+    /// 버전은 XAML 속성 안에 그대로 박힌다 — 2.6.2와 같은 체로 XML을 깨는 글자를 걷는다.
+    #[test]
+    fn version_is_filtered_before_it_reaches_xaml() {
+        assert_eq!(safe_version("3.0.2"), "3.0.2");
+        assert_eq!(safe_version("3.0.2-beta.1"), "3.0.2-beta.1");
+        assert_eq!(safe_version("3.0.2\"><Evil/>&"), "3.0.2Evil");
+    }
+
+    /// 프로세스 이름은 PowerShell 한 줄에 그대로 들어간다 — 식별자 글자만.
+    #[test]
+    fn splash_process_name_is_a_plain_identifier() {
+        let n = splash_process_name();
+        assert!(!n.is_empty());
+        assert!(n.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.')), "{n}");
+    }
 
     /// 스냅샷의 **모양**이 계약면 `UpdateStatus`와 같아야 한다 — 키 하나가 어긋나면
     /// 카드가 조용히 `undefined`를 읽는다(`percent`가 그러면 게이지 폭이 `NaN%`).

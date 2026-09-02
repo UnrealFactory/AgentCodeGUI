@@ -135,6 +135,119 @@ const RELEASES: Record<string, LocalizedRelease> = {
   //     (채팅 엔진·도구 행·MCP & Skill 칩·뷰어 창·한도 두 갈래·계정·다이얼 1·사이드바/알림·
   //     채팅 손맛·Git·창/트레이·휴지통·홈 분리·Verse 제거). 문구의 UI 문자열은 전부 app/src에서
   //     실재를 확인한 것(「한도 소진 시」·「별도 창으로」·「사용 중」·COUNT_OPTIONS 1~6·tray.rs).
+  // 3.0.2 — 3.0.1 보고 넷(2026-09-02): ① 업데이트 설치가 NSIS 기본 마법사(installMode
+  //   passive)로 떠 2.6.2의 스플래시가 사라짐 → quiet(/S) + PowerShell·WPF 스플래시 복귀
+  //   ② Git 스트립 중복 — cwd 표기와 `rev-parse --show-toplevel` 표기의 대소문자가 달라
+  //   같은 저장소가 두 줄(ccg-fs `repos`의 `seen` 키를 대소문자 무시로) ③ /clear 뒤에도
+  //   엔진이 옛 thread.session_id를 쥐고 있어 다음 전송이 지운 세션을 --resume → 지운 대화
+  //   누적 + CLI의 "Continue from where you left off" 반복 주입 ④ 이미 그 모델로 갈아탄 뒤
+  //   같은 모델의 폴백 신호가 오면 from == to 배너(fallback_arms가 land_turn마다 비워진다).
+  '3.0.2': {
+    ko: {
+      eyebrow: 'FIXES',
+      lead: '3.0.1에 들어온 보고 넷을 고쳤습니다 — 업데이트 화면, Git 목록, 대화 비우기, 모델 전환 알림.',
+      notes: [
+        {
+          tag: '업데이트',
+          name: '업데이트 설치가 윈도우 기본 설치 마법사로 뜨던 문제',
+          desc: (
+            <>
+              3.0은 설치기의 <b>기본 진행 화면</b>을 그대로 썼습니다 — 「뒤로/다음/취소」 단추와 압축 해제 경로가
+              흐르는 그 창입니다. 2.6.2처럼 <b>조용히 설치하고</b>, 그동안 앱의 스플래시(「새 버전으로 업데이트하는
+              중」)를 보여 준 뒤 설치가 끝나면 자동으로 다시 열립니다.
+            </>
+          )
+        },
+        {
+          tag: 'Git',
+          name: '같은 저장소가 두 줄로 보이던 문제',
+          desc: (
+            <>
+              폴더를 <b>소문자 경로</b>로 열었을 때(<code>c:\code\…</code>) Git이 알려 주는 실제 표기(
+              <code>C:\Code\…</code>)와 글자가 달라, 같은 저장소를 <b>서로 다른 두 곳</b>으로 세어 탐색기 아래
+              「main」 줄이 두 번 그려졌습니다. 윈도우는 경로 대소문자를 가리지 않으므로 한 곳으로 셉니다.
+            </>
+          )
+        },
+        {
+          tag: '채팅',
+          name: '대화를 비웠는데 지운 대화가 되살아나던 문제',
+          desc: (
+            <>
+              <code>/clear</code>는 화면만 비우고 <b>엔진이 쥔 세션은 그대로</b>였습니다. 그래서 다음 메시지가 방금
+              지운 대화를 이어받아, 지운 내용이 계속 쌓이고 「Continue from where you left off」가 되풀이됐습니다.
+              이제 대화를 비우면 <b>엔진도 그 세션을 놓아</b> 다음 메시지가 진짜 새 대화로 시작합니다. 폴더를 바꾼
+              뒤 첫 메시지도 같습니다.
+            </>
+          )
+        },
+        {
+          tag: '채팅',
+          name: '「Opus 5 → Opus 5」처럼 같은 모델로 전환했다는 알림',
+          desc: (
+            <>
+              모델이 한 번 자동 전환된 뒤(예: Fable 5.1 → Opus 5) 같은 모델의 전환 신호가 또 오면,{' '}
+              <b>바뀐 것이 없는데도</b> 「Opus 5가 거부해 Opus 5로 전환했어요」라는 알림이 떴습니다. 되돌리기 알약도
+              아무것도 되돌리지 않는 자리를 가리켰습니다. 이제 <b>실제로 모델이 바뀔 때만</b> 알립니다.
+            </>
+          )
+        }
+      ]
+    },
+    en: {
+      eyebrow: 'FIXES',
+      lead: 'Four fixes reported on 3.0.1 — the update screen, the Git list, clearing a chat, and model-switch notices.',
+      notes: [
+        {
+          tag: 'Update',
+          name: 'Installing an update showed the standard Windows installer wizard',
+          desc: (
+            <>
+              3.0 used the installer's <b>default progress window</b> — the one with Back/Next/Cancel and a stream of
+              extraction paths. It now installs <b>quietly</b> as 2.6.2 did, showing the app's own splash ("Updating to
+              the new version") while it runs, and reopens automatically when the install finishes.
+            </>
+          )
+        },
+        {
+          tag: 'Git',
+          name: 'The same repository appeared twice',
+          desc: (
+            <>
+              Opening a folder by a <b>lower-case path</b> (<code>c:\code\…</code>) spelled it differently from what Git
+              reports (<code>C:\Code\…</code>), so one repository was counted as <b>two</b> and the "main" row was drawn
+              twice under the explorer. Windows paths are case-insensitive, so they now count as one.
+            </>
+          )
+        },
+        {
+          tag: 'Chat',
+          name: 'A cleared conversation came back',
+          desc: (
+            <>
+              <code>/clear</code> only emptied the screen — <b>the engine kept the session</b>. The next message
+              therefore resumed the conversation you had just cleared, so the old turns kept piling up and "Continue
+              from where you left off" was replayed. Clearing now <b>releases the session on the engine too</b>, so the
+              next message really does start a new conversation. The same applies to the first message after changing
+              folders.
+            </>
+          )
+        },
+        {
+          tag: 'Chat',
+          name: 'A notice saying it switched from "Opus 5" to "Opus 5"',
+          desc: (
+            <>
+              After the model had already switched once (say Fable 5.1 → Opus 5), another switch signal for the{' '}
+              <b>same</b> model produced "Opus 5 refused, so the engine switched to Opus 5" — a switch that changed
+              nothing, with an undo pill pointing at nothing. The notice now appears <b>only when the model actually
+              changes</b>.
+            </>
+          )
+        }
+      ]
+    }
+  },
   // 3.0.1 — 3.0.0 첫 주 보고 셋(2026-09-02): 컨텍스트 게이지 100%(wire.rs result.usage 누적치) ·
   //   계정 picker(맨 위 고르면 바인딩 해제 → 정렬에 흔들림 · 살아 있는 런타임 계정 ≠ 「현재」 ·
   //   추가 채팅 창 미구독) · 멀티 패널 축소 승격(맨 앞 삽입 → 1·2번 밀림) + 드래그 왕복 반전.

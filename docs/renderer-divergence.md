@@ -942,7 +942,7 @@ ready 3/3 · downloading 3/3으로 정상 동작했다 = 화면은 멀쩡하고 
 | 개발 실행 | `app.isPackaged` 게이트 → 세 함수 즉시 반환 | `tauri::is_dev()`(= `!cfg!(feature="custom-protocol")`) 게이트 → 같은 자리 |
 | 자동 다운로드 | `autoDownload = true` | 조회에서 새 버전을 찾으면 곧바로 `download()` |
 | **종료 시 자동 설치** | `autoInstallOnAppQuit = false` (끄는 코드가 필요했다) | **개념 자체가 없다** — 설치는 `app:update-install`을 부를 때만 |
-| 설치 화면 | NSIS `/S`(무음) + PowerShell·WPF 자체 스플래시 | NSIS `passive`(`/P /R`) — **설치기 자신의 진행 막대**가 뜨고 끝나면 앱을 다시 띄운다 |
+| 설치 화면 | NSIS `/S`(무음) + PowerShell·WPF 자체 스플래시 | **같다** — `installMode: "quiet"`(`/S /R`) + 같은 스플래시(`updater.rs` `show_splash`). 3.0.0~3.0.1은 `passive`(`/P /R`)로 NSIS 자신의 진행 페이지를 보였다가 첫 주 보고로 되돌렸다(아래 2) |
 | 주기 재확인 | 30분 · `probing`(받아둔 뒤엔 조용히) | **같은 규칙·같은 값** |
 | 상태 `phase` 7값·`log`·`percent`·`error` | 계약면 `UpdateStatus` | **글자 그대로 같다**(그래서 카드가 안 바뀐다) |
 | 이벤트 청중 | `send()` = 메인 창 | `emit_to(win::MAIN, …)` |
@@ -958,10 +958,17 @@ ready 3/3 · downloading 3/3으로 정상 동작했다 = 화면은 멀쩡하고 
    **세션 메모리 실측**(확인 크리틱 R2): 받아둔 뒤 `PrivateBytes +14.3MB` ·
    `WorkingSet +9.3MB`(8.0MiB 페이로드 기준). 진짜 설치기는 2.81MB이므로 실제 유지량은
    **~3~6MB급**이고, **앱을 껐다 켤 때마다 한 번 다시 받는다.**
-2. **설치 스플래시를 안 만든다.** 2.6.2가 그것을 만든 이유는 `/S`가 화면을 통째로 비웠기
-   때문이다(그 자리에 detached PowerShell 함정과 cmd 8191자 한계가 같이 살았다).
-   `passive`는 NSIS가 자기 진행 막대를 그리므로 빈 화면 구간이 없다 — 스플래시가 필요 없고
-   그 두 함정도 통째로 사라진다. 설치기 헤더·사이드바 이미지는 우리 것 그대로다.
+2. **설치 스플래시 — 안 만들었다가(3.0.0~3.0.1) 되살렸다.** 2.6.2가 그것을 만든 이유는
+   `/S`가 화면을 통째로 비웠기 때문이고(그 자리에 detached PowerShell 함정과 cmd 8191자
+   한계가 같이 살았다), 3.0은 `passive`가 NSIS 자기 진행 막대를 그리니 필요 없다고 봤다.
+   그런데 사용자 눈에 그 진행 막대는 「뒤로/다음/취소」 단추와 `node_modules\typescript\…`
+   추출 경로가 흐르는 **윈도우 기본 설치 마법사**였다(3.0.1 첫 주 보고 — 2.6.2의 스플래시가
+   제품의 얼굴이었다). 그래서 `installMode: "quiet"`(`/S /R`)로 돌리고 2.6.2의 XAML을
+   글자 그대로 옮겼다(`updater.rs` `show_splash`). 두 함정은 안 따라온다: Rust의 자식은
+   libuv 잡 오브젝트에 안 묶여 `cmd.exe` 한 다리 없이 `powershell.exe`를 바로 띄우고(8191자
+   한계도 없다), 콘솔은 `CREATE_NO_WINDOW`로 숨긴다. 재기동은 NSIS `/R`(템플릿
+   `.onInstSuccess`가 무음·수동 모드에서 본다)이 하고, 스플래시는 새 앱 프로세스를 보면
+   닫힌다. 설치기 헤더·사이드바 이미지는 첫 설치(마법사)에서만 보인다.
 3. **피드 주소를 환경변수로 덮을 수 있다**(`CCG_UPDATE_FEED` · 2.6.2에 없던 문).
    있는 이유는 하나다 — **이 축을 실측할 수 있어야 한다.** 진짜 GitHub 릴리스를 만들지
    않고 로컬 정적 피드로 「조회 → 진행률 → 카드 → 설치」를 화면에서 확인하는 통로이고,

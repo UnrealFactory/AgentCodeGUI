@@ -399,10 +399,10 @@ pub fn repos(cwd: &str) -> Vec<GitRepoInfo> {
     let Ok(abs_cwd) = std::path::absolute(cwd) else { return Vec::new() };
     let base = crate::resolve_lexical(&abs_cwd, "");
     let mut out: Vec<GitRepoInfo> = Vec::new();
-    let mut seen: std::collections::HashSet<PathBuf> = std::collections::HashSet::new();
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut add = |out: &mut Vec<GitRepoInfo>, root: &Path| {
         let r = crate::resolve_lexical(root, "");
-        if !seen.insert(r.clone()) {
+        if !seen.insert(repo_key(&r)) {
             return;
         }
         // base 밖(상위) 저장소는 rel '' — 스트립이 라벨 없이 그린다
@@ -424,6 +424,23 @@ pub fn repos(cwd: &str) -> Vec<GitRepoInfo> {
         _ => a.rel.cmp(&b.rel),
     });
     out
+}
+
+/// 저장소 발견의 **동일성 열쇠** — 같은 폴더를 두 표기로 만나도 하나로 센다.
+///
+/// 3.0.1 첫 주 보고(스트립에 「main ●33」이 **둘**): 탐색기가 든 cwd는 `c:\code\agentcodegui`
+/// (소문자 드라이브·소문자 경로)인데 `git rev-parse --show-toplevel`은 디스크의 진짜 표기
+/// `C:/Code/AgentCodeGUI`를 준다. `resolve_lexical`은 어휘적 정규화라 대소문자를 안
+/// 건드리므로 `seen`에 둘이 다른 경로로 들어갔고, 위쪽 저장소(git 표기)와 걷기가 찾은
+/// cwd 자신(cwd 표기)이 같은 저장소인데 두 줄로 그려졌다. Windows 파일시스템은 대소문자를
+/// 안 가리므로 열쇠는 소문자로 접고 구분자도 `\`로 통일한다. Unix는 가리므로 그대로 둔다.
+fn repo_key(p: &Path) -> String {
+    let s = p.to_string_lossy();
+    if cfg!(windows) {
+        s.replace('/', "\\").to_lowercase()
+    } else {
+        s.into_owned()
+    }
 }
 
 fn walk_repos(
@@ -3089,6 +3106,28 @@ mod tests {
         assert_eq!(inner.len(), 1);
         assert_eq!(inner[0].rel, "");
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// 3.0.1 첫 주 보고 — 스트립에 「main」이 둘. cwd의 표기(소문자 드라이브·소문자 경로)와
+    /// git이 주는 toplevel 표기(디스크의 진짜 대소문자)가 달라 같은 저장소가 두 번 실렸다.
+    /// Windows에서만 생기는 성질이라(대소문자를 안 가리는 파일시스템) 거기서만 못 박는다.
+    #[test]
+    #[cfg(windows)]
+    fn the_same_repo_spelled_two_ways_is_one_row() {
+        let r = repo!("case");
+        // 탐색기가 실제로 들던 표기 — 드라이브 문자를 뒤집고 나머지는 전부 소문자로.
+        // (temp 경로가 이미 다 소문자여도 드라이브 문자 뒤집기로 표기는 반드시 달라진다)
+        let real = r.cwd().to_string();
+        let drive = real.chars().next().unwrap();
+        let flipped = if drive.is_ascii_uppercase() { drive.to_ascii_lowercase() } else { drive.to_ascii_uppercase() };
+        let spelled = format!("{flipped}{}", real[1..].to_lowercase());
+        assert_ne!(spelled, real);
+        assert!(Path::new(&spelled).join(".git").exists(), "표기가 달라도 같은 폴더여야 한다");
+
+        let found = repos(&spelled);
+        let roots: Vec<&str> = found.iter().map(|x| x.root.as_str()).collect();
+        assert_eq!(found.len(), 1, "같은 저장소가 표기 둘로 두 번 실렸다: {roots:?}");
+        assert_eq!(found[0].rel, "", "cwd 자신 = 라벨 없는 줄");
     }
 
     #[test]

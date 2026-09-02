@@ -1170,6 +1170,25 @@ impl<D: CliDriver> ChatRuntime<D> {
     pub fn session_id(&self) -> Option<String> {
         self.thread.session_id.clone()
     }
+    /// **렌더러가 이 대화의 세션을 버렸다** — 엔진의 스레드 링크도 잊는다.
+    ///
+    /// ★3.0.1 첫 주 보고 — 「/clear 했는데 지운 대화가 되살아난다 · Continue 루프」.
+    /// `/clear`(와 폴더 변경)는 렌더러 스냅샷을 초기화하고 `StopAll`로 CLI를 죽이지만,
+    /// 그때 이 `thread.session_id`는 그대로 남았다. 그래서 다음 전송이 `t1_spawn`에서
+    /// 옛 세션을 `--resume` 해 ① 지운 대화가 이어지고 ② `StopAll`이 죽인 턴을 되살려
+    /// CLI가 "Continue from where you left off"를 반복 주입했다(사용자가 본 루프).
+    ///
+    /// 세션 정체성의 원본은 **렌더러**다(어느 대화를 보고 있는지는 화면이 안다). 셸은
+    /// 렌더러가 `resume`를 안 실은 전송에서 이걸 불러, 다음 스폰이 콜드 스타트가 되게 한다.
+    /// 엔진 축 전환(`t1_spawn`·`t17_respawn`)이 스레드를 끊는 것과 **같은 자리·같은 필드**다.
+    pub fn forget_thread(&mut self) {
+        self.thread.session_id = None;
+        self.thread.forked_from = None;
+        self.thread.want_fresh = false;
+        self.thread.fork_consumed = false;
+        self.thread.engine = None;
+        self.thread.cwd_at_bind = None;
+    }
     pub fn stream_id(&self) -> Option<StreamId> {
         self.stream.as_ref().map(|s| s.id)
     }
@@ -1723,6 +1742,23 @@ impl<D: CliDriver> ChatRuntime<D> {
     }
 
     fn fallback_signal(&mut self, to_model: &str, via: FallbackVia) {
+        // ★3.0.1 첫 주 보고 — 「Opus 5가 정책상 거부해 Opus 5로 전환했어요」.
+        //
+        // `fallback_arms`는 **턴이 끝날 때 비워진다**(`land_turn`). 그래서 첫 폴백이
+        // 정체성을 이미 그 모델로 바꿔 놓은 뒤(Fable 5.1 → Opus 5), 다음 턴에 같은 모델의
+        // 폴백 신호가 또 오면 `has_arm`이 false라 아래 리비전 갈래로 들어가
+        // `from`(= 이미 Opus)과 `to`(= Opus)가 같은 배너가 떴다. 되돌리기 알약이 가리키는
+        // 리비전도 아무것도 안 바꾸는 빈 리비전이었다.
+        //
+        // 바뀌는 것이 없으면 말할 것도 없다 — 관측만 미러하고 돌아간다. `arm`도 안 남긴다:
+        // arm은 **전환 한 건의 중복 신호**를 접는 표식인데 여기엔 전환 자체가 없다.
+        // 별칭으로 접어 비교하는 이유는 입구마다 어휘가 다르기 때문이다 — `ModelDelta`는
+        // 이미 별칭(`observe_model`)이지만 `RefusalFrame`·`Dialog`는 프레임이 준 값을
+        // 그대로 넘긴다(해석된 id일 수 있다).
+        if model_alias(self.identity.model()) == model_alias(to_model) {
+            self.observed_model = Some(to_model.to_string());
+            return;
+        }
         let has_arm = self.fallback_arms.iter().any(|a| a.to_model == to_model);
         match via {
             // A/B'/C'' — arm이 없으면 리비전 생성. 있으면 소비/미러만.
@@ -4210,6 +4246,85 @@ mod t22_tests {
             "정리 턴까지 끝나면 닫는다: {:?}", r.state());
     }
 
+    /// 이 런타임이 낸 폴백 배너들 — `(from, to)`.
+    fn banners_of(r: &ChatRuntime<EofCli>) -> Vec<(String, String)> {
+        r.events()
+            .into_iter()
+            .filter_map(|e| match e {
+                Event::FallbackBanner {
+                    from_model,
+                    to_model,
+                    ..
+                } => Some((from_model, to_model)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// ★3.0.1 첫 주 보고 — 「Opus 5가 정책상 거부해 Opus 5로 전환했어요」.
+    ///
+    /// `fallback_arms`는 **턴이 끝날 때** 비워지므로(`land_turn`), 첫 폴백이 정체성을 이미
+    /// 그 모델로 바꿔 놓은 뒤 같은 모델의 폴백 신호가 또 오면 arm이 없어 리비전 갈래로
+    /// 들어갔다 — `from`(이미 opus) == `to`(opus)인 자기 전환 배너. `s02`의 「배너 핑퐁
+    /// 금지」는 **같은 턴 안**(arm 살아 있음)만 붙들어서 이 자리를 못 봤다.
+    #[test]
+    fn a_fallback_to_the_model_we_are_already_on_says_nothing() {
+        let mut r = rt();
+        r.dispatch(Cmd::Send { text: "첫 턴".into() });
+        r.on_frame(&json!({ "type": "system", "subtype": "init",
+            "session_id": "S1", "model": "claude-haiku" }));
+
+        // ① 진짜 전환(haiku → opus) — 말해야 한다.
+        r.on_frame(&json!({ "type": "system", "subtype": "model_refusal_fallback",
+            "fallback_model": "opus", "original_model": "haiku", "session_id": "S1" }));
+        assert_eq!(r.identity().model(), "opus");
+        assert_eq!(banners_of(&r).len(), 1, "진짜 전환은 말해야 한다");
+
+        // ② 턴 종료 — 여기서 `fallback_arms`가 비워진다(이 버그의 조건).
+        r.on_frame(&json!({ "type": "result", "subtype": "success", "is_error": false,
+            "terminal_reason": "completed", "result": "끝", "num_turns": 1 }));
+        assert!(r.fallback_arms.is_empty(), "턴 종료가 arm을 비운다(이 못의 전제)");
+
+        // ③ 이미 opus인데 opus로 또 폴백 신호 — 바뀌는 게 없으니 배너도 리비전도 없다.
+        let rev = r.revision();
+        r.on_frame(&json!({ "type": "system", "subtype": "model_refusal_fallback",
+            "fallback_model": "opus", "original_model": "opus", "session_id": "S1" }));
+        assert_eq!(
+            banners_of(&r),
+            vec![("haiku".to_string(), "opus".to_string())],
+            "★ Opus → Opus 자기 전환 배너가 또 떴다"
+        );
+        assert_eq!(r.revision(), rev, "바뀐 게 없으면 빈 리비전도 안 생긴다");
+        assert_eq!(r.identity().model(), "opus");
+    }
+
+    /// 대조군 — **다른** 모델로의 폴백은 그 뒤 턴에서도 그대로 말한다.
+    /// 위 못이 「폴백 배너를 통째로 죽이는」 과잉이 됐는지 가른다.
+    #[test]
+    fn a_fallback_to_a_different_model_still_speaks_after_the_arms_are_cleared() {
+        let mut r = rt();
+        r.dispatch(Cmd::Send { text: "첫 턴".into() });
+        r.on_frame(&json!({ "type": "system", "subtype": "init",
+            "session_id": "S1", "model": "claude-haiku" }));
+        r.on_frame(&json!({ "type": "system", "subtype": "model_refusal_fallback",
+            "fallback_model": "opus", "original_model": "haiku", "session_id": "S1" }));
+        r.on_frame(&json!({ "type": "result", "subtype": "success", "is_error": false,
+            "terminal_reason": "completed", "result": "끝", "num_turns": 1 }));
+
+        // opus → sonnet: 진짜 전환이다.
+        r.on_frame(&json!({ "type": "system", "subtype": "model_refusal_fallback",
+            "fallback_model": "sonnet", "original_model": "opus", "session_id": "S1" }));
+        assert_eq!(
+            banners_of(&r),
+            vec![
+                ("haiku".to_string(), "opus".to_string()),
+                ("opus".to_string(), "sonnet".to_string())
+            ],
+            "다른 모델로의 전환은 여전히 말해야 한다"
+        );
+        assert_eq!(r.identity().model(), "sonnet");
+    }
+
     /// 순서 B — 빈 REPLACE(목록 이탈)가 통지보다 **먼저**. f13_replace가 항목을
     /// PendingSettle로 바꿔 두므로 통지 시점 kind는 Workflow가 아니다 — 그 순서에서도
     /// 기상 유예가 걸려야 한다(실측 poc-wf-live-interleave r1: 이 순서에서 기상 턴 사망).
@@ -4950,6 +5065,55 @@ mod slug_r1_account_dir_tests {
             "훑기가 아니라 리졸버가 답한다"
         );
         let _ = std::fs::remove_dir_all(&home);
+    }
+
+    /// ★3.0.1 첫 주 보고 — 「/clear 했는데 지운 대화가 되살아난다 · Continue 루프」.
+    ///
+    /// 렌더러가 세션을 버리면(clear → 스냅샷 초기화 → 다음 Run에 resume 없음) 셸이
+    /// [`ChatRuntime::forget_thread`]를 부른다. 그러면 다음 전송이 옛 세션을 `--resume`
+    /// 하지 않는다 — 지운 대화가 안 되살아나고, 죽은 턴 재개로 "Continue from where you
+    /// left off"가 반복 주입되던 루프도 끊긴다. **대조군**(아래)이 그 회귀를 붙든다.
+    #[test]
+    fn forget_thread_makes_the_cleared_chat_start_a_fresh_session() {
+        let mut r = rt(&["a@example.invalid"])
+            .with_home(std::path::PathBuf::from(r"C:\ccg-fixture\home"))
+            .with_account_resolver(Arc::new(|e: &str| Ok(std::path::PathBuf::from(format!(r"C:\acct\{e}")))));
+        r.dispatch(Cmd::Send { text: "첫 턴".into() });
+        assert_eq!(r.driver_ref().specs[0].resume, None, "첫 턴은 콜드(resume 없음)");
+        // 실제로는 SystemInit 프레임이 바인딩하는 자리 — 그 결과만 세운다.
+        r.thread.session_id = Some("S-old".into());
+
+        // /clear = StopAll(프로세스 죽임) → 스트림을 닫는다.
+        r.driver().alive = false;
+        r.driver().eof = Some(CloseCause::CliExit);
+        r.tick();
+
+        // 렌더러가 세션을 버렸다 = 셸이 엔진에게 잊으라고 한다.
+        r.forget_thread();
+        r.dispatch(Cmd::Send { text: "새 대화".into() });
+
+        let last = r.driver_ref().specs.last().expect("두 번째 스폰");
+        assert_eq!(last.resume, None, "★ clear 뒤 전송이 옛 세션을 되살렸다");
+    }
+
+    /// 대조군 — `forget_thread`를 **안** 부르면(=평범한 후속 턴) 세션을 그대로 이어간다.
+    /// 이 못이 없으면 위 수정이 「모든 후속 턴이 세션을 잃는」 과잉이 됐는지 못 가른다.
+    #[test]
+    fn a_plain_follow_up_still_resumes_the_same_session() {
+        let mut r = rt(&["a@example.invalid"])
+            .with_home(std::path::PathBuf::from(r"C:\ccg-fixture\home"))
+            .with_account_resolver(Arc::new(|e: &str| Ok(std::path::PathBuf::from(format!(r"C:\acct\{e}")))));
+        r.dispatch(Cmd::Send { text: "첫 턴".into() });
+        r.thread.session_id = Some("S-old".into());
+        r.driver().alive = false;
+        r.driver().eof = Some(CloseCause::CliExit);
+        r.tick();
+
+        // 잊지 않는다 = 렌더러가 resume를 실은 평범한 후속 턴.
+        r.dispatch(Cmd::Send { text: "후속".into() });
+
+        let last = r.driver_ref().specs.last().expect("두 번째 스폰");
+        assert_eq!(last.resume.as_deref(), Some("S-old"), "후속 턴은 세션을 이어가야 한다");
     }
 
     /// ② 리졸버는 **스폰마다** 큐 항목의 계정으로 불린다(P5 — 생성 시 고정 금지).

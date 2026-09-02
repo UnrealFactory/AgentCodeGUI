@@ -39,8 +39,10 @@ tauri-plugin-dialog = "2"
 # 아니라 **패키지 검증**과 **NSIS 설치기 기동**이다. 플러그인은 그 둘을 이미 갖고 있다 —
 # minisign 서명 검증(다운로드 바이트를 공개키로 검사 · 우리는 코드 서명서가 없으니
 # 이것이 유일한 진위 판정이다)과, 받은 `.exe`를 임시 경로에 쓰고 `ShellExecuteW`로
-# `/P /R /UPDATE`를 붙여 띄우는 Windows 경로다. 그 둘을 손으로 다시 쓰면 **틀렸을 때
-# 조용한 쪽**이 보안이다. 셸이 직접 드는 것은 상태기계(2.6.2와 같은 6이벤트)뿐이다.
+# `/S /R /UPDATE`(tauri.conf.json `installMode: "quiet"` — 무음 설치 + 끝나면 재기동)를
+# 붙여 띄우는 Windows 경로다. 그 둘을 손으로 다시 쓰면 **틀렸을 때 조용한 쪽**이
+# 보안이다. 셸이 직접 드는 것은 상태기계(2.6.2와 같은 6이벤트)와 무음 설치 동안 빈
+# 화면을 메꾸는 스플래시(`updater.rs` `show_splash`)뿐이다.
 #
 # `default-features = false` + `native-tls`인 이유는 `ccg-auth`의 선택과 **같은 근거**다
 # (그 크레이트 Cargo.toml `ureq` 주석): rustls + 번들 루트 인증서 대신 OS 스토어(schannel)를
@@ -48,6 +50,10 @@ tauri-plugin-dialog = "2"
 # NSIS `.exe` 한 장이고(v1 호환 zip을 안 만든다 · `tauri.conf.json`
 # `createUpdaterArtifacts: true`), 켜면 zip·tar·flate2가 따라 들어온다.
 tauri-plugin-updater = { version = "2", default-features = false, features = ["native-tls"] }
+# 업데이트 스플래시(`updater.rs` `show_splash`)의 `-EncodedCommand` — 스크립트를 UTF-16LE
+# base64로. 플러그인(minisign 공개키 디코드)이 이미 끌어오는 판(Cargo.lock 0.22)이라 새
+# 의존은 아니다.
+base64 = "0.22"
 serde = { workspace = true }
 serde_json = { workspace = true }
 ccg-store = { path = "../crates/ccg-store" }

@@ -620,6 +620,22 @@ impl Hub {
                         op: PendingOp::Merge,
                     });
                 }
+                // ★3.0.1 첫 주 보고 — 「/clear 했는데 지운 대화가 되살아난다 · Continue 루프」.
+                //    렌더러가 세션을 버리면(clear·폴더 변경 → 스냅샷 초기화) 다음 Run에
+                //    `resume`를 안 싣는다. 그런데 엔진은 옛 `thread.session_id`를 그대로 쥐고
+                //    있어 다음 스폰이 그 세션을 `--resume` 한다 → 지운 대화가 이어지고,
+                //    `StopAll`이 죽인 턴을 되살려 CLI가 "Continue from where you left off"를
+                //    반복 주입한다. 세션 정체성의 원본은 **렌더러**다(어느 대화를 보는지는
+                //    화면이 안다) — resume가 비었는데 엔진이 세션을 쥐고 있으면 그 뜻을 따라
+                //    잊는다. `forkSession`은 언제나 resume를 함께 실으므로 여기 안 걸리고,
+                //    picker 계정·모델 전환도 resume를 유지하므로(T17 재스폰) 영향이 없다.
+                let wants_resume = req
+                    .get("resume")
+                    .and_then(Value::as_str)
+                    .is_some_and(|s| !s.is_empty());
+                if !wants_resume && slot.rt.session_id().is_some() {
+                    slot.rt.forget_thread();
+                }
                 // ② 스레드 이어붙이기 — 재시작 후 첫 전송은 **저장된 sessionId**로 잇는다.
                 //    이게 없으면 대화가 살아 있어도 CLI는 처음 보는 스레드로 답한다.
                 if let Some(r) = req.get("resume").and_then(Value::as_str).filter(|s| !s.is_empty()) {

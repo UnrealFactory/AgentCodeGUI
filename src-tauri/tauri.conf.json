@@ -2,7 +2,7 @@
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "AgentCodeGUI3",
   "mainBinaryName": "AgentCodeGUI3",
-  "version": "3.0.1",
+  "version": "3.0.2",
   "identifier": "com.agentcodegui.app",
   "build": {
     "frontendDist": "../app/dist",
@@ -21,7 +21,7 @@
     "updater": {
       "endpoints": ["https://github.com/UnrealFactory/AgentCodeGUI/releases/latest/download/latest.json"],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEU2RjRERjcyMzZFNTVFNDYKUldSR1h1VTJjdC8wNWtCZ2dUMXFZR0pXR2ZZU1dYeXp6VWhGMHhsMGE4YXVMdC9nY0h2MjFNM2cK",
-      "windows": { "installMode": "passive" }
+      "windows": { "installMode": "quiet" }
     }
   },
   "bundle": {
