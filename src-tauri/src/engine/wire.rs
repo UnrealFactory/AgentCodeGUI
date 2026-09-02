@@ -70,6 +70,11 @@ pub struct Wire {
     thinking_open: bool,
     /// 이 assistant 메시지에서 델타가 흘렀나(완성 프레임의 중복 생각 줄 방지).
     streamed_this_msg: bool,
+    /// 이 런에서 마지막으로 본 **호출 1건의** 컨텍스트(assistant.usage 합). 2.6.2의
+    /// `lastContextTokens`. `result.usage`는 **턴 누적**(호출마다 cache_read가 다시
+    /// 더해진다)이라 게이지 분자로 쓰면 도구 몇 번에 100%가 된다 — 결과 프레임은 이 값을
+    /// 싣는다.
+    last_ctx: Option<u64>,
     /// 살아 있는(스폰을 목격한) 서브에이전트 `tool_use_id`.
     subagents: BTreeSet<String>,
     /// 서브에이전트가 보고한 실행 모델 표시명 — **값이 바뀔 때만** 부분 업데이트.
@@ -632,6 +637,7 @@ impl Wire {
         self.thinking_open = false;
         self.streamed_this_msg = false;
         self.turn_ended = false;
+        self.last_ctx = None;
         // 파일 기준선은 **런 단위**다 — 새 턴은 지금 디스크를 다시 기준으로 잡는다.
         self.baselines.clear();
         json!({ "type": "status", "runId": run_id, "status": "analyzing" })
@@ -1320,6 +1326,7 @@ impl Wire {
                     // `thread/tokenUsage/updated` — Claude의 assistant.usage 자리.
                     "context" => {
                         if let Some(t) = f.get("tokens").and_then(Value::as_u64) {
+                            self.last_ctx = Some(t);
                             out.push(json!({ "type": "context", "runId": run, "contextTokens": t }));
                         }
                     }
@@ -1705,6 +1712,7 @@ impl Wire {
                     let ctx = t
                         + msg["usage"]["cache_read_input_tokens"].as_u64().unwrap_or(0)
                         + msg["usage"]["cache_creation_input_tokens"].as_u64().unwrap_or(0);
+                    self.last_ctx = Some(ctx);
                     out.push(json!({ "type": "context", "runId": run, "contextTokens": ctx }));
                 }
             }
@@ -1809,9 +1817,15 @@ impl Wire {
                 // 이후의 `stopped` 통지는 사용자 중지가 아니라 **턴 종료 정리**다.
                 self.turn_ended = true;
                 let usage = &f["usage"];
-                let ctx = usage["input_tokens"].as_u64().map(|t| {
-                    t + usage["cache_read_input_tokens"].as_u64().unwrap_or(0)
-                        + usage["cache_creation_input_tokens"].as_u64().unwrap_or(0)
+                // 게이지 분자 = 마지막 호출의 컨텍스트(`last_ctx`). `result.usage`는 턴 누적이라
+                // 호출이 하나도 없던 런(assistant 프레임 없이 끝난 오류 등)에서만 폴백으로 읽는다
+                // — 그때는 누적 = 호출 1건이라 뜻이 같다. Codex는 transcode가 이 칸에 이미
+                // 컨텍스트 값을 넣는다(`transcode.rs` result 합성).
+                let ctx = self.last_ctx.or_else(|| {
+                    usage["input_tokens"].as_u64().map(|t| {
+                        t + usage["cache_read_input_tokens"].as_u64().unwrap_or(0)
+                            + usage["cache_creation_input_tokens"].as_u64().unwrap_or(0)
+                    })
                 });
                 // ★R4(§R3.8-J) — `modelUsage`를 읽는다. R3까지 이 둘은 `null`이라
                 // 컨텍스트 팝오버의 '토큰 사용량' 표가 비고 게이지의 분모가 모델 기본
@@ -2131,6 +2145,40 @@ mod tests {
         assert_eq!(tu[0]["outTok"], 9);
         assert_eq!(tu[0]["cacheRead"], 11);
         assert_eq!(tu[0]["cacheWrite"], 3);
+    }
+
+    /// 도구 호출이 이어진 턴의 `result.usage`는 **호출 누적**이다 — 호출마다 cache_read가
+    /// 다시 더해져 셋이면 300K다. 게이지는 마지막 호출의 100K여야 한다(3.0.0에서 한 턴에
+    /// 100%로 튀던 회귀).
+    #[test]
+    fn the_result_context_is_the_last_call_not_the_turn_sum() {
+        let mut w = wire();
+        w.translate(&json!({ "type": "system", "subtype": "init", "session_id": "S1",
+                             "cwd": "C:\\w", "model": "claude-opus-5-1" }));
+        for (i, cache) in [90_000u64, 95_000, 99_000].iter().enumerate() {
+            let evs = w.translate(&json!({ "type": "assistant", "message": {
+                "id": format!("m{i}"), "content": [{ "type": "text", "text": "…" }],
+                "usage": { "input_tokens": 1_000, "output_tokens": 50,
+                           "cache_read_input_tokens": cache, "cache_creation_input_tokens": 0 } } }));
+            let ctx = evs.iter().find(|e| e["type"] == "context").expect("호출마다 context 이벤트");
+            assert_eq!(ctx["contextTokens"], 1_000 + cache);
+        }
+        let evs = w.translate(&json!({
+            "type": "result", "subtype": "success", "is_error": false, "result": "끝",
+            "usage": { "input_tokens": 3_000, "output_tokens": 150,
+                       "cache_read_input_tokens": 284_000, "cache_creation_input_tokens": 0 },
+            "modelUsage": { "claude-opus-5-1": { "contextWindow": 200_000, "inputTokens": 3_000,
+                            "outputTokens": 150, "cacheReadInputTokens": 284_000,
+                            "cacheCreationInputTokens": 0 } }
+        }));
+        let r = evs.iter().find(|e| e["type"] == "result").unwrap();
+        assert_eq!(r["contextTokens"], 100_000, "결과의 컨텍스트는 마지막 호출이지 턴 합이 아니다");
+        assert_eq!(r["contextWindow"], 200_000);
+        // 호출이 없던 런은 누적 = 호출 1건 — 폴백이 산다.
+        w.begin_run("R2");
+        let evs = w.translate(&json!({ "type": "result", "subtype": "success", "is_error": false,
+            "result": "", "usage": { "input_tokens": 7, "cache_read_input_tokens": 3 } }));
+        assert_eq!(evs[0]["contextTokens"], 10);
     }
 
     #[test]

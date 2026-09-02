@@ -1,5 +1,5 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { ApiConfigStatus, AppUser, BgTaskRequest, ChangedFile, EngineId, RunRequest, SessionPersistPayload, SubAgentInfo, UserProfile, UsageInfo } from '@shared/protocol'
+import type { ApiConfigStatus, AppUser, BgTaskRequest, ChangedFile, ChatStatusLite, EngineId, RunRequest, SessionPersistPayload, SubAgentInfo, UserProfile, UsageInfo } from '@shared/protocol'
 
 // 백그라운드 셸 컨트롤 — 이 창의 세션 엔진으로 라우팅 (memo된 WorkBar용 고정 함수)
 const onBgTaskSession = (req: BgTaskRequest): void => {
@@ -45,6 +45,9 @@ import {
 import { parseBtw, btwForkOf, btwRunResume, wrapBtwFork } from '../lib/btw'
 import { pushRecentDir } from '../lib/recentDirs'
 import { useLimitResume } from '../lib/useLimitResume'
+import { listChatWindows, onChatStatus, onChatWindows, type WindowSlot } from '../api/unified'
+import { MAIN_SLOT_NAME, putChatStatuses, putSlotNames, WINDOW_SLOT_NAME } from '../lib/accounts'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 import { ImageViewer } from './ImageViewer'
 import { SubAgentModal } from './AgentPanel'
 const FileModal = lazy(() => import('./FileModal').then((m) => ({ default: m.FileModal }))) // CodeMirror 청크 지연 로드 (App.tsx와 동일)
@@ -206,6 +209,42 @@ export function SessionWindow(): React.ReactElement {
   // 저장본 복원이 끝났는지 — 끝나기 전엔 보고/persist를 막아 저장된 대화를 빈 상태로 덮지 않는다
   const [hydrated, setHydrated] = useState(false)
   const hydratedRef = useRef(false)
+  // ── ★R28 ACCT §3 — 이 창의 chatId + 「계정 → 살아 있는 자리」 역인덱스 ──────────
+  // 본채팅 창(App.tsx)만 `chat:status`를 스토어에 앉히고 있어서, 추가 채팅 창의 계정
+  // picker는 「사용 중」 칩도, 살아 있는 런타임이 물고 있는 계정(「현재」)도 몰랐다 — 정렬
+  // 뒤 맨 위 계정을 「현재」로 적는 그 어긋남이 이 창에서는 그대로 남아 있었다. REPLACE는
+  // 셸이 모든 창에 `emit`하므로 여기서 구독만 하면 같은 표가 선다. 자기 chatId는 창 자리
+  // 목록(`chat:windows`)에서 OS 창 라벨로 찾는다 — 렌더러가 달리 알 길이 없다.
+  const [selfChatId, setSelfChatId] = useState('')
+  useEffect(() => {
+    // 첫 REPLACE가 리스너보다 이를 수 있어(F12) 등록 뒤 스냅샷을 한 번 당긴다(App.tsx와 동일).
+    const catchUp = (): void => {
+      void window.api
+        .getChats()
+        .then((raw) => {
+          const r = raw as { chats?: { id: string; title?: string }[]; statuses?: Record<string, ChatStatusLite> } | null
+          if (r?.statuses) putChatStatuses(Object.values(r.statuses).filter((v): v is ChatStatusLite => !!v))
+          if (Array.isArray(r?.chats))
+            putSlotNames('chats', Object.fromEntries(r!.chats!.filter((c) => c?.id).map((c) => [c.id, c.title?.trim() || MAIN_SLOT_NAME()])))
+        })
+        .catch(() => {})
+    }
+    return onChatStatus(putChatStatuses, catchUp)
+  }, [])
+  useEffect(() => {
+    let label = ''
+    try {
+      label = getCurrentWindow().label || ''
+    } catch {
+      /* 내부 메타데이터 부재 — 자기 자리를 못 빼는 것뿐, 표는 그대로 선다 */
+    }
+    const apply = (slots: WindowSlot[]): void => {
+      const me = label ? slots.find((s) => s.label === label) : undefined
+      if (me?.chatId) setSelfChatId(me.chatId)
+      putSlotNames('wins', Object.fromEntries(slots.map((s) => [s.chatId, s.title?.trim() || WINDOW_SLOT_NAME()])))
+    }
+    return onChatWindows(apply, () => void listChatWindows().then(apply).catch(() => {}))
+  }, [])
   // ── /btw 질문 창 시드 ──
   // btwWin: 이 창이 /btw로 만들어졌다(기본 제목·안내 칩). btwSeedRef: 첫 실행이 포크할
   // 원본 세션(자기 세션이 생기면 자연히 무시). autoAsk: 자동 전송할 인라인 질문 —
@@ -901,6 +940,7 @@ export function SessionWindow(): React.ReactElement {
           started={started}
           picker={picker}
           setPicker={savePicker}
+          chatId={selfChatId || undefined}
           apiMode={apiMode}
           apiReady={!!apiCfg?.hasKey}
           apiReadyCodex={!!apiCfg?.hasOpenaiKey}

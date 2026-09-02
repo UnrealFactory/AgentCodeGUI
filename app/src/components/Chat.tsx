@@ -27,7 +27,7 @@ import type {
 } from '@shared/protocol'
 import { isEn, t, useLang } from '../lib/i18n'
 // ★R28 ACCT §1·§3 — 계정 목록·한도·「사용 중」 역인덱스의 단일 스토어.
-import { ensureAccounts, ensureCodexAccounts, inUseLabel, primeUsageFromDisk, refreshCodexUsage, refreshUsage, useAccounts } from '../lib/accounts'
+import { ensureAccounts, ensureCodexAccounts, inUseLabel, liveAccountOf, primeUsageFromDisk, refreshCodexUsage, refreshUsage, useAccounts } from '../lib/accounts'
 import { sameCwd, type ThreadItem } from '../store/session'
 import { budgetLanding, canPressContinue, holdDelayMs, type LimitHold } from '../lib/limitResume'
 import { noteLanding, putAnchor, takeAnchor } from '../lib/threadAnchor'
@@ -3174,7 +3174,11 @@ export function PickerChip({
   // ★R28 ACCT §4 — 기본 계정 = **목록 맨 위**(파생값). 셸이 그 규칙으로 `isDefault`를
   // 싣는다(`ipc/system.rs`) — 여기서 다시 계산하지 않는다(진실이 두 곳이 되지 않게).
   const defaultEmail = accounts.find((a) => a.isDefault)?.email
-  const effective = picker.account ?? defaultEmail
+  // 바인딩 없는 채팅의 「현재」 — **살아 있는 런타임이 물고 있는 계정**이 맨 위보다 먼저다.
+  // 런타임은 첫 실행 때의 맨 위를 굳히고 이후 요청에 계정이 없으면 그대로 가므로, 설정에서
+  // 정렬해 맨 위가 바뀐 뒤에도 이 채팅은 옛 계정으로 돈다. 맨 위를 「현재」로 적으면 표시와
+  // 실행이 갈린다(3.0.0 보고). 새 채팅·죽은 런타임은 liveRows에 없어 맨 위로 떨어진다.
+  const effective = picker.account ?? liveAccountOf(chatId) ?? defaultEmail
   const cxDefaultEmail = cxAccounts.find((a) => a.isDefault)?.email
   const cxEffective = picker.codexAccount ?? cxDefaultEmail
 
@@ -3203,7 +3207,7 @@ export function PickerChip({
   /** 계정 행 클릭 — 다른 계정이면 확인 카드부터, 같은 계정은 바인딩만 조용히 갱신. */
   const switchAccount = (key: 'account' | 'codexAccount', next: string | undefined, fromEmail?: string, toEmail?: string): void => {
     if (fromEmail === toEmail) {
-      // 같은 계정을 다시 고른 것(기본 바인딩 해제/고정 전환) — 전환이 아니라 확인 불요
+      // 같은 계정을 다시 고른 것(따라가던 계정을 고정) — 전환이 아니라 확인 불요
       setPicker({ ...pickerRef.current, [key]: next })
       return
     }
@@ -3393,8 +3397,11 @@ export function PickerChip({
                   cur={a.email === effective}
                   // ★§3 — 다른 자리가 쓰는 중(주황). **선택은 막지 않는다**(사용자가 알고 고르는 건 존중)
                   warn={inUse(a.email)}
-                  // 기본 계정을 고르면 바인딩을 푼다(기본을 따라감) — 다른 계정은 이 채팅에 고정
-                  onClick={() => switchAccount('account', a.isDefault ? undefined : a.email, effective, a.email)}
+                  // 고른 계정은 **항상 이 채팅에 고정**한다. 맨 위 계정을 골랐을 때 바인딩을
+                  // 풀어 「맨 위를 따라감」으로 두던 초판은, 설정에서 정렬해 맨 위가 바뀌는 순간
+                  // 선택이 조용히 다른 계정으로 옮겨 갔다(3.0.0 보고). 「따라감」은 한 번도 안
+                  // 고른 채팅에만 남는다.
+                  onClick={() => switchAccount('account', a.email, effective, a.email)}
                 />
               ))}
               {/* 숨긴 소진 계정 펼치기 — ToolGroup '이전 도구 N개 펼치기'와 같은 접기 행.
@@ -3425,7 +3432,7 @@ export function PickerChip({
                     t(chatgptPlanLabel(a.plan) + ' 구독', chatgptPlanLabel(a.plan) + ' subscription')
                   }
                   cur={a.email === cxEffective}
-                  onClick={() => switchAccount('codexAccount', a.isDefault ? undefined : a.email, cxEffective, a.email)}
+                  onClick={() => switchAccount('codexAccount', a.email, cxEffective, a.email)}
                 />
               ))}
               {cxExhaustedCount > 0 && (

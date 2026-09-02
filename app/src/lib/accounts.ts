@@ -406,6 +406,20 @@ export function slotsUsing(email: string | undefined, selfKey?: string): AcctSlo
 }
 
 /**
+ * **이 자리의 살아 있는 런타임이 지금 물고 있는 계정** — 없으면 `undefined`.
+ *
+ * 바인딩이 없는 채팅의 「현재」는 `목록 맨 위`가 아니라 이 값이어야 한다. 런타임은
+ * 첫 실행 때의 맨 위를 정체성으로 굳히고(`identity.rs` normalize → `to_raw`가 계정을
+ * 박는다) 이후 실행 요청에 계정이 없으면 그대로 간다 — 그 사이 설정에서 정렬해 맨 위가
+ * 바뀌어도 이 채팅은 옛 계정으로 돈다. picker가 새 맨 위를 「현재」라고 적으면 실행과
+ * 표시가 갈린다(3.0.0 보고: 「선택한 계정이 제대로 안 된다」).
+ */
+export function liveAccountOf(selfKey?: string): string | undefined {
+  if (!selfKey) return undefined
+  return liveRows.find((r) => r.chatId === selfKey || (!!r.panelId && r.panelId === selfKey))?.account
+}
+
+/**
  * 「사용 중」 칩의 문구 — 없으면 `null`.
  *
  * 규약(§3):

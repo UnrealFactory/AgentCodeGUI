@@ -1291,11 +1291,23 @@ function ActiveSession({
   })
   // 다이얼 — 줄일 때 **포커스된 자리를 order 맨 앞으로** 올린다(§2.2-1 "현재 대화 = 1번 자리").
   // 나머지 상대 순서는 보존된다.
+  //
+  // ★2026-09-02 — 접히게 된 포커스 자리는 맨 앞이 아니라 **보이는 마지막 자리(next번)**로
+  // 온다. 맨 앞에 끼우면 1‥next-1번이 전부 한 칸씩 밀린다: 4→2에서 3번 패널에 포커스가
+  // 있으면 [3,1 | 2,4]가 되고 다시 4로 늘리면 [3,1,2,4] — 사용자에겐 "1번·2번 순서가
+  // 뒤틀렸다"로 보였다(패널 아무 데나 클릭해도 포커스가 잡히니 언제 그러는지 알 수 없었다).
+  // 마지막 자리로 오면 1‥next-1번은 그대로고 밀리는 건 포커스 자리와 접히는 자리 사이뿐이다.
+  // next=1이면 맨 앞이라 "현재 대화 = 1번 자리"(IDE 크롬)는 그대로 성립한다. 늘릴 때는
+  // 어느 판에서도 순서를 안 건드린다.
   const applyCount = useEvent((n: number) => {
     const next = clampCount(n)
     const cur = panelOrder
     const keep = focusedSlot != null && cur.includes(focusedSlot) ? focusedSlot : cur[0]
-    const promoted = next < count && cur.indexOf(keep) >= next ? [keep, ...cur.filter((s) => s !== keep)] : cur
+    let promoted = cur
+    if (next < count && cur.indexOf(keep) >= next) {
+      promoted = cur.filter((s) => s !== keep)
+      promoted.splice(next - 1, 0, keep)
+    }
     setVisible(promoted, next)
   })
   // 접힌 자리를 1번 자리로 올린다(팝오버 ↥ · 사이드바 클릭). count는 그대로 —
@@ -1562,12 +1574,16 @@ function ActiveSession({
     const over = (document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null)?.closest?.(
       '.ma-grid .ma-panel'
     ) as HTMLElement | null
-    const target = over ? Number(over.dataset.slot) : NaN
-    if (!Number.isInteger(target) || target === d.slot) return
+    // 삽입 위치는 **그리드 안의 칸 번호**(포인터 밑 패널의 DOM 위치)다. 밑에 깔린 패널의
+    // 슬롯으로 `prev.indexOf(target)`을 잡으면, 리렌더 전에 pointermove가 한 번 더 오는 경우
+    // (패널 여럿이 스트리밍 중일 때) 같은 칸이 "이미 옮긴 뒤의 상태"에서는 반대 방향 이동으로
+    // 읽혀 왕복 반전된다 — 놓인 순서가 이벤트 홀짝에 좌우됐다. 칸 번호면 같은 칸은 from === to.
+    if (!over || Number(over.dataset.slot) === d.slot) return
+    const to = over.parentElement ? Array.prototype.indexOf.call(over.parentElement.children, over) : -1
+    if (to < 0) return
     setPanelOrder((prev) => {
       const from = prev.indexOf(d.slot)
-      const to = prev.indexOf(target)
-      if (from < 0 || to < 0 || from === to) return prev
+      if (from < 0 || to >= prev.length || from === to) return prev
       const next = [...prev]
       next.splice(from, 1)
       next.splice(to, 0, d.slot)

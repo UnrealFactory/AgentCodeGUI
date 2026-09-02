@@ -135,6 +135,93 @@ const RELEASES: Record<string, LocalizedRelease> = {
   //     (채팅 엔진·도구 행·MCP & Skill 칩·뷰어 창·한도 두 갈래·계정·다이얼 1·사이드바/알림·
   //     채팅 손맛·Git·창/트레이·휴지통·홈 분리·Verse 제거). 문구의 UI 문자열은 전부 app/src에서
   //     실재를 확인한 것(「한도 소진 시」·「별도 창으로」·「사용 중」·COUNT_OPTIONS 1~6·tray.rs).
+  // 3.0.1 — 3.0.0 첫 주 보고 셋(2026-09-02): 컨텍스트 게이지 100%(wire.rs result.usage 누적치) ·
+  //   계정 picker(맨 위 고르면 바인딩 해제 → 정렬에 흔들림 · 살아 있는 런타임 계정 ≠ 「현재」 ·
+  //   추가 채팅 창 미구독) · 멀티 패널 축소 승격(맨 앞 삽입 → 1·2번 밀림) + 드래그 왕복 반전.
+  '3.0.1': {
+    ko: {
+      eyebrow: 'FIXES',
+      lead: '3.0.0 첫 주에 들어온 보고 셋을 고쳤습니다 — 컨텍스트 게이지, 계정 선택, 멀티 패널 순서.',
+      notes: [
+        {
+          tag: '채팅',
+          name: '컨텍스트 게이지가 한 번에 100%로 튀던 문제',
+          desc: (
+            <>
+              도구 호출이 이어진 턴의 결과 프레임은 호출마다 캐시 읽기를 다시 더한 <b>턴 누적치</b>인데, 그 값을
+              컨텍스트로 읽고 있어 도구 몇 번에 게이지가 100%가 됐습니다. 2.6.2처럼 <b>마지막 호출의 컨텍스트</b>를
+              씁니다.
+            </>
+          )
+        },
+        {
+          tag: '계정',
+          name: '고른 계정이 정렬 뒤에 바뀌던 문제',
+          desc: (
+            <>
+              맨 위 계정을 고르면 「맨 위를 따라감」으로 저장돼, 설정에서 계정을 정렬하면 이 채팅의 계정이 조용히
+              다른 계정으로 옮겨 갔습니다. 이제 고른 계정은 그 채팅에 <b>고정</b>됩니다. 실행 중인 채팅의 「현재」는
+              목록 맨 위가 아니라 <b>실제로 물고 있는 계정</b>을 가리키고, 추가 채팅 창에서도 「현재」·「사용 중」
+              칩이 같이 보입니다.
+            </>
+          )
+        },
+        {
+          tag: '멀티 패널',
+          name: '패널 수를 줄였다 늘리면 1·2번이 밀리던 문제',
+          desc: (
+            <>
+              줄일 때 포커스된 패널을 1번 자리에 끼워 넣어 나머지가 한 칸씩 밀렸습니다 — 4→2에서 3번에 포커스가
+              있으면 [3, 1], 다시 4로 가면 [3, 1, 2, 4]. 이제 접히게 된 포커스 패널은 <b>보이는 마지막 자리</b>로
+              오고 1‥N-1번은 그대로입니다. 헤더를 길게 눌러 옮길 때 리렌더 사이의 이벤트로 순서가 왕복하던 것도
+              막았습니다.
+            </>
+          )
+        }
+      ]
+    },
+    en: {
+      eyebrow: 'FIXES',
+      lead: "Three fixes for the reports from 3.0.0's first week — the context gauge, account selection, and multi-panel order.",
+      notes: [
+        {
+          tag: 'Chat',
+          name: 'The context gauge jumped to 100% after one exchange',
+          desc: (
+            <>
+              The result frame of a turn with several tool calls carries the turn's <b>cumulative</b> usage (cache reads
+              are re-added on every call), and that value was being read as the context — a few tool calls filled the
+              gauge. It now uses the <b>last call's context</b>, as 2.6.2 did.
+            </>
+          )
+        },
+        {
+          tag: 'Account',
+          name: 'The account you picked changed after sorting',
+          desc: (
+            <>
+              Picking the top account was stored as "follow the top", so sorting accounts in Settings silently moved
+              this chat to a different account. A picked account is now <b>pinned</b> to the chat. For a running chat,
+              "Current" points at <b>the account actually in use</b> rather than the top of the list, and extra chat
+              windows now show the "Current" and "In use" chips too.
+            </>
+          )
+        },
+        {
+          tag: 'Multi panel',
+          name: 'Shrinking then growing the panel count shifted panels 1 and 2',
+          desc: (
+            <>
+              Shrinking inserted the focused panel at slot 1 and pushed the rest down — 4→2 with focus on panel 3 gave
+              [3, 1]; back to 4 gave [3, 1, 2, 4]. A focused panel that would be folded now lands in the{' '}
+              <b>last visible slot</b>, and slots 1‥N-1 stay put. Press-and-hold reordering no longer flips back and
+              forth when events arrive between re-renders.
+            </>
+          )
+        }
+      ]
+    }
+  },
   '3.0.0': {
     ko: {
       eyebrow: 'REBUILT',
